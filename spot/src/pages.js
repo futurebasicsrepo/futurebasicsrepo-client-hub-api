@@ -31,7 +31,7 @@ p.lead{color:var(--muted);margin:0 0 22px;font-size:17px}
 .topbar{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .tabs.modes{margin:0;flex:0 0 auto;width:168px;padding:3px;border-radius:12px}.tabs.modes button{padding:7px 10px;font-size:15px}
 body.shopping main{max-width:1200px}body.shopping #hero,body.shopping .sandbox,body.shopping .anypage,body.shopping #mine{display:none}
-.shophead{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin:22px 0 14px}.shoptitle{margin:0 0 2px;font-size:30px}.shophead p{margin:0}
+.shophead{display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:12px;margin:22px 0 14px}.shoptitle{margin:0 0 2px;font-size:30px}.shophead p{margin:0}
 .views{display:flex;gap:4px;background:var(--line);padding:3px;border-radius:10px}.views button{border:0;background:transparent;width:36px;height:32px;border-radius:8px;font-size:17px;line-height:1;color:var(--muted);cursor:pointer}.views button[aria-pressed=true]{background:var(--card);color:var(--ink);box-shadow:0 1px 2px #0001}
 .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
 @media (min-width:900px){.grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:18px}}
@@ -59,6 +59,8 @@ input:focus,textarea:focus{outline:2px solid var(--spot);outline-offset:1px;bord
 .thumb{width:56px;height:56px;border-radius:12px;background:var(--line) center/cover no-repeat;flex:none}
 .item .t{font-weight:600}.item .v{color:var(--muted);font-size:14px}
 .item .p{margin-left:auto;font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap}
+.trk{margin-top:12px;text-align:left}.trk .track{display:flex;gap:3px;margin:0 0 6px}.trk .track i{flex:1;height:5px;border-radius:3px;background:var(--line)}.trk .track.s1 i:nth-child(-n+1),.trk .track.s2 i:nth-child(-n+2),.trk .track.s3 i:nth-child(-n+3),.trk .track.s4 i{background:var(--ok)}.trk .track.bad i:nth-child(-n+2){background:var(--warn)}
+.retbox{border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin-top:12px;text-align:left}.retbox h3{margin:0 0 6px;font-size:16px}.retbox ol{margin:0 0 10px;padding-left:18px;display:grid;gap:4px}.retbox select,.retbox textarea{width:100%;margin:6px 0}
 .sum{display:flex;justify-content:space-between;color:var(--muted);padding:3px 0;font-variant-numeric:tabular-nums}
 .sum.total{color:var(--ink);font-weight:800;font-size:20px;padding-top:10px;border-top:1px solid var(--line);margin-top:8px}
 .pill{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:700;padding:5px 10px;border-radius:99px;background:var(--line)}
@@ -89,7 +91,14 @@ input:focus,textarea:focus{outline:2px solid var(--spot);outline-offset:1px;bord
 @media (prefers-color-scheme:dark){.stile{background:hsl(var(--h) 30% 22%);color:hsl(var(--h) 70% 82%)}}
 .pc .pb{padding:12px 14px 14px;display:flex;flex-direction:column;gap:3px;flex:1}.pc .st{font-size:12px;font-weight:700;color:var(--muted);display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 .pc .t{font-weight:700;line-height:1.25;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.pc .v{font-size:13px;color:var(--muted)}.pc .why{font-size:13px;color:var(--muted);font-style:italic}
-.pc .pr{font-size:20px;font-weight:800;margin-top:auto;padding-top:6px}.pc .btn{margin-top:8px;padding:11px 12px;font-size:15px;white-space:nowrap}.pc a.see{font-size:13px;font-weight:600;color:var(--muted);text-align:center;margin-top:8px}
+.pc .pr{font-size:20px;font-weight:800;margin-top:auto;padding-top:6px}.pc .pr s{font-size:14px;font-weight:600;color:var(--muted);margin-left:2px}.pc .pr .sale{vertical-align:3px;margin-left:4px;background:color-mix(in srgb,var(--spot) 16%,transparent);color:var(--spot)}.pc .pr .moved{display:block;font-size:12px;font-weight:700}.pc .pr .moved.down{color:var(--ok)}.pc .pr .moved.up{color:var(--warn)}
+.pc:has(.facts .opts .on) .v{display:none}.facts{display:flex;flex-direction:column;gap:5px;margin-top:6px;font-size:12.5px;line-height:1.35;color:var(--muted)}.facts:empty{display:none}
+.facts .opts{display:flex;flex-wrap:wrap;gap:4px;align-items:center}.facts .opts b{font-weight:700;color:var(--ink);margin-right:2px}.facts .opts span{border:1px solid var(--line);border-radius:7px;padding:1px 6px;font-weight:600;color:var(--ink)}.facts .opts span.on{border-color:var(--ink);background:var(--ink);color:var(--bg)}.facts .opts span.no{color:var(--muted);text-decoration:line-through;opacity:.7}.facts .opts span.more{border:0;color:var(--muted)}
+.facts .fl a{color:inherit;font-weight:600}.promo{margin-top:6px;font-size:12.5px;line-height:1.4;color:var(--ink)}.promo .good{color:var(--ink)}.promo .code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.02em;background:color-mix(in srgb,var(--ok) 14%,transparent);color:var(--ok);padding:0 5px;border-radius:5px}.promo .wait{font-style:italic;color:var(--muted)}.promo .plgo{font-size:13px;font-weight:700;padding:0}
+.dl{margin-top:6px;font-size:12.5px;line-height:1.4;color:var(--ink)}.dl a{color:inherit;font-weight:600}.dl .wait{font-style:italic;color:var(--muted)}.dl .dlgo{font-size:13px;font-weight:700;padding:0}
+.cmp{display:flex;flex-direction:column;gap:4px;margin-top:6px;font-size:12.5px;line-height:1.35;color:var(--muted)}.cmp .offer{display:flex;align-items:center;justify-content:space-between;gap:8px;color:var(--ink)}.cmp .offer a{color:var(--muted);text-decoration:none}.cmp .good{color:var(--ok);font-weight:700}.cmp .wait{font-style:italic}.cmp .cmpgo{align-self:flex-start;font-size:13px;font-weight:700;padding:0}.cmp .btn.tiny{padding:5px 10px;font-size:12.5px;margin:0;width:auto;flex:none}
+.rv{display:flex;flex-direction:column;gap:3px;margin-top:6px;font-size:12.5px;line-height:1.35;color:var(--muted)}.rv .rvl a{color:inherit;font-weight:600}.rv .stars{color:var(--ink)}.rv .fit{color:var(--ink);font-weight:600}.rv .wait{font-style:italic}.rv .rvgo{align-self:flex-start;font-size:13px;font-weight:700;padding:0}.facts .good{color:var(--ok);font-weight:700}.facts .shield{color:var(--ink)}.facts .wait{font-style:italic}
+.pc .btn{margin-top:8px;padding:11px 12px;font-size:15px;white-space:nowrap}.pc a.see{font-size:13px;font-weight:600;color:var(--muted);text-align:center;margin-top:8px}
 .pc.sk .ph,.pc.sk .ln{background:linear-gradient(90deg,var(--line),color-mix(in srgb,var(--line) 40%,transparent),var(--line));background-size:200% 100%;animation:sk 1.2s linear infinite}.pc.sk .ln{height:12px;border-radius:6px;margin:6px 0}@keyframes sk{to{background-position:-200% 0}}
 .railnav{display:flex;align-items:center;justify-content:center;gap:12px;font-size:13px;font-weight:700;color:var(--muted)}.railnav button{width:34px;height:34px;border-radius:50%;border:1px solid var(--line);background:var(--card);color:var(--ink);font:inherit;font-size:16px;cursor:pointer}.railnav button:disabled{opacity:.35;cursor:default}
 .askbar{display:flex;gap:8px;position:sticky;bottom:10px;background:var(--card);border:1px solid var(--line);border-radius:18px;padding:6px;box-shadow:0 6px 20px rgba(0,0,0,.08)}.askbar input{flex:1;min-width:0;border:0;background:transparent;margin:0;box-shadow:none}.askbar .btn{width:auto;margin:0;flex:none;padding:10px 16px}
@@ -132,6 +141,33 @@ const HOME_CSS = `
 .hero{display:flex;align-items:center;gap:12px;margin:18px 0 14px}
 .hero #buddy{display:block;width:92px;flex:none;animation:bob 3.2s ease-in-out infinite;margin-bottom:-10px}.buddy3d img{display:block;width:100%;height:auto}
 @keyframes bob{50%{transform:translateY(-4px)}}
+.mine-row.order{align-items:center;gap:12px;justify-content:flex-start}.mine-row .oi{width:48px;height:48px;border-radius:10px;background:#fff;flex:none;overflow:hidden;border:1px solid var(--line)}.mine-row .oi img{width:100%;height:100%;object-fit:contain}.mine-row .ot{flex:1;min-width:0}
+.track{display:flex;gap:3px;margin:6px 0 3px}.track i{flex:1;height:4px;border-radius:2px;background:var(--line)}.track.s1 i:nth-child(-n+1),.track.s2 i:nth-child(-n+2),.track.s3 i:nth-child(-n+3),.track.s4 i{background:var(--ok)}.track.bad i:nth-child(-n+2){background:var(--warn)}.mine-row .ok{color:var(--ok);font-weight:700}
+.hero #buddy{position:relative;cursor:pointer;-webkit-tap-highlight-color:transparent}.hero #buddy.has3d{animation:none}.hero #buddy.has3d img{display:none}.hero #buddy .spot3d{display:block;width:100%;height:auto}
+.hero #buddy.joy img.open{display:none!important}.hero #buddy.joy img.joy{display:block!important}.hero #buddy.joy{animation:spotjoy .5s cubic-bezier(.3,1.6,.5,1) 3}
+.hero #buddy.hop{animation:spotjoy .55s cubic-bezier(.3,1.6,.5,1)}.hero #buddy.think{animation:spotthink 1.8s ease-in-out infinite}.hero #buddy.oh{animation:spotshake .45s ease-in-out 2}
+@keyframes spotjoy{0%,100%{transform:none}35%{transform:translateY(-14px) scale(.96,1.06)}70%{transform:translateY(0) scale(1.06,.94)}}
+@keyframes spotthink{0%,100%{transform:rotate(0)}30%{transform:rotate(-7deg) translateY(-2px)}70%{transform:rotate(6deg)}}
+@keyframes spotshake{0%,100%{transform:none}25%{transform:translateX(-4px) rotate(-4deg)}75%{transform:translateX(4px) rotate(4deg)}}
+.pc .ph{position:relative}.cardlinks .watch.on{color:var(--ok);font-weight:700}.tile .ph{position:relative}.tile .wtag{position:absolute;top:8px;right:8px;z-index:2;background:var(--card);border-radius:999px;padding:3px 7px;font-size:14px;box-shadow:0 1px 4px #0002}.tile .wdrop{font-size:12px;font-weight:700;color:var(--ok)}
+.shopfilter{display:flex;gap:4px;background:var(--line);padding:3px;border-radius:10px}.shopfilter button{border:0;background:transparent;height:32px;padding:0 10px;border-radius:8px;font:inherit;font-size:13px;font-weight:700;color:var(--muted);cursor:pointer;white-space:nowrap}.shopfilter button[aria-pressed=true]{background:var(--card);color:var(--ink);box-shadow:0 1px 2px #0001}
+.cardspot{position:absolute;left:50%;bottom:-6px;width:96px;margin-left:-48px;z-index:3;pointer-events:none;animation:cspop .5s cubic-bezier(.3,1.6,.5,1) both}.ph .cardspot img{position:static;inset:auto;display:block;width:100%;height:auto;padding:0;background:none;object-fit:initial;z-index:auto;filter:drop-shadow(0 6px 10px #0004)}
+.cardspot .cs-say{position:absolute;bottom:100%;left:50%;transform:translateX(-50%);margin-bottom:2px;white-space:nowrap;background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:14px;padding:6px 10px;font-weight:800;font-size:14px;box-shadow:0 4px 14px #0003}
+.cardspot.mine{animation:cspop .5s cubic-bezier(.3,1.6,.5,1) both,csjump .5s .5s cubic-bezier(.3,1.6,.5,1) 2}.cardspot b{position:absolute;top:30%;left:50%;font-size:18px;opacity:0;animation:csheart 1.4s ease-out forwards}.cardspot b:nth-of-type(1){--hx:-46px;animation-delay:.2s}.cardspot b:nth-of-type(2){--hx:30px;animation-delay:.45s}.cardspot b:nth-of-type(3){--hx:-12px;animation-delay:.75s}.cardspot b:nth-of-type(4){--hx:44px;animation-delay:1s}
+.cardspot.bye{animation:csbye .45s ease-in forwards}
+@keyframes cspop{0%{transform:translateY(60px) scale(.6);opacity:0}100%{transform:none;opacity:1}}
+@keyframes csjump{0%,100%{transform:none}40%{transform:translateY(-16px) scale(.95,1.06)}75%{transform:scale(1.06,.94)}}
+@keyframes csheart{0%{transform:translate(0,0) scale(.6);opacity:0}20%{opacity:1}100%{transform:translate(var(--hx),-90px) scale(1.1);opacity:0}}
+@keyframes csbye{to{transform:translateY(50px) scale(.7);opacity:0}}
+${logoFaceCss('.spotsay i')}
+.spotsay i.hop{animation:spotjoy .55s cubic-bezier(.3,1.6,.5,1)}
+@media (prefers-reduced-motion:reduce){.cardspot,.cardspot.mine,.cardspot.bye,.spotsay i.hop{animation:none}}
+.hero .say.pop{animation:saypop .38s cubic-bezier(.3,1.6,.5,1);transform-origin:0 100%}
+@keyframes saypop{0%{transform:scale(.86);opacity:.4}100%{transform:none;opacity:1}}
+.hero .confetti{position:absolute;left:50%;top:40%;width:0;height:0;pointer-events:none;z-index:4}
+.hero .confetti i{position:absolute;width:8px;height:12px;border-radius:2px;animation:burst 1.3s cubic-bezier(.2,.7,.3,1) forwards}
+@keyframes burst{0%{transform:translate(0,0) rotate(0);opacity:1}100%{transform:translate(var(--dx),var(--dy)) rotate(var(--r));opacity:0}}
+@media (prefers-reduced-motion:reduce){.hero #buddy.joy,.hero #buddy.hop,.hero #buddy.think,.hero #buddy.oh,.hero .say.pop{animation:none}}
 .hero .say{background:var(--card);border:1px solid var(--line);border-radius:20px 20px 20px 6px;padding:11px 15px;font-weight:800;font-size:19px;letter-spacing:-.01em}
 .box{background:var(--card);border:2px solid var(--line);border-radius:22px;padding:12px;transition:border-color .15s}
 .box:focus-within,.box.drop{border-color:var(--spot)}
@@ -163,12 +199,13 @@ export function homePage({ origin, provider, cfg }) {
 <div class="topbar"><a class="brand" href="/"><span class="dot"></span>Spot</a><div class="tabs modes" role="tablist" aria-label="Spot or Shop"><button type="button" role="tab" id="modeSpot" aria-selected="true">Spot</button><button type="button" role="tab" id="modeShop" aria-selected="false">Shop</button></div></div>
 <section id="shop" hidden>
   <div class="shophead"><div><h1 class="shoptitle">Shop</h1><p class="small muted" id="shopSub">Everything Spot has shown you.</p></div>
+    <div class="shopfilter" role="group" aria-label="Show"><button type="button" id="fAll" aria-pressed="true">All</button><button type="button" id="fWatch" aria-pressed="false">👀 Watching</button></div>
     <div class="views" role="group" aria-label="Layout"><button type="button" id="viewGrid" aria-pressed="true" aria-label="Grid">▦</button><button type="button" id="viewOne" aria-pressed="false" aria-label="One at a time">▢</button></div></div>
   <div class="grid" id="shopGrid"></div>
   <div class="shopempty" id="shopEmpty" hidden><p><b>Nothing here yet.</b></p><p class="muted">Ask Spot for something, and everything it finds shows up here to come back to.</p><button class="btn" type="button" id="shopStart">Ask Spot →</button></div>
   <div class="sheet shopsheet" id="shopSheet" hidden role="dialog" aria-label="Product"><button class="sheetx" id="shopSheetX" type="button" aria-label="Close">×</button><div id="shopCard"></div></div>
 </section>
-<div class="hero" id="hero">${buddySvg(false)}<div class="say" id="say" aria-live="polite">what do you want?</div></div>
+<div class="hero" id="hero" data-spot3d="${assetUrl('spot3d.js')}">${buddySvg(false)}<div class="say" id="say" aria-live="polite">what do you want?</div></div>
 ${provider === 'sandbox' ? '<div class="sandbox">Test mode: no real money moves.</div>' : ''}
 
 <section id="compose">
@@ -712,7 +749,47 @@ function ridersForm(c,s){
 function orderBox(c,f,agentOn){
   const st=f&&f.state;
   const tr=c.kind==='train';
-  if(st==='placed')return (tr?'<h2>🚆 Booked!</h2><p class="muted" style="margin:0">'+esc(c.merchant.name)+' confirmed your ticket'+(f.order_number?' <b>'+esc(f.order_number)+'</b>':'')+'. Your e-ticket is on its way to '+esc(c.contact?.email||'your email')+'.</p>':'<h2>📦 Ordered!</h2><p class="muted" style="margin:0">'+esc(c.merchant.name)+' confirmed your order'+(f.order_number&&!/[:/]/.test(f.order_number)?' <b>#'+esc(f.order_number)+'</b>':'')+'. Watch your email for tracking.</p>')+(f.order_url?'<a class="btn dark" href="'+esc(f.order_url)+'" target="_blank" rel="noopener">View your order</a>':'');
+  if(st==='placed')return placedBox(c,f,tr)+trackLine(c)+watchLine(c)+returnLine(c,f);
+  return orderBoxRest(c,f,agentOn,st,tr);
+}
+// The price watch on an order Spot paid for: on until when, or what was asked for.
+function watchLine(c){
+  const w=c.price_watch;if(!w)return '';
+  const day=t=>new Date(t).toLocaleDateString([], {month:'short',day:'numeric'});
+  const store=esc(c.merchant.name);
+  if(w.state==='refunded')return '<p class="small" style="margin:10px 0 0">📉 '+store+' matched a lower price: '+usd(w.refunded_cents||w.claimed_cents||0)+' went back to the card that paid.</p>';
+  if(w.state==='claimed')return '<p class="small" style="margin:10px 0 0">📉 '+store+' lowered the price, so Spot asked them for '+usd(w.claimed_cents||0)+' back. If they pay it, it goes back to the card that paid.</p>';
+  return '<p class="small muted" style="margin:10px 0 0">📉 Spot checks '+store+'’s price daily until '+day(w.until)+'. If it drops, Spot asks for the difference.</p>';
+}
+// Where it is: the store's own shipment status, or a tracking number pasted in.
+function trackLine(c){
+  if(c.kind==='train'||c.kind==='flight')return '';
+  const t=c.tracking,S={ordered:[1,'Ordered'],processing:[1,'Getting it ready'],shipped:[2,'Shipped'],in_transit:[2,'On its way'],out_for_delivery:[3,'Out for delivery'],delivered:[4,'Delivered'],problem:[2,'Delivery problem']};
+  const [n,label]=S[(t&&t.status)||'ordered']||S.ordered;
+  let h='<div class="trk"><div class="track s'+n+(t&&t.status==='problem'?' bad':'')+'"><i></i><i></i><i></i><i></i></div><div class="small"><b>'+label+'</b>'+(t&&t.description&&t.description.toLowerCase()!==label.toLowerCase()?': '+esc(t.description):'')+(t&&t.carrier?' · '+esc(t.carrier):'')+(t&&t.number?' '+esc(t.number):'')+'</div>';
+  if(t&&t.url)h+='<a class="btn ghost small" href="'+esc(t.url)+'" target="_blank" rel="noopener" style="margin-top:8px">Track it →</a>';
+  if(!t||!t.number)h+='<div class="row" style="gap:6px;margin-top:8px"><input id="trkNum" placeholder="Tracking number from '+esc(c.merchant.name)+'’s email" style="margin:0;flex:1"><button class="btn ghost small" id="trkAdd" style="margin:0;width:auto">Add</button></div><p class="err" id="trkErr"></p>';
+  return h+'</div>';
+}
+// Returns: start one here; then the store's own steps, with the order number.
+function returnLine(c,f){
+  const r=c.return,store=esc(c.merchant.name);
+  if(r&&r.state==='refunded')return '<p class="small" style="margin:10px 0 0">↩︎ '+store+' refunded the return: '+usd(r.refunded_cents||0)+' went back to the card that paid.</p>';
+  if(r&&r.state==='shipped')return '<p class="small" style="margin:10px 0 0">↩︎ Shipped back'+(r.tracking?' ('+esc(r.tracking)+')':'')+'. When '+store+' refunds it, Spot sends the money back to the card that paid.</p>';
+  if(r&&r.state==='requested'){
+    const p=r.policy||{},where=p.returns_url||p.source_url||c.merchant.url||'';
+    const email=(c.requester&&((c.requester.shipping&&c.requester.shipping.email)||c.requester.email))||'';
+    const steps=['Start it on '+store+'’s site'+(where?' (<a href="'+esc(where)+'" target="_blank" rel="noopener">'+esc(where.replace(/^https:\\/\\//,''))+'</a>)':'')+' with'+(f.order_number?' order <b>'+esc(f.order_number)+'</b>':' your order number')+(email?' and <b>'+esc(email)+'</b>':'')+'.',p.returns_how?esc(p.returns_how):'',p.free_returns===true?'Returns are free: use the label they give you.':p.free_returns===false?'Return shipping may cost a few dollars.':'','When '+store+' refunds it, Spot sends the money back to the card that paid, usually within 5–10 business days.'].filter(Boolean);
+    return '<div class="retbox"><h3>↩︎ Your return</h3>'+(r.past_window?'<p class="small" style="color:var(--warn)">It’s past '+store+'’s usual return window, so they may say no.</p>':'')+'<ol class="small">'+steps.map(x=>'<li>'+x+'</li>').join('')+'</ol>'+(where?'<a class="btn small" href="'+esc(where)+'" target="_blank" rel="noopener">Start it at '+store+' →</a>':'')+'<div class="row" style="gap:6px;margin-top:8px"><input id="retTrack" placeholder="Tracking number (optional)" style="margin:0;flex:1"><button class="btn ghost small" id="retShipped" style="margin:0;width:auto">I shipped it</button></div></div>';
+  }
+  if(!c.can_return)return '';
+  const items=c.items.length>1?'<div class="small" style="margin:6px 0">'+c.items.map((it,i)=>'<label style="display:block"><input type="checkbox" name="ri" value="'+i+'" checked> '+esc(it.title)+'</label>').join('')+'</div>':'';
+  return '<button class="textlink" id="retOpen" style="margin-top:10px">↩︎ Need to send it back?</button><form class="retbox" id="retForm" hidden><h3>Start a return</h3>'+items+'<select name="reason" aria-label="Why"><option value="doesnt_fit">It doesn’t fit</option><option value="changed_mind">Changed my mind</option><option value="damaged">It arrived damaged</option><option value="wrong_item">Wrong item</option><option value="other">Something else</option></select><textarea name="note" rows="2" maxlength="300" placeholder="Anything else? (optional)"></textarea><button class="btn">Get the return steps</button><p class="err" id="retErr"></p></form>';
+}
+function placedBox(c,f,tr){
+  return (tr?'<h2>🚆 Booked!</h2><p class="muted" style="margin:0">'+esc(c.merchant.name)+' confirmed your ticket'+(f.order_number?' <b>'+esc(f.order_number)+'</b>':'')+'. Your e-ticket is on its way to '+esc(c.contact?.email||'your email')+'.</p>':'<h2>📦 Ordered!</h2><p class="muted" style="margin:0">'+esc(c.merchant.name)+' confirmed your order'+(f.order_number&&!/[:/]/.test(f.order_number)?' <b>#'+esc(f.order_number)+'</b>':'')+'. Watch your email for tracking.</p>')+(f.order_url?'<a class="btn dark" href="'+esc(f.order_url)+'" target="_blank" rel="noopener">View your order</a>':'');
+}
+function orderBoxRest(c,f,agentOn,st,tr){
   if(st==='awaiting_confirm')return '<h2>Place your order?</h2>'+(f.has_shot?'<img src="/v1/carts/'+TOKEN+'/manage/order/shot.png?k='+encodeURIComponent(K)+'&t='+f.updated_at+'" alt="The store checkout, filled in" style="width:100%;border-radius:12px;border:1px solid var(--line)">':'')
     +'<div class="sum total"><span>'+esc(c.merchant.name)+' total</span><span>'+usd(f.total_cents)+'</span></div><p class="small muted">'+esc(f.summary||'')+'</p><button class="btn" id="placeIt">Place order</button><button class="btn ghost" id="notYet">Not yet</button>';
   if(st==='starting'||st==='working')return '<h2><span class="spin"></span> '+(tr?'Buying your ticket on ':'Ordering at ')+esc(c.merchant.name)+'…</h2>'+(f.steps||[]).map(x=>'<div class="sum"><span>'+esc(x.text)+'</span><span>✓</span></div>').join('')+'<p class="small muted">Spot is filling in the store’s checkout. You’ll confirm before anything is placed.</p>';
@@ -785,6 +862,11 @@ async function draw(){
   const ship=$('#shipForm');if(ship)ship.onsubmit=async(e)=>{e.preventDefault();const v=Object.fromEntries(new FormData(ship));if(Object.keys(v).length)try{localStorage.setItem('spot:ship',JSON.stringify(v))}catch{}
     const b=ship.querySelector('button');b.disabled=true;b.textContent='starting…';
     try{await api('/v1/carts/'+TOKEN+'/manage/order',{k:K,shipping:v});draw()}catch(err){$('#shipErr').textContent=err.message;b.disabled=false;b.textContent='Try again'}};
+  on('trkAdd',async()=>{try{await api('/v1/carts/'+TOKEN+'/manage/tracking',{k:K,number:$('#trkNum').value});draw()}catch(err){$('#trkErr').textContent=err.message}});
+  on('retOpen',()=>{$('#retForm').hidden=false;$('#retOpen').remove()});
+  const rf0=$('#retForm');if(rf0)rf0.onsubmit=async(e)=>{e.preventDefault();const fd=new FormData(rf0);const items=[...rf0.querySelectorAll('input[name=ri]')].filter(x=>x.checked).map(x=>Number(x.value));const b=rf0.querySelector('button');b.disabled=true;b.textContent='getting the steps…';
+    try{await api('/v1/carts/'+TOKEN+'/manage/return',{k:K,reason:fd.get('reason'),note:fd.get('note')||'',...(rf0.querySelector('input[name=ri]')?{items}:{})});draw()}catch(err){$('#retErr').textContent=err.message;b.disabled=false;b.textContent='Try again'}};
+  on('retShipped',async()=>{try{await api('/v1/carts/'+TOKEN+'/manage/return/shipped',{k:K,tracking:($('#retTrack')||{}).value||''});draw()}catch(err){alert(err.message)}});
   on('placeIt',async()=>{$('#placeIt').disabled=true;$('#placeIt').textContent='placing…';await api('/v1/carts/'+TOKEN+'/manage/order/confirm',{k:K,place:true});draw()});
   on('notYet',async()=>{await api('/v1/carts/'+TOKEN+'/manage/order/confirm',{k:K,place:false});draw()});
   on('got',async()=>{await api('/v1/carts/'+TOKEN+'/manage/received',{k:K});draw()});

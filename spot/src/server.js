@@ -26,6 +26,14 @@ import { createFlights } from './flights.js';
 import { createRisk } from './risk.js';
 import { registerAdmin } from './admin.js';
 import { createPriceWatch } from './pricewatch.js';
+import { createStoreFacts, siteOf } from './storefacts.js';
+import { createWatches } from './watches.js';
+import { createReviews } from './reviews.js';
+import { createCompare } from './compare.js';
+import { createDelivery } from './delivery.js';
+import { createPromos } from './promos.js';
+import { createTracker } from './tracking.js';
+import { getUcpOrder } from './fulfill/ucp.js';
 import { registerAssets } from './assets.js';
 import { registerMerchants } from './merchants.js';
 import { createLiveChecks } from './livechecks.js';
@@ -137,7 +145,9 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   const signing = createSigning({ db, env, origin: baseUrl });
   const signRequest = (u) => signing.signRequest(u);
   app.decorate('signing', signing);
-  const fulfiller = createFulfiller({ spot, provider, env, log: app.log, metrics, ...fulfill, ucp: { profileUrl, sign: signRequest, ...(fulfill.ucp || {}) } });
+  // Promo codes: found by AI per store, tried on the card and at checkout (promos.js).
+  const promos = createPromos({ db, env, ...(capture.promoFind ? { find: capture.promoFind } : {}), ...(capture.promoTry ? { tryCodes: capture.promoTry } : {}), ...(capture.product ? { product: capture.product } : {}), onUsage: (model, usage) => (metrics.ok('anthropic'), metrics.ai(model, usage)), onError: (err) => metrics.fail('anthropic', err), log: app.log });
+  const fulfiller = createFulfiller({ spot, provider, env, log: app.log, metrics, ...fulfill, ucp: { profileUrl, sign: signRequest, codesFor: (cart) => promos.forCart(cart), ...(fulfill.ucp || {}) } });
   // Paying the store directly: Spot builds the store's checkout, the payer pays there.
   const shopifyAuth = fulfill.shopifyAuth || createShopifyAuth({ env, log: console, metrics });
   spot.direct = createDirect({ profileUrl, sign: signRequest, shopifyAuth, ...(fulfill.ucp?.fetchImpl ? { fetchImpl: fulfill.ucp.fetchImpl } : {}), allowPrivate: Boolean(fulfill.ucp?.allowPrivate) || env.SPOT_ALLOW_PRIVATE_FETCH === '1' });
@@ -161,9 +171,26 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   app.decorate('spot', spot);
   const events = createEvents({ db, spot, notifier, baseUrl: () => (env.PUBLIC_URL || '').replace(/\/+$/, '') || seenOrigin || 'http://localhost:3000', log: app.log });
   const approvals = createApprovals({ db, spot, signing, baseUrl, log: app.log });
-  // Daily price checks on Spot-card orders, for staff to claim drops (pricewatch.js).
-  const priceWatch = createPriceWatch({ db, spot, ...(priceNowImpl ? { price: priceNowImpl } : {}), log: app.log });
+  // What a product card shows beyond the pick: options, sale and seen
+  // prices, the store's price-adjustment and return policy (storefacts.js).
+  const storeFacts = createStoreFacts({ db, ...(capture.policy ? { read: capture.policy } : {}), ...(capture.product ? { product: capture.product } : {}), onUsage: (model, usage) => (metrics.ok('anthropic'), metrics.ai(model, usage)), onError: (err) => metrics.fail('anthropic', err), log: app.log });
+  app.decorate('storeFacts', storeFacts);
+  // Daily price checks on Spot-card orders, for staff to claim drops (pricewatch.js),
+  // for as long as the store's own policy allows.
+  const priceWatch = createPriceWatch({ db, spot, ...(priceNowImpl ? { price: priceNowImpl } : {}), policyOf: (c) => storeFacts.known(siteOf(c.items?.find((i) => i?.url)?.url || c.merchant?.url || '')), log: app.log });
   app.decorate('priceWatch', priceWatch);
+  // Where each order is (tracking.js): the store's own order status, or a tracking number pasted in.
+  const tracker = createTracker({ db, spot, getOrder: capture.getOrder || ((c) => getUcpOrder({ storeUrl: c.merchant?.url, orderId: c.fulfillment.order_id, profileUrl: typeof profileUrl === 'function' ? profileUrl() : profileUrl, sign: signRequest, ...(fulfill.ucp?.fetchImpl ? { fetchImpl: fulfill.ucp.fetchImpl } : {}), ...(fulfill.ucp?.allowPrivate ? { allowPrivate: true } : {}) })), log: app.log });
+  app.decorate('tracker', tracker);
+  // "Watch this": price drops and restocks on products a shopper picked (watches.js).
+  const watches = createWatches({ db, notifier, baseUrl, ...(capture.watchPrice ? { price: capture.watchPrice } : {}), ...(capture.watchStock ? { stock: capture.watchStock } : {}), log: app.log });
+  app.decorate('watches', watches);
+  // Fit and reviews on a card, read by AI and kept two weeks (reviews.js).
+  const reviews = createReviews({ db, ...(capture.reviews ? { read: capture.reviews } : {}), onUsage: (model, usage) => (metrics.ok('anthropic'), metrics.ai(model, usage)), onError: (err) => metrics.fail('anthropic', err), log: app.log });
+  // "Arrives by": the store's own delivery dates to the shopper's address (delivery.js).
+  const delivery = createDelivery({ ...(capture.product ? { product: capture.product } : {}), ...(capture.shipRates ? { rates: capture.shipRates } : {}), policyOf: (item) => storeFacts.whenKnown(siteOf(item.url), item.store || ''), log: app.log });
+  // The same product cheaper at another store (compare.js).
+  const compare = createCompare({ db, ...(capture.compare ? { find: capture.compare } : {}), ...(capture.comparePrice ? { price: capture.comparePrice } : {}), onUsage: (model, usage) => (metrics.ok('anthropic'), metrics.ai(model, usage)), onError: (err) => metrics.fail('anthropic', err), log: app.log });
   app.decorate('approvals', approvals);
   spot.emit = (kind, id, extra) => {
     // A person said yes: record a signed approval of exactly what they approved.
@@ -240,6 +267,10 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     thanks: limit('thanks', 20, 600_000),
     // Each of these makes Spot fetch from somewhere else.
     check: limit('check', 60, 600_000),
+    // Card facts: one per batch of cards on screen, and once more for a new store's policy.
+    facts: limit('facts', 300, 600_000),
+    // Fit and reviews: an AI read per product not seen in two weeks.
+    reviews: limit('reviews', 40, 600_000),
     card: limit('card', 120, 600_000),
   };
   let sweeps = 0;
@@ -257,6 +288,10 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     spot.sweepIssue().catch((err) => app.log.error({ err }, 'issue sweep failed'));
     // Store prices on recent Spot-card orders, a few each half hour.
     if (sweeps % 30 === 0 && env.SPOT_PRICE_WATCH !== '0') priceWatch.sweep().catch((err) => app.log.error({ err }, 'price watch failed'));
+    // Shipments of orders placed through agent checkout, a few every 30 minutes.
+    if (sweeps % 30 === 15) tracker.sweep().catch((err) => app.log.error({ err }, 'tracking failed'));
+    // Products shoppers are watching, a few every 10 minutes.
+    if (sweeps % 10 === 0 && env.SPOT_PRICE_WATCH !== '0') watches.sweep().catch((err) => app.log.error({ err }, 'watches failed'));
   }, 60_000);
   sweeper.unref();
   app.addHook('onClose', async () => clearInterval(sweeper));
@@ -577,6 +612,90 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     reply.raw.end();
   });
 
+  // Card facts for the products on screen: options, the store's price now
+  // and on sale, the prices Spot has seen, and the store's policies. A
+  // store's policy is read once a month; until then policy_pending says ask
+  // again in a bit.
+  app.post('/v1/facts', async (req, reply) => {
+    limits.facts(req);
+    const items = Array.isArray(req.body?.items) ? req.body.items : [];
+    const clean = items
+      .filter((i) => i && typeof i.url === 'string' && /^https?:\/\//i.test(i.url))
+      .map((i) => ({ url: i.url.slice(0, 1000), variant: typeof i.variant === 'string' ? i.variant.slice(0, 80) : '', store: typeof i.store === 'string' ? i.store.slice(0, 80) : '' }));
+    reply.header('cache-control', 'no-store');
+    return { facts: await storeFacts.facts(clean) };
+  });
+
+  // Fit and reviews for one product, with the shopper's size worked out
+  // from their saved sizes when reviewers agree on how it fits.
+  app.post('/v1/reviews', async (req, reply) => {
+    limits.reviews(req);
+    const b = req.body || {};
+    const url = typeof b.url === 'string' ? b.url.slice(0, 1000) : '';
+    if (!/^https?:\/\//i.test(url)) throw new CartError('That’s not a product link');
+    const title = typeof b.title === 'string' ? b.title.slice(0, 140) : '';
+    const uid = accounts.userIdOf(req);
+    const sizes = (uid && db.users.byId(uid)?.sizes) || {};
+    reply.header('cache-control', 'no-store');
+    return { reviews: await reviews.forShopper({ url, title, store: typeof b.store === 'string' ? b.store.slice(0, 80) : '' }, sizes) };
+  });
+
+  // Arrives by: dates to the signed-in shopper's saved address, else the
+  // store's usual shipping time.
+  app.post('/v1/delivery', async (req, reply) => {
+    limits.quote(req);
+    const b = req.body || {};
+    const url = typeof b.url === 'string' ? b.url.slice(0, 1000) : '';
+    if (!/^https?:\/\//i.test(url)) throw new CartError('That’s not a product link');
+    const uid = accounts.userIdOf(req);
+    const sh = uid ? db.users.byId(uid)?.shipping : null;
+    const ship = sh?.postal_code ? { city: sh.city || '', state: sh.state || '', postal_code: String(sh.postal_code) } : null;
+    reply.header('cache-control', 'no-store');
+    return { delivery: await delivery.arrives({ url, variant: typeof b.variant === 'string' ? b.variant.slice(0, 80) : '', store: typeof b.store === 'string' ? b.store.slice(0, 80) : '' }, ship) };
+  });
+
+  // Promo codes for one product: the ones that took money off it just now.
+  app.post('/v1/promos', async (req, reply) => {
+    limits.reviews(req);
+    const b = req.body || {};
+    const url = typeof b.url === 'string' ? b.url.slice(0, 1000) : '';
+    if (!/^https?:\/\//i.test(url)) throw new CartError('That’s not a product link');
+    reply.header('cache-control', 'no-store');
+    return { promos: await promos.forItem({ url, variant: typeof b.variant === 'string' ? b.variant.slice(0, 80) : '', store: typeof b.store === 'string' ? b.store.slice(0, 80) : '' }) };
+  });
+
+  // Cheaper elsewhere: the same product at other stores, under this price.
+  app.post('/v1/compare', async (req, reply) => {
+    limits.reviews(req);
+    const b = req.body || {};
+    const url = typeof b.url === 'string' ? b.url.slice(0, 1000) : '';
+    if (!/^https?:\/\//i.test(url)) throw new CartError('That’s not a product link');
+    const title = typeof b.title === 'string' ? b.title.trim().slice(0, 140) : '';
+    if (!title) throw new CartError('Which product?');
+    const price = Number.isInteger(b.price_cents) && b.price_cents > 0 ? b.price_cents : null;
+    reply.header('cache-control', 'no-store');
+    return { compare: await compare.offers({ url, title, store: typeof b.store === 'string' ? b.store.slice(0, 80) : '', variant: typeof b.variant === 'string' ? b.variant.slice(0, 80) : '', price_cents: price }) };
+  });
+
+  // "Watch this": a signed-in shopper's watched products.
+  app.get('/v1/me/watches', async (req, reply) => {
+    const uid = accounts.userIdOf(req);
+    if (!uid) return reply.code(401).send({ error: 'Sign in to watch prices' });
+    reply.header('cache-control', 'no-store');
+    return { watches: watches.list(uid) };
+  });
+  app.post('/v1/me/watches', async (req, reply) => {
+    const uid = accounts.userIdOf(req);
+    if (!uid) return reply.code(401).send({ error: 'Sign in to watch prices' });
+    limits.check(req);
+    return { watch: await watches.start(uid, req.body || {}) };
+  });
+  app.post('/v1/me/watches/:id/stop', async (req, reply) => {
+    const uid = accounts.userIdOf(req);
+    if (!uid) return reply.code(401).send({ error: 'Sign in first' });
+    return { watch: watches.stop(uid, req.params.id) };
+  });
+
   // The Shop page: every product Spot has shown this shopper, newest first.
   app.get('/v1/me/shop', async (req, reply) => {
     const uid = accounts.userIdOf(req);
@@ -880,6 +999,24 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   });
   app.post('/v1/carts/:token/manage/received', async (req) => ({ cart: ownerCart(spot.markReceived(req.params.token, keyOf(req))) }));
   app.post('/v1/carts/:token/manage/cancel', async (req) => ({ cart: ownerCart(await spot.cancel(req.params.token, keyOf(req))) }));
+  // Returns: the requester starts one; Spot gives them the store's own steps.
+  app.post('/v1/carts/:token/manage/return', async (req) => {
+    const cart = spot.loadManaged(req.params.token, keyOf(req));
+    const url = cart.items?.find((i) => i?.url)?.url || cart.merchant?.url || '';
+    const policy = await storeFacts.whenKnown(siteOf(url), cart.merchant?.name || '', 15000).catch(() => null);
+    return { cart: ownerCart(spot.requestReturn(req.params.token, keyOf(req), req.body || {}, { policy })) };
+  });
+  // A tracking number from the store's shipping email.
+  app.post('/v1/carts/:token/manage/tracking', async (req) => {
+    const cart = spot.loadManaged(req.params.token, keyOf(req));
+    if (cart.fulfillment?.state !== 'placed' && !cart.spent_at) throw new CartError('It hasn’t been ordered yet', 409);
+    try {
+      return { cart: ownerCart(tracker.addNumber(cart, req.body?.number)) };
+    } catch (err) {
+      throw new CartError(err.message, err.status || 400);
+    }
+  });
+  app.post('/v1/carts/:token/manage/return/shipped', async (req) => ({ cart: ownerCart(spot.returnShipped(req.params.token, keyOf(req), req.body || {})) }));
   app.post('/v1/carts/:token/manage/refund', async (req) => ({ cart: ownerCart(await spot.refund(req.params.token, keyOf(req))) }));
 
   // Sandbox only: simulate the merchant running the issued card at checkout.

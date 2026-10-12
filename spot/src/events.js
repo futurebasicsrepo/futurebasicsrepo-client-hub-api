@@ -14,6 +14,8 @@
 //                    requester  email
 //   refunded_part    payer      email          unused money, a store return or a matched
 //                                              lower price, sent back
+//   shipping_update  requester  email          shipped (with tracking), out for delivery, delivered, a problem
+//   return_requested requester  email          the store's own return steps, with their order number
 //   price_claimed    payer      email          the store lowered its price after the order;
 //                                              staff asked it for the difference (pricewatch.js)
 //   thanks           payer      email          the requester's thank-you, with a link to
@@ -280,6 +282,43 @@ export function createEvents({ db, spot, notifier, baseUrl, log = console }) {
           subject: `${usd(extra.amount_cents)} back from Spot`,
           text: `${what}, so we sent ${usd(extra.amount_cents)} back to your card.`,
           html: mail({ preheader: `${usd(extra.amount_cents)} back to your card`, title: `${usd(extra.amount_cents)} back to your card`, lines: [`${esc(what)} for <b>${esc(item)}</b>, so we sent the difference back to your card. It usually shows in 5–10 business days.`] }),
+        }];
+      }
+      case 'shipping_update': {
+        const t = cart.tracking;
+        const to = requesterContact(cart).email;
+        const st = extra?.status;
+        if (!t || !to || !st) return [];
+        const track = t.url ? { cta: { label: `Track it${t.carrier ? ` with ${t.carrier}` : ''} →`, url: t.url } } : { cta: { label: 'See your order →', url: link } };
+        const say = {
+          shipped: [`📦 ${item} is on its way`, `${store} shipped it${t.carrier ? ` with ${t.carrier}` : ''}.`],
+          out_for_delivery: [`🚚 ${item} arrives today`, `It’s out for delivery${t.description ? `: ${t.description}` : ''}.`],
+          delivered: [`🎉 ${item} was delivered`, `${t.description || 'It’s there'}. Enjoy! If it’s not right, you can start a return from your order page.`],
+          problem: [`⚠️ A problem delivering ${item}`, `${t.description || `${t.carrier || 'The carrier'} had trouble delivering it`}. Check the tracking, or reply and we’ll help.`],
+        }[st];
+        if (!say) return [];
+        return [{ key: `ship_${st}`, to: { email: to }, subject: say[0], text: `${say[1]} ${t.url || link}`, html: mail({ preheader: say[1], title: esc(say[0]), lines: [esc(say[1])], ...track }) }];
+      }
+      case 'return_requested': {
+        const r = cart.return;
+        const to = requesterContact(cart).email;
+        if (!r || !to) return [];
+        const p = r.policy || {};
+        const where = p.returns_url || p.source_url || cart.merchant?.url || null;
+        const order = f.order_number ? ` order ${f.order_number}` : ' your order';
+        const what = r.items.map((i) => cart.items[i]?.title).filter(Boolean).join(', ') || item;
+        const steps = [
+          `Start it on ${esc(store)}’s site${where ? ` (<a href="${esc(where)}">${esc(where.replace(/^https:\/\//, ''))}</a>)` : ''} with${esc(order)} and this email.`,
+          p.returns_how ? esc(p.returns_how) : '',
+          p.free_returns === true ? 'Returns are free: use the label they give you.' : p.free_returns === false ? 'Return shipping may cost a few dollars.' : '',
+          `When ${esc(store)} refunds it, Spot sends the money back to the card that paid, usually within 5–10 business days. Nothing else to do.`,
+        ].filter(Boolean);
+        return [{
+          key: 'return_requested',
+          to: { email: to },
+          subject: `Sending back ${what}: here’s how`,
+          text: `To return ${what}: start it on ${store}'s site${where ? ` (${where})` : ''} with${order} and this email.${p.returns_how ? ` ${p.returns_how}` : ''} When ${store} refunds it, Spot sends the money back to the card that paid.`,
+          html: mail({ preheader: `Start it on ${store}’s site with${order}`, title: '↩︎ Your return', lines: [`Sending back <b>${esc(what)}</b>${r.past_window ? ` (it’s past ${esc(store)}’s usual window, so they may say no)` : ''}:`, ...steps.map((x, i) => `${i + 1}. ${x}`)], ...(where ? { cta: { label: `Start it at ${store} →`, url: where } } : {}) }),
         }];
       }
       case 'price_claimed': {

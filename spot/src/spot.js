@@ -846,6 +846,50 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
       }
     },
 
+    // ─── Returns ──────────────────────────────────────────────────────────
+    // The requester sends something back. Spot gives them the store's own
+    // steps (its policy, read by AI: storefacts.js) with their order number;
+    // staff see it on /admin. The store refunds Spot's card (kept paused for
+    // SPOT_CARD_KEEP_DAYS), and the refund goes on to the payer.
+    // cart.return = { state: 'requested' | 'shipped' | 'refunded' | 'closed',
+    //   items, reason, note, at, policy, past_window, shipped_at, tracking, refunded_cents }
+    requestReturn(token, key, b = {}, { policy = null, now = Date.now() } = {}) {
+      const cart = loadManaged(token, key);
+      const bought = cart.fulfillment?.state === 'placed' ? cart.fulfillment.placed_at : cart.spent_at;
+      if (cart.settle !== 'card' || (cart.kind || 'goods') !== 'goods' || !bought || !['card_issued', 'completed'].includes(cart.status)) throw new CartError('Only an order Spot placed can be returned here', 409);
+      if (cart.return && cart.return.state !== 'closed') throw new CartError('A return is already started for this order', 409);
+      const all = cart.items.map((_, i) => i);
+      const items = Array.isArray(b.items) ? [...new Set(b.items.filter((i) => Number.isInteger(i) && i >= 0 && i < cart.items.length))] : all;
+      if (!items.length) throw new CartError('Which item is going back?');
+      const reason = RETURN_REASONS.includes(b.reason) ? b.reason : 'other';
+      const note = typeof b.note === 'string' ? b.note.trim().slice(0, 300) : '';
+      const days = policy?.returns_days || null;
+      const ret = {
+        state: 'requested',
+        items,
+        reason,
+        note,
+        at: now,
+        policy: policy ? { returns_days: days, free_returns: policy.free_returns ?? null, returns_how: policy.returns_how || null, returns_url: policy.returns_url || null, source_url: policy.source_url || null } : null,
+        past_window: Boolean(days && now > bought + days * 86_400_000),
+      };
+      const next = this.patch(cart.id, (c) => ({ ...c, return: ret }), 'return_requested');
+      this.emit?.('return_requested', next.id);
+      return next;
+    },
+    returnShipped(token, key, b = {}) {
+      const cart = loadManaged(token, key);
+      if (cart.return?.state !== 'requested') throw new CartError('No return waiting to be shipped', 409);
+      const tracking = typeof b.tracking === 'string' ? b.tracking.trim().slice(0, 80) : '';
+      return this.patch(cart.id, (c) => ({ ...c, return: { ...c.return, state: 'shipped', shipped_at: Date.now(), tracking: tracking || null } }), 'return_shipped');
+    },
+    // Staff: done another way (store credit, a check), or not going ahead.
+    closeReturn(id) {
+      const c = db.byId(id);
+      if (!c?.return || ['refunded', 'closed'].includes(c.return.state)) throw new CartError('No open return on this order', 409);
+      return this.patch(id, (x) => ({ ...x, return: { ...x.return, state: 'closed', closed_at: Date.now() } }), 'return_closed');
+    },
+
     // ─── Issuing money events (Stripe webhooks, or the sandbox) ─────────
     // A store charge (capture) or store refund on Spot's card.
     async recordIssuingTxn({ id, card, authorization = null, type, amount, merchant = null }) {
@@ -876,6 +920,11 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
       if (type === 'refund') {
         // After staff claimed a price drop (pricewatch.js), a store refund is
         // the store matching its lower price, not a return.
+        // A return under way: this refund is it.
+        if (cart.return && ['requested', 'shipped'].includes(cart.return.state)) {
+          await this.refundPart(cart.id, cents, `return_${id}`, 'store_refund');
+          return this.patch(cart.id, (c) => ({ ...c, return: { ...c.return, state: 'refunded', refunded_cents: cents, refunded_at: Date.now() } }), 'return_refunded');
+        }
         const matched = cart.price_watch?.state === 'claimed';
         const next = await this.refundPart(cart.id, cents, `return_${id}`, matched ? 'price_adjustment' : 'store_refund');
         return matched ? this.patch(cart.id, (c) => ({ ...c, price_watch: { ...c.price_watch, state: 'refunded', refunded_cents: cents, refunded_at: Date.now() } }), 'price_refunded') : next;
@@ -1376,6 +1425,7 @@ export function publicBundle(b) {
 // Reported by two different people: nobody can pay it until Spot clears it.
 export const pausedByReports = (cart) => (cart?.reports || []).length >= 2;
 const PAUSED = 'This link is paused while Spot checks it. Nothing was charged.';
+export const RETURN_REASONS = ['doesnt_fit', 'changed_mind', 'damaged', 'wrong_item', 'other'];
 
 export function publicCart(cart) {
   return {
@@ -1448,6 +1498,15 @@ export function ownerCart(cart) {
     // Refunded before the store charged: the payer's hold was released, never charged.
     released: Boolean(cart.released),
     spent_at: cart.spent_at || null,
+    tracking: cart.tracking ? (({ checked_at, ...t }) => t)(cart.tracking) : null,
+    return: cart.return || null,
+    can_return: cart.settle === 'card' && (cart.kind || 'goods') === 'goods' && ['card_issued', 'completed'].includes(cart.status) && Boolean(cart.fulfillment?.state === 'placed' || cart.spent_at) && (!cart.return || cart.return.state === 'closed'),
+    // The price watch (pricewatch.js), as the requester may see it: that
+    // it's on and until when, and a claim once staff have sent one. A drop
+    // found but not yet claimed isn't shown, so nobody is promised money.
+    price_watch: cart.price_watch && ['watching', 'dropped', 'claimed', 'refunded'].includes(cart.price_watch.state)
+      ? { state: cart.price_watch.state === 'dropped' ? 'watching' : cart.price_watch.state, until: cart.price_watch.until, last_at: cart.price_watch.last_at || null, claimed_cents: ['claimed', 'refunded'].includes(cart.price_watch.state) ? cart.price_watch.drop?.cents || null : null, refunded_cents: cart.price_watch.refunded_cents || null }
+      : null,
     spent_cents: cart.spent_cents ?? null,
     spent_merchant: cart.spent_merchant || null,
     // The checkout's own words (detail) are for staff, not the page.

@@ -219,6 +219,53 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
       PRIMARY KEY (user_id, url)
     );
     CREATE INDEX IF NOT EXISTS seen_products_recent ON seen_products (user_id, at DESC);
+    -- Each store's price-adjustment and return policy, as its own policy
+    -- page says (storefacts.js), re-read monthly. Keyed by site (tecovas.com).
+    CREATE TABLE IF NOT EXISTS store_policies (
+      site  TEXT PRIMARY KEY,
+      doc   TEXT NOT NULL,
+      at    INTEGER NOT NULL
+    );
+    -- Prices Spot has seen for a product page: one row per page per day,
+    -- the day's low and high, for "lowest Spot has seen" on the card.
+    CREATE TABLE IF NOT EXISTS price_seen (
+      url   TEXT NOT NULL,
+      day   INTEGER NOT NULL,
+      low   INTEGER NOT NULL,
+      high  INTEGER NOT NULL,
+      PRIMARY KEY (url, day)
+    );
+    -- "Watch this": products a signed-in shopper asked Spot to keep an eye
+    -- on (watches.js), checked about twice a day until next_at says.
+    CREATE TABLE IF NOT EXISTS watches (
+      id       TEXT PRIMARY KEY,
+      user_id  TEXT NOT NULL,
+      url      TEXT NOT NULL,
+      doc      TEXT NOT NULL,
+      state    TEXT NOT NULL,
+      next_at  INTEGER NOT NULL,
+      at       INTEGER NOT NULL,
+      UNIQUE (user_id, url)
+    );
+    CREATE INDEX IF NOT EXISTS watches_due ON watches (state, next_at);
+    -- Fit and reviews per product page, as an AI read them (reviews.js).
+    CREATE TABLE IF NOT EXISTS review_digests (
+      url  TEXT PRIMARY KEY,
+      doc  TEXT NOT NULL,
+      at   INTEGER NOT NULL
+    );
+    -- The same product at other stores, cheaper (compare.js), kept a day.
+    CREATE TABLE IF NOT EXISTS compare_offers (
+      key  TEXT PRIMARY KEY,
+      doc  TEXT NOT NULL,
+      at   INTEGER NOT NULL
+    );
+    -- A store's current promo codes, as an AI found them (promos.js).
+    CREATE TABLE IF NOT EXISTS promo_codes (
+      site  TEXT PRIMARY KEY,
+      doc   TEXT NOT NULL,
+      at    INTEGER NOT NULL
+    );
     -- Self-serve agent API keys (only the SHA-256 is kept).
     CREATE TABLE IF NOT EXISTS api_keys (
       hash        TEXT PRIMARY KEY,
@@ -494,11 +541,93 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
                   ORDER BY json_extract(doc, '$.price_watch.last_at') IS NOT NULL, json_extract(doc, '$.price_watch.last_at') LIMIT 2000`)
         .all(since, since)
         .map((r) => r.id),
+    // Orders placed through agent checkout since `since`, not yet delivered (tracking.js).
+    idsToTrack: (since) =>
+      db
+        .prepare(`SELECT id FROM carts WHERE json_extract(doc, '$.fulfillment.state') = 'placed' AND json_extract(doc, '$.fulfillment.order_id') IS NOT NULL
+                  AND json_extract(doc, '$.fulfillment.placed_at') > ? AND COALESCE(json_extract(doc, '$.tracking.status'), '') != 'delivered'
+                  ORDER BY COALESCE(json_extract(doc, '$.tracking.checked_at'), 0) LIMIT 500`)
+        .all(since)
+        .map((r) => r.id),
+    // Returns under way (spot.requestReturn), for /admin.
+    idsReturns: () => db.prepare("SELECT id FROM carts WHERE json_extract(doc, '$.return.state') IN ('requested', 'shipped') LIMIT 500").all().map((r) => r.id),
     // Price drops waiting on staff (found, not yet claimed or dismissed).
     idsPriceDrops: () => db.prepare("SELECT id FROM carts WHERE json_extract(doc, '$.price_watch.state') IN ('dropped', 'claimed') LIMIT 500").all().map((r) => r.id),
     idsDirectOpen: () => db.prepare("SELECT id FROM carts WHERE status = 'open' AND json_extract(doc, '$.direct.checkout_id') IS NOT NULL LIMIT 500").all().map((r) => r.id),
     idsByStatus: (statuses) => db.prepare(`SELECT id FROM carts WHERE status IN (${statuses.map(() => '?').join(',')}) LIMIT 2000`).all(...statuses).map((r) => r.id),
     keyByHash: (hash) => q.keyByHash.get(hash) || null,
+    watches: {
+      row: (r) => r && { ...JSON.parse(r.doc), id: r.id, user_id: r.user_id, url: r.url, state: r.state, next_at: r.next_at, at: r.at },
+      byId(id) {
+        return this.row(db.prepare('SELECT * FROM watches WHERE id = ?').get(String(id)));
+      },
+      of(userId, url) {
+        return this.row(db.prepare('SELECT * FROM watches WHERE user_id = ? AND url = ?').get(userId, url));
+      },
+      list(userId) {
+        return db.prepare("SELECT * FROM watches WHERE user_id = ? AND state = 'on' ORDER BY at DESC LIMIT 100").all(userId).map((r) => this.row(r));
+      },
+      count(userId) {
+        return db.prepare("SELECT COUNT(*) AS n FROM watches WHERE user_id = ? AND state = 'on'").get(userId).n;
+      },
+      due(now, limit = 20) {
+        return db.prepare("SELECT * FROM watches WHERE state = 'on' AND next_at <= ? ORDER BY next_at LIMIT ?").all(now, limit).map((r) => this.row(r));
+      },
+      save(w) {
+        const { id, user_id, url, state, next_at, at, ...doc } = w;
+        db.prepare('INSERT INTO watches (id, user_id, url, doc, state, next_at, at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET doc = excluded.doc, state = excluded.state, next_at = excluded.next_at').run(id, user_id, url, JSON.stringify(doc), state, next_at, at);
+        return this.byId(id);
+      },
+    },
+    reviews: {
+      get(url) {
+        const r = db.prepare('SELECT doc, at FROM review_digests WHERE url = ?').get(String(url));
+        return r ? { ...JSON.parse(r.doc), at: r.at } : null;
+      },
+      set(url, doc, at = Date.now()) {
+        db.prepare('INSERT INTO review_digests (url, doc, at) VALUES (?, ?, ?) ON CONFLICT (url) DO UPDATE SET doc = excluded.doc, at = excluded.at').run(String(url).slice(0, 1000), JSON.stringify(doc), at);
+      },
+    },
+    compares: {
+      get(key) {
+        const r = db.prepare('SELECT doc, at FROM compare_offers WHERE key = ?').get(String(key));
+        return r ? { ...JSON.parse(r.doc), at: r.at } : null;
+      },
+      set(key, doc, at = Date.now()) {
+        db.prepare('INSERT INTO compare_offers (key, doc, at) VALUES (?, ?, ?) ON CONFLICT (key) DO UPDATE SET doc = excluded.doc, at = excluded.at').run(String(key).slice(0, 1200), JSON.stringify(doc), at);
+      },
+    },
+    promos: {
+      get(site) {
+        const r = db.prepare('SELECT doc, at FROM promo_codes WHERE site = ?').get(String(site));
+        return r ? { ...JSON.parse(r.doc), at: r.at } : null;
+      },
+      set(site, doc, at = Date.now()) {
+        db.prepare('INSERT INTO promo_codes (site, doc, at) VALUES (?, ?, ?) ON CONFLICT (site) DO UPDATE SET doc = excluded.doc, at = excluded.at').run(String(site), JSON.stringify(doc), at);
+      },
+    },
+    policies: {
+      get(site) {
+        const r = db.prepare('SELECT doc, at FROM store_policies WHERE site = ?').get(site);
+        return r ? { ...JSON.parse(r.doc), at: r.at } : null;
+      },
+      set(site, doc, at = Date.now()) {
+        db.prepare('INSERT INTO store_policies (site, doc, at) VALUES (?, ?, ?) ON CONFLICT (site) DO UPDATE SET doc = excluded.doc, at = excluded.at').run(site, JSON.stringify(doc), at);
+      },
+    },
+    prices: {
+      add(url, cents, at = Date.now()) {
+        if (!url || !Number.isInteger(cents) || cents <= 0) return;
+        const day = Math.floor(at / 86_400_000);
+        db.prepare('INSERT INTO price_seen (url, day, low, high) VALUES (?, ?, ?, ?) ON CONFLICT (url, day) DO UPDATE SET low = MIN(low, excluded.low), high = MAX(high, excluded.high)').run(String(url).slice(0, 1000), day, cents, cents);
+      },
+      // Low, high and since when, over the last `days`.
+      of(url, days = 90, at = Date.now()) {
+        const since = Math.floor(at / 86_400_000) - days;
+        const r = db.prepare('SELECT MIN(low) AS low, MAX(high) AS high, MIN(day) AS first, COUNT(*) AS days FROM price_seen WHERE url = ? AND day >= ?').get(String(url), since);
+        return r?.days ? { low_cents: r.low, high_cents: r.high, since: r.first * 86_400_000, days: r.days } : null;
+      },
+    },
     // A shopper's Shop page: every product Spot has shown them, newest first.
     seen: {
       KEEP: 300,

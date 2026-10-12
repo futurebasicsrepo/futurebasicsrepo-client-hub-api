@@ -15,7 +15,7 @@ const shipping = { name: 'Kyle Riggle', line1: '1 Main St', city: 'Austin', stat
 // shipping options, a tokenizer, and completion. `mcp: true` serves it the
 // way Shopify does: over MCP only, with a catalog that looks items up by
 // Shopify id rather than by link (and /products/<handle>.js for the ids).
-async function startUcpStore({ tokenizer = true, continueUrl = null, catalog = true, mcp = false, lookupFails = false, escalate = false, noShipOptions = false, slowRates = false } = {}) {
+async function startUcpStore({ tokenizer = true, continueUrl = null, catalog = true, mcp = false, lookupFails = false, escalate = false, noShipOptions = false, slowRates = false, discount = false } = {}) {
   const log = [];
   let origin;
   const sessions = new Map();
@@ -69,6 +69,7 @@ async function startUcpStore({ tokenizer = true, continueUrl = null, catalog = t
             'dev.ucp.shopping.checkout': [{ version: '2026-08-25' }],
             'dev.ucp.shopping.fulfillment': [{ version: '2026-08-25' }],
             ...(catalog ? { 'dev.ucp.shopping.catalog.lookup': [{ version: '2026-08-25' }] } : {}),
+            ...(discount ? { 'dev.ucp.shopping.discount': [{ version: '2026-08-25' }] } : {}),
           },
           payment_handlers: {},
         },
@@ -122,6 +123,12 @@ async function startUcpStore({ tokenizer = true, continueUrl = null, catalog = t
           fulfillment: { methods: [{ id: 'ship_1', type: 'shipping', line_item_ids: ['li_0'], selected_destination_id: 'dest_1', destinations: [dest], groups: [{ id: 'pkg_1', ...(picked ? { selected_option_id: picked } : {}), options: [{ id: 'express', title: 'Express', totals: [{ type: 'total', amount: 1500 }] }, { id: 'standard', title: 'Standard', totals: [{ type: 'total', amount: 800 }] }] }] }] },
           totals: picked ? [{ type: 'subtotal', amount: 25000 }, { type: 'fulfillment', amount: ship }, { type: 'tax', amount: 1100 }, { type: 'total', amount: 25000 + ship + 1100 }] : co.totals,
         });
+        // The discount extension: SAVE20 takes $50 off; anything else applies nothing.
+        if (discount && picked) {
+          const off = (body.discounts?.codes || []).includes('SAVE20') ? 5000 : 0;
+          co.discounts = { codes: body.discounts?.codes || [], applied: off ? [{ code: 'SAVE20', title: '$50 off', amount: off }] : [] };
+          if (off) co.totals = co.totals.map((x) => (x.type === 'total' ? { ...x, amount: x.amount - off } : x)).concat([{ type: 'discount', amount: off }]);
+        }
         return send(200, view(co));
       }
       if (m[2] === '/complete') {
@@ -133,6 +140,7 @@ async function startUcpStore({ tokenizer = true, continueUrl = null, catalog = t
         return send(200, view(co));
       }
     }
+    if (req.method === 'GET' && req.url === '/ucp/orders/ord_777') return send(200, { id: 'ord_777', fulfillment: { events: [{ id: 'f1', occurred_at: '2026-10-13T15:00:00Z', type: 'shipped', line_items: [{ id: 'li_0', quantity: 1 }], carrier: 'UPS', tracking_number: '1Z999AA10123456784', tracking_url: 'https://www.ups.com/track?tracknum=1Z999AA10123456784' }] } });
     if (req.url === '/tok/tokenize') return send(200, { token: 'tok_from_store' });
     // The storefront cart (Shopify's AJAX API): rates for the cart's address.
     if (req.method === 'POST' && req.url === '/cart/add.js') {
@@ -160,8 +168,8 @@ async function startUcpStore({ tokenizer = true, continueUrl = null, catalog = t
   return { origin, log, close: () => new Promise((r) => server.close(r)) };
 }
 
-async function setup(t, store, { agent = false } = {}) {
-  const app = buildApp({ db: openDb(':memory:'), provider: sandboxProvider(), cfg, logger: false, env: { SPOT_AGENT: agent ? 'on' : 'off', PUBLIC_URL: 'https://spot.example' }, fulfill: { ucp: { allowPrivate: true } } });
+async function setup(t, store, { agent = false, codesFor = null } = {}) {
+  const app = buildApp({ db: openDb(':memory:'), provider: sandboxProvider(), cfg, logger: false, env: { SPOT_AGENT: agent ? 'on' : 'off', PUBLIC_URL: 'https://spot.example' }, fulfill: { ucp: { allowPrivate: true, ...(codesFor ? { codesFor } : {}) } } });
   t.after(async () => {
     await app.close();
     await store.close();
@@ -873,4 +881,49 @@ test('store cart shipping: follows the store to its main domain, and waits for r
   assert.ok(seen.includes('POST www.dw.example/cart/add.js'), 'the cart is on the main domain');
   assert.ok(seen.includes('POST www.dw.example/cart/clear.js'), 'and left empty');
   assert.equal(polls, 2);
+});
+
+test('promo codes at the store’s checkout: the one that takes most off stays; none that work are cleared', async (t) => {
+  const store = await startUcpStore({ discount: true });
+  const { call, token, k, until } = await setup(t, store, { codesFor: async () => ['NOPE10', 'SAVE20', 'BADCODE'] });
+  await call('POST', `/v1/carts/${token}/manage/order`, { k, shipping });
+  const waiting = await until(['awaiting_confirm', 'needs_you']);
+  assert.equal(waiting.state, 'awaiting_confirm', JSON.stringify(waiting));
+  assert.equal(waiting.total_cents, 25000 + 800 + 1100 - 5000, 'SAVE20 applied');
+  const puts = store.log.filter((r) => r.method === 'PUT');
+  assert.deepEqual(puts.map((r) => r.body.discounts?.codes), [undefined, undefined, ['NOPE10'], ['SAVE20'], ['BADCODE'], ['SAVE20']], 'each tried, then the best put back');
+  assert.ok(puts.at(-1).body.fulfillment.methods[0].groups, 'with the shipping still chosen');
+  assert.ok((waiting.steps || []).some((x) => /Used code SAVE20: \$50\.00 off/.test(x.text || x)), JSON.stringify(waiting.steps));
+});
+
+test('promo codes: none apply, the checkout is cleared of them; a store without the extension is never sent any', async (t) => {
+  const store = await startUcpStore({ discount: true });
+  const { call, token, k, until } = await setup(t, store, { codesFor: async () => ['NOPE10'] });
+  await call('POST', `/v1/carts/${token}/manage/order`, { k, shipping });
+  const waiting = await until(['awaiting_confirm', 'needs_you']);
+  assert.equal(waiting.total_cents, 25000 + 800 + 1100);
+  assert.deepEqual(store.log.filter((r) => r.method === 'PUT').at(-1).body.discounts, { codes: [] });
+
+  const plain = await startUcpStore();
+  const b = await setup(t, plain, { codesFor: async () => ['SAVE20'] });
+  await b.call('POST', `/v1/carts/${b.token}/manage/order`, { k: b.k, shipping });
+  await b.until(['awaiting_confirm', 'needs_you']);
+  assert.ok(!plain.log.some((r) => r.body?.discounts), 'not offered, not sent');
+});
+
+test('the order Spot placed is kept by id, and its shipments are read back from the store', async (t) => {
+  const { getUcpOrder } = await import('../src/fulfill/ucp.js');
+  const { fromOrder } = await import('../src/tracking.js');
+  const store = await startUcpStore();
+  const { app, call, token, k, until } = await setup(t, store);
+  await call('POST', `/v1/carts/${token}/manage/order`, { k, shipping });
+  await until(['awaiting_confirm']);
+  await call('POST', `/v1/carts/${token}/manage/order/confirm`, { k, place: true });
+  const done = await until(['placed', 'needs_you']);
+  assert.equal(app.spot.load(token).fulfillment.order_id, 'ord_777');
+  const order = await getUcpOrder({ storeUrl: store.origin, orderId: 'ord_777', profileUrl: 'https://spot.example/.well-known/ucp', allowPrivate: true });
+  const tr = fromOrder(order);
+  assert.equal(tr.status, 'shipped');
+  assert.equal(tr.carrier, 'UPS');
+  assert.equal(done.state, 'placed');
 });

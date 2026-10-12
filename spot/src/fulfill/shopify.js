@@ -60,7 +60,7 @@ export async function loadShopifyProduct(productUrl, opts) {
   const origin = new URL(productUrl).origin;
   const p = await fetchJson(`${origin}/products/${handle}.js`, opts);
   if (!p || !Array.isArray(p.variants)) return null;
-  return { origin, handle, title: p.title, variants: p.variants };
+  return { origin, handle, title: p.title, variants: p.variants, options: Array.isArray(p.options) ? p.options : [] };
 }
 
 // The in-stock variant a product link names with ?variant=<id>, if any.

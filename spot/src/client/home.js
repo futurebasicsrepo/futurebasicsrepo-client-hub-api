@@ -41,6 +41,7 @@
   // Every search uses the sizes and ship-to (the server reads them from the
   // account); the page shows which, so it's never a guess.
   let account = null; // { sizes: { tops: 'M', … }, ship_to: 'Austin, TX' }
+  let myOrders = [];
   const SIZE_LABEL = { tops: 'Tops', bottoms: 'Pants', shoes: 'Shoes', dresses: 'Dresses' };
   const sizeLine = (z) => Object.entries(SIZE_LABEL).filter(([k]) => z?.[k]).map(([k, l]) => l + ' ' + z[k]).join(' · ');
   function renderProfile() {
@@ -63,6 +64,10 @@
       if (!me.name && u.name) me = { ...me, name: u.name };
       if (!me.email && u.email) me = { ...me, email: u.email };
       renderProfile();
+      loadWatches();
+      // Their orders, wherever each is (tracking.js), for "Your orders".
+      myOrders = (j.carts || []).filter((c) => c.fulfillment?.state === 'placed' || c.spent_at).slice(0, 8);
+      renderMine();
     })
     .catch(() => renderProfile());
   let contacts = load('spot:contacts', []);
@@ -99,13 +104,180 @@
     if (screen === 'picks' && (id === 'check' || id === 'ready') && !history.state?.spot) history.pushState({ spot: id }, '');
     screen = id;
     for (const s of ['compose', 'picks', 'check', 'ready', 'shop']) $('#' + s).hidden = s !== id;
-    $('#mine').hidden = id !== 'compose' || !load('spot:mine', []).length;
+    $('#mine').hidden = id !== 'compose' || (!load('spot:mine', []).length && !myOrders.length);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
-  const say = (t) => ($('#say').textContent = t);
+  // ─── Spot, the mascot ─────────────────────────────────────────────────────
+  // The live 3D plush (assets/spot3d.js, as on the website) once it loads;
+  // the stills until then, or on Save-Data. He has opinions: he leans in while
+  // he searches, hops when the first pick lands, gets flustered when he comes
+  // up empty, and is thrilled when you choose the pick he recommended.
+  const buddyEl = $('#buddy');
+  const sayEl = $('#say');
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let s3 = null;
+  const speak = (t) => {
+    if (sayEl.textContent === t) return;
+    sayEl.textContent = t;
+    sayEl.classList.remove('pop');
+    void sayEl.offsetWidth;
+    sayEl.classList.add('pop');
+  };
+  // A quip holds the bubble for a moment; whatever Spot meant to say next
+  // follows right after.
+  let quipUntil = 0;
+  let queued = null;
+  let quipT = 0;
+  const say = (t) => (Date.now() < quipUntil ? (queued = t) : speak(t));
+  const quip = (t, ms = 2200) => {
+    if (!t) return;
+    if (Date.now() >= quipUntil) queued = sayEl.textContent;
+    speak(t);
+    quipUntil = Date.now() + ms;
+    clearTimeout(quipT);
+    quipT = setTimeout(() => {
+      quipUntil = 0;
+      if (queued != null) speak(queued);
+      queued = null;
+    }, ms);
+  };
+  const LINES = {
+    mine: ['ooh, that’s MY pick! 😍', 'yesss, the one I’d get 🧡', 'great minds 🤝', 'you’ve got taste 😌', 'my favorite too!! 🥹'],
+    other: ['ooh, nice one 👌', 'good eye!', 'love that 💛', 'solid choice'],
+    paidMine: ['you got my pick!! 🎉 ordering it…', 'best. choice. ordering it… 🧡'],
+    back: ['that one’s still my fave 👀', 'just saying, my pick’s right here 😇'],
+    found: ['ooh, found good stuff 🤩', 'look what I found!', 'okay these are good 👀'],
+    empty: ['hmm 😕', 'oof, nothing yet'],
+    poke: ['boop!', 'hehe', 'eep!', 'that tickles 😆'],
+    dizzy: ['whoa… 💫'],
+    shy: ['oh! hi… 🙈'],
+    yawn: ['*yaaawn* 🥱'],
+    wake: ['oh! I’m up 👀'],
+    back_tab: ['you’re back! 👋'],
+  };
+  const said = {};
+  const line = (k) => {
+    const a = LINES[k] || [];
+    said[k] = (said[k] ?? Math.floor(Math.random() * a.length)) + 1;
+    return a[said[k] % a.length] || '';
+  };
+  // The stills' version of a mood, when the 3D one isn't there.
+  const still = (cls, ms) => {
+    if (!buddyEl) return;
+    buddyEl.classList.remove('joy', 'think', 'hop', 'oh');
+    void buddyEl.offsetWidth;
+    if (cls) buddyEl.classList.add(cls);
+    if (cls && ms) setTimeout(() => buddyEl.classList.remove(cls), ms);
+  };
+  function confetti(n = 34) {
+    if (reduceMotion || !buddyEl) return;
+    const c = document.createElement('div');
+    c.className = 'confetti';
+    const cols = ['#ff5a36', '#ffb347', '#1d8a52', '#4b7bff', '#ffd23f', '#ff8fb1'];
+    for (let i = 0; i < n; i++) {
+      const p = document.createElement('i');
+      const a = Math.random() * Math.PI * 2;
+      const d = 60 + Math.random() * 150;
+      p.style.cssText = '--dx:' + (Math.cos(a) * d).toFixed(0) + 'px;--dy:' + (Math.sin(a) * d - 50).toFixed(0) + 'px;--r:' + (Math.random() * 720 - 360).toFixed(0) + 'deg;background:' + cols[i % cols.length];
+      c.appendChild(p);
+    }
+    buddyEl.appendChild(c);
+    setTimeout(() => c.remove(), 1500);
+  }
+  // Where they're looking: the card they chose gets its own happy Spot, who
+  // pops up over the photo with his line (and hearts, for his own pick).
+  function cardCheer(card, mine, text) {
+    if (!card) return;
+    card.querySelector('.cardspot')?.remove();
+    const yay = buddyEl?.querySelector('img.joy')?.getAttribute('src') || '';
+    const c = document.createElement('div');
+    c.className = 'cardspot' + (mine ? ' mine' : '');
+    c.setAttribute('aria-hidden', 'true');
+    c.innerHTML = '<span class="cs-say">' + esc(text) + '</span><img src="' + esc(yay) + '" alt="" width="320" height="358">' + (mine && !reduceMotion ? '<b>💛</b><b>🧡</b><b>💛</b><b>✨</b>' : '');
+    (card.querySelector('.ph') || card).appendChild(c);
+    setTimeout(() => c.classList.add('bye'), mine ? 2300 : 1500);
+    setTimeout(() => c.remove(), mine ? 2800 : 2000);
+  }
+  // The small Spot by his line in the thread hops along with the big one.
+  const nod = () => {
+    const f = [...document.querySelectorAll('#thread .spotsay i')].at(-1);
+    if (!f || reduceMotion) return;
+    f.classList.remove('hop');
+    void f.offsetWidth;
+    f.classList.add('hop');
+  };
+  let thinkT = 0;
+  let thinkStop = 0;
+  const spot = {
+    // Searching: he leans in and looks around until the first pick lands.
+    think(on) {
+      clearInterval(thinkT);
+      clearTimeout(thinkStop);
+      if (on) thinkStop = setTimeout(() => spot.think(false), 30000); // never looks around forever
+      if (s3) {
+        s3.anticipate(on);
+        if (on) thinkT = setInterval(() => s3.play(['glance', 'tilt', 'glance', 'peek'][Math.floor(Math.random() * 4)]), 2600);
+      } else still(on ? 'think' : null);
+    },
+    perk() {
+      spot.think(false);
+      nod();
+      if (s3) {
+        s3.hop();
+        s3.happy(true);
+        setTimeout(() => s3?.happy(false), 1100);
+      } else still('hop', 700);
+    },
+    // You chose something: over the moon if it's the one he recommended.
+    cheer(mine) {
+      spot.think(false);
+      nod();
+      if (s3) {
+        s3.hop();
+        s3.happy(true);
+        if (mine) setTimeout(() => s3?.hop(), 520), setTimeout(() => s3?.play('wiggle'), 1100);
+        setTimeout(() => s3?.happy(false), mine ? 2600 : 1400);
+      } else still(mine ? 'joy' : 'hop', mine ? 2400 : 700);
+      if (mine) confetti();
+    },
+    oops() {
+      spot.think(false);
+      if (s3) {
+        s3.pose('oh');
+        setTimeout(() => s3?.pose(null), 1500);
+      } else still('oh', 1500);
+    },
+  };
+  if (buddyEl) {
+    buddyEl.addEventListener('click', (e) => {
+      if (s3) {
+        const r = buddyEl.getBoundingClientRect();
+        return s3.poke((e.clientX - (r.left + r.width / 2)) / (r.width / 2));
+      }
+      still('hop', 700);
+      quip(line('poke'), 1400);
+    });
+    const src = $('#hero')?.dataset.spot3d;
+    if (src && !navigator.connection?.saveData)
+      setTimeout(
+        () =>
+          import(src)
+            .then((m) => {
+              s3 = m.mountSpot3D(buddyEl, { onCue: (c) => quip(line(c === 'back' ? 'back_tab' : c), 1800) });
+              if (!s3) return;
+              buddyEl.classList.add('has3d');
+              if (screen === 'compose') setTimeout(() => s3?.play('wave'), 600);
+            })
+            .catch(() => {}),
+        300,
+      );
+  }
 
   // ─── Compose ──────────────────────────────────────────────────────────────
   const q = $('#q');
+  // He leans in while you type.
+  q.addEventListener('focus', () => s3?.anticipate(true));
+  q.addEventListener('blur', () => s3?.anticipate(false));
   q.addEventListener('input', () => {
     q.style.height = 'auto';
     q.style.height = Math.min(q.scrollHeight, 180) + 'px';
@@ -165,7 +337,7 @@
     const btn = $('#go');
     btn.disabled = true;
     btn.textContent = 'reading…';
-    say(image ? 'ooh, let me look at that…' : /https?:\/\//.test(text) ? 'grabbing it…' : 'looking it up…');
+    spot.think(true), say(image ? 'ooh, let me look at that…' : /https?:\/\//.test(text) ? 'grabbing it…' : 'looking it up…');
     try {
       // Typed: the shelf opens right away and fills as the AI finds things.
       if (!image && !/https?:\/\//.test(text)) {
@@ -219,7 +391,7 @@
       }
     } catch (e) {
       $('#capErr').textContent = e.message;
-      say('hmm, that one got away from me');
+      spot.oops(), say('hmm, that one got away from me');
       // Don't resend a screenshot that didn't work with the next try.
       if (image) {
         image = null;
@@ -237,7 +409,7 @@
   function notFound(warning, text) {
     show('compose');
     $('#capErr').innerHTML = esc(warning) + ' <button class="textlink" type="button" id="capRetry">Try again</button> · <button class="textlink" type="button" id="capManual">type it in myself</button>';
-    say('hmm, I came up empty on that one');
+    spot.oops(), say('hmm, I came up empty on that one');
     $('#capRetry').onclick = go;
     $('#capManual').onclick = () => {
       draft = toDraft({ source: 'text', items: [{ ...blank(), title: text }] });
@@ -298,8 +470,13 @@
       '<div class="pb"><div class="st">' + esc(o.merchant.name || '') + ' <span class="stk" data-url="' + esc(it.url || '') + '">' + stockTag(o) + '</span></div>' +
       '<div class="t">' + esc(it.title) + '</div>' + (it.variant ? '<div class="v">' + esc(it.variant) + (yours(it.variant) ? ' <span class="tag in">your size</span>' : '') + '</div>' : '') +
       (o.why ? '<div class="why">' + esc(o.why) + '</div>' : '') +
-      '<div class="pr">' + (it.price_cents ? usd(it.price_cents) : 'Price at store') + '</div>' + buttons(k, o.stock === 'out') +
-      '<div class="cardlinks"><button class="textlink" type="button" data-act="edit" data-k="' + k + '">Edit details</button>' +
+      (it.url ? '<div class="facts" data-facts="' + esc(it.url) + '" data-k="' + k + '">' + factsHtml(o, k) + '</div>' : '') +
+      (it.url && /^https?:/i.test(it.url) ? '<div class="rv" data-rv="' + esc(it.url) + '" data-k="' + k + '">' + reviewsHtml(o, k) + '</div>' : '') +
+      (it.url && /^https?:/i.test(it.url) ? '<div class="cmp" data-cmp="' + esc(it.url) + '" data-k="' + k + '">' + compareHtml(o, k) + '</div>' : '') +
+      (it.url && /^https?:/i.test(it.url) ? '<div class="dl" data-dl="' + esc(it.url) + '" data-k="' + k + '">' + deliveryHtml(o, k) + '</div>' : '') +
+      (it.url && /^https?:/i.test(it.url) ? '<div class="promo" data-promo="' + esc(it.url) + '" data-k="' + k + '">' + promoHtml(o, k) + '</div>' : '') +
+      '<div class="pr" data-pr="' + esc(it.url || '') + '">' + priceHtml(o, k) + '</div>' + buttons(k, o.stock === 'out') +
+      '<div class="cardlinks"><button class="textlink" type="button" data-act="edit" data-k="' + k + '">Edit details</button>' + (it.url && /^https?:/i.test(it.url) ? watchBtn(it.url, k) : '') +
       (it.url && /^https?:/i.test(it.url) ? '<a href="' + esc(it.url) + '" target="_blank" rel="noopener">At the store ↗</a>' : '') + '</div></div></article>';
   }
   function outfitCard(look, k, top) {
@@ -357,7 +534,11 @@
     T.sync = () => {
       if (turns[t] !== T) return; // a shelf from before "start over"
       const n = T.list.length;
-      turn.querySelector('.at').textContent = n ? Math.min(Math.round(rail.scrollLeft / step()), n - 1) + 1 + ' of ' + n + (T.done ? '' : '+') : '';
+      const at = n ? Math.min(Math.round(rail.scrollLeft / step()), n - 1) : 0;
+      turn.querySelector('.at').textContent = n ? at + 1 + ' of ' + n + (T.done ? '' : '+') : '';
+      // Back to his pick after a look around: he'd like a word.
+      T.far = Math.max(T.far || 0, at);
+      if (at === 0 && T.far >= 3 && !T.nudged && T.kind === 'products') (T.nudged = true), quip(line('back'), 2200), s3?.play('bounce');
       turn.querySelector('[data-step="-1"]').disabled = rail.scrollLeft < 4;
       turn.querySelector('[data-step="1"]').disabled = rail.scrollLeft + rail.clientWidth >= rail.scrollWidth - 4;
       // Near the end: load the next batch, so the shelf never runs out.
@@ -475,17 +656,18 @@
     try {
       await streamed(body, (e) => {
         if (e.type === 'profile') (T.profile = e.profile), showUsed(T);
-        else if (e.type === 'searching') say(T.list.length ? 'finding more…' : 'searching stores…');
-        else if (e.type === 'checking') !T.list.length && say('found some. getting their photos…');
+        else if (e.type === 'searching') say(T.list.length ? 'finding more…' : 'searching stores…'), !T.list.length && spot.think(true);
+        else if (e.type === 'checking') !T.list.length && (say('found some. getting their photos…'), spot.think(true));
         else if (e.type === 'pick' || e.type === 'outfit') {
           const entry = e.option || e.outfit;
           if (addEntry(T, e.type === 'pick' ? 'products' : 'outfits', entry)) added.push(entry);
-          if (T.list.length === 1) say(T.kind === 'outfits' ? 'first look’s up. more coming →' : 'first pick’s up. more coming →');
+          if (T.list.length === 1) say(T.kind === 'outfits' ? 'first look’s up. more coming →' : 'first pick’s up. more coming →'), spot.perk(), quip(line('found'), 1600);
         } else if (e.type === 'update') applyPage(e, true), photoFor(e.new_url || e.url);
         else if (e.type === 'done') done = e;
       });
     } finally {
       T.loading = false;
+      spot.think(false);
       for (const sk of T.rail.querySelectorAll('.sk')) sk.remove();
       if (!added.length || ++T.page > BATCHES) T.done = true;
       T.sync();
@@ -493,6 +675,8 @@
     }
     if (T.list.length > 1) say('swipe for more →');
     details(added);
+    wantFacts(added);
+    if (T.kind === 'products' && T.list[0] && added.includes(T.list[0])) loadReviews(T.list[0]), loadCompare(T.list[0]), loadDelivery(T.list[0]), loadPromos(T.list[0]);
     return { added, done };
   }
   // The next batch, from stores not shown yet, onto the end of the shelf.
@@ -560,6 +744,7 @@
     T.done = true;
     T.sync();
     details(T.list);
+    wantFacts(T.list);
   }
 
   // Photos and stock for stores that don't let Spot read their pages: asked
@@ -581,6 +766,344 @@
     const hits = turns.flatMap((T) => (T ? T.list : [])).filter((e) => (e.items || [e]).some((o) => o.item.url === url && !o.item.image_url));
     if (hits.length) details(hits);
   }
+  // ─── Fit and reviews ─────────────────────────────────────────────────────
+  // What buyers say, read by AI: the rating, how it fits (and the size Spot
+  // would get them, from their saved sizes), what people love and don't.
+  // Spot's own pick and the Shop page's open card load it right away; the
+  // rest on a tap, since each new product is a fresh read.
+  const reviewsBy = new Map();
+  function reviewsHtml(o, k) {
+    const d = reviewsBy.get(o.item.url);
+    if (d === 'loading') return '<div class="rvl wait">Reading what buyers say…</div>';
+    if (!d) return '<button class="textlink rvgo" type="button" data-act="reviews" data-k="' + k + '">⭐ Fit &amp; reviews</button>';
+    if (d.none || d.error) return '<div class="rvl muted">' + (d.error ? 'Couldn’t read reviews just now.' : 'No reviews Spot could find for this one yet.') + '</div>';
+    const out = [];
+    const fit = d.fit === 'small' ? 'Runs small' : d.fit === 'large' ? 'Runs large' : d.fit === 'true' ? 'True to size' : '';
+    const size = d.your_size && d.saved_size && d.your_size !== d.saved_size ? ': we’d get <b>' + esc(d.your_size) + '</b> for you (your usual ' + esc(d.saved_size) + ')' : d.your_size && d.fit === 'true' ? ': your usual <b>' + esc(d.your_size) + '</b>' : d.fit_note ? ': ' + esc(d.fit_note) : '';
+    out.push('<div class="rvl">' + (d.rating ? '<b class="stars">★ ' + d.rating.toFixed(1) + '</b>' + (d.count ? ' <span class="muted">(' + d.count.toLocaleString() + ')</span>' : '') : '') + (fit ? (d.rating ? ' · ' : '') + '<span class="fit">' + fit + size + '</span>' : '') + '</div>');
+    if (d.pros?.length) out.push('<div class="rvl">👍 ' + d.pros.map(esc).join(' · ') + '</div>');
+    if (d.cons?.length) out.push('<div class="rvl">👎 ' + d.cons.map(esc).join(' · ') + '</div>');
+    if (d.source_url) out.push('<div class="rvl"><a href="' + esc(d.source_url) + '" target="_blank" rel="noopener">reviews ↗</a></div>');
+    return out.join('');
+  }
+  function paintReviews(url) {
+    for (const el of document.querySelectorAll('.rv[data-rv="' + CSS.escape(url) + '"]')) {
+      const o = entryAt(el.dataset.k, url);
+      if (o) el.innerHTML = reviewsHtml(o, el.dataset.k);
+    }
+  }
+  async function loadReviews(o) {
+    const url = o?.item?.url;
+    if (!url || reviewsBy.has(url)) return;
+    reviewsBy.set(url, 'loading');
+    paintReviews(url);
+    try {
+      const r = await api('/v1/reviews', { url, title: o.item.title || '', store: o.merchant?.name || '' });
+      reviewsBy.set(url, r.reviews || { error: true });
+      // His own pick, and buyers love it: he's chuffed.
+      if (r.reviews?.rating >= 4.5 && r.reviews.count >= 50) quip('people love this one ⭐', 1800);
+    } catch {
+      reviewsBy.set(url, { error: true });
+    }
+    paintReviews(url);
+  }
+
+  // ─── Promo codes ─────────────────────────────────────────────────────────
+  // Codes the AI found for the store, tried in the store's own cart for this
+  // item: only ones that took money off show (promos.js).
+  const promoBy = new Map();
+  function promoHtml(o, k) {
+    const d = promoBy.get(o.item.url);
+    if (d === 'loading') return '<div class="pl wait">Trying promo codes…</div>';
+    if (!d) return '<button class="textlink plgo" type="button" data-act="promos" data-k="' + k + '">🏷️ Any promo codes?</button>';
+    if (d.off) return '';
+    if (d.error) return '<div class="pl muted">Couldn’t try codes just now.</div>';
+    if (d.working?.length) {
+      const w = d.working[0];
+      return '<div class="pl good">🏷️ <b class="code">' + esc(w.code) + '</b> takes <b>' + usd(w.cents_off) + '</b> off' + (w.description ? ' <span class="muted">(' + esc(w.description) + ')</span>' : '') + '<br><span class="muted">Checked at the store just now. Spot tries it when it orders for you.</span></div>';
+    }
+    if (d.untested?.length) return '<div class="pl">🏷️ Codes to try: ' + d.untested.slice(0, 3).map((c) => '<b class="code">' + esc(c.code) + '</b>').join(' ') + ' <span class="muted">(not checked)</span></div>';
+    return '<div class="pl muted">' + (d.found ? 'Spot tried ' + d.found + (d.found === 1 ? ' code' : ' codes') + ': none work on this right now.' : 'No promo codes for this store right now.') + '</div>';
+  }
+  function paintPromo(url) {
+    for (const el of document.querySelectorAll('.promo[data-promo="' + CSS.escape(url) + '"]')) {
+      const o = entryAt(el.dataset.k, url);
+      if (o) el.innerHTML = promoHtml(o, el.dataset.k);
+    }
+  }
+  async function loadPromos(o) {
+    const url = o?.item?.url;
+    if (!url || promoBy.has(url)) return;
+    promoBy.set(url, 'loading');
+    paintPromo(url);
+    try {
+      const r = await api('/v1/promos', { url, variant: o.item.variant || '', store: o.merchant?.name || '' });
+      promoBy.set(url, r.promos || { error: true });
+      if (r.promos?.working?.length) quip('a code works! ' + usd(r.promos.working[0].cents_off) + ' off 🏷️', 2000);
+    } catch {
+      promoBy.set(url, { error: true });
+    }
+    paintPromo(url);
+  }
+
+  // ─── Arrives by ──────────────────────────────────────────────────────────
+  // The store's own delivery dates to their saved address (Shopify stores),
+  // else the store's usual shipping time from its policy page.
+  const deliveryBy = new Map();
+  const day = (iso) => {
+    const [y, m, d] = String(iso).split('-').map(Number);
+    return new Date(y, m - 1, d).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+  };
+  const span = (a, b) => (a && b && a !== b ? day(a) + ' – ' + day(b) : day(b || a));
+  function deliveryHtml(o, k) {
+    const d = deliveryBy.get(o.item.url);
+    if (d === 'loading') return '<div class="dll wait">Checking delivery…</div>';
+    if (!d) return '<button class="textlink dlgo" type="button" data-act="delivery" data-k="' + k + '">🚚 When would it arrive?</button>';
+    if (d.none || d.error) return '<div class="dll muted">' + (account ? 'The store doesn’t say when it would arrive.' : '<a href="/signin?next=/new">Sign in</a> to see when it would arrive at your door.') + '</div>';
+    const to = d.to ? ' to ' + esc(d.to) : '';
+    if (d.source === 'store') {
+      const c = d.cheapest;
+      const cost = c.cents === 0 ? 'free shipping' : usd(c.cents) + ' shipping';
+      let h = c.max_date ? '🚚 Arrives <b>' + span(c.min_date, c.max_date) + '</b>' + to + ' · ' + cost : '🚚 ' + (c.cents === 0 ? 'Free shipping' : usd(c.cents) + ' shipping') + to + (c.name ? ' (' + esc(c.name) + ')' : '');
+      if (d.fastest) h += '<br><span class="muted">or by <b>' + day(d.fastest.max_date) + '</b> for ' + usd(d.fastest.cents) + (d.fastest.name ? ' (' + esc(d.fastest.name) + ')' : '') + '</span>';
+      return '<div class="dll">' + h + '</div>';
+    }
+    return '<div class="dll">🚚 Usually arrives <b>' + span(d.min_date, d.max_date) + '</b>' + (d.free_over_cents === 0 ? ' · free shipping' : d.free_over_cents ? ' · free shipping over ' + usd(d.free_over_cents) : '') + (account ? '' : ' · <a href="/signin?next=/new">sign in</a> for your exact date') + '</div>';
+  }
+  function paintDelivery(url) {
+    for (const el of document.querySelectorAll('.dl[data-dl="' + CSS.escape(url) + '"]')) {
+      const o = entryAt(el.dataset.k, url);
+      if (o) el.innerHTML = deliveryHtml(o, el.dataset.k);
+    }
+  }
+  async function loadDelivery(o) {
+    const url = o?.item?.url;
+    if (!url || deliveryBy.has(url)) return;
+    deliveryBy.set(url, 'loading');
+    paintDelivery(url);
+    try {
+      const r = await api('/v1/delivery', { url, variant: o.item.variant || '', store: o.merchant?.name || '' });
+      deliveryBy.set(url, r.delivery || { error: true });
+    } catch {
+      deliveryBy.set(url, { error: true });
+    }
+    paintDelivery(url);
+  }
+
+  // ─── Cheaper elsewhere ───────────────────────────────────────────────────
+  // The same product at other stores for less (compare.js): the AI searches,
+  // Spot checks each store's own price where it can. One tap switches the
+  // card to that store; "best price" when nothing beats it.
+  const compareBy = new Map();
+  function compareHtml(o, k) {
+    const d = compareBy.get(o.item.url);
+    if (d === 'loading') return '<div class="cl wait">Checking other stores…</div>';
+    if (!d) return o.item.price_cents ? '<button class="textlink cmpgo" type="button" data-act="compare" data-k="' + k + '">💸 Cheaper elsewhere?</button>' : '';
+    if (d.error) return '<div class="cl muted">Couldn’t check other stores just now.</div>';
+    // Against the price on the card now (the store's own may have replaced the search's).
+    const offers = d.offers.map((x, i) => ({ ...x, i })).filter((x) => x.cents <= o.item.price_cents - 100);
+    if (!offers.length) return '<div class="cl good">✓ Best price Spot found</div>';
+    return offers.map((x) => '<div class="cl offer"><span>💸 <b>' + usd(o.item.price_cents - x.cents) + ' less</b> at ' + esc(x.store) + ': ' + (x.verified ? '' : 'about ') + usd(x.cents) + ' <a href="' + esc(x.url) + '" target="_blank" rel="noopener">↗</a></span><button class="btn ghost tiny" type="button" data-act="switch" data-k="' + k + '" data-i="' + x.i + '">Switch</button></div>').join('');
+  }
+  function paintCompare(url) {
+    for (const el of document.querySelectorAll('.cmp[data-cmp="' + CSS.escape(url) + '"]')) {
+      const o = entryAt(el.dataset.k, url);
+      if (o) el.innerHTML = compareHtml(o, el.dataset.k);
+    }
+  }
+  async function loadCompare(o) {
+    const url = o?.item?.url;
+    if (!url || !o.item.price_cents || compareBy.has(url)) return;
+    compareBy.set(url, 'loading');
+    paintCompare(url);
+    try {
+      const r = await api('/v1/compare', { url, title: o.item.title || '', store: o.merchant?.name || '', variant: o.item.variant || '', price_cents: o.item.price_cents });
+      compareBy.set(url, r.compare || { error: true });
+      if (r.compare?.offers?.length) quip('ooh, found it cheaper 💸', 1800);
+    } catch {
+      compareBy.set(url, { error: true });
+    }
+    paintCompare(url);
+  }
+  // Same product, the cheaper store: the card now buys it there.
+  function switchStore(b) {
+    const k = b.dataset.k;
+    const { e } = entryOf(k);
+    const o = e && (e.items ? null : e);
+    const offer = o && compareBy.get(o.item.url)?.offers?.[Number(b.dataset.i)];
+    if (!offer) return;
+    let origin = '';
+    try {
+      origin = new URL(offer.url).origin;
+    } catch {}
+    const was = o.item.price_cents;
+    o.merchant = { name: offer.store, url: origin };
+    o.item = { ...o.item, url: offer.url, price_cents: offer.cents };
+    o.stock = offer.in_stock ? 'in' : 'unknown';
+    o.why = 'Same one, ' + usd(was - offer.cents) + ' less here' + (o.why ? '. ' + o.why : '');
+    compareBy.set(offer.url, { offers: [] });
+    loadDelivery(o);
+    loadPromos(o);
+    const card = document.querySelector('[data-card="' + CSS.escape(k) + '"]');
+    if (card) card.outerHTML = productCard(o, k, /^\d+:0$/.test(k));
+    if (String(k).startsWith('s:')) $('#shopCard').innerHTML = productCard(o, k, false);
+    wantFacts([o]);
+    keepShelf();
+    walletWatch();
+    spot.cheer(false);
+    quip('switched! saved you ' + usd(was - offer.cents) + ' 💸', 2200);
+  }
+
+  // ─── Watch this ─────────────────────────────────────────────────────────
+  // 👀 on any card: Spot checks the store twice a day and texts or emails
+  // them when the price drops or their size is back (watches.js). Signed in
+  // only, so alerts go to their own account.
+  const watched = new Map();
+  async function loadWatches() {
+    if (!account) return;
+    const r = await api('/v1/me/watches').catch(() => null);
+    if (!r) return;
+    watched.clear();
+    for (const w of r.watches || []) watched.set(w.url, w);
+    for (const u of new Set([...document.querySelectorAll('[data-watch]')].map((b) => b.dataset.watch))) paintWatch(u);
+  }
+  const watchBtn = (url, k) => '<button class="textlink watch' + (watched.has(url) ? ' on' : '') + '" type="button" data-act="watch" data-k="' + k + '" data-watch="' + esc(url) + '">' + (watched.has(url) ? '👀 Watching ✓' : '👀 Watch price') + '</button>';
+  function paintWatch(url) {
+    for (const b of document.querySelectorAll('[data-watch="' + CSS.escape(url) + '"]')) {
+      b.classList.toggle('on', watched.has(url));
+      b.textContent = watched.has(url) ? '👀 Watching ✓' : '👀 Watch price';
+    }
+  }
+  async function toggleWatch(b) {
+    const url = b.dataset.watch;
+    if (!account) {
+      quip('sign in and I’ll watch it for you 👀', 2600);
+      keepShelf();
+      return (location.href = '/signin?next=' + encodeURIComponent('/new'));
+    }
+    const { e } = entryOf(b.dataset.k);
+    const o = (e?.items || [e]).find((x) => x?.item?.url === url);
+    b.disabled = true;
+    try {
+      const had = watched.get(url);
+      if (had) {
+        await api('/v1/me/watches/' + encodeURIComponent(had.id) + '/stop', {});
+        watched.delete(url);
+        quip('okay, I’ll stop watching it', 1800);
+      } else {
+        const r = await api('/v1/me/watches', { url, title: o?.item.title || '', image_url: o?.item.image_url || '', variant: o?.item.variant || '', price_cents: o?.item.price_cents || null, store: o?.merchant?.name || '', store_url: o?.merchant?.url || '', stock: o?.stock || '' });
+        watched.set(url, r.watch);
+        quip(r.watch.stock === 'out' ? 'I’ll tell you the second it’s back 👀' : 'I’ll keep an eye on the price 👀', 2400);
+        s3?.play('peek');
+      }
+      paintWatch(url);
+      if (screen === 'shop') renderShop();
+    } catch (err) {
+      quip(err.message, 2600);
+    } finally {
+      b.disabled = false;
+    }
+  }
+
+  // ─── Card facts ─────────────────────────────────────────────────────────
+  // What the store's own data and Spot's AI add to a card, asked for after it
+  // shows (/v1/facts): sizes and colours in stock, the store's price now and
+  // its sale price, the lowest price Spot has seen, and the store's price-
+  // adjustment and return policy (read off its own policy page).
+  const factsBy = new Map();
+  const factsWanted = new Map();
+  let factsTimer = null;
+  function wantFacts(list, again = false) {
+    for (const o of list.flatMap((e) => e.items || [e])) {
+      const u = o?.item?.url;
+      if (!u || !/^https?:/i.test(u) || (!again && (factsBy.has(u) || factsWanted.has(u)))) continue;
+      factsWanted.set(u, { url: u, variant: o.item.variant || '', store: o.merchant?.name || '' });
+    }
+    clearTimeout(factsTimer);
+    factsTimer = setTimeout(askFacts, 250);
+  }
+  const factsTries = new Map();
+  function askFacts() {
+    const all = [...factsWanted.values()];
+    factsWanted.clear();
+    for (let i = 0; i < all.length; i += 12) {
+      api('/v1/facts', { items: all.slice(i, i + 12) })
+        .then((r) => {
+          const pending = [];
+          for (const f of r.facts || []) {
+            factsBy.set(f.url, f);
+            paintFacts(f.url);
+            // A store Spot hasn't read the policy of yet: ask again in a bit.
+            const n = factsTries.get(f.url) || 0;
+            if (f.policy_pending && n < 3) factsTries.set(f.url, n + 1), pending.push(all.find((x) => x.url === f.url));
+          }
+          if (pending.length) setTimeout(() => (pending.forEach((x) => factsWanted.set(x.url, x)), askFacts()), 15000);
+        })
+        .catch(() => {});
+    }
+  }
+  const optWords = (s) => new Set(String(s || '').toLowerCase().split(/[^a-z0-9.]+/).filter(Boolean));
+  function factsHtml(o, k) {
+    const f = factsBy.get(o.item.url);
+    if (!f) return '';
+    const out = [];
+    const picked = optWords(o.item.variant);
+    for (const op of (f.options || []).slice(0, 2)) {
+      const vals = op.values.slice(0, 10);
+      const chosen = (v) => picked.size && [...optWords(v.value)].every((w) => picked.has(w));
+      out.push('<div class="opts"><b>' + esc(op.name) + '</b>' + vals.map((v) => '<span class="' + (chosen(v) ? 'on' : '') + (v.in ? '' : ' no') + '"' + (v.in ? '' : ' title="Sold out"') + '>' + esc(v.value) + '</span>').join('') + (op.values.length > vals.length ? '<span class="more">+' + (op.values.length - vals.length) + '</span>' : '') + '</div>');
+    }
+    const now = f.now_cents || o.item.price_cents;
+    const seen = f.seen;
+    if (seen && seen.days >= 3 && now && now <= seen.low_cents) out.push('<div class="fl good">↓ Lowest price Spot has seen since ' + new Date(seen.since).toLocaleDateString([], { month: 'short', day: 'numeric' }) + '</div>');
+    else if (seen && seen.days >= 3 && seen.low_cents < now) out.push('<div class="fl">Spot has seen it for ' + usd(seen.low_cents) + (seen.high_cents > seen.low_cents ? '–' + usd(seen.high_cents) : '') + '</div>');
+    const p = f.policy;
+    const store = esc(o.merchant?.name || 'The store');
+    const src = p?.source_url ? ' <a href="' + esc(p.source_url) + '" target="_blank" rel="noopener">policy ↗</a>' : '';
+    if (p?.price_adjustment === true) out.push('<div class="fl shield">🛡️ Price drop protection' + (p.adjustment_days ? ' for ' + p.adjustment_days + ' days' : '') + '. Pay with Spot and Spot watches the price and asks ' + store + ' for the difference.' + src + '</div>');
+    else if (p?.price_adjustment === false) out.push('<div class="fl">No price adjustments at ' + store + '.' + src + '</div>');
+    if (p && (p.returns_days || p.free_returns)) out.push('<div class="fl">↩︎ ' + (p.free_returns ? 'Free returns' : 'Returns') + (p.returns_days ? ' within ' + p.returns_days + ' days' : '') + (p.price_adjustment == null ? src : '') + '</div>');
+    else if (!p && f.policy_pending) out.push('<div class="fl wait">Reading ' + store + '’s price and return policy…</div>');
+    return out.join('');
+  }
+  // The store's own price beats the estimate a search gave; on the Shop
+  // page, how it moved since Spot showed it to them.
+  function priceHtml(o, k) {
+    const f = factsBy.get(o.item.url);
+    const was = o.item.price_cents;
+    const now = f?.now_cents || was;
+    if (!now) return 'Price at store';
+    let h = usd(now);
+    if (f?.was_cents && f.was_cents > now) h += ' <s>' + usd(f.was_cents) + '</s> <span class="tag sale">Sale</span>';
+    if (String(k).startsWith('s:') && was && f?.now_cents && Math.abs(f.now_cents - was) >= 100) h += '<small class="moved ' + (f.now_cents < was ? 'down' : 'up') + '">' + (f.now_cents < was ? '↓ ' + usd(was - f.now_cents) + ' less' : '↑ ' + usd(f.now_cents - was) + ' more') + ' than when you saw it</small>';
+    return h;
+  }
+  function paintFacts(url) {
+    const f = factsBy.get(url);
+    const sel = (a) => '[' + a + '="' + CSS.escape(url) + '"]';
+    for (const el of document.querySelectorAll('.facts' + sel('data-facts'))) {
+      const o = entryAt(el.dataset.k, url);
+      if (o) el.innerHTML = factsHtml(o, el.dataset.k);
+    }
+    if (f?.now_cents) setTimeout(() => paintCompare(url));
+    for (const el of document.querySelectorAll('.pr' + sel('data-pr'))) {
+      const card = el.closest('[data-card]');
+      const o = card && entryAt(card.dataset.card, url);
+      if (o) el.innerHTML = priceHtml(o, card.dataset.card);
+    }
+    // Paying uses the store's price, not the search's guess (not on the Shop
+    // page, where the price they saw is kept to compare).
+    if (f?.now_cents) for (const o of turns.flatMap((T) => (T ? T.list : [])).flatMap((e) => e.items || [e])) if (o.item.url === url) o.item.price_cents = f.now_cents;
+  }
+  const entryAt = (k, url) => {
+    try {
+      const { e } = entryOf(k);
+      return e && (e.items || [e]).find((o) => o.item.url === url);
+    } catch {
+      return null;
+    }
+  };
+
   // A photo that won't load shows the store's tile underneath instead.
   $('#thread').addEventListener('error', (e) => e.target.tagName === 'IMG' && e.target.remove(), true);
   $('#shop').addEventListener('error', (e) => e.target.tagName === 'IMG' && e.target.remove(), true);
@@ -616,15 +1139,31 @@
     }
     shopList = [...byUrl.values()].sort((a, b) => (b.seen_at || 0) - (a.seen_at || 0));
   }
-  const shopTile = (o, i) =>
-    '<button class="tile" type="button" data-i="' + i + '"><div class="ph"><img src="' + esc(o.item.image_url) + '" alt="" loading="lazy" referrerpolicy="no-referrer">' + tile(o) + '</div>' +
-    '<div class="tb"><div class="st">' + esc(o.merchant?.name || '') + '</div><div class="t">' + esc(o.item.title) + '</div><div class="pr">' + (o.item.price_cents ? usd(o.item.price_cents) : 'Price at store') + '</div></div></button>';
+  const shopTile = (o, i) => {
+    const w = watched.get(o.item.url);
+    const moved = w && w.start_cents && w.now_cents && w.now_cents < w.start_cents ? '<div class="wdrop">↓ ' + usd(w.start_cents - w.now_cents) + ' since you started watching</div>' : '';
+    return '<button class="tile" type="button" data-i="' + i + '"><div class="ph"><img src="' + esc(o.item.image_url) + '" alt="" loading="lazy" referrerpolicy="no-referrer">' + tile(o) + (w ? '<span class="wtag" title="Watching">👀</span>' : '') + '</div>' +
+      '<div class="tb"><div class="st">' + esc(o.merchant?.name || '') + '</div><div class="t">' + esc(o.item.title) + '</div><div class="pr">' + (o.item.price_cents ? usd(o.item.price_cents) : 'Price at store') + '</div>' + moved + '</div></button>';
+  };
+  let shopFilter = 'all';
   function renderShop() {
     const grid = $('#shopGrid');
+    // Watching: what they asked Spot to keep an eye on, as Spot last saw it.
+    if (shopFilter === 'watch') {
+      const seen = new Map(shopList.map((o) => [o.item.url, o]));
+      shopList = [...watched.values()].map((w) => ({ ...(seen.get(w.url) || {}), merchant: { name: w.store || seen.get(w.url)?.merchant?.name || '' }, item: { ...(seen.get(w.url)?.item || {}), title: w.title, url: w.url, image_url: w.image_url || seen.get(w.url)?.item?.image_url, variant: w.variant, price_cents: w.now_cents || seen.get(w.url)?.item?.price_cents || null, quantity: 1 }, stock: w.stock, seen_at: w.at })).filter((o) => o.item.image_url);
+    }
     grid.innerHTML = shopList.map(shopTile).join('');
-    $('#shopEmpty').hidden = shopList.length > 0;
-    $('#shopSub').textContent = shopList.length ? shopList.length + (shopList.length === 1 ? ' thing' : ' things') + ' Spot has shown you, newest first.' : 'Everything Spot has shown you.';
+    $('#shopEmpty').hidden = shopList.length > 0 || shopFilter === 'watch';
+    $('#fWatch').textContent = '👀 Watching' + (watched.size ? ' ' + watched.size : '');
+    $('#fAll').setAttribute('aria-pressed', String(shopFilter === 'all'));
+    $('#fWatch').setAttribute('aria-pressed', String(shopFilter === 'watch'));
+    $('#shopSub').textContent = shopFilter === 'watch'
+      ? (watched.size ? 'Spot checks these twice a day and tells you when the price drops or your size is back.' : account ? 'Tap 👀 Watch price on anything, and Spot tells you when it drops or comes back.' : 'Sign in, then tap 👀 Watch price on anything.')
+      : shopList.length ? shopList.length + (shopList.length === 1 ? ' thing' : ' things') + ' Spot has shown you, newest first.' : 'Everything Spot has shown you.';
   }
+  $('#fAll').onclick = () => ((shopFilter = 'all'), loadShop().then(renderShop));
+  $('#fWatch').onclick = () => ((shopFilter = 'watch'), loadWatches().then(renderShop));
   function setView(v) {
     $('#shopGrid').classList.toggle('one', v === 'one');
     $('#viewGrid').setAttribute('aria-pressed', String(v !== 'one'));
@@ -658,6 +1197,11 @@
     if (!b) return;
     const i = Number(b.dataset.i);
     $('#shopCard').innerHTML = productCard(shopList[i], 's:' + i, false);
+    wantFacts([shopList[i]]);
+    loadReviews(shopList[i]);
+    loadCompare(shopList[i]);
+    loadDelivery(shopList[i]);
+    loadPromos(shopList[i]);
     $('#shopSheet').hidden = false;
     walletWatch();
   });
@@ -667,6 +1211,7 @@
   $('#shopCard').addEventListener('click', (ev) => {
     const b = ev.target.closest('[data-act]');
     if (!b) return;
+    if (['watch', 'reviews', 'compare', 'switch', 'delivery', 'promos'].includes(b.dataset.act)) return actOn(b);
     $('#shopSheet').hidden = true;
     document.body.classList.remove('shopping');
     $('#modeSpot').setAttribute('aria-selected', 'true');
@@ -756,7 +1301,8 @@
       quote: (a) => api('/v1/quote', { stores: stores(), shipping: a }),
       pay: (sh, id) => walletOrder(stores(), sh, id),
       done: async (p) => {
-        say('paid! ordering it…');
+        say(pickedMine ? line('paidMine') : 'paid! ordering it…');
+        spot.cheer(pickedMine);
         await api(p.paid, {}).catch(() => {});
         location.href = p.manage;
       },
@@ -822,14 +1368,42 @@
     if (b) actOn(b);
   });
   function actOn(b) {
+    if (b.dataset.act === 'watch') return toggleWatch(b);
+    if (b.dataset.act === 'switch') return switchStore(b);
+    if (b.dataset.act === 'promos') {
+      const { e } = entryOf(b.dataset.k);
+      return loadPromos((e?.items || [e])[0]);
+    }
+    if (b.dataset.act === 'delivery') {
+      const { e } = entryOf(b.dataset.k);
+      return loadDelivery((e?.items || [e])[0]);
+    }
+    if (b.dataset.act === 'compare') {
+      const { e } = entryOf(b.dataset.k);
+      return loadCompare((e?.items || [e])[0]);
+    }
+    if (b.dataset.act === 'reviews') {
+      const { e } = entryOf(b.dataset.k);
+      return loadReviews((e?.items || [e])[0]);
+    }
     if (b.dataset.act === 'edit') {
       const { e } = entryOf(b.dataset.k);
       draft = { ...toDraft({ source: 'lookup', merchant: e.merchant, items: [{ ...e.item }], in_stock: e.stock === 'in' }), fromPicks: true };
       made = null;
       return check(e.stock === 'in' ? '' : 'I couldn’t check stock at ' + (e.merchant.name || 'that store') + '. Tap “At the store” to make sure it’s there');
     }
+    // Choosing one: Spot's pick (the first card of a shelf) delights him.
+    const mine = /^\d+:0$/.test(String(b.dataset.k));
+    if (b.dataset.act === 'pay' || b.dataset.act === 'ask') {
+      pickedMine = mine;
+      const l = line(mine ? 'mine' : 'other');
+      spot.cheer(mine);
+      quip(l, mine ? 2400 : 1600);
+      cardCheer(b.closest('.pc'), mine, l);
+    }
     oneTap(b.dataset.act, b.dataset.k, b);
   }
+  let pickedMine = false;
   async function askMore(e) {
     e?.preventDefault();
     const more = $('#more2').value.trim();
@@ -843,11 +1417,11 @@
       const { done } = await fill(T, { text: ask.text, more, avoid: ask.avoid.slice(-60) });
       if (!T.list.length) {
         T.el.innerHTML = '<div class="me">' + esc(more) + '</div>' + spotSays(done?.warning || 'I couldn’t find anything new for that. Try saying it another way.');
-        say('hmm, nothing new for that one');
+        spot.oops(), say('hmm, nothing new for that one');
       }
     } catch (err) {
       if (!T.list.length) T.el.innerHTML = '<div class="me">' + esc(more) + '</div><p class="err">' + esc(err.message) + '</p>';
-      say('hmm, that one got away from me');
+      spot.oops(), say('hmm, that one got away from me');
     } finally {
       btn.disabled = false;
     }
@@ -898,7 +1472,7 @@
       check(d.warning || '');
     } catch (e) {
       $('#checkErr').textContent = e.message;
-      say('hmm, that one got away from me');
+      spot.oops(), say('hmm, that one got away from me');
     } finally {
       btn.disabled = false;
       btn.textContent = 'Find another';
@@ -1233,7 +1807,22 @@
   };
 
   // ─── My Spots ─────────────────────────────────────────────────────────────
+  // Signed in: "Your orders", each with where it is (ordered → shipped → out
+  // for delivery → delivered). Otherwise the Spots made on this phone.
+  const STAGE = { ordered: [1, 'Ordered'], processing: [1, 'Getting it ready'], shipped: [2, 'Shipped'], in_transit: [2, 'On its way'], out_for_delivery: [3, 'Out for delivery'], delivered: [4, 'Delivered'], problem: [2, 'Delivery problem'] };
+  function orderRow(c) {
+    const t = c.tracking;
+    const [n, label] = STAGE[t?.status || 'ordered'] || STAGE.ordered;
+    const it = c.items?.[0] || {};
+    return '<a class="mine-row order" href="' + esc(c.manage_url || '#') + '"><span class="oi">' + (it.image_url ? '<img src="' + esc(it.image_url) + '" alt="" loading="lazy" referrerpolicy="no-referrer">' : '') + '</span><span class="ot"><b>' + esc(it.title || 'Your order') + '</b><br><span class="muted small">' + esc(c.merchant?.name || '') + (t?.carrier ? ' · ' + esc(t.carrier) : '') + '</span><span class="track s' + n + (t?.status === 'problem' ? ' bad' : '') + '"><i></i><i></i><i></i><i></i></span><span class="small ' + (t?.status === 'delivered' ? 'ok' : '') + '">' + label + (t?.description && t.description.toLowerCase() !== label.toLowerCase() ? ': ' + esc(t.description) : '') + '</span></span></a>';
+  }
   function renderMine() {
+    if (myOrders.length) {
+      $('#mine').querySelector('h2').textContent = 'Your orders';
+      $('#mineList').innerHTML = myOrders.map(orderRow).join('');
+      $('#mine').hidden = screen !== 'compose';
+      return;
+    }
     const mine = load('spot:mine', []);
     $('#mineList').innerHTML = mine
       .slice(0, 6)
