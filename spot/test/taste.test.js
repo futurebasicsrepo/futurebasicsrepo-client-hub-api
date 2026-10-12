@@ -99,3 +99,13 @@ test('ratings Spot already read, for sorting: never a new read', async (t) => {
   assert.deepEqual(r.body.reviews, { 'https://a.com/p/1': { rating: 4.7, count: 210, fit: 'small' } });
   assert.equal(reads, 0);
 });
+
+test('a follow-up that asks for something else is searched on its own; a tweak keeps the first ask', () => {
+  const p = lookupPrompt({ text: 'nonstick pans', more: 'streetwear from Sneaker Politics and A Ma Maniere\ncheaper' });
+  assert.match(p, /typed: "nonstick pans"/);
+  assert.match(p, /"streetwear from Sneaker Politics and A Ma Maniere", then "cheaper"/);
+  assert.match(p, /newest message decides what to find/);
+  assert.match(p, /drop what they asked before/);
+  assert.match(lookupPrompt({ text: 'boots', more: 'in brown' }), /said: "in brown"/);
+  assert.doesNotMatch(lookupPrompt({ text: 'boots' }), /newest message/);
+});

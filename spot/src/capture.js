@@ -822,6 +822,7 @@ export function draftFromDescription(text) {
 // for Coachella") come back as outfits: whole looks, pieces from any store.
 const PRODUCT_HINT = `{"merchant_name": "", "merchant_url": "https://…", "product_url": "https://… its own page if you saw it, else the store page you found it on", "title": "its name as the store sells it (brand and model), not a description", "variant": "", "unit_price": "$0.00", "image_url": "https://… or empty", "why": "short reason, under 60 characters"}`;
 const LOOKUP_SCHEMA_HINT = `{"kind": "products", "products": [${PRODUCT_HINT}]}  or  {"kind": "outfits", "outfits": [{"name": "short look name", "why": "one line", "items": [${PRODUCT_HINT}]}]}`;
+export const MORE_MAX = 900; // what they said after the first ask: up to the last few follow-ups, one per line
 export const MAX_OPTIONS = 12; // per batch; the shelf asks for more as they swipe
 export const MAX_OUTFITS = 4;
 
@@ -829,7 +830,10 @@ const q = (x) => String(x).replace(/"/g, "'");
 // What the model is asked, for a whole answer (captureFromText) or a batch on
 // the shelf (streamLookup: `count` products, a couple of outfits at a time).
 export function lookupPrompt({ text, more = '', sizes = '', shipTo = '', taste = '', avoid = [], count = MAX_OPTIONS, outfits = MAX_OUTFITS }) {
-  return `Someone is shopping and typed: "${q(text)}"${more ? `\nThey saw what you found and said: "${q(more)}"` : ''}
+  const said = String(more || '').split('\n').map((l) => l.trim()).filter(Boolean);
+  return `Someone is shopping and typed: "${q(text)}"${said.length ? `
+They saw what you found and said${said.length > 1 ? ' (oldest first; the last is the newest)' : ''}: ${said.map((l) => `"${q(l)}"`).join(said.length > 1 ? ', then ' : '')}
+Their newest message decides what to find. If it asks for a different kind of thing, or names stores, brands or a style to see, find exactly that and drop what they asked before (keep only what still fits, like a budget or sizes); stores they name are where to look. If it only adjusts the last finds ("in blue", "cheaper", "more like these"), keep finding what they were last looking for, adjusted.` : ''}
 
 Using web search, find things for sale at US online stores that match. Read it the way a great personal shopper would: a budget ("under $50") is a price limit, an occasion or place ("for Coachella", "beach wedding") sets the style.
 - If they want a look, an outfit, or clothes for an occasion or a trip, reply with outfits (as many as they ask for, up to ${outfits}): each a complete look of 3 to 5 pieces (for example top or dress, bottoms, shoes, one accessory) that suit the occasion, pieces from any stores. Every piece is a real product you found for sale ("Steve Madden Jypsey Heel", not "strappy heels"), with its own link.
@@ -849,7 +853,7 @@ const FIND_BUDGET_MS = 35_000; // no new search after this long; answer with wha
 export async function captureFromText(raw, { client, fromUrl = captureFromUrl, product = shopifyProduct, sizes = '', shipTo = '', more = '', avoid = [], onUsage, onError, now = Date.now } = {}) {
   const { text, url } = splitText(raw);
   if (!text) throw new CaptureError('Paste a link, drop a screenshot, or describe what you want');
-  more = String(more || '').trim().slice(0, 300);
+  more = String(more || '').trim().slice(0, MORE_MAX);
   avoid = [].concat(avoid || []).map((u) => String(u).slice(0, 500)).filter((u) => /^https?:\/\//i.test(u)).slice(-60);
   const followUp = Boolean(more || avoid.length);
   if (url && !followUp) return fromUrl(url);
@@ -1232,7 +1236,7 @@ export function lookupCache({ max = 200, ttl = 30 * 60_000, now = Date.now } = {
 export async function streamLookup(raw, { client, fromUrl = captureFromUrl, product = shopifyProduct, resolve = resolveListing, photos = photoSearch, pdp = pageSearch, verify = imageOk, sizes = '', shipTo = '', taste = '', more = '', avoid = [], count = FIRST_BATCH, cache = null, onUsage, onError, now = Date.now } = {}, emit = () => {}) {
   const { text } = splitText(raw);
   if (!text) throw new CaptureError('Paste a link, drop a screenshot, or describe what you want');
-  more = String(more || '').trim().slice(0, 300);
+  more = String(more || '').trim().slice(0, MORE_MAX);
   avoid = [].concat(avoid || []).map((u) => String(u).slice(0, 500)).filter((u) => /^https?:\/\//i.test(u)).slice(-60);
   count = Math.max(1, Math.min(MAX_OPTIONS, count | 0 || FIRST_BATCH));
   const followUp = Boolean(more || avoid.length);
