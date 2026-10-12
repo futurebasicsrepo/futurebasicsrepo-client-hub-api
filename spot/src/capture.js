@@ -239,12 +239,18 @@ async function shopifySuggest(origin, q) {
     .map((p) => ({
       url: absolute(p.url, origin),
       text: String(p.title || ''),
+      named: true, // the store's own product name, without a size
       match: `${p.title || ''} ${p.product_type || ''} ${String(p.body || '').replace(/<[^>]+>/g, ' ').slice(0, 300)}`,
       price_cents: dollarsToCents(p.price) || null,
       image_url: absolute(p.image || p.featured_image?.url, origin),
     }))
     .filter((p) => p.url);
 }
+
+// "Tree Runner - Mist - Size 8", "Midi Dress | Navy - XXS": the name, not the
+// default size the page opened on.
+const SIZE_TAIL = /\s*[-|/,]\s*(?:size\s*)?(?:x{0,3}s|s|m|l|x{0,3}l|\d{1,2}(?:\.5)?|\d{1,2}[tTmM]|one size)\s*$/i;
+export const withoutSize = (t) => String(t || '').replace(/\s*[-|,]\s*size\s*\S+\s*$/i, '').replace(SIZE_TAIL, '').trim();
 
 // The product page for an item whose link is a listing page, or null.
 // { url, title, price_cents, image_url }: what that page (or the store) says.
@@ -272,7 +278,8 @@ export async function resolveListing(item, { fromUrl = captureFromUrl, suggest =
   const found = own && Math.max(titleMatch(hit.text, own.title), titleMatch(item.title, own.title)) >= 0.5 ? own : null;
   return {
     url,
-    title: found?.title || hit.text.slice(0, 140),
+    // The product's name, not the size its page happens to show first.
+    title: withoutSize(hit.named ? hit.text : found?.title || hit.text).slice(0, 140),
     price_cents: found?.price_cents || hit.price_cents || null,
     image_url: tidyImage(found?.image_url || hit.image_url || null),
   };
