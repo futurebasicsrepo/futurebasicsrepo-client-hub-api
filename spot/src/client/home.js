@@ -65,6 +65,7 @@
       if (!me.email && u.email) me = { ...me, email: u.email };
       renderProfile();
       loadWatches();
+      syncTaste();
       // Their orders, wherever each is (tracking.js), for "Your orders".
       myOrders = (j.carts || []).filter((c) => c.fulfillment?.state === 'placed' || c.spent_at).slice(0, 8);
       renderMine();
@@ -479,7 +480,7 @@
       (it.url && /^https?:/i.test(it.url) ? '<div class="dl" data-dl="' + esc(it.url) + '" data-k="' + k + '">' + deliveryHtml(o, k) + '</div>' : '') +
       (it.url && /^https?:/i.test(it.url) ? '<div class="promo" data-promo="' + esc(it.url) + '" data-k="' + k + '">' + promoHtml(o, k) + '</div>' : '') +
       '<div class="pr" data-pr="' + esc(it.url || '') + '">' + priceHtml(o, k) + '</div>' + buttons(k, o.stock === 'out', (it.price_cents || 0) * (it.quantity || 1)) +
-      '<div class="cardlinks"><button class="textlink" type="button" data-act="edit" data-k="' + k + '">Edit details</button>' + (it.url && /^https?:/i.test(it.url) ? watchBtn(it.url, k) : '') +
+      '<div class="cardlinks"><button class="textlink" type="button" data-act="edit" data-k="' + k + '">Edit details</button>' + (it.url && /^https?:/i.test(it.url) ? watchBtn(it.url, k) : '') + (String(k).startsWith('s:') ? '<button class="textlink" type="button" data-act="nope" data-k="' + k + '">👎 Not for me</button>' : '') +
       (it.url && /^https?:/i.test(it.url) ? '<a href="' + esc(it.url) + '" target="_blank" rel="noopener">At the store ↗</a>' : '') + '</div></div></article>';
   }
   function outfitCard(look, k, top) {
@@ -996,6 +997,7 @@
       } else {
         const r = await api('/v1/me/watches', { url, title: o?.item.title || '', image_url: o?.item.image_url || '', variant: o?.item.variant || '', price_cents: o?.item.price_cents || null, store: o?.merchant?.name || '', store_url: o?.merchant?.url || '', stock: o?.stock || '' });
         watched.set(url, r.watch);
+        learn(o, 3);
         quip(r.watch.stock === 'out' ? 'I’ll tell you the second it’s back 👀' : 'I’ll keep an eye on the price 👀', 2400);
         s3?.play('peek');
       }
@@ -1036,6 +1038,7 @@
           for (const f of r.facts || []) {
             factsBy.set(f.url, f);
             paintFacts(f.url);
+            if (screen === 'shop') renderSoon();
             // A store Spot hasn't read the policy of yet: ask again in a bit.
             const n = factsTries.get(f.url) || 0;
             if (f.policy_pending && n < 3) factsTries.set(f.url, n + 1), pending.push(all.find((x) => x.url === f.url));
@@ -1140,33 +1143,257 @@
       const had = byUrl.get(o.item.url);
       if (!had || (o.seen_at || 0) > (had.seen_at || 0)) byUrl.set(o.item.url, o);
     }
-    shopList = [...byUrl.values()].sort((a, b) => (b.seen_at || 0) - (a.seen_at || 0));
+    // Watched products not in the history still belong on the Shop page.
+    for (const w of watched.values()) {
+      if (byUrl.has(w.url) || !w.image_url) continue;
+      byUrl.set(w.url, { merchant: { name: w.store || '' }, item: { title: w.title, url: w.url, image_url: w.image_url, variant: w.variant, price_cents: w.now_cents || null, quantity: 1 }, stock: w.stock, asked: '👀 Watching', seen_at: w.at });
+    }
+    shopAll = [...byUrl.values()].sort((a, b) => (b.seen_at || 0) - (a.seen_at || 0));
+    loadCachedReviews(shopAll);
+  }
+
+  // ─── Shop: sort, filter, collections, and Spot's read on you ─────────────
+  // Sorting and filtering use what the cards know: the store's price and
+  // sale price, price-drop protection and free returns (store policy),
+  // ratings Spot already read, stock, and what they're watching. "For you"
+  // ranks by Spot's read on their taste, learned from what they open, watch,
+  // choose and turn down (and, signed in, kept on their account to shape
+  // new searches too).
+  const SHOP_PREFS = 'spot:shopPrefs';
+  let shopAll = [];
+  let prefs = { sort: null, filters: {}, hidden: [], ...load(SHOP_PREFS, {}) };
+  const savePrefs = () => save(SHOP_PREFS, prefs);
+  const rvCache = new Map();
+  async function loadCachedReviews(list) {
+    const urls = list.map((o) => o.item.url).filter((u) => !rvCache.has(u) && !reviewsBy.has(u));
+    if (!urls.length) return;
+    const r = await api('/v1/reviews/cached', { urls }).catch(() => null);
+    for (const u of urls) rvCache.set(u, r?.reviews?.[u] || null);
+    if (screen === 'shop') renderShop();
+  }
+  const dataOf = (o) => {
+    const u = o.item.url;
+    const f = factsBy.get(u);
+    const price = f?.now_cents || o.item.price_cents || null;
+    const was = f?.was_cents && price && f.was_cents > price ? f.was_cents : null;
+    const high = f?.seen?.high_cents && price && f.seen.high_cents > price ? f.seen.high_cents : null;
+    const deal = was ? (was - price) / was : high ? (high - price) / high : 0;
+    const rv = reviewsBy.get(u);
+    const r = rv && rv !== 'loading' && !rv.none ? rv : rvCache.get(u);
+    const p = f?.policy || null;
+    return { price, was, deal, rating: r?.rating ?? null, count: r?.count ?? null, protect: p?.price_adjustment === true, protectDays: p?.adjustment_days || 0, freeReturns: p?.free_returns === true, stock: o.stock, watching: watched.has(u), store: o.merchant?.name || '' };
+  };
+  const SORTS = [
+    ['foryou', '✨ For you'],
+    ['new', 'Newest'],
+    ['deal', 'Biggest deal'],
+    ['price_asc', 'Price: low to high'],
+    ['price_desc', 'Price: high to low'],
+    ['rating', 'Top rated'],
+    ['protect', 'Price protected first'],
+    ['stock', 'In stock first'],
+  ];
+  const FILTERS = [
+    ['instock', 'In stock'],
+    ['sale', 'On sale'],
+    ['protect', '🛡️ Price protection'],
+    ['freeret', 'Free returns'],
+    ['rated', '★ 4 and up'],
+    ['watching', '👀 Watching'],
+  ];
+  const PRICES = [0, 25, 50, 100, 250, 500];
+  const sortNow = () => prefs.sort || (taste.n >= 5 ? 'foryou' : 'new');
+  // Sorting and filtering by store data needs the card facts for the whole page.
+  const needsFacts = () => ['deal', 'price_asc', 'price_desc', 'protect'].includes(sortNow()) || prefs.filters.sale || prefs.filters.protect || prefs.filters.freeret || prefs.filters.max;
+  function shopView() {
+    const f = prefs.filters;
+    const hidden = new Set(prefs.hidden || []);
+    let list = shopAll.filter((o) => !hidden.has(o.asked || ''));
+    list = list.filter((o) => {
+      const d = dataOf(o);
+      if (f.instock && d.stock === 'out') return false;
+      if (f.sale && !(d.deal >= 0.05)) return false;
+      if (f.protect && !d.protect) return false;
+      if (f.freeret && !d.freeReturns) return false;
+      if (f.rated && !(d.rating >= 4)) return false;
+      if (f.watching && !d.watching) return false;
+      if (f.max && !(d.price && d.price <= f.max * 100)) return false;
+      if (f.stores?.length && !f.stores.includes(d.store)) return false;
+      return true;
+    });
+    const s = sortNow();
+    const by = {
+      foryou: (o) => -tasteScore(o),
+      new: (o) => -(o.seen_at || 0),
+      deal: (o) => -dataOf(o).deal,
+      price_asc: (o) => dataOf(o).price ?? Infinity,
+      price_desc: (o) => -(dataOf(o).price ?? -Infinity),
+      rating: (o) => -((dataOf(o).rating ?? 0) * 1000 + Math.min(dataOf(o).count || 0, 999)),
+      protect: (o) => -(dataOf(o).protect ? 100 + dataOf(o).protectDays : 0),
+      stock: (o) => (dataOf(o).stock === 'in' ? 0 : dataOf(o).stock === 'out' ? 2 : 1),
+    }[s];
+    return list.map((o) => [by(o), -(o.seen_at || 0), o]).sort((a, b) => a[0] - b[0] || a[1] - b[1]).map((x) => x[2]);
   }
   const shopTile = (o, i) => {
     const w = watched.get(o.item.url);
+    const d = dataOf(o);
     const moved = w && w.start_cents && w.now_cents && w.now_cents < w.start_cents ? '<div class="wdrop">↓ ' + usd(w.start_cents - w.now_cents) + ' since you started watching</div>' : '';
+    const badges = [d.was ? '<span class="tb-sale">' + Math.round(d.deal * 100) + '% off</span>' : '', d.rating ? '<span>★ ' + d.rating.toFixed(1) + '</span>' : '', d.protect ? '<span title="Price drop protection">🛡️' + (d.protectDays ? ' ' + d.protectDays + 'd' : '') + '</span>' : '', d.freeReturns ? '<span>Free returns</span>' : '', d.stock === 'out' ? '<span class="tb-out">Sold out</span>' : ''].filter(Boolean).join('');
     return '<button class="tile" type="button" data-i="' + i + '"><div class="ph"><img src="' + esc(o.item.image_url) + '" alt="" loading="lazy" referrerpolicy="no-referrer">' + tile(o) + (w ? '<span class="wtag" title="Watching">👀</span>' : '') + '</div>' +
-      '<div class="tb"><div class="st">' + esc(o.merchant?.name || '') + '</div><div class="t">' + esc(o.item.title) + '</div><div class="pr">' + (o.item.price_cents ? usd(o.item.price_cents) : 'Price at store') + '</div>' + moved + '</div></button>';
+      '<div class="tb"><div class="st">' + esc(o.merchant?.name || '') + '</div><div class="t">' + esc(o.item.title) + '</div><div class="pr">' + (d.price ? usd(d.price) : 'Price at store') + (d.was ? ' <s>' + usd(d.was) + '</s>' : '') + '</div>' + (badges ? '<div class="tbadges">' + badges + '</div>' : '') + moved + '</div></button>';
   };
-  let shopFilter = 'all';
+  let renderT = 0;
+  const renderSoon = () => (clearTimeout(renderT), (renderT = setTimeout(() => screen === 'shop' && renderShop(), 300)));
   function renderShop() {
-    const grid = $('#shopGrid');
-    // Watching: what they asked Spot to keep an eye on, as Spot last saw it.
-    if (shopFilter === 'watch') {
-      const seen = new Map(shopList.map((o) => [o.item.url, o]));
-      shopList = [...watched.values()].map((w) => ({ ...(seen.get(w.url) || {}), merchant: { name: w.store || seen.get(w.url)?.merchant?.name || '' }, item: { ...(seen.get(w.url)?.item || {}), title: w.title, url: w.url, image_url: w.image_url || seen.get(w.url)?.item?.image_url, variant: w.variant, price_cents: w.now_cents || seen.get(w.url)?.item?.price_cents || null, quantity: 1 }, stock: w.stock, seen_at: w.at })).filter((o) => o.item.image_url);
-    }
-    grid.innerHTML = shopList.map(shopTile).join('');
-    $('#shopEmpty').hidden = shopList.length > 0 || shopFilter === 'watch';
-    $('#fWatch').textContent = '👀 Watching' + (watched.size ? ' ' + watched.size : '');
-    $('#fAll').setAttribute('aria-pressed', String(shopFilter === 'all'));
-    $('#fWatch').setAttribute('aria-pressed', String(shopFilter === 'watch'));
-    $('#shopSub').textContent = shopFilter === 'watch'
-      ? (watched.size ? 'Spot checks these twice a day and tells you when the price drops or your size is back.' : account ? 'Tap 👀 Watch price on anything, and Spot tells you when it drops or comes back.' : 'Sign in, then tap 👀 Watch price on anything.')
-      : shopList.length ? shopList.length + (shopList.length === 1 ? ' thing' : ' things') + ' Spot has shown you, newest first.' : 'Everything Spot has shown you.';
+    if (needsFacts()) wantFacts(shopAll.filter((o) => !factsBy.has(o.item.url)));
+    shopList = shopView();
+    $('#shopGrid').innerHTML = shopList.map(shopTile).join('');
+    const active = activeCount();
+    $('#shopEmpty').hidden = shopAll.length > 0;
+    $('#shopNone').hidden = !(shopAll.length && !shopList.length);
+    $('#fabN').textContent = active ? String(active) : '';
+    $('#shopFab').classList.toggle('on', active > 0);
+    const label = (SORTS.find((x) => x[0] === sortNow()) || [])[1] || '';
+    $('#shopSub').textContent = shopAll.length ? (shopList.length === shopAll.length ? shopAll.length + (shopAll.length === 1 ? ' thing' : ' things') + ' Spot has shown you' : shopList.length + ' of ' + shopAll.length) + ' · ' + label.replace('✨ ', '').toLowerCase() : 'Everything Spot has shown you.';
+    if (!$('#shopTools').hidden) renderTools();
   }
-  $('#fAll').onclick = () => ((shopFilter = 'all'), loadShop().then(renderShop));
-  $('#fWatch').onclick = () => ((shopFilter = 'watch'), loadWatches().then(renderShop));
+  const activeCount = () => Object.entries(prefs.filters).filter(([k, v]) => (k === 'stores' ? v?.length : v)).length + (prefs.hidden?.length ? 1 : 0);
+
+  // The sort-and-filter sheet: sort, filters, collections, Spot's read on you.
+  function renderTools() {
+    const f = prefs.filters;
+    const chip = (act, v, label, on) => '<button type="button" class="chip' + (on ? ' on' : '') + '" data-tool="' + act + '" data-v="' + esc(v) + '" aria-pressed="' + Boolean(on) + '">' + label + '</button>';
+    const stores = [...new Set(shopAll.map((o) => o.merchant?.name).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+    const groups = new Map();
+    for (const o of shopAll) groups.set(o.asked || '', (groups.get(o.asked || '') || 0) + 1);
+    const hidden = new Set(prefs.hidden || []);
+    const s = tasteSummary();
+    const learned = [...s.stores.map((x) => chip('forget-store', x, esc(x) + ' ×', true)), ...s.words.map((x) => chip('forget-word', x, esc(x) + ' ×', true)), s.price ? chip('forget-price', '', usd(s.price.low).replace('.00', '') + '–' + usd(s.price.high).replace('.00', '') + ' ×', true) : '', ...s.avoid.map((x) => chip('forget-avoid', x, 'not ' + esc(x) + ' ×', false))].filter(Boolean);
+    $('#toolsBody').innerHTML =
+      '<h3>Sort</h3><div class="chips">' + SORTS.map(([k, l]) => chip('sort', k, l, sortNow() === k)).join('') + '</div>' +
+      (sortNow() === 'foryou' && taste.n < 5 ? '<p class="small muted">Spot is still getting to know you. Open, watch and choose a few things and this gets sharper.</p>' : '') +
+      '<h3>Filter</h3><div class="chips">' + FILTERS.map(([k, l]) => chip('filter', k, l, f[k])).join('') + '</div>' +
+      '<div class="chips">' + PRICES.map((p) => chip('max', p, p ? 'Under $' + p : 'Any price', (f.max || 0) === p)).join('') + '</div>' +
+      (stores.length > 1 ? '<h3>Stores</h3><div class="chips">' + stores.map((x) => chip('store', x, esc(x), f.stores?.includes(x))).join('') + '</div>' : '') +
+      '<h3>Collections</h3><p class="small muted">Everything Spot showed you for each ask. Hide one, or remove it for good.</p><div class="colls">' +
+      [...groups].map(([a, n]) => '<div class="coll' + (hidden.has(a) ? ' off' : '') + '"><button type="button" class="collname" data-tool="toggle-coll" data-v="' + esc(a) + '" aria-pressed="' + !hidden.has(a) + '"><span class="eye">' + (hidden.has(a) ? '◌' : '●') + '</span> ' + esc(a || 'Other finds') + ' <span class="muted">' + n + '</span></button>' + (a === '👀 Watching' ? '' : '<button type="button" class="collx" data-tool="remove-coll" data-v="' + esc(a) + '" aria-label="Remove ' + esc(a || 'these') + '">Remove</button>') + '</div>').join('') + '</div>' +
+      '<h3>Spot’s read on you</h3>' + (learned.length ? '<div class="chips">' + learned.join('') + '</div><p class="small muted">Learned from what you open, watch and choose' + (account ? ', and used to shape new searches too' : '') + '. Tap one to make Spot forget it. <button type="button" class="textlink" data-tool="reset-taste" data-v="">Start over</button></p>' : '<p class="small muted">Nothing yet. Spot learns your style from what you open, watch, choose, and turn down with 👎 Not for me.</p>') +
+      '<div class="toolsfoot"><button type="button" class="btn ghost small" data-tool="clear" data-v="">Clear all</button><button type="button" class="btn small" data-tool="done" data-v="">Show ' + shopList.length + '</button></div>';
+  }
+  function openTools() {
+    renderTools();
+    $('#shopTools').hidden = false;
+    if (needsFacts()) wantFacts(shopAll.filter((o) => !factsBy.has(o.item.url)));
+  }
+  $('#shopFab').onclick = openTools;
+  $('#shopToolsX').onclick = () => ($('#shopTools').hidden = true);
+  $('#shopTools').addEventListener('click', async (ev) => {
+    const b = ev.target.closest('[data-tool]');
+    if (!b) return;
+    const t = b.dataset.tool;
+    const v = b.dataset.v;
+    const f = prefs.filters;
+    if (t === 'sort') prefs.sort = v;
+    else if (t === 'filter') f[v] = !f[v];
+    else if (t === 'max') f.max = Number(v) || 0;
+    else if (t === 'store') f.stores = f.stores?.includes(v) ? f.stores.filter((x) => x !== v) : [...(f.stores || []), v];
+    else if (t === 'toggle-coll') prefs.hidden = prefs.hidden?.includes(v) ? prefs.hidden.filter((x) => x !== v) : [...(prefs.hidden || []), v];
+    else if (t === 'remove-coll') {
+      const n = shopAll.filter((o) => (o.asked || '') === v).length;
+      if (!confirm('Remove “' + (v || 'Other finds') + '” (' + n + (n === 1 ? ' thing' : ' things') + ') from your Shop page?')) return;
+      save(SEEN, load(SEEN, []).filter((o) => (o.asked || '') !== v));
+      if (account) await api('/v1/me/shop/remove', { asked: v }).catch(() => {});
+      prefs.hidden = (prefs.hidden || []).filter((x) => x !== v);
+      shopAll = shopAll.filter((o) => (o.asked || '') !== v);
+    } else if (t === 'forget-store' || t === 'forget-avoid') {
+      delete taste.stores[v.toLowerCase()];
+      delete taste.words[v.toLowerCase()];
+      saveTaste();
+    } else if (t === 'forget-word') {
+      delete taste.words[v];
+      saveTaste();
+    } else if (t === 'forget-price') {
+      taste.price = { sum: 0, w: 0 };
+      saveTaste();
+    } else if (t === 'reset-taste') {
+      if (!confirm('Make Spot forget what it has learned about your taste?')) return;
+      taste = blankTaste();
+      save(TASTE, taste);
+      if (account) api('/v1/me/taste', { reset: true }).catch(() => {});
+    } else if (t === 'clear') prefs = { sort: null, filters: {}, hidden: [] };
+    else if (t === 'done') return ($('#shopTools').hidden = true);
+    savePrefs();
+    renderShop();
+    renderTools();
+  });
+
+  // 👎 Not for me (Shop page): off the page, and Spot learns from it.
+  async function notForMe(b) {
+    const { e } = entryOf(b.dataset.k);
+    if (!e?.item) return;
+    learn(e, -4);
+    save(SEEN, load(SEEN, []).filter((o) => o?.item?.url !== e.item.url));
+    if (account) api('/v1/me/shop/remove', { url: e.item.url }).catch(() => {});
+    shopAll = shopAll.filter((o) => o.item.url !== e.item.url);
+    $('#shopSheet').hidden = true;
+    renderShop();
+    quip('got it, less like that 👍', 1800);
+  }
+
+  // ─── Taste: Spot's read on you ───────────────────────────────────────────
+  // Open a product +1, watch it +3, choose it +5, "not for me" −4: its store,
+  // the words that name it, and the price. Older signals fade a little with
+  // each new one. Kept on this phone, and on their account when signed in.
+  const TASTE = 'spot:taste';
+  const blankTaste = () => ({ v: 1, n: 0, stores: {}, words: {}, price: { sum: 0, w: 0 } });
+  let taste = { ...blankTaste(), ...load(TASTE, {}) };
+  const STOP = new Set(['the', 'and', 'for', 'with', 'set', 'pack', 'piece', 'pieces', 'size', 'new', 'men', 'mens', 'women', 'womens', 'kids', 'black', 'white', 'grey', 'gray', 'blue', 'red', 'green', 'brown', 'pink', 'navy', 'one', 'two', 'inch', 'from', 'your', 'this', 'that', 'edition', 'collection', 'classic', 'original']);
+  const tasteWords = (o) => {
+    const store = new Set(String(o.merchant?.name || '').toLowerCase().split(/[^a-z0-9]+/));
+    return [...new Set(String(o.item?.title || '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').split(/\s+/).filter((w) => w.length > 2 && !STOP.has(w) && !store.has(w) && !/^\d/.test(w)))].slice(0, 8);
+  };
+  let tasteT = 0;
+  function saveTaste() {
+    save(TASTE, taste);
+    if (!account) return;
+    clearTimeout(tasteT);
+    tasteT = setTimeout(() => api('/v1/me/taste', { taste }).catch(() => {}), 1500);
+  }
+  function learn(o, w) {
+    if (!o?.item) return;
+    for (const m of [taste.stores, taste.words]) for (const k of Object.keys(m)) if (Math.abs((m[k] *= 0.985)) < 0.05) delete m[k];
+    const store = String(o.merchant?.name || '').trim().toLowerCase();
+    if (store) taste.stores[store] = Math.max(-50, Math.min(50, (taste.stores[store] || 0) + w));
+    for (const word of tasteWords(o)) taste.words[word] = Math.max(-50, Math.min(50, (taste.words[word] || 0) + w * 0.6));
+    const price = factsBy.get(o.item.url)?.now_cents || o.item.price_cents;
+    if (w > 0 && price) (taste.price.sum += price * w), (taste.price.w += w);
+    taste.n++;
+    saveTaste();
+  }
+  function tasteScore(o) {
+    const store = taste.stores[String(o.merchant?.name || '').trim().toLowerCase()] || 0;
+    const words = tasteWords(o).reduce((n, w) => n + (taste.words[w] || 0), 0);
+    let s = store + Math.max(-15, Math.min(15, words * 0.5));
+    const price = dataOf(o).price;
+    if (price && taste.price.w > 0) s -= Math.min(6, Math.abs(Math.log(price / (taste.price.sum / taste.price.w))) * 3);
+    if (o.stock === 'out') s -= 3;
+    return s;
+  }
+  function tasteSummary() {
+    const topOf = (m, n, ok) => Object.entries(m).filter(([, w]) => ok(w)).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).slice(0, n).map(([k]) => k);
+    const avg = taste.price.w > 0 ? taste.price.sum / taste.price.w : 0;
+    return { stores: topOf(taste.stores, 4, (w) => w >= 1), words: topOf(taste.words, 5, (w) => w >= 1), avoid: [...topOf(taste.stores, 2, (w) => w <= -1.5), ...topOf(taste.words, 3, (w) => w <= -1.5)], price: avg ? { low: Math.round((avg * 0.6) / 100) * 100, high: Math.round((avg * 1.5) / 100) * 100 } : null };
+  }
+  // Signed in: whichever read has more to go on wins (a new phone picks up the account's).
+  function syncTaste() {
+    if (!account) return;
+    api('/v1/me/taste')
+      .then((r) => {
+        if (r.taste && (r.taste.n || 0) > (taste.n || 0)) (taste = { ...blankTaste(), ...r.taste }), save(TASTE, taste);
+        else if (taste.n) saveTaste();
+      })
+      .catch(() => {});
+  }
   function setView(v) {
     $('#shopGrid').classList.toggle('one', v === 'one');
     $('#viewGrid').setAttribute('aria-pressed', String(v !== 'one'));
@@ -1189,6 +1416,8 @@
       for (const T of turns) T?.sync?.();
     }
   }
+  // The Spot / Shop bar stays put; a hairline under it once the page scrolls.
+  addEventListener('scroll', () => document.body.classList.toggle('scrolled', scrollY > 4), { passive: true });
   $('#modeShop').onclick = () => setMode('shop');
   $('#modeSpot').onclick = () => setMode('spot');
   $('#viewGrid').onclick = () => setView('grid');
@@ -1199,6 +1428,7 @@
     const b = ev.target.closest('.tile');
     if (!b) return;
     const i = Number(b.dataset.i);
+    learn(shopList[i], 1);
     $('#shopCard').innerHTML = productCard(shopList[i], 's:' + i, false);
     wantFacts([shopList[i]]);
     loadReviews(shopList[i]);
@@ -1214,7 +1444,7 @@
   $('#shopCard').addEventListener('click', (ev) => {
     const b = ev.target.closest('[data-act]');
     if (!b) return;
-    if (['watch', 'reviews', 'compare', 'switch', 'delivery', 'promos'].includes(b.dataset.act)) return actOn(b);
+    if (['watch', 'reviews', 'compare', 'switch', 'delivery', 'promos', 'nope'].includes(b.dataset.act)) return actOn(b);
     $('#shopSheet').hidden = true;
     document.body.classList.remove('shopping');
     $('#modeSpot').setAttribute('aria-selected', 'true');
@@ -1372,6 +1602,7 @@
   });
   function actOn(b) {
     if (b.dataset.act === 'watch') return toggleWatch(b);
+    if (b.dataset.act === 'nope') return notForMe(b);
     if (b.dataset.act === 'switch') return switchStore(b);
     if (b.dataset.act === 'promos') {
       const { e } = entryOf(b.dataset.k);
@@ -1403,6 +1634,8 @@
       spot.cheer(mine);
       quip(l, mine ? 2400 : 1600);
       cardCheer(b.closest('.pc'), mine, l);
+      const { e: chosen } = entryOf(b.dataset.k);
+      for (const piece of chosen?.items || [chosen]) learn(piece, chosen?.items ? 2 : 5);
     }
     oneTap(b.dataset.act, b.dataset.k, b);
   }

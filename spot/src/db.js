@@ -266,6 +266,12 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
       doc   TEXT NOT NULL,
       at    INTEGER NOT NULL
     );
+    -- What Spot has learned of a shopper's taste (taste.js).
+    CREATE TABLE IF NOT EXISTS tastes (
+      user_id  TEXT PRIMARY KEY,
+      doc      TEXT NOT NULL,
+      at       INTEGER NOT NULL
+    );
     -- Self-serve agent API keys (only the SHA-256 is kept).
     CREATE TABLE IF NOT EXISTS api_keys (
       hash        TEXT PRIMARY KEY,
@@ -649,6 +655,25 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
       },
       clear(userId) {
         db.prepare('DELETE FROM seen_products WHERE user_id = ?').run(userId);
+      },
+      // A whole collection (everything shown for one ask), or one product.
+      removeAsked(userId, asked) {
+        return db.prepare("DELETE FROM seen_products WHERE user_id = ? AND COALESCE(json_extract(doc, '$.asked'), '') = ?").run(userId, String(asked)).changes;
+      },
+      removeUrl(userId, url) {
+        return db.prepare('DELETE FROM seen_products WHERE user_id = ? AND url = ?').run(userId, String(url)).changes;
+      },
+    },
+    tastes: {
+      get(userId) {
+        const r = db.prepare('SELECT doc FROM tastes WHERE user_id = ?').get(userId);
+        return r ? JSON.parse(r.doc) : null;
+      },
+      set(userId, doc, at = Date.now()) {
+        db.prepare('INSERT INTO tastes (user_id, doc, at) VALUES (?, ?, ?) ON CONFLICT (user_id) DO UPDATE SET doc = excluded.doc, at = excluded.at').run(userId, JSON.stringify(doc), at);
+      },
+      clear(userId) {
+        db.prepare('DELETE FROM tastes WHERE user_id = ?').run(userId);
       },
     },
     keyByName: (name) => q.keyByName.get(name) || null,
