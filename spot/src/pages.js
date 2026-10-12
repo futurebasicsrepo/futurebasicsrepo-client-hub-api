@@ -84,6 +84,7 @@ input:focus,textarea:focus{outline:2px solid var(--spot);outline-offset:1px;bord
 .pieces{list-style:none;margin:6px 0 0;padding:0;font-size:13px}.pieces li{display:flex;justify-content:space-between;gap:8px;padding:4px 0;border-top:1px dashed var(--line)}.pieces a{color:var(--ink);text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}.pieces span{color:var(--muted);white-space:nowrap}.pieces li.gone a{text-decoration:line-through;color:var(--muted)}
 .pc.gone{opacity:.55}.used{margin:-4px 0 10px 38px;font-size:13px;font-weight:600;color:var(--ok)}.profilechip{margin:8px 2px 0}.profilechip a{color:inherit;font-weight:700}.pieces i{font-style:normal;color:var(--muted)}.pr small{font-size:13px;font-weight:600;color:var(--muted)}
 .wallets{font-size:12px;font-weight:600;color:var(--muted);text-align:center;margin-top:5px}
+.overcap{font-size:13px;font-weight:600;color:var(--muted);background:var(--soft,rgba(0,0,0,.04));border-radius:12px;padding:10px 12px;margin-top:8px;text-align:center}
 .wpay{min-height:48px;margin-bottom:8px}.wpay[hidden]{display:none}
 .cardlinks{display:flex;justify-content:space-between;gap:8px;margin-top:10px;font-size:13px}.cardlinks a{color:var(--muted);font-weight:600}.cardlinks .textlink{font-size:13px}
 .shelf.looks .pc{flex-basis:84%}
