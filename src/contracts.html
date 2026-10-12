@@ -173,7 +173,7 @@ const fld=(label,path,o={})=>`<label class="f"><span>${label}</span>${o.area?`<t
 function drawEditor(){
   const c=E.c,pu=E.pu,B=$('#eBody'),signNow=ME.signer;
   B.innerHTML=`<div class="dh"><div><span class="mono" style="color:var(--dim)">${esc(E.number||'New contract')} · draft</span><h2>${esc(c.title||'New contract')}</h2></div><button class="btn sm" id="eX">Close</button></div>
-   <div class="probs ${E.problems.length?'':'hidden'}" id="probs"><b>Not ready to send yet</b><ul>${E.problems.map(p=>`<li>${esc(p)}</li>`).join('')}</ul></div>
+   <div class="probs ${E.problems.length?'':'hidden'}" id="probs">${probsHtml()}</div>
    <fieldset><legend>The agreement</legend><div class="g2">${fld('Title','title',{ph:'Salon website and booking'})}<label class="f"><span>Kind of work</span><select class="t" data-k="kind"><option value="website">Website</option><option value="app">App or software</option><option value="other">Other digital work</option></select></label></div></fieldset>
    <fieldset><legend>The client</legend><div class="g2">${fld('Company','client.company')}${fld('Address (printed in the contract)','client.address')}</div><div class="g3">${fld('Who signs','client.signerName')}${fld('Their title','client.signerTitle')}${fld('Their email (the link goes here)','client.signerEmail',{type:'email'})}</div></fieldset>
    <fieldset><legend>Scope of work</legend>${fld('What is delivered (one per line)','scopeText',{area:1,rows:6,ph:'A five-page website\nOnline booking link\nContact form'})}${fld('Not included (optional, one per line)','notText',{area:1,rows:3})}
@@ -215,11 +215,28 @@ function wire(){const B=$('#eBody');
     if(t.id==='hostPrice'){const v=toCents(t.value);E.c.hosting={...(E.c.hosting||{}),monthlyCents:Number.isFinite(v)?v:0}}
   };
   B.onclick=e=>{const rm=e.target.closest('[data-rm]');if(rm){E.pu.milestones.splice(+rm.dataset.rm,1);drawParams();return replan()}if(e.target.id==='addMs'){E.pu.milestones.push({label:'',pct:0,dueOn:'',event:'delivery'});drawParams();replan()}};
+  if(needsSetup())fillSetup();
   $('#eSave').onclick=()=>save().catch(x=>emsg(x.message,'bad'));$('#ePrev').onclick=()=>preview().catch(x=>emsg(x.message,'bad'));$('#eSend').onclick=()=>sendFlow().catch(x=>emsg(x.message,'bad'));
 }
 const emsg=(t,k='ok')=>{const m=$('#eMsg');if(m){m.className='msg '+k;m.textContent=t}};
 function payload(){const c=JSON.parse(JSON.stringify(E.c));c.scope=String(E.c.scopeText||'').split('\n');c.notIncluded=String(E.c.notText||'').split('\n');delete c.scopeText;delete c.notText;if(!c.plan)delete c.plan;return {content:c,dealId:E.dealId||undefined,projectId:E.projectId||undefined}}
-function showProblems(list){E.problems=list||[];const p=$('#probs');if(!p)return;p.classList.toggle('hidden',!E.problems.length);p.innerHTML=`<b>Not ready to send yet</b><ul>${E.problems.map(x=>`<li>${esc(x)}</li>`).join('')}</ul>`}
+// What is wrong with the draft. When it is Future Basics' own details (who signs, the address, the governing law), they can be filled in right here instead of in the Settings tab.
+const needsSetup=()=>E.problems.some(p=>/\(Contracts, Settings\)/.test(p));
+function probsHtml(){return `<b>Not ready to send yet</b><ul>${E.problems.map(x=>`<li>${esc(String(x).replace(/ \(Contracts, Settings\)$/,''))}</li>`).join('')}</ul>${needsSetup()?'<div id="setupBox" class="setup"><span class="sub">Loading…</span></div>':''}`}
+async function fillSetup(){
+  const box=$('#setupBox');if(!box)return;
+  let s;try{s=(await api('/v1/contracts/settings')).settings}catch(x){box.innerHTML=`<p class="msg bad">${esc(x.message)}</p>`;return}
+  box.innerHTML=`<p class="sub" style="margin:8px 0 4px">Fill these in once; they are kept for every contract (and can be changed later under Settings).</p>
+   <div class="g2"><label class="f"><span>Future Basics address</span><input class="t" id="uAddr" value="${esc(s.providerAddress)}" placeholder="10 Studio Way, Norristown PA 19401"></label><label class="f"><span>Who signs for Future Basics</span><input class="t" id="uSigner" value="${esc(s.signerName)}"></label>
+   <label class="f"><span>Their title</span><input class="t" id="uTitle" value="${esc(s.signerTitle)}" placeholder="Founder"></label><label class="f"><span>Governing law (state)</span><input class="t" id="uLaw" value="${esc(s.governingLaw)}" placeholder="Pennsylvania"></label></div>
+   <div class="acts" style="margin-top:8px"><button type="button" class="btn go sm" id="uSave">Save these and check again</button><span class="msg" id="uMsg" role="status"></span></div>`;
+  $('#uSave').onclick=async()=>{const m=$('#uMsg');m.className='msg';m.textContent='Saving…';
+    try{await api('/v1/contracts/settings',{method:'PUT',body:{providerName:s.providerName,providerAddress:$('#uAddr').value,signerName:$('#uSigner').value,signerTitle:$('#uTitle').value,governingLaw:$('#uLaw').value}});
+      const r=await save();if(r.content){E.c.provider={...E.c.provider,...r.content.provider};E.c.terms={...E.c.terms,...r.content.terms}}
+      if(!(r.problems&&r.problems.length))emsg('Saved. The draft is ready to send.')}
+    catch(x){m.className='msg bad';m.textContent=x.message}}
+}
+function showProblems(list){E.problems=list||[];const p=$('#probs');if(!p)return;p.classList.toggle('hidden',!E.problems.length);p.innerHTML=probsHtml();if(needsSetup())fillSetup()}
 async function save(){await flush();const r=E.id?await api('/v1/contracts/'+E.id,{method:'PUT',body:payload()}):await api('/v1/contracts',{body:payload()});E.id=r.contract.id;E.number=r.contract.number;showProblems(r.problems);emsg('Saved.');loadList();return r}
 const flush=()=>new Promise(r=>setTimeout(r,320));
 async function preview(){await flush();const r=await api('/v1/contracts/render',{body:{content:payload().content,number:E.number}});showProblems(r.problems);const d=r.rendered;
@@ -245,7 +262,8 @@ async function loadSettings(){const s=(await api('/v1/contracts/settings')).sett
   $('#sSave').onclick=async()=>{try{await api('/v1/contracts/settings',{method:'PUT',body:{providerName:$('#sProv').value,providerAddress:$('#sAddr').value,signerName:$('#sSigner').value,signerTitle:$('#sTitle').value,governingLaw:$('#sLaw').value}});$('#sMsg').className='msg ok';$('#sMsg').textContent='Saved.'}catch(x){$('#sMsg').className='msg bad';$('#sMsg').textContent=x.message}}}
 
 const LOAD={list:loadList,settings:loadSettings};
-function show(tab){$$('.tab').forEach(x=>x.classList.toggle('on',x.dataset.t===tab));for(const k of Object.keys(LOAD))$('#t-'+k).classList.toggle('hidden',k!==tab);return LOAD[tab]()}
+async function show(tab){$$('.tab').forEach(x=>x.classList.toggle('on',x.dataset.t===tab));for(const k of Object.keys(LOAD))$('#t-'+k).classList.toggle('hidden',k!==tab);
+  try{await LOAD[tab]()}catch(x){$('#t-'+tab).innerHTML=`<div class="panel"><p class="msg bad">${esc(x&&x.message||'Something went wrong')}</p><button class="btn" id="retryTab">Try again</button></div>`;$('#retryTab').onclick=()=>show(tab)}}
 $$('.tab').forEach(t=>t.onclick=()=>show(t.dataset.t));
 $('#newBtn').onclick=()=>chooser().catch(x=>say(x.message,'bad'));
 (async()=>{
