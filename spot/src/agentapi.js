@@ -39,6 +39,12 @@ function apiKeys(env) {
 }
 
 export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env, urlFor, capture, db, approvals, mcpChallenge }) {
+  // The account behind the AI: the finish link goes to its devices too, and
+  // to its email when a text doesn't go (texting down or not approved yet).
+  const ownAccount = (req) => {
+    const u = req.spotUserId ? db.users.byId(req.spotUserId) : null;
+    return u ? { userId: u.id, fallbackEmail: u.email || null } : {};
+  };
   const approvals_ = approvals;
   const keys = apiKeys(env);
   const selfServe = env.SPOT_OPEN_KEYS !== 'off';
@@ -423,7 +429,7 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
     // An account's own AI with no delivery asked for: email the account.
     if (forSelf && req.spotUserId && !b.notify?.email && !b.notify?.phone) spot.emit('ready', cart.id);
     if (forSelf && (b.notify?.email || b.notify?.phone)) {
-      extra.delivered = await notifier.sendFinishLink(spot.byId(cart.id), privateLink, { email: b.notify.email, phone: b.notify.phone });
+      extra.delivered = await notifier.sendFinishLink(spot.byId(cart.id), privateLink, { email: b.notify.email, phone: b.notify.phone, ...ownAccount(req) });
       note(req, agent, 'message_sent', { ask_id: cart.token, to: 'user', status: extra.delivered });
     }
     return view(req, spot.byId(cart.id), extra);
@@ -471,7 +477,7 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
     const extra = { finish_link: privateLink, finish_link_note: `Private: send this only to your user. They open it on their phone, add who's flying, pay, and Spot books it.${req.spotUserId ? ' It is also waiting in their Spot account under "Ready for you".' : ''}` };
     if (b.notify?.email || b.notify?.phone) spot.patch(cart.id, (c) => ({ ...c, notify: { email: b.notify.email || null, phone: b.notify.phone || null } }));
     else if (req.spotUserId) spot.emit('ready', cart.id);
-    if (b.notify?.email || b.notify?.phone) extra.delivered = await notifier.sendFinishLink(spot.byId(cart.id), privateLink, { email: b.notify.email, phone: b.notify.phone });
+    if (b.notify?.email || b.notify?.phone) extra.delivered = await notifier.sendFinishLink(spot.byId(cart.id), privateLink, { email: b.notify.email, phone: b.notify.phone, ...ownAccount(req) });
     return view(req, spot.byId(cart.id), extra);
   }
 
@@ -495,7 +501,7 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
     const extra = { finish_link: privateLink, finish_link_note: `Private: send this only to your user. They open it on their phone, add who's riding, pay, and Spot buys the ticket; ${cart.merchant.name} emails the e-ticket.${req.spotUserId ? ' It is also waiting in their Spot account under "Ready for you".' : ''}` };
     if (b.notify?.email || b.notify?.phone) spot.patch(cart.id, (c) => ({ ...c, notify: { email: b.notify.email || null, phone: b.notify.phone || null } }));
     else if (req.spotUserId) spot.emit('ready', cart.id);
-    if (b.notify?.email || b.notify?.phone) extra.delivered = await notifier.sendFinishLink(spot.byId(cart.id), privateLink, { email: b.notify.email, phone: b.notify.phone });
+    if (b.notify?.email || b.notify?.phone) extra.delivered = await notifier.sendFinishLink(spot.byId(cart.id), privateLink, { email: b.notify.email, phone: b.notify.phone, ...ownAccount(req) });
     return view(req, spot.byId(cart.id), extra);
   }
 
@@ -534,7 +540,7 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
       ? { finish_link: privateLink, finish_link_note: 'Private: send this only to your user. They confirm where it ships, pay once for every store, then place each store’s order.' }
       : { requester_page: privateLink, requester_page_note: 'Private: give this only to the requester. It is where they add the shipping address and follow each store’s order.' };
     if (forSelf && (b.notify?.email || b.notify?.phone)) {
-      extra.delivered = await notifier.sendFinishLink({ ...bundle.carts[0], items: pub.items, merchant: pub.merchant, total_cents: pub.total_cents }, privateLink, { email: b.notify.email, phone: b.notify.phone });
+      extra.delivered = await notifier.sendFinishLink({ ...bundle.carts[0], items: pub.items, merchant: pub.merchant, total_cents: pub.total_cents }, privateLink, { email: b.notify.email, phone: b.notify.phone, ...ownAccount(req) });
       note(req, agent, 'message_sent', { ask_id: bundle.token, to: 'user', status: extra.delivered });
     }
     return bundleView(req, { ...spot.loadBundle(bundle.token), __bundle: true }, extra);

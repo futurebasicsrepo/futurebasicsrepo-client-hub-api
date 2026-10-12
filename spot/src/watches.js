@@ -72,7 +72,7 @@ export function createWatches({ db, notifier, baseUrl = () => '', price = priceN
             html: emailLayout({ base, preheader: 'It’s back. These go fast', title: '👀 It’s back in stock', lines: [`<b>${esc(name)}</b> is back at ${esc(store)}${cents ? `, ${usd(cents)}` : ''}.`], cta: { label: 'Get it in Spot →', url: link }, footer: 'You’re getting this because you asked Spot to watch this. Open Spot’s Shop page to stop watching.' }),
             sms: `Spot: ${name} is back in stock at ${store}${cents ? ` (${usd(cents)})` : ''}. ${link}`,
           };
-    return notifier?.send({ email: u.email || null, phone: u.phone || null }, msg).catch((err) => log.warn?.({ err }, 'watch alert failed'));
+    return notifier?.send({ email: u.email || null, phone: u.phone || null, userId: u.id }, msg).catch((err) => log.warn?.({ err }, 'watch alert failed'));
   }
 
   // quiet: the first read when watching starts, which sets the baseline.
