@@ -42,7 +42,7 @@ env "${COMMON[@]}" HERO_AUTO=off CW_AUTO=off MESH_POLL_MS=300 MESH_FIXTURE_MS=12
 # F: like E, but the studio runs by itself: the hero image is made from the photo inside the exchange, and waits for a person's approval
 env "${COMMON[@]}" CUTOUT_FIXTURE=1 HERO_AUTO_APPROVE=off MESH_POLL_MS=300 MESH_FIXTURE_MS=1200 CHECK_FIXTURE_SCORE=92 PORT=3129 CLIENT_HUB_URL=http://127.0.0.1:3129 AI_FIXTURE=scripts/journeys/fixtures/ai-runner-needsfix.json AI_FIXTURE_DELAY_MS=300 LOOP_STEP_DELAY_MS=150 TECH_PACK_BILLING=off START_RATE_LIMIT=1000 node src/server.js > "$T/server-j-f.log" 2>&1 & PF=$!
 # G: the studio as a customer gets it: the hero is approved by itself when it is good enough, then the colourways and the 3D model follow
-env "${COMMON[@]}" CUTOUT_FIXTURE=1 EMAIL_CAPTURE=1 STUDIO_DAILY_PACKS=1000 MESH_PER_DAY=1000 MESH_POLL_MS=300 MESH_FIXTURE_MS=1200 CHECK_FIXTURE_SCORE=92 PORT=3130 CLIENT_HUB_URL=http://127.0.0.1:3130 AI_FIXTURE=scripts/journeys/fixtures/ai-runner-needsfix.json AI_FIXTURE_DELAY_MS=300 LOOP_STEP_DELAY_MS=150 TECH_PACK_BILLING=off START_RATE_LIMIT=1000 node src/server.js > "$T/server-j-g.log" 2>&1 & PG=$!
+env "${COMMON[@]}" SHOPIFY_TOKEN_KEY=journey-token-key QUICKBOOKS_CLIENT_ID=qbid QUICKBOOKS_CLIENT_SECRET=qbsec QUICKBOOKS_ENV=sandbox QUICKBOOKS_AUTH_ORIGIN=http://127.0.0.1:3133 QUICKBOOKS_OAUTH_ORIGIN=http://127.0.0.1:3133 QUICKBOOKS_REVOKE_ORIGIN=http://127.0.0.1:3133 QUICKBOOKS_API_ORIGIN=http://127.0.0.1:3133 QUICKBOOKS_APP_ORIGIN=http://127.0.0.1:3133 QUICKBOOKS_PAYMENTS=on QUICKBOOKS_PAYMENTS_ORIGIN=http://127.0.0.1:3133 AUTOPAY_TEST_CLOCK=1 AUTOPAY_EVERY_MS=2000000000 AUTOPAY_DELAY_MS=0 CUTOUT_FIXTURE=1 EMAIL_CAPTURE=1 STUDIO_DAILY_PACKS=1000 MESH_PER_DAY=1000 MESH_POLL_MS=300 MESH_FIXTURE_MS=1200 CHECK_FIXTURE_SCORE=92 PORT=3130 CLIENT_HUB_URL=http://127.0.0.1:3130 AI_FIXTURE=scripts/journeys/fixtures/ai-runner-needsfix.json AI_FIXTURE_DELAY_MS=300 LOOP_STEP_DELAY_MS=150 TECH_PACK_BILLING=off START_RATE_LIMIT=1000 node src/server.js > "$T/server-j-g.log" 2>&1 & PG=$!
 # H: the daily studio limit is one pack: the first gets the whole studio, the next ones wait and staff are told once
 env "${COMMON[@]}" CUTOUT_FIXTURE=1 STUDIO_DAILY_PACKS=1 MESH_POLL_MS=300 MESH_FIXTURE_MS=1200 CHECK_FIXTURE_SCORE=92 PORT=3131 CLIENT_HUB_URL=http://127.0.0.1:3131 AI_FIXTURE=scripts/journeys/fixtures/ai-runner-needsfix.json AI_FIXTURE_DELAY_MS=300 LOOP_STEP_DELAY_MS=150 TECH_PACK_BILLING=off START_RATE_LIMIT=1000 node src/server.js > "$T/server-j-h.log" 2>&1 & PH=$!
 for port in 3124 3125 3127 3128 3129 3130 3131; do for i in $(seq 1 120); do curl -sf "http://127.0.0.1:$port/health" >/dev/null && break; sleep 0.5; done; done
@@ -58,6 +58,7 @@ node scripts/journeys/customer.mjs     || RC=1
 node scripts/journeys/cap.mjs          || RC=1
 node scripts/journeys/booth.mjs        || RC=1
 node scripts/journeys/contracts.mjs    || RC=1
+node scripts/journeys/autopay.mjs      || RC=1
 kill -9 $PA $PB $PC $PD $PE $PF $PG $PH $PM 2>/dev/null; wait $PA $PB $PC $PD $PE $PF $PG $PH $PM 2>/dev/null
 [ -n "$THROWAWAY" ] && psql "postgres://postgres:postgres@localhost:5432/postgres" -qAtc "drop database if exists $THROWAWAY with (force)" >/dev/null 2>&1
 echo "journeys: $([ $RC = 0 ] && echo 'all clear' || echo 'PROBLEMS FOUND')"; exit $RC

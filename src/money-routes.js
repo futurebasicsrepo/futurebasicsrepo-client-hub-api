@@ -12,7 +12,7 @@
 import { payoutRow, payoutTotals, needsScope } from './shopify-payouts.js';
 import { moneyAllowed, cleanInvoice, nextInvoiceNumber, invoiceState, aging, parseInvoiceCsv, METHODS } from './money.js';
 import { moneyInvoicePdf } from './money-pdf.js';
-import { qbConfig, signState, readState, authUrl, endpoints, exchangeCode, revoke, companyInfo, pushInvoice, invoiceLink, paymentsSince, methodOf } from './quickbooks.js';
+import { qbConfig, signState, readState, authUrl, endpoints, exchangeCode, revoke, companyInfo, pushInvoice, invoiceLink, paymentsSince, methodOf, recordPayment as qbRecordPayment, SCOPE, PAYMENT_SCOPE } from './quickbooks.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const today = () => new Date().toISOString().slice(0, 10);
@@ -192,7 +192,8 @@ export function registerMoneyRoutes(app, d) {
   const failed = async e => { d.log?.warn?.({ quickbooks: true, status: e.status, intuit_tid: e.tid, code: e.code, err: String(e.message).slice(0, 300) }, 'QuickBooks error'); await pool.query(`update money_connections set last_error=$1, status=case when $2 then 'needs-reconnect' else status end, updated_at=now() where provider='quickbooks'`, [(String(e.message).slice(0, 260) + (e.tid ? ` (intuit_tid ${e.tid})` : '')).slice(0, 300), Boolean(e.refused)]).catch(() => {}); };
   app.get('/v1/money/quickbooks/status', { preHandler: pre }, async () => {
     const c = cfg(), row = await connRow();
-    return { configured: c.ready, sealing: sealReady(), mode: c.mode, redirectUri: c.redirectUri, connected: Boolean(row && row.status === 'connected'), needsReconnect: Boolean(row && row.status === 'needs-reconnect'), company: row?.company || '', realmId: row?.realm_id || '', connectedAt: row?.connected_at || null, lastSyncAt: row?.last_sync_at || null, lastError: row?.last_error || '', refreshExpiresAt: row?.refresh_expires_at || null };
+    return { configured: c.ready, sealing: sealReady(), mode: c.mode, redirectUri: c.redirectUri, connected: Boolean(row && row.status === 'connected'), needsReconnect: Boolean(row && row.status === 'needs-reconnect'), company: row?.company || '', realmId: row?.realm_id || '', connectedAt: row?.connected_at || null, lastSyncAt: row?.last_sync_at || null, lastError: row?.last_error || '', refreshExpiresAt: row?.refresh_expires_at || null,
+      payments: { requested: c.payments, granted: Boolean(row && row.status === 'connected' && String(row.scope || '').includes(PAYMENT_SCOPE)), needsReconnect: Boolean(c.payments && row && !String(row.scope || '').includes(PAYMENT_SCOPE)) } };
   });
   app.post('/v1/money/quickbooks/connect', { preHandler: pre }, async (req, reply) => {
     const c = cfg(); if (!c.ready) return bad(reply, 'QuickBooks is not set up: add QUICKBOOKS_CLIENT_ID and QUICKBOOKS_CLIENT_SECRET to the service', 503);
@@ -208,9 +209,9 @@ export function registerMoneyRoutes(app, d) {
     const c = cfg(); if (!c.ready || !sealReady() || !q.code || !q.realmId) return back('error', 'The sign-in came back without what we need. Try again.');
     try {
       const t = await exchangeCode(c, String(q.code), fetchImpl), ctx = { cfg: c, conn: { realmId: String(q.realmId), accessToken: t.accessToken, refreshToken: t.refreshToken, accessExpiresAt: t.accessExpiresAt }, fetchImpl }, info = await companyInfo(ctx);
-      await pool.query(`insert into money_connections(provider,realm_id,company,mode,access_sealed,refresh_sealed,access_expires_at,refresh_expires_at,status,last_error,connected_by,connected_at,sync_cursor,last_sync_at) values('quickbooks',$1,$2,$3,$4,$5,$6,$7,'connected','',$8,now(),null,null)
-        on conflict (provider) do update set realm_id=$1, company=$2, mode=$3, access_sealed=$4, refresh_sealed=$5, access_expires_at=$6, refresh_expires_at=$7, status='connected', last_error='', connected_by=$8, connected_at=now(), sync_cursor=null, last_sync_at=null, updated_at=now()`,
-        [String(q.realmId), info.name, c.mode, tokenSeal.seal(t.accessToken), tokenSeal.seal(t.refreshToken), t.accessExpiresAt, t.refreshExpiresAt, u.id]);
+      await pool.query(`insert into money_connections(provider,realm_id,company,mode,access_sealed,refresh_sealed,access_expires_at,refresh_expires_at,status,last_error,connected_by,connected_at,sync_cursor,last_sync_at,scope) values('quickbooks',$1,$2,$3,$4,$5,$6,$7,'connected','',$8,now(),null,null,$9)
+        on conflict (provider) do update set realm_id=$1, company=$2, mode=$3, access_sealed=$4, refresh_sealed=$5, access_expires_at=$6, refresh_expires_at=$7, status='connected', last_error='', connected_by=$8, connected_at=now(), sync_cursor=null, last_sync_at=null, scope=$9, updated_at=now()`,
+        [String(q.realmId), info.name, c.mode, tokenSeal.seal(t.accessToken), tokenSeal.seal(t.refreshToken), t.accessExpiresAt, t.refreshExpiresAt, u.id, c.payments ? `${SCOPE} ${PAYMENT_SCOPE}` : SCOPE]);
       return back('connected');
     } catch (e) { return back('error', e.message); }
   });
@@ -224,6 +225,23 @@ export function registerMoneyRoutes(app, d) {
     const ctx = await qbContext(); if (ctx) await revoke(ctx.cfg, ctx.conn.refreshToken, fetchImpl);
     await pool.query(`delete from money_connections where provider='quickbooks'`); return { ok: true };
   });
+  // Make the invoice in QuickBooks and remember where it is (and its online pay page for software work). → what QuickBooks answered.
+  async function pushAndSave(ctx, cur, { send = false } = {}) {
+    const r = await pushInvoice(ctx, { ...cur, issued_on: iso(cur.issued_on), due_on: iso(cur.due_on) }, { send, onlinePayments: (await getSetting('moneyPayment').catch(() => null))?.onlinePayments !== false });
+    await pool.query(`update money_invoices set qb_id=$2, qb_doc_number=$3, qb_sync_token=$4, qb_link=$5, qb_synced_at=now(), status=case when status in ('draft','unrecorded') then 'sent' else status end, sent_at=coalesce(sent_at, now()), updated_at=now() where id=$1`, [cur.id, r.id, r.docNumber || cur.number, r.syncToken, `${ctx.cfg.appOrigin}/app/invoice?txnId=${encodeURIComponent(r.id)}`]);
+    if (cur.work_kind === 'software' && !cur.pay_url) { try { const url = await invoiceLink(ctx, r.id); if (url) await pool.query(`update money_invoices set pay_url=$2, pay_channel='quickbooks' where id=$1`, [cur.id, url]); } catch { /* the payment link can be asked for from the invoice */ } }
+    return r;
+  }
+  // A payment taken through QuickBooks Payments (autopay.js): put it against the invoice in QuickBooks so the books agree with the bank, then in our ledger once, and close the invoice when nothing is owed.
+  // The ledger row carries the same key the payment sync uses, so reading the payment back from QuickBooks later never counts it twice.
+  async function bookAutopay(ctx, inv, { customerId, amountCents, method, reference, paidOn, note = '' }) {
+    const p = await qbRecordPayment(ctx, { customerId, invoiceId: inv.qb_id, amountCents, paidOn, reference, note });
+    await pool.query(`insert into money_payments(invoice_id, source, method, company, amount_cents, currency, paid_on, reference, note, qb_id) values($1,'quickbooks',$2,$3,$4,$5,$6,$7,$8,$9) on conflict (qb_id) where qb_id is not null do nothing`,
+      [inv.id, method, inv.company, amountCents, inv.currency, paidOn, reference, note, `${p.id}:${inv.qb_id}`]);
+    const after = await one(inv.id); if (after && after.status !== 'paid' && after.status !== 'void' && rawOwed(after) === 0) await pool.query(`update money_invoices set status='paid', paid_at=now(), updated_at=now() where id=$1`, [inv.id]);
+    await onChange('quickbooks', inv.id);
+    return { qbPaymentId: p.id };
+  }
   // Make (and optionally email) one invoice in QuickBooks. An invoice already there is not made twice.
   app.post('/v1/money/invoices/:id/quickbooks', { preHandler: pre }, async (req, reply) => {
     if (!needId(req, reply)) return; const cur = await one(req.params.id); if (!cur) return bad(reply, 'Not found', 404);
@@ -232,9 +250,7 @@ export function registerMoneyRoutes(app, d) {
     const send = req.body?.send === true; if (send && !cur.contact_email) return bad(reply, 'Add their email to the invoice first, so QuickBooks knows where to send it');
     const ctx = await qbContext(); if (!ctx) return bad(reply, 'QuickBooks is not connected yet. Connect it in Money → Settings.', 409);
     try {
-      const r = await pushInvoice(ctx, { ...cur, issued_on: iso(cur.issued_on), due_on: iso(cur.due_on) }, { send, onlinePayments: (await getSetting('moneyPayment').catch(() => null))?.onlinePayments !== false });
-      await pool.query(`update money_invoices set qb_id=$2, qb_doc_number=$3, qb_sync_token=$4, qb_link=$5, qb_synced_at=now(), status=case when status in ('draft','unrecorded') then 'sent' else status end, sent_at=coalesce(sent_at, now()), updated_at=now() where id=$1`, [cur.id, r.id, r.docNumber || cur.number, r.syncToken, `${ctx.cfg.appOrigin}/app/invoice?txnId=${encodeURIComponent(r.id)}`]);
-      if (cur.work_kind === 'software' && !cur.pay_url) { try { const url = await invoiceLink(ctx, r.id); if (url) await pool.query(`update money_invoices set pay_url=$2, pay_channel='quickbooks' where id=$1`, [cur.id, url]); } catch { /* the payment link can be asked for from the invoice */ } }
+      const r = await pushAndSave(ctx, cur, { send });
       await onChange('quickbooks', cur.id); return reply.code(201).send({ invoice: view(await one(cur.id)), emailed: r.emailed, customerCreated: r.customerCreated });
     } catch (e) { await failed(e); return bad(reply, e.message, 502); }
   });
@@ -414,5 +430,5 @@ export function registerMoneyRoutes(app, d) {
     if (lines.length > 12 || lines.some(l => l.length > 120)) return bad(reply, 'Payment instructions are at most 12 lines of 120 characters');
     await setSetting('moneyPayment', { instructions: lines.join('\n') }); return { ok: true, instructions: lines.join('\n') };
   });
-  return { syncQuickBooks, syncShopifyLinks, syncPayouts };
+  return { syncQuickBooks, syncShopifyLinks, syncPayouts, qbContext, qbFailed: failed, pushAndSave, bookAutopay, invoiceOne: one };
 }

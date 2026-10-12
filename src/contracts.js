@@ -108,9 +108,9 @@ export function methodParagraph(plan, providerName) {
   const m = plan.method;
   if (m === 'invoice') return `We email an invoice for each payment on its due date, with a link to pay it online. Each invoice is due within the terms printed on it.`;
   const how = m === 'ach' ? 'bank account (ACH debit)' : m === 'card' ? 'card' : 'bank account (ACH debit) or card, whichever the Client chooses when signing';
-  const set = `The Client gives ${providerName} the details through a secure payment page that we email after signing. ${providerName} does not keep card or bank numbers on its own systems.`;
+  const set = `The Client gives the details on a secure payment form shown right after signing (and again from the agreement link). The number goes straight to the payment processor, and ${providerName} does not keep card or bank numbers on its own systems.`;
   if (!plan.autopay) return `The Client pays by ${how}. ${set} Each payment is requested on its due date and the Client approves it then.`;
-  return `The Client authorizes ${providerName} to charge the ${how} on file for each payment in this schedule on the date it falls due, and for no other amount. ${set} We email a receipt for every payment. The Client can cancel this authorization or change the payment method by writing to ${providerName} at least three business days before the next payment is due. A payment that fails is tried again once after three business days; if it still fails the Client agrees to pay that installment by another method within ten days.`;
+  return `The Client authorizes ${providerName} to charge the ${how} on file for each payment in this schedule on the date it falls due, and for no other amount. ${set} We email a notice a few days before each payment and a receipt after it. The Client can cancel this authorization or change the payment method by writing to ${providerName} at least three business days before the next payment is due. A payment that fails is tried again once, three days later; if it still fails the Client agrees to pay that installment by another method within ten days.`;
 }
 
 // ---- clauses ------------------------------------------------------------------------------------------------------------------------------------

@@ -1602,6 +1602,52 @@ export async function migrate() {
     create index if not exists contract_events_idx on contract_events (contract_id, at);
     alter table money_invoices add column if not exists contract_id uuid references contracts(id) on delete set null;
     alter table money_invoices add column if not exists contract_seq integer;
+    -- Automatic payments on a signed contract (autopay.js). The card or bank account is kept at the processor (QuickBooks Payments): we hold only its id and the last four digits.
+    alter table contracts add column if not exists delivered_on date;
+    alter table contracts add column if not exists autopay_paused_at timestamptz;
+    alter table contracts add column if not exists autopay_paused_by text;
+    create table if not exists contract_payment_methods (
+      id uuid primary key default gen_random_uuid(),
+      contract_id uuid not null references contracts(id) on delete cascade,
+      processor text not null default 'quickbooks',
+      kind text not null check (kind in ('card','bank')),
+      customer_id text not null,
+      instrument_id text not null,
+      label text not null default '',
+      last4 text not null default '',
+      exp text not null default '',
+      consent jsonb not null default '{}'::jsonb,
+      status text not null default 'active' check (status in ('active','removed')),
+      created_at timestamptz not null default now(),
+      removed_at timestamptz
+    );
+    create unique index if not exists contract_payment_methods_active_idx on contract_payment_methods (contract_id) where status = 'active';
+    create table if not exists contract_charges (
+      id uuid primary key default gen_random_uuid(),
+      contract_id uuid not null references contracts(id) on delete cascade,
+      seq integer not null,
+      attempt integer not null default 1,
+      invoice_id uuid references money_invoices(id) on delete set null,
+      method_id uuid references contract_payment_methods(id) on delete set null,
+      kind text not null check (kind in ('card','bank')),
+      amount_cents bigint not null check (amount_cents > 0),
+      currency text not null default 'USD',
+      status text not null default 'pending' check (status in ('pending','succeeded','failed')),
+      request_id text not null unique,
+      charge_id text,
+      error text not null default '',
+      due_on text,
+      next_retry_on text,
+      triggered_by text not null default 'job',
+      booked_at timestamptz,
+      book_error text not null default '',
+      qb_payment_id text,
+      receipt_sent_at timestamptz,
+      created_at timestamptz not null default now(),
+      settled_at timestamptz,
+      unique (contract_id, seq, attempt)
+    );
+    alter table money_connections add column if not exists scope text not null default 'com.intuit.quickbooks.accounting';
     create index if not exists shopify_exports_store_idx on shopify_exports(store_id, product_id, created_at desc);
     create table if not exists tech_pack_versions (
       id uuid primary key default gen_random_uuid(),
