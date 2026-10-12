@@ -99,7 +99,8 @@ test('a follow-up says what to change and skips what was already shown', async (
   const d = await captureFromText('Toddler Eagles Tee from Eagles Shop https://shop.example/p1', { client, fromUrl, product: noShopify, more: 'in green, under $30', avoid: ['https://shop.example/p1', 'javascript:alert(1)'] });
   assert.equal(d.items[0].title, 'Tee 4');
   const prompt = calls[0].messages[0].content;
-  assert.match(prompt, /They saw what you found and said: "in green, under \$30"/);
+  assert.match(prompt, /just said: "in green, under \$30"/);
+  assert.match(prompt, /Earlier in this chat they asked for: "Toddler Eagles Tee/);
   assert.match(prompt, /don't suggest them again: https:\/\/shop\.example\/p1/);
   assert.doesNotMatch(prompt, /javascript:/);
   assert.deepEqual(fetched, ['https://shop.example/p4'], 'the store page is read once, for stock and photo');
