@@ -3,7 +3,7 @@
 // the sandbox simulator.
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { agentLabel } from './approvals.js';
-import { COVER_MAX_CENTS, CartError, cardLimitCents, computeTotals, config, decideAuthorization, goodsCents, safeExtrasCents, transition, validateCart } from './cart.js';
+import { COVER_MAX_CENTS, CartError, cardLimitCents, chipProgress, splitCents, usd, computeTotals, config, decideAuthorization, goodsCents, safeExtrasCents, transition, validateCart } from './cart.js';
 import { flightTitle, flightVariant, publicFlight, validateTravelers } from './flights.js';
 import { minutesUntilCutoff, trainTitle, trainVariant, validateRiders, validateTrain } from './trains.js';
 import { validateShipping } from './fulfill/index.js';
@@ -94,6 +94,37 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
     return next;
   }
 
+  // ─── Chip in: several people fund one cart ──────────────────────────────
+  // Each person's money is its own hold (cart.chips). The cart is paid once
+  // the holds cover its total; until then nothing is charged, and if the
+  // link expires or is canceled first, every hold is let go. Once paid,
+  // refunds split across the holds by what each put in, and each is captured.
+  //   chip = { id, ref, cents, name, email, state: 'pending' | 'held' | 'released' | 'captured', at, held_at }
+  const liveChips = (cart) => (cart.chips || []).filter((c) => c.state === 'held' || c.state === 'captured');
+  async function payBack(cart, cents, key) {
+    const parts = liveChips(cart);
+    if (!parts.length) return provider.refund(cart, cents, key);
+    const shares = cents == null ? null : splitCents(cents, parts.map((c) => c.cents));
+    let how = null;
+    for (const [i, c] of parts.entries()) {
+      if (shares && shares[i] <= 0) continue;
+      how = (await provider.refund({ ...cart, payment_ref: c.ref }, shares ? shares[i] : undefined, `${key || 'all'}-${c.id}`)) || how;
+    }
+    return how;
+  }
+  // An open cart that won't be bought: every hold goes back (nothing was charged).
+  function releaseChips(cart) {
+    const out = (cart.chips || []).filter((c) => c.state === 'held' || c.state === 'pending');
+    if (!out.length) return;
+    Promise.all(out.map((c) => provider.refund({ ...cart, payment_ref: c.ref }, undefined, `release-${c.id}`).then(() => c.id, (err) => (log.error?.({ err, cart: cart.id }, 'chip release failed'), null))))
+      .then((ids) => {
+        const gone = new Set(ids.filter(Boolean));
+        api.patch(cart.id, (x) => ({ ...x, chips: (x.chips || []).map((c) => (gone.has(c.id) ? { ...c, state: 'released', released_at: Date.now() } : c)) }), 'chips_released');
+        for (const c of out) if (gone.has(c.id) && c.state === 'held') api.emit('chip_released', cart.id, { chip: c.id });
+      })
+      .catch((err) => log.error?.({ err, cart: cart.id }, 'chip release failed'));
+  }
+
   const closedWhy = (cart) => (cart.status === 'expired' ? 'This link has expired' : cart.status === 'canceled' ? 'This link was canceled' : 'This one is already paid');
 
   function expire(cart) {
@@ -103,6 +134,7 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
     try {
       const expired = move(cart, 'expire');
       dropReadyCard(expired);
+      releaseChips(expired);
       return expired;
     } catch {
       return db.byId(cart.id);
@@ -117,7 +149,7 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
 
   const notReady = (cart) => `Spot can’t buy from ${cart.merchant?.name || 'this store'} right this minute, so nothing was charged. We’ve been alerted. Try again in a little while.`;
 
-  return {
+  const api = {
     provider,
 
     create(input, { ip, userId } = {}, limits = cfg, opts = {}) {
@@ -305,6 +337,7 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
       }
       // How it's paid, and for whom, are set when the link is made: an edit
       // that changed them would price it one way and pay it another.
+      if ((cart.chips || []).some((c) => c.state !== 'released')) throw new CartError('People have chipped in, so this can’t change now. Cancel it to give everyone their hold back, then make a new one.', 409);
       if (input?.settle && input.settle !== cart.settle) throw new CartError('How it’s paid can’t change on an existing link. Make a new one instead.', 409);
       const v = validateCart({ ...input, settle: cart.settle, for: cart.for, requester: { ...cart.requester, ...(input?.requester || {}) } }, capped(feeCfg(cart.bundle_index || 0), cart.user_id));
       let next = { ...cart, ...v, rev: (cart.rev || 1) + 1 };
@@ -604,6 +637,7 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
       if (pausedByReports(cart)) throw new CartError(PAUSED, 423);
       if (cart.settle !== 'card') throw new CartError(cart.settle === 'direct' ? 'This one is paid on the store’s own checkout' : 'This one is paid straight to them on Venmo or Cash App', 409);
       if (cart.bundle_id) throw new CartError('This cart is part of a bundle. Pay for the whole bundle from its link.', 409);
+      if (cart.chip_in) throw new CartError('People are chipping in on this one. Add your part (or all of what’s left) from the link.', 409);
       if (cart.status !== 'open') throw new CartError(cart.status === 'expired' ? 'This cart link has expired' : cart.status === 'canceled' ? 'This link was canceled' : 'This cart is already covered', 409);
       if (cart.kind === 'flight' && !cart.flight.travelers) throw new CartError('Add who\'s flying first', 409);
       if (cart.kind === 'train' && !cart.train.riders) throw new CartError('Add who\'s riding first', 409);
@@ -623,6 +657,8 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
 
     // Called by the Stripe webhook (or the sandbox) once money has landed.
     async paymentSucceeded({ paymentRef, amountCents, payer, approval = null }) {
+      const chipped = db.byChipRef?.(paymentRef);
+      if (chipped) return this._chipHeld(chipped, paymentRef, amountCents, payer);
       const bundle = db.bundles?.byPayment(paymentRef);
       if (bundle) return this._bundlePaid(bundle, amountCents, payer);
       const cart = db.byPayment(paymentRef);
@@ -665,6 +701,93 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
       }
       if (paid.kind !== 'flight' && paid.for !== 'self') this.emit('covered', paid.id);
       return paid.kind === 'flight' ? this.bookFlight(paid) : this.issue(paid);
+    },
+
+    // ─── Chip in ──────────────────────────────────────────────────────────
+    // The requester lets several people pay part each (a gift from a group).
+    setChipIn(token, key, on) {
+      const cart = loadManaged(token, key);
+      if (cart.status !== 'open') throw new CartError(closedWhy(cart), 409);
+      if (on && (cart.settle !== 'card' || cart.bundle_id || (cart.kind || 'goods') !== 'goods' || cart.for === 'self')) throw new CartError('Only a single store’s cart that someone else pays can be chipped in on', 409);
+      if (on && cart.payment_ref) throw new CartError('Someone already started paying this one, so it can’t be split now', 409);
+      if (!on && (cart.chips || []).some((c) => c.state === 'held')) throw new CartError('People have already chipped in. Cancel the link to give their holds back.', 409);
+      return this.patch(cart.id, (c) => ({ ...c, chip_in: Boolean(on) }), on ? 'chip_in_on' : 'chip_in_off');
+    },
+
+    // One person's part: a hold for `cents` (nothing is charged unless the
+    // whole cart is covered). Up to what's left; $5 at least, unless less is left.
+    async startChip(token, { cents, name = null, email = null, ip = null } = {}) {
+      let cart = load(token);
+      if (pausedByReports(cart)) throw new CartError(PAUSED, 423);
+      if (!cart.chip_in) throw new CartError('This one isn’t set up for chipping in', 409);
+      if (cart.status !== 'open') throw new CartError(closedWhy(cart), 409);
+      if ((cart.chips || []).length >= 40) throw new CartError('That’s a lot of people! Ask the last few to pay a bigger part.', 409);
+      // The first person in: the store's real total, and Spot's card made ready.
+      if (!(cart.chips || []).some((c) => c.state === 'held')) {
+        if (!(await this.canOrder(cart))) throw new CartError(`Spot can't order from ${cart.merchant.name} automatically yet, so it can't take payments for this cart.`, 409);
+        cart = await this.confirmTotal(cart, { buyerIp: ip });
+        cart = await this.readyCard(cart);
+      }
+      const left = chipProgress(cart).left_cents;
+      const want = Math.round(Number(cents));
+      if (!Number.isInteger(want) || want < Math.min(500, left) || want > left) throw new CartError(left <= 0 ? 'It’s already covered 🎉' : `Chip in between ${usd(Math.min(500, left))} and ${usd(left)}`);
+      const id = randomBytes(6).toString('base64url');
+      const who = String(name || '').trim().slice(0, 40) || null;
+      const mail = typeof email === 'string' && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim()) ? email.trim().toLowerCase().slice(0, 200) : null;
+      const { ref, client } = await provider.createPayment({ ...cart, total_cents: want, payment_ref: null, chip_id: id });
+      db.addChipRef?.(ref, cart.id);
+      this.patch(cart.id, (c) => ({ ...c, chips: [...(c.chips || []), { id, ref, cents: want, name: who, email: mail, state: 'pending', at: Date.now() }] }), 'chip_started');
+      return { ...client, ref, cents: want };
+    },
+
+    // The pay page, once Stripe.js says that person confirmed (the webhook may be slow).
+    async checkChip(token, ref) {
+      const cart = load(token);
+      const chip = (cart.chips || []).find((c) => c.ref === ref);
+      if (!chip) throw new CartError('Not found', 404);
+      if (chip.state !== 'pending' || !provider.retrievePayment) return cart;
+      return (await this.paidFromIntent(await provider.retrievePayment(ref))) || db.byId(cart.id);
+    },
+
+    async _chipHeld(cart, ref, amountCents, payer) {
+      const chip = (cart.chips || []).find((c) => c.ref === ref);
+      if (!chip || chip.state !== 'pending') return cart; // a repeat webhook
+      // Closed while they were paying, or a different amount: their hold goes straight back.
+      if (cart.status !== 'open' || amountCents !== chip.cents) {
+        db.event(cart.id, cart.status !== 'open' ? 'paid_while_closed' : 'amount_mismatch', { chip: chip.id, got: amountCents });
+        await provider.refund({ ...cart, payment_ref: ref }, undefined, `release-${chip.id}`).catch((err) => log.error?.({ err, cart: cart.id }, 'chip release failed'));
+        return this.patch(cart.id, (c) => ({ ...c, chips: c.chips.map((x) => (x.id === chip.id ? { ...x, state: 'released', released_at: Date.now() } : x)) }));
+      }
+      const name = chip.name || (payer?.name ? String(payer.name).split(' ')[0] : null);
+      let next = this.patch(cart.id, (c) => ({ ...c, chips: c.chips.map((x) => (x.id === chip.id ? { ...x, state: 'held', held_at: Date.now(), name, email: x.email || (payer?.email ? String(payer.email).toLowerCase() : null), fingerprint: payer?.fingerprint || null } : x)) }), 'chip_held');
+      this.emit('chip_held', next.id, { chip: chip.id });
+      if (chipProgress(next).left_cents > 0) return next;
+      return this._chipFunded(next);
+    },
+
+    // Covered: any extra (two people paying the last part at once) goes
+    // back, then the cart is paid like any other and Spot buys it.
+    async _chipFunded(cart) {
+      let over = chipProgress(cart).raised_cents - cart.total_cents;
+      const chips = cart.chips.map((c) => ({ ...c }));
+      for (const c of [...chips].reverse()) {
+        if (over <= 0) break;
+        if (c.state !== 'held') continue;
+        const back = Math.min(over, c.cents);
+        await provider.refund({ ...cart, payment_ref: c.ref }, back === c.cents ? undefined : back, `over-${c.id}`).catch((err) => log.error?.({ err, cart: cart.id }, 'chip overage release failed'));
+        if (back === c.cents) c.state = 'released';
+        else c.cents -= back;
+        c.over_cents = back;
+        over -= back;
+      }
+      const held = chips.filter((c) => c.state === 'held');
+      const names = held.map((c) => c.name).filter(Boolean);
+      const label = names.length ? (names.length <= 2 ? names.join(' & ') : `${names.slice(0, 2).join(', ')} + ${held.length - 2}`) : `${held.length} people`;
+      const paid = move(cart, 'pay', { chips, paid_at: Date.now(), payer: { name: label }, payer_contact: null, payment_ref: `chips:${cart.id}` }, { amount_cents: cart.total_cents, chips: held.length });
+      this.emit('approved', paid.id, { by: 'payer', how: 'chipped_in', amount_cents: paid.total_cents });
+      this.emit('chip_funded', paid.id);
+      this.emit('covered', paid.id);
+      return this.issue(paid);
     },
 
     // Pay an ask with its account's own saved card (funding.js). `how` says
@@ -808,7 +931,7 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
         await provider.cancelCard(cur);
         if (cur.ready_card?.ref && !cur.card_ref) await provider.cancelCard({ ...cur, card_ref: cur.ready_card.ref });
         // A bundle's carts share one payment: always name this cart's share.
-        if (cur.total_cents - already > 0) how = await provider.refund(cur, already || cur.bundle_id ? cur.total_cents - already : undefined, already ? 'rest' : undefined);
+        if (cur.total_cents - already > 0) how = await payBack(cur, already || cur.bundle_id ? cur.total_cents - already : undefined, already ? 'rest' : undefined);
       } catch (err) {
         log.error?.({ err, cart: cur.id }, 'refund failed');
         db.event(cur.id, 'refund_failed', { message: err.message });
@@ -840,7 +963,7 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
       const r = (cart.refunds || []).find((x) => x.key === key);
       const mark = (state, extra) => this.patch(cart.id, (c) => ({ ...c, refunds: (c.refunds || []).map((x) => (x.key === key ? { ...x, state, ...extra } : x)) }));
       try {
-        await provider.refund(cart, r.amount_cents, key);
+        await payBack(cart, r.amount_cents, key);
         const done = mark('done', { done_at: Date.now() });
         this.emit('refunded_part', done.id, { amount_cents: r.amount_cents, reason: r.reason, key });
         return done;
@@ -953,7 +1076,10 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
         if (cart.payment_captured_at) return cart;
       }
       try {
-        const r = await provider.capturePayment(cart.payment_ref);
+        // Chipped in: each person's hold.
+        const holds = liveChips(cart);
+        const results = holds.length ? await Promise.all(holds.map((c) => provider.capturePayment(c.ref))) : null;
+        const r = results ? (results.includes('canceled') ? 'canceled' : 'captured') : await provider.capturePayment(cart.payment_ref);
         if (r === 'canceled') {
           // The hold was released or ran out, yet the store charged Spot: a human looks.
           log.error?.({ cart: cart.id }, 'store charged but the hold is gone');
@@ -1040,7 +1166,8 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
     // The payer disputed their payment with their bank. Stop the card, block
     // the payer's card from Spot, and flag it for a human.
     async dispute(paymentRef, reason = null) {
-      const carts = db.byPaymentAll ? db.byPaymentAll(paymentRef) : [db.byPayment(paymentRef)].filter(Boolean);
+      const chipCart = db.byChipRef?.(paymentRef);
+      const carts = chipCart ? [chipCart] : db.byPaymentAll ? db.byPaymentAll(paymentRef) : [db.byPayment(paymentRef)].filter(Boolean);
       if (!carts.length) return null;
       let first = null;
       for (const cart of carts) {
@@ -1058,6 +1185,7 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
       if (!this.payerOk(token, p)) throw new CartError('Cart not found', 404);
       const cart = load(token);
       if (cart.kind === 'flight') throw new CartError('Flights are booked right away, so they can’t be canceled here. Contact us.', 409);
+      if (liveChips(cart).length) throw new CartError(`Several people chipped in on this one, so only ${cart.requester?.name || 'the person who asked'} can cancel it. Everyone gets their part back if they do.`, 409);
       if (!['paid', 'card_issued'].includes(cart.status)) throw new CartError(cart.status === 'refunded' ? 'This was already refunded' : 'This order can no longer be canceled', 409);
       if (cart.dispute) throw new CartError('This payment is disputed with your bank, which handles the refund. Contact us if you need help.', 409);
       if (ordering(cart)) throw new CartError('Spot is placing this order right now, so it can’t be canceled. Contact us about a return.', 409);
@@ -1210,6 +1338,7 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
       }
       const canceled = move(cart, 'cancel');
       dropReadyCard(canceled);
+      releaseChips(canceled);
       return canceled;
     },
 
@@ -1385,6 +1514,7 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
       return n;
     },
   };
+  return api;
 }
 
 const MAX_BUNDLE_STORES = 5;
@@ -1458,6 +1588,9 @@ export function publicCart(cart) {
     total_cents: cart.total_cents,
     expires_at: cart.expires_at,
     payer_name: cart.payer?.name || null,
+    // Several people paying a part each: how far along it is (first names only).
+    chip_in: Boolean(cart.chip_in),
+    chips: cart.chip_in ? chipProgress(cart) : null,
     // Provenance: which AI put this together, or which store's button sent it.
     built_by: cart.agent ? agentLabel(cart.agent) : null,
     source: cart.source ? { kind: cart.source.kind, name: cart.source.name || null, verified: Boolean(cart.source.verified) } : null,
@@ -1514,6 +1647,8 @@ export function ownerCart(cart) {
       : null,
     spent_cents: cart.spent_cents ?? null,
     spent_merchant: cart.spent_merchant || null,
+    // Who chipped in and how much (names only; their emails stay with Spot).
+    chip_list: (cart.chips || []).filter((c) => c.state !== 'pending').map((c) => ({ name: c.name || null, cents: c.cents, state: c.state })),
     // The checkout's own words (detail) are for staff, not the page.
     fulfillment: cart.fulfillment ? (({ detail, ...f }) => f)(cart.fulfillment) : null,
     held: Boolean(cart.hold),

@@ -248,6 +248,11 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
       UNIQUE (user_id, url)
     );
     CREATE INDEX IF NOT EXISTS watches_due ON watches (state, next_at);
+    -- Chip-in holds: each person's payment, and the cart it's for (spot.js).
+    CREATE TABLE IF NOT EXISTS chip_refs (
+      ref      TEXT PRIMARY KEY,
+      cart_id  TEXT NOT NULL
+    );
     -- Fit and reviews per product page, as an AI read them (reviews.js).
     CREATE TABLE IF NOT EXISTS review_digests (
       url  TEXT PRIMARY KEY,
@@ -383,6 +388,12 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
     byToken: (t) => hydrate(q.byToken.get(t)),
     byId: (id) => hydrate(q.byId.get(id)),
     byPayment: (ref) => hydrate(q.byPayment.get(ref)),
+    // A chip-in hold's cart.
+    addChipRef: (ref, cartId) => db.prepare('INSERT OR IGNORE INTO chip_refs (ref, cart_id) VALUES (?, ?)').run(String(ref), String(cartId)),
+    byChipRef(ref) {
+      const r = db.prepare('SELECT cart_id FROM chip_refs WHERE ref = ?').get(String(ref));
+      return r ? this.byId(r.cart_id) : null;
+    },
     byCard: (ref) => hydrate(q.byCard.get(ref)),
     // Every cart a Stripe payment paid for: one, or each store's cart in a
     // bundle (their refs are "<payment>#<n>").

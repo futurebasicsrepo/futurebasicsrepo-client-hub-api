@@ -409,3 +409,23 @@ function hostOf(url) {
     return '';
   }
 }
+
+// Split `cents` across parts in proportion to their sizes, in whole cents
+// that add up exactly (largest remainder; ties go to the bigger part).
+export function splitCents(cents, parts) {
+  const total = parts.reduce((n, p) => n + p, 0);
+  if (!total) return parts.map(() => 0);
+  const raw = parts.map((p) => (cents * p) / total);
+  const out = raw.map(Math.floor);
+  let left = cents - out.reduce((n, x) => n + x, 0);
+  const order = raw.map((r, i) => [r - Math.floor(r), parts[i], i]).sort((a, b) => b[0] - a[0] || b[1] - a[1]);
+  for (let k = 0; left > 0; k = (k + 1) % order.length, left--) out[order[k][2]]++;
+  return out;
+}
+
+// What a chip-in cart has raised so far (holds in, not yet released).
+export function chipProgress(cart) {
+  const held = (cart.chips || []).filter((c) => c.state === 'held' || c.state === 'captured');
+  const raised = held.reduce((n, c) => n + c.cents, 0);
+  return { raised_cents: raised, left_cents: Math.max(0, (cart.total_cents || 0) - raised), people: held.length, names: held.map((c) => c.name).filter(Boolean).slice(0, 8) };
+}

@@ -24,7 +24,7 @@
 // Each (cart, event, person) is told once: sends are recorded in the
 // notices table. Texts go only to numbers that haven't replied STOP (notify.js).
 // Sending never blocks or breaks the flow that triggered it.
-import { usd } from './cart.js';
+import { chipProgress, usd } from './cart.js';
 import { emailLayout, finishMessage } from './notify.js';
 import { agentLabel } from './approvals.js';
 
@@ -106,6 +106,52 @@ export function createEvents({ db, spot, notifier, baseUrl, log = console }) {
       }];
     }
     switch (kind) {
+      // Chip in: the asker hears as each person joins; each person hears
+      // their part is held, then that it was bought (or let go).
+      case 'chip_held': {
+        const c = (cart.chips || []).find((x) => x.id === extra?.chip);
+        if (!c) return [];
+        const p = chipProgress(cart);
+        const who2 = c.name || 'Someone';
+        const page = `${base}/c/${cart.token}`;
+        const out = [{
+          key: `chip_held:${c.id}`,
+          to: requesterContact(cart),
+          subject: `💸 ${who2} chipped in ${usd(c.cents)} for your ${item}`,
+          text: `${who2} chipped in ${usd(c.cents)}. ${usd(p.raised_cents)} of ${usd(cart.total_cents)} so far${p.left_cents ? `, ${usd(p.left_cents)} to go` : ''}. ${link}`,
+          html: mail({ preheader: `${usd(p.raised_cents)} of ${usd(cart.total_cents)} so far`, title: `💸 ${who2} chipped in!`, lines: [`<b>${esc(who2)}</b> put <b>${usd(c.cents)}</b> toward your <b>${esc(item)}</b> from ${esc(store)}.`, p.left_cents ? `${usd(p.raised_cents)} of ${usd(cart.total_cents)} so far, ${usd(p.left_cents)} to go. Send the link to a few more people.` : 'That covers it! Spot is getting it ready.'], cta: { label: 'See your Spot →', url: link } }),
+          sms: `Spot: ${who2} chipped in ${usd(c.cents)} for your ${item}. ${usd(p.raised_cents)} of ${usd(cart.total_cents)} so far. ${link}`,
+        }];
+        if (c.email) {
+          out.push({
+            key: `chip_receipt:${c.id}`,
+            to: { email: c.email },
+            subject: `You’re in for ${usd(c.cents)} on ${who}’s ${item}`,
+            text: `You chipped in ${usd(c.cents)} toward ${who}'s ${item} from ${store}. It's a hold, not a charge: you're only charged if it's covered by ${new Date(cart.expires_at).toUTCString().slice(0, 16)}, and then Spot buys it for ${who}. If not, the hold is let go. ${page}`,
+            html: mail({ preheader: 'A hold, not a charge, until it’s covered', title: `You’re in for ${usd(c.cents)} 🧡`, lines: [`You chipped in toward <b>${esc(who)}</b>’s <b>${esc(item)}</b> from ${esc(store)}.`, `It’s a hold on your card, not a charge. If everyone together covers it, Spot buys it for ${esc(who)} and charges your part. If it isn’t covered before the link expires, your hold is let go and nothing is charged.`], cta: { label: 'See how it’s going →', url: page } }),
+          });
+        }
+        return out;
+      }
+      case 'chip_funded':
+        return (cart.chips || []).filter((c) => c.state === 'held' && c.email).map((c) => ({
+          key: `chip_funded:${c.id}`,
+          to: { email: c.email },
+          subject: `🎉 It’s covered: Spot is buying ${who}’s ${item}`,
+          text: `Everyone together covered ${who}'s ${item} from ${store}. Your part: ${usd(c.cents)}. Spot buys it now; if anything costs less than held, your share of the difference comes back.`,
+          html: mail({ preheader: `Your part: ${usd(c.cents)}`, title: '🎉 You did it!', lines: [`Everyone together covered <b>${esc(who)}</b>’s <b>${esc(item)}</b> from ${esc(store)}.`, `Your part: <b>${usd(c.cents)}</b>. Spot buys it now. If the store charges less than was held, your share of the difference comes back to your card.`] }),
+        }));
+      case 'chip_released': {
+        const c = (cart.chips || []).find((x) => x.id === extra?.chip);
+        if (!c?.email) return [];
+        return [{
+          key: `chip_released:${c.id}`,
+          to: { email: c.email },
+          subject: `Your hold for ${who}’s ${item} was let go`,
+          text: `${who}'s ${item} wasn't covered in time (or ${who} canceled it), so the ${usd(c.cents)} hold on your card was let go. Nothing was charged.`,
+          html: mail({ preheader: 'Nothing was charged', title: 'Your hold was let go', lines: [`${esc(who)}’s <b>${esc(item)}</b> wasn’t covered in time, or ${esc(who)} canceled it.`, `The ${usd(c.cents)} hold on your card was let go. Nothing was charged.`] }),
+        }];
+      }
       case 'declined': {
         const by = extra?.name || 'They';
         return [{
@@ -344,9 +390,20 @@ export function createEvents({ db, spot, notifier, baseUrl, log = console }) {
       case 'thanks': {
         const t = cart.thanks;
         const c = cart.payer_contact || {};
-        if (!t || cart.for === 'self' || (!c.email && !c.phone)) return [];
         const from = String(cart.requester?.name || 'Your friend').trim().split(/\s+/)[0];
-        const says = `${from} says thanks${t.emoji ? ` ${t.emoji}` : ''}`;
+        const says = `${from} says thanks${t?.emoji ? ` ${t.emoji}` : ''}`;
+        // Chipped in: everyone who gave an email hears it.
+        const chippers = (cart.chips || []).filter((x) => x.state === 'held' || x.state === 'captured').filter((x) => x.email);
+        if (t && chippers.length) {
+          return chippers.map((x) => ({
+            key: `thanks:${x.id}`,
+            to: { email: x.email },
+            subject: `${says}: ${[...t.message].length > 60 ? `${[...t.message].slice(0, 57).join('').trimEnd()}…` : t.message}`,
+            text: `${says}: “${t.message}” For ${item} from ${store}, which you chipped in on (${usd(x.cents)}).`,
+            html: mail({ preheader: t.message, title: says, lines: [`<span style="display:block;padding:14px 16px;border-radius:16px;background:#fff1ec;font-size:18px;line-height:1.45">“${esc(t.message)}”</span>`, `For <b>${esc(item)}</b> from ${esc(store)}. You chipped in ${usd(x.cents)} and made it happen.`], note: `Want someone to spot you next? <a href="${esc(base)}/new" style="color:#6f675c">Make your own Spot</a>.` }),
+          }));
+        }
+        if (!t || cart.for === 'self' || (!c.email && !c.phone)) return [];
         const receipt = `${base}${spot.payerPath(cart)}`;
         return [{
           key: 'thanks',
