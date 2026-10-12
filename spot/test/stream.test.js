@@ -210,3 +210,65 @@ test('the endpoint streams one JSON line per event, with what it used first', as
   assert.equal(lines.at(-1).seen, 'tops M');
   assert.equal((await call({ text: '  ' })).statusCode, 422, 'nothing typed');
 });
+
+test('a category or search page in place of the product: the product on that store, found and swapped in', async () => {
+  const { resolveListing, parseProductHtml, looksLikeListing, cleanVariant } = await import('../src/capture.js');
+  // Shopify's product search knows it: its own page gives the real price and photo.
+  const productPage = { items: [{ title: 'Weekend Sneaker', price_cents: 13500, image_url: 'https://cdn.vessi.example/w.jpg', url: 'https://vessi.example/products/weekend' }], offers: [{ words: new Set(), in: true }], links: [] };
+  const r = await resolveListing(
+    { url: 'https://vessi.example/collections/womens', title: 'Weekend Waterproof Sneakers' },
+    { fromUrl: async (u) => (u === 'https://vessi.example/products/weekend' ? productPage : null), suggest: async () => [{ url: 'https://vessi.example/products/cityscape', text: 'Cityscape Classic' }, { url: 'https://vessi.example/products/weekend', text: 'Weekend Sneaker - Waterproof' }] },
+  );
+  assert.deepEqual(r, { url: 'https://vessi.example/products/weekend', title: 'Weekend Sneaker', price_cents: 13500, image_url: 'https://cdn.vessi.example/w.jpg' });
+
+  // Not Shopify: the listing page's own links, by name.
+  const listing = parseProductHtml(
+    `<html><head><title>Women's outerwear</title><script type="application/ld+json">{"@type":"ItemList","itemListElement":[{"@type":"ListItem","url":"/us/en/products/E123","name":"AIRism UV Protection Cardigan"}]}</script></head>
+     <body><a href="/us/en/women">Women</a><a href="/us/en/products/E999" aria-label="Pocketable UV Protection Parka"><img></a><a href="https://other.example/x">UV Protection Cardigan</a></body></html>`,
+    'https://shop.example/us/en/women/outerwear',
+  );
+  assert.deepEqual(listing.links.map((l) => l.url), ['https://shop.example/us/en/products/E123', 'https://shop.example/us/en/women', 'https://shop.example/us/en/products/E999'], 'same store only; labels count as text');
+  const pages = { 'https://shop.example/us/en/women/outerwear': listing, 'https://shop.example/us/en/products/E123': { items: [{ title: 'AIRism UV Protection Cardigan', price_cents: 2990, image_url: null }], offers: [{ words: new Set(), in: true }], links: [] } };
+  const r2 = await resolveListing({ url: 'https://shop.example/us/en/women/outerwear', title: 'UV Protection Cardigan' }, { fromUrl: async (u) => pages[u] || null, suggest: async () => [] });
+  assert.equal(r2.url, 'https://shop.example/us/en/products/E123');
+  assert.equal(r2.price_cents, 2990);
+
+  // A real product page stays: it has offers, or a price, or its own name.
+  const real = { items: [{ title: 'Tee', price_cents: 2000 }], offers: [{ words: new Set(), in: true }], links: [{ url: 'https://shop.example/p/2', text: 'Black Tee Two' }] };
+  assert.equal(await resolveListing({ url: 'https://shop.example/p/1', title: 'Black Tee' }, { fromUrl: async () => real, suggest: async () => { throw new Error('not asked'); } }), null);
+  // Nothing on the store by that name: leave it.
+  assert.equal(await resolveListing({ url: 'https://shop.example/search?q=tee', title: 'Linen Shirt' }, { fromUrl: async () => listing, suggest: async () => [] }), null);
+
+  assert.equal(looksLikeListing('https://www.amazon.com/s?k=umbrella'), true);
+  assert.equal(looksLikeListing('https://shop.example/collections/a/products/b'), false);
+  assert.equal(cleanVariant('Your size, White'), 'White');
+  assert.equal(cleanVariant('Black / your size'), 'Black');
+  assert.equal(cleanVariant('M, Light Gray'), 'M, Light Gray');
+});
+
+test('on the shelf: a moved link goes out as an update with the product\'s own link, name and price, and the cache keeps it', async () => {
+  const listingUrl = 'https://vessi.example/collections/womens';
+  const { client } = streamer([{ kind: 'products', products: [{ ...P(1, 'vessi'), product_url: listingUrl, title: 'Weekend Sneakers', unit_price: '$129', variant: 'Your size, White' }, P(2, 'gap')] }]);
+  const resolve = async (it) => (it.url === listingUrl ? { url: 'https://vessi.example/products/weekend', title: 'Weekend Sneaker', price_cents: 13500, image_url: 'https://cdn.vessi.example/w.jpg' } : null);
+  const cache = lookupCache();
+  const events = [];
+  const quiet = console.log;
+  console.log = () => {};
+  try {
+    await streamLookup('waterproof sneakers', { client, fromUrl: slowPage(1), product: noShopify, resolve, cache }, (e) => events.push(e));
+  } finally {
+    console.log = quiet;
+  }
+  const first = events.find((e) => e.type === 'pick');
+  assert.equal(first.option.item.url, listingUrl, 'the card goes up at once, with what search found');
+  assert.equal(first.option.item.variant, 'White', 'no "your size"');
+  const moved = events.find((e) => e.type === 'update' && e.new_url);
+  assert.deepEqual({ url: moved.url, new_url: moved.new_url, title: moved.title, price_cents: moved.price_cents, image_url: moved.image_url }, { url: listingUrl, new_url: 'https://vessi.example/products/weekend', title: 'Weekend Sneaker', price_cents: 13500, image_url: 'https://cdn.vessi.example/w.jpg' });
+  assert.equal(events.filter((e) => e.type === 'update' && !e.new_url).length, 1, 'the other card just gets its check');
+  // Asked again: the product page, straight from the cache.
+  const again = [];
+  await streamLookup('waterproof sneakers', { client, fromUrl: slowPage(1), product: noShopify, resolve, cache }, (e) => again.push(e));
+  const cached = again.find((e) => e.type === 'pick');
+  assert.equal(cached.option.item.url, 'https://vessi.example/products/weekend');
+  assert.equal(cached.option.item.price_cents, 13500);
+});

@@ -409,6 +409,7 @@
   // fill in that product wherever it is. `own` = the store's own page photo,
   // which beats the one search turned up.
   function applyPage(p, own = false) {
+    if (p.new_url) return moved(p);
     const hits = turns.flatMap((T) => T.list.flatMap((e) => e.items || [e])).filter((o) => o.item.url === p.url);
     if (!hits.length) return;
     const swap = p.image_url && (own || !hits[0].item.image_url);
@@ -431,6 +432,27 @@
       card.classList.add('gone');
       for (const b of card.querySelectorAll('[data-act="pay"],[data-act="ask"]')) b.disabled = true;
     }
+  }
+  // The link was a category or search page and Spot found the product on it:
+  // the product's own link, name, price and photo, and the card drawn again.
+  function moved(p) {
+    turns.forEach((T, t) => {
+      if (!T) return;
+      T.list.forEach((e, i) => {
+        const hits = (e.items || [e]).filter((o) => o.item.url === p.url);
+        if (!hits.length) return;
+        for (const o of hits) {
+          Object.assign(o.item, { url: p.new_url, title: p.title || o.item.title });
+          if (p.price_cents) (o.item.price_cents = p.price_cents), o.why && (o.why = o.why.replace(/\s*\(?est(?:imated|\.)? price\)?/i, '').trim() || null);
+          if (p.image_url) o.item.image_url = p.image_url;
+          if (p.stock && p.stock !== 'unknown') o.stock = p.stock;
+        }
+        const i0 = ask.avoid.indexOf(p.url);
+        if (i0 >= 0) ask.avoid[i0] = p.new_url;
+        const el = T.rail.querySelector('[data-card="' + t + ':' + i + '"]');
+        if (el) el.outerHTML = (e.items ? outfitCard : productCard)(e, t + ':' + i, i === 0);
+      });
+    });
   }
   // One batch into a turn, card by card as it streams.
   async function fill(T, body) {
