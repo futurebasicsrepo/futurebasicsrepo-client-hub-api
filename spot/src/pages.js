@@ -131,6 +131,107 @@ footer{margin-top:32px;color:var(--muted);font-size:13px;text-align:center}
 .sandbox{background:#fff3cd;color:#6b4e00;border-radius:10px;padding:8px 12px;font-size:13px;font-weight:600;margin:10px 0}
 @media (prefers-color-scheme:dark){.sandbox{background:#3a2f10;color:#ffd97a}}
 .spin{display:inline-block;width:14px;height:14px;border:2px solid var(--line);border-top-color:var(--spot);border-radius:50%;animation:rot .8s linear infinite;vertical-align:-1px}@keyframes rot{to{transform:rotate(360deg)}}
+/* ─── Finish: the details that make it feel native ───────────────────────
+   Hairlines instead of borders, soft depth, system materials (blur) for
+   what floats, sheets with a grabber that rise into place, quieter type
+   weights, tabular prices, and a press that gives under your thumb. */
+:root{--bg2:#f3efe8;--hair:rgba(27,23,18,.1);--depth:0 1px 2px rgba(27,23,18,.04),0 10px 28px -14px rgba(27,23,18,.22);--ease:cubic-bezier(.2,.8,.2,1)}
+@media (prefers-color-scheme:dark){:root{--bg2:#262220;--hair:rgba(255,255,255,.1);--depth:0 1px 2px rgba(0,0,0,.4),0 12px 32px -14px rgba(0,0,0,.7)}}
+body{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;text-rendering:optimizeLegibility;-webkit-tap-highlight-color:transparent}
+h1{font-weight:700;letter-spacing:-.035em}h2{font-weight:650;letter-spacing:-.015em}
+.card{border:.5px solid var(--hair);box-shadow:var(--depth)}
+.btn{font-weight:600;letter-spacing:-.01em;border-radius:14px;transition:transform .18s var(--ease),filter .18s,background-color .18s}
+.btn:active:not(:disabled){transform:scale(.97);filter:brightness(.96)}
+.btn.ghost{border:0;background:color-mix(in srgb,var(--ink) 6%,transparent)}
+.btn.ghost:active:not(:disabled){background:color-mix(in srgb,var(--ink) 10%,transparent)}
+/* Top bar: a translucent material, a compact segmented control. */
+.topbar{background:color-mix(in srgb,var(--bg) 72%,transparent);-webkit-backdrop-filter:saturate(1.8) blur(20px);backdrop-filter:saturate(1.8) blur(20px)}
+body.scrolled .topbar{border-bottom:.5px solid var(--hair)}
+.tabs{background:color-mix(in srgb,var(--ink) 7%,transparent)}
+.tabs.modes{width:156px;padding:2px;border-radius:10px}.tabs.modes button{padding:6px 10px;font-size:14px;font-weight:600;border-radius:8px;transition:color .2s}
+.tabs button[aria-selected=true]{box-shadow:0 1px 3px rgba(0,0,0,.12),0 0 0 .5px rgba(0,0,0,.04)}
+.cartbtn{border:0;width:38px;height:34px;border-radius:10px;background:color-mix(in srgb,var(--ink) 7%,transparent);font-size:17px}
+.cartbtn b{box-shadow:0 0 0 2px var(--bg)}
+/* Shop: photos float on their own, words sit under them. */
+.shophead{margin:18px 0 16px}.shoptitle{font-size:34px;font-weight:700;letter-spacing:-.035em}
+.grid{gap:26px 14px}
+.tile{border:0;border-radius:0;background:transparent;overflow:visible;transition:none}
+.tile:hover{transform:none;box-shadow:none}
+.tile .ph{border:0;border-radius:18px;background:#fff;box-shadow:var(--depth);transition:transform .3s var(--ease)}
+.tile:active .ph{transform:scale(.97)}
+@media (hover:hover){.tile:hover .ph{transform:translateY(-2px)}}
+.tile .ph img{padding:12px;transition:opacity .3s}
+.tile .tb{padding:11px 2px 0;gap:1px}
+.tile .st{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase}
+.tile .t{font-size:15px;font-weight:600;letter-spacing:-.012em;line-height:1.28}
+.tile .pr{font-size:15px;font-weight:600;font-variant-numeric:tabular-nums;margin-top:3px}
+.tile .pr s{font-weight:500}
+.grid.one .tile .tb{padding:14px 4px 0}.grid.one .tile .t{font-size:19px}.grid.one .tile .pr{font-size:18px}.grid.one .tins{font-size:14px}
+.pflag{position:absolute;top:10px;left:10px;z-index:2;font-size:11px;font-weight:700;letter-spacing:.01em;padding:3px 8px;border-radius:99px;color:#fff;background:var(--spot);box-shadow:0 2px 8px -2px rgba(0,0,0,.25)}
+.pflag.out{background:rgba(27,23,18,.72);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
+.tile .wtag{border:0;box-shadow:0 2px 8px -2px rgba(0,0,0,.2)}
+.tins{display:flex;flex-direction:column;gap:3px;margin-top:7px;min-height:52px;font-size:12.5px;line-height:1.3;color:var(--muted)}
+.tins .ti{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;animation:rise .35s var(--ease) both}
+.tins .star{color:var(--ink);font-weight:650}
+.tins .good{color:var(--ok);font-weight:600}
+.tins .deal{color:var(--spot);font-weight:650}
+.tins .code,.promo .code{font:650 11px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.03em;padding:1px 6px;border-radius:6px;background:color-mix(in srgb,var(--ok) 14%,transparent);color:var(--ok)}
+.tile .tbadges{margin-top:6px}.tile .tbadges span{font-size:11px;font-weight:600;border-radius:99px;padding:3px 8px;background:var(--bg2);color:var(--muted)}
+/* While it loads: a soft shimmer the width of a line, never a question. */
+.skl{display:block;height:10px;width:78%;margin:4px 0;border-radius:5px;background:linear-gradient(90deg,var(--bg2) 0%,color-mix(in srgb,var(--bg2) 35%,var(--card)) 50%,var(--bg2) 100%);background-size:220% 100%;animation:shimmer 1.4s ease-in-out infinite}
+.skl+.skl{width:56%}.skl+.skl+.skl{width:66%}
+@keyframes shimmer{from{background-position:120% 0}to{background-position:-120% 0}}
+@keyframes rise{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
+.fab{background:color-mix(in srgb,var(--card) 70%,transparent);color:var(--ink);-webkit-backdrop-filter:saturate(1.8) blur(20px);backdrop-filter:saturate(1.8) blur(20px);border:.5px solid var(--hair);box-shadow:0 12px 32px -12px rgba(0,0,0,.4);font-weight:600;padding:12px 18px}
+.fab:active{transform:scale(.96)}
+/* Sheets: rise into place, a grabber, a quiet close. */
+.sheet{border:0;border-radius:28px 28px 0 0;box-shadow:0 -.5px 0 var(--hair),0 -24px 60px -24px rgba(0,0,0,.4);animation:sheetup .42s var(--ease) both}
+.sheet::before{content:"";position:absolute;top:7px;left:50%;width:36px;height:5px;margin-left:-18px;border-radius:3px;background:color-mix(in srgb,var(--ink) 18%,transparent)}
+@keyframes sheetup{from{transform:translateY(32px);opacity:0}to{transform:none;opacity:1}}
+.sheetx,.shopsheet .sheetx{top:14px;right:14px;width:30px;height:30px;border-radius:50%;background:color-mix(in srgb,var(--ink) 8%,transparent);color:var(--muted);font-size:17px;line-height:30px;text-align:center;padding:0}
+.shopsheet{padding-top:52px}
+.shopsheet .pc{border:0;background:transparent;overflow:visible}
+.shopsheet .pc .ph{border:0;border-radius:24px;box-shadow:var(--depth)}
+.shopsheet .pc .pb{padding:18px 2px 4px}
+.shopsheet .pc .t{font-size:24px;font-weight:700;letter-spacing:-.025em;line-height:1.15;-webkit-line-clamp:3}
+.shopsheet .pc .pr{font-size:30px;font-weight:700;letter-spacing:-.03em}
+/* What Spot knows, as one grouped list (rows load in place). */
+.insg{margin:12px 0 2px;background:var(--bg2);border-radius:14px;padding:2px 13px}
+.insg>div{margin:0;padding:10px 0}.insg>div+div{border-top:.5px solid var(--hair)}.insg>div:empty{display:none}
+.insg .wait{font-style:normal}
+.insg .rvl,.insg .cl,.insg .dll,.insg .pl,.insg .fl{font-size:13px}
+.insg .stars{font-weight:650}
+.pc .pr{font-variant-numeric:tabular-nums}
+.pc{transition:transform .3s var(--ease)}
+/* Cart: thumbnails like an app's, a pill stepper. */
+.cartsheet h2{font-size:24px;font-weight:700;letter-spacing:-.025em}
+.cstore{border-top:.5px solid var(--hair);padding:14px 0 6px}
+.cstore h3{font-size:13px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}.cstore h3 span{color:var(--ink);letter-spacing:0;text-transform:none;font-variant-numeric:tabular-nums}
+.citem{grid-template-columns:58px minmax(0,1fr) auto;gap:12px;margin-bottom:12px}
+.citem img,.citem .ci0{width:58px;height:58px;border-radius:12px;background:#fff;object-fit:contain;padding:4px;box-shadow:0 0 0 .5px var(--hair)}
+.citem .ct{font-size:14.5px;font-weight:600;letter-spacing:-.01em}
+.citem .cq{display:inline-flex;margin-top:6px;padding:2px;border-radius:99px;background:color-mix(in srgb,var(--ink) 6%,transparent)}
+.citem .cq button{border:0;background:transparent;width:28px;height:28px;font-size:15px}
+.citem .cp{font-variant-numeric:tabular-nums;font-weight:600}
+.cartfoot{border-top:.5px solid var(--hair);background:color-mix(in srgb,var(--card) 82%,transparent);-webkit-backdrop-filter:saturate(1.8) blur(20px);backdrop-filter:saturate(1.8) blur(20px)}
+.addcart.on{background:color-mix(in srgb,var(--ok) 14%,transparent);color:var(--ok)}
+/* Product photos: white store shots melt into a soft panel, as in a store app. */
+.tile .ph,.pc .ph,.cell,.citem img,.citem .ci0{background:#f5f4f2}
+.tile .ph img,.pc .ph img,.cell img,.citem img{mix-blend-mode:multiply}
+/* The store's initials only stand in when there's no photo (a broken one is removed). */
+.ph img~.stile,.cell img~.stile{visibility:hidden}
+@media (prefers-color-scheme:dark){.tile .ph,.pc .ph,.cell,.citem img,.citem .ci0{background:#e9e6e1}}
+.views{background:color-mix(in srgb,var(--ink) 7%,transparent);padding:2px;border-radius:10px}.views button{display:grid;place-items:center;width:34px;height:30px;color:var(--muted)}
+.views button[aria-pressed=true]{box-shadow:0 1px 3px rgba(0,0,0,.12),0 0 0 .5px rgba(0,0,0,.04)}
+.cartbtn{display:grid;place-items:center;color:var(--ink)}
+.addcart{display:inline-flex;align-items:center;justify-content:center;gap:6px}
+/* Home: the ask box glows when it's yours to type in. */
+.say{font-weight:700;border:.5px solid var(--hair);box-shadow:var(--depth)}
+.box{border:.5px solid var(--hair);box-shadow:var(--depth);transition:box-shadow .2s var(--ease)}
+.box:focus-within{box-shadow:0 0 0 4px color-mix(in srgb,var(--spot) 22%,transparent),var(--depth)}
+.iconbtn{border:0;border-radius:99px;background:color-mix(in srgb,var(--ink) 6%,transparent);color:var(--ink);font-weight:600;padding:9px 14px}
+.cartfoot .sum.total{border-top:0;padding-top:0;font-size:17px}
+@media (prefers-reduced-motion:reduce){.skl,.sheet,.tins .ti{animation:none}.btn,.tile .ph,.fab{transition:none}}
 `;
 
 function shell({ title, head = '', body, script = '' }) {
@@ -208,11 +309,11 @@ details.more{margin-top:14px}details.more summary{cursor:pointer;font-weight:600
 export function homePage({ origin, provider, cfg }) {
   const bookmarklet = `javascript:location.href=${JSON.stringify(`${origin}/new?url=`)}+encodeURIComponent(location.href)`;
   const body = `
-<div class="topbar"><a class="brand" href="/"><span class="dot"></span>Spot</a><div class="topr"><div class="tabs modes" role="tablist" aria-label="Spot or Shop"><button type="button" role="tab" id="modeSpot" aria-selected="true">Spot</button><button type="button" role="tab" id="modeShop" aria-selected="false">Shop</button></div><button class="cartbtn" id="cartBtn" type="button" aria-label="Your cart" hidden><span aria-hidden="true">🛒</span><b id="cartN"></b></button></div></div>
+<div class="topbar"><a class="brand" href="/"><span class="dot"></span>Spot</a><div class="topr"><div class="tabs modes" role="tablist" aria-label="Spot or Shop"><button type="button" role="tab" id="modeSpot" aria-selected="true">Spot</button><button type="button" role="tab" id="modeShop" aria-selected="false">Shop</button></div><button class="cartbtn" id="cartBtn" type="button" aria-label="Your cart" hidden><svg width="19" height="19" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.2 6.5h11.6l-.9 10.2a1.5 1.5 0 0 1-1.5 1.3H6.6a1.5 1.5 0 0 1-1.5-1.3z"/><path d="M7.2 8.5V5.8a2.8 2.8 0 0 1 5.6 0v2.7"/></svg><b id="cartN"></b></button></div></div>
 <div class="sheet shopsheet cartsheet" id="cartSheet" hidden role="dialog" aria-label="Your cart"><button class="sheetx" id="cartX" type="button" aria-label="Close">×</button><div id="cartBody"></div></div>
 <section id="shop" hidden>
   <div class="shophead"><div><h1 class="shoptitle">Shop</h1><p class="small muted" id="shopSub">Everything Spot has shown you.</p></div>
-    <div class="views" role="group" aria-label="Layout"><button type="button" id="viewGrid" aria-pressed="true" aria-label="Grid">▦</button><button type="button" id="viewOne" aria-pressed="false" aria-label="One at a time">▢</button></div></div>
+    <div class="views" role="group" aria-label="Layout"><button type="button" id="viewGrid" aria-pressed="true" aria-label="Grid"><svg width="17" height="17" viewBox="0 0 17 17" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="1.5" y="1.5" width="5.5" height="5.5" rx="1.6"/><rect x="10" y="1.5" width="5.5" height="5.5" rx="1.6"/><rect x="1.5" y="10" width="5.5" height="5.5" rx="1.6"/><rect x="10" y="10" width="5.5" height="5.5" rx="1.6"/></svg></button><button type="button" id="viewOne" aria-pressed="false" aria-label="One at a time"><svg width="17" height="17" viewBox="0 0 17 17" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="2" y="1.5" width="13" height="14" rx="2.6"/></svg></button></div></div>
   <div class="grid" id="shopGrid"></div>
   <div class="shopempty" id="shopNone" hidden><p><b>Nothing matches.</b></p><p class="muted">Loosen a filter, or show a hidden collection.</p></div>
   <button class="fab" id="shopFab" type="button" aria-label="Sort and filter"><span aria-hidden="true">⇅</span> Sort &amp; filter <b id="fabN"></b></button>
@@ -228,7 +329,7 @@ ${provider === 'sandbox' ? '<div class="sandbox">Test mode: no real money moves.
     <div class="chipbar" id="chip" hidden><span id="chipName"></span><button id="chipX" aria-label="Remove screenshot">×</button></div>
     <textarea id="q" rows="2" autocomplete="off" placeholder="paste a link, drop a screenshot, or say what you want" aria-label="What do you want?"></textarea>
     <div class="boxrow">
-      <label class="iconbtn" for="shot">📷 screenshot</label><input id="shot" type="file" accept="image/*" hidden>
+      <label class="iconbtn" for="shot"><svg width="17" height="17" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 7.2a1.7 1.7 0 0 1 1.7-1.7h2.1l1.3-2h4.8l1.3 2h2.1a1.7 1.7 0 0 1 1.7 1.7v7.6a1.7 1.7 0 0 1-1.7 1.7H4.2a1.7 1.7 0 0 1-1.7-1.7z"/><circle cx="10" cy="10.8" r="3.1"/></svg> Screenshot</label><input id="shot" type="file" accept="image/*" hidden>
       <button class="btn" id="go">Spot it</button>
     </div>
   </div>

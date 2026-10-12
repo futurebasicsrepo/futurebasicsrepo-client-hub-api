@@ -299,8 +299,12 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     check: limit('check', 60, 600_000),
     // Card facts: one per batch of cards on screen, and once more for a new store's policy.
     facts: limit('facts', 300, 600_000),
-    // Fit and reviews: an AI read per product not seen in two weeks.
+    // Fit and reviews: an AI read per product not seen in two weeks. Promo
+    // codes and other stores' prices are each their own read, and load on
+    // their own for products in view (home.js), so each has its own bucket.
     reviews: limit('reviews', 40, 600_000, 120),
+    promos: limit('promos', 40, 600_000, 120),
+    compare: limit('compare', 40, 600_000, 120),
     card: limit('card', 120, 600_000),
   };
   let sweeps = 0;
@@ -755,7 +759,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
 
   // Promo codes for one product: the ones that took money off it just now.
   app.post('/v1/promos', async (req, reply) => {
-    limits.reviews(req);
+    limits.promos(req);
     const b = req.body || {};
     const url = typeof b.url === 'string' ? b.url.slice(0, 1000) : '';
     if (!/^https?:\/\//i.test(url)) throw new CartError('That’s not a product link');
@@ -765,7 +769,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
 
   // Cheaper elsewhere: the same product at other stores, under this price.
   app.post('/v1/compare', async (req, reply) => {
-    limits.reviews(req);
+    limits.compare(req);
     const b = req.body || {};
     const url = typeof b.url === 'string' ? b.url.slice(0, 1000) : '';
     if (!/^https?:\/\//i.test(url)) throw new CartError('That’s not a product link');
