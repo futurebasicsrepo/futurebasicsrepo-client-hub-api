@@ -23,6 +23,28 @@ For live email codes also set `RESEND_API_KEY` and `AUTH_FROM_EMAIL`. Set `INTAK
 
 For Future Basics staff Google Workspace SSO, configure a Google OAuth 2.0 Web application with the authorized redirect URI `https://work.thefuturebasics.com/v1/auth/google/callback`, then set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`. `GOOGLE_REDIRECT_URI` is optional when using the production URL. The server verifies Google's signed identity token, verified-email status, and the `thefuturebasics.com` hosted domain before issuing an admin session.
 
+## Staff network gate (Cloudflare Access)
+
+The work console sits behind Cloudflare Access (Zero Trust). Staff sign in to Cloudflare with their Google Workspace account before work.thefuturebasics.com loads, and the API refuses any **staff** session that did not come through Cloudflare. Without that check, the same staff routes answer on the hub domain and on the `*.up.railway.app` address. Client sessions, the hub, the storefronts, webhooks and `/health` are not affected. The check lives in `src/staff-gate.js` and runs inside `authenticate` for every session whose role is `admin`.
+
+Variables:
+
+- `CF_ACCESS_TEAM_DOMAIN` is your Zero Trust team, e.g. `futurebasics` (or `futurebasics.cloudflareaccess.com`)
+- `CF_ACCESS_AUD` is the Application Audience (AUD) tag of the work console's Access application
+- `CF_ACCESS_MODE=log` (optional) only logs staff requests that skipped Cloudflare instead of refusing them. Use it for the first day.
+
+With either of the first two unset, the gate is off and staff sessions work from anywhere, as before. Platform health → Settings shows which state it is in.
+
+Setup:
+
+1. **DNS on Cloudflare.** Access only works for hostnames whose DNS Cloudflare serves. If thefuturebasics.com is elsewhere, add it to Cloudflare (Free plan), check that every existing record was copied (Shopify storefront, Google Workspace MX, Resend SPF/DKIM, the Railway CNAMEs for `hub` and `work`), then switch the nameservers at the registrar. Set the `work` record to **Proxied** (orange cloud) and SSL/TLS mode to **Full**.
+2. **Zero Trust team.** In Cloudflare Zero Trust, pick a team name; that gives `<team>.cloudflareaccess.com`.
+3. **Google sign-in.** Zero Trust → Settings → Authentication → add **Google Workspace**. Create an OAuth client in Google Cloud with the redirect URI `https://<team>.cloudflareaccess.com/cdn-cgi/access/callback`.
+4. **Access application.** Access → Applications → Add → Self-hosted: domain `work.thefuturebasics.com` (whole host), identity provider Google Workspace, session duration 24 hours. Policy: **Allow** where *Emails ending in* `@thefuturebasics.com`. Optionally add *Require → Gateway/WARP* so it only opens on enrolled company devices.
+5. **Keep the webhooks reachable.** If the Shopify webhook (`/shopify/webhooks`) or Resend webhook (`/webhooks/resend`) URLs in those dashboards point at `work.thefuturebasics.com`, change them to `hub.thefuturebasics.com`, or add a second Access application for exactly that path with a **Bypass** policy. Everything else public (contract signing, factory pages, `/fair`, Shopify connect) is already linked on the hub domain. Open `/fair` from the hub when showing its QR code at a booth.
+6. **Railway variables.** Copy the application's AUD tag, then set `CF_ACCESS_TEAM_DOMAIN`, `CF_ACCESS_AUD` and `CF_ACCESS_MODE=log`. Use the console normally for a day. The deploy logs should show no `staff request did not come through Cloudflare Access` lines from the work console.
+7. **Enforce.** Remove `CF_ACCESS_MODE`. Staff sessions from anywhere but Cloudflare now get `403 STAFF_GATE`. To switch the gate off in an emergency, delete `CF_ACCESS_AUD` and redeploy.
+
 ## Consignment / trade-in counter (Common Ground)
 
 The Common Ground storefront's **Sell** page (`themes/common-ground`, template `page.sell`) posts items with photos to this API. Staff review them at `work.thefuturebasics.com/consign`, make an offer, and the seller accepts, counters or declines from a tokenised ticket link. Every move emails the other side.

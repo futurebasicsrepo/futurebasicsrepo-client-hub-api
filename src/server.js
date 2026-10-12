@@ -27,6 +27,7 @@ import { stubEdit } from './proto-build.js';
 import { qbConfig as qbConfigOf } from './quickbooks.js'
 import { moneyInvoicePdf } from './money-pdf.js'
 import { coverageChecks, coverageConfig, redactSecrets } from './platform-coverage.js'
+import { createStaffGate } from './staff-gate.js';
 import { runChecks, configChecks, jobHealth, insights as platformInsights, classifyAiFailure, assistantAlertContent, probeAssistant, PROBE_MODEL } from './platform.js';
 import { draftSnapshot, draftDiff, aggregateDiffs } from './learning.js';
 import { renderColorways, mergeColorwayTiles } from './colorway.js';
@@ -105,6 +106,7 @@ const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET || '';
 const googleRedirectUri = process.env.GOOGLE_REDIRECT_URI || `${workHubUrl}/v1/auth/google/callback`;
 const googleSsoEnabled = Boolean(googleClientId && googleClientSecret);
 const googleJwks = createRemoteJWKSet(new URL('https://www.googleapis.com/oauth2/v3/certs'));
+const staffGate = createStaffGate(process.env, { log: app.log });
 
 await app.register(cors, { origin: (origin, cb) => cb(null, !origin || allowedOrigins.includes(origin) || (origin==='null' && process.env.DEV_BYPASS_AUTH==='true')), credentials: true });
 await app.register(multipart, {
@@ -185,6 +187,8 @@ async function authenticate(req, reply) {
   // address is verified with a code (by whoever really owns it), after which it must sign in like everyone else.
   if(req.auth.unverified){const u=(await pool.query('select email_verified_at from users where id=$1',[req.auth.sub])).rows[0];if(!u||u.email_verified_at)return reply.code(401).send({error:'Invalid or expired session'})}
   if(req.auth.preview&&!['GET','HEAD','OPTIONS'].includes(req.method))return reply.code(403).send({error:'Client preview is read-only'});
+  // A staff session only counts when the request came through Cloudflare Access on the work console (see src/staff-gate.js).
+  if(req.auth.role==='admin'&&staffGate){const gate=await staffGate.check(req);if(!gate.ok){if(staffGate.mode==='enforce')return reply.code(403).send({error:`Staff tools only open through ${workHubUrl.replace(/^https?:\/\//,'')} with your Cloudflare sign-in.`,code:'STAFF_GATE'});staffGate.report(req,gate.reason)}}
 }
 async function adminOnly(req,reply){if(req.auth?.role!=='admin')return reply.code(403).send({error:'Future Basics admin access required'});}
 
