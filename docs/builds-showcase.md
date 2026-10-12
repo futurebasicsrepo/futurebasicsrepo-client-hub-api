@@ -59,7 +59,7 @@ client-demo.thefuturebasics.com {
 
 ## Keeping it current as the apps change
 
-Each build can say where its code lives: the **Repository** address (GitHub) and, when the build is a folder inside a bigger repository, the **Folder**. Most of ours live in the hub repository (Spot in `spot/`, the coffee, nail and home care sites in `sites/…`, incha.tv in `incha-tv/`, the Common Ground theme in `themes/common-ground`); the piggy bank has its own repository. Existing builds are filled in once, at the first start after this change, and only where staff have not set anything.
+Each build can say where its code lives: the **Repository** address (GitHub) and, when the build is a folder inside a bigger repository, the **Folder**. Most of ours live in the hub repository (Spot in `spot/`, the coffee, nail and home care sites in `sites/…`, the Common Ground theme in `themes/common-ground`); the piggy bank and incha.tv (`futurebasicsrepo/incha-tv`, moved out of the hub's `incha-tv/` folder) have their own repositories. A build whose code moves follows it at the next start, unless staff have already pointed it elsewhere (`MOVED_BUILD_REPOS` in `src/builds.js`). Existing builds are filled in once, at the first start after this change, and only where staff have not set anything.
 
 Every hour (or when you press **Check GitHub now** on the *What's new* tab) the service looks at each build's repository:
 

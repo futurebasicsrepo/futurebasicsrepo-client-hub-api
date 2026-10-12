@@ -95,6 +95,7 @@ ${SSO_CSS}.pk-b{width:100%;display:flex;align-items:center;justify-content:cente
 .aistrip{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;width:100%;margin:18px 0 0;padding:12px 16px;border:1.5px solid var(--line);border-radius:16px;background:var(--card);color:var(--ink);font:inherit;text-align:left;cursor:pointer}
 .setupcard{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;margin:18px 0 0;padding:12px 16px;border:1.5px solid var(--spot);border-radius:16px;background:color-mix(in srgb,var(--spot) 6%,var(--card));color:var(--ink);text-decoration:none}
 .setupcard[hidden]{display:none}.setupcard small{display:block;color:var(--muted);font-size:14px}.setupcard .go2{color:var(--spot);font-weight:700;white-space:nowrap}
+#notifBox [hidden],.notifcard [hidden]{display:none}.notifcard .nbtns{display:flex;align-items:center;gap:4px}.notifcard .linkish{border:0;background:none;font:inherit;cursor:pointer;padding:6px}.notifcard .nx{border:0;background:none;color:var(--muted);font-size:20px;cursor:pointer;padding:4px 6px}
 .setupcard .sface{width:40px;height:40px;border-radius:50%;background:url(${assetUrl('spot-face.webp')}) 50% 46%/116% no-repeat,var(--spot)}
 #ai-card{scroll-margin-top:140px}
 .aistrip span{white-space:nowrap}.aistrip small{color:var(--muted)}.aistrip .go2{margin-left:auto;color:var(--spot);font-weight:700}
@@ -229,6 +230,7 @@ export function accountPage({ origin, provider = 'sandbox' }) {
     body: `<header class="ahead"><div><h1 id="hi">Your Spot</h1><p class="sub" id="who"></p></div><button class="btn ghost sm" id="out">Sign out</button></header>
 <div class="staffbar" id="staffBar" role="navigation" aria-label="Spot team" hidden><span>Spot team</span><a class="btn ghost sm" id="staffAdmin" href="/admin">Admin</a><a class="btn ghost sm" id="staffHealth" href="/admin/health">Health</a></div>
 <a class="setupcard" id="setupCard" href="/setup" hidden><span class="sface" aria-hidden="true"></span><span><b>Finish setting up</b><small>Your name and address, for one-tap checkout.</small></span><span class="go2">Finish →</span></a>
+<div class="setupcard notifcard" id="notifCard" hidden><span class="sface" aria-hidden="true"></span><span><b id="notifCardT">Get a ping on this device</b><small id="notifCardS">When a price drops, someone pays, or an order ships.</small></span><span class="nbtns"><button type="button" class="go2 linkish" id="notifCardOn">Turn on</button><button type="button" class="nx" id="notifCardNo" aria-label="Not now">×</button></span></div>
 <button type="button" class="aistrip" id="aiStrip" hidden></button>
 <section id="readySec" class="readysec" hidden><h2 class="gt">Ready for you</h2><p class="sub">Carts and flights your AI put together. Tap to check and finish.</p><div class="ready" id="ready"></div></section>
 <nav class="tabs" role="tablist" aria-label="Account"><button type="button" role="tab" data-tab="spots" aria-selected="true">Spots</button><button type="button" role="tab" data-tab="ai" aria-selected="false">AI &amp; card</button><button type="button" role="tab" data-tab="details" aria-selected="false">Saved details</button><button type="button" role="tab" data-tab="signin" aria-selected="false">Sign-in</button></nav><section class="panel" data-panel="spots"><h2 class="sr">Your Spots</h2><p class="lead">Everything you’ve asked for, on any device, including what your AI bought or asked for.</p><div class="seg three" role="tablist" aria-label="Show" id="cartSeg" hidden><button type="button" role="tab" aria-selected="true" data-f="all">All</button><button type="button" role="tab" aria-selected="false" data-f="ai">By your AI</button><button type="button" role="tab" aria-selected="false" data-f="you">By you</button></div><div class="box list" id="carts"></div></section><section class="panel" data-panel="ai" hidden><h2 class="sr">Your AI</h2><div class="grp"><h3 class="gt">Connected AIs</h3><p class="sub">Claude, ChatGPT or any MCP app. Set rules for each one, see everything it did, and disconnect it any time. Your AI never gets a card number.</p>
@@ -277,6 +279,8 @@ export function accountPage({ origin, provider = 'sandbox' }) {
   </div>
   <div class="box"><h3 class="bt">Face ID &amp; passkeys</h3><p class="sub" style="margin:0">Sign in with a glance or a touch instead of waiting for a code. Your fingerprint or face never leaves your device.</p><div id="pks"></div>
     <div class="btnrow" style="margin-top:10px"><button class="btn primary" id="addPk" hidden>Add Face ID or a passkey</button></div><p class="sub" id="pkNo" style="margin:10px 0 0" hidden>This browser doesn’t support passkeys.</p></div>
+  <div class="box" id="notifBox"><h3 class="bt">Notifications on this device</h3><p class="sub" id="notifState" style="margin:0">Checking…</p>
+    <div class="btnrow" style="margin-top:10px"><button class="btn primary" id="notifOn" hidden>Turn on notifications</button><button class="btn ghost" id="notifTest" hidden>Send a test</button><button class="btn ghost" id="notifOff" hidden>Turn off</button></div></div>
 </section><p class="err" id="err"></p>`,
     script: `${PASSKEY_JS}
 // Spot charges in US dollars; the viewer's locale decides how that's written (e.g. "US$" outside the US).
@@ -302,9 +306,34 @@ document.querySelectorAll('.tabs [data-tab]').forEach(b=>b.onclick=()=>{tab(b.da
 const fromHash=()=>{const h=location.hash.slice(1);const el=h&&document.getElementById(h);const p=el&&el.closest('.panel');tab(p?p.dataset.panel:h,false);if(el&&p)setTimeout(()=>el.scrollIntoView({block:'start'}),50)};
 fromHash();addEventListener('hashchange',fromHash);
 let me=null;
+// Notifications on this device (web push, served by /sw.js). On iPhone they
+// work from the Home Screen app only (iOS 16.4+).
+const NOTIF={ok:'serviceWorker' in navigator&&'PushManager' in window&&'Notification' in window,ios:/iP(hone|ad|od)/.test(navigator.userAgent),home:matchMedia('(display-mode: standalone)').matches||navigator.standalone===true};
+const keyBytes=s=>{const b=atob((s+'='.repeat((4-s.length%4)%4)).replace(/-/g,'+').replace(/_/g,'/'));return Uint8Array.from(b,c=>c.charCodeAt(0))};
+const postJson=(u,b)=>fetch(u,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(b||{})});
+async function notifSub(){if(!NOTIF.ok)return null;const reg=await navigator.serviceWorker.register('/sw.js');return reg.pushManager.getSubscription()}
+async function notifRender(){const st=$('#notifState');if(!st)return;const on=$('#notifOn'),off=$('#notifOff'),test=$('#notifTest'),card=$('#notifCard');
+  let no=false;try{no=localStorage.getItem('spot:notifNo')==='1'}catch{}
+  const phone=NOTIF.ios||/Android/.test(navigator.userAgent);$('#notifCardT').textContent=phone?'Get a ping on this phone':'Get a ping on this device';
+  if(!NOTIF.ok){on.hidden=off.hidden=test.hidden=true;const home=NOTIF.ios&&!NOTIF.home;st.textContent=home?'On iPhone, notifications come from the Spot app on your Home Screen: in Safari tap Share, then Add to Home Screen. Open Spot from there and turn them on here.':'This browser can’t show notifications. Spot will email you instead.';
+    // iPhone in Safari: the banner says how, since that's the one step between them and pings.
+    card.hidden=!home||no;if(home){$('#notifCardS').textContent='Add Spot to your Home Screen (Share → Add to Home Screen), open it from there, and turn them on.';$('#notifCardOn').hidden=true}return}
+  if(Notification.permission==='denied'){on.hidden=off.hidden=test.hidden=true;st.textContent='Notifications are blocked for Spot in this browser’s settings. Allow them there, then come back.';card.hidden=true;return}
+  const s=await notifSub().catch(()=>null);
+  st.textContent=s?'On. Price drops, “they paid” and your orders show up here, no texts needed.':'Get a ping here when a price drops, someone pays for your Spot, or an order ships.';
+  on.hidden=Boolean(s);off.hidden=test.hidden=!s;card.hidden=Boolean(s)||no}
+async function notifOn(){try{
+  const k=await fetch('/v1/push/key').then(r=>r.json());const reg=await navigator.serviceWorker.register('/sw.js');
+  if(await Notification.requestPermission()!=='granted')return notifRender();
+  const s=(await reg.pushManager.getSubscription())||await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:keyBytes(k.key)});
+  const r=await postJson('/v1/me/push',{subscription:s.toJSON()});if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||'Couldn’t turn them on');
+  await postJson('/v1/me/push/test')}catch(e){$('#notifState').textContent=e.message||'Couldn’t turn them on. Try again.';return}notifRender()}
+async function notifOff(){const s=await notifSub().catch(()=>null);if(s){await postJson('/v1/me/push/remove',{endpoint:s.endpoint}).catch(()=>{});await s.unsubscribe().catch(()=>{})}notifRender()}
+$('#notifOn').onclick=notifOn;$('#notifCardOn').onclick=notifOn;$('#notifOff').onclick=notifOff;$('#notifTest').onclick=()=>postJson('/v1/me/push/test');
+$('#notifCardNo').onclick=()=>{try{localStorage.setItem('spot:notifNo','1')}catch{}$('#notifCard').hidden=true};
 async function load(){
   const r=await fetch('/v1/me');if(r.status===401){try{localStorage.removeItem('spot:in');localStorage.removeItem('spot:staff')}catch{}location.href='/signin?next=/account';return}try{localStorage.setItem('spot:in','1')}catch{}for(const id of ['navAcct','navAcctM']){const na=document.getElementById(id);if(na){na.textContent='My Spots';na.href='/account'}}
-  me=await r.json();const u=me.user;
+  me=await r.json();const u=me.user;notifRender();
   $('#hi').textContent=u.name?'Hi, '+u.name.split(' ')[0]:'Your Spot';$('#who').textContent='Signed in as '+(u.email||fmtPhone(u.phone));
   $('#readySec').hidden=!me.ready.length;
   // Finish it yourself, or hand it to whoever's paying: the same choice as on the cart's own page.
