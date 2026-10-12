@@ -209,6 +209,15 @@ try {
       await page.waitForSelector('#payBox .payform', { timeout: 10000 });
       ok(/Add your card/.test(await page.locator('#payBox h2').innerText()) && await page.locator('#payBox table tbody tr').count() === 4, 'right after signing the page asks for a card and shows the four payments it is for');
       ok(await page.locator('#pGo').isDisabled(), 'the button stays off until the authorization is ticked');
+      const cvc = await page.locator('#cCvc').boundingBox(), zip = await page.locator('#cZip').boundingBox(); ok(cvc.x + cvc.width <= 390 && zip.x + zip.width <= 390, 'every box stays inside a phone screen (the security code no longer spills over)', [cvc, zip]);
+      ok(/Test mode/.test(await page.locator('#payBox').innerText()) && /4111 1111 1111 1111/.test(await page.locator('#payBox .testnote').innerText()), 'on test books the form says to use the test card');
+      await page.fill('#cNum', '4111111111111111'); ok(await page.inputValue('#cNum') === '4111 1111 1111 1111', 'the card number is grouped as it is typed');
+      await page.fill('#cNum', '378282246310005'); ok(await page.inputValue('#cNum') === '3782 822463 10005', 'an American Express number is grouped 4-6-5');
+      await page.fill('#cExp', '0831'); ok(await page.inputValue('#cExp') === '08/31', 'the expiry gets its slash by itself');
+      await page.fill('#cExp', '9'); ok(await page.inputValue('#cExp') === '09/', 'a month typed as 9 becomes 09');
+      await page.fill('#cExp', '10/2029'); ok(await page.inputValue('#cExp') === '10/29', 'an expiry filled in by the phone as 10/2029 becomes 10/29');
+      await page.fill('#cCvc', '12a3'); ok(await page.inputValue('#cCvc') === '123', 'the security code takes digits only');
+      if (process.env.JOURNEY_SHOT_DIR) await page.locator('#payBox').screenshot({ path: `${process.env.JOURNEY_SHOT_DIR}/autopay-card-form.png` });
       await page.fill('#cName', 'Pat Payer'); await page.fill('#cNum', '4111 1111 1111 1112'); await page.fill('#cExp', '08/31'); await page.fill('#cCvc', '123'); await page.fill('#cZip', '19401'); await page.check('#pAuth');
       const n0 = reqs.length; await page.click('#pGo'); await page.waitForTimeout(300);
       ok(/does not look right/.test(await page.locator('#pMsg').innerText()) && reqs.length === n0, 'a card number that fails the check is stopped on the page, with nothing sent anywhere');
