@@ -534,6 +534,8 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
     },
     // Set by the server: can this cart's store price its own checkout?
     quotable: null,
+    // Set by the server: a payer was turned away for the card balance (funds.js).
+    onLowFunds: null,
 
     // Before any hold on the payer's card: Spot's own card for this order
     // exists (made switched off; activateCard turns it on once the hold is
@@ -546,6 +548,7 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
       if (avail != null && avail < need) {
         log.error?.({ cart: cart.id, need_cents: need, available_cents: avail }, 'issuing balance too low to take a payment');
         db.event(cart.id, 'card_not_ready', { reason: 'balance', need_cents: need, available_cents: avail });
+        Promise.resolve(this.onLowFunds?.({ cart, need_cents: need, available_cents: avail })).catch(() => {});
         throw new CartError(notReady(cart), 503);
       }
       if (cart.ready_card) return cart;

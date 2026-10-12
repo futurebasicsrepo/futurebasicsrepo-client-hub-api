@@ -38,6 +38,7 @@ import { cleanTaste, promptLine, summary as tasteSummary } from './taste.js';
 import { registerAssets } from './assets.js';
 import { registerMerchants } from './merchants.js';
 import { createLiveChecks } from './livechecks.js';
+import { createFunds } from './funds.js';
 import { registerShopifyApp } from './shopifyapp.js';
 import { needsSetup, registerAccounts, sizesLine } from './accounts.js';
 import { aiStopped, cardLabel, fundingOf, registerFunding } from './funding.js';
@@ -169,6 +170,9 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   app.addHook('onClose', async () => fulfiller.close());
   // Texts only go to numbers confirmed with a code (a phone sign-in identity).
   const notifier = createNotifier({ env, log: app.log, metrics, optouts: db.optouts, verified: (e164) => Boolean(db.identities.userId('phone', e164)), ...(notifyFetch ? { fetchImpl: notifyFetch } : {}) });
+  // Spot's card balance against what paid orders still need (funds.js).
+  const funds = createFunds({ db, provider, notifier, env, log: app.log });
+  spot.onLowFunds = (info) => funds.refused(info);
   // Early-access invites, sent from /admin (invites.js).
   const invites = createInvites(db);
   // Nightly database backups (started from the entry point, not in tests).
@@ -296,6 +300,8 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     if (sweeps % 30 === 0 && env.SPOT_PRICE_WATCH !== '0') priceWatch.sweep().catch((err) => app.log.error({ err }, 'price watch failed'));
     // Shipments of orders placed through agent checkout, a few every 30 minutes.
     if (sweeps % 30 === 15) tracker.sweep().catch((err) => app.log.error({ err }, 'tracking failed'));
+    // Spot's card balance against paid orders, every half hour (funds.js).
+    if (sweeps % 30 === 20) funds.check().catch((err) => app.log.error({ err }, 'funds check failed'));
     // Products shoppers are watching, a few every 10 minutes.
     if (sweeps % 10 === 0 && env.SPOT_PRICE_WATCH !== '0') watches.sweep().catch((err) => app.log.error({ err }, 'watches failed'));
   }, 60_000);

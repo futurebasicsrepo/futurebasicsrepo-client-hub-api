@@ -14,6 +14,7 @@
 // to: SPOT_CHECK_PRODUCT_URL (a product page on a store with agent
 // checkout, e.g. a Shopify store) and SPOT_CARD_BILLING (Spot's address).
 // Spot builds that store's checkout, reads shipping and tax, and cancels it.
+import { committedCents } from './funds.js';
 import Stripe from 'stripe';
 import { anthropicClient } from './anthropic.js';
 import { usd } from './cart.js';
@@ -129,8 +130,11 @@ export function createLiveChecks({ env = process.env, provider, db, direct = nul
         }
         const avail = Number(acct?.balance?.available?.usd?.value ?? acct?.balance?.available?.usd ?? NaN);
         if (!Number.isFinite(avail)) return { state: 'ok', detail: `Cardholder active · ${fa} open` };
+        // What paid orders still need from it (funds.js): less than that and a paid order's card can be declined.
+        const promised = db ? committedCents(db) : 0;
+        if (promised && avail < promised) return { state: 'fail', detail: `${usd(avail)} available, but ${usd(promised)} is promised to paid orders the stores haven’t charged yet`, fix: 'Add funds to the Business account in Stripe → Balances now' };
         if (avail < MIN_BALANCE_CENTS) return { state: avail <= 0 ? 'fail' : 'warn', detail: `Only ${usd(avail)} available in ${fa}: stores will decline Spot’s cards`, fix: 'Add funds to the Business account in Stripe → Balances' };
-        return { state: 'ok', detail: `Cardholder active · ${usd(avail)} available for Spot cards` };
+        return { state: 'ok', detail: `Cardholder active · ${usd(avail)} available for Spot cards${promised ? ` · ${usd(promised)} promised to paid orders` : ''}` };
       },
     },
     {

@@ -8,6 +8,7 @@
     "start": "node --disable-warning=ExperimentalWarning src/server.js",
     "dev": "node --disable-warning=ExperimentalWarning --watch src/server.js",
     "test": "node --disable-warning=ExperimentalWarning --test --test-concurrency=1",
+    "money:dryrun": "node --disable-warning=ExperimentalWarning scripts/money-dryrun.mjs",
     "build:spot3d": "esbuild src/client/spot3d.js --bundle --format=esm --minify --target=es2020 --legal-comments=none --outfile=assets/spot3d.js"
   },
   "engines": {
