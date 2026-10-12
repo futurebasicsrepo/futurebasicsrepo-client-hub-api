@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readerVerdict, sourceVerdict, pipelineVerdict, salesEmailVerdict, chatVerdict, automationsVerdict, githubVerdict, storesVerdict, moneyVerdict, prototypesVerdict, leadSearchVerdict, coverageConfig, redactSecrets } from '../src/platform-coverage.js';
+import { readerVerdict, sourceVerdict, pipelineVerdict, salesEmailVerdict, chatVerdict, automationsVerdict, githubVerdict, storesVerdict, moneyVerdict, prototypesVerdict, leadSearchVerdict, payoutsVerdict, coverageConfig, redactSecrets } from '../src/platform-coverage.js';
 
 test('an AI reader is off without a key, down when refused, a warning when out of credit', () => {
   const base = { label: 'Grok (xAI)', keyName: 'XAI_API_KEY' };
@@ -120,4 +120,16 @@ test('the prototype settings are listed with the rest', () => {
   const have = coverageConfig({ env: { ANTHROPIC_API_KEY: 'k', BRAVE_API_KEY: 'b' } }), none = coverageConfig({ env: {} }), by = (l, id) => l.find(x => x.id === id);
   assert.equal(by(have, 'protoai').status, 'ok'); assert.equal(by(have, 'leadsearch').status, 'ok');
   assert.equal(by(none, 'protoai').status, 'warn'); assert.match(by(none, 'protoai').detail, /standard template/); assert.equal(by(none, 'leadsearch').status, 'info'); assert.match(by(none, 'leadsearch').detail, /paste addresses/);
+});
+
+test('Shopify Payments payouts: off until connected and read, a warning for a missing scope or a stale read, then the fees', () => {
+  const now = Date.parse('2026-10-12T12:00:00Z'), ok = { lastSyncAt: '2026-10-12T09:00:00Z' };
+  assert.equal(payoutsVerdict({ configured: false, now }).status, 'off');
+  assert.deepEqual([payoutsVerdict({ configured: true, st: { needsScope: true }, now }).status, payoutsVerdict({ configured: true, st: { lastError: 'boom' }, now }).status], ['warn', 'warn']);
+  assert.match(payoutsVerdict({ configured: true, st: { needsScope: true }, now }).summary, /read_shopify_payments/);
+  assert.equal(payoutsVerdict({ configured: true, st: { noAccount: true, lastSyncAt: ok.lastSyncAt }, now }).status, 'off');
+  assert.equal(payoutsVerdict({ configured: true, st: {}, now }).status, 'off');
+  assert.equal(payoutsVerdict({ configured: true, st: { lastSyncAt: '2026-10-10T09:00:00Z' }, now }).status, 'warn');
+  const v = payoutsVerdict({ configured: true, st: ok, p: { total: 4, fee30: 31250, gross30: 1_000_000 }, now });
+  assert.equal(v.status, 'ok'); assert.match(v.summary, /4 payouts read.*\$313.*3\.1% of sales/);
 });

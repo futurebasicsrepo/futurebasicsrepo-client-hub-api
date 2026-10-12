@@ -49,10 +49,11 @@ dialog{border:0;border-radius:24px;padding:0;width:min(760px,95vw);max-height:92
     <div class="top"><div><span class="mono" style="color:var(--dim)">Settings</span><h1>Money</h1><p class="note">What has been paid, what is owed, and every invoice. Kyle and Danielle only.</p></div>
       <div class="acts"><button class="btn" id="importBtn">Import past invoices</button><button class="btn" id="fromBtn">From a deal or project</button><button class="btn go" id="newInv">+ New invoice</button></div></div>
     <p class="msg" id="msg" role="status"></p>
-    <div class="tabs" role="tablist"><button class="tab on" data-t="overview">Overview</button><button class="tab" data-t="invoices">Invoices</button><button class="tab" data-t="ledger">Ledger</button><button class="tab" data-t="settings">Settings</button></div>
+    <div class="tabs" role="tablist"><button class="tab on" data-t="overview">Overview</button><button class="tab" data-t="invoices">Invoices</button><button class="tab" data-t="ledger">Ledger</button><button class="tab" data-t="payouts">Payouts</button><button class="tab" data-t="settings">Settings</button></div>
     <section id="t-overview"></section>
     <section id="t-invoices" class="hidden"></section>
     <section id="t-ledger" class="hidden"></section>
+    <section id="t-payouts" class="hidden"></section>
     <section id="t-settings" class="hidden"></section>
   </div>
 </main>
@@ -194,6 +195,22 @@ async function loadLedger(){
    <div class="panel">${r.payments.length?`<div class="scroll"><table><thead><tr><th>Received</th><th>From</th><th>How</th><th>Invoice or order</th><th>Source</th><th class="n">Amount</th></tr></thead><tbody>${r.payments.map(p=>`<tr><td>${us(p.paidOn)}</td><td>${esc(p.company)}</td><td>${esc(METHOD[p.method]||p.method)}</td><td>${esc([p.invoice?'Invoice '+p.invoice:'',p.reference].filter(Boolean).join(' · '))}${p.note?`<div class="sub">${esc(p.note)}</div>`:''}</td><td><span class="chip dim">${esc(SRC[p.source]||p.source)}</span></td><td class="n">${usd(p.amountCents)}</td></tr>`).join('')}</tbody></table></div>`:'<p class="empty">No payments yet.</p>'}</div>`;
   $('#lSrc').onchange=e=>{L.source=e.target.value;loadLedger()};let tm;$('#lQ').oninput=e=>{clearTimeout(tm);tm=setTimeout(async()=>{L.q=e.target.value;await loadLedger();const q=$('#lQ');q.focus();q.setSelectionRange(q.value.length,q.value.length)},300)};
 }
+// ---------- Shopify Payments payouts ----------
+const PST={paid:['Paid','ok'],scheduled:['Scheduled',''],failed:['Failed','bad'],canceled:['Canceled','']};
+async function loadPayouts(){
+  const r=await api('/v1/money/payouts'),t=r.totals.d30,t90=r.totals.d90,when=iso=>iso?new Date(iso).toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):'never';
+  const msg=r.needsScope?`<div class="panel" style="border-color:#e6a8a0;background:#fff4f2"><b>Shopify will not let this app read payouts yet.</b> <span class="sub">In the Shopify app's settings add the <code>read_shopify_payments</code> access scope, approve it on the store, then press Read payouts now.</span></div>`
+    :r.lastError?`<div class="panel" style="border-color:#e6d27a;background:#fffbea"><b>The last read failed.</b> <span class="sub">${esc(r.lastError)}</span></div>`
+    :r.noAccount?'<div class="panel"><b>This store is not on Shopify Payments.</b> <span class="sub">There are no payouts to read.</span></div>'
+    :!r.configured?'<div class="panel"><b>Shopify is not connected.</b> <span class="sub">Connect the store on the service to read payouts.</span></div>':'';
+  $('#t-payouts').innerHTML=`<div class="top"><p class="sub" style="margin:0">What Shopify Payments paid into the bank and what it kept. Read every 6 hours · last read ${esc(when(r.lastSyncAt))}.</p><div class="acts"><button class="btn" id="readPayouts">Read payouts now</button></div></div>${msg}
+   <div class="tiles"><div class="tile"><span class="sub">Sales paid out · 30 days</span><b>${usd0(t.grossCents)}</b><span class="sub">${t.payouts} payout${t.payouts===1?'':'s'}</span></div>
+   <div class="tile"><span class="sub">Shopify fees · 30 days</span><b>${usd0(t.feeCents)}</b><span class="sub">${t.feePct==null?'no sales yet':t.feePct+'% of sales'} · ${usd0(t90.feeCents)} in 90 days</span></div>
+   <div class="tile"><span class="sub">Reached the bank · 30 days</span><b>${usd0(t.netCents)}</b><span class="sub">${usd0(t90.netCents)} in 90 days</span></div>
+   <div class="tile"><span class="sub">On the way</span><b>${usd0(r.scheduledCents)}</b><span class="sub">scheduled payouts</span></div></div>
+   <div class="panel">${r.payouts.length?`<div class="scroll"><table><thead><tr><th>Date</th><th>Status</th><th class="n">Sales</th><th class="n">Refunds</th><th class="n">Fees</th><th class="n">Paid out</th></tr></thead><tbody>${r.payouts.map(p=>{const [l,c]=PST[p.status]||[p.status,''];return `<tr><td>${esc(p.issuedOn)}</td><td><span class="chip ${c}">${esc(l)}</span>${p.kind==='withdrawal'?' <span class="sub">withdrawal</span>':''}</td><td class="n">${usd(p.chargesCents)}</td><td class="n">${p.refundsCents?usd(p.refundsCents):''}</td><td class="n">${usd(p.feeCents)}</td><td class="n"><b>${usd(p.netCents)}</b></td></tr>`}).join('')}</tbody></table></div>`:'<p class="empty">No payouts yet. They appear here once Shopify Payments has paid out.</p>'}</div>`;
+  $('#readPayouts').onclick=async e=>{const b=e.target;b.disabled=true;try{const x=await api('/v1/money/payouts/sync',{body:{}});say(x.ok?`Read ${x.seen||0} payout${x.seen===1?'':'s'}, ${x.added||0} new.`:(x.error||x.skipped||'Shopify did not answer'),x.ok?'':'bad')}catch(x){say(x.message,'bad')}b.disabled=false;await loadPayouts()};
+}
 async function loadSettings(){
   const s=await api('/v1/money/settings');
   const q=await api('/v1/money/quickbooks/status');
@@ -242,7 +259,7 @@ async function fromSource(){
 $('#fromBtn').onclick=()=>fromSource().catch(x=>say(x.message,'bad'));
 
 // ---------- wiring ----------
-const LOAD={overview:loadOverview,invoices:loadInvoices,ledger:loadLedger,settings:loadSettings};
+const LOAD={overview:loadOverview,invoices:loadInvoices,ledger:loadLedger,payouts:loadPayouts,settings:loadSettings};
 async function load(){await LOAD[TAB]();if(TAB!=='invoices'){try{const r=await api('/v1/money/invoices');NEXT=r.nextNumber}catch{}}}
 function show(tab){TAB=tab;if(location.hash.slice(1)!==tab)history.replaceState(null,'','#'+tab);$$('.tab').forEach(x=>x.classList.toggle('on',x.dataset.t===tab));for(const k of Object.keys(LOAD))$('#t-'+k).classList.toggle('hidden',k!==tab);LOAD[tab]().catch(x=>say(x.message,'bad'))}
 $$('.tab').forEach(t=>t.onclick=()=>show(t.dataset.t));

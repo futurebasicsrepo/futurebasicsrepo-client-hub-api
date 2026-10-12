@@ -1840,5 +1840,22 @@ await journey('J154', 'Money from a won deal: it is listed as not invoiced, one 
     ok(await ph.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1 && document.querySelector('#dlg').getBoundingClientRect().right <= innerWidth + 1), 'on a phone the picker fits the screen'); await ph.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || '/tmp'}/j154-phone.png` }).catch(() => {}); } finally { await pc.close(); }
 });
 
+await journey('J156', 'Money → Payouts: the tab shows sales, fees and what reached the bank, says plainly when Shopify is not connected, and a phone fits', async () => {
+  const r = await room('156', { wait: false }), W = 'http://work.localhost:3123', tag = `po${stamp}`;
+  const kyle = await forge({ sub: sql(`select id from users where lower(email)='kyle@thefuturebasics.com'`).split('\n')[0] || sql(`insert into users(client_id,email,name,role) values('${r.clientId}','kyle@thefuturebasics.com','kyle','admin') returning id`).split('\n')[0], clientId: r.clientId, role: 'admin', email: 'kyle@thefuturebasics.com' });
+  sql(`insert into money_payouts(shopify_id,issued_on,status,kind,net_cents,gross_cents,charges_cents,fee_cents) values('${tag}-a', current_date - 2, 'paid', 'deposit', 97000, 100000, 100000, 3000), ('${tag}-b', current_date + 1, 'scheduled', 'deposit', 48500, 50000, 50000, 1500)`);
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyle);
+  const page = await ctx.newPage(); page.errs = []; page.on('pageerror', e => page.errs.push(e.message)); page.on('dialog', d => d.accept());
+  await page.goto(`${W}/money#payouts`, { waitUntil: 'networkidle' }); await page.waitForSelector('#t-payouts .tiles', { timeout: 15000 });
+  const text = await page.innerText('#t-payouts');
+  ok(/Shopify fees/.test(text) && /\$1,000/.test(text) && /\$30\b/.test(text) && /3% of sales/.test(text) && /\$970/.test(text) && /\$485/.test(text) && /Scheduled/i.test(text) && /Paid/i.test(text), 'the tab shows sales, fees, the share they are, what was paid out and what is on the way', text.slice(0, 300));
+  ok(/Shopify is not connected/.test(text) && await page.locator('#readPayouts').count() === 1, 'a store that is not connected says so, with a button to read');
+  await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || '/tmp'}/j156-payouts.png` }).catch(() => {});
+  ok(page.errs.length === 0, 'no script errors', page.errs); await ctx.close();
+  const { ctx: pc, page: ph } = await phone(); try { await ph.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyle); await ph.goto(`${W}/money#payouts`, { waitUntil: 'networkidle' }); await ph.waitForSelector('#t-payouts .tiles', { timeout: 15000 });
+    ok(await ph.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'on a phone nothing is wider than the screen'); await ph.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || '/tmp'}/j156-phone.png` }).catch(() => {}); } finally { await pc.close(); }
+  sql(`delete from money_payouts where shopify_id like '${tag}-%'`);
+});
+
 await browser.close();
 const bad = summary(); process.exit(bad ? 1 : 0);

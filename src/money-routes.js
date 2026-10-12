@@ -6,8 +6,10 @@
 //   POST /v1/money/import                      a CSV of past invoices: { csv, apply } (apply:false only previews)
 //   GET  /v1/money/payments                    the ledger: money received from every source, newest first
 //   GET  /v1/money/sources                     won deals and live projects, with the invoices already made for each      GET /v1/money/draft?deal=|project=   an invoice filled in from one
+//   GET  /v1/money/payouts   POST /v1/money/payouts/sync     Shopify Payments payouts and the fees Shopify kept
 //   GET|PUT /v1/money/settings                 the payment instructions printed on invoices
 //   GET /v1/money/quickbooks/status   POST .../connect | test | sync | disconnect   GET .../callback (Intuit sends the browser back here)   POST /v1/money/invoices/:id/quickbooks
+import { payoutRow, payoutTotals, needsScope } from './shopify-payouts.js';
 import { moneyAllowed, cleanInvoice, nextInvoiceNumber, invoiceState, aging, parseInvoiceCsv, METHODS } from './money.js';
 import { moneyInvoicePdf } from './money-pdf.js';
 import { qbConfig, signState, readState, authUrl, endpoints, exchangeCode, revoke, companyInfo, pushInvoice, invoiceLink, paymentsSince, methodOf } from './quickbooks.js';
@@ -18,7 +20,7 @@ const iso = d => (d instanceof Date ? d.toISOString().slice(0, 10) : d ? String(
 const clip = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
 
 export function registerMoneyRoutes(app, d) {
-  const { pool, authenticate, adminOnly, getSetting, setSetting, env = process.env, onChange = async () => {}, tokenSeal, stateSecret = 'money', workUrl = 'https://work.thefuturebasics.com', fetchImpl = fetch, log = console, shopifyInvoiceLink = null, shopifyDraftStatus = null } = d;
+  const { pool, authenticate, adminOnly, getSetting, setSetting, env = process.env, onChange = async () => {}, tokenSeal, stateSecret = 'money', workUrl = 'https://work.thefuturebasics.com', fetchImpl = fetch, log = console, shopifyInvoiceLink = null, shopifyDraftStatus = null, shopifyPayouts = null, shopifyReady = () => Boolean(shopifyPayouts) } = d;
   const bad = (reply, error, code = 422) => reply.code(code).send({ error });
   async function moneyOnly(req, reply) {
     const u = (await pool.query('select email from users where id=$1', [req.auth?.sub]).catch(() => ({ rows: [] }))).rows[0];
@@ -370,6 +372,41 @@ export function registerMoneyRoutes(app, d) {
       recent: invs.filter(i => i.status !== 'void').slice().sort((a, b) => String(b.issuedOn).localeCompare(String(a.issuedOn)) || String(b.number).localeCompare(String(a.number))).slice(0, 8), toInvoice, toInvoiceCount: toInvoice.length, toInvoiceCents: toInvoice.reduce((n, x) => n + x.valueCents, 0), unrecorded: invs.filter(i => i.state === 'unrecorded').length, drafts: invs.filter(i => i.state === 'draft').length };
   });
 
+  // ---------- Shopify Payments payouts: what reached the bank, and what Shopify kept ----------
+  const PAYOUT_STATE = 'moneyPayouts';
+  const payoutState = async () => ({ lastSyncAt: null, lastAttemptAt: null, lastError: '', needsScope: false, noAccount: false, ...((await getSetting(PAYOUT_STATE).catch(() => null)) || {}) });
+  async function syncPayouts() {
+    if (!shopifyPayouts) return { ok: false, skipped: 'Shopify is not set up' };
+    const prev = await payoutState(), at = new Date().toISOString(); let after = null, seen = 0, added = 0, noAccount = false;
+    try {
+      for (let page = 0; page < 8; page++) {
+        const r = await shopifyPayouts({ after }); if (!r) return { ok: false, skipped: 'Shopify is not set up' };
+        if (r.noAccount) { noAccount = true; break; }
+        for (const n of r.nodes || []) {
+          const p = payoutRow(n); if (!p.shopifyId || !p.issuedOn) continue; seen++;
+          const res = await pool.query(`insert into money_payouts(shopify_id,issued_on,status,kind,currency,net_cents,gross_cents,charges_cents,refunds_cents,fee_cents) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+            on conflict (shopify_id) do update set issued_on=excluded.issued_on, status=excluded.status, kind=excluded.kind, currency=excluded.currency, net_cents=excluded.net_cents, gross_cents=excluded.gross_cents, charges_cents=excluded.charges_cents, refunds_cents=excluded.refunds_cents, fee_cents=excluded.fee_cents, synced_at=now()
+            returning (xmax = 0) as inserted`, [p.shopifyId, p.issuedOn, p.status, p.kind, p.currency, p.netCents, p.grossCents, p.chargesCents, p.refundsCents, p.feeCents]);
+          if (res.rows[0]?.inserted) added++;
+        }
+        if (!r.pageInfo?.hasNextPage) break; after = r.pageInfo.endCursor;
+      }
+      await setSetting(PAYOUT_STATE, { lastSyncAt: at, lastAttemptAt: at, lastError: '', needsScope: false, noAccount });
+      return { ok: true, seen, added, noAccount };
+    } catch (e) {
+      const scope = needsScope(e.message), msg = scope ? 'Shopify says this app cannot read payouts yet: add the read_shopify_payments access scope to the Shopify app and approve it' : String(e.message || 'Shopify did not answer').slice(0, 200);
+      await setSetting(PAYOUT_STATE, { ...prev, lastAttemptAt: at, lastError: msg, needsScope: scope, noAccount: false });
+      log.warn?.({ err: e.message }, 'Shopify payouts not read'); return { ok: false, error: msg, needsScope: scope };
+    }
+  }
+  app.get('/v1/money/payouts', { preHandler: pre }, async () => {
+    const rows = (await pool.query(`select shopify_id, issued_on, status, kind, currency, net_cents, gross_cents, charges_cents, refunds_cents, fee_cents from money_payouts order by issued_on desc, shopify_id desc limit 200`)).rows
+      .map(r => ({ id: r.shopify_id, issuedOn: iso(r.issued_on), status: r.status, kind: r.kind, currency: r.currency, netCents: Number(r.net_cents), grossCents: Number(r.gross_cents), chargesCents: Number(r.charges_cents), refundsCents: Number(r.refunds_cents), feeCents: Number(r.fee_cents) }));
+    const st = await payoutState(), t = today();
+    return { payouts: rows, totals: { d30: payoutTotals(rows, t, 30), d90: payoutTotals(rows, t, 90) }, scheduledCents: rows.filter(r => r.status === 'scheduled').reduce((a, r) => a + r.netCents, 0), configured: Boolean(shopifyPayouts) && shopifyReady(), ...st };
+  });
+  app.post('/v1/money/payouts/sync', { preHandler: pre }, async () => ({ ...(await syncPayouts()) }));
+
   // ---------- settings ----------
   app.get('/v1/money/settings', { preHandler: pre }, async () => ({ instructions: await instructions() }));
   app.put('/v1/money/settings', { preHandler: pre }, async (req, reply) => {
@@ -377,5 +414,5 @@ export function registerMoneyRoutes(app, d) {
     if (lines.length > 12 || lines.some(l => l.length > 120)) return bad(reply, 'Payment instructions are at most 12 lines of 120 characters');
     await setSetting('moneyPayment', { instructions: lines.join('\n') }); return { ok: true, instructions: lines.join('\n') };
   });
-  return { syncQuickBooks, syncShopifyLinks };
+  return { syncQuickBooks, syncShopifyLinks, syncPayouts };
 }
