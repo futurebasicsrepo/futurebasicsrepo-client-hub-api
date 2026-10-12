@@ -100,8 +100,172 @@
         { target: '.tab[data-t="pipeline"]', title: 'Follow the pipeline', do: 'Open the Pipeline tab.', why: 'A deal is a promise you are working on. Moving it across the board tells the team where it stands.', done: 'click', after: 'Pipeline open.' },
         { target: '#board', title: 'Move deals across', do: 'Open a deal, or drag a card to the next stage as the conversation moves.', why: 'When a deal is won you can start its project from the card: room, project and build in one press, and the account owner is kept.' }
       ]
+    },
+    {
+      id: 'tp-approve', title: 'Approve your tech pack',
+      match: () => shown('#clientApprove'),
+      steps: [
+        { target: '.askchanges summary', title: 'Not right yet?', optional: true, do: 'If something needs to change, open this and say what. We fix it and send a new version.', why: 'Better to ask now than to approve something that is not what you want made.' },
+        { target: '#clientApprove [name="name"]', title: 'Sign with your full name', do: 'Read the pack through, then type your full name.', why: 'Your approval is your signature. It confirms the tech pack describes the product you want made.', done: 'input', after: 'Name typed.' },
+        { target: '#clientApprove button', title: 'Approve it', do: () => `Press “${($('#clientApprove button') || {}).textContent || 'Approve'}”.`, why: 'It releases the pack to Future Basics, then to the factory. After this, any change is a new version.', done: 'click', after: 'Approved.' }
+      ],
+      outro: 'Next we send a quote for sampling. It appears on the project page under Quote & deposit, and you get an email.',
+      next: { tour: 'hub-quote', label: 'Approve the quote and pay the deposit', href: '/hub' }
+    },
+    {
+      id: 'hub-quote', title: 'Approve the quote and pay the deposit',
+      match: () => shown('#projectPage') && shown('#workbar'),
+      steps: [
+        { target: '.wb[data-sel="money"]', title: 'Open Quote & deposit', do: 'In the side bar, press “Quote & deposit”.', why: 'The quote and the deposit invoice for this project are there, with the totals.', done: 'click', after: 'Here is the money page.' },
+        { target: 'button[onclick*="decideQuote"]', title: 'Approve the quote', wait: 'No quote yet. We send one once version 1 of the tech pack is approved, and you get an email.', do: 'Read the quantity, unit cost, tooling and freight, then press “Approve quote”.', why: 'Approving tells us the numbers are right, and it releases the deposit invoice.', done: 'click', after: 'Quote approved.' },
+        { target: () => [...document.querySelectorAll('#projectPageBody a')].find(a => /pay securely/i.test(a.textContent)), title: 'Pay the deposit', wait: 'The deposit invoice appears here once the quote is approved.', do: 'Press “Pay securely” on the deposit invoice. Download PDF is beside it if you need a copy.', why: 'Sampling starts when the deposit is paid. The invoice shows as paid in your room afterwards.', done: 'click', after: 'On your way to pay.' }
+      ],
+      outro: 'When the deposit is paid, sampling begins. Follow it under Messages and Files: sample photos arrive as the factory sends them.',
+      next: { tour: 'hub-messages', label: 'Message the team' }
+    },
+    {
+      id: 'hub-messages', title: 'Message the team',
+      match: () => shown('#projectPage') && shown('#workbar'),
+      steps: [
+        { target: '.wb[data-sel="thread"]', title: 'Open Messages', do: 'In the side bar, press “Messages”.', why: 'One thread for the whole project, so nothing gets lost in an email chain.', done: 'click', after: 'The thread is open.' },
+        { target: '#projectPageBody .mc-compose textarea', title: 'Write to us', wait: 'Waiting for the thread…', do: 'Type your question or update. You can attach a file too.', why: 'We answer here and email you, so you never need to keep checking.', done: 'input', after: 'Message typed.' },
+        { target: '#projectPageBody .mc-send', title: 'Send it', wait: 'Type a message first.', do: 'Press Send.', why: 'It lands with the team straight away.', done: 'click', after: 'Sent.' }
+      ]
+    },
+    {
+      id: 'hub-request', title: 'Ask for something',
+      match: () => shown('#newRequest') || shown('#requestDialog'),
+      steps: [
+        { target: '#newRequest', title: 'Start a request', do: 'Press “Start a request”.', why: 'For anything that is not a new product: artwork, a change to a product in development, or a question.', done: dialogOpen('#requestDialog'), after: 'The form is open.' },
+        { target: '#requestProduct', title: 'Which product', do: 'Choose the product this is about.', why: 'It goes to the people working on that product.' },
+        { target: '#requestType', title: 'What kind of request', do: 'Pick new work, artwork, a tech pack, a change or a question.', why: 'It sends the request to the right person first.' },
+        { target: '#requestTitle', title: 'Give it a title', do: 'In a few words: what you need.', why: 'It is the line the team sees first.', done: 'input', after: 'Title in.' },
+        { target: '#requestForm button.full', title: 'Send it', do: 'Press “Submit request”.', why: 'You get an answer in your project thread.', done: 'click', after: 'Request sent.' }
+      ]
+    },
+    {
+      id: 'hub-files', title: 'Send us a file',
+      match: () => shown('#allFiles'),
+      steps: [
+        { target: '#rfProject', title: 'Choose where it goes', do: 'Pick the product or project the file belongs to.', why: 'Files are filed where the team will look for them.' },
+        { target: '#rfPick', title: 'Send a file', do: 'Press “Send a file” and choose it.', why: 'Like attaching it to a chat. We see it at once and it stays in your files.', done: 'click', after: 'Choosing a file.' }
+      ]
+    },
+    {
+      id: 'hub-shopify', title: 'Connect your Shopify store',
+      match: () => shown('#shopPanel'),
+      steps: [
+        { target: '#shAddr', title: 'Your store address', do: 'Type it like your-store.myshopify.com.', why: 'We connect to your own store so a finished product can be sent to it as a draft.', done: 'input', after: 'Address in.' },
+        { target: '#shGo', title: 'Connect', do: 'Press “Connect a store” and approve it in Shopify.', why: 'You stay in control: you can disconnect at any time, and nothing goes live without you.', done: 'click', after: 'Opening Shopify…' }
+      ]
+    },
+    {
+      id: 'staff-prototype', title: 'Build a prototype for a prospect',
+      match: () => path() === '/prototypes' && shown('#app'),
+      steps: [
+        { target: '#url', title: 'Paste their website', do: 'Type the prospect’s website, like joesplumbing.com.', why: 'We read the real site safely to pull their name, services and photos, so the prototype is theirs, not a template.', done: 'input', after: 'Got the address.' },
+        { target: '#industry', title: 'Check the trade', do: 'Leave it on automatic, or pick their trade.', why: 'The trade picks the playbook: what a good plumber’s or roofer’s site must say and show.' },
+        { target: '#auditBtn', title: 'Audit it first (optional)', do: 'Press “Audit it first” to see what is wrong with their current site. Skip it to build straight away.', why: 'The audit is the pitch: specific, true problems you can name on a call.', done: 'click', after: 'Auditing…' },
+        { target: '#buildBtn', title: 'Build the prototype', do: 'Press “Build the prototype”.', why: 'In a few minutes you have a working version of their own site to show.', done: 'click', after: 'Building…' },
+        { target: '#frame', title: 'Look at what was built', wait: 'The prototype opens here when it is ready.', do: 'Scroll the preview and check it reads like their business.', why: 'Check it before anyone else sees it.' },
+        { target: '#editText', title: 'Ask for a change', optional: true, do: 'Say what to change, in plain words, for example “make the phone number bigger”.', why: 'Each change is a new version you can restore, so nothing is lost.', done: 'input', after: 'Change written.' },
+        { target: '#editGo', title: 'Make the change', optional: true, do: 'Press “Make the change”.', why: 'It rewrites the page and keeps the old version.', done: 'click', after: 'Changing it…' },
+        { target: '#pub', title: 'Publish', wait: 'Open a built prototype to publish it.', do: 'Press Publish for a link you can send.', why: 'A link they can open on their phone is what wins the call.', done: 'click', after: 'Published.' }
+      ],
+      outro: 'Send the link in a personal note and log it in Sales: the deal follows from there.',
+      next: { tour: 'staff-leads', label: 'Find the next prospects' }
+    },
+    {
+      id: 'staff-leads', title: 'Find leads worth a call',
+      match: () => path() === '/prototypes' && shown('#app'),
+      steps: [
+        { target: '.tab[data-t="leads"]', title: 'Open Find leads', do: 'Open the Find leads tab.', why: 'It finds local businesses whose sites are worth improving.', done: 'click', after: 'Leads tab open.' },
+        { target: '#lTrade', title: 'Pick a trade', wait: 'Open Find leads first.', do: 'Choose the trade you want to reach.', why: 'Each trade has its own playbook, so the audit knows what to look for.' },
+        { target: '#lPlace', title: 'Name a town', wait: 'Open Find leads first.', do: 'Type a town, like Norristown, PA.', why: 'Local businesses are the ones you can meet.', done: 'input', after: 'Town in.' },
+        { target: '#lSearch', title: 'Find leads', wait: 'Open Find leads first.', do: 'Press “Find leads”.', why: 'It searches, drops directories and good sites, and keeps the ones worth a call.', done: 'click', after: 'Searching…' },
+        { target: '#lAudit', title: 'Check these sites', wait: 'Search first to get a list.', do: 'Press “Check these sites” for a quick audit of each.', why: 'It ranks them by how much they need you, so you call the best first.', done: 'click', after: 'Checking…' }
+      ]
+    },
+    {
+      id: 'staff-money', title: 'Invoice and get paid',
+      match: () => path() === '/money' && shown('#app'),
+      steps: [
+        { target: '#fromBtn', title: 'Invoice from a deal', do: 'Press “From a deal or project”.', why: 'The invoice fills itself in from what you sold, so nothing is retyped.', done: dialogOpen('#dlg'), after: 'The picker is open.' },
+        { target: '#dBody', title: 'Pick the deal or project', wait: 'Open the picker first.', do: 'Choose a won deal or a project from the list.', why: 'It carries the client, the description and the value.' },
+        { target: '#lines', title: 'Check the lines', wait: 'Pick a deal first.', do: 'Change any line, add a deposit or credit, set the due date.', why: 'What you send is what they pay, so check it once here.' },
+        { target: '#dActs', title: 'Save, send or push', wait: 'Pick a deal first.', do: 'Save the draft, send it, or push it to QuickBooks. Then close this window.', why: 'The PDF carries a payment link, and payments come back on their own.' },
+        { target: '.tab[data-t="payouts"]', title: 'See the bank side', do: 'Open Payouts.', why: 'Shopify Payments payouts and fees, so the books match the bank.', done: 'click', after: 'Payouts open.' },
+        { target: '#readPayouts', title: 'Read payouts now', wait: 'Open Payouts first.', do: 'Press “Read payouts now”.', why: 'It reads what Shopify paid out and what it took in fees. This also runs by itself.', done: 'click', after: 'Reading…' },
+        { target: '.tab[data-t="settings"]', title: 'Open Settings', do: 'Open Settings.', why: 'Where QuickBooks is connected and payment instructions are set.', done: 'click', after: 'Settings open.' },
+        { target: '#qbPanel', title: 'QuickBooks', wait: 'Open Settings first.', do: 'Connect QuickBooks and test the connection here.', why: 'Invoices push to your books and payments come back, so nobody keys anything twice.' }
+      ]
+    },
+    {
+      id: 'staff-intel', title: 'Find people worth talking to',
+      match: () => path() === '/intel' && shown('#app'),
+      steps: [
+        { target: '#listen', title: 'Listen now', do: 'Press “Listen now”.', why: 'It looks for people talking about the problems we solve and scores each one.', done: 'click', after: 'Listening…' },
+        { target: '#list', title: 'Signals, best first', do: 'Open one to see why it scored high, and a drafted note to send in your own words.', why: 'A note that shows you read their situation is the whole sales process.' },
+        { target: '.tab[data-t="watches"]', title: 'Open Watches', do: 'Open the Watches tab.', why: 'A watch keeps listening for a person, a company or a phrase you care about.', done: 'click', after: 'Watches open.' },
+        { target: '#newWatch', title: 'Add a watch', wait: 'Open Watches first.', do: 'Press “+ New watch”.', why: 'New signals appear on Home under Reach out today.', done: 'click', after: 'Adding one.' }
+      ]
+    },
+    {
+      id: 'staff-factories', title: 'Find the right factory',
+      match: () => path() === '/factories' && shown('#app'),
+      steps: [
+        { target: '#map', title: 'Where they are', do: 'Every factory is a pin on the map. Click one to show only that place.', why: 'Location tells you freight, time zone and who to visit on a trip.' },
+        { target: '#q', title: 'Search', do: 'Type a name, a product or a skill.', why: 'Finds who makes what you need.', done: 'input', after: 'Searching.' },
+        { target: '#typeChips', title: 'Narrow by what they make', do: 'Press a product type to keep only those factories.', why: 'The same factory can make several kinds of product.' },
+        { target: '#cards', title: 'Open a factory', do: 'Open a card.', why: 'You see its work in hand, what it makes, its skills and its contact page. Assigned packs, files and project dates show where its work stands.', done: 'click', after: 'Opened.' }
+      ]
+    },
+    {
+      id: 'staff-builds', title: 'Show and invite on the Builds showcase',
+      match: () => path() === '/builds/admin' && shown('#app'),
+      steps: [
+        { target: '#list', title: 'Your builds', do: 'Each card is a product or site we have built, with its live site and stack.', why: 'Clients and prospects see these on the showcase, so keep them current.' },
+        { target: '#newBuild', title: 'Add a build', do: 'Press “New build” to add one.', why: 'Name it, say what it is and link the live site.', done: 'click', after: 'Adding one.' },
+        { target: '.tab[data-t="invites"]', title: 'Open Invites', do: 'Open the Invites tab.', why: 'The showcase is private. An invite gives someone a link to the builds you choose.', done: 'click', after: 'Invites open.' },
+        { target: '#invEmails', title: 'Who to invite', wait: 'Open Invites first.', do: 'Type the email addresses to invite.', why: 'Each person gets their own sign-in link, so you can see who looked.', done: 'input', after: 'Emails in.' },
+        { target: '.tab[data-t="updates"]', title: 'What’s new', do: 'Open What’s new.', why: 'Changes to the apps we build show up here so the showcase follows them.', done: 'click', after: 'Updates open.' }
+      ]
+    },
+    {
+      id: 'staff-console', title: 'The console: clients and production',
+      match: () => path() === '/admin' && shown('#app'),
+      steps: [
+        { target: '#inbox', title: 'Messages', optional: true, do: 'Everything clients write lands here. Reply in the same thread.', why: 'One inbox means nothing waits on someone being at their desk.' },
+        { target: '#clientsHead', title: 'Clients', do: 'Every client is below. Open one for its room, its projects and its tech packs.', why: 'This is where a customer’s whole story lives.' },
+        { target: '#approvals', title: 'Waiting on approval', optional: true, do: 'Packs and quotes waiting on a client.', why: 'These are the ones to nudge.' },
+        { target: '#production', title: 'Production attention', optional: true, do: 'Anything late or stuck at a factory.', why: 'The earlier you see it, the cheaper it is to fix.' },
+        { target: '#assistantLearning', title: 'What the assistant is learning', optional: true, do: 'Where people corrected the assistant.', why: 'Every correction makes the next draft better.' },
+        { target: '#connections', title: 'Connections', do: 'Shopify, email and the rest. Green means connected.', why: 'If a client says a payment or an email did not arrive, look here first.' }
+      ]
+    },
+    {
+      id: 'staff-health', title: 'Platform health',
+      match: () => path() === '/platform' && shown('#platformPage'),
+      steps: [
+        { target: '#pfHealth', title: 'Everything we depend on', do: 'Each card is a connection, a scheduled job or a client site, green when fine.', why: 'Problems show up here before a client notices.' },
+        { target: '#pfRefresh', title: 'Check now', do: 'Press the refresh button to check again right now.', why: 'After you fix something, confirm it is green.', done: 'click', after: 'Checking…' },
+        { target: '#pfTabInsights', title: 'Insights', do: 'Open Insights.', why: 'Who is using the platform and where people get stuck.', done: 'click', after: 'Insights open.' }
+      ]
+    },
+    {
+      id: 'staff-pack', title: 'Work a tech pack',
+      match: () => onWork() && shown('#tabs button[data-tab]') && !$('#clientApprove'),
+      steps: [
+        { target: tab('calls'), title: 'Callouts', do: 'Open Callouts: the pins on the photo with a spec and a note for the factory.', why: 'These are the details the factory must get exactly right.', done: 'click', after: 'Callouts open.' },
+        { target: tab('poms'), title: 'Measurements', do: 'Open the measurement table.', why: 'Check the graded size run against the sample size.', done: 'click', after: 'Measurements open.' },
+        { target: tab('bom'), title: 'Materials and trims', do: 'Open the bill of materials.', why: 'It sets cost and look, and the factory quotes from it.', done: 'click', after: 'Materials open.' },
+        { target: tab('check'), title: 'The independent check', optional: true, do: 'Open Check: the photo beside the render, a score, and what to fix. Run it from its button.', why: 'A second opinion before the pack goes to the client.', done: 'click', after: 'Check open.' },
+        { target: tab('sign'), title: 'Sign-off', do: 'Open Sign.', why: 'Publishing, the client’s approval and the factory’s countersignature are tracked here. Once every signature is in, the pack locks.', done: 'click', after: 'Sign-off open.' }
+      ]
     }
   ];
+
+  if (window.__fbHelperTours) { window.__fbHelperTours(TOURS); return; } // lets a test read the guides without drawing anything
 
   // ---- state -------------------------------------------------------------------------------------------------------------------------------
   let lost = 0, on = store.get(K_ON) === '1', tour = null, i = 0, phase = 'doing', cheerAt = 0, listOpen = false;
@@ -251,7 +415,7 @@ dialog .fbh-tog.on{display:none}
       h = `<div class="meta"><span>${NAME} the helper mouse</span></div><h3>No guide for this page yet</h3><p>${NAME} follows you around, and the guides appear where there is something to walk through. Try My day or the client hub.</p>${tail(false)}`;
     } else if (listOpen) {
       const p = prog();
-      h = `<div class="meta"><span>All guides</span></div>` + `<div class="fbh-list">${TOURS.map(t => { const here = safe(t.match), d = (p[t.id] || {}).done; return `<button type="button" data-a="tour" data-id="${t.id}"${t.href ? ` data-href="${esc(t.href)}"` : ''}${here ? '' : ' disabled'}><span>${d ? '✓ ' : ''}${esc(t.title)}</span><small>${here ? 'on this page' : 'other page'}</small></button>`; }).join('')}</div>` + `<div class="fbh-acts"><button type="button" data-a="guides">Close</button><button type="button" class="q" data-a="off">Turn off</button></div>`;
+      h = `<div class="meta"><span>All guides</span></div>` + `<div class="fbh-list">${TOURS.map(t => ({ t, here: !!safe(t.match) })).sort((a, b) => b.here - a.here).map(({ t, here }) => { const d = (p[t.id] || {}).done; return `<button type="button" data-a="tour" data-id="${t.id}"${t.href ? ` data-href="${esc(t.href)}"` : ''}${here ? '' : ' disabled'}><span>${d ? '✓ ' : ''}${esc(t.title)}</span><small>${here ? 'on this page' : 'other page'}</small></button>`; }).join('')}</div>` + `<div class="fbh-acts"><button type="button" data-a="guides">Close</button><button type="button" class="q" data-a="off">Turn off</button></div>`;
     } else if (phase === 'end') {
       const nx = tour.next && tourById(tour.next.tour);
       h = `<div class="meta"><span>${esc(tour.title)}</span><span>Done</span></div><h3>That is the whole route</h3>${tour.outro ? `<p>${esc(tour.outro)}</p>` : '<p>You have been through every step on this page.</p>'}${nx ? `<p class="nx"><b>Next</b> ${esc(tour.next.label || nx.title)}</p>` : ''}<div class="fbh-acts">${nx ? '<button type="button" class="go" data-a="next-tour">Show me</button>' : ''}<button type="button" data-a="replay">Replay</button><button type="button" data-a="guides">Guides</button><button type="button" class="q" data-a="off">Turn off</button></div>`;
