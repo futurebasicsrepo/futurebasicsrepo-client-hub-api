@@ -206,6 +206,9 @@ await journey('J171', 'The client hub carries the agreement: a contract is tied 
   let d = await dash(), a = d.agreements.find(x => x.id === id), w = d.waiting.find(x => x.kind === 'contract' && x.id === `ct-${id}`);
   ok(a && a.status === 'sent' && a.needs === 'sign' && a.youAreSigner === true && a.link === sent.json.link && a.totalCents === 500000, 'once sent it is in Your agreements, and the signer\'s own link is there', a);
   ok(w && w.needs === 'sign' && w.href === sent.json.link && /^Sign Hub agreement/.test(w.title), 'and in Waiting on you, with a button to sign', w);
+  // addressed by email: even a contract filed under no client at all reaches the person it is addressed to when they sign in
+  sql(`update contracts set client_id=null where id='${id}'`); d = await dash(); ok(d.agreements.some(x => x.id === id && x.link === sent.json.link) && d.waiting.some(x => x.id === `ct-${id}`), 'a contract with no client still reaches the signer by the email they sign in with', d.agreements.length);
+  sql(`update contracts set client_id='${clientId}' where id='${id}'`);
   // someone else at the same client sees it, but not the signing link; a staff preview of the hub gets no link either
   const otherId = sql(`insert into users(client_id,email,name,role) values('${clientId}','teammate-${stamp}@chaos.test','Teammate','client') returning id`).split('\n')[0];
   const other = await forge({ sub: otherId, clientId, role: 'client' }), od = await dash(other), oa = od.agreements.find(x => x.id === id);

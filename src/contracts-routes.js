@@ -367,7 +367,9 @@ export function registerContractRoutes(app, d) {
   async function hubContracts({ clientId, userId, preview = false }) {
     if (!clientId) return [];
     const me = String((await pool.query('select email from users where id=$1', [userId]).catch(() => ({ rows: [] }))).rows[0]?.email || '').toLowerCase();
-    const rows = (await pool.query(`select * from contracts where client_id=$1 and status in ('sent','signed_by_client','executed') order by coalesce(executed_at, sent_at, created_at) desc`, [clientId])).rows, out = [];
+    // Everything for this client, plus anything addressed to the signed-in person's own email wherever it was filed (a staff preview never matches on email).
+    const byEmail = Boolean(me) && !preview;
+    const rows = (await pool.query(`select * from contracts where (client_id=$1 or ($2::boolean and lower(content->'client'->>'signerEmail')=$3)) and status in ('sent','signed_by_client','executed') order by coalesce(executed_at, sent_at, created_at) desc`, [clientId, byEmail, me])).rows, out = [];
     for (let r of rows) {
       r = await fresh(r); if (!r || !['sent', 'signed_by_client', 'executed'].includes(r.status)) continue;
       const c = r.content, mine = Boolean(me) && me === String(c.client.signerEmail || '').toLowerCase(), token = signToken(secret, r.id, r.token_version), link = mine && !preview ? `${publicUrl}/sign/${token}` : null;
