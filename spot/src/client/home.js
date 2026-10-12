@@ -468,6 +468,7 @@
       (o.why ? '<div class="why">' + esc(o.why) + '</div>' : '') +
       (it.url ? '<div class="facts" data-facts="' + esc(it.url) + '" data-k="' + k + '">' + factsHtml(o, k) + '</div>' : '') +
       (it.url && /^https?:/i.test(it.url) ? '<div class="rv" data-rv="' + esc(it.url) + '" data-k="' + k + '">' + reviewsHtml(o, k) + '</div>' : '') +
+      (it.url && /^https?:/i.test(it.url) ? '<div class="cmp" data-cmp="' + esc(it.url) + '" data-k="' + k + '">' + compareHtml(o, k) + '</div>' : '') +
       '<div class="pr" data-pr="' + esc(it.url || '') + '">' + priceHtml(o, k) + '</div>' + buttons(k, o.stock === 'out') +
       '<div class="cardlinks"><button class="textlink" type="button" data-act="edit" data-k="' + k + '">Edit details</button>' + (it.url && /^https?:/i.test(it.url) ? watchBtn(it.url, k) : '') +
       (it.url && /^https?:/i.test(it.url) ? '<a href="' + esc(it.url) + '" target="_blank" rel="noopener">At the store ↗</a>' : '') + '</div></div></article>';
@@ -669,7 +670,7 @@
     if (T.list.length > 1) say('swipe for more →');
     details(added);
     wantFacts(added);
-    if (T.kind === 'products' && T.list[0] && added.includes(T.list[0])) loadReviews(T.list[0]);
+    if (T.kind === 'products' && T.list[0] && added.includes(T.list[0])) loadReviews(T.list[0]), loadCompare(T.list[0]);
     return { added, done };
   }
   // The next batch, from stores not shown yet, onto the end of the shelf.
@@ -799,6 +800,68 @@
       reviewsBy.set(url, { error: true });
     }
     paintReviews(url);
+  }
+
+  // ─── Cheaper elsewhere ───────────────────────────────────────────────────
+  // The same product at other stores for less (compare.js): the AI searches,
+  // Spot checks each store's own price where it can. One tap switches the
+  // card to that store; "best price" when nothing beats it.
+  const compareBy = new Map();
+  function compareHtml(o, k) {
+    const d = compareBy.get(o.item.url);
+    if (d === 'loading') return '<div class="cl wait">Checking other stores…</div>';
+    if (!d) return o.item.price_cents ? '<button class="textlink cmpgo" type="button" data-act="compare" data-k="' + k + '">💸 Cheaper elsewhere?</button>' : '';
+    if (d.error) return '<div class="cl muted">Couldn’t check other stores just now.</div>';
+    // Against the price on the card now (the store's own may have replaced the search's).
+    const offers = d.offers.map((x, i) => ({ ...x, i })).filter((x) => x.cents <= o.item.price_cents - 100);
+    if (!offers.length) return '<div class="cl good">✓ Best price Spot found</div>';
+    return offers.map((x) => '<div class="cl offer"><span>💸 <b>' + usd(o.item.price_cents - x.cents) + ' less</b> at ' + esc(x.store) + ': ' + (x.verified ? '' : 'about ') + usd(x.cents) + ' <a href="' + esc(x.url) + '" target="_blank" rel="noopener">↗</a></span><button class="btn ghost tiny" type="button" data-act="switch" data-k="' + k + '" data-i="' + x.i + '">Switch</button></div>').join('');
+  }
+  function paintCompare(url) {
+    for (const el of document.querySelectorAll('.cmp[data-cmp="' + CSS.escape(url) + '"]')) {
+      const o = entryAt(el.dataset.k, url);
+      if (o) el.innerHTML = compareHtml(o, el.dataset.k);
+    }
+  }
+  async function loadCompare(o) {
+    const url = o?.item?.url;
+    if (!url || !o.item.price_cents || compareBy.has(url)) return;
+    compareBy.set(url, 'loading');
+    paintCompare(url);
+    try {
+      const r = await api('/v1/compare', { url, title: o.item.title || '', store: o.merchant?.name || '', variant: o.item.variant || '', price_cents: o.item.price_cents });
+      compareBy.set(url, r.compare || { error: true });
+      if (r.compare?.offers?.length) quip('ooh, found it cheaper 💸', 1800);
+    } catch {
+      compareBy.set(url, { error: true });
+    }
+    paintCompare(url);
+  }
+  // Same product, the cheaper store: the card now buys it there.
+  function switchStore(b) {
+    const k = b.dataset.k;
+    const { e } = entryOf(k);
+    const o = e && (e.items ? null : e);
+    const offer = o && compareBy.get(o.item.url)?.offers?.[Number(b.dataset.i)];
+    if (!offer) return;
+    let origin = '';
+    try {
+      origin = new URL(offer.url).origin;
+    } catch {}
+    const was = o.item.price_cents;
+    o.merchant = { name: offer.store, url: origin };
+    o.item = { ...o.item, url: offer.url, price_cents: offer.cents };
+    o.stock = offer.in_stock ? 'in' : 'unknown';
+    o.why = 'Same one, ' + usd(was - offer.cents) + ' less here' + (o.why ? '. ' + o.why : '');
+    compareBy.set(offer.url, { offers: [] });
+    const card = document.querySelector('[data-card="' + CSS.escape(k) + '"]');
+    if (card) card.outerHTML = productCard(o, k, /^\d+:0$/.test(k));
+    if (String(k).startsWith('s:')) $('#shopCard').innerHTML = productCard(o, k, false);
+    wantFacts([o]);
+    keepShelf();
+    walletWatch();
+    spot.cheer(false);
+    quip('switched! saved you ' + usd(was - offer.cents) + ' 💸', 2200);
   }
 
   // ─── Watch this ─────────────────────────────────────────────────────────
@@ -932,6 +995,7 @@
       const o = entryAt(el.dataset.k, url);
       if (o) el.innerHTML = factsHtml(o, el.dataset.k);
     }
+    if (f?.now_cents) setTimeout(() => paintCompare(url));
     for (const el of document.querySelectorAll('.pr' + sel('data-pr'))) {
       const card = el.closest('[data-card]');
       const o = card && entryAt(card.dataset.card, url);
@@ -1045,6 +1109,7 @@
     $('#shopCard').innerHTML = productCard(shopList[i], 's:' + i, false);
     wantFacts([shopList[i]]);
     loadReviews(shopList[i]);
+    loadCompare(shopList[i]);
     $('#shopSheet').hidden = false;
     walletWatch();
   });
@@ -1054,7 +1119,7 @@
   $('#shopCard').addEventListener('click', (ev) => {
     const b = ev.target.closest('[data-act]');
     if (!b) return;
-    if (b.dataset.act === 'watch' || b.dataset.act === 'reviews') return actOn(b);
+    if (['watch', 'reviews', 'compare', 'switch'].includes(b.dataset.act)) return actOn(b);
     $('#shopSheet').hidden = true;
     document.body.classList.remove('shopping');
     $('#modeSpot').setAttribute('aria-selected', 'true');
@@ -1212,6 +1277,11 @@
   });
   function actOn(b) {
     if (b.dataset.act === 'watch') return toggleWatch(b);
+    if (b.dataset.act === 'switch') return switchStore(b);
+    if (b.dataset.act === 'compare') {
+      const { e } = entryOf(b.dataset.k);
+      return loadCompare((e?.items || [e])[0]);
+    }
     if (b.dataset.act === 'reviews') {
       const { e } = entryOf(b.dataset.k);
       return loadReviews((e?.items || [e])[0]);

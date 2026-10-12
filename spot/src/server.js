@@ -29,6 +29,7 @@ import { createPriceWatch } from './pricewatch.js';
 import { createStoreFacts, siteOf } from './storefacts.js';
 import { createWatches } from './watches.js';
 import { createReviews } from './reviews.js';
+import { createCompare } from './compare.js';
 import { registerAssets } from './assets.js';
 import { registerMerchants } from './merchants.js';
 import { createLiveChecks } from './livechecks.js';
@@ -177,6 +178,8 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   app.decorate('watches', watches);
   // Fit and reviews on a card, read by AI and kept two weeks (reviews.js).
   const reviews = createReviews({ db, ...(capture.reviews ? { read: capture.reviews } : {}), onUsage: (model, usage) => (metrics.ok('anthropic'), metrics.ai(model, usage)), onError: (err) => metrics.fail('anthropic', err), log: app.log });
+  // The same product cheaper at another store (compare.js).
+  const compare = createCompare({ db, ...(capture.compare ? { find: capture.compare } : {}), ...(capture.comparePrice ? { price: capture.comparePrice } : {}), onUsage: (model, usage) => (metrics.ok('anthropic'), metrics.ai(model, usage)), onError: (err) => metrics.fail('anthropic', err), log: app.log });
   app.decorate('approvals', approvals);
   spot.emit = (kind, id, extra) => {
     // A person said yes: record a signed approval of exactly what they approved.
@@ -622,6 +625,19 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     const sizes = (uid && db.users.byId(uid)?.sizes) || {};
     reply.header('cache-control', 'no-store');
     return { reviews: await reviews.forShopper({ url, title, store: typeof b.store === 'string' ? b.store.slice(0, 80) : '' }, sizes) };
+  });
+
+  // Cheaper elsewhere: the same product at other stores, under this price.
+  app.post('/v1/compare', async (req, reply) => {
+    limits.reviews(req);
+    const b = req.body || {};
+    const url = typeof b.url === 'string' ? b.url.slice(0, 1000) : '';
+    if (!/^https?:\/\//i.test(url)) throw new CartError('That’s not a product link');
+    const title = typeof b.title === 'string' ? b.title.trim().slice(0, 140) : '';
+    if (!title) throw new CartError('Which product?');
+    const price = Number.isInteger(b.price_cents) && b.price_cents > 0 ? b.price_cents : null;
+    reply.header('cache-control', 'no-store');
+    return { compare: await compare.offers({ url, title, store: typeof b.store === 'string' ? b.store.slice(0, 80) : '', variant: typeof b.variant === 'string' ? b.variant.slice(0, 80) : '', price_cents: price }) };
   });
 
   // "Watch this": a signed-in shopper's watched products.
