@@ -102,10 +102,177 @@
     $('#mine').hidden = id !== 'compose' || !load('spot:mine', []).length;
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
-  const say = (t) => ($('#say').textContent = t);
+  // ─── Spot, the mascot ─────────────────────────────────────────────────────
+  // The live 3D plush (assets/spot3d.js, as on the website) once it loads;
+  // the stills until then, or on Save-Data. He has opinions: he leans in while
+  // he searches, hops when the first pick lands, gets flustered when he comes
+  // up empty, and is thrilled when you choose the pick he recommended.
+  const buddyEl = $('#buddy');
+  const sayEl = $('#say');
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let s3 = null;
+  const speak = (t) => {
+    if (sayEl.textContent === t) return;
+    sayEl.textContent = t;
+    sayEl.classList.remove('pop');
+    void sayEl.offsetWidth;
+    sayEl.classList.add('pop');
+  };
+  // A quip holds the bubble for a moment; whatever Spot meant to say next
+  // follows right after.
+  let quipUntil = 0;
+  let queued = null;
+  let quipT = 0;
+  const say = (t) => (Date.now() < quipUntil ? (queued = t) : speak(t));
+  const quip = (t, ms = 2200) => {
+    if (!t) return;
+    if (Date.now() >= quipUntil) queued = sayEl.textContent;
+    speak(t);
+    quipUntil = Date.now() + ms;
+    clearTimeout(quipT);
+    quipT = setTimeout(() => {
+      quipUntil = 0;
+      if (queued != null) speak(queued);
+      queued = null;
+    }, ms);
+  };
+  const LINES = {
+    mine: ['ooh, that’s MY pick! 😍', 'yesss, the one I’d get 🧡', 'great minds 🤝', 'you’ve got taste 😌', 'my favorite too!! 🥹'],
+    other: ['ooh, nice one 👌', 'good eye!', 'love that 💛', 'solid choice'],
+    paidMine: ['you got my pick!! 🎉 ordering it…', 'best. choice. ordering it… 🧡'],
+    back: ['that one’s still my fave 👀', 'just saying, my pick’s right here 😇'],
+    found: ['ooh, found good stuff 🤩', 'look what I found!', 'okay these are good 👀'],
+    empty: ['hmm 😕', 'oof, nothing yet'],
+    poke: ['boop!', 'hehe', 'eep!', 'that tickles 😆'],
+    dizzy: ['whoa… 💫'],
+    shy: ['oh! hi… 🙈'],
+    yawn: ['*yaaawn* 🥱'],
+    wake: ['oh! I’m up 👀'],
+    back_tab: ['you’re back! 👋'],
+  };
+  const said = {};
+  const line = (k) => {
+    const a = LINES[k] || [];
+    said[k] = (said[k] ?? Math.floor(Math.random() * a.length)) + 1;
+    return a[said[k] % a.length] || '';
+  };
+  // The stills' version of a mood, when the 3D one isn't there.
+  const still = (cls, ms) => {
+    if (!buddyEl) return;
+    buddyEl.classList.remove('joy', 'think', 'hop', 'oh');
+    void buddyEl.offsetWidth;
+    if (cls) buddyEl.classList.add(cls);
+    if (cls && ms) setTimeout(() => buddyEl.classList.remove(cls), ms);
+  };
+  function confetti(n = 34) {
+    if (reduceMotion || !buddyEl) return;
+    const c = document.createElement('div');
+    c.className = 'confetti';
+    const cols = ['#ff5a36', '#ffb347', '#1d8a52', '#4b7bff', '#ffd23f', '#ff8fb1'];
+    for (let i = 0; i < n; i++) {
+      const p = document.createElement('i');
+      const a = Math.random() * Math.PI * 2;
+      const d = 60 + Math.random() * 150;
+      p.style.cssText = '--dx:' + (Math.cos(a) * d).toFixed(0) + 'px;--dy:' + (Math.sin(a) * d - 50).toFixed(0) + 'px;--r:' + (Math.random() * 720 - 360).toFixed(0) + 'deg;background:' + cols[i % cols.length];
+      c.appendChild(p);
+    }
+    buddyEl.appendChild(c);
+    setTimeout(() => c.remove(), 1500);
+  }
+  // Where they're looking: the card they chose gets its own happy Spot, who
+  // pops up over the photo with his line (and hearts, for his own pick).
+  function cardCheer(card, mine, text) {
+    if (!card) return;
+    card.querySelector('.cardspot')?.remove();
+    const yay = buddyEl?.querySelector('img.joy')?.getAttribute('src') || '';
+    const c = document.createElement('div');
+    c.className = 'cardspot' + (mine ? ' mine' : '');
+    c.setAttribute('aria-hidden', 'true');
+    c.innerHTML = '<span class="cs-say">' + esc(text) + '</span><img src="' + esc(yay) + '" alt="" width="320" height="358">' + (mine && !reduceMotion ? '<b>💛</b><b>🧡</b><b>💛</b><b>✨</b>' : '');
+    (card.querySelector('.ph') || card).appendChild(c);
+    setTimeout(() => c.classList.add('bye'), mine ? 2300 : 1500);
+    setTimeout(() => c.remove(), mine ? 2800 : 2000);
+  }
+  // The small Spot by his line in the thread hops along with the big one.
+  const nod = () => {
+    const f = [...document.querySelectorAll('#thread .spotsay i')].at(-1);
+    if (!f || reduceMotion) return;
+    f.classList.remove('hop');
+    void f.offsetWidth;
+    f.classList.add('hop');
+  };
+  let thinkT = 0;
+  let thinkStop = 0;
+  const spot = {
+    // Searching: he leans in and looks around until the first pick lands.
+    think(on) {
+      clearInterval(thinkT);
+      clearTimeout(thinkStop);
+      if (on) thinkStop = setTimeout(() => spot.think(false), 30000); // never looks around forever
+      if (s3) {
+        s3.anticipate(on);
+        if (on) thinkT = setInterval(() => s3.play(['glance', 'tilt', 'glance', 'peek'][Math.floor(Math.random() * 4)]), 2600);
+      } else still(on ? 'think' : null);
+    },
+    perk() {
+      spot.think(false);
+      nod();
+      if (s3) {
+        s3.hop();
+        s3.happy(true);
+        setTimeout(() => s3?.happy(false), 1100);
+      } else still('hop', 700);
+    },
+    // You chose something: over the moon if it's the one he recommended.
+    cheer(mine) {
+      spot.think(false);
+      nod();
+      if (s3) {
+        s3.hop();
+        s3.happy(true);
+        if (mine) setTimeout(() => s3?.hop(), 520), setTimeout(() => s3?.play('wiggle'), 1100);
+        setTimeout(() => s3?.happy(false), mine ? 2600 : 1400);
+      } else still(mine ? 'joy' : 'hop', mine ? 2400 : 700);
+      if (mine) confetti();
+    },
+    oops() {
+      spot.think(false);
+      if (s3) {
+        s3.pose('oh');
+        setTimeout(() => s3?.pose(null), 1500);
+      } else still('oh', 1500);
+    },
+  };
+  if (buddyEl) {
+    buddyEl.addEventListener('click', (e) => {
+      if (s3) {
+        const r = buddyEl.getBoundingClientRect();
+        return s3.poke((e.clientX - (r.left + r.width / 2)) / (r.width / 2));
+      }
+      still('hop', 700);
+      quip(line('poke'), 1400);
+    });
+    const src = $('#hero')?.dataset.spot3d;
+    if (src && !navigator.connection?.saveData)
+      setTimeout(
+        () =>
+          import(src)
+            .then((m) => {
+              s3 = m.mountSpot3D(buddyEl, { onCue: (c) => quip(line(c === 'back' ? 'back_tab' : c), 1800) });
+              if (!s3) return;
+              buddyEl.classList.add('has3d');
+              if (screen === 'compose') setTimeout(() => s3?.play('wave'), 600);
+            })
+            .catch(() => {}),
+        300,
+      );
+  }
 
   // ─── Compose ──────────────────────────────────────────────────────────────
   const q = $('#q');
+  // He leans in while you type.
+  q.addEventListener('focus', () => s3?.anticipate(true));
+  q.addEventListener('blur', () => s3?.anticipate(false));
   q.addEventListener('input', () => {
     q.style.height = 'auto';
     q.style.height = Math.min(q.scrollHeight, 180) + 'px';
@@ -165,7 +332,7 @@
     const btn = $('#go');
     btn.disabled = true;
     btn.textContent = 'reading…';
-    say(image ? 'ooh, let me look at that…' : /https?:\/\//.test(text) ? 'grabbing it…' : 'looking it up…');
+    spot.think(true), say(image ? 'ooh, let me look at that…' : /https?:\/\//.test(text) ? 'grabbing it…' : 'looking it up…');
     try {
       // Typed: the shelf opens right away and fills as the AI finds things.
       if (!image && !/https?:\/\//.test(text)) {
@@ -219,7 +386,7 @@
       }
     } catch (e) {
       $('#capErr').textContent = e.message;
-      say('hmm, that one got away from me');
+      spot.oops(), say('hmm, that one got away from me');
       // Don't resend a screenshot that didn't work with the next try.
       if (image) {
         image = null;
@@ -237,7 +404,7 @@
   function notFound(warning, text) {
     show('compose');
     $('#capErr').innerHTML = esc(warning) + ' <button class="textlink" type="button" id="capRetry">Try again</button> · <button class="textlink" type="button" id="capManual">type it in myself</button>';
-    say('hmm, I came up empty on that one');
+    spot.oops(), say('hmm, I came up empty on that one');
     $('#capRetry').onclick = go;
     $('#capManual').onclick = () => {
       draft = toDraft({ source: 'text', items: [{ ...blank(), title: text }] });
@@ -358,7 +525,11 @@
     T.sync = () => {
       if (turns[t] !== T) return; // a shelf from before "start over"
       const n = T.list.length;
-      turn.querySelector('.at').textContent = n ? Math.min(Math.round(rail.scrollLeft / step()), n - 1) + 1 + ' of ' + n + (T.done ? '' : '+') : '';
+      const at = n ? Math.min(Math.round(rail.scrollLeft / step()), n - 1) : 0;
+      turn.querySelector('.at').textContent = n ? at + 1 + ' of ' + n + (T.done ? '' : '+') : '';
+      // Back to his pick after a look around: he'd like a word.
+      T.far = Math.max(T.far || 0, at);
+      if (at === 0 && T.far >= 3 && !T.nudged && T.kind === 'products') (T.nudged = true), quip(line('back'), 2200), s3?.play('bounce');
       turn.querySelector('[data-step="-1"]').disabled = rail.scrollLeft < 4;
       turn.querySelector('[data-step="1"]').disabled = rail.scrollLeft + rail.clientWidth >= rail.scrollWidth - 4;
       // Near the end: load the next batch, so the shelf never runs out.
@@ -476,17 +647,18 @@
     try {
       await streamed(body, (e) => {
         if (e.type === 'profile') (T.profile = e.profile), showUsed(T);
-        else if (e.type === 'searching') say(T.list.length ? 'finding more…' : 'searching stores…');
-        else if (e.type === 'checking') !T.list.length && say('found some. getting their photos…');
+        else if (e.type === 'searching') say(T.list.length ? 'finding more…' : 'searching stores…'), !T.list.length && spot.think(true);
+        else if (e.type === 'checking') !T.list.length && (say('found some. getting their photos…'), spot.think(true));
         else if (e.type === 'pick' || e.type === 'outfit') {
           const entry = e.option || e.outfit;
           if (addEntry(T, e.type === 'pick' ? 'products' : 'outfits', entry)) added.push(entry);
-          if (T.list.length === 1) say(T.kind === 'outfits' ? 'first look’s up. more coming →' : 'first pick’s up. more coming →');
+          if (T.list.length === 1) say(T.kind === 'outfits' ? 'first look’s up. more coming →' : 'first pick’s up. more coming →'), spot.perk(), quip(line('found'), 1600);
         } else if (e.type === 'update') applyPage(e, true), photoFor(e.new_url || e.url);
         else if (e.type === 'done') done = e;
       });
     } finally {
       T.loading = false;
+      spot.think(false);
       for (const sk of T.rail.querySelectorAll('.sk')) sk.remove();
       if (!added.length || ++T.page > BATCHES) T.done = true;
       T.sync();
@@ -858,7 +1030,8 @@
       quote: (a) => api('/v1/quote', { stores: stores(), shipping: a }),
       pay: (sh, id) => walletOrder(stores(), sh, id),
       done: async (p) => {
-        say('paid! ordering it…');
+        say(pickedMine ? line('paidMine') : 'paid! ordering it…');
+        spot.cheer(pickedMine);
         await api(p.paid, {}).catch(() => {});
         location.href = p.manage;
       },
@@ -930,8 +1103,18 @@
       made = null;
       return check(e.stock === 'in' ? '' : 'I couldn’t check stock at ' + (e.merchant.name || 'that store') + '. Tap “At the store” to make sure it’s there');
     }
+    // Choosing one: Spot's pick (the first card of a shelf) delights him.
+    const mine = /^\d+:0$/.test(String(b.dataset.k));
+    if (b.dataset.act === 'pay' || b.dataset.act === 'ask') {
+      pickedMine = mine;
+      const l = line(mine ? 'mine' : 'other');
+      spot.cheer(mine);
+      quip(l, mine ? 2400 : 1600);
+      cardCheer(b.closest('.pc'), mine, l);
+    }
     oneTap(b.dataset.act, b.dataset.k, b);
   }
+  let pickedMine = false;
   async function askMore(e) {
     e?.preventDefault();
     const more = $('#more2').value.trim();
@@ -945,11 +1128,11 @@
       const { done } = await fill(T, { text: ask.text, more, avoid: ask.avoid.slice(-60) });
       if (!T.list.length) {
         T.el.innerHTML = '<div class="me">' + esc(more) + '</div>' + spotSays(done?.warning || 'I couldn’t find anything new for that. Try saying it another way.');
-        say('hmm, nothing new for that one');
+        spot.oops(), say('hmm, nothing new for that one');
       }
     } catch (err) {
       if (!T.list.length) T.el.innerHTML = '<div class="me">' + esc(more) + '</div><p class="err">' + esc(err.message) + '</p>';
-      say('hmm, that one got away from me');
+      spot.oops(), say('hmm, that one got away from me');
     } finally {
       btn.disabled = false;
     }
@@ -1000,7 +1183,7 @@
       check(d.warning || '');
     } catch (e) {
       $('#checkErr').textContent = e.message;
-      say('hmm, that one got away from me');
+      spot.oops(), say('hmm, that one got away from me');
     } finally {
       btn.disabled = false;
       btn.textContent = 'Find another';

@@ -136,6 +136,29 @@ const HOME_CSS = `
 .hero{display:flex;align-items:center;gap:12px;margin:18px 0 14px}
 .hero #buddy{display:block;width:92px;flex:none;animation:bob 3.2s ease-in-out infinite;margin-bottom:-10px}.buddy3d img{display:block;width:100%;height:auto}
 @keyframes bob{50%{transform:translateY(-4px)}}
+.hero #buddy{position:relative;cursor:pointer;-webkit-tap-highlight-color:transparent}.hero #buddy.has3d{animation:none}.hero #buddy.has3d img{display:none}.hero #buddy .spot3d{display:block;width:100%;height:auto}
+.hero #buddy.joy img.open{display:none!important}.hero #buddy.joy img.joy{display:block!important}.hero #buddy.joy{animation:spotjoy .5s cubic-bezier(.3,1.6,.5,1) 3}
+.hero #buddy.hop{animation:spotjoy .55s cubic-bezier(.3,1.6,.5,1)}.hero #buddy.think{animation:spotthink 1.8s ease-in-out infinite}.hero #buddy.oh{animation:spotshake .45s ease-in-out 2}
+@keyframes spotjoy{0%,100%{transform:none}35%{transform:translateY(-14px) scale(.96,1.06)}70%{transform:translateY(0) scale(1.06,.94)}}
+@keyframes spotthink{0%,100%{transform:rotate(0)}30%{transform:rotate(-7deg) translateY(-2px)}70%{transform:rotate(6deg)}}
+@keyframes spotshake{0%,100%{transform:none}25%{transform:translateX(-4px) rotate(-4deg)}75%{transform:translateX(4px) rotate(4deg)}}
+.pc .ph{position:relative}.cardspot{position:absolute;left:50%;bottom:-6px;width:96px;margin-left:-48px;z-index:3;pointer-events:none;animation:cspop .5s cubic-bezier(.3,1.6,.5,1) both}.ph .cardspot img{position:static;inset:auto;display:block;width:100%;height:auto;padding:0;background:none;object-fit:initial;z-index:auto;filter:drop-shadow(0 6px 10px #0004)}
+.cardspot .cs-say{position:absolute;bottom:100%;left:50%;transform:translateX(-50%);margin-bottom:2px;white-space:nowrap;background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:14px;padding:6px 10px;font-weight:800;font-size:14px;box-shadow:0 4px 14px #0003}
+.cardspot.mine{animation:cspop .5s cubic-bezier(.3,1.6,.5,1) both,csjump .5s .5s cubic-bezier(.3,1.6,.5,1) 2}.cardspot b{position:absolute;top:30%;left:50%;font-size:18px;opacity:0;animation:csheart 1.4s ease-out forwards}.cardspot b:nth-of-type(1){--hx:-46px;animation-delay:.2s}.cardspot b:nth-of-type(2){--hx:30px;animation-delay:.45s}.cardspot b:nth-of-type(3){--hx:-12px;animation-delay:.75s}.cardspot b:nth-of-type(4){--hx:44px;animation-delay:1s}
+.cardspot.bye{animation:csbye .45s ease-in forwards}
+@keyframes cspop{0%{transform:translateY(60px) scale(.6);opacity:0}100%{transform:none;opacity:1}}
+@keyframes csjump{0%,100%{transform:none}40%{transform:translateY(-16px) scale(.95,1.06)}75%{transform:scale(1.06,.94)}}
+@keyframes csheart{0%{transform:translate(0,0) scale(.6);opacity:0}20%{opacity:1}100%{transform:translate(var(--hx),-90px) scale(1.1);opacity:0}}
+@keyframes csbye{to{transform:translateY(50px) scale(.7);opacity:0}}
+${logoFaceCss('.spotsay i')}
+.spotsay i.hop{animation:spotjoy .55s cubic-bezier(.3,1.6,.5,1)}
+@media (prefers-reduced-motion:reduce){.cardspot,.cardspot.mine,.cardspot.bye,.spotsay i.hop{animation:none}}
+.hero .say.pop{animation:saypop .38s cubic-bezier(.3,1.6,.5,1);transform-origin:0 100%}
+@keyframes saypop{0%{transform:scale(.86);opacity:.4}100%{transform:none;opacity:1}}
+.hero .confetti{position:absolute;left:50%;top:40%;width:0;height:0;pointer-events:none;z-index:4}
+.hero .confetti i{position:absolute;width:8px;height:12px;border-radius:2px;animation:burst 1.3s cubic-bezier(.2,.7,.3,1) forwards}
+@keyframes burst{0%{transform:translate(0,0) rotate(0);opacity:1}100%{transform:translate(var(--dx),var(--dy)) rotate(var(--r));opacity:0}}
+@media (prefers-reduced-motion:reduce){.hero #buddy.joy,.hero #buddy.hop,.hero #buddy.think,.hero #buddy.oh,.hero .say.pop{animation:none}}
 .hero .say{background:var(--card);border:1px solid var(--line);border-radius:20px 20px 20px 6px;padding:11px 15px;font-weight:800;font-size:19px;letter-spacing:-.01em}
 .box{background:var(--card);border:2px solid var(--line);border-radius:22px;padding:12px;transition:border-color .15s}
 .box:focus-within,.box.drop{border-color:var(--spot)}
@@ -172,7 +195,7 @@ export function homePage({ origin, provider, cfg }) {
   <div class="shopempty" id="shopEmpty" hidden><p><b>Nothing here yet.</b></p><p class="muted">Ask Spot for something, and everything it finds shows up here to come back to.</p><button class="btn" type="button" id="shopStart">Ask Spot →</button></div>
   <div class="sheet shopsheet" id="shopSheet" hidden role="dialog" aria-label="Product"><button class="sheetx" id="shopSheetX" type="button" aria-label="Close">×</button><div id="shopCard"></div></div>
 </section>
-<div class="hero" id="hero">${buddySvg(false)}<div class="say" id="say" aria-live="polite">what do you want?</div></div>
+<div class="hero" id="hero" data-spot3d="${assetUrl('spot3d.js')}">${buddySvg(false)}<div class="say" id="say" aria-live="polite">what do you want?</div></div>
 ${provider === 'sandbox' ? '<div class="sandbox">Test mode: no real money moves.</div>' : ''}
 
 <section id="compose">
