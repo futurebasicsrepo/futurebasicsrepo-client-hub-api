@@ -47,7 +47,7 @@ dialog{border:0;border-radius:24px;padding:0;width:min(760px,95vw);max-height:92
   <div id="noAccess" class="panel hidden"><h1>Money is not open to you</h1><p class="note">Only the people named for it can see invoices and payments. Ask Kyle or Danielle if you need something from here.</p><a class="btn" href="/home" style="margin-top:12px">Back to Home</a></div>
   <div id="app" class="hidden">
     <div class="top"><div><span class="mono" style="color:var(--dim)">Settings</span><h1>Money</h1><p class="note">What has been paid, what is owed, and every invoice. Kyle and Danielle only.</p></div>
-      <div class="acts"><button class="btn" id="importBtn">Import past invoices</button><button class="btn go" id="newInv">+ New invoice</button></div></div>
+      <div class="acts"><button class="btn" id="importBtn">Import past invoices</button><button class="btn" id="fromBtn">From a deal or project</button><button class="btn go" id="newInv">+ New invoice</button></div></div>
     <p class="msg" id="msg" role="status"></p>
     <div class="tabs" role="tablist"><button class="tab on" data-t="overview">Overview</button><button class="tab" data-t="invoices">Invoices</button><button class="tab" data-t="ledger">Ledger</button><button class="tab" data-t="settings">Settings</button></div>
     <section id="t-overview"></section>
@@ -87,6 +87,7 @@ async function loadOverview(){
    <div class="tile ${o.overdueCount?'bad':''}"><span class="sub">Overdue</span><b>${usd0(o.overdueCents)}</b><span class="sub">${o.overdueCount} invoice${o.overdueCount===1?'':'s'}</span></div>
    <div class="tile"><span class="sub">To sort out</span><b>${o.unrecorded+o.drafts}</b><span class="sub">${o.drafts} draft${o.drafts===1?'':'s'} · ${o.unrecorded} with no payment recorded</span></div></div>
   ${o.unrecorded?`<div class="panel" style="border-color:#e6d27a;background:#fffbea"><b>${o.unrecorded} past invoice${o.unrecorded===1?'':'s'} ${o.unrecorded===1?'has':'have'} no payment recorded.</b> <span class="sub">They are not counted as owed. Open Invoices → “Payment not recorded” and mark each one paid or unpaid.</span> <button class="btn sm" data-go="unrecorded">Review them</button></div>`:''}
+  ${o.toInvoiceCount?`<div class="panel"><div class="top" style="margin:0 0 8px"><h2>Won, not invoiced yet</h2><span class="sub">${o.toInvoiceCount} deal${o.toInvoiceCount===1?'':'s'} · ${usd0(o.toInvoiceCents)}</span></div><div class="scroll"><table><tbody>${o.toInvoice.slice(0,6).map(d=>`<tr><td><b>${esc(d.title)}</b><div class="sub">${esc(d.company||'No company')} · won ${esc(String(d.wonAt).slice(0,10))}</div></td><td class="n">${d.valueCents?usd(d.valueCents):'no value'}</td><td class="n"><button class="btn sm" data-draft-deal="${esc(d.id)}">Invoice it</button></td></tr>`).join('')}</tbody></table></div>${o.toInvoiceCount>6?`<p class="sub">and ${o.toInvoiceCount-6} more: use “From a deal or project”.</p>`:''}</div>`:''}
   <div class="panel"><h2>What is owed, by how late</h2>${total?`<div class="age" role="img" aria-label="${esc(o.aging.map(b=>b.label+' '+usd0(b.cents)).join(', '))}">${o.aging.map((b,i)=>b.cents?`<i class="a${i}" style="flex:${b.cents}" title="${esc(b.label)}: ${usd(b.cents)}"></i>`:'').join('')}</div>
    <div class="legend">${o.aging.map((b,i)=>`<span style="--c:${['#9bd8b5','#f2d55a','#f0a24a','#e2683b','#9a2419'][i]}">${esc(b.label)} <b style="color:var(--ink)">${usd0(b.cents)}</b> (${b.count})</span>`).join('')}</div>`:'<p class="empty">Nothing is owed.</p>'}</div>
   <div class="grid2"><div class="panel"><h2>Late invoices</h2>${o.lateInvoices.length?`<div class="scroll"><table><tbody>${o.lateInvoices.map(i=>`<tr class="click" data-open="${i.id}"><td><b>${esc(i.number)}</b><div class="sub">${esc(i.company)}</div></td><td class="n">${usd(i.owedCents)}<div class="sub">${i.daysOverdue} days late</div></td></tr>`).join('')}</tbody></table></div>`:'<p class="empty">Nothing is late.</p>'}</div>
@@ -108,15 +109,16 @@ function lineRow(l={}){return `<div class="lrow"><textarea class="t" data-l="des
 function creditRow(c={}){return `<div class="crow"><input class="t" data-c="label" placeholder="Deposit paid 3/9" value="${esc(c.label||'')}"><input class="t" data-c="amount" inputmode="decimal" placeholder="0.00" value="${c.amountCents!=null?(c.amountCents/100).toFixed(2):''}"><button type="button" class="x" data-rm aria-label="Remove">×</button></div>`}
 const num=v=>{const n=Number(String(v||'').replace(/[$,\s]/g,''));return Number.isFinite(n)?n:NaN};
 function formData(){const g=n=>$('#dBody [name='+n+']')?.value??'';
-  return {workKind:g('workKind'),projectId:g('projectId')||null,number:g('number'),company:g('company'),contactName:g('contactName'),contactEmail:g('contactEmail'),address:g('address'),issuedOn:g('issuedOn'),terms:g('terms'),dueOn:g('dueOn'),notes:g('notes'),taxRatePct:g('taxRatePct'),chargeTax:$('#dBody [name=chargeTax]')?.checked===true,dueNowLabel:g('dueNowLabel'),dueNowCents:g('dueNow')===''?null:Math.round(num(g('dueNow'))*100),
+  return {dealId:DEAL||null,workKind:g('workKind'),projectId:g('projectId')||null,number:g('number'),company:g('company'),contactName:g('contactName'),contactEmail:g('contactEmail'),address:g('address'),issuedOn:g('issuedOn'),terms:g('terms'),dueOn:g('dueOn'),notes:g('notes'),taxRatePct:g('taxRatePct'),chargeTax:$('#dBody [name=chargeTax]')?.checked===true,dueNowLabel:g('dueNowLabel'),dueNowCents:g('dueNow')===''?null:Math.round(num(g('dueNow'))*100),
     lines:$$('#dBody .lrow').map(r=>({description:r.querySelector('[data-l=description]').value,qty:Number(r.querySelector('[data-l=qty]').value),rateCents:Math.round(num(r.querySelector('[data-l=rate]').value)*100)})),
     credits:$$('#dBody .crow').map(r=>({label:r.querySelector('[data-c=label]').value,amountCents:Math.round(num(r.querySelector('[data-c=amount]').value)*100)})).filter(c=>c.label||c.amountCents)}}
 function recalc(){const d=formData(),sub=d.lines.reduce((a,l)=>a+(Number.isFinite(l.rateCents)&&l.qty>0?Math.round(l.qty*l.rateCents):0),0),rate=Number(d.taxRatePct)||0,tax=d.chargeTax?Math.round(sub*rate/100):0,tot=sub+tax,cr=d.credits.reduce((a,c)=>a+(c.amountCents||0),0),bal=Math.max(0,tot-cr);
   $('#tot').innerHTML=`<div><span>Subtotal</span><span>${usd(sub)}</span></div><div><span>Tax${rate?` (${rate}%)`:''}${rate&&!d.chargeTax?' not charged':''}</span><span>${usd(tax)}</span></div><div><span>Total</span><span>${usd(tot)}</span></div>${cr?`<div><span>Less deposits and credits</span><span>−${usd(cr)}</span></div>`:''}<div class="big"><span>${esc(d.dueNowLabel||(cr?'Final payment due':'Total due'))}</span><span>${usd(d.dueNowCents!=null&&d.dueNowCents>=0?Math.min(d.dueNowCents,bal):bal)}</span></div>`}
-function editor(inv){
-  const i=inv||{lines:[{}],credits:[],terms:'Due on receipt',issuedOn:new Date().toISOString().slice(0,10),taxRatePct:0,chargeTax:false,number:NEXT,dueNowCents:null},isNew=!inv,locked=inv&&['paid','void'].includes(inv.status);
+let DEAL=null; // the won deal this invoice bills, when it was started from one
+function editor(inv,prefill){
+  const i=inv||{lines:[{}],credits:[],terms:'Due on receipt',issuedOn:new Date().toISOString().slice(0,10),taxRatePct:0,chargeTax:false,number:NEXT,dueNowCents:null,...(prefill||{})},isNew=!inv,locked=inv&&['paid','void'].includes(inv.status);DEAL=i.dealId||null;
   const f=(n,l,v,o='')=>`<label class="f"><span>${l}</span><input class="t" name="${n}" value="${esc(v??'')}" ${o}></label>`;
-  const body=`<div class="g3">${f('number','Invoice no.',i.number)}${f('issuedOn','Date',i.issuedOn,'type="date"')}<label class="f"><span>Terms</span><select class="t" name="terms" style="width:100%">${['Due on receipt','Due upon receipt','Net 15','Net 30','Net 45','Net 60'].map(t=>`<option ${t===i.terms?'selected':''}>${t}</option>`).join('')}</select></label></div>
+  const body=`${i.dealTitle?`<p class="sub" style="margin:0">Bills the won deal “${esc(i.dealTitle)}”.</p>`:isNew&&prefill?.dealId?`<p class="sub" style="margin:0">Started from the won deal “${esc(prefill.lines?.[0]?.description||'')}”. Check the amount, then save.</p>`:isNew&&prefill?.projectId?'<p class="sub" style="margin:0">Started from a project. Add the amount, then save.</p>':''}<div class="g3">${f('number','Invoice no.',i.number)}${f('issuedOn','Date',i.issuedOn,'type="date"')}<label class="f"><span>Terms</span><select class="t" name="terms" style="width:100%">${['Due on receipt','Due upon receipt','Net 15','Net 30','Net 45','Net 60'].map(t=>`<option ${t===i.terms?'selected':''}>${t}</option>`).join('')}</select></label></div>
    <div class="g2">${f('company','Bill to (company)',i.company,'required')}${f('dueOn','Due date (leave to follow the terms)',isNew?'':i.dueOn,'type="date"')}${f('contactName','Contact',i.contactName)}${f('contactEmail','Their email',i.contactEmail,'type="email"')}</div>
    <label class="f"><span>Address</span><textarea class="t" name="address" style="min-height:64px">${esc(i.address||'')}</textarea></label>
    <div class="g2"><label class="f"><span>Project (optional)</span><select class="t" name="projectId" style="width:100%"><option value="">No project</option>${i.projectId?`<option value="${esc(i.projectId)}" selected>${esc(i.projectName||'This project')}</option>`:''}</select></label>
@@ -223,6 +225,22 @@ function wireQb(q){
   const u=new URLSearchParams(location.search),k=u.get('qb');if(k){m(k==='connected'?'QuickBooks is connected.':(u.get('why')||'QuickBooks did not connect.'),k==='connected'?'ok':'bad');history.replaceState(null,'','/money#settings')}
 }
 
+// ---------- start an invoice from a won deal or a project ----------
+async function startFrom(kind,id){
+  const r=await api('/v1/money/draft?'+kind+'='+encodeURIComponent(id));
+  if(r.billed&&r.billed.length&&!confirm(`${kind==='deal'?'This deal':'This project'} is already invoiced (${r.billed.join(', ')}). Make another invoice for it?`))return;
+  if(!NEXT){const l=await api('/v1/money/invoices');NEXT=l.nextNumber}
+  editor(null,r.draft);
+}
+async function fromSource(){
+  const r=await api('/v1/money/sources'),tag=n=>n.length?`<span class="chip ok">invoiced ${esc(n.join(', '))}</span>`:'<span class="chip">not invoiced</span>';
+  const deals=r.deals.length?r.deals.map(d=>`<tr class="click" data-pick="deal:${esc(d.id)}"><td><b>${esc(d.title)}</b><div class="sub">${esc(d.company||'No company')} · won ${esc(String(d.closedAt||'').slice(0,10))}</div></td><td class="n">${d.valueCents?usd(d.valueCents):''}</td><td>${tag(d.invoices)}</td></tr>`).join(''):'<tr><td class="empty">No won deals yet. Move a deal to Won in Sales and it shows here.</td></tr>';
+  const projs=r.projects.length?r.projects.map(p=>`<tr class="click" data-pick="project:${esc(p.id)}"><td><b>${esc(p.name)}</b><div class="sub">${esc(p.client)} · ${p.kind==='software'?'software':'product'} development</div></td><td class="n"></td><td>${tag(p.invoices)}</td></tr>`).join(''):'<tr><td class="empty">No live projects.</td></tr>';
+  dialog('Start an invoice from…',`<h3>Won deals</h3><div class="scroll" style="max-height:34vh"><table><tbody>${deals}</tbody></table></div><h3 style="margin-top:14px">Projects</h3><div class="scroll" style="max-height:34vh"><table><tbody>${projs}</tbody></table></div>`,[]);
+  $('#dBody').onclick=async e=>{const row=e.target.closest('[data-pick]');if(!row)return;const [k,id]=row.dataset.pick.split(':');try{await startFrom(k,id)}catch(x){$('#dMsg').className='msg bad';$('#dMsg').textContent=x.message}};
+}
+$('#fromBtn').onclick=()=>fromSource().catch(x=>say(x.message,'bad'));
+
 // ---------- wiring ----------
 const LOAD={overview:loadOverview,invoices:loadInvoices,ledger:loadLedger,settings:loadSettings};
 async function load(){await LOAD[TAB]();if(TAB!=='invoices'){try{const r=await api('/v1/money/invoices');NEXT=r.nextNumber}catch{}}}
@@ -230,6 +248,7 @@ function show(tab){TAB=tab;if(location.hash.slice(1)!==tab)history.replaceState(
 $$('.tab').forEach(t=>t.onclick=()=>show(t.dataset.t));
 document.addEventListener('click',async e=>{
   const o=e.target.closest('[data-open]');if(o){const r=await api('/v1/money/invoices/'+o.dataset.open);return editor(r.invoice)}
+  const dd=e.target.closest('[data-draft-deal]');if(dd){try{await startFrom('deal',dd.dataset.draftDeal)}catch(x){say(x.message,'bad')}return}
   const t=e.target.closest('[data-tab]');if(t)return show(t.dataset.tab);
   const g=e.target.closest('[data-go]');if(g){F.status=g.dataset.go;show('invoices');return}
   const s=e.target.closest('#fInv [data-st]');if(s){F.status=s.dataset.st;loadInvoices()}
@@ -241,6 +260,8 @@ $('#importBtn').onclick=importer;
   try{await api('/v1/money/me')}catch(x){$(x.status===403?'#noAccess':'#needSignin').classList.remove('hidden');return}
   $('#app').classList.remove('hidden');const t=$$('.tab').find(x=>x.dataset.t===location.hash.slice(1));show(t?t.dataset.t:'overview');
   // a link from the work home Today list opens that invoice
+  // a link from a won deal in Sales (or a project) starts an invoice from it
+  const qs=new URLSearchParams(location.search);for(const k of ['deal','project']){const v=qs.get(k);if(v&&/^[0-9a-f-]{36}$/i.test(v)){try{await startFrom(k,v)}catch(x){say(x.message,'bad')}}}
   const want=new URLSearchParams(location.search).get('invoice');if(want&&/^[0-9a-f-]{36}$/i.test(want)){try{const r=await api('/v1/money/invoices/'+want);editor(r.invoice)}catch{}}
 })();
 </script>

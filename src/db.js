@@ -1474,6 +1474,8 @@ export async function migrate() {
     alter table money_invoices add column if not exists pay_url text not null default '';
     alter table money_invoices add column if not exists pay_channel text not null default '';
     alter table money_invoices add column if not exists shopify_draft_id text not null default '';
+    alter table money_invoices add column if not exists deal_id uuid references sales_deals(id) on delete set null;
+    create index if not exists money_invoices_deal_idx on money_invoices (deal_id) where deal_id is not null;
     create index if not exists money_invoices_status_idx on money_invoices (status, due_on);
     create index if not exists money_invoices_company_idx on money_invoices (lower(company));
     create table if not exists money_payments (
