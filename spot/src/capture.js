@@ -870,18 +870,27 @@ async function pageDetail(anthropic, url, { variant, title }, { onUsage, onError
 ${title ? `It should be (or list) "${q(title)}"${variant ? `, in ${q(variant)}` : ''}. If it's a list or search page, report on that product.` : variant ? `Size or option: ${q(variant)}.` : ''}
 Reply with ONLY this JSON: {"image_url": "the product's main photo, its full https address, or empty", "in_stock": true or false or null, "unit_price": "$0.00 or empty"}
 Use empty or null for anything the page doesn't show or couldn't be opened.`;
+  // The plain fetch: one page, read once (no filtering step after it).
+  const tools = [{ type: 'web_fetch_20250910', name: 'web_fetch', max_uses: 2, max_content_tokens: 20000 }];
+  const messages = [{ role: 'user', content }];
+  // Haiku first (the quickest: reading one page needs no more), thinking off;
+  // Sonnet if Haiku turns the request down.
+  const fast = process.env.SPOT_DETAILS_MODEL || 'claude-haiku-5-5';
+  const steady = process.env.SPOT_LOOKUP_MODEL || 'claude-sonnet-5-5';
+  const ask = (model) =>
+    /haiku/.test(model)
+      ? anthropic.beta.messages.create({ model, max_tokens: 600, thinking: { type: 'disabled' }, output_config: { effort: 'low' }, tools, messages })
+      : anthropic.beta.messages.create({ model, max_tokens: 600, betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default', output_config: { effort: 'low' }, tools, messages });
   let response;
+  const started = Date.now();
   try {
-    response = await anthropic.beta.messages.create({
-      model: process.env.SPOT_DETAILS_MODEL || process.env.SPOT_LOOKUP_MODEL || 'claude-sonnet-5-5',
-      max_tokens: 600,
-      betas: ['server-side-fallback-2026-07-01'],
-      fallbacks: 'default',
-      output_config: { effort: 'low' },
-      // The plain fetch: one page, read once (no filtering step after it).
-      tools: [{ type: 'web_fetch_20250910', name: 'web_fetch', max_uses: 2, max_content_tokens: 20000 }],
-      messages: [{ role: 'user', content }],
-    });
+    try {
+      response = await ask(fast);
+    } catch (err) {
+      if (!(err instanceof Anthropic.APIError) || fast === steady || ![400, 404].includes(err.status)) throw err;
+      console.error('page details: quick model declined, using', steady, err.status, err.message);
+      response = await ask(steady);
+    }
     onUsage?.(response.model, response.usage);
   } catch (err) {
     onError?.(err);
@@ -892,6 +901,8 @@ Use empty or null for anything the page doesn't show or couldn't be opened.`;
     throw err;
   }
   const v = readJson(response.content.filter((b) => b.type === 'text').map((b) => b.text).join(''));
+  // How often a photo comes back, and how fast: what to tune before launch.
+  console.log('page details', `${Date.now() - started}ms`, response.model, new URL(url).hostname, v?.image_url ? 'photo' : 'no photo');
   if (!v) return null;
   const price = dollarsToCents(v.unit_price);
   return {

@@ -226,13 +226,34 @@ test('page details: each blocked page read at once, on the quicker model, for ph
   } } } };
   const r = await pageDetails(['https://nike.example/p1', { url: 'https://dicks.example/p2', title: 'Polarized sunglasses', variant: 'Black' }, 'nope'], { client });
   assert.equal(calls.length, 2, 'one call per page, side by side');
-  assert.equal(calls[0].model, 'claude-sonnet-5-5');
+  assert.equal(calls[0].model, 'claude-haiku-5-5', 'the quickest model reads the page');
+  assert.deepEqual(calls[0].thinking, { type: 'disabled' });
+  assert.equal(calls[0].fallbacks, undefined, 'Haiku takes no server-side fallback');
   assert.equal(calls[0].tools[0].type, 'web_fetch_20250910', 'the plain fetch, no filtering step');
   assert.match(calls[1].messages[0].content, /It should be \(or list\) "Polarized sunglasses", in Black\. If it's a list or search page, report on that product\./);
   assert.deepEqual(r.pages, [
     { url: 'https://nike.example/p1', image_url: 'https://static.nike.example/p1.jpg', stock: 'in', price_cents: 4500 },
     { url: 'https://dicks.example/p2', image_url: null, stock: 'out', price_cents: null },
   ]);
+});
+
+test('page details: Haiku turns the request down, Sonnet reads it', async () => {
+  const { Anthropic } = await import('../src/anthropic.js');
+  const models = [];
+  const client = { beta: { messages: { create: async (req) => {
+    models.push(req.model);
+    if (/haiku/.test(req.model)) throw new Anthropic.BadRequestError(400, { type: 'error', error: { type: 'invalid_request_error', message: 'tool not supported' } }, 'tool not supported', new Headers());
+    return { stop_reason: 'end_turn', model: req.model, usage: {}, content: [{ type: 'text', text: '{"image_url":"https://cdn.example/x.jpg","in_stock":true}' }] };
+  } } } };
+  const quiet = console.error;
+  console.error = () => {};
+  try {
+    const r = await pageDetails(['https://shop.example/p'], { client });
+    assert.deepEqual(models, ['claude-haiku-5-5', 'claude-sonnet-5-5']);
+    assert.equal(r.pages[0].image_url, 'https://cdn.example/x.jpg');
+  } finally {
+    console.error = quiet;
+  }
 });
 
 test('the shelf asks for photos and stock of pages Spot couldn\'t read', async (t) => {
