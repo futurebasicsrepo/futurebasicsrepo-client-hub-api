@@ -298,6 +298,50 @@ test('photos from an image search: the store’s own result first, nothing unrel
   assert.equal(await photoSearch({ title: 'Ray-Ban Wayfarer' }, { fetchImpl: async () => ({ ok: false, status: 429 }), key: 'k' }).catch(() => 'threw'), null);
 });
 
+test('photos are the product: no logos, no look-alike sites, no other model', async () => {
+  const { photoSearch, specificWords } = await import('../src/capture.js');
+  const brave = (results) => async () => ({ ok: true, json: async () => ({ results }) });
+  const r = (title, host, img) => ({ title, url: `https://${host}/p`, properties: { url: img }, meta_url: { hostname: host } });
+  // A store's logo is never the product's photo.
+  const logo = [r('Sunski Dipsea Polarized Sunglasses', 'sunski.com', 'https://sunski.com/cdn/logo-black.png')];
+  assert.equal(await photoSearch({ title: 'Sunski Dipsea Polarized Sunglasses', store: 'Sunski', url: 'https://sunski.com/products/dipsea' }, { fetchImpl: brave(logo), key: 'k' }), null);
+  // A look-alike of the brand's site isn't the brand.
+  const fake = [r('Costa Del Mar Caleta Polarized Sunglasses', 'costa--sunglasses.com', 'https://costa--sunglasses.com/caleta.jpg')];
+  assert.equal(await photoSearch({ title: 'Costa Caleta Polarized Sunglasses', store: 'Costa Del Mar', url: 'https://www.dickssportinggoods.com/p/1' }, { fetchImpl: brave(fake), key: 'k' }), null);
+  const real = [...fake, r('Costa Del Mar Caleta Polarized Sunglasses', 'www.costadelmar.com', 'https://www.costadelmar.com/caleta.jpg')];
+  assert.equal(await photoSearch({ title: 'Costa Caleta Polarized Sunglasses', store: 'Costa Del Mar', url: 'https://www.dickssportinggoods.com/p/1' }, { fetchImpl: brave(real), key: 'k' }), 'https://www.costadelmar.com/caleta.jpg');
+  // Same brand, another model: not this one.
+  const other = [r('Tifosi Stella Polarized Sunglasses', 'tifosioptics.com', 'https://tifosioptics.com/stella.jpg')];
+  assert.equal(await photoSearch({ title: 'Tifosi Swank Polarized Sunglasses', store: 'Tifosi', url: 'https://tifosioptics.com/products/swank' }, { fetchImpl: brave(other), key: 'k' }), null);
+  // Nothing specific to go on: only a known store's photo, never an article's.
+  const article = [r('Polarized sunglasses: what they do', 'www.aao.org', 'https://www.aao.org/polarized.jpg')];
+  assert.equal(await photoSearch({ title: 'Polarized sunglasses' }, { fetchImpl: brave(article), key: 'k' }), null);
+  assert.deepEqual(specificWords('Tifosi Swank Polarized Sunglasses', { url: 'https://tifosioptics.com/x' }), ['swank']);
+  assert.deepEqual(specificWords('Polarized sunglasses'), []);
+});
+
+test('a listing link moves only to the same product, not one whose description matches', async () => {
+  const { resolveListing } = await import('../src/capture.js');
+  const suggest = async () => [
+    { url: 'https://tifosioptics.com/products/stella', text: 'Stella', named: true, match: 'Stella Sunglasses Tifosi polarized swank style lens', price_cents: 3995 },
+  ];
+  const r = await resolveListing({ url: 'https://tifosioptics.com/collections/sunglasses', title: 'Tifosi Swank Polarized Sunglasses' }, { fromUrl: async () => null, suggest });
+  assert.equal(r, null);
+});
+
+test('a page’s photo: not a category banner, not a logo', async () => {
+  const { withPhoto } = await import('../src/capture.js');
+  const d = (url) => ({ source: 'lookup', items: [{ title: 'Quay High Key', url, image_url: '' }] });
+  const page = (img) => async () => ({ items: [{ title: 'x', image_url: img }] });
+  const none = async () => null;
+  const banner = await withPhoto(d('https://www.quayaustralia.com/collections/sunglasses'), page('https://quay.example/banner.jpg'), none);
+  assert.equal(banner.items[0].image_url, null);
+  const logo = await withPhoto(d('https://sunski.com/products/dipsea'), page('https://sunski.com/cdn/sunski-logo.png'), none);
+  assert.equal(logo.items[0].image_url, null);
+  const ok = await withPhoto(d('https://sunski.com/products/dipsea'), page('https://sunski.com/cdn/dipsea.jpg'), none);
+  assert.equal(ok.items[0].image_url, 'https://sunski.com/cdn/dipsea.jpg');
+});
+
 test('on the shelf: a store that gives no photo gets one from the image search', async () => {
   const { client } = streamer([{ kind: 'products', products: [{ ...P(1, 'walmart'), image_url: '' }] }]);
   const asked = [];

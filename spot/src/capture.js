@@ -197,6 +197,25 @@ const hostOf = (u) => {
     return '';
   }
 };
+const LOGO = /logo|favicon|placeholder|sprite|og[-_]?default|social[-_]?share/i;
+const TRUSTED_STORES = new Set(['amazon.com', 'walmart.com', 'target.com', 'nordstrom.com', 'zappos.com', 'rei.com', 'dickssportinggoods.com', 'macys.com', 'bestbuy.com', 'kohls.com', 'dsw.com', 'footlocker.com', 'nike.com', 'adidas.com', 'uniqlo.com', 'gap.com', 'oldnavy.com', 'hm.com', 'zara.com', 'jcrew.com', 'madewell.com', 'everlane.com', 'urbanoutfitters.com', 'anthropologie.com', 'llbean.com', 'backcountry.com', 'sunglasshut.com', 'ssense.com', 'asos.com', 'abercrombie.com', 'levi.com', 'patagonia.com', 'thenorthface.com', 'costco.com', 'homedepot.com', 'lowes.com', 'wayfair.com', 'ulta.com', 'sephora.com', 'bloomingdales.com', 'saksfifthavenue.com', 'revolve.com', 'shopbop.com', 'zalando.com', 'publiclands.com', 'moosejaw.com', 'evo.com']);
+// The brand's own site: its name, squeezed together, is the site's name
+// (costadelmar.com for Costa Del Mar; not costa--sunglasses.com).
+const brandSite = (store, host) => {
+  const name = String(store || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const label = String(host || '').split('.')[0].replace(/[^a-z0-9]/g, '');
+  return name.length >= 3 && (label === name || (name.length >= 5 && label.startsWith(name)));
+};
+// Or the brand a title leads with, named exactly (ray-ban.com for
+// "Ray-Ban Original Wayfarer"; never costa--sunglasses.com for "Costa").
+const titleBrandSite = (title, host) => {
+  const words = String(title || '').toLowerCase().split(/\s+/).filter(Boolean);
+  const label = String(host || '').split('.')[0].replace(/[^a-z0-9]/g, '');
+  return [1, 2, 3].some((n) => {
+    const name = words.slice(0, n).join('').replace(/[^a-z0-9]/g, '');
+    return name.length >= 4 && label === name;
+  });
+};
 export async function photoSearch({ title, store = '', url = '' }, { fetchImpl = fetch, key = process.env.BRAVE_SEARCH_API_KEY } = {}) {
   if (!key || !title) return null;
   const q = `${title} ${store}`.trim().slice(0, 200);
@@ -210,14 +229,20 @@ export async function photoSearch({ title, store = '', url = '' }, { fetchImpl =
     }
     const j = await res.json();
     const want = rootOf(hostOf(url));
+    const specific = specificWords(title, { store, url });
     const found = (j?.results || [])
       .map((r) => ({
         img: [r?.properties?.url, r?.thumbnail?.src].find((u) => typeof u === 'string' && /^https:\/\/[^\s"'<>]+$/i.test(u)),
         host: rootOf(r?.meta_url?.hostname || hostOf(r?.url)),
+        name: `${r?.title || ''}`,
         score: titleMatch(title, `${r?.title || ''}`),
       }))
-      .filter((r) => r.img);
-    const hit = found.find((r) => want && r.host === want && r.score >= 0.4) || found.find((r) => r.score >= 0.75);
+      .filter((r) => r.img && !LOGO.test(r.img) && namesIt(specific, r.name));
+    // The store's own site first. Otherwise only a store people know (or
+    // the brand's own site), never a look-alike, and only for a name
+    // specific enough to be sure it's the same product.
+    const known = (r) => TRUSTED_STORES.has(r.host) || brandSite(store, r.host) || titleBrandSite(title, r.host);
+    const hit = found.find((r) => want && r.host === want && r.score >= 0.4) || found.find((r) => known(r) && r.score >= 0.75 && keyWords(title).length >= 3);
     return hit ? hit.img.slice(0, 1000) : null;
   } catch {
     return null;
@@ -254,14 +279,27 @@ export function titleMatch(title, text) {
 const genderOf = (s) => (/\b(wom[ae]n|ladies|her)['’]?s?\b/i.test(s) ? 'women' : /\bm[ae]n['’]?s?\b/i.test(s) ? 'men' : null);
 // `match` (when a store gives more than a name: type, description) is scored;
 // `text` is the name. A men's or women's page prefers that side.
-const bestMatch = (title, cands, hint = null, min = 0.6) =>
+// Words that say what kind of thing it is, not which one: two different
+// sunglasses share them, so they can't tell products apart.
+const GENERIC = new Set(['sunglasse', 'glasse', 'polarized', 'sneaker', 'shoe', 'boot', 'sandal', 'slide', 'hoodie', 'sweatshirt', 'shirt', 'tee', 'top', 'pant', 'jean', 'short', 'dress', 'skirt', 'jacket', 'coat', 'sweater', 'cardigan', 'bag', 'backpack', 'hat', 'cap', 'sock', 'black', 'white', 'grey', 'gray', 'blue', 'red', 'green', 'brown', 'navy', 'pink', 'classic', 'original', 'kid', 'adult', 'size', 'pack', 'set']);
+// The words that name this product: not generic, not the store (its name
+// or its web address). "Tifosi Swank Polarized Sunglasses" at tifosioptics.com → swank.
+export function specificWords(title, { store = '', url = '' } = {}) {
+  const host = hostOf(url).toLowerCase();
+  const brand = new Set(keyWords(store));
+  return keyWords(title).filter((w) => !GENERIC.has(w) && !brand.has(w) && !(w.length > 2 && host.includes(w)));
+}
+// A candidate names the same product when its own name (not just its
+// description) has one of those words, if there are any.
+const namesIt = (specific, text) => !specific.length || keyWords(text).some((w) => specific.includes(w));
+const bestMatch = (title, cands, hint = null, min = 0.6, specific = []) =>
   cands
     .map((c) => {
       const score = titleMatch(title, c.match || c.text);
       const g = hint && genderOf(c.text);
       return { ...c, score, rank: score + (g ? (g === hint ? 0.05 : -0.05) : 0) };
     })
-    .filter((c) => c.score >= min)
+    .filter((c) => c.score >= min && namesIt(specific, c.text))
     .sort((a, b) => b.rank - a.rank || a.text.length - b.text.length)[0] || null;
 // Shopify's search adds tracking to its links and sizes its photos down.
 const tidyUrl = (u) => {
@@ -308,10 +346,11 @@ export async function resolveListing(item, { fromUrl = captureFromUrl, suggest =
   }
   const origin = new URL(item.url).origin;
   const hint = genderOf(`${item.url} ${item.title}`);
-  let hit = bestMatch(item.title, await suggest(origin, item.title).catch(() => []), hint);
+  const specific = specificWords(item.title, { url: item.url });
+  let hit = bestMatch(item.title, await suggest(origin, item.title).catch(() => []), hint, 0.6, specific);
   if (!hit) {
     page ||= await fromUrl(item.url).catch(() => null);
-    hit = page && !page.warning ? bestMatch(item.title, (page.links || []).filter((l) => !looksLikeListing(l.url)), hint) : null;
+    hit = page && !page.warning ? bestMatch(item.title, (page.links || []).filter((l) => !looksLikeListing(l.url)), hint, 0.6, specific) : null;
   }
   if (!hit || hit.url === item.url) return null;
   const url = tidyUrl(hit.url);
@@ -1287,7 +1326,10 @@ export async function withPhoto(draft, fromUrl, variantPhoto = shopifyVariantPho
     const page = await Promise.race([fromUrl(item.url), new Promise((_, no) => (timer = setTimeout(() => no(new Error('slow')), PHOTO_WAIT_MS)))]);
     const found = page?.items?.[0];
     if (!found || page.warning) return fallback();
-    const image = (await colorPhoto(item, variantPhoto).catch(() => null)) || found.image_url || hint || null;
+    // A category page's picture is a banner, and a page's share image can be
+    // the store's logo: neither is this product.
+    const own = found.image_url && !looksLikeListing(item.url) && !LOGO.test(found.image_url) ? found.image_url : null;
+    const image = (await colorPhoto(item, variantPhoto).catch(() => null)) || own || hint || null;
     return { ...draft, items: [{ ...item, image_url: image, price_cents: item.price_cents || found.price_cents || null }, ...draft.items.slice(1)] };
   } catch {
     return fallback();
