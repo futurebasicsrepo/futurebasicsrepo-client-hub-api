@@ -212,6 +212,8 @@ try {
       const cvc = await page.locator('#cCvc').boundingBox(), zip = await page.locator('#cZip').boundingBox(); ok(cvc.x + cvc.width <= 390 && zip.x + zip.width <= 390, 'every box stays inside a phone screen (the security code no longer spills over)', [cvc, zip]);
       ok(/Test mode/.test(await page.locator('#payBox').innerText()) && /4111 1111 1111 1111/.test(await page.locator('#payBox .testnote').innerText()), 'on test books the form says to use the test card');
       await page.fill('#cNum', '4111111111111111'); ok(await page.inputValue('#cNum') === '4111 1111 1111 1111', 'the card number is grouped as it is typed');
+      await page.fill('#cNum', ''); await page.locator('#cNum').pressSequentially('4111111111111111'); ok(await page.inputValue('#cNum') === '4111 1111 1111 1111', 'typed one key at a time it ends up whole, not cut short');
+      await page.locator('#cNum').evaluate(el => el.setSelectionRange(9, 9)); await page.keyboard.press('Backspace'); await page.keyboard.type('1'); ok(await page.inputValue('#cNum') === '4111 1111 1111 1111', 'a digit fixed in the middle goes where the cursor is');
       await page.fill('#cNum', '378282246310005'); ok(await page.inputValue('#cNum') === '3782 822463 10005', 'an American Express number is grouped 4-6-5');
       await page.fill('#cExp', '0831'); ok(await page.inputValue('#cExp') === '08/31', 'the expiry gets its slash by itself');
       await page.fill('#cExp', '9'); ok(await page.inputValue('#cExp') === '09/', 'a month typed as 9 becomes 09');

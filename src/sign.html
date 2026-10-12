@@ -124,12 +124,16 @@
       <label class="chk"><input type="checkbox" id="pAuth"><span>${esc(p.authorization)}</span></label>
       <button class="btn go" id="pGo" disabled>Save ${card?'card':'bank account'}</button><p class="msg" id="pMsg" role="alert"></p></form>`;
     const f=$('#pf'),ready=()=>{$('#pGo').disabled=!$('#pAuth').checked};f.addEventListener('input',ready);f.addEventListener('change',ready);
-    const only=(id,fn)=>{const el=$(id);if(el)el.addEventListener('input',e=>{el.value=fn(el.value,e.inputType==='deleteContentBackward')})};
+    // reformat as people type, keeping the cursor next to the digit they just typed (so fixing a digit in the middle works, and the cursor never jumps)
+    const only=(id,fn)=>{const el=$(id);if(!el)return;el.addEventListener('input',e=>{
+      const back=e.inputType==='deleteContentBackward',pos=el.selectionStart==null?el.value.length:el.selectionStart,before=digits(el.value.slice(0,pos)).length,atEnd=pos>=el.value.length;
+      const v=fn(el.value,back);if(v===el.value)return;el.value=v;
+      if(atEnd)return;let n=0,i=0;for(;i<v.length&&n<before;i++)if(/\d/.test(v[i]))n++;try{el.setSelectionRange(i,i)}catch{}})};
     only('#cNum',fmtCard);only('#cExp',fmtExp);only('#cCvc',v=>digits(v).slice(0,4));only('#cZip',v=>String(v).replace(/[^\d-]/g,'').slice(0,10));only('#bRoute',v=>digits(v).slice(0,9));only('#bNum',v=>digits(v).slice(0,17));only('#bPhone',v=>digits(v).slice(0,10));
     const fail=m=>{$('#pMsg').textContent=m;$('#pGo').disabled=false;$('#pGo').textContent='Save '+(card?'card':'bank account')};
     f.addEventListener('submit',async e=>{e.preventDefault();$('#pMsg').textContent='';let tokenBody;
       if(card){const num=digits($('#cNum').value),ed=digits($('#cExp').value),m=ed.length===4||ed.length===6?[0,ed.slice(0,2),ed.slice(2)]:null;
-        if($('#cName').value.trim().length<2)return fail('Enter the name on the card');if(!luhn(num))return fail('That card number does not look right');if(!m||+m[1]<1||+m[1]>12)return fail('Enter the expiry as MM/YY');
+        if($('#cName').value.trim().length<2)return fail('Enter the name on the card');if(num.length<13)return fail('A card number has 15 or 16 digits: you have entered '+num.length+'.');if(!luhn(num))return fail('That card number does not look right: check each digit.');if(!m||+m[1]<1||+m[1]>12)return fail('Enter the expiry as MM/YY');
         const yr=m[2].length===2?'20'+m[2]:m[2];if(new Date(+yr,+m[1],1)<=new Date())return fail('That card has expired');if(!/^\d{3,4}$/.test($('#cCvc').value))return fail('Enter the security code from the card');if(!/^\d{5}(-\d{4})?$/.test($('#cZip').value.trim()))return fail('Enter the 5-digit billing ZIP code');
         tokenBody={card:{number:num,expMonth:m[1].padStart(2,'0'),expYear:yr,cvc:$('#cCvc').value,name:$('#cName').value.trim(),address:{postalCode:$('#cZip').value.trim().slice(0,5),country:'US'}}}}
       else{if($('#bName').value.trim().length<2)return fail('Enter the name on the account');if(!aba($('#bRoute').value))return fail('That routing number does not look right: it is the 9 digits at the bottom left of a check');if(!/^\d{4,17}$/.test($('#bNum').value.replace(/\s+/g,'')))return fail('Enter the account number');if($('#bPhone').value.replace(/\D/g,'').length<10)return fail('Enter a phone number with area code');
