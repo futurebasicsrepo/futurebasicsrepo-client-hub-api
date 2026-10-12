@@ -75,6 +75,7 @@ test('picks go out before their store checks; checks follow as updates; then don
   assert.match(calls[0].messages[0].content, /up to 6 products/, 'a small first batch');
   assert.match(calls[0].messages[0].content, /their sizes are tops M\./);
   assert.match(calls[0].messages[0].content, /Never answer a shopping request with an empty list/);
+  assert.match(calls[0].messages[0].content, /Prefer the brand's own online store and shops that sell direct/, 'stores Spot can buy from and show');
   assert.doesNotMatch(calls[0].messages[0].content, /must be in stock/, 'stock is checked by Spot, not a reason to return nothing');
 });
 
@@ -275,4 +276,41 @@ test('on the shelf: a moved link goes out as an update with the product\'s own l
   const cached = again.find((e) => e.type === 'pick');
   assert.equal(cached.option.item.url, 'https://vessi.example/products/weekend');
   assert.equal(cached.option.item.price_cents, 13500);
+});
+
+test('photos from an image search: the store’s own result first, nothing unrelated, off without a key', async () => {
+  const { photoSearch } = await import('../src/capture.js');
+  const asked = [];
+  const brave = (results) => async (url, init) => (asked.push({ url, key: init.headers['x-subscription-token'] }), { ok: true, json: async () => ({ results }) });
+  const results = [
+    { title: 'Ray-Ban Wayfarer review blog', url: 'https://blog.example/rayban', properties: { url: 'https://blog.example/w.jpg' }, meta_url: { hostname: 'blog.example' } },
+    { title: 'Ray-Ban Original Wayfarer Classic Sunglasses', url: 'https://www.ray-ban.com/usa/sunglasses/rb2140', properties: { url: 'https://assets.ray-ban.com/w.png' }, meta_url: { hostname: 'www.ray-ban.com' } },
+  ];
+  const img = await photoSearch({ title: 'Ray-Ban Original Wayfarer Classic', store: 'Ray-Ban', url: 'https://www.ray-ban.com/usa/x' }, { fetchImpl: brave(results), key: 'k' });
+  assert.equal(img, 'https://assets.ray-ban.com/w.png', 'the store’s own site');
+  assert.match(asked[0].url, /images\/search\?q=Ray-Ban%20Original%20Wayfarer%20Classic%20Ray-Ban/);
+  assert.equal(asked[0].key, 'k');
+  // Another site's photo only when it's plainly the same product.
+  assert.equal(await photoSearch({ title: 'Oakley Holbrook polarized sunglasses', url: 'https://www.dickssportinggoods.com/f/x' }, { fetchImpl: brave(results), key: 'k' }), null);
+  assert.equal(await photoSearch({ title: 'Ray-Ban Original Wayfarer Classic Sunglasses', url: 'https://www.walmart.com/ip/1' }, { fetchImpl: brave(results), key: 'k' }), 'https://assets.ray-ban.com/w.png');
+  // No key: no search. A failing search: no photo, no error.
+  assert.equal(await photoSearch({ title: 'x y z' }, { fetchImpl: () => assert.fail('not asked'), key: '' }), null);
+  assert.equal(await photoSearch({ title: 'Ray-Ban Wayfarer' }, { fetchImpl: async () => ({ ok: false, status: 429 }), key: 'k' }).catch(() => 'threw'), null);
+});
+
+test('on the shelf: a store that gives no photo gets one from the image search', async () => {
+  const { client } = streamer([{ kind: 'products', products: [{ ...P(1, 'walmart'), image_url: '' }] }]);
+  const asked = [];
+  const photos = async (q) => (asked.push(q), 'https://i5.walmartimages.example/tee.jpg');
+  const blocked = async () => ({ items: [{ title: 'Robot or human?' }], warning: 'Walmart doesn’t let Spot read its pages', offers: [] });
+  const events = [];
+  const quiet = [console.log, console.error];
+  console.log = console.error = () => {};
+  try {
+    await streamLookup('black tee', { client, fromUrl: blocked, product: noShopify, resolve: async () => null, photos }, (e) => events.push(e));
+  } finally {
+    [console.log, console.error] = quiet;
+  }
+  assert.deepEqual(asked, [{ title: 'Tee 1', store: 'walmart', url: 'https://walmart.example/p1' }]);
+  assert.equal(events.find((e) => e.type === 'update').image_url, 'https://i5.walmartimages.example/tee.jpg');
 });
