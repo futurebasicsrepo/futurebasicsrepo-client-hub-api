@@ -634,6 +634,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
       const shared = await sharedAsk(String(b.text));
       if (shared.warning) return { source: 'text', merchant: { name: '', url: null }, items: [], not_found: true, warning: shared.warning };
       const d = await captureText(shared.text, { sizes: profile.sizes, shipTo: profile.ship_to, more: typeof b.more === 'string' ? b.more : '', avoid: Array.isArray(b.avoid) ? b.avoid.filter((u) => typeof u === 'string') : [] });
+      showStores(d);
       return uid ? { ...d, profile } : d;
     }
     if (b.image?.data) {
@@ -647,6 +648,26 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
 
   // The shelf's search, streamed: one line of JSON per pick as the model
   // writes it, then store-check updates, then "done" (streamLookup).
+  // Every store a pick comes from, for anyone: Spot's reach (/admin/health).
+  const showStore = (o) => {
+    try {
+      db.stores.add(siteOf(o?.item?.url || o?.merchant?.url || ''), o?.merchant?.name || '');
+    } catch (err) {
+      app.log.warn({ err }, 'store reach record');
+    }
+  };
+  const showStores = (d) => (d?.options || []).concat(...(d?.outfits || []).map((x) => x.items || [])).forEach(showStore);
+  // Before reach was kept: what signed-in shoppers were shown, and carts made.
+  if (!db.stores.count()) {
+    try {
+      for (const r of db.raw.prepare('SELECT doc, at FROM seen_products').all()) {
+        const o = JSON.parse(r.doc);
+        db.stores.add(siteOf(o.item?.url || o.merchant?.url || ''), o.merchant?.name || '', r.at);
+      }
+    } catch (err) {
+      app.log.warn({ err }, 'store reach backfill');
+    }
+  }
   const recent = lookupCache();
   app.post('/v1/capture/stream', async (req, reply) => {
     limits.capture(req);
@@ -665,6 +686,8 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
       db.seen.add(uid, it.url, { merchant: { name: o.merchant?.name || '', url: o.merchant?.url || '' }, item: { title: it.title, url: it.url, image_url: it.image_url, price_cents: it.price_cents || null, variant: it.variant || null, quantity: 1 }, stock: o.stock || 'unknown', why: o.why || null, asked: asked.slice(0, 120) });
     };
     const write = (e) => {
+      if (e.type === 'pick') showStore(e.option);
+      else if (e.type === 'outfit') e.outfit.items.forEach(showStore);
       if (uid) {
         try {
           if (e.type === 'pick') keep(e.option);
