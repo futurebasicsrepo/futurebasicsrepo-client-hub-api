@@ -2110,5 +2110,20 @@ await journey('J182', 'phone: the text link opens a short page already filled in
   await sp.click('[data-close]:visible'); ok(sp.errs.length === 0, 'no page errors in Sales', sp.errs); await sctx.close();
 });
 
+await journey('J183', 'phone: Home has a tile with the new-customer link, with Share, Text it and Copy', async () => {
+  const r = await room('183', { wait: false });
+  const kid = sql(`select id from users where lower(email)='kyle@thefuturebasics.com'`).split('\n')[0] || sql(`insert into users(client_id,email,name,role) values('${r.clientId}','kyle@thefuturebasics.com','Kyle','admin') returning id`).split('\n')[0];
+  const kyle = await forge({ sub: kid, clientId: r.clientId, role: 'admin', email: 'kyle@thefuturebasics.com' });
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, permissions: ['clipboard-read', 'clipboard-write'] });
+  await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} window.__shared = null; navigator.share = async d => { window.__shared = d; }; }, kyle);
+  const page = await ctx.newPage(); page.errs = []; page.on('pageerror', e => page.errs.push(e.message));
+  await page.goto('http://work.localhost:3123/home', { waitUntil: 'networkidle' }); await page.waitForSelector('#share:not(.hidden)', { timeout: 10000 });
+  ok(/\/j\/kyle$/.test(await page.textContent('#shareUrl')) && await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'the tile shows the short link and fits the phone');
+  const sms = await page.getAttribute('#shareSms', 'href'); ok(/^sms:\?&body=/.test(sms) && /\/j\/kyle/.test(decodeURIComponent(sms)) && /Future Basics/.test(decodeURIComponent(sms)), 'Text it opens Messages with the words and the link ready', sms);
+  await page.click('#shareGo'); const sh = await page.evaluate(() => window.__shared); ok(sh && /\/j\/kyle$/.test(sh.url) && !/https?:/.test(sh.text || ''), 'Share opens the phone share sheet with the link', sh);
+  await page.click('#shareCopy'); await page.waitForFunction(() => /Copied/.test(document.querySelector('#shareMsg').textContent)); const clip = await page.evaluate(() => navigator.clipboard.readText().catch(() => '')); ok(/\/j\/kyle/.test(clip) && /Future Basics/.test(clip), 'Copy puts the link and the words on the clipboard', clip);
+  ok(page.errs.length === 0, 'no page errors', page.errs); await ctx.close();
+});
+
 await browser.close();
 const bad = summary(); process.exit(bad ? 1 : 0);

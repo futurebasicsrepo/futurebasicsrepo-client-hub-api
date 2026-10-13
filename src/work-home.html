@@ -22,6 +22,10 @@ h1{font-size:clamp(28px,4vw,44px);letter-spacing:-.03em;font-weight:500;margin:6
 .sub{color:var(--dim);font-size:13px}.note{color:var(--dim);margin:4px 0 0}
 .top{display:flex;gap:16px;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;margin-bottom:18px}
 .acts{display:flex;gap:8px;flex-wrap:wrap}
+.share{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px 16px;align-items:center;background:var(--ink);color:#fff;border-radius:22px;padding:16px 18px;margin-bottom:18px}
+.share .mono{color:#9d9da4}.share b{display:block;font-size:clamp(17px,4.6vw,22px);font-weight:500;letter-spacing:-.01em;overflow-wrap:anywhere;margin:2px 0 3px}.share .sub{color:#c9c9cf}
+.share .acts{justify-content:flex-end}.share .btn{background:transparent;color:#fff;border-color:rgba(255,255,255,.4);min-height:44px}.share .btn:hover{background:rgba(255,255,255,.12)}.share .btn.go{background:#4bff9a;color:#141416;border-color:#4bff9a}.share .msg:empty{display:none}.share .msg{grid-column:1/-1;font-size:13px;color:#4bff9a}
+@media(max-width:700px){.share{grid-template-columns:minmax(0,1fr)}.share .acts{justify-content:stretch}.share .acts .btn{flex:1 1 30%;padding:12px 10px}}
 .btn{display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--ink);background:#fff;color:var(--ink);border-radius:999px;padding:9px 16px;text-decoration:none;cursor:pointer;font-weight:600}.btn:hover{background:var(--fog)}.btn.go{background:var(--ink);color:#fff}.btn.go:hover{background:#2c2c33}.btn.sm{padding:5px 12px;font-size:13px}
 .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr));gap:12px;margin-bottom:18px}
 .tile{background:#fff;border:1px solid var(--line);border-radius:18px;padding:16px 18px;display:flex;flex-direction:column;gap:2px;text-decoration:none}
@@ -63,6 +67,9 @@ h1{font-size:clamp(28px,4vw,44px);letter-spacing:-.03em;font-weight:500;margin:6
     <div class="top"><div><span class="mono" style="color:var(--dim)" id="date"></span><h1 id="hello">Today</h1><p class="note">More leads, more prototypes in front of the right people, and every project in flight one click away.</p></div>
       <div class="acts" id="actions"><a class="btn" href="/sales#contacts" id="aLead">+ Add a lead</a><a class="btn" href="/builds/admin?new=1" id="aProto">+ New prototype</a><a class="btn go" href="/admin#clientsHead" id="aProj">+ New project</a></div></div>
 
+    <section class="share hidden" id="share" aria-label="New-customer sign-up link"><div><span class="mono">New-customer link</span><b id="shareUrl"></b><span class="sub">Opens a short page on their phone, makes their hub and asks for their details once. Each sign-up is marked as yours.</span></div>
+      <div class="acts"><button class="btn go" type="button" id="shareGo">Share</button><a class="btn" id="shareSms" href="#">Text it</a><button class="btn" type="button" id="shareCopy">Copy</button></div><span class="msg" id="shareMsg" role="status"></span></section>
+
     <section class="tiles" id="funnel" aria-label="This week"></section>
 
     <section class="panel" id="myPanel"><div class="ph"><h2>My accounts</h2><span class="sub" id="myCount"></span></div>
@@ -90,6 +97,16 @@ const ago=v=>{if(!v)return '';const d=(Date.now()-new Date(v))/864e5;return d<1?
 const SW=['discovery','prototype','build','review','launch','live','maintenance'];
 let HOME=null,FILTER='all',MONEY=null;
 
+// the sign-up link to text to a new customer: Share opens the phone's own share sheet, Text it opens Messages with the words ready
+async function loadShare(){
+  let d;try{d=await api('/v1/admin/join-link')}catch{return}
+  $('#shareUrl').textContent=d.general.replace(/^https?:\/\//,'');$('#share').classList.remove('hidden');
+  const say=t=>{$('#shareMsg').textContent=t;setTimeout(()=>{if($('#shareMsg').textContent===t)$('#shareMsg').textContent=''},2500)};
+  const text=d.text.replace(d.link,d.general);
+  $('#shareSms').href='sms:?&body='+encodeURIComponent(text);
+  $('#shareGo').onclick=async()=>{if(navigator.share){try{await navigator.share({title:'Open your Future Basics hub',text:text.replace(d.general,'').trim(),url:d.general})}catch{}}else{$('#shareCopy').click()}};
+  $('#shareCopy').onclick=async()=>{try{await navigator.clipboard.writeText(text)}catch{const t=document.createElement('textarea');t.value=text;document.body.appendChild(t);t.select();document.execCommand('copy');t.remove()}say('Copied the link and the text to send')};
+}
 function greet(){const h=new Date().getHours();return (h<12?'Good morning':h<18?'Good afternoon':'Good evening')}
 function renderFunnel(o,h){
   const f=h.funnel,p=o.pipeline;
@@ -161,7 +178,7 @@ $('#projFilters').addEventListener('click',e=>{const b=e.target.closest('[data-f
     const [o,h]=await Promise.all([api('/v1/sales/overview'),api('/v1/admin/home')]);HOME=h;
     $('#app').classList.remove('hidden');
     $('#date').textContent=new Date().toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'});$('#hello').textContent=greet()+(h.me&&h.me.firstName?', '+h.me.firstName:'');
-    renderFunnel(o,h);renderMine(h);renderReach(o,h);renderProtos(h);renderProjects();renderWait(h);
+    loadShare();renderFunnel(o,h);renderMine(h);renderReach(o,h);renderProtos(h);renderProjects();renderWait(h);
     // late invoices join the list once Money answers (it is not waited for: the page is already up, and most people are not allowed in)
     api('/v1/money/overview').then(m=>{MONEY=m;renderReach(o,h)}).catch(()=>{});
   }catch(x){$('#needSignin').classList.remove('hidden')}

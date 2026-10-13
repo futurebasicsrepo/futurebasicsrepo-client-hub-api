@@ -19,6 +19,7 @@ The handle is the part before the @ of a staff email (`kyle@thefuturebasics.com`
 
 ## Where staff find the link
 
+* **Home** (the first screen on a phone): a dark **New-customer link** tile with **Share** (the phone's own share sheet), **Text it** and **Copy**.
 * **Sales** → **New-customer link** (top right): the general link, the words to send, **Text it** (opens the messages app with the text ready), **Copy link**, **Copy the text**.
 * **A contact card** → "Not on the hub yet? Text or copy their hub link": the same, filled in for that person, with their phone number on the Text it button.
 * `GET /v1/admin/join-link?name=&email=&company=` returns `{ handle, link, general, text }` for the signed-in staff member.
@@ -44,4 +45,4 @@ It does **not** ask for payment details: those are only taken on Stripe's page w
 * Routes: `GET|POST /v1/onboarding` (client only; staff and previews are refused), `POST /v1/admin/clients/:id/onboarding { status: 'pending' | 'done' }`, `GET /j`, `GET /j/:handle`.
 * `/v1/session` carries `client.onboarding_status`; `/v1/dashboard` adds a `kind: 'onboarding'` item to `waiting` while pending.
 * The starter template is added once to a place that already has its templates (and never again if it is deleted).
-* Code: `src/onboarding.js` (validation, links, routes), `src/join.html`, the setup form in `src/client.html`, the share dialog in `src/sales.html`. Tests: `test/onboarding.test.js`; journeys J181 (API) and J182 (phone, browser).
+* Code: `src/onboarding.js` (validation, links, routes), `src/join.html`, the setup form in `src/client.html`, the share dialog in `src/sales.html`. Tests: `test/onboarding.test.js`; journeys J181 (API), J182 and J183 (phone, browser).
