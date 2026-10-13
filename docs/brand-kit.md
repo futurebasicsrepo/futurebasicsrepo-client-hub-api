@@ -33,4 +33,11 @@ These are starting rules written from how the hub already uses the brand; edit t
 * CMYK numbers are a plain conversion for a first look. For an exact print match give the printer the Pantone chip or ask for a proof. The Pantone chips are the nearest computed matches (see `pantone-c.js`); PANTONE is a registered trademark of Pantone LLC.
 * There is no EPS or AI file. The PDF and SVG are true vector and open in Illustrator, Affinity, Figma and print shops' software.
 * Routes: `GET /v1/brand` (catalogue), `GET /v1/brand/files/:file`, `GET /v1/brand/kit.zip`. Code: `src/brand-kit.js`, `src/brand.html`. Tests: `test/brand-kit.test.js`, journeys J184 (API) and J185 (browser, desktop and phone).
-* The new icon files are in the kit but the hub's own favicons and app icons (`src/icons`) still show the wordmark until they are swapped.
+
+## Where the mark is used in the product
+
+* **Icons**: the hub's favicon, home-screen and app icons (`src/icons/icon-*.png`, `apple-touch-icon.png`, `icon.svg`) and the link-preview picture (`og-brand.png`, 1200 × 630, the wordmark with the cue) are written from the brand kit by `node scripts/build-brand-icons.mjs`. Run it again if the wordmark or the mark changes. The Tech Pack app (`/start`, the tech pack editor) keeps its own icons (`techpack-v3-*`); `og-join.png` is its own designed card.
+* **Link previews**: `/start`, `/help`, `/join`, `/fair`, the hub, the contract signing page and the builds showcase carry Open Graph and Twitter tags, so a texted link shows a picture and a title.
+* **Headers**: the cue line under the name, as the console headers draw it, is now also on `/start`, the help page, the factory sign-up, the factory tech-pack page and the quote invite.
+* **Email**: `hubEmailShell` opens with the line and dot, drawn in plain HTML (no image to block).
+* **Not changed**: PDFs (the dot after the name in the letterhead already is the mark), the Tech Pack app icons, external listings (Stripe checkout, Google sign-in, Shopify, Resend). Use the icon files from the Brand page for those.

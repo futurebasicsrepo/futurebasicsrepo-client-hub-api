@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import sharp from 'sharp';
+import { readFileSync } from 'node:fs';
 import { assetFiles, assetFile, catalogue, colorFacts, COLORS, kitZip, GROUPS } from '../src/brand-kit.js';
 
 const files = assetFiles();
@@ -64,5 +65,16 @@ test('the favicon and app icons are the compact mark, not the wordmark', async (
   const icon = (await assetFile('future-basics-icon-ink.svg')).buffer.toString(); assert.match(icon, /#4BFF9A/); assert.doesNotMatch(icon, / d="M 4/);
   const tiny = await sharp((await assetFile('favicon-16.png')).buffer).raw().toBuffer({ resolveWithObject: true }); const px = []; for (let i = 0; i < tiny.data.length; i += 4) px.push(tiny.data.subarray(i, i + 3).join(','));
   assert.ok(px.some(c => c === '75,255,154'), 'a green dot survives at 16 px'); // Cue
+});
+const page = f => readFileSync(new URL(`../src/${f}.html`, import.meta.url), 'utf8');
+test('the pages whose links get shared say what they are, with the Future Basics picture', () => {
+  for (const f of ['start', 'help', 'builds', 'client', 'fair', 'sign', 'join']) { const h = page(f); assert.match(h, /og:image" content="https:\/\/hub\.thefuturebasics\.com\/icons\/og-(brand|join)\.png"/, f); assert.match(h, /og:title/, f); assert.match(h, /twitter:card/, f); }
+});
+test('the favicon is the hub icon on the pages that are ours, and the Tech Pack app keeps its own', () => {
+  for (const f of ['client', 'join', 'sign', 'help', 'factory', 'invite', 'print', 'work-home', 'brand']) assert.match(page(f), /rel="icon" href="\/icons\/icon-192\.png"/, f);
+  for (const f of ['start', 'techpack']) assert.match(page(f), /techpack-v3-192\.png/, f);
+});
+test('the cue line sits under the name on the public pages', () => {
+  for (const f of ['start', 'help', 'fair', 'factory', 'invite']) assert.match(page(f), /:after\{content:"";position:absolute;left:0;bottom:-7px;width:\d+px;height:2px;border-radius:1px;background:#4bff9a\}/, f);
 });
 test('an unknown file is not found', async () => { assert.equal(await assetFile('../server.js'), null); assert.equal(await assetFile('nope.png'), null); });
