@@ -38,6 +38,9 @@ export function platformProfile(base) {
         'dev.ucp.shopping.fulfillment': [{ version: UCP_VERSION, spec: `${SPEC}/shopping/extensions/fulfillment/`, schema: `${SCHEMAS}/shopping/fulfillment.json`, extends: 'dev.ucp.shopping.checkout' }],
         'dev.ucp.shopping.catalog.lookup': [{ version: UCP_VERSION, spec: `${SPEC}/shopping/catalog/lookup/`, schema: `${SCHEMAS}/shopping/catalog_lookup.json` }],
         'dev.ucp.shopping.discount': [{ version: UCP_VERSION, spec: `${SPEC}/shopping/extensions/discount/`, schema: `${SCHEMAS}/shopping/discount.json`, extends: 'dev.ucp.shopping.checkout' }],
+        // Get Order (tracking.js): a store only offers get_order to an agent
+        // whose profile names this; without it Shopify answers "Invalid params".
+        'dev.ucp.shopping.order': [{ version: UCP_VERSION, spec: `${SPEC}/shopping/order/`, schema: `${SCHEMAS}/shopping/order.json` }],
       },
       payment_handlers: {},
     },
