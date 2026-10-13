@@ -22,11 +22,13 @@
 //                                              the difference was asked for (pricewatch.js)
 //   thanks           payer      email          the requester's thank-you, with a link to
 //                                              the payer's receipt (where it shows too)
+//   family_ask       parent     email + text   their teen's ask is outside the rules they
+//                              + push         set (family.js): approve it in one tap
 //
 // Each (cart, event, person) is told once: sends are recorded in the
 // notices table. Texts go only to numbers that haven't replied STOP (notify.js).
 // Sending never blocks or breaks the flow that triggered it.
-import { chipProgress, payerIsRequester, requesterEmail, usd } from './cart.js';
+import { chipProgress, familyPaid, payerIsRequester, requesterEmail, usd } from './cart.js';
 import { emailLayout, finishMessage } from './notify.js';
 import { agentLabel } from './approvals.js';
 
@@ -167,7 +169,47 @@ export function createEvents({ db, spot, notifier, baseUrl, log = console }) {
           sms: `Spot: ${by} passed on your ${store} order (${item}). Pay it yourself or send it to someone else: ${link}`,
         }];
       }
+      case 'family_ask': {
+        const parent = cart.family?.parent_id ? db.users.byId(cart.family.parent_id) : null;
+        if (!parent) return [];
+        const teen = (cart.requester?.name || 'Your teen').split(' ')[0];
+        const ask = `${base}/c/${cart.token}`;
+        const why = cart.family.reason;
+        return [{
+          key: 'family_ask',
+          to: { email: parent.email || null, phone: parent.phone || null, userId: parent.id },
+          subject: `${teen} wants ${item} (${usd(cart.total_cents)})`,
+          text: `${teen} asked for ${item} from ${store}, ${usd(cart.total_cents)} all in.${why ? ` Why it came to you: ${why}.` : ''} Approve it in one tap, or say not this time: ${ask}`,
+          push_title: `${teen} wants ${item}`,
+          push_body: `${store} · ${usd(cart.total_cents)}. Tap to approve or pass.`,
+          url: ask,
+          html: mail({
+            preheader: `${store} · ${usd(cart.total_cents)}. Approve or pass`,
+            title: `${esc(teen)} wants something 👀`,
+            lines: [
+              `<b>${esc(item)}</b>${cart.items.length > 1 ? ` +${cart.items.length - 1} more` : ''} from ${esc(store)} · <b>${usd(cart.total_cents)}</b> all in.`,
+              why ? `Why it came to you: ${esc(why)}.` : '',
+              'Approve it and Spot orders it and ships it. Pass and nothing is bought.',
+            ].filter(Boolean),
+            cta: { label: 'Approve or pass →', url: ask },
+            note: `Change ${esc(teen)}’s rules any time in your account, under Family.`,
+          }),
+          sms: `Spot: ${teen} wants ${item} from ${store} (${usd(cart.total_cents)}). Approve or pass: ${ask}`,
+        }];
+      }
       case 'covered':
+        if (familyPaid(cart)) {
+          const p = cart.payer?.name || 'Your parent';
+          const said = cart.saved_pay.how === 'approved_by_parent' ? `${p} approved it` : `It’s inside ${p}’s rules`;
+          return [{
+            key: 'covered',
+            to: requesterContact(cart),
+            subject: `🎉 ${said}: ${item}`,
+            text: `${said}, so ${item} from ${store} is paid for. Spot is ordering it now and will send tracking: ${link}`,
+            html: mail({ preheader: `${item} is on its way to being ordered`, title: `🎉 ${esc(said)}!`, lines: [`<b>${esc(item)}</b> from ${esc(store)} is paid for.`, 'Spot is ordering it now. You’ll get tracking when it ships.'], cta: { label: 'See it →', url: link } }),
+            sms: `Spot: ${said}. ${item} from ${store} is paid for, and Spot is ordering it: ${link}`,
+          }];
+        }
         return [{
           key: 'covered',
           to: requesterContact(cart),
@@ -256,6 +298,7 @@ export function createEvents({ db, spot, notifier, baseUrl, log = console }) {
           `Goods ${usd(cart.cart_cents)}${cart.cushion_cents ? ` · up to ${usd(cart.cushion_cents)} for tax and price changes (unused comes back)` : ''} · Spot fee ${usd(cart.fee_cents)} · <b>Total ${usd(cart.total_cents)}</b>`,
           cart.kind === 'flight' ? 'Spot bought this ticket from the airline for the traveler.' : 'You bought this from Spot. Spot orders it from the store and ships it; returns go through Spot.',
           cart.kind === 'flight' ? '' : 'Changed your mind? Cancel for a full refund any time before Spot places the order.',
+          cart.saved_pay?.how === 'paid_by_family_rules' ? `Paid from your saved card because ${esc(who.split(' ')[0])}’s ask was inside your rules (an approved store, under your limit). Change the rules in your account, under Family.` : '',
           trail ? `<span style="font-size:13px;color:#8a8175">${trail}</span>` : '',
         ].filter(Boolean);
         return [{

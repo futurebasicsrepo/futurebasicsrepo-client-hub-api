@@ -237,7 +237,7 @@ export function accountPage({ origin, provider = 'sandbox' }) {
 <div class="setupcard notifcard" id="notifCard" hidden><span class="sface" aria-hidden="true"></span><span><b id="notifCardT">Get a ping on this device</b><small id="notifCardS">When a price drops, someone pays, or an order ships.</small></span><span class="nbtns"><button type="button" class="go2 linkish" id="notifCardOn">Turn on</button><button type="button" class="nx" id="notifCardNo" aria-label="Not now">×</button></span></div>
 <button type="button" class="aistrip" id="aiStrip" hidden></button>
 <section id="readySec" class="readysec" hidden><h2 class="gt">Ready for you</h2><p class="sub">Carts and flights your AI put together. Tap to check and finish.</p><div class="ready" id="ready"></div></section>
-<nav class="tabs" role="tablist" aria-label="Account"><button type="button" role="tab" data-tab="spots" aria-selected="true">Spots</button><button type="button" role="tab" data-tab="ai" aria-selected="false">AI &amp; card</button><button type="button" role="tab" data-tab="details" aria-selected="false">Saved details</button><button type="button" role="tab" data-tab="signin" aria-selected="false">Sign-in</button></nav><section class="panel" data-panel="spots"><h2 class="sr">Your Spots</h2><div class="savebox" id="saveBox" hidden></div><p class="lead">Everything you’ve asked for, on any device, including what your AI bought or asked for.</p><div class="seg three" role="tablist" aria-label="Show" id="cartSeg" hidden><button type="button" role="tab" aria-selected="true" data-f="all">All</button><button type="button" role="tab" aria-selected="false" data-f="ai">By your AI</button><button type="button" role="tab" aria-selected="false" data-f="you">By you</button></div><div class="box list" id="carts"></div></section><section class="panel" data-panel="ai" hidden><h2 class="sr">Your AI</h2><div class="grp"><h3 class="gt">Connected AIs</h3><p class="sub">Claude, ChatGPT or any MCP app. Set rules for each one, see everything it did, and disconnect it any time. Your AI never gets a card number.</p>
+<nav class="tabs" role="tablist" aria-label="Account"><button type="button" role="tab" data-tab="spots" aria-selected="true">Spots</button><button type="button" role="tab" data-tab="ai" aria-selected="false">AI &amp; card</button><button type="button" role="tab" data-tab="family" aria-selected="false">Family</button><button type="button" role="tab" data-tab="details" aria-selected="false">Saved details</button><button type="button" role="tab" data-tab="signin" aria-selected="false">Sign-in</button></nav><section class="panel" data-panel="spots"><h2 class="sr">Your Spots</h2><div class="savebox" id="saveBox" hidden></div><p class="lead">Everything you’ve asked for, on any device, including what your AI bought or asked for.</p><div class="seg three" role="tablist" aria-label="Show" id="cartSeg" hidden><button type="button" role="tab" aria-selected="true" data-f="all">All</button><button type="button" role="tab" aria-selected="false" data-f="ai">By your AI</button><button type="button" role="tab" aria-selected="false" data-f="you">By you</button></div><div class="box list" id="carts"></div></section><section class="panel" data-panel="ai" hidden><h2 class="sr">Your AI</h2><div class="grp"><h3 class="gt">Connected AIs</h3><p class="sub">Claude, ChatGPT or any MCP app. Set rules for each one, see everything it did, and disconnect it any time. Your AI never gets a card number.</p>
   <div class="box"><div id="keys"></div><div class="btnrow" style="margin-top:10px"><button class="btn primary" id="connectAi">Connect a new AI</button></div>
     <div id="connectOut" class="connect" hidden>
       <p style="margin:14px 0 6px"><b>Add Spot to your AI app, then tap Allow.</b> No key to copy.</p>
@@ -257,6 +257,11 @@ export function accountPage({ origin, provider = 'sandbox' }) {
   <div class="box"><div id="apv"></div>
     <form class="f" id="apvForm" style="margin-top:10px"><div class="two"><input name="name" placeholder="Their name" aria-label="Approver name"><input name="email" type="email" placeholder="Their email" required aria-label="Approver email"></div><div class="btnrow"><button class="btn primary">Ask them</button><span class="ok-msg" id="apvOk"></span></div></form>
   </div>
+</div></section><section class="panel" data-panel="family" hidden><h2 class="sr">Family</h2>
+<div class="box" id="famKid" hidden></div>
+<div id="famParent"><p class="lead">For teens 13 to 17. Small stuff at stores you approve goes through on its own, paid from your card. The big stuff pings you to approve in one tap.</p>
+<div id="famList"></div>
+<div class="box" id="famAddBox"><h3 class="bt">Add a teen</h3><form class="f" id="famAdd"><input name="name" placeholder="Their first name" aria-label="Their first name" required maxlength="40"><label class="agree"><input type="checkbox" name="consent" required> I’m their parent or legal guardian, they’re 13 to 17, and I agree to Spot’s <a href="/terms#family">Terms</a> for them.</label><div class="btnrow"><button class="btn primary">Get their join link</button></div><p class="err" id="famAddErr"></p></form><div id="famLink" hidden></div></div>
 </div></section><section class="panel" data-panel="details" hidden><h2 class="sr">Saved details</h2><p class="lead">Filled in for you at checkout, and used by your AI so it doesn’t have to ask.</p><div class="panes"><a class="pane plink" href="#ai"><span class="pt">Card</span><span class="ps" id="pCardSum"></span><span class="go2">AI &amp; card →</span></a><details class="pane" id="pAddr"><summary><span class="pt">Shipping address</span><span class="ps" id="pAddrSum"></span><span class="chev" aria-hidden="true"></span></summary><div class="pb"><form class="f" id="shipForm">
     <input name="name" placeholder="Full name" autocomplete="name" aria-label="Full name">
     <input name="line1" placeholder="Street" autocomplete="address-line1" aria-label="Street">
@@ -303,7 +308,7 @@ function sums(u){const set=(id,t,empty)=>{const e=document.getElementById(id);if
   const z=u.sizes||{};set('pSizeSum',[z.tops&&'Tops '+z.tops,z.bottoms&&'Pants '+z.bottoms,z.shoes&&'Shoes '+z.shoes,z.dresses&&'Dresses '+z.dresses].filter(Boolean).join(' · '),'Add your sizes');
   set('pTravSum',(u.travelers||[]).map(t=>t.given_name).join(', '),'None yet')}
 // Tabs: one panel at a time; the URL hash keeps your place (and #ai-card style links work).
-const PANELS=['spots','ai','details','signin'];
+const PANELS=['spots','ai','family','details','signin'];
 function tab(k,push){if(!PANELS.includes(k))k='spots';document.querySelectorAll('.tabs [data-tab]').forEach(b=>b.setAttribute('aria-selected',String(b.dataset.tab===k)));
   document.querySelectorAll('.panel').forEach(p=>p.hidden=p.dataset.panel!==k);if(push)history.replaceState(null,'','#'+k)}
 document.querySelectorAll('.tabs [data-tab]').forEach(b=>b.onclick=()=>{tab(b.dataset.tab,true);const t=document.querySelector('.tabs');if(t.getBoundingClientRect().top<70)t.scrollIntoView({block:'start'})});
@@ -435,8 +440,55 @@ document.addEventListener('submit',async e=>{const f=e.target.closest('[data-rul
   const max=c(v.max),month=c(v.month);
   if(max&&month&&month<max){er.textContent='The monthly cap can’t be less than the per-order cap.';return}
   const b=f.querySelector('button');b.disabled=true;
-  try{const r=await post('/v1/me/keys/'+encodeURIComponent(f.dataset.rules)+'/rules',{max_order_cents:max,monthly_cents:month,stores:v.stores.split(/[\s,]+/).filter(Boolean),approver:v.approver,pay:v.pay});me.keys=r.keys;$('#keys').innerHTML=me.keys.map(keyRow).join('');aiStrip();const ok=document.querySelector('[data-rules="'+CSS.escape(f.dataset.rules)+'"] [data-saved]');if(ok){ok.closest('details').open=true;ok.hidden=false;setTimeout(()=>{ok.hidden=true},2500)}}
+  try{const r=await post('/v1/me/keys/'+encodeURIComponent(f.dataset.rules)+'/rules',{max_order_cents:max,monthly_cents:month,stores:v.stores.split(/[\\s,]+/).filter(Boolean),approver:v.approver,pay:v.pay});me.keys=r.keys;$('#keys').innerHTML=me.keys.map(keyRow).join('');aiStrip();const ok=document.querySelector('[data-rules="'+CSS.escape(f.dataset.rules)+'"] [data-saved]');if(ok){ok.closest('details').open=true;ok.hidden=false;setTimeout(()=>{ok.hidden=true},2500)}}
   catch(err){er.textContent=err.message;b.disabled=false}});
+// Family (family.js): a parent's rules for each teen, or, for a teen, whose family they're in.
+let fam=null;
+const famLinkBox=(url,name)=>'<p class="ok-msg" style="margin:12px 0 6px">Send this to '+esc(name)+'. It works once, for 7 days.</p><div class="mcpurl"><code>'+esc(url)+'</code><button class="btn ghost" type="button" data-famcopy="'+esc(url)+'">Copy</button>'+(navigator.share?'<button class="btn ghost" type="button" data-famshare="'+esc(url)+'">Share</button>':'')+'</div>';
+function famRow(t){
+  const r=t.rules||{},cap=r.monthly_cents;
+  const field=(name,label,val,hint)=>'<label class="fl"><span>'+label+'</span><span class="cur"><i aria-hidden="true">'+esc(CUR_SYM)+'</i><input style="padding-left:calc(20px + '+(CUR_SYM.length*0.62).toFixed(2)+'em)" name="'+name+'" inputmode="decimal" placeholder="'+(hint||'')+'" value="'+(val?(val/100):'')+'" aria-label="'+label+' in '+CUR+'"></span></label>';
+  const line=t.auto_on&&!t.paused?'Up to '+money(r.auto_cents)+' at '+(r.stores.length?r.stores.join(', '):'no stores yet')+' goes through on its own'+(cap?', '+money(cap)+' a month':'')+'. Everything else comes to you.':t.paused?'Paused: every ask comes to you.':'Every ask comes to you. Set a limit below to let small stuff through on its own.';
+  const recent=(t.recent||[]).map(c=>'<li><a href="/c/'+encodeURIComponent(c.token)+'"><b>'+esc(c.item)+'</b></a> '+esc([c.store,money(c.cents)].join(' · '))+' <small class="sub">'+(c.decision==='auto'?'went through on its own':c.decision==='approved'?'you approved':(LABEL[c.status]||[c.status])[0]==='waiting'?'waiting on you':esc((LABEL[c.status]||[c.status])[0]))+'</small></li>').join('');
+  return '<div class="keyc" data-fam="'+esc(t.id)+'"><div class="khead"><span class="kname">🧑 <b>'+esc(t.name)+'</b><small>'+(t.joined?'joined':'hasn’t joined yet')+'</small></span><button class="linkbtn" data-famrm>Remove</button></div>'
+    +(t.joined?'':'<div>'+(t.link_expired?'<p class="sub" style="margin:0">Their link expired.</p>':'<p class="sub" style="margin:0">Waiting for them to open their link.</p>')+'<button class="btn ghost sm" type="button" data-famnew style="margin-top:8px">'+(t.link_expired?'Get a new link':'Get the link again')+'</button><div data-famout></div></div>')
+    +'<div class="spend"><b>'+money(t.spent_cents)+'</b> went through on its own this month'+(cap?' <span>of '+money(cap)+'</span>':'')+'</div>'
+    +'<p class="sub" style="margin:6px 0 0">'+esc(line)+'</p>'
+    +'<details class="more"'+(t.auto_on?'':' open')+'><summary>Rules</summary><form class="f rules" data-famrules>'
+    +'<div class="two">'+field('auto','On its own, up to',r.auto_cents,'Nothing')+field('month','On its own, per month',cap,'No cap')+'</div>'
+    +'<label class="fl"><span>Approved stores</span><input name="stores" placeholder="target.com, nike.com" value="'+esc((r.stores||[]).join(', '))+'" aria-label="Approved stores"></label>'
+    +(t.auto_on?'':'<label class="agree"><input type="checkbox" name="agree"> Pay '+esc(t.name)+'’s asks inside these rules from my card without asking me. I get a receipt for each one.</label>')
+    +(fam.card?'<p class="sub" style="margin:0">Paid from your '+esc(fam.card)+'.</p>':'<p class="sub" style="margin:0">Add a card under <a href="#ai-card">AI &amp; card</a> so small stuff can go through on its own and you can approve the rest in one tap.</p>')
+    +'<div class="btnrow"><button class="btn primary">Save</button><button class="btn ghost" type="button" data-fampause>'+(t.paused?'Resume':'Pause')+'</button><span class="ok-msg" data-saved hidden>Saved ✓</span></div><p class="err" data-err></p></form></details>'
+    +(recent?'<details class="more" open><summary>Recent asks</summary><ul class="acts">'+recent+'</ul></details>':'')+'</div>';
+}
+function drawFamily(){
+  if(!fam)return;
+  const kid=fam.parent;$('#famKid').hidden=!kid;$('#famParent').hidden=Boolean(kid);
+  if(kid){const p=esc(kid.name);$('#famKid').innerHTML='<h3 class="bt">You’re in '+p+'’s family</h3><p class="sub" style="margin:0">'+(kid.auto_cents?'Things up to '+money(kid.auto_cents)+(kid.stores&&kid.stores.length?' at '+esc(kid.stores.join(', ')):'')+' go through on their own, paid by '+p+'. ':'')+'Everything else goes to '+p+' for a one-tap yes. '+p+' sees what you ask for.</p><div class="btnrow" style="margin-top:10px"><button class="btn ghost sm" id="famLeave">Leave '+p+'’s family</button></div>';
+    $('#famLeave').onclick=async()=>{if(!confirm('Leave '+kid.name+'’s family? Your asks won’t go to them anymore.'))return;try{await post('/v1/me/family/leave');await loadFamily()}catch(err){$('#err').textContent=err.message}};return}
+  $('#famList').innerHTML=fam.teens.map(famRow).join('');
+}
+async function loadFamily(){try{const r=await fetch('/v1/me/family');if(r.ok){fam=await r.json();drawFamily()}}catch{}}
+$('#famAdd').addEventListener('submit',async e=>{e.preventDefault();$('#famAddErr').textContent='';const f=e.target,v=Object.fromEntries(new FormData(f));const b=f.querySelector('button');b.disabled=true;
+  try{const r=await post('/v1/me/family',{name:v.name,consent:Boolean(v.consent)});f.reset();$('#famLink').hidden=false;$('#famLink').innerHTML=famLinkBox(r.link,r.teen.name);await loadFamily()}
+  catch(err){$('#famAddErr').textContent=err.message}finally{b.disabled=false}});
+document.addEventListener('click',async e=>{
+  const cp=e.target.closest('[data-famcopy]');if(cp){try{await navigator.clipboard.writeText(cp.dataset.famcopy);cp.textContent='Copied'}catch{}return}
+  const sh=e.target.closest('[data-famshare]');if(sh){navigator.share({title:'Join me on Spot',url:sh.dataset.famshare}).catch(()=>{});return}
+  const row=e.target.closest('[data-fam]');if(!row)return;const id=row.dataset.fam,t=fam.teens.find(x=>x.id===id);
+  try{
+    if(e.target.closest('[data-famrm]')){if(!confirm('Remove '+t.name+'? Their asks stop coming to you, and nothing goes through on its own.'))return;await post('/v1/me/family/'+encodeURIComponent(id)+'/remove');return loadFamily()}
+    if(e.target.closest('[data-famnew]')){const r=await post('/v1/me/family/'+encodeURIComponent(id)+'/link');row.querySelector('[data-famout]').innerHTML=famLinkBox(r.link,t.name);return}
+    if(e.target.closest('[data-fampause]')){await post('/v1/me/family/'+encodeURIComponent(id)+'/pause',{on:!t.paused});return loadFamily()}
+  }catch(err){const er=row.querySelector('[data-err]');if(er)er.textContent=err.message;else $('#err').textContent=err.message}});
+document.addEventListener('submit',async e=>{const f=e.target.closest('[data-famrules]');if(!f)return;e.preventDefault();const row=f.closest('[data-fam]'),er=f.querySelector('[data-err]');er.textContent='';const v=Object.fromEntries(new FormData(f));
+  const c=x=>{x=String(x).replace(/[^0-9.]/g,'');return x?Math.round(parseFloat(x)*100):null};
+  const b=f.querySelector('button');b.disabled=true;
+  try{await post('/v1/me/family/'+encodeURIComponent(row.dataset.fam)+'/rules',{auto_cents:c(v.auto),monthly_cents:c(v.month),stores:v.stores.split(/[\\s,]+/).filter(Boolean),agree:Boolean(v.agree)});await loadFamily();
+    const ok=document.querySelector('[data-fam="'+CSS.escape(row.dataset.fam)+'"] [data-saved]');if(ok){ok.closest('details').open=true;ok.hidden=false;setTimeout(()=>{ok.hidden=true},2500)}}
+  catch(err){er.textContent=err.message;b.disabled=false}});
+loadFamily();
 $('#apvForm').addEventListener('submit',async e=>{e.preventDefault();$('#err').textContent='';const v=Object.fromEntries(new FormData(e.target));
   try{const r=await post('/v1/me/approver',v);$('#apvOk').textContent=r.confirm_link?'Test mode: they would get this link by email.':'Sent. They need to tap Yes in the email.';if(r.confirm_link)console.log(r.confirm_link);e.target.reset();load()}catch(err){$('#err').textContent=err.message}});
 // Spots made on this device before signing in join the account.
@@ -543,6 +595,49 @@ const SETUP_CSS = `
 .howto{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:15px}.howto a{color:var(--spot);font-weight:700;text-decoration:none}
 .have{background:color-mix(in srgb,var(--ok) 12%,transparent);color:var(--ink);border-radius:12px;padding:10px 12px;font-size:15px;font-weight:600}.have[hidden]{display:none}
 .sufine{color:var(--muted);font-size:14px;margin:0}
+/* The tour: what Spot does, before the questions (four slides, swipe or Next) */
+.tour{display:flex;flex-direction:column;gap:14px;max-width:520px;margin:0 auto}.tour[hidden]{display:none}
+.tslides{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;gap:16px;margin:0 -4px;padding:4px}
+.tslides::-webkit-scrollbar{display:none}
+.tslide{flex:0 0 100%;scroll-snap-align:center;display:flex;flex-direction:column;gap:8px}
+.tslide h2{font-size:clamp(30px,8vw,40px);line-height:1.02;letter-spacing:-.035em;margin:4px 0 0}
+.tslide .lead{margin:0;color:var(--muted)}
+.tkick{margin:6px 0 0;font-weight:800;font-size:14px;letter-spacing:.02em;color:var(--spot);text-transform:uppercase}
+.tmock{background:var(--bg2);border-radius:24px;padding:18px;min-height:250px;display:flex;flex-direction:column;gap:10px;justify-content:center;position:relative;overflow:hidden}
+.tmock .askb{display:flex;align-items:center;gap:8px;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:10px 10px 10px 16px;font-weight:600;box-shadow:var(--sh-1)}
+.tmock .askb span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tmock .askb i{font-style:normal;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:var(--spot);color:#fff;font-weight:800}
+.tmock .seg2{align-self:center;display:flex;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:3px;font-weight:700;font-size:14px}
+.tmock .seg2 b{padding:6px 16px;border-radius:999px}.tmock .seg2 b.on{background:var(--ink);color:var(--bg)}
+.tmock .tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.tmock .tile{background:var(--card);border-radius:16px;padding:8px;display:flex;flex-direction:column;gap:3px;font-size:12.5px;box-shadow:var(--sh-1)}
+.tmock .tile .ph{aspect-ratio:1;border-radius:10px;background:var(--bg);display:grid;place-items:center;font-size:30px}
+.tmock .tile b{font-size:13px}.tmock .tile small{color:var(--muted)}
+.tmock .pill{align-self:flex-start;display:inline-flex;align-items:center;gap:6px;background:var(--ink);color:var(--bg);border-radius:999px;padding:8px 14px;font-weight:700;font-size:14px}
+.tmock .shops{display:flex;flex-direction:column;gap:8px}
+.tmock .shop{display:flex;align-items:center;gap:10px;background:var(--card);border-radius:16px;padding:10px 12px;box-shadow:var(--sh-1);font-size:14px}
+.tmock .shop i{font-style:normal;width:36px;height:36px;border-radius:10px;background:var(--bg);display:grid;place-items:center;font-size:20px;flex:none}
+.tmock .shop span{display:flex;flex-direction:column;flex:1;min-width:0}.tmock .shop small{color:var(--muted)}
+.tmock .ping{background:var(--card);border-radius:18px;padding:12px 14px;box-shadow:var(--sh-2);display:flex;flex-direction:column;gap:4px;font-size:14px}
+.tmock .ping .hd{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:12.5px;font-weight:600}
+.tmock .ping .hd .ic{width:20px;height:20px;border-radius:6px;background:var(--spot)}
+.tmock .ping b{font-size:15.5px}
+.tmock .ping .acts{display:flex;gap:8px;margin-top:6px}
+.tmock .ping .acts span{flex:1;text-align:center;border-radius:999px;padding:8px;font-weight:800;font-size:14px;background:var(--bg2)}
+.tmock .ping .acts span.go{background:var(--spot);color:#fff}
+.tmock .okline{display:flex;gap:8px;align-items:center;font-size:14px;color:var(--ink);background:color-mix(in srgb,var(--ok) 12%,var(--card));border-radius:14px;padding:9px 12px;font-weight:600}
+.tmock .shield{align-self:flex-start;display:inline-flex;gap:6px;align-items:center;font-weight:700;font-size:14px;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:7px 12px}
+.tdots{display:flex;justify-content:center;gap:8px}.tdots i{width:8px;height:8px;border-radius:50%;background:var(--line);transition:background .3s,width .3s}.tdots i.on{background:var(--spot);width:22px;border-radius:9px}
+.tour .btn.primary{width:100%}
+.tour .tskip{align-self:center;color:var(--muted);font-size:15px}
+.su[hidden]{display:none}
+/* Done: where to go next */
+.sunext{display:grid;gap:8px;margin:2px 0 4px}
+.sunext a{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:12px 14px;text-decoration:none;color:var(--ink);box-shadow:var(--sh-1)}
+.sunext a i{font-style:normal;font-size:22px;width:28px;text-align:center}
+.sunext a span{display:flex;flex-direction:column;flex:1}.sunext a small{color:var(--muted);font-size:13.5px}
+.sunext a::after{content:'→';color:var(--spot);font-weight:800}
+@media (prefers-reduced-motion:reduce){.tslides{scroll-behavior:auto}}
 `;
 
 export function setupPage({ origin }) {
@@ -552,7 +647,22 @@ export function setupPage({ origin }) {
     path: '/setup',
     title: 'Set up · Spot',
     css: SETUP_CSS,
-    body: `<div class="su" id="su">
+    body: `<div class="tour" id="tour" hidden aria-roledescription="carousel" aria-label="What Spot does">
+<div class="tslides" id="tslides">
+<article class="tslide" aria-label="1 of 4"><div class="tmock" aria-hidden="true"><div class="seg2"><b class="on">Spot</b><b>Shop</b></div><div class="askb"><span>black Salomon XT-6, size 10.5</span><i>↑</i></div><div class="tiles"><div class="tile"><div class="ph">👟</div><b>$200</b><small>REI</small></div><div class="tile"><div class="ph">👟</div><b>$200</b><small>Salomon</small></div><div class="tile"><div class="ph">👟</div><b>$185</b><small>Zappos</small></div></div></div>
+<p class="tkick">Spot &amp; Shop</p><h2>Spot anything.</h2><p class="lead">Paste a link, drop a screenshot, share a TikTok, or just say what you want. Spot finds it at the stores that have it. Shop keeps everything you’ve found in one feed, newest first.</p></article>
+<article class="tslide" aria-label="2 of 4"><div class="tmock" aria-hidden="true"><span class="pill">🧭 Discover: on</span><div class="shops"><div class="shop"><i>🏺</i><span><b>Kiln &amp; Co.</b><small>Small-batch ceramics</small></span></div><div class="shop"><i>🧥</i><span><b>Northbound Supply</b><small>Independent outerwear</small></span></div><div class="shop"><i>🕯️</i><span><b>Hollow Pine Goods</b><small>Made by hand</small></span></div></div></div>
+<p class="tkick">Discover</p><h2>Find shops nobody else shows you.</h2><p class="lead">Turn on Discover and Spot skips the big-box stores and the shops you’ve already seen, so every search turns up somewhere new.</p></article>
+<article class="tslide" aria-label="3 of 4"><div class="tmock" aria-hidden="true"><div class="ping"><div class="hd"><span class="ic"></span>Spot · now</div><b>Morgan wants Dunk Low</b><span>Nike · $125.35, over your $25 limit</span><div class="acts"><span class="go">Approve</span><span>Not now</span></div></div><div class="okline">✓ Crew socks · $18 went through on its own</div></div>
+<p class="tkick">Kid Spot</p><h2>Small stuff goes through. Big stuff pings you.</h2><p class="lead">For teens 13 to 17. Pick the stores and a limit; anything inside it is paid from your card on its own. Anything else comes to you for a one-tap yes.</p></article>
+<article class="tslide" aria-label="4 of 4"><div class="tmock" aria-hidden="true"><span class="shield">🛡️ Price Shield · watching 3 orders</span><div class="ping"><div class="hd"><span class="ic"></span>Spot · 2d after you bought it</div><b>📉 $12 back from Nike</b><span>Dunk Low dropped in price. Tap to ask Nike for the difference.</span><div class="acts"><span class="go">Ask for $12</span></div></div></div>
+<p class="tkick">Price Shield</p><h2>Bought it, then the price dropped?</h2><p class="lead">Spot keeps watching after you buy. When a store with price protection lowers its price inside its window, you get a ping, and one tap asks the store for the difference.</p></article>
+</div>
+<div class="tdots" id="tdots" aria-hidden="true"><i class="on"></i><i></i><i></i><i></i></div>
+<button type="button" class="btn primary" id="tNext">Next</button>
+<button type="button" class="linkbtn tskip" id="tSkip">Skip the tour</button>
+</div>
+<div class="su" id="su">
 <div class="sutop"><div class="prog" role="progressbar" aria-label="Setup" aria-valuemin="1" aria-valuemax="5" aria-valuenow="1"><i class="on"></i><i></i><i></i><i></i><i></i></div><span class="sucount" id="count">1 of 5</span><button type="button" class="linkbtn" id="skipAll">Skip setup</button></div>
 <div class="suhero">${buddySvg(false)}<h1 class="say" id="say" tabindex="-1" aria-live="polite">What should I call you?</h1></div>
 <form class="f sustep" data-step="name" data-say="What should I call you?"><p class="lead">It’s how Spot greets you, and the name people see when you ask them to pay.</p>
@@ -580,7 +690,9 @@ export function setupPage({ origin }) {
   <p class="have" id="cardHave" hidden></p>
   <p class="err"></p><button class="btn primary" id="cardGo">Add a card</button>${nav()}</form>
 <div class="f sustep" data-step="done" data-say="You’re all set!" hidden><p class="lead">Ask your AI for something, or make a Spot yourself: paste a link and send it to whoever’s paying.</p>
-  <a class="btn primary" href="/new" style="width:100%">Make a Spot</a><a class="btn ghost" href="/account" style="width:100%">Go to my account</a><p class="sufine">You can change any of this in your account.</p></div>
+  <a class="btn primary" href="/new" style="width:100%">Make a Spot</a>
+  <nav class="sunext" aria-label="Try next"><a href="/new#shop"><i>🛍️</i><span><b>Open Shop</b><small>Everything you’ve found, newest first</small></span></a><a href="/new?discover=1"><i>🧭</i><span><b>Turn on Discover</b><small>Shops you’ve never heard of</small></span></a><a href="/account#family"><i>🧒</i><span><b>Set up Kid Spot</b><small>Add your teen and their rules</small></span></a><a href="/account"><i>🛡️</i><span><b>Price Shield</b><small>Watches prices after you buy</small></span></a></nav>
+  <p class="sufine">You can change any of this in your account. <button type="button" class="linkbtn" id="retour">See the tour again</button></p></div>
 </div>`,
     script: `const STEPS=[...document.querySelectorAll('.sustep')],N=STEPS.length-1;let at=0,me=null;
 function show(i){at=i;STEPS.forEach((s,j)=>s.hidden=j!==i);const s=STEPS[i],done=s.dataset.step==='done';
@@ -603,6 +715,17 @@ document.addEventListener('submit',async e=>{const f=e.target.closest('.sustep')
 document.addEventListener('click',e=>{if(e.target.closest('[data-back]'))show(Math.max(0,at-1));if(e.target.closest('[data-skip]'))show(at+1)});
 $('#skipAll').onclick=async()=>{try{await post('/v1/me',{setup_done:true,setup_skipped:true})}catch{}location.href='/account'};
 $('#copyUrl').onclick=async()=>{try{await navigator.clipboard.writeText($('#mcpUrl').textContent);$('#copyUrl').textContent='Copied'}catch{}};
+// The tour: four slides, once per phone (or ?tour=1), then the questions.
+const TS=$('#tslides'),TD=[...document.querySelectorAll('#tdots i')],TN=TD.length;let tAt=0;
+const tSeen=()=>{try{return localStorage.getItem('spot:toured')==='1'}catch{return false}};
+function tourDone(){try{localStorage.setItem('spot:toured','1')}catch{}$('#tour').hidden=true;$('#su').hidden=false;scrollTo(0,0);const s=STEPS[at];if(s)(s.querySelector('input')||s.querySelector('.btn.primary')).focus({preventScroll:true})}
+function tourGo(i){tAt=Math.max(0,Math.min(TN-1,i));TS.scrollTo({left:TS.clientWidth*tAt,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});tDraw()}
+function tDraw(){TD.forEach((d,j)=>d.classList.toggle('on',j===tAt));$('#tNext').textContent=tAt===TN-1?'Set me up':'Next'}
+TS.addEventListener('scroll',()=>{const i=Math.round(TS.scrollLeft/Math.max(1,TS.clientWidth));if(i!==tAt){tAt=i;tDraw()}},{passive:true});
+$('#tNext').onclick=()=>tAt===TN-1?tourDone():tourGo(tAt+1);$('#tSkip').onclick=tourDone;
+TS.addEventListener('keydown',e=>{if(e.key==='ArrowRight')tourGo(tAt+1);if(e.key==='ArrowLeft')tourGo(tAt-1)});TS.tabIndex=0;
+$('#retour').onclick=()=>{$('#su').hidden=true;$('#tour').hidden=false;tourGo(0)};
+if(new URLSearchParams(location.search).get('tour')==='1'||!tSeen()){$('#su').hidden=true;$('#tour').hidden=false;tDraw()}
 (async()=>{const r=await fetch('/v1/me');if(r.status===401){location.href='/signin?next=/setup';return}
   me=await r.json();const u=me.user;
   // Anything already on the account is filled in, to check or change.

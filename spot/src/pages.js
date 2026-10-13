@@ -403,6 +403,7 @@ ${provider === 'sandbox' ? '<div class="sandbox">Test mode: no real money moves.
     <button class="btn dark small" style="margin-top:10px">Save</button>
   </form>
   <div class="sendrow"><a class="btn ghost" id="txt">Text</a><a class="btn ghost" id="wa" target="_blank" rel="noopener">WhatsApp</a><button class="btn ghost" id="copy">Copy</button></div>
+  <p class="small" id="famNote" hidden style="margin-top:12px"></p>
   <p class="small" id="chipNudge" hidden style="margin-top:12px">🎁 Big one? <button type="button" class="textlink" id="chipIt">Let a few people chip in</button>. Each pays part; nothing is charged unless it's covered.</p>
   <p class="small" id="shipNudge" hidden style="margin-top:12px">📦 One step before they can pay: <a id="shipLink" href="#">add where it ships</a>. They'll pay the store directly.</p>
   <p class="small muted" style="margin-top:14px;display:flex;justify-content:space-between;gap:10px"><button class="textlink" id="edit">edit cart</button><a id="manageLink" href="#">see who pays →</a><button class="textlink" id="again">start another</button></p>
@@ -494,7 +495,9 @@ export function buddySvg(happy) {
   return `<span id="buddy" class="buddy3d${happy ? ' happy' : ''}" aria-hidden="true"><img class="open" src="${assetUrl('spot-hi.webp')}" alt="" width="320" height="358" decoding="async"${happy ? ' style="display:none"' : ''}><img class="joy" src="${assetUrl('spot-yay.webp')}" alt="" width="320" height="358" decoding="async"${happy ? '' : ' style="display:none"'}></span>`;
 }
 
-export function payPage({ cart, links, provider, pageUrl, commission = false }) {
+// family (family.js): the person on the page is the teen's parent, who can
+// approve with their saved card in one tap: { card, teen, reason }.
+export function payPage({ cart, links, provider, pageUrl, commission = false, family = null }) {
   const name = cart.requester.name;
   // Reported by more than one person: shown, but nobody can pay it.
   const open = cart.status === 'open' && !cart.paused;
@@ -547,8 +550,9 @@ ${provider === 'stripe' && cart.settle === 'card' && open ? '<script src="https:
 <a class="brand" href="/"><span class="dot"></span>Spot</a>
 <div class="buddy">${buddySvg(covered)}<div class="hi">${covered ? 'yay!' : open ? 'hey 👋' : 'hmm…'}</div></div>
 <div class="chat" id="chat">${chat}</div>
+${open && family ? familyBox(family) : ''}
 ${open ? lockCard(cart) : ''}
-${open ? `<div class="act${cart.settle === 'handoff' ? '' : ' stick'}" id="act">${actionBox(cart, links, provider, total)}${commission ? `<p class="small muted" style="text-align:center;margin:6px 0 0">Spot may earn a commission from ${esc(cart.merchant.name)}. Your price is the same.</p>` : ''}${cart.for === 'self' || cart.kind === 'flight' || cart.kind === 'train' || cart.bundle_id ? '' : `<button type="button" class="nope" id="nope">Not this time</button><button type="button" class="nope report" id="report">Don’t know ${esc(name)}? Report this link</button>`}</div>` : ''}
+${open ? `<div class="act${cart.settle === 'handoff' || family?.card ? '' : ' stick'}" id="act"${family?.card ? ' hidden' : ''}>${actionBox(cart, links, provider, total)}${commission ? `<p class="small muted" style="text-align:center;margin:6px 0 0">Spot may earn a commission from ${esc(cart.merchant.name)}. Your price is the same.</p>` : ''}${cart.for === 'self' || cart.kind === 'flight' || cart.kind === 'train' || cart.bundle_id ? '' : `<button type="button" class="nope" id="nope">Not this time</button><button type="button" class="nope report" id="report">Don’t know ${esc(name)}? Report this link</button>`}</div>` : ''}
 ${open && cart.settle === 'card' && provider === 'sandbox' ? '<div class="sandbox">Test mode: no real money moves.</div>' : ''}
 ${open ? detailsBox(cart) : ''}
 <footer>By paying you agree to Spot’s <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a>.<br><a href="/">make your own Spot</a></footer>`;
@@ -574,12 +578,28 @@ const rep=$('#report');if(rep)rep.onclick=async()=>{if(!confirm('Report this lin
   catch(e){rep.disabled=false;alert(e.message)}};
 const nope=$('#nope');if(nope)nope.onclick=async()=>{if(!confirm('Let '+${json(name)}+' know you can’t spot this one?'))return;nope.disabled=true;
   try{const nm=$('#payer');await api('/v1/carts/'+${json(cart.token)}+'/decline',{name:nm?nm.value:''});
-    const a=$('#act');if(a)a.remove();const d=$('details');if(d)d.remove();const l=document.querySelector('.lock');if(l)l.remove();
+    const a=$('#act');if(a)a.remove();const fm=$('#fam');if(fm)fm.remove();const d=$('details');if(d)d.remove();const l=document.querySelector('.lock');if(l)l.remove();
     $('#chat').insertAdjacentHTML('beforeend','<div class="bub big" style="animation-delay:.1s">no worries 💛</div><div class="bub" style="animation-delay:.45s">I let '+${json(esc(name))}+' know. nothing was charged.</div>')}
   catch(e){nope.disabled=false;alert(e.message)}};
 ${open && cart.settle === 'card' ? (cart.chip_in ? chipScript(cart, provider) : payScript(cart, provider)) : ''}
-${open && cart.settle === 'direct' ? directScript(cart) : ''}`;
+${open && cart.settle === 'direct' ? directScript(cart) : ''}
+${open && family?.card ? familyScript(cart) : ''}`;
   return shell({ title: ogTitle, head, body, script });
+}
+
+// The parent's one tap on their teen's ask.
+function familyBox(f) {
+  return `<div class="fam" id="fam" style="margin:16px 0;padding:16px;border-radius:18px;background:var(--card);border:1px solid var(--line)"><p style="margin:0 0 10px"><b>${esc(f.teen)} asked you.</b>${f.reason ? ` ${esc(f.reason)}.` : ''}</p>${f.card ? `<button type="button" class="btn go" id="famOk">Approve · ${esc(f.card)}</button><p class="small muted" style="margin:8px 0 0">Spot orders it and ships it to ${esc(f.teen)}.</p><p class="small" style="margin:10px 0 0;display:flex;gap:18px;flex-wrap:wrap"><button type="button" style="background:none;border:0;padding:4px 0;color:var(--muted);text-decoration:underline;font:inherit;font-size:14px;cursor:pointer" id="famNo">Not this time</button><button type="button" style="background:none;border:0;padding:4px 0;color:var(--muted);text-decoration:underline;font:inherit;font-size:14px;cursor:pointer" id="famOther">Pay with another card</button></p>` : '<p class="small muted" style="margin:0">Add a card in your account (AI &amp; card) to approve in one tap next time, or pay below.</p>'}<p class="small" id="famErr" style="color:#c0392b;margin:6px 0 0"></p></div>`;
+}
+function familyScript(cart) {
+  const T = json(cart.token);
+  return `const famNo=$('#famNo');if(famNo)famNo.onclick=()=>{const n=$('#nope');if(n)n.click()};
+const famOther=$('#famOther');if(famOther)famOther.onclick=()=>{const a=$('#act');if(a){a.hidden=false;a.scrollIntoView({behavior:'smooth',block:'center'})}famOther.remove()};
+const famOk=$('#famOk');if(famOk)famOk.onclick=async()=>{famOk.disabled=true;famOk.textContent='approving…';$('#famErr').textContent='';
+  try{const r=await api('/v1/carts/'+${T}+'/family/approve',{});
+    if(r.action){const stripe=Stripe(r.action.publishable_key);const {error}=await stripe.handleNextAction({clientSecret:r.action.client_secret});if(error)throw error;await api('/v1/carts/'+${T}+'/paid',{}).catch(()=>{})}
+    const f=$('#fam');if(f)f.remove();celebrate('')}
+  catch(e){$('#famErr').textContent=e.message;famOk.disabled=false;famOk.textContent='Try again'}};`;
 }
 
 // Where every dollar goes, shown before anyone pays: the items, the

@@ -2434,7 +2434,7 @@
       return;
     }
     const r = await api('/v1/carts', body());
-    made = { token: r.cart.token, key: r.manage_key, link: r.link, manage: r.manage_link, rev: r.cart.rev || 1, total: r.cart.total_cents };
+    made = { token: r.cart.token, key: r.manage_key, link: r.link, manage: r.manage_link, rev: r.cart.rev || 1, total: r.cart.total_cents, family: r.family || null };
     const mine = load('spot:mine', []).filter((m) => m.token !== made.token);
     mine.unshift({ token: made.token, manage: made.manage, title: draft.items[0].title, merchant: draft.merchant.name, total: r.cart.cart_cents, at: Date.now() });
     save('spot:mine', mine.slice(0, 20));
@@ -2469,6 +2469,25 @@
     renderPeople();
     $('#wa').href = 'https://wa.me/?text=' + encodeURIComponent(message());
     $('#txt').href = sms('');
+    // A teen in a family (family.js): their parent's rules paid it, or the
+    // parent was asked already. Nothing to send.
+    const fam = made.family;
+    $('#famNote').hidden = !fam;
+    if (fam) {
+      $('#chipNudge').hidden = true;
+      $('#edit').hidden = true;
+      if (fam.state === 'paid') {
+        show('ready');
+        say('done! it’s inside ' + fam.parent + '’s rules 🎉 ordering it now');
+        $('#famNote').textContent = '✅ Paid from ' + fam.parent + '’s card. Spot is ordering it and will send you tracking.';
+        setTimeout(() => (location.href = made.manage), 1600);
+        return;
+      }
+      $('#famNote').textContent = '📨 Sent to ' + fam.parent + (fam.reason ? ': ' + fam.reason : '') + '. ' + fam.parent + ' gets a one-tap Approve. You can still send the link to someone else.';
+      show('ready');
+      say('sent to ' + fam.parent + '!');
+      return;
+    }
     show('ready');
     say('ready! who should I ask?');
   }
@@ -2592,6 +2611,14 @@
   renderMine();
   show('compose');
   const p = new URLSearchParams(location.search);
+  // From the setup tour: "Turn on Discover".
+  if (p.get('discover') === '1' && !discover) {
+    discover = true;
+    save(DISCOVER, true);
+    showDiscover();
+    history.replaceState(null, '', location.pathname + location.hash);
+    say('discover is on 🧭 what are you looking for?');
+  }
   const incoming = p.get('url') || p.get('text');
   if (p.get('draft')) {
     // From a store's "Ask someone to pay" button: its cart, ready to send.

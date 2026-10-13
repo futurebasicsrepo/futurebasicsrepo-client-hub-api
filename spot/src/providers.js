@@ -8,14 +8,14 @@
 //                                  (once the store accepts the order)
 //   issueCard(cart, { ready })   → { ref, brand, last4, exp_month, exp_year }
 //                                  (ready: made switched off, before the hold)
-//   activateCard(ref, cents)     → void   (switch a ready card on)
+//   activateCard(ref, cents, cart) → void (switch a ready card on)
 //   issuingAvailableCents()      → number | null   (what Spot's cards can spend)
 //   revealCard(cart)             → { number, cvc, exp_month, exp_year }
 //                                  (checkout only: never sent to a browser)
 //   cancelCard(cart)             → void
 //   pauseCard(cart)              → void   (used: no new charge goes through,
 //                                  but a store refund still lands)
-//   setCardLimit(ref, cents)     → void   (Spot covering a difference)
+//   setCardLimit(ref, cents, cart) → void (Spot covering a difference)
 //   refund(cart, amountCents?, key?) → 'released' | 'refunded'
 //                                  (whole payment when no amount; a hold is
 //                                  released rather than refunded)
@@ -35,7 +35,10 @@
 // no Stripe keys are set.
 import { randomInt } from 'node:crypto';
 import Stripe from 'stripe';
-import { BLOCKED_CATEGORIES, cardLimitCents } from './cart.js';
+import { BLOCKED_CATEGORIES, TEEN_CATEGORIES, cardLimitCents } from './cart.js';
+
+// A teen's order (family.js) also blocks liquor stores, tobacco and bars.
+const blockedFor = (cart) => (cart?.family ? [...BLOCKED_CATEGORIES, ...TEEN_CATEGORIES] : BLOCKED_CATEGORIES);
 
 export function pickProvider(env = process.env) {
   if (env.STRIPE_SECRET_KEY) return stripeProvider(env);
@@ -242,7 +245,7 @@ export function stripeProvider(env = process.env) {
             ...(fa ? { financial_account_v2: fa } : {}),
             spending_controls: {
               spending_limits: [{ amount: cardLimitCents(cart), interval: 'all_time' }],
-              blocked_categories: BLOCKED_CATEGORIES,
+              blocked_categories: blockedFor(cart),
             },
             metadata: { spot_cart_id: cart.id },
           },
@@ -259,10 +262,10 @@ export function stripeProvider(env = process.env) {
       }
       return { ref: card.id, brand: card.brand, last4: card.last4, exp_month: card.exp_month, exp_year: card.exp_year };
     },
-    async activateCard(ref, cents) {
+    async activateCard(ref, cents, cart = null) {
       await stripe.issuing.cards.update(ref, {
         status: 'active',
-        spending_controls: { spending_limits: [{ amount: cents, interval: 'all_time' }], blocked_categories: BLOCKED_CATEGORIES },
+        spending_controls: { spending_limits: [{ amount: cents, interval: 'all_time' }], blocked_categories: blockedFor(cart) },
       });
     },
 
@@ -305,9 +308,9 @@ export function stripeProvider(env = process.env) {
     },
 
     // Raise (or lower) a card's network spending limit, keeping its blocks.
-    async setCardLimit(ref, cents) {
+    async setCardLimit(ref, cents, cart = null) {
       await stripe.issuing.cards.update(ref, {
-        spending_controls: { spending_limits: [{ amount: cents, interval: 'all_time' }], blocked_categories: BLOCKED_CATEGORIES },
+        spending_controls: { spending_limits: [{ amount: cents, interval: 'all_time' }], blocked_categories: blockedFor(cart) },
       });
     },
 
