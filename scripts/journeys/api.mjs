@@ -2413,4 +2413,10 @@ await journey('J151', 'Saved lead searches: they run by themselves when due, bri
   } finally { await new Promise(r => site.close(r)); await new Promise(r => brave.close(r)); }
 });
 
+await journey('J177', 'A service we host for a client (the Common Ground make-an-offer service) has a hidden Builds entry at its health address, so the site checks watch it', async () => {
+  const slug = 'common-ground-offers', row = sql(`select status||'|'||visibility||'|'||hosting||'|'||live_url from builds where slug='${slug}'`);
+  ok(row === 'live|hidden|railway|https://offers-api-production-8a9d.up.railway.app/health', 'it is there, live, hidden, on Railway, at its health page', row);
+  ok(sql(`select count(*) from builds where slug='${slug}'`) === '1', 'once only');
+});
+
 const bad = summary(); process.exit(bad ? 1 : 0);

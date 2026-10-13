@@ -3,7 +3,7 @@
 //   viewers   /v1/builds/auth/*  sign in with an emailed code (a session cookie, not the hub's token); /v1/builds, /v1/builds/:slug, /builds/go/:slug
 //   staff     /v1/admin/builds*  builds, invites, activity (the work console's own sign-in)
 //   housed    /v1/builds/auth/check?slug=…  200 or 401, for a reverse proxy in front of a build we host (Caddy forward_auth), so a private build is private
-import { cleanBuild, canSee, visibleBuilds, hasAnyAccess, SEED_BUILDS, MOVED_BUILD_REPOS, STATUS_LABELS } from './builds.js';
+import { cleanBuild, canSee, visibleBuilds, hasAnyAccess, SEED_BUILDS, HOSTED_SERVICES, MOVED_BUILD_REPOS, STATUS_LABELS } from './builds.js';
 import { readdirSync, readFileSync } from 'node:fs';
 import { captureLead } from './sales-routes.js';
 import { syncBuilds, cleanChangeTitle } from './builds-sync.js';
@@ -250,6 +250,17 @@ export async function seedBuilds(pool) {
     const r = cleanBuild({ ...b, visibility: 'hidden', sortOrder: 10 + i * 10 }); if (r.error) continue; const v = r.value;
     await pool.query(`insert into builds(slug,name,tagline,sector,status,visibility,hosting,live_url,repo_url,stack,summary,highlights,sort_order) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) on conflict (slug) do nothing`,
       [v.slug, v.name, v.tagline || '', v.sector || '', v.status || 'concept', 'hidden', v.hosting || 'other', v.live_url || '', v.repo_url || '', v.stack || [], v.summary || '', JSON.stringify(v.highlights || []), v.sort_order]); n++;
+  }
+  return n;
+}
+
+// The services we host for clients get a hidden entry (watched by the site checks) if they have none. An entry staff changed or archived is left as it is.
+export async function ensureHostedBuilds(pool) {
+  let n = 0;
+  for (const b of HOSTED_SERVICES) {
+    const r = cleanBuild({ ...b, visibility: 'hidden', sortOrder: 900 }); if (r.error) continue; const v = r.value;
+    n += (await pool.query(`insert into builds(slug,name,tagline,sector,status,visibility,hosting,live_url,repo_url,stack,summary,highlights,sort_order) values($1,$2,$3,$4,$5,'hidden',$6,$7,$8,$9,$10,$11,$12) on conflict (slug) do nothing`,
+      [v.slug, v.name, v.tagline || '', v.sector || '', v.status || 'live', v.hosting || 'other', v.live_url || '', v.repo_url || '', v.stack || [], v.summary || '', JSON.stringify(v.highlights || []), v.sort_order])).rowCount;
   }
   return n;
 }
