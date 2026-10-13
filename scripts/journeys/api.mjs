@@ -2460,6 +2460,15 @@ await journey('J178', 'The site itself goes to a client\'s Shopify as a draft th
   } finally { await new Promise(r => srv.close(r)); }
 });
 
+});
+
+await journey('J177', 'A service we host for a client (the Common Ground make-an-offer service) has a hidden Builds entry at its health address, so the site checks watch it', async () => {
+  const slug = 'common-ground-offers', row = sql(`select status||'|'||visibility||'|'||hosting||'|'||live_url from builds where slug='${slug}'`);
+  ok(row === 'live|hidden|railway|https://offers-api-production-8a9d.up.railway.app/health', 'it is there, live, hidden, on Railway, at its health page', row);
+  ok(sql(`select count(*) from builds where slug='${slug}'`) === '1', 'once only');
+});
+
+
 await journey('J175', 'A prototype made elsewhere stays in Prototypes (not on Builds) until it is pushed: then it gets its Builds entry, shows in the client\'s room, and the client can be invited; and it can be taken back out', async () => {
   const room = await newRoom('175', { wait: false }), cid = sql(`select client_id from users where lower(email)='${room.email}'`);
   const staff = async email => { const id = sql(`select id from users where lower(email)='${email}'`).split('\n')[0] || sql(`insert into users(client_id,email,name,role) values('${cid}','${email}','${email.split('@')[0]}','admin') returning id`).split('\n')[0]; return forge({ sub: id, clientId: cid, role: 'admin', email }); };

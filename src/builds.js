@@ -107,6 +107,14 @@ export const SEED_BUILDS = [
     highlights: [{ title: 'Any phone video', text: 'iPhone HEVC and others converted to H.264 in the background' }, { title: 'Private by default', text: 'Every upload starts as a private draft' }], stack: ['Next.js', 'Fastify', 'Postgres', 'ffmpeg', 'Vercel', 'Railway'] }
 ];
 
+// Services we host for a client and keep running ourselves. Each has a hidden entry on Builds (staff only), so the site checks watch it like any client site, and it shows on
+// Platform health and on the work home. Made once at start if missing: staff can edit one afterwards, or archive it, and it is not put back.
+export const HOSTED_SERVICES = [
+  { slug: 'common-ground-offers', repoUrl: 'https://github.com/futurebasicsrepo/commonground-offers-api', name: 'Common Ground: make-an-offer service', tagline: 'The service behind the Sell page: photos, offers and the staff counter.', sector: 'Retail · Shopify', status: 'live', hosting: 'railway',
+    liveUrl: 'https://offers-api-production-8a9d.up.railway.app/health', summary: 'Runs on our Railway account and stays with Future Basics. Sellers send items with photos; staff make offers; the Shopify store links to it. The address watched here is its health page.',
+    highlights: [{ title: 'Kept by us', text: 'Hosted and monitored by Future Basics, whoever runs the storefront' }], stack: ['Fastify', 'Postgres', 'Railway', 'Shopify Admin API', 'Resend'] }
+];
+
 // Builds whose code has moved to another repository. A build still pointing at the old place follows it; one staff have pointed elsewhere is left alone.
 export const MOVED_BUILD_REPOS = [
   { slug: 'incha-tv', from: { repoUrl: 'https://github.com/futurebasicsrepo/futurebasicsrepo-client-hub-api', repoPath: 'incha-tv' }, to: { repoUrl: 'https://github.com/futurebasicsrepo/incha-tv', repoPath: '' } }

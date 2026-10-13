@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanBuild, cleanUrl, slugify, canSee, visibleBuilds, hasAnyAccess, highlightsFromText, highlightsToText, linksFromText, linksToText, SEED_BUILDS, MOVED_BUILD_REPOS, STATUSES } from '../src/builds.js';
+import { cleanBuild, cleanUrl, slugify, canSee, visibleBuilds, hasAnyAccess, highlightsFromText, highlightsToText, linksFromText, linksToText, SEED_BUILDS, HOSTED_SERVICES, MOVED_BUILD_REPOS, STATUSES } from '../src/builds.js';
 
 const NOW = Date.parse('2026-10-11T12:00:00Z'), future = '2026-11-11T00:00:00Z', past = '2026-09-01T00:00:00Z';
 const B = (over = {}) => ({ id: 'b1', slug: 's', name: 'N', visibility: 'listed', status: 'live', sort_order: 100, ...over });
@@ -87,4 +87,9 @@ test('a build tied to a client\'s own project is theirs to see, even hidden, but
   const b = { id: 'b1', visibility: 'hidden', status: 'in-progress' }, mine = { client: true, invites: [], projectBuildIds: ['b1'] }, other = { client: true, invites: [], projectBuildIds: ['b2'] };
   assert.equal(canSee(b, mine), true); assert.equal(canSee(b, other), false); assert.equal(canSee({ ...b, status: 'archived' }, mine), false);
   assert.equal(canSee({ ...b, visibility: 'invite' }, mine), true); assert.equal(canSee(b, { client: true, invites: [] }), false);
+});
+
+test('hosted services are valid builds, hidden-able, live and watched at a health address', () => {
+  assert.ok(HOSTED_SERVICES.length >= 1);
+  for (const h of HOSTED_SERVICES) { const r = cleanBuild(h); assert.ok(!r.error, `${h.name}: ${r.error}`); assert.equal(r.value.status, 'live'); assert.match(r.value.live_url, /^https:\/\/.+\/health$/); assert.ok(!SEED_BUILDS.some(b => b.slug === h.slug), 'a hosted service is not also a seed'); }
 });
