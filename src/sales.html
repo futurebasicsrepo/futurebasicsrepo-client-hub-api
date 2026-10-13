@@ -98,7 +98,7 @@ td.pick,th.pick{width:28px;padding-right:0}td.pick input{width:17px;height:17px}
 <main>
   <div id="needSignin" class="panel hidden"><h1>Sign in to the work console first</h1><p class="note">This page uses your work console sign-in. Open the console, sign in, then come back here.</p><a class="btn go" href="/">Open the work console</a></div>
   <div id="app" class="hidden">
-    <span class="mono" style="color:var(--dim)">Future Basics</span><h1>Sales</h1>
+    <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap"><div><span class="mono" style="color:var(--dim)">Future Basics</span><h1>Sales</h1></div><button class="btn sm" id="shareBtn" type="button">New-customer link</button></div>
     <div class="tabs" role="tablist"><button class="tab on" data-t="today">Today</button><button class="tab" data-t="pipeline">Pipeline</button><button class="tab" data-t="contacts">Contacts</button><button class="tab" data-t="tasks">Tasks <span id="taskCount"></span></button><button class="tab" data-t="opportunities">Opportunities <span id="oppCount"></span></button><button class="tab" data-t="press">Press</button><button class="tab" data-t="automations">Automations</button><button class="tab" data-t="chats">Chats <span id="chatCount"></span></button></div>
 
     <section id="t-today"></section>
@@ -175,9 +175,17 @@ td.pick,th.pick{width:28px;padding-right:0}td.pick input{width:17px;height:17px}
   <p class="msg" id="impMsg" role="status"></p>
 </div></dialog>
 
+<dialog id="jdlg"><div class="dbody">
+  <div class="dh"><h2 id="jTitle">New-customer link</h2><button class="btn sm" type="button" data-close>Close</button></div>
+  <p class="note" id="jNote">Send this to anyone new. It opens a short page on their phone, makes their hub, and asks them for their details once. No password. Each sign-up is marked as coming from you.</p>
+  <div class="fields"><label class="f wide"><span class="mono">Link</span><input class="t" id="jLink" readonly></label>
+  <label class="f wide"><span class="mono">Text to send</span><textarea class="t" id="jText" style="min-height:110px"></textarea></label></div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><a class="btn go sm" id="jSms" href="#">Text it</a><button class="btn sm" id="jCopyLink" type="button">Copy link</button><button class="btn sm" id="jCopyText" type="button">Copy the text</button><span class="msg" id="jMsg" role="status"></span></div>
+</div></dialog>
+
 <dialog id="tdlg"><div class="dbody">
   <div class="dh"><h2>Email templates</h2><button class="btn sm" type="button" data-close>Close</button></div>
-  <p class="note">Blanks you can use: <code>{{first_name}}</code> <code>{{name}}</code> <code>{{company}}</code> <code>{{build}}</code> (the last build they looked at) <code>{{sender}}</code>. Add a fallback for when we do not know: <code>{{first_name|there}}</code>.</p>
+  <p class="note">Blanks you can use: <code>{{first_name}}</code> <code>{{name}}</code> <code>{{company}}</code> <code>{{build}}</code> (the last build they looked at) <code>{{sender}}</code> <code>{{join_link}}</code> (their personal hub sign-up link). Add a fallback for when we do not know: <code>{{first_name|there}}</code>.</p>
   <div id="tplList"></div><div><button class="btn go sm" id="tplNew">+ New template</button> <span class="msg" id="tplMsg" role="status"></span></div>
 </div></dialog>
 
@@ -404,7 +412,8 @@ async function openContact(id){
   OPEN_CONTACT=id;const {contact:c,deals,activities,tasks,client}=await api('/v1/sales/contacts/'+id);
   $('#cbody').innerHTML=`<div class="dh"><div><span class="mono" style="color:var(--dim)">${esc(SOURCE[c.source]||c.source)}${client?` · hub client: ${esc(client.name)}`:''}</span><h2>${esc(c.name||c.email||'Unnamed')}</h2><div class="sub">${esc([c.title,c.company].filter(Boolean).join(' at '))} ${heatChip(c.heat)}${c.unsubscribed?' <span class="chip late">not to be emailed</span>':''}</div></div><button class="btn sm" type="button" data-close>Close</button></div>
   <div class="cols2"><div>
-    <h2>Email</h2><div class="emailbox" id="emailBox"><span class="sub">Checking…</span></div>
+    <h2>Email</h2><div class="emailbox" id="emailBox"><span class="sub">Checking…</span></div>${client?'':`
+    <div class="sub" style="margin:-6px 0 16px">Not on the hub yet? <button class="btn sm" id="cHubLink" type="button">Text or copy their hub link</button></div>`}
     <h2>Log something</h2><div class="fields"><label class="f"><span class="mono">What</span><select class="t" id="aKind"><option value="note">Note</option><option value="call">Call</option><option value="meeting">Meeting</option><option value="email_in">Email we got</option><option value="email_out">Email we sent</option></select></label><label class="f wide"><textarea class="t" id="aText" placeholder="What was said, what was agreed" aria-label="What happened"></textarea></label></div><div style="margin:8px 0 18px"><button class="btn go sm" id="aGo">Add to the timeline</button> <span class="msg" id="aMsg"></span></div>
     <h2>Next step</h2><div class="fields"><label class="f wide"><input class="t" id="tTitle" placeholder="Send the proposal" aria-label="Task"></label><label class="f"><input class="t" id="tDue" type="date" aria-label="Due"></label><div><button class="btn sm" id="tGo">Add task</button></div></div>
     <div id="cTasks" style="margin:10px 0 18px">${tasks.map(t=>`<div class="item"><label class="check"><input type="checkbox" data-done="${esc(t.id)}" ${t.done_at?'checked disabled':''}><span class="main"><b style="${t.done_at?'text-decoration:line-through;color:var(--dim)':''}">${esc(t.title)}</b><span class="sub">${t.done_at?'Done':dayOf(t.due_at)}</span></span></label></div>`).join('')||'<p class="note">No tasks.</p>'}</div>
@@ -425,6 +434,7 @@ async function openContact(id){
   $('#eTagRow').onclick=e=>{const b=e.target.closest('[data-untag]');if(b)setTags((c.tags||[]).filter(t=>t!==b.dataset.untag))};
   $('#eTagAdd').onkeydown=e=>{if(e.key==='Enter'||e.key===','){e.preventDefault();const v=e.target.value.trim();if(v)setTags([...(c.tags||[]),v])}};
   $('#eTagAdd').onchange=e=>{const v=e.target.value.trim();if(v)setTags([...(c.tags||[]),v])};
+  if($('#cHubLink'))$('#cHubLink').onclick=()=>openShare({name:c.name,email:c.email,company:c.company,phone:c.phone});
   $('#eSave').onclick=async()=>{const m=$('#eMsg');m.className='msg';m.textContent='Saving…';try{await api('/v1/sales/contacts/'+id,{method:'PUT',body:{name:$('#eName').value,email:$('#eEmail').value,companyName:$('#eCompany').value,title:$('#eTitle').value,phone:$('#ePhone').value,notes:$('#eNotes').value}});m.className='msg ok';m.textContent='Saved';refreshQuiet()}catch(x){m.className='msg bad';m.textContent=x.message}};
   $('#eUnsub').onclick=async()=>{try{await api(`/v1/sales/contacts/${id}/unsubscribe`,{method:'PUT',body:{unsubscribed:!c.unsubscribed}});await openContact(id);refreshQuiet()}catch(x){alert(x.message)}};
   $('#eDel').onclick=async()=>{if(!confirm('Delete this contact and their history?'))return;try{await api('/v1/sales/contacts/'+id,{method:'DELETE'});$('#cdlg').close();await refresh()}catch(x){alert(x.message)}};
@@ -469,6 +479,20 @@ async function loadTemplates(){
   const {templates}=await api('/v1/sales/templates');
   $('#tplList').innerHTML=templates.map(t=>`<div class="tpl" data-tpl="${esc(t.id)}"><div class="fields"><label class="f"><span class="mono">Name</span><input class="t" data-f="name" value="${esc(t.name)}" maxlength="80"></label><label class="f"><span class="mono">Subject</span><input class="t" data-f="subject" value="${esc(t.subject)}" maxlength="200"></label><label class="f wide"><span class="mono">Message</span><textarea class="t" data-f="body" style="min-height:120px">${esc(t.body)}</textarea></label></div><div style="margin-top:6px"><button class="btn sm go" data-tsave>Save</button> <button class="btn sm danger" data-tdel>Delete</button></div></div>`).join('')||'<p class="note">No templates yet.</p>';
 }
+
+// ---------- the hub sign-up link: for anyone new, or filled in for one contact ----------
+async function openShare(c){
+  const q=new URLSearchParams(c?{name:c.name||'',email:c.email||'',company:c.company||''}:{});$('#jMsg').textContent='';
+  let d;try{d=await api('/v1/admin/join-link?'+q)}catch(x){alert(x.message);return}
+  $('#jTitle').textContent=c?`Hub link for ${c.name||c.email}`:'New-customer link';
+  $('#jNote').textContent=c?'This link opens already filled in with what we know about them. Send it by text, or use the Open your Future Basics hub email template.':'Send this to anyone new. It opens a short page on their phone, makes their hub, and asks them for their details once. No password. Each sign-up is marked as coming from you.';
+  $('#jLink').value=d.link;$('#jText').value=d.text;
+  const upd=()=>{$('#jSms').href=`sms:${(c&&c.phone||'').replace(/[^\d+]/g,'')}?&body=${encodeURIComponent($('#jText').value)}`};upd();$('#jText').oninput=upd;
+  $('#jdlg').showModal()}
+const copyOf=async(txt,label)=>{try{await navigator.clipboard.writeText(txt)}catch{const t=document.createElement('textarea');t.value=txt;document.body.appendChild(t);t.select();document.execCommand('copy');t.remove()}$('#jMsg').className='msg ok';$('#jMsg').textContent=label+' copied'};
+$('#shareBtn').onclick=()=>openShare(null);
+$('#jCopyLink').onclick=()=>copyOf($('#jLink').value,'Link');
+$('#jCopyText').onclick=()=>copyOf($('#jText').value,'Text');
 $('#tplBtn').onclick=async()=>{$('#tplMsg').textContent='';await loadTemplates();$('#tdlg').showModal()};
 $('#tplNew').onclick=async()=>{try{await api('/v1/sales/templates',{body:{name:'New template',subject:'',body:''}});await loadTemplates()}catch(x){$('#tplMsg').className='msg bad';$('#tplMsg').textContent=x.message}};
 $('#tplList').addEventListener('click',async e=>{const row=e.target.closest('[data-tpl]');if(!row)return;const m=$('#tplMsg');

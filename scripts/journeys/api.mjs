@@ -2506,4 +2506,77 @@ await journey('J175', 'A prototype made elsewhere stays in Prototypes (not on Bu
   ok((await P(`/${px.id}`, { method: 'DELETE' })).json.ok === true && sql(`select status from builds where id='${re.json.buildId}'`) === 'archived', 'deleting it archives its entry');
 });
 
+await journey('J181', 'New-client onboarding: a won deal or the text link makes a room that asks for their details once on first sign-in; the staff link and the hub-invite email carry the same path', async () => {
+  const room = await newRoom('181', { wait: false }), cid = sql(`select client_id from users where lower(email)='${room.email}'`);
+  const kid = sql(`select id from users where lower(email)='kyle@thefuturebasics.com'`).split('\n')[0] || sql(`insert into users(client_id,email,name,role) values('${cid}','kyle@thefuturebasics.com','Kyle','admin') returning id`).split('\n')[0];
+  const kyle = await forge({ sub: kid, clientId: cid, role: 'admin', email: 'kyle@thefuturebasics.com' }), A = (path, o = {}) => call(path, { token: kyle, ...o }), S = (path, o = {}) => A('/v1/sales' + path, o);
+  // the short link, in a staff member's name
+  const page = await call('/j/kyle'), plain = await call('/j/nobody-' + stamp), evil = await call('/j/' + encodeURIComponent('"><script>alert(1)</script>')), bare = await call('/j');
+  ok(page.status === 200 && /sent you this link/.test(page.text) && /data-ref="kyle"/.test(page.text) && /Open your <em>hub/.test(page.text), 'the short link opens the join page with the sender\'s name on it');
+  ok(plain.status === 200 && !/sent you this link/.test(plain.text) && /data-ref=""/.test(plain.text) && bare.status === 200 && !/sent you this link/.test(bare.text), 'a handle that is not staff, and the bare /j, are the plain page');
+  ok(evil.status === 200 && !/<script>alert/.test(evil.text), 'a hostile handle is not echoed back');
+  // staff get their link and the words to send
+  ok((await call('/v1/admin/join-link')).status === 401 && (await call('/v1/admin/join-link', { token: room.token })).status === 403, 'only staff can ask for the link');
+  const jl = (await A('/v1/admin/join-link?name=Phil%20Reed&email=phil%40cg.test&company=Common%20Ground')).json;
+  ok(/\/j\/kyle$/.test(jl.general) && /\/j\/kyle\?/.test(jl.link) && /email=phil%40cg\.test/.test(jl.link) && jl.text.includes(jl.link) && /^Hi Phil, it's Kyle/.test(jl.text), 'the staff link is /j/kyle, can be filled in for one person, and comes with a text to send', jl);
+  // a customer opens a room from that link
+  const mail = `phil181-${stamp}@cg.test`;
+  const joined = await call('/v1/public/join', { body: { company: `Common Ground ${stamp}`, name: 'Phil Reed', email: mail, phone: '', attribution: { source: 's-kyle', medium: 'text' } } });
+  ok(joined.status === 201 && joined.json.token, 'joining from the text link opens the room', joined.json);
+  const jc = sql(`select onboarding_status||'|'||(acquisition->>'staff')||'|'||(acquisition->>'source')||'|'||(acquisition->>'medium') from clients where lower(contact_email)='${mail}'`);
+  ok(jc === 'pending|Kyle|staff link|text', 'the room is marked as owing its details and remembers whose link it came from', jc);
+  const tk = joined.json.token, sess = (await call('/v1/session', { token: tk })).json, dash = (await call('/v1/dashboard', { token: tk })).json;
+  ok(sess.client.onboarding_status === 'pending' && dash.waiting.some(w => w.kind === 'onboarding'), 'the hub knows to open the form, and a card waits in Waiting on you');
+  // the form
+  const ob = (await call('/v1/onboarding', { token: tk })).json;
+  ok(ob.status === 'pending' && ob.values.name === 'Phil Reed' && ob.values.company === `Common Ground ${stamp}` && ob.email === mail && ob.sharedBy === 'Kyle' && ob.stores.shopify, 'the form opens already filled with what they gave on the join page', ob);
+  const full = { name: 'Phil Reed', role: 'Owner', phone: '(555) 010-2233', contactPref: 'text', company: `Common Ground ${stamp}`, website: 'commonground12.com', storePlatform: 'shopify', storeUrl: 'cg.myshopify.com', address: { line1: '1 Main St', city: 'Austin', region: 'TX', postal: '78701', country: 'USA' }, billingEmail: `ap-${stamp}@cg.test`, goal: 'A new storefront and a make-an-offer flow.', timezone: 'America/Chicago' };
+  const miss = await call('/v1/onboarding', { token: tk, body: { ...full, phone: '' } }), badUrl = await call('/v1/onboarding', { token: tk, body: { ...full, website: 'not a site' } }), noGoal = await call('/v1/onboarding', { token: tk, body: { ...full, goal: '' } });
+  ok(miss.status === 422 && miss.json.field === 'phone' && badUrl.status === 422 && badUrl.json.field === 'website' && noGoal.json.field === 'goal', 'a missing number, a bad website and an empty goal are each refused, naming the field');
+  ok(sql(`select onboarding_status from clients where lower(contact_email)='${mail}'`) === 'pending', 'and nothing was saved');
+  ok((await call('/v1/onboarding', { token: kyle, body: full })).status === 403 && (await call('/v1/onboarding', { body: full })).status === 401, 'staff and strangers cannot fill it in for a client');
+  const done = await call('/v1/onboarding', { token: tk, body: full }); ok(done.status === 200 && done.json.status === 'done' && done.json.first === true, 'saving works', done.json);
+  const row = sql(`select onboarding_status||'|'||contact_phone||'|'||website_url||'|'||(onboarding->>'storePlatform')||'|'||(onboarding->'address'->>'city')||'|'||(onboarding_done_at is not null)::text from clients where lower(contact_email)='${mail}'`);
+  ok(row === 'done|(555) 010-2233|https://commonground12.com|shopify|Austin|true', 'the room has their phone, website and the whole record', row);
+  ok((await call('/v1/session', { token: tk })).json.client.onboarding_status === 'done' && !(await call('/v1/dashboard', { token: tk })).json.waiting.some(w => w.kind === 'onboarding'), 'the form and the card are gone');
+  const again = await call('/v1/onboarding', { token: tk, body: { ...full, role: 'Founder' } }); ok(again.json.first === false && sql(`select onboarding->>'role' from clients where lower(contact_email)='${mail}'`) === 'Founder', 'they can come back and change an answer');
+  const detail = (await A('/v1/admin/clients/' + sql(`select id from clients where lower(contact_email)='${mail}'`))).json.client; ok(detail.onboarding_status === 'done' && detail.onboarding.goal.includes('make-an-offer'), 'staff see the answers on the room');
+  // staff can ask again, or mark it done
+  const rid = detail.id;
+  ok((await call(`/v1/admin/clients/${rid}/onboarding`, { token: tk, body: { status: 'pending' } })).status === 403, 'a client cannot reopen it for themselves through the staff route');
+  ok((await A(`/v1/admin/clients/${rid}/onboarding`, { body: { status: 'later' } })).status === 422, 'only pending or done');
+  ok((await A(`/v1/admin/clients/${rid}/onboarding`, { body: { status: 'pending' } })).status === 200 && (await call('/v1/dashboard', { token: tk })).json.waiting.some(w => w.kind === 'onboarding'), 'staff can ask a room to do it again');
+  ok((await A(`/v1/admin/clients/${rid}/onboarding`, { body: { status: 'done' } })).status === 200 && sql(`select onboarding_status from clients where id='${rid}'`) === 'done', 'or mark it done by hand');
+
+  // a won deal makes a room that asks too, and the CRM contact picks up what they tell us
+  const co = sql(`insert into sales_companies(name) values('Phil Co ${stamp}') returning id`).split('\n')[0], pe = `phil2-${stamp}@cg.test`;
+  const ct = sql(`insert into sales_contacts(name,email,company_id) values('Phil Two','${pe}','${co}') returning id`).split('\n')[0];
+  const won = sql(`insert into sales_deals(title,stage,value_cents,contact_id,company_id) values('Phil site ${stamp}','won',900000,'${ct}','${co}') returning id`).split('\n')[0];
+  const sp = await S(`/deals/${won}/start-project`, { body: { kind: 'software' } }); ok(sp.status === 201 && sp.json.client.created, 'start project makes the room', sp.json);
+  ok(sql(`select onboarding_status from clients where id='${sp.json.client.id}'`) === 'pending', 'and it is marked as owing its details');
+  const pt = (await signIn(pe)); ok(pt && pt.token, 'the contact signs in with an emailed code', pt);
+  if (pt?.token) {
+    ok((await call('/v1/session', { token: pt.token })).json.client.onboarding_status === 'pending', 'and the hub asks for their details');
+    const sv = await call('/v1/onboarding', { token: pt.token, body: { ...full, name: 'Phil Two', company: `Phil Co ${stamp}`, phone: '(555) 010-7777', role: 'CEO' } }); ok(sv.status === 200, 'they fill it in', sv.json);
+    ok(sql(`select phone||'|'||title from sales_contacts where id='${ct}'`) === '(555) 010-7777|CEO' && Number(sql(`select count(*) from sales_activities where contact_id='${ct}' and text like 'Finished the hub onboarding%'`)) === 1, 'the CRM contact gets the phone and title, and the timeline says they finished');
+  }
+  // the email: the same link, in the sender's name and filled in for this person
+  const tpls = (await S('/templates')).json; const inv = tpls.templates.find(t => t.name === 'Open your Future Basics hub');
+  ok(inv && /\{\{join_link/.test(inv.body) && tpls.fields.includes('join_link'), 'there is a hub invitation email in the templates, and join_link is a field');
+  if (inv) {
+    const pv = (await S(`/contacts/${ct}/email-preview`, { body: { subject: inv.subject, body: inv.body } })).json, m = /(https?:\/\/\S+\/j\/kyle\?\S+)/.exec(pv.body || '');
+    ok(m && pv.missing.length === 0 && new URL(m[1]).searchParams.get('email') === pe && new URL(m[1]).searchParams.get('name') === 'Phil Two', 'the preview has Phil\'s own link, from /j/kyle, with his name and email in it', pv);
+    ok(/Hi Phil,/.test(pv.body) && !/\{\{/.test(pv.body + pv.subject), 'and no blanks are left over');
+  }
+  ok((await S('/templates', { body: { name: 'Link fallback', subject: 'x', body: 'Open {{join_link}}' } })).status === 201, 'staff can use the field in their own templates too');
+  // any employee has their own link, even when their email is first.last@
+  const dem = `dana.lee${stamp}@thefuturebasics.com`, dh = `dana-lee${stamp}`, did = sql(`insert into users(client_id,email,name,role) values('${cid}','${dem}','Dana Lee','admin') returning id`).split('\n')[0];
+  const dana = await forge({ sub: did, clientId: cid, role: 'admin', email: dem }), DJ = (await call('/v1/admin/join-link', { token: dana })).json;
+  ok(DJ.handle === dh && DJ.general.endsWith('/j/' + dh) && /it's Dana at Future Basics/.test(DJ.text), 'a dotted staff email gets its own handle and text', DJ);
+  const dpage = await call('/j/' + dh); ok(/Dana sent you this link/.test(dpage.text), 'their link carries their name');
+  const dj = await call('/v1/public/join', { body: { company: `Dana Co ${stamp}`, name: 'Pat Ng', email: `pat${stamp}@dana.test`, attribution: { source: 's-' + dh, medium: 'text' } } });
+  ok(dj.status === 201 && sql(`select acquisition->>'staff' from clients where lower(contact_email)='pat${stamp}@dana.test'`) === 'Dana', 'a sign-up from it is marked as theirs');
+  const dpv = (await call(`/v1/sales/contacts/${ct}/email-preview`, { token: dana, body: { subject: inv.subject, body: inv.body } })).json; ok(new RegExp('/j/' + dh + '\\?').test(dpv.body || ''), 'and the hub email they send carries their link, not someone else\'s', dpv.body);
+});
+
 const bad = summary(); process.exit(bad ? 1 : 0);

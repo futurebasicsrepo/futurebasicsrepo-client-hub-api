@@ -2076,5 +2076,54 @@ await journey('J176', 'A prototype made elsewhere in a browser: add it from the 
   ok(page.errs.length === 0, 'no page errors', page.errs);
 });
 
+await journey('J182', 'phone: the text link opens a short page already filled in, the new client lands in their hub and the setup form opens once; "Later" leaves a card that opens it again; staff get the link and a text from Sales', async () => {
+  const r = await room('182', { wait: false }), W = 'http://work.localhost:3123', mail = `ob182-${stamp}@cg.test`;
+  const kid = sql(`select id from users where lower(email)='kyle@thefuturebasics.com'`).split('\n')[0] || sql(`insert into users(client_id,email,name,role) values('${r.clientId}','kyle@thefuturebasics.com','Kyle','admin') returning id`).split('\n')[0];
+  const kyle = await forge({ sub: kid, clientId: r.clientId, role: 'admin', email: 'kyle@thefuturebasics.com' });
+  const { ctx, page } = await phone(); await page.goto(`${BASE}/j/kyle?name=Phil%20Reed&email=${encodeURIComponent(mail)}&company=Common%20Ground%20${stamp}`, { waitUntil: 'networkidle' });
+  const hero = await page.innerText('.hero'), vals = [await page.inputValue('#email'), await page.inputValue('#name'), await page.inputValue('#company')];
+  ok(/kyle sent you this link/i.test(hero) && vals[0] === mail && vals[1] === 'Phil Reed' && vals[2] === `Common Ground ${stamp}`, 'the short link shows who sent it and arrives with name, email and company filled in', { hero, vals });
+  ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'and it fits a phone with no sideways scroll');
+  await page.click('#go'); await page.waitForURL(/\/hub/, { timeout: 15000 });
+  await page.waitForSelector('#onboardDialog[open]', { timeout: 15000 });
+  ok(await page.inputValue('#onboardForm [name=name]') === 'Phil Reed' && await page.inputValue('#onboardForm [name=company]') === `Common Ground ${stamp}` && await page.inputValue('#onboardForm [name=email]') === mail, 'the hub opens the setup form on the first visit, filled with what they gave');
+  ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'and the form fits the phone');
+  // later: it stays out of the way for this visit, and a card in Waiting on you opens it again
+  await page.click('#onboardDialog .vactions .secondary'); await page.waitForFunction(() => !document.querySelector('#onboardDialog').open);
+  await page.reload({ waitUntil: 'networkidle' }); await sleep(900);
+  ok(!(await page.evaluate(() => document.querySelector('#onboardDialog').open)) && /Finish setting up your account/.test(await page.innerText('#waiting')), '"Later" is respected on a reload, and the card waits in Waiting on you');
+  await page.click('#waiting button:has-text("Finish setting up")'); await page.waitForSelector('#onboardDialog[open]');
+  // a mistake first
+  await page.click('#obSubmit'); await page.waitForFunction(() => document.querySelector('#obErr').textContent.length > 0, null, { timeout: 8000 }).catch(() => {}); const oe = await page.textContent('#obErr'); ok(/mobile number/i.test(oe) && await page.evaluate(() => !!document.querySelector('#onboardForm label.bad')), 'a missing mobile number is named, and the field is marked', oe);
+  await page.fill('#onboardForm [name=phone]', '(555) 010-2233'); await page.selectOption('#onboardForm [name=storePlatform]', 'shopify'); await page.fill('#onboardForm [name=goal]', 'A new storefront and a make-an-offer flow.');
+  await page.fill('#onboardForm [name=line1]', '1 Main St'); await page.fill('#onboardForm [name=city]', 'Austin');
+  await page.click('#obSubmit'); await page.waitForFunction(() => !document.querySelector('#onboardDialog').open, null, { timeout: 10000 });
+  await sleep(600); ok(!/Finish setting up your account/.test(await page.innerText('#waiting')) && sql(`select onboarding_status||'|'||contact_phone from clients where lower(contact_email)='${mail}'`) === 'done|(555) 010-2233', 'saving closes the form, clears the card and stores the answers');
+  await page.reload({ waitUntil: 'networkidle' }); await sleep(900); ok(!(await page.evaluate(() => document.querySelector('#onboardDialog').open)), 'and it does not come back');
+  ok(page.errs.length === 0, 'no page errors on either page', page.errs); await ctx.close();
+  // staff: the link and the text, from Sales
+  const sctx = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await sctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyle);
+  const sp = await sctx.newPage(); sp.errs = []; sp.on('pageerror', e => sp.errs.push(e.message)); await sp.goto(`${W}/sales`, { waitUntil: 'networkidle' }); await sp.waitForSelector('#shareBtn', { timeout: 10000 });
+  await sp.click('#shareBtn'); await sp.waitForSelector('#jdlg[open] #jLink');
+  const link = await sp.inputValue('#jLink'), text = await sp.inputValue('#jText'), sms = await sp.getAttribute('#jSms', 'href');
+  ok(/\/j\/kyle$/.test(link) && text.includes(link) && /^sms:\?&body=/.test(sms) && decodeURIComponent(sms).includes(link), 'Sales gives the general link, the words to send, and a Text it button that opens the messages app with them', { link, sms });
+  await sp.click('[data-close]:visible'); ok(sp.errs.length === 0, 'no page errors in Sales', sp.errs); await sctx.close();
+});
+
+await journey('J183', 'phone: Home has a tile with the new-customer link, with Share, Text it and Copy', async () => {
+  const r = await room('183', { wait: false });
+  const kid = sql(`select id from users where lower(email)='kyle@thefuturebasics.com'`).split('\n')[0] || sql(`insert into users(client_id,email,name,role) values('${r.clientId}','kyle@thefuturebasics.com','Kyle','admin') returning id`).split('\n')[0];
+  const kyle = await forge({ sub: kid, clientId: r.clientId, role: 'admin', email: 'kyle@thefuturebasics.com' });
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, permissions: ['clipboard-read', 'clipboard-write'] });
+  await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} window.__shared = null; navigator.share = async d => { window.__shared = d; }; }, kyle);
+  const page = await ctx.newPage(); page.errs = []; page.on('pageerror', e => page.errs.push(e.message));
+  await page.goto('http://work.localhost:3123/home', { waitUntil: 'networkidle' }); await page.waitForSelector('#share:not(.hidden)', { timeout: 10000 });
+  ok(/\/j\/kyle$/.test(await page.textContent('#shareUrl')) && await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'the tile shows the short link and fits the phone');
+  const sms = await page.getAttribute('#shareSms', 'href'); ok(/^sms:\?&body=/.test(sms) && /\/j\/kyle/.test(decodeURIComponent(sms)) && /Future Basics/.test(decodeURIComponent(sms)), 'Text it opens Messages with the words and the link ready', sms);
+  await page.click('#shareGo'); const sh = await page.evaluate(() => window.__shared); ok(sh && /\/j\/kyle$/.test(sh.url) && !/https?:/.test(sh.text || ''), 'Share opens the phone share sheet with the link', sh);
+  await page.click('#shareCopy'); await page.waitForFunction(() => /Copied/.test(document.querySelector('#shareMsg').textContent)); const clip = await page.evaluate(() => navigator.clipboard.readText().catch(() => '')); ok(/\/j\/kyle/.test(clip) && /Future Basics/.test(clip), 'Copy puts the link and the words on the clipboard', clip);
+  ok(page.errs.length === 0, 'no page errors', page.errs); await ctx.close();
+});
+
 await browser.close();
 const bad = summary(); process.exit(bad ? 1 : 0);
