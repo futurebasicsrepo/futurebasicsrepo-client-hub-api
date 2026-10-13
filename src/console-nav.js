@@ -12,6 +12,7 @@
     grid: '<rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/>',
     target: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1"/>',
     coin: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7v10M14.6 9.6c-.4-1-1.4-1.6-2.6-1.6-1.5 0-2.6.8-2.6 2s1 1.7 2.6 2 2.6.8 2.6 2-1.1 2-2.6 2c-1.2 0-2.2-.6-2.6-1.6"/>',
+    brand: '<rect x="3.5" y="3.5" width="17" height="17" rx="3"/><circle cx="9" cy="9" r="1.6"/><path d="M4 16.5l4.5-4.5 3.5 3.5 3-3 5 5"/>',
     gear: '<circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/>'
   };
   // Grouped by the stage of the work (my day, inbox, people, win, deliver, money, health), not by tool or by which page it lives on. Every place the old menu led to is still one click away.
@@ -46,7 +47,8 @@
       { label: 'Payment gate', href: '/admin#accessPanel' }] },
     { id: 'health', label: 'Sites and health', icon: 'gear', items: [
       { label: 'Platform health', href: '/platform', key: 'platform' },
-      { label: 'Connections', href: '/admin#connections' }] }
+      { label: 'Connections', href: '/admin#connections' }] },
+    { id: 'brand', label: 'Brand and assets', href: '/brand', icon: 'brand' }
   ];
   const DEFAULT_HASH = { '/sales': 'today', '/builds/admin': 'builds' };
   const esc = v => String(v ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));

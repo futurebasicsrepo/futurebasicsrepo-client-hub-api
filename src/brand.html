@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>Brand and assets</title>
+<link rel="icon" href="/icons/icon-192.png">
+<style>
+@import url('/fonts/fonts.css');
+:root{--ink:#141416;--paper:#fff;--fog:#f5f5f2;--dim:#727278;--line:rgba(20,20,22,.14);--cue:#4bff9a;--ok:#17603a;--bad:#a02a20;--ease:cubic-bezier(.22,1,.36,1)}
+*{box-sizing:border-box}html{background:var(--fog)}
+body{margin:0;color:var(--ink);font:400 14px/1.5 'Space Grotesk',system-ui,sans-serif;background:var(--fog);min-height:100vh}
+button,input,select,textarea{font:inherit}a{color:inherit}.hidden{display:none!important}
+.mono{font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase}
+header{height:72px;background:rgba(20,20,22,.96);color:#fff;padding:0 clamp(16px,4vw,48px);display:flex;align-items:center;justify-content:space-between;gap:14px;position:sticky;top:0;z-index:20;backdrop-filter:blur(16px)}
+.wordmark{display:flex;align-items:center;gap:12px;position:relative;text-decoration:none;color:inherit;text-transform:uppercase;letter-spacing:.08em}
+.wordmark:after{content:"";position:absolute;left:0;bottom:-7px;width:64px;height:2px;background:var(--cue)}
+.brand-logo{display:block;width:200px;max-width:34vw;height:auto;max-height:30px}.brand-suffix{font:500 10px 'IBM Plex Mono',monospace;white-space:nowrap}
+main{max-width:1180px;margin:0 auto;overflow-x:clip;padding:26px clamp(14px,3vw,36px) 90px}
+h1{font-size:clamp(30px,5vw,52px);letter-spacing:-.035em;font-weight:500;margin:6px 0 6px;line-height:1.02}h2{font-size:22px;font-weight:500;letter-spacing:-.02em;margin:0}h3{margin:0;font-size:15px;font-weight:600}
+.sub{color:var(--dim);font-size:13px}.note{color:var(--dim);margin:4px 0 0;max-width:68ch}
+.panel{background:#fff;border:1px solid var(--line);border-radius:22px;padding:20px 22px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--ink);background:#fff;color:var(--ink);border-radius:999px;padding:9px 16px;text-decoration:none;cursor:pointer;font-weight:600;min-height:40px}.btn:hover{background:var(--fog)}.btn.go{background:var(--ink);color:#fff}.btn.go:hover{background:#2a2a2e}.btn:disabled{opacity:.6;cursor:wait}
+.hero{background:var(--ink);color:#fff;border-radius:28px;padding:clamp(20px,4vw,40px);margin-bottom:26px;position:relative;overflow:hidden;isolation:isolate}
+.hero:before{content:"";position:absolute;inset:0;z-index:-1;background-image:linear-gradient(rgba(255,255,255,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.05) 1px,transparent 1px);background-size:28px 28px;-webkit-mask-image:radial-gradient(120% 120% at 100% 0,#000 20%,transparent 80%);mask-image:radial-gradient(120% 120% at 100% 0,#000 20%,transparent 80%)}
+.hero .mono{color:#9d9da4}.hero p{color:#c9c9cf;max-width:60ch;margin:6px 0 0;font-size:15px}.hero .acts{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}
+.hero .btn{background:transparent;color:#fff;border-color:rgba(255,255,255,.45)}.hero .btn:hover{background:rgba(255,255,255,.12)}.hero .btn.go{background:var(--cue);color:var(--ink);border-color:var(--cue)}.hero .btn.go:hover{background:#7affb6}
+.sec{margin:34px 0 0}.sec>.hd{display:flex;gap:12px;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;margin-bottom:12px}
+.grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fill,minmax(min(100%,260px),1fr))}.grid.two{grid-template-columns:repeat(auto-fill,minmax(min(100%,420px),1fr))}
+.card{background:#fff;border:1px solid var(--line);border-radius:20px;overflow:hidden;display:flex;flex-direction:column}
+.pv{height:128px;display:grid;place-items:center;padding:18px;border-bottom:1px solid var(--line);background-image:linear-gradient(45deg,rgba(128,128,128,.06) 25%,transparent 25%,transparent 75%,rgba(128,128,128,.06) 75%),linear-gradient(45deg,rgba(128,128,128,.06) 25%,transparent 25%,transparent 75%,rgba(128,128,128,.06) 75%);background-size:16px 16px;background-position:0 0,8px 8px}
+.pv{overflow:hidden}.pv img{max-width:100%;max-height:92px;object-fit:contain;display:block}.pv .ft{font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.1em;color:var(--dim)}
+.card .in{padding:14px 16px 16px;display:flex;flex-direction:column;gap:8px;flex:1}.card .in .sub{margin:0}
+.lbl{font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);margin:2px 0 -2px}
+.pills{display:flex;gap:6px;flex-wrap:wrap}
+.pill{border:1px solid var(--line);background:#fff;border-radius:999px;padding:6px 11px;font:500 12px 'IBM Plex Mono',monospace;cursor:pointer;color:var(--ink);min-height:34px}.pill:hover{background:var(--ink);color:#fff;border-color:var(--ink)}.pill.ok{background:var(--ok);color:#fff;border-color:var(--ok)}.pill:disabled{opacity:.55;cursor:wait}
+.tag{display:inline-block;font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase;padding:2px 8px;border-radius:999px;background:var(--fog);color:var(--dim);margin-left:6px;vertical-align:1px}
+.sw{height:84px;border-bottom:1px solid var(--line)}.sw-b{padding:12px 16px 14px;display:grid;gap:3px}.sw-b b{font-size:16px}.sw-b .mono{color:var(--dim);font-size:10.5px;letter-spacing:.06em;text-transform:none}
+.sw-b button{justify-self:start;margin-top:6px}
+.spec{font-size:clamp(34px,6vw,60px);line-height:1.04;letter-spacing:-.03em;font-weight:500;margin:6px 0 4px}.spec.mono2{font:500 clamp(22px,4vw,34px)/1.2 'IBM Plex Mono',monospace;letter-spacing:.06em;text-transform:uppercase}
+.rules{display:grid;gap:10px 22px;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));margin:0;padding:0;list-style:none}.rules li{display:grid;gap:2px}.rules b{font-size:14px}.rules span{color:#33333a}
+.msg{font-size:13px;min-height:18px;color:var(--ok)}.msg.bad{color:var(--bad)}
+@media(max-width:700px){.pv{height:112px}.hero .acts .btn{flex:1 1 100%}}
+</style>
+</head>
+<body>
+<header>
+  <a class="wordmark" href="/home" aria-label="Work home"><img class="brand-logo" src="https://thefuturebasics.com/cdn/shop/files/future_basics_true_vector_fixed.svg?v=1775278873&amp;width=360" alt="Future Basics"><span class="brand-suffix">/ Brand</span></a>
+</header>
+<main>
+  <div id="needSignin" class="panel hidden"><h1>Sign in to the work console first</h1><p class="note">This page uses your work console sign-in. Open the console, sign in, then come back here.</p><a class="btn go" href="/admin" style="margin-top:12px">Open the work console</a></div>
+  <div id="app" class="hidden">
+    <section class="hero"><span class="mono">Future Basics · for the team</span><h1>Brand and assets.</h1>
+      <p>The wordmark in every colour and file type, icons, social and email images, the colours and the fonts. Everything here is ready to use or download, for web and for print.</p>
+      <div class="acts"><button class="btn go" type="button" id="kit">Download everything (.zip)</button><button class="btn" type="button" data-file="future-basics-brand-guide.pdf">Brand guide (PDF)</button></div><p class="msg" id="kitMsg" role="status" style="color:var(--cue);margin-top:10px"></p></section>
+
+    <section class="panel"><h2>Use it like this</h2><ul class="rules" style="margin-top:12px">
+      <li><b>Vector first</b><span>Use the SVG or PDF whenever you can. They never blur. PNG, WebP and JPG are for places that cannot take a vector.</span></li>
+      <li><b>Ink on light, white on dark</b><span>Print in one colour: black. Cue green only on Ink.</span></li>
+      <li><b>Room to breathe</b><span>Leave a margin as tall as the wordmark on every side. Never smaller than 120 px wide on screen or 30 mm in print.</span></li>
+      <li><b>Keep it whole</b><span>Do not stretch, skew, outline, add shadows or rearrange it. On a photo, put it on a plain area or an Ink panel.</span></li></ul></section>
+
+    <div id="groups"></div>
+  </div>
+</main>
+<script>
+const $=s=>document.querySelector(s),esc=v=>String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+const TOKEN=()=>{try{return localStorage.getItem('fb.admin.token')||''}catch{return ''}};
+async function getFile(path){const r=await fetch(path,{headers:{Authorization:'Bearer '+TOKEN()}});if(!r.ok){let m='Could not get that file';try{m=(await r.json()).error||m}catch{}throw new Error(m)}return r.blob()}
+function saveBlob(blob,name){const u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),4000)}
+const shortTitle=t=>t.split(' · ').slice(1).join(' · ')||t;
+const PV=['svg','png','webp','jpg'];
+const pill=(it,label)=>`<button class="pill" type="button" data-file="${esc(it.file)}" title="${esc(it.note)}">${esc(label)}</button>`;
+function render(cat){
+  const out=[];
+  for(const g of cat.groups){
+    let body='';
+    if(g.id==='logo'){
+      const ways=[...new Set(g.items.map(i=>(/wordmark-(ink|white|black|cue)/.exec(i.file)||[])[1]).filter(Boolean))];
+      body='<div class="grid two">'+ways.map(w=>{const its=g.items.filter(i=>!i.file.includes('on-ink')&&(i.file.includes('wordmark-'+w+'.')||i.file.includes('wordmark-'+w+'-'))),sv=its.find(i=>i.ext==='svg');
+        const web=its.filter(i=>i.kind==='web'||i.kind==='both'),print=its.filter(i=>i.kind==='print'||i.kind==='both');
+        return `<article class="card"><div class="pv" style="background-color:${esc(sv.on)}"><img alt="Wordmark, ${esc(w)}" data-pv="${esc(sv.file)}"></div><div class="in"><h3>${esc(({ink:'Ink',white:'White',black:'Black (one colour)',cue:'Cue green'})[w])}</h3>
+          <span class="lbl">Web</span><div class="pills">${web.map(i=>pill(i,i.ext.toUpperCase()+(/-(\d+)\./.exec(i.file)?' '+/-(\d+)\./.exec(i.file)[1]:''))).join('')}</div>
+          <span class="lbl">Print</span><div class="pills">${print.map(i=>pill(i,i.ext.toUpperCase().replace('JPG','JPG on white')+(/300dpi/.test(i.file)?' 300 dpi':''))).join('')}</div></div></article>`}).join('')+'</div>';
+      const extra=g.items.filter(i=>i.file.includes('on-ink'));
+      if(extra.length)body+='<div class="grid two" style="margin-top:14px">'+extra.map(card).join('')+'</div>';
+    }else if(g.id==='colour'){
+      body='<div class="grid">'+cat.colors.map(c=>`<article class="card"><div class="sw" style="background:${esc(c.hex)}"></div><div class="sw-b"><b>${esc(c.name)}</b><span class="mono">${esc(c.hex)}</span><span class="mono">RGB ${c.rgb.join(' ')}</span><span class="mono">CMYK ${c.cmyk.join(' ')} approx.</span>${c.pantone&&c.id!=='paper'?`<span class="mono">Nearest ${esc(c.pantone)}</span>`:''}<span class="sub">${esc(c.use)}</span><button class="pill" type="button" data-copy="${esc(c.hex)}">Copy ${esc(c.hex)}</button></div></article>`).join('')+'</div>'
+        +`<p class="sub" style="margin:10px 0 12px">CMYK is a plain conversion for a first look. To match exactly in print, give the printer the Pantone chip or ask for a proof. PANTONE is a registered trademark of Pantone LLC.</p><div class="pills">${g.items.map(i=>pill(i,i.title)).join('')}</div>`;
+    }else if(g.id==='font'){
+      body=`<div class="panel"><span class="lbl">Words</span><div class="spec">Space Grotesk</div><div style="font-size:18px;letter-spacing:-.01em">Quietly better basics, made well. 0123456789</div>
+        <span class="lbl" style="display:block;margin-top:18px">Labels and numbers</span><div class="spec mono2">IBM Plex Mono · 0123456789</div></div>
+        <div class="grid" style="margin-top:14px">${g.items.map(i=>`<article class="card"><div class="in"><h3>${esc(i.title.split(' · ')[0])}<span class="tag">${esc(i.ext)}</span></h3><p class="sub">${esc(i.note)}</p><div class="pills">${pill(i,'Download')}</div></div></article>`).join('')}</div>`;
+    }else body='<div class="grid">'+g.items.map(card).join('')+'</div>';
+    out.push(`<section class="sec" id="${esc(g.id)}"><div class="hd"><div><h2>${esc(g.title)}</h2><p class="note">${esc(g.note)}</p></div></div>${body}</section>`);
+  }
+  $('#groups').innerHTML=out.join('');
+  document.querySelectorAll('img[data-pv]').forEach(async img=>{try{img.src=URL.createObjectURL(await getFile('/v1/brand/files/'+img.dataset.pv))}catch{}});
+}
+function card(i){
+  const pv=PV.includes(i.ext)&&i.on;
+  return `<article class="card"><div class="pv" style="background-color:${esc(i.on||'#f5f5f2')}">${pv?`<img alt="" data-pv="${esc(i.file)}">`:`<span class="ft">${esc(i.ext.toUpperCase())}</span>`}</div><div class="in"><h3>${esc(i.title)}<span class="tag">${esc(i.kind==='both'?'web + print':i.kind)}</span></h3><p class="sub">${esc(i.note)}</p><div class="pills" style="margin-top:auto">${pill(i,'Download '+i.ext.toUpperCase())}</div></div></article>`;
+}
+document.addEventListener('click',async e=>{
+  const c=e.target.closest('[data-copy]');if(c){try{await navigator.clipboard.writeText(c.dataset.copy)}catch{}const t=c.textContent;c.classList.add('ok');c.textContent='Copied';setTimeout(()=>{c.classList.remove('ok');c.textContent=t},1400);return}
+  const f=e.target.closest('[data-file]');if(!f||f.disabled)return;f.disabled=true;const t=f.textContent;
+  try{saveBlob(await getFile('/v1/brand/files/'+f.dataset.file),f.dataset.file)}catch(x){alert(x.message)}finally{f.disabled=false;f.textContent=t}});
+$('#kit').onclick=async()=>{const b=$('#kit'),m=$('#kitMsg');b.disabled=true;m.textContent='Putting the kit together…';try{saveBlob(await getFile('/v1/brand/kit.zip'),'future-basics-brand-kit.zip');m.textContent='Downloaded: future-basics-brand-kit.zip'}catch(x){m.textContent=x.message}finally{b.disabled=false}};
+(async()=>{
+  try{const m=location.hash.match(/google-session=([^&]+)/);if(m){localStorage.setItem('fb.admin.token',decodeURIComponent(m[1]));history.replaceState(null,'',location.pathname+location.search)}}catch{}
+  if(!TOKEN()){$('#needSignin').classList.remove('hidden');return}
+  try{const r=await fetch('/v1/brand',{headers:{Authorization:'Bearer '+TOKEN()}});if(!r.ok)throw 0;const cat=await r.json();$('#app').classList.remove('hidden');render(cat)}catch{$('#needSignin').classList.remove('hidden')}
+})();
+</script>
+<script src="/console-nav.js" defer></script>
+</body>
+</html>
