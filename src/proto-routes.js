@@ -38,10 +38,11 @@ export function registerProtoRoutes(app, d) {
       site: full && r.facts ? { title: r.facts.title, description: r.facts.description, phones: r.facts.phones, emails: r.facts.emails, address: r.facts.address, services: (r.facts.services || []).slice(0, 12), colors: r.facts.colors, pages: (r.facts.pages || []).length, generator: r.facts.generator } : undefined,
       buildId: r.build_id, contactId: r.contact_id, dealId: r.deal_id, published: Boolean(r.published_at), publishedAt: r.published_at, shareUrl: r.published_at ? urlOf(r) : '', hasHtml: Boolean(r.has_html ?? r.html),
       headVersion: r.head_version, liveVersion: r.live_version, pendingPublish: Boolean(r.published_at && r.head_version && r.live_version !== r.head_version), editError: r.status === 'ready' ? r.error : '',
+      kind: r.kind || 'generated', externalUrl: r.external_url || '', accessNote: r.access_note || '',
       views: r.views, lastViewedAt: r.last_viewed_at, createdAt: r.created_at, updatedAt: r.updated_at
     };
   };
-  const COLS = `id,slug,url,host,company,industry,industry_from,city,notes,status,step,steps,facts,audit,qa,model,input_tokens,output_tokens,cost_cents,note,error,build_id,contact_id,deal_id,views,last_viewed_at,created_at,updated_at,published_at,head_version,live_version,(html is not null) has_html`;
+  const COLS = `id,slug,url,host,company,industry,industry_from,city,notes,status,step,steps,facts,audit,qa,model,input_tokens,output_tokens,cost_cents,note,error,build_id,contact_id,deal_id,views,last_viewed_at,created_at,updated_at,published_at,head_version,live_version,(html is not null) has_html,kind,external_url,access_note`;
   const get = async id => (await pool.query(`select ${COLS} from prototypes where id=$1`, [id])).rows[0];
 
   // ---------- the pipeline: read → audit → brief → build → check, one at a time per slot, with progress on the row ----------
@@ -117,6 +118,7 @@ export function registerProtoRoutes(app, d) {
     await pool.query('update prototypes set build_id=$2 where id=$1', [r.id, id]); return id;
   }
   async function publish(r) {
+    if (r.kind === 'external') { const e = new Error('This prototype lives elsewhere: push it to Builds instead'); e.code = 409; throw e; }
     if (r.status !== 'ready' || !r.has_html) { const e = new Error('Build the prototype first'); e.code = 409; throw e; }
     if (r.qa && r.qa.pass === false) { const e = new Error(`It does not pass the quality check yet (${(r.qa.failed || []).map(c => c.label).slice(0, 3).join('; ')}). Rebuild it first.`); e.code = 409; throw e; }
     await pool.query('update prototypes set published_at=coalesce(published_at, now()), live_version=head_version, updated_at=now() where id=$1', [r.id]);
@@ -124,7 +126,9 @@ export function registerProtoRoutes(app, d) {
   }
 
   // ---------- staff API ----------
-  app.get('/v1/admin/prototypes/meta', { preHandler: pre }, async () => ({ industries: INDUSTRIES.map(i => ({ key: i.key, label: i.label })), ai: protoAiReady(env), model: protoAiReady(env) ? PROTO_MODEL(env) : 'template', today: await usedToday(), perDay: perDay(), publicUrl, canEdit: canEdit(), editsPerDay: editsPerDay() }));
+  app.get('/v1/admin/prototypes/meta', { preHandler: pre }, async () => ({ industries: INDUSTRIES.map(i => ({ key: i.key, label: i.label })), ai: protoAiReady(env), model: protoAiReady(env) ? PROTO_MODEL(env) : 'template', today: await usedToday(), perDay: perDay(), publicUrl, canEdit: canEdit(), editsPerDay: editsPerDay(),
+    projects: (await pool.query(`select p.id, p.name, c.name client from projects p join clients c on c.id=p.client_id where p.kind='software' and p.status='active' and c.archived_at is null and c.slug<>'future-basics' order by p.updated_at desc limit 80`)).rows,
+    builds: (await pool.query(`select id, name, live_url "liveUrl" from builds where status<>'archived' and live_url<>'' order by name limit 300`)).rows }));
   app.post('/v1/admin/prototypes/audit', { preHandler: pre }, async (req, reply) => {
     if (!throttle(`protoaudit:${req.auth.sub}`, { limit: 60, windowMs: 3600_000 })) return reply.code(429).send({ error: 'That is a lot of audits this hour: try again in a while' });
     const c = cleanSiteUrl(req.body?.url); if (c.error) return reply.code(422).send({ error: c.error });
@@ -144,8 +148,69 @@ export function registerProtoRoutes(app, d) {
       [newSlug(), c.url, c.host, clip(b.company, 80), b.industry || '', b.industry ? 'chosen' : '', clip(b.city, 60), clip(b.notes, 600), req.auth.sub, JSON.stringify([{ at: new Date().toISOString(), text: 'Queued' }]), contactId, dealId])).rows[0];
     enqueue(row.id); return reply.code(202).send({ prototype: view(await get(row.id)) });
   });
+
+  // ---------- a prototype made elsewhere (a Shopify dev store, a staging site): kept here until it is pushed to Builds for a client ----------
+  // It is never read or built by us: just its address, who it is for, and how to get in (a password page, say). Nothing reaches Builds, and so no client, until it is pushed.
+  app.post('/v1/admin/prototypes/external', { preHandler: pre }, async (req, reply) => {
+    const b = req.body || {}, proto = cleanSiteUrl(b.prototypeUrl); if (proto.error) return reply.code(422).send({ error: `The prototype's address: ${proto.error.toLowerCase()}` });
+    const cur = String(b.currentUrl || '').trim() ? cleanSiteUrl(b.currentUrl) : null; if (cur?.error) return reply.code(422).send({ error: `Their current site: ${cur.error.toLowerCase()}` });
+    const company = clip(b.company, 80); if (!company) return reply.code(422).send({ error: 'Whose prototype is it? Add the business name' });
+    if ((await pool.query(`select 1 from prototypes where kind='external' and external_url=$1`, [proto.url])).rowCount) return reply.code(409).send({ error: 'That prototype is already here' });
+    const contactId = UUID.test(String(b.contactId || '')) && (await pool.query('select 1 from sales_contacts where id=$1', [b.contactId])).rowCount ? b.contactId : null, dealId = UUID.test(String(b.dealId || '')) && (await pool.query('select 1 from sales_deals where id=$1', [b.dealId])).rowCount ? b.dealId : null;
+    // the same prototype may already sit on Builds because it was added there by hand: take it out of Builds (archived, hidden) so it only shows here until it is pushed
+    let moved = null;
+    if (UUID.test(String(b.moveBuildId || ''))) {
+      const bd = (await pool.query(`select id, name from builds where id=$1 and status<>'archived'`, [b.moveBuildId])).rows[0];
+      if (bd) { await pool.query(`update builds set status='archived', visibility='hidden', updated_at=now() where id=$1`, [bd.id]); await pool.query('update projects set build_id=null where build_id=$1', [bd.id]); moved = bd.name; }
+    }
+    const row = (await pool.query(`insert into prototypes(slug,url,host,company,city,notes,status,step,steps,kind,external_url,access_note,created_by,contact_id,deal_id) values($1,$2,$3,$4,$5,$6,'ready','Ready',$7::jsonb,'external',$8,$9,$10,$11,$12) returning id`,
+      [newSlug(), (cur || proto).url, (cur || proto).host, company, clip(b.city, 60), clip(b.notes, 600), JSON.stringify([{ at: new Date().toISOString(), text: `Added: ${proto.host}` }]), proto.url, clip(b.accessNote, 300), req.auth.sub, contactId, dealId])).rows[0];
+    const p = await get(row.id); if (contactId) await note(contactId, dealId, `Prototype for ${company} added: ${proto.url}`, req.auth.sub);
+    return reply.code(201).send({ prototype: view(p), movedFromBuilds: moved });
+  });
+  // Push it to Builds: a build entry for it (hidden until someone may see it), tied to the client's project so the client sees it in their room, and an invitation to whoever should look.
+  app.post('/v1/admin/prototypes/:id/to-builds', { preHandler: pre }, async (req, reply) => {
+    if (!UUID.test(req.params.id)) return reply.code(404).send({ error: 'Not found' }); const r = await get(req.params.id); if (!r) return reply.code(404).send({ error: 'Not found' });
+    if (r.kind !== 'external') return reply.code(409).send({ error: 'This prototype was built here: publish it instead' });
+    const b = req.body || {}; let project = null;
+    const wanted = UUID.test(String(b.projectId || '')) ? b.projectId : r.deal_id ? (await pool.query('select project_id from sales_deals where id=$1', [r.deal_id])).rows[0]?.project_id : null;
+    if (wanted) { project = (await pool.query(`select p.id, p.name, p.client_id, p.build_id, c.name client from projects p join clients c on c.id=p.client_id where p.id=$1 and p.kind='software' and c.slug<>'future-basics'`, [wanted])).rows[0] || null; if (!project && UUID.test(String(b.projectId || ''))) return reply.code(422).send({ error: 'That is not one of the client software projects' }); }
+    const emails = b.emails && String(Array.isArray(b.emails) ? b.emails.join('') : b.emails).trim() ? b.emails : null;
+    const name = clip(`${r.company}: new site prototype`, 80), onShopify = /\.myshopify\.com$/.test(new URL(r.external_url).hostname);
+    const summary = clip(b.summary, 900) || `A first look at the new site for ${r.company}${onShopify ? ', built on Shopify' : ''}. It is a prototype: the look and feel and how it works, before anything goes live.`;
+    // where its code lives, so the showcase can follow it (the new theme sits in a folder of the hub repository, for one)
+    const repoUrl = /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+$/.test(String(b.repoUrl || '').trim()) ? String(b.repoUrl).trim() : '', repoPath = /^[\w./-]{1,120}$/.test(String(b.repoPath || '').trim()) && !String(b.repoPath).includes('..') ? String(b.repoPath).trim().replace(/^\/+|\/+$/g, '') : '';
+    let buildId = r.build_id && (await pool.query(`select 1 from builds where id=$1 and status<>'archived'`, [r.build_id])).rowCount ? r.build_id : null;
+    if (buildId) await pool.query(`update builds set name=$2, summary=$3, live_url=$4, repo_url=case when $5<>'' then $5 else repo_url end, repo_path=case when $5<>'' then $6 else repo_path end, updated_at=now() where id=$1`, [buildId, name, summary, r.external_url, repoUrl, repoPath]);
+    else {
+      let slug = slugify(`proto ${r.company}`) || `proto-${r.slug}`; for (let i = 2; (await pool.query('select 1 from builds where slug=$1', [slug])).rowCount; i++) slug = `${slugify(`proto ${r.company}`).slice(0, 52)}-${i}`;
+      buildId = (await pool.query(`insert into builds(slug,name,tagline,sector,status,visibility,hosting,live_url,repo_url,stack,summary,highlights,sort_order,links,repo_path,auto_publish) values($1,$2,$3,$4,'concept','hidden',$5,$6,$9,$7,$8,'[]'::jsonb,100,'[]'::jsonb,$10,false) returning id`,
+        [slug, name, clip(`A new site for ${r.company}`, 140), clip(b.sector, 40) || 'Retail', onShopify ? 'shopify' : 'other', r.external_url, onShopify ? ['Shopify', 'Liquid', 'JavaScript'] : [], summary, repoUrl, repoPath])).rows[0].id;
+    }
+    await pool.query('update prototypes set build_id=$2, published_at=coalesce(published_at, now()), updated_at=now() where id=$1', [r.id, buildId]);
+    if (project) await pool.query('update projects set build_id=$2, updated_at=now() where id=$1', [project.id, buildId]);
+    let invites = null;
+    if (emails) {
+      await pool.query(`update builds set visibility=case when visibility='hidden' then 'invite' else visibility end, updated_at=now() where id=$1`, [buildId]);
+      const res = await app.inject({ method: 'POST', url: '/v1/admin/builds/invites', headers: { authorization: req.headers.authorization, ...(req.headers['cf-access-jwt-assertion'] ? { 'cf-access-jwt-assertion': req.headers['cf-access-jwt-assertion'] } : {}), 'content-type': 'application/json' }, payload: { emails, buildId, days: b.days || 30, note: b.note || '', send: b.send !== false } });
+      let j = {}; try { j = res.json(); } catch { /* the showcase answered with something else */ }
+      if (res.statusCode >= 400) return reply.code(res.statusCode).send({ error: j.error || 'The invitation could not be sent', buildId });
+      invites = j;
+    }
+    if (r.contact_id) await note(r.contact_id, r.deal_id, `The prototype for ${r.company} is on Builds${project ? ` and in ${project.client}'s room` : ''}${invites ? `; ${[].concat(emails).join(', ')} invited` : ''}`, req.auth.sub);
+    return { prototype: view(await get(r.id)), buildId, project: project ? { id: project.id, name: project.name, client: project.client } : null, invites };
+  });
+  // Take it back out of Builds (the entry is archived, the client's project is untied); the prototype stays here.
+  app.post('/v1/admin/prototypes/:id/from-builds', { preHandler: pre }, async (req, reply) => {
+    if (!UUID.test(req.params.id)) return reply.code(404).send({ error: 'Not found' }); const r = await get(req.params.id); if (!r) return reply.code(404).send({ error: 'Not found' });
+    if (r.kind !== 'external') return reply.code(409).send({ error: 'This prototype was built here: use unpublish' });
+    if (r.build_id) { await pool.query(`update builds set status='archived', visibility='hidden', updated_at=now() where id=$1`, [r.build_id]); await pool.query('update projects set build_id=null where build_id=$1', [r.build_id]); }
+    await pool.query('update prototypes set build_id=null, published_at=null, updated_at=now() where id=$1', [r.id]);
+    return { prototype: view(await get(r.id)) };
+  });
   app.post('/v1/admin/prototypes/:id/rebuild', { preHandler: pre }, async (req, reply) => {
     if (!UUID.test(req.params.id)) return reply.code(404).send({ error: 'Not found' }); const r = await get(req.params.id); if (!r) return reply.code(404).send({ error: 'Not found' });
+    if (r.kind === 'external') return reply.code(409).send({ error: 'This prototype lives elsewhere: change it there' });
     if (BUSY.includes(r.status)) return reply.code(409).send({ error: r.status === 'editing' ? 'A change is being made right now' : 'It is already being built' });
     const b = req.body || {}; if (b.industry && !INDUSTRIES.some(i => i.key === b.industry)) return reply.code(422).send({ error: 'Pick one of the trades in the list' });
     if ((await usedToday()) >= perDay() + 10) return reply.code(429).send({ error: `The daily limit is reached` });
@@ -185,6 +250,7 @@ export function registerProtoRoutes(app, d) {
   });
   app.post('/v1/admin/prototypes/:id/edit', { preHandler: pre }, async (req, reply) => {
     if (!UUID.test(req.params.id)) return reply.code(404).send({ error: 'Not found' }); const r = await get(req.params.id); if (!r) return reply.code(404).send({ error: 'Not found' });
+    if (r.kind === 'external') return reply.code(409).send({ error: 'This prototype lives elsewhere: change it there' });
     const instruction = clip(req.body?.instruction, 1200); if (instruction.length < 4) return reply.code(422).send({ error: 'Say what should change: a sentence is enough' });
     if (!canEdit()) return reply.code(409).send({ error: 'Changing a page needs Claude connected (the service needs ANTHROPIC_API_KEY). You can still rebuild it or restore an earlier version.' });
     if (BUSY.includes(r.status)) return reply.code(409).send({ error: r.status === 'editing' ? 'A change is being made right now: wait for it to finish' : 'It is being built right now: wait for it to finish' });

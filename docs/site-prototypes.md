@@ -46,3 +46,13 @@ Two cards under Sales: **Site prototypes** (is Claude connected, builds that kee
 
 ## Data and API
 Tables `prototypes`, `prototype_versions`, `prototype_searches` and `prototype_search_schedules` (`src/db.js`; a search keeps its ranked results so the page can reopen it): the facts, audit, brief, quality result, the page, the previous page after a rebuild, tokens and cost, views, and the build it is on. Pure rules: `src/proto-crawl.js`, `src/proto-industry.js`, `src/proto-build.js`, `src/proto-leads.js` (`test/proto.test.js`, `test/proto-build.test.js`). Routes: `src/proto-routes.js` (`/v1/admin/prototypes…` including `leads/meta`, `leads/search`, `leads/searches`, `leads/add`; and `/p/:slug`). Journeys: J144 (build), J145 (page), J146 and J147 (leads), J151 and J152 (saved searches).
+
+## A prototype made elsewhere (a Shopify store, a staging site)
+Not every prototype is built here: a redesign may live in a Shopify dev store or a staging site. **Add a prototype made elsewhere** (a panel under the build form on the Prototypes page) keeps it here with its address, the business, their current site and how to get in (a store password, say). It is only a record: we never read, rebuild or publish it, and **nothing reaches Builds, and so no client, until it is pushed**.
+
+- **Adding it takes it off Builds.** If a Builds entry already points at the same address (it was added there by hand), the form offers to take that entry out of Builds (archived, hidden) so the prototype only shows in Prototypes.
+- **Push to Builds** makes the prototype's entry on the showcase (a hidden concept, on Shopify when the address is a `.myshopify.com` store, with an optional GitHub address and folder so the showcase can follow its code), **ties it to the client's software project** so the client sees it in their room (even while the entry is hidden for everyone else), and **invites** people by email (they get a sign-in code; the entry becomes invite only). Pushing again updates the same entry and adds invitations.
+- **Take it out of Builds** archives the entry, unties the project and keeps the prototype here.
+- Deleting the prototype archives its Builds entry.
+
+API: `POST /v1/admin/prototypes/external { company, prototypeUrl, currentUrl?, accessNote?, moveBuildId?, contactId?, dealId? }`, `POST …/:id/to-builds { projectId?, emails?, note?, days?, send?, repoUrl?, repoPath?, sector?, summary? }`, `POST …/:id/from-builds` (staff). Journeys J175 (API) and J176 (browser).
