@@ -2125,5 +2125,26 @@ await journey('J183', 'phone: Home has a tile with the new-customer link, with S
   ok(page.errs.length === 0, 'no page errors', page.errs); await ctx.close();
 });
 
+await journey('J185', 'Brand and assets in a browser: the page shows the wordmark and the sections, a download saves the right file, the whole kit downloads, and it fits a phone', async () => {
+  const r = await room('185', { wait: false }), W = 'http://work.localhost:3123', mail = `brandui185-${stamp}@thefuturebasics.com`;
+  const uid = sql(`insert into users(client_id,email,name,role) values('${r.clientId}','${mail}','Bea Brand','admin') returning id`).split('\n')[0];
+  const staff = await forge({ sub: uid, clientId: r.clientId, role: 'admin', email: mail });
+  for (const [label, vp, mobile] of [['desktop', { width: 1280, height: 900 }, false], ['phone', { width: 390, height: 844 }, true]]) {
+    const ctx = await browser.newContext({ viewport: vp, isMobile: mobile, hasTouch: mobile, acceptDownloads: true }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, staff);
+    const page = await ctx.newPage(); page.errs = []; page.on('pageerror', e => page.errs.push(e.message)); await page.goto(`${W}/brand`, { waitUntil: 'networkidle' }); await page.waitForSelector('#groups .sec', { timeout: 10000 });
+    ok(await page.locator('#groups .sec').count() === 6 && /Wordmark/.test(await page.innerText('#logo')) && /Space Grotesk/.test(await page.innerText('#font')) && /#141416/.test(await page.innerText('#colour')), `${label}: the sections are there (wordmark, icons, social, colour, fonts, guide)`);
+    await page.waitForFunction(() => [...document.querySelectorAll('img[data-pv]')].filter(i => i.naturalWidth > 0).length >= 4, null, { timeout: 10000 }); ok(true, `${label}: the previews load`);
+    ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${label}: no sideways scroll`);
+    const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#logo [data-file="future-basics-wordmark-ink-1200.png"]')]); const path = await dl.path();
+    ok(dl.suggestedFilename() === 'future-basics-wordmark-ink-1200.png' && (await import('node:fs')).readFileSync(path).subarray(1, 4).toString() === 'PNG', `${label}: a download saves the real file under its own name`, dl.suggestedFilename());
+    if (!mobile) {
+      const [kit] = await Promise.all([page.waitForEvent('download', { timeout: 30000 }), page.click('#kit')]); ok(kit.suggestedFilename() === 'future-basics-brand-kit.zip' && (await import('node:fs')).readFileSync(await kit.path()).subarray(0, 2).toString() === 'PK', 'the whole kit downloads as a zip');
+      await page.click('[data-copy="#141416"]'); await page.waitForFunction(() => /Copied/.test(document.querySelector('[data-copy="#141416"]').textContent), null, { timeout: 4000 }).catch(() => {}); ok(/Copied/.test(await page.textContent('[data-copy="#141416"]')), 'a colour copies on a click');
+    }
+    ok(page.errs.length === 0, `${label}: no page errors`, page.errs); await ctx.close();
+  }
+  const sess = await browser.newContext({ viewport: { width: 1280, height: 900 } }); const sp = await sess.newPage(); await sp.goto(`${W}/brand`, { waitUntil: 'networkidle' }); ok(!(await sp.locator('#needSignin').isHidden()), 'signed out, it asks to sign in and shows no assets'); await sess.close();
+});
+
 await browser.close();
 const bad = summary(); process.exit(bad ? 1 : 0);

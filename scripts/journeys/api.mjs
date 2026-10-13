@@ -2579,4 +2579,22 @@ await journey('J181', 'New-client onboarding: a won deal or the text link makes 
   const dpv = (await call(`/v1/sales/contacts/${ct}/email-preview`, { token: dana, body: { subject: inv.subject, body: inv.body } })).json; ok(new RegExp('/j/' + dh + '\\?').test(dpv.body || ''), 'and the hub email they send carries their link, not someone else\'s', dpv.body);
 });
 
+await journey('J184', 'Brand and assets: every signed-in employee can list and download the wordmark, icons, colours, fonts, the guide and the whole kit; clients and strangers cannot; the page is served', async () => {
+  const room = await newRoom('184', { wait: false }), cid = sql(`select client_id from users where lower(email)='${room.email}'`);
+  const mail = `brand184-${stamp}@thefuturebasics.com`, uid = sql(`insert into users(client_id,email,name,role) values('${cid}','${mail}','Bea Brand','admin') returning id`).split('\n')[0];
+  const staff = await forge({ sub: uid, clientId: cid, role: 'admin', email: mail });
+  ok((await call('/v1/brand')).status === 401 && (await call('/v1/brand/kit.zip')).status === 401 && (await call('/v1/brand/files/favicon.ico')).status === 401, 'a stranger gets nothing');
+  ok((await call('/v1/brand', { token: room.token })).status === 403 && (await call('/v1/brand/files/favicon.ico', { token: room.token })).status === 403 && (await call('/v1/brand/kit.zip', { token: room.token })).status === 403, 'a client of ours gets nothing');
+  const cat = await call('/v1/brand', { token: staff }); ok(cat.status === 200 && cat.json.groups.map(g => g.id).join() === 'logo,icon,social,colour,font,guide' && cat.json.colors.length >= 8, 'any employee sees the whole catalogue', cat.json.groups?.map(g => g.id));
+  const all = cat.json.groups.flatMap(g => g.items); ok(all.length > 60 && all.some(i => i.ext === 'pdf' && i.kind === 'print') && all.some(i => i.ext === 'svg') && all.some(i => i.ext === 'tiff') && all.some(i => i.ext === 'woff2'), 'with web and print file types', all.length);
+  for (const [f, type, sig] of [['future-basics-wordmark-ink.svg', /svg/, '<svg'], ['future-basics-wordmark-black-cmyk.pdf', /pdf/, '%PDF'], ['future-basics-wordmark-white-1200.png', /png/, '\x89PNG'], ['favicon.ico', /icon/, '\x00\x00\x01\x00'], ['future-basics-colors.css', /css/, '/*'], ['future-basics-brand-guide.pdf', /pdf/, '%PDF']]) {
+    const r = await fetch(BASE + '/v1/brand/files/' + f, { headers: { Authorization: 'Bearer ' + staff } }), b = Buffer.from(await r.arrayBuffer());
+    ok(r.status === 200 && type.test(r.headers.get('content-type')) && /attachment; filename=/.test(r.headers.get('content-disposition')) && b.toString('latin1', 0, sig.length) === sig, `${f} downloads as the right kind of file`, [r.status, r.headers.get('content-type')]);
+  }
+  ok((await call('/v1/brand/files/nope.png', { token: staff })).status === 404 && (await call('/v1/brand/files/' + encodeURIComponent('../server.js'), { token: staff })).status === 404, 'an unknown name or a path is not found');
+  const zr = await fetch(BASE + '/v1/brand/kit.zip', { headers: { Authorization: 'Bearer ' + staff } }), zb = Buffer.from(await zr.arrayBuffer());
+  ok(zr.status === 200 && zb.subarray(0, 2).toString() === 'PK' && zb.readUInt16LE(zb.length - 22 + 10) === all.length, 'the kit zip holds every file', [zr.status, zb.length]);
+  const pg = await call('/brand'); ok(pg.status === 200 && /Brand and assets/.test(pg.text) && /console-nav\.js/.test(pg.text), 'the page is served (it asks for a sign-in itself)');
+});
+
 const bad = summary(); process.exit(bad ? 1 : 0);

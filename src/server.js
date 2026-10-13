@@ -39,6 +39,7 @@ import { draftElectronics, applyElectronicsDraft } from './elecdraft.js';
 import { cutoutEnabled, cutoutProvider, cutoutFromPhoto, placeCutout } from './cutout.js';
 import { registerSalesRoutes, seedSegments, syncHubContacts } from './sales-routes.js';
 import { registerSalesEmailRoutes, seedTemplates } from './sales-email-routes.js';
+import { registerBrandRoutes } from './brand-kit.js';
 import { registerOnboardingRoutes, cleanHandle, staffHandle, joinLink, textFor } from './onboarding.js';
 import { registerSalesAutomationRoutes, seedAutomations } from './sales-automations-routes.js';
 import { processRuns } from './sales-automations-engine.js';
@@ -680,6 +681,9 @@ app.get('/factories', (_req, reply) => reply.header('cache-control','no-store, m
 app.get('/prototypes', (_req, reply) => reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./prototypes.html', import.meta.url), 'utf8')));
 app.get('/intel', (_req, reply) => reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./intel.html', import.meta.url), 'utf8')));
 app.get('/home', sendWorkHome); // the work console's home: leads, prototypes, projects in flight (the old home is /admin: clients and production)
+// Brand and assets: the wordmark, icons, colours, fonts and a guide, to use and download. Open to every signed-in staff member.
+app.get('/brand', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').type('text/html').send(readFileSync(new URL('./brand.html', import.meta.url), 'utf8')));
+registerBrandRoutes(app, { authenticate, adminOnly });
 app.get('/admin', sendAdmin);
 app.get('/clients/:id', sendAdmin);
 app.get('/platform', sendAdmin);
