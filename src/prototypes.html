@@ -71,6 +71,17 @@ dialog{border:0;border-radius:24px;padding:0;width:min(1240px,97vw);max-height:9
       <div class="acts" style="margin-top:12px"><button class="btn" id="auditBtn" type="button">Audit it first</button><button class="btn go" id="buildBtn" type="button">Build the prototype</button><span class="msg" id="msg" role="status"></span></div>
       <div id="auditOut" class="hidden" style="margin-top:16px"></div>
     </section>
+    <details class="panel" id="extPanel"><summary class="sub" style="cursor:pointer">Add a prototype made elsewhere (a Shopify store, a staging site)</summary>
+      <p class="note" style="margin-top:10px">We do not read or rebuild it: it is kept here with its address until you push it to Builds for a client. Nothing is visible to anyone until then.</p>
+      <form class="form" id="extForm" autocomplete="off" style="margin-top:10px">
+        <label class="f"><span>Business name</span><input class="t" id="xCompany" required></label>
+        <label class="f"><span>The prototype's address</span><input class="t" id="xUrl" placeholder="cg12concept.myshopify.com/password" required inputmode="url" autocapitalize="off" spellcheck="false"></label>
+        <label class="f"><span>Their current site (optional)</span><input class="t" id="xCur" placeholder="commonground12.com" inputmode="url" autocapitalize="off" spellcheck="false"></label>
+        <label class="f"><span>How to get in (optional)</span><input class="t" id="xAccess" placeholder="e.g. Store password: ..." autocomplete="off"></label>
+      </form>
+      <label class="chk hidden" id="xMatch" style="margin-top:10px"><input type="checkbox" id="xMove" checked><span></span></label>
+      <div class="acts" style="margin-top:12px"><button class="btn go" id="xAdd" type="button">Add it here</button><span class="msg" id="xMsg" role="status"></span></div>
+    </details>
     <div class="tabs" role="tablist"><button class="tab on" data-t="list">Prototypes</button><button class="tab" data-t="leads">Find leads</button></div>
     <section id="t-list"></section>
     <section id="t-leads" class="hidden">
@@ -112,9 +123,31 @@ $('#buildBtn').onclick=start;
 async function start(){const url=$('#url').value.trim();if(!url)return say('Paste their website first','bad');const b=$('#buildBtn');b.disabled=true;
   try{const r=await api('/v1/admin/prototypes',{body:{url,industry:$('#industry').value,company:$('#company').value,city:$('#city').value,notes:$('#notes').value}});say('Started: you can leave this page, it keeps building.');$('#auditOut').classList.add('hidden');await load();open(r.prototype.id)}catch(e){say(e.message,'bad')}b.disabled=false}
 
+// ---------- a prototype made elsewhere ----------
+const xsay=(t,k='ok')=>{const m=$('#xMsg');m.className='msg '+k;m.textContent=t};
+const hostOf=u=>{try{return new URL(/^[a-z]+:\/\//i.test(u)?u:'https://'+u).hostname.replace(/^www\./,'').toLowerCase()}catch{return ''}};
+$('#xUrl').addEventListener('input',()=>{const h=hostOf($('#xUrl').value),m=h&&META&&(META.builds||[]).find(b=>hostOf(b.liveUrl)===h);$('#xMatch').classList.toggle('hidden',!m);$('#xMatch').dataset.id=m?m.id:'';if(m)$('#xMatch span').textContent=`It is on Builds as “${m.name}”. Take it out of Builds, so it only shows here until it is pushed.`});
+$('#xAdd').onclick=async()=>{const b=$('#xAdd');b.disabled=true;xsay('');
+  try{const r=await api('/v1/admin/prototypes/external',{body:{company:$('#xCompany').value,prototypeUrl:$('#xUrl').value,currentUrl:$('#xCur').value,accessNote:$('#xAccess').value,moveBuildId:!$('#xMatch').classList.contains('hidden')&&$('#xMove').checked?$('#xMatch').dataset.id:''}});
+    xsay(r.movedFromBuilds?`Added. “${r.movedFromBuilds}” is no longer on Builds.`:'Added.');['xCompany','xUrl','xCur','xAccess'].forEach(i=>$('#'+i).value='');$('#xMatch').classList.add('hidden');META=await api('/v1/admin/prototypes/meta');await load()}
+  catch(e){xsay(e.message,'bad')}finally{b.disabled=false}};
+function drawExternal(p){
+  $('#dTitle').textContent=p.company||p.host;$('#dSub').innerHTML=`<span class="chip dim">Made elsewhere</span> ${p.buildId?'<span class="chip ok">On Builds</span>':'<span class="chip warn">Not on Builds yet</span>'}`;
+  const projects=(META&&META.projects)||[],mine=OPEN.proj||'';
+  $('#dBody').innerHTML=`<div class="sec"><h3>The prototype</h3><div class="pitch"><a href="${esc(p.externalUrl)}" target="_blank" rel="noopener">${esc(p.externalUrl)}</a></div>${p.accessNote?`<p class="sub">How to get in: <b>${esc(p.accessNote)}</b></p>`:''}${p.url!==p.externalUrl?`<p class="sub">Their current site: <a href="${esc(p.url)}" target="_blank" rel="noopener">${esc(p.host)}</a></p>`:''}</div>
+  <div class="sec"><h3>${p.buildId?'On Builds: invite more people':'Push to Builds'}</h3>
+    <p class="sub">${p.buildId?'It is on the Builds showcase. Add the client project to show it in their room, or invite people by email.':'Makes its entry on Builds, ties it to the client project so the client sees it in their room, and invites them by email (they get a sign-in code). Nobody sees it before this.'}</p>
+    <label class="f"><span>The client's software project</span><select class="t" id="xProj" style="width:100%"><option value="">Not tied to a project</option>${projects.map(x=>`<option value="${esc(x.id)}" ${mine===x.id?'selected':''}>${esc(x.client)} · ${esc(x.name)}</option>`).join('')}</select></label>
+    <label class="f"><span>Invite by email (optional)</span><input class="t" id="xInv" type="email" placeholder="phil@commonground12.com"></label>
+    <label class="f"><span>A line for the email (optional)</span><input class="t" id="xNote" value="${esc(p.accessNote||'')}" maxlength="300"></label>
+    <details><summary class="sub" style="cursor:pointer">Where its code lives (optional)</summary><div class="form" style="margin-top:8px"><label class="f"><span>GitHub address</span><input class="t" id="xRepo" placeholder="https://github.com/futurebasicsrepo/futurebasicsrepo-client-hub-api" autocapitalize="off" spellcheck="false"></label><label class="f"><span>Folder</span><input class="t" id="xPath" placeholder="themes/common-ground" autocapitalize="off" spellcheck="false"></label></div></details>
+    <div class="acts"><button class="btn go" id="xPush" type="button">${p.buildId?'Save and invite':'Push to Builds'}</button>${p.buildId?'<button class="btn" id="xBack" type="button">Take it out of Builds</button>':''}</div></div>
+  <div class="sec"><h3>More</h3><div class="acts"><button class="btn sm" id="del" type="button" style="color:var(--bad)">Delete</button></div></div>`;
+}
 // ---------- the list ----------
 function card(p){
   const [sl,st]=STATE[p.status]||[p.status,''];const last=(p.steps||[]).slice(-1)[0];
+  if(p.kind==='external')return `<article class="card" data-id="${p.id}"><div class="hd"><div><h3>${esc(p.company||p.host)}</h3><div class="sub">${esc(hostOf(p.externalUrl))}</div></div><span class="chip dim">Made elsewhere</span></div><div class="mini">${p.buildId?'<span class="chip ok">On Builds</span>':'<span class="chip warn">Not on Builds yet</span>'}</div><div class="sub">${ago(p.createdAt)}</div><div class="acts"><button class="btn sm go" data-open="${p.id}">Open</button><a class="btn sm" href="${esc(p.externalUrl)}" target="_blank" rel="noopener">Visit</a></div></article>`;
   return `<article class="card" data-id="${p.id}"><div class="hd"><div><h3>${esc(p.company||p.host)}</h3><div class="sub">${esc(p.host)}${p.city?' · '+esc(p.city):''}${p.industryLabel?' · '+esc(p.industryLabel):''}</div></div><span class="chip ${st}">${esc(sl)}</span></div>
   ${running(p)?`<div class="prog"><div class="bar"><i></i></div><b>${esc(p.step||'')}</b></div>`:''}
   ${p.audit?`<div class="mini"><span class="chip ${gradeTone(p.audit.grade)}">their site ${p.audit.score}/100</span>${p.audit.quickTurn?'<span class="chip ok">quick turn</span>':''}${p.qa?`<span class="chip ${p.qa.pass?'ok':'bad'}">${p.qa.pass?'passes the check '+p.qa.score+'%':'fails the check'}</span>`:''}${p.published?`<span class="chip ok">published · ${p.views} view${p.views===1?'':'s'}</span>`:''}</div>`:''}
@@ -156,6 +189,7 @@ function studio(p){
   <h3 style="margin-top:12px">Versions</h3><ul class="vers">${V.versions.map(verRow).join('')}</ul></div>`}
 
 function draw(){
+  if(OPEN.p.kind==='external')return drawExternal(OPEN.p);
   const p=OPEN.p,[sl,st]=STATE[p.status]||[p.status,''];$('#dTitle').textContent=p.company||p.host;$('#dSub').innerHTML=`<span class="chip ${st}">${esc(sl)}</span> ${esc(p.host)}${p.industryLabel?' · '+esc(p.industryLabel):''}`;
   const stage=p.hasHtml?`<div class="stage ${DEV==='phone'?'phone':''}" id="stage"><iframe id="frame" title="Preview of the new site" sandbox="allow-scripts allow-popups" ${OPEN.html?'':''}></iframe></div>`:running(p)?`<div class="stage" style="align-items:center;flex-direction:column;gap:10px"><div class="bar" style="width:240px"><i></i></div><b>${esc(p.step)}</b><span class="sub">Usually a minute or two.</span></div>`:`<div class="stage" style="align-items:center"><span class="sub">${esc(p.error||'Nothing built yet')}</span></div>`;
   const a=p.audit,q=p.qa;
@@ -194,6 +228,8 @@ document.addEventListener('click',async e=>{
     else if(t.closest('#pub')){await api(`/v1/admin/prototypes/${id}/publish`,{body:{}});dsay('Published. It is on the Builds showcase, hidden until you invite someone.');await load();await open(id)}
     else if(t.closest('#unpub')){await api(`/v1/admin/prototypes/${id}/unpublish`,{body:{}});dsay('Taken down.');await load();await open(id)}
     else if(t.closest('#share')){const email=$('#inv').value.trim();const r=await api(`/v1/admin/prototypes/${id}/share`,{body:{emails:email,note:$('#invNote').value}});dsay(email?`Published and ${email} is invited: they get a sign-in code by email.`:'Published. Copy the link to send it.');await load();await open(id)}
+    else if(t.closest('#xPush')){const email=$('#xInv').value.trim(),proj=$('#xProj').value;OPEN.proj=proj;const r=await api(`/v1/admin/prototypes/${id}/to-builds`,{body:{projectId:proj||undefined,emails:email||undefined,note:$('#xNote').value,repoUrl:$('#xRepo').value.trim()||undefined,repoPath:$('#xPath').value.trim()||undefined}});dsay(`On Builds${r.project?` and in ${r.project.client}'s room`:''}${email?`; ${email} is invited and gets a sign-in code by email`:''}.`);await load();await open(id)}
+    else if(t.closest('#xBack')){if(!confirm('Take it out of Builds? The entry is archived and the client no longer sees it. The prototype stays here.'))return;await api(`/v1/admin/prototypes/${id}/from-builds`,{body:{}});dsay('Taken out of Builds.');await load();await open(id)}
     else if(t.closest('#rebuild')){if(!confirm('Build this prototype again? The page is replaced.'))return;await api(`/v1/admin/prototypes/${id}/rebuild`,{body:{}});dsay('Building again…');await load();await open(id)}
     else if(t.closest('#del')){if(!confirm('Delete this prototype? Its link stops working and its build is archived.'))return;await api('/v1/admin/prototypes/'+id,{method:'DELETE'});$('#dlg').close();OPEN=null;await load()}
     else if(t.closest('#dl')){e.preventDefault();const r=await fetch(`/v1/admin/prototypes/${id}/download`,{headers:{Authorization:'Bearer '+TOKEN()}});const b=await r.blob(),u=URL.createObjectURL(b),a=document.createElement('a');a.href=u;a.download=`${OPEN.p.host}-prototype.html`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),2000)}

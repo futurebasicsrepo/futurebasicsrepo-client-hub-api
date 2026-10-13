@@ -93,12 +93,12 @@ export function createNotifier({ env = process.env, fetchImpl = fetch, log = con
     if (verified && !verified(e164)) return 'not_verified';
     return sms(e164, body).catch(() => 'failed');
   };
-  async function email(to, { subject, text, html }) {
+  async function email(to, { subject, text, html, cc = null, replyTo = null }) {
     if (!env.RESEND_API_KEY) return 'not_configured';
     const res = await fetchImpl('https://api.resend.com/emails', {
       method: 'POST',
       headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ from: env.SPOT_FROM_EMAIL || 'Spot <spot@resend.dev>', to: [to], subject, text, html }),
+      body: JSON.stringify({ from: env.SPOT_FROM_EMAIL || 'Spot <spot@resend.dev>', to: [to], subject, text, ...(html ? { html } : {}), ...(cc ? { cc: [cc] } : {}), ...(replyTo ? { reply_to: replyTo } : {}) }),
     });
     if (!res.ok) {
       log.warn?.({ status: res.status }, 'email send failed');
@@ -130,6 +130,12 @@ export function createNotifier({ env = process.env, fetchImpl = fetch, log = con
   }
 
   return {
+    // A customer's request to a store (priceclaim.js): plain text, from Spot,
+    // with the customer copied and as the reply-to so the store answers them.
+    async sendStoreClaim({ to, customer, subject, text }) {
+      return email(to, { subject, text, cc: customer, replyTo: customer }).catch(() => 'failed');
+    },
+
     // An early-access invite: a personal link that lets them in (invites.js).
     async sendInvite(to, { link, base = env.PUBLIC_URL }) {
       return email(to, {

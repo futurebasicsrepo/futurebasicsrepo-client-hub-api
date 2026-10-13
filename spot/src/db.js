@@ -564,7 +564,7 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
     // Spot-card orders placed since `since`, for the price watch (pricewatch.js).
     idsForPriceWatch: (since) =>
       db
-        .prepare(`SELECT id FROM carts WHERE settle = 'card' AND status IN ('card_issued', 'completed')
+        .prepare(`SELECT id FROM carts WHERE settle IN ('card', 'direct') AND status IN ('card_issued', 'completed')
                   AND (json_extract(doc, '$.fulfillment.placed_at') > ? OR json_extract(doc, '$.spent_at') > ?)
                   ORDER BY json_extract(doc, '$.price_watch.last_at') IS NOT NULL, json_extract(doc, '$.price_watch.last_at') LIMIT 2000`)
         .all(since, since)
