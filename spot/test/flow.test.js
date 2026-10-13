@@ -498,17 +498,17 @@ test('website: landing page, fonts, demo cards and early-access list', async (t)
   t.after(() => app.close());
   const home = await app.inject({ method: 'GET', url: '/' });
   assert.equal(home.statusCode, 200);
-  assert.match(home.body, /yes button/);
+  assert.match(home.body, /Spot anything\.<br>From <em class="circled">any store/);
   for (const id of ['rules', 'stores', 'trust', 'agents', 'faq']) assert.match(home.body, new RegExp(`id="${id}"`));
   assert.match(home.body, /href="\/new"/);
   assert.match(home.body, /og:image" content="http:\/\/localhost(:80)?\/assets\/og-site\.jpg\?v=[a-f0-9]+"/, 'the site preview image');
-  assert.match(home.body, /id="agentlog"/, 'agent demo');
   assert.match(home.body, /class="sec story"/, 'how it works');
   assert.match(home.body, /id="ln3"/);
   for (const who of ['Your AI shops', 'Mom spots you', 'Work pays']) assert.ok(home.body.includes(who), who);
-  assert.match(home.body, /class="cw-wall"/, 'group chat wall');
-  assert.match(home.body, /— the Spot team/, 'letter');
-  assert.match(home.body, /spot-peek\.webp/, 'Spot peeks over the note');
+  // The group-chat wall, the letter and the long agent demo made way for Discover and Kid Spot.
+  assert.doesNotMatch(home.body, /class="cw-wall"/);
+  assert.match(home.body, /id="discover"/);
+  assert.match(home.body, /id="kidspot"/);
   assert.match(home.body, /class="marquee"/, 'examples strip');
   assert.match(home.body, /href="\/integrations"/);
   for (const f of ['bricolage-400.woff2', 'bricolage-800.woff2', 'caveat-700.woff2']) {
