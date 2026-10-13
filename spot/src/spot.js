@@ -1657,7 +1657,20 @@ export function ownerCart(cart) {
     // it's on and until when, and a claim once staff have sent one. A drop
     // found but not yet claimed isn't shown, so nobody is promised money.
     price_watch: cart.price_watch && ['watching', 'dropped', 'claimed', 'refunded'].includes(cart.price_watch.state)
-      ? { state: cart.price_watch.state === 'dropped' ? 'watching' : cart.price_watch.state, until: cart.price_watch.until, last_at: cart.price_watch.last_at || null, claimed_cents: ['claimed', 'refunded'].includes(cart.price_watch.state) ? cart.price_watch.drop?.cents || null : null, refunded_cents: cart.price_watch.refunded_cents || null }
+      ? (() => {
+          const pw = cart.price_watch;
+          // A drop shows only when the customer can ask for it (pricewatch.js eligible).
+          const canAsk = pw.state === 'dropped' && pw.policy?.price_adjustment === true && Date.now() <= pw.until;
+          return {
+            state: pw.state === 'dropped' && !canAsk ? 'watching' : pw.state,
+            until: pw.until,
+            last_at: pw.last_at || null,
+            drop: canAsk ? { cents: pw.drop.cents, items: pw.drop.items.map(({ title, variant, paid_cents, now_cents, quantity }) => ({ title, variant, paid_cents, now_cents, quantity })), days: pw.policy.days || null, source_url: pw.policy.source_url || null } : null,
+            claimed_cents: ['claimed', 'refunded'].includes(pw.state) ? pw.drop?.cents || null : null,
+            claimed_to: pw.state === 'claimed' ? pw.claim?.to || null : null,
+            refunded_cents: pw.refunded_cents || null,
+          };
+        })()
       : null,
     spent_cents: cart.spent_cents ?? null,
     spent_merchant: cart.spent_merchant || null,

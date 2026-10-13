@@ -16,8 +16,10 @@
 //                                              lower price, sent back
 //   shipping_update  requester  email          shipped (with tracking), out for delivery, delivered, a problem
 //   return_requested requester  email          the store's own return steps, with their order number
+//   price_drop       requester  email + push   the store lowered its price inside its own
+//                                              adjustment window: ask for it in one tap
 //   price_claimed    payer      email          the store lowered its price after the order;
-//                                              staff asked it for the difference (pricewatch.js)
+//                                              the difference was asked for (pricewatch.js)
 //   thanks           payer      email          the requester's thank-you, with a link to
 //                                              the payer's receipt (where it shows too)
 //
@@ -368,6 +370,31 @@ export function createEvents({ db, spot, notifier, baseUrl, log = console }) {
           subject: `Sending back ${what}: here’s how`,
           text: `To return ${what}: start it on ${store}'s site${where ? ` (${where})` : ''} with${order} and this email.${p.returns_how ? ` ${p.returns_how}` : ''} When ${store} refunds it, Spot sends the money back to the card that paid.`,
           html: mail({ preheader: `Start it on ${store}’s site with${order}`, title: '↩︎ Your return', lines: [`Sending back <b>${esc(what)}</b>${r.past_window ? ` (it’s past ${esc(store)}’s usual window, so they may say no)` : ''}:`, ...steps.map((x, i) => `${i + 1}. ${x}`)], ...(where ? { cta: { label: `Start it at ${store} →`, url: where } } : {}) }),
+        }];
+      }
+      case 'price_drop': {
+        const drop = cart.price_watch?.drop;
+        if (!drop?.cents) return [];
+        const what = drop.items.length === 1 ? drop.items[0].title || item : item;
+        const by = cart.price_watch.until ? new Date(cart.price_watch.until).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }) : null;
+        const ask = `${link}#price`;
+        return [{
+          key: 'price_drop',
+          to: { email: requesterContact(cart).email, userId: requesterContact(cart).userId },
+          subject: `${store} dropped the price: get ${usd(drop.cents)} back`,
+          text: `${store} lowered the price of ${what} by ${usd(drop.cents)} since you bought it, and ${store} refunds the difference${by ? ` until ${by}` : ''}. Ask for it in one tap: ${ask}`,
+          push_title: `📉 ${usd(drop.cents)} back from ${store}`,
+          push_body: `${what} dropped in price. Tap to ask ${store} for the difference.`,
+          url: ask,
+          html: mail({
+            preheader: `${store} refunds the difference. Ask in one tap`,
+            title: `📉 Get ${usd(drop.cents)} back`,
+            lines: [
+              `${esc(store)} lowered the price of <b>${esc(what)}</b> since you bought it${drop.items.length === 1 ? ` (${usd(drop.items[0].paid_cents)} → ${usd(drop.items[0].now_cents)})` : ''}.`,
+              `${esc(store)}’s policy refunds the difference${by ? ` until <b>${esc(by)}</b>` : ''}. Tap below and Spot emails ${esc(store)} for you, with you copied, so their answer comes straight to you.`,
+            ],
+            cta: { label: `Ask ${store} for ${usd(drop.cents)} →`, url: ask },
+          }),
         }];
       }
       case 'price_claimed': {

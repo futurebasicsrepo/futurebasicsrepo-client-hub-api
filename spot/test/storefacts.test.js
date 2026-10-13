@@ -24,7 +24,9 @@ const TECOVAS = { price_adjustment: true, adjustment_days: 14, adjustment_how: '
 test('a policy is kept only with a source on the store’s own site, and sane numbers', () => {
   assert.equal(siteOf(BOOTS), 'tecovas.com');
   assert.equal(siteOf('https://www.marksandspencer.co.uk/x'), 'marksandspencer.co.uk');
-  assert.deepEqual(policyFrom(TECOVAS, 'tecovas.com'), { ...TECOVAS, adjustment_how: 'email support with your order number', returns_how: null, returns_url: null, ship_days_min: null, ship_days_max: null, free_shipping_over: null });
+  assert.deepEqual(policyFrom(TECOVAS, 'tecovas.com'), { ...TECOVAS, adjustment_how: 'email support with your order number', returns_how: null, returns_url: null, ship_days_min: null, ship_days_max: null, support_email: null, free_shipping_over: null });
+  assert.equal(policyFrom({ ...TECOVAS, support_email: ' Help@Tecovas.com ' }, 'tecovas.com').support_email, 'help@tecovas.com');
+  assert.equal(policyFrom({ ...TECOVAS, support_email: 'not an email' }, 'tecovas.com').support_email, null);
   assert.deepEqual((({ ship_days_min, ship_days_max, free_shipping_over }) => ({ ship_days_min, ship_days_max, free_shipping_over }))(policyFrom({ ...TECOVAS, ship_days_min: 5, ship_days_max: 2, free_shipping_over: 75 }, 'tecovas.com')), { ship_days_min: 2, ship_days_max: 5, free_shipping_over: 7500 });
   assert.equal(policyFrom({ ...TECOVAS, source_url: 'https://www.reddit.com/r/boots' }, 'tecovas.com'), null, 'not the store’s page');
   assert.equal(policyFrom({ ...TECOVAS, source_url: 'http://tecovas.com/p' }, 'tecovas.com'), null, 'https only');
@@ -113,7 +115,7 @@ test('POST /v1/facts: only web links, a dozen at most', async (t) => {
   assert.equal((await call('POST', '/v1/facts', {})).body.facts.length, 0);
 });
 
-test('the price watch runs for the store’s own window, and the requester sees it’s on (never an unclaimed drop)', async (t) => {
+test('the price watch runs for the store’s own window, and the requester sees it’s on, and a drop the store refunds', async (t) => {
   const { a, call } = app(t);
   a.storeFacts.policy('tecovas.com', 'Tecovas');
   await a.storeFacts.settled();
@@ -127,7 +129,8 @@ test('the price watch runs for the store’s own window, and the requester sees 
   assert.equal(c.price_watch.until, placed + 14 * DAY, 'Tecovas adjusts for 14 days');
   assert.equal(c.price_watch.policy.days, 14);
   assert.equal(c.price_watch.state, 'dropped');
-  assert.deepEqual(ownerCart(c).price_watch, { state: 'watching', until: placed + 14 * DAY, last_at: c.price_watch.last_at, claimed_cents: null, refunded_cents: null });
+  // Tecovas refunds a lower price: the requester sees the drop and can ask for it.
+  assert.deepEqual(ownerCart(c).price_watch, { state: 'dropped', until: placed + 14 * DAY, last_at: c.price_watch.last_at, drop: { cents: c.price_watch.drop.cents, items: c.price_watch.drop.items.map(({ title, variant, paid_cents, now_cents, quantity }) => ({ title, variant, paid_cents, now_cents, quantity })), days: 14, source_url: TECOVAS.source_url }, claimed_cents: null, claimed_to: null, refunded_cents: null });
   a.priceWatch.claim(id);
   assert.equal(ownerCart(a.spot.byId(id)).price_watch.claimed_cents, 4600);
 });
