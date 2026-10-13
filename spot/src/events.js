@@ -192,7 +192,7 @@ export function createEvents({ db, spot, notifier, baseUrl, log = console }) {
               'Approve it and Spot orders it and ships it. Pass and nothing is bought.',
             ].filter(Boolean),
             cta: { label: 'Approve or pass →', url: ask },
-            note: `Change ${esc(teen)}’s rules any time in your account, under Family.`,
+            note: `Change ${esc(teen)}’s rules any time in your account, under Kid Spot.`,
           }),
           sms: `Spot: ${teen} wants ${item} from ${store} (${usd(cart.total_cents)}). Approve or pass: ${ask}`,
         }];
@@ -298,7 +298,7 @@ export function createEvents({ db, spot, notifier, baseUrl, log = console }) {
           `Goods ${usd(cart.cart_cents)}${cart.cushion_cents ? ` · up to ${usd(cart.cushion_cents)} for tax and price changes (unused comes back)` : ''} · Spot fee ${usd(cart.fee_cents)} · <b>Total ${usd(cart.total_cents)}</b>`,
           cart.kind === 'flight' ? 'Spot bought this ticket from the airline for the traveler.' : 'You bought this from Spot. Spot orders it from the store and ships it; returns go through Spot.',
           cart.kind === 'flight' ? '' : 'Changed your mind? Cancel for a full refund any time before Spot places the order.',
-          cart.saved_pay?.how === 'paid_by_family_rules' ? `Paid from your saved card because ${esc(who.split(' ')[0])}’s ask was inside your rules (an approved store, under your limit). Change the rules in your account, under Family.` : '',
+          cart.saved_pay?.how === 'paid_by_family_rules' ? `Paid from your saved card because ${esc(who.split(' ')[0])}’s ask was inside your rules (an approved store, under your limit). Change the rules in your account, under Kid Spot.` : '',
           trail ? `<span style="font-size:13px;color:#8a8175">${trail}</span>` : '',
         ].filter(Boolean);
         return [{
