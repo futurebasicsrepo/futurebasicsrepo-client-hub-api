@@ -829,7 +829,16 @@ export const MAX_OUTFITS = 4;
 const q = (x) => String(x).replace(/"/g, "'");
 // What the model is asked, for a whole answer (captureFromText) or a batch on
 // the shelf (streamLookup: `count` products, a couple of outfits at a time).
-export function lookupPrompt({ text, more = '', sizes = '', shipTo = '', taste = '', avoid = [], count = MAX_OPTIONS, outfits = MAX_OUTFITS }) {
+// Discover: shops they wouldn't find on their own. Big chains, department
+// stores and marketplaces are left out (unless they name one), and so are
+// stores they've already been shown (skipStores, sites like tecovas.com).
+export const BIG_STORES = ['Amazon', 'Walmart', 'Target', 'eBay', 'Costco', 'Best Buy', 'Home Depot', "Lowe's", 'Wayfair', "Macy's", 'Nordstrom', "Kohl's", "Bloomingdale's", 'Saks Fifth Avenue', 'Zappos', 'Foot Locker', "Dick's Sporting Goods", 'REI', 'Gap', 'Old Navy', 'H&M', 'Zara', 'Uniqlo', 'ASOS', 'SSENSE', 'Revolve', 'Shopbop', 'Urban Outfitters', 'Anthropologie', 'J.Crew', 'Abercrombie', 'Nike', 'Adidas', 'Sephora', 'Ulta', 'Temu', 'Shein'];
+export function discoverLine(skipStores = []) {
+  const skip = [].concat(skipStores || []).map((x) => String(x).replace(/[^a-z0-9.-]/gi, '')).filter(Boolean).slice(0, 40);
+  return `\nDiscover mode is on: they want shops they wouldn't find on their own. Pick from independent and smaller online stores, small brands' own sites, boutiques and specialty shops. Leave out marketplaces, department stores and big chains (${BIG_STORES.join(', ')}) unless they named one.${skip.length ? ` They've already been shown these stores, so find others: ${skip.join(', ')}.` : ''} Every pick still has to be a real product for sale that ships to them.`;
+}
+
+export function lookupPrompt({ text, more = '', sizes = '', shipTo = '', taste = '', avoid = [], count = MAX_OPTIONS, outfits = MAX_OUTFITS, discover = false, skipStores = [] }) {
   // Follow-ups lead: what they just said is the ask, the earlier asks only
   // fill in what it leaves out ("cheaper", "in blue", "more like these").
   const said = String(more || '').split('\n').map((l) => l.trim()).filter(Boolean);
@@ -844,7 +853,7 @@ Using web search, find things for sale at US online stores that match. Read it t
 Prefer the brand's own online store and shops that sell direct (many run on Shopify) over marketplaces like Amazon, Walmart, Target or eBay: Spot can buy from those and show their photos. Use a big marketplace only when it's clearly the best or only place to get it.
 ${sizes || shipTo ? `What you know about them:${sizes ? ` their sizes are ${q(sizes).slice(0, 300)}.` : ''}${shipTo ? ` They live in ${q(shipTo).slice(0, 80)}, so only pick stores that ship there.` : ''}\n` : ''}${taste ? `${String(taste).slice(0, 600)}\n` : ''}Use the size, colour or options they gave.${sizes ? ` For every clothing or shoe piece they didn't give a size for, pick the right one from their sizes (adult or kids' sizing to match what they asked for) and put it in "variant".` : ' Put the size or option you picked in "variant".'} Skip anything you saw marked sold out, but don't hold back for want of proof: Spot checks each store's own page for stock, size and price before anyone pays. Products named in roundups, gift guides, or category and search pages count: use them, with a link on the selling store's own site (the product's page if you saw it, else that store's home page: Spot finds the product there) and the price you saw (or your best estimate). Give each product's main photo in "image_url" if you saw its address, else leave it empty.${avoid.length ? ` They've already seen these, so don't suggest them again: ${avoid.join(' , ')}` : ''} Reply with ONLY this JSON and nothing else, writing each product as soon as you've found it:
 ${LOOKUP_SCHEMA_HINT}
-Never answer a shopping request with an empty list: give your best picks from what you found, even if you're unsure of stock or the exact price.`;
+Never answer a shopping request with an empty list: give your best picks from what you found, even if you're unsure of stock or the exact price.${discover ? discoverLine(skipStores) : ''}`;
 }
 
 // Follow-ups: "more" is what they said about the last finds ("in blue",
@@ -853,7 +862,7 @@ Never answer a shopping request with an empty list: give your best picks from wh
 const FINDS = 3; // a search that turns up only sold-out items is retried, up to this many
 const FIND_BUDGET_MS = 35_000; // no new search after this long; answer with what we have
 
-export async function captureFromText(raw, { client, fromUrl = captureFromUrl, product = shopifyProduct, sizes = '', shipTo = '', more = '', avoid = [], onUsage, onError, now = Date.now } = {}) {
+export async function captureFromText(raw, { client, fromUrl = captureFromUrl, product = shopifyProduct, sizes = '', shipTo = '', more = '', avoid = [], discover = false, skipStores = [], onUsage, onError, now = Date.now } = {}) {
   const { text, url } = splitText(raw);
   if (!text) throw new CaptureError('Paste a link, drop a screenshot, or describe what you want');
   more = String(more || '').trim().slice(0, MORE_MAX);
@@ -863,7 +872,7 @@ export async function captureFromText(raw, { client, fromUrl = captureFromUrl, p
   if (!client && !process.env.ANTHROPIC_API_KEY) return draftFromDescription(text);
 
   const anthropic = client ?? anthropicClient();
-  const messages = [{ role: 'user', content: lookupPrompt({ text, more, sizes, shipTo, avoid }) }];
+  const messages = [{ role: 'user', content: lookupPrompt({ text, more, sizes, shipTo, avoid, discover, skipStores }) }];
   // One page fetch per product, shared by the stock check and the photo.
   const pages = new Map();
   const page = (u) => (pages.has(u) || pages.set(u, fromUrl(u)), pages.get(u));
@@ -1236,7 +1245,7 @@ export function lookupCache({ max = 200, ttl = 30 * 60_000, now = Date.now } = {
   };
 }
 
-export async function streamLookup(raw, { client, fromUrl = captureFromUrl, product = shopifyProduct, resolve = resolveListing, photos = photoSearch, pdp = pageSearch, verify = imageOk, sizes = '', shipTo = '', taste = '', more = '', avoid = [], count = FIRST_BATCH, cache = null, onUsage, onError, now = Date.now } = {}, emit = () => {}) {
+export async function streamLookup(raw, { client, fromUrl = captureFromUrl, product = shopifyProduct, resolve = resolveListing, photos = photoSearch, pdp = pageSearch, verify = imageOk, sizes = '', shipTo = '', taste = '', discover = false, skipStores = [], more = '', avoid = [], count = FIRST_BATCH, cache = null, onUsage, onError, now = Date.now } = {}, emit = () => {}) {
   const { text } = splitText(raw);
   if (!text) throw new CaptureError('Paste a link, drop a screenshot, or describe what you want');
   more = String(more || '').trim().slice(0, MORE_MAX);
@@ -1246,7 +1255,7 @@ export async function streamLookup(raw, { client, fromUrl = captureFromUrl, prod
   const nothing = () => emit({ type: 'done', kind: null, count: 0, not_found: true, warning: followUp ? 'I couldn’t find anything new for that. Try saying it another way' : 'I couldn’t find that one. Try different words, or paste a link' });
   if (!client && !process.env.ANTHROPIC_API_KEY) return nothing();
 
-  const key = cache && JSON.stringify([text.toLowerCase(), more.toLowerCase(), avoid, sizes, shipTo, taste, count]);
+  const key = cache && JSON.stringify([text.toLowerCase(), more.toLowerCase(), avoid, sizes, shipTo, taste, count, discover, skipStores]);
   const cached = key && cache.get(key);
   if (cached) {
     for (const e of cached) emit(e);
@@ -1255,7 +1264,7 @@ export async function streamLookup(raw, { client, fromUrl = captureFromUrl, prod
 
   const anthropic = client ?? anthropicClient();
   const outfitsWanted = Math.max(1, Math.min(MAX_OUTFITS, Math.ceil(count / 3)));
-  const messages = [{ role: 'user', content: lookupPrompt({ text, more, sizes, shipTo, taste, avoid, count, outfits: outfitsWanted }) + QUICK }];
+  const messages = [{ role: 'user', content: lookupPrompt({ text, more, sizes, shipTo, taste, avoid, count, outfits: outfitsWanted, discover, skipStores }) + QUICK }];
   const pages = new Map();
   const page = (u) => (pages.has(u) || pages.set(u, fromUrl(u)), pages.get(u));
   const seen = new Set(avoid);

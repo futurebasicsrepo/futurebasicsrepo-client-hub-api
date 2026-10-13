@@ -304,6 +304,8 @@ ${logoFaceCss('.spotsay i')}
 .box textarea{border:0;background:transparent;resize:none;font-size:18px;padding:6px 4px;min-height:56px;outline:none}
 .box textarea:focus{outline:none}
 .boxrow{display:flex;align-items:center;gap:8px;margin-top:6px}
+.discrow{margin:10px 2px 0}.disc{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:transparent;color:var(--muted);border-radius:99px;padding:7px 13px;font:inherit;font-size:14px;font-weight:650;cursor:pointer}.disc[aria-pressed=true]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+#discNav[aria-pressed=true]{color:var(--ink);font-weight:700}
 .iconbtn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:12px;padding:9px 12px;font-weight:600;font-size:14px;color:var(--muted);cursor:pointer;margin:0}
 .boxrow .btn{margin:0 0 0 auto;width:auto;padding:11px 20px}
 .chipbar{display:flex;align-items:center;gap:8px;background:var(--bg);border-radius:10px;padding:6px 10px;font-size:14px;margin-bottom:6px}
@@ -351,6 +353,7 @@ ${provider === 'sandbox' ? '<div class="sandbox">Test mode: no real money moves.
       <button class="btn" id="go">Spot it</button>
     </div>
   </div>
+  <div class="discrow"><button type="button" class="disc" id="discBtn" aria-pressed="false"><span aria-hidden="true">🧭</span> Discover new shops</button></div>
   <p class="small muted profilechip" id="profileChip"></p>
   <div class="err" id="capErr"></div>
   <div class="card" id="basket" hidden></div>
@@ -360,7 +363,7 @@ ${provider === 'sandbox' ? '<div class="sandbox">Test mode: no real money moves.
 <section id="picks" hidden>
   <div id="thread" aria-live="polite" data-face="${assetUrl('spot-face.webp')}"></div>
   <form class="askbar" id="askMore"><input id="more2" maxlength="400" enterkeyhint="send" placeholder="cheaper? in black? add a hat?" aria-label="Ask for more, or add something else"><button class="btn small" id="askGo">Ask</button></form>
-  <p class="small muted picknav"><button class="textlink" id="picksOver" type="button">start over</button><button class="textlink" id="picksManual" type="button">type it in myself</button></p>
+  <p class="small muted picknav"><button class="textlink" id="picksOver" type="button">start over</button><button class="textlink" id="discNav" type="button" aria-pressed="false">🧭 Discover: off</button><button class="textlink" id="picksManual" type="button">type it in myself</button></p>
   <form class="sheet" id="nameSheet" hidden><button class="sheetx" id="sheetX" type="button" aria-label="Close">×</button><label for="sheetName">What’s your name?</label><p class="small muted">So they know who’s asking. Spot remembers it on this phone.</p><input id="sheetName" autocomplete="given-name" enterkeyhint="go" placeholder="First name"><button class="btn">Continue</button></form>
 </section>
 

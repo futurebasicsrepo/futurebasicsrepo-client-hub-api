@@ -76,6 +76,9 @@
   // What they asked for, and the product links already shown, so "find
   // another" looks for something new.
   let ask = { text: '', avoid: [] };
+  // Discover mode (below): set before any search can run.
+  const DISCOVER = 'spot:discover';
+  let discover = load(DISCOVER, false) === true;
   let made = null; // { token, key, link, manage, rev }
   let image = null; // { data, media_type, name }
   // Carts from other stores, waiting to go in the same link (a multi-store ask).
@@ -518,7 +521,7 @@
   // The search, streamed: one line of JSON per event, as the server has it
   // (a pick the moment the AI has written it, a store check as it lands).
   async function streamed(body, on) {
-    const r = await fetch('/v1/capture/stream', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    const r = await fetch('/v1/capture/stream', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(discover ? { ...body, discover: true } : body) });
     if (!r.ok || !r.body) {
       const j = await r.json().catch(() => ({}));
       throw new Error(j.error || 'Error ' + r.status);
@@ -2129,6 +2132,23 @@
     }
   }
   $('#askMore').addEventListener('submit', askMore);
+  // Discover: independent and lesser-known shops instead of the big names
+  // (capture.js discoverLine). Remembered on this phone; it shapes the next
+  // search and every batch after it.
+  function showDiscover() {
+    $('#discBtn').setAttribute('aria-pressed', String(discover));
+    $('#discNav').setAttribute('aria-pressed', String(discover));
+    $('#discNav').textContent = '🧭 Discover: ' + (discover ? 'on' : 'off');
+  }
+  const flipDiscover = () => {
+    discover = !discover;
+    save(DISCOVER, discover);
+    showDiscover();
+    quip(discover ? 'ooh, let’s find some shops you’ve never heard of 🧭' : 'back to the usual spots', 2200);
+  };
+  $('#discBtn').onclick = flipDiscover;
+  $('#discNav').onclick = flipDiscover;
+  showDiscover();
   $('#picksOver').onclick = () => {
     forgetShelf();
     turns.length = 0;
@@ -2175,7 +2195,7 @@
     $('#checkErr').textContent = '';
     say(draft.sold_out ? 'on it, finding one that’s in stock…' : 'on it, looking again…');
     try {
-      const d = await api('/v1/capture', { text: base, more: more || (draft.sold_out ? 'that one is sold out, find one in stock' : 'show me a different one'), avoid: ask.avoid });
+      const d = await api('/v1/capture', { text: base, more: more || (draft.sold_out ? 'that one is sold out, find one in stock' : 'show me a different one'), avoid: ask.avoid, ...(discover ? { discover: true } : {}) });
       if (!ask.text) ask.text = base;
       const keep = { note: $('#note').value.trim() };
       draft = { ...toDraft(d), ...keep };
