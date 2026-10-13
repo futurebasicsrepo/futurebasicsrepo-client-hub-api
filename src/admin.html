@@ -293,8 +293,9 @@ async function shrinkImage(file){const url=URL.createObjectURL(file);try{const i
 window.addProduct=(id,name,projectId)=>editor('Add product workflow — '+name,[{name:'title',label:'Product title',required:true,full:true},{name:'referencePhotos',label:'Reference photos',type:'file',full:true,hint:'The assistant drafts the tech pack from these the moment the product is saved. With no photo it drafts from the description and brief; a linked Shopify product uses its image.'},{name:'handle',label:'Shopify handle'},{name:'vendor',label:'Vendor',value:name},{name:'productType',label:'Product type'},{name:'templateSuffix',label:'Theme template suffix',value:'client-product'},{name:'descriptionHtml',label:'Shopify description',type:'textarea',full:true},{name:'shopifyProductId',label:'Existing Shopify product GID (optional)',full:true}],v=>api('/v1/admin/clients/'+id+'/products',{method:'POST',body:JSON.stringify({...v,projectId:projectId||null})}));
 async function boot(){
   msg.textContent='';
+  // keep a Google sign-in first, before any network call: a slow connection must not lose the session
+  let match=location.hash.match(/google-session=([^&]+)/);if(match){token=decodeURIComponent(match[1]);try{localStorage.setItem(KEY,token)}catch{}history.replaceState(null,'',location.pathname+location.search)}
   try{let c=await api('/v1/public/config');if(c.googleSsoEnabled){googleSignIn.classList.remove('hidden');authDivider.classList.remove('hidden')}}catch{}
-  let match=location.hash.match(/google-session=([^&]+)/);if(match){token=decodeURIComponent(match[1]);localStorage.setItem(KEY,token);history.replaceState(null,'',location.pathname+location.search)}
   let params=new URLSearchParams(location.search),ssoError=params.get('sso-error');if(ssoError){msg.textContent=ssoError;history.replaceState(null,'',location.pathname)}
   if(token)await load();
 }

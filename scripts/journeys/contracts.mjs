@@ -244,4 +244,21 @@ await journey('J171', 'The client hub carries the agreement: a contract is tied 
   }
 });
 
+await journey('J174', 'Signing in to the work console with Google: the session is kept on the sign-in page, and the work home also keeps one that lands on it, instead of sending staff back to "Sign in first"', async () => {
+  if (!playwright) { ok(true, 'skipped: no browser here'); return; }
+  const b = await playwright.chromium.launch({ args: ['--no-proxy-server', '--host-resolver-rules=MAP work.thefuturebasics.com 127.0.0.1'] }); const errs = [];
+  // each case is a fresh visit, like the redirect from Google: a new browser profile, a full page load
+  const visit = async url => { const c = await b.newContext({ viewport: { width: 390, height: 844 }, isMobile: true }), p = await c.newPage(); p.on('pageerror', e => errs.push(String(e)));
+    for (let i = 0; i < 3; i++) { try { await p.goto(url, { waitUntil: 'load' }); break; } catch (e) { if (i === 2) throw e; await sleep(500); } } await sleep(1500); return p; };
+  try {
+    const home = 'http://work.thefuturebasics.com:3130', hash = `#google-session=${encodeURIComponent(kyle)}`;
+    const none = await visit(`${home}/`); ok(await none.locator('#needSignin').isVisible(), 'without a session the work home asks to sign in');
+    const p1 = await visit(`${home}/${hash}`); const st1 = { stored: (await p1.evaluate(() => localStorage.getItem('fb.admin.token'))) === kyle, url: p1.url().slice(0, 70), need: await p1.locator('#needSignin').isVisible() };
+    ok(st1.stored && !st1.url.includes('google-session') && !st1.need, 'a Google session that lands on the work home is saved, removed from the address, and the home opens', st1);
+    const p2 = await visit(`${home}/admin${hash}`); const st2 = { stored: (await p2.evaluate(() => localStorage.getItem('fb.admin.token'))) === kyle, url: p2.url().slice(0, 70) };
+    ok(st2.stored && !st2.url.includes('google-session'), 'and the sign-in page keeps it too', st2);
+    ok(errs.length === 0, 'no page errors', errs);
+  } finally { await b.close(); }
+});
+
 const badCount = summary(); process.exit(badCount ? 1 : 0);
