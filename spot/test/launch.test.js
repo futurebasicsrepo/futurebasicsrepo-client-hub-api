@@ -22,17 +22,23 @@ const cart = { requester: { name: 'Kyle' }, merchant: { name: 'SKLZ', url: 'http
 test('home: two clear ways in, one use-case grid, standards, and no waitlist at the end', async (t) => {
   const { call } = app(t);
   const home = (await call('GET', '/')).body;
-  assert.match(home, /class="btn primary" href="\/connect">Add Spot to your AI →/, 'the AI path goes to the quick start');
-  assert.match(home, /href="\/new">Make a Spot/);
+  assert.match(home, /class="btn primary" href="\/new">Start spotting →/, 'shopping first');
+  assert.match(home, /class="btn ghost" href="\/connect">Add Spot to your AI/, 'the AI path goes to the quick start');
   assert.match(home, /id="ask"/);
-  for (const s of ['Flights', 'Trains', 'Any store’s cart', 'Several stores, one link', 'Family']) assert.ok(home.includes(`<h3>${s}</h3>`), s);
+  for (const s of ['Flights', 'Trains', 'Any store’s cart', 'Several stores, one link', 'Kid Spot']) assert.ok(home.includes(`<h3>${s}</h3>`), s);
+  // Every feature has its place, and the repeats are gone.
+  for (const id of ['shop', 'shield', 'discover', 'kidspot', 'how', 'see-it', 'rules', 'why', 'builders', 'agents', 'stores', 'trust', 'faq', 'join']) assert.match(home, new RegExp(`id="${id}"`), id);
+  assert.doesNotMatch(home, /id="how-it-works"/);
+  assert.doesNotMatch(home, /Asking for things is awkward/);
+  assert.match(home, /href="\/new\?discover=1">Try Discover/);
+  assert.match(home, /href="\/account#family">Set up Kid Spot/);
   assert.doesNotMatch(home, /id="for-you"/, 'the second how-it-works is gone');
   assert.doesNotMatch(home, /Want in early/);
   assert.match(home, /Go ask for the thing/);
   assert.match(home, /Built on open standards/);
   assert.match(home, /href="\/standards#ucp">UCP <small>2026-08-25<\/small>/);
   assert.match(home, /href="\/standards#pap">PAP <small>draft 0\.1<\/small>/);
-  assert.match(home, /<summary>See the 7 tools<\/summary>/);
+  assert.match(home, /See the 7 tools/);
   assert.doesNotMatch(home, /href="#join" data-kind/, 'API keys are self-serve, not a waitlist');
   assert.match(home, /href="\/connect">Add to your AI/, 'in the nav');
 });

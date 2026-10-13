@@ -53,6 +53,7 @@ const CSS = `
 .connect .steps{margin:12px 0 0;padding-left:20px}.connect .steps li{margin:6px 0}
 pre{background:var(--night);color:#f4efe8;border-radius:14px;padding:14px;overflow-x:auto;font-size:13px}
 .signin{max-width:460px;margin:30px auto 0}
+.perks{list-style:none;margin:4px 0 18px;padding:0;display:grid;gap:8px}.perks li{display:flex;gap:10px;align-items:flex-start;font-size:15px;line-height:1.4;color:var(--ink)}.perks span{flex:none;width:22px;text-align:center}.perks[hidden]{display:none}
 .code{letter-spacing:.4em;font:800 28px ui-monospace,monospace!important;text-align:center}
 .seg{display:grid;grid-template-columns:1fr 1fr;background:var(--bg);border:1.5px solid var(--line);border-radius:999px;padding:4px;margin:14px 0 10px}.seg[hidden]{display:none}
 .seg.three{grid-template-columns:repeat(3,1fr)}
@@ -172,10 +173,11 @@ export function signinPage({ origin, providers = {}, texts = false }) {
   return page({
     origin,
     path: texts ? '/texts' : '/signin',
-    title: texts ? 'Get Spot by text · Spot' : 'Sign in · Spot',
+    title: texts ? 'Get Spot by text · Spot' : 'Sign in or join · Spot',
     body: `<div class="signin box">
-  <h1 style="font-size:38px">${texts ? 'Get Spot by text' : 'Sign in'}</h1>
-  <p class="sub" id="lead">${texts ? 'Spot texts you a sign-in code, and updates about your own orders: when someone pays for your cart, when your AI asks you to approve something, and when it’s ordered or booked. No marketing.' : 'We’ll send you a 6-digit code. No password needed.'}</p>
+  <h1 style="font-size:38px">${texts ? 'Get Spot by text' : 'Sign in or join'}</h1>
+  <p class="sub" id="lead">${texts ? 'Spot texts you a sign-in code, and updates about your own orders: when someone pays for your cart, when your AI asks you to approve something, and when it’s ordered or booked. No marketing.' : 'New here? Same steps. We’ll send you a 6-digit code, no password needed.'}</p>
+  ${texts ? '' : '<ul class="perks" id="perks"><li><span>🔎</span>Spot anything, from any store, even ones you’ve never heard of</li><li><span>💸</span>Send it to whoever’s paying, or pay in one tap</li><li><span>🛡️</span>Price Shield after you buy, and Kid Spot for your teen</li></ul>'}
   <div class="seg" role="tablist" aria-label="Send the code by" id="seg"${texts ? ' hidden' : ''}><button type="button" role="tab" aria-selected="${!texts}" data-mode="email">Email</button><button type="button" role="tab" aria-selected="${texts}" data-mode="phone">Text</button></div>
   <form class="f" id="emailForm" ${texts ? 'name="sms_optin"' : 'name="signin"'}>${texts ? '' : '<input type="email" id="email" name="email" required placeholder="you@email.com" autocomplete="email webauthn" aria-label="Email">'}${texts ? '<label for="phone" class="sub" style="margin:0;font-weight:600">Mobile phone number</label>' : ''}<input type="tel" id="phone" name="phone" placeholder="Mobile number" autocomplete="tel" inputmode="tel" aria-label="Mobile phone number" ${texts ? 'required' : 'hidden'}>${smsAgree('smsOk', !texts)}<button class="btn primary" id="sendBtn">${texts ? 'Text me a code' : 'Email me a code'}</button></form>
   <form class="f" id="codeForm" hidden><p class="hint" id="devCode" hidden></p><input id="code" class="code" inputmode="numeric" autocomplete="one-time-code" maxlength="7" required placeholder="••••••" aria-label="6-digit code"><button class="btn primary">Sign in</button><button type="button" class="linkbtn" id="again">Start over</button></form>
@@ -196,7 +198,7 @@ $('#seg').addEventListener('click',e=>{const b=e.target.closest('button');if(b)s
 ${texts ? "setMode('phone');" : "try{if(localStorage.getItem('spot:signin')==='phone')setMode('phone')}catch{}"}
 $('#emailForm').addEventListener('submit',async e=>{e.preventDefault();$('#err').textContent='';if(pkAbort){pkAbort.abort();pkAbort=null}const b=$('#sendBtn');b.disabled=true;
   try{who=(mode==='phone'?$('#phone'):$('#email')).value.trim();const r=await post('/v1/auth/start',mode==='phone'?{phone:who,sms_consent:$('#smsOk').checked}:{email:who});
-    $('#seg').hidden=true;$('#emailForm').hidden=true;$('#codeForm').hidden=false;$('#or').hidden=true;$('#sso').hidden=true;$('#lead').textContent='Enter the code we '+(mode==='phone'?'texted to ':'sent to ')+who+'.';
+    $('#seg').hidden=true;$('#emailForm').hidden=true;$('#codeForm').hidden=false;if($('#perks'))$('#perks').hidden=true;$('#or').hidden=true;$('#sso').hidden=true;$('#lead').textContent='Enter the code we '+(mode==='phone'?'texted to ':'sent to ')+who+'.';
     if(r.code){$('#devCode').hidden=false;$('#devCode').textContent='Test mode (no '+(mode==='phone'?'texting':'email')+' service yet): your code is '+r.code;$('#code').value=r.code}
     $('#code').focus()}catch(err){$('#err').textContent=err.message}finally{b.disabled=false}});
 $('#codeForm').addEventListener('submit',async e=>{e.preventDefault();$('#err').textContent='';const b=e.target.querySelector('button');b.disabled=true;
@@ -221,7 +223,7 @@ if(${!texts}&&pkOK()){$('#pkBtn').hidden=false;
     await pkSignIn('conditional',pkAbort.signal);pkDone()}catch(err){/* the quiet passkey offer on load: if this browser can't do it, just leave the code sign-in */}})()}
 const altOK=()=>!$('#pkBtn').hidden||Boolean(document.querySelector('.sso-b'));
 $('#or').hidden=${texts}||!altOK();
-$('#again').onclick=()=>{$('#codeForm').hidden=true;$('#seg').hidden=false;$('#emailForm').hidden=false;$('#or').hidden=${texts}||!altOK();$('#sso').hidden=${texts};$('#lead').textContent='We’ll send you a 6-digit code. No password needed.'};`,
+$('#again').onclick=()=>{$('#codeForm').hidden=true;$('#seg').hidden=false;$('#emailForm').hidden=false;$('#or').hidden=${texts}||!altOK();$('#sso').hidden=${texts};$('#lead').textContent='New here? Same steps. We’ll send you a 6-digit code, no password needed.';if($('#perks'))$('#perks').hidden=false};`,
   });
 }
 
