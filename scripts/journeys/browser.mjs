@@ -2038,12 +2038,12 @@ await journey('J176', 'A prototype made elsewhere in a browser: add it from the 
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyle);
   const page = await ctx.newPage(); page.errs = []; page.on('pageerror', e => page.errs.push(e.message)); page.on('dialog', d => d.accept());
   await page.goto(`${W}/prototypes`, { waitUntil: 'networkidle' }); await page.waitForSelector('#app:not(.hidden) #extPanel', { timeout: 15000 });
-  await page.click('#extPanel summary'); await page.fill('#xCompany', 'Common Ground'); await page.fill('#xUrl', `${host}/password`); await page.fill('#xAccess', 'password: sneakers'); await page.click('#xAdd');
+  await page.click('#extPanel summary'); await page.fill('#xCompany', 'Common Ground'); await page.fill('#xUrl', `${host}/password`); await page.fill('#xAccess', 'Store password: sneakers'); await page.click('#xAdd');
   await page.waitForFunction(() => /Added/.test(document.querySelector('#xMsg')?.textContent || ''), null, { timeout: 10000 });
   const card = page.locator('#t-list .card', { hasText: 'Common Ground' }).first(); await card.waitFor({ timeout: 10000 });
   const ctext = await card.textContent(); ok(/Made elsewhere/.test(ctext) && /Not on Builds yet/.test(ctext), 'it is in the list as made elsewhere and not on Builds yet', ctext);
   await card.locator('[data-open]').click(); await page.waitForSelector('#dlg[open] #xPush', { timeout: 10000 });
-  ok(/password: sneakers/.test(await page.innerText('#dBody')) && (await page.locator('#xProj option').allInnerTexts()).some(t => t.includes(`Storefront ${stamp}`)), 'its page shows how to get in and offers the client project');
+  ok(/Store password: sneakers/.test(await page.innerText('#dBody')) && (await page.locator('#xProj option').allInnerTexts()).some(t => t.includes(`Storefront ${stamp}`)), 'its page shows how to get in and offers the client project');
   await page.selectOption('#xProj', proj.id); await page.click('#xPush');
   await page.waitForFunction(() => /On Builds/.test(document.querySelector('#dSub')?.textContent || ''), null, { timeout: 10000 });
   const tied = sql(`select build_id is not null from projects where id='${proj.id}'`); ok(tied === 't' && /On Builds/.test(await page.textContent('#dSub')), 'pushing puts it on Builds and on the client project', { tied, sub: await page.textContent('#dSub'), msg: await page.textContent('#dMsg') });

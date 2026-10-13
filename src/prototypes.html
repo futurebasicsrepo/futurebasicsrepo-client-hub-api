@@ -77,7 +77,7 @@ dialog{border:0;border-radius:24px;padding:0;width:min(1240px,97vw);max-height:9
         <label class="f"><span>Business name</span><input class="t" id="xCompany" required></label>
         <label class="f"><span>The prototype's address</span><input class="t" id="xUrl" placeholder="cg12concept.myshopify.com/password" required inputmode="url" autocapitalize="off" spellcheck="false"></label>
         <label class="f"><span>Their current site (optional)</span><input class="t" id="xCur" placeholder="commonground12.com" inputmode="url" autocapitalize="off" spellcheck="false"></label>
-        <label class="f"><span>How to get in (optional)</span><input class="t" id="xAccess" placeholder="e.g. the store password" autocomplete="off"></label>
+        <label class="f"><span>How to get in (optional)</span><input class="t" id="xAccess" placeholder="e.g. Store password: ..." autocomplete="off"></label>
       </form>
       <label class="chk hidden" id="xMatch" style="margin-top:10px"><input type="checkbox" id="xMove" checked><span></span></label>
       <div class="acts" style="margin-top:12px"><button class="btn go" id="xAdd" type="button">Add it here</button><span class="msg" id="xMsg" role="status"></span></div>
@@ -139,7 +139,7 @@ function drawExternal(p){
     <p class="sub">${p.buildId?'It is on the Builds showcase. Add the client project to show it in their room, or invite people by email.':'Makes its entry on Builds, ties it to the client project so the client sees it in their room, and invites them by email (they get a sign-in code). Nobody sees it before this.'}</p>
     <label class="f"><span>The client's software project</span><select class="t" id="xProj" style="width:100%"><option value="">Not tied to a project</option>${projects.map(x=>`<option value="${esc(x.id)}" ${mine===x.id?'selected':''}>${esc(x.client)} · ${esc(x.name)}</option>`).join('')}</select></label>
     <label class="f"><span>Invite by email (optional)</span><input class="t" id="xInv" type="email" placeholder="phil@commonground12.com"></label>
-    <label class="f"><span>A line for the email (optional)</span><input class="t" id="xNote" value="${esc(p.accessNote?('To get in: '+p.accessNote):'')}" maxlength="300"></label>
+    <label class="f"><span>A line for the email (optional)</span><input class="t" id="xNote" value="${esc(p.accessNote||'')}" maxlength="300"></label>
     <details><summary class="sub" style="cursor:pointer">Where its code lives (optional)</summary><div class="form" style="margin-top:8px"><label class="f"><span>GitHub address</span><input class="t" id="xRepo" placeholder="https://github.com/futurebasicsrepo/futurebasicsrepo-client-hub-api" autocapitalize="off" spellcheck="false"></label><label class="f"><span>Folder</span><input class="t" id="xPath" placeholder="themes/common-ground" autocapitalize="off" spellcheck="false"></label></div></details>
     <div class="acts"><button class="btn go" id="xPush" type="button">${p.buildId?'Save and invite':'Push to Builds'}</button>${p.buildId?'<button class="btn" id="xBack" type="button">Take it out of Builds</button>':''}</div></div>
   <div class="sec"><h3>More</h3><div class="acts"><button class="btn sm" id="del" type="button" style="color:var(--bad)">Delete</button></div></div>`;

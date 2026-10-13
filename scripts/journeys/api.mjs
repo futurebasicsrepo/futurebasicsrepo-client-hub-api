@@ -2423,8 +2423,8 @@ await journey('J175', 'A prototype made elsewhere stays in Prototypes (not on Bu
   // it was added to Builds by hand before: adding it here takes it out of Builds
   const made = await B('', { body: { name: `cg proto ${stamp}`, slug: `cg-proto-${stamp}`, liveUrl: url, status: 'concept', visibility: 'listed' } }); const oldBuild = made.json.build?.id || made.json.id;
   const meta = (await P('/meta')).json; ok(meta.builds.some(b => b.id === oldBuild) && Array.isArray(meta.projects), 'the page can see which Builds entry already points at it', meta.builds.length);
-  const add = await P('/external', { body: { company: 'Common Ground', prototypeUrl: url, currentUrl: 'commonground12.com', accessNote: 'password: sneakers', moveBuildId: oldBuild } }); const px = add.json.prototype;
-  ok(add.status === 201 && px.kind === 'external' && px.status === 'ready' && px.externalUrl === url && px.buildId === null && px.accessNote === 'password: sneakers' && add.json.movedFromBuilds === `cg proto ${stamp}`, 'it is kept in Prototypes with its address and how to get in, and not on Builds', add.json);
+  const add = await P('/external', { body: { company: 'Common Ground', prototypeUrl: url, currentUrl: 'commonground12.com', accessNote: 'Store password: sneakers', moveBuildId: oldBuild } }); const px = add.json.prototype;
+  ok(add.status === 201 && px.kind === 'external' && px.status === 'ready' && px.externalUrl === url && px.buildId === null && px.accessNote === 'Store password: sneakers' && add.json.movedFromBuilds === `cg proto ${stamp}`, 'it is kept in Prototypes with its address and how to get in, and not on Builds', add.json);
   ok(sql(`select status||'|'||visibility from builds where id='${oldBuild}'`) === 'archived|hidden', 'the by-hand Builds entry is archived and hidden');
   ok((await P('/external', { body: { company: 'Common Ground', prototypeUrl: url } })).status === 409, 'the same prototype is not added twice');
   ok((await P(`/${px.id}/rebuild`, { body: {} })).status === 409 && (await P(`/${px.id}/edit`, { body: { instruction: 'make it bolder' } })).status === 409 && (await P(`/${px.id}/publish`, { body: {} })).status === 409 && (await P(`/${px.id}/share`, { body: { emails: 'x@y.test' } })).status === 409, 'we do not rebuild, change or publish what lives elsewhere');
@@ -2441,7 +2441,7 @@ await journey('J175', 'A prototype made elsewhere stays in Prototypes (not on Bu
   ok(sql(`select status||'|'||visibility||'|'||hosting||'|'||live_url||'|'||repo_path from builds where id='${bid}'`) === `concept|hidden|shopify|${url}|themes/common-ground`, 'the entry is a hidden concept on Shopify, pointing at the prototype, with its code folder');
   ok(sql(`select build_id from projects where id='${proj.id}'`) === bid, 'the project is on that build');
   ok(JSON.stringify((await dash()).software || {}).includes(host), 'and the client now sees it in their room, though the entry is hidden for everyone else', (await dash()).software);
-  const inv = await P(`/${px.id}/to-builds`, { body: { projectId: proj.id, emails: `phil-${stamp}@commonground.test`, note: 'password: sneakers', send: false } });
+  const inv = await P(`/${px.id}/to-builds`, { body: { projectId: proj.id, emails: `phil-${stamp}@commonground.test`, note: 'Store password: sneakers', send: false } });
   ok(inv.status === 200 && inv.json.buildId === bid && inv.json.invites.invited.length === 1 && sql(`select visibility from builds where id='${bid}'`) === 'invite' && sql(`select count(*) from build_invites where build_id='${bid}' and email='phil-${stamp}@commonground.test' and revoked_at is null`) === '1', 'inviting adds the person to that same entry, which becomes invite only', inv.json);
   ok(sql(`select count(*) from builds where slug like 'proto-common-ground%' and status<>'archived'`) === '1', 'pushing again does not make a second entry');
   // back out
