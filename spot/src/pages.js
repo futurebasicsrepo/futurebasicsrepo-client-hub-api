@@ -148,6 +148,13 @@ h1{font-weight:700;letter-spacing:-.035em}h2{font-weight:650;letter-spacing:-.01
 /* Top bar: a translucent material, a compact segmented control. */
 .topbar{background:color-mix(in srgb,var(--bg) 72%,transparent);-webkit-backdrop-filter:saturate(1.8) blur(20px);backdrop-filter:saturate(1.8) blur(20px)}
 body.scrolled .topbar{border-bottom:.5px solid var(--hair)}
+/* The ask bar is the same material as the top bar: translucent, blurred and saturated, with a hairline edge and a faint light along the top, so the pictures slide under it. */
+.askbar{background:color-mix(in srgb,var(--card) 58%,transparent);-webkit-backdrop-filter:saturate(1.8) blur(20px);backdrop-filter:saturate(1.8) blur(20px);border:.5px solid var(--hair);border-radius:22px;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.55),inset 0 -1px 0 rgba(255,255,255,.12),0 14px 34px -14px rgba(27,23,18,.34),0 2px 6px rgba(27,23,18,.08)}
+.askbar input::placeholder{color:color-mix(in srgb,var(--ink) 52%,transparent)}
+.askbar .btn{border-radius:16px;box-shadow:inset 0 1px 0 rgba(255,255,255,.35),0 4px 12px -4px color-mix(in srgb,var(--spot) 70%,transparent)}
+@media (prefers-color-scheme:dark){.askbar{box-shadow:inset 0 1px 0 rgba(255,255,255,.16),inset 0 -1px 0 rgba(255,255,255,.04),0 14px 34px -14px rgba(0,0,0,.75),0 2px 6px rgba(0,0,0,.35)}}
+@supports not ((-webkit-backdrop-filter:blur(1px)) or (backdrop-filter:blur(1px))){.askbar{background:var(--card)}}
 .tabs{background:color-mix(in srgb,var(--ink) 7%,transparent)}
 .tabs.modes{width:156px;padding:2px;border-radius:10px}.tabs.modes button{padding:6px 10px;font-size:14px;font-weight:600;border-radius:8px;transition:color .2s}
 .tabs button[aria-selected=true]{box-shadow:0 1px 3px rgba(0,0,0,.12),0 0 0 .5px rgba(0,0,0,.04)}
