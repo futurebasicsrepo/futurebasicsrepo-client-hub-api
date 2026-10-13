@@ -236,7 +236,17 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   const captureUrl = capture.fromUrl || ((u) => captureFromUrl(u, { sign: signRequest }));
   const aiHooks = { onUsage: (model, usage) => (metrics.ok('anthropic'), metrics.ai(model, usage)), onError: (err) => metrics.fail('anthropic', err) };
   const captureShot = capture.fromScreenshot || ((img) => captureFromScreenshot(img, aiHooks));
-  const captureText = capture.fromText || ((t, o = {}) => captureFromText(t, { fromUrl: captureUrl, sizes: o.sizes, shipTo: o.shipTo, more: o.more, avoid: o.avoid, ...aiHooks }));
+  const captureText = capture.fromText || ((t, o = {}) => captureFromText(t, { fromUrl: captureUrl, sizes: o.sizes, shipTo: o.shipTo, more: o.more, avoid: o.avoid, discover: o.discover, skipStores: o.skipStores, ...aiHooks }));
+  // Discover mode: the stores a signed-in shopper sees most, to leave out.
+  const storesSeenBy = (uid) => {
+    if (!uid) return [];
+    const n = new Map();
+    for (const o of db.seen.list(uid)) {
+      const site = siteOf(o.item?.url || o.merchant?.url || '');
+      if (site) n.set(site, (n.get(site) || 0) + 1);
+    }
+    return [...n].sort((a, b) => b[1] - a[1]).slice(0, 40).map(([site]) => site);
+  };
   // A post shared from TikTok, Instagram, Pinterest…: what it shows, read
   // once per half hour (the shelf asks again for every batch).
   const posts = lookupCache({ max: 100 });
@@ -633,7 +643,8 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
       const profile = { sizes: sizesOf(uid), ship_to: shipToOf(uid) };
       const shared = await sharedAsk(String(b.text));
       if (shared.warning) return { source: 'text', merchant: { name: '', url: null }, items: [], not_found: true, warning: shared.warning };
-      const d = await captureText(shared.text, { sizes: profile.sizes, shipTo: profile.ship_to, more: typeof b.more === 'string' ? b.more : '', avoid: Array.isArray(b.avoid) ? b.avoid.filter((u) => typeof u === 'string') : [] });
+      const discover = b.discover === true;
+      const d = await captureText(shared.text, { sizes: profile.sizes, shipTo: profile.ship_to, more: typeof b.more === 'string' ? b.more : '', avoid: Array.isArray(b.avoid) ? b.avoid.filter((u) => typeof u === 'string') : [], discover, skipStores: discover ? storesSeenBy(uid) : [] });
       return uid ? { ...d, profile } : d;
     }
     if (b.image?.data) {
@@ -693,6 +704,8 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
       more: typeof b.more === 'string' ? b.more : '',
       avoid: Array.isArray(b.avoid) ? b.avoid.filter((u) => typeof u === 'string') : [],
       count: Number(b.count) || undefined,
+      // Shops they wouldn't find on their own (capture.js discoverLine).
+      ...(b.discover === true ? { discover: true, skipStores: storesSeenBy(uid) } : {}),
     };
     try {
       await (capture.stream ? capture.stream(shared.text, opts, write) : streamLookup(shared.text, { ...opts, fromUrl: captureUrl, cache: recent, ...aiHooks }, write));
