@@ -41,6 +41,10 @@ Each time a signed-in non-staff person opens a build page (`open`) or follows "O
 
 Created once, hidden: Spot, Benny's Beans, Modish Nail Spa, NursePartners, Common Ground, Cuesea (details to fill in), incha.tv (no live URL yet). Add vtpconcept, cg12concept and others from the admin page.
 
+## Services we host for a client
+
+A service we run for a client (today: the Common Ground **make-an-offer service** on our Railway account) has a **hidden entry** on Builds, made once at start if it is missing (`HOSTED_SERVICES` in `src/builds.js`). Its address is the service's health page, so the site checks watch it like any client site (up, slow, down, with an alert) and it shows on Platform health and the work home. Staff can edit it afterwards or archive it; it is not put back. To keep another service we host under watch, add it to that list.
+
 ## Housing a client's build
 
 A build we host (a static site or a small app on Railway) can be kept private with the showcase's sign-in. Put Caddy in front of it and use `forward_auth`:
