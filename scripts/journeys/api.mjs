@@ -2460,8 +2460,6 @@ await journey('J178', 'The site itself goes to a client\'s Shopify as a draft th
   } finally { await new Promise(r => srv.close(r)); }
 });
 
-});
-
 await journey('J177', 'A service we host for a client (the Common Ground make-an-offer service) has a hidden Builds entry at its health address, so the site checks watch it', async () => {
   const slug = 'common-ground-offers', row = sql(`select status||'|'||visibility||'|'||hosting||'|'||live_url from builds where slug='${slug}'`);
   ok(row === 'live|hidden|railway|https://offers-api-production-8a9d.up.railway.app/health', 'it is there, live, hidden, on Railway, at its health page', row);
