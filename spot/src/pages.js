@@ -170,17 +170,17 @@ body.scrolled .topbar{border-bottom:.5px solid var(--hair)}
 .pflag{position:absolute;top:10px;left:10px;z-index:2;font-size:11px;font-weight:700;letter-spacing:.01em;padding:3px 8px;border-radius:99px;color:#fff;background:var(--spot);box-shadow:0 2px 8px -2px rgba(0,0,0,.25)}
 .pflag.out{background:rgba(27,23,18,.72);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
 .tile .wtag{border:0;box-shadow:0 2px 8px -2px rgba(0,0,0,.2)}
-.tins{display:flex;flex-direction:column;gap:3px;margin-top:7px;min-height:52px;font-size:12.5px;line-height:1.3;color:var(--muted)}
+.tins{display:flex;flex-direction:column;gap:3px;margin-top:7px;min-height:56px;font-size:12.5px;line-height:1.3;color:var(--muted)}
 .tins .ti{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;animation:rise .35s var(--ease) both}
 .tins .star{color:var(--ink);font-weight:650}
 .tins .good{color:var(--ok);font-weight:600}
 .tins .deal{color:var(--spot);font-weight:650}
 .tins .code,.promo .code{font:650 11px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.03em;padding:1px 6px;border-radius:6px;background:color-mix(in srgb,var(--ok) 14%,transparent);color:var(--ok)}
 .tile .tbadges{margin-top:6px}.tile .tbadges span{font-size:11px;font-weight:600;border-radius:99px;padding:3px 8px;background:var(--bg2);color:var(--muted)}
-/* While it loads: a soft shimmer the width of a line, never a question. */
-.skl{display:block;height:10px;width:78%;margin:4px 0;border-radius:5px;background:linear-gradient(90deg,var(--bg2) 0%,color-mix(in srgb,var(--bg2) 35%,var(--card)) 50%,var(--bg2) 100%);background-size:220% 100%;animation:shimmer 1.4s ease-in-out infinite}
+/* While it loads: a soft pulse the width of a line, never a question (opacity only: cheap to draw while scrolling). */
+.skl{display:block;height:10px;width:78%;margin:4px 0;border-radius:5px;background:color-mix(in srgb,var(--ink) 9%,transparent);animation:skl 1.1s ease-in-out infinite alternate}
 .skl+.skl{width:56%}.skl+.skl+.skl{width:66%}
-@keyframes shimmer{from{background-position:120% 0}to{background-position:-120% 0}}
+@keyframes skl{from{opacity:.45}to{opacity:1}}
 @keyframes rise{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
 .fab{background:color-mix(in srgb,var(--card) 70%,transparent);color:var(--ink);-webkit-backdrop-filter:saturate(1.8) blur(20px);backdrop-filter:saturate(1.8) blur(20px);border:.5px solid var(--hair);box-shadow:0 12px 32px -12px rgba(0,0,0,.4);font-weight:600;padding:12px 18px}
 .fab:active{transform:scale(.96)}
@@ -216,11 +216,19 @@ body.scrolled .topbar{border-bottom:.5px solid var(--hair)}
 .cartfoot{border-top:.5px solid var(--hair);background:color-mix(in srgb,var(--card) 82%,transparent);-webkit-backdrop-filter:saturate(1.8) blur(20px);backdrop-filter:saturate(1.8) blur(20px)}
 .addcart.on{background:color-mix(in srgb,var(--ok) 14%,transparent);color:var(--ok)}
 /* Product photos: white store shots melt into a soft panel, as in a store app. */
-.tile .ph,.pc .ph,.cell,.citem img,.citem .ci0{background:#f5f4f2}
-.tile .ph img,.pc .ph img,.cell img,.citem img{mix-blend-mode:multiply}
+.tile .ph,.pc .ph,.cell,.citem img,.citem .ci0{background:#fff}
+
 /* The store's initials only stand in when there's no photo (a broken one is removed). */
-.ph img~.stile,.cell img~.stile{visibility:hidden}
-@media (prefers-color-scheme:dark){.tile .ph,.pc .ph,.cell,.citem img,.citem .ci0{background:#e9e6e1}}
+.ph.ok .stile,.cell.ok .stile{visibility:hidden}
+.ph img{opacity:0}.ph.ok img{opacity:1}.cell img{opacity:0}.cell.ok img{opacity:1}
+.rail{align-items:flex-start}
+.tins .ti.nr{animation:none}
+.pc .pr{margin-top:6px;padding-top:0}.pc .insg{margin-bottom:14px}
+.pc .ph.nophoto{aspect-ratio:5/2}
+.protect:empty{display:none}.protect{display:flex;flex-direction:column;align-items:flex-start;gap:4px;margin:4px 0 8px}
+.shieldpill{display:inline-flex;align-items:center;gap:4px;padding:5px 10px;border-radius:999px;background:color-mix(in srgb,var(--ok) 13%,transparent);color:var(--ok);font-size:13px;font-weight:700}
+.protectwhy{font-size:13px;color:var(--muted);line-height:1.35}.protectwhy a{color:inherit}
+@media (prefers-color-scheme:dark){.tile .ph,.pc .ph,.cell,.citem img,.citem .ci0{background:#f4f2ee}}
 .views{background:color-mix(in srgb,var(--ink) 7%,transparent);padding:2px;border-radius:10px}.views button{display:grid;place-items:center;width:34px;height:30px;color:var(--muted)}
 .views button[aria-pressed=true]{box-shadow:0 1px 3px rgba(0,0,0,.12),0 0 0 .5px rgba(0,0,0,.04)}
 .cartbtn{display:grid;place-items:center;color:var(--ink)}

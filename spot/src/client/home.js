@@ -454,7 +454,7 @@
   const hue = (name) => [...String(name || 'spot')].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 7);
   const initials = (name) => String(name || '?').replace(/^the\s+/i, '').split(/[\s&’'.-]+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
   const tile = (o) => '<span class="stile" style="--h:' + hue(o.merchant.name) + '"><b>' + esc(initials(o.merchant.name)) + '</b><small>' + esc(o.merchant.name || '') + '</small></span>';
-  const photo = (o, cls) => '<div class="' + cls + '" data-url="' + esc(o.item.url || '') + '">' + (o.item.image_url ? '<img src="' + esc(o.item.image_url) + '" alt="" loading="lazy" referrerpolicy="no-referrer">' : '') + tile(o) + '</div>';
+  const photo = (o, cls) => '<div class="' + cls + (o.item.image_url ? '' : ' nophoto') + '" data-url="' + esc(o.item.url || '') + '">' + (o.item.image_url ? '<img src="' + esc(o.item.image_url) + '" alt="" loading="lazy" referrerpolicy="no-referrer">' : '') + tile(o) + '</div>';
   // Over Spot's per-ask cap: say so on the card, not after a tap (the store
   // link below still works).
   const buttons = (k, sold, cents) =>
@@ -479,13 +479,14 @@
       (top ? '<span class="badge">Spot’s pick</span>' : '') + photo(o, 'ph') +
       '<div class="pb"><div class="st">' + esc(o.merchant.name || '') + ' <span class="stk" data-url="' + esc(it.url || '') + '">' + stockTag(o) + '</span></div>' +
       '<div class="t">' + esc(it.title) + '</div>' + (it.variant ? '<div class="v">' + esc(it.variant) + (yours(it.variant) ? ' <span class="tag in">your size</span>' : '') + '</div>' : '') +
+      '<div class="pr" data-pr="' + esc(it.url || '') + '">' + priceHtml(o, k) + '</div><div class="protect" data-protect="' + esc(it.url || '') + '">' + protectHtml(o) + '</div>' +
       (o.why ? '<div class="why">' + esc(o.why) + '</div>' : '') +
       (it.url ? '<div class="insg">' + '<div class="facts" data-facts="' + esc(it.url) + '" data-k="' + k + '">' + factsHtml(o, k) + '</div>' +
       (/^https?:/i.test(it.url) ? '<div class="rv" data-rv="' + esc(it.url) + '" data-k="' + k + '">' + reviewsHtml(o, k) + '</div>' +
       '<div class="cmp" data-cmp="' + esc(it.url) + '" data-k="' + k + '">' + compareHtml(o, k) + '</div>' +
       '<div class="dl" data-dl="' + esc(it.url) + '" data-k="' + k + '">' + deliveryHtml(o, k) + '</div>' +
       '<div class="promo" data-promo="' + esc(it.url) + '" data-k="' + k + '">' + promoHtml(o, k) + '</div>' : '') + '</div>' : '') +
-      '<div class="pr" data-pr="' + esc(it.url || '') + '">' + priceHtml(o, k) + '</div>' + buttons(k, o.stock === 'out', (it.price_cents || 0) * (it.quantity || 1)) +
+      buttons(k, o.stock === 'out', (it.price_cents || 0) * (it.quantity || 1)) +
       '<div class="cardlinks"><button class="textlink" type="button" data-act="edit" data-k="' + k + '">Edit details</button>' + (it.url && /^https?:/i.test(it.url) ? watchBtn(it.url, k) : '') + (String(k).startsWith('s:') ? '<button class="textlink" type="button" data-act="nope" data-k="' + k + '">👎 Not for me</button>' : '') +
       (it.url && /^https?:/i.test(it.url) ? '<a href="' + esc(it.url) + '" target="_blank" rel="noopener">At the store ↗</a>' : '') + '</div></div></article>';
   }
@@ -873,7 +874,13 @@
   function paintTile(url) {
     for (const el of document.querySelectorAll('.tins[data-u="' + CSS.escape(url) + '"]')) {
       const o = shopList[Number(el.dataset.i)];
-      if (o?.item.url === url) el.innerHTML = tileInsights(o);
+      if (o?.item.url !== url) continue;
+      // Only a line that's new fades in; the ones already there stay still.
+      const html = tileInsights(o);
+      if (el._html === html) continue;
+      const had = new Set([...el.querySelectorAll('.ti')].map((x) => x.textContent));
+      el.innerHTML = el._html = html;
+      for (const x of el.querySelectorAll('.ti')) if (had.has(x.textContent)) x.classList.add('nr');
     }
   }
 
@@ -1179,11 +1186,20 @@
     const p = f.policy;
     const store = esc(o.merchant?.name || 'The store');
     const src = p?.source_url ? ' <a href="' + esc(p.source_url) + '" target="_blank" rel="noopener">policy ↗</a>' : '';
-    if (p?.price_adjustment === true) out.push('<div class="fl shield">🛡️ Price drop protection' + (p.adjustment_days ? ' for ' + p.adjustment_days + ' days' : '') + '. Pay with Spot and Spot watches the price and asks ' + store + ' for the difference.' + src + '</div>');
-    else if (p?.price_adjustment === false) out.push('<div class="fl">No price adjustments at ' + store + '.' + src + '</div>');
+    if (p?.price_adjustment === true) {
+      /* shown under the price (protectHtml) */
+    } else if (p?.price_adjustment === false) out.push('<div class="fl">No price adjustments at ' + store + '.' + src + '</div>');
     if (p && (p.returns_days || p.free_returns)) out.push('<div class="fl">↩︎ ' + (p.free_returns ? 'Free returns' : 'Returns') + (p.returns_days ? ' within ' + p.returns_days + ' days' : '') + (p.price_adjustment == null ? src : '') + '</div>');
     else if (!p && f.policy_pending) out.push('<div class="fl wait">Reading ' + store + '’s price and return policy…</div>');
     return out.join('');
+  }
+  // Price drop protection, right under the price: the store adjusts within
+  // N days, and Spot watches and asks for the difference.
+  function protectHtml(o) {
+    const p = factsBy.get(o.item.url)?.policy;
+    if (p?.price_adjustment !== true) return '';
+    return '<span class="shieldpill">🛡️ Price protection' + (p.adjustment_days ? ' · ' + p.adjustment_days + ' days' : '') + '</span>' +
+      '<span class="protectwhy">If it drops, Spot asks ' + esc(o.merchant?.name || 'the store') + ' for the difference.' + (p.source_url ? ' <a href="' + esc(p.source_url) + '" target="_blank" rel="noopener">Policy ↗</a>' : '') + '</span>';
   }
   // The store's own price beats the estimate a search gave; on the Shop
   // page, how it moved since Spot showed it to them.
@@ -1205,6 +1221,11 @@
       if (o) el.innerHTML = factsHtml(o, el.dataset.k);
     }
     if (f?.now_cents) setTimeout(() => paintCompare(url));
+    for (const el of document.querySelectorAll('.protect' + sel('data-protect'))) {
+      const card = el.closest('[data-card]');
+      const o = card && entryAt(card.dataset.card, url);
+      if (o) el.innerHTML = protectHtml(o);
+    }
     for (const el of document.querySelectorAll('.pr' + sel('data-pr'))) {
       const card = el.closest('[data-card]');
       const o = card && entryAt(card.dataset.card, url);
@@ -1224,8 +1245,19 @@
   };
 
   // A photo that won't load shows the store's tile underneath instead.
-  $('#thread').addEventListener('error', (e) => e.target.tagName === 'IMG' && e.target.remove(), true);
-  $('#shop').addEventListener('error', (e) => e.target.tagName === 'IMG' && e.target.remove(), true);
+  // A photo covers its store tile only once it has loaded; one that fails (or
+  // is a blank pixel) goes, and a card left without one gets a shorter frame.
+  const noPhoto = (img) => (img.parentElement?.classList.add('nophoto'), img.remove());
+  const photoIn = (e) => {
+    const img = e.target;
+    if (img.tagName !== 'IMG' || !img.parentElement?.matches('.ph, .cell')) return;
+    if (e.type === 'error' || img.naturalWidth < 24) return noPhoto(img);
+    img.parentElement.classList.remove('nophoto');
+    img.parentElement.classList.add('ok');
+  };
+  document.addEventListener('load', photoIn, true);
+  document.addEventListener('error', photoIn, true);
+  for (const root of [$('#thread'), $('#shop')]) root.addEventListener('error', (e) => e.target.tagName === 'IMG' && e.target.isConnected && e.target.remove(), true);
   $('#cartBody').addEventListener('error', (e) => e.target.tagName === 'IMG' && e.target.replaceWith(Object.assign(document.createElement('span'), { className: 'ci0' })), true);
 
   const entryOf = (k) => {
@@ -1356,7 +1388,7 @@
     const moved = w && w.start_cents && w.now_cents && w.now_cents < w.start_cents ? '<div class="wdrop">↓ ' + usd(w.start_cents - w.now_cents) + ' since you started watching</div>' : '';
     const flag = d.stock === 'out' ? '<span class="pflag out">Sold out</span>' : d.was ? '<span class="pflag sale">' + Math.round(d.deal * 100) + '% off</span>' : '';
     const badges = [d.protect ? '<span title="Price drop protection">🛡️ Price protection' + (d.protectDays ? ' ' + d.protectDays + 'd' : '') + '</span>' : '', d.freeReturns ? '<span>Free returns</span>' : ''].filter(Boolean).join('');
-    return '<button class="tile" type="button" data-i="' + i + '"><div class="ph"><img src="' + esc(o.item.image_url) + '" alt="" loading="lazy" referrerpolicy="no-referrer">' + tile(o) + flag + (w ? '<span class="wtag" title="Watching">👀</span>' : '') + '</div>' +
+    return '<button class="tile" type="button" data-i="' + i + '" data-u="' + esc(o.item.url) + '"><div class="ph' + (o.item.image_url ? '' : ' nophoto') + '">' + (o.item.image_url ? '<img src="' + esc(o.item.image_url) + '" alt="" loading="lazy" referrerpolicy="no-referrer">' : '') + tile(o) + flag + (w ? '<span class="wtag" title="Watching">👀</span>' : '') + '</div>' +
       '<div class="tb"><div class="st">' + esc(o.merchant?.name || '') + '</div><div class="t">' + esc(o.item.title) + '</div><div class="pr">' + (d.price ? usd(d.price) : 'Price at store') + (d.was ? ' <s>' + usd(d.was) + '</s>' : '') + '</div>' +
       '<div class="tins" data-u="' + esc(o.item.url) + '" data-i="' + i + '">' + tileInsights(o) + '</div>' + (badges ? '<div class="tbadges">' + badges + '</div>' : '') + moved + '</div></button>';
   };
@@ -1365,7 +1397,28 @@
   function renderShop() {
     if (needsFacts()) wantFacts(shopAll.filter((o) => !factsBy.has(o.item.url)));
     shopList = shopView();
-    $('#shopGrid').innerHTML = shopList.map(shopTile).join('');
+    // Redrawn in place: a tile that hasn't changed stays as it is, and a
+    // changed one keeps its photo, so nothing blinks or loads twice as
+    // details arrive.
+    const grid = $('#shopGrid');
+    const had = new Map([...grid.children].map((el) => [el.dataset.u, el]));
+    const tpl = document.createElement('template');
+    grid.replaceChildren(...shopList.map((o, i) => {
+      const html = shopTile(o, i);
+      const prev = had.get(o.item.url);
+      if (prev && prev._html === html) return prev;
+      tpl.innerHTML = html;
+      const el = tpl.content.firstElementChild;
+      el._html = html;
+      const was = prev?.querySelector('.ph > img');
+      const now = el.querySelector('.ph > img');
+      if (was && now && was.getAttribute('src') === now.getAttribute('src')) {
+        now.replaceWith(was);
+        if (prev.querySelector('.ph.ok')) el.querySelector('.ph').classList.add('ok');
+      }
+      if (prev && inView) inView.unobserve(prev);
+      return el;
+    }));
     const active = activeCount();
     $('#shopEmpty').hidden = shopAll.length > 0;
     $('#shopNone').hidden = !(shopAll.length && !shopList.length);
