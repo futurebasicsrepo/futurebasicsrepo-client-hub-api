@@ -274,6 +274,10 @@ export const BLOCKED_CATEGORIES = [
   'dating_escort_services', // 7273
   'massage_parlors', // 7297
 ];
+// 5921 package stores (beer, wine, liquor), 5993 cigar stores, 5813 bars, 5912 is
+// drug stores and stays allowed.
+export const TEEN_MCCS = new Set(['5921', '5993', '5813']);
+export const TEEN_CATEGORIES = ['package_stores_beer_wine_and_liquor', 'cigar_stores_and_stands', 'drinking_places'];
 export const BLOCKED_MCCS = new Set(['6010', '6011', '6012', '6051', '4829', '6540', '6211', '7995', '7801', '7802', '7800', '9406', '5933', '7012', '7273', '7297']);
 
 export function decideAuthorization(cart, auth) {
@@ -283,6 +287,8 @@ export function decideAuthorization(cart, auth) {
   if (!Number.isInteger(auth.amount_cents) || auth.amount_cents <= 0) return { approved: false, reason: 'amount' };
   const m = auth.merchant || {};
   if (BLOCKED_MCCS.has(String(m.category_code || '')) || BLOCKED_CATEGORIES.includes(m.category)) return { approved: false, reason: 'blocked_category' };
+  // A teen's order (family.js) never goes to a liquor store, tobacco or vape shop, or bar.
+  if (cart.family && (TEEN_MCCS.has(String(m.category_code || '')) || TEEN_CATEGORIES.includes(m.category))) return { approved: false, reason: 'age_restricted' };
   if (auth.amount_cents > cardLimitCents(cart)) return { approved: false, reason: 'over_limit' };
   if (!merchantMatches(cart.merchant, m)) return { approved: false, reason: 'wrong_merchant' };
   return { approved: true, reason: 'ok' };
@@ -338,6 +344,11 @@ export function merchantMatches(cartMerchant, authMerchant) {
   }
   return false;
 }
+
+// A teen's ask paid from their parent's saved card (family.js): inside the
+// parent's rules, or after the parent tapped Approve.
+export const FAMILY_HOWS = ['paid_by_family_rules', 'approved_by_parent'];
+export const familyPaid = (cart) => FAMILY_HOWS.includes(cart?.saved_pay?.how);
 
 // Items Spot won't buy on its card: gift cards and other cash equivalents.
 const CASHLIKE = /\b(e-?gift|gift\s*cards?|giftcards?|gift\s*certificates?|prepaid\s*(visa|mastercard|card|debit)|reload(able)?\s*(card|pack)|money\s*orders?|vanilla\s*(visa|gift)|visa\s*gift|amex\s*gift|mastercard\s*gift|bitcoin|crypto|store\s*credit)\b/i;

@@ -65,6 +65,7 @@ import { gateOn, registerGate } from './early.js';
 import { isStaff } from './staff.js';
 import { createPush, SERVICE_WORKER } from './webpush.js';
 import { createInvites } from './invites.js';
+import { createFamily, registerFamily } from './family.js';
 
 export function buildApp({ db = openDb(), provider = pickProvider(), cfg = config(), capture = {}, logger = true, fulfill = {}, env = process.env, notifyFetch, oauthFetch, flights = createFlights({ env }), backupDir, backupFetch, merchantFetch, papFetch, shopifyFetch, priceNowImpl, pushFetch } = {}) {
   const app = Fastify({ logger, bodyLimit: 256 * 1024, trustProxy: true });
@@ -232,6 +233,9 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   };
   const publicUrl = () => (env.PUBLIC_URL || '').replace(/\/$/, '');
   const urlFor = (req, path) => `${publicUrl() || `${req.protocol}://${req.headers.host}`}${path}`;
+  // Parents' rules for their teens' asks (family.js).
+  const family = createFamily({ db, spot });
+  const familyHooks = registerFamily(app, { db, spot, family, urlFor, log: app.log });
   const affiliate = createAffiliate(env);
   const captureUrl = capture.fromUrl || ((u) => captureFromUrl(u, { sign: signRequest }));
   const aiHooks = { onUsage: (model, usage) => (metrics.ok('anthropic'), metrics.ai(model, usage)), onError: (err) => metrics.fail('anthropic', err) };
@@ -561,7 +565,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
       }
     }
     const commission = cart.settle === 'direct' && affiliate.covers(cart.merchant.url);
-    return html(reply, payPage({ cart: publicCart(cart), links: handoffLinks(cart), provider: provider.name, pageUrl: urlFor(req, `/c/${cart.token}`), commission }));
+    return html(reply, payPage({ cart: publicCart(cart), links: handoffLinks(cart), provider: provider.name, pageUrl: urlFor(req, `/c/${cart.token}`), commission, family: familyHooks.approveBox(req, cart) }));
   });
 
   // The payer's receipt from Spot (linked from their receipt email): what
@@ -899,6 +903,8 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     // From a store's "Ask someone to pay" button: the store's cart, as sent.
     const fromStore = req.body?.draft_id ? merchants.fromDraft(req.body.draft_id) : null;
     const input = fromStore ? { ...req.body, ...fromStore.input } : req.body;
+    // A teen's ask (family.js): nothing only for adults, and Spot buys it when the parent's card can pay.
+    const teen = await familyHooks.before(req, input);
     if (input?.settle === 'direct' && !(await spot.direct.supports(input?.merchant?.url ?? input?.merchant_url))) {
       throw new CartError('This store doesn’t take direct checkout yet. Use a card link instead.', 409);
     }
@@ -920,8 +926,12 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     }
     let { cart, manageKey } = spot.create(input, { ip: req.ip, userId: accounts.userIdOf(req) });
     if (fromStore) cart = spot.patch(cart.id, (c) => ({ ...c, source: fromStore.source }), 'from_store_button');
+    // A teen's ask: paid from their parent's card inside the parent's rules, or sent to the parent.
+    const fam = await familyHooks.after(req, cart, manageKey, teen);
+    if (fam) cart = spot.byId(cart.id);
     reply.code(201);
     return {
+      ...(fam ? { family: fam } : {}),
       cart: publicCart(cart),
       link: urlFor(req, `/c/${cart.token}`),
       manage_link: urlFor(req, `/c/${cart.token}/manage?k=${manageKey}`),
@@ -987,6 +997,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   });
   app.post('/v1/bundles', async (req, reply) => {
     limits.create(req);
+    familyHooks.screen(req, req.body?.stores);
     const { bundle, manageKey } = spot.createBundle(req.body, { ip: req.ip, userId: accounts.userIdOf(req) });
     reply.code(201);
     return { bundle: publicBundle(bundle), link: urlFor(req, `/b/${bundle.token}`), manage_link: urlFor(req, `/b/${bundle.token}/manage?k=${manageKey}`), manage_key: manageKey };
@@ -1262,7 +1273,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   });
 
   const mcpAuth = registerMcpAuth(app, { db, urlFor, papFetch });
-  registerAgentApi(app, { spot, fulfiller, notifier, flights, db, provider, env, urlFor, approvals, mcpChallenge: mcpAuth.challenge, capture: { url: captureUrl, text: captureText, sizesOf } });
+  registerAgentApi(app, { spot, fulfiller, notifier, flights, db, provider, env, urlFor, approvals, mcpChallenge: mcpAuth.challenge, capture: { url: captureUrl, text: captureText, sizesOf }, teenScreen: familyHooks.screenUser });
 
   // Sandbox only: what the store does with Spot's card after checkout: charge
   // it (capture), refund a return, or release / reverse the authorization.

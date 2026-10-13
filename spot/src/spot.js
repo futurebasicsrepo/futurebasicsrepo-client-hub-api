@@ -798,9 +798,12 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
     // tap, or { by: 'rules', how: 'paid_by_rules' } when the account opted in
     // to its AI paying on its own. `present`: the person is on the page, so
     // their bank can ask them to verify (then `action` goes back to Stripe.js).
-    async paySaved(token, funding, { present = false, how }) {
+    // `payer`: a teen's ask paid from their parent's card (family.js); the
+    // parent is the payer. Otherwise only the account's own asks.
+    async paySaved(token, funding, { present = false, how, payer = null }) {
       let cart = load(token);
-      if (cart.settle !== 'card' || cart.bundle_id || cart.kind === 'flight' || cart.for !== 'self') throw new CartError('This ask can’t be paid with a saved card', 409);
+      const forFamily = Boolean(payer && cart.family);
+      if (cart.settle !== 'card' || cart.bundle_id || cart.kind === 'flight' || cart.chip_in || (cart.for !== 'self' && !forFamily)) throw new CartError('This ask can’t be paid with a saved card', 409);
       if (cart.status !== 'open') throw new CartError(cart.status === 'expired' ? 'This ask has expired' : 'This ask is already paid', 409);
       if (cart.kind === 'train' ? !cart.train.riders : !cart.requester?.shipping) throw new CartError(cart.kind === 'train' ? 'Add who’s riding first' : 'Add where it ships first', 409);
       if (!(await this.canOrder(cart))) throw new CartError(`Spot can't order from ${cart.merchant.name} automatically yet, so it can't charge your card for it.`, 409);
@@ -813,8 +816,10 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
         if (!db.save({ ...cur, payment_ref: r.ref }, 'open')) throw new CartError('Cart changed, try again', 409);
       }
       if (r.status === 'held' || r.status === 'succeeded') {
-        const payer = { name: cart.requester.name?.split(' ')[0] || null, email: (cart.requester.shipping || cart.train?.contact)?.email || null, fingerprint: funding.fingerprint || null };
-        return { cart: await this.paymentSucceeded({ paymentRef: r.ref, amountCents: cart.total_cents, payer, approval: how }) };
+        const who = forFamily
+          ? { name: payer.name || null, email: payer.email || null, fingerprint: funding.fingerprint || null }
+          : { name: cart.requester.name?.split(' ')[0] || null, email: (cart.requester.shipping || cart.train?.contact)?.email || null, fingerprint: funding.fingerprint || null };
+        return { cart: await this.paymentSucceeded({ paymentRef: r.ref, amountCents: cart.total_cents, payer: who, approval: how }) };
       }
       if (r.status === 'requires_action') return { cart: db.byId(cart.id), action: r.client };
       db.event(cart.id, 'saved_card_failed', { reason: r.error || null });
@@ -843,7 +848,7 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
       const amount = Math.round(Number(cents));
       if (!Number.isFinite(amount) || amount < 1 || amount > COVER_MAX_CENTS) throw new CartError(`Spot can cover $0.01 to $${COVER_MAX_CENTS / 100} on one order`);
       const next = { ...cart, cover_cents: amount };
-      if (provider.setCardLimit) await provider.setCardLimit(cart.card_ref, cardLimitCents(next));
+      if (provider.setCardLimit) await provider.setCardLimit(cart.card_ref, cardLimitCents(next), next);
       db.event(cart.id, 'spot_covered', { amount_cents: amount, by, limit_cents: cardLimitCents(next) });
       return this.patch(cart.id, (c) => ({ ...c, cover_cents: amount }), 'cover_set');
     },
@@ -1268,7 +1273,7 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
       try {
         let card;
         if (cart.ready_card?.ref && provider.activateCard) {
-          await provider.activateCard(cart.ready_card.ref, cardLimitCents(cart));
+          await provider.activateCard(cart.ready_card.ref, cardLimitCents(cart), cart);
           card = cart.ready_card;
         } else {
           card = await provider.issueCard(cart);

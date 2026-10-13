@@ -6,11 +6,14 @@
 //
 // Payload (JWT-style claims plus Spot's own):
 //   iss  Spot's origin          sub  the cart (ask) id      jti  approval id
-//   iat  when                    approved_by  payer | requester | rules
+//   iat  when                    approved_by  payer | requester | rules | parent
 //   how  paid_spot | paid_at_store | placed_order
 //        approved_saved_card  the requester tapped Approve; their saved card paid
 //        paid_by_rules        the account opted in to its AI paying on its own,
 //                             inside its rules (approved_by: rules)
+//        paid_by_family_rules a teen's ask inside their parent's rules, paid
+//                             from the parent's saved card (family.js)
+//        approved_by_parent   the parent tapped Approve on their teen's ask
 //   merchant, items, amount_cents, currency, agent (the AI that asked, if any)
 import { randomBytes } from 'node:crypto';
 import { verifyApproval } from './signing.js';

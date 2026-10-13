@@ -100,6 +100,29 @@ Sign in at `/signin` with a 6-digit code, sent by email (Resend) or by text (Twi
 
 A signed-in owner opens their own Spots without the private key. Codes and sessions are stored hashed. The session cookie is `HttpOnly; SameSite=Lax`, and account writes are JSON-only.
 
+## Family (teens 13 to 17)
+
+`src/family.js`. The rules on an AI key, applied to a person: **small stuff at approved stores goes through on its own; the big stuff pings the parent.**
+
+- **Adding a teen.** On `/account` → Family, the parent gives a first name and confirms they're the parent or guardian and the teen is 13 to 17. That makes a join link (`/family/join/<token>`, 7 days, once, stored hashed). The teen opens it, signs in, and taps Join. The link also lets them past the early-access gate.
+- **Rules per teen:**
+  - an amount that goes through on its own (`auto_cents`, at most $500)
+  - approved stores
+  - an optional monthly limit on what goes through on its own
+  - pause and remove
+  - Letting things through on their own is a separate checkbox, once.
+- **A teen's ask** (`POST /v1/carts`, signed in as the teen):
+  - When the parent has a saved card and Spot can buy from the store, it's a Spot card cart.
+  - **Inside the rules:** the parent's card pays right away (`paySaved`, `paid_by_family_rules`). It ships to the teen's saved address, or the parent's. Spot orders it without a tap, as long as the store's total is inside the card's cap. The parent gets Spot's receipt, with cancel-for-a-refund.
+  - **Outside the rules:** nothing is charged. The parent gets email, text and push (`family_ask`). On the ask's pay page, signed in, they see **Approve · Visa •4242** (`POST /v1/carts/:token/family/approve`), "Not this time", or "Pay with another card".
+  - Approvals are signed as `approved_by: rules | parent`.
+- **Never for a teen**, whatever the rules and whoever pays (the web app, multi-store asks, the teen's own AI):
+  - alcohol, nicotine and vapes, cannabis and CBD, guns and ammunition, adult products, lottery tickets
+  - stores that sell those
+  - Checks are by item name and store domain (`teenBlocked`).
+  - Spot's card for a teen's order also declines liquor stores, tobacco shops and bars (MCC 5921, 5993 and 5813), in the webhook and in Stripe's spending controls.
+- **Terms:** 18+, or 13 to 17 through a parent's family invite (`/terms#family`). The privacy page covers teens.
+
 ## Notifications
 
 `src/events.js` tells people when something happens. It uses email (Resend) and text (Twilio), with a branded email layout (`emailLayout` in `notify.js`).

@@ -115,7 +115,8 @@ export function createInvites(db) {
         return true;
       }
       const was = db.state.get(admitKey(userId));
-      if (was?.via === 'preview') return true;
+      // A teen their parent added (family.js); removing them clears this.
+      if (was?.via === 'preview' || was?.via === 'family') return true;
       return Boolean(was?.email) && live(q.get.get(was.email));
     },
   };
