@@ -693,7 +693,7 @@ app.get('/start', sendStart);
 app.get('/join',(_req,reply)=>reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./join.html',import.meta.url),'utf8')));
 // The same page on a short address for texting: /j, or /j/kyle with the sender's name on it (and kept on the room as where it came from).
 // Only a handle that belongs to a staff member is believed; any other path is the plain page.
-async function staffFor(handle){const h=cleanHandle(handle);if(!h)return null;const u=(await pool.query(`select name,email from users where role='admin' and lower(email)=$1 limit 1`,[`${h}@thefuturebasics.com`])).rows[0];return u?{handle:h,first:(String(u.name||'').trim().split(/\s+/)[0]||h).replace(/^./,c=>c.toUpperCase())}:null}
+async function staffFor(handle){const h=cleanHandle(handle);if(!h)return null;const u=(await pool.query(`select name,email from users where role='admin' and lower(email) like '%@thefuturebasics.com' and left(trim(both '-' from regexp_replace(lower(split_part(email,'@',1)),'[^a-z0-9-]','-','g')),30)=$1 limit 1`,[h])).rows[0];return u?{handle:h,first:(String(u.name||'').trim().split(/\s+/)[0]||h).replace(/^./,c=>c.toUpperCase())}:null}
 const sendJoinShort=async (req,reply)=>{
   const who=await staffFor(req.params?.handle).catch(()=>null);let html=readFileSync(new URL('./join.html',import.meta.url),'utf8');
   html=html.replace('<!--shared-by-->',who?`<span class="meta sharedby">${emailEscape(who.first)} sent you this link</span>`:'').replace('<body>',`<body data-ref="${who?who.handle:''}">`);

@@ -5,7 +5,7 @@
 //   public  GET|POST /u/:token  (unsubscribe; the POST is also the one-click List-Unsubscribe target)   POST /webhooks/resend  (signed)
 import { cleanEmail } from './sales.js';
 import { fireTrigger, stopRuns } from './sales-automations-engine.js';
-import { joinLink, cleanHandle } from './onboarding.js';
+import { joinLink, cleanHandle, staffHandle } from './onboarding.js';
 import { renderTemplate, firstNameOf, buildMessage, unsubscribeToken, readUnsubscribeToken, verifyWebhook, parseAddress, looksLikeOptOut, isAutoReply, stripQuoted, htmlToText, relationship, canEmail, MERGE_FIELDS, STARTER_TEMPLATES } from './sales-email.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -71,7 +71,7 @@ export function registerSalesEmailRoutes(app, d) {
   }
   async function senderFirstName(req, s) { const u = UUID.test(String(req.auth?.sub || '')) ? (await pool.query('select name from users where id=$1', [req.auth.sub])).rows[0] : null; return firstNameOf(u?.name) || firstNameOf(s.fromName) || 'Kyle'; }
   // {{join_link}}: the hub sign-up page, in the sender's name, already filled in with what we know of this person
-  const varsFor = (f, sender) => ({ first_name: firstNameOf(f.c.name), name: f.c.name, company: f.c.company_name || '', build: f.build, sender, join_link: joinLink(hubUrl, { handle: cleanHandle(String(sender || '').toLowerCase()), name: /@/.test(f.c.name || '') ? '' : f.c.name, email: f.c.email, company: f.c.company_name }) });
+  const varsFor = (f, sender, handle = '') => ({ first_name: firstNameOf(f.c.name), name: f.c.name, company: f.c.company_name || '', build: f.build, sender, join_link: joinLink(hubUrl, { handle: cleanHandle(handle) || cleanHandle(String(sender || '').toLowerCase()), name: /@/.test(f.c.name || '') ? '' : f.c.name, email: f.c.email, company: f.c.company_name }) });
   const render = (subject, body, vars) => { const s = renderTemplate(subject, vars), b = renderTemplate(body, vars); return { subject: s.text, body: b.text, missing: [...new Set([...s.missing, ...b.missing])], unknown: [...new Set([...s.unknown, ...b.unknown])] }; };
 
   app.get('/v1/sales/contacts/:id/email-check', { preHandler: pre }, async (req, reply) => {
@@ -83,7 +83,7 @@ export function registerSalesEmailRoutes(app, d) {
   app.post('/v1/sales/contacts/:id/email-preview', { preHandler: pre }, async (req, reply) => {
     if (!UUID.test(req.params.id)) return bad(reply, 'Not found', 404);
     const f = await facts(req.params.id); if (!f) return bad(reply, 'Not found', 404);
-    const s = await settings(), r = render(String(req.body?.subject || ''), String(req.body?.body || ''), varsFor(f, await senderFirstName(req, s)));
+    const s = await settings(), r = render(String(req.body?.subject || ''), String(req.body?.body || ''), varsFor(f, await senderFirstName(req, s), staffHandle(req.auth?.email)));
     return { subject: r.subject, body: r.body, missing: r.missing, unknown: r.unknown };
   });
 
@@ -98,11 +98,11 @@ export function registerSalesEmailRoutes(app, d) {
 
   // ---------- sending ----------
   // One place that sends a contact an email, for the staff page and for automations. → { ok, id, remaining } or { ok: false, status, error, extra }
-  async function sendToContact(contactId, { subject, body, confirmed = false, actorId = null, sender = null, via = null, confirmText = 'Emailed after staff confirmed they know us' }) {
+  async function sendToContact(contactId, { subject, body, confirmed = false, actorId = null, sender = null, handle = '', via = null, confirmText = 'Emailed after staff confirmed they know us' }) {
     const fail = (status, error, extra = {}) => ({ ok: false, status, error, extra });
     const f = await facts(contactId); if (!f) return fail(404, 'Not found');
     const s = await settings(), from = sender || firstNameOf(s.fromName) || 'Kyle';
-    const r = render(String(subject || ''), String(body || ''), varsFor(f, from));
+    const r = render(String(subject || ''), String(body || ''), varsFor(f, from, handle));
     if (!r.subject.trim()) return fail(422, 'Add a subject');
     if (!r.body.trim()) return fail(422, 'Write the message');
     if (r.unknown.length) return fail(422, `Unknown field ${r.unknown.map(x => `{{${x}}}`).join(', ')}. You can use ${MERGE_FIELDS.map(x => `{{${x}}}`).join(', ')}.`);
@@ -138,7 +138,7 @@ export function registerSalesEmailRoutes(app, d) {
   }
   app.post('/v1/sales/contacts/:id/email', { preHandler: pre }, async (req, reply) => {
     if (!UUID.test(req.params.id)) return bad(reply, 'Not found', 404);
-    const s = await settings(), r = await sendToContact(req.params.id, { subject: req.body?.subject, body: req.body?.body, confirmed: req.body?.confirmRelationship === true, actorId: actorOf(req), sender: await senderFirstName(req, s) });
+    const s = await settings(), r = await sendToContact(req.params.id, { subject: req.body?.subject, body: req.body?.body, confirmed: req.body?.confirmRelationship === true, actorId: actorOf(req), sender: await senderFirstName(req, s), handle: staffHandle(req.auth?.email) });
     if (!r.ok) return reply.code(r.status).send({ error: r.error, ...r.extra });
     return reply.code(201).send({ id: r.id, remainingToday: r.remaining });
   });

@@ -2569,6 +2569,14 @@ await journey('J181', 'New-client onboarding: a won deal or the text link makes 
     ok(/Hi Phil,/.test(pv.body) && !/\{\{/.test(pv.body + pv.subject), 'and no blanks are left over');
   }
   ok((await S('/templates', { body: { name: 'Link fallback', subject: 'x', body: 'Open {{join_link}}' } })).status === 201, 'staff can use the field in their own templates too');
+  // any employee has their own link, even when their email is first.last@
+  const dem = `dana.lee${stamp}@thefuturebasics.com`, dh = `dana-lee${stamp}`, did = sql(`insert into users(client_id,email,name,role) values('${cid}','${dem}','Dana Lee','admin') returning id`).split('\n')[0];
+  const dana = await forge({ sub: did, clientId: cid, role: 'admin', email: dem }), DJ = (await call('/v1/admin/join-link', { token: dana })).json;
+  ok(DJ.handle === dh && DJ.general.endsWith('/j/' + dh) && /it's Dana at Future Basics/.test(DJ.text), 'a dotted staff email gets its own handle and text', DJ);
+  const dpage = await call('/j/' + dh); ok(/Dana sent you this link/.test(dpage.text), 'their link carries their name');
+  const dj = await call('/v1/public/join', { body: { company: `Dana Co ${stamp}`, name: 'Pat Ng', email: `pat${stamp}@dana.test`, attribution: { source: 's-' + dh, medium: 'text' } } });
+  ok(dj.status === 201 && sql(`select acquisition->>'staff' from clients where lower(contact_email)='pat${stamp}@dana.test'`) === 'Dana', 'a sign-up from it is marked as theirs');
+  const dpv = (await call(`/v1/sales/contacts/${ct}/email-preview`, { token: dana, body: { subject: inv.subject, body: inv.body } })).json; ok(new RegExp('/j/' + dh + '\\?').test(dpv.body || ''), 'and the hub email they send carries their link, not someone else\'s', dpv.body);
 });
 
 const bad = summary(); process.exit(bad ? 1 : 0);

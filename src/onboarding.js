@@ -11,7 +11,7 @@ export const STORE_PLATFORMS = { shopify: 'Shopify', woocommerce: 'WooCommerce',
 export const CONTACT_PREFS = { email: 'Email', text: 'Text message', call: 'Phone call' };
 
 // "kyle@thefuturebasics.com" → "kyle". Anything that is not a plain handle gives ''.
-export const staffHandle = email => { const h = String(email || '').split('@')[0].toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/^-+|-+$/g, '').slice(0, 30); return /^[a-z0-9][a-z0-9-]*$/.test(h) ? h : ''; };
+export const staffHandle = email => { const h = String(email || '').split('@')[0].toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/^-+|-+$/g, '').slice(0, 30); return /^[a-z0-9][a-z0-9-]*$/.test(h) ? h : ''; }; // first.last@ → first-last (staffFor in server.js matches the same way)
 export const cleanHandle = v => { const h = String(v || '').toLowerCase().trim(); return /^[a-z0-9][a-z0-9-]{0,29}$/.test(h) ? h : ''; };
 
 // The link a person is sent. With details, the join page opens already filled in.
