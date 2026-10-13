@@ -88,6 +88,9 @@ export async function migrate() {
     alter table clients add column if not exists membership_checked_at timestamptz;
     alter table clients add column if not exists acquisition jsonb;
     alter table clients add column if not exists marketing_opt_out_at timestamptz;
+    alter table clients add column if not exists onboarding_status text check (onboarding_status in ('pending','done'));
+    alter table clients add column if not exists onboarding jsonb;
+    alter table clients add column if not exists onboarding_done_at timestamptz;
     update clients set archived_at=coalesce(archived_at,now()),archive_previous_status=coalesce(archive_previous_status,'active'),status='archived'
       where status in ('archive','archived');
     create table if not exists users (

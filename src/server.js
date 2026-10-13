@@ -39,6 +39,7 @@ import { draftElectronics, applyElectronicsDraft } from './elecdraft.js';
 import { cutoutEnabled, cutoutProvider, cutoutFromPhoto, placeCutout } from './cutout.js';
 import { registerSalesRoutes, seedSegments, syncHubContacts } from './sales-routes.js';
 import { registerSalesEmailRoutes, seedTemplates } from './sales-email-routes.js';
+import { registerOnboardingRoutes, cleanHandle, staffHandle, joinLink, textFor } from './onboarding.js';
 import { registerSalesAutomationRoutes, seedAutomations } from './sales-automations-routes.js';
 import { processRuns } from './sales-automations-engine.js';
 import { registerChatRoutes } from './chat-routes.js';
@@ -636,7 +637,8 @@ app.get('/builds', sendBuilds);
 app.get('/console-nav.js', (_req, reply) => reply.header('cache-control', 'public, max-age=300').type('application/javascript').send(readFileSync(new URL('./console-nav.js', import.meta.url), 'utf8')));
 app.get('/sales', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').type('text/html').send(readFileSync(new URL('./sales.html', import.meta.url), 'utf8')));
 registerSalesRoutes(app, { pool, authenticate, adminOnly, log: app.log });
-const salesEmail = registerSalesEmailRoutes(app, { pool, authenticate, adminOnly, secret, getSetting, setSetting, sendHubEmail, hubEmailShell, emailEscape, notifyTo: intakeNotificationEmail, publicUrl: clientHubUrl, workUrl: workHubUrl, log: app.log, fetchImpl: (url, opts) => trackedFetch('resend', url, opts) });
+const salesEmail = registerSalesEmailRoutes(app, { pool, authenticate, adminOnly, secret, getSetting, setSetting, sendHubEmail, hubEmailShell, emailEscape, notifyTo: intakeNotificationEmail, publicUrl: clientHubUrl, hubUrl: clientHubUrl, workUrl: workHubUrl, log: app.log, fetchImpl: (url, opts) => trackedFetch('resend', url, opts) });
+registerOnboardingRoutes(app, { pool, authenticate, adminOnly, notifyStaff, emailEscape, hubButton, workUrl: workHubUrl, log: app.log });
 registerSalesAutomationRoutes(app, { pool, authenticate, adminOnly, setSetting, sendToContact: salesEmail.sendToContact, checkContact: salesEmail.checkContact, log: app.log });
 app.get('/builds/admin', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').type('text/html').send(readFileSync(new URL('./builds-admin.html', import.meta.url), 'utf8')));
 const buildsApi = registerBuildRoutes(app, { pool, authenticate, adminOnly, secret, SignJWT, jwtVerify, hash, throttle, CODE_ASK, CODE_GUESS, tooManyCodes, tooManyGuesses, cleanCode, randomInt, sendHubEmail, hubEmailShell, hubButton, emailEscape, clientForEmail, log: app.log, fetchImpl: (url, opts) => trackedFetch('github', url, opts) });
@@ -689,6 +691,22 @@ const sendStart=(_req,reply)=>reply.header('cache-control','no-store, max-age=0'
 app.get('/start', sendStart);
 // Account sign-up without a tech pack: a short form that opens a hub room straight away (see POST /v1/public/join).
 app.get('/join',(_req,reply)=>reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./join.html',import.meta.url),'utf8')));
+// The same page on a short address for texting: /j, or /j/kyle with the sender's name on it (and kept on the room as where it came from).
+// Only a handle that belongs to a staff member is believed; any other path is the plain page.
+async function staffFor(handle){const h=cleanHandle(handle);if(!h)return null;const u=(await pool.query(`select name,email from users where role='admin' and lower(email)=$1 limit 1`,[`${h}@thefuturebasics.com`])).rows[0];return u?{handle:h,first:(String(u.name||'').trim().split(/\s+/)[0]||h).replace(/^./,c=>c.toUpperCase())}:null}
+const sendJoinShort=async (req,reply)=>{
+  const who=await staffFor(req.params?.handle).catch(()=>null);let html=readFileSync(new URL('./join.html',import.meta.url),'utf8');
+  html=html.replace('<!--shared-by-->',who?`<span class="meta sharedby">${emailEscape(who.first)} sent you this link</span>`:'').replace('<body>',`<body data-ref="${who?who.handle:''}">`);
+  return reply.header('cache-control','no-store, max-age=0').type('text/html').send(html);
+};
+app.get('/j',sendJoinShort);
+app.get('/j/:handle',sendJoinShort);
+// Staff: my link to text to a new customer, with the words to send. Optionally filled in for one person (?name=&email=&company=).
+app.get('/v1/admin/join-link',{preHandler:[authenticate,adminOnly]},async(req)=>{
+  const handle=staffHandle(req.auth.email),me=(await pool.query('select name from users where id=$1',[req.auth.sub])).rows[0],from=String(me?.name||'').trim().split(/\s+/)[0]||'',q=req.query||{};
+  const link=joinLink(clientHubUrl,{handle,name:q.name,email:q.email,company:q.company}),first=String(q.name||'').trim().split(/\s+/)[0];
+  return {handle,link,general:joinLink(clientHubUrl,{handle}),text:textFor({link,from,to:/@/.test(first)?'':first})};
+});
 // Client guide: how the hub works, with screenshots and an FAQ, plus the same guide as a PDF.
 const helpAssets=new URL('./help-assets/',import.meta.url);
 // The trade-fair page (the QR on the cards): brands start a tech pack, factories sign up for a referral link. Bilingual (see hub-i18n.js).
@@ -739,7 +757,7 @@ app.get('/i/:code',(_req,reply)=>reply.header('cache-control','no-store, max-age
 app.get('/print/:id',(_req,reply)=>reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./print.html',import.meta.url),'utf8')));
 app.get('/v1/public/config', async () => ({ workHubUrl, clientHubUrl, startProjectUrl, googleSsoEnabled }));
 app.get('/v1/session', { preHandler: authenticate }, async (req, reply) => {
-  const client = (await pool.query('select id,slug,name,status,archived_at from clients where id=$1', [req.auth.clientId])).rows[0];
+  const client = (await pool.query('select id,slug,name,status,archived_at,onboarding_status from clients where id=$1', [req.auth.clientId])).rows[0];
   if (!client || (req.auth.role !== 'admin' && (client.archived_at || ['archive','archived'].includes(client.status)))) return reply.code(404).send({ error: 'Client workspace not found' });
   return { user: { id: req.auth.sub, email: req.auth.email, role: req.auth.role, preview: req.auth.preview === true }, client, workHubUrl, clientHubUrl };
 });
@@ -1983,6 +2001,8 @@ app.get('/v1/dashboard', { preHandler: authenticate }, async (req,reply) => {
   // their agreements (contracts for digital work): shown in the hub, and the ones that need the signer's attention join "Waiting on you"
   const agreements=await contracts.hubContracts({clientId:id,userId:req.auth.sub,preview:Boolean(req.auth.preview)}).catch(e=>{app.log.warn({err:e.message},'hub agreements failed');return []});
   for(const a of agreements)if(a.needs&&a.link)waiting.push({kind:'contract',id:`ct-${a.id}`,needs:a.needs,title:a.needs==='sign'?`Sign ${a.title}`:'Add your payment details',product:a.title,at:a.needs==='sign'?a.sentAt:a.executedAt||a.sentAt,href:a.link,totalCents:a.totalCents,summary:a.summary,number:a.number});
+  // a new client's details are asked for first (the hub also opens the form on their first visit)
+  if(!req.auth.preview&&(await pool.query(`select 1 from clients where id=$1 and onboarding_status='pending'`,[id])).rowCount)waiting.push({kind:'onboarding',id:'onboarding',title:'Finish setting up your account',product:'Your account',at:new Date().toISOString()});
   waiting.sort((a,b)=>new Date(b.at)-new Date(a.at));
   return { requests: requests.rows, invoices: invoices.rows, projects: projects.rows.map(withSoftware),projectFinancials:projectFinancialRollups(projects.rows,products.rows,quotes.rows,invoices.rows),projectMessages: projectMessages.rows,projectFiles:projectFiles.rows,
     productComments:productComments.rows, products: products.rows.map(withRendering),
@@ -4514,6 +4534,8 @@ function cleanAttribution(a){if(!a||typeof a!=='object')return null;const pick=k
   Object.keys(out).forEach(k=>out[k]===undefined&&delete out[k]);if(out.referrer&&!/^https?:\/\//.test(out.referrer))delete out.referrer;return Object.keys(out).length?{...out,recordedAt:new Date().toISOString()}:null}
 // A buyer who arrived through a factory's link (source f-CODE) carries that factory on their room.
 async function withPartner(attribution){
+  const sm=/^s-([a-z0-9][a-z0-9-]{0,29})$/i.exec(attribution?.source||'');
+  if(sm){const who=await staffFor(sm[1]).catch(()=>null);const {source,...rest}=attribution;return who?{...rest,source:'staff link',staff:who.first,staffHandle:who.handle}:rest}
   const m=/^f-([A-Z0-9]{6})$/i.exec(attribution?.source||'');if(!m)return attribution;
   const p=(await pool.query('select id,company,code from partners where code=$1',[m[1].toUpperCase()])).rows[0];
   return p?{...attribution,partner:p.company,partnerId:p.id,partnerCode:p.code}:attribution;
@@ -4714,6 +4736,7 @@ app.post('/v1/public/join',async(req,reply)=>{
     }
     const user=(await db.query(`insert into users(client_id,email,name,role) values($1,$2,$3,'client') on conflict(email) do update set client_id=excluded.client_id,role=excluded.role returning *`,[client.id,email,name])).rows[0];
     if(brandNew||activatedLead)await db.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'new-account',$2,'client',$3)`,[client.id,`${company} opened a hub account (${name}, ${email})`,client.id]);
+    if(brandNew||activatedLead)await db.query(`update clients set onboarding_status='pending' where id=$1 and onboarding_status is null`,[client.id]); // the hub asks for the rest of their details on the first visit
     await db.query('commit');
     let token=null;
     if(brandNew)token=await issueClientToken(user,client,email,{unverified:true});

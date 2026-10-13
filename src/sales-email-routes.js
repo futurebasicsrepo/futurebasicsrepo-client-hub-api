@@ -5,6 +5,7 @@
 //   public  GET|POST /u/:token  (unsubscribe; the POST is also the one-click List-Unsubscribe target)   POST /webhooks/resend  (signed)
 import { cleanEmail } from './sales.js';
 import { fireTrigger, stopRuns } from './sales-automations-engine.js';
+import { joinLink, cleanHandle } from './onboarding.js';
 import { renderTemplate, firstNameOf, buildMessage, unsubscribeToken, readUnsubscribeToken, verifyWebhook, parseAddress, looksLikeOptOut, isAutoReply, stripQuoted, htmlToText, relationship, canEmail, MERGE_FIELDS, STARTER_TEMPLATES } from './sales-email.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -13,14 +14,24 @@ const DAY_START = `(date_trunc('day', now() at time zone 'utc') at time zone 'ut
 const maskEmail = e => { const [u, d] = String(e || '').split('@'); return d ? `${u.slice(0, 1)}${'*'.repeat(Math.max(1, Math.min(6, u.length - 1)))}@${d}` : ''; };
 const page = (title, inner) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>${title}</title><style>body{margin:0;background:#f5f5f2;color:#141416;font:16px/1.55 Arial,Helvetica,sans-serif;display:grid;place-items:center;min-height:100vh;padding:20px}main{background:#fff;border:1px solid #e3e3e0;border-radius:22px;padding:34px;max-width:460px;width:100%}h1{font-size:24px;margin:0 0 10px;font-weight:600}p{margin:0 0 16px;color:#444}button{font:inherit;font-weight:600;border:0;border-radius:999px;padding:13px 22px;background:#141416;color:#fff;cursor:pointer}small{color:#717177}</style></head><body><main>${inner}<p style="margin:22px 0 0"><small>Future Basics</small></p></main></body></html>`;
 
+// Starter templates added after the first launch: put in once for a place that already has its templates, and never again (a deleted one stays deleted).
+const LATER_STARTERS = ['Open your Future Basics hub'];
 export async function seedTemplates(pool) {
-  if (Number((await pool.query('select count(*) n from sales_templates')).rows[0].n)) return 0;
-  for (const t of STARTER_TEMPLATES) await pool.query('insert into sales_templates(name,subject,body) values($1,$2,$3)', [t.name, t.subject, t.body]);
-  return STARTER_TEMPLATES.length;
+  const mark = async name => (await pool.query(`insert into app_settings(key,value) values($1,'true'::jsonb) on conflict (key) do nothing`, [`salesTemplate:${name}`])).rowCount === 1;
+  const put = t => pool.query('insert into sales_templates(name,subject,body) values($1,$2,$3)', [t.name, t.subject, t.body]);
+  if (!Number((await pool.query('select count(*) n from sales_templates')).rows[0].n)) {
+    for (const t of STARTER_TEMPLATES) { await put(t); if (LATER_STARTERS.includes(t.name)) await mark(t.name); }
+    return STARTER_TEMPLATES.length;
+  }
+  let added = 0;
+  for (const t of STARTER_TEMPLATES.filter(x => LATER_STARTERS.includes(x.name))) {
+    if (await mark(t.name) && !(await pool.query('select 1 from sales_templates where name=$1', [t.name])).rowCount) { await put(t); added++; }
+  }
+  return added;
 }
 
 export function registerSalesEmailRoutes(app, d) {
-  const { pool, authenticate, adminOnly, secret, getSetting, setSetting, sendHubEmail, hubEmailShell, emailEscape, notifyTo, publicUrl, workUrl, log = console, fetchImpl = fetch } = d;
+  const { pool, authenticate, adminOnly, secret, getSetting, setSetting, sendHubEmail, hubEmailShell, emailEscape, notifyTo, publicUrl, hubUrl = publicUrl, workUrl, log = console, fetchImpl = fetch } = d;
   const pre = [authenticate, adminOnly], env = () => process.env;
   const bad = (reply, error, code = 422) => reply.code(code).send({ error });
   const apiKey = () => env().SALES_RESEND_API_KEY || env().RESEND_API_KEY || '';
@@ -59,7 +70,8 @@ export function registerSalesEmailRoutes(app, d) {
     return { c, contact: { email: c.email, unsubscribed: Boolean(c.unsubscribed_at), emailOk: c.email_ok }, rel: relationship({ clientId: c.client_id, kinds, invited }), suppressed: sup, build };
   }
   async function senderFirstName(req, s) { const u = UUID.test(String(req.auth?.sub || '')) ? (await pool.query('select name from users where id=$1', [req.auth.sub])).rows[0] : null; return firstNameOf(u?.name) || firstNameOf(s.fromName) || 'Kyle'; }
-  const varsFor = (f, sender) => ({ first_name: firstNameOf(f.c.name), name: f.c.name, company: f.c.company_name || '', build: f.build, sender });
+  // {{join_link}}: the hub sign-up page, in the sender's name, already filled in with what we know of this person
+  const varsFor = (f, sender) => ({ first_name: firstNameOf(f.c.name), name: f.c.name, company: f.c.company_name || '', build: f.build, sender, join_link: joinLink(hubUrl, { handle: cleanHandle(String(sender || '').toLowerCase()), name: /@/.test(f.c.name || '') ? '' : f.c.name, email: f.c.email, company: f.c.company_name }) });
   const render = (subject, body, vars) => { const s = renderTemplate(subject, vars), b = renderTemplate(body, vars); return { subject: s.text, body: b.text, missing: [...new Set([...s.missing, ...b.missing])], unknown: [...new Set([...s.unknown, ...b.unknown])] }; };
 
   app.get('/v1/sales/contacts/:id/email-check', { preHandler: pre }, async (req, reply) => {
