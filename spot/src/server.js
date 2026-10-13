@@ -8,7 +8,8 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { CartError, config, handoffLinks } from './cart.js';
-import { CaptureError, captureFromScreenshot, captureFromText, captureFromUrl, lookupCache, pageDetails, streamLookup } from './capture.js';
+import { CaptureError, captureFromScreenshot, captureFromText, captureFromUrl, lookupCache, pageDetails, splitText, streamLookup } from './capture.js';
+import { describePhoto, postAsk, postWarning, readPost, socialOf } from './social.js';
 import { openDb } from './db.js';
 import { approvalPage, bundleManagePage, bundlePayPage, bundleReceiptPage, homePage, managePage, notFoundPage, payPage, receiptPage } from './pages.js';
 import { pickProvider } from './providers.js';
@@ -235,6 +236,25 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   const aiHooks = { onUsage: (model, usage) => (metrics.ok('anthropic'), metrics.ai(model, usage)), onError: (err) => metrics.fail('anthropic', err) };
   const captureShot = capture.fromScreenshot || ((img) => captureFromScreenshot(img, aiHooks));
   const captureText = capture.fromText || ((t, o = {}) => captureFromText(t, { fromUrl: captureUrl, sizes: o.sizes, shipTo: o.shipTo, more: o.more, avoid: o.avoid, ...aiHooks }));
+  // A post shared from TikTok, Instagram, Pinterest…: what it shows, read
+  // once per half hour (the shelf asks again for every batch).
+  const posts = lookupCache({ max: 100 });
+  const readShared = async (url) => {
+    const hit = posts.get(url);
+    if (hit) return hit;
+    const post = await (capture.readPost || readPost)(url);
+    if (!post) return post;
+    post.seen = await (capture.describePhoto || describePhoto)(post, aiHooks).catch(() => '');
+    posts.set(url, post);
+    return post;
+  };
+  // The ask a shared post becomes: { text } to search for, or { post, warning }.
+  const sharedAsk = async (text) => {
+    const { url } = splitText(text);
+    if (!url || !socialOf(url)) return { text };
+    const post = await readShared(url);
+    return post?.caption || post?.seen ? { text: postAsk(post, text), post } : { post, warning: postWarning(post || socialOf(url)) };
+  };
   // A signed-in person's saved sizes, for lookups that don't name one.
   const sizesOf = (userId) => sizesLine(userId ? db.users.byId(userId)?.sizes : null);
   // Where their things ship ("Austin, TX"), so a lookup sticks to stores that deliver there.
@@ -610,7 +630,9 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
       // come back so the shelf can say what it used.
       const uid = accounts.userIdOf(req);
       const profile = { sizes: sizesOf(uid), ship_to: shipToOf(uid) };
-      const d = await captureText(String(b.text), { sizes: profile.sizes, shipTo: profile.ship_to, more: typeof b.more === 'string' ? b.more : '', avoid: Array.isArray(b.avoid) ? b.avoid.filter((u) => typeof u === 'string') : [] });
+      const shared = await sharedAsk(String(b.text));
+      if (shared.warning) return { source: 'text', merchant: { name: '', url: null }, items: [], not_found: true, warning: shared.warning };
+      const d = await captureText(shared.text, { sizes: profile.sizes, shipTo: profile.ship_to, more: typeof b.more === 'string' ? b.more : '', avoid: Array.isArray(b.avoid) ? b.avoid.filter((u) => typeof u === 'string') : [] });
       return uid ? { ...d, profile } : d;
     }
     if (b.image?.data) {
@@ -635,10 +657,11 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     reply.hijack();
     reply.raw.writeHead(200, { 'content-type': 'application/x-ndjson; charset=utf-8', 'cache-control': 'no-store', 'x-accel-buffering': 'no' });
     // Every product shown goes on a signed-in shopper's Shop page too.
+    let asked = text;
     const keep = (o) => {
       const it = o?.item;
       if (!it?.url || !it.image_url) return;
-      db.seen.add(uid, it.url, { merchant: { name: o.merchant?.name || '', url: o.merchant?.url || '' }, item: { title: it.title, url: it.url, image_url: it.image_url, price_cents: it.price_cents || null, variant: it.variant || null, quantity: 1 }, stock: o.stock || 'unknown', why: o.why || null, asked: text.slice(0, 120) });
+      db.seen.add(uid, it.url, { merchant: { name: o.merchant?.name || '', url: o.merchant?.url || '' }, item: { title: it.title, url: it.url, image_url: it.image_url, price_cents: it.price_cents || null, variant: it.variant || null, quantity: 1 }, stock: o.stock || 'unknown', why: o.why || null, asked: asked.slice(0, 120) });
     };
     const write = (e) => {
       if (uid) {
@@ -653,6 +676,14 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
       return reply.raw.destroyed || reply.raw.write(JSON.stringify(e) + '\n');
     };
     if (uid) write({ type: 'profile', profile });
+    // A shared post: say where it's from, then search for what it shows.
+    const shared = await sharedAsk(text).catch(() => ({ text }));
+    if (shared.text && shared.text !== text) asked = `${shared.post.name}: ${shared.post.caption || shared.post.seen}`;
+    if (shared.post) write({ type: 'post', name: shared.post.name, author: shared.post.author || '', caption: shared.post.caption || '', seen: shared.post.seen || '' });
+    if (shared.warning) {
+      write({ type: 'done', kind: null, count: 0, not_found: true, warning: shared.warning });
+      return reply.raw.end();
+    }
     const opts = {
       sizes: profile.sizes,
       shipTo: profile.ship_to,
@@ -663,7 +694,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
       count: Number(b.count) || undefined,
     };
     try {
-      await (capture.stream ? capture.stream(text, opts, write) : streamLookup(text, { ...opts, fromUrl: captureUrl, cache: recent, ...aiHooks }, write));
+      await (capture.stream ? capture.stream(shared.text, opts, write) : streamLookup(shared.text, { ...opts, fromUrl: captureUrl, cache: recent, ...aiHooks }, write));
     } catch (err) {
       req.log.warn({ err }, 'stream lookup');
       write({ type: 'done', kind: null, count: 0, not_found: true, warning: err instanceof CaptureError ? err.message : 'Something went wrong. Try again' });

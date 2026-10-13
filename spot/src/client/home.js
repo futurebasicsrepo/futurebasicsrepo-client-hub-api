@@ -343,10 +343,12 @@
     const btn = $('#go');
     btn.disabled = true;
     btn.textContent = 'reading…';
-    spot.think(true), say(image ? 'ooh, let me look at that…' : /https?:\/\//.test(text) ? 'grabbing it…' : 'looking it up…');
+    const shared = !image && socialLink(text);
+    spot.think(true), say(image ? 'ooh, let me look at that…' : shared ? 'reading that ' + shared + ' post…' : /https?:\/\//.test(text) ? 'grabbing it…' : 'looking it up…');
     try {
-      // Typed: the shelf opens right away and fills as the AI finds things.
-      if (!image && !/https?:\/\//.test(text)) {
+      // Typed, or a post from a social app (Spot finds what it shows at the
+      // brand's store): the shelf opens right away and fills as the AI finds things.
+      if (!image && (shared || !/https?:\/\//.test(text))) {
         forgetShelf();
         ask = { text, avoid: [] };
         made = null;
@@ -410,6 +412,14 @@
     }
   }
 
+  // A link from a social app → the app's name. Spot can't buy inside those
+  // apps, so the post becomes a search for what it shows (social.js).
+  function socialLink(text) {
+    const m = String(text).match(/https?:\/\/([^\/\s?#]+)/i);
+    const host = m ? m[1].toLowerCase().replace(/\.$/, '') : '';
+    const site = [[/(^|\.)tiktok\.com$/, 'TikTok'], [/(^|\.)instagram\.com$|^instagr\.am$/, 'Instagram'], [/(^|\.)threads\.(net|com)$/, 'Threads'], [/(^|\.)(facebook\.com|fb\.com|fb\.watch|fb\.me)$/, 'Facebook'], [/(^|\.)pinterest\.[a-z]{2,3}(\.[a-z]{2})?$|^pin\.it$/, 'Pinterest'], [/(^|\.)(youtube\.com|youtu\.be)$/, 'YouTube'], [/(^|\.)(x\.com|twitter\.com)$/, 'X'], [/(^|\.)snapchat\.com$/, 'Snapchat']].find(([re]) => re.test(host));
+    return site ? site[1] : '';
+  }
   // Nothing found: stay right here, say so, keep what they typed. Never a
   // cart with no product in it (and never a fee for nothing).
   function notFound(warning, text) {
@@ -666,6 +676,7 @@
     try {
       await streamed(body, (e) => {
         if (e.type === 'profile') (T.profile = e.profile), showUsed(T);
+        else if (e.type === 'post') !T.list.length && (e.caption || e.seen) && (T.el.querySelector('.spotsay span').textContent = 'that ' + e.name + (e.author ? ' from ' + e.author : '') + '. finding it at the store…');
         else if (e.type === 'searching') say(T.list.length ? 'finding more…' : 'searching stores…'), !T.list.length && spot.think(true);
         else if (e.type === 'checking') !T.list.length && (say('found some. getting their photos…'), spot.think(true));
         else if (e.type === 'pick' || e.type === 'outfit') {
