@@ -5,7 +5,7 @@ import { assetFiles, assetFile, catalogue, colorFacts, COLORS, kitZip, GROUPS } 
 
 const files = assetFiles();
 const magic = { png: b => b.subarray(1, 4).toString() === 'PNG', jpg: b => b[0] === 0xff && b[1] === 0xd8, webp: b => b.subarray(0, 4).toString() === 'RIFF' && b.subarray(8, 12).toString() === 'WEBP', pdf: b => b.subarray(0, 5).toString() === '%PDF-',
-  tiff: b => (b[0] === 0x49 && b[1] === 0x49 && b[2] === 42) || (b[0] === 0x4d && b[1] === 0x4d), ico: b => b.readUInt16LE(0) === 0 && b.readUInt16LE(2) === 1, svg: b => b.toString('utf8', 0, 200).includes('<svg'), woff2: b => b.subarray(0, 4).toString() === 'wOF2', ttf: b => b.readUInt32BE(0) === 0x00010000 || b.subarray(0, 4).toString() === 'true', css: b => b.length > 20, json: b => Boolean(JSON.parse(b.toString())), txt: b => b.length > 100 };
+  tiff: b => (b[0] === 0x49 && b[1] === 0x49 && b[2] === 42) || (b[0] === 0x4d && b[1] === 0x4d), ico: b => b.readUInt16LE(0) === 0 && b.readUInt16LE(2) === 1, svg: b => b.toString('utf8', 0, 200).includes('<svg'), gif: b => b.subarray(0, 3).toString() === 'GIF', woff2: b => b.subarray(0, 4).toString() === 'wOF2', ttf: b => b.readUInt32BE(0) === 0x00010000 || b.subarray(0, 4).toString() === 'true', css: b => b.length > 20, json: b => Boolean(JSON.parse(b.toString())), txt: b => b.length > 100 };
 
 test('every file name is unique and sits in a known group', () => {
   assert.equal(new Set(files).size, files.length);
@@ -48,5 +48,21 @@ test('the kit zip holds every file in folders, and nothing else', async () => {
   const z = await kitZip(); assert.equal(z.subarray(0, 2).toString(), 'PK');
   const eocd = z.length - 22; assert.equal(z.readUInt32LE(eocd), 0x06054b50); assert.equal(z.readUInt16LE(eocd + 10), files.length);
   assert.ok(z.toString('latin1').includes('Future Basics brand kit/Wordmark/Print/future-basics-wordmark-black-cmyk.pdf'));
+});
+test('the mark: a line and a dot, always forward, the dot Cue; one colour when asked; and a still, an animated SVG and a GIF that moves', async () => {
+  const svg = f => assetFile(f).then(a => a.buffer.toString());
+  const ink = await svg('future-basics-mark-ink.svg'); assert.match(ink, /rx="10"[^>]*fill="#141416"/); assert.match(ink, /<circle cx="284" cy="20" r="20" fill="#4BFF9A"/);
+  const black = await svg('future-basics-mark-black.svg'); assert.doesNotMatch(black, /4BFF9A/); assert.equal((black.match(/#000000/g) || []).length, 2);
+  const rev = await svg('future-basics-mark-reverse.svg'); assert.doesNotMatch(rev, /4BFF9A/);
+  assert.match((await assetFile('future-basics-mark-black-cmyk.pdf')).buffer.toString('latin1'), /DeviceCMYK/);
+  const loop = await svg('future-basics-mark-loop-on-light.svg'); assert.match(loop, /@keyframes run/); assert.match(loop, /prefers-reduced-motion/);
+  const g = await sharp((await assetFile('future-basics-mark-loop-on-ink.gif')).buffer, { animated: true }).metadata(); assert.ok(g.pages > 20 && g.width === 480 && g.pageHeight === 160, `${g.pages} ${g.width}x${g.pageHeight}`);
+  const lock = await svg('future-basics-lockup-ink.svg'); assert.match(lock, /fill-rule="evenodd"/); assert.match(lock, /#4BFF9A/);
+  const sheet = catalogue().groups.find(x => x.id === 'mark').items; for (const e of ['svg', 'pdf', 'png', 'webp', 'tiff', 'jpg', 'gif']) assert.ok(sheet.some(i => i.ext === e), e);
+});
+test('the favicon and app icons are the compact mark, not the wordmark', async () => {
+  const icon = (await assetFile('future-basics-icon-ink.svg')).buffer.toString(); assert.match(icon, /#4BFF9A/); assert.doesNotMatch(icon, / d="M 4/);
+  const tiny = await sharp((await assetFile('favicon-16.png')).buffer).raw().toBuffer({ resolveWithObject: true }); const px = []; for (let i = 0; i < tiny.data.length; i += 4) px.push(tiny.data.subarray(i, i + 3).join(','));
+  assert.ok(px.some(c => c === '75,255,154'), 'a green dot survives at 16 px'); // Cue
 });
 test('an unknown file is not found', async () => { assert.equal(await assetFile('../server.js'), null); assert.equal(await assetFile('nope.png'), null); });
