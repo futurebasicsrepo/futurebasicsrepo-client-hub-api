@@ -2592,6 +2592,14 @@
   renderMine();
   show('compose');
   const p = new URLSearchParams(location.search);
+  // From the setup tour: "Turn on Discover".
+  if (p.get('discover') === '1' && !discover) {
+    discover = true;
+    save(DISCOVER, true);
+    showDiscover();
+    history.replaceState(null, '', location.pathname + location.hash);
+    say('discover is on 🧭 what are you looking for?');
+  }
   const incoming = p.get('url') || p.get('text');
   if (p.get('draft')) {
     // From a store's "Ask someone to pay" button: its cart, ready to send.

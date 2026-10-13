@@ -37,6 +37,8 @@ test('🔑 add a passkey on /account, sign out, sign back in with it', { skip: !
   await page.locator('#codeForm button.btn').click();
   // Someone new gets the setup questions first; skipping them lands on the account.
   await page.waitForURL(`${base}/setup`);
+  // It opens with the tour; skip it, then skip the questions.
+  await page.click('#tSkip');
   await page.click('#skipAll');
   await page.waitForURL(`${base}/account`);
 

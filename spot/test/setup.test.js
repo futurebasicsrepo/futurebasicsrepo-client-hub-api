@@ -119,3 +119,20 @@ test('setup survives adding a phone, and merging in another account', async (t) 
   assert.equal((await as2('POST', '/v1/me/link/verify', { email: 'riley@example.com', code: l.body.code })).body.merged, true);
   assert.equal((await as2('GET', '/account')).status, 200);
 });
+
+test('setup opens with the tour: Spot & Shop, Discover, Kid Spot, Price Shield', async (t) => {
+  const { call } = app(t);
+  const as = await signIn(call, 'tour@example.com');
+  const page = (await as('GET', '/setup')).body;
+  const tour = page.slice(page.indexOf('id="tour"'), page.indexOf('id="su"'));
+  for (const name of ['Spot &amp; Shop', 'Discover', 'Kid Spot', 'Price Shield']) assert.ok(tour.includes(`<p class="tkick">${name}</p>`), name);
+  assert.match(tour, /id="tNext">Next</);
+  assert.match(tour, /id="tSkip">Skip the tour</);
+  // Shown once per phone (or with ?tour=1), then straight to the questions.
+  assert.match(page, /localStorage\.getItem\('spot:toured'\)==='1'/);
+  assert.match(page, /get\('tour'\)==='1'/);
+  // Done points at each feature.
+  for (const href of ['/new#shop', '/new?discover=1', '/account#family']) assert.ok(page.includes(`href="${href}"`), href);
+  // /new turns Discover on from the tour's link.
+  assert.match((await call('GET', '/client/home.js')).body, /p\.get\('discover'\) === '1'/);
+});
