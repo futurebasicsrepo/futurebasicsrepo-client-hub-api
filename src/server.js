@@ -703,7 +703,7 @@ app.get('/j',sendJoinShort);
 app.get('/j/:handle',sendJoinShort);
 // Staff: my link to text to a new customer, with the words to send. Optionally filled in for one person (?name=&email=&company=).
 app.get('/v1/admin/join-link',{preHandler:[authenticate,adminOnly]},async(req)=>{
-  const handle=staffHandle(req.auth.email),me=(await pool.query('select name from users where id=$1',[req.auth.sub])).rows[0],from=String(me?.name||'').trim().split(/\s+/)[0]||'',q=req.query||{};
+  const handle=staffHandle(req.auth.email),me=(await pool.query('select name from users where id=$1',[req.auth.sub])).rows[0],from=(String(me?.name||'').trim().split(/\s+/)[0]||'').replace(/^./,c=>c.toUpperCase()),q=req.query||{};
   const link=joinLink(clientHubUrl,{handle,name:q.name,email:q.email,company:q.company}),first=String(q.name||'').trim().split(/\s+/)[0];
   return {handle,link,general:joinLink(clientHubUrl,{handle}),text:textFor({link,from,to:/@/.test(first)?'':first})};
 });
