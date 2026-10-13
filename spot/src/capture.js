@@ -561,7 +561,7 @@ function* jsonLdNodes(html) {
   }
 }
 
-function readMeta(html) {
+export function readMeta(html) {
   const out = {};
   const re = /<meta\s+([^>]+?)\/?>/gi;
   let m;
@@ -578,7 +578,7 @@ function titleTag(html) {
   return html.match(/<title[^>]*>([^<]*)<\/title>/i)?.[1]?.trim();
 }
 
-function decode(s) {
+export function decode(s) {
   return String(s)
     .replace(/&amp;/g, '&')
     .replace(/&quot;/g, '"')
@@ -604,7 +604,7 @@ function prettyHost(host) {
   return core.charAt(0).toUpperCase() + core.slice(1);
 }
 
-async function readCapped(res, max) {
+export async function readCapped(res, max) {
   const reader = res.body.getReader();
   const chunks = [];
   let total = 0;
