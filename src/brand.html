@@ -41,6 +41,28 @@ h1{font-size:clamp(30px,5vw,52px);letter-spacing:-.035em;font-weight:500;margin:
 .spec{font-size:clamp(34px,6vw,60px);line-height:1.04;letter-spacing:-.03em;font-weight:500;margin:6px 0 4px}.spec.mono2{font:500 clamp(22px,4vw,34px)/1.2 'IBM Plex Mono',monospace;letter-spacing:.06em;text-transform:uppercase}
 .rules{display:grid;gap:10px 22px;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));margin:0;padding:0;list-style:none}.rules li{display:grid;gap:2px}.rules b{font-size:14px}.rules span{color:#33333a}
 .msg{font-size:13px;min-height:18px;color:var(--ok)}.msg.bad{color:var(--bad)}
+/* the mark section */
+.mk-hero{background:var(--ink);color:#fff;border-radius:24px;padding:clamp(18px,3vw,30px);display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:22px;align-items:center;margin-bottom:14px}
+.mk-hero img{width:100%;max-width:460px;height:auto;display:block;margin:0 auto}.mk-hero h3{font-size:20px;font-weight:500;letter-spacing:-.01em;margin:0 0 6px;color:#fff}.mk-hero p{margin:0 0 8px;color:#c9c9cf;max-width:46ch}
+.mk-con{display:grid;gap:4px;font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.06em;color:#9d9da4;text-transform:uppercase;margin-top:10px}
+.subh{font-size:16px;font-weight:600;margin:26px 0 4px}.subn{color:var(--dim);margin:0 0 12px;max-width:70ch}
+.use{display:flex;flex-direction:column}.use .demo{height:116px;display:grid;place-items:center;background:var(--fog);border-bottom:1px solid var(--line);padding:12px;overflow:hidden}
+.use .demo.dk{background:var(--ink)}.use .demo.kraft{background:#cdb591}
+.use .in{padding:14px 16px 16px;display:grid;gap:6px}.use h3{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.st{font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase;padding:2px 8px;border-radius:999px;background:var(--fog);color:var(--dim)}.st.now{background:#e3f6ea;color:var(--ok)}.st.new{background:var(--ink);color:#fff}
+.use .rule{font-size:12.5px;color:var(--dim);margin:0}.use b{font-weight:600}
+.d-bar{background:var(--ink);color:#fff;border-radius:10px;padding:14px 18px;font:600 15px 'Space Grotesk',sans-serif;letter-spacing:.08em;text-transform:uppercase;position:relative;display:inline-block}.d-bar:after{content:"";position:absolute;left:18px;bottom:7px;width:46px;height:2px;border-radius:1px;background:var(--cue)}
+.d-load{width:150px}.d-load img{width:100%;display:block}
+.d-track{position:relative;width:210px;height:10px;display:flex;align-items:center;justify-content:space-between}.d-track:before{content:"";position:absolute;left:0;right:0;height:4px;border-radius:2px;background:rgba(20,20,22,.18)}.d-track:after{content:"";position:absolute;left:0;width:50%;height:4px;border-radius:2px;background:var(--ink)}
+.d-track i{position:relative;z-index:1;width:10px;height:10px;border-radius:50%;background:#fff;border:2px solid var(--ink)}.d-track i.on{width:18px;height:18px;border:0;background:var(--cue);box-shadow:0 0 0 3px #fff}
+.d-lbl{display:flex;justify-content:space-between;width:230px;font:500 9.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);margin-top:8px}
+.d-div{text-align:left;width:190px}.d-div:before{content:"";display:block;width:34px;height:4px;border-radius:2px;background:var(--ink);margin-bottom:8px;position:relative}.d-div b{display:block;font-size:17px;font-weight:600;letter-spacing:-.01em}.d-div span{color:var(--dim);font-size:12px}
+.d-ico{display:flex;gap:14px;align-items:flex-end}.d-ico img{display:block;border-radius:6px}
+.d-doc{background:#fff;border:1px solid var(--line);width:150px;padding:10px 12px;border-radius:4px;box-shadow:0 6px 18px rgba(20,20,22,.12)}.d-doc .h{font:700 9px 'Space Grotesk',sans-serif;letter-spacing:.14em;border-bottom:1.5px solid var(--ink);padding-bottom:5px}.d-doc .h:after{content:"";display:inline-block;width:5px;height:5px;border-radius:50%;background:#2edc83;margin-left:5px}.d-doc i{display:block;height:4px;background:#e5e5e0;margin-top:7px;border-radius:2px}
+.d-mail{background:#fff;border:1px solid var(--line);width:170px;border-radius:8px;padding:12px;box-shadow:0 6px 18px rgba(20,20,22,.12)}.d-mail img{width:46px;display:block;margin-bottom:8px}.d-mail b{font-size:13px;display:block}.d-mail i{display:block;height:4px;background:#e5e5e0;margin-top:6px;border-radius:2px}
+.d-avatar{width:84px;height:84px;border-radius:50%;overflow:hidden;box-shadow:0 0 0 3px #fff,0 0 0 4px var(--line)}.d-avatar img{width:100%;height:100%;display:block}
+.d-kraft img{width:120px;display:block}
+@media(max-width:700px){.mk-hero{grid-template-columns:minmax(0,1fr)}}
 @media(max-width:700px){.pv{height:112px}.hero .acts .btn{flex:1 1 100%}}
 </style>
 </head>
@@ -72,11 +94,46 @@ function saveBlob(blob,name){const u=URL.createObjectURL(blob),a=document.create
 const shortTitle=t=>t.split(' · ').slice(1).join(' · ')||t;
 const PV=['svg','png','webp','jpg'];
 const pill=(it,label)=>`<button class="pill" type="button" data-file="${esc(it.file)}" title="${esc(it.note)}">${esc(label)}</button>`;
+const USE=[
+ {t:'Console and hub headers',st:'now',demo:'<div class="d-bar">Future Basics</div>',how:'The wordmark with the cue line under it, as every page header draws it today.',rule:'Form: <b>wordmark + cue</b> (lockup).'},
+ {t:'Loading and working',st:'new',demo:'<div class="d-load"><img alt="" data-pv="future-basics-mark-loop-on-light.svg"></div>',how:'The moving mark replaces spinners wherever something is running: the assistant drafting, a sync, an upload.',rule:'<b>One</b> moving mark per screen, and only while something is really happening.'},
+ {t:'Progress and handoffs',st:'new',demo:'<div><div class="d-track"><i></i><i class="on"></i><i></i></div><div class="d-lbl"><span>Client</span><span>Us</span><span>Factory</span></div></div>',how:'A line with stops, and the dot sits with whoever holds the work. It is the same idea as the “who has the ball” marker.',rule:'The dot is always <b>Cue</b>. The line behind it is Ink.'},
+ {t:'Section breaks and empty states',st:'new',demo:'<div class="d-div"><b>Nothing waiting on you</b><span>You are all caught up.</span></div>',how:'The line alone, short and thick, above a heading or an empty state. The full mark closes a finished list.',rule:'Short: <b>34 to 64 px</b> wide. Never full width.'},
+ {t:'Favicon, app and home screen',st:'now',demo:'<div class="d-ico"><img alt="" width="16" height="16" data-pv="favicon-16.png"><img alt="" width="32" height="32" data-pv="favicon-32.png"><img alt="" width="64" height="64" data-pv="icon-192.png"></div>',how:'The compact mark on Ink, on the hub, the work console and every page we send people to. The wordmark is too fine to read at 16 px, so it never goes in a favicon. (The Tech Pack app keeps its own icon.)',rule:'Use the <b>compact cut</b> for squares, from the icon files.'},
+ {t:'Documents and PDFs',st:'now',demo:'<div class="d-doc"><div class="h">FUTURE BASICS</div><i></i><i style="width:70%"></i><i style="width:84%"></i></div>',how:'The dot after the name in the letterhead is already the mark in miniature. On covers, add the line under the title.',rule:'Dot: <b>Cue (print)</b> green, or black in one-colour print.'},
+ {t:'Email',st:'now',demo:'<div class="d-mail"><img alt="" data-pv="future-basics-mark-ink-600.png"><b>Your agreement is ready</b><i></i><i style="width:76%"></i></div>',how:'A small line and dot sit above the heading in our own emails (welcome, agreements, reminders), drawn in plain HTML so they show everywhere. Signatures keep the wordmark.',rule:'About <b>48 px</b> wide. No animation in email except the GIF where it is safe.'},
+ {t:'Social and profile pictures',st:'new',demo:'<div class="d-avatar"><img alt="" data-pv="profile-picture-ink-1080.png"></div>',how:'The mark on Ink as the profile picture. Banners and link previews use the wordmark with the cue.',rule:'Stays inside the circle platforms crop to.'},
+ {t:'Print, packaging and merch',st:'new',demo:'<div class="d-kraft"><img alt="" data-pv="future-basics-mark-black-600.png"></div>',how:'One colour: black on kraft, white on dark. The dot works as a seal or sticker; the line as a label rule or tape.',rule:'One colour means <b>both</b> parts in the same colour.'}
+];
+function renderMark(g,cat){
+  const its=g.items,by=(re)=>its.filter(i=>re.test(i.file));
+  const cardOf=(label,list,previewFile,on)=>{const web=list.filter(i=>i.kind==='web'||i.kind==='both'),print=list.filter(i=>i.kind==='print'||i.kind==='both');
+    return `<article class="card"><div class="pv" style="background-color:${esc(on)}"><img alt="${esc(label)}" data-pv="${esc(previewFile)}"></div><div class="in"><h3>${esc(label)}</h3><span class="lbl">Web</span><div class="pills">${web.map(i=>pill(i,fileLabel(i))).join('')}</div><span class="lbl">Print</span><div class="pills">${print.map(i=>pill(i,fileLabel(i))).join('')}</div></div></article>`};
+  const ways=[['ink','Ink line, Cue dot'],['white','White line, Cue dot'],['black','Black (one colour)'],['reverse','White (one colour)']].map(([w,l])=>{const list=by(new RegExp('mark-'+w+'[.-]')),sv=list.find(i=>i.ext==='svg');return cardOf(l,list,sv.file,sv.on)});
+  const locks=[['ink','Wordmark + cue, Ink'],['white','Wordmark + cue, White']].map(([w,l])=>{const list=by(new RegExp('lockup-'+w+'[.-]')),sv=list.find(i=>i.ext==='svg');return cardOf(l,list,sv.file,sv.on)});
+  const motion=its.filter(i=>/mark-loop/.test(i.file));
+  return `<div class="mk-hero"><img alt="The mark, moving" data-pv="future-basics-mark-loop-on-dark.svg"><div><h3>The cue</h3><p>A line that has been running, and a dot that has arrived: work moving from one pair of hands to the next. It is already in the console headers and the letterheads; this makes it a proper mark.</p><p>The line is Ink or White. The dot is always Cue.</p><div class="mk-con"><span>Line · 240 × 20, round ends</span><span>Gap · 24 · Dot · 40 across</span><span>Clear space · one dot all round</span><span>Smallest · 48 px wide, 12 mm in print</span></div></div></div>
+  <div class="grid two">${ways.join('')}${locks.join('')}</div>
+  <h3 class="subh">Moving</h3><p class="subn">For anything loading or in progress. The SVG plays anywhere a web page can; the GIF is for email, Slack and slides.</p>
+  <div class="grid two">${motion.map(i=>`<article class="card"><div class="pv" style="background-color:${esc(i.on)}">${i.ext==='svg'?`<img alt="" data-pv="${esc(i.file)}">`:`<img alt="" data-pv="${esc(i.file)}">`}</div><div class="in"><h3>${esc(i.title)}</h3><p class="sub">${esc(i.note)}</p><div class="pills" style="margin-top:auto">${pill(i,'Download '+i.ext.toUpperCase())}</div></div></article>`).join('')}</div>
+  <h3 class="subh">Where it goes</h3><p class="subn">The wordmark says who we are. The mark says that work is moving. Use the wordmark where the name has to be read, the lockup for headers and covers, and the mark alone where the name is already nearby or space is small.</p>
+  <div class="grid">${USE.map(u=>`<article class="card use"><div class="demo${/kraft/.test(u.demo)?' kraft':''}">${u.demo}</div><div class="in"><h3>${esc(u.t)}<span class="st ${u.st}">${u.st==='now'?'In use':'New'}</span></h3><p class="sub" style="margin:0;color:#33333a">${esc(u.how)}</p><p class="rule">${u.rule}</p></div></article>`).join('')}</div>
+  <h3 class="subh">Rules for the mark</h3>
+  <section class="panel"><ul class="rules">
+   <li><b>Always runs forward</b><span>The line is on the left and the dot is on the right. Never flip it, never rotate it, never put the dot first.</span></li>
+   <li><b>Cue is the dot, only the dot</b><span>The line is Ink on light and White on dark. In one-colour print, both parts are the same colour. Cue on Cue disappears: on a green background use Ink for both.</span></li>
+   <li><b>Room and size</b><span>Leave one dot's width on every side. Never smaller than 48 px wide on screen or 12 mm in print. On squares and under 48 px use the compact cut.</span></li>
+   <li><b>Movement means something</b><span>Moving only while something is running, one per screen, and still when someone has asked for less motion. The animated files already do this.</span></li>
+   <li><b>Do not change it</b><span>No outlines, shadows, gradients or extra dots. Do not stretch it, change the weights, or make the line longer to fill a space.</span></li>
+   <li><b>Do not crowd the wordmark</b><span>With the name use the lockup. Do not put the mark beside the wordmark at a different size.</span></li></ul></section>`;
+}
+function fileLabel(i){const m=/-(\d+)\.(png|webp)$/.exec(i.file),size=m?' '+m[1]:'';return i.ext.toUpperCase().replace('JPG','JPG on white')+(/300dpi/.test(i.file)?' 300 dpi':size)}
 function render(cat){
   const out=[];
   for(const g of cat.groups){
     let body='';
-    if(g.id==='logo'){
+    if(g.id==='mark'){body=renderMark(g,cat)}
+    else if(g.id==='logo'){
       const ways=[...new Set(g.items.map(i=>(/wordmark-(ink|white|black|cue)/.exec(i.file)||[])[1]).filter(Boolean))];
       body='<div class="grid two">'+ways.map(w=>{const its=g.items.filter(i=>!i.file.includes('on-ink')&&(i.file.includes('wordmark-'+w+'.')||i.file.includes('wordmark-'+w+'-'))),sv=its.find(i=>i.ext==='svg');
         const web=its.filter(i=>i.kind==='web'||i.kind==='both'),print=its.filter(i=>i.kind==='print'||i.kind==='both');

@@ -273,7 +273,7 @@ const emailOutbox=[];
 app.get('/v1/dev/outbox',async(req,reply)=>{
   if(process.env.EMAIL_CAPTURE!=='1')return reply.code(404).send({error:'Not found'});
   const to=String(req.query?.to||'').toLowerCase(),since=Number(req.query?.since)||0;
-  return {emails:emailOutbox.filter(e=>e.at>=since&&(!to||e.to===to)).map(e=>({to:e.to,subject:e.subject,at:e.at,text:e.html.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim().slice(0,600),links:[...e.html.matchAll(/href="([^"]+)"/g)].map(m=>m[1].replace(/&amp;/g,'&'))}))};
+  return {emails:emailOutbox.filter(e=>e.at>=since&&(!to||e.to===to)).map(e=>({to:e.to,subject:e.subject,at:e.at,html:e.html.slice(0,6000),text:e.html.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim().slice(0,600),links:[...e.html.matchAll(/href="([^"]+)"/g)].map(m=>m[1].replace(/&amp;/g,'&'))}))};
 });
 async function sendHubEmail({to,subject,html,replyTo,from,headers}){
   if(process.env.EMAIL_CAPTURE==='1'){emailOutbox.push({to:String(to).toLowerCase(),subject,html,at:Date.now()});if(emailOutbox.length>300)emailOutbox.shift();return true}
@@ -283,7 +283,7 @@ async function sendHubEmail({to,subject,html,replyTo,from,headers}){
   if(!response.ok)throw new Error(`Hub email delivery failed: ${response.status}`);return true;
 }
 const hubButton=(href,label)=>`<p style="margin:24px 0"><a href="${emailEscape(href)}" style="display:inline-block;padding:14px 22px;border-radius:999px;background:#141416;color:#fff;text-decoration:none;font-weight:600">${emailEscape(label)}</a></p>`;
-const hubEmailShell=(title,body)=>`<div style="font-family:Arial,Helvetica,sans-serif;color:#141416;max-width:640px;line-height:1.5"><p style="font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:#717177">Future Basics · Client hub</p><h1 style="font-size:24px;margin:8px 0 18px">${emailEscape(title)}</h1>${body}<p style="margin-top:32px;font-size:12px;color:#717177">Future Basics · product development, from brief to delivery · reply to this email to reach us.</p></div>`;
+const hubEmailShell=(title,body)=>`<div style="font-family:Arial,Helvetica,sans-serif;color:#141416;max-width:640px;line-height:1.5"><div style="line-height:0;margin:0 0 12px"><span style="display:inline-block;width:50px;height:4px;border-radius:2px;background:#141416;vertical-align:middle"></span><span style="display:inline-block;width:8px;height:8px;border-radius:4px;background:#4bff9a;margin-left:5px;vertical-align:middle"></span></div><p style="font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:#717177;margin:0">Future Basics · Client hub</p><h1 style="font-size:24px;margin:8px 0 18px">${emailEscape(title)}</h1>${body}<p style="margin-top:32px;font-size:12px;color:#717177">Future Basics · product development, from brief to delivery · reply to this email to reach us.</p></div>`;
 // Handoff emails. Staff hear when a client acts; the client's contact hears when something waits on them. A delivery problem is
 // logged and never fails the action that triggered it (the console notice and the hub panel still show it).
 const staffEmail=process.env.STAFF_NOTIFICATION_EMAIL||intakeNotificationEmail;

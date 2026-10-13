@@ -3,7 +3,7 @@
 // a bank debit settles later; a payment that was taken is booked in QuickBooks and the ledger exactly once, even when QuickBooks is down at that moment.
 import http from 'node:http';
 import { createRequire } from 'node:module';
-import { journey, ok, summary, api, jpeg, sleep, sql, stamp, forge } from './lib.mjs';
+import { journey, ok, summary, api, jpeg, sleep, sql, stamp, forge, sharp } from './lib.mjs';
 import { buildPlan } from '../../src/contracts.js';
 import { signWebhook } from '../../src/stripe-payments.js';
 let playwright = null; try { playwright = createRequire(import.meta.url)(process.env.PLAYWRIGHT_PATH || 'playwright'); } catch {}
@@ -363,4 +363,16 @@ try {
     const back = await K('/autopay/processor', { method: 'PUT', body: { processor: 'quickbooks' } }); ok(back.status === 200 && back.json.payments.processor === 'quickbooks', 'and staff can switch back to QuickBooks Payments');
   });
 } finally { mock.close(); stripeMock.close(); }
+
+// The mark in the places people see it: the hub's icons, the link-preview picture, the pages whose links get shared, and the header of our own emails.
+await journey('J186', 'The cue mark is in the hub icons, the link preview, the pages people share and our own emails', async () => {
+  const png = async f => { const r = await fetch(BASE + '/icons/' + f), b = Buffer.from(await r.arrayBuffer()), m = await sharp(b).metadata(), raw = await sharp(b).raw().toBuffer({ resolveWithObject: true }); let cue = 0; for (let i = 0; i < raw.data.length; i += raw.info.channels) if (raw.data[i] === 75 && raw.data[i + 1] === 255 && raw.data[i + 2] === 154) cue++; return { status: r.status, w: m.width, h: m.height, cue }; };
+  for (const [f, w, h] of [['icon-192.png', 192, 192], ['icon-512.png', 512, 512], ['icon-maskable-512.png', 512, 512], ['apple-touch-icon.png', 180, 180], ['og-brand.png', 1200, 630]]) { const r = await png(f); ok(r.status === 200 && r.w === w && r.h === h && r.cue > 20, `${f} is the mark at ${w}×${h} (a Cue dot is in it)`, r); }
+  const tp = await png('techpack-v3-192.png'); ok(tp.status === 200 && tp.cue === 0, 'the Tech Pack app keeps its own icon');
+  for (const [path, og] of [['/start', true], ['/help', true], ['/join', true], ['/fair', true], ['/hub', true]]) { const r = await call(path); ok(r.status === 200 && (!og || (/og:image" content="https:\/\/hub\.thefuturebasics\.com\/icons\/(og-brand|og-join)\.png"/.test(r.text) && /twitter:card/.test(r.text))), `${path} has a link-preview picture`, r.status); }
+  for (const path of ['/start', '/help', '/fair', '/hub', '/join']) ok(!/techpack-v3/.test((await call(path)).text) || path === '/start', `${path} does not use the Tech Pack app icon${path === '/start' ? ' (it is the Tech Pack front door)' : ''}`);
+  const mail = `mark186-${stamp}@brandmail.test`, j = await call('/v1/public/join', { body: { company: `Mark Co ${stamp}`, name: 'Mia Mark', email: mail } }); ok(j.status === 201, 'setup: a join sends the welcome email', j.status);
+  const mails = await outbox(mail), e = mails.find(x => /hub is ready/i.test(x.subject));
+  ok(e && /width:50px;height:4px;border-radius:2px;background:#141416/.test(e.html) && /width:8px;height:8px;border-radius:4px;background:#4bff9a/.test(e.html) && e.html.indexOf('background:#141416') < e.html.indexOf('Client hub'), 'our email opens with the line and the dot, above the words', e?.html?.slice(0, 200));
+});
 const bad = summary(); process.exit(bad ? 1 : 0);
