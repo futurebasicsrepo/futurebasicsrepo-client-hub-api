@@ -156,6 +156,8 @@ body.scrolled .topbar{border-bottom:.5px solid var(--hair)}
 /* Shop: photos float on their own, words sit under them. */
 .shophead{margin:18px 0 16px}.shoptitle{font-size:34px;font-weight:700;letter-spacing:-.035em}
 .grid{gap:26px 14px}
+.shopsec{grid-column:1/-1;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin:4px 0 -10px}.shopsec b{font-size:17px;letter-spacing:-.01em}.shopsec span{color:var(--muted);font-size:14px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+.grid .shopsec:not(:first-child){margin-top:14px}
 .tile{border:0;border-radius:0;background:transparent;overflow:visible;transition:none}
 .tile:hover{transform:none;box-shadow:none}
 .tile .ph{border:0;border-radius:18px;background:#fff;box-shadow:var(--depth);transition:transform .3s var(--ease)}

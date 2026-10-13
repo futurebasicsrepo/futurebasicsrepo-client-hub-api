@@ -344,6 +344,8 @@
     btn.disabled = true;
     btn.textContent = 'reading…';
     const shared = !image && socialLink(text);
+    // A new search: what it finds goes at the top of Shop (shopView).
+    save(SEARCH_AT, Date.now());
     spot.think(true), say(image ? 'ooh, let me look at that…' : shared ? 'reading that ' + shared + ' post…' : /https?:\/\//.test(text) ? 'grabbing it…' : 'looking it up…');
     try {
       // Typed, or a post from a social app (Spot finds what it shows at the
@@ -1317,6 +1319,14 @@
   // choose and turn down (and, signed in, kept on their account to shape
   // new searches too).
   const SHOP_PREFS = 'spot:shopPrefs';
+  // When their newest search started. Its finds sit at the top of Shop until
+  // they pick a sort or filter themselves (prefs.unpinned).
+  const SEARCH_AT = 'spot:searchAt';
+  const pinAt = () => {
+    const at = load(SEARCH_AT, 0);
+    return at && prefs.unpinned !== at ? at : 0;
+  };
+  let pinN = 0;
   let shopAll = [];
   let prefs = { sort: null, filters: {}, hidden: [], ...load(SHOP_PREFS, {}) };
   const savePrefs = () => save(SHOP_PREFS, prefs);
@@ -1361,13 +1371,19 @@
   const PRICES = [0, 25, 50, 100, 250, 500, 1000, 2500];
   const STORES_SHOWN = 8;
   let storesAll = false;
-  const sortNow = () => prefs.sort || (taste.n >= 5 ? 'foryou' : 'new');
+  // Newest first unless they choose otherwise ("For you" is one tap away).
+  const sortNow = () => prefs.sort || 'new';
   // Sorting and filtering by store data needs the card facts for the whole page.
   const needsFacts = () => ['deal', 'price_asc', 'price_desc', 'protect'].includes(sortNow()) || prefs.filters.sale || prefs.filters.protect || prefs.filters.freeret || prefs.filters.max;
   function shopView() {
     const f = prefs.filters;
     const hidden = new Set(prefs.hidden || []);
-    let list = shopAll.filter((o) => !hidden.has(o.asked || ''));
+    // Their newest search first, as found, whatever the sort and filters say.
+    const at = pinAt();
+    const pinned = at ? shopAll.filter((o) => (o.seen_at || 0) >= at && !hidden.has(o.asked || '')).sort((a, b) => (b.seen_at || 0) - (a.seen_at || 0)) : [];
+    pinN = pinned.length;
+    const isPinned = new Set(pinned);
+    let list = shopAll.filter((o) => !hidden.has(o.asked || '') && !isPinned.has(o));
     list = list.filter((o) => {
       const d = dataOf(o);
       if (f.instock && d.stock === 'out') return false;
@@ -1391,7 +1407,7 @@
       protect: (o) => -(dataOf(o).protect ? 100 + dataOf(o).protectDays : 0),
       stock: (o) => (dataOf(o).stock === 'in' ? 0 : dataOf(o).stock === 'out' ? 2 : 1),
     }[s];
-    return list.map((o) => [by(o), -(o.seen_at || 0), o]).sort((a, b) => a[0] - b[0] || a[1] - b[1]).map((x) => x[2]);
+    return [...pinned, ...list.map((o) => [by(o), -(o.seen_at || 0), o]).sort((a, b) => a[0] - b[0] || a[1] - b[1]).map((x) => x[2])];
   }
   const shopTile = (o, i) => {
     const w = watched.get(o.item.url);
@@ -1430,6 +1446,14 @@
       if (prev && inView) inView.unobserve(prev);
       return el;
     }));
+    // The latest search's finds under their own heading, then the rest.
+    if (pinN) {
+      const head = (h, sub) => Object.assign(document.createElement('div'), { className: 'shopsec', innerHTML: '<b>' + h + '</b>' + (sub ? '<span>' + sub + '</span>' : '') });
+      const q = shopList[0].asked || '';
+      grid.prepend(head('Your latest search', q ? '“' + esc(q.length > 60 ? q.slice(0, 57) + '…' : q) + '”' : ''));
+      const n = activeCount();
+      if (shopList.length > pinN) grid.children[pinN + 1].before(head('Everything else', ((SORTS.find((x) => x[0] === sortNow()) || [])[1] || '').replace('✨ ', '') + (n ? ' · ' + n + (n === 1 ? ' filter' : ' filters') : '')));
+    }
     const active = activeCount();
     $('#shopEmpty').hidden = shopAll.length > 0;
     $('#shopNone').hidden = !(shopAll.length && !shopList.length);
@@ -1491,6 +1515,8 @@
     const t = b.dataset.tool;
     const v = b.dataset.v;
     const f = prefs.filters;
+    // Their own sort or filter: the whole page follows it, latest search included.
+    if (['sort', 'filter', 'max', 'store', 'clear'].includes(t)) prefs.unpinned = load(SEARCH_AT, 0);
     if (t === 'sort') prefs.sort = v;
     else if (t === 'filter') f[v] = !f[v];
     else if (t === 'max') f.max = Number(v) || 0;
@@ -1518,7 +1544,7 @@
       taste = blankTaste();
       save(TASTE, taste);
       if (account) api('/v1/me/taste', { reset: true }).catch(() => {});
-    } else if (t === 'clear') (prefs = { sort: null, filters: {}, hidden: [] }), (storesAll = false);
+    } else if (t === 'clear') (prefs = { sort: null, filters: {}, hidden: [], unpinned: prefs.unpinned }), (storesAll = false);
     else if (t === 'done') return closeTools();
     else if (t === 'all-stores') return (storesAll = !storesAll), renderTools();
     savePrefs();
