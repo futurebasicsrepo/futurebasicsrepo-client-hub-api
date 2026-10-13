@@ -3,6 +3,7 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm install --omit=dev
 COPY src ./src
+COPY themes ./themes
 RUN mkdir -p /data/uploads
 ENV NODE_ENV=production PORT=3000 UPLOAD_DIR=/data/uploads
 EXPOSE 3000

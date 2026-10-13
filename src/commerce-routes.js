@@ -5,21 +5,22 @@
 //   PUT /v1/admin/builds/:id/catalog                            the products the build sells
 //   POST /v1/admin/builds/:id/push                              preview or run a push to the client's platform
 import { cleanPlatform, platformLabel } from './software.js';
+import { THEMES, themeKeys, themeFiles, zipOf, signThemeToken, readThemeToken } from './theme-pack.js';
 import { cleanCatalog, catalogFromText, catalogToText, planPush, pushToShopify, pushToSquare, pushToWix, summarize, PUSH_PLATFORMS, SQUARE_ORIGIN, SQUARE_VERSION, WIX_ORIGIN } from './commerce.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CURRENCY = /^[A-Z]{3}$/;
 
 export function registerCommerceRoutes(app, d) {
-  const { pool, authenticate, adminOnly, tokenSeal, storeExec, liveStores, storeView, env = process.env, log = console, fetchImpl = fetch } = d;
+  const { pool, authenticate, adminOnly, tokenSeal, storeExec, liveStores, storeView, env = process.env, log = console, fetchImpl = fetch, publicUrl = 'https://hub.thefuturebasics.com', secret: themeSecret = 'dev', throttle = () => true } = d;
   const pre = [authenticate, adminOnly], bad = (reply, error, code = 422) => reply.code(code).send({ error });
   const needId = (req, reply) => UUID.test(req.params.id) || (bad(reply, 'Not found', 404), false);
   const actorOf = req => (UUID.test(String(req.auth?.sub || '')) ? req.auth.sub : null);
   const running = new Set();
-  const connView = r => r ? { connected: r.status === 'connected', status: r.status, label: r.meta?.label || '', currency: r.meta?.currency || '', siteId: r.meta?.siteId || '', since: r.created_at } : { connected: false, status: 'none' };
+  const connView = r => r ? { connected: r.status === 'connected', status: r.status, label: r.meta?.label || '', currency: r.meta?.currency || '', siteId: r.meta?.siteId || '', shop: r.meta?.shop || '', since: r.created_at } : { connected: false, status: 'none' };
   async function targets(clientId) {
     const conns = (await pool.query('select * from client_commerce_connections where client_id=$1', [clientId])).rows, by = Object.fromEntries(conns.map(c => [c.platform, c]));
-    return { shopify: (await liveStores(clientId)).map(storeView), square: connView(by.square), wix: connView(by.wix) };
+    return { shopify: (await liveStores(clientId)).map(storeView), square: connView(by.square), wix: connView(by.wix), shopifyTheme: connView(by['shopify-theme']) };
   }
 
   app.get('/v1/admin/commerce/clients', { preHandler: pre }, async () => ({ clients: (await pool.query(`select id,name,commerce_platform from clients where archived_at is null and status not in ('archive','archived') and slug<>'future-basics' order by name`)).rows.map(c => ({ id: c.id, name: c.name, platform: c.commerce_platform || '' })) }));
@@ -35,6 +36,14 @@ export function registerCommerceRoutes(app, d) {
   app.put('/v1/admin/clients/:id/commerce/connection', { preHandler: pre }, async (req, reply) => {
     if (!needId(req, reply)) return; if (!tokenSeal.ready) return bad(reply, 'Connections cannot be saved yet: the service has no key to seal them with (SHOPIFY_TOKEN_KEY).', 503);
     const b = req.body || {}, platform = String(b.platform || '');
+    if (platform === 'shopify-theme') {
+      const shop = String(b.shop || '').trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, ''), key = String(b.token || '').trim();
+      if (!/^[a-z0-9][a-z0-9-]{0,60}\.myshopify\.com$/.test(shop)) return bad(reply, 'The store address looks like their-store.myshopify.com');
+      if (key.length < 8 || key.length > 4000 || /\s/.test(key)) return bad(reply, 'Paste the Admin API access token of the app made in their store (it starts with shpat_)');
+      if (!(await pool.query('select 1 from clients where id=$1', [req.params.id])).rowCount) return bad(reply, 'Not found', 404);
+      const row = (await pool.query(`insert into client_commerce_connections(client_id,platform,secret_sealed,meta) values($1,'shopify-theme',$2,$3) on conflict (client_id,platform) do update set secret_sealed=excluded.secret_sealed, meta=excluded.meta, status='connected', updated_at=now() returning *`, [req.params.id, tokenSeal.seal(key), { shop, label: String(b.label || '').trim().slice(0, 80) }])).rows[0];
+      return { ok: true, connection: connView(row) };
+    }
     if (!['square', 'wix'].includes(platform)) return bad(reply, 'Shopify stores are connected by the client from their hub. Here: Square or Wix.');
     const secret = String(platform === 'square' ? b.token : b.apiKey || '').trim(); if (secret.length < 8 || secret.length > 4000 || /\s/.test(secret)) return bad(reply, platform === 'square' ? 'Paste the Square access token' : 'Paste the Wix API key');
     const meta = { label: String(b.label || '').trim().slice(0, 80) };
@@ -48,6 +57,53 @@ export function registerCommerceRoutes(app, d) {
     if (!needId(req, reply)) return; const n = (await pool.query('delete from client_commerce_connections where client_id=$1 and platform=$2', [req.params.id, req.params.platform])).rowCount; return n ? { ok: true } : bad(reply, 'Not found', 404);
   });
 
+
+  // ---------- sending a theme we made to a client's store as an unpublished draft ----------
+  // Shopify only lets an app change themes if Shopify has given it an exemption, but an app the client makes in their own store (Settings, Apps, Develop apps, with the
+  // "themes" permission) is allowed. Its key is saved sealed, like the Square and Wix ones. Without it, the theme is a zip to upload (Themes, Add theme, Upload zip file).
+  const themeList = () => themeKeys().map(k => { const f = themeFiles(k); return { key: k, name: THEMES[k].name, files: f.length, kb: Math.round(f.reduce((n, x) => n + x.data.length, 0) / 1024) }; });
+  app.get('/v1/admin/themes', { preHandler: pre }, async () => ({ themes: themeList() }));
+  app.get('/v1/admin/themes/:key/zip', { preHandler: pre }, async (req, reply) => {
+    if (!themeKeys().includes(req.params.key)) return bad(reply, 'Not found', 404);
+    return reply.type('application/zip').header('content-disposition', `attachment; filename="${req.params.key}-theme.zip"`).header('cache-control', 'no-store').send(zipOf(themeFiles(req.params.key)));
+  });
+  // What Shopify fetches when a theme is sent: no sign-in, but only with an address we signed for that theme a few minutes ago.
+  app.get('/v1/public/theme-zip/:token', async (req, reply) => {
+    if (!throttle(`theme-zip:${req.ip}`, { limit: 30, windowMs: 3600_000 })) return bad(reply, 'Too many tries', 429);
+    const key = readThemeToken(themeSecret, req.params.token); if (!key) return bad(reply, 'This link has expired', 404);
+    return reply.type('application/zip').header('cache-control', 'no-store').header('x-robots-tag', 'noindex').send(zipOf(themeFiles(key)));
+  });
+  const THEME_CREATE = `mutation ThemeCreate($name: String, $source: URL!) { themeCreate(name: $name, source: $source) { theme { id name role } userErrors { code field message } } }`;
+  app.post('/v1/admin/builds/:id/push-theme', { preHandler: pre }, async (req, reply) => {
+    if (!needId(req, reply)) return; const b = (await pool.query('select id,name from builds where id=$1', [req.params.id])).rows[0]; if (!b) return bad(reply, 'Not found', 404);
+    const clientId = String(req.body?.clientId || ''); if (!UUID.test(clientId)) return bad(reply, 'Choose which client this is for');
+    const c = (await pool.query('select id,name from clients where id=$1', [clientId])).rows[0]; if (!c) return bad(reply, 'Client not found', 404);
+    const key = String(req.body?.theme || ''); if (!themeKeys().includes(key)) return bad(reply, 'Choose one of the themes in the list');
+    const conn = (await pool.query(`select * from client_commerce_connections where client_id=$1 and platform='shopify-theme'`, [c.id])).rows[0];
+    if (!conn || conn.status !== 'connected') return bad(reply, conn ? `Connect ${c.name}'s store key again: the saved one no longer works.` : `Connect ${c.name}'s store key first (an app made in their store with the themes permission), or download the zip and upload it in their Themes page.`, 409);
+    const token = tokenSeal.open(conn.secret_sealed); if (!token) return bad(reply, `Connect ${c.name}'s store key again: the saved one can no longer be opened.`, 409);
+    const shop = conn.meta?.shop || '', name = String(req.body?.name || '').replace(/[\u0000-\u001F]+/g, ' ').trim().slice(0, 50) || `${THEMES[key].name} (draft ${new Date().toISOString().slice(0, 10)})`;
+    const files = themeFiles(key);
+    if (req.body?.preview === true) return { preview: true, theme: THEMES[key].name, name, shop, files: files.length, note: 'It is added to their Themes as a draft: nothing on their live store changes until they publish it.' };
+    const lock = `theme:${c.id}:${key}`; if (running.has(lock)) return bad(reply, 'That theme is already being sent to this store', 409);
+    running.add(lock);
+    try {
+      const origin = String(env.SHOPIFY_THEME_ORIGIN || `https://${shop}`).replace(/\/$/, ''), version = env.SHOPIFY_API_VERSION || '2026-07', zipUrl = `${String(publicUrl).replace(/\/$/, '')}/v1/public/theme-zip/${signThemeToken(themeSecret, key)}.zip`;
+      let status = 'done', report;
+      try {
+        const res = await fetchImpl(`${origin}/admin/api/${version}/graphql.json`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Shopify-Access-Token': token }, body: JSON.stringify({ query: THEME_CREATE, variables: { name, source: zipUrl } }) });
+        const j = await res.json().catch(() => ({}));
+        if (res.status === 401 || res.status === 403) { await pool.query(`update client_commerce_connections set status='needs-reconnect', updated_at=now() where id=$1`, [conn.id]).catch(() => {}); return bad(reply, `${shop} no longer lets this key in, or it lacks the themes permission. Make a new key with "Themes: read and write" and connect it again.`, 409); }
+        const errs = j?.data?.themeCreate?.userErrors || [], t = j?.data?.themeCreate?.theme;
+        if (!res.ok || j.errors?.length || errs.length || !t) {
+          const why = (errs.map(e => e.message).concat((j.errors || []).map(e => e.message)).join('; ') || `Shopify answered ${res.status}`).slice(0, 300);
+          status = 'failed'; report = { summary: { created: 0, failed: 1, skipped: 0 }, items: [{ name, outcome: 'failed', reason: why }] };
+        } else report = { summary: { created: 1, failed: 0, skipped: 0 }, items: [{ name, outcome: 'created', externalId: t.id, note: `${files.length} files, saved as a draft (${String(t.role || 'unpublished').toLowerCase()})` }] };
+      } catch (e) { log.warn?.({ err: e.message }, 'theme push failed'); status = 'failed'; report = { summary: { created: 0, failed: 1, skipped: 0 }, items: [{ name, outcome: 'failed', reason: String(e.message).slice(0, 300) }] }; }
+      const row = (await pool.query(`insert into build_pushes(build_id,client_id,platform,target,status,report,pushed_by) values($1,$2,'shopify-theme',$3,$4,$5,$6) returning id,created_at`, [b.id, c.id, shop, status, report, actorOf(req)])).rows[0];
+      return reply.code(status === 'failed' ? 502 : 201).send({ push: { id: row.id, platform: 'shopify-theme', platformLabel: 'Shopify theme', target: shop, status, summary: report.summary, items: report.items, at: row.created_at } });
+    } finally { running.delete(lock); }
+  });
   app.put('/v1/admin/builds/:id/catalog', { preHandler: pre }, async (req, reply) => {
     if (!needId(req, reply)) return;
     const list = Array.isArray(req.body?.items) ? req.body.items : typeof req.body?.text === 'string' ? catalogFromText(req.body.text) : null; if (!list) return bad(reply, 'Send the products as a list or as text, one per line');
@@ -61,7 +117,7 @@ export function registerCommerceRoutes(app, d) {
     const pushes = (await pool.query(`select id,client_id,platform,target,status,report,created_at from build_pushes where build_id=$1 order by created_at desc limit 10`, [b.id])).rows;
     return { catalog: b.catalog || [], catalogText: catalogToText(b.catalog || []), clients: linked.map(c => ({ id: c.id, name: c.name, platform: c.commerce_platform || '' })),
       client: client ? { id: client.id, name: client.name, platform: client.commerce_platform || '', platformLabel: platformLabel(client.commerce_platform), targets: await targets(client.id) } : null,
-      pushes: pushes.map(p => ({ id: p.id, platform: p.platform, platformLabel: platformLabel(p.platform), target: p.target, status: p.status, at: p.created_at, summary: p.report?.summary || {}, items: p.report?.items || [] })) };
+      pushes: pushes.map(p => ({ id: p.id, platform: p.platform, platformLabel: p.platform === 'shopify-theme' ? 'Shopify theme' : platformLabel(p.platform), target: p.target, status: p.status, at: p.created_at, summary: p.report?.summary || {}, items: p.report?.items || [] })) };
   });
 
   app.post('/v1/admin/builds/:id/push', { preHandler: pre }, async (req, reply) => {

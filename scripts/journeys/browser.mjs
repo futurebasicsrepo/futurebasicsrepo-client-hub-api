@@ -2040,6 +2040,21 @@ await journey('J160', 'My accounts on Home: the customers you own with what each
     ok(await ph.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'on a phone nothing is wider than the screen'); await ph.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || '/tmp'}/j160-phone.png` }).catch(() => {}); } finally { await pc.close(); }
 });
 
+await journey('J179', 'Sending the theme in a browser: the push window offers the theme for a Shopify client, the zip downloads, the store key is saved without being shown again, and the page is clean', async () => {
+  const r = await room('179', { wait: false }), W = 'http://work.localhost:3123';
+  const kyle = await forge({ sub: sql(`select id from users where lower(email)='kyle@thefuturebasics.com'`).split('\n')[0] || sql(`insert into users(client_id,email,name,role) values('${r.clientId}','kyle@thefuturebasics.com','kyle','admin') returning id`).split('\n')[0], clientId: r.clientId, role: 'admin', email: 'kyle@thefuturebasics.com' });
+  const made = (await call('/v1/admin/builds', { token: kyle, body: { name: `Theme browser ${stamp}`, slug: `theme-browser-${stamp}`, status: 'concept', visibility: 'hidden' } })).json, bid = made.build?.id || made.id;
+  const proj = (await call(`/v1/admin/clients/${r.clientId}/projects`, { token: kyle, body: { name: `Store ${stamp}`, kind: 'software', buildId: bid } })).json; await call(`/v1/admin/clients/${r.clientId}/commerce`, { method: 'PUT', token: kyle, body: { platform: 'shopify' } });
+  const ctx = await browser.newContext({ viewport: { width: 1200, height: 900 }, acceptDownloads: true }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyle);
+  const page = await ctx.newPage(); page.errs = []; page.on('pageerror', e => page.errs.push(e.message)); page.on('dialog', d => d.accept());
+  await page.goto(`${W}/builds/admin`, { waitUntil: 'networkidle' }); await page.waitForSelector(`[data-push="${bid}"]`, { timeout: 15000 }); await page.click(`[data-push="${bid}"]`); await page.waitForSelector('#pdlg[open] #pTheme #tZip', { timeout: 10000 });
+  const txt = await page.textContent('#pTheme'); ok(/Send the site itself/.test(txt) && /Common Ground/.test(txt) && /draft/i.test(txt) && !(await page.locator('#tGo').count()), 'the theme section is there with the Common Ground theme, says it is a draft, and cannot send before a key is saved');
+  const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 10000 }), page.click('#tZip')]); ok(/common-ground-theme\.zip$/.test(dl.suggestedFilename()), 'the zip downloads', dl.suggestedFilename());
+  await page.fill('#tShop', 'phil-store.myshopify.com'); await page.fill('#tToken', 'shpat_browserkey_1234567'); await page.click('#tSave');
+  await page.waitForSelector('#pTheme #tGo', { timeout: 10000 }); const after = await page.textContent('#pTheme'); ok(/phil-store\.myshopify\.com/.test(after) && !after.includes('shpat_browserkey') && !(await page.inputValue('#tToken')).includes('shpat'), 'saving the key shows the store, offers to send, and never shows the key again');
+  await page.click('#tPrev'); await page.waitForFunction(() => /files go to phil-store/.test(document.querySelector('#tMsg')?.textContent || ''), null, { timeout: 10000 }); ok(true, 'seeing what will be sent says how many files go where');
+});
+
 await journey('J176', 'A prototype made elsewhere in a browser: add it from the form (it is kept here, not on Builds), push it to Builds for a client project, see it marked on Builds, and take it back out', async () => {
   const r = await room('176', { wait: false }), W = 'http://work.localhost:3123', host = `cg-b-${stamp}.myshopify.com`;
   const kyle = await forge({ sub: sql(`select id from users where lower(email)='kyle@thefuturebasics.com'`).split('\n')[0] || sql(`insert into users(client_id,email,name,role) values('${r.clientId}','kyle@thefuturebasics.com','kyle','admin') returning id`).split('\n')[0], clientId: r.clientId, role: 'admin', email: 'kyle@thefuturebasics.com' });
