@@ -287,6 +287,16 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
       doc      TEXT NOT NULL,
       at       INTEGER NOT NULL
     );
+    -- Every store Spot has shown anyone (signed in or not), by site
+    -- (tecovas.com): how many picks, first and last seen. Its reach, for
+    -- /admin/health and for what Spot can truthfully say it searches.
+    CREATE TABLE IF NOT EXISTS stores_shown (
+      site      TEXT PRIMARY KEY,
+      name      TEXT NOT NULL DEFAULT '',
+      shown     INTEGER NOT NULL DEFAULT 0,
+      first_at  INTEGER NOT NULL,
+      last_at   INTEGER NOT NULL
+    );
     -- Self-serve agent API keys (only the SHA-256 is kept).
     CREATE TABLE IF NOT EXISTS api_keys (
       hash        TEXT PRIMARY KEY,
@@ -693,6 +703,22 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
       removeUrl(userId, url) {
         return db.prepare('DELETE FROM seen_products WHERE user_id = ? AND url = ?').run(userId, String(url)).changes;
       },
+    },
+    stores: {
+      // One pick from this store, shown just now.
+      add(site, name = '', at = Date.now(), n = 1) {
+        if (!site) return;
+        db.prepare(
+          `INSERT INTO stores_shown (site, name, shown, first_at, last_at) VALUES (?, ?, ?, ?, ?)
+           ON CONFLICT (site) DO UPDATE SET shown = shown + excluded.shown, last_at = MAX(last_at, excluded.last_at), first_at = MIN(first_at, excluded.first_at),
+             name = CASE WHEN name = '' THEN excluded.name ELSE name END`,
+        ).run(site, String(name || '').slice(0, 80), n, at, at);
+      },
+      count: () => db.prepare('SELECT COUNT(*) AS n FROM stores_shown').get().n,
+      since: (at) => db.prepare('SELECT COUNT(*) AS n FROM stores_shown WHERE first_at >= ?').get(at).n,
+      picks: () => db.prepare('SELECT COALESCE(SUM(shown), 0) AS n FROM stores_shown').get().n,
+      top: (limit = 10) => db.prepare('SELECT site, name, shown, first_at, last_at FROM stores_shown ORDER BY shown DESC, site LIMIT ?').all(limit),
+      sites: () => new Set(db.prepare('SELECT site FROM stores_shown').all().map((r) => r.site)),
     },
     tastes: {
       get(userId) {

@@ -12,6 +12,7 @@
 //   SPOT_AFFILIATE_BPS         commission on affiliate orders (default 300 = 3%)
 
 import { SITE_JS, siteNav } from './site.js';
+import { siteOf } from './storefacts.js';
 
 const DAY = 86_400_000;
 const dayOf = (t) => new Date(t).toISOString().slice(0, 10);
@@ -213,6 +214,25 @@ export function healthReport({ db, env = process.env, metrics, backups, moneyChe
     errors_4xx: sumKey((k) => k === 'req:4xx'),
     errors_5xx: sumKey((k) => k === 'req:5xx'),
   };
+  // ─── Store reach: every store Spot has shown anyone, and ordered from ──
+  const ordered = new Set();
+  for (const r of raw.prepare(`SELECT ${j('merchant.url')} AS m, ${j('items[0].url')} AS i FROM carts WHERE status = 'completed' OR ${j('fulfillment.state')} = 'placed'`).all()) {
+    const site = siteOf(r.m || '') || siteOf(r.i || '');
+    if (site) ordered.add(site);
+  }
+  const picks = db.stores.picks();
+  const top = db.stores.top(10);
+  const stores = {
+    shown: db.stores.count(),
+    new_7d: db.stores.since(now - 7 * DAY),
+    new_30d: db.stores.since(from),
+    ordered: ordered.size,
+    picks,
+    // How flat the results are: the share of all picks the 10 most-shown stores got.
+    top10_share: picks ? top.reduce((t, x) => t + x.shown, 0) / picks : 0,
+    top,
+  };
+
   const attention = stuck.length + money.length + held.length + services.filter((s) => s.state === 'failing').length + (backup?.ok === false ? 1 : 0);
 
   return {
@@ -230,6 +250,7 @@ export function healthReport({ db, env = process.env, metrics, backups, moneyChe
     funnel: series.map((d) => byDay[d]),
     ai: { models: Object.values(models).sort((a, b) => b.cents - a.cents), web_searches: webSearches, cents: aiCents, unpriced },
     usage: { sms_segments: smsSegments, emails, card_payments: cardPayments.n, cards_issued: cardsIssued },
+    stores,
     costs,
     revenue,
     net_cents: revenue.total_cents - costs.total_cents,
@@ -330,6 +351,9 @@ async function load(){
     [usd(h.ai.cents),'Claude cost',n(h.ai.models.reduce((a,m)=>a+m.in+m.out+m.cache_read+m.cache_write,0))+' tokens'],
     [(h.traffic.error_rate*100).toFixed(2)+'%','Server errors',n(h.traffic.errors_5xx)+' of '+n(h.traffic.requests)+' requests'],
   ].map(([b,s,sm])=>'<div class="tile"><b>'+b+'</b><span>'+s+'</span><small>'+sm+'</small></div>').join('');
+  const S=h.stores;
+  $('#reach').innerHTML='<div class="tiles"><div class="tile"><b>'+n(S.shown)+'</b><span>Stores shown</span><small>every store a pick has come from, all time</small></div><div class="tile"><b>+'+n(S.new_7d)+'</b><span>New this week</span><small>+'+n(S.new_30d)+' in 30 days</small></div><div class="tile"><b>'+n(S.ordered)+'</b><span>Stores ordered from</span><small>orders placed, all time</small></div><div class="tile"><b>'+(S.top10_share*100).toFixed(0)+'%</b><span>Top 10 stores’ share</span><small>of '+n(S.picks)+' picks; lower is wider</small></div></div>'
+    +(S.top.length?'<details class="tv"><summary>Most-shown stores</summary><div class="wrapx"><table class="t"><thead><tr><th>Store</th><th>Picks</th><th>First shown</th></tr></thead><tbody>'+S.top.map(x=>'<tr><td>'+esc(x.name||x.site)+' <span class="est">'+esc(x.site)+'</span></td><td>'+n(x.shown)+'</td><td>'+new Date(x.first_at).toLocaleDateString([], {month:'short',day:'numeric'})+'</td></tr>').join('')+'</tbody></table></div></details>':'');
   const stuck=[...h.stuck,...h.money];
   $('#stuck').innerHTML=stuck.length?stuck.map(cartRow).join(''):'<div class="row"><small>Nothing stuck. Every paid Spot has its card and order moving.</small></div>';
   $('#held').innerHTML=h.held.length?h.held.map(x=>cartRow({...x,why:['Held by risk checks: '+(x.hold||'review')+' (release or refund in /admin)']})).join(''):'';
@@ -379,6 +403,7 @@ ${siteNav()}
   <p class="sub" id="liveWhen">Calls every service for real, at no cost: nothing is charged or sent.</p>
   <div class="list" id="live" style="margin-top:10px"></div>
   <h2>Services</h2><div class="list" id="svcs"></div>
+  <h2>Store reach</h2><div id="reach"></div>
   <h2>Spots</h2><div class="charts" id="funnel"></div>
   <h2>Traffic</h2><div class="charts" id="trafficCharts"></div><div id="timing"></div>
   <details class="tv"><summary>Table: every day</summary><div class="wrapx" id="funnelTable"></div></details>
