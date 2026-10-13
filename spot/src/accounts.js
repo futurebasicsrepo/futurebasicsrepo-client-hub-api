@@ -204,7 +204,7 @@ export function registerAccounts(app, { db, env, notifier, provider, urlFor, spo
       linked: db.identities.providersOf(user.id).filter((p) => p !== 'phone'),
       mcp_url: urlFor(req, '/mcp'),
       // Company staff (a confirmed @thefuturebasics.com email) get the dashboards.
-      ...(isStaff(db, env, user.id) ? { staff: { admin_url: '/admin', health_url: '/admin/health' } } : {}),
+      ...(isStaff(db, env, user.id) ? { staff: { admin_url: '/admin', health_url: '/admin/health', brand_url: '/brand' } } : {}),
     };
   });
 

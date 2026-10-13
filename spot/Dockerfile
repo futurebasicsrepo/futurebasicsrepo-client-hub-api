@@ -7,6 +7,7 @@ RUN npx playwright install --with-deps chromium && rm -rf /var/lib/apt/lists/*
 COPY src ./src
 # Spot in 3D and his stills (built: npm run build:spot3d), served from /assets
 COPY assets ./assets
+COPY brand ./brand
 RUN mkdir -p /data
 ENV NODE_ENV=production PORT=3000 SPOT_DB=/data/spot.db
 EXPOSE 3000

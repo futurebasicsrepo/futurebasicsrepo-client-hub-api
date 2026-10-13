@@ -52,7 +52,7 @@ test('staff see Admin and Health on their account page (on any device); everyone
   const { call, signIn } = app(t);
   const kyle = await signIn('kyle@thefuturebasics.com');
   const me = (await call('GET', '/v1/me', undefined, kyle)).body;
-  assert.deepEqual(me.staff, { admin_url: '/admin', health_url: '/admin/health' });
+  assert.deepEqual(me.staff, { admin_url: '/admin', health_url: '/admin/health', brand_url: '/brand' });
   const page = (await call('GET', '/account?skip_setup=1', undefined, kyle)).body;
   assert.match(page, /id="staffBar"[^>]*hidden/, 'shown by the page only when /v1/me says staff');
   assert.match(page, /localStorage\.setItem\('spot:staff','1'\)/, 'remembered for the site menu');
@@ -179,4 +179,36 @@ test('phones: health cards wrap long ids, and pages stay clear of the iPhone sta
   assert.match(page, /padding-top:env\(safe-area-inset-top,0px\)/);
   const home = (await call('GET', '/')).body;
   assert.match(home, /nav\{position:sticky;top:env\(safe-area-inset-top,0px\)/, 'the sticky header sits below the status bar');
+});
+
+test('brand page: staff only, every file downloadable', async (t) => {
+  const { call, signIn } = app(t);
+  // Signed out: sign in first. Anyone else: it isn't there.
+  const out = await call('GET', '/brand');
+  assert.equal(out.status, 302);
+  assert.equal(out.headers.location, '/signin?next=%2Fbrand');
+  assert.equal((await call('GET', '/brand/files/spot-logo.svg')).status, 302);
+  const other = await signIn('kyle@gmail.com');
+  assert.equal((await call('GET', '/brand', undefined, other)).status, 404);
+  assert.equal((await call('GET', '/brand/files/spot-logo.svg', undefined, other)).status, 404);
+
+  const kyle = await signIn('kyle@thefuturebasics.com');
+  const page = await call('GET', '/brand', undefined, kyle);
+  assert.equal(page.status, 200);
+  assert.match(page.headers['cache-control'], /no-store/);
+  assert.match(page.body, /<meta name="robots" content="noindex">/);
+  for (const s of ['Logo', 'Mascot', 'Color', 'Type', 'Bricolage Grotesque', 'Caveat', '#ff5a36']) assert.ok(page.body.includes(s), s);
+  const { BRAND_FILES } = await import('../src/brand.js');
+  for (const name of Object.keys(BRAND_FILES)) {
+    const f = await call('GET', `/brand/files/${name}`, undefined, kyle);
+    assert.equal(f.status, 200, name);
+    assert.match(f.headers['content-disposition'], new RegExp(`attachment; filename="${name.replace('.', '\\.')}"`), name);
+    assert.ok(Number(f.headers['content-length'] || f.body.length) > 0, name);
+  }
+  // Previews show inline.
+  const view = await call('GET', '/brand/files/spot-hi.webp?view=1', undefined, kyle);
+  assert.equal(view.headers['content-type'], 'image/webp');
+  assert.equal(view.headers['content-disposition'], undefined);
+  assert.equal((await call('GET', '/brand/files/..%2Fsrc%2Fserver.js', undefined, kyle)).status, 404);
+  assert.equal((await call('GET', '/brand/files/hasOwnProperty', undefined, kyle)).status, 404);
 });
