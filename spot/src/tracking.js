@@ -12,10 +12,13 @@
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
 const EVERY_MS = 6 * HOUR;
+const ON_VIEW_MS = 15 * 60_000;
 const WINDOW = 45 * DAY;
 const BATCH = 10;
 export const STAGES = ['ordered', 'processing', 'shipped', 'in_transit', 'out_for_delivery', 'delivered'];
-const PROBLEMS = ['failed_attempt', 'canceled', 'undeliverable', 'returned_to_sender'];
+const PROBLEMS = ['failed_attempt', 'attempted_delivery', 'buyer_action_required', 'canceled', 'fulfillment_canceled', 'undeliverable', 'returned_to_sender', 'returning_to_sender'];
+// Shopify's other event names, as Spot's stages (anything else is in transit).
+const SAME = { carrier_picked_up: 'in_transit', confirmed: 'in_transit', delayed: 'in_transit', ready: 'processing', ready_for_pickup: 'out_for_delivery', picked_up: 'delivered' };
 
 // The carrier and its tracking page, from the number's shape.
 export function carrierOf(raw) {
@@ -34,7 +37,7 @@ export function fromOrder(order) {
   const last = events.at(-1);
   if (!last) return null;
   const type = String(last.type).toLowerCase();
-  const status = STAGES.includes(type) ? type : PROBLEMS.includes(type) ? 'problem' : 'in_transit';
+  const status = STAGES.includes(type) ? type : PROBLEMS.includes(type) ? 'problem' : SAME[type] || 'in_transit';
   const withTracking = [...events].reverse().find((e) => e.tracking_number || e.tracking_url);
   const url = typeof withTracking?.tracking_url === 'string' && /^https:\/\//i.test(withTracking.tracking_url) ? withTracking.tracking_url.slice(0, 500) : null;
   return {
@@ -61,6 +64,21 @@ export function createTracker({ db, spot, getOrder = async () => null, findOrder
     if (moved && ['shipped', 'out_for_delivery', 'delivered', 'problem'].includes(next.status)) spot.emit?.('shipping_update', cart.id, { status: next.status });
     return out;
   }
+  // One order: its id from the store if Spot doesn't have it yet, then the
+  // store's order now.
+  async function one(c, now) {
+    const id = c.id;
+    if (!c.fulfillment.order_id) {
+      const orderId = await findOrderId(c).catch((err) => (log.warn?.({ err, cart: id }, 'order id read failed'), null));
+      if (!orderId) return apply(c, null, now);
+      c = spot.patch(c.id, (x) => ({ ...x, fulfillment: { ...x.fulfillment, order_id: String(orderId).slice(0, 200) } }));
+    }
+    // The id's shape (digits and letters masked), to see what a store didn't accept.
+    const shape = String(c.fulfillment.order_id).replace(/[0-9]/g, '9').replace(/[a-z]/gi, 'a').slice(0, 60);
+    const order = await getOrder(c).catch((err) => (log.warn?.({ err, cart: id, order_id_shape: shape }, 'order status read failed'), null));
+    return apply(c, fromOrder(order), now);
+  }
+  const trackable = (c) => c?.fulfillment && c.tracking?.status !== 'delivered';
   return {
     // Orders placed through agent checkout, not yet delivered, a few a run.
     async sweep(now = Date.now()) {
@@ -70,27 +88,22 @@ export function createTracker({ db, spot, getOrder = async () => null, findOrder
       try {
         for (const id of db.idsToTrack(now - WINDOW)) {
           if (n >= BATCH) break;
-          let c = db.byId(id);
-          if (!c?.fulfillment || c.tracking?.status === 'delivered') continue;
+          const c = db.byId(id);
+          if (!trackable(c)) continue;
           if (c.tracking?.checked_at && now - c.tracking.checked_at < EVERY_MS) continue;
           n++;
-          if (!c.fulfillment.order_id) {
-            const orderId = await findOrderId(c).catch((err) => (log.warn?.({ err, cart: id }, 'order id read failed'), null));
-            if (!orderId) {
-              apply(c, null, now);
-              continue;
-            }
-            c = spot.patch(c.id, (x) => ({ ...x, fulfillment: { ...x.fulfillment, order_id: String(orderId).slice(0, 200) } }));
-          }
-          // The id's shape (digits and letters masked), to see what a store didn't accept.
-          const shape = String(c.fulfillment.order_id).replace(/[0-9]/g, '9').replace(/[a-z]/gi, 'a').slice(0, 60);
-          const order = await getOrder(c).catch((err) => (log.warn?.({ err, cart: id, order_id_shape: shape }, 'order status read failed'), null));
-          apply(c, fromOrder(order), now);
+          await one(c, now);
         }
       } finally {
         running = false;
       }
       return n;
+    },
+    // Its owner opened the order ("where's my order?"): ask the store now,
+    // at most every 15 minutes, instead of waiting for the next sweep.
+    async refresh(c, now = Date.now()) {
+      if (!trackable(c) || (c.tracking?.checked_at && now - c.tracking.checked_at < ON_VIEW_MS)) return c;
+      return one(c, now);
     },
     // A tracking number they pasted (from the store's shipping email).
     addNumber(cart, raw, now = Date.now()) {

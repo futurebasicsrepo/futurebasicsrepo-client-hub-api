@@ -1097,6 +1097,11 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     let cart = spot.loadManaged(req.params.token, keyOf(req));
     if (cart.status === 'paid') cart = await spot.issue(cart, { retry: true }); // retry a failed issue, once a minute
     if (cart.settle === 'direct' && cart.direct?.checkout_id) cart = await spot.directSync(cart.token);
+    // Placed: where it is now, if the store answers within a few seconds.
+    if (cart.fulfillment?.state === 'placed') {
+      const was = cart;
+      cart = await Promise.race([tracker.refresh(cart).catch(() => was), new Promise((r) => setTimeout(r, 4000, was).unref?.())]);
+    }
     return {
       cart: ownerCart(cart),
       agent_enabled: fulfiller.agentEnabled(),
