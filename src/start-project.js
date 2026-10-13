@@ -32,6 +32,7 @@ export async function startProject(pool, { dealId, actor = null, kind = 'softwar
       client = (await db.query(`insert into clients(name, slug, status, contact_name, contact_email, allowed_emails, notes, activated_at) values($1,$2,'active',$3,$4,$5,$6,now()) returning id, name, owner_id`,
         [wanted.slice(0, 160), slug, deal.contact_name || null, deal.contact_email || null, deal.contact_email ? [deal.contact_email] : [], `Started from the won deal “${deal.title}”`])).rows[0];
       await db.query(`insert into projects(client_id,name,status,milestone) values($1,'General development','active','In progress') on conflict (client_id,name) do nothing`, [client.id]);
+      await db.query(`update clients set onboarding_status='pending' where id=$1`, [client.id]); // the hub asks them for their details on the first sign-in
       created = true;
     }
     if (v.kind === 'software' && newBuild !== false) v.build_id = await newBuildFor(db, v.name);

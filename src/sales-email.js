@@ -6,7 +6,7 @@ const clip = (v, n) => String(v ?? '').trim().slice(0, n);
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 // ---------- merge fields:  {{first_name}}   {{company|your business}}  ----------
-export const MERGE_FIELDS = ['first_name', 'name', 'company', 'build', 'sender'];
+export const MERGE_FIELDS = ['first_name', 'name', 'company', 'build', 'sender', 'join_link'];
 // → { text, missing: [field names that had no value and no fallback], unknown: [field names that do not exist] }
 export function renderTemplate(template, vars = {}) {
   const missing = new Set(), unknown = new Set();
@@ -115,5 +115,6 @@ export const STARTER_TEMPLATES = [
   { name: 'After they looked at a build', subject: 'Thanks for taking a look at {{build|what we build}}', body: 'Hi {{first_name|there}},\n\nI saw you had a look at {{build|what we build}}. I am glad you did; it is some of the work we are proudest of.\n\nIf it sparked an idea for {{company|your business}}, I would be happy to talk it through. No pitch: 20 minutes, and you leave with a clear picture of what it would take and what it would cost.\n\nWhen is a good time this week?\n\n{{sender|Kyle}}' },
   { name: 'After they opened the live build', subject: 'What did you think of {{build|the build}}?', body: 'Hi {{first_name|there}},\n\nI noticed you opened {{build|the build}} and clicked around. What stood out to you? Anything you would want different for {{company|your business}}?\n\nIf you tell me what you are trying to do, I can show you how we would approach it.\n\n{{sender|Kyle}}' },
   { name: 'Great to meet you', subject: 'Great to meet you, {{first_name|there}}', body: 'Hi {{first_name|there}},\n\nGood to meet you. As promised, here is where to see what we have built: https://builds.thefuturebasics.com\n\nIf anything there looks close to what {{company|your business}} needs, tell me which one and I will send you more detail.\n\n{{sender|Kyle}}' },
+  { name: 'Open your Future Basics hub', subject: 'Your Future Basics hub, {{first_name|there}}', body: 'Hi {{first_name|there}},\n\nThis is the link to open your private Future Basics hub. It takes about two minutes, there is no password, and it is where everything for {{company|your project}} lives: your agreements, files, messages and progress.\n\n{{join_link|https://hub.thefuturebasics.com/join}}\n\nYou will tell us a few things about yourself and your business once, so we never have to ask again. If you would rather talk it through, reply to this email.\n\n{{sender|Kyle}}' },
   { name: 'Checking in', subject: 'Any questions?', body: 'Hi {{first_name|there}},\n\nJust checking in. Is there anything I can answer, or anything that would make this an easier decision?\n\nIf now is not the right time, tell me and I will leave you be.\n\n{{sender|Kyle}}' }
 ];
