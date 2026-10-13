@@ -100,11 +100,11 @@ Sign in at `/signin` with a 6-digit code, sent by email (Resend) or by text (Twi
 
 A signed-in owner opens their own Spots without the private key. Codes and sessions are stored hashed. The session cookie is `HttpOnly; SameSite=Lax`, and account writes are JSON-only.
 
-## Family (teens 13 to 17)
+## Kid Spot: family rules for teens 13 to 17
 
 `src/family.js`. The rules on an AI key, applied to a person: **small stuff at approved stores goes through on its own; the big stuff pings the parent.**
 
-- **Adding a teen.** On `/account` → Family, the parent gives a first name and confirms they're the parent or guardian and the teen is 13 to 17. That makes a join link (`/family/join/<token>`, 7 days, once, stored hashed). The teen opens it, signs in, and taps Join. The link also lets them past the early-access gate.
+- **Adding a teen.** On `/account` → Kid Spot, the parent gives a first name and confirms they're the parent or guardian and the teen is 13 to 17. That makes a join link (`/family/join/<token>`, 7 days, once, stored hashed). The teen opens it, signs in, and taps Join. The link also lets them past the early-access gate.
 - **Rules per teen:**
   - an amount that goes through on its own (`auto_cents`, at most $500)
   - approved stores
