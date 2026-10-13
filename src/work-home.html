@@ -154,6 +154,8 @@ function renderWait(h){
 }
 $('#projFilters').addEventListener('click',e=>{const b=e.target.closest('[data-f]');if(!b)return;FILTER=b.dataset.f;renderProjects()});
 (async()=>{
+  // a Google sign-in that lands here (an older link, or the old redirect) is kept, not bounced: save the session and clean the address
+  try{const m=location.hash.match(/google-session=([^&]+)/);if(m){localStorage.setItem('fb.admin.token',decodeURIComponent(m[1]));history.replaceState(null,'',location.pathname+location.search)}}catch{}
   if(!TOKEN()){$('#needSignin').classList.remove('hidden');return}
   try{
     const [o,h]=await Promise.all([api('/v1/sales/overview'),api('/v1/admin/home')]);HOME=h;

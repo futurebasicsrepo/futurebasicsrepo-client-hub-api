@@ -563,7 +563,7 @@ app.get('/v1/auth/google/start', async (_req, reply) => {
   return reply.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
 });
 app.get('/v1/auth/google/callback', async (req, reply) => {
-  const fail = message => reply.redirect(`${workHubUrl}/?sso-error=${encodeURIComponent(message)}`);
+  const fail = message => reply.redirect(`${workHubUrl}/admin?sso-error=${encodeURIComponent(message)}`);
   try {
     if (req.query?.error) return fail('Google sign-in was cancelled');
     const code = String(req.query?.code || '');
@@ -593,7 +593,7 @@ app.get('/v1/auth/google/callback', async (req, reply) => {
     )).rows[0];
     const token = await new SignJWT({ sub: user.id, clientId: client.id, client: client.slug, role: 'admin', email })
       .setProtectedHeader({ alg: 'HS256' }).setIssuer('future-basics-client-hub').setIssuedAt().setExpirationTime('7d').sign(secret);
-    return reply.redirect(`${workHubUrl}/#google-session=${encodeURIComponent(token)}`);
+    return reply.redirect(`${workHubUrl}/admin#google-session=${encodeURIComponent(token)}`); // the sign-in page keeps it; the work home is not where the console token is picked up
   } catch (error) {
     app.log.warn({ error }, 'Google Workspace sign-in failed');
     return fail('Google sign-in could not be completed');
