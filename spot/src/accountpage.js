@@ -232,7 +232,7 @@ export function accountPage({ origin, provider = 'sandbox' }) {
     path: '/account',
     title: 'Your account · Spot',
     body: `<header class="ahead"><div><h1 id="hi">Your Spot</h1><p class="sub" id="who"></p></div><button class="btn ghost sm" id="out">Sign out</button></header>
-<div class="staffbar" id="staffBar" role="navigation" aria-label="Spot team" hidden><span>Spot team</span><a class="btn ghost sm" id="staffAdmin" href="/admin">Admin</a><a class="btn ghost sm" id="staffHealth" href="/admin/health">Health</a></div>
+<div class="staffbar" id="staffBar" role="navigation" aria-label="Spot team" hidden><span>Spot team</span><a class="btn ghost sm" id="staffAdmin" href="/admin">Admin</a><a class="btn ghost sm" id="staffHealth" href="/admin/health">Health</a><a class="btn ghost sm" id="staffBrand" href="/brand">Brand</a></div>
 <a class="setupcard" id="setupCard" href="/setup" hidden><span class="sface" aria-hidden="true"></span><span><b>Finish setting up</b><small>Your name and address, for one-tap checkout.</small></span><span class="go2">Finish →</span></a>
 <div class="setupcard notifcard" id="notifCard" hidden><span class="sface" aria-hidden="true"></span><span><b id="notifCardT">Get a ping on this device</b><small id="notifCardS">When a price drops, someone pays, or an order ships.</small></span><span class="nbtns"><button type="button" class="go2 linkish" id="notifCardOn">Turn on</button><button type="button" class="nx" id="notifCardNo" aria-label="Not now">×</button></span></div>
 <button type="button" class="aistrip" id="aiStrip" hidden></button>
@@ -374,7 +374,7 @@ async function load(){
   $('#addPk').hidden=!pkOK();$('#pkNo').hidden=pkOK();
   drawFunding();
   aiStrip();
-  if(me.staff){$('#staffBar').hidden=false;$('#staffAdmin').href=me.staff.admin_url;$('#staffHealth').href=me.staff.health_url}
+  if(me.staff){$('#staffBar').hidden=false;$('#staffAdmin').href=me.staff.admin_url;$('#staffHealth').href=me.staff.health_url;if(me.staff.brand_url)$('#staffBrand').href=me.staff.brand_url}
   try{if(me.staff)localStorage.setItem('spot:staff','1');else localStorage.removeItem('spot:staff')}catch{}
   $('#keys').innerHTML=me.keys.length?me.keys.map(keyRow).join(''):'<p class="sub" style="margin:0">No AI connected yet.</p>';
   const a=me.approver;

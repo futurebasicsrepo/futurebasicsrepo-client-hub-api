@@ -65,6 +65,7 @@ import { gateOn, registerGate } from './early.js';
 import { isStaff } from './staff.js';
 import { createPush, SERVICE_WORKER } from './webpush.js';
 import { createInvites } from './invites.js';
+import { registerBrand } from './brand.js';
 import { createFamily, registerFamily } from './family.js';
 
 export function buildApp({ db = openDb(), provider = pickProvider(), cfg = config(), capture = {}, logger = true, fulfill = {}, env = process.env, notifyFetch, oauthFetch, flights = createFlights({ env }), backupDir, backupFetch, merchantFetch, papFetch, shopifyFetch, priceNowImpl, pushFetch } = {}) {
@@ -233,6 +234,8 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   };
   const publicUrl = () => (env.PUBLIC_URL || '').replace(/\/$/, '');
   const urlFor = (req, path) => `${publicUrl() || `${req.protocol}://${req.headers.host}`}${path}`;
+  // Logos, mascot, colors and fonts, for the team only (brand.js).
+  registerBrand(app, { db, env, urlFor });
   // Parents' rules for their teens' asks (family.js).
   const family = createFamily({ db, spot });
   const familyHooks = registerFamily(app, { db, spot, family, urlFor, log: app.log });
