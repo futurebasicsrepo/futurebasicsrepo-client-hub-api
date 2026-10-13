@@ -158,6 +158,8 @@ body.scrolled .topbar{border-bottom:.5px solid var(--hair)}
 .grid{gap:26px 14px}
 .shopsec{grid-column:1/-1;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin:4px 0 -10px}.shopsec b{font-size:17px;letter-spacing:-.01em}.shopsec span{color:var(--muted);font-size:14px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
 .grid .shopsec:not(:first-child){margin-top:14px}
+.shopsecx{margin-left:auto;align-self:center;width:28px;height:28px;border-radius:50%;border:0;background:var(--bg2);color:var(--muted);font-size:17px;line-height:1;cursor:pointer;flex:none}
+.activef{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:-6px 0 16px}.activef[hidden]{display:none}.activef .chip{margin:0}.activef .chip span{opacity:.7;margin-left:2px}
 .tile{border:0;border-radius:0;background:transparent;overflow:visible;transition:none}
 .tile:hover{transform:none;box-shadow:none}
 .tile .ph{border:0;border-radius:18px;background:#fff;box-shadow:var(--depth);transition:transform .3s var(--ease)}
@@ -325,6 +327,7 @@ export function homePage({ origin, provider, cfg }) {
 <section id="shop" hidden>
   <div class="shophead"><div><h1 class="shoptitle">Shop</h1><p class="small muted" id="shopSub">Everything Spot has shown you.</p></div>
     <div class="views" role="group" aria-label="Layout"><button type="button" id="viewGrid" aria-pressed="true" aria-label="Grid"><svg width="17" height="17" viewBox="0 0 17 17" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="1.5" y="1.5" width="5.5" height="5.5" rx="1.6"/><rect x="10" y="1.5" width="5.5" height="5.5" rx="1.6"/><rect x="1.5" y="10" width="5.5" height="5.5" rx="1.6"/><rect x="10" y="10" width="5.5" height="5.5" rx="1.6"/></svg></button><button type="button" id="viewOne" aria-pressed="false" aria-label="One at a time"><svg width="17" height="17" viewBox="0 0 17 17" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="2" y="1.5" width="13" height="14" rx="2.6"/></svg></button></div></div>
+  <div class="activef" id="shopActive" hidden></div>
   <div class="grid" id="shopGrid"></div>
   <div class="shopempty" id="shopNone" hidden><p><b>Nothing matches.</b></p><p class="muted">Loosen a filter, or show a hidden collection.</p></div>
   <button class="fab" id="shopFab" type="button" aria-label="Sort and filter"><span aria-hidden="true">⇅</span> Sort &amp; filter <b id="fabN"></b></button>

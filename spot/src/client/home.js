@@ -1319,8 +1319,9 @@
   // choose and turn down (and, signed in, kept on their account to shape
   // new searches too).
   const SHOP_PREFS = 'spot:shopPrefs';
-  // When their newest search started. Its finds sit at the top of Shop until
-  // they pick a sort or filter themselves (prefs.unpinned).
+  // When their newest search started. Its finds always sit at the top of
+  // Shop, whatever the sort and filters, until the next search or until
+  // they close that section (prefs.unpinned).
   const SEARCH_AT = 'spot:searchAt';
   const pinAt = () => {
     const at = load(SEARCH_AT, 0);
@@ -1450,11 +1451,18 @@
     if (pinN) {
       const head = (h, sub) => Object.assign(document.createElement('div'), { className: 'shopsec', innerHTML: '<b>' + h + '</b>' + (sub ? '<span>' + sub + '</span>' : '') });
       const q = shopList[0].asked || '';
-      grid.prepend(head('Your latest search', q ? '“' + esc(q.length > 60 ? q.slice(0, 57) + '…' : q) + '”' : ''));
+      const top = head('Your latest search', q ? '“' + esc(q.length > 60 ? q.slice(0, 57) + '…' : q) + '”' : '');
+      // Closing it folds those finds into the rest, in the chosen order.
+      const x = Object.assign(document.createElement('button'), { type: 'button', className: 'shopsecx', textContent: '×', title: 'Mix into the rest' });
+      x.setAttribute('aria-label', 'Mix your latest search into the rest');
+      x.onclick = (e) => (e.stopPropagation(), (prefs.unpinned = load(SEARCH_AT, 0)), savePrefs(), renderShop());
+      top.append(x);
+      grid.prepend(top);
       const n = activeCount();
       if (shopList.length > pinN) grid.children[pinN + 1].before(head('Everything else', ((SORTS.find((x) => x[0] === sortNow()) || [])[1] || '').replace('✨ ', '') + (n ? ' · ' + n + (n === 1 ? ' filter' : ' filters') : '')));
     }
     const active = activeCount();
+    renderActive();
     $('#shopEmpty').hidden = shopAll.length > 0;
     $('#shopNone').hidden = !(shopAll.length && !shopList.length);
     $('#fabN').textContent = active ? String(active) : '';
@@ -1463,6 +1471,34 @@
     $('#shopSub').textContent = shopAll.length ? (shopList.length === shopAll.length ? shopAll.length + (shopAll.length === 1 ? ' thing' : ' things') + ' Spot has shown you' : shopList.length + ' of ' + shopAll.length) + ' · ' + label.replace('✨ ', '').toLowerCase() : 'Everything Spot has shown you.';
     if (!$('#shopTools').hidden) renderTools();
   }
+  // What's narrowing the page, always in view under the title: each one a
+  // chip that takes it off.
+  function renderActive() {
+    const f = prefs.filters;
+    const on = [
+      ...FILTERS.filter(([k]) => f[k]).map(([k, l]) => ['filter', k, l]),
+      ...(f.max ? [['max', '', 'Under $' + Number(f.max).toLocaleString('en-US')]] : []),
+      ...(f.stores || []).map((x) => ['store', x, x]),
+      ...(prefs.hidden?.length ? [['hidden', '', prefs.hidden.length + (prefs.hidden.length === 1 ? ' collection hidden' : ' collections hidden')]] : []),
+    ];
+    const el = $('#shopActive');
+    el.hidden = !on.length;
+    el.innerHTML = on.map(([t, v, l]) => '<button type="button" class="chip on" data-off="' + t + '" data-v="' + esc(v) + '">' + l + ' <span aria-hidden="true">×</span></button>').join('') + (on.length > 1 ? '<button type="button" class="textlink" data-off="all" data-v="">Clear all</button>' : '');
+  }
+  $('#shopActive').addEventListener('click', (ev) => {
+    const b = ev.target.closest('[data-off]');
+    if (!b) return;
+    const t = b.dataset.off;
+    const v = b.dataset.v;
+    const f = prefs.filters;
+    if (t === 'filter') delete f[v];
+    else if (t === 'max') delete f.max;
+    else if (t === 'store') f.stores = (f.stores || []).filter((x) => x !== v);
+    else if (t === 'hidden') prefs.hidden = [];
+    else if (t === 'all') (prefs.filters = {}), (prefs.hidden = []);
+    savePrefs();
+    renderShop();
+  });
   const activeCount = () => Object.entries(prefs.filters).filter(([k, v]) => (k === 'stores' ? v?.length : v)).length + (prefs.hidden?.length ? 1 : 0);
 
   // The sort-and-filter sheet: sort, filters, collections, Spot's read on you.
@@ -1515,8 +1551,6 @@
     const t = b.dataset.tool;
     const v = b.dataset.v;
     const f = prefs.filters;
-    // Their own sort or filter: the whole page follows it, latest search included.
-    if (['sort', 'filter', 'max', 'store', 'clear'].includes(t)) prefs.unpinned = load(SEARCH_AT, 0);
     if (t === 'sort') prefs.sort = v;
     else if (t === 'filter') f[v] = !f[v];
     else if (t === 'max') f.max = Number(v) || 0;
