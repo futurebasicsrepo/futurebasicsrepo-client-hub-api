@@ -25,6 +25,15 @@ await journey('J20', 'phone: /start with every mistake a customer can make, then
   const text = await page.innerText('body'); ok(/Reference photo|CALLOUTS|Callouts/i.test(text), 'the editor renders', text.slice(0, 80)); ok(page.errs.length === 0, 'no script errors on either page', page.errs); await ctx.close();
 });
 
+await journey('J180', 'phone: tapping the + itself (not just around it) opens the photo picker, and so does tapping the words under it', async () => {
+  const { ctx, page } = await phone(); await page.goto(`${BASE}/start`, { waitUntil: 'networkidle' });
+  for (const [what, sel] of [['the +', '#drop .ic'], ['the heading', '#drop b'], ['the small print', '#drop .meta'], ['the edge of the box', '#drop']]) {
+    const [chooser] = await Promise.all([page.waitForEvent('filechooser', { timeout: 5000 }).catch(() => null), (async () => { const bx = await page.locator(sel).first().boundingBox(); await page.mouse.click(sel === '#drop' ? bx.x + 8 : bx.x + bx.width / 2, sel === '#drop' ? bx.y + 8 : bx.y + bx.height / 2); })()]); // a real tap at that spot: whatever is on top there gets it
+    ok(Boolean(chooser) && chooser.isMultiple(), `tapping ${what} opens the picker, for several photos`);
+  }
+  await ctx.close();
+});
+
 await journey('J21', 'phone: no signal on submit, nothing is lost, retry works', async () => {
   const { ctx, page } = await phone(); await page.goto(`${BASE}/start`, { waitUntil: 'networkidle' }); await addImage(page); const email = em('21'); await fill(page, { email, title: 'Offline runner', name: 'Offline Olive' });
   await page.route('**/v1/public/start', r => r.abort('internetdisconnected')); await page.click('#go'); await page.waitForFunction(() => /could not reach/i.test(document.querySelector('#msg').textContent), null, { timeout: 8000 }).catch(() => {});
