@@ -1398,6 +1398,10 @@ export async function migrate() {
       published_at timestamptz
     );
     -- The studio: every build, change and restore is a saved version of the page. html on the row is the newest (head); live_version is the one /p/<slug> serves.
+    -- a prototype made elsewhere (a Shopify dev store, a staging site): kept here with its address until it is pushed to Builds for a client
+    alter table prototypes add column if not exists kind text not null default 'generated';
+    alter table prototypes add column if not exists external_url text not null default '';
+    alter table prototypes add column if not exists access_note text not null default '';
     alter table prototypes add column if not exists head_version integer not null default 0;
     alter table prototypes add column if not exists live_version integer;
     alter table prototypes drop constraint if exists prototypes_status_check;

@@ -32,7 +32,7 @@ async function startUcpStore({ tokenizer = true, continueUrl = null, catalog = t
     continue_url: continueUrl ?? `${origin}/checkout/${co.id}`,
     ...co,
   });
-  const tools = { lookup_catalog: ['POST', () => '/ucp/catalog/lookup', (a) => a.catalog], create_checkout: ['POST', () => '/ucp/checkout-sessions', (a) => a.checkout], get_checkout: ['GET', (a) => `/ucp/checkout-sessions/${a.id}`], update_checkout: ['PUT', (a) => `/ucp/checkout-sessions/${a.id}`, (a) => a.checkout], complete_checkout: ['POST', (a) => `/ucp/checkout-sessions/${a.id}/complete`, (a) => a.checkout], cancel_checkout: ['POST', (a) => `/ucp/checkout-sessions/${a.id}/cancel`, () => ({})] };
+  const tools = { lookup_catalog: ['POST', () => '/ucp/catalog/lookup', (a) => a.catalog], create_checkout: ['POST', () => '/ucp/checkout-sessions', (a) => a.checkout], get_checkout: ['GET', (a) => `/ucp/checkout-sessions/${a.id}`], update_checkout: ['PUT', (a) => `/ucp/checkout-sessions/${a.id}`, (a) => a.checkout], complete_checkout: ['POST', (a) => `/ucp/checkout-sessions/${a.id}/complete`, (a) => a.checkout], cancel_checkout: ['POST', (a) => `/ucp/checkout-sessions/${a.id}/cancel`, () => ({})], get_order: ['GET', (a) => `/ucp/orders/${a.id}`] };
   const server = createServer(async (req, res) => {
     let raw = '';
     for await (const c of req) raw += c;

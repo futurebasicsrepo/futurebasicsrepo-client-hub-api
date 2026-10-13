@@ -70,6 +70,7 @@ input:focus,textarea:focus{outline:2px solid var(--spot);outline-offset:1px;bord
 .thumb{width:56px;height:56px;border-radius:12px;background:var(--line) center/cover no-repeat;flex:none}
 .item .t{font-weight:600}.item .v{color:var(--muted);font-size:14px}
 .item .p{margin-left:auto;font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap}
+.pdrop{margin-top:12px;text-align:left;padding:14px;border-radius:14px;background:color-mix(in srgb,var(--ok) 10%,transparent);border:1px solid color-mix(in srgb,var(--ok) 30%,transparent)}.pdrop textarea{font-family:inherit}.pdrop .err:empty{display:none}.pdrop #pcSelf p{margin-top:12px}
 .trk{margin-top:12px;text-align:left}.trk .track{display:flex;gap:3px;margin:0 0 6px}.trk .track i{flex:1;height:5px;border-radius:3px;background:var(--line)}.trk .track.s1 i:nth-child(-n+1),.trk .track.s2 i:nth-child(-n+2),.trk .track.s3 i:nth-child(-n+3),.trk .track.s4 i{background:var(--ok)}.trk .track.bad i:nth-child(-n+2){background:var(--warn)}
 .retbox{border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin-top:12px;text-align:left}.retbox h3{margin:0 0 6px;font-size:16px}.retbox ol{margin:0 0 10px;padding-left:18px;display:grid;gap:4px}.retbox select,.retbox textarea{width:100%;margin:6px 0}
 .sum{display:flex;justify-content:space-between;color:var(--muted);padding:3px 0;font-variant-numeric:tabular-nums}
@@ -933,14 +934,20 @@ function orderBox(c,f,agentOn){
   if(st==='placed')return placedBox(c,f,tr)+trackLine(c)+watchLine(c)+returnLine(c,f);
   return orderBoxRest(c,f,agentOn,st,tr);
 }
-// The price watch on an order Spot paid for: on until when, or what was asked for.
+// The price watch: on until when; a drop the customer can ask for, in one
+// tap (Spot emails the store, or gives them the words); what was asked for.
 function watchLine(c){
   const w=c.price_watch;if(!w)return '';
   const day=t=>new Date(t).toLocaleDateString([], {month:'short',day:'numeric'});
   const store=esc(c.merchant.name);
   if(w.state==='refunded')return '<p class="small" style="margin:10px 0 0">📉 '+store+' matched a lower price: '+usd(w.refunded_cents||w.claimed_cents||0)+' went back to the card that paid.</p>';
-  if(w.state==='claimed')return '<p class="small" style="margin:10px 0 0">📉 '+store+' lowered the price, so Spot asked them for '+usd(w.claimed_cents||0)+' back. If they pay it, it goes back to the card that paid.</p>';
-  return '<p class="small muted" style="margin:10px 0 0">📉 Spot checks '+store+'’s price daily until '+day(w.until)+'. If it drops, Spot asks for the difference.</p>';
+  if(w.state==='claimed')return '<p class="small" style="margin:10px 0 0">📉 '+store+' lowered the price, so '+(w.claimed_to?'Spot emailed '+esc(w.claimed_to)+' for you':'you asked them')+' for '+usd(w.claimed_cents||0)+' back. '+(w.claimed_to?'Their reply comes to your email. ':'')+'If they pay it, it goes back to the card that paid.</p>';
+  if(w.state==='dropped'&&w.drop){
+    const d=w.drop,one=d.items.length===1?d.items[0]:null;
+    return '<div class="pdrop" id="price"><b>📉 '+store+' dropped the price'+(one?': '+usd(one.paid_cents)+' → '+usd(one.now_cents):'')+'</b><p class="small" style="margin:6px 0 10px">'+store+'’s policy refunds the difference until '+day(w.until)+(d.source_url?' (<a href="'+esc(d.source_url)+'" target="_blank" rel="noopener">policy</a>)':'')+'. Spot emails them for you, with you copied, so their answer comes straight to you.</p>'+
+      '<button class="btn" id="pcAsk" style="margin:0">Ask '+store+' for '+usd(d.cents)+' back</button><p class="err" id="pcErr"></p><div id="pcSelf" hidden></div></div>';
+  }
+  return '<p class="small muted" style="margin:10px 0 0">📉 Spot checks '+store+'’s price daily until '+day(w.until)+'. If it drops, Spot lets you know so you can ask for the difference in one tap.</p>';
 }
 // Where it is: the store's own shipment status, or a tracking number pasted in.
 function trackLine(c){
@@ -971,7 +978,7 @@ function returnLine(c,f){
   return '<button class="textlink" id="retOpen" style="margin-top:10px">↩︎ Need to send it back?</button><form class="retbox" id="retForm" hidden><h3>Start a return</h3>'+items+'<select name="reason" aria-label="Why"><option value="doesnt_fit">It doesn’t fit</option><option value="changed_mind">Changed my mind</option><option value="damaged">It arrived damaged</option><option value="wrong_item">Wrong item</option><option value="other">Something else</option></select><textarea name="note" rows="2" maxlength="300" placeholder="Anything else? (optional)"></textarea><button class="btn">Get the return steps</button><p class="err" id="retErr"></p></form>';
 }
 function placedBox(c,f,tr){
-  return (tr?'<h2>🚆 Booked!</h2><p class="muted" style="margin:0">'+esc(c.merchant.name)+' confirmed your ticket'+(f.order_number?' <b>'+esc(f.order_number)+'</b>':'')+'. Your e-ticket is on its way to '+esc(c.contact?.email||'your email')+'.</p>':'<h2>📦 Ordered!</h2><p class="muted" style="margin:0">'+esc(c.merchant.name)+' confirmed your order'+(f.order_number&&!/[:/]/.test(f.order_number)?' <b>#'+esc(f.order_number)+'</b>':'')+'. '+(c.tracking_auto?'Spot lets you know when it ships.':'Watch your email for tracking.')+'</p>')+(f.order_url?'<a class="btn dark" href="'+esc(f.order_url)+'" target="_blank" rel="noopener">View your order</a>':'');
+  return (tr?'<h2>🚆 Booked!</h2><p class="muted" style="margin:0">'+esc(c.merchant.name)+' confirmed your ticket'+(f.order_number?' <b>'+esc(f.order_number)+'</b>':'')+'. Your e-ticket is on its way to '+esc(c.contact?.email||'your email')+'.</p>':'<h2>📦 Ordered!</h2><p class="muted" style="margin:0">'+esc(c.merchant.name)+' confirmed your order'+(f.order_number&&!/[:/]/.test(f.order_number)?' <b>#'+esc(String(f.order_number).replace(/^#/,''))+'</b>':'')+'. '+(c.tracking_auto?'Spot lets you know when it ships.':'Watch your email for tracking.')+'</p>')+(f.order_url?'<a class="btn dark" href="'+esc(f.order_url)+'" target="_blank" rel="noopener">View your order</a>':'');
 }
 function orderBoxRest(c,f,agentOn,st,tr){
   if(st==='awaiting_confirm')return '<h2>Place your order?</h2>'+(f.has_shot?'<img src="/v1/carts/'+TOKEN+'/manage/order/shot.png?k='+encodeURIComponent(K)+'&t='+f.updated_at+'" alt="The store checkout, filled in" style="width:100%;border-radius:12px;border:1px solid var(--line)">':'')
@@ -1058,6 +1065,14 @@ async function draw(){
     const b=ship.querySelector('button');b.disabled=true;b.textContent='starting…';
     try{await api('/v1/carts/'+TOKEN+'/manage/order',{k:K,shipping:v});draw()}catch(err){$('#shipErr').textContent=err.message;b.disabled=false;b.textContent='Try again'}};
   on('trkAdd',async()=>{try{await api('/v1/carts/'+TOKEN+'/manage/tracking',{k:K,number:$('#trkNum').value});draw()}catch(err){$('#trkErr').textContent=err.message}});
+  // Ask the store for a lower price back: sent for them, or the words to send themselves.
+  on('pcAsk',async()=>{const b=$('#pcAsk');b.disabled=true;b.textContent='Sending…';try{const r=await api('/v1/carts/'+TOKEN+'/manage/price-claim',{k:K});if(r.sent)return draw();
+    const box=$('#pcSelf');box.hidden=false;b.hidden=true;
+    box.innerHTML='<p class="small" style="margin:8px 0">Spot couldn’t find '+esc(c.merchant.name)+'’s support email. Send this from your email'+(r.contact_url?' or their <a href="'+esc(r.contact_url)+'" target="_blank" rel="noopener">contact page</a>':'')+':</p><textarea id="pcText" rows="9" readonly style="width:100%;font-size:13px">'+esc('Subject: '+r.message.subject+'\\n\\n'+r.message.text)+'</textarea><div class="row" style="gap:8px;margin-top:8px"><button class="btn ghost small" id="pcCopy" style="margin:0;width:auto">Copy</button><button class="btn small" id="pcSent" style="margin:0;width:auto">I sent it</button></div>';
+    on('pcCopy',()=>{navigator.clipboard?.writeText($('#pcText').value);$('#pcCopy').textContent='Copied'});
+    on('pcSent',async()=>{try{await api('/v1/carts/'+TOKEN+'/manage/price-claim',{k:K,self:true});draw()}catch(err){$('#pcErr').textContent=err.message}});
+  }catch(err){b.disabled=false;b.textContent='Try again';$('#pcErr').textContent=err.message}});
+  if(location.hash==='#price'&&$('#price'))$('#price').scrollIntoView({block:'center'});
   on('retOpen',()=>{$('#retForm').hidden=false;$('#retOpen').remove()});
   const rf0=$('#retForm');if(rf0)rf0.onsubmit=async(e)=>{e.preventDefault();const fd=new FormData(rf0);const items=[...rf0.querySelectorAll('input[name=ri]')].filter(x=>x.checked).map(x=>Number(x.value));const b=rf0.querySelector('button');b.disabled=true;b.textContent='getting the steps…';
     try{await api('/v1/carts/'+TOKEN+'/manage/return',{k:K,reason:fd.get('reason'),note:fd.get('note')||'',...(rf0.querySelector('input[name=ri]')?{items}:{})});draw()}catch(err){$('#retErr').textContent=err.message;b.disabled=false;b.textContent='Try again'}};

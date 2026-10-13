@@ -1,10 +1,14 @@
-// Price watch. After Spot orders something with its own card, it checks the
-// store's price once a day for the store's price-adjustment window (30 days
-// by default, SPOT_PRICE_WATCH_DAYS). A real drop is listed on /admin for
-// staff to claim from the store. The payer hears nothing until staff mark
-// the claim sent: nobody is promised money we haven't asked for. When the
-// store pays it, the refund lands on Spot's paused card (spot.js keeps it
-// for SPOT_CARD_KEEP_DAYS) and goes straight back to the payer.
+// Price watch. After an order is placed (with Spot's card, or paid on the
+// store's own checkout), Spot checks the store's price once a day for the
+// store's price-adjustment window (30 days by default, SPOT_PRICE_WATCH_DAYS).
+// A real drop is listed on /admin. When the store's policy says it refunds
+// a lower price, the customer is emailed and asks in one tap from their
+// order page (priceclaim.js emails the store for them); staff can still
+// claim any drop by hand. The payer hears once it's been asked for: nobody
+// is promised money we haven't asked for. On a Spot-card order the refund
+// lands on Spot's paused card (spot.js keeps it for SPOT_CARD_KEEP_DAYS) and
+// goes straight back to the payer; paid at the store, the store refunds the
+// payer's card itself.
 //
 // cart.price_watch = {
 //   until, last_at,
@@ -41,15 +45,18 @@ export function createPriceWatch({ db, spot, price = priceNow, policyOf = () => 
   const boughtAt = (c) => c.fulfillment?.placed_at || c.spent_at || null;
   // Only orders Spot paid with its own card and the store accepted, still
   // intact: nothing returned, disputed or refunded in full.
+  // Paid on the store's own checkout counts too: the store refunds the
+  // payer's card directly, so the customer asks (claimByCustomer).
   const watchable = (c) =>
     c &&
-    c.settle === 'card' &&
+    (c.settle === 'card' ? ['card_issued', 'completed'].includes(c.status) && (c.fulfillment?.state === 'placed' || c.spent_at) : c.settle === 'direct' && c.status === 'completed' && c.fulfillment?.state === 'placed') &&
     (c.kind || 'goods') === 'goods' &&
-    ['card_issued', 'completed'].includes(c.status) &&
-    (c.fulfillment?.state === 'placed' || c.spent_at) &&
     !c.dispute &&
     !(c.refunds || []).some((r) => r.reason === 'store_refund');
   let running = false;
+  // A drop the customer can ask for: the store's policy says it refunds the
+  // difference, and the window hasn't closed.
+  const eligible = (c, now = Date.now()) => c?.price_watch?.state === 'dropped' && c.price_watch.policy?.price_adjustment === true && now <= c.price_watch.until;
 
   async function check(cart, now = Date.now()) {
     const at = boughtAt(cart);
@@ -90,17 +97,21 @@ export function createPriceWatch({ db, spot, price = priceNow, policyOf = () => 
         const cur = c.price_watch || prev;
         // Staff acted while the store was being read: theirs stands.
         if (!['watching', 'dropped'].includes(cur.state)) return c;
-        const policy = pol ? { price_adjustment: pol.price_adjustment, days: pol.adjustment_days || null, how: pol.adjustment_how || null, source_url: pol.source_url || null } : cur.policy || null;
+        const policy = pol ? { price_adjustment: pol.price_adjustment, days: pol.adjustment_days || null, how: pol.adjustment_how || null, source_url: pol.source_url || null, support_email: pol.support_email || null } : cur.policy || null;
         return { ...c, price_watch: { ...cur, until, last_at: now, items, drop, policy, state: drop ? 'dropped' : 'watching' } };
       },
       fresh ? 'price_drop' : null,
     );
     if (fresh) log.info?.({ cart: cart.id, cents }, 'price drop found');
+    // The store says it refunds a lower price and it's still in time: tell
+    // the customer, who can ask in one tap.
+    if (fresh && eligible(next, now)) spot.emit?.('price_drop', cart.id, { cents });
     return next;
   }
 
   return {
     check,
+    eligible,
     windowMs,
     // A few orders per run, those not checked for the longest first.
     async sweep(now = Date.now()) {
@@ -145,6 +156,24 @@ export function createPriceWatch({ db, spot, price = priceNow, policyOf = () => 
       const next = spot.patch(id, (x) => ({ ...x, price_watch: { ...x.price_watch, state: 'claimed', claimed_at: now } }), 'price_claimed');
       spot.emit?.('price_claimed', id, { cents: next.price_watch.drop.cents });
       return next;
+    },
+
+    // The customer asked from their order page (priceclaim.js): `send` emails
+    // the store and says whether it went ({ sent, to }), or they sent it
+    // themselves (self). The payer hears it was asked for.
+    async claimByCustomer(id, { send = null, self = false } = {}, now = Date.now()) {
+      const c = db.byId(id);
+      if (c?.price_watch?.state === 'claimed') return { cart: c, sent: true, to: c.price_watch.claim?.to || null };
+      if (!eligible(c, now)) throw new CartError(c?.price_watch?.state === 'dropped' ? 'This one can’t be asked for any more' : 'No price drop to ask for on this order', 409);
+      let to = null;
+      if (!self) {
+        const r = await send(c);
+        if (!r?.sent) return { cart: c, sent: false, ...r };
+        to = r.to;
+      }
+      const next = spot.patch(id, (x) => ({ ...x, price_watch: { ...x.price_watch, state: 'claimed', claimed_at: now, claim: { by: self ? 'customer_self' : 'customer', to, at: now } } }), 'price_claimed');
+      spot.emit?.('price_claimed', id, { cents: next.price_watch.drop.cents });
+      return { cart: next, sent: true, to };
     },
 
     // Not worth it, or the store said no: stop watching this order.

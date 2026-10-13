@@ -46,6 +46,8 @@ export function policyFrom(v, site) {
     returns_url: typeof v.returns_url === 'string' && /^https:\/\//i.test(v.returns_url) && siteOf(v.returns_url) === site ? v.returns_url.slice(0, 500) : null,
     ship_days_min: days(v.ship_days_min),
     ship_days_max: days(v.ship_days_max),
+    // Where customer service takes email (price adjustments are asked for there).
+    support_email: typeof v.support_email === 'string' && /^[^\s@<>"]+@[^\s@<>"]+\.[a-z]{2,}$/i.test(v.support_email.trim()) ? v.support_email.trim().toLowerCase().slice(0, 120) : null,
     free_shipping_over: Number.isFinite(Number(v.free_shipping_over)) && Number(v.free_shipping_over) >= 0 && Number(v.free_shipping_over) < 10000 && v.free_shipping_over !== null && v.free_shipping_over !== '' ? Math.round(Number(v.free_shipping_over) * 100) : null,
   };
   if (out.ship_days_min && out.ship_days_max && out.ship_days_min > out.ship_days_max) [out.ship_days_min, out.ship_days_max] = [out.ship_days_max, out.ship_days_min];
@@ -64,7 +66,7 @@ async function readPolicy(site, name, { client, onUsage, onError } = {}) {
 3. Standard shipping in the US: how many business days from order to delivery (processing plus transit), and the order total over which shipping is free.
 Read the policy page itself (help center, FAQ, returns or price policy). Price matching a competitor is not a price adjustment.
 Reply with ONLY this JSON:
-{"price_adjustment": true | false | null, "adjustment_days": number or null, "adjustment_how": "a few words, e.g. contact customer service with your order number" or "", "returns_days": number or null, "free_returns": true | false | null, "returns_how": "one or two short sentences on how to start a return online" or "", "returns_url": "https address where a return is started, on ${site}" or "", "ship_days_min": number or null, "ship_days_max": number or null, "free_shipping_over": dollars as a number (0 if always free) or null, "source_url": "the https address of the policy page you read, on ${site}"}
+{"price_adjustment": true | false | null, "adjustment_days": number or null, "adjustment_how": "a few words, e.g. contact customer service with your order number" or "", "returns_days": number or null, "free_returns": true | false | null, "returns_how": "one or two short sentences on how to start a return online" or "", "returns_url": "https address where a return is started, on ${site}" or "", "ship_days_min": number or null, "ship_days_max": number or null, "free_shipping_over": dollars as a number (0 if always free) or null, "support_email": "the customer service email address the store gives, or empty", "source_url": "the https address of the policy page you read, on ${site}"}
 Say true or false only when the page says so (for example "we do not offer price adjustments"); null when it doesn't say.`;
   const messages = [{ role: 'user', content }];
   try {

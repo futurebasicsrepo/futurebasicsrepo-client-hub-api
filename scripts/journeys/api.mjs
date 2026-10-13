@@ -2460,4 +2460,43 @@ await journey('J178', 'The site itself goes to a client\'s Shopify as a draft th
   } finally { await new Promise(r => srv.close(r)); }
 });
 
+await journey('J175', 'A prototype made elsewhere stays in Prototypes (not on Builds) until it is pushed: then it gets its Builds entry, shows in the client\'s room, and the client can be invited; and it can be taken back out', async () => {
+  const room = await newRoom('175', { wait: false }), cid = sql(`select client_id from users where lower(email)='${room.email}'`);
+  const staff = async email => { const id = sql(`select id from users where lower(email)='${email}'`).split('\n')[0] || sql(`insert into users(client_id,email,name,role) values('${cid}','${email}','${email.split('@')[0]}','admin') returning id`).split('\n')[0]; return forge({ sub: id, clientId: cid, role: 'admin', email }); };
+  const kyle = await staff('kyle@thefuturebasics.com'), P = (path, o = {}) => call('/v1/admin/prototypes' + path, { token: kyle, ...o }), B = (path, o = {}) => call('/v1/admin/builds' + path, { token: kyle, ...o });
+  const host = `cg-proto-${stamp}.myshopify.com`, url = `https://${host}/password`;
+  ok((await call('/v1/admin/prototypes/external', { token: room.token, body: { company: 'X', prototypeUrl: url } })).status === 403, 'only staff can add one');
+  ok((await P('/external', { body: { prototypeUrl: url } })).status === 422 && (await P('/external', { body: { company: 'Common Ground', prototypeUrl: 'not a url' } })).status === 422, 'it needs a business name and a real address');
+  // it was added to Builds by hand before: adding it here takes it out of Builds
+  const made = await B('', { body: { name: `cg proto ${stamp}`, slug: `cg-proto-${stamp}`, liveUrl: url, status: 'concept', visibility: 'listed' } }); const oldBuild = made.json.build?.id || made.json.id;
+  const meta = (await P('/meta')).json; ok(meta.builds.some(b => b.id === oldBuild) && Array.isArray(meta.projects), 'the page can see which Builds entry already points at it', meta.builds.length);
+  const add = await P('/external', { body: { company: 'Common Ground', prototypeUrl: url, currentUrl: 'commonground12.com', accessNote: 'Store password: sneakers', moveBuildId: oldBuild } }); const px = add.json.prototype;
+  ok(add.status === 201 && px.kind === 'external' && px.status === 'ready' && px.externalUrl === url && px.buildId === null && px.accessNote === 'Store password: sneakers' && add.json.movedFromBuilds === `cg proto ${stamp}`, 'it is kept in Prototypes with its address and how to get in, and not on Builds', add.json);
+  ok(sql(`select status||'|'||visibility from builds where id='${oldBuild}'`) === 'archived|hidden', 'the by-hand Builds entry is archived and hidden');
+  ok((await P('/external', { body: { company: 'Common Ground', prototypeUrl: url } })).status === 409, 'the same prototype is not added twice');
+  ok((await P(`/${px.id}/rebuild`, { body: {} })).status === 409 && (await P(`/${px.id}/edit`, { body: { instruction: 'make it bolder' } })).status === 409 && (await P(`/${px.id}/publish`, { body: {} })).status === 409 && (await P(`/${px.id}/share`, { body: { emails: 'x@y.test' } })).status === 409, 'we do not rebuild, change or publish what lives elsewhere');
+  ok((await P('')).json.prototypes.some(x => x.id === px.id && x.kind === 'external'), 'it is in the list');
+  // the client's room: a software project, with nothing on it yet
+  const proj = (await call(`/v1/admin/clients/${cid}/projects`, { token: kyle, body: { name: `Storefront ${stamp}`, kind: 'software' } })).json; const dash = async () => (await call('/v1/dashboard', { token: room.token })).json.projects.find(x => x.id === proj.id);
+  ok(!JSON.stringify((await dash()).software || {}).includes(host), 'the client sees nothing of it yet');
+  ok((await P(`/${px.id}/to-builds`, { token: room.token, body: {} })).status === 403, 'a client cannot push it');
+  const prod = (await call(`/v1/admin/clients/${cid}/projects`, { token: kyle, body: { name: `Tech ${stamp}`, kind: 'product' } })).json;
+  ok((await P(`/${px.id}/to-builds`, { body: { projectId: prod.id } })).status === 422, 'only a software project can be picked');
+  const push = await P(`/${px.id}/to-builds`, { body: { projectId: proj.id, repoUrl: 'https://github.com/futurebasicsrepo/futurebasicsrepo-client-hub-api', repoPath: 'themes/common-ground' } });
+  ok(push.status === 200 && push.json.buildId && push.json.project.id === proj.id && push.json.prototype.buildId === push.json.buildId, 'pushed: it has its Builds entry and is tied to the client project', push.json);
+  const bid = push.json.buildId;
+  ok(sql(`select status||'|'||visibility||'|'||hosting||'|'||live_url||'|'||repo_path from builds where id='${bid}'`) === `concept|hidden|shopify|${url}|themes/common-ground`, 'the entry is a hidden concept on Shopify, pointing at the prototype, with its code folder');
+  ok(sql(`select build_id from projects where id='${proj.id}'`) === bid, 'the project is on that build');
+  ok(JSON.stringify((await dash()).software || {}).includes(host), 'and the client now sees it in their room, though the entry is hidden for everyone else', (await dash()).software);
+  const inv = await P(`/${px.id}/to-builds`, { body: { projectId: proj.id, emails: `phil-${stamp}@commonground.test`, note: 'Store password: sneakers', send: false } });
+  ok(inv.status === 200 && inv.json.buildId === bid && inv.json.invites.invited.length === 1 && sql(`select visibility from builds where id='${bid}'`) === 'invite' && sql(`select count(*) from build_invites where build_id='${bid}' and email='phil-${stamp}@commonground.test' and revoked_at is null`) === '1', 'inviting adds the person to that same entry, which becomes invite only', inv.json);
+  ok(sql(`select count(*) from builds where slug like 'proto-common-ground%' and status<>'archived'`) === '1', 'pushing again does not make a second entry');
+  // back out
+  const back = await P(`/${px.id}/from-builds`, { body: {} });
+  ok(back.status === 200 && back.json.prototype.buildId === null && sql(`select status from builds where id='${bid}'`) === 'archived' && sql(`select coalesce(build_id::text,'none') from projects where id='${proj.id}'`) === 'none' && !JSON.stringify((await dash()).software || {}).includes(host), 'taken back out: the entry is archived, the project is untied, the client no longer sees it, and the prototype is still here');
+  ok((await P('')).json.prototypes.some(x => x.id === px.id), 'it stays in Prototypes');
+  const re = await P(`/${px.id}/to-builds`, { body: { projectId: proj.id } }); ok(re.status === 200 && re.json.buildId && re.json.buildId !== bid, 'it can be pushed again later, to a fresh entry');
+  ok((await P(`/${px.id}`, { method: 'DELETE' })).json.ok === true && sql(`select status from builds where id='${re.json.buildId}'`) === 'archived', 'deleting it archives its entry');
+});
+
 const bad = summary(); process.exit(bad ? 1 : 0);

@@ -151,3 +151,31 @@ test('a Shopify store’s order is asked for by its gid', async () => {
   assert.equal(shopifyOrderId('https://sports-basement.myshopify.com/api/ucp/mcp', 'gid://shopify/Order/1'), 'gid://shopify/Order/1');
   assert.equal(shopifyOrderId('https://store.example/ucp', '123'), '123', 'other stores keep their own ids');
 });
+
+test("Shopify's event names: picked up by the carrier is moving, a missed delivery is a problem, collected is delivered", async () => {
+  const { fromOrder } = await import('../src/tracking.js');
+  const at = (type, extra = {}) => fromOrder({ fulfillment: { events: [{ type, occurred_at: '2026-10-13T10:00:00Z', ...extra }] } });
+  assert.equal(at('carrier_picked_up', { tracking_number: '1Z999AA10123456784', carrier: 'UPS' }).status, 'in_transit');
+  assert.equal(at('carrier_picked_up', { tracking_number: '1Z999AA10123456784', carrier: 'UPS' }).number, '1Z999AA10123456784');
+  assert.equal(at('attempted_delivery').status, 'problem');
+  assert.equal(at('returning_to_sender').status, 'problem');
+  assert.equal(at('picked_up').status, 'delivered');
+  assert.equal(at('delayed').status, 'in_transit');
+});
+
+test("Spot's agent profile names the order capability, so stores offer get_order", async () => {
+  const { platformProfile, UCP_VERSION } = await import('../src/fulfill/ucp.js');
+  assert.equal(platformProfile('https://spotmeplease.com').ucp.capabilities['dev.ucp.shopping.order'][0].version, UCP_VERSION);
+});
+
+test('opening the order asks the store right then, at most every 15 minutes', async (t) => {
+  const { call, orders, placed, reads } = app(t);
+  const { token, k } = await placed();
+  orders.events = [ev('shipped', '2026-10-13T10:00:00Z', { carrier: 'UPS', tracking_number: '1Z999AA10123456784' })];
+  const first = (await call('GET', `/v1/carts/${token}/manage?k=${k}`)).body.cart.tracking;
+  assert.equal(first.status, 'shipped');
+  assert.equal(first.number, '1Z999AA10123456784');
+  assert.equal(reads(), 1);
+  await call('GET', `/v1/carts/${token}/manage?k=${k}`);
+  assert.equal(reads(), 1, 'not again within 15 minutes');
+});
