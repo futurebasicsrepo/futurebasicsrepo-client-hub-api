@@ -595,6 +595,49 @@ const SETUP_CSS = `
 .howto{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:15px}.howto a{color:var(--spot);font-weight:700;text-decoration:none}
 .have{background:color-mix(in srgb,var(--ok) 12%,transparent);color:var(--ink);border-radius:12px;padding:10px 12px;font-size:15px;font-weight:600}.have[hidden]{display:none}
 .sufine{color:var(--muted);font-size:14px;margin:0}
+/* The tour: what Spot does, before the questions (four slides, swipe or Next) */
+.tour{display:flex;flex-direction:column;gap:14px;max-width:520px;margin:0 auto}.tour[hidden]{display:none}
+.tslides{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;gap:16px;margin:0 -4px;padding:4px}
+.tslides::-webkit-scrollbar{display:none}
+.tslide{flex:0 0 100%;scroll-snap-align:center;display:flex;flex-direction:column;gap:8px}
+.tslide h2{font-size:clamp(30px,8vw,40px);line-height:1.02;letter-spacing:-.035em;margin:4px 0 0}
+.tslide .lead{margin:0;color:var(--muted)}
+.tkick{margin:6px 0 0;font-weight:800;font-size:14px;letter-spacing:.02em;color:var(--spot);text-transform:uppercase}
+.tmock{background:var(--bg2);border-radius:24px;padding:18px;min-height:250px;display:flex;flex-direction:column;gap:10px;justify-content:center;position:relative;overflow:hidden}
+.tmock .askb{display:flex;align-items:center;gap:8px;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:10px 10px 10px 16px;font-weight:600;box-shadow:var(--sh-1)}
+.tmock .askb span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tmock .askb i{font-style:normal;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:var(--spot);color:#fff;font-weight:800}
+.tmock .seg2{align-self:center;display:flex;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:3px;font-weight:700;font-size:14px}
+.tmock .seg2 b{padding:6px 16px;border-radius:999px}.tmock .seg2 b.on{background:var(--ink);color:var(--bg)}
+.tmock .tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.tmock .tile{background:var(--card);border-radius:16px;padding:8px;display:flex;flex-direction:column;gap:3px;font-size:12.5px;box-shadow:var(--sh-1)}
+.tmock .tile .ph{aspect-ratio:1;border-radius:10px;background:var(--bg);display:grid;place-items:center;font-size:30px}
+.tmock .tile b{font-size:13px}.tmock .tile small{color:var(--muted)}
+.tmock .pill{align-self:flex-start;display:inline-flex;align-items:center;gap:6px;background:var(--ink);color:var(--bg);border-radius:999px;padding:8px 14px;font-weight:700;font-size:14px}
+.tmock .shops{display:flex;flex-direction:column;gap:8px}
+.tmock .shop{display:flex;align-items:center;gap:10px;background:var(--card);border-radius:16px;padding:10px 12px;box-shadow:var(--sh-1);font-size:14px}
+.tmock .shop i{font-style:normal;width:36px;height:36px;border-radius:10px;background:var(--bg);display:grid;place-items:center;font-size:20px;flex:none}
+.tmock .shop span{display:flex;flex-direction:column;flex:1;min-width:0}.tmock .shop small{color:var(--muted)}
+.tmock .ping{background:var(--card);border-radius:18px;padding:12px 14px;box-shadow:var(--sh-2);display:flex;flex-direction:column;gap:4px;font-size:14px}
+.tmock .ping .hd{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:12.5px;font-weight:600}
+.tmock .ping .hd .ic{width:20px;height:20px;border-radius:6px;background:var(--spot)}
+.tmock .ping b{font-size:15.5px}
+.tmock .ping .acts{display:flex;gap:8px;margin-top:6px}
+.tmock .ping .acts span{flex:1;text-align:center;border-radius:999px;padding:8px;font-weight:800;font-size:14px;background:var(--bg2)}
+.tmock .ping .acts span.go{background:var(--spot);color:#fff}
+.tmock .okline{display:flex;gap:8px;align-items:center;font-size:14px;color:var(--ink);background:color-mix(in srgb,var(--ok) 12%,var(--card));border-radius:14px;padding:9px 12px;font-weight:600}
+.tmock .shield{align-self:flex-start;display:inline-flex;gap:6px;align-items:center;font-weight:700;font-size:14px;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:7px 12px}
+.tdots{display:flex;justify-content:center;gap:8px}.tdots i{width:8px;height:8px;border-radius:50%;background:var(--line);transition:background .3s,width .3s}.tdots i.on{background:var(--spot);width:22px;border-radius:9px}
+.tour .btn.primary{width:100%}
+.tour .tskip{align-self:center;color:var(--muted);font-size:15px}
+.su[hidden]{display:none}
+/* Done: where to go next */
+.sunext{display:grid;gap:8px;margin:2px 0 4px}
+.sunext a{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:12px 14px;text-decoration:none;color:var(--ink);box-shadow:var(--sh-1)}
+.sunext a i{font-style:normal;font-size:22px;width:28px;text-align:center}
+.sunext a span{display:flex;flex-direction:column;flex:1}.sunext a small{color:var(--muted);font-size:13.5px}
+.sunext a::after{content:'→';color:var(--spot);font-weight:800}
+@media (prefers-reduced-motion:reduce){.tslides{scroll-behavior:auto}}
 `;
 
 export function setupPage({ origin }) {
@@ -604,7 +647,22 @@ export function setupPage({ origin }) {
     path: '/setup',
     title: 'Set up · Spot',
     css: SETUP_CSS,
-    body: `<div class="su" id="su">
+    body: `<div class="tour" id="tour" hidden aria-roledescription="carousel" aria-label="What Spot does">
+<div class="tslides" id="tslides">
+<article class="tslide" aria-label="1 of 4"><div class="tmock" aria-hidden="true"><div class="seg2"><b class="on">Spot</b><b>Shop</b></div><div class="askb"><span>black Salomon XT-6, size 10.5</span><i>↑</i></div><div class="tiles"><div class="tile"><div class="ph">👟</div><b>$200</b><small>REI</small></div><div class="tile"><div class="ph">👟</div><b>$200</b><small>Salomon</small></div><div class="tile"><div class="ph">👟</div><b>$185</b><small>Zappos</small></div></div></div>
+<p class="tkick">Spot &amp; Shop</p><h2>Spot anything.</h2><p class="lead">Paste a link, drop a screenshot, share a TikTok, or just say what you want. Spot finds it at the stores that have it. Shop keeps everything you’ve found in one feed, newest first.</p></article>
+<article class="tslide" aria-label="2 of 4"><div class="tmock" aria-hidden="true"><span class="pill">🧭 Discover: on</span><div class="shops"><div class="shop"><i>🏺</i><span><b>Kiln &amp; Co.</b><small>Small-batch ceramics</small></span></div><div class="shop"><i>🧥</i><span><b>Northbound Supply</b><small>Independent outerwear</small></span></div><div class="shop"><i>🕯️</i><span><b>Hollow Pine Goods</b><small>Made by hand</small></span></div></div></div>
+<p class="tkick">Discover</p><h2>Find shops nobody else shows you.</h2><p class="lead">Turn on Discover and Spot skips the big-box stores and the shops you’ve already seen, so every search turns up somewhere new.</p></article>
+<article class="tslide" aria-label="3 of 4"><div class="tmock" aria-hidden="true"><div class="ping"><div class="hd"><span class="ic"></span>Spot · now</div><b>Morgan wants Dunk Low</b><span>Nike · $125.35, over your $25 limit</span><div class="acts"><span class="go">Approve</span><span>Not now</span></div></div><div class="okline">✓ Crew socks · $18 went through on its own</div></div>
+<p class="tkick">Kid Spot</p><h2>Small stuff goes through. Big stuff pings you.</h2><p class="lead">For teens 13 to 17. Pick the stores and a limit; anything inside it is paid from your card on its own. Anything else comes to you for a one-tap yes.</p></article>
+<article class="tslide" aria-label="4 of 4"><div class="tmock" aria-hidden="true"><span class="shield">🛡️ Price Shield · watching 3 orders</span><div class="ping"><div class="hd"><span class="ic"></span>Spot · 2d after you bought it</div><b>📉 $12 back from Nike</b><span>Dunk Low dropped in price. Tap to ask Nike for the difference.</span><div class="acts"><span class="go">Ask for $12</span></div></div></div>
+<p class="tkick">Price Shield</p><h2>Bought it, then the price dropped?</h2><p class="lead">Spot keeps watching after you buy. When a store with price protection lowers its price inside its window, you get a ping, and one tap asks the store for the difference.</p></article>
+</div>
+<div class="tdots" id="tdots" aria-hidden="true"><i class="on"></i><i></i><i></i><i></i></div>
+<button type="button" class="btn primary" id="tNext">Next</button>
+<button type="button" class="linkbtn tskip" id="tSkip">Skip the tour</button>
+</div>
+<div class="su" id="su">
 <div class="sutop"><div class="prog" role="progressbar" aria-label="Setup" aria-valuemin="1" aria-valuemax="5" aria-valuenow="1"><i class="on"></i><i></i><i></i><i></i><i></i></div><span class="sucount" id="count">1 of 5</span><button type="button" class="linkbtn" id="skipAll">Skip setup</button></div>
 <div class="suhero">${buddySvg(false)}<h1 class="say" id="say" tabindex="-1" aria-live="polite">What should I call you?</h1></div>
 <form class="f sustep" data-step="name" data-say="What should I call you?"><p class="lead">It’s how Spot greets you, and the name people see when you ask them to pay.</p>
@@ -632,7 +690,9 @@ export function setupPage({ origin }) {
   <p class="have" id="cardHave" hidden></p>
   <p class="err"></p><button class="btn primary" id="cardGo">Add a card</button>${nav()}</form>
 <div class="f sustep" data-step="done" data-say="You’re all set!" hidden><p class="lead">Ask your AI for something, or make a Spot yourself: paste a link and send it to whoever’s paying.</p>
-  <a class="btn primary" href="/new" style="width:100%">Make a Spot</a><a class="btn ghost" href="/account" style="width:100%">Go to my account</a><p class="sufine">You can change any of this in your account.</p></div>
+  <a class="btn primary" href="/new" style="width:100%">Make a Spot</a>
+  <nav class="sunext" aria-label="Try next"><a href="/new#shop"><i>🛍️</i><span><b>Open Shop</b><small>Everything you’ve found, newest first</small></span></a><a href="/new?discover=1"><i>🧭</i><span><b>Turn on Discover</b><small>Shops you’ve never heard of</small></span></a><a href="/account#family"><i>🧒</i><span><b>Set up Kid Spot</b><small>Add your teen and their rules</small></span></a><a href="/account"><i>🛡️</i><span><b>Price Shield</b><small>Watches prices after you buy</small></span></a></nav>
+  <p class="sufine">You can change any of this in your account. <button type="button" class="linkbtn" id="retour">See the tour again</button></p></div>
 </div>`,
     script: `const STEPS=[...document.querySelectorAll('.sustep')],N=STEPS.length-1;let at=0,me=null;
 function show(i){at=i;STEPS.forEach((s,j)=>s.hidden=j!==i);const s=STEPS[i],done=s.dataset.step==='done';
@@ -655,6 +715,17 @@ document.addEventListener('submit',async e=>{const f=e.target.closest('.sustep')
 document.addEventListener('click',e=>{if(e.target.closest('[data-back]'))show(Math.max(0,at-1));if(e.target.closest('[data-skip]'))show(at+1)});
 $('#skipAll').onclick=async()=>{try{await post('/v1/me',{setup_done:true,setup_skipped:true})}catch{}location.href='/account'};
 $('#copyUrl').onclick=async()=>{try{await navigator.clipboard.writeText($('#mcpUrl').textContent);$('#copyUrl').textContent='Copied'}catch{}};
+// The tour: four slides, once per phone (or ?tour=1), then the questions.
+const TS=$('#tslides'),TD=[...document.querySelectorAll('#tdots i')],TN=TD.length;let tAt=0;
+const tSeen=()=>{try{return localStorage.getItem('spot:toured')==='1'}catch{return false}};
+function tourDone(){try{localStorage.setItem('spot:toured','1')}catch{}$('#tour').hidden=true;$('#su').hidden=false;scrollTo(0,0);const s=STEPS[at];if(s)(s.querySelector('input')||s.querySelector('.btn.primary')).focus({preventScroll:true})}
+function tourGo(i){tAt=Math.max(0,Math.min(TN-1,i));TS.scrollTo({left:TS.clientWidth*tAt,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});tDraw()}
+function tDraw(){TD.forEach((d,j)=>d.classList.toggle('on',j===tAt));$('#tNext').textContent=tAt===TN-1?'Set me up':'Next'}
+TS.addEventListener('scroll',()=>{const i=Math.round(TS.scrollLeft/Math.max(1,TS.clientWidth));if(i!==tAt){tAt=i;tDraw()}},{passive:true});
+$('#tNext').onclick=()=>tAt===TN-1?tourDone():tourGo(tAt+1);$('#tSkip').onclick=tourDone;
+TS.addEventListener('keydown',e=>{if(e.key==='ArrowRight')tourGo(tAt+1);if(e.key==='ArrowLeft')tourGo(tAt-1)});TS.tabIndex=0;
+$('#retour').onclick=()=>{$('#su').hidden=true;$('#tour').hidden=false;tourGo(0)};
+if(new URLSearchParams(location.search).get('tour')==='1'||!tSeen()){$('#su').hidden=true;$('#tour').hidden=false;tDraw()}
 (async()=>{const r=await fetch('/v1/me');if(r.status===401){location.href='/signin?next=/setup';return}
   me=await r.json();const u=me.user;
   // Anything already on the account is filled in, to check or change.
