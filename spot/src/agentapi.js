@@ -38,7 +38,7 @@ function apiKeys(env) {
   return out;
 }
 
-export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env, urlFor, capture, db, approvals, mcpChallenge }) {
+export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env, urlFor, capture, db, approvals, mcpChallenge, teenScreen = null }) {
   // The account behind the AI: the finish link goes to its devices too, and
   // to its email when a text doesn't go (texting down or not approved yet).
   const ownAccount = (req) => {
@@ -285,6 +285,8 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
         throw err;
       }
     }
+    // A teen's account (family.js): nothing only for adults, whoever pays.
+    teenScreen?.(req.spotUserId, items, [merchant?.url, ...items.map((i) => i?.url)]);
     // With an address to ship to, the store's own checkout says what this
     // really costs (shipping and tax), and the rules and the payment use
     // that, not a guess. Stores that can't say keep the estimate.

@@ -21,7 +21,7 @@
 import { runCheckoutAgent } from './agent.js';
 import { checkoutUrl, resolveShopifyCart } from './shopify.js';
 import { discover, runUcpCheckout } from './ucp.js';
-import { cardLimitCents } from '../cart.js';
+import { cardLimitCents, familyPaid } from '../cart.js';
 
 const CONFIRM_TIMEOUT_MS = 10 * 60_000;
 
@@ -130,9 +130,12 @@ export function createFulfiller({ spot, provider, env = process.env, launch, cli
   // `pay: 'auto'`) already said yes in advance, so the order goes ahead
   // without asking when the store's real total is inside the card's cap.
   // Anything over the cap still waits for a person.
+  // A teen's ask their parent's card paid (family.js: inside the parent's
+  // rules, or the parent tapped Approve) goes ahead the same way: the parent
+  // already said yes to that total.
   function askConfirm(cartId, { total_cents, summary, screenshot }) {
     const cart = spot.byId(cartId);
-    if (cart?.saved_pay?.how === 'paid_by_rules' && Number.isFinite(total_cents) && total_cents <= cardLimitCents(cart)) {
+    if ((cart?.saved_pay?.how === 'paid_by_rules' || familyPaid(cart)) && Number.isFinite(total_cents) && total_cents <= cardLimitCents(cart)) {
       update(cartId, { state: 'working', total_cents, summary }, 'order_confirmed_by_rules');
       step(cartId, 'Inside your rules, so Spot placed it without asking');
       spot.emit?.('approved', cartId, { by: 'rules', how: 'placed_order', amount_cents: total_cents });
@@ -310,7 +313,7 @@ export function createFulfiller({ spot, provider, env = process.env, launch, cli
     // "For me" carts: the requester already gave their shipping address, so
     // ordering starts the moment the card is issued.
     async autoStart(cart) {
-      if (cart.for !== 'self' || cart.status !== 'card_issued' || cart.fulfillment) return null;
+      if ((cart.for !== 'self' && !familyPaid(cart)) || cart.status !== 'card_issued' || cart.fulfillment) return null;
       if (cart.kind === 'train') return cart.train?.riders ? this.start(cart) : null;
       if (!cart.requester?.shipping) return null;
       return this.start(cart, cart.requester.shipping);

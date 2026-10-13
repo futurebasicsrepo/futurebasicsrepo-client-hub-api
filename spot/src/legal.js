@@ -5,7 +5,7 @@
 //   SPOT_CONTACT_EMAIL   where people write (default hello@spotmeplease.com)
 import { SITE_JS, siteFooter, siteHead, siteNav } from './site.js';
 
-export const UPDATED = 'October 10, 2026';
+export const UPDATED = 'October 13, 2026';
 
 const CSS = `
 .legal{padding:64px 0 90px}
@@ -93,7 +93,15 @@ export function termsPage({ origin, env = process.env }) {
 </ul>
 
 <h2>6. Your responsibilities</h2>
-<p>You must be at least 18 (or the age of majority where you live) and give accurate information: your name, shipping address and, for flights, each traveler’s details exactly as on their ID. You’re responsible for anything done with your private Spot links, so keep them private.</p>
+<p>You must be at least 18 (or the age of majority where you live), or a teen 13 to 17 whose parent or legal guardian added you to Spot (below). Give accurate information: your name, shipping address and, for flights, each traveler’s details exactly as on their ID. You’re responsible for anything done with your private Spot links, so keep them private.</p>
+
+<h3 id="family">Teens and family accounts</h3>
+<ul>
+<li><b>Who can use it.</b> Spot isn’t for anyone under 13. A teen 13 to 17 may use Spot only through a family invite from their parent or legal guardian. What a teen asks for is paid by their parent, by someone else they send the link to, or by the teen with a card they’re allowed to use.</li>
+<li><b>The parent’s agreement.</b> By adding a teen, you confirm you’re their parent or legal guardian and that they’re 13 to 17, you agree to these terms for them, and you’re responsible for their use of Spot. You can see what they ask for, change their rules, pause them, or remove them at any time.</li>
+<li><b>Rules and your card.</b> If you set an amount that goes through on its own and approve stores, you authorize Spot to charge your saved card, without asking you each time, for your teen’s asks at those stores up to that amount (and the monthly limit you set, if any). You get a receipt for each one, and can cancel for a full refund until Spot places the order. Anything outside your rules comes to you to approve or turn down; nothing is charged unless you approve it.</li>
+<li><b>What Spot won’t get for a teen.</b> Alcohol, tobacco and nicotine, vapes, cannabis and CBD, guns and ammunition, adult products, lottery tickets, and anything else only for adults, whatever the rules say. Spot’s card for a teen’s order also declines liquor stores, tobacco shops and bars.</li>
+</ul>
 
 <h2>7. What you can’t use Spot for</h2>
 <ul>
@@ -201,7 +209,7 @@ export function privacyPage({ origin, env = process.env }) {
 <p>Private links use long random keys; sign-in codes, sessions and API keys are stored only as hashes; passkeys are stored only as public keys; and all traffic is encrypted. No system is perfect, so keep your private Spot links to yourself.</p>
 
 <h2>9. Children</h2>
-<p>Spot is for adults. We don’t knowingly collect information from children under 13, and anyone under 18 should use Spot only with a parent or guardian.</p>
+<p>Spot isn’t for children under 13, and we don’t knowingly collect their information. If we learn we have, we delete it. Teens 13 to 17 can use Spot only when their parent or legal guardian adds them with a family invite. For a teen, we collect only what Spot needs to get their asks paid for and shipped (their name, sign-in email or phone, and shipping address). Their parent sees what they ask for, the stores and amounts, and what was bought. We don’t sell anyone’s information, and we don’t use a teen’s information for advertising. A parent can ask us to see or delete their teen’s information by emailing <a href="mailto:${email}">${email}</a>.</p>
 
 <h2>10. Changes and contact</h2>
 <p>We’ll post updates here and change the date above. Questions: <a href="mailto:${email}">${email}</a>.</p>`,
