@@ -4,7 +4,7 @@
 // public embed info or the page's share tags) → that product at the brand's
 // own store, where Spot can buy it.
 import { Anthropic, anthropicClient } from './anthropic.js';
-import { assertPublicHost, decode, readCapped, readMeta } from './capture.js';
+import { IMAGE_TYPES, assertPublicHost, decode, readCapped, readMeta } from './capture.js';
 
 const SITES = [
   [/(^|\.)tiktok\.com$/, 'TikTok'],
@@ -119,8 +119,40 @@ export async function readPost(rawUrl, { fetchImpl = fetch, allowPrivate = proce
 // What the post's photo shows, in a line ("Arc'teryx Beta jacket in black,
 // hood up"), so a pin with no words or a caption of only hashtags still
 // finds the product. '' when there's no product in it or no model to ask.
-export async function describePhoto(post, { client, onUsage, onError } = {}) {
+// Spot fetches the photo itself: the apps' image hosts (pinimg, TikTok's
+// signed CDN) turn away the model's own fetch.
+const MAX_PHOTO_BYTES = 5_000_000;
+export async function fetchPhoto(u, { fetchImpl = fetch, allowPrivate = process.env.SPOT_ALLOW_PRIVATE_FETCH === '1' } = {}) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+  try {
+    const url = new URL(u);
+    if (!allowPrivate) await assertPublicHost(url.hostname);
+    const res = await fetchImpl(url, { signal: ctrl.signal, redirect: 'error', headers: { 'user-agent': UA, accept: 'image/*' } });
+    const type = String(res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+    if (!res.ok || !IMAGE_TYPES.includes(type)) return await res.body?.cancel?.().catch(() => {}), null;
+    const reader = res.body.getReader();
+    const chunks = [];
+    let total = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > MAX_PHOTO_BYTES) return await reader.cancel().catch(() => {}), null;
+      chunks.push(value);
+    }
+    return { media_type: type, data: Buffer.concat(chunks).toString('base64') };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export async function describePhoto(post, { client, onUsage, onError, fetchImpl, allowPrivate } = {}) {
   if (!post?.image_url || (!client && !process.env.ANTHROPIC_API_KEY)) return '';
+  const photo = await fetchPhoto(post.image_url, { fetchImpl, allowPrivate });
+  if (!photo) return console.error('post photo: could not fetch', post.name), '';
   const anthropic = client ?? anthropicClient();
   try {
     const response = await anthropic.beta.messages.create({
@@ -133,7 +165,7 @@ export async function describePhoto(post, { client, onUsage, onError } = {}) {
         {
           role: 'user',
           content: [
-            { type: 'image', source: { type: 'url', url: post.image_url } },
+            { type: 'image', source: { type: 'base64', ...photo } },
             {
               type: 'text',
               text: `This is the photo from a ${post.name} post${post.caption ? ` captioned "${post.caption.replace(/"/g, "'")}"` : ''}. What product in it would someone want to buy? Name the brand and model if a logo, tag or the caption shows it; otherwise describe it exactly (kind, colour, material, details). If it shows several, name the main ones. One line, under 30 words, nothing else. If it shows no product, reply NONE.`,
@@ -147,7 +179,7 @@ export async function describePhoto(post, { client, onUsage, onError } = {}) {
     return /^none\b/i.test(line) || response.stop_reason === 'refusal' ? '' : line.slice(0, 300);
   } catch (err) {
     onError?.(err);
-    if (err instanceof Anthropic.APIError) return ''; // the caption alone, then
+    if (err instanceof Anthropic.APIError) return console.error('post photo failed', err.status, err.message), ''; // the caption alone, then
     throw err;
   }
 }

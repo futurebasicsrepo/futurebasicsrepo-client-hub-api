@@ -113,9 +113,13 @@ test('the shelf: a shared post is searched for what it shows, or says to screens
 test('the photo, described: brand and model in a line, nothing when it shows no product', async () => {
   const seen = [];
   const client = (line, stop = 'end_turn') => ({ beta: { messages: { create: async (req) => (seen.push(req), { model: 'm', usage: {}, stop_reason: stop, content: [{ type: 'text', text: line }] }) } } });
-  assert.equal(await describePhoto({ name: 'Pinterest', image_url: 'https://i.pinimg.com/a.jpg', caption: '' }, { client: client('Arc’teryx Beta jacket, black') }), 'Arc’teryx Beta jacket, black');
-  assert.deepEqual(seen[0].messages[0].content[0], { type: 'image', source: { type: 'url', url: 'https://i.pinimg.com/a.jpg' } });
-  assert.equal(await describePhoto({ name: 'TikTok', image_url: 'https://p16.example/a.jpg', caption: 'my dog' }, { client: client('NONE') }), '');
-  assert.equal(await describePhoto({ name: 'TikTok', image_url: '' }, { client: client('x') }), '', 'no photo, no call');
+  const img = async () => res(200, Buffer.from('jpegbytes'), { 'content-type': 'image/jpeg' });
+  const opts = (line) => ({ client: client(line), fetchImpl: img, allowPrivate: true });
+  assert.equal(await describePhoto({ name: 'Pinterest', image_url: 'https://i.pinimg.com/a.jpg', caption: '' }, opts('Arc’teryx Beta jacket, black')), 'Arc’teryx Beta jacket, black');
+  assert.deepEqual(seen[0].messages[0].content[0], { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: Buffer.from('jpegbytes').toString('base64') } }, 'Spot sends the photo itself; the image hosts turn the model away');
+  assert.equal(await describePhoto({ name: 'TikTok', image_url: 'https://p16.example/a.jpg', caption: 'my dog' }, opts('NONE')), '');
+  assert.equal(await describePhoto({ name: 'TikTok', image_url: '' }, opts('x')), '', 'no photo, no call');
+  assert.equal(await describePhoto({ name: 'TikTok', image_url: 'https://p16.example/a.jpg' }, { ...opts('x'), fetchImpl: async () => res(200, '<html>', { 'content-type': 'text/html' }) }), '', 'not an image, no call');
+  assert.equal(await describePhoto({ name: 'TikTok', image_url: 'https://p16.example/a.jpg' }, { ...opts('x'), fetchImpl: async () => res(404) }), '');
   assert.equal(seen.length, 2);
 });
