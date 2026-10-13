@@ -184,6 +184,10 @@ body.scrolled .topbar{border-bottom:.5px solid var(--hair)}
 @keyframes skl{from{opacity:.45}to{opacity:1}}
 @keyframes rise{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
 .fab{background:color-mix(in srgb,var(--card) 70%,transparent);color:var(--ink);-webkit-backdrop-filter:saturate(1.8) blur(20px);backdrop-filter:saturate(1.8) blur(20px);border:.5px solid var(--hair);box-shadow:0 12px 32px -12px rgba(0,0,0,.4);font-weight:600;padding:12px 18px}
+/* The ask bar in the same glass as the top bar: what's behind it blurs through, a hairline edge and a lit top. */
+.askbar{z-index:20;background:color-mix(in srgb,var(--bg) 62%,transparent);-webkit-backdrop-filter:saturate(1.8) blur(20px);backdrop-filter:saturate(1.8) blur(20px);border:.5px solid var(--hair);border-radius:22px;box-shadow:inset 0 1px 0 rgba(255,255,255,.35),0 12px 32px -12px rgba(0,0,0,.35)}
+@media (prefers-color-scheme:dark){.askbar{box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 12px 32px -12px rgba(0,0,0,.7)}}
+.askbar .btn{border-radius:16px}
 .fab:active{transform:scale(.96)}
 /* Sheets: rise into place, a grabber, a quiet close. */
 .sheet{border:0;border-radius:28px 28px 0 0;box-shadow:0 -.5px 0 var(--hair),0 -24px 60px -24px rgba(0,0,0,.4);animation:sheetup .42s var(--ease) both}
