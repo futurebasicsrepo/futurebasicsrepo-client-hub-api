@@ -2629,7 +2629,7 @@ function shopifyExportRoutes(path,pre,mine){
 shopifyExportRoutes('/v1/admin/products/:id/tech-pack/shopify-export',[authenticate,adminOnly],false);
 shopifyExportRoutes('/v1/products/:id/tech-pack/shopify-export',[authenticate],true);
 registerHomeRoutes(app,{pool,authenticate,adminOnly});
-registerCommerceRoutes(app,{pool,authenticate,adminOnly,tokenSeal,storeExec,liveStores,storeView:r=>({...storeView(r),status:r.status,shop:r.shop}),env:process.env,log:app.log});
+registerCommerceRoutes(app,{pool,authenticate,adminOnly,tokenSeal,storeExec,liveStores,storeView:r=>({...storeView(r),status:r.status,shop:r.shop}),env:process.env,log:app.log,publicUrl:clientHubUrl,secret:process.env.JWT_SECRET||'dev',throttle});
 // ---- A customer connects their own Shopify store. Authorization-code install: the hub asks for a single-use state tied to the customer and the shop, Shopify sends the
 // merchant back with a signed query, and only a callback that proves the signature, the state and the shop trades its code for a token (sealed before it is stored).
 const SHOPIFY_STATE_MINUTES=15;

@@ -1343,6 +1343,9 @@ export async function migrate() {
       updated_at timestamptz not null default now(),
       unique (client_id, platform)
     );
+    -- a Shopify store key for sending a theme (an app made in the client's own store with the themes permission): sealed like the Square and Wix ones
+    alter table client_commerce_connections drop constraint if exists client_commerce_connections_platform_check;
+    alter table client_commerce_connections add constraint client_commerce_connections_platform_check check (platform in ('square','wix','shopify-theme'));
     create table if not exists build_pushes (
       id uuid primary key default gen_random_uuid(),
       build_id uuid not null references builds(id) on delete cascade,

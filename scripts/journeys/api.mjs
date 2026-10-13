@@ -2413,4 +2413,51 @@ await journey('J151', 'Saved lead searches: they run by themselves when due, bri
   } finally { await new Promise(r => site.close(r)); await new Promise(r => brave.close(r)); }
 });
 
+await journey('J178', 'The site itself goes to a client\'s Shopify as a draft theme: the theme is a real zip, the store key is saved sealed, Shopify is given a short-lived address to fetch it from, a refusal or an error is said plainly, and nothing is sent twice by accident', async () => {
+  const room = await newRoom('178', { wait: false }), cid = sql(`select client_id from users where lower(email)='${room.email}'`);
+  const staff = async email => { const id = sql(`select id from users where lower(email)='${email}'`).split('\n')[0] || sql(`insert into users(client_id,email,name,role) values('${cid}','${email}','${email.split('@')[0]}','admin') returning id`).split('\n')[0]; return forge({ sub: id, clientId: cid, role: 'admin', email }); };
+  const kyle = await staff('kyle@thefuturebasics.com'), A = (path, o = {}) => call(path, { token: kyle, ...o });
+  const http = await import('node:http'), shopify = { calls: [], mode: 'ok' };
+  const srv = http.createServer((req, res) => { const chunks = []; req.on('data', c => chunks.push(c)); req.on('end', () => {
+    const body = (() => { try { return JSON.parse(Buffer.concat(chunks).toString() || '{}'); } catch { return {}; } })(); shopify.calls.push({ path: req.url, key: req.headers['x-shopify-access-token'], body });
+    const send = (code, o) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(o)); };
+    if (shopify.mode === 'refused') return send(401, { errors: '[API] Invalid API key or access token' });
+    if (shopify.mode === 'error') return send(200, { data: { themeCreate: { theme: null, userErrors: [{ code: 'INVALID', field: ['source'], message: 'The theme zip could not be read' }] } } });
+    send(200, { data: { themeCreate: { theme: { id: 'gid://shopify/OnlineStoreTheme/777', name: body.variables?.name, role: 'UNPUBLISHED' }, userErrors: [] } } }); }); });
+  await new Promise(r => srv.listen(3133, '127.0.0.1', r));
+  try {
+    ok((await call('/v1/admin/themes', { token: room.token })).status === 403 && (await call('/v1/admin/themes')).status === 401, 'only staff can list or download themes');
+    const list = (await A('/v1/admin/themes')).json.themes; const th = list.find(t => t.key === 'common-ground'); ok(th && th.files >= 80 && th.name === 'Common Ground', 'the Common Ground theme is there, with its files', list);
+    const zr = await fetch(`${BASE}/v1/admin/themes/common-ground/zip`, { headers: { authorization: `Bearer ${kyle}` } }); const zip = Buffer.from(await zr.arrayBuffer());
+    const entries = b => b.readUInt16LE(b.length - 22 + 10), names = b => { const out = []; let o = b.readUInt32LE(b.length - 22 + 16); const n = entries(b); for (let i = 0; i < n; i++) { const nl = b.readUInt16LE(o + 28), el = b.readUInt16LE(o + 30), cl = b.readUInt16LE(o + 32); out.push(b.subarray(o + 46, o + 46 + nl).toString()); o += 46 + nl + el + cl; } return out; };
+    ok(zr.status === 200 && /zip/.test(zr.headers.get('content-type')) && zip.readUInt32LE(0) === 0x04034b50 && entries(zip) === th.files, 'the download is a real zip with every file', { status: zr.status, entries: entries(zip) });
+    const nm = names(zip); ok(nm.includes('layout/theme.liquid') && nm.includes('templates/index.json') && nm.every(n => /^(assets|config|layout|locales|sections|snippets|templates)\//.test(n)), 'it holds only the folders a theme may hold (no notes or design docs)');
+    ok((await A('/v1/admin/themes/not-a-theme/zip')).status === 404, 'an unknown theme is not found');
+    const b = (await A('/v1/admin/builds', { body: { name: `Theme build ${stamp}`, slug: `theme-build-${stamp}`, status: 'concept', visibility: 'hidden' } })).json; const bid = b.build?.id || b.id;
+    const push = (o = {}) => A(`/v1/admin/builds/${bid}/push-theme`, { body: { clientId: cid, theme: 'common-ground', ...o } });
+    ok((await call(`/v1/admin/builds/${bid}/push-theme`, { token: room.token, body: { clientId: cid, theme: 'common-ground' } })).status === 403, 'a client cannot send themes');
+    ok((await push({ theme: 'nope' })).status === 422, 'only a listed theme can be sent');
+    const early = await push(); ok(early.status === 409 && /store key/i.test(early.json.error) && /zip/i.test(early.json.error), 'before a store key is saved it says what to do, and mentions the zip', early.json);
+    const conn = o => A(`/v1/admin/clients/${cid}/commerce/connection`, { method: 'PUT', body: { platform: 'shopify-theme', ...o } });
+    ok((await conn({ shop: 'not a shop', token: 'shpat_abcdefgh1234' })).status === 422 && (await conn({ shop: 'phil-store.myshopify.com', token: 'x' })).status === 422, 'a bad store address or a short key is refused');
+    const key = 'shpat_themekey_1234567890';
+    const saved = await conn({ shop: 'https://Phil-Store.myshopify.com/admin', token: key }); ok(saved.status === 200 && saved.json.connection.connected && saved.json.connection.shop === 'phil-store.myshopify.com', 'the key is saved against the client\'s store address', saved.json);
+    const view = JSON.stringify((await A(`/v1/admin/builds/${bid}/commerce?clientId=${cid}`)).json); ok(!view.includes(key) && JSON.parse(view).client.targets.shopifyTheme.shop === 'phil-store.myshopify.com', 'the key is never sent back');
+    ok(sql(`select secret_sealed like '%shpat%' from client_commerce_connections where client_id='${cid}' and platform='shopify-theme'`) === 'f', 'and it is sealed at rest');
+    const prev = await push({ preview: true }); ok(prev.json.preview && prev.json.files === th.files && prev.json.shop === 'phil-store.myshopify.com' && shopify.calls.length === 0, 'seeing what will be sent sends nothing', prev.json);
+    const go = await push({ name: 'Common Ground (draft)' }); const call1 = shopify.calls[0];
+    ok(go.status === 201 && go.json.push.status === 'done' && go.json.push.items[0].externalId === 'gid://shopify/OnlineStoreTheme/777', 'sent: Shopify made the draft theme', go.json);
+    ok(call1.key === key && /\/admin\/api\/[\d-]+\/graphql\.json$/.test(call1.path) && /themeCreate/.test(call1.body.query) && call1.body.variables.name === 'Common Ground (draft)' && !/role\s*:/.test(call1.body.query), 'with the store key, as a theme with the name given (never published: the role is left at the default, a draft)', call1.body.variables);
+    const src = new URL(call1.body.variables.source); ok(/^\/v1\/public\/theme-zip\/common-ground\.\d+\.[\w-]{32}\.zip$/.test(src.pathname), 'Shopify is given an address on a short-lived, signed path', src.pathname);
+    const got = await fetch(BASE + src.pathname); const gz = Buffer.from(await got.arrayBuffer()); ok(got.status === 200 && gz.readUInt32LE(0) === 0x04034b50 && entries(gz) === th.files, 'and that address serves the zip with no sign-in');
+    const forged = src.pathname.replace(/[\w-]{32}\.zip$/, 'A'.repeat(32) + '.zip'); ok((await fetch(BASE + forged)).status === 404 && (await fetch(`${BASE}/v1/public/theme-zip/common-ground.1000000000.${'a'.repeat(32)}.zip`)).status === 404, 'a forged or expired address gets nothing');
+    ok(sql(`select count(*) from build_pushes where build_id='${bid}' and platform='shopify-theme' and status='done'`) === '1', 'the push is kept in the history');
+    ok((await A(`/v1/admin/builds/${bid}/commerce?clientId=${cid}`)).json.pushes.some(p => p.platformLabel === 'Shopify theme' && p.target === 'phil-store.myshopify.com'), 'and shows in the build\'s history as a Shopify theme');
+    shopify.mode = 'error'; const bad1 = await push(); ok(bad1.status === 502 && bad1.json.push.status === 'failed' && /could not be read/.test(bad1.json.push.items[0].reason), 'a refusal from Shopify about the zip is said in its own words', bad1.json.push);
+    shopify.mode = 'refused'; const bad2 = await push(); ok(bad2.status === 409 && /themes/i.test(bad2.json.error) && sql(`select status from client_commerce_connections where client_id='${cid}' and platform='shopify-theme'`) === 'needs-reconnect', 'a key Shopify does not accept marks the connection to be redone, and says it may lack the themes permission', bad2.json);
+    ok((await push()).status === 409 && shopify.calls.length === 3, 'nothing more is sent until it is connected again');
+    ok((await A(`/v1/admin/clients/${cid}/commerce/connection/shopify-theme`, { method: 'DELETE' })).json.ok === true, 'the key can be removed');
+  } finally { await new Promise(r => srv.close(r)); }
+});
+
 const bad = summary(); process.exit(bad ? 1 : 0);

@@ -145,6 +145,7 @@ table{width:100%;border-collapse:collapse}th{text-align:left;color:var(--dim);fo
   <label class="f"><span class="mono">Products this site sells (one per line: Name | price | code | picture address | description)</span><textarea class="t" id="pCat" style="min-height:120px" placeholder="Flat white beans, 12oz | 18.50 | FW-12 | https://example.com/beans.jpg | Roasted to order"></textarea></label>
   <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="btn sm" id="pSaveCat" type="button">Save products</button><button class="btn sm" id="pPrev" type="button">See what will be made</button><button class="btn go sm" id="pGo" type="button">Push now</button><span class="msg" id="pMsg" role="status"></span></div>
   <div id="pOut"></div>
+  <div id="pTheme"></div>
   <div id="pHist"></div>
 </div></dialog>
 
@@ -207,8 +208,8 @@ let PUSH={build:null,clients:[],data:null};
 const PLAT={shopify:'Shopify',square:'Square',wix:'Wix',other:'Something else'};
 async function openPush(b,clientId){
   PUSH.build=b;$('#pTitle').textContent='Push “'+b.name+'” to a store';$('#pMsg').textContent='';$('#pMsg').className='msg';$('#pOut').innerHTML='';
-  const [{clients},d]=await Promise.all([api('/v1/admin/commerce/clients'),api('/v1/admin/builds/'+b.id+'/commerce'+(clientId?'?clientId='+clientId:''))]);
-  PUSH.clients=clients;PUSH.data=d;const linked=new Set(d.clients.map(c=>c.id));
+  const [{clients},d,th]=await Promise.all([api('/v1/admin/commerce/clients'),api('/v1/admin/builds/'+b.id+'/commerce'+(clientId?'?clientId='+clientId:'')),api('/v1/admin/themes').catch(()=>({themes:[]}))]);
+  PUSH.clients=clients;PUSH.data=d;PUSH.themes=th.themes;const linked=new Set(d.clients.map(c=>c.id));
   $('#pClient').innerHTML=(d.client?'':'<option value="">Choose a client…</option>')+[...clients].sort((a,z)=>(linked.has(z.id)-linked.has(a.id))||a.name.localeCompare(z.name)).map(c=>`<option value="${esc(c.id)}" ${d.client&&d.client.id===c.id?'selected':''}>${esc(c.name)}${linked.has(c.id)?' (this build is on their project)':''}</option>`).join('');
   $('#pCat').value=d.catalogText;drawPush();$('#pdlg').showModal();
 }
@@ -221,7 +222,8 @@ function drawPush(){
   else if(c.platform==='shopify'){const st=c.targets.shopify;conn=st.length?'<b>Connected:</b> '+st.map(x=>esc(x.shop)+(x.status==='connected'?'':' (needs reconnecting)')).join(', '):'<p class="note" style="margin:0">'+esc(c.name)+' has not connected a Shopify store. They connect it from their hub (Your Shopify store), then it shows here.</p>'}
   else{const t=c.targets[c.platform],sq=c.platform==='square';conn=(t.connected?`<b>${PLAT[c.platform]} is connected</b>${t.label?' ('+esc(t.label)+')':''}${sq&&t.currency?' · '+esc(t.currency):''}. `:t.status==='needs-reconnect'?`<b style="color:#b3261e">${PLAT[c.platform]} needs connecting again.</b> `:'')+`<details ${t.connected?'':'open'} style="margin-top:8px"><summary>${t.connected?'Replace the saved connection':'Connect '+PLAT[c.platform]}</summary><div class="fields" style="margin-top:8px">${sq?`<label class="f wide"><span class="mono">Square access token</span><input class="t" id="cSecret" type="password" autocomplete="off"></label><label class="f"><span class="mono">Currency</span><input class="t" id="cCur" value="${esc(t.currency||'USD')}" maxlength="3"></label>`:`<label class="f wide"><span class="mono">Wix API key</span><input class="t" id="cSecret" type="password" autocomplete="off"></label><label class="f"><span class="mono">Wix site id (if the key is for the whole account)</span><input class="t" id="cSite" value="${esc(t.siteId||'')}"></label>`}<label class="f"><span class="mono">A name for it</span><input class="t" id="cLabel" value="${esc(t.label||'')}" maxlength="80" placeholder="${esc(c.name)} ${PLAT[c.platform]}"></label><div style="display:flex;align-items:end"><button class="btn sm" id="cSave" type="button">Save connection</button></div></div></details>`}
   $('#pConn').innerHTML=conn;
-  $('#pHist').innerHTML=d.pushes.length?'<b>Earlier pushes</b><ul class="feat" style="margin-top:6px">'+d.pushes.map(p=>`<li>${esc(fmt(p.at))} · ${esc(p.platformLabel)}${p.target?' ('+esc(p.target)+')':''} · ${esc(p.status)} · ${p.summary.created||0} made, ${p.summary.failed||0} failed, ${p.summary.skipped||0} left alone</li>`).join('')+'</ul>':'';
+  drawTheme();
+  $('#pHist').innerHTML=d.pushes.length?'<b>Earlier pushes</b><ul class="feat" style="margin-top:6px">'+d.pushes.map(p=>`<li>${esc(fmt(p.at))} · ${esc(p.platformLabel||'Shopify theme')}${p.target?' ('+esc(p.target)+')':''} · ${esc(p.status)} · ${p.summary.created||0} made, ${p.summary.failed||0} failed, ${p.summary.skipped||0} left alone</li>`).join('')+'</ul>':'';
 }
 $('#list').addEventListener('click',e=>{const b=e.target.closest('[data-push]');if(b)openPush(BUILDS.find(x=>x.id===b.dataset.push)).catch(x=>alert(x.message))});
 $('#pClose').onclick=()=>$('#pdlg').close();
@@ -244,6 +246,36 @@ async function doPush(preview){
 }
 $('#pPrev').onclick=()=>doPush(true);
 $('#pGo').onclick=()=>{const c=PUSH.data.client;if(!c)return alert('Choose a client first');if(!confirm(`Put these products into ${c.name}’s ${PLAT[c.platform]||'store'} now?`))return;doPush(false)};
+
+// ---------- the theme: the site itself, as a draft in the client's Shopify ----------
+function drawTheme(){
+  const c=PUSH.data.client,box=$('#pTheme'),themes=PUSH.themes||[];
+  if(!c||c.platform!=='shopify'||!themes.length){box.innerHTML='';return}
+  const t=c.targets.shopifyTheme||{},sel=PUSH.theme||themes[0].key;
+  box.innerHTML=`<div class="panel" style="margin:0;padding:14px"><b>Send the site itself (the theme)</b>
+    <p class="note" style="margin:6px 0 10px">The theme goes into ${esc(c.name)}&rsquo;s Shopify as a <b>draft</b>: nothing on their live store changes until they publish it from Online Store, Themes.</p>
+    <div class="fields"><label class="f"><span class="mono">Theme</span><select class="t" id="tKey">${themes.map(x=>`<option value="${esc(x.key)}" ${x.key===sel?'selected':''}>${esc(x.name)} · ${x.files} files</option>`).join('')}</select></label><label class="f"><span class="mono">Name in their Themes list</span><input class="t" id="tName" maxlength="50" placeholder="Common Ground (draft)"></label></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px"><button class="btn sm" id="tZip" type="button">Download the zip</button>${t.connected?'<button class="btn sm" id="tPrev" type="button">See what will be sent</button><button class="btn go sm" id="tGo" type="button">Send as a draft</button>':''}<span class="msg" id="tMsg" role="status"></span></div>
+    <p class="note" style="margin:8px 0 0">${t.connected?`Store key saved for <b>${esc(t.shop)}</b>.`:'To send it from here, save a store key below. Or download the zip and upload it in their Themes page (Add theme, Upload zip file).'}</p>
+    <details ${t.connected?'':'open'} style="margin-top:8px"><summary>${t.connected?'Replace the store key':'Save a store key'}</summary>
+      <p class="note" style="margin:6px 0">Shopify only lets an app change themes with its own approval, but an app made in the client&rsquo;s own store is allowed. They make it in <b>Settings, Apps and sales channels, Develop apps, Create an app</b>, give it <b>Themes: read and write</b>, install it, and copy the <b>Admin API access token</b> (shown once). It is saved sealed and never shown again.</p>
+      <div class="fields"><label class="f"><span class="mono">Store address</span><input class="t" id="tShop" placeholder="their-store.myshopify.com" autocapitalize="off" spellcheck="false"></label><label class="f"><span class="mono">Admin API access token</span><input class="t" id="tToken" type="password" autocomplete="off" placeholder="shpat_…"></label></div>
+      <button class="btn sm" id="tSave" type="button" style="margin-top:8px">Save the key</button></details></div>`;
+}
+const tsay=(t,k='ok')=>{const m=$('#tMsg');if(m){m.className='msg '+k;m.textContent=t}};
+$('#pTheme').addEventListener('change',e=>{if(e.target.id==='tKey')PUSH.theme=e.target.value});
+$('#pTheme').addEventListener('click',async e=>{
+  const c=PUSH.data&&PUSH.data.client;if(!c)return;const key=($('#tKey')||{}).value;
+  try{
+    if(e.target.closest('#tZip')){const r=await fetch('/v1/admin/themes/'+key+'/zip',{headers:{Authorization:'Bearer '+TOKEN()}});if(!r.ok)throw new Error('The zip could not be made');const u=URL.createObjectURL(await r.blob()),a=document.createElement('a');a.href=u;a.download=key+'-theme.zip';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),2000);tsay('Downloaded. Upload it in their Themes page: Add theme, Upload zip file.')}
+    else if(e.target.closest('#tSave')){await api('/v1/admin/clients/'+c.id+'/commerce/connection',{method:'PUT',body:{platform:'shopify-theme',shop:$('#tShop').value,token:$('#tToken').value}});await openPush(PUSH.build,c.id);tsay('Saved.')}
+    else if(e.target.closest('#tPrev')||e.target.closest('#tGo')){
+      const go=Boolean(e.target.closest('#tGo'));if(go&&!confirm(`Add this theme to ${c.name}’s Shopify as a draft now? Their live store does not change.`))return;
+      tsay(go?'Sending…':'Checking…');const r=await api('/v1/admin/builds/'+PUSH.build.id+'/push-theme',{body:{clientId:c.id,theme:key,name:($('#tName')||{}).value,preview:!go}});
+      if(r.preview)return tsay(`${r.files} files go to ${r.shop} as “${r.name}”. ${r.note}`);
+      const p=r.push;await openPush(PUSH.build,c.id);tsay(p.status==='done'?`Sent. “${p.items[0].name}” is in their Themes as a draft: they preview it and publish when ready.`:(p.items[0].reason||'Shopify did not take it'),p.status==='done'?'ok':'bad')}
+  }catch(x){tsay(x.message,'bad')}
+});
 
 // invites
 async function loadInvites(){
