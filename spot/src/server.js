@@ -27,6 +27,7 @@ import { createFlights } from './flights.js';
 import { createRisk } from './risk.js';
 import { registerAdmin } from './admin.js';
 import { createPriceWatch } from './pricewatch.js';
+import { claimMessage, storeContact } from './priceclaim.js';
 import { createStoreFacts, siteOf } from './storefacts.js';
 import { createWatches } from './watches.js';
 import { createReviews } from './reviews.js';
@@ -1170,6 +1171,26 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     return { cart: ownerCart(spot.requestReturn(req.params.token, keyOf(req), req.body || {}, { policy })) };
   });
   // A tracking number from the store's shipping email.
+  // The price dropped and the store refunds the difference: the customer
+  // asks in one tap. Spot emails the store's customer service with them
+  // copied (replies go to them); with no address found, they get the words
+  // to send themselves, then tap again with { self: true }.
+  app.post('/v1/carts/:token/manage/price-claim', async (req) => {
+    limits.capture(req);
+    const cart = spot.loadManaged(req.params.token, keyOf(req));
+    const u = cart.user_id ? db.users.byId(cart.user_id) : null;
+    const customer = u?.email || cart.requester?.email || cart.requester?.shipping?.email || null;
+    const customerName = cart.requester?.shipping?.name || cart.requester?.name || u?.name || '';
+    const msg = () => claimMessage(db.byId(cart.id), { customerName, customerEmail: customer || '' });
+    const send = async (c) => {
+      const where = await (capture.storeContact || storeContact)(c.merchant?.url || c.items?.find((i) => i?.url)?.url, c.price_watch.policy);
+      if (!where.email || !customer) return { message: msg(), contact_url: where.contact_url };
+      const status = await notifier.sendStoreClaim({ to: where.email, customer, ...msg() });
+      return status === 'sent' ? { sent: true, to: where.email } : { message: msg(), contact_url: where.contact_url };
+    };
+    const r = await priceWatch.claimByCustomer(cart.id, { send, self: req.body?.self === true });
+    return { cart: ownerCart(r.cart), sent: r.sent, to: r.to || null, ...(r.sent ? {} : { message: r.message, contact_url: r.contact_url || null }) };
+  });
   app.post('/v1/carts/:token/manage/tracking', async (req) => {
     const cart = spot.loadManaged(req.params.token, keyOf(req));
     if (cart.fulfillment?.state !== 'placed' && !cart.spent_at) throw new CartError('It hasn’t been ordered yet', 409);
