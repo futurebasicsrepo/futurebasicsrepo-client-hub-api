@@ -337,7 +337,7 @@ await journey('J45', 'the product card in the hub and the work console shows wha
     ok(/Material:\s*Recycled mesh, Suede/.test(hub) && /Decoration:\s*Heel logo/.test(hub) && /Colorways:\s*Gum \(18-1021\), Ecru/.test(hub), 'the hub card reads Material, Decoration and Colorways from the pack', hub.slice(0, 400));
     ok(await page.locator(`#cp-${r.id} .size-chip`).allInnerTexts().then(t => t.join() === '8,9,10'), 'and the size run chips are 8, 9, 10');
     ok(!/Material:\s*TBD/.test(hub), 'with no TBD left where the pack has an answer');
-    await page.locator(`#cp-${r.id}`).screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j45-hub-card.png` });
+    await page.locator(`#cp-${r.id}`).screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/j45-hub-card.png` });
     ok(page.errs.length === 0, 'no script errors', page.errs);
   } finally { await ctx.close(); }
   const admin = await forge({ sub: sql(`select id from users where lower(email)='${r.email}'`), clientId: r.clientId, role: 'admin' });
@@ -348,7 +348,7 @@ await journey('J45', 'the product card in the hub and the work console shows wha
     const work = await wp.innerText(`#wp-${r.id}`);
     ok(await wp.locator(`#wp-${r.id} .size-chips span`).allInnerTexts().then(t => t.join() === '8,9,10'), 'with the size run chips');
     ok(/Recycled mesh, Suede/.test(work) && /Heel logo/.test(work) && /Gum \(18-1021\), Ecru/.test(work), 'the work console card shows the same', work.slice(0, 400));
-    await wp.locator(`#wp-${r.id}`).screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j45-work-card.png` });
+    await wp.locator(`#wp-${r.id}`).screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/j45-work-card.png` });
     ok(wp.errs.length === 0, 'no script errors in the console', wp.errs);
   } finally { await wctx.close(); }
 });
@@ -371,10 +371,10 @@ await journey('J49', 'the console home: waiting on approval, production attentio
     const run = page.locator('#productionAlerts .q-row', { hasText: `PO-J49-${stamp}` }); ok(await run.count() === 1 && /blocked/i.test(await run.innerText()) && /Overdue/i.test(await run.locator('.q-chip').innerText()), 'a blocked production run is in Production attention, marked overdue');
     const learn = await page.innerText('#learning'); ok(/finished/i.test(learn) && /need a re-run/i.test(learn), 'the assistant section shows how it is doing and what needs a re-run', learn.slice(0, 160));
     const box = await page.evaluate(() => { const a = document.getElementById('approvals').getBoundingClientRect().top + scrollY, b = document.getElementById('learning').getBoundingClientRect().bottom + scrollY; return { y: Math.max(0, a - 20), h: Math.min(2600, b - a + 40) }; });
-    await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j49-home-queues.png`, fullPage: true, clip: { x: 0, y: box.y, width: 1280, height: box.h } }).catch(() => {});
+    await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/j49-home-queues.png`, fullPage: true, clip: { x: 0, y: box.y, width: 1280, height: box.h } }).catch(() => {});
     { const m = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true }); await m.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin); const mp = await m.newPage(); await mp.goto(`${W}/admin`, { waitUntil: 'networkidle' }); await mp.waitForSelector('#actions .q-row', { timeout: 15000 });
       const w = await mp.evaluate(() => ({ doc: document.documentElement.scrollWidth, win: innerWidth })); ok(w.doc <= w.win + 1, 'on a phone the queues do not scroll sideways', w);
-      const y = await mp.evaluate(() => document.getElementById('approvals').getBoundingClientRect().top + scrollY - 10); await mp.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j49-home-queues-phone.png`, fullPage: true, clip: { x: 0, y, width: 390, height: 1500 } }).catch(() => {}); await m.close(); }
+      const y = await mp.evaluate(() => document.getElementById('approvals').getBoundingClientRect().top + scrollY - 10); await mp.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/j49-home-queues-phone.png`, fullPage: true, clip: { x: 0, y, width: 390, height: 1500 } }).catch(() => {}); await m.close(); }
     await row.click(); await page.waitForSelector('#clientPage:not(.hidden)', { timeout: 10000 }); await sleep(600);
     ok(page.url().includes(`/clients/${r.clientId}`) && page.url().includes(`product=${r.id}`), 'clicking a row opens that client and that product', page.url());
     ok(await page.locator('#clientPage .crumbs, #crumbs').first().isVisible(), 'and the client page is showing');
@@ -404,7 +404,7 @@ await journey('J51', 'the same chat everywhere: the room thread in the work cons
     await call(`/v1/projects/${pid}/messages`, { token: r.token, body: { body: 'Thanks, see you on the 28th.' } }); await wp.waitForSelector('#roomChat .mc-bub:has-text("see you on the 28th")', { timeout: 9000 }); ok(true, 'a message that arrives while it is open appears by itself');
     ok(await wp.$eval('#roomChat .mc-msgs', e => e.scrollHeight - e.scrollTop - e.clientHeight < 60), 'and the thread stays at the newest message');
     ok(wp.errs.length === 0, 'no script errors in the console', wp.errs);
-    await wp.locator('#roomChat').screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j51-work-thread.png` }).catch(() => {});
+    await wp.locator('#roomChat').screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/j51-work-thread.png` }).catch(() => {});
   } finally { await wctx.close(); }
   // ---- the hub, on a phone ----
   const { ctx, page } = await phone(); await page.addInitScript(() => { window.FBCHAT_POLL_MS = 1200; });
@@ -420,7 +420,7 @@ await journey('J51', 'the same chat everywhere: the room thread in the work cons
     const w = await page.evaluate(() => ({ doc: document.documentElement.scrollWidth, win: innerWidth })); ok(w.doc <= w.win + 1, 'no sideways scroll on a phone', w);
     ok(await page.locator('#hubChat .fbchat-panel, #hubChat.fbchat-panel').count() >= 1 && !(await page.locator('.client-chat, .chat-form').count()), 'the old message box is gone');
     ok(page.errs.length === 0, 'no script errors in the hub', page.errs);
-    await page.locator('#hubChat').screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j51-hub-thread-phone.png` }).catch(() => {});
+    await page.locator('#hubChat').screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/j51-hub-thread-phone.png` }).catch(() => {});
   } finally { await ctx.close(); }
 });
 
@@ -455,7 +455,7 @@ await journey('J55', 'a product\'s comments are the same chat: shared and intern
     ok(!JSON.stringify((await call(`/v1/products/${id}/thread`, { token: r.token })).json).includes('ask the mill'), 'and the client still cannot see the internal one');
     await call('/v1/comments', { token: r.token, body: { productId: id, body: 'Thanks, Friday works.' } }); await wp.waitForSelector('#productChat .mc-bub:has-text("Friday works")', { timeout: 9000 }); ok(true, 'a client comment that arrives while it is open appears by itself');
     ok(wp.errs.length === 0, 'no script errors in the console', wp.errs);
-    await wp.locator('#productChat').screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j55-work-product-chat.png` }).catch(() => {});
+    await wp.locator('#productChat').screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/j55-work-product-chat.png` }).catch(() => {});
   } finally { await wctx.close(); }
   // ---- the hub, on a phone ----
   const { ctx, page } = await phone(); await page.addInitScript(() => { window.FBCHAT_POLL_MS = 1200; });
@@ -472,7 +472,7 @@ await journey('J55', 'a product\'s comments are the same chat: shared and intern
     await call('/v1/admin/comments', { token: admin, body: { productId: id, body: 'Lace is waxed cotton.', visibility: 'client' } }); await page.waitForSelector('#productChat .mc-bub:has-text("waxed cotton")', { timeout: 9000 }); ok(true, 'a reply from us appears by itself');
     const w = await page.evaluate(() => ({ doc: document.documentElement.scrollWidth, win: innerWidth })); ok(w.doc <= w.win + 1, 'no sideways scroll on a phone', w);
     ok(page.errs.length === 0, 'no script errors in the hub', page.errs);
-    await page.locator('#productChat').screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j55-hub-product-chat-phone.png` }).catch(() => {});
+    await page.locator('#productChat').screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/j55-hub-product-chat-phone.png` }).catch(() => {});
   } finally { await ctx.close(); }
 });
 
@@ -499,7 +499,7 @@ await journey('J58', 'the Check tab: photo beside the render, a score, what to f
     ok(Number(sql(`select count(*) from tech_pack_checks where product_id='${id}'`)) === before + 1, 'the button starts a new check');
     await wp.waitForFunction(() => !document.querySelector('[data-act="runcheck"]')?.disabled, null, { timeout: 20000 }); ok(/82/.test(await wp.innerText('.chk-score')), 'and the new result replaces the old one when it is ready');
     ok(wp.errs.length === 0, 'no script errors', wp.errs);
-    await wp.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j58-check-tab.png`, fullPage: true }).catch(() => {});
+    await wp.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/j58-check-tab.png`, fullPage: true }).catch(() => {});
   } finally { await wctx.close(); }
   const { ctx, page } = await phone(); await page.addInitScript(t => { try { localStorage.setItem('fb.client.token', t); } catch {} }, r.token);
   try { await page.goto(`${BASE}/tech-packs/${id}`, { waitUntil: 'networkidle' }); await page.waitForSelector('#sheet .panel.on'); ok(await page.locator('#tabs button[data-tab="check"]').count() === 0 && await page.locator('[data-panel="check"]').count() === 0, 'a client never gets the tab, on a phone or anywhere'); } finally { await ctx.close(); }
@@ -530,13 +530,13 @@ await journey('J63', 'the 3D model: staff make an STL from the client photo, wat
     const bb = await host.boundingBox(); await wp.mouse.move(bb.x + bb.width / 2, bb.y + bb.height / 2); await wp.mouse.down(); await wp.mouse.move(bb.x + bb.width / 2 + 90, bb.y + bb.height / 2 - 50, { steps: 5 }); await wp.mouse.up(); await wp.waitForTimeout(250);
     const s2 = await shot(); ok(Buffer.compare(s1.data, s2.data) !== 0, 'dragging turns it');
     await wp.click('[data-act="stlup"]'); ok(/Up: Z/.test(await wp.innerText('[data-act="stlup"]')), 'the up axis can be flipped');
-    await wp.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j63-viewer.png`, fullPage: true }).catch(() => {});
+    await wp.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/j63-viewer.png`, fullPage: true }).catch(() => {});
     ok(await wp.locator('.stl-host .stl-msg').count() === 0, 'and no error shows');
     const [dl] = await Promise.all([wp.waitForEvent('download', { timeout: 10000 }), wp.click('[data-act="dlmodel"]')]);
     const path = await dl.path(); const { readFileSync } = await import('node:fs'); const buf = readFileSync(path);
     ok(/\.stl$/.test(dl.suggestedFilename()) && buf.length === 84 + 12 * 50 && buf.readUInt32LE(80) === 12, 'the download is a real STL file', [dl.suggestedFilename(), buf.length]);
     ok(wp.errs.length === 0, 'no script errors', wp.errs);
-    await wp.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j63-model.png`, fullPage: true }).catch(() => {});
+    await wp.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/j63-model.png`, fullPage: true }).catch(() => {});
   } finally { await wctx.close(); }
   const m = sql(`select id from tech_pack_models where product_id='${id}' and status='done' limit 1`);
   // on a phone, with a tall preview picture like the one the 3D service sends, the "View in 3D" button is on the screen and opens the viewer
@@ -712,7 +712,7 @@ await journey('J112', 'the Sales page in a browser: Today, adding a contact, log
   ok(/call/i.test(await page.innerText('#cdlg .timeline')), 'a call logged from the card appears on the timeline');
   await page.fill('#tTitle', 'Send the proposal'); await page.fill('#tDue', '2020-01-02'); await page.click('#tGo'); await page.waitForFunction(() => /Send the proposal/.test(document.querySelector('#cTasks').innerText), null, { timeout: 8000 });
   ok(sql(`select count(*) from sales_tasks t join sales_contacts c on c.id=t.contact_id where c.email='dana-${tag}@salon.test' and t.done_at is null`) === '1', 'a task added from the card is saved');
-  await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j112-contact.png` }).catch(() => {});
+  await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/j112-contact.png` }).catch(() => {});
   await page.fill('#ePhone', '555-0100'); await page.click('#eSave'); await page.waitForFunction(() => /Saved/.test(document.querySelector('#eMsg').textContent), null, { timeout: 5000 });
   ok(sql(`select phone from sales_contacts where email='dana-${tag}@salon.test'`) === '555-0100', 'edited details save');
   await page.keyboard.press('Escape');
@@ -729,9 +729,9 @@ await journey('J112', 'the Sales page in a browser: Today, adding a contact, log
   const card = page.locator(`#board .card:has-text("Salon ${tag}: new project")`); ok(await card.count() === 1 && await page.locator('.col[data-stage="new"] .card:has-text("new project")').count() >= 1, 'the deal is on the board under New');
   await card.locator('select').selectOption('meeting'); await page.waitForFunction(t => document.querySelector(`.col[data-stage="meeting"]`).innerText.includes(t), `Salon ${tag}: new project`, { timeout: 8000 });
   ok(sql(`select stage from sales_deals where title='Salon ${tag}: new project'`) === 'meeting', 'moving it with the menu moves it');
-  await page.evaluate(() => scrollTo(0, 0)); await page.dragAndDrop(`#board .card:has-text("Salon ${tag}: new project")`, '.col[data-stage="proposal"]', { targetPosition: { x: 80, y: 50 } }); // top of the column, in view, clear of the sticky header await page.waitForFunction(t => document.querySelector(`.col[data-stage="proposal"]`).innerText.includes(t), `Salon ${tag}: new project`, { timeout: 8000 }).catch(async e => { await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j112-drag-fail.png`, fullPage: true }).catch(() => {}); throw e; });
+  await page.evaluate(() => scrollTo(0, 0)); await page.dragAndDrop(`#board .card:has-text("Salon ${tag}: new project")`, '.col[data-stage="proposal"]', { targetPosition: { x: 80, y: 50 } }); // top of the column, in view, clear of the sticky header await page.waitForFunction(t => document.querySelector(`.col[data-stage="proposal"]`).innerText.includes(t), `Salon ${tag}: new project`, { timeout: 8000 }).catch(async e => { await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/j112-drag-fail.png`, fullPage: true }).catch(() => {}); throw e; });
   ok(sql(`select stage from sales_deals where title='Salon ${tag}: new project'`) === 'proposal', 'dragging it to another column moves it');
-  await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j112-board.png` }).catch(() => {});
+  await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/j112-board.png` }).catch(() => {});
 
   await page.locator(`#board .card:has-text("Salon ${tag}: new project") select`).selectOption('lost'); await page.waitForFunction(t => document.querySelector(`.col[data-stage="lost"]`).innerText.includes(t), `Salon ${tag}: new project`, { timeout: 8000 });
   ok(sql(`select lost_reason from sales_deals where title='Salon ${tag}: new project'`) === 'Went with their nephew', 'losing it asks why and keeps the answer');
@@ -743,7 +743,7 @@ await journey('J112', 'the Sales page in a browser: Today, adding a contact, log
   await ph.goto(`${W}/sales`, { waitUntil: 'networkidle' }); await ph.waitForSelector('.tiles');
   const over = async () => ph.evaluate(() => document.documentElement.scrollWidth - innerWidth);
   ok(await over() <= 1, 'Today fits the phone', await over());
-  await ph.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j112-phone-today.png` }).catch(() => {});
+  await ph.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/j112-phone-today.png` }).catch(() => {});
   await ph.click('.tab[data-t="pipeline"]'); await ph.waitForSelector('#board .card, #board .col'); ok(await over() <= 1, 'the board scrolls inside itself and the page does not', await over());
   await ph.click('.tab[data-t="contacts"]'); await ph.waitForSelector('#cList tr'); ok(await over() <= 1, 'Contacts fit the phone', await over());
   await ph.click('#cList tr.click >> nth=0'); await ph.waitForSelector('#cdlg[open] #aGo'); ok(await ph.evaluate(() => { const d = document.querySelector('#cdlg').getBoundingClientRect(); return d.right <= innerWidth + 1 && d.left >= -1; }), 'a contact card fits the phone');
@@ -764,7 +764,7 @@ await journey('J118', 'the work console menu down the left: grouped, the same on
   ok(await page.$eval('header', h => h.getBoundingClientRect().left) <= 1 && await page.$eval('#app', a => a.getBoundingClientRect().left) >= 230, 'the header spans the page and the content sits to the right of the menu');
   ok(await page.locator('.homenav, a.platformlink').count() === 0, 'the old header links are gone');
   ok(await page.locator('.fbside a.on:not(.gicon)').count() === 1 && /Clients/.test(await page.locator('.fbside a.on:not(.gicon)').innerText()), 'at the top of the clients and production page, Clients is marked as where you are');
-  await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j118-home.png` }).catch(() => {});
+  await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/j118-home.png` }).catch(() => {});
 
   // a section on this page
   await page.click('.fbside a[data-href="/admin#clientsHead"]:not(.gicon)'); await sleep(900);
@@ -795,7 +795,7 @@ await journey('J118', 'the work console menu down the left: grouped, the same on
   await page.click('#fbCollapse'); await sleep(350);
   ok(await page.$eval('.fbside', e => e.getBoundingClientRect().width) < 80 && await page.locator('.fbside a.gicon').first().isVisible(), 'collapsing leaves a narrow rail of icons');
   await page.reload({ waitUntil: 'networkidle' }); await page.waitForSelector('.fbside nav'); ok(await page.$eval('.fbside', e => e.getBoundingClientRect().width) < 80, 'and stays collapsed after a reload');
-  await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j118-collapsed.png` }).catch(() => {});
+  await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/j118-collapsed.png` }).catch(() => {});
   ok(page.errs.length === 0, 'no script errors on the desktop pages', page.errs); await ctx.close();
 
   // signed out: no menu
@@ -808,7 +808,7 @@ await journey('J118', 'the work console menu down the left: grouped, the same on
   await ph.goto(`${W}/sales`, { waitUntil: 'networkidle' }); await ph.waitForSelector('.tiles', { timeout: 15000 });
   ok(await ph.locator('.fbburger').isVisible() && await ph.$eval('.fbside', e => e.getBoundingClientRect().right) <= 1 && await over() <= 1, 'on a phone the menu is closed behind a button and nothing sticks out', await over());
   await ph.click('.fbburger'); await sleep(350); ok(await ph.$eval('.fbside', e => e.getBoundingClientRect().left) >= -1 && /people/i.test(await ph.innerText('.fbside')), 'the button opens the drawer');
-  await ph.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j118-phone.png` }).catch(() => {});
+  await ph.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/j118-phone.png` }).catch(() => {});
   // on a short phone the drawer scrolls under a finger to its last item, and a drag on the dimmed page does not move the page behind it
   await ph.setViewportSize({ width: 390, height: 600 }); await sleep(300); const cdp = await pc.newCDPSession(ph);
   const swipe = async (x, y0, dy) => { await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y: y0 }] }); for (let i = 1; i <= 12; i++) { await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: y0 + dy * i / 12 }] }); await sleep(16); } await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); await sleep(600); };
@@ -844,7 +844,7 @@ await journey('J117', 'the builds collection page: cards show the real site, wha
   const spot = page.locator('.b:has-text("Spot")').first(); await spot.scrollIntoViewIfNeeded(); await sleep(400);
   ok(await spot.locator('.shot img').evaluate(i => i.complete && i.naturalWidth >= 1000), 'a known build shows a picture of its real site, without anyone uploading one');
   ok(await card.locator('.shot img').count() === 0 && await card.locator('.ph').count() === 1, 'a build with no picture yet gets a clean placeholder, not a broken image');
-  await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j117-collection.png` }).catch(() => {});
+  await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/j117-collection.png` }).catch(() => {});
 
   // search, filters, sort
   await page.fill('#q', `postgres`); await sleep(200);
@@ -867,7 +867,7 @@ await journey('J117', 'the builds collection page: cards show the real site, wha
   ok(/Book the chair/.test(t) && /Owner console/.test(t) && /Built with/i.test(t) && /Stripe/i.test(t) && /A salon system/.test(t), 'the product page has what it does (every feature), what it is built with, and the summary');
   ok(await page.locator('.prod .shot').count() === 1 && await page.locator('.facts').count() === 1 && await page.locator('a.go:has-text("live build")').count() === 0, 'with the picture and the facts (no live button when there is no live address)');
   ok(await page.locator('.sec:has-text("More builds") .b').count() >= 1, 'and other builds underneath');
-  await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j117-product.png`, fullPage: true }).catch(() => {});
+  await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/j117-product.png`, fullPage: true }).catch(() => {});
   await page.click('#back'); await page.waitForSelector('.b'); ok(await page.locator('#q').inputValue() === '' || true, 'Back returns to the collection');
   ok(page.errs.length === 0, 'no script errors', page.errs); await ctx.close();
 
@@ -876,7 +876,7 @@ await journey('J117', 'the builds collection page: cards show the real site, wha
   await signIn(ph); const over = () => ph.evaluate(() => document.documentElement.scrollWidth - innerWidth);
   ok(await over() <= 1 && await ph.locator('#facets').isHidden() && await ph.locator('#fbtn').isVisible(), 'on a phone the collection fits and the filters sit behind a button', await over());
   await ph.click('#fbtn'); ok(await ph.locator('#facets').isVisible() && await over() <= 1, 'the button opens them');
-  await ph.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j117-phone.png` }).catch(() => {});
+  await ph.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/j117-phone.png` }).catch(() => {});
   await ph.click('#fbtn'); await ph.click(`.b:has-text("Zed Salon ${tag}")`); await ph.waitForFunction(() => /What it does/.test(document.body.innerText), null, { timeout: 8000 }); ok(await over() <= 1, 'the product page fits the phone', await over());
   ok(ph.errs.length === 0, 'no script errors on the phone', ph.errs); await pc.close();
   sql(`update builds set visibility='${hadSpot || 'hidden'}' where slug='spot'`);
@@ -909,7 +909,7 @@ await journey('J116', 'tags in the Sales page: tag a contact from its card, filt
   ok(sql(`select tags::text from sales_contacts where email='a-${tag}@tags.test'`).includes('hot-prospect'), 'a tag typed on the card is cleaned and saved');
   await page.click('#eTagRow [data-untag="salon"]'); await page.waitForFunction(() => !document.querySelector('#eTagRow').innerText.includes('salon'), null, { timeout: 8000 });
   ok(!sql(`select tags::text from sales_contacts where email='a-${tag}@tags.test'`).includes('salon'), 'removing a tag from the card saves');
-  await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j116-card.png` }).catch(() => {});
+  await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/j116-card.png` }).catch(() => {});
   await page.keyboard.press('Escape');
 
   // bulk tag the two that are left with "salon"
@@ -918,7 +918,7 @@ await journey('J116', 'tags in the Sales page: tag a contact from its card, filt
   ok(/2 selected/.test(await page.innerText('#bulk')), 'ticking people opens the tag bar with the count');
   await page.fill('#bulkTag', 'Spring Launch'); await page.click('#bulkAdd'); await page.waitForFunction(() => /2 updated/.test(document.querySelector('#bulkMsg').textContent), null, { timeout: 8000 });
   ok(sql(`select count(*) from sales_contacts where email like '%-${tag}@tags.test' and 'spring-launch' = any(tags)`) === '2', 'adding a tag to the ticked people tags exactly them');
-  await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j116-bulk.png` }).catch(() => {});
+  await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/j116-bulk.png` }).catch(() => {});
 
   // save the view and use it from another visit
   await page.click('#tagFilter [data-ftag="spring-launch"]'); await page.waitForFunction(() => document.querySelectorAll('#cList tr.click').length === 2, null, { timeout: 8000 });
@@ -938,7 +938,7 @@ await journey('J116', 'tags in the Sales page: tag a contact from its card, filt
   const ph = await pc.newPage(); ph.errs = []; ph.on('pageerror', e => ph.errs.push(e.message));
   await ph.goto(`${W}/sales`, { waitUntil: 'networkidle' }); await ph.waitForSelector('.tiles'); await ph.click('.tab[data-t="contacts"]'); await ph.waitForSelector('#cList tr'); await ph.check('#cList [data-pick] >> nth=0');
   const over = await ph.evaluate(() => document.documentElement.scrollWidth - innerWidth); ok(over <= 1, 'Contacts with tags and the tag bar fit the phone', over);
-  await ph.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j116-phone.png` }).catch(() => {});
+  await ph.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/j116-phone.png` }).catch(() => {});
   ok(ph.errs.length === 0, 'no script errors on the phone', ph.errs); await pc.close();
   sql(`delete from sales_contacts where email like '%-${tag}@tags.test'`);
 });
@@ -966,7 +966,7 @@ await journey('J114', 'Sales email in a browser: send from a contact with a temp
     ok(/kyle@mail\.thefuturebasics\.com/.test(await page.innerText('#emailBox')) && /they know us/.test(await page.innerText('#emailBox')) && /left today/.test(await page.innerText('#emailBox')), 'the card shows who it is from, who it goes to, how many are left today and why they may be emailed');
     await page.selectOption('#mTpl', { index: 1 }); await page.waitForFunction(() => document.getElementById('mSubj').value.length > 0, null, { timeout: 8000 });
     ok(!/\{\{/.test(await page.inputValue('#mSubj') + await page.inputValue('#mBody')) && /Hi Dana,/.test(await page.inputValue('#mBody')), 'choosing a template fills in the message, with their name');
-    await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j114-compose.png` }).catch(() => {});
+    await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/j114-compose.png` }).catch(() => {});
     await page.fill('#mSubj', `Thanks for looking, ${tag}`); await page.click('#mSend');
     await page.waitForFunction(() => /Thanks for looking/.test(document.querySelector('#cdlg .timeline')?.innerText || ''), null, { timeout: 8000 });
     ok(mock.sent.length === 1 && mock.sent[0].to[0] === guest && /Unsubscribe here/.test(mock.sent[0].text), 'sending puts the email on its way with the unsubscribe footer');
@@ -997,7 +997,7 @@ await journey('J114', 'Sales email in a browser: send from a contact with a temp
     ok(Number(sql(`select count(*) from sales_templates where name='New template'`)) >= 1, 'a template can be added'); sql(`delete from sales_templates where name='New template'`); await page.keyboard.press('Escape');
     await page.click('#setBtn'); await page.waitForSelector('#sdlg[open]'); ok(/Sending is on/.test(await page.innerText('#sStatus')) && await page.inputValue('#sFrom') === 'kyle@mail.thefuturebasics.com' && /Philadelphia/.test(await page.inputValue('#sPostal')), 'settings show that sending is on, the from address and the mailing address');
     await page.click('#sTest'); await page.waitForFunction(() => /Sent to/.test(document.getElementById('sMsg').textContent), null, { timeout: 8000 }); ok(mock.sent.at(-1).subject.startsWith('[Test]'), 'the test email goes out');
-    await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j114-settings.png` }).catch(() => {}); await page.keyboard.press('Escape');
+    await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/j114-settings.png` }).catch(() => {}); await page.keyboard.press('Escape');
     ok(page.errs.length === 0, 'no script errors', page.errs); await ctx.close();
 
     // a phone
@@ -1005,7 +1005,7 @@ await journey('J114', 'Sales email in a browser: send from a contact with a temp
     const ph = await pc.newPage(); ph.errs = []; ph.on('pageerror', e => ph.errs.push(e.message));
     await ph.goto(`${W}/sales`, { waitUntil: 'networkidle' }); await ph.click('.tab[data-t="contacts"]'); await ph.fill('#q', guest); await ph.waitForSelector(`#cList tr.click[data-contact="${gid}"]`); await ph.click(`#cList tr.click[data-contact="${gid}"]`); await ph.waitForSelector('#mSend');
     ok(await ph.evaluate(() => { const d = document.querySelector('#cdlg').getBoundingClientRect(); return d.right <= innerWidth + 1 && d.left >= -1 && document.documentElement.scrollWidth - innerWidth <= 1; }), 'the contact card with the email box fits the phone');
-    await ph.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j114-phone.png` }).catch(() => {}); await ph.keyboard.press('Escape');
+    await ph.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/j114-phone.png` }).catch(() => {}); await ph.keyboard.press('Escape');
     await ph.click('#setBtn'); await ph.waitForSelector('#sdlg[open]'); ok(await ph.evaluate(() => { const d = document.querySelector('#sdlg').getBoundingClientRect(); return d.right <= innerWidth + 1 && d.left >= -1; }), 'and so do the settings');
     ok(ph.errs.length === 0, 'no script errors on the phone', ph.errs); await pc.close();
   } finally { await new Promise(r => resend.close(r)); }
@@ -1023,7 +1023,7 @@ await journey('J120', 'the Automations tab in a browser: starters are listed and
   ok(await page.locator('#autoList [data-aid]').count() >= 4 && await page.locator('#autoList [data-aon]:checked').count() === 0, 'the address opens the Automations tab; the starter automations are listed and every one is off');
   ok(/Automatic email goes out/.test(await page.innerText('#autoNote')) && /looks at a build/i.test(await page.innerText('#autoList')) && await page.locator('#autoList .asteps li').count() >= 8, 'each shows when it starts and its steps in plain words', [await page.locator('#autoList .asteps li').count(), (await page.innerText('#autoNote'))]);
   ok(/Automations/.test(await page.locator('.fbside a.on:not(.gicon)').first().innerText()), 'the left menu marks Automations');
-  await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j120-list.png` }).catch(() => {});
+  await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/j120-list.png` }).catch(() => {});
 
   // make one
   await page.click('#autoNew'); await page.waitForSelector('#adlg[open]');
@@ -1056,7 +1056,7 @@ await journey('J120', 'the Automations tab in a browser: starters are listed and
   await page.waitForFunction(t => [...document.querySelectorAll('[data-aid]')].find(x => x.innerText.includes(t))?.innerText.includes('1 running'), `Welcome ${tag}`, { timeout: 8000 }); ok(true, 'the card counts who is running');
   await page.click('.tab[data-t="contacts"]'); await page.fill('#q', `pat-${tag}`); await page.waitForSelector('#cList tr.click'); await page.click('#cList tr.click >> nth=0'); await page.waitForSelector('#cRuns [data-stoprun]', { timeout: 8000 });
   ok(/Welcome/.test(await page.innerText('#cRuns')) && /Step 3 of 3/.test(await page.innerText('#cRuns')), 'their card shows what is running for them and where they are');
-  await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j120-card.png` }).catch(() => {});
+  await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/j120-card.png` }).catch(() => {});
   await page.click('#cRuns [data-stoprun]'); await page.waitForFunction(() => /Stopped: stopped by staff/.test(document.getElementById('cRuns')?.innerText || ''), null, { timeout: 8000 });
   ok(sql(`select status from sales_runs where contact_id='${person}'`) === 'stopped', 'Stop ends it partway');
   await page.keyboard.press('Escape');
@@ -1077,7 +1077,7 @@ await journey('J120', 'the Automations tab in a browser: starters are listed and
   const ph = await pc.newPage(); ph.errs = []; ph.on('pageerror', e => ph.errs.push(e.message)); const over = () => ph.evaluate(() => document.documentElement.scrollWidth - innerWidth);
   await ph.goto(`${W}/sales#automations`, { waitUntil: 'networkidle' }); await ph.waitForSelector('#autoList [data-aid]'); ok(await over() <= 1, 'the list fits a phone', await over());
   await ph.click('#autoNew'); await ph.waitForSelector('#adlg[open]'); await ph.click('[data-addstep="email"]'); ok(await over() <= 1 && await ph.evaluate(() => { const d = document.querySelector('#adlg').getBoundingClientRect(); return d.right <= innerWidth + 1 && d.left >= -1; }), 'and so does the editor');
-  await ph.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j120-phone.png` }).catch(() => {});
+  await ph.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/j120-phone.png` }).catch(() => {});
   ok(ph.errs.length === 0, 'no script errors on the phone', ph.errs); await pc.close();
   sql(`delete from sales_contacts where id='${person}'`);
 });
@@ -1101,7 +1101,7 @@ await journey('J122', 'chat in browsers: the button on the showcase opens the wi
   await f.locator('#vcText').fill('What is this site built with?'); await f.locator('#vcText').press('Enter');
   await f.locator('.mc-msg.in .mc-bub:has-text("Fixture answer")').waitFor({ timeout: 10000 }); ok(true, 'the assistant answers');
   ok(await f.locator('#person').isVisible(), 'and there is a way to ask for a person');
-  await vp.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j122-visitor.png` }).catch(() => {});
+  await vp.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/j122-visitor.png` }).catch(() => {});
   await f.locator('#person').click(); await f.locator('#sub:has-text("Waiting for a person")').waitFor({ timeout: 8000 }); ok(!(await f.locator('#strip').isVisible()), 'a signed-in visitor is not asked for their email (we know it)');
   ok(sql(`select looking_at from chat_conversations order by created_at desc limit 1`) === `Chat Site ${tag}` && sql(`select visitor_email from chat_conversations order by created_at desc limit 1`) === guest, 'the chat knows who they are and what they were looking at');
 
@@ -1113,7 +1113,7 @@ await journey('J122', 'chat in browsers: the button on the showcase opens the wi
   ok(await sp.locator('.fbside a[data-href="/sales#chats"]:not(.gicon) .bdg').isVisible().catch(() => false) || true, 'the menu shows a count');
   await sp.click(`#chatList .citem:has-text("${guest}")`); await sp.waitForSelector('#scText', { timeout: 8000 });
   ok(/Looking at|looking at/.test(await sp.innerText('#chatPane')) && /What is this site built with/.test(await sp.innerText('#chatThread')) && await sp.locator('[data-contact]').count() >= 1, 'the thread, what they were looking at, and a link to their contact are there');
-  await sp.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j122-staff.png` }).catch(() => {});
+  await sp.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/j122-staff.png` }).catch(() => {});
   await sp.fill('#scText', 'Hi, it is Kyle. Happy to walk you through it.'); await sp.press('#scText', 'Enter');
   await sp.waitForSelector('#chatPane .chip.person', { timeout: 10000 }); ok(true, 'replying puts the chat with a person');
   await f.locator('.mc-msg.in .mc-bub:has-text("Happy to walk you through it")').waitFor({ timeout: 15000 }); ok(await f.locator('#sub:has-text("talking with a person")').isVisible(), 'the visitor sees the reply without refreshing, and that a person is here');
@@ -1136,7 +1136,7 @@ await journey('J122', 'chat in browsers: the button on the showcase opens the wi
   await ph.goto('http://builds.localhost:3123/', { waitUntil: 'networkidle' }); await ph.waitForSelector('.fbw-btn'); const over = () => ph.evaluate(() => document.documentElement.scrollWidth - innerWidth);
   ok(await over() <= 1, 'the button does not push a phone page wider'); await ph.click('.fbw-btn'); await ph.waitForSelector('.fbw-win.open');
   const box = await ph.locator('.fbw-win').boundingBox(); ok(box.width >= 388 && box.height >= 840, 'on a phone the window fills the screen');
-  await ph.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j122-phone.png` }).catch(() => {});
+  await ph.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/j122-phone.png` }).catch(() => {});
   await ph.frameLocator('.fbw-win').locator('#close').click(); await ph.waitForFunction(() => !document.querySelector('.fbw-win').classList.contains('open')); ok(await ph.locator('.fbw-btn').isVisible(), 'closing it brings the button back');
   const sph = await (await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })).newPage(); await sph.context().addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
   await sph.goto('http://work.localhost:3123/sales#chats', { waitUntil: 'networkidle' }); await sph.waitForSelector('#chatList .citem'); const sover = () => sph.evaluate(() => document.documentElement.scrollWidth - innerWidth);
@@ -1322,7 +1322,7 @@ await journey('J124', 'the Opportunities tab in a browser: what is worth doing a
   ok(/wrote to us 2 days ago/.test(await card('Inbound Ian').innerText()) && /\$9,000/.test(await card('Quiet Quinn').innerText()) && /have not seen the builds|has not seen the builds/.test(await card('Techpack Tess').innerText()), 'each card says why, in plain words');
   ok(/now/i.test(await card('Inbound Ian').locator('.pri').innerText()) && /later|when there is time/i.test(await card('Techpack Tess').locator('.pri').innerText()), 'and how soon');
   const names = await page.$$eval('#oppList h2', e => e.map(x => x.textContent)); ok(names.findIndex(n => n.includes('Inbound Ian')) < names.findIndex(n => n.includes('Techpack Tess')), 'the strongest comes first');
-  await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j124-list.png` }).catch(() => {});
+  await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/j124-list.png` }).catch(() => {});
   await page.click('#oppTypes [data-otype="deal_quiet"]'); await page.waitForFunction(() => document.querySelectorAll('#oppList [data-okey]').length >= 1 && ![...document.querySelectorAll('#oppList h2')].some(h => /Techpack Tess/.test(h.textContent)), null, { timeout: 8000 });
   ok(await card('Quiet Quinn').count() === 1, 'a kind can be picked to narrow the list'); await page.click('#oppTypes [data-otype=""]'); await page.waitForSelector(`#oppList [data-okey]:has-text("Techpack Tess")`);
   await card('Techpack Tess').locator('[data-oact="task"]').click(); await page.waitForFunction(t => ![...document.querySelectorAll('#oppList h2')].some(h => h.textContent.includes(t)), `Techpack Tess ${tag}`, { timeout: 8000 });
@@ -1335,7 +1335,7 @@ await journey('J124', 'the Opportunities tab in a browser: what is worth doing a
   const pc = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }); await pc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
   const ph = await pc.newPage(); ph.errs = []; ph.on('pageerror', e => ph.errs.push(e.message)); const over = () => ph.evaluate(() => document.documentElement.scrollWidth - innerWidth);
   await ph.goto('http://work.localhost:3123/sales#opportunities', { waitUntil: 'networkidle' }); await ph.waitForSelector('#oppList .panel'); ok(await over() <= 1, 'it fits a phone', await over());
-  await ph.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j124-phone.png` }).catch(() => {});
+  await ph.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/j124-phone.png` }).catch(() => {});
   ok(ph.errs.length === 0, 'no script errors on the phone', ph.errs); await pc.close();
   sql(`delete from sales_contacts where email like '%-${tag}@opp.test'`);
 });
