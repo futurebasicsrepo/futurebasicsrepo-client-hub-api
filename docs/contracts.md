@@ -1,6 +1,6 @@
 # Contracts
 
-A basic contract and signature process for digital work (websites, apps, software). It pulls what the platform already knows about the deal and the project into a fixed-fee agreement, sends it to the client as a private link, collects a typed-name signature with an audit trail, and turns the payment schedule into invoices. The tech pack plays this part for product development; this is the equivalent for digital work.
+A basic contract and signature process for digital work (websites, apps, software) and for physical product development (hats, shirts, shoes, electronics). It pulls what the platform already knows about the deal and the project into a fixed-fee agreement, sends it to the client as a private link, collects a typed-name signature with an audit trail, and turns the payment schedule into invoices. There are two standard agreements, chosen per customer: **digital work** and **physical product development** (see below).
 
 Staff work in **Win, Contracts** (`/contracts`). Clients never sign in: they open the link they were emailed (`/sign/<link>`).
 
@@ -8,7 +8,7 @@ Staff work in **Win, Contracts** (`/contracts`). Clients never sign in: they ope
 
 ## The flow
 
-1. **Start from a deal or a project.** In Sales, a deal in meeting, proposal or won has a **Make a contract** button; or Contracts, **+ New contract** lists the deals and live software projects. The client company, the signer (the deal's contact), the fee (the deal's value) and a starting payment plan come across.
+1. **Start from a deal or a project, and pick the type.** In Sales, a deal in meeting, proposal or won has a **Make a contract** button; or Contracts, **+ New contract** lists the deals and live software projects. The client company, the signer (the deal's contact), the fee (the deal's value) and a starting payment plan come across. The **Type of agreement** menu on that screen sets the wording: left on "Choose from the deal or project" it follows the project (software is digital, any other project is a physical product) or, for a deal with no project, the words in the deal's title (hat, shirt, shoe, electronics, factory, sample and the like mean a product); pick Website, App, Other digital work or Physical product to override it. The type can still be changed in the editor.
 2. **Fill in the rest.** What is delivered (one per line) and what is not, the dates, how the fee is paid, optional monthly hosting, and the legal terms. The wording of each clause can be edited; words in `{{double braces}}` are filled from the contract. A draft can be saved half-finished; the page lists what is missing before it can be sent.
 3. **Send for signature.** The signer gets an email with the fee, the payment plan and a **Review and sign** button. The text is frozen at that moment and fingerprinted (SHA-256). A signer for Future Basics can sign at the same time (**Sign for Future Basics now**) or countersign later.
 4. **The client reads and signs.** The page shows the whole agreement, what they will pay and when, and a signing panel: type your full name, tick that you have read and agree, tick that you agree to sign electronically; for automatic payments, tick the authorization; if the plan lets them choose, pick ACH or card. It works on a phone. They can also decline and say why.
@@ -16,6 +16,28 @@ Staff work in **Win, Contracts** (`/contracts`). Clients never sign in: they ope
 6. **Invoices.** On a fully signed contract a signer presses **Draft the invoices**: one draft invoice per payment in the schedule (deposit on signing, monthly payments on their dates, balance due on delivery), linked to the deal, the project and the contract. They go through the normal Money flow (QuickBooks pay link, payments, overdue). Done once per contract.
 
 Then, as ever, **Start project** on the won deal.
+
+## Physical product agreements
+
+For customers whose project is a product (hats, shirts, shoes, electronics, bags), choose **Physical product development**. The fixed fee pays for our development work: design, tech packs, sampling management, sourcing. Everything else (samples, materials, tooling, production, inspection, testing, freight, duties) is outside the fee unless the scope says it is in. The wording is in [contracts-product-agreement.md](contracts-product-agreement.md), made from the code with the defaults, for a lawyer to read.
+
+What is different from the digital agreement:
+
+| Clause | What it says |
+| --- | --- |
+| Samples and approval | up to *N* rounds are included (set per contract, default 2); extra rounds are quoted; the client approves each sample in writing; the **approved sample plus the tech pack** is the standard production is made and inspected against; production waits for an approved pre-production sample |
+| Production runs | by option: **we order from the factory and supply the goods** (the default: each run is confirmed by a written order showing only the client's price, with a deposit % set per contract; the client does not see what we pay the factory, our quotes or our margin; we answer to the client for goods that do not match the approved sample, with liability for those goods limited to their price; no cancelling once materials are bought), **the client orders from the factory directly** (we manage the order and inspection but are not the manufacturer), or **not covered** (the clause is left out) |
+| Quality and inspection | goods are inspected before they ship to an AQL (default 2.5 major / 4.0 minor); failures are reworked or remade before shipping; later claims need photos within the warranty days |
+| Where the product is sold | the client is responsible for labelling, safety and certification where it sells; the wording lists the rules for the chosen categories (apparel, headwear, footwear, electronics, bags and accessories), for example FCC/UL/CE/RoHS and lithium battery shipping for electronics |
+| Factory introductions | the client will not go around us to a factory we introduce (contact it, or order the same or a similar product from it) for a period set per contract, default 24 months, except a factory it already worked with and told us about before the introduction; breaching it lets us recover our losses, including the margin on those orders. **Optional per contract**: a checkbox in the product options turns it off and leaves the clause out |
+| Ownership | designs, patterns, tech packs and artwork are the client's once paid; Future Basics keeps its tools, templates and base patterns; **tooling, molds and lasts paid for by the client are the client's**, even at the factory |
+| Shipping, duties and risk | per Incoterm (EXW, FOB or DDP); freight, duties and taxes are the client's unless an order says otherwise; the client is importer of record |
+| Our promise / Liability | no promise of sales, certification or factory dates; the client is responsible for the product it sells under its name and should carry product liability insurance |
+| No hosting clause | hosting does not apply |
+
+Payments work as for digital work, but a payment that waits for the work is "**on final sample approval**" instead of "on delivery". Staff press **Record final sample approval** (the button that says Record delivery on a digital contract) and those payments fall due. Invoices drafted from a product contract are product work (so their payment link follows the product-development route), and the starting milestone plan is a kick-off payment and a payment on final sample approval.
+
+Production orders are not part of this plan: each run is confirmed by a written order outside the contract's fixed fee (we order from the factory, and the order shows the client's price only), or, when the client orders directly, the client pays the factory.
 
 ## Payment plans
 
@@ -49,13 +71,13 @@ Any signed-in teammate can draft, send, remind, revise, void and read contracts.
 
 | | |
 | --- | --- |
-| Rules, plans, clauses, hash, token | `src/contracts.js` (no database or web server in it) |
+| Rules, plans, clauses (digital and product), hash, token | `src/contracts.js` (no database or web server in it) |
 | Routes (staff and public) | `src/contracts-routes.js`, listed at the top of the file |
 | PDF | `src/contract-pdf.js` (on `brand-pdf.js`) |
 | Staff page | `src/contracts.html` at `/contracts`, in the console menu under Win |
 | The client's page | `src/sign.html` at `/sign/<link>` |
 | Tables | `contracts`, `contract_events`, and `money_invoices.contract_id` |
-| Tests | `test/contracts.test.js`, journey J164 (API), J165 (browser) |
+| Tests | `test/contracts.test.js`, journeys J164 (API), J165 (browser), J188 (a product contract end to end), J189 (the product options in a browser) |
 | Automatic payments | `src/autopay.js`, `src/qb-payments.js`, see `docs/autopay.md` |
 
 ## In the client hub
@@ -67,5 +89,5 @@ Once sent, the hub's dashboard carries it (`agreements`): a signing request show
 ## Not built yet
 
 - Reminders on a schedule (today staff press **Send a reminder**, once a day at most).
-- A contract template per kind of work (the one standard set is used for websites, apps and other digital work).
+- Production orders as their own signable document (today an order through us is confirmed in writing, outside the contract).
 - Change requests that attach to a signed contract.

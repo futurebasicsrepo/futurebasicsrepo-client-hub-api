@@ -1,10 +1,11 @@
-// Contracts for digital work. Staff build one from a deal and its project, send it for signature, and see who has opened and signed it; the client opens a private
+// Contracts for digital work and physical product development. Staff build one from a deal and its project, send it for signature, and see who has opened and signed it; the client opens a private
 // link, reads the whole agreement and signs by typing their name. See contracts.js for the rules and docs/contracts.md for the flow.
 //
 //   Staff (any signed-in teammate unless noted)
 //   GET  /v1/contracts                      the list, newest first (?status=, ?q=)
 //   GET  /v1/contracts/sources              deals and projects a contract can be made from, with the contracts already made for each
 //   GET  /v1/contracts/draft?deal=|project= a contract filled in from one (nothing is saved)
+//   GET  /v1/contracts/template?kind=        the standard wording for a kind (digital work or a physical product) and the product options
 //   POST /v1/contracts/render               { content } → the finished text and what is still missing (nothing is saved)
 //   GET|PUT /v1/contracts/settings          who signs for Future Basics, the address and the governing law the wording uses
 //   POST /v1/contracts                      { content, dealId?, projectId? } → a draft
@@ -17,7 +18,7 @@
 //   The client (no sign-in: the link is the key)
 //   GET  /v1/public/contracts/:token        the agreement as the client sees it      GET .../pdf
 //   POST /v1/public/contracts/:token/sign { name, title, agree, esign, autopay?, method? }      POST .../decline { reason }
-import { cleanContent, renderContract, sendProblems, docHash, signToken, readToken, nextNumber, checkSignature, buildPlan, planWords, schedule, defaultSections, dollars, longDate, todayISO, addDays, KINDS, TERMS } from './contracts.js';
+import { cleanContent, renderContract, sendProblems, docHash, signToken, readToken, nextNumber, checkSignature, buildPlan, planWords, schedule, defaultSections, dollars, longDate, todayISO, addDays, KINDS, TERMS, isProduct, defaultProduct, PRODUCT_CATEGORIES, INCOTERMS, PRODUCTION_MODES } from './contracts.js';
 import { contractPdf } from './contract-pdf.js';
 import { moneyAllowed, cleanInvoice, nextInvoiceNumber } from './money.js';
 import { fireTrigger } from './sales-automations-engine.js';
@@ -75,7 +76,7 @@ export function registerContractRoutes(app, d) {
   const renderOf = async (r, st) => renderContract({ ...r.content, number: r.number }, st || await settings());
 
   // ---- drafting from the platform -----------------------------------------------------------------------------------------------------------
-  const kindFrom = text => (/\b(web ?site|site|landing|storefront|shop)\b/i.test(text) ? 'website' : /\b(app|software|platform|portal|dashboard|system|integration)\b/i.test(text) ? 'app' : 'other');
+  const kindFrom = text => (/\b(web ?site|site|landing|storefront|shop)\b/i.test(text) ? 'website' : /\b(app|software|platform|portal|dashboard|system|integration)\b/i.test(text) ? 'app' : /\b(hats?|caps?|shirts?|tees?|hoodies?|apparel|garments?|shoes?|sneakers?|footwear|boots?|electronics?|devices?|hardware|bags?|jackets?|sample|samples|factory|manufactur\w*|product development)\b/i.test(text) ? 'product' : 'other');
   async function draftFrom({ dealId = null, projectId = null }, st) {
     let deal = null, project = null, client = null;
     if (dealId) deal = (await pool.query(`select d.*, ct.name contact_name, ct.email contact_email, ct.title contact_title, coalesce(co.name, co2.name, '') company from sales_deals d left join sales_contacts ct on ct.id=d.contact_id left join sales_companies co on co.id=d.company_id left join sales_companies co2 on co2.id=ct.company_id where d.id=$1`, [dealId])).rows[0];
@@ -84,10 +85,10 @@ export function registerContractRoutes(app, d) {
     if (!deal && project) deal = (await pool.query(`select d.*, ct.name contact_name, ct.email contact_email, ct.title contact_title, coalesce(co.name, co2.name, '') company from sales_deals d left join sales_contacts ct on ct.id=d.contact_id left join sales_companies co on co.id=d.company_id left join sales_companies co2 on co2.id=ct.company_id where d.project_id=$1 order by d.created_at desc limit 1`, [project.id])).rows[0] || null;
     if (!deal && !project) return null;
     const company = deal?.company || client?.name || '', projectName = project?.name || deal?.title || '', title = clip(deal?.title || projectName, 160);
-    const total = deal ? Number(deal.value_cents) : 0, kind = project?.kind === 'software' ? 'app' : kindFrom(`${title} ${projectName}`);
+    const total = deal ? Number(deal.value_cents) : 0, kind = project ? (project.kind === 'software' ? 'app' : 'product') : kindFrom(`${title} ${projectName}`);
     const plan = total > 0 ? buildPlan({ type: 'split', totalCents: total, depositPct: 50 }).plan : null;
     const content = { title, kind, provider: { name: st.providerName, address: st.providerAddress, signerName: st.signerName, signerTitle: st.signerTitle }, client: { company, address: '', signerName: deal?.contact_name || client?.contact_name || '', signerTitle: deal?.contact_title || '', signerEmail: deal?.contact_email || client?.contact_email || '' },
-      project: { name: projectName }, scope: [title ? `Deliver: ${title}` : ''].filter(Boolean), notIncluded: [], timeline: { effectiveOn: todayISO(), startOn: '', completionOn: '' }, fee: { totalCents: total, currency: 'USD' }, plan, hosting: { included: false, monthlyCents: 0, note: '' }, terms: { ...TERMS, governingLaw: st.governingLaw }, sections: defaultSections() };
+      project: { name: projectName }, scope: [title ? `Deliver: ${title}` : ''].filter(Boolean), notIncluded: [], timeline: { effectiveOn: todayISO(), startOn: '', completionOn: '' }, fee: { totalCents: total, currency: 'USD' }, plan, hosting: { included: false, monthlyCents: 0, note: '' }, terms: { ...TERMS, governingLaw: st.governingLaw }, sections: defaultSections(kind), ...(isProduct(kind) ? { product: defaultProduct() } : {}) };
     return { content, dealId: deal?.id || null, projectId: project?.id || null, clientId: project?.client_id || null, contactId: deal?.contact_id || null };
   }
 
@@ -106,10 +107,16 @@ export function registerContractRoutes(app, d) {
 
   app.get('/v1/contracts/sources', { preHandler: pre }, async () => {
     const deals = (await pool.query(`select d.id, d.title, d.stage, d.value_cents, d.project_id, coalesce(co.name, co2.name, '') company, ct.name contact_name from sales_deals d left join sales_contacts ct on ct.id=d.contact_id left join sales_companies co on co.id=d.company_id left join sales_companies co2 on co2.id=ct.company_id where d.stage in ('meeting','proposal','won') order by d.updated_at desc limit 80`)).rows;
-    const projects = (await pool.query(`select p.id, p.name, p.kind, p.stage, c.name client from projects p join clients c on c.id=p.client_id where p.kind='software' and p.status='active' and c.slug<>'future-basics' order by p.updated_at desc limit 80`)).rows;
+    const projects = (await pool.query(`select p.id, p.name, p.kind, p.stage, c.name client from projects p join clients c on c.id=p.client_id where p.status='active' and c.slug<>'future-basics' order by p.updated_at desc limit 80`)).rows;
     const made = (await pool.query(`select id, number, status, deal_id, project_id from contracts where status not in ('void') order by created_at desc`)).rows;
     return { deals: deals.map(x => ({ id: x.id, title: x.title, stage: x.stage, valueCents: Number(x.value_cents), company: x.company, contactName: x.contact_name || '', projectId: x.project_id, contracts: made.filter(m => m.deal_id === x.id).map(m => ({ id: m.id, number: m.number, status: m.status })) })),
-      projects: projects.map(x => ({ id: x.id, name: x.name, client: x.client, stage: x.stage, contracts: made.filter(m => m.project_id === x.id).map(m => ({ id: m.id, number: m.number, status: m.status })) })) };
+      projects: projects.map(x => ({ id: x.id, name: x.name, kind: x.kind === 'software' ? 'software' : 'product', client: x.client, stage: x.stage, contracts: made.filter(m => m.project_id === x.id).map(m => ({ id: m.id, number: m.number, status: m.status })) })) };
+  });
+
+  // The standard wording and the product options for a kind of agreement: the editor asks when staff switch between digital work and a physical product.
+  app.get('/v1/contracts/template', { preHandler: pre }, async (req, reply) => {
+    const kind = KINDS[req.query?.kind] ? req.query.kind : null; if (!kind) return bad(reply, 'Choose a kind of agreement');
+    return { kind, sections: defaultSections(kind), product: isProduct(kind) ? defaultProduct() : null, options: { categories: Object.fromEntries(Object.entries(PRODUCT_CATEGORIES).map(([k, v]) => [k, v.label])), incoterms: INCOTERMS, productionModes: PRODUCTION_MODES } };
   });
 
   app.get('/v1/contracts/draft', { preHandler: pre }, async (req, reply) => {
@@ -124,7 +131,7 @@ export function registerContractRoutes(app, d) {
   app.post('/v1/contracts/plan', { preHandler: pre }, async (req, reply) => {
     const b = req.body || {}, total = Math.round(Number(b.totalCents));
     const r = buildPlan({ type: b.type, totalCents: total, depositPct: b.depositPct === '' ? null : b.depositPct, depositCents: b.depositCents === '' ? null : b.depositCents, months: b.months, firstDueOn: b.firstDueOn || null, deliveryOn: b.deliveryOn || null, milestones: Array.isArray(b.milestones) ? b.milestones : [], method: b.method, autopay: b.autopay === true, note: b.note });
-    if (r.error) return bad(reply, r.error); return { plan: r.plan, summary: planWords(r.plan, 'USD') };
+    if (r.error) return bad(reply, r.error); return { plan: r.plan, summary: planWords(r.plan, 'USD', KINDS[b.kind] ? b.kind : '') };
   });
 
   app.post('/v1/contracts/render', { preHandler: pre }, async (req) => {
@@ -203,7 +210,7 @@ export function registerContractRoutes(app, d) {
   async function mailSigner(r, { reminder = false, message = '', senderName = '', replyTo = '' } = {}) {
     const c = r.content, plan = c.plan, link = linkOf(r), until = longDate(iso(r.expires_at));
     const body = `<p>Hi ${emailEscape(firstName(c.client.signerName))},</p><p>${reminder ? 'A reminder: ' : ''}${emailEscape(senderName || c.provider.name)} has sent you an agreement to review and sign: <b>${emailEscape(c.title)}</b> (${emailEscape(r.number)}).</p>`
-      + `<p>Fixed fee <b>${emailEscape(dollars(c.fee.totalCents, c.fee.currency))}</b>, paid ${emailEscape(planWords(plan, c.fee.currency))}.</p>${message ? `<p style="padding:10px 14px;border-left:3px solid #4bff9a;background:#f5f5f2">${emailEscape(message).replace(/\n/g, '<br>')}</p>` : ''}`
+      + `<p>Fixed fee <b>${emailEscape(dollars(c.fee.totalCents, c.fee.currency))}</b>, paid ${emailEscape(planWords(plan, c.fee.currency, c.kind))}.</p>${message ? `<p style="padding:10px 14px;border-left:3px solid #4bff9a;background:#f5f5f2">${emailEscape(message).replace(/\n/g, '<br>')}</p>` : ''}`
       + `<p>You read the whole agreement on the page and sign by typing your name. It takes a couple of minutes and works on a phone.</p>${hubButton(link, 'Review and sign')}<p style="font-size:12px;color:#717177">The link is yours alone and works until ${emailEscape(until)}. Questions? Just reply to this email.</p>`;
     return sendHubEmail({ to: c.client.signerEmail, subject: `${reminder ? 'Reminder: ' : ''}Please review and sign: ${c.title} (${r.number})`, html: hubEmailShell(`Please review and sign: ${c.title}`, body), replyTo: replyTo || undefined });
   }
@@ -307,10 +314,10 @@ export function registerContractRoutes(app, d) {
       for (const p of plan) {
         n++; const number = nextInvoiceNumber([...used, ...made.map(m => m.number)]), due = p.falls || todayISO();
         const inv = cleanInvoice({ number, company: c.client.company, contactName: c.client.signerName, contactEmail: c.client.signerEmail, address: c.client.address, issuedOn: todayISO(), dueOn: due < todayISO() ? todayISO() : due, terms: `Per agreement ${r.number}`,
-          lines: [{ description: `${c.title}: ${p.label} (agreement ${r.number})`, qty: 1, rateCents: p.amountCents }], notes: [payNote, p.event === 'delivery' && !p.dueOn ? 'Due when the work is delivered.' : ''].filter(Boolean).join(' '), currency: c.fee.currency, workKind: 'software', projectId: r.project_id });
+          lines: [{ description: `${c.title}: ${p.label} (agreement ${r.number})`, qty: 1, rateCents: p.amountCents }], notes: [payNote, p.event === 'delivery' && !p.dueOn ? (isProduct(c.kind) ? 'Due when the final sample is approved.' : 'Due when the work is delivered.') : ''].filter(Boolean).join(' '), currency: c.fee.currency, workKind: isProduct(c.kind) ? 'product' : 'software', projectId: r.project_id });
         if (inv.error) throw new Error(inv.error); const v = inv.value;
         const row = (await db.query(`insert into money_invoices(number,company,contact_name,contact_email,address,issued_on,terms,due_on,lines,tax_rate,charge_tax,credits,due_now_label,due_now_cents,subtotal_cents,tax_cents,total_cents,notes,currency,status,source,created_by,client_id,contact_id,deal_id,project_id,work_kind,contract_id,contract_seq)
-          values($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11,$12::jsonb,$13,$14,$15,$16,$17,$18,$19,'draft','app',$20,$21,$22,$23,$24,'software',$25,$26) returning id, number`, [v.number, v.company, v.contactName || contact?.name || '', v.contactEmail || contact?.email || '', v.address, v.issuedOn, v.terms, v.dueOn, JSON.stringify(v.lines), v.taxRatePct, v.chargeTax, JSON.stringify(v.credits), v.dueNowLabel, v.dueNowCents, v.subtotalCents, v.taxCents, v.totalCents, v.notes, v.currency, userId, r.client_id, r.contact_id, r.deal_id, r.project_id, r.id, n])).rows[0];
+          values($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11,$12::jsonb,$13,$14,$15,$16,$17,$18,$19,'draft','app',$20,$21,$22,$23,$24,$25,$26,$27) returning id, number`, [v.number, v.company, v.contactName || contact?.name || '', v.contactEmail || contact?.email || '', v.address, v.issuedOn, v.terms, v.dueOn, JSON.stringify(v.lines), v.taxRatePct, v.chargeTax, JSON.stringify(v.credits), v.dueNowLabel, v.dueNowCents, v.subtotalCents, v.taxCents, v.totalCents, v.notes, v.currency, userId, r.client_id, r.contact_id, r.deal_id, r.project_id, isProduct(c.kind) ? 'product' : 'software', r.id, n])).rows[0];
         made.push({ id: row.id, number: row.number });
       }
       await db.query('update contracts set invoices_at=now(), updated_at=now() where id=$1', [r.id]); await db.query('commit');
@@ -365,7 +372,7 @@ export function registerContractRoutes(app, d) {
   app.post('/v1/contracts/:id/delivered', { preHandler: [...pre, signerOnly] }, async (req, reply) => {
     if (!needId(req, reply)) return; const r = await fresh(await one(req.params.id)); if (!r) return bad(reply, 'Not found', 404); if (r.status !== 'executed') return bad(reply, 'The work is delivered under a signed agreement', 409);
     const on = req.body?.on ? String(req.body.on).slice(0, 10) : todayISO(); if (!/^\d{4}-\d{2}-\d{2}$/.test(on) || Number.isNaN(Date.parse(on))) return bad(reply, 'That is not a date');
-    await pool.query('update contracts set delivered_on=$2, updated_at=now() where id=$1', [r.id, on]); await ev(r.id, 'delivered', { actor: req.signer.email, detail: `Delivered on ${on}: payments due on delivery fall due now` });
+    await pool.query('update contracts set delivered_on=$2, updated_at=now() where id=$1', [r.id, on]); await ev(r.id, 'delivered', { actor: req.signer.email, detail: `${isProduct(r.content?.kind) ? 'Final sample approved' : 'Delivered'} on ${on}: payments due on ${isProduct(r.content?.kind) ? 'final sample approval' : 'delivery'} fall due now` });
     return detail(await one(r.id));
   });
   // Run the payments job now (the job runs by itself every hour). `today` is honoured only on the journey servers.
@@ -388,7 +395,7 @@ export function registerContractRoutes(app, d) {
       const c = r.content, mine = Boolean(me) && me === String(c.client.signerEmail || '').toLowerCase(), token = signToken(secret, r.id, r.token_version), link = mine && !preview ? `${publicUrl}/sign/${token}` : null;
       const method = c.plan.autopay && autopay ? await autopay.activeMethod(r.id) : null, wantsDetails = Boolean(autopay && c.plan.autopay && r.client_signature?.autopay && ['signed_by_client', 'executed'].includes(r.status) && !method);
       out.push({ id: r.id, number: r.number, title: r.title, status: r.status, totalCents: Number(r.total_cents), currency: r.currency, sentAt: r.sent_at, executedAt: r.executed_at, expiresAt: r.expires_at, signerName: c.client.signerName || '',
-        youAreSigner: mine, link, pdfUrl: link ? `/v1/public/contracts/${token}/pdf` : null, summary: planWords(c.plan, r.currency), autopay: Boolean(c.plan.autopay), cardOnFile: method ? method.label : null,
+        youAreSigner: mine, link, pdfUrl: link ? `/v1/public/contracts/${token}/pdf` : null, summary: planWords(c.plan, r.currency, c.kind), autopay: Boolean(c.plan.autopay), cardOnFile: method ? method.label : null,
         needs: r.status === 'sent' ? 'sign' : wantsDetails ? 'details' : null });
     }
     return out;
