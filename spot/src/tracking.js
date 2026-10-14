@@ -4,6 +4,10 @@
 //                    the store for the order (Get Order), whose fulfillment
 //                    events carry each shipment's status, carrier and link.
 //                    About every six hours for 45 days, until delivered.
+//   From its page    when the store won't answer Get Order (a Shopify store
+//                    while Spot's app lacks the orders scope), the store's
+//                    own order page ("View your order") is read for the
+//                    carrier's tracking link or number (orderpage.js).
 //   From you         a tracking number pasted on the order page: the
 //                    carrier is worked out from the number.
 // cart.tracking = { status, carrier, number, url, description, at, source,
@@ -55,7 +59,7 @@ const rank = (s) => (s === 'problem' ? 2.5 : STAGES.indexOf(s));
 
 // findOrderId(cart): the store's order id for a paid-at-the-store order
 // that completed before Spot kept it (read back from the store's checkout).
-export function createTracker({ db, spot, getOrder = async () => null, findOrderId = async () => null, log = console }) {
+export function createTracker({ db, spot, getOrder = async () => null, findOrderId = async () => null, readPage = async () => null, log = console }) {
   let running = false;
   function apply(cart, next, now) {
     const prev = cart.tracking || null;
@@ -70,13 +74,23 @@ export function createTracker({ db, spot, getOrder = async () => null, findOrder
     const id = c.id;
     if (!c.fulfillment.order_id) {
       const orderId = await findOrderId(c).catch((err) => (log.warn?.({ err, cart: id }, 'order id read failed'), null));
-      if (!orderId) return apply(c, null, now);
+      if (!orderId) return apply(c, await page(c), now);
       c = spot.patch(c.id, (x) => ({ ...x, fulfillment: { ...x.fulfillment, order_id: String(orderId).slice(0, 200) } }));
     }
     // The id's shape (digits and letters masked), to see what a store didn't accept.
     const shape = String(c.fulfillment.order_id).replace(/[0-9]/g, '9').replace(/[a-z]/gi, 'a').slice(0, 60);
     const order = await getOrder(c).catch((err) => (log.warn?.({ err, cart: id, order_id_shape: shape }, 'order status read failed'), null));
-    return apply(c, fromOrder(order), now);
+    const fromStore = fromOrder(order);
+    if (fromStore) return apply(c, fromStore, now);
+    return apply(c, await page(c), now);
+  }
+  // The store's order page, when its API said nothing.
+  async function page(c) {
+    if (!c.fulfillment?.order_url) return null;
+    const t = await readPage(c.fulfillment.order_url).catch(() => null);
+    if (!t) return null;
+    // Never step back: the page can lag what Spot already knew.
+    return c.tracking?.status && rank(c.tracking.status) > rank(t.status) ? { ...t, status: c.tracking.status } : t;
   }
   const trackable = (c) => c?.fulfillment && c.tracking?.status !== 'delivered';
   return {

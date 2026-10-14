@@ -179,3 +179,72 @@ test('opening the order asks the store right then, at most every 15 minutes', as
   await call('GET', `/v1/carts/${token}/manage?k=${k}`);
   assert.equal(reads(), 1, 'not again within 15 minutes');
 });
+
+test('the store’s order page: a carrier link, a number in the page’s data, or labeled text', async () => {
+  const { readTracking, trackingFromOrderPage } = await import('../src/orderpage.js');
+  // Classic Shopify order status page: a UPS link and "On its way".
+  const ups = readTracking('<h2>Your order is on its way</h2><a href="https://www.ups.com/track?loc=en_US&amp;tracknum=1Z999AA10123456784&amp;requester=ST/">1Z999AA10123456784</a>');
+  assert.deepEqual({ ...ups, url: ups.url.slice(0, 40) }, { status: 'in_transit', carrier: 'UPS', number: '1Z999AA10123456784', url: 'https://www.ups.com/track?loc=en_US&trac', description: null, at: null, source: 'store_page' });
+  // The order status app's JSON state.
+  const json = readTracking('<script>window.state={"fulfillments":[{"trackingCompany":"FedEx","trackingNumber":"123456789012","trackingUrl":"https:\\/\\/www.fedex.com\\/fedextrack\\/?trknbr=123456789012"}]}</script><p>Delivered</p>');
+  assert.equal(json.number, '123456789012');
+  assert.equal(json.carrier, 'FedEx');
+  assert.equal(json.status, 'delivered');
+  assert.match(json.url, /^https:\/\/www\.fedex\.com\/fedextrack\//);
+  // Text only.
+  const usps = readTracking('<div>Tracking number: <b>9400111899223333444455</b></div><p>Out for delivery</p>');
+  assert.deepEqual([usps.carrier, usps.status], ['USPS', 'out_for_delivery']);
+  // Not delivered yet, whatever the page promises.
+  assert.equal(readTracking('<p>Expected to be delivered by Oct 20</p><a href="https://www.ups.com/track?tracknum=1Z999AA10123456784">track</a>').status, 'shipped');
+  // Nothing shipped, or a sign-in wall: nothing.
+  assert.equal(readTracking('<h1>Thank you, Kyle!</h1><p>Your order is confirmed</p>'), null);
+  assert.equal(readTracking('<form action="/account/login"><input name="email"></form>'), null);
+  // Only public hosts; redirects followed by hand.
+  assert.equal(await trackingFromOrderPage('https://127.0.0.1/orders/1', { allowPrivate: false }), null);
+  assert.equal(await trackingFromOrderPage('http://shop.example/orders/1', { allowPrivate: false }), null, 'https only');
+  const hops = [];
+  const fetchImpl = async (u) => (hops.push(String(u)), hops.length === 1 ? new Response('', { status: 302, headers: { location: '/orders/1?key=abc' } }) : new Response('<a href="https://www.ups.com/track?tracknum=1Z999AA10123456784">t</a>', { status: 200 }));
+  const got = await trackingFromOrderPage('https://shop.example/1/orders/x', { fetchImpl, allowPrivate: true });
+  assert.equal(got.number, '1Z999AA10123456784');
+  assert.deepEqual(hops, ['https://shop.example/1/orders/x', 'https://shop.example/orders/1?key=abc']);
+});
+
+test('when the store won’t answer Get Order, its order page fills the tracking in, and never steps back', async (t) => {
+  const emails = [];
+  let page = '<p>Your order is confirmed</p>';
+  const a = buildApp({
+    db: openDb(':memory:'),
+    provider: sandboxProvider(),
+    cfg: { feeBps: 0, feeFixedCents: 200, maxCartCents: 50000, expiresHours: 72 },
+    logger: false,
+    env,
+    notifyFetch: async (url, init) => (String(url).includes('resend') && emails.push(JSON.parse(String(init.body))), new Response('{}', { status: 200 })),
+    capture: {
+      getOrder: async () => {
+        throw Object.assign(new Error('Missing required scope: read_global_api_orders.'), { code: 'orders_not_allowed' });
+      },
+      orderPage: async (u) => (u === 'https://www.sportsbasement.com/1/orders/abc' ? (await import('../src/orderpage.js')).readTracking(page) : null),
+    },
+  });
+  t.after(() => a.close());
+  const made = (await a.inject({ method: 'POST', url: '/v1/carts', payload: { requester: { name: 'Kyle', email: 'kyle@example.com' }, merchant: { name: 'Sports Basement', url: 'https://www.sportsbasement.com' }, items: [{ title: 'Socks', price_cents: 2300 }] } })).json();
+  await a.inject({ method: 'POST', url: `/v1/carts/${made.cart.token}/sandbox-pay`, payload: { payer_name: 'Mom' } });
+  const id = a.spot.load(made.cart.token).id;
+  a.spot.patch(id, (c) => ({ ...c, fulfillment: { state: 'placed', order_number: 'gid://shopify/Order/1', order_id: 'gid://shopify/Order/1', order_url: 'https://www.sportsbasement.com/1/orders/abc', placed_at: Date.now() - HOUR } }));
+  const t0 = Date.now();
+  await a.tracker.sweep(t0);
+  assert.equal(a.spot.byId(id).tracking.status, undefined, 'not shipped yet');
+  page = '<h2>Your order is on its way</h2><a href="https://www.ups.com/track?tracknum=1Z999AA10123456784">1Z999AA10123456784</a>';
+  await a.tracker.sweep(t0 + 7 * HOUR);
+  const tr = a.spot.byId(id).tracking;
+  assert.deepEqual([tr.status, tr.carrier, tr.number, tr.source], ['in_transit', 'UPS', '1Z999AA10123456784', 'store_page']);
+  // Opening the order page asks again (at most every 15 minutes).
+  page = '<p>Out for delivery</p><a href="https://www.ups.com/track?tracknum=1Z999AA10123456784">t</a>';
+  await a.tracker.refresh(a.spot.byId(id), t0 + 8 * HOUR);
+  assert.equal(a.spot.byId(id).tracking.status, 'out_for_delivery');
+  await until(() => emails.some((m) => /arrives today/.test(m.subject)), 'out for delivery email');
+  // A page that lags doesn't move it back.
+  page = '<p>Shipped</p><a href="https://www.ups.com/track?tracknum=1Z999AA10123456784">t</a>';
+  await a.tracker.refresh(a.spot.byId(id), t0 + 9 * HOUR);
+  assert.equal(a.spot.byId(id).tracking.status, 'out_for_delivery');
+});

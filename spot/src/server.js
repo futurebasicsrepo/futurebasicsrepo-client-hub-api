@@ -65,6 +65,7 @@ import { gateOn, registerGate } from './early.js';
 import { isStaff } from './staff.js';
 import { createPush, SERVICE_WORKER } from './webpush.js';
 import { createInvites } from './invites.js';
+import { trackingFromOrderPage } from './orderpage.js';
 import { registerBrand } from './brand.js';
 import { createFamily, registerFamily } from './family.js';
 
@@ -205,6 +206,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     spot,
     getOrder: capture.getOrder || ((c) => (paidAtStore(c) ? spot.direct.order(c.direct, c.fulfillment.order_id) : ucpOrder(c))),
     findOrderId: capture.findOrderId || (async (c) => (paidAtStore(c) ? (await spot.direct.status(c.direct)).order_id : null)),
+    readPage: capture.orderPage || ((u) => trackingFromOrderPage(u)),
     log: app.log,
   });
   app.decorate('tracker', tracker);
