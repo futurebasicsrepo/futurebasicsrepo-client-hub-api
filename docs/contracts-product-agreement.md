@@ -1,6 +1,6 @@
 # Physical product development agreement: the standard wording
 
-This is what a physical product agreement says when it is made with the defaults (the example below is a hat and apparel brand with an electronics item, production ordered by the client directly). The editor can change any clause per contract. It is a starting point written in plain English, not legal advice: have a lawyer read it before the first one goes out.
+This is what a physical product agreement says when it is made with the defaults (the example below is a hat and apparel brand with an electronics item, production ordered by us from the factory). The editor can change any clause per contract. It is a starting point written in plain English, not legal advice: have a lawyer read it before the first one goes out.
 
 Words that change per contract: the parties, scope, dates, fee and payment schedule, the product categories (compliance wording), the number of sample rounds, the shipping terms, the inspection standard, and who places production orders.
 
@@ -49,11 +49,15 @@ The fixed fee includes up to 2 rounds of samples. A round is one set of samples 
 
 ## 8. Production runs
 
-Production runs are not part of the fixed fee. When the Client is ready to produce, the Client places each order directly with the factory on the factory's written quotation and pays the factory directly under the factory's terms. Future Basics is not the manufacturer and is not a party to the factory's contract. As part of this agreement we give the factory the approved tech pack and the approved sample requirements, follow each order through production, arrange the inspection described below, and act for the Client in good faith to settle any problem that comes up. We do not guarantee the factory's work, prices or dates.
+Production runs are not part of the fixed fee. Future Basics places each production order with the factory itself and supplies the goods to the Client. Each run is confirmed by a written order that we send and the Client approves in writing (email is fine). It states the quantity, the unit price the Client pays, the deposit, the lead time and the shipping terms, and once approved it forms part of this agreement. Unless the order says otherwise, the Client pays a 50% deposit before we place the order with the factory and the balance before the goods ship. The goods become the Client's when it has paid for them in full. Goods made to the Client's design cannot be cancelled or changed once materials are ordered or cutting has begun: the Client pays for the materials bought and the work done up to the time we are told. A quoted price can change if materials, tariffs or exchange rates move before the order is approved.
+
+The Client pays the price on the order and deals only with us. What we pay the factory, our factory quotations and our margin are our own business and are not shown to the Client, and the Client has no right to see them.
+
+Because we supply the goods, we answer to the Client for them: goods that do not match the approved sample and the order are reworked, replaced or credited by us, whatever arrangement we have with the factory. For goods we supply, our total liability for a defect is limited to the price the Client paid for the goods affected, in place of the limit under Limit of liability.
 
 ## 9. Quality and inspection
 
-Production is checked against the approved sample and the tech pack. Unless an order says otherwise, finished goods are inspected before they ship, to an acceptable quality level of 2.5 for major defects and 4.0 for minor defects. We arrange the inspection, either ourselves or through a third-party inspector whose cost we quote first, and we share the report. Goods that fail are reworked or remade by the factory before they ship, unless the Client approves the difference in writing. A defect the inspection report did not show must be reported in writing, with photos, within 30 days of the goods arriving. Who is responsible for defects in the goods is set out in Production runs and in Our promise, and its limits.
+Production is checked against the approved sample and the tech pack. Unless an order says otherwise, finished goods are inspected before they ship, to an acceptable quality level of 2.5 for major defects and 4.0 for minor defects. We arrange the inspection, either ourselves or through a third-party inspector whose cost we quote first, and we share the report. Goods that fail are reworked or remade by the factory before they ship, unless the Client approves the difference in writing. A defect the inspection report did not show must be reported in writing, with photos, within 30 days of the goods arriving. Who answers to the Client for defects in the goods is set out under Production runs.
 
 ## 10. What the Client provides
 
@@ -77,7 +81,7 @@ Each party keeps the other's non-public business information private, uses it on
 
 ## 15. Our promise, and its limits
 
-We will do the work with the care and skill expected of a professional product development studio. If the Client reports a defect in what we delivered (tech packs, patterns, specifications) within 30 days of delivery, we fix it at no charge. After that, fixes are quoted as new work. We do not promise sales or other commercial results, that a product will pass any test, approval or certification, that it can be sold in any particular country, or that a factory will meet its dates. Factories are independent businesses: our part is to choose them carefully, brief them well, follow the order and inspect the goods, and the factory's work is the factory's own.
+We will do the work with the care and skill expected of a professional product development studio. If the Client reports a defect in what we delivered (tech packs, patterns, specifications) within 30 days of delivery, we fix it at no charge. After that, fixes are quoted as new work. We do not promise sales or other commercial results, that a product will pass any test, approval or certification, that it can be sold in any particular country, or that a factory will meet its dates. Factories are independent businesses: our part is to choose them carefully, brief them well, follow the order and inspect the goods, and who answers to the Client for the goods is set out under Production runs.
 
 ## 16. Limit of liability
 
@@ -93,11 +97,11 @@ This is the whole agreement between us about the Project and replaces anything s
 
 ---
 
-## Production runs when we order from the factory
+## Production runs when the client orders directly
 
-When "We order from the factory and supply the goods" is chosen instead, the Production runs clause reads:
+When "The client orders from the factory directly" is chosen instead, the Production runs clause reads:
 
-> Production runs are not part of the fixed fee. Each run is confirmed by a written order that we send and the Client approves in writing (email is fine). It states the quantity, unit price, deposit, lead time and shipping terms, and once approved it forms part of this agreement. Unless the order says otherwise, the Client pays a 50% deposit before we place the order with the factory and the balance before the goods ship. We buy the goods from the factory and supply them to the Client, and they become the Client's when it has paid for them in full. Goods made to the Client's design cannot be cancelled or changed once materials are ordered or cutting has begun: the Client pays for the materials bought and the work done up to the time we are told. A quoted price can change if materials, tariffs or exchange rates move before the order is approved.
+> Production runs are not part of the fixed fee. When the Client is ready to produce, the Client places each order directly with the factory on the factory's written quotation and pays the factory directly under the factory's terms. Future Basics is not the manufacturer and is not a party to the factory's contract. As part of this agreement we give the factory the approved tech pack and the approved sample requirements, follow each order through production, arrange the inspection described below, and act for the Client in good faith to settle any problem that comes up. We do not guarantee the factory's work, prices or dates.
 
 When "Not covered by this agreement" is chosen, the Production runs clause is left out.
 

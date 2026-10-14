@@ -198,8 +198,8 @@ function drawEditor(){
 }
 const CATS={apparel:'Apparel (shirts, hoodies, outerwear)',headwear:'Headwear (hats, caps)',footwear:'Footwear',electronics:'Electronics',accessories:'Bags and accessories',other:'Other product'};
 const TERMS_SHIP={EXW:'Ex works: the client collects at the factory',FOB:'FOB: the client takes the goods once loaded at the port of departure',DDP:'DDP: delivered to the client with duties and taxes paid'};
-const PROD_MODES={direct:'The client orders from the factory directly',through_us:'We order from the factory and supply the goods',none:'Not covered by this agreement'};
-function productFieldset(c){const pr=c.product||(c.product={categories:[],sampleRounds:2,incoterm:'FOB',aql:'2.5 for major defects and 4.0 for minor defects',production:{mode:'direct',depositPct:50}}),mode=pr.production?.mode||'direct';
+const PROD_MODES={through_us:'We order from the factory and supply the goods (the client does not see factory prices)',direct:'The client orders from the factory directly',none:'Not covered by this agreement'};
+function productFieldset(c){const pr=c.product||(c.product={categories:[],sampleRounds:2,incoterm:'FOB',aql:'2.5 for major defects and 4.0 for minor defects',production:{mode:'through_us',depositPct:50}}),mode=pr.production?.mode||'through_us';
   return `<fieldset><legend>The product</legend><div class="chkrow" style="display:flex;flex-wrap:wrap;gap:6px 16px;margin-bottom:8px">${Object.entries(CATS).map(([k,l])=>`<label style="display:flex;gap:6px;align-items:center"><input type="checkbox" data-cat="${k}" ${(pr.categories||[]).includes(k)?'checked':''}> ${l}</label>`).join('')}</div>
    <p class="sub">What it is decides the compliance wording (labels, safety rules, electrical approvals).</p>
    <div class="g3">${fld('Sample rounds included','product.sampleRounds',{type:'number'})}<label class="f"><span>Shipping terms</span><select class="t" data-k="product.incoterm">${Object.entries(TERMS_SHIP).map(([k,l])=>`<option value="${k}" ${pr.incoterm===k?'selected':''}>${l}</option>`).join('')}</select></label>${fld('Inspection standard (AQL)','product.aql')}</div>

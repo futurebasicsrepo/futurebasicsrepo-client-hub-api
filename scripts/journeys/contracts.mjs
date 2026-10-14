@@ -265,7 +265,7 @@ await journey('J174', 'Signing in to the work console with Google: the session i
 await journey('J188', 'Contracts for a physical product (a hat): its own wording, chosen per customer, signed, and its payments read "on final sample approval" and bill as product work', async () => {
   await C('/settings', { method: 'PUT', body: { providerName: 'Future Basics', providerAddress: '10 Studio Way, Norristown PA', signerName: 'Kyle Riggle', signerTitle: 'Founder', governingLaw: 'Pennsylvania' } });
   const tpl = (await C('/template?kind=product')).json, dig = (await C('/template?kind=website')).json;
-  ok(tpl.sections.some(s => s.id === 'samples') && tpl.sections.some(s => s.id === 'production') && tpl.product.production.mode === 'direct' && !tpl.sections.some(s => s.id === 'hosting') && dig.sections.some(s => s.id === 'hosting') && !dig.product, 'the product template has samples and production clauses and no hosting; the digital one is unchanged');
+  ok(tpl.sections.some(s => s.id === 'samples') && tpl.sections.some(s => s.id === 'production') && tpl.product.production.mode === 'through_us' && !tpl.sections.some(s => s.id === 'hosting') && dig.sections.some(s => s.id === 'hosting') && !dig.product, 'the product template has samples and production clauses and no hosting; the digital one is unchanged');
   ok((await C('/template?kind=nope')).status === 422, 'an unknown kind is refused');
 
   const hCo = sql(`insert into sales_companies(name) values('Trail Hat Co ${stamp}') returning id`).split('\n')[0];

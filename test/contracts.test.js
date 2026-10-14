@@ -121,6 +121,14 @@ test('a product contract renders with every merge field filled and nothing left 
   assert.deepEqual(sendProblems(c.value, {}), [], 'a product contract can be sent when the usual details are there');
 });
 
+test('by default we order from the factory, and the client is told it never sees factory prices', () => {
+  assert.equal(defaultProduct().production.mode, 'through_us');
+  const r = renderContract(cleanContent(prod({ product: { production: undefined } })).value), body = r.sections.find(s => s.id === 'production').body;
+  assert.match(body, /Future Basics places each production order with the factory itself/); assert.match(body, /What we pay the factory, our factory quotations and our margin are our own business and are not shown to the Client/);
+  assert.match(body, /Because we supply the goods, we answer to the Client for them/); assert.match(body, /unit price the Client pays/);
+  assert.ok(!/factory\'s written quotation/.test(body) && !/pays the factory directly/.test(body));
+});
+
 test('who places production orders changes the production clause, and "not covered" leaves it out', () => {
   const via = renderContract(cleanContent(prod({ product: { production: { mode: 'through_us', depositPct: 40 } } })).value);
   assert.match(via.sections.find(s => s.id === 'production').body, /a 40% deposit before we place the order/);
@@ -138,7 +146,7 @@ test('electronics add the electrical and battery rules; several categories are a
 test('product options are cleaned: unknown categories and shipping terms fall back, numbers are held in range', () => {
   const p = cleanProduct({ categories: ['hats', 'footwear', 'footwear'], sampleRounds: 99, incoterm: 'CIF', aql: '', production: { mode: 'sell it', depositPct: 500 } });
   assert.deepEqual(p.categories, ['footwear']); assert.equal(p.sampleRounds, 10); assert.equal(p.incoterm, defaultProduct().incoterm); assert.equal(p.aql, defaultProduct().aql);
-  assert.deepEqual(p.production, { mode: 'direct', depositPct: 100 });
+  assert.deepEqual(p.production, { mode: 'through_us', depositPct: 100 }, 'we order from the factory unless told otherwise');
   assert.equal(cleanContent(prod()).value.hosting.included, false, 'a product contract never carries hosting');
   assert.equal(cleanContent(withPlan(base(), { type: 'full' })).value.product, undefined, 'a digital contract carries no product block');
 });

@@ -26,7 +26,7 @@ What is different from the digital agreement:
 | Clause | What it says |
 | --- | --- |
 | Samples and approval | up to *N* rounds are included (set per contract, default 2); extra rounds are quoted; the client approves each sample in writing; the **approved sample plus the tech pack** is the standard production is made and inspected against; production waits for an approved pre-production sample |
-| Production runs | by option: **the client orders from the factory directly** (we manage the order and inspection but are not the manufacturer), **we order from the factory and supply the goods** (each run confirmed by a written order; deposit % set per contract; no cancelling once materials are bought), or **not covered** (the clause is left out) |
+| Production runs | by option: **we order from the factory and supply the goods** (the default: each run is confirmed by a written order showing only the client's price, with a deposit % set per contract; the client does not see what we pay the factory, our quotes or our margin; we answer to the client for goods that do not match the approved sample, with liability for those goods limited to their price; no cancelling once materials are bought), **the client orders from the factory directly** (we manage the order and inspection but are not the manufacturer), or **not covered** (the clause is left out) |
 | Quality and inspection | goods are inspected before they ship to an AQL (default 2.5 major / 4.0 minor); failures are reworked or remade before shipping; later claims need photos within the warranty days |
 | Where the product is sold | the client is responsible for labelling, safety and certification where it sells; the wording lists the rules for the chosen categories (apparel, headwear, footwear, electronics, bags and accessories), for example FCC/UL/CE/RoHS and lithium battery shipping for electronics |
 | Ownership | designs, patterns, tech packs and artwork are the client's once paid; Future Basics keeps its tools, templates and base patterns; **tooling, molds and lasts paid for by the client are the client's**, even at the factory |
@@ -36,7 +36,7 @@ What is different from the digital agreement:
 
 Payments work as for digital work, but a payment that waits for the work is "**on final sample approval**" instead of "on delivery". Staff press **Record final sample approval** (the button that says Record delivery on a digital contract) and those payments fall due. Invoices drafted from a product contract are product work (so their payment link follows the product-development route), and the starting milestone plan is a kick-off payment and a payment on final sample approval.
 
-Production orders are not part of this plan: a client who orders directly pays the factory; for orders through us, each run is confirmed by a written order outside the contract's fixed fee.
+Production orders are not part of this plan: each run is confirmed by a written order outside the contract's fixed fee (we order from the factory, and the order shows the client's price only), or, when the client orders directly, the client pays the factory.
 
 ## Payment plans
 
