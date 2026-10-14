@@ -1,5 +1,5 @@
 import { createRequire } from 'node:module';
-import { journey, ok, summary, api, jpeg, codeFrom, sleep, waitAi, forge, sql, stamp, S } from './lib.mjs';
+import { journey, ok, summary, api, jpeg, codeFrom, sleep, waitAi, forge, sql, stamp, S, setAsideOpportunities } from './lib.mjs';
 const { chromium } = createRequire(import.meta.url)(process.env.PLAYWRIGHT_PATH || 'playwright');
 const BASE = 'http://127.0.0.1:3123', LOG = `${S}/server-j-a.log`, call = api(BASE), runner = jpeg(), FX = (await import('./lib.mjs')).FX;
 let n = 0; const em = tag => `ju${tag}-${stamp}-${++n}@chaos.test`;
@@ -1304,6 +1304,7 @@ await journey('J126', 'the Press tab in a browser: the menu entry opens it, a pi
 });
 await journey('J124', 'the Opportunities tab in a browser: what is worth doing and why, the kinds as filters, make a task, snooze, hide, the short list on Today, the menu count, and a phone', async () => {
   const r = await room('124', { wait: false }), tag = `op${stamp}`;
+  setAsideOpportunities(); // the list shows the strongest 60 in the whole CRM: leave only this journey's people on it
   const admin = await forge({ sub: sql(`select id from users where lower(email)='${r.email}'`), clientId: r.clientId, role: 'admin', email: 'kyle@thefuturebasics.com' });
   const S = (path, o = {}) => call('/v1/sales' + path, { token: admin, ...o });
   const person = async n => (await S('/contacts', { body: { name: `${n} ${tag}`, email: `${n.toLowerCase().replace(/\W/g, '')}-${tag}@opp.test`, source: 'referral' } })).json.id;

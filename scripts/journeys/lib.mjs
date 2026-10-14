@@ -60,3 +60,10 @@ export async function waitAi(call, token, productId, ms = 25000) {
 }
 export const secret = new TextEncoder().encode('smoke-secret');
 export const forge = async (claims, { exp = '7d', iss = 'future-basics-client-hub', key = secret } = {}) => new SignJWT(claims).setProtectedHeader({ alg: 'HS256' }).setIssuer(iss).setIssuedAt().setExpirationTime(exp).sign(key);
+
+// The opportunity list shows the strongest 60 of everyone in the CRM, and a full suite leaves hundreds of rooms there (each tech pack customer is a contact).
+// A journey that checks its own people sets everyone already there aside first (dismissed for a day), so what it checks does not depend on how many journeys ran before it.
+export function setAsideOpportunities() {
+  const types = ['chat_waiting', 'inbound_unanswered', 'opened_live', 'deal_quiet', 'hot_no_deal', 'gone_cold', 'new_unworked', 'cross_sell_builds', 'cross_sell_techpack', 'account_expansion'];
+  sql(`insert into sales_opportunity_state(key,state,until) select t.type || ':' || i.id, 'dismissed', now() + interval '1 day' from (values ${types.map(x => `('${x}')`).join(',')}) t(type), (select id::text id from sales_contacts union select id::text from sales_deals union select id::text from sales_companies) i on conflict (key) do nothing`);
+}

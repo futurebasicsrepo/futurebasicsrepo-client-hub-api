@@ -1,4 +1,4 @@
-import { journey, ok, summary, api, jpeg, png, bigJpeg, hugeHeaderPng, codeFrom, sleep, waitAi, forge, sql, stamp, S } from './lib.mjs';
+import { journey, ok, summary, api, jpeg, png, bigJpeg, hugeHeaderPng, codeFrom, sleep, waitAi, forge, sql, stamp, S, setAsideOpportunities } from './lib.mjs';
 import { readFileSync } from 'node:fs';
 const BASE = 'http://127.0.0.1:3123', LOG = `${S}/server-j-a.log`, call = api(BASE), runner = jpeg();
 let n = 0; const em = tag => `j${tag}-${stamp}-${++n}@chaos.test`;
@@ -1538,6 +1538,7 @@ await journey('J125', 'Press comms: a release or pitch is drafted by the assista
 });
 await journey('J123', 'The opportunity finder: who to talk to next and why, from what the CRM already knows (chats waiting, unanswered mail, live builds opened, quiet deals, warm people, customers who could use more), strongest first, one line per person, nothing for people who opted out, and what staff set aside stays away', async () => {
   const room = await newRoom('123', { wait: false }), tag = `o${stamp}`;
+  setAsideOpportunities(); // the list shows the strongest 60 in the whole CRM: leave only this journey's people on it
   const admin = await forge({ sub: sql(`select id from users where lower(email)='${room.email}'`), clientId: sql(`select client_id from users where lower(email)='${room.email}'`), role: 'admin', email: 'kyle@thefuturebasics.com' });
   const S = (path, o = {}) => call('/v1/sales' + path, { token: admin, ...o });
   const person = async (name, o = {}) => (await S('/contacts', { body: { name: `${name} ${tag}`, email: `${name.toLowerCase().replace(/\W/g, '')}-${tag}@opp.test`, source: 'referral', ...o } })).json.id;
@@ -2017,8 +2018,8 @@ await journey('J140', 'Factories: each factory has what it makes, its skills and
   sql(`insert into room_files(client_id,project_id,product_id,uploader_role,original_name,storage_name,mime_type,size_bytes,factory_visible) values('${room.clientId || cid}','${proj}','${pid}','admin','${tag}-spec.pdf','${tag}-spec','application/pdf',2048,true)`);
   sql(`insert into room_files(client_id,project_id,product_id,uploader_role,original_name,storage_name,mime_type,size_bytes,factory_visible) values('${room.clientId || cid}','${proj}','${pid}','admin','${tag}-private.pdf','${tag}-private','application/pdf',2048,false)`);
   d = (await F(`/${a.id}`)).json; ok(d.files.length === 1 && d.files[0].name === `${tag}-spec.pdf` && /^\/v1\/room-files\/rf%3A/.test(d.files[0].url), 'only the file marked for the factory is listed, with a way to download it', JSON.stringify(d.files).slice(0, 160));
-  sql(`insert into production_runs(product_id,supplier_id,po_number,quantity,status,eta_date) values('${pid}','${a.id}','PO-${stamp}',300,'in-production',current_date-2)`);
-  d = (await F(`/${a.id}`)).json; ok(d.runs.length === 1 && d.runs[0].late === true && d.runs[0].po === `PO-${stamp}` && d.factory.counts.lateRuns === 1 && d.factory.light === 'late', 'a production run past its date is late and turns the factory red');
+  sql(`insert into production_runs(product_id,supplier_id,po_number,quantity,status,eta_date) values('${pid}','${a.id}','PO-F${stamp}',300,'in-production',current_date-2)`);
+  d = (await F(`/${a.id}`)).json; ok(d.runs.length === 1 && d.runs[0].late === true && d.runs[0].po === `PO-F${stamp}` && d.factory.counts.lateRuns === 1 && d.factory.light === 'late', 'a production run past its date is late and turns the factory red');
   sql(`update production_runs set status='delivered' where supplier_id='${a.id}'`); d = (await F(`/${a.id}`)).json; ok(d.runs[0].late === false && d.factory.light === 'active', 'a delivered run is not late');
 
   // the others are not touched, and the list agrees with the detail
