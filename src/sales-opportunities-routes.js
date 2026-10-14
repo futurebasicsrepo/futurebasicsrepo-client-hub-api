@@ -71,7 +71,8 @@ export function registerSalesOpportunityRoutes(app, d) {
   app.post('/v1/sales/opportunities/act', { preHandler: pre }, async (req, reply) => {
     const { key, action } = req.body || {}, a = ['task', 'snooze', 'dismiss'].includes(action) ? action : null;
     if (!a || !key || String(key).length > 80) return bad(reply, 'Choose make a task, snooze or hide');
-    const opp = (await findOpportunities(pool, Date.now(), await hiddenMap())).find(o => o.key === key); // the same list the page was shown, so a card past the first 40 people is still found if (!opp) return bad(reply, 'That opportunity is no longer there. It may already be done.', 404);
+    // the same list the page was shown, so a card past the first 40 people is still found
+    const opp = (await findOpportunities(pool, Date.now(), await hiddenMap())).find(o => o.key === key); if (!opp) return bad(reply, 'That opportunity is no longer there. It may already be done.', 404);
     if (a === 'task') {
       if (!opp.contactId) return bad(reply, 'There is no contact to make a task for');
       await pool.query(`insert into sales_tasks(contact_id,deal_id,title,due_at) values($1,$2,$3,now())`, [opp.contactId, opp.dealId, opp.task || `Follow up with ${opp.name}`]);

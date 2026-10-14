@@ -1595,8 +1595,8 @@ await journey('J123', 'The opportunity finder: who to talk to next and why, from
   ok((await S('/opportunities/act', { body: { key: mine(l, 'Cold Cora').key, action: 'snooze', days: 3 } })).status === 200 && !mine(await list(), 'Cold Cora'), 'snoozing one removes it for now');
   sql(`update sales_opportunity_state set until = now() - interval '1 minute' where key like '%${cora}'`); ok(mine(await list(), 'Cold Cora')?.type === 'gone_cold', 'and it comes back when the time is up, while it is still true');
   act(ian, 'email_out', 'Thanks, here is a call link', '1 hour'); const l3 = await list(); ok(mine(l3, 'Inbound Ian')?.type !== 'inbound_unanswered', 'once someone answers, the unanswered mail is gone');
-  const nf = await S('/opportunities/act', { body: { key: 'inbound_unanswered:nobody', action: 'task' } }), bd = await S('/opportunities/act', { body: { key: 'x', action: 'explode' } });
-  ok(nf.status === 404 && bd.status === 422, 'something that is not there is a not-found, and an action that is not one is refused', [nf.status, nf.json, bd.status, bd.json]);
+  const nf = await S('/opportunities/act', { body: { key: 'inbound_unanswered:nobody', action: 'task' } }), badAct = await S('/opportunities/act', { body: { key: 'x', action: 'explode' } });
+  ok(nf.status === 404 && badAct.status === 422, 'something that is not there is a not-found, and an action that is not one is refused', [nf.status, nf.json, badAct.status, badAct.json]);
 }));
 
 await journey('J134', 'Sales intelligence: listens to Reddit, Hacker News, news, web search, X and Discord, has Claude, ChatGPT or Grok read what is new, surfaces the posts worth a person\'s time with a draft, never sends anything itself, records what each person does, and turns that into KPIs', async () => {
