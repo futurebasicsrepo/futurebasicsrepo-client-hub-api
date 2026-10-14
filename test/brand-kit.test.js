@@ -56,7 +56,7 @@ test('the mark: a line and a dot, always forward, the dot Cue; one colour when a
   const black = await svg('future-basics-mark-black.svg'); assert.doesNotMatch(black, /4BFF9A/); assert.equal((black.match(/#000000/g) || []).length, 2);
   const rev = await svg('future-basics-mark-reverse.svg'); assert.doesNotMatch(rev, /4BFF9A/);
   assert.match((await assetFile('future-basics-mark-black-cmyk.pdf')).buffer.toString('latin1'), /DeviceCMYK/);
-  const loop = await svg('future-basics-mark-loop-on-light.svg'); assert.match(loop, /@keyframes run/); assert.match(loop, /prefers-reduced-motion/);
+  const loop = await svg('future-basics-mark-loop-on-light.svg'); assert.match(loop, /@keyframes run/); assert.match(loop, /viewBox="-12 -12 /); /* room for the dot's pulse */ assert.match(loop, /prefers-reduced-motion/);
   const g = await sharp((await assetFile('future-basics-mark-loop-on-ink.gif')).buffer, { animated: true }).metadata(); assert.ok(g.pages > 20 && g.width === 480 && g.pageHeight === 160, `${g.pages} ${g.width}x${g.pageHeight}`);
   const lock = await svg('future-basics-lockup-ink.svg'); assert.match(lock, /fill-rule="evenodd"/); assert.match(lock, /#4BFF9A/);
   const sheet = catalogue().groups.find(x => x.id === 'mark').items; for (const e of ['svg', 'pdf', 'png', 'webp', 'tiff', 'jpg', 'gif']) assert.ok(sheet.some(i => i.ext === e), e);
