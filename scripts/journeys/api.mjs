@@ -1,4 +1,4 @@
-import { journey, ok, summary, api, jpeg, png, bigJpeg, hugeHeaderPng, codeFrom, sleep, waitAi, forge, sql, stamp, S, setAsideOpportunities } from './lib.mjs';
+import { journey, ok, summary, api, jpeg, png, bigJpeg, hugeHeaderPng, codeFrom, sleep, waitAi, forge, sql, stamp, S, setAsideOpportunities, withOpportunityLock } from './lib.mjs';
 import { readFileSync } from 'node:fs';
 const BASE = 'http://127.0.0.1:3123', LOG = `${S}/server-j-a.log`, call = api(BASE), runner = jpeg();
 let n = 0; const em = tag => `j${tag}-${stamp}-${++n}@chaos.test`;
@@ -1536,7 +1536,7 @@ await journey('J125', 'Press comms: a release or pitch is drafted by the assista
     ok((await P(`/items/${draft.json.id}`, { method: 'DELETE' })).status === 200 && (await P(`/items/${draft.json.id}`, { method: 'DELETE' })).status === 404, 'an item can be deleted');
   } finally { await new Promise(r => resend.close(r)); }
 });
-await journey('J123', 'The opportunity finder: who to talk to next and why, from what the CRM already knows (chats waiting, unanswered mail, live builds opened, quiet deals, warm people, customers who could use more), strongest first, one line per person, nothing for people who opted out, and what staff set aside stays away', async () => {
+await journey('J123', 'The opportunity finder: who to talk to next and why, from what the CRM already knows (chats waiting, unanswered mail, live builds opened, quiet deals, warm people, customers who could use more), strongest first, one line per person, nothing for people who opted out, and what staff set aside stays away', async () => withOpportunityLock(async () => {
   const room = await newRoom('123', { wait: false }), tag = `o${stamp}`;
   setAsideOpportunities(); // the list shows the strongest 60 in the whole CRM: leave only this journey's people on it
   const admin = await forge({ sub: sql(`select id from users where lower(email)='${room.email}'`), clientId: sql(`select client_id from users where lower(email)='${room.email}'`), role: 'admin', email: 'kyle@thefuturebasics.com' });
@@ -1596,7 +1596,7 @@ await journey('J123', 'The opportunity finder: who to talk to next and why, from
   sql(`update sales_opportunity_state set until = now() - interval '1 minute' where key like '%${cora}'`); ok(mine(await list(), 'Cold Cora')?.type === 'gone_cold', 'and it comes back when the time is up, while it is still true');
   act(ian, 'email_out', 'Thanks, here is a call link', '1 hour'); const l3 = await list(); ok(mine(l3, 'Inbound Ian')?.type !== 'inbound_unanswered', 'once someone answers, the unanswered mail is gone');
   ok((await S('/opportunities/act', { body: { key: 'inbound_unanswered:nobody', action: 'task' } })).status === 404 && (await S('/opportunities/act', { body: { key: 'x', action: 'explode' } })).status === 422, 'something that is not there is a not-found, and an action that is not one is refused');
-});
+}));
 
 await journey('J134', 'Sales intelligence: listens to Reddit, Hacker News, news, web search, X and Discord, has Claude, ChatGPT or Grok read what is new, surfaces the posts worth a person\'s time with a draft, never sends anything itself, records what each person does, and turns that into KPIs', async () => {
   const http = await import('node:http');

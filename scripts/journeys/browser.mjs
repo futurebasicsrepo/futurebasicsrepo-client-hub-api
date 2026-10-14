@@ -1,5 +1,5 @@
 import { createRequire } from 'node:module';
-import { journey, ok, summary, api, jpeg, codeFrom, sleep, waitAi, forge, sql, stamp, S, setAsideOpportunities } from './lib.mjs';
+import { journey, ok, summary, api, jpeg, codeFrom, sleep, waitAi, forge, sql, stamp, S, setAsideOpportunities, withOpportunityLock } from './lib.mjs';
 const { chromium } = createRequire(import.meta.url)(process.env.PLAYWRIGHT_PATH || 'playwright');
 const BASE = 'http://127.0.0.1:3123', LOG = `${S}/server-j-a.log`, call = api(BASE), runner = jpeg(), FX = (await import('./lib.mjs')).FX;
 let n = 0; const em = tag => `ju${tag}-${stamp}-${++n}@chaos.test`;
@@ -1302,7 +1302,7 @@ await journey('J126', 'the Press tab in a browser: the menu entry opens it, a pi
     await pctx.close(); await ctx.close();
   } finally { await new Promise(r => resend.close(r)); }
 });
-await journey('J124', 'the Opportunities tab in a browser: what is worth doing and why, the kinds as filters, make a task, snooze, hide, the short list on Today, the menu count, and a phone', async () => {
+await journey('J124', 'the Opportunities tab in a browser: what is worth doing and why, the kinds as filters, make a task, snooze, hide, the short list on Today, the menu count, and a phone', async () => withOpportunityLock(async () => {
   const r = await room('124', { wait: false }), tag = `op${stamp}`;
   setAsideOpportunities(); // the list shows the strongest 60 in the whole CRM: leave only this journey's people on it
   const admin = await forge({ sub: sql(`select id from users where lower(email)='${r.email}'`), clientId: r.clientId, role: 'admin', email: 'kyle@thefuturebasics.com' });
@@ -1338,7 +1338,7 @@ await journey('J124', 'the Opportunities tab in a browser: what is worth doing a
   await ph.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/j124-phone.png` }).catch(() => {});
   ok(ph.errs.length === 0, 'no script errors on the phone', ph.errs); await pc.close();
   sql(`delete from sales_contacts where email like '%-${tag}@opp.test'`);
-});
+}));
 
 await journey('J133', 'the work home in a browser: the week at a glance, who to reach out to, the prototypes and who has looked, the projects in flight with filters, every link goes where it says, and it fits a phone', async () => {
   const r = await room('133', { wait: false }), tag = `wh${stamp}`, W = 'http://work.localhost:3123';
