@@ -26,7 +26,15 @@
   // 6 to 10 digits, dots allowed: 6104.43 or 6104.43.2000
   const hsCode = v => { const d = String(v || '').replace(/[^0-9]/g, ''); return d.length >= 6 && d.length <= 10 ? d.replace(/^(\d{4})(\d{2})(\d{0,4})$/, (m, a, b, c) => (c ? `${a}.${b}.${c}` : `${a}.${b}`)) : ''; };
 
-  const empty = () => ({ currency: 'USD', retailPrice: '', compareAtPrice: '', skuPrefix: '', weightGrams: '', lengthCm: '', widthCm: '', heightCm: '', hsCode: '', variants: [] });
+  // What it costs to make one unit, in the pack's currency. Unit costs on the materials live on the bill of materials (bom[].cost); these are the rest.
+  // Not a quote: the client's own arithmetic, replaced by a factory quote when there is one. It never goes to a factory.
+  const emptyCost = () => ({ labour: '', decoration: '', packaging: '', freight: '', dutyPct: '', wastePct: '', breaks: [] });
+  function normalizeCost(c) {
+    const x = c && typeof c === 'object' ? c : {};
+    return { labour: num(x.labour, { max: 1e6 }), decoration: num(x.decoration, { max: 1e6 }), packaging: num(x.packaging, { max: 1e6 }), freight: num(x.freight, { max: 1e6 }), dutyPct: num(x.dutyPct, { max: 100, dp: 1 }), wastePct: num(x.wastePct, { max: 100, dp: 1 }),
+      breaks: (Array.isArray(x.breaks) ? x.breaks : []).slice(0, 6).map(b => ({ qty: digits(b && b.qty, 1, 7), pctOff: num(b && b.pctOff, { max: 90, dp: 1 }) })).filter(b => b.qty && Number(b.qty) > 0).sort((a, b) => Number(a.qty) - Number(b.qty)) };
+  }
+  const empty = () => ({ currency: 'USD', retailPrice: '', compareAtPrice: '', skuPrefix: '', weightGrams: '', lengthCm: '', widthCm: '', heightCm: '', hsCode: '', cost: emptyCost(), variants: [] });
 
   // a pack's commercial block, cleaned. Prices and measurements are numbers kept as text (as the rest of the pack does); a bad barcode is dropped, not guessed.
   function normalize(input, limit = 200) {
@@ -38,7 +46,7 @@
       barcode: gtinOk(v && v.barcode) ? String(v.barcode).replace(/\D/g, '') : '', price: num(v && v.price)
     })).filter(v => v.size || v.colour || v.sku).filter(v => { const k = `${v.size}|${v.colour}`.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; });
     return { ...base, currency: cur.length === 3 ? cur : 'USD', retailPrice: num(c.retailPrice), compareAtPrice: num(c.compareAtPrice), skuPrefix: slug(c.skuPrefix, 12), weightGrams: num(c.weightGrams, { max: 1e6, dp: 1 }),
-      lengthCm: num(c.lengthCm, { max: 1000, dp: 1 }), widthCm: num(c.widthCm, { max: 1000, dp: 1 }), heightCm: num(c.heightCm, { max: 1000, dp: 1 }), hsCode: hsCode(c.hsCode), variants };
+      lengthCm: num(c.lengthCm, { max: 1000, dp: 1 }), widthCm: num(c.widthCm, { max: 1000, dp: 1 }), heightCm: num(c.heightCm, { max: 1000, dp: 1 }), hsCode: hsCode(c.hsCode), cost: normalizeCost(c.cost), variants };
   }
 
   // One row for every size and colour in the pack. A row the team has already filled in keeps its SKU, barcode and price; a size or colour that has gone loses its row.
@@ -70,10 +78,32 @@
     return out;
   }
 
-  // The view a factory gets: everything but what the client charges.
-  function forFactory(c) { const x = normalize(c); return { ...x, retailPrice: '', compareAtPrice: '', variants: x.variants.map(v => ({ ...v, price: '' })) }; }
+  // The view a factory gets: everything but what the client charges and what it costs them.
+  function forFactory(c) { const x = normalize(c); return { ...x, retailPrice: '', compareAtPrice: '', cost: emptyCost(), variants: x.variants.map(v => ({ ...v, price: '' })) }; }
 
-  const api = { COUNTRIES, countryCode, gtinOk, hsCode, empty, normalize, syncVariants, missing, forFactory };
+  // One unit, added up. Materials are quantity x unit cost on each bill-of-materials line (a line with a cost and no quantity counts once); waste is a percentage on the
+  // materials; duty is a percentage of what the goods cost before freight; freight is per unit. A quantity break takes a percentage off the goods at that order size.
+  // Lines with no cost are counted, never guessed. Money is rounded to cents at the end.
+  const f = v => { const n = parseFloat(String(v == null ? '' : v).replace(/[^0-9.\-]/g, '')); return Number.isFinite(n) ? n : null; };
+  const r2 = n => Math.round(n * 100) / 100;
+  function costSummary(pack) {
+    const p = pack || {}, c = normalize(p.commercial), k = c.cost, bom = Array.isArray(p.bom) ? p.bom : [];
+    let materials = 0, priced = 0, unpriced = 0;
+    const lines = bom.map(r => {
+      const u = f(r && r.cost), q = f(r && r.qty);
+      if (u == null) { if (r && (r.component || r.material)) unpriced++; return null; }
+      priced++; const line = (q == null ? 1 : q) * u; materials += line; return r2(line);
+    });
+    const waste = materials * (f(k.wastePct) || 0) / 100, labour = f(k.labour) || 0, decoration = f(k.decoration) || 0, packaging = f(k.packaging) || 0, freight = f(k.freight) || 0, dutyPct = f(k.dutyPct) || 0;
+    const goods = materials + waste + labour + decoration + packaging, duty = goods * dutyPct / 100, landed = goods + duty + freight, retail = f(c.retailPrice);
+    const marginOf = l => (retail && retail > 0 ? Math.round(((retail - l) / retail) * 1000) / 10 : null);
+    const hasAny = priced > 0 || labour > 0 || decoration > 0 || packaging > 0 || freight > 0;
+    const breaks = k.breaks.map(b => { const g = goods * (1 - (f(b.pctOff) || 0) / 100), l = g + g * dutyPct / 100 + freight; return { qty: b.qty, pctOff: b.pctOff || '0', landed: r2(l), marginPct: marginOf(l) }; });
+    return { currency: c.currency, hasAny, lines, pricedLines: priced, unpricedLines: unpriced, materials: r2(materials), waste: r2(waste), labour: r2(labour), decoration: r2(decoration), packaging: r2(packaging),
+      fob: r2(goods), dutyPct: String(dutyPct), duty: r2(duty), freight: r2(freight), landed: r2(landed), retail: retail == null ? null : r2(retail), marginPct: marginOf(landed), breaks };
+  }
+
+  const api = { COUNTRIES, countryCode, gtinOk, hsCode, empty, emptyCost, normalize, syncVariants, missing, forFactory, costSummary };
   root.FBCommercial = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

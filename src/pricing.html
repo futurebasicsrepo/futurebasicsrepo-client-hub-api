@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>Tech pack pricing — Future Basics</title>
+  <meta name="description" content="Your first tech pack is free. After that, one price per pack, or a monthly membership. Every pack is checked, comes with a cost estimate, and downloads as PDF and Excel.">
+  <meta property="og:type" content="website"><meta property="og:site_name" content="Future Basics"><meta property="og:title" content="Tech pack pricing — Future Basics"><meta property="og:description" content="First pack free. Then one price per pack, or a monthly membership. Checked, costed, and ready for a factory."><meta property="og:image" content="https://hub.thefuturebasics.com/icons/og-brand.png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" href="/icons/techpack-v3-192.png" type="image/png"><meta name="theme-color" content="#141416">
+  <style>
+    @import url('/fonts/fonts.css');
+    :root{--ink:#141416;--paper:#fff;--fog:#f5f5f2;--dim:#727278;--line:rgba(20,20,22,.14);--cue:#4bff9a;--ok:#17603a;--ease:cubic-bezier(.22,1,.36,1)}
+    *{box-sizing:border-box}html{background:var(--fog)}body{margin:0;color:var(--ink);font:400 16px/1.5 'Space Grotesk',system-ui,sans-serif;background:var(--fog);-webkit-font-smoothing:antialiased;overflow-x:hidden}
+    a{color:inherit}.meta{font:500 10px/1.35 'IBM Plex Mono',monospace;text-transform:uppercase;letter-spacing:.15em;color:var(--dim)}
+    header{height:60px;background:var(--ink);color:#fff;padding:0 18px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,.08)}
+    .wordmark{position:relative;display:flex;align-items:center;gap:10px;color:#fff;text-decoration:none}.wordmark:after{content:"";position:absolute;left:0;bottom:-7px;width:56px;height:2px;border-radius:1px;background:var(--cue)}.wordmark img{height:16px;display:block}.wordmark span{color:#aaa;font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.14em;text-transform:uppercase}
+    .go{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 20px;border-radius:999px;background:var(--cue);color:var(--ink);text-decoration:none;font-weight:600;border:0;cursor:pointer}.go:hover{background:#7affb6}.go.ghost{background:transparent;color:var(--ink);border:1px solid var(--ink)}.go.ghost:hover{background:var(--ink);color:#fff}
+    .hero{background:var(--ink);color:#fff;padding:36px 18px 84px;position:relative;overflow:hidden;isolation:isolate}
+    .hero:before{content:"";position:absolute;inset:0;z-index:-1;background-image:linear-gradient(rgba(255,255,255,.055) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.055) 1px,transparent 1px);background-size:28px 28px;-webkit-mask-image:radial-gradient(120% 90% at 50% 40%,#000 30%,transparent 85%);mask-image:radial-gradient(120% 90% at 50% 40%,#000 30%,transparent 85%)}
+    .wrap{max-width:1040px;margin:0 auto}.hero .meta{color:#9d9da4}
+    h1{font-weight:500;letter-spacing:-.045em;line-height:.96;font-size:clamp(36px,7vw,62px);margin:10px 0 12px;text-wrap:balance;max-width:16ch}h1 em{font-style:normal;color:var(--cue)}
+    .lede{color:#c9c9cf;max-width:52ch;margin:0}
+    .plans{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin:-52px auto 0;padding:0 18px;max-width:1076px;position:relative}
+    .plan{background:var(--paper);border:1px solid var(--line);border-radius:22px;padding:22px 20px;display:flex;flex-direction:column;gap:10px;min-width:0}
+    .plan.pick{background:var(--ink);color:#fff;border-color:var(--ink)}.plan.pick .meta,.plan.pick li{color:#c9c9cf}.plan.pick li:before{background:var(--cue)}
+    .plan h2{margin:0;font-size:18px;font-weight:600;letter-spacing:-.01em}
+    .price{font-size:40px;font-weight:500;letter-spacing:-.04em;line-height:1}.price small{font-size:14px;font-weight:400;color:var(--dim);letter-spacing:0}.plan.pick .price small{color:#a8a8b0}
+    .plan ul{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:8px;align-content:start;flex:1}.plan li{position:relative;padding-left:18px;font-size:14px;color:#3d3d44}.plan li:before{content:"";position:absolute;left:0;top:.5em;width:8px;height:8px;border-radius:50%;background:var(--ink)}
+    .plan .go{margin-top:8px}.plan.pick .go.ghost{color:#fff;border-color:#fff}
+    section.band{max-width:1040px;margin:0 auto;padding:56px 18px 0}
+    h3{font-size:clamp(24px,4vw,34px);font-weight:500;letter-spacing:-.03em;margin:6px 0 18px;text-wrap:balance}
+    .tick{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+    .tick div{border-top:2px solid var(--ink);padding-top:10px}.tick b{display:block;font-weight:600}.tick p{margin:4px 0 0;color:#4a4a52;font-size:14px}
+    details{border-top:1px solid var(--line);padding:14px 0}details:last-of-type{border-bottom:1px solid var(--line)}summary{cursor:pointer;font-weight:600;list-style:none}summary::-webkit-details-marker{display:none}summary:after{content:"+";float:right;font:500 18px 'IBM Plex Mono',monospace}details[open] summary:after{content:"–"}details p{margin:8px 0 0;color:#4a4a52;max-width:68ch}
+    footer{max-width:1040px;margin:0 auto;padding:44px 18px 56px;display:flex;gap:16px;flex-wrap:wrap;align-items:center;justify-content:space-between}
+    .note{font-size:13px;color:var(--dim);margin:14px 18px 0;max-width:1040px}
+    header .go{white-space:nowrap}@media(max-width:480px){.wordmark span{display:none}}
+    @media(max-width:980px){.plans{grid-template-columns:repeat(2,minmax(0,1fr))}.tick{grid-template-columns:1fr}}
+    @media(max-width:560px){.plans{grid-template-columns:1fr}h1{max-width:none}}
+    :focus-visible{outline:3px solid var(--cue);outline-offset:2px}@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+  </style>
+</head>
+<body>
+  <header><a class="wordmark" href="/start"><img src="https://thefuturebasics.com/cdn/shop/files/future_basics_true_vector_fixed.svg?v=1775278873&amp;width=360" alt="Future Basics"><span>/ Tech pack</span></a><a class="go" href="/start" style="min-height:38px;padding:0 16px">Start a pack</a></header>
+  <section class="hero"><div class="wrap">
+    <span class="meta">Pricing</span>
+    <h1>A tech pack a factory can <em>quote</em>, for the price of a lunch.</h1>
+    <p class="lede">Your first pack is free. After that, pay for the packs you make, or join and make as many as you need. Every pack is checked against the picture, costed, and ready to send.</p>
+  </div></section>
+
+  <div class="plans" id="plans" aria-label="Plans">
+    <article class="plan"><span class="meta">Try it</span><h2>First pack</h2><div class="price">Free</div>
+      <ul><li>Your photo becomes a full pack: materials, measurements, colourways with Pantone, construction, labels</li><li>A cost estimate you can edit</li><li>Download as PDF and Excel</li><li>Callouts and questions on any detail</li></ul>
+      <a class="go" href="/start">Start free</a></article>
+    <article class="plan"><span class="meta">Pay as you go</span><h2>One pack</h2><div class="price" id="single">$48<small> / pack</small></div>
+      <ul><li>Everything in the first pack</li><li>We check each pack against your picture before it is published to you</li><li>Signed-off versions, with what changed each time</li><li>No subscription</li></ul>
+      <a class="go ghost" href="/start">Start a pack</a></article>
+    <article class="plan pick" id="memberPlan"><span class="meta">Most packs for the money</span><h2>Membership</h2><div class="price" id="member">$100<small> / month</small></div>
+      <ul><li>Every pack you make while you are a member, with no per-pack fee</li><li>Everything in One pack</li><li>Billed monthly through our store</li></ul>
+      <a class="go" id="memberGo" href="/start">Join</a></article>
+    <article class="plan"><span class="meta">Done with you</span><h2>A project with us</h2><div class="price" style="font-size:28px;padding-top:10px">Quoted</div>
+      <ul><li>Packs are included once you have a project with us</li><li>We review each pack, send it to factories, compare their quotes and run samples</li><li>One room for files, messages, agreements and payments</li></ul>
+      <a class="go ghost" href="https://thefuturebasics.com/pages/contact">Start a project</a></article>
+  </div>
+  <p class="note" id="billingNote" hidden></p>
+
+  <section class="band"><span class="meta">In every pack</span><h3>What a factory needs, and what you need to price it</h3>
+    <div class="tick">
+      <div><b>Checked, not just drafted</b><p>The pack is compared with your picture and held to a score before it is sent. If it needs a person, it says so.</p></div>
+      <div><b>A cost you can edit</b><p>Unit costs on every material, labour, decoration, packaging, freight and duty. See the landed cost, your margin, and the cost at 500 or 1,000 units.</p></div>
+      <div><b>PDF and Excel</b><p>A print-ready pack and one workbook with a sheet for materials, measurements, colourways, SKUs and cost. Or any sheet as CSV.</p></div>
+      <div><b>Factory-ready sizes</b><p>Measurements with tolerances, in inches and centimetres, graded across your size run.</p></div>
+      <div><b>Pantone and parts</b><p>Colourways matched to Pantone and applied part by part, with artwork placement.</p></div>
+      <div><b>Your costs stay yours</b><p>When a pack goes to a factory through us, it carries the spec only. Your retail price and unit costs are left off.</p></div>
+    </div></section>
+
+  <section class="band"><span class="meta">Questions</span><h3>Before you start</h3>
+    <details><summary>Is the first pack really free?</summary><p>Yes. Your first pack is free, with no card. If the assistant cannot read your photo, that does not use it up: we ask for a better picture.</p></details>
+    <details><summary>What do I get for $48 that I do not get free?</summary><p>The same pack, for every product after the first. The price is per pack, so a product with a few revisions is still one pack.</p></details>
+    <details><summary>Do the packs go to a factory for me?</summary><p>You can download the pack and send it to any factory yourself. If you would rather we send it to the right factories, compare their quotes and run samples, that is a project with us.</p></details>
+    <details><summary>Can I open it in Excel?</summary><p>Yes. Every pack downloads as one workbook, or as CSV for any sheet. When we send a pack to a factory, your retail price and your costs are left out.</p></details>
+    <details><summary>Is the cost estimate a quote?</summary><p>No. It is your own arithmetic: unit costs you enter, added up with freight and duty. A factory's quote replaces it.</p></details>
+  </section>
+
+  <footer><span class="meta">Future Basics · tech packs factories can read</span><a class="go" href="/start">Make your first pack</a></footer>
+
+<script>
+(async()=>{
+  const $=s=>document.querySelector(s),usd=c=>'$'+(c/100).toFixed(c%100?2:0);
+  try{
+    const r=await fetch('/v1/pricing'),p=await r.json();
+    if(p.single)$('#single').innerHTML=usd(p.single.amountCents)+'<small> / pack</small>';
+    if(p.membership){$('#member').innerHTML=usd(p.membership.amountCents)+'<small> / month</small>';$('#memberGo').href=p.membership.url}
+    else{$('#memberPlan').hidden=true;document.getElementById('plans').style.gridTemplateColumns='repeat(3,minmax(0,1fr))'}
+    if(p.billing===false){const n=$('#billingNote');n.hidden=false;n.textContent='Packs are free while we are launching. These are the prices that will apply after.'}
+  }catch{}
+})();
+</script>
+</body>
+</html>
