@@ -158,3 +158,10 @@ test('a payment that waits for the work reads "on final sample approval" for a p
   const sch = renderContract(cleanContent(prod()).value).sections.find(s => s.kind === 'schedule');
   assert.equal(sch.rows[1].when, 'On final sample approval'); assert.match(sch.summary, /on final sample approval/);
 });
+
+test('factory introductions: the client agrees not to go around us, for a period set per contract', () => {
+  assert.equal(defaultProduct().circumventionMonths, 24); assert.ok(defaultSections('product').some(x => x.id === 'circumvention') && !defaultSections().some(x => x.id === 'circumvention'), 'only the product agreement has it');
+  const r = renderContract(cleanContent(prod({ product: { circumventionMonths: 36 } })).value), t = r.sections.find(x => x.id === 'circumvention');
+  assert.equal(t.title, 'Factory introductions'); assert.match(t.body, /For 36 months after the date of this agreement/); assert.match(t.body, /except through us/); assert.match(t.body, /already worked with before we introduced it/); assert.deepEqual(r.missing, []);
+  assert.equal(cleanProduct({ circumventionMonths: 0 }).circumventionMonths, 1); assert.equal(cleanProduct({ circumventionMonths: 9999 }).circumventionMonths, 120); assert.equal(cleanProduct({}).circumventionMonths, 24);
+});

@@ -281,7 +281,7 @@ await journey('J188', 'Contracts for a physical product (a hat): its own wording
   ok(created.status === 201 && created.json.contract.kind === 'product' && created.json.contract.kindLabel === 'Physical product development', 'a product contract is saved with its kind', JSON.stringify(created.json).slice(0, 200));
   ok(!created.json.problems.length, 'nothing is missing from it', created.json.problems);
   const rend = (await C(`/${id}`)).json.rendered, txt = JSON.stringify(rend.sections);
-  ok(/up to 2 rounds of samples/.test(txt) && /a 40% deposit before we place the order/.test(txt) && /flammability/.test(txt) && /small-part and lead rules/.test(txt) && !/hosting/i.test(rend.sections.map(s => s.title).join(' ')), 'the text carries the sample rounds, the production terms and the apparel and headwear rules');
+  ok(/up to 2 rounds of samples/.test(txt) && /a 40% deposit before we place the order/.test(txt) && /flammability/.test(txt) && /small-part and lead rules/.test(txt) && !/hosting/i.test(rend.sections.map(s => s.title).join(' ')) && rend.sections.some(s => s.title === 'Factory introductions' && /For 24 months/.test(s.body)), 'the text carries the sample rounds, the production terms, the apparel and headwear rules and the factory introductions clause');
   const sch = rend.sections.find(s => s.kind === 'schedule'); ok(sch.rows[1].when === 'On final sample approval' && /on final sample approval/.test(sch.summary), 'the balance is due on final sample approval');
 
   const sent = await C(`/${id}/send`, { body: {} }); ok(sent.status === 200 && sent.json.contract.status === 'sent', 'it is sent', sent.json.error);

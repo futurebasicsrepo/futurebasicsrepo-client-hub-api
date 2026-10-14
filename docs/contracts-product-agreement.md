@@ -79,19 +79,23 @@ Unless an order says otherwise, goods are shipped on FOB (free on board: the goo
 
 Each party keeps the other's non-public business information private, uses it only for this Project, and returns or deletes it on request when the Project ends. The Client's designs and plans are shared with factories only as far as needed to make samples and goods, and we ask factories to keep them private. Our supplier details and prices are our confidential information too. This does not cover information that is already public, that the party already knew, or that the law requires it to disclose.
 
-## 15. Our promise, and its limits
+## 15. Factory introductions
+
+The factories we use, and what we pay them, are our confidential information. For 24 months after the date of this agreement (or after the last order under it, if that is later), the Client will not, directly or through anyone else, contact a factory we have introduced or named to it in connection with the Project, or order the products covered by this agreement, or a substantially similar product, from that factory, except through us. This does not apply to a factory the Client already worked with before we introduced it and told us about in writing before the introduction. If the Client breaks this section, we may recover our losses, including the margin we would have earned on those orders.
+
+## 16. Our promise, and its limits
 
 We will do the work with the care and skill expected of a professional product development studio. If the Client reports a defect in what we delivered (tech packs, patterns, specifications) within 30 days of delivery, we fix it at no charge. After that, fixes are quoted as new work. We do not promise sales or other commercial results, that a product will pass any test, approval or certification, that it can be sold in any particular country, or that a factory will meet its dates. Factories are independent businesses: our part is to choose them carefully, brief them well, follow the order and inspect the goods, and who answers to the Client for the goods is set out under Production runs.
 
-## 16. Limit of liability
+## 17. Limit of liability
 
 Neither party is liable to the other for lost profits, lost sales, lost data or any indirect or consequential loss. Each party's total liability under this agreement is limited to the fees the Client has paid us under it for development work. This does not limit anything the law does not allow to be limited. The Client is responsible for the product it sells under its own name, including claims from its customers, recalls and action by regulators, except to the extent they are caused by our breach of this agreement, and should carry product liability insurance before it sells the product.
 
-## 17. Ending the agreement
+## 18. Ending the agreement
 
 Either party can end this agreement by writing to the other if the other breaks it in a serious way and does not fix it within 10 days of being told. The Client can also end it at any time by writing to us. In either case the Client pays for the work done up to the date of ending, for samples and materials already ordered, and for any production order already placed or in progress, and fees already paid for work done are not refunded. Sections on ownership, confidentiality, liability and payment of money owed continue after the agreement ends.
 
-## 18. General
+## 19. General
 
 This is the whole agreement between us about the Project and replaces anything said or written before it. It can only be changed in writing that both parties accept. Neither party can hand this agreement to someone else without the other's written consent, except to a successor of its whole business. If a part of it cannot be enforced, the rest still applies. It is governed by the laws of Pennsylvania. Both parties agree that signing electronically has the same effect as signing on paper, that this agreement can be signed in separate copies, and that the signed electronic copy is the original.
 
