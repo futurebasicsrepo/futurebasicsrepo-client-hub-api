@@ -163,5 +163,11 @@ test('factory introductions: the client agrees not to go around us, for a period
   assert.equal(defaultProduct().circumventionMonths, 24); assert.ok(defaultSections('product').some(x => x.id === 'circumvention') && !defaultSections().some(x => x.id === 'circumvention'), 'only the product agreement has it');
   const r = renderContract(cleanContent(prod({ product: { circumventionMonths: 36 } })).value), t = r.sections.find(x => x.id === 'circumvention');
   assert.equal(t.title, 'Factory introductions'); assert.match(t.body, /For 36 months after the date of this agreement/); assert.match(t.body, /except through us/); assert.match(t.body, /already worked with before we introduced it/); assert.deepEqual(r.missing, []);
-  assert.equal(cleanProduct({ circumventionMonths: 0 }).circumventionMonths, 1); assert.equal(cleanProduct({ circumventionMonths: 9999 }).circumventionMonths, 120); assert.equal(cleanProduct({}).circumventionMonths, 24);
+  assert.equal(cleanProduct({ circumventionMonths: 0 }).circumventionMonths, 0, 'zero turns the clause off'); assert.equal(cleanProduct({ circumventionMonths: 9999 }).circumventionMonths, 120); assert.equal(cleanProduct({}).circumventionMonths, 24);
+});
+
+test('the factory introductions clause is optional per contract: zero months leaves it out', () => {
+  const off = renderContract(cleanContent(prod({ product: { circumventionMonths: 0 } })).value);
+  assert.ok(!off.sections.some(x => x.id === 'circumvention') && !/Factory introductions/.test(JSON.stringify(off.sections)), 'no clause, and nothing else refers to it');
+  assert.deepEqual(off.missing, []); assert.ok(renderContract(cleanContent(prod()).value).sections.some(x => x.id === 'circumvention'), 'on by default');
 });

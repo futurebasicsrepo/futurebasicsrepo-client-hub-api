@@ -317,6 +317,9 @@ await journey('J189', 'Contracts in a browser: a physical product agreement is c
     ok(/Samples and approval/.test(pv) && /30% deposit/.test(pv) && /lithium batteries/.test(pv) && /Quality and inspection/.test(pv), 'Preview shows the product wording, the production deposit and the electronics rules', pv.slice(0, 120));
     await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/contract-product.png` }).catch(() => {});
 
+    ok(/Factory introductions/.test(await page.innerText('#ePrevBox')), 'the factory introductions clause is in by default');
+    await page.uncheck('[data-circ]'); await page.click('#ePrev'); await page.waitForFunction(() => document.querySelector('#ePrevBox')?.innerText && !/Factory introductions/.test(document.querySelector('#ePrevBox').innerText), null, { timeout: 8000 }); ok(await page.locator('[data-k="product.circumventionMonths"]').count() === 0, 'switching it off takes it out of the contract and hides its months');
+    await page.check('[data-circ]'); await page.waitForSelector('[data-k="product.circumventionMonths"]');
     await page.selectOption('[data-k="kind"]', 'website'); await page.waitForSelector('#hostOn'); lg = await legends();
     ok(!lg.includes('the product') && lg.some(x => /hosting/.test(x)) && (await page.inputValue('[data-k="scopeText"]')).startsWith('A complete tech pack'), 'switching to a website swaps the options back and keeps what was typed', lg.join(' | ') + ' // ' + await page.inputValue('[data-k="scopeText"]'));
     await page.click('#ePrev'); await page.waitForFunction(() => /Who owns the work/.test(document.querySelector('#ePrevBox')?.innerText || ''), null, { timeout: 8000 });
