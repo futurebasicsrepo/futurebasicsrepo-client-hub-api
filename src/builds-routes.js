@@ -12,6 +12,7 @@ import { syncBuilds, cleanChangeTitle } from './builds-sync.js';
 const PREVIEW_DIR = new URL('./builds-previews/', import.meta.url);
 const previewSlugs = () => { try { return new Set(readdirSync(PREVIEW_DIR).filter(f => /^[a-z0-9-]+\.jpg$/.test(f)).map(f => f.slice(0, -4))); } catch { return new Set(); } };
 const PREVIEWS = previewSlugs();
+export const hasBuildPreview = slug => PREVIEWS.has(slug);
 
 const COOKIE = 'fb_builds', SESSION_DAYS = 14;
 const IMAGE_RE = /^data:image\/(png|jpeg|jpg|webp);base64,[a-z0-9+/=]+$/i, MAX_COVER_CHARS = 4_000_000;

@@ -93,7 +93,7 @@ export function normalizeTechPack(input) {
     })).filter(r => r.name || r.code),
     bom: list(src.bom, LIMITS.bom, r => ({
       component: str(r?.component, 160), material: str(r?.material, 200), spec: str(r?.spec, 300), supplier: str(r?.supplier, 120),
-      ref: str(r?.ref, 80), color: str(r?.color, 120), placement: str(r?.placement, 160), qty: str(r?.qty, 24), unit: str(r?.unit, 24), notes: str(r?.notes, 400)
+      ref: str(r?.ref, 80), color: str(r?.color, 120), placement: str(r?.placement, 160), qty: str(r?.qty, 24), unit: str(r?.unit, 24), cost: unitCost(r?.cost), notes: str(r?.notes, 400)
     })).filter(r => r.component || r.material),
     construction: list(src.construction, LIMITS.construction, r => ({ area: str(r?.area, 120), detail: str(r?.detail, 600) })).filter(r => r.area || r.detail),
     colorways: list(src.colorways, LIMITS.colorways, r => ({ name: str(r?.name, 80), code: str(r?.code, 40), swatch: hex(r?.swatch), notes: str(r?.notes, 300) })).filter(r => r.name),
@@ -123,6 +123,9 @@ export function normalizeTechPack(input) {
     notes: str(src.notes, 6000)
   };
 }
+
+// What one unit of a material costs, as a plain number kept as text (the pack keeps all its numbers that way). A bad value is dropped, not guessed.
+function unitCost(v) { const t = String(v ?? '').replace(/[^0-9.]/g, ''), n = Number(t); return t && Number.isFinite(n) && n <= 1e6 ? String(Math.round(n * 100) / 100) : ''; }
 
 // Electronic products carry one more section. Anything else gets the empty one, so older packs read as they always did.
 function normalizeElectronics(input) {
@@ -368,7 +371,7 @@ export function techPackReadiness(data, verification) {
 // What clients and factories receive: the published snapshot only, never the live draft.
 export function publishedTechPackView(row, extra = {}) {
   const data = normalizeTechPack(row.published_data);
-  if (extra.audience === 'factory') data.commercial = globalThis.FBCommercial.forFactory(data.commercial); // what the client charges is not the factory's business
+  if (extra.audience === 'factory') { data.commercial = globalThis.FBCommercial.forFactory(data.commercial); data.bom = data.bom.map(r => ({ ...r, cost: '' })); } // what the client charges, and what it costs them, is not the factory's business
   const verification = normalizeVerification(row.verification, row.version);
   return {
     audience: extra.audience || 'client',

@@ -1713,4 +1713,71 @@ await journey('J102', 'samples and inspection: the usual stages in one press, a 
   }
 });
 
+await journey('J187', 'cost and Excel: unit costs add up to a landed cost and a margin, a pack downloads as Excel or CSV for the client, staff and a factory, and a factory never gets a cost or the retail price; the public prices are readable', async () => {
+  const m = await room('187'); await waitAi(call, m.token, m.id);
+  const admin = await forge({ sub: sql(`select id from users where client_id='${m.cid}' limit 1`), clientId: m.cid, role: 'admin' }), adm = (p, o = {}) => call(p, { token: admin, ...o });
+  const draft = async () => (await call(`/v1/products/${m.id}/tech-pack/draft`, { token: m.token })).json;
+  let d = await draft(); const data = structuredClone(d.techPack.data);
+  data.bom = [{ component: 'Shell', material: 'Nylon', qty: '1.2', unit: 'm', cost: '6.50' }, { component: 'Zip', material: 'YKK', qty: '1', unit: 'pc', cost: '0.8' }, { component: 'Care label', material: 'Woven' }];
+  data.commercial = { ...data.commercial, retailPrice: '89', cost: { labour: '7', decoration: '2.5', packaging: '0.6', freight: '1.2', dutyPct: '16.5', wastePct: '5', breaks: [{ qty: '500', pctOff: '5' }] } };
+  const sv = await call(`/v1/products/${m.id}/tech-pack/draft`, { method: 'PUT', token: m.token, body: { data, etag: d.techPack.etag } }); ok(sv.status === 200, 'the client saves unit costs and the cost block', [sv.status, sv.json.error]);
+  d = await draft(); ok(d.techPack.data.bom[0].cost === '6.5' && d.techPack.data.commercial.cost.labour === '7' && d.techPack.data.commercial.cost.breaks[0].qty === '500', 'they are kept', d.techPack.data.commercial.cost);
+
+  const get = async (path, token, o = {}) => { const r = await fetch(BASE + path, { headers: token ? { Authorization: 'Bearer ' + token } : {}, ...o }); return { status: r.status, type: r.headers.get('content-type') || '', disp: r.headers.get('content-disposition') || '', buf: Buffer.from(await r.arrayBuffer()) }; };
+  ok((await get(`/v1/products/${m.id}/tech-pack/draft/export`)).status === 401, 'a stranger gets no download');
+  const other = await room('187b'); ok((await get(`/v1/products/${m.id}/tech-pack/draft/export`, other.token)).status === 404, 'another client cannot download this pack');
+  const x = await get(`/v1/products/${m.id}/tech-pack/draft/export`, m.token), xs = x.buf.toString('latin1');
+  ok(x.status === 200 && /spreadsheetml\.sheet/.test(x.type) && /attachment; filename=".*-draft\.xlsx"/.test(x.disp) && x.buf.readUInt32LE(0) === 0x04034b50, 'the client downloads the draft as a workbook', [x.status, x.type, x.disp]);
+  ok(/Unit cost \(USD\)/.test(xs) && /Landed cost of one unit/.test(xs) && /xl\/worksheets\/sheet1\.xml/.test(xs), 'with the materials, the unit costs and a Cost sheet');
+  const csv = await get(`/v1/products/${m.id}/tech-pack/draft/export?format=csv&sheet=materials`, m.token), ct = csv.buf.toString('utf8');
+  ok(csv.status === 200 && /text\/csv/.test(csv.type) && ct.startsWith('﻿Component,Material') && /Shell,Nylon,.*1\.2,m,6\.5,7\.8/.test(ct), 'one sheet downloads as CSV, with the line cost worked out', ct.split('\r\n').slice(0, 2));
+  const cc = await get(`/v1/products/${m.id}/tech-pack/draft/export?format=csv&sheet=cost`, m.token); ok(cc.status === 200 && /Landed cost of one unit,23\.49/.test(cc.buf.toString('utf8')), 'the Cost sheet adds up to 23.49 a unit', cc.buf.toString('utf8').split('\r\n').slice(0, 12));
+  ok((await get(`/v1/products/${m.id}/tech-pack/draft/export?format=csv&sheet=nope`, m.token)).status === 404, 'an unknown sheet is a 404');
+
+  if (playwright) {
+    const bw = await playwright.chromium.launch();
+    try {
+      const ctx = await bw.newContext({ viewport: { width: 1280, height: 900 }, acceptDownloads: true }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.client.token', t); } catch {} }, m.token);
+      const p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message));
+      await p.goto(`${BASE}/tech-packs/${m.id}`, { waitUntil: 'domcontentloaded' }); await p.waitForSelector('#tabs button[data-tab="bom"]', { timeout: 20000 }); await p.keyboard.press('Escape'); await p.click('#tabs button[data-tab="bom"]');
+      await p.waitForSelector('[data-cost] #costSummary .costsum'); const sum = (await p.innerText('#costSummary')).toLowerCase();
+      ok(/landed cost of one unit/.test(sum) && /\$23\.49/.test(sum) && /gross margin 73\.6%/.test(sum) && /500 units/.test(sum) && /1 material has no cost yet/.test(sum), 'the Cost estimate block shows the landed cost, the margin, the price break and what is missing', sum);
+      const first = p.locator('table[data-tbl="bom"] tbody tr').first().locator('td[data-l="Unit cost"] input'); if (!(await first.count())) ok(false, 'the unit cost field is in the first materials row', (await p.locator('table[data-tbl="bom"] tbody tr').first().innerHTML()).slice(0, 1500)); await first.fill('10');
+      await p.waitForFunction(() => /\$28\.62/.test(document.querySelector('#costSummary').innerText), null, { timeout: 5000 }); ok(true, 'typing a unit cost updates the landed cost at once');
+      await p.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/j187-cost.png`, fullPage: false }).catch(() => {});
+      await p.click('summary[aria-label="More actions"]'); const [dl] = await Promise.all([p.waitForEvent('download', { timeout: 15000 }), p.click('[data-act="xlsx"]')]);
+      ok(/\.xlsx$/.test(dl.suggestedFilename()), 'the Download Excel button saves a workbook', dl.suggestedFilename()); ok(p.errs.length === 0, 'no script errors', p.errs);
+      await ctx.close();
+    } finally { await bw.close(); }
+  }
+
+  ok((await adm(`/v1/admin/products/${m.id}/tech-pack/publish`, { method: 'POST', body: { override: 'journey: cost and excel' } })).status === 200, 'staff publish');
+  ok((await call(`/v1/products/${m.id}/tech-pack/approve`, { method: 'POST', token: m.token, body: { name: 'Pat Client' } })).status === 200, 'the client approves');
+  const cl = await get(`/v1/products/${m.id}/tech-pack/export`, m.token); ok(cl.status === 200 && /-v1\.xlsx"/.test(cl.disp) && /Landed cost of one unit/.test(cl.buf.toString('latin1')), 'the published pack downloads for the client with its cost');
+  const st = await get(`/v1/admin/products/${m.id}/tech-pack/export`, admin); ok(st.status === 200 && /Landed cost of one unit/.test(st.buf.toString('latin1')), 'and for staff, from the work console');
+  ok((await get(`/v1/admin/products/${m.id}/tech-pack/export`, m.token)).status === 403, 'a client cannot use the staff route');
+  const sh = await adm(`/v1/admin/products/${m.id}/tech-pack/shares`, { method: 'POST', body: { label: 'Mill 187' } }), ftok = sh.json.url.split('/tp/')[1];
+  const fx = await get(`/v1/tp/${ftok}/export`), fs = fx.buf.toString('latin1');
+  ok(fx.status === 200 && /xl\/worksheets\/sheet1\.xml/.test(fs) && /Shell/.test(fs), 'a factory downloads the pack from its link', [fx.status]);
+  ok(!/Unit cost|Line cost|Landed|Retail price|Waste allowance|Gross margin/.test(fs) && !/>6\.5</.test(fs) && !/23\.49/.test(fs), 'and it carries no cost sheet, no unit cost and no retail price');
+  const fc = await get(`/v1/tp/${ftok}/export?format=csv&sheet=cost`); ok(fc.status === 404, 'a factory cannot ask for the Cost sheet');
+  const fm = await get(`/v1/tp/${ftok}/export?format=csv&sheet=materials`); ok(fm.status === 200 && !/cost/i.test(fm.buf.toString('utf8').split('\r\n')[0]), 'a factory CSV of the materials has no cost column', fm.buf.toString('utf8').split('\r\n')[0]);
+  const view = (await call(`/v1/tp/${ftok}`)).json.techPack.data; ok(view.bom.every(r => r.cost === '') && view.commercial.cost.labour === '' && view.commercial.retailPrice === '', 'the factory page itself has none either');
+  ok((await get(`/v1/tp/nope-nope/export`)).status === 404, 'a bad link is a 404');
+
+  if (playwright) {
+    const bw = await playwright.chromium.launch();
+    try {
+      const ctx = await bw.newContext({ viewport: { width: 1280, height: 900 } });
+      const fp = await ctx.newPage(); fp.errs = []; fp.on('pageerror', e => fp.errs.push(e.message)); await fp.goto(`${BASE}/tp/${ftok}`, { waitUntil: 'domcontentloaded' }); await fp.waitForSelector('#tabs button[data-tab="bom"]', { timeout: 20000 });
+      await fp.click('#tabs button[data-tab="bom"]'); ok(await fp.locator('[data-cost]').count() === 0 && !/Unit cost/.test(await fp.innerText('table[data-tbl="bom"]')) && await fp.locator('[data-act="xlsx"]').count() === 1, 'the factory page shows no cost block and no unit cost column, but has the Excel button', fp.errs);
+      await ctx.close();
+    } finally { await bw.close(); }
+  }
+  const pr = await get('/v1/pricing'), pj = JSON.parse(pr.buf.toString('utf8')), pg = await get('/pricing');
+  ok(pr.status === 200 && pj.single?.amountCents > 0 && pj.single.currency === 'USD' && typeof pj.billing === 'boolean' && (pj.membership === null || pj.membership.amountCents > 0), 'the public prices are readable without signing in', pj);
+  ok(pg.status === 200 && /Tech pack pricing/.test(pg.buf.toString('utf8')) && /First pack/.test(pg.buf.toString('utf8')), 'and the pricing page is public');
+
+});
+
 summary(); process.exit(bad ? 1 : 0);

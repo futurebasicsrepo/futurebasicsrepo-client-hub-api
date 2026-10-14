@@ -1,4 +1,4 @@
-import { createRequire } from 'node:module'; import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'; import { execSync } from 'node:child_process'; import { fileURLToPath } from 'node:url'; import { dirname, join } from 'node:path';
+import { createRequire } from 'node:module'; import { readFileSync, writeFileSync, mkdirSync, rmSync } from 'node:fs'; import { execSync } from 'node:child_process'; import { fileURLToPath } from 'node:url'; import { dirname, join } from 'node:path';
 export const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 export const req = createRequire(join(REPO, 'package.json'));
 export const sharp = req('sharp'); export const { SignJWT } = req('jose');
@@ -60,3 +60,17 @@ export async function waitAi(call, token, productId, ms = 25000) {
 }
 export const secret = new TextEncoder().encode('smoke-secret');
 export const forge = async (claims, { exp = '7d', iss = 'future-basics-client-hub', key = secret } = {}) => new SignJWT(claims).setProtectedHeader({ alg: 'HS256' }).setIssuer(iss).setIssuedAt().setExpirationTime(exp).sign(key);
+
+// The opportunity list shows the strongest 60 of everyone in the CRM, and a full suite leaves hundreds of rooms there (each tech pack customer is a contact).
+// A journey that checks its own people sets everyone already there aside first (dismissed for a day), so what it checks does not depend on how many journeys ran before it.
+// Setting everyone aside also sets aside the people another journey has just made, and the API and browser journeys run side by side on one database. Two journeys that
+// use it take turns (a folder is the lock: making it is all-or-nothing), so neither wipes the other's list in the middle of its checks.
+export async function withOpportunityLock(fn) {
+  const dir = join(process.env.JOURNEY_TMP || '/tmp', 'opportunity-journeys.lock'); let waited = 0;
+  for (;;) { try { mkdirSync(dir); break; } catch (e) { if (e.code !== 'EEXIST') throw e; if ((waited += 250) > 240000) { rmSync(dir, { recursive: true, force: true }); waited = 0; } await new Promise(r => setTimeout(r, 250)); } }
+  try { return await fn(); } finally { rmSync(dir, { recursive: true, force: true }); }
+}
+export function setAsideOpportunities() {
+  const types = ['chat_waiting', 'inbound_unanswered', 'opened_live', 'deal_quiet', 'hot_no_deal', 'gone_cold', 'new_unworked', 'cross_sell_builds', 'cross_sell_techpack', 'account_expansion'];
+  sql(`insert into sales_opportunity_state(key,state,until) select t.type || ':' || i.id, 'dismissed', now() + interval '1 day' from (values ${types.map(x => `('${x}')`).join(',')}) t(type), (select id::text id from sales_contacts union select id::text from sales_deals union select id::text from sales_companies) i on conflict (key) do nothing`);
+}

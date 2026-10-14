@@ -1,5 +1,6 @@
 // GET /v1/admin/home: what the work console's home page shows beyond the Sales overview (which it also reads): leads waiting for a first reply, prototypes and
 // how warm they are, projects in flight (software and product), and what is waiting elsewhere. Staff only.
+import { hasBuildPreview } from './builds-routes.js';
 import { projectRow, orderProjects, prototypeRow, firstName, trend, accountRow, orderAccounts, LEAD_SOURCES_EXCLUDED } from './home.js';
 
 export function registerHomeRoutes(app, { pool, authenticate, adminOnly }) {
@@ -66,7 +67,7 @@ export function registerHomeRoutes(app, { pool, authenticate, adminOnly }) {
       signals: { total: sc.total, overdue: sc.overdue, top: sigs.map(r => ({ id: r.id, source: r.source, title: r.title, summary: r.summary, score: r.score, status: r.status, ownerName: r.owner_name || '', foundAt: r.found_at, postedAt: r.posted_at })) },
       funnel: { newLeads7: cur.n, newLeadsPrev7: prev.n, trend: trend(cur.n, prev.n), lookers7: look.lookers, demos7: look.demos, won30: { count: won.n, valueCents: Number(won.v) } },
       awaitingReply: awaiting.map(r => ({ id: r.id, name: r.name || r.email, email: r.email, company: r.company || '', source: r.source, createdAt: r.created_at })),
-      prototypes: protos.map(prototypeRow), showNow: showNow.map(r => ({ ...prototypeRow(r), views30: Number(r.views7) || 0 })),
+      prototypes: protos.map(r => prototypeRow({ ...r, has_cover: r.has_cover || hasBuildPreview(r.slug) })), showNow: showNow.map(r => ({ ...prototypeRow({ ...r, has_cover: r.has_cover || hasBuildPreview(r.slug) }), views30: Number(r.views7) || 0 })),
       projects: orderProjects(projects.map(r => projectRow(r))),
       waiting: { approvals: appr.n, production: prod.n }
     };

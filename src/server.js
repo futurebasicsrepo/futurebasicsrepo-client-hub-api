@@ -70,6 +70,7 @@ import { listRoomFiles, listFactoryFiles, fileFor } from './room-files.js';
 import { conceptRender, conceptPlacement } from './concept.js';
 import { packDiff, diffSummary, carriedAcks } from './pack-diff.js';
 import { buildShopifyExport, exportToShopify, planSummary } from './pack-export.js';
+import { packSheets, toXlsx, toCsv, exportName, SHEET_KEYS } from './pack-sheets.js';
 import { appConfig, shopDomain, authorizeUrl, verifyOAuthQuery, verifyWebhook, newState, exchangeCode, sealer, SHOP_INFO_QUERY, UNINSTALL_WEBHOOK, merchantExec } from './shopify-merchant.js';
 import { Readable } from 'node:stream';
 import { cleanArt, artColours, printCheck, graphicCrop, parseImage } from './art.js';
@@ -693,6 +694,9 @@ app.get('/projects/:id', async (req,reply)=>String(req.headers.host||'').toLower
 const sendTechPack=(_req,reply)=>reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./techpack.html',import.meta.url),'utf8'));
 const sendStart=(_req,reply)=>reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./start.html',import.meta.url),'utf8'));
 app.get('/start', sendStart);
+// Public prices: what one pack costs, the membership when there is one, and whether the gate is on (when it is off every pack is free). The page and /start read the same numbers.
+app.get('/pricing',(_req,reply)=>reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./pricing.html',import.meta.url),'utf8')));
+app.get('/v1/pricing',async(_req,reply)=>{const p=techPackPricing();return reply.header('cache-control','public, max-age=60').send({single:p.single,membership:p.membership?{amountCents:p.membership.amountCents,currency:p.membership.currency,period:p.membership.period,url:p.membership.url}:null,billing:billingOn()})});
 // Account sign-up without a tech pack: a short form that opens a hub room straight away (see POST /v1/public/join).
 app.get('/join',(_req,reply)=>reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./join.html',import.meta.url),'utf8')));
 // The same page on a short address for texting: /j, or /j/kyle with the sender's name on it (and kept on the room as where it came from).
@@ -2599,7 +2603,8 @@ async function shopifyExportContext(productId,{clientId=null,store=null}={}){
   if(!ctx.techPack.published_at)return {status:409,error:'Publish the tech pack first: the store gets the published version'};
   const tier=(await pool.query(`select ${store?'wholesale_cents':'unit_cost_cents'} as c from price_tiers where product_id=$1 and ${store?'wholesale_cents':'unit_cost_cents'} is not null order by min_quantity limit 1`,[productId])).rows[0];
   const pub=normalizeTechPack(ctx.techPack.published_data),media=packMedia(pub).map(m=>({key:m.key,kind:m.kind,name:m.name,mime:m.mime,url:mediaUrl(productId,m.key,6*3600)}));
-  const plan=buildShopifyExport({pack:pub,product:{title:ctx.product.title,client_slug:ctx.product.client_slug},version:ctx.techPack.version,cost:tier?Number(tier.c)/100:'',media,hubUrl:`${clientHubUrl}/tech-packs/${productId}`});
+  const estimate=globalThis.FBCommercial.costSummary(pub); // the customer's own landed-cost estimate fills the cost in their own store when there is no wholesale price
+  const plan=buildShopifyExport({pack:pub,product:{title:ctx.product.title,client_slug:ctx.product.client_slug},version:ctx.techPack.version,cost:tier?Number(tier.c)/100:(store&&estimate.hasAny?estimate.landed:''),media,hubUrl:`${clientHubUrl}/tech-packs/${productId}`});
   const last=(await pool.query('select * from shopify_exports where product_id=$1 and store_id is not distinct from $2 order by created_at desc limit 1',[productId,store?store.id:null])).rows[0]||null;
   const linked=store?null:(await pool.query('select shopify_product_id from products where id=$1',[productId])).rows[0]?.shopify_product_id||null;
   return {ctx,plan,last,linked};
@@ -2990,6 +2995,44 @@ app.get('/v1/products/:id/tech-pack',{preHandler:authenticate},async(req,reply)=
     and not exists(select 1 from projects ap where ap.id=p.project_id and (ap.archived_at is not null or ap.status in ('archive','archived')))`,[req.params.id,req.auth.clientId])).rows[0];
   if(!row)return reply.code(404).send({error:'Tech pack not found'});
   return publishedTechPackView(row,{audience:'client'});
+});
+
+// ---- the pack as a spreadsheet: one workbook, or one sheet as CSV (src/pack-sheets.js). Built for whoever is asking: a factory gets no costs and no retail price. ----
+function sendPackSheets(reply,{data,title,version,audience,format,sheet}){
+  const sheets=packSheets(normalizeTechPack(data),{audience,title});
+  reply.header('cache-control','no-store');
+  if(String(format||'').toLowerCase()==='csv'){
+    const key=SHEET_KEYS[String(sheet||'materials').toLowerCase()],sh=sheets.find(x=>x.name===key);
+    if(!sh)return reply.code(404).send({error:'That sheet is not in this pack'});
+    return reply.header('content-disposition',`attachment; filename="${exportName(`${title} ${key}`,version,'.csv')}"`).type('text/csv; charset=utf-8').send(toCsv(sh));
+  }
+  return reply.header('content-disposition',`attachment; filename="${exportName(title,version,'.xlsx')}"`).type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet').send(toXlsx(sheets));
+}
+app.get('/v1/products/:id/tech-pack/export',{preHandler:authenticate},async(req,reply)=>{
+  if(!/^[0-9a-f-]{36}$/i.test(req.params.id))return reply.code(404).send({error:'Tech pack not found'});
+  if(req.auth.role==='admin'&&!req.auth.preview)return reply.code(403).send({error:'Staff download from the work console'});
+  const row=(await pool.query(`select tp.version,tp.published_data,p.title from tech_packs tp join products p on p.id=tp.product_id
+    where tp.product_id=$1 and tp.client_id=$2 and tp.published_at is not null
+    and not exists(select 1 from projects ap where ap.id=p.project_id and (ap.archived_at is not null or ap.status in ('archive','archived')))`,[req.params.id,req.auth.clientId])).rows[0];
+  if(!row)return reply.code(404).send({error:'Tech pack not found'});
+  return sendPackSheets(reply,{data:row.published_data,title:row.title,version:row.version,audience:'client',format:req.query?.format,sheet:req.query?.sheet});
+});
+app.get('/v1/products/:id/tech-pack/draft/export',{preHandler:authenticate},async(req,reply)=>{
+  if(req.auth.role!=='client')return reply.code(403).send({error:'Client drafts are downloaded from the client hub'});
+  const row=await loadClientDraft(req.params.id,req.auth.clientId);if(!row)return reply.code(404).send({error:'Tech pack draft not found'});
+  return sendPackSheets(reply,{data:row.data,title:row.title,version:'draft',audience:'client',format:req.query?.format,sheet:req.query?.sheet});
+});
+app.get('/v1/admin/products/:id/tech-pack/export',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const ctx=await loadAdminTechPack(req.params.id);if(!ctx||!ctx.techPack)return reply.code(404).send({error:'Tech pack not found'});
+  const live=Boolean(ctx.techPack.published_at)&&req.query?.live==='1';
+  return sendPackSheets(reply,{data:live?ctx.techPack.published_data:ctx.techPack.data,title:ctx.product.title,version:live?ctx.techPack.version:'working',audience:'client',format:req.query?.format,sheet:req.query?.sheet});
+});
+app.get('/v1/tp/:token/export',async(req,reply)=>{
+  if(!throttle(`tpexport:${req.ip}`,{limit:120,windowMs:3600_000}))return reply.code(429).send({error:'Too many downloads: try again in a while'});
+  const {row,error}=await loadShareByToken(req.params.token);if(error)return reply.code(error.code).send({error:error.message});
+  const data=normalizeTechPack(publishedTechPackView(row,{audience:'factory',shareLabel:row.share_label}).techPack.data);
+  if(row.quote)data.style={...data.style,designer:''}; // a quotation link never carries the client's name
+  return sendPackSheets(reply,{data,title:row.title,version:row.version,audience:'factory',format:req.query?.format,sheet:req.query?.sheet});
 });
 app.get('/r/:id/:sig',async(req,reply)=>{
   const id=String(req.params.id),sig=String(req.params.sig).replace(/\.jpe?g$/i,'');

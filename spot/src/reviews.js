@@ -121,8 +121,8 @@ export function createReviews({ db, client = null, read = readReviews, onUsage, 
           .then((d) => {
             if (d === undefined) return null;
             const doc = d || { none: true };
-            db.reviews.set(url, doc, Date.now());
-            return { ...doc, at: Date.now() };
+            db.reviews.set(url, doc, now); // the caller's clock, so a read that takes a moment does not shift when it expires
+            return { ...doc, at: now };
           })
           .catch((err) => (log.warn?.({ err, url }, 'reviews read failed'), null))
           .finally(() => inflight.delete(url)),
