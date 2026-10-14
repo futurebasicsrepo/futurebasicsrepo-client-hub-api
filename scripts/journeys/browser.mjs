@@ -986,6 +986,7 @@ await journey('J114', 'Sales email in a browser: send from a contact with a temp
     await page.fill('#q', guest); await page.waitForSelector(`#cList tr.click[data-contact="${gid}"]`); await page.click(`#cList tr.click[data-contact="${gid}"]`);
     await page.waitForSelector('#cdlg .ev:has-text("Re: Thanks for looking") [data-reply]', { timeout: 8000 });
     ok(/hot/i.test(await page.innerText('#cdlg')) && /Reply to/.test(await page.innerText('#cTasks')), 'the reply is on the timeline, they are hot, and there is a task to answer it');
+    { const ev = await page.innerText('#cdlg .ev:has-text("Re: Thanks for looking")'); ok(/Tuesday works for me/.test(ev) && !/> hello|Kyle wrote/.test(ev), 'the timeline shows what the reply said, without the quoted history under it'); }
     await page.click('#cdlg .ev:has-text("Re: Thanks for looking") [data-reply]'); await page.waitForFunction(() => document.getElementById('mSubj')?.value === 'Re: Thanks for looking', null, { timeout: 5000 });
     await page.fill('#mBody', 'Great, Tuesday at 10 it is.\n\nKyle'); await page.click('#mSend'); await page.waitForFunction(() => document.querySelectorAll('#cdlg .ev [data-email]').length >= 3, null, { timeout: 8000 });
     ok(mock.sent.length === 2 && mock.sent[1].subject === 'Re: Thanks for looking', 'Reply puts "Re:" on the subject and answers on the same thread');
