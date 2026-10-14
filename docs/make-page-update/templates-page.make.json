@@ -1,0 +1,605 @@
+/*
+ * ------------------------------------------------------------
+ * IMPORTANT: The contents of this file are auto-generated.
+ *
+ * This file may be updated by the Shopify admin theme editor
+ * or related systems. Please exercise caution as any changes
+ * made to this file may be overwritten.
+ * ------------------------------------------------------------
+ */
+{
+  "layout": "exhibition",
+  "sections": {
+    "make": {
+      "type": "make-v3",
+      "settings": {
+        "cta_url": "/pages/contact",
+        "start_url": "https://hub.thefuturebasics.com/start",
+        "faq_schema": true,
+        "part": "top"
+      },
+      "blocks": {
+        "m1": {
+          "type": "mark",
+          "settings": {
+            "name": "wales bonner"
+          }
+        },
+        "m2": {
+          "type": "mark",
+          "settings": {
+            "name": "gap"
+          }
+        },
+        "m3": {
+          "type": "mark",
+          "settings": {
+            "name": "world"
+          }
+        },
+        "m4": {
+          "type": "mark",
+          "settings": {
+            "name": "vandy the pink"
+          }
+        },
+        "m5": {
+          "type": "mark",
+          "settings": {
+            "name": "clarks originals"
+          }
+        },
+        "m6": {
+          "type": "mark",
+          "settings": {
+            "name": "adidas"
+          }
+        },
+        "m7": {
+          "type": "mark",
+          "settings": {
+            "name": "yzy"
+          }
+        },
+        "m8": {
+          "type": "mark",
+          "settings": {
+            "name": "shopify"
+          }
+        },
+        "m9": {
+          "type": "mark",
+          "settings": {
+            "name": "apthcry"
+          }
+        },
+        "m10": {
+          "type": "mark",
+          "settings": {
+            "name": "house of errors"
+          }
+        },
+        "m11": {
+          "type": "mark",
+          "settings": {
+            "name": "dingyun zhang"
+          }
+        },
+        "m12": {
+          "type": "mark",
+          "settings": {
+            "name": "marni"
+          }
+        },
+        "g1": {
+          "type": "figure",
+          "settings": {
+            "figure": "50",
+            "label": "apparel, per style"
+          }
+        },
+        "g2": {
+          "type": "figure",
+          "settings": {
+            "figure": "300",
+            "label": "plush, per style"
+          }
+        },
+        "g3": {
+          "type": "figure",
+          "settings": {
+            "figure": "100%",
+            "label": "of revenue, yours"
+          }
+        },
+        "g4": {
+          "type": "figure",
+          "settings": {
+            "figure": "5",
+            "label": "categories, one partner"
+          }
+        },
+        "o1": {
+          "type": "object",
+          "settings": {
+            "cap": "obj_01 / 06 — soft goods",
+            "title": "apparel",
+            "body": "cut-and-sew, not printed blanks. patterns, fabric sourcing, fit, wash, trims, labelling.",
+            "moq": "from 50 pcs · 8–14 wks"
+          }
+        },
+        "o2": {
+          "type": "object",
+          "settings": {
+            "cap": "obj_02 / 06 — soft goods",
+            "title": "plush",
+            "body": "your character, made real. pattern engineering, material matching, safety testing.",
+            "moq": "from 300 pcs · 10–16 wks"
+          }
+        },
+        "o3": {
+          "type": "object",
+          "settings": {
+            "cap": "obj_03 / 06 — hard goods",
+            "title": "toys & objects",
+            "body": "collectibles, desk objects, fingerboards, packaging-led pieces.",
+            "moq": "tooling-dependent"
+          }
+        },
+        "o4": {
+          "type": "object",
+          "settings": {
+            "cap": "obj_04 / 06 — development",
+            "title": "footwear",
+            "body": "yes, actual shoes. last development, tooling, full size runs. a programme, not a print job.",
+            "moq": "6–12 months"
+          }
+        },
+        "o5": {
+          "type": "object",
+          "settings": {
+            "cap": "obj_05 / 06 — development",
+            "title": "electronics",
+            "body": "industrial design through engineering, tooling and certification.",
+            "moq": "6–12 months"
+          }
+        },
+        "o7": {
+          "type": "object",
+          "settings": {
+            "cap": "obj_06 / 06 — systems",
+            "title": "software",
+            "body": "the tools behind the product. client portals, approval workflows, ai that turns images into documents, payments and partner networks, built and handed over.",
+            "moq": "scoped per build · from 4 wks"
+          }
+        },
+        "o6": {
+          "type": "object",
+          "settings": {
+            "cap": "note",
+            "title": "minimums vary.",
+            "body": "apparel starts at fifty, plush at three hundred. footwear and electronics are a different scale entirely, and software is scoped to the job. every product carries its own minimum on its page.",
+            "is_note": true
+          }
+        },
+        "s1": {
+          "type": "step",
+          "settings": {
+            "key": "01 — free",
+            "title": "apply",
+            "body": "tell us who you reach and what you want to make. we read every one.",
+            "note": "3 day reply"
+          }
+        },
+        "s2": {
+          "type": "step",
+          "settings": {
+            "key": "02",
+            "title": "strategy call",
+            "body": "we work out what should actually exist. sometimes that means talking you out of your first idea.",
+            "note": "45 min"
+          }
+        },
+        "s3": {
+          "type": "step",
+          "settings": {
+            "key": "03",
+            "title": "design & sample",
+            "body": "tech packs, materials, colourways, and the thing itself in your hands.",
+            "note": "2 rounds"
+          }
+        },
+        "s4": {
+          "type": "step",
+          "settings": {
+            "key": "04",
+            "title": "produce",
+            "body": "our factories, our quality control, transparent landed cost. you see the invoice.",
+            "note": "from 50 pcs"
+          }
+        },
+        "s5": {
+          "type": "step",
+          "settings": {
+            "key": "05",
+            "title": "launch",
+            "body": "your shopify store, built and live. you own it.",
+            "note": "handed over"
+          }
+        },
+        "k1": {
+          "type": "package",
+          "settings": {
+            "price": "from $15k",
+            "title": "signature",
+            "body": "one real product, one real store. strategy session, one custom product in one category, full design and development, two sampling rounds, production management, a shopify store built and handed over, studio photography, and the launch assets to sell it.",
+            "note": "10–14 weeks"
+          }
+        },
+        "k2": {
+          "type": "package",
+          "settings": {
+            "price": "from $45k",
+            "title": "capsule",
+            "body": "a drop, not a product. everything in signature, plus three to six pieces across at least two categories, line identity and packaging, campaign photography and a video asset, drop mechanics built into the store, email flows connected, and launch-week support.",
+            "note": "16–20 weeks"
+          }
+        },
+        "k3": {
+          "type": "package",
+          "settings": {
+            "price": "from $150k",
+            "title": "imprint",
+            "body": "your own line, with footwear and electronics unlocked. everything in capsule, plus a multi-season roadmap, development at tooling scale, inventory financing and ownership structuring, warehousing and fulfilment, wholesale and retail placement, and ongoing operations.",
+            "note": "6–12 months"
+          }
+        }
+      },
+      "block_order": [
+        "m1",
+        "m2",
+        "m3",
+        "m4",
+        "m5",
+        "m6",
+        "m7",
+        "m8",
+        "m9",
+        "m10",
+        "m11",
+        "m12",
+        "g1",
+        "g2",
+        "g3",
+        "g4",
+        "o1",
+        "o2",
+        "o3",
+        "o4",
+        "o5",
+        "o7",
+        "o6",
+        "s1",
+        "s2",
+        "s3",
+        "s4",
+        "s5",
+        "k1",
+        "k2",
+        "k3"
+      ]
+    },
+    "systems": {
+      "type": "make-systems",
+      "settings": {
+        "cta_url": "/pages/contact",
+        "start_url": "https://hub.thefuturebasics.com/start"
+      },
+      "blocks": {
+        "c1": {
+          "type": "capability",
+          "settings": {
+            "cap": "ai in the workflow",
+            "title": "ai that does the work.",
+            "body": "Models wired into the real steps of a business, not a chat box bolted on. They read a photo, draft the document, check it against the image and hand it to a person to approve.",
+            "points": "Image to structured data: tech packs, specs, carts\nA second, independent model checks the first\nRetries, limits and a human sign-off on every output"
+          }
+        },
+        "c2": {
+          "type": "capability",
+          "settings": {
+            "cap": "workflow + approvals",
+            "title": "approvals that hold.",
+            "body": "Versions that lock when signed, one clear owner at every step, and every change kept on the record.",
+            "points": "Multi-party sign-off: client, studio, supplier\nMilestones that move on real events, not manual updates\nEmails and alerts at every handoff"
+          }
+        },
+        "c3": {
+          "type": "capability",
+          "settings": {
+            "cap": "payments + commerce",
+            "title": "money in the flow.",
+            "body": "Deposits, invoices, memberships and checkout, tied to the work they pay for.",
+            "points": "Shopify checkout, draft orders and subscriptions\nStripe, Apple Pay and Google Pay\nPaid status flows straight back into the app\nAgreements signed online, with payment plans and autopay by card or bank"
+          }
+        },
+        "c4": {
+          "type": "capability",
+          "settings": {
+            "cap": "global by default",
+            "title": "built for where you make.",
+            "body": "Interfaces and documents in the language of the person reading them, on pages that load inside mainland China.",
+            "points": "Simplified and Traditional Chinese, Spanish, Portuguese, Italian\nSelf-hosted fonts and assets, no blocked dependencies\nReferral links and lead tracking for partner networks"
+          }
+        },
+        "c5": {
+          "type": "capability",
+          "settings": {
+            "cap": "operations",
+            "title": "a console for the team.",
+            "body": "Queues that show what is waiting, and on whom, so nothing sits in an inbox.",
+            "points": "Separate access for clients, staff and partners\nA shared thread and file room for every project\nHealth checks and a full activity history\nA sales CRM with email, chat and a ranked list of who to talk to next"
+          }
+        },
+        "c6": {
+          "type": "capability",
+          "settings": {
+            "cap": "engineering",
+            "title": "shipped with tests.",
+            "body": "Every release runs scripted end-to-end journeys, on a phone-sized browser too, before it goes live. Then we hand over the keys.",
+            "points": "Unit tests plus real user journeys\nNode, Postgres, Next.js · Railway, Vercel, Shopify\nYour code, your accounts, documented"
+          }
+        },
+        "p1": {
+          "type": "proof",
+          "settings": {
+            "figure": "5",
+            "label": "factory languages, Chinese in both scripts"
+          }
+        },
+        "p2": {
+          "type": "proof",
+          "settings": {
+            "figure": "3",
+            "label": "signatures before a version locks"
+          }
+        },
+        "p3": {
+          "type": "proof",
+          "settings": {
+            "figure": "1,000+",
+            "label": "automated checks before every release"
+          }
+        },
+        "p4": {
+          "type": "proof",
+          "settings": {
+            "figure": "1",
+            "label": "place for every project, quote and file"
+          }
+        },
+        "b1": {
+          "type": "build",
+          "settings": {
+            "kind": "ours · live",
+            "title": "client hub",
+            "body": "Image-to-tech-pack AI, costing, Excel export, approvals, factory sign-off in five languages, payments and a work console. The platform on this page.",
+            "stack": "ai, postgres, shopify",
+            "ours": true,
+            "image": "shopify://shop_images/fb-build-hub.webp"
+          }
+        },
+        "b2": {
+          "type": "build",
+          "settings": {
+            "kind": "hardware + payments",
+            "title": "tap-to-give",
+            "body": "Tap a phone on a jar, pay with Apple Pay or Google Pay, and the jar’s display updates the moment the payment clears.",
+            "stack": "nfc, esp32, stripe",
+            "ours": false,
+            "image": "shopify://shop_images/fb-build-piggy.webp"
+          }
+        },
+        "b3": {
+          "type": "build",
+          "settings": {
+            "kind": "media platform",
+            "title": "fan video network",
+            "body": "Fans upload phone clips, trim and publish them. Communities, live match streams, brackets and moderation.",
+            "stack": "video, next.js, realtime",
+            "ours": false,
+            "image": "shopify://shop_images/fb-build-incha.webp"
+          }
+        },
+        "b4": {
+          "type": "build",
+          "settings": {
+            "kind": "agentic commerce",
+            "title": "approvals for ai shopping",
+            "body": "Spending rules for AI agents, a person to say yes to anything outside them, and signed proof of every approval.",
+            "stack": "agents, mcp, signed approvals",
+            "ours": false,
+            "image": "shopify://shop_images/fb-build-spot.webp"
+          }
+        },
+        "b5": {
+          "type": "build",
+          "settings": {
+            "kind": "commerce",
+            "title": "consignment storefront",
+            "body": "A Shopify store for consigned and vintage goods: buyers make offers, sellers send in inventory, and a live-show channel runs alongside.",
+            "stack": "shopify, liquid, offers, live shows",
+            "ours": false,
+            "image": "shopify://shop_images/fb-build-cg-tv.webp",
+            "image_2": "shopify://shop_images/fb-build-cg-offer.webp",
+            "image_3": "shopify://shop_images/fb-build-cg-grid.webp"
+          }
+        },
+        "b6": {
+          "type": "build",
+          "settings": {
+            "image": "shopify://shop_images/fb-build-cue.webp",
+            "kind": "retail ai",
+            "title": "cues for the shop floor",
+            "body": "Reads the POS, ecommerce and loyalty systems a store already runs, and puts one plain sentence in front of the person serving the customer, in the second it matters.",
+            "stack": "shopify pos, ai, live displays",
+            "ours": false
+          }
+        }
+      },
+      "block_order": [
+        "c1",
+        "c2",
+        "c3",
+        "c4",
+        "c5",
+        "c6",
+        "p1",
+        "p2",
+        "p3",
+        "p4",
+        "b1",
+        "b6",
+        "b4",
+        "b2",
+        "b3",
+        "b5"
+      ]
+    },
+    "make_end": {
+      "type": "make-v3",
+      "settings": {
+        "cta_url": "/pages/contact",
+        "start_url": "https://hub.thefuturebasics.com/start",
+        "faq_schema": true,
+        "part": "end"
+      },
+      "blocks": {
+        "q9": {
+          "type": "question",
+          "settings": {
+            "key": "tech pack",
+            "title": "is the first tech pack really free?",
+            "body": "yes. add an image and your email at hub.thefuturebasics.com/start and the assistant drafts your first tech pack at no cost, no card needed. after that it is $48 a pack, or $100 a month for unlimited packs on the studio membership. see every plan at hub.thefuturebasics.com/pricing."
+          }
+        },
+        "q10": {
+          "type": "question",
+          "settings": {
+            "key": "plan",
+            "title": "what do i get for $48?",
+            "body": "an assistant draft from your image with callouts, measurements, materials, construction and colourways, a cost estimate you can edit, then a review by future basics, a published version 1, a factory version in chinese (simplified or traditional), spanish, portuguese or italian, and an excel or pdf download. you can edit it any time."
+          }
+        },
+        "q1": {
+          "type": "question",
+          "settings": {
+            "key": "minimums",
+            "title": "what is the real minimum?",
+            "body": "fifty pieces on most items, apparel included. plush is three hundred. toys depend on tooling. footwear and electronics are a different scale entirely, and we say so upfront rather than let you find out later."
+          }
+        },
+        "q2": {
+          "type": "question",
+          "settings": {
+            "key": "cost",
+            "title": "what does it actually cost?",
+            "body": "packages start at $15,000 for development, design and the store build. production is separate and billed at transparent landed cost."
+          }
+        },
+        "q3": {
+          "type": "question",
+          "settings": {
+            "key": "audience",
+            "title": "do i need a certain audience size?",
+            "body": "no. a forty-thousand-person email list that opens is worth more here than a million passive followers."
+          }
+        },
+        "q4": {
+          "type": "question",
+          "settings": {
+            "key": "first time",
+            "title": "do i need to have sold merch before?",
+            "body": "no. plenty of the best projects are someone's first product."
+          }
+        },
+        "q5": {
+          "type": "question",
+          "settings": {
+            "key": "companies",
+            "title": "do you work with companies as well as creators?",
+            "body": "equally. roughly half this business is brands who want product worth paying for rather than swag worth throwing out."
+          }
+        },
+        "q6": {
+          "type": "question",
+          "settings": {
+            "key": "timing",
+            "title": "how long does it take?",
+            "body": "ten to fourteen weeks for apparel, idea to live. ten to sixteen for plush. footwear and electronics run six to twelve months."
+          }
+        },
+        "q7": {
+          "type": "question",
+          "settings": {
+            "key": "risk",
+            "title": "what if it does not sell?",
+            "body": "we will tell you before we build it if we think the product is wrong. and at fifty pieces, being wrong is survivable — that is rather the point of the minimum."
+          }
+        },
+        "q8": {
+          "type": "question",
+          "settings": {
+            "key": "ownership",
+            "title": "who owns the store?",
+            "body": "you do, outright. your shopify account, your domain, your customer data. we build it and hand over the keys."
+          }
+        },
+        "q11": {
+          "type": "question",
+          "settings": {
+            "key": "software",
+            "title": "do you build software for other businesses?",
+            "body": "yes. the hub on this page is ours, and we build the same kind of tooling for brands: client portals, approval workflows, ai that turns images and documents into structured work, payments and partner networks. tell us what is slowing the business down and we will scope it, usually from four weeks."
+          }
+        },
+        "q12": {
+          "type": "question",
+          "settings": {
+            "key": "excel",
+            "title": "can i open it in excel?",
+            "body": "yes. every pack downloads as one excel workbook with a sheet each for materials, measurements, colourways, skus and cost, or as csv for any single sheet. the version a factory gets leaves out your retail price and your costs."
+          }
+        },
+        "q13": {
+          "type": "question",
+          "settings": {
+            "key": "costs",
+            "title": "is the cost estimate a quote?",
+            "body": "no. it is your own arithmetic: a unit cost on each material, plus labour, decoration, packaging, freight and duty, added up to a landed cost and a margin, with price breaks at the order sizes you choose. a factory's quote replaces it, and factories never see it."
+          }
+        }
+      },
+      "block_order": [
+        "q9",
+        "q10",
+        "q1",
+        "q2",
+        "q3",
+        "q4",
+        "q5",
+        "q6",
+        "q7",
+        "q8",
+        "q11",
+        "q12",
+        "q13"
+      ]
+    }
+  },
+  "order": [
+    "make",
+    "systems",
+    "make_end"
+  ]
+}
