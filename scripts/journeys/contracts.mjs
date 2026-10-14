@@ -262,4 +262,71 @@ await journey('J174', 'Signing in to the work console with Google: the session i
   } finally { await b.close(); }
 });
 
+await journey('J188', 'Contracts for a physical product (a hat): its own wording, chosen per customer, signed, and its payments read "on final sample approval" and bill as product work', async () => {
+  await C('/settings', { method: 'PUT', body: { providerName: 'Future Basics', providerAddress: '10 Studio Way, Norristown PA', signerName: 'Kyle Riggle', signerTitle: 'Founder', governingLaw: 'Pennsylvania' } });
+  const tpl = (await C('/template?kind=product')).json, dig = (await C('/template?kind=website')).json;
+  ok(tpl.sections.some(s => s.id === 'samples') && tpl.sections.some(s => s.id === 'production') && tpl.product.production.mode === 'direct' && !tpl.sections.some(s => s.id === 'hosting') && dig.sections.some(s => s.id === 'hosting') && !dig.product, 'the product template has samples and production clauses and no hosting; the digital one is unchanged');
+  ok((await C('/template?kind=nope')).status === 422, 'an unknown kind is refused');
+
+  const hCo = sql(`insert into sales_companies(name) values('Trail Hat Co ${stamp}') returning id`).split('\n')[0];
+  const hCt = sql(`insert into sales_contacts(name,email,title,company_id) values('Hattie Ames','hattie-${stamp}@hats.test','Founder','${hCo}') returning id`).split('\n')[0];
+  const hDeal = sql(`insert into sales_deals(title,stage,value_cents,contact_id,company_id) values('Trail hat and cap line ${stamp}','proposal',900000,'${hCt}','${hCo}') returning id`).split('\n')[0];
+  const dr = (await C(`/draft?deal=${hDeal}`)).json, dc = dr.content;
+  ok(dc.kind === 'product' && dc.product?.sampleRounds === 2 && dc.sections.some(s => s.id === 'samples') && !dc.sections.some(s => s.id === 'hosting'), 'a deal about hats drafts a product contract by itself', dc.kind);
+  ok((await C(`/draft?deal=${deal}`)).json.content.kind === 'website', 'the website deal still drafts a website contract');
+
+  const HSIGN = `hattie-${stamp}@hats.test`;
+  const content = { ...dc, client: { ...dc.client, address: '5 Brim St, Portland OR' }, scope: ['A complete tech pack', 'Sourcing and quotes from up to three factories', 'Two rounds of samples'], product: { ...dc.product, categories: ['headwear', 'apparel'], production: { mode: 'through_us', depositPct: 40 } }, timeline: { effectiveOn: '2026-11-01', startOn: '2026-11-03', completionOn: '2027-01-15' }, plan: buildPlan({ type: 'split', totalCents: 900000 }).plan };
+  const created = await C('', { body: { content, dealId: hDeal } }), id = created.json.contract?.id;
+  ok(created.status === 201 && created.json.contract.kind === 'product' && created.json.contract.kindLabel === 'Physical product development', 'a product contract is saved with its kind', JSON.stringify(created.json).slice(0, 200));
+  ok(!created.json.problems.length, 'nothing is missing from it', created.json.problems);
+  const rend = (await C(`/${id}`)).json.rendered, txt = JSON.stringify(rend.sections);
+  ok(/up to 2 rounds of samples/.test(txt) && /a 40% deposit before we place the order/.test(txt) && /flammability/.test(txt) && /small-part and lead rules/.test(txt) && !/hosting/i.test(rend.sections.map(s => s.title).join(' ')), 'the text carries the sample rounds, the production terms and the apparel and headwear rules');
+  const sch = rend.sections.find(s => s.kind === 'schedule'); ok(sch.rows[1].when === 'On final sample approval' && /on final sample approval/.test(sch.summary), 'the balance is due on final sample approval');
+
+  const sent = await C(`/${id}/send`, { body: {} }); ok(sent.status === 200 && sent.json.contract.status === 'sent', 'it is sent', sent.json.error);
+  const token = tokenOf(sent.json.link), mail = (await outbox(HSIGN)).find(e => /Please review and sign/.test(e.subject));
+  ok(mail && /final sample approval/.test(mail.text), 'the email says when the payments fall', mail?.text.slice(0, 240));
+  const sg = await P(token, '/sign', { body: { name: 'Hattie Ames', title: 'Founder', agree: true, esign: true } }); ok(sg.status === 200, 'the client signs', sg.json.error);
+  ok((await K(`/${id}/countersign`, { body: {} })).status === 200, 'Future Basics countersigns');
+  const inv = await K(`/${id}/invoices`, { body: {} }); ok(inv.status === 200 && inv.json.made.length === 2, 'two invoices are drafted', inv.json.error);
+  const rows = sql(`select work_kind, notes from money_invoices where contract_id='${id}' order by contract_seq`).split('\n').map(l => l.split('|'));
+  ok(rows.every(r => r[0] === 'product') && /final sample is approved/.test(rows[1][1]), 'the invoices bill as product work, and the balance says when it is due', JSON.stringify(rows));
+  const dv = await K(`/${id}/delivered`, { body: { on: '2027-01-10' } }); ok(dv.status === 200 && dv.json.events.some(e => /Final sample approved on 2027-01-10/.test(e.detail || '')), 'recording the approval is worded for a product', JSON.stringify((dv.json.events || []).slice(-1)));
+  const pr = await fetch(`${BASE}/v1/contracts/${id}/pdf`, { headers: { Authorization: 'Bearer ' + colby } }); ok(pr.status === 200 && /pdf/.test(pr.headers.get('content-type') || ''), 'the PDF can be made');
+});
+
+await journey('J189', 'Contracts in a browser: a physical product agreement is chosen per customer, shows its product options, and switching the type swaps the wording', async () => {
+  if (!playwright) { ok(true, 'skipped: no browser here'); return; }
+  await C('/settings', { method: 'PUT', body: { providerName: 'Future Basics', providerAddress: '10 Studio Way, Norristown PA', signerName: 'Kyle Riggle', signerTitle: 'Founder', governingLaw: 'Pennsylvania' } });
+  const capDeal = sql(`insert into sales_deals(title,stage,value_cents,contact_id,company_id) values('Beanie and cap line ${stamp}','proposal',1500000,'${ct}','${co}') returning id`).split('\n')[0];
+  const b = await playwright.chromium.launch(); const errs = [];
+  try {
+    const ctx = await b.newContext({ viewport: { width: 1280, height: 900 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyle);
+    const page = await ctx.newPage(); page.on('pageerror', e => errs.push(String(e))); page.on('dialog', d => d.accept());
+    await page.goto(`${BASE}/contracts`, { waitUntil: 'networkidle' }); await page.waitForSelector('#app:not(.hidden)', { timeout: 15000 });
+    const legends = async () => (await page.locator('#eBody fieldset legend').allInnerTexts()).map(x => x.trim().toLowerCase());
+    await page.click('#newBtn'); await page.waitForSelector(`[data-deal="${capDeal}"]`); ok(await page.locator('#dKind option').count() === 5, 'the chooser offers the type of agreement: digital kinds and a physical product');
+    await page.click(`[data-deal="${capDeal}"]`); await page.waitForSelector('#eBody [data-k="client.company"]');
+    let lg = await legends();
+    ok(await page.inputValue('[data-k="kind"]') === 'product' && lg.includes('the product') && !lg.some(x => /hosting/.test(x)), 'a deal about caps opens as a physical product agreement, with product options and no hosting', lg.join(' | '));
+    await page.check('[data-cat="electronics"]'); await page.selectOption('[data-k="product.production.mode"]', 'through_us'); await page.waitForSelector('[data-k="product.production.depositPct"]');
+    await page.fill('[data-k="product.production.depositPct"]', '30'); await page.fill('[data-k="scopeText"]', 'A complete tech pack\nTwo rounds of samples');
+    await page.waitForFunction(() => /on final sample approval/.test(document.querySelector('#pOut')?.innerText || ''), null, { timeout: 8000 }); ok(true, 'the schedule says "on final sample approval"');
+    await page.click('#ePrev'); await page.waitForSelector('#ePrevBox .preview'); const pv = await page.innerText('#ePrevBox');
+    ok(/Samples and approval/.test(pv) && /30% deposit/.test(pv) && /lithium batteries/.test(pv) && /Quality and inspection/.test(pv), 'Preview shows the product wording, the production deposit and the electronics rules', pv.slice(0, 120));
+    await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/contract-product.png` }).catch(() => {});
+
+    await page.selectOption('[data-k="kind"]', 'website'); await page.waitForSelector('#hostOn'); lg = await legends();
+    ok(!lg.includes('the product') && lg.some(x => /hosting/.test(x)) && (await page.inputValue('[data-k="scopeText"]')).startsWith('A complete tech pack'), 'switching to a website swaps the options back and keeps what was typed', lg.join(' | ') + ' // ' + await page.inputValue('[data-k="scopeText"]'));
+    await page.click('#ePrev'); await page.waitForFunction(() => /Who owns the work/.test(document.querySelector('#ePrevBox')?.innerText || ''), null, { timeout: 8000 });
+    ok(!/Samples and approval/.test(await page.innerText('#ePrevBox')), 'the website wording has no sample clauses');
+    await page.selectOption('[data-k="kind"]', 'product'); await page.waitForSelector('[data-cat="apparel"]'); ok((await legends()).includes('the product'), 'and back to a physical product');
+
+    await page.click('#eX'); await page.click('#newBtn'); await page.waitForSelector('#blank'); await page.selectOption('#dKind', 'product'); await page.click('#blank'); await page.waitForSelector('#eBody [data-k="client.company"]');
+    ok(await page.inputValue('[data-k="kind"]') === 'product' && (await legends()).includes('the product'), 'a blank contract can start as a physical product agreement');
+    ok(errs.length === 0, 'no page errors', errs);
+  } finally { await b.close(); }
+});
+
 const badCount = summary(); process.exit(badCount ? 1 : 0);

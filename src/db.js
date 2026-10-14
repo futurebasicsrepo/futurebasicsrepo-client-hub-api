@@ -1614,6 +1614,9 @@ export async function migrate() {
     alter table money_invoices add column if not exists contract_seq integer;
     -- Automatic payments on a signed contract (autopay.js). The card or bank account is kept at the processor (QuickBooks Payments): we hold only its id and the last four digits.
     alter table contracts add column if not exists delivered_on date;
+    -- physical product development agreements: the kind column's check also allows 'product'
+    alter table contracts drop constraint if exists contracts_kind_check;
+    alter table contracts add constraint contracts_kind_check check (kind in ('website','app','other','product'));
     alter table contracts add column if not exists autopay_paused_at timestamptz;
     alter table contracts add column if not exists autopay_paused_by text;
     create table if not exists contract_payment_methods (
