@@ -997,6 +997,10 @@ await journey('J114', 'Sales email in a browser: send from a contact with a temp
     ok(Number(sql(`select count(*) from sales_templates where name='New template'`)) >= 1, 'a template can be added'); sql(`delete from sales_templates where name='New template'`); await page.keyboard.press('Escape');
     await page.click('#setBtn'); await page.waitForSelector('#sdlg[open]'); ok(/Sending is on/.test(await page.innerText('#sStatus')) && await page.inputValue('#sFrom') === 'kyle@mail.thefuturebasics.com' && /Philadelphia/.test(await page.inputValue('#sPostal')), 'settings show that sending is on, the from address and the mailing address');
     await page.click('#sTest'); await page.waitForFunction(() => /Sent to/.test(document.getElementById('sMsg').textContent), null, { timeout: 8000 }); ok(mock.sent.at(-1).subject.startsWith('[Test]'), 'the test email goes out');
+    // an address typed into the form is used by the test straight away, without pressing Save first
+    await page.fill('#sPostal', 'Future Basics\n99 Test Lane\nPhiladelphia, PA 19107'); await page.click('#sTest'); await page.waitForFunction(() => /Sent to/.test(document.getElementById('sMsg').textContent) && /99 Test Lane/.test(document.getElementById('sPostal').value), null, { timeout: 8000 });
+    ok(/99 Test Lane/.test(mock.sent.at(-1).text || ''), 'Send me a test saves what is in the form first, so a typed address is not rejected as missing');
+    await page.fill('#sPostal', 'Future Basics\n1134 Sansom St\nPhiladelphia, PA 19107'); await page.click('#sSave'); await page.waitForFunction(() => /Saved/.test(document.getElementById('sMsg').textContent), null, { timeout: 5000 });
     await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/j114-settings.png` }).catch(() => {}); await page.keyboard.press('Escape');
     ok(page.errs.length === 0, 'no script errors', page.errs); await ctx.close();
 
