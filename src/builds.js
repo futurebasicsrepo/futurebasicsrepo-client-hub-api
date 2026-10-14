@@ -86,7 +86,7 @@ export const hasAnyAccess = (viewer, now = Date.now()) => Boolean(viewer && (vie
 
 // The builds already made, seeded once, hidden until they have been reviewed in the console.
 export const SEED_BUILDS = [
-  { slug: 'spot', repoUrl: 'https://github.com/futurebasicsrepo/futurebasicsrepo-client-hub-api', repoPath: 'spot', name: 'Spot', tagline: 'The yes button for AI shopping.', sector: 'Commerce · AI', status: 'live', hosting: 'railway', liveUrl: 'https://spotmeplease.com',
+  { slug: 'spot', repoUrl: 'https://github.com/futurebasicsrepo/spotmeplease', name: 'Spot', tagline: 'The yes button for AI shopping.', sector: 'Commerce · AI', status: 'live', hosting: 'railway', liveUrl: 'https://spotmeplease.com',
     summary: 'AI can find it and fill the cart; a person has to say yes to paying. Spot is that yes: from the user, or from whoever is paying, with rules the user sets for their AI and signed proof of every approval. Stores embed an "Ask someone to pay" button by their checkout.',
     highlights: [{ title: 'Rules for every AI key', text: 'Per-order and monthly limits, allowed stores, refused or sent to an approver' }, { title: 'Signed approvals', text: 'EdDSA-signed proof of every yes; requests to stores are signed too' }, { title: 'Store button', text: "Opens the shopper's cart at the store's own prices" }], stack: ['Node', 'Fastify', 'Postgres', 'Shopify app', 'Railway'] },
   { slug: 'bennys-beans', repoUrl: 'https://github.com/futurebasicsrepo/futurebasicsrepo-client-hub-api', repoPath: 'sites/bennysbeans', name: "Benny's Beans", tagline: 'Roasted after you order.', sector: 'Coffee · Retail', status: 'concept', hosting: 'railway', liveUrl: 'https://bennys-beans.up.railway.app',
@@ -117,5 +117,6 @@ export const HOSTED_SERVICES = [
 
 // Builds whose code has moved to another repository. A build still pointing at the old place follows it; one staff have pointed elsewhere is left alone.
 export const MOVED_BUILD_REPOS = [
-  { slug: 'incha-tv', from: { repoUrl: 'https://github.com/futurebasicsrepo/futurebasicsrepo-client-hub-api', repoPath: 'incha-tv' }, to: { repoUrl: 'https://github.com/futurebasicsrepo/incha-tv', repoPath: '' } }
+  { slug: 'incha-tv', from: { repoUrl: 'https://github.com/futurebasicsrepo/futurebasicsrepo-client-hub-api', repoPath: 'incha-tv' }, to: { repoUrl: 'https://github.com/futurebasicsrepo/incha-tv', repoPath: '' } },
+  { slug: 'spot', from: { repoUrl: 'https://github.com/futurebasicsrepo/futurebasicsrepo-client-hub-api', repoPath: 'spot' }, to: { repoUrl: 'https://github.com/futurebasicsrepo/spotmeplease', repoPath: '' } }
 ];
