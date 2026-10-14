@@ -1,0 +1,138 @@
+--- a/sections/make-v3.liquid	2026-10-14 02:36:48.544781984 +0000
++++ b/sections/make-v3.liquid	2026-10-14 02:39:08.529120556 +0000
+@@ -193,7 +193,7 @@
+     <div>
+       <span class="mk3__mono">future basics · make</span>
+       <h1>{{ section.settings.hero_title | default: 'real product, made properly.' }} <span>{{ section.settings.hero_accent | default: 'now with your own tools.' }}</span></h1>
+-      <div class="mk3__lede">{{ section.settings.hero_lede | default: '<p>We develop and produce apparel, plush, objects, footwear and electronics, from first sketch to delivery, and we build the software that runs it. That system is now yours too: <b>turn any image into a factory-ready tech pack</b>, colour it, check it in 3D, share it with a factory and track it to delivery in one place.</p>' }}</div>
++      <div class="mk3__lede">{{ section.settings.hero_lede | default: '<p>We develop and produce apparel, plush, objects, footwear and electronics, from first sketch to delivery, and we build the software that runs it. That system is now yours too: <b>turn any image into a factory-ready tech pack</b>, cost it, colour it, check it in 3D, download it as Excel or PDF, share it with a factory and track it to delivery in one place.</p>' }}</div>
+       <div class="mk3__actions">
+         <a class="mk3__btn" href="{{ start_url }}?utm_source=thefuturebasics&utm_medium=site&utm_campaign=make_hero">turn any image into a tech pack <i>free</i></a>
+         <a class="mk3__btn mk3__btn--ghost" href="{{ contact_url }}">start a full project</a>
+@@ -294,7 +294,7 @@
+     <div class="mk3__feat">
+       <div class="mk3__shot"><img src="https://cdn.shopify.com/s/files/1/0535/2606/9445/files/fb-make-tee-measure.webp" alt="Points of measure for a graphic tee graded across XS to 2XL" width="1800" height="1210" loading="lazy"></div>
+       <div class="mk3__feat-copy"><span class="mk3__mono">edit · version · export</span><h3>a real document, not a moodboard.</h3><p>Every page a factory expects, editable by you or your team, saved as you go.</p>
+-        <ul><li>Two assistants, design and development, negotiate the pack until it scores 90/100 against your image</li><li>Points of measure graded across the size run</li><li>PDF export, and a factory version in Chinese, Spanish, Portuguese or Italian in one press</li><li>v1 stays live while v2 is edited; approved versions lock</li></ul></div>
++        <ul><li>Two assistants, design and development, negotiate the pack until it scores 90/100 against your image</li><li>Points of measure graded across the size run</li><li>PDF and Excel export, and a factory version in Chinese, Spanish, Portuguese or Italian in one press</li><li>A cost estimate, private to you: unit costs add up to a landed cost and your margin</li><li>v1 stays live while v2 is edited; approved versions lock</li></ul></div>
+     </div>
+ 
+     <div class="mk3__feat">
+@@ -323,13 +323,17 @@
+         <li><span class="mk3__mono">five factory languages</span>Chinese (Simplified or Traditional), Spanish, Portuguese and Italian, in one press.</li>
+         <li><span class="mk3__mono">who has it</span>Every product shows whether it is waiting on you, Future Basics or the factory.</li>
+         <li><span class="mk3__mono">versions that hold</span>v1 stays live while v2 is edited; signed versions lock, changes become the next one.</li>
+-        <li><span class="mk3__mono">money in the flow</span>Quotes, sample deposits and invoices, paid through Shopify checkout.</li>
++        <li><span class="mk3__mono">money in the flow</span>Quotes, sample deposits and invoices through Shopify checkout, and agreements signed online with payment plans and autopay.</li>
++        <li><span class="mk3__mono">cost estimate</span>A unit cost on every material, plus labour, packing, freight and duty, add up to a landed cost and your margin, at the order sizes you pick.</li>
++        <li><span class="mk3__mono">excel and csv</span>One workbook with a sheet each for materials, measurements, colourways, SKUs and cost, or any single sheet as CSV.</li>
++        <li><span class="mk3__mono">your costs stay yours</span>A pack sent to a factory carries the spec only: no retail price and no unit costs.</li>
++        <li><span class="mk3__mono">a short first sign-in</span>No password. One short form the first time, then your details are kept for every pack.</li>
+       </ul>
+     </div>
+ 
+     <div class="mk3__prices" id="pricing">
+       <div class="mk3__price mk3__price--hot"><span class="mk3__mono">first pack</span><b>free</b><p>Your first tech pack from an image, start to finish. No card needed.</p></div>
+-      <div class="mk3__price"><span class="mk3__mono">per pack</span><b>$48</b><p>Each pack after that, drafted from your image, with Future Basics review, v1 publish and a factory export in Chinese or three European languages.</p></div>
++      <div class="mk3__price"><span class="mk3__mono">per pack</span><b>$48</b><p>Each pack after that, drafted from your image, with a cost estimate, Excel and PDF export, Future Basics review, v1 publish and a factory export in Chinese or three European languages.</p></div>
+       <div class="mk3__price"><span class="mk3__mono">studio membership</span><b>$100<small>/month</small></b><p>Unlimited packs, versions and factory links for your studio. Cancel anytime.</p></div>
+     </div>
+     <div class="mk3__compare">
+@@ -344,6 +348,7 @@
+     </div>
+     <div class="mk3__actions">
+       <a class="mk3__btn" href="{{ start_url }}?utm_source=thefuturebasics&utm_medium=site&utm_campaign=make_platform">start your free tech pack</a>
++      <a class="mk3__btn mk3__btn--ghost" href="https://hub.thefuturebasics.com/pricing">see pricing</a>
+       <a class="mk3__btn mk3__btn--ghost" href="https://hub.thefuturebasics.com/help">see how it works</a>
+     </div>
+   </section>
+--- a/templates/page.make.json	2026-10-14 02:36:48.544975538 +0000
++++ b/templates/page.make.json	2026-10-14 02:39:08.528628706 +0000
+@@ -320,7 +320,7 @@
+             "cap": "payments + commerce",
+             "title": "money in the flow.",
+             "body": "Deposits, invoices, memberships and checkout, tied to the work they pay for.",
+-            "points": "Shopify checkout, draft orders and subscriptions\nStripe, Apple Pay and Google Pay\nPaid status flows straight back into the app"
++            "points": "Shopify checkout, draft orders and subscriptions\nStripe, Apple Pay and Google Pay\nPaid status flows straight back into the app\nAgreements signed online, with payment plans and autopay by card or bank"
+           }
+         },
+         "c4": {
+@@ -338,7 +338,7 @@
+             "cap": "operations",
+             "title": "a console for the team.",
+             "body": "Queues that show what is waiting, and on whom, so nothing sits in an inbox.",
+-            "points": "Separate access for clients, staff and partners\nA shared thread and file room for every project\nHealth checks and a full activity history"
++            "points": "Separate access for clients, staff and partners\nA shared thread and file room for every project\nHealth checks and a full activity history\nA sales CRM with email, chat and a ranked list of who to talk to next"
+           }
+         },
+         "c6": {
+@@ -367,7 +367,7 @@
+         "p3": {
+           "type": "proof",
+           "settings": {
+-            "figure": "400+",
++            "figure": "1,000+",
+             "label": "automated checks before every release"
+           }
+         },
+@@ -383,7 +383,7 @@
+           "settings": {
+             "kind": "ours · live",
+             "title": "client hub",
+-            "body": "Image-to-tech-pack AI, approvals, factory sign-off in five languages, payments and a work console. The platform on this page.",
++            "body": "Image-to-tech-pack AI, costing, Excel export, approvals, factory sign-off in five languages, payments and a work console. The platform on this page.",
+             "stack": "ai, postgres, shopify",
+             "ours": true,
+             "image": "shopify://shop_images/fb-build-hub.webp"
+@@ -480,7 +480,7 @@
+           "settings": {
+             "key": "tech pack",
+             "title": "is the first tech pack really free?",
+-            "body": "yes. add an image and your email at hub.thefuturebasics.com/start and the assistant drafts your first tech pack at no cost, no card needed. after that it is $48 a pack, or $100 a month for unlimited packs on the studio membership."
++            "body": "yes. add an image and your email at hub.thefuturebasics.com/start and the assistant drafts your first tech pack at no cost, no card needed. after that it is $48 a pack, or $100 a month for unlimited packs on the studio membership. see every plan at hub.thefuturebasics.com/pricing."
+           }
+         },
+         "q10": {
+@@ -488,7 +488,7 @@
+           "settings": {
+             "key": "plan",
+             "title": "what do i get for $48?",
+-            "body": "an assistant draft from your image with callouts, measurements, materials, construction and colourways, then a review by future basics, a published version 1 and a factory version in chinese (simplified or traditional), spanish, portuguese or italian. you can edit it any time."
++            "body": "an assistant draft from your image with callouts, measurements, materials, construction and colourways, a cost estimate you can edit, then a review by future basics, a published version 1, a factory version in chinese (simplified or traditional), spanish, portuguese or italian, and an excel or pdf download. you can edit it any time."
+           }
+         },
+         "q1": {
+@@ -562,6 +562,22 @@
+             "title": "do you build software for other businesses?",
+             "body": "yes. the hub on this page is ours, and we build the same kind of tooling for brands: client portals, approval workflows, ai that turns images and documents into structured work, payments and partner networks. tell us what is slowing the business down and we will scope it, usually from four weeks."
+           }
++        },
++        "q12": {
++          "type": "question",
++          "settings": {
++            "key": "excel",
++            "title": "can i open it in excel?",
++            "body": "yes. every pack downloads as one excel workbook with a sheet each for materials, measurements, colourways, skus and cost, or as csv for any single sheet. the version a factory gets leaves out your retail price and your costs."
++          }
++        },
++        "q13": {
++          "type": "question",
++          "settings": {
++            "key": "costs",
++            "title": "is the cost estimate a quote?",
++            "body": "no. it is your own arithmetic: a unit cost on each material, plus labour, decoration, packaging, freight and duty, added up to a landed cost and a margin, with price breaks at the order sizes you choose. a factory's quote replaces it, and factories never see it."
++          }
+         }
+       },
+       "block_order": [
+@@ -575,7 +591,9 @@
+         "q6",
+         "q7",
+         "q8",
+-        "q11"
++        "q11",
++        "q12",
++        "q13"
+       ]
+     }
+   },

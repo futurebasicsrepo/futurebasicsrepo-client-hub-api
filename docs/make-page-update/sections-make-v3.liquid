@@ -1,0 +1,437 @@
+{%- comment -%}
+  Future Basics Make — v3. Two halves:
+    01 · experience — who we've made for, categories with real minimums, past projects, how a full build runs, packages
+    02 · platform   — the tech pack tool in the Client Hub (real screenshots), pricing, comparison
+    03 · systems    — lives in sections/make-systems.liquid (its own blocks; a section holds at most 50)
+  The 'part' setting splits this section around it: one instance shows hero → platform, another questions → close.
+  Content lives in blocks (marks, figures, objects, projects, steps, packages, questions) so it is edited in the theme editor.
+  Primary CTA is the self-serve tech pack at hub.thefuturebasics.com/start (UTM-tagged); full builds go to /pages/contact.
+{%- endcomment -%}
+
+{%- liquid
+  assign start_url = section.settings.start_url | default: 'https://hub.thefuturebasics.com/start'
+  assign contact_url = section.settings.cta_url | default: '/pages/contact'
+  assign shots = 'https://hub.thefuturebasics.com/help/assets/'
+  assign marks = section.blocks | where: 'type', 'mark'
+  assign figures = section.blocks | where: 'type', 'figure'
+  assign objects = section.blocks | where: 'type', 'object'
+  assign projects = section.blocks | where: 'type', 'project'
+  assign steps = section.blocks | where: 'type', 'step'
+  assign packages = section.blocks | where: 'type', 'package'
+  assign questions = section.blocks | where: 'type', 'question'
+  assign part = section.settings.part | default: 'all'
+-%}
+
+{% style %}
+  html,body{background:#f7f7f5;margin:0;padding:0;min-height:100%}
+  .mk3{
+    --paper:#f7f7f5;--card:#fff;--ink:#141416;--dim:#6b6b72;--line:rgba(20,20,22,.14);--green:#48f39a;--deep:#17603a;--panel:#ecece8;
+    --sans:'Space Grotesk',system-ui,sans-serif;--mono:'IBM Plex Mono',ui-monospace,monospace;
+    --pad:clamp(20px,4vw,58px);
+    background:var(--paper);color:var(--ink);font-family:var(--sans);overflow-x:hidden
+  }
+  .mk3 *{box-sizing:border-box}.mk3 a{color:inherit;text-decoration:none}.mk3 img{display:block;max-width:100%}
+  .mk3 h1,.mk3 h2,.mk3 h3,.mk3 p{margin:0}
+  .mk3 h1,.mk3 h2,.mk3 h3{font-weight:500;letter-spacing:-.05em;line-height:.92;text-transform:lowercase;text-wrap:balance}
+  .mk3__pad{padding-left:var(--pad);padding-right:var(--pad)}
+  .mk3__mono{font:500 10px/1.4 var(--mono);letter-spacing:.18em;text-transform:uppercase;color:var(--dim)}
+  .mk3__btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;min-height:50px;padding:0 24px;border:1px solid var(--ink);border-radius:999px;background:var(--ink);color:var(--paper)!important;font:500 15px/1 var(--sans);text-transform:lowercase;transition:transform .25s,box-shadow .25s}
+  .mk3__btn:hover{transform:translateY(-2px);box-shadow:0 12px 30px rgba(20,20,22,.15)}
+  .mk3__btn:focus-visible,.mk3 a:focus-visible,.mk3 summary:focus-visible{outline:2px solid var(--deep);outline-offset:3px}
+  .mk3__btn--ghost{background:transparent;color:var(--ink)!important}
+  .mk3__btn i{font-style:normal;padding:4px 8px;border-radius:999px;background:var(--green);color:var(--ink);font:500 9px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase}
+
+  /* hero */
+  .mk3__hero{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(300px,.85fr);gap:clamp(28px,5vw,80px);align-items:center;padding-top:clamp(56px,8vw,110px);padding-bottom:clamp(56px,7vw,96px)}
+  .mk3__hero h1{font-size:clamp(42px,6.4vw,100px);max-width:11ch;margin-top:18px}
+  .mk3__hero h1 span{display:block;color:var(--dim)}
+  .mk3__lede{max-width:52ch;margin-top:26px!important;color:var(--dim);font:400 clamp(16px,1.4vw,20px)/1.55 var(--sans)}
+  .mk3__lede p{margin:0}.mk3__lede b{color:var(--ink);font-weight:500}
+  .mk3__actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:30px}
+  .mk3__fine{margin-top:14px!important;font:400 12px/1.5 var(--mono);color:var(--dim)}
+  .mk3__device{position:relative;justify-self:center;width:min(100%,430px)}
+  .mk3__phone{position:relative;aspect-ratio:1100/2019;margin:-6% -4% -12%}
+  .mk3__phone img{width:100%;height:100%;object-fit:contain;filter:drop-shadow(0 30px 40px rgba(20,20,22,.12))}
+  .mk3__tag{position:absolute;display:inline-flex;align-items:center;gap:8px;padding:9px 12px;border:1px solid var(--line);border-radius:999px;background:rgba(255,255,255,.94);font:500 9px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;box-shadow:0 10px 26px rgba(20,20,22,.08);white-space:nowrap;animation:mk3Float 5s ease-in-out infinite}
+  .mk3__tag:before{content:"";width:7px;height:7px;border-radius:50%;background:var(--green)}
+  .mk3__tag--a{left:-14%;top:30%}.mk3__tag--b{right:-10%;top:58%;animation-delay:-1.6s}.mk3__tag--c{left:-8%;bottom:16%;animation-delay:-3s}
+
+  /* marks */
+  .mk3__marks{border-top:1px solid var(--line);border-bottom:1px solid var(--line);background:var(--card);padding-top:22px;padding-bottom:22px;display:grid;grid-template-columns:auto 1fr;gap:28px;align-items:center}
+  .mk3__marks ul{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:8px 30px}
+  .mk3__marks li{font:500 clamp(17px,1.6vw,24px)/1.1 var(--sans);letter-spacing:-.03em;text-transform:lowercase}
+
+  /* half markers */
+  .mk3__half{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:clamp(24px,4vw,64px);align-items:end;padding-top:clamp(72px,9vw,128px);padding-bottom:clamp(32px,4vw,56px)}
+  .mk3__half h2{font-size:clamp(48px,7.4vw,112px);margin-top:14px}
+  .mk3__half p{max-width:46ch;color:var(--dim);font-size:clamp(16px,1.35vw,19px);line-height:1.55}
+  .mk3__half p b{color:var(--ink);font-weight:500}
+  .mk3__sub{display:flex;justify-content:space-between;align-items:baseline;gap:20px;margin:clamp(48px,6vw,80px) 0 18px;padding-top:16px;border-top:1px solid var(--ink)}
+  .mk3__sub h3{font-size:clamp(26px,2.6vw,38px)}
+
+  /* figures */
+  .mk3__figures{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:28px;overflow:hidden}
+  .mk3__figure{background:var(--card);padding:24px 22px;display:grid;gap:6px}
+  .mk3__figure b{font:500 clamp(40px,4.4vw,64px)/1 var(--sans);letter-spacing:-.05em;font-variant-numeric:tabular-nums}
+  .mk3__figure span{color:var(--dim);font-size:14px}
+
+  /* projects */
+  .mk3__projects{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+  .mk3__project{display:grid;grid-template-rows:auto 1fr;border:1px solid var(--line);border-radius:26px;overflow:hidden;background:var(--card)}
+  .mk3__project-img{aspect-ratio:4/5;background:var(--panel);overflow:hidden}.mk3__project-img img{width:100%;height:100%;object-fit:cover;transition:transform .6s}
+  .mk3__project:hover .mk3__project-img img{transform:scale(1.03)}
+  .mk3__project-body{padding:18px 20px 20px;display:grid;gap:8px;align-content:start}
+  .mk3__project-body h3{font-size:26px}
+  .mk3__project-body p{color:var(--dim);font-size:14px;line-height:1.5}
+  .mk3__chips{display:flex;flex-wrap:wrap;gap:6px}.mk3__chips span{padding:5px 9px;border:1px solid var(--line);border-radius:999px;font:500 9px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+  .mk3__empty{border:1px dashed var(--line);border-radius:26px;padding:28px;color:var(--dim);font-size:14px}
+
+  /* categories */
+  .mk3__cats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:28px;overflow:hidden}
+  .mk3__cat{background:var(--card);padding:24px;display:grid;gap:10px;align-content:start;min-height:220px}
+  .mk3__cat h3{font-size:clamp(28px,2.8vw,40px)}
+  .mk3__cat p{color:var(--dim);font-size:14px;line-height:1.5;max-width:36ch}
+  .mk3__cat b{align-self:end;font:500 11px/1.3 var(--mono);letter-spacing:.1em;text-transform:uppercase}
+  .mk3__cat--note{background:var(--ink);color:var(--paper)}
+  .mk3__cat--note:last-child:nth-child(3n+1){grid-column:1/-1}.mk3__cat--note p{color:#b9b9bf}.mk3__cat--note .mk3__mono{color:var(--green)}
+
+  /* steps */
+  .mk3__steps{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}
+  .mk3__step{position:relative;border-top:2px solid var(--ink);padding-top:16px;display:grid;gap:8px;align-content:start}
+  .mk3__step h3{font-size:24px}.mk3__step p{color:var(--dim);font-size:14px;line-height:1.5}
+  .mk3__step em{font:500 10px/1 var(--mono);font-style:normal;letter-spacing:.12em;text-transform:uppercase;color:var(--deep)}
+
+  /* packages */
+  .mk3__packs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+  .mk3__pack{border:1px solid var(--line);border-radius:26px;background:var(--card);padding:24px;display:grid;gap:12px;align-content:start}
+  .mk3__pack b{font:500 13px/1 var(--mono);letter-spacing:.06em}
+  .mk3__pack h3{font-size:34px}.mk3__pack p{color:var(--dim);font-size:14px;line-height:1.55}
+
+  /* platform */
+  .mk3__platform{background:var(--ink);color:var(--paper);margin-top:clamp(72px,9vw,128px);padding-bottom:clamp(72px,9vw,120px)}
+  .mk3__platform .mk3__mono{color:#9a9aa1}.mk3__platform .mk3__half{padding-top:clamp(72px,9vw,120px)}
+  .mk3__platform .mk3__half p{color:#b9b9bf}.mk3__platform .mk3__half p b{color:var(--paper)}
+  .mk3__platform .mk3__half h2 span{color:var(--green)}
+  .mk3__feat{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,.75fr);gap:clamp(24px,4vw,64px);align-items:center;padding:clamp(28px,4vw,48px) 0;border-top:1px solid rgba(255,255,255,.14)}
+  .mk3__feat:nth-of-type(even){grid-template-columns:minmax(0,.75fr) minmax(0,1.25fr)}.mk3__feat:nth-of-type(even) .mk3__shot{order:2}
+  .mk3__shot{border-radius:22px;overflow:hidden;border:1px solid rgba(255,255,255,.16);background:#222;box-shadow:0 30px 80px rgba(0,0,0,.35);aspect-ratio:16/10.75}
+  .mk3__shot img{width:100%;height:100%;object-fit:cover;object-position:top}
+  .mk3__feat-copy{display:grid;gap:14px;align-content:start}
+  .mk3__feat-copy h3{font-size:clamp(30px,3.2vw,48px)}
+  .mk3__feat-copy p{color:#b9b9bf;font-size:16px;line-height:1.6;max-width:44ch}
+  .mk3__feat-copy ul{margin:0;padding:0;list-style:none;display:grid;gap:8px}
+  .mk3__feat-copy li{display:flex;gap:10px;font-size:15px;line-height:1.45}.mk3__feat-copy li:before{content:"";flex:0 0 7px;height:7px;margin-top:7px;border-radius:50%;background:var(--green)}
+
+  /* studio band */
+  .mk3__studio{padding-top:clamp(40px,5vw,64px);border-top:1px solid rgba(255,255,255,.14)}
+  .mk3__studio-head h3{font-size:clamp(30px,3.6vw,54px);margin-top:12px;max-width:20ch}.mk3__studio-head h3 span{display:block;color:var(--green)}
+  .mk3__phones{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-top:clamp(24px,3vw,40px)}
+  .mk3__phones figure{margin:0;border-radius:24px;overflow:hidden;border:1px solid rgba(255,255,255,.12);background:#1b1b1f;display:grid;grid-template-rows:auto 1fr}
+  .mk3__phones img{width:100%;height:auto;aspect-ratio:4/5;object-fit:cover}
+  .mk3__phones figcaption{padding:18px 20px 22px;display:grid;gap:8px;align-content:start}
+  .mk3__phones figcaption b{font:500 24px/1.05 var(--sans);letter-spacing:-.04em;text-transform:lowercase}
+  .mk3__phones figcaption p{color:#b9b9bf;font-size:14px;line-height:1.55}
+  .mk3__adds{list-style:none;margin:14px 0 0;padding:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.12);border-radius:24px;overflow:hidden}
+  .mk3__adds li{background:var(--ink);padding:20px;display:grid;gap:8px;align-content:start;font-size:14px;line-height:1.5;color:#d6d6da}
+  .mk3__adds li .mk3__mono{color:var(--green)}
+
+  /* pricing */
+  .mk3__prices{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-top:clamp(40px,5vw,64px)}
+  .mk3__price{border:1px solid rgba(255,255,255,.18);border-radius:26px;padding:26px;display:grid;gap:12px;align-content:start}
+  .mk3__price--hot{background:var(--green);color:var(--ink);border-color:var(--green)}.mk3__price--hot .mk3__mono{color:var(--ink)}
+  .mk3__price b{font:500 clamp(46px,5vw,72px)/1 var(--sans);letter-spacing:-.05em}.mk3__price b small{font-size:.32em;letter-spacing:0;margin-left:4px}
+  .mk3__price p{font-size:14px;line-height:1.55;color:#b9b9bf}.mk3__price--hot p{color:#1f3b2b}
+  .mk3__compare{margin-top:14px;overflow-x:auto;border:1px solid rgba(255,255,255,.14);border-radius:22px}
+  .mk3__compare table{width:100%;border-collapse:collapse;font-size:14px;min-width:560px}
+  .mk3__compare th,.mk3__compare td{text-align:left;padding:14px 18px;border-bottom:1px solid rgba(255,255,255,.1)}
+  .mk3__compare th{font:500 10px/1.3 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:#9a9aa1}
+  .mk3__compare tr:last-child td{border-bottom:0}.mk3__compare td:first-child{color:#b9b9bf}
+  .mk3__compare tr.us td{color:var(--paper);font-weight:500}.mk3__compare tr.us td:first-child:before{content:"";display:inline-block;width:7px;height:7px;margin-right:9px;border-radius:50%;background:var(--green)}
+  .mk3__platform .mk3__actions{margin-top:36px}
+  .mk3__platform .mk3__btn{background:var(--paper);color:var(--ink)!important;border-color:var(--paper)}
+  .mk3__platform .mk3__btn--ghost{background:transparent;color:var(--paper)!important}
+
+  /* faq */
+  .mk3__faq{display:grid;grid-template-columns:minmax(0,.7fr) minmax(0,1.3fr);gap:clamp(24px,4vw,64px);padding-top:clamp(72px,9vw,120px)}
+  .mk3__faq h2{font-size:clamp(44px,5.6vw,84px)}
+  .mk3__faq details{border-top:1px solid var(--line);padding:18px 0}.mk3__faq details:last-child{border-bottom:1px solid var(--line)}
+  .mk3__faq summary{cursor:pointer;list-style:none;display:flex;justify-content:space-between;gap:20px;font:500 clamp(18px,1.6vw,22px)/1.3 var(--sans);letter-spacing:-.02em;text-transform:lowercase}
+  .mk3__faq summary::-webkit-details-marker{display:none}.mk3__faq summary:after{content:"+";font-family:var(--mono);color:var(--dim)}.mk3__faq details[open] summary:after{content:"–"}
+  .mk3__faq details p{margin-top:10px!important;color:var(--dim);font-size:15px;line-height:1.6;max-width:62ch}
+
+  /* close */
+  .mk3__close{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;padding-top:clamp(72px,9vw,120px);padding-bottom:clamp(56px,7vw,96px)}
+  .mk3__door{border-radius:32px;padding:clamp(26px,3.4vw,44px);display:grid;gap:16px;align-content:space-between;min-height:320px;border:1px solid var(--line);background:var(--card)}
+  .mk3__door--self{background:var(--green);border-color:var(--green)}.mk3__door--self .mk3__mono{color:var(--ink)}
+  .mk3__door h2{font-size:clamp(36px,4.4vw,64px)}.mk3__door p{font-size:16px;line-height:1.55;max-width:40ch;color:var(--dim)}.mk3__door--self p{color:#1f3b2b}
+  .mk3__foot{display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap;padding-top:24px;padding-bottom:34px;border-top:1px solid var(--line)}
+
+  @keyframes mk3Float{50%{transform:translateY(-8px)}}
+  @media(max-width:1000px){
+    .mk3__hero,.mk3__half,.mk3__faq,.mk3__feat,.mk3__feat:nth-of-type(even){grid-template-columns:1fr}
+    .mk3__feat:nth-of-type(even) .mk3__shot{order:0}
+    .mk3__figures{grid-template-columns:repeat(2,minmax(0,1fr))}
+    .mk3__projects,.mk3__cats,.mk3__packs,.mk3__prices,.mk3__adds{grid-template-columns:repeat(2,minmax(0,1fr))}
+    .mk3__phones{grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+    .mk3__cat--note:last-child:nth-child(3n+1){grid-column:auto}.mk3__cat--note:last-child:nth-child(odd){grid-column:1/-1}
+    .mk3__steps{grid-template-columns:repeat(2,minmax(0,1fr));row-gap:22px}
+    .mk3__tag--a{left:-6%}.mk3__tag--b{right:-6%}.mk3__tag--c{left:-4%}
+  }
+  @media(max-width:620px){
+    .mk3__marks{grid-template-columns:1fr;gap:12px}
+    .mk3__projects,.mk3__cats,.mk3__packs,.mk3__prices,.mk3__steps,.mk3__close,.mk3__phones,.mk3__adds{grid-template-columns:1fr}
+    .mk3__device{width:min(78vw,320px)}.mk3__tag{font-size:8px;padding:7px 10px}.mk3__tag--a{left:-4%;top:10%}.mk3__tag--b{right:-4%}.mk3__tag--c{display:none}
+    .mk3__sub{display:grid}.mk3__btn{width:100%}
+  }
+  @media(prefers-reduced-motion:reduce){.mk3 *,.mk3 *:before,.mk3 *:after{animation:none!important;transition:none!important}}
+{% endstyle %}
+
+<div class="mk3">
+
+  {%- unless part == 'end' -%}
+  <section class="mk3__hero mk3__pad">
+    <div>
+      <span class="mk3__mono">future basics · make</span>
+      <h1>{{ section.settings.hero_title | default: 'real product, made properly.' }} <span>{{ section.settings.hero_accent | default: 'now with your own tools.' }}</span></h1>
+      <div class="mk3__lede">{{ section.settings.hero_lede | default: '<p>We develop and produce apparel, plush, objects, footwear and electronics, from first sketch to delivery, and we build the software that runs it. That system is now yours too: <b>turn any image into a factory-ready tech pack</b>, cost it, colour it, check it in 3D, download it as Excel or PDF, share it with a factory and track it to delivery in one place.</p>' }}</div>
+      <div class="mk3__actions">
+        <a class="mk3__btn" href="{{ start_url }}?utm_source=thefuturebasics&utm_medium=site&utm_campaign=make_hero">turn any image into a tech pack <i>free</i></a>
+        <a class="mk3__btn mk3__btn--ghost" href="{{ contact_url }}">start a full project</a>
+      </div>
+      <p class="mk3__fine">first tech pack free · then $48 a pack or $100/month · no card to start</p>
+    </div>
+    <div class="mk3__device">
+      <div class="mk3__phone"><img src="https://cdn.shopify.com/s/files/1/0535/2606/9445/files/fb-phone-cap.webp" alt="A tech pack open on a phone: a 6-panel cap with five numbered callouts and its fabric Pantones" width="1100" height="2019" loading="eager" fetchpriority="high"></div>
+      <span class="mk3__tag mk3__tag--a">5 callouts · from one photo</span>
+      <span class="mk3__tag mk3__tag--b">pantones matched</span>
+      <span class="mk3__tag mk3__tag--c">v1 · factory sign-off</span>
+    </div>
+  </section>
+
+  {%- if marks.size > 0 -%}
+  <section class="mk3__marks mk3__pad" aria-label="Brands we have made product with">
+    <span class="mk3__mono">{{ section.settings.marks_label | default: 'made with' }}</span>
+    <ul>{%- for b in marks -%}<li {{ b.shopify_attributes }}>{{ b.settings.name }}</li>{%- endfor -%}</ul>
+  </section>
+  {%- endif -%}
+
+  {%- comment -%} ───────── 01 · experience ───────── {%- endcomment -%}
+  <section class="mk3__pad" id="experience">
+    <div class="mk3__half">
+      <div><span class="mk3__mono">01 · experience</span><h2>what we’ve made.</h2></div>
+      <p><b>Cut-and-sew, not printed blanks.</b> Patterns, sourcing, sampling, costing, production and quality control, run by one team for brands, artists and creators. Every category below has a real minimum and a real lead time.</p>
+    </div>
+
+    {%- if figures.size > 0 -%}
+    <div class="mk3__figures">
+      {%- for b in figures -%}<div class="mk3__figure" {{ b.shopify_attributes }}><b>{{ b.settings.figure }}</b><span>{{ b.settings.label }}</span></div>{%- endfor -%}
+    </div>
+    {%- endif -%}
+
+    {%- if projects.size > 0 or request.design_mode -%}
+    <div class="mk3__sub"><h3>selected work</h3><span class="mk3__mono">{{ projects.size }} project{% if projects.size != 1 %}s{% endif %}</span></div>
+    {%- if projects.size > 0 -%}
+    <div class="mk3__projects">
+      {%- for b in projects -%}
+      <article class="mk3__project" {{ b.shopify_attributes }}>
+        <div class="mk3__project-img">{%- if b.settings.image != blank -%}{{ b.settings.image | image_url: width: 900 | image_tag: widths: '360, 540, 720, 900', sizes: '(max-width: 620px) 100vw, (max-width: 1000px) 50vw, 33vw', loading: 'lazy', alt: b.settings.image.alt | default: b.settings.title }}{%- endif -%}</div>
+        <div class="mk3__project-body">
+          {%- if b.settings.client != blank -%}<span class="mk3__mono">{{ b.settings.client }}</span>{%- endif -%}
+          <h3>{{ b.settings.title }}</h3>
+          {%- if b.settings.body != blank -%}<p>{{ b.settings.body }}</p>{%- endif -%}
+          <div class="mk3__chips">{%- if b.settings.category != blank -%}<span>{{ b.settings.category }}</span>{%- endif -%}{%- if b.settings.quantity != blank -%}<span>{{ b.settings.quantity }}</span>{%- endif -%}{%- if b.settings.lead_time != blank -%}<span>{{ b.settings.lead_time }}</span>{%- endif -%}</div>
+        </div>
+      </article>
+      {%- endfor -%}
+    </div>
+    {%- else -%}
+    <p class="mk3__empty">Add “Project” blocks in the theme editor: an image, the client, what it was, quantity and lead time. This note only shows in the editor.</p>
+    {%- endif -%}
+    {%- endif -%}
+
+    {%- if objects.size > 0 -%}
+    <div class="mk3__sub"><h3>what we make</h3><span class="mk3__mono">minimums · lead times</span></div>
+    <div class="mk3__cats">
+      {%- for b in objects -%}
+      <div class="mk3__cat{% if b.settings.is_note %} mk3__cat--note{% endif %}" {{ b.shopify_attributes }}>
+        <span class="mk3__mono">{{ b.settings.cap }}</span>
+        <h3>{{ b.settings.title }}</h3>
+        <p>{{ b.settings.body }}</p>
+        {%- if b.settings.moq != blank -%}<b>{{ b.settings.moq }}</b>{%- endif -%}
+      </div>
+      {%- endfor -%}
+    </div>
+    {%- endif -%}
+
+    {%- if steps.size > 0 -%}
+    <div class="mk3__sub"><h3>how a full build runs</h3><span class="mk3__mono">idea to live</span></div>
+    <ol class="mk3__steps">
+      {%- for b in steps -%}<li class="mk3__step" {{ b.shopify_attributes }}><span class="mk3__mono">{{ b.settings.key }}</span><h3>{{ b.settings.title }}</h3><p>{{ b.settings.body }}</p>{%- if b.settings.note != blank -%}<em>{{ b.settings.note }}</em>{%- endif -%}</li>{%- endfor -%}
+    </ol>
+    {%- endif -%}
+
+    {%- if packages.size > 0 -%}
+    <div class="mk3__sub"><h3>full-service packages</h3><a class="mk3__mono" href="{{ contact_url }}">start a project →</a></div>
+    <div class="mk3__packs">
+      {%- for b in packages -%}<div class="mk3__pack" {{ b.shopify_attributes }}><b>{{ b.settings.price }}</b><h3>{{ b.settings.title }}</h3><p>{{ b.settings.body }}</p>{%- if b.settings.note != blank -%}<span class="mk3__mono">{{ b.settings.note }}</span>{%- endif -%}</div>{%- endfor -%}
+    </div>
+    {%- endif -%}
+  </section>
+
+  {%- comment -%} ───────── 02 · platform ───────── {%- endcomment -%}
+  <section class="mk3__platform mk3__pad" id="platform">
+    <div class="mk3__half">
+      <div><span class="mk3__mono">02 · platform</span><h2>a modern plm. <span>minus the plm.</span></h2></div>
+      <p><b>The tools we use on every project, open to you and your team.</b> Write technical documents from any image, colour them part by part, check them in 3D, and take them through factory sign-off and quotes, with every version, file and payment in one room. It works on your phone.</p>
+    </div>
+
+    <div class="mk3__feat">
+      <div class="mk3__shot"><img src="{{ 'fb-make-jacket-colourways.webp' | file_url }}" alt="A denim trucker jacket tech pack in the hub: three colourways drawn from one photo, every part listed with its Pantone C code" width="1800" height="1210" loading="lazy"></div>
+      <div class="mk3__feat-copy"><span class="mk3__mono">image → tech pack</span><h3>start from any image.</h3><p>A finished render, a flat sketch, a photo of a sample or a screenshot you saved. In minutes you have a draft tech pack to edit.</p>
+        <ul><li>A clean hero image made from your photo, colours measured from its pixels</li><li>Callouts pinned to the image</li><li>Points of measure, researched from comparable styles when the image gives none</li><li>Materials, construction, labels and care</li></ul></div>
+    </div>
+
+    <div class="mk3__feat">
+      <div class="mk3__shot"><img src="https://cdn.shopify.com/s/files/1/0535/2606/9445/files/fb-make-tee-measure.webp" alt="Points of measure for a graphic tee graded across XS to 2XL" width="1800" height="1210" loading="lazy"></div>
+      <div class="mk3__feat-copy"><span class="mk3__mono">edit · version · export</span><h3>a real document, not a moodboard.</h3><p>Every page a factory expects, editable by you or your team, saved as you go.</p>
+        <ul><li>Two assistants, design and development, negotiate the pack until it scores 90/100 against your image</li><li>Points of measure graded across the size run</li><li>PDF and Excel export, and a factory version in Chinese, Spanish, Portuguese or Italian in one press</li><li>A cost estimate, private to you: unit costs add up to a landed cost and your margin</li><li>v1 stays live while v2 is edited; approved versions lock</li></ul></div>
+    </div>
+
+    <div class="mk3__feat">
+      <div class="mk3__shot"><img src="https://cdn.shopify.com/s/files/1/0535/2606/9445/files/fb-make-jacket-callouts.webp" alt="Numbered callouts pinned on a track jacket: funnel collar, embroidered mark, welt pocket, two-way zip" width="1800" height="1210" loading="lazy"></div>
+      <div class="mk3__feat-copy"><span class="mk3__mono">factory sign-off</span><h3>the factory signs every detail.</h3><p>Samples come back wrong when the brief is vague. Here the factory works from a private link and acknowledges each callout before anything is cut.</p>
+        <ul><li>You approve, Future Basics signs, the factory countersigns</li><li>Factories quote through the same private link: free, no account, your name kept private</li><li>One shared thread and file room per project</li></ul></div>
+    </div>
+
+    <div class="mk3__feat">
+      <div class="mk3__shot"><img src="https://cdn.shopify.com/s/files/1/0535/2606/9445/files/fb-make-tool-submit.webp" alt="A multitool tech pack's submission page: you, Future Basics and the factory each sign in turn" width="1800" height="1210" loading="lazy"></div>
+      <div class="mk3__feat-copy"><span class="mk3__mono">submit → sign-off → production</span><h3>when you’re ready, we make it.</h3><p>Submit a pack and it moves through one sign-off chain: we review and publish v1, you approve it, the factory countersigns every callout. Then it becomes a project with a quote, sample deposit and invoices paid through Shopify checkout, and every product shows whether it is waiting on you, us or the factory.</p></div>
+    </div>
+
+    <div class="mk3__studio">
+      <div class="mk3__studio-head"><span class="mk3__mono">new in the hub</span><h3>colour, check and build it in 3d. <span>before a sample is cut.</span></h3></div>
+      <div class="mk3__phones">
+        <figure><img src="{{ 'fb-hub-colourway.webp' | file_url }}" alt="A graphite colourway of a trail runner in the hub, each part listed with its Pantone C code" width="1000" height="1250" loading="lazy"><figcaption><span class="mk3__mono">colourways by part</span><b>every panel, its own pantone.</b><p>Colourways drawn from the approved hero image, part by part, each with its Pantone C code matched from the colour itself.</p></figcaption></figure>
+        <figure><img src="{{ 'fb-hub-threed.webp' | file_url }}" alt="A 3D model of a loafer in the hub, made from a render that scored 91 out of 100 against the photo" width="1000" height="1250" loading="lazy"><figcaption><span class="mk3__mono">3d model · stl</span><b>turn it in your hand.</b><p>Once the pack scores 90/100 against your photo it becomes a 3D model you can spin in the browser and hand to the factory.</p></figcaption></figure>
+        <figure><img src="{{ 'fb-hub-callouts.webp' | file_url }}" alt="Twelve numbered callouts pinned on a denim trucker jacket in the hub, on a phone" width="1000" height="1250" loading="lazy"><figcaption><span class="mk3__mono">callouts · factory sign-off</span><b>every detail, pinned.</b><p>Callouts pinned to the photo, each with a spec and a note. The factory acknowledges every one through a private link, in its own language, before anything is cut.</p></figcaption></figure>
+      </div>
+      <ul class="mk3__adds">
+        <li><span class="mk3__mono">negotiated pack</span>A design assistant and a development assistant go back and forth until the pack scores 90/100 against your image.</li>
+        <li><span class="mk3__mono">independent check</span>A second model draws the product from the pack alone and compares it with your photo before anyone signs.</li>
+        <li><span class="mk3__mono">hero image</span>A clean studio image made from your photo, colours measured from its pixels, approved by a person.</li>
+        <li><span class="mk3__mono">pantone c, automatic</span>Every colour in the pack gets its nearest Pantone C code the moment it opens.</li>
+        <li><span class="mk3__mono">five factory languages</span>Chinese (Simplified or Traditional), Spanish, Portuguese and Italian, in one press.</li>
+        <li><span class="mk3__mono">who has it</span>Every product shows whether it is waiting on you, Future Basics or the factory.</li>
+        <li><span class="mk3__mono">versions that hold</span>v1 stays live while v2 is edited; signed versions lock, changes become the next one.</li>
+        <li><span class="mk3__mono">money in the flow</span>Quotes, sample deposits and invoices through Shopify checkout, and agreements signed online with payment plans and autopay.</li>
+        <li><span class="mk3__mono">cost estimate</span>A unit cost on every material, plus labour, packing, freight and duty, add up to a landed cost and your margin, at the order sizes you pick.</li>
+        <li><span class="mk3__mono">excel and csv</span>One workbook with a sheet each for materials, measurements, colourways, SKUs and cost, or any single sheet as CSV.</li>
+        <li><span class="mk3__mono">your costs stay yours</span>A pack sent to a factory carries the spec only: no retail price and no unit costs.</li>
+        <li><span class="mk3__mono">a short first sign-in</span>No password. One short form the first time, then your details are kept for every pack.</li>
+      </ul>
+    </div>
+
+    <div class="mk3__prices" id="pricing">
+      <div class="mk3__price mk3__price--hot"><span class="mk3__mono">first pack</span><b>free</b><p>Your first tech pack from an image, start to finish. No card needed.</p></div>
+      <div class="mk3__price"><span class="mk3__mono">per pack</span><b>$48</b><p>Each pack after that, drafted from your image, with a cost estimate, Excel and PDF export, Future Basics review, v1 publish and a factory export in Chinese or three European languages.</p></div>
+      <div class="mk3__price"><span class="mk3__mono">studio membership</span><b>$100<small>/month</small></b><p>Unlimited packs, versions and factory links for your studio. Cancel anytime.</p></div>
+    </div>
+    <div class="mk3__compare">
+      <table>
+        <thead><tr><th scope="col">getting a tech pack</th><th scope="col">cost</th><th scope="col">time</th><th scope="col">factory sign-off</th></tr></thead>
+        <tbody>
+          <tr><td>freelance technical designer</td><td>$300–800 a pack</td><td>1–3 weeks</td><td>email and PDFs</td></tr>
+          <tr><td>PLM software</td><td>$10,000+ a year</td><td>weeks to set up</td><td>yes, if the factory logs in</td></tr>
+          <tr class="us"><td>future basics</td><td>free, then $48 or $100/month</td><td>minutes for a draft</td><td>private link, every callout</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="mk3__actions">
+      <a class="mk3__btn" href="{{ start_url }}?utm_source=thefuturebasics&utm_medium=site&utm_campaign=make_platform">start your free tech pack</a>
+      <a class="mk3__btn mk3__btn--ghost" href="https://hub.thefuturebasics.com/pricing">see pricing</a>
+      <a class="mk3__btn mk3__btn--ghost" href="https://hub.thefuturebasics.com/help">see how it works</a>
+    </div>
+  </section>
+
+  {%- endunless -%}
+
+  {%- unless part == 'top' -%}
+  {%- if questions.size > 0 -%}
+  <section class="mk3__faq mk3__pad" id="faq">
+    <div><span class="mk3__mono">questions</span><h2>the honest answers.</h2></div>
+    <div>
+      {%- for b in questions -%}<details {{ b.shopify_attributes }}><summary>{{ b.settings.title }}</summary><p>{{ b.settings.body }}</p></details>{%- endfor -%}
+    </div>
+  </section>
+  {%- endif -%}
+
+  <section class="mk3__close mk3__pad">
+    <div class="mk3__door mk3__door--self">
+      <div><span class="mk3__mono">do it yourself</span><h2>start with any image.</h2></div>
+      <p>Turn your design, sketch or photo into a tech pack in minutes. Your first one is free.</p>
+      <a class="mk3__btn" href="{{ start_url }}?utm_source=thefuturebasics&utm_medium=site&utm_campaign=make_close">start a tech pack</a>
+    </div>
+    <div class="mk3__door">
+      <div><span class="mk3__mono">do it with us</span><h2>build the whole thing.</h2></div>
+      <p>Product, production, the store that sells it and the software behind it, with one team from first sketch to first order.</p>
+      <a class="mk3__btn mk3__btn--ghost" href="{{ contact_url }}">start a project</a>
+    </div>
+  </section>
+
+  <footer class="mk3__foot mk3__pad"><span class="mk3__mono">future basics · a non-linear progress corp®</span><span class="mk3__mono">product development + software + commerce systems</span></footer>
+  {%- endunless -%}
+</div>
+
+{%- if section.settings.faq_schema and questions.size > 0 and part != 'top' -%}
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{%- for b in questions -%}{"@type":"Question","name":{{ b.settings.title | json }},"acceptedAnswer":{"@type":"Answer","text":{{ b.settings.body | json }}}}{%- unless forloop.last -%},{%- endunless -%}{%- endfor -%}]}
+</script>
+{%- endif -%}
+
+{% schema %}
+{
+  "name": "Make — work + platform",
+  "settings": [
+    { "type": "url", "id": "cta_url", "label": "Start a project link" },
+    { "type": "text", "id": "start_url", "label": "Tech pack start link", "default": "https://hub.thefuturebasics.com/start" },
+    { "type": "text", "id": "hero_title", "label": "Hero title" },
+    { "type": "text", "id": "hero_accent", "label": "Hero title, second line" },
+    { "type": "richtext", "id": "hero_lede", "label": "Hero text" },
+    { "type": "text", "id": "marks_label", "label": "Brand list label", "default": "made with" },
+    { "type": "text", "id": "min_figure", "label": "Legacy: minimum figure" },
+    { "type": "checkbox", "id": "faq_schema", "label": "Add FAQ structured data", "default": true },
+    { "type": "select", "id": "part", "label": "Show", "default": "all", "options": [ { "value": "all", "label": "Whole page" }, { "value": "top", "label": "Hero to platform" }, { "value": "end", "label": "Questions and close" } ] }
+  ],
+  "blocks": [
+    { "type": "mark", "name": "Brand", "settings": [ { "type": "text", "id": "name", "label": "Name" } ] },
+    { "type": "figure", "name": "Figure", "settings": [ { "type": "text", "id": "figure", "label": "Figure" }, { "type": "text", "id": "label", "label": "Label" } ] },
+    { "type": "project", "name": "Project", "settings": [
+      { "type": "image_picker", "id": "image", "label": "Image" },
+      { "type": "text", "id": "client", "label": "Client or brand" },
+      { "type": "text", "id": "title", "label": "What it was" },
+      { "type": "textarea", "id": "body", "label": "Short description" },
+      { "type": "text", "id": "category", "label": "Category" },
+      { "type": "text", "id": "quantity", "label": "Quantity", "info": "e.g. 250 units" },
+      { "type": "text", "id": "lead_time", "label": "Lead time", "info": "e.g. 11 weeks" }
+    ] },
+    { "type": "object", "name": "Category", "settings": [
+      { "type": "text", "id": "cap", "label": "Caption" }, { "type": "text", "id": "title", "label": "Title" },
+      { "type": "textarea", "id": "body", "label": "Text" }, { "type": "text", "id": "moq", "label": "Minimum and lead time" },
+      { "type": "checkbox", "id": "is_note", "label": "Show as a note", "default": false }
+    ] },
+    { "type": "step", "name": "Step", "settings": [
+      { "type": "text", "id": "key", "label": "Number" }, { "type": "text", "id": "title", "label": "Title" },
+      { "type": "textarea", "id": "body", "label": "Text" }, { "type": "text", "id": "note", "label": "Note" }
+    ] },
+    { "type": "package", "name": "Package", "settings": [
+      { "type": "text", "id": "price", "label": "Price" }, { "type": "text", "id": "title", "label": "Title" },
+      { "type": "textarea", "id": "body", "label": "Text" }, { "type": "text", "id": "note", "label": "Timing" }
+    ] },
+    { "type": "question", "name": "Question", "settings": [
+      { "type": "text", "id": "key", "label": "Key" }, { "type": "text", "id": "title", "label": "Question" },
+      { "type": "textarea", "id": "body", "label": "Answer" }
+    ] }
+  ],
+  "presets": [{ "name": "Make — work + platform" }]
+}
+{% endschema %}
