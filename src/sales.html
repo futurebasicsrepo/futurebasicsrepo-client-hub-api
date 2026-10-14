@@ -506,8 +506,9 @@ async function loadSettings(){
   $('#sStatus').innerHTML=`<p>${r.configured.sending?'<b>Sending is on.</b>':'<b style="color:var(--bad)">Sending is off:</b> the service needs its Resend key.'} ${r.sentToday} sent today, ${r.remaining} left.</p><p>${r.configured.webhook?'Replies, bounces and complaints come back to us.':'<b style="color:var(--bad)">Replies are not coming back yet.</b> In Resend, add a webhook to <code>'+esc(r.webhookUrl)+'</code> for the events delivered, bounced, complained and received, then put its signing secret on the service as <code>RESEND_WEBHOOK_SECRET</code>.'}</p>${s.postalAddress.trim()?'':'<p style="color:var(--bad)">Add your business mailing address. Nothing can be sent without one.</p>'}`;
 }
 $('#setBtn').onclick=async()=>{$('#sMsg').textContent='';try{await loadSettings();$('#sdlg').showModal()}catch(x){alert(x.message)}};
-$('#sSave').onclick=async()=>{const m=$('#sMsg');m.className='msg';m.textContent='Saving…';try{await api('/v1/sales/email/settings',{method:'PUT',body:{fromName:$('#sName').value,fromAddress:$('#sFrom').value,postalAddress:$('#sPostal').value,dailyCap:Number($('#sCap').value)}});m.className='msg ok';m.textContent='Saved';await loadSettings()}catch(x){m.className='msg bad';m.textContent=x.message}};
-$('#sTest').onclick=async()=>{const m=$('#sMsg');m.className='msg';m.textContent='Sending a test…';try{const r=await api('/v1/sales/email/test',{body:{}});m.className='msg ok';m.textContent='Sent to '+r.to}catch(x){m.className='msg bad';m.textContent=x.message}};
+const saveEmailForm=async()=>{await api('/v1/sales/email/settings',{method:'PUT',body:{fromName:$('#sName').value,fromAddress:$('#sFrom').value,postalAddress:$('#sPostal').value,dailyCap:Number($('#sCap').value)}});await loadSettings()};
+$('#sSave').onclick=async()=>{const m=$('#sMsg');m.className='msg';m.textContent='Saving…';try{await saveEmailForm();m.className='msg ok';m.textContent='Saved'}catch(x){m.className='msg bad';m.textContent=x.message}};
+$('#sTest').onclick=async()=>{const m=$('#sMsg');m.className='msg';m.textContent='Sending a test…';try{await saveEmailForm();const r=await api('/v1/sales/email/test',{body:{}});m.className='msg ok';m.textContent='Sent to '+r.to}catch(x){m.className='msg bad';m.textContent=x.message}};
 
 // ---------- shared behaviour ----------
 document.addEventListener('click',async e=>{
