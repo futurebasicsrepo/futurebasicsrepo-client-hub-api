@@ -9,6 +9,7 @@
 import { fireTrigger, fireTagsAdded, stopRuns } from './sales-automations-engine.js';
 import { STAGES, OPEN_STAGES, STAGE_LABELS, AUTO_TAGS, cleanContact, cleanDeal, cleanTask, cleanActivity, cleanSegment, cleanTags, cleanEmail, heat, staleDays, pipelineSummary, nextBusinessDay, parseCsv } from './sales.js';
 import { startProject } from './start-project.js';
+import { stripQuoted } from './sales-email.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const HEAT_KINDS = ['showcase_demo', 'showcase_view', 'email_in', 'chat_in', 'meeting', 'call'];
@@ -205,7 +206,11 @@ export function registerSalesRoutes(app, { pool, authenticate, adminOnly, log = 
       pool.query(`select a.id,a.kind,a.text,a.meta,a.created_at,a.deal_id,u.name actor_name from sales_activities a left join users u on u.id=a.actor_id where a.contact_id=$1 order by a.created_at desc limit 120`, [c.id]),
       pool.query(`select id,title,due_at,done_at,deal_id from sales_tasks where contact_id=$1 and (done_at is null or done_at > now() - interval '14 days') order by done_at nulls first, due_at nulls last`, [c.id]),
       c.client_id ? pool.query('select id,name,status from clients where id=$1', [c.client_id]) : { rows: [] }]);
-    return { contact: { ...contactRow(c), heat: heat(acts.rows.map(a => ({ kind: a.kind, at: a.created_at }))) }, deals: deals.rows.map(d => ({ ...d, value_cents: Number(d.value_cents) })), activities: acts.rows, tasks: tasks.rows, client: client.rows[0] || null };
+    // a reply shows what was said in the timeline, not only its subject: the new part of the message, without the quoted history
+    const inIds = acts.rows.filter(a => a.kind === 'email_in' && a.meta?.emailId).map(a => a.meta.emailId);
+    const bodies = new Map(inIds.length ? (await pool.query(`select id::text id, body_text from sales_emails where id::text = any($1::text[])`, [inIds.map(String)])).rows.map(r => [r.id, r.body_text]) : []);
+    const activities = acts.rows.map(a => { const b = a.kind === 'email_in' && a.meta?.emailId ? bodies.get(String(a.meta.emailId)) : null; return b == null ? a : { ...a, preview: stripQuoted(b).slice(0, 400) }; });
+    return { contact: { ...contactRow(c), heat: heat(acts.rows.map(a => ({ kind: a.kind, at: a.created_at }))) }, deals: deals.rows.map(d => ({ ...d, value_cents: Number(d.value_cents) })), activities, tasks: tasks.rows, client: client.rows[0] || null };
   });
   app.put('/v1/sales/contacts/:id', { preHandler: pre }, async (req, reply) => {
     if (!needId(req, reply)) return;
