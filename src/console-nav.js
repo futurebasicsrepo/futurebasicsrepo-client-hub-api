@@ -172,7 +172,7 @@ body.fbcollapsed .fbside a{justify-content:center;padding:10px}body.fbcollapsed 
   function gates() {
     let t = ''; try { t = localStorage.getItem('fb.admin.token') || ''; } catch {}
     if (!t) return;
-    document.querySelectorAll('.fbside a[data-gated]').forEach(a => fetch(`/v1/${a.dataset.gated}/me`, { headers: { Authorization: 'Bearer ' + t } }).then(r => { if (r.ok) a.removeAttribute('hidden'); }).catch(() => {}));
+    document.querySelectorAll('.fbside a[data-gated]').forEach(a => fetch(`/v1/${a.dataset.gated}/me`, { headers: { Authorization: 'Bearer ' + t } }).then(r => { if (r.ok) { a.removeAttribute('hidden'); const g = a.closest('.grp'); if (g) g.hidden = false; } }).catch(() => {}));
   }
 
   // What this person has been given (Team access, /team). The menu only shows what they can open; the service refuses the rest anyway, so if the answer cannot be
@@ -205,9 +205,8 @@ body.fbcollapsed .fbside a{justify-content:center;padding:10px}body.fbcollapsed 
     document.querySelectorAll('.fbside a[data-module]').forEach(a => { if (all || owner || (!me.blocked && mods.has(a.dataset.module))) a.removeAttribute('hidden'); else a.setAttribute('hidden', ''); });
     document.querySelectorAll('.fbside a[data-owner]').forEach(a => { if (all || owner) a.removeAttribute('hidden'); else a.setAttribute('hidden', ''); });
     document.querySelectorAll('.fbside .grp').forEach(g => {
-      const shown = [...g.querySelectorAll('a:not(.gicon)')].filter(a => !a.hidden && !(a.dataset.gated && a.hidden));
-      const pending = [...g.querySelectorAll('a[data-gated]')].some(a => a.hidden);
-      g.hidden = !shown.length && !pending;
+      const shown = [...g.querySelectorAll('a:not(.gicon)')].filter(a => !a.hidden);
+      g.hidden = !shown.length; // an item the service reveals later (Money) shows its group again
       const first = shown[0], icon = g.querySelector('a.gicon'); if (icon && first) { icon.setAttribute('href', first.getAttribute('href')); icon.dataset.href = first.dataset.href; }
     });
     const w = document.querySelector('.fbside [data-waiting]'); if (w) { const n = me && me.owner ? Number(me.waiting) || 0 : 0; w.textContent = n; w.hidden = !n; }
