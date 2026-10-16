@@ -2745,10 +2745,57 @@ app.post('/v1/admin/products/:id/tech-pack/request-views',{preHandler:[authentic
   }
   return {requested:missing,emailed};
 });
+// What the team chose to tell the client about a newly published version. By default both: an email to the client's contact and a message in the project thread.
+// copyTo: up to five more addresses that get the same email (the client's other people).
+function publishNotifyOptions(input){
+  const o=input&&typeof input==='object'?input:{},raw=Array.isArray(o.copyTo)?o.copyTo:String(o.copyTo||'').split(/[\s,;]+/);
+  const copyTo=[...new Set(raw.map(x=>String(x||'').trim().toLowerCase()).filter(x=>/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(x)))].slice(0,5);
+  return {email:o.email!==false,thread:o.thread!==false,copyTo,message:String(o.message||'').trim().slice(0,1000)};
+}
+async function notifyTechPackPublished({product,version,note,wanted,actor}){
+  const out={email:{requested:wanted.email,sent:[],failed:[],skipped:null},thread:{requested:wanted.thread,posted:false,skipped:null},quiet:!wanted.email&&!wanted.thread};
+  const internal=product.client_slug==='future-basics',title=product.title,first=String(product.client_contact_name||'').split(' ')[0]||'there';
+  const link=`${clientHubUrl}/tech-packs/${product.id}`;
+  // the email goes first, so the message in the thread can say it was sent
+  if(!wanted.email)out.email.skipped='not-chosen';
+  else if(internal)out.email.skipped='internal';
+  else{
+    const main=String(product.client_contact_email||'').trim().toLowerCase(),to=[...(main?[main]:[]),...wanted.copyTo.filter(x=>x!==main)];
+    if(!to.length)out.email.skipped='no-contact-email';
+    for(const addr of to){
+      try{
+        const ok=await sendHubEmail({to:addr,subject:`Tech pack v${version} is ready for your approval — ${title}`,
+          html:hubEmailShell('A tech pack is ready for your approval',`<p>Hi ${emailEscape(addr===main?first:'there')},</p><p>Version ${version} of the tech pack for <strong>${emailEscape(title)}</strong> is published to your project room. Review the sketches and callouts, measurements, materials, construction, colours and artwork, then approve it in the <strong>Sign</strong> tab — your approval is what releases it to Future Basics and the factory.</p>${hubButton(link,'Review and approve')}${wanted.message?`<p style="white-space:pre-wrap">${emailEscape(wanted.message)}</p>`:''}${note?`<p style="padding:14px 16px;border-left:3px solid #4bff9a;background:#f5f5f2;white-space:pre-wrap">${emailEscape(note)}</p>`:''}<p style="font-size:12px;color:#717177">Sign in with your work email — no password, we send a six-digit code.</p>`),replyTo:actor?.email||intakeNotificationEmail});
+        (ok?out.email.sent:out.email.failed).push(addr);
+      }catch(error){out.email.failed.push(addr);app.log.error({error,productId:product.id},'Tech pack published but the client email failed')}
+    }
+  }
+  if(!wanted.thread)out.thread.skipped='not-chosen';
+  else if(internal)out.thread.skipped='internal';
+  else if(!product.project_id)out.thread.skipped='no-project';
+  else{
+    try{
+      const body=[`Tech pack v${version} for ${title} is published to your project room and ready for your review. Open it from the Tech packs tab, look through it, and approve it in the Sign tab.`,
+        note&&`What changed: ${note}`,wanted.message,out.email.sent.length&&`We have also emailed ${out.email.sent.length>1?'a link to you and your team':'you a link'}.`].filter(Boolean).join('\n\n');
+      await pool.query(`insert into project_messages(project_id,client_id,author_id,author_role,body) values($1,$2,$3,'admin',$4)`,[product.project_id,product.client_id,/^[0-9a-f-]{36}$/i.test(String(actor?.sub||''))?actor.sub:null,body.slice(0,5000)]);
+      await pool.query(`update projects set updated_at=now() where id=$1`,[product.project_id]);
+      await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'project-message',$2,'project',$3)`,[product.client_id,`Tech pack v${version} is ready: ${title}`,product.project_id]);
+      out.thread.posted=true;
+    }catch(error){out.thread.skipped='failed';app.log.error({error,productId:product.id},'Tech pack published but the project thread message failed')}
+  }
+  // the team's own record of who was told what
+  const told=[out.email.sent.length&&`emailed ${out.email.sent.join(', ')}`,out.email.failed.length&&`the email to ${out.email.failed.join(', ')} did not send`,out.thread.posted&&'posted in the project thread'].filter(Boolean);
+  await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,
+    [product.client_id,product.id,/^[0-9a-f-]{36}$/i.test(String(actor?.sub||''))?actor.sub:null,
+     `${told.length?`Told the client about v${version} of ${title}: ${told.join('; ')}`:`Published v${version} of ${title} without telling the client${internal?' (internal room)':out.email.skipped==='no-contact-email'&&!out.thread.posted?' (no contact email)':''}`}`,{techPack:true,version,notify:out}]).catch(()=>{});
+  return out;
+}
 app.post('/v1/admin/products/:id/tech-pack/publish',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const ctx=await loadAdminTechPack(req.params.id);if(!ctx)return reply.code(404).send({error:'Product not found'});
   if(!ctx.techPack)return reply.code(409).send({error:'Save the tech pack before publishing it'});
   let note=String(req.body?.note||'').trim().slice(0,500);
+  const userNote=note; // what the team wrote about this version; the reason for publishing past a failed check stays on the version and is never sent to the client
+  const notifyWanted=publishNotifyOptions(req.body?.notify);
   // the publish gate: ready, and checked by the independent spec check, or published anyway with a reason that is kept on the version
   const lastCheck=(await pool.query(`select status,score,verdict_label,pack_updated_at from tech_pack_checks where tech_pack_id=$1 order by created_at desc limit 1`,[ctx.techPack.id])).rows[0];
   const gate=publishGate(ctx.techPack.data,{threshold:LOOP_THRESHOLD(),checkRequired:aiEnabled(),
@@ -2790,15 +2837,9 @@ app.post('/v1/admin/products/:id/tech-pack/publish',{preHandler:[authenticate,ad
     await flagRequote(ctx.product,ctx.techPack.published_data,row);
     await syncCardQuietly(ctx.product.id,row.published_data);
     await factoriesAfterPublish(row,ctx.product.title);
-    let clientNotified=false;
-    if(ctx.product.client_slug!=='future-basics'&&ctx.product.client_contact_email){
-      try{
-        const first=String(ctx.product.client_contact_name||'').split(' ')[0]||'there',link=`${clientHubUrl}/tech-packs/${ctx.product.id}`;
-        clientNotified=await sendHubEmail({to:ctx.product.client_contact_email,subject:`Tech pack v${row.version} is ready for your approval — ${ctx.product.title}`,
-          html:hubEmailShell('A tech pack is ready for your approval',`<p>Hi ${emailEscape(first)},</p><p>Version ${row.version} of the tech pack for <strong>${emailEscape(ctx.product.title)}</strong> is published to your project room. Review the sketches and callouts, measurements, materials, construction, colours and artwork, then approve it in the <strong>Sign</strong> tab — your approval is what releases it to Future Basics and the factory.</p>${hubButton(link,'Review and approve')}${note?`<p style="padding:14px 16px;border-left:3px solid #4bff9a;background:#f5f5f2;white-space:pre-wrap">${emailEscape(note)}</p>`:''}<p style="font-size:12px;color:#717177">Sign in with your work email — no password, we send a six-digit code.</p>`),replyTo:req.auth.email||intakeNotificationEmail});
-      }catch(error){app.log.error({error,productId:ctx.product.id},'Tech pack published but client notification failed')}
-    }
-    return {techPack:techPackPayload(row),clientNotified};
+    // Telling the client: an email, and a message in the project thread (the Message Center here, the project thread in the client's hub). Each is the team's choice.
+    const notify=await notifyTechPackPublished({product:ctx.product,version:row.version,note:userNote,wanted:notifyWanted,actor:req.auth});
+    return {techPack:techPackPayload(row),clientNotified:notify.email.sent.length>0,notify};
   }catch(error){await client.query('rollback').catch(()=>{});throw error}finally{client.release()}
 });
 // Pictures made after a version was published (the hero image, the colourway pictures) are not in what the client and factories read. This puts the current ones

@@ -1780,4 +1780,64 @@ await journey('J187', 'cost and Excel: unit costs add up to a landed cost and a 
 
 });
 
+await journey('J192', 'Publishing a tech pack: the team chooses whether the client is emailed and whether the project thread gets a message, the choice is shown and recorded, and the thread shows in the Message Center and the client\'s hub', async () => {
+  const m = await room('92'), admin = await forge({ sub: sql(`select id from users where client_id='${m.cid}' limit 1`), clientId: m.cid, role: 'admin' }), adm = (path, o = {}) => call(path, { token: admin, ...o });
+  const to = `pat92-${stamp}@client.test`, copy = `copy92-${stamp}@client.test`, pid = sql(`select project_id from products where id='${m.id}'`);
+  sql(`update clients set contact_name='Pat Client', contact_email='${to}' where id='${m.cid}'`);
+  const seed = (await adm(`/v1/admin/products/${m.id}/tech-pack`)).json.seed; ok((await adm(`/v1/admin/products/${m.id}/tech-pack`, { method: 'PUT', body: { data: seed } })).status === 200, 'setup: a saved pack');
+  const outbox = async who => ((await call(`/v1/dev/outbox?to=${encodeURIComponent(who)}`)).json.emails || []).filter(e => /is ready for your approval/.test(e.subject));
+  const threadN = () => Number(sql(`select count(*) from project_messages where project_id='${pid}' and body like 'Tech pack v%'`));
+  const told = () => sql(`select summary from activities where product_id='${m.id}' and metadata->>'notify' is not null order by created_at desc limit 1`);
+  const publish = body => adm(`/v1/admin/products/${m.id}/tech-pack/publish`, { method: 'POST', body: { override: 'journey: the secret reason', ...body } });
+
+  // by default: the contact is emailed and the thread gets a message
+  const a = await publish({ note: 'First version', notify: { copyTo: `${copy}, not-an-email, ${to}`, message: 'Hello from the team' } });
+  ok(a.status === 200 && a.json.clientNotified === true && a.json.notify.email.sent.join() === `${to},${copy}` && a.json.notify.thread.posted === true && a.json.notify.quiet === false, 'by default the contact and the extra address are emailed and the thread is posted', a.json.notify);
+  const ma = await outbox(to), mc = await outbox(copy);
+  ok(ma.length === 1 && mc.length === 1 && /Hello from the team/.test(ma[0].text) && /First version/.test(ma[0].text) && ma[0].links.some(l => l.includes(`/tech-packs/${m.id}`)), 'the email carries the message, the note and the link', ma[0]?.text.slice(0, 200));
+  ok(!JSON.stringify([ma, mc]).includes('secret reason'), 'the reason for publishing past a failed check is not sent to the client');
+  ok(threadN() === 1 && /We have also emailed/.test(sql(`select body from project_messages where project_id='${pid}' and body like 'Tech pack v1%' limit 1`)), 'the project thread gets a message that says it was emailed too');
+  const ct = (await call(`/v1/projects/${pid}/thread`, { token: m.token })).json; ok((ct.messages || []).some(x => /Tech pack v1 for/.test(x.body) && /Hello from the team/.test(x.body) && /First version/.test(x.body)), 'the client sees it in their hub project thread', (ct.messages || []).map(x => x.body.slice(0, 40)));
+  const mcn = (await adm('/v1/admin/message-center')).json.conversations.find(c => c.projectId === pid); ok(mcn && /Tech pack v1/.test(mcn.preview) && /^You:/.test(mcn.preview), 'and in the Message Center in the work console', mcn);
+  ok(Number(sql(`select count(*) from notifications where client_id='${m.cid}' and type='project-message' and title like 'Tech pack v1%'`)) === 1, 'the client gets a notification for it');
+  ok(/Told the client about v1/.test(told()) && /emailed/.test(told()) && /posted in the project thread/.test(told()), 'the team\'s record says who was told', told());
+
+  // quietly: nothing goes out and nothing is posted, and the record says so
+  const q = await publish({ notify: { email: false, thread: false } });
+  ok(q.status === 200 && q.json.clientNotified === false && q.json.notify.quiet === true && q.json.notify.email.skipped === 'not-chosen' && q.json.notify.thread.skipped === 'not-chosen', 'publishing quietly tells the client nothing', q.json.notify);
+  ok((await outbox(to)).length === 1 && threadN() === 1, 'no new email and no new message');
+  ok(/without telling the client/.test(told()), 'and the record says it was published without telling the client', told());
+
+  // email only, then thread only
+  const e = await publish({ notify: { thread: false } }); ok(e.json.notify.email.sent.join() === to && e.json.notify.thread.posted === false && (await outbox(to)).length === 2 && threadN() === 1, 'email only: the contact is emailed, nothing is posted', e.json.notify);
+  const t = await publish({ notify: { email: false } }); ok(t.json.notify.thread.posted === true && t.json.notify.email.sent.length === 0 && (await outbox(to)).length === 2 && threadN() === 2 && !/We have also emailed/.test(sql(`select body from project_messages where project_id='${pid}' and body like 'Tech pack v4%' limit 1`)), 'thread only: a message is posted that does not claim an email', t.json.notify);
+
+  // no contact email, and an internal room
+  sql(`update clients set contact_email=null where id='${m.cid}'`);
+  const n = await publish({ notify: { thread: false } }); ok(n.status === 200 && n.json.clientNotified === false && n.json.notify.email.skipped === 'no-contact-email', 'a client with no contact email is told so, and the pack still publishes', n.json.notify);
+  const cc = await publish({ notify: { thread: false, copyTo: copy } }); ok(cc.json.notify.email.sent.join() === copy, 'but extra addresses can still be emailed', cc.json.notify);
+  const fb = sql(`select id from clients where slug='future-basics'`);
+  if (fb) { sql(`update products set client_id='${fb}' where id='${m.id}'`); const i = await publish({}); ok(i.status === 200 && i.json.notify.email.skipped === 'internal' && i.json.notify.thread.skipped === 'internal', 'a Future Basics room is never emailed or posted to', i.json.notify); sql(`update products set client_id='${m.cid}' where id='${m.id}'`); }
+
+  if (playwright) {
+    const b = await playwright.chromium.launch(); const errs = [];
+    try {
+      sql(`update clients set contact_name='Pat Client', contact_email='${to}' where id='${m.cid}'`);
+      const ctx = await b.newContext({ viewport: { width: 1280, height: 1000 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+      const page = await ctx.newPage(); page.on('pageerror', e => errs.push(String(e)));
+      const versionsBefore = Number(sql(`select count(*) from tech_pack_versions v join tech_packs t on t.id=v.tech_pack_id where t.product_id='${m.id}'`));
+      await page.goto(`${BASE}/tech-packs/${m.id}`, { waitUntil: 'networkidle' });
+      await page.waitForSelector('button[data-act="publish"]', { timeout: 15000 });
+      await page.locator('button[data-act="publish"]').click(); await page.waitForSelector('dialog.pub[open]', { timeout: 8000 });
+      const txt = await page.innerText('dialog.pub');
+      ok(/Tell the client/i.test(txt) && /Pat Client/.test(txt) && /Post in the project thread/i.test(txt) && /emailed and the thread gets a message/.test(txt), 'the publish dialog offers the email to the contact and the thread message, on by default', txt.slice(0, 300));
+      await page.uncheck('dialog.pub [data-email]'); ok(/Nothing is posted in the thread|No email is sent/.test(await page.innerText('dialog.pub [data-sum]')) && !(await page.locator('dialog.pub [data-ccrow]').isVisible()), 'unticking the email updates the summary and hides the extra addresses');
+      await page.uncheck('dialog.pub [data-thread]'); ok(/published quietly/.test(await page.innerText('dialog.pub [data-sum]')), 'with both unticked the dialog says it is published quietly');
+      await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/publish-dialog.png` }).catch(() => {});
+      await page.click('dialog.pub [data-cancel]'); await page.waitForSelector('dialog.pub', { state: 'detached', timeout: 5000 }).catch(() => {}); ok(await page.locator('dialog.pub').count() === 0 && Number(sql(`select count(*) from tech_pack_versions v join tech_packs t on t.id=v.tech_pack_id where t.product_id='${m.id}'`)) === versionsBefore, 'cancel closes it without publishing');
+      ok(errs.length === 0, 'no page errors', errs);
+    } finally { await b.close(); }
+  }
+});
+
 summary(); process.exit(bad ? 1 : 0);
