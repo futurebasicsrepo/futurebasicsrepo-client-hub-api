@@ -29,6 +29,8 @@ import { qbConfig as qbConfigOf } from './quickbooks.js'
 import { moneyInvoicePdf } from './money-pdf.js'
 import { coverageChecks, coverageConfig, redactSecrets } from './platform-coverage.js'
 import { createStaffGate } from './staff-gate.js';
+import { createStaffAccess } from './staff-access.js';
+import { registerStaffAccessRoutes } from './staff-access-routes.js';
 import { runChecks, configChecks, jobHealth, insights as platformInsights, classifyAiFailure, assistantAlertContent, probeAssistant, PROBE_MODEL } from './platform.js';
 import { draftSnapshot, draftDiff, aggregateDiffs } from './learning.js';
 import { renderColorways, mergeColorwayTiles } from './colorway.js';
@@ -111,6 +113,8 @@ const googleRedirectUri = process.env.GOOGLE_REDIRECT_URI || `${workHubUrl}/v1/a
 const googleSsoEnabled = Boolean(googleClientId && googleClientSecret);
 const googleJwks = createRemoteJWKSet(new URL('https://www.googleapis.com/oauth2/v3/certs'));
 const staffGate = createStaffGate(process.env, { log: app.log });
+// which parts of the work console each person may open (src/staff-access.js): getSetting and setSetting are declared further down and only called once a request arrives
+const staffAccess = createStaffAccess({ pool, getSetting: k => getSetting(k), setSetting: (k, v) => setSetting(k, v), env: process.env });
 
 await app.register(cors, { origin: (origin, cb) => cb(null, !origin || allowedOrigins.includes(origin) || (origin==='null' && process.env.DEV_BYPASS_AUTH==='true')), credentials: true });
 await app.register(multipart, {
@@ -193,6 +197,8 @@ async function authenticate(req, reply) {
   if(req.auth.preview&&!['GET','HEAD','OPTIONS'].includes(req.method))return reply.code(403).send({error:'Client preview is read-only'});
   // A staff session only counts when the request came through Cloudflare Access on the work console (see src/staff-gate.js).
   if(req.auth.role==='admin'&&staffGate){const gate=await staffGate.check(req);if(!gate.ok){if(staffGate.mode==='enforce')return reply.code(403).send({error:`Staff tools only open through ${workHubUrl.replace(/^https?:\/\//,'')} with your Cloudflare sign-in.`,code:'STAFF_GATE'});staffGate.report(req,gate.reason)}}
+  // Danielle and Kyle decide who may open which module; every staff request is held to it (the shared client/staff routes too)
+  if(req.auth.role==='admin'){const refused=await staffAccess.check(req);if(refused)return reply.code(refused.status).send(refused.body)}
 }
 async function adminOnly(req,reply){if(req.auth?.role!=='admin')return reply.code(403).send({error:'Future Basics admin access required'});}
 
@@ -683,6 +689,7 @@ app.get('/prototypes', (_req, reply) => reply.header('cache-control','no-store, 
 app.get('/intel', (_req, reply) => reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./intel.html', import.meta.url), 'utf8')));
 app.get('/home', sendWorkHome); // the work console's home: leads, prototypes, projects in flight (the old home is /admin: clients and production)
 // Brand and assets: the wordmark, icons, colours, fonts and a guide, to use and download. Open to every signed-in staff member.
+app.get('/team', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').type('text/html').send(readFileSync(new URL('./team.html', import.meta.url), 'utf8')));
 app.get('/brand', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').type('text/html').send(readFileSync(new URL('./brand.html', import.meta.url), 'utf8')));
 registerBrandRoutes(app, { authenticate, adminOnly });
 app.get('/admin', sendAdmin);
@@ -2658,6 +2665,7 @@ function shopifyExportRoutes(path,pre,mine){
 shopifyExportRoutes('/v1/admin/products/:id/tech-pack/shopify-export',[authenticate,adminOnly],false);
 shopifyExportRoutes('/v1/products/:id/tech-pack/shopify-export',[authenticate],true);
 registerHomeRoutes(app,{pool,authenticate,adminOnly});
+registerStaffAccessRoutes(app,{pool,authenticate,adminOnly,staffAccess,env:process.env,log:app.log});
 registerCommerceRoutes(app,{pool,authenticate,adminOnly,tokenSeal,storeExec,liveStores,storeView:r=>({...storeView(r),status:r.status,shop:r.shop}),env:process.env,log:app.log,publicUrl:clientHubUrl,secret:process.env.JWT_SECRET||'dev',throttle});
 // ---- A customer connects their own Shopify store. Authorization-code install: the hub asks for a single-use state tied to the customer and the shop, Shopify sends the
 // merchant back with a signed query, and only a callback that proves the signature, the state and the shop trades its code for a token (sealed before it is stored).

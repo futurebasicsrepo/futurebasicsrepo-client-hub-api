@@ -59,7 +59,7 @@ export function registerHomeRoutes(app, { pool, authenticate, adminOnly }) {
     const unowned = await q(`select c.id, c.name, (select count(*) from projects p where p.client_id=c.id and ${LIVE})::int projects from clients c
       where c.owner_id is null and c.archived_at is null and c.status='active' and c.slug <> 'future-basics' and exists (select 1 from projects p where p.client_id=c.id and ${LIVE} and p.name <> 'General development')
       order by c.name limit 12`);
-    return {
+    const out = {
       me: { firstName: firstName(meRow?.name, meRow?.email || req.auth?.email) },
       myAccounts: orderAccounts(mine.map(r => accountRow(r))),
       unownedAccounts: unowned.map(r => ({ id: r.id, name: r.name, projects: r.projects })),
@@ -71,6 +71,13 @@ export function registerHomeRoutes(app, { pool, authenticate, adminOnly }) {
       projects: orderProjects(projects.map(r => projectRow(r))),
       waiting: { approvals: appr.n, production: prod.n }
     };
+    // My day is for everyone on the team, but each part of it shows only what the person has been given (Team access)
+    const can = id => !req.staff || req.staff.can(id);
+    if (!can('clients')) Object.assign(out, { myAccounts: [], unownedAccounts: [], projects: [], waiting: { approvals: 0, production: 0 } });
+    if (!can('prototypes')) Object.assign(out, { prototypes: [], showNow: [], leadSearches: [] });
+    if (!can('intel')) out.signals = { total: 0, overdue: 0, top: [] };
+    if (!can('crm')) Object.assign(out, { awaitingReply: [], funnel: { newLeads7: 0, newLeadsPrev7: 0, trend: out.funnel.trend, lookers7: 0, demos7: 0, won30: { count: 0, valueCents: 0 } } });
+    return out;
   });
   // Take an account (or give it to someone): the owner is the one voice the client hears from and the person Home asks about it.
   app.put('/v1/admin/clients/:id/owner', { preHandler: pre }, async (req, reply) => {

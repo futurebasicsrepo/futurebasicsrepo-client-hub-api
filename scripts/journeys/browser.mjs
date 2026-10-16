@@ -760,7 +760,7 @@ await journey('J118', 'the work console menu down the left: grouped, the same on
   await page.goto(`${W}/admin`, { waitUntil: 'networkidle' }); await page.waitForSelector('#app:not(.hidden)', { timeout: 15000 }); await page.waitForSelector('.fbside nav', { timeout: 5000 });
   const labels = await page.$$eval('.fbside a[data-nav] .lbl', e => e.map(x => x.textContent));
   ok(['My day', 'Messages', 'Chats', 'Contacts', 'Clients', 'Tasks', 'Fair contacts', 'Sales today', 'Pipeline', 'Opportunities', 'Intelligence', 'Site prototypes', 'Builds showcase', 'Automations', 'Press', 'Projects', 'Waiting on approval', 'Production attention', 'Factories', 'Assistant learning', 'Payment gate', 'Platform health', 'Connections'].every(l => labels.includes(l)), 'every place the old menu led to is still in the menu', labels);
-  ok((await page.$$eval('.fbside .grp > span', e => e.map(x => x.textContent))).join('|') === 'Inbox|People|Win|Deliver|Money|Sites and health', 'grouped by stage: Inbox, People, Win, Deliver, Money, Sites and health');
+  ok((await page.$$eval('.fbside .grp > span', e => e.map(x => x.textContent))).join('|') === 'Inbox|People|Win|Deliver|Money|Sites and health|Team', 'grouped by stage: Inbox, People, Win, Deliver, Money, Sites and health, Team');
   ok(await page.$eval('header', h => h.getBoundingClientRect().left) <= 1 && await page.$eval('#app', a => a.getBoundingClientRect().left) >= 230, 'the header spans the page and the content sits to the right of the menu');
   ok(await page.locator('.homenav, a.platformlink').count() === 0, 'the old header links are gone');
   ok(await page.locator('.fbside a.on:not(.gicon)').count() === 1 && /Clients/.test(await page.locator('.fbside a.on:not(.gicon)').innerText()), 'at the top of the clients and production page, Clients is marked as where you are');
@@ -1489,7 +1489,7 @@ await journey('J138', 'Money in a browser: Colby is turned away and never sees t
   await cp.goto(`${W}/money`, { waitUntil: 'networkidle' }); await cp.waitForSelector('#noAccess:not(.hidden)', { timeout: 15000 });
   ok(await cp.isHidden('#app') && /not open to you/.test(await cp.innerText('#noAccess')), 'Colby is told Money is not open to him and sees none of it');
   await cp.goto(`${W}/home`, { waitUntil: 'networkidle' }); await cp.waitForSelector('.fbside a[data-nav]', { timeout: 10000 }); await sleep(800);
-  ok(await cp.locator('.fbside a[data-gated=money]').count() === 1 && await cp.locator('.fbside a[data-gated=money]').isHidden() && await cp.locator('.fbside a[data-nav="Payment gate"]').isVisible(), 'the menu hides Money from him (the payment gate stays)'); await cc.close();
+  ok(await cp.locator('.fbside a[data-gated=money]').count() === 1 && await cp.locator('.fbside a[data-gated=money]').isHidden() && await cp.locator('.fbside a[data-nav="Payment gate"]').isHidden() && await cp.locator('.fbside a[data-nav="Team access"]').isHidden(), 'the menu hides Money, the payment gate and Team access from him (they are for the owners)'); await cc.close();
   // Kyle
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyle);
   const page = await ctx.newPage(); page.errs = []; page.on('pageerror', e => page.errs.push(e.message)); page.on('dialog', d => d.accept());
@@ -2038,7 +2038,7 @@ await journey('J160', 'My accounts on Home: the customers you own with what each
   await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || '/tmp'}/j160-home.png` }).catch(() => {});
   await page.click(`[data-take] >> nth=0`); await page.waitForFunction(() => !document.querySelector('#unownedBox [data-take]') || document.querySelectorAll('#myList .acct').length >= 3, null, { timeout: 8000 });
   ok(await page.locator('#myList .acct').count() >= 3, 'pressing Take moves the account into my accounts on the page');
-  ok((await page.$$eval('.fbside .grp > span', e => e.map(x => x.textContent))).join('|') === 'Inbox|People|Win|Deliver|Money|Sites and health' && /My day/.test(await page.locator('.fbside a.on:not(.gicon)').first().innerText()), 'the menu is by stage and marks My day');
+  ok((await page.$$eval('.fbside .grp > span', e => e.map(x => x.textContent))).join('|') === 'Inbox|People|Win|Deliver|Money|Sites and health|Team' && /My day/.test(await page.locator('.fbside a.on:not(.gicon)').first().innerText()), 'the menu is by stage and marks My day');
   await page.click('.fbside a[data-href="/home#projPanel"]:not(.gicon)'); await sleep(500);
   ok(/Projects/.test(await page.locator('.fbside a.on:not(.gicon)').first().innerText()) && await page.locator('#projPanel').isVisible(), 'Projects in the menu goes to the projects on Home');
   ok(page.errs.length === 0, 'no script errors', page.errs); await ctx.close();

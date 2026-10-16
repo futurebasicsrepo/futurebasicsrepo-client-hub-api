@@ -19,36 +19,38 @@
   const NAV = [
     { id: 'home', label: 'My day', href: '/home', icon: 'home' },
     { id: 'inbox', label: 'Inbox', icon: 'chat', items: [
-      { label: 'Messages', href: '/admin#inbox', badge: '#mcCount' },
-      { label: 'Chats', href: '/sales#chats', badge: '#chatCount' }] },
+      { label: 'Messages', href: '/admin#inbox', badge: '#mcCount', module: 'messages' },
+      { label: 'Chats', href: '/sales#chats', badge: '#chatCount', module: 'messages' }] },
     { id: 'people', label: 'People', icon: 'users', items: [
-      { label: 'Contacts', href: '/sales#contacts' },
-      { label: 'Clients', href: '/admin#clientsHead' },
-      { label: 'Tasks', href: '/sales#tasks', badge: '#taskCount' },
-      { label: 'Fair contacts', href: '/admin#partnersSection' }] },
+      { label: 'Contacts', href: '/sales#contacts', module: 'crm' },
+      { label: 'Clients', href: '/admin#clientsHead', module: 'clients' },
+      { label: 'Tasks', href: '/sales#tasks', badge: '#taskCount', module: 'crm' },
+      { label: 'Fair contacts', href: '/admin#partnersSection', module: 'clients' }] },
     { id: 'win', label: 'Win', icon: 'target', items: [
-      { label: 'Sales today', href: '/sales#today' },
-      { label: 'Pipeline', href: '/sales#pipeline' },
-      { label: 'Contracts', href: '/contracts' },
-      { label: 'Opportunities', href: '/sales#opportunities', badge: '#oppCount' },
-      { label: 'Intelligence', href: '/intel' },
-      { label: 'Site prototypes', href: '/prototypes' },
-      { label: 'Builds showcase', href: '/builds/admin#builds', badge: '#newCount' },
-      { label: 'Automations', href: '/sales#automations' },
-      { label: 'Press', href: '/sales#press' }] },
+      { label: 'Sales today', href: '/sales#today', module: 'crm' },
+      { label: 'Pipeline', href: '/sales#pipeline', module: 'crm' },
+      { label: 'Contracts', href: '/contracts', module: 'contracts' },
+      { label: 'Opportunities', href: '/sales#opportunities', badge: '#oppCount', module: 'crm' },
+      { label: 'Intelligence', href: '/intel', module: 'intel' },
+      { label: 'Site prototypes', href: '/prototypes', module: 'prototypes' },
+      { label: 'Builds showcase', href: '/builds/admin#builds', badge: '#newCount', module: 'builds' },
+      { label: 'Automations', href: '/sales#automations', module: 'automations' },
+      { label: 'Press', href: '/sales#press', module: 'press' }] },
     { id: 'deliver', label: 'Deliver', icon: 'box', items: [
-      { label: 'Projects', href: '/home#projPanel' },
-      { label: 'Waiting on approval', href: '/admin#approvals' },
-      { label: 'Production attention', href: '/admin#production' },
-      { label: 'Factories', href: '/factories', key: 'factories' },
-      { label: 'Assistant learning', href: '/admin#assistantLearning' }] },
+      { label: 'Projects', href: '/home#projPanel', module: 'clients' },
+      { label: 'Waiting on approval', href: '/admin#approvals', module: 'clients' },
+      { label: 'Production attention', href: '/admin#production', module: 'clients' },
+      { label: 'Factories', href: '/factories', key: 'factories', module: 'factories' },
+      { label: 'Assistant learning', href: '/admin#assistantLearning', module: 'clients' }] },
     { id: 'money', label: 'Money', icon: 'coin', items: [
       { label: 'Money', href: '/money', gated: 'money' },
-      { label: 'Payment gate', href: '/admin#accessPanel' }] },
+      { label: 'Payment gate', href: '/admin#accessPanel', owner: true }] },
     { id: 'health', label: 'Sites and health', icon: 'gear', items: [
-      { label: 'Platform health', href: '/platform', key: 'platform' },
-      { label: 'Connections', href: '/admin#connections' }] },
-    { id: 'brand', label: 'Brand and assets', href: '/brand', icon: 'brand' }
+      { label: 'Platform health', href: '/platform', key: 'platform', module: 'platform' },
+      { label: 'Connections', href: '/admin#connections', module: 'platform' }] },
+    { id: 'team', label: 'Team', icon: 'users', items: [
+      { label: 'Team access', href: '/team', owner: true, waiting: true }] },
+    { id: 'brand', label: 'Brand and assets', href: '/brand', icon: 'brand', module: 'brand' }
   ];
   const DEFAULT_HASH = { '/sales': 'today', '/builds/admin': 'builds' };
   const esc = v => String(v ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -104,7 +106,7 @@ body.fbcollapsed .fbside a{justify-content:center;padding:10px}body.fbcollapsed 
 
   function render() {
     const links = [];
-    const item = (it, cls = '') => { links.push(it); return `<a href="${esc(it.href)}" data-nav="${esc(it.key || it.id || it.label)}" data-href="${esc(it.href)}" ${cls ? `class="${cls}"` : ''} title="${esc(it.label)}"${it.gated ? ` data-gated="${esc(it.gated)}" hidden` : ''}>${it.icon ? svg(it.icon) : ''}<span class="lbl">${esc(it.label)}</span>${it.badge ? `<span class="bdg" data-badge="${esc(it.badge)}" hidden></span>` : ''}</a>`; };
+    const item = (it, cls = '') => { links.push(it); return `<a href="${esc(it.href)}" data-nav="${esc(it.key || it.id || it.label)}" data-href="${esc(it.href)}" ${cls ? `class="${cls}"` : ''} title="${esc(it.label)}"${it.gated ? ` data-gated="${esc(it.gated)}" hidden` : ''}${it.module ? ` data-module="${esc(it.module)}" hidden` : ''}${it.owner ? ' data-owner="1" hidden' : ''}>${it.icon ? svg(it.icon) : ''}<span class="lbl">${esc(it.label)}</span>${it.badge ? `<span class="bdg" data-badge="${esc(it.badge)}" hidden></span>` : ''}${it.waiting ? '<span class="bdg" data-waiting hidden></span>' : ''}</a>`; };
     return `<nav aria-label="Work console">${NAV.map(n => n.items
       ? `<div class="grp"><span>${esc(n.label)}</span><a class="gicon" href="${esc((n.items.find(i => !i.gated) || n.items[0]).href)}" data-href="${esc((n.items.find(i => !i.gated) || n.items[0]).href)}" data-group="${n.id}" title="${esc(n.label)}">${svg(n.icon)}</a>${n.items.map(it => item(it)).join('')}</div>`
       : item(n)).join('')}</nav>
@@ -170,7 +172,55 @@ body.fbcollapsed .fbside a{justify-content:center;padding:10px}body.fbcollapsed 
   function gates() {
     let t = ''; try { t = localStorage.getItem('fb.admin.token') || ''; } catch {}
     if (!t) return;
-    document.querySelectorAll('.fbside a[data-gated]').forEach(a => fetch(`/v1/${a.dataset.gated}/me`, { headers: { Authorization: 'Bearer ' + t } }).then(r => { if (r.ok) a.removeAttribute('hidden'); }).catch(() => {}));
+    document.querySelectorAll('.fbside a[data-gated]').forEach(a => fetch(`/v1/${a.dataset.gated}/me`, { headers: { Authorization: 'Bearer ' + t } }).then(r => { if (r.ok) { a.removeAttribute('hidden'); const g = a.closest('.grp'); if (g) g.hidden = false; } }).catch(() => {}));
+  }
+
+  // What this person has been given (Team access, /team). The menu only shows what they can open; the service refuses the rest anyway, so if the answer cannot be
+  // had the menu shows everything rather than nothing. A page that belongs to one module says so, plainly, when the person has not been given it.
+  const PAGE_MODULE = { '/contracts': 'contracts', '/intel': 'intel', '/prototypes': 'prototypes', '/builds/admin': 'builds', '/factories': 'factories', '/platform': 'platform', '/brand': 'brand' };
+  const toast = (text, key) => {
+    if (!text) return; const id = 'fbNoAccess'; let el = document.getElementById(id);
+    if (!el) { el = document.createElement('div'); el.id = id; el.setAttribute('role', 'status'); el.style.cssText = 'position:fixed;top:84px;left:50%;transform:translateX(-50%);z-index:60;background:#141416;color:#fff;border-radius:14px;padding:12px 18px;font:400 14px/1.4 \'Space Grotesk\',system-ui,sans-serif;max-width:min(92vw,520px);box-shadow:0 12px 40px rgba(20,20,22,.3)'; document.body.appendChild(el); }
+    el.textContent = text; el.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => { el.hidden = true; }, 6000);
+  };
+  function wall(title, text) {
+    if (document.getElementById('fbWall')) return;
+    const el = document.createElement('div'); el.id = 'fbWall';
+    el.style.cssText = 'position:fixed;top:72px;right:0;bottom:0;left:var(--fbw,0px);z-index:14;background:#f5f5f2;display:grid;place-items:center;padding:24px;font:400 15px/1.5 \'Space Grotesk\',system-ui,sans-serif;color:#141416';
+    el.innerHTML = `<div style="max-width:460px;background:#fff;border:1px solid rgba(20,20,22,.14);border-radius:22px;padding:26px"><h1 style="margin:0 0 8px;font-size:24px;font-weight:500;letter-spacing:-.02em">${esc(title)}</h1><p style="margin:0 0 16px;color:#33333a">${esc(text)}</p><a href="/home" style="display:inline-block;border:1px solid #141416;border-radius:999px;padding:9px 16px;text-decoration:none;color:#141416;font-weight:600">Back to My day</a></div>`;
+    document.body.appendChild(el);
+  }
+  const wrapFetch = () => {
+    if (window.fetch.__fbAccess) return; const orig = window.fetch;
+    window.fetch = function () {
+      return orig.apply(this, arguments).then(r => {
+        if (r.status === 403) r.clone().json().then(j => { if (j && (j.code === 'MODULE_ACCESS' || j.code === 'STAFF_PAUSED' || j.code === 'OWNER_ONLY')) toast(j.error, j.module || j.code); }).catch(() => {});
+        return r;
+      });
+    };
+    window.fetch.__fbAccess = true;
+  };
+  function applyAccess(me) {
+    const all = !me, mods = new Set(me ? me.modules : []), owner = Boolean(me && me.owner);
+    document.querySelectorAll('.fbside a[data-module]').forEach(a => { if (all || owner || (!me.blocked && mods.has(a.dataset.module))) a.removeAttribute('hidden'); else a.setAttribute('hidden', ''); });
+    document.querySelectorAll('.fbside a[data-owner]').forEach(a => { if (all || owner) a.removeAttribute('hidden'); else a.setAttribute('hidden', ''); });
+    document.querySelectorAll('.fbside .grp').forEach(g => {
+      const shown = [...g.querySelectorAll('a:not(.gicon)')].filter(a => !a.hidden);
+      g.hidden = !shown.length; // an item the service reveals later (Money) shows its group again
+      const first = shown[0], icon = g.querySelector('a.gicon'); if (icon && first) { icon.setAttribute('href', first.getAttribute('href')); icon.dataset.href = first.dataset.href; }
+    });
+    const w = document.querySelector('.fbside [data-waiting]'); if (w) { const n = me && me.owner ? Number(me.waiting) || 0 : 0; w.textContent = n; w.hidden = !n; }
+    if (!me) return;
+    if (me.blocked) return wall('Your access is paused', 'Ask Kyle or Danielle to turn it back on.');
+    const p = pathOf(), need = PAGE_MODULE[p];
+    if (need && !owner && !mods.has(need)) wall('This part of the console is not turned on for you', `Ask Kyle or Danielle to give you access to ${(me.labels && me.labels[need]) || need}.`);
+    if (p === '/team' && !owner) wall('Only Danielle and Kyle can change who sees what', 'If you need access to something, ask one of them.');
+  }
+  let accessDone = false; // the page may sign in after the menu is drawn: ask again, once, when a token turns up
+  function access() {
+    let t = ''; try { t = localStorage.getItem('fb.admin.token') || ''; } catch {}
+    wrapFetch(); if (!t || accessDone) return; accessDone = true;
+    fetch('/v1/staff-access/me', { headers: { Authorization: 'Bearer ' + t } }).then(r => r.ok ? r.json() : null).then(applyAccess).catch(() => applyAccess(null));
   }
   function mount() {
     const style = document.createElement('style'); style.textContent = css; document.head.appendChild(style);
@@ -185,7 +235,7 @@ body.fbcollapsed .fbside a{justify-content:center;padding:10px}body.fbcollapsed 
     setCollapsed(collapsed, false); autoCollapse(); paintActive(); badges(); spy();
     for (const m of ['pushState', 'replaceState']) { const orig = history[m]; history[m] = function () { const r = orig.apply(this, arguments); window.dispatchEvent(new Event('fb:nav')); return r; }; }
     for (const ev of ['hashchange', 'popstate', 'fb:nav']) window.addEventListener(ev, () => { autoCollapse(); paintActive(); });
-    gates(); setInterval(() => { badges(); paintActive(); }, 1500); // the pages draw their own counts and open sub-pages themselves
+    gates(); access(); setInterval(() => { badges(); paintActive(); if (!accessDone) access(); }, 1500); // the pages draw their own counts and open sub-pages themselves
     // arriving from another page at /admin#inbox: the section only exists once the page has loaded its data, so wait for it
     const want = (location.hash || '').slice(1);
     if (want && pathOf() === '/admin') {
