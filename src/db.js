@@ -1,5 +1,6 @@
 import pg from 'pg';
 import { createBlobLayer, externalize } from './pack-blobs.js';
+import { MODULE_IDS } from './staff-access.js';
 
 export const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
@@ -101,6 +102,31 @@ export async function migrate() {
       role text not null default 'client' check (role in ('client','admin')),
       created_at timestamptz not null default now()
     );
+    -- Who on the team may open which part of the work console (src/staff-access.js). The first time this table is made, everyone who is staff today keeps
+    -- everything they can reach now; from then on a new staff sign-in has no row and starts with the owners' default (nothing) until Danielle or Kyle gives access.
+    do $$ begin
+      if not exists(select 1 from information_schema.tables where table_name='staff_access') then
+        create table staff_access (
+          user_id uuid primary key references users(id) on delete cascade,
+          modules text[] not null default '{}',
+          blocked boolean not null default false,
+          note text not null default '',
+          updated_by uuid references users(id) on delete set null,
+          updated_at timestamptz not null default now()
+        );
+        insert into staff_access(user_id, modules) select id, ARRAY[${MODULE_IDS.map(m => `'${m}'`).join(',')}]::text[] from users where role='admin';
+      end if;
+    end $$;
+    create table if not exists staff_access_log (
+      id bigserial primary key,
+      user_id uuid,
+      user_email text not null default '',
+      actor_id uuid,
+      actor_email text not null default '',
+      change jsonb not null default '{}',
+      at timestamptz not null default now()
+    );
+    create index if not exists staff_access_log_at_idx on staff_access_log (at desc);
     do $$ begin
       if not exists(select 1 from information_schema.columns where table_name='users' and column_name='email_verified_at') then
         alter table users add column email_verified_at timestamptz;

@@ -23,7 +23,7 @@ export JOURNEY_TMP="$(mktemp -d)"; T="$JOURNEY_TMP"; mkdir -p "$T/uploads"
 [ -z "${PLAYWRIGHT_PATH:-}" ] && [ -d /opt/node22/lib/node_modules/playwright ] && export PLAYWRIGHT_PATH=/opt/node22/lib/node_modules/playwright
 psql "$DATABASE_URL" -qAtc "delete from app_settings where key='techPackBilling'" >/dev/null 2>&1 # start every run with the payment gate on automatic
 for port in 3123 3124 3125 3126 3127 3128 3129 3130 3131 3132 3133 3135; do for p in $(ss -ltnp 2>/dev/null | grep ":$port " | grep -o 'pid=[0-9]*' | cut -d= -f2); do kill -9 "$p"; done; done
-COMMON=(DATABASE_URL="$DATABASE_URL" JWT_SECRET=smoke-secret UPLOAD_DIR="$T/uploads" FOLLOWUPS_DISABLED=true VENDOR_DATA_KEY=00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff VENDOR_REVEAL_EMAILS=@chaos.test)
+COMMON=(DATABASE_URL="$DATABASE_URL" JWT_SECRET=smoke-secret STAFF_ACCESS_DEFAULT=all UPLOAD_DIR="$T/uploads" FOLLOWUPS_DISABLED=true VENDOR_DATA_KEY=00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff VENDOR_REVEAL_EMAILS=@chaos.test)
 FIX=scripts/journeys/fixtures/ai-runner.json
 # A: production-like (no dev bypass), fixture assistant, billing on, no Shopify, /start limit lifted so the mistakes are not throttled.
 #    Its connection pool is deliberately tiny (4): any request that holds a database connection while asking for a second one hangs here.
@@ -59,6 +59,7 @@ node scripts/journeys/cap.mjs          || RC=1
 node scripts/journeys/booth.mjs        || RC=1
 node scripts/journeys/contracts.mjs    || RC=1
 node scripts/journeys/autopay.mjs      || RC=1
+node scripts/journeys/team.mjs         || RC=1
 kill -9 $PA $PB $PC $PD $PE $PF $PG $PH $PM 2>/dev/null; wait $PA $PB $PC $PD $PE $PF $PG $PH $PM 2>/dev/null
 [ -n "$THROWAWAY" ] && psql "postgres://postgres:postgres@localhost:5432/postgres" -qAtc "drop database if exists $THROWAWAY with (force)" >/dev/null 2>&1
 echo "journeys: $([ $RC = 0 ] && echo 'all clear' || echo 'PROBLEMS FOUND')"; exit $RC
