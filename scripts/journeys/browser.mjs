@@ -1,5 +1,5 @@
 import { createRequire } from 'node:module';
-import { journey, ok, summary, api, jpeg, codeFrom, sleep, waitAi, forge, sql, stamp, S, setAsideOpportunities, withOpportunityLock } from './lib.mjs';
+import { journey, ok, summary, api, jpeg, codeFrom, sleep, waitAi, forge, sql, stamp, S, setAsideOpportunities, withOpportunityLock, ownerOf } from './lib.mjs';
 const { chromium } = createRequire(import.meta.url)(process.env.PLAYWRIGHT_PATH || 'playwright');
 const BASE = 'http://127.0.0.1:3123', LOG = `${S}/server-j-a.log`, call = api(BASE), runner = jpeg(), FX = (await import('./lib.mjs')).FX;
 let n = 0; const em = tag => `ju${tag}-${stamp}-${++n}@chaos.test`;
@@ -175,7 +175,7 @@ await journey('J33', 'message center on a phone: list → thread → send, reply
 
 await journey('J37', 'staff switches: free access for one client, and the payment gate for everyone', async () => {
   const r = await room('37', { wait: false }), W = 'http://work.localhost:3123';
-  const admin = await forge({ sub: sql(`select id from users where lower(email)='${r.email}'`), clientId: r.clientId, role: 'admin' });
+  const admin = await ownerOf(r.clientId);
   const second = (await call('/v1/tech-packs', { token: r.token, body: { title: 'Second pack', projectId: r.projectId, photos: [runner] } })).json; ok(second.ai === 'locked', 'setup: the client has a pack waiting for payment', second.ai);
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
   const page = await ctx.newPage(); page.errs = []; page.on('pageerror', e => page.errs.push(e.message)); const dialogs = []; page.on('dialog', d => { dialogs.push(d.message()); d.accept(); });
@@ -201,7 +201,7 @@ await journey('J37', 'staff switches: free access for one client, and the paymen
 
 await journey('J38', 'the whole customer path with the payment gate on, then off, switched live on the same server', async () => {
   const seed = await room('38s', { wait: false });
-  const admin = await forge({ sub: sql(`select id from users where lower(email)='${seed.email}'`), clientId: seed.clientId, role: 'admin' });
+  const admin = await ownerOf(seed.clientId);
   const setMode = m => call('/v1/admin/tech-pack-billing', { method: 'PUT', token: admin, body: { mode: m } });
   const field = '[data-path=\'["style","styleName"]\']', PAY = /first tech pack was on us|\$48|Unlock this tech pack/i;
   const status = async (token, id) => (await call(`/v1/products/${id}/tech-pack/draft`, { token })).json.techPack;

@@ -1,4 +1,4 @@
-import { journey, ok, summary, api, jpeg, png, bigJpeg, hugeHeaderPng, codeFrom, sleep, waitAi, forge, sql, stamp, S, setAsideOpportunities, withOpportunityLock } from './lib.mjs';
+import { journey, ok, summary, api, jpeg, png, bigJpeg, hugeHeaderPng, codeFrom, sleep, waitAi, forge, sql, stamp, S, setAsideOpportunities, withOpportunityLock, ownerOf } from './lib.mjs';
 import { readFileSync } from 'node:fs';
 const BASE = 'http://127.0.0.1:3123', LOG = `${S}/server-j-a.log`, call = api(BASE), runner = jpeg();
 let n = 0; const em = tag => `j${tag}-${stamp}-${++n}@chaos.test`;
@@ -288,7 +288,7 @@ await journey('J36', 'payment gate: free access per client, a global switch, and
   let restore = null;
   try {
   const a = await newRoom('36'), cid = a.r.json.client.id, pid = a.r.json.project.id;
-  const admin = await forge({ sub: sql(`select id from users where lower(email)='${a.email}'`), clientId: cid, role: 'admin' }); restore = () => call('/v1/admin/tech-pack-billing', { method: 'PUT', token: admin, body: { mode: 'auto' } });
+  const admin = await ownerOf(cid); restore = () => call('/v1/admin/tech-pack-billing', { method: 'PUT', token: admin, body: { mode: 'auto' } });
   const hubPack = async (title) => (await call('/v1/tech-packs', { token: a.token, body: { title, projectId: pid, photos: [runner] } })).json;
   const adm = (path, o = {}) => call(path, { token: admin, ...o });
   ok((await call('/v1/admin/tech-pack-billing', { token: a.token })).status === 403 && (await call('/v1/admin/tech-pack-billing')).status === 401, 'only staff can read or change the gate');
