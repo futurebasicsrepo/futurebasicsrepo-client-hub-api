@@ -60,6 +60,8 @@ export async function waitAi(call, token, productId, ms = 25000) {
 }
 export const secret = new TextEncoder().encode('smoke-secret');
 export const forge = async (claims, { exp = '7d', iss = 'future-basics-client-hub', key = secret } = {}) => new SignJWT(claims).setProtectedHeader({ alg: 'HS256' }).setIssuer(iss).setIssuedAt().setExpirationTime(exp).sign(key);
+// Danielle and Kyle are the owners: changing the tech pack payment gate is for them. A journey that switches the gate acts as Kyle (the room's own user stays a stand-in for a teammate).
+export const ownerOf = async clientId => forge({ sub: sql(`select id from users where lower(email)='kyle@thefuturebasics.com'`).split('\n')[0] || sql(`insert into users(client_id,email,name,role) values('${clientId}','kyle@thefuturebasics.com','kyle','admin') returning id`).split('\n')[0], clientId, role: 'admin', email: 'kyle@thefuturebasics.com' });
 
 // The opportunity list shows the strongest 60 of everyone in the CRM, and a full suite leaves hundreds of rooms there (each tech pack customer is a contact).
 // A journey that checks its own people sets everyone already there aside first (dismissed for a day), so what it checks does not depend on how many journeys ran before it.

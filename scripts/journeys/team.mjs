@@ -42,6 +42,8 @@ await journey('J190', 'Team access: owners give each person modules, everyone el
     // more modules, a preset-sized set
     ok((await O(`/users/${patId}`, { method: 'PUT', body: { modules: ['crm', 'clients', 'brand'] } })).status === 200 && (await P('/v1/admin/dashboard')).status === 200 && (await P('/v1/brand')).status === 200 && (await P('/v1/contracts')).status === 403, 'more modules open exactly what was added');
 
+    const gate = await P('/v1/admin/tech-pack-billing', { method: 'PUT', body: { mode: 'auto' } }); ok(gate.status === 403 && codeOf(gate) === 'OWNER_ONLY' && (await P('/v1/admin/tech-pack-billing')).status === 200 && (await O('/me')).status === 200 && (await call('/v1/admin/tech-pack-billing', { method: 'PUT', token: kyleT, body: { mode: 'auto' } })).status === 200, 'changing the payment gate is for the owners; a teammate with Clients and projects can read it', gate.json);
+
     // pause and resume
     ok((await O(`/users/${patId}`, { method: 'PUT', body: { blocked: true } })).status === 200, 'an owner pauses someone');
     const paused = await P('/v1/sales/contacts'); ok(paused.status === 403 && codeOf(paused) === 'STAFF_PAUSED', 'a paused person is refused everything', paused.json);
