@@ -2,12 +2,12 @@
 
 A part of the work console for Danielle and Kyle (and anyone they tick it for on **Team access**). It looks at what brands like Ralph Lauren, Aimé Leon Dore and A-COLD-WALL* make and what is selling through, so line plans start from the market and the Future Basics brand code instead of a blank page.
 
-This is the first of three parts.
+The first two of three parts are built.
 
 | Part | What it does | State |
 | --- | --- | --- |
 | **L1 Library** | The brand code, the brands we watch, an automatic reader of the public web, the library of what it found | built (this document) |
-| **L2 Line plan** | Trend read across every category, assortment, price ladder, margin with the landed-cost model | next |
+| **L2 Line plan** | The trend read across every category, a price ladder held to the Zara line, a line plan drafted from the library and the brand code, margin against the brand code's economics | built (this document) |
 | **L3 Concepts** | Concepts with the Future Basics twist, a "too close to the reference" check, an approval board, an approved concept becomes a product and runs the tech pack | after L2 |
 
 ## Who can open it
@@ -44,7 +44,29 @@ From a shop's own feed: the share of sizes sold out, weighted by how recently th
 
 ## The page
 
-`/lab`: **Library** (filter by category, brand, word; sort by newest, selling fastest or price; save, hide, open the brand's own page; add a piece by pasting its address), **Brands we watch** (read now, pause, remove, add), **Brand code**, and the log of what the Lab has read.
+`/lab`: **Library** (filter by category, brand, word; sort by newest, selling fastest or price; save, hide, open the brand's own page; add a piece by pasting its address), **What's moving**, **Line plans**, **Brands we watch** (read now, pause, remove, add), **Brand code**, and the log of what the Lab has read.
+
+## What's moving (the trend read)
+
+Plain arithmetic over the library, so it costs nothing and can be checked. Per category: how many pieces, the reference brands' price range and median, the price anchor's own range and median, how much of what has stock data is **moving** (heat 30 or more), how much is new this month, and the colours, fabrics, shapes and details that keep appearing (the same colour in different case counts once). Luxury "cuts only" brands (Prada, Gucci) feed the shapes and details but never the price evidence.
+
+### The price ladder
+
+The ladder is the price range a piece in that category is held to: **entry** (the anchor's 25th percentile), **core** (its median) and the **cap** (its 75th percentile, nothing above it). When the Lab has read at least three priced pieces from the price anchor (Zara) the ladder is Zara's own prices. When it has not, the ladder is **estimated** from the reference brands at 40% of their prices and is marked as an estimate; with fewer than three priced pieces there is no ladder and the page says so.
+
+## Line plans
+
+A plan is a season's assortment: pieces with a **role** (core, trend, hero, entry), a category, a target price, an estimated landed cost and a starting quantity. **Draft the plan** asks the assistant to build one from the library and the brand code: it is given the brand code, each category's ladder, colours, fabrics, shapes, details and the pieces that are moving, plus the role mix to aim for (about 15% hero, 30% trend, 15% entry, the rest core). It is told every piece is ours to design: no brand's product names, logos or prints, and each piece gets a specific "twist" that is ours. The answer is then made safe in code before it is saved: real categories only, prices clamped to the ladder cap, starting quantities near a factory's usual minimum (core 500, trend 300, hero 150, entry 500), and references only to library pieces that exist.
+
+Everything is editable on the page: name, category, role, price, cost, quantity, drop and restore, add a piece, rename, mark the plan approved, delete it, and **download it as a CSV** (quoted for spreadsheets; a cell that starts like a formula is neutralised).
+
+### Landed cost and margin
+
+Until a concept becomes a real tech pack, landed cost is an **estimate**: the brand code's cost ratio (default 28% of the shelf price) times the price. A piece's cost stays empty, so the estimate follows the brand code if you change it, until you type the real cost; clearing it goes back to the estimate. Once a concept becomes a tech pack (Lab L3) the bill of materials gives the true landed cost. The brand code also holds the **lowest acceptable gross margin** (default 60%).
+
+### What gets flagged
+
+A piece above the ladder cap ("Above the Zara line for tops ($40)"), a margin under the floor, a piece with no price, a plan that leans on one category (over 40% with six or more pieces), no hero, no core, no entry price, and pieces with no quantity. Dropped pieces are not flagged and are left out of the totals (pieces, median price, blended margin, units, revenue at the shelf price, gross).
 
 ## Automatic reading
 
@@ -59,6 +81,7 @@ A job runs every six hours and reads up to three brands that have not been read 
 | `LAB_AUTO` | `off` stops the six-hourly job |
 | `LAB_DAILY_CENTS` | daily AI allowance for reading (default 200, about two dollars); past it pieces are saved without a design read |
 | `LAB_FETCH_DELAY_MS` | pause between requests to one site (default 700) |
+| `LAB_DAILY_PLANS` | how many assistant-drafted plans can be made in 24 hours (default 10) |
 | `LAB_WEB_QUERIES`, `LAB_IMAGE_QUERIES` | searches per brand when falling back (default 4 and 3) |
 
 ## Where it lives
@@ -67,8 +90,9 @@ A job runs every six hours and reads up to three brands that have not been read 
 | --- | --- |
 | Categories, robots rules, feed and page parsers, sell-through, brand code, watchlist (no network) | `src/lab.js` |
 | The scanner, the AI read, saving, the due-brand job | `src/lab-scan.js` |
+| The trend read, price ladder, line plan logic, the assistant's brief and the CSV (no network) | `src/lab-plan.js` |
 | The API | `src/lab-routes.js` |
 | The page | `src/lab.html` at `/lab` |
 | Module and access | `src/staff-access.js` (`lab`, held back), `src/console-nav.js` |
-| Tables | `lab_brands`, `lab_items`, `lab_scans` (`src/db.js`) |
-| Tests | `test/lab.test.js`, journeys J193 (API), J194 (library, brand code, watchlist), J195 (browser) |
+| Tables | `lab_brands`, `lab_items`, `lab_scans`, `lab_plans`, `lab_plan_lines` (`src/db.js`) |
+| Tests | `test/lab.test.js`, `test/lab-plan.test.js`, journeys J193 (API), J194 (library, brand code, watchlist), J195 (browser), J196 (trends and plans, API), J197 (plans, browser) |
