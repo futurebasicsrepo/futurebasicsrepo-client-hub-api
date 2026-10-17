@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { MODULES, MODULE_IDS, PRESETS, moduleFor, isOwner, ownerList, cleanModules, parseDefault, reach, createStaffAccess } from '../src/staff-access.js';
+import { MODULES, MODULE_IDS, OPEN_IDS, PRESETS, moduleFor, isOwner, ownerList, cleanModules, parseDefault, reach, createStaffAccess } from '../src/staff-access.js';
 
 const ENV = {};
 
@@ -12,13 +12,13 @@ test('the owners are Danielle and Kyle unless ACCESS_ADMIN_EMAILS says otherwise
 });
 
 test('every staff route belongs to a module, and the module ids are unique and labelled', () => {
-  assert.equal(new Set(MODULE_IDS).size, MODULES.length); assert.ok(MODULES.every(m => m.label && m.hint && m.group));
+  assert.equal(new Set(MODULE_IDS).size, MODULES.length); assert.ok(MODULES.find(m => m.id === 'lab').restricted && !OPEN_IDS.includes('lab') && OPEN_IDS.length === MODULES.length - 1); assert.ok(MODULES.every(m => m.label && m.hint && m.group));
   const cases = {
     '/v1/sales/contacts/:id': 'crm', '/v1/sales/deals': 'crm', '/v1/sales/email/settings': 'crm', '/v1/sales/opportunities': 'crm', '/v1/sales/overview': 'crm', '/v1/sales/templates': 'crm',
     '/v1/sales/chats': 'messages', '/v1/sales/chats/:id/reply': 'messages', '/v1/admin/message-center': 'messages', '/v1/admin/notifications/:id/read': 'messages',
     '/v1/sales/automations': 'automations', '/v1/sales/runs/:id/stop': 'automations', '/v1/sales/contacts/:id/runs': 'automations', '/v1/sales/press/releases': 'press',
     '/v1/intel/signals': 'intel', '/v1/contracts': 'contracts', '/v1/contracts/:id/send': 'contracts', '/v1/admin/prototypes': 'prototypes', '/v1/admin/builds/:id': 'builds',
-    '/v1/admin/factories': 'factories', '/v1/admin/platform/health': 'platform', '/v1/admin/shopify/status': 'platform', '/v1/brand': 'brand',
+    '/v1/admin/factories': 'factories', '/v1/admin/platform/health': 'platform', '/v1/admin/shopify/status': 'platform', '/v1/brand': 'brand', '/v1/lab/items': 'lab', '/v1/lab/brands/:id/scan': 'lab',
     '/v1/admin/clients/:id': 'clients', '/v1/admin/products/:id/tech-pack': 'clients', '/v1/admin/projects/:id/messages': 'clients', '/v1/admin/learning': 'clients', '/v1/admin/dashboard': 'clients',
     '/v1/products/:id/files': 'clients', '/v1/projects/:id': 'clients', '/v1/invoices/:id/download': 'clients', '/v1/room-files/:id': 'clients',
     '/v1/admin/home': null, '/v1/staff-access/me': null, '/v1/staff-access': null, '/v1/money/invoices': null, '/v1/session': null, '/healthz': null
@@ -41,8 +41,8 @@ test('a person can open only what is ticked; a new person gets the default; the 
 
 test('module lists are cleaned and the starting default can be everything, a list, or nothing', () => {
   assert.deepEqual(cleanModules(['press', 'crm', 'crm', 'x']), ['crm', 'press'], 'the page order, once each, real ids only'); assert.deepEqual(cleanModules('crm'), []);
-  assert.deepEqual(parseDefault('all'), MODULE_IDS); assert.deepEqual(parseDefault('crm, brand'), ['crm', 'brand']); assert.deepEqual(parseDefault(''), []); assert.deepEqual(parseDefault(undefined), []);
-  assert.ok(PRESETS.every(p => p.modules.every(m => MODULE_IDS.includes(m))) && PRESETS.find(p => p.id === 'everything').modules.length === MODULES.length && PRESETS.find(p => p.id === 'nothing').modules.length === 0);
+  assert.deepEqual(parseDefault('all'), OPEN_IDS); assert.deepEqual(parseDefault('crm, brand'), ['crm', 'brand']); assert.deepEqual(parseDefault('crm, lab'), ['crm'], 'the Design Lab is never a default'); assert.deepEqual(parseDefault(''), []); assert.deepEqual(parseDefault(undefined), []);
+  assert.ok(PRESETS.every(p => p.modules.every(m => MODULE_IDS.includes(m))) && PRESETS.find(p => p.id === 'everything').modules.length === OPEN_IDS.length && !PRESETS.some(p => p.modules.includes('lab')) && PRESETS.find(p => p.id === 'nothing').modules.length === 0);
 });
 
 function fake(rows, settings = {}) {
@@ -81,5 +81,6 @@ test('the default for new people is the owners\' stored choice, then STAFF_ACCES
   assert.deepEqual(await none.defaults(), []); assert.equal((await none.check(req(U3, '/v1/brand'))).status, 403);
   assert.deepEqual(await none.setDefaults(['brand', 'zzz']), ['brand']); assert.equal(await none.check(req(U3, '/v1/brand')), null, 'the stored default applies to people with no row');
   const withEnv = createStaffAccess({ pool: { query: async () => ({ rows: [] }) }, env: { STAFF_ACCESS_DEFAULT: 'all' }, getSetting: async () => null, setSetting: async () => {} });
-  assert.deepEqual(await withEnv.defaults(), MODULE_IDS);
+  assert.deepEqual(await withEnv.defaults(), OPEN_IDS, 'everything does not hand out the held-back Design Lab');
+  assert.deepEqual(await none.setDefaults(['brand', 'lab']), ['brand'], 'saving the default drops the Design Lab');
 });

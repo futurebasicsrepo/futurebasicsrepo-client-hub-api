@@ -1,6 +1,6 @@
 import pg from 'pg';
 import { createBlobLayer, externalize } from './pack-blobs.js';
-import { MODULE_IDS } from './staff-access.js';
+import { OPEN_IDS } from './staff-access.js';
 
 export const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
@@ -114,7 +114,7 @@ export async function migrate() {
           updated_by uuid references users(id) on delete set null,
           updated_at timestamptz not null default now()
         );
-        insert into staff_access(user_id, modules) select id, ARRAY[${MODULE_IDS.map(m => `'${m}'`).join(',')}]::text[] from users where role='admin';
+        insert into staff_access(user_id, modules) select id, ARRAY[${OPEN_IDS.map(m => `'${m}'`).join(',')}]::text[] from users where role='admin';
       end if;
     end $$;
     create table if not exists staff_access_log (
@@ -127,6 +127,57 @@ export async function migrate() {
       at timestamptz not null default now()
     );
     create index if not exists staff_access_log_at_idx on staff_access_log (at desc);
+    -- The Design Lab (src/lab.js): the brands we watch, what they make (facts and a link, never a copied picture) and each scan.
+    create table if not exists lab_brands (
+      id uuid primary key default gen_random_uuid(),
+      name text not null,
+      site text not null default '',
+      role text not null default 'reference' check (role in ('reference','price','cuts')),
+      note text not null default '',
+      enabled boolean not null default true,
+      last_scanned_at timestamptz,
+      last_scan_note text not null default '',
+      created_at timestamptz not null default now()
+    );
+    create unique index if not exists lab_brands_name_idx on lab_brands (lower(name));
+    create table if not exists lab_items (
+      id uuid primary key default gen_random_uuid(),
+      brand_id uuid references lab_brands(id) on delete cascade,
+      source text not null default 'site' check (source in ('feed','page','search','image','manual')),
+      url text not null,
+      title text not null,
+      image_url text not null default '',
+      price_cents integer,
+      currency text not null default 'USD',
+      category text not null default 'other',
+      attrs jsonb not null default '{}',
+      sellthrough jsonb,
+      heat integer,
+      summary text not null default '',
+      status text not null default 'new' check (status in ('new','saved','hidden')),
+      note text not null default '',
+      first_seen_at timestamptz not null default now(),
+      last_seen_at timestamptz not null default now(),
+      published_at timestamptz,
+      read_at timestamptz
+    );
+    create unique index if not exists lab_items_url_idx on lab_items (url);
+    create index if not exists lab_items_brand_idx on lab_items (brand_id, last_seen_at desc);
+    create index if not exists lab_items_cat_idx on lab_items (category, first_seen_at desc);
+    create table if not exists lab_scans (
+      id bigserial primary key,
+      brand_id uuid references lab_brands(id) on delete cascade,
+      started_at timestamptz not null default now(),
+      finished_at timestamptz,
+      method text not null default '',
+      found integer not null default 0,
+      added integer not null default 0,
+      blocked boolean not null default false,
+      note text not null default '',
+      cost_cents numeric not null default 0,
+      by_user uuid references users(id) on delete set null
+    );
+    create index if not exists lab_scans_at_idx on lab_scans (started_at desc);
     do $$ begin
       if not exists(select 1 from information_schema.columns where table_name='users' and column_name='email_verified_at') then
         alter table users add column email_verified_at timestamptz;
