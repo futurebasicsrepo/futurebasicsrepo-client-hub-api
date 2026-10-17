@@ -40,6 +40,7 @@
       { label: 'Library', href: '/lab#library', module: 'lab' },
       { label: 'What\'s moving', href: '/lab#trends', module: 'lab' },
       { label: 'Line plans', href: '/lab#plans', module: 'lab' },
+      { label: 'Concepts', href: '/lab#board', module: 'lab' },
       { label: 'Brands we watch', href: '/lab#brands', module: 'lab' },
       { label: 'Brand code', href: '/lab#code', module: 'lab' }] },
     { id: 'deliver', label: 'Deliver', icon: 'box', items: [

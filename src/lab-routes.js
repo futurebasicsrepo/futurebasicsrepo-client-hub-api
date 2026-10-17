@@ -11,8 +11,9 @@
 //   GET  /v1/lab/scans                    what each scan did, and why it fell back to search when a site said no
 import { providerReady, ask as realAsk } from './intel-llm.js';
 import { CATEGORIES, CATEGORY_IDS, categoryLabel, cleanCategory, BRAND_ROLES, SEED_BRANDS, ITEM_STATUSES, DEFAULT_BRAND_CODE, cleanBrandCode, cleanBrand, heatLabel } from './lab.js';
+import { createLabData } from './lab-data.js';
 import { scanBrand, scanDue, addByUrl, dailyCents } from './lab-scan.js';
-import { trendRead, ROLES, cleanLine, lineWarnings, planSummary, generateLines, planCsv, marginOf, defaultCost } from './lab-plan.js';
+import { ROLES, cleanLine, lineWarnings, planSummary, generateLines, planCsv, marginOf, defaultCost } from './lab-plan.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const clip = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
@@ -29,7 +30,7 @@ export function registerLabRoutes(app, d) {
   const needId = (req, reply) => UUID.test(req.params.id) || (bad(reply, 'Not found', 404), false);
   const actorOf = req => (UUID.test(String(req.auth?.sub || '')) ? req.auth.sub : null);
   const running = new Set();
-  const loadCode = async () => cleanBrandCode(await getSetting('labBrandCode').catch(() => null) || {});
+  const { loadCode, library, trendsFor } = createLabData(pool, getSetting);
   const deps = async req => ({ env, fetchImpl, askImpl, crawlOpts, delayMs, code: await loadCode(), by: req ? actorOf(req) : null, log });
   const brandShape = r => ({ id: r.id, name: r.name, site: r.site, role: r.role, roleLabel: BRAND_ROLES.find(x => x.id === r.role)?.label || r.role, note: r.note, enabled: r.enabled, lastScannedAt: r.last_scanned_at, lastScanNote: r.last_scan_note, items: Number(r.items || 0), newItems: Number(r.new_items || 0), scanning: running.has(r.id) });
   const itemShape = r => ({ id: r.id, brandId: r.brand_id, brand: r.brand_name || '', source: r.source, url: r.url, title: r.title, imageUrl: r.image_url, price: r.price_cents == null ? null : r.price_cents / 100, currency: r.currency, category: r.category, categoryLabel: categoryLabel(r.category),
@@ -133,9 +134,6 @@ export function registerLabRoutes(app, d) {
     return { scans: rows.map(s => ({ id: Number(s.id), brand: s.brand_name || '', startedAt: s.started_at, finishedAt: s.finished_at, method: s.method, found: s.found, added: s.added, blocked: s.blocked, note: s.note, costCents: Number(s.cost_cents) })) };
   });
   // ---- trends and line plans ----
-  const library = async days => (await pool.query(`select i.id, i.title, i.category, i.price_cents, i.heat, i.first_seen_at, i.attrs, b.name brand, b.role from lab_items i left join lab_brands b on b.id=i.brand_id
-    where i.status<>'hidden' and i.last_seen_at > now() - ($1 || ' days')::interval order by i.last_seen_at desc limit 6000`, [String(days)])).rows.map(r => ({ id: r.id, title: r.title, category: r.category, price: r.price_cents == null ? null : r.price_cents / 100, heat: r.heat, firstSeenAt: r.first_seen_at, attrs: r.attrs || {}, brand: r.brand || '', role: r.role || 'reference' }));
-  const trendsFor = async days => trendRead(await library(days));
   const ladderMap = t => Object.fromEntries(t.categories.filter(c => c.ladder).map(c => [c.id, c.ladder]));
   const lineShape = (r, ladders, econ, anchor, refs = new Map()) => {
     const l = { id: r.id, planId: r.plan_id, category: r.category, categoryLabel: categoryLabel(r.category), role: r.role, name: r.name, brief: r.brief, twist: r.twist, rationale: r.rationale, priceCents: r.price_cents, costCents: r.cost_cents, qty: r.qty, status: r.status, sort: r.sort, refs: (r.refs || []).map(id => refs.get(id)).filter(Boolean) };
@@ -149,7 +147,8 @@ export function registerLabRoutes(app, d) {
     const rows = (await pool.query('select * from lab_plan_lines where plan_id=$1 order by sort, created_at', [id])).rows;
     const ids = [...new Set(rows.flatMap(r => r.refs || []))], refs = new Map();
     if (ids.length) for (const r of (await pool.query(`select i.id, i.title, i.url, i.image_url, b.name brand from lab_items i left join lab_brands b on b.id=i.brand_id where i.id = any($1::uuid[])`, [ids])).rows) refs.set(r.id, { id: r.id, title: r.title, url: r.url, imageUrl: r.image_url, brand: r.brand || '' });
-    const lines = rows.map(r => lineShape(r, ladders, econ, anchor, refs));
+    const cc = new Map((await pool.query(`select line_id, count(*)::int n, count(*) filter (where status in ('approved','tech_pack'))::int approved, (array_agg(product_id) filter (where product_id is not null))[1] product_id from lab_concepts where plan_id=$1 and line_id is not null group by line_id`, [id])).rows.map(r => [r.line_id, r]));
+    const lines = rows.map(r => ({ ...lineShape(r, ladders, econ, anchor, refs), conceptCount: cc.get(r.id)?.n || 0, approvedConcepts: cc.get(r.id)?.approved || 0, productId: cc.get(r.id)?.product_id || null }));
     return { plan: planShape({ ...plan, lines: rows.length }), lines, summary: planSummary(lines.map(l => ({ ...l })), ladders, econ, anchor), ladders, economics: econ, anchor, roles: ROLES };
   }
   const touch = id => pool.query('update lab_plans set updated_at=now() where id=$1', [id]);

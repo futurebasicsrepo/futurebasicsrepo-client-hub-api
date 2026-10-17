@@ -62,6 +62,17 @@ h1{font-size:clamp(30px,5vw,48px);letter-spacing:-.035em;font-weight:500;margin:
 .lt input,.lt select{border:1px solid var(--line);border-radius:8px;padding:5px 7px;background:#fff;min-width:0;width:100%}.lt .num{width:78px}.lt select{min-width:112px}.lt tr.dropped td{opacity:.45}
 .lt details summary{cursor:pointer;color:var(--dim);font-size:12.5px}.lt details p{margin:4px 0;max-width:46ch}
 .wrapx{overflow-x:auto}
+.cgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px}
+.cc{background:#fff;border:1px solid var(--line);border-radius:18px;overflow:hidden;display:flex;flex-direction:column;min-width:0;cursor:pointer}.cc:hover{border-color:var(--ink)}.cc.approved{border-color:var(--ok);box-shadow:0 0 0 1px var(--ok)}.cc.rejected{opacity:.55}
+.cc .ph{aspect-ratio:1/1;background:var(--fog);display:grid;place-items:center;color:var(--dim);font-size:12px;overflow:hidden;text-align:center;padding:10px}.cc .ph img{width:100%;height:100%;object-fit:cover}
+.cc .bd{padding:10px 14px 14px;display:grid;gap:6px}.cc h3{margin:0;font-size:15px;font-weight:600;overflow-wrap:anywhere}
+dialog.cd{border:0;border-radius:24px;padding:0;width:min(980px,96vw);max-height:92vh;overflow:auto;background:#fff;color:var(--ink)}dialog.cd::backdrop{background:rgba(20,20,22,.55)}
+.cd .in{padding:22px;display:grid;gap:16px}.cd .top{display:grid;grid-template-columns:minmax(220px,380px) 1fr;gap:20px}.cd .big{aspect-ratio:1/1;background:var(--fog);border-radius:16px;overflow:hidden;display:grid;place-items:center;color:var(--dim);text-align:center;padding:10px}.cd .big img{width:100%;height:100%;object-fit:cover}
+.cd label{display:grid;gap:3px}.cd label>span{font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}.cd .t{width:100%}
+.refs{display:flex;gap:10px;overflow-x:auto;padding-bottom:4px}.ref{flex:0 0 150px;border:1px solid var(--line);border-radius:12px;overflow:hidden;font-size:12px;background:#fff}.ref .ph{aspect-ratio:1/1;background:var(--fog);overflow:hidden}.ref img{width:100%;height:100%;object-fit:cover}.ref div{padding:6px 8px}
+.verdict{border-radius:14px;padding:12px 14px;display:grid;gap:6px}.verdict.clear{background:#e4f6ec}.verdict.check{background:#fff1d6}.verdict.too_close{background:#fbe5e2}.verdict ul{margin:0;padding-left:18px}
+.cm{display:grid;gap:8px}.cm .c{border-top:1px solid var(--line);padding-top:6px;font-size:13px}.cm .c b{margin-right:6px}.cm .c time{color:var(--dim);font-size:12px}
+@media(max-width:700px){.cd .top{grid-template-columns:1fr}.cd .in{padding:16px}}
 @media(max-width:700px){.two{grid-template-columns:1fr}.grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.panel{padding:16px}}
 </style>
 </head>
@@ -105,6 +116,12 @@ h1{font-size:clamp(30px,5vw,48px);letter-spacing:-.035em;font-weight:500;margin:
         <div class="plans" id="planList" style="margin-top:16px"></div>
         <div id="planView" class="hidden" style="margin-top:18px;border-top:1px solid var(--line);padding-top:16px"></div>
       </div></section>
+
+    <section class="sec" id="board"><div class="hd"><h2>Concepts</h2><p class="note">Our own take on each planned piece: a picture, a specific twist, and a check against what inspired it. Look at a concept beside the pieces it was drawn from before you approve it. An approved concept becomes a product in the Future Basics room and its tech pack is drafted from it.</p></div>
+      <div class="panel"><div class="filters" id="bFilters" role="group" aria-label="Concept status"></div><div class="row" style="margin-bottom:12px"><select class="t" id="bPlan" aria-label="Plan"><option value="">All plans</option></select><span class="sub" id="bNote"></span></div>
+        <div class="cgrid" id="cgrid"></div><p class="note hidden" id="cEmpty">No concepts yet. Open a line plan and press “Make concepts” on a piece.</p></div></section>
+
+    <dialog class="cd" id="cd" aria-label="Concept"></dialog>
 
     <section class="sec" id="brands"><div class="hd"><h2>Brands we watch</h2><p class="note">The Lab reads each one on its own every few days. It follows each site's robots.txt, goes slowly, and when a site says no, or sits behind a bot wall, it finds the brand's pieces through ordinary web and image search instead.</p></div>
       <div class="panel">
@@ -256,7 +273,7 @@ function drawPlan(){
     <div class="tiles"><div class="tile"><b>${s.count}</b><span>Pieces</span></div><div class="tile"><b>${s.priceMedian!=null?usd(s.priceMedian):'—'}</b><span>Median price</span></div><div class="tile"><b>${s.blendedMarginPct!=null?s.blendedMarginPct+'%':'—'}</b><span>Blended margin</span></div><div class="tile"><b>${s.units.toLocaleString()}</b><span>Units</span></div><div class="tile"><b>${money(s.revenueCents)}</b><span>Revenue at shelf</span></div><div class="tile"><b>${money(s.grossCents)}</b><span>Gross</span></div><div class="tile"><b ${s.lineWarnings?'style="color:var(--bad)"':''}>${s.lineWarnings}</b><span>Flags</span></div></div>
     ${s.notes.length?`<ul class="sub" style="margin:0 0 10px;padding-left:18px">${s.notes.map(n=>`<li>${esc(n)}</li>`).join('')}</ul>`:''}
     <h3 style="margin:14px 0 4px;font-size:15px">Price ladder against ${esc(P.anchor)}</h3>${ladderRows(P)||'<p class="note">Add priced pieces to see the ladder.</p>'}
-    <div class="wrapx" style="margin-top:14px"><table class="lt"><thead><tr><th>Piece</th><th>Category</th><th>Role</th><th>Price</th><th>Cost</th><th>Margin</th><th>Qty</th><th></th></tr></thead><tbody>${P.lines.map(l=>`<tr class="${l.status==='dropped'?'dropped':''}" data-line="${l.id}">
+    <div class="wrapx" style="margin-top:14px"><table class="lt"><thead><tr><th>Piece</th><th>Category</th><th>Role</th><th>Price</th><th>Cost</th><th>Margin</th><th>Qty</th><th>Concepts</th><th></th></tr></thead><tbody>${P.lines.map(l=>`<tr class="${l.status==='dropped'?'dropped':''}" data-line="${l.id}">
       <td style="min-width:200px"><input data-f="name" value="${esc(l.name)}" maxlength="100" aria-label="Name">
         <details><summary>${l.twist?esc(l.twist.slice(0,60))+(l.twist.length>60?'…':''):'Details'}</summary><p><b>What:</b> ${esc(l.brief)||'—'}</p><p><b>Our twist:</b> ${esc(l.twist)||'—'}</p><p><b>Why:</b> ${esc(l.rationale)||'—'}</p>${l.refs.length?`<p><b>Looked at:</b> ${l.refs.map(r=>safe(r.url)?`<a href="${esc(safe(r.url))}" target="_blank" rel="noopener noreferrer">${esc(r.title)}</a>`:esc(r.title)).join(' · ')}</p>`:''}
         <label class="sub">Our twist<input data-f="twist" value="${esc(l.twist)}" maxlength="400"></label></details>
@@ -264,6 +281,7 @@ function drawPlan(){
       <td><select data-f="category">${sel(cats,l.category)}</select></td><td><select data-f="role">${sel(P.roles,l.role)}</select></td>
       <td><input class="num" data-f="price" inputmode="decimal" value="${l.price??''}" aria-label="Price"></td><td><input class="num" data-f="cost" inputmode="decimal" value="${l.costIsEstimate?'':l.cost??''}" placeholder="${l.cost!=null?Math.round(l.cost*100)/100:''}" title="${l.costIsEstimate?'An estimate from the brand code: type the real cost when you have it':''}" aria-label="Landed cost"></td>
       <td>${l.marginPct!=null?l.marginPct+'%':'—'}${l.costIsEstimate&&l.marginPct!=null?'<br><span class="sub">est.</span>':''}</td><td><input class="num" data-f="qty" inputmode="numeric" value="${l.qty}" aria-label="Quantity"></td>
+      <td style="min-width:130px">${l.status==='dropped'?'':`<button class="btn sm" type="button" data-mk>Make concepts</button>`}${l.conceptCount?`<br><a href="#board" data-view>${l.conceptCount} concept${l.conceptCount===1?'':'s'}${l.approvedConcepts?` · ${l.approvedConcepts} approved`:''}</a>`:''}${l.productId?`<br><a href="/tech-packs/${esc(l.productId)}">Open tech pack</a>`:''}</td>
       <td><button class="btn sm" type="button" data-drop>${l.status==='dropped'?'Restore':'Drop'}</button> <button class="btn sm" type="button" data-ldel aria-label="Delete ${esc(l.name)}">×</button></td></tr>`).join('')}</tbody></table></div>
     <div class="row" style="margin-top:12px"><input class="t" id="newLine" placeholder="Add a piece by name" maxlength="100"><select class="t" id="newCat" style="flex:0 0 190px">${sel(cats,'tops')}</select><button class="btn" type="button" id="addLine">Add piece</button><span class="msg" id="lineMsg" role="status"></span></div>`;
 }
@@ -294,9 +312,78 @@ document.addEventListener('submit',async e=>{
   try{CUR=await api('/v1/lab/plans/generate',{body:{name:f.name.value,season:f.season.value,brief:f.brief.value,size:Number(f.size.value)}});drawPlan();await loadPlans(true);m.textContent='Drafted. Change anything you like.';$('#planView').scrollIntoView({behavior:'smooth',block:'start'})}
   catch(x){m.className='msg bad';m.textContent=x.message}go.disabled=false;
 });
+
+/* ---------- concepts ---------- */
+let BOARD={status:'',plan:'',line:''},CONC=[],BCOUNTS={},OPENID=null,IMGURL='';
+const VERDICT={clear:['Clear','ok'],check:['Look closely','warn'],too_close:['Too close','bad']};
+const STAT={draft:['Draft',''],approved:['Approved','ok'],rejected:['Rejected','bad'],tech_pack:['Tech pack','hot']};
+async function loadBoard(){
+  const p=new URLSearchParams();if(BOARD.status)p.set('status',BOARD.status);if(BOARD.plan)p.set('plan',BOARD.plan);if(BOARD.line)p.set('line',BOARD.line);
+  const j=await api('/v1/lab/concepts?'+p);CONC=j.concepts;BCOUNTS=j.counts;
+  const all=Object.values(BCOUNTS).reduce((a,b)=>a+b,0);
+  $('#bFilters').innerHTML=[['','All',all],['draft','Draft',BCOUNTS.draft||0],['approved','Approved',BCOUNTS.approved||0],['rejected','Rejected',BCOUNTS.rejected||0],['tech_pack','Tech pack',BCOUNTS.tech_pack||0]].map(([k,l,n])=>`<button type="button" class="pill" data-bs="${k}" aria-pressed="${BOARD.status===k}">${l} · ${n}</button>`).join('')+(BOARD.line?'<button type="button" class="pill" data-bclear>Showing one piece · show all</button>':'');
+  const pl=await api('/v1/lab/plans');$('#bPlan').innerHTML='<option value="">All plans</option>'+pl.plans.map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join('');$('#bPlan').value=BOARD.plan;
+  $('#bNote').textContent=j.imageConnected?'':'No image model is connected: concepts are made without pictures.';
+  $('#cEmpty').classList.toggle('hidden',CONC.length>0);
+  $('#cgrid').innerHTML=CONC.map(c=>{const v=c.closeness?VERDICT[c.closeness.verdict]:null,st=STAT[c.status];return `<article class="cc ${c.status}" data-cid="${c.id}" tabindex="0" role="button" aria-label="Open ${esc(c.name)}"><div class="ph">${c.thumb?`<img src="${esc(c.thumb)}" alt="${esc(c.name)}">`:esc(c.imageNote||'No picture')}</div><div class="bd"><h3>${esc(c.name)}</h3><div class="tags"><span class="chip ${st[1]}">${st[0]}</span>${v?`<span class="chip ${v[1]}">${v[0]}</span>`:''}<span class="chip">${esc(c.categoryLabel)}</span>${c.price!=null?`<span class="pr">${esc(usd(c.price))}</span>`:''}</div><div class="sub">${esc(c.planName)}</div><div class="sm">${esc(c.twist.slice(0,110))}${c.twist.length>110?'…':''}</div></div></article>`}).join('');
+}
+async function blobUrl(id){const r=await fetch(`/v1/lab/concepts/${id}/image`,{headers:{Authorization:'Bearer '+TOKEN()}});if(!r.ok)return '';return URL.createObjectURL(await r.blob())}
+function conceptHtml(d,img){
+  const c=d.concept,v=c.closeness?VERDICT[c.closeness.verdict]:null,s=c.spec||{},st=STAT[c.status],locked=c.status==='tech_pack';
+  const ai=c.closeness&&c.closeness.ai;
+  return `<div class="in"><div class="row" style="justify-content:space-between"><div><span class="chip ${st[1]}">${st[0]}</span> <span class="chip">${esc(c.categoryLabel)} · ${esc(c.role)}</span>${d.parent?` <span class="sub">revised from ${esc(d.parent.name)}</span>`:''}</div><button class="btn sm" type="button" data-cclose>Close</button></div>
+  <div class="top"><div class="big">${img?`<img src="${esc(img)}" alt="${esc(c.name)}">`:esc(c.imageNote||'No picture yet')}</div>
+  <div class="form" data-cf><label><span>Name</span><input class="t" data-k="name" value="${esc(c.name)}" maxlength="100" ${locked?'disabled':''}></label>
+    <label><span>Our twist (the specific thing on this piece that is ours)</span><textarea class="t" data-k="twist" maxlength="400" ${locked?'disabled':''}>${esc(c.twist)}</textarea></label>
+    <label><span>What it is</span><textarea class="t" data-k="description" maxlength="600" ${locked?'disabled':''}>${esc(s.description||'')}</textarea></label>
+    <div class="two"><label><span>Shape</span><input class="t" data-k="silhouette" value="${esc(s.silhouette||'')}" ${locked?'disabled':''}></label><label><span>Fabric</span><input class="t" data-k="fabric" value="${esc(s.fabric||'')}" ${locked?'disabled':''}></label></div>
+    <div class="two"><label><span>Colours (comma separated)</span><input class="t" data-k="colors" value="${esc((s.colors||[]).join(', '))}" ${locked?'disabled':''}></label><label><span>Details (one per line)</span><textarea class="t" data-k="details" style="min-height:60px" ${locked?'disabled':''}>${esc((s.details||[]).join('\n'))}</textarea></label></div>
+    <div class="two"><label><span>Target price $</span><input class="t" data-k="price" inputmode="decimal" value="${c.price??''}" ${locked?'disabled':''}></label><label><span>Quantity</span><input class="t" data-k="qty" inputmode="numeric" value="${c.qty}" ${locked?'disabled':''}></label></div>
+    ${locked?'':'<div class="row"><button class="btn sm" type="button" data-csave>Save changes</button><span class="msg" id="cMsg" role="status"></span></div>'}</div></div>
+  ${v?`<div class="verdict ${c.closeness.verdict}"><div class="row"><b>${v[0]}</b><span class="sub">${c.closeness.aiChecked?'words and second opinion':'words only: not second-checked'}</span><button class="btn sm" type="button" data-ccheck>Re-check</button></div>${c.closeness.reasons.length?`<ul>${c.closeness.reasons.map(r=>`<li>${esc(r)}</li>`).join('')}</ul>`:'<span class="sub">Nothing close to any piece it was drawn from.</span>'}${ai&&ai.fixes.length?`<div class="sub"><b>To make it ours:</b> ${esc(ai.fixes.join(' · '))}</div>`:''}${c.overrideReason?`<div class="sub"><b>Approved anyway because:</b> ${esc(c.overrideReason)}</div>`:''}<span class="sub">The check reads words, not pictures. Look at the concept next to the pieces below.</span></div>`:''}
+  <div><b style="font-size:14px">Drawn from, to look at side by side</b><div class="refs" style="margin-top:8px">${d.concept.refs.map(r=>`<div class="ref"><div class="ph">${safe(r.imageUrl)?`<img src="${esc(safe(r.imageUrl))}" alt="${esc(r.title)}" loading="lazy" referrerpolicy="no-referrer">`:''}</div><div><b>${esc(r.title)}</b><br><span class="sub">${esc(r.brand)}${r.price!=null?' · '+esc(usd(r.price)):''}</span>${safe(r.url)?`<br><a href="${esc(safe(r.url))}" target="_blank" rel="noopener noreferrer">Open</a>`:''}</div></div>`).join('')||'<span class="sub">No library pieces attached.</span>'}</div></div>
+  <div class="row">${c.status==='approved'?`<button class="btn go" type="button" data-ctp>Send to tech pack</button>`:''}${c.status==='tech_pack'?`<a class="btn go" href="${esc(c.productUrl)}">Open the tech pack</a>`:''}${c.status==='draft'||c.status==='rejected'?'<button class="btn go" type="button" data-capprove>Approve</button>':''}${c.status==='draft'?'<button class="btn" type="button" data-creject>Reject</button>':''}${c.status==='approved'||c.status==='rejected'?'<button class="btn" type="button" data-creopen>Back to draft</button>':''}${locked?'':'<button class="btn" type="button" data-crevise>Revise…</button><button class="btn" type="button" data-cdel>Delete</button>'}<span class="msg" id="cAct" role="status"></span></div>
+  <div class="cm"><b style="font-size:14px">Comments</b>${d.comments.map(x=>`<div class="c"><b>${esc(x.name)}</b>${esc(x.body)} <time>${esc(when(x.at))}</time></div>`).join('')||'<span class="sub">No comments yet.</span>'}
+    <div class="row"><input class="t" id="cNew" placeholder="Add a comment" maxlength="1000" aria-label="Comment"><button class="btn sm" type="button" data-ccom>Post</button></div></div></div>`;
+}
+async function openConcept(id){
+  OPENID=id;const dlg=$('#cd'),d=await api('/v1/lab/concepts/'+id);
+  dlg.innerHTML=conceptHtml(d,'');if(!dlg.open)dlg.showModal();
+  if(d.concept.hasImage){const u=await blobUrl(id);if(OPENID===id&&u){IMGURL&&URL.revokeObjectURL(IMGURL);IMGURL=u;const b=dlg.querySelector('.big');if(b)b.innerHTML=`<img src="${esc(u)}" alt="${esc(d.concept.name)}">`}}
+}
+async function actC(path,body,msg){const m=$('#cAct');if(m){m.className='msg';m.textContent=msg||'Working…'}try{const j=await api(`/v1/lab/concepts/${OPENID}${path}`,{method:'POST',body:body||{}});await refreshAfter(j);return j}catch(x){const mm=$('#cAct');if(mm){mm.className='msg bad';mm.textContent=x.message}throw x}}
+async function refreshAfter(j){await openConcept(OPENID);await loadBoard();if(CUR)await openPlan(CUR.plan.id)}
+document.addEventListener('click',async e=>{
+  const bs=e.target.closest('[data-bs]');if(bs){BOARD.status=bs.dataset.bs;loadBoard().catch(()=>{});return}
+  if(e.target.closest('[data-bclear]')){BOARD.line='';loadBoard().catch(()=>{});return}
+  const cc=e.target.closest('.cc');if(cc){openConcept(cc.dataset.cid).catch(x=>alert(x.message));return}
+  if(e.target.closest('[data-cclose]')){$('#cd').close();return}
+  const tr=e.target.closest('tr[data-line]');
+  if(tr&&e.target.closest('[data-view]')){BOARD.line=tr.dataset.line;BOARD.plan=CUR.plan.id;BOARD.status='';loadBoard().then(()=>$('#board').scrollIntoView({behavior:'smooth'})).catch(()=>{});e.preventDefault();return}
+  if(tr&&e.target.closest('[data-mk]')){
+    const steer=prompt('Anything to steer the concepts? (optional, for example “longer back, no pockets”)','');if(steer===null)return;
+    const m=$('#lineMsg'),btn=e.target.closest('[data-mk]');m.className='msg';m.textContent='Designing three concepts, drawing them and checking them. This takes up to a minute…';btn.disabled=true;
+    try{await api(`/v1/lab/plans/${CUR.plan.id}/lines/${tr.dataset.line}/concepts`,{body:{count:3,note:steer}});BOARD={status:'',plan:CUR.plan.id,line:tr.dataset.line};await openPlan(CUR.plan.id);await loadBoard();$('#board').scrollIntoView({behavior:'smooth'})}
+    catch(x){const mm=$('#lineMsg');if(mm){mm.className='msg bad';mm.textContent=x.message}btn.disabled=false}return}
+  if(!$('#cd').open)return;
+  if(e.target.closest('[data-csave]')){
+    const f=document.querySelector('[data-cf]'),g=k=>f.querySelector(`[data-k="${k}"]`).value,m=$('#cMsg');m.className='msg';m.textContent='Saving…';
+    try{await api('/v1/lab/concepts/'+OPENID,{method:'PUT',body:{name:g('name'),twist:g('twist'),description:g('description'),silhouette:g('silhouette'),fabric:g('fabric'),colors:g('colors').split(',').map(x=>x.trim()).filter(Boolean),details:g('details').split(/\n/).map(x=>x.trim()).filter(Boolean),price:g('price'),qty:g('qty')}});await openConcept(OPENID);await loadBoard();const n=$('#cMsg');if(n)n.textContent='Saved and checked again'}catch(x){m.className='msg bad';m.textContent=x.message}return}
+  if(e.target.closest('[data-ccheck]')){actC('/check',{},'Checking…').catch(()=>{});return}
+  if(e.target.closest('[data-capprove]')){
+    try{await actC('/approve',{},'Approving…')}catch(x){if(/too close/i.test(x.message)){const why=prompt(x.message+'\n\nWhy is it fine to approve anyway? (this is recorded)','');if(why&&why.trim().length>=10)actC('/approve',{overrideReason:why},'Approving…').catch(()=>{})}}return}
+  if(e.target.closest('[data-creject]')){const why=prompt('Why? So the next concept can be better.','');if(why&&why.trim())actC('/reject',{reason:why}).catch(()=>{});return}
+  if(e.target.closest('[data-creopen]')){actC('/reopen').catch(()=>{});return}
+  if(e.target.closest('[data-crevise]')){const n=prompt('What should change? For example “less boxy, a longer back”','');if(n&&n.trim()){const m=$('#cAct');m.className='msg';m.textContent='Designing, drawing and checking a revised concept…';try{const j=await api(`/v1/lab/concepts/${OPENID}/revise`,{body:{note:n}});await loadBoard();await openConcept(j.concept.id)}catch(x){m.className='msg bad';m.textContent=x.message}}return}
+  if(e.target.closest('[data-ctp]')){const m=$('#cAct');m.className='msg';m.textContent='Making the product and starting the tech pack…';try{const j=await api(`/v1/lab/concepts/${OPENID}/tech-pack`,{body:{}});await openConcept(OPENID);await loadBoard();if(CUR)await openPlan(CUR.plan.id)}catch(x){m.className='msg bad';m.textContent=x.message}return}
+  if(e.target.closest('[data-cdel]')){if(!confirm('Delete this concept?'))return;try{await api('/v1/lab/concepts/'+OPENID,{method:'DELETE'});$('#cd').close();await loadBoard()}catch(x){alert(x.message)}return}
+  if(e.target.closest('[data-ccom]')){const v=$('#cNew').value.trim();if(!v)return;try{await api(`/v1/lab/concepts/${OPENID}/comments`,{body:{body:v}});await openConcept(OPENID)}catch(x){alert(x.message)}return}
+});
+document.addEventListener('change',e=>{if(e.target.id==='bPlan'){BOARD.plan=e.target.value;BOARD.line='';loadBoard().catch(()=>{})}});
+document.addEventListener('keydown',e=>{const cc=e.target.closest&&e.target.closest('.cc');if(cc&&(e.key==='Enter'||e.key===' ')){e.preventDefault();openConcept(cc.dataset.cid).catch(()=>{})}});
 (async()=>{
   if(!TOKEN()){$('#needSignin').classList.remove('hidden');return}
-  try{await refresh();$('#app').classList.remove('hidden');drawCode();await loadItems(true);await loadScans();await loadTrends();await loadPlans()}
+  try{await refresh();$('#app').classList.remove('hidden');drawCode();await loadItems(true);await loadScans();await loadTrends();await loadPlans();await loadBoard()}
   catch(x){$('#app').classList.add('hidden');const n=$('#needSignin');n.classList.remove('hidden');const no=/access to Design Lab|not turned on|Only Danielle/i.test(x.message);n.querySelector('h1').textContent=no?'The Design Lab is not turned on for you':'Sign in to the work console first';n.querySelector('.note').textContent=no?'It is for Danielle and Kyle. If you need it, ask one of them to tick Design Lab for you on Team access.':'This page uses your work console sign-in. Open the console, sign in, then come back here.'}
 })();
 </script>
