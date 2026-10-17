@@ -172,9 +172,16 @@ export const DEFAULT_BRAND_CODE = {
   looks: ['Preppy and heritage shapes made modern', 'Quiet logos and small details over loud branding', 'Considered proportions: a relaxed, drawn-out silhouette', 'Neutral and heritage colours with one confident accent'],
   avoid: ['Shein-tier fast fashion: thin fabric, loud trends that last a month, poor finishing', 'Copying a brand\'s logo, print, name or distinctive artwork', 'Materials that make the price jump past the Zara line'],
   exemplars: [],
-  notes: ''
+  notes: '',
+  // What a plan is held to: landed cost as a share of the shelf price, and the lowest gross margin that is acceptable.
+  economics: { costRatio: 0.28, minMarginPct: 60 }
 };
 const list = (v, n, len) => (Array.isArray(v) ? v : String(v ?? '').split(/\r?\n/)).map(s => clip(s, len)).filter(Boolean).slice(0, n);
+const num = (v, lo, hi, d) => { const n = Number(v); return Number.isFinite(n) && n >= lo && n <= hi ? n : d; };
+export function cleanEconomics(v, base = DEFAULT_BRAND_CODE.economics) {
+  const e = v && typeof v === 'object' ? v : {}, b = base || DEFAULT_BRAND_CODE.economics;
+  return { costRatio: Math.round(num(e.costRatio, 0.05, 0.9, b.costRatio) * 1000) / 1000, minMarginPct: Math.round(num(e.minMarginPct, 0, 95, b.minMarginPct)) };
+}
 export function cleanBrandCode(input = {}, base = DEFAULT_BRAND_CODE) {
   const b = input && typeof input === 'object' ? input : {};
   const pa = b.priceAnchor && typeof b.priceAnchor === 'object' ? b.priceAnchor : {};
@@ -186,7 +193,8 @@ export function cleanBrandCode(input = {}, base = DEFAULT_BRAND_CODE) {
     materials: clip(b.materials ?? base.materials, 600),
     looks: b.looks === undefined ? base.looks : list(b.looks, 12, 200),
     avoid: b.avoid === undefined ? base.avoid : list(b.avoid, 12, 240),
-    exemplars: ex, notes: clip(b.notes ?? base.notes, 1200)
+    exemplars: ex, notes: clip(b.notes ?? base.notes, 1200),
+    economics: cleanEconomics(b.economics, base.economics)
   };
 }
 // The brand code as a paragraph the AI is given before it reads or judges anything.

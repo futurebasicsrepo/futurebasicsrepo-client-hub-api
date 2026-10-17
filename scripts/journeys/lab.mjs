@@ -18,6 +18,8 @@ const day = n => new Date(Date.now() - n * 86_400_000).toISOString();
 const mk = (handle, title, type, gone, total, days, price) => ({ handle, title, product_type: type, vendor: 'Feed Shop', tags: 'core', body_html: `<p>${title} in a heavy cotton</p>`, published_at: day(days), images: [{ src: `https://cdn.feedshop.test/${handle}.jpg` }], variants: Array.from({ length: total }, (_, i) => ({ price: String(price), available: i >= gone })) });
 const FEED = { products: [mk('heavy-tee', 'Heavy Tee', 'T-Shirts', 5, 6, 9, 78), mk('fisherman-knit', 'Fisherman Knit Sweater', '', 0, 6, 200, 168), mk('wax-bomber', 'Wax Cotton Bomber Jacket', 'Jackets', 2, 5, 30, 298), mk('dad-cap', 'Washed Dad Cap', 'Hats', 0, 1, 60, 48),
   mk('court-sneaker', 'Court Sneaker', 'Footwear', 1, 8, 40, 190), mk('canvas-tote', 'Canvas Tote Bag', '', 0, 1, 90, 58), mk('web-belt', 'Web Belt', 'Accessories', 0, 3, 120, 45), mk('pleat-pant', 'Pleated Wool Pant', 'Trousers', 1, 6, 50, 220), mk('two-button-blazer', 'Two-Button Blazer', '', 0, 6, 70, 395), mk('wool-blanket', 'Wool Blanket', '', 0, 1, 300, 240)] };
+const ANCHOR = { products: [mk('a-tee', 'Basic Tee', 'T-Shirts', 1, 4, 20, 30), mk('a-polo', 'Pique Polo', 'Polos', 0, 4, 40, 40), mk('a-crew', 'Crew Sweatshirt', 'Sweatshirts', 2, 4, 15, 45), mk('a-shirt', 'Poplin Shirt', 'Shirts', 0, 4, 60, 40)] };
+const JACKETS = { products: [mk('field-coat', 'Field Coat', 'Coats', 1, 5, 20, 250), mk('quilt-liner', 'Quilted Liner Jacket', 'Jackets', 0, 5, 50, 300), mk('rain-shell', 'Rain Shell', 'Outerwear', 2, 5, 25, 350)] };
 const seen = [], searches = [];
 const shops = http.createServer((q, s) => {
   const host = String(q.headers['x-original-host'] || '').replace(/^www\./, ''), u = new URL(q.url, 'http://x'); seen.push(host + u.pathname);
@@ -26,6 +28,16 @@ const shops = http.createServer((q, s) => {
     if (u.pathname === '/robots.txt') return send(200, 'User-agent: *\nDisallow: /cart\nDisallow: /collections/*sort_by*\n', 'text/plain');
     if (u.pathname === '/products.json') return send(200, JSON.stringify(u.searchParams.get('page') === '1' ? FEED : { products: [] }), 'application/json');
     if (u.pathname === '/products/heavy-tee') return send(200, '<html><head><title>Heavy Tee</title><meta property="og:title" content="Heavy Tee"><meta property="og:image" content="https://cdn.feedshop.test/heavy-tee.jpg"><meta property="product:price:amount" content="78.00"></head><body>tee</body></html>');
+    return send(404, 'no');
+  }
+  if (host === 'anchorshop.test') {
+    if (u.pathname === '/robots.txt') return send(404, 'none');
+    if (u.pathname === '/products.json') return send(200, JSON.stringify(u.searchParams.get('page') === '1' ? ANCHOR : { products: [] }), 'application/json');
+    return send(404, 'no');
+  }
+  if (host === 'jacketshop.test') {
+    if (u.pathname === '/robots.txt') return send(404, 'none');
+    if (u.pathname === '/products.json') return send(200, JSON.stringify(u.searchParams.get('page') === '1' ? JACKETS : { products: [] }), 'application/json');
     return send(404, 'no');
   }
   if (host === 'wallshop.test') return send(403, 'Access denied');
@@ -191,6 +203,202 @@ await journey('J195', 'Design Lab in a browser: the library, filters, save and h
     await pc.close();
     ok(errs.length === 0, 'no page errors', errs);
   } finally { await call(`/v1/staff-access/users/${patId}`, { method: 'PUT', token: kyleT, body: { modules: [] } }); await b.close(); }
+});
+
+await journey('J196', 'Design Lab line plans: the trend read and price ladder come from the library, the assistant drafts a plan held to the Zara line, and every number can be edited', async () => {
+  const refB = await mkBrand('Plan Ref', 'https://feedshop.test'), anchorB = await mkBrand('Plan Anchor', 'https://anchorshop.test', 'price'), jackB = await mkBrand('Plan Jackets', 'https://jacketshop.test');
+  ok((await SCAN(refB.id)).json.scan?.found === 10 && (await SCAN(anchorB.id)).json.scan?.found === 4 && (await SCAN(jackB.id)).json.scan?.found === 3, 'a reference shop, a price anchor and a jacket shop are read');
+  try {
+    // access
+    ok((await P('/trends')).status === 403 && (await P('/plans')).status === 403 && (await P('/plans/generate', { body: { name: 'x' } })).status === 403 && (await call('/v1/lab/trends')).status === 401, 'the trend read and the plans are closed like the rest of the Lab');
+
+    // the trend read
+    const tr = (await K('/trends')).json, tops = tr.categories.find(c => c.id === 'tops'), outer = tr.categories.find(c => c.id === 'outerwear');
+    ok(tops.count >= 5 && tops.anchor?.n === 4 && tops.reference?.n >= 1 && tops.anchor.median >= 38 && tops.anchor.median <= 42 && tr.anchor === 'Zara', 'prices are read per category, with the anchor\'s own prices separate from the references\'', [tops.count, tops.anchor, tr.anchor]);
+    ok(tops.ladder?.basis === 'anchor' && tops.ladder.cap >= 40 && tops.ladder.cap <= 50 && tops.ladder.entry <= tops.ladder.core && tops.ladder.core <= tops.ladder.cap, 'the ladder for tops is the anchor\'s', tops.ladder);
+    ok(outer.ladder?.basis === 'estimated' && outer.ladder.cap < 250, 'with no anchor prices for outerwear the ladder is an estimate, far below the reference prices', outer.ladder);
+    ok(tr.movers[0].heat >= 60 && /Heavy Tee/.test(tr.movers[0].title) && tops.colors.some(c => /navy/i.test(c.name)) && tops.hotShare > 0, 'what is moving and what keeps showing up are counted', [tr.movers[0], tops.colors]);
+    ok((await K('/trends?days=1')).json.total >= 14 && tr.categories.length >= 10, 'every category is listed');
+
+    // drafting a plan
+    const gen = await K('/plans/generate', { body: { name: 'Fall 2027 capsule', season: 'Fall 2027', brief: 'quiet heritage basics', size: 8 } }); const P1 = gen.json;
+    ok(gen.status === 201 && P1.plan.name === 'Fall 2027 capsule' && P1.lines.length === 8 && P1.plan.summary, 'the assistant drafts an 8-piece plan', gen.json.error || P1.lines?.length);
+    ok(P1.lines.every(l => l.price > 0 && l.cost > 0 && l.qty > 0 && l.costIsEstimate && l.marginPct > 60) && P1.lines.filter(l => l.role === 'hero').length === 1 && P1.lines.some(l => l.role === 'entry'), 'every piece has a price, an estimated cost and margin, a starting quantity and a role', P1.lines.map(l => [l.role, l.price]));
+    ok(P1.lines.filter(l => l.category === 'tops').every(l => l.price <= tops.ladder.cap), 'tops are held to the anchor line');
+    ok(P1.lines.some(l => l.refs.length && l.refs[0].title && /^https?:/.test(l.refs[0].url)) && P1.lines.every(l => l.twist), 'pieces point back at the library pieces they were drawn from, and each has our twist');
+    ok(P1.summary.count === 8 && P1.summary.units > 0 && P1.summary.blendedMarginPct > 60 && P1.economics.costRatio === 0.28 && P1.anchor === 'Zara', 'the totals are worked out', P1.summary);
+    ok((await K('/plans')).json.plans[0].id === P1.plan.id && (await K('/plans')).json.plans[0].lines === 8, 'it is in the list');
+
+    // editing
+    const L = P1.lines.find(l => l.category === 'tops'), put = (body, id = L.id) => K(`/plans/${P1.plan.id}/lines/${id}`, { method: 'PUT', body });
+    const hi = (await put({ price: 99 })).json; const hl = hi.lines.find(l => l.id === L.id); ok(hl.price === 99 && hl.warnings.some(w => w.kind === 'above' && /Zara line/.test(w.text)) && hi.summary.lineWarnings >= 1, 'a price above the Zara line is flagged', hl);
+    const thin = (await put({ price: 40, cost: 30 })).json.lines.find(l => l.id === L.id); ok(thin.cost === 30 && !thin.costIsEstimate && thin.marginPct === 25 && thin.warnings.some(w => w.kind === 'margin'), 'a typed cost replaces the estimate and a thin margin is flagged', thin);
+    const back = (await put({ cost: null })).json.lines.find(l => l.id === L.id); ok(back.costIsEstimate && back.marginPct === 72 && !back.warnings.some(w => w.kind === 'margin'), 'clearing the cost goes back to the estimate', back);
+    ok((await put({ qty: 1000 })).json.lines.find(l => l.id === L.id).qty === 1000 && (await put({ role: 'hero', category: 'knitwear' })).json.lines.find(l => l.id === L.id).role === 'hero', 'quantity, role and category change');
+    const dropped = (await put({ status: 'dropped' })).json; ok(dropped.summary.count === 7 && dropped.summary.dropped === 1, 'a dropped piece leaves the totals but stays on the plan'); ok((await put({ status: 'planned' })).json.summary.count === 8, 'and can be restored');
+    ok((await put({ price: 'abc' })).status === 422 && (await put({ category: 'zzz' })).status === 422 && (await put({ qty: -2 })).status === 422 && (await put({ name: '' })).status === 422 && (await put({ status: 'weird' })).status === 422, 'nonsense is refused');
+    ok((await put({ price: 5 }, '00000000-0000-4000-8000-000000000000')).status === 404, 'an unknown piece is a plain not-found');
+    const added = await K(`/plans/${P1.plan.id}/lines`, { body: { name: '=cmd()', category: 'headwear', role: 'entry', price: 28, qty: 400 } }); ok(added.status === 201 && added.json.lines.length === 9 && added.json.lines.at(-1).name === '=cmd()' && added.json.lines.at(-1).cost === 7.84, 'a piece is added by hand', added.json.error);
+    ok((await K(`/plans/${P1.plan.id}/lines`, { body: { name: '' } })).status === 422 && (await K(`/plans/${P1.plan.id}/lines`, { body: { name: 'x', price: 'abc' } })).status === 422, 'a piece with no name or a bad price is refused');
+
+    // economics come from the brand code
+    const was = (await K('/overview')).json.brandCode.economics; ok(was.costRatio === 0.28 && was.minMarginPct === 60, 'the economics are in the brand code');
+    ok((await K('/brand-code', { method: 'PUT', body: { economics: { costRatio: 0.4, minMarginPct: 70 } } })).json.brandCode.economics.costRatio === 0.4, 'and can be changed');
+    const reran = (await K(`/plans/${P1.plan.id}`)).json; ok(reran.lines.filter(l => l.costIsEstimate && l.price > 0).every(l => l.marginPct === 60) && reran.summary.lineWarnings > 0, 'estimated costs and the margin floor follow the brand code', reran.summary.lineWarnings);
+    await K('/brand-code', { method: 'PUT', body: { economics: { costRatio: 0.28, minMarginPct: 60 } } });
+    ok((await K('/brand-code', { method: 'PUT', body: { economics: { costRatio: 9, minMarginPct: -1 } } })).json.brandCode.economics.costRatio === 0.28, 'out-of-range economics fall back');
+
+    // the plan itself
+    const ren = await K(`/plans/${P1.plan.id}`, { method: 'PUT', body: { name: 'Fall 2027 capsule v2', status: 'approved' } }); ok(ren.json.plan.name.endsWith('v2') && ren.json.plan.status === 'approved', 'a plan is renamed and approved');
+    ok((await K(`/plans/${P1.plan.id}`, { method: 'PUT', body: { status: 'nope' } })).status === 422 && (await K(`/plans/${P1.plan.id}`, { method: 'PUT', body: { name: ' ' } })).status === 422, 'a bad status or an empty name is refused');
+    const csv = await call(`/v1/lab/plans/${P1.plan.id}/export.csv`, { token: kyleT }); const rows = csv.text.trim().split(/\r?\n/);
+    ok(csv.status === 200 && /text\/csv/.test(csv.ct) && rows[0].includes('Fall 2027 capsule v2') && rows[1].startsWith('Category,Role,Name') && rows.length >= 11 && csv.text.includes("'=cmd()") && !/(^|,)=cmd/.test(csv.text), 'the CSV has every piece and a name that looks like a formula is neutralised', rows.slice(0, 3));
+    ok((await call(`/v1/lab/plans/${P1.plan.id}/export.csv`)).status === 401 && (await P(`/plans/${P1.plan.id}`)).status === 403, 'plans and their files are not open to anyone else');
+
+    // a blank plan, and the daily limit
+    const blank = await K('/plans', { body: { name: 'Blank', season: 'Spring' } }); ok(blank.status === 201 && blank.json.lines.length === 0 && blank.json.summary.count === 0, 'a blank plan can be started by hand');
+    ok((await K('/plans', { body: { name: '' } })).status === 422 && (await K('/plans/nope')).status === 404, 'no name, or an unknown plan, is refused');
+    const ids = [P1.plan.id, blank.json.plan.id]; let limited = 0;
+    for (let i = 0; i < 12; i++) { const g = await K('/plans/generate', { body: { name: `Limit ${i}`, size: 3 } }); if (g.status === 201) ids.push(g.json.plan.id); else { limited = g.status; ok(/daily limit/.test(g.json.error), 'the limit says what it is'); break; } }
+    ok(limited === 429, 'generating plans has a daily limit so a stuck button cannot spend the allowance', limited);
+    for (const id of ids) ok((await K(`/plans/${id}`, { method: 'DELETE' })).status === 200, 'a plan is deleted');
+    ok((await K(`/plans/${ids[0]}`)).status === 404 && (await K('/plans')).json.plans.length === 0, 'and is gone');
+  } finally { for (const b of [refB, anchorB, jackB]) await K(`/brands/${b.id}`, { method: 'DELETE' }); }
+});
+
+await journey('J197', 'Design Lab line plans in a browser: what is moving, drafting a plan, editing a price and seeing the flag, dropping, adding, downloading, on a phone', async () => {
+  if (!playwright) { ok(true, 'skipped: no browser here'); return; }
+  const refB = await mkBrand('Plan Ref', 'https://feedshop.test'), anchorB = await mkBrand('Plan Anchor', 'https://anchorshop.test', 'price'); await SCAN(refB.id); await SCAN(anchorB.id);
+  const b = await playwright.chromium.launch(), errs = [];
+  try {
+    const oc = await b.newContext({ viewport: { width: 1280, height: 900 }, acceptDownloads: true }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
+    const page = await oc.newPage(); page.on('pageerror', e => errs.push(String(e))); page.on('dialog', d => d.accept());
+    await page.goto(`${BASE}/lab`, { waitUntil: 'networkidle' }); await page.waitForSelector('#trendGrid .tc');
+    const topsCard = page.locator('#trendGrid .tc', { hasText: 'Tops and jersey' }); ok(await topsCard.count() === 1 && /our ladder/i.test(await topsCard.innerText()) && /zara/i.test(await topsCard.innerText()) && /heat/i.test(await topsCard.innerText()), 'What\'s moving shows the tops with the Zara prices, our ladder and the pieces that are moving');
+    ok(await page.locator('.fbside a[data-nav="Line plans"]:not([hidden])').count() >= 1 || await page.locator('.fbside a[href="/lab#plans"]').count() >= 1, 'the menu has Line plans');
+    await page.fill('#planForm [name=name]', 'Browser plan'); await page.fill('#planForm [name=season]', 'Fall 2027'); await page.fill('#planForm [name=brief]', 'quiet heritage basics'); await page.selectOption('#planForm [name=size]', '8');
+    await page.locator('#planGo').click(); await page.waitForSelector('#planView table.lt tbody tr', { timeout: 20000 });
+    ok(await page.locator('#planView table.lt tbody tr').count() === 8 && /Browser plan/.test(await page.innerText('#planView h2')) && /Blended margin/i.test(await page.innerText('#planView .tiles')), 'the plan appears with eight pieces and the totals');
+    ok(/Price ladder against Zara/.test(await page.innerText('#planView')) && await page.locator('#planView .track .dot').count() >= 1, 'the ladder shows our prices against the Zara line');
+    const first = page.locator('#planView tr[data-line]').first(); await first.locator('input[data-f="price"]').fill('199'); await first.locator('input[data-f="price"]').dispatchEvent('change');
+    await page.waitForFunction(() => /Above the/.test(document.querySelector('#planView tr[data-line]').textContent), null, { timeout: 8000 }); ok(await page.locator('#planView .track .dot.warn').count() >= 1, 'a price above the line is flagged on the row and on the ladder');
+    const flags = Number((await page.locator('#planView .tile', { hasText: 'Flags' }).locator('b').innerText()).trim()); ok(flags >= 1, 'and counted in the totals', flags);
+    await page.locator('#planView tr[data-line]').nth(1).locator('[data-drop]').click(); await page.waitForSelector('#planView tr.dropped', { timeout: 8000 }); ok(/7/.test(await page.locator('#planView .tile').first().innerText()), 'dropping a piece takes it out of the count');
+    await page.fill('#newLine', 'Browser added cap'); await page.selectOption('#newCat', 'headwear'); await page.locator('#addLine').click(); await page.waitForFunction(() => [...document.querySelectorAll('#planView tr[data-line] input[data-f=name]')].some(i => i.value === 'Browser added cap'), null, { timeout: 8000 }); ok(true, 'a piece is added by name');
+    const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 10000 }), page.locator('[data-csv]').click()]); ok(/browser-plan\.csv$/.test(dl.suggestedFilename()), 'the plan downloads as a CSV', dl.suggestedFilename());
+    await page.locator('[data-status]').click(); await page.waitForFunction(() => /Back to draft/.test(document.querySelector('#planView').textContent), null, { timeout: 8000 }); await page.waitForFunction(() => /approved/i.test(document.querySelector('#planList .pl.on .chip')?.textContent || ''), null, { timeout: 8000 }).catch(() => {}); ok(/approved/i.test(await page.locator('#planList .pl.on .chip').innerText()), 'the plan can be marked approved');
+    await page.locator('#planView').scrollIntoViewIfNeeded(); await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/design-lab-plan-desktop.png` }).catch(() => {});
+    await page.setViewportSize({ width: 360, height: 800 }); await page.waitForTimeout(250); ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), 'a phone does not scroll sideways (the table scrolls inside its own box)', await page.evaluate(() => document.documentElement.scrollWidth));
+    await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/design-lab-plan.png`, fullPage: false }).catch(() => {});
+    ok(errs.length === 0, 'no page errors', errs); await oc.close();
+  } finally { for (const p of (await K('/plans')).json.plans) await K(`/plans/${p.id}`, { method: 'DELETE' }); for (const x of [refB, anchorB]) await K(`/brands/${x.id}`, { method: 'DELETE' }); await b.close(); }
+});
+
+// a plan with a few pieces, made from a reference shop, a price anchor and a jacket shop; returns what the concept journeys need
+async function conceptSetup() {
+  const refB = await mkBrand('Concept Ref', 'https://feedshop.test'), anchorB = await mkBrand('Concept Anchor', 'https://anchorshop.test', 'price'), jackB = await mkBrand('Concept Jackets', 'https://jacketshop.test');
+  for (const b of [refB, anchorB, jackB]) await SCAN(b.id);
+  const gen = await K('/plans/generate', { body: { name: 'Concept plan', season: 'Fall 2027', brief: 'quiet heritage basics', size: 6 } });
+  return { brands: [refB, anchorB, jackB], plan: gen.json, gen };
+}
+const cleanup = async (brands, planId) => { if (planId) await K(`/plans/${planId}`, { method: 'DELETE' }); for (const b of brands) await K(`/brands/${b.id}`, { method: 'DELETE' }); };
+
+await journey('J198', 'Design Lab concepts: several takes on a planned piece, drawn and checked against what inspired them, approved only when they are ours, and an approved one becomes a product and a tech pack', async () => {
+  const { brands, plan, gen } = await conceptSetup(); ok(gen.status === 201 && plan.lines.length >= 4, 'a plan to work from', gen.json.error);
+  try {
+    const line = plan.lines.find(l => l.refs.length) || plan.lines[0], mk = (body = {}, l = line) => K(`/plans/${plan.plan.id}/lines/${l.id}/concepts`, { body });
+    // access
+    ok((await call(`/v1/lab/plans/${plan.plan.id}/lines/${line.id}/concepts`, { body: {} })).status === 401 && (await P('/concepts')).status === 403 && (await call(`/v1/lab/plans/${plan.plan.id}/lines/${line.id}/concepts`, { token: patT, body: {} })).status === 403, 'concepts are closed like the rest of the Lab');
+    ok((await K(`/plans/${plan.plan.id}/lines/00000000-0000-4000-8000-000000000000/concepts`, { body: {} })).status === 404 && (await K('/plans/00000000-0000-4000-8000-000000000000/lines/00000000-0000-4000-8000-000000000000/concepts', { body: {} })).status === 404, 'an unknown piece is a plain not-found');
+
+    // making concepts
+    const made = await mk({ count: 3, note: 'longer back' }); ok(made.status === 201 && made.json.concepts.length === 3, 'three concepts are made for one planned piece', made.json.error);
+    const [A, B, C] = made.json.concepts;
+    ok(new Set(made.json.concepts.map(c => c.name)).size === 3 && made.json.concepts.every(c => c.status === 'draft' && /^data:image\/jpeg;base64,/.test(c.thumb) && c.hasImage && c.twist.length > 15 && c.spec.details.length >= 2 && c.price === line.price && c.role === line.role && c.refs.length >= 1), 'each has its own name, a picture, a twist, details, the planned price and the pieces it draws on', made.json.concepts[0]);
+    ok(made.json.concepts.every(c => c.closeness && ['clear', 'check', 'too_close'].includes(c.closeness.verdict) && c.closeness.aiChecked === true && c.closeness.nearest), 'each was checked against those pieces, with a second opinion', A.closeness);
+    const after = (await K(`/plans/${plan.plan.id}`)).json.lines.find(l => l.id === line.id); ok(after.status === 'in_concept' && after.conceptCount === 3 && after.approvedConcepts === 0, 'the planned piece moves to "in concept" and counts its concepts', [after.status, after.conceptCount]);
+    ok((await mk({ count: 9 })).json.concepts.length === 4 && (await mk({ count: 0 })).json.concepts.length === 3, 'one to four at a time: nine becomes four, nothing means three');
+    const img = await call(`/v1/lab/concepts/${A.id}/image`, { token: kyleT }); ok(img.status === 200 && /image\/jpeg/.test(img.ct), 'the picture is served to the sign-in', img.status);
+    ok((await call(`/v1/lab/concepts/${A.id}/image`)).status === 401 && (await call(`/v1/lab/concepts/${A.id}/image`, { token: patT })).status === 403, 'and to nobody else');
+
+    // the board and the detail
+    const list = (await K(`/concepts?plan=${plan.plan.id}`)).json; ok(list.concepts.length >= 10 && list.counts.draft >= 10 && list.imageConnected === true, 'the board lists them with counts', list.counts);
+    ok((await K(`/concepts?line=${line.id}&status=draft`)).json.concepts.length >= 10 && (await K('/concepts?status=approved')).json.concepts.length === 0, 'filtered by piece and by status');
+    const det = (await K(`/concepts/${A.id}`)).json; ok(det.concept.refs.length >= 1 && det.concept.refs[0].title && /^https?:/.test(det.concept.refs[0].url) && Array.isArray(det.comments) && det.comments.length === 0, 'the detail has the pieces it was drawn from, to look at side by side');
+
+    // editing and the brand-name guard
+    const bad = await K(`/concepts/${A.id}`, { method: 'PUT', body: { price: 'abc' } }); ok(bad.status === 422 && (await K(`/concepts/${A.id}`, { method: 'PUT', body: { name: '' } })).status === 422 && (await K(`/concepts/${A.id}`, { method: 'PUT', body: { qty: -1 } })).status === 422, 'nonsense edits are refused');
+    const ed = (await K(`/concepts/${A.id}`, { method: 'PUT', body: { name: 'Garden Overshirt', twist: 'A long back yoke seam that nobody else makes', price: 44, qty: 250 } })).json.concept; ok(ed.name === 'Garden Overshirt' && ed.price === 44 && ed.qty === 250 && ed.closeness.aiChecked === false && ed.closeness.reasons.some(r => /Edited since/.test(r)), 'a concept is edited, and the second opinion is marked out of date', ed.closeness);
+    const named = (await K(`/concepts/${B.id}`, { method: 'PUT', body: { twist: 'Like the Ralph Lauren polo pony but ours, in the style of Gucci' } })).json.concept; ok(named.closeness.verdict === 'too_close' && named.closeness.hits.includes('Ralph Lauren') && named.closeness.hits.includes('polo pony'), 'naming another brand or its mark makes it "too close"', named.closeness.hits);
+    const refuse = await K(`/concepts/${B.id}/approve`, { body: {} }); ok(refuse.status === 422 && refuse.json.code === 'TOO_CLOSE' && /too close/i.test(refuse.json.error), 'a too-close concept cannot be approved', refuse.json);
+    ok((await K(`/concepts/${B.id}/approve`, { body: { overrideReason: 'short' } })).status === 422, 'and a throwaway reason does not count');
+    const noTwist = await K(`/concepts/${C.id}`, { method: 'PUT', body: { twist: '' } }); ok(noTwist.status === 200, 'a twist can be cleared'); const nt = await K(`/concepts/${C.id}/approve`, { body: {} }); ok(nt.status === 422 && nt.json.code === 'NO_TWIST', 'but a concept with no twist of its own is not approved', nt.json);
+    await K(`/concepts/${C.id}`, { method: 'PUT', body: { twist: 'A colour story of olive with a rust bar tack at the pocket' } });
+
+    // comments, approve, reject, reopen
+    ok((await K(`/concepts/${A.id}/comments`, { body: { body: '' } })).status === 422 && (await K(`/concepts/${A.id}/comments`, { body: { body: 'Love the long back.' } })).status === 201, 'comments need words');
+    const ap = await K(`/concepts/${A.id}/approve`, { body: {} }); ok(ap.status === 200 && ap.json.concept.status === 'approved' && ap.json.concept.approvedBy, 'a concept that is ours is approved, and who approved it is kept', ap.json);
+    const d2 = (await K(`/concepts/${A.id}`)).json; ok(d2.comments.some(c => /Love the long back/.test(c.body) && c.name) && d2.comments.some(c => /^Approved/.test(c.body)), 'the comments carry the discussion and the decision');
+    ok((await K(`/plans/${plan.plan.id}`)).json.lines.find(l => l.id === line.id).status === 'approved', 'the planned piece is marked approved');
+    const forced = await K(`/concepts/${B.id}/approve`, { body: { overrideReason: 'We checked it side by side with the reference and it is clearly different' } }); ok(forced.status === 200 && forced.json.concept.overrideReason.length > 10, 'a person can approve a "too close" concept by writing down why, and it is recorded');
+    ok((await K(`/concepts/${B.id}`)).json.comments.some(c => /after the "too close" check/.test(c.body)), 'the reason is in the comments too');
+    ok((await K(`/concepts/${A.id}`, { method: 'PUT', body: { name: 'Garden Overshirt II' } })).json.concept.status === 'draft', 'changing an approved concept sends it back to draft'); ok((await K(`/concepts/${A.id}`)).json.comments.some(c => /back to draft/i.test(c.body)), 'and says so');
+    await K(`/concepts/${A.id}/approve`, { body: {} });
+    const rj = await K(`/concepts/${C.id}/reject`, { body: {} }); ok(rj.status === 422, 'a rejection needs a reason'); ok((await K(`/concepts/${C.id}/reject`, { body: { reason: 'Too fussy for the price' } })).json.concept.status === 'rejected', 'a concept is rejected with a reason');
+    ok((await K(`/concepts/${C.id}/reopen`, { body: {} })).json.concept.status === 'draft' && (await K(`/concepts/${A.id}/reopen`, { body: {} })).json.concept.status === 'draft', 'a rejected or approved concept can go back to draft'); await K(`/concepts/${A.id}/approve`, { body: {} });
+
+    // revising
+    ok((await K(`/concepts/${A.id}/revise`, { body: {} })).status === 422, 'a revision needs a note'); const rev = await K(`/concepts/${A.id}/revise`, { body: { note: 'less boxy, a longer back' } });
+    ok(rev.status === 201 && rev.json.concept.parentId === A.id && rev.json.concept.status === 'draft' && rev.json.concept.thumb && rev.json.concept.refs.length >= 1, 'a revision is a new concept that remembers its parent', rev.json.error);
+    ok((await K(`/concepts/${rev.json.concept.id}`)).json.parent?.id === A.id, 'the detail names the concept it came from');
+
+    // the tech pack
+    ok((await K(`/concepts/${C.id}/tech-pack`, { body: {} })).status === 409, 'a concept that is not approved cannot become a tech pack');
+    const tp = await K(`/concepts/${A.id}/tech-pack`, { body: {} }); ok(tp.status === 201 && tp.json.productId && tp.json.url === `/tech-packs/${tp.json.productId}` && tp.json.concept.status === 'tech_pack', 'an approved concept becomes a product and starts its tech pack', tp.json);
+    const prod = sql(`select p.title||'|'||c.slug||'|'||coalesce(p.product_type,'')||'|'||(p.description_html like '%Designed in the Future Basics Design Lab%')||'|'||(p.description_html like '%Our twist%') from products p join clients c on c.id=p.client_id where p.id='${tp.json.productId}'`); ok(prod === `Garden Overshirt II|future-basics|${'Tops'}|true|true`, 'the product is in the Future Basics room with the concept as its brief', prod);
+    const pack = sql(`select count(*)||'|'||coalesce(max(source),'') from tech_packs where product_id='${tp.json.productId}'`); ok(/^1\|photo$/.test(pack), 'a tech pack is started from the concept\'s picture', [pack, tp.json.autoDraft]);
+    const again = await K(`/concepts/${A.id}/tech-pack`, { body: {} }); ok(again.status === 409 && again.json.productId === tp.json.productId, 'a second press does not make a second product', again.json);
+    ok(sql(`select count(*) from products where title like 'Garden Overshirt II'`) === '1', 'one product in the database');
+    const ln = (await K(`/plans/${plan.plan.id}`)).json.lines.find(l => l.id === line.id); ok(ln.status === 'tech_pack' && ln.productId === tp.json.productId, 'the planned piece links to its product', [ln.status, ln.productId]);
+    ok((await K(`/concepts/${A.id}`, { method: 'PUT', body: { name: 'x' } })).status === 409 && (await K(`/concepts/${A.id}`, { method: 'DELETE' })).status === 409 && (await K(`/concepts/${A.id}/reject`, { body: { reason: 'nope nope' } })).status === 409, 'a concept that became a tech pack is a record: it cannot be changed, rejected or deleted');
+    ok((await K(`/concepts/${rev.json.concept.id}`, { method: 'DELETE' })).status === 200 && (await K(`/concepts/${rev.json.concept.id}`)).status === 404 && (await K('/concepts/nope')).status === 404, 'a draft concept can be deleted');
+
+    // the daily limit
+    let limited = 0; for (let i = 0; i < 12; i++) { const g = await mk({ count: 4 }, plan.lines.find(l => l.id !== line.id)); if (g.status !== 201) { limited = g.status; ok(/daily limit/.test(g.json.error), 'the limit says what it is'); break; } }
+    ok(limited === 429, 'making concepts has a daily limit so a stuck button cannot spend the allowance', limited);
+  } finally { await cleanup(brands, plan.plan?.id); }
+});
+
+await journey('J199', 'Design Lab concepts in a browser: make concepts from a plan, open one, edit its twist, see it flagged for naming a brand, approve with a reason, comment, send to a tech pack', async () => {
+  if (!playwright) { ok(true, 'skipped: no browser here'); return; }
+  const { brands, plan } = await conceptSetup(); const line = plan.lines.find(l => l.refs.length) || plan.lines[0];
+  const b = await playwright.chromium.launch(), errs = []; let answer = '';
+  try {
+    const oc = await b.newContext({ viewport: { width: 1280, height: 900 } }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
+    const page = await oc.newPage(); page.on('pageerror', e => errs.push(String(e))); page.on('dialog', d => d.accept(d.type() === 'prompt' ? answer : undefined));
+    await page.goto(`${BASE}/lab`, { waitUntil: 'networkidle' }); await page.waitForSelector('#planList .pl');
+    await page.locator('#planList .pl', { hasText: 'Concept plan' }).locator('[data-open]').click(); await page.waitForSelector('#planView tr[data-line]');
+    ok(await page.locator('.fbside a[href="/lab#board"]').count() >= 1, 'the menu has Concepts');
+    answer = 'longer back'; await page.locator(`#planView tr[data-line="${line.id}"] [data-mk]`).click(); await page.waitForFunction(() => document.querySelectorAll('#cgrid .cc').length >= 3, null, { timeout: 30000 });
+    ok(await page.locator('#cgrid .cc').count() === 3 && await page.locator('#cgrid .cc img').count() === 3 && /clear|look closely|too close/i.test(await page.locator('#cgrid .cc').first().innerText()), 'three concept cards appear with their pictures and their check');
+    ok(/in_concept|in concept/i.test(await page.locator(`#planView tr[data-line="${line.id}"]`).innerText()) || /3 concepts/.test(await page.locator(`#planView tr[data-line="${line.id}"]`).innerText()), 'the plan row now counts its concepts');
+    await page.locator('#cgrid .cc').first().click(); await page.waitForSelector('#cd[open] [data-cf]'); await page.waitForFunction(() => document.querySelector('#cd .big img'), null, { timeout: 8000 });
+    ok(await page.locator('#cd .ref').count() >= 1 && /side by side|drawn from/i.test(await page.innerText('#cd')), 'the concept opens with the pieces it was drawn from beside it');
+    await page.fill('#cd [data-k="twist"]', 'Like the Ralph Lauren polo pony but ours'); await page.locator('#cd [data-csave]').click(); await page.waitForFunction(() => /too close/i.test(document.querySelector('#cd .verdict')?.textContent || ''), null, { timeout: 8000 });
+    ok(/Ralph Lauren/.test(await page.innerText('#cd .verdict')), 'naming another brand flags it "too close" and says which name');
+    answer = 'We looked at it beside the reference and it is clearly different'; await page.locator('#cd [data-capprove]').click(); await page.waitForFunction(() => /approved/i.test(document.querySelector('#cd .in .chip')?.textContent || ''), null, { timeout: 10000 });
+    ok(/approved anyway because/i.test(await page.innerText('#cd .verdict')), 'approving needs a reason, and the reason is shown with the check');
+    await page.fill('#cd #cNew', 'Checked with Danielle'); await page.locator('#cd [data-ccom]').click(); await page.waitForFunction(() => /Checked with Danielle/.test(document.querySelector('#cd .cm')?.textContent || ''), null, { timeout: 8000 }); ok(true, 'a comment is posted');
+    await page.locator('#cd [data-ctp]').click(); await page.waitForSelector('#cd a.btn.go[href^="/tech-packs/"]', { timeout: 30000 });
+    ok(/tech-packs\/[0-9a-f-]{36}/.test(await page.locator('#cd a.btn.go[href^="/tech-packs/"]').getAttribute('href')), 'sending to a tech pack gives a link to it');
+    await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/design-lab-concept.png` }).catch(() => {});
+    await page.locator('#cd [data-cclose]').click(); await page.waitForFunction(() => !document.querySelector('#cd[open]'));
+    await page.locator('#bFilters [data-bs="tech_pack"]').click(); await page.waitForFunction(() => document.querySelectorAll('#cgrid .cc').length === 1, null, { timeout: 8000 }); ok(/tech pack/i.test(await page.locator('#cgrid .cc').innerText()), 'the board filters by status');
+    await page.locator('#bFilters [data-bs="draft"]').click(); await page.waitForFunction(() => document.querySelectorAll('#cgrid .cc').length === 2, null, { timeout: 8000 });
+    await page.locator('#cgrid .cc').first().click(); await page.waitForSelector('#cd[open] [data-creject]'); answer = 'Too fussy for the price'; await page.locator('#cd [data-creject]').click(); await page.waitForFunction(() => /rejected/i.test(document.querySelector('#cd .in .chip')?.textContent || ''), null, { timeout: 8000 }); ok(true, 'a concept is rejected with a reason');
+    await page.locator('#cd [data-cclose]').click(); await page.setViewportSize({ width: 360, height: 800 }); await page.waitForTimeout(250); ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), 'a phone does not scroll sideways', await page.evaluate(() => document.documentElement.scrollWidth));
+    ok(errs.length === 0, 'no page errors', errs); await oc.close();
+  } finally { await cleanup(brands, plan.plan?.id); await b.close(); }
 });
 
 shops.close(); brave.close();

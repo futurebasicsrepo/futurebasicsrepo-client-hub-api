@@ -53,6 +53,7 @@ import { registerPressRoutes, seedPress } from './press-routes.js';
 import { registerSalesOpportunityRoutes } from './sales-opportunities-routes.js';
 import { registerIntelRoutes, seedIntel } from './intel-routes.js';
 import { registerLabRoutes, seedLab } from './lab-routes.js';
+import { registerLabConceptRoutes } from './lab-concept-routes.js';
 import { purgeOld as labPurge } from './lab-scan.js';
 import { runDue as intelRunDue, scorePending as intelScore, loadSettings as intelSettings, purgeOld as intelPurge } from './intel-engine.js';
 import { registerBuildRoutes, seedBuilds, ensureHostedBuilds, backfillBuildRepos, moveBuildRepos, syncBuilds } from './builds-routes.js';
@@ -663,6 +664,8 @@ registerIntelRoutes(app, { pool, authenticate, adminOnly, getSetting, setSetting
 // The Design Lab (the Lab module on Team access). Under the journeys its shop reads go to the same stand-in server as the prototypes, with no pause between requests.
 const lab=registerLabRoutes(app, { pool, authenticate, adminOnly, getSetting, setSetting, log: app.log,
   ...(process.env.PROTOTYPE_TEST_ORIGIN ? { delayMs: 0, crawlOpts: { lookup: async () => [{ address: '93.184.216.34' }], fetchImpl: (u, o) => { const x = new URL(u); return fetch(process.env.PROTOTYPE_TEST_ORIGIN + x.pathname + x.search, { ...o, headers: { ...(o && o.headers), 'x-original-host': x.hostname } }); } } } : {}) });
+// Concepts: an approved one becomes a product in the Future Basics room, with its tech pack drafted from the concept (createClientProduct, shared with the console).
+registerLabConceptRoutes(app, { pool, authenticate, adminOnly, getSetting, log: app.log, createProduct: args => createClientProduct(args) });
 const money=registerMoneyRoutes(app, { pool, authenticate, adminOnly, getSetting, setSetting, tokenSeal: sealer(process.env), stateSecret: process.env.JWT_SECRET || 'dev', workUrl: workHubUrl, log: app.log,
   // product development is paid through a Shopify checkout (a draft order for the amount due), see money-routes.js
   shopifyInvoiceLink: async ({ title, amountCents, currency, email, note, number }) => {
@@ -982,6 +985,17 @@ app.post('/v1/admin/clients',{preHandler:[authenticate,adminOnly]},async(req,rep
   await pool.query(`insert into projects(client_id,name,status,milestone) values($1,'General development','active','In progress') on conflict(client_id,name) do nothing`,[client.id]);
   return client;
 });
+// A product in a client's room, with its milestones, and a tech pack drafted from the reference photos or the brief. Shared by the console and the Design Lab.
+async function createClientProduct({clientId,projectId=null,title,handle=null,shopifyProductId=null,descriptionHtml=null,vendor=null,productType=null,templateSuffix=null,referencePhotos=[],actorId=null}){
+  let p=(await pool.query(`insert into products(client_id,project_id,title,shopify_handle,shopify_product_id,description_html,vendor,product_type,template_suffix)
+    values($1,$2,$3,$4,$5,$6,$7,$8,$9) returning *`,[clientId,projectId||null,title,handle||null,shopifyProductId||null,descriptionHtml||null,vendor||null,productType||null,templateSuffix||null])).rows[0];
+  await pool.query(`insert into milestones(product_id,name,status,sort_order) select $1,name,case when n=1 then 'current' else 'upcoming' end,n
+    from(values(1,'Brief'),(2,'Concept'),(3,'Development'),(4,'Sample'),(5,'Approval'),(6,'Production'),(7,'Quality'),(8,'Delivery'))m(n,name)`,[p.id]);
+  await flow(p.id,'product-created',{owner:'future-basics',actorId});
+  if((shopifyProductId||handle)&&shopifyConfigured()){try{p=await hydrateLinkedShopifyProduct(p.id,await resolveShopifyProduct(shopifyProductId||null,handle||null))||p}catch(e){app.log.warn({err:e.message,productId:p.id},'linked Shopify product not hydrated at creation')}}
+  const autoDraft=await autoDraftProduct(p,{photos:referencePhotos,actorId,reason:'created'}).catch(e=>{app.log.warn({err:e.message,productId:p.id},'auto draft failed');return {ai:'error'}});
+  return {...p,autoDraft};
+}
 app.post('/v1/admin/clients/:id/products',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const {title,handle,shopifyProductId,descriptionHtml,vendor,productType,templateSuffix,projectId}=req.body||{};if(!title)return reply.code(400).send({error:'title required'});
   const prepRef=await preparePhotos(req.body?.referencePhotos);if(prepRef.bad)return reply.code(400).send({error:`Reference photo ${prepRef.bad} could not be opened — re-save it as a JPG or PNG`});
@@ -991,14 +1005,7 @@ app.post('/v1/admin/clients/:id/products',{preHandler:[authenticate,adminOnly]},
   const project=projectId?(await pool.query(`select id from projects where id=$1 and client_id=$2
     and archived_at is null and status not in ('archive','archived')`,[projectId,req.params.id])).rows[0]:null;
   if(projectId&&!project)return reply.code(400).send({error:'Select a valid project'});
-  let p=(await pool.query(`insert into products(client_id,project_id,title,shopify_handle,shopify_product_id,description_html,vendor,product_type,template_suffix)
-    values($1,$2,$3,$4,$5,$6,$7,$8,$9) returning *`,[req.params.id,project?.id||null,title,handle||null,shopifyProductId||null,descriptionHtml||null,vendor||null,productType||null,templateSuffix||null])).rows[0];
-  await pool.query(`insert into milestones(product_id,name,status,sort_order) select $1,name,case when n=1 then 'current' else 'upcoming' end,n
-    from(values(1,'Brief'),(2,'Concept'),(3,'Development'),(4,'Sample'),(5,'Approval'),(6,'Production'),(7,'Quality'),(8,'Delivery'))m(n,name)`,[p.id]);
-  await flow(p.id,'product-created',{owner:'future-basics',actorId:req.auth.sub});
-  if((shopifyProductId||handle)&&shopifyConfigured()){try{p=await hydrateLinkedShopifyProduct(p.id,await resolveShopifyProduct(shopifyProductId||null,handle||null))||p}catch(e){app.log.warn({err:e.message,productId:p.id},'linked Shopify product not hydrated at creation')}}
-  const autoDraft=await autoDraftProduct(p,{photos:referencePhotos,actorId:req.auth.sub,reason:'created'}).catch(e=>{app.log.warn({err:e.message,productId:p.id},'auto draft failed');return {ai:'error'}});
-  return {...p,autoDraft};
+  return createClientProduct({clientId:req.params.id,projectId:project?.id||null,title,handle,shopifyProductId,descriptionHtml,vendor,productType,templateSuffix,referencePhotos,actorId:req.auth.sub});
 });
 app.patch('/v1/admin/products/:id',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const {stage,riskLevel,owner,targetDate,shopifyProductId,shopifyHandle,descriptionHtml,vendor,productType,templateSuffix}=req.body||{};
@@ -3140,7 +3147,7 @@ app.post('/v1/admin/followups/run',{preHandler:[authenticate,adminOnly]},async(r
 // Nothing is backfilled: only clients whose first photo pack (or payment) comes after the sweep first ran are emailed.
 // Each step is claimed in nurture_sends before sending, so two instances never send the same email twice.
 const nurtureSecret=process.env.UNSUBSCRIBE_SECRET||process.env.JWT_SECRET||'';
-const nurtureAddress=process.env.MAILING_ADDRESS||'Future Basics · 1134 Sansom St, Philadelphia, PA 19107';
+const nurtureAddress=process.env.MAILING_ADDRESS||'Future Basics · 1134 Sansom St, Suite 1912, Philadelphia, PA 19107';
 const unsubscribeUrlFor=clientId=>`${clientHubUrl}/email/unsubscribe?c=${clientId}&t=${unsubscribeToken(clientId,nurtureSecret)}`;
 const NURTURE_CONVERTED_SQL=`(exists(select 1 from tech_packs t where t.client_id=c.id and (t.paid_at is not null or t.submitted_at is not null))
   or exists(select 1 from quotes q join products p on p.id=q.product_id where p.client_id=c.id)

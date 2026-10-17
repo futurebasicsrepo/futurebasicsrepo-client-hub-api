@@ -118,7 +118,7 @@ async function withFallback(cfg, run) {
     throw e;
   }
 }
-async function openaiImage(prompt, cfg) {
+export async function openaiImage(prompt, cfg) {
   return withFallback(cfg, c => openaiImageOnce(prompt, c));
 }
 async function openaiImageOnce(prompt, cfg) {

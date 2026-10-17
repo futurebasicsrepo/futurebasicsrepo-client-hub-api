@@ -178,6 +178,78 @@ export async function migrate() {
       by_user uuid references users(id) on delete set null
     );
     create index if not exists lab_scans_at_idx on lab_scans (started_at desc);
+    -- Design Lab line plans (src/lab-plan.js): a season's assortment, one row per planned piece, with its target price, estimated landed cost and quantity.
+    create table if not exists lab_plans (
+      id uuid primary key default gen_random_uuid(),
+      name text not null,
+      season text not null default '',
+      brief text not null default '',
+      summary text not null default '',
+      status text not null default 'draft' check (status in ('draft','approved')),
+      cost_cents numeric not null default 0,
+      created_by uuid references users(id) on delete set null,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
+    create table if not exists lab_plan_lines (
+      id uuid primary key default gen_random_uuid(),
+      plan_id uuid not null references lab_plans(id) on delete cascade,
+      category text not null default 'other',
+      role text not null default 'core' check (role in ('core','trend','hero','entry')),
+      name text not null,
+      brief text not null default '',
+      twist text not null default '',
+      rationale text not null default '',
+      price_cents integer,
+      cost_cents integer,
+      qty integer not null default 0,
+      refs uuid[] not null default '{}',
+      status text not null default 'planned' check (status in ('planned','dropped','in_concept','approved','tech_pack')),
+      sort integer not null default 0,
+      created_at timestamptz not null default now()
+    );
+    create index if not exists lab_plan_lines_plan_idx on lab_plan_lines (plan_id, sort);
+    -- Design Lab concepts (src/lab-concepts.js): our own take on a planned piece, its picture, how close it sits to what inspired it, the team's comments and verdict.
+    create table if not exists lab_concepts (
+      id uuid primary key default gen_random_uuid(),
+      plan_id uuid references lab_plans(id) on delete cascade,
+      line_id uuid references lab_plan_lines(id) on delete set null,
+      parent_id uuid references lab_concepts(id) on delete set null,
+      name text not null,
+      category text not null default 'other',
+      role text not null default 'core',
+      spec jsonb not null default '{}',
+      twist text not null default '',
+      price_cents integer,
+      cost_cents integer,
+      qty integer not null default 0,
+      refs uuid[] not null default '{}',
+      image bytea,
+      thumb bytea,
+      image_note text not null default '',
+      status text not null default 'draft' check (status in ('draft','approved','rejected','tech_pack')),
+      closeness jsonb,
+      override_reason text not null default '',
+      rejected_reason text not null default '',
+      approved_by uuid references users(id) on delete set null,
+      approved_at timestamptz,
+      product_id uuid, -- the products table is made further down, so this is not a foreign key
+      created_by uuid references users(id) on delete set null,
+      cost_ai numeric not null default 0,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
+    create index if not exists lab_concepts_plan_idx on lab_concepts (plan_id, created_at desc);
+    create index if not exists lab_concepts_line_idx on lab_concepts (line_id);
+    create table if not exists lab_concept_comments (
+      id bigserial primary key,
+      concept_id uuid not null references lab_concepts(id) on delete cascade,
+      user_id uuid references users(id) on delete set null,
+      name text not null default '',
+      body text not null,
+      at timestamptz not null default now()
+    );
+    create index if not exists lab_concept_comments_idx on lab_concept_comments (concept_id, at);
     do $$ begin
       if not exists(select 1 from information_schema.columns where table_name='users' and column_name='email_verified_at') then
         alter table users add column email_verified_at timestamptz;
