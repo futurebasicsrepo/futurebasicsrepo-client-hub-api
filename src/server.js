@@ -52,6 +52,8 @@ import { cleanProject, softwareView, STAGE_KEYS, PROJECT_KINDS, newBuildFor } fr
 import { registerPressRoutes, seedPress } from './press-routes.js';
 import { registerSalesOpportunityRoutes } from './sales-opportunities-routes.js';
 import { registerIntelRoutes, seedIntel } from './intel-routes.js';
+import { registerLabRoutes, seedLab } from './lab-routes.js';
+import { purgeOld as labPurge } from './lab-scan.js';
 import { runDue as intelRunDue, scorePending as intelScore, loadSettings as intelSettings, purgeOld as intelPurge } from './intel-engine.js';
 import { registerBuildRoutes, seedBuilds, ensureHostedBuilds, backfillBuildRepos, moveBuildRepos, syncBuilds } from './builds-routes.js';
 import { PAYOUTS_QUERY } from './shopify-payouts.js';
@@ -658,6 +660,9 @@ const protos=registerProtoRoutes(app, { pool, authenticate, adminOnly, throttle,
   crawlOpts: process.env.PROTOTYPE_TEST_ORIGIN ? { lookup: async () => [{ address: '93.184.216.34' }], fetchImpl: (u, o) => { const x = new URL(u); return fetch(process.env.PROTOTYPE_TEST_ORIGIN + x.pathname + x.search, { ...o, headers: { ...(o && o.headers), 'x-original-host': x.hostname } }); } } : {},
   edit: process.env.PROTOTYPE_TEST_EDIT ? stubEdit : undefined });
 registerIntelRoutes(app, { pool, authenticate, adminOnly, getSetting, setSetting, throttle, log: app.log });
+// The Design Lab (the Lab module on Team access). Under the journeys its shop reads go to the same stand-in server as the prototypes, with no pause between requests.
+const lab=registerLabRoutes(app, { pool, authenticate, adminOnly, getSetting, setSetting, log: app.log,
+  ...(process.env.PROTOTYPE_TEST_ORIGIN ? { delayMs: 0, crawlOpts: { lookup: async () => [{ address: '93.184.216.34' }], fetchImpl: (u, o) => { const x = new URL(u); return fetch(process.env.PROTOTYPE_TEST_ORIGIN + x.pathname + x.search, { ...o, headers: { ...(o && o.headers), 'x-original-host': x.hostname } }); } } } : {}) });
 const money=registerMoneyRoutes(app, { pool, authenticate, adminOnly, getSetting, setSetting, tokenSeal: sealer(process.env), stateSecret: process.env.JWT_SECRET || 'dev', workUrl: workHubUrl, log: app.log,
   // product development is paid through a Shopify checkout (a draft order for the amount due), see money-routes.js
   shopifyInvoiceLink: async ({ title, amountCents, currency, email, note, number }) => {
@@ -689,6 +694,7 @@ app.get('/prototypes', (_req, reply) => reply.header('cache-control','no-store, 
 app.get('/intel', (_req, reply) => reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./intel.html', import.meta.url), 'utf8')));
 app.get('/home', sendWorkHome); // the work console's home: leads, prototypes, projects in flight (the old home is /admin: clients and production)
 // Brand and assets: the wordmark, icons, colours, fonts and a guide, to use and download. Open to every signed-in staff member.
+app.get('/lab', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').type('text/html').send(readFileSync(new URL('./lab.html', import.meta.url), 'utf8')));
 app.get('/team', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').type('text/html').send(readFileSync(new URL('./team.html', import.meta.url), 'utf8')));
 app.get('/brand', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').type('text/html').send(readFileSync(new URL('./brand.html', import.meta.url), 'utf8')));
 registerBrandRoutes(app, { authenticate, adminOnly });
@@ -5917,6 +5923,7 @@ await seedSegments(pool).catch(e=>app.log.warn({err:e.message},'starter customer
 await seedTemplates(pool).catch(e=>app.log.warn({err:e.message},'starter email templates not added'));
 await seedAutomations(pool).catch(e=>app.log.warn({err:e.message},'starter automations not added'));
 await seedIntel(pool).catch(e=>app.log.warn({err:e.message},'listening watches not added'));
+await seedLab(pool).catch(e=>app.log.warn({err:e.message},'design lab watchlist not added'));
 await seedPress(pool).catch(e=>app.log.warn({err:e.message},'press view not added'));
 await seedBuilds(pool).then(n=>{if(n)app.log.info({n},'builds seeded (hidden until reviewed)')}).catch(e=>app.log.warn({err:e.message},'builds not seeded'));
 await ensureHostedBuilds(pool).then(n=>{if(n)app.log.info({n},'hosted services added to Builds (hidden, watched)')}).catch(e=>app.log.warn({err:e.message},'hosted services not added'));
@@ -5955,6 +5962,8 @@ jobEvery('Money Shopify links', 30 * 60 * 1000, async()=>{const r=await money.sy
 {const qc=qbConfigOf(process.env);if(qc.ready&&qc.payments)jobEvery('Automatic payments', Number(process.env.AUTOPAY_EVERY_MS)||60 * 60 * 1000, async()=>{const r=await contracts.autopay.run();return (r.charged||0)+(r.polled||0)+(r.booked||0)}, { delay: process.env.AUTOPAY_DELAY_MS!==undefined?Number(process.env.AUTOPAY_DELAY_MS):60 * 1000 }); else declareJob('Automatic payments', 60 * 60 * 1000, qc.ready?'Payments are not switched on: set QUICKBOOKS_PAYMENTS=on, then connect QuickBooks again':'QuickBooks keys are not set');}
 if(qbConfigOf(process.env).ready)jobEvery('QuickBooks payments', 30 * 60 * 1000, async()=>{const r=await money.syncQuickBooks();return r.added||0}, { delay: 45 * 1000 }); else declareJob('QuickBooks payments', 30 * 60 * 1000, 'QuickBooks keys are not set');
 if(process.env.INTEL_AUTO!=='off')jobEvery('Sales intelligence', 15 * 60 * 1000, async()=>{const st=await intelSettings(getSetting),d={env:process.env,fetchImpl:(u,o)=>fetch(u,o),settings:st,log:app.log},w=await intelRunDue(pool,d),r=await intelScore(pool,d,{limit:40});await intelPurge(pool,st.retentionDays).catch(()=>{});return w.reduce((n,x)=>n+(x.added||0),0)+r.read}, { delay: 3 * 60 * 1000 }); else declareJob('Sales intelligence', 15 * 60 * 1000, 'switched off (INTEL_AUTO=off)');
+// Design Lab: read the watched brands that have not been looked at in three days (a few at a time, within a daily AI allowance). Switched off with LAB_AUTO=off.
+if(process.env.LAB_AUTO!=='off')jobEvery('Design Lab scan', 6 * 3600 * 1000, async()=>{const r=await lab.scanDue({limit:3,hours:72});await labPurge(pool).catch(()=>{});return r.reduce((n,x)=>n+(x.added||0),0)}, { delay: 6 * 60 * 1000 }); else declareJob('Design Lab scan', 6 * 3600 * 1000, 'switched off (LAB_AUTO=off)');
 jobEvery('CRM sync from the hub', 60 * 60 * 1000, async()=>{const r=await syncHubContacts(pool);return r.created+r.updated}, { delay: 90 * 1000 });
 // The showcase follows the apps: hourly, look at each build's repository for merged changes (needs a GitHub token to read private repositories; 'Sync now' on the builds page works without the job)
 if(process.env.BUILDS_GITHUB_TOKEN||process.env.GITHUB_TOKEN)jobEvery('Showcase update sync', 60 * 60 * 1000, async()=>{const r=await syncBuilds(pool,{log:app.log,fetchImpl:(u,o)=>trackedFetch('github',u,o)});return r.queued+r.published}, { delay: 2 * 60 * 1000 });

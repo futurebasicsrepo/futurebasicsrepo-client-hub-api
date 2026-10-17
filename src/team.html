@@ -80,8 +80,9 @@ const picked=el=>[...el.querySelectorAll('input[data-m]:checked')].map(i=>i.data
 function chip(p){
   if(p.owner)return '<span class="chip ok">Owner · everything</span>';
   if(p.blocked)return '<span class="chip bad">Paused</span>';
+  const open=D.modules.filter(m=>!m.restricted),held=D.modules.filter(m=>m.restricted&&p.modules.includes(m.id)).map(m=>m.label),extra=held.length?' + '+held.join(', '):'',isAll=open.every(m=>p.modules.includes(m.id));
   if(!p.configured)return `<span class="chip warn">New · ${p.modules.length?p.modules.length+' of '+D.modules.length+' by default':'no access yet'}</span>`;
-  return `<span class="chip">${p.modules.length===D.modules.length?'Everything':p.modules.length?p.modules.length+' of '+D.modules.length+' modules':'My day only'}</span>`;
+  return `<span class="chip">${isAll?'Everything':p.modules.length?p.modules.length+' of '+D.modules.length+' modules':'My day only'}${held.length&&isAll?esc(extra):''}</span>`;
 }
 function draw(){
   $('#defaultsBox').innerHTML=`${presets()}<div style="display:grid;gap:14px;margin-top:12px">${boxes(D.defaults)}</div><div class="row" style="margin-top:14px"><button class="btn go" id="saveDef" type="button">Save</button><span class="msg" id="defMsg" role="status"></span></div>`;

@@ -29,14 +29,14 @@ export function cleanSiteUrl(input) {
 }
 
 // Fetch one page: redirects followed by hand (each hop checked), size and time capped. → { url, status, ok, type, text, ms, bytes, truncated }
-export async function safeFetch(url, { fetchImpl = fetch, lookup = (h => dns.lookup(h, { all: true })), timeoutMs = TIMEOUT_MS, maxBytes = MAX_BYTES, maxRedirects = 4 } = {}) {
+export async function safeFetch(url, { fetchImpl = fetch, lookup = (h => dns.lookup(h, { all: true })), timeoutMs = TIMEOUT_MS, maxBytes = MAX_BYTES, maxRedirects = 4, userAgent = UA, accept = 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.5' } = {}) {
   let cur = url; const t0 = Date.now();
   for (let hop = 0; hop <= maxRedirects; hop++) {
     const c = cleanSiteUrl(cur); if (c.error) throw new Error(c.error);
     const host = new URL(c.url).hostname;
     if (!net.isIP(host)) { let addrs; try { addrs = await lookup(host); } catch { throw new Error(`The site ${host} could not be found`); } if (!addrs.length || addrs.some(a => !isPublicIp(a.address))) throw new Error('That address does not lead to a public website'); }
     const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), timeoutMs);
-    let res; try { res = await fetchImpl(c.url, { redirect: 'manual', signal: ctl.signal, headers: { 'User-Agent': UA, Accept: 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.5', 'Accept-Language': 'en-US,en;q=0.8' } }); }
+    let res; try { res = await fetchImpl(c.url, { redirect: 'manual', signal: ctl.signal, headers: { 'User-Agent': userAgent, Accept: accept, 'Accept-Language': 'en-US,en;q=0.8' } }); }
     catch (e) { clearTimeout(timer); throw new Error(e.name === 'AbortError' ? `The site took longer than ${Math.round(timeoutMs / 1000)} seconds to answer` : `The site could not be reached (${String(e.cause?.code || e.message).slice(0, 60)})`); }
     if ([301, 302, 303, 307, 308].includes(res.status) && res.headers.get('location')) { clearTimeout(timer); cur = new URL(res.headers.get('location'), c.url).toString(); continue; }
     const type = String(res.headers.get('content-type') || ''); let text = '', bytes = 0, truncated = false;

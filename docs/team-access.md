@@ -24,6 +24,7 @@ The people named for Money (`MONEY_ACCESS_EMAILS`, default Danielle and Kyle) ar
 | Factories | the factory list, map, skills and assigned work |
 | Platform health | health checks, connections, usage |
 | Brand and assets | logos, fonts, colours, downloads |
+| Design Lab | what other brands make and what is selling, our brand code, line plans and concepts (see `docs/design-lab.md`). **Held back**: never part of Everything or of the default for new people; an owner ticks it for a person on purpose |
 
 Not modules: **My day** (open to everyone on the team, but each part of it only shows what the person has been given), **Money** and signing for Future Basics (the Money list), **Team access** (owners only) and changing the **Payment gate** (the owners only; anyone with Clients and projects can read it).
 
@@ -43,7 +44,7 @@ Not modules: **My day** (open to everyone on the team, but each part of it only 
 
 ## When this went live
 
-Everyone who was staff at that moment was given every module, so nothing changed for them until an owner restricts them. People who sign in for the first time afterwards start with the owners' default.
+Everyone who was staff at that moment was given every module (except the held-back Design Lab), so nothing changed for them until an owner restricts them. People who sign in for the first time afterwards start with the owners' default.
 
 ## Settings
 

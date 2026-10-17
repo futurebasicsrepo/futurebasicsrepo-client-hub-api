@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>Design Lab</title>
+<link rel="icon" href="/icons/icon-192.png">
+<style>
+@import url('/fonts/fonts.css');
+:root{--ink:#141416;--paper:#fff;--fog:#f5f5f2;--dim:#727278;--line:rgba(20,20,22,.14);--cue:#4bff9a;--ok:#17603a;--bad:#a02a20;--warn:#8a5a00}
+*{box-sizing:border-box}html{background:var(--fog)}
+body{margin:0;color:var(--ink);font:400 14px/1.5 'Space Grotesk',system-ui,sans-serif;background:var(--fog);min-height:100vh}
+button,input,select,textarea{font:inherit}a{color:inherit}.hidden{display:none!important}
+.mono{font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase}
+header{height:72px;background:rgba(20,20,22,.96);color:#fff;padding:0 clamp(16px,4vw,48px);display:flex;align-items:center;justify-content:space-between;gap:14px;position:sticky;top:0;z-index:20;backdrop-filter:blur(16px)}
+.wordmark{display:flex;align-items:center;gap:12px;position:relative;text-decoration:none;color:inherit;text-transform:uppercase;letter-spacing:.08em}
+.wordmark:after{content:"";position:absolute;left:0;bottom:-7px;width:64px;height:2px;background:var(--cue)}
+.brand-logo{display:block;width:200px;max-width:34vw;height:auto;max-height:30px}.brand-suffix{font:500 10px 'IBM Plex Mono',monospace;white-space:nowrap}
+main{max-width:1180px;margin:0 auto;overflow-x:clip;padding:26px clamp(14px,3vw,36px) 90px}
+h1{font-size:clamp(30px,5vw,48px);letter-spacing:-.035em;font-weight:500;margin:6px 0 6px;line-height:1.04}h2{font-size:20px;font-weight:500;letter-spacing:-.02em;margin:0}
+.sub{color:var(--dim);font-size:13px}.note{color:var(--dim);margin:4px 0 0;max-width:72ch}
+.panel{background:#fff;border:1px solid var(--line);border-radius:22px;padding:20px 22px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--ink);background:#fff;color:var(--ink);border-radius:999px;padding:8px 15px;text-decoration:none;cursor:pointer;font-weight:600;min-height:38px}.btn:hover{background:var(--ink);color:#fff}
+.btn.go{background:var(--cue);border-color:var(--cue);color:var(--ink)}.btn.go:hover{background:#7affb6;color:var(--ink)}.btn.sm{min-height:32px;padding:5px 12px;font-size:13px}.btn[disabled]{opacity:.5;cursor:default}
+.hero{background:var(--ink);color:#fff;border-radius:28px;padding:clamp(20px,4vw,36px);margin-bottom:22px;position:relative;overflow:hidden;isolation:isolate}
+.hero:before{content:"";position:absolute;inset:0;z-index:-1;background-image:linear-gradient(rgba(255,255,255,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.05) 1px,transparent 1px);background-size:28px 28px}
+.hero .mono{color:#9d9da4}.hero p{color:#c9c9cf;max-width:66ch;margin:6px 0 0;font-size:15px}
+.stats{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}
+.stat{border:1px solid rgba(255,255,255,.18);border-radius:14px;padding:8px 14px;min-width:110px}.stat b{display:block;font-size:22px;font-weight:500;letter-spacing:-.02em}.stat span{font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#9d9da4}
+.sec{margin:34px 0 0;scroll-margin-top:90px}.sec>.hd{margin-bottom:12px}
+.chip{font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.06em;text-transform:uppercase;border-radius:999px;padding:3px 10px;background:var(--fog);color:var(--dim);white-space:nowrap}
+.chip.ok{background:#e4f6ec;color:var(--ok)}.chip.warn{background:#fff1d6;color:var(--warn)}.chip.bad{background:#fbe5e2;color:var(--bad)}.chip.hot{background:var(--ink);color:var(--cue)}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.t,select.t{border:1px solid var(--line);border-radius:12px;padding:8px 12px;background:#fff;min-width:0;flex:1 1 180px}textarea.t{width:100%;min-height:76px;resize:vertical}
+.msg{font-size:13px;min-height:18px;color:var(--ok)}.msg.bad{color:var(--bad)}
+.filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.pill{border:1px solid var(--line);background:#fff;border-radius:999px;padding:5px 12px;font:500 12px 'IBM Plex Mono',monospace;cursor:pointer;min-height:32px}.pill:hover{border-color:var(--ink)}.pill[aria-pressed="true"]{background:var(--ink);color:#fff;border-color:var(--ink)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px}
+.card{background:#fff;border:1px solid var(--line);border-radius:18px;overflow:hidden;display:flex;flex-direction:column;min-width:0}
+.card .ph{aspect-ratio:4/5;background:var(--fog);display:grid;place-items:center;color:var(--dim);font-size:12px;overflow:hidden}.card .ph img{width:100%;height:100%;object-fit:cover;display:block}
+.card .bd{padding:12px 14px 14px;display:grid;gap:6px;flex:1}.card .br{font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+.card h3{margin:0;font-size:15px;font-weight:600;line-height:1.3;overflow-wrap:anywhere}.card .pr{font-weight:600}
+.card .sm{font-size:12.5px;color:#33333a}.card .tags{display:flex;gap:6px;flex-wrap:wrap}.card .ac{display:flex;gap:6px;flex-wrap:wrap;margin-top:auto;padding-top:6px}
+.card.saved{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink)}
+.brand{display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:12px 0;border-top:1px solid var(--line)}.brand:first-child{border:0}
+.brand .nm{flex:1 1 240px;min-width:0;display:grid}.brand .nm b{font-size:15px}.brand .nm span{color:var(--dim);font-size:13px;overflow-wrap:anywhere}
+.form{display:grid;gap:14px}.form label{display:grid;gap:4px}.form label>span{font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.log{margin:0;padding:0;list-style:none;display:grid;gap:8px}.log li{display:flex;gap:10px;flex-wrap:wrap;justify-content:space-between;border-top:1px solid var(--line);padding-top:8px}.log li:first-child{border:0;padding:0}
+.log time{color:var(--dim);font-size:12.5px;white-space:nowrap}
+.fair{background:#fff8e6;border:1px solid #ecd9a8;border-radius:14px;padding:10px 14px;color:#5b4300;font-size:13px;max-width:86ch}
+@media(max-width:700px){.two{grid-template-columns:1fr}.grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.panel{padding:16px}}
+</style>
+</head>
+<body>
+<header>
+  <a class="wordmark" href="/home" aria-label="Work home"><img class="brand-logo" src="https://thefuturebasics.com/cdn/shop/files/future_basics_true_vector_fixed.svg?v=1775278873&amp;width=360" alt="Future Basics"><span class="brand-suffix">/ Design Lab</span></a>
+</header>
+<main>
+  <div id="needSignin" class="panel hidden"><h1>Sign in to the work console first</h1><p class="note">This page uses your work console sign-in. Open the console, sign in, then come back here.</p><a class="btn go" href="/admin" style="margin-top:12px">Open the work console</a></div>
+  <div id="app" class="hidden">
+    <section class="hero"><span class="mono">Future Basics · Danielle and Kyle only</span><h1>Design Lab.</h1>
+      <p>What the brands we admire make, and what is actually selling, read from the public web and kept here as facts and links. We borrow the cut and the attitude, hold the price at Zara, and add our own twist.</p>
+      <div class="stats" id="stats"></div></section>
+
+    <section class="sec" id="library"><div class="hd"><h2>Library</h2><p class="note">Every piece the Lab has found. <b>Heat</b> comes from the shop's own stock: sizes that have sold out on a newer piece. It is a hint about what is moving, not a sales number.</p></div>
+      <div class="panel">
+        <div class="filters" id="catPills" role="group" aria-label="Category"></div>
+        <div class="row" style="margin-bottom:14px">
+          <select class="t" id="fBrand" aria-label="Brand"></select>
+          <select class="t" id="fSort" aria-label="Sort"><option value="new">Newest first</option><option value="hot">Selling fastest</option><option value="price_asc">Price, low to high</option><option value="price_desc">Price, high to low</option><option value="brand">Brand</option></select>
+          <select class="t" id="fStatus" aria-label="Show"><option value="">All pieces</option><option value="saved">Saved</option><option value="hidden">Hidden</option></select>
+          <input class="t" id="fQ" type="search" placeholder="Search a word: oversized, wool, cap…" aria-label="Search">
+        </div>
+        <div class="grid" id="items"></div>
+        <p class="note hidden" id="empty"></p>
+        <div class="row" style="margin-top:14px"><button class="btn sm hidden" id="more" type="button">Show more</button><span class="sub" id="count"></span></div>
+        <div class="row" style="margin-top:18px;border-top:1px solid var(--line);padding-top:16px">
+          <input class="t" id="addUrl" type="url" placeholder="Paste the address of a product page to add it" aria-label="Product page address">
+          <button class="btn" id="addBtn" type="button">Add this piece</button><span class="msg" id="addMsg" role="status"></span>
+        </div>
+      </div></section>
+
+    <section class="sec" id="brands"><div class="hd"><h2>Brands we watch</h2><p class="note">The Lab reads each one on its own every few days. It follows each site's robots.txt, goes slowly, and when a site says no, or sits behind a bot wall, it finds the brand's pieces through ordinary web and image search instead.</p></div>
+      <div class="panel">
+        <div class="row" style="margin-bottom:6px"><button class="btn go" id="scanAll" type="button">Read everything now</button><span class="msg" id="scanMsg" role="status"></span></div>
+        <div id="brandList"></div>
+        <form class="row" id="brandForm" style="margin-top:16px;border-top:1px solid var(--line);padding-top:16px">
+          <input class="t" name="name" placeholder="Brand name" required maxlength="80" aria-label="Brand name">
+          <input class="t" name="site" placeholder="Website, like kith.com" aria-label="Website">
+          <select class="t" name="role" aria-label="What it is for"></select>
+          <button class="btn" type="submit">Add to the list</button><span class="msg" id="brandMsg" role="status"></span>
+        </form>
+      </div></section>
+
+    <section class="sec" id="code"><div class="hd"><h2>Brand code</h2><p class="note">How Future Basics decides what is ours. Everything the Lab reads, plans and designs is held against this. Edit it any time.</p></div>
+      <div class="panel"><form class="form" id="codeForm">
+        <label><span>What Future Basics is</span><textarea class="t" name="statement" maxlength="600"></textarea></label>
+        <div class="two"><label><span>Price anchor</span><input class="t" name="anchor" maxlength="80"></label><label><span>What the anchor means for us</span><input class="t" name="anchorNote" maxlength="400"></label></div>
+        <div class="two"><label><span>Cuts we borrow from (one per line)</span><textarea class="t" name="cuts"></textarea></label><label><span>Materials</span><textarea class="t" name="materials"></textarea></label></div>
+        <div class="two"><label><span>The look (one per line)</span><textarea class="t" name="looks"></textarea></label><label><span>Never (one per line)</span><textarea class="t" name="avoid"></textarea></label></div>
+        <div><span class="sub">Pieces we love. Three to five of these teach the Lab our taste far faster than words.</span><div id="exemplars" style="display:grid;gap:8px;margin-top:8px"></div><button class="btn sm" id="addEx" type="button" style="margin-top:8px">Add a piece</button></div>
+        <label><span>Notes</span><textarea class="t" name="notes" maxlength="1200"></textarea></label>
+        <div class="row"><button class="btn go" type="submit">Save the brand code</button><span class="msg" id="codeMsg" role="status"></span></div>
+      </form></div></section>
+
+    <section class="sec"><div class="hd"><h2>What the Lab has read</h2></div><div class="panel"><ul class="log" id="scans"></ul>
+      <p class="fair" style="margin-top:14px">The Lab keeps facts and links, and the address of a picture on the brand's own site. It does not copy pictures, logos, prints or names into our work. Every concept later is checked against what it was inspired by before anyone can approve it.</p></div></section>
+  </div>
+</main>
+<script src="/console-nav.js" defer></script>
+<script>
+const $=s=>document.querySelector(s),esc=v=>String(v??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const TOKEN=()=>{try{return localStorage.getItem('fb.admin.token')||''}catch{return ''}};
+const safe=u=>/^https?:\/\//i.test(String(u||''))?String(u):'';
+async function api(path,o={}){const r=await fetch(path,{method:o.method||(o.body?'POST':'GET'),headers:{Authorization:'Bearer '+TOKEN(),...(o.body?{'Content-Type':'application/json'}:{})},body:o.body?JSON.stringify(o.body):undefined});let j={};try{j=await r.json()}catch{}if(!r.ok)throw new Error(j.error||'That did not work');return j}
+let O=null,F={category:'',offset:0},LIST=[],TOTAL=0,POLL=null;
+const when=d=>{try{return d?new Date(d).toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):'never'}catch{return ''}};
+const money=(p,c)=>p==null?'':(c&&c!=='USD'?c+' ':'$')+(p%1?p.toFixed(2):p.toFixed(0));
+const lines=t=>String(t||'').split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+
+function drawTop(){
+  const t=O.totals,c=O.connected;
+  $('#stats').innerHTML=`<div class="stat"><b>${t.items}</b><span>Pieces</span></div><div class="stat"><b>${t.fresh}</b><span>New this week</span></div><div class="stat"><b>${t.saved}</b><span>Saved</span></div><div class="stat"><b>${O.brands.filter(b=>b.enabled).length}</b><span>Brands watched</span></div>
+  <div class="stat"><b style="font-size:15px;padding-top:5px">${c.search?'On':'Off'} · ${c.ai?'On':'Off'}</b><span>Search · AI read</span></div>`;
+  $('#catPills').innerHTML=`<button type="button" class="pill" data-cat="" aria-pressed="${F.category===''}">All</button>`+O.categories.filter(x=>x.count||x.id===F.category).map(x=>`<button type="button" class="pill" data-cat="${x.id}" aria-pressed="${F.category===x.id}">${esc(x.label)} · ${x.count}</button>`).join('');
+  const cur=$('#fBrand').value;$('#fBrand').innerHTML='<option value="">All brands</option>'+O.brands.map(b=>`<option value="${b.id}">${esc(b.name)}</option>`).join('');$('#fBrand').value=cur;
+}
+function drawBrands(){
+  $('#brandList').innerHTML=O.brands.map(b=>`<div class="brand" data-id="${b.id}"><span class="nm"><b>${esc(b.name)} <span class="chip ${b.role==='reference'?'':b.role==='price'?'warn':'ok'}">${esc(b.roleLabel)}</span>${b.enabled?'':' <span class="chip bad">Off</span>'}</b><span>${esc(b.site||'no website')}${b.note?' · '+esc(b.note):''}</span><span>${b.scanning?'Reading now…':b.lastScannedAt?`Read ${esc(when(b.lastScannedAt))}. ${esc(b.lastScanNote)}`:'Not read yet'}</span></span>
+    <span class="chip">${b.items} pieces</span>
+    <button class="btn sm" type="button" data-scan ${b.scanning?'disabled':''}>${b.scanning?'Reading…':'Read now'}</button><button class="btn sm" type="button" data-toggle>${b.enabled?'Pause':'Resume'}</button><button class="btn sm" type="button" data-del>Remove</button></div>`).join('')||'<p class="note">No brands yet.</p>';
+  $('#brandForm [name=role]').innerHTML=O.roles.map(r=>`<option value="${r.id}" title="${esc(r.hint)}">${esc(r.label)}</option>`).join('');
+  if(O.scanning.length&&!POLL)POLL=setInterval(refresh,2500);
+  if(!O.scanning.length&&POLL){clearInterval(POLL);POLL=null;loadItems(true).catch(()=>{});loadScans().catch(()=>{})}
+}
+function exRow(e={}){return `<div class="row" data-ex><input class="t" data-n placeholder="Piece or product" value="${esc(e.name)}" maxlength="120"><input class="t" data-w placeholder="Why we love it" value="${esc(e.why)}" maxlength="400"><input class="t" data-u placeholder="Link (optional)" value="${esc(e.url)}" maxlength="500"><button class="btn sm" type="button" data-rmex>Remove</button></div>`}
+function drawCode(){
+  const c=O.brandCode,f=$('#codeForm');f.statement.value=c.statement;f.anchor.value=c.priceAnchor.name;f.anchorNote.value=c.priceAnchor.note;f.cuts.value=c.cutReferences.join('\n');f.materials.value=c.materials;f.looks.value=c.looks.join('\n');f.avoid.value=c.avoid.join('\n');f.notes.value=c.notes;
+  $('#exemplars').innerHTML=c.exemplars.map(exRow).join('');
+}
+function card(i){
+  const img=safe(i.imageUrl),a=i.attrs||{},bits=[a.silhouette,a.fabric,(a.colors||[]).slice(0,2).join(', ')].filter(Boolean);
+  return `<article class="card ${i.status==='saved'?'saved':''}" data-id="${i.id}"><div class="ph">${img?`<img src="${esc(img)}" alt="${esc(i.title)}" loading="lazy" referrerpolicy="no-referrer">`:'No picture'}</div>
+  <div class="bd"><span class="br">${esc(i.brand||'Added by hand')}${i.isNew?' · new':''}</span><h3>${esc(i.title)}</h3>
+  <div class="tags">${i.price!=null?`<span class="pr">${esc(money(i.price,i.currency))}</span>`:''}<span class="chip">${esc(i.categoryLabel)}</span>${i.heatLabel&&i.heat>=30?`<span class="chip hot" title="Sizes sold out: ${i.sellthrough?Math.round((i.sellthrough.soldOutShare||0)*100):0}%">${esc(i.heatLabel)}</span>`:''}</div>
+  ${i.summary?`<div class="sm">${esc(i.summary)}</div>`:''}${bits.length?`<div class="sub">${esc(bits.join(' · '))}</div>`:''}
+  <div class="ac"><button class="btn sm" type="button" data-save>${i.status==='saved'?'Saved':'Save'}</button><button class="btn sm" type="button" data-hide>${i.status==='hidden'?'Bring back':'Hide'}</button>${safe(i.url)?`<a class="btn sm" href="${esc(safe(i.url))}" target="_blank" rel="noopener noreferrer">Open</a>`:''}</div></div></article>`;
+}
+function drawItems(append){
+  const g=$('#items');g.innerHTML=LIST.map(card).join('');
+  $('#empty').classList.toggle('hidden',LIST.length>0);
+  if(!LIST.length)$('#empty').textContent=O.totals.items?'Nothing matches those filters.':'The library is empty. Press “Read everything now” under Brands we watch, and the Lab will start reading.';
+  $('#more').classList.toggle('hidden',LIST.length>=TOTAL);$('#count').textContent=TOTAL?`${LIST.length} of ${TOTAL}`:'';
+}
+async function loadItems(reset){
+  if(reset)F.offset=0;
+  const p=new URLSearchParams({sort:$('#fSort').value,limit:'60',offset:String(F.offset)});
+  if(F.category)p.set('category',F.category);if($('#fBrand').value)p.set('brand',$('#fBrand').value);if($('#fStatus').value)p.set('status',$('#fStatus').value);if($('#fQ').value.trim())p.set('q',$('#fQ').value.trim());
+  const j=await api('/v1/lab/items?'+p);LIST=reset?j.items:LIST.concat(j.items);TOTAL=j.total;drawItems();
+}
+async function refresh(){O=await api('/v1/lab/overview');drawTop();drawBrands()}
+async function loadScans(){const j=await api('/v1/lab/scans?limit=12');$('#scans').innerHTML=j.scans.length?j.scans.map(s=>`<li><span><b>${esc(s.brand)}</b> · ${s.method?esc(s.method.replace('+',' then ')):'nothing read'}${s.found?` · ${s.found} found${s.added?`, ${s.added} new`:''}`:''}${s.blocked?' <span class="chip warn">site said no</span>':''}${s.note?`<br><span class="sub">${esc(s.note)}</span>`:''}</span><time>${esc(when(s.startedAt))}</time></li>`).join(''):'<li><span class="sub">Nothing has been read yet.</span></li>'}
+let debounce=null;
+document.addEventListener('input',e=>{if(e.target.id==='fQ'){clearTimeout(debounce);debounce=setTimeout(()=>loadItems(true).catch(()=>{}),300)}});
+document.addEventListener('change',e=>{if(['fBrand','fSort','fStatus'].includes(e.target.id))loadItems(true).catch(()=>{})});
+document.addEventListener('click',async e=>{
+  const cat=e.target.closest('[data-cat]');if(cat){F.category=cat.dataset.cat;drawTop();loadItems(true).catch(()=>{});return}
+  if(e.target.id==='more'){F.offset=LIST.length;loadItems(false).catch(()=>{});return}
+  const c=e.target.closest('.card');
+  if(c&&(e.target.closest('[data-save]')||e.target.closest('[data-hide]'))){const it=LIST.find(x=>x.id===c.dataset.id),want=e.target.closest('[data-save]')?(it.status==='saved'?'new':'saved'):(it.status==='hidden'?'new':'hidden');
+    try{await api('/v1/lab/items/'+it.id,{method:'PUT',body:{status:want}});await refresh();await loadItems(true)}catch(x){alert(x.message)}return}
+  const b=e.target.closest('.brand');
+  if(b&&e.target.closest('[data-scan]')){const m=$('#scanMsg');m.className='msg';m.textContent='Reading…';try{await api(`/v1/lab/brands/${b.dataset.id}/scan`,{method:'POST',body:{}});m.textContent='Reading started. Results appear in the library as they arrive.';await refresh()}catch(x){m.className='msg bad';m.textContent=x.message}return}
+  if(b&&e.target.closest('[data-toggle]')){const br=O.brands.find(x=>x.id===b.dataset.id);try{await api('/v1/lab/brands/'+br.id,{method:'PUT',body:{enabled:!br.enabled}});await refresh()}catch(x){alert(x.message)}return}
+  if(b&&e.target.closest('[data-del]')){const br=O.brands.find(x=>x.id===b.dataset.id);if(!confirm(`Remove ${br.name} and the ${br.items} pieces read from it?`))return;try{await api('/v1/lab/brands/'+br.id,{method:'DELETE'});await refresh();await loadItems(true)}catch(x){alert(x.message)}return}
+  if(e.target.id==='scanAll'){const m=$('#scanMsg');m.className='msg';m.textContent='Starting…';try{const j=await api('/v1/lab/scan',{method:'POST',body:{}});m.textContent=`Reading ${j.brands} brands, one after another. This takes a few minutes.`;await refresh()}catch(x){m.className='msg bad';m.textContent=x.message}return}
+  if(e.target.id==='addEx'){$('#exemplars').insertAdjacentHTML('beforeend',exRow());return}
+  if(e.target.closest('[data-rmex]')){e.target.closest('[data-ex]').remove();return}
+  if(e.target.id==='addBtn'){const m=$('#addMsg');m.className='msg';m.textContent='Reading the page…';e.target.disabled=true;try{const j=await api('/v1/lab/items',{body:{url:$('#addUrl').value}});m.textContent=`Added “${j.item.title}”`;$('#addUrl').value='';await refresh();await loadItems(true)}catch(x){m.className='msg bad';m.textContent=x.message}e.target.disabled=false}
+});
+document.addEventListener('submit',async e=>{
+  if(e.target.id==='brandForm'){e.preventDefault();const f=e.target,m=$('#brandMsg');m.className='msg';m.textContent='';try{await api('/v1/lab/brands',{body:{name:f.name.value,site:f.site.value,role:f.role.value}});f.reset();m.textContent='Added';await refresh()}catch(x){m.className='msg bad';m.textContent=x.message}}
+  if(e.target.id==='codeForm'){e.preventDefault();const f=e.target,m=$('#codeMsg');m.className='msg';m.textContent='Saving…';
+    const ex=[...document.querySelectorAll('[data-ex]')].map(r=>({name:r.querySelector('[data-n]').value,why:r.querySelector('[data-w]').value,url:r.querySelector('[data-u]').value})).filter(x=>x.name.trim());
+    try{const j=await api('/v1/lab/brand-code',{method:'PUT',body:{statement:f.statement.value,priceAnchor:{name:f.anchor.value,note:f.anchorNote.value},cutReferences:lines(f.cuts.value),materials:f.materials.value,looks:lines(f.looks.value),avoid:lines(f.avoid.value),exemplars:ex,notes:f.notes.value}});O.brandCode=j.brandCode;drawCode();$('#codeMsg').className='msg';$('#codeMsg').textContent='Saved'}catch(x){m.className='msg bad';m.textContent=x.message}}
+});
+(async()=>{
+  if(!TOKEN()){$('#needSignin').classList.remove('hidden');return}
+  try{await refresh();$('#app').classList.remove('hidden');drawCode();await loadItems(true);await loadScans()}
+  catch(x){$('#app').classList.add('hidden');const n=$('#needSignin');n.classList.remove('hidden');const no=/access to Design Lab|not turned on|Only Danielle/i.test(x.message);n.querySelector('h1').textContent=no?'The Design Lab is not turned on for you':'Sign in to the work console first';n.querySelector('.note').textContent=no?'It is for Danielle and Kyle. If you need it, ask one of them to tick Design Lab for you on Team access.':'This page uses your work console sign-in. Open the console, sign in, then come back here.'}
+})();
+</script>
+</body>
+</html>

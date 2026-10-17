@@ -26,9 +26,13 @@ export const MODULES = [
   { id: 'clients', label: 'Clients and projects', group: 'Delivery', hint: 'Client rooms, projects, products and tech packs, approvals, production, quotes, files and assistant learning' },
   { id: 'factories', label: 'Factories', group: 'Delivery', hint: 'The factory list, map, skills and assigned work' },
   { id: 'platform', label: 'Platform health', group: 'Sites and health', hint: 'Health checks, connections and how the platform is being used' },
-  { id: 'brand', label: 'Brand and assets', group: 'Brand', hint: 'Logos, fonts, colours and downloads' }
+  { id: 'brand', label: 'Brand and assets', group: 'Brand', hint: 'Logos, fonts, colours and downloads' },
+  // Held back: never part of "Everything", the first-sign-in default or the one-time backfill. An owner ticks it for a person on purpose.
+  { id: 'lab', label: 'Design Lab', group: 'Design Lab', hint: 'What other brands make and what is selling, our brand code, line plans and concepts. Owners only unless you tick it for someone', restricted: true }
 ];
 export const MODULE_IDS = MODULES.map(m => m.id);
+// What "everything", the default for new people and the backfill hand out: every module except the held-back ones.
+export const OPEN_IDS = MODULES.filter(m => !m.restricted).map(m => m.id);
 const BY_ID = new Map(MODULES.map(m => [m.id, m]));
 export const moduleLabel = id => BY_ID.get(id)?.label || id;
 
@@ -36,7 +40,7 @@ export const moduleLabel = id => BY_ID.get(id)?.label || id;
 export const PRESETS = [
   { id: 'sales', label: 'Sales', modules: ['messages', 'crm', 'automations', 'press', 'contracts', 'intel', 'prototypes', 'builds', 'brand'] },
   { id: 'delivery', label: 'Delivery', modules: ['messages', 'clients', 'factories', 'brand'] },
-  { id: 'everything', label: 'Everything', modules: MODULE_IDS },
+  { id: 'everything', label: 'Everything', modules: OPEN_IDS },
   { id: 'nothing', label: 'Nothing yet', modules: [] }
 ];
 
@@ -61,6 +65,7 @@ const RULES = [
   [/^\/v1\/intel/, 'intel'],
   [/^\/v1\/contracts/, 'contracts'],
   [/^\/v1\/brand/, 'brand'],
+  [/^\/v1\/lab/, 'lab'],
   [/^\/v1\/admin/, 'clients'],
   // shared routes that clients use for their own room and that staff use to work in any room
   [/^\/v1\/(products|projects|room-files|project-files|pick-images|invoices|quotes|approvals|comments|asset-versions|requests|vendor|tech-packs|dashboard)(\/|$)/, 'clients']
@@ -85,7 +90,9 @@ export function isOwner(email, env = process.env) {
 // Keeps only real module ids, once each, in the page's order.
 export const cleanModules = list => { const want = new Set((Array.isArray(list) ? list : []).map(String)); return MODULE_IDS.filter(id => want.has(id)); };
 // "all" / "everything", or a comma separated list, for the starting access of people with no row (STAFF_ACCESS_DEFAULT); anything else is nothing.
-export const parseDefault = v => { const s = String(v ?? '').trim().toLowerCase(); return s === 'all' || s === 'everything' ? MODULE_IDS.slice() : cleanModules(s.split(/[,\s;]+/)); };
+export const parseDefault = v => { const s = String(v ?? '').trim().toLowerCase(); return withoutHeldBack(s === 'all' || s === 'everything' ? OPEN_IDS : cleanModules(s.split(/[,\s;]+/))); };
+// The held-back modules (the Design Lab) are never a default for people nobody has looked at yet.
+export const withoutHeldBack = list => cleanModules(list).filter(id => OPEN_IDS.includes(id));
 
 // One person's reach. `row` is their staff_access row (or null for someone new).
 export function reach({ email, row = null, defaults = [], env = process.env }) {
@@ -103,9 +110,9 @@ export function createStaffAccess({ pool, getSetting, setSetting, env = process.
   // The owners' default for people who have no row yet. Stored by the owners; STAFF_ACCESS_DEFAULT only sets where it starts.
   async function defaults() {
     const stored = await getSetting('staffAccessDefaults').catch(() => null);
-    return Array.isArray(stored?.modules) ? cleanModules(stored.modules) : parseDefault(env.STAFF_ACCESS_DEFAULT);
+    return Array.isArray(stored?.modules) ? withoutHeldBack(stored.modules) : parseDefault(env.STAFF_ACCESS_DEFAULT);
   }
-  async function setDefaults(modules) { const v = { modules: cleanModules(modules) }; await setSetting('staffAccessDefaults', v); forget(); return v.modules; }
+  async function setDefaults(modules) { const v = { modules: withoutHeldBack(modules) }; await setSetting('staffAccessDefaults', v); forget(); return v.modules; }
 
   // The reach of whoever the token says. A session that is not a real user row (the staff preview) is not restricted: the server made it itself.
   async function reachOf(auth) {
