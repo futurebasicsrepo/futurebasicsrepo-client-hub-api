@@ -760,7 +760,7 @@ await journey('J118', 'the work console menu down the left: grouped, the same on
   await page.goto(`${W}/admin`, { waitUntil: 'networkidle' }); await page.waitForSelector('#app:not(.hidden)', { timeout: 15000 }); await page.waitForSelector('.fbside nav', { timeout: 5000 });
   const labels = await page.$$eval('.fbside a[data-nav] .lbl', e => e.map(x => x.textContent));
   ok(['My day', 'Messages', 'Chats', 'Contacts', 'Clients', 'Tasks', 'Fair contacts', 'Sales today', 'Pipeline', 'Opportunities', 'Intelligence', 'Site prototypes', 'Builds showcase', 'Automations', 'Press', 'Projects', 'Waiting on approval', 'Production attention', 'Factories', 'Assistant learning', 'Payment gate', 'Platform health', 'Connections'].every(l => labels.includes(l)), 'every place the old menu led to is still in the menu', labels);
-  ok((await page.$$eval('.fbside .grp > span', e => e.map(x => x.textContent))).join('|') === 'Inbox|People|Win|Design Lab|Deliver|Money|Sites and health|Team', 'grouped by stage: Inbox, People, Win, Design Lab (owners), Deliver, Money, Sites and health, Team');
+  ok((await page.$$eval('.fbside .grp > span', e => e.map(x => x.textContent))).join('|') === 'Inbox|Clients|Sales|Business', 'four groups by kind of work: Inbox, Clients, Sales, Business (with My day and the Design Lab on their own)');
   ok(await page.$eval('header', h => h.getBoundingClientRect().left) <= 1 && await page.$eval('#app', a => a.getBoundingClientRect().left) >= 230, 'the header spans the page and the content sits to the right of the menu');
   ok(await page.locator('.homenav, a.platformlink').count() === 0, 'the old header links are gone');
   ok(await page.locator('.fbside a.on:not(.gicon)').count() === 1 && /Clients/.test(await page.locator('.fbside a.on:not(.gicon)').innerText()), 'at the top of the clients and production page, Clients is marked as where you are');
@@ -787,7 +787,7 @@ await journey('J118', 'the work console menu down the left: grouped, the same on
   await page.click('.tab[data-t="tasks"]'); await sleep(300); ok(/Tasks/.test(await page.locator('.fbside a.on:not(.gicon)').first().innerText()), 'using the page tabs moves the marker too');
   await page.click('.fbside a[data-href="/builds/admin#builds"]:not(.gicon)'); await page.waitForURL(/\/builds\/admin#builds/, { timeout: 10000 }); await page.waitForSelector('#t-builds:not(.hidden)', { timeout: 10000 });
   ok(/Builds showcase/.test(await page.locator('.fbside a.on:not(.gicon)').first().innerText()), 'Builds showcase opens the builds page, menu marked');
-  ok(await page.locator('.fbside .grp:has-text("People")').count() === 1, 'the same menu is on the builds page');
+  ok(await page.locator('.fbside .grp:has-text("Sales")').count() === 1, 'the same menu is on the builds page');
   await page.click('.fbside a[data-href="/admin#approvals"]:not(.gicon)'); await page.waitForURL(/\/admin/, { timeout: 10000 }); await page.waitForSelector('#app:not(.hidden)', { timeout: 15000 });
   await sleep(1200); ok(await page.$eval('#approvals', e => { const t = e.getBoundingClientRect().top; return t >= -5 && t < 300; }), 'arriving from another page at a section scrolls to it once the page has loaded');
 
@@ -807,7 +807,7 @@ await journey('J118', 'the work console menu down the left: grouped, the same on
   const ph = await pc.newPage(); ph.errs = []; ph.on('pageerror', e => ph.errs.push(e.message)); const over = () => ph.evaluate(() => document.documentElement.scrollWidth - innerWidth);
   await ph.goto(`${W}/sales`, { waitUntil: 'networkidle' }); await ph.waitForSelector('.tiles', { timeout: 15000 });
   ok(await ph.locator('.fbburger').isVisible() && await ph.$eval('.fbside', e => e.getBoundingClientRect().right) <= 1 && await over() <= 1, 'on a phone the menu is closed behind a button and nothing sticks out', await over());
-  await ph.click('.fbburger'); await sleep(350); ok(await ph.$eval('.fbside', e => e.getBoundingClientRect().left) >= -1 && /people/i.test(await ph.innerText('.fbside')), 'the button opens the drawer');
+  await ph.click('.fbburger'); await sleep(350); ok(await ph.$eval('.fbside', e => e.getBoundingClientRect().left) >= -1 && /sales/i.test(await ph.innerText('.fbside')), 'the button opens the drawer');
   await ph.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/j118-phone.png` }).catch(() => {});
   // on a short phone the drawer scrolls under a finger to its last item, and a drag on the dimmed page does not move the page behind it
   await ph.setViewportSize({ width: 390, height: 600 }); await sleep(300); const cdp = await pc.newCDPSession(ph);
@@ -2038,12 +2038,60 @@ await journey('J160', 'My accounts on Home: the customers you own with what each
   await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || '/tmp'}/j160-home.png` }).catch(() => {});
   await page.click(`[data-take] >> nth=0`); await page.waitForFunction(() => !document.querySelector('#unownedBox [data-take]') || document.querySelectorAll('#myList .acct').length >= 3, null, { timeout: 8000 });
   ok(await page.locator('#myList .acct').count() >= 3, 'pressing Take moves the account into my accounts on the page');
-  ok((await page.$$eval('.fbside .grp > span', e => e.map(x => x.textContent))).join('|') === 'Inbox|People|Win|Design Lab|Deliver|Money|Sites and health|Team' && /My day/.test(await page.locator('.fbside a.on:not(.gicon)').first().innerText()), 'the menu is by stage and marks My day');
+  ok((await page.$$eval('.fbside .grp > span', e => e.map(x => x.textContent))).join('|') === 'Inbox|Clients|Sales|Business' && /My day/.test(await page.locator('.fbside a.on:not(.gicon)').first().innerText()), 'the menu is by stage and marks My day');
   await page.click('.fbside a[data-href="/home#projPanel"]:not(.gicon)'); await sleep(500);
   ok(/Projects/.test(await page.locator('.fbside a.on:not(.gicon)').first().innerText()) && await page.locator('#projPanel').isVisible(), 'Projects in the menu goes to the projects on Home');
   ok(page.errs.length === 0, 'no script errors', page.errs); await ctx.close();
   const { ctx: pc, page: ph } = await phone(); try { await ph.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, olive); await ph.goto(`${W}/home`, { waitUntil: 'networkidle' }); await ph.waitForSelector('#myList .acct', { timeout: 15000 });
     ok(await ph.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'on a phone nothing is wider than the screen'); await ph.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || '/tmp'}/j160-phone.png` }).catch(() => {}); } finally { await pc.close(); }
+});
+
+await journey('J202', 'Client cards newest first and sortable, the menu folds and finds, and a tech pack can be started from My day and from the menu', async () => {
+  const r = await room('202', { wait: false }), W = 'http://work.localhost:3123', tag = `qs${stamp}`;
+  const uid = sql(`insert into users(client_id,email,name,role) values('${r.clientId}','quick-${tag}@thefuturebasics.com','Quinn Quick','admin') returning id`).split('\n')[0];
+  const tok = await forge({ sub: uid, clientId: r.clientId, role: 'admin', email: `quick-${tag}@thefuturebasics.com` });
+  const old = sql(`insert into clients(name,slug,status,created_at) values('Aaa Oldest ${tag}','aaa-oldest-${tag}','active', now() - interval '400 days') returning id`).split('\n')[0];
+  const fresh = sql(`insert into clients(name,slug,status,created_at) values('Zzz Newest ${tag}','zzz-newest-${tag}','active', now() + interval '1 day') returning id`).split('\n')[0];
+
+  const pk = await call('/v1/admin/client-picker', { token: tok });
+  ok(pk.status === 200 && pk.json.clients[0].id === fresh && pk.json.clients.some(c => c.id === old), 'the picker lists live client rooms, newest first');
+  ok((await call('/v1/admin/client-picker', { token: r.token })).status === 403, 'a client cannot read it');
+
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, tok);
+  const page = await ctx.newPage(); page.errs = []; page.on('pageerror', e => page.errs.push(e.message));
+  await page.goto(`${W}/admin`, { waitUntil: 'networkidle' }); await page.waitForSelector('#clients .card', { timeout: 20000 });
+  const names = () => page.$$eval('#clients .card h2', e => e.map(x => x.textContent.trim()));
+  let ns = await names(); ok(ns[0] === `Zzz Newest ${tag}` && ns.indexOf(`Aaa Oldest ${tag}`) > ns.indexOf(`Zzz Newest ${tag}`), 'client cards open newest first', ns.slice(0, 3).join(' | '));
+  await page.selectOption('#clientSort', 'name'); ns = await names(); ok(ns.indexOf(`Aaa Oldest ${tag}`) < ns.indexOf(`Zzz Newest ${tag}`), 'Name A to Z reorders them');
+  await page.reload({ waitUntil: 'networkidle' }); await page.waitForSelector('#clients .card'); ok(await page.$eval('#clientSort', s => s.value) === 'name', 'and the choice is remembered');
+  await page.selectOption('#clientSort', 'oldest'); ns = await names(); ok(ns[0] !== `Zzz Newest ${tag}` && ns.indexOf(`Aaa Oldest ${tag}`) < ns.indexOf(`Zzz Newest ${tag}`), 'Oldest first works');
+  await page.selectOption('#clientSort', 'newest'); await page.fill('#clientFind', `oldest ${tag}`); ns = await names(); ok(ns.length === 1 && /Aaa Oldest/.test(ns[0]) && /1 of/i.test(await page.innerText('#clientShown')), 'the box narrows the cards and says how many', ns.join('|'));
+  await page.fill('#clientFind', '');
+
+  // the menu: four groups, folding remembered, Jump to, Design Lab as one entry
+  await page.waitForSelector('.fbside nav'); await sleep(900);
+  ok(await page.locator('.fbside a[data-nav="Design Lab"]').count() === 1 && await page.locator('.fbside .grp').count() === 4 && await page.locator('.fbside a[data-href^="/lab"]').count() === 1, 'the menu has four groups and the Design Lab as one entry');
+  await page.click('.fbside .grp[data-grp="sales"] > span'); ok(await page.locator('.fbside a[data-href="/sales#pipeline"]:not(.gicon)').isHidden(), 'a group folds away when its title is pressed');
+  await page.reload({ waitUntil: 'networkidle' }); await page.waitForSelector('.fbside nav'); ok(await page.locator('.fbside .grp[data-grp="sales"].shut').count() === 1, 'and stays folded after a reload');
+  await page.fill('#fbJump', 'pipel'); ok(await page.locator('.fbside a[data-href="/sales#pipeline"]:not(.gicon)').isVisible() && await page.locator('.fbside a[data-href="/sales#contacts"]:not(.gicon)').isHidden(), 'Jump to shows only what matches, even inside a folded group');
+  await page.fill('#fbJump', ''); await page.click('.fbside .grp[data-grp="sales"] > span');
+
+  // start a tech pack from the menu
+  await page.click('#fbStart'); await page.waitForSelector('#fbStartDlg #fbsClient option[value]:not([value=""])', { state: 'attached', timeout: 8000 });
+  ok(await page.$eval('#fbsClient', s => s.options[1].textContent) === `Zzz Newest ${tag}`, 'the dialog lists the newest client first');
+  await page.click('#fbsGo'); ok(await page.locator('#fbStartDlg').count() === 1, 'a form with nothing chosen does not submit');
+  await page.selectOption('#fbsClient', fresh); await page.fill('#fbsTitle', 'Quick hoodie'); await page.setInputFiles('#fbsPhoto', `${FX}/ig-screenshot.png`);
+  await page.click('#fbsGo'); await page.waitForURL(/\/tech-packs\//, { timeout: 20000 });
+  ok(sql(`select count(*)::text from products where client_id='${fresh}' and title='Quick hoodie'`) === '1', 'it makes the product in that client\'s room and opens its tech pack');
+
+  // from My day: the button, and one tap on a recent client
+  await page.goto(`${W}/home`, { waitUntil: 'networkidle' }); await page.waitForSelector('#techClients [data-c]', { timeout: 15000 });
+  ok(await page.locator('#aTech').isVisible() && (await page.$$eval('#techClients [data-c]', e => e[0].textContent)) === `Zzz Newest ${tag}`, 'My day has a Start a tech pack button and the newest clients one tap away');
+  await page.click(`#techClients [data-c="${fresh}"]`); await page.waitForSelector('#fbStartDlg'); await page.waitForFunction(id => document.getElementById('fbsClient').value === id, fresh, { timeout: 8000 }).catch(() => {});
+  ok(await page.$eval('#fbsClient', s => s.value) === fresh, 'tapping a client opens the form with that client chosen');
+  await page.fill('#fbsTitle', 'Quick tee'); await page.click('#fbsGo'); await page.waitForURL(/\/tech-packs\//, { timeout: 20000 });
+  ok(sql(`select count(*)::text from products where client_id='${fresh}' and title='Quick tee'`) === '1', 'and starts the pack for them');
+  ok(page.errs.length === 0, 'no script errors', page.errs); await ctx.close();
 });
 
 await journey('J179', 'Sending the theme in a browser: the push window offers the theme for a Shopify client, the zip downloads, the store key is saved without being shown again, and the page is clean', async () => {

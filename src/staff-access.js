@@ -51,7 +51,7 @@ const RULES = [
   // changing what the tech pack payment gate charges is for the owners (anyone with Clients and projects may still read it)
   [/^\/v1\/admin\/tech-pack-billing/, 'owner', ['PUT', 'POST', 'PATCH', 'DELETE']],
   [/^\/v1\/money/, null],
-  [/^\/v1\/admin\/home/, null],
+  [/^\/v1\/admin\/(home|client-picker)/, null],
   [/^\/v1\/admin\/(message-center|notifications)/, 'messages'],
   [/^\/v1\/sales\/chats/, 'messages'],
   [/^\/v1\/admin\/(platform|shopify\/status|resend\/status)/, 'platform'],

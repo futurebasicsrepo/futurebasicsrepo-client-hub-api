@@ -65,7 +65,9 @@ h1{font-size:clamp(28px,4vw,44px);letter-spacing:-.03em;font-weight:500;margin:6
   <div id="needSignin" class="panel hidden"><h1>Sign in to the work console first</h1><p class="note">This page uses your work console sign-in. Open the console, sign in, then come back here.</p><a class="btn go" href="/admin" style="margin-top:12px">Open the work console</a></div>
   <div id="app" class="hidden">
     <div class="top"><div><span class="mono" style="color:var(--dim)" id="date"></span><h1 id="hello">Today</h1><p class="note">More leads, more prototypes in front of the right people, and every project in flight one click away.</p></div>
-      <div class="acts" id="actions"><a class="btn" href="/sales#contacts" id="aLead">+ Add a lead</a><a class="btn" href="/builds/admin?new=1" id="aProto">+ New prototype</a><a class="btn go" href="/admin#clientsHead" id="aProj">+ New project</a></div></div>
+      <div class="acts" id="actions"><a class="btn" href="/sales#contacts" id="aLead">+ Add a lead</a><a class="btn" href="/builds/admin?new=1" id="aProto">+ New prototype</a><button class="btn go" type="button" id="aTech">+ Start a tech pack</button><a class="btn" href="/admin#clientsHead" id="aProj">+ New project</a></div></div>
+
+    <section class="panel hidden" id="techPanel" aria-label="Start a tech pack"><div class="ph"><h2>Start a tech pack</h2><span class="sub">Pick a client, name the product, add a photo if you have one.</span></div><div class="chips" id="techClients"></div></section>
 
     <section class="share hidden" id="share" aria-label="New-customer sign-up link"><div><span class="mono">New-customer link</span><b id="shareUrl"></b><span class="sub">Opens a short page on their phone, makes their hub and asks for their details once. Each sign-up is marked as yours.</span></div>
       <div class="acts"><button class="btn go" type="button" id="shareGo">Share</button><a class="btn" id="shareSms" href="#">Text it</a><button class="btn" type="button" id="shareCopy">Copy</button></div><span class="msg" id="shareMsg" role="status"></span></section>
@@ -95,6 +97,7 @@ async function api(path,o={}){const r=await fetch(path,{method:o.method||(o.body
 const money=c=>'$'+Math.round(Number(c||0)/100).toLocaleString();
 const ago=v=>{if(!v)return '';const d=(Date.now()-new Date(v))/864e5;return d<1?'today':d<2?'yesterday':Math.floor(d)+' days ago'};
 const SW=['discovery','prototype','build','review','launch','live','maintenance'];
+const startTech=id=>{if(window.fbNav&&window.fbNav.startTechPack)window.fbNav.startTechPack({clientId:id||''});else location.href='/admin#clientsHead'};
 let HOME=null,FILTER='all',MONEY=null;
 
 // the sign-up link to text to a new customer: Share opens the phone's own share sheet, Text it opens Messages with the words ready
@@ -169,6 +172,11 @@ function renderWait(h){
   if(w.production)bits.push(`<a class="chip us" href="/admin#production">${w.production} production problem${w.production===1?'':'s'}</a>`);
   $('#waitbar').innerHTML=bits.length?'<span class="sub">Also waiting:</span>'+bits.join(''):'';
 }
+$('#aTech').addEventListener('click',()=>startTech());
+$('#techClients').addEventListener('click',e=>{const b=e.target.closest('[data-c]');startTech(b?b.dataset.c:'')});
+// the newest client rooms, one tap each: the person is in a hurry, so the client is already chosen when the box opens
+async function loadTechPanel(){try{const d=await api('/v1/admin/client-picker'),list=(d.clients||[]).slice(0,8);if(!list.length)return;
+  $('#techClients').innerHTML=list.map(c=>`<button class="fchip" type="button" data-c="${esc(c.id)}">${esc(c.name)}</button>`).join('')+'<button class="fchip" type="button" data-c="">Another client…</button>';$('#techPanel').classList.remove('hidden')}catch{$('#aTech').classList.add('hidden')}}
 $('#projFilters').addEventListener('click',e=>{const b=e.target.closest('[data-f]');if(!b)return;FILTER=b.dataset.f;renderProjects()});
 (async()=>{
   // a Google sign-in that lands here (an older link, or the old redirect) is kept, not bounced: save the session and clean the address
@@ -178,7 +186,7 @@ $('#projFilters').addEventListener('click',e=>{const b=e.target.closest('[data-f
     const [o,h]=await Promise.all([api('/v1/sales/overview'),api('/v1/admin/home')]);HOME=h;
     $('#app').classList.remove('hidden');
     $('#date').textContent=new Date().toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'});$('#hello').textContent=greet()+(h.me&&h.me.firstName?', '+h.me.firstName:'');
-    loadShare();renderFunnel(o,h);renderMine(h);renderReach(o,h);renderProtos(h);renderProjects();renderWait(h);
+    loadTechPanel();loadShare();renderFunnel(o,h);renderMine(h);renderReach(o,h);renderProtos(h);renderProjects();renderWait(h);
     // late invoices join the list once Money answers (it is not waited for: the page is already up, and most people are not allowed in)
     api('/v1/money/overview').then(m=>{MONEY=m;renderReach(o,h)}).catch(()=>{});
   }catch(x){$('#needSignin').classList.remove('hidden')}

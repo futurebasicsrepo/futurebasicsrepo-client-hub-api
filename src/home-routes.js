@@ -79,6 +79,12 @@ export function registerHomeRoutes(app, { pool, authenticate, adminOnly }) {
     if (!can('crm')) Object.assign(out, { awaitingReply: [], funnel: { newLeads7: 0, newLeadsPrev7: 0, trend: out.funnel.trend, lookers7: 0, demos7: 0, won30: { count: 0, valueCents: 0 } } });
     return out;
   });
+  // The short list the quick "Start a tech pack" box picks a client from (My day and the left menu): live client rooms, newest first. Anyone on the team may ask; people without Clients and projects get an empty list.
+  app.get('/v1/admin/client-picker', { preHandler: pre }, async (req) => {
+    if (req.staff && !req.staff.can('clients')) return { clients: [] }; // not an error: My day simply has nothing to offer this person
+    const rows = (await pool.query(`select id, name, created_at from clients where archived_at is null and status not in ('archive','archived') and slug <> 'future-basics' order by created_at desc limit 500`)).rows;
+    return { clients: rows.map(r => ({ id: r.id, name: r.name, createdAt: r.created_at })) };
+  });
   // Take an account (or give it to someone): the owner is the one voice the client hears from and the person Home asks about it.
   app.put('/v1/admin/clients/:id/owner', { preHandler: pre }, async (req, reply) => {
     if (!UUID.test(String(req.params.id))) return reply.code(404).send({ error: 'Client not found' });

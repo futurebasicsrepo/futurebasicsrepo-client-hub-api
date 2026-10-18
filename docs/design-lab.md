@@ -12,7 +12,7 @@ All three parts are built.
 
 ## Who can open it
 
-The Lab is a held-back module on Team access: it is **not** part of the "Everything" preset, **not** part of the default for new people and **not** handed out by the one-time backfill. Owners (the Money list, or `ACCESS_ADMIN_EMAILS`) always have it. An owner ticks **Design Lab** on a person's card to give it to them. Every `/v1/lab/*` route belongs to the module, so reading and writing are both refused (`403`, `code: MODULE_ACCESS`) for anyone without it, and the menu group and `/lab` page say so.
+The Lab is a held-back module on Team access: it is **not** part of the "Everything" preset, **not** part of the default for new people and **not** handed out by the one-time backfill. Owners (the Money list, or `ACCESS_ADMIN_EMAILS`) always have it. An owner ticks **Design Lab** on a person's card to give it to them. Every `/v1/lab/*` route belongs to the module, so reading and writing are both refused (`403`, `code: MODULE_ACCESS`) for anyone without it, and the menu entry and `/lab` page say so.
 
 ## Who it is for
 
@@ -152,3 +152,5 @@ A job runs every six hours and reads up to three brands that have not been read 
 | Module and access | `src/staff-access.js` (`lab`, held back), `src/console-nav.js` |
 | Tables | `lab_brands`, `lab_items`, `lab_scans`, `lab_plans`, `lab_plan_lines`, `lab_concepts`, `lab_concept_comments` (`src/db.js`) |
 | Tests | `test/lab.test.js`, `test/lab-plan.test.js`, `test/lab-concepts.test.js`, `test/lab-program.test.js`, journeys J193 (API), J194 (library, brand code, watchlist), J195 (browser), J196 (trends and plans, API), J197 (plans, browser), J198 (concepts, API), J199 (concepts, browser), J200 (graphic program, API), J201 (graphic program, browser) |
+
+In the menu the Lab is one entry (`/lab`); its six sections (Library, What's moving, Line plans, Concepts, Brands we watch, Brand code) are tabs across the top of the page, with the one you are reading marked.

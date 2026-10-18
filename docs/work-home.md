@@ -15,3 +15,10 @@
 All of it comes from `GET /v1/sales/overview` (the Sales numbers) and `GET /v1/admin/home` (leads waiting, prototypes, projects, what is waiting), both staff only. The rules are in `src/home.js`, the queries in `src/home-routes.js`, the page in `src/work-home.html`.
 
 The quick actions at the top: add a lead (Sales contacts), new prototype (opens the new build form), new project (the client list).
+
+
+## Start a tech pack
+The green **+ Start a tech pack** button at the top of My day (and in the left menu) opens a short box: client, product name, optional photo and note. The eight newest client rooms sit under it as one-tap chips that open the box with that client chosen. It uses `GET /v1/admin/client-picker` (live rooms, newest first; people without Clients and projects get an empty list and no button) and then `POST /v1/admin/clients/:id/products`, so the product and its assistant-drafted tech pack are made exactly as from a client room, and the pack opens.
+
+## Client cards
+On `/admin` the client cards are newest first by default. A bar above them sorts by newest, oldest, name (A to Z or Z to A), most products or most spent, and a box narrows them by name, contact or slug. The choice is remembered on that device.
