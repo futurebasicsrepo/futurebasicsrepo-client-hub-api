@@ -251,6 +251,20 @@ export async function migrate() {
       at timestamptz not null default now()
     );
     create index if not exists lab_concept_comments_idx on lab_concept_comments (concept_id, at);
+    create table if not exists lab_concept_views (
+      concept_id uuid not null references lab_concepts(id) on delete cascade,
+      kind text not null,
+      status text not null default 'pending',
+      image bytea,
+      thumb bytea,
+      video bytea,
+      mime text,
+      model text not null default '',
+      note text not null default '',
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now(),
+      primary key (concept_id, kind)
+    );
     do $$ begin
       if not exists(select 1 from information_schema.columns where table_name='users' and column_name='email_verified_at') then
         alter table users add column email_verified_at timestamptz;
