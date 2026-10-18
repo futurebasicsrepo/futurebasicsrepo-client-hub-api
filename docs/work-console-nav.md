@@ -11,7 +11,7 @@ Four groups by the kind of work, with My day and the Design Lab on their own at 
 | Inbox | Messages, Chats | `/admin#inbox`, `/sales#chats` |
 | Clients | Clients, Projects, Waiting on approval, Production attention, Factories, Contracts, Assistant learning | `/admin#clientsHead`, `/home#projPanel`, sections of `/admin`, `/factories`, `/contracts` |
 | Sales | Sales today, Contacts, Tasks, Pipeline, Opportunities, Intelligence, Site prototypes, Builds showcase, Fair contacts, Automations, Press | `/sales#today|contacts|tasks|pipeline|opportunities|automations|press`, `/intel`, `/prototypes`, `/builds/admin#builds`, `/admin#partnersSection` |
-| Design Lab | one entry (owners, or whoever was given it) | `/lab`; its six sections (Library, What's moving, Line plans, Concepts, Brands we watch, Brand code) are tabs across the top of that page |
+| Design Lab | one entry (owners, or whoever was given it) | `/lab`; its seven sections (Library, What's moving, Line plans, Concepts, Assortment board, Brands we watch, Brand code) are tabs across the top of that page |
 | Business | Money (only for the people it is open to), Payment gate, Platform health, Connections, Brand and assets, Team access | `/money`, `/admin#accessPanel`, `/platform`, `/admin#connections`, `/brand`, `/team` |
 
 Every place the old menu led to is still one click away; items only moved. Nothing that does a different job was merged: the three production queues stay separate sections.

@@ -153,4 +153,20 @@ A job runs every six hours and reads up to three brands that have not been read 
 | Tables | `lab_brands`, `lab_items`, `lab_scans`, `lab_plans`, `lab_plan_lines`, `lab_concepts`, `lab_concept_comments` (`src/db.js`) |
 | Tests | `test/lab.test.js`, `test/lab-plan.test.js`, `test/lab-concepts.test.js`, `test/lab-program.test.js`, journeys J193 (API), J194 (library, brand code, watchlist), J195 (browser), J196 (trends and plans, API), J197 (plans, browser), J198 (concepts, API), J199 (concepts, browser), J200 (graphic program, API), J201 (graphic program, browser) |
 
-In the menu the Lab is one entry (`/lab`); its six sections (Library, What's moving, Line plans, Concepts, Brands we watch, Brand code) are tabs across the top of the page, with the one you are reading marked.
+In the menu the Lab is one entry (`/lab`); its seven sections (Library, What's moving, Line plans, Concepts, Assortment board, Brands we watch, Brand code) are tabs across the top of the page, with the one you are reading marked.
+
+## Assortment board
+A visual wall of the concepts (`/lab#assort`, files `src/lab-views.js`, `src/lab-view-routes.js`, table `lab_concept_views`). Each concept can have, beyond its one drawn picture:
+- **Flats:** front and back, laid flat on white (a shoe in side profile, a cap or bag standing alone).
+- **On model:** an adult man, front, three-quarter, side and back, framed for the product (full length for clothes, head and shoulders for headwear, lower legs for footwear, knees up for bags). Pieces with nobody wearing them (home and objects) get flats only.
+- **A walk** (optional): a short clip of the front on-model view walking toward the camera and turning.
+
+Every view is drawn by the image model **from the concept's own picture** (and the flat, and then the front on-model view, so the same man and outfit carry through the angles), with instructions to keep the shape, colours, logo and graphics exactly and to add no new marks. Views are made in the background, one concept at a time; the board shows the concept's own picture until a view lands and refreshes itself. **Make missing views** does the whole board (or the chosen plan); a concept's viewer can draw its views again. Redrawing a concept's picture deletes its views, because they were drawn from the old one.
+
+The board has a **Flats / On model / Both** switch (remembered) and an **In play / Approved / All** filter (rejected concepts are off the board unless asked for). Opening a tile shows the viewer: pick an angle, drag across the picture, use the slider or the arrow keys, or press **Rotate** to turn the model through the views by itself (it holds still for people who ask their device for reduced motion). **Rotate is a turn through four still pictures, not a 3D model**; the walk is the real motion.
+
+The walk needs a video model: set `LAB_VIDEO_PROVIDER=openai` with the OpenAI key (`LAB_VIDEO_MODEL`, default `sora-2`; `LAB_VIDEO_SECONDS`, default 8; `LAB_VIDEO_SIZE`, default 720x1280). With none connected the board says so and the rest still works. **The walk adapter has been written against OpenAI's videos API and tested only against a stand-in; the first real run may need its model name or options adjusted.**
+
+Limits: `LAB_DAILY_VIEWS` (default 80 images a day), `LAB_DAILY_WALKS` (default 6), `LAB_MODEL_SIZE` (the on-model picture size, default 1024x1536). Each view is one image-model call, so a full concept is six, and the board's button says how many it will make.
+
+API (all inside the Design Lab module): `GET /v1/lab/assortment?plan=&status=`, `POST /v1/lab/assortment/views {plan?, ids?}`, `POST /v1/lab/concepts/:id/views {kinds?, redo?}`, `GET /v1/lab/concepts/:id/views`, `GET /v1/lab/concepts/:id/views/:kind[?thumb=1]` (kind is `picture`, a view, or `walk`), `POST /v1/lab/concepts/:id/walk`.

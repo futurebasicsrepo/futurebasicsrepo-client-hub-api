@@ -168,7 +168,7 @@ await journey('J195', 'Design Lab in a browser: the library, filters, save and h
     ok(/Design Lab/.test(await page.innerText('.hero h1')) && (await page.locator('#items .card').count()) >= 3, 'the library opens with pieces in it');
     ok((await page.locator('#catPills .pill').allInnerTexts()).some(t => /Footwear/.test(t)) && (await page.locator('#catPills .pill').allInnerTexts()).some(t => /Headwear/.test(t)), 'the category filter covers hats and footwear, not only clothes');
     await page.waitForFunction(() => { const a = document.querySelector('.fbside a[data-nav="Design Lab"]'); return a && !a.hidden; }, null, { timeout: 8000 }).catch(() => {});
-    ok(await page.locator('.fbside a[data-module="lab"]:not([hidden])').count() === 1 && await page.locator('#labTabs a').count() === 6, 'the owner sees the Design Lab in the menu as one entry, with its six sections as tabs on the page');
+    ok(await page.locator('.fbside a[data-module="lab"]:not([hidden])').count() === 1 && await page.locator('#labTabs a').count() === 7, 'the owner sees the Design Lab in the menu as one entry, with its seven sections as tabs on the page');
     await page.locator('#labTabs a[href="#plans"]').first().click(); await page.waitForFunction(() => { const r = document.getElementById('plans').getBoundingClientRect(); return r.top >= 0 && r.top < 300; }, null, { timeout: 8000 }).catch(() => {});
     ok(await page.evaluate(() => { const r = document.getElementById('plans').getBoundingClientRect(); return r.top >= 0 && r.top < 300; }), 'the menu\'s Line plans link takes you to the plans section, not just the top of the page', await page.evaluate(() => document.getElementById('plans').getBoundingClientRect().top));
     await page.locator('#labTabs a[href="#library"]').first().click(); await page.waitForFunction(() => document.getElementById('library').getBoundingClientRect().top < 300, null, { timeout: 8000 }).catch(() => {});
@@ -478,6 +478,83 @@ await journey('J201', 'Design Lab graphic program in a browser: develop it, see 
     await page.locator('#labTabs a[href="#code"]').first().click(); await page.waitForFunction(() => document.getElementById('code').getBoundingClientRect().top < 300, null, { timeout: 8000 }).catch(() => {});
     ok(/deep, original graphic program/.test(await page.inputValue('#codeForm [name=graphicsApproach]')), 'the brand code shows how deep our graphics go');
     await page.setViewportSize({ width: 360, height: 800 }); await page.waitForTimeout(250); ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), 'a phone does not scroll sideways', await page.evaluate(() => document.documentElement.scrollWidth));
+    ok(errs.length === 0, 'no page errors', errs); await oc.close();
+  } finally { await cleanup(brands, plan.plan?.id); await b.close(); }
+});
+
+await journey('J203', 'Design Lab assortment board: every concept as a flat and on a model, drawn in the background from the concept\'s own picture, a spin through the on-model views, and a walk when a video model is connected', async () => {
+  const { brands, plan } = await conceptSetup(); const tops = plan.lines.find(l => l.category === 'tops') || plan.lines[0];
+  try {
+    const made = await K(`/plans/${plan.plan.id}/lines/${tops.id}/concepts`, { body: { count: 3 } }); ok(made.status === 201 && made.json.concepts.length === 3, 'concepts to put on the board', made.json.error);
+    const [A, B, C] = made.json.concepts, pid = plan.plan.id;
+    const wait = async (fn, ms = 20000) => { const t = Date.now(); for (;;) { const v = await fn(); if (v) return v; if (Date.now() - t > ms) return null; await new Promise(r => setTimeout(r, 250)); } };
+    ok((await P('/assortment')).status === 403 && (await call('/v1/lab/assortment')).status === 401 && (await P(`/concepts/${A.id}/views`, { body: {} })).status === 403, 'closed to anyone without the Design Lab');
+    const board = await K(`/assortment?plan=${pid}`);
+    ok(board.status === 200 && board.json.concepts.length === 3 && board.json.concepts.every(c => c.hasPicture && c.kinds.length === 6 && Object.keys(c.views).length === 0) && board.json.imageConnected && board.json.videoConnected && board.json.spin.join() === 'model_front,model_34,model_side,model_back', 'the board lists each concept with the views it can have and what is connected');
+    ok((await K('/concepts/00000000-0000-4000-8000-000000000000/views', { body: {} })).status === 404 && (await K(`/concepts/${A.id}/views/nonsense`)).status === 404 && (await K(`/concepts/${A.id}/views/walk`)).status === 404 && (await K(`/concepts/${A.id}/views/model_front`)).status === 404, 'unknown concepts and views that are not made yet are not found');
+
+    // making the views for one concept happens in the background and lands view by view
+    const go = await K(`/concepts/${A.id}/views`, { body: {} }); ok(go.status === 202 && go.json.started === 6, 'making the views is accepted and runs in the background', go.json.error);
+    ok(await wait(async () => { const v = (await K(`/concepts/${A.id}/views`)).json.views; return Object.keys(v).length === 6 && Object.values(v).every(x => x.status === 'ready'); }), 'all six views (flat front and back, on model front, three-quarter, side and back) arrive');
+    const get = (path) => fetch(`${BASE}/v1/lab/concepts/${A.id}/views/${path}`, { headers: { Authorization: 'Bearer ' + kyleT } }), mf = await get('model_front'), th = await get('model_front?thumb=1');
+    const mfb = Buffer.from(await mf.arrayBuffer()), thb = Buffer.from(await th.arrayBuffer());
+    ok(mf.status === 200 && /image\/jpeg/.test(mf.headers.get('content-type')) && thb.length > 0 && thb.length < mfb.length, 'a view is served as a picture, and a smaller one for the board');
+    ok((await K(`/concepts/${A.id}/views`, { body: {} })).json.started === 0, 'asking again makes nothing twice');
+    ok((await K(`/concepts/${A.id}/views`, { body: { kinds: ['flat_front'], redo: true } })).json.started === 1 && await wait(async () => (await K(`/concepts/${A.id}/views`)).json.views.flat_front.status === 'ready'), 'one view can be drawn again');
+
+    // the walk starts from the front view on the model
+    const early = await K(`/concepts/${B.id}/walk`, { body: {} }); ok(early.status === 409 && /on-model views first/.test(early.json.error), 'a walk needs the on-model views first');
+    const w = await K(`/concepts/${A.id}/walk`, { body: {} }); ok(w.status === 202, 'the walk is accepted', w.json.error);
+    ok(await wait(async () => (await K(`/concepts/${A.id}/views`)).json.views.walk?.status === 'ready'), 'the walk arrives');
+    const vid = await fetch(`${BASE}/v1/lab/concepts/${A.id}/views/walk`, { headers: { Authorization: 'Bearer ' + kyleT } }); ok(vid.status === 200 && /video\/mp4/.test(vid.headers.get('content-type')), 'and is served as a video');
+
+    // the whole board at once
+    const all = await K('/assortment/views', { body: { plan: pid } }); ok(all.status === 202 && all.json.concepts === 2 && all.json.views === 12, 'making the missing views for the plan skips the concept that is done', JSON.stringify(all.json));
+    ok(await wait(async () => (await K(`/assortment?plan=${pid}`)).json.concepts.every(c => Object.values(c.views).filter(v => v.status === 'ready').length >= 6), 40000), 'every concept on the board ends up with its views');
+    ok((await K('/assortment/views', { body: { plan: pid } })).json.queued === 0, 'and asking again queues nothing');
+
+    // a redrawn picture makes the old views stale, so they go
+    await K(`/concepts/${C.id}/redraw`, { body: {} }); ok(Object.keys((await K(`/concepts/${C.id}/views`)).json.views).length === 0, 'redrawing a concept\'s picture clears the views drawn from the old one');
+    // a rejected concept leaves the board unless asked for
+    await K(`/concepts/${C.id}/reject`, { body: { reason: 'too plain for the season' } });
+    ok((await K(`/assortment?plan=${pid}`)).json.concepts.length === 2 && (await K(`/assortment?plan=${pid}&status=all`)).json.concepts.length === 3, 'a rejected concept is off the board unless all are asked for');
+  } finally { await cleanup(brands, plan.plan?.id); }
+});
+
+await journey('J204', 'Design Lab assortment board in a browser: the wall of flats and models, the Flats / On model / Both switch, the viewer that turns the model and plays the walk, and a phone fits', async () => {
+  if (!playwright) { ok(true, 'skipped: no browser here'); return; }
+  const { brands, plan } = await conceptSetup(); const tops = plan.lines.find(l => l.category === 'tops') || plan.lines[0];
+  const b = await playwright.chromium.launch(), errs = [];
+  try {
+    const made = await K(`/plans/${plan.plan.id}/lines/${tops.id}/concepts`, { body: { count: 3 } }); const [A] = made.json.concepts;
+    const oc = await b.newContext({ viewport: { width: 1280, height: 900 } }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
+    const page = await oc.newPage(); page.on('pageerror', e => errs.push(String(e)));
+    await page.goto(`${BASE}/lab#assort`, { waitUntil: 'networkidle' }); await page.waitForSelector('#aBoard .at', { timeout: 15000 });
+    ok(await page.locator('#labTabs a[href="#assort"]').count() === 1 && await page.locator('#aBoard .at').count() >= 3, 'the Assortment board is a tab and shows a tile for each concept');
+    ok(/Make \d+ missing views?/.test(await page.innerText('#aMake')) && await page.locator('#aBoard .at img').first().waitFor({ timeout: 8000 }).then(() => true).catch(() => false), 'a tile shows the concept\'s own picture until its views are made, and the button offers to make the rest');
+    await page.selectOption('#aPlan', plan.plan.id); await page.waitForFunction(() => document.querySelectorAll('#aBoard .at').length === 3);
+    await page.locator('#aMake').click(); await page.waitForFunction(() => /All views made/.test(document.getElementById('aMake').textContent), null, { timeout: 60000 });
+    ok(true, 'Make missing views draws every view and the button says when all are made');
+    await page.waitForFunction(() => document.querySelectorAll('#aBoard .at .im i').length >= 6 && [...document.querySelectorAll('#aBoard .at .im i')].some(i => /Flat/.test(i.textContent)) && [...document.querySelectorAll('#aBoard .at .im i')].some(i => /On model/.test(i.textContent)), null, { timeout: 15000 });
+    await page.locator('#assort').scrollIntoViewIfNeeded(); await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || '/tmp'}/j204-board.png` }).catch(() => {});
+    ok(await page.locator('#aBoard .at .ap.two').count() >= 3, 'Both shows the flat and the model side by side on each tile');
+    await page.click('#aShow [data-show="flat"]'); ok(await page.locator('#aBoard .at .ap.two').count() === 0 && /flat/i.test(await page.locator('#aBoard .at .im i').first().innerText()), 'Flats shows only the flats');
+    await page.click('#aShow [data-show="model"]'); await page.waitForFunction(() => /On model/.test(document.querySelector('#aBoard .at .im i').textContent)); ok(true, 'On model shows only the models');
+    await page.reload({ waitUntil: 'networkidle' }); await page.waitForSelector('#aBoard .at'); ok(await page.locator('#aShow [data-show="model"][aria-pressed="true"]').count() === 1, 'the choice is remembered');
+
+    await page.locator(`#aBoard .at[data-aid="${A.id}"]`).click(); await page.waitForSelector('#av[open] #avStage img', { timeout: 10000 });
+    await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || '/tmp'}/j204-viewer.png` }).catch(() => {});
+    ok(await page.locator('#avStrip button').count() === 8 && await page.locator('#avStrip button:not([disabled])').count() >= 7, 'the viewer lists the concept, both flats, four angles and the walk');
+    const src = () => page.$eval('#avStage img', i => i.src), s1 = await src(); await page.locator('#avStrip [data-avk="model_side"]').click(); await page.waitForFunction(s => document.querySelector('#avStage img') && document.querySelector('#avStage img').src !== s, s1, { timeout: 6000 }); ok(true, 'choosing an angle shows it');
+    await page.focus('#avSpin'); await page.fill('#avSpin', '0').catch(() => {}); await page.evaluate(() => { const s = document.getElementById('avSpin'); s.value = '3'; s.dispatchEvent(new Event('input', { bubbles: true })); }); await page.waitForFunction(() => /Back/.test(document.querySelector('#avStage .cap').textContent), null, { timeout: 6000 }); ok(true, 'the slider turns the model to the back');
+    await page.keyboard.press('Escape').catch(() => {}); await page.waitForSelector('#av[open]', { timeout: 2000 }).catch(() => {});
+    if (!(await page.locator('#av[open]').count())) await page.locator(`#aBoard .at[data-aid="${A.id}"]`).click();
+    await page.waitForSelector('#avRot'); await page.click('#avRot'); const seen = new Set(); for (let i = 0; i < 12 && seen.size < 3; i++) { seen.add(await page.innerText('#avStage .cap').catch(() => '')); await page.waitForTimeout(600); } ok(seen.size >= 3, 'Rotate turns the model through the views by itself', [...seen].join(' | ')); await page.click('#avRot');
+    ok(await page.locator('#av [data-avwalk]').isEnabled(), 'the walk is offered when a video model is connected'); await page.locator('#av [data-avwalk]').click();
+    await page.waitForFunction(() => document.querySelector('#av [data-avk="walk"]:not([disabled])'), null, { timeout: 30000 }); await page.locator('#avStrip [data-avk="walk"]').click(); await page.waitForSelector('#avStage video', { timeout: 6000 }); ok(true, 'the walk plays in the viewer');
+    await page.locator('#av [data-avclose]').click(); await page.waitForFunction(() => !document.querySelector('#av[open]'));
+    await page.setViewportSize({ width: 360, height: 800 }); await page.waitForTimeout(300);
+    ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), 'a phone does not scroll sideways', await page.evaluate(() => document.documentElement.scrollWidth));
     ok(errs.length === 0, 'no page errors', errs); await oc.close();
   } finally { await cleanup(brands, plan.plan?.id); await b.close(); }
 });

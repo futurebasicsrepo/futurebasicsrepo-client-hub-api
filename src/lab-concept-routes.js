@@ -200,6 +200,7 @@ export function registerLabConceptRoutes(app, d) {
     let img; try { img = await renderConcept({ name: r.name, category: r.category, twist: r.twist, spec: ensureBranding(r.spec || {}, r.category) }, { cfg, brandNames: await brandNames() }); } catch (e) { return bad(reply, `The picture could not be drawn: ${clip(e.message, 160)}`, 502); }
     redraws.set(day, (redraws.get(day) || 0) + 1);
     await pool.query(`update lab_concepts set image=$2, thumb=$3, image_note='', updated_at=now() where id=$1`, [r.id, img.image, img.thumb]);
+    await pool.query('delete from lab_concept_views where concept_id=$1', [r.id]); // the flats, the on-model views and the walk were drawn from the old picture
     return { concept: await one(r.id) };
   });
 
