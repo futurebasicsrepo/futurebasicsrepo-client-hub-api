@@ -3,19 +3,23 @@
 The staff pages (`/admin`, `/sales`, `/builds/admin`) share one left-hand menu, drawn by `src/console-nav.js` (served at `/console-nav.js`). A page adds `<script src="/console-nav.js" defer></script>` and nothing else; the menu hides itself while the page shows its sign-in panel.
 
 ## How it is grouped
-The menu follows the stage of the work, in the order a teammate meets it, so one generalist can carry a customer from first hello to final invoice.
+Four groups by the kind of work, with My day and the Design Lab on their own at the top level. (The earlier nine groups were by stage of the work; Win had become a grab-bag of ten unrelated things, Money and Team held one or two items each, and the Design Lab alone took six lines.)
 
 | Group | Items | Where each lives |
 | --- | --- | --- |
-| My day (top) | My day | `/home`: this week, **My accounts**, who to reach out to, prototypes, projects in flight |
+| My day | My day | `/home`: this week, **Start a tech pack**, My accounts, who to reach out to, prototypes, projects in flight |
 | Inbox | Messages, Chats | `/admin#inbox`, `/sales#chats` |
-| People | Contacts, Clients, Tasks, Fair contacts | `/sales#contacts`, `/admin#clientsHead`, `/sales#tasks`, `/admin#partnersSection` |
-| Win | Sales today, Pipeline, Opportunities, Intelligence, Site prototypes, Builds showcase, Automations, Press | `/sales#today|pipeline|opportunities|automations|press`, `/intel`, `/prototypes`, `/builds/admin#builds` (its What's new, Invites and Who looked are tabs on that page) |
-| Deliver | Projects, Waiting on approval, Production attention, Factories, Assistant learning | `/home#projPanel`, sections of `/admin`, `/factories` |
-| Money | Money (only for the people it is open to), Payment gate | `/money`, `/admin#accessPanel` |
-| Sites and health | Platform health, Connections | `/platform` (its Client sites card), `/admin#connections` |
+| Clients | Clients, Projects, Waiting on approval, Production attention, Factories, Contracts, Assistant learning | `/admin#clientsHead`, `/home#projPanel`, sections of `/admin`, `/factories`, `/contracts` |
+| Sales | Sales today, Contacts, Tasks, Pipeline, Opportunities, Intelligence, Site prototypes, Builds showcase, Fair contacts, Automations, Press | `/sales#today|contacts|tasks|pipeline|opportunities|automations|press`, `/intel`, `/prototypes`, `/builds/admin#builds`, `/admin#partnersSection` |
+| Design Lab | one entry (owners, or whoever was given it) | `/lab`; its six sections (Library, What's moving, Line plans, Concepts, Brands we watch, Brand code) are tabs across the top of that page |
+| Business | Money (only for the people it is open to), Payment gate, Platform health, Connections, Brand and assets, Team access | `/money`, `/admin#accessPanel`, `/platform`, `/admin#connections`, `/brand`, `/team` |
 
 Every place the old menu led to is still one click away; items only moved. Nothing that does a different job was merged: the three production queues stay separate sections.
+
+## Quick actions at the top
+- **Start a tech pack** (green button): a box with the client (newest first), the product name, an optional photo and note. It makes the product the way a client room does, the assistant drafts the pack, and the pack opens. The same box opens from the **Start a tech pack** button on My day, where the eight newest clients are also one tap each (the client is chosen when the box opens). It reads `GET /v1/admin/client-picker`, which gives people without Clients and projects an empty list and hides the button for them.
+- **Jump to…** filters the menu as you type (names and a few extra words each item answers to, such as "invoices" for Money). Enter opens the first match; Esc clears; `/` focuses it from anywhere on the page.
+- **Fold a group** by pressing its title; the menu remembers which are folded on this device, and unfolds the one you arrive in.
 
 ## Behaviour
 - Sales and Builds admin read `#tab` from the address, so a menu item opens straight to a tab and the tabs keep the address in step.

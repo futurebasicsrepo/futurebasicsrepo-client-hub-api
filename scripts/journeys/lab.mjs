@@ -167,11 +167,11 @@ await journey('J195', 'Design Lab in a browser: the library, filters, save and h
     await page.goto(`${BASE}/lab`, { waitUntil: 'networkidle' }); await page.waitForSelector('#items .card');
     ok(/Design Lab/.test(await page.innerText('.hero h1')) && (await page.locator('#items .card').count()) >= 3, 'the library opens with pieces in it');
     ok((await page.locator('#catPills .pill').allInnerTexts()).some(t => /Footwear/.test(t)) && (await page.locator('#catPills .pill').allInnerTexts()).some(t => /Headwear/.test(t)), 'the category filter covers hats and footwear, not only clothes');
-    await page.waitForFunction(() => { const a = document.querySelector('.fbside a[data-nav="Library"]'); return a && !a.hidden; }, null, { timeout: 8000 }).catch(() => {});
-    ok(await page.locator('.fbside a[data-module="lab"]:not([hidden])').count() >= 3, 'the owner sees the Design Lab in the menu');
-    await page.locator('.fbside a[data-nav="Line plans"]').first().click(); await page.waitForFunction(() => { const r = document.getElementById('plans').getBoundingClientRect(); return r.top >= 0 && r.top < 300; }, null, { timeout: 8000 }).catch(() => {});
+    await page.waitForFunction(() => { const a = document.querySelector('.fbside a[data-nav="Design Lab"]'); return a && !a.hidden; }, null, { timeout: 8000 }).catch(() => {});
+    ok(await page.locator('.fbside a[data-module="lab"]:not([hidden])').count() === 1 && await page.locator('#labTabs a').count() === 6, 'the owner sees the Design Lab in the menu as one entry, with its six sections as tabs on the page');
+    await page.locator('#labTabs a[href="#plans"]').first().click(); await page.waitForFunction(() => { const r = document.getElementById('plans').getBoundingClientRect(); return r.top >= 0 && r.top < 300; }, null, { timeout: 8000 }).catch(() => {});
     ok(await page.evaluate(() => { const r = document.getElementById('plans').getBoundingClientRect(); return r.top >= 0 && r.top < 300; }), 'the menu\'s Line plans link takes you to the plans section, not just the top of the page', await page.evaluate(() => document.getElementById('plans').getBoundingClientRect().top));
-    await page.locator('.fbside a[data-nav="Library"]').first().click(); await page.waitForFunction(() => document.getElementById('library').getBoundingClientRect().top < 300, null, { timeout: 8000 }).catch(() => {});
+    await page.locator('#labTabs a[href="#library"]').first().click(); await page.waitForFunction(() => document.getElementById('library').getBoundingClientRect().top < 300, null, { timeout: 8000 }).catch(() => {});
     await page.locator('#catPills .pill', { hasText: 'Footwear' }).click(); await page.waitForFunction(() => document.querySelectorAll('#items .card').length >= 1 && [...document.querySelectorAll('#items .card .chip')].every(c => !/Tops/.test(c.textContent)));
     ok((await page.locator('#items .card h3').allInnerTexts()).every(t => /sneaker|loafer|boot/i.test(t) || true) && await page.locator('#catPills .pill[aria-pressed="true"]').innerText().then(t => /Footwear/.test(t)), 'choosing a category narrows the library');
     await page.locator('#catPills .pill', { hasText: 'All' }).click(); await page.waitForFunction(() => document.querySelectorAll('#items .card').length >= 3);
@@ -279,7 +279,7 @@ await journey('J197', 'Design Lab line plans in a browser: what is moving, draft
     const page = await oc.newPage(); page.on('pageerror', e => errs.push(String(e))); page.on('dialog', d => d.accept());
     await page.goto(`${BASE}/lab`, { waitUntil: 'networkidle' }); await page.waitForSelector('#trendGrid .tc');
     const topsCard = page.locator('#trendGrid .tc', { hasText: 'Tops and jersey' }); ok(await topsCard.count() === 1 && /our ladder/i.test(await topsCard.innerText()) && /zara/i.test(await topsCard.innerText()) && /heat/i.test(await topsCard.innerText()), 'What\'s moving shows the tops with the Zara prices, our ladder and the pieces that are moving');
-    ok(await page.locator('.fbside a[data-nav="Line plans"]:not([hidden])').count() >= 1 || await page.locator('.fbside a[href="/lab#plans"]').count() >= 1, 'the menu has Line plans');
+    ok(await page.locator('#labTabs a[href="#plans"]').count() === 1, 'the page has a Line plans tab');
     await page.fill('#planForm [name=name]', 'Browser plan'); await page.fill('#planForm [name=season]', 'Fall 2027'); await page.fill('#planForm [name=brief]', 'quiet heritage basics'); await page.selectOption('#planForm [name=size]', '8');
     await page.locator('#planGo').click(); await page.waitForSelector('#planView table.lt tbody tr', { timeout: 20000 });
     ok(await page.locator('#planView table.lt tbody tr').count() === 8 && /Browser plan/.test(await page.innerText('#planView h2')) && /Blended margin/i.test(await page.innerText('#planView .tiles')), 'the plan appears with eight pieces and the totals');
@@ -388,7 +388,7 @@ await journey('J199', 'Design Lab concepts in a browser: make concepts from a pl
     const page = await oc.newPage(); page.on('pageerror', e => errs.push(String(e))); page.on('dialog', d => d.accept(d.type() === 'prompt' ? answer : undefined));
     await page.goto(`${BASE}/lab`, { waitUntil: 'networkidle' }); await page.waitForSelector('#planList .pl');
     await page.locator('#planList .pl', { hasText: 'Concept plan' }).locator('[data-open]').click(); await page.waitForSelector('#planView tr[data-line]');
-    ok(await page.locator('.fbside a[href="/lab#board"]').count() >= 1, 'the menu has Concepts');
+    ok(await page.locator('#labTabs a[href="#board"]').count() === 1, 'the page has a Concepts tab');
     answer = 'longer back'; await page.locator(`#planView tr[data-line="${line.id}"] [data-mk]`).click(); await page.waitForFunction(() => document.querySelectorAll('#cgrid .cc').length >= 3, null, { timeout: 30000 });
     ok(await page.locator('#cgrid .cc').count() === 3 && await page.locator('#cgrid .cc img').count() === 3 && /clear|look closely|too close/i.test(await page.locator('#cgrid .cc').first().innerText()), 'three concept cards appear with their pictures and their check');
     ok(/in_concept|in concept/i.test(await page.locator(`#planView tr[data-line="${line.id}"]`).innerText()) || /3 concepts/.test(await page.locator(`#planView tr[data-line="${line.id}"]`).innerText()), 'the plan row now counts its concepts');
@@ -475,7 +475,7 @@ await journey('J201', 'Design Lab graphic program in a browser: develop it, see 
     await page.locator('#cgrid .cc').last().click(); await page.waitForSelector('#cd[open] .gfx', { timeout: 8000 }); // newest first: the oldest of the three is the one that applies a motif
     ok(/crest|stripes/.test(await page.innerText('#cd .gfx')) && await page.locator('#cd .gfx img').count() >= 1, 'a concept shows the program graphic it applies, with its kind');
     await page.locator('#cd [data-cclose]').click(); await page.waitForFunction(() => !document.querySelector('#cd[open]'));
-    await page.locator('.fbside a[data-nav="Brand code"]').first().click(); await page.waitForFunction(() => document.getElementById('code').getBoundingClientRect().top < 300, null, { timeout: 8000 }).catch(() => {});
+    await page.locator('#labTabs a[href="#code"]').first().click(); await page.waitForFunction(() => document.getElementById('code').getBoundingClientRect().top < 300, null, { timeout: 8000 }).catch(() => {});
     ok(/deep, original graphic program/.test(await page.inputValue('#codeForm [name=graphicsApproach]')), 'the brand code shows how deep our graphics go');
     await page.setViewportSize({ width: 360, height: 800 }); await page.waitForTimeout(250); ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), 'a phone does not scroll sideways', await page.evaluate(() => document.documentElement.scrollWidth));
     ok(errs.length === 0, 'no page errors', errs); await oc.close();
