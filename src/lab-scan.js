@@ -128,7 +128,7 @@ async function searchItems(brand, d, queries) {
 export function labFixture({ user }) {
   const items = [...String(user).matchAll(/^#(\d+) \| ([^|\n]*)\|/gm)].map(m => ({ i: Number(m[1]), title: m[2].trim() }));
   if (/Which of these links/.test(user)) return { products: [...String(user).matchAll(/^L(\d+) \| (\S+) \| ([^\n]*)$/gm)].filter(m => /product|\/p\//i.test(m[2])).map(m => ({ n: Number(m[1]), title: m[3].replace(/ \|.*$/, '').trim() || 'Product', price: '', category: categorize({ title: m[3] }) })) };
-  return { items: items.map(x => ({ i: x.i, product: !/\b(guide|review|how to|best \d+)\b/i.test(x.title), category: categorize({ title: x.title }), silhouette: /oversiz|relax/i.test(x.title) ? 'relaxed' : 'regular', fabric: /knit|wool/i.test(x.title) ? 'wool blend' : 'cotton', colors: ['navy'], details: ['small embroidered mark'], fit: 'regular', season: 'all year', summary: `${x.title}: a stand-in read for the tests.` })) };
+  return { items: items.map(x => ({ i: x.i, product: !/\b(guide|review|how to|best \d+)\b/i.test(x.title), category: categorize({ title: x.title }), graphics: /varsity|crest|stripe/i.test(x.title) ? ['crest and stripes'] : [], silhouette: /oversiz|relax/i.test(x.title) ? 'relaxed' : 'regular', fabric: /knit|wool/i.test(x.title) ? 'wool blend' : 'cotton', colors: ['navy'], details: ['small embroidered mark'], fit: 'regular', season: 'all year', summary: `${x.title}: a stand-in read for the tests.` })) };
 }
 export function makeReader(d) {
   const { env, askImpl, code } = d, state = { cents: 0, calls: 0, failed: '' };
@@ -145,7 +145,7 @@ export function makeReader(d) {
       for (let at = 0; at < items.length && at < MAX_READS; at += READ_BATCH) {
         const batch = items.slice(at, at + READ_BATCH);
         const lines = batch.map((x, n) => `#${n + 1} | ${clip(x.title, 140)} | brand: ${clip(x.vendor, 40)} | ${x.priceCents ? '$' + (x.priceCents / 100).toFixed(0) : 'no price'} | type: ${clip(x.productType, 40)} | ${clip(x.description, 220)}`);
-        const user = `For each numbered listing answer {"items":[{"i":number,"product":true if it is ONE product that is sold (false for an article, a list, a collection page or a store page),"category":one of ${CATEGORY_IDS.join('|')},"silhouette":"short","fabric":"short, only if stated","colors":["names"],"details":["up to 4 design details"],"fit":"short","season":"short","summary":"one sentence for a designer"}]}\n\n${lines.join('\n')}`;
+        const user = `For each numbered listing answer {"items":[{"i":number,"product":true if it is ONE product that is sold (false for an article, a list, a collection page or a store page),"category":one of ${CATEGORY_IDS.join('|')},"silhouette":"short","fabric":"short, only if stated","colors":["names"],"details":["up to 4 design details"],"fit":"short","season":"short","graphics":["each print, crest, pattern, stripe, lettering or illustration on it, in a few words; empty if it is plain"],"summary":"one sentence for a designer"}]}\n\n${lines.join('\n')}`;
         try { const j = await call(user, labFixture, 4000); for (const r of j.items || []) { const x = batch[Number(r.i) - 1]; if (x) out.set(x, r); } }
         catch (e) { state.failed = e.message; break; }
       }
@@ -187,7 +187,7 @@ export async function upsertItems(pool, brandId, items) {
   }
   return added;
 }
-const attrsOf = r => ({ silhouette: clip(r.silhouette, 80), fabric: clip(r.fabric, 120), colors: (Array.isArray(r.colors) ? r.colors : []).slice(0, 6).map(c => clip(c, 30)), details: (Array.isArray(r.details) ? r.details : []).slice(0, 5).map(c => clip(c, 100)), fit: clip(r.fit, 60), season: clip(r.season, 40) });
+const attrsOf = r => ({ silhouette: clip(r.silhouette, 80), fabric: clip(r.fabric, 120), colors: (Array.isArray(r.colors) ? r.colors : []).slice(0, 6).map(c => clip(c, 30)), details: (Array.isArray(r.details) ? r.details : []).slice(0, 5).map(c => clip(c, 100)), fit: clip(r.fit, 60), season: clip(r.season, 40), graphics: (Array.isArray(r.graphics) ? r.graphics : []).slice(0, 4).map(c => clip(c, 80)).filter(Boolean) });
 
 // ---- scanning one brand -----------------------------------------------------------------------------------------------------------------------
 export async function dailyCents(pool) { return Number((await pool.query(`select coalesce(sum(cost_cents),0) c from lab_scans where started_at > now() - interval '24 hours'`)).rows[0].c) || 0; }

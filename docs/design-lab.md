@@ -14,6 +14,10 @@ All three parts are built.
 
 The Lab is a held-back module on Team access: it is **not** part of the "Everything" preset, **not** part of the default for new people and **not** handed out by the one-time backfill. Owners (the Money list, or `ACCESS_ADMIN_EMAILS`) always have it. An owner ticks **Design Lab** on a person's card to give it to them. Every `/v1/lab/*` route belongs to the module, so reading and writing are both refused (`403`, `code: MODULE_ACCESS`) for anyone without it, and the menu group and `/lab` page say so.
 
+## Who it is for
+
+Future Basics is **male-driven and unisex**: menswear first (men's sizing, proportions and fits), in pieces anyone can wear. It is part of the brand code ("Who it is for"), so it reaches every assistant prompt. A line plan leaves womenswear-only categories (dresses) out unless you ask for them by name, and concepts are designed for men first.
+
 ## The brand code
 
 Kyle's direction, stored as editable settings (`labBrandCode`): *affordable, never cheap. Cheap is Shein; we like Zara. Gucci, Prada, Ralph Lauren and Aimé Leon Dore cuts and aesthetic, but not as rich in materials.* It holds a statement, the price anchor (Zara), the cuts we borrow from, materials, the look, what to avoid, notes and a list of **pieces we love**. Three to five pieces we love teach the Lab our taste far faster than words, so add them when you have them. The brand code is given to the AI before it reads or judges anything.
@@ -72,6 +76,22 @@ A piece above the ladder cap ("Above the Zara line for tops ($40)"), a margin un
 
 On a line plan, **Make concepts** on a planned piece asks the assistant for three different takes on it (you can add a steer such as "longer back, no pockets"). Each concept has a name, a plain-words description, shape, fabric, fit, colours, details and trims, and a **twist**: the specific thing on the piece that is ours. The assistant is given the brand code, the planned piece, the category's trend and the library pieces that inspired it, and is told every concept is our own design: never to name another brand or its products, and to keep materials simpler than the references so the price holds. Each concept is then drawn and checked.
 
+### Future Basics on every concept
+
+- **The logo, always.** Every concept carries the Future Basics logo. The assistant chooses the mark (the cue mark, the wordmark, or both), where it goes and how it is made (embroidered, woven patch, screen print and so on). If it forgets, the cue mark goes on at the usual place for that kind of piece.
+- **The internal woven label, always.** Every concept carries a Future Basics internal woven label, in fixed words that suit the piece: the back neck seam on tops and outerwear, the inside sweatband on caps, the tongue lining on footwear, the inside waistband on bottoms, and so on. The assistant cannot change or drop it.
+- **Drawn from our own brand files.** The picture is drawn by the image model with the logo place left plain, then our real logo files are laid on it (light on a dark garment, dark on a light one), with a small woven-label inset in the corner. A model never draws the lettering. The placement on the picture is a guide; the tech pack carries the exact spec.
+- **Future Basics graphics, where it makes sense.** On a tee, a sweatshirt, a cap, a tote or outerwear the assistant also gives the piece one to three graphics. They are **not limited to our logo or its line and dot, nor to the logo colours.** The brands we study (Ralph Lauren, Aimé Leon Dore, A-COLD-WALL*) have taken their graphic programs deep, so ours goes deep too: crests and emblems, original lettering and numerals, stripes and bands, patterns, illustration, technical annotation. Each has a kind, a placement and a technique (screen print, embroidery, woven jacquard, puff print, flock print, appliqué, chenille patch and so on). A clean piece, such as tailoring, stays clean.
+- **Original, always.** The assistant is told to study how those programs are built (their range, discipline and placement) and make ours our own: never to copy or imitate a mark, crest, lettering style, print or character, and never to name them. The words in a graphic are checked against brand names and trade dress, and the too-close check reads them.
+- **How a graphic is kept.** The assistant draws it as an SVG. Lettering (`<text>` in Space Grotesk or IBM Plex Mono) is turned into **outlines from our own font files**, so it looks the same everywhere and never depends on an installed font; only the words are kept beside it. Anything else that could run, fetch or change (scripts, images, links, filters, patterns, style blocks) is dropped, along with drawings that are too big. Front graphics are laid on the concept's picture; ones for the back or a sleeve are in the spec, the brief and the artwork.
+- You can change the logo, remove a graphic, or **redraw the picture** from the concept window (`LAB_DAILY_REDRAWS` limits redraws). The too-close check reads the graphics' words too.
+
+### The graphic program
+
+A line plan can have a **graphic program**: the season's graphics designed once as a system, so concepts share a world instead of each inventing its own. **Develop the graphic program** (in the plan view, with an optional steer such as "lean on numerals") asks the assistant for four to six motifs across different kinds, a palette in real colours (not only our logo colours), a story and rules for where and how many go on a piece. It is given the brand code, the plan's pieces and **what graphics the reference brands put on those kinds of piece** (read from the library), for the range and depth to match and never to copy. You can rename the program, remove a motif, develop it again or remove it.
+
+When concepts are made for a piece, the program is in the prompt and a concept **applies motifs by id**, taking the motif's drawing, words and kind and choosing where and how it goes; it may add one new graphic of its own. A concept keeps its graphics once made, so editing the program later does not change concepts already made.
+
 ### The picture
 
 Drawn by the image model from a prompt built from the concept alone. **No reference picture is ever sent to the image model**, brand names are stripped from the words it gets, and it is told no text, logos or brand marks. With no image model connected a concept is saved without a picture and says so. Pictures are stored on the concept (a JPEG and a small thumbnail) and served only to people with the Lab.
@@ -94,7 +114,7 @@ Approval is blocked for "too close" unless a person writes down why (at least te
 
 ### From an approved concept to a tech pack
 
-**Send to tech pack** makes a product in the Future Basics room: the title is the concept's name, the brief carries the concept in words, our twist and the commercial targets (price, estimated landed cost, quantity), the concept's picture is the reference photo, and the tech pack assistant drafts the pack from them (when it is switched on). The brief says the picture is an AI render, not a sample. The planned piece is marked "tech pack" and links to the product (`/tech-packs/<product>`). A concept can only become a tech pack once; it then stays as the record and cannot be changed, rejected or deleted. The tech pack's own landed-cost estimate takes over from the ratio used in the plan.
+**Send to tech pack** makes a product in the Future Basics room: the title is the concept's name, the brief carries the concept in words, our twist and the commercial targets (price, estimated landed cost, quantity), the concept's picture is the reference photo, and the tech pack assistant drafts the pack from them (when it is switched on). The brief says the picture is an AI render, not a sample. The planned piece is marked "tech pack" and links to the product (`/tech-packs/<product>`). The brief also carries who it is for, the logo, the woven label and the graphics, so the tech pack assistant starts from them. The concept's **artwork goes into the tech pack's Art tab**: the Future Basics logo, the woven label and each graphic, as transparent PNGs. A concept can only become a tech pack once; it then stays as the record and cannot be changed, rejected or deleted. The tech pack's own landed-cost estimate takes over from the ratio used in the plan.
 
 ## Automatic reading
 
@@ -110,6 +130,8 @@ A job runs every six hours and reads up to three brands that have not been read 
 | `LAB_DAILY_CENTS` | daily AI allowance for reading (default 200, about two dollars); past it pieces are saved without a design read |
 | `LAB_FETCH_DELAY_MS` | pause between requests to one site (default 700) |
 | `LAB_DAILY_CONCEPTS` | how many concepts (each with a picture and a check) can be made in 24 hours (default 30) |
+| `LAB_DAILY_PROGRAMS` | how many graphic programs can be developed in a day (default 12) |
+| `LAB_DAILY_REDRAWS` | how many concept pictures can be redrawn in a day (default 30) |
 | `LAB_DAILY_PLANS` | how many assistant-drafted plans can be made in 24 hours (default 10) |
 | `LAB_WEB_QUERIES`, `LAB_IMAGE_QUERIES` | searches per brand when falling back (default 4 and 3) |
 
@@ -120,6 +142,8 @@ A job runs every six hours and reads up to three brands that have not been read 
 | Categories, robots rules, feed and page parsers, sell-through, brand code, watchlist (no network) | `src/lab.js` |
 | The scanner, the AI read, saving, the due-brand job | `src/lab-scan.js` |
 | The trend read, price ladder, line plan logic, the assistant's brief and the CSV (no network) | `src/lab-plan.js` |
+| Lettering as outlines from our fonts | `src/lab-type.js` |
+| The graphic program (motifs, palette, the assistant's brief) | `src/lab-program.js` |
 | Concepts: the brand-name guard, the closeness check, the assistant's brief, the picture, the product brief (no web server) | `src/lab-concepts.js` |
 | The concepts API | `src/lab-concept-routes.js` |
 | Reads shared by the Lab's routes | `src/lab-data.js` |
@@ -127,4 +151,4 @@ A job runs every six hours and reads up to three brands that have not been read 
 | The page | `src/lab.html` at `/lab` |
 | Module and access | `src/staff-access.js` (`lab`, held back), `src/console-nav.js` |
 | Tables | `lab_brands`, `lab_items`, `lab_scans`, `lab_plans`, `lab_plan_lines`, `lab_concepts`, `lab_concept_comments` (`src/db.js`) |
-| Tests | `test/lab.test.js`, `test/lab-plan.test.js`, `test/lab-concepts.test.js`, journeys J193 (API), J194 (library, brand code, watchlist), J195 (browser), J196 (trends and plans, API), J197 (plans, browser), J198 (concepts, API), J199 (concepts, browser) |
+| Tests | `test/lab.test.js`, `test/lab-plan.test.js`, `test/lab-concepts.test.js`, `test/lab-program.test.js`, journeys J193 (API), J194 (library, brand code, watchlist), J195 (browser), J196 (trends and plans, API), J197 (plans, browser), J198 (concepts, API), J199 (concepts, browser), J200 (graphic program, API), J201 (graphic program, browser) |

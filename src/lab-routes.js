@@ -12,6 +12,7 @@
 import { providerReady, ask as realAsk } from './intel-llm.js';
 import { CATEGORIES, CATEGORY_IDS, categoryLabel, cleanCategory, BRAND_ROLES, SEED_BRANDS, ITEM_STATUSES, DEFAULT_BRAND_CODE, cleanBrandCode, cleanBrand, heatLabel } from './lab.js';
 import { createLabData } from './lab-data.js';
+import { generateProgram, cleanProgram } from './lab-program.js';
 import { scanBrand, scanDue, addByUrl, dailyCents } from './lab-scan.js';
 import { ROLES, cleanLine, lineWarnings, planSummary, generateLines, planCsv, marginOf, defaultCost } from './lab-plan.js';
 
@@ -149,7 +150,7 @@ export function registerLabRoutes(app, d) {
     if (ids.length) for (const r of (await pool.query(`select i.id, i.title, i.url, i.image_url, b.name brand from lab_items i left join lab_brands b on b.id=i.brand_id where i.id = any($1::uuid[])`, [ids])).rows) refs.set(r.id, { id: r.id, title: r.title, url: r.url, imageUrl: r.image_url, brand: r.brand || '' });
     const cc = new Map((await pool.query(`select line_id, count(*)::int n, count(*) filter (where status in ('approved','tech_pack'))::int approved, (array_agg(product_id) filter (where product_id is not null))[1] product_id from lab_concepts where plan_id=$1 and line_id is not null group by line_id`, [id])).rows.map(r => [r.line_id, r]));
     const lines = rows.map(r => ({ ...lineShape(r, ladders, econ, anchor, refs), conceptCount: cc.get(r.id)?.n || 0, approvedConcepts: cc.get(r.id)?.approved || 0, productId: cc.get(r.id)?.product_id || null }));
-    return { plan: planShape({ ...plan, lines: rows.length }), lines, summary: planSummary(lines.map(l => ({ ...l })), ladders, econ, anchor), ladders, economics: econ, anchor, roles: ROLES };
+    return { plan: planShape({ ...plan, lines: rows.length }), program: plan.program || null, lines, summary: planSummary(lines.map(l => ({ ...l })), ladders, econ, anchor), ladders, economics: econ, anchor, roles: ROLES };
   }
   const touch = id => pool.query('update lab_plans set updated_at=now() where id=$1', [id]);
 
@@ -187,6 +188,33 @@ export function registerLabRoutes(app, d) {
   app.delete('/v1/lab/plans/:id', { preHandler: pre }, async (req, reply) => {
     if (!needId(req, reply)) return;
     const r = await pool.query('delete from lab_plans where id=$1', [req.params.id]); if (!r.rowCount) return bad(reply, 'Not found', 404); return { ok: true };
+  });
+  // the graphic program: a season's graphics as one system, which the concepts then draw on
+  const programs = new Map();
+  app.post('/v1/lab/plans/:id/program', { preHandler: pre }, async (req, reply) => {
+    if (!needId(req, reply)) return;
+    const plan = (await pool.query('select * from lab_plans where id=$1', [req.params.id])).rows[0]; if (!plan) return bad(reply, 'Not found', 404);
+    const day = new Date().toISOString().slice(0, 10), cap = Number(env.LAB_DAILY_PROGRAMS ?? 12); if (cap >= 0 && (programs.get(day) || 0) >= cap) return bad(reply, `The daily limit of ${cap} graphic programs is reached. Raise LAB_DAILY_PROGRAMS.`, 429);
+    if (!providerReady('anthropic', env)) return bad(reply, 'Claude is not connected (the service needs ANTHROPIC_API_KEY)', 503);
+    const lines = (await pool.query('select name, category, role, status from lab_plan_lines where plan_id=$1 order by sort', [plan.id])).rows;
+    if (!lines.some(l => l.status !== 'dropped')) return bad(reply, 'Add some pieces to the plan first: the graphics are designed for the pieces in it.', 409);
+    let out; try { out = await generateProgram({ plan, lines, trends: await trendsFor(180), code: await loadCode(), note: req.body?.note, askImpl, env, fetchImpl }); } catch (e) { return bad(reply, e.message, 502); }
+    if (!out.program) return bad(reply, 'The assistant did not come back with a usable graphic program. Try again, or change the note.', 502);
+    programs.set(day, (programs.get(day) || 0) + 1);
+    await pool.query('update lab_plans set program=$2, updated_at=now() where id=$1', [plan.id, JSON.stringify(out.program)]);
+    return reply.code(201).send(await loadPlan(plan.id));
+  });
+  app.put('/v1/lab/plans/:id/program', { preHandler: pre }, async (req, reply) => {
+    if (!needId(req, reply)) return;
+    const plan = (await pool.query('select program from lab_plans where id=$1', [req.params.id])).rows[0]; if (!plan) return bad(reply, 'Not found', 404); if (!plan.program) return bad(reply, 'This plan has no graphic program yet', 409);
+    const b = req.body || {}, remove = new Set((Array.isArray(b.removeMotifs) ? b.removeMotifs : []).map(String));
+    const next = cleanProgram({ ...plan.program, ...(b.name !== undefined ? { name: b.name } : {}), ...(b.story !== undefined ? { story: b.story } : {}), ...(b.rules !== undefined ? { rules: b.rules } : {}), motifs: plan.program.motifs.filter(m => !remove.has(m.id)).map(m => (b.renameMotif && b.renameMotif.id === m.id && String(b.renameMotif.name || '').trim() ? { ...m, name: b.renameMotif.name } : m)) });
+    await pool.query('update lab_plans set program=$2, updated_at=now() where id=$1', [req.params.id, next ? JSON.stringify(next) : null]);
+    return loadPlan(req.params.id);
+  });
+  app.delete('/v1/lab/plans/:id/program', { preHandler: pre }, async (req, reply) => {
+    if (!needId(req, reply)) return;
+    const r = await pool.query('update lab_plans set program=null, updated_at=now() where id=$1', [req.params.id]); if (!r.rowCount) return bad(reply, 'Not found', 404); return loadPlan(req.params.id);
   });
   app.post('/v1/lab/plans/:id/lines', { preHandler: pre }, async (req, reply) => {
     if (!needId(req, reply)) return;

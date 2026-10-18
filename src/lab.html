@@ -71,6 +71,9 @@ dialog.cd{border:0;border-radius:24px;padding:0;width:min(980px,96vw);max-height
 .cd label{display:grid;gap:3px}.cd label>span{font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}.cd .t{width:100%}
 .refs{display:flex;gap:10px;overflow-x:auto;padding-bottom:4px}.ref{flex:0 0 150px;border:1px solid var(--line);border-radius:12px;overflow:hidden;font-size:12px;background:#fff}.ref .ph{aspect-ratio:1/1;background:var(--fog);overflow:hidden}.ref img{width:100%;height:100%;object-fit:cover}.ref div{padding:6px 8px}
 .verdict{border-radius:14px;padding:12px 14px;display:grid;gap:6px}.verdict.clear{background:#e4f6ec}.verdict.check{background:#fff1d6}.verdict.too_close{background:#fbe5e2}.verdict ul{margin:0;padding-left:18px}
+.brd{border:1px solid var(--line);border-radius:14px;padding:12px 14px;display:grid;gap:10px;background:var(--fog)}.brd h4{margin:0;font-size:14px}.gfx{display:grid;grid-template-columns:72px 1fr auto;gap:10px;align-items:center;background:#fff;border:1px solid var(--line);border-radius:12px;padding:8px}.gfx img{width:72px;height:72px;background:var(--fog);border-radius:8px;object-fit:contain}.gfx .none{width:72px;height:72px;background:var(--fog);border-radius:8px;display:grid;place-items:center;font-size:11px;color:var(--dim);text-align:center}
+.prog{border:1px solid var(--line);border-radius:16px;padding:14px 16px;margin:14px 0;display:grid;gap:10px;background:#fff}.prog h3{margin:0;font-size:16px}.sw{display:inline-block;width:14px;height:14px;border-radius:4px;border:1px solid var(--line);vertical-align:-2px;margin-right:4px}
+.mot{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px}.mt{border:1px solid var(--line);border-radius:12px;padding:8px;display:grid;gap:4px;align-content:start;background:var(--fog)}.mt .dr{aspect-ratio:3/2;background:#fff;border-radius:8px;display:grid;place-items:center;overflow:hidden}.mt img{max-width:100%;max-height:100%}
 .cm{display:grid;gap:8px}.cm .c{border-top:1px solid var(--line);padding-top:6px;font-size:13px}.cm .c b{margin-right:6px}.cm .c time{color:var(--dim);font-size:12px}
 @media(max-width:700px){.cd .top{grid-template-columns:1fr}.cd .in{padding:16px}}
 @media(max-width:700px){.two{grid-template-columns:1fr}.grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.panel{padding:16px}}
@@ -138,6 +141,8 @@ dialog.cd{border:0;border-radius:24px;padding:0;width:min(980px,96vw);max-height
     <section class="sec" id="code"><div class="hd"><h2>Brand code</h2><p class="note">How Future Basics decides what is ours. Everything the Lab reads, plans and designs is held against this. Edit it any time.</p></div>
       <div class="panel"><form class="form" id="codeForm">
         <label><span>What Future Basics is</span><textarea class="t" name="statement" maxlength="600"></textarea></label>
+        <label><span>How deep our graphics go</span><textarea class="t" name="graphicsApproach" maxlength="600"></textarea></label>
+        <label><span>Who it is for</span><textarea class="t" name="audience" maxlength="400"></textarea></label>
         <div class="two"><label><span>Price anchor</span><input class="t" name="anchor" maxlength="80"></label><label><span>What the anchor means for us</span><input class="t" name="anchorNote" maxlength="400"></label></div>
         <div class="two"><label><span>Cuts we borrow from (one per line)</span><textarea class="t" name="cuts"></textarea></label><label><span>Materials</span><textarea class="t" name="materials"></textarea></label></div>
         <div class="two"><label><span>The look (one per line)</span><textarea class="t" name="looks"></textarea></label><label><span>Never (one per line)</span><textarea class="t" name="avoid"></textarea></label></div>
@@ -179,7 +184,7 @@ function drawBrands(){
 }
 function exRow(e={}){return `<div class="row" data-ex><input class="t" data-n placeholder="Piece or product" value="${esc(e.name)}" maxlength="120"><input class="t" data-w placeholder="Why we love it" value="${esc(e.why)}" maxlength="400"><input class="t" data-u placeholder="Link (optional)" value="${esc(e.url)}" maxlength="500"><button class="btn sm" type="button" data-rmex>Remove</button></div>`}
 function drawCode(){
-  const c=O.brandCode,f=$('#codeForm');f.statement.value=c.statement;f.anchor.value=c.priceAnchor.name;f.anchorNote.value=c.priceAnchor.note;f.cuts.value=c.cutReferences.join('\n');f.materials.value=c.materials;f.looks.value=c.looks.join('\n');f.avoid.value=c.avoid.join('\n');f.notes.value=c.notes;f.costRatio.value=c.economics.costRatio;f.minMargin.value=c.economics.minMarginPct;
+  const c=O.brandCode,f=$('#codeForm');f.statement.value=c.statement;f.audience.value=c.audience||'';f.graphicsApproach.value=c.graphicsApproach||'';f.anchor.value=c.priceAnchor.name;f.anchorNote.value=c.priceAnchor.note;f.cuts.value=c.cutReferences.join('\n');f.materials.value=c.materials;f.looks.value=c.looks.join('\n');f.avoid.value=c.avoid.join('\n');f.notes.value=c.notes;f.costRatio.value=c.economics.costRatio;f.minMargin.value=c.economics.minMarginPct;
   $('#exemplars').innerHTML=c.exemplars.map(exRow).join('');
 }
 function card(i){
@@ -226,7 +231,7 @@ document.addEventListener('submit',async e=>{
   if(e.target.id==='brandForm'){e.preventDefault();const f=e.target,m=$('#brandMsg');m.className='msg';m.textContent='';try{await api('/v1/lab/brands',{body:{name:f.name.value,site:f.site.value,role:f.role.value}});f.reset();await refresh();m.textContent='Added'}catch(x){m.className='msg bad';m.textContent=x.message}}
   if(e.target.id==='codeForm'){e.preventDefault();const f=e.target,m=$('#codeMsg');m.className='msg';m.textContent='Saving…';
     const ex=[...document.querySelectorAll('[data-ex]')].map(r=>({name:r.querySelector('[data-n]').value,why:r.querySelector('[data-w]').value,url:r.querySelector('[data-u]').value})).filter(x=>x.name.trim());
-    try{const j=await api('/v1/lab/brand-code',{method:'PUT',body:{statement:f.statement.value,priceAnchor:{name:f.anchor.value,note:f.anchorNote.value},cutReferences:lines(f.cuts.value),materials:f.materials.value,looks:lines(f.looks.value),avoid:lines(f.avoid.value),exemplars:ex,notes:f.notes.value,economics:{costRatio:Number(f.costRatio.value),minMarginPct:Number(f.minMargin.value)}}});O.brandCode=j.brandCode;drawCode();$('#codeMsg').className='msg';$('#codeMsg').textContent='Saved'}catch(x){m.className='msg bad';m.textContent=x.message}}
+    try{const j=await api('/v1/lab/brand-code',{method:'PUT',body:{statement:f.statement.value,audience:f.audience.value,graphicsApproach:f.graphicsApproach.value,priceAnchor:{name:f.anchor.value,note:f.anchorNote.value},cutReferences:lines(f.cuts.value),materials:f.materials.value,looks:lines(f.looks.value),avoid:lines(f.avoid.value),exemplars:ex,notes:f.notes.value,economics:{costRatio:Number(f.costRatio.value),minMarginPct:Number(f.minMargin.value)}}});O.brandCode=j.brandCode;drawCode();$('#codeMsg').className='msg';$('#codeMsg').textContent='Saved'}catch(x){m.className='msg bad';m.textContent=x.message}}
 });
 
 /* ---------- what's moving ---------- */
@@ -262,6 +267,13 @@ function ladderRows(P){
     return `<div class="lad"><span>${esc(name)}<br><span class="sub">${usd(l.entry)} · ${usd(l.core)} · cap ${usd(l.cap)}${l.basis==='anchor'?'':' (est.)'}</span></span><div class="track" role="img" aria-label="Ladder ${usd(l.entry)} to ${usd(l.cap)}; our pieces ${ls.map(x=>usd(x.price)).join(', ')}"><div class="rng" style="left:${pos(l.entry)}%;width:${pos(l.cap)-pos(l.entry)}%"></div><i class="tk" style="left:${pos(l.core)}%"></i>${ls.map(x=>`<i class="dot ${x.price>l.cap?'warn':''}" style="left:${pos(x.price)}%" title="${esc(x.name)} ${usd(x.price)}"></i>`).join('')}</div></div>`}).join('');
   return rows+(none.length?`<p class="sub" style="margin:8px 0 0">No price evidence yet for ${esc(none.join(', '))}: read more brands to get a ladder.</p>`:'');
 }
+function programHtml(P){
+  const pr=P.program;
+  if(!pr)return `<div class="prog"><h3>Graphic program</h3><p class="note" style="margin:0">Design this season's graphics as one system, the way the brands we study build theirs: crests, our own lettering and numerals, stripes, patterns, illustration, technical annotation. Concepts then draw on it.</p><div class="row"><button class="btn go" type="button" data-prog>Develop the graphic program</button><span class="msg" id="progMsg" role="status"></span></div></div>`;
+  return `<div class="prog"><div class="row" style="justify-content:space-between"><h3>Graphic program: ${esc(pr.name)}</h3><div class="row"><button class="btn sm" type="button" data-prog>Develop it again</button><button class="btn sm" type="button" data-progdel>Remove</button></div></div>
+  <p class="note" style="margin:0">${esc(pr.story)}</p>${pr.palette.length?`<div class="kv"><b>Palette</b>${pr.palette.map(c=>`<span class="chip"><i class="sw" style="background:${esc(c.hex)}"></i>${esc(c.name)} ${esc(c.hex)}</span>`).join('')}</div>`:''}${pr.rules?`<div class="sub"><b>Rules:</b> ${esc(pr.rules)}</div>`:''}
+  <div class="mot">${pr.motifs.map(m=>`<div class="mt" data-mid="${esc(m.id)}"><div class="dr">${svgImg(m.svg)}</div><b>${esc(m.name)}</b><span class="sub">${esc(m.kind)} · ${esc(m.id)}${m.placements.length?' · '+esc(m.placements.join(', ')):''}</span>${m.texts.length?`<span class="sub">reads: ${esc(m.texts.join(' / '))}</span>`:''}<span class="sm">${esc(m.idea)}</span><button class="btn sm" type="button" data-motifrm>Remove</button></div>`).join('')}</div><span class="msg" id="progMsg" role="status"></span></div>`;
+}
 function drawPlan(){
   const P=CUR;if(!P){$('#planView').classList.add('hidden');return}
   const s=P.summary,pl=P.plan,sel=(opts,v)=>opts.map(o=>`<option value="${o.id}" ${o.id===v?'selected':''}>${esc(o.label)}</option>`).join('');
@@ -272,6 +284,7 @@ function drawPlan(){
     ${pl.summary?`<p class="note">${esc(pl.summary)}</p>`:''}
     <div class="tiles"><div class="tile"><b>${s.count}</b><span>Pieces</span></div><div class="tile"><b>${s.priceMedian!=null?usd(s.priceMedian):'—'}</b><span>Median price</span></div><div class="tile"><b>${s.blendedMarginPct!=null?s.blendedMarginPct+'%':'—'}</b><span>Blended margin</span></div><div class="tile"><b>${s.units.toLocaleString()}</b><span>Units</span></div><div class="tile"><b>${money(s.revenueCents)}</b><span>Revenue at shelf</span></div><div class="tile"><b>${money(s.grossCents)}</b><span>Gross</span></div><div class="tile"><b ${s.lineWarnings?'style="color:var(--bad)"':''}>${s.lineWarnings}</b><span>Flags</span></div></div>
     ${s.notes.length?`<ul class="sub" style="margin:0 0 10px;padding-left:18px">${s.notes.map(n=>`<li>${esc(n)}</li>`).join('')}</ul>`:''}
+    ${programHtml(P)}
     <h3 style="margin:14px 0 4px;font-size:15px">Price ladder against ${esc(P.anchor)}</h3>${ladderRows(P)||'<p class="note">Add priced pieces to see the ladder.</p>'}
     <div class="wrapx" style="margin-top:14px"><table class="lt"><thead><tr><th>Piece</th><th>Category</th><th>Role</th><th>Price</th><th>Cost</th><th>Margin</th><th>Qty</th><th>Concepts</th><th></th></tr></thead><tbody>${P.lines.map(l=>`<tr class="${l.status==='dropped'?'dropped':''}" data-line="${l.id}">
       <td style="min-width:200px"><input data-f="name" value="${esc(l.name)}" maxlength="100" aria-label="Name">
@@ -314,12 +327,12 @@ document.addEventListener('submit',async e=>{
 });
 
 /* ---------- concepts ---------- */
-let BOARD={status:'',plan:'',line:''},CONC=[],BCOUNTS={},OPENID=null,IMGURL='';
+let BOARD={status:'',plan:'',line:''},CONC=[],BCOUNTS={},OPENID=null,IMGURL='',BOPT={marks:[],logoTechniques:[],graphicPlaces:[],graphicTechniques:[]},CGFX=[];
 const VERDICT={clear:['Clear','ok'],check:['Look closely','warn'],too_close:['Too close','bad']};
 const STAT={draft:['Draft',''],approved:['Approved','ok'],rejected:['Rejected','bad'],tech_pack:['Tech pack','hot']};
 async function loadBoard(){
   const p=new URLSearchParams();if(BOARD.status)p.set('status',BOARD.status);if(BOARD.plan)p.set('plan',BOARD.plan);if(BOARD.line)p.set('line',BOARD.line);
-  const j=await api('/v1/lab/concepts?'+p);CONC=j.concepts;BCOUNTS=j.counts;
+  const j=await api('/v1/lab/concepts?'+p);CONC=j.concepts;BCOUNTS=j.counts;if(j.options)BOPT=j.options;
   const all=Object.values(BCOUNTS).reduce((a,b)=>a+b,0);
   $('#bFilters').innerHTML=[['','All',all],['draft','Draft',BCOUNTS.draft||0],['approved','Approved',BCOUNTS.approved||0],['rejected','Rejected',BCOUNTS.rejected||0],['tech_pack','Tech pack',BCOUNTS.tech_pack||0]].map(([k,l,n])=>`<button type="button" class="pill" data-bs="${k}" aria-pressed="${BOARD.status===k}">${l} · ${n}</button>`).join('')+(BOARD.line?'<button type="button" class="pill" data-bclear>Showing one piece · show all</button>':'');
   const pl=await api('/v1/lab/plans');$('#bPlan').innerHTML='<option value="">All plans</option>'+pl.plans.map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join('');$('#bPlan').value=BOARD.plan;
@@ -328,6 +341,17 @@ async function loadBoard(){
   $('#cgrid').innerHTML=CONC.map(c=>{const v=c.closeness?VERDICT[c.closeness.verdict]:null,st=STAT[c.status];return `<article class="cc ${c.status}" data-cid="${c.id}" tabindex="0" role="button" aria-label="Open ${esc(c.name)}"><div class="ph">${c.thumb?`<img src="${esc(c.thumb)}" alt="${esc(c.name)}">`:esc(c.imageNote||'No picture')}</div><div class="bd"><h3>${esc(c.name)}</h3><div class="tags"><span class="chip ${st[1]}">${st[0]}</span>${v?`<span class="chip ${v[1]}">${v[0]}</span>`:''}<span class="chip">${esc(c.categoryLabel)}</span>${c.price!=null?`<span class="pr">${esc(usd(c.price))}</span>`:''}</div><div class="sub">${esc(c.planName)}</div><div class="sm">${esc(c.twist.slice(0,110))}${c.twist.length>110?'…':''}</div></div></article>`}).join('');
 }
 async function blobUrl(id){const r=await fetch(`/v1/lab/concepts/${id}/image`,{headers:{Authorization:'Bearer '+TOKEN()}});if(!r.ok)return '';return URL.createObjectURL(await r.blob())}
+const svgImg=svg=>svg?`<img alt="graphic" src="data:image/svg+xml;utf8,${encodeURIComponent(svg)}">`:'<span class="none">no drawing</span>';
+function brandingHtml(c,locked){
+  const b=(c.spec.branding||{}).logo||{},sel=(opts,v,k)=>`<select class="t" data-b="${k}" ${locked?'disabled':''}>${opts.map(o=>`<option value="${esc(o.id||o)}" ${(o.id||o)===v?'selected':''}>${esc(o.label||o)}</option>`).join('')}</select>`;
+  CGFX=(c.spec.graphics||[]).map(g=>({...g}));
+  return `<div class="brd"><h4>Future Basics branding</h4><div class="sub">The logo and the woven label are on every piece. Graphics come from the plan's graphic program, or are new. They are drawn from our own brand files and placed on the picture afterwards, so the picture shows a guide to where they go; the tech pack carries the exact spec.</div>
+  <div class="two"><label><span>Logo</span>${sel(BOPT.marks,b.mark,'mark')}</label><label><span>Made by</span>${sel(BOPT.logoTechniques,b.technique,'technique')}</label></div>
+  <label><span>Where the logo goes</span><input class="t" data-b="placement" value="${esc(b.placement||'')}" maxlength="120" ${locked?'disabled':''}></label>
+  <label><span>Internal woven label (always added)</span><input class="t" value="${esc((c.spec.branding||{}).label||'')}" disabled></label>
+  <div><b style="font-size:13px">Future Basics graphics</b><div style="display:grid;gap:8px;margin-top:6px" id="gfxList">${CGFX.length?CGFX.map((g,i)=>`<div class="gfx" data-gi="${i}">${svgImg(g.svg)}<div><b>${esc(g.name)}</b><br><span class="sub">${esc(g.kind||'icon')} · ${esc(g.placement)} · ${esc(g.technique)}${g.colors&&g.colors.length?' · '+esc(g.colors.join(', ')):''}${g.texts&&g.texts.length?' · reads: '+esc(g.texts.join(' / ')):''}</span><br><span class="sm">${esc(g.idea)}</span></div>${locked?'':'<button class="btn sm" type="button" data-grm>Remove</button>'}</div>`).join(''):'<span class="sub">No graphic on this one. A clean piece stays clean.</span>'}</div></div>
+  ${locked?'':'<div class="row"><button class="btn sm" type="button" data-credraw>Redraw the picture</button><span class="sub">after changing the words, the logo or the graphics</span></div>'}</div>`;
+}
 function conceptHtml(d,img){
   const c=d.concept,v=c.closeness?VERDICT[c.closeness.verdict]:null,s=c.spec||{},st=STAT[c.status],locked=c.status==='tech_pack';
   const ai=c.closeness&&c.closeness.ai;
@@ -340,6 +364,7 @@ function conceptHtml(d,img){
     <div class="two"><label><span>Colours (comma separated)</span><input class="t" data-k="colors" value="${esc((s.colors||[]).join(', '))}" ${locked?'disabled':''}></label><label><span>Details (one per line)</span><textarea class="t" data-k="details" style="min-height:60px" ${locked?'disabled':''}>${esc((s.details||[]).join('\n'))}</textarea></label></div>
     <div class="two"><label><span>Target price $</span><input class="t" data-k="price" inputmode="decimal" value="${c.price??''}" ${locked?'disabled':''}></label><label><span>Quantity</span><input class="t" data-k="qty" inputmode="numeric" value="${c.qty}" ${locked?'disabled':''}></label></div>
     ${locked?'':'<div class="row"><button class="btn sm" type="button" data-csave>Save changes</button><span class="msg" id="cMsg" role="status"></span></div>'}</div></div>
+  ${brandingHtml(c,locked)}
   ${v?`<div class="verdict ${c.closeness.verdict}"><div class="row"><b>${v[0]}</b><span class="sub">${c.closeness.aiChecked?'words and second opinion':'words only: not second-checked'}</span><button class="btn sm" type="button" data-ccheck>Re-check</button></div>${c.closeness.reasons.length?`<ul>${c.closeness.reasons.map(r=>`<li>${esc(r)}</li>`).join('')}</ul>`:'<span class="sub">Nothing close to any piece it was drawn from.</span>'}${ai&&ai.fixes.length?`<div class="sub"><b>To make it ours:</b> ${esc(ai.fixes.join(' · '))}</div>`:''}${c.overrideReason?`<div class="sub"><b>Approved anyway because:</b> ${esc(c.overrideReason)}</div>`:''}<span class="sub">The check reads words, not pictures. Look at the concept next to the pieces below.</span></div>`:''}
   <div><b style="font-size:14px">Drawn from, to look at side by side</b><div class="refs" style="margin-top:8px">${d.concept.refs.map(r=>`<div class="ref"><div class="ph">${safe(r.imageUrl)?`<img src="${esc(safe(r.imageUrl))}" alt="${esc(r.title)}" loading="lazy" referrerpolicy="no-referrer">`:''}</div><div><b>${esc(r.title)}</b><br><span class="sub">${esc(r.brand)}${r.price!=null?' · '+esc(usd(r.price)):''}</span>${safe(r.url)?`<br><a href="${esc(safe(r.url))}" target="_blank" rel="noopener noreferrer">Open</a>`:''}</div></div>`).join('')||'<span class="sub">No library pieces attached.</span>'}</div></div>
   <div class="row">${c.status==='approved'?`<button class="btn go" type="button" data-ctp>Send to tech pack</button>`:''}${c.status==='tech_pack'?`<a class="btn go" href="${esc(c.productUrl)}">Open the tech pack</a>`:''}${c.status==='draft'||c.status==='rejected'?'<button class="btn go" type="button" data-capprove>Approve</button>':''}${c.status==='draft'?'<button class="btn" type="button" data-creject>Reject</button>':''}${c.status==='approved'||c.status==='rejected'?'<button class="btn" type="button" data-creopen>Back to draft</button>':''}${locked?'':'<button class="btn" type="button" data-crevise>Revise…</button><button class="btn" type="button" data-cdel>Delete</button>'}<span class="msg" id="cAct" role="status"></span></div>
@@ -358,6 +383,10 @@ document.addEventListener('click',async e=>{
   if(e.target.closest('[data-bclear]')){BOARD.line='';loadBoard().catch(()=>{});return}
   const cc=e.target.closest('.cc');if(cc){openConcept(cc.dataset.cid).catch(x=>alert(x.message));return}
   if(e.target.closest('[data-cclose]')){$('#cd').close();return}
+  if(e.target.closest('[data-prog]')){const steer=prompt('Anything to steer the graphics? (optional, for example “more varsity, less technical” or “lean on numerals and stripes”)','');if(steer===null)return;const m=$('#progMsg'),btn=e.target.closest('[data-prog]');m.className='msg';m.textContent='Designing the graphic program and drawing every motif. This takes a minute or two…';btn.disabled=true;
+    try{CUR=await api(`/v1/lab/plans/${CUR.plan.id}/program`,{body:{note:steer}});drawPlan();await loadPlans(true)}catch(x){const mm=$('#progMsg');if(mm){mm.className='msg bad';mm.textContent=x.message}btn.disabled=false}return}
+  if(e.target.closest('[data-progdel]')){if(!confirm('Remove the graphic program? Concepts already made keep their graphics.'))return;try{CUR=await api(`/v1/lab/plans/${CUR.plan.id}/program`,{method:'DELETE'});drawPlan();await loadPlans(true)}catch(x){alert(x.message)}return}
+  if(e.target.closest('[data-motifrm]')){const id=e.target.closest('.mt').dataset.mid;try{CUR=await api(`/v1/lab/plans/${CUR.plan.id}/program`,{method:'PUT',body:{removeMotifs:[id]}});drawPlan();await loadPlans(true)}catch(x){alert(x.message)}return}
   const tr=e.target.closest('tr[data-line]');
   if(tr&&e.target.closest('[data-view]')){BOARD.line=tr.dataset.line;BOARD.plan=CUR.plan.id;BOARD.status='';loadBoard().then(()=>$('#board').scrollIntoView({behavior:'smooth'})).catch(()=>{});e.preventDefault();return}
   if(tr&&e.target.closest('[data-mk]')){
@@ -368,7 +397,9 @@ document.addEventListener('click',async e=>{
   if(!$('#cd').open)return;
   if(e.target.closest('[data-csave]')){
     const f=document.querySelector('[data-cf]'),g=k=>f.querySelector(`[data-k="${k}"]`).value,m=$('#cMsg');m.className='msg';m.textContent='Saving…';
-    try{await api('/v1/lab/concepts/'+OPENID,{method:'PUT',body:{name:g('name'),twist:g('twist'),description:g('description'),silhouette:g('silhouette'),fabric:g('fabric'),colors:g('colors').split(',').map(x=>x.trim()).filter(Boolean),details:g('details').split(/\n/).map(x=>x.trim()).filter(Boolean),price:g('price'),qty:g('qty')}});await openConcept(OPENID);await loadBoard();const n=$('#cMsg');if(n)n.textContent='Saved and checked again'}catch(x){m.className='msg bad';m.textContent=x.message}return}
+    try{await api('/v1/lab/concepts/'+OPENID,{method:'PUT',body:{name:g('name'),twist:g('twist'),description:g('description'),silhouette:g('silhouette'),fabric:g('fabric'),colors:g('colors').split(',').map(x=>x.trim()).filter(Boolean),details:g('details').split(/\n/).map(x=>x.trim()).filter(Boolean),price:g('price'),qty:g('qty'),logo:{mark:document.querySelector('[data-b="mark"]').value,technique:document.querySelector('[data-b="technique"]').value,placement:document.querySelector('[data-b="placement"]').value},graphics:CGFX}});await openConcept(OPENID);await loadBoard();const n=$('#cMsg');if(n)n.textContent='Saved and checked again'}catch(x){m.className='msg bad';m.textContent=x.message}return}
+  if(e.target.closest('[data-grm]')){const i=Number(e.target.closest('.gfx').dataset.gi);CGFX.splice(i,1);e.target.closest('.gfx').remove();const m=$('#cMsg');if(m){m.className='msg';m.textContent='Removed. Press Save changes to keep it.'}return}
+  if(e.target.closest('[data-credraw]')){const m=$('#cAct');m.className='msg';m.textContent='Drawing the picture again…';try{await api(`/v1/lab/concepts/${OPENID}/redraw`,{body:{}});await openConcept(OPENID);await loadBoard()}catch(x){m.className='msg bad';m.textContent=x.message}return}
   if(e.target.closest('[data-ccheck]')){actC('/check',{},'Checking…').catch(()=>{});return}
   if(e.target.closest('[data-capprove]')){
     try{await actC('/approve',{},'Approving…')}catch(x){if(/too close/i.test(x.message)){const why=prompt(x.message+'\n\nWhy is it fine to approve anyway? (this is recorded)','');if(why&&why.trim().length>=10)actC('/approve',{overrideReason:why},'Approving…').catch(()=>{})}}return}
