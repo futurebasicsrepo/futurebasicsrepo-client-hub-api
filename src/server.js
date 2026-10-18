@@ -665,7 +665,7 @@ registerIntelRoutes(app, { pool, authenticate, adminOnly, getSetting, setSetting
 const lab=registerLabRoutes(app, { pool, authenticate, adminOnly, getSetting, setSetting, log: app.log,
   ...(process.env.PROTOTYPE_TEST_ORIGIN ? { delayMs: 0, crawlOpts: { lookup: async () => [{ address: '93.184.216.34' }], fetchImpl: (u, o) => { const x = new URL(u); return fetch(process.env.PROTOTYPE_TEST_ORIGIN + x.pathname + x.search, { ...o, headers: { ...(o && o.headers), 'x-original-host': x.hostname } }); } } } : {}) });
 // Concepts: an approved one becomes a product in the Future Basics room, with its tech pack drafted from the concept (createClientProduct, shared with the console).
-registerLabConceptRoutes(app, { pool, authenticate, adminOnly, getSetting, log: app.log, createProduct: args => createClientProduct(args) });
+registerLabConceptRoutes(app, { pool, authenticate, adminOnly, getSetting, log: app.log, createProduct: args => createClientProduct(args), attachArtwork: (productId, items) => attachLabArtwork(productId, items) });
 const money=registerMoneyRoutes(app, { pool, authenticate, adminOnly, getSetting, setSetting, tokenSeal: sealer(process.env), stateSecret: process.env.JWT_SECRET || 'dev', workUrl: workHubUrl, log: app.log,
   // product development is paid through a Shopify checkout (a draft order for the amount due), see money-routes.js
   shopifyInvoiceLink: async ({ title, amountCents, currency, email, note, number }) => {
@@ -1007,6 +1007,13 @@ app.post('/v1/admin/clients/:id/products',{preHandler:[authenticate,adminOnly]},
   if(projectId&&!project)return reply.code(400).send({error:'Select a valid project'});
   return createClientProduct({clientId:req.params.id,projectId:project?.id||null,title,handle,shopifyProductId,descriptionHtml,vendor,productType,templateSuffix,referencePhotos,actorId:req.auth.sub});
 });
+// The Design Lab's artwork (the logo, the woven label, each graphic) goes into the new product's tech pack as artwork, where the Art tab shows it. → how many files were added
+async function attachLabArtwork(productId,items){
+  const pack=(await pool.query('select id,data from tech_packs where product_id=$1',[productId])).rows[0];if(!pack||!items?.length)return 0;
+  const data=normalizeTechPack(pack.data),have=new Set(data.artwork.map(a=>a.image)),add=items.filter(i=>i.image&&!have.has(i.image)).map((i,n)=>({id:`art-lab-${Date.now().toString(36)}${n}`,name:i.name,image:i.image,source:'lab',note:'From the Design Lab',pantones:[],placements:[]}));
+  if(!add.length)return 0;data.artwork=[...add,...data.artwork].slice(0,12);
+  await pool.query('update tech_packs set data=$2,updated_at=now() where id=$1',[pack.id,data]);return add.length;
+}
 app.patch('/v1/admin/products/:id',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const {stage,riskLevel,owner,targetDate,shopifyProductId,shopifyHandle,descriptionHtml,vendor,productType,templateSuffix}=req.body||{};
   let p=(await pool.query(`update products set current_stage=coalesce($1,current_stage),risk_level=coalesce($2,risk_level),

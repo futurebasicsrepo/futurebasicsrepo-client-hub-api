@@ -73,7 +73,7 @@ test('editing a concept is cleaned; the product brief carries the concept and is
 });
 
 // ---- Future Basics branding, graphics and the audience ------------------------------------------------------------------------------------------------
-import { ensureBranding, cleanGraphicSvg, cleanGraphics, composeBranding, labelWords, LOGO_PLACE, GRAPHIC_PLACE } from '../src/lab-concepts.js';
+import { ensureBranding, cleanGraphic, cleanGraphics, composeBranding, labelWords, LOGO_PLACE, GRAPHIC_PLACE } from '../src/lab-concepts.js';
 import { brandCodeWords, cleanBrandCode } from '../src/lab.js';
 import { generateLines, trendRead, planFixture, WOMENSWEAR_ONLY } from '../src/lab-plan.js';
 import sharp from 'sharp';
@@ -86,13 +86,17 @@ test('every concept carries the Future Basics logo and woven label, whatever the
   assert.match(labelWords('footwear'), /tongue/); assert.match(labelWords('bottoms'), /waistband/);
 });
 
-test('graphics: only plain brand-coloured shapes survive, and nothing that can run or fetch', () => {
-  const good = '<svg viewBox="0 0 200 200"><rect x="20" y="90" width="120" height="20" rx="10" fill="#141416"/><circle cx="165" cy="100" r="14" fill="#4BFF9A"/><g opacity="0.5"><path d="M10 10 L50 50" stroke="#ff0000" stroke-width="4"/></g></svg>';
-  const out = cleanGraphicSvg(good); assert.match(out, /^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg" viewBox="0 0 200 200">/); assert.ok(out.includes('fill="#141416"') && out.includes('fill="#4BFF9A"')); assert.ok(!/#ff0000/i.test(out), 'an off-brand red is pulled to the nearest brand colour');
-  for (const bad of ['<svg><script>alert(1)</script><rect width="9" height="9"/></svg>', '<svg><rect width="9" height="9" onload="x()"/></svg>', '<svg><image href="http://x/y.png"/></svg>', '<svg><text>Gucci</text><rect width="9" height="9"/></svg>', '<svg><rect width="9" height="9" fill="url(#a)"/></svg>', '<svg><foreignObject/></svg>', '<svg><use href="#a"/></svg>', '<svg></svg>', 'not svg', '<svg><rect width="9" height="9" style="x"/><style>*{}</style></svg>', '<svg><a href="javascript:x"><rect width="9" height="9"/></a></svg>', '<svg>' + '<rect width="1" height="1"/>'.repeat(80) + '</svg>', '<svg><rect width="9" height="9" xlink:href="data:text/html,x"/></svg>']) assert.equal(cleanGraphicSvg(bad), '', bad.slice(0, 50));
-  assert.equal(cleanGraphicSvg(good + 'x'.repeat(7000)), '', 'too big');
-  const gs = cleanGraphics([{ name: ' Grid ', idea: 'A grid', placement: 'Front Chest', technique: 'Screen Print', colors: ['Ink', '', 'Cue'], svg: good }, { name: '', idea: 'no name' }, { name: 'Odd', idea: 'x', placement: 'moon', technique: 'magic' }, 5, null]);
-  assert.equal(gs.length, 2); assert.deepEqual([gs[0].placement, gs[0].technique, gs[0].colors], ['front chest', 'screen print', ['Ink', 'Cue']]); assert.deepEqual([gs[1].placement, gs[1].technique], ['front chest', 'screen print'], 'unknown choices fall back');
+test('graphics: plain shapes and our own lettering as outlines survive, in any colour; nothing that can run or fetch does', () => {
+  const good = '<svg viewBox="0 0 200 200"><rect x="20" y="90" width="120" height="20" rx="10" fill="#141416"/><circle cx="165" cy="100" r="14" fill="#C8372D"/><g opacity="0.5"><path d="M10 10 L50 50" stroke="#1f3a5f" stroke-width="4" stroke-dasharray="4 2"/></g></svg>';
+  const out = cleanGraphic(good); assert.match(out.svg, /^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg" viewBox="0 0 200 200">/); assert.ok(out.svg.includes('#C8372D') && out.svg.includes('#1F3A5F'), 'a program can use its own colours, not only the logo\'s'); assert.ok(out.svg.includes('stroke-dasharray'));
+  const lettered = cleanGraphic('<svg viewBox="0 0 300 120"><text x="150" y="80" font-family="grotesk-bold" font-size="60" text-anchor="middle" fill="#1F3A5F" letter-spacing="2">FB 26</text><text x="150" y="110" font-family="mono" font-size="14" text-anchor="middle">SPEC 01 / FB-26</text></svg>');
+  assert.deepEqual(lettered.texts, ['FB 26', 'SPEC 01 / FB-26']); assert.ok(!/<text|font-family/.test(lettered.svg), 'lettering is outlines now, nothing that depends on a font being installed'); assert.equal((lettered.svg.match(/<path/g) || []).length, 2); assert.match(lettered.svg, /viewBox="0 0 300 120"/, 'a wide drawing keeps its shape');
+  for (const bad of ['<svg><script>alert(1)</script><rect width="9" height="9"/></svg>', '<svg><rect width="9" height="9" onload="x()"/></svg>', '<svg><image href="http://x/y.png"/></svg>', '<svg><text x="1" y="9">Gucci</text><rect width="9" height="9"/></svg>', '<svg><text x="1" y="9">Ralph Lauren Polo</text></svg>', '<svg><text x="1" y="9">' + 'A'.repeat(30) + '</text></svg>', '<svg><text x="1" y="9"><tspan>x</tspan></text></svg>', '<svg><text x="1" y="9">a<b</text></svg>', '<svg><rect width="9" height="9" fill="url(#a)"/></svg>', '<svg><foreignObject/></svg>', '<svg><use href="#a"/></svg>', '<svg></svg>', 'not svg', '<svg><rect width="9" height="9"/><style>*{}</style></svg>', '<svg><a href="javascript:x"><rect width="9" height="9"/></a></svg>', '<svg>' + '<rect width="1" height="1"/>'.repeat(320) + '</svg>', '<svg><rect width="9" height="9" xlink:href="data:text/html,x"/></svg>', '<svg viewBox="0 0 5000 5000"><rect width="9" height="9"/></svg>', '<svg><defs><rect/></defs><rect width="9" height="9"/></svg>']) assert.equal(cleanGraphic(bad).svg, '', bad.slice(0, 60));
+  assert.equal(cleanGraphic(good + 'x'.repeat(15000)).svg, '', 'too big'); assert.equal(cleanGraphic(Array.from({ length: 9 }, (_, i) => `<text x="1" y="${i + 9}">A${i}</text>`).join('').replace(/^/, '<svg>') + '</svg>').svg, '', 'no more than eight lines of lettering');
+  const gs = cleanGraphics([{ name: ' Grid ', kind: 'Stripes', idea: 'A grid', placement: 'Front Chest', technique: 'Screen Print', colors: ['Ink', '', 'Cue'], svg: good }, { name: '', idea: 'no name' }, { name: 'Odd', idea: 'x', placement: 'moon', technique: 'magic', kind: 'nonsense' }, 5, null]);
+  assert.equal(gs.length, 2); assert.deepEqual([gs[0].kind, gs[0].placement, gs[0].technique, gs[0].colors], ['stripes', 'front chest', 'screen print', ['Ink', 'Cue']]); assert.deepEqual([gs[1].kind, gs[1].placement, gs[1].technique], ['icon', 'front chest', 'screen print'], 'unknown choices fall back');
+  assert.deepEqual(cleanGraphics([{ name: 'N', idea: 'i', svg: lettered.svg, texts: lettered.texts }])[0].texts, ['FB 26', 'SPEC 01 / FB-26'], 'the words stay with the drawing once it is only outlines');
+  assert.equal(cleanGraphics(Array.from({ length: 9 }, (_, i) => ({ name: 'g' + i, idea: 'i' }))).length, 4, 'up to four graphics on a piece');
 });
 
 test('the logo, the graphics and the woven label are laid on the picture from our own files', async () => {
@@ -122,7 +126,7 @@ test('the audience is male-driven and unisex in the brand code, the plan and the
   await generateLines({ trends, size: 6, categories: ['dresses', 'tops'], env: { ANTHROPIC_API_KEY: 'k', AI_FIXTURE: 'x' }, askImpl: async a => { seen = a; return { json: planFixture({ user: a.user }), usage: {} }; } });
   assert.match(seen.user, /Categories you may use: dresses, tops/, 'but they can be asked for by name');
   let call; await generateConcepts({ line: { name: 'Tee', category: 'tops', role: 'core' }, env: ENV, askImpl: async a => { call = a; return { json: conceptFixture({ user: a.user }), usage: {} }; } });
-  assert.match(call.system, /male-driven and unisex/); assert.match(call.system, /Future Basics logo/); assert.match(call.system, /internal woven label/); assert.match(call.system, /never containing text/); assert.match(call.user, /"graphics"/);
+  assert.match(call.system, /male-driven and unisex/); assert.match(call.system, /Future Basics logo/); assert.match(call.system, /internal woven label/); assert.match(call.system, /not limited to our logo or its line and dot/); assert.match(call.system, /crests and emblems, original lettering and numerals/); assert.match(call.user, /"graphics"/);
 });
 
 test('generated concepts always come back with the logo, the label and clean graphics', async () => {
@@ -135,7 +139,7 @@ test('generated concepts always come back with the logo, the label and clean gra
 
 test('the tech pack brief names the logo, the woven label, the graphics and who it is for', () => {
   const brief = productBrief({ name: 'Boxy tee', category: 'tops', twist: 'Our seam', priceCents: 3800, spec: { description: 'A tee', branding: { logo: { mark: 'lockup', placement: 'woven loop at the hem', technique: 'woven patch' } }, graphics: [{ name: 'Line and dot grid', idea: 'tone on tone', placement: 'front chest', technique: 'screen print', colors: ['Ink', 'Cue'] }] } }, { name: 'Fall 27' });
-  assert.match(brief, /Who it is for:<\/strong> Male-driven and unisex/); assert.match(brief, /Future Basics logo:<\/strong> Wordmark and cue mark, woven loop at the hem, woven patch \(always on the piece\)/); assert.match(brief, /Internal label:<\/strong> Future Basics internal woven label[^<]*back neck seam \(always on the piece\)/); assert.match(brief, /Line and dot grid \(front chest, screen print, Ink and Cue\): tone on tone/);
+  assert.match(brief, /Who it is for:<\/strong> Male-driven and unisex/); assert.match(brief, /Future Basics logo:<\/strong> Wordmark and cue mark, woven loop at the hem, woven patch \(always on the piece\)/); assert.match(brief, /Internal label:<\/strong> Future Basics internal woven label[^<]*back neck seam \(always on the piece\)/); assert.match(brief, /Line and dot grid \(icon, front chest, screen print, Ink and Cue\): tone on tone/);
   assert.match(productBrief({ name: 'Old concept', category: 'tops', spec: { description: 'made before branding existed' } }), /Internal label/, 'a concept made before this still gets the label');
 });
 

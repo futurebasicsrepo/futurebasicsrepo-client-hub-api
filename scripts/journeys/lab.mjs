@@ -416,5 +416,71 @@ await journey('J199', 'Design Lab concepts in a browser: make concepts from a pl
   } finally { await cleanup(brands, plan.plan?.id); await b.close(); }
 });
 
+await journey('J200', 'Design Lab graphic program: a season\'s graphics designed as one system with original lettering, concepts apply its motifs, and the artwork goes into the tech pack', async () => {
+  const { brands, plan, gen } = await conceptSetup(); ok(gen.status === 201 && plan.lines.length >= 4, 'a plan to work from', gen.json.error);
+  try {
+    const PG = (id, body = {}) => K(`/plans/${id}/program`, { body }), pid = plan.plan.id;
+    ok((await call(`/v1/lab/plans/${pid}/program`, { body: {} })).status === 401 && (await call(`/v1/lab/plans/${pid}/program`, { token: patT, body: {} })).status === 403 && (await K(`/plans/${pid}/program`, { method: 'PUT', body: { name: 'x' } })).status === 409, 'the program is closed like the rest of the Lab, and cannot be edited before there is one');
+    const blank = (await K('/plans', { body: { name: 'Blank' } })).json; ok((await PG(blank.plan.id)).status === 409 && (await PG('00000000-0000-4000-8000-000000000000')).status === 404, 'a plan with no pieces has nothing to design graphics for; an unknown plan is a plain not-found'); await K(`/plans/${blank.plan.id}`, { method: 'DELETE' });
+    ok(plan.program === null, 'a new plan has no program yet');
+    const made = await PG(pid, { note: 'lean on numerals' }); ok(made.status === 201 && made.json.program?.name === 'Quiet Varsity', 'the assistant develops a graphic program for the plan', made.json.error);
+    const pr = made.json.program; ok(pr.motifs.length >= 4 && new Set(pr.motifs.map(m => m.kind)).size >= 4 && pr.palette.length >= 3 && pr.story && pr.rules, 'several kinds of motif, a palette, a story and rules: a system, not one logo', pr.motifs.map(m => m.kind));
+    ok(pr.motifs.some(m => m.texts.length) && pr.motifs.every(m => m.svg && !/<text|font-family/.test(m.svg)) && pr.palette.some(c => !['#141416', '#FFFFFF', '#4BFF9A'].includes(c.hex)), 'it has original lettering as outlines, and colours beyond the logo\'s', pr.palette);
+    ok((await K(`/plans/${pid}`)).json.program.name === 'Quiet Varsity', 'it is kept with the plan');
+    const ed = await K(`/plans/${pid}/program`, { method: 'PUT', body: { name: 'Quiet Varsity II', removeMotifs: [pr.motifs.at(-1).id], renameMotif: { id: pr.motifs[0].id, name: 'House crest' } } }); ok(ed.json.program.name === 'Quiet Varsity II' && ed.json.program.motifs.length === pr.motifs.length - 1 && ed.json.program.motifs[0].name === 'House crest', 'the program can be renamed and a motif removed or renamed', ed.json.program?.motifs?.map(m => m.name));
+
+    // concepts draw on it
+    const line = plan.lines.find(l => l.category === 'tops') || plan.lines[0];
+    const mk = await K(`/plans/${pid}/lines/${line.id}/concepts`, { body: { count: 3 } }); ok(mk.status === 201, 'concepts are made with the program in hand', mk.json.error);
+    const [A, B, C] = mk.json.concepts;
+    ok(A.spec.graphics[0].name === 'House crest' && A.spec.graphics[0].kind === 'crest' && A.spec.graphics[0].texts.join() === 'FB' && /<path/.test(A.spec.graphics[0].svg) && A.spec.graphics[0].motif === 'm1', 'a concept applies a motif by id and takes its drawing and its words', A.spec.graphics);
+    ok(B.spec.graphics[0].kind === 'stripes' && C.spec.graphics.length === 0, 'another applies a different motif, and a third stays clean');
+    ok(A.spec.graphics.every(g => !g.svg || !/<text/.test(g.svg)), 'no lettering that depends on a font');
+
+    // the concept's graphics are its own once made: removing the motif from the program does not change it
+    await K(`/plans/${pid}/program`, { method: 'PUT', body: { removeMotifs: ['m1'] } }); ok((await K(`/concepts/${A.id}`)).json.concept.spec.graphics[0].name === 'House crest', 'removing a motif from the program leaves concepts already made alone');
+
+    // approve and send to a tech pack: the artwork goes with it
+    ok((await K(`/concepts/${A.id}/approve`, { body: {} })).status === 200, 'approved');
+    const tp = await K(`/concepts/${A.id}/tech-pack`, { body: {} }); ok(tp.status === 201, 'sent to a tech pack', tp.json.error);
+    const art = sql(`select coalesce(string_agg(a->>'name', ' | '), '') from tech_packs t, jsonb_array_elements(t.data->'artwork') a where t.product_id='${tp.json.productId}'`);
+    ok(/Future Basics logo/.test(art) && /internal woven label/.test(art) && /Graphic · House crest \(FB\)/.test(art), 'the logo, the woven label and the graphic are in the tech pack\'s artwork', art);
+    const desc = sql(`select description_html from products where id='${tp.json.productId}'`); ok(/Graphic program:<\/strong> Quiet Varsity II/.test(desc) && /House crest \(crest, /.test(desc) && /reading &quot;FB&quot;/.test(desc), 'the brief names the program and what each graphic says', desc.slice(-500));
+    ok(/artwork files attached/.test((await K(`/concepts/${A.id}`)).json.comments.map(c => c.body).join(' ')), 'the comments say the artwork was attached');
+
+    // remove and regenerate; the brand code carries the graphics approach
+    ok((await K(`/plans/${pid}/program`, { method: 'DELETE' })).json.program === null && (await K(`/plans/${pid}/program`, { method: 'DELETE' })).status === 200, 'the program can be removed');
+    ok((await PG(pid)).status === 201, 'and developed again');
+    const bc = (await K('/overview')).json.brandCode; ok(/deep, original graphic program/.test(bc.graphicsApproach), 'the brand code says how deep our graphics go');
+    ok((await K('/brand-code', { method: 'PUT', body: { graphicsApproach: 'Go deeper than the logo' } })).json.brandCode.graphicsApproach === 'Go deeper than the logo', 'and it can be changed');
+    await K('/brand-code', { method: 'PUT', body: { graphicsApproach: bc.graphicsApproach } });
+  } finally { await cleanup(brands, plan.plan?.id); }
+});
+
+await journey('J201', 'Design Lab graphic program in a browser: develop it, see the motifs, remove one, make concepts that use it', async () => {
+  if (!playwright) { ok(true, 'skipped: no browser here'); return; }
+  const { brands, plan } = await conceptSetup(); const line = plan.lines.find(l => l.category === 'tops') || plan.lines[0];
+  const b = await playwright.chromium.launch(), errs = []; let answer = '';
+  try {
+    const oc = await b.newContext({ viewport: { width: 1280, height: 900 } }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
+    const page = await oc.newPage(); page.on('pageerror', e => errs.push(String(e))); page.on('dialog', d => d.accept(d.type() === 'prompt' ? answer : undefined));
+    await page.goto(`${BASE}/lab`, { waitUntil: 'networkidle' }); await page.waitForSelector('#planList .pl');
+    await page.locator('#planList .pl', { hasText: 'Concept plan' }).locator('[data-open]').click(); await page.waitForSelector('#planView .prog');
+    ok(/Graphic program/.test(await page.innerText('#planView .prog')) && await page.locator('#planView [data-prog]').count() === 1, 'a plan offers to develop its graphic program');
+    answer = 'lean on numerals'; await page.locator('#planView [data-prog]').click(); await page.waitForSelector('#planView .mt', { timeout: 30000 });
+    ok(await page.locator('#planView .mt').count() >= 4 && await page.locator('#planView .mt img').count() >= 4 && /Quiet Varsity/.test(await page.innerText('#planView .prog')) && await page.locator('#planView .prog .sw').count() >= 3, 'the program shows its motifs drawn, its palette and its name');
+    ok(/reads: FB/.test(await page.innerText('#planView .prog')), 'a motif says what its lettering reads');
+    const n = await page.locator('#planView .mt').count(); await page.locator('#planView .mt [data-motifrm]').last().click(); await page.waitForFunction(k => document.querySelectorAll('#planView .mt').length === k - 1, n, { timeout: 8000 }); ok(true, 'a motif can be removed');
+    answer = ''; await page.locator(`#planView tr[data-line="${line.id}"] [data-mk]`).click(); await page.waitForFunction(() => document.querySelectorAll('#cgrid .cc').length >= 3, null, { timeout: 30000 });
+    await page.locator('#cgrid .cc').last().click(); await page.waitForSelector('#cd[open] .gfx', { timeout: 8000 }); // newest first: the oldest of the three is the one that applies a motif
+    ok(/crest|stripes/.test(await page.innerText('#cd .gfx')) && await page.locator('#cd .gfx img').count() >= 1, 'a concept shows the program graphic it applies, with its kind');
+    await page.locator('#cd [data-cclose]').click(); await page.waitForFunction(() => !document.querySelector('#cd[open]'));
+    await page.locator('.fbside a[data-nav="Brand code"]').first().click(); await page.waitForFunction(() => document.getElementById('code').getBoundingClientRect().top < 300, null, { timeout: 8000 }).catch(() => {});
+    ok(/deep, original graphic program/.test(await page.inputValue('#codeForm [name=graphicsApproach]')), 'the brand code shows how deep our graphics go');
+    await page.setViewportSize({ width: 360, height: 800 }); await page.waitForTimeout(250); ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), 'a phone does not scroll sideways', await page.evaluate(() => document.documentElement.scrollWidth));
+    ok(errs.length === 0, 'no page errors', errs); await oc.close();
+  } finally { await cleanup(brands, plan.plan?.id); await b.close(); }
+});
+
 shops.close(); brave.close();
 process.exit(summary() ? 1 : 0);

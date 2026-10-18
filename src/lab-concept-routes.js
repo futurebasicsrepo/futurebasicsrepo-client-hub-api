@@ -9,14 +9,14 @@ import { imageConfig } from './check.js';
 import { ask as realAsk, providerReady } from './intel-llm.js';
 import { categoryLabel } from './lab.js';
 import { createLabData } from './lab-data.js';
-import { generateConcepts, renderConcept, aiOpinion, closeness, cleanConceptEdit, productBrief, ensureBranding, LOGO_MARKS, LOGO_TECHNIQUES, GRAPHIC_PLACE, GRAPHIC_TECHNIQUES, PRODUCT_TYPES } from './lab-concepts.js';
+import { generateConcepts, artworkFiles, renderConcept, aiOpinion, closeness, cleanConceptEdit, productBrief, ensureBranding, LOGO_MARKS, LOGO_TECHNIQUES, GRAPHIC_PLACE, GRAPHIC_TECHNIQUES, PRODUCT_TYPES } from './lab-concepts.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const clip = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
 const dataUrl = b => (b ? `data:image/jpeg;base64,${Buffer.from(b).toString('base64')}` : '');
 
 export function registerLabConceptRoutes(app, d) {
-  const { pool, authenticate, adminOnly, getSetting, env = process.env, fetchImpl = fetch, askImpl = realAsk, createProduct, imageCfg = () => imageConfig(env), log = console } = d;
+  const { pool, authenticate, adminOnly, getSetting, env = process.env, fetchImpl = fetch, askImpl = realAsk, createProduct, attachArtwork, imageCfg = () => imageConfig(env), log = console } = d;
   const pre = [authenticate, adminOnly], bad = (reply, error, code = 422, extra = {}) => reply.code(code).send({ error, ...extra });
   const needId = (req, reply) => UUID.test(req.params.id) || (bad(reply, 'Not found', 404), false);
   const actorOf = req => (UUID.test(String(req.auth?.sub || '')) ? req.auth.sub : null);
@@ -52,7 +52,8 @@ export function registerLabConceptRoutes(app, d) {
     const code = await loadCode(), names = await brandNames(), trends = await trendsFor(180), cat = trends.categories.find(c => c.id === line.category);
     let ids = refIds?.length ? refIds : cat?.movers?.map(m => m.id) || [];
     const refs = await refRows(ids.slice(0, 6));
-    const gen = await generateConcepts({ line, plan, refs: refs.map(r => ({ title: r.title, attrs: r.attrs })), trend: cat, code, count, note: steer, parent, askImpl, env, fetchImpl });
+    const program = plan?.id ? (await pool.query('select program from lab_plans where id=$1', [plan.id])).rows[0]?.program || null : null;
+    const gen = await generateConcepts({ line, plan, refs: refs.map(r => ({ title: r.title, attrs: r.attrs })), trend: cat, program, code, count, note: steer, parent, askImpl, env, fetchImpl });
     if (!gen.concepts.length) throw Object.assign(new Error('The assistant did not come back with usable concepts. Try again, or change the note.'), { status: 502 });
     const cfg = imageCfg(), refLite = refs.map(r => ({ id: r.id, title: r.title, brand: r.brand, attrs: r.attrs || {}, summary: r.summary }));
     const made = await Promise.all(gen.concepts.map(async c => {
@@ -204,7 +205,7 @@ export function registerLabConceptRoutes(app, d) {
 
   app.post('/v1/lab/concepts/:id/tech-pack', { preHandler: pre }, async (req, reply) => {
     if (!needId(req, reply)) return;
-    const r = (await pool.query('select c.*, p.name plan_name, p.season from lab_concepts c left join lab_plans p on p.id=c.plan_id where c.id=$1', [req.params.id])).rows[0]; if (!r) return bad(reply, 'Not found', 404);
+    const r = (await pool.query('select c.*, p.name plan_name, p.season, p.program->>\'name\' program_name from lab_concepts c left join lab_plans p on p.id=c.plan_id where c.id=$1', [req.params.id])).rows[0]; if (!r) return bad(reply, 'Not found', 404);
     if (r.product_id) return bad(reply, 'This concept already has a tech pack', 409, { productId: r.product_id, url: productUrl(r.product_id) });
     if (r.status !== 'approved') return bad(reply, 'Approve the concept first', 409);
     if (r.closeness?.verdict === 'too_close' && clip(r.override_reason, 400).length < 10) return bad(reply, 'The check says this is too close to what inspired it, and no reason was written down. Reopen it and approve it again.', 409);
@@ -214,11 +215,12 @@ export function registerLabConceptRoutes(app, d) {
     const claimed = await pool.query(`update lab_concepts set status='tech_pack', updated_at=now() where id=$1 and product_id is null and status='approved' returning id`, [r.id]);
     if (!claimed.rowCount) return bad(reply, 'This concept already has a tech pack', 409);
     const photo = (await pool.query('select image from lab_concepts where id=$1', [r.id])).rows[0]?.image;
-    let product; try { product = await createProduct({ clientId: room.id, title: r.name, descriptionHtml: productBrief({ name: r.name, category: r.category, spec: r.spec, twist: r.twist, priceCents: r.price_cents, costCents: r.cost_cents, qty: r.qty }, { name: r.plan_name, season: r.season }), vendor: 'Future Basics', productType: PRODUCT_TYPES[r.category] || null, referencePhotos: photo ? [dataUrl(photo)] : [], actorId: actorOf(req) }); }
+    let product; try { product = await createProduct({ clientId: room.id, title: r.name, descriptionHtml: productBrief({ name: r.name, category: r.category, programName: r.program_name, spec: r.spec, twist: r.twist, priceCents: r.price_cents, costCents: r.cost_cents, qty: r.qty }, { name: r.plan_name, season: r.season }), vendor: 'Future Basics', productType: PRODUCT_TYPES[r.category] || null, referencePhotos: photo ? [dataUrl(photo)] : [], actorId: actorOf(req) }); }
     catch (e) { await pool.query(`update lab_concepts set status='approved' where id=$1 and product_id is null`, [r.id]); return bad(reply, `The product could not be made: ${clip(e.message, 200)}`, 502); }
     await pool.query(`update lab_concepts set product_id=$2, updated_at=now() where id=$1`, [r.id, product.id]);
+    let art = 0; if (attachArtwork) { try { art = await attachArtwork(product.id, await artworkFiles({ category: r.category, spec: r.spec })); } catch (e) { log.warn?.({ err: e.message }, 'design lab artwork not attached'); } }
     if (r.line_id) await pool.query(`update lab_plan_lines set status='tech_pack' where id=$1`, [r.line_id]);
-    await note(r.id, req, `Sent to a tech pack (${product.autoDraft?.ai === 'pending' ? 'the assistant is drafting it from the concept' : product.autoDraft?.ai === 'off' ? 'the assistant is off, so it starts empty' : 'started'}).`);
+    await note(r.id, req, `Sent to a tech pack (${product.autoDraft?.ai === 'pending' ? 'the assistant is drafting it from the concept' + (art ? `; ${art} artwork files attached: the logo, the woven label and the graphics` : '') : product.autoDraft?.ai === 'off' ? 'the assistant is off, so it starts empty' : 'started'}).`);
     return reply.code(201).send({ productId: product.id, url: productUrl(product.id), autoDraft: product.autoDraft || null, concept: await one(r.id) });
   });
 

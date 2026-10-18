@@ -38,7 +38,7 @@ export function trendRead(rows, { now = new Date() } = {}) {
     const movers = [...rs].filter(r => r.heat != null).sort((a, b) => b.heat - a.heat).slice(0, 4).map(r => ({ id: r.id, title: r.title, brand: r.brand || '', price: r.price, heat: r.heat }));
     const out = { id: c.id, label: c.label, count: rs.length, brands: tally(rs.map(r => r.brand), 4), reference: stats(refs.map(r => r.price)), anchor: stats(anchor.map(r => r.price)),
       withHeat: rs.filter(r => r.heat != null).length, hotCount: hot.length, hotShare: rs.filter(r => r.heat != null).length ? Math.round((hot.length / rs.filter(r => r.heat != null).length) * 100) / 100 : null,
-      newShare: Math.round((fresh.length / rs.length) * 100) / 100, colors: tally(attrs.map(a => a.colors)), fabrics: tally(attrs.map(a => a.fabric)), silhouettes: tally(attrs.map(a => a.silhouette)), details: tally(attrs.map(a => a.details), 6), movers };
+      newShare: Math.round((fresh.length / rs.length) * 100) / 100, colors: tally(attrs.map(a => a.colors)), fabrics: tally(attrs.map(a => a.fabric)), silhouettes: tally(attrs.map(a => a.silhouette)), details: tally(attrs.map(a => a.details), 6), graphics: tally(attrs.map(a => a.graphics), 6), movers };
     out.ladder = priceLadder(out);
     return out;
   });

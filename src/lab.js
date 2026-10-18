@@ -169,6 +169,7 @@ export const DEFAULT_BRAND_CODE = {
   priceAnchor: { name: 'Zara', note: 'Where our shelf price should sit. If a piece would cost more than Zara charges for the same thing, the materials or the trims need a second look.' },
   audience: 'Male-driven and unisex: menswear first (men\'s sizing, proportions and fits), in pieces anyone can wear. No womenswear-only pieces such as dresses and skirts.',
   cutReferences: ['Gucci', 'Prada', 'Ralph Lauren', 'Aimé Leon Dore'],
+  graphicsApproach: 'A deep, original graphic program, not just the logo: crests and emblems, our own lettering and numerals, stripes and bands, patterns, illustration and technical annotation. Study how Ralph Lauren, Aimé Leon Dore and A-COLD-WALL* build theirs (the range of motifs, the discipline of colour, how they repeat and where they sit) and build ours with the same depth. Never copy a mark, lettering, crest or print from anyone.',
   materials: 'Honest and simple, not rich: good cotton, cotton blends, brushed fleece, plain wool blends and clean synthetics. No cashmere, no leather unless it earns its price.',
   looks: ['Preppy and heritage shapes made modern', 'Quiet logos and small details over loud branding', 'Considered proportions: a relaxed, drawn-out silhouette', 'Neutral and heritage colours with one confident accent'],
   avoid: ['Shein-tier fast fashion: thin fabric, loud trends that last a month, poor finishing', 'Copying a brand\'s logo, print, name or distinctive artwork', 'Materials that make the price jump past the Zara line'],
@@ -190,7 +191,7 @@ export function cleanBrandCode(input = {}, base = DEFAULT_BRAND_CODE) {
   return {
     statement: clip(b.statement ?? base.statement, 600) || base.statement,
     priceAnchor: { name: clip(pa.name ?? base.priceAnchor.name, 80) || base.priceAnchor.name, note: clip(pa.note ?? base.priceAnchor.note, 400) },
-    audience: clip(b.audience ?? base.audience, 400),
+    audience: clip(b.audience ?? base.audience, 400), graphicsApproach: clip(b.graphicsApproach ?? base.graphicsApproach, 600),
     cutReferences: b.cutReferences === undefined ? base.cutReferences : list(b.cutReferences, 12, 60),
     materials: clip(b.materials ?? base.materials, 600),
     looks: b.looks === undefined ? base.looks : list(b.looks, 12, 200),
@@ -202,7 +203,7 @@ export function cleanBrandCode(input = {}, base = DEFAULT_BRAND_CODE) {
 // The brand code as a paragraph the AI is given before it reads or judges anything.
 export function brandCodeWords(code) {
   const c = code || DEFAULT_BRAND_CODE;
-  return [`Brand: ${c.statement}`, `Who it is for: ${c.audience || DEFAULT_BRAND_CODE.audience}`, `Every piece carries the Future Basics logo and a Future Basics internal woven label.`, `Price anchor: ${c.priceAnchor.name}. ${c.priceAnchor.note}`, `Cuts we borrow from: ${c.cutReferences.join(', ')}.`, `Materials: ${c.materials}`, `Looks: ${c.looks.join('; ')}.`, `Never: ${c.avoid.join('; ')}.`,
+  return [`Brand: ${c.statement}`, `Who it is for: ${c.audience || DEFAULT_BRAND_CODE.audience}`, `Every piece carries the Future Basics logo and a Future Basics internal woven label.`, `Graphics: ${c.graphicsApproach || DEFAULT_BRAND_CODE.graphicsApproach}`, `Price anchor: ${c.priceAnchor.name}. ${c.priceAnchor.note}`, `Cuts we borrow from: ${c.cutReferences.join(', ')}.`, `Materials: ${c.materials}`, `Looks: ${c.looks.join('; ')}.`, `Never: ${c.avoid.join('; ')}.`,
     ...(c.exemplars.length ? [`Pieces we love: ${c.exemplars.map(e => `${e.name}${e.why ? ' (' + e.why + ')' : ''}`).join('; ')}.`] : [])].join('\n');
 }
 

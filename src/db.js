@@ -191,6 +191,7 @@ export async function migrate() {
       created_at timestamptz not null default now(),
       updated_at timestamptz not null default now()
     );
+    alter table lab_plans add column if not exists program jsonb;
     create table if not exists lab_plan_lines (
       id uuid primary key default gen_random_uuid(),
       plan_id uuid not null references lab_plans(id) on delete cascade,
