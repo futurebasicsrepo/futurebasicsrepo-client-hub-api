@@ -71,3 +71,86 @@ test('editing a concept is cleaned; the product brief carries the concept and is
   assert.match(brief, /Designed in the Future Basics Design Lab/); assert.match(brief, /AI concept render/); assert.match(brief, /\$38\.00/); assert.match(brief, /\$10\.64/); assert.match(brief, /Fall 27 · FW/); assert.ok(!/<script>|<b>/.test(brief), 'escaped');
   assert.equal(PRODUCT_TYPES.headwear, 'Headwear'); assert.ok(PRODUCT_TYPES.footwear && PRODUCT_TYPES.bags);
 });
+
+// ---- Future Basics branding, graphics and the audience ------------------------------------------------------------------------------------------------
+import { ensureBranding, cleanGraphicSvg, cleanGraphics, composeBranding, labelWords, LOGO_PLACE, GRAPHIC_PLACE } from '../src/lab-concepts.js';
+import { brandCodeWords, cleanBrandCode } from '../src/lab.js';
+import { generateLines, trendRead, planFixture, WOMENSWEAR_ONLY } from '../src/lab-plan.js';
+import sharp from 'sharp';
+
+test('every concept carries the Future Basics logo and woven label, whatever the assistant says', () => {
+  const none = ensureBranding({}, 'tops'); assert.equal(none.branding.logo.mark, 'cue'); assert.match(none.branding.logo.placement, /left chest/); assert.equal(none.branding.logo.technique, 'embroidered'); assert.match(none.branding.label, /Future Basics internal woven label/); assert.match(none.branding.label, /back neck seam/);
+  const odd = ensureBranding({ branding: { logo: { mark: 'skull', placement: '', technique: 'tattoo' }, label: 'No label please' } }, 'headwear'); assert.equal(odd.branding.logo.mark, 'cue'); assert.match(odd.branding.logo.placement, /crown/); assert.equal(odd.branding.logo.technique, 'embroidered'); assert.match(odd.branding.label, /internal woven label/); assert.match(odd.branding.label, /sweatband/, 'the label is ours, put back in words that suit a cap');
+  const kept = ensureBranding({ branding: { logo: { mark: 'lockup', placement: 'woven loop at the hem', technique: 'woven patch' } } }, 'outerwear'); assert.deepEqual([kept.branding.logo.mark, kept.branding.logo.placement, kept.branding.logo.technique], ['lockup', 'woven loop at the hem', 'woven patch'], 'a good choice is kept');
+  for (const c of ['footwear', 'bags', 'bottoms', 'tailoring', 'accessories', 'home', 'other', 'knitwear']) assert.match(labelWords(c), /Future Basics internal woven label/, c);
+  assert.match(labelWords('footwear'), /tongue/); assert.match(labelWords('bottoms'), /waistband/);
+});
+
+test('graphics: only plain brand-coloured shapes survive, and nothing that can run or fetch', () => {
+  const good = '<svg viewBox="0 0 200 200"><rect x="20" y="90" width="120" height="20" rx="10" fill="#141416"/><circle cx="165" cy="100" r="14" fill="#4BFF9A"/><g opacity="0.5"><path d="M10 10 L50 50" stroke="#ff0000" stroke-width="4"/></g></svg>';
+  const out = cleanGraphicSvg(good); assert.match(out, /^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg" viewBox="0 0 200 200">/); assert.ok(out.includes('fill="#141416"') && out.includes('fill="#4BFF9A"')); assert.ok(!/#ff0000/i.test(out), 'an off-brand red is pulled to the nearest brand colour');
+  for (const bad of ['<svg><script>alert(1)</script><rect width="9" height="9"/></svg>', '<svg><rect width="9" height="9" onload="x()"/></svg>', '<svg><image href="http://x/y.png"/></svg>', '<svg><text>Gucci</text><rect width="9" height="9"/></svg>', '<svg><rect width="9" height="9" fill="url(#a)"/></svg>', '<svg><foreignObject/></svg>', '<svg><use href="#a"/></svg>', '<svg></svg>', 'not svg', '<svg><rect width="9" height="9" style="x"/><style>*{}</style></svg>', '<svg><a href="javascript:x"><rect width="9" height="9"/></a></svg>', '<svg>' + '<rect width="1" height="1"/>'.repeat(80) + '</svg>', '<svg><rect width="9" height="9" xlink:href="data:text/html,x"/></svg>']) assert.equal(cleanGraphicSvg(bad), '', bad.slice(0, 50));
+  assert.equal(cleanGraphicSvg(good + 'x'.repeat(7000)), '', 'too big');
+  const gs = cleanGraphics([{ name: ' Grid ', idea: 'A grid', placement: 'Front Chest', technique: 'Screen Print', colors: ['Ink', '', 'Cue'], svg: good }, { name: '', idea: 'no name' }, { name: 'Odd', idea: 'x', placement: 'moon', technique: 'magic' }, 5, null]);
+  assert.equal(gs.length, 2); assert.deepEqual([gs[0].placement, gs[0].technique, gs[0].colors], ['front chest', 'screen print', ['Ink', 'Cue']]); assert.deepEqual([gs[1].placement, gs[1].technique], ['front chest', 'screen print'], 'unknown choices fall back');
+});
+
+test('the logo, the graphics and the woven label are laid on the picture from our own files', async () => {
+  const base = await sharp({ create: { width: 1024, height: 1024, channels: 3, background: '#d9dbe0' } }).jpeg().toBuffer();
+  const spec = ensureBranding({ branding: { logo: { mark: 'cue' } }, graphics: [{ name: 'Grid', idea: 'a grid', placement: 'front chest', technique: 'screen print', svg: '<svg viewBox="0 0 200 200"><rect x="0" y="80" width="200" height="40" fill="#141416"/></svg>' }, { name: 'Back', idea: 'on the back', placement: 'back', technique: 'screen print', svg: '<svg viewBox="0 0 200 200"><rect width="200" height="200" fill="#141416"/></svg>' }] }, 'tops');
+  const out = await composeBranding(base, { category: 'tops', spec }), px = async (buf, x, y) => { const { data } = await sharp(buf).extract({ left: x, top: y, width: 1, height: 1 }).raw().toBuffer({ resolveWithObject: true }); return [...data]; };
+  assert.deepEqual((await sharp(out).metadata()).width, 1024);
+  const chest = await px(out, 512, 430), corner = await px(out, 1024 - 40, 1024 - 40), plain = await px(out, 60, 60), back = await px(out, 100, 900);
+  assert.ok(chest[0] < 60, 'the front graphic is drawn on the chest: ' + chest); assert.ok(corner[0] < 60, 'the woven label inset sits in the corner: ' + corner); assert.ok(plain[0] > 200, 'the rest of the picture is untouched');
+  assert.ok(back[0] > 200, 'a graphic that goes on the back is not painted on the front picture');
+  const same = await composeBranding(base, { category: 'tailoring', spec: ensureBranding({}, 'tailoring') }); assert.ok((await sharp(same).metadata()).width === 1024, 'a category with no front logo spot still gets the label inset');
+  assert.ok(LOGO_PLACE.tops[1] && GRAPHIC_PLACE['front chest'] && GRAPHIC_PLACE.back === null);
+});
+
+test('the picture is asked to leave the logo and graphic places plain, and still carries no text', () => {
+  const p = imagePrompt({ name: 'Boxy tee', category: 'tops', twist: 't', spec: ensureBranding({ description: 'd', graphics: [{ name: 'G', idea: 'i', placement: 'front chest', technique: 'screen print', svg: '<svg viewBox="0 0 200 200"><rect width="9" height="9"/></svg>' }] }, 'tops') });
+  assert.match(p, /completely plain and unmarked/); assert.match(p, /left chest/); assert.match(p, /front chest/); assert.match(p, /menswear and unisex/); assert.match(p, /No text, no lettering, no logos/);
+  assert.ok(!/completely plain and unmarked/.test(imagePrompt({ name: 'Blazer', category: 'tailoring', spec: ensureBranding({}, 'tailoring') })), 'no front spot, nothing to keep plain');
+});
+
+test('the audience is male-driven and unisex in the brand code, the plan and the concepts', async () => {
+  assert.match(brandCodeWords(cleanBrandCode({})), /Who it is for: Male-driven and unisex/); assert.match(brandCodeWords(cleanBrandCode({})), /Future Basics logo and a Future Basics internal woven label/);
+  assert.equal(cleanBrandCode({ audience: ' Men and everyone ' }).audience, 'Men and everyone'); assert.match(cleanBrandCode({}).audience, /Male-driven and unisex/);
+  const trends = trendRead([{ id: 'a', title: 't', category: 'dresses', price: 90, heat: 50, firstSeenAt: '2026-10-01T00:00:00Z', attrs: {}, brand: 'R', role: 'reference' }, { id: 'b', title: 'u', category: 'tops', price: 50, heat: 50, firstSeenAt: '2026-10-01T00:00:00Z', attrs: {}, brand: 'R', role: 'reference' }], { now: new Date('2026-10-17') });
+  let seen; await generateLines({ trends, size: 6, env: { ANTHROPIC_API_KEY: 'k', AI_FIXTURE: 'x' }, askImpl: async a => { seen = a; return { json: planFixture({ user: a.user }), usage: {} }; } });
+  assert.match(seen.system, /male-driven and unisex/); assert.match(seen.system, /no womenswear-only pieces/); assert.ok(!/Categories you may use:.*dresses/.test(seen.user), 'dresses are left out of a plan unless asked for'); assert.deepEqual(WOMENSWEAR_ONLY, ['dresses']);
+  await generateLines({ trends, size: 6, categories: ['dresses', 'tops'], env: { ANTHROPIC_API_KEY: 'k', AI_FIXTURE: 'x' }, askImpl: async a => { seen = a; return { json: planFixture({ user: a.user }), usage: {} }; } });
+  assert.match(seen.user, /Categories you may use: dresses, tops/, 'but they can be asked for by name');
+  let call; await generateConcepts({ line: { name: 'Tee', category: 'tops', role: 'core' }, env: ENV, askImpl: async a => { call = a; return { json: conceptFixture({ user: a.user }), usage: {} }; } });
+  assert.match(call.system, /male-driven and unisex/); assert.match(call.system, /Future Basics logo/); assert.match(call.system, /internal woven label/); assert.match(call.system, /never containing text/); assert.match(call.user, /"graphics"/);
+});
+
+test('generated concepts always come back with the logo, the label and clean graphics', async () => {
+  const g = await generateConcepts({ line: { name: 'Camp shirt', category: 'tops', role: 'core' }, count: 3, env: ENV, askImpl: async a => ({ json: conceptFixture({ user: a.user }), usage: {} }) });
+  assert.ok(g.concepts.every(c => c.spec.branding.logo.mark && c.spec.branding.label.includes('internal woven label')), 'all three');
+  assert.deepEqual(g.concepts.map(c => c.spec.branding.logo.mark), ['cue', 'word', 'lockup']); assert.equal(g.concepts[0].spec.graphics.length, 1); assert.ok(g.concepts[0].spec.graphics[0].svg.includes('<rect')); assert.equal(g.concepts[1].spec.graphics.length, 0, 'a clean piece stays clean');
+  const bare = await generateConcepts({ line: { name: 'Cap', category: 'headwear', role: 'core' }, env: ENV, askImpl: async () => ({ json: { concepts: [{ name: 'Plain Cap', twist: 'ours' }] }, usage: {} }) });
+  assert.match(bare.concepts[0].spec.branding.label, /sweatband/, 'even when the assistant forgot them');
+});
+
+test('the tech pack brief names the logo, the woven label, the graphics and who it is for', () => {
+  const brief = productBrief({ name: 'Boxy tee', category: 'tops', twist: 'Our seam', priceCents: 3800, spec: { description: 'A tee', branding: { logo: { mark: 'lockup', placement: 'woven loop at the hem', technique: 'woven patch' } }, graphics: [{ name: 'Line and dot grid', idea: 'tone on tone', placement: 'front chest', technique: 'screen print', colors: ['Ink', 'Cue'] }] } }, { name: 'Fall 27' });
+  assert.match(brief, /Who it is for:<\/strong> Male-driven and unisex/); assert.match(brief, /Future Basics logo:<\/strong> Wordmark and cue mark, woven loop at the hem, woven patch \(always on the piece\)/); assert.match(brief, /Internal label:<\/strong> Future Basics internal woven label[^<]*back neck seam \(always on the piece\)/); assert.match(brief, /Line and dot grid \(front chest, screen print, Ink and Cue\): tone on tone/);
+  assert.match(productBrief({ name: 'Old concept', category: 'tops', spec: { description: 'made before branding existed' } }), /Internal label/, 'a concept made before this still gets the label');
+});
+
+test('editing a concept can change the logo and remove a graphic, and the guard reads the graphics too', () => {
+  const base = { name: 'Tee', twist: 'ours', spec: ensureBranding({ description: 'd', graphics: [{ name: 'A', idea: 'a', placement: 'front chest', technique: 'screen print' }, { name: 'B', idea: 'b', placement: 'left chest', technique: 'embroidery' }] }, 'tops'), priceCents: 3800, costCents: null, qty: 1, category: 'tops' };
+  const e = cleanConceptEdit({ logo: { mark: 'word', technique: 'rubber print' }, graphics: [{ name: 'B', idea: 'b', placement: 'left chest', technique: 'embroidery' }] }, base);
+  assert.deepEqual([e.spec.branding.logo.mark, e.spec.branding.logo.technique], ['word', 'rubber print']); assert.deepEqual(e.spec.graphics.map(g => g.name), ['B']); assert.match(e.spec.branding.label, /internal woven label/);
+  assert.equal(cleanConceptEdit({}, base).spec.graphics.length, 2, 'untouched graphics stay');
+  const c = closeness({ name: 'Tee', twist: 'ours', spec: ensureBranding({ description: 'd', graphics: [{ name: 'Pony', idea: 'a polo pony galloping', placement: 'front chest', technique: 'screen print' }] }, 'tops') }, []); assert.equal(c.verdict, 'too_close'); assert.ok(c.hits.includes('polo pony'));
+});
+
+test('the logo is drawn light on a dark garment and dark on a light one, judged where it goes', async () => {
+  const garment = async colour => sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024"><rect width="1024" height="1024" fill="#e6e7ea"/><rect x="232" y="250" width="560" height="520" rx="70" fill="${colour}"/></svg>`)).jpeg({ quality: 90 }).toBuffer();
+  const band = async buf => { const { data } = await sharp(buf).extract({ left: 540, top: 356, width: 150, height: 8 }).raw().toBuffer({ resolveWithObject: true }); return [Math.min(...data), Math.max(...data)]; };
+  const spec = ensureBranding({ branding: { logo: { mark: 'lockup' } } }, 'tops');
+  const dark = await band(await composeBranding(await garment('#2f3b57'), { category: 'tops', spec })), light = await band(await composeBranding(await garment('#e8dfc9'), { category: 'tops', spec }));
+  assert.ok(dark[1] > 240, 'white logo on navy: ' + dark); assert.ok(light[0] < 60, 'dark logo on cream: ' + light);
+});

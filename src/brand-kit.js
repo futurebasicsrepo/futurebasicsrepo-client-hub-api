@@ -288,3 +288,7 @@ export function registerBrandRoutes(app, { authenticate, adminOnly }) {
   });
   app.get('/v1/brand/kit.zip', { preHandler: pre }, async (_req, reply) => reply.header('content-disposition', 'attachment; filename="future-basics-brand-kit.zip"').header('cache-control', 'private, max-age=300').type('application/zip').send(await kitZip()));
 }
+
+// The marks as SVG text for other parts of the hub (the Design Lab puts them on concept pictures): the wordmark, the cue mark (a line and a dot), and the two together.
+export const logoSvg = (kind = 'mark', o = {}) => kind === 'word' ? wordSvg({ fill: o.fill || INK, bg: o.bg || null, pad: o.pad || 0 }) : kind === 'lockup' ? lockupSvg({ word: o.fill || INK, line: o.fill || INK, dot: o.dot || CUE_HEX, bg: o.bg || null, pad: o.pad || 0 }) : markSvg({ line: o.fill || INK, dot: o.dot || CUE_HEX, bg: o.bg || null, pad: o.pad || 0 });
+export const BRAND_INK = INK, BRAND_CUE = CUE_HEX;

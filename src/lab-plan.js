@@ -10,6 +10,7 @@ import { ask as realAsk, providerReady, costCents } from './intel-llm.js';
 
 const clip = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
 export const REF_TO_ANCHOR = 0.4; // with no anchor prices read yet, a reference brand's price is scaled by this to estimate the Zara line
+export const WOMENSWEAR_ONLY = ['dresses']; // left out of a plan unless it is asked for by name: Future Basics is male-driven and unisex
 export const HOT = 30;            // heat at or above this counts as "moving"
 
 // ---- the trend read ---------------------------------------------------------------------------------------------------------------------------
@@ -138,12 +139,12 @@ export function planFixture({ user }) {
 }
 
 export function generateSystem(code) {
-  return `You are the head of product for Future Basics, building a season's line plan. Future Basics sells affordable, considered clothing, headwear, footwear and accessories: the cuts and attitude of luxury and heritage brands at a price held to a fast-fashion anchor, in simpler materials.\n${brandCodeWords(code)}\nRules: every piece is OUR design. Describe a shape, fabric and detail in plain words; never name a brand's product, copy a logo, print or distinctive artwork, and make the "twist" a specific idea that is ours, not a reference to someone else's. Stay at or under each category's price cap. Prefer shapes the market is moving on and details that keep appearing, in materials simpler than the references. Be concrete and brief.`;
+  return `You are the head of product for Future Basics, building a season's line plan. Future Basics sells affordable, considered clothing, headwear, footwear and accessories: the cuts and attitude of luxury and heritage brands at a price held to a fast-fashion anchor, in simpler materials.\n${brandCodeWords(code)}\nRules: the line is male-driven and unisex: design for men first (men's sizing, proportions and fits) in pieces anyone can wear, and plan no womenswear-only pieces such as dresses or skirts. Every piece is OUR design. Describe a shape, fabric and detail in plain words; never name a brand's product, copy a logo, print or distinctive artwork, and make the "twist" a specific idea that is ours, not a reference to someone else's. Stay at or under each category's price cap. Prefer shapes the market is moving on and details that keep appearing, in materials simpler than the references. Be concrete and brief.`;
 }
 // → { summary, lines: [...clean lines, ready to save], costCents }. `trends` is a trendRead result.
 export async function generateLines({ trends, code = DEFAULT_BRAND_CODE, brief = '', season = '', size = 12, categories = [], askImpl = realAsk, env = process.env, fetchImpl = fetch } = {}) {
   if (!providerReady('anthropic', env)) throw new Error('Claude is not connected (the service needs ANTHROPIC_API_KEY)');
-  const n = Math.min(Math.max(Math.round(size) || 12, 3), 30), mix = roleMix(n), allowed = (categories.length ? categories : CATEGORY_IDS).filter(c => CATEGORY_IDS.includes(c));
+  const n = Math.min(Math.max(Math.round(size) || 12, 3), 30), mix = roleMix(n), allowed = (categories.length ? categories : CATEGORY_IDS.filter(c => !WOMENSWEAR_ONLY.includes(c))).filter(c => CATEGORY_IDS.includes(c));
   const econ = cleanEconomics(code.economics), refMap = new Map(); let r = 0;
   const digest = { mix, season: clip(season, 40), economics: econ, categories: trends.categories.filter(c => c.count && allowed.includes(c.id)).map(c => ({
     id: c.id, label: c.label, count: c.count, hotShare: c.hotShare, newShare: c.newShare, ladder: c.ladder, colors: c.colors.map(x => x.name), fabrics: c.fabrics.map(x => x.name), silhouettes: c.silhouettes.map(x => x.name), details: c.details.map(x => x.name),

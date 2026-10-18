@@ -9,7 +9,7 @@ import { imageConfig } from './check.js';
 import { ask as realAsk, providerReady } from './intel-llm.js';
 import { categoryLabel } from './lab.js';
 import { createLabData } from './lab-data.js';
-import { generateConcepts, renderConcept, aiOpinion, closeness, cleanConceptEdit, productBrief, PRODUCT_TYPES } from './lab-concepts.js';
+import { generateConcepts, renderConcept, aiOpinion, closeness, cleanConceptEdit, productBrief, ensureBranding, LOGO_MARKS, LOGO_TECHNIQUES, GRAPHIC_PLACE, GRAPHIC_TECHNIQUES, PRODUCT_TYPES } from './lab-concepts.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const clip = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
@@ -28,7 +28,7 @@ export function registerLabConceptRoutes(app, d) {
   const productUrl = id => (id ? `/tech-packs/${id}` : '');
 
   const shape = (r, { refs = null } = {}) => ({
-    id: r.id, planId: r.plan_id, planName: r.plan_name || '', lineId: r.line_id, parentId: r.parent_id, name: r.name, category: r.category, categoryLabel: categoryLabel(r.category), role: r.role, spec: r.spec || {}, twist: r.twist,
+    id: r.id, planId: r.plan_id, planName: r.plan_name || '', lineId: r.line_id, parentId: r.parent_id, name: r.name, category: r.category, categoryLabel: categoryLabel(r.category), role: r.role, spec: ensureBranding(r.spec || {}, r.category), twist: r.twist,
     price: r.price_cents == null ? null : r.price_cents / 100, cost: r.cost_cents == null ? null : r.cost_cents / 100, qty: r.qty, status: r.status, closeness: r.closeness || null, hasImage: Boolean(r.has_image ?? r.image), thumb: dataUrl(r.thumb), imageNote: r.image_note,
     overrideReason: r.override_reason, rejectedReason: r.rejected_reason, approvedBy: r.approver || '', approvedAt: r.approved_at, productId: r.product_id, productUrl: productUrl(r.product_id), createdAt: r.created_at, updatedAt: r.updated_at,
     ...(refs ? { refs: refs.map(refShape) } : { refIds: r.refs || [] })
@@ -96,7 +96,7 @@ export function registerLabConceptRoutes(app, d) {
     const limit = Math.min(Math.max(Number(q.limit) || 60, 1), 120);
     const rows = (await pool.query(`${SELECT} ${where.length ? 'where ' + where.join(' and ') : ''} order by c.created_at desc limit ${limit}`, args)).rows;
     const counts = (await pool.query(`select status, count(*)::int n from lab_concepts group by 1`)).rows;
-    return { concepts: rows.map(r => shape(r)), counts: Object.fromEntries(counts.map(c => [c.status, c.n])), imageConnected: imageCfg().configured };
+    return { concepts: rows.map(r => shape(r)), counts: Object.fromEntries(counts.map(c => [c.status, c.n])), imageConnected: imageCfg().configured, options: { marks: LOGO_MARKS, logoTechniques: LOGO_TECHNIQUES, graphicPlaces: Object.keys(GRAPHIC_PLACE), graphicTechniques: GRAPHIC_TECHNIQUES } };
   });
   app.get('/v1/lab/concepts/:id', { preHandler: pre }, async (req, reply) => {
     if (!needId(req, reply)) return;
@@ -188,6 +188,20 @@ export function registerLabConceptRoutes(app, d) {
     catch (e) { return bad(reply, e.message, e.status || 502); }
   });
 
+  // draw the picture again from the concept as it is now (after its words, logo or graphics were changed), with the Future Basics marks put back on
+  const redraws = new Map();
+  app.post('/v1/lab/concepts/:id/redraw', { preHandler: pre }, async (req, reply) => {
+    if (!needId(req, reply)) return;
+    const r = (await pool.query('select * from lab_concepts where id=$1', [req.params.id])).rows[0]; if (!r) return bad(reply, 'Not found', 404);
+    if (r.status === 'tech_pack') return bad(reply, 'This concept is already a tech pack', 409);
+    const day = new Date().toISOString().slice(0, 10), cap = Number(env.LAB_DAILY_REDRAWS ?? 30); if (cap >= 0 && (redraws.get(day) || 0) >= cap) return bad(reply, `The daily limit of ${cap} redrawn pictures is reached. Raise LAB_DAILY_REDRAWS.`, 429);
+    const cfg = imageCfg(); if (!cfg.configured) return bad(reply, 'No image model is connected, so there is no picture to draw.', 503);
+    let img; try { img = await renderConcept({ name: r.name, category: r.category, twist: r.twist, spec: ensureBranding(r.spec || {}, r.category) }, { cfg, brandNames: await brandNames() }); } catch (e) { return bad(reply, `The picture could not be drawn: ${clip(e.message, 160)}`, 502); }
+    redraws.set(day, (redraws.get(day) || 0) + 1);
+    await pool.query(`update lab_concepts set image=$2, thumb=$3, image_note='', updated_at=now() where id=$1`, [r.id, img.image, img.thumb]);
+    return { concept: await one(r.id) };
+  });
+
   app.post('/v1/lab/concepts/:id/tech-pack', { preHandler: pre }, async (req, reply) => {
     if (!needId(req, reply)) return;
     const r = (await pool.query('select c.*, p.name plan_name, p.season from lab_concepts c left join lab_plans p on p.id=c.plan_id where c.id=$1', [req.params.id])).rows[0]; if (!r) return bad(reply, 'Not found', 404);
@@ -200,7 +214,7 @@ export function registerLabConceptRoutes(app, d) {
     const claimed = await pool.query(`update lab_concepts set status='tech_pack', updated_at=now() where id=$1 and product_id is null and status='approved' returning id`, [r.id]);
     if (!claimed.rowCount) return bad(reply, 'This concept already has a tech pack', 409);
     const photo = (await pool.query('select image from lab_concepts where id=$1', [r.id])).rows[0]?.image;
-    let product; try { product = await createProduct({ clientId: room.id, title: r.name, descriptionHtml: productBrief({ name: r.name, spec: r.spec, twist: r.twist, priceCents: r.price_cents, costCents: r.cost_cents, qty: r.qty }, { name: r.plan_name, season: r.season }), vendor: 'Future Basics', productType: PRODUCT_TYPES[r.category] || null, referencePhotos: photo ? [dataUrl(photo)] : [], actorId: actorOf(req) }); }
+    let product; try { product = await createProduct({ clientId: room.id, title: r.name, descriptionHtml: productBrief({ name: r.name, category: r.category, spec: r.spec, twist: r.twist, priceCents: r.price_cents, costCents: r.cost_cents, qty: r.qty }, { name: r.plan_name, season: r.season }), vendor: 'Future Basics', productType: PRODUCT_TYPES[r.category] || null, referencePhotos: photo ? [dataUrl(photo)] : [], actorId: actorOf(req) }); }
     catch (e) { await pool.query(`update lab_concepts set status='approved' where id=$1 and product_id is null`, [r.id]); return bad(reply, `The product could not be made: ${clip(e.message, 200)}`, 502); }
     await pool.query(`update lab_concepts set product_id=$2, updated_at=now() where id=$1`, [r.id, product.id]);
     if (r.line_id) await pool.query(`update lab_plan_lines set status='tech_pack' where id=$1`, [r.line_id]);
