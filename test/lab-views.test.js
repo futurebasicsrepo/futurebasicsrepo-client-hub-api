@@ -65,6 +65,8 @@ test('the video model is used only when connected, and the walk waits for it, th
   const failing = async (url) => (url.endsWith('/v1/videos') ? new Response(JSON.stringify({ id: 'v', status: 'failed', error: { message: 'policy' } }), { status: 200 }) : new Response('{}', { status: 200 }));
   await assert.rejects(makeWalk({ concept, frame: await tinyJpeg(), cfg, fetchImpl: failing, sleep: async () => {}, env: { OPENAI_API_KEY: 'k' } }), /policy/);
   assert.match(walkPrompt(concept), /walks steadily toward the camera/);
+  const gone = async () => new Response('', { status: 404 }), openai = videoConfig({ LAB_VIDEO_PROVIDER: 'openai', OPENAI_API_KEY: 'k' });
+  await assert.rejects(makeWalk({ concept, frame: await tinyJpeg(), cfg: openai, fetchImpl: gone, sleep: async () => {}, env: { OPENAI_API_KEY: 'k' } }), /shut down its video model/);
 });
 
 test('the walk is framed without a face, and when the picture is refused it is made from words alone', async () => {

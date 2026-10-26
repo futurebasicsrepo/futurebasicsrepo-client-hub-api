@@ -292,6 +292,13 @@ export async function migrate() {
       consumed_at timestamptz,
       created_at timestamptz not null default now()
     );
+    do $$ begin
+      if not exists(select 1 from information_schema.columns where table_name='users' and column_name='last_sign_in_at') then
+        alter table users add column last_sign_in_at timestamptz;
+        -- the only past sign-ins on record are spent email codes; a Google sign-in left no trace before this column
+        update users u set last_sign_in_at=lc.at from (select lower(email) email, max(consumed_at) at from login_codes where consumed_at is not null and email not like 'vendor-reveal:%' group by lower(email)) lc where lower(u.email)=lc.email;
+      end if;
+    end $$;
     create table if not exists preview_sessions (
       id uuid primary key default gen_random_uuid(),
       code_hash text unique not null,

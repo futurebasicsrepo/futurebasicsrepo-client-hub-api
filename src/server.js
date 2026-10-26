@@ -551,8 +551,8 @@ app.post('/v1/auth/verify', async (req, reply) => {
     if (!client) { await c.query('rollback'); return reply.code(403).send({ error: 'Client access is no longer active' }); }
     const role = email.split('@')[1] === 'thefuturebasics.com' ? 'admin' : 'client';
     user = (await c.query(
-      `insert into users(client_id,email,role,email_verified_at) values($1,$2,$3,now()) on conflict(email)
-       do update set client_id=excluded.client_id,role=excluded.role,email_verified_at=coalesce(users.email_verified_at,now()) returning *`, [client.id, email, role]
+      `insert into users(client_id,email,role,email_verified_at,last_sign_in_at) values($1,$2,$3,now(),now()) on conflict(email)
+       do update set client_id=excluded.client_id,role=excluded.role,email_verified_at=coalesce(users.email_verified_at,now()),last_sign_in_at=now() returning *`, [client.id, email, role]
     )).rows[0];
     await c.query('commit');
   } catch (e) { await c.query('rollback').catch(() => {}); throw e; } finally { c.release(); }
@@ -602,8 +602,8 @@ app.get('/v1/auth/google/callback', async (req, reply) => {
     const client = (await pool.query("select * from clients where slug='future-basics' and status='active'")).rows[0];
     if (!client) return fail('Future Basics staff access is not active');
     const user = (await pool.query(
-      `insert into users(client_id,email,role) values($1,$2,'admin') on conflict(email)
-       do update set client_id=excluded.client_id,role='admin' returning *`, [client.id, email]
+      `insert into users(client_id,email,role,last_sign_in_at) values($1,$2,'admin',now()) on conflict(email)
+       do update set client_id=excluded.client_id,role='admin',last_sign_in_at=now() returning *`, [client.id, email]
     )).rows[0];
     const token = await new SignJWT({ sub: user.id, clientId: client.id, client: client.slug, role: 'admin', email })
       .setProtectedHeader({ alg: 'HS256' }).setIssuer('future-basics-client-hub').setIssuedAt().setExpirationTime('7d').sign(secret);

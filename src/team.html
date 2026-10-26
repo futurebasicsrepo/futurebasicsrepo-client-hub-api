@@ -30,7 +30,7 @@ h1{font-size:clamp(30px,5vw,48px);letter-spacing:-.035em;font-weight:500;margin:
 .who{background:#fff;border:1px solid var(--line);border-radius:18px;margin:0 0 10px}
 .who>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:12px;padding:14px 18px;flex-wrap:wrap}.who>summary::-webkit-details-marker{display:none}
 .who>summary:focus-visible{outline:2px solid var(--ink);outline-offset:2px;border-radius:18px}
-.who .nm{display:grid;min-width:0;flex:1 1 220px}.who .nm b{font-size:15px;overflow-wrap:anywhere}.who .nm span{color:var(--dim);font-size:13px;overflow-wrap:anywhere}
+.who .nm{display:grid;min-width:0;flex:1 1 220px}.who .nm b{font-size:15px;overflow-wrap:anywhere}.who .nm span{color:var(--dim);font-size:13px;overflow-wrap:anywhere}.who .nm .seen{color:var(--dim);font-size:12px;margin-top:2px}
 .chip{font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.06em;text-transform:uppercase;border-radius:999px;padding:3px 10px;background:var(--fog);color:var(--dim);white-space:nowrap}
 .chip.ok{background:#e4f6ec;color:var(--ok)}.chip.warn{background:#fff1d6;color:var(--warn)}.chip.bad{background:#fbe5e2;color:var(--bad)}
 .who[open]>summary{border-bottom:1px solid var(--line)}
@@ -77,6 +77,14 @@ const groups=()=>{const g=new Map();for(const m of D.modules){if(!g.has(m.group)
 const boxes=(picked,name)=>groups().map(([g,ms])=>`<div class="grp"><span class="lbl">${esc(g)}</span>${ms.map(m=>`<label class="mod"><input type="checkbox" data-m="${m.id}" ${picked.includes(m.id)?'checked':''}><span><b>${esc(m.label)}</b><small>${esc(m.hint)}</small></span></label>`).join('')}</div>`).join('');
 const presets=()=>`<div class="pre"><span class="sub">Start from</span>${D.presets.map(p=>`<button type="button" class="pill" data-preset="${p.id}">${esc(p.label)}</button>`).join('')}</div>`;
 const picked=el=>[...el.querySelectorAll('input[data-m]:checked')].map(i=>i.dataset.m);
+// sign-ins were first recorded on SEEN_FROM; before that only email-code sign-ins left a trace, so "not recorded" is not "never"
+const SEEN_FROM='2026-10-26';
+const day=d=>{try{return new Date(d).toLocaleDateString([], {month:'short',day:'numeric',year:'numeric'})}catch{return ''}};
+function seen(p){
+  const first=p.since?`First signed in ${esc(day(p.since))}`:'';
+  const last=p.lastSignIn?`last signed in ${esc(when(p.lastSignIn))}`:`no sign-in recorded since ${esc(day(SEEN_FROM+'T12:00:00'))}`;
+  return first?`${first} · ${last}`:last.charAt(0).toUpperCase()+last.slice(1);
+}
 function chip(p){
   if(p.owner)return '<span class="chip ok">Owner · everything</span>';
   if(p.blocked)return '<span class="chip bad">Paused</span>';
@@ -89,7 +97,7 @@ function draw(){
   const waiting=D.team.filter(p=>!p.owner&&!p.configured).length;
   $('#teamNote').textContent=waiting?`${waiting} ${waiting===1?'person has':'people have'} not been looked at yet. Open their card and choose what they can see.`:'Open a card to change what that person can see.';
   $('#team').innerHTML=D.team.map(p=>`<details class="who" data-id="${p.id}" ${!p.owner&&!p.configured?'open':''}>
-    <summary><span class="nm"><b>${esc(p.name||p.email)}</b><span>${p.name?esc(p.email):''}${p.note?(p.name?' · ':'')+esc(p.note):''}</span></span>${chip(p)}</summary>
+    <summary><span class="nm"><b>${esc(p.name||p.email)}</b><span>${p.name?esc(p.email):''}${p.note?(p.name?' · ':'')+esc(p.note):''}</span><small class="seen" data-seen>${seen(p)}</small></span>${chip(p)}</summary>
     <div class="edit">${p.owner?'<p class="note" style="margin:0">Danielle and Kyle always have access to everything here, so there is nothing to choose.</p>':`${presets()}${boxes(p.modules)}
       <label class="row"><span class="sub">Note (only you see it)</span><input class="t" data-note value="${esc(p.note)}" maxlength="200" placeholder="Role, start date, anything to remember"></label>
       <label class="mod" style="max-width:520px"><input type="checkbox" data-paused ${p.blocked?'checked':''}><span><b>Pause access</b><small>Shuts them out of the whole work console until you turn it back on. Nothing is deleted.</small></span></label>

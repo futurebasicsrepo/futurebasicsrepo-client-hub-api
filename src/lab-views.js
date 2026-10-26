@@ -125,6 +125,8 @@ export async function makeWalk({ concept, frame, cfg = videoConfig(), fetchImpl 
   const send = withRef => { const fd = new FormData(); fd.append('model', cfg.model); fd.append('prompt', withRef ? walkPrompt(concept) : `${walkPrompt(concept, { reference: false })} ${describe(concept)}`); fd.append('size', cfg.size); fd.append('seconds', cfg.seconds); if (withRef) fd.append('input_reference', new Blob([ref], { type: 'image/jpeg' }), 'model.jpg'); return fetchImpl(`${cfg.origin}/v1/videos`, { method: 'POST', headers: auth, body: fd, signal: AbortSignal.timeout(120000) }); };
   let start = await send(true);
   if (!start.ok && start.status >= 400 && start.status < 500 && start.status !== 401 && start.status !== 429) start = await send(false);
+  // OpenAI shut its video API (Sora) down on 24 September 2026: every request now answers 404 with nothing in it
+  if (start.status === 404 && /api\.openai\.com/.test(cfg.origin)) throw new Error('OpenAI has shut down its video model (Sora), so the walk cannot be made through OpenAI any more. Another video provider has to be connected.');
   if (!start.ok) throw new Error(`The video model refused the request (${start.status}): ${clip(await start.text().catch(() => ''), 200)}`);
   let job = await start.json();
   for (let i = 0; i < 90 && !['completed', 'failed'].includes(job.status); i++) {
