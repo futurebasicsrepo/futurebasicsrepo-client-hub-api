@@ -55,6 +55,7 @@ import { registerIntelRoutes, seedIntel } from './intel-routes.js';
 import { registerLabRoutes, seedLab } from './lab-routes.js';
 import { registerLabConceptRoutes } from './lab-concept-routes.js';
 import { registerLabViewRoutes } from './lab-view-routes.js';
+import { createArtService, registerLabArtRoutes } from './lab-art-routes.js';
 import { purgeOld as labPurge } from './lab-scan.js';
 import { runDue as intelRunDue, scorePending as intelScore, loadSettings as intelSettings, purgeOld as intelPurge } from './intel-engine.js';
 import { registerBuildRoutes, seedBuilds, ensureHostedBuilds, backfillBuildRepos, moveBuildRepos, syncBuilds } from './builds-routes.js';
@@ -663,10 +664,12 @@ const protos=registerProtoRoutes(app, { pool, authenticate, adminOnly, throttle,
   edit: process.env.PROTOTYPE_TEST_EDIT ? stubEdit : undefined });
 registerIntelRoutes(app, { pool, authenticate, adminOnly, getSetting, setSetting, throttle, log: app.log });
 // The Design Lab (the Lab module on Team access). Under the journeys its shop reads go to the same stand-in server as the prototypes, with no pause between requests.
-const lab=registerLabRoutes(app, { pool, authenticate, adminOnly, getSetting, setSetting, log: app.log,
+const labArt=createArtService(pool,{log:app.log}); // the graphics the image model draws for the Lab, one at a time
+registerLabArtRoutes(app, { pool, authenticate, adminOnly, art: labArt });
+const lab=registerLabRoutes(app, { pool, authenticate, adminOnly, getSetting, setSetting, log: app.log, art: labArt,
   ...(process.env.PROTOTYPE_TEST_ORIGIN ? { delayMs: 0, crawlOpts: { lookup: async () => [{ address: '93.184.216.34' }], fetchImpl: (u, o) => { const x = new URL(u); return fetch(process.env.PROTOTYPE_TEST_ORIGIN + x.pathname + x.search, { ...o, headers: { ...(o && o.headers), 'x-original-host': x.hostname } }); } } } : {}) });
 // Concepts: an approved one becomes a product in the Future Basics room, with its tech pack drafted from the concept (createClientProduct, shared with the console).
-registerLabConceptRoutes(app, { pool, authenticate, adminOnly, getSetting, log: app.log, createProduct: args => createClientProduct(args), attachArtwork: (productId, items) => attachLabArtwork(productId, items) });
+registerLabConceptRoutes(app, { pool, authenticate, adminOnly, getSetting, log: app.log, art: labArt, createProduct: args => createClientProduct(args), attachArtwork: (productId, items) => attachLabArtwork(productId, items) });
 registerLabViewRoutes(app, { pool, authenticate, adminOnly, log: app.log });
 const money=registerMoneyRoutes(app, { pool, authenticate, adminOnly, getSetting, setSetting, tokenSeal: sealer(process.env), stateSecret: process.env.JWT_SECRET || 'dev', workUrl: workHubUrl, log: app.log,
   // product development is paid through a Shopify checkout (a draft order for the amount due), see money-routes.js

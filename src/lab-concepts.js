@@ -9,7 +9,7 @@
 //  3. Drawing the concept: a text-to-image prompt built from the concept alone. No reference picture is ever sent to the image model, and brand names are
 //     stripped from the words it gets.
 import sharp from 'sharp';
-import { imageConfig, openaiImage } from './check.js';
+import { imageConfig, openaiImage, openaiEdit } from './check.js';
 import { ask as realAsk, providerReady, costCents } from './intel-llm.js';
 import { brandCodeWords, DEFAULT_BRAND_CODE, categoryLabel, cleanCategory } from './lab.js';
 import { logoSvg, BRAND_INK } from './brand-kit.js';
@@ -148,7 +148,8 @@ export const cleanGraphicSvg = input => cleanGraphic(input).svg;
 export const cleanGraphics = list => (Array.isArray(list) ? list : []).slice(0, 4).map(g => {
   const placement = clip(g?.placement, 40).toLowerCase(), technique = clip(g?.technique, 40).toLowerCase(), kind = clip(g?.kind, 20).toLowerCase(), c = g?.svg ? cleanGraphic(g.svg) : { svg: '', texts: Array.isArray(g?.texts) ? g.texts : [] };
   return { name: clip(g?.name, 80), kind: GRAPHIC_KINDS.some(k => k.id === kind) ? kind : 'icon', idea: clip(g?.idea, 300), placement: Object.keys(GRAPHIC_PLACE).includes(placement) ? placement : 'front chest', technique: GRAPHIC_TECHNIQUES.includes(technique) ? technique : 'screen print',
-    colors: (Array.isArray(g?.colors) ? g.colors : []).map(x => clip(x, 30)).filter(Boolean).slice(0, 4), svg: c.svg, texts: (c.texts.length ? c.texts : (Array.isArray(g?.texts) ? g.texts : [])).map(t => clip(t, 24)).filter(Boolean).slice(0, 8), ...(g?.motif ? { motif: clip(g.motif, 12) } : {}) };
+    colors: (Array.isArray(g?.colors) ? g.colors : []).map(x => clip(x, 30)).filter(Boolean).slice(0, 4), svg: c.svg, texts: (c.texts.length ? c.texts : (Array.isArray(g?.texts) ? g.texts : [])).map(t => clip(t, 40)).filter(Boolean).slice(0, 8), ...(g?.motif ? { motif: clip(g.motif, 12) } : {}),
+    ...(g?.composition ? { composition: clip(g.composition, 400) } : {}), ...(/^[0-9a-f-]{36}$/i.test(String(g?.art || '')) ? { art: g.art } : {}) };
 }).filter(g => g.name && g.idea);
 // the program as words for a prompt
 export const programWords = pr => (pr ? [`Graphic program "${pr.name}": ${pr.story}`, pr.palette?.length ? `Palette: ${pr.palette.map(c => `${c.name} ${c.hex}`).join(', ')}.` : '', pr.rules ? `Rules: ${pr.rules}` : '',
@@ -156,7 +157,7 @@ export const programWords = pr => (pr ? [`Graphic program "${pr.name}": ${pr.sto
 // A concept's graphics that point at a motif (by id) take its drawing, words and kind; the concept can still choose where and how.
 export function resolveMotifs(graphics, program) {
   const by = new Map((program?.motifs || []).map(m => [m.id, m]));
-  return (Array.isArray(graphics) ? graphics : []).map(g => { const m = by.get(String(g?.motif)); return m ? { ...g, name: g.name || m.name, kind: m.kind, idea: g.idea || m.idea, svg: m.svg || g.svg, texts: m.texts, placement: g.placement || m.placements[0] || 'front chest', colors: g.colors?.length ? g.colors : (program.palette || []).slice(0, 2).map(c => c.name) } : g; });
+  return (Array.isArray(graphics) ? graphics : []).map(g => { const m = by.get(String(g?.motif)); return m ? { ...g, name: g.name || m.name, kind: m.kind, idea: g.idea || m.idea, svg: m.svg || g.svg, texts: m.texts, ...(m.art ? { art: m.art } : {}), ...(m.composition ? { composition: m.composition } : {}), placement: g.placement || m.placements[0] || 'front chest', colors: g.colors?.length ? g.colors : (program.palette || []).slice(0, 2).map(c => c.name) } : g; });
 }
 
 // What a concept always carries: the logo (the assistant chooses the mark, where and how; it can never be left out) and the woven label (fixed words).
@@ -165,7 +166,7 @@ export function ensureBranding(spec = {}, category = 'other') {
   return { ...spec, branding: { logo: { mark: LOGO_MARKS.some(m => m.id === l.mark) ? l.mark : 'cue', placement: clip(l.placement, 120) || place(category), technique: LOGO_TECHNIQUES.includes(String(l.technique || '').toLowerCase()) ? String(l.technique).toLowerCase() : 'embroidered' }, label: labelWords(category) }, graphics: cleanGraphics(spec.graphics) };
 }
 // the logo and the label, drawn from our own brand files, and any front graphics, laid on the concept's picture. → a JPEG buffer
-export async function composeBranding(buf, concept, { locate = null } = {}) {
+export async function composeBranding(buf, concept, { locate = null, arts = new Map(), skipArt = false } = {}) {
   const spec = ensureBranding(concept.spec, concept.category), meta = await sharp(buf).metadata(), W = meta.width, H = meta.height, layers = [];
   const png = async (svg, width) => sharp(Buffer.from(svg), { density: Math.max(72, Math.ceil(72 * width / 100)) }).resize({ width: Math.max(8, Math.round(width)) }).png().toBuffer();
   // (stats() of an extract alone reads the whole picture, so the region is cut out first)
@@ -175,7 +176,7 @@ export async function composeBranding(buf, concept, { locate = null } = {}) {
     let img = input; if (Math.abs(angle) > 0.5) img = await sharp(input).rotate(angle, { background: { r: 0, g: 0, b: 0, alpha: 0 } }).png().toBuffer();
     const m = await sharp(img).metadata(); layers.push({ input: img, left: Math.max(0, Math.min(W - m.width, Math.round(f.x * W - m.width / 2))), top: Math.max(0, Math.min(H - m.height, Math.round(f.y * H - m.height / 2))) });
   };
-  const front = (LOGO_PLACE[concept.category] || LOGO_PLACE.other)[1], graphics = spec.graphics.filter(g => GRAPHIC_PLACE[g.placement] && g.svg);
+  const front = (LOGO_PLACE[concept.category] || LOGO_PLACE.other)[1], graphics = spec.graphics.filter(g => GRAPHIC_PLACE[g.placement] && (g.art ? !skipArt && arts.get(g.art) : g.svg));
   const logoMul = spec.branding.logo.mark === 'cue' ? 1 : 2.2;
   // where each mark goes: a vision model looks at this picture and measures it; fixed positions are the fallback
   const asks = [...(front ? [{ id: 'logo', where: `the Future Basics logo: ${place(concept.category)}`, w: front.w * logoMul }] : []), ...graphics.map((g, i) => ({ id: `g${i}`, where: `a graphic: ${g.placement}`, w: GRAPHIC_PLACE[g.placement].w }))];
@@ -184,7 +185,7 @@ export async function composeBranding(buf, concept, { locate = null } = {}) {
     const f = found?.get('logo'), at = f || front, mark = spec.branding.logo.mark, w = f ? f.w * W : front.w * W * logoMul, fill = (await lum(at, w)) < 120 ? '#FFFFFF' : BRAND_INK;
     await put(await png(logoSvg(mark, { fill }), w), at, f ? f.angle : 0);
   }
-  for (const [i, g] of graphics.entries()) { const f = found?.get(`g${i}`), fb = GRAPHIC_PLACE[g.placement]; await put(await png(g.svg, (f ? f.w : fb.w) * W), f || fb, f ? f.angle : 0); }
+  for (const [i, g] of graphics.entries()) { const f = found?.get(`g${i}`), fb = GRAPHIC_PLACE[g.placement], w = Math.max(8, Math.round((f ? f.w : fb.w) * W)); await put(g.art ? await sharp(arts.get(g.art)).resize({ width: w }).png().toBuffer() : await png(g.svg, w), f || fb, f ? f.angle : 0); }
   // the woven label as a small inset in the bottom corner, so the picture shows it is there
   const lw = Math.round(W * 0.2), label = await sharp(Buffer.from(logoSvg('lockup', { fill: '#FFFFFF', bg: BRAND_INK, pad: 90 })), { density: 144 }).resize({ width: lw }).png().toBuffer(), lm = await sharp(label).metadata();
   layers.push({ input: label, left: Math.max(0, W - lm.width - Math.round(W * 0.03)), top: Math.max(0, H - lm.height - Math.round(H * 0.03)) });
@@ -206,10 +207,12 @@ export function conceptFixture({ user }) {
 export async function generateConcepts({ line, plan = {}, refs = [], trend = null, program = null, code = DEFAULT_BRAND_CODE, count = 3, note = '', parent = null, askImpl = realAsk, env = process.env, fetchImpl = fetch } = {}) {
   if (!providerReady('anthropic', env)) throw new Error('Claude is not connected (the service needs ANTHROPIC_API_KEY)');
   const n = Math.min(Math.max(Math.round(count) || 3, 1), 4);
-  const system = `You are the lead designer at Future Basics. Future Basics makes affordable, considered clothing, headwear, footwear and accessories: the cuts and attitude of luxury and heritage brands at a price held to a fast-fashion anchor, in simpler materials.\n${brandCodeWords(code)}\nRules: the line is male-driven and unisex: design for men first (men's sizing, proportions and fits) in pieces anyone can wear. Every concept is OUR design. Every concept carries the Future Basics logo (choose the mark: cue, word or lockup; where it goes; how it is made) and a Future Basics internal woven label; the label is added for you, so do not describe it. Where it makes sense for the piece (a tee, a sweatshirt, a cap, a tote, outerwear) also give it Future Basics graphics, one to three, and take them as deep as the brands we study take theirs: crests and emblems, original lettering and numerals, stripes and bands, patterns, illustration, technical annotation. They are not limited to our logo or its line and dot, nor to the logo colours. When a graphic program is given, apply its motifs by id ("motif") and choose where and how they go; you may add one new graphic of your own that fits the program. Everything is original: never copy or imitate a mark, crest, lettering, print or character from anyone, and never name them. Leave a clean piece clean (tailoring and fine knit usually have none). Describe it in plain words: shape, fabric, fit, colour, trims and details. NEVER name another brand or its products, never describe a logo, print, pattern or signature detail that belongs to someone else, and make the "twist" a specific idea that is ours and visible on the piece (a proportion, a seam, a trim, a colour story). Different concepts must differ from each other in shape or detail, not only in colour. Materials stay simpler than the references so the price holds.`;
+  const system = `You are the lead designer at Future Basics. Future Basics makes affordable, considered clothing, headwear, footwear and accessories: the cuts and attitude of luxury and heritage brands at a price held to a fast-fashion anchor, in simpler materials.\n${brandCodeWords(code)}\nRules: the line is male-driven and unisex: design for men first (men's sizing, proportions and fits) in pieces anyone can wear. Every concept is OUR design. Every concept carries the Future Basics logo (choose the mark: cue, word or lockup; where it goes; how it is made) and a Future Basics internal woven label; the label is added for you, so do not describe it. Where it makes sense for the piece (a tee, a sweatshirt, a cap, a tote, outerwear) also give it Future Basics graphics, one to three, and take them as deep as the brands we study take theirs: crests and emblems, original lettering and numerals, stripes and bands, patterns, illustration, technical annotation. They are not limited to our logo or its line and dot, nor to the logo colours. When a graphic program is given, apply its motifs by id ("motif") and choose where and how they go; you may add one new graphic of your own that fits the program. A new graphic is described in words (its layers, colours and lettering), never drawn: the image model draws it as finished, multi-colour artwork (think vintage tour tees, varsity crests, surf, motorsport, workwear graphics), so describe it as richly as a real graphic tee would be. Everything is original: never copy or imitate a mark, crest, lettering, print or character from anyone, and never name them. Leave a clean piece clean (tailoring and fine knit usually have none). Describe it in plain words: shape, fabric, fit, colour, trims and details. NEVER name another brand or its products, never describe a logo, print, pattern or signature detail that belongs to someone else, and make the "twist" a specific idea that is ours and visible on the piece (a proportion, a seam, a trim, a colour story). Different concepts must differ from each other in shape or detail, not only in colour. Materials stay simpler than the references so the price holds.`;
   const trendWords = trend ? `Trend in ${categoryLabel(line.category)}: shapes ${trend.silhouettes?.map(x => x.name).join(', ') || 'n/a'}; fabrics ${trend.fabrics?.map(x => x.name).join(', ') || 'n/a'}; details ${trend.details?.map(x => x.name).join(', ') || 'n/a'}; colours ${trend.colors?.map(x => x.name).join(', ') || 'n/a'}.` : '';
-  const user = `Make ${n} different concepts for one planned piece.\nPlanned piece: ${clip(line.name, 100)} (category ${line.category}, role ${line.role}, target price $${line.priceCents != null ? (line.priceCents / 100).toFixed(0) : '?'})\nPlan: ${clip(plan.name, 80)}${plan.season ? ' · ' + clip(plan.season, 40) : ''}${plan.brief ? ' · ' + clip(plan.brief, 300) : ''}\nBrief: ${clip(line.brief, 400)}\nTwist idea from the plan: ${clip(line.twist, 300)}\nWhy it is in the plan: ${clip(line.rationale, 300)}\n${trendWords}\n${programWords(program) ? programWords(program) + '\n' : ''}Library pieces that inspired it (for what the market likes; do not copy them): ${refs.map(r => `${clip(r.title, 90)}${r.attrs?.silhouette ? ' [' + clip(r.attrs.silhouette, 40) + ']' : ''}`).join('; ') || 'none'}\n${parent ? `This revises an earlier concept: ${clip(parent.name, 100)} — ${clip(parent.spec?.description, 300)}\n` : ''}${note ? `Steer: ${clip(note, 400)}\n` : ''}\nAnswer {"concepts":[{"name":"short product name","description":"one or two sentences","silhouette":"short","fabric":"short, simple and affordable","fit":"short","trims":"short","colors":["1-3 colours"],"details":["3-5 design details"],"logo":{"mark":"cue|word|lockup","placement":"where the Future Basics logo goes","technique":"embroidered|woven patch|screen print|rubber print|heat transfer|debossed|metal plaque"},"graphics":[{"motif":"program motif id, if you are applying one","name":"short","kind":"crest|lettering|numerals|stripes|pattern|illustration|technical|icon","idea":"what the artwork is","placement":"front chest|left chest|front centre|full front|chest band|sleeve|back|back yoke|hem|inside","technique":"screen print|embroidery|woven jacquard|puff print|rubber print|heat transfer|debossed|flock print|appliqué|chenille patch","colors":["Navy","Cream"],"svg":"only for a NEW graphic: <svg viewBox=\"0 0 200 200\"> of plain shapes and <text font-family=grotesk-bold|grotesk|mono> lettering, solid hex colours, original words only"}],"twist":"our own idea, specific"}]}`;
-  const res = await askImpl({ provider: 'anthropic', system, user, json: true, maxTokens: 3500, env, fetchImpl, fixture: conceptFixture });
+  const user = `Make ${n} different concepts for one planned piece.\nPlanned piece: ${clip(line.name, 100)} (category ${line.category}, role ${line.role}, target price $${line.priceCents != null ? (line.priceCents / 100).toFixed(0) : '?'})\nPlan: ${clip(plan.name, 80)}${plan.season ? ' · ' + clip(plan.season, 40) : ''}${plan.brief ? ' · ' + clip(plan.brief, 300) : ''}\nBrief: ${clip(line.brief, 400)}\nTwist idea from the plan: ${clip(line.twist, 300)}\nWhy it is in the plan: ${clip(line.rationale, 300)}\n${trendWords}\n${programWords(program) ? programWords(program) + '\n' : ''}Library pieces that inspired it (for what the market likes; do not copy them): ${refs.map(r => `${clip(r.title, 90)}${r.attrs?.silhouette ? ' [' + clip(r.attrs.silhouette, 40) + ']' : ''}`).join('; ') || 'none'}\n${parent ? `This revises an earlier concept: ${clip(parent.name, 100)} — ${clip(parent.spec?.description, 300)}\n` : ''}${note ? `Steer: ${clip(note, 400)}\n` : ''}\nAnswer {"concepts":[{"name":"short product name","description":"one or two sentences","silhouette":"short","fabric":"short, simple and affordable","fit":"short","trims":"short","colors":["1-3 colours"],"details":["3-5 design details"],"logo":{"mark":"cue|word|lockup","placement":"where the Future Basics logo goes","technique":"embroidered|woven patch|screen print|rubber print|heat transfer|debossed|metal plaque"},"graphics":[{"motif":"program motif id, if you are applying one","name":"short","kind":"crest|lettering|numerals|stripes|pattern|illustration|technical|icon","idea":"what the artwork is","placement":"front chest|left chest|front centre|full front|chest band|sleeve|back|back yoke|hem|inside","technique":"screen print|embroidery|woven jacquard|puff print|rubber print|heat transfer|debossed|flock print|appliqué|chenille patch","colors":["Navy","Cream"],"composition":"only for a NEW graphic: its layers from back to front, the colour of each, where the lettering sits","texts":["only for a NEW graphic: each line of lettering, our own words"]}],"twist":"our own idea, specific"}]}`;
+  // an answer that is cut off or malformed is asked for once more, more briefly, before giving up
+  let res; try { res = await askImpl({ provider: 'anthropic', system, user, json: true, maxTokens: 8000, env, fetchImpl, fixture: conceptFixture }); }
+  catch (e) { if (!/JSON|ran out of room/i.test(e.message)) throw e; res = await askImpl({ provider: 'anthropic', system, user: user + '\nKeep every field short. Answer with valid JSON only.', json: true, maxTokens: 8000, env, fetchImpl, fixture: conceptFixture }); }
   const out = [], seen = new Set();
   for (const c of Array.isArray(res.json?.concepts) ? res.json.concepts : []) {
     const name = clip(c.name, 100); if (!name || seen.has(norm(name))) continue; seen.add(norm(name));
@@ -220,14 +223,15 @@ export async function generateConcepts({ line, plan = {}, refs = [], trend = nul
 }
 
 // ---- 3. drawing it -----------------------------------------------------------------------------------------------------------------------------
-export function imagePrompt(concept, { brandNames = [] } = {}) {
-  const s = concept.spec || {}, say = t => stripBrands(clip(t, 400), brandNames), cat = concept.category, bare = [(LOGO_PLACE[cat] || LOGO_PLACE.other)[1] ? place(cat) : '', ...(s.graphics || []).filter(g => GRAPHIC_PLACE[g.placement] && g.svg).map(g => g.placement)].filter(Boolean);
+export function imagePrompt(concept, { brandNames = [], printed = [] } = {}) {
+  const s = concept.spec || {}, say = t => stripBrands(clip(t, 400), brandNames), cat = concept.category, bare = [(LOGO_PLACE[cat] || LOGO_PLACE.other)[1] ? place(cat) : '', ...(s.graphics || []).filter(g => GRAPHIC_PLACE[g.placement] && g.svg && !printed.includes(g)).map(g => g.placement)].filter(Boolean);
   return [`A clean, photorealistic studio product photograph of one item for a menswear and unisex brand: ${say(concept.name)}${cat ? ` (${categoryLabel(cat).toLowerCase()})` : ''}.`,
     s.description ? say(s.description) : '', s.silhouette ? `Shape: ${say(s.silhouette)}.` : '', s.fabric ? `Fabric: ${say(s.fabric)}.` : '', s.colors?.length ? `Colour: ${say(s.colors.join(', '))}.` : '',
     s.details?.length ? `Design details: ${say(s.details.join('; '))}.` : '', s.trims ? `Trims: ${say(s.trims)}.` : '', concept.twist ? `Signature idea: ${say(concept.twist)}.` : '',
     'Three-quarter front view at eye level, on a plain light-grey background with soft light. The item only: no people, no hands, no mannequin.',
+    printed.length ? `The attached pictures are our own graphic artwork. Print them on the piece: ${printed.map((g, i) => `artwork ${i + 1} on the ${g.placement} as a ${g.technique || 'screen print'}`).join('; ')}. Reproduce each one exactly as given (the same drawing, colours and words, nothing added or left out), sized as a real ${categoryLabel(cat).toLowerCase()} graphic would be, lying on the cloth and following its folds and light like real ink.` : '',
     bare.length ? `Keep these places completely plain and unmarked, because our own artwork is added afterwards: ${bare.join('; ')}.` : '',
-    'No text, no lettering, no logos, no brand marks, no labels and no watermarks anywhere.'].filter(Boolean).join('\n').slice(0, 3800);
+    printed.length ? 'No other text, lettering, logos, brand marks, labels or watermarks anywhere beyond the printed artwork.' : 'No text, no lettering, no logos, no brand marks, no labels and no watermarks anywhere.'].filter(Boolean).join('\n').slice(0, 3800);
 }
 async function fixtureConceptImage(concept) {
   const c = ({ navy: '#2f3b57', cream: '#e8dfc9', olive: '#6b6f3a', rust: '#a4502d' })[norm((concept.spec?.colors || [])[0])] || '#59606b';
@@ -235,15 +239,20 @@ async function fixtureConceptImage(concept) {
   return sharp(Buffer.from(svg)).jpeg({ quality: 86 }).toBuffer();
 }
 // → { image, thumb, model } as Buffers, or null when no image model is connected. The prompt is built from the concept alone: no reference picture goes in.
-export async function renderConcept(concept, { cfg = imageConfig(), brandNames = [], locate } = {}) {
+export async function renderConcept(concept, { cfg = imageConfig(), brandNames = [], locate, arts = new Map() } = {}) {
   if (!cfg.configured) return null;
-  const buf = cfg.provider === 'fixture' ? await fixtureConceptImage(concept) : await openaiImage(imagePrompt(concept, { brandNames }), { ...cfg, size: process.env.HERO_SIZE || cfg.size || '1024x1024' });
+  const printed = (concept.spec?.graphics || []).filter(g => g.art && arts.get(g.art) && GRAPHIC_PLACE[g.placement] !== undefined).slice(0, 3);
+  let buf;
+  if (cfg.provider === 'fixture') buf = await fixtureConceptImage(concept);
+  else if (printed.length) buf = await openaiEdit({ images: printed.map(g => arts.get(g.art)), prompt: imagePrompt(concept, { brandNames, printed }), cfg: { ...cfg, size: process.env.HERO_SIZE || cfg.size || '1024x1024' } }); // the artwork goes in, printed on the piece by the image model
+  else buf = await openaiImage(imagePrompt(concept, { brandNames }), { ...cfg, size: process.env.HERO_SIZE || cfg.size || '1024x1024' });
   const upright = await sharp(buf).rotate().resize({ width: 1400, height: 1400, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 90 }).toBuffer();
-  return { ...(await finishConcept(upright, concept, { cfg, locate })), model: cfg.model || cfg.provider };
+  return { ...(await finishConcept(upright, concept, { cfg, locate, arts })), model: cfg.model || cfg.provider };
 }
 // the logo, graphics and label laid on the plain picture (kept as `raw` so they can be placed again without drawing it again)
-export async function finishConcept(raw, concept, { cfg = {}, locate } = {}) {
-  const marked = await composeBranding(raw, concept, { locate: locate || (cfg.provider === 'fixture' ? null : locateMarks) });
+export async function finishConcept(raw, concept, { cfg = {}, locate, arts = new Map() } = {}) {
+  // the image model prints the artwork itself; the test placeholder cannot, so there it is laid on like the other marks
+  const marked = await composeBranding(raw, concept, { locate: locate || (cfg.provider === 'fixture' ? null : locateMarks), arts: cfg.provider === 'fixture' ? arts : new Map(), skipArt: cfg.provider !== 'fixture' });
   const thumb = await sharp(marked).resize({ width: 420, height: 420, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 72 }).toBuffer();
   return { image: marked, thumb, raw };
 }
@@ -259,12 +268,16 @@ export function productBrief(concept, plan = {}) {
   return `<p><strong>Designed in the Future Basics Design Lab.</strong> The reference picture is an AI concept render, not a sample.</p>` + rows.map(([k, v]) => `<p><strong>${h(k)}:</strong> ${h(v)}</p>`).join('');
 }
 // The concept's artwork as files for the tech pack: our logo, the woven label, and each graphic, as transparent PNGs (the label on its Ink ground). → [{ name, image }] with data URLs
-export async function artworkFiles(concept) {
+export async function artworkFiles(concept, { arts = new Map() } = {}) {
   const spec = ensureBranding(concept.spec, concept.category), out = [], png = async (svg, width) => `data:image/png;base64,${(await sharp(Buffer.from(svg), { density: Math.max(72, Math.ceil(72 * width / 100)) }).resize({ width }).png().toBuffer()).toString('base64')}`;
   const mark = spec.branding.logo.mark;
   out.push({ name: `Future Basics logo · ${LOGO_MARKS.find(m => m.id === mark)?.label || 'Cue mark'}`, image: await png(logoSvg(mark, { fill: BRAND_INK }), mark === 'cue' ? 600 : 1400) });
   out.push({ name: 'Future Basics internal woven label', image: await png(logoSvg('lockup', { fill: '#FFFFFF', bg: BRAND_INK, pad: 90 }), 1200) });
-  for (const g of spec.graphics) if (g.svg) out.push({ name: `Graphic · ${g.name}${g.texts.length ? ' (' + g.texts.join(' / ') + ')' : ''}`, image: await png(g.svg, 1400) });
+  for (const g of spec.graphics) {
+    const label = `Graphic · ${g.name}${g.texts.length ? ' (' + g.texts.join(' / ') + ')' : ''}`;
+    if (g.art && arts.get(g.art)) out.push({ name: label, image: `data:image/png;base64,${Buffer.from(arts.get(g.art)).toString('base64')}` });
+    else if (g.svg) out.push({ name: label, image: await png(g.svg, 1400) });
+  }
   return out;
 }
 export const cleanConceptEdit = (b, base) => {

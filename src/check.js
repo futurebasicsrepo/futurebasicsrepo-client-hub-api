@@ -124,7 +124,7 @@ export async function openaiImage(prompt, cfg) {
 async function openaiImageOnce(prompt, cfg) {
   const res = await trackedFetch('imagegen', 'https://api.openai.com/v1/images/generations', {
     method: 'POST', headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: cfg.model, prompt, size: cfg.size, quality: cfg.quality, n: 1, output_format: 'jpeg' }), signal: AbortSignal.timeout(150000)
+    body: JSON.stringify({ model: cfg.model, prompt, size: cfg.size, quality: cfg.quality, n: 1, output_format: cfg.format || 'jpeg', ...(cfg.background ? { background: cfg.background } : {}) }), signal: AbortSignal.timeout(180000)
   });
   if (!res.ok) { const t = await res.text().catch(() => ''); throw Object.assign(new Error(`The image model refused the request (${res.status}): ${clip(t, 200)}`), { status: res.status }); }
   const j = await res.json(), item = j?.data?.[0];
@@ -142,7 +142,7 @@ async function openaiEditOnce({ images, prompt, cfg }) {
   fd.append('model', cfg.model); fd.append('prompt', prompt); fd.append('size', cfg.size || '1024x1024'); fd.append('quality', cfg.quality || 'medium'); fd.append('n', '1'); fd.append('output_format', 'jpeg');
   const fidelity = process.env.IMAGE_INPUT_FIDELITY || (/^gpt-image-1/.test(String(cfg.model)) ? 'high' : ''); // the newer models do not take it
   if (fidelity && fidelity !== 'off') fd.append('input_fidelity', fidelity);
-  images.slice(0, 4).forEach((b, i) => fd.append('image[]', new Blob([b], { type: 'image/jpeg' }), `reference-${i + 1}.jpg`));
+  images.slice(0, 4).forEach((b, i) => { const png = b[0] === 0x89 && b[1] === 0x50; fd.append('image[]', new Blob([b], { type: png ? 'image/png' : 'image/jpeg' }), `reference-${i + 1}.${png ? 'png' : 'jpg'}`); }); // artwork goes in as PNG, so its transparency survives
   const res = await trackedFetch('imagegen', 'https://api.openai.com/v1/images/edits', { method: 'POST', headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` }, body: fd, signal: AbortSignal.timeout(180000) });
   if (!res.ok) { const t = await res.text().catch(() => ''); throw Object.assign(new Error(`The image model refused the request (${res.status}): ${clip(t, 200)}`), { status: res.status }); }
   const j = await res.json(), item = j?.data?.[0];

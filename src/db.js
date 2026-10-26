@@ -252,6 +252,17 @@ export async function migrate() {
       at timestamptz not null default now()
     );
     create index if not exists lab_concept_comments_idx on lab_concept_comments (concept_id, at);
+    create table if not exists lab_art (
+      id uuid primary key default gen_random_uuid(),
+      plan_id uuid references lab_plans(id) on delete cascade,
+      concept_id uuid references lab_concepts(id) on delete cascade,
+      name text not null default '',
+      png bytea not null,
+      thumb bytea not null,
+      prompt text not null default '',
+      model text not null default '',
+      created_at timestamptz not null default now()
+    );
     create table if not exists lab_concept_views (
       concept_id uuid not null references lab_concepts(id) on delete cascade,
       kind text not null,
