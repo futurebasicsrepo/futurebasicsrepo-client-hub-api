@@ -124,7 +124,7 @@ export function registerLabViewRoutes(app, d) {
     const cap = Number(env.LAB_DAILY_WALKS ?? 6); if (cap >= 0 && (await dayCount(`kind = 'walk'`)) >= cap) return bad(reply, `The daily limit of ${cap} walks is reached. Raise LAB_DAILY_WALKS.`, 429);
     await pool.query(`insert into lab_concept_views(concept_id,kind,status,note) values($1,'walk','pending','') on conflict (concept_id,kind) do update set status='pending', note='', created_at=case when lab_concept_views.status='ready' then now() else lab_concept_views.created_at end, updated_at=now()`, [c.id]);
     const ok = enqueue(`${c.id}:walk`, async () => {
-      try { const w = await makeWalk({ concept: { name: c.name, category: c.category }, frame: front, cfg, fetchImpl, env }); await pool.query(`update lab_concept_views set status='ready', video=$2, mime=$3, model=$4, note='', updated_at=now() where concept_id=$1 and kind='walk'`, [c.id, w.video, w.mime, w.model || '']); }
+      try { const w = await makeWalk({ concept: { name: c.name, category: c.category, spec: c.spec }, frame: front, cfg, fetchImpl, env }); await pool.query(`update lab_concept_views set status='ready', video=$2, mime=$3, model=$4, note='', updated_at=now() where concept_id=$1 and kind='walk'`, [c.id, w.video, w.mime, w.model || '']); }
       catch (e) { await pool.query(`update lab_concept_views set status='failed', note=$2, updated_at=now() where concept_id=$1 and kind='walk'`, [c.id, clip(e.message, 200)]); }
     });
     return reply.code(202).send({ started: ok ? 1 : 0, views: await summary(c.id) });

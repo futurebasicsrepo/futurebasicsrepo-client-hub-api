@@ -108,17 +108,23 @@ export function videoConfig(env = process.env) {
   if (env.LAB_VIDEO_FIXTURE || env.AI_FIXTURE) return { provider: 'fixture', configured: true, model: 'fixture', note: 'test placeholder, not a real video model' };
   return { provider: 'none', configured: false, note: 'no video model is connected (set LAB_VIDEO_PROVIDER=openai with an OpenAI key)' };
 }
-export const walkPrompt = concept => [`A short fashion film. The man in the reference photograph, wearing the ${categoryLabel(concept.category).toLowerCase()} piece "${clip(concept.name, 90)}", walks steadily toward the camera across a plain mid-grey seamless studio floor, then turns on the spot to show the back and the side, and turns to the front again.`,
-  'Steady locked-off camera, full length, soft studio light, natural cloth movement so the fabric and fit read clearly. Keep his face, outfit, colours and every logo and graphic exactly as in the reference. No text, no subtitles, no added logos, no music.'].join(' ');
+export const walkPrompt = (concept, { reference = true } = {}) => [`A short fashion film, framed from the shoulders down so the face is never in the picture. ${reference ? 'The man in the reference photograph' : 'A man'}, wearing the ${categoryLabel(concept.category).toLowerCase()} piece "${clip(concept.name, 90)}", walks steadily toward the camera across a plain mid-grey seamless studio floor, then turns on the spot to show the back and the side, and turns to the front again.`,
+  `Steady locked-off camera, soft studio light, natural cloth movement so the fabric and fit read clearly.${reference ? ' Keep his outfit, colours and every logo and graphic exactly as in the reference.' : ''} No text, no subtitles, no added logos, no music.`].join(' ');
 
 // → { video: Buffer, mime }. `frame` is the front on-model picture. `fetchImpl` and `sleep` are replaceable so this can be tested without a network.
+// the piece in words, for a walk made without the picture
+const describe = c => { const sp = c.spec || {}; return clip([`He wears ${clip(c.name, 90)}`, sp.description, sp.fabric && `in ${sp.fabric}`, sp.colors?.length && `colour ${sp.colors.join(', ')}`].filter(Boolean).join(', ') + '.', 600); };
 export async function makeWalk({ concept, frame, cfg = videoConfig(), fetchImpl = fetch, sleep = ms => new Promise(r => setTimeout(r, ms)), env = process.env }) {
   if (!cfg.configured) throw new Error(cfg.note || 'No video model is connected');
   if (cfg.provider === 'fixture') return { video: Buffer.from('FIXTURE-WALK-VIDEO'), mime: 'video/mp4', model: 'fixture' };
-  const [w, h] = String(cfg.size).split('x').map(Number), ref = await sharp(frame).resize(w, h, { fit: 'contain', background: '#c9ccd2' }).jpeg({ quality: 90 }).toBuffer();
-  const fd = new FormData(); fd.append('model', cfg.model); fd.append('prompt', walkPrompt(concept)); fd.append('size', cfg.size); fd.append('seconds', cfg.seconds); fd.append('input_reference', new Blob([ref], { type: 'image/jpeg' }), 'model.jpg');
+  // the video model refuses pictures with a person's face in them, so the reference is cropped from the shoulders down; if it is still refused, the walk is made from words alone
+  const [w, h] = String(cfg.size).split('x').map(Number), meta = await sharp(frame).metadata(), cut = Math.round((meta.height || 0) * 0.2);
+  const body = await sharp(frame).extract({ left: 0, top: cut, width: meta.width, height: Math.max(1, meta.height - cut) }).toBuffer();
+  const ref = await sharp(body).resize(w, h, { fit: 'contain', background: '#c9ccd2' }).jpeg({ quality: 90 }).toBuffer();
   const auth = { Authorization: `Bearer ${env.OPENAI_API_KEY}` };
-  const start = await fetchImpl(`${cfg.origin}/v1/videos`, { method: 'POST', headers: auth, body: fd, signal: AbortSignal.timeout(120000) });
+  const send = withRef => { const fd = new FormData(); fd.append('model', cfg.model); fd.append('prompt', withRef ? walkPrompt(concept) : `${walkPrompt(concept, { reference: false })} ${describe(concept)}`); fd.append('size', cfg.size); fd.append('seconds', cfg.seconds); if (withRef) fd.append('input_reference', new Blob([ref], { type: 'image/jpeg' }), 'model.jpg'); return fetchImpl(`${cfg.origin}/v1/videos`, { method: 'POST', headers: auth, body: fd, signal: AbortSignal.timeout(120000) }); };
+  let start = await send(true);
+  if (!start.ok && start.status >= 400 && start.status < 500 && start.status !== 401 && start.status !== 429) start = await send(false);
   if (!start.ok) throw new Error(`The video model refused the request (${start.status}): ${clip(await start.text().catch(() => ''), 200)}`);
   let job = await start.json();
   for (let i = 0; i < 90 && !['completed', 'failed'].includes(job.status); i++) {

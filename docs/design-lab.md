@@ -187,3 +187,9 @@ Graphics used to be simple shapes the assistant drew as SVG, which came out thin
 - Every word is ours: words naming another brand are removed before drawing, and the prompt forbids imitating any existing logo, band, team, character or mascot. Check the spelling of the lettering on each artwork; image models usually get it right but not always.
 - Limits: `LAB_DAILY_ART` (default 40 artworks a day). Each artwork is one image-model call.
 - The "broken JSON" error on Make concepts came from the answer being cut off (the concepts carried hand-drawn SVG, and the room for the answer was small). Concepts no longer carry drawings, have more room, and a malformed answer is asked for once more before the error is shown.
+
+## Logo placement rules, removing marks, the walk
+- The logo goes where the concept says (its "Where the logo goes" text), not a fixed spot per category. A place the front picture cannot show (the back, the inside, the lining, under a flap) is left off the picture instead of being moved: the vision model answers "not visible" and the mark is skipped. Trousers default to the front right hip below the waistband (they used to default to "back pocket or hem", which put marks on the cuff).
+- **No logo:** the Logo menu has "No logo on this piece". Saving a change to the logo or removing a graphic updates the picture straight away (placement only, no new picture). A graphic the image model printed into the picture needs **Redraw the picture** to come off; the page says so.
+- Redraw and Place again report their progress and result right under the two buttons (they used to report at the bottom of the dialog, out of sight).
+- **The walk:** the video model refuses reference pictures with a face, so the walk now starts from the on-model front view cropped from the shoulders down, framed without the face; if the picture is still refused, the walk is made from words alone. A failed walk shows its reason in the viewer.

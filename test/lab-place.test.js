@@ -55,3 +55,19 @@ test('artwork: the prompt asks for layered, several-colour original art with onl
   const white = await sharp({ create: { width: 40, height: 40, channels: 3, background: '#ffffff' } }).composite([{ input: await sharp({ create: { width: 10, height: 10, channels: 3, background: '#ff0000' } }).png().toBuffer(), left: 15, top: 15 }]).png().toBuffer();
   const k = await sharp(await keyOut(white)).raw().toBuffer({ resolveWithObject: true }); assert.equal(k.data[3], 0, 'the white edge is cut away'); assert.equal(k.data[(20 * 40 + 20) * 4 + 3], 255, 'the ink stays');
 });
+
+test('a logo whose place cannot be seen, or "no logo", is left off the picture instead of being moved to a hem', async () => {
+  const item = { x0: 0.2, y0: 0.1, x1: 0.8, y1: 0.9 };
+  const r = sanitize({ item, marks: [{ id: 'logo', visible: false, x: 0.5, y: 0.85, w: 0.06, angle: 0 }] }, marks);
+  assert.ok(r.hidden.has('logo') && !r.get('logo'), 'not visible: hidden, not placed');
+  const ink = async buf => (await sharp(await sharp(buf).extract({ left: 0, top: 0, width: 560, height: 600 }).toBuffer()).stats()).channels[0].stdev; // everywhere but the label card corner
+  const plain = await ink(await base());
+  const back = { category: 'bottoms', spec: ensureBranding({ branding: { logo: { mark: 'word', placement: 'Back waistband, centre back seam' } } }, 'bottoms') };
+  assert.ok(await ink(await composeBranding(await base(), back)) - plain < 0.5, 'a back-waistband logo is not drawn on the front picture');
+  const none = { category: 'tops', spec: ensureBranding({ branding: { logo: { mark: 'none' } } }, 'tops') };
+  assert.equal(none.spec.branding.logo.mark, 'none'); assert.ok(await ink(await composeBranding(await base(), none)) - plain < 0.5, 'no logo when the piece is set to have none');
+  const hiddenByModel = await composeBranding(await base(), { category: 'tops', spec: ensureBranding({}, 'tops') }, { locate: async () => Object.assign(new Map(), { hidden: new Set(['logo']) }) });
+  assert.ok(await ink(hiddenByModel) - plain < 0.5, 'the vision model saying it cannot be seen leaves it off');
+  const front = await composeBranding(await base(), { category: 'tops', spec: ensureBranding({}, 'tops') });
+  assert.ok(await ink(front) - plain > 0.5, 'a front logo is still drawn');
+});

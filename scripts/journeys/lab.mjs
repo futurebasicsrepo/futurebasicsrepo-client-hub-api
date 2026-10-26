@@ -588,5 +588,24 @@ await journey('J207', 'Design Lab marks: the plain picture is kept so the logo a
   } finally { await cleanup(brands, plan.plan?.id); }
 });
 
+await journey('J208', 'Design Lab marks in a browser: placing the logo again says it is done right by the button, and the logo can be taken off a piece', async () => {
+  if (!playwright) { ok(true, 'skipped: no browser here'); return; }
+  const { brands, plan } = await conceptSetup(); const tops = plan.lines.find(l => l.category === 'tops') || plan.lines[0];
+  const b = await playwright.chromium.launch(), errs = [];
+  try {
+    const c = (await K(`/plans/${plan.plan.id}/lines/${tops.id}/concepts`, { body: { count: 1 } })).json.concepts[0];
+    const oc = await b.newContext({ viewport: { width: 1280, height: 900 } }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
+    const page = await oc.newPage(); page.on('pageerror', e => errs.push(String(e))); page.on('dialog', d => d.accept());
+    await page.goto(`${BASE}/lab#board`, { waitUntil: 'networkidle' }); await page.waitForSelector(`#cgrid .cc[data-cid="${c.id}"]`, { timeout: 15000 });
+    await page.click(`#cgrid .cc[data-cid="${c.id}"]`); await page.waitForSelector('#cd[open] [data-creplace]');
+    await page.click('#cd [data-creplace]'); await page.waitForFunction(() => /Done: the logo and graphics were placed again/.test(document.getElementById('cMarkMsg')?.textContent || ''), null, { timeout: 15000 });
+    ok(true, 'Place the logo and graphics again reports that it is done, next to the button');
+    await page.selectOption('#cd [data-b="mark"]', 'none'); await page.click('#cd [data-csave]');
+    await page.waitForFunction(() => /updated/.test(document.getElementById('cMsg')?.textContent || ''), null, { timeout: 15000 });
+    ok(sql(`select spec->'branding'->'logo'->>'mark' from lab_concepts where id='${c.id}'`) === 'none', 'the logo can be taken off a piece, and the picture is updated at once');
+    ok(errs.length === 0, 'no page errors', errs); await oc.close();
+  } finally { await cleanup(brands, plan.plan?.id); await b.close(); }
+});
+
 shops.close(); brave.close();
 process.exit(summary() ? 1 : 0);

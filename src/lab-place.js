@@ -9,14 +9,14 @@ export const PLACE_SCHEMA = {
   properties: {
     item: { type: 'object', additionalProperties: false, required: ['x0', 'y0', 'x1', 'y1'], description: 'The bounding box of the product itself (not the background, not the small inset label card), as fractions 0-1 of the picture.',
       properties: { x0: { type: 'number' }, y0: { type: 'number' }, x1: { type: 'number' }, y1: { type: 'number' } } },
-    marks: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['id', 'x', 'y', 'w', 'angle'],
-      properties: { id: { type: 'string' }, x: { type: 'number', description: 'Centre of the mark, fraction 0-1 of the picture width from the left' }, y: { type: 'number', description: 'Centre of the mark, fraction 0-1 of the picture height from the top' },
+    marks: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['id', 'visible', 'x', 'y', 'w', 'angle'],
+      properties: { id: { type: 'string' }, visible: { type: 'boolean', description: 'false when that place cannot be seen in this picture (for example the back waistband in a front view): then the mark is left off' }, x: { type: 'number', description: 'Centre of the mark, fraction 0-1 of the picture width from the left' }, y: { type: 'number', description: 'Centre of the mark, fraction 0-1 of the picture height from the top' },
         w: { type: 'number', description: 'Width of the mark as a fraction 0-1 of the picture width' }, angle: { type: 'number', description: 'Degrees, clockwise positive, that the mark must be turned so it lies along the cloth there' } } } }
   }
 };
 const SYSTEM = `You place marks on a product photograph for a clothing and accessories brand. The picture shows one item (a garment, cap, shoe or bag) photographed in a studio. A small dark label card in a bottom corner is NOT part of the item: ignore it.
 For each mark you are asked about, give where it goes on the item: the centre point and the width, as fractions of the whole picture, and the angle that makes it lie flat along the cloth at that point (a front-on item needs about 0; a three-quarter view tilts the surface, so a chest mark follows the slope of the chest).
-Rules: the whole mark must sit well inside the item's outline, away from edges, seams, collars, cuffs, straps, handles, zips, pockets, buttons and hardware. Centre a "centre front" mark on the middle of the main front panel (for a bag, centred between the handles, on the body not on the handle or the band edge). A "left chest" mark is the wearer's left, which is on the viewer's right of a front view, at about the height of the armpit, one hand-width from the centre line. Size a chest mark small, a centre-front mark on a bag or sweatshirt larger. Judge by the real picture, not by habit.`;
+Rules: the whole mark must sit well inside the item's outline, away from edges, seams, collars, cuffs, straps, handles, zips, pockets, buttons and hardware. Centre a "centre front" mark on the middle of the main front panel (for a bag, centred between the handles, on the body not on the handle or the band edge). A "left chest" mark is the wearer's left, which is on the viewer's right of a front view, at about the height of the armpit, one hand-width from the centre line. Size a chest mark small, a centre-front mark on a bag or sweatshirt larger. Judge by the real picture, not by habit. If the place a mark is asked for cannot be seen in this picture (the back, the inside, a hem turned away), say visible false rather than putting it somewhere else; never move a mark to a hem or cuff because its real place is hidden.`;
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 const num = v => (Number.isFinite(Number(v)) ? Number(v) : NaN);
@@ -34,14 +34,17 @@ export async function locateMarks({ image, category = 'other', marks = [], ask =
 export function sanitize(out, marks) {
   const b = out?.item || {}, x0 = clamp(num(b.x0), 0, 0.95), y0 = clamp(num(b.y0), 0, 0.95), x1 = clamp(num(b.x1), x0 + 0.05, 1), y1 = clamp(num(b.y1), y0 + 0.05, 1);
   if (![x0, y0, x1, y1].every(Number.isFinite) || x1 - x0 < 0.12 || y1 - y0 < 0.12) return null;
-  const res = new Map();
+  const res = new Map(), hidden = new Set();
   for (const m of marks) {
     const r = (out.marks || []).find(k => k && k.id === m.id); if (!r) continue;
+    if (r.visible === false) { hidden.add(m.id); continue; }
     const x = num(r.x), y = num(r.y), w = num(r.w), a = num(r.angle);
     if (![x, y, w].every(Number.isFinite)) continue;
     const pad = 0.04;
     if (x < x0 + pad || x > x1 - pad || y < y0 + pad || y > y1 - pad) continue; // not on the item
     res.set(m.id, { x, y, w: clamp(w, m.w * 0.5, Math.min(m.w * 2.2, (x1 - x0) * 0.6)), angle: Number.isFinite(a) ? clamp(a, -35, 35) : 0 });
   }
-  return res.size ? res : null;
+  if (!res.size && !hidden.size) return null;
+  res.hidden = hidden; // marks whose place cannot be seen: left off the picture, not moved
+  return res;
 }
