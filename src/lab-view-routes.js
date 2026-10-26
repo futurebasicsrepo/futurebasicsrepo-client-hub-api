@@ -78,12 +78,13 @@ export function registerLabViewRoutes(app, d) {
   app.get('/v1/lab/concepts/:id/views/:kind', { preHandler: pre }, async (req, reply) => {
     if (!needId(req, reply)) return;
     const kind = req.params.kind;
-    if (kind === 'picture') { const r = (await pool.query('select image, thumb from lab_concepts where id=$1', [req.params.id])).rows[0]; const b = req.query?.thumb ? r?.thumb : r?.image; if (!b) return bad(reply, 'No picture', 404); return reply.header('content-type', 'image/jpeg').header('cache-control', 'private, max-age=300').send(b); }
+    if (kind === 'picture') { const r = (await pool.query('select image, thumb, updated_at from lab_concepts where id=$1', [req.params.id])).rows[0]; const b = req.query?.thumb ? r?.thumb : r?.image; if (!b) return bad(reply, 'No picture', 404); const tag = `"${new Date(r.updated_at).getTime()}${req.query?.thumb ? 't' : ''}"`; if (req.headers['if-none-match'] === tag) return reply.code(304).header('etag', tag).send(); return reply.header('content-type', 'image/jpeg').header('cache-control', 'private, no-cache').header('etag', tag).send(b); }
     if (kind !== 'walk' && !isKind(kind)) return bad(reply, 'Not found', 404);
-    const r = (await pool.query(`select image, thumb, video, mime from lab_concept_views where concept_id=$1 and kind=$2 and status='ready'`, [req.params.id, kind])).rows[0];
-    if (kind === 'walk') { if (!r?.video) return bad(reply, 'No walk yet', 404); return reply.header('content-type', r.mime || 'video/mp4').header('cache-control', 'private, max-age=300').send(r.video); }
+    const r = (await pool.query(`select image, thumb, video, mime, updated_at from lab_concept_views where concept_id=$1 and kind=$2 and status='ready'`, [req.params.id, kind])).rows[0];
+    const tag = r ? `"${new Date(r.updated_at).getTime()}${req.query?.thumb ? 't' : ''}"` : '', fresh = () => (req.headers['if-none-match'] === tag ? reply.code(304).header('etag', tag).send() : null); // revalidated, so a view drawn again replaces the browser's old copy
+    if (kind === 'walk') { if (!r?.video) return bad(reply, 'No walk yet', 404); return fresh() || reply.header('content-type', r.mime || 'video/mp4').header('cache-control', 'private, no-cache').header('etag', tag).send(r.video); }
     const b = req.query?.thumb ? r?.thumb : r?.image; if (!b) return bad(reply, 'Not made yet', 404);
-    return reply.header('content-type', 'image/jpeg').header('cache-control', 'private, max-age=300').send(b);
+    return fresh() || reply.header('content-type', 'image/jpeg').header('cache-control', 'private, no-cache').header('etag', tag).send(b);
   });
 
   app.post('/v1/lab/concepts/:id/views', { preHandler: pre }, async (req, reply) => {

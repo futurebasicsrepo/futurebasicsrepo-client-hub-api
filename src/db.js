@@ -240,6 +240,7 @@ export async function migrate() {
       created_at timestamptz not null default now(),
       updated_at timestamptz not null default now()
     );
+    alter table lab_concepts add column if not exists raw bytea; -- the picture before the logo and graphics were laid on, so they can be placed again without drawing it again
     create index if not exists lab_concepts_plan_idx on lab_concepts (plan_id, created_at desc);
     create index if not exists lab_concepts_line_idx on lab_concepts (line_id);
     create table if not exists lab_concept_comments (

@@ -9,14 +9,14 @@ import { imageConfig } from './check.js';
 import { ask as realAsk, providerReady } from './intel-llm.js';
 import { categoryLabel } from './lab.js';
 import { createLabData } from './lab-data.js';
-import { generateConcepts, artworkFiles, renderConcept, aiOpinion, closeness, cleanConceptEdit, productBrief, ensureBranding, LOGO_MARKS, LOGO_TECHNIQUES, GRAPHIC_PLACE, GRAPHIC_TECHNIQUES, PRODUCT_TYPES } from './lab-concepts.js';
+import { generateConcepts, artworkFiles, renderConcept, finishConcept, aiOpinion, closeness, cleanConceptEdit, productBrief, ensureBranding, LOGO_MARKS, LOGO_TECHNIQUES, GRAPHIC_PLACE, GRAPHIC_TECHNIQUES, PRODUCT_TYPES } from './lab-concepts.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const clip = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
 const dataUrl = b => (b ? `data:image/jpeg;base64,${Buffer.from(b).toString('base64')}` : '');
 
 export function registerLabConceptRoutes(app, d) {
-  const { pool, authenticate, adminOnly, getSetting, env = process.env, fetchImpl = fetch, askImpl = realAsk, createProduct, attachArtwork, imageCfg = () => imageConfig(env), log = console } = d;
+  const { pool, authenticate, adminOnly, getSetting, env = process.env, fetchImpl = fetch, askImpl = realAsk, createProduct, attachArtwork, imageCfg = () => imageConfig(env), placeImpl, log = console } = d;
   const pre = [authenticate, adminOnly], bad = (reply, error, code = 422, extra = {}) => reply.code(code).send({ error, ...extra });
   const needId = (req, reply) => UUID.test(req.params.id) || (bad(reply, 'Not found', 404), false);
   const actorOf = req => (UUID.test(String(req.auth?.sub || '')) ? req.auth.sub : null);
@@ -67,9 +67,9 @@ export function registerLabConceptRoutes(app, d) {
     }));
     const out = [];
     for (const m of made) {
-      const r = (await pool.query(`insert into lab_concepts(plan_id,line_id,parent_id,name,category,role,spec,twist,price_cents,cost_cents,qty,refs,image,thumb,image_note,closeness,created_by,cost_ai)
-        values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) returning id`,
-      [plan?.id || null, line.id || null, parent?.id || null, m.c.name, line.category, line.role, m.c.spec, m.c.twist, line.priceCents ?? null, line.costCents ?? null, line.qty ?? 0, refs.map(r => r.id), m.img?.image || null, m.img?.thumb || null, m.imageNote, m.close, actorOf(req), m.cents])).rows[0];
+      const r = (await pool.query(`insert into lab_concepts(plan_id,line_id,parent_id,name,category,role,spec,twist,price_cents,cost_cents,qty,refs,image,thumb,image_note,closeness,created_by,cost_ai,raw)
+        values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) returning id`,
+      [plan?.id || null, line.id || null, parent?.id || null, m.c.name, line.category, line.role, m.c.spec, m.c.twist, line.priceCents ?? null, line.costCents ?? null, line.qty ?? 0, refs.map(r => r.id), m.img?.image || null, m.img?.thumb || null, m.imageNote, m.close, actorOf(req), m.cents, m.img?.raw || null])).rows[0];
       out.push(await one(r.id));
     }
     if (line.id) await pool.query(`update lab_plan_lines set status='in_concept' where id=$1 and status='planned'`, [line.id]);
@@ -108,8 +108,10 @@ export function registerLabConceptRoutes(app, d) {
   });
   app.get('/v1/lab/concepts/:id/image', { preHandler: pre }, async (req, reply) => {
     if (!needId(req, reply)) return;
-    const r = (await pool.query('select image from lab_concepts where id=$1', [req.params.id])).rows[0]; if (!r?.image) return bad(reply, 'No picture', 404);
-    return reply.header('content-type', 'image/jpeg').header('cache-control', 'private, max-age=300').send(r.image);
+    const r = (await pool.query('select image, updated_at from lab_concepts where id=$1', [req.params.id])).rows[0]; if (!r?.image) return bad(reply, 'No picture', 404);
+    // revalidated every time (the picture changes when it is redrawn or its marks are placed again), so a redrawn picture is never shown from the browser's old copy
+    const tag = `"${new Date(r.updated_at).getTime()}"`; if (req.headers['if-none-match'] === tag) return reply.code(304).header('etag', tag).send();
+    return reply.header('content-type', 'image/jpeg').header('cache-control', 'private, no-cache').header('etag', tag).send(r.image);
   });
 
   app.put('/v1/lab/concepts/:id', { preHandler: pre }, async (req, reply) => {
@@ -199,8 +201,20 @@ export function registerLabConceptRoutes(app, d) {
     const cfg = imageCfg(); if (!cfg.configured) return bad(reply, 'No image model is connected, so there is no picture to draw.', 503);
     let img; try { img = await renderConcept({ name: r.name, category: r.category, twist: r.twist, spec: ensureBranding(r.spec || {}, r.category) }, { cfg, brandNames: await brandNames() }); } catch (e) { return bad(reply, `The picture could not be drawn: ${clip(e.message, 160)}`, 502); }
     redraws.set(day, (redraws.get(day) || 0) + 1);
-    await pool.query(`update lab_concepts set image=$2, thumb=$3, image_note='', updated_at=now() where id=$1`, [r.id, img.image, img.thumb]);
+    await pool.query(`update lab_concepts set image=$2, thumb=$3, raw=$4, image_note='', updated_at=now() where id=$1`, [r.id, img.image, img.thumb, img.raw || null]);
     await pool.query('delete from lab_concept_views where concept_id=$1', [r.id]); // the flats, the on-model views and the walk were drawn from the old picture
+    return { concept: await one(r.id) };
+  });
+
+  // lay the logo and graphics on again, in the right places, without drawing the picture again (needs the plain picture, which pictures drawn since this was added keep)
+  app.post('/v1/lab/concepts/:id/replace-marks', { preHandler: pre }, async (req, reply) => {
+    if (!needId(req, reply)) return;
+    const r = (await pool.query('select * from lab_concepts where id=$1', [req.params.id])).rows[0]; if (!r) return bad(reply, 'Not found', 404);
+    if (r.status === 'tech_pack') return bad(reply, 'This concept is already a tech pack', 409);
+    if (!r.raw) return bad(reply, 'This picture was drawn before the plain copy was kept. Use Redraw the picture once; after that the marks can be placed again for free.', 409);
+    let img; try { img = await finishConcept(r.raw, { name: r.name, category: r.category, twist: r.twist, spec: ensureBranding(r.spec || {}, r.category) }, { cfg: imageCfg(), locate: placeImpl }); } catch (e) { return bad(reply, `The marks could not be placed: ${clip(e.message, 160)}`, 502); }
+    await pool.query(`update lab_concepts set image=$2, thumb=$3, updated_at=now() where id=$1`, [r.id, img.image, img.thumb]);
+    await pool.query('delete from lab_concept_views where concept_id=$1', [r.id]);
     return { concept: await one(r.id) };
   });
 
