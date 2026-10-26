@@ -14,6 +14,7 @@ import { ask as realAsk, providerReady, costCents } from './intel-llm.js';
 import { brandCodeWords, DEFAULT_BRAND_CODE, categoryLabel, cleanCategory } from './lab.js';
 import { logoSvg, BRAND_INK } from './brand-kit.js';
 import { textPath } from './lab-type.js';
+import { locateMarks } from './lab-place.js';
 
 const clip = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
 export const norm = s => String(s ?? '').normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase();
@@ -164,15 +165,26 @@ export function ensureBranding(spec = {}, category = 'other') {
   return { ...spec, branding: { logo: { mark: LOGO_MARKS.some(m => m.id === l.mark) ? l.mark : 'cue', placement: clip(l.placement, 120) || place(category), technique: LOGO_TECHNIQUES.includes(String(l.technique || '').toLowerCase()) ? String(l.technique).toLowerCase() : 'embroidered' }, label: labelWords(category) }, graphics: cleanGraphics(spec.graphics) };
 }
 // the logo and the label, drawn from our own brand files, and any front graphics, laid on the concept's picture. → a JPEG buffer
-export async function composeBranding(buf, concept) {
+export async function composeBranding(buf, concept, { locate = null } = {}) {
   const spec = ensureBranding(concept.spec, concept.category), meta = await sharp(buf).metadata(), W = meta.width, H = meta.height, layers = [];
   const png = async (svg, width) => sharp(Buffer.from(svg), { density: Math.max(72, Math.ceil(72 * width / 100)) }).resize({ width: Math.max(8, Math.round(width)) }).png().toBuffer();
   // (stats() of an extract alone reads the whole picture, so the region is cut out first)
   const lum = async (f, w) => { try { const left = Math.max(0, Math.round(f.x * W - w / 2)), top = Math.max(0, Math.round(f.y * H - w / 2)); const region = await sharp(buf).extract({ left, top, width: Math.max(2, Math.min(Math.round(w), W - left)), height: Math.max(2, Math.min(Math.round(w), H - top)) }).toBuffer(), st = await sharp(region).stats(); const [r, g, b] = st.channels.map(c => c.mean); return 0.299 * r + 0.587 * g + 0.114 * b; } catch { return 128; } };
-  const put = async (input, f) => { const m = await sharp(input).metadata(); layers.push({ input, left: Math.max(0, Math.round(f.x * W - m.width / 2)), top: Math.max(0, Math.round(f.y * H - m.height / 2)) }); };
-  const front = (LOGO_PLACE[concept.category] || LOGO_PLACE.other)[1];
-  if (front) { const mark = spec.branding.logo.mark, w = front.w * W * (mark === 'cue' ? 1 : 2.2), fill = (await lum(front, front.w * W)) < 120 ? '#FFFFFF' : BRAND_INK; await put(await png(logoSvg(mark, { fill }), w), front); }
-  for (const g of spec.graphics) { const f = GRAPHIC_PLACE[g.placement]; if (f && g.svg) await put(await png(g.svg, f.w * W), f); }
+  // a mark is laid with its centre on the point, turned to lie along the cloth when it is not straight
+  const put = async (input, f, angle = 0) => {
+    let img = input; if (Math.abs(angle) > 0.5) img = await sharp(input).rotate(angle, { background: { r: 0, g: 0, b: 0, alpha: 0 } }).png().toBuffer();
+    const m = await sharp(img).metadata(); layers.push({ input: img, left: Math.max(0, Math.min(W - m.width, Math.round(f.x * W - m.width / 2))), top: Math.max(0, Math.min(H - m.height, Math.round(f.y * H - m.height / 2))) });
+  };
+  const front = (LOGO_PLACE[concept.category] || LOGO_PLACE.other)[1], graphics = spec.graphics.filter(g => GRAPHIC_PLACE[g.placement] && g.svg);
+  const logoMul = spec.branding.logo.mark === 'cue' ? 1 : 2.2;
+  // where each mark goes: a vision model looks at this picture and measures it; fixed positions are the fallback
+  const asks = [...(front ? [{ id: 'logo', where: `the Future Basics logo: ${place(concept.category)}`, w: front.w * logoMul }] : []), ...graphics.map((g, i) => ({ id: `g${i}`, where: `a graphic: ${g.placement}`, w: GRAPHIC_PLACE[g.placement].w }))];
+  let found = null; try { found = asks.length && locate ? await locate({ image: buf, category: concept.category, marks: asks }) : null; } catch { found = null; }
+  if (front) {
+    const f = found?.get('logo'), at = f || front, mark = spec.branding.logo.mark, w = f ? f.w * W : front.w * W * logoMul, fill = (await lum(at, w)) < 120 ? '#FFFFFF' : BRAND_INK;
+    await put(await png(logoSvg(mark, { fill }), w), at, f ? f.angle : 0);
+  }
+  for (const [i, g] of graphics.entries()) { const f = found?.get(`g${i}`), fb = GRAPHIC_PLACE[g.placement]; await put(await png(g.svg, (f ? f.w : fb.w) * W), f || fb, f ? f.angle : 0); }
   // the woven label as a small inset in the bottom corner, so the picture shows it is there
   const lw = Math.round(W * 0.2), label = await sharp(Buffer.from(logoSvg('lockup', { fill: '#FFFFFF', bg: BRAND_INK, pad: 90 })), { density: 144 }).resize({ width: lw }).png().toBuffer(), lm = await sharp(label).metadata();
   layers.push({ input: label, left: Math.max(0, W - lm.width - Math.round(W * 0.03)), top: Math.max(0, H - lm.height - Math.round(H * 0.03)) });
@@ -223,13 +235,17 @@ async function fixtureConceptImage(concept) {
   return sharp(Buffer.from(svg)).jpeg({ quality: 86 }).toBuffer();
 }
 // → { image, thumb, model } as Buffers, or null when no image model is connected. The prompt is built from the concept alone: no reference picture goes in.
-export async function renderConcept(concept, { cfg = imageConfig(), brandNames = [] } = {}) {
+export async function renderConcept(concept, { cfg = imageConfig(), brandNames = [], locate } = {}) {
   if (!cfg.configured) return null;
   const buf = cfg.provider === 'fixture' ? await fixtureConceptImage(concept) : await openaiImage(imagePrompt(concept, { brandNames }), { ...cfg, size: process.env.HERO_SIZE || cfg.size || '1024x1024' });
-  const upright = await sharp(buf).rotate().resize({ width: 1400, height: 1400, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 90 }).toBuffer(), marked = await composeBranding(upright, concept);
-  const image = marked;
+  const upright = await sharp(buf).rotate().resize({ width: 1400, height: 1400, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 90 }).toBuffer();
+  return { ...(await finishConcept(upright, concept, { cfg, locate })), model: cfg.model || cfg.provider };
+}
+// the logo, graphics and label laid on the plain picture (kept as `raw` so they can be placed again without drawing it again)
+export async function finishConcept(raw, concept, { cfg = {}, locate } = {}) {
+  const marked = await composeBranding(raw, concept, { locate: locate || (cfg.provider === 'fixture' ? null : locateMarks) });
   const thumb = await sharp(marked).resize({ width: 420, height: 420, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 72 }).toBuffer();
-  return { image, thumb, model: cfg.model || cfg.provider };
+  return { image: marked, thumb, raw };
 }
 
 // ---- turning an approved concept into a product ------------------------------------------------------------------------------------------------------

@@ -62,6 +62,8 @@ const brave = http.createServer((q, s) => {
   send(404, {});
 });
 await new Promise(r => brave.listen(3133, '127.0.0.1', r));
+// the page asks its questions in its own box (the browser's prompt() can be switched off): type the answer and continue
+const say = async (page, text) => { await page.waitForSelector('dialog.ask[open] textarea', { timeout: 8000 }); await page.fill('dialog.ask[open] textarea', text); await page.click('dialog.ask[open] button.go'); await page.waitForFunction(() => !document.querySelector('dialog.ask[open]'), null, { timeout: 4000 }); };
 const SCAN = async (id) => (await K(`/brands/${id}/scan?wait=1`, { method: 'POST', body: {} }));
 const mkBrand = async (name, site, role = 'reference') => (await K('/brands', { body: { name: `${name} ${stamp}`, site, role } })).json.brand;
 
@@ -385,11 +387,11 @@ await journey('J199', 'Design Lab concepts in a browser: make concepts from a pl
   const b = await playwright.chromium.launch(), errs = []; let answer = '';
   try {
     const oc = await b.newContext({ viewport: { width: 1280, height: 900 } }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
-    const page = await oc.newPage(); page.on('pageerror', e => errs.push(String(e))); page.on('dialog', d => d.accept(d.type() === 'prompt' ? answer : undefined));
+    const page = await oc.newPage(); page.on('pageerror', e => errs.push(String(e))); page.on('dialog', d => d.accept());
     await page.goto(`${BASE}/lab`, { waitUntil: 'networkidle' }); await page.waitForSelector('#planList .pl');
     await page.locator('#planList .pl', { hasText: 'Concept plan' }).locator('[data-open]').click(); await page.waitForSelector('#planView tr[data-line]');
     ok(await page.locator('#labTabs a[href="#board"]').count() === 1, 'the page has a Concepts tab');
-    answer = 'longer back'; await page.locator(`#planView tr[data-line="${line.id}"] [data-mk]`).click(); await page.waitForFunction(() => document.querySelectorAll('#cgrid .cc').length >= 3, null, { timeout: 30000 });
+    await page.locator(`#planView tr[data-line="${line.id}"] [data-mk]`).click(); await say(page, 'longer back'); await page.waitForFunction(() => document.querySelectorAll('#cgrid .cc').length >= 3, null, { timeout: 30000 });
     ok(await page.locator('#cgrid .cc').count() === 3 && await page.locator('#cgrid .cc img').count() === 3 && /clear|look closely|too close/i.test(await page.locator('#cgrid .cc').first().innerText()), 'three concept cards appear with their pictures and their check');
     ok(/in_concept|in concept/i.test(await page.locator(`#planView tr[data-line="${line.id}"]`).innerText()) || /3 concepts/.test(await page.locator(`#planView tr[data-line="${line.id}"]`).innerText()), 'the plan row now counts its concepts');
     await page.locator('#cgrid .cc').first().click(); await page.waitForSelector('#cd[open] [data-cf]'); await page.waitForFunction(() => document.querySelector('#cd .big img'), null, { timeout: 8000 });
@@ -401,7 +403,7 @@ await journey('J199', 'Design Lab concepts in a browser: make concepts from a pl
     await page.locator('#cd [data-credraw]').click(); await page.waitForFunction(() => document.querySelector('#cd .big img') && !/Drawing/.test(document.querySelector('#cAct')?.textContent || ''), null, { timeout: 15000 }); ok(true, 'the picture is drawn again');
     await page.fill('#cd [data-k="twist"]', 'Like the Ralph Lauren polo pony but ours'); await page.locator('#cd [data-csave]').click(); await page.waitForFunction(() => /too close/i.test(document.querySelector('#cd .verdict')?.textContent || ''), null, { timeout: 8000 });
     ok(/Ralph Lauren/.test(await page.innerText('#cd .verdict')), 'naming another brand flags it "too close" and says which name');
-    answer = 'We looked at it beside the reference and it is clearly different'; await page.locator('#cd [data-capprove]').click(); await page.waitForFunction(() => /approved/i.test(document.querySelector('#cd .in .chip')?.textContent || ''), null, { timeout: 10000 });
+    await page.locator('#cd [data-capprove]').click(); await say(page, 'We looked at it beside the reference and it is clearly different'); await page.waitForFunction(() => /approved/i.test(document.querySelector('#cd .in .chip')?.textContent || ''), null, { timeout: 10000 });
     ok(/approved anyway because/i.test(await page.innerText('#cd .verdict')), 'approving needs a reason, and the reason is shown with the check');
     await page.fill('#cd #cNew', 'Checked with Danielle'); await page.locator('#cd [data-ccom]').click(); await page.waitForFunction(() => /Checked with Danielle/.test(document.querySelector('#cd .cm')?.textContent || ''), null, { timeout: 8000 }); ok(true, 'a comment is posted');
     await page.locator('#cd [data-ctp]').click(); await page.waitForSelector('#cd a.btn.go[href^="/tech-packs/"]', { timeout: 30000 });
@@ -410,7 +412,7 @@ await journey('J199', 'Design Lab concepts in a browser: make concepts from a pl
     await page.locator('#cd [data-cclose]').click(); await page.waitForFunction(() => !document.querySelector('#cd[open]'));
     await page.locator('#bFilters [data-bs="tech_pack"]').click(); await page.waitForFunction(() => document.querySelectorAll('#cgrid .cc').length === 1, null, { timeout: 8000 }); ok(/tech pack/i.test(await page.locator('#cgrid .cc').innerText()), 'the board filters by status');
     await page.locator('#bFilters [data-bs="draft"]').click(); await page.waitForFunction(() => document.querySelectorAll('#cgrid .cc').length === 2, null, { timeout: 8000 });
-    await page.locator('#cgrid .cc').first().click(); await page.waitForSelector('#cd[open] [data-creject]'); answer = 'Too fussy for the price'; await page.locator('#cd [data-creject]').click(); await page.waitForFunction(() => /rejected/i.test(document.querySelector('#cd .in .chip')?.textContent || ''), null, { timeout: 8000 }); ok(true, 'a concept is rejected with a reason');
+    await page.locator('#cgrid .cc').first().click(); await page.waitForSelector('#cd[open] [data-creject]'); await page.locator('#cd [data-creject]').click(); await say(page, 'Too fussy for the price'); await page.waitForFunction(() => /rejected/i.test(document.querySelector('#cd .in .chip')?.textContent || ''), null, { timeout: 8000 }); ok(true, 'a concept is rejected with a reason');
     await page.locator('#cd [data-cclose]').click(); await page.setViewportSize({ width: 360, height: 800 }); await page.waitForTimeout(250); ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), 'a phone does not scroll sideways', await page.evaluate(() => document.documentElement.scrollWidth));
     ok(errs.length === 0, 'no page errors', errs); await oc.close();
   } finally { await cleanup(brands, plan.plan?.id); await b.close(); }
@@ -463,15 +465,15 @@ await journey('J201', 'Design Lab graphic program in a browser: develop it, see 
   const b = await playwright.chromium.launch(), errs = []; let answer = '';
   try {
     const oc = await b.newContext({ viewport: { width: 1280, height: 900 } }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
-    const page = await oc.newPage(); page.on('pageerror', e => errs.push(String(e))); page.on('dialog', d => d.accept(d.type() === 'prompt' ? answer : undefined));
+    const page = await oc.newPage(); page.on('pageerror', e => errs.push(String(e))); page.on('dialog', d => d.accept());
     await page.goto(`${BASE}/lab`, { waitUntil: 'networkidle' }); await page.waitForSelector('#planList .pl');
     await page.locator('#planList .pl', { hasText: 'Concept plan' }).locator('[data-open]').click(); await page.waitForSelector('#planView .prog');
     ok(/Graphic program/.test(await page.innerText('#planView .prog')) && await page.locator('#planView [data-prog]').count() === 1, 'a plan offers to develop its graphic program');
-    answer = 'lean on numerals'; await page.locator('#planView [data-prog]').click(); await page.waitForSelector('#planView .mt', { timeout: 30000 });
+    await page.locator('#planView [data-prog]').click(); await say(page, 'lean on numerals'); await page.waitForSelector('#planView .mt', { timeout: 30000 });
     ok(await page.locator('#planView .mt').count() >= 4 && await page.locator('#planView .mt img').count() >= 4 && /Quiet Varsity/.test(await page.innerText('#planView .prog')) && await page.locator('#planView .prog .sw').count() >= 3, 'the program shows its motifs drawn, its palette and its name');
     ok(/reads: FB/.test(await page.innerText('#planView .prog')), 'a motif says what its lettering reads');
     const n = await page.locator('#planView .mt').count(); await page.locator('#planView .mt [data-motifrm]').last().click(); await page.waitForFunction(k => document.querySelectorAll('#planView .mt').length === k - 1, n, { timeout: 8000 }); ok(true, 'a motif can be removed');
-    answer = ''; await page.locator(`#planView tr[data-line="${line.id}"] [data-mk]`).click(); await page.waitForFunction(() => document.querySelectorAll('#cgrid .cc').length >= 3, null, { timeout: 30000 });
+    await page.locator(`#planView tr[data-line="${line.id}"] [data-mk]`).click(); await say(page, ''); await page.waitForFunction(() => document.querySelectorAll('#cgrid .cc').length >= 3, null, { timeout: 30000 });
     await page.locator('#cgrid .cc').last().click(); await page.waitForSelector('#cd[open] .gfx', { timeout: 8000 }); // newest first: the oldest of the three is the one that applies a motif
     ok(/crest|stripes/.test(await page.innerText('#cd .gfx')) && await page.locator('#cd .gfx img').count() >= 1, 'a concept shows the program graphic it applies, with its kind');
     await page.locator('#cd [data-cclose]').click(); await page.waitForFunction(() => !document.querySelector('#cd[open]'));
@@ -557,6 +559,24 @@ await journey('J204', 'Design Lab assortment board in a browser: the wall of fla
     ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), 'a phone does not scroll sideways', await page.evaluate(() => document.documentElement.scrollWidth));
     ok(errs.length === 0, 'no page errors', errs); await oc.close();
   } finally { await cleanup(brands, plan.plan?.id); await b.close(); }
+});
+
+await journey('J207', 'Design Lab marks: the plain picture is kept so the logo and graphics can be placed again without a new picture, and a redrawn picture is never served from an old copy', async () => {
+  const { brands, plan } = await conceptSetup(); const tops = plan.lines.find(l => l.category === 'tops') || plan.lines[0];
+  try {
+    const made = await K(`/plans/${plan.plan.id}/lines/${tops.id}/concepts`, { body: { count: 1 } }); const c = made.json.concepts[0];
+    ok(sql(`select (raw is not null)::text from lab_concepts where id='${c.id}'`) === 'true', 'a concept keeps its plain picture beside the one with the marks on');
+    const get = (path, h = {}) => fetch(`${BASE}/v1/lab/concepts/${c.id}/${path}`, { headers: { Authorization: 'Bearer ' + kyleT, ...h } });
+    const first = await get('image'); const tag = first.headers.get('etag');
+    ok(first.status === 200 && /no-cache/.test(first.headers.get('cache-control')) && tag, 'the picture is revalidated each time (private, no-cache, with a tag)');
+    ok((await get('image', { 'if-none-match': tag })).status === 304, 'and an unchanged picture costs nothing to ask for again');
+    await new Promise(r => setTimeout(r, 1100));
+    ok((await K(`/concepts/${c.id}/replace-marks`, { body: {} })).status === 200 && (await get('image', { 'if-none-match': tag })).status === 200, 'placing the marks again makes a new picture that replaces the old one at once');
+    ok((await K(`/concepts/${c.id}/redraw`, { body: {} })).status === 200, 'redrawing still works');
+    sql(`update lab_concepts set raw=null where id='${c.id}'`);
+    const old = await K(`/concepts/${c.id}/replace-marks`, { body: {} }); ok(old.status === 409 && /Redraw the picture once/.test(old.json.error), 'a picture from before the plain copy was kept says to redraw it once');
+    ok((await P(`/concepts/${c.id}/replace-marks`, { body: {} })).status === 403 && (await K('/concepts/00000000-0000-4000-8000-000000000000/replace-marks', { body: {} })).status === 404, 'closed to others, and unknown concepts are not found');
+  } finally { await cleanup(brands, plan.plan?.id); }
 });
 
 shops.close(); brave.close();
