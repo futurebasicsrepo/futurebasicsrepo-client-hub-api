@@ -2094,6 +2094,52 @@ await journey('J202', 'Client cards newest first and sortable, the menu folds an
   ok(page.errs.length === 0, 'no script errors', page.errs); await ctx.close();
 });
 
+await journey('J205', 'A new client with no products yet: a request needs no product, can carry files, and Send files works without starting a request or a tech pack', async () => {
+  const tag = `nc${stamp}`, cid = sql(`insert into clients(name,slug,status) values('New Client ${tag}','new-client-${tag}','active') returning id`).split('\n')[0];
+  const uid = sql(`insert into users(client_id,email,name,role) values('${cid}','newc-${tag}@chaos.test','Nia New','client') returning id`).split('\n')[0];
+  const tok = await forge({ sub: uid, clientId: cid, role: 'client', email: `newc-${tag}@chaos.test` });
+  const ok1 = await call('/v1/requests', { token: tok, body: { type: 'question', title: 'Where do I start?', details: 'No product yet' } });
+  ok(ok1.status === 201 && ok1.json.product_id === null, 'a request with no product is accepted', JSON.stringify(ok1.json));
+  const other = sql(`select p.id from products p where p.client_id <> '${cid}' limit 1`).split('\n')[0];
+  ok((await call('/v1/requests', { token: tok, body: { type: 'question', title: 'x', details: 'y', productId: other } })).status === 400 && (await call('/v1/requests', { token: tok, body: { type: 'question', title: 'x', details: 'y', productId: 'not-an-id' } })).status === 400, 'a product that is not theirs (or not an id) is refused');
+  ok((await call('/v1/requests', { token: tok, body: { type: 'question', title: '', details: 'y' } })).status === 400, 'a request still needs a title and details');
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.client.token', t); } catch {} }, tok);
+  const page = await ctx.newPage(); page.errs = []; page.on('pageerror', e => page.errs.push(e.message));
+  await page.goto(`${BASE}/hub`, { waitUntil: 'networkidle' }); await page.waitForSelector('#newRequest', { timeout: 15000 });
+  await page.click('#newRequest'); await page.waitForSelector('#requestDialog[open]');
+  ok(await page.$eval('#requestProduct', s => s.options.length === 1 && s.options[0].value === '' && !s.required && /not about a product/i.test(s.options[0].textContent)), 'with no products the request form offers "not about a product", and it is not required');
+  await page.fill('#requestTitle', 'Logo ideas'); await page.fill('#requestDetails', 'Here is what I have in mind'); await page.setInputFiles('#requestFiles', `${FX}/ig-screenshot.png`);
+  await page.click('#requestForm button.full'); await page.waitForFunction(() => /Request submitted/.test(document.getElementById('requestMessage').textContent), null, { timeout: 15000 });
+  ok(sql(`select count(*)::text from requests where client_id='${cid}' and title='Logo ideas' and product_id is null`) === '1', 'the request is made without a product');
+  ok(sql(`select count(*)::text from room_files where client_id='${cid}' and note like 'With the request: Logo ideas%'`) === '1', 'and its file lands in the room\'s files, for Future Basics to see');
+  await page.waitForFunction(() => !document.querySelector('#requestDialog[open]'), null, { timeout: 8000 });
+  const [chooser] = await Promise.all([page.waitForEvent('filechooser', { timeout: 8000 }), page.click('#sendFilesTop')]);
+  await chooser.setFiles(`${FX}/pinterest-screenshot.png`); await page.waitForFunction(() => /Sent 1 file/.test(document.getElementById('rfMsg').textContent), null, { timeout: 15000 });
+  ok(sql(`select count(*)::text from room_files where client_id='${cid}'`) === '2', 'Send files works with no request and no tech pack');
+  ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'a phone does not scroll sideways'); ok(page.errs.length === 0, 'no script errors', page.errs); await ctx.close();
+});
+
+await journey('J206', 'Renaming a project: a product project and a software project can be renamed and edited in the work console, and a product project is not refused for having no build', async () => {
+  const r = await room('206', { wait: false }), W = 'http://work.localhost:3123', tag = `rn${stamp}`;
+  const uid = sql(`insert into users(client_id,email,name,role) values('${r.clientId}','ren-${tag}@thefuturebasics.com','Ren Owner','admin') returning id`).split('\n')[0];
+  const tok = await forge({ sub: uid, clientId: r.clientId, role: 'admin', email: `ren-${tag}@thefuturebasics.com` });
+  const cid = sql(`insert into clients(name,slug,status) values('Rename Co ${tag}','rename-co-${tag}','active') returning id`).split('\n')[0];
+  const prod = sql(`insert into projects(client_id,name,status,kind) values('${cid}','Old product name','active','product') returning id`).split('\n')[0];
+  const soft = sql(`insert into projects(client_id,name,status,kind,stage) values('${cid}','Old site name','active','software','build') returning id`).split('\n')[0];
+  const P = (id, body) => call(`/v1/admin/projects/${id}`, { token: tok, method: 'PATCH', body });
+  const a = await P(prod, { name: 'New product name', buildId: null }); ok(a.status === 200 && a.json.name === 'New product name', 'a product project is renamed even when the form sends no build', JSON.stringify(a.json));
+  ok((await P(prod, { name: 'x', buildId: '00000000-0000-4000-8000-000000000000' })).status === 400 && (await P(prod, { stage: 'launch' })).status === 400, 'but it still cannot be given a build or a stage');
+  const b = await P(soft, { name: 'New site name', buildId: null }); ok(b.status === 200 && b.json.name === 'New site name', 'a software project is renamed too');
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, tok);
+  const page = await ctx.newPage(); page.errs = []; page.on('pageerror', e => page.errs.push(e.message));
+  await page.goto(`${W}/clients/${cid}`, { waitUntil: 'networkidle' }); await page.waitForSelector('#roomMain', { timeout: 20000 }); await page.waitForFunction(() => typeof window.editProject === 'function' && typeof activeClient !== 'undefined' && activeClient, null, { timeout: 20000 });
+  await page.evaluate(id => window.editProject(id), prod); await page.waitForSelector('#editorForm [name=name]');
+  await page.fill('#editorForm [name=name]', 'Renamed in the browser'); await page.locator('#editorForm .editor-actions button:not([type=button])').first().click();
+  await page.waitForFunction(() => /Renamed in the browser/.test(document.body.innerText), null, { timeout: 10000 });
+  ok(sql(`select name from projects where id='${prod}'`) === 'Renamed in the browser', 'renaming a product project from the work console saves, with no error');
+  ok(page.errs.length === 0, 'no script errors', page.errs); await ctx.close();
+});
+
 await journey('J179', 'Sending the theme in a browser: the push window offers the theme for a Shopify client, the zip downloads, the store key is saved without being shown again, and the page is clean', async () => {
   const r = await room('179', { wait: false }), W = 'http://work.localhost:3123';
   const kyle = await forge({ sub: sql(`select id from users where lower(email)='kyle@thefuturebasics.com'`).split('\n')[0] || sql(`insert into users(client_id,email,name,role) values('${r.clientId}','kyle@thefuturebasics.com','kyle','admin') returning id`).split('\n')[0], clientId: r.clientId, role: 'admin', email: 'kyle@thefuturebasics.com' });
