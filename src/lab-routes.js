@@ -14,6 +14,8 @@ import { CATEGORIES, CATEGORY_IDS, categoryLabel, cleanCategory, BRAND_ROLES, SE
 import { createLabData } from './lab-data.js';
 import { generateProgram, cleanProgram } from './lab-program.js';
 import { scanBrand, scanDue, addByUrl, dailyCents } from './lab-scan.js';
+import { preparePhoto, readPhoto } from './lab-photo.js';
+import { randomUUID } from 'node:crypto';
 import { ROLES, cleanLine, lineWarnings, planSummary, generateLines, planCsv, marginOf, defaultCost } from './lab-plan.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -34,7 +36,7 @@ export function registerLabRoutes(app, d) {
   const { loadCode, library, trendsFor } = createLabData(pool, getSetting);
   const deps = async req => ({ env, fetchImpl, askImpl, crawlOpts, delayMs, code: await loadCode(), by: req ? actorOf(req) : null, log });
   const brandShape = r => ({ id: r.id, name: r.name, site: r.site, role: r.role, roleLabel: BRAND_ROLES.find(x => x.id === r.role)?.label || r.role, note: r.note, enabled: r.enabled, lastScannedAt: r.last_scanned_at, lastScanNote: r.last_scan_note, items: Number(r.items || 0), newItems: Number(r.new_items || 0), scanning: running.has(r.id) });
-  const itemShape = r => ({ id: r.id, brandId: r.brand_id, brand: r.brand_name || '', source: r.source, url: r.url, title: r.title, imageUrl: r.image_url, price: r.price_cents == null ? null : r.price_cents / 100, currency: r.currency, category: r.category, categoryLabel: categoryLabel(r.category),
+  const itemShape = r => ({ id: r.id, brandId: r.brand_id, brand: r.brand_name || r.attrs?.brandName || '', fromPhoto: String(r.url || '').startsWith('photo:'), source: r.source, url: r.url, title: r.title, imageUrl: r.image_url, price: r.price_cents == null ? null : r.price_cents / 100, currency: r.currency, category: r.category, categoryLabel: categoryLabel(r.category),
     attrs: r.attrs || {}, sellthrough: r.sellthrough || null, heat: r.heat, heatLabel: heatLabel(r.heat), summary: r.summary, status: r.status, note: r.note, firstSeenAt: r.first_seen_at, lastSeenAt: r.last_seen_at, isNew: Date.now() - new Date(r.first_seen_at).getTime() < 7 * 86_400_000 });
 
   async function runScan(brand, req) {
@@ -117,6 +119,26 @@ export function registerLabRoutes(app, d) {
     const r = await addByUrl(pool, url, await deps(req)); if (r.error) return bad(reply, r.error);
     const row = (await pool.query(`select i.*, b.name brand_name from lab_items i left join lab_brands b on b.id=i.brand_id where i.id=$1`, [r.id])).rows[0];
     return reply.code(201).send({ item: itemShape(row) });
+  });
+  // a piece added from a photo or a screenshot: the picture is kept and read into the same facts a shop listing gives. One picture per request.
+  app.post('/v1/lab/items/photo', { preHandler: pre, bodyLimit: 16_000_000 }, async (req, reply) => {
+    const b = req.body || {}, prep = await preparePhoto(b.photo); if (prep.error) return bad(reply, prep.error);
+    const hint = clip(b.note, 300), read = await readPhoto(prep.photo, { hint, code: await loadCode(), env });
+    const title = clip(b.title, 120) || read?.title || 'Saved picture', category = cleanCategory(b.category) || read?.category || 'other';
+    const brandName = clip(b.brand, 60) || read?.brand || '';
+    const brand = brandName ? (await pool.query('select id from lab_brands where lower(name)=lower($1) limit 1', [brandName])).rows[0] : null;
+    const link = /^https?:\/\/\S+$/i.test(String(b.link || '').trim()) ? String(b.link).trim().slice(0, 600) : '';
+    const attrs = { ...(read?.attrs || {}), ...(brandName && !brand ? { brandName } : {}), ...(link ? { link } : {}) };
+    const thumb = `data:image/jpeg;base64,${prep.thumb.toString('base64')}`;
+    const r = (await pool.query(`insert into lab_items(brand_id,source,url,title,image_url,category,attrs,summary,status,note,photo,read_at) values($1,'manual',$2,$3,$4,$5,$6,$7,'saved',$8,$9,case when $10 then now() else null end) returning id`,
+      [brand?.id || null, `photo:${randomUUID()}`, title, thumb, category, attrs, read?.summary || '', hint, prep.photo, Boolean(read)])).rows[0];
+    const row = (await pool.query(`select i.*, b.name brand_name from lab_items i left join lab_brands b on b.id=i.brand_id where i.id=$1`, [r.id])).rows[0];
+    return reply.code(201).send({ item: itemShape(row), read: Boolean(read) });
+  });
+  app.get('/v1/lab/items/:id/photo', { preHandler: pre }, async (req, reply) => {
+    if (!needId(req, reply)) return;
+    const r = (await pool.query('select photo from lab_items where id=$1', [req.params.id])).rows[0]; if (!r?.photo) return bad(reply, 'No picture', 404);
+    return reply.header('content-type', 'image/jpeg').header('cache-control', 'private, max-age=86400').send(r.photo);
   });
   app.put('/v1/lab/items/:id', { preHandler: pre }, async (req, reply) => {
     if (!needId(req, reply)) return;

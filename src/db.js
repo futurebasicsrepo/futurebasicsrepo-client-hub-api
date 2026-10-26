@@ -162,6 +162,7 @@ export async function migrate() {
       read_at timestamptz
     );
     create unique index if not exists lab_items_url_idx on lab_items (url);
+    alter table lab_items add column if not exists photo bytea; -- a piece added from a photo or screenshot keeps the picture
     create index if not exists lab_items_brand_idx on lab_items (brand_id, last_seen_at desc);
     create index if not exists lab_items_cat_idx on lab_items (category, first_seen_at desc);
     create table if not exists lab_scans (
