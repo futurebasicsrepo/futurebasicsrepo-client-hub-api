@@ -2389,12 +2389,16 @@ app.post('/v1/approvals/:id/decision', { preHandler: authenticate }, async (req,
 app.post('/v1/requests', { preHandler: authenticate }, async (req, reply) => {
   const { type, title, details, dueDate, productId } = req.body || {};
   if (!type || !title || !details) return reply.code(400).send({ error: 'type, title, and details are required' });
+  // a request does not have to be about a product: a new client has none yet, and a question or some artwork may not belong to one
+  let pid = null;
+  if (productId) {
+    if (!UUID_RE.test(String(productId)) || !(await pool.query('select 1 from products where id=$1 and client_id=$2', [productId, req.auth.clientId])).rowCount) return reply.code(400).send({ error: 'Select a valid product' });
+    pid = productId;
+  }
   const row = (await pool.query(
-    `insert into requests(client_id,user_id,type,title,details,due_date,product_id)
-     select $1,$2,$3,$4,$5,$6,p.id from products p where p.id=$7 and p.client_id=$1 returning *`,
-    [req.auth.clientId, req.auth.sub, type, title, details, dueDate || null, productId || null]
+    `insert into requests(client_id,user_id,type,title,details,due_date,product_id) values($1,$2,$3,$4,$5,$6,$7) returning *`,
+    [req.auth.clientId, req.auth.sub, type, title, details, dueDate || null, pid]
   )).rows[0];
-  if(!row)return reply.code(400).send({error:'Select a valid product'});
   return reply.code(201).send(row);
 });
 

@@ -22,3 +22,6 @@ The green **+ Start a tech pack** button at the top of My day (and in the left m
 
 ## Client cards
 On `/admin` the client cards are newest first by default. A bar above them sorts by newest, oldest, name (A to Z or Z to A), most products or most spent, and a box narrows them by name, contact or slug. The choice is remembered on that device.
+
+## Client hub: requests and files
+A request does not have to be about a product (a new client has none yet): the form's product choice is optional ("Not about a product"), and the request can carry files. Files sent with a request go to the room's files with the request's title in their note, so staff see them in the client room whether or not a product is involved. A **Send files** button next to Start a tech pack and Start a request opens the file picker straight away: files can be sent with or without a request or a tech pack.
