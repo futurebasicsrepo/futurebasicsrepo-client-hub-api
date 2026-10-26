@@ -16,7 +16,9 @@ const clip = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
 const dataUrl = b => (b ? `data:image/jpeg;base64,${Buffer.from(b).toString('base64')}` : '');
 
 export function registerLabConceptRoutes(app, d) {
-  const { pool, authenticate, adminOnly, getSetting, env = process.env, fetchImpl = fetch, askImpl = realAsk, createProduct, attachArtwork, imageCfg = () => imageConfig(env), placeImpl, log = console } = d;
+  const { pool, authenticate, adminOnly, getSetting, env = process.env, fetchImpl = fetch, askImpl = realAsk, createProduct, attachArtwork, imageCfg = () => imageConfig(env), placeImpl, art: artSvc = null, log = console } = d;
+  // the artwork of a concept's graphics, as PNGs by id (empty when there is no artwork service)
+  const artsFor = async spec => (artSvc ? artSvc.load((spec?.graphics || []).map(g => g.art).filter(Boolean)) : new Map());
   const pre = [authenticate, adminOnly], bad = (reply, error, code = 422, extra = {}) => reply.code(code).send({ error, ...extra });
   const needId = (req, reply) => UUID.test(req.params.id) || (bad(reply, 'Not found', 404), false);
   const actorOf = req => (UUID.test(String(req.auth?.sub || '')) ? req.auth.sub : null);
@@ -60,7 +62,11 @@ export function registerLabConceptRoutes(app, d) {
       const concept = { ...c, category: line.category };
       let img = null, imageNote = '';
       if (!cfg.configured) imageNote = 'No image model is connected, so this concept has no picture yet.';
-      else { try { img = await renderConcept(concept, { cfg, brandNames: names }); } catch (e) { imageNote = `The picture could not be drawn: ${clip(e.message, 160)}`; } }
+      else {
+        // a graphic with no artwork yet (a new one, or a program motif still being drawn) is drawn now, so the picture can carry it
+        if (artSvc) for (const g of c.spec.graphics || []) { if (g.art || g.svg) continue; try { g.art = await artSvc.drawAndStore(g, { program, planId: plan?.id || null, technique: g.technique }); } catch (e) { log.warn?.({ err: e.message }, 'design lab concept artwork failed'); } }
+        try { img = await renderConcept(concept, { cfg, brandNames: names, arts: await artsFor(c.spec) }); } catch (e) { imageNote = `The picture could not be drawn: ${clip(e.message, 160)}`; }
+      }
       let ai = null, cents = gen.costCents / gen.concepts.length;
       try { const o = await aiOpinion({ concept, refs: refLite, code, askImpl, env, fetchImpl }); ai = o.ai; cents += o.costCents; } catch (e) { log.warn?.({ err: e.message }, 'design lab second opinion failed'); }
       return { c, img, imageNote, close: closeness(concept, refLite, { brandNames: names, ai }), cents };
@@ -199,7 +205,14 @@ export function registerLabConceptRoutes(app, d) {
     if (r.status === 'tech_pack') return bad(reply, 'This concept is already a tech pack', 409);
     const day = new Date().toISOString().slice(0, 10), cap = Number(env.LAB_DAILY_REDRAWS ?? 30); if (cap >= 0 && (redraws.get(day) || 0) >= cap) return bad(reply, `The daily limit of ${cap} redrawn pictures is reached. Raise LAB_DAILY_REDRAWS.`, 429);
     const cfg = imageCfg(); if (!cfg.configured) return bad(reply, 'No image model is connected, so there is no picture to draw.', 503);
-    let img; try { img = await renderConcept({ name: r.name, category: r.category, twist: r.twist, spec: ensureBranding(r.spec || {}, r.category) }, { cfg, brandNames: await brandNames() }); } catch (e) { return bad(reply, `The picture could not be drawn: ${clip(e.message, 160)}`, 502); }
+    // graphics made before the artwork was drawn by the image model (simple shapes) get real artwork now, so the redrawn picture carries it
+    const spec = ensureBranding(r.spec || {}, r.category);
+    if (artSvc && spec.graphics.some(g => !g.art)) {
+      const program = r.plan_id ? (await pool.query('select program from lab_plans where id=$1', [r.plan_id])).rows[0]?.program || null : null; let changed = false;
+      for (const g of spec.graphics) { if (g.art) continue; try { g.art = await artSvc.drawAndStore(g, { program, planId: r.plan_id, conceptId: r.id, technique: g.technique }); changed = true; } catch (e) { log.warn?.({ err: e.message }, 'design lab concept artwork failed'); } }
+      if (changed) { await pool.query('update lab_concepts set spec=$2 where id=$1', [r.id, spec]); r.spec = spec; }
+    }
+    let img; try { img = await renderConcept({ name: r.name, category: r.category, twist: r.twist, spec }, { cfg, brandNames: await brandNames(), arts: await artsFor(spec) }); } catch (e) { return bad(reply, `The picture could not be drawn: ${clip(e.message, 160)}`, 502); }
     redraws.set(day, (redraws.get(day) || 0) + 1);
     await pool.query(`update lab_concepts set image=$2, thumb=$3, raw=$4, image_note='', updated_at=now() where id=$1`, [r.id, img.image, img.thumb, img.raw || null]);
     await pool.query('delete from lab_concept_views where concept_id=$1', [r.id]); // the flats, the on-model views and the walk were drawn from the old picture
@@ -212,7 +225,7 @@ export function registerLabConceptRoutes(app, d) {
     const r = (await pool.query('select * from lab_concepts where id=$1', [req.params.id])).rows[0]; if (!r) return bad(reply, 'Not found', 404);
     if (r.status === 'tech_pack') return bad(reply, 'This concept is already a tech pack', 409);
     if (!r.raw) return bad(reply, 'This picture was drawn before the plain copy was kept. Use Redraw the picture once; after that the marks can be placed again for free.', 409);
-    let img; try { img = await finishConcept(r.raw, { name: r.name, category: r.category, twist: r.twist, spec: ensureBranding(r.spec || {}, r.category) }, { cfg: imageCfg(), locate: placeImpl }); } catch (e) { return bad(reply, `The marks could not be placed: ${clip(e.message, 160)}`, 502); }
+    let img; try { img = await finishConcept(r.raw, { name: r.name, category: r.category, twist: r.twist, spec: ensureBranding(r.spec || {}, r.category) }, { cfg: imageCfg(), locate: placeImpl, arts: await artsFor(r.spec) }); } catch (e) { return bad(reply, `The marks could not be placed: ${clip(e.message, 160)}`, 502); }
     await pool.query(`update lab_concepts set image=$2, thumb=$3, updated_at=now() where id=$1`, [r.id, img.image, img.thumb]);
     await pool.query('delete from lab_concept_views where concept_id=$1', [r.id]);
     return { concept: await one(r.id) };
@@ -233,7 +246,7 @@ export function registerLabConceptRoutes(app, d) {
     let product; try { product = await createProduct({ clientId: room.id, title: r.name, descriptionHtml: productBrief({ name: r.name, category: r.category, programName: r.program_name, spec: r.spec, twist: r.twist, priceCents: r.price_cents, costCents: r.cost_cents, qty: r.qty }, { name: r.plan_name, season: r.season }), vendor: 'Future Basics', productType: PRODUCT_TYPES[r.category] || null, referencePhotos: photo ? [dataUrl(photo)] : [], actorId: actorOf(req) }); }
     catch (e) { await pool.query(`update lab_concepts set status='approved' where id=$1 and product_id is null`, [r.id]); return bad(reply, `The product could not be made: ${clip(e.message, 200)}`, 502); }
     await pool.query(`update lab_concepts set product_id=$2, updated_at=now() where id=$1`, [r.id, product.id]);
-    let art = 0; if (attachArtwork) { try { art = await attachArtwork(product.id, await artworkFiles({ category: r.category, spec: r.spec })); } catch (e) { log.warn?.({ err: e.message }, 'design lab artwork not attached'); } }
+    let art = 0; if (attachArtwork) { try { art = await attachArtwork(product.id, await artworkFiles({ category: r.category, spec: r.spec }, { arts: await artsFor(r.spec) })); } catch (e) { log.warn?.({ err: e.message }, 'design lab artwork not attached'); } }
     if (r.line_id) await pool.query(`update lab_plan_lines set status='tech_pack' where id=$1`, [r.line_id]);
     await note(r.id, req, `Sent to a tech pack (${product.autoDraft?.ai === 'pending' ? 'the assistant is drafting it from the concept' + (art ? `; ${art} artwork files attached: the logo, the woven label and the graphics` : '') : product.autoDraft?.ai === 'off' ? 'the assistant is off, so it starts empty' : 'started'}).`);
     return reply.code(201).send({ productId: product.id, url: productUrl(product.id), autoDraft: product.autoDraft || null, concept: await one(r.id) });

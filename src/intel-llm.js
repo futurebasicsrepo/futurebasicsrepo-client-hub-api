@@ -38,6 +38,7 @@ export async function ask({ provider = 'anthropic', system = '', user = '', json
     if (!env.ANTHROPIC_API_KEY) throw new Error('Claude is not connected (the service needs ANTHROPIC_API_KEY)');
     const client = new Anthropic(), res = await client.messages.create({ model: m, max_tokens: maxTokens, system: json ? `${system}\n\nAnswer with one JSON object and nothing else.` : system, messages: [{ role: 'user', content: user }] });
     if (res.stop_reason === 'refusal') throw new Error('Claude declined to answer');
+    if (json && res.stop_reason === 'max_tokens') throw new Error('The answer ran out of room before it was finished. Try again, or ask for fewer pieces.');
     const text = res.content.filter(b => b.type === 'text').map(b => b.text).join('').trim();
     return { text, ...(json ? { json: parseJson(text) } : {}), usage: { input: res.usage?.input_tokens || 0, output: res.usage?.output_tokens || 0 }, model: m, provider };
   }

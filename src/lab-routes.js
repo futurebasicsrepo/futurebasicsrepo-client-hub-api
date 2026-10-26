@@ -26,7 +26,7 @@ export async function seedLab(pool) {
 }
 
 export function registerLabRoutes(app, d) {
-  const { pool, authenticate, adminOnly, getSetting, setSetting, env = process.env, fetchImpl = fetch, askImpl = realAsk, crawlOpts, delayMs, log = console } = d;
+  const { pool, authenticate, adminOnly, getSetting, setSetting, env = process.env, fetchImpl = fetch, askImpl = realAsk, crawlOpts, delayMs, art = null, log = console } = d;
   const pre = [authenticate, adminOnly], bad = (reply, error, code = 422) => reply.code(code).send({ error });
   const needId = (req, reply) => UUID.test(req.params.id) || (bad(reply, 'Not found', 404), false);
   const actorOf = req => (UUID.test(String(req.auth?.sub || '')) ? req.auth.sub : null);
@@ -202,6 +202,7 @@ export function registerLabRoutes(app, d) {
     if (!out.program) return bad(reply, 'The assistant did not come back with a usable graphic program. Try again, or change the note.', 502);
     programs.set(day, (programs.get(day) || 0) + 1);
     await pool.query('update lab_plans set program=$2, updated_at=now() where id=$1', [plan.id, JSON.stringify(out.program)]);
+    if (art) art.drawProgram(plan.id); // each motif's artwork is drawn in the background and appears as it lands
     return reply.code(201).send(await loadPlan(plan.id));
   });
   app.put('/v1/lab/plans/:id/program', { preHandler: pre }, async (req, reply) => {

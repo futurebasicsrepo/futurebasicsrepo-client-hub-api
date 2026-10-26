@@ -31,6 +31,7 @@ h1{font-size:clamp(30px,5vw,48px);letter-spacing:-.035em;font-weight:500;margin:
 .labtabs{position:sticky;top:72px;z-index:12;display:flex;gap:6px;overflow-x:auto;margin:14px -4px 0;padding:8px 4px;background:var(--fog,#f5f5f2);scrollbar-width:none}.labtabs::-webkit-scrollbar{display:none}
 .labtabs a{flex:none;border:1px solid rgba(20,20,22,.14);background:#fff;border-radius:999px;padding:7px 14px;text-decoration:none;color:inherit;font-weight:600;font-size:13px;white-space:nowrap}.labtabs a:hover{background:#f5f5f2}.labtabs a.on{background:#141416;border-color:#141416;color:#fff}.labtabs a:focus-visible{outline:2px solid #141416;outline-offset:2px}
 .ask{border:0;border-radius:20px;padding:0;width:min(520px,94vw);background:#fff;color:var(--ink)}.ask::backdrop{background:rgba(20,20,22,.55)}.ask form{padding:20px;display:grid;gap:12px}.ask h3{margin:0;font-size:16px;font-weight:600;line-height:1.35;white-space:pre-line}.ask textarea{width:100%;min-height:92px;border:1px solid var(--line);border-radius:14px;padding:10px 12px;font:inherit;resize:vertical}.ask .row{display:flex;gap:8px;justify-content:flex-end}
+.mt .dr img[data-art],.gfx img[data-art]{background:#d6d6d2;object-fit:contain}
 /* assortment board */
 .abar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px}.seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;background:#fff}.seg button{border:0;background:none;padding:7px 14px;font-weight:600;font-size:13px;cursor:pointer}.seg button[aria-pressed="true"]{background:var(--ink);color:#fff}.seg button:focus-visible{outline:2px solid var(--ink);outline-offset:-2px}
 .agrp{margin:22px 0 8px;display:flex;align-items:baseline;gap:10px}.agrp h3{margin:0;font-size:15px;font-weight:600}.agrp span{color:var(--dim);font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase}
@@ -302,7 +303,7 @@ function programHtml(P){
   if(!pr)return `<div class="prog"><h3>Graphic program</h3><p class="note" style="margin:0">Design this season's graphics as one system, the way the brands we study build theirs: crests, our own lettering and numerals, stripes, patterns, illustration, technical annotation. Concepts then draw on it.</p><div class="row"><button class="btn go" type="button" data-prog>Develop the graphic program</button><span class="msg" id="progMsg" role="status"></span></div></div>`;
   return `<div class="prog"><div class="row" style="justify-content:space-between"><h3>Graphic program: ${esc(pr.name)}</h3><div class="row"><button class="btn sm" type="button" data-prog>Develop it again</button><button class="btn sm" type="button" data-progdel>Remove</button></div></div>
   <p class="note" style="margin:0">${esc(pr.story)}</p>${pr.palette.length?`<div class="kv"><b>Palette</b>${pr.palette.map(c=>`<span class="chip"><i class="sw" style="background:${esc(c.hex)}"></i>${esc(c.name)} ${esc(c.hex)}</span>`).join('')}</div>`:''}${pr.rules?`<div class="sub"><b>Rules:</b> ${esc(pr.rules)}</div>`:''}
-  <div class="mot">${pr.motifs.map(m=>`<div class="mt" data-mid="${esc(m.id)}"><div class="dr">${svgImg(m.svg)}</div><b>${esc(m.name)}</b><span class="sub">${esc(m.kind)} · ${esc(m.id)}${m.placements.length?' · '+esc(m.placements.join(', ')):''}</span>${m.texts.length?`<span class="sub">reads: ${esc(m.texts.join(' / '))}</span>`:''}<span class="sm">${esc(m.idea)}</span><button class="btn sm" type="button" data-motifrm>Remove</button></div>`).join('')}</div><span class="msg" id="progMsg" role="status"></span></div>`;
+  <div class="mot">${pr.motifs.map(m=>`<div class="mt" data-mid="${esc(m.id)}"><div class="dr">${motifArt(m)}</div><b>${esc(m.name)}</b><span class="sub">${esc(m.kind)} · ${esc(m.id)}${m.placements.length?' · '+esc(m.placements.join(', ')):''}</span>${m.texts.length?`<span class="sub">reads: ${esc(m.texts.join(' / '))}</span>`:''}<span class="sm">${esc(m.idea)}</span><div class="row"><button class="btn sm" type="button" data-motifart ${m.artStatus==='pending'?'disabled':''}>Draw again</button><button class="btn sm" type="button" data-motifrm>Remove</button></div></div>`).join('')}</div><span class="msg" id="progMsg" role="status"></span></div>`;
 }
 function drawPlan(){
   const P=CUR;if(!P){$('#planView').classList.add('hidden');return}
@@ -328,7 +329,10 @@ function drawPlan(){
       <td><button class="btn sm" type="button" data-drop>${l.status==='dropped'?'Restore':'Drop'}</button> <button class="btn sm" type="button" data-ldel aria-label="Delete ${esc(l.name)}">×</button></td></tr>`).join('')}</tbody></table></div>
     <div class="row" style="margin-top:12px"><input class="t" id="newLine" placeholder="Add a piece by name" maxlength="100"><select class="t" id="newCat" style="flex:0 0 190px">${sel(cats,'tops')}</select><button class="btn" type="button" id="addLine">Add piece</button><span class="msg" id="lineMsg" role="status"></span></div>`;
 }
-async function openPlan(id,keepScroll){CUR=await api('/v1/lab/plans/'+id);drawPlan();await loadPlans(true)}
+let PLANPOLL=0;
+async function openPlan(id,keepScroll){CUR=await api('/v1/lab/plans/'+id);drawPlan();fillArt($('#planView'));await loadPlans(true);
+  // the program's artwork is drawn in the background: look again until every motif has its picture
+  clearTimeout(PLANPOLL);if(CUR&&CUR.program&&CUR.program.motifs.some(m=>m.artStatus==='pending'))PLANPOLL=setTimeout(()=>{if(CUR&&CUR.plan.id===id)openPlan(id,true).catch(()=>{})},5000)}
 async function putLine(tr,body){
   try{CUR=await api(`/v1/lab/plans/${CUR.plan.id}/lines/${tr.dataset.line}`,{method:'PUT',body});drawPlan();await loadPlans(true)}catch(x){const m=$('#lineMsg');if(m){m.className='msg bad';m.textContent=x.message}else alert(x.message)}
 }
@@ -371,6 +375,11 @@ async function loadBoard(){
   $('#cgrid').innerHTML=CONC.map(c=>{const v=c.closeness?VERDICT[c.closeness.verdict]:null,st=STAT[c.status];return `<article class="cc ${c.status}" data-cid="${c.id}" tabindex="0" role="button" aria-label="Open ${esc(c.name)}"><div class="ph">${c.thumb?`<img src="${esc(c.thumb)}" alt="${esc(c.name)}">`:esc(c.imageNote||'No picture')}</div><div class="bd"><h3>${esc(c.name)}</h3><div class="tags"><span class="chip ${st[1]}">${st[0]}</span>${v?`<span class="chip ${v[1]}">${v[0]}</span>`:''}<span class="chip">${esc(c.categoryLabel)}</span>${c.price!=null?`<span class="pr">${esc(usd(c.price))}</span>`:''}</div><div class="sub">${esc(c.planName)}</div><div class="sm">${esc(c.twist.slice(0,110))}${c.twist.length>110?'…':''}</div></div></article>`}).join('');
 }
 async function blobUrl(id){const r=await fetch(`/v1/lab/concepts/${id}/image`,{headers:{Authorization:'Bearer '+TOKEN()}});if(!r.ok)return '';return URL.createObjectURL(await r.blob())}
+// drawn artwork (the image model's PNG) is fetched with the sign-in; until it lands the box says how it is getting on
+const artImg=(id,big)=>`<img alt="graphic" data-art="${esc(id)}"${big?' data-big="1"':''}>`;
+const ARTURL=new Map();
+async function fillArt(root=document){for(const im of root.querySelectorAll('img[data-art]:not([src])')){const k=im.dataset.art+(im.dataset.big?'':':t');let u=ARTURL.get(k);if(!u){try{const r=await fetch(`/v1/lab/art/${im.dataset.art}${im.dataset.big?'':'?thumb=1'}`,{headers:{Authorization:'Bearer '+TOKEN()}});if(!r.ok)continue;u=URL.createObjectURL(await r.blob());ARTURL.set(k,u)}catch{continue}}im.src=u}}
+const motifArt=m=>m.art?artImg(m.art):m.artStatus==='pending'?'<span class="sub">Drawing the artwork…</span>':m.artStatus==='failed'?`<span class="sub">Could not be drawn: ${esc(m.artNote||'')}</span>`:svgImg(m.svg);
 const svgImg=svg=>svg?`<img alt="graphic" src="data:image/svg+xml;utf8,${encodeURIComponent(svg)}">`:'<span class="none">no drawing</span>';
 function brandingHtml(c,locked){
   const b=(c.spec.branding||{}).logo||{},sel=(opts,v,k)=>`<select class="t" data-b="${k}" ${locked?'disabled':''}>${opts.map(o=>`<option value="${esc(o.id||o)}" ${(o.id||o)===v?'selected':''}>${esc(o.label||o)}</option>`).join('')}</select>`;
@@ -379,7 +388,7 @@ function brandingHtml(c,locked){
   <div class="two"><label><span>Logo</span>${sel(BOPT.marks,b.mark,'mark')}</label><label><span>Made by</span>${sel(BOPT.logoTechniques,b.technique,'technique')}</label></div>
   <label><span>Where the logo goes</span><input class="t" data-b="placement" value="${esc(b.placement||'')}" maxlength="120" ${locked?'disabled':''}></label>
   <label><span>Internal woven label (always added)</span><input class="t" value="${esc((c.spec.branding||{}).label||'')}" disabled></label>
-  <div><b style="font-size:13px">Future Basics graphics</b><div style="display:grid;gap:8px;margin-top:6px" id="gfxList">${CGFX.length?CGFX.map((g,i)=>`<div class="gfx" data-gi="${i}">${svgImg(g.svg)}<div><b>${esc(g.name)}</b><br><span class="sub">${esc(g.kind||'icon')} · ${esc(g.placement)} · ${esc(g.technique)}${g.colors&&g.colors.length?' · '+esc(g.colors.join(', ')):''}${g.texts&&g.texts.length?' · reads: '+esc(g.texts.join(' / ')):''}</span><br><span class="sm">${esc(g.idea)}</span></div>${locked?'':'<button class="btn sm" type="button" data-grm>Remove</button>'}</div>`).join(''):'<span class="sub">No graphic on this one. A clean piece stays clean.</span>'}</div></div>
+  <div><b style="font-size:13px">Future Basics graphics</b><div style="display:grid;gap:8px;margin-top:6px" id="gfxList">${CGFX.length?CGFX.map((g,i)=>`<div class="gfx" data-gi="${i}">${g.art?artImg(g.art):svgImg(g.svg)}<div><b>${esc(g.name)}</b><br><span class="sub">${esc(g.kind||'icon')} · ${esc(g.placement)} · ${esc(g.technique)}${g.colors&&g.colors.length?' · '+esc(g.colors.join(', ')):''}${g.texts&&g.texts.length?' · reads: '+esc(g.texts.join(' / ')):''}</span><br><span class="sm">${esc(g.idea)}</span></div>${locked?'':'<button class="btn sm" type="button" data-grm>Remove</button>'}</div>`).join(''):'<span class="sub">No graphic on this one. A clean piece stays clean.</span>'}</div></div>
   ${locked?'':'<div class="row"><button class="btn sm" type="button" data-credraw>Redraw the picture</button><span class="sub">after changing the words, the logo or the graphics</span></div><div class="row"><button class="btn sm" type="button" data-creplace>Place the logo and graphics again</button><span class="sub">if they sit in the wrong place: no new picture is drawn</span></div>'}</div>`;
 }
 function conceptHtml(d,img){
@@ -403,7 +412,7 @@ function conceptHtml(d,img){
 }
 async function openConcept(id){
   OPENID=id;const dlg=$('#cd'),d=await api('/v1/lab/concepts/'+id);
-  dlg.innerHTML=conceptHtml(d,'');if(!dlg.open)dlg.showModal();
+  dlg.innerHTML=conceptHtml(d,'');fillArt(dlg);if(!dlg.open)dlg.showModal();
   if(d.concept.hasImage){const u=await blobUrl(id);if(OPENID===id&&u){IMGURL&&URL.revokeObjectURL(IMGURL);IMGURL=u;const b=dlg.querySelector('.big');if(b)b.innerHTML=`<img src="${esc(u)}" alt="${esc(d.concept.name)}">`}}
 }
 async function actC(path,body,msg){const m=$('#cAct');if(m){m.className='msg';m.textContent=msg||'Working…'}try{const j=await api(`/v1/lab/concepts/${OPENID}${path}`,{method:'POST',body:body||{}});await refreshAfter(j);return j}catch(x){const mm=$('#cAct');if(mm){mm.className='msg bad';mm.textContent=x.message}throw x}}
@@ -413,9 +422,10 @@ document.addEventListener('click',async e=>{
   if(e.target.closest('[data-bclear]')){BOARD.line='';loadBoard().catch(()=>{});return}
   const cc=e.target.closest('.cc');if(cc){openConcept(cc.dataset.cid).catch(x=>alert(x.message));return}
   if(e.target.closest('[data-cclose]')){$('#cd').close();return}
-  if(e.target.closest('[data-prog]')){const steer=await askText('Anything to steer the graphics? (optional, for example “more varsity, less technical” or “lean on numerals and stripes”)','');if(steer===null)return;const m=$('#progMsg'),btn=e.target.closest('[data-prog]');m.className='msg';m.textContent='Designing the graphic program and drawing every motif. This takes a minute or two…';btn.disabled=true;
-    try{CUR=await api(`/v1/lab/plans/${CUR.plan.id}/program`,{body:{note:steer}});drawPlan();await loadPlans(true)}catch(x){const mm=$('#progMsg');if(mm){mm.className='msg bad';mm.textContent=x.message}btn.disabled=false}return}
+  if(e.target.closest('[data-prog]')){const steer=await askText('Anything to steer the graphics? (optional, for example “more varsity, less technical” or “lean on numerals and stripes”)','');if(steer===null)return;const m=$('#progMsg'),btn=e.target.closest('[data-prog]');m.className='msg';m.textContent='Designing the graphic program. Its artwork is then drawn one motif at a time and appears here as each lands…';btn.disabled=true;
+    try{CUR=await api(`/v1/lab/plans/${CUR.plan.id}/program`,{body:{note:steer}});await openPlan(CUR.plan.id,true)}catch(x){const mm=$('#progMsg');if(mm){mm.className='msg bad';mm.textContent=x.message}btn.disabled=false}return}
   if(e.target.closest('[data-progdel]')){if(!confirm('Remove the graphic program? Concepts already made keep their graphics.'))return;try{CUR=await api(`/v1/lab/plans/${CUR.plan.id}/program`,{method:'DELETE'});drawPlan();await loadPlans(true)}catch(x){alert(x.message)}return}
+  if(e.target.closest('[data-motifart]')){const id=e.target.closest('.mt').dataset.mid;try{await api(`/v1/lab/plans/${CUR.plan.id}/program/motifs/${id}/art`,{body:{}});await openPlan(CUR.plan.id,true)}catch(x){alert(x.message)}return}
   if(e.target.closest('[data-motifrm]')){const id=e.target.closest('.mt').dataset.mid;try{CUR=await api(`/v1/lab/plans/${CUR.plan.id}/program`,{method:'PUT',body:{removeMotifs:[id]}});drawPlan();await loadPlans(true)}catch(x){alert(x.message)}return}
   const tr=e.target.closest('tr[data-line]');
   if(tr&&e.target.closest('[data-view]')){BOARD.line=tr.dataset.line;BOARD.plan=CUR.plan.id;BOARD.status='';loadBoard().then(()=>$('#board').scrollIntoView({behavior:'smooth'})).catch(()=>{});e.preventDefault();return}

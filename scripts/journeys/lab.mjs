@@ -429,6 +429,13 @@ await journey('J200', 'Design Lab graphic program: a season\'s graphics designed
     const pr = made.json.program; ok(pr.motifs.length >= 4 && new Set(pr.motifs.map(m => m.kind)).size >= 4 && pr.palette.length >= 3 && pr.story && pr.rules, 'several kinds of motif, a palette, a story and rules: a system, not one logo', pr.motifs.map(m => m.kind));
     ok(pr.motifs.some(m => m.texts.length) && pr.motifs.every(m => m.svg && !/<text|font-family/.test(m.svg)) && pr.palette.some(c => !['#141416', '#FFFFFF', '#4BFF9A'].includes(c.hex)), 'it has original lettering as outlines, and colours beyond the logo\'s', pr.palette);
     ok((await K(`/plans/${pid}`)).json.program.name === 'Quiet Varsity', 'it is kept with the plan');
+    // each motif's artwork is drawn by the image model in the background, then served as a PNG with transparency
+    const drawn = await (async () => { for (let i = 0; i < 80; i++) { const p = (await K(`/plans/${pid}`)).json.program; if (p.motifs.every(m => m.artStatus === 'ready' && m.art)) return p; await new Promise(r => setTimeout(r, 250)); } return null; })();
+    ok(drawn, 'every motif gets its drawn artwork in the background');
+    const png = drawn && await fetch(`${BASE}/v1/lab/art/${drawn.motifs[0].art}`, { headers: { Authorization: 'Bearer ' + kyleT } });
+    ok(png && png.status === 200 && /image\/png/.test(png.headers.get('content-type')) && (await P(`/art/${drawn.motifs[0].art}`)).status === 403, 'the artwork is a PNG, for the Lab only');
+    const again = await K(`/plans/${pid}/program/motifs/${drawn.motifs[0].id}/art`, { body: {} }); ok(again.status === 202, 'one motif can be drawn again');
+    ok(await (async () => { for (let i = 0; i < 80; i++) { const m = (await K(`/plans/${pid}`)).json.program.motifs[0]; if (m.artStatus === 'ready' && m.art !== drawn.motifs[0].art) return true; await new Promise(r => setTimeout(r, 250)); } return false; })(), 'and gets new artwork');
     const ed = await K(`/plans/${pid}/program`, { method: 'PUT', body: { name: 'Quiet Varsity II', removeMotifs: [pr.motifs.at(-1).id], renameMotif: { id: pr.motifs[0].id, name: 'House crest' } } }); ok(ed.json.program.name === 'Quiet Varsity II' && ed.json.program.motifs.length === pr.motifs.length - 1 && ed.json.program.motifs[0].name === 'House crest', 'the program can be renamed and a motif removed or renamed', ed.json.program?.motifs?.map(m => m.name));
 
     // concepts draw on it
@@ -437,6 +444,7 @@ await journey('J200', 'Design Lab graphic program: a season\'s graphics designed
     const [A, B, C] = mk.json.concepts;
     ok(A.spec.graphics[0].name === 'House crest' && A.spec.graphics[0].kind === 'crest' && A.spec.graphics[0].texts.join() === 'FB' && /<path/.test(A.spec.graphics[0].svg) && A.spec.graphics[0].motif === 'm1', 'a concept applies a motif by id and takes its drawing and its words', A.spec.graphics);
     ok(B.spec.graphics[0].kind === 'stripes' && C.spec.graphics.length === 0, 'another applies a different motif, and a third stays clean');
+    ok(/^[0-9a-f-]{36}$/.test(A.spec.graphics[0].art || '') && (await fetch(`${BASE}/v1/lab/art/${A.spec.graphics[0].art}`, { headers: { Authorization: 'Bearer ' + kyleT } })).status === 200, 'the concept\'s graphic carries the motif\'s drawn artwork', A.spec.graphics[0]);
     ok(A.spec.graphics.every(g => !g.svg || !/<text/.test(g.svg)), 'no lettering that depends on a font');
 
     // the concept's graphics are its own once made: removing the motif from the program does not change it
@@ -470,6 +478,7 @@ await journey('J201', 'Design Lab graphic program in a browser: develop it, see 
     await page.locator('#planList .pl', { hasText: 'Concept plan' }).locator('[data-open]').click(); await page.waitForSelector('#planView .prog');
     ok(/Graphic program/.test(await page.innerText('#planView .prog')) && await page.locator('#planView [data-prog]').count() === 1, 'a plan offers to develop its graphic program');
     await page.locator('#planView [data-prog]').click(); await say(page, 'lean on numerals'); await page.waitForSelector('#planView .mt', { timeout: 30000 });
+    await page.waitForFunction(() => document.querySelectorAll('#planView .mt img[data-art][src]').length >= 4, null, { timeout: 30000 }).catch(() => {});
     ok(await page.locator('#planView .mt').count() >= 4 && await page.locator('#planView .mt img').count() >= 4 && /Quiet Varsity/.test(await page.innerText('#planView .prog')) && await page.locator('#planView .prog .sw').count() >= 3, 'the program shows its motifs drawn, its palette and its name');
     ok(/reads: FB/.test(await page.innerText('#planView .prog')), 'a motif says what its lettering reads');
     const n = await page.locator('#planView .mt').count(); await page.locator('#planView .mt [data-motifrm]').last().click(); await page.waitForFunction(k => document.querySelectorAll('#planView .mt').length === k - 1, n, { timeout: 8000 }); ok(true, 'a motif can be removed');

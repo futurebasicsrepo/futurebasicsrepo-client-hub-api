@@ -37,3 +37,21 @@ test('a mark that must follow slanted cloth is turned', async () => {
   const flat = await composeBranding(await base(), concept, { locate: loc(0) }), turned = await composeBranding(await base(), concept, { locate: loc(25) });
   assert.notDeepEqual(await sharp(flat).raw().toBuffer(), await sharp(turned).raw().toBuffer());
 });
+
+test('a graphic with drawn artwork is printed by the image model: the prompt says so, and keeps the words as given', async () => {
+  const { imagePrompt } = await import('../src/lab-concepts.js');
+  const g = { name: 'Tour', idea: 'i', placement: 'front chest', technique: 'screen print', art: '00000000-0000-4000-8000-000000000001', texts: ['FUTURE BASICS WORLD TOUR'] };
+  const p = imagePrompt({ name: 'Tour tee', category: 'tops', spec: ensureBranding({ description: 'd', graphics: [g] }, 'tops') }, { printed: [g] });
+  assert.match(p, /artwork 1 on the front chest as a screen print/); assert.match(p, /exactly as given/); assert.match(p, /beyond the printed artwork/);
+});
+
+test('artwork: the prompt asks for layered, several-colour original art with only our words, and the test placeholder has transparency', async () => {
+  const { artPrompt, drawArt, keyOut } = await import('../src/lab-art.js');
+  const program = { style: 'faded vintage tour tee', palette: [{ name: 'Black', hex: '#1E1E1E' }, { name: 'Bone', hex: '#EDE6D6' }, { name: 'Red', hex: '#B3261E' }] };
+  const p = artPrompt({ name: 'World tour', kind: 'lettering', idea: 'an eagle over a sunburst', composition: 'sunburst, eagle, arched lettering', texts: ['FUTURE BASICS', 'WORLD TOUR 26'], colors: ['Black', 'Red'] }, { program });
+  assert.match(p, /faded vintage tour tee/); assert.match(p, /Build it in layers: sunburst, eagle, arched lettering/); assert.match(p, /"FUTURE BASICS", "WORLD TOUR 26"/); assert.match(p, /Black #1E1E1E, Red #B3261E/); assert.match(p, /transparent background/); assert.match(p, /Do not draw or imitate any existing logo, band/);
+  const a = await drawArt({ name: 'X', idea: 'y', texts: ['Ralph Lauren', 'FB 26'] }, { program, cfg: { configured: true, provider: 'fixture' } });
+  assert.ok((await sharp(a.png).metadata()).hasAlpha && a.thumb.length < a.png.length); assert.ok(!/Ralph/.test(a.prompt), 'a word naming someone else is never sent to be drawn');
+  const white = await sharp({ create: { width: 40, height: 40, channels: 3, background: '#ffffff' } }).composite([{ input: await sharp({ create: { width: 10, height: 10, channels: 3, background: '#ff0000' } }).png().toBuffer(), left: 15, top: 15 }]).png().toBuffer();
+  const k = await sharp(await keyOut(white)).raw().toBuffer({ resolveWithObject: true }); assert.equal(k.data[3], 0, 'the white edge is cut away'); assert.equal(k.data[(20 * 40 + 20) * 4 + 3], 255, 'the ink stays');
+});
