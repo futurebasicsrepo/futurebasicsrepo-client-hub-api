@@ -88,12 +88,14 @@ export async function aiOpinion({ concept, refs, code = DEFAULT_BRAND_CODE, askI
 // ---- Future Basics branding on every concept ----------------------------------------------------------------------------------------------------------
 // Every concept carries the Future Basics logo and a Future Basics internal woven label, whatever the assistant says: they are put back in code if they are missing.
 // The mark and the label are drawn from our own brand files and placed on the picture afterwards, never drawn by the image model (a model redraws lettering).
-export const LOGO_MARKS = [{ id: 'cue', label: 'Cue mark (line and dot)' }, { id: 'word', label: 'Wordmark' }, { id: 'lockup', label: 'Wordmark and cue mark' }];
+export const LOGO_MARKS = [{ id: 'cue', label: 'Cue mark (line and dot)' }, { id: 'word', label: 'Wordmark' }, { id: 'lockup', label: 'Wordmark and cue mark' }, { id: 'none', label: 'No logo on this piece' }];
+// a mark said to sit somewhere the front picture cannot show (the back, the inside, under a flap) is not drawn on it
+export const HIDDEN_PLACE = /\b(back|rear|inside|inner|interior|underside|under the|lining|tongue|sweatband|seat|yoke|behind)\b/i;
 export const LOGO_TECHNIQUES = ['embroidered', 'woven patch', 'screen print', 'rubber print', 'heat transfer', 'debossed', 'metal plaque'];
 // where the logo goes by default, in words, and where it sits on the front picture (centre and width as fractions of the picture; null = not on the front view)
 export const LOGO_PLACE = {
   tops: ['small mark on the left chest', { x: 0.6, y: 0.36, w: 0.07 }], knitwear: ['small mark on the left chest', { x: 0.6, y: 0.36, w: 0.07 }], outerwear: ['small mark on the left chest', { x: 0.6, y: 0.36, w: 0.07 }],
-  tailoring: ['small mark on the inside chest pocket and a woven loop at the back neck', null], bottoms: ['small mark at the right back pocket or hem', { x: 0.5, y: 0.3, w: 0.06 }], dresses: ['small mark on the left chest', { x: 0.6, y: 0.36, w: 0.07 }],
+  tailoring: ['small mark on the inside chest pocket and a woven loop at the back neck', null], bottoms: ['small mark on the front, just below the waistband at the right hip', { x: 0.56, y: 0.2, w: 0.06 }], dresses: ['small mark on the left chest', { x: 0.6, y: 0.36, w: 0.07 }],
   headwear: ['mark at the centre front of the crown', { x: 0.5, y: 0.42, w: 0.13 }], footwear: ['mark on the heel tab or lateral side', { x: 0.5, y: 0.5, w: 0.09 }], bags: ['mark at the centre front', { x: 0.5, y: 0.5, w: 0.13 }],
   accessories: ['mark on the most visible face', { x: 0.5, y: 0.5, w: 0.1 }], home: ['mark on the front', { x: 0.5, y: 0.5, w: 0.1 }], other: ['mark on the front', { x: 0.5, y: 0.5, w: 0.1 }]
 };
@@ -179,13 +181,14 @@ export async function composeBranding(buf, concept, { locate = null, arts = new 
   const front = (LOGO_PLACE[concept.category] || LOGO_PLACE.other)[1], graphics = spec.graphics.filter(g => GRAPHIC_PLACE[g.placement] && (g.art ? !skipArt && arts.get(g.art) : g.svg));
   const logoMul = spec.branding.logo.mark === 'cue' ? 1 : 2.2;
   // where each mark goes: a vision model looks at this picture and measures it; fixed positions are the fallback
-  const asks = [...(front ? [{ id: 'logo', where: `the Future Basics logo: ${place(concept.category)}`, w: front.w * logoMul }] : []), ...graphics.map((g, i) => ({ id: `g${i}`, where: `a graphic: ${g.placement}`, w: GRAPHIC_PLACE[g.placement].w }))];
+  const logoAt = spec.branding.logo.placement || place(concept.category), showLogo = front && spec.branding.logo.mark !== 'none' && !HIDDEN_PLACE.test(logoAt);
+  const asks = [...(showLogo ? [{ id: 'logo', where: `the Future Basics logo: ${logoAt}`, w: front.w * logoMul }] : []), ...graphics.map((g, i) => ({ id: `g${i}`, where: `a graphic: ${g.placement}`, w: GRAPHIC_PLACE[g.placement].w }))];
   let found = null; try { found = asks.length && locate ? await locate({ image: buf, category: concept.category, marks: asks }) : null; } catch { found = null; }
-  if (front) {
+  if (showLogo && !found?.hidden?.has('logo')) {
     const f = found?.get('logo'), at = f || front, mark = spec.branding.logo.mark, w = f ? f.w * W : front.w * W * logoMul, fill = (await lum(at, w)) < 120 ? '#FFFFFF' : BRAND_INK;
     await put(await png(logoSvg(mark, { fill }), w), at, f ? f.angle : 0);
   }
-  for (const [i, g] of graphics.entries()) { const f = found?.get(`g${i}`), fb = GRAPHIC_PLACE[g.placement], w = Math.max(8, Math.round((f ? f.w : fb.w) * W)); await put(g.art ? await sharp(arts.get(g.art)).resize({ width: w }).png().toBuffer() : await png(g.svg, w), f || fb, f ? f.angle : 0); }
+  for (const [i, g] of graphics.entries()) { if (found?.hidden?.has(`g${i}`)) continue; const f = found?.get(`g${i}`), fb = GRAPHIC_PLACE[g.placement], w = Math.max(8, Math.round((f ? f.w : fb.w) * W)); await put(g.art ? await sharp(arts.get(g.art)).resize({ width: w }).png().toBuffer() : await png(g.svg, w), f || fb, f ? f.angle : 0); }
   // the woven label as a small inset in the bottom corner, so the picture shows it is there
   const lw = Math.round(W * 0.2), label = await sharp(Buffer.from(logoSvg('lockup', { fill: '#FFFFFF', bg: BRAND_INK, pad: 90 })), { density: 144 }).resize({ width: lw }).png().toBuffer(), lm = await sharp(label).metadata();
   layers.push({ input: label, left: Math.max(0, W - lm.width - Math.round(W * 0.03)), top: Math.max(0, H - lm.height - Math.round(H * 0.03)) });
@@ -224,7 +227,7 @@ export async function generateConcepts({ line, plan = {}, refs = [], trend = nul
 
 // ---- 3. drawing it -----------------------------------------------------------------------------------------------------------------------------
 export function imagePrompt(concept, { brandNames = [], printed = [] } = {}) {
-  const s = concept.spec || {}, say = t => stripBrands(clip(t, 400), brandNames), cat = concept.category, bare = [(LOGO_PLACE[cat] || LOGO_PLACE.other)[1] ? place(cat) : '', ...(s.graphics || []).filter(g => GRAPHIC_PLACE[g.placement] && g.svg && !printed.includes(g)).map(g => g.placement)].filter(Boolean);
+  const s = concept.spec || {}, say = t => stripBrands(clip(t, 400), brandNames), cat = concept.category, logo = s.branding?.logo || {}, logoAt = logo.placement || place(cat), bare = [(LOGO_PLACE[cat] || LOGO_PLACE.other)[1] && logo.mark !== 'none' && !HIDDEN_PLACE.test(logoAt) ? logoAt : '', ...(s.graphics || []).filter(g => GRAPHIC_PLACE[g.placement] && g.svg && !printed.includes(g)).map(g => g.placement)].filter(Boolean);
   return [`A clean, photorealistic studio product photograph of one item for a menswear and unisex brand: ${say(concept.name)}${cat ? ` (${categoryLabel(cat).toLowerCase()})` : ''}.`,
     s.description ? say(s.description) : '', s.silhouette ? `Shape: ${say(s.silhouette)}.` : '', s.fabric ? `Fabric: ${say(s.fabric)}.` : '', s.colors?.length ? `Colour: ${say(s.colors.join(', '))}.` : '',
     s.details?.length ? `Design details: ${say(s.details.join('; '))}.` : '', s.trims ? `Trims: ${say(s.trims)}.` : '', concept.twist ? `Signature idea: ${say(concept.twist)}.` : '',
@@ -271,7 +274,7 @@ export function productBrief(concept, plan = {}) {
 export async function artworkFiles(concept, { arts = new Map() } = {}) {
   const spec = ensureBranding(concept.spec, concept.category), out = [], png = async (svg, width) => `data:image/png;base64,${(await sharp(Buffer.from(svg), { density: Math.max(72, Math.ceil(72 * width / 100)) }).resize({ width }).png().toBuffer()).toString('base64')}`;
   const mark = spec.branding.logo.mark;
-  out.push({ name: `Future Basics logo · ${LOGO_MARKS.find(m => m.id === mark)?.label || 'Cue mark'}`, image: await png(logoSvg(mark, { fill: BRAND_INK }), mark === 'cue' ? 600 : 1400) });
+  if (mark !== 'none') out.push({ name: `Future Basics logo · ${LOGO_MARKS.find(m => m.id === mark)?.label || 'Cue mark'}`, image: await png(logoSvg(mark, { fill: BRAND_INK }), mark === 'cue' ? 600 : 1400) });
   out.push({ name: 'Future Basics internal woven label', image: await png(logoSvg('lockup', { fill: '#FFFFFF', bg: BRAND_INK, pad: 90 }), 1200) });
   for (const g of spec.graphics) {
     const label = `Graphic · ${g.name}${g.texts.length ? ' (' + g.texts.join(' / ') + ')' : ''}`;

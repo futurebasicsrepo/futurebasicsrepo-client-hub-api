@@ -66,3 +66,16 @@ test('the video model is used only when connected, and the walk waits for it, th
   await assert.rejects(makeWalk({ concept, frame: await tinyJpeg(), cfg, fetchImpl: failing, sleep: async () => {}, env: { OPENAI_API_KEY: 'k' } }), /policy/);
   assert.match(walkPrompt(concept), /walks steadily toward the camera/);
 });
+
+test('the walk is framed without a face, and when the picture is refused it is made from words alone', async () => {
+  const seen = []; let n = 0;
+  const fetchImpl = async (url, o = {}) => {
+    if (url.endsWith('/v1/videos')) { n++; seen.push(o.body.get('input_reference') ? 'with picture' : 'words only'); return n === 1 ? new Response('{"error":{"message":"faces are not allowed"}}', { status: 400 }) : new Response(JSON.stringify({ id: 'v', status: 'completed' }), { status: 200 }); }
+    if (url.endsWith('/content')) return new Response(Buffer.from('MP4'), { status: 200 });
+    return new Response(JSON.stringify({ id: 'v', status: 'completed' }), { status: 200 });
+  };
+  const cfg = { ...videoConfig({ LAB_VIDEO_PROVIDER: 'openai', OPENAI_API_KEY: 'k' }), origin: 'https://v.test' };
+  const w = await makeWalk({ concept: { ...concept, spec: { description: 'a washed tee', colors: ['navy'] } }, frame: await tinyJpeg(), cfg, fetchImpl, sleep: async () => {}, env: { OPENAI_API_KEY: 'k' } });
+  assert.deepEqual(seen, ['with picture', 'words only']); assert.equal(w.video.toString(), 'MP4');
+  assert.match(walkPrompt(concept), /from the shoulders down/); assert.doesNotMatch(walkPrompt(concept), /his face/);
+});

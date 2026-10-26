@@ -3,7 +3,7 @@
 // site says no, keeps no duplicates, obeys robots.txt, and the library, brand code and watchlist behave.
 import http from 'node:http';
 import { createRequire } from 'node:module';
-import { journey, ok, summary, api, jpeg, sql, stamp, forge } from './lib.mjs';
+import { journey, ok, summary, api, jpeg, sql, stamp, forge, FX } from './lib.mjs';
 let playwright = null; try { playwright = createRequire(import.meta.url)(process.env.PLAYWRIGHT_PATH || 'playwright'); } catch {}
 const BASE = 'http://127.0.0.1:3123', call = api(BASE);
 const room = (await call('/v1/public/start', { body: { email: `jt-${stamp}-${Math.random().toString(36).slice(2, 7)}@chaos.test`, name: 'Lab Admin', title: 'Lab runner', photos: [jpeg()] } })).json;
@@ -586,6 +586,52 @@ await journey('J207', 'Design Lab marks: the plain picture is kept so the logo a
     const old = await K(`/concepts/${c.id}/replace-marks`, { body: {} }); ok(old.status === 409 && /Redraw the picture once/.test(old.json.error), 'a picture from before the plain copy was kept says to redraw it once');
     ok((await P(`/concepts/${c.id}/replace-marks`, { body: {} })).status === 403 && (await K('/concepts/00000000-0000-4000-8000-000000000000/replace-marks', { body: {} })).status === 404, 'closed to others, and unknown concepts are not found');
   } finally { await cleanup(brands, plan.plan?.id); }
+});
+
+await journey('J208', 'Design Lab marks in a browser: placing the logo again says it is done right by the button, and the logo can be taken off a piece', async () => {
+  if (!playwright) { ok(true, 'skipped: no browser here'); return; }
+  const { brands, plan } = await conceptSetup(); const tops = plan.lines.find(l => l.category === 'tops') || plan.lines[0];
+  const b = await playwright.chromium.launch(), errs = [];
+  try {
+    const c = (await K(`/plans/${plan.plan.id}/lines/${tops.id}/concepts`, { body: { count: 1 } })).json.concepts[0];
+    const oc = await b.newContext({ viewport: { width: 1280, height: 900 } }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
+    const page = await oc.newPage(); page.on('pageerror', e => errs.push(String(e))); page.on('dialog', d => d.accept());
+    await page.goto(`${BASE}/lab#board`, { waitUntil: 'networkidle' }); await page.waitForSelector(`#cgrid .cc[data-cid="${c.id}"]`, { timeout: 15000 });
+    await page.click(`#cgrid .cc[data-cid="${c.id}"]`); await page.waitForSelector('#cd[open] [data-creplace]');
+    await page.click('#cd [data-creplace]'); await page.waitForFunction(() => /Done: the logo and graphics were placed again/.test(document.getElementById('cMarkMsg')?.textContent || ''), null, { timeout: 15000 });
+    ok(true, 'Place the logo and graphics again reports that it is done, next to the button');
+    await page.selectOption('#cd [data-b="mark"]', 'none'); await page.click('#cd [data-csave]');
+    await page.waitForFunction(() => /updated/.test(document.getElementById('cMsg')?.textContent || ''), null, { timeout: 15000 });
+    ok(sql(`select spec->'branding'->'logo'->>'mark' from lab_concepts where id='${c.id}'`) === 'none', 'the logo can be taken off a piece, and the picture is updated at once');
+    ok(errs.length === 0, 'no page errors', errs); await oc.close();
+  } finally { await cleanup(brands, plan.plan?.id); await b.close(); }
+});
+
+await journey('J209', 'Design Lab library from photos and screenshots: a picture is read into a piece, kept, saved, tagged with its brand, and can be added by button, drop or paste in the page', async () => {
+  const pic = jpeg(), before = Number(sql(`select count(*) from lab_items where url like 'photo:%'`));
+  const r = await K('/items/photo', { body: { photo: pic, brand: 'Unknown Label', note: 'great washed tee from a post' } });
+  ok(r.status === 201 && r.json.read === true && r.json.item.fromPhoto && r.json.item.status === 'saved' && r.json.item.category === 'tops' && /^data:image\/jpeg;base64,/.test(r.json.item.imageUrl), 'a photo becomes a saved library piece, read into a category and facts, with its picture', JSON.stringify(r.json).slice(0, 300));
+  ok(r.json.item.brand === 'Unknown Label' && r.json.item.attrs.silhouette && r.json.item.summary, 'the brand it was given is shown, and the facts the assistant read are kept');
+  const ph = await fetch(`${BASE}/v1/lab/items/${r.json.item.id}/photo`, { headers: { Authorization: 'Bearer ' + kyleT } }); ok(ph.status === 200 && /image\/jpeg/.test(ph.headers.get('content-type')), 'the full picture is kept');
+  const brand = sql(`select name from lab_brands limit 1`); if (brand) { const b = await K('/items/photo', { body: { photo: pic, brand: brand.toUpperCase() } }); ok(b.status === 201 && b.json.item.brand === brand && b.json.item.brandId, 'a brand on the watchlist is matched whatever its case'); }
+  ok((await K('/items/photo', { body: { photo: 'data:text/plain;base64,aGVsbG8=' } })).status === 422 && (await K('/items/photo', { body: { photo: 'data:image/png;base64,bm90IGFuIGltYWdl' } })).status === 422, 'a file that is not a picture, or a broken picture, is refused with a reason');
+  ok((await P('/items/photo', { body: { photo: pic } })).status === 403, 'closed to anyone without the Design Lab');
+  ok((await K('/items?q=washed')).json.items.some(i => i.id === r.json.item.id), 'the piece can be found in the library');
+  if (!playwright) { ok(true, 'skipped the browser part: no browser here'); return; }
+  const b = await playwright.chromium.launch(), errs = [];
+  try {
+    const oc = await b.newContext({ viewport: { width: 1280, height: 900 } }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
+    const page = await oc.newPage(); page.on('pageerror', e => errs.push(String(e)));
+    await page.goto(`${BASE}/lab#library`, { waitUntil: 'networkidle' }); await page.waitForSelector('#addPhotoBtn');
+    await page.fill('#addBrand', 'Shop Window'); await page.setInputFiles('#addPhotos', [`${FX}/ig-screenshot.png`, `${FX}/pinterest-screenshot.png`]);
+    await page.waitForFunction(() => /Added 2 pictures/.test(document.getElementById('photoMsg').textContent), null, { timeout: 20000 });
+    ok(Number(sql(`select count(*) from lab_items where url like 'photo:%'`)) >= before + 4 && Number(sql(`select count(*) from lab_items where attrs->>'brandName'='Shop Window'`)) === 2, 'two screenshots chosen with the button become two pieces with the brand typed');
+    await page.evaluate(async () => { const r = await fetch('/icons/icon-192.png'); const blob = await r.blob(); const dt = new DataTransfer(); dt.items.add(new File([blob], 'shot.png', { type: 'image/png' })); document.activeElement?.blur(); document.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true })); });
+    await page.waitForFunction(() => /Added 1 picture/.test(document.getElementById('photoMsg').textContent), null, { timeout: 20000 }).catch(() => {});
+    ok(/Added 1 picture/.test(await page.innerText('#photoMsg')), 'a pasted screenshot is added too');
+    ok(await page.locator('#items .card .br', { hasText: 'Shop Window' }).count() >= 1, 'the pieces show in the library with their pictures');
+    ok(errs.length === 0, 'no page errors', errs); await oc.close();
+  } finally { await b.close(); }
 });
 
 shops.close(); brave.close();
