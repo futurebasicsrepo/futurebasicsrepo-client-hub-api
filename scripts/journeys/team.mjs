@@ -2,7 +2,7 @@
 // A person with no row starts with nothing; a paused person is shut out; the owners cannot be changed; a client is untouched. The stored default for new
 // people is put back to "everything" at the end, because the rest of the suite signs in as staff who have no row.
 import { createRequire } from 'node:module';
-import { journey, ok, summary, api, jpeg, sql, stamp, forge } from './lib.mjs';
+import { journey, ok, summary, api, jpeg, sql, stamp, forge, codeFrom, sleep, S } from './lib.mjs';
 let playwright = null; try { playwright = createRequire(import.meta.url)(process.env.PLAYWRIGHT_PATH || 'playwright'); } catch {}
 import { MODULE_IDS } from '../../src/staff-access.js';
 const BASE = 'http://127.0.0.1:3130', call = api(BASE);
@@ -29,6 +29,13 @@ await journey('J190', 'Team access: owners give each person modules, everyone el
     const denied = await P('/v1/sales/contacts'); ok(denied.status === 403 && codeOf(denied) === 'MODULE_ACCESS' && denied.json.module === 'crm' && /Contacts and sales/.test(denied.json.error) && /Kyle or Danielle/.test(denied.json.error), 'a new person is refused the contacts, and told who to ask', denied.json);
     ok((await P('/v1/admin/home')).status === 200, 'My day is open to everyone on the team');
     const newest = (await O('')).json.team.find(p => p.email === PAT); ok(newest && !newest.configured && newest.usingDefault && newest.modules.length === 0, 'the list shows them as new, on the default');
+
+    // when each person last signed in: nothing until they do, then the moment they do
+    ok(newest.lastSignIn === null && newest.since, 'a person who has not signed in shows no last sign-in, only when they joined', newest);
+    await call('/v1/auth/code', { body: { email: PAT } }); await sleep(200); const code = codeFrom(`${S}/server-j-g.log`, PAT);
+    const v = await call('/v1/auth/verify', { body: { email: PAT, code } }); ok(v.status === 200 && v.json.user?.role === 'admin', 'they sign in with an emailed code', [v.status, v.json]);
+    const signed = (await O('')).json.team.find(p => p.email === PAT); ok(signed.lastSignIn && Date.now() - new Date(signed.lastSignIn) < 60000, 'Team access shows when they last signed in', signed);
+    const owner = (await O('')).json.team.find(p => p.owner); ok('lastSignIn' in owner, 'every card carries it, owners too');
 
     // give one module
     const set = await O(`/users/${patId}`, { method: 'PUT', body: { modules: ['crm'], note: 'Sales, started today' } }); ok(set.status === 200 && set.json.person.modules.join() === 'crm', 'an owner gives one module', set.json);
@@ -87,6 +94,7 @@ await journey('J191', 'Team access in a browser: the owners open the page and gi
     await page.waitForFunction(() => document.querySelector('.fbside a[data-nav="Team access"]') && !document.querySelector('.fbside a[data-nav="Team access"]').hidden, null, { timeout: 8000 }).catch(() => {});
     { const h1 = await page.innerText('.hero h1'), links = await page.locator('.fbside a[data-nav="Team access"]:not([hidden])').count(); ok(/Who sees what/.test(h1) && links === 1, 'the Team access page opens for an owner, with its place in the menu', [h1, links, await page.locator('.fbside').count()]); }
     const card = page.locator(`.who[data-id="${patId}"]`); ok(await card.count() === 1 && /no access yet/i.test(await card.locator('.chip').innerText()) && await card.evaluate(n => n.open), 'a new person is listed, open, and marked as having no access yet');
+    { const seen = await card.locator('[data-seen]').innerText(); ok(/First signed in .+ · last signed in /i.test(seen), 'the card says when they joined and when they last signed in', seen); }
     await card.locator('[data-preset="sales"]').click(); ok(await card.locator('input[data-m="crm"]').isChecked() && !(await card.locator('input[data-m="clients"]').isChecked()), 'the Sales preset ticks the sales modules and not the client ones');
     await card.locator('input[data-m="crm"]').uncheck(); await card.locator('input[data-m="contracts"]').check(); await card.locator('[data-note]').fill('Browser journey'); await card.locator('[data-save]').click();
     await page.waitForFunction(id => /Saved/.test(document.querySelector(`.who[data-id="${id}"] .msg`)?.textContent || ''), patId, { timeout: 8000 });

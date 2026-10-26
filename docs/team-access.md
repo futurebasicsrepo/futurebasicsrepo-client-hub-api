@@ -40,6 +40,7 @@ Not modules: **My day** (open to everyone on the team, but each part of it only 
 - **New people start with**: what someone gets the first time they sign in with a @thefuturebasics.com address, until an owner looks at them. It starts as nothing (they see My day and nothing else).
 - **The team**: one card per person, with the modules in groups. **Start from** ticks the usual set for a role (Sales, Delivery, Everything, Nothing yet) and the boxes can still be changed. A **note** is private to the owners. **Pause access** shuts the person out of the whole console until it is turned back on; nothing is deleted and their modules are kept.
 - People nobody has looked at yet are listed first, open, and the menu shows the owners how many are waiting.
+- Each card says when the person **first signed in** (when their account was made) and when they **last signed in**, by Google or by an emailed code. Sign-ins are recorded from 26 October 2026; before that only emailed-code sign-ins left a trace, so those were filled in and a Google-only person shows "no sign-in recorded" until their next one. A session lasts seven days, so someone can be working without a new sign-in for up to a week.
 - **Recent changes** records who changed what, and when.
 
 ## When this went live

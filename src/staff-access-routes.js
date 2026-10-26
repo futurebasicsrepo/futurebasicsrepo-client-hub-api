@@ -35,11 +35,11 @@ export function registerStaffAccessRoutes(app, { pool, authenticate, adminOnly, 
 
   app.get('/v1/staff-access', { preHandler: owners }, async () => {
     const defaults = await staffAccess.defaults();
-    const rows = (await pool.query(`select u.id, u.email, u.name, u.created_at, sa.modules, sa.blocked, sa.note, sa.updated_at, sa.updated_by, ub.name updated_by_name, ub.email updated_by_email
+    const rows = (await pool.query(`select u.id, u.email, u.name, u.created_at, u.last_sign_in_at, sa.modules, sa.blocked, sa.note, sa.updated_at, sa.updated_by, ub.name updated_by_name, ub.email updated_by_email
       from users u left join staff_access sa on sa.user_id=u.id left join users ub on ub.id=sa.updated_by where u.role='admin' and lower(u.email) not like 'preview@%' order by lower(coalesce(nullif(u.name,''), u.email))`)).rows;
     const team = rows.map(r => {
       const owner = isOwner(r.email, env), configured = Boolean(r.modules);
-      return { id: r.id, email: r.email, name: r.name || '', owner, configured, blocked: Boolean(r.blocked) && !owner, note: r.note || '', since: r.created_at,
+      return { id: r.id, email: r.email, name: r.name || '', owner, configured, blocked: Boolean(r.blocked) && !owner, note: r.note || '', since: r.created_at, lastSignIn: r.last_sign_in_at || null,
         modules: owner ? MODULE_IDS : configured ? cleanModules(r.modules) : defaults, usingDefault: !owner && !configured,
         updatedAt: r.updated_at || null, updatedBy: r.updated_by_name || r.updated_by_email || '' };
     }).sort((a, b) => Number(b.owner) - Number(a.owner) || Number(a.configured) - Number(b.configured) || a.email.localeCompare(b.email));
