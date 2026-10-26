@@ -190,6 +190,7 @@ body{overflow-x:clip}
 .modalhead .close{flex:none;width:44px;height:44px;padding:0;border:1px solid rgba(255,255,255,.22);border-radius:50%;display:grid;place-items:center;background:transparent;color:#fff;font-size:22px;line-height:1}
 .modalhead .close:focus-visible{outline:2px solid var(--cue);outline-offset:2px}
 #editorForm .editor-actions button[type=button]{background:transparent;color:var(--ink)}
+#editorForm input[type=date],#editorForm input[type=datetime-local]{display:block;width:100%;min-width:0;max-width:100%;box-sizing:border-box;-webkit-appearance:none;appearance:none;min-height:48px} /* iOS draws an empty date box wider than its field */
 .project-actions>.more{padding:0}.project-actions>.more>summary{width:100%;text-align:center}
 .project-empty{grid-column:1/-1;margin:0;padding:18px 20px;border:1px dashed var(--line);border-radius:22px;color:var(--dim)}
 .work-financial .source{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.22);color:#d4d8d5}
