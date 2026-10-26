@@ -1308,7 +1308,7 @@ app.patch('/v1/admin/projects/:id',{preHandler:[authenticate,adminOnly]},async(r
   const cur=(await pool.query('select kind,stage,build_id from projects where id=$1',[req.params.id])).rows[0];if(!cur)return reply.code(404).send({error:'Project not found'});
   let stage=cur.stage,buildId=cur.build_id;
   if(b.stage!==undefined){if(cur.kind!=='software')return reply.code(400).send({error:'Only a software project has stages'});if(!STAGE_KEYS.includes(b.stage))return reply.code(400).send({error:'That is not a stage a software project goes through'});stage=b.stage}
-  if(b.buildId!==undefined){
+  if(b.buildId!==undefined&&!(cur.kind!=='software'&&(b.buildId===null||b.buildId===''))){ // clearing the build of a product project is not an error: it has none
     if(cur.kind!=='software')return reply.code(400).send({error:'Only a software project is tied to a build'});
     if(b.buildId===null||b.buildId==='')buildId=null;
     else{if(!UUID_RE.test(String(b.buildId))||!(await pool.query('select 1 from builds where id=$1',[b.buildId])).rowCount)return reply.code(404).send({error:'That build is not there'});buildId=b.buildId}
