@@ -5445,6 +5445,30 @@ app.post('/v1/admin/products/:id/tech-pack/factory-ack',{preHandler:[authenticat
 });
 // The factory said in Messages that a sample shipped: Future Basics records it (with its tracking) in the pack it works on and in the version the
 // factory reads. Tracking is not part of the spec, so it is no new version.
+// A graphic from the Design Lab's library onto any product's tech pack (the library page's "Put it on a product"; the pack page itself adds one the way it adds an
+// upload). The pack is made first when the product has none yet.
+app.get('/v1/admin/products/search',{preHandler:[authenticate,adminOnly]},async(req)=>{
+  const q=String(req.query?.q||'').replace(/\s+/g,' ').trim().toLowerCase().slice(0,80);
+  const rows=(await pool.query(`select p.id,p.title,c.name client_name,(tp.id is not null) has_pack from products p join clients c on c.id=p.client_id left join tech_packs tp on tp.product_id=p.id
+    where c.archived_at is null and ($1='' or lower(p.title) like $2 or lower(c.name) like $2) order by lower(c.name), lower(p.title) limit 30`,[q,`%${q}%`])).rows;
+  return {products:rows.map(r=>({id:r.id,title:r.title,clientName:r.client_name,hasPack:r.has_pack}))};
+});
+app.post('/v1/admin/products/:id/tech-pack/artwork',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  if(!UUID_RE.test(String(req.params.id))||!UUID_RE.test(String(req.body?.art||'')))return reply.code(404).send({error:'Not found'});
+  const art=(await pool.query('select id,name,png,technique_id from lab_art where id=$1',[req.body.art])).rows[0];if(!art)return reply.code(404).send({error:'That graphic is not in the library'});
+  const pack=await labPack(req.params.id);if(!pack)return reply.code(404).send({error:'Product not found'});
+  const data=normalizeTechPack(pack.data);if(data.artwork.length>=12)return reply.code(409).send({error:'This tech pack already has 12 artworks: take one off first'});
+  const image=`data:image/png;base64,${art.png.toString('base64')}`,placement=String(req.body?.placement||'').replace(/\s+/g,' ').trim().slice(0,120),widthIn=Number(req.body?.widthIn);
+  const tech=art.technique_id?(await pool.query('select name from lab_techniques where id=$1',[art.technique_id])).rows[0]?.name:'';
+  const item={id:`art-lib-${Date.now().toString(36)}`,name:String(art.name||'Graphic').slice(0,120),image,clear:image,source:'upload',note:`From the graphics library${tech?` · ${tech}`:''}${placement?` · ${placement}`:''}`,pantones:[],placements:[]};
+  const sk=data.sketches.find(k=>k.view==='front'&&k.image)||data.sketches.find(k=>k.image);
+  if(sk&&(placement||Number.isFinite(widthIn)))item.placements.push({sketchId:sk.id,x:.5,y:.4,w:.25,widthIn:Number.isFinite(widthIn)&&widthIn>0?widthIn:null,label:placement||'Front'});
+  data.artwork=[item,...data.artwork];
+  await pool.query('update tech_packs set data=$2,updated_at=now() where id=$1',[pack.id,data]);
+  const prod=(await pool.query('select client_id,title from products where id=$1',[req.params.id])).rows[0];
+  await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,[prod?.client_id,req.params.id,req.auth.sub,`"${item.name}" from the graphics library added to the tech pack for ${prod?.title||'the product'}`,{techPackId:pack.id,art:art.id}]).catch(()=>{});
+  return reply.code(201).send({artworkId:item.id,artwork:data.artwork.length,placed:item.placements.length>0});
+});
 // Every published version, kept as it was: the chain of a pack's updates (a factory that sampled from v1 can always be shown v1)
 app.get('/v1/admin/products/:id/tech-pack/versions/:v',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const ctx=await loadAdminTechPack(req.params.id);if(!ctx?.techPack)return reply.code(404).send({error:'Tech pack not found'});

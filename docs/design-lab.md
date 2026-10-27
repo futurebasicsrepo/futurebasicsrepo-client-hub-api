@@ -239,10 +239,12 @@ The library takes pictures as well as links: **Add photos or screenshots** under
 - **Every graphic is kept.** That covers graphics drawn for a line plan's program, for a concept, in the studio, drawn here, and our own uploads. They stay in the library even when the plan or concept they were made for is deleted.
 - **Draw a new graphic.** Say what it is, the words on it (spelled exactly), the ink colours, a style, and what it is **made for**. The technique's design rules (line weights, number of colours) go to the image model. One to three takes at a time. Other brands' names are refused.
 - **Add our own artwork** (PNG, JPEG or WebP). Transparency is kept.
+- **Build a graphic in the studio.** Opens the studio on a clear canvas (`/lab/studio?new=graphic`): draw with AI, paint, type, add our marks, parts from the sketch pack and other library graphics as layers. **Keep in the library** saves the finished picture with its layers. Opening a kept graphic offers **Rework in the studio**, which brings the layers back as they were; **Update the graphic** replaces the picture and its layers, or keep the rework as a new one.
 - **Find and manage.**
   - Search by words, tag, where it came from, or technique.
   - Open a graphic to see it on fabric (jersey, fleece, twill, canvas, denim, any colour), made as any technique.
   - Rename and tag it, give it its usual technique, download it, or **put it on a concept**: where it goes and how it is made. It is placed on the concept's picture straight away.
+  - **Put it on a product**: search any product in any client's room, give a placement and width, and the graphic goes on its tech pack as artwork (Pantones read, placed on the front view). If the product has no pack yet, one is made. The same graphics are offered inside the tech pack, **From the graphics library** beside Upload artwork.
   - **Take out of the library** hides it. Pieces that use it keep it.
 
 ### Techniques
@@ -264,11 +266,12 @@ The library takes pictures as well as links: **Add photos or screenshots** under
 ### Using them on pieces
 - **In a concept:** **Add from the graphics library** (under the graphics) adds one: choose where it goes and how it is made. It is placed on the picture, and its technique goes on the tech pack (the graphic's artwork file is labelled with it).
 - **In the studio:**
-  - The Add tab lists the library.
+  - The Add tab lists the library, and **From the sketch pack**: pockets, zips, collars, trims and buttons drawn in flat-sketch lines, added as a layer to place and size, then blended in with “Change it with AI”.
   - Any layer can be **made as** a technique. It shows at once, and stitches and dots keep a real size at any scale.
   - **Make it real with AI** asks the image model for the real technique inside that layer's area only, with the technique's words and reference photos. The result comes back as a new top layer.
   - **Save to the library** keeps a layer's artwork for other pieces.
   - Graphics made in the studio's AI tab go into the library on their own, made for the chosen technique.
+- Studio routes for the library: `GET /v1/lab/library/studio?art=`, `POST /v1/lab/library/studio/keep`, `PUT /v1/lab/library/graphics/:id/studio`, `POST /v1/lab/library/graphics/:id/studio/apply`, `POST /v1/lab/library/studio/ai` (in `src/lab-studio-routes.js`; the layers live in `lab_art.doc`). Onto a product: `POST /v1/admin/products/:id/tech-pack/artwork` and `GET /v1/admin/products/search`.
 - Routes: `src/lab-library-routes.js` (`/v1/lab/library/graphics…`, `/v1/lab/library/techniques…`, `POST /v1/lab/concepts/:id/graphics`). The techniques and the starting set are in `src/lab-library.js`, the drawing is in `src/lab-finish.js` (served as `/lab/finish.js`), and the page is `src/lab-library.html`. Tables: `lab_art` (with `in_library`, `tags`, `source`, `technique_id`), `lab_techniques` and `lab_technique_photos`.
 
 ## Flats and placement, and "can it be made?"

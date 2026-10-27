@@ -80,7 +80,9 @@ input[type=range]{width:100%;accent-color:var(--ink)}input[type=color]{width:44p
         <div style="display:grid;gap:10px;align-content:start"><h2>Add our own artwork</h2><p class="note">A logo, a scan, a hand drawing, a print file. Transparent PNGs keep their transparency.</p>
           <label class="f"><span>Tags for what you add</span><input class="t" id="uTags" maxlength="200" placeholder="archive, crest"></label>
           <div class="row"><button class="btn" type="button" id="uGo">Choose files…</button><input type="file" id="uFiles" accept="image/png,image/jpeg,image/webp" multiple class="hidden"><span class="msg" id="uMsg" role="status"></span></div>
-          <p class="note">Graphics made for line plans, for concepts and in the studio come here on their own.</p></div>
+          <p class="note">Graphics made for line plans, for concepts and in the studio come here on their own.</p>
+          <h2 style="margin-top:6px">Build one yourself</h2><p class="note">A clear canvas with type, shapes, our marks, any graphic here, parts from the sketch pack, and the image model: layers you keep, so it can be reworked later.</p>
+          <div class="row"><a class="btn go" id="buildGo" href="/lab/studio?new=graphic">Build a graphic in the studio</a></div></div>
       </div>
       <div class="filters"><input class="t" id="fQ" type="search" placeholder="Search names, words and tags" aria-label="Search graphics"><select class="t" id="fSource" aria-label="Where they came from"><option value="">From anywhere</option><option value="library">Drawn here</option><option value="plan">Line plans</option><option value="concept">Concepts</option><option value="studio">The studio</option><option value="upload">Our uploads</option></select><select class="t" id="fTech" aria-label="Technique"><option value="">Any technique</option></select><span class="msg" id="fCount"></span></div>
       <div class="chips" id="fTags"></div>
@@ -99,9 +101,12 @@ input[type=range]{width:100%;accent-color:var(--ink)}input[type=color]{width:44p
   <div class="grid2"><label class="f"><span>Show it as</span><select class="t" id="gvTech"><option value="">The artwork, flat</option></select></label><label class="f"><span>On</span><span class="row"><input type="color" id="gvColor" value="#d9d6cf" aria-label="Garment colour"><select class="t" id="gvCloth" style="flex:1"><option value="jersey">Jersey</option><option value="fleece">Fleece</option><option value="twill">Twill</option><option value="canvas">Canvas</option><option value="denim">Denim</option></select></span></label></div></div>
   <div class="rgt"><div class="row" style="justify-content:space-between"><span class="mono" id="gdMeta"></span><button class="btn sm q" type="button" data-close>Close</button></div>
     <label class="f"><span>Name</span><input class="t" id="gdName" maxlength="120"></label><label class="f"><span>Tags</span><input class="t" id="gdTags" maxlength="300"></label><label class="f"><span>Usually made as</span><select class="t" id="gdTech"><option value="">Not set</option></select></label>
-    <div class="row"><button class="btn" type="button" id="gdSave">Save</button><a class="btn q" id="gdDown" download>Download PNG</a><button class="btn q" type="button" id="gdDel">Take out of the library</button></div>
+    <div class="row"><button class="btn" type="button" id="gdSave">Save</button><a class="btn q" id="gdStudio" href="#">Rework in the studio</a><a class="btn q" id="gdDown" download>Download PNG</a><button class="btn q" type="button" id="gdDel">Take out of the library</button></div>
     <div class="sec"><h4>Put it on a concept</h4><label class="f"><span>Concept</span><select class="t" id="gdConcept"></select></label><div class="grid2"><label class="f"><span>Where</span><select class="t" id="gdPlace"></select></label><label class="f"><span>Made as</span><select class="t" id="gdMade"></select></label></div>
       <div class="row"><button class="btn go" type="button" id="gdPut">Put it on</button></div><p class="note">The graphic is added to the concept and placed on its picture. Open the concept or the studio to finish it.</p></div>
+    <div class="sec"><h4>Put it on a product</h4><label class="f"><span>Product</span><input class="t" id="gpQ" type="search" placeholder="Search products and clients" aria-label="Search products"></label><select class="t" id="gpProduct" size="4" aria-label="Products"></select>
+      <div class="grid2"><label class="f"><span>Where</span><input class="t" id="gpPlace" maxlength="120" placeholder="Left chest" value="Front"></label><label class="f"><span>Width (in)</span><input class="t" id="gpWidth" type="number" step="0.25" min="0.25" placeholder="3.5"></label></div>
+      <div class="row"><button class="btn go" type="button" id="gpPut">Put it on the product</button></div><p class="note">Any product, in any client's room: the graphic goes on its tech pack as artwork, placed on the front view. The pack is made first if the product has none yet.</p></div>
     <p class="msg" id="gdMsg" role="status"></p><p class="note" id="gdPrompt"></p></div></div></dialog>
 
 <dialog id="tDlg"><div class="dl"><div class="lft"><canvas id="tCanvas" width="900" height="760" aria-label="The technique on fabric"></canvas><img id="tReal" class="big hidden" alt="The technique made real by the image model">
@@ -157,6 +162,7 @@ async function openGraphic(id){
   $('#gdMeta').textContent=`${SRC[CUR.source]||CUR.source}${CUR.from?' · '+CUR.from:''}${CUR.by?' · '+CUR.by:''} · ${when(CUR.createdAt)}`;$('#gdName').value=CUR.name;$('#gdTags').value=CUR.tags.join(', ');
   $('#gdTech').innerHTML=techOpts(CUR.techniqueId,'Not set');$('#gvTech').innerHTML=techOpts(CUR.techniqueId,'The artwork, flat');$('#gdMade').innerHTML=techOpts(CUR.techniqueId,'As it is');$('#gdPrompt').textContent=CUR.prompt?'Drawn from: '+CUR.prompt:'';
   $('#gdPlace').innerHTML=['front chest','left chest','front centre','full front','chest band','sleeve','back','back yoke','hem'].map(p=>`<option>${p}</option>`).join('');msg('#gdMsg','');
+  $('#gdStudio').href='/lab/studio?art='+id;$('#gpProduct').innerHTML='';$('#gpQ').value='';loadProducts('');
   d.showModal();GIMG=null;const u=await blobUrl('/v1/lab/art/'+id);$('#gdDown').href=u;$('#gdDown').download=(CUR.name||'graphic').replace(/[^a-z0-9]+/gi,'-').toLowerCase()+'.png';GIMG=await imgOf(u);drawGraphic();
   if(!CONCEPTS){try{CONCEPTS=(await api('/v1/lab/concepts?limit=120')).concepts.filter(c=>c.status!=='tech_pack')}catch{CONCEPTS=[]}}
   $('#gdConcept').innerHTML=CONCEPTS.length?CONCEPTS.map(c=>`<option value="${c.id}">${esc(c.name)} · ${esc(c.categoryLabel)}${c.planName?' · '+esc(c.planName):''}</option>`).join(''):'<option value="">No concepts to put it on yet</option>';
@@ -170,6 +176,12 @@ $('#gdPut').onclick=async()=>{const cid=$('#gdConcept').value;if(!cid)return;con
   try{const r=await api(`/v1/lab/concepts/${cid}/graphics`,{body:{art:CUR.id,placement:$('#gdPlace').value,techniqueId:$('#gdMade').value||null}});let placed=true;try{await api(`/v1/lab/concepts/${cid}/replace-marks`,{body:{}})}catch{placed=false}
     msg('#gdMsg',`It is on the concept${placed?' and placed on its picture':'; redraw its picture to place it'}.${r.backToDraft?' It was approved, so it is back to draft.':''} <a href="/lab/studio?concept=${cid}">Open it in the studio</a>`,'ok')}catch(x){msg('#gdMsg',esc(x.message),'bad')}finally{b.disabled=false}};
 $('#gGrid').addEventListener('click',e=>{const c=e.target.closest('[data-g]');if(c)openGraphic(c.dataset.g).catch(x=>alert(x.message))});
+// any product's tech pack
+let pqT=0;async function loadProducts(q){try{const r=await api('/v1/admin/products/search?q='+encodeURIComponent(q));$('#gpProduct').innerHTML=r.products.length?r.products.map(p=>`<option value="${p.id}">${esc(p.clientName)} · ${esc(p.title)}${p.hasPack?'':' (no tech pack yet)'}</option>`).join(''):'<option value="">No products found</option>'}catch(x){$('#gpProduct').innerHTML=`<option value="">${esc(x.message)}</option>`}}
+$('#gpQ').addEventListener('input',()=>{clearTimeout(pqT);pqT=setTimeout(()=>loadProducts($('#gpQ').value.trim()),250)});
+$('#gpPut').onclick=async()=>{const pid=$('#gpProduct').value;if(!pid){msg('#gdMsg','Choose a product first.','bad');return}const b=$('#gpPut');b.disabled=true;
+  try{const r=await api(`/v1/admin/products/${pid}/tech-pack/artwork`,{body:{art:CUR.id,placement:$('#gpPlace').value,widthIn:Number($('#gpWidth').value)||undefined}});
+    msg('#gdMsg',`It is on the tech pack as artwork${r.placed?', placed on the front':''}. <a href="/tech-packs/${pid}">Open the tech pack</a> to size and place it.`,'ok')}catch(x){msg('#gdMsg',esc(x.message),'bad')}finally{b.disabled=false}};
 
 // ---------- techniques ----------
 const SAMPLE=FX.sample(600);
@@ -241,5 +253,6 @@ async function boot(){
 }
 boot();
 </script>
+<script src="/helper.js" defer></script>
 </body>
 </html>

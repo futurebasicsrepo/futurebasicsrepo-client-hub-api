@@ -61,11 +61,24 @@
       match: () => path() === '/lab/studio' && shown('#app'),
       steps: [
         { target: '#stage', title: 'The concept, in layers', do: 'Draw, paint, type, add our marks or a graphic; each is a layer you can move or hide.', why: 'Finish it by hand where the AI got close but not right.' },
+        { target: '[data-tab="add"]', title: 'Add a part from the sketch pack', optional: true, do: 'Open Add: under “From the sketch pack”, press a pocket, zip, collar, trim or button. It lands as a layer: drag it into place and size it.', why: 'Drawn in the same lines as the flats, so it reads as part of the piece; paint over it and let the AI blend it in.' },
         { target: '#pAi', title: 'Change it with AI', optional: true, do: 'Say what to change, for the whole piece or a painted area, or make a new graphic.', why: 'Quicker than drawing, and only the area you paint changes.' },
         { target: '#apply', title: 'Use it as the concept', do: 'Press the button to make this the concept’s picture.', why: 'The finished picture is what the client sees and what the tech pack starts from.', done: 'click', after: 'Done.' },
         { target: '#back', title: 'Back to the concepts', do: 'Go back to the concept to draw its flats.', why: 'The flats come next: the piece measured, ready for a factory.' }
       ],
       next: { tour: 'lab-flats', label: 'Draw and change the flats' }
+    },
+    {
+      id: 'lab-library', title: 'Build a graphic and put it anywhere',
+      match: () => path() === '/lab/library' && shown('#app') && !$('#gDlg[open]'),
+      steps: [
+        { target: '#gPrompt', title: 'Draw one with AI', optional: true, do: 'Say what the graphic is, the words on it, the ink colours and what it is made for, then press Draw.', why: 'The technique’s own rules go to the image model, so what comes back can be made.' },
+        { target: '#uFiles', title: 'Or add our own artwork', optional: true, do: 'Drop a PNG, JPEG or WebP.', why: 'Transparency is kept, so it sits on fabric as it is.' },
+        { target: '#buildGo', title: 'Or build one in the studio', optional: true, do: 'Press it: the studio opens on a clear canvas. Draw with AI, paint, type, add marks and parts from the sketch pack, then press “Keep in the library”.', why: 'The layers are kept with the graphic, so it can be reworked later exactly as it was built.' },
+        { target: '#gGrid', title: 'Everything we have made', do: 'Search by words, tag, where it came from or technique. Open a graphic to see it on fabric, made as any technique.', why: 'Nothing is lost: graphics drawn for a plan, a concept, in the studio or added by hand all live here.' },
+        { target: '#fQ', title: 'Put it on anything', do: 'Open a graphic: “Put it on a concept” places it on a concept’s picture; “Put it on a product” searches any client’s products and adds it to the tech pack as artwork, placed on the front.', why: 'One library, every piece: the pack carries the graphic, its Pantones and its placement.' }
+      ],
+      next: { tour: 'lab-studio', label: 'Finish a concept in the studio' }
     },
     {
       id: 'lab-flats', title: 'Draw and change the flats',
