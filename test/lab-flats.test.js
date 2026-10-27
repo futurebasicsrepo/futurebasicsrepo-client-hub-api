@@ -88,3 +88,34 @@ test('two placements on top of each other are pointed out', async () => {
   const a = { id: 'a', name: 'Logo', view: 'front', x: 4, y: 7, w: 3, h: 1 }, b = { id: 'b', name: 'Art', view: 'front', x: 0, y: 9, w: 10, h: 8 }, c = { ...a, id: 'c', view: 'back' };
   const o = overlapChecks([a, b, c]); assert.equal(o.a[0].code, 'OVERLAP'); assert.match(o.b[0].text, /Art overlaps Logo/); assert.deepEqual(o.c, [], 'the back is another side');
 });
+
+test('pieces are drawn from the flat sketches, lined up with their measurements', async () => {
+  const { FLAT_TEMPLATES } = await import('../src/lab-flat-templates.js');
+  const { drawingOf, templateOf, defaultTemplate, templatesFor } = await import('../src/lab-flats.js');
+  const { existsSync } = await import('node:fs');
+  assert.ok(FLAT_TEMPLATES.length >= 25);
+  for (const t of FLAT_TEMPLATES) {
+    assert.ok(existsSync(new URL(`../src/flat-templates/${t.file}`, import.meta.url)), `${t.id} has its file`);
+    const p = { ...defaultParams(t.style), template: t.id };
+    for (const view of ['front', 'back']) {
+      const d = drawingOf(p, view); assert.ok(d, `${t.id} ${view} is drawn from the sketch`);
+      assert.ok(Object.values(d.box).every(Number.isFinite) && d.box.x0 < 0 && d.box.x1 > 0, `${t.id} ${view}: the centre line is inside the view`);
+      const w = d.box.x1 - d.box.x0, kind = STYLES[t.style].kind, m = p.m;
+      // the view is about as wide as the piece: wider than the body, not absurdly so
+      if (kind === 'top') assert.ok(w > m.chest && w < m.chest * 3.2, `${t.id} ${view} is ${w.toFixed(1)} in across for a ${m.chest} in chest`);
+      if (kind === 'bottom') assert.ok(w > m.waist * .9 && w < m.waist * 3.2, `${t.id} ${view} is ${w.toFixed(1)} in across for a ${m.waist} in waist`);
+      assert.ok(d.sy / d.sx >= .879 && d.sy / d.sx <= 1.121, 'never visibly stretched');
+    }
+    assert.match(renderSvg(p, 'front'), new RegExp(`<image href="/lab/flat-templates/${t.file}"`));
+  }
+  assert.equal(defaultTemplate('tee', 'boxy'), 'tee-boxy'); assert.equal(defaultTemplate('tee', 'regular'), 'tee-classic'); assert.equal(defaultTemplate('pants', 'regular', 'nylon cargo pant'), 'pt-cargo');
+  assert.equal(defaultTemplate('beanie'), null); assert.deepEqual(templatesFor('tote'), []);
+  const d = (category, name) => detectStyle({ category, name });
+  assert.equal(d('tops', 'Heavyweight boxy tee').template, 'tee-boxy'); assert.equal(d('outerwear', 'Nylon bomber').template, 'jk-bomber'); assert.equal(d('bottoms', 'Washed denim jeans').template, 'pt-jean');
+  // what the page sends: a sketch of another style falls back to the style's own; "none" keeps the simple outline
+  assert.equal(cleanFlat({ style: 'tee', template: 'pt-cargo' }).params.template, 'tee-classic');
+  const none = cleanFlat({ style: 'hoodie', template: 'none' }).params; assert.equal(none.template, 'none'); assert.equal(templateOf(none), null); assert.ok(!/<image /.test(renderSvg(none, 'front')));
+  assert.equal(cleanFlat({ style: 'beanie' }).params.template, undefined);
+  // the service puts the sketch inside the file
+  assert.match(renderSvg(defaultParams('cap'), 'front', { templateHref: f => `data:x;${f}` }), /href="data:x;cap-6panel\.svg"/);
+});

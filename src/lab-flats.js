@@ -1,8 +1,11 @@
 // Design Lab technical flats: a piece drawn as a measured flat (front and back), the way a factory reads it, with every logo and graphic placed in inches
 // from the points a sample room measures from (the high point of the shoulder, the centre front, the waistband, the brim). Nothing here is drawn by an
-// image model: each style is a template built from its points of measure, so the drawing, the placements and the measurement table agree exactly.
+// image model. Each piece is drawn from a professional flat sketch (src/flat-templates, from the flat-sketch pack; see scripts/flat-templates/build.mjs),
+// scaled so its chest or waist and its length match the piece's measurements; the checks, the placements and the measurement table work from
+// the measurements themselves. A style with no sketch (beanie, tote), or "Simple outline", is drawn from its points of measure.
 // The same file runs in the page (served as /lab/flats.js) and on the service (the check and the spec sheet), so it uses neither the DOM nor Node.
 // All lengths are inches. On the front flat the viewer's right is the wearer's left.
+import { FLAT_TEMPLATES } from './lab-flat-templates.js';
 
 export const SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
 const TOP = { chest: 'Chest width, 1 in below the armhole', length: 'Body length from the high point of the shoulder', shoulder: 'Shoulder width, seam to seam', sleeve: 'Sleeve length from the shoulder point', sleeveOpening: 'Sleeve opening, flat', armhole: 'Armhole, straight', neckWidth: 'Neck width, seam to seam', neckDropFront: 'Front neck drop', neckDropBack: 'Back neck drop', hemRib: 'Hem rib height', cuffRib: 'Cuff rib height', neckRib: 'Neck rib width' };
@@ -45,7 +48,45 @@ export function detectStyle(c = {}) {
     cropped: has(/crop/), pleats: has(/double[- ]pleat/) ? 2 : has(/pleat/) ? 1 : 0, chestPocket: has(/chest pocket|patch pocket/), noPocket: has(/no pocket|pocketless/),
     rib: !has(/raw hem|cut[- ]off|no rib/), drawcord: !has(/no drawcord|without drawcord/) && STYLES[style].kind === 'top' ? has(/drawcord|drawstring/) || Boolean(STYLES[style].hood) : has(/drawcord|drawstring|elastic/)
   };
-  return { style, fit, options };
+  return { style, fit, options, template: defaultTemplate(style, fit, t) };
+}
+
+// ---- the sketches: which one a piece is drawn from ----
+// [template, words in the concept that call for it, fits it suits]; the first of a style is its default
+const TEMPLATE_PICK = [
+  ['tee-raglan', /raglan/], ['tee-vneck', /v[- ]?neck/], ['tee-boxy', /boxy|crop/, ['boxy']], ['tee-oversized', /oversiz/, ['oversized', 'relaxed', 'wide']], ['tee-classic'],
+  ['ls-crew'],
+  ['crew-raglan', /raglan/], ['crew-heavy', /heavy|boxy|oversiz/, ['boxy', 'oversized', 'wide']], ['crew-classic'],
+  ['hood-boxy', /boxy|oversiz|crop/, ['boxy', 'oversized', 'relaxed', 'wide']], ['hood-classic'],
+  ['zip-cropped', /crop|boxy/, ['boxy']], ['zip-classic'],
+  ['jk-bomber', /bomber|varsity|ma-?1/], ['jk-track', /track|windbreaker|anorak/], ['jk-trucker', /trucker|denim jacket|chore|overshirt|work jacket|collar/], ['jk-funnel', /funnel|mock neck|fleece/], ['jk-zip'],
+  ['pt-jogger', /jogger|sweatpant|track pant|fleece/], ['pt-jean', /jean|denim|five[- ]pocket|5[- ]pocket/], ['pt-cargo', /cargo|utility/], ['pt-chino', /pleat|trouser|chino/], ['pt-wide', /wide/, ['wide']], ['pt-chino'],
+  ['sh-denim', /denim|jort/], ['sh-cargo', /cargo|utility/], ['sh-pleat', /pleat/], ['sh-chino', /chino|twill|walk/], ['sh-sweat'],
+  ['cap-6panel']
+];
+export const templatesFor = style => FLAT_TEMPLATES.filter(t => t.style === style).map(t => ({ id: t.id, label: t.label }));
+export function defaultTemplate(style, fit = 'regular', words = '') {
+  const own = TEMPLATE_PICK.filter(([id]) => FLAT_TEMPLATES.some(t => t.id === id && t.style === style)); if (!own.length) return null;
+  return (own.find(([, re]) => re && re.test(words)) || own.find(([, , fits]) => fits && fits.includes(fit)) || own.find(([, re, fits]) => !re && !fits) || own[0])[0];
+}
+// the sketch a piece is drawn from: the one it names, or its style's default; 'none' is the simple outline
+export function templateOf(p) {
+  if (p.template === 'none') return null;
+  return FLAT_TEMPLATES.find(t => t.id === p.template && t.style === p.style) || FLAT_TEMPLATES.find(t => t.id === defaultTemplate(p.style, p.fit)) || null;
+}
+// how a sketch's view lines up with the piece: its origin (the HPS on the centre line, the top of the waistband, the brim seam) and its
+// scale across (chest or waist) and down (length, held within 12% of the scale across so the sketch is never visibly stretched), in
+// sketch units an inch; box is the view in inches
+export function drawingOf(p, view = 'front', size = p.size || 'M') {
+  const t = templateOf(p), v = t?.views[view]; if (!v) return null;
+  const m = measurementsFor(p, size), kind = STYLES[p.style].kind, clamp = (a, x) => Math.min(Math.max(a, x * .88), x * 1.12);
+  let sx, sy, oy;
+  if (kind === 'top') { sx = v.chest / m.chest; oy = v.hpsY; sy = clamp((v.hemY - v.hpsY) / m.length, sx); }
+  else if (kind === 'bottom') { sx = v.waist / m.waist; oy = v.topY; sy = clamp((v.hemY - v.topY) / (m.rise + m.inseam), sx); }
+  else { sx = v.width / m.crownWidth; oy = v.seamY; sy = sx; }
+  if (!(sx > 0 && sy > 0)) return null;
+  const [bx, by, bw, bh] = v.box;
+  return { t, v, sx, sy, ox: v.cf, oy, box: { x0: (bx - v.cf) / sx, y0: (by - oy) / sy, x1: (bx + bw - v.cf) / sx, y1: (by + bh - oy) / sy } };
 }
 export function defaultParams(style, fit = 'regular', options = {}) {
   const S = STYLES[style]; if (!S) return null;
@@ -236,11 +277,13 @@ export function defaultPlacement(kind, p, { aspect = 1, label = '' } = {}) {
 
 // ---- the picture: one view as SVG, with the placements, their measurements and the points of measure ----
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-export function renderSvg(p, view = 'front', { placements = [], hrefs = {}, size = p.size || 'M', showPom = false, showDims = true, selected = null, findings = {}, scale = 22, title = '' } = {} /* scale 0: no width and height, for nesting */) {
-  const g = geometry(p, view, size), b = g.bounds, pad = 3.2, x0 = b.x0 - pad, y0 = b.y0 - pad - (title ? 1.2 : 0), W = b.x1 - b.x0 + pad * 2, H = b.y1 - b.y0 + pad * 2 + (title ? 1.2 : 0);
+// templateHref: where the page finds a sketch's file (the service passes data URLs, so a saved or printed sheet stands on its own)
+export const TEMPLATE_URL = file => `/lab/flat-templates/${file}`;
+export function renderSvg(p, view = 'front', { placements = [], hrefs = {}, size = p.size || 'M', showPom = false, showDims = true, selected = null, findings = {}, scale = 22, title = '', templateHref = TEMPLATE_URL } = {} /* scale 0: no width and height, for nesting */) {
+  const g = geometry(p, view, size), d = drawingOf(p, view, size), b = d ? d.box : g.bounds, pad = 3.2, x0 = b.x0 - pad, y0 = b.y0 - pad - (title ? 1.2 : 0), W = b.x1 - b.x0 + pad * 2, H = b.y1 - b.y0 + pad * 2 + (title ? 1.2 : 0);
   const k = Math.max(1, Math.max(W, H) / 30), fs = .34 * k; // labels grow with the drawing, so they read at the size it is shown
   const sw = { outline: .07, seam: .035, stitch: .03, rib: .018, under: .05, cord: .05, label: .03 }, dash = { stitch: '.18 .12', label: '.15 .1' };
-  const parts = g.parts.map(pt => `<path d="${pt.d}" fill="${pt.kind === 'outline' || pt.kind === 'under' ? '#ffffff' : 'none'}" stroke="#141416" stroke-width="${sw[pt.kind] || .035}"${dash[pt.kind] ? ` stroke-dasharray="${dash[pt.kind]}"` : ''} stroke-linejoin="round" stroke-linecap="round"/>`).join('');
+  const parts = d ? `<svg x="${b.x0.toFixed(3)}" y="${b.y0.toFixed(3)}" width="${(b.x1 - b.x0).toFixed(3)}" height="${(b.y1 - b.y0).toFixed(3)}" viewBox="${d.v.box.join(' ')}" preserveAspectRatio="none" overflow="hidden"><image href="${esc(templateHref(d.t.file))}" x="${d.t.page[0]}" y="${d.t.page[1]}" width="${d.t.page[2]}" height="${d.t.page[3]}"/></svg>` : g.parts.map(pt => `<path d="${pt.d}" fill="${pt.kind === 'outline' || pt.kind === 'under' ? '#ffffff' : 'none'}" stroke="#141416" stroke-width="${sw[pt.kind] || .035}"${dash[pt.kind] ? ` stroke-dasharray="${dash[pt.kind]}"` : ''} stroke-linejoin="round" stroke-linecap="round"/>`).join('');
   const T = (x, y, s, t, a = 'middle', c = '#141416', wgt = 500) => `<text x="${x.toFixed(2)}" y="${y.toFixed(2)}" font-size="${s}" text-anchor="${a}" fill="${c}" font-family="Space Grotesk, Helvetica, Arial, sans-serif" font-weight="${wgt}">${esc(t)}</text>`;
   const arrow = (a, bb, label, col = '#2a6df4') => { const mx = (a[0] + bb[0]) / 2, my = (a[1] + bb[1]) / 2, vert = Math.abs(bb[1] - a[1]) > Math.abs(bb[0] - a[0]); return `<g pointer-events="none"><line x1="${a[0]}" y1="${a[1]}" x2="${bb[0]}" y2="${bb[1]}" stroke="${col}" stroke-width=".03" stroke-dasharray=".14 .08"/><circle cx="${a[0]}" cy="${a[1]}" r=".07" fill="${col}"/><circle cx="${bb[0]}" cy="${bb[1]}" r=".07" fill="${col}"/>${label ? `<rect x="${(vert ? mx + .15 : mx - label.length * fs * .3)}" y="${(vert ? my - fs * .9 : my - fs * 1.75)}" width="${label.length * fs * .6 + .1}" height="${fs * 1.35}" rx=".1" fill="#ffffff" opacity=".92"/>${T(vert ? mx + .2 + label.length * fs * .3 : mx, vert ? my + fs * .3 : my - fs * .75, fs, label, 'middle', col, 600)}` : ''}</g>`; };
   let pl = '';
@@ -255,13 +298,14 @@ export function renderSvg(p, view = 'front', { placements = [], hrefs = {}, size
       pl += `<g pointer-events="none">${T(q.x, q.y + q.h / 2 + fs * 1.3, fs * .9, `${fmt(q.w)} × ${fmt(q.h)}`, 'middle', '#141416', 600)}</g>`;
     }
   }
-  const pom = showPom ? g.pom.map((d, i) => arrow(d.from, d.to, `${String.fromCharCode(65 + Object.keys(p.m).indexOf(d.key))} ${fmt(measurementsFor(p, size)[d.key])}`, '#7a3fd1')).join('') : '';
+  // on a sketch only the points it was lined up to sit on it exactly; the table has the rest
+  const pom = showPom ? g.pom.filter(q => !d || ['chest', 'length', 'waist', 'crownWidth'].includes(q.key)).map((d, i) => arrow(d.from, d.to, `${String.fromCharCode(65 + Object.keys(p.m).indexOf(d.key))} ${fmt(measurementsFor(p, size)[d.key])}`, '#7a3fd1')).join('') : '';
   const cf = STYLES[p.style].kind === 'top' || STYLES[p.style].kind === 'bottom' ? `<line x1="0" y1="${b.y0 - .6}" x2="0" y2="${b.y1 + .6}" stroke="#9a9aa0" stroke-width=".02" stroke-dasharray=".4 .15 .08 .15"/>${T(0, b.y1 + 1.1, .3, view === 'back' ? 'CB' : 'CF', 'middle', '#727278')}` : '';
   const hps = STYLES[p.style].kind === 'top' ? `<line x1="${b.x0 - 1}" y1="0" x2="${b.x1 + 1}" y2="0" stroke="#9a9aa0" stroke-width=".02" stroke-dasharray=".25 .15"/>${T(b.x1 + 1.1, .1, .28, 'HPS', 'start', '#727278')}` : '';
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${x0.toFixed(2)} ${y0.toFixed(2)} ${W.toFixed(2)} ${H.toFixed(2)}"${scale ? ` width="${(W * scale).toFixed(0)}" height="${(H * scale).toFixed(0)}"` : ''} data-view="${view}"><rect x="${x0}" y="${y0}" width="${W}" height="${H}" fill="#ffffff"/>${title ? T(x0 + .4, y0 + .8, .5, title, 'start', '#141416', 600) : ''}${cf}${hps}${parts}${pl}${pom}${T(x0 + W - .4, y0 + H - .4, .28, `${STYLES[p.style].label} · ${view} · size ${STYLES[p.style].oneSize ? 'one size' : size}`, 'end', '#727278')}</svg>`;
 }
 // the picture's coordinates → inches, for dragging placements in the page
-export function viewBoxOf(p, view, { title = '' } = {}) { const b = geometry(p, view).bounds, pad = 3.2; return { x0: b.x0 - pad, y0: b.y0 - pad - (title ? 1.2 : 0), w: b.x1 - b.x0 + pad * 2, h: b.y1 - b.y0 + pad * 2 + (title ? 1.2 : 0) }; }
+export function viewBoxOf(p, view, { title = '', size = p.size || 'M' } = {}) { const b = drawingOf(p, view, size)?.box || geometry(p, view, size).bounds, pad = 3.2; return { x0: b.x0 - pad, y0: b.y0 - pad - (title ? 1.2 : 0), w: b.x1 - b.x0 + pad * 2, h: b.y1 - b.y0 + pad * 2 + (title ? 1.2 : 0) }; }
 
 // → clean, bounded params and placements (from the page)
 export function cleanFlat(input = {}) {
@@ -269,7 +313,8 @@ export function cleanFlat(input = {}) {
   const fit = FITS[input.fit] ? input.fit : 'regular', base = defaultParams(style, fit), m = {};
   for (const k of Object.keys(base.m)) { const v = Number(input.m?.[k]); m[k] = Number.isFinite(v) ? r8(Math.min(Math.max(v, 0), 80)) : base.m[k]; }
   const o = input.options || {}, options = { drop: Boolean(o.drop), cropped: Boolean(o.cropped), pleats: Math.min(Math.max(Math.round(Number(o.pleats) || 0), 0), 2), chestPocket: Boolean(o.chestPocket), noPocket: Boolean(o.noPocket), drawcord: o.drawcord !== false, rib: o.rib !== false };
-  const params = { style, fit, size: SIZES.includes(input.size) ? input.size : 'M', m, options };
+  const template = input.template === 'none' ? 'none' : FLAT_TEMPLATES.some(t => t.id === input.template && t.style === style) ? input.template : defaultTemplate(style, fit);
+  const params = { style, fit, size: SIZES.includes(input.size) ? input.size : 'M', m, options, ...(template ? { template } : {}) };
   const placements = (Array.isArray(input.placements) ? input.placements : []).slice(0, 12).map((q, i) => ({
     id: /^[a-z0-9-]{1,40}$/i.test(String(q.id || '')) ? String(q.id) : 'p' + i, name: String(q.name || 'Graphic').replace(/\s+/g, ' ').trim().slice(0, 60) || 'Graphic', view: q.view === 'back' ? 'back' : 'front',
     x: r8(Math.min(Math.max(Number(q.x) || 0, -60), 60)), y: r8(Math.min(Math.max(Number(q.y) || 0, -30), 80)), w: r8(Math.min(Math.max(Number(q.w) || 1, .25), 40)), h: r8(Math.min(Math.max(Number(q.h) || 1, .25), 40)),

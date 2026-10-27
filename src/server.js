@@ -713,6 +713,12 @@ app.get('/lab/studio', (_req, reply) => reply.header('cache-control', 'no-store,
 app.get('/lab/library', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').type('text/html').send(readFileSync(new URL('./lab-library.html', import.meta.url), 'utf8')));
 app.get('/lab/flats', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').type('text/html').send(readFileSync(new URL('./lab-flats.html', import.meta.url), 'utf8')));
 app.get('/lab/flats.js', (_req, reply) => reply.header('cache-control', 'public, max-age=300').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-flats.js', import.meta.url), 'utf8')));
+app.get('/lab/lab-flat-templates.js', (_req, reply) => reply.header('cache-control', 'public, max-age=300').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-flat-templates.js', import.meta.url), 'utf8')));
+// the flat sketches the technical flats are drawn from (from the purchased flat-sketch pack: served to the Design Lab pages, not listed anywhere)
+app.get('/lab/flat-templates/:file', (req, reply) => {
+  const f = String(req.params.file || ''); if (!/^[a-z0-9-]+\.svg$/.test(f)) return reply.code(404).send('Not found');
+  try { return reply.header('cache-control', 'public, max-age=86400').type('image/svg+xml').send(readFileSync(new URL(`./flat-templates/${f}`, import.meta.url))); } catch { return reply.code(404).send('Not found'); }
+});
 app.get('/lab/finish.js', (_req, reply) => reply.header('cache-control', 'public, max-age=300').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-finish.js', import.meta.url), 'utf8')));
 app.get('/team', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').type('text/html').send(readFileSync(new URL('./team.html', import.meta.url), 'utf8')));
 app.get('/brand', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').type('text/html').send(readFileSync(new URL('./brand.html', import.meta.url), 'utf8')));

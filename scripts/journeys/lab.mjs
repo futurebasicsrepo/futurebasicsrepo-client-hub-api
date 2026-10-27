@@ -932,6 +932,7 @@ await journey('J214', 'Design Lab flats: a concept becomes measured front and ba
     // the spec sheet
     const sheet = await fetch(`${BASE}/v1/lab/concepts/${c.id}/flats/sheet.svg`, { headers: { Authorization: 'Bearer ' + kyleT } }); const svg = await sheet.text();
     ok(sheet.status === 200 && /image\/svg/.test(sheet.headers.get('content-type')) && svg.includes(c.name.replace(/&/g, '&amp;')) && /Points of measure/.test(svg) && /below the HPS/.test(svg) && (svg.match(/data-view=/g) || []).length === 2, 'the spec sheet has both flats, every placement measured and the graded measurements');
+    ok((svg.match(/<image href="data:image\/svg\+xml;base64,/g) || []).length === 2, 'the flat sketches travel inside the sheet');
     ok((await sharp(Buffer.from(svg)).png().toBuffer()).length > 10000, 'and it renders');
 
     // approval waits for a reason while it cannot be made
@@ -965,7 +966,8 @@ await journey('J215', 'Design Lab flats in a browser: open them from a concept, 
     await page.click(`#cgrid .cc[data-cid="${c.id}"]`); await page.waitForSelector('#cd[open] [data-cflats]');
     await Promise.all([page.waitForURL(/\/lab\/flats\?concept=/), page.click('#cd [data-cflats]')]);
     await page.waitForSelector('#canvas svg [data-pl]', { timeout: 15000 });
-    ok(await page.locator('#canvas svg path').count() > 5 && /not saved yet/i.test(await page.innerText('#saved')), 'the flats open, worked out from the concept, waiting to be saved');
+    const sketch = await page.locator('#canvas svg image[href^="/lab/flat-templates/"]').getAttribute('href').catch(() => null);
+    ok(sketch && (await fetch(BASE + sketch)).status === 200 && /not saved yet/i.test(await page.innerText('#saved')), 'the flats open on a professional flat sketch, worked out from the concept, waiting to be saved', sketch);
     const logoCard = page.locator('#pPl .pl').first(); ok(/below the HPS/.test(await logoCard.innerText()), 'the logo says where it sits, in inches from the HPS', await logoCard.innerText());
     // drag the logo up against the collar: the measurement follows and the check catches it
     const g = page.locator('#canvas [data-pl]').first(), bb = await g.boundingBox();
@@ -984,6 +986,9 @@ await journey('J215', 'Design Lab flats in a browser: open them from a concept, 
     // the garment: fit and a measurement
     await page.click('.tabs [data-tab=garment]'); await page.selectOption('#gFit', 'oversized');
     const chest = Number(await page.locator('[data-m=chest]').inputValue()); ok(chest >= 24, 'an oversized fit widens the chest', chest);
+    const tpl = await page.locator('#gTpl').inputValue(); ok(/oversized|boxy/.test(tpl), 'and draws it from the oversized sketch', tpl);
+    await page.selectOption('#gTpl', 'none'); ok(await page.locator('#canvas svg path').count() > 5 && !(await page.locator('#canvas svg image[href^="/lab/flat-templates/"]').count()), 'the simple outline is still there to choose');
+    await page.selectOption('#gTpl', tpl);
     await page.locator('[data-m=length]').fill('31'); await page.click('.tabs [data-tab=pom]');
     const pom = await page.innerText('#pPom'); ok(/Body length/.test(pom) && /\b31\b/.test(pom) && /XXL/.test(pom), 'the points of measure are graded across the sizes', pom.slice(0, 200));
     await page.click('#save'); await page.waitForFunction(() => /^Saved/.test(document.getElementById('saved').textContent), null, { timeout: 15000 });
