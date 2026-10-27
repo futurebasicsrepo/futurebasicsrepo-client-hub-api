@@ -57,6 +57,7 @@ import { registerLabConceptRoutes } from './lab-concept-routes.js';
 import { registerLabViewRoutes } from './lab-view-routes.js';
 import { registerLabStudioRoutes } from './lab-studio-routes.js';
 import { registerLabLibraryRoutes } from './lab-library-routes.js';
+import { labHandoff } from './lab-handoff.js';
 import { registerLabFlatsRoutes } from './lab-flats-routes.js';
 import { createArtService, registerLabArtRoutes } from './lab-art-routes.js';
 import { purgeOld as labPurge } from './lab-scan.js';
@@ -672,11 +673,11 @@ registerLabArtRoutes(app, { pool, authenticate, adminOnly, art: labArt });
 const lab=registerLabRoutes(app, { pool, authenticate, adminOnly, getSetting, setSetting, log: app.log, art: labArt,
   ...(process.env.PROTOTYPE_TEST_ORIGIN ? { delayMs: 0, crawlOpts: { lookup: async () => [{ address: '93.184.216.34' }], fetchImpl: (u, o) => { const x = new URL(u); return fetch(process.env.PROTOTYPE_TEST_ORIGIN + x.pathname + x.search, { ...o, headers: { ...(o && o.headers), 'x-original-host': x.hostname } }); } } } : {}) });
 // Concepts: an approved one becomes a product in the Future Basics room, with its tech pack drafted from the concept (createClientProduct, shared with the console).
-registerLabConceptRoutes(app, { pool, authenticate, adminOnly, getSetting, log: app.log, art: labArt, createProduct: args => createClientProduct(args), attachArtwork: (productId, items) => attachLabArtwork(productId, items), flatFiles: id => labFlats.files(id) });
+registerLabConceptRoutes(app, { pool, authenticate, adminOnly, getSetting, log: app.log, art: labArt, createProduct: args => createClientProduct(args), attachArtwork: (productId, items) => attachLabArtwork(productId, items), sendFlats: (id, productId) => labFlats.sendToPack(id, productId), flatsCheck: id => labFlats.startCheck(id) });
 registerLabViewRoutes(app, { pool, authenticate, adminOnly, log: app.log });
 registerLabStudioRoutes(app, { pool, authenticate, adminOnly });
 registerLabLibraryRoutes(app, { pool, authenticate, adminOnly, art: labArt, log: app.log });
-const labFlats = registerLabFlatsRoutes(app, { pool, authenticate, adminOnly, log: app.log, attachArtwork: (productId, items) => attachLabArtwork(productId, items) });
+const labFlats = registerLabFlatsRoutes(app, { pool, authenticate, adminOnly, log: app.log, attachArtwork: (productId, items) => attachLabArtwork(productId, items), applyHandoff: (productId, h) => applyLabHandoff(productId, h) });
 const money=registerMoneyRoutes(app, { pool, authenticate, adminOnly, getSetting, setSetting, tokenSeal: sealer(process.env), stateSecret: process.env.JWT_SECRET || 'dev', workUrl: workHubUrl, log: app.log,
   // product development is paid through a Shopify checkout (a draft order for the amount due), see money-routes.js
   shopifyInvoiceLink: async ({ title, amountCents, currency, email, note, number }) => {
@@ -779,6 +780,7 @@ app.get('/favicon.ico',(_req,reply)=>reply.redirect('/icons/icon-192.png'));
 app.get('/helper.js',(_req,reply)=>reply.header('cache-control','public, max-age=300').type('application/javascript').send(readFileSync(new URL('./helper.js',import.meta.url),'utf8')));
 app.get('/ball.js',(_req,reply)=>reply.header('cache-control','public, max-age=3600').type('application/javascript').send(readFileSync(new URL('./ball.js',import.meta.url),'utf8')));
 app.get('/categories.js',(_req,reply)=>reply.header('cache-control','public, max-age=3600').type('application/javascript').send(readFileSync(new URL('./categories.js',import.meta.url),'utf8')));
+app.get('/sample-review.js',(_req,reply)=>reply.header('cache-control','public, max-age=300').type('application/javascript').send(readFileSync(new URL('./sample-review.js',import.meta.url),'utf8')));
 app.get('/commercial.js',(_req,reply)=>reply.header('cache-control','public, max-age=300').type('application/javascript').send(readFileSync(new URL('./commercial.js',import.meta.url),'utf8')));
 app.get('/elec.js',(_req,reply)=>reply.header('cache-control','public, max-age=3600').type('application/javascript').send(readFileSync(new URL('./elec.js',import.meta.url),'utf8')));
 app.get('/pantone-c.js',(_req,reply)=>reply.header('cache-control','public, max-age=3600').type('application/javascript').send(readFileSync(new URL('./pantone-c.js',import.meta.url),'utf8')));
@@ -1030,11 +1032,28 @@ app.post('/v1/admin/clients/:id/products',{preHandler:[authenticate,adminOnly]},
   return createClientProduct({clientId:req.params.id,projectId:project?.id||null,title,handle,shopifyProductId,descriptionHtml,vendor,productType,templateSuffix,referencePhotos,actorId:req.auth.sub});
 });
 // The Design Lab's artwork (the logo, the woven label, each graphic) goes into the new product's tech pack as artwork, where the Art tab shows it. → how many files were added
+// A product made from a Design Lab concept always gets a pack to carry its artwork and flats, even while the assistant is off (it would otherwise
+// make none, and the files would be lost)
+async function labPack(productId){
+  let pack=(await pool.query('select id,data from tech_packs where product_id=$1',[productId])).rows[0];if(pack)return pack;
+  const p=(await pool.query('select id,client_id,title,product_type,description_html from products where id=$1',[productId])).rows[0];if(!p)return null;
+  return (await pool.query(`insert into tech_packs(product_id,client_id,status,data,initiated_by,source,billing) values($1,$2,'draft',$3,'brand','brief','admin') on conflict(product_id) do update set updated_at=now() returning id,data`,[p.id,p.client_id,normalizeTechPack(seedTechPack({product:p}))])).rows[0];
+}
+// files from the Lab replace the ones of the same name sent before (flats sent again after a change), so the pack never fills with copies
+const labArtworkInto=(data,items)=>{const names=new Set(items.map(i=>i.name)),kept=data.artwork.filter(a=>!(a.note==='From the Design Lab'&&names.has(a.name))),have=new Set(kept.map(a=>a.image));
+  const add=items.filter(i=>i.image&&!have.has(i.image)).map((i,n)=>({id:`art-lab-${Date.now().toString(36)}${n}`,name:i.name,image:i.image,source:'lab',note:'From the Design Lab',pantones:[],placements:[]}));
+  data.artwork=[...add,...kept].slice(0,12);return add.length;};
 async function attachLabArtwork(productId,items){
-  const pack=(await pool.query('select id,data from tech_packs where product_id=$1',[productId])).rows[0];if(!pack||!items?.length)return 0;
-  const data=normalizeTechPack(pack.data),have=new Set(data.artwork.map(a=>a.image)),add=items.filter(i=>i.image&&!have.has(i.image)).map((i,n)=>({id:`art-lab-${Date.now().toString(36)}${n}`,name:i.name,image:i.image,source:'lab',note:'From the Design Lab',pantones:[],placements:[]}));
-  if(!add.length)return 0;data.artwork=[...add,...data.artwork].slice(0,12);
-  await pool.query('update tech_packs set data=$2,updated_at=now() where id=$1',[pack.id,data]);return add.length;
+  if(!items?.length)return 0;const pack=await labPack(productId);if(!pack)return 0;
+  const data=normalizeTechPack(pack.data),n=labArtworkInto(data,items);if(!n)return 0;
+  await pool.query('update tech_packs set data=$2,updated_at=now() where id=$1',[pack.id,data]);return n;
+}
+// the flats handed to the pack (src/lab-handoff.js): files, sketches, measurements, construction, materials, colour and the plan's numbers
+async function applyLabHandoff(productId,{files,lab}){
+  const pack=await labPack(productId);if(!pack)return null;
+  const data=normalizeTechPack(labHandoff(normalizeTechPack(pack.data),lab)),n=labArtworkInto(data,files||[]);
+  await pool.query('update tech_packs set data=$2,updated_at=now() where id=$1',[pack.id,data]);
+  return {files:n,pom:data.pom.filter(r=>r.how==='From the flats').length,construction:data.construction.filter(r=>r.area.startsWith('Flats · ')).length,sketches:data.sketches.filter(x=>x.id.startsWith('lab-flat-')).length};
 }
 app.patch('/v1/admin/products/:id',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const {stage,riskLevel,owner,targetDate,shopifyProductId,shopifyHandle,descriptionHtml,vendor,productType,templateSuffix}=req.body||{};
@@ -2511,7 +2530,7 @@ app.get('/v1/admin/products/:id/tech-pack',{preHandler:[authenticate,adminOnly]}
   const ctx=await loadAdminTechPack(req.params.id);if(!ctx)return reply.code(404).send({error:'Product not found'});
   const shares=ctx.techPack?(await pool.query('select * from tech_pack_shares where tech_pack_id=$1 order by created_at desc',[ctx.techPack.id])).rows:[];
   const seed=seedTechPack(ctx);
-  return {product:ctx.product,techPack:ctx.techPack?{...techPackPayload(ctx.techPack),loop:await latestLoop(ctx.techPack.id)}:null,seed,completeness:techPackCompleteness(ctx.techPack?.data||seed),shares:shares.map(shareRow),assignment:await assignmentView(ctx),suppliers:(await pool.query(`select id,name,contact_email,country from suppliers where status='active' order by lower(name)`)).rows.map(x=>({id:x.id,name:x.name,email:x.contact_email||'',country:x.country||''})),workHubUrl,clientHubUrl,translations:packTranslations(ctx.techPack),aiEnabled:aiEnabled(),loopEnabled:LOOP_ON(),cutoutEnabled:cutoutEnabled()};
+  return {product:ctx.product,techPack:ctx.techPack?{...techPackPayload(ctx.techPack),loop:await latestLoop(ctx.techPack.id)}:null,seed,completeness:techPackCompleteness(ctx.techPack?.data||seed),shares:shares.map(shareRow),assignment:await assignmentView(ctx),suppliers:(await pool.query(`select id,name,contact_email,country from suppliers where status='active' order by lower(name)`)).rows.map(x=>({id:x.id,name:x.name,email:x.contact_email||'',country:x.country||''})),workHubUrl,clientHubUrl,translations:packTranslations(ctx.techPack),aiEnabled:aiEnabled(),loopEnabled:LOOP_ON(),cutoutEnabled:cutoutEnabled(),lab:(await pool.query('select id,name from lab_concepts where product_id=$1',[req.params.id])).rows[0]||null};
 });
 // Sketches travel inline as data URLs, so this route accepts a larger body than the default 1MB.
 // The card at the front of a product (hub and work console) reads product_configurations. The tech pack feeds it, so editing the pack updates the card
@@ -5269,8 +5288,9 @@ async function fairLinkFor(supplierId){
 app.get('/v1/tp/:token',async(req,reply)=>{
   const {row,error}=await loadShareByToken(req.params.token);if(error)return reply.code(error.code).send({error:error.message});
   await pool.query('update tech_pack_shares set view_count=view_count+1,last_viewed_at=now() where id=$1',[row.share_id]);
-  if(row.quote){ // a quotation link: the pack, without the client's name, signatures or the staff's notes, and the factory's own quote if it already sent one
-    const clean={...row,client_name:'',project_name:null,verification:emptyVerification(row.version),revisions:[],published_data:{...normalizeTechPack(row.published_data),style:{...normalizeTechPack(row.published_data).style,designer:''}}};
+  if(row.quote){ // a quotation link: the pack, without the client's name, signatures or the staff's notes, and the factory's own quote if it already sent one;
+    // what changed in each version stays (without who changed it), so a factory asked to quote again sees why
+    const clean={...row,client_name:'',project_name:null,verification:emptyVerification(row.version),revisions:(Array.isArray(row.revisions)?row.revisions:[]).map(r=>({version:r.version,at:r.at,changes:r.changes||[]})),published_data:{...normalizeTechPack(row.published_data),style:{...normalizeTechPack(row.published_data).style,designer:''}}};
     const mine=(await pool.query('select * from factory_quotes where share_id=$1',[row.share_id])).rows[0];
     return {...publishedTechPackView(clean,{audience:'factory',shareLabel:row.share_label,translations:translationsForPack(row,row.published_data)}),quoteMode:true,quote:mine?quoteRow(mine):null,quoteDefaults:{company:row.share_label,email:row.share_email||''},model:await factoryModel(row),fairLink:await fairLinkFor(row.share_supplier)};
   }
@@ -5306,6 +5326,23 @@ app.post('/v1/tp/:token/ack',async(req,reply)=>{
   const updated=await updateVerification(row.id,row.version,v=>{for(const key of keys){if(acknowledged)v.acks[key]=v.acks[key]||{by:row.share_label,at:new Date().toISOString()};else delete v.acks[key]}});
   if(!updated)return reply.code(409).send({error:'A new version of this tech pack was published — reload to see it'});
   return publishedTechPackView({...row,verification:updated.verification,locked_at:updated.locked_at},{audience:'factory',shareLabel:row.share_label});
+});
+// The factory says a sample is on its way: the sample's status turns to sent with its tracking, in the pack the team works on and in the version the
+// factory reads, and the team is told (the sample review follows when it arrives)
+app.post('/v1/tp/:token/sample',async(req,reply)=>{
+  const {row,error}=await loadShareByToken(req.params.token);if(error)return reply.code(error.code).send({error:error.message});
+  if(row.quote)return reply.code(403).send({error:'This link is for quotations only'});
+  const stage=String(req.body?.stage||'').slice(0,60),tracking=String(req.body?.tracking||'').replace(/\s+/g,' ').trim().slice(0,80);
+  const pub=normalizeTechPack(row.published_data),i=pub.sampling.findIndex(r=>r.stage===stage);if(i<0)return reply.code(404).send({error:'That sample is not on this tech pack'});
+  if(['approved'].includes(pub.sampling[i].status))return reply.code(409).send({error:'That sample is already approved'});
+  const mark=d=>{const x=normalizeTechPack(d),j=x.sampling.findIndex(r=>r.stage===stage);if(j>=0){x.sampling[j].status='sent';x.sampling[j].tracking=tracking||x.sampling[j].tracking}return x};
+  const tp=(await pool.query('select data,published_data from tech_packs where id=$1',[row.id])).rows[0];
+  await pool.query('update tech_packs set data=$2,published_data=$3 where id=$1',[row.id,mark(tp.data),mark(tp.published_data)]);
+  const summary=`${row.share_label} sent the ${stage} for ${row.title}${tracking?` (tracking ${tracking})`:''}`;
+  await pool.query(`insert into activities(client_id,product_id,type,summary,metadata) values($1,$2,'tech-pack',$3,$4)`,[row.client_id,row.product_id,summary,{techPackId:row.id,shareId:row.share_id,stage,tracking}]).catch(()=>{});
+  await notifyStaff(`Sample sent: ${row.share_label} · ${row.title}`,`<p><strong>${emailEscape(row.share_label)}</strong> sent the <strong>${emailEscape(stage)}</strong> for <strong>${emailEscape(row.title)}</strong>${tracking?` (tracking ${emailEscape(tracking)})`:''}. Review it on the tech pack under Samples when it arrives.</p>`).catch?.(()=>{});
+  const fresh=(await loadShareByToken(req.params.token)).row;
+  return publishedTechPackView(fresh,{audience:'factory',shareLabel:fresh.share_label});
 });
 const quoteRow=q=>({byStaff:Boolean(q.entered_by),id:q.id,shareId:q.share_id,version:q.version,company:q.company,contactName:q.contact_name,email:q.email,wechat:q.wechat,phone:q.phone,currency:q.currency,tiers:q.tiers||[],moq:q.moq,sampleCost:q.sample_cost==null?null:Number(q.sample_cost),sampleDays:q.sample_days,leadDays:q.lead_days,tooling:q.tooling==null?null:Number(q.tooling),incoterm:q.incoterm,paymentTerms:q.payment_terms,validUntil:q.valid_until?String(q.valid_until).slice(0,10):null,notes:q.notes,revisions:(q.history||[]).length,createdAt:q.created_at,updatedAt:q.updated_at});
 // A quotation is saved the same way whoever it comes from: the factory through its link, or Future Basics typing in what the factory sent another way (staff = {id,email}).

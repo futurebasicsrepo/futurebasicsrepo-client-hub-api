@@ -16,7 +16,7 @@ const clip = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
 const dataUrl = b => (b ? `data:image/jpeg;base64,${Buffer.from(b).toString('base64')}` : '');
 
 export function registerLabConceptRoutes(app, d) {
-  const { pool, authenticate, adminOnly, getSetting, env = process.env, fetchImpl = fetch, askImpl = realAsk, createProduct, attachArtwork, imageCfg = () => imageConfig(env), placeImpl, art: artSvc = null, flatFiles = null, log = console } = d;
+  const { pool, authenticate, adminOnly, getSetting, env = process.env, fetchImpl = fetch, askImpl = realAsk, createProduct, attachArtwork, flatsCheck, imageCfg = () => imageConfig(env), placeImpl, art: artSvc = null, sendFlats = null, log = console } = d;
   // the artwork of a concept's graphics, as PNGs by id (empty when there is no artwork service)
   const artsFor = async spec => (artSvc ? artSvc.load((spec?.graphics || []).map(g => g.art).filter(Boolean)) : new Map());
   const pre = [authenticate, adminOnly], bad = (reply, error, code = 422, extra = {}) => reply.code(code).send({ error, ...extra });
@@ -163,7 +163,13 @@ export function registerLabConceptRoutes(app, d) {
       if (override.length < 10) return bad(reply, `The check says this sits too close to what inspired it. ${close.reasons[0] || ''} Change it, or write down why it is fine to approve anyway.`, 422, { code: 'TOO_CLOSE', verdict: close.verdict, reasons: close.reasons });
     }
     // the flats' check: a piece that cannot be made as drawn is approved only with a reason written down
+    // (flats never saved are checked as they would start, from the concept's own words, so not saving them is no way round the check)
+    // flats never saved do not hold an approval up (nobody has drawn them yet), but how they would start is checked and written on the concept,
+    // so a problem is not missed silently
     const flat = (await pool.query(`select check_result from lab_flats where concept_id=$1`, [r.id])).rows[0]?.check_result, fails = Number(flat?.summary?.fail || 0);
+    let startNote = '';
+    if (!flat && flatsCheck) { try { const st = await flatsCheck(r.id), n = Number(st?.summary?.fail || 0), first = n && Object.values(st.findings || {}).flat().find(f => f.level === 'fail');
+      if (n) startNote = `Approved before its flats were drawn. As they would start, the flats check finds ${n} problem${n === 1 ? '' : 's'}${first ? ` (${first.text})` : ''}: open Flats and placement before it goes to a tech pack.`; } catch (e) { log.warn?.({ err: e.message }, 'flats check before approval failed'); } }
     let makeReason = '';
     if (fails) {
       makeReason = clip(req.body?.makeReason, 400);
@@ -174,7 +180,8 @@ export function registerLabConceptRoutes(app, d) {
     await pool.query(`update lab_concepts set status='approved', override_reason=$2, rejected_reason='', approved_by=$3, approved_at=now(), updated_at=now() where id=$1`, [r.id, override, actorOf(req)]);
     if (r.line_id) await pool.query(`update lab_plan_lines set status='approved' where id=$1 and status in ('planned','in_concept')`, [r.line_id]);
     await note(r.id, req, `Approved${override && !makeReason ? ` after the "too close" check, because: ${override}` : close.verdict === 'check' ? ' (the check said to look at it side by side)' : ''}${makeReason ? `, although the flats check found ${fails} problem${fails === 1 ? '' : 's'}, because: ${makeReason}` : ''}.`);
-    return { concept: await one(r.id) };
+    if (startNote) await note(r.id, req, startNote);
+    return { concept: await one(r.id), ...(startNote ? { warning: startNote } : {}) };
   });
   app.post('/v1/lab/concepts/:id/reject', { preHandler: pre }, async (req, reply) => {
     if (!needId(req, reply)) return;
@@ -258,9 +265,10 @@ export function registerLabConceptRoutes(app, d) {
     await pool.query(`update lab_concepts set product_id=$2, updated_at=now() where id=$1`, [r.id, product.id]);
     let art = 0; if (attachArtwork) { try { art = await attachArtwork(product.id, await artworkFiles({ category: r.category, spec: r.spec }, { arts: await artsFor(r.spec) })); } catch (e) { log.warn?.({ err: e.message }, 'design lab artwork not attached'); } }
     // the flats and the spec sheet go with it when they were drawn
-    if (attachArtwork && flatFiles) { try { const ff = await flatFiles(r.id); if (ff.length) art += await attachArtwork(product.id, ff); } catch (e) { log.warn?.({ err: e.message }, 'design lab flats not attached'); } }
+    // the flats go with it when they were drawn: as files, as its front and back sketches, its measurements, details, stitching and colour
+    let flats = null; if (sendFlats) { try { flats = await sendFlats(r.id, product.id); if (flats) art += flats.files; } catch (e) { log.warn?.({ err: e.message }, 'design lab flats not sent'); } }
     if (r.line_id) await pool.query(`update lab_plan_lines set status='tech_pack' where id=$1`, [r.line_id]);
-    await note(r.id, req, `Sent to a tech pack (${product.autoDraft?.ai === 'pending' ? 'the assistant is drafting it from the concept' + (art ? `; ${art} artwork files attached: the logo, the woven label and the graphics` : '') : product.autoDraft?.ai === 'off' ? 'the assistant is off, so it starts empty' : 'started'}).`);
+    await note(r.id, req, `Sent to a tech pack (${product.autoDraft?.ai === 'pending' ? 'the assistant is drafting it from the concept' + (art ? `; ${art} artwork files attached: the logo, the woven label and the graphics` : '') + (flats ? `; the flats gave it ${flats.pom} measurements, its front and back sketches and ${flats.construction} construction lines` : '') : product.autoDraft?.ai === 'off' ? 'the assistant is off, so it starts empty' : 'started'}).`);
     return reply.code(201).send({ productId: product.id, url: productUrl(product.id), autoDraft: product.autoDraft || null, concept: await one(r.id) });
   });
 

@@ -632,7 +632,7 @@ window.addEventListener('hashchange',()=>toSection(true));
   const h=(location.hash||'').slice(1);if(ids.includes(h))paint(h);})();
 (async()=>{
   if(!TOKEN()){$('#needSignin').classList.remove('hidden');return}
-  try{await refresh();$('#app').classList.remove('hidden');drawCode();await loadItems(true);await loadScans();await loadTrends();await loadPlans();await loadBoard();await loadAssort();toSection(false)}
+  try{await refresh();$('#app').classList.remove('hidden');drawCode();await loadItems(true);await loadScans();await loadTrends();await loadPlans();await loadBoard();await loadAssort();toSection(false);const qc=new URLSearchParams(location.search).get('concept');if(qc){location.hash='#board';openConcept(qc).catch(()=>{})}}
   catch(x){$('#app').classList.add('hidden');const n=$('#needSignin');n.classList.remove('hidden');const no=/access to Design Lab|not turned on|Only Danielle/i.test(x.message);n.querySelector('h1').textContent=no?'The Design Lab is not turned on for you':'Sign in to the work console first';n.querySelector('.note').textContent=no?'It is for Danielle and Kyle. If you need it, ask one of them to tick Design Lab for you on Team access.':'This page uses your work console sign-in. Open the console, sign in, then come back here.'}
 })();
 </script>

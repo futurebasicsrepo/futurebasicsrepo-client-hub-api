@@ -3,7 +3,8 @@
 //   PUT  /v1/lab/concepts/:id/flats             save {style, fit, m, options, placements} and check it
 //   POST /v1/lab/concepts/:id/flats/check       check without saving
 //   GET  /v1/lab/concepts/:id/flats/sheet.svg   the spec sheet: front and back flats, every placement measured, points of measure graded, the check
-//   POST /v1/lab/concepts/:id/flats/tech-pack   put the flats and the spec sheet on the concept's tech pack
+//   POST /v1/lab/concepts/:id/flats/tech-pack   send the flats to the concept's tech pack: the spec sheet and flats as files, the flats as its front and back
+//                                               sketches, the graded measurements, every detail, stitch and placement, the colour, and the plan's numbers
 //   POST /v1/lab/concepts/:id/flats/redraw      {…the flats, view, box:{x,y,w,h} in inches, prompt} the image model redraws that area of the flat sketch
 // The check ("can it be made"): every placement is on the piece and clear of seams, ribs, zips, pockets and collars (the drawing alone); within the
 // technique's size; and its artwork, at the size it is placed, holds the technique's finest line, needs no more inks than the technique is priced for,
@@ -13,7 +14,7 @@ import { readFileSync } from 'node:fs';
 import { logoSvg } from './brand-kit.js';
 import { cleanRules } from './lab-library.js';
 import { ensureBranding } from './lab-concepts.js';
-import { STYLES, FITS, SIZES, detectStyle, defaultParams, defaultPlacement, cleanFlat, cleanEdits, describeEdit, placementChecks, overlapChecks, boxesMeet, describe, renderSvg, pomTable, measurementsFor, fmt, fmtCm } from './lab-flats.js';
+import { STYLES, FITS, SIZES, DETAILS, templateOf, detectStyle, defaultParams, defaultPlacement, cleanFlat, cleanEdits, describeEdit, placementChecks, overlapChecks, boxesMeet, describe, renderSvg, pomTable, measurementsFor, fmt, fmtCm } from './lab-flats.js';
 import { imageConfig, openaiEdit } from './check.js';
 import { brandHits } from './lab-concepts.js';
 
@@ -74,10 +75,10 @@ export const flatEditPrompt = prompt => [
 ].join('\n');
 
 export function registerLabFlatsRoutes(app, d) {
-  const { pool, authenticate, adminOnly, attachArtwork, log = console, env = process.env, imageCfg = () => imageConfig(env), editImpl = openaiEdit } = d;
+  const { pool, authenticate, adminOnly, attachArtwork, applyHandoff, log = console, env = process.env, imageCfg = () => imageConfig(env), editImpl = openaiEdit } = d;
   const pre = [authenticate, adminOnly], bad = (reply, error, code = 422, extra = {}) => reply.code(code).send({ error, ...extra });
   const actorOf = req => (UUID.test(String(req.auth?.sub || '')) ? req.auth.sub : null);
-  const concept = async id => (UUID.test(String(id)) ? (await pool.query('select id, name, category, status, spec, twist, product_id from lab_concepts where id=$1', [id])).rows[0] : null);
+  const concept = async id => (UUID.test(String(id)) ? (await pool.query('select c.id, c.name, c.category, c.status, c.spec, c.twist, c.product_id, c.price_cents, c.cost_cents, c.qty, p.name plan_name from lab_concepts c left join lab_plans p on p.id=c.plan_id where c.id=$1', [id])).rows[0] : null);
   const techniques = async () => (await pool.query('select id, key, kind, name, base, finish, rules from lab_techniques where not archived order by builtin desc, name')).rows.map(t => ({ ...t, rules: cleanRules(t.rules || {}, t.base) }));
   const techFor = (list, q) => list.find(t => t.id === q.techniqueId) || list.find(t => t.key === PREFERRED[q.technique]) || list.find(t => t.base === q.technique) || list.find(t => t.key === 'plastisol') || { name: q.technique || 'screen print', base: q.technique || 'screen print', rules: cleanRules({}, q.technique) };
   const marks = new Map();
@@ -222,18 +223,40 @@ export function registerLabFlatsRoutes(app, d) {
   // the files that go on a tech pack: the spec sheet and each flat, as pictures
   async function files(c) {
     const s = await sheet(c); if (!s) return [];
-    const png = async (svg, width) => `data:image/png;base64,${(await sharp(Buffer.from(svg), { density: 150 }).resize({ width }).flatten({ background: '#ffffff' }).png().toBuffer()).toString('base64')}`;
     const out = [{ name: 'Spec sheet · flats, placements and measurements', image: await png(s.svg, 2400) }];
     for (const v of s.views) out.push({ name: `Technical flat · ${v}`, image: await png(renderSvg(s.p, v, { placements: s.pl, hrefs: s.hrefs, scale: 60, templateSvg, editHrefs: s.editHrefs }), 1800) });
     return out;
   }
+  const png = async (svg, width) => `data:image/png;base64,${(await sharp(Buffer.from(svg), { density: 150 }).resize({ width }).flatten({ background: '#ffffff' }).png().toBuffer()).toString('base64')}`;
+  // everything the tech pack takes from the flats (src/lab-handoff.js lays it into the pack)
+  async function handoff(c) {
+    const items = await files(c); if (!items.length) return null;
+    const r = (await pool.query('select params, placements from lab_flats where concept_id=$1', [c.id])).rows[0], p = r.params, pl = r.placements || [], list = await techniques();
+    const S = STYLES[p.style], tpl = templateOf(p), edits = p.edits || [];
+    const pom = pomTable(p).map(row => ({ code: row.code, name: row.name, how: 'From the flats', tolerance: String(row.tolerance), values: Object.fromEntries(row.values.map(v => [v.size, String(v.value)])) }));
+    const construction = [{ area: 'Drawing', detail: `${FITS[p.fit] || p.fit} fit ${S.label.toLowerCase()}, drawn from the ${tpl ? `"${tpl.label}" flat sketch` : 'measurements'}; sample size M.` },
+      ...pl.map(q => ({ area: `${q.view === 'back' ? 'Back' : 'Front'} · ${q.name}`, detail: `${techFor(list, q).name}, ${fmtCm(q.w)} × ${fmtCm(q.h)}: ${describe(q, p)}.` })),
+      ...edits.map(e => ({ area: e.type === 'stitch' ? 'Stitching' : e.type === 'block' ? 'Colour block' : e.type === 'ai' ? 'Redrawn area' : (DETAILS[e.kind] || 'Detail'), detail: describeEdit(e, p) }))];
+    const threads = new Map(); for (const e of edits) if (e.thread) threads.set(e.thread, [...(threads.get(e.thread) || []), e.type === 'stitch' ? 'stitch line' : (DETAILS[e.kind] || 'detail').toLowerCase()]);
+    const bom = [...pl.map(q => ({ component: `Decoration · ${q.name}`, material: techFor(list, q).name, placement: describe(q, p).slice(0, 160), qty: '1', unit: 'pc' })),
+      ...[...threads].map(([hex, where]) => ({ component: 'Contrast thread', material: 'Polyester sewing thread', color: hex, placement: [...new Set(where)].join(', ').slice(0, 160), qty: '1', unit: 'cone' })),
+      ...edits.filter(e => e.type === 'block').map(e => ({ component: `Colour block · ${e.name || 'panel'}`, material: 'Self fabric', color: e.color, placement: e.view }))];
+    return {
+      files: items,
+      lab: { pom, sizes: S.oneSize ? ['One size'] : SIZES, construction, bom, color: p.color ? { hex: p.color, name: 'Main colour' } : null,
+        sketches: items.filter(i => /^Technical flat · /.test(i.name)).map(i => ({ view: i.name.endsWith('back') ? 'back' : 'front', label: i.name, image: i.image })),
+        priceCents: c.price_cents, costCents: c.cost_cents, qty: c.qty, planName: c.plan_name, style: { sampleSize: S.oneSize ? 'One size' : 'M', fitBlock: `${FITS[p.fit] || p.fit} ${S.label.toLowerCase()}${tpl ? ` (${tpl.label})` : ''}` } }
+    };
+  }
+  const sendToPack = async (c, productId = c.product_id) => { const h = await handoff(c); return h ? applyHandoff(productId, h) : null; };
   app.post('/v1/lab/concepts/:id/flats/tech-pack', { preHandler: pre }, async (req, reply) => {
     const c = await concept(req.params.id); if (!c) return bad(reply, 'Not found', 404);
     if (!c.product_id) return bad(reply, 'This concept has no tech pack yet. Approve it and send it to a tech pack first.', 409);
-    if (!attachArtwork) return bad(reply, 'Files cannot be added to tech packs on this service', 501);
-    const items = await files(c); if (!items.length) return bad(reply, 'Save the flats first', 409);
-    const n = await attachArtwork(c.product_id, items);
-    return { ok: true, files: n, productId: c.product_id };
+    if (!applyHandoff) return bad(reply, 'Flats cannot be sent to tech packs on this service', 501);
+    const sent = await sendToPack(c); if (!sent) return bad(reply, 'Save the flats first', 409);
+    return { ok: true, ...sent, productId: c.product_id };
   });
-  return { files: async id => { const c = await concept(id); return c ? files(c) : []; } };
+  // the check of a concept's flats as they would start (for approving a concept whose flats were never saved)
+  const startCheck = async id => { const c = await concept(id); const init = c && await initial(c); return init ? check(init, init.placements) : null; };
+  return { startCheck, files: async id => { const c = await concept(id); return c ? files(c) : []; }, sendToPack: async (id, productId) => { const c = await concept(id); return c ? sendToPack(c, productId) : null; } };
 }

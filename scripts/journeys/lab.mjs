@@ -958,7 +958,12 @@ await journey('J214', 'Design Lab flats: a concept becomes measured front and ba
     const tp = await K(`/concepts/${c.id}/tech-pack`, { body: {} }); ok(tp.status === 201, 'it becomes a tech pack', tp.json);
     const names = () => sql(`select string_agg(a->>'name', ' | ') from tech_packs, jsonb_array_elements(data->'artwork') a where product_id='${tp.json.productId}'`);
     ok(/Spec sheet · flats, placements and measurements/.test(names()) && /Technical flat · front/.test(names()) && /Technical flat · back/.test(names()), 'the spec sheet and both flats are on the tech pack', names());
-    ok((await F('/tech-pack', { body: {} })).status === 200, 'and they can be added again after a change');
+    const pk = col => sql(`select ${col} from tech_packs where product_id='${tp.json.productId}'`);
+    ok(Number(pk(`(select count(*) from jsonb_array_elements(data->'pom') r where r->>'how'='From the flats')`)) >= 5 && pk(`data->'pom'->0->'values'->>'M'`) !== '', 'the flats\' graded measurements are the pack\'s points of measure', pk(`data->'pom'->0`));
+    ok(pk(`(select string_agg(s->>'id', ',' order by s->>'id') from jsonb_array_elements(data->'sketches') s where s->>'id' like 'lab-flat-%')`) === 'lab-flat-back,lab-flat-front', 'the front and back flats are the pack\'s sketches');
+    ok(Number(pk(`(select count(*) from jsonb_array_elements(data->'construction') r where r->>'area' like 'Flats · %')`)) >= 2 && /From the Design Lab:/.test(pk(`data->>'notes'`)), 'its placements and drawing are construction lines, and the plan\'s numbers are noted');
+    const again = await F('/tech-pack', { body: {} }); ok(again.status === 200 && again.json.pom >= 5, 'the flats can be sent again after a change', again.json);
+    ok(pk(`(select count(*) from jsonb_array_elements(data->'artwork') a where a->>'name'='Technical flat · front')`) === '1' && pk(`(select count(*) from jsonb_array_elements(data->'sketches') s where s->>'id'='lab-flat-front')`) === '1', 'sending again replaces, never doubles');
     // a piece that is not drawn yet says so
     sql(`update lab_concepts set category='footwear' where id='${c.id}'`); sql(`delete from lab_flats where concept_id='${c.id}'`);
     const shoe = (await F()).json; ok(shoe.flat === null && /not drawn for footwear yet/.test(shoe.unsupported), 'a category without templates says so', shoe.unsupported);

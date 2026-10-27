@@ -114,7 +114,7 @@ export function normalizeTechPack(input) {
       })).filter(p => p.sketchId && p.x != null && p.y != null)
     })).filter(a => a.image || a.name),
     labels: list(src.labels, LIMITS.labels, r => ({ item: str(r?.item, 120), spec: str(r?.spec, 400), placement: str(r?.placement, 200) })).filter(r => r.item),
-    sampling: list(src.sampling, LIMITS.samples, r => ({ stage: str(r?.stage, 60), qty: str(r?.qty, 12), due: str(r?.due, 20), status: SAMPLE_STATUS.includes(r?.status) ? r.status : 'planned', notes: str(r?.notes, 400) })).filter(r => r.stage),
+    sampling: list(src.sampling, LIMITS.samples, r => ({ stage: str(r?.stage, 60), qty: str(r?.qty, 12), due: str(r?.due, 20), status: SAMPLE_STATUS.includes(r?.status) ? r.status : 'planned', notes: str(r?.notes, 400), tracking: str(r?.tracking, 80), review: sampleReview(r?.review) })).filter(r => r.stage),
     inspection: { aql: str(src.inspection?.aql, 8), level: str(src.inspection?.level, 8), standard: str(src.inspection?.standard, 600), tests: list(src.inspection?.tests, LIMITS.tests, r => ({ name: str(r?.name, 120), method: str(r?.method, 200), accept: str(r?.accept, 200) })).filter(r => r.name) },
     commercial: globalThis.FBCommercial.normalize(src.commercial, LIMITS.variants),
     packaging: Object.fromEntries(Object.keys(base.packaging).map(k => [k, str(packaging[k], k === 'notes' ? 1500 : 200)])),
@@ -122,6 +122,15 @@ export function normalizeTechPack(input) {
     electronics: normalizeElectronics(src.electronics),
     notes: str(src.notes, 6000)
   };
+}
+
+// A sample's review (src/sample-review.js): what was measured off it, which measurements become the spec, the corrections asked for, the verdict
+function sampleReview(v) {
+  if (!v || typeof v !== 'object') return null;
+  const measured = Object.fromEntries(Object.entries(v.measured && typeof v.measured === 'object' ? v.measured : {}).slice(0, 80).map(([k, x]) => [str(k, 8), str(x, 24)]).filter(([k, x]) => k && x));
+  const corrections = list(v.corrections, 30, c => ({ area: str(c?.area, 120), change: str(c?.change, 600) })).filter(c => c.area || c.change);
+  const out = { verdict: ['approved', 'revise'].includes(v.verdict) ? v.verdict : '', at: str(v.at, 20), by: str(v.by, 80), measured, adopt: list(v.adopt, 80, c => str(c, 8)).filter(c => measured[c]), corrections };
+  return out.verdict || corrections.length || Object.keys(measured).length ? out : null;
 }
 
 // What one unit of a material costs, as a plain number kept as text (the pack keeps all its numbers that way). A bad value is dropped, not guessed.
