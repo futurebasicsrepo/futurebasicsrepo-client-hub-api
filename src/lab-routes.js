@@ -163,7 +163,8 @@ export function registerLabRoutes(app, d) {
     const cost = l.costCents ?? defaultCost(l.priceCents, econ.costRatio);
     return { ...l, price: l.priceCents == null ? null : l.priceCents / 100, cost: cost == null ? null : cost / 100, costIsEstimate: l.costCents == null, marginPct: marginOf(l.priceCents, cost), warnings: lineWarnings(l, ladders[l.category], econ, anchor) };
   };
-  const planShape = r => ({ id: r.id, name: r.name, season: r.season, brief: r.brief, summary: r.summary, status: r.status, costCents: Number(r.cost_cents), createdAt: r.created_at, updatedAt: r.updated_at, lines: Number(r.lines ?? 0) });
+  const planShape = r => ({ id: r.id, name: r.name, season: r.season, brief: r.brief, summary: r.summary, status: r.status, costCents: Number(r.cost_cents), createdAt: r.created_at, updatedAt: r.updated_at, lines: Number(r.lines ?? 0),
+    clientId: r.client_id || null, brand: r.brand || null, sharedAt: r.shared_at || null }); // a plan for a client: their brand words, and when it was shared to their hub
   async function loadPlan(id) {
     const code = await loadCode(), econ = code.economics, anchor = code.priceAnchor.name, trends = await trendsFor(180), ladders = ladderMap(trends);
     const plan = (await pool.query('select * from lab_plans where id=$1', [id])).rows[0]; if (!plan) return null;

@@ -3,7 +3,9 @@
 //   PUT  /v1/lab/concepts/:id/flats             save {style, fit, m, options, placements} and check it
 //   POST /v1/lab/concepts/:id/flats/check       check without saving
 //   GET  /v1/lab/concepts/:id/flats/sheet.svg   the spec sheet: front and back flats, every placement measured, points of measure graded, the check
-//   POST /v1/lab/concepts/:id/flats/tech-pack   put the flats and the spec sheet on the concept's tech pack
+//   POST /v1/lab/concepts/:id/flats/tech-pack   send the flats to the concept's tech pack: the spec sheet and flats as files, the flats as its front and back
+//                                               sketches, the graded measurements, every detail, stitch and placement, the colour, and the plan's numbers
+//   POST /v1/lab/concepts/:id/flats/redraw      {…the flats, view, box:{x,y,w,h} in inches, prompt} the image model redraws that area of the flat sketch
 // The check ("can it be made"): every placement is on the piece and clear of seams, ribs, zips, pockets and collars (the drawing alone); within the
 // technique's size; and its artwork, at the size it is placed, holds the technique's finest line, needs no more inks than the technique is priced for,
 // has no smooth shading a screen cannot print, and, for embroidery, how many stitches it takes.
@@ -12,7 +14,9 @@ import { readFileSync } from 'node:fs';
 import { logoSvg } from './brand-kit.js';
 import { cleanRules } from './lab-library.js';
 import { ensureBranding } from './lab-concepts.js';
-import { STYLES, FITS, SIZES, detectStyle, defaultParams, defaultPlacement, cleanFlat, placementChecks, overlapChecks, boxesMeet, describe, renderSvg, pomTable, measurementsFor, fmt, fmtCm } from './lab-flats.js';
+import { STYLES, FITS, SIZES, DETAILS, templateOf, detectStyle, defaultParams, defaultPlacement, cleanFlat, cleanEdits, describeEdit, placementChecks, overlapChecks, boxesMeet, describe, renderSvg, pomTable, measurementsFor, fmt, fmtCm } from './lab-flats.js';
+import { imageConfig, openaiEdit } from './check.js';
+import { brandHits } from './lab-concepts.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const clip = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
@@ -63,11 +67,18 @@ function artFindings(q, info, rules, tech) {
   return out;
 }
 
+// what the image model is asked when it redraws an area of a flat
+export const flatEditPrompt = prompt => [
+  'This is a black-and-white technical flat sketch of a garment: clean vector line art the way a factory reads it, white cloth, black outlines, dashed lines for topstitching.',
+  `Redraw only the transparent area of the mask: ${prompt}`,
+  'Match the drawing exactly: the same line weight, the same flat-sketch style, white fill, black lines, dashed lines for stitching. No colour, no shading, no texture, no text, no logos, no people. The change joins the lines around it seamlessly, and everything outside the area stays exactly as it is.'
+].join('\n');
+
 export function registerLabFlatsRoutes(app, d) {
-  const { pool, authenticate, adminOnly, attachArtwork, log = console } = d;
+  const { pool, authenticate, adminOnly, attachArtwork, applyHandoff, log = console, env = process.env, imageCfg = () => imageConfig(env), editImpl = openaiEdit } = d;
   const pre = [authenticate, adminOnly], bad = (reply, error, code = 422, extra = {}) => reply.code(code).send({ error, ...extra });
   const actorOf = req => (UUID.test(String(req.auth?.sub || '')) ? req.auth.sub : null);
-  const concept = async id => (UUID.test(String(id)) ? (await pool.query('select id, name, category, status, spec, twist, product_id from lab_concepts where id=$1', [id])).rows[0] : null);
+  const concept = async id => (UUID.test(String(id)) ? (await pool.query('select c.id, c.name, c.category, c.status, c.spec, c.twist, c.product_id, c.price_cents, c.cost_cents, c.qty, p.name plan_name from lab_concepts c left join lab_plans p on p.id=c.plan_id where c.id=$1', [id])).rows[0] : null);
   const techniques = async () => (await pool.query('select id, key, kind, name, base, finish, rules from lab_techniques where not archived order by builtin desc, name')).rows.map(t => ({ ...t, rules: cleanRules(t.rules || {}, t.base) }));
   const techFor = (list, q) => list.find(t => t.id === q.techniqueId) || list.find(t => t.key === PREFERRED[q.technique]) || list.find(t => t.base === q.technique) || list.find(t => t.key === 'plastisol') || { name: q.technique || 'screen print', base: q.technique || 'screen print', rules: cleanRules({}, q.technique) };
   const marks = new Map();
@@ -115,6 +126,7 @@ export function registerLabFlatsRoutes(app, d) {
     const c = await concept(req.params.id); if (!c) return bad(reply, 'Not found', 404), null;
     const { params, placements, error } = cleanFlat(req.body || {}); if (error) return bad(reply, error), null;
     for (const q of placements) if (q.art && !(await pool.query('select 1 from lab_art where id=$1', [q.art])).rowCount) return bad(reply, `${q.name}: that graphic is not in the library`, 422), null;
+    for (const e of params.edits) if (e.type === 'ai' && !(await pool.query('select 1 from lab_art where id=$1', [e.art])).rowCount) return bad(reply, 'A redrawn area is missing its picture', 422), null;
     return { c, params, placements };
   };
   app.post('/v1/lab/concepts/:id/flats/check', { preHandler: pre }, async (req, reply) => { const t = await take(req, reply); if (!t) return; const ck = await check(t.params, t.placements); return { check: ck, where: Object.fromEntries(t.placements.map(q => [q.id, describe(q, t.params)])) }; });
@@ -131,13 +143,57 @@ export function registerLabFlatsRoutes(app, d) {
   // ---- the spec sheet ----
   // the sketch goes inside the sheet as a data URL, so the saved file, the print and the tech-pack picture all stand on their own
   const sketches = new Map(), templateHref = file => { if (!sketches.has(file)) sketches.set(file, `data:image/svg+xml;base64,${readFileSync(new URL(`./flat-templates/${file}`, import.meta.url)).toString('base64')}`); return sketches.get(file); };
+  // the sketch's own markup, drawn inline when the service turns a flat into a picture: a picture of the whole page would be rasterised at
+  // the zoom of the frame, which takes half a minute for a close-up
+  const inline = new Map(), templateSvg = file => { if (!inline.has(file)) { const t = readFileSync(new URL(`./flat-templates/${file}`, import.meta.url), 'utf8'); inline.set(file, t.slice(t.indexOf('>', t.indexOf('<svg')) + 1, t.lastIndexOf('</svg>'))); } return inline.get(file); };
+  // the areas the image model redrew, as data URLs for the same reason
+  const editHrefsOf = async params => { const ids = [...new Set((params.edits || []).filter(e => e.type === 'ai').map(e => e.art))]; if (!ids.length) return {};
+    return Object.fromEntries((await pool.query('select id, png from lab_art where id = any($1::uuid[])', [ids])).rows.map(r => [r.id, `data:image/png;base64,${r.png.toString('base64')}`])); };
+
+  // ---- an area of the flat redrawn by the image model ----
+  const redraws = new Map(), dayOf = () => new Date().toISOString().slice(0, 10), redrawCap = () => Math.max(0, Number(env.LAB_DAILY_FLAT_AI ?? 60) || 0);
+  app.post('/v1/lab/concepts/:id/flats/redraw', { preHandler: pre }, async (req, reply) => {
+    const t = await take(req, reply); if (!t) return;
+    if (t.c.status === 'tech_pack' && !t.c.product_id) return bad(reply, 'This concept is already a tech pack', 409);
+    const b = req.body || {}, view = b.view === 'back' ? 'back' : 'front', prompt = clip(b.prompt, 300);
+    if (prompt.length < 3) return bad(reply, 'Say what to change in the area');
+    const hits = brandHits(prompt, (await pool.query('select name from lab_brands')).rows.map(r => r.name));
+    if (hits.length) return bad(reply, `Leave other brands out of the prompt (${hits.slice(0, 3).join(', ')}). Describe the detail in your own words.`);
+    const box = cleanEdits([{ type: 'detail', kind: 'erase', view, ...(b.box || {}) }])[0]; if (!box || box.w < .5 || box.h < .5) return bad(reply, 'Select an area at least half an inch across');
+    const cfg = imageCfg(); if (!cfg.configured) return bad(reply, 'No image model is connected', 503);
+    if ((redraws.get(dayOf()) || 0) >= redrawCap()) return bad(reply, `The daily limit of ${redrawCap()} AI redraws of flats is reached. Raise LAB_DAILY_FLAT_AI.`, 429);
+    // the view as it stands, in black and white (the model draws line art; the colour goes back on afterwards), framed on the area with room
+    // around it so the model sees how the change joins the rest
+    const N = 1024, side = Math.max(box.w, box.h) * 2.2, cx0 = box.x - side / 2, cy0 = box.y - side / 2;
+    const plainP = { ...t.params, color: '', edits: t.params.edits.filter(e => e.type !== 'block') }, hrefs = await editHrefsOf(plainP);
+    const frame = background => Buffer.from(renderSvg(plainP, view, { plain: true, scale: 0, templateSvg, editHrefs: hrefs, background }).replace(/^<svg ([^>]*?)viewBox="[^"]*"/, `<svg $1viewBox="${cx0} ${cy0} ${side} ${side}" width="${N}" height="${N}"`));
+    const before = await sharp(frame(true)).flatten({ background: '#ffffff' }).png().toBuffer();
+    const cloth = await sharp(frame(false)).ensureAlpha().extractChannel('alpha').raw().toBuffer();
+    const px = v => Math.round(v / side * N), bx = px(box.x - box.w / 2 - cx0), by = px(box.y - box.h / 2 - cy0), bw = Math.max(1, Math.min(N - bx, px(box.w))), bh = Math.max(1, Math.min(N - by, px(box.h)));
+    const m = Buffer.alloc(N * N * 4, 255); for (let y = by; y < by + bh; y++) for (let x = bx; x < bx + bw; x++) m[(y * N + x) * 4 + 3] = 0;
+    const mask = await sharp(m, { raw: { width: N, height: N, channels: 4 } }).png().toBuffer();
+    let out;
+    try {
+      out = cfg.provider === 'fixture'
+        ? await sharp(before).composite([{ input: Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${N}" height="${N}"><ellipse cx="${bx + bw / 2}" cy="${by + bh / 2}" rx="${bw * .35}" ry="${bh * .35}" fill="none" stroke="#141416" stroke-width="6"/></svg>`) }]).png().toBuffer()
+        : await editImpl({ images: [before], mask, prompt: flatEditPrompt(prompt), cfg: { ...cfg, size: '1024x1024' } });
+    } catch (e) { return bad(reply, `The image model could not do it: ${clip(e.message, 200)}`, 502); }
+    redraws.set(dayOf(), (redraws.get(dayOf()) || 0) + 1);
+    // the area alone, grey, clear outside the cloth unless the model drew a line there, so the garment's colour goes back on over it
+    const grey = await sharp(out).resize(N, N, { fit: 'fill' }).greyscale().extract({ left: bx, top: by, width: bw, height: bh }).raw().toBuffer();
+    const rgba = Buffer.alloc(bw * bh * 4);
+    for (let y = 0; y < bh; y++) for (let x = 0; x < bw; x++) { const g = grey[y * bw + x], i = (y * bw + x) * 4; rgba[i] = rgba[i + 1] = rgba[i + 2] = g; rgba[i + 3] = cloth[(by + y) * N + bx + x] > 0 || g < 200 ? 255 : 0; }
+    const png = await sharp(rgba, { raw: { width: bw, height: bh, channels: 4 } }).png().toBuffer(), thumb = await sharp(png).resize({ width: 256, height: 256, fit: 'inside' }).png().toBuffer();
+    const art = (await pool.query(`insert into lab_art(concept_id,name,png,thumb,prompt,model,source,in_library,created_by) values($1,$2,$3,$4,$5,$6,'flat',false,$7) returning id`, [t.c.id, clip(`Flat: ${prompt}`, 80), png, thumb, prompt, cfg.model || cfg.provider, actorOf(req)])).rows[0].id;
+    return { edit: { id: 'ai' + art.slice(0, 8), type: 'ai', view, x: box.x, y: box.y, w: box.w, h: box.h, art, prompt }, left: Math.max(0, redrawCap() - (redraws.get(dayOf()) || 0)) };
+  });
   async function sheet(c, { size } = {}) {
     const r = (await pool.query('select params, placements, check_result from lab_flats where concept_id=$1', [c.id])).rows[0]; if (!r) return null;
     const p = { ...r.params, size: SIZES.includes(size) ? size : r.params.size || 'M' }, pl = r.placements, list = await techniques(), hrefs = {};
     for (const q of pl) { const b = await pngOf(q); if (b) hrefs[q.id] = `data:image/png;base64,${(await sharp(b).resize({ width: 600, height: 600, fit: 'inside', withoutEnlargement: true }).png().toBuffer()).toString('base64')}`; }
     const ck = r.check_result || { findings: {}, summary: { fail: 0, warn: 0 } };
     const views = STYLES[p.style].kind === 'cap' || STYLES[p.style].kind === 'top' || STYLES[p.style].kind === 'bottom' ? ['front', 'back'] : ['front'];
-    const svgs = views.map(v => renderSvg(p, v, { placements: pl, hrefs, findings: ck.findings, showPom: true, scale: 0, templateHref }));
+    const editHrefs = await editHrefsOf(p), svgs = views.map(v => renderSvg(p, v, { placements: pl, hrefs, findings: ck.findings, showPom: true, scale: 0, templateHref, editHrefs }));
     // one page, 17 × 11 in at 100 units an inch: the flats across the top, the placements and the measurements under them
     const W = 1700, T = (x, y, s, t, o = {}) => `<text x="${x}" y="${y}" font-size="${s}" font-family="Space Grotesk, Helvetica, Arial, sans-serif" font-weight="${o.w || 400}" fill="${o.c || '#141416'}"${o.a ? ` text-anchor="${o.a}"` : ''}>${esc(t)}</text>`;
     const colW = (W - 120) / svgs.length; let y = 150;
@@ -146,13 +202,18 @@ export function registerLabFlatsRoutes(app, d) {
     const lv = q => (ck.findings[q.id] || []).some(f => f.level === 'fail') ? ['Cannot be made as drawn', '#a02a20'] : (ck.findings[q.id] || []).some(f => f.level === 'warn') ? ['Check', '#8a5a00'] : ['Ready', '#17603a'];
     pl.forEach((q, i) => { const t = techFor(list, q); y += 30; body += T(60, y, 14, `${i + 1}. ${q.name}`, { w: 600 }) + T(360, y, 14, `${t.name} · ${fmtCm(q.w)} × ${fmtCm(q.h)}`) + T(1640, y, 13, lv(q)[0], { a: 'end', c: lv(q)[1], w: 600 }); y += 20; body += T(76, y, 13, `${q.view === 'back' ? 'Back' : 'Front'}: ${describe(q, p)}`, { c: '#45454c' }); });
     if (!pl.length) { y += 30; body += T(60, y, 14, 'Nothing placed on this piece.', { c: '#727278' }); }
+    // the colour, the details and the stitching changed on the sketch, in words the factory reads
+    const eds = (p.edits || []).filter(e => views.includes(e.view));
+    if (p.color || eds.length) { y += 44; body += T(60, y, 20, 'Colour, details and stitching', { w: 600 }); y += 6;
+      const wrap = t => { const out = ['']; for (const w of t.split(' ')) { if ((out[out.length - 1] + ' ' + w).length > 120) out.push(''); out[out.length - 1] += (out[out.length - 1] ? ' ' : '') + w; } return out; };
+      for (const line of [...(p.color ? [`Main colour ${p.color}`] : []), ...eds.map(e => describeEdit(e, p))]) wrap(line).forEach((part, i) => { y += i ? 17 : 22; body += T(i ? 90 : 76, y, 13, part, { c: '#45454c' }); }); }
     const pom = pomTable(p), cols = pom[0].values.map(v => v.size), cx = 1040; let py = 680;
     body += T(cx, py, 20, `Points of measure (inches) · sample size ${STYLES[p.style].oneSize ? 'one size' : 'M'}`, { w: 600 }); py += 30;
     body += T(cx, py, 12, 'Point', { w: 600, c: '#727278' }) + cols.map((s, i) => T(cx + 330 + i * 52, py, 12, s, { w: 600, c: s === 'M' ? '#141416' : '#727278', a: 'end' })).join('') + T(cx + 330 + cols.length * 52 + 20, py, 12, 'Tol ±', { w: 600, c: '#727278', a: 'end' });
     for (const row of pom) { py += 22; body += T(cx, py, 12, `${row.code} ${row.name}`.slice(0, 48)) + row.values.map((v, i) => T(cx + 330 + i * 52, py, 12, String(v.value), { a: 'end', w: v.size === 'M' ? 600 : 400 })).join('') + T(cx + 330 + cols.length * 52 + 20, py, 12, String(row.tolerance), { a: 'end', c: '#727278' }); }
     const head = `${T(60, 62, 30, c.name, { w: 600 })}${T(60, 92, 15, `${STYLES[p.style].label} · ${FITS[p.fit] || p.fit} fit · Future Basics Design Lab · ${new Date().toISOString().slice(0, 10)}`, { c: '#727278' })}${T(1640, 62, 15, ck.summary.fail ? `${ck.summary.fail} problem${ck.summary.fail === 1 ? '' : 's'} to fix before it can be made` : ck.summary.warn ? `${ck.summary.warn} thing${ck.summary.warn === 1 ? '' : 's'} to check` : 'Ready to make', { a: 'end', w: 600, c: ck.summary.fail ? '#a02a20' : ck.summary.warn ? '#8a5a00' : '#17603a' })}`;
     const H = Math.max(y, py) + 60;
-    return { svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="#ffffff"/><rect x="0" y="0" width="${W}" height="6" fill="#4bff9a"/>${head}${body}</svg>`, p, pl, hrefs, svgs, views };
+    return { editHrefs, svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="#ffffff"/><rect x="0" y="0" width="${W}" height="6" fill="#4bff9a"/>${head}${body}</svg>`, p, pl, hrefs, svgs, views };
   }
   app.get('/v1/lab/concepts/:id/flats/sheet.svg', { preHandler: pre }, async (req, reply) => {
     const c = await concept(req.params.id); if (!c) return bad(reply, 'Not found', 404);
@@ -162,18 +223,40 @@ export function registerLabFlatsRoutes(app, d) {
   // the files that go on a tech pack: the spec sheet and each flat, as pictures
   async function files(c) {
     const s = await sheet(c); if (!s) return [];
-    const png = async (svg, width) => `data:image/png;base64,${(await sharp(Buffer.from(svg), { density: 150 }).resize({ width }).flatten({ background: '#ffffff' }).png().toBuffer()).toString('base64')}`;
     const out = [{ name: 'Spec sheet · flats, placements and measurements', image: await png(s.svg, 2400) }];
-    for (const v of s.views) out.push({ name: `Technical flat · ${v}`, image: await png(renderSvg(s.p, v, { placements: s.pl, hrefs: s.hrefs, scale: 60, templateHref }), 1800) });
+    for (const v of s.views) out.push({ name: `Technical flat · ${v}`, image: await png(renderSvg(s.p, v, { placements: s.pl, hrefs: s.hrefs, scale: 60, templateSvg, editHrefs: s.editHrefs }), 1800) });
     return out;
   }
+  const png = async (svg, width) => `data:image/png;base64,${(await sharp(Buffer.from(svg), { density: 150 }).resize({ width }).flatten({ background: '#ffffff' }).png().toBuffer()).toString('base64')}`;
+  // everything the tech pack takes from the flats (src/lab-handoff.js lays it into the pack)
+  async function handoff(c) {
+    const items = await files(c); if (!items.length) return null;
+    const r = (await pool.query('select params, placements from lab_flats where concept_id=$1', [c.id])).rows[0], p = r.params, pl = r.placements || [], list = await techniques();
+    const S = STYLES[p.style], tpl = templateOf(p), edits = p.edits || [];
+    const pom = pomTable(p).map(row => ({ code: row.code, name: row.name, how: 'From the flats', tolerance: String(row.tolerance), values: Object.fromEntries(row.values.map(v => [v.size, String(v.value)])) }));
+    const construction = [{ area: 'Drawing', detail: `${FITS[p.fit] || p.fit} fit ${S.label.toLowerCase()}, drawn from the ${tpl ? `"${tpl.label}" flat sketch` : 'measurements'}; sample size M.` },
+      ...pl.map(q => ({ area: `${q.view === 'back' ? 'Back' : 'Front'} · ${q.name}`, detail: `${techFor(list, q).name}, ${fmtCm(q.w)} × ${fmtCm(q.h)}: ${describe(q, p)}.` })),
+      ...edits.map(e => ({ area: e.type === 'stitch' ? 'Stitching' : e.type === 'block' ? 'Colour block' : e.type === 'ai' ? 'Redrawn area' : (DETAILS[e.kind] || 'Detail'), detail: describeEdit(e, p) }))];
+    const threads = new Map(); for (const e of edits) if (e.thread) threads.set(e.thread, [...(threads.get(e.thread) || []), e.type === 'stitch' ? 'stitch line' : (DETAILS[e.kind] || 'detail').toLowerCase()]);
+    const bom = [...pl.map(q => ({ component: `Decoration · ${q.name}`, material: techFor(list, q).name, placement: describe(q, p).slice(0, 160), qty: '1', unit: 'pc' })),
+      ...[...threads].map(([hex, where]) => ({ component: 'Contrast thread', material: 'Polyester sewing thread', color: hex, placement: [...new Set(where)].join(', ').slice(0, 160), qty: '1', unit: 'cone' })),
+      ...edits.filter(e => e.type === 'block').map(e => ({ component: `Colour block · ${e.name || 'panel'}`, material: 'Self fabric', color: e.color, placement: e.view }))];
+    return {
+      files: items,
+      lab: { pom, sizes: S.oneSize ? ['One size'] : SIZES, construction, bom, color: p.color ? { hex: p.color, name: 'Main colour' } : null,
+        sketches: items.filter(i => /^Technical flat · /.test(i.name)).map(i => ({ view: i.name.endsWith('back') ? 'back' : 'front', label: i.name, image: i.image })),
+        priceCents: c.price_cents, costCents: c.cost_cents, qty: c.qty, planName: c.plan_name, style: { sampleSize: S.oneSize ? 'One size' : 'M', fitBlock: `${FITS[p.fit] || p.fit} ${S.label.toLowerCase()}${tpl ? ` (${tpl.label})` : ''}` } }
+    };
+  }
+  const sendToPack = async (c, productId = c.product_id) => { const h = await handoff(c); return h ? applyHandoff(productId, h) : null; };
   app.post('/v1/lab/concepts/:id/flats/tech-pack', { preHandler: pre }, async (req, reply) => {
     const c = await concept(req.params.id); if (!c) return bad(reply, 'Not found', 404);
     if (!c.product_id) return bad(reply, 'This concept has no tech pack yet. Approve it and send it to a tech pack first.', 409);
-    if (!attachArtwork) return bad(reply, 'Files cannot be added to tech packs on this service', 501);
-    const items = await files(c); if (!items.length) return bad(reply, 'Save the flats first', 409);
-    const n = await attachArtwork(c.product_id, items);
-    return { ok: true, files: n, productId: c.product_id };
+    if (!applyHandoff) return bad(reply, 'Flats cannot be sent to tech packs on this service', 501);
+    const sent = await sendToPack(c); if (!sent) return bad(reply, 'Save the flats first', 409);
+    return { ok: true, ...sent, productId: c.product_id };
   });
-  return { files: async id => { const c = await concept(id); return c ? files(c) : []; } };
+  // the check of a concept's flats as they would start (for approving a concept whose flats were never saved)
+  const startCheck = async id => { const c = await concept(id); const init = c && await initial(c); return init ? check(init, init.placements) : null; };
+  return { startCheck, sheetSvg: async id => { const c = await concept(id); const sh = c && await sheet(c); return sh?.svg || null; }, files: async id => { const c = await concept(id); return c ? files(c) : []; }, sendToPack: async (id, productId) => { const c = await concept(id); return c ? sendToPack(c, productId) : null; } };
 }

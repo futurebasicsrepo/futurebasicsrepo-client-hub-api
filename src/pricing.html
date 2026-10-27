@@ -63,6 +63,20 @@
   </div>
   <p class="note" id="billingNote" hidden></p>
 
+  <section class="hero" style="padding-top:36px"><div class="wrap">
+    <span class="meta">Design with us</span>
+    <h2 style="margin:6px 0 8px">Not sure what to make yet? We design it with you.</h2>
+    <p class="lede">Our design team reads the market, plans your line, and draws every piece as concepts and measured flats in your brand. You approve each one in your hub, and the ones you approve become tech packs, go to factories, and come back as samples we review against the spec.</p>
+  </div></section>
+  <div class="plans" id="designPlans" aria-label="Design packages" style="grid-template-columns:repeat(2,minmax(0,1fr))">
+    <article class="plan"><span class="meta">One piece</span><h2>Design a piece</h2><div class="price" id="dPiece" style="font-size:28px;padding-top:10px">Quoted</div>
+      <ul><li>Concepts of the piece in your brand, checked so they are yours and nobody else's</li><li>Measured technical flats front and back, with your logo and graphics placed in inches</li><li>Pockets, pleats, trims, colours and stitching worked out on the flats</li><li>The tech pack, sent to factories for quotes, with every sample reviewed against the spec</li><li>You approve or ask for changes in your hub</li></ul>
+      <a class="go" id="dPieceGo" href="https://thefuturebasics.com/pages/contact">Talk to us</a></article>
+    <article class="plan pick"><span class="meta">A collection</span><h2>Design a line</h2><div class="price" id="dLine" style="font-size:28px;padding-top:10px">Quoted</div>
+      <ul><li>A read of the market and a line plan: the pieces, their roles, a price ladder and margins</li><li>A graphic program for the line, drawn as finished artwork</li><li>Concepts and measured flats for every piece</li><li>Tech packs, factory quotes compared side by side, and sample rounds until the line is right</li><li>Everything in one room: concepts, packs, files, messages and payments</li></ul>
+      <a class="go" id="dLineGo" href="https://thefuturebasics.com/pages/contact">Plan a line with us</a></article>
+  </div>
+
   <section class="band"><span class="meta">In every pack</span><h3>What a factory needs, and what you need to price it</h3>
     <div class="tick">
       <div><b>Checked, not just drafted</b><p>The pack is compared with your picture and held to a score before it is sent. If it needs a person, it says so.</p></div>
@@ -91,6 +105,7 @@
     if(p.single)$('#single').innerHTML=usd(p.single.amountCents)+'<small> / pack</small>';
     if(p.membership){$('#member').innerHTML=usd(p.membership.amountCents)+'<small> / month</small>';$('#memberGo').href=p.membership.url}
     else{$('#memberPlan').hidden=true;document.getElementById('plans').style.gridTemplateColumns='repeat(3,minmax(0,1fr))'}
+    if(p.design){if(p.design.pieceCents)$('#dPiece').innerHTML=usd(p.design.pieceCents)+'<small> / piece</small>';if(p.design.lineCents)$('#dLine').innerHTML='From '+usd(p.design.lineCents);for(const id of ['#dPieceGo','#dLineGo'])$(id).href=p.design.contactUrl}
     if(p.billing===false){const n=$('#billingNote');n.hidden=false;n.textContent='Packs are free while we are launching. These are the prices that will apply after.'}
   }catch{}
 })();

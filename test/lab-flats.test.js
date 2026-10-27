@@ -119,3 +119,26 @@ test('pieces are drawn from the flat sketches, lined up with their measurements'
   // the service puts the sketch inside the file
   assert.match(renderSvg(defaultParams('cap'), 'front', { templateHref: f => `data:x;${f}` }), /href="data:x;cap-6panel\.svg"/);
 });
+
+test('the drawing can be changed: colour, colour blocks, details, stitching, redrawn areas', async () => {
+  const { DETAILS, STITCHES, defaultDetail, detailSvg, stitchSvg, cleanEdits, describeEdit, lineFor } = await import('../src/lab-flats.js');
+  const hood = { ...defaultParams('hoodie'), template: 'hood-classic' };
+  for (const k of Object.keys(DETAILS)) {
+    const e = { id: 'd', type: 'detail', view: 'front', stitch: 'double', thread: '#e0218a', color: '', count: 2, flip: false, ...defaultDetail(k, hood, 'front') }, o = detailSvg(e);
+    assert.ok(o.body.length > 20 && !/NaN|undefined/.test(o.body + o.stitch), `${k} draws`);
+    assert.ok(e.y - e.h / 2 > -1, `${k} starts on the piece, not above it`);
+    assert.match(describeEdit(e, hood), /^Front: /);
+  }
+  for (const k of Object.keys(STITCHES)) assert.ok(!/NaN/.test(stitchSvg([[0, 0], [4, 0], [4, 3]], k, '#e0218a')) && stitchSvg([[0, 0], [4, 0]], k).includes('<path'), `${k} draws`);
+  assert.equal(lineFor('#111111') === '#141416', false, 'a dark piece gets light lines'); assert.equal(lineFor('#f4f1ea'), '#141416');
+  // what the page sends is kept within bounds; a block needs a colour, a stitch line two points, a redrawn area its picture
+  const ed = cleanEdits([{ type: 'detail', kind: 'pocket-patch', x: 999, y: 4, w: 5, h: 6, thread: 'red', stitch: 'nope' }, { type: 'stitch', pts: [[0, 0]] }, { type: 'block', pts: [[0, 0], [1, 0], [1, 1]] },
+    { type: 'block', view: 'back', pts: [[0, 0], [1, 0], [1, 1]], color: '#A02A20' }, { type: 'ai', art: 'x' }, { type: 'detail', kind: 'cape' }]);
+  assert.equal(ed.length, 2); assert.deepEqual([ed[0].x, ed[0].thread, ed[0].stitch], [60, '', 'single']); assert.equal(ed[1].color, '#a02a20'); assert.equal(ed[1].view, 'back');
+  const { params } = cleanFlat({ style: 'pants', template: 'pt-pleat', color: '#1F2A44', edits: [{ type: 'detail', kind: 'pleat', view: 'front', x: 3, y: 6, w: .1, h: 9, count: 2 }, { type: 'stitch', view: 'front', pts: [[-8, 1], [8, 1]], stitch: 'double', thread: '#e0218a' }] });
+  assert.equal(params.color, '#1f2a44'); assert.equal(params.edits.length, 2);
+  const svg = renderSvg(params, 'front', { editable: true, selectedEdit: params.edits[0].id });
+  assert.match(svg, /<filter id="fb-front-pt-pleat-t"/, 'the piece is recoloured'); assert.match(svg, /data-ed="e0"/); assert.match(svg, /stroke="#e0218a"/, 'the contrast thread');
+  assert.ok(!/<filter/.test(renderSvg({ ...params, color: '' }, 'back')), 'no colour, no filter; edits on the front stay off the back');
+  assert.match(describeEdit(params.edits[0], params), /Front: Double pleat/); assert.match(describeEdit(params.edits[1], params), /Double needle in #e0218a thread/);
+});

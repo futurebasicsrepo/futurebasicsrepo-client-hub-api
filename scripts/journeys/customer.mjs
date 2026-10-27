@@ -1708,7 +1708,13 @@ await journey('J102', 'samples and inspection: the usual stages in one press, a 
     try {
       const ctx = await bw.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }), p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message));
       await p.goto(`${BASE}/tp/${ftok}`, { waitUntil: 'domcontentloaded' }); await p.waitForSelector('#tabs button[data-tab="bom"]', { timeout: 20000 }); await p.click('#tabs button[data-tab="bom"]'); await p.waitForSelector('[data-sampling]');
-      const txt = await p.innerText('[data-sampling]') + await p.innerText('[data-inspection]'); ok(/Top of production/i.test(txt) && /Wash fastness/i.test(txt) && /ISO 2859/.test(txt) && await p.locator('[data-sampling] [data-act]').count() === 0 && p.errs.length === 0, 'the factory page shows them read-only', txt.slice(0, 120)); await ctx.close();
+      const txt = await p.innerText('[data-sampling]') + await p.innerText('[data-inspection]'); ok(/Top of production/i.test(txt) && /Wash fastness/i.test(txt) && /ISO 2859/.test(txt) && await p.locator('[data-sampling] input,[data-sampling] select,[data-sampling] textarea').count() === 0 && await p.locator('[data-sampling] [data-act]:not([data-act=ssent])').count() === 0 && p.errs.length === 0, 'the factory page shows them read-only', txt.slice(0, 120));
+      // the factory says a sample is on its way, with its tracking: the team sees it on the pack
+      ok(await p.locator('[data-sampling] [data-act=ssent]').count() === 4, 'each sample still to come has a button to say it is sent');
+      p.once('dialog', d => d.accept('1Z999AA10123456784')); await p.locator('[data-sampling] [data-act=ssent]').first().click();
+      await p.waitForFunction(() => /tracking 1Z999AA10123456784/i.test(document.querySelector('[data-sampling]')?.innerText || ''), null, { timeout: 15000 });
+      const live = (await adm(`/v1/admin/products/${m.id}/tech-pack`)).json.techPack.data.sampling[0]; ok(live.status === 'sent' && live.tracking === '1Z999AA10123456784' && p.errs.length === 0, 'the sample is marked sent with its tracking, on the pack the team works on', live);
+      await ctx.close();
     } finally { await bw.close(); }
   }
 });
@@ -1777,6 +1783,7 @@ await journey('J187', 'cost and Excel: unit costs add up to a landed cost and a 
   const pr = await get('/v1/pricing'), pj = JSON.parse(pr.buf.toString('utf8')), pg = await get('/pricing');
   ok(pr.status === 200 && pj.single?.amountCents > 0 && pj.single.currency === 'USD' && typeof pj.billing === 'boolean' && (pj.membership === null || pj.membership.amountCents > 0), 'the public prices are readable without signing in', pj);
   ok(pg.status === 200 && /Tech pack pricing/.test(pg.buf.toString('utf8')) && /First pack/.test(pg.buf.toString('utf8')), 'and the pricing page is public');
+  ok(pj.design && pj.design.pieceCents === null && /^https:/.test(pj.design.contactUrl) && /Design a piece/.test(pg.buf.toString('utf8')) && /Design a line/.test(pg.buf.toString('utf8')), 'the design service is on the pricing page, quoted until its prices are set', pj.design);
 
 });
 

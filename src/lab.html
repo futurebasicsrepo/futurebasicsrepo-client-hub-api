@@ -319,6 +319,16 @@ function programHtml(P){
   <p class="note" style="margin:0">${esc(pr.story)}</p>${pr.palette.length?`<div class="kv"><b>Palette</b>${pr.palette.map(c=>`<span class="chip"><i class="sw" style="background:${esc(c.hex)}"></i>${esc(c.name)} ${esc(c.hex)}</span>`).join('')}</div>`:''}${pr.rules?`<div class="sub"><b>Rules:</b> ${esc(pr.rules)}</div>`:''}
   <div class="mot">${pr.motifs.map(m=>`<div class="mt" data-mid="${esc(m.id)}"><div class="dr">${motifArt(m)}</div><b>${esc(m.name)}</b><span class="sub">${esc(m.kind)} · ${esc(m.id)}${m.placements.length?' · '+esc(m.placements.join(', ')):''}</span>${m.texts.length?`<span class="sub">reads: ${esc(m.texts.join(' / '))}</span>`:''}<span class="sm">${esc(m.idea)}</span><div class="row"><button class="btn sm" type="button" data-motifart ${m.artStatus==='pending'?'disabled':''}>Draw again</button><button class="btn sm" type="button" data-motifrm>Remove</button></div></div>`).join('')}</div><span class="msg" id="progMsg" role="status"></span></div>`;
 }
+// who a line is for: our own, or a client's (Future Basics' design service), in their brand's words, and whether they see it in their hub
+let CLIENTS=null;
+function forClient(pl){const c=(CLIENTS||[]).find(x=>x.id===pl.clientId);
+  return `<details class="forcl" ${pl.clientId?'open':''}><summary><b>${pl.clientId?`For ${esc(c?.name||'a client')}`:'Our own line'}</b><span class="sub"> · ${pl.clientId?(pl.sharedAt?'shared in their hub':'not shared with them yet'):'designed for Future Basics'}</span></summary>
+    <div class="row" style="margin-top:8px"><select class="t" id="pClient" style="width:auto" aria-label="Who this line is for"><option value="">Future Basics (our own line)</option>${(CLIENTS||[]).map(x=>`<option value="${x.id}" ${x.id===pl.clientId?'selected':''}>${esc(x.name)}</option>`).join('')}</select>
+      <input class="t" id="pBrand" style="width:180px" placeholder="Their brand name" value="${esc(pl.brand?.name||'')}" aria-label="Brand name"><input class="t" id="pStatement" style="flex:1;min-width:220px" placeholder="Their brand in a sentence or two" value="${esc(pl.brand?.statement||'')}" aria-label="Brand statement">
+      <label class="sub" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="pShare" ${pl.sharedAt?'checked':''}> Show it in their hub</label><button class="btn sm" type="button" data-pclient>Save</button><span class="sub" id="pClientMsg" role="status"></span></div>
+    <p class="sub">Concepts for a client are written for their brand and leave the logo to their own files (add it from the graphics library in Flats and placement). They approve or ask for changes in their hub, and approved pieces become tech packs in their room.</p></details>`}
+document.addEventListener('click',async e=>{if(!e.target.closest('[data-pclient]'))return;const m=$('#pClientMsg');
+  try{const r=await api(`/v1/lab/plans/${CUR.plan.id}/client`,{method:'PUT',body:{clientId:$('#pClient').value||null,brand:{name:$('#pBrand').value,statement:$('#pStatement').value},shared:$('#pShare').checked}});Object.assign(CUR.plan,r.plan);drawPlan();fillArt($('#planView'));$('#pClientMsg').textContent=r.plan.sharedAt?'Saved: it is in their hub':'Saved'}catch(x){m.textContent=x.message}});
 function drawPlan(){
   const P=CUR;if(!P){$('#planView').classList.add('hidden');return}
   const s=P.summary,pl=P.plan,sel=(opts,v)=>opts.map(o=>`<option value="${o.id}" ${o.id===v?'selected':''}>${esc(o.label)}</option>`).join('');
@@ -327,6 +337,7 @@ function drawPlan(){
   $('#planView').innerHTML=`<div class="row" style="justify-content:space-between"><div style="min-width:0"><h2 style="overflow-wrap:anywhere">${esc(pl.name)}</h2><span class="sub">${esc(pl.season||'')}${pl.brief?' · '+esc(pl.brief):''}</span></div>
     <div class="row"><button class="btn sm" type="button" data-status>${pl.status==='approved'?'Back to draft':'Mark approved'}</button><button class="btn sm" type="button" data-csv>Download CSV</button><button class="btn sm" type="button" data-rename>Rename</button></div></div>
     ${pl.summary?`<p class="note">${esc(pl.summary)}</p>`:''}
+    ${forClient(pl)}
     <div class="tiles"><div class="tile"><b>${s.count}</b><span>Pieces</span></div><div class="tile"><b>${s.priceMedian!=null?usd(s.priceMedian):'—'}</b><span>Median price</span></div><div class="tile"><b>${s.blendedMarginPct!=null?s.blendedMarginPct+'%':'—'}</b><span>Blended margin</span></div><div class="tile"><b>${s.units.toLocaleString()}</b><span>Units</span></div><div class="tile"><b>${money(s.revenueCents)}</b><span>Revenue at shelf</span></div><div class="tile"><b>${money(s.grossCents)}</b><span>Gross</span></div><div class="tile"><b ${s.lineWarnings?'style="color:var(--bad)"':''}>${s.lineWarnings}</b><span>Flags</span></div></div>
     ${s.notes.length?`<ul class="sub" style="margin:0 0 10px;padding-left:18px">${s.notes.map(n=>`<li>${esc(n)}</li>`).join('')}</ul>`:''}
     ${programHtml(P)}
@@ -344,7 +355,7 @@ function drawPlan(){
     <div class="row" style="margin-top:12px"><input class="t" id="newLine" placeholder="Add a piece by name" maxlength="100"><select class="t" id="newCat" style="flex:0 0 190px">${sel(cats,'tops')}</select><button class="btn" type="button" id="addLine">Add piece</button><span class="msg" id="lineMsg" role="status"></span></div>`;
 }
 let PLANPOLL=0;
-async function openPlan(id,keepScroll){CUR=await api('/v1/lab/plans/'+id);drawPlan();fillArt($('#planView'));await loadPlans(true);
+async function openPlan(id,keepScroll){CUR=await api('/v1/lab/plans/'+id);if(!CLIENTS)CLIENTS=(await api('/v1/lab/clients').catch(()=>({clients:[]}))).clients;drawPlan();fillArt($('#planView'));await loadPlans(true);
   // the program's artwork is drawn in the background: look again until every motif has its picture
   clearTimeout(PLANPOLL);if(CUR&&CUR.program&&CUR.program.motifs.some(m=>m.artStatus==='pending'))PLANPOLL=setTimeout(()=>{if(CUR&&CUR.plan.id===id)openPlan(id,true).catch(()=>{})},5000)}
 async function putLine(tr,body){
@@ -423,8 +434,9 @@ function conceptHtml(d,img){
   ${v?`<div class="verdict ${c.closeness.verdict}"><div class="row"><b>${v[0]}</b><span class="sub">${c.closeness.aiChecked?'words and second opinion':'words only: not second-checked'}</span><button class="btn sm" type="button" data-ccheck>Re-check</button></div>${c.closeness.reasons.length?`<ul>${c.closeness.reasons.map(r=>`<li>${esc(r)}</li>`).join('')}</ul>`:'<span class="sub">Nothing close to any piece it was drawn from.</span>'}${ai&&ai.fixes.length?`<div class="sub"><b>To make it ours:</b> ${esc(ai.fixes.join(' · '))}</div>`:''}${c.overrideReason?`<div class="sub"><b>Approved anyway because:</b> ${esc(c.overrideReason)}</div>`:''}<span class="sub">The check reads words, not pictures. Look at the concept next to the pieces below.</span></div>`:''}
   <div><b style="font-size:14px">Drawn from, to look at side by side</b><div class="refs" style="margin-top:8px">${d.concept.refs.map(r=>`<div class="ref"><div class="ph">${safe(r.imageUrl)?`<img src="${esc(safe(r.imageUrl))}" alt="${esc(r.title)}" loading="lazy" referrerpolicy="no-referrer">`:''}</div><div><b>${esc(r.title)}</b><br><span class="sub">${esc(r.brand)}${r.price!=null?' · '+esc(usd(r.price)):''}</span>${safe(r.url)?`<br><a href="${esc(safe(r.url))}" target="_blank" rel="noopener noreferrer">Open</a>`:''}</div></div>`).join('')||'<span class="sub">No library pieces attached.</span>'}</div></div>
   <div class="row">${locked?'':`<a class="btn" href="/lab/studio?concept=${esc(c.id)}" data-cstudio>Open in the studio</a>`}<a class="btn" href="/lab/flats?concept=${esc(c.id)}" data-cflats>Flats and placement</a>${c.status==='approved'?`<button class="btn go" type="button" data-ctp>Send to tech pack</button>`:''}${c.status==='tech_pack'?`<a class="btn go" href="${esc(c.productUrl)}">Open the tech pack</a>`:''}${c.status==='draft'||c.status==='rejected'?'<button class="btn go" type="button" data-capprove>Approve</button>':''}${c.status==='draft'?'<button class="btn" type="button" data-creject>Reject</button>':''}${c.status==='approved'||c.status==='rejected'?'<button class="btn" type="button" data-creopen>Back to draft</button>':''}${locked?'':'<button class="btn" type="button" data-crevise>Revise…</button><button class="btn" type="button" data-cdel>Delete</button>'}<span class="msg" id="cAct" role="status"></span></div>
+  ${d.concept.clientId?`<div class="note" style="margin:0 0 10px">${d.concept.clientVerdict?`<b>${esc(d.concept.clientName||'The client')} ${d.concept.clientVerdict==='approved'?'approved this':'asks for changes'}</b>${d.concept.clientNote?`: ${esc(d.concept.clientNote)}`:''}`:`<b>${esc(d.concept.clientName||'The client')}</b> has not given a verdict yet.`}</div>`:''}
   <div class="cm"><b style="font-size:14px">Comments</b>${d.comments.map(x=>`<div class="c"><b>${esc(x.name)}</b>${esc(x.body)} <time>${esc(when(x.at))}</time></div>`).join('')||'<span class="sub">No comments yet.</span>'}
-    <div class="row"><input class="t" id="cNew" placeholder="Add a comment" maxlength="1000" aria-label="Comment"><button class="btn sm" type="button" data-ccom>Post</button></div></div></div>`;
+    <div class="row"><input class="t" id="cNew" placeholder="Add a comment" maxlength="1000" aria-label="Comment"><button class="btn sm" type="button" data-ccom>Post</button>${d.concept.clientId?'<label class="sub" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="cToClient"> Visible to the client</label>':''}</div></div></div>`;
 }
 // the graphics library inside the concept window: pick one, say where it goes and how it is made
 let LIBTECH=null;
@@ -488,7 +500,7 @@ document.addEventListener('click',async e=>{
   if(e.target.closest('[data-crevise]')){const n=await askText('What should change? For example “less boxy, a longer back”','');if(n&&n.trim()){const m=$('#cAct');m.className='msg';m.textContent='Designing, drawing and checking a revised concept…';try{const j=await api(`/v1/lab/concepts/${OPENID}/revise`,{body:{note:n}});await loadBoard();await openConcept(j.concept.id)}catch(x){m.className='msg bad';m.textContent=x.message}}return}
   if(e.target.closest('[data-ctp]')){const m=$('#cAct');m.className='msg';m.textContent='Making the product and starting the tech pack…';try{const j=await api(`/v1/lab/concepts/${OPENID}/tech-pack`,{body:{}});await openConcept(OPENID);await loadBoard();if(CUR)await openPlan(CUR.plan.id)}catch(x){m.className='msg bad';m.textContent=x.message}return}
   if(e.target.closest('[data-cdel]')){if(!confirm('Delete this concept?'))return;try{await api('/v1/lab/concepts/'+OPENID,{method:'DELETE'});$('#cd').close();await loadBoard()}catch(x){alert(x.message)}return}
-  if(e.target.closest('[data-ccom]')){const v=$('#cNew').value.trim();if(!v)return;try{await api(`/v1/lab/concepts/${OPENID}/comments`,{body:{body:v}});await openConcept(OPENID)}catch(x){alert(x.message)}return}
+  if(e.target.closest('[data-ccom]')){const v=$('#cNew').value.trim();if(!v)return;try{await api(`/v1/lab/concepts/${OPENID}/comments`,{body:{body:($('#cToClient')?.checked?'For the client: ':'')+v}});await openConcept(OPENID)}catch(x){alert(x.message)}return}
 });
 document.addEventListener('change',e=>{if(e.target.id==='bPlan'){BOARD.plan=e.target.value;BOARD.line='';loadBoard().catch(()=>{})}});
 document.addEventListener('keydown',e=>{const cc=e.target.closest&&e.target.closest('.cc');if(cc&&(e.key==='Enter'||e.key===' ')){e.preventDefault();openConcept(cc.dataset.cid).catch(()=>{})}});
@@ -632,9 +644,10 @@ window.addEventListener('hashchange',()=>toSection(true));
   const h=(location.hash||'').slice(1);if(ids.includes(h))paint(h);})();
 (async()=>{
   if(!TOKEN()){$('#needSignin').classList.remove('hidden');return}
-  try{await refresh();$('#app').classList.remove('hidden');drawCode();await loadItems(true);await loadScans();await loadTrends();await loadPlans();await loadBoard();await loadAssort();toSection(false)}
+  try{await refresh();$('#app').classList.remove('hidden');drawCode();await loadItems(true);await loadScans();await loadTrends();await loadPlans();await loadBoard();await loadAssort();toSection(false);const qc=new URLSearchParams(location.search).get('concept');if(qc){location.hash='#board';openConcept(qc).catch(()=>{})}}
   catch(x){$('#app').classList.add('hidden');const n=$('#needSignin');n.classList.remove('hidden');const no=/access to Design Lab|not turned on|Only Danielle/i.test(x.message);n.querySelector('h1').textContent=no?'The Design Lab is not turned on for you':'Sign in to the work console first';n.querySelector('.note').textContent=no?'It is for Danielle and Kyle. If you need it, ask one of them to tick Design Lab for you on Team access.':'This page uses your work console sign-in. Open the console, sign in, then come back here.'}
 })();
 </script>
+<script src="/helper.js" defer></script>
 </body>
 </html>

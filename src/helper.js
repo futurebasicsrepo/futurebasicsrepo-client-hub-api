@@ -29,6 +29,70 @@
   const tab = k => `#tabs [data-tab="${k}"]`;
   const clientPack = () => shown('#tabs button[data-tab]') && !onWork();
   const TOURS = [
+    // ---- design to factory: the Design Lab, the studio, the flats, the tech pack, the factory and its samples (docs/design-to-factory.md) ----
+    {
+      id: 'lab-concept', title: 'Take a concept to a tech pack',
+      match: () => path() === '/lab' && !!$('#cd[open]'),
+      steps: [
+        { target: '#cd .big', title: 'The concept', do: 'Read the picture, the twist and the check: how close it sits to what inspired it.', why: 'Only what is ours is approved. A "too close" concept needs a written reason or a change.' },
+        { target: '[data-cstudio]', title: 'Finish it in the studio', optional: true, do: 'Press “Open in the studio” to change the picture by hand or with AI: colours, graphics, distressing, a painted area redrawn.', why: 'The studio’s finished picture becomes the concept’s, and the tech pack’s first sketch.' },
+        { target: '[data-cflats]', title: 'Draw it as flats', do: 'Press “Flats and placement”.', why: 'The flats are the piece measured, front and back, with every logo and graphic placed in inches. They become the tech pack’s measurements and sketches.', done: 'click', after: 'Opening the flats…' },
+        { target: '[data-capprove]', title: 'Approve it', optional: true, do: 'When it is right, press Approve. A client’s line shows their verdict here first.', why: 'Approving says it is ours and it can be made; the flats check is held to that too.' },
+        { target: '[data-ctp]', title: 'Send it to a tech pack', optional: true, do: 'Press “Send to tech pack”.', why: 'It becomes a product and a tech pack with its flats, measurements, details, colour and target price, in our room or the client’s.', done: 'click', after: 'Making the tech pack…' }
+      ],
+      next: { tour: 'lab-flats', label: 'Draw and change the flats' }
+    },
+    {
+      id: 'lab-plan', title: 'Plan a line and make concepts',
+      match: () => path() === '/lab' && shown('#app') && !$('#cd[open]'),
+      steps: [
+        { target: '#labTabs', title: 'The Design Lab', do: 'Library and What’s moving are what the market is doing; Line plans and Concepts are what we make of it.', why: 'Everything starts from a read of the market, so the line has a reason for every piece.' },
+        { target: '#planForm [name="name"]', title: 'Start a line plan', do: 'Name the plan and the season, say the idea in a sentence, then press the button to draw it.', why: 'The plan sets the pieces, their roles, the price ladder and the margins before anything is designed.', done: 'input', after: 'Named.' },
+        { target: '#planList', title: 'Open a plan', wait: 'Your plans appear here.', do: 'Open a plan to see its pieces, prices and margins.', why: 'Change a price, a quantity or a role and the margins follow.' },
+        { target: '#pClient', title: 'Who it is for', optional: true, do: 'Leave it as our own line, or pick the client it is for, add their brand in a sentence, and tick “Show it in their hub” when it is ready.', why: 'A client’s line is designed in their brand, and they approve each piece in their hub.' },
+        { target: '[data-mk]', title: 'Make concepts', optional: true, do: 'On a planned piece, press “Make concepts”.', why: 'Several takes on the piece, drawn and checked against what inspired them.', done: 'click', after: 'Drawing concepts…' },
+        { target: '#board', title: 'The concepts board', do: 'Open a concept to edit it, check it, finish it and approve it.', why: 'This is where a planned piece becomes a design.' }
+      ],
+      outro: 'Open a concept: Pip shows how it goes from there to a tech pack.',
+      next: { tour: 'lab-concept', label: 'Take a concept to a tech pack' }
+    },
+    {
+      id: 'lab-studio', title: 'Finish a concept in the studio',
+      match: () => path() === '/lab/studio' && shown('#app'),
+      steps: [
+        { target: '#stage', title: 'The concept, in layers', do: 'Draw, paint, type, add our marks or a graphic; each is a layer you can move or hide.', why: 'Finish it by hand where the AI got close but not right.' },
+        { target: '#pAi', title: 'Change it with AI', optional: true, do: 'Say what to change, for the whole piece or a painted area, or make a new graphic.', why: 'Quicker than drawing, and only the area you paint changes.' },
+        { target: '#apply', title: 'Use it as the concept', do: 'Press the button to make this the concept’s picture.', why: 'The finished picture is what the client sees and what the tech pack starts from.', done: 'click', after: 'Done.' },
+        { target: '#back', title: 'Back to the concepts', do: 'Go back to the concept to draw its flats.', why: 'The flats come next: the piece measured, ready for a factory.' }
+      ],
+      next: { tour: 'lab-flats', label: 'Draw and change the flats' }
+    },
+    {
+      id: 'lab-flats', title: 'Draw and change the flats',
+      match: () => path() === '/lab/flats' && shown('#app'),
+      steps: [
+        { target: '#canvas', title: 'The piece as flats', do: 'A professional flat sketch, scaled to the measurements. Drag a logo or graphic: its inches from the HPS and centre front follow.', why: 'This is how a sample room measures, so the factory reads it the same way.' },
+        { target: '.tabs [data-tab="garment"]', title: 'The piece and its drawing', do: 'Open Garment: the style, fit, the sketch it is drawn from, and the sample measurements.', why: 'Every other size is graded from these.', done: 'click', after: 'Garment open.' },
+        { target: '.tabs [data-tab="design"]', title: 'Change the design', do: 'Open Design.', why: 'Colour it, add pockets, pleats, drawcords or a zip, draw stitch lines, or have AI redraw an area.', done: 'click', after: 'Design open.' },
+        { target: '[data-adddet]', title: 'Add a detail', wait: 'Open Design first.', do: 'Press a detail, a pocket or pleats, then drag it into place or type its size.', why: 'Each detail has its own topstitch, thread and fabric colour, and goes on the tech pack in words.' },
+        { target: '[data-mode="ai"]', title: 'Redraw an area with AI', wait: 'Open Design first.', optional: true, do: 'Press it, drag a box round a part, and say what to change, like “make this a cargo pocket”.', why: 'Only that area is redrawn, in the same flat-sketch lines.' },
+        { target: '#save', title: 'Save and check', do: 'Press Save.', why: 'It checks everything can be made: on the piece, clear of seams and zips, within the technique.', done: 'click', after: 'Saved.' },
+        { target: ['#toPack:not(.hidden)', '#sheet'], title: 'Send it on', do: 'Print the spec sheet, or once it is a tech pack, press “Send to the tech pack”.', why: 'The pack takes the measurements, the flats as sketches, every detail and stitch, and the colour.' }
+      ],
+      next: { tour: 'tp-factory', label: 'Publish, send to a factory, review samples' }
+    },
+    {
+      id: 'tp-factory', title: 'Publish, send to a factory, review samples',
+      match: () => onWork() && /^\/tech-packs\//.test(path()) && shown('#tabs button[data-tab]'),
+      steps: [
+        { target: '#crumb', title: 'Where it came from', optional: true, do: 'A pack made from a Design Lab concept links back to its concept and flats here.', why: 'Change the flats and send them again: the pack updates without doubling anything.' },
+        { target: '[data-act="publish"]', title: 'Publish a version', do: 'When the pack is ready, press Publish.', why: 'Each version is numbered and signed off; the factory and the client see what changed each time.' },
+        { target: '#assignForm', title: 'Send it to a factory', optional: true, do: 'Choose the factory and send it for a quote or to make.', why: 'The factory gets its own link in its language: it acknowledges each callout, quotes, and countersigns.' },
+        { target: '[data-sampling]', title: 'Plan the samples', optional: true, do: 'Add the usual stages: proto, fit, pre-production, top of production.', why: 'The factory sees which samples are due, and marks each one sent with its tracking.' },
+        { target: '[data-act="srev"]', title: 'Review a sample', optional: true, do: 'When a sample arrives, press “Review this sample”: type what you measured, add corrections, approve it or ask for changes.', why: 'One press writes the next version: accepted measurements, corrections, and the next sample asked for. Publish it and the factory sees exactly what changed.' }
+      ],
+      outro: 'Publish the corrected version: the factory reads “what changed”, keeps its acknowledgements for what did not, and the next sample follows.'
+    },
     {
       id: 'hub-signin', title: 'Sign in to your room',
       match: () => !!$('#newTechPack') && (shown('#send') || shown('#verify')) && !store.get('fb.client.token'), // the hub shows its sign-in until it has loaded, so someone already signed in must not see this
@@ -278,6 +342,17 @@
         { target: '#eSend', title: 'Send for signature', wait: 'Pick a deal first.', do: 'Press “Send for signature…”.', why: 'The signer gets an email with the fee, the payments and a link to read and sign on any device.', done: 'click', after: 'Choose how to send it.' }
       ],
       outro: 'You will see when it is opened. When the client signs, open the contract and sign for Future Basics: the deal moves to Won. Then draft the invoices from the schedule.'
+    },
+    {
+      id: 'hub-design', title: 'Review your line',
+      match: () => shown('#design') && !!$('#design .dz-card'),
+      steps: [
+        { target: '#design', title: 'Your line in design', do: 'Every piece Future Basics is designing for you, with its picture, the idea and the target price.', why: 'You decide what is made: nothing goes to a factory until you say so.' },
+        { target: '[data-dzflats]', title: 'The flats and measurements', optional: true, do: 'Press “Flats and measurements” to see the piece front and back with every logo placed and every size measured.', why: 'This is exactly what the factory will get.' },
+        { target: '[data-dzv="approved"]', title: 'Approve a piece', optional: true, do: 'Press Approve on a piece you want made.', why: 'Approved pieces become tech packs in your room, then go to factories for quotes and samples.' },
+        { target: '[data-dzask]', title: 'Or ask for changes', optional: true, do: 'Press “Ask for changes” and say what to change: the fit, a colour, a detail.', why: 'The team revises it and answers you on the piece.' }
+      ],
+      outro: 'Each approved piece appears under Your tech packs. From there it is the same as any pack: approve it, approve the quote, and follow the samples.'
     }
   ];
 

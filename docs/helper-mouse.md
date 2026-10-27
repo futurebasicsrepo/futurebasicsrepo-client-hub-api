@@ -23,6 +23,14 @@ Pip stays out of the way of print, factory links (`/tp/…`) and frames.
 | Check your tech pack draft | tech pack editor (client draft) | callouts, measurements, materials, submit |
 | Your day | work Home | add a lead, my accounts, reach out today, prototypes, projects in flight, the menu |
 | Win a deal | Sales | contacts, add a person, name, email, pipeline, move deals across |
+| Plan a line and make concepts | Design Lab | the Lab's sections, a new plan, who it is for, making concepts, the board |
+| Take a concept to a tech pack | Design Lab, a concept open | the check, the studio, the flats, approve, send to tech pack |
+| Finish a concept in the studio | Lab studio | layers, AI changes, use as the concept picture |
+| Draw and change the flats | Flats and placement | the drawing, Garment, Design (details, AI redraw), save, send on |
+| Publish, send to a factory, review samples | tech pack (work console) | where it came from, publish, assign a factory, samples, review a sample |
+| Review your line | hub, Design | the line, its flats, approve, ask for changes |
+
+The design-to-factory guides follow one product from the line plan to a corrected sample, each offering the next; docs/design-to-factory.md is the same route on paper.
 
 On any other page Pip says there is no guide here yet; the switch is still there so nobody has to hunt for it.
 
@@ -57,7 +65,7 @@ Rules that keep guides honest:
 
 ## Where it is loaded
 
-`<script src="/helper.js" defer></script>` at the end of: the hub (`client.html`), the tech pack page, Home, Sales, the console (`admin.html`), Money, Factories, Intelligence, Prototypes and Builds admin. The server serves it at `/helper.js` (cached five minutes). It adds one `.fbh` element to the page and, when a modal dialog is open, moves it into the dialog so it stays on top and clickable.
+`<script src="/helper.js" defer></script>` at the end of: the hub (`client.html`), the tech pack page, Home, Sales, the console (`admin.html`), Money, Factories, Intelligence, Prototypes, Builds admin, and the Design Lab, its studio and its flats. The server serves it at `/helper.js` (cached five minutes). It adds one `.fbh` element to the page and, when a modal dialog is open, moves it into the dialog so it stays on top and clickable.
 
 ## Tests
 
