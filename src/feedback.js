@@ -1,27 +1,41 @@
 // Every button says what it is doing. Loaded on every page (as /feedback.js, before the page's own scripts) so no press goes unanswered:
 //   - the moment it is pressed, the button gives a little;
-//   - a request the press starts shows on the button while it runs (a spinner, "Working…" for screen readers), then a tick when it worked
-//     or a red mark when it did not, with a note at the bottom of the screen that says what failed and why, in the service's own words;
+//   - a request the press starts shows on the button while it runs (a sheen and a creeping green line, "Working…" for screen readers),
+//     then the line runs home with a green glow when it worked, or turns red with a shake when it did not, with a note at the bottom of the screen that says what failed and why, in the service's own words;
 //   - a press whose work fails without saying so (an error nobody caught) is reported the same way.
 // Pages can say more themselves: FBN.toast(text, 'ok' | 'err' | 'info'), and FBN.run(button, async () => …, { done, failed }) for work that
 // is not a request. A button with data-fb="off" is left alone (one that already shows its own progress).
 (function () {
   if (window.FBN) return;
+  // the look: no spinner. While the work runs the button keeps its words and a light sheen sweeps across it over a thin green line that
+  // creeps forward along its bottom edge; done, the line runs home and the button glows green for a moment; failed, the line turns red and
+  // the button shakes. Notes rise from the bottom as dark glass with a hairline that drains while they stay.
   const css = `
-.fbn-stack{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:2147483000;display:grid;gap:8px;justify-items:center;pointer-events:none;width:min(560px,calc(100vw - 32px))}
-.fbn-toast{pointer-events:none;display:flex;gap:10px;align-items:flex-start;background:#141416;color:#fff;border-radius:12px;padding:10px 14px;font:500 14px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;box-shadow:0 8px 28px rgba(0,0,0,.22);max-width:100%;animation:fbnIn .18s ease-out}
-.fbn-toast.err{background:#7a1f17}.fbn-toast.info{background:#1f2a44}
-.fbn-toast b{font-weight:700}.fbn-toast button{all:unset;pointer-events:auto;cursor:pointer;opacity:.75;font-size:16px;line-height:1;padding:0 2px}.fbn-toast button:hover{opacity:1}
-.fbn-toast .ic{flex:none;width:18px;height:18px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:700;background:#4bff9a;color:#141416}
-.fbn-toast.err .ic{background:#ffb4a8;color:#7a1f17}.fbn-toast.info .ic{background:#9fb6ff;color:#1f2a44}
-.fbn-busy{cursor:progress!important;opacity:.85}
-.fbn-busy::after{content:"";display:inline-block;width:.85em;height:.85em;margin-left:.45em;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;vertical-align:-.1em;animation:fbnSpin .7s linear infinite}
-.fbn-ok::after{content:"✓";margin-left:.4em;font-weight:700;color:#17a34a}
-.fbn-err{box-shadow:0 0 0 2px #c0392b!important;animation:fbnShake .3s}
-.fbn-press{transform:scale(.97);transition:transform .08s}
-@keyframes fbnSpin{to{transform:rotate(360deg)}}@keyframes fbnIn{from{opacity:0;transform:translateY(6px)}}
-@keyframes fbnShake{25%{transform:translateX(-3px)}75%{transform:translateX(3px)}}
-@media (prefers-reduced-motion:reduce){.fbn-busy::after{animation-duration:2s}.fbn-toast,.fbn-err{animation:none}.fbn-press{transform:none}}
+.fbn-stack{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:2147483000;display:grid;gap:10px;justify-items:center;pointer-events:none;width:min(560px,calc(100vw - 32px))}
+.fbn-toast{--fbn-c:#4bff9a;--fbn-ms:2600ms;position:relative;overflow:hidden;pointer-events:none;display:flex;gap:12px;align-items:center;color:#f4f4f2;background:rgba(20,20,22,.86);-webkit-backdrop-filter:blur(14px) saturate(1.4);backdrop-filter:blur(14px) saturate(1.4);border:1px solid rgba(255,255,255,.09);border-radius:18px;padding:10px 12px 10px 10px;font:500 14px/1.35 system-ui,-apple-system,"Segoe UI",sans-serif;letter-spacing:.005em;box-shadow:0 18px 40px -12px rgba(0,0,0,.45),0 0 0 1px rgba(0,0,0,.04);max-width:100%;animation:fbnRise .42s cubic-bezier(.2,1.3,.4,1) both}
+.fbn-toast.err{--fbn-c:#ff6b5a;--fbn-ms:9000ms}.fbn-toast.info{--fbn-c:#8fb0ff}
+.fbn-toast::after{content:"";position:absolute;left:18px;right:18px;bottom:0;height:2px;border-radius:2px;background:var(--fbn-c);opacity:.7;transform-origin:left;animation:fbnDrain var(--fbn-ms) linear forwards}
+.fbn-toast .ic{flex:none;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:800;background:var(--fbn-c);color:#141416;box-shadow:0 0 14px -2px var(--fbn-c);animation:fbnPop .5s .08s cubic-bezier(.3,1.6,.5,1) both}
+.fbn-toast b{font-weight:700}.fbn-toast button{all:unset;pointer-events:auto;cursor:pointer;opacity:.55;font-size:17px;line-height:1;padding:2px 6px;border-radius:50%}.fbn-toast button:hover{opacity:1;background:rgba(255,255,255,.1)}
+.fbn-toast.out{animation:fbnSink .28s ease-in forwards}
+.fbn-busy{position:relative!important;overflow:hidden!important;isolation:isolate;cursor:progress!important}
+.fbn-busy::before{content:"";position:absolute;inset:0;z-index:1;pointer-events:none;background:linear-gradient(105deg,transparent 30%,rgba(255,255,255,.55) 48%,rgba(75,255,154,.35) 52%,transparent 70%);background-size:250% 100%;mix-blend-mode:soft-light;animation:fbnSheen 1.15s cubic-bezier(.45,.05,.35,1) infinite}
+.fbn-busy::after{content:"";position:absolute;left:14%;right:14%;bottom:4px;height:3px;border-radius:3px;z-index:2;pointer-events:none;background:linear-gradient(90deg,#17a34a,#4bff9a);box-shadow:0 0 8px #4bff9a;transform-origin:left;animation:fbnCreep 9s cubic-bezier(.08,.75,.2,1) forwards}
+.fbn-ok{position:relative;overflow:hidden;animation:fbnGlow .9s ease-out}
+.fbn-ok::after{content:"";position:absolute;left:14%;right:14%;bottom:4px;height:3px;border-radius:3px;pointer-events:none;background:#4bff9a;box-shadow:0 0 10px #4bff9a;transform-origin:left;animation:fbnHome .55s cubic-bezier(.3,.9,.3,1) forwards}
+.fbn-err{position:relative;overflow:hidden;animation:fbnShake .42s cubic-bezier(.36,.07,.19,.97);box-shadow:0 0 0 2px rgba(255,107,90,.9),0 0 18px -4px #ff6b5a!important}
+.fbn-err::after{content:"";position:absolute;left:14%;right:14%;bottom:4px;height:3px;border-radius:3px;pointer-events:none;background:#ff6b5a;box-shadow:0 0 8px #ff6b5a}
+.fbn-press{transform:scale(.965);transition:transform .09s cubic-bezier(.3,.7,.4,1.4)}
+@keyframes fbnSheen{from{background-position:120% 0}to{background-position:-120% 0}}
+@keyframes fbnCreep{from{transform:scaleX(0)}to{transform:scaleX(.92)}}
+@keyframes fbnHome{0%{transform:scaleX(.6);opacity:1}55%{transform:scaleX(1);opacity:1}100%{transform:scaleX(1);opacity:0}}
+@keyframes fbnGlow{0%{box-shadow:0 0 0 0 rgba(75,255,154,.75)}100%{box-shadow:0 0 0 12px rgba(75,255,154,0)}}
+@keyframes fbnShake{10%,90%{transform:translateX(-1px)}20%,80%{transform:translateX(3px)}30%,50%,70%{transform:translateX(-5px)}40%,60%{transform:translateX(5px)}}
+@keyframes fbnRise{from{opacity:0;transform:translateY(18px) scale(.94)}}
+@keyframes fbnSink{to{opacity:0;transform:translateY(10px) scale(.97)}}
+@keyframes fbnPop{from{transform:scale(0) rotate(-45deg)}}
+@keyframes fbnDrain{from{transform:scaleX(1)}to{transform:scaleX(0)}}
+@media (prefers-reduced-motion:reduce){.fbn-busy::before{animation:none;background:rgba(75,255,154,.12)}.fbn-busy::after{animation:none;transform:scaleX(.5)}.fbn-toast,.fbn-toast .ic,.fbn-toast.out,.fbn-err,.fbn-ok,.fbn-ok::after{animation:none}.fbn-press{transform:none}}
 @media print{.fbn-stack{display:none}}`;
   // the words, in the page's language when it sets window.FBN_STRINGS (the factory page does)
   const EN = { working: 'Working…', done: 'done', failed: 'did not work', offline: 'could not reach the service. Check your connection and try again.', wrong: 'Something went wrong', dismiss: 'Dismiss' };
@@ -45,7 +59,8 @@
     el.innerHTML = `<span class="ic" aria-hidden="true">${kind === 'err' ? '!' : kind === 'info' ? 'i' : '✓'}</span><span>${esc(t)}</span><button type="button" aria-label="${esc(words.dismiss)}">×</button>`;
     el.querySelector('button').onclick = () => el.remove();
     box.appendChild(el); while (box.children.length > 4) box.firstChild.remove();
-    setTimeout(() => el.remove(), ms || (kind === 'err' ? 9000 : 2600));
+    const life = ms || (kind === 'err' ? 9000 : 2600); el.style.setProperty('--fbn-ms', life + 'ms');
+    setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 300); }, life);
   }
   const labelOf = b => String(b.getAttribute('aria-label') || b.dataset.fbLabel || b.textContent || b.value || b.title || '').replace(/\s+/g, ' ').trim().slice(0, 48);
   // the button's state while its work runs
@@ -61,7 +76,7 @@
     const n = (pending.get(b) || 1) - 1; pending.set(b, n); if (n > 0) return;
     b.classList.remove('fbn-busy'); b.removeAttribute('aria-busy');
     if (b.dataset.fbTitle !== undefined) { if (b.dataset.fbTitle) b.setAttribute('title', b.dataset.fbTitle); else b.removeAttribute('title'); delete b.dataset.fbTitle; }
-    const cls = ok ? 'fbn-ok' : 'fbn-err'; b.classList.add(cls); setTimeout(() => b.classList.remove(cls), ok ? 1400 : 1800);
+    const cls = ok ? 'fbn-ok' : 'fbn-err'; b.classList.add(cls); setTimeout(() => b.classList.remove(cls), ok ? 1000 : 1800);
   }
   // the button pressed last: a request that starts within a moment of the press belongs to it
   let last = null;
