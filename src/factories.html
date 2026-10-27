@@ -49,6 +49,7 @@ table{border-collapse:collapse;width:100%}th,td{text-align:left;padding:8px 10px
 .picks{display:flex;gap:6px;flex-wrap:wrap}.pick{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:5px 12px;cursor:pointer;background:#fff;font-size:13px;font-weight:600}.pick:has(input:checked){background:var(--ink);color:#fff;border-color:var(--ink)}.pick input{position:absolute;opacity:0;pointer-events:none}.pick:has(input:focus-visible){outline:2px solid var(--cue);outline-offset:2px}
 .kv{display:grid;grid-template-columns:150px 1fr;gap:4px 12px}.kv dt{color:var(--dim)}.kv dd{margin:0;overflow-wrap:anywhere}
 </style>
+<script src="/feedback.js"></script>
 </head>
 <body>
 <header><a class="wordmark" href="/factories" aria-label="Factories"><img class="brand-logo" src="https://thefuturebasics.com/cdn/shop/files/future_basics_true_vector_fixed.svg?v=1775278873&amp;width=360" alt="Future Basics"><span class="brand-suffix">/ Factories</span></a></header>
@@ -58,6 +59,7 @@ table{border-collapse:collapse;width:100%}th,td{text-align:left;padding:8px 10px
     <div class="top"><div><span class="mono" style="color:var(--dim)">Production</span><h1>Factories</h1><p class="note">Who makes what, where they are, and what is in their hands right now.</p></div>
       <div class="acts"><a class="btn" href="/admin#partnersSection">Fair contacts</a><a class="btn" href="/booth">Fair notes</a></div></div>
     <p class="msg" id="msg" role="status"></p>
+    <label class="note" style="display:flex;gap:8px;align-items:center;margin:0 0 14px" title="Off: a factory reads its link and writes to you in Messages, and you record its quote, acknowledgements, countersignature and samples (the tech pack's Sign and Samples sections). On: the factory gets those buttons on its own link."><input type="checkbox" id="factoryActions"> Let factories quote, acknowledge, countersign and mark samples sent on their own links (otherwise they read and write in Messages)</label>
     <div class="tiles" id="tiles"></div>
     <section class="panel" aria-label="Map of factories">
       <div class="top" style="margin-bottom:10px"><div><h2>Where they are</h2><p class="note" id="mapNote"></p></div></div>
@@ -223,7 +225,9 @@ $('#q').addEventListener('input',e=>{F.q=e.target.value;renderList()});
 $('#light').addEventListener('change',e=>{F.light=e.target.value;renderList()});
 $('#country').addEventListener('change',e=>{F.country=e.target.value;renderList()});
 
-async function load(){
+async function factoryActions(){const box=document.getElementById('factoryActions');if(!box)return;try{box.checked=(await api('/v1/admin/factory-actions')).on}catch{box.disabled=true}
+  box.onchange=async()=>{box.disabled=true;try{const r=await api('/v1/admin/factory-actions',{method:'PUT',body:{on:box.checked}});box.checked=r.on;FBN.toast(r.on?'Factories can now act on their own links':'Factories now read their links and write in Messages')}catch(e){box.checked=!box.checked;FBN.toast(e.message,'err')}finally{box.disabled=false}}}
+async function load(){factoryActions();
   D=await api('/v1/admin/factories');
   for(const g of D.vocab.productTypes)for(const t of g.types)TL[t.key]=t.label;for(const s of D.vocab.skills)SL[s.key]=s.label;
   renderTiles();chips();renderList();
