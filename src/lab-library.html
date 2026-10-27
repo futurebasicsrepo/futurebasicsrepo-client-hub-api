@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>Graphics and techniques</title>
+<link rel="icon" href="/icons/icon-192.png">
+<style>
+@import url('/fonts/fonts.css');
+:root{--ink:#141416;--paper:#fff;--fog:#f5f5f2;--dim:#727278;--line:rgba(20,20,22,.14);--cue:#4bff9a;--ok:#17603a;--bad:#a02a20}
+*{box-sizing:border-box}html{background:var(--fog)}
+body{margin:0;color:var(--ink);font:400 14px/1.5 'Space Grotesk',system-ui,sans-serif;background:var(--fog);min-height:100vh}
+button,input,select,textarea{font:inherit;color:inherit}a{color:inherit}.hidden{display:none!important}
+header{height:72px;background:rgba(20,20,22,.96);color:#fff;padding:0 clamp(16px,4vw,48px);display:flex;align-items:center;gap:14px;position:sticky;top:0;z-index:20}
+.wordmark{display:flex;align-items:center;gap:12px;position:relative;text-decoration:none;color:inherit;text-transform:uppercase;letter-spacing:.08em}
+.wordmark:after{content:"";position:absolute;left:0;bottom:-7px;width:64px;height:2px;background:var(--cue)}
+.brand-logo{display:block;width:200px;max-width:34vw;height:auto;max-height:30px}.brand-suffix{font:500 10px 'IBM Plex Mono',monospace;white-space:nowrap}
+main{max-width:1240px;margin:0 auto;padding:22px clamp(14px,3vw,36px) 90px}
+h1{font-size:clamp(28px,4.4vw,42px);letter-spacing:-.035em;font-weight:500;margin:4px 0;line-height:1.05}h2{font-size:19px;font-weight:500;letter-spacing:-.02em;margin:0}h3{margin:0;font-size:15px;font-weight:600}
+.mono{font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+.note{color:var(--dim);margin:4px 0 0;max-width:76ch;font-size:13px}
+.labtabs{position:sticky;top:72px;z-index:12;display:flex;gap:6px;overflow-x:auto;margin:12px -4px 0;padding:8px 4px;background:var(--fog);scrollbar-width:none}.labtabs::-webkit-scrollbar{display:none}
+.labtabs a{flex:none;border:1px solid var(--line);background:#fff;border-radius:999px;padding:7px 14px;text-decoration:none;font-weight:600;font-size:13px;white-space:nowrap}.labtabs a:hover{background:var(--fog)}.labtabs a.on{background:var(--ink);border-color:var(--ink);color:#fff}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;background:#fff;margin:18px 0 14px}.seg button{border:0;background:none;padding:9px 18px;font-weight:600;cursor:pointer}.seg button[aria-pressed=true]{background:var(--ink);color:#fff}
+.panel{background:#fff;border:1px solid var(--line);border-radius:22px;padding:18px 20px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--ink);background:#fff;color:var(--ink);border-radius:999px;padding:7px 14px;text-decoration:none;cursor:pointer;font-weight:600;min-height:36px;font-size:13px;white-space:nowrap}.btn:hover{background:var(--ink);color:#fff}
+.btn.go{background:var(--cue);border-color:var(--cue)}.btn.go:hover{background:#7affb6;color:var(--ink)}.btn.q{border-color:var(--line)}.btn.sm{min-height:28px;padding:3px 10px;font-size:12px}.btn[disabled]{opacity:.45;pointer-events:none}
+.t{width:100%;border:1px solid var(--line);border-radius:12px;padding:8px 11px;background:#fff;font-size:14px;min-width:0}textarea.t{min-height:76px;resize:vertical}
+label.f{display:grid;gap:4px;font-size:12px;color:var(--dim)}label.f>span{font-weight:500}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,190px),1fr));gap:10px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.msg{font-size:13px;color:var(--dim);margin:0}.msg.bad{color:var(--bad)}.msg.ok{color:var(--ok)}
+.gen{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:16px}
+.filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:18px 0 12px}.filters .t{width:auto;min-width:160px}
+.chips{display:flex;gap:6px;flex-wrap:wrap}.chip{border:1px solid var(--line);background:#fff;border-radius:999px;padding:3px 10px;font-size:12px;cursor:pointer}.chip[aria-pressed=true]{background:var(--ink);color:#fff;border-color:var(--ink)}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,200px),1fr));gap:12px}
+.card{background:#fff;border:1px solid var(--line);border-radius:18px;overflow:hidden;display:flex;flex-direction:column;cursor:pointer;text-align:left;padding:0}.card:hover{border-color:var(--ink)}.card:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.card .ph{aspect-ratio:1;background:#ecebe6;display:grid;place-items:center;background-image:linear-gradient(45deg,#e3e2dc 25%,transparent 25%,transparent 75%,#e3e2dc 75%),linear-gradient(45deg,#e3e2dc 25%,transparent 25%,transparent 75%,#e3e2dc 75%);background-size:18px 18px;background-position:0 0,9px 9px}
+.card .ph img{width:86%;height:86%;object-fit:contain}.card .ph canvas{width:100%;height:100%;display:block}
+.card .bd{padding:10px 12px;display:grid;gap:3px}.card b{font-size:14px;line-height:1.25;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}.card small{color:var(--dim);font-size:12px}
+.tagrow{display:flex;gap:4px;flex-wrap:wrap}.tag{background:var(--fog);border-radius:6px;padding:0 6px;font-size:11px;color:var(--dim)}
+.kind{margin:22px 0 10px;display:flex;align-items:baseline;gap:10px}.kind span{color:var(--dim);font-size:13px}
+.tcard .ph{aspect-ratio:6/5}
+.flag{position:absolute;margin:8px;background:rgba(20,20,22,.8);color:#fff;border-radius:999px;padding:2px 8px;font-size:11px}
+dialog{border:0;border-radius:24px;padding:0;width:min(1080px,96vw);max-height:94vh;background:#fff;color:var(--ink)}dialog::backdrop{background:rgba(20,20,22,.55)}
+.dl{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:0;max-height:94vh}
+.dl .lft{background:#ecebe6;padding:18px;display:grid;gap:10px;align-content:start;overflow:auto}.dl .rgt{padding:18px 20px;overflow:auto;display:grid;gap:12px;align-content:start}
+.dl canvas,.dl .big{width:100%;border-radius:16px;display:block;background:#fff}
+.fx{display:grid;grid-template-columns:110px minmax(0,1fr) 44px;gap:8px;align-items:center;font-size:12px}.fx>span{color:var(--dim)}.fx output{text-align:right;color:var(--dim);font-variant-numeric:tabular-nums}
+input[type=range]{width:100%;accent-color:var(--ink)}input[type=color]{width:44px;height:30px;border:1px solid var(--line);border-radius:8px;padding:2px;background:#fff}
+.photos{display:flex;gap:8px;flex-wrap:wrap}.photos figure{margin:0;position:relative;width:84px;height:84px;border-radius:12px;overflow:hidden;background:var(--fog)}.photos img{width:100%;height:100%;object-fit:cover}.photos button{position:absolute;top:3px;right:3px;border:0;border-radius:50%;width:22px;height:22px;background:rgba(20,20,22,.8);color:#fff;cursor:pointer;line-height:1}
+.sec{border-top:1px solid var(--line);padding-top:12px;display:grid;gap:8px}.sec>h4{margin:0;font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+.busy{display:inline-flex;gap:8px;align-items:center}.busy i{width:9px;height:9px;border-radius:50%;background:var(--cue);animation:p 1s infinite alternate}@keyframes p{to{opacity:.2}}
+@media (prefers-reduced-motion:reduce){.busy i{animation:none}}
+#needSignin{max-width:620px;margin:40px auto}
+@media(max-width:820px){.gen{grid-template-columns:1fr}.dl{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header><a class="wordmark" href="/home" aria-label="Work home"><img class="brand-logo" src="https://thefuturebasics.com/cdn/shop/files/future_basics_true_vector_fixed.svg?v=1775278873&amp;width=360" alt="Future Basics"><span class="brand-suffix">/ Design Lab</span></a></header>
+<main>
+  <div id="needSignin" class="panel hidden"><h1>Sign in to the work console first</h1><p class="note">This page uses your work console sign-in. Open the console, sign in, then come back here.</p><a class="btn go" href="/admin" style="margin-top:12px">Open the work console</a></div>
+  <div id="app" class="hidden">
+    <nav class="labtabs" aria-label="Design Lab sections"><a href="/lab#library">Library</a><a href="/lab#trends">What's moving</a><a href="/lab#plans">Line plans</a><a href="/lab#board">Concepts</a><a href="/lab#assort">Assortment board</a><a class="on" href="/lab/library" aria-current="page">Graphics and techniques</a><a href="/lab#brands">Brands we watch</a><a href="/lab#code">Brand code</a></nav>
+    <span class="mono" style="display:block;margin-top:14px">Our library</span><h1>Graphics and techniques.</h1>
+    <p class="note">Every graphic we make, and every way we make one: embroidery, print, heat transfer, patches and distressing. Built once, used on every piece after, from a concept or in the studio.</p>
+    <div class="seg" role="tablist"><button type="button" data-sec="graphics" aria-pressed="true">Graphics</button><button type="button" data-sec="techniques" aria-pressed="false">Techniques</button></div>
+
+    <section id="secGraphics">
+      <div class="panel gen">
+        <div style="display:grid;gap:10px"><h2>Draw a new graphic</h2>
+          <label class="f"><span>What it is</span><textarea class="t" id="gPrompt" maxlength="700" placeholder="A cracked two-colour arch of words over a lightning bolt and a sunburst, 1970s rock tour style"></textarea></label>
+          <div class="grid2"><label class="f"><span>Words on it, exactly (separate with /)</span><input class="t" id="gTexts" maxlength="200" placeholder="FUTURE BASICS / DEPT. 27"></label><label class="f"><span>Ink colours</span><input class="t" id="gColors" maxlength="160" placeholder="cream, faded red, navy"></label></div>
+          <div class="grid2"><label class="f"><span>Style</span><select class="t" id="gStyle"></select></label><label class="f"><span>Made for</span><select class="t" id="gTech"><option value="">Any technique</option></select></label></div>
+          <div class="grid2"><label class="f"><span>Name (optional)</span><input class="t" id="gName" maxlength="80"></label><label class="f"><span>Tags</span><input class="t" id="gTags" maxlength="200" placeholder="rock, summer 27, arch"></label></div>
+          <div class="row"><label class="f" style="grid-auto-flow:column;align-items:center"><span>How many</span><select class="t" id="gCount" style="width:auto"><option>1</option><option>2</option><option>3</option></select></label><button class="btn go" type="button" id="gGo">Draw it</button><span class="msg" id="gMsg" role="status"></span></div>
+          <p class="note">"Made for" tells the image model how to design for that technique (line weights, number of colours). Other brands' names are refused: describe the look in your own words.</p></div>
+        <div style="display:grid;gap:10px;align-content:start"><h2>Add our own artwork</h2><p class="note">A logo, a scan, a hand drawing, a print file. Transparent PNGs keep their transparency.</p>
+          <label class="f"><span>Tags for what you add</span><input class="t" id="uTags" maxlength="200" placeholder="archive, crest"></label>
+          <div class="row"><button class="btn" type="button" id="uGo">Choose files…</button><input type="file" id="uFiles" accept="image/png,image/jpeg,image/webp" multiple class="hidden"><span class="msg" id="uMsg" role="status"></span></div>
+          <p class="note">Graphics made for line plans, for concepts and in the studio come here on their own.</p></div>
+      </div>
+      <div class="filters"><input class="t" id="fQ" type="search" placeholder="Search names, words and tags" aria-label="Search graphics"><select class="t" id="fSource" aria-label="Where they came from"><option value="">From anywhere</option><option value="library">Drawn here</option><option value="plan">Line plans</option><option value="concept">Concepts</option><option value="studio">The studio</option><option value="upload">Our uploads</option></select><select class="t" id="fTech" aria-label="Technique"><option value="">Any technique</option></select><span class="msg" id="fCount"></span></div>
+      <div class="chips" id="fTags"></div>
+      <div class="cards" id="gGrid" style="margin-top:12px"></div>
+      <div class="row" style="margin-top:14px"><button class="btn q hidden" type="button" id="gMore">Show more</button></div>
+    </section>
+
+    <section id="secTech" class="hidden">
+      <div class="row" style="justify-content:space-between"><p class="note" style="margin:0">Each technique shows here on fabric, drawn by the page. <b>Make it real</b> asks the image model for a photograph of the real thing, using the technique's words and reference photos. Change any of them, or add your own.</p><button class="btn go" type="button" id="tNew">New technique</button></div>
+      <div id="tList"></div>
+    </section>
+  </div>
+</main>
+
+<dialog id="gDlg"><div class="dl"><div class="lft"><canvas id="gCanvas" width="900" height="760" aria-label="The graphic on fabric"></canvas>
+  <div class="grid2"><label class="f"><span>Show it as</span><select class="t" id="gvTech"><option value="">The artwork, flat</option></select></label><label class="f"><span>On</span><span class="row"><input type="color" id="gvColor" value="#d9d6cf" aria-label="Garment colour"><select class="t" id="gvCloth" style="flex:1"><option value="jersey">Jersey</option><option value="fleece">Fleece</option><option value="twill">Twill</option><option value="canvas">Canvas</option><option value="denim">Denim</option></select></span></label></div></div>
+  <div class="rgt"><div class="row" style="justify-content:space-between"><span class="mono" id="gdMeta"></span><button class="btn sm q" type="button" data-close>Close</button></div>
+    <label class="f"><span>Name</span><input class="t" id="gdName" maxlength="120"></label><label class="f"><span>Tags</span><input class="t" id="gdTags" maxlength="300"></label><label class="f"><span>Usually made as</span><select class="t" id="gdTech"><option value="">Not set</option></select></label>
+    <div class="row"><button class="btn" type="button" id="gdSave">Save</button><a class="btn q" id="gdDown" download>Download PNG</a><button class="btn q" type="button" id="gdDel">Take out of the library</button></div>
+    <div class="sec"><h4>Put it on a concept</h4><label class="f"><span>Concept</span><select class="t" id="gdConcept"></select></label><div class="grid2"><label class="f"><span>Where</span><select class="t" id="gdPlace"></select></label><label class="f"><span>Made as</span><select class="t" id="gdMade"></select></label></div>
+      <div class="row"><button class="btn go" type="button" id="gdPut">Put it on</button></div><p class="note">The graphic is added to the concept and placed on its picture. Open the concept or the studio to finish it.</p></div>
+    <p class="msg" id="gdMsg" role="status"></p><p class="note" id="gdPrompt"></p></div></div></dialog>
+
+<dialog id="tDlg"><div class="dl"><div class="lft"><canvas id="tCanvas" width="900" height="760" aria-label="The technique on fabric"></canvas><img id="tReal" class="big hidden" alt="The technique made real by the image model">
+  <div class="row"><button class="btn sm" type="button" id="tShowMock" aria-pressed="true">Mock-up</button><button class="btn sm q" type="button" id="tShowReal" aria-pressed="false">Real (AI)</button><button class="btn sm go" type="button" id="tMakeReal">Make it real</button><span class="msg" id="tRealMsg" role="status"></span></div>
+  <div class="grid2"><label class="f"><span>Try it with</span><select class="t" id="tvArt"><option value="">Our sample graphic</option></select></label><label class="f"><span>On</span><span class="row"><input type="color" id="tvColor" value="#d9d6cf" aria-label="Garment colour"><select class="t" id="tvCloth" style="flex:1"><option value="jersey">Jersey</option><option value="fleece">Fleece</option><option value="twill">Twill</option><option value="canvas">Canvas</option><option value="denim">Denim</option></select></span></label></div>
+  <div class="sec"><h4>Reference photos of the real thing</h4><div class="photos" id="tPhotos"></div><div class="row"><button class="btn sm" type="button" id="tAddPhoto">Add photos…</button><input type="file" id="tPhotoIn" accept="image/*" multiple class="hidden"></div><p class="note">Up to four close-ups of the real technique (a thread, an ink, a film). They go to the image model next to the piece whenever it is made real.</p></div></div>
+  <div class="rgt" id="tForm"></div></div></dialog>
+
+<script src="/lab/finish.js"></script>
+<script src="/console-nav.js" defer></script>
+<script>
+'use strict';
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)],esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const TOKEN=()=>{try{return localStorage.getItem('fb.admin.token')||''}catch{return ''}};
+async function api(path,o={}){const r=await fetch(path,{method:o.method||(o.body?'POST':'GET'),headers:{Authorization:'Bearer '+TOKEN(),...(o.body?{'Content-Type':'application/json'}:{})},body:o.body?JSON.stringify(o.body):undefined});const j=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(new Error(j.error||('Request failed ('+r.status+')')),{status:r.status});return j}
+const BLOBS=new Map();async function blobUrl(path){if(BLOBS.has(path))return BLOBS.get(path);const p=fetch(path,{headers:{Authorization:'Bearer '+TOKEN()}}).then(r=>{if(!r.ok)throw new Error('The picture could not be loaded');return r.blob()}).then(b=>URL.createObjectURL(b));BLOBS.set(path,p);p.catch(()=>BLOBS.delete(path));return p}
+const imgOf=src=>new Promise((ok,no)=>{const i=new Image();i.onload=()=>ok(i);i.onerror=()=>no(new Error('A picture could not be read'));i.src=src});
+const fileUrl=f=>new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(r.result);r.onerror=no;r.readAsDataURL(f)});
+const when=d=>{try{return new Date(d).toLocaleDateString([], {month:'short',day:'numeric',year:'numeric'})}catch{return ''}};
+const SRC={library:'Drawn here',plan:'Line plan',concept:'Concept',studio:'Studio',upload:'Upload'};
+let G={graphics:[],total:0,tags:[],styles:[]},T={techniques:[],kinds:[]},TAG='',OFF=0,CUR=null,TCUR=null,CONCEPTS=null;
+const FX=window.FBFinish;
+const techOpts=(v,none)=>`${none?`<option value="">${esc(none)}</option>`:''}${T.kinds.map(k=>{const l=T.techniques.filter(t=>t.kind===k.id);return l.length?`<optgroup label="${esc(k.label)}">${l.map(t=>`<option value="${t.id}" ${t.id===v?'selected':''}>${esc(t.name)}</option>`).join('')}</optgroup>`:''}).join('')}`;
+function section(s){$$('.seg [data-sec]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.sec===s)));$('#secGraphics').classList.toggle('hidden',s!=='graphics');$('#secTech').classList.toggle('hidden',s!=='techniques');if(location.hash!=='#'+s)history.replaceState(null,'','#'+s);if(s==='techniques')paintTech()}
+$$('.seg [data-sec]').forEach(b=>b.onclick=()=>section(b.dataset.sec));
+
+// ---------- graphics ----------
+async function loadGraphics(more=false){
+  if(!more)OFF=0;const q=new URLSearchParams({limit:'48',offset:String(OFF)});if($('#fQ').value.trim())q.set('q',$('#fQ').value.trim());if($('#fSource').value)q.set('source',$('#fSource').value);if($('#fTech').value)q.set('technique',$('#fTech').value);if(TAG)q.set('tag',TAG);
+  const r=await api('/v1/lab/library/graphics?'+q);G={...r,graphics:more?[...G.graphics,...r.graphics]:r.graphics};OFF=G.graphics.length;paintGraphics()}
+function paintGraphics(){
+  if(!$('#gStyle').options.length)$('#gStyle').innerHTML=G.styles.map(s=>`<option>${esc(s)}</option>`).join('');
+  $('#fCount').textContent=`${G.total} ${G.total===1?'graphic':'graphics'}`;
+  $('#fTags').innerHTML=G.tags.map(t=>`<button type="button" class="chip" data-tag="${esc(t.tag)}" aria-pressed="${t.tag===TAG}">${esc(t.tag)} · ${t.n}</button>`).join('');
+  $('#gGrid').innerHTML=G.graphics.map(g=>`<button type="button" class="card" data-g="${g.id}"><div class="ph"><img alt="" data-src="/v1/lab/art/${g.id}?thumb=1"></div><div class="bd"><b>${esc(g.name||'Untitled')}</b><small>${esc(SRC[g.source]||g.source)}${g.from?' · '+esc(g.from):''} · ${esc(when(g.createdAt))}</small>${g.techniqueName?`<small>${esc(g.techniqueName)}</small>`:''}${g.tags.length?`<div class="tagrow">${g.tags.map(t=>`<span class="tag">${esc(t)}</span>`).join('')}</div>`:''}</div></button>`).join('')||'<p class="note">Nothing here yet. Draw a graphic above, or add your own artwork.</p>';
+  $('#gMore').classList.toggle('hidden',G.graphics.length>=G.total);
+  for(const i of $$('#gGrid img[data-src]'))blobUrl(i.dataset.src).then(u=>{i.src=u}).catch(()=>{});
+}
+let FT=0;$('#fQ').addEventListener('input',()=>{clearTimeout(FT);FT=setTimeout(()=>loadGraphics().catch(x=>msg('#fCount',x.message,'bad')),250)});
+$('#fSource').onchange=()=>loadGraphics();$('#fTech').onchange=()=>loadGraphics();$('#gMore').onclick=()=>loadGraphics(true);
+$('#fTags').addEventListener('click',e=>{const b=e.target.closest('[data-tag]');if(!b)return;TAG=TAG===b.dataset.tag?'':b.dataset.tag;loadGraphics()});
+function msg(sel,text,cls=''){const m=$(sel);m.className='msg '+cls;m.innerHTML=text}
+$('#gGo').onclick=async()=>{const b=$('#gGo'),n=Number($('#gCount').value);b.disabled=true;msg('#gMsg',`<span class="busy"><i></i>Drawing ${n===1?'it':n+' takes'}. About ${n===1?'a minute':n+' minutes'}…</span>`);
+  try{const r=await api('/v1/lab/library/graphics',{body:{prompt:$('#gPrompt').value,texts:$('#gTexts').value,colors:$('#gColors').value,style:$('#gStyle').value,techniqueId:$('#gTech').value||null,name:$('#gName').value,tags:$('#gTags').value,count:n}});
+    msg('#gMsg',`Done: ${r.ids.length} new in the library.${r.errors.length?' '+esc(r.errors[0]):''}`,'ok');$('#fSource').value='';TAG='';$('#fQ').value='';await loadGraphics()}catch(x){msg('#gMsg',esc(x.message),'bad')}finally{b.disabled=false}};
+$('#uGo').onclick=()=>$('#uFiles').click();
+$('#uFiles').onchange=async e=>{const fs=[...e.target.files];e.target.value='';let n=0;for(const f of fs){if(f.size>15e6){msg('#uMsg',esc(f.name)+' is over 15 MB.','bad');continue}msg('#uMsg',`<span class="busy"><i></i>Adding ${esc(f.name)}…</span>`);try{await api('/v1/lab/library/graphics/upload',{body:{image:await fileUrl(f),name:f.name.replace(/\.[a-z0-9]+$/i,''),tags:$('#uTags').value}});n++}catch(x){msg('#uMsg',esc(x.message),'bad');return}}msg('#uMsg',`Added ${n}.`,'ok');loadGraphics()};
+
+// one graphic: on fabric, as any technique; its name and tags; onto a concept
+let GIMG=null;
+async function openGraphic(id){
+  CUR=G.graphics.find(g=>g.id===id);if(!CUR)return;const d=$('#gDlg');
+  $('#gdMeta').textContent=`${SRC[CUR.source]||CUR.source}${CUR.from?' · '+CUR.from:''}${CUR.by?' · '+CUR.by:''} · ${when(CUR.createdAt)}`;$('#gdName').value=CUR.name;$('#gdTags').value=CUR.tags.join(', ');
+  $('#gdTech').innerHTML=techOpts(CUR.techniqueId,'Not set');$('#gvTech').innerHTML=techOpts(CUR.techniqueId,'The artwork, flat');$('#gdMade').innerHTML=techOpts(CUR.techniqueId,'As it is');$('#gdPrompt').textContent=CUR.prompt?'Drawn from: '+CUR.prompt:'';
+  $('#gdPlace').innerHTML=['front chest','left chest','front centre','full front','chest band','sleeve','back','back yoke','hem'].map(p=>`<option>${p}</option>`).join('');msg('#gdMsg','');
+  d.showModal();GIMG=null;const u=await blobUrl('/v1/lab/art/'+id);$('#gdDown').href=u;$('#gdDown').download=(CUR.name||'graphic').replace(/[^a-z0-9]+/gi,'-').toLowerCase()+'.png';GIMG=await imgOf(u);drawGraphic();
+  if(!CONCEPTS){try{CONCEPTS=(await api('/v1/lab/concepts?limit=120')).concepts.filter(c=>c.status!=='tech_pack')}catch{CONCEPTS=[]}}
+  $('#gdConcept').innerHTML=CONCEPTS.length?CONCEPTS.map(c=>`<option value="${c.id}">${esc(c.name)} · ${esc(c.categoryLabel)}${c.planName?' · '+esc(c.planName):''}</option>`).join(''):'<option value="">No concepts to put it on yet</option>';
+}
+function drawGraphic(){if(!GIMG)return;const t=T.techniques.find(x=>x.id===$('#gvTech').value),c=$('#gCanvas'),s=FX.swatch(GIMG,t?t.finish:null,{w:c.width,h:c.height,color:$('#gvColor').value,cloth:$('#gvCloth').value});c.getContext('2d').drawImage(s,0,0)}
+['#gvTech','#gvColor','#gvCloth'].forEach(s=>$(s).addEventListener('input',drawGraphic));
+$('#gDlg').addEventListener('click',e=>{if(e.target.closest('[data-close]')||e.target===$('#gDlg'))$('#gDlg').close()});
+$('#gdSave').onclick=async()=>{try{await api('/v1/lab/library/graphics/'+CUR.id,{method:'PUT',body:{name:$('#gdName').value,tags:$('#gdTags').value,techniqueId:$('#gdTech').value||null}});msg('#gdMsg','Saved.','ok');await loadGraphics()}catch(x){msg('#gdMsg',esc(x.message),'bad')}};
+$('#gdDel').onclick=async()=>{if(!confirm('Take this graphic out of the library? Pieces that use it keep it.'))return;try{await api('/v1/lab/library/graphics/'+CUR.id,{method:'DELETE'});$('#gDlg').close();await loadGraphics()}catch(x){msg('#gdMsg',esc(x.message),'bad')}};
+$('#gdPut').onclick=async()=>{const cid=$('#gdConcept').value;if(!cid)return;const b=$('#gdPut');b.disabled=true;msg('#gdMsg','<span class="busy"><i></i>Putting it on and placing it…</span>');
+  try{const r=await api(`/v1/lab/concepts/${cid}/graphics`,{body:{art:CUR.id,placement:$('#gdPlace').value,techniqueId:$('#gdMade').value||null}});let placed=true;try{await api(`/v1/lab/concepts/${cid}/replace-marks`,{body:{}})}catch{placed=false}
+    msg('#gdMsg',`It is on the concept${placed?' and placed on its picture':'; redraw its picture to place it'}.${r.backToDraft?' It was approved, so it is back to draft.':''} <a href="/lab/studio?concept=${cid}">Open it in the studio</a>`,'ok')}catch(x){msg('#gdMsg',esc(x.message),'bad')}finally{b.disabled=false}};
+$('#gGrid').addEventListener('click',e=>{const c=e.target.closest('[data-g]');if(c)openGraphic(c.dataset.g).catch(x=>alert(x.message))});
+
+// ---------- techniques ----------
+const SAMPLE=FX.sample(600);
+async function loadTech(){T=await api('/v1/lab/library/techniques');$('#gTech').innerHTML=techOpts('','Any technique');$('#fTech').innerHTML=techOpts('','Any technique')}
+function paintTech(){
+  $('#tList').innerHTML=T.kinds.map(k=>{const l=T.techniques.filter(t=>t.kind===k.id);return l.length?`<div class="kind"><h2>${esc(k.label)}</h2><span>${l.length}</span></div><div class="cards">${l.map(t=>`<button type="button" class="card tcard" data-t="${t.id}"><div class="ph" style="position:relative"><canvas width="360" height="300" data-swatch="${t.id}" aria-hidden="true"></canvas>${t.hasSample?'<span class="flag" style="top:0;left:0">Real sample</span>':''}</div><div class="bd"><b>${esc(t.name)}</b><small>${esc(t.summary)}</small><div class="tagrow"><span class="tag">${esc(t.base)}</span>${t.photos.length?`<span class="tag">${t.photos.length} reference photo${t.photos.length===1?'':'s'}</span>`:''}${t.builtin?'':'<span class="tag">ours</span>'}</div></div></button>`).join('')}</div>`:''}).join('');
+  for(const c of $$('#tList canvas[data-swatch]')){const t=T.techniques.find(x=>x.id===c.dataset.swatch);c.getContext('2d').drawImage(FX.swatch(SAMPLE,t.finish,{w:c.width,h:c.height}),0,0)}
+}
+$('#tList').addEventListener('click',e=>{const c=e.target.closest('[data-t]');if(c)openTech(c.dataset.t)});
+$('#tNew').onclick=async()=>{try{const r=await api('/v1/lab/library/techniques',{body:{name:'New technique',kind:'print',summary:'',finish:{effect:'ink'}}});await loadTech();paintTech();openTech(r.id)}catch(x){alert(x.message)}};
+let TART=null;
+const rngF=(k,lab,min,max,step,v)=>`<label class="fx"><span>${lab}</span><input type="range" data-k="${k}" min="${min}" max="${max}" step="${step}" value="${v}"><output>${v}</output></label>`;
+function techForm(t){const f=t.finish,sel=(k,opts,v)=>`<select class="t" data-k="${k}">${opts.map(o=>`<option value="${esc(o[0])}" ${o[0]===v?'selected':''}>${esc(o[1])}</option>`).join('')}</select>`;
+  const EFF={none:'None (blend and wear only)',stitch:'Embroidery stitches',puff:'Raised puff',ink:'Ink on top',soak:'Ink soaked in',halftone:'Halftone dots',foil:'Metal foil',film:'Transfer film',rubber:'Moulded rubber',chenille:'Chenille pile',woven:'Woven threads',deboss:'Pressed in'};
+  return `<div class="row" style="justify-content:space-between"><span class="mono">${t.builtin?'From the starting set':'Ours'}</span><button class="btn sm q" type="button" data-close>Close</button></div>
+  <label class="f"><span>Name</span><input class="t" data-k="name" value="${esc(t.name)}" maxlength="60"></label>
+  <div class="grid2"><label class="f"><span>Kind</span>${sel('kind',T.kinds.map(k=>[k.id,k.label]),t.kind)}</label><label class="f"><span>On the tech pack as</span>${sel('base',T.baseTechniques.map(b=>[b,b]),t.base)}</label></div>
+  <label class="f"><span>What it is</span><textarea class="t" data-k="summary" maxlength="300" style="min-height:54px">${esc(t.summary)}</textarea></label>
+  <div class="sec"><h4>How it looks here</h4><label class="f"><span>Effect</span>${sel('f.effect',T.effects.map(e=>[e,EFF[e]||e]),f.effect)}</label>
+    ${f.effect==='stitch'?`<label class="f"><span>Stitch</span>${sel('f.stitch',[['satin','Satin'],['chain','Chain'],['fill','Fill (tatami)']],f.stitch)}</label>`:''}${f.effect==='foil'?`<label class="f"><span>Metal</span>${sel('f.metal',[['gold','Gold'],['silver','Silver'],['copper','Copper']],f.metal)}</label>`:''}
+    ${rngF('f.strength','Strength',0,1,.05,f.strength)}${['stitch','foil','film','rubber'].includes(f.effect)?rngF('f.angle','Direction',-180,180,5,f.angle):''}${rngF('f.raise','Raised',0,12,.5,f.raise)}${['ink','film','rubber'].includes(f.effect)?rngF('f.sheen','Shine',0,1,.05,f.sheen):''}
+    <label class="f"><span>Blend</span>${sel('f.blend',[['source-over','Normal'],['multiply','Multiply (soaks into the colour)'],['screen','Screen'],['overlay','Overlay'],['soft-light','Soft light'],['hard-light','Hard light'],['luminosity','Luminosity']],f.blend)}</label>
+    ${rngF('f.opacity','Opacity',.05,1,.05,f.opacity)}${rngF('f.sat','Saturation',0,200,5,f.sat)}
+    <label class="f"><span>Wear</span>${sel('f.d.style',[['worn','Worn: specks and grain'],['cracked','Cracked'],['faded','Faded']],f.distress.style)}</label>${rngF('f.d.amount','Wear amount',0,1,.05,f.distress.amount)}${rngF('f.d.size','Wear grain',5,200,5,f.distress.size)}</div>
+  <div class="sec"><h4>For the image model and the factory</h4><label class="f"><span>How the real thing looks (for "Make it real")</span><textarea class="t" data-k="prompt" maxlength="900">${esc(t.prompt)}</textarea></label>
+    <label class="f"><span>How to design artwork for it</span><textarea class="t" data-k="artGuide" maxlength="500" style="min-height:54px">${esc(t.artGuide)}</textarea></label>
+    <label class="f"><span>Note for the factory</span><textarea class="t" data-k="factoryNote" maxlength="500" style="min-height:54px">${esc(t.factoryNote)}</textarea></label></div>
+  <div class="row"><button class="btn go" type="button" id="tSave">Save</button><button class="btn q" type="button" id="tDup">Duplicate</button><button class="btn q" type="button" id="tDel">Delete</button><span class="msg" id="tMsg" role="status"></span></div>`}
+async function openTech(id){
+  const t=T.techniques.find(x=>x.id===id);if(!t)return;TCUR=JSON.parse(JSON.stringify(t));$('#tForm').innerHTML=techForm(TCUR);
+  $('#tvArt').innerHTML='<option value="">Our sample graphic</option>'+G.graphics.slice(0,40).map(g=>`<option value="${g.id}">${esc(g.name||'Untitled')}</option>`).join('');TART=null;
+  showReal(false);$('#tReal').removeAttribute('src');msg('#tRealMsg',t.hasSample?'A real sample was made '+esc(when(t.sampleAt))+'.':'');$('#tShowReal').disabled=!t.hasSample;$('#tMakeReal').disabled=!T.imageConnected;
+  paintPhotos();$('#tDlg').showModal();drawTech();
+  if(t.hasSample)blobUrl(`/v1/lab/library/techniques/${t.id}/sample?at=${encodeURIComponent(t.sampleAt)}`).then(u=>{$('#tReal').src=u}).catch(()=>{});
+}
+function drawTech(){const c=$('#tCanvas');c.getContext('2d').drawImage(FX.swatch(TART||SAMPLE,TCUR.finish,{w:c.width,h:c.height,color:$('#tvColor').value,cloth:$('#tvCloth').value}),0,0)}
+function showReal(on){$('#tCanvas').classList.toggle('hidden',on);$('#tReal').classList.toggle('hidden',!on);$('#tShowMock').className='btn sm'+(on?' q':'');$('#tShowReal').className='btn sm'+(on?'':' q');$('#tShowMock').setAttribute('aria-pressed',String(!on));$('#tShowReal').setAttribute('aria-pressed',String(on))}
+$('#tShowMock').onclick=()=>showReal(false);$('#tShowReal').onclick=()=>showReal(true);
+['#tvColor','#tvCloth'].forEach(s=>$(s).addEventListener('input',drawTech));
+$('#tvArt').onchange=async e=>{TART=e.target.value?await imgOf(await blobUrl('/v1/lab/art/'+e.target.value)):null;drawTech()};
+function setK(k,v){if(k.startsWith('f.d.'))TCUR.finish.distress[k.slice(4)]=k==='f.d.style'?v:Number(v);else if(k.startsWith('f.'))TCUR.finish[k.slice(2)]=['f.effect','f.stitch','f.metal','f.blend'].includes(k)?v:Number(v);else TCUR[k]=v}
+$('#tForm').addEventListener('input',e=>{const k=e.target.dataset.k;if(!k)return;setK(k,e.target.value);if(e.target.type==='range')e.target.nextElementSibling.textContent=e.target.value;drawTech()});
+$('#tForm').addEventListener('change',e=>{if(e.target.dataset.k==='f.effect'){const s=$('#tForm').scrollTop;$('#tForm').innerHTML=techForm(TCUR);$('#tForm').scrollTop=s}});
+$('#tDlg').addEventListener('click',async e=>{
+  if(e.target.closest('[data-close]')||e.target===$('#tDlg')){$('#tDlg').close();return}
+  if(e.target.id==='tSave'){try{await api('/v1/lab/library/techniques/'+TCUR.id,{method:'PUT',body:TCUR});msg('#tMsg','Saved.','ok');await loadTech();paintTech()}catch(x){msg('#tMsg',esc(x.message),'bad')}}
+  if(e.target.id==='tDup'){try{const r=await api('/v1/lab/library/techniques',{body:{from:TCUR.id}});await loadTech();paintTech();openTech(r.id)}catch(x){msg('#tMsg',esc(x.message),'bad')}}
+  if(e.target.id==='tDel'){if(!confirm(`Delete "${TCUR.name}"? Pieces that use it keep their graphics.`))return;try{await api('/v1/lab/library/techniques/'+TCUR.id,{method:'DELETE'});$('#tDlg').close();await loadTech();paintTech()}catch(x){msg('#tMsg',esc(x.message),'bad')}}
+  const del=e.target.closest('[data-photodel]');if(del){try{await api(`/v1/lab/library/techniques/${TCUR.id}/photos/${del.dataset.photodel}`,{method:'DELETE'});TCUR.photos=TCUR.photos.filter(p=>p!==del.dataset.photodel);await loadTech();paintPhotos()}catch(x){alert(x.message)}}
+});
+function paintPhotos(){$('#tPhotos').innerHTML=TCUR.photos.map(p=>`<figure><img alt="Reference photo" data-src="/v1/lab/library/technique-photos/${p}?thumb=1"><button type="button" data-photodel="${p}" aria-label="Remove this photo">×</button></figure>`).join('')||'<span class="note">No reference photos yet.</span>';for(const i of $$('#tPhotos img[data-src]'))blobUrl(i.dataset.src).then(u=>{i.src=u}).catch(()=>{});$('#tAddPhoto').disabled=TCUR.photos.length>=4}
+$('#tAddPhoto').onclick=()=>$('#tPhotoIn').click();
+$('#tPhotoIn').onchange=async e=>{for(const f of[...e.target.files].slice(0,4-TCUR.photos.length)){try{const r=await api(`/v1/lab/library/techniques/${TCUR.id}/photos`,{body:{image:await fileUrl(f)}});TCUR.photos.push(r.id)}catch(x){alert(x.message);break}}e.target.value='';await loadTech();paintPhotos()};
+$('#tMakeReal').onclick=async()=>{const b=$('#tMakeReal');b.disabled=true;msg('#tRealMsg','<span class="busy"><i></i>The image model is making it real. About a minute…</span>');
+  try{await api('/v1/lab/library/techniques/'+TCUR.id,{method:'PUT',body:TCUR});const c=$('#tCanvas'),r=await api(`/v1/lab/library/techniques/${TCUR.id}/sample`,{body:{image:c.toDataURL('image/png')}});$('#tReal').src=r.image;$('#tShowReal').disabled=false;showReal(true);msg('#tRealMsg','Done. It is kept as this technique\'s sample.','ok');await loadTech();paintTech()}
+  catch(x){msg('#tRealMsg',esc(x.message),'bad')}finally{b.disabled=false}};
+
+async function boot(){
+  if(!TOKEN()){$('#needSignin').classList.remove('hidden');return}
+  try{await loadTech();await loadGraphics()}catch(x){const n=$('#needSignin');n.classList.remove('hidden');const no=/access to Design Lab|not turned on|Only Danielle/i.test(x.message);n.querySelector('h1').textContent=no?'The Design Lab is not turned on for you':'Sign in to the work console first';n.querySelector('p').textContent=x.message;return}
+  $('#app').classList.remove('hidden');section(location.hash==='#techniques'?'techniques':'graphics');
+}
+boot();
+</script>
+</body>
+</html>

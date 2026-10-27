@@ -10,6 +10,8 @@ import sharp from 'sharp';
 import { imageConfig, openaiEdit, openaiImage } from './check.js';
 import { brandHits } from './lab-concepts.js';
 import { logoSvg, COLORS } from './brand-kit.js';
+import { finishArt } from './lab-art.js';
+import { realPrompt } from './lab-library.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const clip = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
@@ -80,7 +82,8 @@ export function registerLabStudioRoutes(app, d) {
       doc: s?.doc || null, savedAt: s?.updated_at || null, savedBy: s?.by_name || '', appliedAt: s?.applied_at || null, canRestore: Boolean(s?.has_original),
       marks: [{ id: 'mark', label: 'Cue mark', svg: logoSvg('mark') }, { id: 'word', label: 'Wordmark', svg: logoSvg('word') }, { id: 'lockup', label: 'Wordmark and cue mark', svg: logoSvg('lockup') }],
       palette, graphics: (c.spec?.graphics || []).filter(g => g.art).map(g => ({ art: g.art, name: clip(g.name, 60) })),
-      ai: { connected: cfg.configured, model: cfg.model || null, left: left() }
+      ai: { connected: cfg.configured, model: cfg.model || null, left: left() },
+      techniques: (await pool.query(`select t.id, t.kind, t.name, t.summary, t.base, t.finish, (select count(*)::int from lab_technique_photos p where p.technique_id=t.id) photos from lab_techniques t where not archived order by kind, builtin desc, name`).catch(() => ({ rows: [] }))).rows
     };
   });
 
@@ -101,29 +104,40 @@ export function registerLabStudioRoutes(app, d) {
   app.post('/v1/lab/concepts/:id/studio/ai', { preHandler: pre, bodyLimit: 32_000_000 }, async (req, reply) => {
     const c = await concept(req, reply); if (!c) return;
     if (c.status === 'tech_pack') return bad(reply, 'This concept is already a tech pack', 409);
-    const b = req.body || {}, mode = b.mode === 'art' ? 'art' : 'edit', prompt = clip(b.prompt, 800);
-    if (prompt.length < 3) return bad(reply, mode === 'art' ? 'Say what the graphic should be' : 'Say what to change');
+    const b = req.body || {}, mode = ['art', 'real'].includes(b.mode) ? b.mode : 'edit', prompt = clip(b.prompt, 800);
+    const tech = UUID.test(String(b.techniqueId || '')) ? (await pool.query('select id, name, summary, prompt, art_guide from lab_techniques where id=$1 and not archived', [b.techniqueId])).rows[0] : null;
+    if (mode === 'real' && !tech) return bad(reply, 'Choose the technique to make real');
+    if (mode !== 'real' && prompt.length < 3) return bad(reply, mode === 'art' ? 'Say what the graphic should be' : 'Say what to change');
     const hits = brandHits(prompt, (await pool.query('select name from lab_brands')).rows.map(r => r.name));
     if (hits.length) return bad(reply, `Leave other brands out of the prompt (${hits.slice(0, 3).join(', ')}). Describe the look in your own words.`);
     const cfg = imageCfg(); if (!cfg.configured) return bad(reply, 'No image model is connected', 503);
     if (left() === 0) return bad(reply, `The daily limit of ${cap()} studio AI edits is reached. Raise LAB_DAILY_STUDIO_AI.`, 429);
     let out;
     try {
-      if (mode === 'art') out = cfg.provider === 'fixture' ? await fixtureArt(prompt) : await imageImpl(artPrompt(prompt), { ...cfg, size: '1024x1024', format: 'png', background: 'transparent' });
+      if (mode === 'art') out = cfg.provider === 'fixture' ? await fixtureArt(prompt) : await imageImpl(artPrompt(tech?.art_guide ? `${prompt}. Designed for ${tech.name.toLowerCase()}: ${tech.art_guide}` : prompt), { ...cfg, size: '1024x1024', format: 'png', background: 'transparent' });
       else {
         const img = pictureOf(b.image); if (!img) return bad(reply, 'Send the picture to change');
         const mask = b.mask ? pictureOf(b.mask) : null; if (b.mask && !mask) return bad(reply, 'The painted area could not be read');
         const meta = await sharp(img).metadata().catch(() => null); if (!meta?.width) return bad(reply, 'The picture could not be read');
         // the model takes the picture and the mask at the same size: the mask is fitted to the picture, and goes as PNG with its transparency
         const png = await sharp(img).png().toBuffer(), m = mask ? await sharp(mask).resize(meta.width, meta.height, { fit: 'fill' }).ensureAlpha().png().toBuffer() : null;
-        out = cfg.provider === 'fixture' ? await fixtureEdit(png, m) : await editImpl({ images: [png], mask: m, prompt: editPrompt(prompt, { masked: Boolean(m) }), cfg: { ...cfg, size: 'auto' } });
+        // making a technique real: its reference photos go in after the piece, so the model sees the real thread, ink or film
+        const refs = mode === 'real' ? (await pool.query('select jpeg from lab_technique_photos where technique_id=$1 order by created_at limit 3', [tech.id])).rows.map(r => r.jpeg) : [];
+        const words = mode === 'real' ? realPrompt(tech, { masked: Boolean(m), photos: refs.length }) + (prompt ? `\nAlso: ${prompt}` : '') : editPrompt(prompt, { masked: Boolean(m) });
+        out = cfg.provider === 'fixture' ? await fixtureEdit(png, m) : await editImpl({ images: [png, ...refs], mask: m, prompt: words, cfg: { ...cfg, size: 'auto' } });
         // the answer is brought back to the picture's own size, so it lands exactly over it
         out = await sharp(out).resize(meta.width, meta.height, { fit: 'fill' }).png().toBuffer();
       }
     } catch (e) { return bad(reply, `The image model could not do it: ${clip(e.message, 200)}`, 502); }
     uses.set(dayOf(), (uses.get(dayOf()) || 0) + 1);
-    if (mode === 'art') out = await sharp(out).png().toBuffer();
-    return { image: `data:image/png;base64,${out.toString('base64')}`, mode, left: left() };
+    let artId = null;
+    if (mode === 'art') {
+      // a graphic made in the studio goes into the graphics library too, so it can be used on other pieces later
+      const a = await finishArt(await sharp(out).png().toBuffer());
+      artId = (await pool.query(`insert into lab_art(name,png,thumb,prompt,model,source,technique_id,created_by) values($1,$2,$3,$4,$5,'studio',$6,$7) returning id`, [clip(prompt, 80), a.png, a.thumb, prompt, cfg.model || cfg.provider, tech?.id || null, actorOf(req)])).rows[0].id;
+      out = a.png;
+    }
+    return { image: `data:image/png;base64,${out.toString('base64')}`, mode, left: left(), art: artId };
   });
 
   app.post('/v1/lab/concepts/:id/studio/apply', { preHandler: pre, bodyLimit: 32_000_000 }, async (req, reply) => {

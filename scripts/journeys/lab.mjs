@@ -754,5 +754,145 @@ await journey('J211', 'Design Lab studio in a browser: open it from a concept, a
   } finally { await cleanup(brands, plan.plan?.id); await b.close(); }
 });
 
+await journey('J212', 'Design Lab library: graphics are drawn into it, uploaded, tagged, found and kept even when their plan goes; techniques (embroidery, print, transfer, patches, wear) come ready, can be changed, copied, given reference photos and made real; and both are used on concepts and in the studio', async () => {
+  const L = (path, o = {}) => K('/library' + path, o);
+  const { brands, plan } = await conceptSetup(); const tops = plan.lines.find(l => l.category === 'tops') || plan.lines[0];
+  try {
+    ok((await call('/v1/lab/library/graphics')).status === 401 && (await P('/library/graphics')).status === 403 && (await P('/library/techniques')).status === 403, 'closed like the rest of the Lab');
+
+    // techniques, ready to use
+    const tl = await L('/techniques'); const T = tl.json.techniques || [];
+    ok(tl.status === 200 && T.length >= 19 && tl.json.kinds.length === 5 && tl.json.kinds.every(k => T.some(t => t.kind === k.id)), 'the starting techniques cover embroidery, print, heat transfer, patches and wear', T.length);
+    const satin = T.find(t => t.key === 'satin-embroidery'), puff = T.find(t => t.key === 'puff-embroidery');
+    ok(satin && satin.finish.effect === 'stitch' && satin.base === 'embroidery' && /satin-stitch/.test(satin.prompt) && satin.artGuide && satin.factoryNote, 'each says how it looks here, how the real thing looks, how to design for it and what the factory needs', satin);
+    const again = (await L('/techniques')).json.techniques; ok(again.length === T.length, 'they are put in once, not again on every visit');
+    const mine = await L('/techniques', { body: { name: `Bleach splatter ${stamp}`, kind: 'distress', summary: 'Bleach flicked on before printing', finish: { effect: 'none', distress: { style: 'faded', amount: .5 } }, prompt: 'bleach spots, orange-pink haloes' } });
+    ok(mine.status === 201, 'a technique of our own is added', mine.json);
+    const edit = await L(`/techniques/${mine.json.id}`, { method: 'PUT', body: { finish: { effect: 'soak', strength: .9 }, summary: 'Bleach, then a water-based print' } });
+    const mt = (await L('/techniques')).json.techniques.find(t => t.id === mine.json.id); ok(edit.status === 200 && mt.finish.effect === 'soak' && mt.summary === 'Bleach, then a water-based print' && mt.name.startsWith('Bleach splatter'), 'and changed, keeping what was not changed', mt);
+    ok((await L('/techniques', { body: { name: 'x', kind: 'distress' } })).status === 422 && (await L('/techniques', { body: { name: 'Lasers', kind: 'lasers' } })).status === 422, 'a technique needs a real name and kind');
+    const photo = jpeg(), p1 = await L(`/techniques/${mine.json.id}/photos`, { body: { image: photo } });
+    ok(p1.status === 201 && (await fetch(`${BASE}/v1/lab/library/technique-photos/${p1.json.id}?thumb=1`, { headers: { Authorization: 'Bearer ' + kyleT } })).status === 200, 'a reference photo of the real thing is kept');
+    for (let i = 0; i < 3; i++) await L(`/techniques/${mine.json.id}/photos`, { body: { image: photo } });
+    ok((await L(`/techniques/${mine.json.id}/photos`, { body: { image: photo } })).status === 409, 'up to four reference photos');
+    const dup = await L('/techniques', { body: { from: mine.json.id } }); const dt = (await L('/techniques')).json.techniques.find(t => t.id === dup.json.id);
+    ok(dup.status === 201 && /\(copy\)$/.test(dt.name) && dt.photos.length === 4 && dt.finish.effect === 'soak', 'a technique can be copied, photos and all, to make a variation', dt);
+    ok((await L(`/techniques/${mine.json.id}/photos/${p1.json.id}`, { method: 'DELETE' })).status === 200 && (await L('/techniques')).json.techniques.find(t => t.id === mine.json.id).photos.length === 3, 'a photo can be removed');
+    const sample = await L(`/techniques/${satin.id}/sample`, { body: { image: await png(300, 250, [200, 190, 170]) } });
+    ok(sample.status === 200 && /^data:image\/jpeg/.test(sample.json.image) && (await fetch(`${BASE}/v1/lab/library/techniques/${satin.id}/sample`, { headers: { Authorization: 'Bearer ' + kyleT } })).status === 200 && (await L('/techniques')).json.techniques.find(t => t.id === satin.id).hasSample, 'a technique is made real on fabric by the image model, and the sample is kept', sample.json.error);
+    ok((await L(`/techniques/${dup.json.id}`, { method: 'DELETE' })).status === 200 && !(await L('/techniques')).json.techniques.some(t => t.id === dup.json.id), 'a technique can be deleted');
+
+    // graphics
+    const drawn = await L('/graphics', { body: { prompt: 'an arch of words over a lightning bolt', texts: 'FUTURE BASICS / DEPT 27', colors: 'cream, faded red', style: 'vintage rock tour tee', techniqueId: puff.id, tags: 'rock, Bolt', count: 2 } });
+    ok(drawn.status === 201 && drawn.json.ids.length === 2, 'two takes on a graphic are drawn straight into the library', drawn.json);
+    const prompt = sql(`select prompt from lab_art where id='${drawn.json.ids[0]}'`); ok(/3d puff embroidery/i.test(prompt) && /Thick, simple, closed shapes/.test(prompt) && /"FUTURE BASICS"/.test(prompt), 'drawn for the chosen technique, with the words spelled as given');
+    ok((await L('/graphics', { body: { prompt: 'a Supreme box logo but ours' } })).status === 422 && (await L('/graphics', { body: { prompt: 'x' } })).status === 422, 'another brand in the prompt, or no prompt, is refused');
+    const up = await L('/graphics/upload', { body: { image: await png(200, 120, [20, 60, 30]), name: 'Archive crest', tags: ['archive', 'crest'] } }); ok(up.status === 201, 'our own artwork is added', up.json);
+    ok((await L('/graphics/upload', { body: { image: 'data:text/html;base64,AAAA' } })).status === 422, 'only pictures can be added');
+    const list = (await L('/graphics?limit=200')).json; const mineG = list.graphics.filter(g => drawn.json.ids.includes(g.id) || g.id === up.json.id);
+    ok(mineG.length === 3 && mineG.filter(g => g.source === 'library').every(g => g.techniqueName === '3D puff embroidery' && g.tags.join() === 'rock,bolt') && mineG.find(g => g.id === up.json.id).source === 'upload', 'they are listed with where they came from, their technique and their tags', mineG);
+    ok((await L('/graphics?tag=archive')).json.graphics.some(g => g.id === up.json.id) && (await L('/graphics?q=lightning')).json.graphics.some(g => g.id === drawn.json.ids[0]) && (await L('/graphics?source=upload')).json.graphics.every(g => g.source === 'upload'), 'found by tag, by words and by where they came from');
+    ok((await L(`/graphics/${up.json.id}`, { method: 'PUT', body: { name: 'Archive crest 1998', tags: 'archive, heritage', techniqueId: satin.id } })).status === 200 && (await L('/graphics?q=1998')).json.graphics[0]?.techniqueName === 'Satin stitch embroidery', 'renamed, retagged and given a technique');
+    // kept even when the plan it was drawn for goes
+    const tmp = (await K('/plans', { body: { name: `Gone soon ${stamp}`, season: 'Spring 2028' } })).json.plan || (await K('/plans', { body: { name: `Gone soon ${stamp}` } })).json.plan;
+    if (tmp?.id) { const aid = sql(`insert into lab_art(plan_id,name,png,thumb,source) select '${tmp.id}', 'Plan motif ${stamp}', png, thumb, 'plan' from lab_art where id='${up.json.id}' returning id`).split('\n')[0];
+      await K(`/plans/${tmp.id}`, { method: 'DELETE' }); ok(sql(`select (plan_id is null)::text from lab_art where id='${aid}'`) === 'true' && (await L(`/graphics?q=Plan motif ${stamp}`)).json.graphics.length === 1, 'a graphic drawn for a plan stays in the library when the plan is deleted'); }
+    else ok(false, 'a plan could be made to test with');
+
+    // on a concept, and in the studio
+    const c = (await K(`/plans/${plan.plan.id}/lines/${tops.id}/concepts`, { body: { count: 1 } })).json.concepts[0];
+    const before = (await K(`/concepts/${c.id}`)).json.concept.spec.graphics.length;
+    const put = await K(`/concepts/${c.id}/graphics`, { body: { art: drawn.json.ids[0], placement: 'left chest', techniqueId: puff.id } });
+    const g = (await K(`/concepts/${c.id}`)).json.concept.spec.graphics.find(x => x.art === drawn.json.ids[0]);
+    ok(put.status === 200 && g && g.placement === 'left chest' && g.technique === 'embroidery' && g.finish?.name === '3D puff embroidery' && (await K(`/concepts/${c.id}`)).json.concept.spec.graphics.length === before + 1, 'a library graphic goes on a concept, where it goes and how it is made', g);
+    ok((await K(`/concepts/${c.id}/replace-marks`, { body: {} })).status === 200, 'and is placed on its picture');
+    for (let i = 0; i < 4; i++) await K(`/concepts/${c.id}/graphics`, { body: { art: up.json.id } });
+    ok((await K(`/concepts/${c.id}/graphics`, { body: { art: up.json.id } })).status === 409 && (await K(`/concepts/${c.id}/graphics`, { body: { art: '00000000-0000-4000-8000-000000000000' } })).status === 404, 'up to four graphics on a piece, and only graphics that exist');
+    const st = (await K(`/concepts/${c.id}/studio`)).json; ok(st.techniques.length >= 19 && st.techniques.some(t => t.id === mine.json.id && t.photos === 3), 'the studio has every technique, with its reference photos');
+    const sa = await K(`/concepts/${c.id}/studio/ai`, { body: { mode: 'art', prompt: 'a small crest with a lightning bolt', techniqueId: satin.id } });
+    ok(sa.status === 200 && sa.json.art && sql(`select source || ':' || coalesce(technique_id::text,'') from lab_art where id='${sa.json.art}'`) === `studio:${satin.id}`, 'a graphic made in the studio goes into the library with its technique', sa.json.error);
+    const real = await K(`/concepts/${c.id}/studio/ai`, { body: { mode: 'real', techniqueId: mine.json.id, image: await png(256, 256, [120, 120, 120]) } });
+    ok(real.status === 200 && /^data:image\/png/.test(real.json.image), 'a technique is made real on the piece in the studio', real.json.error);
+    ok((await K(`/concepts/${c.id}/studio/ai`, { body: { mode: 'real', image: await png(64, 64) } })).status === 422, 'making something real needs the technique');
+    ok((await L(`/graphics/${up.json.id}`, { method: 'DELETE' })).status === 200 && !(await L('/graphics?tag=heritage')).json.graphics.length && (await fetch(`${BASE}/v1/lab/art/${up.json.id}`, { headers: { Authorization: 'Bearer ' + kyleT } })).status === 200, 'taken out of the library, a graphic still serves the pieces that use it');
+    await L(`/techniques/${mine.json.id}`, { method: 'DELETE' });
+  } finally { await cleanup(brands, plan.plan?.id); }
+});
+
+await journey('J213', 'Design Lab library in a browser: draw a graphic, see it embroidered on fabric, put it on a concept; tune a technique and make it real; and in the studio, add a library graphic, make it embroidered, make that real with AI and keep a layer in the library', async () => {
+  if (!playwright) { ok(true, 'skipped: no browser here'); return; }
+  const { brands, plan } = await conceptSetup(); const tops = plan.lines.find(l => l.category === 'tops') || plan.lines[0];
+  const b = await playwright.chromium.launch(), errs = [];
+  try {
+    const c = (await K(`/plans/${plan.plan.id}/lines/${tops.id}/concepts`, { body: { count: 1 } })).json.concepts[0];
+    const oc = await b.newContext({ viewport: { width: 1440, height: 900 } }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
+    const page = await oc.newPage(); page.on('pageerror', e => errs.push(String(e)));
+    await page.goto(`${BASE}/lab#board`, { waitUntil: 'networkidle' });
+    await Promise.all([page.waitForURL(/\/lab\/library/), page.click('#labTabs a[href="/lab/library"]')]);
+    await page.waitForSelector('#app:not(.hidden)');
+    ok(await page.locator('.labtabs a.on').innerText() === 'Graphics and techniques', 'the library is a section of the Lab');
+
+    // draw a graphic for puff embroidery
+    await page.fill('#gPrompt', `a varsity crest with a bolt ${stamp}`); await page.fill('#gTexts', 'DEPT 27'); await page.fill('#gTags', 'varsity');
+    await page.selectOption('#gTech', { label: '3D puff embroidery' }); await page.click('#gGo');
+    await page.waitForFunction(() => /Done: 1 new/.test(document.getElementById('gMsg').textContent), null, { timeout: 30000 });
+    await page.waitForSelector('#gGrid .card img[src]', { timeout: 10000 });
+    ok(/varsity crest/.test(await page.innerText('#gGrid .card')), 'the new graphic is first in the library');
+    // on fabric as embroidery, then onto the concept
+    await page.click('#gGrid .card'); await page.waitForSelector('#gDlg[open]');
+    await page.waitForFunction(() => { const c = document.getElementById('gCanvas'); const d = c.getContext('2d').getImageData(c.width / 2, c.height / 2, 1, 1).data; return d[3] === 255; }, null, { timeout: 8000 });
+    await page.selectOption('#gvTech', { label: 'Satin stitch embroidery' });
+    const flatVsStitch = await page.evaluate(() => { const c = document.getElementById('gCanvas'), x = c.getContext('2d'), d = x.getImageData(0, 0, c.width, c.height).data; let s = 0; for (let i = 0; i < d.length; i += 4000) s += d[i]; return s; });
+    ok(flatVsStitch > 0, 'the graphic is shown on fabric, made as the chosen technique');
+    await page.selectOption('#gdConcept', c.id); await page.selectOption('#gdPlace', 'left chest'); await page.click('#gdPut');
+    await page.waitForFunction(() => /It is on the concept/.test(document.getElementById('gdMsg').textContent), null, { timeout: 20000 });
+    const onIt = (await K(`/concepts/${c.id}`)).json.concept.spec.graphics.find(g => g.placement === 'left chest' && g.finish?.name === '3D puff embroidery');
+    ok(Boolean(onIt), 'it is on the concept, on the left chest, as puff embroidery', (await K(`/concepts/${c.id}`)).json.concept.spec.graphics);
+    await page.click('#gDlg [data-close]');
+
+    // techniques: live swatches, tune one, make it real
+    await page.click('.seg [data-sec=techniques]'); await page.waitForSelector('#tList canvas[data-swatch]');
+    const tiles = await page.locator('#tList .tcard').count(); ok(tiles >= 19 && await page.locator('#tList h2').count() === 5, 'every technique is shown, grouped by kind', tiles);
+    const painted = await page.evaluate(() => [...document.querySelectorAll('#tList canvas[data-swatch]')].slice(0, 6).every(c => { const d = c.getContext('2d').getImageData(c.width / 2, c.height / 2, 1, 1).data; return d[3] === 255; }));
+    ok(painted, 'each is drawn on fabric with a sample graphic');
+    await page.click('#tList .tcard:has-text("Chain stitch embroidery")'); await page.waitForSelector('#tDlg[open] #tForm [data-k=name]');
+    await page.locator('#tForm [data-k="f.raise"]').fill('5'); await page.click('#tSave'); await page.waitForFunction(() => /Saved/.test(document.getElementById('tMsg')?.textContent || ''));
+    ok((await K('/library/techniques')).json.techniques.find(t => t.key === 'chain-stitch').finish.raise === 5, 'a technique is tuned and saved');
+    await page.click('#tMakeReal'); await page.waitForFunction(() => /Done/.test(document.getElementById('tRealMsg').textContent), null, { timeout: 30000 });
+    ok(await page.locator('#tReal:not(.hidden)').count() === 1, 'and made real by the image model, shown next to the mock-up');
+    await page.click('#tDlg [data-close]');
+
+    // the concept window picks from the library too
+    await page.goto(`${BASE}/lab#board`, { waitUntil: 'networkidle' }); await page.waitForSelector(`#cgrid .cc[data-cid="${c.id}"]`, { timeout: 15000 });
+    await page.click(`#cgrid .cc[data-cid="${c.id}"]`); await page.waitForSelector('#cd[open] [data-glib]'); await page.waitForLoadState('networkidle'); await page.click('#cd [data-glib]');
+    await page.waitForSelector('#glibBox [data-gpick]'); const n0 = (await K(`/concepts/${c.id}`)).json.concept.spec.graphics.length;
+    await page.click('#glibBox [data-gpick]'); await page.selectOption('#glibTech', { label: 'Vintage cracked print' }); await page.click('#glibBox [data-gput]');
+    await page.waitForFunction(() => /from the library is on the piece/.test(document.getElementById('cMarkMsg')?.textContent || ''), null, { timeout: 20000 });
+    ok((await K(`/concepts/${c.id}`)).json.concept.spec.graphics.length === n0 + 1, 'a library graphic is put on a concept from its own window');
+
+    // the studio: a library graphic, embroidered, made real, kept
+    await page.goto(`${BASE}/lab/studio?concept=${c.id}`, { waitUntil: 'networkidle' }); await page.waitForSelector('#pLayers .ly'); await page.waitForFunction(() => !document.querySelector('#busy:not(.hidden)'));
+    await page.click('.tabs [data-tab=add]'); await page.waitForSelector('#libTiles [data-lib] img[src]', { timeout: 10000 });
+    await page.click('#libTiles [data-lib]'); await page.waitForFunction(() => LAYERS.length === 2);
+    const added = await page.evaluate(() => { const l = selected(); return { src: l.src, finish: l.finish && l.finish.name }; });
+    ok(/^\/v1\/lab\/art\//.test(added.src), 'a library graphic is added to the design', added);
+    await page.selectOption('#pLayers [data-tech]', { label: 'Satin stitch embroidery' });
+    const fin = await page.evaluate(() => { const l = selected(); return { name: l.finish && l.finish.name, effect: l.finish && l.finish.effect }; });
+    ok(fin.name === 'Satin stitch embroidery' && fin.effect === 'stitch' && /Satin stitch/.test(await page.innerText('#pLayers .ly.on')), 'it is made as satin stitch embroidery, shown at once', fin);
+    await page.click('#pLayers [data-act=real]'); await page.waitForFunction(() => LAYERS[LAYERS.length - 1].name.startsWith('Real ·'), null, { timeout: 30000 });
+    ok(true, 'Make it real with AI adds the real embroidery as the top layer, in that area only');
+    await page.click('#pLayers .ly:has-text("Satin stitch")'); const before = Number(sql(`select count(*) from lab_art where source='studio'`));
+    await page.click('#pLayers [data-act=keep]'); await page.waitForFunction(() => /graphics library now/.test(document.getElementById('stToast')?.textContent || ''), null, { timeout: 10000 });
+    ok(Number(sql(`select count(*) from lab_art where source='studio'`)) === before + 1, 'a layer is kept in the graphics library');
+    await page.click('#save'); await page.waitForFunction(() => /Saved/.test(document.getElementById('saved').textContent), null, { timeout: 20000 });
+    await page.reload({ waitUntil: 'networkidle' }); await page.waitForSelector('#pLayers .ly'); await page.waitForFunction(() => !document.querySelector('#busy:not(.hidden)'));
+    ok(await page.evaluate(() => LAYERS.some(l => l.finish && l.finish.name === 'Satin stitch embroidery')), 'the technique is kept with the saved design');
+    await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/lab-library-studio.png` }).catch(() => {});
+    await page.goto(`${BASE}/lab/library#techniques`, { waitUntil: 'networkidle' }); await page.waitForSelector('#tList canvas[data-swatch]');
+    await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/lab-library.png` }).catch(() => {});
+    ok(errs.length === 0, 'no page errors', errs); await oc.close();
+  } finally { await cleanup(brands, plan.plan?.id); await b.close(); }
+});
+
 shops.close(); brave.close();
 process.exit(summary() ? 1 : 0);

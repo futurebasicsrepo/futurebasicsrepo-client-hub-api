@@ -131,6 +131,7 @@ kbd{font:500 10px 'IBM Plex Mono',monospace;border:1px solid var(--line);border-
 </div>
 <dialog id="askDlg" style="border:0;border-radius:20px;padding:0;width:min(480px,94vw)"><form method="dialog" style="padding:20px;display:grid;gap:12px"><h3 id="askTitle" style="margin:0;font-size:16px;line-height:1.35"></h3><p class="note" id="askText" style="font-size:13px"></p><div class="row" style="justify-content:flex-end"><button class="btn" value="no" type="submit">Cancel</button><button class="btn go" value="yes" type="submit" id="askYes">Yes</button></div></form></dialog>
 <input type="file" id="fileIn" accept="image/*" multiple class="hidden">
+<script src="/lab/finish.js"></script>
 <script src="/console-nav.js" defer></script>
 <script>
 'use strict';
@@ -167,28 +168,17 @@ const fixed=l=>l.kind==='base'||l.kind==='paint'; // full-size layers that do no
 
 // ---------- history (rasters are copied before they change, so a step keeps its own) ----------
 let HIST=[],HI=-1;
-const snap=()=>({sel:SEL,layers:LAYERS.map(l=>({...l,adjust:{...l.adjust},tint:{...l.tint},distress:{...l.distress}}))});
+const copyL=l=>({...l,adjust:{...l.adjust},tint:{...l.tint},distress:{...l.distress},finish:l.finish?{...l.finish,distress:{...l.finish.distress}}:null});
+const snap=()=>({sel:SEL,layers:LAYERS.map(copyL)});
 function commit(){HIST=HIST.slice(0,HI+1);HIST.push(snap());if(HIST.length>60)HIST.shift();HI=HIST.length-1;touch();syncUndo()}
-function restore(s){LAYERS=s.layers.map(l=>({...l,adjust:{...l.adjust},tint:{...l.tint},distress:{...l.distress}}));SEL=s.sel&&layerOf(s.sel)?s.sel:null;touch();paintPanels();draw()}
+function restore(s){LAYERS=s.layers.map(copyL);SEL=s.sel&&layerOf(s.sel)?s.sel:null;touch();paintPanels();draw()}
 function undo(){if(HI>0){HI--;restore(HIST[HI]);syncUndo()}}function redo(){if(HI<HIST.length-1){HI++;restore(HIST[HI]);syncUndo()}}
 function syncUndo(){$('#undo').disabled=HI<=0;$('#redo').disabled=HI>=HIST.length-1}
 function touch(){DIRTY=true;showSaved()}
 function showSaved(){const s=$('#saved');s.className='saved'+(DIRTY?' dirty':'');s.textContent=DIRTY?'Not saved':SAVED_AT?'Saved '+new Date(SAVED_AT).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}):''}
 
 // ---------- distressing: a worn texture made from a seed, so it is the same every time it is drawn ----------
-const rng=seed=>()=>{seed|=0;seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296};
-const TEX=new Map();
-function texture(style,w,h,size,seed){
-  const key=[style,w,h,size,seed].join('|');if(TEX.has(key))return TEX.get(key);
-  const c=canvas(w,h),x=c.getContext('2d'),r=rng(seed),s=Math.max(.2,size/50),area=w*h;
-  x.fillStyle='#000';x.strokeStyle='#000';
-  if(style==='cracked'){x.lineCap='round';const n=Math.round(area/(9000*s*s))+6;for(let i=0;i<n;i++){let px=r()*w,py=r()*h,a=r()*Math.PI*2;x.lineWidth=(.6+r()*2.2)*s;x.globalAlpha=.55+r()*.45;x.beginPath();x.moveTo(px,py);const steps=4+Math.floor(r()*10);for(let k=0;k<steps;k++){a+=(r()-.5)*1.2;px+=Math.cos(a)*(8+r()*26)*s;py+=Math.sin(a)*(8+r()*26)*s;x.lineTo(px,py)}x.stroke()}}
-  if(style==='faded'){const n=Math.round(area/(26000*s*s))+5;for(let i=0;i<n;i++){const px=r()*w,py=r()*h,rad=(20+r()*90)*s,g=x.createRadialGradient(px,py,0,px,py,rad);g.addColorStop(0,'rgba(0,0,0,'+(.25+r()*.45)+')');g.addColorStop(1,'rgba(0,0,0,0)');x.globalAlpha=1;x.fillStyle=g;x.fillRect(px-rad,py-rad,rad*2,rad*2)}x.fillStyle='#000'}
-  // every style has the specks and the grain of a worn print
-  const specks=Math.round(area/((style==='worn'?260:900)*s*s));for(let i=0;i<specks;i++){const rad=(r()**3*5+.4)*s;x.globalAlpha=.35+r()*.65;x.beginPath();x.ellipse(r()*w,r()*h,rad,rad*(.4+r()*.8),r()*3,0,Math.PI*2);x.fill()}
-  const grain=Math.round(area/(40*s));x.globalAlpha=.22;for(let i=0;i<grain;i++)x.fillRect(r()*w,r()*h,1.2*s,1.2*s);
-  x.globalAlpha=1;if(TEX.size>40)TEX.delete(TEX.keys().next().value);TEX.set(key,c);return c;
-}
+const texture=(...a)=>window.FBFinish.texture(...a); // the same worn textures as the technique library (src/lab-finish.js)
 
 // ---------- what each layer looks like on its own (before it is placed) ----------
 function textMetrics(l){
@@ -219,7 +209,8 @@ function contentOf(l){
     if(l.fill)x.fill();if(sw)x.stroke();return c}
   return canvas(1,1);
 }
-const sig=l=>JSON.stringify([l.kind,l.raster?l.raster._rid:0,l.text,l.font,l.size,l.bold,l.italic,l.track,l.lead,l.align,l.arc,l.color,l.outline,l.outlineColor,l.shape,l.w,l.h,l.radius,l.fill,l.fillColor,l.stroke,l.strokeW,l.strokeColor,l.adjust,l.tint,l.distress]);
+const unitOf=l=>{const u=(W/1000)/(fixed(l)?1:l.scale);return Math.pow(1.15,Math.round(Math.log(u)/Math.log(1.15)))}; // stitches and dots keep a real size: one step per 15% of scale
+const sig=l=>JSON.stringify([l.finish,l.finish?unitOf(l):0,l.kind,l.raster?l.raster._rid:0,l.text,l.font,l.size,l.bold,l.italic,l.track,l.lead,l.align,l.arc,l.color,l.outline,l.outlineColor,l.shape,l.w,l.h,l.radius,l.fill,l.fillColor,l.stroke,l.strokeW,l.strokeColor,l.adjust,l.tint,l.distress]);
 const plainLook=l=>l.adjust.hue===0&&l.adjust.sat===100&&l.adjust.bright===100&&l.adjust.contrast===100;
 // the layer with its colour adjustments, its recolouring and its distressing: cached until any of them change
 function processed(l){
@@ -229,11 +220,13 @@ function processed(l){
   x.drawImage(src,0,0);x.filter='none';
   if(l.tint.amount>0){x.globalCompositeOperation='source-atop';x.globalAlpha=l.tint.amount;x.fillStyle=l.tint.color;x.fillRect(0,0,c.width,c.height);x.globalAlpha=1}
   if(l.distress.amount>0){x.globalCompositeOperation='destination-out';x.globalAlpha=clamp(l.distress.amount,0,1);x.drawImage(texture(l.distress.style,c.width,c.height,l.distress.size,l.distress.seed),0,0);x.globalAlpha=1}
-  x.globalCompositeOperation='source-over';l._pk=k;l._pc=c;return c;
+  x.globalCompositeOperation='source-over';
+  const out=l.finish&&l.finish.effect&&l.finish.effect!=='none'?window.FBFinish.effect(c,l.finish,unitOf(l),l.distress.seed||1):c;
+  l._pk=k;l._pc=out;return out;
 }
 const dims=l=>{const c=processed(l);return[c.width,c.height]};
 function place(x,l){x.translate(l.x,l.y);x.rotate(l.rot);x.scale(l.scale*(l.flip?-1:1),l.scale)}
-function drawLayer(x,l){if(!l.visible)return;const c=processed(l);x.save();x.globalAlpha=l.opacity;x.globalCompositeOperation=l.blend;place(x,l);x.drawImage(c,-c.width/2,-c.height/2);x.restore()}
+function drawLayer(x,l){if(!l.visible)return;const c=processed(l),sh=l.finish&&window.FBFinish.shadow(l.finish,W/1000);x.save();x.globalAlpha=l.opacity;x.globalCompositeOperation=l.blend;if(sh){x.shadowColor=sh.color;x.shadowBlur=sh.blur;x.shadowOffsetX=sh.dx;x.shadowOffsetY=sh.dy}place(x,l);x.drawImage(c,-c.width/2,-c.height/2);x.restore()}
 function compose(){docX.setTransform(1,0,0,1,0,0);docX.globalCompositeOperation='source-over';docX.globalAlpha=1;docX.clearRect(0,0,W,H);docX.fillStyle='#fff';docX.fillRect(0,0,W,H);for(const l of LAYERS)drawLayer(docX,l)}
 // doc point → the layer's own pixels, and back
 function toLocal(l,px,py){const[w,h]=dims(l);let dx=px-l.x,dy=py-l.y;const c=Math.cos(-l.rot),s=Math.sin(-l.rot);let lx=(dx*c-dy*s)/l.scale,ly=(dx*s+dy*c)/l.scale;if(l.flip)lx=-lx;return[lx+w/2,ly+h/2]}
@@ -340,7 +333,7 @@ function addLayer(l,{silent=false,top=false}={}){
   SEL=l.id;if(!silent)commit();paintPanels();draw();return l}
 function removeLayer(l){if(l.kind==='base'&&LAYERS.filter(x=>x.kind==='base').length<2){toast('The base picture stays. Hide it instead if you need to.');return}LAYERS=LAYERS.filter(x=>x!==l);SEL=LAYERS.length?LAYERS[LAYERS.length-1].id:null;commit();paintPanels();draw()}
 function moveLayer(l,d){const i=LAYERS.indexOf(l),j=clamp(i+d,0,LAYERS.length-1);if(i===j)return;LAYERS.splice(i,1);LAYERS.splice(j,0,l);commit();paintPanels();draw()}
-function duplicate(l){const c={...l,id:uid(),name:l.name+' copy',adjust:{...l.adjust},tint:{...l.tint},distress:{...l.distress},_pc:null,_pk:null};if(isRaster(l))c.raster=cloneCanvas(l.raster);if(c.kind==='base'){c.kind='image';c.locked=false}if(!fixed(c)){c.x+=20;c.y+=20}addLayer(c)}
+function duplicate(l){const c={...copyL(l),id:uid(),name:l.name+' copy',_pc:null,_pk:null};if(isRaster(l))c.raster=cloneCanvas(l.raster);if(c.kind==='base'){c.kind='image';c.locked=false}if(!fixed(c)){c.x+=20;c.y+=20}addLayer(c)}
 // type and shapes become a picture layer (with their look baked in), so they can be painted on, rubbed out and distressed by hand
 function rasterize(l){const c=processed(l),r=cloneCanvas(c),n={...fresh('image',{name:l.name}),x:l.x,y:l.y,scale:l.scale,rot:l.rot,flip:l.flip,opacity:l.opacity,blend:l.blend,raster:r,src:null,dirty:true};const i=LAYERS.indexOf(l);LAYERS[i]=n;SEL=n.id;commit();paintPanels();draw()}
 const thumbOf=l=>{try{const c=processed(l),t=canvas(80,80),x=t.getContext('2d'),k=Math.min(80/c.width,80/c.height);x.drawImage(c,(80-c.width*k)/2,(80-c.height*k)/2,c.width*k,c.height*k);return t.toDataURL('image/png')}catch{return ''}};
@@ -354,7 +347,7 @@ const rng2=(p,lab,min,max,step,v,unit='')=>`<label class="f"><span>${lab}</span>
 function paintPanels(){paintLayers();if(TAB==='ai')paintAiState()}
 function paintLayers(){
   const p=$('#pLayers'),l=selected();
-  const list=[...LAYERS].reverse().map(x=>`<div class="ly ${x.id===SEL?'on':''} ${x.visible?'':'off'}" data-ly="${x.id}" tabindex="0" role="button" aria-pressed="${x.id===SEL}"><button type="button" data-vis title="${x.visible?'Hide':'Show'}" aria-label="${x.visible?'Hide':'Show'} ${esc(x.name)}">${x.visible?EYE:SHUT}</button>${x.kind==='text'?`<span class="th">T</span>`:`<img alt="" src="${thumbOf(x)}">`}<span class="nm">${esc(x.name)}<small>${KIND[x.kind]}${x.blend!=='source-over'?' · '+esc(BLENDS.find(b=>b[0]===x.blend)?.[1].split(' (')[0]):''}${x.distress.amount?' · distressed':''}</small></span><button type="button" data-lock title="${x.locked?'Unlock':'Lock'}" aria-label="${x.locked?'Unlock':'Lock'} ${esc(x.name)}">${x.locked?LOCK:OPEN}</button></div>`).join('');
+  const list=[...LAYERS].reverse().map(x=>`<div class="ly ${x.id===SEL?'on':''} ${x.visible?'':'off'}" data-ly="${x.id}" tabindex="0" role="button" aria-pressed="${x.id===SEL}"><button type="button" data-vis title="${x.visible?'Hide':'Show'}" aria-label="${x.visible?'Hide':'Show'} ${esc(x.name)}">${x.visible?EYE:SHUT}</button>${x.kind==='text'?`<span class="th">T</span>`:`<img alt="" src="${thumbOf(x)}">`}<span class="nm">${esc(x.name)}<small>${KIND[x.kind]}${x.blend!=='source-over'?' · '+esc(BLENDS.find(b=>b[0]===x.blend)?.[1].split(' (')[0]):''}${x.finish?' · '+esc(x.finish.name):x.distress.amount?' · distressed':''}</small></span><button type="button" data-lock title="${x.locked?'Unlock':'Lock'}" aria-label="${x.locked?'Unlock':'Lock'} ${esc(x.name)}">${x.locked?LOCK:OPEN}</button></div>`).join('');
   p.innerHTML=`<div class="sec"><h4>Layers · top first</h4><div class="layers">${list}</div></div>${l?fieldsHtml(l):'<p class="note">Choose a layer to change it. Add type, our marks, your own pictures and AI graphics from the Add and AI tabs.</p>'}`;
 }
 function fieldsHtml(l){
@@ -373,22 +366,48 @@ function fieldsHtml(l){
   return `<div class="sec"><h4>${esc(KIND[l.kind])}</h4><input class="t" data-p="name" value="${esc(l.name)}" maxlength="60" aria-label="Layer name">
     ${rng2('opacity','Opacity',0,1,.01,l.opacity)}<label class="f w"><span>Blend</span><select class="t" data-p="blend">${BLENDS.map(([k,v])=>`<option value="${k}" ${k===l.blend?'selected':''}>${esc(v)}</option>`).join('')}</select></label></div>
   ${kind}${pos}
+  ${l.kind==='base'?'':techHtml(l)}
   <div class="sec"><h4>Colour</h4>${rng2('a.hue','Hue',-180,180,1,a.hue,'°')}${rng2('a.sat','Saturation',0,300,1,a.sat,'%')}${rng2('a.bright','Brightness',0,200,1,a.bright,'%')}${rng2('a.contrast','Contrast',0,200,1,a.contrast,'%')}
     <label class="f w"><span>Recolour</span>${col('t.color',t.color)}</label>${rng2('t.amount','Recolour amount',0,1,.01,t.amount)}
     <div class="row"><button class="btn sm q" type="button" data-act="lookreset">Reset the colour</button></div>${l.kind==='base'?'<p class="note">Hue turns the colour of the whole picture: on a grey studio background mostly the piece changes. For one part only, paint it in the AI tab and ask.</p>':''}</div>
   <div class="sec"><h4>Distress</h4><label class="f w"><span>Kind</span><select class="t" data-p="d.style">${[['worn','Worn print: specks and grain'],['cracked','Cracked ink'],['faded','Faded, washed out']].map(([k,v])=>`<option value="${k}" ${k===d.style?'selected':''}>${v}</option>`).join('')}</select></label>
     ${rng2('d.amount','Amount',0,1,.01,d.amount)}${rng2('d.size','Grain size',5,200,1,d.size)}<div class="row"><button class="btn sm q" type="button" data-act="seed">Another pattern</button></div></div>
-  <div class="sec"><h4>Layer</h4><div class="row"><button class="btn sm q" type="button" data-act="up">Move up</button><button class="btn sm q" type="button" data-act="down">Move down</button><button class="btn sm q" type="button" data-act="dup">Duplicate</button>${l.kind==='text'||l.kind==='shape'?'<button class="btn sm q" type="button" data-act="raster" title="So it can be painted on and rubbed out">Turn into pixels</button>':''}${l.kind==='base'&&D.concept.hasPlain?'<button class="btn sm q" type="button" data-act="plain">Use the plain picture</button>':''}<button class="btn sm q" type="button" data-act="del">Delete</button></div></div>`;
+  <div class="sec"><h4>Layer</h4><div class="row"><button class="btn sm q" type="button" data-act="up">Move up</button><button class="btn sm q" type="button" data-act="down">Move down</button><button class="btn sm q" type="button" data-act="dup">Duplicate</button>${l.kind==='base'?'':'<button class="btn sm q" type="button" data-act="keep" title="Keep this artwork in the graphics library, for other pieces">Save to the library</button>'}${l.kind==='text'||l.kind==='shape'?'<button class="btn sm q" type="button" data-act="raster" title="So it can be painted on and rubbed out">Turn into pixels</button>':''}${l.kind==='base'&&D.concept.hasPlain?'<button class="btn sm q" type="button" data-act="plain">Use the plain picture</button>':''}<button class="btn sm q" type="button" data-act="del">Delete</button></div></div>`;
 }
+const techOpts=v=>`<option value="">None</option>${[['embroidery','Embroidery'],['print','Print'],['heat_transfer','Heat transfer'],['patch','Patches and appliqué'],['distress','Distressing and wash']].map(([k,lab])=>{const t=(D.techniques||[]).filter(x=>x.kind===k);return t.length?`<optgroup label="${lab}">${t.map(x=>`<option value="${x.id}" ${x.id===v?'selected':''}>${esc(x.name)}</option>`).join('')}</optgroup>`:''}).join('')}`;
+function techHtml(l){const f=l.finish;return `<div class="sec"><h4>Technique</h4><label class="f w"><span>Made as</span><select class="t" data-tech>${techOpts(f&&f.id)}</select></label>
+  ${f?`${f.effect!=='none'?rng2('fin.strength','Strength',0,1,.05,f.strength):''}${rng2('fin.raise','Raised',0,12,.5,f.raise)}${['stitch','foil','film','rubber'].includes(f.effect)?rng2('fin.angle','Direction',-180,180,5,f.angle,'°'):''}
+  <div class="row"><button class="btn sm go" type="button" data-act="real" ${D.ai.connected?'':'disabled'}>Make it real with AI</button></div><p class="note">Drawn here as a quick look. Make it real asks the image model for the real ${esc(f.name.toLowerCase())} on this fabric, in this layer's area only, using the technique's words and reference photos.</p>`
+  :'<p class="note">Embroidery, print, heat transfer, patches and wear from the <a href="/lab/library#techniques" target="_blank" rel="noopener">technique library</a>.</p>'}</div>`}
+function applyTech(l,id){
+  const t=(D.techniques||[]).find(x=>x.id===id);
+  if(!t){l.finish=null;l.blend='source-over';l.opacity=1;l.distress={...l.distress,amount:0};l.adjust.sat=100;return}
+  const f=t.finish||{};l.finish={id:t.id,name:t.name,...f,distress:{...(f.distress||{})}};l.blend=f.blend||'source-over';l.opacity=f.opacity??1;l.adjust.sat=f.sat??100;
+  l.distress=f.distress&&f.distress.amount>0?{...l.distress,style:f.distress.style,amount:f.distress.amount,size:f.distress.size}:{...l.distress,amount:0};
+}
+// the layer alone, as a soft-edged area the size of the picture, for the AI to work inside
+function areaOf(l){const c=canvas(W,H),x=c.getContext('2d');const p=processed(l);x.save();place(x,l);x.drawImage(p,-p.width/2,-p.height/2);x.restore();
+  const m=canvas(W,H),mx=m.getContext('2d'),pad=Math.max(4,Math.round(W/160));mx.filter=`blur(${pad}px)`;for(let i=0;i<3;i++)mx.drawImage(c,0,0);mx.filter='none';mx.globalCompositeOperation='source-in';mx.fillStyle='#e03b2e';mx.fillRect(0,0,W,H);return m}
+// the artwork of a layer for the library: its colour, without wear or a technique
+function artOf(l){const src=contentOf(l),c=canvas(src.width,src.height),x=c.getContext('2d');if(!plainLook(l))x.filter=`hue-rotate(${l.adjust.hue}deg) saturate(${l.adjust.sat}%) brightness(${l.adjust.bright}%) contrast(${l.adjust.contrast}%)`;x.drawImage(src,0,0);x.filter='none';if(l.tint.amount>0){x.globalCompositeOperation='source-atop';x.globalAlpha=l.tint.amount;x.fillStyle=l.tint.color;x.fillRect(0,0,c.width,c.height)}return c}
+async function keepInLibrary(l){try{const r=await api('/v1/lab/library/graphics/upload',{body:{image:artOf(l).toDataURL('image/png'),name:l.name,source:'studio',techniqueId:l.finish?l.finish.id:null}});toast(`"${l.name}" is in the graphics library now.`);LIB=null;if(TAB==='add')paintLib()}catch(x){toast(x.message)}}
+async function makeReal(l){
+  const btn=$('#pLayers [data-act=real]');if(btn)btn.disabled=true;busy(`The AI is making it real ${l.finish.name.toLowerCase()}. About a minute…`);
+  try{compose();const area=areaOf(l),mk=canvas(W,H),mx=mk.getContext('2d');mx.fillStyle='#000';mx.fillRect(0,0,W,H);mx.globalCompositeOperation='destination-out';mx.drawImage(area,0,0);
+    const r=await api(`/v1/lab/concepts/${CID}/studio/ai`,{body:{mode:'real',techniqueId:l.finish.id,image:docC.toDataURL('image/png'),mask:mk.toDataURL('image/png')}});
+    const img=await imgOf(r.image),c=canvas(W,H),x=c.getContext('2d');x.drawImage(img,0,0,W,H);x.globalCompositeOperation='destination-in';x.drawImage(area,0,0);
+    addLayer(fresh('image',{name:`Real · ${l.finish.name} · ${l.name}`.slice(0,60),raster:stamp(c),src:null,dirty:true,x:W/2,y:H/2}),{top:true});D.ai.left=r.left;
+    toast(`Done: the real ${l.finish.name.toLowerCase()} is the top layer. Hide it to compare.`)}catch(x){toast(x.message)}finally{busy();if(btn)btn.disabled=false}}
 // the moving parts of the panel follow a drag without the whole panel being drawn again
 function paintFields(){const l=selected();if(!l)return;for(const[k,v]of[['scale',+l.scale.toFixed(2)],['rotd',Math.round(l.rot*180/Math.PI)],['w',l.w],['h',l.h]]){const i=$(`#pLayers [data-p="${k}"]`);if(i&&document.activeElement!==i){i.value=v;if(i.nextElementSibling)i.nextElementSibling.textContent=v+(k==='scale'?'×':k==='rotd'?'°':'px')}}}
 function setProp(l,p,v){
+  if(p.startsWith('fin.')){if(l.finish)l.finish[p.slice(4)]=Number(v);return}
   if(p.startsWith('a.'))l.adjust[p.slice(2)]=Number(v);else if(p.startsWith('t.'))l.tint[p.slice(2)]=p==='t.color'?v:Number(v);else if(p.startsWith('d.'))l.distress[p.slice(2)]=p==='d.style'?v:Number(v);
   else if(p==='rotd')l.rot=Number(v)*Math.PI/180;else if(['name','text','font','blend','color','outlineColor','fillColor','strokeColor'].includes(p))l[p]=v;else if(['fill','stroke'].includes(p))l[p]=Boolean(v);else l[p]=Number(v);
 }
 const pL=$('#pLayers');
 pL.addEventListener('input',e=>{const p=e.target.dataset.p,l=selected();if(!p||!l)return;setProp(l,p,e.target.type==='checkbox'?e.target.checked:e.target.value);if(e.target.type==='range'&&e.target.nextElementSibling)e.target.nextElementSibling.textContent=e.target.value+({opacity:'',scale:'×',rotd:'°','a.hue':'°','a.sat':'%','a.bright':'%','a.contrast':'%',size:'px',w:'px',h:'px',radius:'px',strokeW:'px',outline:'px'}[p]??'');touch();draw()});
-pL.addEventListener('change',e=>{if(!e.target.dataset.p)return;commit();if(['name','blend','d.amount','text'].includes(e.target.dataset.p)||e.target.tagName==='SELECT'||e.target.type==='checkbox')paintLayers()});
+pL.addEventListener('change',e=>{if(e.target.matches('[data-tech]')){const l=selected();if(l){applyTech(l,e.target.value);commit();paintLayers();draw()}return}if(!e.target.dataset.p)return;commit();if(['name','blend','d.amount','text'].includes(e.target.dataset.p)||e.target.tagName==='SELECT'||e.target.type==='checkbox')paintLayers()});
 pL.addEventListener('click',e=>{
   const row=e.target.closest('[data-ly]');
   if(row){const l=layerOf(row.dataset.ly);if(e.target.closest('[data-vis]')){l.visible=!l.visible;commit()}else if(e.target.closest('[data-lock]')){l.locked=!l.locked;commit()}else SEL=l.id;paintLayers();draw();return}
@@ -396,7 +415,7 @@ pL.addEventListener('click',e=>{
   if(tg){l[tg.dataset.toggle]=!l[tg.dataset.toggle];commit();paintLayers();draw();return}
   if(al){l.align=al.dataset.align;commit();paintLayers();draw();return}
   if(!ac)return;const a=ac.dataset.act;
-  if(a==='up')moveLayer(l,1);if(a==='down')moveLayer(l,-1);if(a==='dup')duplicate(l);if(a==='del')removeLayer(l);if(a==='raster')rasterize(l);if(a==='plain')usePlain(l);
+  if(a==='up')moveLayer(l,1);if(a==='down')moveLayer(l,-1);if(a==='dup')duplicate(l);if(a==='del')removeLayer(l);if(a==='raster')rasterize(l);if(a==='real')makeReal(l);if(a==='keep')keepInLibrary(l);if(a==='plain')usePlain(l);
   if(a==='centre'){l.x=W/2;l.y=H/2;commit();draw()}if(a==='flip'){l.flip=!l.flip;commit();draw()}
   if(a==='fabric'){l.blend='multiply';l.opacity=Math.min(l.opacity,.94);if(!l.distress.amount){l.distress.style='worn';l.distress.amount=.18}commit();paintLayers();draw()}
   if(a==='lookreset'){l.adjust={hue:0,sat:100,bright:100,contrast:100};l.tint.amount=0;commit();paintLayers();draw()}
@@ -410,12 +429,19 @@ function paintAdd(){
   const p=$('#pAdd');
   p.innerHTML=`<div class="sec"><h4>Future Basics marks</h4><div class="tiles">${D.marks.map(m=>`<button class="tile" type="button" data-mark="${m.id}"><img alt="" src="data:image/svg+xml;charset=utf-8,${encodeURIComponent(m.svg)}">${esc(m.label)}</button>`).join('')}</div><p class="note">Added in Ink. Click a colour below to recolour the selected mark.</p></div>
   ${D.graphics.length?`<div class="sec"><h4>This concept's graphics</h4><div class="tiles" id="gfxTiles">${D.graphics.map(g=>`<button class="tile" type="button" data-art="${esc(g.art)}"><img alt="" data-artimg="${esc(g.art)}">${esc(g.name)}</button>`).join('')}</div></div>`:''}
+  <div class="sec"><h4>From the graphics library</h4><input class="t" type="search" id="libQ" placeholder="Search our graphics" aria-label="Search the graphics library"><div class="tiles" id="libTiles"><span class="note">Loading…</span></div><p class="note"><a href="/lab/library" target="_blank" rel="noopener">Open the library</a> to draw new graphics or manage them.</p></div>
   <div class="sec"><h4>Your own pictures</h4><div class="row"><button class="btn sm" type="button" id="addPic">Add a picture…</button><button class="btn sm q" type="button" id="addPaint">New painting layer</button></div><p class="note">Or drop or paste one onto the stage. A logo, a scan, a texture, a photo of a print.</p></div>
   <div class="sec"><h4>Type and shapes</h4><div class="row"><button class="btn sm q" type="button" data-addtool="text">Type</button><button class="btn sm q" type="button" data-addtool="rect">Rectangle</button><button class="btn sm q" type="button" data-addtool="ellipse">Ellipse</button><button class="btn sm q" type="button" data-addtool="line">Line</button></div></div>
   <div class="sec"><h4>Colours</h4>${['brand','program'].map(f=>{const s=D.palette.filter(c=>c.from===f);return s.length?`<span class="note">${f==='brand'?'Future Basics':'This plan\'s graphic program'}</span><div class="sw">${s.map(c=>`<button type="button" data-sw="${esc(c.hex)}" title="${esc(c.name)} ${esc(c.hex)}" aria-label="${esc(c.name)}" style="background:${esc(c.hex)}"></button>`).join('')}</div>`:''}).join('')}
     <p class="note">A colour becomes the brush colour. With type or a shape selected it colours that; with a picture or mark selected it recolours it.</p></div>`;
   for(const i of p.querySelectorAll('[data-artimg]'))blobOf('/v1/lab/art/'+i.dataset.artimg+'?thumb=1').then(b=>{i.src=URL.createObjectURL(b)}).catch(()=>{});
+  paintLib();let lt=0;$('#libQ').addEventListener('input',()=>{clearTimeout(lt);lt=setTimeout(()=>{LIB=null;paintLib()},250)});
 }
+let LIB=null;
+async function paintLib(){const box=$('#libTiles');if(!box)return;
+  try{if(!LIB){const q=($('#libQ')?.value||'').trim();LIB=(await api('/v1/lab/library/graphics?limit=24'+(q?'&q='+encodeURIComponent(q):''))).graphics}
+    box.innerHTML=LIB.length?LIB.map(g=>`<button class="tile" type="button" data-lib="${g.id}" title="${esc(g.name)}${g.techniqueName?' · '+esc(g.techniqueName):''}"><img alt="" data-libimg="${g.id}">${esc((g.name||'Untitled').slice(0,28))}</button>`).join(''):'<span class="note">Nothing found.</span>';
+    for(const i of box.querySelectorAll('[data-libimg]'))blobOf('/v1/lab/art/'+i.dataset.libimg+'?thumb=1').then(b=>{i.src=URL.createObjectURL(b)}).catch(()=>{})}catch(x){box.innerHTML=`<span class="note">${esc(x.message)}</span>`}}
 async function markRaster(id,color='#141416'){const m=D.marks.find(x=>x.id===id);const svg=m.svg.replace(/#141416/gi,color);const img=await imgOf('data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg));const k=1600/Math.max(img.naturalWidth||img.width,1),c=canvas((img.naturalWidth||img.width)*k,(img.naturalHeight||img.height)*k);c.getContext('2d').drawImage(img,0,0,c.width,c.height);return stamp(c)}
 async function addPicture(src,name,{fit=.45,origin=null}={}){const img=await imgOf(src),c=canvas(img.naturalWidth,img.naturalHeight);c.getContext('2d').drawImage(img,0,0);const sc=Math.min(W*fit/c.width,H*fit/c.height,1);return addLayer(fresh('image',{name,raster:stamp(c),src:origin,dirty:!origin,_srcRid:c._rid,scale:+sc.toFixed(3),x:W/2,y:H/2}))}
 async function addFiles(files){for(const f of[...files].filter(f=>/^image\//.test(f.type)).slice(0,6)){if(f.size>15e6){toast(f.name+' is over 15 MB.');continue}try{await addPicture(await urlOfBlob(f),f.name.replace(/\.[a-z0-9]+$/i,'').slice(0,40)||'Picture')}catch(x){toast(x.message)}}}
@@ -423,6 +449,10 @@ $('#pAdd').addEventListener('click',async e=>{
   const mk=e.target.closest('[data-mark]'),ar=e.target.closest('[data-art]'),sw=e.target.closest('[data-sw]'),at=e.target.closest('[data-addtool]');
   if(mk){const r=await markRaster(mk.dataset.mark);addLayer(fresh('image',{name:D.marks.find(m=>m.id===mk.dataset.mark).label,raster:r,src:'brand:'+mk.dataset.mark,_srcRid:r._rid,scale:+Math.min(W*.22/r.width,1).toFixed(3),x:W/2,y:H*.4}));return}
   if(ar){busy('Loading the graphic…');try{const src=await urlOfBlob(await blobOf('/v1/lab/art/'+ar.dataset.art));const img=await imgOf(src),c=canvas(img.naturalWidth,img.naturalHeight);c.getContext('2d').drawImage(img,0,0);addLayer(fresh('image',{name:ar.textContent.trim().slice(0,40)||'Graphic',raster:stamp(c),src:'/v1/lab/art/'+ar.dataset.art,_srcRid:c._rid,scale:+Math.min(W*.35/c.width,1).toFixed(3),x:W/2,y:H*.45}))}catch(x){toast(x.message)}finally{busy()}return}
+  const lb=e.target.closest('[data-lib]');
+  if(lb){const g=(LIB||[]).find(x=>x.id===lb.dataset.lib);busy('Loading the graphic…');try{const src=await urlOfBlob(await blobOf('/v1/lab/art/'+lb.dataset.lib));const img=await imgOf(src),c=stamp(canvas(img.naturalWidth,img.naturalHeight));c.getContext('2d').drawImage(img,0,0);
+    const l=addLayer(fresh('image',{name:(g&&g.name||'Graphic').slice(0,40),raster:c,src:'/v1/lab/art/'+lb.dataset.lib,_srcRid:c._rid,scale:+Math.min(W*.35/c.width,1).toFixed(3),x:W/2,y:H*.45}),{silent:true});
+    if(g&&g.techniqueId)applyTech(l,g.techniqueId);commit();paintLayers();draw();tab('layers')}catch(x){toast(x.message)}finally{busy()}return}
   if(sw){applySwatch(sw.dataset.sw);return}
   if(at){setTool(at.dataset.addtool);toast(at.dataset.addtool==='text'?'Click the picture where the type should go.':'Drag on the picture to draw it.');return}
   if(e.target.id==='addPic')$('#fileIn').click();
@@ -446,7 +476,8 @@ function paintAi(){
     <p class="note" id="aiScope"></p><div class="row"><button class="btn go sm" type="button" id="aiGo" ${ai.connected?'':'disabled'}>Change it</button></div>
     <p class="note">The AI looks at everything visible and comes back as a new layer on top, so nothing you made is lost: hide it, lower its opacity, or rub parts of it out. With an area painted, only that area changes.</p></div>
   <div class="sec"><h4>Make a graphic</h4><textarea class="t" id="aiArt" maxlength="800" placeholder="A cracked two-colour arch of the words FUTURE BASICS over a lightning bolt, 1970s rock tour style, ink and cream"></textarea>
-    <div class="row"><button class="btn go sm" type="button" id="artGo" ${ai.connected?'':'disabled'}>Make it</button></div><p class="note">Drawn on a clear background, as a layer to place, recolour and distress. Describe the look in your own words: other brands' names are refused.</p></div>
+    <label class="f w"><span>Made as</span><select class="t" id="aiTech">${techOpts('')}</select></label>
+    <div class="row"><button class="btn go sm" type="button" id="artGo" ${ai.connected?'':'disabled'}>Make it</button></div><p class="note">Drawn on a clear background, as a layer to place, recolour and distress, and kept in the graphics library for other pieces. With a technique chosen, it is designed for it and shown made that way. Describe the look in your own words: other brands' names are refused.</p></div>
   <p class="msg" id="aiMsg" role="status">${ai.connected?(ai.left==null?'':`${ai.left} AI ${ai.left===1?'change':'changes'} left today.`):'No image model is connected, so the AI tools are off. Everything else works.'}</p>`;
   paintAiState();
 }
@@ -466,7 +497,7 @@ $('#pAi').addEventListener('click',async e=>{
     catch(x){m.className='msg bad';m.textContent=x.message}finally{busy();e.target.disabled=false}return}
   if(e.target.id==='artGo'){const prompt=$('#aiArt').value.trim();if(prompt.length<3){m.className='msg bad';m.textContent='Say what the graphic should be.';return}
     busy('Drawing the graphic. About a minute…');e.target.disabled=true;
-    try{const r=await api(`/v1/lab/concepts/${CID}/studio/ai`,{body:{mode:'art',prompt}});await addPicture(r.image,'Graphic · '+prompt.slice(0,32),{fit:.4});D.ai.left=r.left;m.className='msg ok';m.textContent=`Done: the graphic is a new layer. Move it into place.${r.left==null?'':` ${r.left} left today.`}`}
+    try{const tid=$('#aiTech').value||null,r=await api(`/v1/lab/concepts/${CID}/studio/ai`,{body:{mode:'art',prompt,techniqueId:tid}});const l=await addPicture(r.image,'Graphic · '+prompt.slice(0,32),{fit:.4,origin:r.art?'/v1/lab/art/'+r.art:null});if(tid){applyTech(l,tid);commit();paintLayers();draw()}D.ai.left=r.left;LIB=null;m.className='msg ok';m.textContent=`Done: the graphic is a new layer, and it is in the graphics library. Move it into place.${r.left==null?'':` ${r.left} left today.`}`}
     catch(x){m.className='msg bad';m.textContent=x.message}finally{busy();e.target.disabled=false}}
 });
 
@@ -487,7 +518,7 @@ const xa=v=>esc(String(v));
 function svgDoc(){
   const parts=LAYERS.filter(l=>l.visible).map(l=>{
     const c=processed(l),tr=`translate(${+l.x.toFixed(2)} ${+l.y.toFixed(2)}) rotate(${+(l.rot*180/Math.PI).toFixed(3)}) scale(${+(l.scale*(l.flip?-1:1)).toFixed(4)} ${+l.scale.toFixed(4)})`;
-    const style=`opacity:${l.opacity}${l.blend!=='source-over'?';mix-blend-mode:'+l.blend:''}`,live=plainLook(l)&&!l.distress.amount&&(l.tint.amount===0||l.tint.amount===1);
+    const style=`opacity:${l.opacity}${l.blend!=='source-over'?';mix-blend-mode:'+l.blend:''}`,live=plainLook(l)&&!l.distress.amount&&!l.finish&&(l.tint.amount===0||l.tint.amount===1);
     let inner='';
     if(l.kind==='text'&&live&&!l.arc){const{font,lines,lw}=textMetrics(l),fill=l.tint.amount===1?l.tint.color:l.color,lh=l.size*l.lead,pad=Math.ceil(l.size*.35+(l.outline||0)*2+4),w=c.width,h=c.height;
       inner=lines.map((t,i)=>{const x0=l.align==='left'?pad:l.align==='right'?w-pad-lw[i]:(w-lw[i])/2;return `<text x="${(x0-w/2).toFixed(1)}" y="${(pad+lh*i+lh/2-h/2).toFixed(1)}" dominant-baseline="middle" font-family="${xa(FONTS[l.font][0])}" font-size="${l.size}" font-weight="${l.bold?700:400}"${l.italic?' font-style="italic"':''} letter-spacing="${l.track}" fill="${xa(fill)}"${l.outline?` stroke="${xa(l.outlineColor)}" stroke-width="${l.outline*2}" paint-order="stroke" stroke-linejoin="round"`:''} xml:space="preserve">${esc(t)}</text>`}).join('')}
@@ -536,7 +567,7 @@ $('#undo').onclick=undo;$('#redo').onclick=redo;
 
 // ---------- opening the design: the saved layers, or the concept's picture as the base ----------
 async function loadLayer(o){
-  const l={...fresh(o.kind),...o,adjust:{...fresh(o.kind).adjust,...(o.adjust||{})},tint:{...fresh(o.kind).tint,...(o.tint||{})},distress:{...fresh(o.kind).distress,...(o.distress||{})}};
+  const l={...fresh(o.kind),...o,adjust:{...fresh(o.kind).adjust,...(o.adjust||{})},tint:{...fresh(o.kind).tint,...(o.tint||{})},distress:{...fresh(o.kind).distress,...(o.distress||{})},finish:o.finish&&o.finish.id?{...o.finish,distress:{...(o.finish.distress||{})}}:null};
   if(isRaster(l)){let src=l.src||'';
     if(/^brand:/.test(src)){l.raster=await markRaster(src.slice(6))}
     else{if(src.startsWith('/v1/lab/art/'))src=await urlOfBlob(await blobOf(src));const img=await imgOf(src),c=canvas(img.naturalWidth,img.naturalHeight);c.getContext('2d').drawImage(img,0,0);l.raster=stamp(c)}

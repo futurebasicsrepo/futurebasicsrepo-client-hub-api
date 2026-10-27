@@ -151,7 +151,7 @@ export const cleanGraphics = list => (Array.isArray(list) ? list : []).slice(0, 
   const placement = clip(g?.placement, 40).toLowerCase(), technique = clip(g?.technique, 40).toLowerCase(), kind = clip(g?.kind, 20).toLowerCase(), c = g?.svg ? cleanGraphic(g.svg) : { svg: '', texts: Array.isArray(g?.texts) ? g.texts : [] };
   return { name: clip(g?.name, 80), kind: GRAPHIC_KINDS.some(k => k.id === kind) ? kind : 'icon', idea: clip(g?.idea, 300), placement: Object.keys(GRAPHIC_PLACE).includes(placement) ? placement : 'front chest', technique: GRAPHIC_TECHNIQUES.includes(technique) ? technique : 'screen print',
     colors: (Array.isArray(g?.colors) ? g.colors : []).map(x => clip(x, 30)).filter(Boolean).slice(0, 4), svg: c.svg, texts: (c.texts.length ? c.texts : (Array.isArray(g?.texts) ? g.texts : [])).map(t => clip(t, 40)).filter(Boolean).slice(0, 8), ...(g?.motif ? { motif: clip(g.motif, 12) } : {}),
-    ...(g?.composition ? { composition: clip(g.composition, 400) } : {}), ...(/^[0-9a-f-]{36}$/i.test(String(g?.art || '')) ? { art: g.art } : {}) };
+    ...(g?.composition ? { composition: clip(g.composition, 400) } : {}), ...(/^[0-9a-f-]{36}$/i.test(String(g?.art || '')) ? { art: g.art } : {}), ...(/^[0-9a-f-]{36}$/i.test(String(g?.finish?.id || '')) ? { finish: { id: g.finish.id, name: clip(g.finish.name, 60) } } : {}) };
 }).filter(g => g.name && g.idea);
 // the program as words for a prompt
 export const programWords = pr => (pr ? [`Graphic program "${pr.name}": ${pr.story}`, pr.palette?.length ? `Palette: ${pr.palette.map(c => `${c.name} ${c.hex}`).join(', ')}.` : '', pr.rules ? `Rules: ${pr.rules}` : '',
@@ -277,7 +277,7 @@ export async function artworkFiles(concept, { arts = new Map() } = {}) {
   if (mark !== 'none') out.push({ name: `Future Basics logo · ${LOGO_MARKS.find(m => m.id === mark)?.label || 'Cue mark'}`, image: await png(logoSvg(mark, { fill: BRAND_INK }), mark === 'cue' ? 600 : 1400) });
   out.push({ name: 'Future Basics internal woven label', image: await png(logoSvg('lockup', { fill: '#FFFFFF', bg: BRAND_INK, pad: 90 }), 1200) });
   for (const g of spec.graphics) {
-    const label = `Graphic · ${g.name}${g.texts.length ? ' (' + g.texts.join(' / ') + ')' : ''}`;
+    const label = `Graphic · ${g.name}${g.texts.length ? ' (' + g.texts.join(' / ') + ')' : ''} · ${g.finish?.name || g.technique}`;
     if (g.art && arts.get(g.art)) out.push({ name: label, image: `data:image/png;base64,${Buffer.from(arts.get(g.art)).toString('base64')}` });
     else if (g.svg) out.push({ name: label, image: await png(g.svg, 1400) });
   }

@@ -132,6 +132,7 @@ A job runs every six hours and reads up to three brands that have not been read 
 | `LAB_DAILY_CONCEPTS` | how many concepts (each with a picture and a check) can be made in 24 hours (default 30) |
 | `LAB_DAILY_PROGRAMS` | how many graphic programs can be developed in a day (default 12) |
 | `LAB_DAILY_REDRAWS` | how many concept pictures can be redrawn in a day (default 30) |
+| `LAB_DAILY_SAMPLES` | how many technique samples the image model can make real in a day (default 30) |
 | `LAB_DAILY_STUDIO_AI` | how many AI changes and AI graphics the studio can make in a day (default 60; -1 for no limit) |
 | `LAB_DAILY_PLANS` | how many assistant-drafted plans can be made in 24 hours (default 10) |
 | `LAB_WEB_QUERIES`, `LAB_IMAGE_QUERIES` | searches per brand when falling back (default 4 and 3) |
@@ -227,3 +228,43 @@ The library takes pictures as well as links: **Add photos or screenshots** under
   - **Layers for Illustrator (SVG)**, one group per layer. Plain type and shapes stay live vectors; anything recoloured partly, adjusted or distressed is placed as its picture.
 - Fonts other than Space Grotesk and IBM Plex Mono are the computer's own (serif, slab, condensed, script, typewriter), so they can look slightly different on another machine. The SVG names the font.
 - Routes: `src/lab-studio-routes.js` (`GET/PUT /v1/lab/concepts/:id/studio`, `GET …/studio/plain`, `POST …/studio/ai`, `POST …/studio/apply`, `POST …/studio/restore`). The page is `src/lab-studio.html`, and the table is `lab_studio_docs`. A saved design can be up to 30 MB and 80 layers. A layer's picture can only come from the design itself, a Lab graphic or one of our marks, never from an outside address.
+
+## Graphics and techniques: the library
+
+**Graphics and techniques** (a Lab tab, `/lab/library`) is where everything we have made lives, so it can be used on any piece later.
+
+### Graphics
+- **Every graphic is kept.** That covers graphics drawn for a line plan's program, for a concept, in the studio, drawn here, and our own uploads. They stay in the library even when the plan or concept they were made for is deleted.
+- **Draw a new graphic.** Say what it is, the words on it (spelled exactly), the ink colours, a style, and what it is **made for**. The technique's design rules (line weights, number of colours) go to the image model. One to three takes at a time. Other brands' names are refused.
+- **Add our own artwork** (PNG, JPEG or WebP). Transparency is kept.
+- **Find and manage.**
+  - Search by words, tag, where it came from, or technique.
+  - Open a graphic to see it on fabric (jersey, fleece, twill, canvas, denim, any colour), made as any technique.
+  - Rename and tag it, give it its usual technique, download it, or **put it on a concept**: where it goes and how it is made. It is placed on the concept's picture straight away.
+  - **Take out of the library** hides it. Pieces that use it keep it.
+
+### Techniques
+- **The starting set** (all of them can be changed):
+  - Embroidery: satin stitch, 3D puff, chain stitch, fill stitch.
+  - Print: plastisol, water-based or discharge, vintage cracked, puff print, halftone, foil.
+  - Heat transfer: glossy, soft-touch matte, reflective.
+  - Patches: chenille, woven, rubber, deboss.
+  - Wear: worn-in, sun-faded, heavily distressed.
+- **What each technique holds:**
+  - **How it looks here.** The page draws it straight away and for free (`src/lab-finish.js`): stitches with thread sheen, raised puff and rubber with light and shadow, ink grain, soaked-in ink, halftone dots, metal foil, glossy film, chenille pile, woven threads, a pressed-in deboss. Each has strength, direction, how raised it is, shine, blend, opacity, saturation and wear.
+  - **How the real thing looks**: the words the image model gets for **Make it real**.
+  - **How to design artwork for it**: given to the image model whenever a graphic is drawn for this technique.
+  - **A note for the factory.**
+  - **Up to four reference photos** of the real thing. They go to the image model next to the piece, so it matches real thread, ink or film.
+- **Make it real** (on the technique) makes the mock-up on fabric into a photograph of the real thing. It is kept as the technique's sample.
+- You can change, **duplicate** (photos and all) or delete any technique, or add a new one.
+
+### Using them on pieces
+- **In a concept:** **Add from the graphics library** (under the graphics) adds one: choose where it goes and how it is made. It is placed on the picture, and its technique goes on the tech pack (the graphic's artwork file is labelled with it).
+- **In the studio:**
+  - The Add tab lists the library.
+  - Any layer can be **made as** a technique. It shows at once, and stitches and dots keep a real size at any scale.
+  - **Make it real with AI** asks the image model for the real technique inside that layer's area only, with the technique's words and reference photos. The result comes back as a new top layer.
+  - **Save to the library** keeps a layer's artwork for other pieces.
+  - Graphics made in the studio's AI tab go into the library on their own, made for the chosen technique.
+- Routes: `src/lab-library-routes.js` (`/v1/lab/library/graphics…`, `/v1/lab/library/techniques…`, `POST /v1/lab/concepts/:id/graphics`). The techniques and the starting set are in `src/lab-library.js`, the drawing is in `src/lab-finish.js` (served as `/lab/finish.js`), and the page is `src/lab-library.html`. Tables: `lab_art` (with `in_library`, `tags`, `source`, `technique_id`), `lab_techniques` and `lab_technique_photos`.
