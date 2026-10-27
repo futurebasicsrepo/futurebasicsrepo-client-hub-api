@@ -55,6 +55,7 @@ import { registerIntelRoutes, seedIntel } from './intel-routes.js';
 import { registerLabRoutes, seedLab } from './lab-routes.js';
 import { registerLabConceptRoutes } from './lab-concept-routes.js';
 import { registerLabViewRoutes } from './lab-view-routes.js';
+import { registerLabStudioRoutes } from './lab-studio-routes.js';
 import { createArtService, registerLabArtRoutes } from './lab-art-routes.js';
 import { purgeOld as labPurge } from './lab-scan.js';
 import { runDue as intelRunDue, scorePending as intelScore, loadSettings as intelSettings, purgeOld as intelPurge } from './intel-engine.js';
@@ -671,6 +672,7 @@ const lab=registerLabRoutes(app, { pool, authenticate, adminOnly, getSetting, se
 // Concepts: an approved one becomes a product in the Future Basics room, with its tech pack drafted from the concept (createClientProduct, shared with the console).
 registerLabConceptRoutes(app, { pool, authenticate, adminOnly, getSetting, log: app.log, art: labArt, createProduct: args => createClientProduct(args), attachArtwork: (productId, items) => attachLabArtwork(productId, items) });
 registerLabViewRoutes(app, { pool, authenticate, adminOnly, log: app.log });
+registerLabStudioRoutes(app, { pool, authenticate, adminOnly });
 const money=registerMoneyRoutes(app, { pool, authenticate, adminOnly, getSetting, setSetting, tokenSeal: sealer(process.env), stateSecret: process.env.JWT_SECRET || 'dev', workUrl: workHubUrl, log: app.log,
   // product development is paid through a Shopify checkout (a draft order for the amount due), see money-routes.js
   shopifyInvoiceLink: async ({ title, amountCents, currency, email, note, number }) => {
@@ -703,6 +705,7 @@ app.get('/intel', (_req, reply) => reply.header('cache-control','no-store, max-a
 app.get('/home', sendWorkHome); // the work console's home: leads, prototypes, projects in flight (the old home is /admin: clients and production)
 // Brand and assets: the wordmark, icons, colours, fonts and a guide, to use and download. Open to every signed-in staff member.
 app.get('/lab', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').type('text/html').send(readFileSync(new URL('./lab.html', import.meta.url), 'utf8')));
+app.get('/lab/studio', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').type('text/html').send(readFileSync(new URL('./lab-studio.html', import.meta.url), 'utf8')));
 app.get('/team', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').type('text/html').send(readFileSync(new URL('./team.html', import.meta.url), 'utf8')));
 app.get('/brand', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').type('text/html').send(readFileSync(new URL('./brand.html', import.meta.url), 'utf8')));
 registerBrandRoutes(app, { authenticate, adminOnly });

@@ -134,15 +134,17 @@ async function openaiImageOnce(prompt, cfg) {
 }
 
 // An edit with reference images: the images go in, the model redraws them as the prompt says. Used for the hero image and for renders guided by it.
-export async function openaiEdit({ images, prompt, cfg }) {
-  return withFallback(cfg, c => openaiEditOnce({ images, prompt, cfg: c }));
+export async function openaiEdit({ images, prompt, cfg, mask = null }) {
+  return withFallback(cfg, c => openaiEditOnce({ images, prompt, cfg: c, mask }));
 }
-async function openaiEditOnce({ images, prompt, cfg }) {
+// `mask` (optional) is a PNG the size of the first image: where it is transparent the model redraws, the rest it keeps
+async function openaiEditOnce({ images, prompt, cfg, mask }) {
   const fd = new FormData();
   fd.append('model', cfg.model); fd.append('prompt', prompt); fd.append('size', cfg.size || '1024x1024'); fd.append('quality', cfg.quality || 'medium'); fd.append('n', '1'); fd.append('output_format', 'jpeg');
   const fidelity = process.env.IMAGE_INPUT_FIDELITY || (/^gpt-image-1/.test(String(cfg.model)) ? 'high' : ''); // the newer models do not take it
   if (fidelity && fidelity !== 'off') fd.append('input_fidelity', fidelity);
   images.slice(0, 4).forEach((b, i) => { const png = b[0] === 0x89 && b[1] === 0x50; fd.append('image[]', new Blob([b], { type: png ? 'image/png' : 'image/jpeg' }), `reference-${i + 1}.${png ? 'png' : 'jpg'}`); }); // artwork goes in as PNG, so its transparency survives
+  if (mask) fd.append('mask', new Blob([mask], { type: 'image/png' }), 'mask.png');
   const res = await trackedFetch('imagegen', 'https://api.openai.com/v1/images/edits', { method: 'POST', headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` }, body: fd, signal: AbortSignal.timeout(180000) });
   if (!res.ok) { const t = await res.text().catch(() => ''); throw Object.assign(new Error(`The image model refused the request (${res.status}): ${clip(t, 200)}`), { status: res.status }); }
   const j = await res.json(), item = j?.data?.[0];

@@ -132,6 +132,7 @@ A job runs every six hours and reads up to three brands that have not been read 
 | `LAB_DAILY_CONCEPTS` | how many concepts (each with a picture and a check) can be made in 24 hours (default 30) |
 | `LAB_DAILY_PROGRAMS` | how many graphic programs can be developed in a day (default 12) |
 | `LAB_DAILY_REDRAWS` | how many concept pictures can be redrawn in a day (default 30) |
+| `LAB_DAILY_STUDIO_AI` | how many AI changes and AI graphics the studio can make in a day (default 60; -1 for no limit) |
 | `LAB_DAILY_PLANS` | how many assistant-drafted plans can be made in 24 hours (default 10) |
 | `LAB_WEB_QUERIES`, `LAB_IMAGE_QUERIES` | searches per brand when falling back (default 4 and 3) |
 
@@ -196,3 +197,33 @@ Graphics used to be simple shapes the assistant drew as SVG, which came out thin
 
 ## Adding pieces from photos and screenshots
 The library takes pictures as well as links: **Add photos or screenshots** under the library (choose several at once), drop pictures on the library, or paste a screenshot anywhere on the Lab page. Each picture is shrunk in the browser, sent on its own (`POST /v1/lab/items/photo`), read by a vision model into the same facts a shop listing gives (name, category, shape, fabric, fit, colours, details, the graphics on it, and the brand when it is plainly shown), and added as a **saved** piece. An optional Brand field tags the batch; a brand on the watchlist is matched by name, any other is kept as a label. The picture is kept (`lab_items.photo`, full size at `GET /v1/lab/items/:id/photo`; the card shows a small copy) and the piece is used by trends, plans and concepts like any other. With no Claude key the picture is still added, just without the facts.
+
+## The studio: finishing a concept by hand and with AI
+
+**Open in the studio** on a concept (or on its card in the assortment viewer) opens `/lab/studio?concept=<id>`. It is a layered editor that runs in the page itself, with no outside software.
+
+- **Layers.** The concept's picture is the base layer. You can add type, shapes, paintings, our marks (cue mark, wordmark, lockup), the concept's own graphics, and your own pictures (button, drop or paste). Each layer can be hidden, locked, reordered, duplicated or deleted. It has an opacity and a blend mode. **Multiply** makes a print take the fabric's folds, and **Sit it in the fabric** sets that with a little wear in one click.
+- **By hand.**
+  - **Brush:** paints on a painting layer, or starts a new one.
+  - **Eraser:** rubs out any picture layer.
+  - **Distress brush:** wears a layer away, like an old print.
+  - **Type** and **shapes:** stay editable. Type can be bold or italic, spaced, outlined and **arched** (for a college or rock-tee arc). **Turn into pixels** lets you paint on type or a shape and rub it out.
+  - **Eyedropper:** picks a colour from the picture.
+  - Undo and redo cover every step.
+- **Colour.** Every layer has hue, saturation, brightness and contrast. **Recolour** turns a mark or graphic into one colour. The swatches are the Future Basics colours and the plan's graphic-program palette; clicking one with a layer selected colours that layer.
+- **Distress.** Every layer has an even wear: a worn print (specks and grain), cracked ink, or faded and washed out. You set the amount and grain size, and **Another pattern** gives a new one.
+- **AI.**
+  - **Change the piece:** sends everything visible to the image model with your words. With an area painted first (the area tool), only that area changes, and the answer is clipped to it so the rest stays exactly as it was.
+  - **Make a graphic:** draws a new graphic on a clear background.
+  - Either way the result comes back as a new layer on top, so nothing you made is lost. Prompts that name another brand are refused, the same as the rest of the Lab.
+- **Saving.**
+  - **Save** (Ctrl S) keeps the layers with the concept, and the studio also saves on its own while there are changes. Reopening the studio brings the design back exactly as it was saved.
+  - **Use as the concept picture** makes everything visible the concept's picture. Its views are drawn again from it, and an approved concept goes back to draft.
+  - The picture from before the studio is kept: **Put the old picture back** restores it.
+  - After that, the logo and graphics are part of the picture, so **Place the logo and graphics again** says to move them in the studio instead.
+- **Export.**
+  - **Picture (PNG)** at full size.
+  - **The selected layer (PNG)** with a clear background, for a print file.
+  - **Layers for Illustrator (SVG)**, one group per layer. Plain type and shapes stay live vectors; anything recoloured partly, adjusted or distressed is placed as its picture.
+- Fonts other than Space Grotesk and IBM Plex Mono are the computer's own (serif, slab, condensed, script, typewriter), so they can look slightly different on another machine. The SVG names the font.
+- Routes: `src/lab-studio-routes.js` (`GET/PUT /v1/lab/concepts/:id/studio`, `GET …/studio/plain`, `POST …/studio/ai`, `POST …/studio/apply`, `POST …/studio/restore`). The page is `src/lab-studio.html`, and the table is `lab_studio_docs`. A saved design can be up to 30 MB and 80 layers. A layer's picture can only come from the design itself, a Lab graphic or one of our marks, never from an outside address.

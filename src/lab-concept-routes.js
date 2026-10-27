@@ -224,6 +224,7 @@ export function registerLabConceptRoutes(app, d) {
     if (!needId(req, reply)) return;
     const r = (await pool.query('select * from lab_concepts where id=$1', [req.params.id])).rows[0]; if (!r) return bad(reply, 'Not found', 404);
     if (r.status === 'tech_pack') return bad(reply, 'This concept is already a tech pack', 409);
+    if (!r.raw && (await pool.query('select 1 from lab_studio_docs where concept_id=$1 and applied_at is not null', [r.id])).rowCount) return bad(reply, 'This picture was finished in the studio, so the logo and graphics are part of it now. Move them in the studio, or redraw the picture.', 409);
     if (!r.raw) return bad(reply, 'This picture was drawn before the plain copy was kept. Use Redraw the picture once; after that the marks can be placed again for free.', 409);
     let img; try { img = await finishConcept(r.raw, { name: r.name, category: r.category, twist: r.twist, spec: ensureBranding(r.spec || {}, r.category) }, { cfg: imageCfg(), locate: placeImpl, arts: await artsFor(r.spec) }); } catch (e) { return bad(reply, `The marks could not be placed: ${clip(e.message, 160)}`, 502); }
     await pool.query(`update lab_concepts set image=$2, thumb=$3, updated_at=now() where id=$1`, [r.id, img.image, img.thumb]);

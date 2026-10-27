@@ -1,0 +1,163 @@
+// Design Lab studio: a concept's picture opened in a layered editor (src/lab-studio.html) to be finished by hand and with the image model: brush and eraser,
+// type, shapes, the Future Basics marks and colours, the plan's graphics, recolouring and distressing, and AI edits of the whole piece or a painted area.
+//   GET  /v1/lab/concepts/:id/studio            the concept, the saved design (layers), the brand marks and colours, the concept's graphics
+//   GET  /v1/lab/concepts/:id/studio/plain      the picture before the logo and graphics were laid on (when it was kept)
+//   PUT  /v1/lab/concepts/:id/studio            save the design {doc}
+//   POST /v1/lab/concepts/:id/studio/ai         {mode:'edit', image, mask?, prompt} redraw the piece (or only the painted area) · {mode:'art', prompt} a new graphic on a clear background
+//   POST /v1/lab/concepts/:id/studio/apply      {image} the finished design becomes the concept's picture (the picture before the first one is kept)
+//   POST /v1/lab/concepts/:id/studio/restore    put back the picture the concept had before the studio
+import sharp from 'sharp';
+import { imageConfig, openaiEdit, openaiImage } from './check.js';
+import { brandHits } from './lab-concepts.js';
+import { logoSvg, COLORS } from './brand-kit.js';
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const clip = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
+export const LAYER_KINDS = new Set(['base', 'image', 'paint', 'text', 'shape']);
+const MAX_DOC = 30_000_000, MAX_LAYERS = 80;
+// where a layer's picture may come from: a picture inside the design itself, a graphic of the Lab, or one of our marks; never an outside address
+const SRC_OK = /^(data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+|\/v1\/lab\/art\/[0-9a-f-]{36}|brand:(mark|word|lockup))$/i;
+
+// → { doc } or { error }. The page draws the layers itself; this only keeps what it is sent within bounds.
+export function cleanDoc(input) {
+  const d = input && typeof input === 'object' ? input : null; if (!d) return { error: 'Nothing to save' };
+  const w = Math.round(Number(d.w)), h = Math.round(Number(d.h));
+  if (!(w >= 64 && w <= 4096 && h >= 64 && h <= 4096)) return { error: 'The design has no size' };
+  if (!Array.isArray(d.layers) || !d.layers.length) return { error: 'The design has no layers' };
+  if (d.layers.length > MAX_LAYERS) return { error: `A design can have up to ${MAX_LAYERS} layers` };
+  for (const l of d.layers) {
+    if (!l || typeof l !== 'object' || !LAYER_KINDS.has(l.kind)) return { error: 'A layer of an unknown kind' };
+    for (const k of ['src', 'mask', 'distressMap']) if (l[k] != null && l[k] !== '' && !SRC_OK.test(String(l[k]))) return { error: 'A layer points at a picture outside the design' };
+    if (l.text != null && String(l.text).length > 400) return { error: 'A line of type is too long (400 characters at most)' };
+  }
+  const doc = { v: 1, w, h, layers: d.layers, selected: typeof d.selected === 'string' ? d.selected.slice(0, 40) : null };
+  if (JSON.stringify(doc).length > MAX_DOC) return { error: 'The design is too big to save (30 MB). Merge or delete some picture layers.' };
+  return { doc };
+}
+
+const pictureOf = dataUrl => { const m = /^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/=]+)$/i.exec(String(dataUrl || '')); return m ? Buffer.from(m[2], 'base64') : null; };
+export const editPrompt = (prompt, { masked }) => [
+  masked ? 'Edit only the transparent area of the mask in this product picture; everything outside it must stay exactly as it is, pixel for pixel.' : 'Edit this product picture.',
+  `What to change: ${prompt}`,
+  'Keep the garment\'s shape, the camera, the light and the background unless the change asks for them. Keep the Future Basics marks as they are unless the change is about them. Do not add any other company\'s name, logo or trade dress. Photorealistic.'
+].join('\n');
+export const artPrompt = prompt => `An original garment graphic, print-ready flat artwork isolated on a fully transparent background, nothing else in the picture: ${prompt}. Crisp edges, limited ink colours, no mock-up, no garment, no shadow. Do not use any other company's name, logo or trade dress.`;
+
+async function fixtureEdit(img, mask) {
+  const base = sharp(img).png(), meta = await sharp(img).metadata();
+  const tinted = await sharp(img).removeAlpha().modulate({ hue: 90, saturation: 1.4 }).png().toBuffer();
+  if (!mask) return tinted;
+  // the fixture changes only where the mask is clear, like the real model is asked to
+  const hole = await sharp(mask).resize(meta.width, meta.height).extractChannel('alpha').negate().toBuffer();
+  const cut = await sharp(tinted).joinChannel(hole).png().toBuffer();
+  return base.composite([{ input: cut }]).png().toBuffer();
+}
+const fixtureArt = prompt => sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024"><circle cx="512" cy="512" r="300" fill="none" stroke="#141416" stroke-width="40"/><text x="512" y="540" font-family="sans-serif" font-size="70" text-anchor="middle" fill="#a02a20">${clip(prompt, 18).replace(/[<&>"]/g, '')}</text></svg>`)).png().toBuffer();
+
+export function registerLabStudioRoutes(app, d) {
+  const { pool, authenticate, adminOnly, env = process.env, imageCfg = () => imageConfig(env), editImpl = openaiEdit, imageImpl = openaiImage } = d;
+  const pre = [authenticate, adminOnly], bad = (reply, error, code = 422, extra = {}) => reply.code(code).send({ error, ...extra });
+  const actorOf = req => (UUID.test(String(req.auth?.sub || '')) ? req.auth.sub : null);
+  const nameOf = async req => { const id = actorOf(req); if (!id) return 'Staff'; return (await pool.query(`select coalesce(nullif(name,''), split_part(email,'@',1)) n from users where id=$1`, [id])).rows[0]?.n || 'Staff'; };
+  const note = async (id, req, body) => pool.query(`insert into lab_concept_comments(concept_id,user_id,name,body) values($1,$2,$3,$4)`, [id, actorOf(req), await nameOf(req), clip(body, 1000)]);
+  const concept = async (req, reply) => {
+    if (!UUID.test(req.params.id)) return bad(reply, 'Not found', 404), null;
+    const r = (await pool.query('select id, name, category, status, spec, plan_id, (raw is not null) has_plain, (image is not null) has_image from lab_concepts where id=$1', [req.params.id])).rows[0];
+    if (!r) return bad(reply, 'Not found', 404), null; return r;
+  };
+  const uses = new Map(), dayOf = () => new Date().toISOString().slice(0, 10);
+  const cap = () => Number(env.LAB_DAILY_STUDIO_AI ?? 60);
+  const left = () => { const c = cap(); return c < 0 ? null : Math.max(0, c - (uses.get(dayOf()) || 0)); };
+
+  app.get('/v1/lab/concepts/:id/studio', { preHandler: pre }, async (req, reply) => {
+    const c = await concept(req, reply); if (!c) return;
+    const s = (await pool.query(`select s.doc, s.updated_at, s.applied_at, (s.original is not null) has_original, coalesce(nullif(u.name,''), split_part(u.email,'@',1)) by_name from lab_studio_docs s left join users u on u.id=s.updated_by where s.concept_id=$1`, [c.id])).rows[0];
+    const program = c.plan_id ? (await pool.query('select program from lab_plans where id=$1', [c.plan_id])).rows[0]?.program : null;
+    const palette = [...COLORS.map(x => ({ name: x.name, hex: x.hex, from: 'brand' })), ...((program?.palette || []).map(x => ({ name: clip(x.name, 40), hex: x.hex, from: 'program' })))].filter(x => /^#[0-9a-f]{6}$/i.test(x.hex || ''));
+    const cfg = imageCfg();
+    return {
+      concept: { id: c.id, name: c.name, category: c.category, status: c.status, hasImage: c.has_image, hasPlain: c.has_plain, locked: c.status === 'tech_pack', colors: c.spec?.colors || [] },
+      doc: s?.doc || null, savedAt: s?.updated_at || null, savedBy: s?.by_name || '', appliedAt: s?.applied_at || null, canRestore: Boolean(s?.has_original),
+      marks: [{ id: 'mark', label: 'Cue mark', svg: logoSvg('mark') }, { id: 'word', label: 'Wordmark', svg: logoSvg('word') }, { id: 'lockup', label: 'Wordmark and cue mark', svg: logoSvg('lockup') }],
+      palette, graphics: (c.spec?.graphics || []).filter(g => g.art).map(g => ({ art: g.art, name: clip(g.name, 60) })),
+      ai: { connected: cfg.configured, model: cfg.model || null, left: left() }
+    };
+  });
+
+  app.get('/v1/lab/concepts/:id/studio/plain', { preHandler: pre }, async (req, reply) => {
+    if (!UUID.test(req.params.id)) return bad(reply, 'Not found', 404);
+    const r = (await pool.query('select raw from lab_concepts where id=$1', [req.params.id])).rows[0]; if (!r?.raw) return bad(reply, 'No plain picture was kept for this concept', 404);
+    return reply.header('content-type', 'image/jpeg').header('cache-control', 'private, no-cache').send(r.raw);
+  });
+
+  app.put('/v1/lab/concepts/:id/studio', { preHandler: pre, bodyLimit: 32_000_000 }, async (req, reply) => {
+    const c = await concept(req, reply); if (!c) return;
+    if (c.status === 'tech_pack') return bad(reply, 'This concept is already a tech pack', 409);
+    const { doc, error } = cleanDoc(req.body?.doc); if (error) return bad(reply, error);
+    const r = (await pool.query(`insert into lab_studio_docs(concept_id, doc, updated_by) values($1,$2,$3) on conflict(concept_id) do update set doc=excluded.doc, updated_by=excluded.updated_by, updated_at=now() returning updated_at`, [c.id, doc, actorOf(req)])).rows[0];
+    return { ok: true, savedAt: r.updated_at };
+  });
+
+  app.post('/v1/lab/concepts/:id/studio/ai', { preHandler: pre, bodyLimit: 32_000_000 }, async (req, reply) => {
+    const c = await concept(req, reply); if (!c) return;
+    if (c.status === 'tech_pack') return bad(reply, 'This concept is already a tech pack', 409);
+    const b = req.body || {}, mode = b.mode === 'art' ? 'art' : 'edit', prompt = clip(b.prompt, 800);
+    if (prompt.length < 3) return bad(reply, mode === 'art' ? 'Say what the graphic should be' : 'Say what to change');
+    const hits = brandHits(prompt, (await pool.query('select name from lab_brands')).rows.map(r => r.name));
+    if (hits.length) return bad(reply, `Leave other brands out of the prompt (${hits.slice(0, 3).join(', ')}). Describe the look in your own words.`);
+    const cfg = imageCfg(); if (!cfg.configured) return bad(reply, 'No image model is connected', 503);
+    if (left() === 0) return bad(reply, `The daily limit of ${cap()} studio AI edits is reached. Raise LAB_DAILY_STUDIO_AI.`, 429);
+    let out;
+    try {
+      if (mode === 'art') out = cfg.provider === 'fixture' ? await fixtureArt(prompt) : await imageImpl(artPrompt(prompt), { ...cfg, size: '1024x1024', format: 'png', background: 'transparent' });
+      else {
+        const img = pictureOf(b.image); if (!img) return bad(reply, 'Send the picture to change');
+        const mask = b.mask ? pictureOf(b.mask) : null; if (b.mask && !mask) return bad(reply, 'The painted area could not be read');
+        const meta = await sharp(img).metadata().catch(() => null); if (!meta?.width) return bad(reply, 'The picture could not be read');
+        // the model takes the picture and the mask at the same size: the mask is fitted to the picture, and goes as PNG with its transparency
+        const png = await sharp(img).png().toBuffer(), m = mask ? await sharp(mask).resize(meta.width, meta.height, { fit: 'fill' }).ensureAlpha().png().toBuffer() : null;
+        out = cfg.provider === 'fixture' ? await fixtureEdit(png, m) : await editImpl({ images: [png], mask: m, prompt: editPrompt(prompt, { masked: Boolean(m) }), cfg: { ...cfg, size: 'auto' } });
+        // the answer is brought back to the picture's own size, so it lands exactly over it
+        out = await sharp(out).resize(meta.width, meta.height, { fit: 'fill' }).png().toBuffer();
+      }
+    } catch (e) { return bad(reply, `The image model could not do it: ${clip(e.message, 200)}`, 502); }
+    uses.set(dayOf(), (uses.get(dayOf()) || 0) + 1);
+    if (mode === 'art') out = await sharp(out).png().toBuffer();
+    return { image: `data:image/png;base64,${out.toString('base64')}`, mode, left: left() };
+  });
+
+  app.post('/v1/lab/concepts/:id/studio/apply', { preHandler: pre, bodyLimit: 32_000_000 }, async (req, reply) => {
+    const c = await concept(req, reply); if (!c) return;
+    if (c.status === 'tech_pack') return bad(reply, 'This concept is already a tech pack', 409);
+    const buf = pictureOf(req.body?.image); if (!buf) return bad(reply, 'Send the finished picture');
+    let image, thumb; try {
+      image = await sharp(buf).flatten({ background: '#ffffff' }).resize({ width: 2048, height: 2048, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 90 }).toBuffer();
+      thumb = await sharp(image).resize({ width: 420, height: 420, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 72 }).toBuffer();
+    } catch { return bad(reply, 'The picture could not be read'); }
+    const client = await pool.connect();
+    try {
+      await client.query('begin');
+      // the picture the concept had before the studio is kept once, so it can always be put back
+      await client.query(`insert into lab_studio_docs(concept_id, doc, original, applied_at, updated_by) select id, '{}'::jsonb, image, now(), $2 from lab_concepts where id=$1
+        on conflict(concept_id) do update set original=coalesce(lab_studio_docs.original, (select image from lab_concepts where id=$1)), applied_at=now()`, [c.id, actorOf(req)]);
+      const back = c.status === 'approved';
+      await client.query(`update lab_concepts set image=$2, thumb=$3, raw=null, image_note='', status=$4, override_reason=case when $5 then '' else override_reason end, updated_at=now() where id=$1`, [c.id, image, thumb, back ? 'draft' : c.status, back]);
+      await client.query('delete from lab_concept_views where concept_id=$1', [c.id]); // the flats and the on-model views were drawn from the old picture
+      await client.query('commit');
+      await note(c.id, req, back ? 'Picture finished in the studio. It was approved, so it is back to draft to be approved again.' : 'Picture finished in the studio.');
+      return { ok: true, status: back ? 'draft' : c.status };
+    } catch (e) { await client.query('rollback').catch(() => {}); throw e; } finally { client.release(); }
+  });
+
+  app.post('/v1/lab/concepts/:id/studio/restore', { preHandler: pre }, async (req, reply) => {
+    const c = await concept(req, reply); if (!c) return;
+    if (c.status === 'tech_pack') return bad(reply, 'This concept is already a tech pack', 409);
+    const s = (await pool.query('select original from lab_studio_docs where concept_id=$1', [c.id])).rows[0]; if (!s?.original) return bad(reply, 'The picture has not been changed in the studio', 409);
+    const thumb = await sharp(s.original).resize({ width: 420, height: 420, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 72 }).toBuffer();
+    await pool.query(`update lab_concepts set image=$2, thumb=$3, updated_at=now() where id=$1`, [c.id, s.original, thumb]);
+    await pool.query(`update lab_studio_docs set original=null, applied_at=null where concept_id=$1`, [c.id]);
+    await pool.query('delete from lab_concept_views where concept_id=$1', [c.id]);
+    await note(c.id, req, 'The picture from before the studio was put back.');
+    return { ok: true };
+  });
+}
