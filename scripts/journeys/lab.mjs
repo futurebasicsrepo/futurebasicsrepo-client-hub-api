@@ -171,7 +171,7 @@ await journey('J195', 'Design Lab in a browser: the library, filters, save and h
     ok(/Design Lab/.test(await page.innerText('.hero h1')) && (await page.locator('#items .card').count()) >= 3, 'the library opens with pieces in it');
     ok((await page.locator('#catPills .pill').allInnerTexts()).some(t => /Footwear/.test(t)) && (await page.locator('#catPills .pill').allInnerTexts()).some(t => /Headwear/.test(t)), 'the category filter covers hats and footwear, not only clothes');
     await page.waitForFunction(() => { const a = document.querySelector('.fbside a[data-nav="Design Lab"]'); return a && !a.hidden; }, null, { timeout: 8000 }).catch(() => {});
-    ok(await page.locator('.fbside a[data-module="lab"]:not([hidden])').count() === 1 && await page.locator('#labTabs a').count() === 7, 'the owner sees the Design Lab in the menu as one entry, with its seven sections as tabs on the page');
+    ok(await page.locator('.fbside a[data-module="lab"]:not([hidden])').count() === 1 && await page.locator('#labTabs a').count() === 8, 'the owner sees the Design Lab in the menu as one entry, with its eight sections as tabs on the page', [await page.locator('.fbside a[data-module="lab"]:not([hidden])').count(), await page.locator('#labTabs a').count()]);
     await page.locator('#labTabs a[href="#plans"]').first().click(); await page.waitForFunction(() => { const r = document.getElementById('plans').getBoundingClientRect(); return r.top >= 0 && r.top < 300; }, null, { timeout: 8000 }).catch(() => {});
     ok(await page.evaluate(() => { const r = document.getElementById('plans').getBoundingClientRect(); return r.top >= 0 && r.top < 300; }), 'the menu\'s Line plans link takes you to the plans section, not just the top of the page', await page.evaluate(() => document.getElementById('plans').getBoundingClientRect().top));
     await page.locator('#labTabs a[href="#library"]').first().click(); await page.waitForFunction(() => document.getElementById('library').getBoundingClientRect().top < 300, null, { timeout: 8000 }).catch(() => {});
@@ -1019,6 +1019,41 @@ await journey('J216', 'Design service: a line designed for a client in their bra
         ok(errs.length === 0, 'no page errors', errs);
       } finally { await bw.close(); }
     }
+  } finally { await cleanup(brands, plan.plan?.id); }
+});
+
+await journey('J217', 'Design to factory and back: a concept becomes a tech pack carrying its flats; it is published and sent to a factory; the factory marks the proto sent; the sample is reviewed against the spec; the corrections become version 2; the factory sees what changed and the next sample is asked for', async () => {
+  const { brands, plan } = await conceptSetup(); await import('../../src/sample-review.js'); const FBSample = globalThis.FBSample;
+  const A = (path, o = {}) => call(path, { token: kyleT, ...o });
+  try {
+    const line = plan.lines.find(l => l.category === 'tops') || plan.lines[0], mk = await K(`/plans/${plan.plan.id}/lines/${line.id}/concepts`, { body: { count: 1 } }), c = mk.json.concepts[0];
+    ok((await K(`/concepts/${c.id}/approve`, { body: { overrideReason: 'reviewed side by side with the references: it is ours' } })).status === 200, '1. the concept is approved');
+    const fl = (await K(`/concepts/${c.id}/flats`)).json; ok(fl.flat && (await K(`/concepts/${c.id}/flats`, { method: 'PUT', body: fl.flat })).status === 200, '2. its flats are drawn and saved');
+    const tp = await K(`/concepts/${c.id}/tech-pack`, { body: {} }); ok(tp.status === 201, '3. it becomes a tech pack', tp.json); const pid = tp.json.productId;
+    let pack = (await A(`/v1/admin/products/${pid}/tech-pack`)).json;
+    ok(pack.lab?.id === c.id && pack.techPack.data.pom.some(r => r.how === 'From the flats') && pack.techPack.data.sketches.some(k => k.id === 'lab-flat-front'), '   carrying its measurements and flats, and a link back to the concept', pack.lab);
+    const data = pack.techPack.data; data.sampling = [{ stage: 'Proto sample', qty: '2', status: 'requested' }, { stage: 'Fit sample', qty: '2', status: 'planned' }];
+    ok((await A(`/v1/admin/products/${pid}/tech-pack`, { method: 'PUT', body: { data } })).status === 200, '4. the samples are planned');
+    const pub = await A(`/v1/admin/products/${pid}/tech-pack/publish`, { method: 'POST', body: { override: 'journey: design to factory' } }); ok(pub.status === 200, '5. version 1 is published', pub.json);
+    const sup = (await A('/v1/admin/suppliers', { method: 'POST', body: { name: `Round Trip Mill ${stamp}` } })).json;
+    const asg = await A(`/v1/admin/products/${pid}/tech-pack/factory`, { method: 'POST', body: { supplierId: sup.id, mode: 'review' } }); ok(asg.status === 200 || asg.status === 201, '6. it is sent to a factory', asg.json);
+    const tok = asg.json.assignment.packUrl.split('/tp/')[1];
+    let fv = (await call(`/v1/tp/${tok}`)).json; ok(fv.techPack.version === 1 && fv.techPack.data.sampling.length === 2 && fv.techPack.data.pom.length >= 5, '   the factory reads version 1: its measurements and the samples due', fv.techPack?.version);
+    ok((await call(`/v1/tp/${tok}/sample`, { body: { stage: 'Proto sample', tracking: 'DHL 4471' } })).status === 200, '7. the factory marks the proto sent');
+    pack = (await A(`/v1/admin/products/${pid}/tech-pack`)).json; const live = pack.techPack.data;
+    ok(live.sampling[0].status === 'sent' && live.sampling[0].tracking === 'DHL 4471', '   the team sees it sent, with its tracking', live.sampling[0]);
+    // the review: the chest is an inch and a half over, the length is accepted as the new spec, one correction
+    const size = FBSample.sampleSizeOf(live), chest = live.pom[0], len = live.pom[1], spec = Number(chest.values[size]);
+    live.sampling[0].review = { verdict: 'revise', at: '2026-10-27', by: 'Kyle', measured: { [chest.code]: String(spec + 1.5), [len.code]: String(Number(len.values[size]) + .5) }, adopt: [len.code], corrections: [{ area: 'Neck rib', change: 'Rib rolls: use a 2x2 rib, 1 in finished' }] };
+    const check = FBSample.check(live, 0); ok(check[0].out === true && check[1].out === false, '8. the sample is measured against the spec and its tolerance', check.slice(0, 2));
+    const next = FBSample.apply(live, 0);
+    ok((await A(`/v1/admin/products/${pid}/tech-pack`, { method: 'PUT', body: { data: next } })).status === 200, '9. the review writes the next version', next.sampling.map(r => r.status));
+    const pub2 = await A(`/v1/admin/products/${pid}/tech-pack/publish`, { method: 'POST', body: { override: 'journey: corrections from the proto' } }); ok(pub2.status === 200, '10. version 2 is published', pub2.json);
+    fv = (await call(`/v1/tp/${tok}`)).json; const d2 = fv.techPack.data;
+    ok(fv.techPack.version === 2 && d2.construction.some(r => /Correction · Proto sample: Neck rib/.test(r.area)) && d2.construction.some(r => /measurements to correct/.test(r.area)), '11. the factory reads version 2 with the corrections', fv.techPack?.version);
+    ok(Number(d2.pom[1].values[size]) === Number(len.values[size]) + .5 && Number(d2.pom[0].values[size]) === spec, '   the accepted length is the new spec; the chest stays and is to be corrected');
+    ok(d2.sampling[0].status === 'revise' && d2.sampling[1].status === 'requested', '   the proto is marked for corrections and the fit sample is asked for', d2.sampling.map(r => r.status));
+    const rev = (fv.revisions || fv.techPack.revisions || []).find(r => Number(r.version) === 2); ok(rev && (rev.changes || []).length > 0, '12. "what changed in v2" is there for the factory', fv.revisions?.length);
   } finally { await cleanup(brands, plan.plan?.id); }
 });
 

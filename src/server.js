@@ -737,7 +737,10 @@ const sendStart=(_req,reply)=>reply.header('cache-control','no-store, max-age=0'
 app.get('/start', sendStart);
 // Public prices: what one pack costs, the membership when there is one, and whether the gate is on (when it is off every pack is free). The page and /start read the same numbers.
 app.get('/pricing',(_req,reply)=>reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./pricing.html',import.meta.url),'utf8')));
-app.get('/v1/pricing',async(_req,reply)=>{const p=techPackPricing();return reply.header('cache-control','public, max-age=60').send({single:p.single,membership:p.membership?{amountCents:p.membership.amountCents,currency:p.membership.currency,period:p.membership.period,url:p.membership.url}:null,billing:billingOn()})});
+// the design service's packages (Design Lab work for a client): a price shows only when one is set, otherwise the page says "Quoted"
+const designPrice=v=>{const n=Number(v);return Number.isFinite(n)&&n>0?Math.round(n):null};
+app.get('/v1/pricing',async(_req,reply)=>{const p=techPackPricing();return reply.header('cache-control','public, max-age=60').send({single:p.single,membership:p.membership?{amountCents:p.membership.amountCents,currency:p.membership.currency,period:p.membership.period,url:p.membership.url}:null,billing:billingOn(),
+  design:{pieceCents:designPrice(process.env.DESIGN_PIECE_PRICE_CENTS),lineCents:designPrice(process.env.DESIGN_LINE_PRICE_CENTS),contactUrl:process.env.DESIGN_CONTACT_URL||'https://thefuturebasics.com/pages/contact'}})});
 // Account sign-up without a tech pack: a short form that opens a hub room straight away (see POST /v1/public/join).
 app.get('/join',(_req,reply)=>reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./join.html',import.meta.url),'utf8')));
 // The same page on a short address for texting: /j, or /j/kyle with the sender's name on it (and kept on the room as where it came from).

@@ -1783,6 +1783,7 @@ await journey('J187', 'cost and Excel: unit costs add up to a landed cost and a 
   const pr = await get('/v1/pricing'), pj = JSON.parse(pr.buf.toString('utf8')), pg = await get('/pricing');
   ok(pr.status === 200 && pj.single?.amountCents > 0 && pj.single.currency === 'USD' && typeof pj.billing === 'boolean' && (pj.membership === null || pj.membership.amountCents > 0), 'the public prices are readable without signing in', pj);
   ok(pg.status === 200 && /Tech pack pricing/.test(pg.buf.toString('utf8')) && /First pack/.test(pg.buf.toString('utf8')), 'and the pricing page is public');
+  ok(pj.design && pj.design.pieceCents === null && /^https:/.test(pj.design.contactUrl) && /Design a piece/.test(pg.buf.toString('utf8')) && /Design a line/.test(pg.buf.toString('utf8')), 'the design service is on the pricing page, quoted until its prices are set', pj.design);
 
 });
 

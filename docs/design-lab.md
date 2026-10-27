@@ -1,5 +1,7 @@
 # Design Lab
 
+The whole route from a line plan to a corrected sample, and the design service for clients, is in [design-to-factory.md](design-to-factory.md).
+
 A part of the work console for Danielle and Kyle (and anyone they tick it for on **Team access**). It looks at what brands like Ralph Lauren, Aimé Leon Dore and A-COLD-WALL* make and what is selling through, so line plans start from the market and the Future Basics brand code instead of a blank page.
 
 All three parts are built.
