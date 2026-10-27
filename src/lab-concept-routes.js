@@ -32,11 +32,12 @@ export function registerLabConceptRoutes(app, d) {
   const shape = (r, { refs = null } = {}) => ({
     id: r.id, planId: r.plan_id, planName: r.plan_name || '', lineId: r.line_id, parentId: r.parent_id, name: r.name, category: r.category, categoryLabel: categoryLabel(r.category), role: r.role, spec: ensureBranding(r.spec || {}, r.category), twist: r.twist,
     price: r.price_cents == null ? null : r.price_cents / 100, cost: r.cost_cents == null ? null : r.cost_cents / 100, qty: r.qty, status: r.status, closeness: r.closeness || null, hasImage: Boolean(r.has_image ?? r.image), thumb: dataUrl(r.thumb), imageNote: r.image_note,
+    clientId: r.plan_client_id || null, clientName: r.client_name || '', clientVerdict: r.client_verdict || '', clientNote: r.client_note || '', clientAt: r.client_at || null,
     overrideReason: r.override_reason, rejectedReason: r.rejected_reason, approvedBy: r.approver || '', approvedAt: r.approved_at, productId: r.product_id, productUrl: productUrl(r.product_id), createdAt: r.created_at, updatedAt: r.updated_at,
     ...(refs ? { refs: refs.map(refShape) } : { refIds: r.refs || [] })
   });
   const SELECT = `select c.id, c.plan_id, c.line_id, c.parent_id, c.name, c.category, c.role, c.spec, c.twist, c.price_cents, c.cost_cents, c.qty, c.refs, c.thumb, c.image_note, c.status, c.closeness, c.override_reason, c.rejected_reason, c.approved_at, c.product_id, c.created_at, c.updated_at,
-    (c.image is not null) has_image, p.name plan_name, coalesce(nullif(u.name,''), split_part(u.email,'@',1)) approver from lab_concepts c left join lab_plans p on p.id=c.plan_id left join users u on u.id=c.approved_by`;
+    (c.image is not null) has_image, p.name plan_name, c.client_verdict, c.client_note, c.client_at, p.client_id plan_client_id, (select name from clients where id=p.client_id) client_name, coalesce(nullif(u.name,''), split_part(u.email,'@',1)) approver from lab_concepts c left join lab_plans p on p.id=c.plan_id left join users u on u.id=c.approved_by`;
   async function one(id) { const r = (await pool.query(`${SELECT} where c.id=$1`, [id])).rows[0]; return r ? shape(r, { refs: await refRows(r.refs) }) : null; }
   const note = async (conceptId, req, body) => pool.query(`insert into lab_concept_comments(concept_id,user_id,name,body) values($1,$2,$3,$4)`, [conceptId, actorOf(req), await nameOf(req), clip(body, 1000)]);
 
@@ -54,8 +55,11 @@ export function registerLabConceptRoutes(app, d) {
     const code = await loadCode(), names = await brandNames(), trends = await trendsFor(180), cat = trends.categories.find(c => c.id === line.category);
     let ids = refIds?.length ? refIds : cat?.movers?.map(m => m.id) || [];
     const refs = await refRows(ids.slice(0, 6));
-    const program = plan?.id ? (await pool.query('select program from lab_plans where id=$1', [plan.id])).rows[0]?.program || null : null;
-    const gen = await generateConcepts({ line, plan, refs: refs.map(r => ({ title: r.title, attrs: r.attrs })), trend: cat, program, code, count, note: steer, parent, askImpl, env, fetchImpl });
+    const pr = plan?.id ? (await pool.query('select program, brand, client_id from lab_plans where id=$1', [plan.id])).rows[0] : null, program = pr?.program || null;
+    // a client's line is written for their brand, and carries their logo (placed by hand), not ours
+    const brand = pr?.client_id && pr.brand?.name ? pr.brand : null;
+    const gen = await generateConcepts({ line, plan, refs: refs.map(r => ({ title: r.title, attrs: r.attrs })), trend: cat, program, code: brand ? { ...code, statement: brand.statement || code.statement, exemplars: [] } : code, count, note: steer, parent, brand, askImpl, env, fetchImpl });
+    if (brand) for (const c of gen.concepts) c.spec = { ...c.spec, branding: { ...(c.spec.branding || {}), logo: { ...(c.spec.branding?.logo || {}), mark: 'none' } } };
     if (!gen.concepts.length) throw Object.assign(new Error('The assistant did not come back with usable concepts. Try again, or change the note.'), { status: 502 });
     const cfg = imageCfg(), refLite = refs.map(r => ({ id: r.id, title: r.title, brand: r.brand, attrs: r.attrs || {}, summary: r.summary }));
     const made = await Promise.all(gen.concepts.map(async c => {
@@ -108,7 +112,7 @@ export function registerLabConceptRoutes(app, d) {
   app.get('/v1/lab/concepts/:id', { preHandler: pre }, async (req, reply) => {
     if (!needId(req, reply)) return;
     const c = await one(req.params.id); if (!c) return bad(reply, 'Not found', 404);
-    const comments = (await pool.query(`select id, name, body, at from lab_concept_comments where concept_id=$1 order by at, id`, [c.id])).rows.map(r => ({ id: Number(r.id), name: r.name, body: r.body, at: r.at }));
+    const comments = (await pool.query(`select id, name, body, at, by_client from lab_concept_comments where concept_id=$1 order by at, id`, [c.id])).rows.map(r => ({ id: Number(r.id), byClient: r.by_client, name: r.by_client ? `${r.name} (client)` : r.name, body: r.body, at: r.at }));
     const parent = c.parentId ? (await pool.query('select id, name from lab_concepts where id=$1', [c.parentId])).rows[0] : null;
     return { concept: c, comments, parent: parent ? { id: parent.id, name: parent.name } : null };
   });
@@ -255,15 +259,18 @@ export function registerLabConceptRoutes(app, d) {
     if (r.status !== 'approved') return bad(reply, 'Approve the concept first', 409);
     if (r.closeness?.verdict === 'too_close' && clip(r.override_reason, 400).length < 10) return bad(reply, 'The check says this is too close to what inspired it, and no reason was written down. Reopen it and approve it again.', 409);
     if (!createProduct) return bad(reply, 'Tech packs cannot be started from here on this service', 501);
-    const room = (await pool.query(`select id from clients where slug='future-basics' and status='active'`)).rows[0]; if (!room) return bad(reply, 'The Future Basics room is not active', 409);
+    // a concept from a client's line becomes a tech pack in the client's own room; our own line's go to the Future Basics room
+    const lp = r.plan_id ? (await pool.query('select client_id, brand from lab_plans where id=$1', [r.plan_id])).rows[0] : null, forClient = lp?.client_id || null;
+    const room = (await pool.query(forClient ? `select id from clients where id=$1 and archived_at is null` : `select id from clients where slug='future-basics' and status='active'`, forClient ? [forClient] : [])).rows[0];
+    if (!room) return bad(reply, forClient ? 'The client this line is for has no active room' : 'The Future Basics room is not active', 409);
     // claim it first, so two clicks make one product; give the claim back if the product cannot be made
     const claimed = await pool.query(`update lab_concepts set status='tech_pack', updated_at=now() where id=$1 and product_id is null and status='approved' returning id`, [r.id]);
     if (!claimed.rowCount) return bad(reply, 'This concept already has a tech pack', 409);
     const photo = (await pool.query('select image from lab_concepts where id=$1', [r.id])).rows[0]?.image;
-    let product; try { product = await createProduct({ clientId: room.id, title: r.name, descriptionHtml: productBrief({ name: r.name, category: r.category, programName: r.program_name, spec: r.spec, twist: r.twist, priceCents: r.price_cents, costCents: r.cost_cents, qty: r.qty }, { name: r.plan_name, season: r.season }), vendor: 'Future Basics', productType: PRODUCT_TYPES[r.category] || null, referencePhotos: photo ? [dataUrl(photo)] : [], actorId: actorOf(req) }); }
+    let product; try { product = await createProduct({ clientId: room.id, title: r.name, descriptionHtml: productBrief({ name: r.name, category: r.category, programName: r.program_name, spec: r.spec, twist: r.twist, priceCents: r.price_cents, costCents: r.cost_cents, qty: r.qty }, { name: r.plan_name, season: r.season }), vendor: (forClient && lp.brand?.name) || 'Future Basics', productType: PRODUCT_TYPES[r.category] || null, referencePhotos: photo ? [dataUrl(photo)] : [], actorId: actorOf(req) }); }
     catch (e) { await pool.query(`update lab_concepts set status='approved' where id=$1 and product_id is null`, [r.id]); return bad(reply, `The product could not be made: ${clip(e.message, 200)}`, 502); }
     await pool.query(`update lab_concepts set product_id=$2, updated_at=now() where id=$1`, [r.id, product.id]);
-    let art = 0; if (attachArtwork) { try { art = await attachArtwork(product.id, await artworkFiles({ category: r.category, spec: r.spec }, { arts: await artsFor(r.spec) })); } catch (e) { log.warn?.({ err: e.message }, 'design lab artwork not attached'); } }
+    let art = 0; if (attachArtwork) { try { art = await attachArtwork(product.id, (await artworkFiles({ category: r.category, spec: r.spec }, { arts: await artsFor(r.spec) })).filter(a => !forClient || !/^Future Basics /.test(a.name))); } catch (e) { log.warn?.({ err: e.message }, 'design lab artwork not attached'); } }
     // the flats and the spec sheet go with it when they were drawn
     // the flats go with it when they were drawn: as files, as its front and back sketches, its measurements, details, stitching and colour
     let flats = null; if (sendFlats) { try { flats = await sendFlats(r.id, product.id); if (flats) art += flats.files; } catch (e) { log.warn?.({ err: e.message }, 'design lab flats not sent'); } }

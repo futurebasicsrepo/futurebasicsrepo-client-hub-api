@@ -970,6 +970,58 @@ await journey('J214', 'Design Lab flats: a concept becomes measured front and ba
   } finally { await cleanup(brands, plan.plan?.id); }
 });
 
+await journey('J216', 'Design service: a line designed for a client in their brand, shared to their hub; they ask for changes on one concept and approve another; the team answers them; the approved one becomes a tech pack in the client\'s own room with its flats; nobody else sees any of it', async () => {
+  const { brands, plan } = await conceptSetup();
+  const start = async who => (await call('/v1/public/start', { body: { email: `${who}-${stamp}-${Math.random().toString(36).slice(2, 6)}@chaos.test`, name: who, title: 'Board shorts', photos: [jpeg()] } })).json;
+  const cl = await start('dana'), other = await start('otto'), ctoken = cl.token, cid = cl.client.id, C = (path, o = {}) => call('/v1/client/design' + path, { token: ctoken, ...o });
+  try {
+    ok((await K('/clients')).json.clients.some(c => c.id === cid), 'the client rooms a line can be designed for');
+    const set = await K(`/plans/${plan.plan.id}/client`, { method: 'PUT', body: { clientId: cid, brand: { name: 'Tidewater', statement: 'Cold-water surf clothing for people who swim all year' }, shared: false } });
+    ok(set.status === 200 && set.json.plan.brand.name === 'Tidewater' && !set.json.plan.sharedAt, 'the line is set as a client\'s, in their brand words, not shared yet', set.json);
+    const line = plan.lines[0], mk = await K(`/plans/${plan.plan.id}/lines/${line.id}/concepts`, { body: { count: 2 } });
+    ok(mk.status === 201 && mk.json.concepts.length >= 2 && mk.json.concepts.every(c => c.spec.branding.logo.mark === 'none' && c.clientId === cid), 'concepts for a client carry their logo, not ours (placed by hand later)', mk.json.error || mk.json.concepts?.map(c => c.spec.branding.logo.mark));
+    ok((await C('')).json.plans.length === 0, 'before it is shared, the client sees nothing');
+    await K(`/plans/${plan.plan.id}/client`, { method: 'PUT', body: { clientId: cid, brand: { name: 'Tidewater' }, shared: true } });
+    const dz = (await C('')).json, pl = dz.plans[0];
+    ok(pl && pl.brandName === 'Tidewater' && pl.concepts.length >= 2 && pl.concepts.every(c => c.stage === 'in_design' && !c.verdict), 'shared: the client sees each concept of their line', dz);
+    const [a, b] = pl.concepts;
+    if (a.image) ok((await fetch(BASE + a.image, { headers: { Authorization: 'Bearer ' + ctoken } })).status === 200, 'and its picture');
+    ok((await call(`/v1/client/design/concepts/${a.id}/image`, { token: other.token })).status === 404 && (await call('/v1/client/design', { token: other.token })).json.plans.length === 0, 'another client sees none of it');
+    // the client's say
+    ok((await C(`/concepts/${b.id}/verdict`, { body: { verdict: 'changes', note: '' } })).status === 422, 'asking for changes needs to say what');
+    ok((await C(`/concepts/${b.id}/verdict`, { body: { verdict: 'changes', note: 'Shorter inseam, 5 in, and a key pocket' } })).status === 200 && (await C(`/concepts/${a.id}/verdict`, { body: { verdict: 'approved', note: 'Love it' } })).status === 200, 'they ask for changes on one and approve another');
+    const sb = (await K(`/concepts/${b.id}`)).json;
+    ok(sb.concept.clientVerdict === 'changes' && /key pocket/.test(sb.concept.clientNote) && sb.comments.some(c => c.byClient && /\(client\)/.test(c.name)), 'the team sees it on the concept, with the client\'s note in its comments', sb.concept);
+    await K(`/concepts/${b.id}/comments`, { body: { body: 'For the client: Done: 5 in inseam and a key pocket on the right.' } }); await K(`/concepts/${b.id}/comments`, { body: { body: 'internal: check the costing' } });
+    const msgs = (await C('')).json.plans[0].concepts.find(c => c.id === b.id).comments;
+    ok(msgs.some(m => m.name === 'Future Basics' && /5 in inseam/.test(m.body)) && !msgs.some(m => /internal/.test(m.body)), 'the team answers the client; its own notes stay internal', msgs);
+    // the approved one becomes a tech pack in the client's room, with its flats
+    const ap = await K(`/concepts/${a.id}/approve`, { body: { overrideReason: 'reviewed side by side: it is ours, and the client approved it' } }); ok(ap.status === 200, 'the team approves it too', ap.json);
+    const fl = (await K(`/concepts/${a.id}/flats`)).json; if (fl.flat) await K(`/concepts/${a.id}/flats`, { method: 'PUT', body: fl.flat });
+    const tp = await K(`/concepts/${a.id}/tech-pack`, { body: {} });
+    ok(tp.status === 201 && sql(`select client_id from products where id='${tp.json.productId}'`) === cid && sql(`select vendor from products where id='${tp.json.productId}'`) === 'Tidewater', 'it becomes a tech pack in the client\'s own room, under their brand', tp.json);
+    ok(!/Future Basics (logo|internal woven label)/.test(sql(`select coalesce(string_agg(a->>'name', ' | '),'') from tech_packs, jsonb_array_elements(data->'artwork') a where product_id='${tp.json.productId}'`)), 'without our logo or label files');
+    ok((await call('/v1/dashboard', { token: ctoken })).json.products.some(p => p.id === tp.json.productId), 'it is in their hub with their other products');
+    const after = (await C('')).json.plans[0].concepts.find(c => c.id === a.id);
+    ok(after.stage === 'tech_pack' && after.productId === tp.json.productId && (await C(`/concepts/${a.id}/verdict`, { body: { verdict: 'changes', note: 'make it longer' } })).status === 409, 'the hub shows it as a tech pack, where changes are asked for from now on');
+    if (fl.flat) { const f = await fetch(BASE + after.flats, { headers: { Authorization: 'Bearer ' + ctoken } }); ok(f.status === 200 && /<svg/.test(await f.text()), 'the client reads its flats and measurements'); }
+    // in a browser: the hub's Design section
+    if (playwright) {
+      const bw = await playwright.chromium.launch(); try {
+        const ctx = await bw.newContext({ viewport: { width: 1280, height: 900 } }), page = await ctx.newPage(), errs = []; page.on('pageerror', e => errs.push(e.message));
+        await ctx.addInitScript(t => { try { localStorage.setItem('fb.client.token', t); } catch {} }, ctoken);
+        await page.goto(BASE + '/', { waitUntil: 'domcontentloaded' }); await page.waitForSelector('#design .dz-card', { timeout: 20000 });
+        ok(await page.locator('#navDesign').count() === 1 && !(await page.locator('#navDesign').getAttribute('class') || '').includes('hidden') && await page.locator('#design .dz-card').count() >= 2 && /tidewater/i.test(await page.innerText('#design')), 'the hub has a Design section with the line', [await page.locator('#navDesign').getAttribute('class'), await page.locator('#design .dz-card').count(), (await page.innerText('#design')).slice(0, 80)]);
+        const card = page.locator(`#design [data-dz]:not([data-dz="${a.id}"]):not([data-dz="${b.id}"])`).first();
+        if (await card.count()) { await card.locator('[data-dzask]').click(); await card.locator('textarea').fill('Can it come in navy?'); await card.locator('[data-dzv="changes"]').click();
+          await page.waitForFunction(() => /Changes asked for/.test(document.getElementById('design').innerText), null, { timeout: 15000 }); ok(true, 'a client asks for changes from the hub'); }
+        await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/hub-design.png`, fullPage: false }).catch(() => {});
+        ok(errs.length === 0, 'no page errors', errs);
+      } finally { await bw.close(); }
+    }
+  } finally { await cleanup(brands, plan.plan?.id); }
+});
+
 await journey('J215', 'Design Lab flats in a browser: open them from a concept, see the front and back, drag the logo and watch its measurements, add a library graphic, catch a collar problem, change the fit and the measurements, read the graded points of measure, save and print the spec sheet', async () => {
   if (!playwright) { ok(true, 'skipped: no browser here'); return; }
   const { brands, plan } = await conceptSetup(); const tops = plan.lines.find(l => l.category === 'tops') || plan.lines[0];

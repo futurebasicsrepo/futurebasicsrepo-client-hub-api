@@ -242,6 +242,14 @@ export async function migrate() {
       updated_at timestamptz not null default now()
     );
     alter table lab_concepts add column if not exists raw bytea; -- the picture before the logo and graphics were laid on, so they can be placed again without drawing it again
+    -- a line plan can be designed for a client (Future Basics' design service): their brand words for the assistant, and whether they see it in their hub
+    alter table lab_plans add column if not exists client_id uuid references clients(id) on delete set null;
+    alter table lab_plans add column if not exists brand jsonb;
+    alter table lab_plans add column if not exists shared_at timestamptz;
+    -- the client's say on a concept of theirs, from the hub
+    alter table lab_concepts add column if not exists client_verdict text not null default '';
+    alter table lab_concepts add column if not exists client_note text not null default '';
+    alter table lab_concepts add column if not exists client_at timestamptz;
     create table if not exists lab_studio_docs ( -- a concept's picture as layers in the studio, and the picture it had before the studio
       concept_id uuid primary key references lab_concepts(id) on delete cascade,
       doc jsonb not null default '{}',
@@ -261,6 +269,7 @@ export async function migrate() {
       at timestamptz not null default now()
     );
     create index if not exists lab_concept_comments_idx on lab_concept_comments (concept_id, at);
+    alter table lab_concept_comments add column if not exists by_client boolean not null default false;
     create table if not exists lab_art (
       id uuid primary key default gen_random_uuid(),
       plan_id uuid references lab_plans(id) on delete cascade,

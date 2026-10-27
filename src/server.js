@@ -58,6 +58,7 @@ import { registerLabViewRoutes } from './lab-view-routes.js';
 import { registerLabStudioRoutes } from './lab-studio-routes.js';
 import { registerLabLibraryRoutes } from './lab-library-routes.js';
 import { labHandoff } from './lab-handoff.js';
+import { registerLabClientRoutes } from './lab-client-routes.js';
 import { registerLabFlatsRoutes } from './lab-flats-routes.js';
 import { createArtService, registerLabArtRoutes } from './lab-art-routes.js';
 import { purgeOld as labPurge } from './lab-scan.js';
@@ -678,6 +679,7 @@ registerLabViewRoutes(app, { pool, authenticate, adminOnly, log: app.log });
 registerLabStudioRoutes(app, { pool, authenticate, adminOnly });
 registerLabLibraryRoutes(app, { pool, authenticate, adminOnly, art: labArt, log: app.log });
 const labFlats = registerLabFlatsRoutes(app, { pool, authenticate, adminOnly, log: app.log, attachArtwork: (productId, items) => attachLabArtwork(productId, items), applyHandoff: (productId, h) => applyLabHandoff(productId, h) });
+registerLabClientRoutes(app, { pool, authenticate, adminOnly, log: app.log, sheetSvg: id => labFlats.sheetSvg(id), notifyStaff, notifyClientContact, hubUrl: () => clientHubUrl });
 const money=registerMoneyRoutes(app, { pool, authenticate, adminOnly, getSetting, setSetting, tokenSeal: sealer(process.env), stateSecret: process.env.JWT_SECRET || 'dev', workUrl: workHubUrl, log: app.log,
   // product development is paid through a Shopify checkout (a draft order for the amount due), see money-routes.js
   shopifyInvoiceLink: async ({ title, amountCents, currency, email, note, number }) => {
