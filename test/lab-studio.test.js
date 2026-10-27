@@ -8,8 +8,8 @@ const doc = (o = {}) => ({ w: 1024, h: 1536, layers: [{ id: 'a', kind: 'base', s
 test('a studio design is kept within bounds', () => {
   assert.equal(cleanDoc(doc()).doc.layers.length, 2);
   assert.equal(cleanDoc(doc({ selected: 'b' })).doc.selected, 'b');
-  for (const src of ['brand:mark', 'brand:lockup', '/v1/lab/art/0e5b2f4a-1c2d-4e5f-8a9b-0c1d2e3f4a5b', 'data:image/jpeg;base64,AAAA']) assert.ok(cleanDoc(doc({ layers: [{ id: 'x', kind: 'image', src }] })).doc, src);
-  for (const src of ['https://evil.test/a.png', 'javascript:alert(1)', 'data:text/html;base64,AAAA', '/v1/admin/clients', 'brand:other']) assert.match(cleanDoc(doc({ layers: [{ id: 'x', kind: 'image', src }] })).error, /outside the design/, src);
+  for (const src of ['brand:mark', 'brand:lockup', '/v1/lab/art/0e5b2f4a-1c2d-4e5f-8a9b-0c1d2e3f4a5b', 'data:image/jpeg;base64,AAAA', '/lab/flat-parts/pockets-1-3.webp']) assert.ok(cleanDoc(doc({ layers: [{ id: 'x', kind: 'image', src }] })).doc, src);
+  for (const src of ['https://evil.test/a.png', 'javascript:alert(1)', 'data:text/html;base64,AAAA', '/v1/admin/clients', 'brand:other', '/lab/flat-parts/../server.js', '/lab/flat-templates/tee-classic.svg']) assert.match(cleanDoc(doc({ layers: [{ id: 'x', kind: 'image', src }] })).error, /outside the design/, src);
   assert.match(cleanDoc(doc({ layers: [{ id: 'x', kind: 'iframe' }] })).error, /unknown kind/);
   assert.match(cleanDoc(doc({ layers: [] })).error, /no layers/);
   assert.match(cleanDoc(doc({ w: 20 })).error, /no size/);

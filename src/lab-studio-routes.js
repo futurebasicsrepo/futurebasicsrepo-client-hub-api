@@ -6,6 +6,12 @@
 //   POST /v1/lab/concepts/:id/studio/ai         {mode:'edit', image, mask?, prompt} redraw the piece (or only the painted area) · {mode:'art', prompt} a new graphic on a clear background
 //   POST /v1/lab/concepts/:id/studio/apply      {image} the finished design becomes the concept's picture (the picture before the first one is kept)
 //   POST /v1/lab/concepts/:id/studio/restore    put back the picture the concept had before the studio
+// The same studio builds graphics for the library (src/lab-library.html → /lab/studio?new=graphic or ?art=<id>): a clear canvas, or a graphic to rework.
+//   GET  /v1/lab/library/studio?art=<id>          the graphic (or nothing, for a new one), its saved layers, the marks, colours and techniques
+//   PUT  /v1/lab/library/graphics/:id/studio      save the layers {doc}
+//   POST /v1/lab/library/studio/ai                the same AI edits as above, for a graphic
+//   POST /v1/lab/library/studio/keep              {image, name?, doc?, techniqueId?} the finished picture becomes a new library graphic
+//   POST /v1/lab/library/graphics/:id/studio/apply {image, doc?} the finished picture replaces this graphic's (pieces using it keep what they had)
 import sharp from 'sharp';
 import { imageConfig, openaiEdit, openaiImage } from './check.js';
 import { brandHits } from './lab-concepts.js';
@@ -17,8 +23,9 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const clip = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
 export const LAYER_KINDS = new Set(['base', 'image', 'paint', 'text', 'shape']);
 const MAX_DOC = 30_000_000, MAX_LAYERS = 80;
-// where a layer's picture may come from: a picture inside the design itself, a graphic of the Lab, or one of our marks; never an outside address
-const SRC_OK = /^(data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+|\/v1\/lab\/art\/[0-9a-f-]{36}|brand:(mark|word|lockup))$/i;
+// where a layer's picture may come from: a picture inside the design itself, a graphic of the Lab, a part from the sketch pack's add-on sheets, or one
+// of our marks; never an outside address
+const SRC_OK = /^(data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+|\/v1\/lab\/art\/[0-9a-f-]{36}|\/lab\/flat-parts\/[a-z0-9-]+\.webp|brand:(mark|word|lockup))$/i;
 
 // → { doc } or { error }. The page draws the layers itself; this only keeps what it is sent within bounds.
 export function cleanDoc(input) {
@@ -101,9 +108,8 @@ export function registerLabStudioRoutes(app, d) {
     return { ok: true, savedAt: r.updated_at };
   });
 
-  app.post('/v1/lab/concepts/:id/studio/ai', { preHandler: pre, bodyLimit: 32_000_000 }, async (req, reply) => {
-    const c = await concept(req, reply); if (!c) return;
-    if (c.status === 'tech_pack') return bad(reply, 'This concept is already a tech pack', 409);
+  // the AI edits, for a concept's design or a library graphic: redraw the piece (or only the painted area), make a graphic, or make a technique real
+  async function runAi(req, reply, { conceptId = null } = {}) {
     const b = req.body || {}, mode = ['art', 'real'].includes(b.mode) ? b.mode : 'edit', prompt = clip(b.prompt, 800);
     const tech = UUID.test(String(b.techniqueId || '')) ? (await pool.query('select id, name, summary, prompt, art_guide from lab_techniques where id=$1 and not archived', [b.techniqueId])).rows[0] : null;
     if (mode === 'real' && !tech) return bad(reply, 'Choose the technique to make real');
@@ -134,10 +140,15 @@ export function registerLabStudioRoutes(app, d) {
     if (mode === 'art') {
       // a graphic made in the studio goes into the graphics library too, so it can be used on other pieces later
       const a = await finishArt(await sharp(out).png().toBuffer());
-      artId = (await pool.query(`insert into lab_art(name,png,thumb,prompt,model,source,technique_id,created_by) values($1,$2,$3,$4,$5,'studio',$6,$7) returning id`, [clip(prompt, 80), a.png, a.thumb, prompt, cfg.model || cfg.provider, tech?.id || null, actorOf(req)])).rows[0].id;
+      artId = (await pool.query(`insert into lab_art(name,png,thumb,prompt,model,source,technique_id,concept_id,created_by) values($1,$2,$3,$4,$5,'studio',$6,$7,$8) returning id`, [clip(prompt, 80), a.png, a.thumb, prompt, cfg.model || cfg.provider, tech?.id || null, conceptId, actorOf(req)])).rows[0].id;
       out = a.png;
     }
     return { image: `data:image/png;base64,${out.toString('base64')}`, mode, left: left(), art: artId };
+  }
+  app.post('/v1/lab/concepts/:id/studio/ai', { preHandler: pre, bodyLimit: 32_000_000 }, async (req, reply) => {
+    const c = await concept(req, reply); if (!c) return;
+    if (c.status === 'tech_pack') return bad(reply, 'This concept is already a tech pack', 409);
+    return runAi(req, reply, { conceptId: c.id });
   });
 
   app.post('/v1/lab/concepts/:id/studio/apply', { preHandler: pre, bodyLimit: 32_000_000 }, async (req, reply) => {
@@ -173,5 +184,44 @@ export function registerLabStudioRoutes(app, d) {
     await pool.query('delete from lab_concept_views where concept_id=$1', [c.id]);
     await note(c.id, req, 'The picture from before the studio was put back.');
     return { ok: true };
+  });
+
+  // ---- the studio for the graphics library: build a graphic from nothing, or rework one ----
+  const graphic = async id => (UUID.test(String(id || '')) ? (await pool.query('select id, name, tags, technique_id, doc, (png is not null) has_image from lab_art where id=$1', [id])).rows[0] || null : null);
+  const common = async () => {
+    const cfg = imageCfg();
+    return {
+      marks: [{ id: 'mark', label: 'Cue mark', svg: logoSvg('mark') }, { id: 'word', label: 'Wordmark', svg: logoSvg('word') }, { id: 'lockup', label: 'Wordmark and cue mark', svg: logoSvg('lockup') }],
+      palette: COLORS.map(x => ({ name: x.name, hex: x.hex, from: 'brand' })).filter(x => /^#[0-9a-f]{6}$/i.test(x.hex || '')),
+      ai: { connected: cfg.configured, model: cfg.model || null, left: left() },
+      techniques: (await pool.query(`select t.id, t.kind, t.name, t.summary, t.base, t.finish, (select count(*)::int from lab_technique_photos p where p.technique_id=t.id) photos from lab_techniques t where not archived order by kind, builtin desc, name`).catch(() => ({ rows: [] }))).rows
+    };
+  };
+  app.get('/v1/lab/library/studio', { preHandler: pre }, async (req, reply) => {
+    const id = String(req.query?.art || ''); const g = id ? await graphic(id) : null; if (id && !g) return bad(reply, 'That graphic is not in the library', 404);
+    return { graphic: g ? { id: g.id, name: g.name, tags: g.tags, techniqueId: g.technique_id, hasImage: g.has_image } : null, doc: g?.doc || null, savedAt: null, savedBy: '', appliedAt: null, canRestore: false, graphics: [], ...(await common()) };
+  });
+  app.put('/v1/lab/library/graphics/:id/studio', { preHandler: pre, bodyLimit: 32_000_000 }, async (req, reply) => {
+    const g = await graphic(req.params.id); if (!g) return bad(reply, 'Not found', 404);
+    const { doc, error } = cleanDoc(req.body?.doc); if (error) return bad(reply, error);
+    const r = (await pool.query('update lab_art set doc=$2 where id=$1 returning now() as at', [g.id, doc])).rows[0];
+    return { ok: true, savedAt: r.at };
+  });
+  app.post('/v1/lab/library/studio/ai', { preHandler: pre, bodyLimit: 32_000_000 }, async (req, reply) => runAi(req, reply));
+  // the finished graphic: as a new one in the library, or in place of the one it started from
+  const finished = async body => { const buf = pictureOf(body?.image); if (!buf) throw new Error('Send the finished picture'); try { return await finishArt(await sharp(buf).ensureAlpha().png().toBuffer()); } catch { throw new Error('The picture could not be read'); } };
+  app.post('/v1/lab/library/studio/keep', { preHandler: pre, bodyLimit: 32_000_000 }, async (req, reply) => {
+    const b = req.body || {}; let a; try { a = await finished(b); } catch (e) { return bad(reply, e.message); }
+    const doc = b.doc ? cleanDoc(b.doc).doc || null : null, tech = UUID.test(String(b.techniqueId || '')) ? b.techniqueId : null;
+    const r = (await pool.query(`insert into lab_art(name,png,thumb,prompt,model,source,tags,technique_id,doc,created_by) values($1,$2,$3,'','studio','studio',$4,$5,$6,$7) returning id`,
+      [clip(b.name, 120) || 'Graphic', a.png, a.thumb, (Array.isArray(b.tags) ? b.tags : String(b.tags || '').split(',')).map(t => clip(t, 30).toLowerCase()).filter(Boolean).slice(0, 12), tech, doc, actorOf(req)])).rows[0];
+    return reply.code(201).send({ id: r.id });
+  });
+  app.post('/v1/lab/library/graphics/:id/studio/apply', { preHandler: pre, bodyLimit: 32_000_000 }, async (req, reply) => {
+    const g = await graphic(req.params.id); if (!g) return bad(reply, 'Not found', 404);
+    const b = req.body || {}; let a; try { a = await finished(b); } catch (e) { return bad(reply, e.message); }
+    const doc = b.doc ? cleanDoc(b.doc).doc || g.doc : g.doc;
+    await pool.query('update lab_art set png=$2, thumb=$3, doc=$4, in_library=true where id=$1', [g.id, a.png, a.thumb, doc]);
+    return { ok: true, id: g.id };
   });
 }

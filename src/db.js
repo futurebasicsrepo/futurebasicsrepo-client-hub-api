@@ -287,6 +287,7 @@ export async function migrate() {
     alter table lab_art add column if not exists source text not null default 'plan';
     alter table lab_art add column if not exists technique_id uuid;
     alter table lab_art add column if not exists created_by uuid references users(id) on delete set null;
+    alter table lab_art add column if not exists doc jsonb; -- the layers a graphic was built from in the studio, so it can be reworked
     do $$ begin
       if exists(select 1 from pg_constraint where conname='lab_art_plan_id_fkey' and confdeltype='c') then
         alter table lab_art drop constraint lab_art_plan_id_fkey; alter table lab_art add constraint lab_art_plan_id_fkey foreign key (plan_id) references lab_plans(id) on delete set null;

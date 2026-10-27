@@ -1057,6 +1057,60 @@ await journey('J217', 'Design to factory and back: a concept becomes a tech pack
   } finally { await cleanup(brands, plan.plan?.id); }
 });
 
+await journey('J220', 'Graphics anywhere: a graphic is built in the library\'s own studio (drawn by the image model, with a part from the sketch pack as a layer) and kept with its layers; reworked and updated; a part from the sketch pack goes on a concept in the studio; and a library graphic goes onto any product\'s tech pack as artwork, placed on the front', async () => {
+  const { FLAT_PARTS } = await import('../../src/lab-flat-parts.js'); const part = FLAT_PARTS.find(q => q.kind === 'pockets') || FLAT_PARTS[0];
+  const A = (path, o = {}) => call(path, { token: kyleT, ...o });
+  // the library's studio: nothing to start from
+  const s0 = await K('/library/studio'); ok(s0.status === 200 && s0.json.graphic === null && s0.json.marks.length === 3 && s0.json.ai, '1. the graphics studio opens on a clear canvas, with our marks and the image model', s0.json);
+  const drawn = await K('/library/studio/ai', { body: { mode: 'art', prompt: 'a sunburst crest with a wave' } }); ok(drawn.status === 200 && /^data:image\/png/.test(drawn.json.image) && drawn.json.art, '2. the image model draws a graphic for it (and it is in the library already)', drawn.json.error);
+  const doc = { w: 1024, h: 1024, layers: [{ id: 'bg', kind: 'base' }, { id: 'g', kind: 'image', src: `/v1/lab/art/${drawn.json.art}` }, { id: 'p', kind: 'image', src: `/lab/flat-parts/${part.file}` }, { id: 't', kind: 'text', text: 'FUTURE BASICS' }] };
+  const kept = await K('/library/studio/keep', { body: { image: drawn.json.image, name: `J220 crest ${stamp}`, doc, tags: ['j220'] } }); ok(kept.status === 201 && kept.json.id, '3. the finished graphic is kept in the library with the layers it was built from', kept.json);
+  const gid = kept.json.id;
+  const s1 = await K(`/library/studio?art=${gid}`); ok(s1.json.graphic?.hasImage && s1.json.doc?.layers?.length === 4 && s1.json.doc.layers.some(l => l.src === `/lab/flat-parts/${part.file}`), '   it opens again with its four layers, the sketch-pack part among them');
+  ok((await K(`/library/graphics/${gid}/studio`, { method: 'PUT', body: { doc: { ...doc, layers: [{ id: 'x', kind: 'image', src: 'https://evil.test/a.png' }] } } })).status === 422, '   a layer from outside is refused');
+  ok((await K(`/library/graphics/${gid}/studio`, { method: 'PUT', body: { doc: { ...doc, layers: doc.layers.slice(0, 3) } } })).status === 200, '4. its layers are saved');
+  const up = await K(`/library/graphics/${gid}/studio/apply`, { body: { image: drawn.json.image, doc } }); ok(up.status === 200 && (await K(`/library/studio?art=${gid}`)).json.doc.layers.length === 4, '5. reworked, the graphic is updated in place', up.json);
+  const lib = await K(`/library/graphics?q=${encodeURIComponent('J220 crest')}`); ok(lib.json.graphics.some(g => g.id === gid && g.source === 'studio' && g.tags.includes('j220')), '   the library lists it as built in the studio', lib.json.graphics?.length);
+  const png = await fetch(`${BASE}/v1/lab/art/${gid}`, { headers: { Authorization: 'Bearer ' + kyleT } }); ok(png.status === 200 && /image\/png/.test(png.headers.get('content-type')), '   and its picture is a PNG with a clear background');
+  // a part from the sketch pack on a concept, and the graphic on any product's tech pack
+  const { brands, plan } = await conceptSetup();
+  try {
+    const line = plan.lines.find(l => l.category === 'tops') || plan.lines[0], c = (await K(`/plans/${plan.plan.id}/lines/${line.id}/concepts`, { body: { count: 1 } })).json.concepts[0];
+    const cdoc = { w: 1024, h: 1024, layers: [{ id: 'bg', kind: 'base' }, { id: 'p', kind: 'image', src: `/lab/flat-parts/${part.file}` }] };
+    ok((await K(`/concepts/${c.id}/studio`, { method: 'PUT', body: { doc: cdoc } })).status === 200 && (await K(`/concepts/${c.id}/studio`)).json.doc.layers[1].src === `/lab/flat-parts/${part.file}`, `6. a ${part.label.toLowerCase()} from the sketch pack is a layer on the concept, kept with its design`);
+    await K(`/concepts/${c.id}/approve`, { body: { overrideReason: 'reviewed side by side with the references: it is ours' } });
+    const fl = (await K(`/concepts/${c.id}/flats`)).json; await K(`/concepts/${c.id}/flats`, { method: 'PUT', body: fl.flat });
+    const pid = (await K(`/concepts/${c.id}/tech-pack`, { body: {} })).json.productId;
+    const found = await A(`/v1/admin/products/search?q=${encodeURIComponent(c.name.split(' ')[0])}`); ok(found.status === 200 && found.json.products.some(p => p.id === pid && p.hasPack), '7. the product is found by name from the library', found.json.products?.length);
+    const put = await A(`/v1/admin/products/${pid}/tech-pack/artwork`, { body: { art: gid, placement: 'Left chest', widthIn: 3.5 } }); ok(put.status === 201 && put.json.placed === true, '8. the graphic goes on the product\'s tech pack as artwork, placed on the front', put.json);
+    const pack = (await A(`/v1/admin/products/${pid}/tech-pack`)).json.techPack.data, a0 = pack.artwork[0];
+    ok(a0 && /From the graphics library/.test(a0.note) && a0.placements[0]?.label === 'Left chest' && a0.placements[0].widthIn === 3.5 && /^data:image\/png/.test(a0.image), '   with its picture, where it goes and its width', a0 && { note: a0.note, placements: a0.placements });
+    ok((await A(`/v1/admin/products/${pid}/tech-pack/artwork`, { body: { art: '00000000-0000-4000-8000-000000000000' } })).status === 404, '   a graphic that is not in the library is refused');
+    if (playwright) {
+      const b = await playwright.chromium.launch();
+      try {
+        const oc = await b.newContext({ viewport: { width: 1440, height: 950 } }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
+        const page = await oc.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
+        await page.goto(`${BASE}/lab/studio?new=graphic`, { waitUntil: 'networkidle' }); await page.waitForSelector('#app:not(.hidden)');
+        ok(/Keep in the library/.test(await page.innerText('#apply')) && /clear background/.test(await page.innerText('#cSub')), '9. in a browser the graphics studio starts on a clear canvas, ready to keep in the library');
+        await page.click('[data-tab="add"]'); await page.waitForSelector('#partTiles [data-part]', { timeout: 15000 });
+        const before = await page.evaluate(() => LAYERS.length); await page.click('#partTiles [data-part]'); await page.waitForFunction(n => LAYERS.length === n + 1, before, { timeout: 15000 });
+        ok(await page.evaluate(() => LAYERS[LAYERS.length - 1].src.startsWith('/lab/flat-parts/')), '   a part from the sketch pack becomes a layer', await page.evaluate(() => LAYERS[LAYERS.length - 1].src));
+        await page.click('#partKinds [data-pkind="zips"]'); await page.waitForFunction(() => document.querySelectorAll('#partTiles [data-part^="zips-"]').length > 0);
+        ok(true, '   and the parts come in kinds: pockets, zips, collars, trims, buttons');
+        await page.goto(`${BASE}/lab/library`, { waitUntil: 'networkidle' }); await page.waitForSelector('#app:not(.hidden)');
+        ok(await page.locator('#buildGo[href="/lab/studio?new=graphic"]').count() === 1, '10. the library offers to build a graphic in the studio');
+        await page.goto(`${BASE}/tech-packs/${pid}`, { waitUntil: 'networkidle' }); await page.waitForSelector('#tabs [data-tab="art"]'); await page.click('#tabs [data-tab="art"]');
+        ok(await page.locator('[data-act="artlib"]').count() === 1, '11. the tech pack offers artwork from the graphics library');
+        await page.click('[data-act="artlib"]'); await page.waitForSelector('#artLibTiles [data-lib]', { timeout: 15000 });
+        const nArt = await page.locator('[data-panel="art"] article.art').count(); await page.click(`#artLibTiles [data-lib="${gid}"]`); await page.waitForFunction(n => document.querySelectorAll('[data-panel="art"] article.art').length === n + 1, nArt, { timeout: 20000 });
+        ok(await page.locator('[data-panel="art"] article.art .art-note', { hasText: 'From the graphics library' }).count() >= 1, '   picking one adds it to the pack like an upload, Pantones read and ready to place');
+        ok(!errs.length, 'no page errors', errs);
+      } finally { await b.close(); }
+    }
+  } finally { await cleanup(brands, plan.plan?.id); }
+});
+
 await journey('J218', 'The factory views and writes in Messages; the team makes the corrections: the factory has no buttons on its link (it cannot acknowledge, quote, countersign or mark a sample sent), it writes that the proto shipped, the team records it, reviews the sample, and the corrections go out as version 2 while version 1 stays exactly as it was; flats sent again become version 3', async () => {
   const { brands, plan } = await conceptSetup(); await import('../../src/sample-review.js'); const FBSample = globalThis.FBSample;
   const A = (path, o = {}) => call(path, { token: kyleT, ...o });

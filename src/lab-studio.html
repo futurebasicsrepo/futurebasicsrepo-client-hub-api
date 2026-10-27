@@ -94,6 +94,7 @@ kbd{font:500 10px 'IBM Plex Mono',monospace;border:1px solid var(--line);border-
         <button type="button" role="menuitem" data-exp="png"><b>Picture (PNG)</b><small>Everything as one picture, full size</small></button>
         <button type="button" role="menuitem" data-exp="svg"><b>Layers for Illustrator (SVG)</b><small>One group per layer; type and shapes stay editable</small></button>
         <button type="button" role="menuitem" data-exp="layer"><b>The selected layer (PNG)</b><small>With a clear background, for a print file</small></button>
+        <button type="button" role="menuitem" data-exp="keepnew" class="hidden" id="expKeepNew"><b>Keep as a new graphic</b><small>Everything visible goes into the library as its own graphic</small></button>
       </div></div>
     <button class="btn go sm" id="apply" type="button">Use as the concept picture</button>
   </div>
@@ -147,7 +148,11 @@ let RID=1;const stamp=c=>{c._rid=RID++;return c};
 const cloneCanvas=c=>{const n=canvas(c.width,c.height);n.getContext('2d').drawImage(c,0,0);return stamp(n)};
 const uid=()=>'l'+Math.random().toString(36).slice(2,9);
 const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
-const CID=new URLSearchParams(location.search).get('concept')||'';
+const QS=new URLSearchParams(location.search),CID=QS.get('concept')||'';
+// the same studio builds graphics for the library: ?new=graphic starts on a clear canvas, ?art=<id> reworks a graphic; nothing here is a concept then
+let GID=QS.get('art')||'';const GMODE=!CID&&(Boolean(GID)||QS.get('new')==='graphic');
+const AI_URL=()=>GMODE?'/v1/lab/library/studio/ai':AI_URL();
+let PARTS=null,PKIND='pockets';
 
 // ---------- what a layer is ----------
 const FONTS={grotesk:['Space Grotesk',"'Space Grotesk',system-ui,sans-serif"],mono:['IBM Plex Mono',"'IBM Plex Mono',monospace"],serif:['Serif',"Georgia,'Times New Roman',serif"],slab:['Slab',"Rockwell,'Roboto Slab','Courier New',serif"],condensed:['Condensed',"Impact,Haettenschweiler,'Arial Narrow Bold',sans-serif"],script:['Script',"'Brush Script MT','Segoe Script',cursive"],typewriter:['Typewriter',"'Courier New',Courier,monospace"]};
@@ -228,7 +233,7 @@ function processed(l){
 const dims=l=>{const c=processed(l);return[c.width,c.height]};
 function place(x,l){x.translate(l.x,l.y);x.rotate(l.rot);x.scale(l.scale*(l.flip?-1:1),l.scale)}
 function drawLayer(x,l){if(!l.visible)return;const c=processed(l),sh=l.finish&&window.FBFinish.shadow(l.finish,W/1000);x.save();x.globalAlpha=l.opacity;x.globalCompositeOperation=l.blend;if(sh){x.shadowColor=sh.color;x.shadowBlur=sh.blur;x.shadowOffsetX=sh.dx;x.shadowOffsetY=sh.dy}place(x,l);x.drawImage(c,-c.width/2,-c.height/2);x.restore()}
-function compose(){docX.setTransform(1,0,0,1,0,0);docX.globalCompositeOperation='source-over';docX.globalAlpha=1;docX.clearRect(0,0,W,H);docX.fillStyle='#fff';docX.fillRect(0,0,W,H);for(const l of LAYERS)drawLayer(docX,l)}
+function compose(){docX.setTransform(1,0,0,1,0,0);docX.globalCompositeOperation='source-over';docX.globalAlpha=1;docX.clearRect(0,0,W,H);if(!GMODE){docX.fillStyle='#fff';docX.fillRect(0,0,W,H)}for(const l of LAYERS)drawLayer(docX,l)} // a graphic keeps its clear background
 // doc point → the layer's own pixels, and back
 function toLocal(l,px,py){const[w,h]=dims(l);let dx=px-l.x,dy=py-l.y;const c=Math.cos(-l.rot),s=Math.sin(-l.rot);let lx=(dx*c-dy*s)/l.scale,ly=(dx*s+dy*c)/l.scale;if(l.flip)lx=-lx;return[lx+w/2,ly+h/2]}
 function corners(l){const[w,h]=dims(l),c=Math.cos(l.rot),s=Math.sin(l.rot),f=l.flip?-1:1;return[[-w/2,-h/2],[w/2,-h/2],[w/2,h/2],[-w/2,h/2]].map(([a,b])=>{a*=l.scale*f;b*=l.scale;return[l.x+a*c-b*s,l.y+a*s+b*c]})}
@@ -395,7 +400,7 @@ async function keepInLibrary(l){try{const r=await api('/v1/lab/library/graphics/
 async function makeReal(l){
   const btn=$('#pLayers [data-act=real]');if(btn)btn.disabled=true;busy(`The AI is making it real ${l.finish.name.toLowerCase()}. About a minute…`);
   try{compose();const area=areaOf(l),mk=canvas(W,H),mx=mk.getContext('2d');mx.fillStyle='#000';mx.fillRect(0,0,W,H);mx.globalCompositeOperation='destination-out';mx.drawImage(area,0,0);
-    const r=await api(`/v1/lab/concepts/${CID}/studio/ai`,{body:{mode:'real',techniqueId:l.finish.id,image:docC.toDataURL('image/png'),mask:mk.toDataURL('image/png')}});
+    const r=await api(AI_URL(),{body:{mode:'real',techniqueId:l.finish.id,image:docC.toDataURL('image/png'),mask:mk.toDataURL('image/png')}});
     const img=await imgOf(r.image),c=canvas(W,H),x=c.getContext('2d');x.drawImage(img,0,0,W,H);x.globalCompositeOperation='destination-in';x.drawImage(area,0,0);
     addLayer(fresh('image',{name:`Real · ${l.finish.name} · ${l.name}`.slice(0,60),raster:stamp(c),src:null,dirty:true,x:W/2,y:H/2}),{top:true});D.ai.left=r.left;
     toast(`Done: the real ${l.finish.name.toLowerCase()} is the top layer. Hide it to compare.`)}catch(x){toast(x.message)}finally{busy();if(btn)btn.disabled=false}}
@@ -431,13 +436,20 @@ function paintAdd(){
   p.innerHTML=`<div class="sec"><h4>Future Basics marks</h4><div class="tiles">${D.marks.map(m=>`<button class="tile" type="button" data-mark="${m.id}"><img alt="" src="data:image/svg+xml;charset=utf-8,${encodeURIComponent(m.svg)}">${esc(m.label)}</button>`).join('')}</div><p class="note">Added in Ink. Click a colour below to recolour the selected mark.</p></div>
   ${D.graphics.length?`<div class="sec"><h4>This concept's graphics</h4><div class="tiles" id="gfxTiles">${D.graphics.map(g=>`<button class="tile" type="button" data-art="${esc(g.art)}"><img alt="" data-artimg="${esc(g.art)}">${esc(g.name)}</button>`).join('')}</div></div>`:''}
   <div class="sec"><h4>From the graphics library</h4><input class="t" type="search" id="libQ" placeholder="Search our graphics" aria-label="Search the graphics library"><div class="tiles" id="libTiles"><span class="note">Loading…</span></div><p class="note"><a href="/lab/library" target="_blank" rel="noopener">Open the library</a> to draw new graphics or manage them.</p></div>
+  <div class="sec"><h4>From the sketch pack</h4><div class="row" id="partKinds"></div><div class="tiles" id="partTiles"><span class="note">Loading…</span></div><p class="note">The pack's own pockets, zips, collars, trims and buttons, drawn in flat-sketch lines. Add one, place it, then paint over it and use “Change it with AI” to blend it into the piece.</p></div>
   <div class="sec"><h4>Your own pictures</h4><div class="row"><button class="btn sm" type="button" id="addPic">Add a picture…</button><button class="btn sm q" type="button" id="addPaint">New painting layer</button></div><p class="note">Or drop or paste one onto the stage. A logo, a scan, a texture, a photo of a print.</p></div>
   <div class="sec"><h4>Type and shapes</h4><div class="row"><button class="btn sm q" type="button" data-addtool="text">Type</button><button class="btn sm q" type="button" data-addtool="rect">Rectangle</button><button class="btn sm q" type="button" data-addtool="ellipse">Ellipse</button><button class="btn sm q" type="button" data-addtool="line">Line</button></div></div>
   <div class="sec"><h4>Colours</h4>${['brand','program'].map(f=>{const s=D.palette.filter(c=>c.from===f);return s.length?`<span class="note">${f==='brand'?'Future Basics':'This plan\'s graphic program'}</span><div class="sw">${s.map(c=>`<button type="button" data-sw="${esc(c.hex)}" title="${esc(c.name)} ${esc(c.hex)}" aria-label="${esc(c.name)}" style="background:${esc(c.hex)}"></button>`).join('')}</div>`:''}).join('')}
     <p class="note">A colour becomes the brush colour. With type or a shape selected it colours that; with a picture or mark selected it recolours it.</p></div>`;
   for(const i of p.querySelectorAll('[data-artimg]'))blobOf('/v1/lab/art/'+i.dataset.artimg+'?thumb=1').then(b=>{i.src=URL.createObjectURL(b)}).catch(()=>{});
   paintLib();let lt=0;$('#libQ').addEventListener('input',()=>{clearTimeout(lt);lt=setTimeout(()=>{LIB=null;paintLib()},250)});
+  paintParts();
 }
+async function paintParts(){const box=$('#partTiles'),kinds=$('#partKinds');if(!box)return;
+  try{if(!PARTS)PARTS=await import('/lab/lab-flat-parts.js');
+    kinds.innerHTML=Object.entries(PARTS.PART_KINDS).map(([k,l])=>`<button class="btn sm q" type="button" data-pkind="${k}" aria-pressed="${PKIND===k}">${esc(l)}s</button>`).join('');
+    box.innerHTML=PARTS.FLAT_PARTS.filter(q=>q.kind===PKIND).map(q=>`<button class="tile" type="button" data-part="${esc(q.id)}" title="${esc(q.label)}"><img alt="" loading="lazy" src="/lab/flat-parts/${esc(q.file)}">${esc(q.label)}</button>`).join('')||'<span class="note">None of this kind.</span>'}
+  catch(x){box.innerHTML=`<span class="note">${esc(x.message)}</span>`}}
 let LIB=null;
 async function paintLib(){const box=$('#libTiles');if(!box)return;
   try{if(!LIB){const q=($('#libQ')?.value||'').trim();LIB=(await api('/v1/lab/library/graphics?limit=24'+(q?'&q='+encodeURIComponent(q):''))).graphics}
@@ -448,6 +460,8 @@ async function addPicture(src,name,{fit=.45,origin=null}={}){const img=await img
 async function addFiles(files){for(const f of[...files].filter(f=>/^image\//.test(f.type)).slice(0,6)){if(f.size>15e6){toast(f.name+' is over 15 MB.');continue}try{await addPicture(await urlOfBlob(f),f.name.replace(/\.[a-z0-9]+$/i,'').slice(0,40)||'Picture')}catch(x){toast(x.message)}}}
 $('#pAdd').addEventListener('click',async e=>{
   const mk=e.target.closest('[data-mark]'),ar=e.target.closest('[data-art]'),sw=e.target.closest('[data-sw]'),at=e.target.closest('[data-addtool]');
+  const pk=e.target.closest('[data-pkind]');if(pk){PKIND=pk.dataset.pkind;paintParts();return}
+  const pt=e.target.closest('[data-part]');if(pt){const q=(PARTS?.FLAT_PARTS||[]).find(x=>x.id===pt.dataset.part);if(!q)return;busy('Loading the part…');try{await addPicture('/lab/flat-parts/'+q.file,q.label,{fit:.28,origin:'/lab/flat-parts/'+q.file});toast(`${q.label} added as a layer: drag it into place.`)}catch(x){toast(x.message)}finally{busy()}return}
   if(mk){const r=await markRaster(mk.dataset.mark);addLayer(fresh('image',{name:D.marks.find(m=>m.id===mk.dataset.mark).label,raster:r,src:'brand:'+mk.dataset.mark,_srcRid:r._rid,scale:+Math.min(W*.22/r.width,1).toFixed(3),x:W/2,y:H*.4}));return}
   if(ar){busy('Loading the graphic…');try{const src=await urlOfBlob(await blobOf('/v1/lab/art/'+ar.dataset.art));const img=await imgOf(src),c=canvas(img.naturalWidth,img.naturalHeight);c.getContext('2d').drawImage(img,0,0);addLayer(fresh('image',{name:ar.textContent.trim().slice(0,40)||'Graphic',raster:stamp(c),src:'/v1/lab/art/'+ar.dataset.art,_srcRid:c._rid,scale:+Math.min(W*.35/c.width,1).toFixed(3),x:W/2,y:H*.45}))}catch(x){toast(x.message)}finally{busy()}return}
   const lb=e.target.closest('[data-lib]');
@@ -490,7 +504,7 @@ $('#pAi').addEventListener('click',async e=>{
   const m=$('#aiMsg');
   if(e.target.id==='aiGo'){const prompt=$('#aiEdit').value.trim();if(prompt.length<3){m.className='msg bad';m.textContent='Say what to change.';return}
     busy(MASKED?'The AI is changing the painted area. About a minute…':'The AI is changing the piece. About a minute…');e.target.disabled=true;
-    try{compose();const r=await api(`/v1/lab/concepts/${CID}/studio/ai`,{body:{mode:'edit',prompt,image:docC.toDataURL('image/png'),mask:MASKED?maskPng():null}});
+    try{compose();const r=await api(AI_URL(),{body:{mode:'edit',prompt,image:docC.toDataURL('image/png'),mask:MASKED?maskPng():null}});
       const img=await imgOf(r.image),c=canvas(W,H),x=c.getContext('2d');x.drawImage(img,0,0,W,H);
       // only the painted area is kept from the answer (softened at its edge), so the rest stays exactly as it was
       if(MASKED){x.globalCompositeOperation='destination-in';x.filter='blur(3px)';x.drawImage(mask,0,0);x.filter='none'}
@@ -498,7 +512,7 @@ $('#pAi').addEventListener('click',async e=>{
     catch(x){m.className='msg bad';m.textContent=x.message}finally{busy();e.target.disabled=false}return}
   if(e.target.id==='artGo'){const prompt=$('#aiArt').value.trim();if(prompt.length<3){m.className='msg bad';m.textContent='Say what the graphic should be.';return}
     busy('Drawing the graphic. About a minute…');e.target.disabled=true;
-    try{const tid=$('#aiTech').value||null,r=await api(`/v1/lab/concepts/${CID}/studio/ai`,{body:{mode:'art',prompt,techniqueId:tid}});const l=await addPicture(r.image,'Graphic · '+prompt.slice(0,32),{fit:.4,origin:r.art?'/v1/lab/art/'+r.art:null});if(tid){applyTech(l,tid);commit();paintLayers();draw()}D.ai.left=r.left;LIB=null;m.className='msg ok';m.textContent=`Done: the graphic is a new layer, and it is in the graphics library. Move it into place.${r.left==null?'':` ${r.left} left today.`}`}
+    try{const tid=$('#aiTech').value||null,r=await api(AI_URL(),{body:{mode:'art',prompt,techniqueId:tid}});const l=await addPicture(r.image,'Graphic · '+prompt.slice(0,32),{fit:.4,origin:r.art?'/v1/lab/art/'+r.art:null});if(tid){applyTech(l,tid);commit();paintLayers();draw()}D.ai.left=r.left;LIB=null;m.className='msg ok';m.textContent=`Done: the graphic is a new layer, and it is in the graphics library. Move it into place.${r.left==null?'':` ${r.left} left today.`}`}
     catch(x){m.className='msg bad';m.textContent=x.message}finally{busy();e.target.disabled=false}}
 });
 
@@ -506,7 +520,12 @@ $('#pAi').addEventListener('click',async e=>{
 function serialize(){return{w:W,h:H,selected:SEL,layers:LAYERS.map(l=>{const o={};for(const[k,v]of Object.entries(l))if(!k.startsWith('_')&&k!=='raster'&&k!=='dirty')o[k]=v;
   if(isRaster(l)&&(l.dirty||!l.src||l.kind==='paint'||l.raster._rid!==l._srcRid))o.src=l.raster.toDataURL('image/png');return o})}}
 async function save(){const b=$('#save');b.disabled=true;$('#saved').textContent='Saving…';
-  try{const doc=serialize();const r=await api(`/v1/lab/concepts/${CID}/studio`,{method:'PUT',body:{doc}});
+  try{const doc=serialize();let r;
+    if(GMODE){compose();const image=docC.toDataURL('image/png');
+      // a graphic not yet in the library goes in with its first save; after that its layers are saved on it
+      if(!GID){const k=await api('/v1/lab/library/studio/keep',{body:{image,name:D.concept.name,doc}});GID=k.id;D.concept.hasImage=true;history.replaceState(null,'',`/lab/studio?art=${GID}`);r={savedAt:new Date().toISOString()}}
+      else r=await api(`/v1/lab/library/graphics/${GID}/studio`,{method:'PUT',body:{doc}})}
+    else r=await api(`/v1/lab/concepts/${CID}/studio`,{method:'PUT',body:{doc}});
     // what was sent is now what the layers come from
     for(const l of LAYERS){const s=doc.layers.find(x=>x.id===l.id);if(s&&isRaster(l)){l.src=s.src;l.dirty=false;l._srcRid=l.raster._rid}}
     DIRTY=false;SAVED_AT=r.savedAt;showSaved();return true}
@@ -535,10 +554,16 @@ $('#expBtn').onclick=e=>{e.stopPropagation();const p=$('#expPop'),open=p.classLi
 document.addEventListener('click',e=>{if(!e.target.closest('.menu')){$('#expPop').classList.add('hidden');$('#expBtn').setAttribute('aria-expanded','false')}});
 $('#expPop').addEventListener('click',e=>{const b=e.target.closest('[data-exp]');if(!b)return;$('#expPop').classList.add('hidden');const k=b.dataset.exp;compose();
   if(k==='png')download(docC.toDataURL('image/png'),fileBase()+'.png');
+  if(k==='keepnew'){const name=prompt('Name for the new graphic',(D.concept.name||'Graphic')+' (variant)');if(name===null)return;busy('Keeping it in the library…');api('/v1/lab/library/studio/keep',{body:{image:docC.toDataURL('image/png'),name,doc:serialize()}}).then(()=>toast(`"${name}" is in the graphics library now.`,'/lab/library')).catch(x=>toast(x.message)).finally(()=>busy())}
   if(k==='svg'){const url=URL.createObjectURL(new Blob([svgDoc()],{type:'image/svg+xml'}));download(url,fileBase()+'-layers.svg');setTimeout(()=>URL.revokeObjectURL(url),4000)}
   if(k==='layer'){const l=selected();if(!l){toast('Choose a layer first.');return}const c=processed(l),o=canvas(c.width*l.scale,c.height*l.scale);o.getContext('2d').drawImage(c,0,0,o.width,o.height);download(o.toDataURL('image/png'),fileBase()+'-'+l.name.toLowerCase().replace(/[^a-z0-9]+/g,'-').slice(0,30)+'.png')}});
 function ask(title,text,yes='Yes'){return new Promise(ok=>{const d=$('#askDlg');$('#askTitle').textContent=title;$('#askText').textContent=text;$('#askYes').textContent=yes;d.returnValue='';d.onclose=()=>ok(d.returnValue==='yes');d.showModal()})}
 $('#apply').onclick=async()=>{
+  if(GMODE){busy(GID?'Updating the graphic…':'Keeping it in the library…');
+    try{compose();const image=docC.toDataURL('image/png'),doc=serialize();
+      if(GID){await api(`/v1/lab/library/graphics/${GID}/studio/apply`,{body:{image,doc}});toast('The graphic is updated in the library. Pieces that already use it keep what they had.','/lab/library')}
+      else{const k=await api('/v1/lab/library/studio/keep',{body:{image,name:D.concept.name,doc}});GID=k.id;D.concept.hasImage=true;history.replaceState(null,'',`/lab/studio?art=${GID}`);paintSub();toast('It is in the graphics library now. Put it on any concept or product from there.','/lab/library')}
+      DIRTY=false;SAVED_AT=new Date().toISOString();showSaved()}catch(x){toast(x.message)}finally{busy()}return}
   if(D.concept.locked)return;
   const ok=await ask('Use this as the concept picture?',`Everything visible becomes the picture of "${D.concept.name}". Its flats, on-model views and walk will be drawn again from it.${D.concept.status==='approved'?' It is approved, so it goes back to draft to be approved again.':''} The picture it has now is kept and can be put back.`,'Use it');if(!ok)return;
   busy('Saving and using it…');try{await save();compose();const r=await api(`/v1/lab/concepts/${CID}/studio/apply`,{body:{image:docC.toDataURL('image/png')}});D.concept.status=r.status;D.canRestore=true;paintSub();toast('It is the concept picture now.',`/lab#board`)}catch(x){toast(x.message)}finally{busy()}};
@@ -546,7 +571,7 @@ $('#apply').onclick=async()=>{
 // ---------- small things ----------
 function busy(text){const b=$('#busy');if(!text){b.classList.add('hidden');return}$('#busyText').textContent=text;b.classList.remove('hidden')}
 let TT=0;function toast(text,href){if(!text)return;let el=$('#stToast');if(!el){el=document.createElement('div');el.id='stToast';el.setAttribute('role','status');el.style.cssText='position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:#141416;color:#fff;border-radius:14px;padding:10px 16px;font-size:13px;z-index:60;max-width:min(92vw,560px)';document.body.appendChild(el)}el.innerHTML=esc(text)+(href?` <a href="${esc(href)}" style="color:#4bff9a">Open the concepts</a>`:'');el.hidden=false;clearTimeout(TT);TT=setTimeout(()=>{el.hidden=true},6500)}
-function paintSub(){const c=D.concept,st={draft:'Draft',approved:'Approved',rejected:'Rejected',tech_pack:'Tech pack'}[c.status]||c.status;$('#cName').textContent=c.name;$('#cSub').innerHTML=`${esc(st)} · ${W}×${H}px${D.canRestore?' · <button class="btn sm q" type="button" id="restore" style="min-height:22px;padding:0 8px">Put the old picture back</button>':''}`;const r=$('#restore');if(r)r.onclick=async()=>{if(!await ask('Put the old picture back?','The concept gets the picture it had before the studio. Your design here stays as it is.','Put it back'))return;try{await api(`/v1/lab/concepts/${CID}/studio/restore`,{body:{}});D.canRestore=false;paintSub();toast('The old picture is back on the concept.')}catch(x){toast(x.message)}}}
+function paintSub(){const c=D.concept;if(GMODE){$('#cName').textContent=c.name;$('#cSub').textContent=`${GID?'Graphic in the library':'New graphic, not kept yet'} · ${W}×${H}px · clear background`;$('#apply').textContent=GID?'Update the graphic':'Keep in the library';$('#expKeepNew').classList.toggle('hidden',!GID);return}const st={draft:'Draft',approved:'Approved',rejected:'Rejected',tech_pack:'Tech pack'}[c.status]||c.status;$('#cName').textContent=c.name;$('#cSub').innerHTML=`${esc(st)} · ${W}×${H}px${D.canRestore?' · <button class="btn sm q" type="button" id="restore" style="min-height:22px;padding:0 8px">Put the old picture back</button>':''}`;const r=$('#restore');if(r)r.onclick=async()=>{if(!await ask('Put the old picture back?','The concept gets the picture it had before the studio. Your design here stays as it is.','Put it back'))return;try{await api(`/v1/lab/concepts/${CID}/studio/restore`,{body:{}});D.canRestore=false;paintSub();toast('The old picture is back on the concept.')}catch(x){toast(x.message)}}}
 document.addEventListener('keydown',e=>{
   if(!D)return;const typing=e.target.closest&&e.target.closest('input,textarea,select,[contenteditable]'),mod=e.ctrlKey||e.metaKey;
   if(mod&&e.key.toLowerCase()==='s'){e.preventDefault();save();return}
@@ -577,6 +602,7 @@ async function loadLayer(o){
 }
 async function boot(){
   if(!TOKEN()){$('#needSignin').classList.remove('hidden');return}
+  if(GMODE){return bootGraphic()}
   if(!/^[0-9a-f-]{36}$/i.test(CID)){$('#needSignin').classList.remove('hidden');$('#needSignin h1').textContent='Open a concept first';$('#needSignin p').textContent='The studio opens from a concept in the Design Lab: open one and press Open in the studio.';$('#needSignin a').href='/lab#board';$('#needSignin a').textContent='Open the concepts';return}
   try{D=await api(`/v1/lab/concepts/${CID}/studio`)}catch(x){const n=$('#needSignin');n.classList.remove('hidden');const no=/access to Design Lab|not turned on|Only Danielle/i.test(x.message);n.querySelector('h1').textContent=x.status===404?'That concept is not there any more':no?'The Design Lab is not turned on for you':'Sign in to the work console first';n.querySelector('p').textContent=x.status===404?'It may have been deleted.':x.message;return}
   $('#app').classList.remove('hidden');$('#back').href='/lab#board';
@@ -591,6 +617,23 @@ async function boot(){
   docC.width=W;docC.height=H;mask=canvas(W,H);maskX=mask.getContext('2d');
   setColor(CUR);paintSub();paintAdd();tab('layers');setTool('select');HIST=[snap()];HI=0;syncUndo();DIRTY=false;showSaved();paintLayers();requestAnimationFrame(fit);
   setInterval(()=>{if(DIRTY&&!DRAG)save()},90000); // a quiet save every minute and a half while there are changes
+}
+// a graphic for the library: a clear canvas, or the graphic's picture as a layer over one, with the layers it was built from when it has them
+async function bootGraphic(){
+  try{D=await api('/v1/lab/library/studio'+(GID?'?art='+encodeURIComponent(GID):''))}catch(x){const n=$('#needSignin');n.classList.remove('hidden');n.querySelector('h1').textContent=x.status===404?'That graphic is not in the library':'Sign in to the work console first';n.querySelector('p').textContent=x.message;return}
+  D.concept={name:D.graphic?.name||'New graphic',status:'graphic',locked:false,hasImage:Boolean(D.graphic?.hasImage),hasPlain:false,colors:[]};
+  $('#app').classList.remove('hidden');$('#back').href='/lab/library';$('#back').textContent='← Graphics library';document.querySelector('.brand-suffix').textContent='/ Graphics studio';
+  busy('Opening the graphic…');
+  try{
+    if(D.doc&&Array.isArray(D.doc.layers)&&D.doc.layers.length){W=D.doc.w;H=D.doc.h;LAYERS=[];for(const o of D.doc.layers){try{LAYERS.push(await loadLayer(o))}catch{toast('A layer could not be loaded and was left out.')}}SEL=D.doc.selected&&LAYERS.some(l=>l.id===D.doc.selected)?D.doc.selected:null}
+    else{W=1024;H=1024;const clear=canvas(W,H);LAYERS=[{...fresh('base',{name:'Clear background',raster:stamp(clear),x:W/2,y:H/2,dirty:true})}];
+      if(GID&&D.concept.hasImage){const src=await urlOfBlob(await blobOf('/v1/lab/art/'+GID)),img=await imgOf(src);W=Math.max(1024,img.naturalWidth);H=Math.max(1024,img.naturalHeight);const c2=canvas(W,H);LAYERS[0].raster=stamp(c2);LAYERS[0].x=W/2;LAYERS[0].y=H/2;
+        const c=canvas(img.naturalWidth,img.naturalHeight);c.getContext('2d').drawImage(img,0,0);LAYERS.push(fresh('image',{name:D.concept.name.slice(0,40),raster:stamp(c),src:'/v1/lab/art/'+GID,_srcRid:c._rid,scale:1,x:W/2,y:H/2}));LAYERS[1]._srcRid=LAYERS[1].raster._rid}}
+    LAYERS[0]._srcRid=LAYERS[0].raster._rid;
+  }catch(x){toast(x.message)}finally{busy()}
+  docC.width=W;docC.height=H;mask=canvas(W,H);maskX=mask.getContext('2d');
+  setColor(CUR);paintSub();paintAdd();tab('layers');setTool('select');HIST=[snap()];HI=0;syncUndo();DIRTY=false;showSaved();paintLayers();requestAnimationFrame(fit);
+  setInterval(()=>{if(DIRTY&&!DRAG&&GID)save()},90000);
 }
 boot();
 </script>

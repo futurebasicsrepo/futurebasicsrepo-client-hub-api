@@ -79,6 +79,7 @@ For a client's line, the window also shows:
 
 **What it does:** the concept's picture opens as layers. You can:
 - paint, type, and add marks and library graphics;
+- add **parts from the sketch pack** (Add → From the sketch pack): pockets, zips, collars, trims and buttons drawn in flat-sketch lines, as a layer you place and size, then blend in with “Change it with AI”;
 - recolour and distress;
 - have the image model redraw the whole piece or a painted area.
 
@@ -234,6 +235,26 @@ The design packages show **Quoted** until their prices are set in the service's 
 
 Packs made from the design service skip the per-pack paywall. They are billed as part of the design work, through Money and Agreements like any project.
 
+## Graphics: where they come from and where they go
+
+A graphic can start in four places, and every one of them ends in the **graphics library** (`/lab/library`), so it can be used on any piece later:
+
+| Starts | How |
+| --- | --- |
+| A line plan's program or a concept | drawn by the image model when the plan or concept is made |
+| The library | **Draw a new graphic**: words, ink colours, a style and what it is made for |
+| Our own files | **Add our own artwork** (PNG, JPEG, WebP; transparency kept) |
+| The library's studio | **Build a graphic in the studio** opens the studio on a clear canvas: draw with AI, paint, type, add marks, parts from the sketch pack and other library graphics as layers, then **Keep in the library**. The layers are kept with it, so **Rework in the studio** opens it again as it was built, and **Update the graphic** replaces it |
+
+From the library a graphic goes:
+
+- **onto a concept** (Put it on a concept: where, and made how), placed on the picture, with its technique on the tech pack;
+- **onto any product** (Put it on a product: search any client's products): it lands on the product's tech pack as artwork, Pantones read, placed on the front view at the width you give; the pack is made first if the product has none yet;
+- **onto the flats** (Design → Add a graphic) as a placement with inches from the HPS and centre front;
+- **into a tech pack from the pack itself**: **From the graphics library** beside Upload artwork, on the artwork tab.
+
+Parts from the sketch pack (pockets, zips, collars, trims, buttons) go the same way: onto the flats (Design → Parts) and onto a concept or a graphic in the studio (Add → From the sketch pack).
+
 ## Every button answers
 
 Every page loads `/feedback.js`.
@@ -269,6 +290,7 @@ Each guide offers the next one when it ends. The client's own guides for tech pa
 | J216 | The design service: a client's line, shared, with verdicts, replies, privacy, and the tech pack in the client's room. Includes the hub in a browser |
 | J217 | The whole loop over HTTP: concept → tech pack → publish → factory → sample sent → review → version 2 → the factory sees the corrections and the next sample |
 | J218 | The factory views and writes in Messages: no buttons (acknowledge, quote, countersign, sample sent all refused), the team records the shipped sample, the corrections go out as v2 while v1 is kept exactly, flats sent unchanged make no version, flats changed go out as v3. Includes the factory page in a browser |
+| J220 | Graphics anywhere: a graphic built in the library's studio (AI drawing, a sketch-pack part as a layer), kept with its layers, reworked and updated; a part from the pack on a concept in the studio; a library graphic onto any product's tech pack as artwork placed on the front, over HTTP and in a browser |
 | J219 | Every press answers: working, then a tick and a note, or a red mark and a note saying what failed; an uncaught failure is reported too |
 | J102 | Samples on the factory link, including marking one sent with its tracking (with factory buttons on) |
 | J162 | Pip on the hub and Home. Every guide has a title, a "do" and a "why" on each step, and valid selectors |
