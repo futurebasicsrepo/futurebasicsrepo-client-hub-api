@@ -14,7 +14,7 @@ import { readFileSync } from 'node:fs';
 import { logoSvg } from './brand-kit.js';
 import { cleanRules } from './lab-library.js';
 import { ensureBranding } from './lab-concepts.js';
-import { STYLES, FITS, SIZES, DETAILS, templateOf, detectStyle, defaultParams, defaultPlacement, cleanFlat, cleanEdits, describeEdit, placementChecks, overlapChecks, boxesMeet, describe, renderSvg, pomTable, measurementsFor, fmt, fmtCm } from './lab-flats.js';
+import { STYLES, FITS, SIZES, DETAILS, templateOf, fitToTemplate, detectStyle, defaultParams, defaultPlacement, cleanFlat, cleanEdits, describeEdit, placementChecks, overlapChecks, boxesMeet, describe, renderSvg, pomTable, measurementsFor, fmt, fmtCm } from './lab-flats.js';
 import { imageConfig, openaiEdit } from './check.js';
 import { brandHits } from './lab-concepts.js';
 
@@ -89,7 +89,7 @@ export function registerLabFlatsRoutes(app, d) {
   // where the piece starts: its style, fit and details from its words, and its logo and graphics where the concept said they go
   async function initial(c) {
     const det = detectStyle(c); if (!det) return null;
-    const params = { ...defaultParams(det.style, det.fit, det.options), ...(det.template ? { template: det.template } : {}) }, spec = ensureBranding(c.spec || {}, c.category), placements = [], list = await techniques();
+    const params = fitToTemplate({ ...defaultParams(det.style, det.fit, det.options), ...(det.template ? { template: det.template } : {}) }), spec = ensureBranding(c.spec || {}, c.category), placements = [], list = await techniques();
     const logo = spec.branding?.logo || {};
     if (logo.mark && logo.mark !== 'none') { const mark = logo.mark === 'cue' ? 'mark' : logo.mark, base = LOGO_BASE[logo.technique] || 'embroidery', aspect = await aspectOf({ mark }); const t = techFor(list, { technique: base });
       placements.push({ id: 'logo', name: 'Future Basics logo', source: 'logo', mark, technique: base, techniqueId: t.id, ...defaultPlacement('logo', params, { aspect, label: logo.placement || '' }) }); }
@@ -145,6 +145,8 @@ export function registerLabFlatsRoutes(app, d) {
   const sketches = new Map(), templateHref = file => { if (!sketches.has(file)) sketches.set(file, `data:image/svg+xml;base64,${readFileSync(new URL(`./flat-templates/${file}`, import.meta.url)).toString('base64')}`); return sketches.get(file); };
   // the sketch's own markup, drawn inline when the service turns a flat into a picture: a picture of the whole page would be rasterised at
   // the zoom of the frame, which takes half a minute for a close-up
+  // the add-on parts as pictures inside the sheet (a data URL, so the sheet stands alone and rasterises without fetching)
+  const partData = new Map(), partHref = file => { if (!partData.has(file)) { try { partData.set(file, `data:image/webp;base64,${readFileSync(new URL(`./flat-parts/${file}`, import.meta.url)).toString('base64')}`); } catch { partData.set(file, ''); } } return partData.get(file); };
   const inline = new Map(), templateSvg = file => { if (!inline.has(file)) { const t = readFileSync(new URL(`./flat-templates/${file}`, import.meta.url), 'utf8'); inline.set(file, t.slice(t.indexOf('>', t.indexOf('<svg')) + 1, t.lastIndexOf('</svg>'))); } return inline.get(file); };
   // the areas the image model redrew, as data URLs for the same reason
   const editHrefsOf = async params => { const ids = [...new Set((params.edits || []).filter(e => e.type === 'ai').map(e => e.art))]; if (!ids.length) return {};
@@ -166,7 +168,7 @@ export function registerLabFlatsRoutes(app, d) {
     // around it so the model sees how the change joins the rest
     const N = 1024, side = Math.max(box.w, box.h) * 2.2, cx0 = box.x - side / 2, cy0 = box.y - side / 2;
     const plainP = { ...t.params, color: '', edits: t.params.edits.filter(e => e.type !== 'block') }, hrefs = await editHrefsOf(plainP);
-    const frame = background => Buffer.from(renderSvg(plainP, view, { plain: true, scale: 0, templateSvg, editHrefs: hrefs, background }).replace(/^<svg ([^>]*?)viewBox="[^"]*"/, `<svg $1viewBox="${cx0} ${cy0} ${side} ${side}" width="${N}" height="${N}"`));
+    const frame = background => Buffer.from(renderSvg(plainP, view, { plain: true, scale: 0, templateSvg, partHref, editHrefs: hrefs, background }).replace(/^<svg ([^>]*?)viewBox="[^"]*"/, `<svg $1viewBox="${cx0} ${cy0} ${side} ${side}" width="${N}" height="${N}"`));
     const before = await sharp(frame(true)).flatten({ background: '#ffffff' }).png().toBuffer();
     const cloth = await sharp(frame(false)).ensureAlpha().extractChannel('alpha').raw().toBuffer();
     const px = v => Math.round(v / side * N), bx = px(box.x - box.w / 2 - cx0), by = px(box.y - box.h / 2 - cy0), bw = Math.max(1, Math.min(N - bx, px(box.w))), bh = Math.max(1, Math.min(N - by, px(box.h)));
@@ -193,7 +195,7 @@ export function registerLabFlatsRoutes(app, d) {
     for (const q of pl) { const b = await pngOf(q); if (b) hrefs[q.id] = `data:image/png;base64,${(await sharp(b).resize({ width: 600, height: 600, fit: 'inside', withoutEnlargement: true }).png().toBuffer()).toString('base64')}`; }
     const ck = r.check_result || { findings: {}, summary: { fail: 0, warn: 0 } };
     const views = STYLES[p.style].kind === 'cap' || STYLES[p.style].kind === 'top' || STYLES[p.style].kind === 'bottom' ? ['front', 'back'] : ['front'];
-    const editHrefs = await editHrefsOf(p), svgs = views.map(v => renderSvg(p, v, { placements: pl, hrefs, findings: ck.findings, showPom: true, scale: 0, templateHref, editHrefs }));
+    const editHrefs = await editHrefsOf(p), svgs = views.map(v => renderSvg(p, v, { placements: pl, hrefs, findings: ck.findings, showPom: true, scale: 0, templateHref, partHref, editHrefs }));
     // one page, 17 × 11 in at 100 units an inch: the flats across the top, the placements and the measurements under them
     const W = 1700, T = (x, y, s, t, o = {}) => `<text x="${x}" y="${y}" font-size="${s}" font-family="Space Grotesk, Helvetica, Arial, sans-serif" font-weight="${o.w || 400}" fill="${o.c || '#141416'}"${o.a ? ` text-anchor="${o.a}"` : ''}>${esc(t)}</text>`;
     const colW = (W - 120) / svgs.length; let y = 150;
@@ -224,7 +226,7 @@ export function registerLabFlatsRoutes(app, d) {
   async function files(c) {
     const s = await sheet(c); if (!s) return [];
     const out = [{ name: 'Spec sheet · flats, placements and measurements', image: await png(s.svg, 2400) }];
-    for (const v of s.views) out.push({ name: `Technical flat · ${v}`, image: await png(renderSvg(s.p, v, { placements: s.pl, hrefs: s.hrefs, scale: 60, templateSvg, editHrefs: s.editHrefs }), 1800) });
+    for (const v of s.views) out.push({ name: `Technical flat · ${v}`, image: await png(renderSvg(s.p, v, { placements: s.pl, hrefs: s.hrefs, scale: 60, templateSvg, partHref, editHrefs: s.editHrefs }), 1800) });
     return out;
   }
   const png = async (svg, width) => `data:image/png;base64,${(await sharp(Buffer.from(svg), { density: 150 }).resize({ width }).flatten({ background: '#ffffff' }).png().toBuffer()).toString('base64')}`;
@@ -236,7 +238,7 @@ export function registerLabFlatsRoutes(app, d) {
     const pom = pomTable(p).map(row => ({ code: row.code, name: row.name, how: 'From the flats', tolerance: String(row.tolerance), values: Object.fromEntries(row.values.map(v => [v.size, String(v.value)])) }));
     const construction = [{ area: 'Drawing', detail: `${FITS[p.fit] || p.fit} fit ${S.label.toLowerCase()}, drawn from the ${tpl ? `"${tpl.label}" flat sketch` : 'measurements'}; sample size M.` },
       ...pl.map(q => ({ area: `${q.view === 'back' ? 'Back' : 'Front'} · ${q.name}`, detail: `${techFor(list, q).name}, ${fmtCm(q.w)} × ${fmtCm(q.h)}: ${describe(q, p)}.` })),
-      ...edits.map(e => ({ area: e.type === 'stitch' ? 'Stitching' : e.type === 'block' ? 'Colour block' : e.type === 'ai' ? 'Redrawn area' : (DETAILS[e.kind] || 'Detail'), detail: describeEdit(e, p) }))];
+      ...edits.map(e => ({ area: e.type === 'stitch' ? 'Stitching' : e.type === 'block' ? 'Colour block' : e.type === 'ai' ? 'Redrawn area' : e.type === 'part' ? (e.name || 'Add-on part') : (DETAILS[e.kind] || 'Detail'), detail: describeEdit(e, p) }))];
     const threads = new Map(); for (const e of edits) if (e.thread) threads.set(e.thread, [...(threads.get(e.thread) || []), e.type === 'stitch' ? 'stitch line' : (DETAILS[e.kind] || 'detail').toLowerCase()]);
     const bom = [...pl.map(q => ({ component: `Decoration · ${q.name}`, material: techFor(list, q).name, placement: describe(q, p).slice(0, 160), qty: '1', unit: 'pc' })),
       ...[...threads].map(([hex, where]) => ({ component: 'Contrast thread', material: 'Polyester sewing thread', color: hex, placement: [...new Set(where)].join(', ').slice(0, 160), qty: '1', unit: 'cone' })),
@@ -254,7 +256,18 @@ export function registerLabFlatsRoutes(app, d) {
     if (!c.product_id) return bad(reply, 'This concept has no tech pack yet. Approve it and send it to a tech pack first.', 409);
     if (!applyHandoff) return bad(reply, 'Flats cannot be sent to tech packs on this service', 501);
     const sent = await sendToPack(c); if (!sent) return bad(reply, 'Save the flats first', 409);
-    return { ok: true, ...sent, productId: c.product_id };
+    // a tech pack already published keeps that version as it was: the flats go out as the next version, which the factory sees with what changed
+    const tp = (await pool.query('select version, published_at from tech_packs where product_id=$1 order by created_at desc limit 1', [c.product_id])).rows[0];
+    const changes = tp?.published_at && d.packChanges ? await d.packChanges(c.product_id) : null;
+    if (tp?.published_at) tp.same = Boolean(changes && !changes.length); // nothing a factory reads changed: no new version
+    let version = null, publishError = null;
+    if (tp?.published_at && !tp.same) {
+      const note = `Flats updated in the Design Lab (${c.name})`;
+      const res = await app.inject({ method: 'POST', url: `/v1/admin/products/${c.product_id}/tech-pack/publish`, headers: { authorization: req.headers.authorization || '' }, payload: { note, override: `${note}; v${tp.version} stays as it was`, notify: { email: false, thread: true } } });
+      const body = (() => { try { return JSON.parse(res.body); } catch { return {}; } })();
+      if (res.statusCode < 300) version = body.techPack?.version || null; else publishError = body.error || `The next version could not be published (${res.statusCode})`;
+    }
+    return { ok: true, ...sent, productId: c.product_id, version, previousVersion: tp?.published_at ? tp.version : null, unchanged: Boolean(tp?.published_at && tp.same), changes: (changes || []).slice(0, 12).map(x => `${x.section}: ${x.label}`), publishError };
   });
   // the check of a concept's flats as they would start (for approving a concept whose flats were never saved)
   const startCheck = async id => { const c = await concept(id); const init = c && await initial(c); return init ? check(init, init.placements) : null; };

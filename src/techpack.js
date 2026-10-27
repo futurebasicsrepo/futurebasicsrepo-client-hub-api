@@ -378,6 +378,10 @@ export function techPackReadiness(data, verification) {
 }
 
 // What clients and factories receive: the published snapshot only, never the live draft.
+let factoryActionsSetting = null; // set from the work console (stored in app_settings); otherwise FACTORY_ACTIONS=on
+export const setFactoryActions = on => { factoryActionsSetting = on == null ? null : Boolean(on); };
+export const factoryActionsOn = () => factoryActionsSetting ?? (typeof process !== 'undefined' && process.env?.FACTORY_ACTIONS === 'on');
+export const FACTORY_VIEW_ONLY = 'Factories read the tech pack on this link and write to Future Basics in Messages. Future Basics records quotes, acknowledgements, countersignatures and samples.';
 export function publishedTechPackView(row, extra = {}) {
   const data = normalizeTechPack(row.published_data);
   if (extra.audience === 'factory') { data.commercial = globalThis.FBCommercial.forFactory(data.commercial); data.bom = data.bom.map(r => ({ ...r, cost: '' })); } // what the client charges, and what it costs them, is not the factory's business
@@ -385,6 +389,9 @@ export function publishedTechPackView(row, extra = {}) {
   return {
     audience: extra.audience || 'client',
     shareLabel: extra.shareLabel || null,
+    // a factory reads its link and writes to Future Basics in Messages; Future Basics records its quote, acknowledgements, countersignature and
+    // samples. FACTORY_ACTIONS=on gives the factory those buttons on its own link again.
+    factoryActions: extra.audience === 'factory' && factoryActionsOn(),
     product: { id: row.product_id, title: row.title, productType: row.product_type, imageUrl: row.shopify_image_url || null, imageAlt: row.shopify_image_alt || null, clientName: row.client_name, projectName: row.project_name || null, projectId: extra.audience === 'factory' ? null : (row.project_id || null) },
     techPack: {
       version: row.version, publishedAt: row.published_at, lockedAt: row.locked_at || null,

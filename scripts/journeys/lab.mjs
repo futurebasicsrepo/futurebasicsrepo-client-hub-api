@@ -1057,6 +1057,72 @@ await journey('J217', 'Design to factory and back: a concept becomes a tech pack
   } finally { await cleanup(brands, plan.plan?.id); }
 });
 
+await journey('J218', 'The factory views and writes in Messages; the team makes the corrections: the factory has no buttons on its link (it cannot acknowledge, quote, countersign or mark a sample sent), it writes that the proto shipped, the team records it, reviews the sample, and the corrections go out as version 2 while version 1 stays exactly as it was; flats sent again become version 3', async () => {
+  const { brands, plan } = await conceptSetup(); await import('../../src/sample-review.js'); const FBSample = globalThis.FBSample;
+  const A = (path, o = {}) => call(path, { token: kyleT, ...o });
+  ok((await A('/v1/admin/factory-actions', { method: 'PUT', body: { on: false } })).json.on === false, '0. factories read their links and write in Messages (the setting on the Factories page)');
+  try {
+    const line = plan.lines.find(l => l.category === 'tops') || plan.lines[0], c = (await K(`/plans/${plan.plan.id}/lines/${line.id}/concepts`, { body: { count: 1 } })).json.concepts[0];
+    await K(`/concepts/${c.id}/approve`, { body: { overrideReason: 'reviewed side by side with the references: it is ours' } });
+    const fl = (await K(`/concepts/${c.id}/flats`)).json; await K(`/concepts/${c.id}/flats`, { method: 'PUT', body: fl.flat });
+    const pid = (await K(`/concepts/${c.id}/tech-pack`, { body: {} })).json.productId;
+    const data = (await A(`/v1/admin/products/${pid}/tech-pack`)).json.techPack.data; data.sampling = [{ stage: 'Proto sample', qty: '2', status: 'requested' }, { stage: 'Fit sample', qty: '2', status: 'planned' }];
+    await A(`/v1/admin/products/${pid}/tech-pack`, { method: 'PUT', body: { data } });
+    ok((await A(`/v1/admin/products/${pid}/tech-pack/publish`, { method: 'POST', body: { override: 'journey: view-only factory' } })).status === 200, '1. version 1 is published');
+    const sup = (await A('/v1/admin/suppliers', { method: 'POST', body: { name: `View Only Mill ${stamp}` } })).json;
+    const tok = (await A(`/v1/admin/products/${pid}/tech-pack/factory`, { method: 'POST', body: { supplierId: sup.id, mode: 'review' } })).json.assignment.packUrl.split('/tp/')[1];
+    const fv = (await call(`/v1/tp/${tok}`)).json; ok(fv.techPack.version === 1 && fv.factoryActions === false, '2. the factory reads version 1, with no buttons of its own', fv.factoryActions);
+    const key = fv.techPack.readiness.callouts[0]?.key || 'x:1';
+    for (const [what, path, body] of [['acknowledge a callout', 'ack', { key }], ['send a quote', 'quote', { currency: 'USD', tiers: [{ qty: 500, unit: 5 }], email: 'q@mill.test' }], ['countersign', 'sign', { name: 'Mill Manager' }], ['mark a sample sent', 'sample', { stage: 'Proto sample', tracking: 'X' }]]) {
+      const r = await call(`/v1/tp/${tok}/${path}`, { body }); ok(r.status === 403 && /Messages/.test(r.json.error || ''), `   it cannot ${what} itself: it is told to write in Messages`, r.status);
+    }
+    const msg = await call(`/v1/tp/${tok}/messages`, { body: { body: 'The proto shipped today, DHL 5521' } }); ok(msg.status === 200 || msg.status === 201, '3. the factory writes that the proto shipped, in Messages', msg.status);
+    const sent = await A(`/v1/admin/products/${pid}/tech-pack/sample-sent`, { method: 'POST', body: { stage: 'Proto sample', tracking: 'DHL 5521' } }); ok(sent.status === 200, '4. the team records it sent, with the tracking', sent.json);
+    const fv1 = (await call(`/v1/tp/${tok}`)).json; ok(fv1.techPack.version === 1 && fv1.techPack.data.sampling[0].status === 'sent' && fv1.techPack.data.sampling[0].tracking === 'DHL 5521', '   the factory sees it on version 1: tracking is no new version', fv1.techPack.data.sampling[0]);
+    const v1 = (await A(`/v1/admin/products/${pid}/tech-pack/versions/1`)).json, v1Json = JSON.stringify(v1.data.construction);
+    // the team reviews the sample and makes the corrections: they go out as version 2
+    const live = (await A(`/v1/admin/products/${pid}/tech-pack`)).json.techPack.data, size = FBSample.sampleSizeOf(live), chest = live.pom[0];
+    live.sampling[0].review = { verdict: 'revise', at: '2026-10-27', by: 'Kyle', measured: { [chest.code]: String(Number(chest.values[size]) + 1.5) }, adopt: [], corrections: [{ area: 'Hem', change: 'Hem twists: cut on grain, 1 in coverstitch' }] };
+    await A(`/v1/admin/products/${pid}/tech-pack`, { method: 'PUT', body: { data: FBSample.apply(live, 0) } });
+    const p2 = await A(`/v1/admin/products/${pid}/tech-pack/publish`, { method: 'POST', body: { note: 'Corrections from the Proto sample review', override: 'Corrections from the Proto sample review' } }); ok(p2.status === 200 && p2.json.techPack.version === 2, '5. the corrections go out as version 2', p2.json.techPack?.version);
+    const fv2 = (await call(`/v1/tp/${tok}`)).json; ok(fv2.techPack.version === 2 && fv2.techPack.data.construction.some(r => /Correction · Proto sample: Hem/.test(r.area)), '   the factory reads version 2 with the corrections', fv2.techPack.version);
+    const v1again = (await A(`/v1/admin/products/${pid}/tech-pack/versions/1`)).json; ok(JSON.stringify(v1again.data.construction) === v1Json && !v1again.data.construction.some(r => /Correction/.test(r.area)) && v1again.current === false, '6. version 1 is kept exactly as it was: the chain of versions is intact');
+    // flats changed in the Lab and sent again: version 3, version 2 kept
+    const same = await K(`/concepts/${c.id}/flats/tech-pack`, { body: {} }); ok(same.status === 200 && same.json.unchanged === true && same.json.version === null, '7. flats sent again unchanged make no new version', same.json);
+    const fl2 = (await K(`/concepts/${c.id}/flats`)).json.flat; ok((await K(`/concepts/${c.id}/flats`, { method: 'PUT', body: { ...fl2, color: '#1f2a44' } })).status === 200, '   the flats are coloured navy in the Lab');
+    const again = await K(`/concepts/${c.id}/flats/tech-pack`, { body: {} }); ok(again.status === 200 && again.json.version === 3 && again.json.previousVersion === 2, '   sent again, they go out as version 3', again.json);
+    const v2 = (await A(`/v1/admin/products/${pid}/tech-pack/versions/2`)).json; ok(v2.version === 2 && v2.data.construction.some(r => /Correction · Proto sample: Hem/.test(r.area)) && (await call(`/v1/tp/${tok}`)).json.techPack.version === 3, '   version 2 stays as it was, and the factory reads version 3');
+    if (playwright) {
+      const b = await playwright.chromium.launch();
+      try {
+        const page = await (await b.newContext({ viewport: { width: 1280, height: 900 } })).newPage(); await page.goto(`${BASE}/tp/${tok}`, { waitUntil: 'networkidle' });
+        await page.waitForSelector('#tabs [data-tab]'); await page.click('#tabs [data-tab="calls"]').catch(() => {});
+        ok(await page.locator('.ackbtn').count() === 0 && await page.locator('#factorySign').count() === 0 && await page.locator('[data-act="ssent"]').count() === 0, '8. in a browser the factory page has no acknowledge, countersign or sample buttons');
+        ok(await page.locator('#tabs [data-tab="msgs"]').count() === 1, '   and it has its Messages tab');
+      } finally { await b.close(); }
+    }
+  } finally { await A('/v1/admin/factory-actions', { method: 'PUT', body: { on: true } }); await cleanup(brands, plan.plan?.id); }
+});
+
+await journey('J219', 'Every press answers: a button that starts a request shows it is working, then a tick and a note when it worked, or a red mark and a note saying what failed and why', async () => {
+  if (!playwright) { ok(true, 'skipped: no browser here'); return; }
+  const b = await playwright.chromium.launch();
+  try {
+    const ctx = await b.newContext({ viewport: { width: 1280, height: 900 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
+    const page = await ctx.newPage(); await page.goto(`${BASE}/factories`, { waitUntil: 'networkidle' });
+    ok(await page.evaluate(() => Boolean(window.FBN && window.FBN.toast)), 'the feedback layer is on the page');
+    await page.evaluate(() => { for (const [id, url] of [['fbOk', '/v1/admin/factory-actions'], ['fbBad', '/v1/admin/no-such-thing']]) { const btn = document.createElement('button'); btn.id = id; btn.textContent = id === 'fbOk' ? 'Save the setting' : 'Do the impossible'; btn.onclick = () => fetch(url, { method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + localStorage.getItem('fb.admin.token') }, body: JSON.stringify({ on: true }) }); document.body.appendChild(btn); } });
+    await page.route('**/v1/admin/factory-actions', async r => { await new Promise(x => setTimeout(x, 600)); await r.continue(); });
+    await page.click('#fbOk'); ok(await page.locator('#fbOk.fbn-busy[aria-busy="true"]').count() === 1, 'while the request runs, the button shows it is working');
+    await page.waitForSelector('.fbn-toast:not(.err)', { timeout: 5000 }); ok(/Save the setting: done/.test(await page.innerText('.fbn-stack')) && await page.locator('#fbOk.fbn-ok').count() === 1, 'when it worked: a tick on the button and a note', await page.innerText('.fbn-stack'));
+    await page.click('#fbBad'); await page.waitForSelector('.fbn-toast.err', { timeout: 5000 });
+    ok(/Do the impossible:/.test(await page.innerText('.fbn-toast.err')) && await page.locator('#fbBad.fbn-err').count() === 1, 'when it failed: a red mark on the button and a note that says what failed', await page.innerText('.fbn-toast.err'));
+    await page.evaluate(() => { const btn = document.createElement('button'); btn.id = 'fbThrow'; btn.textContent = 'Broken press'; btn.onclick = () => Promise.reject(new Error('the printer is out of paper')); document.body.appendChild(btn); });
+    await page.click('#fbThrow'); await page.waitForFunction(() => /out of paper/.test(document.querySelector('.fbn-stack')?.innerText || ''), null, { timeout: 5000 }).catch(() => {});
+    ok(/Broken press: the printer is out of paper/.test(await page.innerText('.fbn-stack')), 'a press whose work fails without saying so is reported too', await page.innerText('.fbn-stack'));
+  } finally { await b.close(); }
+});
+
 await journey('J215', 'Design Lab flats in a browser: open them from a concept, see the front and back, drag the logo and watch its measurements, add a library graphic, catch a collar problem, change the fit and the measurements, read the graded points of measure, save and print the spec sheet', async () => {
   if (!playwright) { ok(true, 'skipped: no browser here'); return; }
   const { brands, plan } = await conceptSetup(); const tops = plan.lines.find(l => l.category === 'tops') || plan.lines[0];
@@ -1089,9 +1155,16 @@ await journey('J215', 'Design Lab flats in a browser: open them from a concept, 
     // the garment: fit and a measurement
     await page.click('.tabs [data-tab=garment]'); await page.selectOption('#gFit', 'oversized');
     const chest = Number(await page.locator('[data-m=chest]').inputValue()); ok(chest >= 24, 'an oversized fit widens the chest', chest);
-    const tpl = await page.locator('#gTpl').inputValue(); ok(/oversized|boxy/.test(tpl), 'and draws it from the oversized sketch', tpl);
-    await page.selectOption('#gTpl', 'none'); ok(await page.locator('#canvas svg path').count() > 5 && !(await page.locator('#canvas svg image[href^="/lab/flat-templates/"]').count()), 'the simple outline is still there to choose');
-    await page.selectOption('#gTpl', tpl);
+    const tpl = await page.locator('#gGal [data-tpl][aria-pressed="true"]').getAttribute('data-tpl'); ok(/oversized|boxy/.test(tpl), 'and draws it from the oversized sketch', tpl);
+    ok(await page.locator('#gGal [data-tpl] img').count() >= 10, 'the sketch gallery shows this style\'s sketches as thumbnails', await page.locator('#gGal [data-tpl]').count());
+    await page.click('#gGal [data-tpl="none"]'); ok(await page.locator('#canvas svg path').count() > 5 && !(await page.locator('#canvas svg image[href^="/lab/flat-templates/"]').count()), 'the simple outline is still there to choose');
+    await page.waitForSelector('.fbn-toast'); ok(/simple outline/i.test(await page.innerText('.fbn-stack')), 'and picking it says so', await page.innerText('.fbn-stack'));
+    // any sketch in the pack: search women's halter, and the piece becomes that style
+    await page.fill('#gQ', 'halter swimsuit'); await page.waitForFunction(() => document.querySelectorAll('#gGal [data-tpl]').length >= 1 && [...document.querySelectorAll('#gGal [data-tpl]')].every(b => /halter/i.test(b.textContent)));
+    const sw = await page.locator('#gGal [data-tpl]').first().getAttribute('data-tpl'); await page.click(`#gGal [data-tpl="${sw}"]`);
+    ok(await page.locator('#gStyle').inputValue() === 'swimsuit' && (await page.locator('#canvas svg image[href^="/lab/flat-templates/"]').getAttribute('href')).includes(sw), 'a sketch of another style, found by searching, changes the piece to it', sw);
+    await page.fill('#gQ', ''); await page.selectOption('#gStyle', 'tee'); await page.selectOption('#gFit', 'oversized');
+    await page.click(`#gGal [data-tpl="${tpl}"]`);
     await page.locator('[data-m=length]').fill('31'); await page.click('.tabs [data-tab=pom]');
     const pom = await page.innerText('#pPom'); ok(/Body length/.test(pom) && /\b31\b/.test(pom) && /XXL/.test(pom), 'the points of measure are graded across the sizes', pom.slice(0, 200));
     // design: a colour, a pocket in a double-needle topstitch, a stitch line drawn point by point, an area redrawn by the image model
@@ -1099,6 +1172,10 @@ await journey('J215', 'Design Lab flats in a browser: open them from a concept, 
     ok(await page.locator('#canvas svg filter').count() >= 1, 'a colour recolours the sketch');
     await page.click('[data-adddet="pocket-patch"]'); ok(await page.locator('#canvas [data-ed]').count() === 1 && /Patch pocket/.test(await page.innerText('#pDesign')), 'a patch pocket is added where it usually goes, and listed');
     await page.selectOption('.ed [data-ek=stitch]', 'double'); ok(/topstitch double needle/.test(await page.innerText('#pDesign')), 'its topstitch changes to double needle');
+    // a part from the pack's own add-on sheets: a zip puller, placed and named
+    await page.click('[data-pkind="zips"]'); const nEd = await page.locator('#canvas [data-ed]').count(); await page.click('[data-addpart]');
+    ok(await page.locator('#canvas [data-ed]').count() === nEd + 1 && await page.locator('#canvas svg image[href^="/lab/flat-parts/"]').count() === 1 && /add-on sheet/.test(await page.innerText('#pDesign')), 'a zip from the pack\'s add-on sheet goes on the flat and is written up');
+    await page.click('.ed.on [data-edel]'); ok(await page.locator('#canvas [data-ed]').count() === nEd, 'and comes off again');
     const cb = await page.locator('#canvas > svg').boundingBox();
     await page.click('[data-mode=stitch]'); await page.mouse.click(cb.x + cb.width * .35, cb.y + cb.height * .8); await page.mouse.click(cb.x + cb.width * .65, cb.y + cb.height * .8); await page.keyboard.press('Enter');
     ok(/Double needle line/.test(await page.innerText('#pDesign')), 'a stitch line is drawn point by point');

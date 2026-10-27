@@ -6,7 +6,7 @@ import { createHash, createHmac, timingSafeEqual, randomBytes, randomInt, random
 import { createReadStream, createWriteStream, mkdirSync, readFileSync } from 'node:fs';
 import { unlink, writeFile, mkdir, readFile } from 'node:fs/promises';
 import { pipeline } from 'node:stream/promises';
-import { gzip as gzipCb } from 'node:zlib';
+import { gzip as gzipCb, gzipSync } from 'node:zlib';
 import { promisify } from 'node:util';
 import { basename, extname, join } from 'node:path';
 import sharp from 'sharp';
@@ -70,7 +70,7 @@ import { shopifyConfigured, shopifyGraphql, SHOP_CONNECTION_QUERY, APP_SCOPES_QU
 import { latestProductQuote, productCommercials, projectFinancialRollups, clientProductTerms, draftOrderLinesForProducts } from './commercials.js';
 import { normalizeSubmission, normalizeAmount, nextOfferState, consignmentView, formatCents } from './consign.js';
 import { normalizeOfferSubmission, normalizeOfferAmount, nextOfferMove, offerView } from './offers.js';
-import { missingViews, normalizeTechPack, seedTechPack, techPackCompleteness, publishedTechPackView, normalizeVerification, techPackReadiness, emptyVerification, publishGate, isInlineImage, packStrings, mergeClientEdits, cardFieldsFromPack } from './techpack.js';
+import { missingViews, normalizeTechPack, seedTechPack, techPackCompleteness, publishedTechPackView, factoryActionsOn, setFactoryActions, FACTORY_VIEW_ONLY, normalizeVerification, techPackReadiness, emptyVerification, publishGate, isInlineImage, packStrings, mergeClientEdits, cardFieldsFromPack } from './techpack.js';
 import { aiEnabled, vetMeasurements, draftFromPhotos, draftFromBrief, applyDraftToPack, productTypeLabel, AI_MODEL, translateStrings, TRANSLATION_LANGS, LANG_LABELS, locateProduct, cropToBox, draftLooksEmpty, NoProductError, completeMeasurements, locateCallouts, calloutCrop } from './ai.js';
 import { planClientAccess, normalizeEmails, emailDomain } from './access.js';
 import { applyFlow, MILESTONE_STATUSES, OWNERS, OWNER_LABELS } from './flow.js';
@@ -678,7 +678,7 @@ registerLabConceptRoutes(app, { pool, authenticate, adminOnly, getSetting, log: 
 registerLabViewRoutes(app, { pool, authenticate, adminOnly, log: app.log });
 registerLabStudioRoutes(app, { pool, authenticate, adminOnly });
 registerLabLibraryRoutes(app, { pool, authenticate, adminOnly, art: labArt, log: app.log });
-const labFlats = registerLabFlatsRoutes(app, { pool, authenticate, adminOnly, log: app.log, attachArtwork: (productId, items) => attachLabArtwork(productId, items), applyHandoff: (productId, h) => applyLabHandoff(productId, h) });
+const labFlats = registerLabFlatsRoutes(app, { pool, authenticate, adminOnly, log: app.log, attachArtwork: (productId, items) => attachLabArtwork(productId, items), applyHandoff: (productId, h) => applyLabHandoff(productId, h), packChanges: async productId => { const t=(await pool.query('select data,published_data from tech_packs where product_id=$1 order by created_at desc limit 1',[productId])).rows[0]; return t?.published_data?packDiff(normalizeTechPack(t.published_data),normalizeTechPack(t.data)).filter(c=>!/ picture$/.test(c.label)&&!(c.section==='Artwork'&&/^(Spec sheet|Technical flat)/.test(c.label))):null; } /* the flats are drawn again each time they are sent: a new picture alone is no change, and a changed drawing always changes its measurements, construction lines or colours too */ });
 registerLabClientRoutes(app, { pool, authenticate, adminOnly, log: app.log, sheetSvg: id => labFlats.sheetSvg(id), notifyStaff, notifyClientContact, hubUrl: () => clientHubUrl });
 const money=registerMoneyRoutes(app, { pool, authenticate, adminOnly, getSetting, setSetting, tokenSeal: sealer(process.env), stateSecret: process.env.JWT_SECRET || 'dev', workUrl: workHubUrl, log: app.log,
   // product development is paid through a Shopify checkout (a draft order for the amount due), see money-routes.js
@@ -716,11 +716,29 @@ app.get('/lab/studio', (_req, reply) => reply.header('cache-control', 'no-store,
 app.get('/lab/library', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').type('text/html').send(readFileSync(new URL('./lab-library.html', import.meta.url), 'utf8')));
 app.get('/lab/flats', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').type('text/html').send(readFileSync(new URL('./lab-flats.html', import.meta.url), 'utf8')));
 app.get('/lab/flats.js', (_req, reply) => reply.header('cache-control', 'public, max-age=300').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-flats.js', import.meta.url), 'utf8')));
-app.get('/lab/lab-flat-templates.js', (_req, reply) => reply.header('cache-control', 'public, max-age=300').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-flat-templates.js', import.meta.url), 'utf8')));
-// the flat sketches the technical flats are drawn from (from the purchased flat-sketch pack: served to the Design Lab pages, not listed anywhere)
+// the flat-sketch pack is large (nearly 400 sketches, their measurements and the add-on parts), so the text files go gzipped to any browser that takes it
+const packGz = new Map(), sendPack = (req, reply, rel, type, maxAge) => {
+  let body; try { body = readFileSync(new URL(rel, import.meta.url)); } catch { return reply.code(404).send('Not found'); }
+  reply.header('cache-control', `public, max-age=${maxAge}`).header('vary', 'accept-encoding').type(type);
+  if (!/\bgzip\b/.test(String(req.headers['accept-encoding'] || ''))) return reply.send(body);
+  const key = `${rel}:${body.length}`; if (!packGz.has(key)) packGz.set(key, gzipSync(body));
+  return reply.header('content-encoding', 'gzip').send(packGz.get(key));
+};
+app.get('/lab/lab-flat-templates.js', (req, reply) => sendPack(req, reply, './lab-flat-templates.js', 'application/javascript; charset=utf-8', 300));
+app.get('/lab/lab-flat-parts.js', (req, reply) => sendPack(req, reply, './lab-flat-parts.js', 'application/javascript; charset=utf-8', 300));
+// the flat sketches the technical flats are drawn from (from the purchased flat-sketch pack: served to the Design Lab pages, not listed anywhere),
+// their thumbnails for the picker, and the add-on parts (pockets, zips, collars, trims, buttons) cut from the pack's add-on sheets
 app.get('/lab/flat-templates/:file', (req, reply) => {
   const f = String(req.params.file || ''); if (!/^[a-z0-9-]+\.svg$/.test(f)) return reply.code(404).send('Not found');
-  try { return reply.header('cache-control', 'public, max-age=86400').type('image/svg+xml').send(readFileSync(new URL(`./flat-templates/${f}`, import.meta.url))); } catch { return reply.code(404).send('Not found'); }
+  return sendPack(req, reply, `./flat-templates/${f}`, 'image/svg+xml', 86400);
+});
+app.get('/lab/flat-templates/thumbs/:file', (req, reply) => {
+  const f = String(req.params.file || ''); if (!/^[a-z0-9-]+\.webp$/.test(f)) return reply.code(404).send('Not found');
+  try { return reply.header('cache-control', 'public, max-age=86400').type('image/webp').send(readFileSync(new URL(`./flat-templates/thumbs/${f}`, import.meta.url))); } catch { return reply.code(404).send('Not found'); }
+});
+app.get('/lab/flat-parts/:file', (req, reply) => {
+  const f = String(req.params.file || ''); if (!/^[a-z0-9-]+\.webp$/.test(f)) return reply.code(404).send('Not found');
+  try { return reply.header('cache-control', 'public, max-age=86400').type('image/webp').send(readFileSync(new URL(`./flat-parts/${f}`, import.meta.url))); } catch { return reply.code(404).send('Not found'); }
 });
 app.get('/lab/finish.js', (_req, reply) => reply.header('cache-control', 'public, max-age=300').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-finish.js', import.meta.url), 'utf8')));
 app.get('/team', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').type('text/html').send(readFileSync(new URL('./team.html', import.meta.url), 'utf8')));
@@ -782,6 +800,7 @@ app.get('/apple-touch-icon.png',(_req,reply)=>reply.redirect('/icons/apple-touch
 app.get('/favicon.ico',(_req,reply)=>reply.redirect('/icons/icon-192.png'));
 // The shared chat thread (script and styles), used by the Message Center, the room's project thread and the hub's project messages.
 // Pip, the helper mouse: a guide that follows the pointer and walks a person through the page (see helper.js and docs/helper-mouse.md)
+app.get('/feedback.js',(_req,reply)=>reply.header('cache-control','public, max-age=300').type('application/javascript').send(readFileSync(new URL('./feedback.js',import.meta.url),'utf8')));
 app.get('/helper.js',(_req,reply)=>reply.header('cache-control','public, max-age=300').type('application/javascript').send(readFileSync(new URL('./helper.js',import.meta.url),'utf8')));
 app.get('/ball.js',(_req,reply)=>reply.header('cache-control','public, max-age=3600').type('application/javascript').send(readFileSync(new URL('./ball.js',import.meta.url),'utf8')));
 app.get('/categories.js',(_req,reply)=>reply.header('cache-control','public, max-age=3600').type('application/javascript').send(readFileSync(new URL('./categories.js',import.meta.url),'utf8')));
@@ -3541,6 +3560,10 @@ async function billingSummary(){
   const counts=(await pool.query(`select (select count(*)::int from clients where tech_pack_comped and archived_at is null) comped_clients,(select count(*)::int from tech_packs where ai_status='locked' and status='draft') waiting_packs`)).rows[0];
   return {mode:billingMode||'auto',effective:billingOn(),automatic:billingAuto(),shopifyConnected:shopifyConfigured(),priceCents:TECH_PACK_PRICE_CENTS,compedClients:counts.comped_clients,waitingPacks:counts.waiting_packs};
 }
+// Whether factories get buttons on their links (acknowledge, quote, countersign, sample sent) or read the pack and write in Messages while
+// Future Basics records those for them (the default)
+app.get('/v1/admin/factory-actions',{preHandler:[authenticate,adminOnly]},async()=>({on:factoryActionsOn()}));
+app.put('/v1/admin/factory-actions',{preHandler:[authenticate,adminOnly]},async(req)=>{const on=Boolean(req.body?.on);await setSetting('factoryActions',{on,by:req.auth.sub,at:new Date().toISOString()});setFactoryActions(on);return {on}});
 app.get('/v1/admin/tech-pack-billing',{preHandler:[authenticate,adminOnly]},async()=>billingSummary());
 app.put('/v1/admin/tech-pack-billing',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const mode=req.body?.mode;if(!['on','off','auto'].includes(mode))return reply.code(400).send({error:'mode must be on, off or auto'});
@@ -5320,6 +5343,7 @@ app.get('/v1/tp/:token/model/:file',async(req,reply)=>{
 });
 // The factory works the acknowledgement chain through its link: tick callouts, then countersign.
 app.post('/v1/tp/:token/ack',async(req,reply)=>{
+  if(!factoryActionsOn())return reply.code(403).send({error:FACTORY_VIEW_ONLY});
   const {row,error}=await loadShareByToken(req.params.token);if(error)return reply.code(error.code).send({error:error.message});
   if(row.quote)return reply.code(403).send({error:'This link is for quotations only: send your quote from the Quote tab'});
   if(row.held)return reply.code(409).send({error:`A newer version is waiting for ${row.client_name}'s approval — nothing can be acknowledged until then`});
@@ -5335,6 +5359,7 @@ app.post('/v1/tp/:token/ack',async(req,reply)=>{
 // The factory says a sample is on its way: the sample's status turns to sent with its tracking, in the pack the team works on and in the version the
 // factory reads, and the team is told (the sample review follows when it arrives)
 app.post('/v1/tp/:token/sample',async(req,reply)=>{
+  if(!factoryActionsOn())return reply.code(403).send({error:FACTORY_VIEW_ONLY});
   const {row,error}=await loadShareByToken(req.params.token);if(error)return reply.code(error.code).send({error:error.message});
   if(row.quote)return reply.code(403).send({error:'This link is for quotations only'});
   const stage=String(req.body?.stage||'').slice(0,60),tracking=String(req.body?.tracking||'').replace(/\s+/g,' ').trim().slice(0,80);
@@ -5369,6 +5394,7 @@ async function saveFactoryQuote(row,q,staff=null){
 }
 // A factory sends (or revises) its quotation through its link: free, no account. Staff are told; earlier versions of the same factory's quote are kept.
 app.post('/v1/tp/:token/quote',async(req,reply)=>{
+  if(!factoryActionsOn())return reply.code(403).send({error:FACTORY_VIEW_ONLY});
   if(!throttle(`quote:${req.params.token}`,{limit:30,windowMs:3600_000}))return reply.code(429).send({error:'Too many sends from this link. Please try again in an hour.'});
   const {row,error}=await loadShareByToken(req.params.token);if(error)return reply.code(error.code).send({error:error.message});
   if(!row.quote)return reply.code(403).send({error:'This link is not for quotations'});
@@ -5416,6 +5442,30 @@ app.post('/v1/admin/products/:id/tech-pack/factory-ack',{preHandler:[authenticat
   if(!updated)return reply.code(409).send({error:'The tech pack changed: reload and try again'});
   await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary) values($1,$2,$3,'tech-pack',$4)`,[ctx.product.client_id,ctx.product.id,req.auth.sub,`${n} callout${n===1?'':'s'} acknowledged by Future Basics for ${await forFactory(ctx,req.body)}`]).catch(()=>{});
   return {acknowledged:n,techPack:techPackPayload(updated)};
+});
+// The factory said in Messages that a sample shipped: Future Basics records it (with its tracking) in the pack it works on and in the version the
+// factory reads. Tracking is not part of the spec, so it is no new version.
+// Every published version, kept as it was: the chain of a pack's updates (a factory that sampled from v1 can always be shown v1)
+app.get('/v1/admin/products/:id/tech-pack/versions/:v',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const ctx=await loadAdminTechPack(req.params.id);if(!ctx?.techPack)return reply.code(404).send({error:'Tech pack not found'});
+  const v=Number(req.params.v);if(!Number.isInteger(v)||v<1)return reply.code(400).send({error:'Which version?'});
+  const row=(await pool.query('select version,data,note,published_at,locked_at from tech_pack_versions where tech_pack_id=$1 and version=$2',[ctx.techPack.id,v])).rows[0];
+  if(!row)return reply.code(404).send({error:`There is no v${v} of this tech pack`});
+  return {version:row.version,data:normalizeTechPack(row.data),note:row.note||'',publishedAt:row.published_at,lockedAt:row.locked_at,current:row.version===ctx.techPack.version};
+});
+app.post('/v1/admin/products/:id/tech-pack/sample-sent',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const ctx=await loadAdminTechPack(req.params.id);if(!ctx?.techPack)return reply.code(404).send({error:'Tech pack not found'});
+  if(!ctx.techPack.published_at)return reply.code(409).send({error:'Publish the tech pack first: the factory has nothing to sample yet'});
+  const stage=String(req.body?.stage||'').slice(0,60),tracking=String(req.body?.tracking||'').replace(/\s+/g,' ').trim().slice(0,80);
+  const pub=normalizeTechPack(ctx.techPack.published_data),i=pub.sampling.findIndex(r=>r.stage===stage);if(i<0)return reply.code(404).send({error:'That sample is not on the published version'});
+  if(pub.sampling[i].status==='approved')return reply.code(409).send({error:'That sample is already approved'});
+  const mark=d=>{const x=normalizeTechPack(d),j=x.sampling.findIndex(r=>r.stage===stage);if(j>=0){x.sampling[j].status='sent';x.sampling[j].tracking=tracking||x.sampling[j].tracking}return x};
+  const tp=(await pool.query('select data,published_data from tech_packs where id=$1',[ctx.techPack.id])).rows[0];
+  await pool.query('update tech_packs set data=$2,published_data=$3 where id=$1',[ctx.techPack.id,mark(tp.data),mark(tp.published_data)]);
+  await pool.query(`update tech_pack_versions set data=$3::jsonb where tech_pack_id=$1 and version=$2`,[ctx.techPack.id,ctx.techPack.version,JSON.stringify(mark(tp.published_data))]).catch(()=>{});
+  await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,[ctx.product.client_id,ctx.product.id,req.auth.sub,`The ${stage} for ${ctx.product.title} is on its way${tracking?` (tracking ${tracking})`:''}`,{techPackId:ctx.techPack.id,stage,tracking}]).catch(()=>{});
+  const fresh=await loadAdminTechPack(req.params.id);
+  return {ok:true,stage,tracking,techPack:techPackPayload(fresh.techPack)};
 });
 app.post('/v1/admin/products/:id/tech-pack/factory-sign',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const ctx=await staffFactoryCtx(req,reply);if(!ctx)return;
@@ -5572,6 +5622,7 @@ app.get('/v1/admin/products/:id/tech-pack/quotes',{preHandler:[authenticate,admi
   return {version:tp.version,qty,links:links.map(l=>({...shareRow(l),quoted:Boolean(l.quote_id)})),quotes,compare:compareQuotes(quotes,qty)};
 });
 app.post('/v1/tp/:token/sign',async(req,reply)=>{
+  if(!factoryActionsOn())return reply.code(403).send({error:FACTORY_VIEW_ONLY});
   const {row,error}=await loadShareByToken(req.params.token);if(error)return reply.code(error.code).send({error:error.message});
   if(row.quote)return reply.code(403).send({error:'This link is for quotations only: send your quote from the Quote tab'});
   if(row.held)return reply.code(409).send({error:`A newer version is waiting for ${row.client_name}'s approval — countersign it once it is approved`});
@@ -5998,6 +6049,7 @@ for (const signal of ['SIGTERM', 'SIGINT']) {
 
 await migrate();
 billingMode=['on','off'].includes((await getSetting('techPackBilling'))?.mode)?(await getSetting('techPackBilling')).mode:null;
+{const fa=await getSetting('factoryActions');if(fa&&typeof fa.on==='boolean')setFactoryActions(fa.on)}
 await repairPendingShopifyLinks();
 if(!(await getSetting('buildReposFilled'))){await backfillBuildRepos(pool).then(async n=>{await setSetting('buildReposFilled',{at:new Date().toISOString(),n});if(n)app.log.info({n},'showcase builds now know where their code lives')}).catch(e=>app.log.warn({err:e.message},'build repositories not filled in'))}
 await moveBuildRepos(pool).then(n=>{if(n)app.log.info({n},'showcase builds follow their code to its new repository')}).catch(e=>app.log.warn({err:e.message},'moved build repositories not updated'));

@@ -73,8 +73,10 @@
       steps: [
         { target: '#canvas', title: 'The piece as flats', do: 'A professional flat sketch, scaled to the measurements. Drag a logo or graphic: its inches from the HPS and centre front follow.', why: 'This is how a sample room measures, so the factory reads it the same way.' },
         { target: '.tabs [data-tab="garment"]', title: 'The piece and its drawing', do: 'Open Garment: the style, fit, the sketch it is drawn from, and the sample measurements.', why: 'Every other size is graded from these.', done: 'click', after: 'Garment open.' },
+        { target: '#gGal', title: 'Pick any sketch in the pack', wait: 'Open Garment first.', optional: true, do: 'Every drawing in the pack, men’s and women’s: search it (cargo, pleated, halter), or tick Every style to change what the piece is.', why: 'The piece starts at the sketch’s own proportions: a cropped tee shorter, a maxi dress longer.' },
         { target: '.tabs [data-tab="design"]', title: 'Change the design', do: 'Open Design.', why: 'Colour it, add pockets, pleats, drawcords or a zip, draw stitch lines, or have AI redraw an area.', done: 'click', after: 'Design open.' },
         { target: '[data-adddet]', title: 'Add a detail', wait: 'Open Design first.', do: 'Press a detail, a pocket or pleats, then drag it into place or type its size.', why: 'Each detail has its own topstitch, thread and fabric colour, and goes on the tech pack in words.' },
+        { target: '[data-addpart]', title: 'Parts from the sketch pack', wait: 'Open Design first.', optional: true, do: 'Pockets, zips, collars, trims and buttons from the pack itself: add one, drag it into place and size it.', why: 'They are drawn in the same lines as the sketch, take the garment’s colour, and the tech pack names them.' },
         { target: '[data-mode="ai"]', title: 'Redraw an area with AI', wait: 'Open Design first.', optional: true, do: 'Press it, drag a box round a part, and say what to change, like “make this a cargo pocket”.', why: 'Only that area is redrawn, in the same flat-sketch lines.' },
         { target: '#save', title: 'Save and check', do: 'Press Save.', why: 'It checks everything can be made: on the piece, clear of seams and zips, within the technique.', done: 'click', after: 'Saved.' },
         { target: ['#toPack:not(.hidden)', '#sheet'], title: 'Send it on', do: 'Print the spec sheet, or once it is a tech pack, press “Send to the tech pack”.', why: 'The pack takes the measurements, the flats as sketches, every detail and stitch, and the colour.' }
@@ -87,11 +89,12 @@
       steps: [
         { target: '#crumb', title: 'Where it came from', optional: true, do: 'A pack made from a Design Lab concept links back to its concept and flats here.', why: 'Change the flats and send them again: the pack updates without doubling anything.' },
         { target: '[data-act="publish"]', title: 'Publish a version', do: 'When the pack is ready, press Publish.', why: 'Each version is numbered and signed off; the factory and the client see what changed each time.' },
-        { target: '#assignForm', title: 'Send it to a factory', optional: true, do: 'Choose the factory and send it for a quote or to make.', why: 'The factory gets its own link in its language: it acknowledges each callout, quotes, and countersigns.' },
-        { target: '[data-sampling]', title: 'Plan the samples', optional: true, do: 'Add the usual stages: proto, fit, pre-production, top of production.', why: 'The factory sees which samples are due, and marks each one sent with its tracking.' },
-        { target: '[data-act="srev"]', title: 'Review a sample', optional: true, do: 'When a sample arrives, press “Review this sample”: type what you measured, add corrections, approve it or ask for changes.', why: 'One press writes the next version: accepted measurements, corrections, and the next sample asked for. Publish it and the factory sees exactly what changed.' }
+        { target: '#assignForm', title: 'Send it to a factory', optional: true, do: 'Choose the factory and send it for a quote or to make.', why: 'The factory gets its own link in its language. It reads the pack and writes to you in Messages; you record its quote, acknowledgement and countersignature.' },
+        { target: '[data-sampling]', title: 'Plan the samples', optional: true, do: 'Add the usual stages: proto, fit, pre-production, top of production.', why: 'The factory sees which samples are due. When it says one shipped, press “Record it sent” and add the tracking.' },
+        { target: '[data-act="srev"]', title: 'Review a sample', optional: true, do: 'When a sample arrives, press “Review this sample”: type what you measured, add corrections, approve it or ask for changes.', why: 'One press makes the next version (v2, v3…) and sends it to the factory: accepted measurements, corrections, the next sample. The version before stays exactly as it was.' },
+        { target: '[data-act="viewver"]', title: 'Every version, kept', optional: true, do: 'Under Revisions, “View v1” shows any version exactly as it was published.', why: 'The chain of updates stays whole: what the factory sampled from is always there to compare.' }
       ],
-      outro: 'Publish the corrected version: the factory reads “what changed”, keeps its acknowledgements for what did not, and the next sample follows.'
+      outro: 'The factory reads the new version and “what changed”, answers in Messages, and the next sample follows.'
     },
     {
       id: 'hub-signin', title: 'Sign in to your room',

@@ -189,3 +189,15 @@ test('long lists are capped so a card stays a card', () => {
   const f = cardFieldsFromPack({ bom, colorways: Array.from({ length: 40 }, (_, i) => ({ name: `Colour ${i}` })) });
   assert.equal(f.material.split(', ').length, 6); assert.ok(f.material.length <= 200); assert.equal(f.colorways.length, 12);
 });
+
+test('a factory reads its link and writes in Messages unless the team gives it buttons', async () => {
+  const { publishedTechPackView, setFactoryActions, factoryActionsOn } = await import('../src/techpack.js');
+  const row = { published_data: {}, version: 1, verification: null, product_id: 'p', title: 'Tee' };
+  setFactoryActions(null); const was = process.env.FACTORY_ACTIONS; delete process.env.FACTORY_ACTIONS;
+  try {
+    assert.equal(factoryActionsOn(), false); assert.equal(publishedTechPackView(row, { audience: 'factory' }).factoryActions, false, 'view only by default');
+    process.env.FACTORY_ACTIONS = 'on'; assert.equal(publishedTechPackView(row, { audience: 'factory' }).factoryActions, true, 'FACTORY_ACTIONS=on gives the buttons back');
+    setFactoryActions(false); assert.equal(factoryActionsOn(), false, 'the console setting wins over the environment');
+    assert.equal(publishedTechPackView(row, { audience: 'client' }).factoryActions, false, 'a client never gets factory buttons');
+  } finally { setFactoryActions(null); if (was === undefined) delete process.env.FACTORY_ACTIONS; else process.env.FACTORY_ACTIONS = was; }
+});

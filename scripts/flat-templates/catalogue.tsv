@@ -1,0 +1,383 @@
+# every drawing in the flat-sketch pack: source file (under the download folder), style, name, template id, range
+all/Hats__Hats.svg	cap	Six-panel cap	cap-6panel	mens
+all/Package01-01.svg	tee	Classic tee	tee-classic	mens
+all/Package01-02.svg	tee	Oversized tee	tee-oversized	mens
+all/Package01-03.svg	tee	Boxy cropped tee	tee-boxy	mens
+all/Package01-04.svg	shirtss	Camp-collar shirt	ss-camp-collar-shirt	mens
+all/Package01-05.svg	crewneck	Crewneck sweatshirt	crew-classic	mens
+all/Package01-06.svg	hoodie	Pullover hoodie	hood-classic	mens
+all/Package01-07.svg	hoodie	Boxy hoodie	hood-boxy	mens
+all/Package01-08.svg	ziphoodie	Zip hoodie	zip-classic	mens
+all/Package01-09.svg	jacket	Bomber jacket	jk-bomber	mens
+all/Package01-10.svg	jacket	Collared blouson	jk-collared-blouson	mens
+all/Package01-11.svg	jacket	Track jacket	jk-track	mens
+all/Package01-12.svg	jacket	Trucker jacket	jk-trucker	mens
+all/Package01-13.svg	jacket	Denim jacket	jk-denim-jacket	mens
+all/Package01-14.svg	jacket	Shearling aviator jacket	jk-shearling-aviator-jacket	mens
+all/Package01-15.svg	jacket	Cropped denim jacket	jk-cropped-denim-jacket	mens
+all/Package01-16.svg	jacket	Hooded puffer jacket	jk-hooded-puffer-jacket	mens
+all/Package01-17.svg	jacket	Button cardigan	jk-button-cardigan	mens
+all/Package01-18.svg	jacket	Harrington jacket	jk-harrington-jacket	mens
+all/Package01-19.svg	jacket	Snap-front varsity jacket	jk-snap-front-varsity-jacket	mens
+all/Package01-20.svg	polo	Rib-hem polo	polo-rib-hem-polo	mens
+all/Package01-21.svg	jacket	Zip work jacket	jk-zip	mens
+all/Package01-22.svg	jacket	Half-zip pullover	jk-half-zip-pullover	mens
+all/Package01-23.svg	jacket	Chore jacket	jk-chore-jacket	mens
+all/Package01-24.svg	jacket	Raglan overshirt jacket	jk-raglan-overshirt-jacket	mens
+all/Package01-25.svg	jacket	Hooded shirt jacket	jk-hooded-shirt-jacket	mens
+all/Package01-26.svg	coat	Long puffer parka	coat-long-puffer-parka	mens
+all/Package01-27.svg	jacket	Biker jacket	jk-biker-jacket	mens
+all/Package01-28.svg	coat	Overcoat	coat-overcoat	mens
+all/Package01-29.svg	shirt	Western overshirt	shirt-western-overshirt	mens
+all/Package01-30.svg	pants	Cargo pants	pt-cargo	mens
+all/Package01-31.svg	pants	Carpenter pants	pt-carpenter-pants	mens
+all/Package01-32.svg	pants	Double-knee work pants	pt-double-knee-work-pants	mens
+all/Package01-33.svg	pants	Sweatpants	pt-jogger	mens
+all/Package01-34.svg	pants	Distressed skinny jeans	pt-distressed-skinny-jeans	mens
+all/Package01-35.svg	pants	Five-pocket jeans	pt-jean	mens
+all/Package01-36.svg	pants	Flared jeans	pt-flared-jeans	mens
+all/Package01-37.svg	shorts	Denim shorts	sh-denim	mens
+all/Package01-38.svg	pants	Slim jeans	pt-slim-jeans	mens
+all/Package01-39.svg	pants	Cargo sweatpants	pt-cargo-sweatpants	mens
+all/Package01-40.svg	pants	Cargo joggers	pt-cargo-joggers	mens
+all/Package01-41.svg	shorts	Sweat shorts	sh-sweat	mens
+all/Package01-42.svg	shorts	Curved-hem sweat shorts	sh-curved-hem-sweat-shorts	mens
+all/Package01-43.svg	shorts	Drawcord sweat shorts	sh-drawcord-sweat-shorts	mens
+all/Package01-44.svg	shorts	Cargo sweat shorts	sh-cargo-sweat-shorts	mens
+all/Package01-45.svg	pants	Barrel-leg jeans	pt-barrel-leg-jeans	mens
+all/Package01-46.svg	shorts	Pleated shorts	sh-pleat	mens
+all/Package01-47.svg	pants	Straight sweatpants	pt-straight-sweatpants	mens
+all/Package01-48.svg	shorts	Five-pocket shorts	sh-five-pocket-shorts	mens
+all/Package01-49.svg	pants	Double-knee carpenter pants	pt-double-knee-carpenter-pants	mens
+all/Package01-50.svg	pants	Pleated trousers	pt-pleat	mens
+all/Package01-51.svg	pants	Wide-leg trousers	pt-wide-leg-trousers	mens
+all/Package01-52.svg	pants	Double-knee wide pants	pt-double-knee-wide-pants	mens
+all/Package01-53.svg	shorts	Carpenter shorts	sh-carpenter-shorts	mens
+all/Package01-54.svg	pants	Straight jeans	pt-straight-jeans	mens
+all/Package01-55.svg	shorts	Long jorts	sh-long-jorts	mens
+all/Package02__Package02-01.svg	tee	V-neck football jersey	tee-v-neck-football-jersey	mens
+all/Package02__Package02-02.svg	tee	Sports jersey	tee-sports-jersey	mens
+all/Package02__Package02-03.svg	tee	Raglan sports jersey	tee-raglan-sports-jersey	mens
+all/Package02__Package02-04.svg	tee	Yoke football jersey	tee-yoke-football-jersey	mens
+all/Package02__Package02-05.svg	tee	Striped-sleeve jersey	tee-striped-sleeve-jersey	mens
+all/Package02__Package02-06.svg	tee	Striped sponsor jersey	tee-striped-sponsor-jersey	mens
+all/Package02__Package02-07.svg	polo	Retro collar jersey	polo-retro-collar-jersey	mens
+all/Package02__Package02-08.svg	tee	Soccer jersey	tee-soccer-jersey	mens
+all/Package02__Package02-09.svg	longsleeve	V-neck long-sleeve jersey	ls-v-neck-long-sleeve-jersey	mens
+all/Package02__Package02-10.svg	longsleeve	Raglan long-sleeve jersey	ls-raglan-long-sleeve-jersey	mens
+all/Package02__Package02-11.svg	longsleeve	Collared long-sleeve jersey	ls-collared-long-sleeve-jersey	mens
+all/Package02__Package02-12.svg	longsleeve	V-neck long-sleeve top	ls-crew	mens
+all/Package03__Package03-01.svg	shirt	Button-down shirt	shirt-button-down-shirt	mens
+all/Package03__Package03-02.svg	shirtss	Camp-collar shirt with pocket	ss-camp-collar-shirt-with-pocket	mens
+all/Package03__Package03-03.svg	shirtss	Two-pocket work shirt	ss-two-pocket-work-shirt	mens
+all/Package03__Package03-04.svg	shirt	Classic shirt	shirt-classic-shirt	mens
+all/Package03__Package03-05.svg	shirtss	Boxy camp shirt	ss-boxy-camp-shirt	mens
+all/Package03__Package03-06.svg	shirt	Overshirt with pocket	shirt-overshirt-with-pocket	mens
+all/Package03__Package03-07.svg	shirt	Utility shirt	shirt-utility-shirt	mens
+all/Package03__Package03-08.svg	shirt	Camp-collar long-sleeve shirt	shirt-camp-collar-long-sleeve-shirt	mens
+all/Package03__Package03-09.svg	shirt	Two-pocket overshirt	shirt-two-pocket-overshirt	mens
+all/Package03__Package03-10.svg	shirt	Popover shirt	shirt-popover-shirt	mens
+all/Package03__Package03-11.svg	shirtss	Oversized camp shirt	ss-oversized-camp-shirt	mens
+all/Package03__Package03-12.svg	shirt	Welt-pocket overshirt	shirt-welt-pocket-overshirt	mens
+all/Package03__Package03-13.svg	shirtss	Boxy short-sleeve shirt	ss-boxy-short-sleeve-shirt	mens
+all/Package03__Package03-14.svg	shirtss	Camp shirt with chest pocket	ss-camp-shirt-with-chest-pocket	mens
+all/Package03__Package03-15.svg	shirt	Oversized shirt	shirt-oversized-shirt	mens
+all/Package03__Package03-16.svg	shirt	Yoke shirt	shirt-yoke-shirt	mens
+all/Package03__Package03-17.svg	shirt	Two-pocket shacket	shirt-two-pocket-shacket	mens
+all/Package03__Package03-18.svg	shirt	Relaxed shirt	shirt-relaxed-shirt	mens
+all/Package03__Package03-19.svg	shirt	Long shirt	shirt-long-shirt	mens
+all/Package03__Package03-20.svg	shirt	Band-collar shirt	shirt-band-collar-shirt	mens
+all/Package03__Package03-21.svg	shirtss	Short-sleeve shirt	ss-short-sleeve-shirt	mens
+all/Package03__Package03-22.svg	shirtss	Cropped camp shirt	ss-cropped-camp-shirt	mens
+all/Package03__Package03-23.svg	shirtss	Oversized short-sleeve shirt	ss-oversized-short-sleeve-shirt	mens
+all/Package03__Package03-24.svg	shirt	Utility shirt jacket	shirt-utility-shirt-jacket	mens
+all/Package04__Packge 04-01.svg	tank	Muscle tank	tank-muscle-tank	mens
+all/Package04__Packge 04-02.svg	pants	Elastic-waist trousers	pt-elastic-waist-trousers	mens
+all/Package04__Packge 04-03.svg	pants	Cargo joggers	pt-cargo-joggers-2	mens
+all/Package04__Packge 04-04.svg	pants	Paneled joggers	pt-paneled-joggers	mens
+all/Package04__Packge 04-05.svg	jacket	Funnel-neck bomber	jk-funnel-neck-bomber	mens
+all/Package04__Packge 04-06.svg	crewneck	Cropped raglan crew	crew-raglan	mens
+all/Package04__Packge 04-07.svg	longsleeve	Raglan long-sleeve tee	ls-raglan-long-sleeve-tee	mens
+all/Package04__Packge 04-08.svg	tee	Raglan tee	tee-raglan	mens
+all/Package05__Package 05-01.svg	shorts	Pleated trouser shorts	sh-pleated-trouser-shorts	mens
+all/Package05__Package 05-02.svg	tee	Cropped boxy tee	tee-cropped-boxy-tee	mens
+all/Package05__Package 05-03.svg	tee	Raglan boxy tee	tee-raglan-boxy-tee	mens
+all/Package05__Package 05-04.svg	shirtss	Zip short-sleeve shirt	ss-zip-short-sleeve-shirt	mens
+all/Package05__Package 05-05.svg	pants	Wide sweatpants	pt-wide-sweatpants	mens
+all/Package05__Package 05-06.svg	pants	Side-stripe track pants	pt-side-stripe-track-pants	mens
+all/Package05__Package 05-07.svg	pants	Balloon joggers	pt-balloon-joggers	mens
+all/Package05__Package 05-08.svg	pants	Contrast-panel track pants	pt-contrast-panel-track-pants	mens
+all/Package05__Package 05-09.svg	pants	Tailored trousers	pt-tailored-trousers	mens
+all/Package05__Package 05-10.svg	pants	Carpenter jeans	pt-carpenter-jeans	mens
+all/Package05__Package 05-11.svg	pants	Wide-leg jeans	pt-wide-leg-jeans	mens
+all/Package05__Package 05-12.svg	pants	Baggy carpenter jeans	pt-baggy-carpenter-jeans	mens
+all/Package05__Package 05-13.svg	shorts	Carpenter shorts	sh-carpenter-shorts-2	mens
+all/Package05__Package 05-14.svg	shorts	Five-pocket denim shorts	sh-five-pocket-denim-shorts	mens
+all/Package05__Package 05-15.svg	pants	Baggy jeans	pt-baggy-jeans	mens
+all/Package05__Package 05-16.svg	jacket	Paneled moto jacket	jk-paneled-moto-jacket	mens
+all/Package05__Package 05-17.svg	shorts	Long carpenter shorts	sh-long-carpenter-shorts	mens
+all/Package05__Package 05-18.svg	shorts	Mesh basketball shorts	sh-mesh-basketball-shorts	mens
+all/Package05__Package 05-19.svg	longsleeve	Layered-sleeve tee	ls-layered-sleeve-tee	mens
+all/Package05__Package 05-20.svg	coat	Belted trench jacket	coat-belted-trench-jacket	mens
+all/Package05__Package 05-21.svg	tank	Sleeveless tee	tank-sleeveless-tee	mens
+all/Package05__Package 05-22.svg	coat	Tailored overcoat	coat-tailored-overcoat	mens
+all/Package05__Package 05-23.svg	crewneck	Cropped sweatshirt	crew-cropped-sweatshirt	mens
+all/Package05__Package 05-24.svg	longsleeve	Long-sleeve boxy tee	ls-long-sleeve-boxy-tee	mens
+all/Package05__Package 05-25.svg	shirt	Camp-collar overshirt	shirt-camp-collar-overshirt	mens
+all/Package05__Package 05-26.svg	shirt	Patch-pocket overshirt	shirt-patch-pocket-overshirt	mens
+all/Package05__Package 05-27.svg	jacket	Moto zip jacket	jk-moto-zip-jacket	mens
+all/Package05__Package 05-28.svg	jacket	Raglan bomber	jk-raglan-bomber	mens
+all/Package05__Package 05-29.svg	jacket	Collared bomber	jk-collared-bomber	mens
+all/Package05__Package 05-30.svg	jacket	Flap-pocket bomber	jk-flap-pocket-bomber	mens
+all/Package05__Package 05-31.svg	pants	Double-knee carpenter jeans	pt-double-knee-carpenter-jeans	mens
+all/Package05__Package 05-32.svg	pants	Painter pants	pt-painter-pants	mens
+all/Package05__Package 05-33.svg	vest	Denim vest	vest-denim-vest	mens
+all/Package05__Package 05-34.svg	polo	Long-sleeve polo	polo-long-sleeve-polo	mens
+all/Package05__Package 05-35.svg	polo	Rib-hem long-sleeve polo	polo-rib-hem-long-sleeve-polo	mens
+all/Package05__Package 05-36.svg	jacket	Stand-collar bomber	jk-stand-collar-bomber	mens
+all/Package05__Package 05-37.svg	jacket	Leather biker jacket	jk-leather-biker-jacket	mens
+all/Package05__Package 05-38.svg	jacket	Pintuck work jacket	jk-pintuck-work-jacket	mens
+all/Package05__Package 05-39.svg	coat	Shop coat	coat-shop-coat	mens
+all/Package05__Package 05-40.svg	jacket	Cargo bomber	jk-cargo-bomber	mens
+all/Package05__Package 05-41.svg	jacket	Zip blouson	jk-zip-blouson	mens
+all/Package05__Package 05-42.svg	jacket	Flap-pocket blouson	jk-flap-pocket-blouson	mens
+all/Package05__Package 05-43.svg	jacket	Workwear blouson	jk-workwear-blouson	mens
+all/Package05__Package 05-44.svg	jacket	Contrast-collar bomber	jk-contrast-collar-bomber	mens
+all/Package05__Package 05-45.svg	shirt	Patch-pocket shacket	shirt-patch-pocket-shacket	mens
+all/Package05__Package 05-46.svg	shorts	Elastic-waist shorts	sh-elastic-waist-shorts	mens
+all/Package05__Package 05-47.svg	polo	Johnny-collar long-sleeve polo	polo-johnny-collar-long-sleeve-polo	mens
+all/Package05__Package 05-48.svg	polo	Johnny-collar sweatshirt	polo-johnny-collar-sweatshirt	mens
+all/Package05__Package 05-49.svg	polo	Half-zip polo	polo-half-zip-polo	mens
+all/Package05__Package 05-50.svg	shirtss	Open-collar knit polo	ss-open-collar-knit-polo	mens
+all/Package05__Package 05-51.svg	polo	Johnny-collar polo	polo-johnny-collar-polo	mens
+all/Package05__Package 05-52.svg	pants	Pleated wide trousers	pt-pleated-wide-trousers	mens
+all/Package05__Package 05-53.svg	jacket	Western yoke jacket	jk-western-yoke-jacket	mens
+all/Package05__Package 05-54.svg	jacket	Patch-pocket chore coat	jk-patch-pocket-chore-coat	mens
+all/Package05__Package 05-55.svg	jacket	Rib-hem chore jacket	jk-rib-hem-chore-jacket	mens
+all/Package05__Package 05-56.svg	polo	Henley sweatshirt	polo-henley-sweatshirt	mens
+all/Package05__Package 05-57.svg	pants	Balloon jeans	pt-balloon-jeans	mens
+all/Package05__Package 05-58.svg	shorts	Long carpenter jorts	sh-long-carpenter-jorts	mens
+all/Package05__Package 05-59.svg	pants	Wide carpenter pants	pt-wide-carpenter-pants	mens
+all/Package05__Package 05-60.svg	shorts	Baggy jorts	sh-baggy-jorts	mens
+all/Package05__Package 05-61.svg	pants	Wide straight jeans	pt-wide-straight-jeans	mens
+all/Package05__Package 05-62.svg	pants	Double-knee work jeans	pt-double-knee-work-jeans	mens
+all/Package06__Package 06_Mens Blazer_01.svg	jacket	Blazer	jk-blazer	mens
+all/Package06__Package 06_Mens Blazer_02.svg	pants	Suit trousers	pt-suit-trousers	mens
+all/Package07__Package 07-01.svg	pants	Flared sweatpants	pt-flared-sweatpants	mens
+all/Package07__Package 07-02.svg	jacket	Zip trucker jacket	jk-zip-trucker-jacket	mens
+all/Package07__Package 07-03.svg	shorts	Double-knee work shorts	sh-double-knee-work-shorts	mens
+all/Package07__Package 07-04.svg	polo	Long-sleeve knit polo	polo-long-sleeve-knit-polo	mens
+all/Package07__Package 07-05.svg	tee	Heavyweight boxy tee	tee-heavyweight-boxy-tee	mens
+all/Package07__Package 07-06.svg	polo	Classic polo	polo-classic-polo	mens
+all/Package07__Package 07-07.svg	polo	Zip polo with pocket	polo-zip-polo-with-pocket	mens
+all/Package07__Package 07-08.svg	tee	Number jersey tee	tee-number-jersey-tee	mens
+all/Package07__Package 07-09.svg	shirt	Camp-collar long-sleeve shirt	shirt-camp-collar-long-sleeve-shirt-2	mens
+all/Package07__Package 07-10.svg	shorts	Running shorts	sh-running-shorts	mens
+all/Package07__Package 07-11.svg	shorts	Long drawcord shorts	sh-long-drawcord-shorts	mens
+all/Package07__Package 07-12.svg	shorts	Five-pocket shorts	sh-five-pocket-shorts-2	mens
+all/Package07__Package 07-13.svg	shorts	Chino shorts	sh-chino	mens
+all/Package07__Package 07-14.svg	pants	Wide-leg sweatpants	pt-wide	mens
+all/Package07__Package 07-15.svg	pants	Double-knee carpenter pants	pt-double-knee-carpenter-pants-2	mens
+all/Package07__Package 07-16.svg	ziphoodie	Cropped half-zip hoodie	zip-cropped-half-zip-hoodie	mens
+all/Package07__Package 07-17.svg	jacket	Zip work blouson	jk-zip-work-blouson	mens
+all/Package07__Package 07-18.svg	jacket	Kangaroo-pocket zip jacket	jk-kangaroo-pocket-zip-jacket	mens
+all/Package07__Package 07-19.svg	shirt	Cropped overshirt	shirt-cropped-overshirt	mens
+all/Package07__Package 07-20.svg	jacket	Funnel-neck zip jacket	jk-funnel	mens
+all/Package07__Package 07-21.svg	jacket	Hooded puffer	jk-hooded-puffer	mens
+all/Package07__Package 07-22.svg	jacket	Stand-collar puffer	jk-stand-collar-puffer	mens
+all/Package07__Package 07-23.svg	crewneck	Heavyweight crew	crew-heavy	mens
+all/Package07__Package 07-24.svg	polo	Rugby-collar sweatshirt	polo-rugby-collar-sweatshirt	mens
+all/Package07__Package 07-25.svg	ziphoodie	Cropped zip hoodie	zip-cropped	mens
+all/Package07__Package 07-26.svg	hoodie	Cropped hoodie	hood-cropped-hoodie	mens
+all/Package07__Package 07-27.svg	hoodie	Raglan cropped hoodie	hood-raglan-cropped-hoodie	mens
+all/Package07__Package 07-28.svg	crewneck	Quarter-zip sweatshirt	crew-quarter-zip-sweatshirt	mens
+all/Package07__Package 07-29.svg	hoodie	Super-cropped hoodie	hood-super-cropped-hoodie	mens
+all/Package07__Package 07-30.svg	pants	Wide jeans	pt-wide-jeans	mens
+all/Package07__Package 07-31.svg	longsleeve	Long-sleeve tee	ls-long-sleeve-tee	mens
+all/Package07__Package 07-32.svg	tank	Classic tank	tank-classic-tank	mens
+all/Package07__Package 07-33.svg	tank	Rib tank	tank-rib-tank	mens
+all/Package07__Package 07-34.svg	tee	Baby tee	tee-baby-tee	mens
+all/Package07__Package 07-35.svg	longsleeve	Layered long-sleeve tee	ls-layered-long-sleeve-tee	mens
+all/Package07__Package 07-36.svg	shorts	Retro running shorts	sh-retro-running-shorts	mens
+all/Package07__Package 07-37.svg	shorts	Mesh shorts	sh-mesh-shorts	mens
+all/Package07__Package 07-38.svg	tee	V-neck boxy tee	tee-vneck	mens
+all/Package08__Package 08-01.svg	tee	Cropped tee	tee-cropped-tee	mens
+all/Package08__Package 08-02.svg	tee	Heavyweight tee	tee-heavyweight-tee	mens
+all/Package08__Package 08-03.svg	tee	Dropped-shoulder tee	tee-dropped-shoulder-tee	mens
+all/Package08__Package 08-04.svg	polo	Long-sleeve pocket polo	polo-long-sleeve-pocket-polo	mens
+all/Package08__Package 08-05.svg	crewneck	Half-zip pullover	crew-half-zip-pullover	mens
+all/Package08__Package 08-06.svg	crewneck	Shoulder-yoke sweatshirt	crew-shoulder-yoke-sweatshirt	mens
+all/Package08__Package 08-07.svg	pants	Relaxed jeans	pt-relaxed-jeans	mens
+all/Package08__Package 08-08.svg	shorts	Cargo shorts	sh-cargo	mens
+all/Package08__Package 08-09.svg	shorts	Denim shorts	sh-denim-shorts	mens
+all/Package08__Package 08-10.svg	shorts	Chino shorts	sh-chino-shorts	mens
+all/Package08__Package 08-11.svg	bucket	Bucket hat	bucket-bucket-hat	mens
+all/Package08__Package 08-12.svg	vest	Utility vest	vest-utility-vest	mens
+all/Package08__Package 08-13.svg	pants	Baggy cargo pants	pt-baggy-cargo-pants	mens
+all/Package08__Package 08-14.svg	pants	Cargo track pants	pt-cargo-track-pants	mens
+all/Package08__Package 08-15.svg	jacket	Raglan half-zip anorak	jk-raglan-half-zip-anorak	mens
+all/Package08__Package 08-16.svg	jacket	Three-stripe track jacket	jk-three-stripe-track-jacket	mens
+all/Package08__Package 08-17.svg	pants	Three-stripe track pants	pt-three-stripe-track-pants	mens
+all/Package08__Package 08-18.svg	jacket	Patch-pocket blazer	jk-patch-pocket-blazer	mens
+all/Package08__Package 08-19.svg	jacket	Patch-pocket cardigan	jk-patch-pocket-cardigan	mens
+all/Package08__Package 08-20.svg	shirt	Two-pocket overshirt	shirt-two-pocket-overshirt-2	mens
+all/Package08__Package 08-21.svg	pants	Chinos	pt-chino	mens
+all/Package08__Package 08-22.svg	longsleeve	Raglan fitted long-sleeve	ls-raglan-fitted-long-sleeve	mens
+all/Package08__Package 08-23.svg	longsleeve	Raglan long-sleeve crew	ls-raglan-long-sleeve-crew	mens
+all/Package08__Package 08-24.svg	pants	Classic joggers	pt-classic-joggers	mens
+all/Package08__Package 08-25.svg	pants	Tapered track pants	pt-tapered-track-pants	mens
+all/Package08__Package 08-26.svg	pants	Paneled cuffed joggers	pt-paneled-cuffed-joggers	mens
+all/Package08__Package 08-27.svg	shorts	Drawcord sweat shorts	sh-drawcord-sweat-shorts-2	mens
+all/Package08__Package 08-28.svg	pants	Straight track pants	pt-straight-track-pants	mens
+all/Package08__Package 08-29.svg	pants	Flared track pants	pt-flared-track-pants	mens
+all/Package08__Package 08-30.svg	shorts	Lined training shorts	sh-lined-training-shorts	mens
+all/Package08__Package 08-31.svg	shorts	Boxer briefs	sh-boxer-briefs	mens
+all/Package09__Package 07 copy-01.svg	ziphoodie	Paneled zip hoodie	zip-paneled-zip-hoodie	mens
+all/Package09__Package 07 copy-02.svg	tee	Heavyweight boxy tee	tee-heavyweight-boxy-tee-2	mens
+all/Package09__Package 07 copy-03.svg	tank	Sleeveless boxy tee	tank-sleeveless-boxy-tee	mens
+all/Package09__Package 07 copy-04.svg	pants	Zip-pocket joggers	pt-zip-pocket-joggers	mens
+all/Package09__Package 07 copy-05.svg	longsleeve	Raglan long-sleeve tee	ls-raglan-long-sleeve-tee-2	mens
+all/Package09__Package 07 copy-06.svg	hoodie	Drawcord pullover hoodie	hood-drawcord-pullover-hoodie	mens
+all/Package09__Package 07 copy-07.svg	tee	Raglan training tee	tee-raglan-training-tee	mens
+all/Package09__Package 07 copy-08.svg	shorts	Split-hem running shorts	sh-split-hem-running-shorts	mens
+all/Package09__Package 07 copy-09.svg	crewneck	Oversized crewneck	crew-oversized-crewneck	mens
+all/Package09__Package 07 copy-10.svg	tee	Oversized shoulder-seam tee	tee-oversized-shoulder-seam-tee	mens
+all/Package09__Package 07 copy-11.svg	shorts	Lined drawcord shorts	sh-lined-drawcord-shorts	mens
+all/Package09__Package 07 copy-12.svg	longsleeve	Rib-paneled base layer	ls-rib-paneled-base-layer	mens
+all/Package09__Package 07 copy-13.svg	pants	Slim track pants	pt-slim-track-pants	mens
+all/Package09__Package 07 copy-14.svg	pants	Paneled training joggers	pt-paneled-training-joggers	mens
+womens/W-Active-Wear__Womans-Activewear-01.svg	tee	Cropped fitted tee	tee-cropped-fitted-tee	womens
+womens/W-Active-Wear__Womans-Activewear-02.svg	bra	Strappy sports bra	bra-strappy-sports-bra	womens
+womens/W-Active-Wear__Womans-Activewear-03.svg	bra	Halter crop top	bra-halter-crop-top	womens
+womens/W-Active-Wear__Womans-Activewear-04.svg	bra	Racerback sports bra	bra-racerback-sports-bra	womens
+womens/W-Active-Wear__Womans-Activewear-05.svg	bra	Scoop sports bra	bra-scoop-sports-bra	womens
+womens/W-Active-Wear__Womans-Activewear-06.svg	tee	Cropped raglan training tee	tee-cropped-raglan-training-tee	womens
+womens/W-Active-Wear__Womans-Activewear-07.svg	bra	Cross-front sports bra	bra-cross-front-sports-bra	womens
+womens/W-Active-Wear__Womans-Activewear-08.svg	bra	Cross-back sports bra	bra-cross-back-sports-bra	womens
+womens/W-Active-Wear__Womans-Activewear-09.svg	leggings	Leggings	lg-leggings	womens
+womens/W-Active-Wear__Womans-Activewear-10.svg	leggings	Paneled leggings	lg-paneled-leggings	womens
+womens/W-Active-Wear__Womans-Activewear-11.svg	shorts	Bike shorts	sh-bike-shorts	womens
+womens/W-Active-Wear__Womans-Activewear-12.svg	shorts	V-waist bike shorts	sh-v-waist-bike-shorts	womens
+womens/W-Body-Suit__Womans-BodySuits-01.svg	bodysuit	Scoop-neck bodysuit	bs-scoop-neck-bodysuit	womens
+womens/W-Body-Suit__Womans-BodySuits-02.svg	bodysuit	Cami bodysuit	bs-cami-bodysuit	womens
+womens/W-Body-Suit__Womans-BodySuits-03.svg	bodysuit	Short-sleeve tie-back bodysuit	bs-short-sleeve-tie-back-bodysuit	womens
+womens/W-Body-Suit__Womans-BodySuits-04.svg	bodysuit	Tie-strap bodysuit	bs-tie-strap-bodysuit	womens
+womens/W-Body-Suit__Womans-BodySuits-05.svg	bodysuit	Square-neck short-sleeve bodysuit	bs-square-neck-short-sleeve-bodysuit	womens
+womens/W-Body-Suit__Womans-BodySuits-06.svg	bodysuit	Plunge bodysuit	bs-plunge-bodysuit	womens
+womens/W-Body-Suit__Womans-BodySuits-07.svg	bodysuit	Wrap-back cami bodysuit	bs-wrap-back-cami-bodysuit	womens
+womens/W-Body-Suit__Womans-BodySuits-08.svg	bodysuit	Deep-V bodysuit	bs-deep-v-bodysuit	womens
+womens/W-Body-Suit__Womans-BodySuits-09.svg	bodysuit	Off-shoulder bodysuit	bs-off-shoulder-bodysuit	womens
+womens/W-Body-Suit__Womans-BodySuits-10.svg	bodysuit	Collared long-sleeve bodysuit	bs-collared-long-sleeve-bodysuit	womens
+womens/W-Body-Suit__Womans-BodySuits-11.svg	bodysuit	Cap-sleeve bodysuit	bs-cap-sleeve-bodysuit	womens
+womens/W-Body-Suit__Womans-BodySuits-12.svg	bodysuit	Deep-scoop bodysuit	bs-deep-scoop-bodysuit	womens
+womens/W-Body-Suit__Womans-BodySuits-13.svg	bodysuit	Open-back tank bodysuit	bs-open-back-tank-bodysuit	womens
+womens/W-Body-Suit__Womans-BodySuits-14.svg	bodysuit	Square-neck tank bodysuit	bs-square-neck-tank-bodysuit	womens
+womens/W-Body-Suit__Womans-BodySuits-15.svg	bodysuit	Scoop tank bodysuit	bs-scoop-tank-bodysuit	womens
+womens/W-Body-Suit__Womans-BodySuits-16.svg	bodysuit	V-neck tee bodysuit	bs-v-neck-tee-bodysuit	womens
+womens/W-Body-Suit__Womans-BodySuits-17.svg	bodysuit	Open-back tee bodysuit	bs-open-back-tee-bodysuit	womens
+womens/W-Body-Suit__Womans-BodySuits-18.svg	bodysuit	One-shoulder bodysuit	bs-one-shoulder-bodysuit	womens
+womens/W-Body-Suit__Womans-BodySuits-19.svg	bodysuit	Racer tank bodysuit	bs-racer-tank-bodysuit	womens
+womens/W-Body-Suit__Womans-BodySuits-20.svg	bodysuit	Long-sleeve bodysuit	bs-long-sleeve-bodysuit	womens
+womens/W-Body-Suit__Womans-BodySuits-21.svg	bodysuit	Crew tee bodysuit	bs-crew-tee-bodysuit	womens
+womens/W-Body-Suit__Womans-BodySuits-22.svg	bodysuit	V-neck tee bodysuit	bs-v-neck-tee-bodysuit-2	womens
+womens/W-Body-Suit__Womans-BodySuits-23.svg	bodysuit	Off-shoulder long-sleeve bodysuit	bs-off-shoulder-long-sleeve-bodysuit	womens
+womens/W-Body-Suit__Womans-BodySuits-24.svg	bodysuit	Mock-neck bodysuit	bs-mock-neck-bodysuit	womens
+womens/W-Body-Suit__Womans-BodySuits-25.svg	bodysuit	Cross-strap bodysuit	bs-cross-strap-bodysuit	womens
+womens/W-Body-Suit__Womans-BodySuits-26.svg	bodysuit	Square-neck long-sleeve bodysuit	bs-square-neck-long-sleeve-bodysuit	womens
+womens/W-Body-Suit__Womans-BodySuits-27.svg	bodysuit	Strapless bodysuit	bs-strapless-bodysuit	womens
+womens/W-Body-Suit__Womans-BodySuits-28.svg	bodysuit	Zip mock-neck bodysuit	bs-zip-mock-neck-bodysuit	womens
+womens/W-Body-Suit__Womans-BodySuits-29.svg	bodysuit	Square-neck tee bodysuit	bs-square-neck-tee-bodysuit	womens
+womens/W-Cami-Top__CamiTops-01.svg	cami	Babydoll cami	cami-babydoll-cami	womens
+womens/W-Cami-Top__CamiTops-02.svg	cami	Triangle cami	cami-triangle-cami	womens
+womens/W-Cami-Top__CamiTops-03.svg	cami	Ruched halter top	cami-ruched-halter-top	womens
+womens/W-Cami-Top__CamiTops-04.svg	cami	Bustier cami	cami-bustier-cami	womens
+womens/W-Cami-Top__Untitled-8-04.svg	cami	Corset top	cami-corset-top	womens
+womens/W-Dresses__Untitled-8-01.svg	dress	One-shoulder cut-out gown	dr-one-shoulder-cut-out-gown	womens
+womens/W-Dresses__Woman-Dresses-01.svg	dress	Long-sleeve maxi dress	dr-long-sleeve-maxi-dress	womens
+womens/W-Dresses__Woman-Dresses-02.svg	dress	One-shoulder column dress	dr-one-shoulder-column-dress	womens
+womens/W-Dresses__Woman-Dresses-03.svg	dress	Slip maxi dress	dr-slip-maxi-dress	womens
+womens/W-Dresses__Woman-Dresses-04.svg	dress	Strapless column dress	dr-strapless-column-dress	womens
+womens/W-Dresses__Woman-Dresses-05.svg	dress	Racer maxi dress	dr-racer-maxi-dress	womens
+womens/W-Dresses__Woman-Dresses-06.svg	dress	Strapless mini dress	dr-strapless-mini-dress	womens
+womens/W-Dresses__Woman-Dresses-07.svg	dress	Seamed mini dress	dr-seamed-mini-dress	womens
+womens/W-Dresses__Woman-Dresses-08.svg	dress	Long-sleeve mini dress	dr-long-sleeve-mini-dress	womens
+womens/W-Dresses__Woman-Dresses-09.svg	dress	T-shirt dress	dr-t-shirt-dress	womens
+womens/W-Outerwear__Untitled-8-02.svg	coat	Oversized wool coat	coat-oversized-wool-coat	womens
+womens/W-Skirts__Skirts-01.svg	skirt	Mini skirt	sk-mini-skirt	womens
+womens/W-Skirts__Skirts-02.svg	skirt	Cargo mini skirt	sk-cargo-mini-skirt	womens
+womens/W-Skirts__Skirts-03.svg	skirt	Maxi skirt	sk-maxi-skirt	womens
+womens/W-Skirts__Skirts-04.svg	skirt	Flared midi skirt	sk-flared-midi-skirt	womens
+womens/W-Skirts__Skirts-05.svg	skirt	Wrap cargo skort	sk-wrap-cargo-skort	womens
+womens/W-Skirts__Skirts-06.svg	skirt	Denim mini skirt	sk-denim-mini-skirt	womens
+womens/W-Skirts__Skirts-07.svg	skirt	Pleated tennis skirt	sk-pleated-tennis-skirt	womens
+womens/W-Skirts__Skirts-08.svg	skirt	Flared mini skirt	sk-flared-mini-skirt	womens
+womens/W-Skirts__Untitled-8-03.svg	skirt	Elastic mini skort	sk-elastic-mini-skort	womens
+womens/W-Sweats__Sweats-01.svg	ziphoodie	Cropped zip hoodie	zip-cropped-zip-hoodie	womens
+womens/W-Sweats__Sweats-02.svg	ziphoodie	Oversized zip hoodie	zip-oversized-zip-hoodie	womens
+womens/W-Sweats__Sweats-03.svg	hoodie	Cropped half-zip hoodie	hood-cropped-half-zip-hoodie	womens
+womens/W-Sweats__Sweats-04.svg	pants	Wide-leg sweatpants	pt-wide-leg-sweatpants	womens
+womens/W-Sweats__Sweats-05.svg	pants	Cuffed sweatpants	pt-cuffed-sweatpants	womens
+womens/W-Sweats__Sweats-06.svg	tee	Cropped boxy tee	tee-cropped-boxy-tee-2	womens
+womens/W-Sweats__Sweats-07.svg	pants	Flared sweatpants	pt-flared-sweatpants-2	womens
+womens/W-Sweats__Sweats-08.svg	shorts	Lounge shorts	sh-lounge-shorts	womens
+womens/W-Sweats__Sweats-09.svg	tee	Oversized tee	tee-oversized-tee	womens
+womens/W-Swim-Suits__Womans-Swimsuits-01.svg	bikini	Triangle string bikini	bk-triangle-string-bikini	womens
+womens/W-Swim-Suits__Womans-Swimsuits-02.svg	bikini	Balconette bikini	bk-balconette-bikini	womens
+womens/W-Swim-Suits__Womans-Swimsuits-03.svg	bikini	Underwire plunge bikini	bk-underwire-plunge-bikini	womens
+womens/W-Swim-Suits__Womans-Swimsuits-04.svg	bikini	Puff-strap bikini with boy shorts	bk-puff-strap-bikini-with-boy-shorts	womens
+womens/W-Swim-Suits__Womans-Swimsuits-05.svg	bikini	Halter string bikini	bk-halter-string-bikini	womens
+womens/W-Swim-Suits__Womans-Swimsuits-06.svg	bikini	Underwire triangle bikini	bk-underwire-triangle-bikini	womens
+womens/W-Swim-Suits__Womans-Swimsuits-07.svg	bikini	Banded triangle bikini	bk-banded-triangle-bikini	womens
+womens/W-Swim-Suits__Womans-Swimsuits-08.svg	bikini	Twist-halter bikini	bk-twist-halter-bikini	womens
+womens/W-Swim-Suits__Womans-Swimsuits-09.svg	bikini	Scoop high-waist bikini	bk-scoop-high-waist-bikini	womens
+womens/W-Swim-Suits__Womans-Swimsuits-10.svg	bikini	Micro triangle bikini	bk-micro-triangle-bikini	womens
+womens/W-Swim-Suits__Womans-Swimsuits-11.svg	bikini	Bandeau tie bikini	bk-bandeau-tie-bikini	womens
+womens/W-Swim-Suits__Womans-Swimsuits-12.svg	bikini	Scoop bralette bikini	bk-scoop-bralette-bikini	womens
+womens/W-Swim-Suits__Womans-Swimsuits-13.svg	bikini	Halter plunge bikini	bk-halter-plunge-bikini	womens
+womens/W-Swim-Suits__Womans-Swimsuits-14.svg	swimsuit	Halter plunge swimsuit	sw-halter-plunge-swimsuit	womens
+womens/W-Swim-Suits__Womans-Swimsuits-15.svg	swimsuit	Ruched-front swimsuit	sw-ruched-front-swimsuit	womens
+womens/W-Swim-Suits__Womans-Swimsuits-16.svg	swimsuit	Cami swimsuit	sw-cami-swimsuit	womens
+womens/W-Swim-Suits__Womans-Swimsuits-17.svg	swimsuit	Wide-strap plunge swimsuit	sw-wide-strap-plunge-swimsuit	womens
+womens/W-Swim-Suits__Womans-Swimsuits-18.svg	swimsuit	Ruched tank swimsuit	sw-ruched-tank-swimsuit	womens
+womens/W-Swim-Suits__Womans-Swimsuits-19.svg	swimsuit	Wrap-front swimsuit	sw-wrap-front-swimsuit	womens
+womens/W-Swim-Suits__Womans-Swimsuits-20.svg	swimsuit	One-shoulder cut-out swimsuit	sw-one-shoulder-cut-out-swimsuit	womens
+womens/W-Swim-Suits__Womans-Swimsuits-21.svg	swimsuit	Side-tie scoop swimsuit	sw-side-tie-scoop-swimsuit	womens
+womens/W-Swim-Suits__Womans-Swimsuits-22.svg	swimsuit	One-shoulder tie swimsuit	sw-one-shoulder-tie-swimsuit	womens
+womens/W-Swim-Suits__Womans-Swimsuits-23.svg	swimsuit	Scoop-back swimsuit	sw-scoop-back-swimsuit	womens
+womens/W-Swim-Suits__Womans-Swimsuits-24.svg	swimsuit	High-neck swimsuit	sw-high-neck-swimsuit	womens
+womens/W-Swim-Suits__Womans-Swimsuits-25.svg	bikini	Bandeau belted bikini	bk-bandeau-belted-bikini	womens
+womens/W-Swim-Suits__Womans-Swimsuits-26.svg	swimsuit	Plunge swimsuit	sw-plunge-swimsuit	womens
+womens/W-Swim-Suits__Womans-Swimsuits-27.svg	swimsuit	One-shoulder swimsuit	sw-one-shoulder-swimsuit	womens
+womens/W-Swim-Suits__Womans-Swimsuits-28.svg	swimsuit	Halter scarf swimsuit	sw-halter-scarf-swimsuit	womens
+womens/W-Swim-Suits__Womans-Swimsuits-29.svg	swimsuit	Twist-front cut-out swimsuit	sw-twist-front-cut-out-swimsuit	womens
+womens/W-Swim-Suits__Womans-Swimsuits-30.svg	swimsuit	Halter keyhole swimsuit	sw-halter-keyhole-swimsuit	womens
+womens/W-Swim-Suits__Womans-Swimsuits-31.svg	swimsuit	Halter high-neck swimsuit	sw-halter-high-neck-swimsuit	womens
+womens/W-Swim-Suits__Womans-Swimsuits-32.svg	swimsuit	V-neck swimsuit	sw-v-neck-swimsuit	womens
+womens/W-Swim-Suits__Womans-Swimsuits-33.svg	swimsuit	Deep-scoop swimsuit	sw-deep-scoop-swimsuit	womens
+womens/W-Tanks__WomansTanks-01.svg	tank	Cropped racer tank	tank-cropped-racer-tank	womens
+womens/W-Tanks__WomansTanks-02.svg	cami	Tube top	cami-tube-top	womens
+womens/W-Tanks__WomansTanks-03.svg	tank	Cropped scoop tank	tank-cropped-scoop-tank	womens
+womens/W-Tanks__WomansTanks-04.svg	cami	Bustier cami	cami-bustier-cami-2	womens
+womens/W-Vest__WomansVest-01.svg	vest	Tailored waistcoat	vest-tailored-waistcoat	womens
+womens/W-Vest__WomansVest-02.svg	vest	Halter-back waistcoat	vest-halter-back-waistcoat	womens
+womens/W-Vest__WomansVest-03.svg	vest	Cropped sweater vest	vest-cropped-sweater-vest	womens
+womens/W-Vest__WomansVest-04.svg	vest	Cap-sleeve sweater vest	vest-cap-sleeve-sweater-vest	womens
+womens/W-Vest__WomansVest-05.svg	vest	Long waistcoat	vest-long-waistcoat	womens
+womens/W-Vest__WomansVest-06.svg	vest	Tipped sweater vest	vest-tipped-sweater-vest	womens
+womens/W-Vest__WomansVest-07.svg	vest	Turtleneck knit vest	vest-turtleneck-knit-vest	womens
+womens/W-Vest__WomansVest-08.svg	vest	Longline vest	vest-longline-vest	womens
+womens/W-Vest__WomansVest-09.svg	vest	V-neck waistcoat	vest-v-neck-waistcoat	womens
+womens/W-Vest__WomansVest-10.svg	vest	Scoop waistcoat	vest-scoop-waistcoat	womens
+womens/W-Vest__WomansVest-11.svg	vest	Turtleneck tank sweater	vest-turtleneck-tank-sweater	womens
+womens/W-Vest__WomansVest-12.svg	vest	Puffer vest	vest-puffer-vest	womens
+womens/W-Vest__WomansVest-13.svg	vest	Zip fleece vest	vest-zip-fleece-vest	womens
+womens/W-Vest__WomansVest-14.svg	vest	Snap utility vest	vest-snap-utility-vest	womens
+womens/W-Vest__WomansVest-15.svg	vest	Belted utility vest	vest-belted-utility-vest	womens
+womens/W-Vest__WomansVest-16.svg	vest	Zip fleece vest with pocket	vest-zip-fleece-vest-with-pocket	womens
+womens/W-Vest__WomansVest-17.svg	vest	Paneled zip vest	vest-paneled-zip-vest	womens
+womens/W-Vest__WomansVest-18.svg	vest	Four-button waistcoat	vest-four-button-waistcoat	womens
+womens/W-Vest__WomansVest-19.svg	vest	Longline open waistcoat	vest-longline-open-waistcoat	womens
+womens/W-Vest__WomansVest-20.svg	vest	Open-front vest	vest-open-front-vest	womens
+womens/W-Vest__WomansVest-21.svg	vest	Halter waistcoat	vest-halter-waistcoat	womens
+womens/W-Vest__WomansVest-22.svg	vest	Cropped denim vest	vest-cropped-denim-vest	womens
+womens/W-Vest__WomansVest-23.svg	vest	Lapel waistcoat	vest-lapel-waistcoat	womens
