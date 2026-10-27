@@ -253,6 +253,18 @@ From the library a graphic goes:
 - **onto the flats** (Design → Add a graphic) as a placement with inches from the HPS and centre front;
 - **into a tech pack from the pack itself**: **From the graphics library** beside Upload artwork, on the artwork tab.
 
+**The job file.** A graphic plus a technique becomes the production artwork pack a factory or digitiser works from: on a graphic in the library (**Factory job file**: made as, width, garment colour) or on the tech pack's artwork card (**Job file**, at the width it is placed). It is a zip:
+
+| Technique | What is inside |
+| --- | --- |
+| Every job | `artwork-300dpi.png`; one `ink-NN-<pantone>.png` (the colour on a clear ground) and `film-NN-<pantone>.png` (black-on-white film positive) per colour; `job-sheet.pdf` (one page: size in inches and mm, colours as Pantone C with coverage, settings, warnings); `job.json`; `README.txt` |
+| Screen print | `underbase.png` when the garment is dark (white under every light colour, choked); mesh count, lpi, angle and dot shape, ink type, flash and cure, from the technique (plastisol, water-based, discharge, halftone, puff, foil, flock, rubber, vintage) |
+| Embroidery | the threads to match (Pantone), the stitch (satin, tatami fill, chain, satin over foam), backing, underlay, pull compensation, the smallest satin column, and an estimated stitch count from the technique's density and the area covered |
+| Heat transfer | `artwork-mirrored-300dpi.png` for the carrier, finish, carrier, press settings |
+| Patches | `cut-line.png` (the shape grown by 2 mm), edge finish (merrowed or laser-cut), base and backing |
+
+The summary (colours, screens or stitches, warnings) shows in the library before anything is downloaded, and changes with the technique, width and garment colour. Warnings come from the technique's rules: a source too small for the width, more colours than it is priced for, a size over its limit, too many stitches for a knit.
+
 Parts from the sketch pack (pockets, zips, collars, trims, buttons) go the same way: onto the flats (Design → Parts) and onto a concept or a graphic in the studio (Add → From the sketch pack).
 
 ## Every button answers
@@ -290,6 +302,7 @@ Each guide offers the next one when it ends. The client's own guides for tech pa
 | J216 | The design service: a client's line, shared, with verdicts, replies, privacy, and the tech pack in the client's room. Includes the hub in a browser |
 | J217 | The whole loop over HTTP: concept → tech pack → publish → factory → sample sent → review → version 2 → the factory sees the corrections and the next sample |
 | J218 | The factory views and writes in Messages: no buttons (acknowledge, quote, countersign, sample sent all refused), the team records the shipped sample, the corrections go out as v2 while v1 is kept exactly, flats sent unchanged make no version, flats changed go out as v3. Includes the factory page in a browser |
+| J221 | The job file: a library graphic made as plastisol (inks, films, underbase, halftone, mesh), as embroidery (threads, stitch, backing, stitch count), as a patch (cut line, edge) and as a transfer (mirrored); the zip and its contents; the summary and download in a browser from the library and from the tech pack's artwork card |
 | J220 | Graphics anywhere: a graphic built in the library's studio (AI drawing, a sketch-pack part as a layer), kept with its layers, reworked and updated; a part from the pack on a concept in the studio; a library graphic onto any product's tech pack as artwork placed on the front, over HTTP and in a browser |
 | J219 | Every press answers: working, then a tick and a note, or a red mark and a note saying what failed; an uncaught failure is reported too |
 | J102 | Samples on the factory link, including marking one sent with its tracking (with factory buttons on) |
@@ -298,6 +311,7 @@ Each guide offers the next one when it ends. The client's own guides for tech pa
 **Unit tests:**
 - `test/lab-flats.test.js`: every sketch in the pack (its file, thumbnail and views), the new styles, the sketch's own proportions, the add-on parts, and the edits;
 - `test/lab-handoff.test.js`: what the flats give the pack;
+- `test/lab-jobfile.test.js`: the job file per technique (separations, underbase, films, settings, stitch count, cut line, the zip);
 - `test/sample-review.test.js`: reviews and the next version.
 
 ## Not built yet

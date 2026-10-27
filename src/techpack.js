@@ -107,6 +107,7 @@ export function normalizeTechPack(input) {
       clear: image(a?.clear), // the same graphic on a transparent background, made from the upload: what is laid over a garment picture
       source: ['upload', 'cropped'].includes(a?.source) ? a.source : '',
       note: str(a?.note, 400),
+      libraryArt: /^[0-9a-f-]{36}$/i.test(String(a?.libraryArt || '')) ? String(a.libraryArt).toLowerCase() : '', // the graphics-library graphic it came from, so its job file can be made from the pack
       pantones: list(a?.pantones, LIMITS.pantones, p => ({ hex: hex(p?.hex), name: str(p?.name, 60), code: str(p?.code, 40) })).filter(p => p.hex),
       placements: list(a?.placements, LIMITS.placements, p => ({
         sketchId: sketchIds.has(String(p?.sketchId)) ? String(p.sketchId) : '',

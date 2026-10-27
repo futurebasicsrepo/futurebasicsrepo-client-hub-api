@@ -244,6 +244,7 @@ The library takes pictures as well as links: **Add photos or screenshots** under
   - Search by words, tag, where it came from, or technique.
   - Open a graphic to see it on fabric (jersey, fleece, twill, canvas, denim, any colour), made as any technique.
   - Rename and tag it, give it its usual technique, download it, or **put it on a concept**: where it goes and how it is made. It is placed on the concept's picture straight away.
+  - **Factory job file**: the graphic made as a technique, at a width, on a garment colour, as the zip a factory or digitiser works from (separations with Pantones, films, underbase, halftone and mesh; or threads, stitch, backing and stitch count; or the cut line and edge; a one-page job sheet and `job.json`). The summary shows before the download. `GET /v1/lab/library/graphics/:id/job?technique=&widthIn=&garment=[&preview=1]`, made in `src/lab-jobfile.js`. The tech pack's artwork card offers the same (**Job file**) for a graphic that came from the library.
   - **Put it on a product**: search any product in any client's room, give a placement and width, and the graphic goes on its tech pack as artwork (Pantones read, placed on the front view). If the product has no pack yet, one is made. The same graphics are offered inside the tech pack, **From the graphics library** beside Upload artwork.
   - **Take out of the library** hides it. Pieces that use it keep it.
 

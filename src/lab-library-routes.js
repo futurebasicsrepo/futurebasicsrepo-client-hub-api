@@ -8,9 +8,11 @@
 //   POST /v1/lab/library/techniques/:id/photos {image}    DELETE …/photos/:pid    GET /v1/lab/library/technique-photos/:pid[?thumb=1]
 //   POST /v1/lab/library/techniques/:id/sample {image}    the image model makes the mock-up look real (kept as the technique's sample)    GET …/sample
 //   POST /v1/lab/concepts/:id/graphics {art, placement?, techniqueId?}    put a library graphic on a concept (the page then places it on the picture)
+//   GET  /v1/lab/library/graphics/:id/job?technique=&widthIn=&garment=[&preview=1]   the production job file (a zip: separations, settings, sheet), or its summary
 import sharp from 'sharp';
 import { imageConfig, openaiEdit } from './check.js';
 import { finishArt, ART_STYLES } from './lab-art.js';
+import { jobZip, jobFile } from './lab-jobfile.js';
 import { brandHits, cleanGraphics, ensureBranding, GRAPHIC_PLACE, GRAPHIC_TECHNIQUES } from './lab-concepts.js';
 import { BUILTIN_TECHNIQUES, TECHNIQUE_KINDS, EFFECTS, cleanTechnique, cleanRules, realPrompt } from './lab-library.js';
 
@@ -98,6 +100,20 @@ export function registerLabLibraryRoutes(app, d) {
   });
 
   // ---- techniques ----
+  // the job file: the graphic made as a technique, at a width, as the files a factory or digitiser works from
+  app.get('/v1/lab/library/graphics/:id/job', { preHandler: pre }, async (req, reply) => {
+    if (!need(req, reply)) return;
+    const a = (await pool.query('select id, name, png, technique_id from lab_art where id=$1', [req.params.id])).rows[0]; if (!a) return bad(reply, 'Not found', 404);
+    const q = req.query || {}, techId = UUID.test(String(q.technique || '')) ? q.technique : a.technique_id;
+    const row = techId ? await technique(techId) : null; if (techId && !row) return bad(reply, 'That technique is not in the library', 404);
+    const t = row ? techShape(row) : null, widthIn = Number(q.widthIn) || 4, garmentColour = /^#[0-9a-f]{6}$/i.test(String(q.garment || '')) ? String(q.garment) : '';
+    try {
+      if (q.preview) { const r = await jobFile(a.png, { name: a.name, technique: t, widthIn, garmentColour }); return { job: r.job, files: r.files.map(f => ({ name: f.name, bytes: f.data.length })), zipName: r.zipName }; }
+      const r = await jobZip(a.png, { name: a.name, technique: t, widthIn, garmentColour });
+      return reply.header('content-type', 'application/zip').header('content-disposition', `attachment; filename="${r.zipName}"`).header('cache-control', 'no-store').send(r.zip);
+    } catch (e) { log.warn?.({ err: e.message, art: a.id }, 'job file could not be made'); return bad(reply, 'The job file could not be made from this graphic', 500); }
+  });
+
   app.get('/v1/lab/library/techniques', { preHandler: pre }, async () => {
     await seeded;
     const rows = (await pool.query(`select id, key, kind, name, summary, base, finish, rules, prompt, art_guide, factory_note, builtin, (sample is not null) has_sample, sample_at, updated_at from lab_techniques where not archived order by array_position($1::text[], kind), builtin desc, name`, [TECHNIQUE_KINDS.map(k => k.id)])).rows;
