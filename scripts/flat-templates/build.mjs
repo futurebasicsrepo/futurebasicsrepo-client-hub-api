@@ -20,7 +20,7 @@ const PICK = [
   ['jk-bomber', 'jacket', 'Bomber jacket', 'Package01-09.svg'], ['jk-track', 'jacket', 'Track jacket', 'Package01-11.svg'], ['jk-trucker', 'jacket', 'Trucker jacket', 'Package01-12.svg'],
   ['jk-zip', 'jacket', 'Zip work jacket', 'Package01-21.svg'], ['jk-funnel', 'jacket', 'Funnel-neck zip jacket', 'Package07__Package 07-20.svg'],
   ['pt-jogger', 'pants', 'Sweatpants', 'Package01-33.svg'], ['pt-jean', 'pants', 'Five-pocket jeans', 'Package01-35.svg'], ['pt-cargo', 'pants', 'Cargo pants', 'Package01-30.svg'],
-  ['pt-chino', 'pants', 'Chinos', 'Package08__Package 08-21.svg'], ['pt-wide', 'pants', 'Wide-leg sweatpants', 'Package07__Package 07-14.svg'],
+  ['pt-pleat', 'pants', 'Pleated trousers', 'Package01-50.svg'], ['pt-chino', 'pants', 'Chinos', 'Package08__Package 08-21.svg'], ['pt-wide', 'pants', 'Wide-leg sweatpants', 'Package07__Package 07-14.svg'],
   ['sh-sweat', 'shorts', 'Sweat shorts', 'Package01-41.svg'], ['sh-denim', 'shorts', 'Denim shorts', 'Package01-37.svg'], ['sh-pleat', 'shorts', 'Pleated shorts', 'Package01-46.svg'],
   ['sh-chino', 'shorts', 'Chino shorts', 'Package07__Package 07-13.svg'], ['sh-cargo', 'shorts', 'Cargo shorts', 'Package08__Package 08-08.svg'],
   ['cap-6panel', 'cap', 'Six-panel cap', 'Hats__Hats.svg']
@@ -112,6 +112,12 @@ function measure(M, lab, c, kind, collar) {
     const ws = rows.map(r => r.runs.length ? r.runs[r.runs.length - 1][1] - r.runs[0][0] + 1 : 0), widest = ws.indexOf(Math.max(...ws));
     Object.assign(out, { width: U(ws[widest]), seamY: Y(rows[widest].y), topY: Y(c.y0), hemY: Y(rows[hem].y) });
   }
+  // the view's own outline (each row from its leftmost to its rightmost cloth, a little outside), so a neighbouring view or a drawcord
+  // that reaches into its box is not drawn with it
+  const pad = 2 * M.k, stepR = Math.max(1, Math.round(rows.length / 90)), L = [], R = [];
+  for (let i = 0; i < rows.length; i += stepR) { const band = rows.slice(i, i + stepR).flatMap(r => r.runs); if (!band.length) continue; const y = rows[i].y;
+    L.push([X(Math.max(c.x0, Math.min(...band.map(q => q[0])) - pad)), Y(y)]); R.push([X(Math.min(c.x1 + 1, Math.max(...band.map(q => q[1])) + pad)), Y(y)]); }
+  if (L.length) { const yTop = Y(c.y0 - pad), yBot = Y(c.y1 + 1 + pad); L.unshift([L[0][0], yTop]); R.unshift([R[0][0], yTop]); L.push([L[L.length - 1][0], yBot]); R.push([R[R.length - 1][0], yBot]); out.clip = [...L, ...R.reverse()]; }
   return out;
 }
 // a picture of each view with what was measured on it, to check by eye

@@ -60,7 +60,7 @@ const TEMPLATE_PICK = [
   ['hood-boxy', /boxy|oversiz|crop/, ['boxy', 'oversized', 'relaxed', 'wide']], ['hood-classic'],
   ['zip-cropped', /crop|boxy/, ['boxy']], ['zip-classic'],
   ['jk-bomber', /bomber|varsity|ma-?1/], ['jk-track', /track|windbreaker|anorak/], ['jk-trucker', /trucker|denim jacket|chore|overshirt|work jacket|collar/], ['jk-funnel', /funnel|mock neck|fleece/], ['jk-zip'],
-  ['pt-jogger', /jogger|sweatpant|track pant|fleece/], ['pt-jean', /jean|denim|five[- ]pocket|5[- ]pocket/], ['pt-cargo', /cargo|utility/], ['pt-chino', /pleat|trouser|chino/], ['pt-wide', /wide/, ['wide']], ['pt-chino'],
+  ['pt-jogger', /jogger|sweatpant|track pant|fleece/], ['pt-jean', /jean|denim|five[- ]pocket|5[- ]pocket/], ['pt-cargo', /cargo|utility/], ['pt-pleat', /pleat|trouser|tailored/], ['pt-wide', /wide/, ['wide']], ['pt-chino'],
   ['sh-denim', /denim|jort/], ['sh-cargo', /cargo|utility/], ['sh-pleat', /pleat/], ['sh-chino', /chino|twill|walk/], ['sh-sweat'],
   ['cap-6panel']
 ];
@@ -276,14 +276,152 @@ export function defaultPlacement(kind, p, { aspect = 1, label = '' } = {}) {
 }
 
 // ---- the picture: one view as SVG, with the placements, their measurements and the points of measure ----
+// ---- changing the drawing: the garment's colour, colour blocks, details, stitching, and areas an image model redraws ----
+// Edits are kept in inches on one view, like placements: { id, type: 'detail' | 'stitch' | 'block' | 'ai', view, ... }.
+//   detail: a pocket, pleat, drawcord, zip, placket, or a cover-up over something on the sketch: { kind, x, y, w, h, count, flip, stitch, thread, color }
+//   stitch: a stitch line drawn along a seam or edge: { pts: [[x, y]...], stitch, thread, spi }
+//   block:  a contrast colour panel: { pts: [[x, y]...] (a closed shape), color, name }
+//   ai:     an area redrawn by the image model from a few words: { x, y, w, h, art (a lab_art id), prompt }
+// The garment's colour (p.color) and each block recolour the sketch itself: white cloth takes the colour, its lines and shading stay.
+export const DETAILS = {
+  'pocket-patch': 'Patch pocket', 'pocket-flap': 'Flap pocket', 'pocket-welt': 'Welt pocket', 'pocket-cargo': 'Cargo pocket', 'pocket-kangaroo': 'Kangaroo pocket',
+  'pocket-slant': 'Slant pocket', 'pocket-jean': 'Jean front pocket', 'pocket-zip': 'Zip pocket', pleat: 'Pleats', drawcord: 'Drawcord', zip: 'Zip', placket: 'Button placket', erase: 'Cover up'
+};
+export const STITCHES = { single: 'Single needle', double: 'Double needle', triple: 'Triple needle', chain: 'Chain stitch', cover: 'Coverstitch', zigzag: 'Zigzag', bartack: 'Bartack', blind: 'Blind hem' };
+const HEX = /^#[0-9a-f]{6}$/i, INK = '#141416';
+export const hexOf = v => HEX.test(String(v || '')) ? String(v).toLowerCase() : '';
+const rgbOf = h => { const n = parseInt(h.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255].map(v => v / 255); };
+const lumOf = h => { const c = rgbOf(h).map(v => v <= .03928 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4); return .2126 * c[0] + .7152 * c[1] + .0722 * c[2]; };
+const mixHex = (a, b, t) => '#' + rgbOf(a).map((v, i) => Math.round((v + (rgbOf(b)[i] - v) * t) * 255).toString(16).padStart(2, '0')).join('');
+// the colour the drawing's lines take on a cloth: ink on light cloth, a light line on dark cloth so the drawing still reads
+export const lineFor = fill => !fill || lumOf(fill) > .16 ? INK : mixHex(fill, '#ffffff', .62);
+// recolours a black-and-white drawing: white → the cloth, black → its line colour, the greys between them
+const tintFilter = (id, fill) => { const l = rgbOf(lineFor(fill)), c = rgbOf(fill), row = i => { const a = c[i] - l[i]; return `${(a * .2126).toFixed(4)} ${(a * .7152).toFixed(4)} ${(a * .0722).toFixed(4)} 0 ${l[i].toFixed(4)}`; };
+  return `<filter id="${id}" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="${row(0)} ${row(1)} ${row(2)} 0 0 0 1 0"/></filter>`; };
+const n3 = v => +(+v).toFixed(3);
+const pathD = pts => 'M' + pts.map(q => `${n3(q[0])} ${n3(q[1])}`).join(' L');
+const offsetPts = (pts, d) => pts.map((q, i) => { const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)], dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy) || 1; return [q[0] - dy / L * d, q[1] + dx / L * d]; });
+// a zigzag along a line: a point every `step`, alternately either side
+const zig = (pts, amp = .06, step = .12) => { const out = []; let k = 0; for (let i = 0; i < pts.length - 1; i++) { const [a, b] = [pts[i], pts[i + 1]], L = Math.hypot(b[0] - a[0], b[1] - a[1]), n = Math.max(1, Math.round(L / step)), nx = -(b[1] - a[1]) / (L || 1), ny = (b[0] - a[0]) / (L || 1);
+  for (let j = 0; j < n; j++, k++) { const t = j / n, s = k % 2 ? amp : -amp; out.push([a[0] + (b[0] - a[0]) * t + nx * s, a[1] + (b[1] - a[1]) * t + ny * s]); } } out.push(pts[pts.length - 1]); return out; };
+// a stitch line, drawn the way flats show each stitch type
+export function stitchSvg(pts, type = 'single', thread = INK) {
+  if (!pts || pts.length < 2) return '';
+  const s = (d, w = .03, dash = '.12 .07') => `<path d="${d}" fill="none" stroke="${thread}" stroke-width="${w}"${dash ? ` stroke-dasharray="${dash}"` : ''} stroke-linecap="round" stroke-linejoin="round"/>`;
+  switch (type) {
+    case 'double': return s(pathD(offsetPts(pts, -.07))) + s(pathD(offsetPts(pts, .07)));
+    case 'triple': return [-.13, 0, .13].map(o => s(pathD(offsetPts(pts, o)))).join('');
+    case 'chain': return s(pathD(pts), .055, '.035 .07');
+    case 'cover': return s(pathD(offsetPts(pts, -.12))) + s(pathD(offsetPts(pts, .12))) + s(pathD(zig(pts, .11, .1)), .014, '');
+    case 'zigzag': return s(pathD(zig(pts)), .025, '');
+    case 'bartack': return s(pathD(zig(pts, .05, .035)), .03, '');
+    case 'blind': return s(pathD(pts), .02, '.03 .16');
+    default: return s(pathD(pts));
+  }
+}
+const bez = (a, c1, c2, b, n = 12) => Array.from({ length: n + 1 }, (_, i) => { const t = i / n, u = 1 - t; return [u * u * u * a[0] + 3 * u * u * t * c1[0] + 3 * u * t * t * c2[0] + t * t * t * b[0], u * u * u * a[1] + 3 * u * u * t * c1[1] + 3 * u * t * t * c2[1] + t * t * t * b[1]]; });
+// one detail, drawn as flat-sketch line art in inches: { body: the shape (outline and cloth), stitch: its topstitching }
+export function detailSvg(e, cloth = '#ffffff') {
+  const fill = hexOf(e.color) || cloth, lc = lineFor(fill === '#ffffff' ? '' : fill), th = hexOf(e.thread) || lc, st = STITCHES[e.stitch] ? e.stitch : 'single';
+  const x0 = e.x - e.w / 2, x1 = e.x + e.w / 2, y0 = e.y - e.h / 2, y1 = e.y + e.h / 2, f = e.flip ? -1 : 1, W = .06;
+  const shape = (pts, close = true) => `<path d="${pathD(pts)}${close ? ' Z' : ''}" fill="${close ? fill : 'none'}" stroke="${lc}" stroke-width="${W}" stroke-linejoin="round" stroke-linecap="round"/>`;
+  const line = (pts, w = W) => `<path d="${pathD(pts)}" fill="none" stroke="${lc}" stroke-width="${w}" stroke-linecap="round"/>`;
+  const dot = (cx, cy, r = .17) => `<circle cx="${n3(cx)}" cy="${n3(cy)}" r="${r}" fill="${fill}" stroke="${lc}" stroke-width="${W * .8}"/>`;
+  const ts = pts => stitchSvg(pts, st, th), rect = (a, b, c, d) => [[a, b], [c, b], [c, d], [a, d]], ins = .18;
+  let body = '', stitch = '';
+  switch (e.kind) {
+    case 'pocket-patch': { const r = Math.min(.6, e.w * .15); body = shape([[x0, y0], ...bez([x0, y1 - r], [x0, y1], [x0, y1], [x0 + r, y1], 4), ...bez([x1 - r, y1], [x1, y1], [x1, y1], [x1, y1 - r], 4), [x1, y0]]);
+      stitch = ts([[x0 + ins, y0], [x0 + ins, y1 - ins - r * .5], [x0 + ins + r * .5, y1 - ins], [x1 - ins - r * .5, y1 - ins], [x1 - ins, y1 - ins - r * .5], [x1 - ins, y0]]) + ts([[x0, y0 + .7], [x1, y0 + .7]]); break; }
+    case 'pocket-flap': { const fy = y0 + e.h * .34; body = shape(rect(x0, y0 + e.h * .08, x1, y1)) + shape([[x0 - .1, y0], [x1 + .1, y0], [x1 + .1, fy], [e.x, fy + e.h * .1], [x0 - .1, fy]]) + dot(e.x, fy - .05);
+      stitch = ts([[x0 + ins - .1, y0 + .15], [x0 + ins - .1, fy - .1], [e.x, fy + e.h * .1 - .22], [x1 - ins + .1, fy - .1], [x1 - ins + .1, y0 + .15]]) + ts([[x0 + ins, fy + .3], [x0 + ins, y1 - ins], [x1 - ins, y1 - ins], [x1 - ins, fy + .3]]); break; }
+    case 'pocket-welt': body = shape(rect(x0, y0, x1, y1)) + line([[x0 + .1, e.y], [x1 - .1, e.y]], W * .8);
+      stitch = ts([[x0 + .08, y0 + .08], [x1 - .08, y0 + .08], [x1 - .08, y1 - .08], [x0 + .08, y1 - .08], [x0 + .08, y0 + .08]]) + stitchSvg([[x0 + .05, y0], [x0 + .05, y1]], 'bartack', th) + stitchSvg([[x1 - .05, y0], [x1 - .05, y1]], 'bartack', th); break;
+    case 'pocket-cargo': { const fy = y0 + e.h * .28; body = shape(rect(x0, y0 + .2, x1, y1)) + line([[e.x - e.w * .16, fy], [e.x - e.w * .16, y1]], W * .7) + line([[e.x + e.w * .16, fy], [e.x + e.w * .16, y1]], W * .7) + shape(rect(x0 - .1, y0, x1 + .1, fy)) + dot(e.x, fy - .3, .14);
+      stitch = ts([[x0, fy - ins], [x1, fy - ins]]) + ts([[x0 + ins, fy + .2], [x0 + ins, y1 - ins], [x1 - ins, y1 - ins], [x1 - ins, fy + .2]]); break; }
+    case 'pocket-kangaroo': { const R = bez([e.x + e.w * .3, y0], [e.x + e.w * .42, y0 + e.h * .35], [e.x + e.w * .5, y0 + e.h * .55], [x1, y1]), Lf = bez([x0, y1], [e.x - e.w * .5, y0 + e.h * .55], [e.x - e.w * .42, y0 + e.h * .35], [e.x - e.w * .3, y0]);
+      body = shape([[e.x - e.w * .3, y0], ...R, ...Lf.slice(0, -1)]); stitch = ts(offsetPts(R, -ins)) + ts(offsetPts(Lf, -ins)) + ts([[e.x - e.w * .3 + .1, y0 + ins], [e.x + e.w * .3 - .1, y0 + ins]]); break; }
+    case 'pocket-slant': { const a = f > 0 ? [x0, y0] : [x1, y0], b = f > 0 ? [x1, y1] : [x0, y1]; body = line([a, b]); stitch = ts(offsetPts([a, b], ins * f)) + stitchSvg([a, [a[0], a[1] + .35]], 'bartack', th) + stitchSvg([b, [b[0], b[1] - .35]], 'bartack', th); break; }
+    case 'pocket-jean': { const a = f > 0 ? [x0, y0] : [x1, y0], b = f > 0 ? [x1, y1] : [x0, y1], cv = bez(a, [a[0], a[1] + e.h * .75], [a[0] + (b[0] - a[0]) * .35, b[1]], b);
+      const cx0 = f > 0 ? x1 - e.w * .42 : x0 + e.w * .08, coin = rect(cx0, y0 + .15, cx0 + e.w * .34, y0 + e.h * .5);
+      body = line(cv) + shape(coin); stitch = ts(offsetPts(cv, -ins * f)) + ts(offsetPts(cv, -ins * 1.8 * f)) + ts([[coin[0][0] + .1, coin[3][1] - .1], [coin[1][0] - .1, coin[3][1] - .1]]); break; }
+    case 'pocket-zip': body = shape(rect(x0, e.y - .14, x1, e.y + .14)) + line([[x0 + .05, e.y], [x1 - .05, e.y]], .12).replace('stroke-linecap="round"', 'stroke-dasharray=".05 .05"') + shape(rect(x1 - .05, e.y - .1, x1 + .45, e.y + .1));
+      stitch = ts([[x0, e.y - .26], [x1, e.y - .26]]) + ts([[x0, e.y + .26], [x1, e.y + .26]]); break;
+    case 'pleat': { const n = Math.min(Math.max(Math.round(e.count || 1), 1), 3);
+      for (let i = 0; i < n; i++) { const xi = e.x + i * .55 * f; body += line([[xi, y0], [xi, y0 + e.h * .32]]) + `<path d="${pathD([[xi, y0 + e.h * .32], [xi + .05 * f, y1]])}" fill="none" stroke="${lc}" stroke-width="${W * .5}" stroke-dasharray=".25 .14" opacity=".7"/>`; stitch += stitchSvg([[xi - .12 * f, y0 + .05], [xi - .12 * f, y0 + .5]], 'bartack', th); } break; }
+    case 'drawcord': { const cord = (ex, dir) => { const pts = bez([ex, y0], [ex, y0 + e.h * .45], [ex + dir * .5, y0 + e.h * .7], [ex + dir * .35, y1]); const end = pts[pts.length - 1];
+      return `<path d="${pathD(pts)}" fill="none" stroke="${lc}" stroke-width=".2" stroke-linecap="round"/><path d="${pathD(pts)}" fill="none" stroke="${fill}" stroke-width=".11" stroke-linecap="round"/>` + shape(rect(end[0] - .09, end[1] - .1, end[0] + .09, end[1] + .45)) + dot(ex, y0, .16); };
+      body = cord(x0, -1) + cord(x1, 1); break; }
+    case 'zip': body = shape(rect(e.x - .2, y0, e.x + .2, y1)) + line([[e.x, y0 + .1], [e.x, y1]], .14).replace('stroke-linecap="round"', 'stroke-dasharray=".06 .05"') + shape([[e.x - .14, y0 - .05], [e.x + .14, y0 - .05], [e.x + .1, y0 + .7], [e.x - .1, y0 + .7]]);
+      stitch = ts([[e.x - .38, y0], [e.x - .38, y1]]) + ts([[e.x + .38, y0], [e.x + .38, y1]]); break;
+    case 'placket': { const nb = Math.max(2, Math.round(e.h / 3)); body = shape(rect(x0, y0, x1, y1)); for (let i = 0; i < nb; i++) body += dot(e.x, y0 + (i + .5) * e.h / nb, Math.min(.22, e.w * .22));
+      stitch = ts([[x0 + .12, y0], [x0 + .12, y1]]) + ts([[x1 - .12, y0], [x1 - .12, y1]]); break; }
+    case 'erase': body = `<rect x="${n3(x0)}" y="${n3(y0)}" width="${n3(e.w)}" height="${n3(e.h)}" rx=".15" fill="${fill}"/>`; break;
+  }
+  return { body, stitch };
+}
+// where a new detail starts on a piece, in inches (the sample size), so it lands somewhere sensible before it is dragged
+export function defaultDetail(kind, p, view = 'front') {
+  const S = STYLES[p.style], m = measurementsFor(p, 'M'), top = S.kind === 'top', bottom = S.kind === 'bottom', half = top ? m.chest / 2 : bottom ? m.waist / 2 : 4;
+  const at = (x, y, w, h, extra = {}) => ({ kind, view, x: r8(x), y: r8(y), w: r8(w), h: r8(h), ...extra }), down = (x, top, w, h, extra) => at(x, top + h / 2, w, h, extra); // down: placed by its top edge
+  if (kind === 'pleat') return down(bottom ? half * .35 : 0, bottom ? (m.waistband || 1.5) : 6, .1, bottom ? 9 : 6, { count: 2 });
+  if (kind === 'drawcord') return bottom ? down(0, (m.waistband || 1.5) * .6, 1.6, 7) : down(0, (m.neckDropFront || 3) + .6, 3, 8);
+  if (kind === 'zip') return bottom ? down(0, 1.5, .4, 7) : down(0, 1, .4, Math.max(8, (m.length || 26) - 2));
+  if (kind === 'placket') return down(0, top ? (m.neckDropFront || 3) : 1.5, 1.25, top ? 7 : 6);
+  if (kind === 'pocket-kangaroo') return at(0, top ? m.length * .66 : 10, Math.min(13, half * 1.15), 7);
+  if (kind === 'pocket-welt') return at(bottom ? half * .55 : half * .45, bottom ? 4 : m.length * .66, 5.5, .6);
+  if (kind === 'pocket-zip') return at(half * .45, top ? m.length * .4 : 6, 5, .3);
+  if (kind === 'pocket-slant' || kind === 'pocket-jean') return at(half * .62, bottom ? (m.waistband || 1.5) + 2.2 : 12, half * .45, 4.5, { flip: false });
+  if (kind === 'pocket-cargo') return at(bottom ? half * .8 : half * .5, bottom ? (m.rise || 12) + 3 : m.length * .55, 7, 8);
+  if (kind === 'erase') return at(top ? 0 : half * .5, top ? m.length * .62 : 8, 6, 5);
+  return at(half * (top ? .5 : .55), top ? 9.5 : bottom ? 6 : 3, top ? 4.5 : 6, top ? 5 : 6.5);
+}
+// what the edits say, the way the spec sheet and the tech pack write them
+export function describeEdit(e, p) {
+  const v = e.view === 'back' ? 'Back' : 'Front', thread = hexOf(e.thread) ? ` in ${hexOf(e.thread)} thread` : '';
+  if (e.type === 'stitch') { const L = e.pts.slice(1).reduce((a, q, i) => a + Math.hypot(q[0] - e.pts[i][0], q[1] - e.pts[i][1]), 0); return `${v}: ${STITCHES[e.stitch] || 'Stitch'}${thread}${e.spi ? `, ${e.spi} stitches an inch` : ''}, ${fmt(L)} long`; }
+  if (e.type === 'block') return `${v}: ${e.name || 'Colour block'} in ${hexOf(e.color) || 'the main colour'}`;
+  if (e.type === 'ai') return `${v}: redrawn: ${e.prompt || 'a change'} (${fmt(e.w)} × ${fmt(e.h)})`;
+  const name = e.kind === 'pleat' ? `${{ 1: 'Single', 2: 'Double', 3: 'Triple' }[Math.min(Math.max(Math.round(e.count || 1), 1), 3)]} pleat` : DETAILS[e.kind] || 'Detail';
+  if (e.kind === 'erase') return `${v}: covered over (${fmt(e.w)} × ${fmt(e.h)})`;
+  return `${v}: ${name}, ${fmt(e.w)} × ${fmt(e.h)}, ${describe({ ...e, name }, p)}; topstitch ${(STITCHES[e.stitch] || 'single needle').toLowerCase()}${thread}${hexOf(e.color) ? `; ${hexOf(e.color)}` : ''}`;
+}
+const cleanPts = (a, min) => { const pts = (Array.isArray(a) ? a : []).slice(0, 60).map(q => [r8(Math.min(Math.max(Number(q?.[0]) || 0, -60), 60)), r8(Math.min(Math.max(Number(q?.[1]) || 0, -30), 80))]); return pts.length >= min ? pts : null; };
+export function cleanEdits(list) {
+  const num = (v, lo, hi, d) => { const n = Number(v); return Number.isFinite(n) ? r8(Math.min(Math.max(n, lo), hi)) : d; };
+  return (Array.isArray(list) ? list : []).slice(0, 60).map((e, i) => {
+    const base = { id: /^[a-z0-9-]{1,40}$/i.test(String(e?.id || '')) ? String(e.id) : 'e' + i, view: e?.view === 'back' ? 'back' : 'front' };
+    if (e?.type === 'stitch') { const pts = cleanPts(e.pts, 2); return pts && { ...base, type: 'stitch', pts, stitch: STITCHES[e.stitch] ? e.stitch : 'single', thread: hexOf(e.thread), spi: Math.round(num(e.spi, 0, 20, 0)) }; }
+    if (e?.type === 'block') { const pts = cleanPts(e.pts, 3); return pts && hexOf(e.color) && { ...base, type: 'block', pts, color: hexOf(e.color), name: String(e.name || '').replace(/\s+/g, ' ').trim().slice(0, 40) }; }
+    const box = { x: num(e?.x, -60, 60, 0), y: num(e?.y, -30, 80, 0), w: num(e?.w, .1, 40, 1), h: num(e?.h, .1, 40, 1) };
+    if (e?.type === 'ai') return /^[0-9a-f-]{36}$/i.test(String(e.art || '')) && { ...base, type: 'ai', ...box, art: e.art, prompt: String(e.prompt || '').replace(/\s+/g, ' ').trim().slice(0, 200) };
+    if (e?.type === 'detail' && DETAILS[e.kind]) return { ...base, type: 'detail', kind: e.kind, ...box, count: Math.round(num(e.count, 1, 3, 1)), flip: Boolean(e.flip), stitch: STITCHES[e.stitch] ? e.stitch : 'single', thread: hexOf(e.thread), color: hexOf(e.color) };
+    return null;
+  }).filter(Boolean);
+}
+
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 // templateHref: where the page finds a sketch's file (the service passes data URLs, so a saved or printed sheet stands on its own)
 export const TEMPLATE_URL = file => `/lab/flat-templates/${file}`;
-export function renderSvg(p, view = 'front', { placements = [], hrefs = {}, size = p.size || 'M', showPom = false, showDims = true, selected = null, findings = {}, scale = 22, title = '', templateHref = TEMPLATE_URL } = {} /* scale 0: no width and height, for nesting */) {
+export function renderSvg(p, view = 'front', { placements = [], hrefs = {}, size = p.size || 'M', showPom = false, showDims = true, selected = null, findings = {}, scale = 22, title = '', templateHref = TEMPLATE_URL, editHrefs = {}, editable = false, selectedEdit = null, overlay = '', plain = false, background = true, templateSvg = null } = {} /* templateSvg: the sketch's own markup, to draw it inline (the service: much faster to rasterise than a picture of the whole page); scale 0: no width and height, for nesting; editHrefs: the pictures of areas redrawn by the image model; plain: the drawing alone, no guides or labels */) {
   const g = geometry(p, view, size), d = drawingOf(p, view, size), b = d ? d.box : g.bounds, pad = 3.2, x0 = b.x0 - pad, y0 = b.y0 - pad - (title ? 1.2 : 0), W = b.x1 - b.x0 + pad * 2, H = b.y1 - b.y0 + pad * 2 + (title ? 1.2 : 0);
   const k = Math.max(1, Math.max(W, H) / 30), fs = .34 * k; // labels grow with the drawing, so they read at the size it is shown
   const sw = { outline: .07, seam: .035, stitch: .03, rib: .018, under: .05, cord: .05, label: .03 }, dash = { stitch: '.18 .12', label: '.15 .1' };
-  const parts = d ? `<svg x="${b.x0.toFixed(3)}" y="${b.y0.toFixed(3)}" width="${(b.x1 - b.x0).toFixed(3)}" height="${(b.y1 - b.y0).toFixed(3)}" viewBox="${d.v.box.join(' ')}" preserveAspectRatio="none" overflow="hidden"><image href="${esc(templateHref(d.t.file))}" x="${d.t.page[0]}" y="${d.t.page[1]}" width="${d.t.page[2]}" height="${d.t.page[3]}"/></svg>` : g.parts.map(pt => `<path d="${pt.d}" fill="${pt.kind === 'outline' || pt.kind === 'under' ? '#ffffff' : 'none'}" stroke="#141416" stroke-width="${sw[pt.kind] || .035}"${dash[pt.kind] ? ` stroke-dasharray="${dash[pt.kind]}"` : ''} stroke-linejoin="round" stroke-linecap="round"/>`).join('');
+  const pid = `fb-${view}-${d ? d.t.id : p.style}`, clipDef = d?.v.clip ? `<clipPath id="${pid}-v"><polygon points="${d.v.clip.map(q => q.join(',')).join(' ')}"/></clipPath>` : '';
+  const parts = d ? `<svg x="${b.x0.toFixed(3)}" y="${b.y0.toFixed(3)}" width="${(b.x1 - b.x0).toFixed(3)}" height="${(b.y1 - b.y0).toFixed(3)}" viewBox="${d.v.box.join(' ')}" preserveAspectRatio="none" overflow="hidden">${clipDef}${templateSvg ? `<g${clipDef ? ` clip-path="url(#${pid}-v)"` : ''}><svg x="${d.t.page[0]}" y="${d.t.page[1]}" width="${d.t.page[2]}" height="${d.t.page[3]}" viewBox="${d.t.page.join(' ')}">${templateSvg(d.t.file)}</svg></g>` : `<image href="${esc(templateHref(d.t.file))}" x="${d.t.page[0]}" y="${d.t.page[1]}" width="${d.t.page[2]}" height="${d.t.page[3]}"${clipDef ? ` clip-path="url(#${pid}-v)"` : ''}/>`}</svg>` : g.parts.map(pt => `<path d="${pt.d}" fill="${pt.kind === 'outline' || pt.kind === 'under' ? '#ffffff' : 'none'}" stroke="#141416" stroke-width="${sw[pt.kind] || .035}"${dash[pt.kind] ? ` stroke-dasharray="${dash[pt.kind]}"` : ''} stroke-linejoin="round" stroke-linecap="round"/>`).join('');
+  // the edits: the sketch, its cover-ups and redrawn areas are one drawing, recoloured as a whole (the garment's colour) and again inside
+  // each colour block; details and stitch lines are drawn on top in their own colours
+  const edits = (p.edits || []).filter(e => e.view === view), cloth = hexOf(p.color), blocks = edits.filter(e => e.type === 'block');
+  const clothAt = e => { const bl = [...blocks].reverse().find(q => inside([e.x, e.y], q.pts)); return bl ? bl.color : cloth || '#ffffff'; };
+  const hit = (e, inner) => editable ? `<g data-ed="${esc(e.id)}">${inner}</g>` : inner;
+  const box = e => `<rect x="${n3(e.x - e.w / 2 - .15)}" y="${n3(e.y - e.h / 2 - .15)}" width="${n3(e.w + .3)}" height="${n3(e.h + .3)}" fill="#ffffff" fill-opacity="0"${e.id === selectedEdit ? ' stroke="#2a6df4" stroke-width=".05" stroke-dasharray=".18 .1"' : ''}/>`;
+  const under = edits.filter(e => (e.type === 'detail' && e.kind === 'erase') || (e.type === 'ai' && editHrefs[e.art])).map(e => e.type === 'ai'
+    ? `<image href="${esc(editHrefs[e.art])}" x="${n3(e.x - e.w / 2)}" y="${n3(e.y - e.h / 2)}" width="${n3(e.w)}" height="${n3(e.h)}" preserveAspectRatio="none"/>`
+    : `<rect x="${n3(e.x - e.w / 2)}" y="${n3(e.y - e.h / 2)}" width="${n3(e.w)}" height="${n3(e.h)}" rx=".15" fill="#ffffff"/>`).join('');
+  const defs = `<defs><g id="${pid}-b">${parts}${under}</g>${cloth ? tintFilter(`${pid}-t`, cloth) : ''}${blocks.map((e, i) => tintFilter(`${pid}-t${i}`, e.color) + `<clipPath id="${pid}-c${i}"><path d="${pathD(e.pts)} Z"/></clipPath>`).join('')}</defs>`;
+  const drawing = `${defs}<use href="#${pid}-b"${cloth ? ` filter="url(#${pid}-t)"` : ''}/>${blocks.map((e, i) => `<g clip-path="url(#${pid}-c${i})"><use href="#${pid}-b" filter="url(#${pid}-t${i})"/></g>`).join('')}`
+    + (editable ? blocks.map(e => hit(e, `<path d="${pathD(e.pts)} Z" fill="#ffffff" fill-opacity="0"${e.id === selectedEdit ? ' stroke="#2a6df4" stroke-width=".05" stroke-dasharray=".18 .1"' : ''}/>`)).join('') + edits.filter(e => e.type === 'ai' || (e.type === 'detail' && e.kind === 'erase')).map(e => hit(e, box(e))).join('') : '')
+    + edits.filter(e => e.type === 'detail' && e.kind !== 'erase').map(e => { const o = detailSvg(e, clothAt(e)); return hit(e, (editable ? box(e) : '') + o.body + o.stitch); }).join('')
+    + edits.filter(e => e.type === 'stitch').map(e => hit(e, (editable ? `<path d="${pathD(e.pts)}" fill="none" stroke="#ffffff" stroke-opacity="0" stroke-width=".45"/>` : '') + stitchSvg(e.pts, e.stitch, hexOf(e.thread) || lineFor(cloth)) + (e.id === selectedEdit ? `<path d="${pathD(e.pts)}" fill="none" stroke="#2a6df4" stroke-width=".02"/>` : ''))).join('');
   const T = (x, y, s, t, a = 'middle', c = '#141416', wgt = 500) => `<text x="${x.toFixed(2)}" y="${y.toFixed(2)}" font-size="${s}" text-anchor="${a}" fill="${c}" font-family="Space Grotesk, Helvetica, Arial, sans-serif" font-weight="${wgt}">${esc(t)}</text>`;
   const arrow = (a, bb, label, col = '#2a6df4') => { const mx = (a[0] + bb[0]) / 2, my = (a[1] + bb[1]) / 2, vert = Math.abs(bb[1] - a[1]) > Math.abs(bb[0] - a[0]); return `<g pointer-events="none"><line x1="${a[0]}" y1="${a[1]}" x2="${bb[0]}" y2="${bb[1]}" stroke="${col}" stroke-width=".03" stroke-dasharray=".14 .08"/><circle cx="${a[0]}" cy="${a[1]}" r=".07" fill="${col}"/><circle cx="${bb[0]}" cy="${bb[1]}" r=".07" fill="${col}"/>${label ? `<rect x="${(vert ? mx + .15 : mx - label.length * fs * .3)}" y="${(vert ? my - fs * .9 : my - fs * 1.75)}" width="${label.length * fs * .6 + .1}" height="${fs * 1.35}" rx=".1" fill="#ffffff" opacity=".92"/>${T(vert ? mx + .2 + label.length * fs * .3 : mx, vert ? my + fs * .3 : my - fs * .75, fs, label, 'middle', col, 600)}` : ''}</g>`; };
   let pl = '';
@@ -302,7 +440,7 @@ export function renderSvg(p, view = 'front', { placements = [], hrefs = {}, size
   const pom = showPom ? g.pom.filter(q => !d || ['chest', 'length', 'waist', 'crownWidth'].includes(q.key)).map((d, i) => arrow(d.from, d.to, `${String.fromCharCode(65 + Object.keys(p.m).indexOf(d.key))} ${fmt(measurementsFor(p, size)[d.key])}`, '#7a3fd1')).join('') : '';
   const cf = STYLES[p.style].kind === 'top' || STYLES[p.style].kind === 'bottom' ? `<line x1="0" y1="${b.y0 - .6}" x2="0" y2="${b.y1 + .6}" stroke="#9a9aa0" stroke-width=".02" stroke-dasharray=".4 .15 .08 .15"/>${T(0, b.y1 + 1.1, .3, view === 'back' ? 'CB' : 'CF', 'middle', '#727278')}` : '';
   const hps = STYLES[p.style].kind === 'top' ? `<line x1="${b.x0 - 1}" y1="0" x2="${b.x1 + 1}" y2="0" stroke="#9a9aa0" stroke-width=".02" stroke-dasharray=".25 .15"/>${T(b.x1 + 1.1, .1, .28, 'HPS', 'start', '#727278')}` : '';
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${x0.toFixed(2)} ${y0.toFixed(2)} ${W.toFixed(2)} ${H.toFixed(2)}"${scale ? ` width="${(W * scale).toFixed(0)}" height="${(H * scale).toFixed(0)}"` : ''} data-view="${view}"><rect x="${x0}" y="${y0}" width="${W}" height="${H}" fill="#ffffff"/>${title ? T(x0 + .4, y0 + .8, .5, title, 'start', '#141416', 600) : ''}${cf}${hps}${parts}${pl}${pom}${T(x0 + W - .4, y0 + H - .4, .28, `${STYLES[p.style].label} · ${view} · size ${STYLES[p.style].oneSize ? 'one size' : size}`, 'end', '#727278')}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${x0.toFixed(2)} ${y0.toFixed(2)} ${W.toFixed(2)} ${H.toFixed(2)}"${scale ? ` width="${(W * scale).toFixed(0)}" height="${(H * scale).toFixed(0)}"` : ''} data-view="${view}">${background ? `<rect x="${x0}" y="${y0}" width="${W}" height="${H}" fill="#ffffff"/>` : ''}${plain ? drawing : `${title ? T(x0 + .4, y0 + .8, .5, title, 'start', '#141416', 600) : ''}${cf}${hps}${drawing}${pl}${pom}${overlay}${T(x0 + W - .4, y0 + H - .4, .28, `${STYLES[p.style].label} · ${view} · size ${STYLES[p.style].oneSize ? 'one size' : size}${cloth ? ` · ${cloth}` : ''}`, 'end', '#727278')}`}</svg>`;
 }
 // the picture's coordinates → inches, for dragging placements in the page
 export function viewBoxOf(p, view, { title = '', size = p.size || 'M' } = {}) { const b = drawingOf(p, view, size)?.box || geometry(p, view, size).bounds, pad = 3.2; return { x0: b.x0 - pad, y0: b.y0 - pad - (title ? 1.2 : 0), w: b.x1 - b.x0 + pad * 2, h: b.y1 - b.y0 + pad * 2 + (title ? 1.2 : 0) }; }
@@ -314,7 +452,7 @@ export function cleanFlat(input = {}) {
   for (const k of Object.keys(base.m)) { const v = Number(input.m?.[k]); m[k] = Number.isFinite(v) ? r8(Math.min(Math.max(v, 0), 80)) : base.m[k]; }
   const o = input.options || {}, options = { drop: Boolean(o.drop), cropped: Boolean(o.cropped), pleats: Math.min(Math.max(Math.round(Number(o.pleats) || 0), 0), 2), chestPocket: Boolean(o.chestPocket), noPocket: Boolean(o.noPocket), drawcord: o.drawcord !== false, rib: o.rib !== false };
   const template = input.template === 'none' ? 'none' : FLAT_TEMPLATES.some(t => t.id === input.template && t.style === style) ? input.template : defaultTemplate(style, fit);
-  const params = { style, fit, size: SIZES.includes(input.size) ? input.size : 'M', m, options, ...(template ? { template } : {}) };
+  const params = { style, fit, size: SIZES.includes(input.size) ? input.size : 'M', m, options, ...(template ? { template } : {}), color: hexOf(input.color), edits: cleanEdits(input.edits) };
   const placements = (Array.isArray(input.placements) ? input.placements : []).slice(0, 12).map((q, i) => ({
     id: /^[a-z0-9-]{1,40}$/i.test(String(q.id || '')) ? String(q.id) : 'p' + i, name: String(q.name || 'Graphic').replace(/\s+/g, ' ').trim().slice(0, 60) || 'Graphic', view: q.view === 'back' ? 'back' : 'front',
     x: r8(Math.min(Math.max(Number(q.x) || 0, -60), 60)), y: r8(Math.min(Math.max(Number(q.y) || 0, -30), 80)), w: r8(Math.min(Math.max(Number(q.w) || 1, .25), 40)), h: r8(Math.min(Math.max(Number(q.h) || 1, .25), 40)),

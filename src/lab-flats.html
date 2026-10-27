@@ -47,6 +47,11 @@ table.pom{border-collapse:collapse;font-size:12px;width:100%}table.pom th,table.
 .wrapx{overflow-x:auto}
 .msg{font-size:12.5px;color:var(--dim);margin:0}.msg.bad{color:var(--bad)}.msg.ok{color:var(--ok)}
 .tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}.tiles button{border:1px solid var(--line);border-radius:10px;background:#f3f3f0;padding:4px;cursor:pointer;display:grid;gap:2px;font-size:10.5px}.tiles img{width:100%;height:46px;object-fit:contain}
+.swatches{display:flex;gap:7px;flex-wrap:wrap;align-items:center}.sw{width:26px;height:26px;border-radius:50%;border:1px solid var(--line);cursor:pointer;padding:0;display:inline-grid;place-items:center;color:var(--dim)}.sw[aria-pressed=true]{outline:2px solid var(--ink);outline-offset:2px}
+.kinds{display:flex;flex-wrap:wrap;gap:6px}.canvas.drawing{cursor:crosshair}.hint{background:#eef4ff;color:#1d3f8a;border-radius:10px;padding:8px 10px;font-size:12.5px;display:grid;gap:8px}
+.ed{border:1px solid var(--line);border-radius:14px;padding:10px 12px;display:grid;gap:8px}.ed.on{border-color:#2a6df4;box-shadow:inset 0 0 0 1px #2a6df4}.ed .hd{display:flex;gap:6px;align-items:center}.ed .hd b{flex:1;font-size:14px}
+.pick{display:flex;gap:6px;align-items:center;font-size:12px;color:var(--dim)}.pick input[type=color]{width:34px;height:26px;border:1px solid var(--line);border-radius:8px;padding:1px;background:#fff}
+textarea.t{min-height:64px;resize:vertical}
 #needSignin{max-width:620px;margin:40px auto;background:#fff;border:1px solid var(--line);border-radius:22px;padding:22px}
 @media(max-width:980px){.wrap{grid-template-columns:1fr}.side{border-left:0;border-top:1px solid var(--line)}.pane{max-height:none}}
 @media print{header,.bar,.side,.tools,#fbSide,.fbside{display:none!important}.wrap{grid-template-columns:1fr}body{background:#fff}}
@@ -65,37 +70,102 @@ table.pom{border-collapse:collapse;font-size:12px;width:100%}table.pom th,table.
         <label class="chk"><input type="checkbox" id="showDims" checked> Placement measurements</label><label class="chk"><input type="checkbox" id="showPom"> Points of measure</label></div>
       <div id="status" class="status ok" role="status"></div>
       <div class="canvas" id="canvas"></div>
-      <p class="msg">Drag a logo or graphic to move it; its measurements follow. Measured from the high point of the shoulder (HPS) and the centre front (CF), as a sample room measures. On the front, the viewer's right is the wearer's left.</p>
+      <p class="msg">Drag a logo, graphic or detail to move it; its measurements follow. Measured from the high point of the shoulder (HPS) and the centre front (CF), as a sample room measures. On the front, the viewer's right is the wearer's left.</p>
     </div>
     <aside class="side">
-      <div class="tabs" role="tablist"><button type="button" role="tab" data-tab="pl" aria-selected="true">Placements</button><button type="button" role="tab" data-tab="garment" aria-selected="false">Garment</button><button type="button" role="tab" data-tab="pom" aria-selected="false">Measurements</button></div>
-      <div class="pane" id="pPl"></div><div class="pane hidden" id="pGarment"></div><div class="pane hidden" id="pPom"></div>
+      <div class="tabs" role="tablist"><button type="button" role="tab" data-tab="pl" aria-selected="true">Placements</button><button type="button" role="tab" data-tab="design" aria-selected="false">Design</button><button type="button" role="tab" data-tab="garment" aria-selected="false">Garment</button><button type="button" role="tab" data-tab="pom" aria-selected="false">Measurements</button></div>
+      <div class="pane" id="pPl"></div><div class="pane hidden" id="pDesign"></div><div class="pane hidden" id="pGarment"></div><div class="pane hidden" id="pPom"></div>
     </aside>
   </div>
 </div>
 <script src="/console-nav.js" defer></script>
 <script type="module">
-import { STYLES, FITS, SIZES, geometry, renderSvg, viewBoxOf, templatesFor, templateOf, defaultTemplate, describe, placementChecks, overlapChecks, pomTable, defaultParams, defaultPlacement, measurementsFor, POM_NAMES, fmt, fmtCm } from '/lab/flats.js';
+import { STYLES, FITS, SIZES, DETAILS, STITCHES, defaultDetail, describeEdit, geometry, renderSvg, viewBoxOf, templatesFor, templateOf, defaultTemplate, describe, placementChecks, overlapChecks, pomTable, defaultParams, defaultPlacement, measurementsFor, POM_NAMES, fmt, fmtCm } from '/lab/flats.js';
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)],esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const TOKEN=()=>{try{return localStorage.getItem('fb.admin.token')||''}catch{return ''}};
 async function api(path,o={}){const r=await fetch(path,{method:o.method||(o.body?'POST':'GET'),headers:{Authorization:'Bearer '+TOKEN(),...(o.body?{'Content-Type':'application/json'}:{})},body:o.body?JSON.stringify(o.body):undefined});const j=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(new Error(j.error||('Request failed ('+r.status+')')),{status:r.status});return j}
 const BLOB=new Map();const blobUrl=p=>{if(!BLOB.has(p))BLOB.set(p,fetch(p,{headers:{Authorization:'Bearer '+TOKEN()}}).then(r=>r.ok?r.blob():null).then(b=>b?URL.createObjectURL(b):''));return BLOB.get(p)};
 const CID=new URLSearchParams(location.search).get('concept')||'';
+let SELE=null,MODE=null,DRAFT=[],AIBOX=null,BOXDRAG=null,EHREF={},NEWST={stitch:'double',thread:'#141416'},NEWBL={color:'#a02a20'};
 let D=null,P=null,PL=[],VIEW='front',SEL=null,CHECK={findings:{},summary:{fail:0,warn:0}},WHERE={},DIRTY=false,TAB='pl',HREF={},MARKS={};
 const r8=v=>Math.round(v*8)/8;
 const techName=q=>(D.techniques.find(t=>t.id===q.techniqueId)||{}).name||q.technique;
-const flatBody=()=>({style:P.style,fit:P.fit,size:P.size,m:P.m,options:P.options,template:P.template||templateOf(P)?.id||'none',placements:PL});
+const flatBody=()=>({style:P.style,fit:P.fit,size:P.size,m:P.m,options:P.options,template:P.template||templateOf(P)?.id||'none',color:P.color||'',edits:P.edits||[],placements:PL});
 function touch(){DIRTY=true;$('#saved').className='saved dirty';$('#saved').textContent='Not saved';recheckSoon()}
 
 // ---------- drawing ----------
 // the quick checks (the drawing) run here at once; the artwork checks come back from the service a moment later
 function localFindings(){const out={},over=overlapChecks(PL);for(const q of PL){const t=D.techniques.find(x=>x.id===q.techniqueId);const loc=placementChecks(q,P,t?{...t.rules,techniqueName:t.name}:{});const art=(CHECK.findings[q.id]||[]).filter(f=>['FINE_DETAIL','INKS','GRADIENT','STITCHES','TINY'].includes(f.code));out[q.id]=[...loc,...(over[q.id]||[]),...art]}return out}
 function draw(){
-  const F=localFindings(),svg=renderSvg(P,VIEW,{placements:PL,hrefs:HREF,size:$('#size').value||P.size,showPom:$('#showPom').checked,showDims:$('#showDims').checked,selected:SEL,findings:F,scale:0});
+  const F=localFindings(),svg=renderSvg(P,VIEW,{placements:PL,hrefs:HREF,size:$('#size').value||P.size,showPom:$('#showPom').checked,showDims:$('#showDims').checked,selected:SEL,findings:F,scale:0,editable:true,selectedEdit:SELE,editHrefs:EHREF,overlay:overlay()});
   $('#canvas').innerHTML=svg;const fail=Object.values(F).flat().filter(f=>f.level==='fail').length,warn=Object.values(F).flat().filter(f=>f.level==='warn').length,s=$('#status');
   s.className='status '+(fail?'bad':warn?'warn':'ok');s.innerHTML=fail?`<span class="dot fail"></span>${fail} problem${fail===1?'':'s'} to fix before it can be made`:warn?`<span class="dot warn"></span>Can be made: ${warn} thing${warn===1?'':'s'} to check`:'<span class="dot ok"></span>Can be made as drawn';
   return F}
-function paint(){const F=draw();paintPl(F);if(TAB==='garment')paintGarment();if(TAB==='pom')paintPom()}
+function paint(){const F=draw();paintPl(F);if(TAB==='design')paintDesign();if(TAB==='garment')paintGarment();if(TAB==='pom')paintPom();$('#canvas').classList.toggle('drawing',!!MODE)}
+// what is being drawn right now: the points of a stitch line or a colour block, or the box for the image model
+function overlay(){const c='#2a6df4',pts=DRAFT.map(q=>q.join(' ')).join(' L');let o='';
+  if(DRAFT.length)o+=`<path d="M${pts}${MODE==='block'&&DRAFT.length>2?' Z':''}" fill="${MODE==='block'?'rgba(42,109,244,.12)':'none'}" stroke="${c}" stroke-width=".05" stroke-dasharray=".2 .1"/>`+DRAFT.map(q=>`<circle cx="${q[0]}" cy="${q[1]}" r=".12" fill="${c}"/>`).join('');
+  if(MODE==='ai'&&AIBOX)o+=`<rect x="${AIBOX.x-AIBOX.w/2}" y="${AIBOX.y-AIBOX.h/2}" width="${AIBOX.w}" height="${AIBOX.h}" fill="rgba(42,109,244,.08)" stroke="${c}" stroke-width=".06" stroke-dasharray=".25 .12"/>`;
+  return o?`<g pointer-events="none">${o}</g>`:''}
+
+// ---------- design: colour, details, stitching, AI redraws ----------
+const SWATCH=['#111111','#f4f1ea','#1f2a44','#b9b9b4','#e8e2d4','#5b5e3a','#6b4a2f','#a02a20','#2a4fbf','#c9a227'];
+const GROUPS=[['Pockets',['pocket-patch','pocket-flap','pocket-welt','pocket-cargo','pocket-kangaroo','pocket-slant','pocket-jean','pocket-zip']],['Pleats, closures and trims',['pleat','drawcord','zip','placket']],['Change the sketch',['erase']]];
+const SUGG=['Make this a cargo pocket with a flap','Add double forward pleats','Add an elastic waist with a drawstring','Remove the pocket','Make this a welt pocket','Add a zip pocket','Make the cuff a rib cuff','Add a hood drawstring with metal aglets'];
+const stitchOpts=v=>Object.entries(STITCHES).map(([k,l])=>`<option value="${k}" ${k===v?'selected':''}>${l}</option>`).join('');
+const pick=(k,v,label,clear)=>`<label class="pick"><input type="color" data-ek="${k}" value="${v||'#141416'}" aria-label="${label}">${label}${v&&clear?` <button class="btn sm q" type="button" data-clear="${k}">${clear}</button>`:''}</label>`;
+function modeHint(){
+  if(MODE==='stitch')return `<div class="hint"><span>Click along the seam or edge, point by point. Double-click or press Enter to finish; Esc to stop.</span><div class="kinds"><select class="t" data-new="stitch" style="width:auto">${stitchOpts(NEWST.stitch)}</select><label class="pick"><input type="color" data-new="thread" value="${NEWST.thread}" aria-label="Thread colour">Thread</label></div></div>`;
+  if(MODE==='block')return `<div class="hint"><span>Click round the panel to colour (a sleeve, a yoke, a hood lining). Double-click or press Enter to close it.</span><label class="pick"><input type="color" data-new="blockColor" value="${NEWBL.color}" aria-label="Block colour">Colour</label></div>`;
+  if(MODE==='ai')return AIBOX?`<div class="hint"><span>Say what to change inside the box. The image model redraws only that area, in the same flat-sketch lines.</span><textarea class="t" id="aiPrompt" placeholder="For example: make this a cargo pocket with a flap"></textarea><div class="kinds">${SUGG.map(t=>`<button class="btn sm q" type="button" data-sugg="${esc(t)}">${esc(t)}</button>`).join('')}</div><div class="kinds"><button class="btn sm go" type="button" id="aiGo">Redraw this area</button><button class="btn sm q" type="button" data-mode="ai">Cancel</button></div><span id="aiMsg" role="status"></span></div>`:'<div class="hint">Drag a box round the part of the drawing to change.</div>';
+  return '';
+}
+function edCard(e){
+  const title=e.type==='detail'?(e.kind==='pleat'?'Pleats':DETAILS[e.kind]):e.type==='stitch'?`${STITCHES[e.stitch]} line`:e.type==='block'?(e.name||'Colour block'):'Redrawn area';
+  const num=(k,l,v,step=.125)=>`<label>${l}<input class="t" type="number" step="${step}" data-ek="${k}" value="${v}"></label>`;
+  let body='';
+  if(e.type==='detail'){body=`<div class="nums">${num('w','Width (in)',e.w)}${num('h','Height (in)',e.h)}${num('x','From centre (in)',e.x)}</div><div class="nums">${num('top','Top edge down (in)',r8(e.y-e.h/2))}${e.kind==='pleat'?`<label>Pleats<select class="t" data-ek="count">${[1,2,3].map(n=>`<option value="${n}" ${n===e.count?'selected':''}>${['Single','Double','Triple'][n-1]}</option>`).join('')}</select></label>`:''}${['pleat','pocket-slant','pocket-jean'].includes(e.kind)?`<label class="chk" style="align-self:end"><input type="checkbox" data-ek="flip" ${e.flip?'checked':''}> Face the other way</label>`:''}</div>`
+    +(e.kind==='erase'?'':`<label class="f"><span>Topstitch</span><select class="t" data-ek="stitch">${stitchOpts(e.stitch)}</select></label><div class="kinds">${pick('thread',e.thread,'Thread','Match the lines')}${pick('color',e.color,'Fabric','Same as the piece')}</div>`)}
+  if(e.type==='stitch')body=`<label class="f"><span>Stitch</span><select class="t" data-ek="stitch">${stitchOpts(e.stitch)}</select></label><div class="kinds">${pick('thread',e.thread,'Thread','Match the lines')}<label class="pick">Stitches an inch <input class="t" type="number" min="0" max="20" step="1" data-ek="spi" value="${e.spi||''}" style="width:64px"></label></div>`;
+  if(e.type==='block')body=`<label class="f"><span>Panel</span><input class="t" data-ek="name" value="${esc(e.name)}" placeholder="Sleeve, yoke, hood lining…"></label>${pick('color',e.color,'Colour')}`;
+  if(e.type==='ai')body=`<p class="msg">“${esc(e.prompt)}”</p>`;
+  return `<div class="ed ${e.id===SELE?'on':''}" data-e="${esc(e.id)}"><div class="hd"><b>${esc(title)}</b>${e.type==='detail'||e.type==='block'?'<button class="btn sm q" type="button" data-mirror>Mirror</button>':''}<button class="btn sm q" type="button" data-edel aria-label="Remove ${esc(title)}">Remove</button></div>${body}<div class="where">${esc(describeEdit(e,P))}</div></div>`;
+}
+function paintDesign(){
+  const eds=(P.edits||[]).filter(e=>e.view===VIEW);
+  $('#pDesign').innerHTML=`<div class="sec"><h4>Colour</h4><div class="swatches">${['',...SWATCH].map(c=>`<button type="button" class="sw" data-color="${c}" aria-pressed="${(P.color||'')===c}" title="${c||'White, no colour'}" aria-label="${c||'White, no colour'}" style="background:${c||'#fff'}">${c?'':'–'}</button>`).join('')}<label class="sw" title="Any colour" style="background:conic-gradient(#e11,#ee1,#1e1,#1ee,#11e,#e1e,#e11);position:relative"><input type="color" id="dColor" value="${P.color||'#ffffff'}" style="opacity:0;position:absolute;inset:0;width:100%;height:100%;cursor:pointer" aria-label="Any colour"></label></div><p class="msg">Colours the whole piece. The sketch's lines and shading stay, and a dark colour gets light lines so the drawing still reads.</p></div>
+  <div class="sec"><h4>Add a detail</h4>${GROUPS.map(([g,ks])=>`<div class="mono">${g}</div><div class="kinds">${ks.map(k=>`<button class="btn sm q" type="button" data-adddet="${k}">${esc(k==='pleat'?'Pleats':DETAILS[k])}</button>`).join('')}</div>`).join('')}<p class="msg">It lands on the ${VIEW} where that detail usually goes: drag it, or set its size and place below. Cover up hides something on the sketch, like a pocket you are replacing.</p></div>
+  <div class="sec"><h4>Draw</h4><div class="kinds"><button class="btn sm" type="button" data-mode="stitch" aria-pressed="${MODE==='stitch'}">Stitch line</button><button class="btn sm" type="button" data-mode="block" aria-pressed="${MODE==='block'}">Colour block</button><button class="btn sm" type="button" data-mode="ai" aria-pressed="${MODE==='ai'}">Redraw an area with AI</button></div>${modeHint()}</div>
+  <div class="sec"><h4>Changed on the ${VIEW}</h4>${eds.length?eds.map(edCard).join(''):'<p class="msg">Nothing changed on this side yet.</p>'}</div>`;
+}
+const newId=k=>k+Math.random().toString(36).slice(2,8);
+function finishDraft(){const pts=DRAFT.filter((q,i)=>!i||Math.hypot(q[0]-DRAFT[i-1][0],q[1]-DRAFT[i-1][1])>.1);let e=null;
+  if(MODE==='stitch'&&pts.length>=2)e={id:newId('s'),type:'stitch',view:VIEW,pts,stitch:NEWST.stitch,thread:NEWST.thread==='#141416'?'':NEWST.thread,spi:0};
+  if(MODE==='block'&&pts.length>=3)e={id:newId('b'),type:'block',view:VIEW,pts,color:NEWBL.color,name:''};
+  DRAFT=[];MODE=null;if(e){P.edits.push(e);SELE=e.id;touch()}paint()}
+$('#pDesign').addEventListener('click',async e=>{
+  const sw=e.target.closest('[data-color]');if(sw){P.color=sw.dataset.color;touch();paint();return}
+  const ad=e.target.closest('[data-adddet]');if(ad){const k=ad.dataset.adddet,d={id:newId('d'),type:'detail',stitch:'single',thread:'',color:'',count:1,flip:false,...defaultDetail(k,P,VIEW)};P.edits.push(d);SELE=d.id;touch();paint();return}
+  const md=e.target.closest('[data-mode]');if(md){MODE=MODE===md.dataset.mode?null:md.dataset.mode;DRAFT=[];AIBOX=null;paint();return}
+  const sg=e.target.closest('[data-sugg]');if(sg){$('#aiPrompt').value=sg.dataset.sugg;$('#aiPrompt').focus();return}
+  if(e.target.id==='aiGo'){const b=e.target,msg=$('#aiMsg'),prompt=$('#aiPrompt').value.trim();if(prompt.length<3){msg.textContent='Say what to change first.';return}
+    b.disabled=true;msg.textContent='Redrawing… this takes up to a minute.';
+    try{const r=await api(`/v1/lab/concepts/${CID}/flats/redraw`,{body:{...flatBody(),view:VIEW,box:AIBOX,prompt}});EHREF[r.edit.art]=await blobUrl('/v1/lab/art/'+r.edit.art);P.edits.push(r.edit);SELE=r.edit.id;AIBOX=null;MODE=null;touch();paint()}
+    catch(x){msg.textContent=x.message;b.disabled=false}return}
+  const card=e.target.closest('[data-e]');if(!card)return;const ed=P.edits.find(x=>x.id===card.dataset.e);if(!ed)return;
+  if(e.target.closest('[data-edel]')){P.edits=P.edits.filter(x=>x!==ed);if(SELE===ed.id)SELE=null;touch();paint();return}
+  if(e.target.closest('[data-mirror]')){const m=JSON.parse(JSON.stringify(ed));m.id=newId('m');if(m.pts)m.pts=m.pts.map(q=>[-q[0],q[1]]);else{m.x=-m.x;m.flip=!m.flip}P.edits.push(m);SELE=m.id;touch();paint();return}
+  const cl=e.target.closest('[data-clear]');if(cl){ed[cl.dataset.clear]='';touch();paint();return}
+  if(!e.target.closest('input,select,button,textarea')&&SELE!==ed.id){SELE=ed.id;paint()}});
+function editField(e){
+  if(e.target.id==='dColor'){P.color=e.target.value;touch();e.type==='change'?paint():draw();return}
+  const nw=e.target.dataset.new;if(nw){if(nw==='blockColor')NEWBL.color=e.target.value;else NEWST[nw]=e.target.value;return}
+  const card=e.target.closest('[data-e]'),k=e.target.dataset.ek;if(!card||!k)return;const ed=P.edits.find(x=>x.id===card.dataset.e);if(!ed)return;
+  const v=e.target.type==='checkbox'?e.target.checked:e.target.type==='number'?Number(e.target.value):e.target.value;
+  if(e.target.type==='number'&&!Number.isFinite(v))return;
+  if(k==='top')ed.y=r8(v+ed.h/2);else if(k==='h'){const top=ed.y-ed.h/2;ed.h=Math.max(.1,v);ed.y=r8(top+ed.h/2)}else if(k==='count')ed.count=Number(v);else ed[k]=k==='w'?Math.max(.1,v):v;
+  touch();if(e.type==='change')paint();else draw()}
+$('#pDesign').addEventListener('input',editField);$('#pDesign').addEventListener('change',editField);
 
 // ---------- placements panel ----------
 function techOpts(v){const kinds=[['embroidery','Embroidery'],['print','Print'],['heat_transfer','Heat transfer'],['patch','Patches and appliqué'],['distress','Distressing and wash']];return kinds.map(([k,l])=>{const t=D.techniques.filter(x=>x.kind===k);return t.length?`<optgroup label="${l}">${t.map(x=>`<option value="${x.id}" ${x.id===v?'selected':''}>${esc(x.name)}</option>`).join('')}</optgroup>`:''}).join('')}
@@ -139,24 +209,39 @@ function paintGarment(){
   <div class="sec"><h4>Sample size (M) measurements, inches</h4><div class="meas">${Object.keys(P.m).map((k,i)=>`<b>${String.fromCharCode(65+i)}</b><span>${esc(POM_NAMES[k]||k)}</span><input class="t" type="number" step="0.125" min="0" data-m="${k}" value="${P.m[k]}" aria-label="${esc(POM_NAMES[k]||k)}">`).join('')}</div><p class="msg">Every other size is graded from these. The flats redraw as you type.</p></div>`;
 }
 $('#pGarment').addEventListener('change',e=>{
-  if(e.target.id==='gStyle'||e.target.id==='gFit'){const st=$('#gStyle').value,fit=$('#gFit').value;const n=defaultParams(st,fit,st===P.style?P.options:{});n.size=P.size;n.template=defaultTemplate(st,fit,(D.concept?.name||'').toLowerCase())||undefined;if(st!==P.style){PL=PL.map(q=>({...q,...defaultPlacement(q.mark?'logo':'graphic',n,{aspect:q.w/q.h,label:q.view==='back'?'back':q.mark?'left chest':'front chest'})}))}P=n;touch();paintGarment();paint();return}
+  if(e.target.id==='gStyle'||e.target.id==='gFit'){const st=$('#gStyle').value,fit=$('#gFit').value;const n=defaultParams(st,fit,st===P.style?P.options:{});n.size=P.size;n.template=defaultTemplate(st,fit,(D.concept?.name||'').toLowerCase())||undefined;n.color=P.color;n.edits=st===P.style?P.edits:[];if(st!==P.style){PL=PL.map(q=>({...q,...defaultPlacement(q.mark?'logo':'graphic',n,{aspect:q.w/q.h,label:q.view==='back'?'back':q.mark?'left chest':'front chest'})}))}P=n;touch();paintGarment();paint();return}
   if(e.target.id==='gTpl'){P.template=e.target.value;touch();paint();return}
   const o=e.target.dataset.o;if(o){P.options[o]=e.target.type==='checkbox'?e.target.checked:Number(e.target.value);if(o==='cropped'){const base=defaultParams(P.style,P.fit,P.options);P.m.length=base.m.length}touch();paint()}});
 $('#pGarment').addEventListener('input',e=>{const k=e.target.dataset.m;if(!k)return;const v=Number(e.target.value);if(Number.isFinite(v)&&v>=0){P.m[k]=v;touch();draw()}});
 function paintPom(){const rows=pomTable(P),sz=rows[0].values.map(v=>v.size);$('#pPom').innerHTML=`<div class="sec"><h4>Points of measure, graded</h4><div class="wrapx"><table class="pom"><thead><tr><th>Point</th>${sz.map(s=>`<th class="${s==='M'?'m':''}">${s}</th>`).join('')}<th>±</th></tr></thead><tbody>${rows.map(r=>`<tr><td><b style="color:#7a3fd1">${r.code}</b> ${esc(r.name)}</td>${r.values.map(v=>`<td class="${v.size==='M'?'m':''}">${v.value}</td>`).join('')}<td>${r.tolerance}</td></tr>`).join('')}</tbody></table></div><p class="msg">Inches. Turn on "Points of measure" to see where each is taken. Change the sample size on the Garment tab.</p></div>`}
 
 // ---------- tabs, view, dragging ----------
-function tab(t){TAB=t;$$('.tabs [data-tab]').forEach(b=>b.setAttribute('aria-selected',String(b.dataset.tab===t)));$('#pPl').classList.toggle('hidden',t!=='pl');$('#pGarment').classList.toggle('hidden',t!=='garment');$('#pPom').classList.toggle('hidden',t!=='pom');paint()}
+function tab(t){TAB=t;if(t!=='design'){MODE=null;DRAFT=[];AIBOX=null}$$('.tabs [data-tab]').forEach(b=>b.setAttribute('aria-selected',String(b.dataset.tab===t)));$('#pPl').classList.toggle('hidden',t!=='pl');$('#pDesign').classList.toggle('hidden',t!=='design');$('#pGarment').classList.toggle('hidden',t!=='garment');$('#pPom').classList.toggle('hidden',t!=='pom');paint()}
 $$('.tabs [data-tab]').forEach(b=>b.onclick=()=>tab(b.dataset.tab));
-function setView(v){VIEW=v;$$('[data-view]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.view===v)));draw()}
+function setView(v){VIEW=v;DRAFT=[];AIBOX=null;$$('[data-view]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.view===v)));if(TAB==='design')paint();else draw()}
 $$('[data-view]').forEach(b=>b.onclick=()=>setView(b.dataset.view));
 ['#showDims','#showPom','#size'].forEach(s=>$(s).addEventListener('change',draw));
 let DRAG=null;
 const inch=e=>{const svg=$('#canvas svg'),pt=svg.createSVGPoint();pt.x=e.clientX;pt.y=e.clientY;const m=svg.getScreenCTM().inverse(),r=pt.matrixTransform(m);return[r.x,r.y]};
-$('#canvas').addEventListener('pointerdown',e=>{const g=e.target.closest('[data-pl]');if(!g)return;const q=PL.find(x=>x.id===g.dataset.pl);SEL=q.id;const[x,y]=inch(e);DRAG={q,dx:x-q.x,dy:y-q.y};$('#canvas').setPointerCapture(e.pointerId);paint()});
-$('#canvas').addEventListener('pointermove',e=>{if(!DRAG)return;const[x,y]=inch(e);DRAG.q.x=r8(x-DRAG.dx);DRAG.q.y=r8(y-DRAG.dy);if(Math.abs(DRAG.q.x)<.25)DRAG.q.x=0;DRAG.moved=true;draw()});
-const end=()=>{if(DRAG&&DRAG.moved){touch();paint()}DRAG=null};$('#canvas').addEventListener('pointerup',end);$('#canvas').addEventListener('pointercancel',end);
-document.addEventListener('keydown',e=>{if(e.target.closest('input,select,textarea'))return;const q=PL.find(x=>x.id===SEL);if(!q)return;const s=e.shiftKey?1:.125;let hit=true;if(e.key==='ArrowLeft')q.x-=s;else if(e.key==='ArrowRight')q.x+=s;else if(e.key==='ArrowUp')q.y-=s;else if(e.key==='ArrowDown')q.y+=s;else hit=false;if(hit){e.preventDefault();q.x=r8(q.x);q.y=r8(q.y);touch();paint()}if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'){e.preventDefault();save()}});
+$('#canvas').addEventListener('pointerdown',e=>{
+  if(MODE==='stitch'||MODE==='block'){const[x,y]=inch(e);DRAFT.push([r8(x),r8(y)]);draw();return}
+  if(MODE==='ai'){const[x,y]=inch(e);BOXDRAG=[x,y];AIBOX={x,y,w:0,h:0};$('#canvas').setPointerCapture(e.pointerId);return}
+  const g=e.target.closest('[data-pl]');
+  if(g){const q=PL.find(x=>x.id===g.dataset.pl);SEL=q.id;const[x,y]=inch(e);DRAG={q,dx:x-q.x,dy:y-q.y};$('#canvas').setPointerCapture(e.pointerId);paint();return}
+  const ge=e.target.closest('[data-ed]');const ed=ge&&P.edits.find(x=>x.id===ge.dataset.ed);if(!ed)return;
+  SELE=ed.id;if(TAB!=='design')tab('design');const[x,y]=inch(e);DRAG={ed,start:[x,y],orig:JSON.parse(JSON.stringify(ed))};$('#canvas').setPointerCapture(e.pointerId);paint()});
+$('#canvas').addEventListener('pointermove',e=>{
+  if(BOXDRAG){const[x,y]=inch(e),[a,b]=BOXDRAG;AIBOX={x:r8((a+x)/2),y:r8((b+y)/2),w:r8(Math.abs(x-a)),h:r8(Math.abs(y-b))};draw();return}
+  if(!DRAG)return;const[x,y]=inch(e);
+  if(DRAG.ed){const dx=x-DRAG.start[0],dy=y-DRAG.start[1],o=DRAG.orig;if(o.pts)DRAG.ed.pts=o.pts.map(q=>[r8(q[0]+dx),r8(q[1]+dy)]);else{DRAG.ed.x=r8(o.x+dx);DRAG.ed.y=r8(o.y+dy);if(Math.abs(DRAG.ed.x)<.25&&!['pocket-patch','pocket-flap','pocket-welt','pocket-cargo','pocket-slant','pocket-jean','pocket-zip','pleat'].includes(DRAG.ed.kind))DRAG.ed.x=0}DRAG.moved=true;draw();return}
+  DRAG.q.x=r8(x-DRAG.dx);DRAG.q.y=r8(y-DRAG.dy);if(Math.abs(DRAG.q.x)<.25)DRAG.q.x=0;DRAG.moved=true;draw()});
+const end=()=>{if(BOXDRAG){BOXDRAG=null;if(!AIBOX||AIBOX.w<.5||AIBOX.h<.5)AIBOX=null;paint();setTimeout(()=>$('#aiPrompt')?.focus(),0);return}if(DRAG&&DRAG.moved){touch();paint()}DRAG=null};
+$('#canvas').addEventListener('dblclick',e=>{if(MODE==='stitch'||MODE==='block'){e.preventDefault();finishDraft()}});$('#canvas').addEventListener('pointerup',end);$('#canvas').addEventListener('pointercancel',end);
+document.addEventListener('keydown',e=>{if(e.target.closest('input,select,textarea'))return;
+  if(MODE&&e.key==='Escape'){MODE=null;DRAFT=[];AIBOX=null;paint();return}if((MODE==='stitch'||MODE==='block')&&e.key==='Enter'){e.preventDefault();finishDraft();return}
+  const ed=TAB==='design'&&P.edits.find(x=>x.id===SELE);
+  if(ed){if(e.key==='Delete'||e.key==='Backspace'){e.preventDefault();P.edits=P.edits.filter(x=>x!==ed);SELE=null;touch();paint();return}const s=e.shiftKey?1:.125,mv={ArrowLeft:[-s,0],ArrowRight:[s,0],ArrowUp:[0,-s],ArrowDown:[0,s]}[e.key];if(mv){e.preventDefault();if(ed.pts)ed.pts=ed.pts.map(q=>[r8(q[0]+mv[0]),r8(q[1]+mv[1])]);else{ed.x=r8(ed.x+mv[0]);ed.y=r8(ed.y+mv[1])}touch();paint();return}}
+  const q=PL.find(x=>x.id===SEL);if(!q)return;const s=e.shiftKey?1:.125;let hit=true;if(e.key==='ArrowLeft')q.x-=s;else if(e.key==='ArrowRight')q.x+=s;else if(e.key==='ArrowUp')q.y-=s;else if(e.key==='ArrowDown')q.y+=s;else hit=false;if(hit){e.preventDefault();q.x=r8(q.x);q.y=r8(q.y);touch();paint()}if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'){e.preventDefault();save()}});
 
 // ---------- the service: the artwork check, saving, the spec sheet, the tech pack ----------
 let CT=0;function recheckSoon(){clearTimeout(CT);CT=setTimeout(async()=>{try{const r=await api(`/v1/lab/concepts/${CID}/flats/check`,{body:flatBody()});CHECK=r.check;WHERE=r.where;paint()}catch{}},700)}
@@ -172,7 +257,8 @@ async function boot(){
   $('#app').classList.remove('hidden');$('#cName').textContent=D.concept.name;$('#toStudio').href='/lab/studio?concept='+CID;
   if(D.unsupported){$('#cSub').textContent=D.unsupported;$('#canvas').innerHTML=`<p class="msg" style="padding:30px">${esc(D.unsupported)}</p>`;['#save','#sheet'].forEach(s=>$(s).disabled=true);return}
   const st=await api('/v1/lab/concepts/'+CID+'/studio').catch(()=>null);D.marks=Object.fromEntries((st?.marks||[]).map(m=>[m.id,m.svg]));
-  const f=D.flat;P={style:f.style,fit:f.fit,size:f.size||'M',m:f.m,options:f.options||{}};PL=f.placements||[];CHECK=f.check||CHECK;
+  const f=D.flat;P={style:f.style,fit:f.fit,size:f.size||'M',m:f.m,options:f.options||{},template:f.template,color:f.color||'',edits:f.edits||[]};
+  for(const ed of P.edits)if(ed.type==='ai')EHREF[ed.art]=await blobUrl('/v1/lab/art/'+ed.art);PL=f.placements||[];CHECK=f.check||CHECK;
   $('#size').innerHTML=(STYLES[P.style].oneSize?['M']:SIZES).map(s=>`<option value="${s}" ${s==='M'?'selected':''}>${STYLES[P.style].oneSize?'One size':s}</option>`).join('');
   $('#cSub').textContent=`${D.styles[P.style].label} · ${FITS[P.fit]} fit${f.saved?'':' · worked out from the concept: check it, then save'}`;
   if(D.concept.productId)$('#toPack').classList.remove('hidden');

@@ -935,6 +935,17 @@ await journey('J214', 'Design Lab flats: a concept becomes measured front and ba
     ok((svg.match(/<image href="data:image\/svg\+xml;base64,/g) || []).length === 2, 'the flat sketches travel inside the sheet');
     ok((await sharp(Buffer.from(svg)).png().toBuffer()).length > 10000, 'and it renders');
 
+    // the drawing changed: a colour, a pocket in contrast thread, a stitch line, an area redrawn by the image model
+    const rd = await F('/redraw', { body: { ...body, view: 'front', box: { x: 4, y: 12, w: 4, h: 4 }, prompt: 'make this a welt pocket' } });
+    ok(rd.status === 200 && rd.json.edit.type === 'ai' && /welt pocket/.test(rd.json.edit.prompt) && sql(`select source || ':' || in_library from lab_art where id='${rd.json.edit.art}'`) === 'flat:false', 'an area of the flat is redrawn by the image model and kept out of the graphics library', [rd.status, rd.json]);
+    ok((await F('/redraw', { body: { ...body, view: 'front', box: { x: 4, y: 12, w: .2, h: .2 }, prompt: 'make this a welt pocket' } })).status === 422 && (await F('/redraw', { body: { ...body, view: 'front', box: { x: 4, y: 12, w: 4, h: 4 }, prompt: '' } })).status === 422, 'it needs an area and words');
+    const edited = { ...body, color: '#1f2a44', edits: [{ id: 'pk', type: 'detail', kind: 'pocket-patch', view: 'front', x: -5, y: 10, w: 4.5, h: 5, stitch: 'double', thread: '#e0218a' }, { id: 'hm', type: 'stitch', view: 'back', pts: [[-10, 26], [10, 26]], stitch: 'cover' }, rd.json.edit] };
+    ok((await F('', { method: 'PUT', body: edited })).status === 200 && (await F()).json.flat.edits.length === 3, 'the edits are saved with the flats');
+    const svg2 = await (await fetch(`${BASE}/v1/lab/concepts/${c.id}/flats/sheet.svg`, { headers: { Authorization: 'Bearer ' + kyleT } })).text();
+    ok(/Colour, details and stitching/.test(svg2) && /Main colour #1f2a44/.test(svg2) && /Patch pocket/.test(svg2) && /double needle in #e0218a thread/.test(svg2) && /Coverstitch/.test(svg2) && /redrawn: make this a welt pocket/.test(svg2) && /<image href="data:image\/png;base64,/.test(svg2), 'the spec sheet shows the colour and lists every detail and stitch for the factory');
+    ok((await sharp(Buffer.from(svg2)).png().toBuffer()).length > 10000, 'and still renders');
+    await F('', { method: 'PUT', body });
+
     // approval waits for a reason while it cannot be made
     const cant = { ...body, placements: [...body.placements, { id: 'n', name: 'Neck hit', view: 'front', art, techniqueId: glossy.id, technique: 'heat transfer', x: 0, y: f.m.neckDropFront + .9, w: 3, h: 1 }] };
     await F('', { method: 'PUT', body: cant });
@@ -991,8 +1002,22 @@ await journey('J215', 'Design Lab flats in a browser: open them from a concept, 
     await page.selectOption('#gTpl', tpl);
     await page.locator('[data-m=length]').fill('31'); await page.click('.tabs [data-tab=pom]');
     const pom = await page.innerText('#pPom'); ok(/Body length/.test(pom) && /\b31\b/.test(pom) && /XXL/.test(pom), 'the points of measure are graded across the sizes', pom.slice(0, 200));
+    // design: a colour, a pocket in a double-needle topstitch, a stitch line drawn point by point, an area redrawn by the image model
+    await page.click('.tabs [data-tab=design]'); await page.click('[data-color="#1f2a44"]');
+    ok(await page.locator('#canvas svg filter').count() >= 1, 'a colour recolours the sketch');
+    await page.click('[data-adddet="pocket-patch"]'); ok(await page.locator('#canvas [data-ed]').count() === 1 && /Patch pocket/.test(await page.innerText('#pDesign')), 'a patch pocket is added where it usually goes, and listed');
+    await page.selectOption('.ed [data-ek=stitch]', 'double'); ok(/topstitch double needle/.test(await page.innerText('#pDesign')), 'its topstitch changes to double needle');
+    const cb = await page.locator('#canvas > svg').boundingBox();
+    await page.click('[data-mode=stitch]'); await page.mouse.click(cb.x + cb.width * .35, cb.y + cb.height * .8); await page.mouse.click(cb.x + cb.width * .65, cb.y + cb.height * .8); await page.keyboard.press('Enter');
+    ok(/Double needle line/.test(await page.innerText('#pDesign')), 'a stitch line is drawn point by point');
+    await page.click('[data-mode=ai]'); await page.mouse.move(cb.x + cb.width * .4, cb.y + cb.height * .45); await page.mouse.down(); await page.mouse.move(cb.x + cb.width * .6, cb.y + cb.height * .62, { steps: 6 }); await page.mouse.up();
+    await page.click('[data-sugg="Remove the pocket"]'); await page.click('#aiGo');
+    await page.waitForFunction(() => /Redrawn area/.test(document.getElementById('pDesign').textContent), null, { timeout: 30000 });
+    ok(await page.locator('#canvas svg image[href^="blob:"]').count() >= 1, 'an area is redrawn by the image model and laid on the sketch');
+    await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/lab-flats-design.png` }).catch(() => {});
     await page.click('#save'); await page.waitForFunction(() => /^Saved/.test(document.getElementById('saved').textContent), null, { timeout: 15000 });
     const row = sql(`select params->>'fit' || ':' || (params->'m'->>'length') from lab_flats where concept_id='${c.id}'`); ok(row === 'oversized:31', 'saved, as changed', row);
+    const eds = sql(`select (params->>'color') || ':' || jsonb_array_length(params->'edits') from lab_flats where concept_id='${c.id}'`); ok(eds === '#1f2a44:3', 'with its colour and its three changes', eds);
     const [popup] = await Promise.all([page.waitForEvent('popup'), page.click('#sheet')]); await popup.waitForLoadState(); ok(/Spec sheet/.test(await popup.title()), 'the spec sheet opens to print', await popup.title()); await popup.close();
     await page.click('.tabs [data-tab=pl]'); await page.click('[data-view=front]'); await page.check('#showPom');
     await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/lab-flats.png` }).catch(() => {});
