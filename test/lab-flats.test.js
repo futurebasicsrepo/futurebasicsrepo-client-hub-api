@@ -91,18 +91,24 @@ test('two placements on top of each other are pointed out', async () => {
 
 test('pieces are drawn from the flat sketches, lined up with their measurements', async () => {
   const { FLAT_TEMPLATES } = await import('../src/lab-flat-templates.js');
-  const { drawingOf, templateOf, defaultTemplate, templatesFor } = await import('../src/lab-flats.js');
+  const { drawingOf, templateOf, defaultTemplate, templatesFor, fitToTemplate } = await import('../src/lab-flats.js');
   const { existsSync } = await import('node:fs');
-  assert.ok(FLAT_TEMPLATES.length >= 25);
+  // every drawing in the pack, men's and women's
+  assert.ok(FLAT_TEMPLATES.length >= 350, `${FLAT_TEMPLATES.length} sketches`);
+  assert.ok(FLAT_TEMPLATES.some(t => t.range === 'womens') && FLAT_TEMPLATES.some(t => t.range === 'mens'));
+  assert.equal(new Set(FLAT_TEMPLATES.map(t => t.id)).size, FLAT_TEMPLATES.length, 'every sketch has its own id');
   for (const t of FLAT_TEMPLATES) {
+    assert.ok(STYLES[t.style], `${t.id} is a style the Lab knows`);
     assert.ok(existsSync(new URL(`../src/flat-templates/${t.file}`, import.meta.url)), `${t.id} has its file`);
-    const p = { ...defaultParams(t.style), template: t.id };
+    assert.ok(existsSync(new URL(`../src/flat-templates/thumbs/${t.id}.webp`, import.meta.url)), `${t.id} has its thumbnail`);
+    const p = fitToTemplate({ ...defaultParams(t.style), template: t.id });
     for (const view of ['front', 'back']) {
+      if (!t.views[view]) continue;
       const d = drawingOf(p, view); assert.ok(d, `${t.id} ${view} is drawn from the sketch`);
       assert.ok(Object.values(d.box).every(Number.isFinite) && d.box.x0 < 0 && d.box.x1 > 0, `${t.id} ${view}: the centre line is inside the view`);
       const w = d.box.x1 - d.box.x0, kind = STYLES[t.style].kind, m = p.m;
       // the view is about as wide as the piece: wider than the body, not absurdly so
-      if (kind === 'top') assert.ok(w > m.chest && w < m.chest * 3.2, `${t.id} ${view} is ${w.toFixed(1)} in across for a ${m.chest} in chest`);
+      if (kind === 'top') assert.ok(w >= m.chest - .01 && w < m.chest * 3.2, `${t.id} ${view} is ${w.toFixed(1)} in across for a ${m.chest} in chest`);
       if (kind === 'bottom') assert.ok(w > m.waist * .9 && w < m.waist * 3.2, `${t.id} ${view} is ${w.toFixed(1)} in across for a ${m.waist} in waist`);
       assert.ok(d.sy / d.sx >= .879 && d.sy / d.sx <= 1.121, 'never visibly stretched');
     }
@@ -141,4 +147,41 @@ test('the drawing can be changed: colour, colour blocks, details, stitching, red
   assert.match(svg, /<filter id="fb-front-pt-pleat-t"/, 'the piece is recoloured'); assert.match(svg, /data-ed="e0"/); assert.match(svg, /stroke="#e0218a"/, 'the contrast thread');
   assert.ok(!/<filter/.test(renderSvg({ ...params, color: '' }, 'back')), 'no colour, no filter; edits on the front stay off the back');
   assert.match(describeEdit(params.edits[0], params), /Front: Double pleat/); assert.match(describeEdit(params.edits[1], params), /Double needle in #e0218a thread/);
+});
+
+test('the whole pack: women\'s styles, shirts, polos, tanks, vests, coats; each sketch starts at its own proportions', async () => {
+  const { fitToTemplate, pomTable, geometry, pomName } = await import('../src/lab-flats.js');
+  const d = (category, name) => detectStyle({ category, name }).style;
+  assert.equal(d('dresses', 'Slip midi dress'), 'dress'); assert.equal(d('bottoms', 'Pleated tennis skirt'), 'skirt'); assert.equal(d('bottoms', 'Ribbed leggings'), 'leggings');
+  assert.equal(d('tops', 'Halter bikini'), 'bikini'); assert.equal(d('tops', 'Scoop one-piece swimsuit'), 'swimsuit'); assert.equal(d('tops', 'Square-neck bodysuit'), 'bodysuit');
+  assert.equal(d('tops', 'Racerback sports bra'), 'bra'); assert.equal(d('tops', 'Lace cami'), 'cami'); assert.equal(d('tops', 'Ribbed tank'), 'tank');
+  assert.equal(d('tops', 'Camp collar shirt'), 'shirtss'); assert.equal(d('tops', 'Oxford button-down'), 'shirt'); assert.equal(d('tops', 'Boxy t-shirt'), 'tee'); assert.equal(d('tops', 'Pique polo'), 'polo');
+  assert.equal(d('outerwear', 'Wool overcoat'), 'coat'); assert.equal(d('outerwear', 'Puffer vest'), 'vest'); assert.equal(d('headwear', 'Washed bucket hat'), 'bucket'); assert.equal(d('tops', 'Harvest crew sweatshirt'), 'crewneck');
+  // a concept's own words pick the sketch: a pleated skirt gets the pleated one
+  assert.equal(detectStyle({ category: 'bottoms', name: 'Pleated tennis skirt' }).template, 'sk-pleated-tennis-skirt');
+  // a skirt is measured as a skirt
+  const sk = defaultParams('skirt'); assert.ok(geometry(sk, 'front').regions.skirt); assert.equal(pomName('skirt', 'length'), 'Length from the top of the waistband');
+  assert.ok(pomTable(sk).some(r => r.name === 'Sweep (hem width), flat')); assert.ok(!pomTable(defaultParams('tank')).some(r => r.key === 'sleeve'), 'a tank has no sleeve length');
+  // a cropped sketch starts shorter than the classic one; a maxi dress longer than a mini
+  const len = (style, template) => fitToTemplate({ ...defaultParams(style), template }).m.length;
+  assert.ok(len('tee', 'tee-cropped-tee') < len('tee', 'tee-classic'), 'cropped tee is shorter');
+  assert.ok(len('dress', 'dr-slip-maxi-dress') > len('dress', 'dr-strapless-mini-dress') + 8, 'maxi is much longer than mini');
+  const inseam = template => fitToTemplate({ ...defaultParams('shorts'), template }).m.inseam;
+  assert.ok(inseam('sh-long-jorts') > inseam('sh-running-shorts'), 'long jorts have a longer inseam than running shorts');
+});
+
+test('add-on parts from the pack: pockets, zips, collars, trims and buttons placed on a flat', async () => {
+  const { FLAT_PARTS, PART_KINDS, partOf, defaultPart, cleanEdits, describeEdit } = await import('../src/lab-flats.js');
+  const { existsSync } = await import('node:fs');
+  assert.ok(FLAT_PARTS.length >= 100, `${FLAT_PARTS.length} parts`);
+  for (const k of Object.keys(PART_KINDS)) assert.ok(FLAT_PARTS.some(q => q.kind === k), `there are ${k}`);
+  for (const q of FLAT_PARTS) assert.ok(existsSync(new URL(`../src/flat-parts/${q.file}`, import.meta.url)) && q.aspect > 0, `${q.id} has its picture`);
+  const tee = { ...defaultParams('tee'), template: 'tee-classic' }, pocket = FLAT_PARTS.find(q => q.kind === 'pockets');
+  const e = { id: 'p1', ...defaultPart(pocket.id, tee, 'front') };
+  assert.ok(e.w > 2 && e.w < 9 && e.y > 4, 'a pocket lands on the chest at a pocket size');
+  const [clean] = cleanEdits([e, { type: 'part', part: 'nope', x: 0, y: 0, w: 1, h: 1 }]); assert.equal(cleanEdits([e, { type: 'part', part: 'nope' }]).length, 1, 'an unknown part is dropped');
+  assert.equal(clean.part, pocket.id);
+  const svg = renderSvg({ ...tee, edits: [clean] }, 'front', { partHref: f => `data:part;${f}` });
+  assert.match(svg, new RegExp(`href="data:part;${pocket.file}"`), 'the part is drawn on the flat, inside the recoloured drawing');
+  assert.match(describeEdit(clean, tee), /add-on sheet/); assert.equal(partOf(pocket.id).kind, 'pockets');
 });

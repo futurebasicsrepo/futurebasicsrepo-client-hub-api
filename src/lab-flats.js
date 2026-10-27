@@ -6,11 +6,15 @@
 // The same file runs in the page (served as /lab/flats.js) and on the service (the check and the spec sheet), so it uses neither the DOM nor Node.
 // All lengths are inches. On the front flat the viewer's right is the wearer's left.
 import { FLAT_TEMPLATES } from './lab-flat-templates.js';
+import { FLAT_PARTS, PART_KINDS } from './lab-flat-parts.js';
+export { FLAT_PARTS, PART_KINDS };
 
 export const SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
 const TOP = { chest: 'Chest width, 1 in below the armhole', length: 'Body length from the high point of the shoulder', shoulder: 'Shoulder width, seam to seam', sleeve: 'Sleeve length from the shoulder point', sleeveOpening: 'Sleeve opening, flat', armhole: 'Armhole, straight', neckWidth: 'Neck width, seam to seam', neckDropFront: 'Front neck drop', neckDropBack: 'Back neck drop', hemRib: 'Hem rib height', cuffRib: 'Cuff rib height', neckRib: 'Neck rib width' };
-const BOTTOM = { waist: 'Waist, flat, top edge', hip: 'Hip, flat, at 7 in below the waistband', rise: 'Front rise, waistband included', inseam: 'Inseam', thigh: 'Thigh, flat, 1 in below the crotch', legOpening: 'Leg opening, flat', waistband: 'Waistband height' };
-export const POM_NAMES = { ...TOP, ...BOTTOM, crownWidth: 'Crown width, front, flat', crownHeight: 'Crown height', brimLength: 'Brim length from the crown seam', brimWidth: 'Brim width', width: 'Width, flat', height: 'Height', cuff: 'Cuff height', handleDrop: 'Handle drop', handleWidth: 'Handle width' };
+const BOTTOM = { waist: 'Waist, flat, top edge', hip: 'Hip, flat, at 7 in below the waistband', rise: 'Front rise, waistband included', inseam: 'Inseam', thigh: 'Thigh, flat, 1 in below the crotch', legOpening: 'Leg opening, flat', waistband: 'Waistband height', sweep: 'Sweep (hem width), flat' };
+export const POM_NAMES = { ...TOP, ...BOTTOM, length: TOP.length, crownWidth: 'Crown width, front, flat', crownHeight: 'Crown height', brimLength: 'Brim length from the crown seam', brimWidth: 'Brim width', width: 'Width, flat', height: 'Height', cuff: 'Cuff height', handleDrop: 'Handle drop', handleWidth: 'Handle width' };
+// a style's own name for a point of measure where the general one does not fit it (a skirt's length, a bikini's top width)
+export const pomName = (style, k) => STYLES[style]?.names?.[k] || POM_NAMES[k] || k;
 const topBase = (o, extra = {}) => ({ kind: 'top', base: o, grade: { chest: 1, length: 1, shoulder: .75, sleeve: o.sleeve > 12 ? .5 : .25, sleeveOpening: .25, armhole: .5, neckWidth: .25, neckDropFront: .125, neckDropBack: 0, hemRib: 0, cuffRib: 0, neckRib: 0 }, ...extra });
 export const STYLES = {
   tee: { label: 'T-shirt', category: 'tops', ...topBase({ chest: 21, length: 28, shoulder: 18.5, sleeve: 8.5, sleeveOpening: 7.25, armhole: 9, neckWidth: 7.25, neckDropFront: 3.5, neckDropBack: 1, hemRib: 0, cuffRib: 0, neckRib: .875 }) },
@@ -23,7 +27,23 @@ export const STYLES = {
   shorts: { label: 'Shorts', category: 'bottoms', kind: 'bottom', base: { waist: 16.5, hip: 22, rise: 12, inseam: 7, thigh: 13.5, legOpening: 12, waistband: 1.5 }, grade: { waist: 1, hip: 1, rise: .375, inseam: 0, thigh: .5, legOpening: .5, waistband: 0 } },
   cap: { label: 'Six-panel cap', category: 'headwear', kind: 'cap', base: { crownWidth: 8.5, crownHeight: 4.5, brimLength: 2.75, brimWidth: 7.5 }, grade: {}, oneSize: true },
   beanie: { label: 'Cuffed beanie', category: 'headwear', kind: 'beanie', base: { width: 9, height: 10.5, cuff: 3 }, grade: {}, oneSize: true },
-  tote: { label: 'Tote bag', category: 'bags', kind: 'tote', base: { width: 15, height: 16, handleDrop: 11, handleWidth: 1 }, grade: {}, oneSize: true }
+  tote: { label: 'Tote bag', category: 'bags', kind: 'tote', base: { width: 15, height: 16, handleDrop: 11, handleWidth: 1 }, grade: {}, oneSize: true },
+  // the rest of the flat-sketch pack: woven shirts, polos, sleeveless tops, vests, coats, and the women's range
+  shirt: { label: 'Button-up shirt', category: 'tops', ...topBase({ chest: 22.5, length: 30, shoulder: 19, sleeve: 25, sleeveOpening: 4.75, armhole: 10, neckWidth: 6.75, neckDropFront: 3, neckDropBack: .75, hemRib: 0, cuffRib: 2.5, neckRib: 0 }) },
+  shirtss: { label: 'Short-sleeve shirt', category: 'tops', ...topBase({ chest: 22.5, length: 29, shoulder: 19, sleeve: 9.5, sleeveOpening: 7.5, armhole: 10, neckWidth: 6.75, neckDropFront: 3, neckDropBack: .75, hemRib: 0, cuffRib: 0, neckRib: 0 }) },
+  polo: { label: 'Polo', category: 'tops', ...topBase({ chest: 21.5, length: 28.5, shoulder: 18.5, sleeve: 9, sleeveOpening: 6.5, armhole: 9, neckWidth: 7, neckDropFront: 3, neckDropBack: .75, hemRib: 0, cuffRib: 1, neckRib: 0 }) },
+  tank: { label: 'Tank', category: 'tops', ...topBase({ chest: 20, length: 27, shoulder: 14, sleeve: 0, sleeveOpening: 0, armhole: 10, neckWidth: 8, neckDropFront: 4, neckDropBack: 1.5, hemRib: 0, cuffRib: 0, neckRib: .5 }) },
+  vest: { label: 'Vest', category: 'outerwear', ...topBase({ chest: 21, length: 25, shoulder: 14.5, sleeve: 0, sleeveOpening: 0, armhole: 11, neckWidth: 7.5, neckDropFront: 8, neckDropBack: 1, hemRib: 0, cuffRib: 0, neckRib: 0 }) },
+  coat: { label: 'Coat', category: 'outerwear', ...topBase({ chest: 24, length: 40, shoulder: 20, sleeve: 26, sleeveOpening: 5.5, armhole: 11, neckWidth: 7.5, neckDropFront: 3, neckDropBack: 1, hemRib: 0, cuffRib: 0, neckRib: 0 }), pocket: 'welt' },
+  dress: { label: 'Dress', category: 'dresses', ...topBase({ chest: 17.5, length: 38, shoulder: 14, sleeve: 0, sleeveOpening: 0, armhole: 8.5, neckWidth: 8, neckDropFront: 4.5, neckDropBack: 2, hemRib: 0, cuffRib: 0, neckRib: 0 }) },
+  bodysuit: { label: 'Bodysuit', category: 'tops', ...topBase({ chest: 16.5, length: 25, shoulder: 13, sleeve: 0, sleeveOpening: 0, armhole: 8, neckWidth: 7.5, neckDropFront: 4.5, neckDropBack: 2, hemRib: 0, cuffRib: 0, neckRib: 0 }), names: { length: 'Body length from the high point of the shoulder to the crotch' } },
+  swimsuit: { label: 'Swimsuit', category: 'tops', ...topBase({ chest: 15.5, length: 24, shoulder: 12, sleeve: 0, sleeveOpening: 0, armhole: 8, neckWidth: 8, neckDropFront: 5.5, neckDropBack: 4, hemRib: 0, cuffRib: 0, neckRib: 0 }), names: { length: 'Body length from the top of the strap to the crotch' } },
+  bikini: { label: 'Bikini', category: 'tops', ...topBase({ chest: 13, length: 20, shoulder: 10, sleeve: 0, sleeveOpening: 0, armhole: 6, neckWidth: 6, neckDropFront: 6, neckDropBack: 6, hemRib: 0, cuffRib: 0, neckRib: 0 }), names: { chest: 'Top width, flat, under the cups', length: 'Set height, top of the strap to the bottom of the brief', shoulder: 'Strap spread at the top', armhole: 'Side height of the top', neckWidth: 'Neck opening between the straps' } },
+  bra: { label: 'Sports bra', category: 'tops', ...topBase({ chest: 14.5, length: 11, shoulder: 11, sleeve: 0, sleeveOpening: 0, armhole: 7, neckWidth: 7, neckDropFront: 4, neckDropBack: 4, hemRib: 1.5, cuffRib: 0, neckRib: 0 }), names: { hemRib: 'Underband height' } },
+  cami: { label: 'Cami top', category: 'tops', ...topBase({ chest: 16.5, length: 18, shoulder: 11, sleeve: 0, sleeveOpening: 0, armhole: 8, neckWidth: 8, neckDropFront: 4, neckDropBack: 2.5, hemRib: 0, cuffRib: 0, neckRib: 0 }) },
+  skirt: { label: 'Skirt', category: 'bottoms', kind: 'bottom', skirt: true, names: { length: 'Length from the top of the waistband' }, base: { waist: 14.5, hip: 19.5, length: 17, sweep: 22, waistband: 1.25 }, grade: { waist: 1, hip: 1, length: .25, sweep: 1, waistband: 0 } },
+  leggings: { label: 'Leggings', category: 'bottoms', kind: 'bottom', base: { waist: 13, hip: 16.5, rise: 10.5, inseam: 28, thigh: 9.5, legOpening: 4.25, waistband: 3 }, grade: { waist: 1, hip: 1, rise: .375, inseam: 0, thigh: .5, legOpening: .25, waistband: 0 } },
+  bucket: { label: 'Bucket hat', category: 'headwear', kind: 'cap', bucket: true, base: { crownWidth: 9.5, crownHeight: 3.75, brimLength: 2.25, brimWidth: 13 }, grade: {}, oneSize: true }
 };
 export const FITS = { slim: 'Slim', regular: 'Regular', relaxed: 'Relaxed', boxy: 'Boxy', oversized: 'Oversized', wide: 'Wide' };
 const FIT_TOP = { slim: { chest: -1.5, shoulder: -.5 }, regular: {}, relaxed: { chest: 1.5, shoulder: 1.5, drop: true }, boxy: { chest: 2.5, length: -1.5, shoulder: 3, drop: true }, oversized: { chest: 3.5, length: 1, shoulder: 3.5, drop: true, sleeve: .5 }, wide: { chest: 2.5, shoulder: 2.5, drop: true } };
@@ -37,11 +57,18 @@ export function detectStyle(c = {}) {
   const t = [c.name, c.spec?.silhouette, c.spec?.description, ...(c.spec?.details || [])].join(' ').toLowerCase(), cat = c.category;
   const has = re => re.test(t);
   let style = null;
-  if (cat === 'headwear') style = has(/beanie|knit hat|watch cap|toque/) ? 'beanie' : has(/cap|hat|snapback|trucker|dad hat|six[- ]panel|5[- ]panel|five[- ]panel/) ? 'cap' : 'cap';
+  if (cat === 'headwear') style = has(/beanie|knit hat|watch cap|toque/) ? 'beanie' : has(/bucket/) ? 'bucket' : 'cap';
   else if (cat === 'bags') style = 'tote';
-  else if (cat === 'bottoms') style = has(/\bshorts?\b/) ? 'shorts' : 'pants';
-  else if (cat === 'outerwear') style = has(/hood/) ? 'ziphoodie' : 'jacket';
-  else if (['tops', 'knitwear'].includes(cat)) style = has(/zip/) && has(/hood/) ? 'ziphoodie' : has(/hood/) ? 'hoodie' : has(/crew|sweatshirt|sweater|jumper|fleece|knit/) ? 'crewneck' : has(/long[- ]?sleeve|\bl\/s\b|longsleeve/) ? 'longsleeve' : has(/jacket|overshirt|coach|bomber/) ? 'jacket' : 'tee';
+  else if (has(/bikini|two[- ]piece swim/)) style = 'bikini';
+  else if (has(/swimsuit|one[- ]piece|swimwear|bathing suit|maillot/)) style = 'swimsuit';
+  else if (has(/bodysuit|leotard/)) style = 'bodysuit';
+  else if (cat === 'bottoms' || (cat === 'tailoring' && has(/trouser|pant|short|skirt/))) style = has(/skirt|skort/) ? 'skirt' : has(/legging/) ? 'leggings' : has(/\bshorts?\b|jort/) ? 'shorts' : 'pants';
+  else if (cat === 'dresses') style = has(/skirt|skort/) ? 'skirt' : 'dress';
+  else if (has(/sports bra|bralette|bra top/)) style = 'bra';
+  else if (has(/\bcami\b|camisole|tube top|corset|bustier/)) style = 'cami';
+  else if (has(/\bvest\b|gilet|waistcoat/) && !has(/vest top/)) style = 'vest';
+  else if (cat === 'outerwear' || cat === 'tailoring') style = has(/\bcoat\b|overcoat|topcoat|parka|trench|\bmac\b/) ? 'coat' : has(/hood/) ? 'ziphoodie' : 'jacket';
+  else if (['tops', 'knitwear'].includes(cat)) style = has(/zip/) && has(/hood/) ? 'ziphoodie' : has(/hood/) ? 'hoodie' : has(/polo|rugby|johnny collar/) ? 'polo' : has(/crew|sweatshirt|sweater|jumper|fleece|knit/) ? 'crewneck' : has(/tank|sleeveless|singlet|muscle/) ? 'tank' : has(/(?<!t-)\bshirt\b|overshirt|shacket|button[- ]?(up|down)|camp collar|oxford|flannel|western/) ? (has(/short[- ]sleeve|camp|bowling|cuban/) ? 'shirtss' : 'shirt') : has(/long[- ]?sleeve|\bl\/s\b|longsleeve/) ? 'longsleeve' : has(/jacket|coach|bomber/) ? 'jacket' : 'tee';
   if (!style) return null;
   const fit = has(/oversiz/) ? 'oversized' : has(/boxy|cropped and wide|box fit/) ? 'boxy' : has(/wide[- ]leg|\bwide\b/) && STYLES[style].kind === 'bottom' ? 'wide' : has(/relaxed|loose|baggy/) ? 'relaxed' : has(/slim|fitted|tapered/) ? 'slim' : 'regular';
   const options = {
@@ -66,8 +93,28 @@ const TEMPLATE_PICK = [
 ];
 export const templatesFor = style => FLAT_TEMPLATES.filter(t => t.style === style).map(t => ({ id: t.id, label: t.label }));
 export function defaultTemplate(style, fit = 'regular', words = '') {
-  const own = TEMPLATE_PICK.filter(([id]) => FLAT_TEMPLATES.some(t => t.id === id && t.style === style)); if (!own.length) return null;
-  return (own.find(([, re]) => re && re.test(words)) || own.find(([, , fits]) => fits && fits.includes(fit)) || own.find(([, re, fits]) => !re && !fits) || own[0])[0];
+  const own = TEMPLATE_PICK.filter(([id]) => FLAT_TEMPLATES.some(t => t.id === id && t.style === style)), all = FLAT_TEMPLATES.filter(t => t.style === style); if (!all.length) return null;
+  const picked = own.find(([, re]) => re && re.test(words)); if (picked) return picked[0];
+  // a sketch whose name shares the most telling words with the concept (cargo, pleated, halter, cropped…)
+  const said = new Set(String(words).toLowerCase().split(/[^a-z]+/).filter(w => w.length > 3 && !COMMON.has(w)));
+  let best = null, score = 0; for (const t of all) { const n = t.label.toLowerCase().split(/[^a-z]+/).filter(w => said.has(w)).length; if (n > score) { best = t; score = n; } }
+  if (best) return best.id;
+  return (own.find(([, , fits]) => fits && fits.includes(fit)) || own.find(([, re, fits]) => !re && !fits) || own[0] || [all[0].id])[0];
+}
+const COMMON = new Set(['with', 'from', 'shirt', 'tee', 'pants', 'shorts', 'jacket', 'dress', 'skirt', 'vest', 'coat', 'polo', 'tank', 'hoodie', 'classic', 'regular', 'that', 'this', 'line', 'future', 'basics', 'cotton', 'jersey', 'fleece', 'twill', 'piece']);
+// a sketch's own proportions: a cropped tee, a maxi dress or a long short is drawn shorter or longer than the usual sketch of its style, so a
+// piece drawn from it starts that much shorter or longer than the style's standard (the sketches are stylised, so the comparison is with the
+// style's middle sketch, not with real inches), and the drawing is not stretched back to the standard
+const REF = {};
+const refRatio = style => { if (!(style in REF)) { const r = FLAT_TEMPLATES.filter(t => t.style === style && t.views.front.ratio).map(t => t.views.front.ratio).sort((a, b) => a - b); REF[style] = r.length ? r[Math.floor(r.length / 2)] : null; } return REF[style]; };
+export function fitToTemplate(p) {
+  const t = templateOf(p), v = t?.views?.front, S = STYLES[p.style], ref = refRatio(p.style), base = defaultParams(p.style, p.fit, p.options)?.m; if (!v?.ratio || !S || !ref || !base) return p;
+  let k = Math.min(Math.max(v.ratio / ref, .45), 2.4); if (Math.abs(k - 1) < .08) k = 1;
+  const m = { ...p.m };
+  if (S.kind === 'top' && base.length) m.length = r8(base.length * k);
+  else if (S.kind === 'bottom' && S.skirt) m.length = r8(base.length * k);
+  else if (S.kind === 'bottom') m.inseam = r8(Math.max(1, (base.rise + base.inseam) * k - (m.rise || base.rise)));
+  return { ...p, m };
 }
 // the sketch a piece is drawn from: the one it names, or its style's default; 'none' is the simple outline
 export function templateOf(p) {
@@ -82,7 +129,7 @@ export function drawingOf(p, view = 'front', size = p.size || 'M') {
   const m = measurementsFor(p, size), kind = STYLES[p.style].kind, clamp = (a, x) => Math.min(Math.max(a, x * .88), x * 1.12);
   let sx, sy, oy;
   if (kind === 'top') { sx = v.chest / m.chest; oy = v.hpsY; sy = clamp((v.hemY - v.hpsY) / m.length, sx); }
-  else if (kind === 'bottom') { sx = v.waist / m.waist; oy = v.topY; sy = clamp((v.hemY - v.topY) / (m.rise + m.inseam), sx); }
+  else if (kind === 'bottom') { sx = v.waist / m.waist; oy = v.topY; sy = clamp((v.hemY - v.topY) / (STYLES[p.style].skirt ? m.length : m.rise + m.inseam), sx); }
   else { sx = v.width / m.crownWidth; oy = v.seamY; sy = sx; }
   if (!(sx > 0 && sy > 0)) return null;
   const [bx, by, bw, bh] = v.box;
@@ -104,8 +151,8 @@ export function measurementsFor(p, size = 'M') {
 }
 export function pomTable(p) {
   const S = STYLES[p.style], sizes = S.oneSize ? ['One size'] : SIZES;
-  return Object.keys(p.m).filter(k => !(['hemRib', 'cuffRib', 'neckRib'].includes(k) && !p.m[k])).map((k, i) => ({
-    code: String.fromCharCode(65 + i), key: k, name: POM_NAMES[k] || k, tolerance: p.m[k] >= 10 ? .5 : p.m[k] >= 3 ? .25 : .125,
+  return Object.keys(p.m).filter(k => !(['hemRib', 'cuffRib', 'neckRib', 'sleeve', 'sleeveOpening'].includes(k) && !p.m[k])).map((k, i) => ({
+    code: String.fromCharCode(65 + i), key: k, name: pomName(p.style, k), tolerance: p.m[k] >= 10 ? .5 : p.m[k] >= 3 ? .25 : .125,
     values: sizes.map(s => ({ size: s, value: S.oneSize ? p.m[k] : measurementsFor(p, s)[k] }))
   }));
 }
@@ -169,6 +216,7 @@ function topGeom(S, m, o, view) {
   return { outline: poly, parts, regions, keepouts, pom, bounds: bounds([...poly, ...(S.hood ? [[0, view === 'front' ? -11.5 : -12.6], [nw + 3.2, -5], [-nw - 3.2, -5]] : [])]), anchorName: view === 'front' ? 'HPS' : 'HPS (back)' };
 }
 function bottomGeom(S, m, o, view) {
+  if (S.skirt) return skirtGeom(m, view);
   const w = m.waist, wb = m.waistband, hipH = m.hip / 2, L = m.rise + m.inseam, cr = m.rise, lo = m.legOpening, out = hipH + .25;
   // each leg opening sits around the leg's middle; a wide short flares out past the hip rather than crossing the centre
   const mid = Math.max(out * .55, lo / 2 + .4), hemIn = mid - lo / 2, hemOut = mid + lo / 2;
@@ -190,6 +238,13 @@ function bottomGeom(S, m, o, view) {
   }
   keepouts.push({ name: 'the waistband', poly: [[-w / 2 - 1, -1], [w / 2 + 1, -1], [w / 2 + 1, wb + .5], [-w / 2 - 1, wb + .5]], why: 'waistband', level: 'fail' }, { name: 'the crotch seam', poly: [[-1.4, cr - 2], [1.4, cr - 2], [1.4, L], [-1.4, L]], why: 'crotch', level: 'fail' });
   return { outline: poly, parts, regions: { 'left leg': legL, 'right leg': legR }, keepouts, pom: [{ key: 'waist', from: [-w / 2, -1.2], to: [w / 2, -1.2] }, { key: 'inseam', from: [.6, cr + .9], to: [hemIn + .4, L] }], bounds: bounds(poly), anchorName: 'top of the waistband' };
+}
+function skirtGeom(m, view) {
+  const w = m.waist / 2, wb = m.waistband, L = m.length, sw = Math.max(m.sweep, m.hip) / 2, hip = m.hip / 2, P = pts => 'M' + pts.map(q => q.map(n => +n.toFixed(3)).join(' ')).join(' L');
+  const poly = [[-w, 0], [w, 0], [w, wb], [hip, Math.min(7, L * .45)], [sw, L], [-sw, L], [-hip, Math.min(7, L * .45)], [-w, wb]];
+  const parts = [{ d: P(poly) + ' Z', kind: 'outline' }, { d: P([[-w, wb], [w, wb]]), kind: 'seam' }, { d: P([[-sw + .1, L - .75], [sw - .1, L - .75]]), kind: 'stitch' }];
+  if (view === 'back') parts.push({ d: P([[0, wb], [0, Math.min(8, L * .5)]]), kind: 'seam' }, { d: P([[-1, wb + .3], [1, wb + .3], [1, wb + 1.1], [-1, wb + 1.1]]) + ' Z', kind: 'label' });
+  return { outline: poly, parts, regions: { skirt: poly }, keepouts: [{ name: 'the waistband', poly: [[-w - 1, -1], [w + 1, -1], [w + 1, wb + .5], [-w - 1, wb + .5]], why: 'waistband', level: 'fail' }, { name: 'the hem', poly: [[-sw - 1, L - 1], [sw + 1, L - 1], [sw + 1, L + 1], [-sw - 1, L + 1]], why: 'hem', level: 'warn' }], pom: [{ key: 'waist', from: [-w, -1.2], to: [w, -1.2] }, { key: 'length', from: [w + .6, 0], to: [w + .6, L] }], bounds: bounds(poly), anchorName: 'top of the waistband' };
 }
 function capGeom(m, view) {
   const w = m.crownWidth / 2, h = m.crownHeight, P = pts => 'M' + pts.map(q => q.map(n => +n.toFixed(3)).join(' ')).join(' L');
@@ -375,12 +430,24 @@ export function defaultDetail(kind, p, view = 'front') {
   if (kind === 'erase') return at(top ? 0 : half * .5, top ? m.length * .62 : 8, 6, 5);
   return at(half * (top ? .5 : .55), top ? 9.5 : bottom ? 6 : 3, top ? 4.5 : 6, top ? 5 : 6.5);
 }
+// a part from the add-on sheets, first placed where that kind of part usually goes, at its usual size
+export function defaultPart(id, p, view = 'front') {
+  const q = partOf(id); if (!q) return null;
+  const S = STYLES[p.style], m = measurementsFor(p, 'M'), top = S.kind === 'top', bottom = S.kind === 'bottom', half = top ? m.chest / 2 : bottom ? m.waist / 2 : 4;
+  const w = Math.min(q.width, half * 1.6), h = r8(w / (q.aspect || 1)), at = (x, y) => ({ type: 'part', part: id, view, x: r8(x), y: r8(y), w: r8(w), h, name: q.label });
+  if (q.kind === 'zips') return at(0, (top ? (m.length || 26) : 9) / 2);
+  if (q.kind === 'collars') return at(0, h / 2 - .4);
+  if (q.kind === 'buttons') return at(0, top ? 4 : 1);
+  if (q.kind === 'pockets') return at(bottom ? half * .55 : half * .45, top ? Math.max(8, m.length * .35) : bottom ? (m.waistband || 1.5) + 4 : 3);
+  return at(0, top ? m.length * .5 : bottom ? 8 : 2);
+}
 // what the edits say, the way the spec sheet and the tech pack write them
 export function describeEdit(e, p) {
   const v = e.view === 'back' ? 'Back' : 'Front', thread = hexOf(e.thread) ? ` in ${hexOf(e.thread)} thread` : '';
   if (e.type === 'stitch') { const L = e.pts.slice(1).reduce((a, q, i) => a + Math.hypot(q[0] - e.pts[i][0], q[1] - e.pts[i][1]), 0); return `${v}: ${STITCHES[e.stitch] || 'Stitch'}${thread}${e.spi ? `, ${e.spi} stitches an inch` : ''}, ${fmt(L)} long`; }
   if (e.type === 'block') return `${v}: ${e.name || 'Colour block'} in ${hexOf(e.color) || 'the main colour'}`;
   if (e.type === 'ai') return `${v}: redrawn: ${e.prompt || 'a change'} (${fmt(e.w)} × ${fmt(e.h)})`;
+  if (e.type === 'part') { const q = partOf(e.part); return `${v}: ${e.name || q?.label || 'Part'} (from the add-on sheet ${q?.id || ''}), ${fmt(e.w)} × ${fmt(e.h)}, ${describe({ ...e, name: e.name || q?.label || 'the part' }, p)}${e.flip ? ', mirrored' : ''}`; }
   const name = e.kind === 'pleat' ? `${{ 1: 'Single', 2: 'Double', 3: 'Triple' }[Math.min(Math.max(Math.round(e.count || 1), 1), 3)]} pleat` : DETAILS[e.kind] || 'Detail';
   if (e.kind === 'erase') return `${v}: covered over (${fmt(e.w)} × ${fmt(e.h)})`;
   return `${v}: ${name}, ${fmt(e.w)} × ${fmt(e.h)}, ${describe({ ...e, name }, p)}; topstitch ${(STITCHES[e.stitch] || 'single needle').toLowerCase()}${thread}${hexOf(e.color) ? `; ${hexOf(e.color)}` : ''}`;
@@ -394,6 +461,7 @@ export function cleanEdits(list) {
     if (e?.type === 'block') { const pts = cleanPts(e.pts, 3); return pts && hexOf(e.color) && { ...base, type: 'block', pts, color: hexOf(e.color), name: String(e.name || '').replace(/\s+/g, ' ').trim().slice(0, 40) }; }
     const box = { x: num(e?.x, -60, 60, 0), y: num(e?.y, -30, 80, 0), w: num(e?.w, .1, 40, 1), h: num(e?.h, .1, 40, 1) };
     if (e?.type === 'ai') return /^[0-9a-f-]{36}$/i.test(String(e.art || '')) && { ...base, type: 'ai', ...box, art: e.art, prompt: String(e.prompt || '').replace(/\s+/g, ' ').trim().slice(0, 200) };
+    if (e?.type === 'part' && partOf(e.part)) return { ...base, type: 'part', part: e.part, ...box, flip: Boolean(e.flip), name: String(e.name || '').replace(/\s+/g, ' ').trim().slice(0, 60) };
     if (e?.type === 'detail' && DETAILS[e.kind]) return { ...base, type: 'detail', kind: e.kind, ...box, count: Math.round(num(e.count, 1, 3, 1)), flip: Boolean(e.flip), stitch: STITCHES[e.stitch] ? e.stitch : 'single', thread: hexOf(e.thread), color: hexOf(e.color) };
     return null;
   }).filter(Boolean);
@@ -402,7 +470,9 @@ export function cleanEdits(list) {
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 // templateHref: where the page finds a sketch's file (the service passes data URLs, so a saved or printed sheet stands on its own)
 export const TEMPLATE_URL = file => `/lab/flat-templates/${file}`;
-export function renderSvg(p, view = 'front', { placements = [], hrefs = {}, size = p.size || 'M', showPom = false, showDims = true, selected = null, findings = {}, scale = 22, title = '', templateHref = TEMPLATE_URL, editHrefs = {}, editable = false, selectedEdit = null, overlay = '', plain = false, background = true, templateSvg = null } = {} /* templateSvg: the sketch's own markup, to draw it inline (the service: much faster to rasterise than a picture of the whole page); scale 0: no width and height, for nesting; editHrefs: the pictures of areas redrawn by the image model; plain: the drawing alone, no guides or labels */) {
+export const PART_URL = file => `/lab/flat-parts/${file}`;
+export const partOf = id => FLAT_PARTS.find(q => q.id === id) || null;
+export function renderSvg(p, view = 'front', { placements = [], hrefs = {}, size = p.size || 'M', showPom = false, showDims = true, selected = null, findings = {}, scale = 22, title = '', templateHref = TEMPLATE_URL, partHref = PART_URL, editHrefs = {}, editable = false, selectedEdit = null, overlay = '', plain = false, background = true, templateSvg = null } = {} /* templateSvg: the sketch's own markup, to draw it inline (the service: much faster to rasterise than a picture of the whole page); scale 0: no width and height, for nesting; editHrefs: the pictures of areas redrawn by the image model; plain: the drawing alone, no guides or labels */) {
   const g = geometry(p, view, size), d = drawingOf(p, view, size), b = d ? d.box : g.bounds, pad = 3.2, x0 = b.x0 - pad, y0 = b.y0 - pad - (title ? 1.2 : 0), W = b.x1 - b.x0 + pad * 2, H = b.y1 - b.y0 + pad * 2 + (title ? 1.2 : 0);
   const k = Math.max(1, Math.max(W, H) / 30), fs = .34 * k; // labels grow with the drawing, so they read at the size it is shown
   const sw = { outline: .07, seam: .035, stitch: .03, rib: .018, under: .05, cord: .05, label: .03 }, dash = { stitch: '.18 .12', label: '.15 .1' };
@@ -414,12 +484,12 @@ export function renderSvg(p, view = 'front', { placements = [], hrefs = {}, size
   const clothAt = e => { const bl = [...blocks].reverse().find(q => inside([e.x, e.y], q.pts)); return bl ? bl.color : cloth || '#ffffff'; };
   const hit = (e, inner) => editable ? `<g data-ed="${esc(e.id)}">${inner}</g>` : inner;
   const box = e => `<rect x="${n3(e.x - e.w / 2 - .15)}" y="${n3(e.y - e.h / 2 - .15)}" width="${n3(e.w + .3)}" height="${n3(e.h + .3)}" fill="#ffffff" fill-opacity="0"${e.id === selectedEdit ? ' stroke="#2a6df4" stroke-width=".05" stroke-dasharray=".18 .1"' : ''}/>`;
-  const under = edits.filter(e => (e.type === 'detail' && e.kind === 'erase') || (e.type === 'ai' && editHrefs[e.art])).map(e => e.type === 'ai'
-    ? `<image href="${esc(editHrefs[e.art])}" x="${n3(e.x - e.w / 2)}" y="${n3(e.y - e.h / 2)}" width="${n3(e.w)}" height="${n3(e.h)}" preserveAspectRatio="none"/>`
+  const under = edits.filter(e => (e.type === 'detail' && e.kind === 'erase') || (e.type === 'ai' && editHrefs[e.art]) || (e.type === 'part' && partOf(e.part))).map(e => e.type === 'ai' || e.type === 'part'
+    ? `<image href="${esc(e.type === 'ai' ? editHrefs[e.art] : partHref(partOf(e.part).file))}" x="${n3(e.x - e.w / 2)}" y="${n3(e.y - e.h / 2)}" width="${n3(e.w)}" height="${n3(e.h)}" preserveAspectRatio="none"${e.flip ? ` transform="translate(${n3(2 * e.x)} 0) scale(-1 1)"` : ''}/>`
     : `<rect x="${n3(e.x - e.w / 2)}" y="${n3(e.y - e.h / 2)}" width="${n3(e.w)}" height="${n3(e.h)}" rx=".15" fill="#ffffff"/>`).join('');
   const defs = `<defs><g id="${pid}-b">${parts}${under}</g>${cloth ? tintFilter(`${pid}-t`, cloth) : ''}${blocks.map((e, i) => tintFilter(`${pid}-t${i}`, e.color) + `<clipPath id="${pid}-c${i}"><path d="${pathD(e.pts)} Z"/></clipPath>`).join('')}</defs>`;
   const drawing = `${defs}<use href="#${pid}-b"${cloth ? ` filter="url(#${pid}-t)"` : ''}/>${blocks.map((e, i) => `<g clip-path="url(#${pid}-c${i})"><use href="#${pid}-b" filter="url(#${pid}-t${i})"/></g>`).join('')}`
-    + (editable ? blocks.map(e => hit(e, `<path d="${pathD(e.pts)} Z" fill="#ffffff" fill-opacity="0"${e.id === selectedEdit ? ' stroke="#2a6df4" stroke-width=".05" stroke-dasharray=".18 .1"' : ''}/>`)).join('') + edits.filter(e => e.type === 'ai' || (e.type === 'detail' && e.kind === 'erase')).map(e => hit(e, box(e))).join('') : '')
+    + (editable ? blocks.map(e => hit(e, `<path d="${pathD(e.pts)} Z" fill="#ffffff" fill-opacity="0"${e.id === selectedEdit ? ' stroke="#2a6df4" stroke-width=".05" stroke-dasharray=".18 .1"' : ''}/>`)).join('') + edits.filter(e => e.type === 'ai' || e.type === 'part' || (e.type === 'detail' && e.kind === 'erase')).map(e => hit(e, box(e))).join('') : '')
     + edits.filter(e => e.type === 'detail' && e.kind !== 'erase').map(e => { const o = detailSvg(e, clothAt(e)); return hit(e, (editable ? box(e) : '') + o.body + o.stitch); }).join('')
     + edits.filter(e => e.type === 'stitch').map(e => hit(e, (editable ? `<path d="${pathD(e.pts)}" fill="none" stroke="#ffffff" stroke-opacity="0" stroke-width=".45"/>` : '') + stitchSvg(e.pts, e.stitch, hexOf(e.thread) || lineFor(cloth)) + (e.id === selectedEdit ? `<path d="${pathD(e.pts)}" fill="none" stroke="#2a6df4" stroke-width=".02"/>` : ''))).join('');
   const T = (x, y, s, t, a = 'middle', c = '#141416', wgt = 500) => `<text x="${x.toFixed(2)}" y="${y.toFixed(2)}" font-size="${s}" text-anchor="${a}" fill="${c}" font-family="Space Grotesk, Helvetica, Arial, sans-serif" font-weight="${wgt}">${esc(t)}</text>`;
