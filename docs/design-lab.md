@@ -268,3 +268,41 @@ The library takes pictures as well as links: **Add photos or screenshots** under
   - **Save to the library** keeps a layer's artwork for other pieces.
   - Graphics made in the studio's AI tab go into the library on their own, made for the chosen technique.
 - Routes: `src/lab-library-routes.js` (`/v1/lab/library/graphics…`, `/v1/lab/library/techniques…`, `POST /v1/lab/concepts/:id/graphics`). The techniques and the starting set are in `src/lab-library.js`, the drawing is in `src/lab-finish.js` (served as `/lab/finish.js`), and the page is `src/lab-library.html`. Tables: `lab_art` (with `in_library`, `tags`, `source`, `technique_id`), `lab_techniques` and `lab_technique_photos`.
+
+## Flats and placement, and "can it be made?"
+
+**Flats and placement** (in the concept window, `/lab/flats?concept=<id>`) draws the piece as measured technical flats, front and back, the way a factory reads them. Nothing on it is drawn by an image model: each style is a template built from its points of measure, so the drawing, the placements and the measurement table always agree.
+
+- **Styles.** T-shirt, long-sleeve tee, crewneck sweatshirt, pullover hoodie, zip hoodie, zip jacket, pants, shorts, six-panel cap, cuffed beanie and tote.
+  - The style, fit (slim, regular, relaxed, boxy, oversized, wide) and details (dropped shoulder, cropped, pleats, pockets, drawcords) are read from the concept's words.
+  - Change any of them on the Garment tab. Every sample-size (M) measurement can be typed in.
+  - Other categories say they are not drawn yet.
+- **Placements.**
+  - The concept's logo and graphics start where the concept says: left chest, full front, back, sleeve, and so on. A logo that would land on a graphic goes to the back neck instead.
+  - Drag one to move it, or type its width, its distance from the centre and its top edge.
+  - Each says where it is the way a sample room measures it, for example: "6 in (15.2 cm) below the HPS, centre 4 in from the CF toward the wearer's left". On the front, the viewer's right is the wearer's left.
+  - Add our marks or any library graphic. Each placement has its technique.
+- **The check** (live as you work, and kept on save):
+  - **On the piece.** It sits on the piece and clear of seams, by the technique's distance.
+  - **Clear of construction.** It does not cross:
+    - the collar, a rib hem or cuff;
+    - a zip, a fly, a waistband or the crotch;
+    - a pocket (that one is a warning);
+    - a brim seam or the beanie's fold.
+  - **Within the technique's size**: the hoop or the platen.
+  - **The artwork at its placed size:**
+    - **Fine detail:** the share finer than the technique's finest line, with the size at which it would hold;
+    - **Inks:** more inks or threads than the technique is priced for;
+    - **Shading:** smooth shading a screen cannot print without halftones;
+    - **Stitches:** for embroidery, a stitch count.
+  - **Overlaps:** two placements on top of each other.
+  - Problems are marked "cannot be made as drawn", "check" or "ready".
+- **What each technique can make** is set in the library (Graphics and techniques, a technique, "What it can make"): finest line in mm, inks or threads it is priced for, largest width and height, room from seams, and stitches per square inch for embroidery. The starting set comes filled in.
+- **Approval.** While the saved flats have problems that stop the piece being made, approving it asks why it is fine anyway, and the reason is kept on the concept. This works like the "too close" check.
+- **The spec sheet** (17 × 11 in, print or save as PDF) has:
+  - both flats with every placement measured;
+  - a placement list, each with its technique, size and plain-words position;
+  - the points of measure, graded XS to XXL with tolerances;
+  - the check's verdict.
+- **The tech pack.** When an approved concept becomes a tech pack, the spec sheet and the front and back flats go into its artwork. **Add to the tech pack** on the flats page adds them again after a change.
+- Routes: `src/lab-flats-routes.js` (`GET/PUT /v1/lab/concepts/:id/flats`, `POST …/flats/check`, `GET …/flats/sheet.svg`, `POST …/flats/tech-pack`). The templates, measurements, grading, wording and drawing checks are in `src/lab-flats.js`, shared with the page as `/lab/flats.js`. The page is `src/lab-flats.html`, and the table is `lab_flats` (with `lab_techniques.rules`).

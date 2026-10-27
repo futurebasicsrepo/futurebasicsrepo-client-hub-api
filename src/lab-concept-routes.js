@@ -16,7 +16,7 @@ const clip = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
 const dataUrl = b => (b ? `data:image/jpeg;base64,${Buffer.from(b).toString('base64')}` : '');
 
 export function registerLabConceptRoutes(app, d) {
-  const { pool, authenticate, adminOnly, getSetting, env = process.env, fetchImpl = fetch, askImpl = realAsk, createProduct, attachArtwork, imageCfg = () => imageConfig(env), placeImpl, art: artSvc = null, log = console } = d;
+  const { pool, authenticate, adminOnly, getSetting, env = process.env, fetchImpl = fetch, askImpl = realAsk, createProduct, attachArtwork, imageCfg = () => imageConfig(env), placeImpl, art: artSvc = null, flatFiles = null, log = console } = d;
   // the artwork of a concept's graphics, as PNGs by id (empty when there is no artwork service)
   const artsFor = async spec => (artSvc ? artSvc.load((spec?.graphics || []).map(g => g.art).filter(Boolean)) : new Map());
   const pre = [authenticate, adminOnly], bad = (reply, error, code = 422, extra = {}) => reply.code(code).send({ error, ...extra });
@@ -162,9 +162,18 @@ export function registerLabConceptRoutes(app, d) {
       override = clip(req.body?.overrideReason, 400);
       if (override.length < 10) return bad(reply, `The check says this sits too close to what inspired it. ${close.reasons[0] || ''} Change it, or write down why it is fine to approve anyway.`, 422, { code: 'TOO_CLOSE', verdict: close.verdict, reasons: close.reasons });
     }
+    // the flats' check: a piece that cannot be made as drawn is approved only with a reason written down
+    const flat = (await pool.query(`select check_result from lab_flats where concept_id=$1`, [r.id])).rows[0]?.check_result, fails = Number(flat?.summary?.fail || 0);
+    let makeReason = '';
+    if (fails) {
+      makeReason = clip(req.body?.makeReason, 400);
+      const first = Object.values(flat.findings || {}).flat().find(f => f.level === 'fail');
+      if (makeReason.length < 10) return bad(reply, `The flats check found ${fails} problem${fails === 1 ? '' : 's'} that mean it cannot be made as drawn. ${first?.text || ''} Fix ${fails === 1 ? 'it' : 'them'} in Flats and placement, or write down why it is fine to approve anyway.`, 422, { code: 'CANNOT_MAKE', fails });
+      override = [override, `Flats check: ${makeReason}`].filter(Boolean).join(' · ');
+    }
     await pool.query(`update lab_concepts set status='approved', override_reason=$2, rejected_reason='', approved_by=$3, approved_at=now(), updated_at=now() where id=$1`, [r.id, override, actorOf(req)]);
     if (r.line_id) await pool.query(`update lab_plan_lines set status='approved' where id=$1 and status in ('planned','in_concept')`, [r.line_id]);
-    await note(r.id, req, `Approved${override ? ` after the "too close" check, because: ${override}` : close.verdict === 'check' ? ' (the check said to look at it side by side)' : ''}.`);
+    await note(r.id, req, `Approved${override && !makeReason ? ` after the "too close" check, because: ${override}` : close.verdict === 'check' ? ' (the check said to look at it side by side)' : ''}${makeReason ? `, although the flats check found ${fails} problem${fails === 1 ? '' : 's'}, because: ${makeReason}` : ''}.`);
     return { concept: await one(r.id) };
   });
   app.post('/v1/lab/concepts/:id/reject', { preHandler: pre }, async (req, reply) => {
@@ -248,6 +257,8 @@ export function registerLabConceptRoutes(app, d) {
     catch (e) { await pool.query(`update lab_concepts set status='approved' where id=$1 and product_id is null`, [r.id]); return bad(reply, `The product could not be made: ${clip(e.message, 200)}`, 502); }
     await pool.query(`update lab_concepts set product_id=$2, updated_at=now() where id=$1`, [r.id, product.id]);
     let art = 0; if (attachArtwork) { try { art = await attachArtwork(product.id, await artworkFiles({ category: r.category, spec: r.spec }, { arts: await artsFor(r.spec) })); } catch (e) { log.warn?.({ err: e.message }, 'design lab artwork not attached'); } }
+    // the flats and the spec sheet go with it when they were drawn
+    if (attachArtwork && flatFiles) { try { const ff = await flatFiles(r.id); if (ff.length) art += await attachArtwork(product.id, ff); } catch (e) { log.warn?.({ err: e.message }, 'design lab flats not attached'); } }
     if (r.line_id) await pool.query(`update lab_plan_lines set status='tech_pack' where id=$1`, [r.line_id]);
     await note(r.id, req, `Sent to a tech pack (${product.autoDraft?.ai === 'pending' ? 'the assistant is drafting it from the concept' + (art ? `; ${art} artwork files attached: the logo, the woven label and the graphics` : '') : product.autoDraft?.ai === 'off' ? 'the assistant is off, so it starts empty' : 'started'}).`);
     return reply.code(201).send({ productId: product.id, url: productUrl(product.id), autoDraft: product.autoDraft || null, concept: await one(r.id) });

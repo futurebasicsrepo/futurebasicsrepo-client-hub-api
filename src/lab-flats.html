@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>Flats and placement</title>
+<link rel="icon" href="/icons/icon-192.png">
+<style>
+@import url('/fonts/fonts.css');
+:root{--ink:#141416;--paper:#fff;--fog:#f5f5f2;--dim:#727278;--line:rgba(20,20,22,.14);--cue:#4bff9a;--ok:#17603a;--bad:#a02a20;--warn:#8a5a00}
+*{box-sizing:border-box}html{background:var(--fog)}
+body{margin:0;color:var(--ink);font:400 14px/1.45 'Space Grotesk',system-ui,sans-serif;background:var(--fog);min-height:100vh}
+button,input,select,textarea{font:inherit;color:inherit}a{color:inherit}.hidden{display:none!important}
+header{height:72px;background:rgba(20,20,22,.96);color:#fff;padding:0 clamp(16px,3vw,32px);display:flex;align-items:center;position:sticky;top:0;z-index:20}
+.wordmark{display:flex;align-items:center;gap:12px;position:relative;text-decoration:none;color:inherit;text-transform:uppercase;letter-spacing:.08em}
+.wordmark:after{content:"";position:absolute;left:0;bottom:-7px;width:64px;height:2px;background:var(--cue)}
+.brand-logo{display:block;width:200px;max-width:34vw;height:auto;max-height:30px}.brand-suffix{font:500 10px 'IBM Plex Mono',monospace;white-space:nowrap}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--ink);background:#fff;color:var(--ink);border-radius:999px;padding:6px 13px;text-decoration:none;cursor:pointer;font-weight:600;min-height:34px;font-size:13px;white-space:nowrap}.btn:hover{background:var(--ink);color:#fff}
+.btn.go{background:var(--cue);border-color:var(--cue)}.btn.go:hover{background:#7affb6;color:var(--ink)}.btn.q{border-color:var(--line)}.btn.sm{min-height:28px;padding:3px 10px;font-size:12px}.btn[disabled]{opacity:.45;pointer-events:none}.btn[aria-pressed=true]{background:var(--ink);color:#fff;border-color:var(--ink)}
+.mono{font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+.bar{display:flex;align-items:center;gap:8px;padding:10px clamp(14px,2vw,24px);background:#fff;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.bar .ttl{margin-right:auto;display:grid;line-height:1.2}.bar .ttl b{font-size:16px}.bar .ttl span{color:var(--dim);font-size:12px}
+.saved{color:var(--dim);font-size:12px}.saved.dirty{color:var(--warn)}
+.wrap{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:0;min-height:calc(100vh - 72px - 56px)}
+.stage{padding:14px clamp(14px,2vw,24px);display:grid;gap:10px;align-content:start}
+.tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;background:#fff}.seg button{border:0;background:none;padding:6px 14px;font-weight:600;cursor:pointer;font-size:13px}.seg button[aria-pressed=true]{background:var(--ink);color:#fff}
+.canvas{background:#fff;border:1px solid var(--line);border-radius:20px;overflow:hidden;touch-action:none;position:relative}
+.canvas svg{display:block;width:100%;height:auto;max-height:calc(100vh - 220px)}
+.canvas [data-pl]{cursor:grab}.canvas [data-pl]:active{cursor:grabbing}
+.status{display:flex;gap:10px;align-items:center;padding:10px 14px;border-radius:14px;font-weight:600;font-size:14px}.status.ok{background:#e4f6ea;color:var(--ok)}.status.warn{background:#fbf0d9;color:var(--warn)}.status.bad{background:#f8e1de;color:var(--bad)}
+.side{background:#fff;border-left:1px solid var(--line);display:grid;grid-template-rows:auto minmax(0,1fr)}
+.tabs{display:flex;border-bottom:1px solid var(--line)}.tabs button{flex:1;border:0;background:none;padding:12px 6px;font-weight:600;cursor:pointer;border-bottom:2px solid transparent;font-size:13px}.tabs button[aria-selected=true]{border-bottom-color:var(--ink)}
+.pane{padding:14px 16px 60px;display:grid;gap:14px;align-content:start;overflow-y:auto;max-height:calc(100vh - 72px - 56px - 46px)}
+.sec{display:grid;gap:8px}.sec>h4{margin:0;font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+.f{display:grid;grid-template-columns:120px minmax(0,1fr);gap:8px;align-items:center;font-size:12.5px}.f>span:first-child{color:var(--dim)}
+.t{width:100%;border:1px solid var(--line);border-radius:10px;padding:6px 9px;background:#fff;font-size:13px;min-width:0}
+.meas{display:grid;grid-template-columns:22px minmax(0,1fr) 78px;gap:6px 8px;align-items:center;font-size:12.5px}.meas b{color:#7a3fd1;font-size:12px}.meas input{text-align:right}
+.chk{display:flex;gap:8px;align-items:center;font-size:13px}
+.pl{border:1px solid var(--line);border-radius:14px;padding:10px 12px;display:grid;gap:8px}.pl.on{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+.pl .hd{display:flex;gap:8px;align-items:center}.pl .hd b{flex:1;font-size:14px}.pl .where{font-size:12.5px;color:#45454c}
+.nums{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}.nums label{display:grid;gap:2px;font-size:11px;color:var(--dim)}
+.find{display:grid;gap:4px}.find div{font-size:12.5px;padding:6px 9px;border-radius:9px;line-height:1.4}.find .fail{background:#f8e1de;color:#7c1f17}.find .warn{background:#fbf0d9;color:#6b4600}.find .info{background:var(--fog);color:#45454c}
+.dot{width:9px;height:9px;border-radius:50%;display:inline-block}.dot.fail{background:var(--bad)}.dot.warn{background:#d49a00}.dot.ok{background:#1f9d55}
+table.pom{border-collapse:collapse;font-size:12px;width:100%}table.pom th,table.pom td{padding:4px 5px;border-bottom:1px solid var(--line);text-align:right;font-variant-numeric:tabular-nums}table.pom th:first-child,table.pom td:first-child{text-align:left}table.pom .m{font-weight:700}
+.wrapx{overflow-x:auto}
+.msg{font-size:12.5px;color:var(--dim);margin:0}.msg.bad{color:var(--bad)}.msg.ok{color:var(--ok)}
+.tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}.tiles button{border:1px solid var(--line);border-radius:10px;background:#f3f3f0;padding:4px;cursor:pointer;display:grid;gap:2px;font-size:10.5px}.tiles img{width:100%;height:46px;object-fit:contain}
+#needSignin{max-width:620px;margin:40px auto;background:#fff;border:1px solid var(--line);border-radius:22px;padding:22px}
+@media(max-width:980px){.wrap{grid-template-columns:1fr}.side{border-left:0;border-top:1px solid var(--line)}.pane{max-height:none}}
+@media print{header,.bar,.side,.tools,#fbSide,.fbside{display:none!important}.wrap{grid-template-columns:1fr}body{background:#fff}}
+</style>
+</head>
+<body>
+<header><a class="wordmark" href="/home" aria-label="Work home"><img class="brand-logo" src="https://thefuturebasics.com/cdn/shop/files/future_basics_true_vector_fixed.svg?v=1775278873&amp;width=360" alt="Future Basics"><span class="brand-suffix">/ Flats and placement</span></a></header>
+<div id="needSignin" class="hidden"><h1 style="margin-top:0">Sign in to the work console first</h1><p class="msg" style="font-size:14px">This page uses your work console sign-in.</p><a class="btn go" href="/admin" style="margin-top:12px">Open the work console</a></div>
+<div id="app" class="hidden">
+  <div class="bar"><a class="btn q sm" href="/lab#board">← Concepts</a><div class="ttl"><b id="cName">Loading…</b><span id="cSub"></span></div>
+    <a class="btn q sm" id="toStudio" href="#">Open in the studio</a><span class="saved" id="saved" role="status"></span><button class="btn sm" type="button" id="save">Save</button><button class="btn sm" type="button" id="sheet">Spec sheet</button><button class="btn go sm hidden" type="button" id="toPack">Add to the tech pack</button></div>
+  <div class="wrap">
+    <div class="stage">
+      <div class="tools"><div class="seg" role="group" aria-label="View"><button type="button" data-view="front" aria-pressed="true">Front</button><button type="button" data-view="back" aria-pressed="false">Back</button></div>
+        <label class="chk"><span class="mono">Size</span><select class="t" id="size" style="width:auto"></select></label>
+        <label class="chk"><input type="checkbox" id="showDims" checked> Placement measurements</label><label class="chk"><input type="checkbox" id="showPom"> Points of measure</label></div>
+      <div id="status" class="status ok" role="status"></div>
+      <div class="canvas" id="canvas"></div>
+      <p class="msg">Drag a logo or graphic to move it; its measurements follow. Measured from the high point of the shoulder (HPS) and the centre front (CF), as a sample room measures. On the front, the viewer's right is the wearer's left.</p>
+    </div>
+    <aside class="side">
+      <div class="tabs" role="tablist"><button type="button" role="tab" data-tab="pl" aria-selected="true">Placements</button><button type="button" role="tab" data-tab="garment" aria-selected="false">Garment</button><button type="button" role="tab" data-tab="pom" aria-selected="false">Measurements</button></div>
+      <div class="pane" id="pPl"></div><div class="pane hidden" id="pGarment"></div><div class="pane hidden" id="pPom"></div>
+    </aside>
+  </div>
+</div>
+<script src="/console-nav.js" defer></script>
+<script type="module">
+import { STYLES, FITS, SIZES, geometry, renderSvg, viewBoxOf, describe, placementChecks, overlapChecks, pomTable, defaultParams, defaultPlacement, measurementsFor, POM_NAMES, fmt, fmtCm } from '/lab/flats.js';
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)],esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const TOKEN=()=>{try{return localStorage.getItem('fb.admin.token')||''}catch{return ''}};
+async function api(path,o={}){const r=await fetch(path,{method:o.method||(o.body?'POST':'GET'),headers:{Authorization:'Bearer '+TOKEN(),...(o.body?{'Content-Type':'application/json'}:{})},body:o.body?JSON.stringify(o.body):undefined});const j=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(new Error(j.error||('Request failed ('+r.status+')')),{status:r.status});return j}
+const BLOB=new Map();const blobUrl=p=>{if(!BLOB.has(p))BLOB.set(p,fetch(p,{headers:{Authorization:'Bearer '+TOKEN()}}).then(r=>r.ok?r.blob():null).then(b=>b?URL.createObjectURL(b):''));return BLOB.get(p)};
+const CID=new URLSearchParams(location.search).get('concept')||'';
+let D=null,P=null,PL=[],VIEW='front',SEL=null,CHECK={findings:{},summary:{fail:0,warn:0}},WHERE={},DIRTY=false,TAB='pl',HREF={},MARKS={};
+const r8=v=>Math.round(v*8)/8;
+const techName=q=>(D.techniques.find(t=>t.id===q.techniqueId)||{}).name||q.technique;
+const flatBody=()=>({style:P.style,fit:P.fit,size:P.size,m:P.m,options:P.options,placements:PL});
+function touch(){DIRTY=true;$('#saved').className='saved dirty';$('#saved').textContent='Not saved';recheckSoon()}
+
+// ---------- drawing ----------
+// the quick checks (the drawing) run here at once; the artwork checks come back from the service a moment later
+function localFindings(){const out={},over=overlapChecks(PL);for(const q of PL){const t=D.techniques.find(x=>x.id===q.techniqueId);const loc=placementChecks(q,P,t?{...t.rules,techniqueName:t.name}:{});const art=(CHECK.findings[q.id]||[]).filter(f=>['FINE_DETAIL','INKS','GRADIENT','STITCHES','TINY'].includes(f.code));out[q.id]=[...loc,...(over[q.id]||[]),...art]}return out}
+function draw(){
+  const F=localFindings(),svg=renderSvg(P,VIEW,{placements:PL,hrefs:HREF,size:$('#size').value||P.size,showPom:$('#showPom').checked,showDims:$('#showDims').checked,selected:SEL,findings:F,scale:0});
+  $('#canvas').innerHTML=svg;const fail=Object.values(F).flat().filter(f=>f.level==='fail').length,warn=Object.values(F).flat().filter(f=>f.level==='warn').length,s=$('#status');
+  s.className='status '+(fail?'bad':warn?'warn':'ok');s.innerHTML=fail?`<span class="dot fail"></span>${fail} problem${fail===1?'':'s'} to fix before it can be made`:warn?`<span class="dot warn"></span>Can be made: ${warn} thing${warn===1?'':'s'} to check`:'<span class="dot ok"></span>Can be made as drawn';
+  return F}
+function paint(){const F=draw();paintPl(F);if(TAB==='garment')paintGarment();if(TAB==='pom')paintPom()}
+
+// ---------- placements panel ----------
+function techOpts(v){const kinds=[['embroidery','Embroidery'],['print','Print'],['heat_transfer','Heat transfer'],['patch','Patches and appliqué'],['distress','Distressing and wash']];return kinds.map(([k,l])=>{const t=D.techniques.filter(x=>x.kind===k);return t.length?`<optgroup label="${l}">${t.map(x=>`<option value="${x.id}" ${x.id===v?'selected':''}>${esc(x.name)}</option>`).join('')}</optgroup>`:''}).join('')}
+function paintPl(F=localFindings()){
+  const p=$('#pPl');if(TAB!=='pl')return;
+  p.innerHTML=`<div class="sec"><h4>On this piece</h4>${PL.length?PL.map(q=>{const f=F[q.id]||[],lv=f.some(x=>x.level==='fail')?'fail':f.some(x=>x.level==='warn')?'warn':'ok';return `<div class="pl ${q.id===SEL?'on':''}" data-q="${esc(q.id)}">
+    <div class="hd"><span class="dot ${lv}"></span><b>${esc(q.name)}</b><select class="t" data-k="view" style="width:auto"><option value="front" ${q.view==='front'?'selected':''}>Front</option><option value="back" ${q.view==='back'?'selected':''}>Back</option></select><button class="btn sm q" type="button" data-del aria-label="Remove ${esc(q.name)}">Remove</button></div>
+    <label class="f"><span>Made as</span><select class="t" data-k="techniqueId">${techOpts(q.techniqueId)}</select></label>
+    <div class="nums"><label>Width (in)<input class="t" type="number" step="0.125" min="0.25" data-k="w" value="${q.w}"></label><label>From ${STYLES[P.style].kind==='top'?'CF':'centre'} (in)<input class="t" type="number" step="0.125" data-k="x" value="${q.x}"></label><label>${STYLES[P.style].kind==='cap'?'Above brim (in)':'Top edge down (in)'}<input class="t" type="number" step="0.125" data-k="top" value="${STYLES[P.style].kind==='cap'?r8(-(q.y+q.h/2)):r8(q.y-q.h/2)}"></label></div>
+    <div class="where">${esc(describe(q,P))} · ${esc(fmt(q.w))} × ${esc(fmt(q.h))}</div>
+    ${f.length?`<div class="find">${f.map(x=>`<div class="${x.level}">${esc(x.text)}</div>`).join('')}</div>`:''}</div>`}).join(''):'<p class="msg">Nothing placed yet.</p>'}</div>
+  <div class="sec"><h4>Add</h4><div class="row" style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm" type="button" data-addmark="mark">Cue mark</button><button class="btn sm" type="button" data-addmark="word">Wordmark</button><button class="btn sm" type="button" data-addmark="lockup">Lockup</button></div>
+    <input class="t" type="search" id="libQ" placeholder="A graphic from the library" aria-label="Search the graphics library"><div class="tiles" id="libTiles"></div></div>`;
+  libTiles();
+}
+let LIB=null,lt=0;
+async function libTiles(){const box=$('#libTiles');if(!box)return;try{if(!LIB){const q=($('#libQ')?.value||'').trim();LIB=(await api('/v1/lab/library/graphics?limit=16'+(q?'&q='+encodeURIComponent(q):''))).graphics}box.innerHTML=LIB.map(g=>`<button type="button" data-lib="${g.id}" title="${esc(g.name)}"><img alt="" data-src="/v1/lab/art/${g.id}?thumb=1">${esc((g.name||'').slice(0,18))}</button>`).join('')||'<span class="msg">Nothing found.</span>';for(const i of box.querySelectorAll('img[data-src]'))blobUrl(i.dataset.src).then(u=>{i.src=u})}catch(x){box.innerHTML=`<span class="msg">${esc(x.message)}</span>`}}
+$('#pPl').addEventListener('input',e=>{if(e.target.id==='libQ'){clearTimeout(lt);lt=setTimeout(()=>{LIB=null;libTiles()},250);return}const card=e.target.closest('[data-q]'),k=e.target.dataset.k;if(!card||!k||e.target.tagName==='SELECT')return;const q=PL.find(x=>x.id===card.dataset.q),v=Number(e.target.value);if(!Number.isFinite(v))return;
+  if(k==='w'){const a=q.w/q.h,top=q.y-q.h/2;q.w=Math.max(.25,v);q.h=r8(q.w/a);q.y=STYLES[P.style].kind==='cap'?q.y:top+q.h/2}if(k==='x')q.x=v;if(k==='top')q.y=STYLES[P.style].kind==='cap'?-v-q.h/2:v+q.h/2;touch();draw()});
+$('#pPl').addEventListener('change',e=>{const card=e.target.closest('[data-q]');if(!card)return;const q=PL.find(x=>x.id===card.dataset.q),k=e.target.dataset.k;if(k==='view'){q.view=e.target.value;setView(q.view)}if(k==='techniqueId'){q.techniqueId=e.target.value;q.technique=(D.techniques.find(t=>t.id===q.techniqueId)||{}).base||q.technique}touch();paint()});
+$('#pPl').addEventListener('click',async e=>{
+  const card=e.target.closest('[data-q]');
+  if(e.target.closest('[data-del]')){PL=PL.filter(x=>x.id!==card.dataset.q);touch();paint();return}
+  if(card&&!e.target.closest('input,select,button')){SEL=card.dataset.q;const q=PL.find(x=>x.id===SEL);if(q.view!==VIEW)setView(q.view);paint();return}
+  const mk=e.target.closest('[data-addmark]');if(mk){await addPlacement({name:{mark:'Cue mark',word:'Wordmark',lockup:'Wordmark and cue mark'}[mk.dataset.addmark],mark:mk.dataset.addmark,source:'logo'});return}
+  const lb=e.target.closest('[data-lib]');if(lb){const g=LIB.find(x=>x.id===lb.dataset.lib);await addPlacement({name:g.name||'Graphic',art:g.id,source:'graphic',techniqueId:g.techniqueId||null});return}
+});
+async function addPlacement(base){
+  const href=await hrefOf(base),img=await new Promise(r=>{const i=new Image();i.onload=()=>r(i);i.onerror=()=>r(null);i.src=href});const aspect=img?(img.naturalWidth||1)/(img.naturalHeight||1):1;
+  const t=D.techniques.find(x=>x.id===base.techniqueId)||D.techniques.find(x=>x.base===(base.mark?'embroidery':'screen print'));
+  const q={id:'p'+Math.random().toString(36).slice(2,8),...base,techniqueId:t&&t.id,technique:t?t.base:'screen print',...defaultPlacement(base.mark?'logo':'graphic',P,{aspect,label:VIEW==='back'?'back':base.mark?'left chest':'front chest'})};
+  if(VIEW==='back'&&q.view!=='back'){q.view='back'}HREF[q.id]=href;PL.push(q);SEL=q.id;touch();paint()}
+async function hrefOf(q){if(q.art)return blobUrl('/v1/lab/art/'+q.art);if(q.mark){if(!MARKS[q.mark])MARKS[q.mark]='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(D.marks[q.mark]||'');return MARKS[q.mark]}return ''}
+
+// ---------- garment and measurements ----------
+function paintGarment(){
+  const S=STYLES[P.style],o=P.options,box=(k,l)=>`<label class="chk"><input type="checkbox" data-o="${k}" ${o[k]?'checked':''}> ${l}</label>`;
+  $('#pGarment').innerHTML=`<div class="sec"><h4>The piece</h4><label class="f"><span>Style</span><select class="t" id="gStyle">${Object.entries(D.styles).map(([k,v])=>`<option value="${k}" ${k===P.style?'selected':''}>${esc(v.label)}</option>`).join('')}</select></label>
+    <label class="f"><span>Fit</span><select class="t" id="gFit">${Object.entries(FITS).map(([k,v])=>`<option value="${k}" ${k===P.fit?'selected':''}>${v}</option>`).join('')}</select></label><p class="msg">Changing the style or fit sets the measurements to its standard; your placements stay.</p></div>
+  <div class="sec"><h4>Details</h4>${S.kind==='top'?box('drop','Dropped shoulder')+box('cropped','Cropped')+(S.hood?box('drawcord','Hood drawcords'):'')+(S.pocket?box('noPocket','No front pocket'):box('chestPocket','Chest pocket')):''}${S.kind==='bottom'?`<label class="f"><span>Pleats</span><select class="t" data-o="pleats"><option value="0" ${!o.pleats?'selected':''}>None</option><option value="1" ${o.pleats==1?'selected':''}>Single</option><option value="2" ${o.pleats==2?'selected':''}>Double</option></select></label>`:''}${['cap','beanie','tote'].includes(S.kind)?'<p class="msg">Nothing to change for this one.</p>':''}</div>
+  <div class="sec"><h4>Sample size (M) measurements, inches</h4><div class="meas">${Object.keys(P.m).map((k,i)=>`<b>${String.fromCharCode(65+i)}</b><span>${esc(POM_NAMES[k]||k)}</span><input class="t" type="number" step="0.125" min="0" data-m="${k}" value="${P.m[k]}" aria-label="${esc(POM_NAMES[k]||k)}">`).join('')}</div><p class="msg">Every other size is graded from these. The flats redraw as you type.</p></div>`;
+}
+$('#pGarment').addEventListener('change',e=>{
+  if(e.target.id==='gStyle'||e.target.id==='gFit'){const st=$('#gStyle').value,fit=$('#gFit').value;const n=defaultParams(st,fit,st===P.style?P.options:{});n.size=P.size;if(st!==P.style){PL=PL.map(q=>({...q,...defaultPlacement(q.mark?'logo':'graphic',n,{aspect:q.w/q.h,label:q.view==='back'?'back':q.mark?'left chest':'front chest'})}))}P=n;touch();paintGarment();paint();return}
+  const o=e.target.dataset.o;if(o){P.options[o]=e.target.type==='checkbox'?e.target.checked:Number(e.target.value);if(o==='cropped'){const base=defaultParams(P.style,P.fit,P.options);P.m.length=base.m.length}touch();paint()}});
+$('#pGarment').addEventListener('input',e=>{const k=e.target.dataset.m;if(!k)return;const v=Number(e.target.value);if(Number.isFinite(v)&&v>=0){P.m[k]=v;touch();draw()}});
+function paintPom(){const rows=pomTable(P),sz=rows[0].values.map(v=>v.size);$('#pPom').innerHTML=`<div class="sec"><h4>Points of measure, graded</h4><div class="wrapx"><table class="pom"><thead><tr><th>Point</th>${sz.map(s=>`<th class="${s==='M'?'m':''}">${s}</th>`).join('')}<th>±</th></tr></thead><tbody>${rows.map(r=>`<tr><td><b style="color:#7a3fd1">${r.code}</b> ${esc(r.name)}</td>${r.values.map(v=>`<td class="${v.size==='M'?'m':''}">${v.value}</td>`).join('')}<td>${r.tolerance}</td></tr>`).join('')}</tbody></table></div><p class="msg">Inches. Turn on "Points of measure" to see where each is taken. Change the sample size on the Garment tab.</p></div>`}
+
+// ---------- tabs, view, dragging ----------
+function tab(t){TAB=t;$$('.tabs [data-tab]').forEach(b=>b.setAttribute('aria-selected',String(b.dataset.tab===t)));$('#pPl').classList.toggle('hidden',t!=='pl');$('#pGarment').classList.toggle('hidden',t!=='garment');$('#pPom').classList.toggle('hidden',t!=='pom');paint()}
+$$('.tabs [data-tab]').forEach(b=>b.onclick=()=>tab(b.dataset.tab));
+function setView(v){VIEW=v;$$('[data-view]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.view===v)));draw()}
+$$('[data-view]').forEach(b=>b.onclick=()=>setView(b.dataset.view));
+['#showDims','#showPom','#size'].forEach(s=>$(s).addEventListener('change',draw));
+let DRAG=null;
+const inch=e=>{const svg=$('#canvas svg'),pt=svg.createSVGPoint();pt.x=e.clientX;pt.y=e.clientY;const m=svg.getScreenCTM().inverse(),r=pt.matrixTransform(m);return[r.x,r.y]};
+$('#canvas').addEventListener('pointerdown',e=>{const g=e.target.closest('[data-pl]');if(!g)return;const q=PL.find(x=>x.id===g.dataset.pl);SEL=q.id;const[x,y]=inch(e);DRAG={q,dx:x-q.x,dy:y-q.y};$('#canvas').setPointerCapture(e.pointerId);paint()});
+$('#canvas').addEventListener('pointermove',e=>{if(!DRAG)return;const[x,y]=inch(e);DRAG.q.x=r8(x-DRAG.dx);DRAG.q.y=r8(y-DRAG.dy);if(Math.abs(DRAG.q.x)<.25)DRAG.q.x=0;DRAG.moved=true;draw()});
+const end=()=>{if(DRAG&&DRAG.moved){touch();paint()}DRAG=null};$('#canvas').addEventListener('pointerup',end);$('#canvas').addEventListener('pointercancel',end);
+document.addEventListener('keydown',e=>{if(e.target.closest('input,select,textarea'))return;const q=PL.find(x=>x.id===SEL);if(!q)return;const s=e.shiftKey?1:.125;let hit=true;if(e.key==='ArrowLeft')q.x-=s;else if(e.key==='ArrowRight')q.x+=s;else if(e.key==='ArrowUp')q.y-=s;else if(e.key==='ArrowDown')q.y+=s;else hit=false;if(hit){e.preventDefault();q.x=r8(q.x);q.y=r8(q.y);touch();paint()}if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'){e.preventDefault();save()}});
+
+// ---------- the service: the artwork check, saving, the spec sheet, the tech pack ----------
+let CT=0;function recheckSoon(){clearTimeout(CT);CT=setTimeout(async()=>{try{const r=await api(`/v1/lab/concepts/${CID}/flats/check`,{body:flatBody()});CHECK=r.check;WHERE=r.where;paint()}catch{}},700)}
+async function save(){const b=$('#save');b.disabled=true;$('#saved').textContent='Saving…';try{const r=await api(`/v1/lab/concepts/${CID}/flats`,{method:'PUT',body:flatBody()});CHECK=r.check;DIRTY=false;$('#cSub').textContent=`${D.styles[P.style].label} · ${FITS[P.fit]} fit`;$('#saved').className='saved';$('#saved').textContent='Saved '+new Date().toLocaleTimeString([], {hour:'numeric',minute:'2-digit'});paint();return true}catch(x){$('#saved').className='saved dirty';$('#saved').textContent=x.message;return false}finally{b.disabled=false}}
+$('#save').onclick=save;
+$('#sheet').onclick=async()=>{if(DIRTY&&!(await save()))return;const r=await fetch(`/v1/lab/concepts/${CID}/flats/sheet.svg?size=${encodeURIComponent($('#size').value)}`,{headers:{Authorization:'Bearer '+TOKEN()}});if(!r.ok){$('#saved').textContent='The spec sheet could not be made';return}const u=URL.createObjectURL(await r.blob()),w=window.open('','_blank');if(w){w.document.write(`<!doctype html><title>Spec sheet · ${esc(D.concept.name)}</title><style>@page{size:17in 11in;margin:.3in}body{margin:0}img{width:100%;display:block}</style><img src="${u}" alt="Spec sheet" onload="setTimeout(()=>print(),300)">`);w.document.close()}else location.href=u};
+$('#toPack').onclick=async()=>{const b=$('#toPack');if(DIRTY&&!(await save()))return;b.disabled=true;try{const r=await api(`/v1/lab/concepts/${CID}/flats/tech-pack`,{body:{}});$('#saved').className='saved';$('#saved').innerHTML=`Added ${r.files} files to the <a href="/tech-packs/${r.productId}">tech pack</a>`}catch(x){$('#saved').className='saved dirty';$('#saved').textContent=x.message}finally{b.disabled=false}};
+window.addEventListener('beforeunload',e=>{if(DIRTY){e.preventDefault();e.returnValue=''}});
+
+async function boot(){
+  if(!TOKEN()){$('#needSignin').classList.remove('hidden');return}
+  try{D=await api(`/v1/lab/concepts/${CID}/flats`)}catch(x){const n=$('#needSignin');n.classList.remove('hidden');n.querySelector('h1').textContent=x.status===404?'That concept is not there any more':/not turned on|Only Danielle|access to Design Lab/i.test(x.message)?'The Design Lab is not turned on for you':'Sign in to the work console first';n.querySelector('p').textContent=x.message;return}
+  $('#app').classList.remove('hidden');$('#cName').textContent=D.concept.name;$('#toStudio').href='/lab/studio?concept='+CID;
+  if(D.unsupported){$('#cSub').textContent=D.unsupported;$('#canvas').innerHTML=`<p class="msg" style="padding:30px">${esc(D.unsupported)}</p>`;['#save','#sheet'].forEach(s=>$(s).disabled=true);return}
+  const st=await api('/v1/lab/concepts/'+CID+'/studio').catch(()=>null);D.marks=Object.fromEntries((st?.marks||[]).map(m=>[m.id,m.svg]));
+  const f=D.flat;P={style:f.style,fit:f.fit,size:f.size||'M',m:f.m,options:f.options||{}};PL=f.placements||[];CHECK=f.check||CHECK;
+  $('#size').innerHTML=(STYLES[P.style].oneSize?['M']:SIZES).map(s=>`<option value="${s}" ${s==='M'?'selected':''}>${STYLES[P.style].oneSize?'One size':s}</option>`).join('');
+  $('#cSub').textContent=`${D.styles[P.style].label} · ${FITS[P.fit]} fit${f.saved?'':' · worked out from the concept: check it, then save'}`;
+  if(D.concept.productId)$('#toPack').classList.remove('hidden');
+  for(const q of PL)HREF[q.id]=await hrefOf(q);
+  DIRTY=!f.saved;$('#saved').className='saved'+(DIRTY?' dirty':'');$('#saved').textContent=f.saved?'Saved':'Not saved yet';
+  tab('pl');
+}
+boot();
+</script>
+</body>
+</html>

@@ -894,5 +894,106 @@ await journey('J213', 'Design Lab library in a browser: draw a graphic, see it e
   } finally { await cleanup(brands, plan.plan?.id); await b.close(); }
 });
 
+await journey('J214', 'Design Lab flats: a concept becomes measured front and back flats with its logo and graphics placed from what it says; the check catches what cannot be made (collar, zip, pocket, size, lines too fine for the technique); the spec sheet and the tech pack carry it; and approval needs a reason while it cannot be made', async () => {
+  const { brands, plan } = await conceptSetup(); const tops = plan.lines.find(l => l.category === 'tops') || plan.lines[0];
+  try {
+    const c = (await K(`/plans/${plan.plan.id}/lines/${tops.id}/concepts`, { body: { count: 1 } })).json.concepts[0];
+    const F = (path = '', o = {}) => K(`/concepts/${c.id}/flats${path}`, o);
+    ok((await call(`/v1/lab/concepts/${c.id}/flats`)).status === 401 && (await P(`/concepts/${c.id}/flats`)).status === 403 && (await K('/concepts/00000000-0000-4000-8000-000000000000/flats')).status === 404, 'closed like the rest of the Lab');
+    const first = await F(); const f = first.json.flat;
+    ok(first.status === 200 && f && !f.saved && ['tee', 'longsleeve', 'crewneck', 'hoodie', 'ziphoodie', 'jacket'].includes(f.style) && f.m.chest > 15, 'the concept is worked out as a measured flat: its style, fit and measurements', first.json.error || f);
+    const logo = f.placements.find(q => q.source === 'logo'); ok(logo && logo.mark && logo.techniqueId && logo.w > 0 && logo.h > 0, 'its Future Basics logo is placed where the concept says, with how it is made', f.placements);
+    ok(f.check && typeof f.check.summary.fail === 'number', 'and it is checked straight away', f.check);
+
+    // save, then catch what cannot be made
+    const body = { style: f.style, fit: f.fit, m: f.m, options: f.options, placements: f.placements };
+    const saved = await F('', { method: 'PUT', body }); ok(saved.status === 200 && (await F()).json.flat.saved, 'the flats are saved', saved.json.error);
+    const thin = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="800" height="400"><rect x="20" y="20" width="760" height="360" fill="none" stroke="#141416" stroke-width="3"/><path d="M40 200 H760 M400 40 V360" stroke="#141416" stroke-width="3"/></svg>`);
+    const art = (await K('/library/graphics/upload', { body: { image: `data:image/png;base64,${(await sharp(thin).png().toBuffer()).toString('base64')}`, name: 'Hairline grid' } })).json.id;
+    const techs = first.json.techniques, satin = techs.find(t => t.name === 'Satin stitch embroidery'), glossy = techs.find(t => t.name === 'Glossy heat transfer');
+    const check = async (placements, extra = {}) => (await F('/check', { body: { ...body, ...extra, placements } })).json;
+    const neck = await check([{ ...logo, id: 'n', x: 0, y: f.m.neckDropFront + 1.2, w: 3, h: 1 }]);
+    ok(neck.check.findings.n.some(x => x.code === 'KEEPOUT_NECK' && x.level === 'fail') && /below the HPS/.test(neck.where.n), 'a logo against the collar cannot be made, and says where it is', neck.check.findings.n);
+    const fine = await check([{ id: 'g', name: 'Hairline grid', view: 'front', art, techniqueId: satin.id, technique: 'embroidery', x: 0, y: f.m.neckDropFront + 5, w: 3, h: 1.5 }]);
+    const fd = fine.check.findings.g.find(x => x.code === 'FINE_DETAIL'); ok(fd && /finer than 1.5 mm/.test(fd.text) && fine.check.findings.g.some(x => x.code === 'STITCHES'), 'hairlines embroidered at 3 in are too fine, with a stitch count', fine.check.findings.g);
+    const ht = await check([{ id: 'g', name: 'Hairline grid', view: 'front', art, techniqueId: glossy.id, technique: 'heat transfer', x: 0, y: f.m.neckDropFront + 8, w: 10, h: 5 }]);
+    ok(!ht.check.findings.g.some(x => x.code === 'FINE_DETAIL'), 'the same artwork as a heat transfer at 10 in holds its lines', ht.check.findings.g);
+    const big = await check([{ id: 'b', name: 'Back hit', view: 'back', art, techniqueId: satin.id, technique: 'embroidery', x: 0, y: 9, w: 13, h: 6.5 }]);
+    ok(big.check.findings.b.some(x => x.code === 'TOO_WIDE'), 'bigger than an embroidery hoop is caught', big.check.findings.b);
+    ok(satin.rules.maxW === 12 && satin.rules.minLineMm === 1.5 && satin.rules.density === 1800, 'each technique says what it can make', satin.rules);
+    await K(`/library/techniques/${satin.id}`, { method: 'PUT', body: { rules: { ...satin.rules, maxW: 14 } } });
+    const big2 = await check([{ id: 'b', name: 'Back hit', view: 'back', art, techniqueId: satin.id, technique: 'embroidery', x: 0, y: 9, w: 13, h: 6.5 }]);
+    ok(!big2.check.findings.b.some(x => x.code === 'TOO_WIDE'), 'a bigger hoop, set on the technique, is used by the check', big2.check.findings.b);
+    await K(`/library/techniques/${satin.id}`, { method: 'PUT', body: { rules: satin.rules } });
+    const zip = await check([{ id: 'z', name: 'Chest art', view: 'front', art, techniqueId: glossy.id, technique: 'heat transfer', x: 0, y: 9, w: 8, h: 4 }], { style: 'ziphoodie', fit: 'regular', m: undefined, options: {} });
+    ok(zip.check.findings.z.some(x => x.code === 'KEEPOUT_ZIP' && x.level === 'fail'), 'nothing goes across a zip', zip.check.findings.z);
+    ok((await F('', { method: 'PUT', body: { ...body, style: 'kimono' } })).status === 422 && (await F('/check', { body: { ...body, placements: [{ id: 'x', name: 'x', art: '00000000-0000-4000-8000-000000000000' }] } })).status === 422, 'an unknown style or graphic is refused');
+
+    // the spec sheet
+    const sheet = await fetch(`${BASE}/v1/lab/concepts/${c.id}/flats/sheet.svg`, { headers: { Authorization: 'Bearer ' + kyleT } }); const svg = await sheet.text();
+    ok(sheet.status === 200 && /image\/svg/.test(sheet.headers.get('content-type')) && svg.includes(c.name.replace(/&/g, '&amp;')) && /Points of measure/.test(svg) && /below the HPS/.test(svg) && (svg.match(/data-view=/g) || []).length === 2, 'the spec sheet has both flats, every placement measured and the graded measurements');
+    ok((await sharp(Buffer.from(svg)).png().toBuffer()).length > 10000, 'and it renders');
+
+    // approval waits for a reason while it cannot be made
+    const cant = { ...body, placements: [...body.placements, { id: 'n', name: 'Neck hit', view: 'front', art, techniqueId: glossy.id, technique: 'heat transfer', x: 0, y: f.m.neckDropFront + .9, w: 3, h: 1 }] };
+    await F('', { method: 'PUT', body: cant });
+    const ap = await K(`/concepts/${c.id}/approve`, { body: { overrideReason: 'reviewed side by side with the references, it is ours' } });
+    ok(ap.status === 422 && ap.json.code === 'CANNOT_MAKE' && /cannot be made as drawn/.test(ap.json.error), 'a concept whose flats cannot be made is not approved without a reason', ap.json);
+    const ap2 = await K(`/concepts/${c.id}/approve`, { body: { overrideReason: 'reviewed side by side with the references, it is ours', makeReason: 'the neck hit moves down at sampling, agreed with the factory' } });
+    ok(ap2.status === 200 && ap2.json.concept.status === 'approved' && /flats check found \d+ problems?, because: the neck hit/.test(sql(`select string_agg(body,' | ') from lab_concept_comments where concept_id='${c.id}'`)), 'with a reason it is approved, and the reason is kept', ap2.json.error);
+    // the tech pack carries the flats
+    await F('', { method: 'PUT', body });
+    const tp = await K(`/concepts/${c.id}/tech-pack`, { body: {} }); ok(tp.status === 201, 'it becomes a tech pack', tp.json);
+    const names = () => sql(`select string_agg(a->>'name', ' | ') from tech_packs, jsonb_array_elements(data->'artwork') a where product_id='${tp.json.productId}'`);
+    ok(/Spec sheet · flats, placements and measurements/.test(names()) && /Technical flat · front/.test(names()) && /Technical flat · back/.test(names()), 'the spec sheet and both flats are on the tech pack', names());
+    ok((await F('/tech-pack', { body: {} })).status === 200, 'and they can be added again after a change');
+    // a piece that is not drawn yet says so
+    sql(`update lab_concepts set category='footwear' where id='${c.id}'`); sql(`delete from lab_flats where concept_id='${c.id}'`);
+    const shoe = (await F()).json; ok(shoe.flat === null && /not drawn for footwear yet/.test(shoe.unsupported), 'a category without templates says so', shoe.unsupported);
+  } finally { await cleanup(brands, plan.plan?.id); }
+});
+
+await journey('J215', 'Design Lab flats in a browser: open them from a concept, see the front and back, drag the logo and watch its measurements, add a library graphic, catch a collar problem, change the fit and the measurements, read the graded points of measure, save and print the spec sheet', async () => {
+  if (!playwright) { ok(true, 'skipped: no browser here'); return; }
+  const { brands, plan } = await conceptSetup(); const tops = plan.lines.find(l => l.category === 'tops') || plan.lines[0];
+  const b = await playwright.chromium.launch(), errs = [];
+  try {
+    const c = (await K(`/plans/${plan.plan.id}/lines/${tops.id}/concepts`, { body: { count: 1 } })).json.concepts[0];
+    const oc = await b.newContext({ viewport: { width: 1440, height: 950 } }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
+    const page = await oc.newPage(); page.on('pageerror', e => errs.push(String(e)));
+    await page.goto(`${BASE}/lab#board`, { waitUntil: 'networkidle' }); await page.waitForSelector(`#cgrid .cc[data-cid="${c.id}"]`, { timeout: 15000 });
+    await page.click(`#cgrid .cc[data-cid="${c.id}"]`); await page.waitForSelector('#cd[open] [data-cflats]');
+    await Promise.all([page.waitForURL(/\/lab\/flats\?concept=/), page.click('#cd [data-cflats]')]);
+    await page.waitForSelector('#canvas svg [data-pl]', { timeout: 15000 });
+    ok(await page.locator('#canvas svg path').count() > 5 && /not saved yet/i.test(await page.innerText('#saved')), 'the flats open, worked out from the concept, waiting to be saved');
+    const logoCard = page.locator('#pPl .pl').first(); ok(/below the HPS/.test(await logoCard.innerText()), 'the logo says where it sits, in inches from the HPS', await logoCard.innerText());
+    // drag the logo up against the collar: the measurement follows and the check catches it
+    const g = page.locator('#canvas [data-pl]').first(), bb = await g.boundingBox();
+    await page.mouse.move(bb.x + bb.width / 2, bb.y + bb.height / 2); await page.mouse.down(); await page.mouse.move(bb.x + bb.width / 2 - 60, 120, { steps: 8 }); await page.mouse.up();
+    await page.waitForFunction(() => /problem/.test(document.getElementById('status').textContent), null, { timeout: 5000 }).catch(() => {});
+    ok(/problem/.test(await page.innerText('#status')) && /collar|neck|edge|piece/i.test(await page.innerText('#pPl')), 'dragged against the collar, it says it cannot be made and why', await page.innerText('#status'));
+    // put it back by typing
+    await page.locator('#pPl .pl').first().locator('[data-k=top]').fill('6'); await page.locator('#pPl .pl').first().locator('[data-k=x]').fill('4');
+    await page.waitForFunction(() => !/problem/.test(document.getElementById('status').textContent), null, { timeout: 5000 }).catch(() => {});
+    ok(!/problem/.test(await page.innerText('#status')), 'typed back to 6 in below the HPS and 4 in off centre, it can be made', await page.innerText('#status'));
+    // a graphic from the library, on the back
+    await page.click('[data-view=back]'); await page.waitForSelector('#libTiles [data-lib]', { timeout: 10000 }).catch(() => {});
+    if (await page.locator('#libTiles [data-lib]').count()) { const n = await page.locator('#pPl .pl').count(); await page.click('#libTiles [data-lib]'); await page.waitForFunction(k => document.querySelectorAll('#pPl .pl').length === k + 1, n);
+      ok(/below the HPS on the back/.test(await page.locator('#pPl .pl.on').innerText()), 'a library graphic goes on the back, measured from the HPS', await page.locator('#pPl .pl.on').innerText()); }
+    else ok(true, 'no library graphics to add here');
+    // the garment: fit and a measurement
+    await page.click('.tabs [data-tab=garment]'); await page.selectOption('#gFit', 'oversized');
+    const chest = Number(await page.locator('[data-m=chest]').inputValue()); ok(chest >= 24, 'an oversized fit widens the chest', chest);
+    await page.locator('[data-m=length]').fill('31'); await page.click('.tabs [data-tab=pom]');
+    const pom = await page.innerText('#pPom'); ok(/Body length/.test(pom) && /\b31\b/.test(pom) && /XXL/.test(pom), 'the points of measure are graded across the sizes', pom.slice(0, 200));
+    await page.click('#save'); await page.waitForFunction(() => /^Saved/.test(document.getElementById('saved').textContent), null, { timeout: 15000 });
+    const row = sql(`select params->>'fit' || ':' || (params->'m'->>'length') from lab_flats where concept_id='${c.id}'`); ok(row === 'oversized:31', 'saved, as changed', row);
+    const [popup] = await Promise.all([page.waitForEvent('popup'), page.click('#sheet')]); await popup.waitForLoadState(); ok(/Spec sheet/.test(await popup.title()), 'the spec sheet opens to print', await popup.title()); await popup.close();
+    await page.click('.tabs [data-tab=pl]'); await page.click('[data-view=front]'); await page.check('#showPom');
+    await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/lab-flats.png` }).catch(() => {});
+    ok(errs.length === 0, 'no page errors', errs); await oc.close();
+  } finally { await cleanup(brands, plan.plan?.id); await b.close(); }
+});
+
 shops.close(); brave.close();
 process.exit(summary() ? 1 : 0);

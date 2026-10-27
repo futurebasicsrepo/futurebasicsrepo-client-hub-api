@@ -12,14 +12,14 @@ import sharp from 'sharp';
 import { imageConfig, openaiEdit } from './check.js';
 import { finishArt, ART_STYLES } from './lab-art.js';
 import { brandHits, cleanGraphics, ensureBranding, GRAPHIC_PLACE, GRAPHIC_TECHNIQUES } from './lab-concepts.js';
-import { BUILTIN_TECHNIQUES, TECHNIQUE_KINDS, EFFECTS, cleanTechnique, realPrompt } from './lab-library.js';
+import { BUILTIN_TECHNIQUES, TECHNIQUE_KINDS, EFFECTS, cleanTechnique, cleanRules, realPrompt } from './lab-library.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const clip = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
 const SOURCES = ['library', 'studio', 'upload', 'plan', 'concept'];
 const cleanTags = t => [...new Set((Array.isArray(t) ? t : String(t || '').split(',')).map(x => clip(x, 30).toLowerCase()).filter(Boolean))].slice(0, 12);
 export const pictureOf = dataUrl => { const m = /^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/=]+)$/i.exec(String(dataUrl || '')); return m ? Buffer.from(m[2], 'base64') : null; };
-const techShape = (r, photos = []) => ({ id: r.id, key: r.key, kind: r.kind, name: r.name, summary: r.summary, base: r.base, finish: r.finish, prompt: r.prompt, artGuide: r.art_guide, factoryNote: r.factory_note,
+const techShape = (r, photos = []) => ({ id: r.id, key: r.key, kind: r.kind, name: r.name, summary: r.summary, base: r.base, finish: r.finish, rules: cleanRules(r.rules || {}, r.base), prompt: r.prompt, artGuide: r.art_guide, factoryNote: r.factory_note,
   builtin: r.builtin, hasSample: Boolean(r.has_sample), sampleAt: r.sample_at, photos, updatedAt: r.updated_at });
 
 export function registerLabLibraryRoutes(app, d) {
@@ -30,8 +30,8 @@ export function registerLabLibraryRoutes(app, d) {
 
   // the starting techniques are put in once; after that they are ours to change
   const seeded = (async () => {
-    for (const t of BUILTIN_TECHNIQUES) await pool.query(`insert into lab_techniques(key,kind,name,summary,base,finish,prompt,art_guide,factory_note,builtin) values($1,$2,$3,$4,$5,$6,$7,$8,$9,true) on conflict(key) do nothing`,
-      [t.key, t.kind, t.name, t.summary, t.base, t.finish, t.prompt, t.artGuide, t.factoryNote]);
+    for (const t of BUILTIN_TECHNIQUES) await pool.query(`insert into lab_techniques(key,kind,name,summary,base,finish,prompt,art_guide,factory_note,rules,builtin) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,true) on conflict(key) do update set rules=coalesce(lab_techniques.rules, excluded.rules)`,
+      [t.key, t.kind, t.name, t.summary, t.base, t.finish, t.prompt, t.artGuide, t.factoryNote, cleanRules(t.rules || {}, t.base)]);
   })().catch(e => log.warn?.({ err: e.message }, 'design lab techniques could not be put in'));
   const technique = async id => (UUID.test(String(id || '')) ? (await pool.query('select * from lab_techniques where id=$1 and not archived', [id])).rows[0] || null : null);
   const photosOf = async id => (await pool.query('select jpeg from lab_technique_photos where technique_id=$1 order by created_at limit 3', [id])).rows.map(r => r.jpeg);
@@ -100,22 +100,22 @@ export function registerLabLibraryRoutes(app, d) {
   // ---- techniques ----
   app.get('/v1/lab/library/techniques', { preHandler: pre }, async () => {
     await seeded;
-    const rows = (await pool.query(`select id, key, kind, name, summary, base, finish, prompt, art_guide, factory_note, builtin, (sample is not null) has_sample, sample_at, updated_at from lab_techniques where not archived order by array_position($1::text[], kind), builtin desc, name`, [TECHNIQUE_KINDS.map(k => k.id)])).rows;
+    const rows = (await pool.query(`select id, key, kind, name, summary, base, finish, rules, prompt, art_guide, factory_note, builtin, (sample is not null) has_sample, sample_at, updated_at from lab_techniques where not archived order by array_position($1::text[], kind), builtin desc, name`, [TECHNIQUE_KINDS.map(k => k.id)])).rows;
     const photos = (await pool.query('select id, technique_id from lab_technique_photos order by created_at')).rows;
     return { techniques: rows.map(r => techShape(r, photos.filter(p => p.technique_id === r.id).map(p => p.id))), kinds: TECHNIQUE_KINDS, effects: EFFECTS, baseTechniques: GRAPHIC_TECHNIQUES, imageConnected: imageCfg().configured, samplesLeft: sampleCap() < 0 ? null : Math.max(0, sampleCap() - (samples.get(dayOf()) || 0)) };
   });
   app.post('/v1/lab/library/techniques', { preHandler: pre }, async (req, reply) => {
     await seeded; const b = req.body || {}, from = await technique(b.from);
-    const base = from ? { name: `${from.name} (copy)`, kind: from.kind, summary: from.summary, base: from.base, finish: from.finish, prompt: from.prompt, artGuide: from.art_guide, factoryNote: from.factory_note } : {};
+    const base = from ? { name: `${from.name} (copy)`, kind: from.kind, summary: from.summary, base: from.base, finish: from.finish, rules: from.rules, prompt: from.prompt, artGuide: from.art_guide, factoryNote: from.factory_note } : {};
     const { technique: t, error } = cleanTechnique(from ? { ...base, ...Object.fromEntries(Object.entries(b).filter(([k]) => k !== 'from')) } : b, base); if (error) return bad(reply, error);
-    const r = (await pool.query(`insert into lab_techniques(kind,name,summary,base,finish,prompt,art_guide,factory_note,created_by) values($1,$2,$3,$4,$5,$6,$7,$8,$9) returning id`, [t.kind, t.name, t.summary, t.base, t.finish, t.prompt, t.artGuide, t.factoryNote, actorOf(req)])).rows[0];
+    const r = (await pool.query(`insert into lab_techniques(kind,name,summary,base,finish,prompt,art_guide,factory_note,rules,created_by) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) returning id`, [t.kind, t.name, t.summary, t.base, t.finish, t.prompt, t.artGuide, t.factoryNote, t.rules, actorOf(req)])).rows[0];
     if (from) await pool.query(`insert into lab_technique_photos(technique_id,jpeg,thumb) select $2, jpeg, thumb from lab_technique_photos where technique_id=$1`, [from.id, r.id]);
     return reply.code(201).send({ id: r.id });
   });
   app.put('/v1/lab/library/techniques/:id', { preHandler: pre }, async (req, reply) => {
     if (!need(req, reply)) return; const cur = await technique(req.params.id); if (!cur) return bad(reply, 'Not found', 404);
-    const { technique: t, error } = cleanTechnique(req.body || {}, { name: cur.name, kind: cur.kind, summary: cur.summary, base: cur.base, finish: cur.finish, prompt: cur.prompt, artGuide: cur.art_guide, factoryNote: cur.factory_note }); if (error) return bad(reply, error);
-    await pool.query(`update lab_techniques set kind=$2,name=$3,summary=$4,base=$5,finish=$6,prompt=$7,art_guide=$8,factory_note=$9,updated_at=now() where id=$1`, [cur.id, t.kind, t.name, t.summary, t.base, t.finish, t.prompt, t.artGuide, t.factoryNote]);
+    const { technique: t, error } = cleanTechnique(req.body || {}, { name: cur.name, kind: cur.kind, summary: cur.summary, base: cur.base, finish: cur.finish, rules: cur.rules, prompt: cur.prompt, artGuide: cur.art_guide, factoryNote: cur.factory_note }); if (error) return bad(reply, error);
+    await pool.query(`update lab_techniques set kind=$2,name=$3,summary=$4,base=$5,finish=$6,prompt=$7,art_guide=$8,factory_note=$9,rules=$10,updated_at=now() where id=$1`, [cur.id, t.kind, t.name, t.summary, t.base, t.finish, t.prompt, t.artGuide, t.factoryNote, t.rules]);
     return { ok: true };
   });
   app.delete('/v1/lab/library/techniques/:id', { preHandler: pre }, async (req, reply) => {
