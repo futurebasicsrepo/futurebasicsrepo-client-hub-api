@@ -203,7 +203,7 @@ body.fbcollapsed .fbside a{justify-content:center;padding:10px}body.fbcollapsed 
 
   // What this person has been given (Team access, /team). The menu only shows what they can open; the service refuses the rest anyway, so if the answer cannot be
   // had the menu shows everything rather than nothing. A page that belongs to one module says so, plainly, when the person has not been given it.
-  const PAGE_MODULE = { '/contracts': 'contracts', '/intel': 'intel', '/prototypes': 'prototypes', '/builds/admin': 'builds', '/factories': 'factories', '/lab': 'lab', '/platform': 'platform', '/brand': 'brand' };
+  const PAGE_MODULE = { '/contracts': 'contracts', '/intel': 'intel', '/prototypes': 'prototypes', '/builds/admin': 'builds', '/factories': 'factories', '/lab': 'lab', '/lab/studio': 'lab', '/lab/library': 'lab', '/platform': 'platform', '/brand': 'brand' };
   const toast = (text, key) => {
     if (!text) return; const id = 'fbNoAccess'; let el = document.getElementById(id);
     if (!el) { el = document.createElement('div'); el.id = id; el.setAttribute('role', 'status'); el.style.cssText = 'position:fixed;top:84px;left:50%;transform:translateX(-50%);z-index:60;background:#141416;color:#fff;border-radius:14px;padding:12px 18px;font:400 14px/1.4 \'Space Grotesk\',system-ui,sans-serif;max-width:min(92vw,520px);box-shadow:0 12px 40px rgba(20,20,22,.3)'; document.body.appendChild(el); }

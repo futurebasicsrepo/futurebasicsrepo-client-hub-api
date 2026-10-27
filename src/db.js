@@ -242,6 +242,14 @@ export async function migrate() {
       updated_at timestamptz not null default now()
     );
     alter table lab_concepts add column if not exists raw bytea; -- the picture before the logo and graphics were laid on, so they can be placed again without drawing it again
+    create table if not exists lab_studio_docs ( -- a concept's picture as layers in the studio, and the picture it had before the studio
+      concept_id uuid primary key references lab_concepts(id) on delete cascade,
+      doc jsonb not null default '{}',
+      original bytea,
+      applied_at timestamptz,
+      updated_by uuid references users(id) on delete set null,
+      updated_at timestamptz not null default now()
+    );
     create index if not exists lab_concepts_plan_idx on lab_concepts (plan_id, created_at desc);
     create index if not exists lab_concepts_line_idx on lab_concepts (line_id);
     create table if not exists lab_concept_comments (
@@ -262,6 +270,49 @@ export async function migrate() {
       thumb bytea not null,
       prompt text not null default '',
       model text not null default '',
+      created_at timestamptz not null default now()
+    );
+    -- the graphics library: every artwork stays, whatever made it (a plan, a concept, the studio, the library, an upload), even when the plan or concept goes
+    alter table lab_art add column if not exists in_library boolean not null default true;
+    alter table lab_art add column if not exists tags text[] not null default '{}';
+    alter table lab_art add column if not exists source text not null default 'plan';
+    alter table lab_art add column if not exists technique_id uuid;
+    alter table lab_art add column if not exists created_by uuid references users(id) on delete set null;
+    do $$ begin
+      if exists(select 1 from pg_constraint where conname='lab_art_plan_id_fkey' and confdeltype='c') then
+        alter table lab_art drop constraint lab_art_plan_id_fkey; alter table lab_art add constraint lab_art_plan_id_fkey foreign key (plan_id) references lab_plans(id) on delete set null;
+      end if;
+      if exists(select 1 from pg_constraint where conname='lab_art_concept_id_fkey' and confdeltype='c') then
+        alter table lab_art drop constraint lab_art_concept_id_fkey; alter table lab_art add constraint lab_art_concept_id_fkey foreign key (concept_id) references lab_concepts(id) on delete set null;
+      end if;
+    end $$;
+    create index if not exists lab_art_library_idx on lab_art (created_at desc) where in_library;
+    update lab_art set source='concept' where source='plan' and concept_id is not null;
+    -- the techniques library: embroidery, print, heat transfer, patches, distressing (src/lab-library.js)
+    create table if not exists lab_techniques (
+      id uuid primary key default gen_random_uuid(),
+      key text unique,
+      kind text not null,
+      name text not null,
+      summary text not null default '',
+      base text not null default 'screen print',
+      finish jsonb not null default '{}',
+      prompt text not null default '',
+      art_guide text not null default '',
+      factory_note text not null default '',
+      sample bytea,
+      sample_at timestamptz,
+      builtin boolean not null default false,
+      archived boolean not null default false,
+      created_by uuid references users(id) on delete set null,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
+    create table if not exists lab_technique_photos (
+      id uuid primary key default gen_random_uuid(),
+      technique_id uuid not null references lab_techniques(id) on delete cascade,
+      jpeg bytea not null,
+      thumb bytea not null,
       created_at timestamptz not null default now()
     );
     create table if not exists lab_concept_views (

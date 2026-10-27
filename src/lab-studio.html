@@ -1,0 +1,597 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>Design Lab studio</title>
+<link rel="icon" href="/icons/icon-192.png">
+<style>
+@import url('/fonts/fonts.css');
+:root{--ink:#141416;--paper:#fff;--fog:#f5f5f2;--dim:#727278;--line:rgba(20,20,22,.14);--cue:#4bff9a;--ok:#17603a;--bad:#a02a20;--stage:#e4e4e0}
+*{box-sizing:border-box}html{background:var(--fog)}
+body{margin:0;color:var(--ink);font:400 14px/1.45 'Space Grotesk',system-ui,sans-serif;background:var(--fog);height:100vh;height:100dvh;overflow:hidden}
+button,input,select,textarea{font:inherit;color:inherit}a{color:inherit}.hidden{display:none!important}
+.mono{font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase}
+header{height:72px;background:rgba(20,20,22,.96);color:#fff;padding:0 clamp(16px,3vw,32px);display:flex;align-items:center;gap:14px;position:sticky;top:0;z-index:20}
+.wordmark{display:flex;align-items:center;gap:12px;position:relative;text-decoration:none;color:inherit;text-transform:uppercase;letter-spacing:.08em}
+.wordmark:after{content:"";position:absolute;left:0;bottom:-7px;width:64px;height:2px;background:var(--cue)}
+.brand-logo{display:block;width:200px;max-width:34vw;height:auto;max-height:30px}.brand-suffix{font:500 10px 'IBM Plex Mono',monospace;white-space:nowrap}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--ink);background:#fff;color:var(--ink);border-radius:999px;padding:6px 13px;text-decoration:none;cursor:pointer;font-weight:600;min-height:34px;font-size:13px;white-space:nowrap}.btn:hover{background:var(--ink);color:#fff}
+.btn.go{background:var(--cue);border-color:var(--cue);color:var(--ink)}.btn.go:hover{background:#7affb6;color:var(--ink)}.btn.sm{min-height:28px;padding:3px 10px;font-size:12px}.btn[disabled]{opacity:.45;cursor:default;pointer-events:none}
+.btn.q{border-color:var(--line)}
+#needSignin{max-width:620px;margin:40px auto;background:#fff;border:1px solid var(--line);border-radius:22px;padding:22px}
+/* the studio: a bar, the tools, the stage, the panel */
+.studio{display:grid;grid-template-columns:52px minmax(0,1fr) 330px;grid-template-rows:auto minmax(0,1fr);height:calc(100dvh - 72px)}
+.bar{grid-column:1/-1;display:flex;align-items:center;gap:8px;padding:8px 12px;background:#fff;border-bottom:1px solid var(--line);flex-wrap:wrap;min-height:52px}
+.bar .ttl{display:grid;line-height:1.15;min-width:0;margin-right:auto}.bar .ttl b{font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:38vw}.bar .ttl span{color:var(--dim);font-size:12px}
+.saved{color:var(--dim);font-size:12px;min-width:90px;text-align:right}.saved.dirty{color:#8a5a00}
+.rail{background:#fff;border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 0;overflow-y:auto}
+.rail button{width:38px;height:38px;border-radius:10px;border:1px solid transparent;background:none;cursor:pointer;display:grid;place-items:center;position:relative}
+.rail button svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.rail button:hover{background:var(--fog)}.rail button[aria-pressed=true]{background:var(--ink);color:#fff}
+.rail button:focus-visible{outline:2px solid var(--ink);outline-offset:1px}
+.rail hr{width:26px;border:0;border-top:1px solid var(--line);margin:4px 0}
+.cur{width:30px;height:30px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px var(--line);margin-top:6px;cursor:pointer;padding:0}
+.mid{display:grid;grid-template-rows:auto minmax(0,1fr);min-width:0;min-height:0}
+.opts{display:flex;align-items:center;gap:12px;padding:6px 12px;background:#fafaf8;border-bottom:1px solid var(--line);font-size:12px;min-height:40px;flex-wrap:wrap}
+.opts label{display:inline-flex;align-items:center;gap:6px}.opts input[type=range]{width:110px}.opts .hint{color:var(--dim)}
+.stage{position:relative;overflow:hidden;background:var(--stage);background-image:linear-gradient(rgba(20,20,22,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(20,20,22,.05) 1px,transparent 1px);background-size:24px 24px;touch-action:none}
+.stage canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.zoom{position:absolute;right:12px;bottom:12px;display:flex;gap:4px;align-items:center;background:#fff;border:1px solid var(--line);border-radius:999px;padding:3px 6px;font-size:12px}
+.zoom button{border:0;background:none;cursor:pointer;font-weight:700;width:26px;height:26px;border-radius:50%}.zoom button:hover{background:var(--fog)}
+.busy{position:absolute;left:50%;top:16px;transform:translateX(-50%);background:var(--ink);color:#fff;border-radius:999px;padding:8px 16px;font-size:13px;display:flex;gap:10px;align-items:center;z-index:3}
+.busy i{width:10px;height:10px;border-radius:50%;background:var(--cue);animation:pulse 1s infinite alternate}@keyframes pulse{to{opacity:.25}}
+@media (prefers-reduced-motion:reduce){.busy i{animation:none}}
+.side{background:#fff;border-left:1px solid var(--line);display:grid;grid-template-rows:auto minmax(0,1fr);min-height:0}
+.tabs{display:flex;border-bottom:1px solid var(--line)}.tabs button{flex:1;border:0;background:none;padding:11px 6px;font-weight:600;cursor:pointer;border-bottom:2px solid transparent;font-size:13px}.tabs button[aria-selected=true]{border-bottom-color:var(--ink)}
+.pane{overflow-y:auto;padding:12px 14px 40px;display:grid;gap:14px;align-content:start}
+.sec{display:grid;gap:8px}.sec>h4{margin:0;font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+.f{display:grid;grid-template-columns:92px minmax(0,1fr) 46px;gap:8px;align-items:center;font-size:12px}.f>span:first-child{color:var(--dim)}.f output{text-align:right;font-variant-numeric:tabular-nums;color:var(--dim)}
+.f.w{grid-template-columns:92px minmax(0,1fr)}
+.t{width:100%;border:1px solid var(--line);border-radius:10px;padding:6px 9px;background:#fff;font-size:13px;min-width:0}textarea.t{min-height:64px;resize:vertical}
+input[type=color]{width:100%;height:30px;border:1px solid var(--line);border-radius:8px;background:#fff;padding:2px;cursor:pointer}
+input[type=range]{width:100%;accent-color:var(--ink)}
+.row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.layers{display:grid;gap:4px}
+.ly{display:grid;grid-template-columns:28px 40px minmax(0,1fr) 28px;gap:6px;align-items:center;border:1px solid var(--line);border-radius:12px;padding:4px 6px;cursor:pointer;background:#fff}
+.ly.on{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}.ly:focus-visible{outline:2px solid var(--ink);outline-offset:1px}
+.ly img,.ly .th{width:40px;height:40px;border-radius:8px;object-fit:contain;background:#ecece8;display:grid;place-items:center;font-size:15px;font-weight:700;overflow:hidden}
+.ly .nm{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ly .nm small{display:block;color:var(--dim);font-size:11px}
+.ly button{border:0;background:none;cursor:pointer;width:28px;height:28px;border-radius:8px;display:grid;place-items:center}.ly button:hover{background:var(--fog)}.ly button svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.7}
+.ly.off .nm,.ly.off img{opacity:.45}
+.sw{display:flex;gap:6px;flex-wrap:wrap}.sw button{width:28px;height:28px;border-radius:50%;border:1px solid var(--line);cursor:pointer;padding:0}.sw button:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.tile{border:1px solid var(--line);border-radius:12px;background:#f3f3f0;cursor:pointer;padding:6px;display:grid;gap:4px;justify-items:center;font-size:11px;text-align:center}.tile:hover{border-color:var(--ink)}
+.tile img{width:100%;height:56px;object-fit:contain}
+.msg{font-size:12px;color:var(--dim);margin:0}.msg.bad{color:var(--bad)}.msg.ok{color:var(--ok)}
+.note{font-size:12px;color:var(--dim);margin:0}
+.drop{position:absolute;inset:10px;border:2px dashed var(--ink);border-radius:18px;background:rgba(255,255,255,.6);display:grid;place-items:center;font-weight:600;z-index:4;pointer-events:none}
+.menu{position:relative}.menu .pop{position:absolute;right:0;top:calc(100% + 6px);background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:0 12px 40px rgba(20,20,22,.18);padding:6px;display:grid;min-width:250px;z-index:30}
+.menu .pop button{border:0;background:none;text-align:left;padding:8px 10px;border-radius:10px;cursor:pointer;display:grid}.menu .pop button:hover{background:var(--fog)}.menu .pop small{color:var(--dim);font-size:11px}
+.mask-on{color:#b0261c!important}
+kbd{font:500 10px 'IBM Plex Mono',monospace;border:1px solid var(--line);border-radius:4px;padding:0 4px;color:var(--dim)}
+@media(max-width:980px){body{overflow:auto;height:auto}.studio{grid-template-columns:48px minmax(0,1fr);grid-template-rows:auto 62vh auto;height:auto}.side{grid-column:1/-1;border-left:0;border-top:1px solid var(--line);min-height:420px}.bar .ttl b{max-width:60vw}}
+</style>
+</head>
+<body>
+<header>
+  <a class="wordmark" href="/home" aria-label="Work home"><img class="brand-logo" src="https://thefuturebasics.com/cdn/shop/files/future_basics_true_vector_fixed.svg?v=1775278873&amp;width=360" alt="Future Basics"><span class="brand-suffix">/ Design Lab studio</span></a>
+</header>
+<div id="needSignin" class="hidden"><h1 style="margin-top:0">Sign in to the work console first</h1><p class="note" style="font-size:14px">This page uses your work console sign-in. Open the console, sign in, then come back here.</p><a class="btn go" href="/admin" style="margin-top:12px">Open the work console</a></div>
+
+<div class="studio hidden" id="app">
+  <div class="bar">
+    <a class="btn q sm" id="back" href="/lab#board">← Concepts</a>
+    <div class="ttl"><b id="cName">Loading…</b><span id="cSub"></span></div>
+    <button class="btn q sm" id="undo" type="button" title="Undo (Ctrl Z)">Undo</button>
+    <button class="btn q sm" id="redo" type="button" title="Redo (Ctrl Shift Z)">Redo</button>
+    <span class="saved" id="saved" role="status"></span>
+    <button class="btn sm" id="save" type="button" title="Save (Ctrl S)">Save</button>
+    <div class="menu"><button class="btn sm" id="expBtn" type="button" aria-haspopup="true" aria-expanded="false">Export</button>
+      <div class="pop hidden" id="expPop" role="menu">
+        <button type="button" role="menuitem" data-exp="png"><b>Picture (PNG)</b><small>Everything as one picture, full size</small></button>
+        <button type="button" role="menuitem" data-exp="svg"><b>Layers for Illustrator (SVG)</b><small>One group per layer; type and shapes stay editable</small></button>
+        <button type="button" role="menuitem" data-exp="layer"><b>The selected layer (PNG)</b><small>With a clear background, for a print file</small></button>
+      </div></div>
+    <button class="btn go sm" id="apply" type="button">Use as the concept picture</button>
+  </div>
+  <nav class="rail" aria-label="Tools">
+    <button type="button" data-tool="select" title="Select and move (V)" aria-label="Select and move"><svg viewBox="0 0 24 24"><path d="M5 3l14 8-6 2-3 6z"/></svg></button>
+    <button type="button" data-tool="hand" title="Move the view (H, or hold Space)" aria-label="Move the view"><svg viewBox="0 0 24 24"><path d="M8 13V5a1.5 1.5 0 013 0v6M11 11V4a1.5 1.5 0 013 0v7M14 11V6a1.5 1.5 0 013 0v8c0 4-3 7-7 7-3 0-5-2-6-4l-2-4a1.5 1.5 0 012.6-1.5L8 14"/></svg></button>
+    <hr>
+    <button type="button" data-tool="brush" title="Brush (B)" aria-label="Brush"><svg viewBox="0 0 24 24"><path d="M18 3l3 3-9 9-3-3zM9 12c-3 0-5 2-5 5 0 2-1 3-2 4 4 0 9-1 9-5"/></svg></button>
+    <button type="button" data-tool="eraser" title="Eraser (E)" aria-label="Eraser"><svg viewBox="0 0 24 24"><path d="M16 3l5 5-11 11H5l-3-3zM9 9l6 6M10 21h11"/></svg></button>
+    <button type="button" data-tool="distress" title="Distress brush (D): wears the selected layer away" aria-label="Distress brush"><svg viewBox="0 0 24 24"><circle cx="6" cy="7" r="1.2"/><circle cx="12" cy="5" r=".8"/><circle cx="17" cy="9" r="1.5"/><circle cx="9" cy="13" r=".9"/><circle cx="15" cy="15" r="1"/><circle cx="6" cy="18" r="1.4"/><circle cx="19" cy="19" r=".8"/><path d="M3 11l4 2 3-2 4 3 3-1 4 2"/></svg></button>
+    <hr>
+    <button type="button" data-tool="text" title="Type (T)" aria-label="Type"><svg viewBox="0 0 24 24"><path d="M5 5h14M12 5v15M9 20h6"/></svg></button>
+    <button type="button" data-tool="rect" title="Rectangle (R)" aria-label="Rectangle"><svg viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" rx="1.5"/></svg></button>
+    <button type="button" data-tool="ellipse" title="Ellipse (O)" aria-label="Ellipse"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="8" ry="6"/></svg></button>
+    <button type="button" data-tool="line" title="Line (L)" aria-label="Line"><svg viewBox="0 0 24 24"><path d="M5 19L19 5"/></svg></button>
+    <button type="button" data-tool="pick" title="Pick a colour from the picture (I)" aria-label="Pick a colour"><svg viewBox="0 0 24 24"><path d="M14 4l6 6-2 2-6-6zM12 6l-8 8v4h4l8-8"/></svg></button>
+    <hr>
+    <button type="button" data-tool="area" title="Paint the area for the AI (M)" aria-label="Paint the area for the AI" class="mask-on"><svg viewBox="0 0 24 24"><path d="M4 4h4M12 4h4M20 4v4M20 12v4M20 20h-4M12 20H8M4 20v-4M4 12V8"/><path d="M9 15l2-6 4 4z"/></svg></button>
+    <button class="cur" id="curColor" type="button" title="Colour" aria-label="Choose the colour"></button>
+    <input type="color" id="curPicker" class="hidden" aria-hidden="true" tabindex="-1">
+  </nav>
+  <div class="mid">
+    <div class="opts" id="opts"></div>
+    <div class="stage" id="stage"><canvas id="view"></canvas>
+      <div class="busy hidden" id="busy"><i></i><span id="busyText">Working…</span></div>
+      <div class="drop hidden" id="drop">Drop a picture to add it as a layer</div>
+      <div class="zoom"><button type="button" id="zOut" aria-label="Zoom out">−</button><span id="zLabel">100%</span><button type="button" id="zIn" aria-label="Zoom in">+</button><button type="button" id="zFit" aria-label="Fit to the screen" title="Fit (0)" style="width:auto;padding:0 6px;font-weight:600">Fit</button></div>
+    </div>
+  </div>
+  <aside class="side">
+    <div class="tabs" role="tablist"><button type="button" role="tab" data-tab="layers" aria-selected="true">Layers</button><button type="button" role="tab" data-tab="add" aria-selected="false">Add</button><button type="button" role="tab" data-tab="ai" aria-selected="false">AI</button></div>
+    <div class="pane" id="pLayers" role="tabpanel"></div>
+    <div class="pane hidden" id="pAdd" role="tabpanel"></div>
+    <div class="pane hidden" id="pAi" role="tabpanel"></div>
+  </aside>
+</div>
+<dialog id="askDlg" style="border:0;border-radius:20px;padding:0;width:min(480px,94vw)"><form method="dialog" style="padding:20px;display:grid;gap:12px"><h3 id="askTitle" style="margin:0;font-size:16px;line-height:1.35"></h3><p class="note" id="askText" style="font-size:13px"></p><div class="row" style="justify-content:flex-end"><button class="btn" value="no" type="submit">Cancel</button><button class="btn go" value="yes" type="submit" id="askYes">Yes</button></div></form></dialog>
+<input type="file" id="fileIn" accept="image/*" multiple class="hidden">
+<script src="/lab/finish.js"></script>
+<script src="/console-nav.js" defer></script>
+<script>
+'use strict';
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)],esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const TOKEN=()=>{try{return localStorage.getItem('fb.admin.token')||''}catch{return ''}};
+async function api(path,o={}){const r=await fetch(path,{method:o.method||(o.body?'POST':'GET'),headers:{Authorization:'Bearer '+TOKEN(),...(o.body?{'Content-Type':'application/json'}:{})},body:o.body?JSON.stringify(o.body):undefined});const j=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(new Error(j.error||('Request failed ('+r.status+')')),{status:r.status});return j}
+async function blobOf(path){const r=await fetch(path,{headers:{Authorization:'Bearer '+TOKEN()}});if(!r.ok)throw new Error('The picture could not be loaded ('+r.status+')');return r.blob()}
+const urlOfBlob=b=>new Promise((ok,no)=>{const fr=new FileReader();fr.onload=()=>ok(fr.result);fr.onerror=no;fr.readAsDataURL(b)});
+const imgOf=src=>new Promise((ok,no)=>{const i=new Image();i.onload=()=>ok(i);i.onerror=()=>no(new Error('A picture could not be read'));i.src=src});
+const canvas=(w,h)=>{const c=document.createElement('canvas');c.width=Math.max(1,Math.round(w));c.height=Math.max(1,Math.round(h));return c};
+let RID=1;const stamp=c=>{c._rid=RID++;return c};
+const cloneCanvas=c=>{const n=canvas(c.width,c.height);n.getContext('2d').drawImage(c,0,0);return stamp(n)};
+const uid=()=>'l'+Math.random().toString(36).slice(2,9);
+const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
+const CID=new URLSearchParams(location.search).get('concept')||'';
+
+// ---------- what a layer is ----------
+const FONTS={grotesk:['Space Grotesk',"'Space Grotesk',system-ui,sans-serif"],mono:['IBM Plex Mono',"'IBM Plex Mono',monospace"],serif:['Serif',"Georgia,'Times New Roman',serif"],slab:['Slab',"Rockwell,'Roboto Slab','Courier New',serif"],condensed:['Condensed',"Impact,Haettenschweiler,'Arial Narrow Bold',sans-serif"],script:['Script',"'Brush Script MT','Segoe Script',cursive"],typewriter:['Typewriter',"'Courier New',Courier,monospace"]};
+const BLENDS=[['source-over','Normal'],['multiply','Multiply (sits in the fabric)'],['screen','Screen'],['overlay','Overlay'],['soft-light','Soft light'],['hard-light','Hard light'],['darken','Darken'],['lighten','Lighten'],['color-burn','Colour burn'],['color-dodge','Colour dodge'],['difference','Difference'],['hue','Hue'],['saturation','Saturation'],['color','Colour'],['luminosity','Luminosity']];
+const KIND={base:'Picture',image:'Picture layer',paint:'Painting',text:'Type',shape:'Shape'};
+const fresh=(kind,o={})=>({id:uid(),kind,name:o.name||KIND[kind],visible:true,locked:kind==='base',opacity:1,blend:'source-over',x:0,y:0,scale:1,rot:0,flip:false,
+  adjust:{hue:0,sat:100,bright:100,contrast:100},tint:{color:'#141416',amount:0},distress:{style:'worn',amount:0,size:50,seed:Math.floor(Math.random()*1e6)},...o});
+
+// ---------- state ----------
+let D=null,W=1024,H=1024,LAYERS=[],SEL=null,TOOL='select',CUR='#141416',DIRTY=false,SAVED_AT=null;
+const OPT={size:28,flow:1,soft:0,dsize:60,area:60};
+const docC=canvas(1,1),docX=docC.getContext('2d');
+let mask=canvas(1,1),maskX=mask.getContext('2d'),MASKED=false;
+const view=$('#view'),vx=view.getContext('2d');let Z=1,PX=0,PY=0,DPR=1;
+const layerOf=id=>LAYERS.find(l=>l.id===id);
+const selected=()=>layerOf(SEL);
+const isRaster=l=>l&&(l.kind==='base'||l.kind==='image'||l.kind==='paint');
+const fixed=l=>l.kind==='base'||l.kind==='paint'; // full-size layers that do not move
+
+// ---------- history (rasters are copied before they change, so a step keeps its own) ----------
+let HIST=[],HI=-1;
+const copyL=l=>({...l,adjust:{...l.adjust},tint:{...l.tint},distress:{...l.distress},finish:l.finish?{...l.finish,distress:{...l.finish.distress}}:null});
+const snap=()=>({sel:SEL,layers:LAYERS.map(copyL)});
+function commit(){HIST=HIST.slice(0,HI+1);HIST.push(snap());if(HIST.length>60)HIST.shift();HI=HIST.length-1;touch();syncUndo()}
+function restore(s){LAYERS=s.layers.map(copyL);SEL=s.sel&&layerOf(s.sel)?s.sel:null;touch();paintPanels();draw()}
+function undo(){if(HI>0){HI--;restore(HIST[HI]);syncUndo()}}function redo(){if(HI<HIST.length-1){HI++;restore(HIST[HI]);syncUndo()}}
+function syncUndo(){$('#undo').disabled=HI<=0;$('#redo').disabled=HI>=HIST.length-1}
+function touch(){DIRTY=true;showSaved()}
+function showSaved(){const s=$('#saved');s.className='saved'+(DIRTY?' dirty':'');s.textContent=DIRTY?'Not saved':SAVED_AT?'Saved '+new Date(SAVED_AT).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}):''}
+
+// ---------- distressing: a worn texture made from a seed, so it is the same every time it is drawn ----------
+const texture=(...a)=>window.FBFinish.texture(...a); // the same worn textures as the technique library (src/lab-finish.js)
+
+// ---------- what each layer looks like on its own (before it is placed) ----------
+function textMetrics(l){
+  const x=docX,font=`${l.italic?'italic ':''}${l.bold?'700':'400'} ${l.size}px ${FONTS[l.font]?.[1]||FONTS.grotesk[1]}`;x.save();x.font=font;
+  const lines=String(l.text||' ').split('\n'),lw=lines.map(t=>[...t].reduce((s,ch)=>s+x.measureText(ch).width,0)+Math.max(0,[...t].length-1)*l.track);x.restore();return{font,lines,lw}}
+function contentOf(l){
+  if(isRaster(l))return l.raster;
+  if(l.kind==='text'){
+    const{font,lines,lw}=textMetrics(l),pad=Math.ceil(l.size*.35+(l.outline||0)*2+4),lh=l.size*l.lead;
+    if(l.arc&&lines.length===1){
+      // one line bent on a circle: up for an arch (college, rock tee), down for a smile; each letter stands square to the curve
+      const L=Math.max(1,lw[0]),th=Math.abs(l.arc)/100*Math.PI,R=L/th,up=l.arc>0;docX.save();docX.font=font;
+      let s=0;const gl=[...lines[0]].map(g=>{const gw=docX.measureText(g).width,phi=-th/2+(s+gw/2)/R;s+=gw+l.track;return{g,x:R*Math.sin(phi),y:up?R*(1-Math.cos(phi)):-R*(1-Math.cos(phi)),r:up?phi:-phi}});docX.restore();
+      const xs=gl.map(q=>q.x),ys=gl.map(q=>q.y),ext=l.size*.75+pad,x0=Math.min(...xs)-ext,x1=Math.max(...xs)+ext,y0=Math.min(...ys)-ext,y1=Math.max(...ys)+ext;
+      const c=canvas(x1-x0,y1-y0),x=c.getContext('2d');x.font=font;x.textBaseline='middle';x.textAlign='center';x.lineJoin='round';x.fillStyle=l.color;x.strokeStyle=l.outlineColor;x.lineWidth=(l.outline||0)*2;
+      for(const q of gl){x.save();x.translate(q.x-x0,q.y-y0);x.rotate(q.r);if(l.outline)x.strokeText(q.g,0,0);x.fillText(q.g,0,0);x.restore()}
+      return c}
+    const w=Math.max(...lw,1)+pad*2,h=lines.length*lh+pad*2,c=canvas(w,h),x=c.getContext('2d');
+    x.font=font;x.textBaseline='middle';x.lineJoin='round';x.fillStyle=l.color;x.strokeStyle=l.outlineColor;x.lineWidth=(l.outline||0)*2;
+    lines.forEach((t,i)=>{let px=l.align==='left'?pad:l.align==='right'?w-pad-lw[i]:(w-lw[i])/2;const py=pad+lh*i+lh/2;for(const g of[...t]){if(l.outline)x.strokeText(g,px,py);x.fillText(g,px,py);px+=x.measureText(g).width+l.track}});
+    return c}
+  if(l.kind==='shape'){
+    const sw=l.stroke?l.strokeW:0,pad=Math.ceil(sw/2+2),c=canvas(l.w+pad*2,(l.shape==='line'?Math.max(sw,2):l.h)+pad*2),x=c.getContext('2d');
+    x.lineWidth=sw;x.strokeStyle=l.strokeColor;x.fillStyle=l.fillColor;x.lineCap='round';x.lineJoin='round';x.beginPath();
+    if(l.shape==='ellipse')x.ellipse(c.width/2,c.height/2,l.w/2,l.h/2,0,0,Math.PI*2);
+    else if(l.shape==='line'){x.moveTo(pad,c.height/2);x.lineTo(c.width-pad,c.height/2);x.lineWidth=Math.max(sw,1);x.strokeStyle=l.stroke?l.strokeColor:l.fillColor;x.stroke();return c}
+    else x.roundRect(pad,pad,l.w,l.h,Math.min(l.radius||0,l.w/2,l.h/2));
+    if(l.fill)x.fill();if(sw)x.stroke();return c}
+  return canvas(1,1);
+}
+const unitOf=l=>{const u=(W/1000)/(fixed(l)?1:l.scale);return Math.pow(1.15,Math.round(Math.log(u)/Math.log(1.15)))}; // stitches and dots keep a real size: one step per 15% of scale
+const sig=l=>JSON.stringify([l.finish,l.finish?unitOf(l):0,l.kind,l.raster?l.raster._rid:0,l.text,l.font,l.size,l.bold,l.italic,l.track,l.lead,l.align,l.arc,l.color,l.outline,l.outlineColor,l.shape,l.w,l.h,l.radius,l.fill,l.fillColor,l.stroke,l.strokeW,l.strokeColor,l.adjust,l.tint,l.distress]);
+const plainLook=l=>l.adjust.hue===0&&l.adjust.sat===100&&l.adjust.bright===100&&l.adjust.contrast===100;
+// the layer with its colour adjustments, its recolouring and its distressing: cached until any of them change
+function processed(l){
+  const k=sig(l);if(l._pk===k&&l._pc)return l._pc;
+  const src=contentOf(l),c=canvas(src.width,src.height),x=c.getContext('2d');
+  if(!plainLook(l))x.filter=`hue-rotate(${l.adjust.hue}deg) saturate(${l.adjust.sat}%) brightness(${l.adjust.bright}%) contrast(${l.adjust.contrast}%)`;
+  x.drawImage(src,0,0);x.filter='none';
+  if(l.tint.amount>0){x.globalCompositeOperation='source-atop';x.globalAlpha=l.tint.amount;x.fillStyle=l.tint.color;x.fillRect(0,0,c.width,c.height);x.globalAlpha=1}
+  if(l.distress.amount>0){x.globalCompositeOperation='destination-out';x.globalAlpha=clamp(l.distress.amount,0,1);x.drawImage(texture(l.distress.style,c.width,c.height,l.distress.size,l.distress.seed),0,0);x.globalAlpha=1}
+  x.globalCompositeOperation='source-over';
+  const out=l.finish&&l.finish.effect&&l.finish.effect!=='none'?window.FBFinish.effect(c,l.finish,unitOf(l),l.distress.seed||1):c;
+  l._pk=k;l._pc=out;return out;
+}
+const dims=l=>{const c=processed(l);return[c.width,c.height]};
+function place(x,l){x.translate(l.x,l.y);x.rotate(l.rot);x.scale(l.scale*(l.flip?-1:1),l.scale)}
+function drawLayer(x,l){if(!l.visible)return;const c=processed(l),sh=l.finish&&window.FBFinish.shadow(l.finish,W/1000);x.save();x.globalAlpha=l.opacity;x.globalCompositeOperation=l.blend;if(sh){x.shadowColor=sh.color;x.shadowBlur=sh.blur;x.shadowOffsetX=sh.dx;x.shadowOffsetY=sh.dy}place(x,l);x.drawImage(c,-c.width/2,-c.height/2);x.restore()}
+function compose(){docX.setTransform(1,0,0,1,0,0);docX.globalCompositeOperation='source-over';docX.globalAlpha=1;docX.clearRect(0,0,W,H);docX.fillStyle='#fff';docX.fillRect(0,0,W,H);for(const l of LAYERS)drawLayer(docX,l)}
+// doc point → the layer's own pixels, and back
+function toLocal(l,px,py){const[w,h]=dims(l);let dx=px-l.x,dy=py-l.y;const c=Math.cos(-l.rot),s=Math.sin(-l.rot);let lx=(dx*c-dy*s)/l.scale,ly=(dx*s+dy*c)/l.scale;if(l.flip)lx=-lx;return[lx+w/2,ly+h/2]}
+function corners(l){const[w,h]=dims(l),c=Math.cos(l.rot),s=Math.sin(l.rot),f=l.flip?-1:1;return[[-w/2,-h/2],[w/2,-h/2],[w/2,h/2],[-w/2,h/2]].map(([a,b])=>{a*=l.scale*f;b*=l.scale;return[l.x+a*c-b*s,l.y+a*s+b*c]})}
+
+// ---------- the view ----------
+let RAF=0;function draw(){if(!RAF)RAF=requestAnimationFrame(()=>{RAF=0;render()})}
+const sx=x=>x*Z+PX,sy=y=>y*Z+PY,dx=x=>(x-PX)/Z,dy=y=>(y-PY)/Z;
+function render(){
+  compose();const r=view.getBoundingClientRect();DPR=window.devicePixelRatio||1;const cw=Math.round(r.width*DPR),ch=Math.round(r.height*DPR);if(view.width!==cw||view.height!==ch){view.width=cw;view.height=ch}
+  vx.setTransform(DPR,0,0,DPR,0,0);vx.clearRect(0,0,r.width,r.height);vx.save();vx.shadowColor='rgba(20,20,22,.18)';vx.shadowBlur=24;vx.fillStyle='#fff';vx.fillRect(PX,PY,W*Z,H*Z);vx.restore();
+  vx.imageSmoothingQuality='high';vx.drawImage(docC,PX,PY,W*Z,H*Z);
+  if(MASKED&&(TOOL==='area'||TAB==='ai')){vx.save();vx.globalAlpha=.42;vx.drawImage(mask,PX,PY,W*Z,H*Z);vx.restore()}
+  const l=selected();
+  if(l&&l.visible&&!fixed(l)&&TOOL==='select'){const p=corners(l).map(([a,b])=>[sx(a),sy(b)]);vx.strokeStyle='#141416';vx.lineWidth=1;vx.setLineDash([5,4]);vx.beginPath();p.forEach(([a,b],i)=>i?vx.lineTo(a,b):vx.moveTo(a,b));vx.closePath();vx.stroke();vx.setLineDash([]);
+    if(!l.locked){const tm=[(p[0][0]+p[1][0])/2,(p[0][1]+p[1][1])/2],rk=rotKnob(l);vx.beginPath();vx.moveTo(tm[0],tm[1]);vx.lineTo(rk[0],rk[1]);vx.stroke();
+      for(const[a,b]of p){vx.fillStyle='#fff';vx.fillRect(a-5,b-5,10,10);vx.strokeRect(a-5,b-5,10,10)}vx.beginPath();vx.arc(rk[0],rk[1],6,0,Math.PI*2);vx.fillStyle='#4bff9a';vx.fill();vx.stroke()}}
+  if(HOVER&&['brush','eraser','distress','area'].includes(TOOL)){const rad=(TOOL==='distress'?OPT.dsize:TOOL==='area'?OPT.area:OPT.size)/2*Z;vx.strokeStyle='rgba(20,20,22,.8)';vx.lineWidth=1;vx.beginPath();vx.arc(HOVER[0],HOVER[1],Math.max(rad,2),0,Math.PI*2);vx.stroke();vx.strokeStyle='rgba(255,255,255,.8)';vx.beginPath();vx.arc(HOVER[0],HOVER[1],Math.max(rad,2)+1,0,Math.PI*2);vx.stroke()}
+  $('#zLabel').textContent=Math.round(Z*100)+'%';
+}
+function rotKnob(l){const p=corners(l).map(([a,b])=>[sx(a),sy(b)]),tm=[(p[0][0]+p[1][0])/2,(p[0][1]+p[1][1])/2],c=[sx(l.x),sy(l.y)],d=Math.hypot(tm[0]-c[0],tm[1]-c[1])||1;return[tm[0]+(tm[0]-c[0])/d*28,tm[1]+(tm[1]-c[1])/d*28]}
+function fit(){const r=$('#stage').getBoundingClientRect();Z=Math.min((r.width-48)/W,(r.height-48)/H,2);PX=(r.width-W*Z)/2;PY=(r.height-H*Z)/2;draw()}
+function zoomAt(f,cx,cy){const nz=clamp(Z*f,.05,8);PX=cx-(cx-PX)*nz/Z;PY=cy-(cy-PY)*nz/Z;Z=nz;draw()}
+new ResizeObserver(()=>draw()).observe($('#stage'));
+
+// ---------- pointer work on the stage ----------
+let DRAG=null,HOVER=null,SPACE=false;
+const pt=e=>{const r=view.getBoundingClientRect();return[e.clientX-r.left,e.clientY-r.top]};
+function hit(px,py){for(let i=LAYERS.length-1;i>=0;i--){const l=LAYERS[i];if(!l.visible||l.kind==='base')continue;const[w,h]=dims(l),[a,b]=toLocal(l,px,py);if(a<0||b<0||a>=w||b>=h)continue;
+  if(l.kind==='paint'||l.kind==='image'){const d=processed(l).getContext('2d',{willReadFrequently:true}).getImageData(Math.floor(a),Math.floor(b),1,1).data;if(d[3]<12)continue}return l}return null}
+function strokeTarget(tool){
+  let l=selected();
+  if(tool==='brush'){if(!l||l.kind!=='paint'||l.locked){l=addLayer(fresh('paint',{name:'Painting',x:W/2,y:H/2,raster:stamp(canvas(W,H))}),{silent:true})}return l}
+  if(!l||!isRaster(l)){toast(tool==='area'?'':'Select a picture, painting or the base picture first. Type and shapes: use "Turn into pixels" on them.');return null}
+  if(l.locked){toast('That layer is locked. Unlock it in the layer list.');return null}
+  return l;
+}
+function dab(l,x0,y0,x1,y1,tool){
+  const c=l.raster,x=c.getContext('2d'),[a0,b0]=toLocal(l,x0,y0),[a1,b1]=toLocal(l,x1,y1),sz=(tool==='distress'?OPT.dsize:OPT.size)/l.scale;
+  x.save();x.lineCap='round';x.lineJoin='round';x.lineWidth=sz;
+  if(tool==='brush'){x.globalAlpha=OPT.flow;x.strokeStyle=CUR;if(OPT.soft){x.shadowColor=CUR;x.shadowBlur=sz*OPT.soft}}
+  else{x.globalCompositeOperation='destination-out';x.globalAlpha=OPT.flow;x.strokeStyle='#000'}
+  if(tool==='distress'){const t=texture('worn',256,256,40,l.id.length*7919);x.strokeStyle=x.createPattern(t,'repeat');x.globalAlpha=Math.min(1,OPT.flow*1.4)}
+  x.beginPath();x.moveTo(a0,b0);x.lineTo(a1+.01,b1);x.stroke();x.restore();c._rid=RID++;
+}
+function maskDab(x0,y0,x1,y1,erase){maskX.save();maskX.lineCap='round';maskX.lineWidth=OPT.area;maskX.strokeStyle='#e03b2e';if(erase)maskX.globalCompositeOperation='destination-out';maskX.beginPath();maskX.moveTo(x0,y0);maskX.lineTo(x1+.01,y1);maskX.stroke();maskX.restore();MASKED=true;mask._rid=RID++;paintAiState()}
+view.addEventListener('pointerdown',e=>{
+  if(!D)return;view.setPointerCapture(e.pointerId);const[px,py]=pt(e),x=dx(px),y=dy(py);
+  if(TOOL==='hand'||SPACE||e.button===1){DRAG={mode:'pan',px,py,PX,PY};return}
+  if(TOOL==='pick'){compose();const d=docX.getImageData(clamp(Math.floor(x),0,W-1),clamp(Math.floor(y),0,H-1),1,1).data;setColor('#'+[d[0],d[1],d[2]].map(v=>v.toString(16).padStart(2,'0')).join(''));return}
+  if(TOOL==='area'){maskDab(x,y,x,y,e.altKey);DRAG={mode:'area',x,y,erase:e.altKey};draw();return}
+  if(['brush','eraser','distress'].includes(TOOL)){const l=strokeTarget(TOOL);if(!l)return;l.raster=cloneCanvas(l.raster);SEL=l.id;dab(l,x,y,x,y,TOOL);DRAG={mode:'stroke',l,x,y};draw();return}
+  if(TOOL==='text'){const l=addLayer(fresh('text',{name:'Type',x,y,text:'FUTURE BASICS',font:'grotesk',size:Math.round(W/14),bold:true,italic:false,track:Math.round(W/200),lead:1.1,align:'center',arc:0,color:CUR,outline:0,outlineColor:'#ffffff'}));setTool('select');tab('layers');setTimeout(()=>{const t=$('#pLayers textarea[data-p=text]');if(t){t.focus();t.select()}},30);return}
+  if(['rect','ellipse','line'].includes(TOOL)){DRAG={mode:'shape',x0:x,y0:y,l:null};return}
+  // select: a handle of the chosen layer first, then whatever is under the pointer
+  const l=selected();
+  if(l&&!fixed(l)&&!l.locked&&l.visible){const rk=rotKnob(l);if(Math.hypot(px-rk[0],py-rk[1])<11){DRAG={mode:'rot',l,a0:Math.atan2(y-l.y,x-l.x)-l.rot};return}
+    const k=corners(l).findIndex(([a,b])=>Math.hypot(sx(a)-px,sy(b)-py)<10);if(k>=0){DRAG={mode:'scale',l,d0:Math.hypot(x-l.x,y-l.y)||1,s0:l.scale};return}}
+  const h=hit(x,y);SEL=h?h.id:(l&&fixed(l)?l.id:null);paintPanels();
+  if(h&&!h.locked&&!fixed(h))DRAG={mode:'move',l:h,ox:x-h.x,oy:y-h.y,moved:false};draw();
+});
+view.addEventListener('pointermove',e=>{
+  const[px,py]=pt(e);HOVER=[px,py];if(!DRAG){if(['brush','eraser','distress','area'].includes(TOOL))draw();return}
+  const x=dx(px),y=dy(py),g=DRAG;
+  if(g.mode==='pan'){PX=g.PX+px-g.px;PY=g.PY+py-g.py}
+  else if(g.mode==='area'){maskDab(g.x,g.y,x,y,g.erase);g.x=x;g.y=y}
+  else if(g.mode==='stroke'){dab(g.l,g.x,g.y,x,y,TOOL);g.x=x;g.y=y}
+  else if(g.mode==='move'){g.l.x=Math.round(x-g.ox);g.l.y=Math.round(y-g.oy);g.moved=true}
+  else if(g.mode==='scale'){g.l.scale=clamp(g.s0*Math.hypot(x-g.l.x,y-g.l.y)/g.d0,.02,40);g.moved=true}
+  else if(g.mode==='rot'){let a=Math.atan2(y-g.l.y,x-g.l.x)-g.a0;if(e.shiftKey)a=Math.round(a/(Math.PI/12))*(Math.PI/12);g.l.rot=a;g.moved=true}
+  else if(g.mode==='shape'){
+    if(!g.l){if(Math.hypot(x-g.x0,y-g.y0)<4)return;g.l=addLayer(fresh('shape',{name:{rect:'Rectangle',ellipse:'Ellipse',line:'Line'}[TOOL],shape:TOOL,w:4,h:4,radius:0,fill:TOOL!=='line',fillColor:CUR,stroke:TOOL==='line',strokeW:Math.max(2,Math.round(W/160)),strokeColor:CUR,x:g.x0,y:g.y0}),{silent:true})}
+    const l=g.l;if(l.shape==='line'){const len=Math.hypot(x-g.x0,y-g.y0);l.w=Math.max(4,Math.round(len));l.x=(x+g.x0)/2;l.y=(y+g.y0)/2;l.rot=Math.atan2(y-g.y0,x-g.x0)}
+    else{let w=Math.abs(x-g.x0),h=Math.abs(y-g.y0);if(e.shiftKey)w=h=Math.max(w,h);l.w=Math.max(4,Math.round(w));l.h=Math.max(4,Math.round(h));l.x=g.x0+(x<g.x0?-w:w)/2;l.y=g.y0+(y<g.y0?-h:h)/2}}
+  draw();if(g.mode!=='pan'&&g.mode!=='area')paintFields();
+});
+const endDrag=()=>{const g=DRAG;DRAG=null;if(!g)return;if(g.mode==='stroke'||g.mode==='area'||(g.mode==='shape'&&g.l)||g.moved){if(g.mode!=='area')commit();if(g.mode==='shape')setTool('select');paintPanels()}draw()};
+view.addEventListener('pointerup',endDrag);view.addEventListener('pointercancel',endDrag);view.addEventListener('pointerleave',()=>{HOVER=null;draw()});
+view.addEventListener('wheel',e=>{e.preventDefault();const[px,py]=pt(e);if(e.ctrlKey||e.metaKey)zoomAt(Math.exp(-e.deltaY*.01),px,py);else{PX-=e.deltaX;PY-=e.deltaY;draw()}},{passive:false});
+$('#zIn').onclick=()=>{const r=view.getBoundingClientRect();zoomAt(1.25,r.width/2,r.height/2)};$('#zOut').onclick=()=>{const r=view.getBoundingClientRect();zoomAt(.8,r.width/2,r.height/2)};$('#zFit').onclick=fit;
+
+// ---------- tools and their options ----------
+function setTool(t){TOOL=t;$$('.rail [data-tool]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.tool===t)));view.style.cursor=t==='hand'?'grab':t==='select'?'default':t==='text'?'text':'crosshair';paintOpts();draw()}
+function paintOpts(){
+  const o=$('#opts'),rg=(k,lab,min,max,step=1,unit='px')=>`<label>${lab}<input type="range" data-o="${k}" min="${min}" max="${max}" step="${step}" value="${OPT[k]}"><output>${OPT[k]}${unit}</output></label>`;
+  const help={select:'Click a layer to choose it. Drag to move, a corner to resize, the green knob to turn (Shift: 15° steps). Arrows nudge.',hand:'Drag to move around. Ctrl and the wheel, or a pinch, zooms.',text:'Click where the type should go.',rect:'Drag to draw. Shift makes a square.',ellipse:'Drag to draw. Shift makes a circle.',line:'Drag to draw a line.',pick:'Click the picture to take its colour.'};
+  if(TOOL==='brush')o.innerHTML=rg('size','Size',1,400)+rg('flow','Opacity',.05,1,.05,'')+rg('soft','Softness',0,1,.05,'')+'<span class="hint">Paints on the selected painting layer, or starts a new one.</span>';
+  else if(TOOL==='eraser')o.innerHTML=rg('size','Size',1,400)+rg('flow','Strength',.05,1,.05,'')+'<span class="hint">Rubs out the selected layer.</span>';
+  else if(TOOL==='distress')o.innerHTML=rg('dsize','Size',4,600)+rg('flow','Strength',.05,1,.05,'')+'<span class="hint">Wears the selected layer away, like an old print. For an even wear across the layer, use Distress in its settings.</span>';
+  else if(TOOL==='area')o.innerHTML=rg('area','Size',4,600)+'<span class="hint">Paint over what the AI should change. Hold Alt to rub out.</span><button class="btn sm" type="button" data-clearmask>Clear the area</button>';
+  else o.innerHTML=`<span class="hint">${help[TOOL]||''}</span>`;
+}
+$('#opts').addEventListener('input',e=>{const k=e.target.dataset.o;if(!k)return;OPT[k]=Number(e.target.value);e.target.nextElementSibling.textContent=OPT[k]+(['flow','soft'].includes(k)?'':'px');draw()});
+$('#opts').addEventListener('click',e=>{if(e.target.closest('[data-clearmask]'))clearMask()});
+$$('.rail [data-tool]').forEach(b=>b.onclick=()=>setTool(b.dataset.tool));
+function setColor(c){CUR=c;$('#curColor').style.background=c;$('#curPicker').value=c}
+$('#curColor').onclick=()=>$('#curPicker').click();$('#curPicker').addEventListener('input',e=>setColor(e.target.value));
+function clearMask(){maskX.clearRect(0,0,W,H);MASKED=false;paintAiState();draw()}
+
+// ---------- layers ----------
+function addLayer(l,{silent=false,top=false}={}){
+  if(!l.x&&!l.y){l.x=W/2;l.y=H/2}
+  const i=SEL?LAYERS.findIndex(x=>x.id===SEL):-1;if(top||i<0)LAYERS.push(l);else LAYERS.splice(i+1,0,l);
+  SEL=l.id;if(!silent)commit();paintPanels();draw();return l}
+function removeLayer(l){if(l.kind==='base'&&LAYERS.filter(x=>x.kind==='base').length<2){toast('The base picture stays. Hide it instead if you need to.');return}LAYERS=LAYERS.filter(x=>x!==l);SEL=LAYERS.length?LAYERS[LAYERS.length-1].id:null;commit();paintPanels();draw()}
+function moveLayer(l,d){const i=LAYERS.indexOf(l),j=clamp(i+d,0,LAYERS.length-1);if(i===j)return;LAYERS.splice(i,1);LAYERS.splice(j,0,l);commit();paintPanels();draw()}
+function duplicate(l){const c={...copyL(l),id:uid(),name:l.name+' copy',_pc:null,_pk:null};if(isRaster(l))c.raster=cloneCanvas(l.raster);if(c.kind==='base'){c.kind='image';c.locked=false}if(!fixed(c)){c.x+=20;c.y+=20}addLayer(c)}
+// type and shapes become a picture layer (with their look baked in), so they can be painted on, rubbed out and distressed by hand
+function rasterize(l){const c=processed(l),r=cloneCanvas(c),n={...fresh('image',{name:l.name}),x:l.x,y:l.y,scale:l.scale,rot:l.rot,flip:l.flip,opacity:l.opacity,blend:l.blend,raster:r,src:null,dirty:true};const i=LAYERS.indexOf(l);LAYERS[i]=n;SEL=n.id;commit();paintPanels();draw()}
+const thumbOf=l=>{try{const c=processed(l),t=canvas(80,80),x=t.getContext('2d'),k=Math.min(80/c.width,80/c.height);x.drawImage(c,(80-c.width*k)/2,(80-c.height*k)/2,c.width*k,c.height*k);return t.toDataURL('image/png')}catch{return ''}};
+const EYE='<svg viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>',SHUT='<svg viewBox="0 0 24 24"><path d="M3 3l18 18M10.6 5.1A10 10 0 0112 5c6 0 10 7 10 7a17 17 0 01-3 3.7M6.6 6.6C3.8 8.4 2 12 2 12s4 7 10 7a9.5 9.5 0 004.4-1"/></svg>',LOCK='<svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/></svg>',OPEN='<svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 017.5-2"/></svg>';
+
+let TAB='layers';
+function tab(t){TAB=t;$$('.tabs [data-tab]').forEach(b=>b.setAttribute('aria-selected',String(b.dataset.tab===t)));$('#pLayers').classList.toggle('hidden',t!=='layers');$('#pAdd').classList.toggle('hidden',t!=='add');$('#pAi').classList.toggle('hidden',t!=='ai');if(t==='ai'){paintAi()}draw()}
+$$('.tabs [data-tab]').forEach(b=>b.onclick=()=>tab(b.dataset.tab));
+
+const rng2=(p,lab,min,max,step,v,unit='')=>`<label class="f"><span>${lab}</span><input type="range" data-p="${p}" min="${min}" max="${max}" step="${step}" value="${v}"><output>${v}${unit}</output></label>`;
+function paintPanels(){paintLayers();if(TAB==='ai')paintAiState()}
+function paintLayers(){
+  const p=$('#pLayers'),l=selected();
+  const list=[...LAYERS].reverse().map(x=>`<div class="ly ${x.id===SEL?'on':''} ${x.visible?'':'off'}" data-ly="${x.id}" tabindex="0" role="button" aria-pressed="${x.id===SEL}"><button type="button" data-vis title="${x.visible?'Hide':'Show'}" aria-label="${x.visible?'Hide':'Show'} ${esc(x.name)}">${x.visible?EYE:SHUT}</button>${x.kind==='text'?`<span class="th">T</span>`:`<img alt="" src="${thumbOf(x)}">`}<span class="nm">${esc(x.name)}<small>${KIND[x.kind]}${x.blend!=='source-over'?' · '+esc(BLENDS.find(b=>b[0]===x.blend)?.[1].split(' (')[0]):''}${x.finish?' · '+esc(x.finish.name):x.distress.amount?' · distressed':''}</small></span><button type="button" data-lock title="${x.locked?'Unlock':'Lock'}" aria-label="${x.locked?'Unlock':'Lock'} ${esc(x.name)}">${x.locked?LOCK:OPEN}</button></div>`).join('');
+  p.innerHTML=`<div class="sec"><h4>Layers · top first</h4><div class="layers">${list}</div></div>${l?fieldsHtml(l):'<p class="note">Choose a layer to change it. Add type, our marks, your own pictures and AI graphics from the Add and AI tabs.</p>'}`;
+}
+function fieldsHtml(l){
+  const a=l.adjust,t=l.tint,d=l.distress,col=(p,v)=>`<input type="color" data-p="${p}" value="${v}">`;
+  let kind='';
+  if(l.kind==='text')kind=`<div class="sec"><h4>Type</h4><textarea class="t" data-p="text" aria-label="The words" maxlength="400">${esc(l.text)}</textarea>
+    <label class="f w"><span>Font</span><select class="t" data-p="font">${Object.entries(FONTS).map(([k,v])=>`<option value="${k}" ${k===l.font?'selected':''}>${esc(v[0])}</option>`).join('')}</select></label>
+    <div class="row"><button class="btn sm ${l.bold?'':'q'}" type="button" data-toggle="bold">Bold</button><button class="btn sm ${l.italic?'':'q'}" type="button" data-toggle="italic">Italic</button>${['left','center','right'].map(x=>`<button class="btn sm ${l.align===x?'':'q'}" type="button" data-align="${x}">${x==='center'?'Centre':x[0].toUpperCase()+x.slice(1)}</button>`).join('')}</div>
+    ${rng2('size','Size',8,600,1,l.size,'px')}${rng2('track','Spacing',-20,120,1,l.track)}${rng2('lead','Line height',.7,2.5,.05,l.lead)}${rng2('arc','Arch',-100,100,1,l.arc)}
+    <label class="f w"><span>Colour</span>${col('color',l.color)}</label>${rng2('outline','Outline',0,40,1,l.outline,'px')}<label class="f w"><span>Outline colour</span>${col('outlineColor',l.outlineColor)}</label>
+    <p class="note">Arch bends one line of type, for a college or rock-tee arc. Fonts other than Space Grotesk and IBM Plex Mono come from this computer.</p></div>`;
+  if(l.kind==='shape')kind=`<div class="sec"><h4>Shape</h4>${rng2('w','Width',4,Math.max(W,H)*2,1,l.w,'px')}${l.shape==='line'?'':rng2('h','Height',4,Math.max(W,H)*2,1,l.h,'px')}${l.shape==='rect'?rng2('radius','Corners',0,600,1,l.radius,'px'):''}
+    ${l.shape==='line'?'':`<label class="f w"><span>Fill</span><span class="row"><input type="checkbox" data-p="fill" ${l.fill?'checked':''} aria-label="Fill">${col('fillColor',l.fillColor)}</span></label>`}
+    <label class="f w"><span>${l.shape==='line'?'Line':'Outline'}</span><span class="row">${l.shape==='line'?'':`<input type="checkbox" data-p="stroke" ${l.stroke?'checked':''} aria-label="Outline">`}${col('strokeColor',l.strokeColor)}</span></label>${rng2('strokeW','Thickness',1,120,1,l.strokeW,'px')}</div>`;
+  const pos=fixed(l)?'':`<div class="sec"><h4>Place</h4>${rng2('scale','Size',.02,6,.01,+l.scale.toFixed(2),'×')}${rng2('rotd','Turn',-180,180,1,Math.round(l.rot*180/Math.PI),'°')}<div class="row"><button class="btn sm q" type="button" data-act="centre">Centre</button><button class="btn sm q" type="button" data-act="flip">Flip</button><button class="btn sm q" type="button" data-act="fabric" title="Multiply, a little worn: the way a print sits in cloth">Sit it in the fabric</button></div></div>`;
+  return `<div class="sec"><h4>${esc(KIND[l.kind])}</h4><input class="t" data-p="name" value="${esc(l.name)}" maxlength="60" aria-label="Layer name">
+    ${rng2('opacity','Opacity',0,1,.01,l.opacity)}<label class="f w"><span>Blend</span><select class="t" data-p="blend">${BLENDS.map(([k,v])=>`<option value="${k}" ${k===l.blend?'selected':''}>${esc(v)}</option>`).join('')}</select></label></div>
+  ${kind}${pos}
+  ${l.kind==='base'?'':techHtml(l)}
+  <div class="sec"><h4>Colour</h4>${rng2('a.hue','Hue',-180,180,1,a.hue,'°')}${rng2('a.sat','Saturation',0,300,1,a.sat,'%')}${rng2('a.bright','Brightness',0,200,1,a.bright,'%')}${rng2('a.contrast','Contrast',0,200,1,a.contrast,'%')}
+    <label class="f w"><span>Recolour</span>${col('t.color',t.color)}</label>${rng2('t.amount','Recolour amount',0,1,.01,t.amount)}
+    <div class="row"><button class="btn sm q" type="button" data-act="lookreset">Reset the colour</button></div>${l.kind==='base'?'<p class="note">Hue turns the colour of the whole picture: on a grey studio background mostly the piece changes. For one part only, paint it in the AI tab and ask.</p>':''}</div>
+  <div class="sec"><h4>Distress</h4><label class="f w"><span>Kind</span><select class="t" data-p="d.style">${[['worn','Worn print: specks and grain'],['cracked','Cracked ink'],['faded','Faded, washed out']].map(([k,v])=>`<option value="${k}" ${k===d.style?'selected':''}>${v}</option>`).join('')}</select></label>
+    ${rng2('d.amount','Amount',0,1,.01,d.amount)}${rng2('d.size','Grain size',5,200,1,d.size)}<div class="row"><button class="btn sm q" type="button" data-act="seed">Another pattern</button></div></div>
+  <div class="sec"><h4>Layer</h4><div class="row"><button class="btn sm q" type="button" data-act="up">Move up</button><button class="btn sm q" type="button" data-act="down">Move down</button><button class="btn sm q" type="button" data-act="dup">Duplicate</button>${l.kind==='base'?'':'<button class="btn sm q" type="button" data-act="keep" title="Keep this artwork in the graphics library, for other pieces">Save to the library</button>'}${l.kind==='text'||l.kind==='shape'?'<button class="btn sm q" type="button" data-act="raster" title="So it can be painted on and rubbed out">Turn into pixels</button>':''}${l.kind==='base'&&D.concept.hasPlain?'<button class="btn sm q" type="button" data-act="plain">Use the plain picture</button>':''}<button class="btn sm q" type="button" data-act="del">Delete</button></div></div>`;
+}
+const techOpts=v=>`<option value="">None</option>${[['embroidery','Embroidery'],['print','Print'],['heat_transfer','Heat transfer'],['patch','Patches and appliqué'],['distress','Distressing and wash']].map(([k,lab])=>{const t=(D.techniques||[]).filter(x=>x.kind===k);return t.length?`<optgroup label="${lab}">${t.map(x=>`<option value="${x.id}" ${x.id===v?'selected':''}>${esc(x.name)}</option>`).join('')}</optgroup>`:''}).join('')}`;
+function techHtml(l){const f=l.finish;return `<div class="sec"><h4>Technique</h4><label class="f w"><span>Made as</span><select class="t" data-tech>${techOpts(f&&f.id)}</select></label>
+  ${f?`${f.effect!=='none'?rng2('fin.strength','Strength',0,1,.05,f.strength):''}${rng2('fin.raise','Raised',0,12,.5,f.raise)}${['stitch','foil','film','rubber'].includes(f.effect)?rng2('fin.angle','Direction',-180,180,5,f.angle,'°'):''}
+  <div class="row"><button class="btn sm go" type="button" data-act="real" ${D.ai.connected?'':'disabled'}>Make it real with AI</button></div><p class="note">Drawn here as a quick look. Make it real asks the image model for the real ${esc(f.name.toLowerCase())} on this fabric, in this layer's area only, using the technique's words and reference photos.</p>`
+  :'<p class="note">Embroidery, print, heat transfer, patches and wear from the <a href="/lab/library#techniques" target="_blank" rel="noopener">technique library</a>.</p>'}</div>`}
+function applyTech(l,id){
+  const t=(D.techniques||[]).find(x=>x.id===id);
+  if(!t){l.finish=null;l.blend='source-over';l.opacity=1;l.distress={...l.distress,amount:0};l.adjust.sat=100;return}
+  const f=t.finish||{};l.finish={id:t.id,name:t.name,...f,distress:{...(f.distress||{})}};l.blend=f.blend||'source-over';l.opacity=f.opacity??1;l.adjust.sat=f.sat??100;
+  l.distress=f.distress&&f.distress.amount>0?{...l.distress,style:f.distress.style,amount:f.distress.amount,size:f.distress.size}:{...l.distress,amount:0};
+}
+// the layer alone, as a soft-edged area the size of the picture, for the AI to work inside
+function areaOf(l){const c=canvas(W,H),x=c.getContext('2d');const p=processed(l);x.save();place(x,l);x.drawImage(p,-p.width/2,-p.height/2);x.restore();
+  const m=canvas(W,H),mx=m.getContext('2d'),pad=Math.max(4,Math.round(W/160));mx.filter=`blur(${pad}px)`;for(let i=0;i<3;i++)mx.drawImage(c,0,0);mx.filter='none';mx.globalCompositeOperation='source-in';mx.fillStyle='#e03b2e';mx.fillRect(0,0,W,H);return m}
+// the artwork of a layer for the library: its colour, without wear or a technique
+function artOf(l){const src=contentOf(l),c=canvas(src.width,src.height),x=c.getContext('2d');if(!plainLook(l))x.filter=`hue-rotate(${l.adjust.hue}deg) saturate(${l.adjust.sat}%) brightness(${l.adjust.bright}%) contrast(${l.adjust.contrast}%)`;x.drawImage(src,0,0);x.filter='none';if(l.tint.amount>0){x.globalCompositeOperation='source-atop';x.globalAlpha=l.tint.amount;x.fillStyle=l.tint.color;x.fillRect(0,0,c.width,c.height)}return c}
+async function keepInLibrary(l){try{const r=await api('/v1/lab/library/graphics/upload',{body:{image:artOf(l).toDataURL('image/png'),name:l.name,source:'studio',techniqueId:l.finish?l.finish.id:null}});toast(`"${l.name}" is in the graphics library now.`);LIB=null;if(TAB==='add')paintLib()}catch(x){toast(x.message)}}
+async function makeReal(l){
+  const btn=$('#pLayers [data-act=real]');if(btn)btn.disabled=true;busy(`The AI is making it real ${l.finish.name.toLowerCase()}. About a minute…`);
+  try{compose();const area=areaOf(l),mk=canvas(W,H),mx=mk.getContext('2d');mx.fillStyle='#000';mx.fillRect(0,0,W,H);mx.globalCompositeOperation='destination-out';mx.drawImage(area,0,0);
+    const r=await api(`/v1/lab/concepts/${CID}/studio/ai`,{body:{mode:'real',techniqueId:l.finish.id,image:docC.toDataURL('image/png'),mask:mk.toDataURL('image/png')}});
+    const img=await imgOf(r.image),c=canvas(W,H),x=c.getContext('2d');x.drawImage(img,0,0,W,H);x.globalCompositeOperation='destination-in';x.drawImage(area,0,0);
+    addLayer(fresh('image',{name:`Real · ${l.finish.name} · ${l.name}`.slice(0,60),raster:stamp(c),src:null,dirty:true,x:W/2,y:H/2}),{top:true});D.ai.left=r.left;
+    toast(`Done: the real ${l.finish.name.toLowerCase()} is the top layer. Hide it to compare.`)}catch(x){toast(x.message)}finally{busy();if(btn)btn.disabled=false}}
+// the moving parts of the panel follow a drag without the whole panel being drawn again
+function paintFields(){const l=selected();if(!l)return;for(const[k,v]of[['scale',+l.scale.toFixed(2)],['rotd',Math.round(l.rot*180/Math.PI)],['w',l.w],['h',l.h]]){const i=$(`#pLayers [data-p="${k}"]`);if(i&&document.activeElement!==i){i.value=v;if(i.nextElementSibling)i.nextElementSibling.textContent=v+(k==='scale'?'×':k==='rotd'?'°':'px')}}}
+function setProp(l,p,v){
+  if(p.startsWith('fin.')){if(l.finish)l.finish[p.slice(4)]=Number(v);return}
+  if(p.startsWith('a.'))l.adjust[p.slice(2)]=Number(v);else if(p.startsWith('t.'))l.tint[p.slice(2)]=p==='t.color'?v:Number(v);else if(p.startsWith('d.'))l.distress[p.slice(2)]=p==='d.style'?v:Number(v);
+  else if(p==='rotd')l.rot=Number(v)*Math.PI/180;else if(['name','text','font','blend','color','outlineColor','fillColor','strokeColor'].includes(p))l[p]=v;else if(['fill','stroke'].includes(p))l[p]=Boolean(v);else l[p]=Number(v);
+}
+const pL=$('#pLayers');
+pL.addEventListener('input',e=>{const p=e.target.dataset.p,l=selected();if(!p||!l)return;setProp(l,p,e.target.type==='checkbox'?e.target.checked:e.target.value);if(e.target.type==='range'&&e.target.nextElementSibling)e.target.nextElementSibling.textContent=e.target.value+({opacity:'',scale:'×',rotd:'°','a.hue':'°','a.sat':'%','a.bright':'%','a.contrast':'%',size:'px',w:'px',h:'px',radius:'px',strokeW:'px',outline:'px'}[p]??'');touch();draw()});
+pL.addEventListener('change',e=>{if(e.target.matches('[data-tech]')){const l=selected();if(l){applyTech(l,e.target.value);commit();paintLayers();draw()}return}if(!e.target.dataset.p)return;commit();if(['name','blend','d.amount','text'].includes(e.target.dataset.p)||e.target.tagName==='SELECT'||e.target.type==='checkbox')paintLayers()});
+pL.addEventListener('click',e=>{
+  const row=e.target.closest('[data-ly]');
+  if(row){const l=layerOf(row.dataset.ly);if(e.target.closest('[data-vis]')){l.visible=!l.visible;commit()}else if(e.target.closest('[data-lock]')){l.locked=!l.locked;commit()}else SEL=l.id;paintLayers();draw();return}
+  const l=selected();if(!l)return;const tg=e.target.closest('[data-toggle]'),al=e.target.closest('[data-align]'),ac=e.target.closest('[data-act]');
+  if(tg){l[tg.dataset.toggle]=!l[tg.dataset.toggle];commit();paintLayers();draw();return}
+  if(al){l.align=al.dataset.align;commit();paintLayers();draw();return}
+  if(!ac)return;const a=ac.dataset.act;
+  if(a==='up')moveLayer(l,1);if(a==='down')moveLayer(l,-1);if(a==='dup')duplicate(l);if(a==='del')removeLayer(l);if(a==='raster')rasterize(l);if(a==='real')makeReal(l);if(a==='keep')keepInLibrary(l);if(a==='plain')usePlain(l);
+  if(a==='centre'){l.x=W/2;l.y=H/2;commit();draw()}if(a==='flip'){l.flip=!l.flip;commit();draw()}
+  if(a==='fabric'){l.blend='multiply';l.opacity=Math.min(l.opacity,.94);if(!l.distress.amount){l.distress.style='worn';l.distress.amount=.18}commit();paintLayers();draw()}
+  if(a==='lookreset'){l.adjust={hue:0,sat:100,bright:100,contrast:100};l.tint.amount=0;commit();paintLayers();draw()}
+  if(a==='seed'){l.distress.seed=Math.floor(Math.random()*1e6);if(!l.distress.amount)l.distress.amount=.3;commit();paintLayers();draw()}
+});
+pL.addEventListener('keydown',e=>{const row=e.target.closest('[data-ly]');if(row&&(e.key==='Enter'||e.key===' ')&&e.target===row){e.preventDefault();SEL=row.dataset.ly;paintLayers();draw()}});
+async function usePlain(l){busy('Loading the plain picture…');try{const src=await urlOfBlob(await blobOf(`/v1/lab/concepts/${CID}/studio/plain`)),img=await imgOf(src),r=canvas(W,H);r.getContext('2d').drawImage(img,0,0,W,H);l.raster=stamp(r);l.src=null;l.dirty=true;l.name='Picture (plain)';commit();paintLayers();draw();toast('The base is the picture without the logo and graphics. Add our marks from the Add tab.')}catch(x){toast(x.message)}finally{busy()}}
+
+// ---------- add: marks, graphics, pictures, colours ----------
+function paintAdd(){
+  const p=$('#pAdd');
+  p.innerHTML=`<div class="sec"><h4>Future Basics marks</h4><div class="tiles">${D.marks.map(m=>`<button class="tile" type="button" data-mark="${m.id}"><img alt="" src="data:image/svg+xml;charset=utf-8,${encodeURIComponent(m.svg)}">${esc(m.label)}</button>`).join('')}</div><p class="note">Added in Ink. Click a colour below to recolour the selected mark.</p></div>
+  ${D.graphics.length?`<div class="sec"><h4>This concept's graphics</h4><div class="tiles" id="gfxTiles">${D.graphics.map(g=>`<button class="tile" type="button" data-art="${esc(g.art)}"><img alt="" data-artimg="${esc(g.art)}">${esc(g.name)}</button>`).join('')}</div></div>`:''}
+  <div class="sec"><h4>From the graphics library</h4><input class="t" type="search" id="libQ" placeholder="Search our graphics" aria-label="Search the graphics library"><div class="tiles" id="libTiles"><span class="note">Loading…</span></div><p class="note"><a href="/lab/library" target="_blank" rel="noopener">Open the library</a> to draw new graphics or manage them.</p></div>
+  <div class="sec"><h4>Your own pictures</h4><div class="row"><button class="btn sm" type="button" id="addPic">Add a picture…</button><button class="btn sm q" type="button" id="addPaint">New painting layer</button></div><p class="note">Or drop or paste one onto the stage. A logo, a scan, a texture, a photo of a print.</p></div>
+  <div class="sec"><h4>Type and shapes</h4><div class="row"><button class="btn sm q" type="button" data-addtool="text">Type</button><button class="btn sm q" type="button" data-addtool="rect">Rectangle</button><button class="btn sm q" type="button" data-addtool="ellipse">Ellipse</button><button class="btn sm q" type="button" data-addtool="line">Line</button></div></div>
+  <div class="sec"><h4>Colours</h4>${['brand','program'].map(f=>{const s=D.palette.filter(c=>c.from===f);return s.length?`<span class="note">${f==='brand'?'Future Basics':'This plan\'s graphic program'}</span><div class="sw">${s.map(c=>`<button type="button" data-sw="${esc(c.hex)}" title="${esc(c.name)} ${esc(c.hex)}" aria-label="${esc(c.name)}" style="background:${esc(c.hex)}"></button>`).join('')}</div>`:''}).join('')}
+    <p class="note">A colour becomes the brush colour. With type or a shape selected it colours that; with a picture or mark selected it recolours it.</p></div>`;
+  for(const i of p.querySelectorAll('[data-artimg]'))blobOf('/v1/lab/art/'+i.dataset.artimg+'?thumb=1').then(b=>{i.src=URL.createObjectURL(b)}).catch(()=>{});
+  paintLib();let lt=0;$('#libQ').addEventListener('input',()=>{clearTimeout(lt);lt=setTimeout(()=>{LIB=null;paintLib()},250)});
+}
+let LIB=null;
+async function paintLib(){const box=$('#libTiles');if(!box)return;
+  try{if(!LIB){const q=($('#libQ')?.value||'').trim();LIB=(await api('/v1/lab/library/graphics?limit=24'+(q?'&q='+encodeURIComponent(q):''))).graphics}
+    box.innerHTML=LIB.length?LIB.map(g=>`<button class="tile" type="button" data-lib="${g.id}" title="${esc(g.name)}${g.techniqueName?' · '+esc(g.techniqueName):''}"><img alt="" data-libimg="${g.id}">${esc((g.name||'Untitled').slice(0,28))}</button>`).join(''):'<span class="note">Nothing found.</span>';
+    for(const i of box.querySelectorAll('[data-libimg]'))blobOf('/v1/lab/art/'+i.dataset.libimg+'?thumb=1').then(b=>{i.src=URL.createObjectURL(b)}).catch(()=>{})}catch(x){box.innerHTML=`<span class="note">${esc(x.message)}</span>`}}
+async function markRaster(id,color='#141416'){const m=D.marks.find(x=>x.id===id);const svg=m.svg.replace(/#141416/gi,color);const img=await imgOf('data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg));const k=1600/Math.max(img.naturalWidth||img.width,1),c=canvas((img.naturalWidth||img.width)*k,(img.naturalHeight||img.height)*k);c.getContext('2d').drawImage(img,0,0,c.width,c.height);return stamp(c)}
+async function addPicture(src,name,{fit=.45,origin=null}={}){const img=await imgOf(src),c=canvas(img.naturalWidth,img.naturalHeight);c.getContext('2d').drawImage(img,0,0);const sc=Math.min(W*fit/c.width,H*fit/c.height,1);return addLayer(fresh('image',{name,raster:stamp(c),src:origin,dirty:!origin,_srcRid:c._rid,scale:+sc.toFixed(3),x:W/2,y:H/2}))}
+async function addFiles(files){for(const f of[...files].filter(f=>/^image\//.test(f.type)).slice(0,6)){if(f.size>15e6){toast(f.name+' is over 15 MB.');continue}try{await addPicture(await urlOfBlob(f),f.name.replace(/\.[a-z0-9]+$/i,'').slice(0,40)||'Picture')}catch(x){toast(x.message)}}}
+$('#pAdd').addEventListener('click',async e=>{
+  const mk=e.target.closest('[data-mark]'),ar=e.target.closest('[data-art]'),sw=e.target.closest('[data-sw]'),at=e.target.closest('[data-addtool]');
+  if(mk){const r=await markRaster(mk.dataset.mark);addLayer(fresh('image',{name:D.marks.find(m=>m.id===mk.dataset.mark).label,raster:r,src:'brand:'+mk.dataset.mark,_srcRid:r._rid,scale:+Math.min(W*.22/r.width,1).toFixed(3),x:W/2,y:H*.4}));return}
+  if(ar){busy('Loading the graphic…');try{const src=await urlOfBlob(await blobOf('/v1/lab/art/'+ar.dataset.art));const img=await imgOf(src),c=canvas(img.naturalWidth,img.naturalHeight);c.getContext('2d').drawImage(img,0,0);addLayer(fresh('image',{name:ar.textContent.trim().slice(0,40)||'Graphic',raster:stamp(c),src:'/v1/lab/art/'+ar.dataset.art,_srcRid:c._rid,scale:+Math.min(W*.35/c.width,1).toFixed(3),x:W/2,y:H*.45}))}catch(x){toast(x.message)}finally{busy()}return}
+  const lb=e.target.closest('[data-lib]');
+  if(lb){const g=(LIB||[]).find(x=>x.id===lb.dataset.lib);busy('Loading the graphic…');try{const src=await urlOfBlob(await blobOf('/v1/lab/art/'+lb.dataset.lib));const img=await imgOf(src),c=stamp(canvas(img.naturalWidth,img.naturalHeight));c.getContext('2d').drawImage(img,0,0);
+    const l=addLayer(fresh('image',{name:(g&&g.name||'Graphic').slice(0,40),raster:c,src:'/v1/lab/art/'+lb.dataset.lib,_srcRid:c._rid,scale:+Math.min(W*.35/c.width,1).toFixed(3),x:W/2,y:H*.45}),{silent:true});
+    if(g&&g.techniqueId)applyTech(l,g.techniqueId);commit();paintLayers();draw();tab('layers')}catch(x){toast(x.message)}finally{busy()}return}
+  if(sw){applySwatch(sw.dataset.sw);return}
+  if(at){setTool(at.dataset.addtool);toast(at.dataset.addtool==='text'?'Click the picture where the type should go.':'Drag on the picture to draw it.');return}
+  if(e.target.id==='addPic')$('#fileIn').click();
+  if(e.target.id==='addPaint')addLayer(fresh('paint',{name:'Painting',raster:stamp(canvas(W,H))}));
+});
+function applySwatch(hex){setColor(hex);const l=selected();if(!l||l.locked)return;
+  if(l.kind==='text')l.color=hex;else if(l.kind==='shape'){if(l.fill||l.shape==='line')l.fillColor=hex;if(l.stroke)l.strokeColor=hex}else if(l.kind!=='base'){l.tint={color:hex,amount:1}}else return;commit();paintLayers();draw()}
+$('#fileIn').addEventListener('change',e=>{addFiles(e.target.files);e.target.value=''});
+const stage=$('#stage');let dragN=0;
+stage.addEventListener('dragenter',e=>{if([...e.dataTransfer.types].includes('Files')){dragN++;$('#drop').classList.remove('hidden')}});
+stage.addEventListener('dragleave',()=>{if(--dragN<=0){dragN=0;$('#drop').classList.add('hidden')}});
+stage.addEventListener('dragover',e=>e.preventDefault());
+stage.addEventListener('drop',e=>{e.preventDefault();dragN=0;$('#drop').classList.add('hidden');addFiles(e.dataTransfer.files)});
+document.addEventListener('paste',e=>{if(e.target.closest&&e.target.closest('input,textarea'))return;const f=[...(e.clipboardData?.files||[])];if(f.length){e.preventDefault();addFiles(f)}});
+
+// ---------- AI: change the piece (all of it, or the painted area), or make a graphic ----------
+function paintAi(){
+  const p=$('#pAi'),ai=D.ai;
+  p.innerHTML=`<div class="sec"><h4>Change the piece</h4><textarea class="t" id="aiEdit" maxlength="800" placeholder="Make the body a washed olive. Add a raw hem. Give the sleeves a faded sun-bleached look."></textarea>
+    <div class="row"><button class="btn sm ${MASKED?'':'q'}" type="button" data-aiscope="area" aria-pressed="${MASKED}">Only the painted area</button><button class="btn sm q" type="button" data-paintarea>Paint the area</button><button class="btn sm q" type="button" data-clearmask ${MASKED?'':'disabled'}>Clear it</button></div>
+    <p class="note" id="aiScope"></p><div class="row"><button class="btn go sm" type="button" id="aiGo" ${ai.connected?'':'disabled'}>Change it</button></div>
+    <p class="note">The AI looks at everything visible and comes back as a new layer on top, so nothing you made is lost: hide it, lower its opacity, or rub parts of it out. With an area painted, only that area changes.</p></div>
+  <div class="sec"><h4>Make a graphic</h4><textarea class="t" id="aiArt" maxlength="800" placeholder="A cracked two-colour arch of the words FUTURE BASICS over a lightning bolt, 1970s rock tour style, ink and cream"></textarea>
+    <label class="f w"><span>Made as</span><select class="t" id="aiTech">${techOpts('')}</select></label>
+    <div class="row"><button class="btn go sm" type="button" id="artGo" ${ai.connected?'':'disabled'}>Make it</button></div><p class="note">Drawn on a clear background, as a layer to place, recolour and distress, and kept in the graphics library for other pieces. With a technique chosen, it is designed for it and shown made that way. Describe the look in your own words: other brands' names are refused.</p></div>
+  <p class="msg" id="aiMsg" role="status">${ai.connected?(ai.left==null?'':`${ai.left} AI ${ai.left===1?'change':'changes'} left today.`):'No image model is connected, so the AI tools are off. Everything else works.'}</p>`;
+  paintAiState();
+}
+function paintAiState(){const s=$('#aiScope');if(s)s.textContent=MASKED?'Only the painted (red) area will change.':'Nothing is painted: the whole piece can change. Paint an area to keep the rest exactly as it is.';const b=$('#pAi [data-clearmask]');if(b)b.disabled=!MASKED;const a=$('#pAi [data-aiscope]');if(a){a.className='btn sm '+(MASKED?'':'q');a.setAttribute('aria-pressed',String(MASKED))}}
+function maskPng(){const c=canvas(W,H),x=c.getContext('2d');x.fillStyle='#000';x.fillRect(0,0,W,H);x.globalCompositeOperation='destination-out';x.drawImage(mask,0,0);return c.toDataURL('image/png')}
+$('#pAi').addEventListener('click',async e=>{
+  if(e.target.closest('[data-paintarea]')||e.target.closest('[data-aiscope]')){setTool('area');toast('Paint over what should change. Hold Alt to rub out.');return}
+  if(e.target.closest('[data-clearmask]')){clearMask();return}
+  const m=$('#aiMsg');
+  if(e.target.id==='aiGo'){const prompt=$('#aiEdit').value.trim();if(prompt.length<3){m.className='msg bad';m.textContent='Say what to change.';return}
+    busy(MASKED?'The AI is changing the painted area. About a minute…':'The AI is changing the piece. About a minute…');e.target.disabled=true;
+    try{compose();const r=await api(`/v1/lab/concepts/${CID}/studio/ai`,{body:{mode:'edit',prompt,image:docC.toDataURL('image/png'),mask:MASKED?maskPng():null}});
+      const img=await imgOf(r.image),c=canvas(W,H),x=c.getContext('2d');x.drawImage(img,0,0,W,H);
+      // only the painted area is kept from the answer (softened at its edge), so the rest stays exactly as it was
+      if(MASKED){x.globalCompositeOperation='destination-in';x.filter='blur(3px)';x.drawImage(mask,0,0);x.filter='none'}
+      addLayer(fresh('image',{name:'AI · '+prompt.slice(0,40),raster:stamp(c),src:null,dirty:true,x:W/2,y:H/2}),{top:true});D.ai.left=r.left;m.className='msg ok';m.textContent=`Done: it is the top layer.${r.left==null?'':` ${r.left} left today.`}`;if(MASKED)clearMask()}
+    catch(x){m.className='msg bad';m.textContent=x.message}finally{busy();e.target.disabled=false}return}
+  if(e.target.id==='artGo'){const prompt=$('#aiArt').value.trim();if(prompt.length<3){m.className='msg bad';m.textContent='Say what the graphic should be.';return}
+    busy('Drawing the graphic. About a minute…');e.target.disabled=true;
+    try{const tid=$('#aiTech').value||null,r=await api(`/v1/lab/concepts/${CID}/studio/ai`,{body:{mode:'art',prompt,techniqueId:tid}});const l=await addPicture(r.image,'Graphic · '+prompt.slice(0,32),{fit:.4,origin:r.art?'/v1/lab/art/'+r.art:null});if(tid){applyTech(l,tid);commit();paintLayers();draw()}D.ai.left=r.left;LIB=null;m.className='msg ok';m.textContent=`Done: the graphic is a new layer, and it is in the graphics library. Move it into place.${r.left==null?'':` ${r.left} left today.`}`}
+    catch(x){m.className='msg bad';m.textContent=x.message}finally{busy();e.target.disabled=false}}
+});
+
+// ---------- saving, using, exporting ----------
+function serialize(){return{w:W,h:H,selected:SEL,layers:LAYERS.map(l=>{const o={};for(const[k,v]of Object.entries(l))if(!k.startsWith('_')&&k!=='raster'&&k!=='dirty')o[k]=v;
+  if(isRaster(l)&&(l.dirty||!l.src||l.kind==='paint'||l.raster._rid!==l._srcRid))o.src=l.raster.toDataURL('image/png');return o})}}
+async function save(){const b=$('#save');b.disabled=true;$('#saved').textContent='Saving…';
+  try{const doc=serialize();const r=await api(`/v1/lab/concepts/${CID}/studio`,{method:'PUT',body:{doc}});
+    // what was sent is now what the layers come from
+    for(const l of LAYERS){const s=doc.layers.find(x=>x.id===l.id);if(s&&isRaster(l)){l.src=s.src;l.dirty=false;l._srcRid=l.raster._rid}}
+    DIRTY=false;SAVED_AT=r.savedAt;showSaved();return true}
+  catch(x){$('#saved').className='saved dirty';$('#saved').textContent=x.message;return false}finally{b.disabled=false}}
+$('#save').onclick=save;
+function download(url,name){const a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove()}
+const fileBase=()=>String(D.concept.name||'concept').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,50)||'concept';
+const xa=v=>esc(String(v));
+// one group per layer; plain type and shapes stay live vectors, the rest is placed as its picture
+function svgDoc(){
+  const parts=LAYERS.filter(l=>l.visible).map(l=>{
+    const c=processed(l),tr=`translate(${+l.x.toFixed(2)} ${+l.y.toFixed(2)}) rotate(${+(l.rot*180/Math.PI).toFixed(3)}) scale(${+(l.scale*(l.flip?-1:1)).toFixed(4)} ${+l.scale.toFixed(4)})`;
+    const style=`opacity:${l.opacity}${l.blend!=='source-over'?';mix-blend-mode:'+l.blend:''}`,live=plainLook(l)&&!l.distress.amount&&!l.finish&&(l.tint.amount===0||l.tint.amount===1);
+    let inner='';
+    if(l.kind==='text'&&live&&!l.arc){const{font,lines,lw}=textMetrics(l),fill=l.tint.amount===1?l.tint.color:l.color,lh=l.size*l.lead,pad=Math.ceil(l.size*.35+(l.outline||0)*2+4),w=c.width,h=c.height;
+      inner=lines.map((t,i)=>{const x0=l.align==='left'?pad:l.align==='right'?w-pad-lw[i]:(w-lw[i])/2;return `<text x="${(x0-w/2).toFixed(1)}" y="${(pad+lh*i+lh/2-h/2).toFixed(1)}" dominant-baseline="middle" font-family="${xa(FONTS[l.font][0])}" font-size="${l.size}" font-weight="${l.bold?700:400}"${l.italic?' font-style="italic"':''} letter-spacing="${l.track}" fill="${xa(fill)}"${l.outline?` stroke="${xa(l.outlineColor)}" stroke-width="${l.outline*2}" paint-order="stroke" stroke-linejoin="round"`:''} xml:space="preserve">${esc(t)}</text>`}).join('')}
+    else if(l.kind==='shape'&&live){const fill=l.tint.amount===1?l.tint.color:l.fillColor,sk=l.tint.amount===1?l.tint.color:l.strokeColor;
+      inner=l.shape==='line'?`<line x1="${-l.w/2}" y1="0" x2="${l.w/2}" y2="0" stroke="${xa(l.stroke?sk:fill)}" stroke-width="${Math.max(l.strokeW,1)}" stroke-linecap="round"/>`:
+        l.shape==='ellipse'?`<ellipse cx="0" cy="0" rx="${l.w/2}" ry="${l.h/2}" fill="${l.fill?xa(fill):'none'}"${l.stroke?` stroke="${xa(sk)}" stroke-width="${l.strokeW}"`:''}/>`:
+        `<rect x="${-l.w/2}" y="${-l.h/2}" width="${l.w}" height="${l.h}" rx="${Math.min(l.radius||0,l.w/2,l.h/2)}" fill="${l.fill?xa(fill):'none'}"${l.stroke?` stroke="${xa(sk)}" stroke-width="${l.strokeW}"`:''}/>`}
+    else inner=`<image x="${-c.width/2}" y="${-c.height/2}" width="${c.width}" height="${c.height}" href="${c.toDataURL('image/png')}"/>`;
+    return `<g id="${xa(l.name.replace(/[^A-Za-z0-9_-]+/g,'_')+'_'+l.id)}" data-name="${xa(l.name)}" transform="${tr}" style="${style}">${inner}</g>`});
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">\n<title>${esc(D.concept.name)} · Future Basics Design Lab</title>\n${parts.join('\n')}\n</svg>`;
+}
+$('#expBtn').onclick=e=>{e.stopPropagation();const p=$('#expPop'),open=p.classList.toggle('hidden');$('#expBtn').setAttribute('aria-expanded',String(!open))};
+document.addEventListener('click',e=>{if(!e.target.closest('.menu')){$('#expPop').classList.add('hidden');$('#expBtn').setAttribute('aria-expanded','false')}});
+$('#expPop').addEventListener('click',e=>{const b=e.target.closest('[data-exp]');if(!b)return;$('#expPop').classList.add('hidden');const k=b.dataset.exp;compose();
+  if(k==='png')download(docC.toDataURL('image/png'),fileBase()+'.png');
+  if(k==='svg'){const url=URL.createObjectURL(new Blob([svgDoc()],{type:'image/svg+xml'}));download(url,fileBase()+'-layers.svg');setTimeout(()=>URL.revokeObjectURL(url),4000)}
+  if(k==='layer'){const l=selected();if(!l){toast('Choose a layer first.');return}const c=processed(l),o=canvas(c.width*l.scale,c.height*l.scale);o.getContext('2d').drawImage(c,0,0,o.width,o.height);download(o.toDataURL('image/png'),fileBase()+'-'+l.name.toLowerCase().replace(/[^a-z0-9]+/g,'-').slice(0,30)+'.png')}});
+function ask(title,text,yes='Yes'){return new Promise(ok=>{const d=$('#askDlg');$('#askTitle').textContent=title;$('#askText').textContent=text;$('#askYes').textContent=yes;d.returnValue='';d.onclose=()=>ok(d.returnValue==='yes');d.showModal()})}
+$('#apply').onclick=async()=>{
+  if(D.concept.locked)return;
+  const ok=await ask('Use this as the concept picture?',`Everything visible becomes the picture of "${D.concept.name}". Its flats, on-model views and walk will be drawn again from it.${D.concept.status==='approved'?' It is approved, so it goes back to draft to be approved again.':''} The picture it has now is kept and can be put back.`,'Use it');if(!ok)return;
+  busy('Saving and using it…');try{await save();compose();const r=await api(`/v1/lab/concepts/${CID}/studio/apply`,{body:{image:docC.toDataURL('image/png')}});D.concept.status=r.status;D.canRestore=true;paintSub();toast('It is the concept picture now.',`/lab#board`)}catch(x){toast(x.message)}finally{busy()}};
+
+// ---------- small things ----------
+function busy(text){const b=$('#busy');if(!text){b.classList.add('hidden');return}$('#busyText').textContent=text;b.classList.remove('hidden')}
+let TT=0;function toast(text,href){if(!text)return;let el=$('#stToast');if(!el){el=document.createElement('div');el.id='stToast';el.setAttribute('role','status');el.style.cssText='position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:#141416;color:#fff;border-radius:14px;padding:10px 16px;font-size:13px;z-index:60;max-width:min(92vw,560px)';document.body.appendChild(el)}el.innerHTML=esc(text)+(href?` <a href="${esc(href)}" style="color:#4bff9a">Open the concepts</a>`:'');el.hidden=false;clearTimeout(TT);TT=setTimeout(()=>{el.hidden=true},6500)}
+function paintSub(){const c=D.concept,st={draft:'Draft',approved:'Approved',rejected:'Rejected',tech_pack:'Tech pack'}[c.status]||c.status;$('#cName').textContent=c.name;$('#cSub').innerHTML=`${esc(st)} · ${W}×${H}px${D.canRestore?' · <button class="btn sm q" type="button" id="restore" style="min-height:22px;padding:0 8px">Put the old picture back</button>':''}`;const r=$('#restore');if(r)r.onclick=async()=>{if(!await ask('Put the old picture back?','The concept gets the picture it had before the studio. Your design here stays as it is.','Put it back'))return;try{await api(`/v1/lab/concepts/${CID}/studio/restore`,{body:{}});D.canRestore=false;paintSub();toast('The old picture is back on the concept.')}catch(x){toast(x.message)}}}
+document.addEventListener('keydown',e=>{
+  if(!D)return;const typing=e.target.closest&&e.target.closest('input,textarea,select,[contenteditable]'),mod=e.ctrlKey||e.metaKey;
+  if(mod&&e.key.toLowerCase()==='s'){e.preventDefault();save();return}
+  if(typing)return;
+  if(mod&&e.key.toLowerCase()==='z'){e.preventDefault();e.shiftKey?redo():undo();return}if(mod&&e.key.toLowerCase()==='y'){e.preventDefault();redo();return}
+  if(mod&&e.key.toLowerCase()==='d'){e.preventDefault();const l=selected();if(l)duplicate(l);return}
+  if(e.key===' '&&!SPACE){SPACE=true;view.style.cursor='grab';e.preventDefault();return}
+  const l=selected();
+  if((e.key==='Delete'||e.key==='Backspace')&&l&&!l.locked){e.preventDefault();removeLayer(l);return}
+  if(l&&!fixed(l)&&!l.locked&&e.key.startsWith('Arrow')){e.preventDefault();const s=e.shiftKey?10:1;if(e.key==='ArrowLeft')l.x-=s;if(e.key==='ArrowRight')l.x+=s;if(e.key==='ArrowUp')l.y-=s;if(e.key==='ArrowDown')l.y+=s;draw();clearTimeout(l._nt);l._nt=setTimeout(commit,400);return}
+  if(e.key==='['){OPT.size=Math.max(1,Math.round(OPT.size*.8));OPT.dsize=Math.max(4,Math.round(OPT.dsize*.8));OPT.area=Math.max(4,Math.round(OPT.area*.8));paintOpts();draw();return}
+  if(e.key===']'){OPT.size=Math.min(400,Math.round(OPT.size*1.25));OPT.dsize=Math.min(600,Math.round(OPT.dsize*1.25));OPT.area=Math.min(600,Math.round(OPT.area*1.25));paintOpts();draw();return}
+  if(e.key==='0'){fit();return}if(e.key==='+'||e.key==='='){const r=view.getBoundingClientRect();zoomAt(1.25,r.width/2,r.height/2);return}if(e.key==='-'){const r=view.getBoundingClientRect();zoomAt(.8,r.width/2,r.height/2);return}
+  const t={v:'select',h:'hand',b:'brush',e:'eraser',d:'distress',t:'text',r:'rect',o:'ellipse',l:'line',i:'pick',m:'area'}[e.key.toLowerCase()];if(t&&!mod&&!e.altKey)setTool(t);
+});
+document.addEventListener('keyup',e=>{if(e.key===' '){SPACE=false;setTool(TOOL)}});
+window.addEventListener('beforeunload',e=>{if(DIRTY){e.preventDefault();e.returnValue=''}});
+$('#undo').onclick=undo;$('#redo').onclick=redo;
+
+// ---------- opening the design: the saved layers, or the concept's picture as the base ----------
+async function loadLayer(o){
+  const l={...fresh(o.kind),...o,adjust:{...fresh(o.kind).adjust,...(o.adjust||{})},tint:{...fresh(o.kind).tint,...(o.tint||{})},distress:{...fresh(o.kind).distress,...(o.distress||{})},finish:o.finish&&o.finish.id?{...o.finish,distress:{...(o.finish.distress||{})}}:null};
+  if(isRaster(l)){let src=l.src||'';
+    if(/^brand:/.test(src)){l.raster=await markRaster(src.slice(6))}
+    else{if(src.startsWith('/v1/lab/art/'))src=await urlOfBlob(await blobOf(src));const img=await imgOf(src),c=canvas(img.naturalWidth,img.naturalHeight);c.getContext('2d').drawImage(img,0,0);l.raster=stamp(c)}
+    l._srcRid=l.raster._rid}
+  return l;
+}
+async function boot(){
+  if(!TOKEN()){$('#needSignin').classList.remove('hidden');return}
+  if(!/^[0-9a-f-]{36}$/i.test(CID)){$('#needSignin').classList.remove('hidden');$('#needSignin h1').textContent='Open a concept first';$('#needSignin p').textContent='The studio opens from a concept in the Design Lab: open one and press Open in the studio.';$('#needSignin a').href='/lab#board';$('#needSignin a').textContent='Open the concepts';return}
+  try{D=await api(`/v1/lab/concepts/${CID}/studio`)}catch(x){const n=$('#needSignin');n.classList.remove('hidden');const no=/access to Design Lab|not turned on|Only Danielle/i.test(x.message);n.querySelector('h1').textContent=x.status===404?'That concept is not there any more':no?'The Design Lab is not turned on for you':'Sign in to the work console first';n.querySelector('p').textContent=x.status===404?'It may have been deleted.':x.message;return}
+  $('#app').classList.remove('hidden');$('#back').href='/lab#board';
+  if(D.concept.locked){$('#apply').disabled=true;$('#apply').title='This concept is already a tech pack'}
+  busy('Opening the design…');
+  try{
+    if(D.doc&&Array.isArray(D.doc.layers)&&D.doc.layers.length){W=D.doc.w;H=D.doc.h;LAYERS=[];for(const o of D.doc.layers){try{LAYERS.push(await loadLayer(o))}catch{toast('A layer could not be loaded and was left out.')}}SEL=D.doc.selected&&LAYERS.some(l=>l.id===D.doc.selected)?D.doc.selected:null;SAVED_AT=D.savedAt}
+    else if(D.concept.hasImage){const src=await urlOfBlob(await blobOf(`/v1/lab/concepts/${CID}/image`)),img=await imgOf(src);W=img.naturalWidth;H=img.naturalHeight;const c=canvas(W,H);c.getContext('2d').drawImage(img,0,0);
+      LAYERS=[{...fresh('base',{name:'Picture',raster:stamp(c),src,x:W/2,y:H/2})}];LAYERS[0]._srcRid=LAYERS[0].raster._rid}
+    else{W=1024;H=1024;const c=canvas(W,H),x=c.getContext('2d');x.fillStyle='#e9e9e6';x.fillRect(0,0,W,H);LAYERS=[{...fresh('base',{name:'Blank',raster:stamp(c),x:W/2,y:H/2,dirty:true})}]}
+  }catch(x){toast(x.message)}finally{busy()}
+  docC.width=W;docC.height=H;mask=canvas(W,H);maskX=mask.getContext('2d');
+  setColor(CUR);paintSub();paintAdd();tab('layers');setTool('select');HIST=[snap()];HI=0;syncUndo();DIRTY=false;showSaved();paintLayers();requestAnimationFrame(fit);
+  setInterval(()=>{if(DIRTY&&!DRAG)save()},90000); // a quiet save every minute and a half while there are changes
+}
+boot();
+</script>
+</body>
+</html>

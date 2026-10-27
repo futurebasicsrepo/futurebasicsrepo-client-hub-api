@@ -20,10 +20,12 @@ export function createArtService(pool, { env = process.env, imageCfg = () => ima
   const enqueue = job => { queue.push(job); setImmediate(pump); };
   const idle = () => (working || queue.length ? new Promise(r => waiters.push(r)) : Promise.resolve());
   // → the id of the stored artwork. Throws when it cannot be drawn.
-  async function drawAndStore(g, { program = null, planId = null, conceptId = null, technique = '' } = {}) {
+  async function drawAndStore(g, { program = null, planId = null, conceptId = null, technique = '', source = null, tags = [], techniqueId = null, createdBy = null } = {}) {
     const left = await capLeft(1); if (left !== true) throw new Error(`The daily limit of ${left} artworks is reached. Raise LAB_DAILY_ART.`);
     const a = await drawArt(g, { program, technique, cfg: imageCfg(), ...(draw ? { draw } : {}) });
-    return (await pool.query(`insert into lab_art(plan_id,concept_id,name,png,thumb,prompt,model) values($1,$2,$3,$4,$5,$6,$7) returning id`, [planId, conceptId, clip(g.name, 120), a.png, a.thumb, a.prompt, a.model || ''])).rows[0].id;
+    // every artwork goes into the graphics library, so it can be used again on any piece later
+    return (await pool.query(`insert into lab_art(plan_id,concept_id,name,png,thumb,prompt,model,source,tags,technique_id,created_by) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) returning id`,
+      [planId, conceptId, clip(g.name, 120), a.png, a.thumb, a.prompt, a.model || '', source || (conceptId ? 'concept' : 'plan'), tags, techniqueId, createdBy])).rows[0].id;
   }
   // the motif's state is written into the plan's program one at a time (read, change one motif, write)
   const setMotif = async (planId, mid, patch) => {

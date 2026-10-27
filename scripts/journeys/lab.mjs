@@ -3,7 +3,8 @@
 // site says no, keeps no duplicates, obeys robots.txt, and the library, brand code and watchlist behave.
 import http from 'node:http';
 import { createRequire } from 'node:module';
-import { journey, ok, summary, api, jpeg, sql, stamp, forge, FX } from './lib.mjs';
+import { readFileSync } from 'node:fs';
+import { journey, ok, summary, api, jpeg, png, sql, stamp, forge, FX, sharp } from './lib.mjs';
 let playwright = null; try { playwright = createRequire(import.meta.url)(process.env.PLAYWRIGHT_PATH || 'playwright'); } catch {}
 const BASE = 'http://127.0.0.1:3123', call = api(BASE);
 const room = (await call('/v1/public/start', { body: { email: `jt-${stamp}-${Math.random().toString(36).slice(2, 7)}@chaos.test`, name: 'Lab Admin', title: 'Lab runner', photos: [jpeg()] } })).json;
@@ -632,6 +633,265 @@ await journey('J209', 'Design Lab library from photos and screenshots: a picture
     ok(await page.locator('#items .card .br', { hasText: 'Shop Window' }).count() >= 1, 'the pieces show in the library with their pictures');
     ok(errs.length === 0, 'no page errors', errs); await oc.close();
   } finally { await b.close(); }
+});
+
+await journey('J210', 'Design Lab studio: a concept opens as layers, the design is saved and reopened, AI changes only the painted area, a graphic is made on a clear background, the finished design becomes the concept picture, and the old one can be put back', async () => {
+  const { brands, plan } = await conceptSetup(); const tops = plan.lines.find(l => l.category === 'tops') || plan.lines[0];
+  try {
+    const c = (await K(`/plans/${plan.plan.id}/lines/${tops.id}/concepts`, { body: { count: 1 } })).json.concepts[0];
+    const S = (path = '', o = {}) => K(`/concepts/${c.id}/studio${path}`, o);
+    ok((await call(`/v1/lab/concepts/${c.id}/studio`)).status === 401 && (await P(`/concepts/${c.id}/studio`)).status === 403 && (await K('/concepts/00000000-0000-4000-8000-000000000000/studio')).status === 404, 'closed like the rest of the Lab, and an unknown concept is not found');
+    const open = await S(); ok(open.status === 200 && open.json.doc === null && open.json.concept.hasImage && open.json.marks.length === 3 && open.json.marks.every(m => /<svg/.test(m.svg)) && open.json.palette.some(p => p.hex.toUpperCase() === '#4BFF9A') && open.json.ai.connected, 'the studio opens with the marks, the brand colours and the AI ready, and nothing saved yet', open.json.error || open.json.ai);
+    ok(open.json.concept.hasPlain === true && (await fetch(`${BASE}/v1/lab/concepts/${c.id}/studio/plain`, { headers: { Authorization: 'Bearer ' + kyleT } })).status === 200, 'the picture without the marks can be used as the base');
+
+    // saving: what is sent is kept, inside limits
+    const pic = await png(64, 64, [200, 30, 30]), doc = { w: 512, h: 512, selected: 'a1', layers: [{ id: 'a1', kind: 'base', name: 'Picture', src: pic }, { id: 'a2', kind: 'text', name: 'Type', text: 'FUTURE BASICS', font: 'grotesk', size: 40 }, { id: 'a3', kind: 'image', name: 'Mark', src: 'brand:mark' }] };
+    const saved = await S('', { method: 'PUT', body: { doc } }); ok(saved.status === 200 && saved.json.savedAt, 'a design is saved', saved.json);
+    const back = (await S()).json; ok(back.doc.layers.length === 3 && back.doc.layers[1].text === 'FUTURE BASICS' && back.savedBy, 'and comes back as it was, with who saved it', back.doc?.layers?.length);
+    const bad = async (d, re, msg) => { const r = await S('', { method: 'PUT', body: { doc: d } }); ok(r.status === 422 && re.test(r.json.error), msg, [r.status, r.json.error]); };
+    await bad({ ...doc, layers: [{ id: 'x', kind: 'image', src: 'https://evil.test/p.png' }] }, /outside the design/, 'a layer pointing at an outside address is refused');
+    await bad({ ...doc, layers: [{ id: 'x', kind: 'script' }] }, /unknown kind/, 'an unknown kind of layer is refused');
+    await bad({ ...doc, w: 9 }, /no size/, 'a design with no real size is refused');
+    await bad({ ...doc, layers: Array.from({ length: 81 }, (_, i) => ({ id: 'l' + i, kind: 'text', text: 'x' })) }, /up to 80 layers/, 'too many layers are refused');
+
+    // AI: the painted area changes, the rest stays exactly
+    const base = await png(256, 256, [120, 120, 120]);
+    const raw = Buffer.alloc(256 * 256 * 4); for (let y = 0; y < 256; y++) for (let x = 128; x < 256; x++) raw[(y * 256 + x) * 4 + 3] = 255; // the left half is clear: that is what may change
+    const maskBuf = await sharp(raw, { raw: { width: 256, height: 256, channels: 4 } }).png().toBuffer();
+    const edit = await S('/ai', { body: { mode: 'edit', prompt: 'make the left half olive', image: base, mask: `data:image/png;base64,${maskBuf.toString('base64')}` } });
+    ok(edit.status === 200 && /^data:image\/png;base64,/.test(edit.json.image), 'an AI change comes back as a picture', edit.json.error);
+    if (edit.status === 200) {
+      const out = await sharp(Buffer.from(edit.json.image.split(',')[1], 'base64')).raw().toBuffer({ resolveWithObject: true }), px = (x, y) => { const i = (y * out.info.width + x) * out.info.channels; return [out.data[i], out.data[i + 1], out.data[i + 2]]; };
+      ok(out.info.width === 256 && out.info.height === 256, 'at the size of the picture sent, so it lands exactly over it', out.info);
+      ok(px(200, 128).join() === '120,120,120', 'outside the painted area nothing changes', px(200, 128));
+    }
+    const whole = await S('/ai', { body: { mode: 'edit', prompt: 'washed olive body', image: base } }); ok(whole.status === 200, 'with nothing painted, the whole piece can change', whole.json.error);
+    const art = await S('/ai', { body: { mode: 'art', prompt: 'an arch of the words FUTURE BASICS over a lightning bolt' } });
+    ok(art.status === 200 && (await sharp(Buffer.from(art.json.image.split(',')[1], 'base64')).metadata()).hasAlpha, 'a graphic is made on a clear background', art.json.error);
+    const brand = await S('/ai', { body: { mode: 'art', prompt: 'a Gucci style monogram' } }); ok(brand.status === 422 && /Leave other brands out/.test(brand.json.error), 'a prompt naming another brand is refused', brand.json);
+    ok((await S('/ai', { body: { mode: 'edit', prompt: 'x', image: base } })).status === 422 && (await S('/ai', { body: { mode: 'edit', prompt: 'make it red' } })).status === 422, 'an empty ask, or no picture, is refused');
+
+    // using it: the concept picture changes, the old one is kept, the views are drawn again
+    sql(`update lab_concepts set status='approved' where id='${c.id}'`);
+    const before = sql(`select md5(image) from lab_concepts where id='${c.id}'`);
+    const used = await S('/apply', { body: { image: await png(300, 400, [10, 120, 60]) } });
+    ok(used.status === 200 && used.json.status === 'draft', 'the finished design becomes the concept picture, and an approved concept goes back to draft', used.json);
+    ok(sql(`select md5(image) from lab_concepts where id='${c.id}'`) !== before && sql(`select md5(original) from lab_studio_docs where concept_id='${c.id}'`) === before, 'the picture changed, and the one before is kept');
+    ok(sql(`select (raw is null)::text from lab_concepts where id='${c.id}'`) === 'true' && /finished in the studio/.test((await K(`/concepts/${c.id}/replace-marks`, { body: {} })).json.error || ''), 'the marks are part of the picture now, and placing them again says to move them in the studio');
+    ok(/Picture finished in the studio/.test(sql(`select string_agg(body,' | ') from lab_concept_comments where concept_id='${c.id}'`)), 'the concept says it was finished in the studio');
+    await S('/apply', { body: { image: await png(300, 400, [200, 200, 10]) } });
+    ok(sql(`select md5(original) from lab_studio_docs where concept_id='${c.id}'`) === before, 'using it again keeps the very first picture, not the one in between');
+    const rest = await S('/restore', { body: {} }); ok(rest.status === 200 && sql(`select md5(image) from lab_concepts where id='${c.id}'`) === before, 'the old picture can be put back', rest.json);
+    ok((await S('/restore', { body: {} })).status === 409, 'and once it is back there is nothing more to put back');
+    sql(`update lab_concepts set status='tech_pack' where id='${c.id}'`);
+    ok((await S('', { method: 'PUT', body: { doc } })).status === 409 && (await S('/apply', { body: { image: pic } })).status === 409, 'a concept that is a tech pack is not changed from the studio');
+    sql(`update lab_concepts set status='draft' where id='${c.id}'`);
+  } finally { await cleanup(brands, plan.plan?.id); }
+});
+
+await journey('J211', 'Design Lab studio in a browser: open it from a concept, add type, a mark and a painting, distress and recolour, paint an area and let the AI change it, save, reopen, export for Illustrator, and use it as the concept picture', async () => {
+  if (!playwright) { ok(true, 'skipped: no browser here'); return; }
+  const { brands, plan } = await conceptSetup(); const tops = plan.lines.find(l => l.category === 'tops') || plan.lines[0];
+  const b = await playwright.chromium.launch(), errs = [];
+  try {
+    const c = (await K(`/plans/${plan.plan.id}/lines/${tops.id}/concepts`, { body: { count: 1 } })).json.concepts[0];
+    const oc = await b.newContext({ viewport: { width: 1440, height: 900 }, acceptDownloads: true }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
+    const page = await oc.newPage(); page.on('pageerror', e => errs.push(String(e)));
+    await page.goto(`${BASE}/lab#board`, { waitUntil: 'networkidle' }); await page.waitForSelector(`#cgrid .cc[data-cid="${c.id}"]`, { timeout: 15000 });
+    await page.click(`#cgrid .cc[data-cid="${c.id}"]`); await page.waitForSelector('#cd[open] [data-cstudio]');
+    await Promise.all([page.waitForURL(/\/lab\/studio\?concept=/), page.click('#cd [data-cstudio]')]);
+    await page.waitForSelector('#pLayers .ly', { timeout: 15000 }); await page.waitForFunction(() => !document.querySelector('#busy:not(.hidden)'));
+    ok(await page.locator('#pLayers .ly').count() === 1 && /Picture/.test(await page.innerText('#pLayers .ly')), 'the concept opens in the studio with its picture as the base layer');
+    const box = await page.locator('#view').boundingBox(), cx = box.x + box.width / 2, cy = box.y + box.height / 2;
+    const layers = () => page.locator('#pLayers .ly').count();
+
+    // type, straight onto the piece
+    await page.keyboard.press('t'); await page.mouse.click(cx, cy - 60);
+    await page.waitForSelector('#pLayers textarea[data-p=text]'); await page.fill('#pLayers textarea[data-p=text]', 'BASICS DEPT.'); await page.locator('#pLayers textarea[data-p=text]').blur();
+    await page.locator('#pLayers [data-p=arc]').fill('40'); await page.locator('#pLayers [data-p=arc]').dispatchEvent('change');
+    ok(await layers() === 2 && /BASICS DEPT/.test(await page.evaluate(() => JSON.stringify(serialize().layers.map(l => l.text || '')))), 'type is added where it was clicked, its words changed, and arched');
+    // our mark, recoloured with a brand colour, sitting in the fabric
+    await page.click('.tabs [data-tab=add]'); await page.click('#pAdd [data-mark=word]'); await page.waitForFunction(n => document.querySelectorAll('#pLayers .ly').length === n, 3);
+    await page.click('#pAdd [data-sw="#4BFF9A"], #pAdd [data-sw="#4bff9a"]');
+    await page.click('.tabs [data-tab=layers]'); await page.click('#pLayers [data-act=fabric]');
+    const mark = await page.evaluate(() => { const l = selected(); return { name: l.name, src: l.src, tint: l.tint, blend: l.blend, d: l.distress.amount }; });
+    ok(mark.src === 'brand:word' && mark.tint.amount === 1 && /4bff9a/i.test(mark.tint.color) && mark.blend === 'multiply' && mark.d > 0, 'the wordmark is added, recoloured in Cue, and sat in the fabric (multiply, a little worn)', mark);
+    // distress by amount
+    await page.locator('#pLayers [data-p="d.amount"]').fill('0.6'); await page.locator('#pLayers [data-p="d.amount"]').dispatchEvent('change');
+    ok(await page.evaluate(() => selected().distress.amount) === 0.6, 'distressing is turned up on the mark');
+    // a painting by hand
+    await page.keyboard.press('b'); await page.mouse.move(cx - 120, cy + 80); await page.mouse.down(); await page.mouse.move(cx, cy + 120, { steps: 6 }); await page.mouse.move(cx + 120, cy + 80, { steps: 6 }); await page.mouse.up();
+    ok(await layers() === 4 && await page.evaluate(() => selected().kind) === 'paint', 'the brush starts a new painting layer and paints on it');
+    await page.keyboard.press('Control+z'); ok(await page.evaluate(() => LAYERS.length) === 3, 'undo takes the stroke back'); await page.keyboard.press('Control+Shift+z'); ok(await page.evaluate(() => LAYERS.length) === 4, 'and redo brings it back');
+
+    // the AI changes only a painted area, as a layer on top
+    await page.click('.tabs [data-tab=ai]'); await page.keyboard.press('m'); await page.mouse.move(cx - 40, cy); await page.mouse.down(); await page.mouse.move(cx + 40, cy + 40, { steps: 5 }); await page.mouse.up();
+    ok(/Only the painted/.test(await page.innerText('#aiScope')), 'the painted area is what will change');
+    await page.fill('#aiEdit', 'make this part washed olive'); await page.click('#aiGo');
+    await page.waitForFunction(() => /Done/.test(document.getElementById('aiMsg')?.textContent || ''), null, { timeout: 20000 });
+    ok(await page.evaluate(() => LAYERS[LAYERS.length - 1].name.startsWith('AI ·')) && await page.evaluate(() => !MASKED), 'the change comes back as the top layer, and the area is cleared');
+    await page.fill('#aiArt', 'a lightning bolt crest'); await page.click('#artGo');
+    await page.waitForFunction(() => /graphic is a new layer/.test(document.getElementById('aiMsg')?.textContent || ''), null, { timeout: 20000 });
+    ok(await layers() === 6, 'a graphic is made and added as a layer to place');
+
+    // save, reopen, and it is all there
+    await page.click('#save'); await page.waitForFunction(() => /Saved/.test(document.getElementById('saved').textContent), null, { timeout: 20000 });
+    await page.reload({ waitUntil: 'networkidle' }); await page.waitForSelector('#pLayers .ly'); await page.waitForFunction(() => !document.querySelector('#busy:not(.hidden)'));
+    const re = await page.evaluate(() => LAYERS.map(l => l.kind + ':' + (l.text || l.src && l.src.slice(0, 10) || '')));
+    ok(re.length === 6 && re.some(x => /text:BASICS DEPT/.test(x)) && re.some(x => x === 'image:brand:word'), 'after a reload the design is exactly as it was saved', re);
+
+    // export for Illustrator: type stays type
+    await page.click('#expBtn'); const [dl] = await Promise.all([page.waitForEvent('download'), page.click('[data-exp=svg]')]);
+    const svg = readFileSync(await dl.path(), 'utf8'); ok(/^<\?xml/.test(svg) && (svg.match(/<g id=/g) || []).length === 6 && /<image /.test(svg), 'the SVG has one group per layer, for Illustrator', (svg.match(/<g id=/g) || []).length);
+    await page.click('#expBtn'); const [dp] = await Promise.all([page.waitForEvent('download'), page.click('[data-exp=png]')]); ok(/\.png$/.test(dp.suggestedFilename()), 'and the whole thing as a PNG');
+
+    // use it
+    const before = sql(`select md5(image) from lab_concepts where id='${c.id}'`);
+    await page.click('#apply'); await page.click('#askYes'); await page.waitForFunction(() => /concept picture now/.test(document.getElementById('stToast')?.textContent || ''), null, { timeout: 20000 });
+    ok(sql(`select md5(image) from lab_concepts where id='${c.id}'`) !== before && /Put the old picture back/.test(await page.innerText('#cSub')), 'the design becomes the concept picture, and the old one can be put back from here');
+    await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/lab-studio.png` }).catch(() => {});
+    ok(errs.length === 0, 'no page errors', errs); await oc.close();
+  } finally { await cleanup(brands, plan.plan?.id); await b.close(); }
+});
+
+await journey('J212', 'Design Lab library: graphics are drawn into it, uploaded, tagged, found and kept even when their plan goes; techniques (embroidery, print, transfer, patches, wear) come ready, can be changed, copied, given reference photos and made real; and both are used on concepts and in the studio', async () => {
+  const L = (path, o = {}) => K('/library' + path, o);
+  const { brands, plan } = await conceptSetup(); const tops = plan.lines.find(l => l.category === 'tops') || plan.lines[0];
+  try {
+    ok((await call('/v1/lab/library/graphics')).status === 401 && (await P('/library/graphics')).status === 403 && (await P('/library/techniques')).status === 403, 'closed like the rest of the Lab');
+
+    // techniques, ready to use
+    const tl = await L('/techniques'); const T = tl.json.techniques || [];
+    ok(tl.status === 200 && T.length >= 19 && tl.json.kinds.length === 5 && tl.json.kinds.every(k => T.some(t => t.kind === k.id)), 'the starting techniques cover embroidery, print, heat transfer, patches and wear', T.length);
+    const satin = T.find(t => t.key === 'satin-embroidery'), puff = T.find(t => t.key === 'puff-embroidery');
+    ok(satin && satin.finish.effect === 'stitch' && satin.base === 'embroidery' && /satin-stitch/.test(satin.prompt) && satin.artGuide && satin.factoryNote, 'each says how it looks here, how the real thing looks, how to design for it and what the factory needs', satin);
+    const again = (await L('/techniques')).json.techniques; ok(again.length === T.length, 'they are put in once, not again on every visit');
+    const mine = await L('/techniques', { body: { name: `Bleach splatter ${stamp}`, kind: 'distress', summary: 'Bleach flicked on before printing', finish: { effect: 'none', distress: { style: 'faded', amount: .5 } }, prompt: 'bleach spots, orange-pink haloes' } });
+    ok(mine.status === 201, 'a technique of our own is added', mine.json);
+    const edit = await L(`/techniques/${mine.json.id}`, { method: 'PUT', body: { finish: { effect: 'soak', strength: .9 }, summary: 'Bleach, then a water-based print' } });
+    const mt = (await L('/techniques')).json.techniques.find(t => t.id === mine.json.id); ok(edit.status === 200 && mt.finish.effect === 'soak' && mt.summary === 'Bleach, then a water-based print' && mt.name.startsWith('Bleach splatter'), 'and changed, keeping what was not changed', mt);
+    ok((await L('/techniques', { body: { name: 'x', kind: 'distress' } })).status === 422 && (await L('/techniques', { body: { name: 'Lasers', kind: 'lasers' } })).status === 422, 'a technique needs a real name and kind');
+    const photo = jpeg(), p1 = await L(`/techniques/${mine.json.id}/photos`, { body: { image: photo } });
+    ok(p1.status === 201 && (await fetch(`${BASE}/v1/lab/library/technique-photos/${p1.json.id}?thumb=1`, { headers: { Authorization: 'Bearer ' + kyleT } })).status === 200, 'a reference photo of the real thing is kept');
+    for (let i = 0; i < 3; i++) await L(`/techniques/${mine.json.id}/photos`, { body: { image: photo } });
+    ok((await L(`/techniques/${mine.json.id}/photos`, { body: { image: photo } })).status === 409, 'up to four reference photos');
+    const dup = await L('/techniques', { body: { from: mine.json.id } }); const dt = (await L('/techniques')).json.techniques.find(t => t.id === dup.json.id);
+    ok(dup.status === 201 && /\(copy\)$/.test(dt.name) && dt.photos.length === 4 && dt.finish.effect === 'soak', 'a technique can be copied, photos and all, to make a variation', dt);
+    ok((await L(`/techniques/${mine.json.id}/photos/${p1.json.id}`, { method: 'DELETE' })).status === 200 && (await L('/techniques')).json.techniques.find(t => t.id === mine.json.id).photos.length === 3, 'a photo can be removed');
+    const sample = await L(`/techniques/${satin.id}/sample`, { body: { image: await png(300, 250, [200, 190, 170]) } });
+    ok(sample.status === 200 && /^data:image\/jpeg/.test(sample.json.image) && (await fetch(`${BASE}/v1/lab/library/techniques/${satin.id}/sample`, { headers: { Authorization: 'Bearer ' + kyleT } })).status === 200 && (await L('/techniques')).json.techniques.find(t => t.id === satin.id).hasSample, 'a technique is made real on fabric by the image model, and the sample is kept', sample.json.error);
+    ok((await L(`/techniques/${dup.json.id}`, { method: 'DELETE' })).status === 200 && !(await L('/techniques')).json.techniques.some(t => t.id === dup.json.id), 'a technique can be deleted');
+
+    // graphics
+    const drawn = await L('/graphics', { body: { prompt: 'an arch of words over a lightning bolt', texts: 'FUTURE BASICS / DEPT 27', colors: 'cream, faded red', style: 'vintage rock tour tee', techniqueId: puff.id, tags: 'rock, Bolt', count: 2 } });
+    ok(drawn.status === 201 && drawn.json.ids.length === 2, 'two takes on a graphic are drawn straight into the library', drawn.json);
+    const prompt = sql(`select prompt from lab_art where id='${drawn.json.ids[0]}'`); ok(/3d puff embroidery/i.test(prompt) && /Thick, simple, closed shapes/.test(prompt) && /"FUTURE BASICS"/.test(prompt), 'drawn for the chosen technique, with the words spelled as given');
+    ok((await L('/graphics', { body: { prompt: 'a Supreme box logo but ours' } })).status === 422 && (await L('/graphics', { body: { prompt: 'x' } })).status === 422, 'another brand in the prompt, or no prompt, is refused');
+    const up = await L('/graphics/upload', { body: { image: await png(200, 120, [20, 60, 30]), name: 'Archive crest', tags: ['archive', 'crest'] } }); ok(up.status === 201, 'our own artwork is added', up.json);
+    ok((await L('/graphics/upload', { body: { image: 'data:text/html;base64,AAAA' } })).status === 422, 'only pictures can be added');
+    const list = (await L('/graphics?limit=200')).json; const mineG = list.graphics.filter(g => drawn.json.ids.includes(g.id) || g.id === up.json.id);
+    ok(mineG.length === 3 && mineG.filter(g => g.source === 'library').every(g => g.techniqueName === '3D puff embroidery' && g.tags.join() === 'rock,bolt') && mineG.find(g => g.id === up.json.id).source === 'upload', 'they are listed with where they came from, their technique and their tags', mineG);
+    ok((await L('/graphics?tag=archive')).json.graphics.some(g => g.id === up.json.id) && (await L('/graphics?q=lightning')).json.graphics.some(g => g.id === drawn.json.ids[0]) && (await L('/graphics?source=upload')).json.graphics.every(g => g.source === 'upload'), 'found by tag, by words and by where they came from');
+    ok((await L(`/graphics/${up.json.id}`, { method: 'PUT', body: { name: 'Archive crest 1998', tags: 'archive, heritage', techniqueId: satin.id } })).status === 200 && (await L('/graphics?q=1998')).json.graphics[0]?.techniqueName === 'Satin stitch embroidery', 'renamed, retagged and given a technique');
+    // kept even when the plan it was drawn for goes
+    const tmp = (await K('/plans', { body: { name: `Gone soon ${stamp}`, season: 'Spring 2028' } })).json.plan || (await K('/plans', { body: { name: `Gone soon ${stamp}` } })).json.plan;
+    if (tmp?.id) { const aid = sql(`insert into lab_art(plan_id,name,png,thumb,source) select '${tmp.id}', 'Plan motif ${stamp}', png, thumb, 'plan' from lab_art where id='${up.json.id}' returning id`).split('\n')[0];
+      await K(`/plans/${tmp.id}`, { method: 'DELETE' }); ok(sql(`select (plan_id is null)::text from lab_art where id='${aid}'`) === 'true' && (await L(`/graphics?q=Plan motif ${stamp}`)).json.graphics.length === 1, 'a graphic drawn for a plan stays in the library when the plan is deleted'); }
+    else ok(false, 'a plan could be made to test with');
+
+    // on a concept, and in the studio
+    const c = (await K(`/plans/${plan.plan.id}/lines/${tops.id}/concepts`, { body: { count: 1 } })).json.concepts[0];
+    const before = (await K(`/concepts/${c.id}`)).json.concept.spec.graphics.length;
+    const put = await K(`/concepts/${c.id}/graphics`, { body: { art: drawn.json.ids[0], placement: 'left chest', techniqueId: puff.id } });
+    const g = (await K(`/concepts/${c.id}`)).json.concept.spec.graphics.find(x => x.art === drawn.json.ids[0]);
+    ok(put.status === 200 && g && g.placement === 'left chest' && g.technique === 'embroidery' && g.finish?.name === '3D puff embroidery' && (await K(`/concepts/${c.id}`)).json.concept.spec.graphics.length === before + 1, 'a library graphic goes on a concept, where it goes and how it is made', g);
+    ok((await K(`/concepts/${c.id}/replace-marks`, { body: {} })).status === 200, 'and is placed on its picture');
+    for (let i = 0; i < 4; i++) await K(`/concepts/${c.id}/graphics`, { body: { art: up.json.id } });
+    ok((await K(`/concepts/${c.id}/graphics`, { body: { art: up.json.id } })).status === 409 && (await K(`/concepts/${c.id}/graphics`, { body: { art: '00000000-0000-4000-8000-000000000000' } })).status === 404, 'up to four graphics on a piece, and only graphics that exist');
+    const st = (await K(`/concepts/${c.id}/studio`)).json; ok(st.techniques.length >= 19 && st.techniques.some(t => t.id === mine.json.id && t.photos === 3), 'the studio has every technique, with its reference photos');
+    const sa = await K(`/concepts/${c.id}/studio/ai`, { body: { mode: 'art', prompt: 'a small crest with a lightning bolt', techniqueId: satin.id } });
+    ok(sa.status === 200 && sa.json.art && sql(`select source || ':' || coalesce(technique_id::text,'') from lab_art where id='${sa.json.art}'`) === `studio:${satin.id}`, 'a graphic made in the studio goes into the library with its technique', sa.json.error);
+    const real = await K(`/concepts/${c.id}/studio/ai`, { body: { mode: 'real', techniqueId: mine.json.id, image: await png(256, 256, [120, 120, 120]) } });
+    ok(real.status === 200 && /^data:image\/png/.test(real.json.image), 'a technique is made real on the piece in the studio', real.json.error);
+    ok((await K(`/concepts/${c.id}/studio/ai`, { body: { mode: 'real', image: await png(64, 64) } })).status === 422, 'making something real needs the technique');
+    ok((await L(`/graphics/${up.json.id}`, { method: 'DELETE' })).status === 200 && !(await L('/graphics?tag=heritage')).json.graphics.length && (await fetch(`${BASE}/v1/lab/art/${up.json.id}`, { headers: { Authorization: 'Bearer ' + kyleT } })).status === 200, 'taken out of the library, a graphic still serves the pieces that use it');
+    await L(`/techniques/${mine.json.id}`, { method: 'DELETE' });
+  } finally { await cleanup(brands, plan.plan?.id); }
+});
+
+await journey('J213', 'Design Lab library in a browser: draw a graphic, see it embroidered on fabric, put it on a concept; tune a technique and make it real; and in the studio, add a library graphic, make it embroidered, make that real with AI and keep a layer in the library', async () => {
+  if (!playwright) { ok(true, 'skipped: no browser here'); return; }
+  const { brands, plan } = await conceptSetup(); const tops = plan.lines.find(l => l.category === 'tops') || plan.lines[0];
+  const b = await playwright.chromium.launch(), errs = [];
+  try {
+    const c = (await K(`/plans/${plan.plan.id}/lines/${tops.id}/concepts`, { body: { count: 1 } })).json.concepts[0];
+    const oc = await b.newContext({ viewport: { width: 1440, height: 900 } }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
+    const page = await oc.newPage(); page.on('pageerror', e => errs.push(String(e)));
+    await page.goto(`${BASE}/lab#board`, { waitUntil: 'networkidle' });
+    await Promise.all([page.waitForURL(/\/lab\/library/), page.click('#labTabs a[href="/lab/library"]')]);
+    await page.waitForSelector('#app:not(.hidden)');
+    ok(await page.locator('.labtabs a.on').innerText() === 'Graphics and techniques', 'the library is a section of the Lab');
+
+    // draw a graphic for puff embroidery
+    await page.fill('#gPrompt', `a varsity crest with a bolt ${stamp}`); await page.fill('#gTexts', 'DEPT 27'); await page.fill('#gTags', 'varsity');
+    await page.selectOption('#gTech', { label: '3D puff embroidery' }); await page.click('#gGo');
+    await page.waitForFunction(() => /Done: 1 new/.test(document.getElementById('gMsg').textContent), null, { timeout: 30000 });
+    await page.waitForSelector('#gGrid .card img[src]', { timeout: 10000 });
+    ok(/varsity crest/.test(await page.innerText('#gGrid .card')), 'the new graphic is first in the library');
+    // on fabric as embroidery, then onto the concept
+    await page.click('#gGrid .card'); await page.waitForSelector('#gDlg[open]');
+    await page.waitForFunction(() => { const c = document.getElementById('gCanvas'); const d = c.getContext('2d').getImageData(c.width / 2, c.height / 2, 1, 1).data; return d[3] === 255; }, null, { timeout: 8000 });
+    await page.selectOption('#gvTech', { label: 'Satin stitch embroidery' });
+    const flatVsStitch = await page.evaluate(() => { const c = document.getElementById('gCanvas'), x = c.getContext('2d'), d = x.getImageData(0, 0, c.width, c.height).data; let s = 0; for (let i = 0; i < d.length; i += 4000) s += d[i]; return s; });
+    ok(flatVsStitch > 0, 'the graphic is shown on fabric, made as the chosen technique');
+    await page.selectOption('#gdConcept', c.id); await page.selectOption('#gdPlace', 'left chest'); await page.click('#gdPut');
+    await page.waitForFunction(() => /It is on the concept/.test(document.getElementById('gdMsg').textContent), null, { timeout: 20000 });
+    const onIt = (await K(`/concepts/${c.id}`)).json.concept.spec.graphics.find(g => g.placement === 'left chest' && g.finish?.name === '3D puff embroidery');
+    ok(Boolean(onIt), 'it is on the concept, on the left chest, as puff embroidery', (await K(`/concepts/${c.id}`)).json.concept.spec.graphics);
+    await page.click('#gDlg [data-close]');
+
+    // techniques: live swatches, tune one, make it real
+    await page.click('.seg [data-sec=techniques]'); await page.waitForSelector('#tList canvas[data-swatch]');
+    const tiles = await page.locator('#tList .tcard').count(); ok(tiles >= 19 && await page.locator('#tList h2').count() === 5, 'every technique is shown, grouped by kind', tiles);
+    const painted = await page.evaluate(() => [...document.querySelectorAll('#tList canvas[data-swatch]')].slice(0, 6).every(c => { const d = c.getContext('2d').getImageData(c.width / 2, c.height / 2, 1, 1).data; return d[3] === 255; }));
+    ok(painted, 'each is drawn on fabric with a sample graphic');
+    await page.click('#tList .tcard:has-text("Chain stitch embroidery")'); await page.waitForSelector('#tDlg[open] #tForm [data-k=name]');
+    await page.locator('#tForm [data-k="f.raise"]').fill('5'); await page.click('#tSave'); await page.waitForFunction(() => /Saved/.test(document.getElementById('tMsg')?.textContent || ''));
+    ok((await K('/library/techniques')).json.techniques.find(t => t.key === 'chain-stitch').finish.raise === 5, 'a technique is tuned and saved');
+    await page.click('#tMakeReal'); await page.waitForFunction(() => /Done/.test(document.getElementById('tRealMsg').textContent), null, { timeout: 30000 });
+    ok(await page.locator('#tReal:not(.hidden)').count() === 1, 'and made real by the image model, shown next to the mock-up');
+    await page.click('#tDlg [data-close]');
+
+    // the concept window picks from the library too
+    await page.goto(`${BASE}/lab#board`, { waitUntil: 'networkidle' }); await page.waitForSelector(`#cgrid .cc[data-cid="${c.id}"]`, { timeout: 15000 });
+    await page.click(`#cgrid .cc[data-cid="${c.id}"]`); await page.waitForSelector('#cd[open] [data-glib]'); await page.waitForLoadState('networkidle'); await page.click('#cd [data-glib]');
+    await page.waitForSelector('#glibBox [data-gpick]'); const n0 = (await K(`/concepts/${c.id}`)).json.concept.spec.graphics.length;
+    await page.click('#glibBox [data-gpick]'); await page.selectOption('#glibTech', { label: 'Vintage cracked print' }); await page.click('#glibBox [data-gput]');
+    await page.waitForFunction(() => /from the library is on the piece/.test(document.getElementById('cMarkMsg')?.textContent || ''), null, { timeout: 20000 });
+    ok((await K(`/concepts/${c.id}`)).json.concept.spec.graphics.length === n0 + 1, 'a library graphic is put on a concept from its own window');
+
+    // the studio: a library graphic, embroidered, made real, kept
+    await page.goto(`${BASE}/lab/studio?concept=${c.id}`, { waitUntil: 'networkidle' }); await page.waitForSelector('#pLayers .ly'); await page.waitForFunction(() => !document.querySelector('#busy:not(.hidden)'));
+    await page.click('.tabs [data-tab=add]'); await page.waitForSelector('#libTiles [data-lib] img[src]', { timeout: 10000 });
+    await page.click('#libTiles [data-lib]'); await page.waitForFunction(() => LAYERS.length === 2);
+    const added = await page.evaluate(() => { const l = selected(); return { src: l.src, finish: l.finish && l.finish.name }; });
+    ok(/^\/v1\/lab\/art\//.test(added.src), 'a library graphic is added to the design', added);
+    await page.selectOption('#pLayers [data-tech]', { label: 'Satin stitch embroidery' });
+    const fin = await page.evaluate(() => { const l = selected(); return { name: l.finish && l.finish.name, effect: l.finish && l.finish.effect }; });
+    ok(fin.name === 'Satin stitch embroidery' && fin.effect === 'stitch' && /Satin stitch/.test(await page.innerText('#pLayers .ly.on')), 'it is made as satin stitch embroidery, shown at once', fin);
+    await page.click('#pLayers [data-act=real]'); await page.waitForFunction(() => LAYERS[LAYERS.length - 1].name.startsWith('Real ·'), null, { timeout: 30000 });
+    ok(true, 'Make it real with AI adds the real embroidery as the top layer, in that area only');
+    await page.click('#pLayers .ly:has-text("Satin stitch")'); const before = Number(sql(`select count(*) from lab_art where source='studio'`));
+    await page.click('#pLayers [data-act=keep]'); await page.waitForFunction(() => /graphics library now/.test(document.getElementById('stToast')?.textContent || ''), null, { timeout: 10000 });
+    ok(Number(sql(`select count(*) from lab_art where source='studio'`)) === before + 1, 'a layer is kept in the graphics library');
+    await page.click('#save'); await page.waitForFunction(() => /Saved/.test(document.getElementById('saved').textContent), null, { timeout: 20000 });
+    await page.reload({ waitUntil: 'networkidle' }); await page.waitForSelector('#pLayers .ly'); await page.waitForFunction(() => !document.querySelector('#busy:not(.hidden)'));
+    ok(await page.evaluate(() => LAYERS.some(l => l.finish && l.finish.name === 'Satin stitch embroidery')), 'the technique is kept with the saved design');
+    await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/lab-library-studio.png` }).catch(() => {});
+    await page.goto(`${BASE}/lab/library#techniques`, { waitUntil: 'networkidle' }); await page.waitForSelector('#tList canvas[data-swatch]');
+    await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/lab-library.png` }).catch(() => {});
+    ok(errs.length === 0, 'no page errors', errs); await oc.close();
+  } finally { await cleanup(brands, plan.plan?.id); await b.close(); }
 });
 
 shops.close(); brave.close();
