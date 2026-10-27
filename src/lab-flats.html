@@ -27,7 +27,7 @@ header{height:72px;background:rgba(20,20,22,.96);color:#fff;padding:0 clamp(16px
 .tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;background:#fff}.seg button{border:0;background:none;padding:6px 14px;font-weight:600;cursor:pointer;font-size:13px}.seg button[aria-pressed=true]{background:var(--ink);color:#fff}
 .canvas{background:#fff;border:1px solid var(--line);border-radius:20px;overflow:hidden;touch-action:none;position:relative}
-.canvas svg{display:block;width:100%;height:auto;max-height:calc(100vh - 220px)}
+.canvas>svg{display:block;width:100%;height:auto;max-height:calc(100vh - 220px)}
 .canvas [data-pl]{cursor:grab}.canvas [data-pl]:active{cursor:grabbing}
 .status{display:flex;gap:10px;align-items:center;padding:10px 14px;border-radius:14px;font-weight:600;font-size:14px}.status.ok{background:#e4f6ea;color:var(--ok)}.status.warn{background:#fbf0d9;color:var(--warn)}.status.bad{background:#f8e1de;color:var(--bad)}
 .side{background:#fff;border-left:1px solid var(--line);display:grid;grid-template-rows:auto minmax(0,1fr)}
@@ -75,7 +75,7 @@ table.pom{border-collapse:collapse;font-size:12px;width:100%}table.pom th,table.
 </div>
 <script src="/console-nav.js" defer></script>
 <script type="module">
-import { STYLES, FITS, SIZES, geometry, renderSvg, viewBoxOf, describe, placementChecks, overlapChecks, pomTable, defaultParams, defaultPlacement, measurementsFor, POM_NAMES, fmt, fmtCm } from '/lab/flats.js';
+import { STYLES, FITS, SIZES, geometry, renderSvg, viewBoxOf, templatesFor, templateOf, defaultTemplate, describe, placementChecks, overlapChecks, pomTable, defaultParams, defaultPlacement, measurementsFor, POM_NAMES, fmt, fmtCm } from '/lab/flats.js';
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)],esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const TOKEN=()=>{try{return localStorage.getItem('fb.admin.token')||''}catch{return ''}};
 async function api(path,o={}){const r=await fetch(path,{method:o.method||(o.body?'POST':'GET'),headers:{Authorization:'Bearer '+TOKEN(),...(o.body?{'Content-Type':'application/json'}:{})},body:o.body?JSON.stringify(o.body):undefined});const j=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(new Error(j.error||('Request failed ('+r.status+')')),{status:r.status});return j}
@@ -84,7 +84,7 @@ const CID=new URLSearchParams(location.search).get('concept')||'';
 let D=null,P=null,PL=[],VIEW='front',SEL=null,CHECK={findings:{},summary:{fail:0,warn:0}},WHERE={},DIRTY=false,TAB='pl',HREF={},MARKS={};
 const r8=v=>Math.round(v*8)/8;
 const techName=q=>(D.techniques.find(t=>t.id===q.techniqueId)||{}).name||q.technique;
-const flatBody=()=>({style:P.style,fit:P.fit,size:P.size,m:P.m,options:P.options,placements:PL});
+const flatBody=()=>({style:P.style,fit:P.fit,size:P.size,m:P.m,options:P.options,template:P.template||templateOf(P)?.id||'none',placements:PL});
 function touch(){DIRTY=true;$('#saved').className='saved dirty';$('#saved').textContent='Not saved';recheckSoon()}
 
 // ---------- drawing ----------
@@ -134,12 +134,13 @@ async function hrefOf(q){if(q.art)return blobUrl('/v1/lab/art/'+q.art);if(q.mark
 function paintGarment(){
   const S=STYLES[P.style],o=P.options,box=(k,l)=>`<label class="chk"><input type="checkbox" data-o="${k}" ${o[k]?'checked':''}> ${l}</label>`;
   $('#pGarment').innerHTML=`<div class="sec"><h4>The piece</h4><label class="f"><span>Style</span><select class="t" id="gStyle">${Object.entries(D.styles).map(([k,v])=>`<option value="${k}" ${k===P.style?'selected':''}>${esc(v.label)}</option>`).join('')}</select></label>
-    <label class="f"><span>Fit</span><select class="t" id="gFit">${Object.entries(FITS).map(([k,v])=>`<option value="${k}" ${k===P.fit?'selected':''}>${v}</option>`).join('')}</select></label><p class="msg">Changing the style or fit sets the measurements to its standard; your placements stay.</p></div>
+    <label class="f"><span>Fit</span><select class="t" id="gFit">${Object.entries(FITS).map(([k,v])=>`<option value="${k}" ${k===P.fit?'selected':''}>${v}</option>`).join('')}</select></label>${templatesFor(P.style).length?`<label class="f"><span>Drawing</span><select class="t" id="gTpl">${[...templatesFor(P.style),{id:'none',label:'Simple outline'}].map(t=>`<option value="${t.id}" ${t.id===(templateOf(P)?.id||'none')?'selected':''}>${esc(t.label)}</option>`).join('')}</select></label>`:''}<p class="msg">Changing the style or fit sets the measurements to its standard; your placements stay. The drawing is a flat sketch scaled to the chest or waist and the length.</p></div>
   <div class="sec"><h4>Details</h4>${S.kind==='top'?box('drop','Dropped shoulder')+box('cropped','Cropped')+(S.hood?box('drawcord','Hood drawcords'):'')+(S.pocket?box('noPocket','No front pocket'):box('chestPocket','Chest pocket')):''}${S.kind==='bottom'?`<label class="f"><span>Pleats</span><select class="t" data-o="pleats"><option value="0" ${!o.pleats?'selected':''}>None</option><option value="1" ${o.pleats==1?'selected':''}>Single</option><option value="2" ${o.pleats==2?'selected':''}>Double</option></select></label>`:''}${['cap','beanie','tote'].includes(S.kind)?'<p class="msg">Nothing to change for this one.</p>':''}</div>
   <div class="sec"><h4>Sample size (M) measurements, inches</h4><div class="meas">${Object.keys(P.m).map((k,i)=>`<b>${String.fromCharCode(65+i)}</b><span>${esc(POM_NAMES[k]||k)}</span><input class="t" type="number" step="0.125" min="0" data-m="${k}" value="${P.m[k]}" aria-label="${esc(POM_NAMES[k]||k)}">`).join('')}</div><p class="msg">Every other size is graded from these. The flats redraw as you type.</p></div>`;
 }
 $('#pGarment').addEventListener('change',e=>{
-  if(e.target.id==='gStyle'||e.target.id==='gFit'){const st=$('#gStyle').value,fit=$('#gFit').value;const n=defaultParams(st,fit,st===P.style?P.options:{});n.size=P.size;if(st!==P.style){PL=PL.map(q=>({...q,...defaultPlacement(q.mark?'logo':'graphic',n,{aspect:q.w/q.h,label:q.view==='back'?'back':q.mark?'left chest':'front chest'})}))}P=n;touch();paintGarment();paint();return}
+  if(e.target.id==='gStyle'||e.target.id==='gFit'){const st=$('#gStyle').value,fit=$('#gFit').value;const n=defaultParams(st,fit,st===P.style?P.options:{});n.size=P.size;n.template=defaultTemplate(st,fit,(D.concept?.name||'').toLowerCase())||undefined;if(st!==P.style){PL=PL.map(q=>({...q,...defaultPlacement(q.mark?'logo':'graphic',n,{aspect:q.w/q.h,label:q.view==='back'?'back':q.mark?'left chest':'front chest'})}))}P=n;touch();paintGarment();paint();return}
+  if(e.target.id==='gTpl'){P.template=e.target.value;touch();paint();return}
   const o=e.target.dataset.o;if(o){P.options[o]=e.target.type==='checkbox'?e.target.checked:Number(e.target.value);if(o==='cropped'){const base=defaultParams(P.style,P.fit,P.options);P.m.length=base.m.length}touch();paint()}});
 $('#pGarment').addEventListener('input',e=>{const k=e.target.dataset.m;if(!k)return;const v=Number(e.target.value);if(Number.isFinite(v)&&v>=0){P.m[k]=v;touch();draw()}});
 function paintPom(){const rows=pomTable(P),sz=rows[0].values.map(v=>v.size);$('#pPom').innerHTML=`<div class="sec"><h4>Points of measure, graded</h4><div class="wrapx"><table class="pom"><thead><tr><th>Point</th>${sz.map(s=>`<th class="${s==='M'?'m':''}">${s}</th>`).join('')}<th>±</th></tr></thead><tbody>${rows.map(r=>`<tr><td><b style="color:#7a3fd1">${r.code}</b> ${esc(r.name)}</td>${r.values.map(v=>`<td class="${v.size==='M'?'m':''}">${v.value}</td>`).join('')}<td>${r.tolerance}</td></tr>`).join('')}</tbody></table></div><p class="msg">Inches. Turn on "Points of measure" to see where each is taken. Change the sample size on the Garment tab.</p></div>`}
