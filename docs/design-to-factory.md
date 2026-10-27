@@ -238,9 +238,9 @@ Packs made from the design service skip the per-pack paywall. They are billed as
 
 Every page loads `/feedback.js`.
 
-- **Working:** a button that starts something shows a spinner while it runs.
-- **Worked:** a tick, and a note at the bottom of the screen ("Save: done").
-- **Failed:** a red mark, and a note that says what failed and why, in the service's own words: "Approve: Say what to change", "Send: you are signed out: sign in again", or "could not reach the service".
+- **Working:** a button that starts something keeps its words; a light sheen sweeps across it and a thin green line creeps along its bottom edge while it runs.
+- **Worked:** the line runs home and the button glows green for a moment; a note rises at the bottom of the screen ("Save: done"), with a hairline that drains while it stays.
+- **Failed:** the line turns red and the button shakes, with a note that says what failed and why, in the service's own words: "Approve: Say what to change", "Send: you are signed out: sign in again", or "could not reach the service".
 - **Failed without saying so:** a press whose work fails and nothing else reports it is reported the same way.
 
 **Hooks for page code:**
