@@ -29,7 +29,7 @@ header{height:72px;background:rgba(20,20,22,.96);color:#fff;padding:0 clamp(16px
 .saved{color:var(--dim);font-size:12px;min-width:90px;text-align:right}.saved.dirty{color:#8a5a00}
 /* one workspace: the picture, the flats front or back, or both side by side (data-v on .studio) */
 .seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;background:#fff;flex:none}.seg button{border:0;background:none;padding:5px 12px;font-weight:600;cursor:pointer;font-size:12.5px;white-space:nowrap}.seg button[aria-pressed=true]{background:var(--ink);color:#fff}.seg button:focus-visible{outline:2px solid var(--ink);outline-offset:-2px}
-.gpl{display:grid;gap:6px}.gp{display:grid;gap:1px;text-align:left;border:1px solid var(--line);border-radius:10px;background:#fff;padding:7px 10px;cursor:pointer;font-size:12.5px}.gp:hover{border-color:var(--ink)}.gp span{color:var(--dim);font-size:11.5px}.gp small{color:var(--dim);font-size:11px}
+.gpl{display:grid;gap:6px}.gprow{display:grid;gap:4px}.gp{display:grid;gap:1px;text-align:left;border:1px solid var(--line);border-radius:10px;background:#fff;padding:7px 10px;cursor:pointer;font-size:12.5px}.gp:hover{border-color:var(--ink)}.gp span{color:var(--dim);font-size:11.5px}.gp small{color:var(--dim);font-size:11px}
 .studio[data-level=simple] .pro-only,.studio[data-level=simple] [data-act=sep]{display:none!important}
 #readyPop{width:min(380px,92vw);right:0;left:auto;padding:12px;display:grid;gap:8px}#readyPop.hidden{display:none}
 .rd{display:grid;grid-template-columns:18px minmax(0,1fr) auto;gap:4px 8px;align-items:start;font-size:12.5px;padding:6px 0;border-top:1px solid var(--line)}.rd b{font-size:13px}.rd small{grid-column:2/3;color:var(--dim);line-height:1.35}.rd .st{width:14px;height:14px;border-radius:50%;margin-top:2px}.rd .st.done{background:#1f9d55}.rd .st.todo{background:#a02a20}.rd .st.warn{background:#d49a00}
@@ -240,7 +240,7 @@ function commit(){HIST=HIST.slice(0,HI+1);HIST.push(snap());if(HIST.length>60)HI
 function restore(s){LAYERS=s.layers.map(copyL);SEL=s.sel&&layerOf(s.sel)?s.sel:null;touch();paintPanels();draw()}
 function undo(){if(HI>0){HI--;restore(HIST[HI]);syncUndo()}}function redo(){if(HI<HIST.length-1){HI++;restore(HIST[HI]);syncUndo()}}
 function syncUndo(){$('#undo').disabled=HI<=0;$('#redo').disabled=HI>=HIST.length-1}
-function touch(){DIRTY=true;showSaved()}
+let EDITS=0;function touch(){DIRTY=true;EDITS++;showSaved()}
 function showSaved(){const s=$('#saved');s.className='saved'+(DIRTY?' dirty':'');s.textContent=DIRTY?'Not saved':SAVED_AT?'Saved '+new Date(SAVED_AT).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}):''}
 
 // ---------- distressing: a worn texture made from a seed, so it is the same every time it is drawn ----------
@@ -693,10 +693,10 @@ $('#pAi').addEventListener('click',async e=>{
 });
 
 // ---------- saving, using, exporting ----------
-function serialize(){return{w:W,h:H,ppi:PPI,ppiSet:PPISET,selected:SEL,layers:LAYERS.map(l=>{const o={};for(const[k,v]of Object.entries(l))if(!k.startsWith('_')&&k!=='raster'&&k!=='dirty')o[k]=v;
+function serialize(){return{w:W,h:H,ppi:PPI,ppiSet:PPISET,selected:SEL,linked:[...LINKING],layers:LAYERS.map(l=>{const o={};for(const[k,v]of Object.entries(l))if(!k.startsWith('_')&&k!=='raster'&&k!=='dirty')o[k]=v;
   if(isRaster(l)&&(l.dirty||!l.src||l.kind==='paint'||l.raster._rid!==l._srcRid))o.src=l.raster.toDataURL('image/png');return o})}}
 async function save(){const b=$('#save');b.disabled=true;$('#saved').textContent='Saving…';
-  try{if(!GMODE){const sent=await syncFlats({before:flatsFirst}).catch(x=>{toast('The flats did not take the graphics: '+x.message);return false});if(sent)reloadFlats()}const doc=serialize();let r;
+  try{if(!GMODE){const sent=await syncFlats({before:flatsFirst}).catch(x=>{toast('The flats did not take the graphics: '+x.message);return false});if(sent)reloadFlats()}const doc=serialize(),at=EDITS;let r;
     if(GMODE){compose();const image=docC.toDataURL('image/png');
       // a graphic not yet in the library goes in with its first save; after that its layers are saved on it
       if(!GID){const k=await api('/v1/lab/library/studio/keep',{body:{image,name:D.concept.name,doc}});GID=k.id;D.concept.hasImage=true;history.replaceState(null,'',`/lab/studio?art=${GID}`);r={savedAt:new Date().toISOString()}}
@@ -704,10 +704,17 @@ async function save(){const b=$('#save');b.disabled=true;$('#saved').textContent
     else r=await api(`/v1/lab/concepts/${CID}/studio`,{method:'PUT',body:{doc}});
     // what was sent is now what the layers come from
     for(const l of LAYERS){const s=doc.layers.find(x=>x.id===l.id);if(s&&isRaster(l)){l.src=s.src;l.dirty=false;l._srcRid=l.raster._rid}}
-    DIRTY=false;SAVED_AT=r.savedAt;showSaved();if(!GMODE)loadReady();return true}
+    DIRTY=EDITS!==at;SAVED_AT=r.savedAt;showSaved();if(!GMODE)loadReady(); /* a change made while it saved (a graphic arriving from the flats) stays to save */return true}
   catch(x){$('#saved').className='saved dirty';$('#saved').textContent=x.message;return false}finally{b.disabled=false}}
 $('#save').onclick=saveAll;
-function download(url,name){const a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove()}
+// installed on the home screen (an iPad), a download would leave the app: the file opens in the app's sheet, with Share and Save
+const INAPP=()=>{try{return navigator.standalone===true||matchMedia('(display-mode: standalone)').matches}catch{return false}};
+// the page may not fetch its own data: and blob: addresses (the site's content rules), so the file is taken from where it was made
+const BLOB_OF=new Map(),mkUrl=URL.createObjectURL.bind(URL),rmUrl=URL.revokeObjectURL.bind(URL);
+URL.createObjectURL=b=>{const u=mkUrl(b);if(b instanceof Blob)BLOB_OF.set(u,b);return u};URL.revokeObjectURL=u=>{BLOB_OF.delete(u);rmUrl(u)};
+function blobOfUrl(url){if(BLOB_OF.has(url))return BLOB_OF.get(url);const m=/^data:([^;,]+)?(;base64)?,(.*)$/s.exec(String(url));if(!m)return null;
+  const raw=m[2]?atob(m[3]):decodeURIComponent(m[3]),a=new Uint8Array(raw.length);for(let i=0;i<raw.length;i++)a[i]=raw.charCodeAt(i);return new Blob([a],{type:m[1]||'application/octet-stream'})}
+function download(url,name){if(INAPP()){const b=blobOfUrl(url);if(b){showSheet(b,name,name);return}}const a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove()}
 const fileBase=()=>String(D.concept.name||'concept').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,50)||'concept';
 const xa=v=>esc(String(v));
 // one group per layer; plain type and shapes stay live vectors, the rest is placed as its picture
@@ -854,7 +861,7 @@ async function boot(){
   await loadFonts();setColor(CUR);paintSub();paintAdd();tab('layers');setTool('select');HIST=[snap()];HI=0;syncUndo();DIRTY=false;showSaved();paintLayers();requestAnimationFrame(fit);
   if(QS.get('tryon')==='1')tryOpen().catch(()=>{});
   setInterval(()=>{if(DIRTY&&!DRAG)save()},90000); // a quiet save every minute and a half while there are changes
-  setVMode(QS.get('view')||'picture');loadFlatsRecord();loadReady();
+  (D.doc?.linked||[]).forEach(id=>LINKING.add(id));setVMode(QS.get('view')||'picture');loadFlatsRecord();loadReady();
 }
 // a graphic for the library: a clear canvas, or the graphic's picture as a layer over one, with the layers it was built from when it has them
 async function bootGraphic(){
@@ -994,8 +1001,8 @@ let SYNCED=null;
 async function syncFlats({before}={}){
   if(before)await before(); // unsaved changes on the flats go first and their sizes come back to the layers, so nothing set on the flats is undone
   const placed=LAYERS.filter(l=>l.kind!=='base'&&l.placement&&l.visible).slice(0,8).map(l=>({l,s:inchesOf(l),key:sig(l)}));
-  const key=JSON.stringify(placed.map(x=>[x.l.id,x.l.name,x.l.placement,fin(x.s.w),fin(x.s.h),x.l.finish?.id||'',x.key]));if(key===SYNCED)return false;
-  const layers=placed.map(x=>({layer:x.l.id,name:x.l.name,widthIn:x.s.w,heightIn:x.s.h,placement:x.l.placement,techniqueId:x.l.finish?.id||null,...(x.l.art&&x.l.artSig===x.key?{art:x.l.art}:{image:artPng(x.l)})}));
+  const key=JSON.stringify(placed.map(x=>[x.l.id,x.l.fromFlat||'',x.l.name,x.l.placement,fin(x.s.w),fin(x.s.h),x.l.finish?.id||'',x.key]));if(key===SYNCED)return false;
+  const layers=placed.map(x=>({layer:x.l.id,...(x.l.fromFlat?{fromFlat:x.l.fromFlat}:{}),name:x.l.name,widthIn:x.s.w,heightIn:x.s.h,placement:x.l.placement,techniqueId:x.l.finish?.id||null,...(x.l.art&&x.l.artSig===x.key?{art:x.l.art}:{image:artPng(x.l)})}));
   const r=await api(`/v1/lab/concepts/${CID}/studio/graphics`,{body:{layers}});
   for(const x of placed)if(r.arts[x.l.id]){x.l.art=r.arts[x.l.id];x.l.artSig=x.key}
   if(SYNCED!==null||placed.length)toast(placed.length?`On the concept${r.flats?' and its flats':''}: ${placed.length} graphic${placed.length>1?'s':''} at their size.`:'Nothing from the studio is on the flats now.');
@@ -1014,7 +1021,7 @@ function flatSrc(){const t=QS.get('template');return `/lab/flats?concept=${CID}&
 function loadFlats(){$('#flatFrame').src=flatSrc();FLOADED=true;TPLUSED=true}
 function reloadFlats(){if(!FLOADED||FF()?.dirty())return;$('#flatFrame').src=flatSrc()}
 async function flatsFirst(){const f=FF();if(f&&f.dirty()&&!(await f.save()))throw new Error('the flats could not be saved first')}
-async function saveAll(){if(GMODE||!CID)return save();const f=FF();if(f&&f.dirty()&&!(await f.save()))return false;return save()}
+async function saveAll(){if(GMODE||!CID)return save();const f=FF();if(f&&f.dirty()&&!(await f.save()))return false;await LINKP;return save()} // graphics on their way from the flats are part of this save
 // the flats' own saved line shows in the header beside the picture's
 function mirrorFlats(){const d=$('#flatFrame').contentDocument,src=d&&d.getElementById('saved'),out=$('#fsaved');if(!src)return;FOBS?.disconnect();
   const copy=()=>{out.className='saved flat-only'+(src.classList.contains('dirty')?' dirty':'');out.innerHTML=src.innerHTML?'Flats: '+src.innerHTML:'';out.title=src.title||'The flats'};copy();FOBS=new MutationObserver(copy);FOBS.observe(src,{childList:true,characterData:true,subtree:true,attributes:true})}
@@ -1029,13 +1036,38 @@ function adoptFlats(list,{saved=true}={}){FLATS={saved,placements:list||[]};if(G
     if(q){const s=inchesOf(l);if(s.w>0&&Math.abs(q.w-s.w)>.07){l.scale=clamp(l.scale*q.w/s.w,.02,40);changed.push(`${l.name} is ${fin(q.w)} in wide, as on the flats`)}}
     else if(saved&&l.art){l.placement=undefined;changed.push(`${l.name} came off the flats, so it is on the picture only`)}} // only a layer that was on them (it has its artwork) can have come off
   if(changed.length){commit();draw();toast(changed.slice(0,2).join('. ')+(changed.length>2?` and ${changed.length-2} more`:'')+'.')}
-  paintLayers()}
+  paintLayers();
+  // a logo or graphic added on the flats comes onto the picture by itself (the front only: the picture shows the front). What came with the
+  // concept is already drawn in its picture, so that waits for Put on the picture.
+  if(saved)linkFromFlats(FLATS.placements.filter(q=>q.source!=='studio'&&q.view==='front'&&(q.added||/^p[a-z0-9]{6}$/.test(q.id))&&(q.art||q.mark)))}
+const LINKING=new Set();
+// where a placement sits on the picture: the garment's top and centre in the picture, then the placement's inches at the picture's scale
+function garmentBox(){const b=LAYERS.find(l=>l.kind==='base');if(!b||!b.raster)return null;const k=Math.min(1,256/b.raster.width),w=Math.max(1,Math.round(b.raster.width*k)),h=Math.max(1,Math.round(b.raster.height*k)),c=canvas(w,h),x=c.getContext('2d',{willReadFrequently:true});x.drawImage(b.raster,0,0,w,h);
+  const d=x.getImageData(0,0,w,h).data,px=(i,j)=>{const o=(j*w+i)*4;return[d[o],d[o+1],d[o+2],d[o+3]]},cs=[px(0,0),px(w-1,0),px(0,h-1),px(w-1,h-1)],bg=[0,1,2].map(i=>cs.reduce((t,q)=>t+q[i],0)/4),fg=(i,j)=>{const p=px(i,j);return p[3]>20&&Math.abs(p[0]-bg[0])+Math.abs(p[1]-bg[1])+Math.abs(p[2]-bg[2])>36};
+  const cols=new Array(w).fill(0),rows=new Array(h).fill(0);for(let j=0;j<h;j++)for(let i=0;i<w;i++)if(fg(i,j)){cols[i]++;rows[j]++}
+  const min=Math.max(2,h*.02),a=cols.findIndex(v=>v>=min),z=w-1-[...cols].reverse().findIndex(v=>v>=min),top=rows.findIndex(v=>v>=Math.max(2,w*.02));if(a<0||z<=a||top<0)return null;
+  return{cx:(a+z+1)/2/k,top:top/k}}
+function flatKey(q){const ids=(D.placements||[]).map(p=>p.id),t=`${q.name||''} ${q.where||''}`.toLowerCase(),hit=ids.find(k=>t.includes(k));if(hit)return hit;
+  if(/pant|short|jean|trouser|bottom/.test(String(D.concept.category||''))&&ids.includes('thigh'))return'thigh';
+  if(q.w>=9&&ids.includes('full front'))return'full front';if(Math.abs(q.x)>=1.25&&ids.includes('left chest'))return'left chest';return ids.includes('centre chest')?'centre chest':ids[0]||undefined}
+async function flatToLayer(q){let r,src;
+  if(q.art){const u=await urlOfBlob(await blobOf('/v1/lab/art/'+q.art)),img=await imgOf(u);r=stamp(canvas(img.naturalWidth,img.naturalHeight));r.getContext('2d').drawImage(img,0,0);src='/v1/lab/art/'+q.art}
+  else if(q.mark){r=await markRaster(q.mark);src='brand:'+q.mark}else return null;
+  const box=garmentBox(),l=addLayer(fresh('image',{name:String(q.name||'Graphic').slice(0,40),raster:r,src,_srcRid:r._rid,scale:1,x:Math.round(box?box.cx+q.x*PPI:W/2),y:Math.round(box?box.top+q.y*PPI:H*.4)}),{silent:true});
+  const sz=inchesOf(l);if(sz.w>0)l.scale=clamp(q.w/sz.w,.02,40);l.placement=flatKey(q);l.fromFlat=q.id;if(q.techniqueId&&D.techniques?.some(t=>t.id===q.techniqueId))applyTech(l,q.techniqueId);return l}
+let LINKP=Promise.resolve();
+function linkFromFlats(list){return LINKP=LINKP.then(()=>linkNow(list)).catch(()=>{})}
+async function linkNow(list){const todo=list.filter(q=>!LAYERS.some(l=>l.fromFlat===q.id)&&!LINKING.has(q.id));if(!todo.length)return;const done=[];
+  for(const q of todo){LINKING.add(q.id);try{const l=await flatToLayer(q);if(l)done.push(l.name)}catch{LINKING.delete(q.id)}}
+  if(done.length){commit();paintLayers();draw();toast(`From the flats: ${done.slice(0,2).join(', ')}${done.length>2?` and ${done.length-2} more`:''} on the picture at ${done.length>1?'their':'its'} size. Move ${done.length>1?'them':'it'} where ${done.length>1?'they sit':'it sits'} in the picture.`)}}
 async function loadFlatsRecord(){if(GMODE||!CID)return;try{const r=await api(`/v1/lab/concepts/${CID}/flats`);if(r.unsupported)return;const f=r.flat||{};adoptFlats((f.placements||[]).map(q=>({...q,where:''})),{saved:Boolean(f.saved)})}catch{}}
 function garmentHtml(){if(GMODE||!FLATS)return'';const L=FLATS.placements;
   return `<div class="sec" id="garmentSec"><h4>On the garment · in inches</h4>${L.length?`<div class="gpl">${L.map(q=>{const ly=q.source==='studio'&&LAYERS.find(x=>x.id===q.layer);
-    return `<button type="button" class="gp" data-gp="${esc(q.id)}" ${ly?`data-gly="${esc(ly.id)}"`:''}><b>${esc(q.name)}</b><span>${q.view==='back'?'Back':'Front'} · ${fin(q.w)} × ${fin(q.h)} in${ly?' · on the picture':''}</span>${q.where?`<small>${esc(q.where)}</small>`:''}</button>`}).join('')}</div>`:'<p class="note" style="margin:0">Nothing is placed on the garment yet. Choose where a layer goes (Goes on) and it lands on the flats at its size.</p>'}
+    const linked=ly||LAYERS.find(l=>l.fromFlat===q.id),can=!linked&&FLATS.saved&&q.view==='front'&&(q.art||q.mark);
+    return `<div class="gprow"><button type="button" class="gp" data-gp="${esc(q.id)}" ${linked?`data-gly="${esc(linked.id)}"`:''}><b>${esc(q.name)}</b><span>${q.view==='back'?'Back':'Front'} · ${fin(q.w)} × ${fin(q.h)} in${linked?' · on the picture':q.view==='back'?' · the picture shows the front':''}</span>${q.where?`<small>${esc(q.where)}</small>`:''}</button>${can?`<button type="button" class="btn sm q" data-gpadd="${esc(q.id)}" title="Add it to the picture as a layer at its size">Put on the picture</button>`:''}</div>`}).join('')}</div>`:'<p class="note" style="margin:0">Nothing is placed on the garment yet. Choose where a layer goes (Goes on) and it lands on the flats at its size.</p>'}
     <p class="note" style="margin:0">One record for both views: change a size here or on the flats and the other follows.${FLATS.saved?'':' The flats are not saved yet.'}</p></div>`}
-$('#pLayers').addEventListener('click',e=>{const b=e.target.closest('[data-gp]');if(!b)return;if(b.dataset.gly&&(VMODE==='picture'||VMODE==='split')){SEL=b.dataset.gly;paintLayers();draw();return}
+$('#pLayers').addEventListener('click',async e=>{const ad=e.target.closest('[data-gpadd]');if(ad){const q=FLATS?.placements.find(x=>x.id===ad.dataset.gpadd);if(!q)return;ad.disabled=true;busy('Putting it on the picture…');try{const l=await flatToLayer(q);if(l){SEL=l.id;commit();paintLayers();draw();toast(`${l.name} is on the picture at its size: move it where it sits.`)}}catch(x){toast(x.message);ad.disabled=false}finally{busy()}return}
+  const b=e.target.closest('[data-gp]');if(!b)return;if(b.dataset.gly&&(VMODE==='picture'||VMODE==='split')){SEL=b.dataset.gly;paintLayers();draw();return}
   const q=FLATS?.placements.find(x=>x.id===b.dataset.gp);if(!q)return;Promise.resolve(VMODE==='split'?null:setVMode(q.view)).then(()=>{const go=()=>{const f=FF();if(f&&f.ready())f.select(q.id);else setTimeout(go,200)};go()})});
 // ---------- Simple and Pro ----------
 // Simple shows the essentials (the picture, graphics and their place, the flats and their sheets); Pro shows every tool. A client's room starts
@@ -1061,9 +1093,9 @@ document.addEventListener('click',e=>{if(!e.target.closest('#readyWrap'))$('#rea
 
 // a sheet from the flats, when the Lab runs as a home-screen app: shown here, with Share (Print, Save to Files, AirDrop, Mail) and Close
 function showSheet(blob,name,title){let d=$('#sheetDlg');if(!d){d=document.createElement('dialog');d.id='sheetDlg';d.style.cssText='border:0;border-radius:20px;padding:0;width:min(1100px,96vw);max-height:94vh;overflow:auto';document.body.appendChild(d)}
-  const u=URL.createObjectURL(blob),pdf=/pdf/.test(blob.type)||/\.pdf$/.test(name),file=new File([blob],name,{type:blob.type||(pdf?'application/pdf':'image/svg+xml')}),canShare=Boolean(navigator.canShare?.({files:[file]}));
+  const u=URL.createObjectURL(blob),pdf=/pdf/.test(blob.type)||/\.pdf$/.test(name),pic=/^image\//.test(blob.type)||/\.(png|svg|jpe?g|webp)$/i.test(name),file=new File([blob],name,{type:blob.type||(pdf?'application/pdf':'image/svg+xml')}),canShare=Boolean(navigator.canShare?.({files:[file]}));
   d.innerHTML=`<div style="padding:16px;display:grid;gap:12px"><div class="row" style="justify-content:space-between;gap:8px;flex-wrap:wrap"><h3 style="margin:0;font-size:16px">${esc(title)}</h3><div class="row" style="gap:8px">${canShare?'<button class="btn go sm" type="button" data-sheetshare>Share or print</button>':''}<a class="btn sm" href="${u}" download="${esc(name)}">Save</a><button class="btn sm q" type="button" data-sheetclose>Close</button></div></div>
-    ${pdf?`<p class="note" style="margin:0">The decoration sheet is ready: one page per graphic. ${canShare?'Share or print sends it to Print, Files, Mail or AirDrop.':'Save keeps the PDF.'}</p>`:`<img src="${u}" alt="${esc(title)}" style="width:100%;display:block;border:1px solid var(--line);border-radius:12px;background:#fff">`}</div>`;
+    ${pdf?`<p class="note" style="margin:0">The decoration sheet is ready: one page per graphic. ${canShare?'Share or print sends it to Print, Files, Mail or AirDrop.':'Save keeps the PDF.'}</p>`:!pic?`<p class="note" style="margin:0">${esc(name)} is ready. ${canShare?'Share sends it to Files, Mail or AirDrop.':'Save keeps it.'}</p>`:`<img src="${u}" alt="${esc(title)}" style="width:100%;display:block;border:1px solid var(--line);border-radius:12px;background:#fff">`}</div>`;
   d.querySelector('[data-sheetclose]').onclick=()=>{d.close();setTimeout(()=>URL.revokeObjectURL(u),1000)};
   const sh=d.querySelector('[data-sheetshare]');if(sh)sh.onclick=()=>navigator.share({files:[file],title}).catch(()=>{});
   d.showModal()}

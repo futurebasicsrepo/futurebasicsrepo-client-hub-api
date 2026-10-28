@@ -467,18 +467,19 @@ export function registerLabFlatsRoutes(app, d) {
       if (!art) return bad(reply, `${clip(l.name, 40) || 'A layer'}: send its picture`);
       const tech = UUID.test(String(l.techniqueId || '')) ? list.find(x => x.id === l.techniqueId) : null;
       arts[l.layer] = art;
-      graphics.push({ name: clip(l.name, 80) || 'Studio graphic', kind: 'icon', idea: 'Placed and measured in the studio', placement: PLACEMENTS[l.placement].label.toLowerCase(), technique: tech?.base || 'screen print', art, ...(tech ? { finish: { id: tech.id, name: tech.name } } : {}), studioLayer: l.layer, widthIn: Math.round(w * 100) / 100, heightIn: Math.round(h * 100) / 100 });
+      graphics.push({ ...(/^[a-z0-9-]{1,40}$/i.test(String(l.fromFlat || '')) ? { fromFlat: String(l.fromFlat) } : {}), name: clip(l.name, 80) || 'Studio graphic', kind: 'icon', idea: 'Placed and measured in the studio', placement: PLACEMENTS[l.placement].label.toLowerCase(), technique: tech?.base || 'screen print', art, ...(tech ? { finish: { id: tech.id, name: tech.name } } : {}), studioLayer: l.layer, widthIn: Math.round(w * 100) / 100, heightIn: Math.round(h * 100) / 100 });
     }
-    const spec = { ...(c.spec || {}), graphics: [...(c.spec?.graphics || []).filter(g => !g.studioLayer), ...graphics].slice(0, 8) };
+    const spec = { ...(c.spec || {}), graphics: [...(c.spec?.graphics || []).filter(g => !g.studioLayer), ...graphics.map(({ fromFlat, ...g }) => g)].slice(0, 8) };
     await pool.query('update lab_concepts set spec=$2, updated_at=now() where id=$1', [c.id, spec]);
     // the flats already saved take the studio's graphics too: kept where they were moved to, resized, new ones at their spot, removed ones gone
     const r = (await pool.query('select params, placements from lab_flats where concept_id=$1', [c.id])).rows[0]; let flats = null;
     if (r) {
-      const params = r.params, old = r.placements || [], keep = old.filter(q => q.source !== 'studio'), studio = [];
+      // a layer put on the picture from the flats (fromFlat) takes that placement over: same spot, from then on one record drawn on both
+      const params = r.params, old = r.placements || [], claimed = new Set(graphics.map(g => g.fromFlat).filter(Boolean)), keep = old.filter(q => q.source !== 'studio' && !claimed.has(q.id)), studio = [];
       for (const g of graphics) {
-        const prev = old.find(q => q.source === 'studio' && q.layer === g.studioLayer), t = techFor(list, { techniqueId: g.finish?.id, technique: g.technique });
+        const prev = old.find(q => q.source === 'studio' && q.layer === g.studioLayer) || (g.fromFlat ? old.find(q => q.id === g.fromFlat && q.source !== 'studio') : null), t = techFor(list, { techniqueId: g.finish?.id, technique: g.technique });
         const base = prev ? { view: prev.view, x: prev.x, y: prev.y - prev.h / 2 + g.heightIn / 2, w: g.widthIn, h: g.heightIn } : sized(defaultPlacement('graphic', params, { aspect: g.widthIn / g.heightIn, label: g.placement }), g);
-        studio.push({ ...(prev || {}), id: 's-' + g.studioLayer, name: g.name, source: 'studio', layer: g.studioLayer, art: g.art, technique: t.base, techniqueId: t.id, ...base });
+        studio.push({ ...(prev || {}), mark: undefined, added: undefined, id: 's-' + g.studioLayer, name: g.name, source: 'studio', layer: g.studioLayer, art: g.art, technique: t.base, techniqueId: t.id, ...base });
       }
       const { params: p2, placements } = cleanFlat({ ...params, placements: [...keep, ...studio] }), ck = await check(p2, placements, c.client_id);
       await pool.query('update lab_flats set placements=$2, check_result=$3, checked_at=now(), updated_at=now() where concept_id=$1', [c.id, JSON.stringify(placements), ck]);

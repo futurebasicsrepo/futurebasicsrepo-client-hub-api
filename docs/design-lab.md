@@ -189,6 +189,8 @@ The Lab installs as its own home-screen app (`/lab.webmanifest`: standalone, ope
 | Two fingers | pinch to zoom and move the view; a stroke a finger had started is undone |
 | Handles | corners and the turn knob take a fingertip (a bigger target than for a mouse); the tool rail and zoom buttons are 46 px on a touch screen |
 
+The flats zoom too: two fingers pinch and move them, one finger moves them once zoomed (a placement under the finger still drags), Ctrl and the wheel zoom on a computer, and **Fit** shows the whole piece again. A pinch that starts while a placement is being dragged puts it back where it was. On Design, and on any console page on a touch screen narrower than a desktop, the console menu starts folded to its icons (a person's own choice is kept). Installed, exports (the picture, a layer, the Illustrator SVG, the stitch file, the separations) open in the app's sheet with Share and Save rather than as a download that leaves the app.
+
 Side by side shows on an iPad held sideways; upright, the picture or the flats fill the screen. Installed, the spec sheet and the decoration sheet open inside the app with **Share or print** (Print, Save to Files, Mail, AirDrop) and **Save**, since a new window would leave the app.
 
 ## A room's team, and the libraries it shares
@@ -298,6 +300,8 @@ Where a graphic goes and how big it is lives in one record: its placement on the
 | Change its width on the flats and save | The layer on the picture is resized to match (the flats keep eighths of an inch, so smaller gaps are left alone) |
 | Take it off the flats and save | The layer stays on the picture, with no place on the garment, and does not come back on the next save |
 | Save the picture while the flats have unsaved changes | The flats are saved first and their sizes taken, so nothing set on the flats is undone |
+
+**Graphics added on the flats come onto the picture.** A logo or library graphic added on the flats (front) appears on the picture by itself once the flats are saved: at its size, placed from its inches at the picture's scale (the garment's top and centre in the picture are found from the base picture), with its place on the garment set. Move it to where it sits in the picture. On the next save the picture's layer takes the flats placement over (same spot), so from then on it is one record drawn on both. A layer taken off the picture comes off the flats and is not brought back (the picture remembers what it has taken: `doc.linked`). What came with the concept (its logo and graphics) is usually already drawn in its picture, so it waits for **Put on the picture** in the list below; back placements stay on the flats, since the picture shows the front.
 
 The Layers panel lists **On the garment · in inches**: every placement on the flats, front or back, with its size and where it sits. One drawn from the picture chooses its layer; any other opens it on the flats.
 
