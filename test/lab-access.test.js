@@ -26,7 +26,7 @@ test('a walk and a 3D model count for more than a picture', () => {
   assert.equal(UNITS.studio, 1); assert.equal(UNITS.walk, 4); assert.equal(UNITS.tryon, 3);
 });
 
-test('the gate: staff pass; a client with no live access is told what the Lab costs; the staff-only parts refuse a client', async () => {
+test('the gate: staff pass; a client with no live access is told what the Lab costs; the research side and client assignment refuse a client', async () => {
   const rows = { active: [], owns: [] }, calls = [];
   const pool = { query: async (q, args) => { calls.push(q); if (/from lab_access where client_id=\$1 and status='active'/.test(q)) return { rows: rows.active, rowCount: rows.active.length }; if (/select 1 from lab_/.test(q)) return { rows: rows.owns, rowCount: rows.owns.length }; return { rows: [], rowCount: 0 }; } };
   const lab = createLabAccess({ pool, env: {} });
@@ -37,7 +37,7 @@ test('the gate: staff pass; a client with no live access is told what the Lab co
   r = reply(); await lab.gate(client, r); assert.equal(r.status, 403); assert.equal(r.body.code, 'LAB_LOCKED'); assert.equal(r.body.pricing.feeCents, 49900);
   rows.active = [{ id: 'a1', client_id: cid, status: 'active', included_ai: 40, ai_price_cents: 250, unpaid_cap_cents: 15000 }];
   r = reply(); await lab.gate(client, r); assert.equal(r.status, undefined); assert.equal(lab.scope(client), cid);
-  for (const [url, method] of [['/v1/lab/brands', 'POST'], ['/v1/lab/taste', 'GET'], ['/v1/lab/clients', 'GET'], ['/v1/lab/materials', 'POST'], ['/v1/lab/library/techniques/x/sample', 'GET'], ['/v1/lab/plans/x/client', 'PUT']]) {
+  for (const [url, method] of [['/v1/lab/brands', 'POST'], ['/v1/lab/taste', 'GET'], ['/v1/lab/clients', 'GET'], ['/v1/lab/items', 'GET'], ['/v1/lab/plans/x/client', 'PUT']]) {
     r = reply(); await lab.gate({ ...client, url, method }, r); assert.equal(r.status, 403, url); assert.equal(r.body.code, 'LAB_STAFF_ONLY');
   }
   r = reply(); await lab.gate({ ...client, url: '/v1/lab/materials', method: 'GET' }, r); assert.equal(r.status, undefined, 'the shared libraries are readable');

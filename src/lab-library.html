@@ -55,7 +55,8 @@ input[type=range]{width:100%;accent-color:var(--ink)}input[type=color]{width:44p
 @media (prefers-reduced-motion:reduce){.busy i{animation:none}}
 #needSignin{max-width:620px;margin:40px auto}
 @media(max-width:820px){.gen{grid-template-columns:1fr}.dl{grid-template-columns:1fr}}
-html[data-lab-client] #tNew{display:none}
+.libflag{display:inline-block;font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.12em;text-transform:uppercase;border:1px solid var(--line);border-radius:999px;padding:2px 7px;margin-top:4px;background:#fff}
+.ro-note{font-size:12px;color:var(--dim);margin:6px 0 0}
 </style>
 <script src="/feedback.js"></script>
 </head>
@@ -156,7 +157,7 @@ function paintGraphics(){
   if(!$('#gStyle').options.length)$('#gStyle').innerHTML=G.styles.map(s=>`<option>${esc(s)}</option>`).join('');
   $('#fCount').textContent=`${G.total} ${G.total===1?'graphic':'graphics'}`;
   $('#fTags').innerHTML=G.tags.map(t=>`<button type="button" class="chip" data-tag="${esc(t.tag)}" aria-pressed="${t.tag===TAG}">${esc(t.tag)} · ${t.n}</button>`).join('');
-  $('#gGrid').innerHTML=G.graphics.map(g=>`<button type="button" class="card" data-g="${g.id}"><div class="ph"><img alt="" data-src="/v1/lab/art/${g.id}?thumb=1"></div><div class="bd"><b>${esc(g.name||'Untitled')}</b><small>${esc(SRC[g.source]||g.source)}${g.from?' · '+esc(g.from):''} · ${esc(when(g.createdAt))}</small>${g.techniqueName?`<small>${esc(g.techniqueName)}</small>`:''}${g.tags.length?`<div class="tagrow">${g.tags.map(t=>`<span class="tag">${esc(t)}</span>`).join('')}</div>`:''}</div></button>`).join('')||'<p class="note">Nothing here yet. Draw a graphic above, or add your own artwork.</p>';
+  $('#gGrid').innerHTML=G.graphics.map(g=>`<button type="button" class="card" data-g="${g.id}"><div class="ph"><img alt="" data-src="/v1/lab/art/${g.id}?thumb=1"></div><div class="bd"><b>${esc(g.name||'Untitled')}</b>${g.room?`<span class="libflag" title="A client's graphic">${esc(g.room)}</span>`:''}<small>${esc(SRC[g.source]||g.source)}${g.from?' · '+esc(g.from):''} · ${esc(when(g.createdAt))}</small>${g.techniqueName?`<small>${esc(g.techniqueName)}</small>`:''}${g.tags.length?`<div class="tagrow">${g.tags.map(t=>`<span class="tag">${esc(t)}</span>`).join('')}</div>`:''}</div></button>`).join('')||'<p class="note">Nothing here yet. Draw a graphic above, or add your own artwork.</p>';
   $('#gMore').classList.toggle('hidden',G.graphics.length>=G.total);
   for(const i of $$('#gGrid img[data-src]'))blobUrl(i.dataset.src).then(u=>{i.src=u}).catch(()=>{});
 }
@@ -181,6 +182,7 @@ async function openGraphic(id){
   $('#gdMeta').textContent=`${SRC[CUR.source]||CUR.source}${CUR.from?' · '+CUR.from:''}${CUR.by?' · '+CUR.by:''} · ${when(CUR.createdAt)}`;$('#gdName').value=CUR.name;$('#gdTags').value=CUR.tags.join(', ');
   $('#gdTech').innerHTML=techOpts(CUR.techniqueId,'Not set');$('#gvTech').innerHTML=techOpts(CUR.techniqueId,'The artwork, flat');$('#gdMade').innerHTML=techOpts(CUR.techniqueId,'As it is');$('#gdPrompt').textContent=CUR.prompt?'Drawn from: '+CUR.prompt:'';
   $('#gdPlace').innerHTML=['front chest','left chest','front centre','full front','chest band','sleeve','back','back yoke','hem'].map(p=>`<option>${p}</option>`).join('');msg('#gdMsg','');
+  if(CUR.room)$('#gdMeta').textContent+=' · '+CUR.room+'\'s room';
   $('#gdStudio').href='/lab/studio?art='+id;$('#gpProduct').innerHTML='';$('#gpQ').value='';loadProducts('');
   $('#gjTech').innerHTML=techOpts(CUR.techniqueId,'Screen print (default)');msg('#gjInfo','');jobPreview();$('#gjEmb').innerHTML='';$('#grImg').classList.add('hidden');msg('#grInfo','');
   d.showModal();GIMG=null;const u=await blobUrl('/v1/lab/art/'+id);$('#gdDown').href=u;$('#gdDown').download=(CUR.name||'graphic').replace(/[^a-z0-9]+/gi,'-').toLowerCase()+'.png';GIMG=await imgOf(u);drawGraphic();
@@ -226,7 +228,7 @@ $('#gpPut').onclick=async()=>{const pid=$('#gpProduct').value;if(!pid){msg('#gdM
 const SAMPLE=FX.sample(600);
 async function loadTech(){T=await api('/v1/lab/library/techniques');$('#gTech').innerHTML=techOpts('','Any technique');$('#fTech').innerHTML=techOpts('','Any technique')}
 function paintTech(){
-  $('#tList').innerHTML=T.kinds.map(k=>{const l=T.techniques.filter(t=>t.kind===k.id);return l.length?`<div class="kind"><h2>${esc(k.label)}</h2><span>${l.length}</span></div><div class="cards">${l.map(t=>`<button type="button" class="card tcard" data-t="${t.id}"><div class="ph" style="position:relative"><canvas width="360" height="300" data-swatch="${t.id}" aria-hidden="true"></canvas>${t.hasSample?'<span class="flag" style="top:0;left:0">Real sample</span>':''}</div><div class="bd"><b>${esc(t.name)}</b><small>${esc(t.summary)}</small><div class="tagrow"><span class="tag">${esc(t.base)}</span>${t.photos.length?`<span class="tag">${t.photos.length} reference photo${t.photos.length===1?'':'s'}</span>`:''}${t.builtin?'':'<span class="tag">ours</span>'}</div></div></button>`).join('')}</div>`:''}).join('');
+  $('#tList').innerHTML=T.kinds.map(k=>{const l=T.techniques.filter(t=>t.kind===k.id);return l.length?`<div class="kind"><h2>${esc(k.label)}</h2><span>${l.length}</span></div><div class="cards">${l.map(t=>`<button type="button" class="card tcard" data-t="${t.id}"><div class="ph" style="position:relative"><canvas width="360" height="300" data-swatch="${t.id}" aria-hidden="true"></canvas>${t.hasSample?'<span class="flag" style="top:0;left:0">Real sample</span>':''}${CLIENT_MODE()&&t.editable===false?'<span class="flag" style="top:0;right:0;left:auto">Starter</span>':!CLIENT_MODE()&&t.room?`<span class="flag" style="top:0;right:0;left:auto">${esc(t.room)}</span>`:''}</div><div class="bd"><b>${esc(t.name)}</b><small>${esc(t.summary)}</small><div class="tagrow"><span class="tag">${esc(t.base)}</span>${t.photos.length?`<span class="tag">${t.photos.length} reference photo${t.photos.length===1?'':'s'}</span>`:''}${t.builtin?'':'<span class="tag">ours</span>'}</div></div></button>`).join('')}</div>`:''}).join('');
   for(const c of $$('#tList canvas[data-swatch]')){const t=T.techniques.find(x=>x.id===c.dataset.swatch);c.getContext('2d').drawImage(FX.swatch(SAMPLE,t.finish,{w:c.width,h:c.height}),0,0)}
 }
 $('#tList').addEventListener('click',e=>{const c=e.target.closest('[data-t]');if(c)openTech(c.dataset.t)});
@@ -260,6 +262,8 @@ async function openTech(id){
   const t=T.techniques.find(x=>x.id===id);if(!t)return;TCUR=JSON.parse(JSON.stringify(t));$('#tForm').innerHTML=techForm(TCUR);
   $('#tvArt').innerHTML='<option value="">Our sample graphic</option>'+G.graphics.slice(0,40).map(g=>`<option value="${g.id}">${esc(g.name||'Untitled')}</option>`).join('');TART=null;
   showReal(false);$('#tReal').removeAttribute('src');msg('#tRealMsg',t.hasSample?'A real sample was made '+esc(when(t.sampleAt))+'.':'');$('#tShowReal').disabled=!t.hasSample;$('#tMakeReal').disabled=!T.imageConnected;
+  {const ro=t.editable===false;$('#tSave').classList.toggle('hidden',ro);$('#tDel').classList.toggle('hidden',ro);$('#tMakeReal').classList.toggle('hidden',ro);$('#tDup').textContent=ro?'Make my own copy':'Duplicate';
+   $('#tForm').querySelector('.ro-note')?.remove();if(ro)$('#tForm').insertAdjacentHTML('afterbegin','<p class="ro-note">A starter technique: use it on your graphics as it is, or make your own copy to change it.</p>')}
   paintPhotos();$('#tDlg').showModal();drawTech();
   if(t.hasSample)blobUrl(`/v1/lab/library/techniques/${t.id}/sample?at=${encodeURIComponent(t.sampleAt)}`).then(u=>{$('#tReal').src=u}).catch(()=>{});
 }

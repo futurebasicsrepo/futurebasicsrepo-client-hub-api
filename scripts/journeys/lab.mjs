@@ -4,7 +4,7 @@
 import http from 'node:http';
 import { createRequire } from 'node:module';
 import { readFileSync, writeFileSync } from 'node:fs';
-import { journey, ok, summary, api, jpeg, png, sql, stamp, forge, FX, sharp } from './lib.mjs';
+import { journey, ok, summary, api, jpeg, png, sql, stamp, forge, FX, sharp, S, codeFrom, sleep } from './lib.mjs';
 let playwright = null; try { playwright = createRequire(import.meta.url)(process.env.PLAYWRIGHT_PATH || 'playwright'); } catch {}
 const BASE = 'http://127.0.0.1:3123', call = api(BASE);
 const room = (await call('/v1/public/start', { body: { email: `jt-${stamp}-${Math.random().toString(36).slice(2, 7)}@chaos.test`, name: 'Lab Admin', title: 'Lab runner', photos: [jpeg()] } })).json;
@@ -1888,6 +1888,7 @@ await journey('J230', 'Decoration to the factory: a graphic has a real size in i
 });
 
 await journey('J231', 'From the studio to the factory: a graphic placed and measured in the studio lands on the flats at its size; artwork sizes per group of garment sizes; inks per colourway; vector and stitch files; an all-over repeat made in the library and laid over the whole piece; and factory quotes that calibrate the costs', async () => {
+  await K('/library/techniques'); // the built-in techniques are put in at start-up: wait for them before the first flats read
   const { brands, plan } = await conceptSetup();
   const tops = plan.lines.find(l => l.category === 'tops') || plan.lines[0];
   const [c, c2] = (await K(`/plans/${plan.plan.id}/lines/${tops.id}/concepts`, { body: { count: 2 } })).json.concepts;
@@ -2017,7 +2018,7 @@ await journey('J232', 'The self-serve Design Lab: a client room is locked out un
 
     // their room, scoped
     const ov = await C('/overview'); ok(ov.status === 200 && ov.json.client === true && ov.json.brands.length === 0 && ov.json.categories.length > 5 && ov.json.brandCode === null, 'the Lab opens for them without the research side', [ov.status, ov.json.brands?.length]);
-    ok((await C('/brands', { body: { name: 'X', url: 'https://x.test' } })).json.code === 'LAB_STAFF_ONLY' && (await C('/taste')).status === 403 && (await C('/clients')).status === 403 && (await C('/items')).status === 403 && (await C('/materials', { body: { name: 'M' } })).status === 403 && (await C('/library/techniques', { body: { name: 'T' } })).status === 403, 'the research, the taste, the client list and the shared libraries\' edits stay Future Basics only');
+    ok((await C('/brands', { body: { name: 'X', url: 'https://x.test' } })).json.code === 'LAB_STAFF_ONLY' && (await C('/taste')).status === 403 && (await C('/clients')).status === 403 && (await C('/items')).status === 403, 'the research, the taste and the client list stay Future Basics only (a room adds its own materials and techniques: J233)');
     ok((await C('/materials')).status === 200 && (await C('/library/techniques')).status === 200, 'they read the shared materials and techniques');
     ok((await C('/plans')).json.plans.length === 0 && (await C(`/plans/${staffPlan.plan.id}`)).status === 404 && (await C('/concepts')).json.concepts.length === 0, 'they see none of our plans or concepts, not even by id');
     const mine = await C('/plans', { body: { name: 'My first line', season: 'SS28' } }); ok(mine.status === 201 && sql(`select client_id from lab_plans where id='${mine.json.plan.id}'`).split('\n')[0] === cid && /Self Serve/.test(sql(`select brand->>'name' from lab_plans where id='${mine.json.plan.id}'`)), 'a plan they make is theirs, in their brand', [mine.status, mine.json.error]);
@@ -2092,6 +2093,87 @@ await journey('J232', 'The self-serve Design Lab: a client room is locked out un
   } finally {
     await A(`/v1/admin/clients/${cid}/lab`, { method: 'PATCH', body: { action: 'end' } }).catch(() => {});
     await cleanup(brands, staffPlan.plan?.id);
+  }
+});
+
+await journey('J233', 'A room\'s team and its libraries: the room adds a teammate who signs in with a code and works on the same plans, graphics, materials and techniques; a room sees only its own work (plus the read-only starter materials and techniques), never ours or another room\'s, while Future Basics staff see everything; a teammate taken off loses access at once', async () => {
+  const LOG = `${S}/server-j-a.log`, A = (path, o = {}) => call(path, { token: kyleT, ...o });
+  const mkRoom = async who => {
+    const email = `${who}-${stamp}@team${stamp}.test`, st = await call('/v1/public/start', { body: { email, name: `${who} owner`, title: 'First tee', photos: [jpeg()] } });
+    const cid = st.json.client?.id || sql(`select client_id from users where lower(email)='${email}'`), uid = sql(`select id from users where lower(email)='${email}'`).split('\n')[0], slug = sql(`select slug from clients where id='${cid}'`).split('\n')[0];
+    sql(`update users set email_verified_at=now(), last_sign_in_at=now() where id='${uid}'`); sql(`update clients set contact_email='${email}' where id='${cid}'`);
+    await A(`/v1/admin/clients/${cid}/lab`, { method: 'PATCH', body: { action: 'comp' } });
+    return { email, cid, uid, t: await forge({ sub: uid, clientId: cid, client: slug, role: 'client', email }) };
+  };
+  const one = await mkRoom('alpha'), two = await mkRoom('bravo');
+  const O = (p, o = {}) => call(p, { token: one.t, ...o }), B = (p, o = {}) => call(p, { token: two.t, ...o });
+  const mate = `mo-${stamp}@elsewhere${stamp}.test`;
+  try {
+    // the team
+    let t = await O('/v1/client/team'); ok(t.status === 200 && t.json.members.length === 1 && t.json.members[0].owner && t.json.members[0].you && t.json.members[0].status === 'active', 'the room starts with its owner', t.json);
+    ok((await O('/v1/client/team', { body: { email: 'nope' } })).status === 422 && (await O('/v1/client/team', { body: { email: 'pat@thefuturebasics.com' } })).status === 422 && (await O('/v1/client/team', { body: { email: two.email } })).status === 409, 'a bad address, Future Basics, and someone with their own room are refused');
+    const add = await O('/v1/client/team', { body: { email: mate, name: 'Mo Maker' } }); ok(add.status === 201 && add.json.members.length === 2 && add.json.members.some(m => m.email === mate && m.status === 'invited' && m.name === 'Mo Maker'), 'the owner adds a teammate', add.json);
+    ok((await O('/v1/client/team', { body: { email: mate.toUpperCase() } })).status === 409, 'not twice');
+    await call('/v1/auth/code', { body: { email: mate } }); await sleep(200); const code = codeFrom(LOG, mate); ok(/^\d{6}$/.test(code || ''), 'the teammate gets a sign-in code', code);
+    const v = await call('/v1/auth/verify', { body: { email: mate, code } }); ok(v.status === 200 && v.json.client?.id === one.cid, 'and signs in to the same room', [v.status, v.json.error]);
+    const mt = v.json.token, M = (p, o = {}) => call(p, { token: mt, ...o }), mateId = v.json.user?.id;
+    t = await M('/v1/client/team'); ok(t.json.members.find(m => m.email === mate)?.status === 'active' && t.json.members.find(m => m.email === mate)?.you && t.json.members.find(m => m.email === mate)?.invitedBy?.startsWith('alpha'), 'they show as signed in, added by the owner', t.json.members);
+    ok((await M(`/v1/client/team/${mateId}`, { method: 'DELETE' })).status === 409 && (await M(`/v1/client/team/${one.uid}`, { method: 'DELETE' })).status === 409, 'nobody takes themselves or the owner off');
+
+    // the room's plans and libraries, shared by the team
+    const plan = await M('/v1/lab/plans', { body: { name: 'Team line' } }); ok(plan.status === 201 && (await O('/v1/lab/plans')).json.plans.some(p => p.id === plan.json.plan.id) && !(await B('/v1/lab/plans')).json.plans.some(p => p.id === plan.json.plan.id), 'a plan one teammate makes is the whole team\'s, and nobody else\'s');
+    const up = await O('/v1/lab/library/graphics/upload', { body: { image: await png(300, 300, [20, 90, 200]), name: 'Team mark', tags: 'team' } }); ok(up.status === 201, 'the owner adds a graphic', up.json.error);
+    const mg = (await M('/v1/lab/library/graphics')).json.graphics.find(g => g.id === up.json.id); ok(mg && /^alpha/.test(mg.by), 'the teammate sees it, made by the owner', mg);
+    ok(!(await B('/v1/lab/library/graphics')).json.graphics.some(g => g.id === up.json.id) && (await B(`/v1/lab/art/${up.json.id}`)).status === 404, 'another room does not');
+    // ours never reach a room
+    const ours = await A('/v1/lab/library/graphics/upload', { body: { image: await png(300, 300, [200, 40, 40]), name: `FB stamp ${stamp}`, tags: 'fb' } }); ok(ours.status === 201, 'we add a graphic of our own');
+    ok(!(await O('/v1/lab/library/graphics')).json.graphics.some(g => g.id === ours.json.id) && (await O(`/v1/lab/art/${ours.json.id}`)).status === 404 && (await O(`/v1/lab/library/studio?art=${ours.json.id}`)).status === 404, 'a room never sees our graphics, by list, by id or in the studio');
+    ok((await O(`/v1/lab/library/graphics/${ours.json.id}`, { method: 'PUT', body: { shared: true, name: 'Taken' } })).status === 404, 'nor touches them');
+    const staffList = (await A('/v1/lab/library/graphics?limit=200')).json.graphics, sg = staffList.find(g => g.id === up.json.id);
+    ok(sg && /alpha/.test(sg.room) && staffList.some(g => g.id === ours.json.id), 'staff see every graphic, the room\'s marked with its name', sg?.room);
+    // materials: the room's own plus the starter set; staff see all
+    const mat = await M('/v1/lab/materials', { body: { kind: 'fabric', name: 'Team twill', price: 7.5 } }); ok(mat.status === 201, 'the teammate adds a material', mat.json.error);
+    const fbOwn = await A('/v1/lab/materials', { body: { kind: 'fabric', name: `FB house twill ${stamp}`, price: 9 } }); ok(fbOwn.status === 201, 'we add one of our own');
+    const om = (await O('/v1/lab/materials?kind=fabric')).json; ok(om.client === true && om.materials.some(m => m.id === mat.json.material.id && m.editable && /Mo Maker/.test(m.by)) && om.materials.some(m => m.starter && m.editable === false), 'the owner sees the teammate\'s material beside the read-only starter fabrics', om.materials.length);
+    ok(!om.materials.some(m => m.id === fbOwn.json.material.id) && !(await B('/v1/lab/materials?kind=fabric')).json.materials.some(m => m.id === mat.json.material.id), 'but neither our own nor another room\'s');
+    ok((await O(`/v1/lab/materials/${mat.json.material.id}`, { method: 'PUT', body: { price: 8 } })).status === 200, 'the owner edits the teammate\'s material');
+    const starterMat = om.materials.find(m => m.starter); ok((await O(`/v1/lab/materials/${starterMat.id}`, { method: 'PUT', body: { price: 1 } })).status === 404 && (await O(`/v1/lab/materials/${fbOwn.json.material.id}/swatch`)).status === 404, 'a starter row cannot be changed, and ours cannot be opened');
+    const am = (await A('/v1/lab/materials?kind=fabric')).json.materials; ok(am.some(m => m.id === mat.json.material.id && /alpha/.test(m.room)) && am.some(m => m.id === fbOwn.json.material.id), 'staff see every material, the room\'s marked with its name');
+    // techniques: the same
+    const techs = (await O('/v1/lab/library/techniques')).json.techniques, starter = techs.find(x => x.editable === false);
+    ok(starter && (await O(`/v1/lab/library/techniques/${starter.id}`, { method: 'PUT', body: { name: 'Mine now' } })).status === 404, 'starter techniques are read-only to a room');
+    const copy = await M('/v1/lab/library/techniques', { body: { from: starter.id } }); ok(copy.status === 201 && sql(`select client_id from lab_techniques where id='${copy.json.id}'`) === one.cid, 'a copy of one is the room\'s own', copy.json.error);
+    const ol = (await O('/v1/lab/library/techniques')).json.techniques, bl = (await B('/v1/lab/library/techniques')).json.techniques; ok(ol.some(x => x.id === copy.json.id && x.editable) && !bl.some(x => x.id === copy.json.id), 'the team sees the copy; another room does not');
+    const fbTech = await A('/v1/lab/library/techniques', { body: { name: `FB house print ${stamp}`, kind: 'print', summary: '', finish: { effect: 'ink' } } }); ok(fbTech.status === 201 && !ol.some(x => x.id === fbTech.json.id) && !(await O('/v1/lab/library/techniques')).json.techniques.some(x => x.id === fbTech.json.id), 'a technique we add stays ours');
+    ok((await A('/v1/lab/library/techniques')).json.techniques.some(x => x.id === copy.json.id && /alpha/.test(x.room)), 'staff see the room\'s technique too');
+    ok((await O(`/v1/lab/library/techniques/${copy.json.id}`, { method: 'PUT', body: { name: 'Team discharge' } })).status === 200, 'and the team changes theirs');
+
+    // taking someone off
+    const off = await O(`/v1/client/team/${mateId}`, { method: 'DELETE' }); ok(off.status === 200 && !off.json.members.some(m => m.email === mate), 'the owner takes the teammate off', off.json);
+    const after = await M('/v1/lab/plans'); ok(after.status === 401 && after.json.code === 'REMOVED' && (await M('/v1/session')).status === 401, 'the session they hold stops working at once', [after.status, after.json]);
+    ok((await call('/v1/auth/code', { body: { email: mate } })).status === 403, 'and they cannot sign in again');
+    ok(sql(`select count(*) from lab_materials where id='${mat.json.material.id}'`) === '1' && (await O('/v1/lab/plans')).json.plans.some(p => p.id === plan.json.plan.id), 'what they made stays with the room');
+    ok((await O('/v1/client/team', { body: { email: mate } })).status === 201, 'adding them again works');
+    await call('/v1/auth/code', { body: { email: mate } }); await sleep(200); const v2 = await call('/v1/auth/verify', { body: { email: mate, code: codeFrom(LOG, mate) } }); ok(v2.status === 200 && (await call('/v1/lab/plans', { token: v2.json.token })).status === 200, 'and they are back in', [v2.status, v2.json.error]);
+
+    // in a browser: the hub's team section, and the library's flags
+    if (!playwright) { ok(true, 'skipped: no browser here'); return; }
+    const b = await playwright.chromium.launch(), errs = [];
+    try {
+      const cc = await b.newContext({ viewport: { width: 1280, height: 900 } }); await cc.addInitScript(x => { try { localStorage.setItem('fb.client.token', x); } catch {} }, one.t);
+      const page = await cc.newPage(); page.on('pageerror', e => errs.push(String(e))); page.on('dialog', d => d.accept());
+      await page.goto(`${BASE}/`, { waitUntil: 'networkidle' }); await page.waitForSelector('#team .team-row', { timeout: 15000 });
+      const txt = await page.innerText('#team'); ok(/Your team/i.test(txt) && txt.includes(mate) && /Owner/i.test(txt) && /Take off the team/i.test(txt), 'the hub lists the team with a way to take someone off', txt.slice(0, 300));
+      await page.fill('#teamAdd input[name="email"]', `third-${stamp}@elsewhere${stamp}.test`); await page.click('#teamAdd button'); await page.waitForFunction(s => document.getElementById('team').innerText.includes(s), `third-${stamp}`, { timeout: 10000 });
+      ok(/Invited/i.test(await page.innerText('#team')), 'adding someone from the hub shows them as invited');
+      await page.goto(`${BASE}/lab/library`, { waitUntil: 'networkidle' }); await page.waitForSelector('#gGrid .card', { timeout: 15000 });
+      const grid = await page.innerText('#gGrid'); ok(grid.includes('Team mark') && !grid.includes(`FB stamp ${stamp}`), 'the room\'s library holds the team\'s graphics and none of ours');
+      await page.goto(`${BASE}/lab/materials`, { waitUntil: 'networkidle' }); await page.waitForSelector('[data-m]', { timeout: 15000 });
+      ok(/Starter library/.test(await page.innerText('body')) && !(await page.innerText('body')).includes(`FB house twill ${stamp}`), 'materials show the starter set and the team\'s, never ours');
+      ok(errs.length === 0, 'no page errors', errs);
+    } finally { await b.close(); }
+  } finally {
+    for (const r of [one, two]) await A(`/v1/admin/clients/${r.cid}/lab`, { method: 'PATCH', body: { action: 'end' } }).catch(() => {});
   }
 });
 

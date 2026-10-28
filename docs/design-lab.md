@@ -149,7 +149,7 @@ A job runs every six hours and reads up to three brands that have not been read 
 
 A client can open the Design Lab on their own room, from the hub, for a fixed price plus a metered part (`src/lab-access.js`, `src/lab-selfserve-routes.js`).
 
-**What they get.** The studio, the flats and the libraries, on their own work: line plans, concepts, the studio, flats, the graphics they draw or upload, their fonts, the decoration quotes they record. Tech packs are included while the Lab is open (a photo pack is never locked for a room with the Lab: its `billing` reads `lab`). The research side (the brands we watch, the pieces we found, what's moving, the brand code), the Future Basics taste, the client list, and the edits of the shared libraries (materials, techniques, the technique samples) stay Future Basics only.
+**What they get.** The studio, the flats and the libraries, on their own work: line plans, concepts, the studio, flats, the graphics they draw or upload, their fonts, the decoration quotes they record. Tech packs are included while the Lab is open (a photo pack is never locked for a room with the Lab: its `billing` reads `lab`). The research side (the brands we watch, the pieces we found, what's moving, the brand code), the Future Basics taste and the client list stay Future Basics only; the room's libraries hold only its own work plus the read-only starter set (see *A room's team, and the libraries it shares*).
 
 **How the price works: fixed + variable.** A fee opens the Lab for a period and includes a handful of AI generations. Past them each generation is metered: a picture counts as one, the on-model views one each, a walk four, a 3D try-on three (`UNITS`). The unbilled part is invoiced in rounds (a Shopify draft order tagged `fb-design-lab-ai`, emailed to the client, also on their hub card) once it reaches the billing round; generations pause when the room owes more than the cap, and continue once the open invoice is paid. Each access row keeps the numbers it was sold at, so a price change never moves a live room.
 
@@ -174,6 +174,25 @@ A client can open the Design Lab on their own room, from the hub, for a fixed pr
 | `DESIGN_LAB_AI_UNPAID_CAP_CENTS` | generations pause past this much owed (default 15000; 0 for no cap) |
 
 Routes: `GET /v1/client/lab`, `POST /v1/client/lab/checkout`, `POST /v1/client/lab/landed`, `POST /v1/client/lab/invoices/:id/landed`, `GET /v1/client/lab/usage`; `GET /v1/products/:id/make`, `POST /v1/products/:id/make-request`, `POST|DELETE /v1/products/:id/quote-links[/:sid]`; staff `GET|PATCH /v1/admin/clients/:id/lab` (`comp`, `end`, `bill`), `POST /v1/admin/lab/invoices/:id/paid`, `GET|PATCH /v1/admin/make-requests[/:id]`. Tables: `lab_access`, `lab_ai_usage`, `lab_ai_invoices`, `make_requests`. Tests: `test/lab-access.test.js`, journey J232.
+
+## A room's team, and the libraries it shares
+
+**The team.** Anyone on a client room can add teammates from the hub's **Team** section (`src/room-team-routes.js`): an email and, if they like, a name. The address joins the room's sign-in list, a user row is made for it, and the teammate gets an email with the way in; they sign in with a six-digit code like everyone else. Everyone on the team sees the whole room: projects, tech packs, files, messages, and the Design Lab with its plans, concepts and libraries. AI generations from the whole team count against the room's one meter. A room holds up to 25 people.
+- An address that already signs in to another active room is refused: one person, one room. Future Basics addresses are refused too; staff already reach every room.
+- **Taking someone off.** A teammate can take another off the team (not themselves, and never the owner, the room's contact address; Future Basics changes the owner from the console). Their session stops working at once (every client request checks, with a 20-second cache the team routes clear), and they cannot sign in again, even when the room's email domain would let them in. What they made stays, by name. Adding them again lets them back in.
+
+**Who sees what.** There are two sides, kept apart:
+- **Future Basics staff** (anyone signed in to the work console with the Lab) see everything: our own work and every client room's plans, concepts, graphics, fonts, materials and techniques. A client's row is marked with the room's name in the graphics, materials and techniques lists.
+- **A client and their team** see only their own room's work. Our graphics, fonts and the materials and techniques we add never reach a room, and neither does another room's work. The one exception is the built-in **starter set** of materials and techniques (screen print, embroidery, the base fabrics and trims) that the flats and the costing need: a room reads and uses those, cannot change them, and can copy a starter technique into the room to make its own version.
+
+| Library | A room sees | Future Basics staff see |
+| --- | --- | --- |
+| Graphics | what the team draws, uploads or makes in the studio | every graphic, every room's |
+| Fonts | fonts the team uploads | every font |
+| Materials, trims and tags | the team's own, plus the starter set (read-only) | every material, every room's |
+| Techniques | the team's own and their copies, plus the starter set (read-only) | every technique, every room's |
+
+The gate answers 404 to a room asking for anything outside this, by list, by id or by a query parameter. `lab_materials` and `lab_techniques` carry `client_id` (null for ours, `builtin` for the starter set), and the flats and studio list only the techniques a piece's room may use: a client's piece gets its room's own plus the starter set, one of ours gets all of ours.
 
 ## Where it lives
 
@@ -431,6 +450,7 @@ Routes: `src/lab-materials-routes.js` (`/v1/lab/materials…`, `/v1/lab/concepts
 - **The sketch is lined up with the measurements.** For each sketch, `scripts/flat-templates/build.mjs` finds the front and back views on the page and measures them: the centre line, the chest between the side seams (or the waistband, or the cap's crown), the high point of the shoulder (or the top of the waistband, or the brim seam) and the hem. The page scales the sketch so its chest or waist matches the piece's, and its length too, held within 12% so it never looks stretched. Placements are measured from the same points, and the checks (collar, zip, pocket, seams, edges) work from the measurements, so they agree with the spec whatever the sketch.
 - **Design tab: change the drawing.** Every sketch can be reworked without leaving the page. **From the sketch pack** places the pack's own add-on parts (about 200 pockets, zips, collars, trims and buttons, cut from its add-on sheets) on the flat:
   - **Colour.** A swatch or any colour recolours the whole piece: the white cloth takes the colour and the sketch's lines and shading stay. A dark colour gets light lines so the drawing still reads.
+    The colour fills the garment's silhouette: the sketch's lines and everything they enclose, never the space around the piece or between its legs (`src/lab-flat-mask.js`). Some of the bought sketches fill those negative spaces white and leave the panels empty, so a plain recolour landed in the wrong places. Each sketch's silhouette is made ahead of time in `src/flat-templates/masks/` (`npm run flat-masks` after adding or changing sketches; `--all` remakes every one) and served at `/lab/flat-masks/<sketch>.png`; a missing one is made the first time it is needed.
   - **Details.** Patch, flap, welt, cargo, kangaroo, slant, jean and zip pockets; single, double or triple pleats; drawcords; zips; button plackets. Each lands where that detail usually goes, then drags into place or takes exact sizes in inches. Each has its own topstitch (single, double or triple needle, chain stitch, coverstitch, zigzag, bartack, blind hem), thread colour and fabric colour. **Mirror** copies one to the other side; **Cover up** hides something on the sketch, like the pocket you are replacing.
   - **Stitch lines.** Click along a seam or edge, then double-click or press Enter. Pick the stitch type, the thread colour and the stitches per inch.
   - **Colour blocks.** Click round a panel (a sleeve, a yoke, a hood lining) to give it its own colour. The sketch's lines show through.

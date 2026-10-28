@@ -1033,6 +1033,20 @@ export async function migrate() {
       created_at timestamptz not null default now()
     );
     create index if not exists make_requests_open on make_requests(status, created_at desc);
+    -- A room's team and its libraries (src/team-routes.js, src/lab-access.js): teammates are the room's users; a teammate taken off the team keeps
+    -- their row (their work stays attributed) but can no longer sign in. Materials and techniques a room adds carry its client_id and stay in the room;
+    -- Future Basics' rows are client_id null, and of those a room reads only the built-in starter set. Future Basics staff see every room's rows.
+    -- added only when missing: an "add column if not exists" locks the whole table even when the column is there, and servers starting together
+    -- (or the starting techniques being put in) would wait on each other
+    do $$ begin
+      if not exists(select 1 from information_schema.columns where table_name='users' and column_name='removed_at') then alter table users add column removed_at timestamptz; end if;
+      if not exists(select 1 from information_schema.columns where table_name='users' and column_name='invited_by') then alter table users add column invited_by uuid references users(id) on delete set null; end if;
+      if not exists(select 1 from information_schema.columns where table_name='users' and column_name='invited_at') then alter table users add column invited_at timestamptz; end if;
+      if not exists(select 1 from information_schema.columns where table_name='lab_materials' and column_name='client_id') then alter table lab_materials add column client_id uuid references clients(id) on delete cascade; end if;
+      if not exists(select 1 from information_schema.columns where table_name='lab_techniques' and column_name='client_id') then alter table lab_techniques add column client_id uuid references clients(id) on delete cascade; end if;
+    end $$;
+    create index if not exists lab_materials_client on lab_materials(client_id);
+    create index if not exists lab_techniques_client on lab_techniques(client_id);
     alter table tech_packs add column if not exists verification jsonb not null default '{}';
     alter table tech_packs add column if not exists locked_at timestamptz;
     alter table tech_packs add column if not exists initiated_by text not null default 'brand';
