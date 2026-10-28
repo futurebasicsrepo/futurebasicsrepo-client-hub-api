@@ -114,6 +114,8 @@ kbd{font:500 10px 'IBM Plex Mono',monospace;border:1px solid var(--line);border-
     <button type="button" data-tool="rect" title="Rectangle (R)" aria-label="Rectangle"><svg viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" rx="1.5"/></svg></button>
     <button type="button" data-tool="ellipse" title="Ellipse (O)" aria-label="Ellipse"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="8" ry="6"/></svg></button>
     <button type="button" data-tool="line" title="Line (L)" aria-label="Line"><svg viewBox="0 0 24 24"><path d="M5 19L19 5"/></svg></button>
+    <button type="button" data-tool="ruler" title="Ruler (U): drag across something you know the size of, to set the real size" aria-label="Ruler"><svg viewBox="0 0 24 24"><path d="M3 17L17 3l4 4L7 21z"/><path d="M7 13l2 2M10 10l2 2M13 7l2 2"/></svg></button>
+    <button type="button" data-tool="warp" title="Warp (W): bend the selected mark to the piece" aria-label="Warp"><svg viewBox="0 0 24 24"><path d="M4 7c5-3 11-3 16 0M4 17c5-3 11-3 16 0M4 7v10M20 7v10M12 5.5v9"/></svg></button>
     <button type="button" data-tool="pick" title="Pick a colour from the picture (I)" aria-label="Pick a colour"><svg viewBox="0 0 24 24"><path d="M14 4l6 6-2 2-6-6zM12 6l-8 8v4h4l8-8"/></svg></button>
     <hr>
     <button type="button" data-tool="area" title="Paint the area for the AI (M)" aria-label="Paint the area for the AI" class="mask-on"><svg viewBox="0 0 24 24"><path d="M4 4h4M12 4h4M20 4v4M20 12v4M20 20h-4M12 20H8M4 20v-4M4 12V8"/><path d="M9 15l2-6 4 4z"/></svg></button>
@@ -155,6 +157,9 @@ kbd{font:500 10px 'IBM Plex Mono',monospace;border:1px solid var(--line);border-
   <div style="display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:14px"><div id="tryHost" style="aspect-ratio:1/1;background:#f5f5f2;border-radius:14px;overflow:hidden;position:relative;min-height:320px"><span class="note" id="tryEmpty" style="position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:20px">No model yet. Make one from the canvas, or from the concept picture.</span></div><div id="tryList" style="display:grid;gap:8px;align-content:start"></div></div>
   <p class="msg" id="tryMsg" role="status" style="margin:0"></p>
 </div></dialog>
+<dialog id="rulerDlg" style="border:0;border-radius:20px;padding:0;width:min(420px,94vw)"><form method="dialog" style="padding:20px;display:grid;gap:12px"><h3 style="margin:0;font-size:16px">How long is that line?</h3><p class="note" style="margin:0;font-size:13px">The line is <span id="rulerPx"></span> pixels. Say how long it is on the piece, and every layer gets its real size: a chest width, a pocket, a label you know.</p><div class="row" style="flex-wrap:nowrap"><input class="t" type="number" id="rulerIn" min="0.1" max="200" step="0.1" aria-label="Length" style="width:120px"><select class="t" id="rulerUnit" style="width:auto" aria-label="Unit"><option value="in">inches</option><option value="cm">cm</option></select></div><div class="row" style="justify-content:flex-end"><button class="btn" value="no" type="submit">Cancel</button><button class="btn go" value="yes" type="submit">Set the scale</button></div></form></dialog>
+<dialog id="tonalDlg" style="border:0;border-radius:20px;padding:0;width:min(760px,96vw)"><div style="padding:18px;display:grid;gap:12px"><div class="row" style="justify-content:space-between"><h3 style="margin:0;font-size:16px">Tone on tone</h3><button class="btn sm q" type="button" data-tonalclose>Close</button></div><p class="note" style="margin:0" id="tonalBase"></p><p class="note" style="margin:0">The fabric's own colour and shades of it, a step lighter and darker: the quiet way to put a mark on a piece. Each has its nearest Pantone C chip; have the factory match it to the fabric lab dip.</p><div class="tiles" id="tonalGrid" style="grid-template-columns:repeat(auto-fill,minmax(96px,1fr))"></div></div></dialog>
+<dialog id="sepDlg" style="border:0;border-radius:20px;padding:0;width:min(980px,96vw);max-height:92vh;overflow:auto"><div style="padding:18px;display:grid;gap:12px"><div class="row" style="justify-content:space-between"><h3 style="margin:0;font-size:16px">Colour separations · <span id="sepWho"></span></h3><div class="row"><button class="btn sm go" type="button" data-sepzip>Download the files</button><button class="btn sm q" type="button" data-sepclose>Close</button></div></div><p class="note" style="margin:0" id="sepNote"></p><div class="tiles" id="sepGrid" style="grid-template-columns:repeat(auto-fill,minmax(180px,1fr))"></div><p class="note" style="margin:0">One plate per ink, black where the ink goes, at the real size. The download has each plate as a PNG, the job sheet and the Pantone list for the printer.</p></div></dialog>
 <input type="file" id="fontIn" accept=".ttf,.otf,.woff,.woff2" class="hidden">
 <dialog id="askDlg" style="border:0;border-radius:20px;padding:0;width:min(480px,94vw)"><form method="dialog" style="padding:20px;display:grid;gap:12px"><h3 id="askTitle" style="margin:0;font-size:16px;line-height:1.35"></h3><p class="note" id="askText" style="font-size:13px"></p><div class="row" style="justify-content:flex-end"><button class="btn" value="no" type="submit">Cancel</button><button class="btn go" value="yes" type="submit" id="askYes">Yes</button></div></form></dialog>
 <input type="file" id="fileIn" accept="image/*" multiple class="hidden">
@@ -201,7 +206,7 @@ const fixed=l=>l.kind==='base'||l.kind==='paint'; // full-size layers that do no
 
 // ---------- history (rasters are copied before they change, so a step keeps its own) ----------
 let HIST=[],HI=-1;
-const copyL=l=>({...l,adjust:{...l.adjust},tint:{...l.tint},distress:{...l.distress},finish:l.finish?{...l.finish,distress:{...l.finish.distress}}:null});
+const copyL=l=>({...l,adjust:{...l.adjust},tint:{...l.tint},distress:{...l.distress},finish:l.finish?{...l.finish,distress:{...l.finish.distress}}:null,...(l.warp?{warp:{...l.warp,pts:l.warp.pts.map(p=>[...p])}}:{})});
 const snap=()=>({sel:SEL,layers:LAYERS.map(copyL)});
 function commit(){HIST=HIST.slice(0,HI+1);HIST.push(snap());if(HIST.length>60)HIST.shift();HI=HIST.length-1;touch();syncUndo()}
 function restore(s){LAYERS=s.layers.map(copyL);SEL=s.sel&&layerOf(s.sel)?s.sel:null;touch();paintPanels();draw()}
@@ -251,7 +256,7 @@ function contentOf(l){
   return canvas(1,1);
 }
 const unitOf=l=>{const u=(W/1000)/(fixed(l)?1:l.scale);return Math.pow(1.15,Math.round(Math.log(u)/Math.log(1.15)))}; // stitches and dots keep a real size: one step per 15% of scale
-const sig=l=>JSON.stringify([l.finish,l.finish?unitOf(l):0,l.kind,l.raster?l.raster._rid:0,l.text,l.font,l.size,l.bold,l.italic,l.track,l.lead,l.align,l.arc,l.color,l.outline,l.outlineColor,l.shape,l.w,l.h,l.radius,l.fill,l.fillColor,l.stroke,l.strokeW,l.strokeColor,l.adjust,l.tint,l.distress]);
+const sig=l=>JSON.stringify([l.finish,l.finish?unitOf(l):0,l.kind,l.raster?l.raster._rid:0,l.text,l.font,l.size,l.bold,l.italic,l.track,l.lead,l.align,l.arc,l.color,l.outline,l.outlineColor,l.shape,l.w,l.h,l.radius,l.fill,l.fillColor,l.stroke,l.strokeW,l.strokeColor,l.adjust,l.tint,l.distress,l.warp]);
 const plainLook=l=>l.adjust.hue===0&&l.adjust.sat===100&&l.adjust.bright===100&&l.adjust.contrast===100;
 // the layer with its colour adjustments, its recolouring and its distressing: cached until any of them change
 function processed(l){
@@ -263,7 +268,7 @@ function processed(l){
   if(l.distress.amount>0){x.globalCompositeOperation='destination-out';x.globalAlpha=clamp(l.distress.amount,0,1);x.drawImage(texture(l.distress.style,c.width,c.height,l.distress.size,l.distress.seed),0,0);x.globalAlpha=1}
   x.globalCompositeOperation='source-over';
   const out=l.finish&&l.finish.effect&&l.finish.effect!=='none'?window.FBFinish.effect(c,l.finish,unitOf(l),l.distress.seed||1):c;
-  l._pk=k;l._pc=out;return out;
+  const bent=l.warp&&!fixed(l)?warpOf(out,l):out;l._pk=k;l._pc=bent;return bent;
 }
 const dims=l=>{const c=processed(l);return[c.width,c.height]};
 function place(x,l){x.translate(l.x,l.y);x.rotate(l.rot);x.scale(l.scale*(l.flip?-1:1),l.scale)}
@@ -286,7 +291,7 @@ function render(){
     if(!l.locked){const tm=[(p[0][0]+p[1][0])/2,(p[0][1]+p[1][1])/2],rk=rotKnob(l);vx.beginPath();vx.moveTo(tm[0],tm[1]);vx.lineTo(rk[0],rk[1]);vx.stroke();
       for(const[a,b]of p){vx.fillStyle='#fff';vx.fillRect(a-5,b-5,10,10);vx.strokeRect(a-5,b-5,10,10)}vx.beginPath();vx.arc(rk[0],rk[1],6,0,Math.PI*2);vx.fillStyle='#4bff9a';vx.fill();vx.stroke()}}
   if(HOVER&&['brush','eraser','distress','area'].includes(TOOL)){const rad=(TOOL==='distress'?OPT.dsize:TOOL==='area'?OPT.area:OPT.size)/2*Z;vx.strokeStyle='rgba(20,20,22,.8)';vx.lineWidth=1;vx.beginPath();vx.arc(HOVER[0],HOVER[1],Math.max(rad,2),0,Math.PI*2);vx.stroke();vx.strokeStyle='rgba(255,255,255,.8)';vx.beginPath();vx.arc(HOVER[0],HOVER[1],Math.max(rad,2)+1,0,Math.PI*2);vx.stroke()}
-  $('#zLabel').textContent=Math.round(Z*100)+'%';
+  overlay();$('#zLabel').textContent=Math.round(Z*100)+'%';
 }
 function rotKnob(l){const p=corners(l).map(([a,b])=>[sx(a),sy(b)]),tm=[(p[0][0]+p[1][0])/2,(p[0][1]+p[1][1])/2],c=[sx(l.x),sy(l.y)],d=Math.hypot(tm[0]-c[0],tm[1]-c[1])||1;return[tm[0]+(tm[0]-c[0])/d*28,tm[1]+(tm[1]-c[1])/d*28]}
 function fit(){const r=$('#stage').getBoundingClientRect();Z=Math.min((r.width-48)/W,(r.height-48)/H,2);PX=(r.width-W*Z)/2;PY=(r.height-H*Z)/2;draw()}
@@ -322,6 +327,8 @@ view.addEventListener('pointerdown',e=>{
   if(['brush','eraser','distress'].includes(TOOL)){const l=strokeTarget(TOOL);if(!l)return;l.raster=cloneCanvas(l.raster);SEL=l.id;dab(l,x,y,x,y,TOOL);DRAG={mode:'stroke',l,x,y};draw();return}
   if(TOOL==='text'){const l=addLayer(fresh('text',{name:'Type',x,y,text:'FUTURE BASICS',font:'grotesk',size:Math.round(W/14),bold:true,italic:false,track:Math.round(W/200),lead:1.1,align:'center',arc:0,color:CUR,outline:0,outlineColor:'#ffffff'}));setTool('select');tab('layers');setTimeout(()=>{const t=$('#pLayers textarea[data-p=text]');if(t){t.focus();t.select()}},30);return}
   if(['rect','ellipse','line'].includes(TOOL)){DRAG={mode:'shape',x0:x,y0:y,l:null};return}
+  if(TOOL==='ruler'){RULER=null;DRAG={mode:'ruler',x0:x,y0:y,x1:x,y1:y};draw();return}
+  if(TOOL==='warp'){DRAG=warpDown(x,y,px,py);draw();return}
   // select: a handle of the chosen layer first, then whatever is under the pointer
   const l=selected();
   if(l&&!fixed(l)&&!l.locked&&l.visible){const rk=rotKnob(l);if(Math.hypot(px-rk[0],py-rk[1])<11){DRAG={mode:'rot',l,a0:Math.atan2(y-l.y,x-l.x)-l.rot};return}
@@ -338,13 +345,15 @@ view.addEventListener('pointermove',e=>{
   else if(g.mode==='move'){g.l.x=Math.round(x-g.ox);g.l.y=Math.round(y-g.oy);g.moved=true}
   else if(g.mode==='scale'){g.l.scale=clamp(g.s0*Math.hypot(x-g.l.x,y-g.l.y)/g.d0,.02,40);g.moved=true}
   else if(g.mode==='rot'){let a=Math.atan2(y-g.l.y,x-g.l.x)-g.a0;if(e.shiftKey)a=Math.round(a/(Math.PI/12))*(Math.PI/12);g.l.rot=a;g.moved=true}
+  else if(g.mode==='ruler'){g.x1=x;g.y1=y;if(e.shiftKey){if(Math.abs(x-g.x0)>Math.abs(y-g.y0))g.y1=g.y0;else g.x1=g.x0}}
+  else if(g.mode==='warp')warpMove(g,x,y);
   else if(g.mode==='shape'){
     if(!g.l){if(Math.hypot(x-g.x0,y-g.y0)<4)return;g.l=addLayer(fresh('shape',{name:{rect:'Rectangle',ellipse:'Ellipse',line:'Line'}[TOOL],shape:TOOL,w:4,h:4,radius:0,fill:TOOL!=='line',fillColor:CUR,stroke:TOOL==='line',strokeW:Math.max(2,Math.round(W/160)),strokeColor:CUR,x:g.x0,y:g.y0}),{silent:true})}
     const l=g.l;if(l.shape==='line'){const len=Math.hypot(x-g.x0,y-g.y0);l.w=Math.max(4,Math.round(len));l.x=(x+g.x0)/2;l.y=(y+g.y0)/2;l.rot=Math.atan2(y-g.y0,x-g.x0)}
     else{let w=Math.abs(x-g.x0),h=Math.abs(y-g.y0);if(e.shiftKey)w=h=Math.max(w,h);l.w=Math.max(4,Math.round(w));l.h=Math.max(4,Math.round(h));l.x=g.x0+(x<g.x0?-w:w)/2;l.y=g.y0+(y<g.y0?-h:h)/2}}
   draw();if(g.mode!=='pan'&&g.mode!=='area')paintFields();
 });
-const endDrag=()=>{const g=DRAG;DRAG=null;if(!g)return;if(g.mode==='stroke'||g.mode==='area'||(g.mode==='shape'&&g.l)||g.moved){if(g.mode!=='area')commit();if(g.mode==='shape')setTool('select');paintPanels()}draw()};
+const endDrag=()=>{const g=DRAG;DRAG=null;if(!g)return;if(g.mode==='ruler'){rulerDone(g);draw();return}if(g.mode==='stroke'||g.mode==='area'||(g.mode==='shape'&&g.l)||g.moved){if(g.mode!=='area')commit();if(g.mode==='shape')setTool('select');paintPanels()}draw()};
 view.addEventListener('pointerup',endDrag);view.addEventListener('pointercancel',endDrag);view.addEventListener('pointerleave',()=>{HOVER=null;draw()});
 view.addEventListener('wheel',e=>{e.preventDefault();const[px,py]=pt(e);if(e.ctrlKey||e.metaKey)zoomAt(Math.exp(-e.deltaY*.01),px,py);else{PX-=e.deltaX;PY-=e.deltaY;draw()}},{passive:false});
 $('#zIn').onclick=()=>{const r=view.getBoundingClientRect();zoomAt(1.25,r.width/2,r.height/2)};$('#zOut').onclick=()=>{const r=view.getBoundingClientRect();zoomAt(.8,r.width/2,r.height/2)};$('#zFit').onclick=fit;
@@ -353,7 +362,7 @@ $('#zIn').onclick=()=>{const r=view.getBoundingClientRect();zoomAt(1.25,r.width/
 function setTool(t){TOOL=t;$$('.rail [data-tool]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.tool===t)));view.style.cursor=t==='hand'?'grab':t==='select'?'default':t==='text'?'text':'crosshair';paintOpts();draw()}
 function paintOpts(){
   const o=$('#opts'),rg=(k,lab,min,max,step=1,unit='px')=>`<label>${lab}<input type="range" data-o="${k}" min="${min}" max="${max}" step="${step}" value="${OPT[k]}"><output>${OPT[k]}${unit}</output></label>`;
-  const help={select:'Click a layer to choose it. Drag to move, a corner to resize, the green knob to turn (Shift: 15° steps). Arrows nudge.',hand:'Drag to move around. Ctrl and the wheel, or a pinch, zooms.',text:'Click where the type should go.',rect:'Drag to draw. Shift makes a square.',ellipse:'Drag to draw. Shift makes a circle.',line:'Drag to draw a line.',pick:'Click the picture to take its colour.'};
+  const help={select:'Click a layer to choose it. Drag to move, a corner to resize, the green knob to turn (Shift: 15° steps). Arrows nudge.',hand:'Drag to move around. Ctrl and the wheel, or a pinch, zooms.',text:'Click where the type should go.',rect:'Drag to draw. Shift makes a square.',ellipse:'Drag to draw. Shift makes a circle.',line:'Drag to draw a line.',pick:'Click the picture to take its colour.',ruler:'Drag across something whose size you know, then say how long it is. Shift keeps the line straight.',warp:'Choose a layer, then drag its points to bend it to the piece. Presets are in the layer settings.'};
   if(TOOL==='brush')o.innerHTML=rg('size','Size',1,400)+rg('flow','Opacity',.05,1,.05,'')+rg('soft','Softness',0,1,.05,'')+'<span class="hint">Paints on the selected painting layer, or starts a new one.</span>';
   else if(TOOL==='eraser')o.innerHTML=rg('size','Size',1,400)+rg('flow','Strength',.05,1,.05,'')+'<span class="hint">Rubs out the selected layer.</span>';
   else if(TOOL==='distress')o.innerHTML=rg('dsize','Size',4,600)+rg('flow','Strength',.05,1,.05,'')+'<span class="hint">Wears the selected layer away, like an old print. For an even wear across the layer, use Distress in its settings.</span>';
@@ -403,14 +412,14 @@ function fieldsHtml(l){
   if(l.kind==='shape')kind=`<div class="sec"><h4>Shape</h4>${rng2('w','Width',4,Math.max(W,H)*2,1,l.w,'px')}${l.shape==='line'?'':rng2('h','Height',4,Math.max(W,H)*2,1,l.h,'px')}${l.shape==='rect'?rng2('radius','Corners',0,600,1,l.radius,'px'):''}
     ${l.shape==='line'?'':`<label class="f w"><span>Fill</span><span class="row"><input type="checkbox" data-p="fill" ${l.fill?'checked':''} aria-label="Fill">${col('fillColor',l.fillColor)}</span></label>`}
     <label class="f w"><span>${l.shape==='line'?'Line':'Outline'}</span><span class="row">${l.shape==='line'?'':`<input type="checkbox" data-p="stroke" ${l.stroke?'checked':''} aria-label="Outline">`}${col('strokeColor',l.strokeColor)}</span></label>${rng2('strokeW','Thickness',1,120,1,l.strokeW,'px')}</div>`;
-  const pos=fixed(l)?'':`<div class="sec"><h4>Place</h4>${rng2('scale','Size',.02,6,.01,+l.scale.toFixed(2),'×')}${rng2('rotd','Turn',-180,180,1,Math.round(l.rot*180/Math.PI),'°')}<div class="row"><button class="btn sm q" type="button" data-act="centre">Centre</button><button class="btn sm q" type="button" data-act="flip">Flip</button><button class="btn sm q" type="button" data-act="fabric" title="Multiply, a little worn: the way a print sits in cloth">Sit it in the fabric</button></div></div>`;
+  const pos=fixed(l)?'':`<div class="sec"><h4>Place</h4>${rng2('scale','Size',.02,6,.01,+l.scale.toFixed(2),'×')}${rng2('rotd','Turn',-180,180,1,Math.round(l.rot*180/Math.PI),'°')}<div class="row"><button class="btn sm q" type="button" data-act="centre">Centre</button><button class="btn sm q" type="button" data-act="flip">Flip</button><button class="btn sm q" type="button" data-act="fabric" title="Multiply, a little worn: the way a print sits in cloth">Sit it in the fabric</button></div></div>${l.kind==='base'?'':sizeHtml(l)}`;
   return `<div class="sec"><h4>${esc(KIND[l.kind])}</h4><input class="t" data-p="name" value="${esc(l.name)}" maxlength="60" aria-label="Layer name">
     ${rng2('opacity','Opacity',0,1,.01,l.opacity)}<label class="f w"><span>Blend</span><select class="t" data-p="blend">${BLENDS.map(([k,v])=>`<option value="${k}" ${k===l.blend?'selected':''}>${esc(v)}</option>`).join('')}</select></label></div>
   ${l.kind==='base'?'':techHtml(l)}
   ${kind}${pos}
   <div class="sec"><h4>Colour</h4>${rng2('a.hue','Hue',-180,180,1,a.hue,'°')}${rng2('a.sat','Saturation',0,300,1,a.sat,'%')}${rng2('a.bright','Brightness',0,200,1,a.bright,'%')}${rng2('a.contrast','Contrast',0,200,1,a.contrast,'%')}
     <label class="f w"><span>Recolour</span>${col('t.color',t.color)}</label>${rng2('t.amount','Recolour amount',0,1,.01,t.amount)}
-    <div class="row"><button class="btn sm q" type="button" data-act="lookreset">Reset the colour</button></div>${l.kind==='base'?'<p class="note">Hue turns the colour of the whole picture: on a grey studio background mostly the piece changes. For one part only, paint it in the AI tab and ask.</p>':''}</div>
+    <div class="row"><button class="btn sm q" type="button" data-act="lookreset">Reset the colour</button>${l.kind==='base'?'':'<button class="btn sm q" type="button" data-act="tonal" title="The colour of the fabric under it, a step lighter or darker, with Pantone codes">Tone on tone…</button>'}</div>${l.kind==='base'?'<p class="note">Hue turns the colour of the whole picture: on a grey studio background mostly the piece changes. For one part only, paint it in the AI tab and ask.</p>':''}</div>
   <div class="sec"><h4>Distress</h4><label class="f w"><span>Kind</span><select class="t" data-p="d.style">${[['worn','Worn print: specks and grain'],['cracked','Cracked ink'],['faded','Faded, washed out']].map(([k,v])=>`<option value="${k}" ${k===d.style?'selected':''}>${v}</option>`).join('')}</select></label>
     ${rng2('d.amount','Amount',0,1,.01,d.amount)}${rng2('d.size','Grain size',5,200,1,d.size)}<div class="row"><button class="btn sm q" type="button" data-act="seed">Another pattern</button></div></div>
   <div class="sec"><h4>Layer</h4><div class="row"><button class="btn sm q" type="button" data-act="up">Move up</button><button class="btn sm q" type="button" data-act="down">Move down</button><button class="btn sm q" type="button" data-act="dup">Duplicate</button>${l.kind==='base'?'':'<button class="btn sm q" type="button" data-act="keep" title="Keep this artwork in the graphics library, for other pieces">Save to the library</button>'}${l.kind==='text'||l.kind==='shape'?'<button class="btn sm q" type="button" data-act="raster" title="So it can be painted on and rubbed out">Turn into pixels</button>':''}${l.kind==='base'&&D.concept.hasPlain?'<button class="btn sm q" type="button" data-act="plain">Use the plain picture</button>':''}<button class="btn sm q" type="button" data-act="del">Delete</button></div></div>`;
@@ -460,8 +469,9 @@ async function makeReal(l){
     addLayer(fresh('image',{name:`Real · ${l.finish.name} · ${l.name}`.slice(0,60),raster:stamp(c),src:null,dirty:true,x:W/2,y:H/2}),{top:true});D.ai.left=r.left;
     toast(`Done: the real ${l.finish.name.toLowerCase()} is the top layer. Hide it to compare.`)}catch(x){toast(x.message)}finally{busy();if(btn)btn.disabled=false}}
 // the moving parts of the panel follow a drag without the whole panel being drawn again
-function paintFields(){const l=selected();if(!l)return;for(const[k,v]of[['scale',+l.scale.toFixed(2)],['rotd',Math.round(l.rot*180/Math.PI)],['w',l.w],['h',l.h]]){const i=$(`#pLayers [data-p="${k}"]`);if(i&&document.activeElement!==i){i.value=v;if(i.nextElementSibling)i.nextElementSibling.textContent=v+(k==='scale'?'×':k==='rotd'?'°':'px')}}}
+function paintFields(){const l=selected();if(!l)return;for(const[k,v]of[['scale',+l.scale.toFixed(2)],['rotd',Math.round(l.rot*180/Math.PI)],['w',l.w],['h',l.h]]){const i=$(`#pLayers [data-p="${k}"]`);if(i&&document.activeElement!==i){i.value=v;if(i.nextElementSibling)i.nextElementSibling.textContent=v+(k==='scale'?'×':k==='rotd'?'°':'px')}}paintSize()}
 function setProp(l,p,v){
+  if(p==='warpk')return;
   if(p.startsWith('fin.')){if(l.finish)l.finish[p.slice(4)]=Number(v);return}
   if(p.startsWith('a.'))l.adjust[p.slice(2)]=Number(v);else if(p.startsWith('t.'))l.tint[p.slice(2)]=p==='t.color'?v:Number(v);else if(p.startsWith('d.'))l.distress[p.slice(2)]=p==='d.style'?v:Number(v);
   else if(p==='rotd')l.rot=Number(v)*Math.PI/180;else if(['name','text','font','blend','color','outlineColor','fillColor','strokeColor'].includes(p))l[p]=v;else if(['fill','stroke'].includes(p))l[p]=Boolean(v);else l[p]=Number(v);
@@ -477,9 +487,11 @@ pL.addEventListener('click',e=>{
   const ta=e.target.closest('[data-tapply]');if(ta){applyTech(l,ta.dataset.tapply);commit();paintLayers();draw();return}
   if(tg){l[tg.dataset.toggle]=!l[tg.dataset.toggle];commit();paintLayers();draw();return}
   if(al){l.align=al.dataset.align;commit();paintLayers();draw();return}
+  const wp=e.target.closest('[data-warp]');if(wp){setWarp(l,wp.dataset.warp);return}
   if(!ac)return;const a=ac.dataset.act;
   if(a==='addfont'){$('#fontIn').click();return}
   if(a==='madeall'){madeOpen();return}
+  if(a==='check'){checkSize(l);return}if(a==='sep'){sepOpen(l);return}if(a==='tonal'){tonalOpen(l);return}
   if(a==='up')moveLayer(l,1);if(a==='down')moveLayer(l,-1);if(a==='dup')duplicate(l);if(a==='del')removeLayer(l);if(a==='raster')rasterize(l);if(a==='real')makeReal(l);if(a==='keep')keepInLibrary(l);if(a==='plain')usePlain(l);
   if(a==='centre'){l.x=W/2;l.y=H/2;commit();draw()}if(a==='flip'){l.flip=!l.flip;commit();draw()}
   if(a==='fabric'){l.blend='multiply';l.opacity=Math.min(l.opacity,.94);if(!l.distress.amount){l.distress.style='worn';l.distress.amount=.18}commit();paintLayers();draw()}
@@ -626,7 +638,7 @@ $('#pAi').addEventListener('click',async e=>{
 });
 
 // ---------- saving, using, exporting ----------
-function serialize(){return{w:W,h:H,selected:SEL,layers:LAYERS.map(l=>{const o={};for(const[k,v]of Object.entries(l))if(!k.startsWith('_')&&k!=='raster'&&k!=='dirty')o[k]=v;
+function serialize(){return{w:W,h:H,ppi:PPI,ppiSet:PPISET,selected:SEL,layers:LAYERS.map(l=>{const o={};for(const[k,v]of Object.entries(l))if(!k.startsWith('_')&&k!=='raster'&&k!=='dirty')o[k]=v;
   if(isRaster(l)&&(l.dirty||!l.src||l.kind==='paint'||l.raster._rid!==l._srcRid))o.src=l.raster.toDataURL('image/png');return o})}}
 async function save(){const b=$('#save');b.disabled=true;$('#saved').textContent='Saving…';
   try{const doc=serialize();let r;
@@ -750,7 +762,7 @@ document.addEventListener('keydown',e=>{
   if(e.key==='['){OPT.size=Math.max(1,Math.round(OPT.size*.8));OPT.dsize=Math.max(4,Math.round(OPT.dsize*.8));OPT.area=Math.max(4,Math.round(OPT.area*.8));paintOpts();draw();return}
   if(e.key===']'){OPT.size=Math.min(400,Math.round(OPT.size*1.25));OPT.dsize=Math.min(600,Math.round(OPT.dsize*1.25));OPT.area=Math.min(600,Math.round(OPT.area*1.25));paintOpts();draw();return}
   if(e.key==='0'){fit();return}if(e.key==='+'||e.key==='='){const r=view.getBoundingClientRect();zoomAt(1.25,r.width/2,r.height/2);return}if(e.key==='-'){const r=view.getBoundingClientRect();zoomAt(.8,r.width/2,r.height/2);return}
-  const t={v:'select',h:'hand',b:'brush',e:'eraser',d:'distress',t:'text',r:'rect',o:'ellipse',l:'line',i:'pick',m:'area'}[e.key.toLowerCase()];if(t&&!mod&&!e.altKey)setTool(t);
+  const t={v:'select',h:'hand',b:'brush',e:'eraser',d:'distress',t:'text',r:'rect',o:'ellipse',l:'line',i:'pick',m:'area',u:'ruler',w:'warp'}[e.key.toLowerCase()];if(t&&!mod&&!e.altKey)setTool(t);
 });
 document.addEventListener('keyup',e=>{if(e.key===' '){SPACE=false;setTool(TOOL)}});
 window.addEventListener('beforeunload',e=>{if(DIRTY){e.preventDefault();e.returnValue=''}});
@@ -783,7 +795,7 @@ async function boot(){
       LAYERS=[{...fresh('base',{name:'Picture',raster:stamp(c),src,x:W/2,y:H/2})}];LAYERS[0]._srcRid=LAYERS[0].raster._rid}
     else{W=1024;H=1024;const c=canvas(W,H),x=c.getContext('2d');x.fillStyle='#e9e9e6';x.fillRect(0,0,W,H);LAYERS=[{...fresh('base',{name:'Blank',raster:stamp(c),x:W/2,y:H/2,dirty:true})}]}
   }catch(x){toast(x.message)}finally{busy()}
-  docC.width=W;docC.height=H;mask=canvas(W,H);maskX=mask.getContext('2d');
+  docC.width=W;docC.height=H;mask=canvas(W,H);maskX=mask.getContext('2d');initPpi();
   await loadFonts();setColor(CUR);paintSub();paintAdd();tab('layers');setTool('select');HIST=[snap()];HI=0;syncUndo();DIRTY=false;showSaved();paintLayers();requestAnimationFrame(fit);
   if(QS.get('tryon')==='1')tryOpen().catch(()=>{});
   setInterval(()=>{if(DIRTY&&!DRAG)save()},90000); // a quiet save every minute and a half while there are changes
@@ -801,10 +813,121 @@ async function bootGraphic(){
         const c=canvas(img.naturalWidth,img.naturalHeight);c.getContext('2d').drawImage(img,0,0);LAYERS.push(fresh('image',{name:D.concept.name.slice(0,40),raster:stamp(c),src:'/v1/lab/art/'+GID,_srcRid:c._rid,scale:1,x:W/2,y:H/2}));LAYERS[1]._srcRid=LAYERS[1].raster._rid}}
     LAYERS[0]._srcRid=LAYERS[0].raster._rid;
   }catch(x){toast(x.message)}finally{busy()}
-  docC.width=W;docC.height=H;mask=canvas(W,H);maskX=mask.getContext('2d');
+  docC.width=W;docC.height=H;mask=canvas(W,H);maskX=mask.getContext('2d');initPpi();
   await loadFonts();setColor(CUR);paintSub();paintAdd();tab('layers');setTool('select');HIST=[snap()];HI=0;syncUndo();DIRTY=false;showSaved();paintLayers();requestAnimationFrame(fit);
   setInterval(()=>{if(DIRTY&&!DRAG&&GID)save()},90000);
 }
+// ---------- real size: the ruler sets how many pixels make an inch; every layer then has a size on the piece ----------
+let PPI=0,PPISET=false,PPINOTE='',RULER=null;
+const GARMENT_IN=[[/\b(cap|hat|visor|bucket)\b/,8],[/\bbeanie\b/,9],[/\b(bag|tote|backpack|pouch)\b/,15],[/\bsock/,4],[/\bshort/,22],[/\b(pant|trouser|jean|cargo|jogger|chino|denim|bottom)/,20],[/\b(jacket|coat|parka|overshirt|shacket|bomber|vest|gilet)/,31],[/\b(hoodie|hood|sweat|crew|fleece|knit|sweater|cardigan|quarter)/,30],[/\b(tank|singlet)\b/,20],[/\b(tee|t-shirt|shirt|polo|top|longsleeve|long sleeve)/,28]];
+function garmentSpan(){ // how wide the piece is in the picture, in pixels: everything that is not the background
+  const b=LAYERS.find(l=>l.kind==='base');if(!b||!b.raster)return 0;const k=Math.min(1,256/b.raster.width),w=Math.max(1,Math.round(b.raster.width*k)),h=Math.max(1,Math.round(b.raster.height*k)),c=canvas(w,h),x=c.getContext('2d',{willReadFrequently:true});x.drawImage(b.raster,0,0,w,h);
+  const d=x.getImageData(0,0,w,h).data,px=(i,j)=>{const o=(j*w+i)*4;return[d[o],d[o+1],d[o+2],d[o+3]]},cs=[px(0,0),px(w-1,0),px(0,h-1),px(w-1,h-1)],bg=[0,1,2].map(i=>cs.reduce((s,c)=>s+c[i],0)/4);
+  const cols=new Array(w).fill(0);for(let j=0;j<h;j++)for(let i=0;i<w;i++){const p=px(i,j);if(p[3]>20&&Math.abs(p[0]-bg[0])+Math.abs(p[1]-bg[1])+Math.abs(p[2]-bg[2])>36)cols[i]++}
+  const min=Math.max(2,h*.02);let a=cols.findIndex(v=>v>=min),z=w-1-[...cols].reverse().findIndex(v=>v>=min);if(a<0||z<=a)return 0;return(z-a+1)/k}
+function initPpi(){RULER=null;
+  if(D.doc&&Number(D.doc.ppi)>1){PPI=Number(D.doc.ppi);PPISET=Boolean(D.doc.ppiSet);PPINOTE=PPISET?'set with the ruler':'estimated';return}
+  PPISET=false;if(GMODE){PPI=W/14;PPINOTE='estimated: the canvas taken as 14 in across';return}
+  const words=`${D.concept.category||''} ${D.concept.name||''}`.toLowerCase(),g=(GARMENT_IN.find(([re])=>re.test(words))||[0,26])[1],span=garmentSpan();
+  if(span>W*.15){PPI=span/g;PPINOTE=`estimated: the piece taken as about ${g} in across`}else{PPI=W*.62/g;PPINOTE=`estimated: about ${g} in across`}}
+const TIGHT=new Map();
+function tight(l){ // the inked part of a layer, without its clear margin (type has room round it)
+  const src=contentOf(l),key=sig(l);if(TIGHT.has(key))return TIGHT.get(key);const k=Math.min(1,400/Math.max(src.width,src.height)),w=Math.max(1,Math.round(src.width*k)),h=Math.max(1,Math.round(src.height*k)),c=canvas(w,h),x=c.getContext('2d',{willReadFrequently:true});x.drawImage(src,0,0,w,h);
+  const d=x.getImageData(0,0,w,h).data;let x0=w,y0=h,x1=-1,y1=-1;for(let j=0;j<h;j++)for(let i=0;i<w;i++)if(d[(j*w+i)*4+3]>16){if(i<x0)x0=i;if(i>x1)x1=i;if(j<y0)y0=j;if(j>y1)y1=j}
+  const r=x1<0?{w:src.width,h:src.height}:{w:(x1-x0+1)/k,h:(y1-y0+1)/k};if(TIGHT.size>200)TIGHT.clear();TIGHT.set(key,r);return r}
+const inchesOf=l=>{const t=tight(l);return{w:t.w*l.scale/(PPI||1),h:t.h*l.scale/(PPI||1)}};
+const fin=v=>(Math.round(v*100)/100).toFixed(v<10?2:1).replace(/\.?0+$/,'');
+function sizeHtml(l){const s=inchesOf(l),pl=D.placements||[];
+  return `<div class="sec" id="sizeSec"><h4>Size on the piece</h4>
+  <p class="note" style="margin:0" id="sizeRead"><b>${fin(s.w)} × ${fin(s.h)} in</b> · ${fin(s.w*2.54)} × ${fin(s.h*2.54)} cm<br><span>${PPISET?'Scale set with the ruler.':`Scale ${esc(PPINOTE)}. For a true size, use the ruler (U) across something you know.`}</span></p>
+  <label class="f w"><span>Width</span><span class="row" style="flex-wrap:nowrap"><input class="t" type="number" min="0.25" max="40" step="0.05" data-win value="${fin(s.w)}" style="width:90px" aria-label="Width in inches"><span class="note">in</span></span></label>
+  <label class="f w"><span>Goes on</span><select class="t" data-placement><option value="">Choose where it goes</option>${pl.map(p=>`<option value="${p.id}" ${l.placement===p.id?'selected':''}>${esc(p.label)} · ${p.w[0]}–${p.w[1]} in</option>`).join('')}</select></label>
+  <div class="row"><button class="btn sm" type="button" data-act="check">Check the size and cost</button><button class="btn sm q" type="button" data-act="sep" title="The plates a printer burns screens from, one per ink, with Pantone codes">Colour separations…</button></div>
+  <div id="chk" aria-live="polite"></div></div>
+  <div class="sec"><h4>Warp to the piece</h4><div class="row" style="gap:4px">${[['arcup','Arc up'],['arcdown','Arc down'],['bulge','Bulge'],['wrap','Wrap round the body'],['flag','Wave']].map(([k,v])=>`<button class="btn sm q" type="button" data-warp="${k}">${v}</button>`).join('')}${l.warp?'<button class="btn sm q" type="button" data-warp="reset">Flat again</button>':''}</div>
+  ${l.warp?rng2('warpk','Amount',-1,1,.05,+(l.warp.k??.5).toFixed(2)):''}<p class="note" style="margin:4px 0 0">Or use the warp tool (W) and drag its 16 points. Warp is how the mark looks on the piece; the size, the separations and the factory files stay flat.</p></div>`}
+function paintSize(){const l=selected(),r=$('#sizeRead');if(!l||!r)return;const s=inchesOf(l);r.querySelector('b').textContent=`${fin(s.w)} × ${fin(s.h)} in`;r.childNodes[1].textContent=` · ${fin(s.w*2.54)} × ${fin(s.h*2.54)} cm`;const i=$('#pLayers [data-win]');if(i&&document.activeElement!==i)i.value=fin(s.w)}
+const money=c=>'$'+(c/100).toFixed(2);
+async function checkSize(l){const box=$('#chk');if(!box)return;const s=inchesOf(l),btn=$('#pLayers [data-act=check]');if(btn)btn.disabled=true;box.innerHTML='<p class="note">Checking…</p>';
+  try{const r=await api('/v1/lab/studio/check',{body:{image:artPng(l),widthIn:s.w,heightIn:s.h,techniqueId:l.finish?.id||null,placement:l.placement||null,name:l.name}});
+    const ic={fail:'✕',warn:'!',info:'✓'},col={fail:'#b3261e',warn:'#8a5a00',info:'#1e6b3a'};
+    box.innerHTML=`<div style="display:grid;gap:6px;margin-top:6px">${r.findings.map(f=>`<p class="note" style="margin:0;color:${col[f.level]||'inherit'}" data-code="${esc(f.code)}"><b>${ic[f.level]||''}</b> ${esc(f.text)}</p>`).join('')||'<p class="note" style="margin:0">Nothing to change at this size.</p>'}
+    <p class="note" style="margin:0" data-cost="${r.cost.perPieceCents}"><b>${money(r.cost.perPieceCents)} a piece</b> as ${esc(r.technique.name)} at ${r.cost.qty} pieces: ${money(r.cost.unitCents)} each and ${money(r.cost.setupCents)} setup. ${r.inks?`${r.inks} ${r.technique.base==='embroidery'?'thread':'ink'} colour${r.inks>1?'s':''}.`:''} A starting figure, before the factory's quote.</p></div>`}
+  catch(x){box.innerHTML=`<p class="note" style="color:#b3261e">${esc(x.message)}</p>`;toast(x.message)}finally{if(btn)btn.disabled=false}}
+function artPng(l){const a=artOf(l),k=Math.min(1,2400/Math.max(a.width,a.height));if(k>=1)return a.toDataURL('image/png');const c=canvas(a.width*k,a.height*k);c.getContext('2d').drawImage(a,0,0,c.width,c.height);return c.toDataURL('image/png')}
+// the ruler: drag across something whose size is known (a chest width, a pocket), then say how long it is
+function rulerDone(g){const len=Math.hypot(g.x1-g.x0,g.y1-g.y0);if(len<8){toast('Drag the ruler across something you know the size of.');RULER=null;return}RULER={x0:g.x0,y0:g.y0,x1:g.x1,y1:g.y1};
+  const d=$('#rulerDlg');$('#rulerPx').textContent=Math.round(len);$('#rulerIn').value=PPI?fin(len/PPI):'';d.returnValue='';d.onclose=()=>{if(d.returnValue!=='yes'){draw();return}let v=Number($('#rulerIn').value);if($('#rulerUnit').value==='cm')v/=2.54;
+    if(!(v>0&&v<200)){toast('Type how long the line is, in inches or centimetres.');return}PPI=len/v;PPISET=true;PPINOTE='set with the ruler';touch();paintLayers();draw();toast(`Scale set: ${fin(v)} in is ${Math.round(len)} pixels.`)};d.showModal();setTimeout(()=>$('#rulerIn').select(),20)}
+// ---------- warp: a 4 × 4 grid of points over the layer (a Bézier patch), drawn through small triangles ----------
+const WN=4,bern=(i,t)=>[(1-t)**3,3*t*(1-t)**2,3*t*t*(1-t),t**3][i];
+const flatPts=()=>{const p=[];for(let j=0;j<WN;j++)for(let i=0;i<WN;i++)p.push([i/3,j/3]);return p};
+function patch(pts,u,v){let x=0,y=0;for(let j=0;j<WN;j++){const bv=bern(j,v);for(let i=0;i<WN;i++){const b=bern(i,u)*bv,p=pts[j*WN+i];x+=b*p[0];y+=b*p[1]}}return[x,y]}
+function presetPts(kind,k){const p=flatPts(),mid=[0,1,1,0],s=4/3;
+  for(let j=0;j<WN;j++)for(let i=0;i<WN;i++){const q=p[j*WN+i];
+    if(kind==='arcup')q[1]-=k*.3*s*mid[i];if(kind==='arcdown')q[1]+=k*.3*s*mid[i];
+    if(kind==='bulge'){const t=(j/3-.5)*2;q[1]+=t*k*.22*s*mid[i];q[0]+=(i/3-.5)*k*.12*mid[j]}
+    if(kind==='wrap'){q[0]=i/3+(i===1?-1:i===2?1:0)*k*.16;q[1]+=k*.08*s*mid[i]}
+    if(kind==='flag')q[1]+=k*.14*[0,1,-1,0][i]}
+  return p}
+function setWarp(l,kind){if(l.locked){toast('That layer is locked.');return}if(kind==='reset'){delete l.warp}else{const k=l.warp&&l.warp.kind===kind?l.warp.k:.5;l.warp={kind,k,pts:presetPts(kind,k)}}commit();paintLayers();draw()}
+function warpOf(src,l){const w0=src.width,h0=src.height,pts=l.warp.pts,xs=pts.map(p=>p[0]),ys=pts.map(p=>p[1]),mx=Math.max(0,-Math.min(...xs),Math.max(...xs)-1),my=Math.max(0,-Math.min(...ys),Math.max(...ys)-1);
+  const px=Math.ceil(mx*w0)+2,py=Math.ceil(my*h0)+2,c=canvas(w0+px*2,h0+py*2),x=c.getContext('2d'),N=12,G=[];
+  l._wg={px,py,w0,h0};
+  for(let j=0;j<=N;j++)for(let i=0;i<=N;i++){const[a,b]=patch(pts,i/N,j/N);G.push([px+a*w0,py+b*h0])}
+  const tri=(s0,s1,s2,d0,d1,d2)=>{const den=s0[0]*(s1[1]-s2[1])+s1[0]*(s2[1]-s0[1])+s2[0]*(s0[1]-s1[1]);if(!den)return;
+    const a=(d0[0]*(s1[1]-s2[1])+d1[0]*(s2[1]-s0[1])+d2[0]*(s0[1]-s1[1]))/den,b=(d0[1]*(s1[1]-s2[1])+d1[1]*(s2[1]-s0[1])+d2[1]*(s0[1]-s1[1]))/den,
+      cc=(d0[0]*(s2[0]-s1[0])+d1[0]*(s0[0]-s2[0])+d2[0]*(s1[0]-s0[0]))/den,d=(d0[1]*(s2[0]-s1[0])+d1[1]*(s0[0]-s2[0])+d2[1]*(s1[0]-s0[0]))/den,
+      e=(d0[0]*(s1[0]*s2[1]-s2[0]*s1[1])+d1[0]*(s2[0]*s0[1]-s0[0]*s2[1])+d2[0]*(s0[0]*s1[1]-s1[0]*s0[1]))/den,f=(d0[1]*(s1[0]*s2[1]-s2[0]*s1[1])+d1[1]*(s2[0]*s0[1]-s0[0]*s2[1])+d2[1]*(s0[0]*s1[1]-s1[0]*s0[1]))/den;
+    const cx=(d0[0]+d1[0]+d2[0])/3,cy=(d0[1]+d1[1]+d2[1])/3,g=p=>{const dx=p[0]-cx,dy=p[1]-cy,n=Math.hypot(dx,dy)||1;return[p[0]+dx/n*.6,p[1]+dy/n*.6]}; // a hair bigger, so no seams show
+    x.save();x.beginPath();const q0=g(d0),q1=g(d1),q2=g(d2);x.moveTo(q0[0],q0[1]);x.lineTo(q1[0],q1[1]);x.lineTo(q2[0],q2[1]);x.closePath();x.clip();x.setTransform(a,b,cc,d,e,f);x.drawImage(src,0,0);x.restore()};
+  for(let j=0;j<N;j++)for(let i=0;i<N;i++){const s=(ii,jj)=>[ii/N*w0,jj/N*h0],g=(ii,jj)=>G[jj*(N+1)+ii];
+    tri(s(i,j),s(i+1,j),s(i+1,j+1),g(i,j),g(i+1,j),g(i+1,j+1));tri(s(i,j),s(i+1,j+1),s(i,j+1),g(i,j),g(i+1,j+1),g(i,j+1))}
+  return c}
+function fromLocal(l,lx,ly){const[w,h]=dims(l);let a=(lx-w/2)*l.scale,b=(ly-h/2)*l.scale;if(l.flip)a=-a;const c=Math.cos(l.rot),s=Math.sin(l.rot);return[l.x+a*c-b*s,l.y+a*s+b*c]}
+const warpHandles=l=>{processed(l);const g=l._wg;return l.warp.pts.map(([u,v])=>fromLocal(l,g.px+u*g.w0,g.py+v*g.h0))};
+function overlay(){
+  if((RULER&&TOOL==='ruler')||(DRAG&&DRAG.mode==='ruler')){const r=DRAG&&DRAG.mode==='ruler'?DRAG:RULER;vx.save();vx.strokeStyle='#e03b2e';vx.lineWidth=2;vx.beginPath();vx.moveTo(sx(r.x0),sy(r.y0));vx.lineTo(sx(r.x1),sy(r.y1));vx.stroke();for(const[a,b]of[[r.x0,r.y0],[r.x1,r.y1]]){vx.beginPath();vx.arc(sx(a),sy(b),4,0,Math.PI*2);vx.fillStyle='#e03b2e';vx.fill()}
+    const len=Math.hypot(r.x1-r.x0,r.y1-r.y0);if(PPI&&len>8){vx.font='600 12px system-ui';vx.fillStyle='#141416';const t=`${fin(len/PPI)} in`;vx.fillText(t,sx((r.x0+r.x1)/2)+8,sy((r.y0+r.y1)/2)-8)}vx.restore()}
+  const l=selected();if(TOOL==='warp'&&l&&l.warp&&!fixed(l)&&l.visible){const h=warpHandles(l).map(([a,b])=>[sx(a),sy(b)]);vx.save();vx.strokeStyle='rgba(20,20,22,.55)';vx.lineWidth=1;
+    for(let j=0;j<WN;j++){vx.beginPath();for(let i=0;i<WN;i++){const p=h[j*WN+i];i?vx.lineTo(p[0],p[1]):vx.moveTo(p[0],p[1])}vx.stroke()}
+    for(let i=0;i<WN;i++){vx.beginPath();for(let j=0;j<WN;j++){const p=h[j*WN+i];j?vx.lineTo(p[0],p[1]):vx.moveTo(p[0],p[1])}vx.stroke()}
+    for(const[a,b]of h){vx.beginPath();vx.arc(a,b,5,0,Math.PI*2);vx.fillStyle='#fff';vx.fill();vx.strokeStyle='#141416';vx.stroke()}vx.restore()}}
+function warpDown(x,y,px,py){const l=selected();if(!l||fixed(l)||l.kind==='base'){toast('Choose a graphic, mark or type layer to warp.');return null}if(l.locked){toast('That layer is locked.');return null}
+  if(!l.warp){l.warp={kind:'free',k:0,pts:flatPts()};l._pk=null;draw()}const h=warpHandles(l);let best=-1,bd=14;h.forEach(([a,b],i)=>{const d=Math.hypot(sx(a)-px,sy(b)-py);if(d<bd){bd=d;best=i}});
+  if(best<0)return null;return{mode:'warp',l,i:best}}
+function warpMove(g,x,y){const l=g.l;processed(l);const w=l._wg,[a,b]=toLocal(l,x,y);l.warp.pts[g.i]=[clamp((a-w.px)/w.w0,-1.5,2.5),clamp((b-w.py)/w.h0,-1.5,2.5)];l.warp.kind='free';g.moved=true}
+// ---------- tone on tone: the fabric under the mark, and shades of it a step lighter and darker ----------
+function fabricUnder(l){const c=canvas(W,H),x=c.getContext('2d',{willReadFrequently:true});if(!GMODE){x.fillStyle='#fff';x.fillRect(0,0,W,H)}for(const o of LAYERS){if(o===l)break;drawLayer(x,o)}
+  const cs=corners(l),xs=cs.map(p=>p[0]),ys=cs.map(p=>p[1]),x0=clamp(Math.floor(Math.min(...xs)),0,W-1),y0=clamp(Math.floor(Math.min(...ys)),0,H-1),x1=clamp(Math.ceil(Math.max(...xs)),x0+1,W),y1=clamp(Math.ceil(Math.max(...ys)),y0+1,H);
+  const d=x.getImageData(x0,y0,x1-x0,y1-y0).data,rs=[],gs=[],bs=[];for(let i=0;i<d.length;i+=16){if(d[i+3]<128)continue;rs.push(d[i]);gs.push(d[i+1]);bs.push(d[i+2])}
+  if(!rs.length)return '#d9d6cf';const med=a=>a.sort((p,q)=>p-q)[a.length>>1];return '#'+[med(rs),med(gs),med(bs)].map(v=>v.toString(16).padStart(2,'0')).join('')}
+const toOk=hex=>{const n=parseInt(hex.slice(1),16),f=v=>{v/=255;return v<=.04045?v/12.92:((v+.055)/1.055)**2.4},r=f(n>>16&255),g=f(n>>8&255),b=f(n&255),l=Math.cbrt(.4122214708*r+.5363325363*g+.0514459929*b),m=Math.cbrt(.2119034982*r+.6806995451*g+.1073969566*b),s=Math.cbrt(.0883024619*r+.2817188376*g+.6299787005*b);
+  return[.2104542553*l+.793617785*m-.0040720468*s,1.9779984951*l-2.428592205*m+.4505937099*s,.0259040371*l+.7827717662*m-.808675766*s]};
+const fromOk=([L,A,B])=>{const l=(L+.3963377774*A+.2158037573*B)**3,m=(L-.1055613458*A-.0638541728*B)**3,s=(L-.0894841775*A-1.291485548*B)**3,g=v=>{v=v<=.0031308?12.92*v:1.055*v**(1/2.4)-.055;return clamp(Math.round(v*255),0,255)};
+  return '#'+[g(4.0767416621*l-3.3077115913*m+.2309699292*s),g(-1.2684380046*l+2.6097574011*m-.3413193965*s),g(-.0041960863*l-.7034186147*m+1.707614701*s)].map(v=>v.toString(16).padStart(2,'0')).join('')};
+function tonesOf(hex){const[L,A,B]=toOk(hex);return[[-.24,'Much darker'],[-.15,'Darker'],[-.08,'A shade darker'],[0,'Dyed to match'],[.08,'A shade lighter'],[.15,'Lighter'],[.24,'Much lighter']].map(([d,label])=>({label,hex:fromOk([clamp(L+d,.05,.98),A*(d<0?1.05:.92),B*(d<0?1.05:.92)]),d}))}
+function loadPantone(){return window.FBPantone?Promise.resolve():new Promise(res=>{const s=document.createElement('script');s.src='/pantone-c.js';s.onload=res;s.onerror=res;document.head.appendChild(s)})}
+async function tonalOpen(l){if(l.kind==='base'){toast('Choose a graphic, mark or type layer first.');return}await loadPantone();const base=fabricUnder(l),pc=h=>window.FBPantone?window.FBPantone.code(h):'';
+  $('#tonalBase').innerHTML=`<span style="display:inline-block;width:18px;height:18px;border-radius:5px;background:${base};vertical-align:middle;border:1px solid rgba(20,20,22,.2)"></span> The fabric under "${esc(l.name)}" is ${base}${pc(base)?' · '+esc(pc(base)):''}`;
+  $('#tonalGrid').innerHTML=tonesOf(base).map(t=>`<button type="button" class="tile" data-tone="${t.hex}" data-pantone="${esc(pc(t.hex))}"><span style="display:block;height:64px;border-radius:8px;background:${t.hex};border:1px solid rgba(20,20,22,.12)"></span><b style="font-size:12px">${t.label}</b><small class="note">${t.hex} · ${esc(pc(t.hex))}</small></button>`).join('');
+  $('#tonalDlg').dataset.layer=l.id;$('#tonalDlg').showModal()}
+$('#tonalDlg').addEventListener('click',e=>{const d=$('#tonalDlg');if(e.target.closest('[data-tonalclose]')||e.target===d){d.close();return}const b=e.target.closest('[data-tone]');if(!b)return;const l=layerOf(d.dataset.layer);if(!l)return;
+  l.tint={color:b.dataset.tone,amount:1};l.tone={hex:b.dataset.tone,pantone:b.dataset.pantone||''};commit();paintLayers();draw();d.close();toast(`Recoloured tone on tone: ${b.dataset.pantone||b.dataset.tone}.`)});
+// ---------- colour separations: the plates the printer burns, from the job file ----------
+async function sepOpen(l){const d=$('#sepDlg'),s=inchesOf(l);d.showModal();$('#sepWho').textContent=`${l.name} · ${fin(s.w)} in wide${l.finish?' · '+l.finish.name:''}`;$('#sepGrid').innerHTML='<p class="note">Separating the colours…</p>';$('#sepNote').textContent='';d.dataset.layer=l.id;
+  try{const r=await api('/v1/lab/studio/separations',{body:{image:artPng(l),techniqueId:l.finish?.id||null,widthIn:s.w,garment:GMODE?'':fabricUnder(l),name:l.name}});
+    $('#sepGrid').innerHTML=r.plates.map(p=>`<figure style="margin:0;display:grid;gap:4px" data-plate="${p.n}"><img alt="Plate ${p.n}" src="${p.image}" style="width:100%;aspect-ratio:1/1;object-fit:contain;background:#fff;border:1px solid rgba(20,20,22,.12);border-radius:10px"><figcaption class="note"><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:${p.hex};vertical-align:middle"></span> <b>${p.n}. ${esc(p.pantone)}</b> · ${Math.round(p.coverage*100)}% cover</figcaption></figure>`).join('')+(r.underbase?`<figure style="margin:0;display:grid;gap:4px"><img alt="Underbase" src="${r.underbase}" style="width:100%;aspect-ratio:1/1;object-fit:contain;background:#555;border-radius:10px"><figcaption class="note"><b>Underbase</b> · white under the colours on a dark garment</figcaption></figure>`:'');
+    $('#sepNote').innerHTML=`${r.plates.length} plate${r.plates.length===1?'':'s'} for ${esc(r.job.technique?.name||r.job.technique||'the print')} at ${esc(r.job.size?.label||fin(s.w)+' in')}.${(r.job.warnings||[]).map(w=>`<br>! ${esc(typeof w==='string'?w:w.text||'')}`).join('')}`}
+  catch(x){$('#sepGrid').innerHTML=`<p class="note" style="color:#b3261e">${esc(x.message)}</p>`;toast(x.message)}}
+$('#sepDlg').addEventListener('click',async e=>{const d=$('#sepDlg');if(e.target.closest('[data-sepclose]')||e.target===d){d.close();return}if(!e.target.closest('[data-sepzip]'))return;const l=layerOf(d.dataset.layer);if(!l)return;const b=e.target.closest('[data-sepzip]');b.disabled=true;
+  try{const s=inchesOf(l),r=await fetch('/v1/lab/studio/separations',{method:'POST',headers:{Authorization:'Bearer '+TOKEN(),'Content-Type':'application/json'},body:JSON.stringify({image:artPng(l),techniqueId:l.finish?.id||null,widthIn:s.w,garment:GMODE?'':fabricUnder(l),name:l.name,zip:true})});
+    if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||'The files could not be made');const url=URL.createObjectURL(await r.blob());download(url,fileBase()+'-separations.zip');setTimeout(()=>URL.revokeObjectURL(url),4000);toast('The separation files are downloading.')}
+  catch(x){toast(x.message)}finally{b.disabled=false}});
+// the size fields
+pL.addEventListener('input',e=>{if(!e.target.matches('[data-win]'))return;const l=selected(),v=Number(e.target.value);if(!l||!(v>0)||l.locked)return;const t=tight(l);l.scale=clamp(v*PPI/(t.w||1),.02,40);touch();draw();paintFields()});
+pL.addEventListener('change',e=>{const l=selected();if(!l)return;if(e.target.matches('[data-win]')){commit();paintSize()}if(e.target.matches('[data-placement]')){l.placement=e.target.value||undefined;commit();const c=$('#chk');if(c)c.innerHTML=''}});
+pL.addEventListener('input',e=>{if(e.target.dataset.p!=='warpk')return;const l=selected();if(!l||!l.warp)return;const k=Number(e.target.value);l.warp.k=k;if(l.warp.kind!=='free')l.warp.pts=presetPts(l.warp.kind,k);draw()});
 boot();
 </script>
 <script src="/helper.js" defer></script>

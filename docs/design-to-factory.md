@@ -86,6 +86,10 @@ For a client's line, the window also shows:
 - add **parts from the sketch pack** (Add → From the sketch pack): pockets, zips, collars, trims and buttons drawn in flat-sketch lines, as a layer you place and size, then blend in with “Change it with AI”;
 - recolour and distress;
 - have the image model redraw the whole piece or a painted area.
+- set the real size with the **ruler** (U), then read each mark's size in inches and cm, check it against where it goes, and see its cost a piece;
+- see a graphic's **colour separations** (a plate per ink, with Pantones) and download them for the printer;
+- **warp** a mark to the piece (arc, bulge, wrap, wave, or by hand with the warp tool, W), while its factory size stays flat;
+- recolour a mark **tone on tone** from the fabric under it, with Pantone codes.
 
 **Use as the concept picture** makes the finished picture the concept's. **Restore** puts back the picture the concept had before.
 
@@ -126,11 +130,15 @@ The concept's own words pick the first sketch: a "pleated tennis skirt" starts o
 
 **Spec sheet** prints the flats with every placement, detail and stitch, in words a factory reads.
 
+**Save** also prices each decoration: its size, colours as Pantone C, the setup (screens, a digitised design, a mould) shared over the planned quantity, and a cost a piece. The total goes into the concept's landed cost and margin.
+
+**Decoration sheet** gives the decorator one page per graphic. Each page has the size, the Pantones, the technique with its factory note and rules, the cost, where it goes on the flat, and what to check before it is made.
+
 **Carries forward, through Send to tech pack:**
 - the graded points of measure and the size run;
 - the front and back flats, as the pack's sketches and as files;
 - every placement, detail and stitch, as construction lines;
-- decorations, contrast threads and colour blocks, as BOM lines;
+- decorations (with their size, Pantones and cost a piece), contrast threads and colour blocks, as BOM lines;
 - the main colour, as the first colourway;
 - the target retail price;
 - a note with the target landed cost, the quantity and the line plan.
@@ -321,6 +329,7 @@ Each guide offers the next one when it ends. The client's own guides for tech pa
 | J216 | The design service: a client's line, shared, with verdicts, replies, privacy, and the tech pack in the client's room. Includes the hub in a browser |
 | J217 | The whole loop over HTTP: concept → tech pack → publish → factory → sample sent → review → version 2 → the factory sees the corrections and the next sample |
 | J218 | The factory views and writes in Messages: no buttons (acknowledge, quote, countersign, sample sent all refused), the team records the shipped sample, the corrections go out as v2 while v1 is kept exactly, flats sent unchanged make no version, flats changed go out as v3. Includes the factory page in a browser |
+| J230 | Decoration to the factory: each flats placement priced into the landed cost and the tech pack BOM, the decoration sheet PDF, the studio size check and separations, the ruler, warp and tone on tone in a browser, one library graphic previewed and put across the range |
 | J229 | Made as: 44 ways to make a graphic across six kinds, picked in the studio from live previews on the layer or from the every-way wall on cloth, by name too; the library page shows them all |
 | J228 | The smaller items: our own fonts (uploaded, served, set in type, listed in the library), the Illustrator round-trip (the studio SVG back as editable layers; a foreign SVG as picture layers), the 3D try-on (from the concept picture and from the canvas, the GLB shown painted in our viewer) |
 | J227 | Every tool in the studio works, clicked one by one in a browser: the rail and zoom, every Add, every Layers control, every AI control (Change it, Make it, Remove the graphic, the fabric), undo, redo, save, export, versions, use as the picture; Remove the graphic takes a printed graphic off the piece in one go |
@@ -344,6 +353,7 @@ Each guide offers the next one when it ends. The client's own guides for tech pa
 - `test/lab-range.test.js`: the taste counts and words, the range change per piece and its cleaning, the poll votes and the demand read, the lookbook PDF;
 - `test/sample-loop.test.js`: the calendar, the comparison's shape and fixture, the written design the model reads, what the pack keeps;
 - `test/lab-materials.test.js`: the starting set, cleaning, the tag drawing, the costing, and what the pack takes;
+- `test/lab-decor.test.js`: placement words and sizes, the size findings, the decoration cost by technique (screens, stitches, area, its own numbers) and how it counts in the landed cost;
 - `test/lab-jobfile.test.js`: the job file per technique (separations, underbase, films, settings, stitch count, cut line, the zip);
 - `test/sample-review.test.js`: reviews and the next version.
 
