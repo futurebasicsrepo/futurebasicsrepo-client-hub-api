@@ -144,6 +144,11 @@ kbd{font:500 10px 'IBM Plex Mono',monospace;border:1px solid var(--line);border-
     <div class="row" style="justify-content:space-between"><span class="note" id="verLabA"></span><span class="note" id="verLabB"></span></div></div>
   <p class="msg" id="verMsg" role="status" style="margin:0"></p>
 </div></dialog>
+<dialog id="madeDlg" style="border:0;border-radius:20px;padding:0;width:min(1180px,96vw);max-height:92vh;overflow:auto"><div style="padding:18px;display:grid;gap:12px">
+  <div class="row" style="justify-content:space-between"><h3 style="margin:0;font-size:16px">Made every way · <span id="madeWho"></span></h3><div class="row"><label class="note" style="display:flex;gap:6px;align-items:center">Cloth <select class="t" id="madeCloth" style="width:auto"><option value="jersey">Jersey</option><option value="fleece">Fleece</option><option value="twill">Twill</option><option value="canvas">Canvas</option><option value="denim">Denim</option></select></label><label class="note" style="display:flex;gap:6px;align-items:center">Colour <input type="color" id="madeCol" value="#d9d6cf"></label><button class="btn sm q" type="button" data-madeclose>Close</button></div></div>
+  <p class="note" style="margin:0">This layer, made each way the library knows, on a piece of cloth. Click one to make the layer that way; Make it real with AI then asks the image model for the photographic version.</p>
+  <div class="tiles" id="madeGrid" style="grid-template-columns:repeat(auto-fill,minmax(200px,1fr))"></div>
+</div></dialog>
 <dialog id="tryDlg" style="border:0;border-radius:20px;padding:0;width:min(1000px,96vw);max-height:92vh;overflow:auto"><div style="padding:18px;display:grid;gap:12px">
   <div class="row" style="justify-content:space-between"><h3 style="margin:0;font-size:16px">3D try-on</h3><div class="row"><button class="btn sm go" type="button" id="tryCanvas">Make it from the canvas</button><button class="btn sm" type="button" id="tryConcept">From the concept picture</button><button class="btn sm q" type="button" data-tryclose>Close</button></div></div>
   <p class="note" style="margin:0" id="tryNote"></p>
@@ -401,8 +406,8 @@ function fieldsHtml(l){
   const pos=fixed(l)?'':`<div class="sec"><h4>Place</h4>${rng2('scale','Size',.02,6,.01,+l.scale.toFixed(2),'×')}${rng2('rotd','Turn',-180,180,1,Math.round(l.rot*180/Math.PI),'°')}<div class="row"><button class="btn sm q" type="button" data-act="centre">Centre</button><button class="btn sm q" type="button" data-act="flip">Flip</button><button class="btn sm q" type="button" data-act="fabric" title="Multiply, a little worn: the way a print sits in cloth">Sit it in the fabric</button></div></div>`;
   return `<div class="sec"><h4>${esc(KIND[l.kind])}</h4><input class="t" data-p="name" value="${esc(l.name)}" maxlength="60" aria-label="Layer name">
     ${rng2('opacity','Opacity',0,1,.01,l.opacity)}<label class="f w"><span>Blend</span><select class="t" data-p="blend">${BLENDS.map(([k,v])=>`<option value="${k}" ${k===l.blend?'selected':''}>${esc(v)}</option>`).join('')}</select></label></div>
-  ${kind}${pos}
   ${l.kind==='base'?'':techHtml(l)}
+  ${kind}${pos}
   <div class="sec"><h4>Colour</h4>${rng2('a.hue','Hue',-180,180,1,a.hue,'°')}${rng2('a.sat','Saturation',0,300,1,a.sat,'%')}${rng2('a.bright','Brightness',0,200,1,a.bright,'%')}${rng2('a.contrast','Contrast',0,200,1,a.contrast,'%')}
     <label class="f w"><span>Recolour</span>${col('t.color',t.color)}</label>${rng2('t.amount','Recolour amount',0,1,.01,t.amount)}
     <div class="row"><button class="btn sm q" type="button" data-act="lookreset">Reset the colour</button></div>${l.kind==='base'?'<p class="note">Hue turns the colour of the whole picture: on a grey studio background mostly the piece changes. For one part only, paint it in the AI tab and ask.</p>':''}</div>
@@ -410,11 +415,31 @@ function fieldsHtml(l){
     ${rng2('d.amount','Amount',0,1,.01,d.amount)}${rng2('d.size','Grain size',5,200,1,d.size)}<div class="row"><button class="btn sm q" type="button" data-act="seed">Another pattern</button></div></div>
   <div class="sec"><h4>Layer</h4><div class="row"><button class="btn sm q" type="button" data-act="up">Move up</button><button class="btn sm q" type="button" data-act="down">Move down</button><button class="btn sm q" type="button" data-act="dup">Duplicate</button>${l.kind==='base'?'':'<button class="btn sm q" type="button" data-act="keep" title="Keep this artwork in the graphics library, for other pieces">Save to the library</button>'}${l.kind==='text'||l.kind==='shape'?'<button class="btn sm q" type="button" data-act="raster" title="So it can be painted on and rubbed out">Turn into pixels</button>':''}${l.kind==='base'&&D.concept.hasPlain?'<button class="btn sm q" type="button" data-act="plain">Use the plain picture</button>':''}<button class="btn sm q" type="button" data-act="del">Delete</button></div></div>`;
 }
-const techOpts=v=>`<option value="">None</option>${[['embroidery','Embroidery'],['print','Print'],['heat_transfer','Heat transfer'],['patch','Patches and appliqué'],['distress','Distressing and wash']].map(([k,lab])=>{const t=(D.techniques||[]).filter(x=>x.kind===k);return t.length?`<optgroup label="${lab}">${t.map(x=>`<option value="${x.id}" ${x.id===v?'selected':''}>${esc(x.name)}</option>`).join('')}</optgroup>`:''}).join('')}`;
-function techHtml(l){const f=l.finish;return `<div class="sec"><h4>Technique</h4><label class="f w"><span>Made as</span><select class="t" data-tech>${techOpts(f&&f.id)}</select></label>
-  ${f?`${f.effect!=='none'?rng2('fin.strength','Strength',0,1,.05,f.strength):''}${rng2('fin.raise','Raised',0,12,.5,f.raise)}${['stitch','foil','film','rubber'].includes(f.effect)?rng2('fin.angle','Direction',-180,180,5,f.angle,'°'):''}
-  <div class="row"><button class="btn sm go" type="button" data-act="real" ${D.ai.connected?'':'disabled'}>Make it real with AI</button></div><p class="note">Drawn here as a quick look. Make it real asks the image model for the real ${esc(f.name.toLowerCase())} on this fabric, in this layer's area only, using the technique's words and reference photos.</p>`
-  :'<p class="note">Embroidery, print, heat transfer, patches and wear from the <a href="/lab/library#techniques" target="_blank" rel="noopener">technique library</a>.</p>'}</div>`}
+const TECH_KINDS=[['embroidery','Embroidery'],['print','Print'],['heat_transfer','Heat transfer'],['patch','Patches and appliqué'],['other','Other ways'],['distress','Distressing and wash']];
+const techOpts=v=>`<option value="">None</option>${TECH_KINDS.map(([k,lab])=>{const t=(D.techniques||[]).filter(x=>x.kind===k);return t.length?`<optgroup label="${lab}">${t.map(x=>`<option value="${x.id}" ${x.id===v?'selected':''}>${esc(x.name)}</option>`).join('')}</optgroup>`:''}).join('')}`;
+// "Made as": every way the mark can be made, drawn on the layer itself as small previews, grouped by kind; the library's recipes (src/lab-finish.js) do the drawing
+let TKIND='',TTH=new Map(),MADE={color:'#d9d6cf',cloth:'jersey'};
+function techThumb(l,t){const src=contentOf(l),key=l.id+'|'+t.id+'|'+(isRaster(l)?(l.raster&&l.raster._rid):[l.text,l.font,l.size,l.color,l.shape,l.w,l.h,l.fillColor].join('|'))+'|'+JSON.stringify(t.finish);if(TTH.has(key))return TTH.get(key);
+  const TW=132,TH=76,k=Math.min(TW*.9/src.width,TH*.84/src.height),w=Math.max(2,Math.round(src.width*k)),h=Math.max(2,Math.round(src.height*k)),g=canvas(w,h);g.getContext('2d').drawImage(src,0,0,w,h);
+  let out;try{const f=t.finish||{};let e=window.FBFinish.effect(g,f,.45,1);if(f.distress&&f.distress.amount>0){const c2=canvas(w,h);c2.getContext('2d').drawImage(e,0,0);window.FBFinish.distress(c2,f.distress,1);e=c2}
+    const tile=canvas(TW,TH),x=tile.getContext('2d');x.drawImage(window.FBFinish.fabric(TW,TH,MADE.color,MADE.cloth,3),0,0);x.globalAlpha=f.opacity??1;x.globalCompositeOperation=f.blend||'source-over';const sh=window.FBFinish.shadow(f,.3);if(sh){x.shadowColor=sh.color;x.shadowBlur=sh.blur;x.shadowOffsetX=sh.dx;x.shadowOffsetY=sh.dy}x.drawImage(e,(TW-w)/2,(TH-h)/2);out=tile.toDataURL('image/png')}catch{out=''}
+  if(TTH.size>600)TTH.clear();TTH.set(key,out);return out}
+function techHtml(l){const f=l.finish,kind=TKIND||(f&&(D.techniques||[]).find(t=>t.id===f.id)?.kind)||'embroidery',list=(D.techniques||[]).filter(t=>t.kind===kind);
+  return `<div class="sec"><h4>Made as</h4><p class="note" style="margin:0 0 4px">How this mark is made on the piece. Pick a way below: it is drawn on the layer straight away. Embroidery, prints, transfers, patches, knit, laser, metal and stones, each in its variants; the <a href="/lab/library#techniques" target="_blank" rel="noopener">technique library</a> has their factory notes.</p>
+  <div class="row" style="gap:4px">${TECH_KINDS.map(([k,lab])=>`<button type="button" class="btn sm ${kind===k?'':'q'}" data-tkind="${k}" aria-pressed="${kind===k}">${lab}</button>`).join('')}</div>
+  <div class="tiles" style="grid-template-columns:repeat(2,minmax(0,1fr));margin-top:6px">${list.map(t=>`<button type="button" class="tile" data-tapply="${t.id}" title="${esc(t.summary)}" style="${f&&f.id===t.id?'border-color:var(--ink);background:#fff':''}"><img alt="" src="${techThumb(l,t)}" width="132" height="76" style="border-radius:8px;width:100%;height:auto">${esc(t.name)}</button>`).join('')||'<span class="note">None of this kind yet.</span>'}</div>
+  <label class="f w" style="margin-top:8px"><span>Or pick by name</span><select class="t" data-tech>${techOpts(f&&f.id)}</select></label>
+  <div class="row" style="margin-top:8px"><button class="btn sm q" type="button" data-act="madeall">See it made every way</button>${f?`<button class="btn sm q" type="button" data-tapply="">Plain (no technique)</button>`:''}</div>
+  ${f?`<p class="note" style="margin:6px 0 0"><b>${esc(f.name)}</b></p>${f.effect!=='none'?rng2('fin.strength','Strength',0,1,.05,f.strength):''}${rng2('fin.raise','Raised',0,12,.5,f.raise)}${['stitch','foil','film','rubber','silicone','metallic','knit'].includes(f.effect)?rng2('fin.angle','Direction',-180,180,5,f.angle,'°'):''}
+  <div class="row"><button class="btn sm go" type="button" data-act="real" ${D.ai.connected?'':'disabled'}>Make it real with AI</button></div><p class="note">Drawn here as a quick look. Make it real asks the image model for the real ${esc(f.name.toLowerCase())} on this fabric, in this layer's area only, using the technique's words and reference photos.</p>`:''}</div>`}
+// every way at once, on a piece of fabric: the technique library's swatch, with this layer's artwork, for each technique
+function madeWall(l){const art=artOf(l),box=$('#madeGrid');box.innerHTML='';const cur=l.finish&&l.finish.id;
+  for(const [k,lab] of TECH_KINDS){const list=(D.techniques||[]).filter(t=>t.kind===k);if(!list.length)continue;const h=document.createElement('h4');h.textContent=lab;h.style.cssText='grid-column:1/-1;margin:8px 0 0;font-size:13px';box.appendChild(h);
+    for(const t of list){const card=document.createElement('button');card.type='button';card.className='tile';card.dataset.madeapply=t.id;card.title=t.summary||'';if(cur===t.id)card.style.cssText='border-color:var(--ink);background:#fff';
+      const c=window.FBFinish.swatch(art,t.finish,{w:260,h:200,color:MADE.color,cloth:MADE.cloth,fill:.6,seed:5});c.style.cssText='width:100%;height:auto;border-radius:8px';card.appendChild(c);const sp=document.createElement('span');sp.textContent=t.name;card.appendChild(sp);box.appendChild(card)}}}
+function madeOpen(){const l=selected();if(!l||l.kind==='base'){toast('Choose a graphic, mark or type layer first.');return}$('#madeDlg').showModal();$('#madeCol').value=MADE.color;$('#madeCloth').value=MADE.cloth;$('#madeWho').textContent=l.name;madeWall(l)}
+$('#madeDlg').addEventListener('click',e=>{if(e.target.closest('[data-madeclose]')||e.target===$('#madeDlg')){$('#madeDlg').close();return}const a=e.target.closest('[data-madeapply]');if(a){const l=selected();if(l){applyTech(l,a.dataset.madeapply);commit();paintLayers();draw();toast(`"${l.name}" is made as ${(D.techniques||[]).find(t=>t.id===a.dataset.madeapply)?.name||'that'}.`)}$('#madeDlg').close()}});
+$('#madeDlg').addEventListener('change',e=>{if(e.target.id==='madeCol')MADE.color=e.target.value;if(e.target.id==='madeCloth')MADE.cloth=e.target.value;TTH.clear();const l=selected();if(l)madeWall(l)});
 function applyTech(l,id){
   const t=(D.techniques||[]).find(x=>x.id===id);
   if(!t){l.finish=null;l.blend='source-over';l.opacity=1;l.distress={...l.distress,amount:0};l.adjust.sat=100;return}
@@ -448,10 +473,13 @@ pL.addEventListener('click',e=>{
   const row=e.target.closest('[data-ly]');
   if(row){const l=layerOf(row.dataset.ly);if(e.target.closest('[data-vis]')){l.visible=!l.visible;commit()}else if(e.target.closest('[data-lock]')){l.locked=!l.locked;commit()}else SEL=l.id;paintLayers();draw();return}
   const l=selected();if(!l)return;const tg=e.target.closest('[data-toggle]'),al=e.target.closest('[data-align]'),ac=e.target.closest('[data-act]');
+  const tk=e.target.closest('[data-tkind]');if(tk){TKIND=tk.dataset.tkind;paintLayers();return}
+  const ta=e.target.closest('[data-tapply]');if(ta){applyTech(l,ta.dataset.tapply);commit();paintLayers();draw();return}
   if(tg){l[tg.dataset.toggle]=!l[tg.dataset.toggle];commit();paintLayers();draw();return}
   if(al){l.align=al.dataset.align;commit();paintLayers();draw();return}
   if(!ac)return;const a=ac.dataset.act;
   if(a==='addfont'){$('#fontIn').click();return}
+  if(a==='madeall'){madeOpen();return}
   if(a==='up')moveLayer(l,1);if(a==='down')moveLayer(l,-1);if(a==='dup')duplicate(l);if(a==='del')removeLayer(l);if(a==='raster')rasterize(l);if(a==='real')makeReal(l);if(a==='keep')keepInLibrary(l);if(a==='plain')usePlain(l);
   if(a==='centre'){l.x=W/2;l.y=H/2;commit();draw()}if(a==='flip'){l.flip=!l.flip;commit();draw()}
   if(a==='fabric'){l.blend='multiply';l.opacity=Math.min(l.opacity,.94);if(!l.distress.amount){l.distress.style='worn';l.distress.amount=.18}commit();paintLayers();draw()}

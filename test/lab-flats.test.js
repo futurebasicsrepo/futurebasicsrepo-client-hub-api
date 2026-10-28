@@ -117,7 +117,7 @@ test('pieces are drawn from the flat sketches, lined up with their measurements'
   assert.equal(defaultTemplate('tee', 'boxy'), 'tee-boxy'); assert.equal(defaultTemplate('tee', 'regular'), 'tee-classic'); assert.equal(defaultTemplate('pants', 'regular', 'nylon cargo pant'), 'pt-cargo');
   assert.equal(defaultTemplate('beanie'), null); assert.deepEqual(templatesFor('tote'), []);
   const d = (category, name) => detectStyle({ category, name });
-  assert.equal(d('tops', 'Heavyweight boxy tee').template, 'tee-boxy'); assert.equal(d('outerwear', 'Nylon bomber').template, 'jk-bomber'); assert.equal(d('bottoms', 'Washed denim jeans').template, 'pt-jean');
+  assert.equal(d('tops', 'Heavyweight boxy tee').template, 'tee-heavyweight-boxy-tee'); assert.equal(d('outerwear', 'Nylon bomber').template, 'jk-bomber'); assert.equal(d('bottoms', 'Washed denim jeans').template, 'pt-jean');
   // what the page sends: a sketch of another style falls back to the style's own; "none" keeps the simple outline
   assert.equal(cleanFlat({ style: 'tee', template: 'pt-cargo' }).params.template, 'tee-classic');
   const none = cleanFlat({ style: 'hoodie', template: 'none' }).params; assert.equal(none.template, 'none'); assert.equal(templateOf(none), null); assert.ok(!/<image /.test(renderSvg(none, 'front')));
@@ -184,4 +184,16 @@ test('add-on parts from the pack: pockets, zips, collars, trims and buttons plac
   const svg = renderSvg({ ...tee, edits: [clean] }, 'front', { partHref: f => `data:part;${f}` });
   assert.match(svg, new RegExp(`href="data:part;${pocket.file}"`), 'the part is drawn on the flat, inside the recoloured drawing');
   assert.match(describeEdit(clean, tee), /add-on sheet/); assert.equal(partOf(pocket.id).kind, 'pockets');
+});
+
+test('the sketch follows the concept: its family from the name, silhouette and fabric, its features scored, and nothing it never asked for', async () => {
+  const { detectStyle, defaultTemplate, rankTemplates, conceptTokens, candidateTemplates } = await import('../src/lab-flats.js');
+  const boot = { category: 'bottoms', name: 'Earth Utility Boot', spec: { silhouette: 'Mid-rise boot cut with a clean seat', fabric: '11oz cotton twill with a garment-dye', description: 'A boot cut in a tobacco-brown garment-dye with a light ripstop lining in the pockets and a water-resistant finish. It has a worn-in look, so it works for rain and work', details: ['Surface abrasion on the seat and front thighs', 'Rust hem-stitch and bar tacks'] } };
+  const d = detectStyle(boot); assert.equal(d.style, 'pants'); assert.equal(d.template, 'pt-chino', 'a plain boot-cut twill pant is not drawn from a cargo or a double-knee');
+  const words = [boot.name, boot.spec.silhouette, boot.spec.fabric, boot.spec.description, ...boot.spec.details].join(' '), strong = [boot.name, boot.spec.silhouette, boot.spec.fabric].join(' ');
+  const tok = conceptTokens(words, strong); assert.ok(tok.has('flared') && tok.has('chinos') && !tok.has('track'), 'boot cut reads as flared, twill as chinos, and the ripstop pocket lining does not make it a track pant');
+  const ranked = rankTemplates('pants', 'regular', words, strong); assert.ok(ranked.slice(0, 10).some(t => t.id === 'pt-flared-jeans'), 'the flared sketch is among the candidates the picture is judged against');
+  const cands = candidateTemplates(ranked); assert.ok(cands.length >= 4 && cands.some(t => t.id === 'pt-flared-jeans') && !cands.some(t => /double-knee|cargo/.test(t.id)), 'the sketches put to the picture: the flare is there, no cargo or double-knee', cands.map(t => t.id + ':' + t.score));
+  for (const [w, id] of [['straight chino', 'pt-chino'], ['relaxed carpenter jean', 'pt-carpenter-jeans'], ['wide leg jean', 'pt-wide-leg-jeans'], ['balloon jean', 'pt-balloon-jeans'], ['painter pant in canvas', 'pt-painter-pants'], ['track pant with side stripe', 'pt-side-stripe-track-pants'], ['heavyweight fleece sweatpant', 'pt-jogger']]) assert.equal(defaultTemplate('pants', 'regular', w), id, w);
+  assert.equal(defaultTemplate('pants', 'regular', ''), 'pt-chino', 'nothing said: the style\'s default');
 });

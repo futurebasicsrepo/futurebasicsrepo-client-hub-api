@@ -247,6 +247,8 @@ The library takes pictures as well as links: **Add photos or screenshots** under
 
 ## Graphics and techniques: the library
 
+**Made as, in the studio.** Every graphic, mark or type layer has a Made as section at the top of its panel: the library's techniques as live previews drawn on that layer, grouped by kind (embroidery, print, heat transfer, patches and appliqué, other ways, distressing), one click to make the layer that way; "See it made every way" lays the layer out every way on a piece of cloth (jersey, fleece, twill, canvas or denim, any colour). The library ships 44 ways: satin, puff, chain, fill, metallic-thread, tonal and run-stitch embroidery; plastisol, water-based, vintage cracked, crackle, puff, high-density, halftone, foil, metallic ink, glitter, flock, direct-to-garment and gel prints; glossy, matte, 3D silicone, DTF, matte and gloss vinyl, reflective, holographic and sublimation transfers; chenille, woven, embroidered, rubber, leather patches, tackle twill and deboss; knit-in jacquard, laser etch, metal plaque, rhinestones and studs; three washes. The renderer (`src/lab-finish.js`) draws each with its own effect (silicone, flock, hd, metallic with sparkle, etch, knit, twill, leather, stud, and metallic thread on stitches); each carries the words for the image model, the artwork guide and the factory note.
+
 **Graphics and techniques** (a Lab tab, `/lab/library`) is where everything we have made lives, so it can be used on any piece later.
 
 ### Graphics
@@ -322,6 +324,8 @@ The library takes pictures as well as links: **Add photos or screenshots** under
 Routes: `src/lab-materials-routes.js` (`/v1/lab/materials…`, `/v1/lab/concepts/:id/materials…`, `…/costing`, `…/colourways`); the data, starting set and costing in `src/lab-materials.js`; the tag drawing in `src/lab-tags.js` (served as `/lab/lab-tags.js`); the page `src/lab-materials.html`. Table: `lab_materials`; a concept keeps its picks in `spec.materials`, its costing in `spec.costing` and its colourways in `spec.colourways`.
 
 ## Flats and placement, and "can it be made?"
+
+**Which sketch a piece is drawn from.** The concept's words are read for the piece's family (jeans, chinos, sweatpants, track pants…: from its name, silhouette and fabric only, so a ripstop pocket lining does not make a twill pant a track pant), its silhouette (flared, straight, wide, slim…) and its features (cargo pockets, double knee, pleats, carpenter loops…). Every sketch of the style is scored (`rankTemplates` in `src/lab-flats.js`): a feature the sketch has that the concept never asked for counts against it, so a plain boot-cut twill pant is not drawn from a skinny double-knee cargo because it shares a word. With an Anthropic key the vision model then confirms the pick from the concept's picture among the best-scored sketches (cached per picture; off under `AI_FIXTURE`). The Garment tab still lets you pick any sketch by hand.
 
 **Flats and placement** (in the concept window, `/lab/flats?concept=<id>`) draws the piece as measured technical flats, front and back, the way a factory reads them. Nothing on it is drawn by an image model.
 

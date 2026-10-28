@@ -49,3 +49,13 @@ test('a concept graphic remembers which technique it is made with', () => {
   assert.deepEqual(g.finish, { id, name: '3D puff embroidery' });
   assert.equal(cleanGraphics([{ name: 'Bolt', idea: 'x', finish: { id: 'nope', name: 'x' } }])[0].finish, undefined);
 });
+
+test('every way a graphic is made: 44 techniques across six kinds, the new finishes kept whole, and the renderer knows every effect', async () => {
+  assert.ok(BUILTIN_TECHNIQUES.length >= 44 && TECHNIQUE_KINDS.length === 6 && TECHNIQUE_KINDS.some(k => k.id === 'other'));
+  for (const key of ['metallic-thread', 'tonal-embroidery', 'tackle-twill', 'high-density', 'metallic-ink', 'glitter', 'flock', 'dtg', 'silicone-3d', 'dtf', 'vinyl-matte', 'holographic', 'sublimation', 'leather-patch', 'metal-plaque', 'knit-in', 'laser-etch', 'rhinestones']) assert.ok(BUILTIN_TECHNIQUES.some(t => t.key === key), key);
+  const f = cleanFinish({ effect: 'stitch', thread: 'metallic', metal: 'silver', sparkle: 2 }); assert.equal(f.thread, 'metallic'); assert.equal(f.sparkle, 1); assert.equal(cleanFinish({ effect: 'nope', thread: 'x' }).thread, 'polyester');
+  assert.equal(cleanFinish({ effect: 'silicone' }).effect, 'silicone'); assert.equal(cleanFinish({ effect: 'stud' }).effect, 'stud');
+  const src = (await import('node:fs')).readFileSync(new URL('../src/lab-finish.js', import.meta.url), 'utf8');
+  for (const e of EFFECTS) assert.ok(e === 'none' || src.includes(`fx === '${e}'`), `the renderer draws ${e}`);
+  assert.deepEqual(/EFFECTS: \[([^\]]+)\]/.exec(src)[1].split(',').map(s => s.trim().replace(/'/g, '')), EFFECTS, 'the page and the server agree on the effects');
+});

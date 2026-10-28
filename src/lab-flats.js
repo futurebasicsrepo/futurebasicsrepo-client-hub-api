@@ -75,11 +75,34 @@ export function detectStyle(c = {}) {
     cropped: has(/crop/), pleats: has(/double[- ]pleat/) ? 2 : has(/pleat/) ? 1 : 0, chestPocket: has(/chest pocket|patch pocket/), noPocket: has(/no pocket|pocketless/),
     rib: !has(/raw hem|cut[- ]off|no rib/), drawcord: !has(/no drawcord|without drawcord/) && STYLES[style].kind === 'top' ? has(/drawcord|drawstring/) || Boolean(STYLES[style].hood) : has(/drawcord|drawstring|elastic/)
   };
-  return { style, fit, options, template: defaultTemplate(style, fit, t) };
+  return { style, fit, options, template: defaultTemplate(style, fit, t, [c.name, c.spec?.silhouette, c.spec?.fabric].join(' ')) };
 }
 
 // ---- the sketches: which one a piece is drawn from ----
-// [template, words in the concept that call for it, fits it suits]; the first of a style is its default
+// The concept's words (its name, silhouette, fabric, fit and details) are read for what they say about the piece: its family (jeans, chinos,
+// sweatpants, track pants…), its silhouette (flared, straight, wide, slim…) and its features (cargo pockets, double knee, pleats…). Every sketch of
+// the style is scored: a feature the sketch has that the concept never asked for counts against it, so a plain boot-cut twill pant is not drawn
+// from a skinny double-knee cargo just because it shares a word. The routes then let the vision model confirm the pick from the concept's picture.
+const SYN = [[/boot[- ]?cut|flare|bell[- ]?bottom/, 'flared'], [/skinny/, 'skinny'], [/\bslim\b|tapered|narrow/, 'slim'], [/straight[- ]leg|\bstraight\b/, 'straight'], [/wide[- ]leg|\bwide\b/, 'wide'], [/baggy|loose/, 'baggy'], [/balloon|barrel/, 'balloon'], [/relaxed/, 'relaxed'],
+  [/denim|\bjeans?\b/, 'jeans'], [/chino|twill|khaki/, 'chinos'], [/sweatpant|fleece|jogger|french terry|loopback/, 'sweatpants'], [/track|nylon|shell|ripstop/, 'track'], [/\btrouser/, 'trousers'], [/jort/, 'jorts'],
+  [/cargo/, 'cargo'], [/carpenter|hammer loop|tool pocket/, 'carpenter'], [/double[- ]knee|knee patch/, 'double-knee'], [/painter/, 'painter'], [/work ?(pant|wear|jean|short|trouser)|workwear/, 'work'], [/pleat/, 'pleated'], [/tailor|\bsuit\b/, 'tailored'], [/elastic/, 'elastic-waist'], [/drawcord|drawstring/, 'drawcord'],
+  [/distress|ripped|destroy/, 'distressed'], [/five[- ]pocket|5[- ]pocket/, 'five-pocket'], [/crop/, 'cropped'], [/raglan/, 'raglan'], [/hood/, 'hood'], [/\bzip/, 'zip'], [/bomber|varsity|ma-?1/, 'bomber'], [/trucker|chore|overshirt|denim jacket/, 'trucker'], [/funnel|mock neck/, 'funnel'], [/mesh/, 'mesh'], [/running|\brun\b/, 'running'], [/lined/, 'lined'], [/stripe/, 'stripe'], [/panel/, 'paneled'], [/cuff/, 'cuffed'], [/heavy/, 'heavy'], [/oversiz/, 'oversized'], [/boxy/, 'boxy'], [/v[- ]?neck/, 'v-neck'], [/\blong\b/, 'long'], [/curved hem/, 'curved'], [/split hem/, 'split'], [/bike/, 'bike'], [/lounge/, 'lounge'], [/boxer/, 'boxer'], [/retro/, 'retro'], [/contrast/, 'contrast'], [/zip pocket/, 'zip-pocket'], [/side stripe/, 'side-stripe'], [/three stripe|3 stripe/, 'three-stripe']];
+const SYN_TOKENS = new Set(SYN.map(x => x[1]));
+const FAMILY = new Set(['jeans', 'chinos', 'sweatpants', 'joggers', 'track', 'trousers', 'jorts', 'pants', 'shorts', 'tee', 'hoodie', 'jacket', 'cap', 'shirt', 'polo', 'tank', 'vest', 'coat', 'dress', 'skirt', 'leggings', 'bra', 'cami', 'bikini', 'swimsuit', 'bodysuit', 'briefs']);
+const SILHOUETTE = new Set(['flared', 'skinny', 'slim', 'straight', 'wide', 'baggy', 'balloon', 'relaxed', 'tapered', 'cropped', 'oversized', 'boxy', 'long']);
+const SAME = { joggers: 'sweatpants', sweat: 'sweatpants', jogger: 'sweatpants', jean: 'jeans', chino: 'chinos', trouser: 'trousers', 'wide-leg': 'wide', 'zip-pocket': 'zip', 'side-stripe': 'stripe', 'three-stripe': 'stripe', 'curved-hem': 'curved', 'split-hem': 'split', 'contrast-panel': 'paneled', 'elastic-waist': 'elastic-waist', 'v-waist': 'v-waist', 'double-knee': 'double-knee', 'five-pocket': 'five-pocket', 'six-panel': 'six-panel', 'training': 'running', 'basketball': 'mesh', 'crew': 'crewneck' };
+const PLAIN = new Set(['classic', 'the', 'and', 'with', 'top', 'cut', 'leg', 'hem', 'waist']);
+// the concept's words as the tokens the sketches are scored on
+// `strong` is the part of the words that decides the family (the name, the silhouette and the fabric): a ripstop pocket lining in the description does not make a twill pant a track pant
+export function conceptTokens(words = '', strong = null) {
+  const t = String(words).toLowerCase(), st = strong == null ? t : String(strong).toLowerCase(), out = new Set();
+  for (const [re, tok] of SYN) if (FAMILY.has(tok) ? re.test(st) : re.test(t)) out.add(tok);
+  // a word the rules above govern (work, wide, cargo…) only counts through its rule, so "works for rain" is not workwear
+  for (const w of t.split(/[^a-z-]+/)) { const k = SAME[w] || w; if (w.length > 3 && !COMMON.has(w) && !SYN_TOKENS.has(k)) out.add(k); }
+  return out;
+}
+const labelTokens = label => label.toLowerCase().split(/\s+/).map(w => SAME[w] || w).filter(w => w && !PLAIN.has(w));
+// [template, words in the concept that call for it, fits it suits]: strong hints, on top of the scoring
 const TEMPLATE_PICK = [
   ['tee-raglan', /raglan/], ['tee-vneck', /v[- ]?neck/], ['tee-boxy', /boxy|crop/, ['boxy']], ['tee-oversized', /oversiz/, ['oversized', 'relaxed', 'wide']], ['tee-classic'],
   ['ls-crew'],
@@ -87,19 +110,33 @@ const TEMPLATE_PICK = [
   ['hood-boxy', /boxy|oversiz|crop/, ['boxy', 'oversized', 'relaxed', 'wide']], ['hood-classic'],
   ['zip-cropped', /crop|boxy/, ['boxy']], ['zip-classic'],
   ['jk-bomber', /bomber|varsity|ma-?1/], ['jk-track', /track|windbreaker|anorak/], ['jk-trucker', /trucker|denim jacket|chore|overshirt|work jacket|collar/], ['jk-funnel', /funnel|mock neck|fleece/], ['jk-zip'],
-  ['pt-jogger', /jogger|sweatpant|track pant|fleece/], ['pt-jean', /jean|denim|five[- ]pocket|5[- ]pocket/], ['pt-cargo', /cargo|utility/], ['pt-pleat', /pleat|trouser|tailored/], ['pt-wide', /wide/, ['wide']], ['pt-chino'],
-  ['sh-denim', /denim|jort/], ['sh-cargo', /cargo|utility/], ['sh-pleat', /pleat/], ['sh-chino', /chino|twill|walk/], ['sh-sweat'],
+  ['pt-jogger', /jogger|sweatpant|track pant|fleece/], ['pt-jean', /jean|denim|five[- ]pocket|5[- ]pocket/], ['pt-cargo', /cargo/], ['pt-pleat', /pleat|trouser|tailored/], ['pt-wide', /wide/, ['wide']], ['pt-chino'],
+  ['sh-denim', /denim|jort/], ['sh-cargo', /cargo/], ['sh-pleat', /pleat/], ['sh-chino', /chino|twill|walk/], ['sh-sweat'],
   ['cap-6panel']
 ];
 export const templatesFor = style => FLAT_TEMPLATES.filter(t => t.style === style).map(t => ({ id: t.id, label: t.label }));
-export function defaultTemplate(style, fit = 'regular', words = '') {
+// every sketch of the style with its score against the concept's words, best first
+export function rankTemplates(style, fit = 'regular', words = '', strong = null) {
+  const all = FLAT_TEMPLATES.filter(t => t.style === style); if (!all.length) return [];
+  const said = conceptTokens(words, strong), hints = TEMPLATE_PICK.filter(([id]) => all.some(t => t.id === id)), saidFamily = [...said].find(w => FAMILY.has(w) && !['pants', 'shorts'].includes(w));
+  return all.map((t, i) => {
+    let score = 0; const why = [];
+    const h = hints.find(([id]) => id === t.id); if (h) { if (h[1] && h[1].test(String(words).toLowerCase())) { score += 4; why.push('named'); } if (h[2] && h[2].includes(fit)) { score += 1; why.push('fit'); } if (!h[1] && !h[2]) score += .5; }
+    for (const w of labelTokens(t.label)) {
+      if (FAMILY.has(w)) { if (['pants', 'shorts'].includes(w)) continue; if (said.has(w)) { score += 2; why.push(w); } else if (saidFamily) { score -= 3; why.push('not ' + w); } continue; }
+      if (said.has(w)) { score += SILHOUETTE.has(w) ? 3 : 4; why.push(w); } else { score -= 2; why.push('no ' + w); }
+    }
+    return { id: t.id, label: t.label, score, why, order: i };
+  }).sort((a, b) => b.score - a.score || a.order - b.order);
+}
+// the sketches worth putting to the vision model: the best few, and any the words do not argue against
+export const candidateTemplates = ranked => ranked.filter((t, i) => i < 4 || t.score >= 0).slice(0, 10);
+export function defaultTemplate(style, fit = 'regular', words = '', strong = null) {
   const own = TEMPLATE_PICK.filter(([id]) => FLAT_TEMPLATES.some(t => t.id === id && t.style === style)), all = FLAT_TEMPLATES.filter(t => t.style === style); if (!all.length) return null;
-  const picked = own.find(([, re]) => re && re.test(words)); if (picked) return picked[0];
-  // a sketch whose name shares the most telling words with the concept (cargo, pleated, halter, cropped…)
-  const said = new Set(String(words).toLowerCase().split(/[^a-z]+/).filter(w => w.length > 3 && !COMMON.has(w)));
-  let best = null, score = 0; for (const t of all) { const n = t.label.toLowerCase().split(/[^a-z]+/).filter(w => said.has(w)).length; if (n > score) { best = t; score = n; } }
-  if (best) return best.id;
-  return (own.find(([, , fits]) => fits && fits.includes(fit)) || own.find(([, re, fits]) => !re && !fits) || own[0] || [all[0].id])[0];
+  const ranked = rankTemplates(style, fit, words, strong);
+  // nothing in the words says anything: the style's own default
+  if (ranked[0] && ranked[0].score <= .5 && !ranked[0].why.some(w => !/^(no |not )/.test(w))) return (own.find(([, , fits]) => fits && fits.includes(fit)) || own.find(([, re, fits]) => !re && !fits) || own[0] || [all[0].id])[0];
+  return ranked[0].id;
 }
 const COMMON = new Set(['with', 'from', 'shirt', 'tee', 'pants', 'shorts', 'jacket', 'dress', 'skirt', 'vest', 'coat', 'polo', 'tank', 'hoodie', 'classic', 'regular', 'that', 'this', 'line', 'future', 'basics', 'cotton', 'jersey', 'fleece', 'twill', 'piece']);
 // a sketch's own proportions: a cropped tee, a maxi dress or a long short is drawn shorter or longer than the usual sketch of its style, so a

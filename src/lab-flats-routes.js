@@ -17,6 +17,8 @@ import { ensureBranding } from './lab-concepts.js';
 import { STYLES, FITS, SIZES, DETAILS, templateOf, fitToTemplate, detectStyle, defaultParams, defaultPlacement, cleanFlat, cleanEdits, describeEdit, placementChecks, overlapChecks, boxesMeet, describe, renderSvg, pomTable, measurementsFor, fmt, fmtCm } from './lab-flats.js';
 import { packRows, cleanColourways } from './lab-materials.js';
 import { imageConfig, openaiEdit } from './check.js';
+import { callJsonSchema } from './studio.js';
+import { rankTemplates, candidateTemplates } from './lab-flats.js';
 import { brandHits } from './lab-concepts.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -76,10 +78,10 @@ export const flatEditPrompt = prompt => [
 ].join('\n');
 
 export function registerLabFlatsRoutes(app, d) {
-  const { pool, authenticate, adminOnly, attachArtwork, applyHandoff, log = console, env = process.env, imageCfg = () => imageConfig(env), editImpl = openaiEdit } = d;
+  const { pool, authenticate, adminOnly, attachArtwork, applyHandoff, log = console, env = process.env, imageCfg = () => imageConfig(env), editImpl = openaiEdit , pickImpl = callJsonSchema } = d;
   const pre = [authenticate, adminOnly], bad = (reply, error, code = 422, extra = {}) => reply.code(code).send({ error, ...extra });
   const actorOf = req => (UUID.test(String(req.auth?.sub || '')) ? req.auth.sub : null);
-  const concept = async id => (UUID.test(String(id)) ? (await pool.query('select c.id, c.name, c.category, c.status, c.spec, c.twist, c.product_id, c.price_cents, c.cost_cents, c.qty, p.name plan_name from lab_concepts c left join lab_plans p on p.id=c.plan_id where c.id=$1', [id])).rows[0] : null);
+  const concept = async id => (UUID.test(String(id)) ? (await pool.query('select c.id, c.name, c.category, c.status, c.spec, c.twist, c.product_id, c.price_cents, c.cost_cents, c.qty, c.updated_at, p.name plan_name from lab_concepts c left join lab_plans p on p.id=c.plan_id where c.id=$1', [id])).rows[0] : null);
   const techniques = async () => (await pool.query('select id, key, kind, name, base, finish, rules from lab_techniques where not archived order by builtin desc, name')).rows.map(t => ({ ...t, rules: cleanRules(t.rules || {}, t.base) }));
   const techFor = (list, q) => list.find(t => t.id === q.techniqueId) || list.find(t => t.key === PREFERRED[q.technique]) || list.find(t => t.base === q.technique) || list.find(t => t.key === 'plastisol') || { name: q.technique || 'screen print', base: q.technique || 'screen print', rules: cleanRules({}, q.technique) };
   const marks = new Map();
@@ -87,9 +89,26 @@ export function registerLabFlatsRoutes(app, d) {
   const pngOf = async q => q.art ? (await pool.query('select png from lab_art where id=$1', [q.art])).rows[0]?.png || null : q.mark ? markPng(q.mark) : null;
   const aspectOf = async q => { const b = await pngOf(q); if (!b) return 1; const m = await sharp(b).metadata(); return (m.width || 1) / (m.height || 1); };
 
+  // the sketch the piece is drawn from: scored from the words, then confirmed from the concept's picture by the vision model (cached per picture)
+  const picks = new Map();
+  async function pickTemplate(c, det) {
+    const ranked = rankTemplates(det.style, det.fit, [c.name, c.spec?.silhouette, c.spec?.fabric, c.spec?.fit, c.spec?.description, ...(c.spec?.details || [])].join(' '), [c.name, c.spec?.silhouette, c.spec?.fabric].join(' '));
+    if (ranked.length < 2 || !env.ANTHROPIC_API_KEY || env.AI_FIXTURE) return det.template;
+    const key = c.id + ':' + String(c.updated_at || ''); if (picks.has(key)) return picks.get(key);
+    const img = (await pool.query('select image from lab_concepts where id=$1', [c.id])).rows[0]?.image; if (!img) return det.template;
+    const cands = candidateTemplates(ranked);
+    try {
+      const jpeg = await sharp(img).resize({ width: 900, height: 900, fit: 'inside' }).jpeg({ quality: 80 }).toBuffer();
+      const out = await pickImpl('You are a garment technologist choosing which professional flat sketch a product picture should be drawn from. Judge the silhouette (leg or body shape, rise, width, length), the construction (pockets, panels, knees, pleats, closures) and the fabric family. Prefer the sketch that adds nothing the garment does not have.',
+        [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: jpeg.toString('base64') } }, { type: 'text', text: `The concept: ${clip([c.name, c.spec?.silhouette, c.spec?.fabric, c.spec?.description].filter(Boolean).join(' · '), 500)}\nThe sketches to choose from:\n${cands.map(t => `- id "${t.id}": ${t.label}`).join('\n')}\nAnswer with the id of the closest sketch.` }],
+        { type: 'object', additionalProperties: false, required: ['id', 'why'], properties: { id: { type: 'string', enum: cands.map(t => t.id) }, why: { type: 'string' } } }, { maxTokens: 300 });
+      const id = cands.some(t => t.id === out?.id) ? out.id : det.template; if (picks.size > 500) picks.clear(); picks.set(key, id); return id;
+    } catch (e) { log.warn?.({ err: e.message }, 'flats sketch pick by picture failed'); return det.template; }
+  }
   // where the piece starts: its style, fit and details from its words, and its logo and graphics where the concept said they go
   async function initial(c) {
     const det = detectStyle(c); if (!det) return null;
+    det.template = await pickTemplate(c, det);
     const params = fitToTemplate({ ...defaultParams(det.style, det.fit, det.options), ...(det.template ? { template: det.template } : {}) }), spec = ensureBranding(c.spec || {}, c.category), placements = [], list = await techniques();
     const logo = spec.branding?.logo || {};
     if (logo.mark && logo.mark !== 'none') { const mark = logo.mark === 'cue' ? 'mark' : logo.mark, base = LOGO_BASE[logo.technique] || 'embroidery', aspect = await aspectOf({ mark }); const t = techFor(list, { technique: base });
