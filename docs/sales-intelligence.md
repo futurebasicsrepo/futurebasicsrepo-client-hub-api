@@ -74,3 +74,12 @@ A deal starts when a person logs **I sent it**, not before. From then on each st
 **Link to a post.** Each signal has **Copy link**: `/intel?signal=<id>` opens Intelligence with that post first and the rest below, and **Show everything** drops it. A link to a post that is gone says so.
 
 **One Today list.** Posts worth a look (score at or above the setting, new or in progress) appear on the work home in **Reach out today** with the tasks, hot contacts and leads waiting, and open that post. KPIs read people without a team as **Future Basics**.
+
+## Opportunities for a client's room
+
+The same listening, run for a client studio on its own searches and read for what that studio sells, so a room like Incha Studios (photo and video content) sees the work it could win across Reddit, X, the web, news, Hacker News and Discord. It lives in its own tables (`intel_room_watches`, `intel_room_signals`, `intel_rooms`, in `src/intel-room.js`), so a room sees only its own posts and Future Basics' intelligence never sees them.
+
+- **Turning it on.** On the room in the work console, **Opportunities in their hub** is a switch, with a line saying what the room sells: the AI reads every post for that. Turning it on the first time makes the starting searches for photo and video work (Reddit r/forhire and brand requests, X, web, news, Hacker News); the ones whose source is not connected on the service start paused. `GET|PATCH /v1/admin/clients/:id/opportunities {enabled, services}`.
+- **In the hub.** An **Opportunities** section (and menu link): the posts worth a look, best first, each with who they are, why now, what to say and a first reply to make your own, plus **Open the post**, **Save**, **I reached out**, **We got the job** and **Not for us**. **Look now** runs the room's searches at once (at most every ten minutes); otherwise they run with the hourly listening. **Your searches** lists them, with pause, remove and add (where to search, and what for).
+- **Reading.** A cheap first look keeps only posts about photo or video work that sound like someone asking, hiring or looking; the AI reads those within 120 a day per room (`task='room-score'` in `intel_usage`, on Future Basics' AI keys). Nothing is ever posted for the room: its people reach out themselves and mark what they did.
+- `GET /v1/client/opportunities`, `POST /v1/client/opportunities/run`, `POST /v1/client/opportunities/signals/:id/{save|contacted|won|dismiss|reopen}`, `POST|PATCH|DELETE /v1/client/opportunities/watches[/:id]`.

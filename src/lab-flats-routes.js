@@ -84,6 +84,27 @@ export function artFindings(q, info, rules, tech) {
 }
 
 // what the image model is asked when it redraws an area of a flat
+// the whole view drawn from the concept's picture: the sketch gives the frame (pose, size, where the shoulders and hem sit, so the inches still
+// line up), the picture gives everything the garment really is
+export const flatDrawPrompt = (view, words = '') => [
+  `Image 1 is a technical flat sketch of a garment, ${view} view. Image 2 is a photograph of the real garment${words ? ` (${words})` : ''}.`,
+  `Redraw image 1 as the professional technical flat of the garment in image 2, ${view} view, the way a factory tech pack shows it.`,
+  'Keep the canvas, the framing, the pose, the scale and the centre line of image 1 exactly: the garment sits in the same place and at the same size, with the shoulders, neck and sleeves where image 1 has them. Change the length, the shape and the hem only where image 2 really differs (a cropped body is drawn cropped).',
+  `Draw every construction detail image 2 shows on the ${view}: collar and lapel shape, closures and buttons or snaps, pockets and flaps, yokes, panels and seams, linings and quilting that show, cuffs, hems, waistbands, drawcords and their tips, stripes and contrast bands that are part of the cloth, topstitching as dashed lines.`,
+  'Flat colour fills in the garment\'s real colours from image 2 (main cloth, contrast, lining, trims), clean black outlines of even weight, no photographic texture, no shading or gradients, no shadows, plain white background.',
+  'Leave out logos, patches, printed graphics and text: they are placed separately. No people, no hangers, no labels, no measurements.',
+  view === 'back' ? 'If image 2 does not show the back, draw the back that goes with that front: the same body, sleeves, hem, cuffs and colours, with the back yoke and seams such a garment has.' : ''
+].filter(Boolean).join('\n');
+// RGB (3 channels) → RGBA: near-white pixels joined to the edge of the picture become clear, the rest (the garment) stays as drawn
+export function clearBackground(rgb, w, h, light = 236) {
+  const out = Buffer.alloc(w * h * 4), seen = new Uint8Array(w * h), stack = [];
+  const white = i => rgb[i * 3] >= light && rgb[i * 3 + 1] >= light && rgb[i * 3 + 2] >= light;
+  for (let x = 0; x < w; x++) { stack.push(x, (h - 1) * w + x); } for (let y = 0; y < h; y++) { stack.push(y * w, y * w + w - 1); }
+  while (stack.length) { const i = stack.pop(); if (seen[i] || !white(i)) continue; seen[i] = 1; const x = i % w, y = (i - x) / w;
+    if (x > 0) stack.push(i - 1); if (x < w - 1) stack.push(i + 1); if (y > 0) stack.push(i - w); if (y < h - 1) stack.push(i + w); }
+  for (let i = 0; i < w * h; i++) { out[i * 4] = rgb[i * 3]; out[i * 4 + 1] = rgb[i * 3 + 1]; out[i * 4 + 2] = rgb[i * 3 + 2]; out[i * 4 + 3] = seen[i] ? 0 : 255; }
+  return out;
+}
 export const flatEditPrompt = prompt => [
   'This is a black-and-white technical flat sketch of a garment: clean vector line art the way a factory reads it, white cloth, black outlines, dashed lines for topstitching.',
   `Redraw only the transparent area of the mask: ${prompt}`,
@@ -142,7 +163,10 @@ export function registerLabFlatsRoutes(app, d) {
   }
   const rgb = h => [1, 3, 5].map(i => parseInt(String(h).slice(i, i + 2), 16)), far = (a, b) => { const [x, y] = [rgb(a), rgb(b)]; return Math.hypot(x[0] - y[0], x[1] - y[1], x[2] - y[2]) > 70; };
   async function mismatch(c, params) {
-    const read = await readPicture(c); if (!read) return null;
+    if (params.drawn?.front && params.drawn.template === params.template) return null; // already drawn from the picture
+    const hasPicture = (await pool.query('select image is not null h from lab_concepts where id=$1', [c.id])).rows[0]?.h; if (!hasPicture) return null;
+    const stock = { style: params.style, label: STYLES[params.style]?.label || params.style, color: null, reasons: ['it is still a stock sketch, not drawn from the picture'] };
+    const read = await readPicture(c); if (!read) return stock;
     const reasons = [], sketchName = (style, template) => templateOf({ style, template })?.label || STYLES[style].label;
     if (read.style !== params.style) reasons.push(`the picture shows a ${STYLES[read.style].label.toLowerCase()}, the flat is a ${STYLES[params.style]?.label.toLowerCase() || params.style}`);
     else if (params.template && params.template !== 'none') {
@@ -151,7 +175,7 @@ export function registerLabFlatsRoutes(app, d) {
       if (best && best !== params.template) reasons.push(`the picture is closest to the “${sketchName(read.style, best)}” sketch, the flat is drawn from “${sketchName(params.style, params.template)}”`);
     }
     if (read.color && (!params.color || far(read.color, params.color))) reasons.push(`the cloth in the picture is ${read.color}, the flat is ${params.color || 'white'}`);
-    return reasons.length ? { style: read.style, label: STYLES[read.style].label, color: read.color, reasons } : null;
+    return { style: read.style, label: STYLES[read.style].label, color: read.color, reasons: reasons.length ? reasons : stock.reasons };
   }
   // a graphic measured in the studio keeps its size: the spot's top edge stays where the spot puts it
   const sized = (box, g) => { const w = Number(g.widthIn), h = Number(g.heightIn); if (!(w > 0 && h > 0)) return box; const top = box.y - box.h / 2; return { ...box, w: Math.round(w * 8) / 8, h: Math.round(h * 8) / 8, y: Math.round((top + h / 2) * 8) / 8 }; };
@@ -247,7 +271,7 @@ export function registerLabFlatsRoutes(app, d) {
     if (r) return shape(c, { ...r.params, placements: r.placements, check: r.check_result, saved: true, updatedAt: r.updated_at }, { techniques: list, picture: await mismatch(c, r.params) });
     const init = await initial(c);
     if (!init) return shape(c, null, { techniques: list, unsupported: looksLikeFootwear(c) && c.category !== 'footwear' ? `This piece reads as footwear, but it sits in a ${c.category} line, so it is not drawn as ${c.category}. Flats are not drawn for footwear yet: change the concept's words, or keep it in a footwear line.` : `Flats are not drawn for ${c.category} yet. They cover tops, hoodies, sweatshirts, jackets, pants, shorts, caps, beanies and totes.` });
-    return shape(c, { ...init, check: await check(init, init.placements, c.client_id), saved: false }, { techniques: list });
+    return shape(c, { ...init, check: await check(init, init.placements, c.client_id), saved: false }, { techniques: list, picture: await mismatch(c, init) });
   });
   // the flat drawn again from the picture (not saved): the garment, fit and colour the picture shows; the graphics come along, the ones added
   // on the flats alone included
@@ -298,7 +322,7 @@ export function registerLabFlatsRoutes(app, d) {
     try { masks.set(d.t.file, `data:image/png;base64,${(await maskFor(d.t.file, file => readFileSync(new URL(`./flat-templates/${file}`, import.meta.url)), file => readFileSync(new URL(`./flat-templates/masks/${file}`, import.meta.url)))).toString('base64')}`); } catch (e) { log.warn?.({ err: e.message, file: d.t.file }, 'flat silhouette not made'); } } };
   const inline = new Map(), templateSvg = file => { if (!inline.has(file)) { const t = readFileSync(new URL(`./flat-templates/${file}`, import.meta.url), 'utf8'); inline.set(file, t.slice(t.indexOf('>', t.indexOf('<svg')) + 1, t.lastIndexOf('</svg>'))); } return inline.get(file); };
   // the areas the image model redrew, as data URLs for the same reason
-  const editHrefsOf = async params => { const ids = [...new Set((params.edits || []).filter(e => e.type === 'ai').map(e => e.art))]; if (!ids.length) return {};
+  const editHrefsOf = async params => { const ids = [...new Set([...(params.edits || []).filter(e => e.type === 'ai').map(e => e.art), ...['front', 'back'].map(v => params.drawn?.[v]).filter(Boolean)])]; if (!ids.length) return {};
     return Object.fromEntries((await pool.query('select id, png from lab_art where id = any($1::uuid[])', [ids])).rows.map(r => [r.id, `data:image/png;base64,${r.png.toString('base64')}`])); };
 
   // ---- an area of the flat redrawn by the image model ----
@@ -338,6 +362,41 @@ export function registerLabFlatsRoutes(app, d) {
     const png = await sharp(rgba, { raw: { width: bw, height: bh, channels: 4 } }).png().toBuffer(), thumb = await sharp(png).resize({ width: 256, height: 256, fit: 'inside' }).png().toBuffer();
     const art = (await pool.query(`insert into lab_art(concept_id,name,png,thumb,prompt,model,source,in_library,created_by) values($1,$2,$3,$4,$5,$6,'flat',false,$7) returning id`, [t.c.id, clip(`Flat: ${prompt}`, 80), png, thumb, prompt, cfg.model || cfg.provider, actorOf(req)])).rows[0].id;
     return { edit: { id: 'ai' + art.slice(0, 8), type: 'ai', view, x: box.x, y: box.y, w: box.w, h: box.h, art, prompt }, left: Math.max(0, redrawCap() - (redraws.get(dayOf()) || 0)) };
+  });
+  // ---- the flat drawn from the picture ----
+  // Each view: the sketch as it stands (framed square on its own box) and the concept's picture go to the image model, which draws the flat
+  // of the garment in the picture on the sketch's frame and in its colours. The result replaces the sketch inside the same box, so every
+  // placement, dimension and point of measure stays in inches; its outline (everything not joined to the white background) is the cloth.
+  app.post('/v1/lab/concepts/:id/flats/draw', { preHandler: pre }, async (req, reply) => {
+    const t = await take(req, reply); if (!t) return;
+    if (t.c.status === 'tech_pack' && !t.c.product_id) return bad(reply, 'This concept is already a tech pack', 409);
+    const img = (await pool.query('select image from lab_concepts where id=$1', [t.c.id])).rows[0]?.image; if (!img) return bad(reply, 'The concept has no picture to draw from yet');
+    const views = (Array.isArray(req.body?.views) ? req.body.views : ['front', 'back']).filter(v => v === 'front' || v === 'back');
+    if (!views.length || !views.every(v => drawingOf(t.params, v))) return bad(reply, 'This sketch has no such view to draw over');
+    const cfg = imageCfg(); if (!cfg.configured) return bad(reply, 'No image model is connected', 503);
+    if ((redraws.get(dayOf()) || 0) + views.length > redrawCap()) return bad(reply, `The daily limit of ${redrawCap()} AI redraws of flats is reached. Raise LAB_DAILY_FLAT_AI.`, 429);
+    try { await charge(req, { kind: 'flat', conceptId: t.c.id, units: views.length }); } catch (e) { return bad(reply, e.message, e.status || 500, e.meter ? { code: e.code, meter: e.meter } : {}); }
+    const photo = await sharp(img).resize({ width: 1024, height: 1024, fit: 'inside' }).jpeg({ quality: 88 }).toBuffer();
+    const words = clip([t.c.name, t.c.spec?.silhouette, t.c.spec?.fabric].filter(Boolean).join(' · '), 200);
+    const plainP = { ...t.params, color: '', drawn: undefined, edits: [] }, N = 1024, drawn = { template: t.params.template };
+    for (const view of views) {
+      const b = drawingOf(plainP, view).box, w = b.x1 - b.x0, h = b.y1 - b.y0, side = Math.max(w, h), cx0 = (b.x0 + b.x1) / 2 - side / 2, cy0 = (b.y0 + b.y1) / 2 - side / 2;
+      const svg = renderSvg(plainP, view, { plain: true, scale: 0, templateSvg, partHref, background: true }).replace(/^<svg ([^>]*?)viewBox="[^"]*"/, `<svg $1viewBox="${cx0} ${cy0} ${side} ${side}" width="${N}" height="${N}"`);
+      const sketch = await sharp(Buffer.from(svg)).flatten({ background: '#ffffff' }).png().toBuffer();
+      let out;
+      try {
+        out = cfg.provider === 'fixture'
+          ? await sharp(sketch).composite([{ input: Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${N}" height="${N}"><rect x="${N * .3}" y="${N * .3}" width="${N * .4}" height="${N * .4}" fill="#3d5a80" stroke="#141416" stroke-width="6"/></svg>`) }]).png().toBuffer()
+          : await editImpl({ images: [sketch, photo], prompt: flatDrawPrompt(view, words), cfg: { ...cfg, size: '1024x1024' } });
+      } catch (e) { return bad(reply, `The image model could not draw the ${view}: ${clip(e.message, 200)}`, 502); }
+      redraws.set(dayOf(), (redraws.get(dayOf()) || 0) + 1);
+      // the view's own box, cut back out of the square, with the white joined to the edges made clear: what is left is the garment
+      const px = v => Math.round(v / side * N), left = Math.max(0, px(b.x0 - cx0)), top = Math.max(0, px(b.y0 - cy0)), bw = Math.min(N - left, px(w)), bh = Math.min(N - top, px(h));
+      const rgb = await sharp(out).resize(N, N, { fit: 'fill' }).extract({ left, top, width: bw, height: bh }).removeAlpha().raw().toBuffer();
+      const png = await sharp(clearBackground(rgb, bw, bh), { raw: { width: bw, height: bh, channels: 4 } }).png().toBuffer(), thumb = await sharp(png).resize({ width: 256, height: 256, fit: 'inside' }).png().toBuffer();
+      drawn[view] = (await pool.query(`insert into lab_art(concept_id,name,png,thumb,prompt,model,source,in_library,created_by) values($1,$2,$3,$4,$5,$6,'flat',false,$7) returning id`, [t.c.id, clip(`Flat ${view}: drawn from the picture`, 80), png, thumb, 'flat from the picture', cfg.model || cfg.provider, actorOf(req)])).rows[0].id;
+    }
+    return { drawn, left: Math.max(0, redrawCap() - (redraws.get(dayOf()) || 0)) };
   });
   const gradeWords = q => (q.grade || []).map(g => `${g.sizes[0]}${g.sizes.length > 1 ? '–' + g.sizes[g.sizes.length - 1] : ''} ${fmt(g.w)} × ${fmt(g.h)}`).join(' · ');
   async function sheet(c, { size } = {}) {

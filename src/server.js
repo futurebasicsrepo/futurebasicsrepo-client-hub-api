@@ -53,6 +53,7 @@ import { cleanProject, softwareView, STAGE_KEYS, PROJECT_KINDS, newBuildFor } fr
 import { registerPressRoutes, seedPress } from './press-routes.js';
 import { registerSalesOpportunityRoutes } from './sales-opportunities-routes.js';
 import { registerIntelRoutes, seedIntel } from './intel-routes.js';
+import { registerIntelRoomRoutes, runRooms as intelRooms } from './intel-room.js';
 import { registerLabRoutes, seedLab } from './lab-routes.js';
 import { registerLabConceptRoutes } from './lab-concept-routes.js';
 import { registerLabViewRoutes } from './lab-view-routes.js';
@@ -694,6 +695,7 @@ const protos=registerProtoRoutes(app, { pool, authenticate, adminOnly, throttle,
   crawlOpts: process.env.PROTOTYPE_TEST_ORIGIN ? { lookup: async () => [{ address: '93.184.216.34' }], fetchImpl: (u, o) => { const x = new URL(u); return fetch(process.env.PROTOTYPE_TEST_ORIGIN + x.pathname + x.search, { ...o, headers: { ...(o && o.headers), 'x-original-host': x.hostname } }); } } : {},
   edit: process.env.PROTOTYPE_TEST_EDIT ? stubEdit : undefined });
 registerIntelRoutes(app, { pool, authenticate, adminOnly, getSetting, setSetting, throttle, log: app.log });
+registerIntelRoomRoutes(app, { pool, authenticate, adminOnly, getSetting, log: app.log });
 // The Design Lab (the Lab module on Team access). Under the journeys its shop reads go to the same stand-in server as the prototypes, with no pause between requests.
 const labArt=createArtService(pool,{log:app.log}); // the graphics the image model draws for the Lab, one at a time
 // Self-serve: a client's room buys Design Lab access (fixed fee, a handful of AI generations included, the rest metered). Staff pass the gate as before;
@@ -6195,7 +6197,7 @@ app.post('/v1/admin/sites/check',{preHandler:[authenticate,adminOnly]},async()=>
 jobEvery('Money Shopify links', 30 * 60 * 1000, async()=>{const r=await money.syncShopifyLinks();return r.added||0}, { delay: 75 * 1000 });
 {const qc=qbConfigOf(process.env);if(qc.ready&&qc.payments)jobEvery('Automatic payments', Number(process.env.AUTOPAY_EVERY_MS)||60 * 60 * 1000, async()=>{const r=await contracts.autopay.run();return (r.charged||0)+(r.polled||0)+(r.booked||0)}, { delay: process.env.AUTOPAY_DELAY_MS!==undefined?Number(process.env.AUTOPAY_DELAY_MS):60 * 1000 }); else declareJob('Automatic payments', 60 * 60 * 1000, qc.ready?'Payments are not switched on: set QUICKBOOKS_PAYMENTS=on, then connect QuickBooks again':'QuickBooks keys are not set');}
 if(qbConfigOf(process.env).ready)jobEvery('QuickBooks payments', 30 * 60 * 1000, async()=>{const r=await money.syncQuickBooks();return r.added||0}, { delay: 45 * 1000 }); else declareJob('QuickBooks payments', 30 * 60 * 1000, 'QuickBooks keys are not set');
-if(process.env.INTEL_AUTO!=='off')jobEvery('Sales intelligence', 15 * 60 * 1000, async()=>{const st=await intelSettings(getSetting),d={env:process.env,fetchImpl:(u,o)=>fetch(u,o),settings:st,log:app.log},w=await intelRunDue(pool,d),r=await intelScore(pool,d,{limit:40});await intelPurge(pool,st.retentionDays).catch(()=>{});return w.reduce((n,x)=>n+(x.added||0),0)+r.read}, { delay: 3 * 60 * 1000 }); else declareJob('Sales intelligence', 15 * 60 * 1000, 'switched off (INTEL_AUTO=off)');
+if(process.env.INTEL_AUTO!=='off')jobEvery('Sales intelligence', 15 * 60 * 1000, async()=>{const st=await intelSettings(getSetting),d={env:process.env,fetchImpl:(u,o)=>fetch(u,o),settings:st,log:app.log},w=await intelRunDue(pool,d),r=await intelScore(pool,d,{limit:40});await intelPurge(pool,st.retentionDays).catch(()=>{});const rm=await intelRooms(pool,d).catch(e=>{app.log.warn({err:e.message},'room opportunities run failed');return{added:0,read:0}});return w.reduce((n,x)=>n+(x.added||0),0)+r.read+rm.added+rm.read}, { delay: 3 * 60 * 1000 }); else declareJob('Sales intelligence', 15 * 60 * 1000, 'switched off (INTEL_AUTO=off)');
 // Design Lab: read the watched brands that have not been looked at in three days (a few at a time, within a daily AI allowance). Switched off with LAB_AUTO=off.
 if(process.env.LAB_AUTO!=='off')jobEvery('Design Lab scan', 6 * 3600 * 1000, async()=>{const r=await lab.scanDue({limit:3,hours:72});await labPurge(pool).catch(()=>{});return r.reduce((n,x)=>n+(x.added||0),0)}, { delay: 6 * 60 * 1000 }); else declareJob('Design Lab scan', 6 * 3600 * 1000, 'switched off (LAB_AUTO=off)');
 jobEvery('CRM sync from the hub', 60 * 60 * 1000, async()=>{const r=await syncHubContacts(pool);return r.created+r.updated}, { delay: 90 * 1000 });

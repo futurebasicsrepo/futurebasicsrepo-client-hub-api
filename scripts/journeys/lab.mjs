@@ -2504,11 +2504,66 @@ await journey('J240', 'Design on an iPad, as Kyle found it: the ruler takes any 
       const asSweat = await K(`/concepts/${c.id}/flats`, { method: 'PUT', body: { ...saved, style: 'crewneck', template: undefined, placements: saved.placements } });
       const redo = await K(`/concepts/${c.id}/flats/from-picture`);
       ok(asSweat.status === 200 && redo.status === 200 && redo.json.flat.style === 'jacket' && redo.json.flat.saved === false && sql(`select style from lab_flats where concept_id='${c.id}'`) === 'crewneck', '8. Redraw from the picture draws it as a jacket again, and keeps nothing until Save', [asSweat.status, asSweat.json?.error, redo.json?.flat?.style]);
-      await F.click('.tabs [data-tab=design]'); await F.click('#redrawPic'); await F.waitForFunction(() => /redrawn from the picture/.test(document.getElementById('cSub').textContent), null, { timeout: 15000 });
-      ok(await F.evaluate(() => FBFlats.dirty()), '9. Redraw from the picture is always in the Design tab, and leaves the flat to save');
+      await F.click('.tabs [data-tab=design]'); await F.click('#redrawPic'); await F.waitForFunction(() => /drawn from the picture/.test(document.getElementById('cSub').textContent), null, { timeout: 30000 });
+      const drawnNow = await F.evaluate(() => ({ dirty: FBFlats.dirty(), img: [...document.querySelectorAll('#canvas svg image')].some(i => /^blob:/.test(i.getAttribute('href') || '')) }));
+      ok(drawnNow.dirty && drawnNow.img, '9. Draw from the picture (always in the Design tab) has the image model draw the view over the sketch\'s frame, and leaves the flat to save', drawnNow);
+      await page.click('#save'); await page.waitForFunction(() => !DIRTY, null, { timeout: 30000 }); await page.waitForTimeout(400);
+      const kept = (await K(`/concepts/${c.id}/flats`)).json.flat;
+      ok(kept.drawn?.front && kept.drawn?.back && kept.drawn.template === kept.template && sql(`select count(*) from lab_art where id in ('${kept.drawn.front}','${kept.drawn.back}') and source='flat'`) === '2', '   saved: front and back drawn from the picture, tied to the sketch they were drawn on', kept.drawn);
+      const sheet = await call(`/v1/lab/concepts/${c.id}/flats/sheet.svg`, { token: kyleT });
+      ok(sheet.status === 200 && sheet.text.includes('data:image/png;base64'), '   and the spec sheet draws them', sheet.status);
       ok(errs.length === 0, 'no page errors', errs); await oc.close();
     } finally { await b.close(); }
   } finally { await cleanup(brands, plan.plan?.id); }
+});
+
+await journey('J241', 'Opportunities for a client\'s room: Future Basics turns it on for a content studio, the room gets its own searches across the platforms, the AI reads posts for what the studio sells, the studio sees and acts on only its own, and staff intelligence never sees them', async () => {
+  const mk = async who => { const email = `${who}-${stamp}@opps.test`, st = await call('/v1/public/start', { body: { email, name: `${who} studio`, title: 'Shoot', photos: [jpeg()] } });
+    const cid = st.json.client?.id || sql(`select client_id from users where lower(email)='${email}'`), uid = sql(`select id from users where lower(email)='${email}'`).split('\n')[0];
+    sql(`update users set email_verified_at=now() where id='${uid}'`); sql(`update clients set status='active' where id='${cid}'`);
+    return { email, cid, uid, slug: sql(`select slug from clients where id='${cid}'`).split('\n')[0] }; };
+  const A = (path, o = {}) => call(path, { token: kyleT, ...o });
+  const room = await mk('incha'), other = await mk('elsewhere');
+  const T = await forge({ sub: room.uid, clientId: room.cid, client: room.slug, role: 'client', email: room.email }), OT = await forge({ sub: other.uid, clientId: other.cid, client: other.slug, role: 'client', email: other.email });
+  const C = (path, o = {}) => call(path, { token: T, ...o });
+  ok((await C('/v1/client/opportunities')).json.enabled === false && (await C('/v1/client/opportunities/run', { method: 'POST' })).status === 403, '1. off until Future Basics turns it on for the room');
+  ok((await C(`/v1/admin/clients/${room.cid}/opportunities`, { method: 'PATCH', body: { enabled: true } })).status >= 401, '   only Future Basics turns it on');
+  const on = await A(`/v1/admin/clients/${room.cid}/opportunities`, { method: 'PATCH', body: { enabled: true, services: 'Photo and video content for brands and artists: campaigns, product shoots, social video and music videos.' } });
+  ok(on.status === 200 && on.json.enabled && on.json.watches >= 5, '2. turned on in the console: the room gets its starting searches for photo and video work', on.json);
+  // posts the room's searches found (as the listening would put them), read on the next look
+  const ins = (ext, title, body) => sql(`insert into intel_room_signals(client_id,source,external_id,url,title,body,posted_at) values('${room.cid}','reddit','${ext}-${stamp}','https://reddit.example/${ext}','${title}','${body}',now()) returning id`).split('\n')[0];
+  const good = ins('a', 'Looking for a videographer for our brand launch', 'We need help with a launch video and product photography next month, any recommendations?');
+  const nofit = ins('b', 'Looking for a photographer NOFIT', 'need help, unpaid, exposure only');
+  const off = ins('c', 'Our new API is live', 'we shipped it');
+  sql(`update intel_room_watches set enabled=false where client_id='${room.cid}'`); // no outside calls in the journey: the searches themselves are covered by J134
+  const run = await C('/v1/client/opportunities/run', { method: 'POST' });
+  ok(run.status === 200 && run.json.read >= 1, '3. Look now: the AI reads the new posts for what the studio sells', run.json);
+  const feed = (await C('/v1/client/opportunities')).json, sig = feed.signals?.find(x => x.id === good);
+  ok(sig && sig.score > 0 && sig.draft && !feed.signals.some(x => x.id === nofit || x.id === off), '4. the hub lists the post worth a look, with a first reply; the not-a-fit and the off-topic ones are left out', feed.signals?.map(x => x.title));
+  ok(sql(`select model from intel_room_signals where id='${off}'`) === 'prefilter', '   the off-topic post never reaches the AI');
+  ok((await C('/v1/client/opportunities/run', { method: 'POST' })).status === 429, '   and Look now waits ten minutes between looks');
+  const act = await C(`/v1/client/opportunities/signals/${good}/contacted`, { method: 'POST' });
+  ok(act.status === 200 && act.json.signal.status === 'contacted' && sql(`select acted_by from intel_room_signals where id='${good}'`) === room.uid, '5. I reached out: marked, with who did it');
+  ok((await call(`/v1/client/opportunities/signals/${good}/won`, { token: OT, method: 'POST' })).status === 403 && (await call('/v1/client/opportunities', { token: OT })).json.enabled === false, '6. another room cannot see or touch it');
+  await A(`/v1/admin/clients/${other.cid}/opportunities`, { method: 'PATCH', body: { enabled: true } });
+  ok((await call(`/v1/client/opportunities/signals/${good}/won`, { token: OT, method: 'POST' })).status === 404 && !(await call('/v1/client/opportunities', { token: OT })).json.signals.some(x => x.id === good), '   even with its own turned on');
+  const ov = await A('/v1/intel/overview');
+  ok(ov.status === 200 && !JSON.stringify(ov.json).includes('brand launch') && !JSON.stringify(ov.json).includes(good), '7. Future Basics\' own intelligence never shows the room\'s posts');
+  const w = await C('/v1/client/opportunities/watches', { method: 'POST', body: { kind: 'hn', query: '"music video" director' } });
+  ok(w.status === 201 && w.json.watch.enabled === true, '8. the room adds its own search');
+  ok((await C(`/v1/client/opportunities/watches/${w.json.watch.id}`, { method: 'DELETE' })).status === 200 && (await call(`/v1/client/opportunities/watches/${w.json.watch.id}`, { token: OT, method: 'DELETE' })).status === 404, '   and removes it; another room cannot');
+  if (playwright) {
+    const b = await playwright.chromium.launch();
+    try {
+      const cc = await b.newContext({ viewport: { width: 390, height: 844 } }); await cc.addInitScript(t => { try { localStorage.setItem('fb.client.token', t); } catch {} }, T);
+      const page = await cc.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
+      await page.goto(`${BASE}/`, { waitUntil: 'networkidle' }); await page.waitForSelector('#opps:not(.hidden) .opp', { timeout: 20000 });
+      ok(/brand launch/.test(await page.innerText('#opps')) && await page.isVisible('#navOpps') && await page.evaluate(() => document.documentElement.scrollWidth - innerWidth) <= 1, '9. on a phone the hub shows Opportunities, with the post and its actions, and fits the screen');
+      ok(errs.length === 0, 'no page errors', errs); await cc.close();
+    } finally { await b.close(); }
+  }
+  await A(`/v1/admin/clients/${room.cid}/opportunities`, { method: 'PATCH', body: { enabled: false } });
+  ok((await C('/v1/client/opportunities')).json.enabled === false, '10. turned off in the console, it leaves the hub');
 });
 
 shops.close(); brave.close();
