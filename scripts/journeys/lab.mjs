@@ -1286,6 +1286,47 @@ await journey('J223', 'Reviewing together: a comment pinned to a spot on the pic
   } finally { await cleanup(brands, plan.plan?.id); }
 });
 
+await journey('J224', 'Closing the loop with the physical sample: the samples are dated on a time-and-action calendar from the day the pack goes out, a late one shows on the console\'s Production attention; photographs of the sample go on its review and the vision model holds them up against the approved design (placement, colour, wash, construction); the differences become corrections for the next version. Over HTTP and in a browser', async () => {
+  const { brands, plan } = await conceptSetup();
+  const A = (path, o = {}) => call(path, { token: kyleT, ...o });
+  try {
+    const line = plan.lines.find(l => l.category === 'tops') || plan.lines[0], c = (await K(`/plans/${plan.plan.id}/lines/${line.id}/concepts`, { body: { count: 1 } })).json.concepts[0];
+    await K(`/concepts/${c.id}/approve`, { body: { overrideReason: 'reviewed side by side with the references: it is ours' } });
+    const fl = (await K(`/concepts/${c.id}/flats`)).json; await K(`/concepts/${c.id}/flats`, { method: 'PUT', body: fl.flat });
+    const pid = (await K(`/concepts/${c.id}/tech-pack`, { body: {} })).json.productId; let pack = (await A(`/v1/admin/products/${pid}/tech-pack`)).json.techPack.data;
+    await import('../../src/sample-review.js'); const FBSample = globalThis.FBSample;
+    // the calendar
+    pack.sampling = [{ stage: 'Proto sample', qty: '2', status: 'requested' }, { stage: 'Fit sample', qty: '2', status: 'planned' }, { stage: 'Pre-production sample', qty: '3', status: 'planned' }, { stage: 'Top of production', qty: '2', status: 'planned' }];
+    const dated = FBSample.planDates(pack, '2026-09-01'); ok(dated.sampling.map(r => r.due).join(',') === '2026-09-15,2026-09-27,2026-10-11,2026-10-18', '1. the four samples are dated in order from the day the pack goes out', dated.sampling.map(r => r.due));
+    ok((await A(`/v1/admin/products/${pid}/tech-pack`, { method: 'PUT', body: { data: dated } })).status === 200, '   and the dates are saved on the pack');
+    const cal = FBSample.calendar((await A(`/v1/admin/products/${pid}/tech-pack`)).json.techPack.data); ok(cal[0].state === 'late' && cal[0].daysLate > 30 && cal[1].state === 'late' && cal[3].state === 'late', '   the calendar reads them against today: the proto is weeks late', cal.map(x => [x.stage, x.state]));
+    const dash = await A('/v1/admin/dashboard'); const late = (dash.json.queues?.attention || []).filter(x => x.kind === 'sample-late' && x.productId === pid);
+    ok(late.length === 4 && /Proto sample is \d+ days late \(due 2026-09-15\)/.test(late[0].title) && late[0].owner === 'factory' && late[0].severity === 'urgent', '2. the console\'s Production attention lists the late samples, on the factory until they ship', late.map(x => x.title));
+    // the sample arrives: photographs and the comparison
+    const photo = await sharp({ create: { width: 640, height: 800, channels: 3, background: { r: 40, g: 40, b: 44 } } }).jpeg().toBuffer();
+    const cmp = await A(`/v1/admin/products/${pid}/tech-pack/sampling/0/compare`, { method: 'POST', body: { photos: [{ image: `data:image/jpeg;base64,${photo.toString('base64')}`, label: 'front' }] } });
+    ok(cmp.status === 200 && cmp.json.review.photos.length === 1 && cmp.json.review.compare.findings.length === 3 && cmp.json.review.compare.verdict === 'close', '3. a photograph of the proto goes on its review and the vision model holds it up against the design', cmp.json);
+    ok(cmp.json.corrections.length === 2 && cmp.json.corrections[0].area === 'left chest' && /Logo sits about 1 in lower/.test(cmp.json.corrections[0].change), '   the differences come back as corrections: placement off, wash too dark; the rib that matches is not one');
+    ok((await A(`/v1/admin/products/${pid}/tech-pack/sampling/1/compare`, { method: 'POST', body: {} })).status === 422 && (await A(`/v1/admin/products/${pid}/tech-pack/sampling/9/compare`, { method: 'POST', body: {} })).status === 404, '   no photo, no comparison; no such sample, 404');
+    pack = (await A(`/v1/admin/products/${pid}/tech-pack`)).json.techPack.data; ok(pack.sampling[0].review.compare.score === 68 && pack.sampling[0].review.photos[0].label === 'front', '   the pack keeps the photo and the comparison');
+    if (playwright) {
+      const b = await playwright.chromium.launch();
+      try {
+        const oc = await b.newContext({ viewport: { width: 1440, height: 950 } }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
+        const page = await oc.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
+        await page.goto(`${BASE}/tech-packs/${pid}`, { waitUntil: 'networkidle' }); await page.waitForSelector('#tabs [data-tab="bom"]'); await page.click('#tabs [data-tab="bom"]'); await page.waitForSelector('[data-ta]', { timeout: 15000 });
+        ok((await page.locator('[data-ta] .st.late').count()) >= 4 && /time and action/i.test(await page.innerText('[data-ta]')), '4. in a browser the pack shows the time-and-action calendar with the late samples', (await page.innerText('[data-ta]')).slice(0, 120));
+        await page.click('[data-act="srev"][data-i="0"]'); await page.waitForSelector('[data-srev="0"]');
+        ok((await page.locator('[data-srev="0"] .sphotos img').count()) === 1 && (await page.locator('[data-srev="0"] .cmpf').count()) === 3 && /Close to the design · 68\/100/i.test(await page.innerText('[data-srev="0"]')), '   the review shows the photo and the comparison, finding by finding', { photos: await page.locator('[data-srev="0"] .sphotos img').count(), findings: await page.locator('[data-srev="0"] .cmpf').count(), text: (await page.innerText('[data-srev="0"]')).slice(0, 300) });
+        await page.click('[data-act="srevadopt"]'); await page.waitForFunction(() => document.querySelectorAll('[data-srev="0"] .srevc').length === 2, null, { timeout: 8000 });
+        ok(/Logo sits about 1 in lower/.test(await page.inputValue('[data-srev="0"] [data-rvc="0"][data-k="change"]')) && (await page.locator('[data-act="srevverdict"][data-v="revise"].on').count()) === 1, '5. one press makes the differences the corrections, and the verdict is “needs corrections”');
+        await page.click('[data-act="taplanall"]'); await page.waitForFunction(() => /Samples dated from/.test(document.body.textContent), null, { timeout: 8000 }); ok(true, '   the samples can be dated again from any day');
+        ok(!errs.length, 'no page errors', errs);
+      } finally { await b.close(); }
+    }
+  } finally { await cleanup(brands, plan.plan?.id); }
+});
+
 await journey('J218', 'The factory views and writes in Messages; the team makes the corrections: the factory has no buttons on its link (it cannot acknowledge, quote, countersign or mark a sample sent), it writes that the proto shipped, the team records it, reviews the sample, and the corrections go out as version 2 while version 1 stays exactly as it was; flats sent again become version 3', async () => {
   const { brands, plan } = await conceptSetup(); await import('../../src/sample-review.js'); const FBSample = globalThis.FBSample;
   const A = (path, o = {}) => call(path, { token: kyleT, ...o });

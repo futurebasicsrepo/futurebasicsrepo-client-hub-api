@@ -115,6 +115,8 @@
       id: 'tp-factory', title: 'Publish, send to a factory, review samples',
       match: () => onWork() && /^\/tech-packs\//.test(path()) && shown('#tabs button[data-tab]'),
       steps: [
+        { target: '[data-ta]', title: 'Time and action', optional: true, do: 'Under Samples: every step with its date and where it stands. Press “Date the samples” to date them from the day the pack goes out; a late one shows on Production attention.', why: 'What is late is visible before it costs a season.' },
+        { target: '[data-act="srevcompare"]', title: 'Hold the sample up against the design', optional: true, do: 'In a sample’s review, add photographs and press “Compare with the approved design”. Press “Add the differences as corrections” to send them in the next version.', why: 'Placement off, colour, wash, a missing detail: caught against the spec, not from memory.' },
         { target: '#crumb', title: 'Where it came from', optional: true, do: 'A pack made from a Design Lab concept links back to its concept and flats here.', why: 'Change the flats and send them again: the pack updates without doubling anything.' },
         { target: '[data-act="publish"]', title: 'Publish a version', do: 'When the pack is ready, press Publish.', why: 'Each version is numbered and signed off; the factory and the client see what changed each time.' },
         { target: '#assignForm', title: 'Send it to a factory', optional: true, do: 'Choose the factory and send it for a quote or to make.', why: 'The factory gets its own link in its language. It reads the pack and writes to you in Messages; you record its quote, acknowledgement and countersignature.' },

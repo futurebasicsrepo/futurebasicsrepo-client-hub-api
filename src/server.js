@@ -59,6 +59,7 @@ import { registerLabStudioRoutes } from './lab-studio-routes.js';
 import { registerLabLibraryRoutes } from './lab-library-routes.js';
 import { registerLabMaterialsRoutes } from './lab-materials-routes.js';
 import { registerLabShareRoutes } from './lab-share-routes.js';
+import { compareSampleToDesign, findingsToCorrections } from './sample-compare.js';
 import { labHandoff } from './lab-handoff.js';
 import { registerLabClientRoutes } from './lab-client-routes.js';
 import { registerLabFlatsRoutes } from './lab-flats-routes.js';
@@ -5372,7 +5373,7 @@ app.post('/v1/tp/:token/sample',async(req,reply)=>{
   const stage=String(req.body?.stage||'').slice(0,60),tracking=String(req.body?.tracking||'').replace(/\s+/g,' ').trim().slice(0,80);
   const pub=normalizeTechPack(row.published_data),i=pub.sampling.findIndex(r=>r.stage===stage);if(i<0)return reply.code(404).send({error:'That sample is not on this tech pack'});
   if(['approved'].includes(pub.sampling[i].status))return reply.code(409).send({error:'That sample is already approved'});
-  const mark=d=>{const x=normalizeTechPack(d),j=x.sampling.findIndex(r=>r.stage===stage);if(j>=0){x.sampling[j].status='sent';x.sampling[j].tracking=tracking||x.sampling[j].tracking}return x};
+  const mark=d=>{const x=normalizeTechPack(d),j=x.sampling.findIndex(r=>r.stage===stage);if(j>=0){x.sampling[j].status='sent';x.sampling[j].tracking=tracking||x.sampling[j].tracking;x.sampling[j].sentAt=x.sampling[j].sentAt||new Date().toISOString().slice(0,10)}return x};
   const tp=(await pool.query('select data,published_data from tech_packs where id=$1',[row.id])).rows[0];
   await pool.query('update tech_packs set data=$2,published_data=$3 where id=$1',[row.id,mark(tp.data),mark(tp.published_data)]);
   const summary=`${row.share_label} sent the ${stage} for ${row.title}${tracking?` (tracking ${tracking})`:''}`;
@@ -5483,6 +5484,20 @@ app.get('/v1/admin/products/:id/tech-pack/versions/:v',{preHandler:[authenticate
   const row=(await pool.query('select version,data,note,published_at,locked_at from tech_pack_versions where tech_pack_id=$1 and version=$2',[ctx.techPack.id,v])).rows[0];
   if(!row)return reply.code(404).send({error:`There is no v${v} of this tech pack`});
   return {version:row.version,data:normalizeTechPack(row.data),note:row.note||'',publishedAt:row.published_at,lockedAt:row.locked_at,current:row.version===ctx.techPack.version};
+});
+// the sample held up against the approved design: the photos on the review go to the vision model, the findings come back onto the review
+app.post('/v1/admin/products/:id/tech-pack/sampling/:i/compare',{preHandler:[authenticate,adminOnly],bodyLimit:40_000_000},async(req,reply)=>{
+  const ctx=await loadAdminTechPack(req.params.id);if(!ctx?.techPack)return reply.code(404).send({error:'Tech pack not found'});
+  const data=normalizeTechPack(ctx.techPack.data),i=Number(req.params.i),row=data.sampling[i];if(!Number.isInteger(i)||!row)return reply.code(404).send({error:'That sample is not on the pack'});
+  row.review=row.review||{verdict:'',at:new Date().toISOString().slice(0,10),by:'',measured:{},adopt:[],corrections:[],photos:[],compare:null};
+  const sent=Array.isArray(req.body?.photos)?req.body.photos.filter(p=>isInlineImage(p?.image||p)).map(p=>({image:p.image||p,label:String(p.label||'').slice(0,80)})):[];
+  if(sent.length)row.review.photos=[...(row.review.photos||[]),...sent].slice(-4);
+  if(!(row.review.photos||[]).length)return reply.code(422).send({error:'Add a photograph of the sample first'});
+  let compare;try{compare=await compareSampleToDesign({pack:data,stage:row.stage,photos:row.review.photos.map(p=>p.image)})}catch(e){return reply.code(e.status||502).send({error:e.message})}
+  row.review.compare=compare;const clean=normalizeTechPack(data);
+  await pool.query('update tech_packs set data=$2,updated_at=now() where id=$1',[ctx.techPack.id,clean]);
+  await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,[ctx.product.client_id,ctx.product.id,req.auth.sub,`The ${row.stage} for ${ctx.product.title} was compared with the design: ${compare.verdict}, ${compare.findings.filter(f=>f.severity!=='ok').length} difference${compare.findings.filter(f=>f.severity!=='ok').length===1?'':'s'}`,{techPackId:ctx.techPack.id,stage:row.stage,score:compare.score}]).catch(()=>{});
+  return {ok:true,review:clean.sampling[i].review,corrections:findingsToCorrections(compare.findings)};
 });
 app.post('/v1/admin/products/:id/tech-pack/sample-sent',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const ctx=await loadAdminTechPack(req.params.id);if(!ctx?.techPack)return reply.code(404).send({error:'Tech pack not found'});

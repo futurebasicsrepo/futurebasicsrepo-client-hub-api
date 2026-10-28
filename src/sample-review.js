@@ -36,5 +36,27 @@
     }
     return out;
   }
-  root.FBSample = { check, apply, sampleSizeOf, tolOf };
+  // ---- time and action: when each sample is due, what is late ----
+  // the usual days each step takes after the one before (the proto from the day the pack goes out; a corrected sample from its review)
+  const LEADS = { 'Proto sample': 14, 'Fit sample': 12, 'Pre-production sample': 14, 'Top of production': 7 };
+  const leadOf = stage => { const s = String(stage || ''); for (const k of Object.keys(LEADS)) if (s.startsWith(k)) return /corrected/i.test(s) ? Math.round(LEADS[k] * .7) : LEADS[k]; return 10; };
+  const addDays = (iso, n) => { const d = new Date(iso + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+  const dayDiff = (a, b) => Math.round((new Date(a + 'T00:00:00Z') - new Date(b + 'T00:00:00Z')) / 86400000);
+  // → a new pack: every sample without a date is dated in order from `start` (the day the pack goes to the factory); dated ones are kept unless `all`
+  function planDates(pack, start, { all = false } = {}) {
+    const out = JSON.parse(JSON.stringify(pack)); let last = start;
+    for (const r of out.sampling || []) { if (all || !r.due) r.due = addDays(last, leadOf(r.stage)); last = r.due; }
+    return out;
+  }
+  // → [{ stage, due, status, sentAt, reviewedAt, state: 'done'|'late'|'soon'|'on-track'|'undated', daysLate, daysLeft }] plus a bulk row when an ETA is given
+  function calendar(pack, { today = new Date().toISOString().slice(0, 10), bulkEta = null, bulkStatus = '' } = {}) {
+    const rows = (pack.sampling || []).map(r => {
+      const rv = r.review || null, done = r.status === 'approved' || (rv && rv.verdict) || r.status === 'revise';
+      const late = !done && r.due && dayDiff(today, r.due) > 0, left = r.due ? dayDiff(r.due, today) : null;
+      return { stage: r.stage, due: r.due || '', status: r.status, sentAt: r.sentAt || '', reviewedAt: rv?.at || '', state: done ? 'done' : late ? 'late' : !r.due ? 'undated' : left <= 7 ? 'soon' : 'on-track', daysLate: late ? dayDiff(today, r.due) : 0, daysLeft: !done && r.due ? left : null };
+    });
+    if (bulkEta) { const late = !['complete', 'delivered'].includes(bulkStatus) && dayDiff(today, bulkEta) > 0; rows.push({ stage: 'Bulk delivery', due: bulkEta, status: bulkStatus || 'planned', sentAt: '', reviewedAt: '', state: ['complete', 'delivered'].includes(bulkStatus) ? 'done' : late ? 'late' : dayDiff(bulkEta, today) <= 7 ? 'soon' : 'on-track', daysLate: late ? dayDiff(today, bulkEta) : 0, daysLeft: dayDiff(bulkEta, today), bulk: true }); }
+    return rows;
+  }
+  root.FBSample = { check, apply, sampleSizeOf, tolOf, planDates, calendar, LEADS, leadOf };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

@@ -199,6 +199,11 @@ The factory sees what is due. When it ships, it says so in Messages; the team pr
 
 It asks first, then publishes the next version for the factory. The version the factory sampled from stays exactly as it was. Cancel keeps the corrections in the draft to publish later.
 
+### The sample held up against the design, and the time-and-action calendar
+
+- **Photographs of the sample** go on its review (up to four). **Compare with the approved design** sends them to the vision model next to the pack's own pictures and spec (artwork placements in inches, colourways with Pantones, materials, construction lines, labels). Back comes a score, a verdict and the differences, each with where, what kind (placement, colour, wash, construction, measurement, material, artwork, label), how serious, what the design says and what the sample shows. **Add the differences as corrections** writes them onto the review; the next version carries them to the factory. The comparison is kept on the pack.
+- **Time and action.** Under the samples, every step with its due date, the day it was sent, the day it was reviewed and where it stands (done, late by n days, due soon, on track, no date). **Date the samples** dates every undated sample in order from the day the pack goes out (proto 14 days, fit 12, pre-production 14, top of production 7; a corrected sample 70% of that); **Date them all again** redoes them. A sample past its date shows on the console's **Production attention**, on the factory until it ships and on us once it has.
+
 ## 8. Back to the factory
 
 The corrected version is published by the review itself (or by **Publish**, if you kept it as a draft). On its link the factory:
@@ -314,6 +319,7 @@ Each guide offers the next one when it ends. The client's own guides for tech pa
 | J216 | The design service: a client's line, shared, with verdicts, replies, privacy, and the tech pack in the client's room. Includes the hub in a browser |
 | J217 | The whole loop over HTTP: concept → tech pack → publish → factory → sample sent → review → version 2 → the factory sees the corrections and the next sample |
 | J218 | The factory views and writes in Messages: no buttons (acknowledge, quote, countersign, sample sent all refused), the team records the shipped sample, the corrections go out as v2 while v1 is kept exactly, flats sent unchanged make no version, flats changed go out as v3. Includes the factory page in a browser |
+| J224 | The sample loop: the time-and-action calendar dated from the day the pack goes out, late samples on Production attention; photographs on the review compared with the approved design by the vision model, the differences made corrections. Over HTTP and in a browser |
 | J223 | Reviewing together: pinned comments, done and reopened; studio versions kept on use and on purpose, two side by side with a wipe, an old one's layers reopened; a view-only link for the factory and the client: opens without sign-in, takes a pinned comment, cannot change anything, stops when turned off. Over HTTP and in a browser |
 | J222 | Materials, trims and tags: the library and its tags drawn to size; picks on a concept with the cost breakdown and margin; colourways with Pantones on the board; the BOM, labels and colourways on the tech pack; the studio's fabric picker. Over HTTP and in a browser |
 | J221 | The job file: a library graphic made as plastisol (inks, films, underbase, halftone, mesh), as embroidery (threads, stitch, backing, stitch count), as a patch (cut line, edge) and as a transfer (mirrored); the zip and its contents; the summary and download in a browser from the library and from the tech pack's artwork card |
@@ -326,6 +332,7 @@ Each guide offers the next one when it ends. The client's own guides for tech pa
 - `test/lab-flats.test.js`: every sketch in the pack (its file, thumbnail and views), the new styles, the sketch's own proportions, the add-on parts, and the edits;
 - `test/lab-handoff.test.js`: what the flats give the pack;
 - `test/lab-share.test.js`: pins and the link token;
+- `test/sample-loop.test.js`: the calendar, the comparison's shape and fixture, the written design the model reads, what the pack keeps;
 - `test/lab-materials.test.js`: the starting set, cleaning, the tag drawing, the costing, and what the pack takes;
 - `test/lab-jobfile.test.js`: the job file per technique (separations, underbase, films, settings, stitch count, cut line, the zip);
 - `test/sample-review.test.js`: reviews and the next version.

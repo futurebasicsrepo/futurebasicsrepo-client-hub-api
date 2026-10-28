@@ -215,15 +215,15 @@ Rules:
 const SYSTEM_GUIDED = SYSTEM + `
 Note on (C): these renders were drawn from an approved reference picture of the product (made from the client's photo) together with the tech pack. They should look like the photo. Where the pack says something the photo does not show (another material, colour, detail or proportion), the render follows the pack, so report that as a discrepancy and name the pack row. Also report anything in the render that the written spec (D) does not mention, because the pack is missing it.`;
 
-async function callJson(system, content, { model = CHECK_MODEL(), maxTokens = 3000 } = {}) {
+export async function callJson(system, content, { model = CHECK_MODEL(), maxTokens = 3000, schema = VERDICT_SCHEMA } = {}) {
   const client = new Anthropic();
   const base = { model, max_tokens: maxTokens, system, messages: [{ role: 'user', content }] };
   let response;
   try {
-    response = await client.beta.messages.create({ ...base, betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default', output_config: { effort: 'medium', format: { type: 'json_schema', schema: VERDICT_SCHEMA } } });
+    response = await client.beta.messages.create({ ...base, betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default', output_config: { effort: 'medium', format: { type: 'json_schema', schema } } });
   } catch (e) {
     if (!(e instanceof Anthropic.BadRequestError)) throw e;
-    response = await client.messages.create({ ...base, system: system + '\n\nRespond with a single JSON object matching this JSON schema and nothing else:\n' + JSON.stringify(VERDICT_SCHEMA) });
+    response = await client.messages.create({ ...base, system: system + '\n\nRespond with a single JSON object matching this JSON schema and nothing else:\n' + JSON.stringify(schema) });
   }
   if (response.stop_reason === 'refusal') throw new Error(`Model declined (${response.stop_details?.category || 'policy'})`);
   const text = response.content.filter(b => b.type === 'text').map(b => b.text).join('').trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
