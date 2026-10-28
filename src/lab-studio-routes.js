@@ -11,6 +11,7 @@
 //   GET  /v1/lab/library/studio?art=<id>          the graphic (or nothing, for a new one), its saved layers, the marks, colours and techniques
 //   PUT  /v1/lab/library/graphics/:id/studio      save the layers {doc}
 //   POST /v1/lab/library/studio/ai                the same AI edits as above, for a graphic
+//   Fonts  GET /v1/lab/fonts   POST /v1/lab/fonts {name, file}   GET /v1/lab/fonts/:id/file   DELETE /v1/lab/fonts/:id   (uploaded once, set in type on every machine)
 //   POST /v1/lab/library/studio/keep              {image, name?, doc?, techniqueId?} the finished picture becomes a new library graphic
 //   POST /v1/lab/library/graphics/:id/studio/apply {image, doc?} the finished picture replaces this graphic's (pieces using it keep what they had)
 import sharp from 'sharp';
@@ -66,6 +67,19 @@ async function fixtureEdit(img, mask) {
 }
 const fixtureArt = prompt => sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024"><circle cx="512" cy="512" r="300" fill="none" stroke="#141416" stroke-width="40"/><text x="512" y="540" font-family="sans-serif" font-size="70" text-anchor="middle" fill="#a02a20">${clip(prompt, 18).replace(/[<&>"]/g, '')}</text></svg>`)).png().toBuffer();
 
+// a font file by its first bytes: TrueType, OpenType, WOFF, WOFF2; anything else is refused
+export function fontInfo(buf) {
+  if (!Buffer.isBuffer(buf) || buf.length < 12) return null;
+  const tag = buf.subarray(0, 4).toString('latin1');
+  if (tag === 'OTTO') return { format: 'otf', mime: 'font/otf' };
+  if (tag === 'wOFF') return { format: 'woff', mime: 'font/woff' };
+  if (tag === 'wOF2') return { format: 'woff2', mime: 'font/woff2' };
+  if (buf.readUInt32BE(0) === 0x00010000 || tag === 'true') return { format: 'ttf', mime: 'font/ttf' };
+  return null;
+}
+export const FONT_MIME = { ttf: 'font/ttf', otf: 'font/otf', woff: 'font/woff', woff2: 'font/woff2' };
+export const fontShape = r => ({ id: r.id, name: r.name, family: r.family, format: r.format, createdAt: r.created_at });
+
 export function registerLabStudioRoutes(app, d) {
   const { pool, authenticate, adminOnly, env = process.env, imageCfg = () => imageConfig(env), editImpl = openaiEdit, imageImpl = openaiImage, placeImpl = locateMarks } = d;
   const pre = [authenticate, adminOnly], bad = (reply, error, code = 422, extra = {}) => reply.code(code).send({ error, ...extra });
@@ -77,6 +91,7 @@ export function registerLabStudioRoutes(app, d) {
     const r = (await pool.query('select id, name, category, status, spec, plan_id, (raw is not null) has_plain, (image is not null) has_image from lab_concepts where id=$1', [req.params.id])).rows[0];
     if (!r) return bad(reply, 'Not found', 404), null; return r;
   };
+  const fontList = async () => (await pool.query('select id, name, family, format, created_at from lab_fonts order by lower(name)')).rows.map(fontShape);
   const uses = new Map(), dayOf = () => new Date().toISOString().slice(0, 10);
   const cap = () => Number(env.LAB_DAILY_STUDIO_AI ?? 60);
   const left = () => { const c = cap(); return c < 0 ? null : Math.max(0, c - (uses.get(dayOf()) || 0)); };
@@ -92,9 +107,30 @@ export function registerLabStudioRoutes(app, d) {
       doc: s?.doc || null, savedAt: s?.updated_at || null, savedBy: s?.by_name || '', appliedAt: s?.applied_at || null, canRestore: Boolean(s?.has_original),
       marks: [{ id: 'mark', label: 'Cue mark', svg: logoSvg('mark') }, { id: 'word', label: 'Wordmark', svg: logoSvg('word') }, { id: 'lockup', label: 'Wordmark and cue mark', svg: logoSvg('lockup') }],
       palette, graphics: (c.spec?.graphics || []).filter(g => g.art).map(g => ({ art: g.art, name: clip(g.name, 60) })), graphicNames: (c.spec?.graphics || []).map(g => clip(g.name, 60)).filter(Boolean),
-      ai: { connected: cfg.configured, model: cfg.model || null, left: left() },
+      ai: { connected: cfg.configured, model: cfg.model || null, left: left() }, fonts: await fontList(),
       techniques: (await pool.query(`select t.id, t.kind, t.name, t.summary, t.base, t.finish, (select count(*)::int from lab_technique_photos p where p.technique_id=t.id) photos from lab_techniques t where not archived order by kind, builtin desc, name`).catch(() => ({ rows: [] }))).rows
     };
+  });
+
+  // ---- fonts ----
+  app.get('/v1/lab/fonts', { preHandler: pre }, async () => ({ fonts: await fontList() }));
+  app.post('/v1/lab/fonts', { preHandler: pre, bodyLimit: 12_000_000 }, async (req, reply) => {
+    const b = req.body || {}, m = /^data:(?:[^;]+);base64,([A-Za-z0-9+/=]+)$/.exec(String(b.file || '')); if (!m) return bad(reply, 'Send the font file');
+    const buf = Buffer.from(m[1], 'base64'); if (buf.length > 8_000_000) return bad(reply, 'That font file is over 8 MB');
+    const info = fontInfo(buf); if (!info) return bad(reply, 'That is not a font file we can use: TTF, OTF, WOFF or WOFF2');
+    const name = clip(b.name, 80).replace(/\.(ttf|otf|woff2?)$/i, ''); if (name.length < 2) return bad(reply, 'Give the font a name');
+    if ((await pool.query('select 1 from lab_fonts where lower(name)=lower($1)', [name])).rowCount) return bad(reply, 'A font with that name is already here', 409);
+    const r = (await pool.query(`insert into lab_fonts(name, family, format, bytes, created_by) values($1, $2, $3, $4, $5) returning id, name, family, format, created_at`, [name, 'fb-' + name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''), info.format, buf, actorOf(req)])).rows[0];
+    return reply.code(201).send({ font: fontShape(r) });
+  });
+  app.get('/v1/lab/fonts/:id/file', { preHandler: pre }, async (req, reply) => {
+    if (!UUID.test(req.params.id)) return bad(reply, 'Not found', 404);
+    const r = (await pool.query('select format, bytes from lab_fonts where id=$1', [req.params.id])).rows[0]; if (!r) return bad(reply, 'Not found', 404);
+    return reply.header('content-type', FONT_MIME[r.format] || 'application/octet-stream').header('cache-control', 'private, max-age=86400').send(r.bytes);
+  });
+  app.delete('/v1/lab/fonts/:id', { preHandler: pre }, async (req, reply) => {
+    if (!UUID.test(req.params.id)) return bad(reply, 'Not found', 404);
+    const r = await pool.query('delete from lab_fonts where id=$1', [req.params.id]); return r.rowCount ? { ok: true } : bad(reply, 'Not found', 404);
   });
 
   app.get('/v1/lab/concepts/:id/studio/plain', { preHandler: pre }, async (req, reply) => {
@@ -243,7 +279,7 @@ export function registerLabStudioRoutes(app, d) {
     return {
       marks: [{ id: 'mark', label: 'Cue mark', svg: logoSvg('mark') }, { id: 'word', label: 'Wordmark', svg: logoSvg('word') }, { id: 'lockup', label: 'Wordmark and cue mark', svg: logoSvg('lockup') }],
       palette: COLORS.map(x => ({ name: x.name, hex: x.hex, from: 'brand' })).filter(x => /^#[0-9a-f]{6}$/i.test(x.hex || '')),
-      ai: { connected: cfg.configured, model: cfg.model || null, left: left() },
+      ai: { connected: cfg.configured, model: cfg.model || null, left: left() }, fonts: await fontList(),
       techniques: (await pool.query(`select t.id, t.kind, t.name, t.summary, t.base, t.finish, (select count(*)::int from lab_technique_photos p where p.technique_id=t.id) photos from lab_techniques t where not archived order by kind, builtin desc, name`).catch(() => ({ rows: [] }))).rows
     };
   };

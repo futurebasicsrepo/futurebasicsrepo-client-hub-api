@@ -82,7 +82,9 @@ input[type=range]{width:100%;accent-color:var(--ink)}input[type=color]{width:44p
           <div class="row"><button class="btn" type="button" id="uGo">Choose files…</button><input type="file" id="uFiles" accept="image/png,image/jpeg,image/webp" multiple class="hidden"><span class="msg" id="uMsg" role="status"></span></div>
           <p class="note">Graphics made for line plans, for concepts and in the studio come here on their own.</p>
           <h2 style="margin-top:6px">Build one yourself</h2><p class="note">A clear canvas with type, shapes, our marks, any graphic here, parts from the sketch pack, and the image model: layers you keep, so it can be reworked later.</p>
-          <div class="row"><a class="btn go" id="buildGo" href="/lab/studio?new=graphic">Build a graphic in the studio</a></div></div>
+          <div class="row"><a class="btn go" id="buildGo" href="/lab/studio?new=graphic">Build a graphic in the studio</a></div>
+          <h2 style="margin-top:6px">Fonts</h2><p class="note">Fonts the studio sets type in, the same on every machine. Upload a font once (TTF, OTF, WOFF or WOFF2); it is kept here and loaded wherever the studio opens.</p>
+          <div class="row"><button class="btn" type="button" id="fontGo">Add a font…</button><input type="file" id="fontFile" accept=".ttf,.otf,.woff,.woff2" class="hidden"><span class="msg" id="fontMsg" role="status"></span></div><div class="chips" id="fontList"></div></div>
       </div>
       <div class="filters"><input class="t" id="fQ" type="search" placeholder="Search names, words and tags" aria-label="Search graphics"><select class="t" id="fSource" aria-label="Where they came from"><option value="">From anywhere</option><option value="library">Drawn here</option><option value="plan">Line plans</option><option value="concept">Concepts</option><option value="studio">The studio</option><option value="upload">Our uploads</option></select><select class="t" id="fTech" aria-label="Technique"><option value="">Any technique</option></select><span class="msg" id="fCount"></span></div>
       <div class="chips" id="fTags"></div>
@@ -150,6 +152,10 @@ function paintGraphics(){
   for(const i of $$('#gGrid img[data-src]'))blobUrl(i.dataset.src).then(u=>{i.src=u}).catch(()=>{});
 }
 let FT=0;$('#fQ').addEventListener('input',()=>{clearTimeout(FT);FT=setTimeout(()=>loadGraphics().catch(x=>msg('#fCount',x.message,'bad')),250)});
+async function loadFonts(){try{const j=await api('/v1/lab/fonts');$('#fontList').innerHTML=j.fonts.length?j.fonts.map(f=>`<span class="chip" style="display:inline-flex;gap:8px;align-items:center">${esc(f.name)} · ${esc(f.format.toUpperCase())}<button type="button" data-fontdel="${f.id}" aria-label="Remove ${esc(f.name)}" style="border:0;background:none;cursor:pointer;font:inherit;color:inherit">×</button></span>`).join(''):'<span class="note">No fonts yet.</span>'}catch(x){$('#fontList').innerHTML=`<span class="msg bad">${esc(x.message)}</span>`}}
+$('#fontGo').onclick=()=>$('#fontFile').click();
+$('#fontFile').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;const m=$('#fontMsg');m.className='msg';m.textContent='Adding…';try{await api('/v1/lab/fonts',{body:{name:f.name.replace(/\.[a-z0-9]+$/i,''),file:await fileUrl(f)}});m.className='msg ok';m.textContent='Added.';await loadFonts()}catch(x){m.className='msg bad';m.textContent=x.message}};
+$('#fontList').addEventListener('click',async e=>{const b=e.target.closest('[data-fontdel]');if(!b)return;if(!confirm('Remove this font? Type set in it falls back to Space Grotesk.'))return;try{await api('/v1/lab/fonts/'+b.dataset.fontdel,{method:'DELETE'});await loadFonts()}catch(x){alert(x.message)}});
 $('#fSource').onchange=()=>loadGraphics();$('#fTech').onchange=()=>loadGraphics();$('#gMore').onclick=()=>loadGraphics(true);
 $('#fTags').addEventListener('click',e=>{const b=e.target.closest('[data-tag]');if(!b)return;TAG=TAG===b.dataset.tag?'':b.dataset.tag;loadGraphics()});
 function msg(sel,text,cls=''){const m=$(sel);m.className='msg '+cls;m.innerHTML=text}
@@ -261,7 +267,7 @@ $('#tMakeReal').onclick=async()=>{const b=$('#tMakeReal');b.disabled=true;msg('#
 
 async function boot(){
   if(!TOKEN()){$('#needSignin').classList.remove('hidden');return}
-  try{await loadTech();await loadGraphics()}catch(x){const n=$('#needSignin');n.classList.remove('hidden');const no=/access to Design Lab|not turned on|Only Danielle/i.test(x.message);n.querySelector('h1').textContent=no?'The Design Lab is not turned on for you':'Sign in to the work console first';n.querySelector('p').textContent=x.message;return}
+  try{await loadTech();await loadGraphics();loadFonts()}catch(x){const n=$('#needSignin');n.classList.remove('hidden');const no=/access to Design Lab|not turned on|Only Danielle/i.test(x.message);n.querySelector('h1').textContent=no?'The Design Lab is not turned on for you':'Sign in to the work console first';n.querySelector('p').textContent=x.message;return}
   $('#app').classList.remove('hidden');section(location.hash==='#techniques'?'techniques':'graphics');
 }
 boot();

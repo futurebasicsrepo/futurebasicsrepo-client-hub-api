@@ -3,7 +3,7 @@
 // site says no, keeps no duplicates, obeys robots.txt, and the library, brand code and watchlist behave.
 import http from 'node:http';
 import { createRequire } from 'node:module';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { journey, ok, summary, api, jpeg, png, sql, stamp, forge, FX, sharp } from './lib.mjs';
 let playwright = null; try { playwright = createRequire(import.meta.url)(process.env.PLAYWRIGHT_PATH || 'playwright'); } catch {}
 const BASE = 'http://127.0.0.1:3123', call = api(BASE);
@@ -830,7 +830,7 @@ await journey('J213', 'Design Lab library in a browser: draw a graphic, see it e
     await page.goto(`${BASE}/lab#board`, { waitUntil: 'networkidle' });
     await Promise.all([page.waitForURL(/\/lab\/library/), page.click('#labTabs a[href="/lab/library"]')]);
     await page.waitForSelector('#app:not(.hidden)');
-    ok(await page.locator('.labtabs a.on').innerText() === 'Graphics and techniques', 'the library is a section of the Lab');
+    ok(await page.locator('nav.labnav a.on').innerText() === 'Graphics & techniques', 'the library is a section of the Lab');
 
     // draw a graphic for puff embroidery
     await page.fill('#gPrompt', `a varsity crest with a bolt ${stamp}`); await page.fill('#gTexts', 'DEPT 27'); await page.fill('#gTags', 'varsity');
@@ -1670,6 +1670,80 @@ await journey('J227', 'Every tool in the studio works: each rail tool and zoom b
     await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/lab-studio-all.png` }).catch(() => {});
     ok(errs.length === 0, 'no page errors', errs); await oc.close();
   } finally { await cleanup(brands, plan.plan?.id); await b.close(); }
+});
+
+await journey('J228', 'The smaller items: custom fonts (uploaded once, set in type on every machine, listed in the library), the Illustrator round-trip (the studio\'s SVG comes back as editable layers; any other SVG as picture layers), and the 3D try-on (the design painted on a 3D model by the service, shown in our own viewer, from the concept picture or from the canvas)', async () => {
+  const { brands, plan } = await conceptSetup();
+  const line = plan.lines.find(l => l.category === 'tops') || plan.lines[0], c = (await K(`/plans/${plan.plan.id}/lines/${line.id}/concepts`, { body: { count: 1 } })).json.concepts[0];
+  const fontIds = [];
+  try {
+    // ---- fonts over HTTP ----
+    const ttf = readFileSync(new URL('../../src/fonts/pdf/SpaceGrotesk-Medium.ttf', import.meta.url)), asUrl = (b, mime) => `data:${mime};base64,${b.toString('base64')}`;
+    ok((await K('/fonts', { body: { name: 'Not a font', file: asUrl(Buffer.from('%PDF-1.4 nope nope nope'), 'application/pdf') } })).status === 422, '1. a file that is not a font is refused');
+    const up = await K('/fonts', { body: { name: 'Test Grotesk.ttf', file: asUrl(ttf, 'font/ttf') } }); ok(up.status === 201 && up.json.font.format === 'ttf' && up.json.font.name === 'Test Grotesk' && up.json.font.family === 'fb-test-grotesk', '   a TTF is kept, named without its extension, with a family of its own', up.json);
+    const F = up.json.font; fontIds.push(F.id);
+    ok((await K('/fonts', { body: { name: 'test grotesk', file: asUrl(ttf, 'font/ttf') } })).status === 409, '   the same name twice is refused');
+    const file = await call(`/v1/lab/fonts/${F.id}/file`, { token: kyleT }); ok(file.status === 200 && /font\/ttf/.test(file.ct), '   the file is served as a font');
+    ok((await call(`/v1/lab/fonts/${F.id}/file`)).status === 401 && (await P('/fonts')).status === 403, '   fonts are closed like the rest of the Lab');
+    ok((await K(`/concepts/${c.id}/studio`)).json.fonts.some(f => f.id === F.id) && (await K('/library/studio')).json.fonts.some(f => f.id === F.id), '   both studios list it');
+
+    // ---- 3D try-on over HTTP ----
+    const t0 = await K(`/concepts/${c.id}/tryon`); ok(t0.status === 200 && t0.json.connected && t0.json.models.length === 0, '2. the try-on is connected (the stand-in service) and empty', t0.json);
+    ok((await K(`/concepts/${c.id}/tryon`, { body: { image: 'data:text/plain;base64,aGk=' } })).status === 422, '   a picture that is not one is refused');
+    const st = await K(`/concepts/${c.id}/tryon`, { body: {} }); ok(st.status === 201 && st.json.model.status === 'running' && st.json.model.source === 'concept', '   a model is started from the concept picture', st.json);
+    ok((await K(`/concepts/${c.id}/tryon`, { body: {} })).status === 409, '   a second one while it runs is refused');
+    let m = null; for (let i = 0; i < 40 && !(m && m.status !== 'running'); i++) { await new Promise(r => setTimeout(r, 500)); m = (await K(`/concepts/${c.id}/tryon`)).json.models[0]; }
+    ok(m && m.status === 'done' && m.triangles === 12 && m.textured && m.hasModel && m.hasThumb, '   it comes back painted, with its model and preview', m);
+    const glb = await fetch(`${BASE}/v1/lab/concepts/${c.id}/tryon/${m.id}/model.glb`, { headers: { Authorization: `Bearer ${kyleT}` } }), gb = Buffer.from(await glb.arrayBuffer());
+    ok(glb.status === 200 && /model\/gltf-binary/.test(glb.headers.get('content-type')) && gb.subarray(0, 4).toString('latin1') === 'glTF', '   the model is a GLB');
+    ok((await call(`/v1/lab/concepts/${c.id}/tryon/${m.id}/thumb`, { token: kyleT })).status === 200 && (await call(`/v1/lab/concepts/${c.id}/tryon/${m.id}/model.glb`)).status === 401, '   with a preview picture, and closed to the public');
+    const cv = await K(`/concepts/${c.id}/tryon`, { body: { image: asUrl(await sharp({ create: { width: 64, height: 64, channels: 3, background: '#224466' } }).jpeg().toBuffer(), 'image/jpeg') } }); ok(cv.status === 201 && cv.json.model.source === 'canvas', '   and one from the canvas, as sent');
+
+    if (playwright) {
+      const b = await playwright.chromium.launch();
+      try {
+        const oc = await b.newContext({ viewport: { width: 1500, height: 980 } }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
+        const page = await oc.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
+        await page.goto(`${BASE}/lab/studio?concept=${c.id}`, { waitUntil: 'networkidle' }); await page.waitForSelector('#pLayers .ly', { timeout: 20000 }); await page.waitForFunction(() => !document.querySelector('#busy:not(.hidden)'));
+        const box = await page.locator('#view').boundingBox(), cx = box.x + box.width / 2, cy = box.y + box.height / 2;
+        // fonts in the studio
+        ok(await page.evaluate(k => Boolean(FONTS[k]) && document.fonts.check("16px 'fb-test-grotesk'"), 'f_' + F.id), '3. the studio loaded the font from the Lab and the browser can set type in it');
+        await page.keyboard.press('t'); await page.mouse.click(cx, cy - 80); await page.waitForSelector('#pLayers textarea[data-p=text]'); await page.fill('#pLayers textarea[data-p=text]', 'ROUND TRIP'); await page.locator('#pLayers textarea[data-p=text]').blur();
+        ok((await page.locator('#pLayers [data-p=font] optgroup').count()) === 2 && (await page.locator('#pLayers [data-act=addfont]').count()) === 1, '   the type panel offers Built in and Our fonts, and Add a font…');
+        await page.selectOption('#pLayers [data-p=font]', 'f_' + F.id); ok(await page.evaluate(k => selected().font === k, 'f_' + F.id), '   the type is set in it');
+        await page.keyboard.press('r'); await page.mouse.move(cx - 60, cy + 40); await page.mouse.down(); await page.mouse.move(cx + 60, cy + 120, { steps: 4 }); await page.mouse.up(); await page.waitForFunction(() => selected().kind === 'shape');
+        const svgText = await page.evaluate(() => svgDoc()); ok(/font-family="Test Grotesk"/.test(svgText) && /<rect /.test(svgText) && (svgText.match(/<g /g) || []).length === 3, '4. the export names the font, keeps the rectangle as a shape, one group per layer');
+        // the round trip: edit the text in the file, bring it back
+        const edited = svgText.replace('ROUND TRIP', 'CAME BACK').replace(/fill="#141416"/, 'fill="#aa2200"');
+        const tmp = `${process.env.JOURNEY_TMP || '/tmp'}/roundtrip-${Date.now()}.svg`; writeFileSync(tmp, edited);
+        await page.setInputFiles('#svgIn', tmp); await page.waitForSelector('#askDlg[open]'); ok(/edited layers back/i.test(await page.innerText('#askTitle')), '   a studio file is recognised and offered as a replacement');
+        await page.click('#askYes'); await page.waitForFunction(() => /brought in/.test(document.getElementById('stToast')?.textContent || ''), null, { timeout: 15000 });
+        const back = await page.evaluate(() => LAYERS.map(l => ({ kind: l.kind, text: l.text || '', font: l.font || '', color: l.color || '', shape: l.shape || '' })));
+        ok(back.length === 3 && back[0].kind === 'base' && back[1].kind === 'text' && back[1].text === 'CAME BACK' && back[1].font === 'f_' + F.id && back[2].kind === 'shape' && back[2].shape === 'rect', '   the layers come back: type still type (with its new words and font), the rectangle still a shape, the base kept', back);
+        ok(await page.evaluate(() => LAYERS[1].color.toLowerCase() === '#aa2200'), '   a colour changed in Illustrator comes back too');
+        await page.keyboard.press('Control+z'); ok(await page.evaluate(() => LAYERS[1].text === 'ROUND TRIP'), '   undo brings the old layers back'); await page.keyboard.press('Control+Shift+z');
+        const foreign = `${process.env.JOURNEY_TMP || '/tmp'}/foreign-${Date.now()}.svg`; writeFileSync(foreign, '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"><circle id="sun" cx="100" cy="100" r="60" fill="#e0a020"/><path id="wave" d="M10 170 Q 100 120 190 170" stroke="#2244aa" stroke-width="6" fill="none"/></svg>');
+        await page.setInputFiles('#svgIn', foreign); await page.waitForSelector('#askDlg[open]'); ok(/not a studio file/i.test(await page.innerText('#askText')), '5. any other SVG is offered as picture layers on top'); await page.click('#askYes'); await page.waitForFunction(n => LAYERS.length === n, 5, { timeout: 15000 });
+        const added = await page.evaluate(() => LAYERS.slice(-2).map(l => ({ kind: l.kind, name: l.name, w: l.raster.width, h: l.raster.height, painted: (() => { const d = l.raster.getContext('2d').getImageData(0, 0, l.raster.width, l.raster.height).data; let n = 0; for (let i = 3; i < d.length; i += 64) if (d[i] > 0) n++; return n; })() })));
+        ok(added[0].name === 'sun' && added[1].name === 'wave' && added.every(l => l.kind === 'image' && l.w === 1024 && l.h === 1024 && l.painted > 0), '   each top-level piece is a picture layer at the canvas size, drawn', added);
+        // 3D in the studio
+        await page.click('#tryBtn'); await page.waitForSelector('#tryDlg[open]'); await page.waitForSelector('#tryHost canvas', { timeout: 30000 });
+        ok(await page.evaluate(() => TRYVIEW && TRYVIEW.triangles === 12), '6. the 3D try-on opens on the model already made and shows it in our viewer');
+        await page.waitForFunction(() => TRYVIEW && TRYVIEW.textured(), null, { timeout: 15000 }); ok(true, '   with the design painted on it');
+        await page.click('#tryCanvas'); await page.waitForFunction(() => /being made/.test(document.getElementById('tryMsg').textContent), null, { timeout: 15000 });
+        await page.waitForFunction(() => document.querySelectorAll('#tryList [data-try]').length === 3 && /Ready/.test(document.querySelector('#tryList [data-try]').textContent), null, { timeout: 40000 });
+        ok(/From the canvas/.test(await page.innerText('#tryList [data-try]')), '   a model from the canvas is made and listed');
+        await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/lab-tryon.png` }).catch(() => {});
+        await page.click('#tryList [data-try] [data-trydel]'); await page.waitForFunction(() => document.querySelectorAll('#tryList [data-try]').length === 2, null, { timeout: 15000 }); ok(true, '   and can be removed');
+        // the concept window links to it; the library lists the font
+        await page.click('[data-tryclose]'); await page.goto(`${BASE}/lab#board`, { waitUntil: 'networkidle' }); await page.waitForSelector(`#cgrid .cc[data-cid="${c.id}"]`, { timeout: 15000 }); await page.click(`#cgrid .cc[data-cid="${c.id}"]`); await page.waitForSelector('#cd[open] [data-ctry]');
+        ok(/tryon=1/.test(await page.getAttribute('#cd [data-ctry]', 'href')), '7. the concept window has a 3D try-on button');
+        await page.goto(`${BASE}/lab/library`, { waitUntil: 'networkidle' }); await page.waitForSelector('#fontList .chip', { timeout: 15000 }); ok(/Test Grotesk · TTF/.test(await page.innerText('#fontList')) && (await page.locator('#fontGo').count()) === 1, '   the library lists the font, with Add a font…');
+        ok(errs.length === 0, 'no page errors', errs); await oc.close();
+      } finally { await b.close(); }
+    }
+    ok((await K(`/fonts/${F.id}`, { method: 'DELETE' })).status === 200 && !(await K('/fonts')).json.fonts.some(f => f.id === F.id), '8. a font can be removed'); fontIds.length = 0;
+  } finally { for (const id of fontIds) await K(`/fonts/${id}`, { method: 'DELETE' }).catch(() => {}); await cleanup(brands, plan.plan?.id); }
 });
 
 shops.close(); brave.close();
