@@ -8,6 +8,8 @@
 // Every item has the same shape so the page renders them one way: { key, stream, owner, severity, clientId, clientName, productId,
 // productTitle, title, detail, since }. `since` is when it started waiting; the page turns it into "waiting 3 days".
 
+import './sample-review.js';
+const FBSample = globalThis.FBSample;
 const LIVE_CLIENT = `c.archived_at is null and c.status not in ('archive','archived') and c.slug<>'future-basics'`;
 const LIVE_PROJECT = a => `not exists(select 1 from projects ap where ap.id=${a}.project_id and (ap.archived_at is not null or ap.status in ('archive','archived'))) and ${a}.completed_at is null`;
 const DAY = 86400000;
@@ -163,6 +165,16 @@ export async function buildQueues(pool, { learning = null } = {}) {
   for (const r of invoices.rows) B.push({ key: `invoice:${r.id}`, stream: 'money', kind: 'invoice', owner: 'client', severity: age(r.due_date) > 14 * DAY ? 'urgent' : 'normal', clientId: r.client_id, clientName: r.client_name, productId: null, productTitle: '', title: `Invoice ${r.number} is overdue`, detail: `$${(Number(r.amount_cents) / 100).toLocaleString('en-US')} was due ${new Date(r.due_date).toLocaleDateString('en-US', { timeZone: 'UTC' })}.`, since: iso(r.due_date) });
   for (const r of risky.rows) { const late = r.target_date && new Date(r.target_date) < new Date(); B.push({ key: `risk:${r.product_id}`, stream: 'products', kind: 'risk', owner: 'us', severity: late ? 'urgent' : 'normal', clientId: r.client_id, clientName: r.client_name, productId: r.product_id, productTitle: r.product_title, title: late ? `Past its target date (${new Date(r.target_date).toLocaleDateString('en-US', { timeZone: 'UTC' })}), still in ${r.current_stage}` : `Flagged ${r.risk_level}`, detail: r.risk_level !== 'on-track' && late ? `Also flagged ${r.risk_level}.` : '', since: iso(late ? r.target_date : r.updated_at) }); }
 
+  // samples past their date on the time-and-action calendar (the pack's own sampling rows)
+  const lateSamples = await pool.query(`select tp.id tp_id, tp.data->'sampling' sampling, tp.published_at, p.id product_id, p.title product_title, c.id client_id, c.name client_name
+    from tech_packs tp join products p on p.id=tp.product_id join clients c on c.id=p.client_id
+    where jsonb_typeof(tp.data->'sampling')='array' and c.archived_at is null and c.status not in ('archive','archived') and ${LIVE_PROJECT('p')} limit 400`).catch(() => ({ rows: [] })); // our own line's samples count too
+  for (const r of lateSamples.rows) {
+    const rows = FBSample.calendar({ sampling: Array.isArray(r.sampling) ? r.sampling : [] });
+    rows.forEach((x, i) => { if (x.state !== 'late') return; const ours = x.status === 'sent';
+      B.push({ key: `sample-late:${r.tp_id}:${i}`, stream: 'samples', kind: 'sample-late', owner: ours ? 'us' : 'factory', severity: x.daysLate > 14 ? 'urgent' : 'normal', clientId: r.client_id, clientName: r.client_name, productId: r.product_id, productTitle: r.product_title,
+        title: `${x.stage} is ${x.daysLate} day${x.daysLate === 1 ? '' : 's'} late (due ${x.due})`, detail: ours ? 'It was sent: review it and send the corrections.' : x.status === 'planned' && !r.published_at ? 'The pack is not published yet.' : 'Ask the factory where it is.', since: new Date(x.due + 'T00:00:00Z').toISOString() }); });
+  }
   const a = ai.rows[0], done = a.done30, failed = a.failed30;
   const assistant = {
     done30: done, failed30: failed, successRate: done + failed ? done / (done + failed) : null,
