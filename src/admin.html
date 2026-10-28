@@ -128,7 +128,9 @@ html{scroll-padding-top:90px}
 .switch span{position:absolute;inset:0;border-radius:999px;background:#d5d5d9;transition:background .2s}.switch span:after{content:"";position:absolute;top:3px;left:3px;width:24px;height:24px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);transition:transform .2s}
 .switch input:checked+span{background:var(--ink)}.switch input:checked+span:after{transform:translateX(22px)}.switch input:focus-visible+span{outline:3px solid var(--cue);outline-offset:2px}
 .gate-row{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:16px 0 0;padding:12px 16px;border:1px solid var(--line);border-radius:16px;background:var(--fog)}.gate-row b{display:block;font-weight:600;font-size:14px}.gate-row small{display:block;color:var(--dim);font-size:12.5px;margin-top:2px}
-.gate-row.on{background:rgba(75,255,154,.16);border-color:rgba(35,120,75,.35)}.gate-row .switch input:checked+span{background:#1f9d5b}
+.gate-row.on{background:rgba(75,255,154,.16);border-color:rgba(35,120,75,.35)}
+/* phones: a room's rows wrap (the words first, the control under them when it does not fit), long addresses break, and nothing widens the page */
+@media(max-width:700px){html,body{overflow-x:clip;max-width:100%}.client-page .panel :is(p,small,a,b,span,div){overflow-wrap:anywhere}.gate-row{flex-wrap:wrap;gap:10px 14px}.gate-row>span:first-child{flex:1 1 180px;min-width:0}.gate-row input[type=email]{min-width:0!important;flex:1 1 160px}.gate-row>span:last-child:not(:first-child){max-width:100%}}.gate-row .switch input:checked+span{background:#1f9d5b}
 @media(max-width:700px){.access{flex-direction:column;align-items:stretch}.access-side{flex-direction:row;justify-content:space-between;align-items:center}}
 
 /* Platform health (staff only). Status is always an icon AND a word; charts use one ink colour, emphasis over rainbow. */

@@ -421,6 +421,8 @@
 body.fbnav .fbh-tog{left:calc(var(--fbw,236px) + 14px)}
 dialog .fbh-tog.on{display:none}
 @media(max-width:900px){body.fbnav .fbh-tog{left:14px}}
+/* on a phone the switch is the mouse and its toggle only, and the page keeps room under its last line so the switch never sits on it */
+@media(max-width:600px){.fbh-tog{padding:5px 8px 5px 6px;gap:6px}.fbh-tog>span:nth-child(2){display:none}body{padding-bottom:calc(64px + env(safe-area-inset-bottom,0px))}}
 .fbh-tog:hover{transform:translateY(-1px)}.fbh-tog:focus-visible,.fbh button:focus-visible{outline:3px solid #4bff9a;outline-offset:2px}
 .fbh-tog .face{width:30px;height:24px;display:block}.fbh-tog .face svg{width:100%;height:100%;display:block}
 .fbh-tog .sw{width:30px;height:18px;border-radius:999px;background:#c9c9ce;position:relative;transition:background .2s}.fbh-tog .sw:after{content:'';position:absolute;left:2px;top:2px;width:14px;height:14px;border-radius:50%;background:#fff;transition:left .2s}
