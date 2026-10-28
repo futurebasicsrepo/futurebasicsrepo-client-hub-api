@@ -68,13 +68,49 @@
     overlay(c, noiseTile(u, 7, .5, .3, 500), 0, .5);
   }
 
+  // a grid of shiny studs or stones over the shape (rhinestones, nailheads, sequins): one dot per cell, lit from the top left
+  function studs(c, u, k) {
+    const w = c.width, h = c.height, src = c.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, w, h).data, cell = Math.max(5, Math.round(9 * u)), out = canvas(w, h), x = out.getContext('2d');
+    for (let cy = 0; cy < h; cy += cell) for (let cx = 0; cx < w; cx += cell) {
+      let r = 0, g = 0, b = 0, a = 0, n = 0; for (let yy = cy; yy < Math.min(h, cy + cell); yy += 2) for (let xx = cx; xx < Math.min(w, cx + cell); xx += 2) { const i = (yy * w + xx) * 4; a += src[i + 3]; if (src[i + 3] > 8) { r += src[i]; g += src[i + 1]; b += src[i + 2]; n++; } }
+      const cover = a / (Math.ceil(Math.min(cell, h - cy) / 2) * Math.ceil(Math.min(cell, w - cx) / 2) * 255); if (cover < .45 || !n) continue;
+      const px = cx + cell / 2, py = cy + cell / 2, rad = cell * .42, col = `rgb(${r / n | 0},${g / n | 0},${b / n | 0})`;
+      x.fillStyle = col; x.beginPath(); x.arc(px, py, rad, 0, Math.PI * 2); x.fill();
+      const g2 = x.createRadialGradient(px - rad * .35, py - rad * .35, 0, px, py, rad); g2.addColorStop(0, `rgba(255,255,255,${.85 * k})`); g2.addColorStop(.5, 'rgba(255,255,255,.08)'); g2.addColorStop(1, 'rgba(0,0,0,.45)');
+      x.fillStyle = g2; x.beginPath(); x.arc(px, py, rad, 0, Math.PI * 2); x.fill();
+    }
+    const cx2 = c.getContext('2d'); cx2.clearRect(0, 0, w, h); cx2.drawImage(out, 0, 0);
+  }
+  function knitTile(u) { const s = Math.max(3, Math.round(4 * u)), t = canvas(s * 2, s * 2), x = t.getContext('2d'); x.lineCap = 'round'; x.lineWidth = Math.max(1, s * .5);
+    for (const [col, oy] of [['rgba(255,255,255,.32)', 0], ['rgba(0,0,0,.34)', s * .45]]) { x.strokeStyle = col; for (let i = 0; i < 2; i++) { const ox = i * s; x.beginPath(); x.moveTo(ox + s * .1, oy + s * .2); x.lineTo(ox + s * .5, oy + s * .9); x.lineTo(ox + s * .9, oy + s * .2); x.stroke(); } } return t; }
+  function twillTile(u) { const s = Math.max(3, Math.round(4 * u)), t = canvas(s * 2, s * 2), x = t.getContext('2d'); x.lineWidth = Math.max(1, s * .6);
+    for (const [col, off] of [['rgba(0,0,0,.28)', 0], ['rgba(255,255,255,.22)', s * .9]]) { x.strokeStyle = col; for (let i = -2; i < 4; i++) { x.beginPath(); x.moveTo(i * s + off, s * 2); x.lineTo(i * s + s * 2 + off, 0); x.stroke(); } } return t; }
+
   // → a new canvas: the layer as it looks with the finish's effect (the distressing, the blend and the raise are applied by whoever draws it)
   // `u` is how many of the layer's own pixels make one pixel of a 1000-pixel-wide picture, so stitches and dots keep a real size whatever the zoom or scale
   function effect(src, f, u = 1, seed = 1) {
     const fx = f && f.effect; if (!fx || fx === 'none') return src;
     const c = canvas(src.width, src.height), x = c.getContext('2d'); x.drawImage(src, 0, 0);
     const k = clamp(f.strength ?? .7, 0, 1), d = (n) => Math.max(1, n * u);
-    if (fx === 'stitch') { overlay(c, stitchTile(f.stitch || 'satin', u), f.angle ?? 45, .55 + .45 * k); overlay(c, noiseTile(u, seed, .18, .18), 0, .6); bevel(c, d(1.6), d(2.2), .55 * k + .2); }
+    if (fx === 'stitch') { if (f.thread === 'metallic') { metal(c, f.metal || 'gold', u); } overlay(c, stitchTile(f.stitch || 'satin', u), f.angle ?? 45, .55 + .45 * k); overlay(c, noiseTile(u, seed, .18, .18), 0, .6); if (f.thread === 'metallic') sheen(c, .5, f.angle ?? 45); bevel(c, d(1.6), d(2.2), .55 * k + .2); }
+    // a thick, glossy, rounded layer: 3D silicone transfers and gel prints
+    if (fx === 'silicone') { x.save(); x.globalCompositeOperation = 'source-atop'; x.globalAlpha = .1 * k; x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); x.restore(); sheen(c, (f.sheen ?? .7) * (.4 + .6 * k), f.angle ?? 35); bevel(c, d(4), d(6), .55 + .45 * k); }
+    // fuzzy, matte, suede-like: flock
+    if (fx === 'flock') { overlay(c, noiseTile(u * 1.3, seed, .34, .34, 3200), 0, .9); overlay(c, noiseTile(u * .8, seed + 2, .2, .3, 1800), 90, .5); bevel(c, d(1.8), d(3.2), .3 + .3 * k); }
+    // thick, sharp-edged, matte: high-density print
+    if (fx === 'hd') { overlay(c, noiseTile(u, seed, .08, .12, 800), 0, .5); sheen(c, .08, f.angle ?? 35); bevel(c, d(3.5), d(1.1), .6 + .4 * k); }
+    // metallic ink, glitter and holographic: the metal with sparkle on top
+    if (fx === 'metallic') { metal(c, f.metal || 'silver', u); sheen(c, .45 * k, f.angle ?? 35); if (f.sparkle > 0) overlay(c, noiseTile(u, seed + 5, .95, .25, Math.round(2600 * f.sparkle)), 0, .75); bevel(c, d(1), d(1.5), .3); }
+    // burnt into the cloth: laser etch (lightens the dyed surface, no raise)
+    if (fx === 'etch') { x.save(); x.globalCompositeOperation = 'source-atop'; x.globalAlpha = .5 * k; x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); x.restore(); overlay(c, noiseTile(u * 1.2, seed, .25, .3, 2200), 0, .8); bevel(c, -d(1.2), d(1.8), .45); }
+    // knitted in: rows of V stitches
+    if (fx === 'knit') { overlay(c, knitTile(u), f.angle ?? 0, .7 + .3 * k); bevel(c, d(1), d(1.6), .3); }
+    // twill cloth cut and sewn on: appliqué and tackle twill
+    if (fx === 'twill') { overlay(c, twillTile(u), 0, .55 + .3 * k); overlay(c, noiseTile(u, seed, .1, .14, 900), 0, .5); bevel(c, d(2.5), d(2.5), .5 + .3 * k); }
+    // pressed into leather: grain, warmth, and the shape sunk in
+    if (fx === 'leather') { x.save(); x.globalCompositeOperation = 'source-atop'; x.globalAlpha = .25; x.fillStyle = '#5a3714'; x.fillRect(0, 0, c.width, c.height); x.restore(); overlay(c, noiseTile(u * 1.5, seed, .3, .4, 2200), 0, .8); bevel(c, -d(2), d(3), .5 + .4 * k); }
+    // rhinestones, nailheads, sequins: a grid of shiny studs
+    if (fx === 'stud') { studs(c, u, k); }
     if (fx === 'puff') { overlay(c, noiseTile(u, seed, .25, .15, 1400), 0, .5); x.save(); x.globalCompositeOperation = 'source-atop'; x.globalAlpha = .12 * k; x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); x.restore(); bevel(c, d(3.5), d(5), .6 + .4 * k); }
     if (fx === 'ink') { overlay(c, noiseTile(u, seed, .12, .2, 1200), 0, .7 * k + .2); sheen(c, (f.sheen ?? .15) * k); }
     if (fx === 'soak') { overlay(c, noiseTile(u, seed, .05, .3, 2000), 0, .8); x.save(); x.globalCompositeOperation = 'destination-out'; x.globalAlpha = .18 * k; x.drawImage(noiseTile(u, seed + 3, 0, 1, 2500), 0, 0, c.width, c.height); x.restore(); }
@@ -129,5 +165,5 @@
     [...word].forEach((ch, i) => { const phi = -th / 2 + (s + ws[i] / 2) / L * th; s += ws[i]; x.save(); x.translate(cx + R * Math.sin(phi), size * .46 - R * Math.cos(phi)); x.rotate(phi); x.fillText(ch, 0, 0); x.restore(); });
     return c;
   }
-  window.FBFinish = { texture, effect, distress, shadow, fabric, swatch, sample, EFFECTS: ['none', 'stitch', 'puff', 'ink', 'soak', 'halftone', 'foil', 'film', 'rubber', 'chenille', 'woven', 'deboss'] };
+  window.FBFinish = { texture, effect, distress, shadow, fabric, swatch, sample, EFFECTS: ['none', 'stitch', 'puff', 'ink', 'soak', 'halftone', 'foil', 'film', 'rubber', 'chenille', 'woven', 'deboss', 'silicone', 'flock', 'hd', 'metallic', 'etch', 'knit', 'twill', 'leather', 'stud'] };
 })();

@@ -762,7 +762,7 @@ await journey('J212', 'Design Lab library: graphics are drawn into it, uploaded,
 
     // techniques, ready to use
     const tl = await L('/techniques'); const T = tl.json.techniques || [];
-    ok(tl.status === 200 && T.length >= 19 && tl.json.kinds.length === 5 && tl.json.kinds.every(k => T.some(t => t.kind === k.id)), 'the starting techniques cover embroidery, print, heat transfer, patches and wear', T.length);
+    ok(tl.status === 200 && T.length >= 44 && tl.json.kinds.length === 6 && tl.json.kinds.every(k => T.some(t => t.kind === k.id)), 'the starting techniques cover embroidery, print, heat transfer, patches and wear', T.length);
     const satin = T.find(t => t.key === 'satin-embroidery'), puff = T.find(t => t.key === 'puff-embroidery');
     ok(satin && satin.finish.effect === 'stitch' && satin.base === 'embroidery' && /satin-stitch/.test(satin.prompt) && satin.artGuide && satin.factoryNote, 'each says how it looks here, how the real thing looks, how to design for it and what the factory needs', satin);
     const again = (await L('/techniques')).json.techniques; ok(again.length === T.length, 'they are put in once, not again on every visit');
@@ -852,7 +852,7 @@ await journey('J213', 'Design Lab library in a browser: draw a graphic, see it e
 
     // techniques: live swatches, tune one, make it real
     await page.click('.seg [data-sec=techniques]'); await page.waitForSelector('#tList canvas[data-swatch]');
-    const tiles = await page.locator('#tList .tcard').count(); ok(tiles >= 19 && await page.locator('#tList h2').count() === 5, 'every technique is shown, grouped by kind', tiles);
+    const tiles = await page.locator('#tList .tcard').count(); ok(tiles >= 44 && await page.locator('#tList h2').count() === 6, 'every technique is shown, grouped by kind', tiles);
     const painted = await page.evaluate(() => [...document.querySelectorAll('#tList canvas[data-swatch]')].slice(0, 6).every(c => { const d = c.getContext('2d').getImageData(c.width / 2, c.height / 2, 1, 1).data; return d[3] === 255; }));
     ok(painted, 'each is drawn on fabric with a sample graphic');
     await page.click('#tList .tcard:has-text("Chain stitch embroidery")'); await page.waitForSelector('#tDlg[open] #tForm [data-k=name]');
@@ -1744,6 +1744,44 @@ await journey('J228', 'The smaller items: custom fonts (uploaded once, set in ty
     }
     ok((await K(`/fonts/${F.id}`, { method: 'DELETE' })).status === 200 && !(await K('/fonts')).json.fonts.some(f => f.id === F.id), '8. a font can be removed'); fontIds.length = 0;
   } finally { for (const id of fontIds) await K(`/fonts/${id}`, { method: 'DELETE' }).catch(() => {}); await cleanup(brands, plan.plan?.id); }
+});
+
+await journey('J229', 'Made as: a mark or graphic in the studio is made as any of 44 ways (embroidery, prints, transfers, patches, knit, laser, metal, stones, each in its variants), picked from live previews drawn on the layer, grouped by kind, or from a wall of every way on a piece of cloth; the library lists them all with their factory notes', async () => {
+  const { brands, plan } = await conceptSetup();
+  const line = plan.lines.find(l => l.category === 'tops') || plan.lines[0], c = (await K(`/plans/${plan.plan.id}/lines/${line.id}/concepts`, { body: { count: 1 } })).json.concepts[0];
+  try {
+    const tl = await K('/library/techniques'); const T = tl.json.techniques, byKind = k => T.filter(t => t.kind === k);
+    ok(tl.status === 200 && T.length >= 44 && tl.json.kinds.length === 6 && byKind('embroidery').length >= 7 && byKind('print').length >= 12 && byKind('heat_transfer').length >= 8 && byKind('patch').length >= 7 && byKind('other').length >= 5, `1. the library has ${T.length} ways to make a graphic across ${tl.json.kinds.length} kinds`, Object.fromEntries(tl.json.kinds.map(k => [k.id, byKind(k.id).length])));
+    ok(T.every(t => tl.json.effects.includes(t.finish.effect) && t.factoryNote && t.prompt) && tl.json.effects.includes('silicone') && tl.json.effects.includes('stud'), '   each one draws with a known effect and carries its factory note and its words for the image model');
+    if (!playwright) { ok(true, 'needs a browser'); return; }
+    const b = await playwright.chromium.launch();
+    try {
+      const oc = await b.newContext({ viewport: { width: 1500, height: 980 } }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
+      const page = await oc.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
+      await page.goto(`${BASE}/lab/studio?concept=${c.id}`, { waitUntil: 'networkidle' }); await page.waitForSelector('#pLayers .ly', { timeout: 20000 }); await page.waitForFunction(() => !document.querySelector('#busy:not(.hidden)'));
+      await page.click('.tabs [data-tab=add]'); await page.click('#pAdd [data-mark=word]'); await page.waitForFunction(() => LAYERS.length === 2); await page.click('.tabs [data-tab=layers]'); await page.waitForSelector('#pLayers [data-tkind]');
+      const fin = () => page.evaluate(() => { const l = selected(); return l.finish ? { id: l.finish.id, name: l.finish.name, effect: l.finish.effect, raise: l.finish.raise } : null; });
+      ok((await page.locator('#pLayers [data-tkind]').count()) === 6 && (await page.locator('#pLayers [data-tapply]:not([data-tapply=""])').count()) === byKind('embroidery').length && (await page.$$eval('#pLayers [data-tapply] img', els => els.every(i => i.getAttribute('src').startsWith('data:image/png')))), '2. the wordmark\'s panel opens on Made as: six kinds, and a drawn preview for every embroidery');
+      const puff = T.find(t => t.key === 'puff-embroidery'); await page.click(`#pLayers [data-tapply="${puff.id}"]`); await page.waitForFunction(() => selected().finish && selected().finish.id, null, { timeout: 5000 });
+      const f1 = await fin(); ok(f1.id === puff.id && f1.effect === 'stitch' && f1.raise === 6, '   one click makes it 3D puff embroidery, drawn on the layer', f1);
+      await page.click('#pLayers [data-tkind=heat_transfer]'); await page.waitForFunction(n => document.querySelectorAll('#pLayers [data-tapply]:not([data-tapply=""])').length === n, byKind('heat_transfer').length);
+      const sil = T.find(t => t.key === 'silicone-3d'); await page.click(`#pLayers [data-tapply="${sil.id}"]`); await page.waitForFunction(id => selected().finish && selected().finish.id === id, sil.id);
+      ok((await fin()).effect === 'silicone' && (await fin()).raise === 5, '   the heat transfers: 3D silicone, thick and glossy', await fin());
+      await page.click('#pLayers [data-tkind=other]'); const studs = T.find(t => t.key === 'rhinestones'); await page.waitForSelector(`#pLayers [data-tapply="${studs.id}"]`); await page.click(`#pLayers [data-tapply="${studs.id}"]`); await page.waitForFunction(id => selected().finish && selected().finish.id === id, studs.id);
+      ok((await fin()).effect === 'stud', '   other ways: rhinestones');
+      await page.click('#pLayers [data-act=madeall]'); await page.waitForSelector('#madeDlg[open]'); await page.waitForFunction(n => document.querySelectorAll('#madeGrid [data-madeapply]').length === n, T.length, { timeout: 30000 });
+      ok((await page.locator('#madeGrid canvas').count()) === T.length && (await page.locator('#madeGrid h4').count()) === 6, `3. "See it made every way": the wordmark made all ${T.length} ways on a piece of cloth, grouped by kind`);
+      await page.selectOption('#madeCloth', 'denim'); await page.waitForFunction(n => document.querySelectorAll('#madeGrid canvas').length === n, T.length); ok(await page.evaluate(() => MADE.cloth === 'denim'), '   drawn again on denim');
+      await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/lab-made-every-way.png` }).catch(() => {});
+      const knit = T.find(t => t.key === 'knit-in'); await page.click(`#madeGrid [data-madeapply="${knit.id}"]`); await page.waitForFunction(id => selected().finish && selected().finish.id === id, knit.id);
+      ok(!(await page.evaluate(() => document.getElementById('madeDlg').open)) && (await fin()).effect === 'knit', '   clicking one makes the layer that way and closes the wall');
+      await page.selectOption('#pLayers [data-tech]', { label: 'Metallic thread embroidery' }); ok((await fin()).effect === 'stitch' && await page.evaluate(() => selected().finish.thread === 'metallic'), '   picking by name still works, and the metallic thread is kept');
+      await page.click('#pLayers [data-tapply=""]'); ok((await fin()) === null, '   Plain takes the technique off');
+      await page.goto(`${BASE}/lab/library#techniques`, { waitUntil: 'networkidle' }); await page.waitForSelector('#tList .kind', { timeout: 15000 });
+      ok((await page.locator('#tList .kind').count()) === 6 && /Other ways/.test(await page.innerText('#tList')), '4. the library page shows the six kinds');
+      ok(errs.length === 0, 'no page errors', errs); await oc.close();
+    } finally { await b.close(); }
+  } finally { await cleanup(brands, plan.plan?.id); }
 });
 
 shops.close(); brave.close();
