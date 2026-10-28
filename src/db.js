@@ -302,6 +302,32 @@ export async function migrate() {
       opened_at timestamptz,
       opens integer not null default 0
     );
+    create table if not exists lab_polls ( -- a customer poll on a range: a link, the pieces in it, and the votes (src/lab-lookbook.js)
+      id uuid primary key default gen_random_uuid(),
+      plan_id uuid not null references lab_plans(id) on delete cascade,
+      token_hash text not null unique,
+      title text not null default '',
+      intro text not null default '',
+      concept_ids uuid[] not null default '{}',
+      created_by uuid references users(id) on delete set null,
+      created_at timestamptz not null default now(),
+      expires_at timestamptz,
+      closed_at timestamptz,
+      opens integer not null default 0
+    );
+    create table if not exists lab_poll_votes (
+      id bigserial primary key,
+      poll_id uuid not null references lab_polls(id) on delete cascade,
+      concept_id uuid not null references lab_concepts(id) on delete cascade,
+      voter_key text not null,
+      voter_name text not null default '',
+      voter_email text not null default '',
+      vote text not null check (vote in ('yes','maybe','no')),
+      price text not null default '' check (price in ('','low','fair','high')),
+      note text not null default '',
+      at timestamptz not null default now(),
+      unique (poll_id, concept_id, voter_key)
+    );
     create table if not exists lab_art (
       id uuid primary key default gen_random_uuid(),
       plan_id uuid references lab_plans(id) on delete cascade,

@@ -1503,5 +1503,89 @@ await journey('J215', 'Design Lab flats in a browser: open them from a concept, 
   } finally { await cleanup(brands, plan.plan?.id); await b.close(); }
 });
 
+await journey('J226', 'Range-level work: one instruction across a whole collection ("make everything 260 gsm and swap the accent to olive") previewed per piece and applied only where ticked, the Lab learning our taste from what is approved and rejected and reading it before it designs, a lookbook of the range in one click, and a customer poll whose votes become a demand read per piece', async () => {
+  const { brands, plan } = await conceptSetup();
+  try {
+    const lines = plan.lines.filter(l => l.status !== 'dropped'), l1 = lines[0], l2 = lines[1] || lines[0], PID = plan.plan.id;
+    const made = (await K(`/plans/${PID}/lines/${l1.id}/concepts`, { body: { count: 2 } })).json.concepts, other = (await K(`/plans/${PID}/lines/${l2.id}/concepts`, { body: { count: 1 } })).json.concepts[0];
+    const [A, B] = made; ok(made.length === 2 && other, 'three concepts on two planned pieces');
+    // access
+    ok((await call(`/v1/lab/plans/${PID}/range/preview`, { body: { instruction: 'x' } })).status === 401 && (await P(`/plans/${PID}/range/preview`, { body: { instruction: 'make everything heavier' } })).status === 403 && (await P('/taste')).status === 403 && (await P(`/plans/${PID}/polls`)).status === 403, '1. range edits, the learned taste and the polls are closed like the rest of the Lab');
+
+    // the Lab learns our taste
+    const ap = await K(`/concepts/${A.id}/approve`, { body: { overrideReason: 'reviewed side by side with the references, it is ours', makeReason: 'the flats are being drawn next' } }); ok(ap.status === 200, '2. one concept is approved', ap.json.error);
+    const rj = await K(`/concepts/${B.id}/reject`, { body: { reason: 'too thin a fabric, and the colour is loud' } }); ok(rj.status === 200, '   and one rejected, with a reason');
+    let taste = null; for (let i = 0; i < 20 && !(taste?.counts?.approved >= 1 && taste?.counts?.rejected >= 1); i++) { await new Promise(r => setTimeout(r, 250)); taste = (await K('/taste')).json.taste; }
+    ok(taste?.counts?.approved >= 1 && taste?.counts?.rejected >= 1 && taste.use !== false, '   the Lab counted both on its own, without being asked', taste?.counts);
+    ok(taste.reasons.some(r => /too thin/.test(r.why)) && Array.isArray(taste.likes) && Array.isArray(taste.dislikes), '   it keeps the reason given, and the traits for and against');
+    const rf = await K('/taste/refresh', { body: { ai: true } }); ok(rf.status === 200 && rf.json.taste.digest?.summary?.length > 10 && rf.json.taste.digest.likes.length >= 1 && rf.json.taste.digestAt, '3. asked to read the board again, the assistant writes what the record says about our taste', rf.json);
+    const off = await K('/taste', { method: 'PUT', body: { use: false } }); ok(off.status === 200 && off.json.taste.use === false && (await K('/taste')).json.taste.use === false, '   the learned taste can be switched off');
+    ok((await K('/taste', { method: 'PUT', body: { use: true } })).json.taste.use === true, '   and on again');
+
+    // one instruction across the range
+    ok((await K(`/plans/${PID}/range/preview`, { body: { instruction: 'x' } })).status === 422, '4. a range change needs real words');
+    const pv = await K(`/plans/${PID}/range/preview`, { body: { instruction: 'make everything 260 gsm and swap the accent to olive' } });
+    ok(pv.status === 200 && pv.json.pieces === 2 && pv.json.changes.length === 2, '   previewed: the change per piece, nothing applied yet (the rejected piece is not in play)', pv.json);
+    ok(pv.json.changes.every(c => /260 gsm/.test(c.fields.fabric) && c.fields.colors.at(-1) === 'olive' && c.before && c.why), '   each change says the field, what it was, what it becomes and why', pv.json.changes[0]);
+    const chA = pv.json.changes.find(c => c.id === A.id); ok(chA && chA.status === 'approved' && (await K(`/concepts/${A.id}`)).json.concept.spec.fabric === A.spec.fabric, '   the approved piece is marked as going back to draft, and nothing has changed yet');
+    ok((await K(`/plans/${PID}/range/apply`, { body: { instruction: 'x', changes: [] } })).status === 422 && (await K(`/plans/${PID}/range/apply`, { body: { changes: [{ id: A.id, fields: { fabric: A.spec.fabric } }] } })).status === 422, '   applying nothing, or a change that changes nothing, is refused');
+    const apl = await K(`/plans/${PID}/range/apply`, { body: { instruction: pv.json.instruction, changes: [{ id: chA.id, fields: chA.fields, why: chA.why }] } });
+    ok(apl.status === 200 && apl.json.applied.length === 1 && apl.json.failed.length === 0 && apl.json.backToDraft === 1, '5. only the ticked change is applied', apl.json);
+    const A2r = (await K(`/concepts/${A.id}`)).json, A2 = A2r.concept, O2 = (await K(`/concepts/${other.id}`)).json.concept;
+    ok(/260 gsm/.test(A2.spec.fabric) && A2.spec.colors.at(-1) === 'olive' && A2.status === 'draft' && A2.closeness && A2r.comments.some(m => /Changed across the range: "make everything 260 gsm/.test(m.body)), '   the piece has the new words, went back to draft, was checked again and says why', [A2.spec.fabric, A2.status]);
+    ok(O2.spec.fabric === other.spec.fabric && O2.status === 'draft', '   the piece that was not ticked is untouched');
+
+    // the lookbook
+    const lb = await fetch(`${BASE}/v1/lab/plans/${PID}/lookbook.pdf`, { headers: { Authorization: `Bearer ${kyleT}` } }); const pdf = Buffer.from(await lb.arrayBuffer());
+    ok(lb.status === 200 && /application\/pdf/.test(lb.headers.get('content-type')) && pdf.slice(0, 5).toString() === '%PDF-' && (pdf.toString('latin1').match(/\/Type \/Page\b/g) || []).length === 3, '6. the lookbook is a PDF: a cover and a page per piece in play', [lb.status, pdf.length]);
+    ok((await fetch(`${BASE}/v1/lab/plans/${PID}/lookbook.pdf`)).status === 401, '   and needs the sign-in');
+
+    // the customer poll
+    const mk = await K(`/plans/${PID}/polls`, { body: {} }); ok(mk.status === 201 && /\/lab\/poll\/[A-Za-z0-9_-]{20,}$/.test(mk.json.poll.url) && mk.json.poll.pieces === 2 && mk.json.poll.expiresAt, '7. one click makes a poll link on the pieces in play', mk.json);
+    const token = mk.json.poll.url.split('/lab/poll/')[1], PUB = `/v1/lab/poll/${token}`;
+    ok((await K(`/plans/${PID}/polls`)).json.polls[0].url === null, '   the link is shown once; the list keeps only its hash');
+    const pub = await call(PUB); ok(pub.status === 200 && pub.json.open && pub.json.pieces.length === 2 && pub.json.pieces.every(p => p.name && !('closeness' in p) && !('cost' in p)), '   anyone with the link sees the pieces: words and price, nothing from the check or the cost', pub.json);
+    ok((await call(`${PUB}/pieces/${A.id}/image`)).status === 200 && (await call(`${PUB}/pieces/${B.id}/image`)).status === 404 && (await call('/v1/lab/poll/notavalidtokenatall12345')).status === 404, '   the pictures of the pieces in the poll, and nothing else');
+    ok((await call(`${PUB}/votes`, { body: { votes: [{ id: B.id, vote: 'yes' }] } })).status === 422, '   a vote on a piece outside the poll is nothing');
+    const v1 = await call(`${PUB}/votes`, { body: { name: 'Sam', email: 'sam@example.com', votes: [{ id: A.id, vote: 'yes', price: 'fair', note: 'make it longer' }, { id: other.id, vote: 'no', price: 'high' }] } }); ok(v1.status === 201 && v1.json.counted === 2, '8. a customer answers piece by piece', v1.json);
+    ok((await call(`${PUB}/votes`, { body: { name: 'Sam', email: 'SAM@example.com', votes: [{ id: A.id, vote: 'maybe', price: 'high' }, { id: other.id, vote: 'no', price: 'high' }] } })).status === 201, '   answering again replaces the earlier answers');
+    ok((await call(`${PUB}/votes`, { body: { name: 'Jo', email: 'jo@example.com', votes: [{ id: A.id, vote: 'yes', price: 'low' }] } })).status === 201, '   a second customer answers');
+    const res = await K(`/polls/${mk.json.poll.id}/results`); const rA = res.json.results.pieces.find(p => p.id === A.id), rO = res.json.results.pieces.find(p => p.id === other.id);
+    ok(res.status === 200 && res.json.results.voters === 2 && res.json.poll.voters === 2, '9. the results count people, not answers', res.json);
+    ok(rA.rank === 1 && rA.yes === 1 && rA.maybe === 1 && rA.no === 0 && rA.demand === 75 && rA.read === 'make it' && rA.priceFeel === 'too high' && rO.rank === 2 && rO.demand === 0 && rO.read === 'think again' && rO.priceFeel === 'too high', '   and read demand per piece: who to make first and what to think again about', [rA, rO]);
+    ok(rA.notes.length === 0, '   a replaced answer takes its note with it');
+    ok((await K(`/polls/${mk.json.poll.id}/close`, { body: {} })).status === 200 && (await call(PUB)).json.open === false && (await call(`${PUB}/votes`, { body: { votes: [{ id: A.id, vote: 'yes' }] } })).status === 410, '10. a closed poll stops taking answers and keeps its results');
+
+    if (playwright) {
+      const poll2 = (await K(`/plans/${PID}/polls`, { body: { title: 'Fall poll' } })).json.poll;
+      const b = await playwright.chromium.launch();
+      try {
+        const oc = await b.newContext({ viewport: { width: 1440, height: 950 } }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
+        const page = await oc.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
+        await page.goto(`${BASE}/lab`, { waitUntil: 'networkidle' }); await page.waitForSelector('#planList .pl');
+        await page.waitForSelector('#tasteBox .chip', { timeout: 15000 }); ok(/approved and \d+ rejected/.test(await page.innerText('#tasteIn')) && (await page.isChecked('#tasteUse')), '11. the brand code section shows what the Lab has learned, with the switch on');
+        await page.locator('#planList .pl', { hasText: 'Concept plan' }).locator('[data-open]').click(); await page.waitForSelector('#planView tr[data-line]'); await page.waitForSelector('#rangeBox'); await page.waitForSelector('#pollList .po');
+        ok((await page.locator('#pollList .po').count()) === 2 && /people answered/.test(await page.innerText('#pollList')), '12. the plan shows its polls with how many answered');
+        await page.locator('#pollList .po').first().locator('[data-pollres]').click(); await page.waitForSelector('#pollList .po table'); 
+        await page.fill('#rangeIn', 'swap the accent to rust'); await page.click('[data-rgo]'); await page.waitForSelector('#rangeOut .ch', { timeout: 20000 });
+        ok((await page.locator('#rangeOut .ch').count()) === 2 && /rust/.test(await page.innerText('#rangeOut')) && /of 2 pieces would change/.test(await page.innerText('#rangeMsg')), '13. a range change is previewed piece by piece on the plan');
+        await page.locator('#rangeOut [data-rc]').nth(1).uncheck(); await page.click('[data-rapply]'); await page.waitForFunction(() => /piece changed/.test(document.querySelector('#rangeOut')?.textContent || ''), null, { timeout: 20000 }).catch(async e => { throw new Error(e.message.split('\n')[0] + ' · msg: ' + await page.innerText('#rangeMsg').catch(() => '?') + ' · out: ' + (await page.innerText('#rangeOut').catch(() => '?')).slice(0, 300)); });
+        ok(/1 piece changed/.test(await page.innerText('#rangeOut')) && (await page.locator('[data-rredraw]').count()) === 1, '    only the ticked piece is changed, and the pictures can be redrawn afterwards');
+        await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/lab-range.png`, fullPage: false }).catch(() => {});
+        // the customer's side
+        const cust = await (await b.newContext({ viewport: { width: 420, height: 860 } })).newPage(), cerrs = []; cust.on('pageerror', e => cerrs.push(String(e)));
+        await cust.goto(poll2.url, { waitUntil: 'networkidle' }); await cust.waitForSelector('#app:not(.hidden)'); await cust.waitForSelector('.piece');
+        ok((await cust.locator('.piece').count()) === 2 && (await cust.title()) === 'Fall poll · Would you buy it?' && (await cust.isDisabled('#send')), '14. the poll page shows the pieces on a phone, and cannot be sent empty');
+        await cust.locator('.piece').first().locator('[data-v=yes]').click(); await cust.locator('.piece').first().locator('[data-p=fair]').click(); await cust.fill('.piece [data-note]', 'longer please');
+        ok(/1 of 2 pieces answered/.test(await cust.innerText('#count')), '    it counts the answers as they are given');
+        await cust.fill('#vName', 'Ana'); await cust.click('#send'); await cust.waitForSelector('#thanks:not(.hidden)', { timeout: 10000 });
+        const r2 = (await K(`/polls/${poll2.id}/results`)).json.results; ok(r2.voters === 1 && r2.pieces[0].rank === 1 && r2.pieces[0].yes === 1 && r2.pieces[0].fair === 1 && r2.pieces[0].notes[0]?.note === 'longer please' && r2.pieces[1].demand === null, '    and the answer lands in the results', r2);
+        await cust.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/lab-poll.png`, fullPage: true }).catch(() => {});
+        ok(errs.length === 0 && cerrs.length === 0, 'no page errors', [errs, cerrs]); await oc.close();
+      } finally { await b.close(); }
+    }
+  } finally { await cleanup(brands, plan.plan?.id); }
+});
+
 shops.close(); brave.close();
 process.exit(summary() ? 1 : 0);

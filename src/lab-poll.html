@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>Would you buy it?</title>
+<link rel="icon" href="/icons/icon-192.png">
+<style>
+@import url('/fonts/fonts.css');
+:root{--ink:#141416;--paper:#fff;--fog:#f5f5f2;--dim:#727278;--line:rgba(20,20,22,.14);--cue:#4bff9a;--ok:#17603a;--bad:#a02a20}
+*{box-sizing:border-box}html{background:var(--fog)}
+body{margin:0;color:var(--ink);font:400 15px/1.5 'Space Grotesk',system-ui,sans-serif;background:var(--fog);min-height:100vh}
+button,input,textarea{font:inherit;color:inherit}a{color:inherit}.hidden{display:none!important}
+header{height:72px;background:rgba(20,20,22,.96);color:#fff;padding:0 clamp(16px,4vw,48px);display:flex;align-items:center;gap:14px;position:sticky;top:0;z-index:20}
+.wordmark{display:flex;align-items:center;gap:12px;position:relative;text-decoration:none;color:inherit;text-transform:uppercase;letter-spacing:.08em}
+.wordmark:after{content:"";position:absolute;left:0;bottom:-7px;width:64px;height:2px;background:var(--cue)}
+.brand-logo{display:block;width:200px;max-width:34vw;height:auto;max-height:30px}.brand-suffix{font:500 10px 'IBM Plex Mono',monospace;white-space:nowrap}
+main{max-width:1040px;margin:0 auto;padding:26px clamp(14px,3vw,36px) 120px}
+h1{font-size:clamp(28px,4.4vw,42px);letter-spacing:-.035em;font-weight:500;margin:4px 0 8px;line-height:1.05;text-wrap:balance}h2{font-size:20px;font-weight:500;letter-spacing:-.02em;margin:0 0 4px}
+.note{color:var(--dim);font-size:13px;margin:0}.mono{font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}
+.panel{background:#fff;border:1px solid var(--line);border-radius:20px;padding:18px}
+.btn{border:1px solid var(--ink);background:#fff;color:var(--ink);border-radius:999px;padding:10px 18px;font-weight:500;cursor:pointer;display:inline-flex;align-items:center;gap:8px;min-height:42px}.btn.go{background:var(--ink);color:#fff}.btn[disabled]{opacity:.5;cursor:default}
+.t{width:100%;border:1px solid var(--line);border-radius:12px;padding:9px 12px;background:#fff;min-height:40px}textarea.t{min-height:60px;resize:vertical}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.piece{display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,.9fr);gap:18px;background:#fff;border:1px solid var(--line);border-radius:20px;padding:16px;margin-top:16px;align-items:start}@media(max-width:760px){.piece{grid-template-columns:1fr}}
+.pic{background:var(--fog);border-radius:14px;overflow:hidden;aspect-ratio:4/5;display:grid;place-items:center}.pic img{display:block;width:100%;height:100%;object-fit:cover}
+.price{font:500 13px 'IBM Plex Mono',monospace;letter-spacing:.04em}
+.seg{display:flex;gap:6px;flex-wrap:wrap}.seg button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:8px 14px;cursor:pointer;font-weight:500;min-height:40px}.seg button[aria-pressed=true]{background:var(--ink);color:#fff;border-color:var(--ink)}
+.seg button[data-v=yes][aria-pressed=true]{background:var(--ok);border-color:var(--ok)}.seg button[data-v=no][aria-pressed=true]{background:var(--bad);border-color:var(--bad)}
+.q{font-size:13px;color:var(--dim);margin:12px 0 6px}
+.chips{display:flex;gap:6px;flex-wrap:wrap}.chip{font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.06em;text-transform:uppercase;border-radius:999px;padding:3px 10px;background:var(--fog);color:var(--dim)}
+.cws{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}.cws span{display:inline-flex;align-items:center;gap:6px;font-size:13px}.cws i{width:18px;height:18px;border-radius:50%;border:1px solid rgba(0,0,0,.2)}
+.bar{position:fixed;left:0;right:0;bottom:0;background:rgba(255,255,255,.96);border-top:1px solid var(--line);padding:12px clamp(14px,3vw,36px);display:flex;gap:12px;align-items:center;flex-wrap:wrap;z-index:15;backdrop-filter:blur(8px)}
+.bar .in{display:flex;gap:8px;flex:1;min-width:260px}.bar .in input{flex:1}
+.msg{font-size:13px;color:var(--dim)}.msg.ok{color:var(--ok)}.msg.bad{color:var(--bad)}
+.done{text-align:center;padding:40px 20px}.done h2{font-size:28px}
+@media(prefers-reduced-motion:no-preference){.piece{animation:up .4s ease both}@keyframes up{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}}
+</style>
+<script src="/feedback.js"></script>
+</head>
+<body>
+<header><a class="wordmark" href="https://thefuturebasics.com" aria-label="Future Basics"><img class="brand-logo" src="https://thefuturebasics.com/cdn/shop/files/future_basics_true_vector_fixed.svg?v=1775278873&amp;width=360" alt="Future Basics"><span class="brand-suffix">/ Would you buy it?</span></a></header>
+<main>
+  <div id="gone" class="panel hidden"><h1>This poll is not open</h1><p class="note" id="goneWhy"></p></div>
+  <div id="app" class="hidden">
+    <span class="mono" id="brand"></span><h1 id="title"></h1><p class="note" id="intro" style="font-size:15px;max-width:60ch"></p>
+    <div id="list"></div>
+    <div class="panel done hidden" id="thanks"><h2>Thank you</h2><p class="note" style="font-size:15px">Your answers are in. They decide what gets made.</p></div>
+  </div>
+</main>
+<div class="bar hidden" id="bar">
+  <span class="msg" id="count">0 pieces answered</span>
+  <div class="in"><input class="t" id="vName" placeholder="Your name (optional)" maxlength="60" aria-label="Your name"><input class="t" id="vEmail" type="email" placeholder="Email, if you want first dibs (optional)" maxlength="120" aria-label="Email"></div>
+  <button class="btn go" type="button" id="send">Send my answers</button><span class="msg" id="msg" role="status"></span>
+</div>
+<script>
+'use strict';
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)],esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const TOKEN=location.pathname.split('/lab/poll/')[1]||'',API=`/v1/lab/poll/${encodeURIComponent(TOKEN)}`;
+async function api(path,o={}){const r=await fetch(path,{method:o.method||(o.body?'POST':'GET'),headers:o.body?{'Content-Type':'application/json'}:{},body:o.body?JSON.stringify(o.body):undefined});const j=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(new Error(j.error||`Request failed (${r.status})`),{status:r.status});return j}
+let D=null;const V=new Map();
+function pieceHtml(p,i){return `<section class="piece" data-id="${esc(p.id)}" aria-label="${esc(p.name)}">
+  <div class="pic">${p.hasImage?`<img src="${API}/pieces/${esc(p.id)}/image" alt="${esc(p.name)}" loading="lazy">`:'<span class="note">No picture yet</span>'}</div>
+  <div><span class="mono">${String(i+1).padStart(2,'0')} · ${esc(p.categoryLabel)}</span><h2>${esc(p.name)}</h2>${p.priceLabel?`<div class="price">${esc(p.priceLabel)} planned</div>`:''}
+    <p class="note" style="margin-top:6px">${esc(p.description)}</p>
+    ${p.details.length?`<div class="chips" style="margin-top:8px">${p.details.map(d=>`<span class="chip">${esc(d)}</span>`).join('')}</div>`:''}
+    ${p.colourways.length?`<div class="cws">${p.colourways.map(c=>`<span><i style="background:${esc(c.hex)}"></i>${esc(c.name)}</span>`).join('')}</div>`:p.colors.length?`<p class="note" style="margin-top:6px">Colours: ${esc(p.colors.join(', '))}</p>`:''}
+    <div class="q">Would you buy it?</div><div class="seg" role="group" aria-label="Would you buy it"><button type="button" data-v="yes" aria-pressed="false">Yes</button><button type="button" data-v="maybe" aria-pressed="false">Maybe</button><button type="button" data-v="no" aria-pressed="false">No</button></div>
+    ${p.priceLabel?`<div class="q">And the price?</div><div class="seg" role="group" aria-label="The price"><button type="button" data-p="low" aria-pressed="false">Would pay more</button><button type="button" data-p="fair" aria-pressed="false">Fair</button><button type="button" data-p="high" aria-pressed="false">Too high</button></div>`:''}
+    <div class="q">Anything you would change? (optional)</div><textarea class="t" data-note maxlength="400" aria-label="What you would change"></textarea>
+  </div></section>`}
+function count(){const n=[...V.values()].filter(v=>v.vote).length;$('#count').textContent=`${n} of ${D.pieces.length} pieces answered`;$('#send').disabled=!n}
+document.addEventListener('click',e=>{const b=e.target.closest('.seg button');if(!b)return;const sec=b.closest('.piece'),id=sec.dataset.id,v=V.get(id)||{id};for(const o of b.parentElement.querySelectorAll('button'))o.setAttribute('aria-pressed',String(o===b));if(b.dataset.v)v.vote=b.dataset.v;else v.price=b.dataset.p;V.set(id,v);count()});
+document.addEventListener('input',e=>{const t=e.target.closest('[data-note]');if(!t)return;const id=t.closest('.piece').dataset.id,v=V.get(id)||{id};v.note=t.value;V.set(id,v)});
+$('#send').addEventListener('click',async()=>{const m=$('#msg'),btn=$('#send');m.className='msg';m.textContent='Sending…';btn.disabled=true;
+  try{const r=await api(`${API}/votes`,{body:{name:$('#vName').value,email:$('#vEmail').value,votes:[...V.values()].filter(v=>v.vote)}});m.className='msg ok';m.textContent=`Thank you: ${r.counted} answer${r.counted===1?'':'s'} counted.`;$('#thanks').classList.remove('hidden');$('#thanks').scrollIntoView({behavior:'smooth'});try{localStorage.setItem('fb.poll.'+TOKEN,'1')}catch{}}
+  catch(x){m.className='msg bad';m.textContent=x.message;btn.disabled=false}});
+(async()=>{try{D=await api(API);$('#brand').textContent=D.brandName;$('#title').textContent=D.title;$('#intro').textContent=D.intro;document.title=`${D.title} · Would you buy it?`;
+  if(!D.open){$('#gone').classList.remove('hidden');$('#goneWhy').textContent='This poll has closed. Thank you for looking.';return}
+  $('#list').innerHTML=D.pieces.map(pieceHtml).join('');$('#app').classList.remove('hidden');$('#bar').classList.remove('hidden');count();
+  let again=false;try{again=localStorage.getItem('fb.poll.'+TOKEN)==='1'}catch{}if(again){$('#msg').textContent='You answered before: sending again replaces your earlier answers.'}}
+  catch(x){$('#gone').classList.remove('hidden');$('#goneWhy').textContent=x.message}})();
+</script>
+</body>
+</html>

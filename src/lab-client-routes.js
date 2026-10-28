@@ -17,7 +17,7 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': 
 import { cleanPin } from './lab-share-routes.js';
 
 export function registerLabClientRoutes(app, d) {
-  const { pool, authenticate, adminOnly, sheetSvg = async () => null, notifyStaff = async () => false, notifyClientContact = async () => false, hubUrl = () => '', log = console } = d;
+  const { pool, authenticate, adminOnly, sheetSvg = async () => null, notifyStaff = async () => false, notifyClientContact = async () => false, hubUrl = () => '', learn = async () => {}, log = console } = d;
   const pre = [authenticate, adminOnly], bad = (reply, error, code = 422) => reply.code(code).send({ error });
   const actorOf = req => (UUID.test(String(req.auth?.sub || '')) ? req.auth.sub : null);
 
@@ -82,6 +82,7 @@ export function registerLabClientRoutes(app, d) {
     const who = await nameOf(req);
     await pool.query(`insert into lab_concept_comments(concept_id, user_id, name, body, by_client) values($1,$2,$3,$4,true)`, [c.id, actorOf(req), who, verdict === 'approved' ? `Approved by the client${note ? `: ${note}` : '.'}` : `The client asks for changes: ${note}`]);
     await notifyStaff(`${verdict === 'approved' ? 'Client approved' : 'Client asks for changes'}: ${c.name}`, `<p><strong>${esc(who)}</strong> ${verdict === 'approved' ? 'approved' : 'asked for changes to'} <strong>${esc(c.name)}</strong> in the line "${esc(c.plan_name)}".${note ? `</p><p>${esc(note)}` : ''}</p><p>Open it in the Design Lab to ${verdict === 'approved' ? 'approve it and send it to a tech pack' : 'revise it'}.</p>`).catch?.(() => {});
+    Promise.resolve().then(learn).catch(e => log.warn?.({ err: e.message }, 'design lab taste could not be read again'));
     return { ok: true, verdict };
   });
   app.post('/v1/client/design/concepts/:id/comments', { preHandler: authenticate }, async (req, reply) => {
