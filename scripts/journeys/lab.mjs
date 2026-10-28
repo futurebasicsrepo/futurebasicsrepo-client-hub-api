@@ -1164,6 +1164,68 @@ await journey('J221', 'The production artwork pack: a library graphic plus a tec
   } finally { await cleanup(brands, plan.plan?.id); }
 });
 
+await journey('J222', 'Materials, trims and tags: the library (fabrics with weight, composition, mill and price; trims; tags in their shapes and sizes for shirts, pants and hang tags, drawn to size); choosing them on a concept sets its BOM, landed cost and margin, with colourways side by side on the board; the tech pack takes the BOM lines, the labels and the colourways; the studio can redraw the piece in a fabric', async () => {
+  const { brands, plan } = await conceptSetup();
+  const A = (path, o = {}) => call(path, { token: kyleT, ...o });
+  try {
+    const lib = await K('/materials'); const by = key => lib.json.materials.find(m => m.key === key);
+    ok(lib.status === 200 && lib.json.materials.length >= 30 && lib.json.options.kinds.length === 3 && lib.json.options.tag.shapes.includes('shield'), '1. the library opens with the starting fabrics, trims and tags', lib.json.materials?.length);
+    const pants = (await K('/materials?kind=tag&for=pants')).json.materials; ok(pants.length >= 3 && pants.every(t => t.spec.for.includes('pants')) && pants.some(t => t.spec.tagKind === 'waistband') && pants.some(t => t.spec.tagKind === 'hang' && t.spec.shape === 'square'), '   tags for pants: a waistband label, a back pocket patch, a square kraft hang tag', pants.map(t => t.name));
+    const svg = await fetch(`${BASE}/v1/lab/materials/${by('hang-rect').id}/tag.svg`, { headers: { Authorization: 'Bearer ' + kyleT } }); const svgText = await svg.text();
+    ok(svg.status === 200 && /image\/svg/.test(svg.headers.get('content-type')) && /50 × 90 mm · rectangle/.test(svgText) && /<circle cx=/.test(svgText), '   a hang tag is drawn to size with its eyelet and string');
+    const added = await K('/materials', { body: { kind: 'fabric', name: `J222 fleece ${stamp}`, price: '9.50', unit: 'm', supplier: 'Test mill', spec: { weightGsm: 400, composition: '100% cotton', construction: 'loopback fleece', widthCm: 180, finish: 'garment dyed' }, colours: [{ hex: '#334455', name: 'slate' }] } });
+    ok(added.status === 201 && added.json.material.priceCents === 950 && added.json.material.colours[0].pantone, '2. a fabric of our own is added, its colour matched to a Pantone', added.json);
+    const fid = added.json.material.id; ok((await K('/materials/' + fid, { method: 'PUT', body: { price: '10' } })).json.material.priceCents === 1000, '   and its price changed');
+    ok((await K('/materials', { body: { kind: 'tag', name: 'x' } })).status === 422, '   a tag without a real name is refused');
+    // on a concept
+    const line = plan.lines.find(l => l.category === 'tops') || plan.lines[0], c = (await K(`/plans/${plan.plan.id}/lines/${line.id}/concepts`, { body: { count: 1 } })).json.concepts[0];
+    await K(`/concepts/${c.id}`, { method: 'PUT', body: { price: '98' } });
+    const m1 = await K(`/concepts/${c.id}/materials`, { body: { material: by('loopback-450').id, role: 'main', colour: '#1f1f22' } });
+    ok(m1.status === 201 && m1.json.picks.length === 1 && m1.json.picks[0].colour.name === 'washed black' && m1.json.cost.materialsCents === Math.round(1.3 * 1180) && m1.json.cost.makingCents === 480, '3. the main fabric goes on the concept at the usual usage for a top, in washed black', m1.json.cost);
+    const landed = m1.json.cost.landedCents; ok(landed === Math.round((1534 + 480) * 1.18) && m1.json.cost.marginPct === Math.round((1 - landed / 9800) * 1000) / 10, '   landed cost adds making, freight and duty; the margin reads the target price', m1.json.cost);
+    const c1 = (await K(`/concepts/${c.id}`)).json.concept; ok(Math.round(c1.cost * 100) === landed && /loopback fleece.*washed black/.test(c1.spec.fabric), '   the concept\'s cost and fabric words now follow the library', { cost: c1.cost, fabric: c1.spec.fabric });
+    const m2 = await K(`/concepts/${c.id}/materials`, { body: { material: fid, role: 'main' } }); ok(m2.json.picks.filter(p => p.role === 'main').length === 1 && m2.json.picks.some(p => p.id === by('loopback-450').id && p.role === 'contrast'), '   a second main fabric makes the first the contrast');
+    for (const key of ['zip-5-metal', 'tag-neck-woven', 'tag-care', 'hang-rect']) await K(`/concepts/${c.id}/materials`, { body: { material: by(key).id } });
+    const m3 = (await K(`/concepts/${c.id}/materials/${by('zip-5-metal').id}`, { method: 'PUT', body: { qty: '2' } })).json; ok(m3.picks.find(p => p.id === by('zip-5-metal').id).qty === 2 && m3.picks.length === 6, '4. a zip, a neck label, a care label and a hang tag go on too; the zip is wanted twice', m3.picks.map(p => p.name));
+    const k2 = (await K(`/concepts/${c.id}/costing`, { method: 'PUT', body: { making: '6', freightPct: '12' } })).json.cost; ok(k2.makingCents === 600 && k2.freightPct === 12 && k2.landedCents === k2.materialsCents + 600 + Math.round((k2.materialsCents + 600) * .12), '   the making cost and freight can be ours', k2);
+    const cw = await K(`/concepts/${c.id}/colourways`, { method: 'PUT', body: { colourways: [{ name: 'Washed black', hex: '#1f1f22' }, { name: 'Moss', hex: '#5b6648', thread: '#e9e3d4' }] } });
+    ok(cw.status === 200 && cw.json.colourways.length === 2 && /^PANTONE /.test(cw.json.colourways[1].pantone) && /^PANTONE /.test(cw.json.colourways[1].threadPantone), '5. two colourways, each with a Pantone read from the colour (and the thread\'s)', cw.json);
+    const board = (await K('/assortment?status=all')).json.concepts.find(x => x.id === c.id); ok(board && board.colourways.length === 2 && board.materials === 6, '   the assortment board carries them');
+    ok((await K(`/concepts/${c.id}/materials/${by('tag-care').id}`, { method: 'DELETE' })).json.picks.length === 5, '   taking one off');
+    // to the tech pack
+    await K(`/concepts/${c.id}/approve`, { body: { overrideReason: 'reviewed side by side with the references: it is ours' } });
+    const fl = (await K(`/concepts/${c.id}/flats`)).json; await K(`/concepts/${c.id}/flats`, { method: 'PUT', body: fl.flat });
+    const pid = (await K(`/concepts/${c.id}/tech-pack`, { body: {} })).json.productId, pack = (await A(`/v1/admin/products/${pid}/tech-pack`)).json.techPack.data;
+    const lib_bom = pack.bom.filter(r => r.notes === 'From the materials library');
+    ok(lib_bom.length === 5 && lib_bom.some(r => r.component === 'Main fabric' && r.cost === '10' && /400 gsm/.test(r.spec)) && lib_bom.some(r => r.component === 'Contrast fabric' && r.color === '#1f1f22') && lib_bom.some(r => r.component === 'Zip' && r.qty === '2'), '6. the tech pack\'s BOM carries every material with its spec, colour, quantity and unit cost', lib_bom.map(r => [r.component, r.qty, r.cost]));
+    ok(pack.labels.some(l => /^Neck label · /.test(l.item) && /60 × 15 mm damask woven neck label, end fold/.test(l.spec) && /neck seam/.test(l.placement)) && pack.labels.some(l => /^Hang tag · /.test(l.item) && /cotton twine through a brass eyelet/.test(l.spec)), '   the labels section lists the tags with their size, shape, fold, material and where they go', pack.labels.map(l => l.item));
+    ok(pack.colorways.some(x => x.swatch === '#5b6648' && /^PANTONE /.test(x.code) && /thread PANTONE/.test(x.notes)), '   and the colourways with their Pantones', pack.colorways);
+    const lib2 = (await K(`/materials?q=${encodeURIComponent('J222 fleece')}`)).json.materials; ok(lib2.length === 1 && lib2[0].id === fid, '   the library finds a fabric by name');
+    ok((await K('/materials/' + fid, { method: 'DELETE' })).json.ok === true && !(await K(`/materials?q=${encodeURIComponent('J222 fleece')}`)).json.materials.length && (await K(`/concepts/${c.id}/materials`)).json.picks.some(p => p.id === fid), '7. taken out of the library, the fabric stays on the concept that uses it');
+    if (playwright) {
+      const b = await playwright.chromium.launch();
+      try {
+        const oc = await b.newContext({ viewport: { width: 1440, height: 950 } }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
+        const page = await oc.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
+        await page.goto(`${BASE}/lab/materials#tags`, { waitUntil: 'networkidle' }); await page.waitForSelector('#app:not(.hidden)'); await page.waitForSelector('[data-tagsvg] svg', { timeout: 15000 });
+        ok(await page.locator('[data-tagsvg] svg').count() >= 10, '8. in a browser the tags page draws every tag to size', await page.locator('[data-tagsvg] svg').count());
+        await page.selectOption('#forSel', 'pants'); await page.waitForFunction(() => document.querySelectorAll('#grid .card').length < 12 && document.querySelectorAll('#grid .card').length > 0); ok(/Waistband label/.test(await page.innerText('#grid')), '   filtered to pants: the waistband label is there');
+        await page.click('#add'); await page.waitForSelector('#dlg[open]'); await page.fill('[data-s="widthMm"]', '70'); await page.fill('[data-s="heightMm"]', '30'); await page.selectOption('[data-s="shape"]', 'rounded');
+        await page.waitForFunction(() => /70 × 30 mm · rounded/.test(document.querySelector('#dPrev').textContent), null, { timeout: 5000 }); ok(true, '   a new tag is drawn as it is typed: 70 × 30 mm, rounded');
+        await page.keyboard.press('Escape');
+        await page.goto(`${BASE}/lab#board`, { waitUntil: 'networkidle' }); await page.waitForSelector('#app:not(.hidden)'); await page.waitForSelector(`.cc[data-cid="${c.id}"]`, { timeout: 20000 }); await page.click(`.cc[data-cid="${c.id}"]`);
+        await page.waitForFunction(() => /Landed cost/.test(document.querySelector('#matIn')?.textContent || ''), null, { timeout: 20000 });
+        ok(/Main fabric/.test(await page.innerText('#matIn')) && /Hang tag|Neck label/.test(await page.innerText('#matIn')) && (await page.locator('#cwRows .cwrow').count()) === 2, '9. the concept window lists what it is made of, the cost breakdown and the two colourways', (await page.innerText('#matIn')).slice(0, 200));
+        await page.click('#cd [data-cclose]'); await page.goto(`${BASE}/lab#assort`, { waitUntil: 'networkidle' }); await page.waitForSelector(`.at[data-aid="${c.id}"] .cwt`, { timeout: 20000 });
+        ok(await page.locator(`.at[data-aid="${c.id}"] .cwt`).count() === 2, '   the assortment board shows its colourways side by side');
+        await page.goto(`${BASE}/lab/studio?concept=${c.id}`, { waitUntil: 'networkidle' }); await page.waitForSelector('#app:not(.hidden)'); await page.click('[data-tab="ai"]'); await page.waitForSelector('#fabUse', { timeout: 15000 });
+        ok(/On the concept:/.test(await page.innerText('#fabSec')) && await page.locator('#fabSel option').count() >= 10, '10. the studio knows the fabric on the concept and offers the library to redraw the piece in');
+        ok(!errs.length, 'no page errors', errs);
+      } finally { await b.close(); }
+    }
+  } finally { await cleanup(brands, plan.plan?.id); }
+});
+
 await journey('J218', 'The factory views and writes in Messages; the team makes the corrections: the factory has no buttons on its link (it cannot acknowledge, quote, countersign or mark a sample sent), it writes that the proto shipped, the team records it, reviews the sample, and the corrections go out as version 2 while version 1 stays exactly as it was; flats sent again become version 3', async () => {
   const { brands, plan } = await conceptSetup(); await import('../../src/sample-review.js'); const FBSample = globalThis.FBSample;
   const A = (path, o = {}) => call(path, { token: kyleT, ...o });

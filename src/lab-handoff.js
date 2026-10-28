@@ -3,6 +3,7 @@
 // the plan's price, cost and quantity. Merged into whatever the pack already holds, so the assistant's draft and anyone's edits stay; sending it
 // again after a change replaces what came from the flats last time and nothing else.
 //   labHandoff(pack, lab) → the pack with the Lab's part laid in (a normalised pack in, a normalised pack out: the caller normalises)
+import { MATERIALS_NOTE } from './lab-materials.js';
 export const FLATS_NOTE = 'From the flats';
 const LAB_LINE = /^From the Design Lab: .*$/m;
 const money = cents => (cents == null || !Number.isFinite(Number(cents)) ? '' : (Number(cents) / 100).toFixed(2));
@@ -34,6 +35,16 @@ export function labHandoff(pack, lab = {}) {
   // construction and materials: what came from the flats last time is replaced; the rest stays
   if (lab.construction) out.construction = [...(out.construction || []).filter(r => !String(r.area).startsWith('Flats · ')), ...lab.construction.map(r => ({ area: `Flats · ${r.area}`.slice(0, 120), detail: String(r.detail).slice(0, 600) }))].slice(0, 80);
   if (lab.bom) out.bom = [...(out.bom || []).filter(r => r.notes !== FLATS_NOTE), ...lab.bom.map(r => ({ component: '', material: '', spec: '', supplier: '', ref: '', color: '', placement: '', qty: '', unit: '', cost: '', ...r, notes: FLATS_NOTE }))].slice(0, 120);
+  // the materials library: its BOM lines and labels replace what came from it last time; colourways go after the main colour
+  if (lab.materials) {
+    out.bom = [...(out.bom || []).filter(r => r.notes !== MATERIALS_NOTE), ...lab.materials.bom.map(r => ({ component: '', material: '', spec: '', supplier: '', ref: '', color: '', placement: '', qty: '', unit: '', cost: '', ...r, notes: MATERIALS_NOTE }))].slice(0, 80);
+    const items = new Set(lab.materials.labels.map(l => l.item));
+    out.labels = [...lab.materials.labels, ...(out.labels || []).filter(l => !items.has(l.item) && !/^(Neck label|Size tab|Care and content label|Hem tag|Sleeve tag|Waistband label|Back pocket patch|Locker loop label|Sweatband label|Hang tag|Size sticker) · /.test(l.item))].slice(0, 40);
+  }
+  if (lab.colourways?.length) {
+    const cws = lab.colourways.map(c => ({ name: c.name || c.pantone || c.hex, code: c.pantone || '', swatch: c.hex, notes: `${MATERIALS_NOTE}${c.thread ? ` · thread ${c.threadPantone || c.thread}` : ''}` }));
+    out.colorways = [...(out.colorways || []).filter(c => !String(c.notes || '').startsWith(MATERIALS_NOTE) && !cws.some(x => x.swatch === c.swatch)), ...cws].slice(0, 16);
+  }
   // the main colour, as the first colourway
   if (lab.color?.hex) {
     const cw = { name: lab.color.name || 'Main colour', code: lab.color.code || '', swatch: lab.color.hex, notes: FLATS_NOTE };

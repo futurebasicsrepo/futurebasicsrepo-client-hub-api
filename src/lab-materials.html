@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>Materials, trims and tags</title>
+<link rel="icon" href="/icons/icon-192.png">
+<style>
+@import url('/fonts/fonts.css');
+:root{--ink:#141416;--paper:#fff;--fog:#f5f5f2;--dim:#727278;--line:rgba(20,20,22,.14);--cue:#4bff9a;--ok:#17603a;--bad:#a02a20}
+*{box-sizing:border-box}html{background:var(--fog)}
+body{margin:0;color:var(--ink);font:400 14px/1.5 'Space Grotesk',system-ui,sans-serif;background:var(--fog);min-height:100vh}
+button,input,select,textarea{font:inherit;color:inherit}a{color:inherit}.hidden{display:none!important}
+header{height:72px;background:rgba(20,20,22,.96);color:#fff;padding:0 clamp(16px,4vw,48px);display:flex;align-items:center;gap:14px;position:sticky;top:0;z-index:20}
+.wordmark{display:flex;align-items:center;gap:12px;position:relative;text-decoration:none;color:inherit;text-transform:uppercase;letter-spacing:.08em}
+.wordmark:after{content:"";position:absolute;left:0;bottom:-7px;width:64px;height:2px;background:var(--cue)}
+.brand-logo{display:block;width:200px;max-width:34vw;height:auto;max-height:30px}.brand-suffix{font:500 10px 'IBM Plex Mono',monospace;white-space:nowrap}
+main{max-width:1240px;margin:0 auto;padding:22px clamp(14px,3vw,36px) 90px}
+h1{font-size:clamp(28px,4.4vw,42px);letter-spacing:-.035em;font-weight:500;margin:4px 0;line-height:1.05}h2{font-size:19px;font-weight:500;letter-spacing:-.02em;margin:0}h3{margin:0;font-size:15px;font-weight:500}h4{margin:0;font-size:13px;font-weight:500}
+.note{color:var(--dim);font-size:13px;margin:0}.mono{font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}
+.labtabs{position:sticky;top:72px;z-index:12;display:flex;gap:6px;overflow:auto;padding:10px 0;margin:0 0 6px;background:var(--fog);scrollbar-width:none}
+.labtabs a{flex:none;border:1px solid var(--line);background:#fff;border-radius:999px;padding:6px 14px;font-size:13px;text-decoration:none;color:var(--ink)}.labtabs a.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.panel{background:#fff;border:1px solid var(--line);border-radius:20px;padding:18px}
+.btn{border:1px solid var(--ink);background:#fff;color:var(--ink);border-radius:999px;padding:8px 16px;font-weight:500;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:8px;min-height:38px}
+.btn.go{background:var(--ink);color:#fff}.btn.q{border-color:var(--line)}.btn.sm{padding:5px 12px;min-height:32px;font-size:13px}.btn:disabled{opacity:.5;cursor:default}
+.t{width:100%;border:1px solid var(--line);border-radius:12px;padding:9px 12px;background:#fff;min-height:40px}textarea.t{min-height:80px;resize:vertical}select.t{appearance:auto}
+.f{display:grid;gap:4px}.f>span{font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;background:#fff}.seg button{border:0;background:none;padding:8px 16px;cursor:pointer}.seg button[aria-pressed=true]{background:var(--ink);color:#fff}
+.tools{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:14px 0}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,230px),1fr));gap:14px;margin-top:14px}
+.card{background:#fff;border:1px solid var(--line);border-radius:18px;overflow:hidden;cursor:pointer;display:flex;flex-direction:column}.card:hover{border-color:var(--ink)}
+.card .sw{aspect-ratio:4/3;background:var(--fog);display:grid;place-items:center;position:relative;overflow:hidden}.card .sw img{width:100%;height:100%;object-fit:cover}.card .sw svg{max-width:92%;max-height:92%}
+.card .sw .dots{position:absolute;left:10px;bottom:10px;display:flex;gap:4px}.card .sw .dots i{width:14px;height:14px;border-radius:50%;border:1px solid rgba(0,0,0,.25);display:block}
+.card .bd{padding:12px 14px;display:grid;gap:4px}.card .bd b{font-weight:500}.card .bd .mono{letter-spacing:.06em}.card .pr{font:500 12px 'IBM Plex Mono',monospace}
+.chip{font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.06em;text-transform:uppercase;border-radius:999px;padding:3px 10px;background:var(--fog);color:var(--dim);white-space:nowrap}
+.msg{font-size:13px;color:var(--dim)}.msg.ok{color:var(--ok)}.msg.bad{color:var(--bad)}
+dialog{border:0;border-radius:24px;padding:0;width:min(900px,96vw);max-height:92vh;overflow:auto;background:#fff;color:var(--ink)}dialog::backdrop{background:rgba(20,20,22,.55)}
+.dlg{padding:22px;display:grid;gap:14px}.dlg .two{display:grid;grid-template-columns:minmax(220px,340px) 1fr;gap:20px}@media(max-width:720px){.dlg .two{grid-template-columns:1fr}.grid3{grid-template-columns:1fr}}
+.prev{background:var(--fog);border-radius:16px;min-height:220px;display:grid;place-items:center;padding:10px;overflow:hidden;position:relative}.prev img,.prev svg{max-width:100%;max-height:360px}
+.colours{display:grid;gap:6px}.colours .c{display:grid;grid-template-columns:40px 1fr 1fr auto;gap:6px;align-items:center}.colours input[type=color]{width:40px;height:32px;border:1px solid var(--line);border-radius:8px;padding:0;background:none}
+</style>
+<script src="/feedback.js"></script>
+</head>
+<body>
+<header><a class="wordmark" href="/home" aria-label="Work home"><img class="brand-logo" src="https://thefuturebasics.com/cdn/shop/files/future_basics_true_vector_fixed.svg?v=1775278873&amp;width=360" alt="Future Basics"><span class="brand-suffix">/ Design Lab</span></a></header>
+<main>
+  <div id="needSignin" class="panel hidden"><h1>Sign in to the work console first</h1><p class="note">This page uses your work console sign-in. Open the console, sign in, then come back here.</p><a class="btn go" href="/admin" style="margin-top:12px">Open the work console</a></div>
+  <div id="app" class="hidden">
+    <nav class="labtabs" aria-label="Design Lab sections"><a href="/lab#library">Library</a><a href="/lab#trends">What's moving</a><a href="/lab#plans">Line plans</a><a href="/lab#board">Concepts</a><a href="/lab#assort">Assortment board</a><a href="/lab/library">Graphics and techniques</a><a class="on" href="/lab/materials" aria-current="page">Materials, trims and tags</a><a href="/lab#brands">Brands we watch</a><a href="/lab#code">Brand code</a></nav>
+    <span class="mono" style="display:block;margin-top:14px">Our library</span><h1>Materials, trims and tags.</h1>
+    <p class="note">Every fabric, trim and label we buy, with its weight, composition, mill, price and swatch, and every tag in its shape and size: neck labels, size tabs, care labels, hem tags, waistband labels, hang tags. Choose one on a concept and its bill of materials, landed cost and margin follow; the tech pack takes the lines.</p>
+    <div class="tools"><div class="seg" role="tablist" id="kinds"></div><input class="t" id="q" type="search" placeholder="Search by name, code, mill, composition…" aria-label="Search" style="max-width:360px"><select class="t" id="forSel" style="max-width:180px;display:none" aria-label="For"></select><button class="btn go" type="button" id="add">Add one</button><span class="msg" id="msg" role="status"></span></div>
+    <div class="grid" id="grid"></div>
+  </div>
+</main>
+
+<dialog id="dlg" aria-label="Material"><div class="dlg">
+  <div class="row" style="justify-content:space-between"><h2 id="dTitle">Add a fabric</h2><button class="btn sm q" type="button" data-close>Close</button></div>
+  <div class="two"><div style="display:grid;gap:10px;align-content:start"><div class="prev" id="dPrev"></div><div class="row" id="dSwatchRow"><button class="btn sm q" type="button" id="dSwatchBtn">Add a swatch photo…</button><input type="file" id="dSwatchIn" accept="image/*" class="hidden"></div></div>
+  <div style="display:grid;gap:10px">
+    <input type="hidden" id="dKind"><input type="hidden" id="dId">
+    <label class="f"><span>Name</span><input class="t" id="dName" maxlength="120"></label>
+    <div class="grid3"><label class="f"><span>Our code</span><input class="t" id="dCode" maxlength="40" placeholder="FB-F11"></label><label class="f"><span>Price</span><input class="t" id="dPrice" inputmode="decimal" placeholder="0.00"></label><label class="f"><span>Per</span><select class="t" id="dUnit"></select></label></div>
+    <div class="grid3"><label class="f"><span>Mill or supplier</span><input class="t" id="dSupplier" maxlength="160"></label><label class="f"><span>MOQ</span><input class="t" id="dMoq" inputmode="numeric"></label><label class="f"><span>Lead time (days)</span><input class="t" id="dLead" inputmode="numeric"></label></div>
+    <div id="dSpec" style="display:grid;gap:10px"></div>
+    <div class="f"><span>Colours</span><div class="colours" id="dColours"></div><div class="row"><button class="btn sm q" type="button" id="dAddColour">Add a colour</button></div></div>
+    <label class="f"><span>Notes</span><textarea class="t" id="dNotes" maxlength="600"></textarea></label>
+    <div class="row"><button class="btn go" type="button" id="dSave">Save</button><button class="btn q" type="button" id="dDel">Take out of the library</button><span class="msg" id="dMsg" role="status"></span></div>
+  </div></div>
+</div></dialog>
+
+<script src="/console-nav.js" defer></script>
+<script>
+'use strict';
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)],esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const TOKEN=()=>{try{return localStorage.getItem('fb.admin.token')||''}catch{return ''}};
+async function api(path,o={}){const r=await fetch(path,{method:o.method||(o.body?'POST':'GET'),headers:{Authorization:'Bearer '+TOKEN(),...(o.body?{'Content-Type':'application/json'}:{})},body:o.body?JSON.stringify(o.body):undefined});const j=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(new Error(j.error||`Request failed (${r.status})`),{status:r.status});return j}
+const BLOBS=new Map();async function blobUrl(path){if(BLOBS.has(path))return BLOBS.get(path);const p=fetch(path,{headers:{Authorization:'Bearer '+TOKEN()}}).then(r=>{if(!r.ok)throw new Error('The picture could not be loaded');return r.blob()}).then(b=>URL.createObjectURL(b));BLOBS.set(path,p);p.catch(()=>BLOBS.delete(path));return p}
+const fileUrl=f=>new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(r.result);r.onerror=no;r.readAsDataURL(f)});
+function msg(sel,text,cls=''){const m=$(sel);m.className='msg '+cls;m.innerHTML=text}
+const money=c=>'$'+(c/100).toFixed(2);
+let M={materials:[],options:null},KIND='fabric',FOR='',CUR=null,TAGS=null,SWATCH='';
+const opt=(list,v,labelOf=x=>x)=>list.map(x=>{const id=x.id||x;return `<option value="${esc(id)}" ${id===v?'selected':''}>${esc(labelOf(x))}</option>`}).join('');
+
+async function load(){const r=await api(`/v1/lab/materials?kind=${KIND}&q=${encodeURIComponent($('#q').value.trim())}${FOR?'&for='+encodeURIComponent(FOR):''}`);M=r;paint()}
+function paint(){
+  const o=M.options;$('#kinds').innerHTML=o.kinds.map(k=>`<button type="button" data-kind="${k.id}" aria-pressed="${k.id===KIND}">${esc(k.label)}</button>`).join('');
+  const fs=$('#forSel');fs.style.display=KIND==='tag'?'':'none';if(KIND==='tag')fs.innerHTML=`<option value="">For anything</option>${o.tag.for.map(f=>`<option value="${f}" ${f===FOR?'selected':''}>For ${f}</option>`).join('')}`;
+  $('#add').textContent=KIND==='fabric'?'Add a fabric':KIND==='trim'?'Add a trim':'Add a tag';
+  const g=$('#grid');g.innerHTML=M.materials.length?M.materials.map(card).join(''):'<p class="note">Nothing here yet.</p>';
+  for(const el of g.querySelectorAll('[data-swatch]'))blobUrl(`/v1/lab/materials/${el.dataset.swatch}/swatch?thumb=1`).then(u=>{const i=new Image();i.alt='';i.src=u;el.prepend(i)}).catch(()=>{});
+  for(const el of g.querySelectorAll('[data-tagsvg]'))drawTag(el,M.materials.find(m=>m.id===el.dataset.tagsvg));
+}
+function card(m){
+  const s=m.spec||{},line=m.kind==='fabric'?[s.weightGsm?s.weightGsm+' gsm':'',s.construction,s.composition].filter(Boolean).join(' · '):m.kind==='trim'?[s.category,s.size,s.material,s.finish].filter(Boolean).join(' · '):`${s.widthMm} × ${s.heightMm} mm · ${s.shape}${s.fold&&s.fold!=='none'?' · '+s.fold:''} · ${s.material}`;
+  const dots=(m.colours||[]).slice(0,6).map(c=>`<i style="background:${esc(c.hex||'#ccc')}" title="${esc(c.name||'')}${c.pantone?' · '+esc(c.pantone):''}"></i>`).join('');
+  const sw=m.kind==='tag'?`<div class="sw" data-tagsvg="${m.id}"></div>`:`<div class="sw" ${m.hasSwatch?`data-swatch="${m.id}"`:''}>${m.hasSwatch?'':`<span class="mono" style="letter-spacing:.06em">${esc(m.kind==='fabric'?(s.construction||'fabric'):(s.category||'trim'))}</span>`}<div class="dots">${dots}</div></div>`;
+  return `<article class="card" data-m="${m.id}" tabindex="0" role="button"><${'div'} style="display:contents">${sw}</div><div class="bd"><b>${esc(m.name)}</b><span class="note">${esc(line)}</span><div class="row" style="justify-content:space-between"><span class="pr">${money(m.priceCents)} / ${esc(m.unit)}</span>${m.kind==='tag'&&s.for?.length?`<span class="chip">${esc(s.for.join(' · '))}</span>`:m.supplier?`<span class="chip" title="${esc(m.supplier)}">${esc(m.supplier.split(':')[0].slice(0,18))}</span>`:''}</div></div></article>`;
+}
+async function tagsMod(){if(!TAGS)TAGS=await import('/lab/lab-tags.js');return TAGS}
+async function drawTag(el,m){if(!m)return;const T=await tagsMod();el.innerHTML=T.tagSvg(m.spec,{scale:2.4,fill:(m.colours||[])[0]?.hex||'',ink:(m.colours||[])[0]?.hex&&lum((m.colours||[])[0].hex)<128?'#f3eee4':'#141416'})}
+const lum=h=>{const n=parseInt(h.slice(1),16);return ((n>>16)*299+((n>>8)&255)*587+(n&255)*114)/1000};
+
+// ---- the form ----
+function specForm(kind,s={}){
+  const o=M.options;
+  if(kind==='fabric')return `<div class="grid3"><label class="f"><span>Weight (gsm)</span><input class="t" data-s="weightGsm" inputmode="numeric" value="${esc(s.weightGsm??'')}"></label><label class="f"><span>Width (cm)</span><input class="t" data-s="widthCm" inputmode="numeric" value="${esc(s.widthCm??'')}"></label><label class="f"><span>Stretch</span><input class="t" data-s="stretch" value="${esc(s.stretch||'')}" placeholder="none / low / high"></label></div>
+    <label class="f"><span>Composition</span><input class="t" data-s="composition" value="${esc(s.composition||'')}" placeholder="100% cotton"></label>
+    <div class="grid3"><label class="f"><span>Construction</span><select class="t" data-s="construction">${opt(o.fabric.constructions,s.construction||'single jersey')}</select></label><label class="f"><span>Finish</span><select class="t" data-s="finish">${opt(o.fabric.finishes,s.finish||'none')}</select></label><label class="f"><span>Shrinkage</span><input class="t" data-s="shrinkage" value="${esc(s.shrinkage||'')}" placeholder="3–5%"></label></div>`;
+  if(kind==='trim')return `<div class="grid3"><label class="f"><span>What it is</span><select class="t" data-s="category">${opt(o.trim.categories,s.category||'zip')}</select></label><label class="f"><span>Size</span><input class="t" data-s="size" value="${esc(s.size||'')}" placeholder="#5, 60 cm"></label><label class="f"><span>Per piece</span><input class="t" data-s="qtyPerPiece" inputmode="decimal" value="${esc(s.qtyPerPiece??1)}"></label></div>
+    <div class="grid2"><label class="f"><span>Material</span><input class="t" data-s="material" value="${esc(s.material||'')}"></label><label class="f"><span>Finish</span><input class="t" data-s="finish" value="${esc(s.finish||'')}"></label></div>`;
+  const t=o.tag;
+  return `<div class="grid3"><label class="f"><span>Kind of tag</span><select class="t" data-s="tagKind">${opt(t.kinds,s.tagKind||'neck',k=>k.label)}</select></label><label class="f"><span>Shape</span><select class="t" data-s="shape">${opt(t.shapes,s.shape||'rectangle')}</select></label><label class="f"><span>Fold</span><select class="t" data-s="fold">${opt(t.folds,s.fold||'none')}</select></label></div>
+    <div class="grid3"><label class="f"><span>Width (mm)</span><input class="t" data-s="widthMm" inputmode="numeric" value="${esc(s.widthMm??40)}"></label><label class="f"><span>Height (mm)</span><input class="t" data-s="heightMm" inputmode="numeric" value="${esc(s.heightMm??20)}"></label><label class="f"><span>Material</span><select class="t" data-s="material">${opt(t.materials,s.material||'damask woven')}</select></label></div>
+    <div class="grid2"><label class="f"><span>Attached</span><select class="t" data-s="attach">${opt(t.attach,s.attach||t.attach[0])}</select></label><label class="f"><span>Print</span><select class="t" data-s="print">${opt(t.prints,s.print||'woven')}</select></label></div>
+    <div class="grid3"><label class="f"><span>String</span><select class="t" data-s="string">${opt(t.strings,s.string||'none')}</select></label><label class="f"><span>Eyelet</span><select class="t" data-s="eyelet"><option value="1" ${s.eyelet?'selected':''}>Brass eyelet</option><option value="" ${s.eyelet?'':'selected'}>No eyelet</option></select></label><label class="f"><span>For</span><select class="t" data-s="for" multiple size="3">${t.for.map(f=>`<option value="${f}" ${(s.for||[]).includes(f)?'selected':''}>${f}</option>`).join('')}</select></label></div>
+    <label class="f"><span>Words on it (one per line)</span><textarea class="t" data-s="text" style="min-height:60px">${esc((s.text||[]).join('\n'))}</textarea></label>`;
+}
+function colourRows(list){$('#dColours').innerHTML=(list||[]).map(c=>`<div class="c"><input type="color" value="${esc(c.hex||'#888888')}" aria-label="Colour"><input class="t" placeholder="Name" value="${esc(c.name||'')}" maxlength="40"><input class="t" placeholder="Pantone C (read from the colour if empty)" value="${esc(c.pantone||'')}" maxlength="40"><button class="btn sm q" type="button" data-rmc>✕</button></div>`).join('')}
+function readSpec(){const s={};for(const el of $$('#dSpec [data-s]')){const k=el.dataset.s;s[k]=el.multiple?[...el.selectedOptions].map(o=>o.value):k==='text'?el.value.split(/\n/).map(x=>x.trim()).filter(Boolean):k==='eyelet'?Boolean(el.value):el.value}return s}
+function readColours(){return $$('#dColours .c').map(r=>{const [h,n,p]=r.querySelectorAll('input');return {hex:h.value,name:n.value,pantone:p.value}})}
+async function preview(){const kind=$('#dKind').value,p=$('#dPrev');if(kind==='tag'){const T=await tagsMod(),cs=readColours();p.innerHTML=T.tagSvg(readSpec(),{scale:3,fill:cs[0]?.hex||'',ink:cs[0]?.hex&&lum(cs[0].hex)<128?'#f3eee4':'#141416'});return}
+  if(SWATCH){p.innerHTML=`<img src="${esc(SWATCH)}" alt="">`;return}const cs=readColours();p.innerHTML=cs.length?`<div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center">${cs.map(c=>`<span style="width:56px;height:56px;border-radius:12px;background:${esc(c.hex)};border:1px solid rgba(0,0,0,.15)" title="${esc(c.name)}"></span>`).join('')}</div>`:'<span class="note">No swatch yet</span>'}
+function openForm(m){
+  CUR=m||null;SWATCH='';const kind=m?m.kind:KIND;$('#dKind').value=kind;$('#dId').value=m?m.id:'';
+  $('#dTitle').textContent=m?m.name:(kind==='fabric'?'Add a fabric':kind==='trim'?'Add a trim':'Add a tag');
+  $('#dName').value=m?.name||'';$('#dCode').value=m?.code||'';$('#dPrice').value=m?(m.priceCents/100).toFixed(2):'';$('#dUnit').innerHTML=opt(M.options.units,m?.unit||(kind==='fabric'?'m':'pc'));
+  $('#dSupplier').value=m?.supplier||'';$('#dMoq').value=m?.moq||'';$('#dLead').value=m?.leadDays||'';$('#dNotes').value=m?.notes||'';
+  $('#dSpec').innerHTML=specForm(kind,m?.spec||{});colourRows(m?.colours||[]);$('#dDel').classList.toggle('hidden',!m);$('#dSwatchRow').classList.toggle('hidden',kind==='tag');msg('#dMsg','');
+  if(m?.hasSwatch)blobUrl(`/v1/lab/materials/${m.id}/swatch`).then(u=>{SWATCH=u;preview()}).catch(()=>{});
+  preview();$('#dlg').showModal();
+}
+$('#dSpec').addEventListener('input',preview);$('#dColours').addEventListener('input',preview);
+$('#dAddColour').onclick=()=>{colourRows([...readColours(),{hex:'#888888',name:''}]);preview()};
+$('#dColours').addEventListener('click',e=>{const b=e.target.closest('[data-rmc]');if(b){b.closest('.c').remove();preview()}});
+$('#dSwatchBtn').onclick=()=>$('#dSwatchIn').click();$('#dSwatchIn').onchange=async()=>{const f=$('#dSwatchIn').files[0];if(!f)return;SWATCH=await fileUrl(f);$('#dSwatchIn').value='';preview();if(CUR){FBN.run($('#dSwatchBtn'),()=>api(`/v1/lab/materials/${CUR.id}/swatch`,{body:{image:SWATCH}}),{done:'Swatch saved.'}).then(()=>{BLOBS.delete(`/v1/lab/materials/${CUR.id}/swatch?thumb=1`);load()})}};
+$('#dSave').onclick=async()=>{const b=$('#dSave');FBN.begin(b);try{const body={kind:$('#dKind').value,name:$('#dName').value,code:$('#dCode').value,price:$('#dPrice').value,unit:$('#dUnit').value,supplier:$('#dSupplier').value,moq:$('#dMoq').value,leadDays:$('#dLead').value,spec:readSpec(),colours:readColours(),notes:$('#dNotes').value};
+  if(CUR){await api('/v1/lab/materials/'+CUR.id,{method:'PUT',body})}else{if(SWATCH&&SWATCH.startsWith('data:'))body.swatch=SWATCH;await api('/v1/lab/materials',{body})}
+  FBN.end(b,true);FBN.toast(CUR?'Saved.':'Added to the library.','ok');$('#dlg').close();await load()}catch(x){FBN.end(b,false);msg('#dMsg',esc(x.message),'bad')}};
+$('#dDel').onclick=async()=>{if(!CUR||!confirm('Take this out of the library? Concepts that use it keep it.'))return;try{await api('/v1/lab/materials/'+CUR.id,{method:'DELETE'});$('#dlg').close();FBN.toast('Taken out of the library.','ok');await load()}catch(x){msg('#dMsg',esc(x.message),'bad')}};
+$('#dlg').addEventListener('click',e=>{if(e.target.closest('[data-close]')||e.target===$('#dlg'))$('#dlg').close()});
+$('#kinds').addEventListener('click',e=>{const b=e.target.closest('[data-kind]');if(b){KIND=b.dataset.kind;FOR='';load().catch(x=>msg('#msg',esc(x.message),'bad'))}});
+$('#forSel').addEventListener('change',()=>{FOR=$('#forSel').value;load().catch(x=>msg('#msg',esc(x.message),'bad'))});
+let qT=0;$('#q').addEventListener('input',()=>{clearTimeout(qT);qT=setTimeout(()=>load().catch(x=>msg('#msg',esc(x.message),'bad')),250)});
+$('#add').onclick=()=>openForm(null);
+$('#grid').addEventListener('click',e=>{const c=e.target.closest('[data-m]');if(c)openForm(M.materials.find(m=>m.id===c.dataset.m))});
+$('#grid').addEventListener('keydown',e=>{if(e.key==='Enter'){const c=e.target.closest('[data-m]');if(c)openForm(M.materials.find(m=>m.id===c.dataset.m))}});
+(async()=>{if(!TOKEN()){$('#needSignin').classList.remove('hidden');return}try{await load();$('#app').classList.remove('hidden');if(location.hash==='#tags'){KIND='tag';await load()}}catch(x){if(x.status===401||x.status===403)$('#needSignin').classList.remove('hidden');else{$('#app').classList.remove('hidden');msg('#msg',esc(x.message),'bad')}}})();
+</script>
+<script src="/helper.js" defer></script>
+</body>
+</html>

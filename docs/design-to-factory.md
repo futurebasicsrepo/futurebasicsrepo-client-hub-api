@@ -73,6 +73,10 @@ For a client's line, the window also shows:
 
 **Carries forward:** the picture, the words, the logo and graphics with where they go, and the price, cost and quantity.
 
+**Materials, tags and colourways** (in the concept window): what the piece is made of, from the materials library (`/lab/materials`): main fabric, contrast, rib, lining, trims, and the tags and labels in their shapes and sizes. The landed cost (materials + making + freight and duty) and the margin follow; colourways go side by side on the assortment board.
+
+**Carries forward:** the BOM lines (with unit costs), the labels and the colourways, into the tech pack.
+
 ## 3. Studio
 
 **Who:** the design team, from **Open in the studio** on a concept.
@@ -84,6 +88,8 @@ For a client's line, the window also shows:
 - have the image model redraw the whole piece or a painted area.
 
 **Use as the concept picture** makes the finished picture the concept's. **Restore** puts back the picture the concept had before.
+
+- choose **the fabric** from the materials library (AI tab): the concept is made of it, and the image model can redraw the piece in that cloth.
 
 **Carries forward:** the finished picture. It becomes the tech pack's first sketch.
 
@@ -302,6 +308,7 @@ Each guide offers the next one when it ends. The client's own guides for tech pa
 | J216 | The design service: a client's line, shared, with verdicts, replies, privacy, and the tech pack in the client's room. Includes the hub in a browser |
 | J217 | The whole loop over HTTP: concept → tech pack → publish → factory → sample sent → review → version 2 → the factory sees the corrections and the next sample |
 | J218 | The factory views and writes in Messages: no buttons (acknowledge, quote, countersign, sample sent all refused), the team records the shipped sample, the corrections go out as v2 while v1 is kept exactly, flats sent unchanged make no version, flats changed go out as v3. Includes the factory page in a browser |
+| J222 | Materials, trims and tags: the library and its tags drawn to size; picks on a concept with the cost breakdown and margin; colourways with Pantones on the board; the BOM, labels and colourways on the tech pack; the studio's fabric picker. Over HTTP and in a browser |
 | J221 | The job file: a library graphic made as plastisol (inks, films, underbase, halftone, mesh), as embroidery (threads, stitch, backing, stitch count), as a patch (cut line, edge) and as a transfer (mirrored); the zip and its contents; the summary and download in a browser from the library and from the tech pack's artwork card |
 | J220 | Graphics anywhere: a graphic built in the library's studio (AI drawing, a sketch-pack part as a layer), kept with its layers, reworked and updated; a part from the pack on a concept in the studio; a library graphic onto any product's tech pack as artwork placed on the front, over HTTP and in a browser |
 | J219 | Every press answers: working, then a tick and a note, or a red mark and a note saying what failed; an uncaught failure is reported too |
@@ -311,6 +318,7 @@ Each guide offers the next one when it ends. The client's own guides for tech pa
 **Unit tests:**
 - `test/lab-flats.test.js`: every sketch in the pack (its file, thumbnail and views), the new styles, the sketch's own proportions, the add-on parts, and the edits;
 - `test/lab-handoff.test.js`: what the flats give the pack;
+- `test/lab-materials.test.js`: the starting set, cleaning, the tag drawing, the costing, and what the pack takes;
 - `test/lab-jobfile.test.js`: the job file per technique (separations, underbase, films, settings, stitch count, cut line, the zip);
 - `test/sample-review.test.js`: reviews and the next version.
 
