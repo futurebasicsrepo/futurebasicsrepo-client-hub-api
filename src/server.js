@@ -209,8 +209,9 @@ async function validateClientDomains(values, clientId = null) {
 
 // whether a client user was taken off their room's team (held for 20 seconds; the team routes forget a user the moment they change them)
 const removedCache=new Map();
-async function userRemoved(id){if(!/^[0-9a-f-]{36}$/i.test(String(id||'')))return false;const c=removedCache.get(id);if(c&&Date.now()-c.at<20000)return c.removed;
-  const removed=Boolean((await pool.query('select removed_at from users where id=$1',[id])).rows[0]?.removed_at);removedCache.set(id,{removed,at:Date.now()});if(removedCache.size>5000)removedCache.clear();return removed}
+// a person's standing on their room: taken off the team, or moved to another room by Future Basics (both end the session they hold)
+async function userState(id){if(!/^[0-9a-f-]{36}$/i.test(String(id||'')))return{removed:false,clientId:null};const c=removedCache.get(id);if(c&&Date.now()-c.at<20000)return c;
+  const u=(await pool.query('select removed_at,client_id from users where id=$1',[id])).rows[0];const st={removed:Boolean(u?.removed_at),clientId:u?.client_id||null,at:Date.now()};removedCache.set(id,st);if(removedCache.size>5000)removedCache.clear();return st}
 const forgetUser=id=>removedCache.delete(id);
 async function authenticate(req, reply) {
   const token = req.headers.authorization?.replace(/^Bearer\s+/i, '');
@@ -222,7 +223,9 @@ async function authenticate(req, reply) {
   if(req.auth.unverified){const u=(await pool.query('select email_verified_at from users where id=$1',[req.auth.sub])).rows[0];if(!u||u.email_verified_at)return reply.code(401).send({error:'Invalid or expired session'})}
   if(req.auth.preview&&!['GET','HEAD','OPTIONS'].includes(req.method))return reply.code(403).send({error:'Client preview is read-only'});
   // a teammate the room took off its team: the session they still hold stops working at once
-  if(req.auth.role==='client'&&!req.auth.preview&&await userRemoved(req.auth.sub))return reply.code(401).send({error:'You are no longer on this room\'s team',code:'REMOVED'});
+  if(req.auth.role==='client'&&!req.auth.preview){const st=await userState(req.auth.sub);if(st.removed)return reply.code(401).send({error:'You are no longer on this room\'s team',code:'REMOVED'});
+    // moved to another room (the work console's "Move them here"): the old room's session ends, and signing in again opens the new one
+    if(st.clientId&&req.auth.clientId&&st.clientId!==req.auth.clientId)return reply.code(401).send({error:'Your room changed. Sign in again to open it.',code:'MOVED'})}
   // A staff session only counts when the request came through Cloudflare Access on the work console (see src/staff-gate.js).
   if(req.auth.role==='admin'&&staffGate){const gate=await staffGate.check(req);if(!gate.ok){if(staffGate.mode==='enforce')return reply.code(403).send({error:`Staff tools only open through ${workHubUrl.replace(/^https?:\/\//,'')} with your Cloudflare sign-in.`,code:'STAFF_GATE'});staffGate.report(req,gate.reason)}}
   // Danielle and Kyle decide who may open which module; every staff request is held to it (the shared client/staff routes too)
@@ -413,8 +416,9 @@ async function sendIntakeConfirmation(intake){
 }
 async function clientForEmail(email,q=pool){
   const domain=emailDomain(email);
-  return (await q.query(`select * from clients where status='active' and (($1<>'' and $1=any(email_domains)) or $2=any(allowed_emails))
-    order by ($2=any(allowed_emails)) desc limit 1`,[domain,email])).rows[0]||null;
+  // the room that lists the address wins over a room that only claims its domain; ties go to the room the person is already in, then the oldest
+  return (await q.query(`select c.* from clients c where c.status='active' and (($1<>'' and $1=any(c.email_domains)) or $2=any(array(select lower(x) from unnest(coalesce(c.allowed_emails,'{}')) x)))
+    order by ($2=any(array(select lower(x) from unnest(coalesce(c.allowed_emails,'{}')) x))) desc, exists(select 1 from users u where lower(u.email)=$2 and u.client_id=c.id and u.removed_at is null) desc, c.created_at limit 1`,[domain,email])).rows[0]||null;
 }
 
 async function storeAssetVersion(asset,userId,part,notes,role=null){
@@ -717,7 +721,7 @@ registerLabRangeRoutes(app, { pool, ...labDeps, getSetting, setSetting, editConc
 const labFlats = registerLabFlatsRoutes(app, { pool, ...labDeps, log: app.log, attachArtwork: (productId, items) => attachLabArtwork(productId, items), applyHandoff: (productId, h) => applyLabHandoff(productId, h), packChanges: async productId => { const t=(await pool.query('select data,published_data from tech_packs where product_id=$1 order by created_at desc limit 1',[productId])).rows[0]; return t?.published_data?packDiff(normalizeTechPack(t.published_data),normalizeTechPack(t.data)).filter(c=>!/ picture$/.test(c.label)&&!(c.section==='Artwork'&&/^(Spec sheet|Technical flat)/.test(c.label))):null; } /* the flats are drawn again each time they are sent: a new picture alone is no change, and a changed drawing always changes its measurements, construction lines or colours too */ });
 registerLabClientRoutes(app, { pool, authenticate, adminOnly, log: app.log, sheetSvg: id => labFlats.sheetSvg(id), notifyStaff, notifyClientContact, hubUrl: () => clientHubUrl, learn: learnLabTaste });
 registerRoomTeamRoutes(app, { pool, authenticate, clientHubUrl, sendHubEmail, hubEmailShell, emailEscape, replyTo: intakeNotificationEmail, forgetUser, log: app.log });
-registerLabSelfServeRoutes(app, { pool, authenticate, adminOnly, lab: labAccess, clientHubUrl, workHubUrl, notifyStaff, notifyClientContact, sendHubEmail, hubEmailShell, replyTo: intakeNotificationEmail, forgetUser, log: app.log });
+registerLabSelfServeRoutes(app, { pool, authenticate, adminOnly, lab: labAccess, clientHubUrl, workHubUrl, notifyStaff, notifyClientContact, sendHubEmail, hubEmailShell, replyTo: intakeNotificationEmail, forgetUser, clientForEmail, log: app.log });
 const money=registerMoneyRoutes(app, { pool, authenticate, adminOnly, getSetting, setSetting, tokenSeal: sealer(process.env), stateSecret: process.env.JWT_SECRET || 'dev', workUrl: workHubUrl, log: app.log,
   // product development is paid through a Shopify checkout (a draft order for the amount due), see money-routes.js
   shopifyInvoiceLink: async ({ title, amountCents, currency, email, note, number }) => {
