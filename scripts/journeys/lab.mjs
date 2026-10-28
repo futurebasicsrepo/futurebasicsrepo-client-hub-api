@@ -1339,14 +1339,14 @@ await journey('J225', 'Finding your way round the Lab: one navigation on every L
         const oc = await b.newContext({ viewport: { width: 1440, height: 950 } }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
         const page = await oc.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
         await page.goto(`${BASE}/lab`, { waitUntil: 'networkidle' }); await page.waitForSelector('#app:not(.hidden)'); await page.waitForSelector('nav.labnav .g a');
-        const groups = await page.$$eval('nav.labnav .g > span', els => els.map(e => e.textContent)); ok(groups.join(',') === 'Make,Libraries,Research' && (await page.locator('nav.labnav a').count()) === 12, '2. the Lab page shows the three groups: Make, Libraries, Research', groups);
+        const groups = await page.$$eval('nav.labnav .g > span', els => els.map(e => e.textContent)); ok(groups.join(',') === 'Make,Libraries,Research' && (await page.locator('nav.labnav a').count()) === 11, '2. the Lab page shows the three groups: Make, Libraries, Research', groups);
         const order = await page.$$eval('#app .sec', els => els.map(e => e.id).filter(Boolean)); ok(order.join(',').startsWith('plans,board,assort,libs,library,trends,brands,code'), '   and the work comes first on the page, the research after', order);
-        ok(/Line plan → Concepts → Studio → Flats → Tech pack → Factory → Samples/.test(await page.innerText('nav.labnav .flow')), '   with the flow written out');
+        ok(/Line plan → Concepts → Design → Tech pack → Factory → Samples/.test(await page.innerText('nav.labnav .flow')), '   with the flow written out');
         await page.click('nav.labnav a[href="/lab/studio"]'); await page.waitForSelector('#pickC:not(.hidden)', { timeout: 15000 }); await page.waitForSelector(`#pickList [data-pick="${c.id}"]`, { timeout: 15000 });
-        ok((await page.locator('nav.labnav a.on').count()) === 1 && (await page.innerText('nav.labnav a.on')) === 'Studio', '3. Studio from the nav: a concept picker, with Studio lit in the nav');
+        ok((await page.locator('nav.labnav a.on').count()) === 1 && (await page.innerText('nav.labnav a.on')) === 'Design', '3. Design from the nav (the picture and the flats in one place): a concept picker, with Design lit in the nav');
         await page.fill('#pickQ', c.name.split(' ')[0]); await page.click(`#pickList [data-pick="${c.id}"]`); await page.waitForSelector('#app:not(.hidden)', { timeout: 20000 }); await page.waitForSelector('#stage');
         ok(new URL(page.url()).searchParams.get('concept') === c.id && (await page.locator('[data-lab-menu]').count()) === 1, '   picking one opens it in the studio, which has the Lab menu in its bar');
-        await page.click('[data-lab-menu]'); await page.waitForSelector('.labmenu .pop:not([hidden])'); ok((await page.locator('.labmenu .pop a').count()) === 12 && (await page.locator('.labmenu .pop a.on').count()) === 1, '   the menu opens with the same twelve places, Studio marked');
+        await page.click('[data-lab-menu]'); await page.waitForSelector('.labmenu .pop:not([hidden])'); ok((await page.locator('.labmenu .pop a').count()) === 11 && (await page.locator('.labmenu .pop a.on').count()) === 1, '   the menu opens with the same eleven places, Design marked');
         await page.goto(`${BASE}/lab/sketches`, { waitUntil: 'networkidle' }); await page.waitForSelector('#app:not(.hidden)'); await page.waitForSelector('#gal [data-tpl]', { timeout: 15000 });
         const total = Number(await page.innerText('#count')); ok(total >= 380 && (await page.locator('#gal [data-tpl]').count()) >= 200, '4. the sketch pack page lists the pack', total);
         await page.fill('#q', 'cargo'); await page.waitForFunction(() => document.querySelectorAll('#gal [data-tpl]').length < 60 && document.querySelectorAll('#gal [data-tpl]').length > 0, null, { timeout: 8000 });
@@ -1355,11 +1355,12 @@ await journey('J225', 'Finding your way round the Lab: one navigation on every L
         const firstTpl = await page.getAttribute('#gal [data-tpl]', 'data-tpl'); await page.click('#gal [data-tpl]'); await page.waitForSelector('#big img'); ok(/cargo/i.test(await page.innerText('#pinfo')), '   a sketch opens large with its name and range', await page.innerText('#pinfo'));
         await page.click('.seg [data-sec="parts"]'); await page.waitForSelector('#parts img'); ok((await page.locator('#pkinds [data-pk]').count()) === 5 && (await page.locator('#parts img').count()) > 5, '   the parts shelf: pockets, zips, collars, trims, buttons');
         await page.click('.seg [data-sec="sketches"]'); await page.waitForSelector(`#pick [data-cid="${c.id}"]`, { timeout: 15000 }); await page.click(`#pick [data-cid="${c.id}"]`);
-        await page.waitForURL(/\/lab\/flats\?concept=/, { timeout: 20000 }); await page.waitForSelector('#app:not(.hidden)'); await page.waitForFunction(() => !/template=/.test(location.search), null, { timeout: 15000 });
-        ok(new URL(page.url()).searchParams.get('concept') === c.id, '5. Put it on a concept opens the flats on that concept');
+        await page.waitForURL(/\/lab\/studio\?concept=/, { timeout: 20000 }); await page.waitForSelector('#app[data-v="front"]', { timeout: 20000 }); await page.waitForFunction(() => !/template=/.test(location.search), null, { timeout: 15000 });
+        const ff = page.frameLocator('#flatFrame'); await ff.locator('#app:not(.hidden)').waitFor({ timeout: 20000 });
+        ok(new URL(page.url()).searchParams.get('concept') === c.id && /template=/.test(await page.getAttribute('#flatFrame', 'src')), '5. Put it on a concept opens that concept in Design on its flat front, with the sketch handed to the flats');
         const used = (await K(`/concepts/${c.id}/flats`)).json; ok(true, '   (the template is applied on the page; saved with the next Save)', used.flat?.template);
-        await page.goto(`${BASE}/lab/flats`, { waitUntil: 'networkidle' }); await page.waitForSelector('#pickC:not(.hidden)', { timeout: 15000 }); await page.waitForSelector(`#pickList [data-pick="${c.id}"]`, { timeout: 15000 });
-        ok((await page.innerText('nav.labnav a.on')) === 'Flats', '6. Flats from the nav: the concept picker too, with Flats lit');
+        await page.goto(`${BASE}/lab/flats`, { waitUntil: 'networkidle' }); await page.waitForURL(/\/lab\/studio/, { timeout: 15000 }); await page.waitForSelector('#pickC:not(.hidden)', { timeout: 15000 }); await page.waitForSelector(`#pickList [data-pick="${c.id}"]`, { timeout: 15000 });
+        ok((await page.innerText('nav.labnav a.on')) === 'Design', '6. the old flats address lands on the Design picker, with Design lit');
         ok(!errs.length, 'no page errors', errs);
       } finally { await b.close(); }
     }
@@ -1442,62 +1443,64 @@ await journey('J215', 'Design Lab flats in a browser: open them from a concept, 
     const page = await oc.newPage(); page.on('pageerror', e => errs.push(String(e)));
     await page.goto(`${BASE}/lab#board`, { waitUntil: 'networkidle' }); await page.waitForSelector(`#cgrid .cc[data-cid="${c.id}"]`, { timeout: 15000 });
     await page.click(`#cgrid .cc[data-cid="${c.id}"]`); await page.waitForSelector('#cd[open] [data-cflats]');
-    await Promise.all([page.waitForURL(/\/lab\/flats\?concept=/), page.click('#cd [data-cflats]')]);
-    await page.waitForSelector('#canvas svg [data-pl]', { timeout: 15000 });
-    const sketch = await page.locator('#canvas svg image[href^="/lab/flat-templates/"]').getAttribute('href').catch(() => null);
-    ok(sketch && (await fetch(BASE + sketch)).status === 200 && /not saved yet/i.test(await page.innerText('#saved')), 'the flats open on a professional flat sketch, worked out from the concept, waiting to be saved', sketch);
-    const logoCard = page.locator('#pPl .pl').first(); ok(/below the HPS/.test(await logoCard.innerText()), 'the logo says where it sits, in inches from the HPS', await logoCard.innerText());
+    await Promise.all([page.waitForURL(/\/lab\/studio\?concept=.*view=front/), page.click('#cd [data-cflats]')]);
+    const F = await (await page.waitForSelector('#flatFrame')).contentFrame();
+    ok(await page.getAttribute('#viewSeg [data-v=front]', 'aria-pressed') === 'true' && await page.isVisible('#flatHost') && !(await page.isVisible('#stage')), 'Flats opens the concept in Design on its flat front: one workspace, the picture one press away');
+    await F.waitForSelector('#canvas svg [data-pl]', { timeout: 15000 });
+    const sketch = await F.locator('#canvas svg image[href^="/lab/flat-templates/"]').getAttribute('href').catch(() => null);
+    ok(sketch && (await fetch(BASE + sketch)).status === 200 && /not saved yet/i.test(await page.innerText('#fsaved')), 'the flats open on a professional flat sketch, worked out from the concept, waiting to be saved', sketch);
+    const logoCard = F.locator('#pPl .pl').first(); ok(/below the HPS/.test(await logoCard.innerText()), 'the logo says where it sits, in inches from the HPS', await logoCard.innerText());
     // drag the logo up against the collar: the measurement follows and the check catches it
-    const g = page.locator('#canvas [data-pl]').first(), bb = await g.boundingBox();
+    const g = F.locator('#canvas [data-pl]').first(), bb = await g.boundingBox();
     await page.mouse.move(bb.x + bb.width / 2, bb.y + bb.height / 2); await page.mouse.down(); await page.mouse.move(bb.x + bb.width / 2 - 60, 120, { steps: 8 }); await page.mouse.up();
-    await page.waitForFunction(() => /problem/.test(document.getElementById('status').textContent), null, { timeout: 5000 }).catch(() => {});
-    ok(/problem/.test(await page.innerText('#status')) && /collar|neck|edge|piece/i.test(await page.innerText('#pPl')), 'dragged against the collar, it says it cannot be made and why', await page.innerText('#status'));
+    await F.waitForFunction(() => /problem/.test(document.getElementById('status').textContent), null, { timeout: 5000 }).catch(() => {});
+    ok(/problem/.test(await F.innerText('#status')) && /collar|neck|edge|piece/i.test(await F.innerText('#pPl')), 'dragged against the collar, it says it cannot be made and why', await F.innerText('#status'));
     // put it back by typing
-    await page.locator('#pPl .pl').first().locator('[data-k=top]').fill('6'); await page.locator('#pPl .pl').first().locator('[data-k=x]').fill('4');
-    await page.waitForFunction(() => !/problem/.test(document.getElementById('status').textContent), null, { timeout: 5000 }).catch(() => {});
-    ok(!/problem/.test(await page.innerText('#status')), 'typed back to 6 in below the HPS and 4 in off centre, it can be made', await page.innerText('#status'));
+    await F.locator('#pPl .pl').first().locator('[data-k=top]').fill('6'); await F.locator('#pPl .pl').first().locator('[data-k=x]').fill('4');
+    await F.waitForFunction(() => !/problem/.test(document.getElementById('status').textContent), null, { timeout: 5000 }).catch(() => {});
+    ok(!/problem/.test(await F.innerText('#status')), 'typed back to 6 in below the HPS and 4 in off centre, it can be made', await F.innerText('#status'));
     // a graphic from the library, on the back
-    await page.click('[data-view=back]'); await page.waitForSelector('#libTiles [data-lib]', { timeout: 10000 }).catch(() => {});
-    if (await page.locator('#libTiles [data-lib]').count()) { const n = await page.locator('#pPl .pl').count(); await page.click('#libTiles [data-lib]'); await page.waitForFunction(k => document.querySelectorAll('#pPl .pl').length === k + 1, n);
-      ok(/below the HPS on the back/.test(await page.locator('#pPl .pl.on').innerText()), 'a library graphic goes on the back, measured from the HPS', await page.locator('#pPl .pl.on').innerText()); }
+    await page.click('#viewSeg [data-v=back]'); await F.waitForSelector('#libTiles [data-lib]', { timeout: 10000 }).catch(() => {});
+    if (await F.locator('#libTiles [data-lib]').count()) { const n = await F.locator('#pPl .pl').count(); await F.click('#libTiles [data-lib]'); await F.waitForFunction(k => document.querySelectorAll('#pPl .pl').length === k + 1, n);
+      ok(/below the HPS on the back/.test(await F.locator('#pPl .pl.on').innerText()), 'a library graphic goes on the back, measured from the HPS', await F.locator('#pPl .pl.on').innerText()); }
     else ok(true, 'no library graphics to add here');
     // the garment: fit and a measurement
-    await page.click('.tabs [data-tab=garment]'); await page.selectOption('#gFit', 'oversized');
-    const chest = Number(await page.locator('[data-m=chest]').inputValue()); ok(chest >= 24, 'an oversized fit widens the chest', chest);
-    const tpl = await page.locator('#gGal [data-tpl][aria-pressed="true"]').getAttribute('data-tpl'); ok(/oversized|boxy/.test(tpl), 'and draws it from the oversized sketch', tpl);
-    ok(await page.locator('#gGal [data-tpl] img').count() >= 10, 'the sketch gallery shows this style\'s sketches as thumbnails', await page.locator('#gGal [data-tpl]').count());
-    await page.click('#gGal [data-tpl="none"]'); ok(await page.locator('#canvas svg path').count() > 5 && !(await page.locator('#canvas svg image[href^="/lab/flat-templates/"]').count()), 'the simple outline is still there to choose');
-    await page.waitForSelector('.fbn-toast'); ok(/simple outline/i.test(await page.innerText('.fbn-stack')), 'and picking it says so', await page.innerText('.fbn-stack'));
+    await F.click('.tabs [data-tab=garment]'); await F.selectOption('#gFit', 'oversized');
+    const chest = Number(await F.locator('[data-m=chest]').inputValue()); ok(chest >= 24, 'an oversized fit widens the chest', chest);
+    const tpl = await F.locator('#gGal [data-tpl][aria-pressed="true"]').getAttribute('data-tpl'); ok(/oversized|boxy/.test(tpl), 'and draws it from the oversized sketch', tpl);
+    ok(await F.locator('#gGal [data-tpl] img').count() >= 10, 'the sketch gallery shows this style\'s sketches as thumbnails', await F.locator('#gGal [data-tpl]').count());
+    await F.click('#gGal [data-tpl="none"]'); ok(await F.locator('#canvas svg path').count() > 5 && !(await F.locator('#canvas svg image[href^="/lab/flat-templates/"]').count()), 'the simple outline is still there to choose');
+    await F.waitForSelector('.fbn-toast'); ok(/simple outline/i.test(await F.innerText('.fbn-stack')), 'and picking it says so', await F.innerText('.fbn-stack'));
     // any sketch in the pack: search women's halter, and the piece becomes that style
-    await page.fill('#gQ', 'halter swimsuit'); await page.waitForFunction(() => document.querySelectorAll('#gGal [data-tpl]').length >= 1 && [...document.querySelectorAll('#gGal [data-tpl]')].every(b => /halter/i.test(b.textContent)));
-    const sw = await page.locator('#gGal [data-tpl]').first().getAttribute('data-tpl'); await page.click(`#gGal [data-tpl="${sw}"]`);
-    ok(await page.locator('#gStyle').inputValue() === 'swimsuit' && (await page.locator('#canvas svg image[href^="/lab/flat-templates/"]').getAttribute('href')).includes(sw), 'a sketch of another style, found by searching, changes the piece to it', sw);
-    await page.fill('#gQ', ''); await page.selectOption('#gStyle', 'tee'); await page.selectOption('#gFit', 'oversized');
-    await page.click(`#gGal [data-tpl="${tpl}"]`);
-    await page.locator('[data-m=length]').fill('31'); await page.click('.tabs [data-tab=pom]');
-    const pom = await page.innerText('#pPom'); ok(/Body length/.test(pom) && /\b31\b/.test(pom) && /XXL/.test(pom), 'the points of measure are graded across the sizes', pom.slice(0, 200));
+    await F.fill('#gQ', 'halter swimsuit'); await F.waitForFunction(() => document.querySelectorAll('#gGal [data-tpl]').length >= 1 && [...document.querySelectorAll('#gGal [data-tpl]')].every(b => /halter/i.test(b.textContent)));
+    const sw = await F.locator('#gGal [data-tpl]').first().getAttribute('data-tpl'); await F.click(`#gGal [data-tpl="${sw}"]`);
+    ok(await F.locator('#gStyle').inputValue() === 'swimsuit' && (await F.locator('#canvas svg image[href^="/lab/flat-templates/"]').getAttribute('href')).includes(sw), 'a sketch of another style, found by searching, changes the piece to it', sw);
+    await F.fill('#gQ', ''); await F.selectOption('#gStyle', 'tee'); await F.selectOption('#gFit', 'oversized');
+    await F.click(`#gGal [data-tpl="${tpl}"]`);
+    await F.locator('[data-m=length]').fill('31'); await F.click('.tabs [data-tab=pom]');
+    const pom = await F.innerText('#pPom'); ok(/Body length/.test(pom) && /\b31\b/.test(pom) && /XXL/.test(pom), 'the points of measure are graded across the sizes', pom.slice(0, 200));
     // design: a colour, a pocket in a double-needle topstitch, a stitch line drawn point by point, an area redrawn by the image model
-    await page.click('.tabs [data-tab=design]'); await page.click('[data-color="#1f2a44"]');
-    ok(await page.locator('#canvas svg filter').count() >= 1, 'a colour recolours the sketch');
-    await page.click('[data-adddet="pocket-patch"]'); ok(await page.locator('#canvas [data-ed]').count() === 1 && /Patch pocket/.test(await page.innerText('#pDesign')), 'a patch pocket is added where it usually goes, and listed');
-    await page.selectOption('.ed [data-ek=stitch]', 'double'); ok(/topstitch double needle/.test(await page.innerText('#pDesign')), 'its topstitch changes to double needle');
+    await F.click('.tabs [data-tab=design]'); await F.click('[data-color="#1f2a44"]');
+    ok(await F.locator('#canvas svg filter').count() >= 1, 'a colour recolours the sketch');
+    await F.click('[data-adddet="pocket-patch"]'); ok(await F.locator('#canvas [data-ed]').count() === 1 && /Patch pocket/.test(await F.innerText('#pDesign')), 'a patch pocket is added where it usually goes, and listed');
+    await F.selectOption('.ed [data-ek=stitch]', 'double'); ok(/topstitch double needle/.test(await F.innerText('#pDesign')), 'its topstitch changes to double needle');
     // a part from the pack's own add-on sheets: a zip puller, placed and named
-    await page.click('[data-pkind="zips"]'); const nEd = await page.locator('#canvas [data-ed]').count(); await page.click('[data-addpart]');
-    ok(await page.locator('#canvas [data-ed]').count() === nEd + 1 && await page.locator('#canvas svg image[href^="/lab/flat-parts/"]').count() === 1 && /add-on sheet/.test(await page.innerText('#pDesign')), 'a zip from the pack\'s add-on sheet goes on the flat and is written up');
-    await page.click('.ed.on [data-edel]'); ok(await page.locator('#canvas [data-ed]').count() === nEd, 'and comes off again');
-    const cb = await page.locator('#canvas > svg').boundingBox();
-    await page.click('[data-mode=stitch]'); await page.mouse.click(cb.x + cb.width * .35, cb.y + cb.height * .8); await page.mouse.click(cb.x + cb.width * .65, cb.y + cb.height * .8); await page.keyboard.press('Enter');
-    ok(/Double needle line/.test(await page.innerText('#pDesign')), 'a stitch line is drawn point by point');
-    await page.click('[data-mode=ai]'); await page.mouse.move(cb.x + cb.width * .4, cb.y + cb.height * .45); await page.mouse.down(); await page.mouse.move(cb.x + cb.width * .6, cb.y + cb.height * .62, { steps: 6 }); await page.mouse.up();
-    await page.click('[data-sugg="Remove the pocket"]'); await page.click('#aiGo');
-    await page.waitForFunction(() => /Redrawn area/.test(document.getElementById('pDesign').textContent), null, { timeout: 30000 });
-    ok(await page.locator('#canvas svg image[href^="blob:"]').count() >= 1, 'an area is redrawn by the image model and laid on the sketch');
+    await F.click('[data-pkind="zips"]'); const nEd = await F.locator('#canvas [data-ed]').count(); await F.click('[data-addpart]');
+    ok(await F.locator('#canvas [data-ed]').count() === nEd + 1 && await F.locator('#canvas svg image[href^="/lab/flat-parts/"]').count() === 1 && /add-on sheet/.test(await F.innerText('#pDesign')), 'a zip from the pack\'s add-on sheet goes on the flat and is written up');
+    await F.click('.ed.on [data-edel]'); ok(await F.locator('#canvas [data-ed]').count() === nEd, 'and comes off again');
+    const cb = await F.locator('#canvas > svg').boundingBox();
+    await F.click('[data-mode=stitch]'); await page.mouse.click(cb.x + cb.width * .35, cb.y + cb.height * .8); await page.mouse.click(cb.x + cb.width * .65, cb.y + cb.height * .8); await page.keyboard.press('Enter');
+    ok(/Double needle line/.test(await F.innerText('#pDesign')), 'a stitch line is drawn point by point');
+    await F.click('[data-mode=ai]'); await page.mouse.move(cb.x + cb.width * .4, cb.y + cb.height * .45); await page.mouse.down(); await page.mouse.move(cb.x + cb.width * .6, cb.y + cb.height * .62, { steps: 6 }); await page.mouse.up();
+    await F.click('[data-sugg="Remove the pocket"]'); await F.click('#aiGo');
+    await F.waitForFunction(() => /Redrawn area/.test(document.getElementById('pDesign').textContent), null, { timeout: 30000 });
+    ok(await F.locator('#canvas svg image[href^="blob:"]').count() >= 1, 'an area is redrawn by the image model and laid on the sketch');
     await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/lab-flats-design.png` }).catch(() => {});
-    await page.click('#save'); await page.waitForFunction(() => /^Saved/.test(document.getElementById('saved').textContent), null, { timeout: 15000 });
+    await page.click('#save'); await F.waitForFunction(() => /^Saved/.test(document.getElementById('saved').textContent), null, { timeout: 15000 });
     const row = sql(`select params->>'fit' || ':' || (params->'m'->>'length') from lab_flats where concept_id='${c.id}'`); ok(row === 'oversized:31', 'saved, as changed', row);
     const eds = sql(`select (params->>'color') || ':' || jsonb_array_length(params->'edits') from lab_flats where concept_id='${c.id}'`); ok(eds === '#1f2a44:3', 'with its colour and its three changes', eds);
-    const [popup] = await Promise.all([page.waitForEvent('popup'), page.click('#sheet')]); await popup.waitForLoadState(); ok(/Spec sheet/.test(await popup.title()), 'the spec sheet opens to print', await popup.title()); await popup.close();
-    await page.click('.tabs [data-tab=pl]'); await page.click('[data-view=front]'); await page.check('#showPom');
+    const [popup] = await Promise.all([page.waitForEvent('popup'), page.click('#specBtn')]); await popup.waitForLoadState(); ok(/Spec sheet/.test(await popup.title()), 'the spec sheet opens to print', await popup.title()); await popup.close();
+    await F.click('.tabs [data-tab=pl]'); await page.click('#viewSeg [data-v=front]'); await F.check('#showPom');
     await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/lab-flats.png` }).catch(() => {});
     ok(errs.length === 0, 'no page errors', errs); await oc.close();
   } finally { await cleanup(brands, plan.plan?.id); await b.close(); }
@@ -1878,7 +1881,7 @@ await journey('J230', 'Decoration to the factory: a graphic has a real size in i
       await page.click('#save'); await page.waitForFunction(() => !DIRTY, null, { timeout: 15000 });
       const d = (await K(`/concepts/${sc.id}/studio`)).json.doc; ok(d && d.ppiSet === true && d.ppi > 1, '   saved: the scale set with the ruler comes back next time', d && [d.ppi, d.ppiSet]);
       // flats and the plan page
-      await page.goto(`${BASE}/lab/flats?concept=${c.id}`, { waitUntil: 'networkidle' }); ok(await page.locator('#decoSheet').count() === 1, '11. the flats have a Decoration sheet button');
+      await page.goto(`${BASE}/lab/studio?concept=${c.id}&view=front`, { waitUntil: 'networkidle' }); await page.waitForSelector('#app[data-v=front]'); ok(await page.isVisible('#decoBtn') && await page.isVisible('#specBtn'), '11. the flats, in Design, have a Decoration sheet button');
       await page.goto(`${BASE}/lab#plans`, { waitUntil: 'networkidle' }); await page.evaluate(id => openPlan(id), plan.plan.id); await page.waitForFunction(id => [...document.querySelectorAll('#mkArt option')].some(o => o.value === id), art, { timeout: 15000 });
       await page.selectOption('#mkArt', art); await page.selectOption('#mkWhich', 'all'); await page.click('[data-mkgo]'); await page.waitForSelector('#mkOut [data-mk]', { timeout: 30000 });
       ok((await page.locator('#mkOut [data-mk]').count()) >= 2 && (await page.locator('#mkOut img').count()) >= 1, '12. the plan page: one graphic previewed on every piece, with a tick each');
@@ -1960,18 +1963,18 @@ await journey('J231', 'From the studio to the factory: a graphic placed and meas
       const oc = await b.newContext({ viewport: { width: 1500, height: 980 } }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
       const page = await oc.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
       // the flats page
-      await page.goto(`${BASE}/lab/flats?concept=${c2.id}`, { waitUntil: 'networkidle' }); await page.waitForSelector('#pPl [data-q]', { timeout: 20000 });
-      const sid = await page.evaluate(() => [...document.querySelectorAll('#pPl [data-q]')].find(c => /from the studio/.test(c.querySelector('.where').textContent))?.dataset.q); ok(Boolean(sid), '8. the flats page: the studio graphic is there, marked from the studio');
-      await page.click(`#pPl [data-q="${sid}"] .where`); await page.waitForSelector('#pPl [data-grade="2"]');
-      await page.click('#pPl [data-grade="2"]'); await page.waitForSelector('#pPl [data-gw]', { timeout: 15000 });
-      ok((await page.locator('#pPl [data-gw]').count()) === 2, '   Two sizes: a width per group of garment sizes, each one editable');
-      const wOf = () => page.evaluate(id => Number(document.querySelector(`#canvas [data-pl="${id}"] image`)?.getAttribute('width')), sid); const wm = await wOf();
-      await page.selectOption('#size', 'XXL'); await page.dispatchEvent('#size', 'change'); const wx = await wOf(); ok(wx > wm, `   the size picker draws the XXL artwork bigger (${wm} → ${wx} in)`);
-      await page.waitForSelector('#repTiles [data-rep]', { timeout: 15000 }); await page.click(`#repTiles [data-rep="${kept.json.id}"]`); await page.waitForSelector('#canvas pattern image', { state: 'attached', timeout: 15000 });
-      ok(/halfdrop repeat/.test(await page.innerText('#pPl')), '   the all-over repeat chosen from the library covers the piece');
-      await page.click('#save'); await page.waitForSelector('#pPl [data-dc]', { timeout: 20000 });
-      ok((await page.locator('#pPl [data-dc]').count()) >= 2 && /a piece/.test(await page.innerText('#pPl [data-dc]')), '   saved: what each decoration costs, the all-over print among them');
-      const card = page.locator('#pPl [data-dc]').first(); await card.locator('summary').click(); await card.locator('[data-qk=unit]').fill('2.50'); await card.locator('[data-qsave]').click(); await page.waitForFunction(() => /Kept:/.test(document.querySelector('#pPl [data-qmsg]').textContent), null, { timeout: 15000 });
+      await page.goto(`${BASE}/lab/studio?concept=${c2.id}&view=front`, { waitUntil: 'networkidle' }); const F = await (await page.waitForSelector('#flatFrame')).contentFrame(); await F.waitForSelector('#pPl [data-q]', { timeout: 20000 });
+      const sid = await F.evaluate(() => [...document.querySelectorAll('#pPl [data-q]')].find(c => /from the studio/.test(c.querySelector('.where').textContent))?.dataset.q); ok(Boolean(sid), '8. the flats page: the studio graphic is there, marked from the studio');
+      await F.click(`#pPl [data-q="${sid}"] .where`); await F.waitForSelector('#pPl [data-grade="2"]');
+      await F.click('#pPl [data-grade="2"]'); await F.waitForSelector('#pPl [data-gw]', { timeout: 15000 });
+      ok((await F.locator('#pPl [data-gw]').count()) === 2, '   Two sizes: a width per group of garment sizes, each one editable');
+      const wOf = () => F.evaluate(id => Number(document.querySelector(`#canvas [data-pl="${id}"] image`)?.getAttribute('width')), sid); const wm = await wOf();
+      await F.selectOption('#size', 'XXL'); await F.dispatchEvent('#size', 'change'); const wx = await wOf(); ok(wx > wm, `   the size picker draws the XXL artwork bigger (${wm} → ${wx} in)`);
+      await F.waitForSelector('#repTiles [data-rep]', { timeout: 15000 }); await F.click(`#repTiles [data-rep="${kept.json.id}"]`); await F.waitForSelector('#canvas pattern image', { state: 'attached', timeout: 15000 });
+      ok(/halfdrop repeat/.test(await F.innerText('#pPl')), '   the all-over repeat chosen from the library covers the piece');
+      await page.click('#save'); await F.waitForSelector('#pPl [data-dc]', { timeout: 20000 });
+      ok((await F.locator('#pPl [data-dc]').count()) >= 2 && /a piece/.test(await F.innerText('#pPl [data-dc]')), '   saved: what each decoration costs, the all-over print among them');
+      const card = F.locator('#pPl [data-dc]').first(); await card.locator('summary').click(); await card.locator('[data-qk=unit]').fill('2.50'); await card.locator('[data-qsave]').click(); await F.waitForFunction(() => /Kept:/.test(document.querySelector('#pPl [data-qmsg]').textContent), null, { timeout: 15000 });
       ok(true, '   and a factory\'s quote is recorded from the page'); await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/lab-flats-factory.png` }).catch(() => {});
       // the library page
       await page.goto(`${BASE}/lab/library`, { waitUntil: 'networkidle' }); await page.waitForFunction(() => typeof openGraphic === 'function' && G.graphics.length > 0, null, { timeout: 15000 });
@@ -2175,6 +2178,54 @@ await journey('J233', 'A room\'s team and its libraries: the room adds a teammat
   } finally {
     for (const r of [one, two]) await A(`/v1/admin/clients/${r.cid}/lab`, { method: 'PATCH', body: { action: 'end' } }).catch(() => {});
   }
+});
+
+await journey('J234', 'One Design workspace: a concept opens on its picture, and the same page shows its flat front, flat back, or both side by side; a graphic placed on the picture is on the flats when they are shown, one Save keeps both, and the old flats address lands here', async () => {
+  const { brands, plan } = await conceptSetup();
+  try {
+    const line = plan.lines.find(l => l.category === 'tops') || plan.lines[0], c = (await K(`/plans/${plan.plan.id}/lines/${line.id}/concepts`, { body: { count: 1 } })).json.concepts[0];
+    if (!playwright) { ok(true, 'needs a browser'); return; }
+    const b = await playwright.chromium.launch();
+    try {
+      const oc = await b.newContext({ viewport: { width: 1440, height: 950 } }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
+      const page = await oc.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
+      await page.goto(`${BASE}/lab/studio?concept=${c.id}`, { waitUntil: 'networkidle' }); await page.waitForSelector('#pLayers .ly', { timeout: 20000 }); await page.waitForFunction(() => !document.querySelector('#busy:not(.hidden)'));
+      ok((await page.locator('#viewSeg [data-v]').count()) === 4 && await page.getAttribute('#viewSeg [data-v=picture]', 'aria-pressed') === 'true' && await page.isVisible('#stage') && !(await page.isVisible('#specBtn')) && !(await page.getAttribute('#flatFrame', 'src')),
+        '1. a concept opens on its picture: the switch reads Picture, Flat front, Flat back, Side by side, and the flats wait until they are asked for');
+      // a wordmark placed on the picture, not saved
+      await page.click('.tabs [data-tab=add]'); await page.click('#pAdd [data-mark=word]'); await page.waitForFunction(() => LAYERS.length >= 2); await page.click('.tabs [data-tab=layers]'); await page.waitForSelector('#sizeRead');
+      await page.fill('#pLayers [data-win]', '3.5'); await page.dispatchEvent('#pLayers [data-win]', 'change'); await page.selectOption('#pLayers [data-placement]', 'left chest');
+      ok(await page.evaluate(() => DIRTY), '   a wordmark set to 3.5 in for the left chest, not saved yet');
+      await page.click('#viewSeg [data-v=front]'); await page.waitForSelector('#app[data-v=front]');
+      const F = await (await page.waitForSelector('#flatFrame')).contentFrame(); await F.waitForSelector('#pPl [data-q]', { timeout: 20000 });
+      ok(!(await page.isVisible('#stage')) && await page.isVisible('#specBtn') && await page.isVisible('#decoBtn') && !(await page.isVisible('#apply')) && /view=front/.test(page.url()), '2. Flat front: the flats fill the workspace, and the header swaps the picture\'s buttons for the sheets', page.url());
+      ok(await F.evaluate(() => [...document.querySelectorAll('#pPl [data-q] .where')].some(w => /from the studio/.test(w.textContent))), '   the wordmark from the picture is already on the flats, without a save');
+      ok(!(await F.isVisible('header')) && !(await F.isVisible('.bar')), '   the flats carry no second header or bar');
+      await page.click('#viewSeg [data-v=back]'); await F.waitForFunction(() => document.querySelector('[data-view=back]')?.getAttribute('aria-pressed') === 'true', null, { timeout: 5000 });
+      ok(/view=back/.test(page.url()), '3. Flat back turns the flats round');
+      await page.click('#viewSeg [data-v=split]'); await page.waitForSelector('#app[data-v=split]'); await page.waitForTimeout(300);
+      const sb = await page.locator('#stage').boundingBox(), hb = await page.locator('#flatHost').boundingBox();
+      ok(sb && hb && sb.width > 300 && hb.width > 300 && hb.x > sb.x && Math.abs(hb.y - sb.y) < 80 && await page.isVisible('#pLayers') && await page.isVisible('#apply'), '4. Side by side: the picture and the flat next to each other, with the layers panel', [sb, hb]);
+      ok(await F.evaluate(() => document.documentElement.dataset.embed === 'compact' && getComputedStyle(document.querySelector('.side')).display === 'none'), '   beside the picture the flat shows the drawing alone');
+      await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/lab-design-split.png` }).catch(() => {});
+      // a change on the flats, and one Save keeps both
+      await page.click('#viewSeg [data-v=front]'); await F.click('.tabs [data-tab=design]'); await F.click('[data-color="#1f2a44"]');
+      await page.waitForFunction(() => /Not saved/i.test(document.getElementById('fsaved').textContent), null, { timeout: 5000 });
+      ok(true, '5. a colour on the flats shows as not saved in the workspace header');
+      await page.click('#save'); await F.waitForFunction(() => /^Saved/.test(document.getElementById('saved').textContent), null, { timeout: 20000 }); await page.waitForFunction(() => !DIRTY, null, { timeout: 30000 });
+      const col = sql(`select params->>'color' from lab_flats where concept_id='${c.id}'`), fp = (await K(`/concepts/${c.id}/flats`)).json.flat.placements.find(q => q.source === 'studio'), doc = (await K(`/concepts/${c.id}/studio`)).json.doc;
+      ok(col === '#1f2a44' && fp && Math.abs(fp.w - 3.5) < .2 && doc?.layers?.length >= 2, '   one Save keeps the flats (their colour, the wordmark at 3.5 in) and the picture\'s layers', [col, fp?.w, doc?.layers?.length]);
+      await page.click('#viewSeg [data-v=picture]'); ok(await page.isVisible('#stage') && !(await page.isVisible('#flatHost')) && !/view=/.test(page.url()), '6. Picture brings the layers back');
+      await page.goto(`${BASE}/lab/flats?concept=${c.id}`); await page.waitForURL(/\/lab\/studio\?concept=.*view=front/, { timeout: 15000 }); await page.waitForSelector('#app[data-v=front]', { timeout: 20000 });
+      ok(true, '7. the old flats address opens the same workspace on the flat front');
+      ok(errs.length === 0, 'no page errors', errs); await oc.close();
+      const pc = await b.newContext({ viewport: { width: 390, height: 844 } }); await pc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
+      const ph = await pc.newPage(); await ph.goto(`${BASE}/lab/studio?concept=${c.id}&view=front`, { waitUntil: 'networkidle' }); await ph.waitForSelector('#app[data-v=front]', { timeout: 20000 });
+      const over = await ph.evaluate(() => document.documentElement.scrollWidth - innerWidth), fh = (await ph.locator('#flatHost').boundingBox())?.height || 0;
+      ok(over <= 1 && !(await ph.isVisible('#viewSeg [data-v=split]')) && fh > 400, '8. on a phone: no sideways scroll, side by side is left out, the flats fill the screen', [over, fh]);
+      await pc.close();
+    } finally { await b.close(); }
+  } finally { await cleanup(brands, plan.plan?.id); }
 });
 
 shops.close(); brave.close();

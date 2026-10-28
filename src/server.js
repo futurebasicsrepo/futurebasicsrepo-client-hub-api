@@ -758,7 +758,8 @@ app.get('/lab/sketches', (_req, reply) => reply.header('cache-control', 'no-stor
 app.get('/lab/nav.js', (_req, reply) => reply.header('cache-control', 'public, max-age=300').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-nav.js', import.meta.url), 'utf8')));
 app.get('/lab/materials', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').type('text/html').send(readFileSync(new URL('./lab-materials.html', import.meta.url), 'utf8')));
 app.get('/lab/lab-tags.js', (_req, reply) => reply.header('cache-control', 'public, max-age=300').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-tags.js', import.meta.url), 'utf8')));
-app.get('/lab/flats', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').type('text/html').send(readFileSync(new URL('./lab-flats.html', import.meta.url), 'utf8')));
+// the flats page runs inside the Design workspace (/lab/studio) in a frame: it may be framed by this site's own pages and nobody else's
+app.get('/lab/flats', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').header('content-security-policy', "upgrade-insecure-requests; default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob: https:; connect-src 'self' https://thefuturebasics.com; frame-ancestors 'self'; base-uri 'self'; form-action 'self'").type('text/html').send(readFileSync(new URL('./lab-flats.html', import.meta.url), 'utf8')));
 app.get('/lab/flats.js', (_req, reply) => reply.header('cache-control', 'public, max-age=300').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-flats.js', import.meta.url), 'utf8')));
 // the flat-sketch pack is large (nearly 400 sketches, their measurements and the add-on parts), so the text files go gzipped to any browser that takes it
 const packGz = new Map(), sendPack = (req, reply, rel, type, maxAge) => {

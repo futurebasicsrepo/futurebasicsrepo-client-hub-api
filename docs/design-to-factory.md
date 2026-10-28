@@ -14,12 +14,12 @@ Pip, the helper mouse, walks each stage on screen. Turn on **Guide** at the bott
 
 ```
  Design Lab (/lab)                                        Tech pack (/tech-packs/:id)          Factory link (/tp/:token)
- ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌────────┐  send   ┌──────────────┐  publish  ┌──────────────────┐
- │Line plan │ → │ Concepts │ → │  Studio  │ → │ Flats  │ ──────→ │  Tech pack   │ ────────→ │ reads vN in its  │
- │ pieces,  │   │ drawn,   │   │ finish by│   │ 382    │         │ measurements,│    v1     │ language, writes │
- │ prices,  │   │ checked, │   │ hand and │   │sketches│         │ sketches,    │           │ to us in Messages│
- │ margins  │   │ approved │   │ AI       │   │ + parts│         │ BOM, colour  │           └────────┬─────────┘
- └──────────┘   └────▲─────┘   └──────────┘   └───┬────┘         └──────▲───────┘                    │ "the proto shipped"
+ ┌──────────┐   ┌──────────┐   ┌───────────────────────┐  send   ┌──────────────┐  publish  ┌──────────────────┐
+ │Line plan │ → │ Concepts │ → │ Design: the picture   │ ──────→ │  Tech pack   │ ────────→ │ reads vN in its  │
+ │ pieces,  │   │ drawn,   │   │ and its flats, front  │         │ measurements,│    v1     │ language, writes │
+ │ prices,  │   │ checked, │   │ and back: by hand, AI │         │ sketches,    │           │ to us in Messages│
+ │ margins  │   │ approved │   │ 382 sketches + parts  │         │ BOM, colour  │           └────────┬─────────┘
+ └──────────┘   └────▲─────┘   └──────────────────┬────┘         └──────▲───────┘                    │ "the proto shipped"
                      │ the client approves        │ sent again           │ v2, v3… (each kept)       ▼ we record it sent
                      │ in their hub               └─────────────────────►│                  ┌──────────────────┐
                                                                          └──────────────────│  Sample review   │
@@ -79,7 +79,7 @@ For a client's line, the window also shows:
 
 ## 3. Studio
 
-**Who:** the design team, from **Open in the studio** on a concept.
+**Who:** the design team, from **Open in Design** on a concept: the **Picture** view of the Design workspace (`/lab/studio?concept=…`), which also shows the flats (step 4).
 
 **What it does:** the concept's picture opens as layers. You can:
 - paint, type, and add marks and library graphics;
@@ -101,7 +101,7 @@ For a client's line, the window also shows:
 
 ## 4. Flats and placement
 
-**Who:** the design team, from **Flats and placement** on a concept (`/lab/flats?concept=`).
+**Who:** the design team, from **Flats** on a concept, or the **Flat front** and **Flat back** views of Design (`/lab/studio?concept=…&view=front`). The flats and the picture are one workspace: **Side by side** shows both, and one Save keeps both.
 
 **What it shows:** the piece drawn from a professional flat sketch, front and back, scaled to its measurements. Every drawing in the flat-sketch pack is there: 382 sketches, men's and women's.
 
@@ -320,8 +320,8 @@ Every page loads `/feedback.js`.
 | --- | --- | --- |
 | Plan a line and make concepts | `/lab` | the Lab's sections, a new plan, who it is for, making concepts, the board |
 | Take a concept to a tech pack | `/lab`, a concept open | the check, the studio, the flats, approve, send to tech pack |
-| Finish a concept in the studio | `/lab/studio` | layers, AI changes, use as the concept picture |
-| Draw and change the flats | `/lab/flats` | the drawing, Garment, Design (details, AI redraw), save, send on |
+| Finish a concept in Design | `/lab/studio`, the picture | the view switch, layers, AI changes, use as the concept picture |
+| Draw and change the flats | `/lab/studio`, a flat view | front, back or side by side, the flats and their panel, one Save, the sheets and the tech pack |
 | Publish, send to a factory, review samples | a tech pack, work console | where it came from, publish, assign a factory, samples, review a sample |
 | Review your line | the client's hub | the line, flats, approve, ask for changes |
 
@@ -335,6 +335,7 @@ Each guide offers the next one when it ends. The client's own guides for tech pa
 | J216 | The design service: a client's line, shared, with verdicts, replies, privacy, and the tech pack in the client's room. Includes the hub in a browser |
 | J217 | The whole loop over HTTP: concept → tech pack → publish → factory → sample sent → review → version 2 → the factory sees the corrections and the next sample |
 | J218 | The factory views and writes in Messages: no buttons (acknowledge, quote, countersign, sample sent all refused), the team records the shipped sample, the corrections go out as v2 while v1 is kept exactly, flats sent unchanged make no version, flats changed go out as v3. Includes the factory page in a browser |
+| J234 | One Design workspace: a concept opens on its picture; Flat front, Flat back and Side by side on the same page; a graphic placed on the picture is on the flats when they are shown; one Save keeps the flats and the picture; the old flats address lands here; a phone fits |
 | J233 | A room's team and its libraries: a teammate added from the hub signs in with a code and works on the same plans, graphics, materials and techniques; a room sees only its own work plus the read-only starter materials and techniques, never Future Basics' or another room's; staff see everything, each room's marked; a starter technique copied and changed; a teammate taken off loses their session and sign-in at once, and can be added again; the hub's Team section and the room-only library in a browser |
 | J232 | The self-serve Design Lab: a client room locked out until the Lab is opened on it; their plans, concepts and graphics theirs alone while staff see everything; generations metered, invoiced, capped and unblocked when paid; tech packs covered; the make request on Production attention and answered; the factory quotation link; the hub card, the Lab and the Make it tab in a browser |
 | J231 | From the studio to the factory: a studio layer on the flats at its size (resized, removed, on new flats), artwork by garment size, inks per colourway, an all-over repeat made in the library and priced on the flats, the decoration sheet and tech pack carrying them, factory quotes moving the costs, vector and .dst files; the flats, library and studio pages in a browser |
