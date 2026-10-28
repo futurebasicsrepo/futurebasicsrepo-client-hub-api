@@ -1682,6 +1682,62 @@ export async function migrate() {
     );
     create index if not exists intel_signals_status_idx on intel_signals (status, score desc nulls last, found_at desc);
     create index if not exists intel_signals_unscored_idx on intel_signals (found_at desc) where scored_at is null;
+    -- Opportunities for a client's room (see src/intel-room.js): the same listening as sales intelligence, on the room's own searches, read
+    -- for the room's own services. Kept apart from Future Basics' feed: a room sees only its own, and staff intelligence never sees these.
+    create table if not exists intel_rooms (
+      client_id uuid primary key references clients(id) on delete cascade,
+      enabled boolean not null default false,
+      services text not null default '',
+      updated_by uuid references users(id) on delete set null,
+      updated_at timestamptz not null default now()
+    );
+    create table if not exists intel_room_watches (
+      id uuid primary key default gen_random_uuid(),
+      client_id uuid not null references clients(id) on delete cascade,
+      name text not null,
+      kind text not null check (kind in ('reddit','hn','news','web','x','discord')),
+      query text not null default '',
+      enabled boolean not null default true,
+      cursor text not null default '',
+      last_run_at timestamptz,
+      last_status text not null default '',
+      last_error text not null default '',
+      last_found integer not null default 0,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
+    create index if not exists intel_room_watches_client_idx on intel_room_watches (client_id);
+    create table if not exists intel_room_signals (
+      id uuid primary key default gen_random_uuid(),
+      client_id uuid not null references clients(id) on delete cascade,
+      watch_id uuid references intel_room_watches(id) on delete set null,
+      source text not null,
+      external_id text not null,
+      url text not null default '',
+      author text not null default '',
+      title text not null default '',
+      body text not null default '',
+      posted_at timestamptz,
+      found_at timestamptz not null default now(),
+      status text not null default 'new' check (status in ('new','saved','contacted','won','dismissed')),
+      acted_by uuid references users(id) on delete set null,
+      acted_at timestamptz,
+      scored_at timestamptz,
+      relevant boolean,
+      intent text,
+      fit integer,
+      urgency integer,
+      score integer,
+      summary text not null default '',
+      why_now text not null default '',
+      angle text not null default '',
+      draft text not null default '',
+      draft_channel text not null default '',
+      risks text not null default '',
+      model text not null default '',
+      unique (client_id, source, external_id)
+    );
+    create index if not exists intel_room_signals_list_idx on intel_room_signals (client_id, status, score desc nulls last, found_at desc);
     create table if not exists intel_events (
       id uuid primary key default gen_random_uuid(),
       signal_id uuid not null references intel_signals(id) on delete cascade,

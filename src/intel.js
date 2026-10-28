@@ -43,7 +43,7 @@ const LINE_WORDS = {
   apps: /\b(app|apps|web ?app|website|saas|dashboard|portal|mvp|integration|api|custom software|software|developer|developers|dev shop|no-?code|low-?code|shopify|storefront|platform|internal tool|crm|erp)\b/i,
   product: /\b(manufactur\w+|factory|factories|tech ?pack|samples?|prototype|prototyping|product design|sourcing|supplier|suppliers|apparel|footwear|garment|packaging|private label|cad|cmf|industrial design|hardware product|dtc)\b/i
 };
-const ASK_WORDS = /\b(need|needs|needed|looking for|looking to|want to|wanting|hire|hiring|recommend\w*|anyone know|anybody know|suggest\w*|who can|who do you|help|how (do|can|should|would) (i|we)|struggl\w+|frustrat\w+|alternatives?|quote|budget|rfp|agency|agencies|consultant|consultants|freelanc\w+|contractor|co-?founder|outsourc\w+|build(ing)? (a|an|our|my)|ideas? for)\b/i;
+export const ASK_WORDS = /\b(need|needs|needed|looking for|looking to|want to|wanting|hire|hiring|recommend\w*|anyone know|anybody know|suggest\w*|who can|who do you|help|how (do|can|should|would) (i|we)|struggl\w+|frustrat\w+|alternatives?|quote|budget|rfp|agency|agencies|consultant|consultants|freelanc\w+|contractor|co-?founder|outsourc\w+|build(ing)? (a|an|our|my)|ideas? for)\b/i;
 export function prefilter(text) {
   const t = String(text || ''), lines = LINE_KEYS.filter(k => LINE_WORDS[k].test(t));
   return { pass: lines.length > 0 && ASK_WORDS.test(t), lines };
