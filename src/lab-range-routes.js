@@ -4,8 +4,13 @@
 //             POST /v1/lab/plans/:id/range/apply {instruction, changes: [{id, fields}]}                 → applies the ticked changes, one by one
 //   Lookbook  GET /v1/lab/plans/:id/lookbook.pdf?which=
 //   Polls     GET /v1/lab/plans/:id/polls   POST /v1/lab/plans/:id/polls {title?, intro?, which?, days?}   POST /v1/lab/polls/:pid/close   GET /v1/lab/polls/:pid/results
+//   Mockup    POST /v1/lab/plans/:id/mockup {art, placement, which?}   one library graphic on every piece of the range, as pictures (nothing kept)
+//             POST /v1/lab/plans/:id/mockup/apply {art, placement, techniqueId?, ids}   put it on the ticked pieces: on their words and on their pictures
 //   Public    GET /v1/lab/poll/:token   GET …/pieces/:id/image   POST …/votes {name?, email?, votes: [{id, vote, price?, note?}]}   (the page: src/lab-poll.html)
 import { randomBytes } from 'node:crypto';
+import sharp from 'sharp';
+import { locateMarks } from './lab-place.js';
+import { GRAPHIC_PLACE } from './lab-concepts.js';
 import { ask as realAsk, providerReady } from './intel-llm.js';
 import { createLabData } from './lab-data.js';
 import { hashToken } from './lab-share-routes.js';
@@ -19,7 +24,7 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': 
 const WHICH = { in_play: `c.status <> 'rejected'`, approved: `c.status in ('approved','tech_pack')`, all: 'true' };
 
 export function registerLabRangeRoutes(app, d) {
-  const { pool, authenticate, adminOnly, getSetting, setSetting, editConcept, env = process.env, fetchImpl = fetch, askImpl = realAsk, notifyStaff = async () => false, log = console } = d;
+  const { pool, authenticate, adminOnly, getSetting, setSetting, editConcept, env = process.env, fetchImpl = fetch, askImpl = realAsk, notifyStaff = async () => false, locate = locateMarks, log = console } = d;
   const pre = [authenticate, adminOnly], bad = (reply, error, code = 422, extra = {}) => reply.code(code).send({ error, ...extra });
   const need = (req, reply, k = 'id') => UUID.test(String(req.params[k])) || (bad(reply, 'Not found', 404), false);
   const actorOf = req => (UUID.test(String(req.auth?.sub || '')) ? req.auth.sub : null);
@@ -73,6 +78,60 @@ export function registerLabRangeRoutes(app, d) {
       if (out.error) failed.push({ id: ch.id, error: out.error }); else applied.push({ id: ch.id, name: out.concept.name, status: out.concept.status, fields: Object.keys(ch.fields), closeness: out.concept.closeness?.verdict || null });
     }
     return { applied, failed, backToDraft: applied.filter(a => a.status === 'draft' && rows.find(r => r.id === a.id)?.status === 'approved').length };
+  });
+
+  // ---- one graphic across the whole range ----
+  // where a graphic goes, by the kind of piece: "auto" is the usual spot for each; a spot that does not exist on a piece (a thigh on a tee) skips it
+  const SPOTS = { 'left chest': ['tops', 'knitwear', 'outerwear', 'tailoring', 'dresses'], 'front chest': ['tops', 'knitwear', 'outerwear', 'tailoring', 'dresses'], 'full front': ['tops', 'knitwear', 'outerwear', 'dresses'], thigh: ['bottoms'], 'cap front': ['headwear'], 'bag front': ['bags'] };
+  const AUTO = { tops: 'left chest', knitwear: 'left chest', outerwear: 'left chest', tailoring: 'left chest', dresses: 'front chest', bottoms: 'thigh', headwear: 'cap front', bags: 'bag front' };
+  const spotFor = (placement, category) => placement === 'auto' ? AUTO[category] || null : (SPOTS[placement] || []).includes(category) ? placement : null;
+  const artPng = async id => (UUID.test(String(id || '')) ? (await pool.query('select name, png from lab_art where id=$1', [id])).rows[0] : null);
+  // the graphic laid on a piece's picture: where the vision model says (with a key), else the usual fractions for the spot
+  async function layOn(buf, png, spot, category) {
+    const meta = await sharp(buf).metadata(), W = meta.width, H = meta.height, fb = GRAPHIC_PLACE[spot] || { x: .5, y: .45, w: .25 };
+    let f = null; if (env.ANTHROPIC_API_KEY && !env.AI_FIXTURE) { try { const r = await locate({ image: await sharp(buf).jpeg().toBuffer(), category, marks: [{ id: 'g', where: `a graphic: ${spot}`, w: fb.w }], env }); f = r?.get?.('g') || null; } catch { f = null; } }
+    const at = f || fb, w = Math.max(8, Math.round((f ? f.w : fb.w) * W)); let art = await sharp(png).resize({ width: w }).png().toBuffer();
+    if (f && Math.abs(f.angle) > .5) art = await sharp(art).rotate(f.angle, { background: { r: 0, g: 0, b: 0, alpha: 0 } }).png().toBuffer();
+    const m = await sharp(art).metadata();
+    return sharp(buf).composite([{ input: art, left: Math.max(0, Math.min(W - m.width, Math.round(at.x * W - m.width / 2))), top: Math.max(0, Math.min(H - m.height, Math.round(at.y * H - m.height / 2))) }]).jpeg({ quality: 88 }).toBuffer();
+  }
+  const mockPieces = async (planId, which) => (await pool.query(`select c.id, c.name, c.category, c.status, c.spec, c.image from lab_concepts c where c.plan_id=$1 and ${WHICH[which] || WHICH.in_play} order by c.category, c.role, c.created_at limit 24`, [planId])).rows;
+  app.post('/v1/lab/plans/:id/mockup', { preHandler: pre }, async (req, reply) => {
+    if (!need(req, reply)) return; const p = await plan(req.params.id); if (!p) return bad(reply, 'Not found', 404);
+    const b = req.body || {}, a = await artPng(b.art); if (!a) return bad(reply, 'Choose a graphic from the library');
+    const placement = b.placement === 'auto' || SPOTS[b.placement] ? b.placement : 'auto', rows = await mockPieces(p.id, whichOf(b.which)); if (!rows.length) return bad(reply, 'There is no concept in this range yet', 409);
+    const items = [];
+    for (const r of rows) {
+      const spot = spotFor(placement, r.category), base = { id: r.id, name: r.name, category: r.category, status: r.status };
+      if (r.status === 'tech_pack') { items.push({ ...base, skipped: 'Already a tech pack: change it there' }); continue; }
+      if (!spot) { items.push({ ...base, skipped: `No ${placement} on this kind of piece` }); continue; }
+      if (!r.image) { items.push({ ...base, spot, skipped: 'No picture yet' }); continue; }
+      const out = await layOn(r.image, a.png, spot, r.category), small = await sharp(out).resize({ width: 420, height: 420, fit: 'inside' }).jpeg({ quality: 80 }).toBuffer();
+      items.push({ ...base, spot, image: `data:image/jpeg;base64,${small.toString('base64')}` });
+    }
+    return { art: { id: b.art, name: a.name }, placement, items };
+  });
+  app.post('/v1/lab/plans/:id/mockup/apply', { preHandler: pre }, async (req, reply) => {
+    if (!need(req, reply)) return; const p = await plan(req.params.id); if (!p) return bad(reply, 'Not found', 404);
+    const b = req.body || {}, a = await artPng(b.art); if (!a) return bad(reply, 'Choose a graphic from the library');
+    const placement = b.placement === 'auto' || SPOTS[b.placement] ? b.placement : 'auto', ids = new Set((Array.isArray(b.ids) ? b.ids : []).filter(x => UUID.test(String(x))));
+    if (!ids.size) return bad(reply, 'Tick at least one piece');
+    const tech = UUID.test(String(b.techniqueId || '')) ? (await pool.query('select id, name, base from lab_techniques where id=$1', [b.techniqueId])).rows[0] : null;
+    const rows = (await mockPieces(p.id, 'all')).filter(r => ids.has(r.id)), applied = [], skipped = [];
+    for (const r of rows) {
+      const spot = spotFor(placement, r.category); if (!spot || r.status === 'tech_pack') { skipped.push({ id: r.id, name: r.name, why: r.status === 'tech_pack' ? 'Already a tech pack' : `No ${placement} on this kind of piece` }); continue; }
+      const graphics = Array.isArray(r.spec?.graphics) ? r.spec.graphics : [];
+      if (graphics.some(g => g.art === b.art)) { skipped.push({ id: r.id, name: r.name, why: 'Already carries this graphic' }); continue; }
+      if (graphics.length >= 4) { skipped.push({ id: r.id, name: r.name, why: 'Already has four graphics' }); continue; }
+      const g = { name: clip(a.name, 80) || 'Library graphic', kind: 'icon', idea: `From the graphics library, put on across the range: ${clip(a.name, 80)}`, placement: spot, technique: tech?.base || 'screen print', art: b.art, ...(tech ? { finish: { id: tech.id, name: tech.name } } : {}) };
+      const out = await editConcept(r.id, { graphics: [...graphics, g] }, req, { why: `The graphic "${clip(a.name, 60)}" was put on across the range (${spot}).` });
+      if (out.error) { skipped.push({ id: r.id, name: r.name, why: out.error }); continue; }
+      // the picture shows it straight away; the flats and the tech pack take it from the concept's words
+      if (r.image) { const img = await layOn(r.image, a.png, spot, r.category), thumb = await sharp(img).resize({ width: 420, height: 420, fit: 'inside' }).jpeg({ quality: 72 }).toBuffer();
+        await pool.query('update lab_concepts set image=$2, thumb=$3, updated_at=now() where id=$1', [r.id, img, thumb]); await pool.query('delete from lab_concept_views where concept_id=$1', [r.id]).catch(() => {}); }
+      applied.push({ id: r.id, name: r.name, spot, status: out.concept.status });
+    }
+    return { applied, skipped };
   });
 
   // ---- the lookbook ----

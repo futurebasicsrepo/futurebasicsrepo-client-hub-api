@@ -86,10 +86,11 @@ export function registerLabMaterialsRoutes(app, d) {
   const concept = async id => (UUID.test(String(id || '')) ? (await pool.query('select id, category, spec, price_cents, cost_cents, status from lab_concepts where id=$1', [id])).rows[0] || null : null);
   const picksOf = c => (Array.isArray(c.spec?.materials) ? c.spec.materials : []);
   const costing = c => ({ makingCents: Number.isFinite(Number(c.spec?.costing?.makingCents)) ? Number(c.spec.costing.makingCents) : null, freightPct: Number.isFinite(Number(c.spec?.costing?.freightPct)) ? Number(c.spec.costing.freightPct) : FREIGHT_DUTY_PCT });
-  const summary = c => { const k = costing(c); return { picks: picksOf(c), cost: costOf(picksOf(c), { category: c.category, priceCents: c.price_cents, makingCents: k.makingCents, freightPct: k.freightPct }), colourways: cleanColourways(c.spec?.colourways), costing: k }; };
+  const decosOf = c => (Array.isArray(c.spec?.decorations) ? c.spec.decorations : []);
+  const summary = c => { const k = costing(c); return { picks: picksOf(c), cost: costOf(picksOf(c), { category: c.category, priceCents: c.price_cents, makingCents: k.makingCents, freightPct: k.freightPct, decorations: decosOf(c) }), colourways: cleanColourways(c.spec?.colourways), costing: k }; };
   // the concept's landed cost follows its materials once it has any; the plan's margin reads it
   const store = async (c, spec) => {
-    const s = summary({ ...c, spec }), landed = s.picks.length ? s.cost.landedCents : c.cost_cents;
+    const s = summary({ ...c, spec }), landed = s.picks.length || s.cost.decorations.length ? s.cost.landedCents : c.cost_cents;
     await pool.query('update lab_concepts set spec=$2, cost_cents=$3, updated_at=now() where id=$1', [c.id, spec, landed]);
     return { ...s, cost: { ...s.cost, landedCents: landed ?? s.cost.landedCents } };
   };

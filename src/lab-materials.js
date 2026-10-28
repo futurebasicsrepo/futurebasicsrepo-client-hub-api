@@ -105,11 +105,13 @@ export function cleanPick(b = {}, m, category = 'other') {
 }
 export const marginOf = (priceCents, costCents) => priceCents > 0 && costCents != null ? Math.round((1 - costCents / priceCents) * 1000) / 10 : null;
 // → { lines, materialsCents, makingCents, factoryCents, freightCents, landedCents, marginPct, priceCents }
-export function costOf(picks = [], { category = 'other', priceCents = null, makingCents = null, freightPct = FREIGHT_DUTY_PCT } = {}) {
+// `decorations` are the flats' placements priced (src/lab-decor.js): their cost per piece, setups shared over the planned quantity, counts in the factory cost
+export function costOf(picks = [], { category = 'other', priceCents = null, makingCents = null, freightPct = FREIGHT_DUTY_PCT, decorations = [] } = {}) {
   const lines = picks.map(p => ({ ...p, cents: Math.round(p.qty * p.unitCents) }));
+  const deco = (Array.isArray(decorations) ? decorations : []).filter(d => d && Number.isFinite(Number(d.perPieceCents))), decorationCents = deco.reduce((s, d) => s + Number(d.perPieceCents), 0);
   const materialsCents = lines.reduce((s, l) => s + l.cents, 0), making = makingCents ?? MAKING_CENTS[category] ?? MAKING_CENTS.other;
-  const factoryCents = materialsCents + making, freightCents = Math.round(factoryCents * freightPct / 100), landedCents = factoryCents + freightCents;
-  return { lines, materialsCents, makingCents: making, factoryCents, freightCents, freightPct, landedCents, priceCents, marginPct: marginOf(priceCents, landedCents) };
+  const factoryCents = materialsCents + decorationCents + making, freightCents = Math.round(factoryCents * freightPct / 100), landedCents = factoryCents + freightCents;
+  return { lines, decorations: deco, decorationCents, materialsCents, makingCents: making, factoryCents, freightCents, freightPct, landedCents, priceCents, marginPct: marginOf(priceCents, landedCents) };
 }
 // the words the image model gets to draw the piece in its fabric
 export function fabricWords(m) { if (!m || m.kind !== 'fabric') return ''; const s = m.spec || {}; return [s.weightGsm ? `${s.weightGsm} gsm` : '', s.construction, s.composition ? `(${s.composition})` : '', s.finish && s.finish !== 'none' ? `${s.finish} finish` : ''].filter(Boolean).join(' '); }

@@ -11,12 +11,19 @@
 //   GET  /v1/lab/library/studio?art=<id>          the graphic (or nothing, for a new one), its saved layers, the marks, colours and techniques
 //   PUT  /v1/lab/library/graphics/:id/studio      save the layers {doc}
 //   POST /v1/lab/library/studio/ai                the same AI edits as above, for a graphic
+//   POST /v1/lab/studio/check {image, widthIn, heightIn, techniqueId?, placement?}   a layer measured with the ruler: size against where it goes and how it is
+//        made, the finest line and the colours at that size, and what it costs a piece        POST /v1/lab/studio/separations {image, techniqueId?, widthIn, garment?, zip?}
+//        the colour separations: one plate per ink or thread with its Pantone, the coverage, and the job file to download
 //   Fonts  GET /v1/lab/fonts   POST /v1/lab/fonts {name, file}   GET /v1/lab/fonts/:id/file   DELETE /v1/lab/fonts/:id   (uploaded once, set in type on every machine)
 //   POST /v1/lab/library/studio/keep              {image, name?, doc?, techniqueId?} the finished picture becomes a new library graphic
 //   POST /v1/lab/library/graphics/:id/studio/apply {image, doc?} the finished picture replaces this graphic's (pieces using it keep what they had)
 import sharp from 'sharp';
 import { imageConfig, openaiEdit, openaiImage } from './check.js';
 import { locateMarks } from './lab-place.js';
+import { artInfo, artFindings } from './lab-flats-routes.js';
+import { sizeFindings, decorationCost, PLACEMENTS } from './lab-decor.js';
+import { jobFile, jobZip } from './lab-jobfile.js';
+import { cleanRules } from './lab-library.js';
 import { GRAPHIC_PLACE } from './lab-concepts.js';
 import { brandHits } from './lab-concepts.js';
 import { logoSvg, COLORS } from './brand-kit.js';
@@ -43,7 +50,7 @@ export function cleanDoc(input) {
     for (const k of ['src', 'mask', 'distressMap']) if (l[k] != null && l[k] !== '' && !SRC_OK.test(String(l[k]))) return { error: 'A layer points at a picture outside the design' };
     if (l.text != null && String(l.text).length > 400) return { error: 'A line of type is too long (400 characters at most)' };
   }
-  const doc = { v: 1, w, h, layers: d.layers, selected: typeof d.selected === 'string' ? d.selected.slice(0, 40) : null };
+  const ppi = Number(d.ppi), doc = { v: 1, w, h, layers: d.layers, selected: typeof d.selected === 'string' ? d.selected.slice(0, 40) : null, ...(ppi > 1 && ppi < 2000 ? { ppi: Math.round(ppi * 100) / 100, ppiSet: Boolean(d.ppiSet) } : {}) };
   if (JSON.stringify(doc).length > MAX_DOC) return { error: 'The design is too big to save (30 MB). Merge or delete some picture layers.' };
   return { doc };
 }
@@ -108,8 +115,34 @@ export function registerLabStudioRoutes(app, d) {
       marks: [{ id: 'mark', label: 'Cue mark', svg: logoSvg('mark') }, { id: 'word', label: 'Wordmark', svg: logoSvg('word') }, { id: 'lockup', label: 'Wordmark and cue mark', svg: logoSvg('lockup') }],
       palette, graphics: (c.spec?.graphics || []).filter(g => g.art).map(g => ({ art: g.art, name: clip(g.name, 60) })), graphicNames: (c.spec?.graphics || []).map(g => clip(g.name, 60)).filter(Boolean),
       ai: { connected: cfg.configured, model: cfg.model || null, left: left() }, fonts: await fontList(),
-      techniques: (await pool.query(`select t.id, t.kind, t.name, t.summary, t.base, t.finish, (select count(*)::int from lab_technique_photos p where p.technique_id=t.id) photos from lab_techniques t where not archived order by kind, builtin desc, name`).catch(() => ({ rows: [] }))).rows
+      techniques: (await pool.query(`select t.id, t.kind, t.name, t.summary, t.base, t.finish, t.rules, (select count(*)::int from lab_technique_photos p where p.technique_id=t.id) photos from lab_techniques t where not archived order by kind, builtin desc, name`).catch(() => ({ rows: [] }))).rows.map(t => ({ ...t, rules: cleanRules(t.rules || {}, t.base) })), placements: Object.entries(PLACEMENTS).map(([id, p]) => ({ id, label: p.label, w: p.w }))
     };
+  });
+
+  // ---- a layer measured: size and placement rules, the art at that size, the cost ----
+  const techOf = async id => (UUID.test(String(id || '')) ? (await pool.query('select id, name, kind, base, finish, rules from lab_techniques where id=$1', [id])).rows[0] : null) || { id: null, name: 'Screen print', kind: 'print', base: 'screen print', finish: {}, rules: {} };
+  app.post('/v1/lab/studio/check', { preHandler: pre, bodyLimit: 32_000_000 }, async (req, reply) => {
+    const b = req.body || {}, img = pictureOf(b.image); if (!img) return bad(reply, 'Send the layer as a picture');
+    const w = Number(b.widthIn), h = Number(b.heightIn); if (!(w > 0 && w < 80 && h > 0 && h < 80)) return bad(reply, 'Measure the layer first: set the ruler');
+    const t = await techOf(b.techniqueId), rules = { ...cleanRules(t.rules || {}, t.base), techniqueName: t.name }, placement = PLACEMENTS[b.placement] ? b.placement : null, name = clip(b.name, 60) || 'The graphic';
+    const findings = sizeFindings({ widthIn: w, heightIn: h, placement, rules, base: t.base, techName: t.name, name });
+    let info = null; try { info = await artInfo(img, w, h, rules); findings.push(...artFindings({ name, w, h }, info, rules, t)); } catch { /* the size alone */ }
+    const cost = decorationCost({ base: t.base, rules, widthIn: w, heightIn: h, colours: Math.max(1, info?.inks || 1), coverage: info?.coverage || .6, qty: Number(b.qty) || 300 });
+    return { technique: { id: t.id, name: t.name, base: t.base }, size: { widthIn: Math.round(w * 100) / 100, heightIn: Math.round(h * 100) / 100 }, placement, findings, inks: info?.inks ?? null, coverage: info?.coverage ?? null, cost, rules };
+  });
+  // ---- colour separations: the job file's plates for a layer ----
+  app.post('/v1/lab/studio/separations', { preHandler: pre, bodyLimit: 32_000_000 }, async (req, reply) => {
+    const b = req.body || {}, img = pictureOf(b.image); if (!img) return bad(reply, 'Send the layer as a picture');
+    const t = await techOf(b.techniqueId), w = Math.max(.5, Math.min(40, Number(b.widthIn) || 4)), garment = /^#[0-9a-f]{6}$/i.test(String(b.garment || '')) ? b.garment : '', name = clip(b.name, 60) || 'Graphic';
+    const technique = { ...t, rules: cleanRules(t.rules || {}, t.base) };
+    if (b.zip) { const z = await jobZip(img, { name, technique, widthIn: w, garmentColour: garment }); return reply.header('content-type', 'application/zip').header('content-disposition', `attachment; filename="${z.zipName}"`).send(z.zip); }
+    const { job, files } = await jobFile(img, { name, technique, widthIn: w, garmentColour: garment });
+    // each plate small enough to show: the ink in its colour on a clear background
+    const plates = [];
+    for (const col of job.colours) { const f = files.find(x => x.name === col.ink); if (!f) continue; const small = await sharp(f.data).resize({ width: 360, height: 360, fit: 'inside' }).png().toBuffer(); plates.push({ n: col.n, pantone: col.pantone, hex: col.hex, coverage: col.coverage, image: `data:image/png;base64,${small.toString('base64')}` }); }
+    const under = files.find(x => x.name === 'underbase.png');
+    return { job: { name: job.name, technique: job.technique, size: job.size, coverage: job.coverage, colours: job.colours.map(c => ({ n: c.n, pantone: c.pantone, hex: c.hex, coverage: c.coverage })), warnings: job.warnings, print: job.print || null, embroidery: job.embroidery || null, transfer: job.transfer || null, patch: job.patch || null },
+      plates, underbase: under ? `data:image/png;base64,${(await sharp(under.data).resize({ width: 360, height: 360, fit: 'inside' }).png().toBuffer()).toString('base64')}` : null };
   });
 
   // ---- fonts ----
@@ -280,7 +313,7 @@ export function registerLabStudioRoutes(app, d) {
       marks: [{ id: 'mark', label: 'Cue mark', svg: logoSvg('mark') }, { id: 'word', label: 'Wordmark', svg: logoSvg('word') }, { id: 'lockup', label: 'Wordmark and cue mark', svg: logoSvg('lockup') }],
       palette: COLORS.map(x => ({ name: x.name, hex: x.hex, from: 'brand' })).filter(x => /^#[0-9a-f]{6}$/i.test(x.hex || '')),
       ai: { connected: cfg.configured, model: cfg.model || null, left: left() }, fonts: await fontList(),
-      techniques: (await pool.query(`select t.id, t.kind, t.name, t.summary, t.base, t.finish, (select count(*)::int from lab_technique_photos p where p.technique_id=t.id) photos from lab_techniques t where not archived order by kind, builtin desc, name`).catch(() => ({ rows: [] }))).rows
+      techniques: (await pool.query(`select t.id, t.kind, t.name, t.summary, t.base, t.finish, t.rules, (select count(*)::int from lab_technique_photos p where p.technique_id=t.id) photos from lab_techniques t where not archived order by kind, builtin desc, name`).catch(() => ({ rows: [] }))).rows.map(t => ({ ...t, rules: cleanRules(t.rules || {}, t.base) })), placements: Object.entries(PLACEMENTS).map(([id, p]) => ({ id, label: p.label, w: p.w }))
     };
   };
   app.get('/v1/lab/library/studio', { preHandler: pre }, async (req, reply) => {

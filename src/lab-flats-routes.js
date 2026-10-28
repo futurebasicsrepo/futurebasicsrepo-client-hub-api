@@ -15,7 +15,10 @@ import { logoSvg } from './brand-kit.js';
 import { cleanRules } from './lab-library.js';
 import { ensureBranding } from './lab-concepts.js';
 import { STYLES, FITS, SIZES, DETAILS, templateOf, fitToTemplate, detectStyle, defaultParams, defaultPlacement, cleanFlat, cleanEdits, describeEdit, placementChecks, overlapChecks, boxesMeet, describe, renderSvg, pomTable, measurementsFor, fmt, fmtCm } from './lab-flats.js';
-import { packRows, cleanColourways } from './lab-materials.js';
+import { packRows, cleanColourways, costOf, FREIGHT_DUTY_PCT } from './lab-materials.js';
+import { artColours } from './art.js';
+import { decorationCost, decorationLine } from './lab-decor.js';
+import { brandDoc, fact, table, safe, INK, DIM, LINE } from './brand-pdf.js';
 import { imageConfig, openaiEdit } from './check.js';
 import { callJsonSchema } from './studio.js';
 import { rankTemplates, candidateTemplates } from './lab-flats.js';
@@ -57,7 +60,7 @@ export async function artInfo(buf, wIn, hIn, rules) {
   return { coverage: ink / (W * H), inks, gradient, fine, holds, mmPerPx };
 }
 const pct = x => `${Math.round(x * 100)}%`;
-function artFindings(q, info, rules, tech) {
+export function artFindings(q, info, rules, tech) {
   const out = [], name = q.name, emb = tech.base === 'embroidery';
   if (info.fine > .03) {
     const scale = info.holds ? rules.minLineMm / info.holds : 2, bigger = Math.min(q.w * scale, rules.maxW);
@@ -130,6 +133,31 @@ export function registerLabFlatsRoutes(app, d) {
     }
     return { findings, summary: { fail, warn, placements: placements.length }, at: new Date().toISOString() };
   }
+  // each placement priced: its colours read from its artwork (a mark is one ink), its coverage, its size and how it is made, at the planned quantity
+  const colourCache = new Map();
+  async function coloursOf(q) {
+    if (q.mark) return [{ hex: '#141416', name: 'Ink', pantone: 'PANTONE Black 6 C', share: 1 }];
+    const key = q.art || ''; if (colourCache.has(key)) return colourCache.get(key);
+    const b = await pngOf(q); const list = b ? (await artColours(b, { max: 12 })).filter(c => c.share >= .02).map(c => ({ hex: c.hex, name: c.name, pantone: c.code || '', share: c.share })) : [];
+    if (colourCache.size > 300) colourCache.clear(); colourCache.set(key, list); return list;
+  }
+  async function decorationsOf(c, params, placements) {
+    const list = await techniques(), out = [];
+    for (const q of placements) {
+      const t = techFor(list, q), cols = await coloursOf(q); let coverage = .6;
+      try { const b = await pngOf(q); if (b) coverage = (await artInfo(b, q.w, q.h, t.rules)).coverage || .6; } catch { /* the usual coverage */ }
+      const cost = decorationCost({ base: t.base, rules: t.rules, widthIn: q.w, heightIn: q.h, colours: Math.max(1, cols.length), coverage, qty: c.qty || 300 });
+      out.push({ id: q.id, ...decorationLine({ name: q.name, technique: t.name, base: t.base, widthIn: q.w, heightIn: q.h, colours: Math.max(1, cols.length), pantones: cols.map(x => x.pantone || x.hex), cost, view: q.view, placement: describe(q, params) }) });
+    }
+    return out;
+  }
+  // the concept carries its decorations, so its costing and the plan's margin count them
+  async function keepDecorations(c, decorations) {
+    const spec = { ...(c.spec || {}), decorations }, picks = Array.isArray(spec.materials) ? spec.materials : [], k = spec.costing || {};
+    const cost = costOf(picks, { category: c.category, priceCents: c.price_cents, makingCents: Number.isFinite(Number(k.makingCents)) ? Number(k.makingCents) : null, freightPct: Number.isFinite(Number(k.freightPct)) ? Number(k.freightPct) : FREIGHT_DUTY_PCT, decorations });
+    await pool.query('update lab_concepts set spec=$2, cost_cents=$3 where id=$1', [c.id, spec, picks.length || decorations.length ? cost.landedCents : c.cost_cents]);
+    return cost;
+  }
   const shape = (c, row, extra = {}) => ({ concept: { id: c.id, name: c.name, category: c.category, status: c.status, productId: c.product_id, locked: c.status === 'tech_pack' && !c.product_id }, ...extra,
     styles: Object.fromEntries(Object.entries(STYLES).map(([k, v]) => [k, { label: v.label, kind: v.kind, oneSize: Boolean(v.oneSize) }])), fits: FITS, sizes: SIZES, flat: row });
 
@@ -157,7 +185,8 @@ export function registerLabFlatsRoutes(app, d) {
     await pool.query(`insert into lab_flats(concept_id, style, params, placements, check_result, checked_at, updated_by) values($1,$2,$3,$4,$5,now(),$6)
       on conflict(concept_id) do update set style=excluded.style, params=excluded.params, placements=excluded.placements, check_result=excluded.check_result, checked_at=now(), updated_by=excluded.updated_by, updated_at=now()`,
     [t.c.id, t.params.style, t.params, JSON.stringify(t.placements), ck, actorOf(req)]);
-    return { ok: true, check: ck, where: Object.fromEntries(t.placements.map(q => [q.id, describe(q, t.params)])) };
+    let decorations = [], cost = null; try { decorations = await decorationsOf(t.c, t.params, t.placements); cost = await keepDecorations(t.c, decorations); } catch (e) { log.warn?.({ err: e.message }, 'flats decoration costing failed'); }
+    return { ok: true, check: ck, where: Object.fromEntries(t.placements.map(q => [q.id, describe(q, t.params)])), decorations, cost: cost ? { decorationCents: cost.decorationCents, landedCents: cost.landedCents, marginPct: cost.marginPct } : null };
   });
 
   // ---- the spec sheet ----
@@ -242,6 +271,42 @@ export function registerLabFlatsRoutes(app, d) {
     const s = await sheet(c, { size: req.query?.size }); if (!s) return bad(reply, 'Save the flats first', 404);
     return reply.header('content-type', 'image/svg+xml; charset=utf-8').header('cache-control', 'private, no-cache').header('content-disposition', `inline; filename="${c.name.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-spec.svg"`).send(s.svg);
   });
+  // the decoration sheet: one page per placement, for the factory's decoration department (or the print or embroidery shop)
+  async function decorationPdf(c) {
+    const s = await sheet(c); if (!s) return null;
+    const list = await techniques(), notes = new Map((await pool.query('select id, factory_note, art_guide, summary from lab_techniques')).rows.map(r => [r.id, r])), decos = await decorationsOf(c, s.p, s.pl), ck = (await pool.query('select check_result from lab_flats where concept_id=$1', [c.id])).rows[0]?.check_result || { findings: {} };
+    const b = brandDoc({ title: `${c.name} · decorations`, kind: 'Decoration sheet', ref: `${s.pl.length} placement${s.pl.length === 1 ? '' : 's'}`, footerNote: 'Future Basics · decoration sheet · colours as Pantone C, matched from the artwork: confirm each against a swatch book' });
+    const { doc, L, CW } = b;
+    if (!s.pl.length) { doc.fillColor(INK).font('SG-B').fontSize(18).text(safe(c.name), L, b.bodyTop); doc.fillColor(DIM).font('SG').fontSize(11).text('Nothing is placed on this piece yet.', L, doc.y + 8); return b.finish(); }
+    for (const [i, q] of s.pl.entries()) {
+      if (i) doc.addPage();
+      const t = techFor(list, q), n = notes.get(t.id) || {}, dd = decos.find(x => x.id === q.id), y0 = b.bodyTop;
+      doc.fillColor(DIM).font('MONO').fontSize(8.5).text(safe(`${String(i + 1).padStart(2, '0')} / ${String(s.pl.length).padStart(2, '0')}  ·  ${q.view === 'back' ? 'BACK' : 'FRONT'}`), L, y0, { characterSpacing: 1 });
+      doc.fillColor(INK).font('SG-B').fontSize(20).text(safe(q.name), L, doc.y + 4, { width: CW });
+      doc.fillColor(DIM).font('SG').fontSize(10.5).text(safe(`${c.name} · made as ${t.name}`), L, doc.y + 2, { width: CW });
+      let y = doc.y + 12; const col = CW / 4;
+      fact(b, 'Width', fmtCm(q.w), L, y, col); fact(b, 'Height', fmtCm(q.h), L + col, y, col); fact(b, 'Colours', String(dd?.colours ?? '—'), L + col * 2, y, col); fact(b, 'Cost per piece', dd ? `$${(dd.perPieceCents / 100).toFixed(2)}` : '—', L + col * 3, y, col); y += 46;
+      // the artwork, and the flat with the placement on it
+      const art = s.hrefs[q.id] ? Buffer.from(s.hrefs[q.id].split(',')[1], 'base64') : null, bw = CW * .48, bh = 200;
+      doc.rect(L, y, bw, bh).fill('#f3f2ee'); if (art) { try { doc.image(art, L + 10, y + 10, { fit: [bw - 20, bh - 20], align: 'center', valign: 'center' }); } catch { /* left blank */ } } doc.rect(L, y, bw, bh).lineWidth(.6).strokeColor(LINE).stroke();
+      try { const flat = await sharp(Buffer.from(renderSvg(s.p, q.view, { placements: s.pl, hrefs: s.hrefs, selected: q.id, scale: 40, templateSvg, partHref, editHrefs: s.editHrefs }))).resize({ width: 900, height: 900, fit: 'inside' }).flatten({ background: '#ffffff' }).png().toBuffer();
+        doc.image(flat, L + bw + 12, y, { fit: [CW - bw - 12, bh], align: 'center', valign: 'center' }); } catch { /* no flat picture */ }
+      y += bh + 14;
+      doc.fillColor(INK).font('SG-B').fontSize(11).text('Where it goes', L, y); doc.fillColor(INK).font('SG').fontSize(10).text(safe(describe(q, s.p)), L, doc.y + 3, { width: CW }); y = doc.y + 12;
+      const cols = (await coloursOf(q));
+      if (cols.length) { doc.fillColor(INK).font('SG-B').fontSize(11).text(t.base === 'embroidery' ? 'Threads' : 'Inks and colours', L, y); table(b, [{ h: '#', w: .08, mono: true }, { h: 'Pantone C', w: .52, mono: true }, { h: 'Share of the artwork', w: .4, align: 'right', mono: true }], cols.map((x, k) => [String(k + 1), { t: x.pantone || x.name, swatch: x.hex }, `${Math.round(x.share * 100)} %`]), { y: doc.y + 6, fontSize: 9.5 }); y = doc.y + 12; }
+      const rows = [['How it is made', t.name], ['Factory note', n.factory_note || ''], ['Artwork guide', n.art_guide || ''], ['Rules', `finest line ${t.rules.minLineMm} mm, up to ${t.rules.maxColors || 'any'} colours, up to ${t.rules.maxW} × ${t.rules.maxH} in`], ...(dd ? [['Cost', `$${(dd.unitCents / 100).toFixed(2)} a piece + $${(dd.setupCents / 100).toFixed(2)} setup over ${dd.qty} pieces = $${(dd.perPieceCents / 100).toFixed(2)} a piece${dd.basis ? ` (${dd.basis})` : ''}; before the factory's quote`]] : [])].filter(r => r[1]);
+      table(b, [{ h: 'Item', w: .22, mono: true }, { h: '', w: .78 }], rows, { y, fontSize: 9.5, head: false }); y = doc.y + 10;
+      const f = (ck.findings[q.id] || []).filter(x => x.level !== 'info');
+      if (f.length) { doc.fillColor('#a02a20').font('SG-B').fontSize(10).text('Check before it is made', L, y); doc.fillColor(INK).font('SG').fontSize(9.5); for (const x of f) doc.text(safe('• ' + x.text), L, doc.y + 3, { width: CW }); }
+    }
+    return b.finish();
+  }
+  app.get('/v1/lab/concepts/:id/flats/decorations.pdf', { preHandler: pre }, async (req, reply) => {
+    const c = await concept(req.params.id); if (!c) return bad(reply, 'Not found', 404);
+    const pdf = await decorationPdf(c); if (!pdf) return bad(reply, 'Save the flats first', 404);
+    return reply.header('content-type', 'application/pdf').header('content-disposition', `inline; filename="${c.name.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-decorations.pdf"`).header('cache-control', 'private, no-store').send(pdf);
+  });
   // the files that go on a tech pack: the spec sheet and each flat, as pictures
   async function files(c) {
     const s = await sheet(c); if (!s) return [];
@@ -263,7 +328,8 @@ export function registerLabFlatsRoutes(app, d) {
       ...pl.map(q => ({ area: `${q.view === 'back' ? 'Back' : 'Front'} · ${q.name}`, detail: `${techFor(list, q).name}, ${fmtCm(q.w)} × ${fmtCm(q.h)}: ${describe(q, p)}.` })),
       ...edits.map(e => ({ area: e.type === 'stitch' ? 'Stitching' : e.type === 'block' ? 'Colour block' : e.type === 'ai' ? 'Redrawn area' : e.type === 'part' ? (e.name || 'Add-on part') : (DETAILS[e.kind] || 'Detail'), detail: describeEdit(e, p) }))];
     const threads = new Map(); for (const e of edits) if (e.thread) threads.set(e.thread, [...(threads.get(e.thread) || []), e.type === 'stitch' ? 'stitch line' : (DETAILS[e.kind] || 'detail').toLowerCase()]);
-    const bom = [...pl.map(q => ({ component: `Decoration · ${q.name}`, material: techFor(list, q).name, placement: describe(q, p).slice(0, 160), qty: '1', unit: 'pc' })),
+    const decos = await decorationsOf(c, p, pl).catch(() => []), decoOf = q => decos.find(x => x.id === q.id);
+    const bom = [...pl.map(q => { const dd = decoOf(q); return { component: `Decoration · ${q.name}`, material: techFor(list, q).name, spec: dd ? `${fmtCm(q.w)} × ${fmtCm(q.h)}, ${dd.colours} colour${dd.colours === 1 ? '' : 's'}${dd.basis ? `; ${dd.basis}` : ''}`.slice(0, 200) : '', color: dd ? dd.pantones.join(', ').slice(0, 120) : '', placement: describe(q, p).slice(0, 160), qty: '1', unit: 'pc', ...(dd ? { cost: (dd.perPieceCents / 100).toFixed(2) } : {}) }; }),
       ...[...threads].map(([hex, where]) => ({ component: 'Contrast thread', material: 'Polyester sewing thread', color: hex, placement: [...new Set(where)].join(', ').slice(0, 160), qty: '1', unit: 'cone' })),
       ...edits.filter(e => e.type === 'block').map(e => ({ component: `Colour block · ${e.name || 'panel'}`, material: 'Self fabric', color: e.color, placement: e.view }))];
     return {
