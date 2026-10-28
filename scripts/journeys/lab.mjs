@@ -2228,5 +2228,61 @@ await journey('J234', 'One Design workspace: a concept opens on its picture, and
   } finally { await cleanup(brands, plan.plan?.id); }
 });
 
+await journey('J235', 'Design, one placement model and two levels: a graphic\'s size set on the flats comes back to the picture, taking it off the flats leaves it on the picture only, the picture lists everything on the garment in inches, Simple hides the specialist tools on both sides, and a checklist says what is left before the tech pack', async () => {
+  const { brands, plan } = await conceptSetup();
+  try {
+    const line = plan.lines.find(l => l.category === 'tops') || plan.lines[0], c = (await K(`/plans/${plan.plan.id}/lines/${line.id}/concepts`, { body: { count: 1 } })).json.concepts[0];
+    // the checklist over HTTP
+    const r0 = await K(`/concepts/${c.id}/ready`); const st = id => r0.json.items?.find(i => i.id === id)?.state;
+    ok(r0.status === 200 && r0.json.ready === false && st('flats') === 'todo' && st('approved') === 'todo' && r0.json.total >= 7, '1. the checklist: a fresh concept still needs its flats saved and its approval, among others', r0.json.items?.map(i => `${i.id}:${i.state}`));
+    ok((await call(`/v1/lab/concepts/${c.id}/ready`, {})).status === 401 && (await P(`/concepts/${c.id}/ready`)).status === 403, '   it needs a Lab sign-in');
+    if (!playwright) { ok(true, 'needs a browser'); return; }
+    const b = await playwright.chromium.launch();
+    try {
+      const oc = await b.newContext({ viewport: { width: 1440, height: 950 } }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
+      const page = await oc.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
+      await page.goto(`${BASE}/lab/studio?concept=${c.id}`, { waitUntil: 'networkidle' }); await page.waitForSelector('#pLayers .ly', { timeout: 20000 }); await page.waitForFunction(() => !document.querySelector('#busy:not(.hidden)'));
+      // levels
+      ok(await page.getAttribute('#app', 'data-level') === 'pro' && await page.isVisible('.rail [data-tool=distress]'), '2. Future Basics opens on Pro: every tool, distress among them');
+      await page.click('#levelSeg [data-level=simple]');
+      ok(!(await page.isVisible('.rail [data-tool=distress]')) && !(await page.isVisible('.rail [data-tool=warp]')) && !(await page.isVisible('#impBtn')) && await page.isVisible('.rail [data-tool=brush]') && await page.evaluate(() => localStorage.getItem('fb.design.level')) === 'simple', '   Simple keeps the essentials and puts distress, warp, the ruler and Illustrator import away, and is remembered');
+      await page.keyboard.press('d'); ok(await page.evaluate(() => TOOL) !== 'distress', '   and their shortcuts rest with them');
+      await page.click('#viewSeg [data-v=front]'); const F = await (await page.waitForSelector('#flatFrame')).contentFrame(); await F.waitForSelector('#pPl [data-q]', { timeout: 20000 });
+      ok(await F.evaluate(() => document.documentElement.dataset.level) === 'simple' && !(await F.isVisible('.tabs [data-tab=pom]')) && !(await F.isVisible('#showPom')), '3. on the flats Simple puts the measurements table and points of measure away too');
+      await page.click('#levelSeg [data-level=pro]'); ok(await F.isVisible('.tabs [data-tab=pom]'), '   and Pro brings them back');
+      // the checklist in the page
+      await page.click('#viewSeg [data-v=picture]'); await page.waitForFunction(() => /Checklist \d+\/\d+/.test(document.getElementById('readyBtn').textContent), null, { timeout: 10000 });
+      await page.click('#readyBtn'); await page.waitForSelector('#readyPop:not(.hidden) .rd');
+      ok((await page.locator('#readyPop .rd').count()) >= 7 && await page.locator('#readyPop .rd[data-ready=flats][data-state=todo]').count() === 1, '4. Checklist in the header: each item, done or to do, with where to fix it', await page.innerText('#readyBtn'));
+      await page.click('#readyPop [data-ready=flats] [data-readygo]'); await page.waitForSelector('#app[data-v=front]'); ok(true, '   Go on the flats item opens the flats');
+      // one placement model: a wordmark placed on the picture, then resized on the flats
+      await page.click('#viewSeg [data-v=picture]');
+      await page.click('.tabs [data-tab=add]'); await page.click('#pAdd [data-mark=word]'); await page.waitForFunction(() => LAYERS.length >= 2); await page.click('.tabs [data-tab=layers]'); await page.waitForSelector('#sizeRead');
+      await page.fill('#pLayers [data-win]', '3.5'); await page.dispatchEvent('#pLayers [data-win]', 'change'); await page.selectOption('#pLayers [data-placement]', 'left chest');
+      const lid = await page.evaluate(() => SEL);
+      await page.click('#save'); await page.waitForFunction(() => !DIRTY, null, { timeout: 30000 });
+      await page.waitForSelector(`#garmentSec [data-gly="${lid}"]`, { timeout: 15000 });
+      ok(/3\.5 ×/.test(await page.innerText(`#garmentSec [data-gly="${lid}"]`)), '5. the picture lists what is on the garment, in inches: the wordmark at 3.5 in', await page.innerText('#garmentSec'));
+      await page.click(`#garmentSec [data-gly="${lid}"]`); ok(await page.evaluate(() => SEL) === lid, '   clicking it there chooses its layer');
+      await page.click('#viewSeg [data-v=front]'); await F.waitForSelector(`#pPl [data-q="s-${lid}"]`, { timeout: 20000 });
+      await F.click(`#pPl [data-q="s-${lid}"] .where`); await F.locator(`#pPl [data-q="s-${lid}"] [data-k=w]`).fill('4.5');
+      await page.click('#save'); await F.waitForFunction(() => /^Saved/.test(document.getElementById('saved').textContent), null, { timeout: 20000 }); await page.waitForFunction(() => !DIRTY, null, { timeout: 30000 });
+      const w = await page.evaluate(id => inchesOf(LAYERS.find(l => l.id === id)).w, lid);
+      ok(Math.abs(w - 4.5) < .08, '6. 4.5 in typed on the flats: the wordmark on the picture is 4.5 in wide too', w);
+      const fp = (await K(`/concepts/${c.id}/flats`)).json.flat.placements.find(q => q.layer === lid); ok(fp && Math.abs(fp.w - 4.5) < .01, '   and saving the picture keeps the flats at 4.5 in, not its old size', fp?.w);
+      // taken off the flats
+      await F.click(`#pPl [data-q="s-${lid}"] [data-del]`); await page.click('#save'); await F.waitForFunction(() => /^Saved/.test(document.getElementById('saved').textContent), null, { timeout: 20000 }); await page.waitForFunction(() => !DIRTY, null, { timeout: 30000 });
+      ok(await page.evaluate(id => !LAYERS.find(l => l.id === id).placement, lid) && !(await K(`/concepts/${c.id}/flats`)).json.flat.placements.some(q => q.layer === lid), '7. taken off the flats, it stays on the picture with no place on the garment, and does not come back on the next save');
+      const r1 = (await K(`/concepts/${c.id}/ready`)).json; ok(r1.items.find(i => i.id === 'flats').state === 'done' && r1.items.find(i => i.id === 'placed').state === 'warn', '8. the checklist now has the flats saved, and notes the wordmark on the picture with no place', r1.items.map(i => `${i.id}:${i.state}`));
+      await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/lab-design-checklist.png` }).catch(() => {});
+      ok(errs.length === 0, 'no page errors', errs); await oc.close();
+      // a client's room starts on Simple
+      const cc = await b.newContext({ viewport: { width: 1280, height: 900 } }); await cc.addInitScript(() => { try { localStorage.setItem('fb.client.token', 'x'); } catch {} });
+      const cp = await cc.newPage(); await cp.goto(`${BASE}/lab/studio?concept=${c.id}`, { waitUntil: 'domcontentloaded' }); await cp.waitForSelector('#app', { state: 'attached' });
+      ok(await cp.getAttribute('#app', 'data-level') === 'simple', '9. signed in from a client\'s hub, Design starts on Simple'); await cc.close();
+    } finally { await b.close(); }
+  } finally { await cleanup(brands, plan.plan?.id); }
+});
+
 shops.close(); brave.close();
 process.exit(summary() ? 1 : 0);

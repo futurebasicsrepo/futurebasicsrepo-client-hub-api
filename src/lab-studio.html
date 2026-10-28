@@ -28,6 +28,11 @@ header{height:72px;background:rgba(20,20,22,.96);color:#fff;padding:0 clamp(16px
 .saved{color:var(--dim);font-size:12px;min-width:90px;text-align:right}.saved.dirty{color:#8a5a00}
 /* one workspace: the picture, the flats front or back, or both side by side (data-v on .studio) */
 .seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;background:#fff;flex:none}.seg button{border:0;background:none;padding:5px 12px;font-weight:600;cursor:pointer;font-size:12.5px;white-space:nowrap}.seg button[aria-pressed=true]{background:var(--ink);color:#fff}.seg button:focus-visible{outline:2px solid var(--ink);outline-offset:-2px}
+.gpl{display:grid;gap:6px}.gp{display:grid;gap:1px;text-align:left;border:1px solid var(--line);border-radius:10px;background:#fff;padding:7px 10px;cursor:pointer;font-size:12.5px}.gp:hover{border-color:var(--ink)}.gp span{color:var(--dim);font-size:11.5px}.gp small{color:var(--dim);font-size:11px}
+.studio[data-level=simple] .pro-only,.studio[data-level=simple] [data-act=sep]{display:none!important}
+#readyPop{width:min(380px,92vw);right:0;left:auto;padding:12px;display:grid;gap:8px}#readyPop.hidden{display:none}
+.rd{display:grid;grid-template-columns:18px minmax(0,1fr) auto;gap:4px 8px;align-items:start;font-size:12.5px;padding:6px 0;border-top:1px solid var(--line)}.rd b{font-size:13px}.rd small{grid-column:2/3;color:var(--dim);line-height:1.35}.rd .st{width:14px;height:14px;border-radius:50%;margin-top:2px}.rd .st.done{background:#1f9d55}.rd .st.todo{background:#a02a20}.rd .st.warn{background:#d49a00}
+#readyBtn.ok{border-color:#1f9d55;color:#17603a}
 .flathost{display:none;min-height:0;min-width:0;background:var(--fog)}.flathost iframe{display:block;width:100%;height:100%;border:0}
 .studio[data-v=picture] .flat-only,.studio:not([data-v]) .flat-only{display:none}
 .studio[data-v=front] .pic-only,.studio[data-v=back] .pic-only{display:none!important}
@@ -96,16 +101,19 @@ kbd{font:500 10px 'IBM Plex Mono',monospace;border:1px solid var(--line);border-
     <button class="btn q sm" type="button" data-lab-menu data-lab="studio">Lab ▾</button><a class="btn q sm" id="back" href="/lab#board">← Concepts</a>
     <div class="ttl"><b id="cName">Loading…</b><span id="cSub"></span></div>
     <div class="seg" id="viewSeg" role="group" aria-label="What to show"><button type="button" data-v="picture" aria-pressed="true" title="The picture, as layers">Picture</button><button type="button" data-v="front" aria-pressed="false" title="The measured flat, front">Flat front</button><button type="button" data-v="back" aria-pressed="false" title="The measured flat, back">Flat back</button><button type="button" data-v="split" aria-pressed="false" class="wideonly" title="The picture and the flat side by side">Side by side</button></div>
+    <div class="seg" id="levelSeg" role="group" aria-label="How much to show"><button type="button" data-level="simple" aria-pressed="false" title="The essentials: the picture, graphics and their place, the flats and the sheets">Simple</button><button type="button" data-level="pro" aria-pressed="false" title="Every tool: distress, warp, the ruler, separations, Illustrator files, points of measure, grading, stitch lines">Pro</button></div>
+    <div class="menu" id="readyWrap"><button class="btn sm q" id="readyBtn" type="button" aria-haspopup="true" aria-expanded="false" title="What it still needs before the tech pack">Checklist</button>
+      <div class="pop hidden" id="readyPop" role="dialog" aria-label="Before the tech pack"><div id="readyList"></div></div></div>
     <button class="btn q sm pic-only" id="undo" type="button" title="Undo (Ctrl Z)">Undo</button>
     <button class="btn q sm pic-only" id="redo" type="button" title="Redo (Ctrl Shift Z)">Redo</button>
     <span class="saved pic-only" id="saved" role="status"></span><span class="saved flat-only" id="fsaved" role="status" title="The flats"></span>
     <button class="btn sm" id="save" type="button" title="Save (Ctrl S)">Save</button>
-    <button class="btn sm pic-only" id="impBtn" type="button" title="Bring an SVG back from Illustrator: the studio's own export comes back as layers">Import</button><input type="file" id="svgIn" accept=".svg,image/svg+xml" class="hidden">
+    <button class="btn sm pic-only pro-only" id="impBtn" type="button" title="Bring an SVG back from Illustrator: the studio's own export comes back as layers">Import</button><input type="file" id="svgIn" accept=".svg,image/svg+xml" class="hidden">
     <button class="btn sm pic-only" id="tryBtn" type="button" title="The design painted on a 3D model, turned round">3D</button>
     <div class="menu pic-only"><button class="btn sm" id="expBtn" type="button" aria-haspopup="true" aria-expanded="false">Export</button>
       <div class="pop hidden" id="expPop" role="menu">
         <button type="button" role="menuitem" data-exp="png"><b>Picture (PNG)</b><small>Everything as one picture, full size</small></button>
-        <button type="button" role="menuitem" data-exp="svg"><b>Layers for Illustrator (SVG)</b><small>One group per layer; type and shapes stay editable</small></button>
+        <button type="button" role="menuitem" data-exp="svg" class="pro-only"><b>Layers for Illustrator (SVG)</b><small>One group per layer; type and shapes stay editable</small></button>
         <button type="button" role="menuitem" data-exp="layer"><b>The selected layer (PNG)</b><small>With a clear background, for a print file</small></button>
         <button type="button" role="menuitem" data-exp="keepnew" class="hidden" id="expKeepNew"><b>Keep as a new graphic</b><small>Everything visible goes into the library as its own graphic</small></button>
       </div></div>
@@ -121,15 +129,15 @@ kbd{font:500 10px 'IBM Plex Mono',monospace;border:1px solid var(--line);border-
     <hr>
     <button type="button" data-tool="brush" title="Brush (B)" aria-label="Brush"><svg viewBox="0 0 24 24"><path d="M18 3l3 3-9 9-3-3zM9 12c-3 0-5 2-5 5 0 2-1 3-2 4 4 0 9-1 9-5"/></svg></button>
     <button type="button" data-tool="eraser" title="Eraser (E)" aria-label="Eraser"><svg viewBox="0 0 24 24"><path d="M16 3l5 5-11 11H5l-3-3zM9 9l6 6M10 21h11"/></svg></button>
-    <button type="button" data-tool="distress" title="Distress brush (D): wears the selected layer away" aria-label="Distress brush"><svg viewBox="0 0 24 24"><circle cx="6" cy="7" r="1.2"/><circle cx="12" cy="5" r=".8"/><circle cx="17" cy="9" r="1.5"/><circle cx="9" cy="13" r=".9"/><circle cx="15" cy="15" r="1"/><circle cx="6" cy="18" r="1.4"/><circle cx="19" cy="19" r=".8"/><path d="M3 11l4 2 3-2 4 3 3-1 4 2"/></svg></button>
+    <button type="button" class="pro-only" data-tool="distress" title="Distress brush (D): wears the selected layer away" aria-label="Distress brush"><svg viewBox="0 0 24 24"><circle cx="6" cy="7" r="1.2"/><circle cx="12" cy="5" r=".8"/><circle cx="17" cy="9" r="1.5"/><circle cx="9" cy="13" r=".9"/><circle cx="15" cy="15" r="1"/><circle cx="6" cy="18" r="1.4"/><circle cx="19" cy="19" r=".8"/><path d="M3 11l4 2 3-2 4 3 3-1 4 2"/></svg></button>
     <hr>
     <button type="button" data-tool="text" title="Type (T)" aria-label="Type"><svg viewBox="0 0 24 24"><path d="M5 5h14M12 5v15M9 20h6"/></svg></button>
     <button type="button" data-tool="rect" title="Rectangle (R)" aria-label="Rectangle"><svg viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" rx="1.5"/></svg></button>
     <button type="button" data-tool="ellipse" title="Ellipse (O)" aria-label="Ellipse"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="8" ry="6"/></svg></button>
     <button type="button" data-tool="line" title="Line (L)" aria-label="Line"><svg viewBox="0 0 24 24"><path d="M5 19L19 5"/></svg></button>
-    <button type="button" data-tool="ruler" title="Ruler (U): drag across something you know the size of, to set the real size" aria-label="Ruler"><svg viewBox="0 0 24 24"><path d="M3 17L17 3l4 4L7 21z"/><path d="M7 13l2 2M10 10l2 2M13 7l2 2"/></svg></button>
-    <button type="button" data-tool="warp" title="Warp (W): bend the selected mark to the piece" aria-label="Warp"><svg viewBox="0 0 24 24"><path d="M4 7c5-3 11-3 16 0M4 17c5-3 11-3 16 0M4 7v10M20 7v10M12 5.5v9"/></svg></button>
-    <button type="button" data-tool="pick" title="Pick a colour from the picture (I)" aria-label="Pick a colour"><svg viewBox="0 0 24 24"><path d="M14 4l6 6-2 2-6-6zM12 6l-8 8v4h4l8-8"/></svg></button>
+    <button type="button" class="pro-only" data-tool="ruler" title="Ruler (U): drag across something you know the size of, to set the real size" aria-label="Ruler"><svg viewBox="0 0 24 24"><path d="M3 17L17 3l4 4L7 21z"/><path d="M7 13l2 2M10 10l2 2M13 7l2 2"/></svg></button>
+    <button type="button" class="pro-only" data-tool="warp" title="Warp (W): bend the selected mark to the piece" aria-label="Warp"><svg viewBox="0 0 24 24"><path d="M4 7c5-3 11-3 16 0M4 17c5-3 11-3 16 0M4 7v10M20 7v10M12 5.5v9"/></svg></button>
+    <button type="button" class="pro-only" data-tool="pick" title="Pick a colour from the picture (I)" aria-label="Pick a colour"><svg viewBox="0 0 24 24"><path d="M14 4l6 6-2 2-6-6zM12 6l-8 8v4h4l8-8"/></svg></button>
     <hr>
     <button type="button" data-tool="area" title="Paint the area for the AI (M)" aria-label="Paint the area for the AI" class="mask-on"><svg viewBox="0 0 24 24"><path d="M4 4h4M12 4h4M20 4v4M20 12v4M20 20h-4M12 20H8M4 20v-4M4 12V8"/><path d="M9 15l2-6 4 4z"/></svg></button>
     <button class="cur" id="curColor" type="button" title="Colour" aria-label="Choose the colour"></button>
@@ -414,7 +422,7 @@ function paintPanels(){paintLayers();if(TAB==='ai')paintAiState()}
 function paintLayers(){
   const p=$('#pLayers'),l=selected();
   const list=[...LAYERS].reverse().map(x=>`<div class="ly ${x.id===SEL?'on':''} ${x.visible?'':'off'}" data-ly="${x.id}" tabindex="0" role="button" aria-pressed="${x.id===SEL}"><button type="button" data-vis title="${x.visible?'Hide':'Show'}" aria-label="${x.visible?'Hide':'Show'} ${esc(x.name)}">${x.visible?EYE:SHUT}</button>${x.kind==='text'?`<span class="th">T</span>`:`<img alt="" src="${thumbOf(x)}">`}<span class="nm">${esc(x.name)}<small>${KIND[x.kind]}${x.blend!=='source-over'?' · '+esc(BLENDS.find(b=>b[0]===x.blend)?.[1].split(' (')[0]):''}${x.finish?' · '+esc(x.finish.name):x.distress.amount?' · distressed':''}</small></span><button type="button" data-lock title="${x.locked?'Unlock':'Lock'}" aria-label="${x.locked?'Unlock':'Lock'} ${esc(x.name)}">${x.locked?LOCK:OPEN}</button></div>`).join('');
-  p.innerHTML=`<div class="sec"><h4>Layers · top first</h4><div class="layers">${list}</div></div>${l?fieldsHtml(l):'<p class="note">Choose a layer to change it. Add type, our marks, your own pictures and AI graphics from the Add and AI tabs.</p>'}`;
+  p.innerHTML=`<div class="sec"><h4>Layers · top first</h4><div class="layers">${list}</div></div>${garmentHtml()}${l?fieldsHtml(l):'<p class="note">Choose a layer to change it. Add type, our marks, your own pictures and AI graphics from the Add and AI tabs.</p>'}`;
 }
 function fieldsHtml(l){
   const a=l.adjust,t=l.tint,d=l.distress,col=(p,v)=>`<input type="color" data-p="${p}" value="${v}">`;
@@ -665,7 +673,7 @@ async function save(){const b=$('#save');b.disabled=true;$('#saved').textContent
     else r=await api(`/v1/lab/concepts/${CID}/studio`,{method:'PUT',body:{doc}});
     // what was sent is now what the layers come from
     for(const l of LAYERS){const s=doc.layers.find(x=>x.id===l.id);if(s&&isRaster(l)){l.src=s.src;l.dirty=false;l._srcRid=l.raster._rid}}
-    DIRTY=false;SAVED_AT=r.savedAt;showSaved();return true}
+    DIRTY=false;SAVED_AT=r.savedAt;showSaved();if(!GMODE)loadReady();return true}
   catch(x){$('#saved').className='saved dirty';$('#saved').textContent=x.message;return false}finally{b.disabled=false}}
 $('#save').onclick=saveAll;
 function download(url,name){const a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove()}
@@ -778,7 +786,7 @@ document.addEventListener('keydown',e=>{
   if(e.key==='['){OPT.size=Math.max(1,Math.round(OPT.size*.8));OPT.dsize=Math.max(4,Math.round(OPT.dsize*.8));OPT.area=Math.max(4,Math.round(OPT.area*.8));paintOpts();draw();return}
   if(e.key===']'){OPT.size=Math.min(400,Math.round(OPT.size*1.25));OPT.dsize=Math.min(600,Math.round(OPT.dsize*1.25));OPT.area=Math.min(600,Math.round(OPT.area*1.25));paintOpts();draw();return}
   if(e.key==='0'){fit();return}if(e.key==='+'||e.key==='='){const r=view.getBoundingClientRect();zoomAt(1.25,r.width/2,r.height/2);return}if(e.key==='-'){const r=view.getBoundingClientRect();zoomAt(.8,r.width/2,r.height/2);return}
-  const t={v:'select',h:'hand',b:'brush',e:'eraser',d:'distress',t:'text',r:'rect',o:'ellipse',l:'line',i:'pick',m:'area',u:'ruler',w:'warp'}[e.key.toLowerCase()];if(t&&!mod&&!e.altKey)setTool(t);
+  const t={v:'select',h:'hand',b:'brush',e:'eraser',d:'distress',t:'text',r:'rect',o:'ellipse',l:'line',i:'pick',m:'area',u:'ruler',w:'warp'}[e.key.toLowerCase()];if(t&&!mod&&!e.altKey&&!(LEVEL==='simple'&&PRO_TOOLS.includes(t)))setTool(t);
 });
 document.addEventListener('keyup',e=>{if(e.key===' '){SPACE=false;setTool(TOOL)}});
 window.addEventListener('beforeunload',e=>{if(DIRTY||FF()?.dirty()){e.preventDefault();e.returnValue=''}});
@@ -815,11 +823,11 @@ async function boot(){
   await loadFonts();setColor(CUR);paintSub();paintAdd();tab('layers');setTool('select');HIST=[snap()];HI=0;syncUndo();DIRTY=false;showSaved();paintLayers();requestAnimationFrame(fit);
   if(QS.get('tryon')==='1')tryOpen().catch(()=>{});
   setInterval(()=>{if(DIRTY&&!DRAG)save()},90000); // a quiet save every minute and a half while there are changes
-  setVMode(QS.get('view')||'picture');
+  setVMode(QS.get('view')||'picture');loadFlatsRecord();loadReady();
 }
 // a graphic for the library: a clear canvas, or the graphic's picture as a layer over one, with the layers it was built from when it has them
 async function bootGraphic(){
-  $('#viewSeg').classList.add('hidden'); // a graphic for the library has no flats
+  ['#viewSeg','#readyWrap'].forEach(s=>$(s).classList.add('hidden')); // a graphic for the library has no flats and no tech pack
   try{D=await api('/v1/lab/library/studio'+(GID?'?art='+encodeURIComponent(GID):''))}catch(x){const n=$('#needSignin');n.classList.remove('hidden');n.querySelector('h1').textContent=x.status===404?'That graphic is not in the library':'Sign in first';n.querySelector('p').textContent=x.message;return}
   D.concept={name:D.graphic?.name||'New graphic',status:'graphic',locked:false,hasImage:Boolean(D.graphic?.hasImage),hasPlain:false,colors:[]};
   $('#app').classList.remove('hidden');$('#back').href='/lab/library';$('#back').textContent='← Graphics library';document.querySelector('.brand-suffix').textContent='/ Graphics studio';
@@ -953,14 +961,14 @@ $('#sepDlg').addEventListener('click',async e=>{const d=$('#sepDlg');if(e.target
 // the layers with a place on the piece go to the concept and its flats, at their size, when the design is saved
 let SYNCED=null;
 async function syncFlats({before}={}){
+  if(before)await before(); // unsaved changes on the flats go first and their sizes come back to the layers, so nothing set on the flats is undone
   const placed=LAYERS.filter(l=>l.kind!=='base'&&l.placement&&l.visible).slice(0,8).map(l=>({l,s:inchesOf(l),key:sig(l)}));
   const key=JSON.stringify(placed.map(x=>[x.l.id,x.l.name,x.l.placement,fin(x.s.w),fin(x.s.h),x.l.finish?.id||'',x.key]));if(key===SYNCED)return false;
   const layers=placed.map(x=>({layer:x.l.id,name:x.l.name,widthIn:x.s.w,heightIn:x.s.h,placement:x.l.placement,techniqueId:x.l.finish?.id||null,...(x.l.art&&x.l.artSig===x.key?{art:x.l.art}:{image:artPng(x.l)})}));
-  if(before)await before(); // unsaved changes on the flats go first, so the graphics land on them and nothing is lost
   const r=await api(`/v1/lab/concepts/${CID}/studio/graphics`,{body:{layers}});
   for(const x of placed)if(r.arts[x.l.id]){x.l.art=r.arts[x.l.id];x.l.artSig=x.key}
   if(SYNCED!==null||placed.length)toast(placed.length?`On the concept${r.flats?' and its flats':''}: ${placed.length} graphic${placed.length>1?'s':''} at their size.`:'Nothing from the studio is on the flats now.');
-  const was=SYNCED;SYNCED=key;return Boolean(r.flats)&&(placed.length>0||(was!==null&&was!=='[]'))} // true when the saved flats changed
+  loadFlatsRecord();const was=SYNCED;SYNCED=key;return Boolean(r.flats)&&(placed.length>0||(was!==null&&was!=='[]'))} // true when the saved flats changed
 // the size fields
 pL.addEventListener('input',e=>{if(!e.target.matches('[data-win]'))return;const l=selected(),v=Number(e.target.value);if(!l||!(v>0)||l.locked)return;const t=tight(l);l.scale=clamp(v*PPI/(t.w||1),.02,40);touch();draw();paintFields()});
 pL.addEventListener('change',e=>{const l=selected();if(!l)return;if(e.target.matches('[data-win]')){commit();paintSize()}if(e.target.matches('[data-placement]')){l.placement=e.target.value||undefined;commit();const c=$('#chk');if(c)c.innerHTML=''}});
@@ -979,7 +987,48 @@ async function saveAll(){if(GMODE||!CID)return save();const f=FF();if(f&&f.dirty
 // the flats' own saved line shows in the header beside the picture's
 function mirrorFlats(){const d=$('#flatFrame').contentDocument,src=d&&d.getElementById('saved'),out=$('#fsaved');if(!src)return;FOBS?.disconnect();
   const copy=()=>{out.className='saved flat-only'+(src.classList.contains('dirty')?' dirty':'');out.innerHTML=src.innerHTML?'Flats: '+src.innerHTML:'';out.title=src.title||'The flats'};copy();FOBS=new MutationObserver(copy);FOBS.observe(src,{childList:true,characterData:true,subtree:true,attributes:true})}
-window.FBDesign={saveAll,flatsChanged(){},flatsReady(){const f=FF();if(!f)return;f.mode(VMODE==='split'?'compact':'full');if(VMODE==='front'||VMODE==='back')f.setView(VMODE);mirrorFlats();$('#packBtn').classList.toggle('hidden',!f.canPack());['#specBtn','#decoBtn'].forEach(s=>$(s).disabled=Boolean(f.unsupported()))}};
+// ---------- one placement model: inches on the garment ----------
+// Where a graphic goes and how big it is lives in one place: the flats' placement, in inches from the HPS and the centre front. A layer with a
+// place on the picture is that placement drawn on the picture: set its size on the picture and the flats take it; change its size on the flats,
+// or take it off them, and the picture follows. FLATS is the latest record the page has (from the service, then from the flats as they save).
+let FLATS=null;
+function adoptFlats(list,{saved=true}={}){FLATS={saved,placements:list||[]};if(GMODE||!LAYERS.length){paintLayers();return}
+  const changed=[];
+  for(const l of LAYERS){if(l.kind==='base'||!l.placement)continue;const q=FLATS.placements.find(x=>x.source==='studio'&&x.layer===l.id);
+    if(q){const s=inchesOf(l);if(s.w>0&&Math.abs(q.w-s.w)>.07){l.scale=clamp(l.scale*q.w/s.w,.02,40);changed.push(`${l.name} is ${fin(q.w)} in wide, as on the flats`)}}
+    else if(saved&&l.art){l.placement=undefined;changed.push(`${l.name} came off the flats, so it is on the picture only`)}} // only a layer that was on them (it has its artwork) can have come off
+  if(changed.length){commit();draw();toast(changed.slice(0,2).join('. ')+(changed.length>2?` and ${changed.length-2} more`:'')+'.')}
+  paintLayers()}
+async function loadFlatsRecord(){if(GMODE||!CID)return;try{const r=await api(`/v1/lab/concepts/${CID}/flats`);if(r.unsupported)return;const f=r.flat||{};adoptFlats((f.placements||[]).map(q=>({...q,where:''})),{saved:Boolean(f.saved)})}catch{}}
+function garmentHtml(){if(GMODE||!FLATS)return'';const L=FLATS.placements;
+  return `<div class="sec" id="garmentSec"><h4>On the garment · in inches</h4>${L.length?`<div class="gpl">${L.map(q=>{const ly=q.source==='studio'&&LAYERS.find(x=>x.id===q.layer);
+    return `<button type="button" class="gp" data-gp="${esc(q.id)}" ${ly?`data-gly="${esc(ly.id)}"`:''}><b>${esc(q.name)}</b><span>${q.view==='back'?'Back':'Front'} · ${fin(q.w)} × ${fin(q.h)} in${ly?' · on the picture':''}</span>${q.where?`<small>${esc(q.where)}</small>`:''}</button>`}).join('')}</div>`:'<p class="note" style="margin:0">Nothing is placed on the garment yet. Choose where a layer goes (Goes on) and it lands on the flats at its size.</p>'}
+    <p class="note" style="margin:0">One record for both views: change a size here or on the flats and the other follows.${FLATS.saved?'':' The flats are not saved yet.'}</p></div>`}
+$('#pLayers').addEventListener('click',e=>{const b=e.target.closest('[data-gp]');if(!b)return;if(b.dataset.gly&&(VMODE==='picture'||VMODE==='split')){SEL=b.dataset.gly;paintLayers();draw();return}
+  const q=FLATS?.placements.find(x=>x.id===b.dataset.gp);if(!q)return;Promise.resolve(VMODE==='split'?null:setVMode(q.view)).then(()=>{const go=()=>{const f=FF();if(f&&f.ready())f.select(q.id);else setTimeout(go,200)};go()})});
+// ---------- Simple and Pro ----------
+// Simple shows the essentials (the picture, graphics and their place, the flats and their sheets); Pro shows every tool. A client's room starts
+// on Simple and Future Basics on Pro; the choice is remembered in this browser.
+const PRO_TOOLS=['distress','ruler','warp','pick'];
+const isClientView=()=>{try{return !localStorage.getItem('fb.admin.token')&&Boolean(localStorage.getItem('fb.client.token'))}catch{return false}};
+let LEVEL=(()=>{try{const v=localStorage.getItem('fb.design.level');if(v==='simple'||v==='pro')return v}catch{}return isClientView()?'simple':'pro'})();
+function setLevel(v,{keep=true}={}){LEVEL=v==='simple'?'simple':'pro';$('#app').dataset.level=LEVEL;$$('#levelSeg [data-level]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.level===LEVEL)));
+  if(keep)try{localStorage.setItem('fb.design.level',LEVEL)}catch{}
+  if(LEVEL==='simple'&&PRO_TOOLS.includes(TOOL))setTool('select');FF()?.level?.(LEVEL)}
+$$('#levelSeg [data-level]').forEach(b=>b.onclick=()=>setLevel(b.dataset.level));setLevel(LEVEL,{keep:false});
+
+// ---------- the checklist: what it still needs before the tech pack ----------
+let READY=null;
+async function loadReady(){if(GMODE||!CID)return;try{READY=await api(`/v1/lab/concepts/${CID}/ready`)}catch{return}paintReady()}
+function paintReady(){const b=$('#readyBtn');if(!READY){b.textContent='Checklist';return}
+  b.textContent=READY.isPack?'Tech pack ✓':`Checklist ${READY.done}/${READY.total}`;b.classList.toggle('ok',READY.ready);
+  $('#readyList').innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b style="font-size:14px">${READY.isPack?'It is a tech pack':READY.ready?'Ready for the tech pack':'Before the tech pack'}</b>${READY.next?`<a class="btn sm go" href="${esc(READY.next.href)}" data-readynext>${esc(READY.next.label)}</a>`:''}</div>`
+    +READY.items.map(i=>`<div class="rd" data-ready="${esc(i.id)}" data-state="${i.state}"><span class="st ${i.state}" aria-label="${i.state==='done'?'Done':i.state==='todo'?'To do':'Worth a look'}"></span><b>${esc(i.label)}</b>${i.state==='done'?'<span></span>':i.go?.view?`<button class="btn sm q" type="button" data-readygo="${esc(i.go.view)}">Go</button>`:i.go?.href?`<a class="btn sm q" href="${esc(i.go.href)}">Open</a>`:'<span></span>'}<small>${esc(i.note)}</small></div>`).join('')}
+$('#readyBtn').onclick=e=>{e.stopPropagation();const p=$('#readyPop'),open=p.classList.toggle('hidden');$('#readyBtn').setAttribute('aria-expanded',String(!open));if(!open)loadReady()};
+$('#readyPop').addEventListener('click',e=>{e.stopPropagation();const g=e.target.closest('[data-readygo]');if(g){$('#readyPop').classList.add('hidden');setVMode(g.dataset.readygo)}});
+document.addEventListener('click',e=>{if(!e.target.closest('#readyWrap'))$('#readyPop').classList.add('hidden')});
+
+window.FBDesign={saveAll,flatsChanged(){},flatsSaved(){const f=FF();if(f)adoptFlats(f.placements(),{saved:true});setTimeout(loadReady,300)},flatsReady(){const f=FF();if(!f)return;f.mode(VMODE==='split'?'compact':'full');if(VMODE==='front'||VMODE==='back')f.setView(VMODE);mirrorFlats();f.level?.(LEVEL);$('#packBtn').classList.toggle('hidden',!f.canPack());FLATS={saved:f.saved(),placements:f.placements()};paintLayers();['#specBtn','#decoBtn'].forEach(s=>$(s).disabled=Boolean(f.unsupported()))}};
 async function setVMode(v,{push=true}={}){
   if(!VIEWS.includes(v)||GMODE||!CID)v='picture';const was=VMODE;
   if(v!=='picture'){
