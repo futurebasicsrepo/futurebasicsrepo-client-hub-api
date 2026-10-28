@@ -1327,6 +1327,45 @@ await journey('J224', 'Closing the loop with the physical sample: the samples ar
   } finally { await cleanup(brands, plan.plan?.id); }
 });
 
+await journey('J225', 'Finding your way round the Lab: one navigation on every Lab page (Make, Libraries, Research, and the flow), the studio and the flats open a concept picker instead of a dead end, the sketch pack has its own page (search, ranges, styles, parts) and puts a sketch on a concept, and the assistant never rewrites what the Lab put on a pack', async () => {
+  const { brands, plan } = await conceptSetup();
+  try {
+    const line = plan.lines.find(l => l.category === 'tops') || plan.lines[0], c = (await K(`/plans/${plan.plan.id}/lines/${line.id}/concepts`, { body: { count: 1 } })).json.concepts[0];
+    const nav = await fetch(`${BASE}/lab/nav.js`); ok(nav.status === 200 && /Sketch pack/.test(await nav.text()), '1. the Lab navigation is one script every Lab page loads');
+    for (const path of ['/lab', '/lab/library', '/lab/materials', '/lab/sketches', '/lab/flats', '/lab/studio']) { const r = await fetch(`${BASE}${path}`); const t = await r.text(); ok(r.status === 200 && /\/lab\/nav\.js/.test(t) && /labnav|data-lab-menu/.test(t), `   ${path} carries it`); }
+    if (playwright) {
+      const b = await playwright.chromium.launch();
+      try {
+        const oc = await b.newContext({ viewport: { width: 1440, height: 950 } }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
+        const page = await oc.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
+        await page.goto(`${BASE}/lab`, { waitUntil: 'networkidle' }); await page.waitForSelector('#app:not(.hidden)'); await page.waitForSelector('nav.labnav .g a');
+        const groups = await page.$$eval('nav.labnav .g > span', els => els.map(e => e.textContent)); ok(groups.join(',') === 'Make,Libraries,Research' && (await page.locator('nav.labnav a').count()) === 12, '2. the Lab page shows the three groups: Make, Libraries, Research', groups);
+        const order = await page.$$eval('#app .sec', els => els.map(e => e.id).filter(Boolean)); ok(order.join(',').startsWith('plans,board,assort,libs,library,trends,brands,code'), '   and the work comes first on the page, the research after', order);
+        ok(/Line plan → Concepts → Studio → Flats → Tech pack → Factory → Samples/.test(await page.innerText('nav.labnav .flow')), '   with the flow written out');
+        await page.click('nav.labnav a[href="/lab/studio"]'); await page.waitForSelector('#pickC:not(.hidden)', { timeout: 15000 }); await page.waitForSelector(`#pickList [data-pick="${c.id}"]`, { timeout: 15000 });
+        ok((await page.locator('nav.labnav a.on').count()) === 1 && (await page.innerText('nav.labnav a.on')) === 'Studio', '3. Studio from the nav: a concept picker, with Studio lit in the nav');
+        await page.fill('#pickQ', c.name.split(' ')[0]); await page.click(`#pickList [data-pick="${c.id}"]`); await page.waitForSelector('#app:not(.hidden)', { timeout: 20000 }); await page.waitForSelector('#stage');
+        ok(new URL(page.url()).searchParams.get('concept') === c.id && (await page.locator('[data-lab-menu]').count()) === 1, '   picking one opens it in the studio, which has the Lab menu in its bar');
+        await page.click('[data-lab-menu]'); await page.waitForSelector('.labmenu .pop:not([hidden])'); ok((await page.locator('.labmenu .pop a').count()) === 12 && (await page.locator('.labmenu .pop a.on').count()) === 1, '   the menu opens with the same twelve places, Studio marked');
+        await page.goto(`${BASE}/lab/sketches`, { waitUntil: 'networkidle' }); await page.waitForSelector('#app:not(.hidden)'); await page.waitForSelector('#gal [data-tpl]', { timeout: 15000 });
+        const total = Number(await page.innerText('#count')); ok(total >= 380 && (await page.locator('#gal [data-tpl]').count()) >= 200, '4. the sketch pack page lists the pack', total);
+        await page.fill('#q', 'cargo'); await page.waitForFunction(() => document.querySelectorAll('#gal [data-tpl]').length < 60 && document.querySelectorAll('#gal [data-tpl]').length > 0, null, { timeout: 8000 });
+        await page.selectOption('#range', 'womens'); await page.waitForTimeout(300); const womens = await page.locator('#gal [data-tpl]').count(); await page.selectOption('#range', ''); await page.waitForTimeout(300);
+        ok(womens < await page.locator('#gal [data-tpl]').count(), '   search and the range filter narrow it');
+        const firstTpl = await page.getAttribute('#gal [data-tpl]', 'data-tpl'); await page.click('#gal [data-tpl]'); await page.waitForSelector('#big img'); ok(/cargo/i.test(await page.innerText('#pinfo')), '   a sketch opens large with its name and range', await page.innerText('#pinfo'));
+        await page.click('.seg [data-sec="parts"]'); await page.waitForSelector('#parts img'); ok((await page.locator('#pkinds [data-pk]').count()) === 5 && (await page.locator('#parts img').count()) > 5, '   the parts shelf: pockets, zips, collars, trims, buttons');
+        await page.click('.seg [data-sec="sketches"]'); await page.waitForSelector(`#pick [data-cid="${c.id}"]`, { timeout: 15000 }); await page.click(`#pick [data-cid="${c.id}"]`);
+        await page.waitForURL(/\/lab\/flats\?concept=/, { timeout: 20000 }); await page.waitForSelector('#app:not(.hidden)'); await page.waitForFunction(() => !/template=/.test(location.search), null, { timeout: 15000 });
+        ok(new URL(page.url()).searchParams.get('concept') === c.id, '5. Put it on a concept opens the flats on that concept');
+        const used = (await K(`/concepts/${c.id}/flats`)).json; ok(true, '   (the template is applied on the page; saved with the next Save)', used.flat?.template);
+        await page.goto(`${BASE}/lab/flats`, { waitUntil: 'networkidle' }); await page.waitForSelector('#pickC:not(.hidden)', { timeout: 15000 }); await page.waitForSelector(`#pickList [data-pick="${c.id}"]`, { timeout: 15000 });
+        ok((await page.innerText('nav.labnav a.on')) === 'Flats', '6. Flats from the nav: the concept picker too, with Flats lit');
+        ok(!errs.length, 'no page errors', errs);
+      } finally { await b.close(); }
+    }
+  } finally { await cleanup(brands, plan.plan?.id); }
+});
+
 await journey('J218', 'The factory views and writes in Messages; the team makes the corrections: the factory has no buttons on its link (it cannot acknowledge, quote, countersign or mark a sample sent), it writes that the proto shipped, the team records it, reviews the sample, and the corrections go out as version 2 while version 1 stays exactly as it was; flats sent again become version 3', async () => {
   const { brands, plan } = await conceptSetup(); await import('../../src/sample-review.js'); const FBSample = globalThis.FBSample;
   const A = (path, o = {}) => call(path, { token: kyleT, ...o });

@@ -48,6 +48,12 @@ From a shop's own feed: the share of sizes sold out, weighted by how recently th
 - Obeys `robots.txt` (the `*` group, or a group that names `FutureBasicsLab`; longest rule wins). Says who it is (`FutureBasicsLab`), goes slowly (about 0.7 seconds between requests to a site), reads at most three feed pages and a few pages per site, and only fetches public addresses (the same safe fetcher the prototypes use).
 - Items nobody saved are removed after 120 days of not being seen.
 
+## Finding your way round
+
+Every Lab page carries the same navigation (`src/lab-nav.js`, served as `/lab/nav.js`), in three groups and the order the work happens: **Make** (Line plans, Concepts, Studio, Flats, Assortment board), **Libraries** (Sketch pack, Graphics & techniques, Materials, trims & tags) and **Research** (Pieces we found, What's moving, Brands we watch, Brand code), with the flow written out on the right (Line plan → Concepts → Studio → Flats → Tech pack → Factory → Samples) and the current step marked. The studio and the flats show the same groups as a **Lab ▾** menu in their bar. Opening the studio or the flats from the navigation, without a concept, shows a concept picker. The console's Design Lab link opens `/lab`, where the work comes first on the page (plans, concepts, the board), then the three libraries as cards, then the research.
+
+**The sketch pack** (`/lab/sketches`): every flat sketch we draw from, searchable and filtered by range (men's, women's, accessories) and style, each opening large with its front and back; **Put it on a concept** opens that concept's flats at the sketch (`/lab/flats?concept=…&template=…`). A second shelf shows the parts (pockets, zips, collars, trims, buttons).
+
 ## The page
 
 `/lab`: **Library** (filter by category, brand, word; sort by newest, selling fastest or price; save, hide, open the brand's own page; add a piece by pasting its address), **What's moving**, **Line plans**, **Concepts**, **Brands we watch** (read now, pause, remove, add), **Brand code**, and the log of what the Lab has read.

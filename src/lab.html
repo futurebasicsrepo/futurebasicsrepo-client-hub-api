@@ -28,6 +28,7 @@ h1{font-size:clamp(30px,5vw,48px);letter-spacing:-.035em;font-weight:500;margin:
 .hero .mono{color:#9d9da4}.hero p{color:#c9c9cf;max-width:66ch;margin:6px 0 0;font-size:15px}
 .stats{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}
 .stat{border:1px solid rgba(255,255,255,.18);border-radius:14px;padding:8px 14px;min-width:110px}.stat b{display:block;font-size:22px;font-weight:500;letter-spacing:-.02em}.stat span{font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#9d9da4}
+.grp{margin:26px 0 10px;display:grid;gap:4px}.grp .note{max-width:70ch}.libs{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:12px}.lib{display:grid;gap:6px;background:#fff;border:1px solid var(--line);border-radius:18px;padding:16px;text-decoration:none;color:inherit}.lib:hover{border-color:var(--ink)}.lib b{font-size:16px;font-weight:500}.lib span{color:var(--dim);font-size:13px}
 .labtabs{position:sticky;top:72px;z-index:12;display:flex;gap:6px;overflow-x:auto;margin:14px -4px 0;padding:8px 4px;background:var(--fog,#f5f5f2);scrollbar-width:none}.labtabs::-webkit-scrollbar{display:none}
 .labtabs a{flex:none;border:1px solid rgba(20,20,22,.14);background:#fff;border-radius:999px;padding:7px 14px;text-decoration:none;color:inherit;font-weight:600;font-size:13px;white-space:nowrap}.labtabs a:hover{background:#f5f5f2}.labtabs a.on{background:#141416;border-color:#141416;color:#fff}.labtabs a:focus-visible{outline:2px solid #141416;outline-offset:2px}
 .ask{border:0;border-radius:20px;padding:0;width:min(520px,94vw);background:#fff;color:var(--ink)}.ask::backdrop{background:rgba(20,20,22,.55)}.ask form{padding:20px;display:grid;gap:12px}.ask h3{margin:0;font-size:16px;font-weight:600;line-height:1.35;white-space:pre-line}.ask textarea{width:100%;min-height:92px;border:1px solid var(--line);border-radius:14px;padding:10px 12px;font:inherit;resize:vertical}.ask .row{display:flex;gap:8px;justify-content:flex-end}
@@ -112,10 +113,35 @@ dialog.cd{border:0;border-radius:24px;padding:0;width:min(980px,96vw);max-height
   <div id="needSignin" class="panel hidden"><h1>Sign in to the work console first</h1><p class="note">This page uses your work console sign-in. Open the console, sign in, then come back here.</p><a class="btn go" href="/admin" style="margin-top:12px">Open the work console</a></div>
   <div id="app" class="hidden">
     <section class="hero"><span class="mono">Future Basics · Danielle and Kyle only</span><h1>Design Lab.</h1>
-      <p>What the brands we admire make, and what is actually selling, read from the public web and kept here as facts and links. We borrow the cut and the attitude, hold the price at Zara, and add our own twist.</p>
+      <p>Plan the season, draw the concepts, finish them in the studio, measure them as flats, and send them to a tech pack. The libraries hold what we draw from; the research holds what the market is doing.</p>
+      <div class="row" style="margin-top:14px;gap:8px"><a class="btn" href="#plans" style="background:#fff;color:var(--ink);border-color:#fff">Start a line plan</a><a class="btn" href="#board" style="color:#fff;border-color:rgba(255,255,255,.5)">Open the concepts</a><a class="btn" href="/lab/studio" style="color:#fff;border-color:rgba(255,255,255,.5)">Studio</a><a class="btn" href="/lab/flats" style="color:#fff;border-color:rgba(255,255,255,.5)">Flats</a><a class="btn" href="/lab/sketches" style="color:#fff;border-color:rgba(255,255,255,.5)">Sketch pack</a></div>
       <div class="stats" id="stats"></div></section>
-    <nav class="labtabs" id="labTabs" aria-label="Design Lab sections"><a href="#library">Library</a><a href="#trends">What's moving</a><a href="#plans">Line plans</a><a href="#board">Concepts</a><a href="#assort">Assortment board</a><a href="/lab/library">Graphics and techniques</a><a href="/lab/materials">Materials, trims and tags</a><a href="#brands">Brands we watch</a><a href="#code">Brand code</a></nav>
+    <nav class="labnav" id="labTabs"></nav>
 
+    <div class="grp" id="grp-make"><span class="mono">Make</span><p class="note">The work, in the order it happens: plan the season, draw the concepts, finish them in the studio, measure them as flats, send them to a tech pack.</p></div>
+    <section class="sec" id="plans"><div class="hd"><h2>Line plans</h2><p class="note">An assortment for a season: which pieces, in which role, at what price, with an estimated landed cost and a starting quantity. The assistant builds a first draft from the library and the brand code; you change anything. Landed cost is a share of the shelf price until a concept becomes a real tech pack, where the bill of materials gives the true number.</p></div>
+      <div class="panel">
+        <form class="form" id="planForm"><div class="two"><label><span>Plan name</span><input class="t" name="name" maxlength="100" placeholder="Fall 2027 capsule" required></label><label><span>Season</span><input class="t" name="season" maxlength="40" placeholder="Fall 2027"></label></div>
+          <label><span>The idea (optional)</span><textarea class="t" name="brief" maxlength="800" placeholder="A heritage-leaning capsule for guys who dress in quiet, well-cut basics. Lean on outerwear and knit."></textarea></label>
+          <div class="row"><label class="row" style="gap:6px"><span class="sub">Pieces</span><select class="t" name="size" style="flex:0 0 90px"><option>8</option><option selected>12</option><option>16</option><option>24</option></select></label><button class="btn go" type="submit" id="planGo">Draft the plan</button><button class="btn" type="button" id="planBlank">Start blank</button><span class="msg" id="planMsg" role="status"></span></div></form>
+        <div class="plans" id="planList" style="margin-top:16px"></div>
+        <div id="planView" class="hidden" style="margin-top:18px;border-top:1px solid var(--line);padding-top:16px"></div>
+      </div></section>
+    <section class="sec" id="board"><div class="hd"><h2>Concepts</h2><p class="note">Our own take on each planned piece: a picture, a specific twist, and a check against what inspired it. Look at a concept beside the pieces it was drawn from before you approve it. An approved concept becomes a product in the Future Basics room and its tech pack is drafted from it.</p></div>
+      <div class="panel"><div class="filters" id="bFilters" role="group" aria-label="Concept status"></div><div class="row" style="margin-bottom:12px"><select class="t" id="bPlan" aria-label="Plan"><option value="">All plans</option></select><span class="sub" id="bNote"></span></div>
+        <div class="cgrid" id="cgrid"></div><p class="note hidden" id="cEmpty">No concepts yet. Open a line plan and press “Make concepts” on a piece.</p></div></section>
+    <section class="sec" id="assort"><div class="hd"><h2>Assortment board</h2><p class="note">Every concept in one visual wall: laid flat and on a model. Open one to turn the model all the way round, or, with a video model connected, watch the model walk in the piece. Pictures are drawn from each concept's own picture, so the shape, colours, logo and graphics stay the ones you reviewed.</p></div>
+      <div class="panel"><div class="abar"><select class="t" id="aPlan" aria-label="Plan"><option value="">All plans</option></select>
+        <div class="seg" id="aShow" role="group" aria-label="What to show"><button type="button" data-show="flat" aria-pressed="false">Flats</button><button type="button" data-show="model" aria-pressed="false">On model</button><button type="button" data-show="both" aria-pressed="true">Both</button></div>
+        <div class="seg" id="aStat" role="group" aria-label="Which concepts"><button type="button" data-st="" aria-pressed="true">In play</button><button type="button" data-st="approved" aria-pressed="false">Approved</button><button type="button" data-st="all" aria-pressed="false">All</button></div>
+        <button type="button" class="btn sm go" id="aMake">Make missing views</button><span class="sub" id="aNote" role="status"></span></div>
+        <div id="aBoard"></div><p class="note hidden" id="aEmpty">No concepts to show yet. Make concepts from a line plan and they appear here.</p></div></section>
+
+    <dialog class="av" id="av" aria-label="Concept views"></dialog>
+    <dialog class="cd" id="cd" aria-label="Concept"></dialog>
+    <div class="grp" id="grp-libraries"><span class="mono">Libraries</span><p class="note">What we draw from and build with, kept once and used on every piece.</p></div>
+    <section class="sec" id="libs"><div class="libs"><a class="lib" href="/lab/sketches"><b>Sketch pack</b><span>382 flat sketches, men's, women's and accessories, with their parts. Pick one for any concept.</span></a><a class="lib" href="/lab/library"><b>Graphics &amp; techniques</b><span>Every graphic we have made, and every way we make one: embroidery, print, transfer, patches.</span></a><a class="lib" href="/lab/materials"><b>Materials, trims &amp; tags</b><span>Fabrics with weight and price, trims, and labels and hang tags drawn to size. Costed on every concept.</span></a></div></section>
+    <div class="grp" id="grp-research"><span class="mono">Research</span><p class="note">What the market is doing, read from the public web and held against our brand code.</p></div>
     <section class="sec" id="library"><div class="hd"><h2>Library</h2><p class="note">Every piece the Lab has found. <b>Heat</b> comes from the shop's own stock: sizes that have sold out on a newer piece. It is a hint about what is moving, not a sales number.</p></div>
       <div class="panel">
         <div class="filters" id="catPills" role="group" aria-label="Category"></div>
@@ -138,33 +164,8 @@ dialog.cd{border:0;border-radius:24px;padding:0;width:min(980px,96vw);max-height
           <span class="sub">or drop pictures here, or paste a screenshot</span><span class="msg" id="photoMsg" role="status"></span>
         </div>
       </div></section>
-
     <section class="sec" id="trends"><div class="hd"><h2>What's moving</h2><p class="note">The library read as numbers: prices by category, how much of each is selling, and the colours, fabrics, shapes and details that keep showing up. <b>Our ladder</b> is the price range a piece in that category is held to: Zara's own prices where the Lab has read them, otherwise an estimate from the reference brands.</p></div>
       <div class="trend" id="trendGrid"></div><p class="note hidden" id="trendEmpty">Nothing to read yet. Read some brands first.</p></section>
-
-    <section class="sec" id="plans"><div class="hd"><h2>Line plans</h2><p class="note">An assortment for a season: which pieces, in which role, at what price, with an estimated landed cost and a starting quantity. The assistant builds a first draft from the library and the brand code; you change anything. Landed cost is a share of the shelf price until a concept becomes a real tech pack, where the bill of materials gives the true number.</p></div>
-      <div class="panel">
-        <form class="form" id="planForm"><div class="two"><label><span>Plan name</span><input class="t" name="name" maxlength="100" placeholder="Fall 2027 capsule" required></label><label><span>Season</span><input class="t" name="season" maxlength="40" placeholder="Fall 2027"></label></div>
-          <label><span>The idea (optional)</span><textarea class="t" name="brief" maxlength="800" placeholder="A heritage-leaning capsule for guys who dress in quiet, well-cut basics. Lean on outerwear and knit."></textarea></label>
-          <div class="row"><label class="row" style="gap:6px"><span class="sub">Pieces</span><select class="t" name="size" style="flex:0 0 90px"><option>8</option><option selected>12</option><option>16</option><option>24</option></select></label><button class="btn go" type="submit" id="planGo">Draft the plan</button><button class="btn" type="button" id="planBlank">Start blank</button><span class="msg" id="planMsg" role="status"></span></div></form>
-        <div class="plans" id="planList" style="margin-top:16px"></div>
-        <div id="planView" class="hidden" style="margin-top:18px;border-top:1px solid var(--line);padding-top:16px"></div>
-      </div></section>
-
-    <section class="sec" id="board"><div class="hd"><h2>Concepts</h2><p class="note">Our own take on each planned piece: a picture, a specific twist, and a check against what inspired it. Look at a concept beside the pieces it was drawn from before you approve it. An approved concept becomes a product in the Future Basics room and its tech pack is drafted from it.</p></div>
-      <div class="panel"><div class="filters" id="bFilters" role="group" aria-label="Concept status"></div><div class="row" style="margin-bottom:12px"><select class="t" id="bPlan" aria-label="Plan"><option value="">All plans</option></select><span class="sub" id="bNote"></span></div>
-        <div class="cgrid" id="cgrid"></div><p class="note hidden" id="cEmpty">No concepts yet. Open a line plan and press “Make concepts” on a piece.</p></div></section>
-
-    <section class="sec" id="assort"><div class="hd"><h2>Assortment board</h2><p class="note">Every concept in one visual wall: laid flat and on a model. Open one to turn the model all the way round, or, with a video model connected, watch the model walk in the piece. Pictures are drawn from each concept's own picture, so the shape, colours, logo and graphics stay the ones you reviewed.</p></div>
-      <div class="panel"><div class="abar"><select class="t" id="aPlan" aria-label="Plan"><option value="">All plans</option></select>
-        <div class="seg" id="aShow" role="group" aria-label="What to show"><button type="button" data-show="flat" aria-pressed="false">Flats</button><button type="button" data-show="model" aria-pressed="false">On model</button><button type="button" data-show="both" aria-pressed="true">Both</button></div>
-        <div class="seg" id="aStat" role="group" aria-label="Which concepts"><button type="button" data-st="" aria-pressed="true">In play</button><button type="button" data-st="approved" aria-pressed="false">Approved</button><button type="button" data-st="all" aria-pressed="false">All</button></div>
-        <button type="button" class="btn sm go" id="aMake">Make missing views</button><span class="sub" id="aNote" role="status"></span></div>
-        <div id="aBoard"></div><p class="note hidden" id="aEmpty">No concepts to show yet. Make concepts from a line plan and they appear here.</p></div></section>
-
-    <dialog class="av" id="av" aria-label="Concept views"></dialog>
-    <dialog class="cd" id="cd" aria-label="Concept"></dialog>
-
     <section class="sec" id="brands"><div class="hd"><h2>Brands we watch</h2><p class="note">The Lab reads each one on its own every few days. It follows each site's robots.txt, goes slowly, and when a site says no, or sits behind a bot wall, it finds the brand's pieces through ordinary web and image search instead.</p></div>
       <div class="panel">
         <div class="row" style="margin-bottom:6px"><button class="btn go" id="scanAll" type="button">Read everything now</button><span class="msg" id="scanMsg" role="status"></span></div>
@@ -176,7 +177,6 @@ dialog.cd{border:0;border-radius:24px;padding:0;width:min(980px,96vw);max-height
           <button class="btn" type="submit">Add to the list</button><span class="msg" id="brandMsg" role="status"></span>
         </form>
       </div></section>
-
     <section class="sec" id="code"><div class="hd"><h2>Brand code</h2><p class="note">How Future Basics decides what is ours. Everything the Lab reads, plans and designs is held against this. Edit it any time.</p></div>
       <div class="panel"><form class="form" id="codeForm">
         <label><span>What Future Basics is</span><textarea class="t" name="statement" maxlength="600"></textarea></label>
@@ -190,11 +190,11 @@ dialog.cd{border:0;border-radius:24px;padding:0;width:min(980px,96vw);max-height
         <label><span>Notes</span><textarea class="t" name="notes" maxlength="1200"></textarea></label>
         <div class="row"><button class="btn go" type="submit">Save the brand code</button><span class="msg" id="codeMsg" role="status"></span></div>
       </form></div></section>
-
     <section class="sec"><div class="hd"><h2>What the Lab has read</h2></div><div class="panel"><ul class="log" id="scans"></ul>
       <p class="fair" style="margin-top:14px">The Lab keeps facts and links, and the address of a picture on the brand's own site. It does not copy pictures, logos, prints or names into our work. Every concept later is checked against what it was inspired by before anyone can approve it.</p></div></section>
   </div>
 </main>
+<script src="/lab/nav.js"></script>
 <script src="/console-nav.js" defer></script>
 <script>
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)],esc=v=>String(v??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));

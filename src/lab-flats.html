@@ -61,9 +61,10 @@ textarea.t{min-height:64px;resize:vertical}
 </head>
 <body>
 <header><a class="wordmark" href="/home" aria-label="Work home"><img class="brand-logo" src="https://thefuturebasics.com/cdn/shop/files/future_basics_true_vector_fixed.svg?v=1775278873&amp;width=360" alt="Future Basics"><span class="brand-suffix">/ Flats and placement</span></a></header>
+<div id="pickC" class="hidden" style="max-width:760px;margin:30px auto;padding:0 16px"><nav class="labnav" data-lab="flats"></nav><h1 style="margin-top:14px">Flats and placement</h1><p class="msg" style="font-size:14px">The flats are drawn for one piece at a time: the measured front and back, every logo and graphic placed in inches. Which concept?</p><input class="t" id="pickQ" type="search" placeholder="Search concepts" aria-label="Search concepts" style="margin:10px 0;width:100%;max-width:380px"><div id="pickList" style="display:grid;gap:6px"><span class="msg">Loading concepts…</span></div><p class="msg" style="margin-top:12px">No concepts yet? <a href="/lab#plans">Start a line plan</a> and make some.</p></div>
 <div id="needSignin" class="hidden"><h1 style="margin-top:0">Sign in to the work console first</h1><p class="msg" style="font-size:14px">This page uses your work console sign-in.</p><a class="btn go" href="/admin" style="margin-top:12px">Open the work console</a></div>
 <div id="app" class="hidden">
-  <div class="bar"><a class="btn q sm" href="/lab#board">← Concepts</a><div class="ttl"><b id="cName">Loading…</b><span id="cSub"></span></div>
+  <div class="bar"><button class="btn q sm" type="button" data-lab-menu data-lab="flats">Lab ▾</button><a class="btn q sm" href="/lab#board">← Concepts</a><div class="ttl"><b id="cName">Loading…</b><span id="cSub"></span></div>
     <a class="btn q sm" id="toStudio" href="#">Open in the studio</a><span class="saved" id="saved" role="status"></span><button class="btn sm" type="button" id="save">Save</button><button class="btn sm" type="button" id="sheet">Spec sheet</button><button class="btn go sm hidden" type="button" id="toPack">Send to the tech pack</button></div>
   <div class="wrap">
     <div class="stage">
@@ -81,6 +82,7 @@ textarea.t{min-height:64px;resize:vertical}
   </div>
 </div>
 <script src="/console-nav.js" defer></script>
+<script src="/lab/nav.js"></script>
 <script type="module">
 import { STYLES, FITS, SIZES, DETAILS, STITCHES, defaultDetail, describeEdit, geometry, renderSvg, viewBoxOf, templatesFor, templateOf, defaultTemplate, describe, placementChecks, overlapChecks, pomTable, defaultParams, defaultPlacement, measurementsFor, POM_NAMES, pomName, fitToTemplate, FLAT_PARTS, PART_KINDS, partOf, defaultPart, fmt, fmtCm } from '/lab/flats.js';
 import { FLAT_TEMPLATES } from '/lab/lab-flat-templates.js';
@@ -275,8 +277,18 @@ $('#sheet').onclick=async()=>{if(DIRTY&&!(await save()))return;const r=await fet
 $('#toPack').onclick=async()=>{const b=$('#toPack');if(DIRTY&&!(await save()))return;b.disabled=true;try{const r=await api(`/v1/lab/concepts/${CID}/flats/tech-pack`,{body:{}});$('#saved').className='saved';$('#saved').innerHTML=`Sent to the <a href="/tech-packs/${r.productId}">tech pack</a>${r.version?` as v${r.version} (v${r.previousVersion} kept)`:''}: ${r.pom} measurements, ${r.sketches} flats as sketches, ${r.construction} construction lines`;FBN.toast(r.version?`Published v${r.version} for the factory. v${r.previousVersion} stays as it was.`:r.publishError?`Saved in the tech pack's draft. ${r.publishError}`:'Sent to the tech pack draft',r.publishError?'info':'ok',r.publishError?9000:4000)}catch(x){$('#saved').className='saved dirty';$('#saved').textContent=x.message}finally{b.disabled=false}};
 window.addEventListener('beforeunload',e=>{if(DIRTY){e.preventDefault();e.returnValue=''}});
 
+// no concept in the address: pick one here instead of a dead end
+async function pickConcept(){
+  const box=$('#pickC');box.classList.remove('hidden');if(window.FBLabNav)box.querySelectorAll('nav.labnav').forEach(n=>window.FBLabNav.render(n));
+  let list=[];try{list=(await api('/v1/lab/concepts?limit=120')).concepts}catch(x){$('#pickList').innerHTML=`<span class="msg">${esc(x.message)}</span>`;return}
+  const tpl=new URLSearchParams(location.search).get('template')||'';
+  const paint=()=>{const q=($('#pickQ').value||'').toLowerCase(),l=list.filter(c=>!q||`${c.name} ${c.categoryLabel||''} ${c.planName||''}`.toLowerCase().includes(q)).slice(0,60);
+    $('#pickList').innerHTML=l.length?l.map(c=>`<a class="btn q" style="justify-content:space-between" href="/lab/flats?concept=${c.id}${tpl?'&template='+encodeURIComponent(tpl):''}" data-pick="${c.id}"><span><b>${esc(c.name)}</b> <span class="msg">· ${esc(c.categoryLabel||c.category||'')}${c.planName?' · '+esc(c.planName):''}${c.status==='tech_pack'?' · tech pack':c.status==='approved'?' · approved':''}</span></span><span>→</span></a>`).join(''):'<span class="msg">No concepts yet.</span>'};
+  paint();$('#pickQ').addEventListener('input',paint);
+}
 async function boot(){
   if(!TOKEN()){$('#needSignin').classList.remove('hidden');return}
+  if(!/^[0-9a-f-]{36}$/i.test(CID))return pickConcept();
   try{D=await api(`/v1/lab/concepts/${CID}/flats`)}catch(x){const n=$('#needSignin');n.classList.remove('hidden');n.querySelector('h1').textContent=x.status===404?'That concept is not there any more':/not turned on|Only Danielle|access to Design Lab/i.test(x.message)?'The Design Lab is not turned on for you':'Sign in to the work console first';n.querySelector('p').textContent=x.message;return}
   $('#app').classList.remove('hidden');$('#cName').textContent=D.concept.name;$('#toStudio').href='/lab/studio?concept='+CID;
   if(D.unsupported){$('#cSub').textContent=D.unsupported;$('#canvas').innerHTML=`<p class="msg" style="padding:30px">${esc(D.unsupported)}</p>`;['#save','#sheet'].forEach(s=>$(s).disabled=true);return}
@@ -284,6 +296,7 @@ async function boot(){
   const f=D.flat;P={style:f.style,fit:f.fit,size:f.size||'M',m:f.m,options:f.options||{},template:f.template,color:f.color||'',edits:f.edits||[]};
   for(const ed of P.edits)if(ed.type==='ai')EHREF[ed.art]=await blobUrl('/v1/lab/art/'+ed.art);PL=f.placements||[];CHECK=f.check||CHECK;
   $('#size').innerHTML=(STYLES[P.style].oneSize?['M']:SIZES).map(s=>`<option value="${s}" ${s==='M'?'selected':''}>${STYLES[P.style].oneSize?'One size':s}</option>`).join('');
+  const wantTpl=new URLSearchParams(location.search).get('template');if(wantTpl&&FLAT_TEMPLATES.some(t=>t.id===wantTpl)&&templateOf(P)?.id!==wantTpl)setTimeout(()=>{useTemplate(wantTpl);history.replaceState(null,'',`/lab/flats?concept=${CID}`)},0);
   $('#cSub').textContent=`${D.styles[P.style].label} · ${FITS[P.fit]} fit${f.saved?'':' · worked out from the concept: check it, then save'}`;
   if(D.concept.productId)$('#toPack').classList.remove('hidden');
   for(const q of PL)HREF[q.id]=await hrefOf(q);

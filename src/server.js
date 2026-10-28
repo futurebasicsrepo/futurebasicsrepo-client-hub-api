@@ -720,6 +720,8 @@ app.get('/lab', (_req, reply) => reply.header('cache-control', 'no-store, max-ag
 app.get('/lab/studio', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').type('text/html').send(readFileSync(new URL('./lab-studio.html', import.meta.url), 'utf8')));
 app.get('/lab/library', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').type('text/html').send(readFileSync(new URL('./lab-library.html', import.meta.url), 'utf8')));
 app.get('/lab/share/:token', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').header('referrer-policy', 'no-referrer').type('text/html').send(readFileSync(new URL('./lab-share.html', import.meta.url), 'utf8')));
+app.get('/lab/sketches', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').type('text/html').send(readFileSync(new URL('./lab-sketches.html', import.meta.url), 'utf8')));
+app.get('/lab/nav.js', (_req, reply) => reply.header('cache-control', 'public, max-age=300').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-nav.js', import.meta.url), 'utf8')));
 app.get('/lab/materials', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').type('text/html').send(readFileSync(new URL('./lab-materials.html', import.meta.url), 'utf8')));
 app.get('/lab/lab-tags.js', (_req, reply) => reply.header('cache-control', 'public, max-age=300').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-tags.js', import.meta.url), 'utf8')));
 app.get('/lab/flats', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').type('text/html').send(readFileSync(new URL('./lab-flats.html', import.meta.url), 'utf8')));
