@@ -7,6 +7,7 @@
 //                                               sketches, the graded measurements, every detail, stitch and placement, the colour, and the plan's numbers
 //   POST /v1/lab/concepts/:id/flats/redraw      {…the flats, view, box:{x,y,w,h} in inches, prompt} the image model redraws that area of the flat sketch
 //   POST /v1/lab/concepts/:id/flats/suggest     {…the flats, placementId} artwork sizes per group of garment sizes, and the inks for each colourway
+//   GET  /v1/lab/concepts/:id/ready             what it still needs before the tech pack (the Design checklist)
 //   POST /v1/lab/concepts/:id/studio/graphics   {layers:[{layer, name, image|art, widthIn, heightIn, placement, techniqueId?}]} the studio's placed
 //                                               layers become the concept's graphics, and placements on its flats at their size
 //   GET|POST /v1/lab/decor/quotes, DELETE /v1/lab/decor/quotes/:id   what factories really charged, against the estimate: it calibrates the costs
@@ -30,6 +31,7 @@ import { imageConfig, openaiEdit } from './check.js';
 import { callJsonSchema } from './studio.js';
 import { rankTemplates, candidateTemplates } from './lab-flats.js';
 import { brandHits } from './lab-concepts.js';
+import { readiness } from './lab-ready.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const clip = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
@@ -205,6 +207,13 @@ export function registerLabFlatsRoutes(app, d) {
     const init = await initial(c);
     if (!init) return shape(c, null, { techniques: list, unsupported: `Flats are not drawn for ${c.category} yet. They cover tops, hoodies, sweatshirts, jackets, pants, shorts, caps, beanies and totes.` });
     return shape(c, { ...init, check: await check(init, init.placements, c.client_id), saved: false }, { techniques: list });
+  });
+  // what the concept still needs before it becomes a tech pack: the Design workspace's checklist (src/lab-ready.js)
+  app.get('/v1/lab/concepts/:id/ready', { preHandler: pre }, async (req, reply) => {
+    if (!UUID.test(String(req.params.id))) return bad(reply, 'Not found', 404);
+    const c = (await pool.query('select id, status, spec, twist, closeness, product_id, client_verdict, (image is not null) has_image from lab_concepts where id=$1', [req.params.id])).rows[0]; if (!c) return bad(reply, 'Not found', 404);
+    const doc = (await pool.query('select doc from lab_studio_docs where concept_id=$1', [c.id])).rows[0]?.doc || null, f = (await pool.query('select check_result from lab_flats where concept_id=$1', [c.id])).rows[0];
+    return readiness({ concept: c, studioDoc: doc, flat: f ? { check: f.check_result } : null });
   });
   const take = async (req, reply) => {
     const c = await concept(req.params.id); if (!c) return bad(reply, 'Not found', 404), null;

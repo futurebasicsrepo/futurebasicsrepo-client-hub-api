@@ -269,8 +269,47 @@ A concept is designed in one place, `/lab/studio?concept=<id>`. A switch in its 
 - **One header.** The concept's name, the Lab menu, one **Save** and the view switch are shared. The picture's buttons (Undo, Import, 3D, Export, Versions, Use as the concept picture) show with the picture; the flats' (Spec sheet, Decoration sheet, Send to the tech pack) show with the flats. Each side says whether it is saved.
 - **One Save.** Save (or Ctrl S, on either side) saves unsaved flats first, then the picture. The picture's layers that have a place on the piece then go onto the flats at their size, and the flats reload with them.
 - **The picture's graphics are on the flats when you look.** Switching from the picture to a flat puts its placed graphics on the flats first, without waiting for a save.
-- **How it is built (pass 1).** The flats page (`src/lab-flats.html`) runs inside the workspace in a frame from the same site (`/lab/flats?concept=<id>&embed=full`, or `embed=compact` for side by side), loaded the first time a flat is shown. It exposes `window.FBFlats` (dirty, save, view, mode, the sheets) and calls the workspace's `window.FBDesign`. Opened on its own, `/lab/flats` sends you to the workspace; only that page may be framed, and only by the site itself (`frame-ancestors 'self'`). One placement model for both sides, and Simple and Pro modes, are the next passes.
+- **How it is built (pass 1).** The flats page (`src/lab-flats.html`) runs inside the workspace in a frame from the same site (`/lab/flats?concept=<id>&embed=full`, or `embed=compact` for side by side), loaded the first time a flat is shown. It exposes `window.FBFlats` (dirty, save, view, mode, the sheets) and calls the workspace's `window.FBDesign`. Opened on its own, `/lab/flats` sends you to the workspace; only that page may be framed, and only by the site itself (`frame-ancestors 'self'`). The next two passes are below.
 - **On a phone** Side by side is left out; the picture or the flats fill the screen.
+
+### One placement model: inches on the garment
+
+Where a graphic goes and how big it is lives in one record: its placement on the flats, in inches from the high point of the shoulder and the centre front. A layer on the picture with a place on the garment (**Goes on**) is that placement drawn on the picture.
+
+| You do this | The other side follows |
+| --- | --- |
+| Set a layer's width on the picture, or choose where it goes | The flats take its size and place on the next save, or when you switch to a flat |
+| Change its width on the flats and save | The layer on the picture is resized to match (the flats keep eighths of an inch, so smaller gaps are left alone) |
+| Take it off the flats and save | The layer stays on the picture, with no place on the garment, and does not come back on the next save |
+| Save the picture while the flats have unsaved changes | The flats are saved first and their sizes taken, so nothing set on the flats is undone |
+
+The Layers panel lists **On the garment · in inches**: every placement on the flats, front or back, with its size and where it sits. One drawn from the picture chooses its layer; any other opens it on the flats.
+
+### Simple and Pro
+
+A switch in the header shows the essentials or every tool, on both sides. A client's room starts on **Simple** and Future Basics on **Pro**; the choice is remembered in the browser.
+
+| | Simple | Pro adds |
+| --- | --- | --- |
+| Picture | select, move, brush, eraser, type, shapes, the AI area, Add, AI, layers, Export as a picture | distress, the ruler, warp, the colour picker, Illustrator import and export, colour separations |
+| Flats | placements, the Design tab (colour, details, AI redraw), the Garment tab, placement measurements | the Measurements table, points of measure, stitch lines, artwork sizes per garment size |
+
+### The checklist: before the tech pack
+
+**Checklist** in the header (`GET /v1/lab/concepts/:id/ready`, `src/lab-ready.js`) shows how many of these are done, and opens a list with where to fix each:
+
+| Item | Holds the tech pack up when |
+| --- | --- |
+| The concept picture | there is none yet |
+| Graphics placed on the garment | never: a layer with no place is worth a look |
+| The flats saved | they are not |
+| It can be made as drawn | the flats check has problems (things to check are worth a look) |
+| The main fabric chosen | no material is chosen (materials with no fabric are worth a look) |
+| Our twist written down | it is missing: approval needs it |
+| Not too close to what inspired it | never: shown when the check says too close |
+| Approved | it is not |
+
+When nothing holds it up, the list offers **Send to the tech pack**; once it is a tech pack, **Open the tech pack**.
 
 ### The studio: the picture, by hand and with AI
 

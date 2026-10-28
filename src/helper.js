@@ -66,6 +66,8 @@
       match: () => path() === '/lab/studio' && shown('#app') && !['front', 'back'].includes($('#app')?.dataset.v),
       steps: [
         { target: '#viewSeg', title: 'One workspace', optional: true, do: 'Switch between the picture, the flat front, the flat back, or both side by side.', why: 'The picture and its measured flats are the same piece: change one, look at the other, without leaving.' },
+        { target: '#levelSeg', title: 'Simple or Pro', optional: true, do: 'Simple keeps the essentials; Pro adds distress, warp, the ruler, separations, points of measure and grading.', why: 'Everyone works in the same place, at the depth they need.' },
+        { target: '#readyBtn', title: 'What is left before the tech pack', optional: true, do: 'Open the Checklist: each item says whether it is done and where to fix it.', why: 'When nothing holds it up, it offers Send to the tech pack.' },
         { target: '#stage', title: 'The concept, in layers', do: 'Draw, paint, type, add our marks or a graphic; each is a layer you can move or hide.', why: 'Finish it by hand where the AI got close but not right.' },
         { target: '[data-tab="add"]', title: 'Add a part from the sketch pack', optional: true, do: 'Open Add: under “From the sketch pack”, press a pocket, zip, collar, trim or button. It lands as a layer: drag it into place and size it.', why: 'Drawn in the same lines as the flats, so it reads as part of the piece; paint over it and let the AI blend it in.' },
         { target: '#pAi', title: 'Change it with AI', optional: true, do: 'Say what to change, for the whole piece or a painted area, or make a new graphic.', why: 'Quicker than drawing, and only the area you paint changes.' },
