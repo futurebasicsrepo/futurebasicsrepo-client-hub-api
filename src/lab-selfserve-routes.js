@@ -13,6 +13,8 @@
 //     GET  /v1/admin/clients/:id/lab               the room's access, meter and usage
 //     PATCH /v1/admin/clients/:id/lab              {action: 'comp'|'end'|'bill'|'free'|'charge', days?, includedAi?, aiPriceCents?} give access, end it, invoice the unbilled
 //                                                  generations now, or turn the room's charges off (free: open, no fee, AI never billed) and back on
+//     POST /v1/admin/clients/:id/lab/invite        {email, name?} invite a designer to the room's Design Lab: the address may sign in to the room,
+//                                                  and gets the welcome (open it on an iPad, add it to the home screen, sign in with the emailed code)
 //     POST /v1/admin/lab/invoices/:id/paid         record an AI invoice as paid by other means
 //     GET  /v1/admin/make-requests, PATCH /v1/admin/make-requests/:id {status, reply}
 import { randomBytes, createHash } from 'node:crypto';
@@ -24,7 +26,7 @@ const hash = v => createHash('sha256').update(String(v)).digest('hex');
 const STATUSES = ['requested', 'quoting', 'declined', 'done'];
 
 export function registerLabSelfServeRoutes(app, d) {
-  const { pool, authenticate, adminOnly, lab, clientHubUrl = '', workHubUrl = '', notifyStaff = async () => false, notifyClientContact = async () => false, sendHubEmail = async () => false, hubEmailShell = (t, b) => b, replyTo = '', log = console } = d;
+  const { pool, authenticate, adminOnly, lab, clientHubUrl = '', workHubUrl = '', notifyStaff = async () => false, notifyClientContact = async () => false, sendHubEmail = async () => false, hubEmailShell = (t, b) => b, replyTo = '', forgetUser = () => {}, log = console } = d;
   const bad = (reply, error, code = 422, extra = {}) => reply.code(code).send({ error, ...extra });
   const clientOf = req => (req.auth?.role !== 'admin' && UUID.test(String(req.auth?.clientId || '')) ? req.auth.clientId : null);
   const need = (req, reply, k = 'id') => UUID.test(String(req.params[k])) || (bad(reply, 'Not found', 404), false);
@@ -123,6 +125,38 @@ export function registerLabSelfServeRoutes(app, d) {
       else return bad(reply, 'action must be comp, end, bill, free or charge');
     } catch (e) { return fail(reply, e); }
     return { ...(await lab.status(c.id)), usage: await lab.usage(c.id, 30) };
+  });
+  // a designer invited from the work console: allowed to sign in to the room (as a teammate added from the hub is), and welcomed with how to
+  // start, on an iPad or a computer
+  const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  app.post('/v1/admin/clients/:id/lab/invite', { preHandler: staff }, async (req, reply) => {
+    if (!need(req, reply)) return; const c = await client(req.params.id); if (!c) return bad(reply, 'Client not found', 404);
+    const email = clip(req.body?.email, 254).toLowerCase(), name = clip(req.body?.name, 80), by = UUID.test(String(req.auth.sub || '')) ? req.auth.sub : null;
+    if (!EMAIL.test(email)) return bad(reply, 'That email address does not look right');
+    if (email.endsWith('@thefuturebasics.com')) return bad(reply, 'Future Basics already opens every room from the work console');
+    const other = (await pool.query(`select 1 from users u join clients k on k.id=u.client_id where lower(u.email)=$1 and u.client_id<>$2 and u.removed_at is null and k.status='active' and k.archived_at is null`, [email, c.id])).rowCount;
+    if (other) return bad(reply, 'That address already signs in to another room. One person, one room: use another address, or move them first.', 409);
+    const q = await pool.connect(); let user;
+    try {
+      await q.query('begin');
+      await q.query(`update clients set allowed_emails=(select array_agg(distinct e) from unnest(coalesce(allowed_emails,'{}')||array[$2]::text[]) e) where id=$1`, [c.id, email]);
+      user = (await q.query(`insert into users(client_id, email, name, role, invited_by, invited_at) values($1,$2,nullif($3,''),'client',$4,now())
+        on conflict(email) do update set client_id=excluded.client_id, removed_at=null, invited_by=excluded.invited_by, invited_at=now(), name=coalesce(users.name, excluded.name) returning *`, [c.id, email, name, by])).rows[0];
+      await q.query(`insert into activities(client_id, actor_id, type, summary) values($1,$2,'design',$3)`, [c.id, by, `${email} invited to the Design Lab`]);
+      await q.query('commit');
+    } catch (e) { await q.query('rollback').catch(() => {}); throw e; } finally { q.release(); }
+    forgetUser(user.id);
+    const open = Boolean(await lab.active(c.id)), url = `${clientHubUrl}/lab`, first = name ? esc(name.split(' ')[0]) : '';
+    let emailed = false;
+    try {
+      emailed = await sendHubEmail({ to: email, replyTo: replyTo || undefined, subject: `Your Design Lab with Future Basics`,
+        html: hubEmailShell('Your Design Lab is ready', `<p>${first ? `Hi ${first},` : 'Hello,'}</p><p>Future Basics has set you up in the Design Lab for <strong>${esc(c.name)}</strong>: plan a line, design each piece on its picture and its measured flats, and send it to a tech pack and a factory.</p>
+          <p><b>On an iPad</b> (the best way to work, with an Apple Pencil): open <a href="${esc(url)}">${esc(url)}</a> in Safari, tap Share, then Add to Home Screen. Open the Design Lab icon and sign in with this address; a code arrives by email.</p>
+          <p><b>On a computer</b>: open the same link and sign in the same way.</p>
+          <p>Inside: <b>Design</b> holds the picture and its flats side by side; <b>Simple</b> keeps the essentials and <b>Pro</b> shows every tool; the <b>Checklist</b> says what is left before the tech pack.${open ? '' : ' The Lab opens on your room once Future Basics turns it on; until then you will see the offer.'}</p>
+          <p><a href="${esc(url)}" style="display:inline-block;background:#141416;color:#fff;padding:10px 18px;border-radius:999px;text-decoration:none">Open the Design Lab</a></p>`) });
+    } catch (e) { log.warn?.({ err: e.message }, 'design lab invite email not sent'); }
+    return { ok: true, email, emailed, open };
   });
   app.post('/v1/admin/lab/invoices/:id/paid', { preHandler: staff }, async (req, reply) => {
     if (!need(req, reply)) return; const r = await lab.invoicePaid(req.params.id, { orderId: clip(req.body?.reference, 80) || 'manual' }); if (!r) return bad(reply, 'That invoice is not open', 404);
