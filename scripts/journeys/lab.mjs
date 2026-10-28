@@ -2349,5 +2349,57 @@ await journey('J236', 'Charges off per room, and Design on an iPad with the Penc
   } finally { await cleanup(brands, plan.plan?.id); }
 });
 
+await journey('J237', 'Graphics added on the flats come onto the picture, and the iPad polish: a mark added on the flats appears on the picture at its size and becomes one record drawn on both; taken off the picture it stays off; what came with the concept waits for Put on the picture; the console menu folds away on Design; the flats pinch to zoom; installed, an export opens in the app with Share and Save', async () => {
+  const { brands, plan } = await conceptSetup();
+  try {
+    const line = plan.lines.find(l => l.category === 'tops') || plan.lines[0], c = (await K(`/plans/${plan.plan.id}/lines/${line.id}/concepts`, { body: { count: 1 } })).json.concepts[0];
+    if (!playwright) { ok(true, 'needs a browser'); return; }
+    const b = await playwright.chromium.launch();
+    try {
+      const oc = await b.newContext({ viewport: { width: 1440, height: 950 } }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); localStorage.removeItem('fb.nav.collapsed'); } catch {} }, kyleT);
+      const page = await oc.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
+      await page.goto(`${BASE}/lab/studio?concept=${c.id}&view=front`, { waitUntil: 'networkidle' }); await page.waitForSelector('#app[data-v=front]', { timeout: 20000 });
+      await page.waitForFunction(() => document.body.classList.contains('fbnav'), null, { timeout: 10000 }).catch(() => {});
+      ok(await page.evaluate(() => document.body.classList.contains('fbcollapsed')), '1. on Design the console menu starts folded to its icons, giving the width to the work');
+      const F = await (await page.waitForSelector('#flatFrame')).contentFrame(); await F.waitForSelector('#pPl [data-q]', { timeout: 20000 });
+      await F.click('#pPl [data-addmark=word]'); await F.waitForFunction(() => FBFlats.placements().some(q => q.added && q.mark === 'word'), null, { timeout: 5000 });
+      const added = await F.evaluate(() => { const q = FBFlats.placements().find(x => x.added && x.mark === 'word'); return { id: q.id, w: q.w, x: q.x, y: q.y }; });
+      await page.click('#save'); await page.waitForFunction(id => LAYERS.some(l => l.fromFlat === id), added.id, { timeout: 20000 });
+      const ly = await page.evaluate(id => { const l = LAYERS.find(x => x.fromFlat === id); return { id: l.id, w: inchesOf(l).w, placement: l.placement, name: l.name }; }, added.id);
+      ok(Math.abs(ly.w - added.w) < .1 && ly.placement, '2. a wordmark added on the flats comes onto the picture by itself, at its size, with its place on the garment', [ly, added]);
+      await page.waitForFunction(() => !DIRTY && !document.getElementById('save').disabled, null, { timeout: 30000 });
+      let fl = (await K(`/concepts/${c.id}/flats`)).json.flat.placements; const took = fl.find(q => q.layer === ly.id);
+      ok(took && took.source === 'studio' && !fl.some(q => q.id === added.id) && Math.abs(took.x - added.x) < .01 && Math.abs(took.y - added.y) < .01, '3. saved, the picture\'s layer takes the flats placement over: one record, still where it was put on the flats', [took, added]);
+      await page.reload({ waitUntil: 'networkidle' }); await page.waitForSelector('#pLayers .ly', { state: 'attached', timeout: 20000 }); await page.waitForTimeout(1500);
+      ok(await page.evaluate(id => LAYERS.filter(l => l.id === id).length, ly.id) === 1 && await page.evaluate(() => LAYERS.filter(l => l.fromFlat).length) === 1, '   opened again, it is there once, not twice');
+      await page.click('#viewSeg [data-v=picture]'); await page.evaluate(id => { SEL = id; removeLayer(LAYERS.find(l => l.id === id)); }, ly.id); await page.click('#save'); await page.waitForFunction(() => !DIRTY, null, { timeout: 30000 });
+      fl = (await K(`/concepts/${c.id}/flats`)).json.flat.placements;
+      await page.reload({ waitUntil: 'networkidle' }); await page.waitForSelector('#pLayers .ly', { state: 'attached', timeout: 20000 }); await page.waitForTimeout(1500);
+      ok(!fl.some(q => q.layer === ly.id) && await page.evaluate(() => LAYERS.filter(l => l.fromFlat).length) === 0, '4. taken off the picture, it comes off the flats and does not come back');
+      const logo = fl.find(q => q.id === 'logo');
+      if (logo) { await page.waitForSelector('#garmentSec [data-gpadd="logo"]', { timeout: 10000 }); await page.click('#garmentSec [data-gpadd="logo"]'); await page.waitForFunction(() => LAYERS.some(l => l.fromFlat === 'logo'), null, { timeout: 15000 });
+        ok(true, '5. the logo that came with the concept waits for Put on the picture, and goes on when asked'); }
+      else ok(await page.locator('#garmentSec').count() === 1, '5. (this concept has no logo placement)');
+      ok(errs.length === 0, 'no page errors', errs); await oc.close();
+      // the iPad, installed
+      const ic = await b.newContext({ viewport: { width: 1194, height: 834 }, hasTouch: true, isMobile: true });
+      await ic.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); Object.defineProperty(navigator, 'standalone', { get: () => true }); } catch {} }, kyleT);
+      const ip = await ic.newPage(), ierrs = []; ip.on('pageerror', e => ierrs.push(String(e)));
+      await ip.goto(`${BASE}/lab/studio?concept=${c.id}&view=front`, { waitUntil: 'networkidle' }); await ip.waitForSelector('#app[data-v=front]', { timeout: 20000 });
+      const IF = await (await ip.waitForSelector('#flatFrame')).contentFrame(); await IF.waitForSelector('#canvas svg', { timeout: 20000 });
+      const cdp = await ic.newCDPSession(ip), cb = await ip.locator('#flatFrame').boundingBox(), sb = await IF.locator('#canvas').boundingBox();
+      const cx = sb.x + sb.width / 2, cy = sb.y + sb.height / 2, tp = (type, pts) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: pts.map((p, i) => ({ x: p[0], y: p[1], id: i + 1 })) });
+      await tp('touchStart', [[cx - 50, cy], [cx + 50, cy]]); for (let i = 1; i <= 6; i++) await tp('touchMove', [[cx - 50 - i * 25, cy], [cx + 50 + i * 25, cy]]); await tp('touchEnd', []);
+      const fz = await IF.evaluate(() => ({ z: FBFlats.zoom(), vb: document.querySelector('#canvas svg').getAttribute('viewBox'), base: document.querySelector('#canvas svg').dataset.base, fit: !document.getElementById('fzFit').classList.contains('hidden') }));
+      ok(fz.z > 1.5 && fz.vb !== fz.base && fz.fit, '6. on the iPad two fingers pinch the flats to zoom in, and Fit appears', fz);
+      await IF.tap('#fzFit'); ok(await IF.evaluate(() => FBFlats.zoom()) === 1, '   Fit shows the whole piece again');
+      await ip.tap('#viewSeg [data-v=picture]'); await ip.waitForSelector('#pLayers .ly', { timeout: 20000 }); await ip.waitForFunction(() => !document.querySelector('#busy:not(.hidden)'));
+      await ip.tap('#expBtn'); await ip.tap('#expPop [data-exp=png]'); await ip.waitForSelector('#sheetDlg[open]', { timeout: 15000 });
+      ok(await ip.locator('#sheetDlg a[download]').count() === 1 && await ip.locator('#sheetDlg img').count() === 1, '7. installed, an export opens inside the app with the picture and Save, not as a download that leaves it');
+      ok(ierrs.length === 0, 'no page errors on the iPad', ierrs); await ic.close();
+    } finally { await b.close(); }
+  } finally { await cleanup(brands, plan.plan?.id); }
+});
+
 shops.close(); brave.close();
 process.exit(summary() ? 1 : 0);

@@ -191,7 +191,9 @@ body.fbcollapsed .fbside a{justify-content:center;padding:10px}body.fbcollapsed 
   }
 
   const setCollapsed = (v, persist) => { collapsed = v; document.body.classList.toggle('fbcollapsed', v); if (persist) { try { localStorage.setItem(KEY, v ? '1' : '0'); } catch {} } const b = document.getElementById('fbCollapse'); if (b) b.setAttribute('aria-label', v ? 'Expand the menu' : 'Collapse the menu'); };
-  const autoCollapse = () => { if (!chosen()) setCollapsed(location.pathname.startsWith('/clients/'), false); }; // a client's own room has its own rail: give it the width
+  // a client's own room has its own rail, and Design (the picture and its flats) needs the width: both start collapsed, as does any page on a
+// touch screen narrower than a desktop (an iPad), unless the person has chosen
+const autoCollapse = () => { if (!chosen()) { let touch = false; try { touch = matchMedia('(pointer:coarse)').matches && innerWidth < 1400; } catch {} setCollapsed(location.pathname.startsWith('/clients/') || location.pathname === '/lab/studio' || touch, false); } };
   function closeDrawer() { document.body.classList.remove('fbopen'); const b = document.querySelector('.fbburger'); if (b) b.setAttribute('aria-expanded', 'false'); }
 
   // Menu items only some people may see (Money) stay hidden until the service says this person is allowed.

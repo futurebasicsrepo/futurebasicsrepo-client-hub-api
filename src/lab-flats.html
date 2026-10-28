@@ -83,7 +83,7 @@ textarea.t{min-height:64px;resize:vertical}
     <div class="stage">
       <div class="tools"><div class="seg" role="group" aria-label="View"><button type="button" data-view="front" aria-pressed="true">Front</button><button type="button" data-view="back" aria-pressed="false">Back</button></div>
         <label class="chk"><span class="mono">Size</span><select class="t" id="size" style="width:auto"></select></label>
-        <label class="chk"><input type="checkbox" id="showDims" checked> Placement measurements</label><label class="chk lv-pro"><input type="checkbox" id="showPom"> Points of measure</label></div>
+        <label class="chk"><input type="checkbox" id="showDims" checked> Placement measurements</label><label class="chk lv-pro"><input type="checkbox" id="showPom"> Points of measure</label><button class="btn sm q hidden" type="button" id="fzFit" title="Show the whole piece">Fit</button></div>
       <div id="status" class="status ok" role="status"></div>
       <div class="canvas" id="canvas"></div>
       <p class="msg">Drag a logo, graphic or detail to move it; its measurements follow. Measured from the high point of the shoulder (HPS) and the centre front (CF), as a sample room measures. On the front, the viewer's right is the wearer's left.</p>
@@ -121,7 +121,7 @@ function touch(){DIRTY=true;$('#saved').className='saved dirty';$('#saved').text
 function localFindings(){const out={},over=overlapChecks(PL);for(const q of PL){const t=D.techniques.find(x=>x.id===q.techniqueId);const loc=placementChecks(q,P,t?{...t.rules,techniqueName:t.name}:{});const art=(CHECK.findings[q.id]||[]).filter(f=>['FINE_DETAIL','INKS','GRADIENT','STITCHES','TINY'].includes(f.code));out[q.id]=[...loc,...(over[q.id]||[]),...art]}return out}
 function draw(){
   const F=localFindings(),sz=$('#size').value||P.size,pls=PL.map(q=>{if(!q.grade)return q;const g=q.grade.find(x=>x.sizes.includes(sz));return g?{...q,w:g.w,h:g.h,y:q.y-q.h/2+g.h/2}:q}),svg=renderSvg(P,VIEW,{maskHref:MASK_URL,placements:pls,hrefs:HREF,size:sz,showPom:$('#showPom').checked,showDims:$('#showDims').checked,selected:SEL,findings:F,scale:0,editable:true,selectedEdit:SELE,editHrefs:EHREF,overlay:overlay(),alloverHref:AOHREF});
-  $('#canvas').innerHTML=svg;const fail=Object.values(F).flat().filter(f=>f.level==='fail').length,warn=Object.values(F).flat().filter(f=>f.level==='warn').length,s=$('#status');
+  $('#canvas').innerHTML=svg;zoomSvg();const fail=Object.values(F).flat().filter(f=>f.level==='fail').length,warn=Object.values(F).flat().filter(f=>f.level==='warn').length,s=$('#status');
   s.className='status '+(fail?'bad':warn?'warn':'ok');s.innerHTML=fail?`<span class="dot fail"></span>${fail} problem${fail===1?'':'s'} to fix before it can be made`:warn?`<span class="dot warn"></span>Can be made: ${warn} thing${warn===1?'':'s'} to check`:'<span class="dot ok"></span>Can be made as drawn';
   return F}
 function paint(){const F=draw();paintPl(F);if(TAB==='design')paintDesign();if(TAB==='garment')paintGarment();if(TAB==='pom')paintPom();$('#canvas').classList.toggle('drawing',!!MODE)}
@@ -263,7 +263,7 @@ $('#pPl').addEventListener('click',async e=>{
 async function addPlacement(base){
   const href=await hrefOf(base),img=await new Promise(r=>{const i=new Image();i.onload=()=>r(i);i.onerror=()=>r(null);i.src=href});const aspect=img?(img.naturalWidth||1)/(img.naturalHeight||1):1;
   const t=D.techniques.find(x=>x.id===base.techniqueId)||D.techniques.find(x=>x.base===(base.mark?'embroidery':'screen print'));
-  const q={id:'p'+Math.random().toString(36).slice(2,8),...base,techniqueId:t&&t.id,technique:t?t.base:'screen print',...defaultPlacement(base.mark?'logo':'graphic',P,{aspect,label:VIEW==='back'?'back':base.mark?'left chest':'front chest'})};
+  const q={id:'p'+Math.random().toString(36).slice(2,8),...base,added:true,techniqueId:t&&t.id,technique:t?t.base:'screen print',...defaultPlacement(base.mark?'logo':'graphic',P,{aspect,label:VIEW==='back'?'back':base.mark?'left chest':'front chest'})};
   if(VIEW==='back'&&q.view!=='back'){q.view='back'}HREF[q.id]=href;PL.push(q);SEL=q.id;touch();paint()}
 async function hrefOf(q){if(q.art)return blobUrl('/v1/lab/art/'+q.art);if(q.mark){if(!MARKS[q.mark])MARKS[q.mark]='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(D.marks[q.mark]||'');return MARKS[q.mark]}return ''}
 
@@ -303,16 +303,39 @@ function paintPom(){const rows=pomTable(P),sz=rows[0].values.map(v=>v.size);$('#
 function tab(t){TAB=t;if(t!=='design'){MODE=null;DRAFT=[];AIBOX=null}$$('.tabs [data-tab]').forEach(b=>b.setAttribute('aria-selected',String(b.dataset.tab===t)));$('#pPl').classList.toggle('hidden',t!=='pl');$('#pDesign').classList.toggle('hidden',t!=='design');$('#pGarment').classList.toggle('hidden',t!=='garment');$('#pPom').classList.toggle('hidden',t!=='pom');paint()}
 $$('.tabs [data-tab]').forEach(b=>b.onclick=()=>tab(b.dataset.tab));
 function setView(v){VIEW=v;DRAFT=[];AIBOX=null;$$('[data-view]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.view===v)));if(TAB==='design')paint();else draw()}
-$$('[data-view]').forEach(b=>b.onclick=()=>setView(b.dataset.view));
+$$('[data-view]').forEach(b=>b.onclick=()=>setView(b.dataset.view));$('#fzFit').onclick=fzFit;
 ['#showDims','#showPom','#size'].forEach(s=>$(s).addEventListener('change',draw));
 let DRAG=null;
+// ---------- zoom on the flats: two fingers pinch and move it (an iPad), Ctrl and the wheel on a computer, one finger moves it once zoomed ----------
+let FZ=1,FC=null,FG=null,FPAN=null;const FPTR=new Map();
+function baseBox(){const svg=$('#canvas svg');if(!svg)return null;const v=(svg.dataset.base||svg.getAttribute('viewBox')||'').split(/[ ,]+/).map(Number);return v.length===4&&v.every(Number.isFinite)?{x:v[0],y:v[1],w:v[2],h:v[3]}:null}
+function zoomSvg(){const svg=$('#canvas svg');if(!svg)return;if(!svg.dataset.base)svg.dataset.base=svg.getAttribute('viewBox')||'';const b=baseBox();if(!b)return;
+  if(FZ<=1.001){FZ=1;FC=null;svg.setAttribute('viewBox',svg.dataset.base)}
+  else{const w=b.w/FZ,h=b.h/FZ,c=FC||[b.x+b.w/2,b.y+b.h/2],cx=Math.min(Math.max(c[0],b.x+w/2),b.x+b.w-w/2),cy=Math.min(Math.max(c[1],b.y+h/2),b.y+b.h-h/2);FC=[cx,cy];svg.setAttribute('viewBox',`${cx-w/2} ${cy-h/2} ${w} ${h}`)}
+  $('#fzFit')?.classList.toggle('hidden',FZ<=1)}
+const unitsPerPx=()=>{const svg=$('#canvas svg'),b=baseBox();if(!svg||!b)return 1;const r=svg.getBoundingClientRect();return Math.max(b.w/FZ/r.width,b.h/FZ/r.height)};
+const centreNow=()=>{const b=baseBox();return FC||(b?[b.x+b.w/2,b.y+b.h/2]:[0,0])};
+function fzFit(){FZ=1;FC=null;zoomSvg()}
+$('#canvas').addEventListener('pointerdown',e=>{if(e.pointerType!=='touch')return;FPTR.set(e.pointerId,[e.clientX,e.clientY]);if(FPTR.size<2)return;
+  e.stopImmediatePropagation();e.preventDefault();
+  if(DRAG){if(DRAG.q&&DRAG.ox!==undefined){DRAG.q.x=DRAG.ox;DRAG.q.y=DRAG.oy}if(DRAG.ed&&DRAG.orig)Object.assign(DRAG.ed,JSON.parse(JSON.stringify(DRAG.orig)));DRAG=null;draw()} // two fingers: a pinch, not a move
+  BOXDRAG=null;FPAN=null;const[a,b]=[...FPTR.values()],r=$('#canvas svg').getBoundingClientRect();FG={d:Math.hypot(a[0]-b[0],a[1]-b[1])||1,m:[(a[0]+b[0])/2,(a[1]+b[1])/2],z:FZ,c:centreNow(),u:unitsPerPx(),rc:[r.left+r.width/2,r.top+r.height/2]}},true);
+$('#canvas').addEventListener('pointermove',e=>{const p=FPTR.get(e.pointerId);if(p){p[0]=e.clientX;p[1]=e.clientY}
+  if(FG&&FPTR.size>=2){e.stopImmediatePropagation();const[a,b]=[...FPTR.values()],d=Math.hypot(a[0]-b[0],a[1]-b[1])||1,m=[(a[0]+b[0])/2,(a[1]+b[1])/2];
+    const P=[FG.c[0]+(FG.m[0]-FG.rc[0])*FG.u,FG.c[1]+(FG.m[1]-FG.rc[1])*FG.u];FZ=Math.min(Math.max(FG.z*d/FG.d,1),6);const u1=FG.u*FG.z/FZ;FC=[P[0]-(m[0]-FG.rc[0])*u1,P[1]-(m[1]-FG.rc[1])*u1];zoomSvg();return}
+  if(FPAN){e.stopImmediatePropagation();const u=unitsPerPx();FC=[FPAN.c[0]-(e.clientX-FPAN.x)*u,FPAN.c[1]-(e.clientY-FPAN.y)*u];zoomSvg()}},true);
+const fzUp=e=>{FPTR.delete(e.pointerId);if(FG&&FPTR.size<2){FG=null;e.stopImmediatePropagation()}if(FPAN){FPAN=null;e.stopImmediatePropagation()}};
+['pointerup','pointercancel'].forEach(t=>$('#canvas').addEventListener(t,fzUp,true));
+$('#canvas').addEventListener('wheel',e=>{if(!(e.ctrlKey||e.metaKey))return;e.preventDefault();const r=$('#canvas svg').getBoundingClientRect(),u=unitsPerPx(),c=centreNow(),P=[c[0]+(e.clientX-r.left-r.width/2)*u,c[1]+(e.clientY-r.top-r.height/2)*u];
+  FZ=Math.min(Math.max(FZ*Math.exp(-e.deltaY*.01),1),6);FC=[P[0]-(e.clientX-r.left-r.width/2)*unitsPerPx(),P[1]-(e.clientY-r.top-r.height/2)*unitsPerPx()];zoomSvg()},{passive:false});
+['gesturestart','gesturechange'].forEach(t=>$('#canvas').addEventListener(t,e=>e.preventDefault()));
 const inch=e=>{const svg=$('#canvas svg'),pt=svg.createSVGPoint();pt.x=e.clientX;pt.y=e.clientY;const m=svg.getScreenCTM().inverse(),r=pt.matrixTransform(m);return[r.x,r.y]};
 $('#canvas').addEventListener('pointerdown',e=>{
   if(MODE==='stitch'||MODE==='block'){const[x,y]=inch(e);DRAFT.push([r8(x),r8(y)]);draw();return}
   if(MODE==='ai'){const[x,y]=inch(e);BOXDRAG=[x,y];AIBOX={x,y,w:0,h:0};$('#canvas').setPointerCapture(e.pointerId);return}
   const g=e.target.closest('[data-pl]');
-  if(g){const q=PL.find(x=>x.id===g.dataset.pl);SEL=q.id;const[x,y]=inch(e);DRAG={q,dx:x-q.x,dy:y-q.y};$('#canvas').setPointerCapture(e.pointerId);paint();return}
-  const ge=e.target.closest('[data-ed]');const ed=ge&&P.edits.find(x=>x.id===ge.dataset.ed);if(!ed)return;
+  if(g){const q=PL.find(x=>x.id===g.dataset.pl);SEL=q.id;const[x,y]=inch(e);DRAG={q,dx:x-q.x,dy:y-q.y,ox:q.x,oy:q.y};$('#canvas').setPointerCapture(e.pointerId);paint();return}
+  const ge=e.target.closest('[data-ed]');const ed=ge&&P.edits.find(x=>x.id===ge.dataset.ed);if(!ed){if(FZ>1){FPAN={x:e.clientX,y:e.clientY,c:centreNow()};$('#canvas').setPointerCapture(e.pointerId)}return}
   SELE=ed.id;if(TAB!=='design')tab('design');const[x,y]=inch(e);DRAG={ed,start:[x,y],orig:JSON.parse(JSON.stringify(ed))};$('#canvas').setPointerCapture(e.pointerId);paint()});
 $('#canvas').addEventListener('pointermove',e=>{
   if(BOXDRAG){const[x,y]=inch(e),[a,b]=BOXDRAG;AIBOX={x:r8((a+x)/2),y:r8((b+y)/2),w:r8(Math.abs(x-a)),h:r8(Math.abs(y-b))};draw();return}
@@ -368,9 +391,10 @@ if(EMBED)window.FBFlats={dirty:()=>Boolean(D&&P&&DIRTY),ready:()=>Boolean(D&&P),
   mode:m=>{document.documentElement.dataset.embed=m==='compact'?'compact':'full';if(P)draw()},sheet:()=>$('#sheet').click(),deco:()=>$('#decoSheet').click(),pack:()=>$('#toPack').click(),
   canPack:()=>!$('#toPack').classList.contains('hidden'),unsupported:()=>D?.unsupported||'',
   // the placements, in inches on the garment: the one record of where each graphic goes and how big it is
-  placements:()=>(P?PL.map(q=>({id:q.id,name:q.name,view:q.view,x:q.x,y:q.y,w:q.w,h:q.h,source:q.source,layer:q.layer||null,where:describe(q,P)})):[]),saved:()=>Boolean(D&&P&&!DIRTY),
+  placements:()=>(P?PL.map(q=>({id:q.id,name:q.name,view:q.view,x:q.x,y:q.y,w:q.w,h:q.h,source:q.source,layer:q.layer||null,art:q.art||null,mark:q.mark||null,techniqueId:q.techniqueId||null,added:Boolean(q.added),where:describe(q,P)})):[]),saved:()=>Boolean(D&&P&&!DIRTY),
   select:id=>{const q=PL.find(x=>x.id===id);if(!q)return;if(q.view!==VIEW)setView(q.view);SEL=id;tab('pl');paint();document.querySelector(`#pPl [data-q="${id}"]`)?.scrollIntoView({block:'nearest'})},
   check:()=>({...(CHECK.summary||{}),saved:Boolean(D&&P&&!DIRTY)}),
+  zoom:()=>FZ,
   level:m=>{document.documentElement.dataset.level=m==='simple'?'simple':'pro';if(m==='simple'&&TAB==='pom')tab('pl');if(m==='simple'&&MODE==='stitch'){MODE=null;DRAFT=[];if(P)paint()}}};
 boot();
 </script>

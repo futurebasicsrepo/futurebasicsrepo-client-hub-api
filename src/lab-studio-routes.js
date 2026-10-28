@@ -52,7 +52,9 @@ export function cleanDoc(input) {
     for (const k of ['src', 'mask', 'distressMap']) if (l[k] != null && l[k] !== '' && !SRC_OK.test(String(l[k]))) return { error: 'A layer points at a picture outside the design' };
     if (l.text != null && String(l.text).length > 400) return { error: 'A line of type is too long (400 characters at most)' };
   }
-  const ppi = Number(d.ppi), doc = { v: 1, w, h, layers: d.layers, selected: typeof d.selected === 'string' ? d.selected.slice(0, 40) : null, ...(ppi > 1 && ppi < 2000 ? { ppi: Math.round(ppi * 100) / 100, ppiSet: Boolean(d.ppiSet) } : {}) };
+  const ppi = Number(d.ppi), doc = { v: 1, w, h, layers: d.layers, selected: typeof d.selected === 'string' ? d.selected.slice(0, 40) : null, ...(ppi > 1 && ppi < 2000 ? { ppi: Math.round(ppi * 100) / 100, ppiSet: Boolean(d.ppiSet) } : {}),
+    // the flats placements already brought onto the picture: a layer taken off the picture is not brought back
+    ...(Array.isArray(d.linked) ? { linked: d.linked.filter(x => /^[a-z0-9-]{1,40}$/i.test(String(x))).slice(0, 60) } : {}) };
   if (JSON.stringify(doc).length > MAX_DOC) return { error: 'The design is too big to save (30 MB). Merge or delete some picture layers.' };
   return { doc };
 }
