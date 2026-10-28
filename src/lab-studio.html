@@ -163,7 +163,7 @@ const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
 const QS=new URLSearchParams(location.search),CID=QS.get('concept')||'';
 // the same studio builds graphics for the library: ?new=graphic starts on a clear canvas, ?art=<id> reworks a graphic; nothing here is a concept then
 let GID=QS.get('art')||'';const GMODE=!CID&&(Boolean(GID)||QS.get('new')==='graphic');
-const AI_URL=()=>GMODE?'/v1/lab/library/studio/ai':AI_URL();
+const AI_URL=()=>GMODE?'/v1/lab/library/studio/ai':`/v1/lab/concepts/${CID}/studio/ai`;
 let PARTS=null,PKIND='pockets';
 
 // ---------- what a layer is ----------
@@ -500,8 +500,8 @@ function paintAi(){
   const p=$('#pAi'),ai=D.ai;
   p.innerHTML=`<div class="sec"><h4>Change the piece</h4><textarea class="t" id="aiEdit" maxlength="800" placeholder="Make the body a washed olive. Add a raw hem. Give the sleeves a faded sun-bleached look."></textarea>
     <div class="row"><button class="btn sm ${MASKED?'':'q'}" type="button" data-aiscope="area" aria-pressed="${MASKED}">Only the painted area</button><button class="btn sm q" type="button" data-paintarea>Paint the area</button><button class="btn sm q" type="button" data-clearmask ${MASKED?'':'disabled'}>Clear it</button></div>
-    <p class="note" id="aiScope"></p><div class="row"><button class="btn go sm" type="button" id="aiGo" ${ai.connected?'':'disabled'}>Change it</button></div>
-    <p class="note">The AI looks at everything visible and comes back as a new layer on top, so nothing you made is lost: hide it, lower its opacity, or rub parts of it out. With an area painted, only that area changes.</p></div>
+    <p class="note" id="aiScope"></p><div class="row"><button class="btn go sm" type="button" id="aiGo" ${ai.connected?'':'disabled'}>Change it</button>${CID&&!GMODE?`<button class="btn sm" type="button" id="rmGfx" title="Takes the printed graphic off the piece: a selected graphic layer is removed; otherwise the AI finds it (or uses the painted area) and fills it with plain fabric" ${ai.connected?'':'disabled'}>Remove the graphic</button>`:''}</div>
+    <p class="note">The AI looks at everything visible and comes back as a new layer on top, so nothing you made is lost: hide it, lower its opacity, or rub parts of it out. With an area painted, only that area changes.${CID&&!GMODE?' Remove the graphic takes a printed graphic off the piece in one go: paint over it first for an exact area, or let the AI find it.':''}</p></div>
   <div class="sec"><h4>Make a graphic</h4><textarea class="t" id="aiArt" maxlength="800" placeholder="A cracked two-colour arch of the words FUTURE BASICS over a lightning bolt, 1970s rock tour style, ink and cream"></textarea>
     <label class="f w"><span>Made as</span><select class="t" id="aiTech">${techOpts('')}</select></label>
     <div class="row"><button class="btn go sm" type="button" id="artGo" ${ai.connected?'':'disabled'}>Make it</button></div><p class="note">Drawn on a clear background, as a layer to place, recolour and distress, and kept in the graphics library for other pieces. With a technique chosen, it is designed for it and shown made that way. Describe the look in your own words: other brands' names are refused.</p></div>
@@ -540,24 +540,42 @@ async function paintFabrics(){
   $('#fabUse').onclick=async()=>{const b=$('#fabUse');try{await FBN.run(b,()=>api(`/v1/lab/concepts/${CID}/materials`,{body:{material:$('#fabSel').value,role:'main',colour:$('#fabCol').value||undefined}}),{done:'The concept is made of it: cost and margin updated.'});await paintFabrics()}catch{}};
   $('#fabDraw').onclick=()=>{const m=lib.materials.find(x=>x.id===$('#fabSel').value);if(!m)return;const col=(m.colours||[]).find(c=>c.hex===$('#fabCol').value);$('#aiEdit').value=`Render the whole piece in ${words(m)}${col?`, ${col.name||col.hex} colour`:''}: the real weight, drape, surface texture and sheen of that cloth, same cut and details.`;$('#aiGo').click()};
 }
+// the AI changes the piece, or only the painted area, and the answer lands as the top layer → true when it did
+async function runEdit(prompt,{label=null}={}){
+  const m=$('#aiMsg');busy(MASKED?'The AI is changing the painted area. About a minute…':'The AI is changing the piece. About a minute…');
+  try{compose();const r=await api(AI_URL(),{body:{mode:'edit',prompt,image:docC.toDataURL('image/png'),mask:MASKED?maskPng():null}});
+    const img=await imgOf(r.image),c=canvas(W,H),x=c.getContext('2d');x.drawImage(img,0,0,W,H);
+    // only the painted area is kept from the answer (softened at its edge), so the rest stays exactly as it was
+    if(MASKED){x.globalCompositeOperation='destination-in';x.filter='blur(3px)';x.drawImage(mask,0,0);x.filter='none'}
+    addLayer(fresh('image',{name:(label||'AI · '+prompt).slice(0,40),raster:stamp(c),src:null,dirty:true,x:W/2,y:H/2}),{top:true});D.ai.left=r.left;if(m){m.className='msg ok';m.textContent=`Done: it is the top layer.${r.left==null?'':` ${r.left} left today.`}`}if(MASKED)clearMask();toast('Done: the change is the top layer.');return true}
+  catch(x){if(m){m.className='msg bad';m.textContent=x.message}toast(x.message);return false}finally{busy()}}
+// "Remove the graphic": a selected graphic layer simply goes; otherwise the painted area, or the area the vision model finds, is filled with plain fabric by the AI,
+// and the graphic can come off the concept's words too, so a redraw or the tech pack does not bring it back
+const REMOVE_WORDS='Remove the printed or embroidered graphic in this area completely and fill it with the plain garment fabric: continue the weave, colour, seams, folds and lighting from around it, so nothing printed is left.';
+function isGraphicLayer(l){return l&&l.kind==='image'&&(String(l.src||'').startsWith('/v1/lab/art/')||/^Graphic\b/.test(l.name||''))}
+function paintFound(list){maskX.save();maskX.fillStyle='#e03b2e';for(const f of list){const w=f.w*W*1.3,h=Math.max(w*1.05,f.w*W*1.1);maskX.beginPath();maskX.ellipse(f.x*W,f.y*H,w/2,h/2,(f.angle||0)*Math.PI/180,0,Math.PI*2);maskX.fill()}maskX.restore();MASKED=list.length>0;paintAiState();draw()}
+async function removeGraphic(){
+  const l=selected();if(isGraphicLayer(l)){removeLayer(l);toast(`"${l.name}" is off the piece.`);return}
+  if(!MASKED){busy('Finding the graphic on the piece…');let r;try{compose();r=await api(`/v1/lab/concepts/${CID}/studio/find-graphics`,{body:{image:docC.toDataURL('image/png')}})}catch(x){busy();toast(x.message);return}busy();
+    if(!r.found.length){setTool('area');tab('ai');toast(r.note||'The graphic could not be found on its own: paint over it, then press Remove the graphic again.');return}
+    paintFound(r.found);toast(`Found ${r.found.map(f=>f.name).join(', ')}: that area is painted. Removing it…`)}
+  const ok=await runEdit(REMOVE_WORDS,{label:'Graphic removed'});if(!ok)return;
+  const names=D.graphicNames||[];if(names.length&&!D.concept.locked){
+    const yes=await ask('Also take the graphic off the concept?',`The picture is changed here. The concept's words still carry ${names.length===1?'the graphic':'these graphics'}: ${names.join(', ')}. Taking ${names.length===1?'it':'them'} off means a redraw and the tech pack will not bring ${names.length===1?'it':'them'} back.${D.concept.status==='approved'?' The concept is approved, so it goes back to draft to be approved again.':''}`,'Take it off');
+    if(yes){try{await api(`/v1/lab/concepts/${CID}`,{method:'PUT',body:{graphics:[]}});D.graphicNames=[];D.graphics=[];if(TAB==='add')paintAdd();toast('The graphic is off the concept. Use as the concept picture when the piece looks right.')}catch(x){toast(x.message)}}}
+}
 function paintAiState(){const s=$('#aiScope');if(s)s.textContent=MASKED?'Only the painted (red) area will change.':'Nothing is painted: the whole piece can change. Paint an area to keep the rest exactly as it is.';const b=$('#pAi [data-clearmask]');if(b)b.disabled=!MASKED;const a=$('#pAi [data-aiscope]');if(a){a.className='btn sm '+(MASKED?'':'q');a.setAttribute('aria-pressed',String(MASKED))}}
 function maskPng(){const c=canvas(W,H),x=c.getContext('2d');x.fillStyle='#000';x.fillRect(0,0,W,H);x.globalCompositeOperation='destination-out';x.drawImage(mask,0,0);return c.toDataURL('image/png')}
 $('#pAi').addEventListener('click',async e=>{
   if(e.target.closest('[data-paintarea]')||e.target.closest('[data-aiscope]')){setTool('area');toast('Paint over what should change. Hold Alt to rub out.');return}
   if(e.target.closest('[data-clearmask]')){clearMask();return}
   const m=$('#aiMsg');
-  if(e.target.id==='aiGo'){const prompt=$('#aiEdit').value.trim();if(prompt.length<3){m.className='msg bad';m.textContent='Say what to change.';return}
-    busy(MASKED?'The AI is changing the painted area. About a minute…':'The AI is changing the piece. About a minute…');e.target.disabled=true;
-    try{compose();const r=await api(AI_URL(),{body:{mode:'edit',prompt,image:docC.toDataURL('image/png'),mask:MASKED?maskPng():null}});
-      const img=await imgOf(r.image),c=canvas(W,H),x=c.getContext('2d');x.drawImage(img,0,0,W,H);
-      // only the painted area is kept from the answer (softened at its edge), so the rest stays exactly as it was
-      if(MASKED){x.globalCompositeOperation='destination-in';x.filter='blur(3px)';x.drawImage(mask,0,0);x.filter='none'}
-      addLayer(fresh('image',{name:'AI · '+prompt.slice(0,40),raster:stamp(c),src:null,dirty:true,x:W/2,y:H/2}),{top:true});D.ai.left=r.left;m.className='msg ok';m.textContent=`Done: it is the top layer.${r.left==null?'':` ${r.left} left today.`}`;if(MASKED)clearMask()}
-    catch(x){m.className='msg bad';m.textContent=x.message}finally{busy();e.target.disabled=false}return}
+  if(e.target.id==='aiGo'){const prompt=$('#aiEdit').value.trim();if(prompt.length<3){m.className='msg bad';m.textContent='Say what to change.';toast('Say what to change first.');return}e.target.disabled=true;try{await runEdit(prompt)}finally{e.target.disabled=false}return}
+  if(e.target.id==='rmGfx'){e.target.disabled=true;try{await removeGraphic()}finally{const b=$('#rmGfx');if(b)b.disabled=false}return}
   if(e.target.id==='artGo'){const prompt=$('#aiArt').value.trim();if(prompt.length<3){m.className='msg bad';m.textContent='Say what the graphic should be.';return}
     busy('Drawing the graphic. About a minute…');e.target.disabled=true;
     try{const tid=$('#aiTech').value||null,r=await api(AI_URL(),{body:{mode:'art',prompt,techniqueId:tid}});const l=await addPicture(r.image,'Graphic · '+prompt.slice(0,32),{fit:.4,origin:r.art?'/v1/lab/art/'+r.art:null});if(tid){applyTech(l,tid);commit();paintLayers();draw()}D.ai.left=r.left;LIB=null;m.className='msg ok';m.textContent=`Done: the graphic is a new layer, and it is in the graphics library. Move it into place.${r.left==null?'':` ${r.left} left today.`}`}
-    catch(x){m.className='msg bad';m.textContent=x.message}finally{busy();e.target.disabled=false}}
+    catch(x){m.className='msg bad';m.textContent=x.message;toast(x.message)}finally{busy();e.target.disabled=false}}
 });
 
 // ---------- saving, using, exporting ----------

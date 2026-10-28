@@ -237,6 +237,8 @@ The library takes pictures as well as links: **Add photos or screenshots** under
 - Fonts other than Space Grotesk and IBM Plex Mono are the computer's own (serif, slab, condensed, script, typewriter), so they can look slightly different on another machine. The SVG names the font.
 - Routes: `src/lab-studio-routes.js` (`GET/PUT /v1/lab/concepts/:id/studio`, `GET …/studio/plain`, `POST …/studio/ai`, `POST …/studio/apply`, `POST …/studio/restore`). The page is `src/lab-studio.html`, and the table is `lab_studio_docs`. A saved design can be up to 30 MB and 80 layers. A layer's picture can only come from the design itself, a Lab graphic or one of our marks, never from an outside address.
 
+- **Remove the graphic** (AI tab): a selected graphic layer is simply removed; otherwise the painted area, or the area the vision model finds (`POST /v1/lab/concepts/:id/studio/find-graphics {image}`, the concept's own graphics asked for by placement), is filled with plain fabric by the image model as a new layer on top, and the studio then offers to take the graphic off the concept's words too, so a redraw and the tech pack do not bring it back. Every AI button also says in a toast when it fails, not only at the foot of the panel.
+
 ## Graphics and techniques: the library
 
 **Graphics and techniques** (a Lab tab, `/lab/library`) is where everything we have made lives, so it can be used on any piece later.

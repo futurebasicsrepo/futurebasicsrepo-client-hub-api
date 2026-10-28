@@ -2,6 +2,7 @@
 // type, shapes, the Future Basics marks and colours, the plan's graphics, recolouring and distressing, and AI edits of the whole piece or a painted area.
 //   GET  /v1/lab/concepts/:id/studio            the concept, the saved design (layers), the brand marks and colours, the concept's graphics
 //   GET  /v1/lab/concepts/:id/studio/plain      the picture before the logo and graphics were laid on (when it was kept)
+//   POST /v1/lab/concepts/:id/studio/find-graphics {image}   where the graphics sit on the picture (a vision model measures; nothing is drawn), so the studio can paint the area for the AI
 //   PUT  /v1/lab/concepts/:id/studio            save the design {doc}
 //   POST /v1/lab/concepts/:id/studio/ai         {mode:'edit', image, mask?, prompt} redraw the piece (or only the painted area) · {mode:'art', prompt} a new graphic on a clear background
 //   POST /v1/lab/concepts/:id/studio/apply      {image} the finished design becomes the concept's picture (the picture before the first one is kept)
@@ -14,6 +15,8 @@
 //   POST /v1/lab/library/graphics/:id/studio/apply {image, doc?} the finished picture replaces this graphic's (pieces using it keep what they had)
 import sharp from 'sharp';
 import { imageConfig, openaiEdit, openaiImage } from './check.js';
+import { locateMarks } from './lab-place.js';
+import { GRAPHIC_PLACE } from './lab-concepts.js';
 import { brandHits } from './lab-concepts.js';
 import { logoSvg, COLORS } from './brand-kit.js';
 import { finishArt } from './lab-art.js';
@@ -64,7 +67,7 @@ async function fixtureEdit(img, mask) {
 const fixtureArt = prompt => sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024"><circle cx="512" cy="512" r="300" fill="none" stroke="#141416" stroke-width="40"/><text x="512" y="540" font-family="sans-serif" font-size="70" text-anchor="middle" fill="#a02a20">${clip(prompt, 18).replace(/[<&>"]/g, '')}</text></svg>`)).png().toBuffer();
 
 export function registerLabStudioRoutes(app, d) {
-  const { pool, authenticate, adminOnly, env = process.env, imageCfg = () => imageConfig(env), editImpl = openaiEdit, imageImpl = openaiImage } = d;
+  const { pool, authenticate, adminOnly, env = process.env, imageCfg = () => imageConfig(env), editImpl = openaiEdit, imageImpl = openaiImage, placeImpl = locateMarks } = d;
   const pre = [authenticate, adminOnly], bad = (reply, error, code = 422, extra = {}) => reply.code(code).send({ error, ...extra });
   const actorOf = req => (UUID.test(String(req.auth?.sub || '')) ? req.auth.sub : null);
   const nameOf = async req => { const id = actorOf(req); if (!id) return 'Staff'; return (await pool.query(`select coalesce(nullif(name,''), split_part(email,'@',1)) n from users where id=$1`, [id])).rows[0]?.n || 'Staff'; };
@@ -88,7 +91,7 @@ export function registerLabStudioRoutes(app, d) {
       concept: { id: c.id, name: c.name, category: c.category, status: c.status, hasImage: c.has_image, hasPlain: c.has_plain, locked: c.status === 'tech_pack', colors: c.spec?.colors || [] },
       doc: s?.doc || null, savedAt: s?.updated_at || null, savedBy: s?.by_name || '', appliedAt: s?.applied_at || null, canRestore: Boolean(s?.has_original),
       marks: [{ id: 'mark', label: 'Cue mark', svg: logoSvg('mark') }, { id: 'word', label: 'Wordmark', svg: logoSvg('word') }, { id: 'lockup', label: 'Wordmark and cue mark', svg: logoSvg('lockup') }],
-      palette, graphics: (c.spec?.graphics || []).filter(g => g.art).map(g => ({ art: g.art, name: clip(g.name, 60) })),
+      palette, graphics: (c.spec?.graphics || []).filter(g => g.art).map(g => ({ art: g.art, name: clip(g.name, 60) })), graphicNames: (c.spec?.graphics || []).map(g => clip(g.name, 60)).filter(Boolean),
       ai: { connected: cfg.configured, model: cfg.model || null, left: left() },
       techniques: (await pool.query(`select t.id, t.kind, t.name, t.summary, t.base, t.finish, (select count(*)::int from lab_technique_photos p where p.technique_id=t.id) photos from lab_techniques t where not archived order by kind, builtin desc, name`).catch(() => ({ rows: [] }))).rows
     };
@@ -98,6 +101,22 @@ export function registerLabStudioRoutes(app, d) {
     if (!UUID.test(req.params.id)) return bad(reply, 'Not found', 404);
     const r = (await pool.query('select raw from lab_concepts where id=$1', [req.params.id])).rows[0]; if (!r?.raw) return bad(reply, 'No plain picture was kept for this concept', 404);
     return reply.header('content-type', 'image/jpeg').header('cache-control', 'private, no-cache').send(r.raw);
+  });
+
+  // Where the graphics are on the picture as it is now: for "Remove the graphic", which paints the area for the AI from this.
+  // The concept's own graphics are asked for by placement; with none on the words, the model is asked for any printed graphic it can see.
+  app.post('/v1/lab/concepts/:id/studio/find-graphics', { preHandler: pre, bodyLimit: 32_000_000 }, async (req, reply) => {
+    const c = await concept(req, reply); if (!c) return;
+    const img = pictureOf(req.body?.image); if (!img) return bad(reply, 'Send the picture to look at');
+    const gfx = (c.spec?.graphics || []).filter(g => g.placement);
+    const asks = gfx.length ? gfx.map((g, i) => ({ id: `g${i}`, name: clip(g.name, 60) || 'Graphic', where: `the printed or embroidered graphic "${clip(g.name, 60)}": ${g.placement}`, w: GRAPHIC_PLACE[g.placement]?.w || 0.3 }))
+      : [{ id: 'g0', name: 'The graphic', where: 'the main printed or embroidered graphic on the piece (not the small Future Basics logo, not the inset label card)', w: 0.3 }];
+    if (env.AI_FIXTURE) return { found: asks.map(a => ({ id: a.id, name: a.name, x: 0.5, y: 0.42, w: a.w, angle: 0 })), model: 'fixture' };
+    if (!env.ANTHROPIC_API_KEY) return { found: [], note: 'The vision model is not connected (no Anthropic key): paint over the graphic by hand.' };
+    const jpeg = await sharp(img).jpeg({ quality: 85 }).toBuffer().catch(() => null); if (!jpeg) return bad(reply, 'The picture could not be read');
+    const res = await placeImpl({ image: jpeg, category: c.category, marks: asks, env });
+    const found = asks.filter(a => res?.get?.(a.id)).map(a => ({ id: a.id, name: a.name, ...res.get(a.id) }));
+    return { found, hidden: asks.filter(a => res?.hidden?.has(a.id)).map(a => a.name), note: found.length ? '' : 'The graphic could not be found on its own: paint over it by hand.' };
   });
 
   app.put('/v1/lab/concepts/:id/studio', { preHandler: pre, bodyLimit: 32_000_000 }, async (req, reply) => {

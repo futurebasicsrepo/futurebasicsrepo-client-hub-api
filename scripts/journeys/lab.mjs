@@ -1587,5 +1587,90 @@ await journey('J226', 'Range-level work: one instruction across a whole collecti
   } finally { await cleanup(brands, plan.plan?.id); }
 });
 
+await journey('J227', 'Every tool in the studio works: each rail tool and zoom button, every Add (marks, library, sketch-pack parts, painting, type and shapes, colours), every Layers control (select, hide, lock, up, down, duplicate, centre, flip, sit in fabric, reset colour, another pattern, turn into pixels, technique and make it real, save to the library, plain picture, delete), every AI control (paint the area, scope, clear, Change it, Make it, Remove the graphic, the fabric), undo, redo, save, export, versions, use as the picture; and "Remove the graphic" takes a printed graphic off the piece in one go', async () => {
+  const { brands, plan } = await conceptSetup();
+  if (!playwright) { ok(true, 'needs a browser'); await cleanup(brands, plan.plan?.id); return; }
+  const line = plan.lines.find(l => l.category === 'tops') || plan.lines[0], c = (await K(`/plans/${plan.plan.id}/lines/${line.id}/concepts`, { body: { count: 1 } })).json.concepts[0];
+  ok(c.spec.graphics.length === 1, 'a concept with one graphic on its words', c.spec.graphics);
+  const b = await playwright.chromium.launch();
+  try {
+    const oc = await b.newContext({ viewport: { width: 1500, height: 980 }, acceptDownloads: true }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
+    const page = await oc.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e))); page.on('dialog', d => d.accept('Variant'));
+    await page.goto(`${BASE}/lab/studio?concept=${c.id}`, { waitUntil: 'networkidle' }); await page.waitForSelector('#pLayers .ly', { timeout: 20000 }); await page.waitForFunction(() => !document.querySelector('#busy:not(.hidden)'));
+    const box = await page.locator('#view').boundingBox(), cx = box.x + box.width / 2, cy = box.y + box.height / 2;
+    const n = () => page.evaluate(() => LAYERS.length), sel = () => page.evaluate(() => { const l = selected(); return l ? { id: l.id, kind: l.kind, name: l.name, visible: l.visible, locked: l.locked, x: l.x, y: l.y, flip: l.flip, blend: l.blend, tint: l.tint, adjust: l.adjust, seed: l.distress.seed, amount: l.distress.amount, finish: l.finish && l.finish.id, src: l.src, bold: l.bold, align: l.align } : null; });
+    const idle = () => page.waitForFunction(() => !document.querySelector('#busy:not(.hidden)'), null, { timeout: 30000 });
+    const toastHas = re => page.waitForFunction(r => new RegExp(r).test(document.getElementById('stToast')?.textContent || ''), re.source, { timeout: 30000 });
+
+    // 1. the rail and the zoom
+    const tools = await page.$$eval('.rail [data-tool]', els => els.map(e => e.dataset.tool)); let railOk = 0;
+    for (const t of tools) { await page.click(`.rail [data-tool="${t}"]`); if (await page.evaluate(x => TOOL === x && document.querySelector(`.rail [data-tool="${x}"]`).getAttribute('aria-pressed') === 'true', t) && (await page.innerText('#opts')).trim().length > 0) railOk++; }
+    ok(railOk === tools.length && tools.length === 11, `1. every rail tool selects and shows its options (${tools.join(', ')})`, railOk);
+    const z0 = await page.innerText('#zLabel'); await page.click('#zIn'); await page.waitForFunction(z => document.getElementById('zLabel').textContent !== z, z0); const z1 = await page.innerText('#zLabel'); await page.click('#zOut'); await page.waitForFunction(z => document.getElementById('zLabel').textContent !== z, z1); await page.click('#zFit'); await page.waitForFunction(z => document.getElementById('zLabel').textContent === z, z0);
+    ok(parseInt(z1) > parseInt(z0), '   zoom in, out and fit', [z0, z1]);
+
+    // 2. Add
+    await page.click('.tabs [data-tab=add]'); await page.waitForSelector('#pAdd [data-mark]');
+    const before = await n(); for (const m of ['mark', 'word', 'lockup']) { await page.click(`#pAdd [data-mark=${m}]`); await page.waitForFunction(k => LAYERS.length === k, before + ['mark', 'word', 'lockup'].indexOf(m) + 1); }
+    ok(await n() === before + 3 && (await sel()).src === 'brand:lockup', '2. the three Future Basics marks each add a layer');
+    await page.click('#pAdd [data-sw]'); ok((await sel()).tint.amount === 1, '   a colour swatch recolours the selected mark');
+    await page.click('#addPaint'); ok((await sel()).kind === 'paint', '   New painting layer');
+    await page.waitForSelector('#partKinds [data-pkind]'); const kinds = await page.$$eval('#partKinds [data-pkind]', els => els.map(e => e.dataset.pkind)); await page.click(`#partKinds [data-pkind="${kinds[kinds.length - 1]}"]`); await page.waitForSelector('#partTiles [data-part]'); const k0 = await n(); await page.click('#partTiles [data-part]'); await idle(); await page.waitForFunction(k => LAYERS.length === k + 1, k0);
+    ok((await sel()).src.startsWith('/lab/flat-parts/'), `   a sketch-pack part (${kinds.length} kinds) is added as a layer`);
+    await page.waitForSelector('#libTiles [data-lib], #libTiles .note'); if (await page.locator('#libTiles [data-lib]').count()) { const l0 = await n(); await page.click('#libTiles [data-lib]'); await idle(); await page.waitForFunction(k => LAYERS.length === k + 1, l0); ok((await sel()).src.startsWith('/v1/lab/art/'), '   a graphic from the library is added as a layer'); } else ok(true, '   (the library has no graphics in this database yet)');
+    await page.fill('#libQ', 'zzz-nothing'); await page.waitForFunction(() => /Nothing found|data-lib/.test(document.getElementById('libTiles').innerHTML), null, { timeout: 10000 });
+    for (const [t, act] of [['text', async () => { await page.mouse.click(cx, cy - 80); }], ['rect', async () => { await page.mouse.move(cx - 60, cy); await page.mouse.down(); await page.mouse.move(cx + 40, cy + 60, { steps: 4 }); await page.mouse.up(); }], ['ellipse', async () => { await page.mouse.move(cx - 60, cy + 90); await page.mouse.down(); await page.mouse.move(cx + 20, cy + 150, { steps: 4 }); await page.mouse.up(); }], ['line', async () => { await page.mouse.move(cx - 100, cy - 150); await page.mouse.down(); await page.mouse.move(cx + 100, cy - 140, { steps: 4 }); await page.mouse.up(); }]]) {
+      await page.click('.tabs [data-tab=add]'); const t0 = await n(); await page.click(`#pAdd [data-addtool=${t}]`); ok(await page.evaluate(x => TOOL === x, t), `   Add → ${t} picks the tool`); await act(); await page.waitForFunction(k => LAYERS.length === k + 1, t0); }
+    ok((await sel()).kind === 'shape', '   type, rectangle, ellipse and line each make a layer on the picture');
+
+    // 3. Layers
+    await page.click('.tabs [data-tab=layers]'); const rows = await page.locator('#pLayers .ly').count(); ok(rows === await n(), `3. the Layers list shows every layer (${rows})`);
+    const textRow = await page.evaluate(() => LAYERS.find(l => l.kind === 'text').id); await page.click(`#pLayers [data-ly="${textRow}"]`); ok((await sel()).kind === 'text', '   clicking a row selects it');
+    await page.click(`#pLayers [data-ly="${textRow}"] [data-vis]`); ok((await sel()).visible === false, '   hide'); await page.click(`#pLayers [data-ly="${textRow}"] [data-vis]`); ok((await sel()).visible === true, '   show');
+    await page.click(`#pLayers [data-ly="${textRow}"] [data-lock]`); ok((await sel()).locked === true, '   lock'); await page.click(`#pLayers [data-ly="${textRow}"] [data-lock]`); ok((await sel()).locked === false, '   unlock');
+    const b0 = (await sel()).bold; await page.click('#pLayers [data-toggle=bold]'); await page.click('#pLayers [data-align=right]'); const tx = await sel(); ok(tx.bold === !b0 && tx.align === 'right', '   bold and align on type', tx);
+    await page.click('#pLayers [data-act=raster]'); ok((await sel()).kind === 'image', '   turn into pixels');
+    const iv = await sel(); await page.click('#pLayers [data-act=flip]'); ok((await sel()).flip !== iv.flip, '   flip');
+    await page.evaluate(() => { const l = selected(); l.x = 10; l.y = 10; }); await page.click('#pLayers [data-act=centre]'); const cv = await sel(); ok(Math.abs(cv.x - await page.evaluate(() => W / 2)) < 1, '   centre');
+    await page.click('#pLayers [data-act=fabric]'); ok((await sel()).blend === 'multiply', '   sit it in the fabric');
+    await page.click('#pLayers [data-act=seed]'); const s1 = (await sel()).seed; await page.click('#pLayers [data-act=seed]'); ok((await sel()).seed !== s1 && (await sel()).amount > 0, '   another distress pattern');
+    await page.locator('#pLayers [data-p="a.hue"]').fill('90'); await page.locator('#pLayers [data-p="a.hue"]').dispatchEvent('input'); await page.click('#pLayers [data-act=lookreset]'); ok((await sel()).adjust.hue === 0, '   reset the colour');
+    const pos = () => page.evaluate(() => LAYERS.findIndex(l => l.id === SEL)); const p0 = await pos(); await page.click('#pLayers [data-act=down]'); ok(await pos() === p0 - 1, '   move down'); await page.click('#pLayers [data-act=up]'); ok(await pos() === p0, '   move up');
+    const d0 = await n(); await page.click('#pLayers [data-act=dup]'); ok(await n() === d0 + 1 && /copy$/.test((await sel()).name), '   duplicate');
+    await page.click('#pLayers [data-act=del]'); ok(await n() === d0, '   delete');
+    await page.click('#pLayers [data-act=keep]'); await toastHas(/graphics library now/); ok(true, '   save to the library');
+    const techs = await page.$$eval('#pLayers [data-tech] option', os => os.map(o => o.value).filter(Boolean)); await page.selectOption('#pLayers [data-tech]', techs[0]); ok((await sel()).finish === techs[0], '   a technique is applied');
+    const r0 = await n(); await page.click('#pLayers [data-act=real]'); await idle(); await page.waitForFunction(k => LAYERS.length === k + 1, r0, { timeout: 30000 }); ok((await sel()).name.startsWith('Real ·'), '   make it real with AI lands as a layer');
+    const baseRow = await page.evaluate(() => LAYERS.find(l => l.kind === 'base').id); await page.click(`#pLayers [data-ly="${baseRow}"]`); await page.click('#pLayers [data-act=plain]'); await idle(); ok((await sel()).name === 'Picture (plain)', '   use the plain picture on the base');
+    await page.click('#pLayers [data-act=del]'); await toastHas(/base picture stays/); ok(await page.evaluate(() => LAYERS.some(l => l.kind === 'base')), '   the base cannot be deleted, and says so');
+
+    // 4. AI
+    await page.click('.tabs [data-tab=ai]'); await page.waitForSelector('#aiGo'); await page.waitForSelector('#fabSel', { timeout: 15000 });
+    ok(await page.locator('#rmGfx').count() === 1 && !(await page.isDisabled('#aiGo')), '4. the AI tab has Change it, Make it and Remove the graphic, switched on');
+    await page.click('#pAi [data-paintarea]'); ok(await page.evaluate(() => TOOL === 'area'), '   Paint the area picks the area tool');
+    await page.mouse.move(cx - 50, cy); await page.mouse.down(); await page.mouse.move(cx + 50, cy + 30, { steps: 5 }); await page.mouse.up(); ok(await page.evaluate(() => MASKED) && /Only the painted/.test(await page.innerText('#aiScope')), '   painting marks the area');
+    await page.click('#pAi [data-clearmask]'); ok(!(await page.evaluate(() => MASKED)), '   Clear it clears the area');
+    await page.click('#aiGo'); ok(/Say what to change/.test(await page.innerText('#aiMsg')), '   Change it with nothing written says so');
+    const a0 = await n(); await page.fill('#aiEdit', 'Remove the back graphic'); await page.click('#aiGo'); await page.waitForFunction(() => /Done/.test(document.getElementById('aiMsg')?.textContent || ''), null, { timeout: 30000 });
+    ok(await n() === a0 + 1 && (await sel()).name.startsWith('AI ·'), '   Change it: the whole piece, as the top layer (this was the broken button)');
+    const g0 = await n(); await page.fill('#aiArt', 'a lightning bolt crest'); await page.click('#artGo'); await page.waitForFunction(() => /graphic is a new layer/.test(document.getElementById('aiMsg')?.textContent || ''), null, { timeout: 30000 }); ok(await n() === g0 + 1 && (await sel()).name.startsWith('Graphic ·'), '   Make it: a graphic as a layer');
+    await page.click('#rmGfx'); await toastHas(/is off the piece/); ok(await n() === g0, '   Remove the graphic with a graphic layer selected removes that layer');
+    const m0 = await n(); await page.click('#rmGfx'); await page.waitForSelector('#askDlg[open]', { timeout: 40000 });
+    ok(await n() === m0 + 1 && (await sel()).name === 'Graphic removed' && /take the graphic off the concept/i.test(await page.innerText('#askTitle')), '5. Remove the graphic with nothing painted: the AI finds the graphic, paints the area, fills it with plain fabric, then asks about the concept\'s words');
+    await page.click('#askYes'); await toastHas(/off the concept/); const after = (await K(`/concepts/${c.id}`)).json.concept; ok(after.spec.graphics.length === 0 && after.status === 'draft', '   the graphic is off the concept\'s words too', after.spec.graphics);
+    await page.click('#fabUse'); await page.waitForFunction(() => /On the concept:/.test(document.getElementById('fabSec')?.textContent || ''), null, { timeout: 15000 }); ok(true, '   the fabric: Use it on the concept');
+    const f0 = await n(); await page.click('#fabDraw'); await page.waitForFunction(k => LAYERS.length === k + 1, f0, { timeout: 30000 }); ok((await sel()).name.startsWith('AI · Render the whole piece'), '   the fabric: Redraw the piece in it');
+
+    // 6. the top bar
+    const u0 = await n(); await page.click('#undo'); ok(await n() === u0 - 1, '6. Undo'); await page.click('#redo'); ok(await n() === u0, '   Redo');
+    await page.click('#save'); await page.waitForFunction(() => /^Saved/.test(document.getElementById('saved').textContent), null, { timeout: 15000 }); ok(true, '   Save');
+    for (const [k, re] of [['png', /\.png$/], ['svg', /-layers\.svg$/], ['layer', /\.png$/]]) { await page.click('#expBtn'); const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 20000 }), page.click(`#expPop [data-exp=${k}]`)]); ok(re.test(dl.suggestedFilename()), `   Export → ${k}`, dl.suggestedFilename()); }
+    await page.click('#verBtn'); await page.waitForSelector('#verDlg[open]'); await page.waitForFunction(() => !/Loading/.test(document.getElementById('verList').textContent)); const v0 = await page.locator('#verList [data-vn]').count(); await page.click('#verKeep'); await page.waitForFunction(k => document.querySelectorAll('#verList [data-vn]').length === k + 1, v0, { timeout: 20000 }); await page.click('#verDlg [data-verclose]'); ok(!(await page.evaluate(() => document.getElementById('verDlg').open)), '   Versions: keep one, close');
+    await page.click('#apply'); await page.waitForSelector('#askDlg[open]'); await page.click('#askYes'); await toastHas(/concept picture now/); ok(true, '   Use as the concept picture');
+    await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/lab-studio-all.png` }).catch(() => {});
+    ok(errs.length === 0, 'no page errors', errs); await oc.close();
+  } finally { await cleanup(brands, plan.plan?.id); await b.close(); }
+});
+
 shops.close(); brave.close();
 process.exit(summary() ? 1 : 0);
