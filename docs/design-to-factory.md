@@ -321,6 +321,7 @@ Each guide offers the next one when it ends. The client's own guides for tech pa
 | J216 | The design service: a client's line, shared, with verdicts, replies, privacy, and the tech pack in the client's room. Includes the hub in a browser |
 | J217 | The whole loop over HTTP: concept → tech pack → publish → factory → sample sent → review → version 2 → the factory sees the corrections and the next sample |
 | J218 | The factory views and writes in Messages: no buttons (acknowledge, quote, countersign, sample sent all refused), the team records the shipped sample, the corrections go out as v2 while v1 is kept exactly, flats sent unchanged make no version, flats changed go out as v3. Includes the factory page in a browser |
+| J228 | The smaller items: our own fonts (uploaded, served, set in type, listed in the library), the Illustrator round-trip (the studio SVG back as editable layers; a foreign SVG as picture layers), the 3D try-on (from the concept picture and from the canvas, the GLB shown painted in our viewer) |
 | J227 | Every tool in the studio works, clicked one by one in a browser: the rail and zoom, every Add, every Layers control, every AI control (Change it, Make it, Remove the graphic, the fabric), undo, redo, save, export, versions, use as the picture; Remove the graphic takes a printed graphic off the piece in one go |
 | J226 | Range-level work: one instruction across the collection previewed per piece and applied only where ticked; the Lab learning our taste from what is approved and rejected and reading it before it designs; a lookbook in one click; a customer poll whose votes become a demand read per piece. Over HTTP and in a browser, on the plan and on a phone |
 | J225 | Finding your way round: one navigation on every Lab page (Make, Libraries, Research, the flow), concept pickers for the studio and the flats, the sketch pack page (search, ranges, styles, parts) putting a sketch on a concept, the assistant leaving Lab rows alone |
@@ -338,6 +339,7 @@ Each guide offers the next one when it ends. The client's own guides for tech pa
 - `test/lab-handoff.test.js`: what the flats give the pack;
 - `test/lab-share.test.js`: pins and the link token;
 - `test/lab-keep.test.js`: the assistant leaves the Lab's rows exactly as set;
+- `test/lab-tryon.test.js`: the textured GLB built and read back (transforms, strides, flat normals), the stand-in 3D service, font files by their first bytes;
 - `test/lab-range.test.js`: the taste counts and words, the range change per piece and its cleaning, the poll votes and the demand read, the lookbook PDF;
 - `test/sample-loop.test.js`: the calendar, the comparison's shape and fixture, the written design the model reads, what the pack keeps;
 - `test/lab-materials.test.js`: the starting set, cleaning, the tag drawing, the costing, and what the pack takes;

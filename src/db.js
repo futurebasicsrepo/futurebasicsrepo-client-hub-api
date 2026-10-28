@@ -302,6 +302,36 @@ export async function migrate() {
       opened_at timestamptz,
       opens integer not null default 0
     );
+    create table if not exists lab_concept_models ( -- 3D try-on: the concept's design painted on a 3D model by the outside service (src/lab-tryon-routes.js)
+      id uuid primary key default gen_random_uuid(),
+      concept_id uuid not null references lab_concepts(id) on delete cascade,
+      provider text not null default '',
+      model text,
+      task_id text,
+      status text not null default 'running' check (status in ('running','done','failed')),
+      source text not null default 'concept' check (source in ('concept','canvas')),
+      image bytea,
+      image_hash text not null default '',
+      glb bytea,
+      thumb bytea,
+      triangles integer,
+      textured boolean not null default false,
+      credits numeric,
+      error text not null default '',
+      requested_by uuid references users(id) on delete set null,
+      created_at timestamptz not null default now(),
+      completed_at timestamptz
+    );
+    create index if not exists lab_concept_models_idx on lab_concept_models (concept_id, created_at desc);
+    create table if not exists lab_fonts ( -- fonts the studio can set type in on every machine (uploaded once, served from here)
+      id uuid primary key default gen_random_uuid(),
+      name text not null,
+      family text not null,
+      format text not null check (format in ('ttf','otf','woff','woff2')),
+      bytes bytea not null,
+      created_by uuid references users(id) on delete set null,
+      created_at timestamptz not null default now()
+    );
     create table if not exists lab_polls ( -- a customer poll on a range: a link, the pieces in it, and the votes (src/lab-lookbook.js)
       id uuid primary key default gen_random_uuid(),
       plan_id uuid not null references lab_plans(id) on delete cascade,

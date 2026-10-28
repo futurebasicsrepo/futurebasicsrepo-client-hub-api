@@ -90,6 +90,8 @@ kbd{font:500 10px 'IBM Plex Mono',monospace;border:1px solid var(--line);border-
     <button class="btn q sm" id="redo" type="button" title="Redo (Ctrl Shift Z)">Redo</button>
     <span class="saved" id="saved" role="status"></span>
     <button class="btn sm" id="save" type="button" title="Save (Ctrl S)">Save</button>
+    <button class="btn sm" id="impBtn" type="button" title="Bring an SVG back from Illustrator: the studio's own export comes back as layers">Import</button><input type="file" id="svgIn" accept=".svg,image/svg+xml" class="hidden">
+    <button class="btn sm" id="tryBtn" type="button" title="The design painted on a 3D model, turned round">3D</button>
     <div class="menu"><button class="btn sm" id="expBtn" type="button" aria-haspopup="true" aria-expanded="false">Export</button>
       <div class="pop hidden" id="expPop" role="menu">
         <button type="button" role="menuitem" data-exp="png"><b>Picture (PNG)</b><small>Everything as one picture, full size</small></button>
@@ -142,6 +144,13 @@ kbd{font:500 10px 'IBM Plex Mono',monospace;border:1px solid var(--line);border-
     <div class="row" style="justify-content:space-between"><span class="note" id="verLabA"></span><span class="note" id="verLabB"></span></div></div>
   <p class="msg" id="verMsg" role="status" style="margin:0"></p>
 </div></dialog>
+<dialog id="tryDlg" style="border:0;border-radius:20px;padding:0;width:min(1000px,96vw);max-height:92vh;overflow:auto"><div style="padding:18px;display:grid;gap:12px">
+  <div class="row" style="justify-content:space-between"><h3 style="margin:0;font-size:16px">3D try-on</h3><div class="row"><button class="btn sm go" type="button" id="tryCanvas">Make it from the canvas</button><button class="btn sm" type="button" id="tryConcept">From the concept picture</button><button class="btn sm q" type="button" data-tryclose>Close</button></div></div>
+  <p class="note" style="margin:0" id="tryNote"></p>
+  <div style="display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:14px"><div id="tryHost" style="aspect-ratio:1/1;background:#f5f5f2;border-radius:14px;overflow:hidden;position:relative;min-height:320px"><span class="note" id="tryEmpty" style="position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:20px">No model yet. Make one from the canvas, or from the concept picture.</span></div><div id="tryList" style="display:grid;gap:8px;align-content:start"></div></div>
+  <p class="msg" id="tryMsg" role="status" style="margin:0"></p>
+</div></dialog>
+<input type="file" id="fontIn" accept=".ttf,.otf,.woff,.woff2" class="hidden">
 <dialog id="askDlg" style="border:0;border-radius:20px;padding:0;width:min(480px,94vw)"><form method="dialog" style="padding:20px;display:grid;gap:12px"><h3 id="askTitle" style="margin:0;font-size:16px;line-height:1.35"></h3><p class="note" id="askText" style="font-size:13px"></p><div class="row" style="justify-content:flex-end"><button class="btn" value="no" type="submit">Cancel</button><button class="btn go" value="yes" type="submit" id="askYes">Yes</button></div></form></dialog>
 <input type="file" id="fileIn" accept="image/*" multiple class="hidden">
 <script src="/lab/finish.js"></script>
@@ -167,6 +176,7 @@ const AI_URL=()=>GMODE?'/v1/lab/library/studio/ai':`/v1/lab/concepts/${CID}/stud
 let PARTS=null,PKIND='pockets';
 
 // ---------- what a layer is ----------
+// the built-in faces, and the fonts uploaded to the Lab (loaded from the server, so type sets the same on every machine)
 const FONTS={grotesk:['Space Grotesk',"'Space Grotesk',system-ui,sans-serif"],mono:['IBM Plex Mono',"'IBM Plex Mono',monospace"],serif:['Serif',"Georgia,'Times New Roman',serif"],slab:['Slab',"Rockwell,'Roboto Slab','Courier New',serif"],condensed:['Condensed',"Impact,Haettenschweiler,'Arial Narrow Bold',sans-serif"],script:['Script',"'Brush Script MT','Segoe Script',cursive"],typewriter:['Typewriter',"'Courier New',Courier,monospace"]};
 const BLENDS=[['source-over','Normal'],['multiply','Multiply (sits in the fabric)'],['screen','Screen'],['overlay','Overlay'],['soft-light','Soft light'],['hard-light','Hard light'],['darken','Darken'],['lighten','Lighten'],['color-burn','Colour burn'],['color-dodge','Colour dodge'],['difference','Difference'],['hue','Hue'],['saturation','Saturation'],['color','Colour'],['luminosity','Luminosity']];
 const KIND={base:'Picture',image:'Picture layer',paint:'Painting',text:'Type',shape:'Shape'};
@@ -199,6 +209,14 @@ function showSaved(){const s=$('#saved');s.className='saved'+(DIRTY?' dirty':'')
 const texture=(...a)=>window.FBFinish.texture(...a); // the same worn textures as the technique library (src/lab-finish.js)
 
 // ---------- what each layer looks like on its own (before it is placed) ----------
+async function loadFonts(){let changed=false;for(const f of (D.fonts||[])){const key='f_'+f.id;if(FONTS[key])continue;
+    try{const buf=await (await blobOf(`/v1/lab/fonts/${f.id}/file`)).arrayBuffer();const face=new FontFace(f.family,buf);await face.load();document.fonts.add(face);FONTS[key]=[f.name,`'${f.family}',sans-serif`,f.id];changed=true}catch(x){toast(`The font "${f.name}" could not be loaded.`)}}
+  if(changed){for(const l of LAYERS)if(l.kind==='text'){l._pk=null;l._pc=null}draw()}}
+const fontOpts=v=>`<optgroup label="Built in">${Object.entries(FONTS).filter(([k])=>!k.startsWith('f_')).map(([k,f])=>`<option value="${k}" ${k===v?'selected':''}>${esc(f[0])}</option>`).join('')}</optgroup>${Object.keys(FONTS).some(k=>k.startsWith('f_'))?`<optgroup label="Our fonts">${Object.entries(FONTS).filter(([k])=>k.startsWith('f_')).map(([k,f])=>`<option value="${k}" ${k===v?'selected':''}>${esc(f[0])}</option>`).join('')}</optgroup>`:''}`;
+async function addFont(file){if(!file)return;if(file.size>8e6){toast(file.name+' is over 8 MB.');return}busy('Adding the font…');
+  try{const r=await api('/v1/lab/fonts',{body:{name:file.name.replace(/\.[a-z0-9]+$/i,''),file:await urlOfBlob(file)}});D.fonts=[...(D.fonts||[]),r.font];await loadFonts();const l=selected();if(l&&l.kind==='text'&&!l.locked){l.font='f_'+r.font.id;l._pk=null;commit()}paintLayers();draw();toast(`"${r.font.name}" is in the Lab's fonts now, for every machine.`)}
+  catch(x){toast(x.message)}finally{busy()}}
+$('#fontIn').addEventListener('change',e=>{addFont(e.target.files[0]);e.target.value=''});
 function textMetrics(l){
   const x=docX,font=`${l.italic?'italic ':''}${l.bold?'700':'400'} ${l.size}px ${FONTS[l.font]?.[1]||FONTS.grotesk[1]}`;x.save();x.font=font;
   const lines=String(l.text||' ').split('\n'),lw=lines.map(t=>[...t].reduce((s,ch)=>s+x.measureText(ch).width,0)+Math.max(0,[...t].length-1)*l.track);x.restore();return{font,lines,lw}}
@@ -372,11 +390,11 @@ function fieldsHtml(l){
   const a=l.adjust,t=l.tint,d=l.distress,col=(p,v)=>`<input type="color" data-p="${p}" value="${v}">`;
   let kind='';
   if(l.kind==='text')kind=`<div class="sec"><h4>Type</h4><textarea class="t" data-p="text" aria-label="The words" maxlength="400">${esc(l.text)}</textarea>
-    <label class="f w"><span>Font</span><select class="t" data-p="font">${Object.entries(FONTS).map(([k,v])=>`<option value="${k}" ${k===l.font?'selected':''}>${esc(v[0])}</option>`).join('')}</select></label>
+    <label class="f w"><span>Font</span><span class="row" style="flex-wrap:nowrap"><select class="t" data-p="font" style="min-width:0">${fontOpts(l.font)}</select><button class="btn sm q" type="button" data-act="addfont" title="Upload a TTF, OTF, WOFF or WOFF2: it is kept in the Lab and sets the same on every machine">Add a font…</button></span></label>
     <div class="row"><button class="btn sm ${l.bold?'':'q'}" type="button" data-toggle="bold">Bold</button><button class="btn sm ${l.italic?'':'q'}" type="button" data-toggle="italic">Italic</button>${['left','center','right'].map(x=>`<button class="btn sm ${l.align===x?'':'q'}" type="button" data-align="${x}">${x==='center'?'Centre':x[0].toUpperCase()+x.slice(1)}</button>`).join('')}</div>
     ${rng2('size','Size',8,600,1,l.size,'px')}${rng2('track','Spacing',-20,120,1,l.track)}${rng2('lead','Line height',.7,2.5,.05,l.lead)}${rng2('arc','Arch',-100,100,1,l.arc)}
     <label class="f w"><span>Colour</span>${col('color',l.color)}</label>${rng2('outline','Outline',0,40,1,l.outline,'px')}<label class="f w"><span>Outline colour</span>${col('outlineColor',l.outlineColor)}</label>
-    <p class="note">Arch bends one line of type, for a college or rock-tee arc. Fonts other than Space Grotesk and IBM Plex Mono come from this computer.</p></div>`;
+    <p class="note">Arch bends one line of type, for a college or rock-tee arc. Our fonts are kept in the Lab, so type sets the same on every machine; add one with its file.</p></div>`;
   if(l.kind==='shape')kind=`<div class="sec"><h4>Shape</h4>${rng2('w','Width',4,Math.max(W,H)*2,1,l.w,'px')}${l.shape==='line'?'':rng2('h','Height',4,Math.max(W,H)*2,1,l.h,'px')}${l.shape==='rect'?rng2('radius','Corners',0,600,1,l.radius,'px'):''}
     ${l.shape==='line'?'':`<label class="f w"><span>Fill</span><span class="row"><input type="checkbox" data-p="fill" ${l.fill?'checked':''} aria-label="Fill">${col('fillColor',l.fillColor)}</span></label>`}
     <label class="f w"><span>${l.shape==='line'?'Line':'Outline'}</span><span class="row">${l.shape==='line'?'':`<input type="checkbox" data-p="stroke" ${l.stroke?'checked':''} aria-label="Outline">`}${col('strokeColor',l.strokeColor)}</span></label>${rng2('strokeW','Thickness',1,120,1,l.strokeW,'px')}</div>`;
@@ -433,6 +451,7 @@ pL.addEventListener('click',e=>{
   if(tg){l[tg.dataset.toggle]=!l[tg.dataset.toggle];commit();paintLayers();draw();return}
   if(al){l.align=al.dataset.align;commit();paintLayers();draw();return}
   if(!ac)return;const a=ac.dataset.act;
+  if(a==='addfont'){$('#fontIn').click();return}
   if(a==='up')moveLayer(l,1);if(a==='down')moveLayer(l,-1);if(a==='dup')duplicate(l);if(a==='del')removeLayer(l);if(a==='raster')rasterize(l);if(a==='real')makeReal(l);if(a==='keep')keepInLibrary(l);if(a==='plain')usePlain(l);
   if(a==='centre'){l.x=W/2;l.y=H/2;commit();draw()}if(a==='flip'){l.flip=!l.flip;commit();draw()}
   if(a==='fabric'){l.blend='multiply';l.opacity=Math.min(l.opacity,.94);if(!l.distress.amount){l.distress.style='worn';l.distress.amount=.18}commit();paintLayers();draw()}
@@ -619,6 +638,62 @@ $('#expPop').addEventListener('click',e=>{const b=e.target.closest('[data-exp]')
   if(k==='keepnew'){const name=prompt('Name for the new graphic',(D.concept.name||'Graphic')+' (variant)');if(name===null)return;busy('Keeping it in the library…');api('/v1/lab/library/studio/keep',{body:{image:docC.toDataURL('image/png'),name,doc:serialize()}}).then(()=>toast(`"${name}" is in the graphics library now.`,'/lab/library')).catch(x=>toast(x.message)).finally(()=>busy())}
   if(k==='svg'){const url=URL.createObjectURL(new Blob([svgDoc()],{type:'image/svg+xml'}));download(url,fileBase()+'-layers.svg');setTimeout(()=>URL.revokeObjectURL(url),4000)}
   if(k==='layer'){const l=selected();if(!l){toast('Choose a layer first.');return}const c=processed(l),o=canvas(c.width*l.scale,c.height*l.scale);o.getContext('2d').drawImage(c,0,0,o.width,o.height);download(o.toDataURL('image/png'),fileBase()+'-'+l.name.toLowerCase().replace(/[^a-z0-9]+/g,'-').slice(0,30)+'.png')}});
+// ---------- Illustrator round-trip: the studio's own SVG comes back as layers; any other SVG comes in as picture layers ----------
+const FONT_KEYS=()=>{const m=new Map();for(const[k,v]of Object.entries(FONTS)){m.set(v[0].toLowerCase(),k);m.set(v[1].split(',')[0].replace(/['"]/g,'').trim().toLowerCase(),k)}return m};
+// translate / rotate / scale / matrix, in any order, as one placement
+function parseTransform(str){const mul=(a,b)=>[a[0]*b[0]+a[2]*b[1],a[1]*b[0]+a[3]*b[1],a[0]*b[2]+a[2]*b[3],a[1]*b[2]+a[3]*b[3],a[0]*b[4]+a[2]*b[5]+a[4],a[1]*b[4]+a[3]*b[5]+a[5]];let cur=[1,0,0,1,0,0],m;const re=/(matrix|translate|rotate|scale)\(([^)]*)\)/g;
+  while((m=re.exec(str||''))){const v=m[2].trim().split(/[\s,]+/).map(Number);let t;
+    if(m[1]==='matrix')t=v.length===6?v:[1,0,0,1,0,0];else if(m[1]==='translate')t=[1,0,0,1,v[0]||0,v[1]||0];else if(m[1]==='scale')t=[v[0]||1,0,0,v.length>1?v[1]:(v[0]||1),0,0];
+    else{const a=(v[0]||0)*Math.PI/180,c=Math.cos(a),s=Math.sin(a);t=[c,s,-s,c,0,0];if(v.length>2)t=mul(mul([1,0,0,1,v[1],v[2]],t),[1,0,0,1,-v[1],-v[2]])}
+    cur=mul(cur,t)}
+  const[a,b,c,d,e,f]=cur,det=a*d-b*c,flip=det<0;return{x:e,y:f,rot:flip?Math.atan2(-b,-a):Math.atan2(b,a),sx:Math.hypot(a,b),sy:Math.hypot(c,d),flip}}
+const svgAttr=(el,k)=>{const v=el.getAttribute(k);if(v!=null)return v;const m=new RegExp('(?:^|;)\\s*'+k+'\\s*:\\s*([^;]+)').exec(el.getAttribute('style')||'');return m?m[1].trim():null};
+async function importSvg(file){
+  const text=await file.text(),doc=new DOMParser().parseFromString(text,'image/svg+xml');if(doc.querySelector('parsererror')){toast('That SVG could not be read.');return}
+  const svg=doc.documentElement,vb=(svg.getAttribute('viewBox')||'').trim().split(/[\s,]+/).map(Number),sw=vb.length===4&&vb[2]>0?vb[2]:parseFloat(svg.getAttribute('width'))||W,sh=vb.length===4&&vb[3]>0?vb[3]:parseFloat(svg.getAttribute('height'))||H,k=W/sw;
+  const tops=[...svg.children].filter(e=>!['title','defs','metadata','desc','style','script'].includes(e.localName)),ours=tops.filter(e=>e.localName==='g'&&e.hasAttribute('data-name')),mine=ours.length>0,groups=mine?ours:tops;
+  if(!groups.length){toast('There is nothing to bring in from that SVG.');return}
+  const yes=mine?await ask('Bring the edited layers back?',`This file came from the studio (${groups.length} layers). They replace the layers on the canvas: type and shapes left as type and shapes stay editable; anything redrawn comes in as a picture layer. Undo brings the old ones back.`,'Replace the layers'):await ask('Bring this SVG in?',`Not a studio file: each of its ${groups.length} top-level pieces comes in as a picture layer on top, at the size of the canvas.`,'Add on top');
+  if(!yes)return;busy('Bringing the SVG in…');
+  try{const out=[],byId=new Map(LAYERS.map(l=>[l.id,l])),defs=svg.querySelector('defs'),defsText=defs?new XMLSerializer().serializeToString(defs):'';
+    for(const g of groups){const idm=/_([a-z0-9]{6,10})$/.exec(g.getAttribute('id')||''),old=mine&&idm?byId.get(idm[1]):null,tr=parseTransform(g.getAttribute('transform')),style=g.getAttribute('style')||'',op=/opacity\s*:\s*([\d.]+)/.exec(style),bl=/mix-blend-mode\s*:\s*([a-z-]+)/.exec(style);
+      const kids=[...g.children].filter(e=>e.localName!=='title'),name=(g.getAttribute('data-name')||g.getAttribute('id')||g.localName).slice(0,60);let l=null;
+      const common=o=>{o.x=tr.x*k;o.y=tr.y*k;o.rot=tr.rot;o.scale=Math.max(.02,tr.sx*k);o.flip=tr.flip;o.opacity=op?clamp(Number(op[1]),0,1):1;o.blend=bl&&BLENDS.some(b=>b[0]===bl[1])?bl[1]:'source-over';o.name=name;o.visible=true;return o};
+      if(mine&&kids.length&&kids.every(e=>e.localName==='text')){l=old&&old.kind==='text'?copyL(old):fresh('text',{});l.text=kids.map(t=>t.textContent).join('\n');const t0=kids[0],fam=(svgAttr(t0,'font-family')||'').replace(/['"]/g,'').split(',')[0].trim().toLowerCase(),fk=FONT_KEYS().get(fam);if(fk)l.font=fk;
+        const fs=parseFloat(svgAttr(t0,'font-size'));if(fs>0)l.size=fs;const fw=svgAttr(t0,'font-weight');if(fw)l.bold=/bold|[6-9]00/.test(fw);l.italic=/italic|oblique/.test(svgAttr(t0,'font-style')||'');const ls=parseFloat(svgAttr(t0,'letter-spacing'));if(Number.isFinite(ls))l.track=ls;
+        const fill=svgAttr(t0,'fill');if(fill&&fill!=='none'){l.color=fill;l.tint={...l.tint,amount:0}}const sk=svgAttr(t0,'stroke'),swd=parseFloat(svgAttr(t0,'stroke-width'));if(sk&&sk!=='none'&&swd>0){l.outlineColor=sk;l.outline=swd/2}else l.outline=0;common(l)}
+      else if(mine&&kids.length===1&&['rect','ellipse','line'].includes(kids[0].localName)){const s=kids[0],n=s.localName,A=a=>parseFloat(svgAttr(s,a));l=old&&old.kind==='shape'?copyL(old):fresh('shape',{});l.shape=n;
+        if(n==='rect'){l.w=A('width')||l.w;l.h=A('height')||l.h;l.radius=A('rx')||0}else if(n==='ellipse'){l.w=A('rx')*2||l.w;l.h=A('ry')*2||l.h}else l.w=Math.abs(A('x2')-A('x1'))||l.w;
+        const fill=svgAttr(s,'fill'),sk=svgAttr(s,'stroke');if(n!=='line'){l.fill=Boolean(fill&&fill!=='none');if(l.fill)l.fillColor=fill}if(sk&&sk!=='none'){l.stroke=true;l.strokeColor=sk;l.strokeW=A('stroke-width')||l.strokeW;if(n==='line')l.fillColor=sk}else if(n!=='line')l.stroke=false;l.tint={...l.tint,amount:0};common(l)}
+      else if(kids.length===1&&kids[0].localName==='image'&&/^data:image\//.test(kids[0].getAttribute('href')||kids[0].getAttributeNS('http://www.w3.org/1999/xlink','href')||'')){const href=kids[0].getAttribute('href')||kids[0].getAttributeNS('http://www.w3.org/1999/xlink','href'),img=await imgOf(href),c=canvas(img.naturalWidth,img.naturalHeight);c.getContext('2d').drawImage(img,0,0);
+        l=old&&(old.kind==='base'||old.kind==='paint')?copyL(old):fresh('image',{});l.raster=stamp(c);l.src=null;l.dirty=true;l._srcRid=l.raster._rid;common(l);
+        if(fixed(l)){l.x=W/2;l.y=H/2;l.scale=1;l.rot=0;l.flip=false;if(c.width!==W||c.height!==H){const f=canvas(W,H);f.getContext('2d').drawImage(c,0,0,W,H);l.raster=stamp(f);l._srcRid=l.raster._rid}}}
+      else{const wrap=`<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${W}" height="${H}" viewBox="0 0 ${sw} ${sh}">${defsText}${new XMLSerializer().serializeToString(g)}</svg>`,url=URL.createObjectURL(new Blob([wrap],{type:'image/svg+xml'}));
+        try{const img=await imgOf(url),c=canvas(W,H);c.getContext('2d').drawImage(img,0,0,W,H);l=fresh('image',{name});l.raster=stamp(c);l.src=null;l.dirty=true;l._srcRid=l.raster._rid;l.x=W/2;l.y=H/2}finally{URL.revokeObjectURL(url)}}
+      if(l){l._pc=null;l._pk=null;out.push(l)}}
+    if(!out.length)throw new Error('Nothing in that SVG could be brought in.');
+    if(mine){if(!out.some(x=>x.kind==='base')){const base=LAYERS.find(x=>x.kind==='base');if(base)out.unshift(base)}LAYERS=out}else LAYERS.push(...out);
+    SEL=out[out.length-1].id;commit();paintPanels();draw();toast(`${out.length} layer${out.length===1?'':'s'} brought in from the SVG.`)}
+  catch(x){toast(x.message)}finally{busy()}}
+$('#impBtn').onclick=()=>$('#svgIn').click();$('#svgIn').addEventListener('change',e=>{if(e.target.files[0])importSvg(e.target.files[0]);e.target.value=''});
+
+// ---------- 3D try-on: the design painted on a 3D model (src/lab-tryon-routes.js), shown in our own viewer ----------
+let TRY=null,TRYVIEW=null,TRYPOLL=0,TRYSHOWN='';
+function loadStl(){return window.FBStl?Promise.resolve():new Promise((res,rej)=>{const s=document.createElement('script');s.src='/stl-viewer.js';s.onload=res;s.onerror=()=>rej(new Error('The 3D viewer could not be loaded'));document.head.appendChild(s)})}
+async function tryOpen(){if(!CID||GMODE)return;$('#tryDlg').showModal();$('#tryMsg').className='msg';$('#tryMsg').textContent='';await tryRefresh()}
+async function tryRefresh(){try{TRY=await api(`/v1/lab/concepts/${CID}/tryon`);paintTry();clearTimeout(TRYPOLL);if(TRY.models.some(m=>m.status==='running')&&$('#tryDlg').open)TRYPOLL=setTimeout(tryRefresh,4000);
+    const done=TRY.models.find(m=>m.status==='done'&&m.hasModel);if(done&&TRYSHOWN!==done.id)await tryShow(done.id)}catch(x){$('#tryMsg').className='msg bad';$('#tryMsg').textContent=x.message}}
+function paintTry(){const t=TRY,when=d=>new Date(d).toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});$('#tryCanvas').disabled=!t.connected;$('#tryConcept').disabled=!t.connected;
+  $('#tryNote').textContent=t.connected?'The design goes to the 3D service with its texture switched on, and the model comes back painted with it: drag to turn it, scroll to zoom. About two minutes; it spends credits, so nothing runs on its own.':t.note;
+  $('#tryList').innerHTML=t.models.length?t.models.map(m=>`<div style="border:1px solid var(--line);border-radius:12px;padding:8px 10px;display:grid;gap:6px;font-size:13px;background:#fff" data-try="${m.id}"><div class="row" style="justify-content:space-between"><b>${m.status==='done'?'Ready':m.status==='running'?'Being made…':'Could not be made'}</b><span class="note">${esc(when(m.createdAt))}</span></div><span class="note">From ${m.source==='canvas'?'the canvas':'the concept picture'}${m.triangles?` · ${m.triangles.toLocaleString()} triangles${m.textured?', painted':''}`:''}${m.error?` · ${esc(m.error)}`:''}</span><div class="row">${m.status==='done'&&m.hasModel?`<button class="btn sm ${TRYSHOWN===m.id?'':'q'}" type="button" data-tryshow="${m.id}">${TRYSHOWN===m.id?'Showing':'Show'}</button>`:''}<button class="btn sm q" type="button" data-trydel="${m.id}">Remove</button></div></div>`).join(''):'<span class="note">No model yet.</span>'}
+async function tryShow(id){await loadStl();const ab=await (await blobOf(`/v1/lab/concepts/${CID}/tryon/${id}/model.glb`)).arrayBuffer();if(TRYVIEW){TRYVIEW.destroy();TRYVIEW=null}$('#tryEmpty').classList.add('hidden');TRYVIEW=window.FBStl.mount($('#tryHost'),ab,{upAxis:'y'});TRYSHOWN=id;if(TRY)paintTry()}
+async function tryStart(fromCanvas){const b=fromCanvas?$('#tryCanvas'):$('#tryConcept');b.disabled=true;$('#tryMsg').className='msg';$('#tryMsg').textContent='Sending the design to the 3D service…';
+  try{let body={};if(fromCanvas){compose();body={image:docC.toDataURL('image/jpeg',.92)}}await api(`/v1/lab/concepts/${CID}/tryon`,{body});$('#tryMsg').textContent='The model is being made. About two minutes; it appears here on its own.';await tryRefresh()}
+  catch(x){$('#tryMsg').className='msg bad';$('#tryMsg').textContent=x.message}finally{b.disabled=false}}
+$('#tryBtn').onclick=tryOpen;$('#tryCanvas').onclick=()=>tryStart(true);$('#tryConcept').onclick=()=>tryStart(false);
+$('#tryDlg').addEventListener('click',async e=>{if(e.target.closest('[data-tryclose]')||e.target===$('#tryDlg')){clearTimeout(TRYPOLL);$('#tryDlg').close();return}
+  const sh=e.target.closest('[data-tryshow]');if(sh){try{await tryShow(sh.dataset.tryshow)}catch(x){$('#tryMsg').className='msg bad';$('#tryMsg').textContent=x.message}return}
+  const dl=e.target.closest('[data-trydel]');if(dl){try{await api(`/v1/lab/concepts/${CID}/tryon/${dl.dataset.trydel}`,{method:'DELETE'});if(TRYSHOWN===dl.dataset.trydel&&TRYVIEW){TRYVIEW.destroy();TRYVIEW=null;TRYSHOWN='';$('#tryEmpty').classList.remove('hidden')}await tryRefresh()}catch(x){$('#tryMsg').className='msg bad';$('#tryMsg').textContent=x.message}}});
 function ask(title,text,yes='Yes'){return new Promise(ok=>{const d=$('#askDlg');$('#askTitle').textContent=title;$('#askText').textContent=text;$('#askYes').textContent=yes;d.returnValue='';d.onclose=()=>ok(d.returnValue==='yes');d.showModal()})}
 $('#apply').onclick=async()=>{
   if(GMODE){busy(GID?'Updating the graphic…':'Keeping it in the library…');
@@ -633,7 +708,7 @@ $('#apply').onclick=async()=>{
 // ---------- small things ----------
 function busy(text){const b=$('#busy');if(!text){b.classList.add('hidden');return}$('#busyText').textContent=text;b.classList.remove('hidden')}
 let TT=0;function toast(text,href){if(!text)return;let el=$('#stToast');if(!el){el=document.createElement('div');el.id='stToast';el.setAttribute('role','status');el.style.cssText='position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:#141416;color:#fff;border-radius:14px;padding:10px 16px;font-size:13px;z-index:60;max-width:min(92vw,560px)';document.body.appendChild(el)}el.innerHTML=esc(text)+(href?` <a href="${esc(href)}" style="color:#4bff9a">Open the concepts</a>`:'');el.hidden=false;clearTimeout(TT);TT=setTimeout(()=>{el.hidden=true},6500)}
-function paintSub(){const c=D.concept;if(GMODE){$('#cName').textContent=c.name;$('#cSub').textContent=`${GID?'Graphic in the library':'New graphic, not kept yet'} · ${W}×${H}px · clear background`;$('#apply').textContent=GID?'Update the graphic':'Keep in the library';$('#expKeepNew').classList.toggle('hidden',!GID);return}const st={draft:'Draft',approved:'Approved',rejected:'Rejected',tech_pack:'Tech pack'}[c.status]||c.status;$('#cName').textContent=c.name;$('#cSub').innerHTML=`${esc(st)} · ${W}×${H}px${D.canRestore?' · <button class="btn sm q" type="button" id="restore" style="min-height:22px;padding:0 8px">Put the old picture back</button>':''}`;const r=$('#restore');if(r)r.onclick=async()=>{if(!await ask('Put the old picture back?','The concept gets the picture it had before the studio. Your design here stays as it is.','Put it back'))return;try{await api(`/v1/lab/concepts/${CID}/studio/restore`,{body:{}});D.canRestore=false;paintSub();toast('The old picture is back on the concept.')}catch(x){toast(x.message)}}}
+function paintSub(){const c=D.concept;$('#tryBtn').classList.toggle('hidden',GMODE);if(GMODE){$('#cName').textContent=c.name;$('#cSub').textContent=`${GID?'Graphic in the library':'New graphic, not kept yet'} · ${W}×${H}px · clear background`;$('#apply').textContent=GID?'Update the graphic':'Keep in the library';$('#expKeepNew').classList.toggle('hidden',!GID);return}const st={draft:'Draft',approved:'Approved',rejected:'Rejected',tech_pack:'Tech pack'}[c.status]||c.status;$('#cName').textContent=c.name;$('#cSub').innerHTML=`${esc(st)} · ${W}×${H}px${D.canRestore?' · <button class="btn sm q" type="button" id="restore" style="min-height:22px;padding:0 8px">Put the old picture back</button>':''}`;const r=$('#restore');if(r)r.onclick=async()=>{if(!await ask('Put the old picture back?','The concept gets the picture it had before the studio. Your design here stays as it is.','Put it back'))return;try{await api(`/v1/lab/concepts/${CID}/studio/restore`,{body:{}});D.canRestore=false;paintSub();toast('The old picture is back on the concept.')}catch(x){toast(x.message)}}}
 document.addEventListener('keydown',e=>{
   if(!D)return;const typing=e.target.closest&&e.target.closest('input,textarea,select,[contenteditable]'),mod=e.ctrlKey||e.metaKey;
   if(mod&&e.key.toLowerCase()==='s'){e.preventDefault();save();return}
@@ -681,7 +756,8 @@ async function boot(){
     else{W=1024;H=1024;const c=canvas(W,H),x=c.getContext('2d');x.fillStyle='#e9e9e6';x.fillRect(0,0,W,H);LAYERS=[{...fresh('base',{name:'Blank',raster:stamp(c),x:W/2,y:H/2,dirty:true})}]}
   }catch(x){toast(x.message)}finally{busy()}
   docC.width=W;docC.height=H;mask=canvas(W,H);maskX=mask.getContext('2d');
-  setColor(CUR);paintSub();paintAdd();tab('layers');setTool('select');HIST=[snap()];HI=0;syncUndo();DIRTY=false;showSaved();paintLayers();requestAnimationFrame(fit);
+  await loadFonts();setColor(CUR);paintSub();paintAdd();tab('layers');setTool('select');HIST=[snap()];HI=0;syncUndo();DIRTY=false;showSaved();paintLayers();requestAnimationFrame(fit);
+  if(QS.get('tryon')==='1')tryOpen().catch(()=>{});
   setInterval(()=>{if(DIRTY&&!DRAG)save()},90000); // a quiet save every minute and a half while there are changes
 }
 // a graphic for the library: a clear canvas, or the graphic's picture as a layer over one, with the layers it was built from when it has them
@@ -698,7 +774,7 @@ async function bootGraphic(){
     LAYERS[0]._srcRid=LAYERS[0].raster._rid;
   }catch(x){toast(x.message)}finally{busy()}
   docC.width=W;docC.height=H;mask=canvas(W,H);maskX=mask.getContext('2d');
-  setColor(CUR);paintSub();paintAdd();tab('layers');setTool('select');HIST=[snap()];HI=0;syncUndo();DIRTY=false;showSaved();paintLayers();requestAnimationFrame(fit);
+  await loadFonts();setColor(CUR);paintSub();paintAdd();tab('layers');setTool('select');HIST=[snap()];HI=0;syncUndo();DIRTY=false;showSaved();paintLayers();requestAnimationFrame(fit);
   setInterval(()=>{if(DIRTY&&!DRAG&&GID)save()},90000);
 }
 boot();

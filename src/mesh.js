@@ -53,6 +53,44 @@ export function fixtureStl() {
 }
 const FIXTURE_PNG = () => sharp({ create: { width: 64, height: 64, channels: 3, background: '#cccccc' } }).jpeg().toBuffer();
 
+// ---- GLB: a textured model (the Lab's 3D try-on) ----
+// A glTF binary from flat arrays and one picture: the JSON chunk, then the binary chunk with the geometry and the picture. → Buffer
+export function buildGlb({ positions, normals, uvs, indices, image, mime = 'image/jpeg', name = 'Future Basics try-on' }) {
+  const pad4 = n => (4 - (n % 4)) % 4;
+  const parts = [], views = [], accessors = []; let off = 0;
+  const push = (buf, target) => { const i = views.length; views.push({ buffer: 0, byteOffset: off, byteLength: buf.length, ...(target ? { target } : {}) }); parts.push(buf); const p = pad4(buf.length); if (p) parts.push(Buffer.alloc(p)); off += buf.length + p; return i; };
+  const bounds = arr => { const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity]; for (let i = 0; i < arr.length; i += 3) for (let k = 0; k < 3; k++) { if (arr[i + k] < min[k]) min[k] = arr[i + k]; if (arr[i + k] > max[k]) max[k] = arr[i + k]; } return { min, max }; };
+  const f32 = a => Buffer.from(new Float32Array(a).buffer), u32 = a => Buffer.from(new Uint32Array(a).buffer);
+  const b = bounds(positions);
+  accessors.push({ bufferView: push(f32(positions), 34962), componentType: 5126, count: positions.length / 3, type: 'VEC3', min: b.min, max: b.max });
+  accessors.push({ bufferView: push(f32(normals), 34962), componentType: 5126, count: normals.length / 3, type: 'VEC3' });
+  accessors.push({ bufferView: push(f32(uvs), 34962), componentType: 5126, count: uvs.length / 2, type: 'VEC2' });
+  accessors.push({ bufferView: push(u32(indices), 34963), componentType: 5125, count: indices.length, type: 'SCALAR' });
+  const img = image ? push(Buffer.from(image)) : null;
+  const json = { asset: { version: '2.0', generator: 'Future Basics hub' }, scene: 0, scenes: [{ nodes: [0] }], nodes: [{ mesh: 0, name }],
+    meshes: [{ primitives: [{ attributes: { POSITION: 0, NORMAL: 1, TEXCOORD_0: 2 }, indices: 3, material: 0 }] }],
+    materials: [{ name: 'skin', pbrMetallicRoughness: { ...(img != null ? { baseColorTexture: { index: 0 } } : { baseColorFactor: [0.86, 0.84, 0.8, 1] }), metallicFactor: 0, roughnessFactor: 0.9 }, doubleSided: true }],
+    ...(img != null ? { textures: [{ source: 0, sampler: 0 }], samplers: [{ magFilter: 9729, minFilter: 9987, wrapS: 33071, wrapT: 33071 }], images: [{ bufferView: img, mimeType: mime }] } : {}),
+    buffers: [{ byteLength: off }], bufferViews: views, accessors };
+  const jsonBuf = Buffer.from(JSON.stringify(json)), jp = pad4(jsonBuf.length), bin = Buffer.concat(parts);
+  const head = Buffer.alloc(12 + 8), jh = Buffer.alloc(8), bh = Buffer.alloc(8);
+  const total = 12 + 8 + jsonBuf.length + jp + 8 + bin.length;
+  head.writeUInt32LE(0x46546c67, 0); head.writeUInt32LE(2, 4); head.writeUInt32LE(total, 8); head.writeUInt32LE(jsonBuf.length + jp, 12); head.writeUInt32LE(0x4e4f534a, 16);
+  bh.writeUInt32LE(bin.length, 0); bh.writeUInt32LE(0x004e4942, 4);
+  return Buffer.concat([head, jsonBuf, Buffer.alloc(jp, 0x20), bh, bin]);
+}
+// The test stand-in's textured model: a flat garment slab, the picture on its front (and mirrored on its back), plain edges. → Buffer
+export function fixtureGlb(texture = null) {
+  const d = 0.08, P = [], N = [], T = [], I = [];
+  const quad = (a, b, c, e, n, uv) => { const i = P.length / 3; P.push(...a, ...b, ...c, ...e); for (let k = 0; k < 4; k++) N.push(...n); T.push(...uv); I.push(i, i + 1, i + 2, i, i + 2, i + 3); };
+  quad([-0.5, 0.5, d], [-0.5, -0.5, d], [0.5, -0.5, d], [0.5, 0.5, d], [0, 0, 1], [0, 0, 0, 1, 1, 1, 1, 0]);                 // front: the whole picture
+  quad([0.5, 0.5, -d], [0.5, -0.5, -d], [-0.5, -0.5, -d], [-0.5, 0.5, -d], [0, 0, -1], [0, 0, 0, 1, 1, 1, 1, 0]);             // back: the picture mirrored
+  const edge = [0.5, 0.02, 0.5, 0.02, 0.5, 0.02, 0.5, 0.02];                                                                   // edges take one spot near the top of the picture
+  quad([-0.5, 0.5, -d], [-0.5, -0.5, -d], [-0.5, -0.5, d], [-0.5, 0.5, d], [-1, 0, 0], edge); quad([0.5, 0.5, d], [0.5, -0.5, d], [0.5, -0.5, -d], [0.5, 0.5, -d], [1, 0, 0], edge);
+  quad([-0.5, 0.5, -d], [-0.5, 0.5, d], [0.5, 0.5, d], [0.5, 0.5, -d], [0, 1, 0], edge); quad([-0.5, -0.5, d], [-0.5, -0.5, -d], [0.5, -0.5, -d], [0.5, -0.5, d], [0, -1, 0], edge);
+  return buildGlb({ positions: P, normals: N, uvs: T, indices: I, image: texture || null, mime: texture && texture[0] === 0x89 ? 'image/png' : 'image/jpeg' });
+}
+
 // ---- the photo, in a form the service accepts (jpeg or png, a sensible size) ----
 export async function photoForMesh(dataUrl) {
   const m = /^data:image\/(?:png|jpe?g|webp);base64,(.+)$/i.exec(String(dataUrl || ''));
@@ -68,11 +106,11 @@ const vendorError = async res => {
   e.status = res.status; return e;
 };
 
-// → { taskId }
-export async function startMesh({ imageDataUrl, cfg = meshConfig(), env = process.env }) {
+// → { taskId }. `texture` asks the service to paint the picture onto the model (the Lab's 3D try-on); `formats` is what to download (stl for the tech pack, glb for a textured model)
+export async function startMesh({ imageDataUrl, cfg = meshConfig(), env = process.env, texture = false, formats = ['stl'] }) {
   if (cfg.provider === 'fixture') return { taskId: 'fixture-' + Date.now().toString(36) };
   if (!cfg.configured) throw new Error('No 3D service is connected: set MESHY_API_KEY on the service.');
-  const body = { image_url: imageDataUrl, ai_model: cfg.model, should_texture: env.MESH_TEXTURE === 'on', target_formats: ['stl'], image_enhancement: true, auto_size: true };
+  const body = { image_url: imageDataUrl, ai_model: cfg.model, should_texture: texture || env.MESH_TEXTURE === 'on', target_formats: formats, image_enhancement: true, auto_size: true };
   const res = await trackedFetch('meshy', API, { method: 'POST', headers: headers(env.MESHY_API_KEY), body: JSON.stringify(body), signal: AbortSignal.timeout(60000) });
   if (!res.ok) throw await vendorError(res);
   const out = await res.json(); const taskId = out.result || out.id;
@@ -85,19 +123,19 @@ export async function pollMesh(taskId, { cfg = meshConfig(), env = process.env }
   if (cfg.provider === 'fixture') {
     const t = Number(process.env.MESH_FIXTURE_MS) || 1200, born = parseInt(String(taskId).replace('fixture-', ''), 36) || 0;
     if (/fail/i.test(env.MESH_FIXTURE_MODE || '')) return { status: 'failed', progress: 0, error: 'Test fixture: the service could not make a model.' };
-    return Date.now() - born < t ? { status: 'running', progress: 40 } : { status: 'done', progress: 100, stlUrl: 'fixture:stl', thumbUrl: 'fixture:thumb', credits: 0 };
+    return Date.now() - born < t ? { status: 'running', progress: 40 } : { status: 'done', progress: 100, stlUrl: 'fixture:stl', glbUrl: 'fixture:glb', thumbUrl: 'fixture:thumb', credits: 0 };
   }
   const res = await trackedFetch('meshy', `${API}/${encodeURIComponent(taskId)}`, { headers: { Authorization: `Bearer ${env.MESHY_API_KEY}` }, signal: AbortSignal.timeout(30000) });
   if (!res.ok) throw await vendorError(res);
   const t = await res.json(), st = String(t.status || '').toUpperCase();
-  if (st === 'SUCCEEDED') return t.model_urls?.stl ? { status: 'done', progress: 100, stlUrl: t.model_urls.stl, thumbUrl: t.thumbnail_url || null, credits: t.consumed_credits ?? null } : { status: 'failed', progress: 100, error: 'Meshy finished but returned no STL file.' };
+  if (st === 'SUCCEEDED') return t.model_urls?.stl || t.model_urls?.glb ? { status: 'done', progress: 100, stlUrl: t.model_urls.stl || null, glbUrl: t.model_urls.glb || null, thumbUrl: t.thumbnail_url || null, credits: t.consumed_credits ?? null } : { status: 'failed', progress: 100, error: 'Meshy finished but returned no STL file.' };
   if (st === 'FAILED' || st === 'CANCELED') return { status: 'failed', progress: Number(t.progress) || 0, error: clip(t.task_error?.message, 200) || 'Meshy could not make a model from this photo.' };
   return { status: 'running', progress: Math.max(0, Math.min(99, Number(t.progress) || 0)) };
 }
 
 // Downloads one file the service made. Only https links to the vendor's own hosts; a size cap; nothing is followed to anywhere else.
-export async function fetchAsset(url, { kind = 'stl', cfg = meshConfig() } = {}) {
-  if (cfg.provider === 'fixture') return kind === 'stl' ? fixtureStl() : FIXTURE_PNG();
+export async function fetchAsset(url, { kind = 'stl', cfg = meshConfig(), texture = null } = {}) {
+  if (cfg.provider === 'fixture') return kind === 'stl' ? fixtureStl() : kind === 'glb' ? fixtureGlb(texture) : FIXTURE_PNG();
   let u; try { u = new URL(url); } catch { throw new Error('The 3D service sent a bad link.'); }
   let res;
   for (let hop = 0; hop < 4; hop++) { // redirects are followed by hand so every hop stays on the vendor's own hosts

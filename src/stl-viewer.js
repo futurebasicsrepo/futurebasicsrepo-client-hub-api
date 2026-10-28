@@ -2,7 +2,8 @@
 // where the surface is smooth and keeps edges crisp where it is not, and shows it with WebGL: drag to turn, scroll or pinch to zoom, right-drag or
 // two fingers to move, double-click to start over.
 //   FBStl.parse(arrayBuffer) -> { positions, normals, triangles, size, center }        (also used by the tests, in Node)
-//   FBStl.mount(element, arrayBuffer, { upAxis }) -> { destroy(), reset(), setUp('y'|'z') }  or throws if WebGL is not available
+//   FBStl.parseGlb(arrayBuffer) -> the same, plus uvs and the texture picture (a glTF binary, as the 3D service makes for the Lab's try-on)
+//   FBStl.mount(element, arrayBuffer, { upAxis }) -> { destroy(), reset(), setUp('y'|'z') }  or throws if WebGL is not available (STL or GLB: told apart by the file's first bytes)
 (function (root) {
   'use strict';
 
@@ -62,20 +63,76 @@
     return { positions: pos, normals, triangles: n, size, center, diag };
   }
 
+  // ---- GLB: the JSON chunk says where the geometry and the picture sit in the binary chunk ----
+  const isGlb = buf => buf && buf.byteLength > 20 && new DataView(buf).getUint32(0, true) === 0x46546c67;
+  function parseGlb(buf) {
+    const dv = new DataView(buf); if (!isGlb(buf)) throw new Error('This file is not a valid GLB.');
+    let o = 12, json = null, bin = null;
+    while (o + 8 <= buf.byteLength) { const len = dv.getUint32(o, true), type = dv.getUint32(o + 4, true); const body = buf.slice(o + 8, o + 8 + len); if (type === 0x4e4f534a) json = JSON.parse(new TextDecoder().decode(body)); else if (type === 0x004e4942) bin = body; o += 8 + len; }
+    if (!json || !Array.isArray(json.meshes)) throw new Error('This file is not a valid GLB.');
+    const SIZE = { 5120: 1, 5121: 1, 5122: 2, 5123: 2, 5125: 4, 5126: 4 }, N = { SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4, MAT4: 16 };
+    const read = idx => { // one accessor as a flat Float32Array (or Uint32Array for indices), whatever its stride and type
+      const a = json.accessors[idx], bv = json.bufferViews[a.bufferView], n = N[a.type], sz = SIZE[a.componentType], stride = bv.byteStride || n * sz, base = (bv.byteOffset || 0) + (a.byteOffset || 0);
+      if (!bin) throw new Error('This GLB keeps its data outside the file.');
+      const out = a.componentType === 5125 || a.componentType === 5123 || a.componentType === 5121 ? new Uint32Array(a.count * n) : new Float32Array(a.count * n), v = new DataView(bin), norm = a.normalized;
+      for (let i = 0; i < a.count; i++) for (let k = 0; k < n; k++) { const p = base + i * stride + k * sz; let x;
+        switch (a.componentType) { case 5126: x = v.getFloat32(p, true); break; case 5125: x = v.getUint32(p, true); break; case 5123: x = v.getUint16(p, true); if (norm) x /= 65535; break; case 5121: x = v.getUint8(p); if (norm) x /= 255; break; case 5122: x = v.getInt16(p, true); if (norm) x = Math.max(x / 32767, -1); break; default: x = v.getInt8(p); if (norm) x = Math.max(x / 127, -1); }
+        out[i * n + k] = x; }
+      return out;
+    };
+    // node transforms: a matrix, or translation·rotation·scale; children inherit
+    const matOf = node => { if (node.matrix) return Float64Array.from(node.matrix); const t = node.translation || [0, 0, 0], q = node.rotation || [0, 0, 0, 1], s = node.scale || [1, 1, 1], [x, y, z, w] = q;
+      const r = [1 - 2 * (y * y + z * z), 2 * (x * y + z * w), 2 * (x * z - y * w), 0, 2 * (x * y - z * w), 1 - 2 * (x * x + z * z), 2 * (y * z + x * w), 0, 2 * (x * z + y * w), 2 * (y * z - x * w), 1 - 2 * (x * x + y * y), 0, t[0], t[1], t[2], 1];
+      for (let c = 0; c < 3; c++) for (let k = 0; k < 3; k++) r[c * 4 + k] *= s[c]; return r; };
+    const mulM = (a, b) => { const out = new Array(16).fill(0); for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) for (let k = 0; k < 4; k++) out[c * 4 + r] += a[k * 4 + r] * b[c * 4 + k]; return out; };
+    const prims = []; const walk = (ni, parent) => { const node = json.nodes[ni]; if (!node) return; const m = mulM(parent, matOf(node)); if (node.mesh != null) for (const p of json.meshes[node.mesh].primitives || []) prims.push({ p, m }); for (const c of node.children || []) walk(c, m); };
+    const roots = json.scenes && json.scenes[json.scene || 0] ? json.scenes[json.scene || 0].nodes : json.nodes.map((_, i) => i);
+    const I = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]; for (const r of roots) walk(r, I);
+    if (!prims.length) throw new Error('This GLB has no geometry.');
+    // the picture: the first base-colour texture found
+    let texture = null, texMat = -1;
+    const imageOf = mi => { const m = json.materials && json.materials[mi], ti = m && m.pbrMetallicRoughness && m.pbrMetallicRoughness.baseColorTexture && m.pbrMetallicRoughness.baseColorTexture.index; if (ti == null) return null; const src = json.textures[ti] && json.textures[ti].source, im = src != null && json.images[src]; if (!im) return null;
+      if (im.bufferView != null) { const bv = json.bufferViews[im.bufferView]; return { mime: im.mimeType || 'image/png', bytes: new Uint8Array(bin.slice(bv.byteOffset || 0, (bv.byteOffset || 0) + bv.byteLength)) }; }
+      if (im.uri && /^data:/.test(im.uri)) { const m2 = /^data:([^;]+);base64,(.*)$/.exec(im.uri); if (!m2) return null; const s = atob(m2[2]), b = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) b[i] = s.charCodeAt(i); return { mime: m2[1], bytes: b }; }
+      return null; };
+    for (const { p } of prims) if (p.material != null && !texture) { texture = imageOf(p.material); if (texture) texMat = p.material; }
+    const P = [], NN = [], UV = [];
+    for (const { p, m } of prims) {
+      if (p.mode != null && p.mode !== 4) continue; // triangles only
+      const pos = read(p.attributes.POSITION), nor = p.attributes.NORMAL != null ? read(p.attributes.NORMAL) : null, uv = p.attributes.TEXCOORD_0 != null ? read(p.attributes.TEXCOORD_0) : null;
+      const idx = p.indices != null ? read(p.indices) : Uint32Array.from({ length: pos.length / 3 }, (_, i) => i), painted = texture && p.material === texMat && uv;
+      const xf = (x, y, z) => [m[0] * x + m[4] * y + m[8] * z + m[12], m[1] * x + m[5] * y + m[9] * z + m[13], m[2] * x + m[6] * y + m[10] * z + m[14]];
+      const xn = (x, y, z) => { const v = [m[0] * x + m[4] * y + m[8] * z, m[1] * x + m[5] * y + m[9] * z, m[2] * x + m[6] * y + m[10] * z], l = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0] / l, v[1] / l, v[2] / l]; };
+      for (let t = 0; t + 2 < idx.length; t += 3) {
+        const corners = [idx[t], idx[t + 1], idx[t + 2]].map(i => xf(pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2]));
+        let fn = null; if (!nor) { const [a, b, c] = corners, ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2], vx = c[0] - a[0], vy = c[1] - a[1], vz = c[2] - a[2], nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx, l = Math.hypot(nx, ny, nz) || 1; fn = [nx / l, ny / l, nz / l]; }
+        for (let c = 0; c < 3; c++) { const i = idx[t + c]; P.push(...corners[c]); NN.push(...(nor ? xn(nor[i * 3], nor[i * 3 + 1], nor[i * 3 + 2]) : fn)); UV.push(painted ? uv[i * 2] : -1, painted ? uv[i * 2 + 1] : -1); }
+      }
+    }
+    const positions = new Float32Array(P), normals = new Float32Array(NN), uvs = new Float32Array(UV), n = positions.length / 9;
+    for (let i = 0; i < positions.length; i++) if (!Number.isFinite(positions[i])) throw new Error('This GLB has bad geometry.');
+    const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
+    for (let i = 0; i < positions.length; i += 3) for (let k = 0; k < 3; k++) { const x = positions[i + k]; if (x < min[k]) min[k] = x; if (x > max[k]) max[k] = x; }
+    const size = [max[0] - min[0], max[1] - min[1], max[2] - min[2]], center = [(min[0] + max[0]) / 2, (min[1] + max[1]) / 2, (min[2] + max[2]) / 2];
+    return { positions, normals, uvs, triangles: n, size, center, diag: Math.hypot(size[0], size[1], size[2]) || 1, texture };
+  }
+  const parseAny = buf => (isGlb(buf) ? parseGlb(buf) : parse(buf));
+
   // ---- tiny matrix helpers (column-major, like WebGL wants) ----
   const mul = (a, b) => { const o = new Float32Array(16); for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) { let s = 0; for (let k = 0; k < 4; k++) s += a[k * 4 + r] * b[c * 4 + k]; o[c * 4 + r] = s; } return o; };
   const persp = (fov, asp, n, f) => { const t = 1 / Math.tan(fov / 2), o = new Float32Array(16); o[0] = t / asp; o[5] = t; o[10] = (f + n) / (n - f); o[11] = -1; o[14] = 2 * f * n / (n - f); return o; };
 
-  const VS = 'attribute vec3 p;attribute vec3 n;uniform mat4 mvp;uniform mat3 nm;varying vec3 vn;void main(){vn=nm*n;gl_Position=mvp*vec4(p,1.0);}';
-  const FS = 'precision mediump float;varying vec3 vn;uniform vec3 tint;'
+  const VS = 'attribute vec3 p;attribute vec3 n;attribute vec2 t;uniform mat4 mvp;uniform mat3 nm;varying vec3 vn;varying vec2 vt;void main(){vn=nm*n;vt=t;gl_Position=mvp*vec4(p,1.0);}';
+  const FS = 'precision mediump float;varying vec3 vn;varying vec2 vt;uniform vec3 tint;uniform sampler2D tex;uniform float useTex;'
     + 'void main(){vec3 N=normalize(vn);if(!gl_FrontFacing)N=-N;'
     + 'float key=max(dot(N,normalize(vec3(-0.45,0.65,0.62))),0.0);float fill=max(dot(N,normalize(vec3(0.7,0.15,0.4))),0.0)*0.28;'
     + 'float rim=pow(1.0-max(N.z,0.0),3.0)*0.22;float sky=0.32+0.18*N.y;'
-    + 'vec3 c=tint*(sky+key*0.78+fill)+vec3(rim);gl_FragColor=vec4(pow(c,vec3(0.92)),1.0);}';
+    + 'float on=useTex*step(0.0,vt.x);vec3 base=mix(tint,texture2D(tex,vt).rgb,on);'
+    + 'vec3 c=base*(sky+key*mix(0.78,0.55,on)+fill)+vec3(rim*(1.0-on*0.6));gl_FragColor=vec4(pow(c,vec3(0.92)),1.0);}';
 
   function mount(el, buf, opts) {
     opts = opts || {};
-    const model = buf && buf.positions ? buf : parse(buf);
+    const model = buf && buf.positions ? buf : parseAny(buf);
     const canvas = document.createElement('canvas');
     canvas.className = 'stl-canvas'; canvas.setAttribute('role', 'img'); canvas.setAttribute('aria-label', '3D model. Drag to turn it, scroll to zoom.');
     canvas.style.cssText = 'display:block;width:100%;height:100%;touch-action:none;cursor:grab;outline:none';
@@ -88,12 +145,22 @@
     const prog = gl.createProgram(); gl.attachShader(prog, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, FS)); gl.linkProgram(prog);
     if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error('3D program failed to link.');
     gl.useProgram(prog);
-    const bufP = gl.createBuffer(), bufN = gl.createBuffer(), aP = gl.getAttribLocation(prog, 'p'), aN = gl.getAttribLocation(prog, 'n');
+    const bufP = gl.createBuffer(), bufN = gl.createBuffer(), bufT = gl.createBuffer(), aP = gl.getAttribLocation(prog, 'p'), aN = gl.getAttribLocation(prog, 'n'), aT = gl.getAttribLocation(prog, 't');
     gl.bindBuffer(gl.ARRAY_BUFFER, bufP); gl.bufferData(gl.ARRAY_BUFFER, model.positions, gl.STATIC_DRAW);
     gl.bindBuffer(gl.ARRAY_BUFFER, bufN); gl.bufferData(gl.ARRAY_BUFFER, model.normals, gl.STATIC_DRAW);
-    const uMvp = gl.getUniformLocation(prog, 'mvp'), uNm = gl.getUniformLocation(prog, 'nm'), uTint = gl.getUniformLocation(prog, 'tint');
+    gl.bindBuffer(gl.ARRAY_BUFFER, bufT); gl.bufferData(gl.ARRAY_BUFFER, model.uvs || new Float32Array(model.triangles * 6).fill(-1), gl.STATIC_DRAW);
+    const uMvp = gl.getUniformLocation(prog, 'mvp'), uNm = gl.getUniformLocation(prog, 'nm'), uTint = gl.getUniformLocation(prog, 'tint'), uTex = gl.getUniformLocation(prog, 'tex'), uUse = gl.getUniformLocation(prog, 'useTex');
     gl.enable(gl.DEPTH_TEST); gl.clearColor(0, 0, 0, 0);
-    gl.uniform3f(uTint, 0.86, 0.84, 0.80);
+    gl.uniform3f(uTint, 0.86, 0.84, 0.80); gl.uniform1f(uUse, 0); gl.uniform1i(uTex, 0);
+    // the picture painted on the model (a GLB with a texture): uploaded once it has loaded; until then the model shows plain
+    const tex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, tex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([220, 215, 205, 255]));
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    let textured = false;
+    if (model.texture && model.texture.bytes && typeof URL !== 'undefined') {
+      const url = URL.createObjectURL(new Blob([model.texture.bytes], { type: model.texture.mime || 'image/png' })), im = new Image();
+      im.onload = () => { if (dead) return; gl.bindTexture(gl.TEXTURE_2D, tex); gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, im); gl.uniform1f(uUse, 1); textured = true; URL.revokeObjectURL(url); schedule(); };
+      im.onerror = () => URL.revokeObjectURL(url); im.src = url;
+    }
 
     // the model is centred and scaled to fit; "up" is the axis that points up on screen (Meshy models are Y-up, most CAD files are Z-up)
     let up = opts.upAxis === 'z' ? 'z' : 'y';
@@ -123,6 +190,8 @@
       gl.uniformMatrix3fv(uNm, false, nm);
       gl.bindBuffer(gl.ARRAY_BUFFER, bufP); gl.enableVertexAttribArray(aP); gl.vertexAttribPointer(aP, 3, gl.FLOAT, false, 0, 0);
       gl.bindBuffer(gl.ARRAY_BUFFER, bufN); gl.enableVertexAttribArray(aN); gl.vertexAttribPointer(aN, 3, gl.FLOAT, false, 0, 0);
+      gl.bindBuffer(gl.ARRAY_BUFFER, bufT); gl.enableVertexAttribArray(aT); gl.vertexAttribPointer(aT, 2, gl.FLOAT, false, 0, 0);
+      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tex);
       gl.drawArrays(gl.TRIANGLES, 0, model.triangles * 3);
       dirty = false;
       if (state.auto) { state.yaw += 0.006; dirty = true; }
@@ -160,12 +229,12 @@
     function setUp(axis) { up = axis === 'z' ? 'z' : 'y'; schedule(); return up; }
     schedule();
     return {
-      reset, setUp, getUp: () => up, canvas, triangles: model.triangles,
+      reset, setUp, getUp: () => up, canvas, triangles: model.triangles, textured: () => textured,
       destroy() { dead = true; if (raf) cancelAnimationFrame(raf); if (ro) ro.disconnect(); try { gl.getExtension('WEBGL_lose_context')?.loseContext(); } catch (e) { /* ignore */ } canvas.remove(); }
     };
   }
 
-  const api = { parse, mount };
+  const api = { parse, parseGlb, parseAny, isGlb, mount };
   root.FBStl = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
