@@ -336,6 +336,30 @@ export async function migrate() {
       thumb bytea not null,
       created_at timestamptz not null default now()
     );
+    -- the materials, trims and tags library: fabrics, trims and labels kept once and chosen on any concept (src/lab-materials.js)
+    create table if not exists lab_materials (
+      id uuid primary key default gen_random_uuid(),
+      key text unique,
+      kind text not null check (kind in ('fabric','trim','tag')),
+      name text not null,
+      code text not null default '',
+      supplier text not null default '',
+      price_cents integer not null default 0,
+      unit text not null default 'pc',
+      moq integer not null default 0,
+      lead_days integer not null default 0,
+      spec jsonb not null default '{}',
+      colours jsonb not null default '[]',
+      notes text not null default '',
+      swatch bytea,
+      thumb bytea,
+      builtin boolean not null default false,
+      archived boolean not null default false,
+      created_by uuid references users(id) on delete set null,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
+    create index if not exists lab_materials_kind_idx on lab_materials(kind) where not archived;
     create table if not exists lab_concept_views (
       concept_id uuid not null references lab_concepts(id) on delete cascade,
       kind text not null,

@@ -275,6 +275,25 @@ The library takes pictures as well as links: **Add photos or screenshots** under
 - Studio routes for the library: `GET /v1/lab/library/studio?art=`, `POST /v1/lab/library/studio/keep`, `PUT /v1/lab/library/graphics/:id/studio`, `POST /v1/lab/library/graphics/:id/studio/apply`, `POST /v1/lab/library/studio/ai` (in `src/lab-studio-routes.js`; the layers live in `lab_art.doc`). Onto a product: `POST /v1/admin/products/:id/tech-pack/artwork` and `GET /v1/admin/products/search`.
 - Routes: `src/lab-library-routes.js` (`/v1/lab/library/graphics…`, `/v1/lab/library/techniques…`, `POST /v1/lab/concepts/:id/graphics`). The techniques and the starting set are in `src/lab-library.js`, the drawing is in `src/lab-finish.js` (served as `/lab/finish.js`), and the page is `src/lab-library.html`. Tables: `lab_art` (with `in_library`, `tags`, `source`, `technique_id`), `lab_techniques` and `lab_technique_photos`.
 
+## Materials, trims and tags: the library
+
+**Materials, trims and tags** (a Lab tab, `/lab/materials`) is what we make pieces of, kept once and chosen on any concept.
+
+- **Fabrics**: weight (gsm), composition, construction (loopback fleece, French terry, heavy jersey, twill, denim, ripstop…), width, finish, stretch, shrinkage; the mill, our code, price per metre, MOQ and lead time; a swatch photo; the colours it comes in, each matched to a Pantone C.
+- **Trims**: zips, buttons, snaps, rivets, eyelets, drawcords, aglets, elastic, thread…, with size, material, finish, how many a piece takes, and the price.
+- **Tags and labels**, in their shapes and sizes, drawn to scale on the page: neck labels (woven end-fold, printed tagless), size tabs, care and content labels (centre fold), hem and sleeve tags, waistband labels and back pocket patches for pants, locker loop and sweatband labels, size stickers, and hang tags (rectangle, square, circle, shield, book fold) with their board, print, eyelet and string. Each says what it is for (shirts, pants, outerwear, knitwear, headwear, accessories), how it folds and where it is sewn. A new tag is drawn as it is typed; the drawing is also at `GET /v1/lab/materials/:id/tag.svg`.
+- A starting set of 10 fabrics, 11 trims and 16 tags is put in once; all of it is ours to change. Taking one out of the library leaves it on the concepts that use it.
+
+**On a concept** (the concept window, "Materials, tags and colourways"): add the main fabric (the one before becomes the contrast), rib, lining, trims and tags. Each pick takes the usual quantity for that kind of piece (a top takes 1.3 m, a jacket 2.6 m; a trim its count per piece) which can be changed. The cost adds up: materials + making (the usual cut-make-trim for the category, or ours) + freight and duty (18%, or ours) = landed cost, and the margin against the target price. The concept's cost follows, so the plan's margin flags read it. The fabric words on the concept follow the main fabric.
+
+**Colourways** are set on the concept (name and colour; the Pantone, and the thread's, are read from the colour) and shown side by side on the assortment board: the flat washed in each colour under the tile.
+
+**In the studio**, the AI tab's "The fabric" picks from the library: **Use it on the concept** (cost and margin update) and **Redraw the piece in it** (the image model draws the piece in that cloth and colour, as a new layer).
+
+**To the tech pack**: every material becomes a BOM line with its spec, supplier, code, colour, quantity, unit and unit cost (marked "From the materials library", replaced when sent again); every tag becomes a line in Labels (size, shape, fold, material, print, string, where it goes, the words on it); the colourways go on with their Pantones. They travel with the flats, or on their own when there are no flats yet.
+
+Routes: `src/lab-materials-routes.js` (`/v1/lab/materials…`, `/v1/lab/concepts/:id/materials…`, `…/costing`, `…/colourways`); the data, starting set and costing in `src/lab-materials.js`; the tag drawing in `src/lab-tags.js` (served as `/lab/lab-tags.js`); the page `src/lab-materials.html`. Table: `lab_materials`; a concept keeps its picks in `spec.materials`, its costing in `spec.costing` and its colourways in `spec.colourways`.
+
 ## Flats and placement, and "can it be made?"
 
 **Flats and placement** (in the concept window, `/lab/flats?concept=<id>`) draws the piece as measured technical flats, front and back, the way a factory reads them. Nothing on it is drawn by an image model.

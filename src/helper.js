@@ -36,6 +36,7 @@
       steps: [
         { target: '#cd .big', title: 'The concept', do: 'Read the picture, the twist and the check: how close it sits to what inspired it.', why: 'Only what is ours is approved. A "too close" concept needs a written reason or a change.' },
         { target: '[data-cstudio]', title: 'Finish it in the studio', optional: true, do: 'Press “Open in the studio” to change the picture by hand or with AI: colours, graphics, distressing, a painted area redrawn.', why: 'The studio’s finished picture becomes the concept’s, and the tech pack’s first sketch.' },
+        { target: '#matBox', title: 'What it is made of', optional: true, do: 'Add the main fabric, rib, trims and the tags from the materials library; set colourways.', why: 'The landed cost and margin update as you choose, and the tech pack takes the BOM lines and labels.' },
         { target: '[data-cflats]', title: 'Draw it as flats', do: 'Press “Flats and placement”.', why: 'The flats are the piece measured, front and back, with every logo and graphic placed in inches. They become the tech pack’s measurements and sketches.', done: 'click', after: 'Opening the flats…' },
         { target: '[data-capprove]', title: 'Approve it', optional: true, do: 'When it is right, press Approve. A client’s line shows their verdict here first.', why: 'Approving says it is ours and it can be made; the flats check is held to that too.' },
         { target: '[data-ctp]', title: 'Send it to a tech pack', optional: true, do: 'Press “Send to tech pack”.', why: 'It becomes a product and a tech pack with its flats, measurements, details, colour and target price, in our room or the client’s.', done: 'click', after: 'Making the tech pack…' }
@@ -80,6 +81,16 @@
         { target: '#gGrid', title: 'The factory job file', optional: true, do: 'In a graphic’s window, choose how it is made, the width and the garment colour, read the summary (colours as Pantone, screens or stitches, any warning), then press “Download the job file”.', why: 'The factory or digitiser gets separations, films, the underbase or cut line, the settings and a one-page sheet: nothing to redraw.' }
       ],
       next: { tour: 'lab-studio', label: 'Finish a concept in the studio' }
+    },
+    {
+      id: 'lab-materials', title: 'Fabrics, trims and tags, costed',
+      match: () => path() === '/lab/materials' && shown('#app') && !$('#dlg[open]'),
+      steps: [
+        { target: '#kinds', title: 'Three shelves', do: 'Fabrics, trims, and tags and labels. Search any of them by name, code, mill or composition.', why: 'Everything we buy, kept once with its price, so a concept costs out the moment you choose.' },
+        { target: '#grid', title: 'Tags drawn to size', optional: true, do: 'On the tags shelf every label and hang tag is drawn at its real size and shape, with its fold, eyelet and string. Filter by what it is for: shirts, pants, outerwear.', why: 'The factory gets the same drawing and the words beside it: size, fold, material, where it is sewn.' },
+        { target: '#add', title: 'Add one', do: 'Press it: a fabric with its weight and composition, a trim, or a tag that is drawn as you type its size and shape.', why: 'Price per metre or piece, MOQ and lead time ride along onto every concept that uses it.' }
+      ],
+      next: { tour: 'lab-concept', label: 'Choose materials on a concept' }
     },
     {
       id: 'lab-flats', title: 'Draw and change the flats',

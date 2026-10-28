@@ -15,6 +15,7 @@ import { logoSvg } from './brand-kit.js';
 import { cleanRules } from './lab-library.js';
 import { ensureBranding } from './lab-concepts.js';
 import { STYLES, FITS, SIZES, DETAILS, templateOf, fitToTemplate, detectStyle, defaultParams, defaultPlacement, cleanFlat, cleanEdits, describeEdit, placementChecks, overlapChecks, boxesMeet, describe, renderSvg, pomTable, measurementsFor, fmt, fmtCm } from './lab-flats.js';
+import { packRows, cleanColourways } from './lab-materials.js';
 import { imageConfig, openaiEdit } from './check.js';
 import { brandHits } from './lab-concepts.js';
 
@@ -232,7 +233,10 @@ export function registerLabFlatsRoutes(app, d) {
   const png = async (svg, width) => `data:image/png;base64,${(await sharp(Buffer.from(svg), { density: 150 }).resize({ width }).flatten({ background: '#ffffff' }).png().toBuffer()).toString('base64')}`;
   // everything the tech pack takes from the flats (src/lab-handoff.js lays it into the pack)
   async function handoff(c) {
-    const items = await files(c); if (!items.length) return null;
+    const items = await files(c);
+    // what the concept is made of goes with it, flats or no flats
+    const picks = Array.isArray(c.spec?.materials) ? c.spec.materials : [], materials = picks.length ? packRows(picks) : null, colourways = cleanColourways(c.spec?.colourways);
+    if (!items.length) return materials || colourways.length ? { files: [], lab: { materials, colourways, priceCents: c.price_cents, costCents: c.cost_cents, qty: c.qty, planName: c.plan_name } } : null;
     const r = (await pool.query('select params, placements from lab_flats where concept_id=$1', [c.id])).rows[0], p = r.params, pl = r.placements || [], list = await techniques();
     const S = STYLES[p.style], tpl = templateOf(p), edits = p.edits || [];
     const pom = pomTable(p).map(row => ({ code: row.code, name: row.name, how: 'From the flats', tolerance: String(row.tolerance), values: Object.fromEntries(row.values.map(v => [v.size, String(v.value)])) }));
@@ -245,7 +249,7 @@ export function registerLabFlatsRoutes(app, d) {
       ...edits.filter(e => e.type === 'block').map(e => ({ component: `Colour block · ${e.name || 'panel'}`, material: 'Self fabric', color: e.color, placement: e.view }))];
     return {
       files: items,
-      lab: { pom, sizes: S.oneSize ? ['One size'] : SIZES, construction, bom, color: p.color ? { hex: p.color, name: 'Main colour' } : null,
+      lab: { pom, sizes: S.oneSize ? ['One size'] : SIZES, construction, bom, materials, colourways, color: p.color ? { hex: p.color, name: 'Main colour' } : null,
         sketches: items.filter(i => /^Technical flat · /.test(i.name)).map(i => ({ view: i.name.endsWith('back') ? 'back' : 'front', label: i.name, image: i.image })),
         priceCents: c.price_cents, costCents: c.cost_cents, qty: c.qty, planName: c.plan_name, style: { sampleSize: S.oneSize ? 'One size' : 'M', fitBlock: `${FITS[p.fit] || p.fit} ${S.label.toLowerCase()}${tpl ? ` (${tpl.label})` : ''}` } }
     };

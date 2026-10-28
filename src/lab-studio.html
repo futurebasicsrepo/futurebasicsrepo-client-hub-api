@@ -493,8 +493,23 @@ function paintAi(){
   <div class="sec"><h4>Make a graphic</h4><textarea class="t" id="aiArt" maxlength="800" placeholder="A cracked two-colour arch of the words FUTURE BASICS over a lightning bolt, 1970s rock tour style, ink and cream"></textarea>
     <label class="f w"><span>Made as</span><select class="t" id="aiTech">${techOpts('')}</select></label>
     <div class="row"><button class="btn go sm" type="button" id="artGo" ${ai.connected?'':'disabled'}>Make it</button></div><p class="note">Drawn on a clear background, as a layer to place, recolour and distress, and kept in the graphics library for other pieces. With a technique chosen, it is designed for it and shown made that way. Describe the look in your own words: other brands' names are refused.</p></div>
+  ${CID&&!GMODE?`<div class="sec" id="fabSec"><h4>The fabric</h4><span class="note">Loading the materials library…</span></div>`:''}
   <p class="msg" id="aiMsg" role="status">${ai.connected?(ai.left==null?'':`${ai.left} AI ${ai.left===1?'change':'changes'} left today.`):'No image model is connected, so the AI tools are off. Everything else works.'}</p>`;
-  paintAiState();
+  paintAiState();if(CID&&!GMODE)paintFabrics().catch(x=>{const f=$('#fabSec');if(f)f.innerHTML=`<h4>The fabric</h4><span class="note">${esc(x.message)}</span>`});
+}
+// the fabric from the materials library: choose it for the concept (its cost follows), and have the image model draw the piece in it
+let FABS=null,FABPICKS=null;
+async function paintFabrics(){
+  const f=$('#fabSec');if(!f)return;
+  const [lib,mine]=await Promise.all([FABS?Promise.resolve(FABS):api('/v1/lab/materials?kind=fabric'),api(`/v1/lab/concepts/${CID}/materials`)]);FABS=lib;FABPICKS=mine;
+  const main=mine.picks.find(p=>p.role==='main'&&p.kind==='fabric'),words=m=>[m.spec.weightGsm?m.spec.weightGsm+' gsm':'',m.spec.construction,m.spec.composition?`(${m.spec.composition})`:'',m.spec.finish&&m.spec.finish!=='none'?m.spec.finish:''].filter(Boolean).join(' ');
+  f.innerHTML=`<h4>The fabric</h4><p class="note">${main?`On the concept: <b>${esc(main.name)}</b>${main.colour?` in ${esc(main.colour.name||main.colour.hex)}`:''} · landed cost ${'$'+(mine.cost.landedCents/100).toFixed(2)}${mine.cost.marginPct!=null?` · margin ${mine.cost.marginPct}%`:''}.`:'No fabric chosen yet: the concept costs out on the usual making cost alone.'}</p>
+    <div class="row"><select class="t" id="fabSel" style="flex:1;min-width:0">${lib.materials.map(m=>`<option value="${m.id}" ${main&&m.id===main.id?'selected':''}>${esc(m.name)} · ${'$'+(m.priceCents/100).toFixed(2)}/${esc(m.unit)}</option>`).join('')}</select><select class="t" id="fabCol" style="width:auto"></select></div>
+    <div class="row"><button class="btn sm" type="button" id="fabUse" ${D.concept.locked?'disabled':''}>Use it on the concept</button><button class="btn go sm" type="button" id="fabDraw" ${D.ai.connected?'':'disabled'}>Redraw the piece in it</button></div>
+    <p class="note">Use it: the concept's bill of materials, landed cost and margin update, and the tech pack takes the fabric line. Redraw: the image model draws the piece in that cloth and colour as a new layer on top.</p>`;
+  const cols=()=>{const m=lib.materials.find(x=>x.id===$('#fabSel').value);$('#fabCol').innerHTML=`<option value="">Any colour</option>${(m?.colours||[]).map(c=>`<option value="${c.hex}" ${main&&main.id===m.id&&main.colour?.hex===c.hex?'selected':''}>${esc(c.name||c.hex)}</option>`).join('')}`};cols();$('#fabSel').onchange=cols;
+  $('#fabUse').onclick=async()=>{const b=$('#fabUse');try{await FBN.run(b,()=>api(`/v1/lab/concepts/${CID}/materials`,{body:{material:$('#fabSel').value,role:'main',colour:$('#fabCol').value||undefined}}),{done:'The concept is made of it: cost and margin updated.'});await paintFabrics()}catch{}};
+  $('#fabDraw').onclick=()=>{const m=lib.materials.find(x=>x.id===$('#fabSel').value);if(!m)return;const col=(m.colours||[]).find(c=>c.hex===$('#fabCol').value);$('#aiEdit').value=`Render the whole piece in ${words(m)}${col?`, ${col.name||col.hex} colour`:''}: the real weight, drape, surface texture and sheen of that cloth, same cut and details.`;$('#aiGo').click()};
 }
 function paintAiState(){const s=$('#aiScope');if(s)s.textContent=MASKED?'Only the painted (red) area will change.':'Nothing is painted: the whole piece can change. Paint an area to keep the rest exactly as it is.';const b=$('#pAi [data-clearmask]');if(b)b.disabled=!MASKED;const a=$('#pAi [data-aiscope]');if(a){a.className='btn sm '+(MASKED?'':'q');a.setAttribute('aria-pressed',String(MASKED))}}
 function maskPng(){const c=canvas(W,H),x=c.getContext('2d');x.fillStyle='#000';x.fillRect(0,0,W,H);x.globalCompositeOperation='destination-out';x.drawImage(mask,0,0);return c.toDataURL('image/png')}

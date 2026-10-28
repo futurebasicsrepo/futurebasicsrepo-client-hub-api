@@ -7,6 +7,7 @@
 import { imageConfig } from './check.js';
 import { categoryLabel } from './lab.js';
 import { ensureBranding } from './lab-concepts.js';
+import { cleanColourways } from './lab-materials.js';
 import { VIEW_KINDS, KIND_IDS, SPIN_KINDS, isKind, kindsFor, canWalk, makeViews, makeWalk, videoConfig } from './lab-views.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -67,7 +68,7 @@ export function registerLabViewRoutes(app, d) {
     const plans = (await pool.query(`select id, name from lab_plans order by created_at desc limit 40`)).rows;
     const vid = videoCfg(), img = imageCfg();
     return {
-      concepts: rows.map(r => ({ id: r.id, name: r.name, category: r.category, categoryLabel: categoryLabel(r.category), role: r.role, status: r.status, price: r.price_cents == null ? null : r.price_cents / 100, twist: r.twist, planId: r.plan_id, planName: r.plan_name || '', closeness: r.closeness?.verdict || null, hasPicture: r.has_picture, views: vs.get(r.id) || {}, kinds: kindsFor(r.category), canWalk: canWalk(r.category) })),
+      concepts: rows.map(r => ({ id: r.id, colourways: cleanColourways(r.spec?.colourways), materials: Array.isArray(r.spec?.materials) ? r.spec.materials.length : 0, name: r.name, category: r.category, categoryLabel: categoryLabel(r.category), role: r.role, status: r.status, price: r.price_cents == null ? null : r.price_cents / 100, twist: r.twist, planId: r.plan_id, planName: r.plan_name || '', closeness: r.closeness?.verdict || null, hasPicture: r.has_picture, views: vs.get(r.id) || {}, kinds: kindsFor(r.category), canWalk: canWalk(r.category) })),
       plans, kinds: VIEW_KINDS, spin: SPIN_KINDS, imageConnected: img.configured, imageNote: img.note || '', videoConnected: vid.configured, videoNote: vid.note || '', busy: running.size,
       limits: { images: Number(env.LAB_DAILY_VIEWS ?? 80), walks: Number(env.LAB_DAILY_WALKS ?? 6) }
     };
