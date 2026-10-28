@@ -38,17 +38,24 @@ export function createLabAccess(d) {
 
   // ---- the gate and the scope ----
   // what a client's room may not touch: the research side (brands, the watchlist, the market), the Future Basics taste and brand code,
-  // the shared libraries' writes (materials, techniques), the client assignment of a plan, and the list of clients
+  // the client assignment of a plan, and the list of clients. (Their own materials and techniques they add and edit; ours they read.)
   const STAFF_ONLY = [
     [/^\/v1\/lab\/(brands|brand-code|scan|scans|items|trends|clients|taste)(\/|$)/, null],
-    [/^\/v1\/lab\/materials/, 'write'], [/^\/v1\/lab\/library\/techniques/, 'write'], [/^\/v1\/lab\/library\/techniques\/[^/]+\/sample$/, null],
     [/^\/v1\/lab\/plans\/[^/]+\/client$/, null]
   ];
   // which table owns the :id in the url, so one check in the gate keeps every loader behind it to the room's own rows
-  const OWNER = [[/^\/v1\/lab\/concepts\/([^/]+)/, 'lab_concepts'], [/^\/v1\/lab\/plans\/([^/]+)/, 'lab_plans'], [/^\/v1\/lab\/(?:art|library\/graphics)\/([^/]+)/, 'lab_art'], [/^\/v1\/lab\/fonts\/([^/]+)/, 'lab_fonts'], [/^\/v1\/lab\/decor\/quotes\/([^/]+)/, 'lab_decor_quotes'], [/^\/v1\/lab\/polls\/([^/]+)/, 'lab_polls']];
-  async function owns(cid, table, id) {
+  const OWNER = [[/^\/v1\/lab\/concepts\/([^/]+)/, 'lab_concepts'], [/^\/v1\/lab\/plans\/([^/]+)/, 'lab_plans'], [/^\/v1\/lab\/(?:art|library\/graphics)\/([^/]+)/, 'lab_art'], [/^\/v1\/lab\/fonts\/([^/]+)/, 'lab_fonts'], [/^\/v1\/lab\/decor\/quotes\/([^/]+)/, 'lab_decor_quotes'], [/^\/v1\/lab\/polls\/([^/]+)/, 'lab_polls'],
+    [/^\/v1\/lab\/materials\/([^/]+)/, 'lab_materials'], [/^\/v1\/lab\/library\/techniques\/([^/]+)/, 'lab_techniques'], [/^\/v1\/lab\/library\/technique-photos\/([^/]+)/, 'lab_technique_photos']];
+  // whose row it is: the room's own rows they read and change; the shared library (Future Basics' materials, techniques and fonts, and a graphic we share)
+  // they read and use, but cannot change
+  async function owns(cid, table, id, method = 'GET') {
     if (!UUID.test(String(id || ''))) return true; // not a uuid: the route's own 404 answers
-    const q = table === 'lab_polls' ? `select 1 from lab_polls x join lab_plans p on p.id=x.plan_id where x.id=$1 and p.client_id=$2` : `select 1 from ${table} where id=$1 and client_id=$2`;
+    const read = method === 'GET' || method === 'HEAD';
+    const q = table === 'lab_polls' ? `select 1 from lab_polls x join lab_plans p on p.id=x.plan_id where x.id=$1 and p.client_id=$2`
+      : table === 'lab_technique_photos' ? `select 1 from lab_technique_photos x join lab_techniques t on t.id=x.technique_id where x.id=$1 and (t.client_id=$2 or t.client_id is null)`
+      : table === 'lab_art' ? `select 1 from lab_art where id=$1 and (client_id=$2${read ? ' or shared' : ''})`
+      : ['lab_materials', 'lab_techniques', 'lab_fonts'].includes(table) ? `select 1 from ${table} where id=$1 and (client_id=$2${read ? ' or client_id is null' : ''})`
+      : `select 1 from ${table} where id=$1 and client_id=$2`;
     return (await pool.query(q, [id, cid])).rowCount > 0;
   }
   async function gate(req, reply) {
@@ -58,11 +65,11 @@ export function createLabAccess(d) {
     const path = String(req.url || '').split('?')[0], method = String(req.method || 'GET').toUpperCase();
     for (const [re, when] of STAFF_ONLY) if (re.test(path) && (when !== 'write' || method !== 'GET')) return reply.code(403).send({ error: 'That part of the Lab is Future Basics only', code: 'LAB_STAFF_ONLY' });
     if (req.auth.preview && method !== 'GET') return reply.code(403).send({ error: 'Client preview is read-only', code: 'PREVIEW' });
-    for (const [re, table] of OWNER) { const m = re.exec(path); if (m) { if (!(await owns(cid, table, m[1]))) return reply.code(404).send({ error: 'Not found' }); break; } }
+    for (const [re, table] of OWNER) { const m = re.exec(path); if (m) { if (!(await owns(cid, table, m[1], method))) return reply.code(404).send({ error: 'Not found' }); break; } }
     req.lab = { admin: false, clientId: cid, access: a };
   }
   // a row id from a request body: a client's room may use only its own (null when it is not theirs)
-  async function ownId(req, table, id) { const cid = scope(req); if (!UUID.test(String(id || ''))) return null; if (!cid) return id; return (await owns(cid, table, id)) ? id : null; }
+  async function ownId(req, table, id) { const cid = scope(req); if (!UUID.test(String(id || ''))) return null; if (!cid) return id; return (await owns(cid, table, id, 'GET')) ? id : null; } // a row a room may use: its own, or the shared library's
   const scope = req => (req?.lab && !req.lab.admin && UUID.test(String(req.lab.clientId || '')) ? req.lab.clientId : null);
 
   // ---- the meter ----

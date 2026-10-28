@@ -91,8 +91,9 @@ export function registerLabFlatsRoutes(app, d) {
   const own = req => lab?.scope?.(req) || null, charge = async (req, o) => (lab ? lab.charge(req, o) : null); // a client's room: its own quotes, its AI meter
   const pre = [authenticate, adminOnly], bad = (reply, error, code = 422, extra = {}) => reply.code(code).send({ error, ...extra });
   const actorOf = req => (UUID.test(String(req.auth?.sub || '')) ? req.auth.sub : null);
-  const concept = async id => (UUID.test(String(id)) ? (await pool.query('select c.id, c.name, c.category, c.status, c.spec, c.twist, c.product_id, c.price_cents, c.cost_cents, c.qty, c.updated_at, p.name plan_name from lab_concepts c left join lab_plans p on p.id=c.plan_id where c.id=$1', [id])).rows[0] : null);
-  const techniques = async () => (await pool.query('select id, key, kind, name, base, finish, rules from lab_techniques where not archived order by builtin desc, name')).rows.map(t => ({ ...t, rules: cleanRules(t.rules || {}, t.base) }));
+  const concept = async id => (UUID.test(String(id)) ? (await pool.query('select c.id, c.name, c.category, c.status, c.spec, c.twist, c.product_id, c.price_cents, c.cost_cents, c.qty, c.updated_at, c.client_id, p.name plan_name from lab_concepts c left join lab_plans p on p.id=c.plan_id where c.id=$1', [id])).rows[0] : null);
+  // the techniques a piece may be made with: Future Basics' shared ones, plus its own room's (a room's techniques stay in that room)
+  const techniques = async (cid = null) => (await pool.query('select id, key, kind, name, base, finish, rules from lab_techniques where not archived and (client_id is null or client_id=$1) order by builtin desc, name', [UUID.test(String(cid || '')) ? cid : null])).rows.map(t => ({ ...t, rules: cleanRules(t.rules || {}, t.base) }));
   const techFor = (list, q) => list.find(t => t.id === q.techniqueId) || list.find(t => t.key === PREFERRED[q.technique]) || list.find(t => t.base === q.technique) || list.find(t => t.key === 'plastisol') || { name: q.technique || 'screen print', base: q.technique || 'screen print', rules: cleanRules({}, q.technique) };
   const marks = new Map();
   const markPng = async mark => { if (!marks.has(mark)) marks.set(mark, await sharp(Buffer.from(logoSvg(mark))).resize({ width: 1200 }).png().toBuffer()); return marks.get(mark); };
@@ -121,7 +122,7 @@ export function registerLabFlatsRoutes(app, d) {
   async function initial(c) {
     const det = detectStyle(c); if (!det) return null;
     det.template = await pickTemplate(c, det);
-    const params = fitToTemplate({ ...defaultParams(det.style, det.fit, det.options), ...(det.template ? { template: det.template } : {}) }), spec = ensureBranding(c.spec || {}, c.category), placements = [], list = await techniques();
+    const params = fitToTemplate({ ...defaultParams(det.style, det.fit, det.options), ...(det.template ? { template: det.template } : {}) }), spec = ensureBranding(c.spec || {}, c.category), placements = [], list = await techniques(c.client_id);
     const logo = spec.branding?.logo || {};
     if (logo.mark && logo.mark !== 'none') { const mark = logo.mark === 'cue' ? 'mark' : logo.mark, base = LOGO_BASE[logo.technique] || 'embroidery', aspect = await aspectOf({ mark }); const t = techFor(list, { technique: base });
       placements.push({ id: 'logo', name: 'Future Basics logo', source: 'logo', mark, technique: base, techniqueId: t.id, ...defaultPlacement('logo', params, { aspect, label: logo.placement || '' }) }); }
@@ -135,8 +136,8 @@ export function registerLabFlatsRoutes(app, d) {
     return { ...params, placements };
   }
   // the check: { findings: {placementId: [..]}, summary: {fail, warn}, at }
-  async function check(params, placements) {
-    const list = await techniques(), findings = {}, over = overlapChecks(placements); let fail = 0, warn = 0;
+  async function check(params, placements, cid = null) {
+    const list = await techniques(cid), findings = {}, over = overlapChecks(placements); let fail = 0, warn = 0;
     for (const q of placements) {
       const t = techFor(list, q), rules = { ...t.rules, techniqueName: t.name }, f = [...placementChecks(q, params, rules), ...(over[q.id] || [])];
       try { const b = await pngOf(q); if (b) f.push(...artFindings(q, await artInfo(b, q.w, q.h, rules), rules, t)); } catch (e) { log.warn?.({ err: e.message }, 'flats artwork check failed'); }
@@ -169,7 +170,7 @@ export function registerLabFlatsRoutes(app, d) {
     return 600;
   }
   async function decorationsOf(c, params, placements) {
-    const list = await techniques(), out = [], cal = await calibrations();
+    const list = await techniques(c.client_id), out = [], cal = await calibrations();
     for (const q of placements) {
       const t = techFor(list, q), cols = await coloursOf(q); let coverage = .6;
       try { const b = await pngOf(q); if (b) coverage = (await artInfo(b, q.w, q.h, t.rules)).coverage || .6; } catch { /* the usual coverage */ }
@@ -198,11 +199,11 @@ export function registerLabFlatsRoutes(app, d) {
   app.get('/v1/lab/concepts/:id/flats', { preHandler: pre }, async (req, reply) => {
     const c = await concept(req.params.id); if (!c) return bad(reply, 'Not found', 404);
     const r = (await pool.query('select style, params, placements, check_result, checked_at, updated_at from lab_flats where concept_id=$1', [c.id])).rows[0];
-    const list = (await techniques()).map(t => ({ id: t.id, name: t.name, kind: t.kind, base: t.base, rules: t.rules }));
+    const list = (await techniques(c.client_id)).map(t => ({ id: t.id, name: t.name, kind: t.kind, base: t.base, rules: t.rules }));
     if (r) return shape(c, { ...r.params, placements: r.placements, check: r.check_result, saved: true, updatedAt: r.updated_at }, { techniques: list });
     const init = await initial(c);
     if (!init) return shape(c, null, { techniques: list, unsupported: `Flats are not drawn for ${c.category} yet. They cover tops, hoodies, sweatshirts, jackets, pants, shorts, caps, beanies and totes.` });
-    return shape(c, { ...init, check: await check(init, init.placements), saved: false }, { techniques: list });
+    return shape(c, { ...init, check: await check(init, init.placements, c.client_id), saved: false }, { techniques: list });
   });
   const take = async (req, reply) => {
     const c = await concept(req.params.id); if (!c) return bad(reply, 'Not found', 404), null;
@@ -211,11 +212,11 @@ export function registerLabFlatsRoutes(app, d) {
     for (const e of params.edits) if (e.type === 'ai' && !(await pool.query('select 1 from lab_art where id=$1', [e.art])).rowCount) return bad(reply, 'A redrawn area is missing its picture', 422), null;
     return { c, params, placements };
   };
-  app.post('/v1/lab/concepts/:id/flats/check', { preHandler: pre }, async (req, reply) => { const t = await take(req, reply); if (!t) return; const ck = await check(t.params, t.placements); return { check: ck, where: Object.fromEntries(t.placements.map(q => [q.id, describe(q, t.params)])) }; });
+  app.post('/v1/lab/concepts/:id/flats/check', { preHandler: pre }, async (req, reply) => { const t = await take(req, reply); if (!t) return; const ck = await check(t.params, t.placements, t.c.client_id); return { check: ck, where: Object.fromEntries(t.placements.map(q => [q.id, describe(q, t.params)])) }; });
   app.put('/v1/lab/concepts/:id/flats', { preHandler: pre }, async (req, reply) => {
     const t = await take(req, reply); if (!t) return;
     if (t.c.status === 'tech_pack' && !t.c.product_id) return bad(reply, 'This concept is already a tech pack', 409);
-    const ck = await check(t.params, t.placements);
+    const ck = await check(t.params, t.placements, t.c.client_id);
     await pool.query(`insert into lab_flats(concept_id, style, params, placements, check_result, checked_at, updated_by) values($1,$2,$3,$4,$5,now(),$6)
       on conflict(concept_id) do update set style=excluded.style, params=excluded.params, placements=excluded.placements, check_result=excluded.check_result, checked_at=now(), updated_by=excluded.updated_by, updated_at=now()`,
     [t.c.id, t.params.style, t.params, JSON.stringify(t.placements), ck, actorOf(req)]);
@@ -276,7 +277,7 @@ export function registerLabFlatsRoutes(app, d) {
   const gradeWords = q => (q.grade || []).map(g => `${g.sizes[0]}${g.sizes.length > 1 ? '–' + g.sizes[g.sizes.length - 1] : ''} ${fmt(g.w)} × ${fmt(g.h)}`).join(' · ');
   async function sheet(c, { size } = {}) {
     const r = (await pool.query('select params, placements, check_result from lab_flats where concept_id=$1', [c.id])).rows[0]; if (!r) return null;
-    const p = { ...r.params, size: SIZES.includes(size) ? size : r.params.size || 'M' }, pl = r.placements, list = await techniques(), hrefs = {};
+    const p = { ...r.params, size: SIZES.includes(size) ? size : r.params.size || 'M' }, pl = r.placements, list = await techniques(c.client_id), hrefs = {};
     for (const q of pl) { const b = await pngOf(q); if (b) hrefs[q.id] = `data:image/png;base64,${(await sharp(b).resize({ width: 600, height: 600, fit: 'inside', withoutEnlargement: true }).png().toBuffer()).toString('base64')}`; }
     const ck = r.check_result || { findings: {}, summary: { fail: 0, warn: 0 } };
     const views = STYLES[p.style].kind === 'cap' || STYLES[p.style].kind === 'top' || STYLES[p.style].kind === 'bottom' ? ['front', 'back'] : ['front'];
@@ -312,7 +313,7 @@ export function registerLabFlatsRoutes(app, d) {
   // the decoration sheet: one page per placement, for the factory's decoration department (or the print or embroidery shop)
   async function decorationPdf(c) {
     const s = await sheet(c); if (!s) return null;
-    const list = await techniques(), notes = new Map((await pool.query('select id, factory_note, art_guide, summary from lab_techniques')).rows.map(r => [r.id, r])), decos = await decorationsOf(c, s.p, s.pl), ck = (await pool.query('select check_result from lab_flats where concept_id=$1', [c.id])).rows[0]?.check_result || { findings: {} };
+    const list = await techniques(c.client_id), notes = new Map((await pool.query('select id, factory_note, art_guide, summary from lab_techniques')).rows.map(r => [r.id, r])), decos = await decorationsOf(c, s.p, s.pl), ck = (await pool.query('select check_result from lab_flats where concept_id=$1', [c.id])).rows[0]?.check_result || { findings: {} };
     const b = brandDoc({ title: `${c.name} · decorations`, kind: 'Decoration sheet', ref: `${s.pl.length} placement${s.pl.length === 1 ? '' : 's'}`, footerNote: 'Future Basics · decoration sheet · costs are estimates, the factory\'s quote confirms them · colours as Pantone C, matched from the artwork: confirm each against a swatch book' });
     const { doc, L, CW } = b;
     if (!s.pl.length && !s.p.allover) { doc.fillColor(INK).font('SG-B').fontSize(18).text(safe(c.name), L, b.bodyTop); doc.fillColor(DIM).font('SG').fontSize(11).text('Nothing is placed on this piece yet.', L, doc.y + 8); return b.finish(); }
@@ -382,7 +383,7 @@ export function registerLabFlatsRoutes(app, d) {
     // what the concept is made of goes with it, flats or no flats
     const picks = Array.isArray(c.spec?.materials) ? c.spec.materials : [], materials = picks.length ? packRows(picks) : null, colourways = cleanColourways(c.spec?.colourways);
     if (!items.length) return materials || colourways.length ? { files: [], lab: { materials, colourways, priceCents: c.price_cents, costCents: c.cost_cents, qty: c.qty, planName: c.plan_name } } : null;
-    const r = (await pool.query('select params, placements from lab_flats where concept_id=$1', [c.id])).rows[0], p = r.params, pl = r.placements || [], list = await techniques();
+    const r = (await pool.query('select params, placements from lab_flats where concept_id=$1', [c.id])).rows[0], p = r.params, pl = r.placements || [], list = await techniques(c.client_id);
     const S = STYLES[p.style], tpl = templateOf(p), edits = p.edits || [];
     const pom = pomTable(p).map(row => ({ code: row.code, name: row.name, how: 'From the flats', tolerance: String(row.tolerance), values: Object.fromEntries(row.values.map(v => [v.size, String(v.value)])) }));
     const construction = [{ area: 'Drawing', detail: `${FITS[p.fit] || p.fit} fit ${S.label.toLowerCase()}, drawn from the ${tpl ? `"${tpl.label}" flat sketch` : 'measurements'}; sample size M.` },
@@ -440,7 +441,7 @@ export function registerLabFlatsRoutes(app, d) {
   app.post('/v1/lab/concepts/:id/studio/graphics', { preHandler: pre, bodyLimit: 40_000_000 }, async (req, reply) => {
     const c = await concept(req.params.id); if (!c) return bad(reply, 'Not found', 404);
     if (c.status === 'tech_pack' && !c.product_id) return bad(reply, 'This concept is already a tech pack', 409);
-    const list = await techniques(), given = Array.isArray(req.body?.layers) ? req.body.layers.slice(0, 8) : [], graphics = [], arts = {};
+    const list = await techniques(c.client_id), given = Array.isArray(req.body?.layers) ? req.body.layers.slice(0, 8) : [], graphics = [], arts = {};
     for (const l of given) {
       if (!LAYER.test(String(l.layer || '')) || !PLACEMENTS[l.placement]) continue;
       const w = Number(l.widthIn), h = Number(l.heightIn); if (!(w > 0 && w < 40 && h > 0 && h < 40)) return bad(reply, `${clip(l.name, 40) || 'A layer'}: measure it first`);
@@ -464,7 +465,7 @@ export function registerLabFlatsRoutes(app, d) {
         const base = prev ? { view: prev.view, x: prev.x, y: prev.y - prev.h / 2 + g.heightIn / 2, w: g.widthIn, h: g.heightIn } : sized(defaultPlacement('graphic', params, { aspect: g.widthIn / g.heightIn, label: g.placement }), g);
         studio.push({ ...(prev || {}), id: 's-' + g.studioLayer, name: g.name, source: 'studio', layer: g.studioLayer, art: g.art, technique: t.base, techniqueId: t.id, ...base });
       }
-      const { params: p2, placements } = cleanFlat({ ...params, placements: [...keep, ...studio] }), ck = await check(p2, placements);
+      const { params: p2, placements } = cleanFlat({ ...params, placements: [...keep, ...studio] }), ck = await check(p2, placements, c.client_id);
       await pool.query('update lab_flats set placements=$2, check_result=$3, checked_at=now(), updated_at=now() where concept_id=$1', [c.id, JSON.stringify(placements), ck]);
       const fresh = await concept(c.id); let cost = null; try { cost = await keepDecorations(fresh, await decorationsOf(fresh, p2, placements)); } catch { /* the costing waits for the next save */ }
       flats = { placements: placements.filter(q => q.source === 'studio').length, check: ck.summary, landedCents: cost?.landedCents ?? null };
@@ -480,7 +481,7 @@ export function registerLabFlatsRoutes(app, d) {
     return { quotes: rows.map(quoteRow), calibration: await calibrations() };
   });
   app.post('/v1/lab/decor/quotes', { preHandler: pre }, async (req, reply) => {
-    const b = req.body || {}, list = await techniques(), t = UUID.test(String(b.techniqueId || '')) ? list.find(x => x.id === b.techniqueId) : null;
+    const b = req.body || {}, list = await techniques(own(req)), t = UUID.test(String(b.techniqueId || '')) ? list.find(x => x.id === b.techniqueId) : null;
     const base = t?.base || (Object.keys(DECOR_BASES()).includes(b.base) ? b.base : null); if (!base) return bad(reply, 'Say how it is made: a technique from the library');
     const w = Number(b.widthIn), h = Number(b.heightIn), colours = Math.round(Number(b.colours) || 1), qty = Math.round(Number(b.qty) || 0), unit = Math.round(Number(b.unitCents)), setup = Math.round(Number(b.setupCents) || 0);
     if (!(w > 0 && w <= 2000 && h > 0 && h <= 60)) return bad(reply, 'Give the size the factory quoted for, in inches');

@@ -175,6 +175,23 @@ A client can open the Design Lab on their own room, from the hub, for a fixed pr
 
 Routes: `GET /v1/client/lab`, `POST /v1/client/lab/checkout`, `POST /v1/client/lab/landed`, `POST /v1/client/lab/invoices/:id/landed`, `GET /v1/client/lab/usage`; `GET /v1/products/:id/make`, `POST /v1/products/:id/make-request`, `POST|DELETE /v1/products/:id/quote-links[/:sid]`; staff `GET|PATCH /v1/admin/clients/:id/lab` (`comp`, `end`, `bill`), `POST /v1/admin/lab/invoices/:id/paid`, `GET|PATCH /v1/admin/make-requests[/:id]`. Tables: `lab_access`, `lab_ai_usage`, `lab_ai_invoices`, `make_requests`. Tests: `test/lab-access.test.js`, journey J232.
 
+## A room's team, and the libraries it shares
+
+**The team.** Anyone on a client room can add teammates from the hub's **Team** section (`src/room-team-routes.js`): an email and, if they like, a name. The address joins the room's sign-in list, a user row is made for it, and the teammate gets an email with the way in; they sign in with a six-digit code like everyone else. Everyone on the team sees the whole room: projects, tech packs, files, messages, and the Design Lab with its plans, concepts and libraries. AI generations from the whole team count against the room's one meter. A room holds up to 25 people.
+- An address that already signs in to another active room is refused: one person, one room. Future Basics addresses are refused too; staff already reach every room.
+- **Taking someone off.** A teammate can take another off the team (not themselves, and never the owner, the room's contact address; Future Basics changes the owner from the console). Their session stops working at once (every client request checks, with a 20-second cache the team routes clear), and they cannot sign in again, even when the room's email domain would let them in. What they made stays, by name. Adding them again lets them back in.
+
+**The libraries.** A room's Lab library is its own work plus what Future Basics shares:
+| Library | The room's own | Shared by Future Basics |
+| --- | --- | --- |
+| Graphics | everything the team draws, uploads or makes in the studio | a Future Basics graphic staff mark **Share with every client room** in the graphic's dialog (the library's "Shared by Future Basics" filter lists them) |
+| Fonts | fonts the team uploads | our fonts |
+| Materials, trims and tags | what the team adds | our whole starting library |
+| Techniques | what the team adds, or a **copy** of one of ours | our whole starting library |
+
+What Future Basics shares, a room reads and uses on its pieces but cannot change or remove (the gate answers 404 to a write); a technique of ours can be copied into the room and changed there. Only Future Basics graphics can be shared, and only by staff: a room's work never reaches another room. Staff see every graphic, as before; the materials list shows our library, and `?room=all` adds every room's. `lab_materials` and `lab_techniques` carry `client_id` (null for ours), `lab_art` carries `shared`, and the flats and studio list only the techniques a piece's room may use.
+
+
 ## Where it lives
 
 | | |
