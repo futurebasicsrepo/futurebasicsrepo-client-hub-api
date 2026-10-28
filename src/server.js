@@ -1,3 +1,4 @@
+import './fonts-setup.js'; // first: pictures the server draws need fonts before anything draws text
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';

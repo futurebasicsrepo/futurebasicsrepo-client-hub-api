@@ -12,7 +12,9 @@ const fp = name => new URL(name, FONT_DIR).pathname;
 // Glyphs the embedded Latin cuts can draw. Anything else (a client written in Chinese) falls back to Helvetica for that string
 // rather than printing empty boxes; Helvetica cannot draw it either, so it prints a plain "?" and never a broken glyph.
 const LATIN = /^[ -~ -ɏ‐-‧‰-›€™←-↓−×]*$/;
-export const clean = s => String(s ?? '').replace(/[\u0000-\u0009\u000B-\u001F]/g, ' ');
+// the cuts draw ½ ¼ ¾ but not eighths or thirds: those are written out ("4⅞" reads "4 7/8") instead of printing as "?"
+const FRACTIONS = { '⅛': '1/8', '⅜': '3/8', '⅝': '5/8', '⅞': '7/8', '⅓': '1/3', '⅔': '2/3', '⅙': '1/6', '⅚': '5/6', '⅕': '1/5' };
+export const clean = s => String(s ?? '').replace(/[\u0000-\u0009\u000B-\u001F]/g, ' ').replace(/(\d?)([⅛⅜⅝⅞⅓⅔⅙⅚⅕])/g, (_, d, f) => `${d ? d + ' ' : ''}${FRACTIONS[f]}`);
 export const safe = s => { const t = clean(s); return LATIN.test(t) ? t : t.replace(/[^ -~ -ɏ‐-‧€−×]/g, '?'); };
 
 export function money(cents, currency = 'USD') {
