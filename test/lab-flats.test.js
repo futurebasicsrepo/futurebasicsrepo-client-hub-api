@@ -197,3 +197,12 @@ test('the sketch follows the concept: its family from the name, silhouette and f
   for (const [w, id] of [['straight chino', 'pt-chino'], ['relaxed carpenter jean', 'pt-carpenter-jeans'], ['wide leg jean', 'pt-wide-leg-jeans'], ['balloon jean', 'pt-balloon-jeans'], ['painter pant in canvas', 'pt-painter-pants'], ['track pant with side stripe', 'pt-side-stripe-track-pants'], ['heavyweight fleece sweatpant', 'pt-jogger']]) assert.equal(defaultTemplate('pants', 'regular', w), id, w);
   assert.equal(defaultTemplate('pants', 'regular', ''), 'pt-chino', 'nothing said: the style\'s default');
 });
+
+test('a piece that reads as footwear is not drawn as a pant, whatever line it sits in; boot-cut and cargo pants still are', async () => {
+  const { detectStyle, looksLikeFootwear } = await import('../src/lab-flats.js');
+  assert.equal(looksLikeFootwear({ name: 'Earth Utility Boot', category: 'bottoms', spec: { silhouette: 'lace-up boot with a lug sole' } }), true);
+  assert.equal(detectStyle({ name: 'Earth Utility Boot', category: 'bottoms', spec: { silhouette: 'lace-up boot with a lug sole' } }), null);
+  assert.equal(detectStyle({ name: 'Court Sneaker', category: 'footwear', spec: {} }), null);
+  assert.equal(detectStyle({ name: 'Boot-cut Utility Pant', category: 'bottoms', spec: { silhouette: 'boot cut' } })?.style, 'pants');
+  assert.equal(detectStyle({ name: 'Utility Cargo', category: 'bottoms', spec: { description: 'cargo pants to wear with boots' } })?.style, 'pants');
+});

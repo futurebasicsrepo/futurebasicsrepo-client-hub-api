@@ -2401,5 +2401,41 @@ await journey('J237', 'Graphics added on the flats come onto the picture, and th
   } finally { await cleanup(brands, plan.plan?.id); }
 });
 
+await journey('J238', 'Welcoming a client\'s designers, and footwear kept off pant flats: the work console invites a designer to a room\'s Design Lab (they may sign in to the room, the address is checked, one room per person), the Lab shows a client a How to start welcome once, and a boot in a Bottoms line is not drawn as a pant', async () => {
+  const email = `lab-welcome-${stamp}@selfserve.test`, started = await call('/v1/public/start', { body: { email, name: 'Welcome Room', title: 'First tee', photos: [jpeg()] } });
+  const cid = started.json.client?.id || sql(`select client_id from users where lower(email)='${email}'`), uid = sql(`select id from users where lower(email)='${email}'`).split('\n')[0], slug = sql(`select slug from clients where id='${cid}'`).split('\n')[0];
+  sql(`update users set email_verified_at=now() where id='${uid}'`);
+  const A = (path, o = {}) => call(path, { token: kyleT, ...o }), designer = `designer-${stamp}@selfserve.test`;
+  const { brands, plan } = await conceptSetup();
+  try {
+    ok((await A(`/v1/admin/clients/${cid}/lab/invite`, { body: { email: 'nope' } })).status === 422 && (await A(`/v1/admin/clients/${cid}/lab/invite`, { body: { email: 'someone@thefuturebasics.com' } })).status === 422, '1. an invite needs a real address, and not one of ours');
+    ok((await call(`/v1/admin/clients/${cid}/lab/invite`, { token: await forge({ sub: uid, clientId: cid, client: slug, role: 'client', email }), body: { email: designer } })).status >= 401, '   only Future Basics invites from the console');
+    const inv = await A(`/v1/admin/clients/${cid}/lab/invite`, { body: { email: designer, name: 'Dana Designer' } });
+    ok(inv.status === 200 && inv.json.email === designer && inv.json.open === false, '2. the console invites a designer to the room\'s Lab (it says the Lab is not open yet)', inv.json);
+    ok(sql(`select '${designer}' = any(allowed_emails) from clients where id='${cid}'`) === 't' && sql(`select client_id from users where lower(email)='${designer}'`) === cid && /invited to the Design Lab/.test(sql(`select summary from activities where client_id='${cid}' and type='design' order by created_at desc limit 1`)), '   they may sign in to the room, and it is on the room\'s record');
+    const other = await call('/v1/public/start', { body: { email: `lab-other-${stamp}@selfserve.test`, name: 'Other Room', title: 'Tee', photos: [jpeg()] } });
+    const ocid = other.json.client?.id || sql(`select client_id from users where lower(email)='lab-other-${stamp}@selfserve.test'`);
+    ok((await A(`/v1/admin/clients/${ocid}/lab/invite`, { body: { email: designer } })).status === 409, '3. an address that signs in to one room is not invited to another');
+    // footwear in a Bottoms line
+    const line = plan.lines.find(l => l.category === 'bottoms') || plan.lines[0], c = (await K(`/plans/${plan.plan.id}/lines/${line.id}/concepts`, { body: { count: 1 } })).json.concepts[0];
+    sql(`update lab_concepts set name='Earth Utility Boot', category='bottoms', spec=coalesce(spec,'{}'::jsonb)||'{"silhouette":"lace-up boot with a lug sole","description":"a utility boot"}'::jsonb where id='${c.id}'`);
+    const fl = (await K(`/concepts/${c.id}/flats`)).json;
+    ok(fl.unsupported && /reads as footwear/.test(fl.unsupported) && !fl.flat, '4. a boot in a Bottoms line is not drawn as a pant: the flats say why', fl.unsupported);
+    if (!playwright) { ok(true, 'needs a browser'); return; }
+    await A(`/v1/admin/clients/${cid}/lab`, { method: 'PATCH', body: { action: 'free' } });
+    const ct = await forge({ sub: uid, clientId: cid, client: slug, role: 'client', email }), b = await playwright.chromium.launch();
+    try {
+      const cc = await b.newContext({ viewport: { width: 1194, height: 834 } }); await cc.addInitScript(t => { try { localStorage.setItem('fb.client.token', t); } catch {} }, ct);
+      const page = await cc.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
+      await page.goto(`${BASE}/lab`, { waitUntil: 'networkidle' }); await page.waitForSelector('#app:not(.hidden)', { timeout: 20000 });
+      ok(await page.isVisible('#welcome') && /Add to Home Screen/.test(await page.innerText('#welcome')) && /Checklist/.test(await page.innerText('#welcome')), '5. the first time in, a client\'s designer sees How to start: the iPad, the line, Design, Simple or Pro, the Checklist');
+      await page.click('#welcomeDone'); await page.reload({ waitUntil: 'networkidle' }); await page.waitForSelector('#app:not(.hidden)', { timeout: 20000 });
+      ok(!(await page.isVisible('#welcome')), '   Got it puts it away for good');
+      await page.click('#howStart'); ok(await page.isVisible('#welcome'), '   and How to start brings it back');
+      ok(errs.length === 0, 'no page errors', errs); await cc.close();
+    } finally { await b.close(); }
+  } finally { await cleanup(brands, plan.plan?.id); }
+});
+
 shops.close(); brave.close();
 process.exit(summary() ? 1 : 0);

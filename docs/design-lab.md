@@ -177,6 +177,10 @@ Routes: `GET /v1/client/lab`, `POST /v1/client/lab/checkout`, `POST /v1/client/l
 
 **Charges off for a room.** On a room in the work console, **Design Lab charges** is a switch like free tech pack access. Switched on (charges off), the room's Lab is open at once with no fee and no end date; AI generations are counted but never billed or paused, and tech packs come with the open Lab. An invoice raised before stays owed. Switched back off, a room with no paid period sees the offer again; its plans and concepts stay. Stored as `clients.lab_free`; `PATCH /v1/admin/clients/:id/lab {action: 'free'|'charge'}`, written on the room's record.
 
+**Inviting a designer.** On a room in the work console, **Invite a designer** takes an email: the address may then sign in to the room (it is added to the room's allowed emails, as a teammate added from the hub is), the invite is on the room's record, and the designer gets the welcome by email: how to keep the Lab on an iPad's home screen, how to sign in with the emailed code, and what Design, Simple and Pro, and the Checklist are. An address that already signs in to another room is refused (one person, one room). `POST /v1/admin/clients/:id/lab/invite {email, name?}`.
+
+**How to start.** The first time a client's designer opens the Lab, a short welcome shows the same steps (the iPad step is left out once the Lab runs from the home screen). **Got it** puts it away; **How to start** in the Lab's header brings it back.
+
 ## On an iPad, with the Pencil
 
 The Lab installs as its own home-screen app (`/lab.webmanifest`: standalone, opening on `/lab`; the Lab pages carry the Apple home-screen tags and icon). In Safari: Share, then Add to Home Screen. The installed app keeps its own sign-in: sign in once inside it with the emailed code.
@@ -514,6 +518,8 @@ Routes: `src/lab-materials-routes.js` (`/v1/lab/materials…`, `/v1/lab/concepts
 ## Flats and placement, and "can it be made?"
 
 **Which sketch a piece is drawn from.** The concept's words are read for the piece's family (jeans, chinos, sweatpants, track pants…: from its name, silhouette and fabric only, so a ripstop pocket lining does not make a twill pant a track pant), its silhouette (flared, straight, wide, slim…) and its features (cargo pockets, double knee, pleats, carpenter loops…). Every sketch of the style is scored (`rankTemplates` in `src/lab-flats.js`): a feature the sketch has that the concept never asked for counts against it, so a plain boot-cut twill pant is not drawn from a skinny double-knee cargo because it shares a word. With an Anthropic key the vision model then confirms the pick from the concept's picture among the best-scored sketches (cached per picture; off under `AI_FIXTURE`). The Garment tab still lets you pick any sketch by hand.
+
+**Footwear is not drawn as a pant.** A concept whose words read as footwear (boot, sneaker, trainer, shoe, loafer, sandal, mule, clog, slide), with no pant words (boot-cut, pants, jeans, cargo…), gets no flats, wherever its line sits; the flats say it reads as footwear and that flats are not drawn for footwear yet. Before this a boot in a Bottoms line was drawn as a pant.
 
 **Flats and placement** (the flat views of Design: **Flats** on a concept opens `/lab/studio?concept=<id>&view=front`) draws the piece as measured technical flats, front and back, the way a factory reads them. Nothing on it is drawn by an image model.
 

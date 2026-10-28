@@ -53,9 +53,16 @@ export const fmt = v => { const n = r8(Math.abs(v)), w = Math.floor(n), f = n - 
 export const fmtCm = v => `${fmt(v)} (${(Math.abs(v) * 2.54).toFixed(1)} cm)`;
 
 // ---- what the concept is: the style, the fit and the details, read from its words ----
+// a piece that reads as footwear (a boot, a sneaker, a loafer) whatever line it sits in: there are no footwear flats, so it is not drawn as a
+// pant because its line is Bottoms. Boot-cut and the like are cuts of a pant, not footwear.
+export function looksLikeFootwear(c = {}) {
+  const t = [c.name, c.spec?.silhouette, c.spec?.description].join(' ').toLowerCase();
+  return c.category === 'footwear' || (/\b(boots?|sneakers?|trainers?|shoes?|loafers?|sandals?|mules?|clogs?|slides?|derbys?)\b/.test(t) && !/boot[- ]?cut|\b(pants?|trousers?|jeans?|chinos?|shorts?|skirts?|leggings?|joggers?|cargos?)\b/.test(t));
+}
 export function detectStyle(c = {}) {
   const t = [c.name, c.spec?.silhouette, c.spec?.description, ...(c.spec?.details || [])].join(' ').toLowerCase(), cat = c.category;
   const has = re => re.test(t);
+  if (looksLikeFootwear(c)) return null;
   let style = null;
   if (cat === 'headwear') style = has(/beanie|knit hat|watch cap|toque/) ? 'beanie' : has(/bucket/) ? 'bucket' : 'cap';
   else if (cat === 'bags') style = 'tote';
