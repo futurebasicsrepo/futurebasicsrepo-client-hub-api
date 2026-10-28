@@ -304,6 +304,44 @@ The library takes pictures as well as links: **Add photos or screenshots** under
 - **The lookbook** (`src/lab-lookbook.js`): `GET /v1/lab/plans/:id/lookbook.pdf?which=in_play|approved`: a cover, the contents, one page per piece (its picture and its words, the planned price; nothing from the check or the cost), in the brand template.
 - **The customer poll** (`lab_polls`, `lab_poll_votes`, page `src/lab-poll.html` at `/lab/poll/:token`): `POST /v1/lab/plans/:id/polls {title?, intro?, which?, days?}` gives the link once (only its hash is kept; the plan keeps it on screen until you leave). Anyone with the link sees the pieces and answers, piece by piece: would you buy it (yes, maybe, no), the price (would pay more, fair, too high), what they would change, and optionally who they are. One person is one key (their email when given, else their address), so answering again replaces the earlier answers. `GET /v1/lab/polls/:pid/results` is the demand read: per piece, yes counts 1 and maybe ½ as a share of the people who voted, a rank, a price feel and a plain read (make it ≥ 70 %, worth a sample ≥ 45 %, think again). Staff hear when the first person and every tenth answers. `POST …/polls/:pid/close` stops the link; the results stay.
 
+## Decoration to the factory: real size, separations, the decoration sheet, cost, warp, tone on tone, one graphic across the range
+
+These turn a graphic into something a decorator can quote and make. The rules and prices live in `src/lab-decor.js`.
+
+- **Size in inches, with placement rules.** Every placement has the sizes that read well there, by the trade's usual ranges for menswear:
+
+  | Placement | Usual width |
+  | --- | --- |
+  | Left chest | 2.5–4 in |
+  | Centre chest | 4–8 in |
+  | Full front | 9–12 in |
+  | Full back | 10–13 in |
+  | Back neck | 1.5–3.5 in |
+  | Sleeve | 2–3.5 in |
+  | Thigh | 2.5–6 in |
+  | Cap front | 2–4.5 in, at most 2.25 in tall |
+
+  Hip, back pocket, cap side and bag have their own ranges too. A graphic too big for its technique fails. One too wide, too small or too tall for its spot is a warning.
+- **In the studio, the ruler (U) sets the real size.** Drag across something whose size you know, then type its length in inches or cm. Until then the scale is estimated from how wide the piece is in the picture: about 28 in across for a tee, 30 for a hoodie, 20 for a pant, 8 for a cap. The scale is saved with the design.
+  - Every graphic, mark or type layer shows its width and height in inches and cm, under **Size on the piece**. Typing a width sizes it.
+  - **Goes on** picks the placement. **Check the size and cost** asks `POST /v1/lab/studio/check`. It answers with the size against the placement and the technique, the finest line at that size, the inks and a cost a piece.
+- **Colour separations.** **Colour separations…** on a layer shows one plate per ink with its Pantone C, and the white underbase on a dark garment. **Download the files** gives the job zip for the printer. This uses the same job file as the library (`POST /v1/lab/studio/separations`).
+- **Warp to the piece.** Presets are arc up, arc down, bulge, wrap round the body and wave, with an amount. **Flat again** removes the warp. The warp tool (W) drags the 16 points of the grid by hand. Warp is only how the mark looks on the picture. The size, the separations and the factory files stay flat.
+- **Tone on tone.** **Tone on tone…** samples the fabric under the layer. It offers that colour dyed to match, plus three steps lighter and three darker, each with its nearest Pantone C. A click recolours the mark and keeps the Pantone on the layer.
+- **The cost goes into the BOM.** Saving the flats prices each placement and keeps the lines on the concept as `spec.decorations`.
+  - Each line has its size, colours, Pantones, technique, setup and a cost a piece. A setup is screens per colour, a digitised design, a mould or a die, shared over the planned quantity (300 by default).
+  - The concept's landed cost and margin count the decorations. The materials panel shows them as **Decoration**.
+  - The tech pack BOM has a row per decoration, marked "From the flats", with its size, Pantones and cost.
+  - Starting prices per base technique are in `DECOR_COST`. A technique can carry its own in its rules (`rules.cost`).
+- **The decoration sheet.** **Decoration sheet** on the flats opens `GET /v1/lab/concepts/:id/flats/decorations.pdf`. It has one page per graphic, in the brand template:
+  - the size, colours and cost a piece
+  - the artwork and the flat with that placement picked out
+  - where it goes, the Pantones, and the technique's factory note and rules
+  - what to check before it is made
+- **One graphic across the range.** On a line plan, **One graphic across the range** takes a library graphic, a spot and how it is made. "The usual spot per piece" means left chest on tops, knitwear, outerwear and tailoring, front chest on dresses, thigh on bottoms, cap front on headwear and bag front on bags.
+  - **Preview on every piece** draws it on each concept's picture (`POST /v1/lab/plans/:id/mockup`). The model places it where it can; otherwise the usual spot is used. Nothing is kept yet.
+  - **Put it on the ticked pieces** (`POST /v1/lab/plans/:id/mockup/apply`) adds it to each concept's graphics and redraws its picture. Pieces that are already tech packs, that have no such spot, that already carry the graphic or that already have four are left alone, with the reason.
+
 ## Materials, trims and tags: the library
 
 **Materials, trims and tags** (a Lab tab, `/lab/materials`) is what we make pieces of, kept once and chosen on any concept.
