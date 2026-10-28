@@ -15,6 +15,7 @@ var c=q.get('concept')||'',t=q.get('template')||'',v=q.get('view')==='back'?'bac
 *{box-sizing:border-box}html{background:var(--fog)}
 body{margin:0;color:var(--ink);font:400 14px/1.45 'Space Grotesk',system-ui,sans-serif;background:var(--fog);min-height:100vh}
 button,input,select,textarea{font:inherit;color:inherit}a{color:inherit}.hidden{display:none!important}
+.pic-note{display:flex;align-items:center;justify-content:space-between;gap:10px 14px;flex-wrap:wrap;padding:10px clamp(14px,2vw,24px);background:#fff7e0;border-bottom:1px solid #ecd9a4;font-size:13.5px}
 header{height:72px;background:rgba(20,20,22,.96);color:#fff;padding:0 clamp(16px,3vw,32px);display:flex;align-items:center;position:sticky;top:0;z-index:20}
 .wordmark{display:flex;align-items:center;gap:12px;position:relative;text-decoration:none;color:inherit;text-transform:uppercase;letter-spacing:.08em}
 .wordmark:after{content:"";position:absolute;left:0;bottom:-7px;width:64px;height:2px;background:var(--cue)}
@@ -78,6 +79,7 @@ textarea.t{min-height:64px;resize:vertical}
 <div id="needSignin" class="hidden"><h1 style="margin-top:0">Sign in first</h1><p class="msg" style="font-size:14px">Future Basics signs in at the work console; a client whose room has the Design Lab signs in at their hub.</p><a class="btn go" href="/admin" style="margin-top:12px">Open the work console</a> <a class="btn" href="/" style="margin-top:12px">Client? Open your hub</a></div>
 <div id="app" class="hidden">
   <div class="bar"><button class="btn q sm" type="button" data-lab-menu data-lab="flats">Lab ▾</button><a class="btn q sm" href="/lab#board">← Concepts</a><div class="ttl"><b id="cName">Loading…</b><span id="cSub"></span></div>
+  <div id="picNote" class="pic-note hidden" role="status"></div>
     <a class="btn q sm" id="toStudio" href="#">Open in the studio</a><span class="saved" id="saved" role="status"></span><button class="btn sm" type="button" id="save">Save</button><button class="btn sm" type="button" id="sheet">Spec sheet</button><button class="btn sm" type="button" id="decoSheet" title="One page per graphic for the decorator: size, Pantones, technique, cost, where it goes">Decoration sheet</button><button class="btn go sm hidden" type="button" id="toPack">Send to the tech pack</button></div>
   <div class="wrap">
     <div class="stage">
@@ -255,7 +257,9 @@ $('#pPl').addEventListener('input',e=>{if(e.target.id==='libQ'){clearTimeout(lt)
 $('#pPl').addEventListener('change',e=>{const card=e.target.closest('[data-q]');if(!card)return;const q=PL.find(x=>x.id===card.dataset.q),k=e.target.dataset.k;if(!k)return;if(k==='view'){q.view=e.target.value;setView(q.view)}if(k==='techniqueId'){q.techniqueId=e.target.value;q.technique=(D.techniques.find(t=>t.id===q.techniqueId)||{}).base||q.technique}touch();paint()});
 $('#pPl').addEventListener('click',async e=>{
   const card=e.target.closest('[data-q]');
-  if(e.target.closest('[data-del]')){PL=PL.filter(x=>x.id!==card.dataset.q);touch();paint();return}
+  if(e.target.closest('[data-del]')){const gone=PL.find(x=>x.id===card.dataset.q);PL=PL.filter(x=>x!==gone);if(SEL===gone?.id)SEL=null;
+    // one record on both views: a graphic that is also a layer on the picture comes off the garment there too, or the next save would put it back
+    if(gone&&HOST()?.flatRemoved)HOST().flatRemoved({id:gone.id,layer:gone.source==='studio'?gone.layer:null});touch();paint();return}
   if(card&&!e.target.closest('input,select,button')){SEL=card.dataset.q;const q=PL.find(x=>x.id===SEL);if(q.view!==VIEW)setView(q.view);paint();return}
   const mk=e.target.closest('[data-addmark]');if(mk){await addPlacement({name:{mark:'Cue mark',word:'Wordmark',lockup:'Wordmark and cue mark'}[mk.dataset.addmark],mark:mk.dataset.addmark,source:'logo'});return}
   const lb=e.target.closest('[data-lib]');if(lb){const g=LIB.find(x=>x.id===lb.dataset.lib);await addPlacement({name:g.name||'Graphic',art:g.id,source:'graphic',techniqueId:g.techniqueId||null});return}
@@ -316,6 +320,8 @@ function zoomSvg(){const svg=$('#canvas svg');if(!svg)return;if(!svg.dataset.bas
 const unitsPerPx=()=>{const svg=$('#canvas svg'),b=baseBox();if(!svg||!b)return 1;const r=svg.getBoundingClientRect();return Math.max(b.w/FZ/r.width,b.h/FZ/r.height)};
 const centreNow=()=>{const b=baseBox();return FC||(b?[b.x+b.w/2,b.y+b.h/2]:[0,0])};
 function fzFit(){FZ=1;FC=null;zoomSvg()}
+// keeping the pointer is a nicety: where the browser refuses it (Safari can, for a Pencil), the drag still works
+const capt=e=>{try{$('#canvas').setPointerCapture(e.pointerId)}catch{}};
 $('#canvas').addEventListener('pointerdown',e=>{if(e.pointerType!=='touch')return;FPTR.set(e.pointerId,[e.clientX,e.clientY]);if(FPTR.size<2)return;
   e.stopImmediatePropagation();e.preventDefault();
   if(DRAG){if(DRAG.q&&DRAG.ox!==undefined){DRAG.q.x=DRAG.ox;DRAG.q.y=DRAG.oy}if(DRAG.ed&&DRAG.orig)Object.assign(DRAG.ed,JSON.parse(JSON.stringify(DRAG.orig)));DRAG=null;draw()} // two fingers: a pinch, not a move
@@ -332,11 +338,11 @@ $('#canvas').addEventListener('wheel',e=>{if(!(e.ctrlKey||e.metaKey))return;e.pr
 const inch=e=>{const svg=$('#canvas svg'),pt=svg.createSVGPoint();pt.x=e.clientX;pt.y=e.clientY;const m=svg.getScreenCTM().inverse(),r=pt.matrixTransform(m);return[r.x,r.y]};
 $('#canvas').addEventListener('pointerdown',e=>{
   if(MODE==='stitch'||MODE==='block'){const[x,y]=inch(e);DRAFT.push([r8(x),r8(y)]);draw();return}
-  if(MODE==='ai'){const[x,y]=inch(e);BOXDRAG=[x,y];AIBOX={x,y,w:0,h:0};$('#canvas').setPointerCapture(e.pointerId);return}
+  if(MODE==='ai'){const[x,y]=inch(e);BOXDRAG=[x,y];AIBOX={x,y,w:0,h:0};capt(e);return}
   const g=e.target.closest('[data-pl]');
-  if(g){const q=PL.find(x=>x.id===g.dataset.pl);SEL=q.id;const[x,y]=inch(e);DRAG={q,dx:x-q.x,dy:y-q.y,ox:q.x,oy:q.y};$('#canvas').setPointerCapture(e.pointerId);paint();return}
-  const ge=e.target.closest('[data-ed]');const ed=ge&&P.edits.find(x=>x.id===ge.dataset.ed);if(!ed){if(FZ>1){FPAN={x:e.clientX,y:e.clientY,c:centreNow()};$('#canvas').setPointerCapture(e.pointerId)}return}
-  SELE=ed.id;if(TAB!=='design')tab('design');const[x,y]=inch(e);DRAG={ed,start:[x,y],orig:JSON.parse(JSON.stringify(ed))};$('#canvas').setPointerCapture(e.pointerId);paint()});
+  if(g){const q=PL.find(x=>x.id===g.dataset.pl);SEL=q.id;const[x,y]=inch(e);DRAG={q,dx:x-q.x,dy:y-q.y,ox:q.x,oy:q.y};capt(e);paint();return}
+  const ge=e.target.closest('[data-ed]');const ed=ge&&P.edits.find(x=>x.id===ge.dataset.ed);if(!ed){if(FZ>1){FPAN={x:e.clientX,y:e.clientY,c:centreNow()};capt(e)}return}
+  SELE=ed.id;if(TAB!=='design')tab('design');const[x,y]=inch(e);DRAG={ed,start:[x,y],orig:JSON.parse(JSON.stringify(ed))};capt(e);paint()});
 $('#canvas').addEventListener('pointermove',e=>{
   if(BOXDRAG){const[x,y]=inch(e),[a,b]=BOXDRAG;AIBOX={x:r8((a+x)/2),y:r8((b+y)/2),w:r8(Math.abs(x-a)),h:r8(Math.abs(y-b))};draw();return}
   if(!DRAG)return;const[x,y]=inch(e);
@@ -375,7 +381,14 @@ async function boot(){
   $('#app').classList.remove('hidden');$('#cName').textContent=D.concept.name;$('#toStudio').href='/lab/studio?concept='+CID;
   if(D.unsupported){$('#cSub').textContent=D.unsupported;$('#canvas').innerHTML=`<p class="msg" style="padding:30px">${esc(D.unsupported)}</p>`;['#save','#sheet'].forEach(s=>$(s).disabled=true);return}
   const st=await api('/v1/lab/concepts/'+CID+'/studio').catch(()=>null);D.marks=Object.fromEntries((st?.marks||[]).map(m=>[m.id,m.svg]));
-  const f=D.flat;P={style:f.style,fit:f.fit,size:f.size||'M',m:f.m,options:f.options||{},template:f.template,color:f.color||'',edits:f.edits||[],...(f.allover?{allover:f.allover}:{})};if(P.allover)AOHREF=await blobUrl('/v1/lab/art/'+P.allover.art);
+  await useFlat(D.flat);
+  if(D.picture)picNote(D.picture);
+  tab('pl');
+  if(EMBED){const v=new URLSearchParams(location.search).get('view');if(v==='back')setView('back');HOST()?.flatsReady?.()}
+}
+// the flat in hand: its garment, fit, sizes, colour, edits and placements
+async function useFlat(f){
+  P={style:f.style,fit:f.fit,size:f.size||'M',m:f.m,options:f.options||{},template:f.template,color:f.color||'',edits:f.edits||[],...(f.allover?{allover:f.allover}:{})};if(P.allover)AOHREF=await blobUrl('/v1/lab/art/'+P.allover.art);
   for(const ed of P.edits)if(ed.type==='ai')EHREF[ed.art]=await blobUrl('/v1/lab/art/'+ed.art);PL=f.placements||[];CHECK=f.check||CHECK;DECOS=f.saved?D.decorations:null;
   $('#size').innerHTML=(STYLES[P.style].oneSize?['M']:SIZES).map(s=>`<option value="${s}" ${s==='M'?'selected':''}>${STYLES[P.style].oneSize?'One size':s}</option>`).join('');
   const wantTpl=new URLSearchParams(location.search).get('template');if(wantTpl&&FLAT_TEMPLATES.some(t=>t.id===wantTpl)&&templateOf(P)?.id!==wantTpl)setTimeout(()=>{useTemplate(wantTpl);history.replaceState(null,'',`/lab/flats?concept=${CID}${EMBED?'&embed='+EMBED:''}`)},0);
@@ -383,9 +396,10 @@ async function boot(){
   if(D.concept.productId)$('#toPack').classList.remove('hidden');
   for(const q of PL)HREF[q.id]=await hrefOf(q);
   DIRTY=!f.saved;$('#saved').className='saved'+(DIRTY?' dirty':'');$('#saved').textContent=f.saved?'Saved':'Not saved yet';
-  tab('pl');
-  if(EMBED){const v=new URLSearchParams(location.search).get('view');if(v==='back')setView('back');HOST()?.flatsReady?.()}
 }
+// the picture shows another garment than the saved flat: say so, and redraw it from the picture on request (not saved until Save)
+function picNote(pic){const n=$('#picNote');if(!n)return;n.innerHTML=`<span>The picture shows a <b>${esc(pic.label.toLowerCase())}</b>; this flat is drawn as a <b>${esc(D.styles[P.style].label.toLowerCase())}</b>.</span><button class="btn sm go" type="button" id="picRedraw">Redraw from the picture</button>`;n.classList.remove('hidden');
+  $('#picRedraw').onclick=async e=>{const b=e.currentTarget;b.disabled=true;b.textContent='Redrawing…';try{const r=await api(`/v1/lab/concepts/${CID}/flats/from-picture`);await useFlat(r.flat);n.classList.add('hidden');touch();paint();$('#cSub').textContent=`${D.styles[P.style].label} · ${FITS[P.fit]} fit · redrawn from the picture: check it, then save`}catch(x){b.disabled=false;b.textContent='Redraw from the picture';alert(x.message)}}}
 // what the Design workspace calls: is anything unsaved, save, which side shows, the full panel or the drawing alone, the sheets and the tech pack
 if(EMBED)window.FBFlats={dirty:()=>Boolean(D&&P&&DIRTY),ready:()=>Boolean(D&&P),save:()=>(D&&P?save():Promise.resolve(true)),view:()=>VIEW,setView:v=>{if(P&&(v==='front'||v==='back'))setView(v)},
   mode:m=>{document.documentElement.dataset.embed=m==='compact'?'compact':'full';if(P)draw()},sheet:()=>$('#sheet').click(),deco:()=>$('#decoSheet').click(),pack:()=>$('#toPack').click(),

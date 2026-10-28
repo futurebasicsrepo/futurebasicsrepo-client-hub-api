@@ -206,3 +206,12 @@ test('a piece that reads as footwear is not drawn as a pant, whatever line it si
   assert.equal(detectStyle({ name: 'Boot-cut Utility Pant', category: 'bottoms', spec: { silhouette: 'boot cut' } })?.style, 'pants');
   assert.equal(detectStyle({ name: 'Utility Cargo', category: 'bottoms', spec: { description: 'cargo pants to wear with boots' } })?.style, 'pants');
 });
+
+test('a jacket is drawn as a jacket whichever line it sits in: a trucker in a Tops line is not a sweatshirt', async () => {
+  const { detectStyle } = await import('../src/lab-flats.js');
+  const t = detectStyle({ name: 'Field Log Trucker', category: 'tops', spec: { silhouette: 'boxy denim trucker' } });
+  assert.equal(t?.style, 'jacket'); assert.equal(t?.template, 'jk-trucker', 'drawn from the trucker sketch');
+  assert.equal(detectStyle({ name: 'Night Bomber', category: 'tops', spec: {} })?.style, 'jacket');
+  assert.equal(detectStyle({ name: 'Crew Sweat', category: 'tops', spec: { silhouette: 'crewneck sweatshirt' } })?.style, 'crewneck', 'a sweatshirt is still a sweatshirt');
+  assert.equal(detectStyle({ name: 'Heavy Tee', category: 'tops', spec: {} })?.style, 'tee');
+});

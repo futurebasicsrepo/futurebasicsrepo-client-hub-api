@@ -74,7 +74,8 @@ export function detectStyle(c = {}) {
   else if (has(/sports bra|bralette|bra top/)) style = 'bra';
   else if (has(/\bcami\b|camisole|tube top|corset|bustier/)) style = 'cami';
   else if (has(/\bvest\b|gilet|waistcoat/) && !has(/vest top/)) style = 'vest';
-  else if (cat === 'outerwear' || cat === 'tailoring') style = has(/\bcoat\b|overcoat|topcoat|parka|trench|\bmac\b/) ? 'coat' : has(/hood/) ? 'ziphoodie' : 'jacket';
+  // a jacket is a jacket whichever line it sits in: a trucker in a Tops line is not drawn as a sweatshirt
+  else if (cat === 'outerwear' || cat === 'tailoring' || has(/\bjacket\b|trucker|bomber|chore coat|overshirt jacket|shacket|harrington|coach(?:es)? jacket|windbreaker|anorak|blouson|\bparka\b|overcoat|trench coat|peacoat/)) style = has(/\bcoat\b|overcoat|topcoat|parka|trench|\bmac\b/) ? 'coat' : has(/hood/) ? 'ziphoodie' : 'jacket';
   else if (['tops', 'knitwear'].includes(cat)) style = has(/zip/) && has(/hood/) ? 'ziphoodie' : has(/hood/) ? 'hoodie' : has(/polo|rugby|johnny collar/) ? 'polo' : has(/crew|sweatshirt|sweater|jumper|fleece|knit/) ? 'crewneck' : has(/tank|sleeveless|singlet|muscle/) ? 'tank' : has(/(?<!t-)\bshirt\b|overshirt|shacket|button[- ]?(up|down)|camp collar|oxford|flannel|western/) ? (has(/short[- ]sleeve|camp|bowling|cuban/) ? 'shirtss' : 'shirt') : has(/long[- ]?sleeve|\bl\/s\b|longsleeve/) ? 'longsleeve' : has(/jacket|coach|bomber/) ? 'jacket' : 'tee';
   if (!style) return null;
   const fit = has(/oversiz/) ? 'oversized' : has(/boxy|cropped and wide|box fit/) ? 'boxy' : has(/wide[- ]leg|\bwide\b/) && STYLES[style].kind === 'bottom' ? 'wide' : has(/relaxed|loose|baggy/) ? 'relaxed' : has(/slim|fitted|tapered/) ? 'slim' : 'regular';
