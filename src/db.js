@@ -270,6 +270,38 @@ export async function migrate() {
     );
     create index if not exists lab_concept_comments_idx on lab_concept_comments (concept_id, at);
     alter table lab_concept_comments add column if not exists by_client boolean not null default false;
+    -- a comment can be pinned to a spot on the picture or the flats, and resolved once it is dealt with; 'share' marks one left on a review link
+    alter table lab_concept_comments add column if not exists pin jsonb;
+    alter table lab_concept_comments add column if not exists resolved_at timestamptz;
+    alter table lab_concept_comments add column if not exists via text not null default '';
+    -- the studio keeps every version of a concept's picture it was asked to keep or applied, so two can be put side by side
+    create table if not exists lab_studio_versions (
+      id uuid primary key default gen_random_uuid(),
+      concept_id uuid not null references lab_concepts(id) on delete cascade,
+      n integer not null,
+      doc jsonb not null default '{}',
+      jpeg bytea not null,
+      thumb bytea not null,
+      note text not null default '',
+      applied boolean not null default false,
+      created_by uuid references users(id) on delete set null,
+      created_at timestamptz not null default now(),
+      unique(concept_id, n)
+    );
+    -- a view-only link to a concept for a client or a factory to review and comment on (src/lab-share-routes.js)
+    create table if not exists lab_shares (
+      id uuid primary key default gen_random_uuid(),
+      concept_id uuid not null references lab_concepts(id) on delete cascade,
+      token_hash text not null unique,
+      audience text not null default 'client' check (audience in ('client','factory','other')),
+      label text not null default '',
+      created_by uuid references users(id) on delete set null,
+      created_at timestamptz not null default now(),
+      expires_at timestamptz,
+      revoked_at timestamptz,
+      opened_at timestamptz,
+      opens integer not null default 0
+    );
     create table if not exists lab_art (
       id uuid primary key default gen_random_uuid(),
       plan_id uuid references lab_plans(id) on delete cascade,

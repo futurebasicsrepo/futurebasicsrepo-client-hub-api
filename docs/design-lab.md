@@ -275,6 +275,12 @@ The library takes pictures as well as links: **Add photos or screenshots** under
 - Studio routes for the library: `GET /v1/lab/library/studio?art=`, `POST /v1/lab/library/studio/keep`, `PUT /v1/lab/library/graphics/:id/studio`, `POST /v1/lab/library/graphics/:id/studio/apply`, `POST /v1/lab/library/studio/ai` (in `src/lab-studio-routes.js`; the layers live in `lab_art.doc`). Onto a product: `POST /v1/admin/products/:id/tech-pack/artwork` and `GET /v1/admin/products/search`.
 - Routes: `src/lab-library-routes.js` (`/v1/lab/library/graphics…`, `/v1/lab/library/techniques…`, `POST /v1/lab/concepts/:id/graphics`). The techniques and the starting set are in `src/lab-library.js`, the drawing is in `src/lab-finish.js` (served as `/lab/finish.js`), and the page is `src/lab-library.html`. Tables: `lab_art` (with `in_library`, `tags`, `source`, `technique_id`), `lab_techniques` and `lab_technique_photos`.
 
+## Reviewing together: pins, versions, review links
+
+- **Pinned comments** (`lab_concept_comments.pin`: `{on: 'picture'|'flats', x, y}` as fractions): pinned from the concept window (Pin to a spot, click the picture), from the client's hub and from a review link. **Done** sets `resolved_at`; reopen clears it. `POST /v1/lab/concepts/:id/comments/:cid/resolve {resolved}`.
+- **Studio versions** (`lab_studio_versions`): kept on every apply (with the layers) and on `POST /v1/lab/concepts/:id/studio/versions {image, doc, note}`; `GET …/versions`, `GET …/versions/:n` (the layers), `GET …/versions/:n/image[?thumb=1]`. The studio's **Versions** dialog compares two with a wipe and opens an old one's layers.
+- **Review links** (`lab_shares`, `src/lab-share-routes.js`, page `src/lab-share.html`): `POST /v1/lab/concepts/:id/shares {audience, label, days}` gives the link once (only its hash is kept); `GET` lists; `DELETE …/shares/:sid` turns one off. Public: `GET /v1/lab/share/:token` (the piece, flats, colourways, the comments meant for them), `…/image`, `…/flats.svg`, `POST …/comments {name, body, pin}`. Rate-limited by address; expired or turned-off links answer 410.
+
 ## Materials, trims and tags: the library
 
 **Materials, trims and tags** (a Lab tab, `/lab/materials`) is what we make pieces of, kept once and chosen on any concept.

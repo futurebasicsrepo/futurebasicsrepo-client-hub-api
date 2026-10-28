@@ -14,6 +14,7 @@
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const clip = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+import { cleanPin } from './lab-share-routes.js';
 
 export function registerLabClientRoutes(app, d) {
   const { pool, authenticate, adminOnly, sheetSvg = async () => null, notifyStaff = async () => false, notifyClientContact = async () => false, hubUrl = () => '', log = console } = d;
@@ -86,9 +87,9 @@ export function registerLabClientRoutes(app, d) {
   app.post('/v1/client/design/concepts/:id/comments', { preHandler: authenticate }, async (req, reply) => {
     const c = await theirs(req, req.params.id); if (!c) return bad(reply, 'Not found', 404);
     const body = clip(req.body?.body, 1000); if (body.length < 2) return bad(reply, 'Write something first');
-    const who = await nameOf(req);
-    await pool.query(`insert into lab_concept_comments(concept_id, user_id, name, body, by_client) values($1,$2,$3,$4,true)`, [c.id, actorOf(req), who, body]);
-    await notifyStaff(`Client note on ${c.name}`, `<p><strong>${esc(who)}</strong> wrote on <strong>${esc(c.name)}</strong>: ${esc(body)}</p>`).catch?.(() => {});
+    const who = await nameOf(req), pin = cleanPin(req.body?.pin);
+    await pool.query(`insert into lab_concept_comments(concept_id, user_id, name, body, by_client, pin) values($1,$2,$3,$4,true,$5)`, [c.id, actorOf(req), who, body, pin ? JSON.stringify(pin) : null]);
+    await notifyStaff(`Client note on ${c.name}`, `<p><strong>${esc(who)}</strong> wrote on <strong>${esc(c.name)}</strong>${pin ? ` (pinned on the ${pin.on})` : ''}: ${esc(body)}</p>`).catch?.(() => {});
     return { ok: true };
   });
   log.info?.('design service routes ready');
