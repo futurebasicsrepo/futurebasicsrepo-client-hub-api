@@ -18,7 +18,7 @@ import { STYLES, FITS, SIZES, DETAILS, templateOf, fitToTemplate, detectStyle, d
 import { packRows, cleanColourways } from './lab-materials.js';
 import { imageConfig, openaiEdit } from './check.js';
 import { callJsonSchema } from './studio.js';
-import { rankTemplates } from './lab-flats.js';
+import { rankTemplates, candidateTemplates } from './lab-flats.js';
 import { brandHits } from './lab-concepts.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -96,7 +96,7 @@ export function registerLabFlatsRoutes(app, d) {
     if (ranked.length < 2 || !env.ANTHROPIC_API_KEY || env.AI_FIXTURE) return det.template;
     const key = c.id + ':' + String(c.updated_at || ''); if (picks.has(key)) return picks.get(key);
     const img = (await pool.query('select image from lab_concepts where id=$1', [c.id])).rows[0]?.image; if (!img) return det.template;
-    const cands = ranked.filter((t, i) => i < 4 || t.score >= 0).slice(0, 10); // the plausible ones only: a sketch the words argue against is not offered
+    const cands = candidateTemplates(ranked);
     try {
       const jpeg = await sharp(img).resize({ width: 900, height: 900, fit: 'inside' }).jpeg({ quality: 80 }).toBuffer();
       const out = await pickImpl('You are a garment technologist choosing which professional flat sketch a product picture should be drawn from. Judge the silhouette (leg or body shape, rise, width, length), the construction (pockets, panels, knees, pleats, closures) and the fabric family. Prefer the sketch that adds nothing the garment does not have.',

@@ -87,6 +87,7 @@ const SYN = [[/boot[- ]?cut|flare|bell[- ]?bottom/, 'flared'], [/skinny/, 'skinn
   [/denim|\bjeans?\b/, 'jeans'], [/chino|twill|khaki/, 'chinos'], [/sweatpant|fleece|jogger|french terry|loopback/, 'sweatpants'], [/track|nylon|shell|ripstop/, 'track'], [/\btrouser/, 'trousers'], [/jort/, 'jorts'],
   [/cargo/, 'cargo'], [/carpenter|hammer loop|tool pocket/, 'carpenter'], [/double[- ]knee|knee patch/, 'double-knee'], [/painter/, 'painter'], [/work ?(pant|wear|jean|short|trouser)|workwear/, 'work'], [/pleat/, 'pleated'], [/tailor|\bsuit\b/, 'tailored'], [/elastic/, 'elastic-waist'], [/drawcord|drawstring/, 'drawcord'],
   [/distress|ripped|destroy/, 'distressed'], [/five[- ]pocket|5[- ]pocket/, 'five-pocket'], [/crop/, 'cropped'], [/raglan/, 'raglan'], [/hood/, 'hood'], [/\bzip/, 'zip'], [/bomber|varsity|ma-?1/, 'bomber'], [/trucker|chore|overshirt|denim jacket/, 'trucker'], [/funnel|mock neck/, 'funnel'], [/mesh/, 'mesh'], [/running|\brun\b/, 'running'], [/lined/, 'lined'], [/stripe/, 'stripe'], [/panel/, 'paneled'], [/cuff/, 'cuffed'], [/heavy/, 'heavy'], [/oversiz/, 'oversized'], [/boxy/, 'boxy'], [/v[- ]?neck/, 'v-neck'], [/\blong\b/, 'long'], [/curved hem/, 'curved'], [/split hem/, 'split'], [/bike/, 'bike'], [/lounge/, 'lounge'], [/boxer/, 'boxer'], [/retro/, 'retro'], [/contrast/, 'contrast'], [/zip pocket/, 'zip-pocket'], [/side stripe/, 'side-stripe'], [/three stripe|3 stripe/, 'three-stripe']];
+const SYN_TOKENS = new Set(SYN.map(x => x[1]));
 const FAMILY = new Set(['jeans', 'chinos', 'sweatpants', 'joggers', 'track', 'trousers', 'jorts', 'pants', 'shorts', 'tee', 'hoodie', 'jacket', 'cap', 'shirt', 'polo', 'tank', 'vest', 'coat', 'dress', 'skirt', 'leggings', 'bra', 'cami', 'bikini', 'swimsuit', 'bodysuit', 'briefs']);
 const SILHOUETTE = new Set(['flared', 'skinny', 'slim', 'straight', 'wide', 'baggy', 'balloon', 'relaxed', 'tapered', 'cropped', 'oversized', 'boxy', 'long']);
 const SAME = { joggers: 'sweatpants', sweat: 'sweatpants', jogger: 'sweatpants', jean: 'jeans', chino: 'chinos', trouser: 'trousers', 'wide-leg': 'wide', 'zip-pocket': 'zip', 'side-stripe': 'stripe', 'three-stripe': 'stripe', 'curved-hem': 'curved', 'split-hem': 'split', 'contrast-panel': 'paneled', 'elastic-waist': 'elastic-waist', 'v-waist': 'v-waist', 'double-knee': 'double-knee', 'five-pocket': 'five-pocket', 'six-panel': 'six-panel', 'training': 'running', 'basketball': 'mesh', 'crew': 'crewneck' };
@@ -96,7 +97,8 @@ const PLAIN = new Set(['classic', 'the', 'and', 'with', 'top', 'cut', 'leg', 'he
 export function conceptTokens(words = '', strong = null) {
   const t = String(words).toLowerCase(), st = strong == null ? t : String(strong).toLowerCase(), out = new Set();
   for (const [re, tok] of SYN) if (FAMILY.has(tok) ? re.test(st) : re.test(t)) out.add(tok);
-  for (const w of t.split(/[^a-z-]+/)) if (w.length > 3 && !COMMON.has(w)) out.add(SAME[w] || w);
+  // a word the rules above govern (work, wide, cargo…) only counts through its rule, so "works for rain" is not workwear
+  for (const w of t.split(/[^a-z-]+/)) { const k = SAME[w] || w; if (w.length > 3 && !COMMON.has(w) && !SYN_TOKENS.has(k)) out.add(k); }
   return out;
 }
 const labelTokens = label => label.toLowerCase().split(/\s+/).map(w => SAME[w] || w).filter(w => w && !PLAIN.has(w));
@@ -127,6 +129,8 @@ export function rankTemplates(style, fit = 'regular', words = '', strong = null)
     return { id: t.id, label: t.label, score, why, order: i };
   }).sort((a, b) => b.score - a.score || a.order - b.order);
 }
+// the sketches worth putting to the vision model: the best few, and any the words do not argue against
+export const candidateTemplates = ranked => ranked.filter((t, i) => i < 4 || t.score >= 0).slice(0, 10);
 export function defaultTemplate(style, fit = 'regular', words = '', strong = null) {
   const own = TEMPLATE_PICK.filter(([id]) => FLAT_TEMPLATES.some(t => t.id === id && t.style === style)), all = FLAT_TEMPLATES.filter(t => t.style === style); if (!all.length) return null;
   const ranked = rankTemplates(style, fit, words, strong);
