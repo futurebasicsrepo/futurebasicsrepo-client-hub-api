@@ -16,11 +16,12 @@
 // has no smooth shading a screen cannot print, and, for embroidery, how many stitches it takes.
 import sharp from 'sharp';
 import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { maskFor } from './lab-flat-mask.js';
 import { logoSvg } from './brand-kit.js';
 import { cleanRules } from './lab-library.js';
 import { ensureBranding } from './lab-concepts.js';
-import { STYLES, FITS, SIZES, DETAILS, ALLOVER_BASES, templateOf, fitToTemplate, detectStyle, looksLikeFootwear, defaultParams, defaultPlacement, cleanFlat, cleanEdits, describeEdit, placementChecks, overlapChecks, boxesMeet, describe, renderSvg, pomTable, measurementsFor, fmt, fmtCm, drawingOf } from './lab-flats.js';
+import { STYLES, FITS, SIZES, DETAILS, ALLOVER_BASES, templateOf, fitToTemplate, detectStyle, defaultTemplate, looksLikeFootwear, defaultParams, defaultPlacement, cleanFlat, cleanEdits, describeEdit, placementChecks, overlapChecks, boxesMeet, describe, renderSvg, pomTable, measurementsFor, fmt, fmtCm, drawingOf } from './lab-flats.js';
 import { packRows, cleanColourways, costOf, FREIGHT_DUTY_PCT } from './lab-materials.js';
 import { artColours } from './art.js';
 import './pantone-c.js';
@@ -119,13 +120,51 @@ export function registerLabFlatsRoutes(app, d) {
       const id = cands.some(t => t.id === out?.id) ? out.id : det.template; if (picks.size > 500) picks.clear(); picks.set(key, id); return id;
     } catch (e) { log.warn?.({ err: e.message }, 'flats sketch pick by picture failed'); return det.template; }
   }
+  // what the concept's picture shows: the garment it is, its fit and its main colour, read by the vision model (cached per picture). The flat is
+  // drawn from this, so a trucker jacket in the picture is never drawn as the sweatshirt its line's category suggests. FLAT_READ_FIXTURE (JSON)
+  // stands in for the model where the assistant runs on fixtures.
+  const reads = new Map();
+  async function readPicture(c) {
+    const img = (await pool.query('select image from lab_concepts where id=$1', [c.id])).rows[0]?.image; if (!img) return null;
+    const key = createHash('sha1').update(img).digest('hex'); if (reads.has(key)) return reads.get(key);
+    let out = null;
+    if (env.AI_FIXTURE || !env.ANTHROPIC_API_KEY) { try { out = env.FLAT_READ_FIXTURE ? JSON.parse(env.FLAT_READ_FIXTURE) : null; } catch { out = null; } }
+    else {
+      try {
+        const jpeg = await sharp(img).resize({ width: 900, height: 900, fit: 'inside' }).jpeg({ quality: 80 }).toBuffer(), styles = Object.keys(STYLES);
+        out = await pickImpl('You are a garment technologist. Say which garment a product picture shows, so its technical flat is drawn from the right sketch: the garment type, its fit, and the colour of its main cloth.',
+          [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: jpeg.toString('base64') } }, { type: 'text', text: `The garment types:\n${styles.map(k => `- "${k}": ${STYLES[k].label}`).join('\n')}\n- "other": none of these (footwear, accessories, anything else)\nThe concept is called "${clip(c.name, 80)}". If the picture shows several views of one garment, judge that garment.` }],
+          { type: 'object', additionalProperties: false, required: ['style', 'fit', 'color', 'why'], properties: { style: { type: 'string', enum: [...styles, 'other'] }, fit: { type: 'string', enum: Object.keys(FITS) }, color: { type: 'string', description: 'the main cloth colour as #rrggbb' }, why: { type: 'string' } } }, { maxTokens: 300 });
+      } catch (e) { log.warn?.({ err: e.message }, 'flats picture read failed'); return null; }
+    }
+    const r = out && STYLES[out.style] ? { style: out.style, fit: FITS[out.fit] ? out.fit : null, color: /^#[0-9a-f]{6}$/i.test(String(out.color || '')) ? String(out.color).toLowerCase() : null } : null;
+    if (reads.size > 500) reads.clear(); reads.set(key, r); return r;
+  }
+  const rgb = h => [1, 3, 5].map(i => parseInt(String(h).slice(i, i + 2), 16)), far = (a, b) => { const [x, y] = [rgb(a), rgb(b)]; return Math.hypot(x[0] - y[0], x[1] - y[1], x[2] - y[2]) > 70; };
+  async function mismatch(c, params) {
+    const read = await readPicture(c); if (!read) return null;
+    const reasons = [], sketchName = (style, template) => templateOf({ style, template })?.label || STYLES[style].label;
+    if (read.style !== params.style) reasons.push(`the picture shows a ${STYLES[read.style].label.toLowerCase()}, the flat is a ${STYLES[params.style]?.label.toLowerCase() || params.style}`);
+    else if (params.template && params.template !== 'none') {
+      const words = [c.name, c.spec?.silhouette, c.spec?.fabric, c.spec?.fit, c.spec?.description].join(' '), fit = read.fit || params.fit;
+      const best = await pickTemplate(c, { style: read.style, fit, template: defaultTemplate(read.style, fit, words, [c.name, c.spec?.silhouette, c.spec?.fabric].join(' ')) });
+      if (best && best !== params.template) reasons.push(`the picture is closest to the “${sketchName(read.style, best)}” sketch, the flat is drawn from “${sketchName(params.style, params.template)}”`);
+    }
+    if (read.color && (!params.color || far(read.color, params.color))) reasons.push(`the cloth in the picture is ${read.color}, the flat is ${params.color || 'white'}`);
+    return reasons.length ? { style: read.style, label: STYLES[read.style].label, color: read.color, reasons } : null;
+  }
   // a graphic measured in the studio keeps its size: the spot's top edge stays where the spot puts it
   const sized = (box, g) => { const w = Number(g.widthIn), h = Number(g.heightIn); if (!(w > 0 && h > 0)) return box; const top = box.y - box.h / 2; return { ...box, w: Math.round(w * 8) / 8, h: Math.round(h * 8) / 8, y: Math.round((top + h / 2) * 8) / 8 }; };
   // where the piece starts: its style, fit and details from its words, and its logo and graphics where the concept said they go
-  async function initial(c) {
-    const det = detectStyle(c); if (!det) return null;
+  async function initial(c, read = undefined) {
+    if (read === undefined) read = await readPicture(c);
+    let det = detectStyle(c);
+    // the picture wins over the words: the flat is drawn as the garment the picture shows
+    if (read && read.style !== det?.style && !(looksLikeFootwear(c) && !det)) { const words = [c.name, c.spec?.silhouette, c.spec?.fabric, c.spec?.fit, c.spec?.description].join(' '), fit = read.fit || det?.fit || 'regular';
+      det = { style: read.style, fit, options: det?.options || {}, template: defaultTemplate(read.style, fit, words, [c.name, c.spec?.silhouette, c.spec?.fabric].join(' ')) }; }
+    if (!det) return null;
     det.template = await pickTemplate(c, det);
-    const params = fitToTemplate({ ...defaultParams(det.style, det.fit, det.options), ...(det.template ? { template: det.template } : {}) }), spec = ensureBranding(c.spec || {}, c.category), placements = [], list = await techniques(c.client_id);
+    const params = fitToTemplate({ ...defaultParams(det.style, det.fit, det.options), ...(det.template ? { template: det.template } : {}), ...(read?.color ? { color: read.color } : {}) }), spec = ensureBranding(c.spec || {}, c.category), placements = [], list = await techniques(c.client_id);
     const logo = spec.branding?.logo || {};
     if (logo.mark && logo.mark !== 'none') { const mark = logo.mark === 'cue' ? 'mark' : logo.mark, base = LOGO_BASE[logo.technique] || 'embroidery', aspect = await aspectOf({ mark }); const t = techFor(list, { technique: base });
       placements.push({ id: 'logo', name: 'Future Basics logo', source: 'logo', mark, technique: base, techniqueId: t.id, ...defaultPlacement('logo', params, { aspect, label: logo.placement || '' }) }); }
@@ -203,10 +242,22 @@ export function registerLabFlatsRoutes(app, d) {
     const c = await concept(req.params.id); if (!c) return bad(reply, 'Not found', 404);
     const r = (await pool.query('select style, params, placements, check_result, checked_at, updated_at from lab_flats where concept_id=$1', [c.id])).rows[0];
     const list = (await techniques(c.client_id)).map(t => ({ id: t.id, name: t.name, kind: t.kind, base: t.base, rules: t.rules }));
-    if (r) return shape(c, { ...r.params, placements: r.placements, check: r.check_result, saved: true, updatedAt: r.updated_at }, { techniques: list });
+    // a saved flat that does not match its picture (another garment, another sketch, or a cloth colour far from the picture's) says so, and
+    // offers to redraw it from the picture
+    if (r) return shape(c, { ...r.params, placements: r.placements, check: r.check_result, saved: true, updatedAt: r.updated_at }, { techniques: list, picture: await mismatch(c, r.params) });
     const init = await initial(c);
     if (!init) return shape(c, null, { techniques: list, unsupported: looksLikeFootwear(c) && c.category !== 'footwear' ? `This piece reads as footwear, but it sits in a ${c.category} line, so it is not drawn as ${c.category}. Flats are not drawn for footwear yet: change the concept's words, or keep it in a footwear line.` : `Flats are not drawn for ${c.category} yet. They cover tops, hoodies, sweatshirts, jackets, pants, shorts, caps, beanies and totes.` });
     return shape(c, { ...init, check: await check(init, init.placements, c.client_id), saved: false }, { techniques: list });
+  });
+  // the flat drawn again from the picture (not saved): the garment, fit and colour the picture shows; the graphics come along, the ones added
+  // on the flats alone included
+  app.get('/v1/lab/concepts/:id/flats/from-picture', { preHandler: pre }, async (req, reply) => {
+    const c = await concept(req.params.id); if (!c) return bad(reply, 'Not found', 404);
+    const init = await initial(c); if (!init) return bad(reply, 'The picture does not show a garment the flats can draw yet');
+    const old = (await pool.query('select placements from lab_flats where concept_id=$1', [c.id])).rows[0]?.placements || [];
+    const extra = old.filter(q => !init.placements.some(x => x.id === q.id || (q.layer && x.layer === q.layer)) && q.source !== 'logo'); // measured from the centre front, so they keep their spots on the new sketch
+    const { params, placements } = cleanFlat({ ...init, placements: [...init.placements, ...extra] });
+    return { flat: { ...params, placements, check: await check(params, placements, c.client_id), saved: false } };
   });
   // what the concept still needs before it becomes a tech pack: the Design workspace's checklist (src/lab-ready.js)
   app.get('/v1/lab/concepts/:id/ready', { preHandler: pre }, async (req, reply) => {

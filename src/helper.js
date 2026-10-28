@@ -65,7 +65,7 @@
       id: 'lab-studio', title: 'Finish a concept in Design',
       match: () => path() === '/lab/studio' && shown('#app') && !['front', 'back'].includes($('#app')?.dataset.v),
       steps: [
-        { target: '#viewSeg', title: 'One workspace', optional: true, do: 'Switch between the picture, the flat front, the flat back, or both side by side.', why: 'The picture and its measured flats are the same piece: change one, look at the other, without leaving.' },
+        { target: '#viewSeg', title: 'One workspace', optional: true, do: 'Switch between the picture, the flat front and the flat back.', why: 'The picture and its measured flats are the same piece: change one, look at the other, without leaving.' },
         { target: '#levelSeg', title: 'Simple or Pro', optional: true, do: 'Simple keeps the essentials; Pro adds distress, warp, the ruler, separations, points of measure and grading.', why: 'Everyone works in the same place, at the depth they need.' },
         { target: '#readyBtn', title: 'What is left before the tech pack', optional: true, do: 'Open the Checklist: each item says whether it is done and where to fix it.', why: 'When nothing holds it up, it offers Send to the tech pack.' },
         { target: '#stage', title: 'The concept, in layers', do: 'Draw, paint, type, add our marks or a graphic; each is a layer you can move or hide.', why: 'Finish it by hand where the AI got close but not right.' },
@@ -114,7 +114,7 @@
       id: 'lab-flats', title: 'Draw and change the flats',
       match: () => path() === '/lab/studio' && shown('#app') && ['front', 'back'].includes($('#app')?.dataset.v),
       steps: [
-        { target: '#viewSeg', title: 'Front, back, or beside the picture', do: 'Switch between the flat front and back here, or Side by side to see the picture next to the flat.', why: 'Graphics placed on the picture land on the flats at their size when you switch or save.' },
+        { target: '#viewSeg', title: 'Front or back', do: 'Switch between the flat front and back here, or go back to the picture.', why: 'Graphics placed on the picture land on the flats at their size when you switch or save.' },
         { target: '#flatHost', title: 'The flats and their panel', do: 'Drag a logo or graphic: its inches from the HPS and centre front follow. On the right: Placements, Design (colour, pockets, pleats, stitch lines, AI redraws), Garment (style, fit, the sketch) and Measurements.', why: 'This is how a sample room measures, so the factory reads it the same way.' },
         { target: '#save', title: 'Save and check', do: 'Press Save: the flats and the picture are saved together.', why: 'It checks everything can be made: on the piece, clear of seams and zips, within the technique.', done: 'click', after: 'Saved.' },
         { target: ['#packBtn:not(.hidden)', '#specBtn'], title: 'Send it on', do: 'Print the spec sheet or the decoration sheet, or once it is a tech pack, press “Send to the tech pack”.', why: 'The pack takes the measurements, the sketches and every placement.' }
@@ -421,6 +421,8 @@
 body.fbnav .fbh-tog{left:calc(var(--fbw,236px) + 14px)}
 dialog .fbh-tog.on{display:none}
 @media(max-width:900px){body.fbnav .fbh-tog{left:14px}}
+/* on a phone the switch is the mouse and its toggle only, and the page keeps room under its last line so the switch never sits on it */
+@media(max-width:600px){.fbh-tog{padding:5px 8px 5px 6px;gap:6px}.fbh-tog>span:nth-child(2){display:none}body{padding-bottom:calc(64px + env(safe-area-inset-bottom,0px))}}
 .fbh-tog:hover{transform:translateY(-1px)}.fbh-tog:focus-visible,.fbh button:focus-visible{outline:3px solid #4bff9a;outline-offset:2px}
 .fbh-tog .face{width:30px;height:24px;display:block}.fbh-tog .face svg{width:100%;height:100%;display:block}
 .fbh-tog .sw{width:30px;height:18px;border-radius:999px;background:#c9c9ce;position:relative;transition:background .2s}.fbh-tog .sw:after{content:'';position:absolute;left:2px;top:2px;width:14px;height:14px;border-radius:50%;background:#fff;transition:left .2s}

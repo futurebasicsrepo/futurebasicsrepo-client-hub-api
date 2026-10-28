@@ -104,7 +104,7 @@ kbd{font:500 10px 'IBM Plex Mono',monospace;border:1px solid var(--line);border-
   <div class="bar">
     <button class="btn q sm" type="button" data-lab-menu data-lab="studio">Lab ▾</button><a class="btn q sm" id="back" href="/lab#board">← Concepts</a>
     <div class="ttl"><b id="cName">Loading…</b><span id="cSub"></span></div>
-    <div class="seg" id="viewSeg" role="group" aria-label="What to show"><button type="button" data-v="picture" aria-pressed="true" title="The picture, as layers">Picture</button><button type="button" data-v="front" aria-pressed="false" title="The measured flat, front">Flat front</button><button type="button" data-v="back" aria-pressed="false" title="The measured flat, back">Flat back</button><button type="button" data-v="split" aria-pressed="false" class="wideonly" title="The picture and the flat side by side">Side by side</button></div>
+    <div class="seg" id="viewSeg" role="group" aria-label="What to show"><button type="button" data-v="picture" aria-pressed="true" title="The picture, as layers">Picture</button><button type="button" data-v="front" aria-pressed="false" title="The measured flat, front">Flat front</button><button type="button" data-v="back" aria-pressed="false" title="The measured flat, back">Flat back</button></div>
     <div class="seg" id="levelSeg" role="group" aria-label="How much to show"><button type="button" data-level="simple" aria-pressed="false" title="The essentials: the picture, graphics and their place, the flats and the sheets">Simple</button><button type="button" data-level="pro" aria-pressed="false" title="Every tool: distress, warp, the ruler, separations, Illustrator files, points of measure, grading, stitch lines">Pro</button></div>
     <div class="menu" id="readyWrap"><button class="btn sm q" id="readyBtn" type="button" aria-haspopup="true" aria-expanded="false" title="What it still needs before the tech pack">Checklist</button>
       <div class="pop hidden" id="readyPop" role="dialog" aria-label="Before the tech pack"><div id="readyList"></div></div></div>
@@ -183,7 +183,7 @@ kbd{font:500 10px 'IBM Plex Mono',monospace;border:1px solid var(--line);border-
   <div style="display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:14px"><div id="tryHost" style="aspect-ratio:1/1;background:#f5f5f2;border-radius:14px;overflow:hidden;position:relative;min-height:320px"><span class="note" id="tryEmpty" style="position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:20px">No model yet. Make one from the canvas, or from the concept picture.</span></div><div id="tryList" style="display:grid;gap:8px;align-content:start"></div></div>
   <p class="msg" id="tryMsg" role="status" style="margin:0"></p>
 </div></dialog>
-<dialog id="rulerDlg" style="border:0;border-radius:20px;padding:0;width:min(420px,94vw)"><form method="dialog" style="padding:20px;display:grid;gap:12px"><h3 style="margin:0;font-size:16px">How long is that line?</h3><p class="note" style="margin:0;font-size:13px">The line is <span id="rulerPx"></span> pixels. Say how long it is on the piece, and every layer gets its real size: a chest width, a pocket, a label you know.</p><div class="row" style="flex-wrap:nowrap"><input class="t" type="number" id="rulerIn" min="0.1" max="200" step="0.1" aria-label="Length" style="width:120px"><select class="t" id="rulerUnit" style="width:auto" aria-label="Unit"><option value="in">inches</option><option value="cm">cm</option></select></div><div class="row" style="justify-content:flex-end"><button class="btn" value="no" type="submit">Cancel</button><button class="btn go" value="yes" type="submit">Set the scale</button></div></form></dialog>
+<dialog id="rulerDlg" style="border:0;border-radius:20px;padding:0;width:min(420px,94vw)"><form method="dialog" style="padding:20px;display:grid;gap:12px"><h3 style="margin:0;font-size:16px">How long is that line?</h3><p class="note" style="margin:0;font-size:13px">The line is <span id="rulerPx"></span> pixels. Say how long it is on the piece, and every layer gets its real size: a chest width, a pocket, a label you know.</p><div class="row" style="flex-wrap:nowrap"><input class="t" type="number" id="rulerIn" min="0.01" max="200" step="any" inputmode="decimal" aria-label="Length" style="width:120px"><select class="t" id="rulerUnit" style="width:auto" aria-label="Unit"><option value="in">inches</option><option value="cm">cm</option></select></div><div class="row" style="justify-content:flex-end"><button class="btn" value="no" type="submit">Cancel</button><button class="btn go" value="yes" type="submit">Set the scale</button></div></form></dialog>
 <dialog id="tonalDlg" style="border:0;border-radius:20px;padding:0;width:min(760px,96vw)"><div style="padding:18px;display:grid;gap:12px"><div class="row" style="justify-content:space-between"><h3 style="margin:0;font-size:16px">Tone on tone</h3><button class="btn sm q" type="button" data-tonalclose>Close</button></div><p class="note" style="margin:0" id="tonalBase"></p><p class="note" style="margin:0">The fabric's own colour and shades of it, a step lighter and darker: the quiet way to put a mark on a piece. Each has its nearest Pantone C chip; have the factory match it to the fabric lab dip.</p><div class="tiles" id="tonalGrid" style="grid-template-columns:repeat(auto-fill,minmax(96px,1fr))"></div></div></dialog>
 <dialog id="sepDlg" style="border:0;border-radius:20px;padding:0;width:min(980px,96vw);max-height:92vh;overflow:auto"><div style="padding:18px;display:grid;gap:12px"><div class="row" style="justify-content:space-between"><h3 style="margin:0;font-size:16px">Colour separations · <span id="sepWho"></span></h3><div class="row"><button class="btn sm go" type="button" data-sepzip>Download the files</button><button class="btn sm" type="button" data-sepvec title="Every ink traced to clean paths, for a screen printer or Illustrator">Vector (SVG)</button><button class="btn sm" type="button" data-sepdst title="A starting stitch file for an embroidery machine: a digitiser tunes it">Embroidery file (.dst)</button><button class="btn sm q" type="button" data-sepclose>Close</button></div></div><p class="note" style="margin:0" id="sepNote"></p><div id="sepEmb"></div><div class="tiles" id="sepGrid" style="grid-template-columns:repeat(auto-fill,minmax(180px,1fr))"></div><p class="note" style="margin:0">One plate per ink, black where the ink goes, at the real size. The download has each plate as a PNG, the job sheet and the Pantone list for the printer.</p></div></dialog>
 <input type="file" id="fontIn" accept=".ttf,.otf,.woff,.woff2" class="hidden">
@@ -352,6 +352,8 @@ function maskDab(x0,y0,x1,y1,erase){maskX.save();maskX.lineCap='round';maskX.lin
 // two pinch to zoom and move it, so a palm resting on the screen does nothing. Before any Pencil, a finger draws like a mouse.
 // A second finger landing during a finger stroke undoes that stroke and becomes a pinch.
 const PTRS=new Map();let PEN=false,GEST=null;
+// keeping the pointer is a nicety: where the browser refuses it (Safari can, for a Pencil), the stroke still draws
+const capture=e=>{try{view.setPointerCapture(e.pointerId)}catch{}};
 const pressOf=e=>e.pointerType==='pen'&&OPT.pressure?clamp(.15+.85*(e.pressure||.5),.15,1):1;
 const tolOf=e=>e.pointerType==='mouse'?10:22; // a fingertip or a Pencil tip needs a bigger target than a cursor
 function gestStart(){const[a,b]=[...PTRS.values()];GEST={d:Math.hypot(a.x-b.x,a.y-b.y)||1,mx:(a.x+b.x)/2,my:(a.y+b.y)/2,Z,PX,PY}}
@@ -359,14 +361,19 @@ function gestMove(){const[a,b]=[...PTRS.values()];if(!a||!b||!GEST)return;const 
   PX=mx-(GEST.mx-GEST.PX)*nz/GEST.Z;PY=my-(GEST.my-GEST.PY)*nz/GEST.Z;Z=nz;draw()}
 function cancelTouchStroke(){const g=DRAG;if(!g)return;if(g.mode==='stroke'&&g.orig){g.l.raster=g.orig;g.l.raster._rid=RID++}DRAG=null;draw()}
 view.addEventListener('pointerdown',e=>{
-  if(!D)return;const[qx,qy]=pt(e);PTRS.set(e.pointerId,{x:qx,y:qy,type:e.pointerType});if(e.pointerType==='pen')PEN=true;
+  if(!D)return;const[qx,qy]=pt(e);
+  // a pointer whose lift the iPad never reported must not hold the canvas: there is one Pencil, so a new Pencil touch ends any stroke still
+  // open from an earlier one, and the first finger down means no other finger is still down
+  if(e.pointerType==='pen'){for(const[k,q]of PTRS)if(q.type==='pen'&&k!==e.pointerId)PTRS.delete(k);if(DRAG&&DRAG.type==='pen'&&DRAG.pid!==e.pointerId)endDrag({pointerId:DRAG.pid})}
+  if(e.pointerType==='touch'&&e.isPrimary){for(const[k,q]of PTRS)if(q.type==='touch'&&k!==e.pointerId)PTRS.delete(k);GEST=null;if(DRAG&&DRAG.type==='touch'&&DRAG.pid!==e.pointerId){if(DRAG.mode==='stroke')endDrag({pointerId:DRAG.pid});else DRAG=null}}
+  PTRS.set(e.pointerId,{x:qx,y:qy,type:e.pointerType});if(e.pointerType==='pen')PEN=true;
   if(e.pointerType==='touch'&&DRAG&&DRAG.type==='pen')return; // a palm while the Pencil draws
   if(e.pointerType==='pen'&&DRAG&&DRAG.type==='touch'){if(DRAG.mode==='stroke')cancelTouchStroke();else DRAG=null}if(e.pointerType==='pen')GEST=null; // the Pencil wins over a resting palm
   if(e.pointerType==='touch'){const touches=[...PTRS.values()].filter(q=>q.type==='touch').length;
     if(touches>=2){if(DRAG&&DRAG.type==='touch')cancelTouchStroke();gestStart();e.preventDefault();return}
-    if(PEN){view.setPointerCapture(e.pointerId);DRAG={mode:'pan',px:qx,py:qy,PX,PY,pid:e.pointerId,type:'touch'};return}}
+    if(PEN){capture(e);DRAG={mode:'pan',px:qx,py:qy,PX,PY,pid:e.pointerId,type:'touch'};return}}
   if(GEST)return;if(DRAG&&DRAG.pid!==e.pointerId)return; // one stroke at a time
-  view.setPointerCapture(e.pointerId);const[px,py]=pt(e),x=dx(px),y=dy(py);
+  capture(e);const[px,py]=pt(e),x=dx(px),y=dy(py);
   if(TOOL==='hand'||SPACE||e.button===1){DRAG={mode:'pan',px,py,PX,PY,pid:e.pointerId,type:e.pointerType};return}
   if(TOOL==='pick'){compose();const d=docX.getImageData(clamp(Math.floor(x),0,W-1),clamp(Math.floor(y),0,H-1),1,1).data;setColor('#'+[d[0],d[1],d[2]].map(v=>v.toString(16).padStart(2,'0')).join(''));return}
   if(TOOL==='area'){maskDab(x,y,x,y,e.altKey);DRAG={mode:'area',x,y,erase:e.altKey,pid:e.pointerId,type:e.pointerType};draw();return}
@@ -405,7 +412,7 @@ view.addEventListener('pointermove',e=>{
   draw();if(g.mode!=='pan'&&g.mode!=='area')paintFields();
 });
 const endDrag=e=>{if(e&&e.pointerId!==undefined){PTRS.delete(e.pointerId);if(GEST){if(PTRS.size<2)GEST=null;return}if(DRAG&&DRAG.pid!==undefined&&DRAG.pid!==e.pointerId)return}const g=DRAG;DRAG=null;if(!g)return;if(g.mode==='ruler'){rulerDone(g);draw();return}if(g.mode==='stroke'||g.mode==='area'||(g.mode==='shape'&&g.l)||g.moved){if(g.mode!=='area')commit();if(g.mode==='shape')setTool('select');paintPanels()}draw()};
-view.addEventListener('pointerup',endDrag);view.addEventListener('pointercancel',endDrag);view.addEventListener('pointerleave',e=>{if(e.pointerType==='mouse'||e.pointerType==='pen'&&!DRAG){HOVER=null;draw()}});
+view.addEventListener('pointerup',endDrag);view.addEventListener('pointercancel',endDrag);view.addEventListener('lostpointercapture',e=>{if(DRAG&&DRAG.pid===e.pointerId)endDrag(e)});view.addEventListener('pointerleave',e=>{if(e.pointerType==='mouse'||e.pointerType==='pen'&&!DRAG){HOVER=null;draw()}});
 // Safari's own pinch would zoom the whole page; on the stage the pinch is ours
 ['gesturestart','gesturechange'].forEach(t=>$('#stage').addEventListener(t,e=>e.preventDefault()));
 view.addEventListener('wheel',e=>{e.preventDefault();const[px,py]=pt(e);if(e.ctrlKey||e.metaKey)zoomAt(Math.exp(-e.deltaY*.01),px,py);else{PX-=e.deltaX;PY-=e.deltaY;draw()}},{passive:false});
@@ -1015,7 +1022,8 @@ pL.addEventListener('input',e=>{if(e.target.dataset.p!=='warpk')return;const l=s
 // The flats page runs in a frame beside or instead of the picture (?embed=full: its own panel of Placements, Design, Garment, Measurements;
 // ?embed=compact: the drawing alone, for side by side). The header, the view switch and Save are this page's. The frame loads the first
 // time a flat is shown. Saving: unsaved flats first, then the picture, whose placed graphics go onto the flats, which then reload.
-const VIEWS=['picture','front','back','split'];let VMODE='picture',FLOADED=false,TPLUSED=false,FOBS=null;
+// side by side was dropped: a picture and a flat each want the whole screen
+const VIEWS=['picture','front','back'];let VMODE='picture',FLOADED=false,TPLUSED=false,FOBS=null;
 function FF(){try{return FLOADED?$('#flatFrame').contentWindow.FBFlats||null:null}catch{return null}}
 function flatSrc(){const t=QS.get('template');return `/lab/flats?concept=${CID}&embed=${VMODE==='split'?'compact':'full'}&view=${VMODE==='back'?'back':'front'}${t&&!TPLUSED?'&template='+encodeURIComponent(t):''}`}
 function loadFlats(){$('#flatFrame').src=flatSrc();FLOADED=true;TPLUSED=true}
@@ -1099,7 +1107,9 @@ function showSheet(blob,name,title){let d=$('#sheetDlg');if(!d){d=document.creat
   d.querySelector('[data-sheetclose]').onclick=()=>{d.close();setTimeout(()=>URL.revokeObjectURL(u),1000)};
   const sh=d.querySelector('[data-sheetshare]');if(sh)sh.onclick=()=>navigator.share({files:[file],title}).catch(()=>{});
   d.showModal()}
-window.FBDesign={saveAll,showSheet,flatsChanged(){},flatsSaved(){const f=FF();if(f)adoptFlats(f.placements(),{saved:true});setTimeout(loadReady,300)},flatsReady(){const f=FF();if(!f)return;f.mode(VMODE==='split'?'compact':'full');if(VMODE==='front'||VMODE==='back')f.setView(VMODE);mirrorFlats();f.level?.(LEVEL);$('#packBtn').classList.toggle('hidden',!f.canPack());FLATS={saved:f.saved(),placements:f.placements()};paintLayers();['#specBtn','#decoBtn'].forEach(s=>$(s).disabled=Boolean(f.unsupported()))}};
+// a graphic removed on the flats leaves the garment here too (it stays on the picture as a layer); without this the next save puts it back
+function flatRemoved({id,layer}={}){const l=LAYERS.find(x=>(layer&&x.id===layer)||(id&&x.fromFlat===id));if(!l||!l.placement)return;l.placement=undefined;l.fromFlat=undefined;commit();paintLayers();draw();toast(`${l.name} is off the garment. It is still a layer on the picture: delete it in Layers if you do not want it there either.`)}
+window.FBDesign={saveAll,showSheet,flatRemoved,flatsChanged(){},flatsSaved(){const f=FF();if(f)adoptFlats(f.placements(),{saved:true});setTimeout(loadReady,300)},flatsReady(){const f=FF();if(!f)return;f.mode(VMODE==='split'?'compact':'full');if(VMODE==='front'||VMODE==='back')f.setView(VMODE);mirrorFlats();f.level?.(LEVEL);$('#packBtn').classList.toggle('hidden',!f.canPack());FLATS={saved:f.saved(),placements:f.placements()};paintLayers();['#specBtn','#decoBtn'].forEach(s=>$(s).disabled=Boolean(f.unsupported()))}};
 async function setVMode(v,{push=true}={}){
   if(!VIEWS.includes(v)||GMODE||!CID)v='picture';const was=VMODE;
   if(v!=='picture'){

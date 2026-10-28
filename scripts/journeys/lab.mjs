@@ -2180,7 +2180,7 @@ await journey('J233', 'A room\'s team and its libraries: the room adds a teammat
   }
 });
 
-await journey('J234', 'One Design workspace: a concept opens on its picture, and the same page shows its flat front, flat back, or both side by side; a graphic placed on the picture is on the flats when they are shown, one Save keeps both, and the old flats address lands here', async () => {
+await journey('J234', 'One Design workspace: a concept opens on its picture, and the same page shows its flat front or flat back; a graphic placed on the picture is on the flats when they are shown, one Save keeps both, and the old flats address lands here', async () => {
   const { brands, plan } = await conceptSetup();
   try {
     const line = plan.lines.find(l => l.category === 'tops') || plan.lines[0], c = (await K(`/plans/${plan.plan.id}/lines/${line.id}/concepts`, { body: { count: 1 } })).json.concepts[0];
@@ -2190,8 +2190,8 @@ await journey('J234', 'One Design workspace: a concept opens on its picture, and
       const oc = await b.newContext({ viewport: { width: 1440, height: 950 } }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
       const page = await oc.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
       await page.goto(`${BASE}/lab/studio?concept=${c.id}`, { waitUntil: 'networkidle' }); await page.waitForSelector('#pLayers .ly', { timeout: 20000 }); await page.waitForFunction(() => !document.querySelector('#busy:not(.hidden)'));
-      ok((await page.locator('#viewSeg [data-v]').count()) === 4 && await page.getAttribute('#viewSeg [data-v=picture]', 'aria-pressed') === 'true' && await page.isVisible('#stage') && !(await page.isVisible('#specBtn')) && !(await page.getAttribute('#flatFrame', 'src')),
-        '1. a concept opens on its picture: the switch reads Picture, Flat front, Flat back, Side by side, and the flats wait until they are asked for');
+      ok((await page.locator('#viewSeg [data-v]').count()) === 3 && await page.getAttribute('#viewSeg [data-v=picture]', 'aria-pressed') === 'true' && await page.isVisible('#stage') && !(await page.isVisible('#specBtn')) && !(await page.getAttribute('#flatFrame', 'src')),
+        '1. a concept opens on its picture: the switch reads Picture, Flat front, Flat back, and the flats wait until they are asked for');
       // a wordmark placed on the picture, not saved
       await page.click('.tabs [data-tab=add]'); await page.click('#pAdd [data-mark=word]'); await page.waitForFunction(() => LAYERS.length >= 2); await page.click('.tabs [data-tab=layers]'); await page.waitForSelector('#sizeRead');
       await page.fill('#pLayers [data-win]', '3.5'); await page.dispatchEvent('#pLayers [data-win]', 'change'); await page.selectOption('#pLayers [data-placement]', 'left chest');
@@ -2203,11 +2203,7 @@ await journey('J234', 'One Design workspace: a concept opens on its picture, and
       ok(!(await F.isVisible('header')) && !(await F.isVisible('.bar')), '   the flats carry no second header or bar');
       await page.click('#viewSeg [data-v=back]'); await F.waitForFunction(() => document.querySelector('[data-view=back]')?.getAttribute('aria-pressed') === 'true', null, { timeout: 5000 });
       ok(/view=back/.test(page.url()), '3. Flat back turns the flats round');
-      await page.click('#viewSeg [data-v=split]'); await page.waitForSelector('#app[data-v=split]'); await page.waitForTimeout(300);
-      const sb = await page.locator('#stage').boundingBox(), hb = await page.locator('#flatHost').boundingBox();
-      ok(sb && hb && sb.width > 300 && hb.width > 300 && hb.x > sb.x && Math.abs(hb.y - sb.y) < 80 && await page.isVisible('#pLayers') && await page.isVisible('#apply'), '4. Side by side: the picture and the flat next to each other, with the layers panel', [sb, hb]);
-      ok(await F.evaluate(() => document.documentElement.dataset.embed === 'compact' && getComputedStyle(document.querySelector('.side')).display === 'none'), '   beside the picture the flat shows the drawing alone');
-      await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/lab-design-split.png` }).catch(() => {});
+      ok(!(await page.$('#viewSeg [data-v=split]')), '4. no side by side: the picture and the flat each take the whole workspace');
       // a change on the flats, and one Save keeps both
       await page.click('#viewSeg [data-v=front]'); await F.click('.tabs [data-tab=design]'); await F.click('[data-color="#1f2a44"]');
       await page.waitForFunction(() => /Not saved/i.test(document.getElementById('fsaved').textContent), null, { timeout: 5000 });
@@ -2222,7 +2218,7 @@ await journey('J234', 'One Design workspace: a concept opens on its picture, and
       const pc = await b.newContext({ viewport: { width: 390, height: 844 } }); await pc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
       const ph = await pc.newPage(); await ph.goto(`${BASE}/lab/studio?concept=${c.id}&view=front`, { waitUntil: 'networkidle' }); await ph.waitForSelector('#app[data-v=front]', { timeout: 20000 });
       const over = await ph.evaluate(() => document.documentElement.scrollWidth - innerWidth), fh = (await ph.locator('#flatHost').boundingBox())?.height || 0;
-      ok(over <= 1 && !(await ph.isVisible('#viewSeg [data-v=split]')) && fh > 400, '8. on a phone: no sideways scroll, side by side is left out, the flats fill the screen', [over, fh]);
+      ok(over <= 1 && fh > 400, '8. on a phone: no sideways scroll, the flats fill the screen', [over, fh]);
       await pc.close();
     } finally { await b.close(); }
   } finally { await cleanup(brands, plan.plan?.id); }
@@ -2343,7 +2339,7 @@ await journey('J236', 'Charges off per room, and Design on an iPad with the Penc
       await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/lab-ipad.png` }).catch(() => {});
       // portrait
       await page.setViewportSize({ width: 834, height: 1194 }); await page.tap('#viewSeg [data-v=picture]'); await page.waitForTimeout(300);
-      ok(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth) <= 1 && await page.isVisible('#stage') && !(await page.isVisible('#viewSeg [data-v=split]')), '11. turned upright, Design still fits; side by side waits for a wider screen');
+      ok(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth) <= 1 && await page.isVisible('#stage') , '11. turned upright, Design still fits');
       ok(errs.length === 0, 'no page errors', errs); await oc.close();
     } finally { await b.close(); }
   } finally { await cleanup(brands, plan.plan?.id); }
@@ -2465,6 +2461,54 @@ await journey('J239', 'One person, the room they really open: an address added t
   ok(after.status === 200 && after.json.open === true && after.json.free === true, '6. signed in again, the hub opens the free Design Lab', after.json);
   const landed = await call('/v1/client/lab/landed', { token: newT, method: 'POST' });
   ok(landed.status === 200 && landed.json.paid === true && landed.json.free === true, '   and "I have paid" on a free room answers yes', landed.json);
+});
+
+await journey('J240', 'Design on an iPad, as Kyle found it: the ruler takes any length (0.54 in), a Pencil whose lift was never reported does not freeze the canvas, a graphic removed from the flat stays off after a save, and a trucker in a Tops line is drawn as a jacket, with Redraw from the picture for a flat saved as something else', async () => {
+  const { brands, plan } = await conceptSetup();
+  try {
+    const line = plan.lines.find(l => l.category === 'tops') || plan.lines[0], c = (await K(`/plans/${plan.plan.id}/lines/${line.id}/concepts`, { body: { count: 1 } })).json.concepts[0];
+    sql(`update lab_concepts set name='Field Log Trucker', category='tops', spec=coalesce(spec,'{}'::jsonb)||'{"silhouette":"boxy denim trucker jacket"}'::jsonb where id='${c.id}'`);
+    const f0 = (await K(`/concepts/${c.id}/flats`)).json.flat;
+    ok(f0?.style === 'jacket' && f0.template === 'jk-trucker', '1. a trucker in a Tops line is drawn from the trucker sketch, not as a sweatshirt', [f0?.style, f0?.template]);
+    if (!playwright) { ok(true, 'needs a browser'); return; }
+    const b = await playwright.chromium.launch();
+    try {
+      const oc = await b.newContext({ viewport: { width: 1366, height: 1024 }, hasTouch: true }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
+      const page = await oc.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
+      await page.goto(`${BASE}/lab/studio?concept=${c.id}`, { waitUntil: 'networkidle' }); await page.waitForSelector('#pLayers .ly', { timeout: 20000 }); await page.waitForFunction(() => !document.querySelector('#busy:not(.hidden)'));
+      ok(!(await page.$('#viewSeg [data-v=split]')) && (await page.locator('#viewSeg [data-v]').count()) === 3, '2. no Side by side: Picture, Flat front, Flat back');
+      // the ruler's length: any number, 0.54 included
+      ok(await page.evaluate(() => { const i = document.getElementById('rulerIn'); i.value = '0.54'; return i.checkValidity(); }), '3. the ruler takes 0.54 in (it said "Enter a valid value")');
+      // a Pencil stroke whose lift was never reported, then a new one
+      await page.click('[data-tool=brush]');
+      const n0 = await page.evaluate(() => LAYERS.length);
+      const stroke = await page.evaluate(() => { const v = document.getElementById('view'), r = v.getBoundingClientRect(), at = (t, id, x, y) => v.dispatchEvent(new PointerEvent(t, { pointerId: id, pointerType: 'pen', isPrimary: true, bubbles: true, clientX: r.left + x, clientY: r.top + y, pressure: .6, buttons: t === 'pointerup' ? 0 : 1 }));
+        at('pointerdown', 41, 200, 200); at('pointermove', 41, 230, 210); // lifted, but the iPad never said so
+        at('pointerdown', 42, 300, 300); at('pointermove', 42, 340, 320); at('pointermove', 42, 380, 340); at('pointerup', 42, 380, 340);
+        return { drag: DRAG === null, painted: LAYERS.filter(l => l.kind === 'paint').length }; });
+      ok(stroke.drag && stroke.painted >= 1 && await page.evaluate(n => LAYERS.length > n, n0 - 1), '4. a new Pencil stroke draws even after one whose lift never arrived; nothing is left holding the canvas', stroke);
+      // a wordmark on the chest, shown on the flats, then removed there
+      await page.click('[data-tool=select]');
+      await page.click('.tabs [data-tab=add]'); await page.click('#pAdd [data-mark=word]'); await page.waitForFunction(() => LAYERS.some(l => l.kind !== 'base' && l.kind !== 'paint' && l.kind !== 'picture')); await page.click('.tabs [data-tab=layers]'); await page.waitForSelector('#sizeRead');
+      await page.fill('#pLayers [data-win]', '3.5'); await page.dispatchEvent('#pLayers [data-win]', 'change'); await page.selectOption('#pLayers [data-placement]', 'left chest');
+      await page.click('#save'); await page.waitForFunction(() => !DIRTY, null, { timeout: 30000 });
+      await page.click('#viewSeg [data-v=front]'); const F = await (await page.waitForSelector('#flatFrame')).contentFrame(); await F.waitForSelector('#pPl [data-q]', { timeout: 20000 });
+      const sq = await F.evaluate(() => FBFlats.placements().find(q => q.source === 'studio')?.id);
+      ok(Boolean(sq), '5. the wordmark is on the flat');
+      await F.click(`#pPl [data-q="${sq}"] [data-del]`);
+      ok(await page.evaluate(() => !LAYERS.some(l => l.placement && l.kind !== 'base')), '6. removed on the flat, it comes off the garment on the picture too (it stays a layer)');
+      await page.click('#save'); await page.waitForFunction(() => !DIRTY, null, { timeout: 30000 }); await page.waitForTimeout(500);
+      const saved = (await K(`/concepts/${c.id}/flats`)).json.flat;
+      ok(!saved.placements.some(q => q.source === 'studio'), '7. after Save it stays off the flat: the save no longer puts it back', saved.placements.map(q => q.source));
+      // a flat saved as a sweatshirt: Redraw from the picture brings the jacket back (the words stand in for the picture here)
+      const asSweat = await K(`/concepts/${c.id}/flats`, { method: 'PUT', body: { ...saved, style: 'crewneck', template: undefined, placements: saved.placements } });
+      const redo = await K(`/concepts/${c.id}/flats/from-picture`);
+      ok(asSweat.status === 200 && redo.status === 200 && redo.json.flat.style === 'jacket' && redo.json.flat.saved === false && sql(`select style from lab_flats where concept_id='${c.id}'`) === 'crewneck', '8. Redraw from the picture draws it as a jacket again, and keeps nothing until Save', [asSweat.status, asSweat.json?.error, redo.json?.flat?.style]);
+      await F.click('.tabs [data-tab=design]'); await F.click('#redrawPic'); await F.waitForFunction(() => /redrawn from the picture/.test(document.getElementById('cSub').textContent), null, { timeout: 15000 });
+      ok(await F.evaluate(() => FBFlats.dirty()), '9. Redraw from the picture is always in the Design tab, and leaves the flat to save');
+      ok(errs.length === 0, 'no page errors', errs); await oc.close();
+    } finally { await b.close(); }
+  } finally { await cleanup(brands, plan.plan?.id); }
 });
 
 shops.close(); brave.close();

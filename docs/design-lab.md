@@ -175,6 +175,10 @@ A client can open the Design Lab on their own room, from the hub, for a fixed pr
 
 Routes: `GET /v1/client/lab`, `POST /v1/client/lab/checkout`, `POST /v1/client/lab/landed`, `POST /v1/client/lab/invoices/:id/landed`, `GET /v1/client/lab/usage`; `GET /v1/products/:id/make`, `POST /v1/products/:id/make-request`, `POST|DELETE /v1/products/:id/quote-links[/:sid]`; staff `GET|PATCH /v1/admin/clients/:id/lab` (`comp`, `end`, `bill`), `POST /v1/admin/lab/invoices/:id/paid`, `GET|PATCH /v1/admin/make-requests[/:id]`. Tables: `lab_access`, `lab_ai_usage`, `lab_ai_invoices`, `make_requests`. Tests: `test/lab-access.test.js`, journey J232.
 
+**The flat follows the picture.** A concept's flat is drawn as the garment its picture shows: the vision model reads the picture (cached per picture) for the garment type, its fit and the colour of its main cloth, and the picture wins over the line's category, so a trucker jacket in a Tops line is drawn from a jacket sketch in its denim colour, not as a sweatshirt. The words still decide when there is no picture, and a jacket is a jacket in any line (trucker, bomber, chore coat, shacket, anorak…). A flat saved before as another garment says so above the drawing (**The picture shows a … ; this flat is drawn as a …**) with **Redraw from the picture**: the garment, fit and colour come from the picture, the graphics come along, and nothing is kept until Save. `GET /v1/lab/concepts/:id/flats/from-picture`.
+
+**Removing a graphic from the flat** takes it off the garment on the picture too (one record): it stays a layer on the picture, and the next save no longer puts it back on the flats.
+
 **Charges off for a room.** On a room in the work console, **Design Lab charges** is a switch like free tech pack access. Switched on (charges off), the room's Lab is open at once with no fee and no end date; AI generations are counted but never billed or paused, and tech packs come with the open Lab. An invoice raised before stays owed. Switched back off, a room with no paid period sees the offer again; its plans and concepts stay. Stored as `clients.lab_free`; `PATCH /v1/admin/clients/:id/lab {action: 'free'|'charge'}`, written on the room's record.
 
 **Inviting a designer.** On a room in the work console, **Invite a designer** takes an email: the address may then sign in to the room (it is added to the room's allowed emails, as a teammate added from the hub is), the invite is on the room's record, and the designer gets the welcome by email: how to keep the Lab on an iPad's home screen, how to sign in with the emailed code, and what Design, Simple and Pro, and the Checklist are. An address that already signs in to another room is refused (one person, one room). `POST /v1/admin/clients/:id/lab/invite {email, name?}`.
@@ -197,7 +201,7 @@ The Lab installs as its own home-screen app (`/lab.webmanifest`: standalone, ope
 
 The flats zoom too: two fingers pinch and move them, one finger moves them once zoomed (a placement under the finger still drags), Ctrl and the wheel zoom on a computer, and **Fit** shows the whole piece again. A pinch that starts while a placement is being dragged puts it back where it was. On Design, and on any console page on a touch screen narrower than a desktop, the console menu starts folded to its icons (a person's own choice is kept). Installed, exports (the picture, a layer, the Illustrator SVG, the stitch file, the separations) open in the app's sheet with Share and Save rather than as a download that leaves the app.
 
-Side by side shows on an iPad held sideways; upright, the picture or the flats fill the screen. Installed, the spec sheet and the decoration sheet open inside the app with **Share or print** (Print, Save to Files, Mail, AirDrop) and **Save**, since a new window would leave the app.
+The picture or the flats fill the screen (side by side was dropped: each wants the whole iPad). Installed, the spec sheet and the decoration sheet open inside the app with **Share or print** (Print, Save to Files, Mail, AirDrop) and **Save**, since a new window would leave the app.
 
 ## A room's team, and the libraries it shares
 
@@ -288,13 +292,12 @@ A concept is designed in one place, `/lab/studio?concept=<id>`. A switch in its 
 | --- | --- | --- |
 | **Picture** | the concept's picture as layers (below: the studio) | `/lab/studio?concept=<id>` |
 | **Flat front** / **Flat back** | the measured flats with their own panel: Placements, Design, Garment, Measurements (see Flats and placement below) | `…&view=front`, `…&view=back` |
-| **Side by side** | the picture with its layers panel, and the flat drawing next to it | `…&view=split` |
 
 - **One header.** The concept's name, the Lab menu, one **Save** and the view switch are shared. The picture's buttons (Undo, Import, 3D, Export, Versions, Use as the concept picture) show with the picture; the flats' (Spec sheet, Decoration sheet, Send to the tech pack) show with the flats. Each side says whether it is saved.
 - **One Save.** Save (or Ctrl S, on either side) saves unsaved flats first, then the picture. The picture's layers that have a place on the piece then go onto the flats at their size, and the flats reload with them.
 - **The picture's graphics are on the flats when you look.** Switching from the picture to a flat puts its placed graphics on the flats first, without waiting for a save.
 - **How it is built (pass 1).** The flats page (`src/lab-flats.html`) runs inside the workspace in a frame from the same site (`/lab/flats?concept=<id>&embed=full`, or `embed=compact` for side by side), loaded the first time a flat is shown. It exposes `window.FBFlats` (dirty, save, view, mode, the sheets) and calls the workspace's `window.FBDesign`. Opened on its own, `/lab/flats` sends you to the workspace; only that page may be framed, and only by the site itself (`frame-ancestors 'self'`). The next two passes are below.
-- **On a phone** Side by side is left out; the picture or the flats fill the screen.
+- **On a phone** the picture or the flats fill the screen.
 
 ### One placement model: inches on the garment
 
