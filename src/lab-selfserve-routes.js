@@ -15,6 +15,10 @@
 //                                                  generations now, or turn the room's charges off (free: open, no fee, AI never billed) and back on
 //     POST /v1/admin/clients/:id/lab/invite        {email, name?} invite a designer to the room's Design Lab: the address may sign in to the room,
 //                                                  and gets the welcome (open it on an iPad, add it to the home screen, sign in with the emailed code)
+//     GET  /v1/admin/clients/:id/lab/people        the room's addresses and the room each one actually opens (the room a session holds and
+//                                                  the room the next sign-in lands in), so a switch flipped on one room is not mistaken for another
+//     POST /v1/admin/clients/:id/lab/people/move   {email} make this the person's room: on this room's list, off every other room's, their user moved
+//                                                  here (the session they hold on the old room ends; signing in again opens this one)
 //     POST /v1/admin/lab/invoices/:id/paid         record an AI invoice as paid by other means
 //     GET  /v1/admin/make-requests, PATCH /v1/admin/make-requests/:id {status, reply}
 import { randomBytes, createHash } from 'node:crypto';
@@ -26,7 +30,7 @@ const hash = v => createHash('sha256').update(String(v)).digest('hex');
 const STATUSES = ['requested', 'quoting', 'declined', 'done'];
 
 export function registerLabSelfServeRoutes(app, d) {
-  const { pool, authenticate, adminOnly, lab, clientHubUrl = '', workHubUrl = '', notifyStaff = async () => false, notifyClientContact = async () => false, sendHubEmail = async () => false, hubEmailShell = (t, b) => b, replyTo = '', forgetUser = () => {}, log = console } = d;
+  const { pool, authenticate, adminOnly, lab, clientHubUrl = '', workHubUrl = '', notifyStaff = async () => false, notifyClientContact = async () => false, sendHubEmail = async () => false, hubEmailShell = (t, b) => b, replyTo = '', forgetUser = () => {}, clientForEmail = async () => null, log = console } = d;
   const bad = (reply, error, code = 422, extra = {}) => reply.code(code).send({ error, ...extra });
   const clientOf = req => (req.auth?.role !== 'admin' && UUID.test(String(req.auth?.clientId || '')) ? req.auth.clientId : null);
   const need = (req, reply, k = 'id') => UUID.test(String(req.params[k])) || (bad(reply, 'Not found', 404), false);
@@ -157,6 +161,48 @@ export function registerLabSelfServeRoutes(app, d) {
           <p><a href="${esc(url)}" style="display:inline-block;background:#141416;color:#fff;padding:10px 18px;border-radius:999px;text-decoration:none">Open the Design Lab</a></p>`) });
     } catch (e) { log.warn?.({ err: e.message }, 'design lab invite email not sent'); }
     return { ok: true, email, emailed, open };
+  });
+  // where each address on the room really signs in: a person is in one room at a time, and the hub opens the room their session holds
+  const roomName = async id => (id ? (await pool.query('select id, name, status from clients where id=$1', [id])).rows[0] || null : null);
+  async function people(c) {
+    const row = (await pool.query('select allowed_emails, contact_email, status from clients where id=$1', [c.id])).rows[0] || {};
+    const users = (await pool.query(`select lower(email) email, client_id, removed_at, last_sign_in_at from users where role='client' and (client_id=$1 or lower(email)=any($2::text[]))`,
+      [c.id, [...(row.allowed_emails || []), row.contact_email || ''].map(e => String(e).toLowerCase()).filter(Boolean)])).rows;
+    const emails = [...new Set([...(row.allowed_emails || []), row.contact_email, ...users.filter(u => u.client_id === c.id && !u.removed_at).map(u => u.email)].map(e => String(e || '').toLowerCase()).filter(e => EMAIL.test(e) && !e.endsWith('@thefuturebasics.com')))];
+    const out = [];
+    for (const email of emails) {
+      const u = users.find(x => x.email === email), next = await clientForEmail(email);
+      const now = u && !u.removed_at ? await roomName(u.client_id) : null;
+      const away = (now && now.id !== c.id) || (next && next.id !== c.id) || (!next && !now);
+      out.push({ email, signedIn: Boolean(u?.last_sign_in_at), now: now && { id: now.id, name: now.name }, next: next && { id: next.id, name: next.name }, here: !away });
+    }
+    return { roomActive: row.status === 'active', people: out };
+  }
+  app.get('/v1/admin/clients/:id/lab/people', { preHandler: staff }, async (req, reply) => {
+    if (!need(req, reply)) return; const c = await client(req.params.id); if (!c) return bad(reply, 'Client not found', 404);
+    return people(c);
+  });
+  app.post('/v1/admin/clients/:id/lab/people/move', { preHandler: staff }, async (req, reply) => {
+    if (!need(req, reply)) return; const c = await client(req.params.id); if (!c) return bad(reply, 'Client not found', 404);
+    if (c.archived_at || c.status !== 'active') return bad(reply, 'This room is not active, so nobody can sign in to it. Activate it first.', 409);
+    const email = clip(req.body?.email, 254).toLowerCase(), by = UUID.test(String(req.auth.sub || '')) ? req.auth.sub : null;
+    if (!EMAIL.test(email) || email.endsWith('@thefuturebasics.com')) return bad(reply, 'That email address does not look right');
+    const q = await pool.connect(); let moved = [];
+    try {
+      await q.query('begin');
+      const others = (await q.query(`select id, name from clients where id<>$1 and $2=any(array(select lower(x) from unnest(coalesce(allowed_emails,'{}')) x))`, [c.id, email])).rows;
+      await q.query(`update clients set allowed_emails=array(select e from unnest(coalesce(allowed_emails,'{}')) e where lower(e)<>$2) where id<>$1 and $2=any(array(select lower(x) from unnest(coalesce(allowed_emails,'{}')) x))`, [c.id, email]);
+      await q.query(`update clients set allowed_emails=(select array_agg(distinct e) from unnest(coalesce(allowed_emails,'{}')||array[$2]::text[]) e) where id=$1`, [c.id, email]);
+      moved = (await q.query(`update users set client_id=$1, removed_at=null where lower(email)=$2 and role='client' returning id`, [c.id, email])).rows;
+      for (const o of others) await q.query(`insert into activities(client_id, actor_id, type, summary) values($1,$2,'client',$3)`, [o.id, by, `${email} moved to ${c.name}`]);
+      await q.query(`insert into activities(client_id, actor_id, type, summary) values($1,$2,'client',$3)`, [c.id, by, `${email} moved here${others.length ? ` from ${others.map(o => o.name).join(', ')}` : ''}`]);
+      await q.query('commit');
+    } catch (e) { await q.query('rollback').catch(() => {}); throw e; } finally { q.release(); }
+    for (const u of moved) forgetUser(u.id);
+    const r = await people(c), me = r.people.find(p => p.email === email);
+    // another room claims the whole address domain, and this one does not win: say so rather than claim the move took
+    if (me && !me.here) return bad(reply, `${email} would still sign in to ${me.next?.name || 'another room'}. Check that room's email domains.`, 409, r);
+    return { ok: true, email, ...r };
   });
   app.post('/v1/admin/lab/invoices/:id/paid', { preHandler: staff }, async (req, reply) => {
     if (!need(req, reply)) return; const r = await lab.invoicePaid(req.params.id, { orderId: clip(req.body?.reference, 80) || 'manual' }); if (!r) return bad(reply, 'That invoice is not open', 404);

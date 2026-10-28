@@ -2437,5 +2437,35 @@ await journey('J238', 'Welcoming a client\'s designers, and footwear kept off pa
   } finally { await cleanup(brands, plan.plan?.id); }
 });
 
+await journey('J239', 'One person, the room they really open: an address added to a second room still opens the first (so that room\'s free Design Lab never reaches them); the work console shows where each address signs in, Move them here ends the old session, and signing in again opens the free Lab', async () => {
+  const mk = async who => { const email = `${who}-${stamp}@moveroom.test`, st = await call('/v1/public/start', { body: { email, name: `${who} room`, title: 'First tee', photos: [jpeg()] } });
+    const cid = st.json.client?.id || sql(`select client_id from users where lower(email)='${email}'`), uid = sql(`select id from users where lower(email)='${email}'`).split('\n')[0];
+    sql(`update users set email_verified_at=now() where id='${uid}'`); sql(`update clients set status='active' where id='${cid}'`);
+    return { email, cid, uid, slug: sql(`select slug from clients where id='${cid}'`).split('\n')[0], name: sql(`select name from clients where id='${cid}'`).split('\n')[0] }; };
+  const A = (path, o = {}) => call(path, { token: kyleT, ...o });
+  const old = await mk('first'), next = await mk('second');
+  sql(`update clients set allowed_emails=array_append(allowed_emails,'${old.email}') where id='${next.cid}'`);
+  await A(`/v1/admin/clients/${next.cid}/lab`, { method: 'PATCH', body: { action: 'free' } });
+  const oldT = await forge({ sub: old.uid, clientId: old.cid, client: old.slug, role: 'client', email: old.email });
+  const before = await call('/v1/client/lab', { token: oldT });
+  ok(before.status === 200 && before.json.open === false && !before.json.free, '1. the address is on the free room\'s list, but the hub it has open is still its first room: no free Lab there (what Kyle saw)', before.json);
+  const pp = await A(`/v1/admin/clients/${next.cid}/lab/people`), me = pp.json.people?.find(x => x.email === old.email);
+  ok(pp.status === 200 && me && !me.here && me.now?.id === old.cid && me.now?.name === old.name, '2. the console shows the address opens the other room, by name', pp.json);
+  ok(pp.json.people.find(x => x.email === next.email)?.here === true, '   and the room\'s own owner opens it');
+  ok((await call(`/v1/admin/clients/${next.cid}/lab/people`, { token: oldT })).status >= 401 && (await call(`/v1/admin/clients/${next.cid}/lab/people/move`, { token: oldT, body: { email: old.email } })).status >= 401, '   only Future Basics sees and moves people');
+  sql(`update clients set status='lead' where id='${next.cid}'`);
+  ok((await A(`/v1/admin/clients/${next.cid}/lab/people/move`, { body: { email: old.email } })).status === 409, '3. nobody is moved into a room that is not active');
+  sql(`update clients set status='active' where id='${next.cid}'`);
+  const mv = await A(`/v1/admin/clients/${next.cid}/lab/people/move`, { body: { email: old.email } });
+  ok(mv.status === 200 && mv.json.people.find(x => x.email === old.email)?.here === true, '4. Move them here: the address now opens this room', mv.json);
+  ok(sql(`select client_id from users where id='${old.uid}'`) === next.cid && sql(`select '${old.email}' = any(allowed_emails) from clients where id='${old.cid}'`) !== 't', '   their user is moved, and the old room no longer lists them');
+  const gone = await call('/v1/client/lab', { token: oldT });
+  ok(gone.status === 401 && gone.json.code === 'MOVED', '5. the session on the old room ends, saying the room changed', gone.json);
+  const newT = await forge({ sub: old.uid, clientId: next.cid, client: next.slug, role: 'client', email: old.email }), after = await call('/v1/client/lab', { token: newT });
+  ok(after.status === 200 && after.json.open === true && after.json.free === true, '6. signed in again, the hub opens the free Design Lab', after.json);
+  const landed = await call('/v1/client/lab/landed', { token: newT, method: 'POST' });
+  ok(landed.status === 200 && landed.json.paid === true && landed.json.free === true, '   and "I have paid" on a free room answers yes', landed.json);
+});
+
 shops.close(); brave.close();
 process.exit(summary() ? 1 : 0);
