@@ -2504,8 +2504,14 @@ await journey('J240', 'Design on an iPad, as Kyle found it: the ruler takes any 
       const asSweat = await K(`/concepts/${c.id}/flats`, { method: 'PUT', body: { ...saved, style: 'crewneck', template: undefined, placements: saved.placements } });
       const redo = await K(`/concepts/${c.id}/flats/from-picture`);
       ok(asSweat.status === 200 && redo.status === 200 && redo.json.flat.style === 'jacket' && redo.json.flat.saved === false && sql(`select style from lab_flats where concept_id='${c.id}'`) === 'crewneck', '8. Redraw from the picture draws it as a jacket again, and keeps nothing until Save', [asSweat.status, asSweat.json?.error, redo.json?.flat?.style]);
-      await F.click('.tabs [data-tab=design]'); await F.click('#redrawPic'); await F.waitForFunction(() => /redrawn from the picture/.test(document.getElementById('cSub').textContent), null, { timeout: 15000 });
-      ok(await F.evaluate(() => FBFlats.dirty()), '9. Redraw from the picture is always in the Design tab, and leaves the flat to save');
+      await F.click('.tabs [data-tab=design]'); await F.click('#redrawPic'); await F.waitForFunction(() => /drawn from the picture/.test(document.getElementById('cSub').textContent), null, { timeout: 30000 });
+      const drawnNow = await F.evaluate(() => ({ dirty: FBFlats.dirty(), img: [...document.querySelectorAll('#canvas svg image')].some(i => /^blob:/.test(i.getAttribute('href') || '')) }));
+      ok(drawnNow.dirty && drawnNow.img, '9. Draw from the picture (always in the Design tab) has the image model draw the view over the sketch\'s frame, and leaves the flat to save', drawnNow);
+      await page.click('#save'); await page.waitForFunction(() => !DIRTY, null, { timeout: 30000 }); await page.waitForTimeout(400);
+      const kept = (await K(`/concepts/${c.id}/flats`)).json.flat;
+      ok(kept.drawn?.front && kept.drawn?.back && kept.drawn.template === kept.template && sql(`select count(*) from lab_art where id in ('${kept.drawn.front}','${kept.drawn.back}') and source='flat'`) === '2', '   saved: front and back drawn from the picture, tied to the sketch they were drawn on', kept.drawn);
+      const sheet = await call(`/v1/lab/concepts/${c.id}/flats/sheet.svg`, { token: kyleT });
+      ok(sheet.status === 200 && sheet.text.includes('data:image/png;base64'), '   and the spec sheet draws them', sheet.status);
       ok(errs.length === 0, 'no page errors', errs); await oc.close();
     } finally { await b.close(); }
   } finally { await cleanup(brands, plan.plan?.id); }
