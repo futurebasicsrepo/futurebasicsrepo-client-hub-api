@@ -8,17 +8,22 @@
 //   POST /v1/lab/library/techniques/:id/photos {image}    DELETE …/photos/:pid    GET /v1/lab/library/technique-photos/:pid[?thumb=1]
 //   POST /v1/lab/library/techniques/:id/sample {image}    the image model makes the mock-up look real (kept as the technique's sample)    GET …/sample
 //   POST /v1/lab/concepts/:id/graphics {art, placement?, techniqueId?}    put a library graphic on a concept (the page then places it on the picture)
+//   GET  /v1/lab/library/graphics/:id/vector.svg?widthIn=          the graphic traced to vector paths, one per ink (for a screen printer)
+//   GET  /v1/lab/library/graphics/:id/embroidery?widthIn=[&format=dst]   a stitch plan (count, threads, a preview) or the Tajima .dst file
+//   POST /v1/lab/library/repeat {art, type, repeatIn, scale, rotate, background, keep?, name?}   an all-over repeat of a graphic: a preview, or kept
 //   GET  /v1/lab/library/graphics/:id/job?technique=&widthIn=&garment=[&preview=1]   the production job file (a zip: separations, settings, sheet), or its summary
 import sharp from 'sharp';
 import { imageConfig, openaiEdit } from './check.js';
 import { finishArt, ART_STYLES } from './lab-art.js';
 import { jobZip, jobFile } from './lab-jobfile.js';
+import { traceVector, stitchPlan, dstOf, stitchPreview } from './lab-vector.js';
+import { makeRepeat, cleanRepeat, REPEAT_TYPES } from './lab-repeat.js';
 import { brandHits, cleanGraphics, ensureBranding, GRAPHIC_PLACE, GRAPHIC_TECHNIQUES } from './lab-concepts.js';
 import { BUILTIN_TECHNIQUES, TECHNIQUE_KINDS, EFFECTS, cleanTechnique, cleanRules, realPrompt } from './lab-library.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const clip = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
-const SOURCES = ['library', 'studio', 'upload', 'plan', 'concept'];
+const SOURCES = ['library', 'studio', 'upload', 'plan', 'concept', 'repeat'];
 const cleanTags = t => [...new Set((Array.isArray(t) ? t : String(t || '').split(',')).map(x => clip(x, 30).toLowerCase()).filter(Boolean))].slice(0, 12);
 export const pictureOf = dataUrl => { const m = /^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/=]+)$/i.exec(String(dataUrl || '')); return m ? Buffer.from(m[2], 'base64') : null; };
 const techShape = (r, photos = []) => ({ id: r.id, key: r.key, kind: r.kind, name: r.name, summary: r.summary, base: r.base, finish: r.finish, rules: cleanRules(r.rules || {}, r.base), prompt: r.prompt, artGuide: r.art_guide, factoryNote: r.factory_note,
@@ -47,12 +52,12 @@ export function registerLabLibraryRoutes(app, d) {
     if (clip(q.tag, 30)) { args.push(clip(q.tag, 30).toLowerCase()); where.push(`$${args.length} = any(a.tags)`); }
     if (UUID.test(String(q.technique || ''))) { args.push(q.technique); where.push(`a.technique_id=$${args.length}`); }
     const limit = Math.min(Math.max(Number(q.limit) || 60, 1), 200), offset = Math.max(Number(q.offset) || 0, 0), w = where.join(' and ');
-    const rows = (await pool.query(`select a.id, a.name, a.tags, a.source, a.technique_id, a.created_at, left(a.prompt, 400) prompt, t.name technique_name, p.name plan_name, c.name concept_name, coalesce(nullif(u.name,''), split_part(u.email,'@',1)) by_name
+    const rows = (await pool.query(`select a.id, a.name, a.tags, a.source, a.technique_id, a.created_at, a.meta, left(a.prompt, 400) prompt, t.name technique_name, p.name plan_name, c.name concept_name, coalesce(nullif(u.name,''), split_part(u.email,'@',1)) by_name
       from lab_art a left join lab_techniques t on t.id=a.technique_id left join lab_plans p on p.id=a.plan_id left join lab_concepts c on c.id=a.concept_id left join users u on u.id=a.created_by
       where ${w} order by a.created_at desc limit ${limit} offset ${offset}`, args)).rows;
     const total = Number((await pool.query(`select count(*)::int n from lab_art a where ${w}`, args)).rows[0].n);
     const tags = (await pool.query(`select t, count(*)::int n from lab_art, unnest(tags) t where in_library group by t order by n desc, t limit 30`)).rows.map(r => ({ tag: r.t, n: r.n }));
-    return { graphics: rows.map(r => ({ id: r.id, name: r.name, tags: r.tags, source: r.source, techniqueId: r.technique_id, techniqueName: r.technique_name || '', from: r.concept_name || r.plan_name || '', by: r.by_name || '', prompt: r.prompt, createdAt: r.created_at })), total, tags, styles: ART_STYLES, imageConnected: imageCfg().configured };
+    return { graphics: rows.map(r => ({ id: r.id, name: r.name, tags: r.tags, source: r.source, techniqueId: r.technique_id, techniqueName: r.technique_name || '', from: r.concept_name || r.plan_name || '', by: r.by_name || '', prompt: r.prompt, createdAt: r.created_at, ...(r.meta?.repeat ? { repeat: { ...r.meta.repeat, widthIn: r.meta.widthIn, heightIn: r.meta.heightIn } } : {}) })), total, tags, styles: ART_STYLES, imageConnected: imageCfg().configured };
   });
 
   app.post('/v1/lab/library/graphics', { preHandler: pre }, async (req, reply) => {
@@ -97,6 +102,34 @@ export function registerLabLibraryRoutes(app, d) {
     if (!need(req, reply)) return;
     const r = await pool.query('update lab_art set in_library=false where id=$1', [req.params.id]); if (!r.rowCount) return bad(reply, 'Not found', 404);
     return { ok: true };
+  });
+
+  // ---- vector and embroidery files from a graphic ----
+  const artRow = async id => (await pool.query('select id, name, png from lab_art where id=$1', [id])).rows[0];
+  const fileName = (a, ext) => `${String(a.name || 'graphic').replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase() || 'graphic'}.${ext}`;
+  app.get('/v1/lab/library/graphics/:id/vector.svg', { preHandler: pre }, async (req, reply) => {
+    if (!need(req, reply)) return; const a = await artRow(req.params.id); if (!a) return bad(reply, 'Not found', 404);
+    const w = Number(req.query?.widthIn); const v = await traceVector(a.png, { widthIn: w > 0 && w < 80 ? w : null, name: a.name });
+    return reply.header('content-type', 'image/svg+xml; charset=utf-8').header('content-disposition', `attachment; filename="${fileName(a, 'svg')}"`).header('x-paths', String(v.paths)).header('cache-control', 'no-store').send(v.svg);
+  });
+  app.get('/v1/lab/library/graphics/:id/embroidery', { preHandler: pre }, async (req, reply) => {
+    if (!need(req, reply)) return; const a = await artRow(req.params.id); if (!a) return bad(reply, 'Not found', 404);
+    const w = Number(req.query?.widthIn) || 4; if (!(w >= .5 && w <= 16)) return bad(reply, 'An embroidery runs from ½ in to 16 in wide');
+    const p = await stitchPlan(a.png, { widthIn: w });
+    if (req.query?.format === 'dst') { const d = dstOf(p, a.name); return reply.header('content-type', 'application/octet-stream').header('content-disposition', `attachment; filename="${fileName(a, 'dst')}"`).header('cache-control', 'no-store').send(d.file); }
+    const preview = await sharp(Buffer.from(stitchPreview(p, { px: 700 }))).png().toBuffer();
+    return { widthMm: p.widthMm, heightMm: p.heightMm, stitches: p.stitches, jumps: p.jumps, colours: p.colours, preview: `data:image/png;base64,${preview.toString('base64')}` };
+  });
+  // ---- an all-over repeat ----
+  app.post('/v1/lab/library/repeat', { preHandler: pre }, async (req, reply) => {
+    const b = req.body || {}; if (!UUID.test(String(b.art || ''))) return bad(reply, 'Choose a graphic from the library');
+    const a = await artRow(b.art); if (!a) return bad(reply, 'That graphic is not in the library', 404);
+    const r = await makeRepeat(a.png, cleanRepeat(b)), out = { type: r.type, typeLabel: REPEAT_TYPES[r.type], widthIn: r.widthIn, heightIn: r.heightIn, preview: `data:image/png;base64,${r.preview.toString('base64')}` };
+    if (!b.keep) return out;
+    const thumb = await sharp(r.preview).resize({ width: 256, height: 256, fit: 'cover' }).png().toBuffer(), name = clip(b.name, 80) || `${a.name} · ${REPEAT_TYPES[r.type].toLowerCase()} repeat`;
+    const id = (await pool.query(`insert into lab_art(name,png,thumb,prompt,source,in_library,tags,meta,created_by) values($1,$2,$3,$4,'repeat',true,$5,$6,$7) returning id`,
+      [name, r.tile, thumb, `All-over repeat of ${a.name}`, ['repeat', 'all-over'], { repeat: { from: a.id, type: r.type, repeatIn: r.repeatIn, scale: r.scale, rotate: r.rotate, background: r.background }, widthIn: r.widthIn, heightIn: r.heightIn }, actorOf(req)])).rows[0].id;
+    return reply.code(201).send({ ...out, id, name });
   });
 
   // ---- techniques ----

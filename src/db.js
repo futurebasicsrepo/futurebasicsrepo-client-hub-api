@@ -376,6 +376,28 @@ export async function migrate() {
     alter table lab_art add column if not exists technique_id uuid;
     alter table lab_art add column if not exists created_by uuid references users(id) on delete set null;
     alter table lab_art add column if not exists doc jsonb; -- the layers a graphic was built from in the studio, so it can be reworked
+    alter table lab_art add column if not exists meta jsonb; -- what else a picture is: an all-over repeat keeps its type and size in inches here
+    -- what factories really charge for a decoration, against what the Lab estimated for the same size, colours and quantity (src/lab-decor.js)
+    create table if not exists lab_decor_quotes (
+      id uuid primary key default gen_random_uuid(),
+      technique_id uuid,
+      base text not null default 'screen print',
+      supplier text not null default '',
+      width_in numeric not null default 4,
+      height_in numeric not null default 4,
+      colours int not null default 1,
+      qty int not null default 300,
+      unit_cents int not null,
+      setup_cents int not null default 0,
+      actual_cents int not null,
+      estimate_cents int not null,
+      concept_id uuid references lab_concepts(id) on delete set null,
+      placement text not null default '',
+      note text not null default '',
+      created_by uuid references users(id) on delete set null,
+      created_at timestamptz not null default now()
+    );
+    create index if not exists lab_decor_quotes_tech on lab_decor_quotes(technique_id, created_at desc);
     do $$ begin
       if exists(select 1 from pg_constraint where conname='lab_art_plan_id_fkey' and confdeltype='c') then
         alter table lab_art drop constraint lab_art_plan_id_fkey; alter table lab_art add constraint lab_art_plan_id_fkey foreign key (plan_id) references lab_plans(id) on delete set null;

@@ -11,6 +11,7 @@
 //   GET  /v1/lab/library/studio?art=<id>          the graphic (or nothing, for a new one), its saved layers, the marks, colours and techniques
 //   PUT  /v1/lab/library/graphics/:id/studio      save the layers {doc}
 //   POST /v1/lab/library/studio/ai                the same AI edits as above, for a graphic
+//   POST /v1/lab/studio/vector {image, widthIn?} the layer traced to vector paths · POST /v1/lab/studio/embroidery {image, widthIn, format?} its stitch plan or .dst
 //   POST /v1/lab/studio/check {image, widthIn, heightIn, techniqueId?, placement?}   a layer measured with the ruler: size against where it goes and how it is
 //        made, the finest line and the colours at that size, and what it costs a piece        POST /v1/lab/studio/separations {image, techniqueId?, widthIn, garment?, zip?}
 //        the colour separations: one plate per ink or thread with its Pantone, the coverage, and the job file to download
@@ -21,7 +22,8 @@ import sharp from 'sharp';
 import { imageConfig, openaiEdit, openaiImage } from './check.js';
 import { locateMarks } from './lab-place.js';
 import { artInfo, artFindings } from './lab-flats-routes.js';
-import { sizeFindings, decorationCost, PLACEMENTS } from './lab-decor.js';
+import { sizeFindings, decorationCost, PLACEMENTS, calibrationOf } from './lab-decor.js';
+import { traceVector, stitchPlan, dstOf, stitchPreview } from './lab-vector.js';
 import { jobFile, jobZip } from './lab-jobfile.js';
 import { cleanRules } from './lab-library.js';
 import { GRAPHIC_PLACE } from './lab-concepts.js';
@@ -127,7 +129,9 @@ export function registerLabStudioRoutes(app, d) {
     const t = await techOf(b.techniqueId), rules = { ...cleanRules(t.rules || {}, t.base), techniqueName: t.name }, placement = PLACEMENTS[b.placement] ? b.placement : null, name = clip(b.name, 60) || 'The graphic';
     const findings = sizeFindings({ widthIn: w, heightIn: h, placement, rules, base: t.base, techName: t.name, name });
     let info = null; try { info = await artInfo(img, w, h, rules); findings.push(...artFindings({ name, w, h }, info, rules, t)); } catch { /* the size alone */ }
-    const cost = decorationCost({ base: t.base, rules, widthIn: w, heightIn: h, colours: Math.max(1, info?.inks || 1), coverage: info?.coverage || .6, qty: Number(b.qty) || 300 });
+    const quotes = async (col, v) => (await pool.query(`select actual_cents "actualCents", estimate_cents "estimateCents" from lab_decor_quotes where ${col}=$1 order by created_at desc limit 200`, [v]).catch(() => ({ rows: [] }))).rows;
+    const calibration = (t.id && calibrationOf(await quotes('technique_id', t.id))) || calibrationOf(await quotes('base', t.base));
+    const cost = decorationCost({ base: t.base, rules, widthIn: w, heightIn: h, colours: Math.max(1, info?.inks || 1), coverage: info?.coverage || .6, qty: Number(b.qty) || 300, calibration });
     return { technique: { id: t.id, name: t.name, base: t.base }, size: { widthIn: Math.round(w * 100) / 100, heightIn: Math.round(h * 100) / 100 }, placement, findings, inks: info?.inks ?? null, coverage: info?.coverage ?? null, cost, rules };
   });
   // ---- colour separations: the job file's plates for a layer ----
@@ -143,6 +147,21 @@ export function registerLabStudioRoutes(app, d) {
     const under = files.find(x => x.name === 'underbase.png');
     return { job: { name: job.name, technique: job.technique, size: job.size, coverage: job.coverage, colours: job.colours.map(c => ({ n: c.n, pantone: c.pantone, hex: c.hex, coverage: c.coverage })), warnings: job.warnings, print: job.print || null, embroidery: job.embroidery || null, transfer: job.transfer || null, patch: job.patch || null },
       plates, underbase: under ? `data:image/png;base64,${(await sharp(under.data).resize({ width: 360, height: 360, fit: 'inside' }).png().toBuffer()).toString('base64')}` : null };
+  });
+
+  // ---- a layer as vector paths (for a screen printer) and as a stitch file (for an embroidery machine) ----
+  app.post('/v1/lab/studio/vector', { preHandler: pre, bodyLimit: 32_000_000 }, async (req, reply) => {
+    const b = req.body || {}, img = pictureOf(b.image); if (!img) return bad(reply, 'Send the layer as a picture');
+    const w = Number(b.widthIn), v = await traceVector(img, { widthIn: w > 0 && w < 80 ? w : null, name: clip(b.name, 60) || 'Graphic' });
+    return { svg: v.svg, paths: v.paths, colours: v.colours, width: v.width, height: v.height };
+  });
+  app.post('/v1/lab/studio/embroidery', { preHandler: pre, bodyLimit: 32_000_000 }, async (req, reply) => {
+    const b = req.body || {}, img = pictureOf(b.image); if (!img) return bad(reply, 'Send the layer as a picture');
+    const w = Number(b.widthIn) || 4; if (!(w >= .5 && w <= 16)) return bad(reply, 'An embroidery runs from ½ in to 16 in wide');
+    const name = clip(b.name, 60) || 'Graphic', p = await stitchPlan(img, { widthIn: w });
+    if (b.format === 'dst') { const d = dstOf(p, name); return reply.header('content-type', 'application/octet-stream').header('content-disposition', `attachment; filename="${name.replace(/[^a-z0-9]+/gi, '-').toLowerCase() || 'graphic'}.dst"`).send(d.file); }
+    const preview = await sharp(Buffer.from(stitchPreview(p, { px: 700 }))).png().toBuffer();
+    return { widthMm: p.widthMm, heightMm: p.heightMm, stitches: p.stitches, jumps: p.jumps, colours: p.colours, preview: `data:image/png;base64,${preview.toString('base64')}` };
   });
 
   // ---- fonts ----

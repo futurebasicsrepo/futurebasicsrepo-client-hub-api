@@ -509,7 +509,7 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': 
 export const TEMPLATE_URL = file => `/lab/flat-templates/${file}`;
 export const PART_URL = file => `/lab/flat-parts/${file}`;
 export const partOf = id => FLAT_PARTS.find(q => q.id === id) || null;
-export function renderSvg(p, view = 'front', { placements = [], hrefs = {}, size = p.size || 'M', showPom = false, showDims = true, selected = null, findings = {}, scale = 22, title = '', templateHref = TEMPLATE_URL, partHref = PART_URL, editHrefs = {}, editable = false, selectedEdit = null, overlay = '', plain = false, background = true, templateSvg = null } = {} /* templateSvg: the sketch's own markup, to draw it inline (the service: much faster to rasterise than a picture of the whole page); scale 0: no width and height, for nesting; editHrefs: the pictures of areas redrawn by the image model; plain: the drawing alone, no guides or labels */) {
+export function renderSvg(p, view = 'front', { placements = [], hrefs = {}, size = p.size || 'M', showPom = false, showDims = true, selected = null, findings = {}, scale = 22, title = '', templateHref = TEMPLATE_URL, partHref = PART_URL, editHrefs = {}, editable = false, selectedEdit = null, overlay = '', plain = false, background = true, templateSvg = null, alloverHref = '' } = {} /* alloverHref: the all-over print's repeat tile, laid over the cloth; templateSvg: the sketch's own markup, to draw it inline (the service: much faster to rasterise than a picture of the whole page); scale 0: no width and height, for nesting; editHrefs: the pictures of areas redrawn by the image model; plain: the drawing alone, no guides or labels */) {
   const g = geometry(p, view, size), d = drawingOf(p, view, size), b = d ? d.box : g.bounds, pad = 3.2, x0 = b.x0 - pad, y0 = b.y0 - pad - (title ? 1.2 : 0), W = b.x1 - b.x0 + pad * 2, H = b.y1 - b.y0 + pad * 2 + (title ? 1.2 : 0);
   const k = Math.max(1, Math.max(W, H) / 30), fs = .34 * k; // labels grow with the drawing, so they read at the size it is shown
   const sw = { outline: .07, seam: .035, stitch: .03, rib: .018, under: .05, cord: .05, label: .03 }, dash = { stitch: '.18 .12', label: '.15 .1' };
@@ -526,6 +526,11 @@ export function renderSvg(p, view = 'front', { placements = [], hrefs = {}, size
     : `<rect x="${n3(e.x - e.w / 2)}" y="${n3(e.y - e.h / 2)}" width="${n3(e.w)}" height="${n3(e.h)}" rx=".15" fill="#ffffff"/>`).join('');
   const defs = `<defs><g id="${pid}-b">${parts}${under}</g>${cloth ? tintFilter(`${pid}-t`, cloth) : ''}${blocks.map((e, i) => tintFilter(`${pid}-t${i}`, e.color) + `<clipPath id="${pid}-c${i}"><path d="${pathD(e.pts)} Z"/></clipPath>`).join('')}</defs>`;
   const drawing = `${defs}<use href="#${pid}-b"${cloth ? ` filter="url(#${pid}-t)"` : ''}/>${blocks.map((e, i) => `<g clip-path="url(#${pid}-c${i})"><use href="#${pid}-b" filter="url(#${pid}-t${i})"/></g>`).join('')}`
+    // an all-over print: the repeat laid across the cloth (only where the sketch has cloth), then the sketch's lines again on top
+    + (p.allover && alloverHref ? `<defs><pattern id="${pid}-ao" patternUnits="userSpaceOnUse" x="0" y="0" width="${n3(p.allover.w)}" height="${n3(p.allover.h)}"><image href="${esc(alloverHref)}" width="${n3(p.allover.w)}" height="${n3(p.allover.h)}" preserveAspectRatio="none"/></pattern>`
+      + `<filter id="${pid}-aw" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 1 0"/></filter><mask id="${pid}-am" maskUnits="userSpaceOnUse" x="${x0}" y="${y0}" width="${W}" height="${H}"><use href="#${pid}-b" filter="url(#${pid}-aw)"/></mask>`
+      + `<filter id="${pid}-al" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="${(() => { const l = rgbOf(lineFor(cloth)); return `0 0 0 0 ${l[0].toFixed(4)} 0 0 0 0 ${l[1].toFixed(4)} 0 0 0 0 ${l[2].toFixed(4)} -.2126 -.7152 -.0722 1 0`; })()}"/></filter></defs>`
+      + `<rect x="${x0}" y="${y0}" width="${W}" height="${H}" fill="url(#${pid}-ao)" mask="url(#${pid}-am)"/><use href="#${pid}-b" filter="url(#${pid}-al)"/>` : '')
     + (editable ? blocks.map(e => hit(e, `<path d="${pathD(e.pts)} Z" fill="#ffffff" fill-opacity="0"${e.id === selectedEdit ? ' stroke="#2a6df4" stroke-width=".05" stroke-dasharray=".18 .1"' : ''}/>`)).join('') + edits.filter(e => e.type === 'ai' || e.type === 'part' || (e.type === 'detail' && e.kind === 'erase')).map(e => hit(e, box(e))).join('') : '')
     + edits.filter(e => e.type === 'detail' && e.kind !== 'erase').map(e => { const o = detailSvg(e, clothAt(e)); return hit(e, (editable ? box(e) : '') + o.body + o.stitch); }).join('')
     + edits.filter(e => e.type === 'stitch').map(e => hit(e, (editable ? `<path d="${pathD(e.pts)}" fill="none" stroke="#ffffff" stroke-opacity="0" stroke-width=".45"/>` : '') + stitchSvg(e.pts, e.stitch, hexOf(e.thread) || lineFor(cloth)) + (e.id === selectedEdit ? `<path d="${pathD(e.pts)}" fill="none" stroke="#2a6df4" stroke-width=".02"/>` : ''))).join('');
@@ -552,6 +557,21 @@ export function renderSvg(p, view = 'front', { placements = [], hrefs = {}, size
 // the picture's coordinates → inches, for dragging placements in the page
 export function viewBoxOf(p, view, { title = '', size = p.size || 'M' } = {}) { const b = drawingOf(p, view, size)?.box || geometry(p, view, size).bounds, pad = 3.2; return { x0: b.x0 - pad, y0: b.y0 - pad - (title ? 1.2 : 0), w: b.x1 - b.x0 + pad * 2, h: b.y1 - b.y0 + pad * 2 + (title ? 1.2 : 0) }; }
 
+// an all-over print is made one of these ways; a placement can keep one artwork size per group of garment sizes, and its inks per colourway
+export const ALLOVER_BASES = ['all-over sublimation', 'all-over screen print', 'jacquard knit'];
+function cleanGrade(q) {
+  if (!Array.isArray(q.grade) || !q.grade.length) return {}; const seen = new Set(), w0 = Math.max(.25, Number(q.w) || 1), h0 = Math.max(.25, Number(q.h) || 1);
+  const grade = q.grade.slice(0, 4).map(g => ({ sizes: (Array.isArray(g?.sizes) ? g.sizes : []).filter(z => SIZES.includes(z) && !seen.has(z) && seen.add(z)), w: r8(Math.min(Math.max(Number(g?.w) || w0, .25), 40)) }))
+    .filter(g => g.sizes.length).map(g => ({ ...g, h: r8(g.w * h0 / w0) }));
+  return grade.length > 1 ? { grade } : {};
+}
+function cleanInks(inks) {
+  if (!inks || typeof inks !== 'object') return {}; const out = {};
+  for (const [cw, map] of Object.entries(inks).slice(0, 8)) { if (!HEX.test(cw) || !map || typeof map !== 'object') continue; const m = {};
+    for (const [a, b] of Object.entries(map).slice(0, 12)) if (HEX.test(a) && HEX.test(String(b))) m[a.toLowerCase()] = String(b).toLowerCase();
+    if (Object.keys(m).length) out[cw.toLowerCase()] = m; }
+  return Object.keys(out).length ? { inks: out } : {};
+}
 // → clean, bounded params and placements (from the page)
 export function cleanFlat(input = {}) {
   const style = STYLES[input.style] ? input.style : null; if (!style) return { error: 'Choose what the piece is' };
@@ -559,12 +579,15 @@ export function cleanFlat(input = {}) {
   for (const k of Object.keys(base.m)) { const v = Number(input.m?.[k]); m[k] = Number.isFinite(v) ? r8(Math.min(Math.max(v, 0), 80)) : base.m[k]; }
   const o = input.options || {}, options = { drop: Boolean(o.drop), cropped: Boolean(o.cropped), pleats: Math.min(Math.max(Math.round(Number(o.pleats) || 0), 0), 2), chestPocket: Boolean(o.chestPocket), noPocket: Boolean(o.noPocket), drawcord: o.drawcord !== false, rib: o.rib !== false };
   const template = input.template === 'none' ? 'none' : FLAT_TEMPLATES.some(t => t.id === input.template && t.style === style) ? input.template : defaultTemplate(style, fit);
-  const params = { style, fit, size: SIZES.includes(input.size) ? input.size : 'M', m, options, ...(template ? { template } : {}), color: hexOf(input.color), edits: cleanEdits(input.edits) };
+  const ao = input.allover, allover = ao && /^[0-9a-f-]{36}$/i.test(String(ao.art || '')) ? { art: ao.art, w: r8(Math.min(Math.max(Number(ao.w) || 4, .5), 48)), h: r8(Math.min(Math.max(Number(ao.h) || 4, .5), 48)), type: String(ao.type || 'straight').slice(0, 20), name: String(ao.name || 'All-over print').replace(/\s+/g, ' ').trim().slice(0, 60),
+    base: ALLOVER_BASES.includes(ao.base) ? ao.base : ALLOVER_BASES[0], ...(/^[0-9a-f-]{36}$/i.test(String(ao.techniqueId || '')) ? { techniqueId: ao.techniqueId } : {}) } : null;
+  const params = { style, fit, size: SIZES.includes(input.size) ? input.size : 'M', m, options, ...(template ? { template } : {}), color: hexOf(input.color), edits: cleanEdits(input.edits), ...(allover ? { allover } : {}) };
   const placements = (Array.isArray(input.placements) ? input.placements : []).slice(0, 12).map((q, i) => ({
     id: /^[a-z0-9-]{1,40}$/i.test(String(q.id || '')) ? String(q.id) : 'p' + i, name: String(q.name || 'Graphic').replace(/\s+/g, ' ').trim().slice(0, 60) || 'Graphic', view: q.view === 'back' ? 'back' : 'front',
     x: r8(Math.min(Math.max(Number(q.x) || 0, -60), 60)), y: r8(Math.min(Math.max(Number(q.y) || 0, -30), 80)), w: r8(Math.min(Math.max(Number(q.w) || 1, .25), 40)), h: r8(Math.min(Math.max(Number(q.h) || 1, .25), 40)),
     ...(/^[0-9a-f-]{36}$/i.test(String(q.art || '')) ? { art: q.art } : {}), ...(['cue', 'mark', 'word', 'lockup'].includes(q.mark) ? { mark: q.mark === 'cue' ? 'mark' : q.mark } : {}),
-    ...(/^[0-9a-f-]{36}$/i.test(String(q.techniqueId || '')) ? { techniqueId: q.techniqueId } : {}), technique: String(q.technique || 'screen print').slice(0, 40), source: ['logo', 'graphic', 'extra'].includes(q.source) ? q.source : 'extra'
+    ...(/^[0-9a-f-]{36}$/i.test(String(q.techniqueId || '')) ? { techniqueId: q.techniqueId } : {}), technique: String(q.technique || 'screen print').slice(0, 40), source: ['logo', 'graphic', 'extra', 'studio'].includes(q.source) ? q.source : 'extra',
+    ...(/^l[a-z0-9]{1,12}$/.test(String(q.layer || '')) ? { layer: String(q.layer) } : {}), ...cleanGrade(q), ...cleanInks(q.inks)
   }));
   return { params, placements };
 }

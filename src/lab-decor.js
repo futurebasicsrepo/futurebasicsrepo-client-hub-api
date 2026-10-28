@@ -58,11 +58,14 @@ export const DECOR_COST = {
   debossed: { setup: 2500, perSetup: 'die', unit: 50, perIn2: 0, bands: [1, 1.2, 1.5] },
   'laser etch': { setup: 1000, perSetup: 'file', unit: 45, perIn2: 1, bands: [1, 1, 1] },
   'jacquard knit': { setup: 5000, perSetup: 'program', unit: 0, perIn2: 0, bands: [1, 1, 1] },
-  rhinestones: { setup: 2500, perSetup: 'template', unit: 100, perIn2: 15, bands: [1, 1, 1] }
+  rhinestones: { setup: 2500, perSetup: 'template', unit: 100, perIn2: 15, bands: [1, 1, 1] },
+  // an all-over print covers the panels before they are sewn: priced on the printed area, not by a placement band
+  'all-over sublimation': { setup: 0, unit: 150, perIn2: .35, bands: [1, 1, 1] },
+  'all-over screen print': { setup: 6000, perSetup: 'screen', unit: 250, perColour: 60, perIn2: .05, bands: [1, 1, 1] }
 };
 const band = w => (w <= 4 ? 0 : w <= 10 ? 1 : 2);
 // → { unitCents, setupCents, perPieceCents, basis } for one decoration on one piece, at a planned quantity
-export function decorationCost({ base = 'screen print', rules = {}, widthIn = 4, heightIn = 4, colours = 1, coverage = .6, qty = 300 }) {
+export function decorationCost({ base = 'screen print', rules = {}, widthIn = 4, heightIn = 4, colours = 1, coverage = .6, qty = 300, calibration = null }) {
   const d = { ...(DECOR_COST[base] || DECOR_COST['screen print']), ...((rules && rules.cost) || {}) }, n = Math.max(1, Math.round(colours || 1)), area = Math.max(.25, widthIn * heightIn * Math.min(1, Math.max(.05, coverage)));
   let unit = d.unit + (d.perColour || 0) * (n - 1) + (d.perIn2 || 0) * area, setup = d.setup || 0, basis = [];
   if (base === 'embroidery') { const st = Math.round(area * ((rules && rules.density) || 1800) / 100) * 100; unit += (d.per1000 || 18) * st / 1000; basis.push(`about ${st.toLocaleString('en-US')} stitches`); }
@@ -70,6 +73,9 @@ export function decorationCost({ base = 'screen print', rules = {}, widthIn = 4,
   if (d.perSetup === 'screen') { setup *= n; basis.push(`${n} screen${n === 1 ? '' : 's'}`); } else if (d.perSetup && setup) basis.push(`one ${d.perSetup}`);
   if (d.perColour && base !== 'embroidery') basis.push(`${n} colour${n === 1 ? '' : 's'}`);
   if (d.perIn2) basis.push(`${r2(area)} sq in printed`);
+  // the factories' own quotes for this technique move the starting figures towards what they really charge
+  const k = calibration && calibration.n ? Math.min(3, Math.max(.3, Number(calibration.factor) || 1)) : 1;
+  if (k !== 1) { unit *= k; setup *= k; basis.push(`×${k.toFixed(2)} from ${calibration.n} factory quote${calibration.n === 1 ? '' : 's'}`); }
   const q = Math.max(1, Math.round(qty || 300)), unitCents = Math.round(unit), setupCents = Math.round(setup);
   return { unitCents, setupCents, perPieceCents: Math.round(unitCents + setupCents / q), qty: q, basis: basis.join(', ') };
 }
@@ -78,3 +84,46 @@ export const decorationLine = ({ name, technique, base, widthIn, heightIn, colou
   name: String(name || 'Decoration').slice(0, 60), technique: String(technique || base || '').slice(0, 60), base, widthIn: r2(widthIn), heightIn: r2(heightIn), colours, pantones: pantones.slice(0, 8), view, placement: String(placement).slice(0, 160),
   unitCents: cost.unitCents, setupCents: cost.setupCents, perPieceCents: cost.perPieceCents, qty: cost.qty, basis: cost.basis
 });
+
+// ---- one artwork size per group of garment sizes ----
+// A print that reads well on a medium is lost on an XXL and crowds an XS, so factories keep one or two artwork sizes across the run.
+// measures: {size: the garment's width there, e.g. the chest}; the graphic is scaled with it from the sample size and rounded to ¼ in.
+export const GRADE_GROUPS = { 1: [['XS', 'S', 'M', 'L', 'XL', 'XXL']], 2: [['XS', 'S', 'M'], ['L', 'XL', 'XXL']], 3: [['XS', 'S'], ['M', 'L'], ['XL', 'XXL']] };
+const q4 = v => Math.round(v * 4) / 4, q8 = v => Math.round(v * 8) / 8;
+export function gradeArt({ w, h, measures = {}, sample = 'M', breaks = 2 }) {
+  const groups = GRADE_GROUPS[breaks] || GRADE_GROUPS[2], base = Number(measures[sample]) || 0, aspect = h / w || 1;
+  return groups.map(sizes => {
+    const m = sizes.map(s => Number(measures[s])).filter(v => v > 0), avg = m.length ? m.reduce((a, b) => a + b, 0) / m.length : base;
+    const ww = Math.max(.25, q4(base ? w * avg / base : w));
+    return { sizes, w: ww, h: Math.max(.25, q8(ww * aspect)) };
+  });
+}
+// the artwork size a garment size takes: its group's, or the placement's own size
+export const gradeFor = (q, size) => (Array.isArray(q.grade) ? q.grade.find(g => g.sizes.includes(size)) : null) || { w: q.w, h: q.h };
+
+// ---- the inks on each colourway ----
+// An ink that does not stand off the garment (a black print on a black tee) is swapped for one that does; the rest stay as drawn.
+const rgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16) / 255);
+const lin = v => (v <= .03928 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4);
+const luminance = h => { const [r, g, b] = rgb(h).map(lin); return .2126 * r + .7152 * g + .0722 * b; };
+export const contrast = (a, b) => { const x = luminance(a), y = luminance(b); return (Math.max(x, y) + .05) / (Math.min(x, y) + .05); };
+const mix = (a, b, t) => '#' + rgb(a).map((v, i) => Math.round((v + (rgb(b)[i] - v) * t) * 255).toString(16).padStart(2, '0')).join('');
+export function suggestInks(colours = [], garment = '#ffffff', { min = 2.2 } = {}) {
+  const dark = luminance(garment) < .18;
+  return colours.map(c => {
+    if (contrast(c, garment) >= min) return { from: c, to: c, why: 'Stands off the garment as drawn' };
+    // step towards white on a dark garment (towards ink black on a light one) until it reads
+    let to = c; for (let t = .15; t <= 1.001 && contrast(to, garment) < min; t += .15) to = mix(c, dark ? '#ffffff' : '#141416', Math.min(1, t));
+    return { from: c, to, why: dark ? 'Too close to the garment: lightened so it reads' : 'Too close to the garment: darkened so it reads' };
+  });
+}
+
+// ---- the factories' quotes, against what we estimated ----
+// Each quote is kept with the estimate made for the same size, colours and quantity. The factor is the median of quote ÷ estimate, trusted more
+// as quotes come in (a single quote moves the figure a third of the way), bounded so one odd quote cannot run away with it.
+export function calibrationOf(quotes = []) {
+  const r = quotes.map(q => Number(q.actualCents) / Number(q.estimateCents)).filter(v => Number.isFinite(v) && v > 0).sort((a, b) => a - b);
+  if (!r.length) return null;
+  const med = r.length % 2 ? r[(r.length - 1) / 2] : (r[r.length / 2 - 1] + r[r.length / 2]) / 2, trust = Math.min(1, r.length / 3);
+  return { n: r.length, median: Math.round(med * 100) / 100, factor: Math.round(Math.min(3, Math.max(.3, 1 + (med - 1) * trust)) * 100) / 100 };
+}
