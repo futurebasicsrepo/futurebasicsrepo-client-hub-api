@@ -2504,6 +2504,8 @@ await journey('J240', 'Design on an iPad, as Kyle found it: the ruler takes any 
       const asSweat = await K(`/concepts/${c.id}/flats`, { method: 'PUT', body: { ...saved, style: 'crewneck', template: undefined, placements: saved.placements } });
       const redo = await K(`/concepts/${c.id}/flats/from-picture`);
       ok(asSweat.status === 200 && redo.status === 200 && redo.json.flat.style === 'jacket' && redo.json.flat.saved === false && sql(`select style from lab_flats where concept_id='${c.id}'`) === 'crewneck', '8. Redraw from the picture draws it as a jacket again, and keeps nothing until Save', [asSweat.status, asSweat.json?.error, redo.json?.flat?.style]);
+      await F.click('.tabs [data-tab=design]'); await F.click('#redrawPic'); await F.waitForFunction(() => /redrawn from the picture/.test(document.getElementById('cSub').textContent), null, { timeout: 15000 });
+      ok(await F.evaluate(() => FBFlats.dirty()), '9. Redraw from the picture is always in the Design tab, and leaves the flat to save');
       ok(errs.length === 0, 'no page errors', errs); await oc.close();
     } finally { await b.close(); }
   } finally { await cleanup(brands, plan.plan?.id); }

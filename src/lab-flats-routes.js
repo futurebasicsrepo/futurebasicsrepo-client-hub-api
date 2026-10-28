@@ -140,6 +140,19 @@ export function registerLabFlatsRoutes(app, d) {
     const r = out && STYLES[out.style] ? { style: out.style, fit: FITS[out.fit] ? out.fit : null, color: /^#[0-9a-f]{6}$/i.test(String(out.color || '')) ? String(out.color).toLowerCase() : null } : null;
     if (reads.size > 500) reads.clear(); reads.set(key, r); return r;
   }
+  const rgb = h => [1, 3, 5].map(i => parseInt(String(h).slice(i, i + 2), 16)), far = (a, b) => { const [x, y] = [rgb(a), rgb(b)]; return Math.hypot(x[0] - y[0], x[1] - y[1], x[2] - y[2]) > 70; };
+  async function mismatch(c, params) {
+    const read = await readPicture(c); if (!read) return null;
+    const reasons = [], sketchName = (style, template) => templateOf({ style, template })?.label || STYLES[style].label;
+    if (read.style !== params.style) reasons.push(`the picture shows a ${STYLES[read.style].label.toLowerCase()}, the flat is a ${STYLES[params.style]?.label.toLowerCase() || params.style}`);
+    else if (params.template && params.template !== 'none') {
+      const words = [c.name, c.spec?.silhouette, c.spec?.fabric, c.spec?.fit, c.spec?.description].join(' '), fit = read.fit || params.fit;
+      const best = await pickTemplate(c, { style: read.style, fit, template: defaultTemplate(read.style, fit, words, [c.name, c.spec?.silhouette, c.spec?.fabric].join(' ')) });
+      if (best && best !== params.template) reasons.push(`the picture is closest to the “${sketchName(read.style, best)}” sketch, the flat is drawn from “${sketchName(params.style, params.template)}”`);
+    }
+    if (read.color && (!params.color || far(read.color, params.color))) reasons.push(`the cloth in the picture is ${read.color}, the flat is ${params.color || 'white'}`);
+    return reasons.length ? { style: read.style, label: STYLES[read.style].label, color: read.color, reasons } : null;
+  }
   // a graphic measured in the studio keeps its size: the spot's top edge stays where the spot puts it
   const sized = (box, g) => { const w = Number(g.widthIn), h = Number(g.heightIn); if (!(w > 0 && h > 0)) return box; const top = box.y - box.h / 2; return { ...box, w: Math.round(w * 8) / 8, h: Math.round(h * 8) / 8, y: Math.round((top + h / 2) * 8) / 8 }; };
   // where the piece starts: its style, fit and details from its words, and its logo and graphics where the concept said they go
@@ -229,9 +242,9 @@ export function registerLabFlatsRoutes(app, d) {
     const c = await concept(req.params.id); if (!c) return bad(reply, 'Not found', 404);
     const r = (await pool.query('select style, params, placements, check_result, checked_at, updated_at from lab_flats where concept_id=$1', [c.id])).rows[0];
     const list = (await techniques(c.client_id)).map(t => ({ id: t.id, name: t.name, kind: t.kind, base: t.base, rules: t.rules }));
-    // a saved flat drawn as another garment than the picture shows says so, and offers to redraw it from the picture
-    if (r) { const read = await readPicture(c), picture = read && read.style !== r.style ? { style: read.style, label: STYLES[read.style].label, color: read.color } : null;
-      return shape(c, { ...r.params, placements: r.placements, check: r.check_result, saved: true, updatedAt: r.updated_at }, { techniques: list, picture }); }
+    // a saved flat that does not match its picture (another garment, another sketch, or a cloth colour far from the picture's) says so, and
+    // offers to redraw it from the picture
+    if (r) return shape(c, { ...r.params, placements: r.placements, check: r.check_result, saved: true, updatedAt: r.updated_at }, { techniques: list, picture: await mismatch(c, r.params) });
     const init = await initial(c);
     if (!init) return shape(c, null, { techniques: list, unsupported: looksLikeFootwear(c) && c.category !== 'footwear' ? `This piece reads as footwear, but it sits in a ${c.category} line, so it is not drawn as ${c.category}. Flats are not drawn for footwear yet: change the concept's words, or keep it in a footwear line.` : `Flats are not drawn for ${c.category} yet. They cover tops, hoodies, sweatshirts, jackets, pants, shorts, caps, beanies and totes.` });
     return shape(c, { ...init, check: await check(init, init.placements, c.client_id), saved: false }, { techniques: list });
