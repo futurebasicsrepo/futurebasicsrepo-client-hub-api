@@ -13,12 +13,12 @@ import { tagSvg } from './lab-tags.js';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const clip = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
 const pictureOf = dataUrl => { const m = /^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/=]+)$/i.exec(String(dataUrl || '')); return m ? Buffer.from(m[2], 'base64') : null; };
-const shape = r => ({ id: r.id, key: r.key, kind: r.kind, name: r.name, code: r.code, supplier: r.supplier, priceCents: r.price_cents, price: r.price_cents / 100, unit: r.unit, moq: r.moq, leadDays: r.lead_days, spec: r.spec || {}, colours: r.colours || [], notes: r.notes, hasSwatch: Boolean(r.has_swatch), builtin: r.builtin, updatedAt: r.updated_at, shared: !r.client_id, by: r.by_name || '' });
-const COLS = 'id, key, kind, name, code, supplier, price_cents, unit, moq, lead_days, spec, colours, notes, (swatch is not null) has_swatch, builtin, updated_at, client_id, (select coalesce(nullif(u.name,\'\'), split_part(u.email,\'@\',1)) from users u where u.id=lab_materials.created_by) by_name';
+const shape = r => ({ id: r.id, key: r.key, kind: r.kind, name: r.name, code: r.code, supplier: r.supplier, priceCents: r.price_cents, price: r.price_cents / 100, unit: r.unit, moq: r.moq, leadDays: r.lead_days, spec: r.spec || {}, colours: r.colours || [], notes: r.notes, hasSwatch: Boolean(r.has_swatch), builtin: r.builtin, updatedAt: r.updated_at, starter: !r.client_id && Boolean(r.builtin), room: r.room_name || '', by: r.by_name || '' });
+const COLS = 'id, key, kind, name, code, supplier, price_cents, unit, moq, lead_days, spec, colours, notes, (swatch is not null) has_swatch, builtin, updated_at, client_id, (select coalesce(nullif(u.name,\'\'), split_part(u.email,\'@\',1)) from users u where u.id=lab_materials.created_by) by_name, (select name from clients cl where cl.id=lab_materials.client_id) room_name';
 
 export function registerLabMaterialsRoutes(app, d) {
   const { pool, authenticate, adminOnly, lab = null, log = console } = d;
-  // a room's library: the materials its team adds, beside Future Basics' shared ones (client_id null) which every room reads and uses but cannot change
+  // a room's library: the materials its team adds, plus the built-in starter set it reads and uses but cannot change. Future Basics staff see every room's
   const own = req => lab?.scope?.(req) || null, mine = (req, m) => (own(req) ? m.client_id === own(req) : true);
   const pre = [authenticate, adminOnly], bad = (reply, error, code = 422) => reply.code(code).send({ error });
   const actorOf = req => (UUID.test(String(req.auth?.sub || '')) ? req.auth.sub : null);
@@ -35,19 +35,19 @@ export function registerLabMaterialsRoutes(app, d) {
     }
   })().catch(e => { seeding = null; log.warn?.({ err: e.message }, 'the starting materials could not be put in'); }));
   seeded();
-  const one = async (id, req = null) => (UUID.test(String(id || '')) ? (await pool.query(`select ${COLS} from lab_materials where id=$1 and not archived and ($2::uuid is null or client_id is null or client_id=$2)`, [id, req ? own(req) : null])).rows[0] || null : null);
+  const one = async (id, req = null) => (UUID.test(String(id || '')) ? (await pool.query(`select ${COLS} from lab_materials where id=$1 and not archived and ($2::uuid is null or client_id=$2 or (client_id is null and builtin))`, [id, req ? own(req) : null])).rows[0] || null : null);
   const options = () => ({ kinds: MATERIAL_KINDS, fabric: { constructions: FABRIC_CONSTRUCTIONS, finishes: FABRIC_FINISHES }, trim: { categories: TRIM_CATEGORIES }, tag: TAG_OPTIONS, units: UNITS, roles: ROLES, usageM: USAGE_M, makingCents: MAKING_CENTS, freightPct: FREIGHT_DUTY_PCT });
   const withPantone = colours => colours.map(c => ({ ...c, pantone: c.pantone || (c.hex && P ? P.code(c.hex, { hint: c.name }) : '') }));
 
   app.get('/v1/lab/materials', { preHandler: pre }, async req => {
     await seeded();
     const q = req.query || {}, where = ['not archived'], args = [];
-    if (own(req)) { args.push(own(req)); where.push(`(client_id is null or client_id=$${args.length})`); } else if (q.room !== 'all') where.push('client_id is null'); // staff see our library; ?room=all adds every room's
+    if (own(req)) { args.push(own(req)); where.push(`(client_id=$${args.length} or (client_id is null and builtin))`); } // staff see every material, every room's too
     if (MATERIAL_KINDS.some(k => k.id === q.kind)) { args.push(q.kind); where.push(`kind=$${args.length}`); }
     if (clip(q.q, 80)) { args.push(`%${clip(q.q, 80).toLowerCase()}%`); where.push(`(lower(name) like $${args.length} or lower(code) like $${args.length} or lower(supplier) like $${args.length} or lower(spec::text) like $${args.length})`); }
     if (clip(q.for, 20)) { args.push(clip(q.for, 20).toLowerCase()); where.push(`(kind <> 'tag' or spec->'for' ? $${args.length})`); }
     const rows = (await pool.query(`select ${COLS} from lab_materials where ${where.join(' and ')} order by array_position($${args.length + 1}::text[], kind), builtin desc, name limit 400`, [...args, MATERIAL_KINDS.map(k => k.id)])).rows;
-    return { materials: rows.map(r => ({ ...shape(r), editable: mine(req, r) })), options: options(), room: Boolean(own(req)) };
+    return { materials: rows.map(r => ({ ...shape(r), editable: mine(req, r), room: own(req) ? '' : r.room_name || '' })), options: options(), client: Boolean(own(req)) };
   });
   app.post('/v1/lab/materials', { preHandler: pre, bodyLimit: 12_000_000 }, async (req, reply) => {
     const c = cleanMaterial(req.body || {}); if (c.error) return bad(reply, c.error); const x = c.material;

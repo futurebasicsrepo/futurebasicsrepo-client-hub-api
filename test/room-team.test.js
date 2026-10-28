@@ -19,14 +19,16 @@ test('the team: the owner first, signed-in before invited, removed people and st
   assert.deepEqual(v.domains, ['brand.test']); assert.equal(v.max, TEAM_MAX);
 });
 
-test('shared libraries: a room reads Future Basics\' materials, techniques, fonts and shared graphics, but changes only its own', async () => {
+test('a room reaches only its own work, plus the built-in starter materials and techniques to read', async () => {
   const cid = '22222222-2222-4222-8222-222222222222', id = '44444444-4444-4444-8444-444444444444', seen = [];
-  const pool = { query: async (q, args) => { if (/from lab_access/.test(q)) return { rows: [{ id: 'a1', client_id: cid, status: 'active' }], rowCount: 1 }; if (/select 1 from/.test(q)) { seen.push(q); return /client_id is null|or shared/.test(q) ? { rows: [{}], rowCount: 1 } : { rows: [], rowCount: 0 }; } return { rows: [], rowCount: 0 }; } };
+  // the stand-in database: the row is a built-in starter row, not the room's own
+  const pool = { query: async (q) => { if (/from lab_access/.test(q)) return { rows: [{ id: 'a1', client_id: cid, status: 'active' }], rowCount: 1 }; if (/select 1 from/.test(q)) { seen.push(q); return /client_id is null and (t\.)?builtin/.test(q) ? { rows: [{}], rowCount: 1 } : { rows: [], rowCount: 0 }; } return { rows: [], rowCount: 0 }; } };
   const lab = createLabAccess({ pool, env: {} }), reply = () => { const r = { code: c => { r.status = c; return r; }, send: b => { r.body = b; return r; } }; return r; };
   const as = (url, method) => ({ auth: { role: 'client', clientId: cid, sub: '33333333-3333-4333-8333-333333333333' }, url, method });
-  for (const url of [`/v1/lab/materials/${id}/swatch`, `/v1/lab/library/techniques/${id}/sample`, `/v1/lab/fonts/${id}/file`, `/v1/lab/art/${id}`, `/v1/lab/library/technique-photos/${id}`]) { const r = reply(); await lab.gate(as(url, 'GET'), r); assert.equal(r.status, undefined, url); }
-  for (const [url, m] of [[`/v1/lab/materials/${id}`, 'PUT'], [`/v1/lab/library/techniques/${id}`, 'DELETE'], [`/v1/lab/library/graphics/${id}`, 'PUT'], [`/v1/lab/library/techniques/${id}/sample`, 'POST']]) { const r = reply(); await lab.gate(as(url, m), r); assert.equal(r.status, 404, `${m} ${url}`); }
+  for (const url of [`/v1/lab/materials/${id}/swatch`, `/v1/lab/library/techniques/${id}/sample`, `/v1/lab/library/technique-photos/${id}`]) { const r = reply(); await lab.gate(as(url, 'GET'), r); assert.equal(r.status, undefined, url); }
+  for (const [url, m] of [[`/v1/lab/materials/${id}`, 'PUT'], [`/v1/lab/library/techniques/${id}`, 'DELETE'], [`/v1/lab/library/techniques/${id}/sample`, 'POST'], [`/v1/lab/art/${id}`, 'GET'], [`/v1/lab/library/graphics/${id}`, 'GET'], [`/v1/lab/fonts/${id}/file`, 'GET']]) { const r = reply(); await lab.gate(as(url, m), r); assert.equal(r.status, 404, `${m} ${url}`); }
   let r = reply(); await lab.gate(as('/v1/lab/materials', 'POST'), r); assert.equal(r.status, undefined, 'a room adds its own materials');
   r = reply(); await lab.gate(as('/v1/lab/library/techniques', 'POST'), r); assert.equal(r.status, undefined, 'and techniques');
-  assert.ok(seen.some(q => /lab_art where id=\$1 and \(client_id=\$2 or shared\)/.test(q)), 'a graphic is readable when shared');
+  assert.ok(seen.some(q => /lab_art where id=\$1 and client_id=\$2$/.test(q)), 'a graphic is the room\'s own or nothing');
+  assert.ok(seen.some(q => /lab_fonts where id=\$1 and client_id=\$2$/.test(q)), 'and so is a font');
 });

@@ -149,7 +149,7 @@ A job runs every six hours and reads up to three brands that have not been read 
 
 A client can open the Design Lab on their own room, from the hub, for a fixed price plus a metered part (`src/lab-access.js`, `src/lab-selfserve-routes.js`).
 
-**What they get.** The studio, the flats and the libraries, on their own work: line plans, concepts, the studio, flats, the graphics they draw or upload, their fonts, the decoration quotes they record. Tech packs are included while the Lab is open (a photo pack is never locked for a room with the Lab: its `billing` reads `lab`). The research side (the brands we watch, the pieces we found, what's moving, the brand code), the Future Basics taste, the client list, and the edits of the shared libraries (materials, techniques, the technique samples) stay Future Basics only.
+**What they get.** The studio, the flats and the libraries, on their own work: line plans, concepts, the studio, flats, the graphics they draw or upload, their fonts, the decoration quotes they record. Tech packs are included while the Lab is open (a photo pack is never locked for a room with the Lab: its `billing` reads `lab`). The research side (the brands we watch, the pieces we found, what's moving, the brand code), the Future Basics taste and the client list stay Future Basics only; the room's libraries hold only its own work plus the read-only starter set (see *A room's team, and the libraries it shares*).
 
 **How the price works: fixed + variable.** A fee opens the Lab for a period and includes a handful of AI generations. Past them each generation is metered: a picture counts as one, the on-model views one each, a walk four, a 3D try-on three (`UNITS`). The unbilled part is invoiced in rounds (a Shopify draft order tagged `fb-design-lab-ai`, emailed to the client, also on their hub card) once it reaches the billing round; generations pause when the room owes more than the cap, and continue once the open invoice is paid. Each access row keeps the numbers it was sold at, so a price change never moves a live room.
 
@@ -181,16 +181,18 @@ Routes: `GET /v1/client/lab`, `POST /v1/client/lab/checkout`, `POST /v1/client/l
 - An address that already signs in to another active room is refused: one person, one room. Future Basics addresses are refused too; staff already reach every room.
 - **Taking someone off.** A teammate can take another off the team (not themselves, and never the owner, the room's contact address; Future Basics changes the owner from the console). Their session stops working at once (every client request checks, with a 20-second cache the team routes clear), and they cannot sign in again, even when the room's email domain would let them in. What they made stays, by name. Adding them again lets them back in.
 
-**The libraries.** A room's Lab library is its own work plus what Future Basics shares:
-| Library | The room's own | Shared by Future Basics |
+**Who sees what.** There are two sides, kept apart:
+- **Future Basics staff** (anyone signed in to the work console with the Lab) see everything: our own work and every client room's plans, concepts, graphics, fonts, materials and techniques. A client's row is marked with the room's name in the graphics, materials and techniques lists.
+- **A client and their team** see only their own room's work. Our graphics, fonts and the materials and techniques we add never reach a room, and neither does another room's work. The one exception is the built-in **starter set** of materials and techniques (screen print, embroidery, the base fabrics and trims) that the flats and the costing need: a room reads and uses those, cannot change them, and can copy a starter technique into the room to make its own version.
+
+| Library | A room sees | Future Basics staff see |
 | --- | --- | --- |
-| Graphics | everything the team draws, uploads or makes in the studio | a Future Basics graphic staff mark **Share with every client room** in the graphic's dialog (the library's "Shared by Future Basics" filter lists them) |
-| Fonts | fonts the team uploads | our fonts |
-| Materials, trims and tags | what the team adds | our whole starting library |
-| Techniques | what the team adds, or a **copy** of one of ours | our whole starting library |
+| Graphics | what the team draws, uploads or makes in the studio | every graphic, every room's |
+| Fonts | fonts the team uploads | every font |
+| Materials, trims and tags | the team's own, plus the starter set (read-only) | every material, every room's |
+| Techniques | the team's own and their copies, plus the starter set (read-only) | every technique, every room's |
 
-What Future Basics shares, a room reads and uses on its pieces but cannot change or remove (the gate answers 404 to a write); a technique of ours can be copied into the room and changed there. Only Future Basics graphics can be shared, and only by staff: a room's work never reaches another room. Staff see every graphic, as before; the materials list shows our library, and `?room=all` adds every room's. `lab_materials` and `lab_techniques` carry `client_id` (null for ours), `lab_art` carries `shared`, and the flats and studio list only the techniques a piece's room may use.
-
+The gate answers 404 to a room asking for anything outside this, by list, by id or by a query parameter. `lab_materials` and `lab_techniques` carry `client_id` (null for ours, `builtin` for the starter set), and the flats and studio list only the techniques a piece's room may use: a client's piece gets its room's own plus the starter set, one of ours gets all of ours.
 
 ## Where it lives
 

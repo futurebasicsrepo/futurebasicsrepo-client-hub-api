@@ -27,7 +27,7 @@ const SOURCES = ['library', 'studio', 'upload', 'plan', 'concept', 'repeat'];
 const cleanTags = t => [...new Set((Array.isArray(t) ? t : String(t || '').split(',')).map(x => clip(x, 30).toLowerCase()).filter(Boolean))].slice(0, 12);
 export const pictureOf = dataUrl => { const m = /^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/=]+)$/i.exec(String(dataUrl || '')); return m ? Buffer.from(m[2], 'base64') : null; };
 const techShape = (r, photos = []) => ({ id: r.id, key: r.key, kind: r.kind, name: r.name, summary: r.summary, base: r.base, finish: r.finish, rules: cleanRules(r.rules || {}, r.base), prompt: r.prompt, artGuide: r.art_guide, factoryNote: r.factory_note,
-  builtin: r.builtin, hasSample: Boolean(r.has_sample), sampleAt: r.sample_at, photos, updatedAt: r.updated_at, shared: !r.client_id });
+  builtin: r.builtin, hasSample: Boolean(r.has_sample), sampleAt: r.sample_at, photos, updatedAt: r.updated_at, room: r.room_name || '' });
 
 export function registerLabLibraryRoutes(app, d) {
   const { pool, authenticate, adminOnly, art, env = process.env, imageCfg = () => imageConfig(env), editImpl = openaiEdit, lab = null, log = console } = d;
@@ -43,27 +43,26 @@ export function registerLabLibraryRoutes(app, d) {
       [t.key, t.kind, t.name, t.summary, t.base, t.finish, t.prompt, t.artGuide, t.factoryNote, cleanRules(t.rules || {}, t.base)]);
   })().catch(e => { seeding = null; log.warn?.({ err: e.message }, 'design lab techniques could not be put in'); }));
   seeded();
-  // a room uses its own techniques and Future Basics' shared ones (client_id null); staff (req without a room) reach every one
-  const technique = async (id, req = null) => (UUID.test(String(id || '')) ? (await pool.query('select * from lab_techniques where id=$1 and not archived and ($2::uuid is null or client_id is null or client_id=$2)', [id, req ? own(req) : null])).rows[0] || null : null);
+  // a room uses its own techniques and the built-in starter ones; Future Basics staff (req without a room) reach every one, every room's too
+  const technique = async (id, req = null) => (UUID.test(String(id || '')) ? (await pool.query('select * from lab_techniques where id=$1 and not archived and ($2::uuid is null or client_id=$2 or (client_id is null and builtin))', [id, req ? own(req) : null])).rows[0] || null : null);
   const photosOf = async id => (await pool.query('select jpeg from lab_technique_photos where technique_id=$1 order by created_at limit 3', [id])).rows.map(r => r.jpeg);
   const samples = new Map(), dayOf = () => new Date().toISOString().slice(0, 10), sampleCap = () => Number(env.LAB_DAILY_SAMPLES ?? 30);
 
   // ---- graphics ----
   app.get('/v1/lab/library/graphics', { preHandler: pre }, async req => {
     const q = req.query || {}, where = ['a.in_library'], args = [];
-    if (own(req)) { args.push(own(req)); where.push(`(a.client_id=$${args.length} or a.shared)`); } // staff see every graphic, as before
-    if (q.source === 'shared') where.push('a.shared');
+    if (own(req)) { args.push(own(req)); where.push(`a.client_id=$${args.length}`); } // a room sees only its own; Future Basics staff see every graphic, every room's too
     if (clip(q.q, 80)) { args.push(`%${clip(q.q, 80).toLowerCase()}%`); where.push(`(lower(a.name) like $${args.length} or lower(a.prompt) like $${args.length} or exists(select 1 from unnest(a.tags) t where t like $${args.length}))`); }
     if (SOURCES.includes(q.source)) { args.push(q.source); where.push(`a.source=$${args.length}`); }
     if (clip(q.tag, 30)) { args.push(clip(q.tag, 30).toLowerCase()); where.push(`$${args.length} = any(a.tags)`); }
     if (UUID.test(String(q.technique || ''))) { args.push(q.technique); where.push(`a.technique_id=$${args.length}`); }
     const limit = Math.min(Math.max(Number(q.limit) || 60, 1), 200), offset = Math.max(Number(q.offset) || 0, 0), w = where.join(' and ');
-    const rows = (await pool.query(`select a.id, a.name, a.tags, a.source, a.technique_id, a.created_at, a.meta, a.shared, a.client_id, left(a.prompt, 400) prompt, t.name technique_name, p.name plan_name, c.name concept_name, coalesce(nullif(u.name,''), split_part(u.email,'@',1)) by_name
+    const rows = (await pool.query(`select a.id, a.name, a.tags, a.source, a.technique_id, a.created_at, a.meta, a.client_id, (select name from clients cl where cl.id=a.client_id) room_name, left(a.prompt, 400) prompt, t.name technique_name, p.name plan_name, c.name concept_name, coalesce(nullif(u.name,''), split_part(u.email,'@',1)) by_name
       from lab_art a left join lab_techniques t on t.id=a.technique_id left join lab_plans p on p.id=a.plan_id left join lab_concepts c on c.id=a.concept_id left join users u on u.id=a.created_by
       where ${w} order by a.created_at desc limit ${limit} offset ${offset}`, args)).rows;
     const total = Number((await pool.query(`select count(*)::int n from lab_art a where ${w}`, args)).rows[0].n);
-    const tags = (await pool.query(`select t, count(*)::int n from lab_art, unnest(tags) t where in_library and ($1::uuid is null or client_id=$1 or shared) group by t order by n desc, t limit 30`, [own(req)])).rows.map(r => ({ tag: r.t, n: r.n }));
-    return { graphics: rows.map(r => ({ id: r.id, name: r.name, tags: r.tags, source: r.source, techniqueId: r.technique_id, techniqueName: r.technique_name || '', from: r.concept_name || r.plan_name || '', by: r.by_name || '', prompt: r.prompt, createdAt: r.created_at, shared: Boolean(r.shared), editable: own(req) ? r.client_id === own(req) : true, ...(r.meta?.repeat ? { repeat: { ...r.meta.repeat, widthIn: r.meta.widthIn, heightIn: r.meta.heightIn } } : {}) })), total, tags, styles: ART_STYLES, imageConnected: imageCfg().configured };
+    const tags = (await pool.query(`select t, count(*)::int n from lab_art, unnest(tags) t where in_library and ($1::uuid is null or client_id=$1) group by t order by n desc, t limit 30`, [own(req)])).rows.map(r => ({ tag: r.t, n: r.n }));
+    return { graphics: rows.map(r => ({ id: r.id, name: r.name, tags: r.tags, source: r.source, techniqueId: r.technique_id, techniqueName: r.technique_name || '', from: r.concept_name || r.plan_name || '', by: r.by_name || '', prompt: r.prompt, createdAt: r.created_at, room: own(req) ? '' : r.room_name || '', ...(r.meta?.repeat ? { repeat: { ...r.meta.repeat, widthIn: r.meta.widthIn, heightIn: r.meta.heightIn } } : {}) })), total, tags, styles: ART_STYLES, imageConnected: imageCfg().configured };
   });
 
   app.post('/v1/lab/library/graphics', { preHandler: pre }, async (req, reply) => {
@@ -103,8 +102,6 @@ export function registerLabLibraryRoutes(app, d) {
     const r = (await pool.query('select id, name, tags, technique_id from lab_art where id=$1', [req.params.id])).rows[0]; if (!r) return bad(reply, 'Not found', 404);
     const tid = b.techniqueId === null || b.techniqueId === '' ? null : b.techniqueId !== undefined ? (await technique(b.techniqueId, req))?.id ?? r.technique_id : r.technique_id;
     await pool.query('update lab_art set name=$2, tags=$3, technique_id=$4, in_library=true where id=$1', [r.id, b.name !== undefined ? clip(b.name, 120) || r.name : r.name, b.tags !== undefined ? cleanTags(b.tags) : r.tags, tid]);
-    // only Future Basics shares, and only its own graphics: a room's work stays the room's
-    if (typeof b.shared === 'boolean' && !own(req)) { const x = await pool.query('update lab_art set shared=$2 where id=$1 and client_id is null', [r.id, b.shared]); if (!x.rowCount && b.shared) return bad(reply, 'Only a Future Basics graphic can be shared with every room', 409); }
     return { ok: true };
   });
   app.delete('/v1/lab/library/graphics/:id', { preHandler: pre }, async (req, reply) => {
@@ -158,7 +155,7 @@ export function registerLabLibraryRoutes(app, d) {
 
   app.get('/v1/lab/library/techniques', { preHandler: pre }, async req => {
     await seeded();
-    const rows = (await pool.query(`select id, key, kind, name, summary, base, finish, rules, prompt, art_guide, factory_note, builtin, (sample is not null) has_sample, sample_at, updated_at, client_id from lab_techniques where not archived and (client_id is null or client_id=$2) order by array_position($1::text[], kind), (client_id is null), builtin desc, name`, [TECHNIQUE_KINDS.map(k => k.id), own(req)])).rows;
+    const rows = (await pool.query(`select id, key, kind, name, summary, base, finish, rules, prompt, art_guide, factory_note, builtin, (sample is not null) has_sample, sample_at, updated_at, client_id, (select name from clients cl where cl.id=t.client_id) room_name from lab_techniques t where not archived and ($2::uuid is null or client_id=$2 or (client_id is null and builtin)) order by array_position($1::text[], kind), (client_id is null), builtin desc, name`, [TECHNIQUE_KINDS.map(k => k.id), own(req)])).rows;
     const photos = (await pool.query('select id, technique_id from lab_technique_photos order by created_at')).rows;
     return { techniques: rows.map(r => ({ ...techShape(r, photos.filter(p => p.technique_id === r.id).map(p => p.id)), editable: own(req) ? r.client_id === own(req) : true })), kinds: TECHNIQUE_KINDS, effects: EFFECTS, baseTechniques: GRAPHIC_TECHNIQUES, imageConnected: imageCfg().configured, samplesLeft: sampleCap() < 0 ? null : Math.max(0, sampleCap() - (samples.get(dayOf()) || 0)) };
   });
@@ -222,7 +219,7 @@ export function registerLabLibraryRoutes(app, d) {
     const c = (await pool.query('select id, status, spec, category from lab_concepts where id=$1', [req.params.id])).rows[0]; if (!c) return bad(reply, 'Not found', 404);
     if (c.status === 'tech_pack') return bad(reply, 'This concept is already a tech pack', 409);
     if (!UUID.test(String(b.art || ''))) return bad(reply, 'Choose a graphic from the library');
-    const a = (await pool.query('select id, name, prompt, technique_id from lab_art where id=$1 and ($2::uuid is null or client_id=$2 or shared)', [b.art, own(req)])).rows[0]; if (!a) return bad(reply, 'That graphic is not in the library', 404);
+    const a = (await pool.query('select id, name, prompt, technique_id from lab_art where id=$1 and ($2::uuid is null or client_id=$2)', [b.art, own(req)])).rows[0]; if (!a) return bad(reply, 'That graphic is not in the library', 404);
     const t = await technique(b.techniqueId || a.technique_id, req), spec = ensureBranding(c.spec || {}, c.category);
     if (spec.graphics.length >= 4) return bad(reply, 'A concept carries up to 4 graphics. Remove one first.', 409);
     const placement = Object.keys(GRAPHIC_PLACE).includes(b.placement) ? b.placement : 'front chest';

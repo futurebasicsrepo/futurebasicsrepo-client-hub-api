@@ -92,8 +92,8 @@ export function registerLabFlatsRoutes(app, d) {
   const pre = [authenticate, adminOnly], bad = (reply, error, code = 422, extra = {}) => reply.code(code).send({ error, ...extra });
   const actorOf = req => (UUID.test(String(req.auth?.sub || '')) ? req.auth.sub : null);
   const concept = async id => (UUID.test(String(id)) ? (await pool.query('select c.id, c.name, c.category, c.status, c.spec, c.twist, c.product_id, c.price_cents, c.cost_cents, c.qty, c.updated_at, c.client_id, p.name plan_name from lab_concepts c left join lab_plans p on p.id=c.plan_id where c.id=$1', [id])).rows[0] : null);
-  // the techniques a piece may be made with: Future Basics' shared ones, plus its own room's (a room's techniques stay in that room)
-  const techniques = async (cid = null) => (await pool.query('select id, key, kind, name, base, finish, rules from lab_techniques where not archived and (client_id is null or client_id=$1) order by builtin desc, name', [UUID.test(String(cid || '')) ? cid : null])).rows.map(t => ({ ...t, rules: cleanRules(t.rules || {}, t.base) }));
+  // the techniques a piece may be made with: a Future Basics piece, all of ours; a client's piece, its room's own plus the built-in starter set
+  const techniques = async (cid = null) => (await pool.query('select id, key, kind, name, base, finish, rules from lab_techniques where not archived and ((client_id is null and ($1::uuid is null or builtin)) or client_id=$1) order by builtin desc, name', [UUID.test(String(cid || '')) ? cid : null])).rows.map(t => ({ ...t, rules: cleanRules(t.rules || {}, t.base) }));
   const techFor = (list, q) => list.find(t => t.id === q.techniqueId) || list.find(t => t.key === PREFERRED[q.technique]) || list.find(t => t.base === q.technique) || list.find(t => t.key === 'plastisol') || { name: q.technique || 'screen print', base: q.technique || 'screen print', rules: cleanRules({}, q.technique) };
   const marks = new Map();
   const markPng = async mark => { if (!marks.has(mark)) marks.set(mark, await sharp(Buffer.from(logoSvg(mark))).resize({ width: 1200 }).png().toBuffer()); return marks.get(mark); };

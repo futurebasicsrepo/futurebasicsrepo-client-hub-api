@@ -2096,7 +2096,7 @@ await journey('J232', 'The self-serve Design Lab: a client room is locked out un
   }
 });
 
-await journey('J233', 'A room\'s team and its shared libraries: the room adds a teammate who signs in with a code and works on the same plans, graphics, materials and techniques; Future Basics shares its library read-only and can share one of its graphics with every room; a teammate taken off loses access at once', async () => {
+await journey('J233', 'A room\'s team and its libraries: the room adds a teammate who signs in with a code and works on the same plans, graphics, materials and techniques; a room sees only its own work (plus the read-only starter materials and techniques), never ours or another room\'s, while Future Basics staff see everything; a teammate taken off loses access at once', async () => {
   const LOG = `${S}/server-j-a.log`, A = (path, o = {}) => call(path, { token: kyleT, ...o });
   const mkRoom = async who => {
     const email = `${who}-${stamp}@team${stamp}.test`, st = await call('/v1/public/start', { body: { email, name: `${who} owner`, title: 'First tee', photos: [jpeg()] } });
@@ -2123,29 +2123,30 @@ await journey('J233', 'A room\'s team and its shared libraries: the room adds a 
     // the room's plans and libraries, shared by the team
     const plan = await M('/v1/lab/plans', { body: { name: 'Team line' } }); ok(plan.status === 201 && (await O('/v1/lab/plans')).json.plans.some(p => p.id === plan.json.plan.id) && !(await B('/v1/lab/plans')).json.plans.some(p => p.id === plan.json.plan.id), 'a plan one teammate makes is the whole team\'s, and nobody else\'s');
     const up = await O('/v1/lab/library/graphics/upload', { body: { image: await png(300, 300, [20, 90, 200]), name: 'Team mark', tags: 'team' } }); ok(up.status === 201, 'the owner adds a graphic', up.json.error);
-    const mg = (await M('/v1/lab/library/graphics')).json.graphics.find(g => g.id === up.json.id); ok(mg && mg.editable === true && mg.shared === false && /^alpha/.test(mg.by), 'the teammate sees it, as theirs to change, by the owner', mg);
+    const mg = (await M('/v1/lab/library/graphics')).json.graphics.find(g => g.id === up.json.id); ok(mg && /^alpha/.test(mg.by), 'the teammate sees it, made by the owner', mg);
     ok(!(await B('/v1/lab/library/graphics')).json.graphics.some(g => g.id === up.json.id) && (await B(`/v1/lab/art/${up.json.id}`)).status === 404, 'another room does not');
-    const mat = await M('/v1/lab/materials', { body: { kind: 'fabric', name: 'Team twill', price: 7.5 } }); ok(mat.status === 201 && mat.json.material.shared === false, 'the teammate adds a material', mat.json.error);
-    const om = (await O('/v1/lab/materials?kind=fabric')).json; ok(om.room === true && om.materials.some(m => m.id === mat.json.material.id && m.editable && /Mo Maker/.test(m.by)) && om.materials.some(m => m.shared && m.editable === false), 'the owner sees it beside Future Basics\' fabrics, which are read-only', om.materials.length);
-    ok(!(await B('/v1/lab/materials?kind=fabric')).json.materials.some(m => m.id === mat.json.material.id), 'another room does not');
+    // ours never reach a room
+    const ours = await A('/v1/lab/library/graphics/upload', { body: { image: await png(300, 300, [200, 40, 40]), name: `FB stamp ${stamp}`, tags: 'fb' } }); ok(ours.status === 201, 'we add a graphic of our own');
+    ok(!(await O('/v1/lab/library/graphics')).json.graphics.some(g => g.id === ours.json.id) && (await O(`/v1/lab/art/${ours.json.id}`)).status === 404 && (await O(`/v1/lab/library/studio?art=${ours.json.id}`)).status === 404, 'a room never sees our graphics, by list, by id or in the studio');
+    ok((await O(`/v1/lab/library/graphics/${ours.json.id}`, { method: 'PUT', body: { shared: true, name: 'Taken' } })).status === 404, 'nor touches them');
+    const staffList = (await A('/v1/lab/library/graphics?limit=200')).json.graphics, sg = staffList.find(g => g.id === up.json.id);
+    ok(sg && /alpha/.test(sg.room) && staffList.some(g => g.id === ours.json.id), 'staff see every graphic, the room\'s marked with its name', sg?.room);
+    // materials: the room's own plus the starter set; staff see all
+    const mat = await M('/v1/lab/materials', { body: { kind: 'fabric', name: 'Team twill', price: 7.5 } }); ok(mat.status === 201, 'the teammate adds a material', mat.json.error);
+    const fbOwn = await A('/v1/lab/materials', { body: { kind: 'fabric', name: `FB house twill ${stamp}`, price: 9 } }); ok(fbOwn.status === 201, 'we add one of our own');
+    const om = (await O('/v1/lab/materials?kind=fabric')).json; ok(om.client === true && om.materials.some(m => m.id === mat.json.material.id && m.editable && /Mo Maker/.test(m.by)) && om.materials.some(m => m.starter && m.editable === false), 'the owner sees the teammate\'s material beside the read-only starter fabrics', om.materials.length);
+    ok(!om.materials.some(m => m.id === fbOwn.json.material.id) && !(await B('/v1/lab/materials?kind=fabric')).json.materials.some(m => m.id === mat.json.material.id), 'but neither our own nor another room\'s');
     ok((await O(`/v1/lab/materials/${mat.json.material.id}`, { method: 'PUT', body: { price: 8 } })).status === 200, 'the owner edits the teammate\'s material');
-    const fbMat = om.materials.find(m => m.shared); ok((await O(`/v1/lab/materials/${fbMat.id}`, { method: 'PUT', body: { price: 1 } })).status === 404 && (await O(`/v1/lab/materials/${fbMat.id}`, { method: 'DELETE' })).status === 404, 'but not ours');
-    ok(!(await A('/v1/lab/materials?kind=fabric')).json.materials.some(m => m.id === mat.json.material.id) && (await A('/v1/lab/materials?kind=fabric&room=all')).json.materials.some(m => m.id === mat.json.material.id), 'our own library stays ours; a room\'s rows show to staff when asked for');
-    const techs = (await O('/v1/lab/library/techniques')).json.techniques, fbTech = techs.find(x => x.shared);
-    ok(fbTech && fbTech.editable === false && (await O(`/v1/lab/library/techniques/${fbTech.id}`, { method: 'PUT', body: { name: 'Mine now' } })).status === 404, 'Future Basics\' techniques are read-only to a room');
-    const copy = await M('/v1/lab/library/techniques', { body: { from: fbTech.id } }); ok(copy.status === 201 && sql(`select client_id from lab_techniques where id='${copy.json.id}'`) === one.cid, 'a copy of one is the room\'s own', copy.json.error);
-    const ol = (await O('/v1/lab/library/techniques')).json.techniques, bl = (await B('/v1/lab/library/techniques')).json.techniques; ok(ol.some(x => x.id === copy.json.id && x.editable) && !bl.some(x => x.id === copy.json.id), 'the team sees the copy; another room does not', [ol.find(x => x.id === copy.json.id)?.editable, ol.find(x => x.id === copy.json.id)?.shared, Boolean(bl.find(x => x.id === copy.json.id))]);
-    ok((await O(`/v1/lab/library/techniques/${copy.json.id}`, { method: 'PUT', body: { name: 'Team discharge' } })).status === 200, 'and the team changes it');
-
-    // Future Basics shares one of its graphics with every room
-    const ours = await A('/v1/lab/library/graphics/upload', { body: { image: await png(300, 300, [200, 40, 40]), name: `FB stamp ${stamp}`, tags: 'fb' } }); ok(ours.status === 201, 'we add a graphic');
-    ok(!(await B('/v1/lab/library/graphics')).json.graphics.some(g => g.id === ours.json.id), 'a room does not see it until we share it');
-    ok((await A(`/v1/lab/library/graphics/${ours.json.id}`, { method: 'PUT', body: { shared: true } })).status === 200, 'we share it');
-    const bg = (await B('/v1/lab/library/graphics')).json.graphics.find(g => g.id === ours.json.id); ok(bg && bg.shared && bg.editable === false && (await B('/v1/lab/library/graphics?source=shared')).json.graphics.some(g => g.id === ours.json.id), 'every room sees it, read-only, and can filter to what we share', bg);
-    ok((await B(`/v1/lab/art/${ours.json.id}`)).status === 200 && (await B(`/v1/lab/library/graphics/${ours.json.id}`, { method: 'PUT', body: { name: 'Taken' } })).status === 404 && (await B(`/v1/lab/library/graphics/${ours.json.id}`, { method: 'DELETE' })).status === 404, 'they open it but cannot rename or remove it');
-    ok((await A(`/v1/lab/library/graphics/${up.json.id}`, { method: 'PUT', body: { shared: true } })).status === 409, 'a room\'s graphic is never shared with other rooms');
-    ok((await O(`/v1/lab/library/graphics/${up.json.id}`, { method: 'PUT', body: { shared: true } })).status === 200 && sql(`select shared from lab_art where id='${up.json.id}'`) === 'f', 'and a room cannot share its own either');
-    await A(`/v1/lab/library/graphics/${ours.json.id}`, { method: 'PUT', body: { shared: false } }); ok(!(await B('/v1/lab/library/graphics')).json.graphics.some(g => g.id === ours.json.id) && (await B(`/v1/lab/art/${ours.json.id}`)).status === 404, 'unshared, it is gone from the rooms');
+    const starterMat = om.materials.find(m => m.starter); ok((await O(`/v1/lab/materials/${starterMat.id}`, { method: 'PUT', body: { price: 1 } })).status === 404 && (await O(`/v1/lab/materials/${fbOwn.json.material.id}/swatch`)).status === 404, 'a starter row cannot be changed, and ours cannot be opened');
+    const am = (await A('/v1/lab/materials?kind=fabric')).json.materials; ok(am.some(m => m.id === mat.json.material.id && /alpha/.test(m.room)) && am.some(m => m.id === fbOwn.json.material.id), 'staff see every material, the room\'s marked with its name');
+    // techniques: the same
+    const techs = (await O('/v1/lab/library/techniques')).json.techniques, starter = techs.find(x => x.editable === false);
+    ok(starter && (await O(`/v1/lab/library/techniques/${starter.id}`, { method: 'PUT', body: { name: 'Mine now' } })).status === 404, 'starter techniques are read-only to a room');
+    const copy = await M('/v1/lab/library/techniques', { body: { from: starter.id } }); ok(copy.status === 201 && sql(`select client_id from lab_techniques where id='${copy.json.id}'`) === one.cid, 'a copy of one is the room\'s own', copy.json.error);
+    const ol = (await O('/v1/lab/library/techniques')).json.techniques, bl = (await B('/v1/lab/library/techniques')).json.techniques; ok(ol.some(x => x.id === copy.json.id && x.editable) && !bl.some(x => x.id === copy.json.id), 'the team sees the copy; another room does not');
+    const fbTech = await A('/v1/lab/library/techniques', { body: { name: `FB house print ${stamp}`, kind: 'print', summary: '', finish: { effect: 'ink' } } }); ok(fbTech.status === 201 && !ol.some(x => x.id === fbTech.json.id) && !(await O('/v1/lab/library/techniques')).json.techniques.some(x => x.id === fbTech.json.id), 'a technique we add stays ours');
+    ok((await A('/v1/lab/library/techniques')).json.techniques.some(x => x.id === copy.json.id && /alpha/.test(x.room)), 'staff see the room\'s technique too');
+    ok((await O(`/v1/lab/library/techniques/${copy.json.id}`, { method: 'PUT', body: { name: 'Team discharge' } })).status === 200, 'and the team changes theirs');
 
     // taking someone off
     const off = await O(`/v1/client/team/${mateId}`, { method: 'DELETE' }); ok(off.status === 200 && !off.json.members.some(m => m.email === mate), 'the owner takes the teammate off', off.json);
@@ -2157,7 +2158,6 @@ await journey('J233', 'A room\'s team and its shared libraries: the room adds a 
 
     // in a browser: the hub's team section, and the library's flags
     if (!playwright) { ok(true, 'skipped: no browser here'); return; }
-    await A(`/v1/lab/library/graphics/${ours.json.id}`, { method: 'PUT', body: { shared: true } });
     const b = await playwright.chromium.launch(), errs = [];
     try {
       const cc = await b.newContext({ viewport: { width: 1280, height: 900 } }); await cc.addInitScript(x => { try { localStorage.setItem('fb.client.token', x); } catch {} }, one.t);
@@ -2167,12 +2167,12 @@ await journey('J233', 'A room\'s team and its shared libraries: the room adds a 
       await page.fill('#teamAdd input[name="email"]', `third-${stamp}@elsewhere${stamp}.test`); await page.click('#teamAdd button'); await page.waitForFunction(s => document.getElementById('team').innerText.includes(s), `third-${stamp}`, { timeout: 10000 });
       ok(/Invited/i.test(await page.innerText('#team')), 'adding someone from the hub shows them as invited');
       await page.goto(`${BASE}/lab/library`, { waitUntil: 'networkidle' }); await page.waitForSelector('#gGrid .card', { timeout: 15000 });
-      ok(/From Future Basics/i.test(await page.innerText('#gGrid')), 'the library marks what Future Basics shares');
-      await page.click(`#gGrid [data-g="${ours.json.id}"]`); await page.waitForSelector('#gDlg[open]'); ok(await page.locator('#gdSave').evaluate(e => e.classList.contains('hidden')) && await page.locator('#gdShareRow').evaluate(e => getComputedStyle(e).display === 'none'), 'and opens it read-only, with no share switch for a room');
+      const grid = await page.innerText('#gGrid'); ok(grid.includes('Team mark') && !grid.includes(`FB stamp ${stamp}`), 'the room\'s library holds the team\'s graphics and none of ours');
+      await page.goto(`${BASE}/lab/materials`, { waitUntil: 'networkidle' }); await page.waitForSelector('[data-m]', { timeout: 15000 });
+      ok(/Starter library/.test(await page.innerText('body')) && !(await page.innerText('body')).includes(`FB house twill ${stamp}`), 'materials show the starter set and the team\'s, never ours');
       ok(errs.length === 0, 'no page errors', errs);
     } finally { await b.close(); }
   } finally {
-    await A(`/v1/lab/library/graphics/${sql(`select id from lab_art where name='FB stamp ${stamp}' limit 1`) || '00000000-0000-4000-8000-000000000000'}`, { method: 'PUT', body: { shared: false } }).catch(() => {});
     for (const r of [one, two]) await A(`/v1/admin/clients/${r.cid}/lab`, { method: 'PATCH', body: { action: 'end' } }).catch(() => {});
   }
 });

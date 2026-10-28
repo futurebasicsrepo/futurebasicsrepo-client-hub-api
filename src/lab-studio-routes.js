@@ -101,7 +101,7 @@ export function registerLabStudioRoutes(app, d) {
     const r = (await pool.query('select id, name, category, status, spec, plan_id, (raw is not null) has_plain, (image is not null) has_image from lab_concepts where id=$1', [req.params.id])).rows[0];
     if (!r) return bad(reply, 'Not found', 404), null; return r;
   };
-  const fontList = async req => (await pool.query('select id, name, family, format, created_at from lab_fonts where ($1::uuid is null or client_id is null or client_id=$1) order by lower(name)', [own(req)])).rows.map(fontShape); // the Future Basics fonts are shared; a room's own fonts stay in the room
+  const fontList = async req => (await pool.query('select id, name, family, format, created_at from lab_fonts where ($1::uuid is null or client_id=$1) order by lower(name)', [own(req)])).rows.map(fontShape); // a room has only its own fonts; Future Basics staff see every font
   const uses = new Map(), dayOf = () => new Date().toISOString().slice(0, 10);
   const cap = () => Number(env.LAB_DAILY_STUDIO_AI ?? 60);
   const left = () => { const c = cap(); return c < 0 ? null : Math.max(0, c - (uses.get(dayOf()) || 0)); };
@@ -118,7 +118,7 @@ export function registerLabStudioRoutes(app, d) {
       marks: [{ id: 'mark', label: 'Cue mark', svg: logoSvg('mark') }, { id: 'word', label: 'Wordmark', svg: logoSvg('word') }, { id: 'lockup', label: 'Wordmark and cue mark', svg: logoSvg('lockup') }],
       palette, graphics: (c.spec?.graphics || []).filter(g => g.art).map(g => ({ art: g.art, name: clip(g.name, 60) })), graphicNames: (c.spec?.graphics || []).map(g => clip(g.name, 60)).filter(Boolean),
       ai: { connected: cfg.configured, model: cfg.model || null, left: left() }, fonts: await fontList(req),
-      techniques: (await pool.query(`select t.id, t.kind, t.name, t.summary, t.base, t.finish, t.rules, (select count(*)::int from lab_technique_photos p where p.technique_id=t.id) photos from lab_techniques t where not archived and ($1::uuid is null or t.client_id is null or t.client_id=$1) order by kind, builtin desc, name`, [own(req)]).catch(() => ({ rows: [] }))).rows.map(t => ({ ...t, rules: cleanRules(t.rules || {}, t.base) })), placements: Object.entries(PLACEMENTS).map(([id, p]) => ({ id, label: p.label, w: p.w }))
+      techniques: (await pool.query(`select t.id, t.kind, t.name, t.summary, t.base, t.finish, t.rules, (select count(*)::int from lab_technique_photos p where p.technique_id=t.id) photos from lab_techniques t where not archived and ($1::uuid is null or t.client_id=$1 or (t.client_id is null and t.builtin)) order by kind, builtin desc, name`, [own(req)]).catch(() => ({ rows: [] }))).rows.map(t => ({ ...t, rules: cleanRules(t.rules || {}, t.base) })), placements: Object.entries(PLACEMENTS).map(([id, p]) => ({ id, label: p.label, w: p.w }))
     };
   });
 
@@ -219,7 +219,7 @@ export function registerLabStudioRoutes(app, d) {
   // the AI edits, for a concept's design or a library graphic: redraw the piece (or only the painted area), make a graphic, or make a technique real
   async function runAi(req, reply, { conceptId = null } = {}) {
     const b = req.body || {}, mode = ['art', 'real'].includes(b.mode) ? b.mode : 'edit', prompt = clip(b.prompt, 800);
-    const tech = UUID.test(String(b.techniqueId || '')) ? (await pool.query('select id, name, summary, prompt, art_guide from lab_techniques where id=$1 and not archived and ($2::uuid is null or client_id is null or client_id=$2)', [b.techniqueId, own(req)])).rows[0] : null;
+    const tech = UUID.test(String(b.techniqueId || '')) ? (await pool.query('select id, name, summary, prompt, art_guide from lab_techniques where id=$1 and not archived and ($2::uuid is null or client_id=$2 or (client_id is null and builtin))', [b.techniqueId, own(req)])).rows[0] : null;
     if (mode === 'real' && !tech) return bad(reply, 'Choose the technique to make real');
     if (mode !== 'real' && prompt.length < 3) return bad(reply, mode === 'art' ? 'Say what the graphic should be' : 'Say what to change');
     const hits = brandHits(prompt, (await pool.query('select name from lab_brands')).rows.map(r => r.name));
@@ -327,15 +327,15 @@ export function registerLabStudioRoutes(app, d) {
   });
 
   // ---- the studio for the graphics library: build a graphic from nothing, or rework one ----
-  // a graphic by id: a room opens its own and the ones we share (the ?art= query is not under the gate's own check)
-  const graphic = async (id, req = null) => (UUID.test(String(id || '')) ? (await pool.query('select id, name, tags, technique_id, doc, (png is not null) has_image from lab_art where id=$1 and ($2::uuid is null or client_id=$2 or shared)', [id, req ? own(req) : null])).rows[0] || null : null);
+  // a graphic by id: a room opens only its own (the ?art= query is not under the gate's own check)
+  const graphic = async (id, req = null) => (UUID.test(String(id || '')) ? (await pool.query('select id, name, tags, technique_id, doc, (png is not null) has_image from lab_art where id=$1 and ($2::uuid is null or client_id=$2)', [id, req ? own(req) : null])).rows[0] || null : null);
   const common = async req => {
     const cfg = imageCfg();
     return {
       marks: [{ id: 'mark', label: 'Cue mark', svg: logoSvg('mark') }, { id: 'word', label: 'Wordmark', svg: logoSvg('word') }, { id: 'lockup', label: 'Wordmark and cue mark', svg: logoSvg('lockup') }],
       palette: COLORS.map(x => ({ name: x.name, hex: x.hex, from: 'brand' })).filter(x => /^#[0-9a-f]{6}$/i.test(x.hex || '')),
       ai: { connected: cfg.configured, model: cfg.model || null, left: left() }, fonts: await fontList(req),
-      techniques: (await pool.query(`select t.id, t.kind, t.name, t.summary, t.base, t.finish, t.rules, (select count(*)::int from lab_technique_photos p where p.technique_id=t.id) photos from lab_techniques t where not archived and ($1::uuid is null or t.client_id is null or t.client_id=$1) order by kind, builtin desc, name`, [own(req)]).catch(() => ({ rows: [] }))).rows.map(t => ({ ...t, rules: cleanRules(t.rules || {}, t.base) })), placements: Object.entries(PLACEMENTS).map(([id, p]) => ({ id, label: p.label, w: p.w }))
+      techniques: (await pool.query(`select t.id, t.kind, t.name, t.summary, t.base, t.finish, t.rules, (select count(*)::int from lab_technique_photos p where p.technique_id=t.id) photos from lab_techniques t where not archived and ($1::uuid is null or t.client_id=$1 or (t.client_id is null and t.builtin)) order by kind, builtin desc, name`, [own(req)]).catch(() => ({ rows: [] }))).rows.map(t => ({ ...t, rules: cleanRules(t.rules || {}, t.base) })), placements: Object.entries(PLACEMENTS).map(([id, p]) => ({ id, label: p.label, w: p.w }))
     };
   };
   app.get('/v1/lab/library/studio', { preHandler: pre }, async (req, reply) => {
