@@ -1111,6 +1111,59 @@ await journey('J220', 'Graphics anywhere: a graphic is built in the library\'s o
   } finally { await cleanup(brands, plan.plan?.id); }
 });
 
+await journey('J221', 'The production artwork pack: a library graphic plus a technique becomes a job file the factory works from. Screen print: one ink layer and film per colour with its Pantone, the underbase for a dark garment, halftone and mesh; embroidery: threads, stitch, backing and a stitch count; a patch: the cut line and edge; a heat transfer: mirrored. In a browser from the library (the summary changes with the technique, width and garment colour, then the zip downloads) and from the tech pack\'s artwork card', async () => {
+  const { brands, plan } = await conceptSetup();
+  const A = (path, o = {}) => call(path, { token: kyleT, ...o });
+  try {
+    // a three-colour mark of our own: a red disc, a white ring, a black bar
+    const markPng = await sharp(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="900" height="600"><circle cx="450" cy="300" r="270" fill="#d7262b"/><circle cx="450" cy="300" r="180" fill="#ffffff"/><rect x="300" y="255" width="300" height="90" fill="#111111"/></svg>')).png().toBuffer();
+    const techs = (await K('/library/techniques')).json.techniques, tech = key => techs.find(t => t.key === key);
+    const up = await K('/library/graphics/upload', { body: { image: `data:image/png;base64,${markPng.toString('base64')}`, name: `J221 mark ${stamp}`, tags: ['j221'], techniqueId: tech('plastisol').id } });
+    ok(up.status === 201 && up.json.id, '1. our artwork is in the library, made as plastisol', up.json); const gid = up.json.id;
+    const pr = await K(`/library/graphics/${gid}/job?preview=1&widthIn=4&garment=%231a1a1a`); const j = pr.json.job;
+    ok(pr.status === 200 && j && j.colours.length === 3 && j.colours.map(c => c.pantone).join('|') === 'PANTONE 711 C|White|PANTONE Neutral Black C', '2. the job summary reads the three colours as Pantone C', pr.json);
+    ok(j.print && j.print.screens === 4 && j.print.underbase && j.print.halftone && j.print.lpi === 55 && j.print.meshCount === 156, '   a plastisol print on a dark garment: four screens (three colours and the underbase), 55 lpi, 156 mesh', j.print);
+    ok(j.size.widthIn === 4 && j.size.widthMm === 102 && j.size.px[0] === 1200 && pr.json.files.some(f => f.name === 'underbase.png') && pr.json.files.some(f => f.name === 'job-sheet.pdf'), '   at 4 in wide, 300 dpi, with the underbase file and the job sheet', pr.json.files.map(f => f.name));
+    const light = (await K(`/library/graphics/${gid}/job?preview=1&widthIn=4&garment=%23f4f1ea`)).json.job; ok(light.print.underbase === false && light.print.screens === 3, '   on a light garment there is no underbase: three screens');
+    const emb = (await K(`/library/graphics/${gid}/job?preview=1&widthIn=3&technique=${tech('satin-embroidery').id}`)).json.job;
+    ok(emb.embroidery && emb.embroidery.threads.length === 3 && emb.embroidery.stitch === 'satin stitch' && emb.embroidery.stitchEstimate > 1000 && /backing|away/.test(emb.embroidery.backing), '3. made as satin embroidery instead: three threads to match, the stitch, backing and a stitch count', emb.embroidery);
+    const patch = (await K(`/library/graphics/${gid}/job?preview=1&widthIn=3&technique=${tech('woven-patch').id}`)).json; ok(patch.job.patch && /edge/.test(patch.job.patch.edge) && patch.files.some(f => f.name === 'cut-line.png'), '   as a woven patch: a cut line and an edge finish', patch.job.patch);
+    const ht = (await K(`/library/graphics/${gid}/job?preview=1&widthIn=3&technique=${tech('glossy-transfer').id}`)).json; ok(ht.job.transfer && ht.files.some(f => f.name === 'artwork-mirrored-300dpi.png'), '   as a heat transfer: the artwork mirrored for the carrier');
+    ok((await K(`/library/graphics/${gid}/job?preview=1&technique=00000000-0000-4000-8000-000000000000`)).status === 404 && (await K('/library/graphics/00000000-0000-4000-8000-000000000000/job')).status === 404, '   a technique or graphic that is not in the library is refused');
+    const z = await fetch(`${BASE}/v1/lab/library/graphics/${gid}/job?widthIn=4&garment=%231a1a1a`, { headers: { Authorization: 'Bearer ' + kyleT } }); const zb = Buffer.from(await z.arrayBuffer());
+    ok(z.status === 200 && z.headers.get('content-type') === 'application/zip' && /-plastisol-screen-print-job\.zip"/.test(z.headers.get('content-disposition') || '') && zb.readUInt32LE(0) === 0x04034b50 && zb.length > 50000, '4. the job file downloads as a zip named for the graphic and the technique', { status: z.status, type: z.headers.get('content-type'), bytes: zb.length });
+    const names = []; { const e = zb.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06])); const n = zb.readUInt16LE(e + 10); let p = zb.readUInt32LE(e + 16); for (let i = 0; i < n; i++) { const nl = zb.readUInt16LE(p + 28); names.push(zb.toString('utf8', p + 46, p + 46 + nl)); p += 46 + nl + zb.readUInt16LE(p + 30) + zb.readUInt16LE(p + 32); } }
+    ok(['artwork-300dpi.png', 'ink-01-pantone-711-c.png', 'film-01-pantone-711-c.png', 'ink-02-white.png', 'film-02-white.png', 'ink-03-pantone-neutral-black-c.png', 'film-03-pantone-neutral-black-c.png', 'underbase.png', 'job.json', 'job-sheet.pdf', 'README.txt'].every(n => names.includes(n)), '   holding the artwork, an ink and a film per colour, the underbase, job.json, the sheet and a README', names);
+    ok((await call(`/v1/lab/library/graphics/${gid}/job`, { token: patT })).status === 403 || (await call(`/v1/lab/library/graphics/${gid}/job`, { token: patT })).status === 401, '   a client cannot pull it');
+    // onto a product, then the job file from the pack's own artwork card
+    const line = plan.lines.find(l => l.category === 'tops') || plan.lines[0], c = (await K(`/plans/${plan.plan.id}/lines/${line.id}/concepts`, { body: { count: 1 } })).json.concepts[0];
+    await K(`/concepts/${c.id}/approve`, { body: { overrideReason: 'reviewed side by side with the references: it is ours' } });
+    const fl = (await K(`/concepts/${c.id}/flats`)).json; await K(`/concepts/${c.id}/flats`, { method: 'PUT', body: fl.flat });
+    const pid = (await K(`/concepts/${c.id}/tech-pack`, { body: {} })).json.productId;
+    await A(`/v1/admin/products/${pid}/tech-pack/artwork`, { body: { art: gid, placement: 'Left chest', widthIn: 3.5 } });
+    const a0 = (await A(`/v1/admin/products/${pid}/tech-pack`)).json.techPack.data.artwork[0]; ok(a0 && a0.libraryArt === gid, '5. the pack remembers which library graphic its artwork came from', a0 && a0.libraryArt);
+    if (playwright) {
+      const b = await playwright.chromium.launch();
+      try {
+        const oc = await b.newContext({ viewport: { width: 1440, height: 950 }, acceptDownloads: true }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
+        const page = await oc.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
+        await page.goto(`${BASE}/lab/library`, { waitUntil: 'networkidle' }); await page.waitForSelector('#app:not(.hidden)'); await page.fill('#fQ', 'J221 mark'); await page.waitForSelector(`[data-g="${gid}"]`, { timeout: 15000 }); await page.click(`[data-g="${gid}"]`);
+        await page.waitForFunction(() => /PANTONE 711 C/.test(document.querySelector('#gjInfo').textContent), null, { timeout: 20000 });
+        ok(/4 screens incl\. underbase · 55 lpi · mesh 156/.test(await page.innerText('#gjInfo')), '6. in a browser the graphic\'s window sums up the job: colours as Pantone chips, screens, halftone and mesh', await page.innerText('#gjInfo'));
+        await page.selectOption('#gjTech', tech('satin-embroidery').id); await page.waitForFunction(() => /stitches/.test(document.querySelector('#gjInfo').textContent), null, { timeout: 20000 }); ok(/satin stitch · about [\d,]+ stitches/.test(await page.innerText('#gjInfo')), '   change the technique and it is an embroidery job with a stitch count');
+        await page.fill('#gjWidth', '12'); await page.waitForFunction(() => /12 × /.test(document.querySelector('#gjInfo').textContent), null, { timeout: 20000 }); ok(/over the usual|stitches: heavy/.test(await page.innerText('#gjInfo')), '   too big for the technique and it says so', await page.innerText('#gjInfo'));
+        await page.fill('#gjWidth', '4'); await page.selectOption('#gjTech', tech('plastisol').id); await page.waitForFunction(() => /screens/.test(document.querySelector('#gjInfo').textContent), null, { timeout: 20000 });
+        const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 30000 }), page.click('#gjGo')]); ok(/-plastisol-screen-print-job\.zip$/.test(dl.suggestedFilename()), '7. Download the job file brings the zip down', dl.suggestedFilename());
+        await page.waitForFunction(() => /Job file downloaded/.test(document.body.textContent), null, { timeout: 8000 }); ok(true, '   and the press answers: downloaded');
+        await page.goto(`${BASE}/tech-packs/${pid}`, { waitUntil: 'networkidle' }); await page.waitForSelector('#tabs [data-tab="art"]'); await page.click('#tabs [data-tab="art"]');
+        ok(await page.locator('[data-act="artjob"]').count() === 1, '8. the tech pack\'s artwork card offers the job file for a graphic from the library');
+        const [dl2] = await Promise.all([page.waitForEvent('download', { timeout: 30000 }), page.click('[data-act="artjob"]')]); ok(/-job\.zip$/.test(dl2.suggestedFilename()), '   and it downloads from the pack at the width the graphic is placed', dl2.suggestedFilename());
+        ok(!errs.length, 'no page errors', errs);
+      } finally { await b.close(); }
+    }
+  } finally { await cleanup(brands, plan.plan?.id); }
+});
+
 await journey('J218', 'The factory views and writes in Messages; the team makes the corrections: the factory has no buttons on its link (it cannot acknowledge, quote, countersign or mark a sample sent), it writes that the proto shipped, the team records it, reviews the sample, and the corrections go out as version 2 while version 1 stays exactly as it was; flats sent again become version 3', async () => {
   const { brands, plan } = await conceptSetup(); await import('../../src/sample-review.js'); const FBSample = globalThis.FBSample;
   const A = (path, o = {}) => call(path, { token: kyleT, ...o });

@@ -5460,7 +5460,7 @@ app.post('/v1/admin/products/:id/tech-pack/artwork',{preHandler:[authenticate,ad
   const data=normalizeTechPack(pack.data);if(data.artwork.length>=12)return reply.code(409).send({error:'This tech pack already has 12 artworks: take one off first'});
   const image=`data:image/png;base64,${art.png.toString('base64')}`,placement=String(req.body?.placement||'').replace(/\s+/g,' ').trim().slice(0,120),widthIn=Number(req.body?.widthIn);
   const tech=art.technique_id?(await pool.query('select name from lab_techniques where id=$1',[art.technique_id])).rows[0]?.name:'';
-  const item={id:`art-lib-${Date.now().toString(36)}`,name:String(art.name||'Graphic').slice(0,120),image,clear:image,source:'upload',note:`From the graphics library${tech?` · ${tech}`:''}${placement?` · ${placement}`:''}`,pantones:[],placements:[]};
+  const item={id:`art-lib-${Date.now().toString(36)}`,name:String(art.name||'Graphic').slice(0,120),image,clear:image,source:'upload',note:`From the graphics library${tech?` · ${tech}`:''}${placement?` · ${placement}`:''}`,libraryArt:art.id,pantones:[],placements:[]};
   const sk=data.sketches.find(k=>k.view==='front'&&k.image)||data.sketches.find(k=>k.image);
   if(sk&&(placement||Number.isFinite(widthIn)))item.placements.push({sketchId:sk.id,x:.5,y:.4,w:.25,widthIn:Number.isFinite(widthIn)&&widthIn>0?widthIn:null,label:placement||'Front'});
   data.artwork=[item,...data.artwork];
