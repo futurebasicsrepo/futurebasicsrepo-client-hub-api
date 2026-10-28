@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="robots" content="noindex,nofollow">
 <title>Flats and placement</title>
+<script>// the flats live inside the Design workspace (/lab/studio): this page runs there in a frame (?embed=full|compact); opened on its own it goes to the workspace
+(function(){var q=new URLSearchParams(location.search),e=q.get('embed');if(!e&&window.top!==window)e='full';if(e){document.documentElement.dataset.embed=e==='compact'?'compact':'full';return}
+var c=q.get('concept')||'',t=q.get('template')||'',v=q.get('view')==='back'?'back':'front';location.replace('/lab/studio'+(/^[0-9a-f-]{36}$/i.test(c)?'?concept='+c+'&view='+v+(t?'&template='+encodeURIComponent(t):''):(t?'?template='+encodeURIComponent(t):'')))})()</script>
 <link rel="icon" href="/icons/icon-192.png">
 <style>
 @import url('/fonts/fonts.css');
@@ -58,6 +61,11 @@ table.pom{border-collapse:collapse;font-size:12px;width:100%}table.pom th,table.
 textarea.t{min-height:64px;resize:vertical}
 #needSignin{max-width:620px;margin:40px auto;background:#fff;border:1px solid var(--line);border-radius:22px;padding:22px}
 @media(max-width:980px){.wrap{grid-template-columns:1fr}.side{border-left:0;border-top:1px solid var(--line)}.pane{max-height:none}}
+/* inside the Design workspace: its header and bar are the workspace's own; compact is the side-by-side view, the drawing alone */
+[data-embed] header,[data-embed] .bar,[data-embed] #pickC{display:none!important}
+[data-embed] .wrap{min-height:100vh}[data-embed] .pane{max-height:calc(100vh - 46px)}[data-embed] .canvas>svg{max-height:calc(100vh - 150px)}
+[data-embed=full] .tools .seg{display:none}
+[data-embed=compact] .wrap{grid-template-columns:1fr}[data-embed=compact] .side,[data-embed=compact] .stage>.msg{display:none}[data-embed=compact] .stage{padding:10px}
 @media print{header,.bar,.side,.tools,#fbSide,.fbside{display:none!important}.wrap{grid-template-columns:1fr}body{background:#fff}}
 </style>
 <script src="/feedback.js"></script>
@@ -85,7 +93,6 @@ textarea.t{min-height:64px;resize:vertical}
   </div>
 </div>
 <script>try{if(!localStorage.getItem('fb.admin.token')&&localStorage.getItem('fb.client.token'))document.documentElement.dataset.labClient='1'}catch{}</script>
-<script src="/console-nav.js" defer></script>
 <script src="/lab/nav.js"></script>
 <script type="module">
 import { STYLES, FITS, SIZES, DETAILS, STITCHES, defaultDetail, describeEdit, geometry, renderSvg, viewBoxOf, templatesFor, templateOf, defaultTemplate, describe, placementChecks, overlapChecks, pomTable, defaultParams, defaultPlacement, measurementsFor, POM_NAMES, pomName, fitToTemplate, FLAT_PARTS, PART_KINDS, partOf, defaultPart, fmt, fmtCm, MASK_URL } from '/lab/flats.js';
@@ -95,14 +102,14 @@ const TOKEN=()=>{try{return localStorage.getItem('fb.admin.token')||localStorage
 const CLIENT_MODE=()=>{try{return !localStorage.getItem('fb.admin.token')&&Boolean(localStorage.getItem('fb.client.token'))}catch{return false}};
 async function api(path,o={}){const r=await fetch(path,{method:o.method||(o.body?'POST':'GET'),headers:{Authorization:'Bearer '+TOKEN(),...(o.body?{'Content-Type':'application/json'}:{})},body:o.body?JSON.stringify(o.body):undefined});const j=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(new Error(j.error||('Request failed ('+r.status+')')),{status:r.status});return j}
 const BLOB=new Map();const blobUrl=p=>{if(!BLOB.has(p))BLOB.set(p,fetch(p,{headers:{Authorization:'Bearer '+TOKEN()}}).then(r=>r.ok?r.blob():null).then(b=>b?URL.createObjectURL(b):''));return BLOB.get(p)};
-const CID=new URLSearchParams(location.search).get('concept')||'';
+const CID=new URLSearchParams(location.search).get('concept')||'',EMBED=document.documentElement.dataset.embed||'',HOST=()=>{try{return EMBED&&parent!==window?parent.FBDesign:null}catch{return null}};
 let PKIND='pockets',SELE=null,MODE=null,DRAFT=[],AIBOX=null,BOXDRAG=null,EHREF={},NEWST={stitch:'double',thread:'#141416'},NEWBL={color:'#a02a20'};
 let D=null,P=null,PL=[],VIEW='front',SEL=null,CHECK={findings:{},summary:{fail:0,warn:0}},WHERE={},DIRTY=false,TAB='pl',HREF={},MARKS={};
 const r8=v=>Math.round(v*8)/8;
 const techName=q=>(D.techniques.find(t=>t.id===q.techniqueId)||{}).name||q.technique;
 const flatBody=()=>({style:P.style,fit:P.fit,size:P.size,m:P.m,options:P.options,template:P.template||templateOf(P)?.id||'none',color:P.color||'',edits:P.edits||[],placements:PL,allover:P.allover||null});
 let AOHREF='',DECOS=null,CAL=null,REPS=null;
-function touch(){DIRTY=true;$('#saved').className='saved dirty';$('#saved').textContent='Not saved';recheckSoon()}
+function touch(){DIRTY=true;$('#saved').className='saved dirty';$('#saved').textContent='Not saved';recheckSoon();HOST()?.flatsChanged?.()}
 
 // ---------- drawing ----------
 // the quick checks (the drawing) run here at once; the artwork checks come back from the service a moment later
@@ -313,7 +320,7 @@ document.addEventListener('keydown',e=>{if(e.target.closest('input,select,textar
   if(MODE&&e.key==='Escape'){MODE=null;DRAFT=[];AIBOX=null;paint();return}if((MODE==='stitch'||MODE==='block')&&e.key==='Enter'){e.preventDefault();finishDraft();return}
   const ed=TAB==='design'&&P.edits.find(x=>x.id===SELE);
   if(ed){if(e.key==='Delete'||e.key==='Backspace'){e.preventDefault();P.edits=P.edits.filter(x=>x!==ed);SELE=null;touch();paint();return}const s=e.shiftKey?1:.125,mv={ArrowLeft:[-s,0],ArrowRight:[s,0],ArrowUp:[0,-s],ArrowDown:[0,s]}[e.key];if(mv){e.preventDefault();if(ed.pts)ed.pts=ed.pts.map(q=>[r8(q[0]+mv[0]),r8(q[1]+mv[1])]);else{ed.x=r8(ed.x+mv[0]);ed.y=r8(ed.y+mv[1])}touch();paint();return}}
-  const q=PL.find(x=>x.id===SEL);if(!q)return;const s=e.shiftKey?1:.125;let hit=true;if(e.key==='ArrowLeft')q.x-=s;else if(e.key==='ArrowRight')q.x+=s;else if(e.key==='ArrowUp')q.y-=s;else if(e.key==='ArrowDown')q.y+=s;else hit=false;if(hit){e.preventDefault();q.x=r8(q.x);q.y=r8(q.y);touch();paint()}if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'){e.preventDefault();save()}});
+  const q=PL.find(x=>x.id===SEL);if(!q)return;const s=e.shiftKey?1:.125;let hit=true;if(e.key==='ArrowLeft')q.x-=s;else if(e.key==='ArrowRight')q.x+=s;else if(e.key==='ArrowUp')q.y-=s;else if(e.key==='ArrowDown')q.y+=s;else hit=false;if(hit){e.preventDefault();q.x=r8(q.x);q.y=r8(q.y);touch();paint()}if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'){e.preventDefault();HOST()?HOST().saveAll():save()}});
 
 // ---------- the service: the artwork check, saving, the spec sheet, the tech pack ----------
 let CT=0;function recheckSoon(){clearTimeout(CT);CT=setTimeout(async()=>{try{const r=await api(`/v1/lab/concepts/${CID}/flats/check`,{body:flatBody()});CHECK=r.check;WHERE=r.where;paint()}catch{}},700)}
@@ -322,7 +329,7 @@ $('#save').onclick=save;
 $('#sheet').onclick=async()=>{if(DIRTY&&!(await save()))return;const r=await fetch(`/v1/lab/concepts/${CID}/flats/sheet.svg?size=${encodeURIComponent($('#size').value)}`,{headers:{Authorization:'Bearer '+TOKEN()}});if(!r.ok){$('#saved').textContent='The spec sheet could not be made';return}const u=URL.createObjectURL(await r.blob()),w=window.open('','_blank');if(w){w.document.write(`<!doctype html><title>Spec sheet · ${esc(D.concept.name)}</title><style>@page{size:17in 11in;margin:.3in}body{margin:0}img{width:100%;display:block}</style><img src="${u}" alt="Spec sheet" onload="setTimeout(()=>print(),300)">`);w.document.close()}else location.href=u};
 $('#decoSheet').onclick=async()=>{const b=$('#decoSheet');if(DIRTY&&!(await save()))return;if(!PL.length){FBN.toast('Place a graphic on the flat first: the sheet has a page per graphic.','info');return}b.disabled=true;const w=window.open('','_blank');try{const r=await fetch(`/v1/lab/concepts/${CID}/flats/decorations.pdf`,{headers:{Authorization:'Bearer '+TOKEN()}});if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||'The decoration sheet could not be made');const u=URL.createObjectURL(await r.blob());if(w)w.location.href=u;else location.href=u;FBN.toast('Decoration sheet ready','ok')}catch(x){if(w)w.close();$('#saved').className='saved dirty';$('#saved').textContent=x.message}finally{b.disabled=false}};
 $('#toPack').onclick=async()=>{const b=$('#toPack');if(DIRTY&&!(await save()))return;b.disabled=true;try{const r=await api(`/v1/lab/concepts/${CID}/flats/tech-pack`,{body:{}});$('#saved').className='saved';$('#saved').innerHTML=`Sent to the <a href="/tech-packs/${r.productId}">tech pack</a>${r.version?` as v${r.version} (v${r.previousVersion} kept)`:''}: ${r.pom} measurements, ${r.sketches} flats as sketches, ${r.construction} construction lines`;FBN.toast(r.version?`Published v${r.version} for the factory. v${r.previousVersion} stays as it was.`:r.publishError?`Saved in the tech pack's draft. ${r.publishError}`:'Sent to the tech pack draft',r.publishError?'info':'ok',r.publishError?9000:4000)}catch(x){$('#saved').className='saved dirty';$('#saved').textContent=x.message}finally{b.disabled=false}};
-window.addEventListener('beforeunload',e=>{if(DIRTY){e.preventDefault();e.returnValue=''}});
+window.addEventListener('beforeunload',e=>{if(DIRTY&&!EMBED){e.preventDefault();e.returnValue=''}});
 
 // no concept in the address: pick one here instead of a dead end
 async function pickConcept(){
@@ -343,15 +350,19 @@ async function boot(){
   const f=D.flat;P={style:f.style,fit:f.fit,size:f.size||'M',m:f.m,options:f.options||{},template:f.template,color:f.color||'',edits:f.edits||[],...(f.allover?{allover:f.allover}:{})};if(P.allover)AOHREF=await blobUrl('/v1/lab/art/'+P.allover.art);
   for(const ed of P.edits)if(ed.type==='ai')EHREF[ed.art]=await blobUrl('/v1/lab/art/'+ed.art);PL=f.placements||[];CHECK=f.check||CHECK;DECOS=f.saved?D.decorations:null;
   $('#size').innerHTML=(STYLES[P.style].oneSize?['M']:SIZES).map(s=>`<option value="${s}" ${s==='M'?'selected':''}>${STYLES[P.style].oneSize?'One size':s}</option>`).join('');
-  const wantTpl=new URLSearchParams(location.search).get('template');if(wantTpl&&FLAT_TEMPLATES.some(t=>t.id===wantTpl)&&templateOf(P)?.id!==wantTpl)setTimeout(()=>{useTemplate(wantTpl);history.replaceState(null,'',`/lab/flats?concept=${CID}`)},0);
+  const wantTpl=new URLSearchParams(location.search).get('template');if(wantTpl&&FLAT_TEMPLATES.some(t=>t.id===wantTpl)&&templateOf(P)?.id!==wantTpl)setTimeout(()=>{useTemplate(wantTpl);history.replaceState(null,'',`/lab/flats?concept=${CID}${EMBED?'&embed='+EMBED:''}`)},0);
   $('#cSub').textContent=`${D.styles[P.style].label} · ${FITS[P.fit]} fit${f.saved?'':' · worked out from the concept: check it, then save'}`;
   if(D.concept.productId)$('#toPack').classList.remove('hidden');
   for(const q of PL)HREF[q.id]=await hrefOf(q);
   DIRTY=!f.saved;$('#saved').className='saved'+(DIRTY?' dirty':'');$('#saved').textContent=f.saved?'Saved':'Not saved yet';
   tab('pl');
+  if(EMBED){const v=new URLSearchParams(location.search).get('view');if(v==='back')setView('back');HOST()?.flatsReady?.()}
 }
+// what the Design workspace calls: is anything unsaved, save, which side shows, the full panel or the drawing alone, the sheets and the tech pack
+if(EMBED)window.FBFlats={dirty:()=>Boolean(D&&P&&DIRTY),ready:()=>Boolean(D&&P),save:()=>(D&&P?save():Promise.resolve(true)),view:()=>VIEW,setView:v=>{if(P&&(v==='front'||v==='back'))setView(v)},
+  mode:m=>{document.documentElement.dataset.embed=m==='compact'?'compact':'full';if(P)draw()},sheet:()=>$('#sheet').click(),deco:()=>$('#decoSheet').click(),pack:()=>$('#toPack').click(),
+  canPack:()=>!$('#toPack').classList.contains('hidden'),unsupported:()=>D?.unsupported||''};
 boot();
 </script>
-<script src="/helper.js" defer></script>
 </body>
 </html>

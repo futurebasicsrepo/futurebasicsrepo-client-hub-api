@@ -50,9 +50,9 @@ From a shop's own feed: the share of sizes sold out, weighted by how recently th
 
 ## Finding your way round
 
-Every Lab page carries the same navigation (`src/lab-nav.js`, served as `/lab/nav.js`), in three groups and the order the work happens: **Make** (Line plans, Concepts, Studio, Flats, Assortment board), **Libraries** (Sketch pack, Graphics & techniques, Materials, trims & tags) and **Research** (Pieces we found, What's moving, Brands we watch, Brand code), with the flow written out on the right (Line plan → Concepts → Studio → Flats → Tech pack → Factory → Samples) and the current step marked. The studio and the flats show the same groups as a **Lab ▾** menu in their bar. Opening the studio or the flats from the navigation, without a concept, shows a concept picker. The console's Design Lab link opens `/lab`, where the work comes first on the page (plans, concepts, the board), then the three libraries as cards, then the research.
+Every Lab page carries the same navigation (`src/lab-nav.js`, served as `/lab/nav.js`), in three groups and the order the work happens: **Make** (Line plans, Concepts, Design, Assortment board), **Libraries** (Sketch pack, Graphics & techniques, Materials, trims & tags) and **Research** (Pieces we found, What's moving, Brands we watch, Brand code), with the flow written out on the right (Line plan → Concepts → Design → Tech pack → Factory → Samples) and the current step marked. Design shows the same groups as a **Lab ▾** menu in its bar. Opening the studio or the flats from the navigation, without a concept, shows a concept picker. The console's Design Lab link opens `/lab`, where the work comes first on the page (plans, concepts, the board), then the three libraries as cards, then the research.
 
-**The sketch pack** (`/lab/sketches`): every flat sketch we draw from, searchable and filtered by range (men's, women's, accessories) and style, each opening large with its front and back; **Put it on a concept** opens that concept's flats at the sketch (`/lab/flats?concept=…&template=…`). A second shelf shows the parts (pockets, zips, collars, trims, buttons).
+**The sketch pack** (`/lab/sketches`): every flat sketch we draw from, searchable and filtered by range (men's, women's, accessories) and style, each opening large with its front and back; **Put it on a concept** opens that concept in Design on its flat front, drawn from the sketch (`/lab/studio?concept=…&view=front&template=…`). A second shelf shows the parts (pockets, zips, collars, trims, buttons).
 
 ## The page
 
@@ -256,9 +256,25 @@ Graphics used to be simple shapes the assistant drew as SVG, which came out thin
 ## Adding pieces from photos and screenshots
 The library takes pictures as well as links: **Add photos or screenshots** under the library (choose several at once), drop pictures on the library, or paste a screenshot anywhere on the Lab page. Each picture is shrunk in the browser, sent on its own (`POST /v1/lab/items/photo`), read by a vision model into the same facts a shop listing gives (name, category, shape, fabric, fit, colours, details, the graphics on it, and the brand when it is plainly shown), and added as a **saved** piece. An optional Brand field tags the batch; a brand on the watchlist is matched by name, any other is kept as a label. The picture is kept (`lab_items.photo`, full size at `GET /v1/lab/items/:id/photo`; the card shows a small copy) and the piece is used by trends, plans and concepts like any other. With no Claude key the picture is still added, just without the facts.
 
-## The studio: finishing a concept by hand and with AI
+## Design: the picture and its flats in one workspace
 
-**Open in the studio** on a concept (or on its card in the assortment viewer) opens `/lab/studio?concept=<id>`. It is a layered editor that runs in the page itself, with no outside software.
+A concept is designed in one place, `/lab/studio?concept=<id>`. A switch in its bar shows the concept four ways:
+
+| View | What it shows | Address |
+| --- | --- | --- |
+| **Picture** | the concept's picture as layers (below: the studio) | `/lab/studio?concept=<id>` |
+| **Flat front** / **Flat back** | the measured flats with their own panel: Placements, Design, Garment, Measurements (see Flats and placement below) | `…&view=front`, `…&view=back` |
+| **Side by side** | the picture with its layers panel, and the flat drawing next to it | `…&view=split` |
+
+- **One header.** The concept's name, the Lab menu, one **Save** and the view switch are shared. The picture's buttons (Undo, Import, 3D, Export, Versions, Use as the concept picture) show with the picture; the flats' (Spec sheet, Decoration sheet, Send to the tech pack) show with the flats. Each side says whether it is saved.
+- **One Save.** Save (or Ctrl S, on either side) saves unsaved flats first, then the picture. The picture's layers that have a place on the piece then go onto the flats at their size, and the flats reload with them.
+- **The picture's graphics are on the flats when you look.** Switching from the picture to a flat puts its placed graphics on the flats first, without waiting for a save.
+- **How it is built (pass 1).** The flats page (`src/lab-flats.html`) runs inside the workspace in a frame from the same site (`/lab/flats?concept=<id>&embed=full`, or `embed=compact` for side by side), loaded the first time a flat is shown. It exposes `window.FBFlats` (dirty, save, view, mode, the sheets) and calls the workspace's `window.FBDesign`. Opened on its own, `/lab/flats` sends you to the workspace; only that page may be framed, and only by the site itself (`frame-ancestors 'self'`). One placement model for both sides, and Simple and Pro modes, are the next passes.
+- **On a phone** Side by side is left out; the picture or the flats fill the screen.
+
+### The studio: the picture, by hand and with AI
+
+**Open in Design** on a concept (or on its card in the assortment viewer) opens it on its picture. It is a layered editor that runs in the page itself, with no outside software.
 
 - **Layers.** The concept's picture is the base layer. You can add type, shapes, paintings, our marks (cue mark, wordmark, lockup), the concept's own graphics, and your own pictures (button, drop or paste). Each layer can be hidden, locked, reordered, duplicated or deleted. It has an opacity and a blend mode. **Multiply** makes a print take the fabric's folds, and **Sit it in the fabric** sets that with a little wear in one click.
 - **By hand.**
@@ -440,7 +456,7 @@ Routes: `src/lab-materials-routes.js` (`/v1/lab/materials…`, `/v1/lab/concepts
 
 **Which sketch a piece is drawn from.** The concept's words are read for the piece's family (jeans, chinos, sweatpants, track pants…: from its name, silhouette and fabric only, so a ripstop pocket lining does not make a twill pant a track pant), its silhouette (flared, straight, wide, slim…) and its features (cargo pockets, double knee, pleats, carpenter loops…). Every sketch of the style is scored (`rankTemplates` in `src/lab-flats.js`): a feature the sketch has that the concept never asked for counts against it, so a plain boot-cut twill pant is not drawn from a skinny double-knee cargo because it shares a word. With an Anthropic key the vision model then confirms the pick from the concept's picture among the best-scored sketches (cached per picture; off under `AI_FIXTURE`). The Garment tab still lets you pick any sketch by hand.
 
-**Flats and placement** (in the concept window, `/lab/flats?concept=<id>`) draws the piece as measured technical flats, front and back, the way a factory reads them. Nothing on it is drawn by an image model.
+**Flats and placement** (the flat views of Design: **Flats** on a concept opens `/lab/studio?concept=<id>&view=front`) draws the piece as measured technical flats, front and back, the way a factory reads them. Nothing on it is drawn by an image model.
 
 - **The drawing is a professional flat sketch** from the flat-sketch pack Future Basics bought (Kyle's Google Drive: "Mens Sketches", "Womans Sketches" and "Accessories, Pockets, Zippers"). Every drawing in it is here: 381 sketches.
   - **Men's:** tees and jerseys, long sleeves, crews, hoodies, zips, polos, shirts, tanks, jackets, coats, vests, pants, shorts, the cap and the bucket hat.

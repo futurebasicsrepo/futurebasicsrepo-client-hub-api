@@ -1288,7 +1288,7 @@ function renderCrumbs(p){
     const base=/^work\./.test(location.hostname)?location.origin:(S.workHubUrl||''),room=`${base}/clients/${pr.client_id}`;
     el.innerHTML=[link('Clients',base+'/'),link(clientName,room),pr.project_id?link(projectName||'Project',`${room}#project=${pr.project_id}`):'',link(title,`${room}#product=${pr.id}`,'parent'),here].filter(Boolean).join(sep)
       // a pack made from a Design Lab concept leads back to it: the concept and its flats, where the drawing and measurements are changed and sent again
-      +(S.lab?`<span class="sep">·</span><span class="meta">From the Design Lab:</span>${link('concept',`${base}/lab?concept=${S.lab.id}`)}${link('flats',`${base}/lab/flats?concept=${S.lab.id}`)}`:'');return}
+      +(S.lab?`<span class="sep">·</span><span class="meta">From the Design Lab:</span>${link('concept',`${base}/lab?concept=${S.lab.id}`)}${link('flats',`${base}/lab/studio?concept=${S.lab.id}&view=front`)}`:'');return}
   if(MODE==='client'){
     const proj=pr.project_id?`/projects/${pr.project_id}`:'/';
     el.innerHTML=[link('Projects','/'),pr.project_id?link(projectName||'Project',proj):'',link(title,pr.project_id?`${proj}#product=${pr.id}`:'/','parent'),here].filter(Boolean).join(sep);return}

@@ -35,11 +35,11 @@
       match: () => path() === '/lab' && !!$('#cd[open]'),
       steps: [
         { target: '#cd .big', title: 'The concept', do: 'Read the picture, the twist and the check: how close it sits to what inspired it.', why: 'Only what is ours is approved. A "too close" concept needs a written reason or a change.' },
-        { target: '[data-cstudio]', title: 'Finish it in the studio', optional: true, do: 'Press “Open in the studio” to change the picture by hand or with AI: colours, graphics, distressing, a painted area redrawn.', why: 'The studio’s finished picture becomes the concept’s, and the tech pack’s first sketch.' },
+        { target: '[data-cstudio]', title: 'Finish it in Design', optional: true, do: 'Press “Open in Design” to change the picture by hand or with AI: colours, graphics, distressing, a painted area redrawn.', why: 'The studio’s finished picture becomes the concept’s, and the tech pack’s first sketch.' },
         { target: '[data-cpin]', title: 'Pin a comment to a spot', optional: true, do: 'Press “Pin to a spot”, click the place on the picture, write the comment. Press Done on a comment once it is dealt with.', why: 'Feedback sits on the design, not in a chat: everyone sees exactly which pocket.' },
         { target: '#shrBox', title: 'Share for review', optional: true, do: 'Make a view-only link for the client or the factory and send it. They comment and pin; they cannot change anything. Turn it off any time.', why: 'One link, no sign-in: the fastest way to a decision.' },
         { target: '#matBox', title: 'What it is made of', optional: true, do: 'Add the main fabric, rib, trims and the tags from the materials library; set colourways.', why: 'The landed cost and margin update as you choose, and the tech pack takes the BOM lines and labels.' },
-        { target: '[data-cflats]', title: 'Draw it as flats', do: 'Press “Flats and placement”.', why: 'The flats are the piece measured, front and back, with every logo and graphic placed in inches. They become the tech pack’s measurements and sketches.', done: 'click', after: 'Opening the flats…' },
+        { target: '[data-cflats]', title: 'Draw it as flats', do: 'Press “Flats”: the same Design workspace, showing the flats.', why: 'The flats are the piece measured, front and back, with every logo and graphic placed in inches. They become the tech pack’s measurements and sketches.', done: 'click', after: 'Opening the flats…' },
         { target: '[data-capprove]', title: 'Approve it', optional: true, do: 'When it is right, press Approve. A client’s line shows their verdict here first.', why: 'Approving says it is ours and it can be made; the flats check is held to that too.' },
         { target: '[data-ctp]', title: 'Send it to a tech pack', optional: true, do: 'Press “Send to tech pack”.', why: 'It becomes a product and a tech pack with its flats, measurements, details, colour and target price, in our room or the client’s.', done: 'click', after: 'Making the tech pack…' }
       ],
@@ -62,9 +62,10 @@
       next: { tour: 'lab-concept', label: 'Take a concept to a tech pack' }
     },
     {
-      id: 'lab-studio', title: 'Finish a concept in the studio',
-      match: () => path() === '/lab/studio' && shown('#app'),
+      id: 'lab-studio', title: 'Finish a concept in Design',
+      match: () => path() === '/lab/studio' && shown('#app') && !['front', 'back'].includes($('#app')?.dataset.v),
       steps: [
+        { target: '#viewSeg', title: 'One workspace', optional: true, do: 'Switch between the picture, the flat front, the flat back, or both side by side.', why: 'The picture and its measured flats are the same piece: change one, look at the other, without leaving.' },
         { target: '#stage', title: 'The concept, in layers', do: 'Draw, paint, type, add our marks or a graphic; each is a layer you can move or hide.', why: 'Finish it by hand where the AI got close but not right.' },
         { target: '[data-tab="add"]', title: 'Add a part from the sketch pack', optional: true, do: 'Open Add: under “From the sketch pack”, press a pocket, zip, collar, trim or button. It lands as a layer: drag it into place and size it.', why: 'Drawn in the same lines as the flats, so it reads as part of the piece; paint over it and let the AI blend it in.' },
         { target: '#pAi', title: 'Change it with AI', optional: true, do: 'Say what to change, for the whole piece or a painted area, or make a new graphic.', why: 'Quicker than drawing, and only the area you paint changes.' },
@@ -109,17 +110,12 @@
     },
     {
       id: 'lab-flats', title: 'Draw and change the flats',
-      match: () => path() === '/lab/flats' && shown('#app'),
+      match: () => path() === '/lab/studio' && shown('#app') && ['front', 'back'].includes($('#app')?.dataset.v),
       steps: [
-        { target: '#canvas', title: 'The piece as flats', do: 'A professional flat sketch, scaled to the measurements. Drag a logo or graphic: its inches from the HPS and centre front follow.', why: 'This is how a sample room measures, so the factory reads it the same way.' },
-        { target: '.tabs [data-tab="garment"]', title: 'The piece and its drawing', do: 'Open Garment: the style, fit, the sketch it is drawn from, and the sample measurements.', why: 'Every other size is graded from these.', done: 'click', after: 'Garment open.' },
-        { target: '#gGal', title: 'Pick any sketch in the pack', wait: 'Open Garment first.', optional: true, do: 'Every drawing in the pack, men’s and women’s: search it (cargo, pleated, halter), or tick Every style to change what the piece is.', why: 'The piece starts at the sketch’s own proportions: a cropped tee shorter, a maxi dress longer.' },
-        { target: '.tabs [data-tab="design"]', title: 'Change the design', do: 'Open Design.', why: 'Colour it, add pockets, pleats, drawcords or a zip, draw stitch lines, or have AI redraw an area.', done: 'click', after: 'Design open.' },
-        { target: '[data-adddet]', title: 'Add a detail', wait: 'Open Design first.', do: 'Press a detail, a pocket or pleats, then drag it into place or type its size.', why: 'Each detail has its own topstitch, thread and fabric colour, and goes on the tech pack in words.' },
-        { target: '[data-addpart]', title: 'Parts from the sketch pack', wait: 'Open Design first.', optional: true, do: 'Pockets, zips, collars, trims and buttons from the pack itself: add one, drag it into place and size it.', why: 'They are drawn in the same lines as the sketch, take the garment’s colour, and the tech pack names them.' },
-        { target: '[data-mode="ai"]', title: 'Redraw an area with AI', wait: 'Open Design first.', optional: true, do: 'Press it, drag a box round a part, and say what to change, like “make this a cargo pocket”.', why: 'Only that area is redrawn, in the same flat-sketch lines.' },
-        { target: '#save', title: 'Save and check', do: 'Press Save.', why: 'It checks everything can be made: on the piece, clear of seams and zips, within the technique.', done: 'click', after: 'Saved.' },
-        { target: ['#toPack:not(.hidden)', '#sheet'], title: 'Send it on', do: 'Print the spec sheet, or once it is a tech pack, press “Send to the tech pack”.', why: 'The pack takes the measurements, the flats as sketches, every detail and stitch, and the colour.' }
+        { target: '#viewSeg', title: 'Front, back, or beside the picture', do: 'Switch between the flat front and back here, or Side by side to see the picture next to the flat.', why: 'Graphics placed on the picture land on the flats at their size when you switch or save.' },
+        { target: '#flatHost', title: 'The flats and their panel', do: 'Drag a logo or graphic: its inches from the HPS and centre front follow. On the right: Placements, Design (colour, pockets, pleats, stitch lines, AI redraws), Garment (style, fit, the sketch) and Measurements.', why: 'This is how a sample room measures, so the factory reads it the same way.' },
+        { target: '#save', title: 'Save and check', do: 'Press Save: the flats and the picture are saved together.', why: 'It checks everything can be made: on the piece, clear of seams and zips, within the technique.', done: 'click', after: 'Saved.' },
+        { target: ['#packBtn:not(.hidden)', '#specBtn'], title: 'Send it on', do: 'Print the spec sheet or the decoration sheet, or once it is a tech pack, press “Send to the tech pack”.', why: 'The pack takes the measurements, the sketches and every placement.' }
       ],
       next: { tour: 'tp-factory', label: 'Publish, send to a factory, review samples' }
     },

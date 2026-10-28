@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="robots" content="noindex,nofollow">
-<title>Design Lab studio</title>
+<title>Design · Design Lab</title>
 <link rel="icon" href="/icons/icon-192.png">
 <style>
 @import url('/fonts/fonts.css');
@@ -26,6 +26,15 @@ header{height:72px;background:rgba(20,20,22,.96);color:#fff;padding:0 clamp(16px
 .bar{grid-column:1/-1;display:flex;align-items:center;gap:8px;padding:8px 12px;background:#fff;border-bottom:1px solid var(--line);flex-wrap:wrap;min-height:52px}
 .bar .ttl{display:grid;line-height:1.15;min-width:0;margin-right:auto}.bar .ttl b{font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:38vw}.bar .ttl span{color:var(--dim);font-size:12px}
 .saved{color:var(--dim);font-size:12px;min-width:90px;text-align:right}.saved.dirty{color:#8a5a00}
+/* one workspace: the picture, the flats front or back, or both side by side (data-v on .studio) */
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;background:#fff;flex:none}.seg button{border:0;background:none;padding:5px 12px;font-weight:600;cursor:pointer;font-size:12.5px;white-space:nowrap}.seg button[aria-pressed=true]{background:var(--ink);color:#fff}.seg button:focus-visible{outline:2px solid var(--ink);outline-offset:-2px}
+.flathost{display:none;min-height:0;min-width:0;background:var(--fog)}.flathost iframe{display:block;width:100%;height:100%;border:0}
+.studio[data-v=picture] .flat-only,.studio:not([data-v]) .flat-only{display:none}
+.studio[data-v=front] .pic-only,.studio[data-v=back] .pic-only{display:none!important}
+.studio[data-v=front] .rail,.studio[data-v=front] .mid,.studio[data-v=front] .side,.studio[data-v=back] .rail,.studio[data-v=back] .mid,.studio[data-v=back] .side{display:none}
+.studio[data-v=front] .flathost,.studio[data-v=back] .flathost{display:block;grid-column:1/-1}
+.studio[data-v=split]{grid-template-columns:52px minmax(0,1fr) minmax(0,1fr) 330px}
+.studio[data-v=split] .rail{grid-column:1;grid-row:2}.studio[data-v=split] .mid{grid-column:2;grid-row:2}.studio[data-v=split] .flathost{display:block;grid-column:3;grid-row:2;border-left:1px solid var(--line)}.studio[data-v=split] .side{grid-column:4;grid-row:2}
 .rail{background:#fff;border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 0;overflow-y:auto}
 .rail button{width:38px;height:38px;border-radius:10px;border:1px solid transparent;background:none;cursor:pointer;display:grid;place-items:center;position:relative}
 .rail button svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
@@ -71,36 +80,40 @@ input[type=range]{width:100%;accent-color:var(--ink)}
 .menu .pop button{border:0;background:none;text-align:left;padding:8px 10px;border-radius:10px;cursor:pointer;display:grid}.menu .pop button:hover{background:var(--fog)}.menu .pop small{color:var(--dim);font-size:11px}
 .mask-on{color:#b0261c!important}
 kbd{font:500 10px 'IBM Plex Mono',monospace;border:1px solid var(--line);border-radius:4px;padding:0 4px;color:var(--dim)}
-@media(max-width:980px){body{overflow:auto;height:auto}.studio{grid-template-columns:48px minmax(0,1fr);grid-template-rows:auto 62vh auto;height:auto}.side{grid-column:1/-1;border-left:0;border-top:1px solid var(--line);min-height:420px}.bar .ttl b{max-width:60vw}}
+@media(max-width:980px){.seg .wideonly{display:none}.studio[data-v=front] .flathost,.studio[data-v=back] .flathost{height:calc(100dvh - 140px)}.studio[data-v=split]{grid-template-columns:48px minmax(0,1fr);grid-template-rows:auto 62vh 70vh auto}.studio[data-v=split] .flathost{grid-column:1/-1;grid-row:3;border-left:0}.studio[data-v=split] .side{grid-column:1/-1;grid-row:4}body{overflow:auto;height:auto}.studio{grid-template-columns:48px minmax(0,1fr);grid-template-rows:auto 62vh auto;height:auto}.side{grid-column:1/-1;border-left:0;border-top:1px solid var(--line);min-height:420px}.bar .ttl b{max-width:60vw}}
 </style>
 <script src="/feedback.js"></script>
 </head>
 <body>
 <header>
-  <a class="wordmark" href="/home" aria-label="Work home"><img class="brand-logo" src="https://thefuturebasics.com/cdn/shop/files/future_basics_true_vector_fixed.svg?v=1775278873&amp;width=360" alt="Future Basics"><span class="brand-suffix">/ Design Lab studio</span></a>
+  <a class="wordmark" href="/home" aria-label="Work home"><img class="brand-logo" src="https://thefuturebasics.com/cdn/shop/files/future_basics_true_vector_fixed.svg?v=1775278873&amp;width=360" alt="Future Basics"><span class="brand-suffix">/ Design</span></a>
 </header>
-<div id="pickC" class="hidden" style="max-width:760px;margin:30px auto;padding:0 16px"><nav class="labnav" data-lab="studio"></nav><h1 style="margin-top:14px">The studio</h1><p class="note" style="font-size:14px">The studio opens one concept at a time: its picture as layers to paint, type on, add graphics and parts to, and change with AI. Which concept? Or <a href="/lab/studio?new=graphic">build a graphic for the library</a>.</p><input class="t" id="pickQ" type="search" placeholder="Search concepts" aria-label="Search concepts" style="margin:10px 0;width:100%;max-width:380px"><div id="pickList" style="display:grid;gap:6px"><span class="note">Loading concepts…</span></div></div>
+<div id="pickC" class="hidden" style="max-width:760px;margin:30px auto;padding:0 16px"><nav class="labnav" data-lab="studio"></nav><h1 style="margin-top:14px">Design</h1><p class="note" style="font-size:14px">One concept at a time, in one place: its picture as layers to paint, type on, add graphics and parts to, and change with AI, and its measured flats, front and back, with every graphic placed in inches. Which concept? Or <a href="/lab/studio?new=graphic">build a graphic for the library</a>.</p><input class="t" id="pickQ" type="search" placeholder="Search concepts" aria-label="Search concepts" style="margin:10px 0;width:100%;max-width:380px"><div id="pickList" style="display:grid;gap:6px"><span class="note">Loading concepts…</span></div></div>
 <div id="needSignin" class="hidden"><h1 style="margin-top:0">Sign in first</h1><p class="note" style="font-size:14px">Future Basics signs in at the work console. A client whose room has the Design Lab signs in at their hub, then comes back here.</p><a class="btn go" href="/admin" style="margin-top:12px">Open the work console</a> <a class="btn" href="/" style="margin-top:12px">Client? Open your hub</a></div>
 
 <div class="studio hidden" id="app">
   <div class="bar">
     <button class="btn q sm" type="button" data-lab-menu data-lab="studio">Lab ▾</button><a class="btn q sm" id="back" href="/lab#board">← Concepts</a>
     <div class="ttl"><b id="cName">Loading…</b><span id="cSub"></span></div>
-    <button class="btn q sm" id="undo" type="button" title="Undo (Ctrl Z)">Undo</button>
-    <button class="btn q sm" id="redo" type="button" title="Redo (Ctrl Shift Z)">Redo</button>
-    <span class="saved" id="saved" role="status"></span>
+    <div class="seg" id="viewSeg" role="group" aria-label="What to show"><button type="button" data-v="picture" aria-pressed="true" title="The picture, as layers">Picture</button><button type="button" data-v="front" aria-pressed="false" title="The measured flat, front">Flat front</button><button type="button" data-v="back" aria-pressed="false" title="The measured flat, back">Flat back</button><button type="button" data-v="split" aria-pressed="false" class="wideonly" title="The picture and the flat side by side">Side by side</button></div>
+    <button class="btn q sm pic-only" id="undo" type="button" title="Undo (Ctrl Z)">Undo</button>
+    <button class="btn q sm pic-only" id="redo" type="button" title="Redo (Ctrl Shift Z)">Redo</button>
+    <span class="saved pic-only" id="saved" role="status"></span><span class="saved flat-only" id="fsaved" role="status" title="The flats"></span>
     <button class="btn sm" id="save" type="button" title="Save (Ctrl S)">Save</button>
-    <button class="btn sm" id="impBtn" type="button" title="Bring an SVG back from Illustrator: the studio's own export comes back as layers">Import</button><input type="file" id="svgIn" accept=".svg,image/svg+xml" class="hidden">
-    <button class="btn sm" id="tryBtn" type="button" title="The design painted on a 3D model, turned round">3D</button>
-    <div class="menu"><button class="btn sm" id="expBtn" type="button" aria-haspopup="true" aria-expanded="false">Export</button>
+    <button class="btn sm pic-only" id="impBtn" type="button" title="Bring an SVG back from Illustrator: the studio's own export comes back as layers">Import</button><input type="file" id="svgIn" accept=".svg,image/svg+xml" class="hidden">
+    <button class="btn sm pic-only" id="tryBtn" type="button" title="The design painted on a 3D model, turned round">3D</button>
+    <div class="menu pic-only"><button class="btn sm" id="expBtn" type="button" aria-haspopup="true" aria-expanded="false">Export</button>
       <div class="pop hidden" id="expPop" role="menu">
         <button type="button" role="menuitem" data-exp="png"><b>Picture (PNG)</b><small>Everything as one picture, full size</small></button>
         <button type="button" role="menuitem" data-exp="svg"><b>Layers for Illustrator (SVG)</b><small>One group per layer; type and shapes stay editable</small></button>
         <button type="button" role="menuitem" data-exp="layer"><b>The selected layer (PNG)</b><small>With a clear background, for a print file</small></button>
         <button type="button" role="menuitem" data-exp="keepnew" class="hidden" id="expKeepNew"><b>Keep as a new graphic</b><small>Everything visible goes into the library as its own graphic</small></button>
       </div></div>
-    <button class="btn sm q" id="verBtn" type="button" title="Every picture used as the concept, and any kept on purpose: open two side by side">Versions</button>
-    <button class="btn go sm" id="apply" type="button">Use as the concept picture</button>
+    <button class="btn sm q pic-only" id="verBtn" type="button" title="Every picture used as the concept, and any kept on purpose: open two side by side">Versions</button>
+    <button class="btn go sm pic-only" id="apply" type="button">Use as the concept picture</button>
+    <button class="btn sm flat-only" id="specBtn" type="button" title="The flats, measured, as a printable spec sheet">Spec sheet</button>
+    <button class="btn sm flat-only" id="decoBtn" type="button" title="One page per graphic for the decorator: size, Pantones, technique, cost, where it goes">Decoration sheet</button>
+    <button class="btn go sm flat-only hidden" id="packBtn" type="button">Send to the tech pack</button>
   </div>
   <nav class="rail" aria-label="Tools">
     <button type="button" data-tool="select" title="Select and move (V)" aria-label="Select and move"><svg viewBox="0 0 24 24"><path d="M5 3l14 8-6 2-3 6z"/></svg></button>
@@ -136,6 +149,7 @@ kbd{font:500 10px 'IBM Plex Mono',monospace;border:1px solid var(--line);border-
     <div class="pane hidden" id="pAdd" role="tabpanel"></div>
     <div class="pane hidden" id="pAi" role="tabpanel"></div>
   </aside>
+  <div class="flathost" id="flatHost"><iframe id="flatFrame" title="The flats: front and back, measured"></iframe></div>
 </div>
 <dialog id="verDlg" style="border:0;border-radius:20px;padding:0;width:min(1100px,96vw);max-height:92vh;overflow:auto"><div style="padding:18px;display:grid;gap:12px">
   <div class="row" style="justify-content:space-between"><h3 style="margin:0;font-size:16px">Versions</h3><div class="row"><button class="btn sm" type="button" id="verKeep">Keep this as a version</button><button class="btn sm q" type="button" data-verclose>Close</button></div></div>
@@ -554,7 +568,7 @@ stage.addEventListener('dragenter',e=>{if([...e.dataTransfer.types].includes('Fi
 stage.addEventListener('dragleave',()=>{if(--dragN<=0){dragN=0;$('#drop').classList.add('hidden')}});
 stage.addEventListener('dragover',e=>e.preventDefault());
 stage.addEventListener('drop',e=>{e.preventDefault();dragN=0;$('#drop').classList.add('hidden');addFiles(e.dataTransfer.files)});
-document.addEventListener('paste',e=>{if(e.target.closest&&e.target.closest('input,textarea'))return;const f=[...(e.clipboardData?.files||[])];if(f.length){e.preventDefault();addFiles(f)}});
+document.addEventListener('paste',e=>{if(e.target.closest&&e.target.closest('input,textarea')||VMODE==='front'||VMODE==='back')return;const f=[...(e.clipboardData?.files||[])];if(f.length){e.preventDefault();addFiles(f)}});
 
 // ---------- AI: change the piece (all of it, or the painted area), or make a graphic ----------
 function paintAi(){
@@ -643,7 +657,7 @@ $('#pAi').addEventListener('click',async e=>{
 function serialize(){return{w:W,h:H,ppi:PPI,ppiSet:PPISET,selected:SEL,layers:LAYERS.map(l=>{const o={};for(const[k,v]of Object.entries(l))if(!k.startsWith('_')&&k!=='raster'&&k!=='dirty')o[k]=v;
   if(isRaster(l)&&(l.dirty||!l.src||l.kind==='paint'||l.raster._rid!==l._srcRid))o.src=l.raster.toDataURL('image/png');return o})}}
 async function save(){const b=$('#save');b.disabled=true;$('#saved').textContent='Saving…';
-  try{if(!GMODE)await syncFlats().catch(x=>toast('The flats did not take the graphics: '+x.message));const doc=serialize();let r;
+  try{if(!GMODE){const sent=await syncFlats({before:flatsFirst}).catch(x=>{toast('The flats did not take the graphics: '+x.message);return false});if(sent)reloadFlats()}const doc=serialize();let r;
     if(GMODE){compose();const image=docC.toDataURL('image/png');
       // a graphic not yet in the library goes in with its first save; after that its layers are saved on it
       if(!GID){const k=await api('/v1/lab/library/studio/keep',{body:{image,name:D.concept.name,doc}});GID=k.id;D.concept.hasImage=true;history.replaceState(null,'',`/lab/studio?art=${GID}`);r={savedAt:new Date().toISOString()}}
@@ -653,7 +667,7 @@ async function save(){const b=$('#save');b.disabled=true;$('#saved').textContent
     for(const l of LAYERS){const s=doc.layers.find(x=>x.id===l.id);if(s&&isRaster(l)){l.src=s.src;l.dirty=false;l._srcRid=l.raster._rid}}
     DIRTY=false;SAVED_AT=r.savedAt;showSaved();return true}
   catch(x){$('#saved').className='saved dirty';$('#saved').textContent=x.message;return false}finally{b.disabled=false}}
-$('#save').onclick=save;
+$('#save').onclick=saveAll;
 function download(url,name){const a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove()}
 const fileBase=()=>String(D.concept.name||'concept').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,50)||'concept';
 const xa=v=>esc(String(v));
@@ -753,8 +767,8 @@ let TT=0;function toast(text,href){if(!text)return;let el=$('#stToast');if(!el){
 function paintSub(){const c=D.concept;$('#tryBtn').classList.toggle('hidden',GMODE);if(GMODE){$('#cName').textContent=c.name;$('#cSub').textContent=`${GID?'Graphic in the library':'New graphic, not kept yet'} · ${W}×${H}px · clear background`;$('#apply').textContent=GID?'Update the graphic':'Keep in the library';$('#expKeepNew').classList.toggle('hidden',!GID);return}const st={draft:'Draft',approved:'Approved',rejected:'Rejected',tech_pack:'Tech pack'}[c.status]||c.status;$('#cName').textContent=c.name;$('#cSub').innerHTML=`${esc(st)} · ${W}×${H}px${D.canRestore?' · <button class="btn sm q" type="button" id="restore" style="min-height:22px;padding:0 8px">Put the old picture back</button>':''}`;const r=$('#restore');if(r)r.onclick=async()=>{if(!await ask('Put the old picture back?','The concept gets the picture it had before the studio. Your design here stays as it is.','Put it back'))return;try{await api(`/v1/lab/concepts/${CID}/studio/restore`,{body:{}});D.canRestore=false;paintSub();toast('The old picture is back on the concept.')}catch(x){toast(x.message)}}}
 document.addEventListener('keydown',e=>{
   if(!D)return;const typing=e.target.closest&&e.target.closest('input,textarea,select,[contenteditable]'),mod=e.ctrlKey||e.metaKey;
-  if(mod&&e.key.toLowerCase()==='s'){e.preventDefault();save();return}
-  if(typing)return;
+  if(mod&&e.key.toLowerCase()==='s'){e.preventDefault();saveAll();return}
+  if(typing||VMODE==='front'||VMODE==='back')return; // the flats take their own keys, in their frame
   if(mod&&e.key.toLowerCase()==='z'){e.preventDefault();e.shiftKey?redo():undo();return}if(mod&&e.key.toLowerCase()==='y'){e.preventDefault();redo();return}
   if(mod&&e.key.toLowerCase()==='d'){e.preventDefault();const l=selected();if(l)duplicate(l);return}
   if(e.key===' '&&!SPACE){SPACE=true;view.style.cursor='grab';e.preventDefault();return}
@@ -767,7 +781,7 @@ document.addEventListener('keydown',e=>{
   const t={v:'select',h:'hand',b:'brush',e:'eraser',d:'distress',t:'text',r:'rect',o:'ellipse',l:'line',i:'pick',m:'area',u:'ruler',w:'warp'}[e.key.toLowerCase()];if(t&&!mod&&!e.altKey)setTool(t);
 });
 document.addEventListener('keyup',e=>{if(e.key===' '){SPACE=false;setTool(TOOL)}});
-window.addEventListener('beforeunload',e=>{if(DIRTY){e.preventDefault();e.returnValue=''}});
+window.addEventListener('beforeunload',e=>{if(DIRTY||FF()?.dirty()){e.preventDefault();e.returnValue=''}});
 $('#undo').onclick=undo;$('#redo').onclick=redo;
 
 // ---------- opening the design: the saved layers, or the concept's picture as the base ----------
@@ -782,9 +796,9 @@ async function loadLayer(o){
 async function boot(){
   if(!TOKEN()){$('#needSignin').classList.remove('hidden');return}
   if(GMODE){return bootGraphic()}
-  if(!/^[0-9a-f-]{36}$/i.test(CID)){const box=$('#pickC');box.classList.remove('hidden');if(window.FBLabNav)box.querySelectorAll('nav.labnav').forEach(n=>window.FBLabNav.render(n));
+  if(!/^[0-9a-f-]{36}$/i.test(CID)){const KEEPQ=['view','template'].filter(k=>QS.get(k)).map(k=>`&${k}=${encodeURIComponent(QS.get(k))}`).join(''),box=$('#pickC');box.classList.remove('hidden');if(window.FBLabNav)box.querySelectorAll('nav.labnav').forEach(n=>window.FBLabNav.render(n));
     let list=[];try{list=(await api('/v1/lab/concepts?limit=120')).concepts.filter(c=>c.status!=='tech_pack')}catch(x){$('#pickList').innerHTML=`<span class="note">${esc(x.message)}</span>`;return}
-    const paint=()=>{const q=($('#pickQ').value||'').toLowerCase(),l=list.filter(c=>!q||`${c.name} ${c.categoryLabel||''} ${c.planName||''}`.toLowerCase().includes(q)).slice(0,60);$('#pickList').innerHTML=l.length?l.map(c=>`<a class="btn q" style="justify-content:space-between" href="/lab/studio?concept=${c.id}" data-pick="${c.id}"><span><b>${esc(c.name)}</b> <span class="note">· ${esc(c.categoryLabel||c.category||'')}${c.planName?' · '+esc(c.planName):''}</span></span><span>→</span></a>`).join(''):'<span class="note">No concepts yet: <a href="/lab#plans">start a line plan</a> and make some.</span>'};
+    const paint=()=>{const q=($('#pickQ').value||'').toLowerCase(),l=list.filter(c=>!q||`${c.name} ${c.categoryLabel||''} ${c.planName||''}`.toLowerCase().includes(q)).slice(0,60);$('#pickList').innerHTML=l.length?l.map(c=>`<a class="btn q" style="justify-content:space-between" href="/lab/studio?concept=${c.id}${KEEPQ}" data-pick="${c.id}"><span><b>${esc(c.name)}</b> <span class="note">· ${esc(c.categoryLabel||c.category||'')}${c.planName?' · '+esc(c.planName):''}</span></span><span>→</span></a>`).join(''):'<span class="note">No concepts yet: <a href="/lab#plans">start a line plan</a> and make some.</span>'};
     paint();$('#pickQ').addEventListener('input',paint);return}
   if(false){$('#needSignin').classList.remove('hidden');$('#needSignin h1').textContent='Open a concept first';$('#needSignin p').textContent='The studio opens from a concept in the Design Lab: open one and press Open in the studio.';$('#needSignin a').href='/lab#board';$('#needSignin a').textContent='Open the concepts';return}
   try{D=await api(`/v1/lab/concepts/${CID}/studio`)}catch(x){const n=$('#needSignin');n.classList.remove('hidden');const no=/access to Design Lab|not turned on|Only Danielle/i.test(x.message);n.querySelector('h1').textContent=x.status===404?'That concept is not there any more':no?'The Design Lab is not turned on for you':'Sign in first';n.querySelector('p').textContent=x.status===404?'It may have been deleted.':x.message;return}
@@ -801,9 +815,11 @@ async function boot(){
   await loadFonts();setColor(CUR);paintSub();paintAdd();tab('layers');setTool('select');HIST=[snap()];HI=0;syncUndo();DIRTY=false;showSaved();paintLayers();requestAnimationFrame(fit);
   if(QS.get('tryon')==='1')tryOpen().catch(()=>{});
   setInterval(()=>{if(DIRTY&&!DRAG)save()},90000); // a quiet save every minute and a half while there are changes
+  setVMode(QS.get('view')||'picture');
 }
 // a graphic for the library: a clear canvas, or the graphic's picture as a layer over one, with the layers it was built from when it has them
 async function bootGraphic(){
+  $('#viewSeg').classList.add('hidden'); // a graphic for the library has no flats
   try{D=await api('/v1/lab/library/studio'+(GID?'?art='+encodeURIComponent(GID):''))}catch(x){const n=$('#needSignin');n.classList.remove('hidden');n.querySelector('h1').textContent=x.status===404?'That graphic is not in the library':'Sign in first';n.querySelector('p').textContent=x.message;return}
   D.concept={name:D.graphic?.name||'New graphic',status:'graphic',locked:false,hasImage:Boolean(D.graphic?.hasImage),hasPlain:false,colors:[]};
   $('#app').classList.remove('hidden');$('#back').href='/lab/library';$('#back').textContent='← Graphics library';document.querySelector('.brand-suffix').textContent='/ Graphics studio';
@@ -936,18 +952,47 @@ $('#sepDlg').addEventListener('click',async e=>{const d=$('#sepDlg');if(e.target
   catch(x){toast(x.message)}finally{b.disabled=false}});
 // the layers with a place on the piece go to the concept and its flats, at their size, when the design is saved
 let SYNCED=null;
-async function syncFlats(){
+async function syncFlats({before}={}){
   const placed=LAYERS.filter(l=>l.kind!=='base'&&l.placement&&l.visible).slice(0,8).map(l=>({l,s:inchesOf(l),key:sig(l)}));
-  const key=JSON.stringify(placed.map(x=>[x.l.id,x.l.name,x.l.placement,fin(x.s.w),fin(x.s.h),x.l.finish?.id||'',x.key]));if(key===SYNCED)return;
+  const key=JSON.stringify(placed.map(x=>[x.l.id,x.l.name,x.l.placement,fin(x.s.w),fin(x.s.h),x.l.finish?.id||'',x.key]));if(key===SYNCED)return false;
   const layers=placed.map(x=>({layer:x.l.id,name:x.l.name,widthIn:x.s.w,heightIn:x.s.h,placement:x.l.placement,techniqueId:x.l.finish?.id||null,...(x.l.art&&x.l.artSig===x.key?{art:x.l.art}:{image:artPng(x.l)})}));
+  if(before)await before(); // unsaved changes on the flats go first, so the graphics land on them and nothing is lost
   const r=await api(`/v1/lab/concepts/${CID}/studio/graphics`,{body:{layers}});
   for(const x of placed)if(r.arts[x.l.id]){x.l.art=r.arts[x.l.id];x.l.artSig=x.key}
   if(SYNCED!==null||placed.length)toast(placed.length?`On the concept${r.flats?' and its flats':''}: ${placed.length} graphic${placed.length>1?'s':''} at their size.`:'Nothing from the studio is on the flats now.');
-  SYNCED=key}
+  const was=SYNCED;SYNCED=key;return Boolean(r.flats)&&(placed.length>0||(was!==null&&was!=='[]'))} // true when the saved flats changed
 // the size fields
 pL.addEventListener('input',e=>{if(!e.target.matches('[data-win]'))return;const l=selected(),v=Number(e.target.value);if(!l||!(v>0)||l.locked)return;const t=tight(l);l.scale=clamp(v*PPI/(t.w||1),.02,40);touch();draw();paintFields()});
 pL.addEventListener('change',e=>{const l=selected();if(!l)return;if(e.target.matches('[data-win]')){commit();paintSize()}if(e.target.matches('[data-placement]')){l.placement=e.target.value||undefined;commit();const c=$('#chk');if(c)c.innerHTML=''}});
 pL.addEventListener('input',e=>{if(e.target.dataset.p!=='warpk')return;const l=selected();if(!l||!l.warp)return;const k=Number(e.target.value);l.warp.k=k;if(l.warp.kind!=='free')l.warp.pts=presetPts(l.warp.kind,k);draw()});
+// ---------- one workspace: the picture and its flats ----------
+// The flats page runs in a frame beside or instead of the picture (?embed=full: its own panel of Placements, Design, Garment, Measurements;
+// ?embed=compact: the drawing alone, for side by side). The header, the view switch and Save are this page's. The frame loads the first
+// time a flat is shown. Saving: unsaved flats first, then the picture, whose placed graphics go onto the flats, which then reload.
+const VIEWS=['picture','front','back','split'];let VMODE='picture',FLOADED=false,TPLUSED=false,FOBS=null;
+function FF(){try{return FLOADED?$('#flatFrame').contentWindow.FBFlats||null:null}catch{return null}}
+function flatSrc(){const t=QS.get('template');return `/lab/flats?concept=${CID}&embed=${VMODE==='split'?'compact':'full'}&view=${VMODE==='back'?'back':'front'}${t&&!TPLUSED?'&template='+encodeURIComponent(t):''}`}
+function loadFlats(){$('#flatFrame').src=flatSrc();FLOADED=true;TPLUSED=true}
+function reloadFlats(){if(!FLOADED||FF()?.dirty())return;$('#flatFrame').src=flatSrc()}
+async function flatsFirst(){const f=FF();if(f&&f.dirty()&&!(await f.save()))throw new Error('the flats could not be saved first')}
+async function saveAll(){if(GMODE||!CID)return save();const f=FF();if(f&&f.dirty()&&!(await f.save()))return false;return save()}
+// the flats' own saved line shows in the header beside the picture's
+function mirrorFlats(){const d=$('#flatFrame').contentDocument,src=d&&d.getElementById('saved'),out=$('#fsaved');if(!src)return;FOBS?.disconnect();
+  const copy=()=>{out.className='saved flat-only'+(src.classList.contains('dirty')?' dirty':'');out.innerHTML=src.innerHTML?'Flats: '+src.innerHTML:'';out.title=src.title||'The flats'};copy();FOBS=new MutationObserver(copy);FOBS.observe(src,{childList:true,characterData:true,subtree:true,attributes:true})}
+window.FBDesign={saveAll,flatsChanged(){},flatsReady(){const f=FF();if(!f)return;f.mode(VMODE==='split'?'compact':'full');if(VMODE==='front'||VMODE==='back')f.setView(VMODE);mirrorFlats();$('#packBtn').classList.toggle('hidden',!f.canPack());['#specBtn','#decoBtn'].forEach(s=>$(s).disabled=Boolean(f.unsupported()))}};
+async function setVMode(v,{push=true}={}){
+  if(!VIEWS.includes(v)||GMODE||!CID)v='picture';const was=VMODE;
+  if(v!=='picture'){
+    // the graphics placed on the picture go onto the flats before they are shown
+    if(!GMODE&&DIRTY&&(was==='picture'||!FLOADED)){busy('Putting the graphics on the flats…');try{const sent=await syncFlats({before:flatsFirst});if(sent&&FLOADED)reloadFlats()}catch(x){toast('The flats did not take the graphics: '+x.message)}finally{busy()}}
+    if(!FLOADED)loadFlats()}
+  VMODE=v;$('#app').dataset.v=v;$$('#viewSeg [data-v]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.v===v)));
+  const f=FF();if(f&&f.ready()){f.mode(v==='split'?'compact':'full');if(v==='front'||v==='back')f.setView(v)}
+  if(push){const u=new URL(location.href);if(v==='picture')u.searchParams.delete('view');else u.searchParams.set('view',v);u.searchParams.delete('template');history.replaceState(null,'',u)}
+  if(v==='picture'||v==='split')requestAnimationFrame(fit)}
+$$('#viewSeg [data-v]').forEach(b=>b.onclick=()=>setVMode(b.dataset.v));
+const flatsOr=fn=>()=>{const f=FF();if(!f||!f.ready()){toast('The flats are still loading.');return}fn(f)};
+$('#specBtn').onclick=flatsOr(f=>f.sheet());$('#decoBtn').onclick=flatsOr(f=>f.deco());$('#packBtn').onclick=flatsOr(f=>f.pack());
 boot();
 </script>
 <script src="/helper.js" defer></script>
