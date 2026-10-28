@@ -1887,5 +1887,110 @@ await journey('J230', 'Decoration to the factory: a graphic has a real size in i
   } finally { await cleanup(brands, plan.plan?.id); }
 });
 
+await journey('J231', 'From the studio to the factory: a graphic placed and measured in the studio lands on the flats at its size; artwork sizes per group of garment sizes; inks per colourway; vector and stitch files; an all-over repeat made in the library and laid over the whole piece; and factory quotes that calibrate the costs', async () => {
+  const { brands, plan } = await conceptSetup();
+  const tops = plan.lines.find(l => l.category === 'tops') || plan.lines[0];
+  const [c, c2] = (await K(`/plans/${plan.plan.id}/lines/${tops.id}/concepts`, { body: { count: 2 } })).json.concepts;
+  try {
+    const bold = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="900" height="500"><rect x="40" y="60" width="820" height="200" rx="30" fill="#141416"/><circle cx="450" cy="380" r="100" fill="#c8102e"/></svg>`);
+    const image = `data:image/png;base64,${(await sharp(bold).png().toBuffer()).toString('base64')}`, art = (await K('/library/graphics/upload', { body: { image, name: 'Crest two' } })).json.id;
+    const F = (path = '', o = {}) => K(`/concepts/${c.id}/flats${path}`, o), first = (await F()).json, f = first.flat, screen = first.techniques.find(t => t.base === 'screen print');
+    const body = { style: f.style, fit: f.fit, m: f.m, options: f.options, placements: [...f.placements, { id: 'g', name: 'Chest graphic', view: 'front', art, techniqueId: screen.id, technique: 'screen print', x: 0, y: 9, w: 10, h: 5.5 }] };
+    ok((await F('', { method: 'PUT', body })).status === 200, '0. flats saved with a chest graphic');
+    // 1. the studio's placed layer becomes a graphic on the concept and a placement on its flats, at its size
+    const S = (id, layers) => K(`/concepts/${id}/studio/graphics`, { body: { layers } });
+    const s1 = await S(c.id, [{ layer: 'labc123', name: 'Back crest', image, widthIn: 3.5, heightIn: 1.94, placement: 'left chest', techniqueId: screen.id }]);
+    const after = (await F()).json.flat.placements, sp = after.find(q => q.source === 'studio');
+    ok(s1.status === 200 && s1.json.arts.labc123 && s1.json.flats?.placements === 1 && sp && sp.w === 3.5 && sp.layer === 'labc123' && sp.art === s1.json.arts.labc123 && after.length === body.placements.length + 1, '1. the studio layer is on the saved flats at 3.5 in, at the left chest, next to what was there', s1.json.error || after.map(q => [q.id, q.w]));
+    const g1 = JSON.parse(sql(`select spec->'graphics' from lab_concepts where id='${c.id}'`)); ok(g1.some(g => g.studioLayer === 'labc123' && g.widthIn === 3.5 && /left chest/.test(g.placement)), '   and a graphic on the concept, for the tech pack');
+    const s2 = await S(c.id, [{ layer: 'labc123', name: 'Back crest', art: s1.json.arts.labc123, widthIn: 4, heightIn: 2.2, placement: 'left chest', techniqueId: screen.id }]), sp2 = (await F()).json.flat.placements.find(q => q.source === 'studio');
+    ok(s2.status === 200 && sp2.w === 4 && sp2.x === sp.x && Math.abs((sp2.y - sp2.h / 2) - (sp.y - sp.h / 2)) < .01 && (await F()).json.flat.placements.filter(q => q.source === 'studio').length === 1, '   resized in the studio: the same placement, 4 in, its top edge kept');
+    ok((await S(c.id, [])).json.flats.placements === 0 && !(await F()).json.flat.placements.some(q => q.source === 'studio'), '   taken off in the studio: gone from the flats');
+    await S(c2.id, [{ layer: 'lzz9', name: 'Nape', image, widthIn: 2.5, heightIn: 1.4, placement: 'back neck' }]);
+    const init = (await K(`/concepts/${c2.id}/flats`)).json.flat, np = init.placements.find(q => q.source === 'studio');
+    ok(!init.saved && np && np.w === 2.5 && np.view === 'back', '   a concept with no flats yet starts its flats with it, at the back neck', np);
+    ok((await S(c.id, [{ layer: 'labc123', widthIn: 0, heightIn: 1, placement: 'left chest', image }])).status === 422, '   a layer needs a size');
+    // 2. artwork by garment size, and inks on each colourway
+    await K(`/concepts/${c.id}/colourways`, { method: 'PUT', body: { colourways: [{ name: 'Washed black', hex: '#111111' }, { name: 'Bone', hex: '#f2efe6' }] } });
+    const sg = (await F('/suggest', { body: { ...body, placementId: 'g' } })).json;
+    ok(sg.grade && sg.grade.follows === 'chest' && sg.grade.two.length === 2 && sg.grade.two[0].w < 10 && sg.grade.two[1].w > 10 && sg.grade.three.length === 3, '2. artwork sizes suggested from the chest: two or three sizes across the run', sg.grade);
+    const black = sg.inks.find(x => x.colourway.hex === '#111111'), blackInk = black && black.inks.find(x => x.from === '#141416');
+    ok(blackInk && blackInk.to !== '#141416' && /^PANTONE /.test(blackInk.toPantone) && sg.inks.find(x => x.colourway.hex === '#f2efe6').inks.every(x => x.to === x.from || x.from === '#c8102e'), '   the black ink is lifted on the black colourway, as drawn on bone', sg.inks);
+    // 3. an all-over repeat, made in the library
+    const leaf = (await K('/library/graphics/upload', { body: { image: `data:image/png;base64,${(await sharp(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><path d="M20 280 L200 20 L380 280Z" fill="#2f5d3a"/><circle cx="200" cy="200" r="50" fill="#e8c547"/></svg>')).png().toBuffer()).toString('base64')}`, name: 'Leaf' } })).json.id;
+    const rp = await K('/library/repeat', { body: { art: leaf, type: 'halfdrop', repeatIn: 3, scale: .6 } });
+    ok(rp.status === 200 && rp.json.widthIn === 6 && rp.json.preview.startsWith('data:image/png') && !rp.json.id, '3. a half-drop repeat previewed: 6 in across (two columns of 3 in)', rp.json);
+    const kept = await K('/library/repeat', { body: { art: leaf, type: 'halfdrop', repeatIn: 3, scale: .6, keep: true } });
+    const listed = (await K('/library/graphics?source=repeat')).json.graphics.find(g => g.id === kept.json.id);
+    ok(kept.status === 201 && listed && listed.repeat.type === 'halfdrop' && listed.repeat.widthIn === 6, '   kept in the library as a repeat, with its size');
+    // 4. the flats with grading, inks and the all-over print
+    const g = body.placements.find(q => q.id === 'g'); g.grade = sg.grade.two; g.inks = { '#111111': { '#141416': blackInk.to } };
+    const body2 = { ...body, allover: { art: kept.json.id, w: listed.repeat.widthIn, h: listed.repeat.heightIn, type: 'halfdrop', name: 'Leaf all over', base: 'all-over sublimation' } };
+    const put = await F('', { method: 'PUT', body: body2 }), ao = put.json.decorations?.find(d => d.allover), gd = put.json.decorations?.find(d => d.id === 'g');
+    ok(put.status === 200 && ao && ao.base === 'all-over sublimation' && ao.perPieceCents > 0 && gd.grade.length === 2 && gd.inks['#111111'], '4. saved: the all-over print is priced by the cloth it covers, the graphic keeps its sizes and inks', put.json.error || put.json.decorations);
+    const back = (await F()).json.flat; ok(back.allover?.art === kept.json.id && back.placements.find(q => q.id === 'g').grade.length === 2, '   and they come back with the flats');
+    const svg = await (await fetch(`${BASE}/v1/lab/concepts/${c.id}/flats/sheet.svg`, { headers: { Authorization: 'Bearer ' + kyleT } })).text();
+    ok(/Artwork by size: XS–M/.test(svg) && /All over: Leaf all over/.test(svg) && /-ao" patternUnits/.test(svg) && (await sharp(Buffer.from(svg)).png().toBuffer()).length > 10000, '   the spec sheet: sizes per group, the all-over print, drawn on the flats');
+    const pdf = Buffer.from(await (await fetch(`${BASE}/v1/lab/concepts/${c.id}/flats/decorations.pdf`, { headers: { Authorization: 'Bearer ' + kyleT } })).arrayBuffer()), pages = (pdf.toString('latin1').match(/\/Type\s*\/Page[^s]/g) || []).length;
+    writeFileSync(`${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/lab-decorations-j231.pdf`, pdf);
+    ok(pdf.slice(0, 4).toString() === '%PDF' && pages >= body2.placements.length + 1, `   the decoration sheet: a page (or more) per graphic and one for the all-over print (${pages} for ${body2.placements.length} graphics)`);
+    // 5. factory quotes calibrate the costs
+    const est = gd.perPieceCents, q = await K('/decor/quotes', { body: { techniqueId: screen.id, supplier: 'Shop A', widthIn: 10, heightIn: 5.5, colours: gd.colours, qty: 300, unitCents: Math.round(gd.unitCents * 1.6), setupCents: Math.round(gd.setupCents * 1.6), conceptId: c.id, placement: 'Chest graphic' } });
+    ok(q.status === 201 && q.json.quote.actualCents > q.json.quote.estimateCents && q.json.calibration.byTechnique[screen.id].n === 1 && q.json.calibration.byTechnique[screen.id].factor > 1, '5. a factory quote is kept against our estimate for the same job', q.json.error || q.json.calibration);
+    const put2 = await F('', { method: 'PUT', body: body2 }), gd2 = put2.json.decorations.find(d => d.id === 'g');
+    ok(gd2.perPieceCents > est && /factory quote/.test(gd2.basis), `   the next costing moves towards it: ${est} → ${gd2.perPieceCents} cents a piece`, gd2.basis);
+    ok((await K('/decor/quotes')).json.quotes.some(x => x.id === q.json.quote.id && x.techniqueName === screen.name) && (await K('/decor/quotes', { body: { techniqueId: screen.id, widthIn: 0, heightIn: 1, qty: 1, unitCents: 1 } })).status === 422, '   listed, and a quote needs its size');
+    ok((await K(`/decor/quotes/${q.json.quote.id}`, { method: 'DELETE' })).json.ok, '   and can be taken back');
+    // 6. vector and stitch files, from the library and from a studio layer
+    const vr = await fetch(`${BASE}/v1/lab/library/graphics/${art}/vector.svg?widthIn=10`, { headers: { Authorization: 'Bearer ' + kyleT } }), vs = await vr.text();
+    ok(vr.status === 200 && /image\/svg/.test(vr.headers.get('content-type')) && /width="10in"/.test(vs) && (vs.match(/<path /g) || []).length === 2 && Number(vr.headers.get('x-paths')) >= 2, '6. the graphic traced to vector: a path per ink at 10 in');
+    const ej = await K(`/library/graphics/${art}/embroidery?widthIn=3.5`), dr = await fetch(`${BASE}/v1/lab/library/graphics/${art}/embroidery?widthIn=3.5&format=dst`, { headers: { Authorization: 'Bearer ' + kyleT } }), db = Buffer.from(await dr.arrayBuffer());
+    ok(ej.status === 200 && ej.json.stitches > 500 && ej.json.colours.length === 2 && ej.json.preview.startsWith('data:image/png') && db.slice(0, 3).toString() === 'LA:' && (db.length - 512) % 3 === 0, '   and as an embroidery stitch file (.dst) with its stitch count and a preview', ej.json.error);
+    ok((await K(`/library/graphics/${art}/embroidery?widthIn=30`)).status === 422, '   no embroidery wider than a hoop');
+    const sv = await K('/studio/vector', { body: { image, widthIn: 4 } }), se = await K('/studio/embroidery', { body: { image, widthIn: 3 } });
+    ok(sv.status === 200 && sv.json.colours.length === 2 && se.status === 200 && se.json.stitches > 300, '   the studio makes both from a layer');
+    // 7. the tech pack carries it
+    await K(`/concepts/${c.id}/approve`, { body: { overrideReason: 'reviewed side by side with the references: it is ours', makeReason: 'checked with the printer' } });
+    const tp = await K(`/concepts/${c.id}/tech-pack`, { body: {} }), pack = (await call(`/v1/admin/products/${tp.json.productId}/tech-pack`, { token: kyleT })).json.techPack?.data;
+    ok(pack && pack.bom.some(r => r.component === 'Decoration · Chest graphic' && /XS–M/.test(r.spec)) && pack.bom.some(r => /^All-over print · Leaf/.test(r.component) && Number(r.cost) > 0) && pack.construction.some(r => /^Flats · Inks by colourway/.test(r.area) && /Washed black/.test(r.detail)), '7. the tech pack: artwork sizes in the BOM, the all-over print with its cost, the inks by colourway', pack && pack.bom.map(r => r.component));
+    if (!playwright) { ok(true, 'needs a browser'); return; }
+    const b = await playwright.chromium.launch();
+    try {
+      const oc = await b.newContext({ viewport: { width: 1500, height: 980 } }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
+      const page = await oc.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
+      // the flats page
+      await page.goto(`${BASE}/lab/flats?concept=${c2.id}`, { waitUntil: 'networkidle' }); await page.waitForSelector('#pPl [data-q]', { timeout: 20000 });
+      const sid = await page.evaluate(() => [...document.querySelectorAll('#pPl [data-q]')].find(c => /from the studio/.test(c.querySelector('.where').textContent))?.dataset.q); ok(Boolean(sid), '8. the flats page: the studio graphic is there, marked from the studio');
+      await page.click(`#pPl [data-q="${sid}"] .where`); await page.waitForSelector('#pPl [data-grade="2"]');
+      await page.click('#pPl [data-grade="2"]'); await page.waitForSelector('#pPl [data-gw]', { timeout: 15000 });
+      ok((await page.locator('#pPl [data-gw]').count()) === 2, '   Two sizes: a width per group of garment sizes, each one editable');
+      const wOf = () => page.evaluate(id => Number(document.querySelector(`#canvas [data-pl="${id}"] image`)?.getAttribute('width')), sid); const wm = await wOf();
+      await page.selectOption('#size', 'XXL'); await page.dispatchEvent('#size', 'change'); const wx = await wOf(); ok(wx > wm, `   the size picker draws the XXL artwork bigger (${wm} → ${wx} in)`);
+      await page.waitForSelector('#repTiles [data-rep]', { timeout: 15000 }); await page.click(`#repTiles [data-rep="${kept.json.id}"]`); await page.waitForSelector('#canvas pattern image', { state: 'attached', timeout: 15000 });
+      ok(/halfdrop repeat/.test(await page.innerText('#pPl')), '   the all-over repeat chosen from the library covers the piece');
+      await page.click('#save'); await page.waitForSelector('#pPl [data-dc]', { timeout: 20000 });
+      ok((await page.locator('#pPl [data-dc]').count()) >= 2 && /a piece/.test(await page.innerText('#pPl [data-dc]')), '   saved: what each decoration costs, the all-over print among them');
+      const card = page.locator('#pPl [data-dc]').first(); await card.locator('summary').click(); await card.locator('[data-qk=unit]').fill('2.50'); await card.locator('[data-qsave]').click(); await page.waitForFunction(() => /Kept:/.test(document.querySelector('#pPl [data-qmsg]').textContent), null, { timeout: 15000 });
+      ok(true, '   and a factory\'s quote is recorded from the page'); await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/lab-flats-factory.png` }).catch(() => {});
+      // the library page
+      await page.goto(`${BASE}/lab/library`, { waitUntil: 'networkidle' }); await page.waitForFunction(() => typeof openGraphic === 'function' && G.graphics.length > 0, null, { timeout: 15000 });
+      await page.evaluate(id => openGraphic(id), art); await page.waitForSelector('#gDlg[open]');
+      await page.click('#grGo'); await page.waitForFunction(() => !document.getElementById('grImg').classList.contains('hidden'), null, { timeout: 20000 });
+      ok(/repeat, \d/.test(await page.innerText('#grInfo')), '9. the library: a repeat previewed from the graphic'); await page.evaluate(() => document.getElementById('gRep').scrollIntoView()); await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/lab-library-repeat.png` }).catch(() => {});
+      await page.click('#gjDst'); await page.waitForSelector('#gjEmb [data-stitches]', { timeout: 20000 }); ok(Number(await page.getAttribute('#gjEmb [data-stitches]', 'data-stitches')) > 300, '   the embroidery file with its stitch count');
+      // the studio: a layer with a place goes to the flats on save
+      await page.goto(`${BASE}/lab/studio?concept=${c2.id}`, { waitUntil: 'networkidle' }); await page.waitForSelector('#pLayers .ly', { timeout: 20000 }); await page.waitForFunction(() => !document.querySelector('#busy:not(.hidden)'));
+      await page.click('.tabs [data-tab=add]'); await page.click('#pAdd [data-mark=word]'); await page.waitForFunction(() => LAYERS.length >= 2); await page.click('.tabs [data-tab=layers]'); await page.waitForSelector('#sizeRead');
+      await page.fill('#pLayers [data-win]', '3.5'); await page.dispatchEvent('#pLayers [data-win]', 'change'); await page.selectOption('#pLayers [data-placement]', 'left chest');
+      await page.click('#save'); await page.waitForFunction(() => !DIRTY, null, { timeout: 30000 });
+      const fp = (await K(`/concepts/${c2.id}/flats`)).json.flat.placements.find(q => q.source === 'studio');
+      ok(fp && Math.abs(fp.w - 3.5) < .2, '10. the studio: a wordmark set to 3.5 in for the left chest is on the flats when the design is saved', fp);
+      await page.evaluate(() => sepOpen(selected())); await page.waitForSelector('#sepDlg[open] [data-plate]', { timeout: 30000 });
+      ok((await page.locator('#sepDlg [data-sepvec]').count()) === 1 && (await page.locator('#sepDlg [data-sepdst]').count()) === 1, '   the separations offer the vector and embroidery files');
+      ok(errs.length === 0, 'no page errors', errs); await oc.close();
+    } finally { await b.close(); }
+  } finally { await cleanup(brands, plan.plan?.id); }
+});
+
 shops.close(); brave.close();
 process.exit(summary() ? 1 : 0);

@@ -342,6 +342,32 @@ These turn a graphic into something a decorator can quote and make. The rules an
   - **Preview on every piece** draws it on each concept's picture (`POST /v1/lab/plans/:id/mockup`). The model places it where it can; otherwise the usual spot is used. Nothing is kept yet.
   - **Put it on the ticked pieces** (`POST /v1/lab/plans/:id/mockup/apply`) adds it to each concept's graphics and redraws its picture. Pieces that are already tech packs, that have no such spot, that already carry the graphic or that already have four are left alone, with the reason.
 
+## From the studio to the factory: studio graphics on the flats, sizes per garment size, inks per colourway, vector and stitch files, all-over repeats, factory quotes
+
+- **Studio graphics reach the flats.** In the studio, a graphic, mark or type layer with a place chosen under **Goes on** goes to the concept when the design is saved.
+  - It becomes one of the concept's graphics, with its size in inches (`POST /v1/lab/concepts/:id/studio/graphics`).
+  - Saved flats get it as a placement at that size. Saving again resizes it in place and keeps its top edge where it was. Clearing its place takes it off.
+  - A concept with no saved flats starts them with it.
+  - On the flats page these placements are marked "from the studio". From there they reach the decoration sheet, the cost and the tech pack like any other graphic.
+- **Artwork by garment size.** On the flats, the selected placement offers **One size for all**, **Two sizes** or **Three sizes** (`POST /v1/lab/concepts/:id/flats/suggest`).
+  - The artwork is scaled with the chest (the hip on bottoms, the width on a tote) from the sample size, then rounded to ¼ in. Every width can be changed.
+  - The size picker draws each size's artwork.
+  - The spec sheet, the decoration sheet, the BOM and the construction lines give the size for each group, for example "XS–M 9½ in · L–XXL 10½ in".
+- **Inks per colourway.** **Suggest inks for each colourway** checks every ink against every colourway on the concept. An ink too close to the garment is lightened on a dark colourway, or darkened on a light one, until it reads. The rest stay as drawn. Each one can be picked by hand.
+  - The decoration sheet has an "Inks on each colourway" table with Pantones. The tech pack gets a construction line per graphic.
+- **Vector and embroidery files** (`src/lab-vector.js`).
+  - **Vector (SVG)** traces each ink of a graphic to filled paths, at its width in inches, with its Pantone, for a screen printer or Illustrator.
+  - **Embroidery file (.dst)** makes a Tajima stitch file, which every embroidery machine reads, with a stitch count and a preview. It is a tatami fill per thread, with 0.4 mm rows and stitches up to 3.5 mm. This is a starting file: a digitiser adds the underlay, pull compensation and satin for small lettering.
+  - Both are in the graphics library (`GET /v1/lab/library/graphics/:id/vector.svg`, `GET …/embroidery?widthIn=&format=dst`) and in the studio's separations dialog (`POST /v1/lab/studio/vector`, `POST /v1/lab/studio/embroidery`).
+- **All-over repeats** (`src/lab-repeat.js`). **Make an all-over repeat** on a library graphic offers straight, half-drop, brick, mirror or tossed. It takes the repeat width in inches, the motif's size and turn, and a ground colour or clear (`POST /v1/lab/library/repeat`).
+  - **Keep in the library** saves the seamless tile with its size.
+  - On a piece's flats, **All-over print** lays it over the cloth only, with the sketch's lines on top. It is made as all-over sublimation, all-over screen print or jacquard knit.
+  - It is priced by the cloth it covers, front, back and sleeves at the sample size. It has its own page on the decoration sheet and a BOM row on the tech pack.
+- **Factory quotes calibrate the costs.** Under **What the decorations cost** on the flats, **Record the factory's quote** keeps what the factory charged (`/v1/lab/decor/quotes`). It is stored next to our estimate for the same size, colours and quantity.
+  - The factor is the median of quote ÷ estimate, per technique, or per base technique when a technique has none.
+  - One quote moves the estimate a third of the way. Three or more move it all the way. It is bounded between 0.3× and 3×.
+  - Every cost after that uses the factor, in the flats, the studio check and the tech pack. The basis says so, for example "×1.20 from 3 factory quotes". A wrong quote can be deleted.
+
 ## Materials, trims and tags: the library
 
 **Materials, trims and tags** (a Lab tab, `/lab/materials`) is what we make pieces of, kept once and chosen on any concept.

@@ -124,7 +124,9 @@ export function registerLabFlatsRoutes(app, d) {
     const logo = spec.branding?.logo || {};
     if (logo.mark && logo.mark !== 'none') { const mark = logo.mark === 'cue' ? 'mark' : logo.mark, base = LOGO_BASE[logo.technique] || 'embroidery', aspect = await aspectOf({ mark }); const t = techFor(list, { technique: base });
       placements.push({ id: 'logo', name: 'Future Basics logo', source: 'logo', mark, technique: base, techniqueId: t.id, ...defaultPlacement('logo', params, { aspect, label: logo.placement || '' }) }); }
-    for (const [i, g] of (spec.graphics || []).entries()) { if (!g.art) continue; const aspect = await aspectOf({ art: g.art }), t = techFor(list, { techniqueId: g.finish?.id, technique: g.technique });
+    // the branding pass keeps a graphic's words; what the studio measured (its layer and size) is read from the concept as saved
+    const raw = Array.isArray(c.spec?.graphics) ? c.spec.graphics : [];
+    for (const [i, g0] of (spec.graphics || []).entries()) { if (!g0.art) continue; const r0 = raw.find(x => x.art === g0.art && x.studioLayer) || {}, g = { ...g0, ...(r0.studioLayer ? { placement: r0.placement || g0.placement } : {}), studioLayer: r0.studioLayer, widthIn: r0.widthIn, heightIn: r0.heightIn }; const aspect = await aspectOf({ art: g.art }), t = techFor(list, { techniqueId: g.finish?.id, technique: g.technique });
       placements.push({ id: g.studioLayer ? 's-' + g.studioLayer : 'g' + i, name: g.name || `Graphic ${i + 1}`, source: g.studioLayer ? 'studio' : 'graphic', ...(g.studioLayer ? { layer: g.studioLayer } : {}), art: g.art, technique: t.base, techniqueId: t.id, ...sized(defaultPlacement('graphic', params, { aspect, label: g.placement || '' }), g) }); }
     // a logo that would sit on a graphic goes to the back neck instead
     const lg = placements.find(q => q.source === 'logo');
@@ -189,7 +191,7 @@ export function registerLabFlatsRoutes(app, d) {
     await pool.query('update lab_concepts set spec=$2, cost_cents=$3 where id=$1', [c.id, spec, picks.length || decorations.length ? cost.landedCents : c.cost_cents]);
     return cost;
   }
-  const shape = (c, row, extra = {}) => ({ concept: { id: c.id, name: c.name, category: c.category, status: c.status, productId: c.product_id, locked: c.status === 'tech_pack' && !c.product_id }, colourways: cleanColourways(c.spec?.colourways), alloverBases: ALLOVER_BASES, ...extra,
+  const shape = (c, row, extra = {}) => ({ concept: { id: c.id, name: c.name, category: c.category, status: c.status, productId: c.product_id, locked: c.status === 'tech_pack' && !c.product_id }, colourways: cleanColourways(c.spec?.colourways), alloverBases: ALLOVER_BASES, decorations: Array.isArray(c.spec?.decorations) && c.spec.decorations.length ? c.spec.decorations : null, ...extra,
     styles: Object.fromEntries(Object.entries(STYLES).map(([k, v]) => [k, { label: v.label, kind: v.kind, oneSize: Boolean(v.oneSize) }])), fits: FITS, sizes: SIZES, flat: row });
 
   app.get('/v1/lab/concepts/:id/flats', { preHandler: pre }, async (req, reply) => {
@@ -312,6 +314,8 @@ export function registerLabFlatsRoutes(app, d) {
     const b = brandDoc({ title: `${c.name} · decorations`, kind: 'Decoration sheet', ref: `${s.pl.length} placement${s.pl.length === 1 ? '' : 's'}`, footerNote: 'Future Basics · decoration sheet · colours as Pantone C, matched from the artwork: confirm each against a swatch book' });
     const { doc, L, CW } = b;
     if (!s.pl.length && !s.p.allover) { doc.fillColor(INK).font('SG-B').fontSize(18).text(safe(c.name), L, b.bodyTop); doc.fillColor(DIM).font('SG').fontSize(11).text('Nothing is placed on this piece yet.', L, doc.y + 8); return b.finish(); }
+    // a section that would not fit with its first rows starts on the next page, so a heading is never left alone at the bottom
+    const room = (y, need) => { if (y + need <= b.bodyBottom) return y; doc.addPage(); return b.bodyTop; };
     for (const [i, q] of s.pl.entries()) {
       if (i) doc.addPage();
       const t = techFor(list, q), n = notes.get(t.id) || {}, dd = decos.find(x => x.id === q.id), y0 = b.bodyTop;
@@ -321,22 +325,22 @@ export function registerLabFlatsRoutes(app, d) {
       let y = doc.y + 12; const col = CW / 4;
       fact(b, 'Width', fmtCm(q.w), L, y, col); fact(b, 'Height', fmtCm(q.h), L + col, y, col); fact(b, 'Colours', String(dd?.colours ?? '—'), L + col * 2, y, col); fact(b, 'Cost per piece', dd ? `$${(dd.perPieceCents / 100).toFixed(2)}` : '—', L + col * 3, y, col); y += 46;
       // the artwork, and the flat with the placement on it
-      const art = s.hrefs[q.id] ? Buffer.from(s.hrefs[q.id].split(',')[1], 'base64') : null, bw = CW * .48, bh = 200;
+      const art = s.hrefs[q.id] ? Buffer.from(s.hrefs[q.id].split(',')[1], 'base64') : null, bw = CW * .48, bh = 170;
       doc.rect(L, y, bw, bh).fill('#f3f2ee'); if (art) { try { doc.image(art, L + 10, y + 10, { fit: [bw - 20, bh - 20], align: 'center', valign: 'center' }); } catch { /* left blank */ } } doc.rect(L, y, bw, bh).lineWidth(.6).strokeColor(LINE).stroke();
       try { const flat = await sharp(Buffer.from(renderSvg(s.p, q.view, { placements: s.pl, hrefs: s.hrefs, selected: q.id, scale: 40, templateSvg, partHref, editHrefs: s.editHrefs, alloverHref: s.alloverHref }))).resize({ width: 900, height: 900, fit: 'inside' }).flatten({ background: '#ffffff' }).png().toBuffer();
         doc.image(flat, L + bw + 12, y, { fit: [CW - bw - 12, bh], align: 'center', valign: 'center' }); } catch { /* no flat picture */ }
       y += bh + 14;
       doc.fillColor(INK).font('SG-B').fontSize(11).text('Where it goes', L, y); doc.fillColor(INK).font('SG').fontSize(10).text(safe(describe(q, s.p)), L, doc.y + 3, { width: CW }); y = doc.y + 12;
       const cols = (await coloursOf(q));
-      if (cols.length) { doc.fillColor(INK).font('SG-B').fontSize(11).text(t.base === 'embroidery' ? 'Threads' : 'Inks and colours', L, y); table(b, [{ h: '#', w: .08, mono: true }, { h: 'Pantone C', w: .52, mono: true }, { h: 'Share of the artwork', w: .4, align: 'right', mono: true }], cols.map((x, k) => [String(k + 1), { t: x.pantone || x.name, swatch: x.hex }, `${Math.round(x.share * 100)} %`]), { y: doc.y + 6, fontSize: 9.5 }); y = doc.y + 12; }
-      if (q.grade) { doc.fillColor(INK).font('SG-B').fontSize(11).text('Artwork size by garment size', L, y); table(b, [{ h: 'Garment sizes', w: .4 }, { h: 'Width', w: .3, mono: true }, { h: 'Height', w: .3, mono: true }], q.grade.map(g => [g.sizes.join(', '), fmtCm(g.w), fmtCm(g.h)]), { y: doc.y + 6, fontSize: 9.5 }); y = doc.y + 12; }
+      if (cols.length) { y = room(y, 40 + cols.length * 16); doc.fillColor(INK).font('SG-B').fontSize(11).text(t.base === 'embroidery' ? 'Threads' : 'Inks and colours', L, y); table(b, [{ h: '#', w: .08, mono: true }, { h: 'Pantone C', w: .52, mono: true }, { h: 'Share of the artwork', w: .4, align: 'right', mono: true }], cols.map((x, k) => [String(k + 1), { t: x.pantone || x.name, swatch: x.hex }, `${Math.round(x.share * 100)} %`]), { y: doc.y + 6, fontSize: 9.5 }); y = doc.y + 12; }
+      if (q.grade) { y = room(y, 40 + q.grade.length * 16); doc.fillColor(INK).font('SG-B').fontSize(11).text('Artwork size by garment size', L, y); table(b, [{ h: 'Garment sizes', w: .4 }, { h: 'Width', w: .3, mono: true }, { h: 'Height', w: .3, mono: true }], q.grade.map(g => [g.sizes.join(', '), fmtCm(g.w), fmtCm(g.h)]), { y: doc.y + 6, fontSize: 9.5 }); y = doc.y + 12; }
       const cws = cleanColourways(c.spec?.colourways);
-      if (cws.length && cols.length) { doc.fillColor(INK).font('SG-B').fontSize(11).text(t.base === 'embroidery' ? 'Threads on each colourway' : 'Inks on each colourway', L, y);
-        table(b, [{ h: 'Colourway', w: .3 }, { h: t.base === 'embroidery' ? 'Threads' : 'Inks', w: .7, mono: true }], cws.map(cw => [{ t: `${cw.name}${cw.pantone ? ` · ${cw.pantone}` : ''}`, swatch: cw.hex }, cols.map(x => { const to = q.inks?.[cw.hex]?.[x.hex] || x.hex; return to === x.hex ? (x.pantone || x.hex) : `${x.pantone || x.hex} → ${pantoneOf(to)}`; }).join(' · ')]), { y: doc.y + 6, fontSize: 9 }); y = doc.y + 12; }
+      if (cws.length && cols.length) { y = room(y, 40 + cws.length * 22); doc.fillColor(INK).font('SG-B').fontSize(11).text(t.base === 'embroidery' ? 'Threads on each colourway' : 'Inks on each colourway', L, y);
+        table(b, [{ h: 'Colourway', w: .3 }, { h: t.base === 'embroidery' ? 'Threads' : 'Inks', w: .7, mono: true }], cws.map(cw => [{ t: `${cw.name}${cw.pantone ? ` · ${cw.pantone}` : ''}`, swatch: cw.hex }, cols.map(x => { const to = q.inks?.[cw.hex]?.[x.hex] || x.hex; return to === x.hex ? (x.pantone || x.hex) : `${x.pantone || x.hex}, changed to ${pantoneOf(to)}`; }).join(' · ')]), { y: doc.y + 6, fontSize: 9 }); y = doc.y + 12; }
       const rows = [['How it is made', t.name], ['Factory note', n.factory_note || ''], ['Artwork guide', n.art_guide || ''], ['Rules', `finest line ${t.rules.minLineMm} mm, up to ${t.rules.maxColors || 'any'} colours, up to ${t.rules.maxW} × ${t.rules.maxH} in`], ...(dd ? [['Cost', `$${(dd.unitCents / 100).toFixed(2)} a piece + $${(dd.setupCents / 100).toFixed(2)} setup over ${dd.qty} pieces = $${(dd.perPieceCents / 100).toFixed(2)} a piece${dd.basis ? ` (${dd.basis})` : ''}; before the factory's quote`]] : [])].filter(r => r[1]);
-      table(b, [{ h: 'Item', w: .22, mono: true }, { h: '', w: .78 }], rows, { y, fontSize: 9.5, head: false }); y = doc.y + 10;
+      y = room(y, 120); table(b, [{ h: 'Item', w: .22, mono: true }, { h: '', w: .78 }], rows, { y, fontSize: 9.5, head: false }); y = doc.y + 10;
       const f = (ck.findings[q.id] || []).filter(x => x.level !== 'info');
-      if (f.length) { doc.fillColor('#a02a20').font('SG-B').fontSize(10).text('Check before it is made', L, y); doc.fillColor(INK).font('SG').fontSize(9.5); for (const x of f) doc.text(safe('• ' + x.text), L, doc.y + 3, { width: CW }); }
+      if (f.length) { y = room(y, 30 + f.length * 14); doc.fillColor('#a02a20').font('SG-B').fontSize(10).text('Check before it is made', L, y); doc.fillColor(INK).font('SG').fontSize(9.5); for (const x of f) doc.text(safe('• ' + x.text), L, doc.y + 3, { width: CW }); }
     }
     // the all-over print: the repeat, how it is made, and the piece covered in it
     const ao = s.p.allover;
@@ -381,7 +385,7 @@ export function registerLabFlatsRoutes(app, d) {
     const pom = pomTable(p).map(row => ({ code: row.code, name: row.name, how: 'From the flats', tolerance: String(row.tolerance), values: Object.fromEntries(row.values.map(v => [v.size, String(v.value)])) }));
     const construction = [{ area: 'Drawing', detail: `${FITS[p.fit] || p.fit} fit ${S.label.toLowerCase()}, drawn from the ${tpl ? `"${tpl.label}" flat sketch` : 'measurements'}; sample size M.` },
       ...pl.map(q => ({ area: `${q.view === 'back' ? 'Back' : 'Front'} · ${q.name}`, detail: `${techFor(list, q).name}, ${fmtCm(q.w)} × ${fmtCm(q.h)}: ${describe(q, p)}.${q.grade ? ` Artwork by size: ${gradeWords(q)}.` : ''}` })),
-      ...pl.filter(q => q.inks).map(q => ({ area: `Inks by colourway · ${q.name}`, detail: Object.entries(q.inks).map(([cw, m]) => `on ${(cleanColourways(c.spec?.colourways).find(x => x.hex === cw)?.name) || cw}: ${Object.entries(m).filter(([a, b2]) => a !== b2).map(([a, b2]) => `${pantoneOf(a)} → ${pantoneOf(b2)}`).join(', ') || 'as drawn'}`).join('; ') })),
+      ...pl.filter(q => q.inks).map(q => ({ area: `Inks by colourway · ${q.name}`, detail: Object.entries(q.inks).map(([cw, m]) => `on ${(cleanColourways(c.spec?.colourways).find(x => x.hex === cw)?.name) || cw}: ${Object.entries(m).filter(([a, b2]) => a !== b2).map(([a, b2]) => `${pantoneOf(a)} changed to ${pantoneOf(b2)}`).join(', ') || 'as drawn'}`).join('; ') })),
       ...(p.allover ? [{ area: `All over · ${p.allover.name}`, detail: `${p.allover.base}, a ${p.allover.type} repeat of ${fmtCm(p.allover.w)} × ${fmtCm(p.allover.h)}, printed on the panels before cutting.` }] : []),
       ...edits.map(e => ({ area: e.type === 'stitch' ? 'Stitching' : e.type === 'block' ? 'Colour block' : e.type === 'ai' ? 'Redrawn area' : e.type === 'part' ? (e.name || 'Add-on part') : (DETAILS[e.kind] || 'Detail'), detail: describeEdit(e, p) }))];
     const threads = new Map(); for (const e of edits) if (e.thread) threads.set(e.thread, [...(threads.get(e.thread) || []), e.type === 'stitch' ? 'stitch line' : (DETAILS[e.kind] || 'detail').toLowerCase()]);
