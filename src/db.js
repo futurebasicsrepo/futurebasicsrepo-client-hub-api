@@ -85,6 +85,7 @@ export async function migrate() {
     alter table clients add column if not exists activated_at timestamptz;
     alter table clients add column if not exists welcome_sent_at timestamptz;
     alter table clients add column if not exists tech_pack_comped boolean not null default false;
+    alter table clients add column if not exists lab_free boolean not null default false; -- Design Lab charges off on this room: open, no fee, AI never billed
     alter table clients add column if not exists membership_active_until timestamptz;
     alter table clients add column if not exists membership_checked_at timestamptz;
     alter table clients add column if not exists acquisition jsonb;

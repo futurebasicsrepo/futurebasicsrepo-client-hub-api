@@ -31,8 +31,13 @@ export function meterOf({ access, usedUnits = 0, invoices = [] }) {
 export function createLabAccess(d) {
   const { pool, env = process.env, log = console, shopify = {}, clientHubUrl = '', recordPayment = async () => ({}), onActivate = async () => {}, notifyClient = async () => false } = d;
   const pricing = () => pricingFrom(env);
-  const row = r => (r ? { id: r.id, status: r.status, source: r.source, feeCents: r.fee_cents, days: r.days, includedAi: r.included_ai, aiPriceCents: r.ai_price_cents, unpaidCapCents: r.unpaid_cap_cents, startsAt: r.starts_at, endsAt: r.ends_at, paidAt: r.paid_at, endedAt: r.ended_at, checkoutUrl: r.pay_invoice_url || null } : null);
-  const active = async clientId => (UUID.test(String(clientId || '')) ? (await pool.query(`select * from lab_access where client_id=$1 and status='active' and (ends_at is null or ends_at > now()) order by ends_at desc nulls first limit 1`, [clientId])).rows[0] || null : null);
+  const row = r => (r ? { id: r.id, status: r.status, source: r.source, feeCents: r.fee_cents, days: r.days, includedAi: r.included_ai, aiPriceCents: r.ai_price_cents, unpaidCapCents: r.unpaid_cap_cents, startsAt: r.starts_at, endsAt: r.ends_at, paidAt: r.paid_at, endedAt: r.ended_at, checkoutUrl: r.pay_invoice_url || null, free: Boolean(r.free) } : null);
+  const paidActive = async clientId => (UUID.test(String(clientId || '')) ? (await pool.query(`select * from lab_access where client_id=$1 and status='active' and (ends_at is null or ends_at > now()) order by ends_at desc nulls first limit 1`, [clientId])).rows[0] || null : null);
+  // charges off on a room (clients.lab_free, the work console's switch, like free tech pack access): the Lab is open with no fee and no end,
+  // and AI generations are counted but never billed or paused. A paid period still running keeps its row; it simply stops costing anything.
+  const isFree = async clientId => UUID.test(String(clientId || '')) && (await pool.query('select lab_free from clients where id=$1', [clientId])).rows[0]?.lab_free === true;
+  const FREE = clientId => ({ id: null, client_id: clientId, status: 'active', source: 'free', fee_cents: 0, days: null, included_ai: 0, ai_price_cents: 0, unpaid_cap_cents: 0, starts_at: null, ends_at: null, paid_at: null, ended_at: null, free: true });
+  const active = async clientId => { const a = await paidActive(clientId); if (await isFree(clientId)) return a ? { ...a, free: true } : FREE(clientId); return a; };
   const pending = async clientId => (await pool.query(`select * from lab_access where client_id=$1 and status='pending' order by created_at desc limit 1`, [clientId])).rows[0] || null;
   const latest = async clientId => (await pool.query(`select * from lab_access where client_id=$1 order by (status='active') desc, created_at desc limit 1`, [clientId])).rows[0] || null;
 
@@ -75,15 +80,19 @@ export function createLabAccess(d) {
   // ---- the meter ----
   async function meter(clientId, access = null) {
     const a = access || await active(clientId); if (!a) return null;
-    const used = Number((await pool.query(`select coalesce(sum(units),0)::int n from lab_ai_usage where client_id=$1 and access_id=$2`, [clientId, a.id])).rows[0].n);
-    const invoices = (await pool.query(`select * from lab_ai_invoices where client_id=$1 and access_id=$2 order by created_at`, [clientId, a.id])).rows;
-    return { ...meterOf({ access: a, usedUnits: used, invoices }), invoices: invoices.map(i => ({ id: i.id, units: i.units, amountCents: i.amount_cents, url: i.invoice_url || null, paidAt: i.paid_at, createdAt: i.created_at })) };
+    const used = Number((await pool.query(`select coalesce(sum(units),0)::int n from lab_ai_usage where client_id=$1 and access_id is not distinct from $2`, [clientId, a.id])).rows[0].n);
+    const invoices = a.id ? (await pool.query(`select * from lab_ai_invoices where client_id=$1 and access_id=$2 order by created_at`, [clientId, a.id])).rows : [];
+    const m = meterOf({ access: a, usedUnits: used, invoices });
+    // free: what is already invoiced stays owed; nothing new is billed and nothing is paused
+    const f = a.free ? { free: true, overUnits: 0, overCents: 0, unbilledUnits: 0, unbilledCents: 0, owedCents: m.unpaidCents, blocked: false } : { free: false };
+    return { ...m, ...f, invoices: invoices.map(i => ({ id: i.id, units: i.units, amountCents: i.amount_cents, url: i.invoice_url || null, paidAt: i.paid_at, createdAt: i.created_at })) };
   }
   // before an AI generation: staff always may; a client may while the room owes less than the cap. Records the use when allowed.
   async function charge(req, { kind = 'studio', units = null, conceptId = null } = {}) {
     const n = Math.max(1, Math.round(Number(units ?? UNITS[kind] ?? 1))), who = UUID.test(String(req?.auth?.sub || '')) ? req.auth.sub : null, cid = scope(req);
     if (!cid) { await pool.query(`insert into lab_ai_usage(client_id, access_id, user_id, kind, units, concept_id) values(null, null, $1, $2, $3, $4)`, [who, kind, n, UUID.test(String(conceptId || '')) ? conceptId : null]).catch(() => {}); return null; }
     const a = req.lab.access, m = await meter(cid, a);
+    if (a.free) { await pool.query(`insert into lab_ai_usage(client_id, access_id, user_id, kind, units, concept_id) values($1, $2, $3, $4, $5, $6)`, [cid, a.id, who, kind, n, UUID.test(String(conceptId || '')) ? conceptId : null]); return { ...m, used: m.used + n }; } // charges off: counted, never billed
     if (m.blocked) throw Object.assign(new Error(`Your room owes $${(m.owedCents / 100).toFixed(2)} for AI generations past the ${m.included} included. Pay the open invoice in your hub to keep going.`), { status: 402, code: 'LAB_AI_CAP', meter: m });
     await pool.query(`insert into lab_ai_usage(client_id, access_id, user_id, kind, units, concept_id) values($1, $2, $3, $4, $5, $6)`, [cid, a.id, who, kind, n, UUID.test(String(conceptId || '')) ? conceptId : null]);
     const after = { ...m, used: m.used + n }; // bill a round in the background once the unbilled part adds up
@@ -180,9 +189,16 @@ export function createLabAccess(d) {
 
   // ---- what a room sees ----
   async function status(clientId) {
+    if (await isFree(clientId)) { const a = await active(clientId); return { pricing: pricing(), access: row(a), ended: null, meter: await meter(clientId, a), open: true, free: true }; }
     const p = pricing(), a = await latest(clientId), live = a && a.status === 'active' && (!a.ends_at || new Date(a.ends_at) > new Date());
-    return { pricing: p, access: row(live ? a : (a?.status === 'pending' ? a : null)), ended: !live && a?.status === 'ended' ? row(a) : null, meter: live ? await meter(clientId, a) : null, open: Boolean(live) };
+    return { pricing: p, access: row(live ? a : (a?.status === 'pending' ? a : null)), ended: !live && a?.status === 'ended' ? row(a) : null, meter: live ? await meter(clientId, a) : null, open: Boolean(live), free: false };
   }
   const usage = async (clientId, limit = 60) => (await pool.query(`select u.kind, u.units, u.created_at, c.name concept from lab_ai_usage u left join lab_concepts c on c.id=u.concept_id where u.client_id=$1 order by u.created_at desc limit $2`, [clientId, limit])).rows.map(r => ({ kind: r.kind, units: r.units, at: r.created_at, concept: r.concept || '' }));
-  return { pricing, gate, scope, ownId, active, meter, charge, checkout, landed, activate, comp, end, billOverage, invoicePaid, invoiceLanded, fromOrder, status, usage, row };
+  // the work console's switch: charges off (free) or on, per room, written on the room's record
+  async function setFree(clientId, on, by = null) {
+    const r = (await pool.query('update clients set lab_free=$2 where id=$1 and lab_free is distinct from $2 returning name', [clientId, Boolean(on)])).rows[0];
+    if (r) await pool.query(`insert into activities(client_id, actor_id, type, summary, metadata) values($1, $2, 'design', $3, $4)`, [clientId, by, on ? `Design Lab charges turned off for ${r.name}: the Lab is free` : `Design Lab charges turned back on for ${r.name}`, { labFree: Boolean(on) }]).catch(() => {});
+    return Boolean(r);
+  }
+  return { pricing, gate, scope, ownId, active, isFree, setFree, meter, charge, checkout, landed, activate, comp, end, billOverage, invoicePaid, invoiceLanded, fromOrder, status, usage, row };
 }

@@ -175,6 +175,22 @@ A client can open the Design Lab on their own room, from the hub, for a fixed pr
 
 Routes: `GET /v1/client/lab`, `POST /v1/client/lab/checkout`, `POST /v1/client/lab/landed`, `POST /v1/client/lab/invoices/:id/landed`, `GET /v1/client/lab/usage`; `GET /v1/products/:id/make`, `POST /v1/products/:id/make-request`, `POST|DELETE /v1/products/:id/quote-links[/:sid]`; staff `GET|PATCH /v1/admin/clients/:id/lab` (`comp`, `end`, `bill`), `POST /v1/admin/lab/invoices/:id/paid`, `GET|PATCH /v1/admin/make-requests[/:id]`. Tables: `lab_access`, `lab_ai_usage`, `lab_ai_invoices`, `make_requests`. Tests: `test/lab-access.test.js`, journey J232.
 
+**Charges off for a room.** On a room in the work console, **Design Lab charges** is a switch like free tech pack access. Switched on (charges off), the room's Lab is open at once with no fee and no end date; AI generations are counted but never billed or paused, and tech packs come with the open Lab. An invoice raised before stays owed. Switched back off, a room with no paid period sees the offer again; its plans and concepts stay. Stored as `clients.lab_free`; `PATCH /v1/admin/clients/:id/lab {action: 'free'|'charge'}`, written on the room's record.
+
+## On an iPad, with the Pencil
+
+The Lab installs as its own home-screen app (`/lab.webmanifest`: standalone, opening on `/lab`; the Lab pages carry the Apple home-screen tags and icon). In Safari: Share, then Add to Home Screen. The installed app keeps its own sign-in: sign in once inside it with the emailed code.
+
+| On the picture | What happens |
+| --- | --- |
+| The Pencil | draws, erases and distresses; pressing harder draws wider (**Pencil pressure** in the brush options); every sample it reports is used, so quick curves stay smooth |
+| A finger, before any Pencil | draws like a mouse |
+| A finger, once the Pencil has been used | moves the view; a palm resting on the screen paints nothing, and the Pencil wins over it |
+| Two fingers | pinch to zoom and move the view; a stroke a finger had started is undone |
+| Handles | corners and the turn knob take a fingertip (a bigger target than for a mouse); the tool rail and zoom buttons are 46 px on a touch screen |
+
+Side by side shows on an iPad held sideways; upright, the picture or the flats fill the screen. Installed, the spec sheet and the decoration sheet open inside the app with **Share or print** (Print, Save to Files, Mail, AirDrop) and **Save**, since a new window would leave the app.
+
 ## A room's team, and the libraries it shares
 
 **The team.** Anyone on a client room can add teammates from the hub's **Team** section (`src/room-team-routes.js`): an email and, if they like, a name. The address joins the room's sign-in list, a user row is made for it, and the teammate gets an email with the way in; they sign in with a six-digit code like everyone else. Everyone on the team sees the whole room: projects, tech packs, files, messages, and the Design Lab with its plans, concepts and libraries. AI generations from the whole team count against the room's one meter. A room holds up to 25 people.

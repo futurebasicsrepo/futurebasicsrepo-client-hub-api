@@ -11,7 +11,8 @@
 //     DELETE /v1/products/:id/quote-links/:sid     turn a link off
 //   Staff (the work console):
 //     GET  /v1/admin/clients/:id/lab               the room's access, meter and usage
-//     PATCH /v1/admin/clients/:id/lab              {action: 'comp'|'end'|'bill', days?, includedAi?, aiPriceCents?} give access, end it, or invoice the unbilled generations now
+//     PATCH /v1/admin/clients/:id/lab              {action: 'comp'|'end'|'bill'|'free'|'charge', days?, includedAi?, aiPriceCents?} give access, end it, invoice the unbilled
+//                                                  generations now, or turn the room's charges off (free: open, no fee, AI never billed) and back on
 //     POST /v1/admin/lab/invoices/:id/paid         record an AI invoice as paid by other means
 //     GET  /v1/admin/make-requests, PATCH /v1/admin/make-requests/:id {status, reply}
 import { randomBytes, createHash } from 'node:crypto';
@@ -115,7 +116,11 @@ export function registerLabSelfServeRoutes(app, d) {
       if (b.action === 'comp') { await lab.comp(c.id, { by, days: b.days, includedAi: b.includedAi, aiPriceCents: b.aiPriceCents, unpaidCapCents: b.unpaidCapCents }); notifyClientContact(c.id, { subject: 'Your Design Lab is open', body: `<p>Future Basics opened the Design Lab on your room: plan a line, draw concepts, finish them in the studio, measure them as flats and turn them into tech packs.</p><p><a href="${esc(clientHubUrl)}/lab">Open the Design Lab</a></p>` }).catch(() => {}); }
       else if (b.action === 'end') await lab.end(c.id, by);
       else if (b.action === 'bill') { const inv = await lab.billOverage(c.id, { force: true, by }); if (!inv) return bad(reply, 'Nothing is unbilled on this room'); }
-      else return bad(reply, 'action must be comp, end or bill');
+      else if (b.action === 'free' || b.action === 'charge') {
+        const wasOpen = Boolean(await lab.active(c.id)), changed = await lab.setFree(c.id, b.action === 'free', by);
+        if (changed && b.action === 'free' && !wasOpen) notifyClientContact(c.id, { subject: 'Your Design Lab is open', body: '<p>Future Basics opened the Design Lab on your room, free: plan a line, draw concepts, finish them in Design and turn them into tech packs. Open it from your hub.</p>' }).catch(() => {});
+      }
+      else return bad(reply, 'action must be comp, end, bill, free or charge');
     } catch (e) { return fail(reply, e); }
     return { ...(await lab.status(c.id)), usage: await lab.usage(c.id, 30) };
   });

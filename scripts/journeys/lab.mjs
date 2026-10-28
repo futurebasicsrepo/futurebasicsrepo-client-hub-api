@@ -2284,5 +2284,70 @@ await journey('J235', 'Design, one placement model and two levels: a graphic\'s 
   } finally { await cleanup(brands, plan.plan?.id); }
 });
 
+await journey('J236', 'Charges off per room, and Design on an iPad with the Pencil: the work console turns a room\'s Design Lab charges off (open, no fee, AI counted but never billed) and back on; on an iPad the Lab installs as a home-screen app, the Pencil draws wider when pressed harder, a resting palm moves the view instead of painting, and two fingers pinch to zoom', async () => {
+  const email = `lab-free-${stamp}@selfserve.test`, started = await call('/v1/public/start', { body: { email, name: 'Free Room', title: 'First tee', photos: [jpeg()] } });
+  const cid = started.json.client?.id || sql(`select client_id from users where lower(email)='${email}'`), uid = sql(`select id from users where lower(email)='${email}'`).split('\n')[0], slug = sql(`select slug from clients where id='${cid}'`).split('\n')[0];
+  sql(`update users set email_verified_at=now() where id='${uid}'`);
+  const clientT = await forge({ sub: uid, clientId: cid, client: slug, role: 'client', email }), C = (path, o = {}) => call('/v1/lab' + path, { token: clientT, ...o }), H = (path, o = {}) => call(path, { token: clientT, ...o }), A = (path, o = {}) => call(path, { token: kyleT, ...o });
+  const { brands, plan } = await conceptSetup();
+  try {
+    ok((await C('/plans')).json.code === 'LAB_LOCKED', '1. a room starts with the Lab locked');
+    const free = await A(`/v1/admin/clients/${cid}/lab`, { method: 'PATCH', body: { action: 'free' } });
+    ok(free.status === 200 && free.json.open === true && free.json.free === true && free.json.access?.source === 'free' && free.json.access.free === true, '2. the console turns charges off: the Lab opens on the room at once, free', free.json);
+    ok(sql(`select lab_free from clients where id='${cid}'`) === 't' && /charges turned off/.test(sql(`select summary from activities where client_id='${cid}' and type='design' order by created_at desc limit 1`)), '   and it is on the room\'s record');
+    const mine = await C('/plans', { body: { name: 'Free line', season: 'SS28' } }), pid = mine.json.plan?.id; ok(mine.status === 201, '3. the room plans a line', mine.json.error);
+    const line = await C(`/plans/${pid}/lines`, { body: { category: 'tops', role: 'core', name: 'Heavy tee', brief: 'a heavy cotton tee', price: 78 } }), lid = line.json.line?.id || line.json.lines?.slice(-1)[0]?.id || line.json.plan?.lines?.slice(-1)[0]?.id;
+    for (let i = 0; i < 3; i++) { const g = await C(`/plans/${pid}/lines/${lid}/concepts`, { body: { count: 1 } }); ok(g.status === 201, `   generation ${i + 1} goes through`, g.json.error); }
+    const st = (await H('/v1/client/lab')).json;
+    ok(st.open && st.free && st.meter.used >= 3 && st.meter.owedCents === 0 && st.meter.blocked === false && st.meter.unbilledCents === 0 && sql(`select count(*) from lab_ai_invoices where client_id='${cid}'`) === '0', '4. generations are counted, nothing is owed or invoiced, nothing pauses', st.meter);
+    ok((await H('/v1/client/lab/checkout', { method: 'POST' })).status === 409, '   there is nothing to buy: the checkout says the Lab is already open');
+    const pack = await H('/v1/tech-packs', { body: { title: 'With a free Lab', projectId: started.json.project.id, photos: [jpeg()] } }); ok(pack.status === 201 && pack.json.ai !== 'locked', '   tech packs come with the open Lab, as they do with a paid one', [pack.status, pack.json.ai]);
+    const on = await A(`/v1/admin/clients/${cid}/lab`, { method: 'PATCH', body: { action: 'charge' } });
+    ok(on.status === 200 && on.json.free === false && on.json.open === false && (await C('/plans')).json.code === 'LAB_LOCKED', '5. charges back on: with no paid period the room is offered the Lab again, its work kept', on.json);
+    ok(Number(sql(`select count(*) from lab_plans where client_id='${cid}'`)) >= 1, '   their plan is still there');
+    if (!playwright) { ok(true, 'needs a browser'); return; }
+    // the iPad
+    const man = await call('/lab.webmanifest'); ok(man.status === 200 && man.json.display === 'standalone' && man.json.start_url === '/lab' && man.json.icons.length >= 3, '6. the Lab installs as its own home-screen app: standalone, opening on the Lab', man.json);
+    const line2 = plan.lines.find(l => l.category === 'tops') || plan.lines[0], c = (await K(`/plans/${plan.plan.id}/lines/${line2.id}/concepts`, { body: { count: 1 } })).json.concepts[0];
+    const b = await playwright.chromium.launch();
+    try {
+      const oc = await b.newContext({ viewport: { width: 1194, height: 834 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2, userAgent: 'Mozilla/5.0 (iPad; CPU OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1' });
+      await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
+      const page = await oc.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
+      await page.goto(`${BASE}/lab/studio?concept=${c.id}`, { waitUntil: 'networkidle' }); await page.waitForSelector('#pLayers .ly', { timeout: 20000 }); await page.waitForFunction(() => !document.querySelector('#busy:not(.hidden)'));
+      const head = await page.evaluate(() => ({ man: document.querySelector('link[rel=manifest]')?.getAttribute('href'), apple: document.querySelector('meta[name=apple-mobile-web-app-capable]')?.content, icon: document.querySelector('link[rel=apple-touch-icon]')?.getAttribute('href'), over: document.documentElement.scrollWidth - innerWidth, btn: document.querySelector('.rail [data-tool=brush]').getBoundingClientRect().width }));
+      ok(head.man === '/lab.webmanifest' && head.apple === 'yes' && head.icon && head.over <= 1 && head.btn >= 44, '   Design carries the home-screen tags, fits the iPad across, and its tools are a fingertip wide', head);
+      await page.tap('.rail [data-tool=brush]'); ok(await page.evaluate(() => TOOL) === 'brush' && await page.isVisible('#opts [data-press]'), '7. a tap picks the brush, with Pencil pressure on');
+      const cdp = await oc.newCDPSession(page), vb = await page.locator('#view').boundingBox();
+      const pen = async (y, force) => { const x0 = vb.x + vb.width * .3, x1 = vb.x + vb.width * .7; await cdp.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: x0, y, button: 'left', buttons: 1, clickCount: 1, pointerType: 'pen', force });
+        for (let i = 1; i <= 12; i++) await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: x0 + (x1 - x0) * i / 12, y, button: 'left', buttons: 1, pointerType: 'pen', force });
+        await cdp.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: x1, y, button: 'left', buttons: 0, clickCount: 1, pointerType: 'pen', force }); };
+      const yHard = vb.y + vb.height * .35, yLight = vb.y + vb.height * .65; await pen(yHard, 1); await pen(yLight, .1);
+      // the thickness of each stroke, in the painting layer, across its middle
+      const thick = await page.evaluate(([vx, vy, vw, y1, y2]) => { const l = LAYERS.find(q => q.kind === 'paint'); if (!l) return null; const r = view.getBoundingClientRect(), ctx = l.raster.getContext('2d');
+        const col = (yy) => { const X = Math.round(dx(vx + vw * .5 - r.left)), Y = Math.round(dy(yy - r.top)); let n = 0; for (let j = Y - 80; j <= Y + 80; j++) { if (j < 0 || j >= l.raster.height) continue; if (ctx.getImageData(X, j, 1, 1).data[3] > 20) n++; } return n; };
+        return { hard: col(y1), light: col(y2), pen: PEN }; }, [vb.x, vb.y, vb.width, yHard, yLight]);
+      ok(thick && thick.pen && thick.hard > thick.light * 2 && thick.light > 0, '   the Pencil draws, wider when pressed hard than when pressed lightly', thick);
+      const opaque = () => page.evaluate(() => { const l = LAYERS.find(q => q.kind === 'paint'), d = l.raster.getContext('2d').getImageData(0, 0, l.raster.width, l.raster.height).data; let n = 0; for (let i = 3; i < d.length; i += 16) if (d[i] > 20) n++; return n; });
+      const before = await opaque(), px0 = await page.evaluate(() => PX);
+      const tp = (type, pts) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: pts.map((p, i) => ({ x: p[0], y: p[1], id: i + 1 })) });
+      const cx = vb.x + vb.width * .5, cy = vb.y + vb.height * .5;
+      await tp('touchStart', [[cx, cy]]); for (let i = 1; i <= 6; i++) await tp('touchMove', [[cx + i * 20, cy + i * 8]]); await tp('touchEnd', []);
+      ok(await opaque() === before && await page.evaluate(() => PX) !== px0, '8. after the Pencil, a finger (or a resting palm) moves the view and paints nothing', [before, px0, await page.evaluate(() => PX)]);
+      const z0 = await page.evaluate(() => Z);
+      await tp('touchStart', [[cx - 60, cy], [cx + 60, cy]]); for (let i = 1; i <= 6; i++) await tp('touchMove', [[cx - 60 - i * 25, cy], [cx + 60 + i * 25, cy]]); await tp('touchEnd', []);
+      const z1 = await page.evaluate(() => Z); ok(z1 > z0 * 1.4 && await opaque() === before, '9. two fingers pinch to zoom in, painting nothing', [z0, z1]);
+      await page.tap('#zFit');
+      await page.tap('#viewSeg [data-v=front]'); const F = await (await page.waitForSelector('#flatFrame')).contentFrame(); await F.waitForSelector('#pPl [data-q]', { timeout: 20000 });
+      ok(await F.evaluate(() => document.documentElement.scrollWidth - innerWidth) <= 1 && await page.evaluate(() => document.documentElement.scrollWidth - innerWidth) <= 1, '10. the flats fit the iPad too');
+      await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/lab-ipad.png` }).catch(() => {});
+      // portrait
+      await page.setViewportSize({ width: 834, height: 1194 }); await page.tap('#viewSeg [data-v=picture]'); await page.waitForTimeout(300);
+      ok(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth) <= 1 && await page.isVisible('#stage') && !(await page.isVisible('#viewSeg [data-v=split]')), '11. turned upright, Design still fits; side by side waits for a wider screen');
+      ok(errs.length === 0, 'no page errors', errs); await oc.close();
+    } finally { await b.close(); }
+  } finally { await cleanup(brands, plan.plan?.id); }
+});
+
 shops.close(); brave.close();
 process.exit(summary() ? 1 : 0);

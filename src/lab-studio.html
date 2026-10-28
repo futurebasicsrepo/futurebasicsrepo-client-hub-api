@@ -6,6 +6,7 @@
 <meta name="robots" content="noindex,nofollow">
 <title>Design · Design Lab</title>
 <link rel="icon" href="/icons/icon-192.png">
+<link rel="manifest" href="/lab.webmanifest"><link rel="apple-touch-icon" href="/icons/apple-touch-icon.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Design Lab"><meta name="apple-mobile-web-app-status-bar-style" content="black"><meta name="theme-color" content="#141416">
 <style>
 @import url('/fonts/fonts.css');
 :root{--ink:#141416;--paper:#fff;--fog:#f5f5f2;--dim:#727278;--line:rgba(20,20,22,.14);--cue:#4bff9a;--ok:#17603a;--bad:#a02a20;--stage:#e4e4e0}
@@ -52,6 +53,9 @@ header{height:72px;background:rgba(20,20,22,.96);color:#fff;padding:0 clamp(16px
 .opts label{display:inline-flex;align-items:center;gap:6px}.opts input[type=range]{width:110px}.opts .hint{color:var(--dim)}
 .stage{position:relative;overflow:hidden;background:var(--stage);background-image:linear-gradient(rgba(20,20,22,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(20,20,22,.05) 1px,transparent 1px);background-size:24px 24px;touch-action:none}
 .stage canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.stage,.stage canvas{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
+/* a finger or a Pencil: bigger targets on the tool rail and the zoom */
+@media (pointer:coarse){.studio{grid-template-columns:60px minmax(0,1fr) 330px}.rail button{width:46px;height:46px}.zoom button{min-width:40px;min-height:40px}.seg button{padding:8px 14px}}
 .zoom{position:absolute;right:12px;bottom:12px;display:flex;gap:4px;align-items:center;background:#fff;border:1px solid var(--line);border-radius:999px;padding:3px 6px;font-size:12px}
 .zoom button{border:0;background:none;cursor:pointer;font-weight:700;width:26px;height:26px;border-radius:50%}.zoom button:hover{background:var(--fog)}
 .busy{position:absolute;left:50%;top:16px;transform:translateX(-50%);background:var(--ink);color:#fff;border-radius:999px;padding:8px 16px;font-size:13px;display:flex;gap:10px;align-items:center;z-index:3}
@@ -219,7 +223,7 @@ const fresh=(kind,o={})=>({id:uid(),kind,name:o.name||KIND[kind],visible:true,lo
 
 // ---------- state ----------
 let D=null,W=1024,H=1024,LAYERS=[],SEL=null,TOOL='select',CUR='#141416',DIRTY=false,SAVED_AT=null;
-const OPT={size:28,flow:1,soft:0,dsize:60,area:60};
+const OPT={size:28,flow:1,soft:0,dsize:60,area:60,pressure:true};
 const docC=canvas(1,1),docX=docC.getContext('2d');
 let mask=canvas(1,1),maskX=mask.getContext('2d'),MASKED=false;
 const view=$('#view'),vx=view.getContext('2d');let Z=1,PX=0,PY=0,DPR=1;
@@ -334,8 +338,8 @@ function strokeTarget(tool){
   if(l.locked){toast('That layer is locked. Unlock it in the layer list.');return null}
   return l;
 }
-function dab(l,x0,y0,x1,y1,tool){
-  const c=l.raster,x=c.getContext('2d'),[a0,b0]=toLocal(l,x0,y0),[a1,b1]=toLocal(l,x1,y1),sz=(tool==='distress'?OPT.dsize:OPT.size)/l.scale;
+function dab(l,x0,y0,x1,y1,tool,pr=1){ // pr: how hard the Pencil presses (1 for a mouse or a finger)
+  const c=l.raster,x=c.getContext('2d'),[a0,b0]=toLocal(l,x0,y0),[a1,b1]=toLocal(l,x1,y1),sz=Math.max(.5,(tool==='distress'?OPT.dsize:OPT.size)*pr)/l.scale;
   x.save();x.lineCap='round';x.lineJoin='round';x.lineWidth=sz;
   if(tool==='brush'){x.globalAlpha=OPT.flow;x.strokeStyle=CUR;if(OPT.soft){x.shadowColor=CUR;x.shadowBlur=sz*OPT.soft}}
   else{x.globalCompositeOperation='destination-out';x.globalAlpha=OPT.flow;x.strokeStyle='#000'}
@@ -343,26 +347,49 @@ function dab(l,x0,y0,x1,y1,tool){
   x.beginPath();x.moveTo(a0,b0);x.lineTo(a1+.01,b1);x.stroke();x.restore();c._rid=RID++;
 }
 function maskDab(x0,y0,x1,y1,erase){maskX.save();maskX.lineCap='round';maskX.lineWidth=OPT.area;maskX.strokeStyle='#e03b2e';if(erase)maskX.globalCompositeOperation='destination-out';maskX.beginPath();maskX.moveTo(x0,y0);maskX.lineTo(x1+.01,y1);maskX.stroke();maskX.restore();MASKED=true;mask._rid=RID++;paintAiState()}
+// ---------- iPad and the Pencil ----------
+// The Pencil draws (with its pressure, every sample it reports); once a Pencil has been used, fingers never draw: one finger moves the view,
+// two pinch to zoom and move it, so a palm resting on the screen does nothing. Before any Pencil, a finger draws like a mouse.
+// A second finger landing during a finger stroke undoes that stroke and becomes a pinch.
+const PTRS=new Map();let PEN=false,GEST=null;
+const pressOf=e=>e.pointerType==='pen'&&OPT.pressure?clamp(.15+.85*(e.pressure||.5),.15,1):1;
+const tolOf=e=>e.pointerType==='mouse'?10:22; // a fingertip or a Pencil tip needs a bigger target than a cursor
+function gestStart(){const[a,b]=[...PTRS.values()];GEST={d:Math.hypot(a.x-b.x,a.y-b.y)||1,mx:(a.x+b.x)/2,my:(a.y+b.y)/2,Z,PX,PY}}
+function gestMove(){const[a,b]=[...PTRS.values()];if(!a||!b||!GEST)return;const d=Math.hypot(a.x-b.x,a.y-b.y)||1,mx=(a.x+b.x)/2,my=(a.y+b.y)/2,nz=clamp(GEST.Z*d/GEST.d,.05,8);
+  PX=mx-(GEST.mx-GEST.PX)*nz/GEST.Z;PY=my-(GEST.my-GEST.PY)*nz/GEST.Z;Z=nz;draw()}
+function cancelTouchStroke(){const g=DRAG;if(!g)return;if(g.mode==='stroke'&&g.orig){g.l.raster=g.orig;g.l.raster._rid=RID++}DRAG=null;draw()}
 view.addEventListener('pointerdown',e=>{
-  if(!D)return;view.setPointerCapture(e.pointerId);const[px,py]=pt(e),x=dx(px),y=dy(py);
-  if(TOOL==='hand'||SPACE||e.button===1){DRAG={mode:'pan',px,py,PX,PY};return}
+  if(!D)return;const[qx,qy]=pt(e);PTRS.set(e.pointerId,{x:qx,y:qy,type:e.pointerType});if(e.pointerType==='pen')PEN=true;
+  if(e.pointerType==='touch'&&DRAG&&DRAG.type==='pen')return; // a palm while the Pencil draws
+  if(e.pointerType==='pen'&&DRAG&&DRAG.type==='touch'){if(DRAG.mode==='stroke')cancelTouchStroke();else DRAG=null}if(e.pointerType==='pen')GEST=null; // the Pencil wins over a resting palm
+  if(e.pointerType==='touch'){const touches=[...PTRS.values()].filter(q=>q.type==='touch').length;
+    if(touches>=2){if(DRAG&&DRAG.type==='touch')cancelTouchStroke();gestStart();e.preventDefault();return}
+    if(PEN){view.setPointerCapture(e.pointerId);DRAG={mode:'pan',px:qx,py:qy,PX,PY,pid:e.pointerId,type:'touch'};return}}
+  if(GEST)return;if(DRAG&&DRAG.pid!==e.pointerId)return; // one stroke at a time
+  view.setPointerCapture(e.pointerId);const[px,py]=pt(e),x=dx(px),y=dy(py);
+  if(TOOL==='hand'||SPACE||e.button===1){DRAG={mode:'pan',px,py,PX,PY,pid:e.pointerId,type:e.pointerType};return}
   if(TOOL==='pick'){compose();const d=docX.getImageData(clamp(Math.floor(x),0,W-1),clamp(Math.floor(y),0,H-1),1,1).data;setColor('#'+[d[0],d[1],d[2]].map(v=>v.toString(16).padStart(2,'0')).join(''));return}
-  if(TOOL==='area'){maskDab(x,y,x,y,e.altKey);DRAG={mode:'area',x,y,erase:e.altKey};draw();return}
-  if(['brush','eraser','distress'].includes(TOOL)){const l=strokeTarget(TOOL);if(!l)return;l.raster=cloneCanvas(l.raster);SEL=l.id;dab(l,x,y,x,y,TOOL);DRAG={mode:'stroke',l,x,y};draw();return}
+  if(TOOL==='area'){maskDab(x,y,x,y,e.altKey);DRAG={mode:'area',x,y,erase:e.altKey,pid:e.pointerId,type:e.pointerType};draw();return}
+  if(['brush','eraser','distress'].includes(TOOL)){const l=strokeTarget(TOOL);if(!l)return;const orig=l.raster;l.raster=cloneCanvas(l.raster);SEL=l.id;dab(l,x,y,x,y,TOOL,pressOf(e));DRAG={mode:'stroke',l,x,y,orig,pid:e.pointerId,type:e.pointerType};draw();return}
   if(TOOL==='text'){const l=addLayer(fresh('text',{name:'Type',x,y,text:'FUTURE BASICS',font:'grotesk',size:Math.round(W/14),bold:true,italic:false,track:Math.round(W/200),lead:1.1,align:'center',arc:0,color:CUR,outline:0,outlineColor:'#ffffff'}));setTool('select');tab('layers');setTimeout(()=>{const t=$('#pLayers textarea[data-p=text]');if(t){t.focus();t.select()}},30);return}
-  if(['rect','ellipse','line'].includes(TOOL)){DRAG={mode:'shape',x0:x,y0:y,l:null};return}
-  if(TOOL==='ruler'){RULER=null;DRAG={mode:'ruler',x0:x,y0:y,x1:x,y1:y};draw();return}
-  if(TOOL==='warp'){DRAG=warpDown(x,y,px,py);draw();return}
+  if(['rect','ellipse','line'].includes(TOOL)){DRAG={mode:'shape',x0:x,y0:y,l:null,pid:e.pointerId,type:e.pointerType};return}
+  if(TOOL==='ruler'){RULER=null;DRAG={mode:'ruler',x0:x,y0:y,x1:x,y1:y,pid:e.pointerId,type:e.pointerType};draw();return}
+  if(TOOL==='warp'){DRAG=warpDown(x,y,px,py);if(DRAG){DRAG.pid=e.pointerId;DRAG.type=e.pointerType}draw();return}
   // select: a handle of the chosen layer first, then whatever is under the pointer
   const l=selected();
-  if(l&&!fixed(l)&&!l.locked&&l.visible){const rk=rotKnob(l);if(Math.hypot(px-rk[0],py-rk[1])<11){DRAG={mode:'rot',l,a0:Math.atan2(y-l.y,x-l.x)-l.rot};return}
-    const k=corners(l).findIndex(([a,b])=>Math.hypot(sx(a)-px,sy(b)-py)<10);if(k>=0){DRAG={mode:'scale',l,d0:Math.hypot(x-l.x,y-l.y)||1,s0:l.scale};return}}
+  if(l&&!fixed(l)&&!l.locked&&l.visible){const rk=rotKnob(l);if(Math.hypot(px-rk[0],py-rk[1])<tolOf(e)+1){DRAG={mode:'rot',l,a0:Math.atan2(y-l.y,x-l.x)-l.rot,pid:e.pointerId,type:e.pointerType};return}
+    const k=corners(l).findIndex(([a,b])=>Math.hypot(sx(a)-px,sy(b)-py)<tolOf(e));if(k>=0){DRAG={mode:'scale',l,d0:Math.hypot(x-l.x,y-l.y)||1,s0:l.scale,pid:e.pointerId,type:e.pointerType};return}}
   const h=hit(x,y);SEL=h?h.id:(l&&fixed(l)?l.id:null);paintPanels();
-  if(h&&!h.locked&&!fixed(h))DRAG={mode:'move',l:h,ox:x-h.x,oy:y-h.y,moved:false};draw();
+  if(h&&!h.locked&&!fixed(h))DRAG={mode:'move',l:h,ox:x-h.x,oy:y-h.y,moved:false,pid:e.pointerId,type:e.pointerType};draw();
 });
 view.addEventListener('pointermove',e=>{
-  const[px,py]=pt(e);HOVER=[px,py];if(!DRAG){if(['brush','eraser','distress','area'].includes(TOOL))draw();return}
+  const[px,py]=pt(e),q=PTRS.get(e.pointerId);if(q){q.x=px;q.y=py}
+  if(GEST){gestMove();return}
+  if(DRAG&&DRAG.pid!==undefined&&DRAG.pid!==e.pointerId)return;
+  if(e.pointerType!=='touch')HOVER=[px,py];if(!DRAG){if(['brush','eraser','distress','area'].includes(TOOL))draw();return}
   const x=dx(px),y=dy(py),g=DRAG;
+  // the Pencil reports more samples than the screen draws: take all of them, so a quick curve stays a curve
+  if(g.mode==='stroke'){const ev=e.getCoalescedEvents?.()||[];for(const c of ev.length?ev:[e]){const[cx,cy]=pt(c),ux=dx(cx),uy=dy(cy);dab(g.l,g.x,g.y,ux,uy,TOOL,pressOf(c));g.x=ux;g.y=uy}draw();paintFields();return}
   if(g.mode==='pan'){PX=g.PX+px-g.px;PY=g.PY+py-g.py}
   else if(g.mode==='area'){maskDab(g.x,g.y,x,y,g.erase);g.x=x;g.y=y}
   else if(g.mode==='stroke'){dab(g.l,g.x,g.y,x,y,TOOL);g.x=x;g.y=y}
@@ -377,18 +404,22 @@ view.addEventListener('pointermove',e=>{
     else{let w=Math.abs(x-g.x0),h=Math.abs(y-g.y0);if(e.shiftKey)w=h=Math.max(w,h);l.w=Math.max(4,Math.round(w));l.h=Math.max(4,Math.round(h));l.x=g.x0+(x<g.x0?-w:w)/2;l.y=g.y0+(y<g.y0?-h:h)/2}}
   draw();if(g.mode!=='pan'&&g.mode!=='area')paintFields();
 });
-const endDrag=()=>{const g=DRAG;DRAG=null;if(!g)return;if(g.mode==='ruler'){rulerDone(g);draw();return}if(g.mode==='stroke'||g.mode==='area'||(g.mode==='shape'&&g.l)||g.moved){if(g.mode!=='area')commit();if(g.mode==='shape')setTool('select');paintPanels()}draw()};
-view.addEventListener('pointerup',endDrag);view.addEventListener('pointercancel',endDrag);view.addEventListener('pointerleave',()=>{HOVER=null;draw()});
+const endDrag=e=>{if(e&&e.pointerId!==undefined){PTRS.delete(e.pointerId);if(GEST){if(PTRS.size<2)GEST=null;return}if(DRAG&&DRAG.pid!==undefined&&DRAG.pid!==e.pointerId)return}const g=DRAG;DRAG=null;if(!g)return;if(g.mode==='ruler'){rulerDone(g);draw();return}if(g.mode==='stroke'||g.mode==='area'||(g.mode==='shape'&&g.l)||g.moved){if(g.mode!=='area')commit();if(g.mode==='shape')setTool('select');paintPanels()}draw()};
+view.addEventListener('pointerup',endDrag);view.addEventListener('pointercancel',endDrag);view.addEventListener('pointerleave',e=>{if(e.pointerType==='mouse'||e.pointerType==='pen'&&!DRAG){HOVER=null;draw()}});
+// Safari's own pinch would zoom the whole page; on the stage the pinch is ours
+['gesturestart','gesturechange'].forEach(t=>$('#stage').addEventListener(t,e=>e.preventDefault()));
 view.addEventListener('wheel',e=>{e.preventDefault();const[px,py]=pt(e);if(e.ctrlKey||e.metaKey)zoomAt(Math.exp(-e.deltaY*.01),px,py);else{PX-=e.deltaX;PY-=e.deltaY;draw()}},{passive:false});
 $('#zIn').onclick=()=>{const r=view.getBoundingClientRect();zoomAt(1.25,r.width/2,r.height/2)};$('#zOut').onclick=()=>{const r=view.getBoundingClientRect();zoomAt(.8,r.width/2,r.height/2)};$('#zFit').onclick=fit;
 
 // ---------- tools and their options ----------
 function setTool(t){TOOL=t;$$('.rail [data-tool]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.tool===t)));view.style.cursor=t==='hand'?'grab':t==='select'?'default':t==='text'?'text':'crosshair';paintOpts();draw()}
+const pressHtml=()=>`<label class="chk" title="With an Apple Pencil, pressing harder makes the line wider"><input type="checkbox" data-press ${OPT.pressure?'checked':''}> Pencil pressure</label>`;
+$('#opts').addEventListener('change',e=>{if(e.target.matches('[data-press]'))OPT.pressure=e.target.checked});
 function paintOpts(){
   const o=$('#opts'),rg=(k,lab,min,max,step=1,unit='px')=>`<label>${lab}<input type="range" data-o="${k}" min="${min}" max="${max}" step="${step}" value="${OPT[k]}"><output>${OPT[k]}${unit}</output></label>`;
   const help={select:'Click a layer to choose it. Drag to move, a corner to resize, the green knob to turn (Shift: 15° steps). Arrows nudge.',hand:'Drag to move around. Ctrl and the wheel, or a pinch, zooms.',text:'Click where the type should go.',rect:'Drag to draw. Shift makes a square.',ellipse:'Drag to draw. Shift makes a circle.',line:'Drag to draw a line.',pick:'Click the picture to take its colour.',ruler:'Drag across something whose size you know, then say how long it is. Shift keeps the line straight.',warp:'Choose a layer, then drag its points to bend it to the piece. Presets are in the layer settings.'};
-  if(TOOL==='brush')o.innerHTML=rg('size','Size',1,400)+rg('flow','Opacity',.05,1,.05,'')+rg('soft','Softness',0,1,.05,'')+'<span class="hint">Paints on the selected painting layer, or starts a new one.</span>';
-  else if(TOOL==='eraser')o.innerHTML=rg('size','Size',1,400)+rg('flow','Strength',.05,1,.05,'')+'<span class="hint">Rubs out the selected layer.</span>';
+  if(TOOL==='brush')o.innerHTML=rg('size','Size',1,400)+rg('flow','Opacity',.05,1,.05,'')+rg('soft','Softness',0,1,.05,'')+pressHtml()+'<span class="hint">Paints on the selected painting layer, or starts a new one. With the Pencil, fingers move and pinch the view.</span>';
+  else if(TOOL==='eraser')o.innerHTML=rg('size','Size',1,400)+rg('flow','Strength',.05,1,.05,'')+pressHtml()+'<span class="hint">Rubs out the selected layer.</span>';
   else if(TOOL==='distress')o.innerHTML=rg('dsize','Size',4,600)+rg('flow','Strength',.05,1,.05,'')+'<span class="hint">Wears the selected layer away, like an old print. For an even wear across the layer, use Distress in its settings.</span>';
   else if(TOOL==='area')o.innerHTML=rg('area','Size',4,600)+'<span class="hint">Paint over what the AI should change. Hold Alt to rub out.</span><button class="btn sm" type="button" data-clearmask>Clear the area</button>';
   else o.innerHTML=`<span class="hint">${help[TOOL]||''}</span>`;
@@ -1028,7 +1059,15 @@ $('#readyBtn').onclick=e=>{e.stopPropagation();const p=$('#readyPop'),open=p.cla
 $('#readyPop').addEventListener('click',e=>{e.stopPropagation();const g=e.target.closest('[data-readygo]');if(g){$('#readyPop').classList.add('hidden');setVMode(g.dataset.readygo)}});
 document.addEventListener('click',e=>{if(!e.target.closest('#readyWrap'))$('#readyPop').classList.add('hidden')});
 
-window.FBDesign={saveAll,flatsChanged(){},flatsSaved(){const f=FF();if(f)adoptFlats(f.placements(),{saved:true});setTimeout(loadReady,300)},flatsReady(){const f=FF();if(!f)return;f.mode(VMODE==='split'?'compact':'full');if(VMODE==='front'||VMODE==='back')f.setView(VMODE);mirrorFlats();f.level?.(LEVEL);$('#packBtn').classList.toggle('hidden',!f.canPack());FLATS={saved:f.saved(),placements:f.placements()};paintLayers();['#specBtn','#decoBtn'].forEach(s=>$(s).disabled=Boolean(f.unsupported()))}};
+// a sheet from the flats, when the Lab runs as a home-screen app: shown here, with Share (Print, Save to Files, AirDrop, Mail) and Close
+function showSheet(blob,name,title){let d=$('#sheetDlg');if(!d){d=document.createElement('dialog');d.id='sheetDlg';d.style.cssText='border:0;border-radius:20px;padding:0;width:min(1100px,96vw);max-height:94vh;overflow:auto';document.body.appendChild(d)}
+  const u=URL.createObjectURL(blob),pdf=/pdf/.test(blob.type)||/\.pdf$/.test(name),file=new File([blob],name,{type:blob.type||(pdf?'application/pdf':'image/svg+xml')}),canShare=Boolean(navigator.canShare?.({files:[file]}));
+  d.innerHTML=`<div style="padding:16px;display:grid;gap:12px"><div class="row" style="justify-content:space-between;gap:8px;flex-wrap:wrap"><h3 style="margin:0;font-size:16px">${esc(title)}</h3><div class="row" style="gap:8px">${canShare?'<button class="btn go sm" type="button" data-sheetshare>Share or print</button>':''}<a class="btn sm" href="${u}" download="${esc(name)}">Save</a><button class="btn sm q" type="button" data-sheetclose>Close</button></div></div>
+    ${pdf?`<p class="note" style="margin:0">The decoration sheet is ready: one page per graphic. ${canShare?'Share or print sends it to Print, Files, Mail or AirDrop.':'Save keeps the PDF.'}</p>`:`<img src="${u}" alt="${esc(title)}" style="width:100%;display:block;border:1px solid var(--line);border-radius:12px;background:#fff">`}</div>`;
+  d.querySelector('[data-sheetclose]').onclick=()=>{d.close();setTimeout(()=>URL.revokeObjectURL(u),1000)};
+  const sh=d.querySelector('[data-sheetshare]');if(sh)sh.onclick=()=>navigator.share({files:[file],title}).catch(()=>{});
+  d.showModal()}
+window.FBDesign={saveAll,showSheet,flatsChanged(){},flatsSaved(){const f=FF();if(f)adoptFlats(f.placements(),{saved:true});setTimeout(loadReady,300)},flatsReady(){const f=FF();if(!f)return;f.mode(VMODE==='split'?'compact':'full');if(VMODE==='front'||VMODE==='back')f.setView(VMODE);mirrorFlats();f.level?.(LEVEL);$('#packBtn').classList.toggle('hidden',!f.canPack());FLATS={saved:f.saved(),placements:f.placements()};paintLayers();['#specBtn','#decoBtn'].forEach(s=>$(s).disabled=Boolean(f.unsupported()))}};
 async function setVMode(v,{push=true}={}){
   if(!VIEWS.includes(v)||GMODE||!CID)v='picture';const was=VMODE;
   if(v!=='picture'){
