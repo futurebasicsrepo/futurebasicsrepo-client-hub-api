@@ -65,7 +65,7 @@ textarea.t{min-height:64px;resize:vertical}
 <body>
 <header><a class="wordmark" href="/home" aria-label="Work home"><img class="brand-logo" src="https://thefuturebasics.com/cdn/shop/files/future_basics_true_vector_fixed.svg?v=1775278873&amp;width=360" alt="Future Basics"><span class="brand-suffix">/ Flats and placement</span></a></header>
 <div id="pickC" class="hidden" style="max-width:760px;margin:30px auto;padding:0 16px"><nav class="labnav" data-lab="flats"></nav><h1 style="margin-top:14px">Flats and placement</h1><p class="msg" style="font-size:14px">The flats are drawn for one piece at a time: the measured front and back, every logo and graphic placed in inches. Which concept?</p><input class="t" id="pickQ" type="search" placeholder="Search concepts" aria-label="Search concepts" style="margin:10px 0;width:100%;max-width:380px"><div id="pickList" style="display:grid;gap:6px"><span class="msg">Loading concepts…</span></div><p class="msg" style="margin-top:12px">No concepts yet? <a href="/lab#plans">Start a line plan</a> and make some.</p></div>
-<div id="needSignin" class="hidden"><h1 style="margin-top:0">Sign in to the work console first</h1><p class="msg" style="font-size:14px">This page uses your work console sign-in.</p><a class="btn go" href="/admin" style="margin-top:12px">Open the work console</a></div>
+<div id="needSignin" class="hidden"><h1 style="margin-top:0">Sign in first</h1><p class="msg" style="font-size:14px">Future Basics signs in at the work console; a client whose room has the Design Lab signs in at their hub.</p><a class="btn go" href="/admin" style="margin-top:12px">Open the work console</a> <a class="btn" href="/" style="margin-top:12px">Client? Open your hub</a></div>
 <div id="app" class="hidden">
   <div class="bar"><button class="btn q sm" type="button" data-lab-menu data-lab="flats">Lab ▾</button><a class="btn q sm" href="/lab#board">← Concepts</a><div class="ttl"><b id="cName">Loading…</b><span id="cSub"></span></div>
     <a class="btn q sm" id="toStudio" href="#">Open in the studio</a><span class="saved" id="saved" role="status"></span><button class="btn sm" type="button" id="save">Save</button><button class="btn sm" type="button" id="sheet">Spec sheet</button><button class="btn sm" type="button" id="decoSheet" title="One page per graphic for the decorator: size, Pantones, technique, cost, where it goes">Decoration sheet</button><button class="btn go sm hidden" type="button" id="toPack">Send to the tech pack</button></div>
@@ -84,13 +84,15 @@ textarea.t{min-height:64px;resize:vertical}
     </aside>
   </div>
 </div>
+<script>try{if(!localStorage.getItem('fb.admin.token')&&localStorage.getItem('fb.client.token'))document.documentElement.dataset.labClient='1'}catch{}</script>
 <script src="/console-nav.js" defer></script>
 <script src="/lab/nav.js"></script>
 <script type="module">
 import { STYLES, FITS, SIZES, DETAILS, STITCHES, defaultDetail, describeEdit, geometry, renderSvg, viewBoxOf, templatesFor, templateOf, defaultTemplate, describe, placementChecks, overlapChecks, pomTable, defaultParams, defaultPlacement, measurementsFor, POM_NAMES, pomName, fitToTemplate, FLAT_PARTS, PART_KINDS, partOf, defaultPart, fmt, fmtCm } from '/lab/flats.js';
 import { FLAT_TEMPLATES } from '/lab/lab-flat-templates.js';
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)],esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const TOKEN=()=>{try{return localStorage.getItem('fb.admin.token')||''}catch{return ''}};
+const TOKEN=()=>{try{return localStorage.getItem('fb.admin.token')||localStorage.getItem('fb.client.token')||''}catch{return ''}}; // staff sign in at the work console; a client with the Design Lab on their room signs in at their hub
+const CLIENT_MODE=()=>{try{return !localStorage.getItem('fb.admin.token')&&Boolean(localStorage.getItem('fb.client.token'))}catch{return false}};
 async function api(path,o={}){const r=await fetch(path,{method:o.method||(o.body?'POST':'GET'),headers:{Authorization:'Bearer '+TOKEN(),...(o.body?{'Content-Type':'application/json'}:{})},body:o.body?JSON.stringify(o.body):undefined});const j=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(new Error(j.error||('Request failed ('+r.status+')')),{status:r.status});return j}
 const BLOB=new Map();const blobUrl=p=>{if(!BLOB.has(p))BLOB.set(p,fetch(p,{headers:{Authorization:'Bearer '+TOKEN()}}).then(r=>r.ok?r.blob():null).then(b=>b?URL.createObjectURL(b):''));return BLOB.get(p)};
 const CID=new URLSearchParams(location.search).get('concept')||'';
@@ -211,8 +213,8 @@ function alloverHtml(){const a=P.allover;
 async function repTiles(){const box=$('#repTiles');if(!box)return;try{if(!REPS)REPS=(await api('/v1/lab/library/graphics?source=repeat&limit=24')).graphics;
   box.innerHTML=REPS.map(g=>`<button type="button" data-rep="${g.id}" title="${esc(g.name)}"><img alt="" data-src="/v1/lab/art/${g.id}?thumb=1">${esc((g.name||'').slice(0,18))}</button>`).join('')||'<span class="msg">No repeats in the library yet.</span>';for(const i of box.querySelectorAll('img[data-src]'))blobUrl(i.dataset.src).then(u=>{i.src=u})}catch(x){box.innerHTML=`<span class="msg">${esc(x.message)}</span>`}}
 async function setAllover(a){P.allover=a;AOHREF=a?await blobUrl('/v1/lab/art/'+a.art):'';touch();paint()}
-function decosHtml(){if(!DECOS)return `<div class="sec"><h4>What the decorations cost</h4><p class="msg" style="margin:0">Save to price each decoration. A factory's real quote can then be recorded against it.</p></div>`;
-  return `<div class="sec"><h4>What the decorations cost</h4>${DECOS.map(d=>`<div class="dc" data-dc="${esc(d.id)}"><div class="ink"><b>${esc(d.name)}</b><span class="msg">${esc(d.technique)} · ${d.widthIn} × ${d.heightIn} in · ${d.colours} colour${d.colours>1?'s':''}</span></div>
+function decosHtml(){if(!DECOS)return `<div class="sec"><h4>What the decorations cost <small class="msg" style="font-weight:400">estimated · the factory's quote confirms it</small></h4><p class="msg" style="margin:0">Save to price each decoration. A factory's real quote can then be recorded against it.</p></div>`;
+  return `<div class="sec"><h4>What the decorations cost <small class="msg" style="font-weight:400">estimated · the factory's quote confirms it</small></h4>${DECOS.map(d=>`<div class="dc" data-dc="${esc(d.id)}"><div class="ink"><b>${esc(d.name)}</b><span class="msg">${esc(d.technique)} · ${d.widthIn} × ${d.heightIn} in · ${d.colours} colour${d.colours>1?'s':''}</span></div>
     <div><b>${money(d.perPieceCents)} a piece</b> <span class="msg">at ${d.qty}: ${money(d.unitCents)} each + ${money(d.setupCents)} setup${d.basis?` · ${esc(d.basis)}`:''}</span></div>
     <details><summary class="msg" style="cursor:pointer">Record the factory's quote</summary><div class="qf" style="margin-top:6px"><label>Factory<input class="t" data-qk="supplier" placeholder="Who quoted"></label><label>A piece ($)<input class="t" type="number" step="0.01" min="0" data-qk="unit"></label><label>Setup ($)<input class="t" type="number" step="0.01" min="0" data-qk="setup" value="0"></label><label>Quantity<input class="t" type="number" step="1" min="1" data-qk="qty" value="${d.qty}"></label></div>
     <div class="rowx" style="margin-top:6px"><button class="btn sm go" type="button" data-qsave>Record the quote</button><span class="msg" data-qmsg role="status"></span></div></details></div>`).join('')}
@@ -334,7 +336,7 @@ async function pickConcept(){
 async function boot(){
   if(!TOKEN()){$('#needSignin').classList.remove('hidden');return}
   if(!/^[0-9a-f-]{36}$/i.test(CID))return pickConcept();
-  try{D=await api(`/v1/lab/concepts/${CID}/flats`)}catch(x){const n=$('#needSignin');n.classList.remove('hidden');n.querySelector('h1').textContent=x.status===404?'That concept is not there any more':/not turned on|Only Danielle|access to Design Lab/i.test(x.message)?'The Design Lab is not turned on for you':'Sign in to the work console first';n.querySelector('p').textContent=x.message;return}
+  try{D=await api(`/v1/lab/concepts/${CID}/flats`)}catch(x){const n=$('#needSignin');n.classList.remove('hidden');n.querySelector('h1').textContent=x.status===404?'That concept is not there any more':/not turned on|Only Danielle|access to Design Lab/i.test(x.message)?'The Design Lab is not turned on for you':'Sign in first';n.querySelector('p').textContent=x.message;return}
   $('#app').classList.remove('hidden');$('#cName').textContent=D.concept.name;$('#toStudio').href='/lab/studio?concept='+CID;
   if(D.unsupported){$('#cSub').textContent=D.unsupported;$('#canvas').innerHTML=`<p class="msg" style="padding:30px">${esc(D.unsupported)}</p>`;['#save','#sheet'].forEach(s=>$(s).disabled=true);return}
   const st=await api('/v1/lab/concepts/'+CID+'/studio').catch(()=>null);D.marks=Object.fromEntries((st?.marks||[]).map(m=>[m.id,m.svg]));

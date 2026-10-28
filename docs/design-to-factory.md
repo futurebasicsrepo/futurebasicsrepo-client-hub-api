@@ -260,6 +260,8 @@ The design packages show **Quoted** until their prices are set in the service's 
 
 Packs made from the design service skip the per-pack paywall. They are billed as part of the design work, through Money and Agreements like any project.
 
+- **The Design Lab (self-serve):** a third tier. A fixed fee opens the Lab on the client's own room for a period with some AI generations included; the rest are metered and invoiced in rounds. Tech packs come with it, every cost is marked as an estimate the factory confirms, and a finished pack goes to the client's own factory for a quotation or to Future Basics to make. See *Self-serve: a client's room buys the Lab* in `docs/design-lab.md`.
+
 ## Reviewing together
 
 - **Comments pinned to a spot.** In the concept window, press **Pin to a spot**, click the picture, write the comment. Pins are numbered to the comments; a comment is marked **Done** once dealt with (and can be reopened). A client in their hub, and anyone on a review link, can pin too.
@@ -333,6 +335,7 @@ Each guide offers the next one when it ends. The client's own guides for tech pa
 | J216 | The design service: a client's line, shared, with verdicts, replies, privacy, and the tech pack in the client's room. Includes the hub in a browser |
 | J217 | The whole loop over HTTP: concept → tech pack → publish → factory → sample sent → review → version 2 → the factory sees the corrections and the next sample |
 | J218 | The factory views and writes in Messages: no buttons (acknowledge, quote, countersign, sample sent all refused), the team records the shipped sample, the corrections go out as v2 while v1 is kept exactly, flats sent unchanged make no version, flats changed go out as v3. Includes the factory page in a browser |
+| J232 | The self-serve Design Lab: a client room locked out until the Lab is opened on it; their plans, concepts and graphics theirs alone while staff see everything; generations metered, invoiced, capped and unblocked when paid; tech packs covered; the make request on Production attention and answered; the factory quotation link; the hub card, the Lab and the Make it tab in a browser |
 | J231 | From the studio to the factory: a studio layer on the flats at its size (resized, removed, on new flats), artwork by garment size, inks per colourway, an all-over repeat made in the library and priced on the flats, the decoration sheet and tech pack carrying them, factory quotes moving the costs, vector and .dst files; the flats, library and studio pages in a browser |
 | J230 | Decoration to the factory: each flats placement priced into the landed cost and the tech pack BOM, the decoration sheet PDF, the studio size check and separations, the ruler, warp and tone on tone in a browser, one library graphic previewed and put across the range |
 | J229 | Made as: 44 ways to make a graphic across six kinds, picked in the studio from live previews on the layer or from the every-way wall on cloth, by name too; the library page shows them all |
@@ -360,11 +363,11 @@ Each guide offers the next one when it ends. The client's own guides for tech pa
 - `test/lab-materials.test.js`: the starting set, cleaning, the tag drawing, the costing, and what the pack takes;
 - `test/lab-decor.test.js`: placement words and sizes, the size findings, the decoration cost by technique (screens, stitches, area, its own numbers) and how it counts in the landed cost, artwork by garment size, inks per colourway, the quote calibration, and what the flats keep;
 - `test/lab-vector.test.js`: the vector trace, the stitch plan and the .dst file read back, and the repeats;
+- `test/lab-access.test.js`: the Lab's pricing from the environment, the meter (included, over, billed, paid, the cap), the gate (staff, a locked room, the staff-only parts, a row that is not theirs), and the payment sync reading the Lab's orders;
 - `test/lab-jobfile.test.js`: the job file per technique (separations, underbase, films, settings, stitch count, cut line, the zip);
 - `test/sample-review.test.js`: reviews and the next version.
 
 ## Not built yet
 
-- **A self-serve Design Lab for clients.** The service runs the Lab for them; the data is per line plan and per client, ready for it.
 - **A sample's photos are not attached to its review.** They live in the product's files and messages.
 - **Saving flats after a concept is approved does not send it back to draft.** The approval and its reasons stand.

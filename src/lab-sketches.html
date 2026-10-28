@@ -39,7 +39,7 @@ h1{font-size:clamp(28px,4.4vw,42px);letter-spacing:-.035em;font-weight:500;margi
 <body>
 <header><a class="wordmark" href="/home" aria-label="Work home"><img class="brand-logo" src="https://thefuturebasics.com/cdn/shop/files/future_basics_true_vector_fixed.svg?v=1775278873&amp;width=360" alt="Future Basics"><span class="brand-suffix">/ Design Lab</span></a></header>
 <main>
-  <div id="needSignin" class="panel hidden"><h1>Sign in to the work console first</h1><p class="note">This page uses your work console sign-in. Open the console, sign in, then come back here.</p><a class="btn go" href="/admin" style="margin-top:12px">Open the work console</a></div>
+  <div id="needSignin" class="panel hidden"><h1>Sign in first</h1><p class="note">Future Basics signs in at the work console. A client whose room has the Design Lab signs in at their hub, then comes back here.</p><a class="btn go" href="/admin" style="margin-top:12px">Open the work console</a> <a class="btn" href="/" style="margin-top:12px">Client? Open your hub</a></div>
   <div id="app" class="hidden">
     <nav class="labnav" data-lab="sketches"></nav>
     <span class="mono" style="display:block;margin-top:14px">Our library</span><h1>The sketch pack.</h1>
@@ -53,13 +53,15 @@ h1{font-size:clamp(28px,4.4vw,42px);letter-spacing:-.035em;font-weight:500;margi
   </div>
 </main>
 <script src="/lab/nav.js"></script>
+<script>try{if(!localStorage.getItem('fb.admin.token')&&localStorage.getItem('fb.client.token'))document.documentElement.dataset.labClient='1'}catch{}</script>
 <script src="/console-nav.js" defer></script>
 <script type="module">
 import { FLAT_TEMPLATES } from '/lab/lab-flat-templates.js';
 import { FLAT_PARTS, PART_KINDS } from '/lab/lab-flat-parts.js';
 import { STYLES, TEMPLATE_URL } from '/lab/flats.js';
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)],esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const TOKEN=()=>{try{return localStorage.getItem('fb.admin.token')||''}catch{return ''}};
+const TOKEN=()=>{try{return localStorage.getItem('fb.admin.token')||localStorage.getItem('fb.client.token')||''}catch{return ''}}; // staff sign in at the work console; a client with the Design Lab on their room signs in at their hub
+const CLIENT_MODE=()=>{try{return !localStorage.getItem('fb.admin.token')&&Boolean(localStorage.getItem('fb.client.token'))}catch{return false}};
 async function api(path){const r=await fetch(path,{headers:{Authorization:'Bearer '+TOKEN()}});const j=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(new Error(j.error||`Request failed (${r.status})`),{status:r.status});return j}
 const RANGES={mens:"Men's",womens:"Women's",acc:'Accessories'};
 let Q={q:new URLSearchParams(location.search).get('q')||'',range:'',style:''},CUR=null,CONCEPTS=null,PK=Object.keys(PART_KINDS)[0];

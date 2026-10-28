@@ -90,7 +90,8 @@ export const FONT_MIME = { ttf: 'font/ttf', otf: 'font/otf', woff: 'font/woff', 
 export const fontShape = r => ({ id: r.id, name: r.name, family: r.family, format: r.format, createdAt: r.created_at });
 
 export function registerLabStudioRoutes(app, d) {
-  const { pool, authenticate, adminOnly, env = process.env, imageCfg = () => imageConfig(env), editImpl = openaiEdit, imageImpl = openaiImage, placeImpl = locateMarks } = d;
+  const { pool, authenticate, adminOnly, env = process.env, imageCfg = () => imageConfig(env), editImpl = openaiEdit, imageImpl = openaiImage, placeImpl = locateMarks, lab = null } = d;
+  const own = req => lab?.scope?.(req) || null, charge = async (req, o) => (lab ? lab.charge(req, o) : null);
   const pre = [authenticate, adminOnly], bad = (reply, error, code = 422, extra = {}) => reply.code(code).send({ error, ...extra });
   const actorOf = req => (UUID.test(String(req.auth?.sub || '')) ? req.auth.sub : null);
   const nameOf = async req => { const id = actorOf(req); if (!id) return 'Staff'; return (await pool.query(`select coalesce(nullif(name,''), split_part(email,'@',1)) n from users where id=$1`, [id])).rows[0]?.n || 'Staff'; };
@@ -100,7 +101,7 @@ export function registerLabStudioRoutes(app, d) {
     const r = (await pool.query('select id, name, category, status, spec, plan_id, (raw is not null) has_plain, (image is not null) has_image from lab_concepts where id=$1', [req.params.id])).rows[0];
     if (!r) return bad(reply, 'Not found', 404), null; return r;
   };
-  const fontList = async () => (await pool.query('select id, name, family, format, created_at from lab_fonts order by lower(name)')).rows.map(fontShape);
+  const fontList = async req => (await pool.query('select id, name, family, format, created_at from lab_fonts where ($1::uuid is null or client_id is null or client_id=$1) order by lower(name)', [own(req)])).rows.map(fontShape); // the Future Basics fonts are shared; a room's own fonts stay in the room
   const uses = new Map(), dayOf = () => new Date().toISOString().slice(0, 10);
   const cap = () => Number(env.LAB_DAILY_STUDIO_AI ?? 60);
   const left = () => { const c = cap(); return c < 0 ? null : Math.max(0, c - (uses.get(dayOf()) || 0)); };
@@ -116,7 +117,7 @@ export function registerLabStudioRoutes(app, d) {
       doc: s?.doc || null, savedAt: s?.updated_at || null, savedBy: s?.by_name || '', appliedAt: s?.applied_at || null, canRestore: Boolean(s?.has_original),
       marks: [{ id: 'mark', label: 'Cue mark', svg: logoSvg('mark') }, { id: 'word', label: 'Wordmark', svg: logoSvg('word') }, { id: 'lockup', label: 'Wordmark and cue mark', svg: logoSvg('lockup') }],
       palette, graphics: (c.spec?.graphics || []).filter(g => g.art).map(g => ({ art: g.art, name: clip(g.name, 60) })), graphicNames: (c.spec?.graphics || []).map(g => clip(g.name, 60)).filter(Boolean),
-      ai: { connected: cfg.configured, model: cfg.model || null, left: left() }, fonts: await fontList(),
+      ai: { connected: cfg.configured, model: cfg.model || null, left: left() }, fonts: await fontList(req),
       techniques: (await pool.query(`select t.id, t.kind, t.name, t.summary, t.base, t.finish, t.rules, (select count(*)::int from lab_technique_photos p where p.technique_id=t.id) photos from lab_techniques t where not archived order by kind, builtin desc, name`).catch(() => ({ rows: [] }))).rows.map(t => ({ ...t, rules: cleanRules(t.rules || {}, t.base) })), placements: Object.entries(PLACEMENTS).map(([id, p]) => ({ id, label: p.label, w: p.w }))
     };
   });
@@ -165,14 +166,14 @@ export function registerLabStudioRoutes(app, d) {
   });
 
   // ---- fonts ----
-  app.get('/v1/lab/fonts', { preHandler: pre }, async () => ({ fonts: await fontList() }));
+  app.get('/v1/lab/fonts', { preHandler: pre }, async req => ({ fonts: await fontList(req) }));
   app.post('/v1/lab/fonts', { preHandler: pre, bodyLimit: 12_000_000 }, async (req, reply) => {
     const b = req.body || {}, m = /^data:(?:[^;]+);base64,([A-Za-z0-9+/=]+)$/.exec(String(b.file || '')); if (!m) return bad(reply, 'Send the font file');
     const buf = Buffer.from(m[1], 'base64'); if (buf.length > 8_000_000) return bad(reply, 'That font file is over 8 MB');
     const info = fontInfo(buf); if (!info) return bad(reply, 'That is not a font file we can use: TTF, OTF, WOFF or WOFF2');
     const name = clip(b.name, 80).replace(/\.(ttf|otf|woff2?)$/i, ''); if (name.length < 2) return bad(reply, 'Give the font a name');
-    if ((await pool.query('select 1 from lab_fonts where lower(name)=lower($1)', [name])).rowCount) return bad(reply, 'A font with that name is already here', 409);
-    const r = (await pool.query(`insert into lab_fonts(name, family, format, bytes, created_by) values($1, $2, $3, $4, $5) returning id, name, family, format, created_at`, [name, 'fb-' + name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''), info.format, buf, actorOf(req)])).rows[0];
+    if ((await pool.query('select 1 from lab_fonts where lower(name)=lower($1) and client_id is not distinct from $2', [name, own(req)])).rowCount) return bad(reply, 'A font with that name is already here', 409);
+    const r = (await pool.query(`insert into lab_fonts(name, family, format, bytes, created_by, client_id) values($1, $2, $3, $4, $5, $6) returning id, name, family, format, created_at`, [name, 'fb-' + name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''), info.format, buf, actorOf(req), own(req)])).rows[0];
     return reply.code(201).send({ font: fontShape(r) });
   });
   app.get('/v1/lab/fonts/:id/file', { preHandler: pre }, async (req, reply) => {
@@ -224,6 +225,7 @@ export function registerLabStudioRoutes(app, d) {
     const hits = brandHits(prompt, (await pool.query('select name from lab_brands')).rows.map(r => r.name));
     if (hits.length) return bad(reply, `Leave other brands out of the prompt (${hits.slice(0, 3).join(', ')}). Describe the look in your own words.`);
     const cfg = imageCfg(); if (!cfg.configured) return bad(reply, 'No image model is connected', 503);
+    try { await charge(req, { kind: 'studio', conceptId }); } catch (e) { return bad(reply, e.message, e.status || 500, e.meter ? { code: e.code, meter: e.meter } : {}); }
     if (left() === 0) return bad(reply, `The daily limit of ${cap()} studio AI edits is reached. Raise LAB_DAILY_STUDIO_AI.`, 429);
     let out;
     try {
@@ -331,7 +333,7 @@ export function registerLabStudioRoutes(app, d) {
     return {
       marks: [{ id: 'mark', label: 'Cue mark', svg: logoSvg('mark') }, { id: 'word', label: 'Wordmark', svg: logoSvg('word') }, { id: 'lockup', label: 'Wordmark and cue mark', svg: logoSvg('lockup') }],
       palette: COLORS.map(x => ({ name: x.name, hex: x.hex, from: 'brand' })).filter(x => /^#[0-9a-f]{6}$/i.test(x.hex || '')),
-      ai: { connected: cfg.configured, model: cfg.model || null, left: left() }, fonts: await fontList(),
+      ai: { connected: cfg.configured, model: cfg.model || null, left: left() }, fonts: await fontList(req),
       techniques: (await pool.query(`select t.id, t.kind, t.name, t.summary, t.base, t.finish, t.rules, (select count(*)::int from lab_technique_photos p where p.technique_id=t.id) photos from lab_techniques t where not archived order by kind, builtin desc, name`).catch(() => ({ rows: [] }))).rows.map(t => ({ ...t, rules: cleanRules(t.rules || {}, t.base) })), placements: Object.entries(PLACEMENTS).map(([id, p]) => ({ id, label: p.label, w: p.w }))
     };
   };

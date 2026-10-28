@@ -87,7 +87,8 @@ export const flatEditPrompt = prompt => [
 ].join('\n');
 
 export function registerLabFlatsRoutes(app, d) {
-  const { pool, authenticate, adminOnly, attachArtwork, applyHandoff, log = console, env = process.env, imageCfg = () => imageConfig(env), editImpl = openaiEdit , pickImpl = callJsonSchema } = d;
+  const { pool, authenticate, adminOnly, attachArtwork, applyHandoff, log = console, env = process.env, imageCfg = () => imageConfig(env), editImpl = openaiEdit , pickImpl = callJsonSchema, lab = null } = d;
+  const own = req => lab?.scope?.(req) || null, charge = async (req, o) => (lab ? lab.charge(req, o) : null); // a client's room: its own quotes, its AI meter
   const pre = [authenticate, adminOnly], bad = (reply, error, code = 422, extra = {}) => reply.code(code).send({ error, ...extra });
   const actorOf = req => (UUID.test(String(req.auth?.sub || '')) ? req.auth.sub : null);
   const concept = async id => (UUID.test(String(id)) ? (await pool.query('select c.id, c.name, c.category, c.status, c.spec, c.twist, c.product_id, c.price_cents, c.cost_cents, c.qty, c.updated_at, p.name plan_name from lab_concepts c left join lab_plans p on p.id=c.plan_id where c.id=$1', [id])).rows[0] : null);
@@ -246,6 +247,7 @@ export function registerLabFlatsRoutes(app, d) {
     const box = cleanEdits([{ type: 'detail', kind: 'erase', view, ...(b.box || {}) }])[0]; if (!box || box.w < .5 || box.h < .5) return bad(reply, 'Select an area at least half an inch across');
     const cfg = imageCfg(); if (!cfg.configured) return bad(reply, 'No image model is connected', 503);
     if ((redraws.get(dayOf()) || 0) >= redrawCap()) return bad(reply, `The daily limit of ${redrawCap()} AI redraws of flats is reached. Raise LAB_DAILY_FLAT_AI.`, 429);
+    try { await charge(req, { kind: 'flat', conceptId: t.c.id }); } catch (e) { return bad(reply, e.message, e.status || 500, e.meter ? { code: e.code, meter: e.meter } : {}); }
     // the view as it stands, in black and white (the model draws line art; the colour goes back on afterwards), framed on the area with room
     // around it so the model sees how the change joins the rest
     const N = 1024, side = Math.max(box.w, box.h) * 2.2, cx0 = box.x - side / 2, cy0 = box.y - side / 2;
@@ -311,7 +313,7 @@ export function registerLabFlatsRoutes(app, d) {
   async function decorationPdf(c) {
     const s = await sheet(c); if (!s) return null;
     const list = await techniques(), notes = new Map((await pool.query('select id, factory_note, art_guide, summary from lab_techniques')).rows.map(r => [r.id, r])), decos = await decorationsOf(c, s.p, s.pl), ck = (await pool.query('select check_result from lab_flats where concept_id=$1', [c.id])).rows[0]?.check_result || { findings: {} };
-    const b = brandDoc({ title: `${c.name} · decorations`, kind: 'Decoration sheet', ref: `${s.pl.length} placement${s.pl.length === 1 ? '' : 's'}`, footerNote: 'Future Basics · decoration sheet · colours as Pantone C, matched from the artwork: confirm each against a swatch book' });
+    const b = brandDoc({ title: `${c.name} · decorations`, kind: 'Decoration sheet', ref: `${s.pl.length} placement${s.pl.length === 1 ? '' : 's'}`, footerNote: 'Future Basics · decoration sheet · costs are estimates, the factory\'s quote confirms them · colours as Pantone C, matched from the artwork: confirm each against a swatch book' });
     const { doc, L, CW } = b;
     if (!s.pl.length && !s.p.allover) { doc.fillColor(INK).font('SG-B').fontSize(18).text(safe(c.name), L, b.bodyTop); doc.fillColor(DIM).font('SG').fontSize(11).text('Nothing is placed on this piece yet.', L, doc.y + 8); return b.finish(); }
     // a section that would not fit with its first rows starts on the next page, so a heading is never left alone at the bottom
@@ -474,7 +476,7 @@ export function registerLabFlatsRoutes(app, d) {
   const quoteRow = r => ({ id: r.id, techniqueId: r.technique_id, techniqueName: r.technique_name || null, base: r.base, supplier: r.supplier, widthIn: Number(r.width_in), heightIn: Number(r.height_in), colours: r.colours, qty: r.qty, unitCents: r.unit_cents, setupCents: r.setup_cents, actualCents: r.actual_cents, estimateCents: r.estimate_cents, conceptId: r.concept_id, conceptName: r.concept_name || null, placement: r.placement, note: r.note, createdAt: r.created_at });
   app.get('/v1/lab/decor/quotes', { preHandler: pre }, async req => {
     const tid = UUID.test(String(req.query?.techniqueId || '')) ? req.query.techniqueId : null;
-    const rows = (await pool.query(`select q.*, t.name technique_name, c.name concept_name from lab_decor_quotes q left join lab_techniques t on t.id=q.technique_id left join lab_concepts c on c.id=q.concept_id ${tid ? 'where q.technique_id=$1' : ''} order by q.created_at desc limit 200`, tid ? [tid] : [])).rows;
+    const rows = (await pool.query(`select q.*, t.name technique_name, c.name concept_name from lab_decor_quotes q left join lab_techniques t on t.id=q.technique_id left join lab_concepts c on c.id=q.concept_id where ($1::uuid is null or q.client_id=$1) ${tid ? 'and q.technique_id=$2' : ''} order by q.created_at desc limit 200`, tid ? [own(req), tid] : [own(req)])).rows;
     return { quotes: rows.map(quoteRow), calibration: await calibrations() };
   });
   app.post('/v1/lab/decor/quotes', { preHandler: pre }, async (req, reply) => {
@@ -487,8 +489,8 @@ export function registerLabFlatsRoutes(app, d) {
     // the estimate for exactly what was quoted, before any calibration, so the factor measures the starting figures themselves
     const est = decorationCost({ base, rules: t?.rules || {}, widthIn: w, heightIn: h, colours, coverage: Number(b.coverage) > 0 ? Number(b.coverage) : .6, qty });
     const actual = Math.round(unit + setup / qty), cid = UUID.test(String(b.conceptId || '')) ? b.conceptId : null;
-    const r = (await pool.query(`insert into lab_decor_quotes(technique_id, base, supplier, width_in, height_in, colours, qty, unit_cents, setup_cents, actual_cents, estimate_cents, concept_id, placement, note, created_by)
-      values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) returning *`, [t?.id || null, base, clip(b.supplier, 80), w, h, colours, qty, unit, setup, actual, Math.max(1, est.perPieceCents), cid, clip(b.placement, 80), clip(b.note, 300), actorOf(req)])).rows[0];
+    const r = (await pool.query(`insert into lab_decor_quotes(technique_id, base, supplier, width_in, height_in, colours, qty, unit_cents, setup_cents, actual_cents, estimate_cents, concept_id, placement, note, created_by, client_id)
+      values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) returning *`, [t?.id || null, base, clip(b.supplier, 80), w, h, colours, qty, unit, setup, actual, Math.max(1, est.perPieceCents), cid, clip(b.placement, 80), clip(b.note, 300), actorOf(req), own(req)])).rows[0];
     return reply.code(201).send({ quote: quoteRow(r), estimate: est, calibration: await calibrations() });
   });
   app.delete('/v1/lab/decor/quotes/:id', { preHandler: pre }, async (req, reply) => {

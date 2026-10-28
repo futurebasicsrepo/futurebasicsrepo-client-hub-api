@@ -112,7 +112,7 @@ dialog.cd{border:0;border-radius:24px;padding:0;width:min(980px,96vw);max-height
   <a class="wordmark" href="/home" aria-label="Work home"><img class="brand-logo" src="https://thefuturebasics.com/cdn/shop/files/future_basics_true_vector_fixed.svg?v=1775278873&amp;width=360" alt="Future Basics"><span class="brand-suffix">/ Design Lab</span></a>
 </header>
 <main>
-  <div id="needSignin" class="panel hidden"><h1>Sign in to the work console first</h1><p class="note">This page uses your work console sign-in. Open the console, sign in, then come back here.</p><a class="btn go" href="/admin" style="margin-top:12px">Open the work console</a></div>
+  <div id="needSignin" class="panel hidden"><h1>Sign in first</h1><p class="note">Future Basics signs in at the work console. A client whose room has the Design Lab signs in at their hub, then comes back here.</p><a class="btn go" href="/admin" style="margin-top:12px">Open the work console</a> <a class="btn" href="/" style="margin-top:12px">Client? Open your hub</a></div>
   <div id="app" class="hidden">
     <section class="hero"><span class="mono">Future Basics · Danielle and Kyle only</span><h1>Design Lab.</h1>
       <p>Plan the season, draw the concepts, finish them in the studio, measure them as flats, and send them to a tech pack. The libraries hold what we draw from; the research holds what the market is doing.</p>
@@ -198,12 +198,14 @@ dialog.cd{border:0;border-radius:24px;padding:0;width:min(980px,96vw);max-height
   </div>
 </main>
 <script src="/lab/nav.js"></script>
+<script>try{if(!localStorage.getItem('fb.admin.token')&&localStorage.getItem('fb.client.token'))document.documentElement.dataset.labClient='1'}catch{}</script>
 <script src="/console-nav.js" defer></script>
 <script>
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)],esc=v=>String(v??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const TOKEN=()=>{try{return localStorage.getItem('fb.admin.token')||''}catch{return ''}};
+const TOKEN=()=>{try{return localStorage.getItem('fb.admin.token')||localStorage.getItem('fb.client.token')||''}catch{return ''}}; // staff sign in at the work console; a client with the Design Lab on their room signs in at their hub
+const CLIENT_MODE=()=>{try{return !localStorage.getItem('fb.admin.token')&&Boolean(localStorage.getItem('fb.client.token'))}catch{return false}};
 const safe=u=>/^https?:\/\//i.test(String(u||''))?String(u):'';
-async function api(path,o={}){const r=await fetch(path,{method:o.method||(o.body?'POST':'GET'),headers:{Authorization:'Bearer '+TOKEN(),...(o.body?{'Content-Type':'application/json'}:{})},body:o.body?JSON.stringify(o.body):undefined});let j={};try{j=await r.json()}catch{}if(!r.ok)throw new Error(j.error||'That did not work');return j}
+async function api(path,o={}){const r=await fetch(path,{method:o.method||(o.body?'POST':'GET'),headers:{Authorization:'Bearer '+TOKEN(),...(o.body?{'Content-Type':'application/json'}:{})},body:o.body?JSON.stringify(o.body):undefined});let j={};try{j=await r.json()}catch{}if(!r.ok){const e=new Error(j.error||'That did not work');e.status=r.status;e.data=j;throw e}return j}
 let O=null,F={category:'',offset:0},LIST=[],TOTAL=0,POLL=null;
 const when=d=>{try{return d?new Date(d).toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):'never'}catch{return ''}};
 const money=(p,c)=>p==null?'':(c&&c!=='USD'?c+' ':'$')+(p%1?p.toFixed(2):p.toFixed(0));
@@ -357,7 +359,7 @@ function drawPlan(){
     ${programHtml(P)}
     ${rangeHtml(P)}
     <h3 style="margin:14px 0 4px;font-size:15px">Price ladder against ${esc(P.anchor)}</h3>${ladderRows(P)||'<p class="note">Add priced pieces to see the ladder.</p>'}
-    <div class="wrapx" style="margin-top:14px"><table class="lt"><thead><tr><th>Piece</th><th>Category</th><th>Role</th><th>Price</th><th>Cost</th><th>Margin</th><th>Qty</th><th>Concepts</th><th></th></tr></thead><tbody>${P.lines.map(l=>`<tr class="${l.status==='dropped'?'dropped':''}" data-line="${l.id}">
+    <div class="wrapx" style="margin-top:14px"><table class="lt"><thead><tr><th>Piece</th><th>Category</th><th>Role</th><th>Price</th><th title="Estimated: the factory's quote confirms it">Cost (est.)</th><th>Margin</th><th>Qty</th><th>Concepts</th><th></th></tr></thead><tbody>${P.lines.map(l=>`<tr class="${l.status==='dropped'?'dropped':''}" data-line="${l.id}">
       <td style="min-width:200px"><input data-f="name" value="${esc(l.name)}" maxlength="100" aria-label="Name">
         <details><summary>${l.twist?esc(l.twist.slice(0,60))+(l.twist.length>60?'…':''):'Details'}</summary><p><b>What:</b> ${esc(l.brief)||'—'}</p><p><b>Our twist:</b> ${esc(l.twist)||'—'}</p><p><b>Why:</b> ${esc(l.rationale)||'—'}</p>${l.refs.length?`<p><b>Looked at:</b> ${l.refs.map(r=>safe(r.url)?`<a href="${esc(safe(r.url))}" target="_blank" rel="noopener noreferrer">${esc(r.title)}</a>`:esc(r.title)).join(' · ')}</p>`:''}
         <label class="sub">Our twist<input data-f="twist" value="${esc(l.twist)}" maxlength="400"></label></details>
@@ -402,7 +404,7 @@ async function pollsLoad(){const box=$('#pollList');if(!box||!CUR)return;try{con
 function resultsHtml(res){if(!res.pieces.length)return '<span class="sub">No pieces.</span>';
   return `<div class="sub" style="margin:6px 0">${res.voters} ${res.voters===1?'person has':'people have'} answered.</div><div class="wrapx"><table class="lt"><thead><tr><th>#</th><th>Piece</th><th>Demand</th><th>Yes · maybe · no</th><th>Price</th><th>Read</th><th>What they would change</th></tr></thead><tbody>${res.pieces.map(p=>`<tr><td>${p.rank??'—'}</td><td><b>${esc(p.name)}</b><br><span class="sub">${esc(p.categoryLabel)}${p.priceLabel?' · '+esc(p.priceLabel):''}</span></td><td class="dm ${p.demand==null?'':p.demand>=70?'go':p.demand<45?'no':''}">${p.demand==null?'—':p.demand+'%'}</td><td>${p.yes} · ${p.maybe} · ${p.no}</td><td>${esc(p.priceFeel||'—')}</td><td>${esc(p.read)}</td><td class="sub">${p.notes.slice(0,4).map(n=>`<b>${esc(n.who)}:</b> ${esc(n.note)}`).join('<br>')}</td></tr>`).join('')}</tbody></table></div>`}
 let PLANPOLL=0;
-async function openPlan(id,keepScroll){CUR=await api('/v1/lab/plans/'+id);if(!CLIENTS)CLIENTS=(await api('/v1/lab/clients').catch(()=>({clients:[]}))).clients;drawPlan();fillArt($('#planView'));pollsLoad().catch(()=>{});mockLoad().catch(()=>{});await loadPlans(true);
+async function openPlan(id,keepScroll){CUR=await api('/v1/lab/plans/'+id);if(!CLIENTS)CLIENTS=O.client?[]:(await api('/v1/lab/clients').catch(()=>({clients:[]}))).clients;drawPlan();fillArt($('#planView'));pollsLoad().catch(()=>{});mockLoad().catch(()=>{});await loadPlans(true);
   // the program's artwork is drawn in the background: look again until every motif has its picture
   clearTimeout(PLANPOLL);if(CUR&&CUR.program&&CUR.program.motifs.some(m=>m.artStatus==='pending'))PLANPOLL=setTimeout(()=>{if(CUR&&CUR.plan.id===id)openPlan(id,true).catch(()=>{})},5000)}
 async function putLine(tr,body){
@@ -785,8 +787,8 @@ window.addEventListener('hashchange',()=>toSection(true));
   const h=(location.hash||'').slice(1);if(ids.includes(h))paint(h);})();
 (async()=>{
   if(!TOKEN()){$('#needSignin').classList.remove('hidden');return}
-  try{await refresh();$('#app').classList.remove('hidden');drawCode();loadTaste();await loadItems(true);await loadScans();await loadTrends();await loadPlans();await loadBoard();await loadAssort();toSection(false);const qc=new URLSearchParams(location.search).get('concept');if(qc){location.hash='#board';openConcept(qc).catch(()=>{})}}
-  catch(x){$('#app').classList.add('hidden');const n=$('#needSignin');n.classList.remove('hidden');const no=/access to Design Lab|not turned on|Only Danielle/i.test(x.message);n.querySelector('h1').textContent=no?'The Design Lab is not turned on for you':'Sign in to the work console first';n.querySelector('.note').textContent=no?'It is for Danielle and Kyle. If you need it, ask one of them to tick Design Lab for you on Team access.':'This page uses your work console sign-in. Open the console, sign in, then come back here.'}
+  try{await refresh();$('#app').classList.remove('hidden');if(O.client){document.body.classList.add('lab-client');$('.hero .mono').textContent='Your Design Lab';$('.hero p').textContent='Plan a line, draw the concepts, finish them in the studio, measure them as flats, and turn them into tech packs. Costs here are estimates: the factory\'s quote confirms them.';for(const id of ['grp-research','library','trends','brands','code'])$('#'+id)?.classList.add('hidden')}else{drawCode();loadTaste();await loadItems(true);await loadScans();await loadTrends()}await loadPlans();await loadBoard();await loadAssort();toSection(false);const qc=new URLSearchParams(location.search).get('concept');if(qc){location.hash='#board';openConcept(qc).catch(()=>{})}}
+  catch(x){$('#app').classList.add('hidden');const n=$('#needSignin');n.classList.remove('hidden');const locked=x.data?.code==='LAB_LOCKED',no=/access to Design Lab|not turned on|Only Danielle/i.test(x.message);n.querySelector('h1').textContent=locked?'The Design Lab is not open on your room yet':no?'The Design Lab is not turned on for you':'Sign in first';n.querySelector('.note').textContent=locked?'Open it from the Design Lab card in your hub: a fixed price for the period, with AI generations included.':no?'It is for Danielle and Kyle. If you need it, ask one of them to tick Design Lab for you on Team access.':'Future Basics signs in at the work console. A client whose room has the Design Lab signs in at their hub, then comes back here.'}
 })();
 </script>
 <script src="/helper.js" defer></script>

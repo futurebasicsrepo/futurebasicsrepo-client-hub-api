@@ -28,7 +28,9 @@ export async function seedLab(pool) {
 }
 
 export function registerLabRoutes(app, d) {
-  const { pool, authenticate, adminOnly, getSetting, setSetting, env = process.env, fetchImpl = fetch, askImpl = realAsk, crawlOpts, delayMs, art = null, log = console } = d;
+  const { pool, authenticate, adminOnly, getSetting, setSetting, env = process.env, fetchImpl = fetch, askImpl = realAsk, crawlOpts, delayMs, art = null, lab = null, log = console } = d;
+  const own = req => lab?.scope?.(req) || null; // a client's room sees its own plans; staff (null) see all
+  const roomBrand = async cid => { const c = (await pool.query('select name from clients where id=$1', [cid])).rows[0]; return c ? { name: c.name } : null; };
   const pre = [authenticate, adminOnly], bad = (reply, error, code = 422) => reply.code(code).send({ error });
   const needId = (req, reply) => UUID.test(req.params.id) || (bad(reply, 'Not found', 404), false);
   const actorOf = req => (UUID.test(String(req.auth?.sub || '')) ? req.auth.sub : null);
@@ -45,7 +47,8 @@ export function registerLabRoutes(app, d) {
     try { return await scanBrand(pool, brand, await deps(req)); } finally { running.delete(brand.id); }
   }
 
-  app.get('/v1/lab/overview', { preHandler: pre }, async () => {
+  app.get('/v1/lab/overview', { preHandler: pre }, async req => {
+    if (own(req)) return { brandCode: null, defaults: DEFAULT_BRAND_CODE, brands: [], roles: BRAND_ROLES, categories: CATEGORIES.map(c => ({ ...c, count: 0 })), totals: { items: 0, saved: 0, fresh: 0 }, connected: { search: false, ai: providerReady('anthropic', env) }, spend: null, scanning: [], client: true };
     const [brands, cats, tot, spent] = await Promise.all([
       pool.query(`select b.*, (select count(*) from lab_items i where i.brand_id=b.id and i.status<>'hidden') items, (select count(*) from lab_items i where i.brand_id=b.id and i.status='new' and i.first_seen_at > now()-interval '7 days') new_items from lab_brands b order by case b.role when 'reference' then 0 when 'price' then 1 else 2 end, lower(b.name)`),
       pool.query(`select category, count(*)::int n from lab_items where status<>'hidden' group by 1`),
@@ -181,10 +184,10 @@ export function registerLabRoutes(app, d) {
     const days = Math.min(Math.max(Number(req.query?.days) || 180, 7), 720), code = await loadCode();
     return { days, ...(await trendsFor(days)), economics: code.economics, anchor: code.priceAnchor.name };
   });
-  app.get('/v1/lab/plans', { preHandler: pre }, async () => ({ plans: (await pool.query(`select p.*, (select count(*) from lab_plan_lines l where l.plan_id=p.id and l.status<>'dropped') lines from lab_plans p order by p.updated_at desc limit 100`)).rows.map(planShape) }));
+  app.get('/v1/lab/plans', { preHandler: pre }, async req => ({ plans: (await pool.query(`select p.*, (select count(*) from lab_plan_lines l where l.plan_id=p.id and l.status<>'dropped') lines from lab_plans p where ($1::uuid is null or p.client_id=$1) order by p.updated_at desc limit 100`, [own(req)])).rows.map(planShape) }));
   app.post('/v1/lab/plans', { preHandler: pre }, async (req, reply) => {
     const name = clip(req.body?.name, 100); if (!name) return bad(reply, 'Give the plan a name');
-    const r = (await pool.query(`insert into lab_plans(name,season,brief,created_by) values($1,$2,$3,$4) returning *`, [name, clip(req.body?.season, 40), clip(req.body?.brief, 800), actorOf(req)])).rows[0];
+    const cid = own(req), r = (await pool.query(`insert into lab_plans(name,season,brief,created_by,client_id,brand) values($1,$2,$3,$4,$5,$6) returning *`, [name, clip(req.body?.season, 40), clip(req.body?.brief, 800), actorOf(req), cid, cid ? await roomBrand(cid) : null])).rows[0];
     return reply.code(201).send(await loadPlan(r.id));
   });
   app.post('/v1/lab/plans/generate', { preHandler: pre }, async (req, reply) => {
@@ -195,7 +198,7 @@ export function registerLabRoutes(app, d) {
     const cats = Array.isArray(b.categories) ? b.categories.map(String).filter(c => CATEGORY_IDS.includes(c)) : [];
     let out; try { out = await generateLines({ trends, code: await loadCode(), brief: b.brief, season: b.season, size: Number(b.size) || 12, categories: cats, askImpl, env, fetchImpl }); } catch (e) { return bad(reply, e.message, 502); }
     if (!out.lines.length) return bad(reply, 'The assistant did not come back with a usable plan. Try again, or name fewer categories.', 502);
-    const plan = (await pool.query(`insert into lab_plans(name,season,brief,summary,cost_cents,created_by) values($1,$2,$3,$4,$5,$6) returning id`, [name, clip(b.season, 40), clip(b.brief, 800), out.summary, Math.max(out.costCents, 0.001), actorOf(req)])).rows[0];
+    const cid = own(req), plan = (await pool.query(`insert into lab_plans(name,season,brief,summary,cost_cents,created_by,client_id,brand) values($1,$2,$3,$4,$5,$6,$7,$8) returning id`, [name, clip(b.season, 40), clip(b.brief, 800), out.summary, Math.max(out.costCents, 0.001), actorOf(req), cid, cid ? await roomBrand(cid) : null])).rows[0];
     let sort = 0; for (const l of out.lines) await pool.query(`insert into lab_plan_lines(plan_id,category,role,name,brief,twist,rationale,price_cents,cost_cents,qty,refs,sort) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`, [plan.id, l.category, l.role, l.name, l.brief, l.twist, l.rationale, l.priceCents, l.costCents, l.qty, l.refs, sort++]);
     return reply.code(201).send(await loadPlan(plan.id));
   });

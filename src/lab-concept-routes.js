@@ -17,7 +17,8 @@ const clip = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
 const dataUrl = b => (b ? `data:image/jpeg;base64,${Buffer.from(b).toString('base64')}` : '');
 
 export function registerLabConceptRoutes(app, d) {
-  const { pool, authenticate, adminOnly, getSetting, env = process.env, fetchImpl = fetch, askImpl = realAsk, createProduct, attachArtwork, flatsCheck, imageCfg = () => imageConfig(env), placeImpl, art: artSvc = null, sendFlats = null, learn = async () => {}, log = console } = d;
+  const { pool, authenticate, adminOnly, getSetting, env = process.env, fetchImpl = fetch, askImpl = realAsk, createProduct, attachArtwork, flatsCheck, imageCfg = () => imageConfig(env), placeImpl, art: artSvc = null, sendFlats = null, learn = async () => {}, lab = null, log = console } = d;
+  const own = req => lab?.scope?.(req) || null, charge = async (req, o) => (lab ? lab.charge(req, o) : null); // a client's room: its own concepts, its AI meter
   // the learned taste (src/lab-taste.js), when the team has not switched it off
   const loadTaste = async () => { const t = await getSetting('labTaste').catch(() => null); return t && t.use !== false ? t : null; };
   const relearn = () => Promise.resolve().then(learn).catch(e => log.warn?.({ err: e.message }, 'design lab taste could not be read again'));
@@ -62,6 +63,7 @@ export function registerLabConceptRoutes(app, d) {
     const pr = plan?.id ? (await pool.query('select program, brand, client_id from lab_plans where id=$1', [plan.id])).rows[0] : null, program = pr?.program || null;
     // a client's line is written for their brand, and carries their logo (placed by hand), not ours
     const brand = pr?.client_id && pr.brand?.name ? pr.brand : null;
+    await charge(req, { kind: 'concept', units: count }); // a client's room pays for the pictures past the included ones (402 past the cap, before anything is spent)
     const gen = await generateConcepts({ line, plan, refs: refs.map(r => ({ title: r.title, attrs: r.attrs })), trend: cat, program, code: brand ? { ...code, statement: brand.statement || code.statement, exemplars: [] } : code, count, note: steer, parent, brand, taste: await loadTaste(), askImpl, env, fetchImpl });
     if (brand) for (const c of gen.concepts) c.spec = { ...c.spec, branding: { ...(c.spec.branding || {}), logo: { ...(c.spec.branding?.logo || {}), mark: 'none' } } };
     if (!gen.concepts.length) throw Object.assign(new Error('The assistant did not come back with usable concepts. Try again, or change the note.'), { status: 502 });
@@ -108,9 +110,9 @@ export function registerLabConceptRoutes(app, d) {
     if (UUID.test(String(q.plan || ''))) { args.push(q.plan); where.push(`c.plan_id=$${args.length}`); }
     if (UUID.test(String(q.line || ''))) { args.push(q.line); where.push(`c.line_id=$${args.length}`); }
     if (['draft', 'approved', 'rejected', 'tech_pack'].includes(q.status)) { args.push(q.status); where.push(`c.status=$${args.length}`); }
-    const limit = Math.min(Math.max(Number(q.limit) || 60, 1), 120);
+    const limit = Math.min(Math.max(Number(q.limit) || 60, 1), 120); if (own(req)) { args.push(own(req)); where.push(`c.client_id=$${args.length}`); }
     const rows = (await pool.query(`${SELECT} ${where.length ? 'where ' + where.join(' and ') : ''} order by c.created_at desc limit ${limit}`, args)).rows;
-    const counts = (await pool.query(`select status, count(*)::int n from lab_concepts group by 1`)).rows;
+    const counts = (await pool.query(`select status, count(*)::int n from lab_concepts where ($1::uuid is null or client_id=$1) group by 1`, [own(req)])).rows;
     return { concepts: rows.map(r => shape(r)), counts: Object.fromEntries(counts.map(c => [c.status, c.n])), imageConnected: imageCfg().configured, options: { marks: LOGO_MARKS, logoTechniques: LOGO_TECHNIQUES, graphicPlaces: Object.keys(GRAPHIC_PLACE), graphicTechniques: GRAPHIC_TECHNIQUES } };
   });
   app.get('/v1/lab/concepts/:id', { preHandler: pre }, async (req, reply) => {
@@ -240,6 +242,7 @@ export function registerLabConceptRoutes(app, d) {
     if (r.status === 'tech_pack') return bad(reply, 'This concept is already a tech pack', 409);
     const day = new Date().toISOString().slice(0, 10), cap = Number(env.LAB_DAILY_REDRAWS ?? 30); if (cap >= 0 && (redraws.get(day) || 0) >= cap) return bad(reply, `The daily limit of ${cap} redrawn pictures is reached. Raise LAB_DAILY_REDRAWS.`, 429);
     const cfg = imageCfg(); if (!cfg.configured) return bad(reply, 'No image model is connected, so there is no picture to draw.', 503);
+    try { await charge(req, { kind: 'redraw', conceptId: r.id }); } catch (e) { return bad(reply, e.message, e.status || 500, e.meter ? { code: e.code, meter: e.meter } : {}); }
     // graphics made before the artwork was drawn by the image model (simple shapes) get real artwork now, so the redrawn picture carries it
     const spec = ensureBranding(r.spec || {}, r.category);
     if (artSvc && spec.graphics.some(g => !g.art)) {

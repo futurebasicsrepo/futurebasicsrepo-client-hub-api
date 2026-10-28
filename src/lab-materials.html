@@ -46,7 +46,7 @@ dialog{border:0;border-radius:24px;padding:0;width:min(900px,96vw);max-height:92
 <body>
 <header><a class="wordmark" href="/home" aria-label="Work home"><img class="brand-logo" src="https://thefuturebasics.com/cdn/shop/files/future_basics_true_vector_fixed.svg?v=1775278873&amp;width=360" alt="Future Basics"><span class="brand-suffix">/ Design Lab</span></a></header>
 <main>
-  <div id="needSignin" class="panel hidden"><h1>Sign in to the work console first</h1><p class="note">This page uses your work console sign-in. Open the console, sign in, then come back here.</p><a class="btn go" href="/admin" style="margin-top:12px">Open the work console</a></div>
+  <div id="needSignin" class="panel hidden"><h1>Sign in first</h1><p class="note">Future Basics signs in at the work console. A client whose room has the Design Lab signs in at their hub, then comes back here.</p><a class="btn go" href="/admin" style="margin-top:12px">Open the work console</a> <a class="btn" href="/" style="margin-top:12px">Client? Open your hub</a></div>
   <div id="app" class="hidden">
     <nav class="labnav" data-lab="materials"></nav>
     <span class="mono" style="display:block;margin-top:14px">Our library</span><h1>Materials, trims and tags.</h1>
@@ -72,11 +72,13 @@ dialog{border:0;border-radius:24px;padding:0;width:min(900px,96vw);max-height:92
 </div></dialog>
 
 <script src="/lab/nav.js"></script>
+<script>try{if(!localStorage.getItem('fb.admin.token')&&localStorage.getItem('fb.client.token'))document.documentElement.dataset.labClient='1'}catch{}</script>
 <script src="/console-nav.js" defer></script>
 <script>
 'use strict';
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)],esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const TOKEN=()=>{try{return localStorage.getItem('fb.admin.token')||''}catch{return ''}};
+const TOKEN=()=>{try{return localStorage.getItem('fb.admin.token')||localStorage.getItem('fb.client.token')||''}catch{return ''}}; // staff sign in at the work console; a client with the Design Lab on their room signs in at their hub
+const CLIENT_MODE=()=>{try{return !localStorage.getItem('fb.admin.token')&&Boolean(localStorage.getItem('fb.client.token'))}catch{return false}};
 async function api(path,o={}){const r=await fetch(path,{method:o.method||(o.body?'POST':'GET'),headers:{Authorization:'Bearer '+TOKEN(),...(o.body?{'Content-Type':'application/json'}:{})},body:o.body?JSON.stringify(o.body):undefined});const j=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(new Error(j.error||`Request failed (${r.status})`),{status:r.status});return j}
 const BLOBS=new Map();async function blobUrl(path){if(BLOBS.has(path))return BLOBS.get(path);const p=fetch(path,{headers:{Authorization:'Bearer '+TOKEN()}}).then(r=>{if(!r.ok)throw new Error('The picture could not be loaded');return r.blob()}).then(b=>URL.createObjectURL(b));BLOBS.set(path,p);p.catch(()=>BLOBS.delete(path));return p}
 const fileUrl=f=>new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(r.result);r.onerror=no;r.readAsDataURL(f)});

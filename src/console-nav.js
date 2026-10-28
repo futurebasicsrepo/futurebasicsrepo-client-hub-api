@@ -339,5 +339,7 @@ body.fbcollapsed .fbside a{justify-content:center;padding:10px}body.fbcollapsed 
     }
   }
   window.fbNav = { badge: badges, startTechPack };
+  const labClient = () => { try { return document.documentElement.dataset.labClient === '1' || (location.pathname.startsWith('/lab') && !localStorage.getItem('fb.admin.token') && Boolean(localStorage.getItem('fb.client.token'))); } catch { return false; } };
+  if (labClient()) return; // a client in the Design Lab: their hub is their home, not the console
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount); else mount();
 })();

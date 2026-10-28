@@ -145,6 +145,36 @@ A job runs every six hours and reads up to three brands that have not been read 
 | `LAB_DAILY_PLANS` | how many assistant-drafted plans can be made in 24 hours (default 10) |
 | `LAB_WEB_QUERIES`, `LAB_IMAGE_QUERIES` | searches per brand when falling back (default 4 and 3) |
 
+## Self-serve: a client's room buys the Lab
+
+A client can open the Design Lab on their own room, from the hub, for a fixed price plus a metered part (`src/lab-access.js`, `src/lab-selfserve-routes.js`).
+
+**What they get.** The studio, the flats and the libraries, on their own work: line plans, concepts, the studio, flats, the graphics they draw or upload, their fonts, the decoration quotes they record. Tech packs are included while the Lab is open (a photo pack is never locked for a room with the Lab: its `billing` reads `lab`). The research side (the brands we watch, the pieces we found, what's moving, the brand code), the Future Basics taste, the client list, and the edits of the shared libraries (materials, techniques, the technique samples) stay Future Basics only.
+
+**How the price works: fixed + variable.** A fee opens the Lab for a period and includes a handful of AI generations. Past them each generation is metered: a picture counts as one, the on-model views one each, a walk four, a 3D try-on three (`UNITS`). The unbilled part is invoiced in rounds (a Shopify draft order tagged `fb-design-lab-ai`, emailed to the client, also on their hub card) once it reaches the billing round; generations pause when the room owes more than the cap, and continue once the open invoice is paid. Each access row keeps the numbers it was sold at, so a price change never moves a live room.
+
+**Buying it.** The hub's Design Lab card shows the offer and opens a Shopify checkout (a draft order tagged `fb-design-lab`). The payment sync recognises the order by its tag and opens the Lab; the hub's "I have paid" asks straight away. With Shopify not connected, the card says payments are not set up, and staff open the Lab from the room instead (**Give access** on the client's room in the console, with the days, the included generations, the price and the cap as fields when they should differ). Staff can also end it, invoice the unbilled generations now, and mark an invoice paid by other means.
+
+**Scoping.** Every Lab route runs the gate (`labAccess.gate`) instead of `adminOnly`: staff pass as before; a client passes while their access is live and then `req.lab.clientId` scopes the lists (plans, concepts, graphics, fonts, decoration quotes) and the gate checks that the `:id` in the url (a concept, a plan, a graphic, a font, a quote, a poll) belongs to their room. `client_id` is kept on `lab_concepts`, `lab_art`, `lab_fonts` and `lab_decor_quotes` by triggers from the plan, so a plan moved to a client carries its concepts and artwork with it.
+
+**Estimates.** Every cost the Lab shows a client (the plan's cost column, the decoration costs on the flats and the decoration sheet, the studio check, the tech pack's cost block) says it is an estimate: the factory's quote confirms it.
+
+**Make it.** On a client's tech pack a **Make it** tab offers two ways to production: **Ask Future Basics to make this** (a request with a quantity and a note; it lands on Production attention in the console and emails the team; staff answer it from the client's room: *we are pricing it*, *order placed*, or *decline*, each with a word to the client), and **Send it to your own factory** (a private quotation link to the published pack, with the quote form, emailed to the factory if an address is given; what the factory sends back shows on the tab; up to twelve links open at a time). An unpublished pack cannot be sent out: Future Basics reviews it first.
+
+**Pages.** The Lab pages accept the client's hub token (`fb.client.token`) as well as the staff one; in client mode the research side and the console's side menu are gone, the Lab's own menu leads back to the hub, and the technique editor is hidden. The hub has a **Design Lab** link and card (the offer, or the meter and the open invoices). The public pricing page carries the Lab as a third design tier, from `/v1/pricing`.
+
+| Setting | |
+| --- | --- |
+| `DESIGN_LAB_SELF_SERVE` | `off` hides the offer and refuses the checkout (staff can still give access) |
+| `DESIGN_LAB_PRICE_CENTS` | the fee (default 49900) |
+| `DESIGN_LAB_DAYS` | the period (default 90) |
+| `DESIGN_LAB_INCLUDED_AI` | generations included (default 40) |
+| `DESIGN_LAB_AI_PRICE_CENTS` | a generation past them (default 250) |
+| `DESIGN_LAB_AI_BILL_AT_CENTS` | the billing round (default 2500) |
+| `DESIGN_LAB_AI_UNPAID_CAP_CENTS` | generations pause past this much owed (default 15000; 0 for no cap) |
+
+Routes: `GET /v1/client/lab`, `POST /v1/client/lab/checkout`, `POST /v1/client/lab/landed`, `POST /v1/client/lab/invoices/:id/landed`, `GET /v1/client/lab/usage`; `GET /v1/products/:id/make`, `POST /v1/products/:id/make-request`, `POST|DELETE /v1/products/:id/quote-links[/:sid]`; staff `GET|PATCH /v1/admin/clients/:id/lab` (`comp`, `end`, `bill`), `POST /v1/admin/lab/invoices/:id/paid`, `GET|PATCH /v1/admin/make-requests[/:id]`. Tables: `lab_access`, `lab_ai_usage`, `lab_ai_invoices`, `make_requests`. Tests: `test/lab-access.test.js`, journey J232.
+
 ## Where it lives
 
 | | |
