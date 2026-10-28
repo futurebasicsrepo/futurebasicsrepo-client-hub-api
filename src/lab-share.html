@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>Design review</title>
+<link rel="icon" href="/icons/icon-192.png">
+<style>
+@import url('/fonts/fonts.css');
+:root{--ink:#141416;--paper:#fff;--fog:#f5f5f2;--dim:#727278;--line:rgba(20,20,22,.14);--cue:#4bff9a;--ok:#17603a;--bad:#a02a20}
+*{box-sizing:border-box}html{background:var(--fog)}
+body{margin:0;color:var(--ink);font:400 15px/1.5 'Space Grotesk',system-ui,sans-serif;background:var(--fog);min-height:100vh}
+button,input,textarea{font:inherit;color:inherit}a{color:inherit}.hidden{display:none!important}
+header{height:72px;background:rgba(20,20,22,.96);color:#fff;padding:0 clamp(16px,4vw,48px);display:flex;align-items:center;gap:14px;position:sticky;top:0;z-index:20}
+.wordmark{display:flex;align-items:center;gap:12px;position:relative;text-decoration:none;color:inherit;text-transform:uppercase;letter-spacing:.08em}
+.wordmark:after{content:"";position:absolute;left:0;bottom:-7px;width:64px;height:2px;background:var(--cue)}
+.brand-logo{display:block;width:200px;max-width:34vw;height:auto;max-height:30px}.brand-suffix{font:500 10px 'IBM Plex Mono',monospace;white-space:nowrap}
+main{max-width:1100px;margin:0 auto;padding:22px clamp(14px,3vw,36px) 90px}
+h1{font-size:clamp(26px,4vw,38px);letter-spacing:-.035em;font-weight:500;margin:4px 0;line-height:1.05}h2{font-size:18px;font-weight:500;letter-spacing:-.02em;margin:0 0 8px}
+.note{color:var(--dim);font-size:13px;margin:0}.mono{font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}
+.panel{background:#fff;border:1px solid var(--line);border-radius:20px;padding:18px}
+.btn{border:1px solid var(--ink);background:#fff;color:var(--ink);border-radius:999px;padding:8px 16px;font-weight:500;cursor:pointer;display:inline-flex;align-items:center;gap:8px;min-height:38px}.btn.go{background:var(--ink);color:#fff}.btn.q{border-color:var(--line)}.btn.sm{padding:5px 12px;min-height:32px;font-size:13px}.btn[aria-pressed=true]{background:var(--ink);color:var(--cue)}
+.t{width:100%;border:1px solid var(--line);border-radius:12px;padding:9px 12px;background:#fff;min-height:40px}textarea.t{min-height:80px;resize:vertical}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.two{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(300px,.9fr);gap:20px;align-items:start}@media(max-width:820px){.two{grid-template-columns:1fr}}
+.chip{font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.06em;text-transform:uppercase;border-radius:999px;padding:3px 10px;background:var(--fog);color:var(--dim);white-space:nowrap}
+.view{position:relative;background:#fff;border:1px solid var(--line);border-radius:16px;overflow:hidden;display:grid;place-items:center}.view img{display:block;width:100%;height:auto}
+.view.pinning{cursor:crosshair}.view.pinning:after{content:"Click where the comment belongs";position:absolute;left:10px;top:10px;background:rgba(20,20,22,.85);color:#fff;border-radius:999px;padding:3px 10px;font-size:12px}
+.pin{position:absolute;width:24px;height:24px;margin:-12px 0 0 -12px;border-radius:50%;background:var(--ink);color:var(--cue);font:600 11px 'IBM Plex Mono',monospace;display:grid;place-items:center;box-shadow:0 2px 10px rgba(0,0,0,.3);border:2px solid #fff;cursor:pointer}.pin.done{background:#8d8d93;color:#fff}.pin.new{background:var(--bad);color:#fff}
+.cm{display:grid;gap:8px}.c{border-top:1px solid var(--line);padding-top:8px;font-size:14px}.c b{margin-right:6px}.c time{color:var(--dim);font-size:12px}.c .n{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--ink);color:var(--cue);font:600 10px 'IBM Plex Mono',monospace;margin-right:6px;vertical-align:-4px}.c.done{opacity:.55}
+.msg{font-size:13px;color:var(--dim)}.msg.ok{color:var(--ok)}.msg.bad{color:var(--bad)}
+.cws{display:flex;gap:8px;flex-wrap:wrap}.cws span{display:inline-flex;align-items:center;gap:6px;font-size:13px}.cws i{width:18px;height:18px;border-radius:50%;border:1px solid rgba(0,0,0,.2)}
+</style>
+<script src="/feedback.js"></script>
+</head>
+<body>
+<header><a class="wordmark" href="https://thefuturebasics.com" aria-label="Future Basics"><img class="brand-logo" src="https://thefuturebasics.com/cdn/shop/files/future_basics_true_vector_fixed.svg?v=1775278873&amp;width=360" alt="Future Basics"><span class="brand-suffix">/ Design review</span></a></header>
+<main>
+  <div id="gone" class="panel hidden"><h1>This link is not open</h1><p class="note" id="goneWhy"></p></div>
+  <div id="app" class="hidden">
+    <span class="mono" id="who"></span><h1 id="name"></h1>
+    <p class="note" id="desc"></p>
+    <div class="two" style="margin-top:16px">
+      <div style="display:grid;gap:14px">
+        <div><div class="row" style="justify-content:space-between;margin-bottom:6px"><h2 style="margin:0">The piece</h2><span class="chip" id="stat"></span></div><div class="view" id="vPic"><span class="note" style="padding:40px">No picture yet</span></div></div>
+        <div id="flatsBox" class="hidden"><h2>The flats</h2><div class="view" id="vFlats"></div><p class="note">Front and back, measured. Click a spot to pin a comment there.</p></div>
+        <div id="cwBox" class="hidden"><h2>Colourways</h2><div class="cws" id="cws"></div></div>
+      </div>
+      <div class="panel" style="display:grid;gap:12px;position:sticky;top:86px">
+        <h2 style="margin:0">Comments</h2>
+        <div class="cm" id="cm"></div>
+        <div style="display:grid;gap:8px;border-top:1px solid var(--line);padding-top:10px">
+          <input class="t" id="cName" placeholder="Your name" maxlength="60" aria-label="Your name">
+          <textarea class="t" id="cBody" placeholder="What should change, or what you like" maxlength="1000" aria-label="Comment"></textarea>
+          <div class="row"><button class="btn sm" type="button" id="pinBtn" aria-pressed="false">Pin it to a spot</button><span class="note" id="pinNote">No pin: a general comment</span></div>
+          <div class="row"><button class="btn go" type="button" id="send">Send the comment</button><span class="msg" id="msg" role="status"></span></div>
+          <p class="note">This link is for looking and commenting. Future Basics makes the changes and sends the next version.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+<script>
+'use strict';
+const $=s=>document.querySelector(s),esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const TOKEN=location.pathname.split('/lab/share/')[1]||'',API=`/v1/lab/share/${encodeURIComponent(TOKEN)}`;
+async function api(path,o={}){const r=await fetch(path,{method:o.method||(o.body?'POST':'GET'),headers:o.body?{'Content-Type':'application/json'}:{},body:o.body?JSON.stringify(o.body):undefined});const j=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(new Error(j.error||`Request failed (${r.status})`),{status:r.status});return j}
+const when=d=>{try{return new Date(d).toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}catch{return ''}};
+let D=null,PIN=null,PINNING=false;
+function pinsHtml(on){const list=D.comments.filter(c=>c.pin&&c.pin.on===on);return list.map(c=>`<span class="pin ${c.resolvedAt?'done':''}" style="left:${c.pin.x*100}%;top:${c.pin.y*100}%" title="${esc(c.name)}: ${esc(c.body)}" data-cid="${c.id}">${D.comments.indexOf(c)+1}</span>`).join('')+(PIN&&PIN.on===on?`<span class="pin new" style="left:${PIN.x*100}%;top:${PIN.y*100}%">+</span>`:'')}
+function paint(){
+  const c=D.concept;$('#who').textContent=`For ${D.label} · ${c.category}`;$('#name').textContent=c.name;$('#desc').textContent=[c.twist,c.description,c.fabric?'Fabric: '+c.fabric:'',...(c.details||[])].filter(Boolean).join(' · ');
+  $('#stat').textContent=c.status==='tech_pack'?'In the tech pack':c.status==='approved'?'Approved':'In design';
+  const vp=$('#vPic');if(c.hasImage&&!vp.querySelector('img')){vp.innerHTML=`<img src="${API}/image?t=${Date.now()}" alt="${esc(c.name)}">`}
+  for(const p of vp.querySelectorAll('.pin'))p.remove();vp.insertAdjacentHTML('beforeend',pinsHtml('picture'));
+  if(c.hasFlats){$('#flatsBox').classList.remove('hidden');const vf=$('#vFlats');if(!vf.querySelector('img'))vf.innerHTML=`<img src="${API}/flats.svg" alt="The flats">`;for(const p of vf.querySelectorAll('.pin'))p.remove();vf.insertAdjacentHTML('beforeend',pinsHtml('flats'))}
+  if(c.colourways?.length){$('#cwBox').classList.remove('hidden');$('#cws').innerHTML=c.colourways.map(w=>`<span><i style="background:${esc(w.hex)}"></i>${esc(w.name||w.hex)}${w.pantone?` <span class="mono" style="letter-spacing:.04em">${esc(w.pantone)}</span>`:''}</span>`).join('')}
+  $('#cm').innerHTML=D.comments.length?D.comments.map((x,i)=>`<div class="c ${x.resolvedAt?'done':''}">${x.pin?`<span class="n" title="Pinned on the ${esc(x.pin.on)}">${i+1}</span>`:''}<b>${esc(x.name)}</b>${esc(x.body)} <time>${esc(when(x.at))}</time>${x.resolvedAt?' <span class="chip">done</span>':''}</div>`).join(''):'<span class="note">No comments yet. Yours is the first.</span>';
+  $('#pinNote').textContent=PIN?`Pinned on the ${PIN.on} at ${Math.round(PIN.x*100)}% across, ${Math.round(PIN.y*100)}% down`:'No pin: a general comment';
+  $('#vPic').classList.toggle('pinning',PINNING);$('#vFlats').classList.toggle('pinning',PINNING);
+}
+for(const [sel,on] of [['#vPic','picture'],['#vFlats','flats']])$(sel).addEventListener('click',e=>{if(e.target.closest('.pin')){const id=e.target.closest('.pin').dataset.cid;const c=D.comments.find(x=>String(x.id)===id);if(c){FBN.toast(`${c.name}: ${c.body}`,'info')}return}
+  if(!PINNING)return;const img=$(sel).querySelector('img');if(!img)return;const r=img.getBoundingClientRect();PIN={on,x:Math.min(1,Math.max(0,(e.clientX-r.left)/r.width)),y:Math.min(1,Math.max(0,(e.clientY-r.top)/r.height))};PINNING=false;$('#pinBtn').setAttribute('aria-pressed','false');paint();$('#cBody').focus()});
+$('#pinBtn').onclick=()=>{if(PIN){PIN=null;PINNING=false}else PINNING=!PINNING;$('#pinBtn').setAttribute('aria-pressed',String(PINNING));$('#pinBtn').textContent=PIN?'Take the pin off':PINNING?'Click the picture…':'Pin it to a spot';paint()};
+$('#send').onclick=async()=>{const b=$('#send'),m=$('#msg');FBN.begin(b);try{const name=$('#cName').value.trim();try{localStorage.setItem('fb.review.name',name)}catch{}
+  const r=await api(`${API}/comments`,{body:{name,body:$('#cBody').value,pin:PIN}});D.comments.push(r.comment);$('#cBody').value='';PIN=null;$('#pinBtn').textContent='Pin it to a spot';paint();FBN.end(b,true);m.className='msg ok';m.textContent='Sent. Future Basics has it.'}catch(x){FBN.end(b,false);m.className='msg bad';m.textContent=x.message}};
+(async()=>{try{D=await api(API);try{$('#cName').value=localStorage.getItem('fb.review.name')||''}catch{}$('#app').classList.remove('hidden');paint()}catch(x){$('#gone').classList.remove('hidden');$('#goneWhy').textContent=x.message+'. Ask Future Basics for a new link.'}})();
+</script>
+</body>
+</html>

@@ -241,6 +241,12 @@ The design packages show **Quoted** until their prices are set in the service's 
 
 Packs made from the design service skip the per-pack paywall. They are billed as part of the design work, through Money and Agreements like any project.
 
+## Reviewing together
+
+- **Comments pinned to a spot.** In the concept window, press **Pin to a spot**, click the picture, write the comment. Pins are numbered to the comments; a comment is marked **Done** once dealt with (and can be reopened). A client in their hub, and anyone on a review link, can pin too.
+- **Studio versions.** Every picture used as the concept is kept as a version, and **Keep this as a version** keeps one on purpose (the last forty). **Versions** in the studio lists them; tick two to see them side by side with a wipe; **Open its layers** puts an old version back on the canvas to carry on from.
+- **A view-only link.** In the concept window, **Share for review** makes a link for the client, the factory or anyone (7, 30 or 90 days). It opens without a sign-in (`/lab/share/<token>`): the piece, the flats, the colourways and the comments; they add comments, pinned or not, under their name; nothing on it can change the design. The link is shown once; **Turn off** stops it. Opens are counted. Comments left on a link reach the team by email and show on the concept with "(client)" or "(factory)".
+
 ## Graphics: where they come from and where they go
 
 A graphic can start in four places, and every one of them ends in the **graphics library** (`/lab/library`), so it can be used on any piece later:
@@ -308,6 +314,7 @@ Each guide offers the next one when it ends. The client's own guides for tech pa
 | J216 | The design service: a client's line, shared, with verdicts, replies, privacy, and the tech pack in the client's room. Includes the hub in a browser |
 | J217 | The whole loop over HTTP: concept → tech pack → publish → factory → sample sent → review → version 2 → the factory sees the corrections and the next sample |
 | J218 | The factory views and writes in Messages: no buttons (acknowledge, quote, countersign, sample sent all refused), the team records the shipped sample, the corrections go out as v2 while v1 is kept exactly, flats sent unchanged make no version, flats changed go out as v3. Includes the factory page in a browser |
+| J223 | Reviewing together: pinned comments, done and reopened; studio versions kept on use and on purpose, two side by side with a wipe, an old one's layers reopened; a view-only link for the factory and the client: opens without sign-in, takes a pinned comment, cannot change anything, stops when turned off. Over HTTP and in a browser |
 | J222 | Materials, trims and tags: the library and its tags drawn to size; picks on a concept with the cost breakdown and margin; colourways with Pantones on the board; the BOM, labels and colourways on the tech pack; the studio's fabric picker. Over HTTP and in a browser |
 | J221 | The job file: a library graphic made as plastisol (inks, films, underbase, halftone, mesh), as embroidery (threads, stitch, backing, stitch count), as a patch (cut line, edge) and as a transfer (mirrored); the zip and its contents; the summary and download in a browser from the library and from the tech pack's artwork card |
 | J220 | Graphics anywhere: a graphic built in the library's studio (AI drawing, a sketch-pack part as a layer), kept with its layers, reworked and updated; a part from the pack on a concept in the studio; a library graphic onto any product's tech pack as artwork placed on the front, over HTTP and in a browser |
@@ -318,6 +325,7 @@ Each guide offers the next one when it ends. The client's own guides for tech pa
 **Unit tests:**
 - `test/lab-flats.test.js`: every sketch in the pack (its file, thumbnail and views), the new styles, the sketch's own proportions, the add-on parts, and the edits;
 - `test/lab-handoff.test.js`: what the flats give the pack;
+- `test/lab-share.test.js`: pins and the link token;
 - `test/lab-materials.test.js`: the starting set, cleaning, the tag drawing, the costing, and what the pack takes;
 - `test/lab-jobfile.test.js`: the job file per technique (separations, underbase, films, settings, stitch count, cut line, the zip);
 - `test/sample-review.test.js`: reviews and the next version.

@@ -168,10 +168,41 @@ export function registerLabStudioRoutes(app, d) {
       const back = c.status === 'approved';
       await client.query(`update lab_concepts set image=$2, thumb=$3, raw=null, image_note='', status=$4, override_reason=case when $5 then '' else override_reason end, updated_at=now() where id=$1`, [c.id, image, thumb, back ? 'draft' : c.status, back]);
       await client.query('delete from lab_concept_views where concept_id=$1', [c.id]); // the flats and the on-model views were drawn from the old picture
+      await keepVersion(client, c.id, { image, thumb, doc: req.body?.doc, note: clip(req.body?.note, 160) || 'Used as the concept picture', applied: true, by: actorOf(req) });
       await client.query('commit');
       await note(c.id, req, back ? 'Picture finished in the studio. It was approved, so it is back to draft to be approved again.' : 'Picture finished in the studio.');
       return { ok: true, status: back ? 'draft' : c.status };
     } catch (e) { await client.query('rollback').catch(() => {}); throw e; } finally { client.release(); }
+  });
+
+  // ---- versions: every picture applied, and any the team asks to keep, so two can be put side by side ----
+  const keepVersion = async (q, conceptId, { image, thumb, doc, note = '', applied = false, by = null }) => {
+    const n = Number((await q.query('select coalesce(max(n),0)+1 n from lab_studio_versions where concept_id=$1', [conceptId])).rows[0].n);
+    await q.query(`insert into lab_studio_versions(concept_id, n, doc, jpeg, thumb, note, applied, created_by) values($1,$2,$3,$4,$5,$6,$7,$8)`, [conceptId, n, (doc && typeof doc === 'object' && cleanDoc(doc).doc) || {}, image, thumb, note, applied, by]);
+    await q.query('delete from lab_studio_versions where concept_id=$1 and n <= (select max(n) from lab_studio_versions where concept_id=$1) - 40', [conceptId]); // the last forty
+    return n;
+  };
+  app.get('/v1/lab/concepts/:id/studio/versions', { preHandler: pre }, async (req, reply) => {
+    const c = await concept(req, reply); if (!c) return;
+    const rows = (await pool.query(`select v.n, v.note, v.applied, v.created_at, (v.doc->'layers') is not null layered, coalesce(nullif(u.name,''), split_part(u.email,'@',1)) by_name from lab_studio_versions v left join users u on u.id=v.created_by where v.concept_id=$1 order by v.n desc`, [c.id])).rows;
+    return { versions: rows.map(r => ({ n: r.n, note: r.note, applied: r.applied, at: r.created_at, by: r.by_name || '', hasLayers: Boolean(r.layered) })) };
+  });
+  app.post('/v1/lab/concepts/:id/studio/versions', { preHandler: pre, bodyLimit: 32_000_000 }, async (req, reply) => {
+    const c = await concept(req, reply); if (!c) return;
+    const buf = pictureOf(req.body?.image); if (!buf) return bad(reply, 'Send the picture to keep');
+    let image, thumb; try { image = await sharp(buf).flatten({ background: '#ffffff' }).resize({ width: 2048, height: 2048, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 88 }).toBuffer(); thumb = await sharp(image).resize({ width: 420, height: 420, fit: 'inside' }).jpeg({ quality: 72 }).toBuffer(); } catch { return bad(reply, 'The picture could not be read'); }
+    const n = await keepVersion(pool, c.id, { image, thumb, doc: req.body?.doc, note: clip(req.body?.note, 160) || 'Kept from the studio', by: actorOf(req) });
+    return reply.code(201).send({ n });
+  });
+  app.get('/v1/lab/concepts/:id/studio/versions/:n', { preHandler: pre }, async (req, reply) => {
+    const c = await concept(req, reply); if (!c) return; const n = Number(req.params.n); if (!Number.isInteger(n)) return bad(reply, 'Not found', 404);
+    const r = (await pool.query('select doc, note, applied, created_at from lab_studio_versions where concept_id=$1 and n=$2', [c.id, n])).rows[0]; if (!r) return bad(reply, 'Not found', 404);
+    return { n, doc: r.doc && Array.isArray(r.doc.layers) && r.doc.layers.length ? r.doc : null, note: r.note, applied: r.applied, at: r.created_at };
+  });
+  app.get('/v1/lab/concepts/:id/studio/versions/:n/image', { preHandler: pre }, async (req, reply) => {
+    const c = await concept(req, reply); if (!c) return; const n = Number(req.params.n); if (!Number.isInteger(n)) return bad(reply, 'Not found', 404);
+    const r = (await pool.query('select jpeg, thumb from lab_studio_versions where concept_id=$1 and n=$2', [c.id, n])).rows[0]; if (!r) return bad(reply, 'Not found', 404);
+    return reply.header('content-type', 'image/jpeg').header('cache-control', 'private, max-age=86400, immutable').send(req.query?.thumb ? r.thumb : r.jpeg);
   });
 
   app.post('/v1/lab/concepts/:id/studio/restore', { preHandler: pre }, async (req, reply) => {

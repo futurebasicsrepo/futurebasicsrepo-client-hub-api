@@ -58,6 +58,7 @@ import { registerLabViewRoutes } from './lab-view-routes.js';
 import { registerLabStudioRoutes } from './lab-studio-routes.js';
 import { registerLabLibraryRoutes } from './lab-library-routes.js';
 import { registerLabMaterialsRoutes } from './lab-materials-routes.js';
+import { registerLabShareRoutes } from './lab-share-routes.js';
 import { labHandoff } from './lab-handoff.js';
 import { registerLabClientRoutes } from './lab-client-routes.js';
 import { registerLabFlatsRoutes } from './lab-flats-routes.js';
@@ -680,6 +681,7 @@ registerLabViewRoutes(app, { pool, authenticate, adminOnly, log: app.log });
 registerLabStudioRoutes(app, { pool, authenticate, adminOnly });
 registerLabLibraryRoutes(app, { pool, authenticate, adminOnly, art: labArt, log: app.log });
 registerLabMaterialsRoutes(app, { pool, authenticate, adminOnly, log: app.log });
+registerLabShareRoutes(app, { pool, authenticate, adminOnly, log: app.log, notifyStaff, sheetSvg: id => labFlats.sheetSvg(id) });
 const labFlats = registerLabFlatsRoutes(app, { pool, authenticate, adminOnly, log: app.log, attachArtwork: (productId, items) => attachLabArtwork(productId, items), applyHandoff: (productId, h) => applyLabHandoff(productId, h), packChanges: async productId => { const t=(await pool.query('select data,published_data from tech_packs where product_id=$1 order by created_at desc limit 1',[productId])).rows[0]; return t?.published_data?packDiff(normalizeTechPack(t.published_data),normalizeTechPack(t.data)).filter(c=>!/ picture$/.test(c.label)&&!(c.section==='Artwork'&&/^(Spec sheet|Technical flat)/.test(c.label))):null; } /* the flats are drawn again each time they are sent: a new picture alone is no change, and a changed drawing always changes its measurements, construction lines or colours too */ });
 registerLabClientRoutes(app, { pool, authenticate, adminOnly, log: app.log, sheetSvg: id => labFlats.sheetSvg(id), notifyStaff, notifyClientContact, hubUrl: () => clientHubUrl });
 const money=registerMoneyRoutes(app, { pool, authenticate, adminOnly, getSetting, setSetting, tokenSeal: sealer(process.env), stateSecret: process.env.JWT_SECRET || 'dev', workUrl: workHubUrl, log: app.log,
@@ -716,6 +718,7 @@ app.get('/home', sendWorkHome); // the work console's home: leads, prototypes, p
 app.get('/lab', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').type('text/html').send(readFileSync(new URL('./lab.html', import.meta.url), 'utf8')));
 app.get('/lab/studio', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').type('text/html').send(readFileSync(new URL('./lab-studio.html', import.meta.url), 'utf8')));
 app.get('/lab/library', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').type('text/html').send(readFileSync(new URL('./lab-library.html', import.meta.url), 'utf8')));
+app.get('/lab/share/:token', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').header('referrer-policy', 'no-referrer').type('text/html').send(readFileSync(new URL('./lab-share.html', import.meta.url), 'utf8')));
 app.get('/lab/materials', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').type('text/html').send(readFileSync(new URL('./lab-materials.html', import.meta.url), 'utf8')));
 app.get('/lab/lab-tags.js', (_req, reply) => reply.header('cache-control', 'public, max-age=300').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-tags.js', import.meta.url), 'utf8')));
 app.get('/lab/flats', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').type('text/html').send(readFileSync(new URL('./lab-flats.html', import.meta.url), 'utf8')));

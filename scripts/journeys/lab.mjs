@@ -1226,6 +1226,66 @@ await journey('J222', 'Materials, trims and tags: the library (fabrics with weig
   } finally { await cleanup(brands, plan.plan?.id); }
 });
 
+await journey('J223', 'Reviewing together: a comment pinned to a spot on the picture, resolved when dealt with; the studio keeps versions (every picture used, any kept on purpose) and shows two side by side with a wipe, and opens an old one\'s layers; a view-only link for a client or a factory opens without a sign-in, shows the piece, the flats and the comments, takes a pinned comment and cannot change anything; a turned-off or expired link stops', async () => {
+  const { brands, plan } = await conceptSetup();
+  try {
+    const line = plan.lines.find(l => l.category === 'tops') || plan.lines[0], c = (await K(`/plans/${plan.plan.id}/lines/${line.id}/concepts`, { body: { count: 1 } })).json.concepts[0];
+    // pins
+    const p1 = await K(`/concepts/${c.id}/comments`, { body: { body: 'Lower this pocket by an inch', pin: { on: 'picture', x: 0.62, y: 0.55 } } }); ok(p1.status === 201 && p1.json.pin?.x === 0.62, '1. a comment is pinned to a spot on the picture', p1.json);
+    await K(`/concepts/${c.id}/comments`, { body: { body: 'General: love the colour' } });
+    let d = (await K(`/concepts/${c.id}`)).json; ok(d.comments.length === 2 && d.comments[0].pin?.on === 'picture' && d.comments[1].pin === null && !d.comments[0].resolvedAt, '   the concept lists it with its pin, the other without');
+    ok((await K(`/concepts/${c.id}/comments/${d.comments[0].id}/resolve`, { body: { resolved: true } })).json.resolved === true && (await K(`/concepts/${c.id}`)).json.comments[0].resolvedAt, '   marked done once dealt with');
+    ok((await K(`/concepts/${c.id}/comments/${d.comments[0].id}/resolve`, { body: { resolved: false } })).json.resolved === false, '   and reopened');
+    // versions
+    const png = await sharp({ create: { width: 640, height: 640, channels: 4, background: { r: 200, g: 40, b: 40, alpha: 1 } } }).png().toBuffer(), png2 = await sharp({ create: { width: 640, height: 640, channels: 4, background: { r: 40, g: 60, b: 200, alpha: 1 } } }).png().toBuffer();
+    const doc = { w: 640, h: 640, layers: [{ id: 'bg', kind: 'base' }, { id: 't', kind: 'text', text: 'V ONE' }] };
+    const k1 = await K(`/concepts/${c.id}/studio/versions`, { body: { image: `data:image/png;base64,${png.toString('base64')}`, doc, note: 'first idea' } }); ok(k1.status === 201 && k1.json.n === 1, '2. a version is kept from the studio on purpose', k1.json);
+    const ap = await K(`/concepts/${c.id}/studio/apply`, { body: { image: `data:image/png;base64,${png2.toString('base64')}`, doc: { ...doc, layers: [...doc.layers, { id: 'u', kind: 'text', text: 'V TWO' }] } } }); ok(ap.status === 200, '   a picture used as the concept is kept as a version too', ap.json);
+    const vs = (await K(`/concepts/${c.id}/studio/versions`)).json.versions; ok(vs.length === 2 && vs[0].n === 2 && vs[0].applied === true && vs[1].n === 1 && vs[1].note === 'first idea' && vs.every(v => v.hasLayers), '   both listed, newest first, the used one marked', vs);
+    const v1 = (await K(`/concepts/${c.id}/studio/versions/1`)).json; ok(v1.doc?.layers?.length === 2 && v1.doc.layers[1].text === 'V ONE', '   an old version gives back its layers to carry on from');
+    const im = await fetch(`${BASE}/v1/lab/concepts/${c.id}/studio/versions/2/image?thumb=1`, { headers: { Authorization: 'Bearer ' + kyleT } }); ok(im.status === 200 && im.headers.get('content-type') === 'image/jpeg', '   and its picture');
+    ok((await K(`/concepts/${c.id}/studio/versions/9`)).status === 404, '   a version that is not there is 404');
+    // share links
+    const sh = await K(`/concepts/${c.id}/shares`, { body: { audience: 'factory', label: 'Sun Garment', days: 7 } }); ok(sh.status === 201 && /\/lab\/share\/[A-Za-z0-9_-]{20,}$/.test(sh.json.share.url) && sh.json.share.audience === 'factory', '3. a view-only link is made for the factory', sh.json);
+    const url = sh.json.share.url, token = url.split('/lab/share/')[1], S = (path, o = {}) => call(`/v1/lab/share/${token}${path}`, o);
+    const listed = (await K(`/concepts/${c.id}/shares`)).json.shares; ok(listed.length === 1 && listed[0].url === null && listed[0].opens === 0, '   the link is shown once; the list keeps its label and opens, not the link');
+    const pub = await S(''); ok(pub.status === 200 && pub.json.concept.name === c.name && pub.json.audience === 'factory' && pub.json.label === 'Sun Garment' && pub.json.comments.length === 1 && pub.json.comments[0].pin, '4. it opens without a sign-in: the piece and the pinned comment (the general staff note stays in-house)', pub.json);
+    ok((await K(`/concepts/${c.id}/shares`)).json.shares[0].opens === 1, '   the opening is counted');
+    const pc = await S('/comments', { body: { name: 'Mr Lin', body: 'The pocket bag needs 2 cm more', pin: { on: 'picture', x: 0.3, y: 0.7 } } }); ok(pc.status === 201 && pc.json.comment.name === 'Mr Lin (factory)' && pc.json.comment.pin.y === 0.7, '5. the factory pins a comment of its own', pc.json);
+    ok((await S('/comments', { body: { name: 'M', body: 'x' } })).status === 422, '   without a name or words it is refused');
+    d = (await K(`/concepts/${c.id}`)).json; ok(d.comments.some(x => x.via === 'share' && x.name === 'Mr Lin (factory)' && x.pin?.x === 0.3), '   staff see it on the concept with its pin');
+    ok((await call(`/v1/lab/share/${token}/image`)).status === 200 || !pub.json.concept.hasImage, '   the picture is served on the link');
+    ok((await call(`/v1/lab/share/${token}`, { method: 'PUT', body: {} })).status === 404 && (await call(`/v1/lab/share/${token}/studio`, { body: {} })).status === 404, '   nothing on the link can change the design');
+    ok((await K(`/concepts/${c.id}/shares/${sh.json.share.id}`, { method: 'DELETE' })).json.ok === true && (await S('')).status === 410, '6. turned off, the link stops');
+    ok((await call('/v1/lab/share/not-a-real-token-at-all-0000')).status === 404, '   a made-up link is not found');
+    const sh2 = (await K(`/concepts/${c.id}/shares`, { body: { audience: 'client', days: 30 } })).json.share, token2 = sh2.url.split('/lab/share/')[1];
+    if (playwright) {
+      const b = await playwright.chromium.launch();
+      try {
+        const pub2 = await b.newPage(), errs = []; pub2.on('pageerror', e => errs.push(String(e)));
+        await pub2.goto(`${BASE}/lab/share/${token2}`, { waitUntil: 'networkidle' }); await pub2.waitForSelector('#app:not(.hidden)');
+        ok((await pub2.innerText('#name')) === c.name && (await pub2.locator('#cm .c').count()) >= 2 && (await pub2.locator('#vPic .pin').count()) >= 1, '7. in a browser the review page shows the piece, the comments and the pins, with no sign-in', await pub2.innerText('#who'));
+        await pub2.fill('#cName', 'Ana'); await pub2.fill('#cBody', 'Make the sleeve longer'); await pub2.click('#pinBtn'); const img = pub2.locator('#vPic img'); const bb = await img.boundingBox(); await pub2.mouse.click(bb.x + bb.width * 0.8, bb.y + bb.height * 0.2);
+        ok(/Pinned on the picture at 80% across, 20% down/.test(await pub2.innerText('#pinNote')), '   a spot is picked on the picture', await pub2.innerText('#pinNote'));
+        await pub2.click('#send'); await pub2.waitForFunction(() => /Sent\./.test(document.querySelector('#msg').textContent), null, { timeout: 10000 });
+        ok(/Ana \(client\)/.test(await pub2.innerText('#cm')) && (await pub2.locator('#vPic .pin').count()) >= 2, '   the comment is sent and pinned', (await pub2.innerText('#cm')).slice(0, 160));
+        ok(!errs.length, '   no page errors on the review page', errs);
+        const oc = await b.newContext({ viewport: { width: 1440, height: 950 } }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
+        const page = await oc.newPage(), errs2 = []; page.on('pageerror', e => errs2.push(String(e)));
+        await page.goto(`${BASE}/lab#board`, { waitUntil: 'networkidle' }); await page.waitForSelector('#app:not(.hidden)'); await page.waitForSelector(`.cc[data-cid="${c.id}"]`, { timeout: 20000 }); await page.click(`.cc[data-cid="${c.id}"]`);
+        await page.waitForSelector('#cd .big .pin', { timeout: 20000 }); ok((await page.locator('#cd .big .pin').count()) >= 3 && (await page.locator('#cd .cm .c .n').count()) >= 3, '8. the concept window shows every pin on the picture, numbered to the comments');
+        await page.waitForFunction(() => /For the client/.test(document.querySelector('#shrIn')?.textContent || ''), null, { timeout: 15000 }); ok(/Turn off/.test(await page.innerText('#shrIn')), '   and the review links with a Turn off');
+        await page.click('#cd [data-cclose]');
+        await page.goto(`${BASE}/lab/studio?concept=${c.id}`, { waitUntil: 'networkidle' }); await page.waitForSelector('#app:not(.hidden)'); await page.click('#verBtn'); await page.waitForSelector('#verList [data-vn="2"]', { timeout: 15000 });
+        ok((await page.locator('#verList [data-vn]').count()) === 2, '9. the studio lists both versions'); await page.check('[data-vsel="1"]'); await page.check('[data-vsel="2"]'); await page.waitForSelector('#verCmp:not(.hidden)');
+        await page.evaluate(() => { const r = document.querySelector('#verWipe'); r.value = '30'; r.dispatchEvent(new Event('input', { bubbles: true })); }); ok(/70%/.test(await page.evaluate(() => document.querySelector('#verB').style.clipPath)), '   two side by side with the wipe');
+        await page.click('[data-vopen="1"]'); await page.waitForFunction(() => /Version 1 is on the canvas/.test(document.body.textContent), null, { timeout: 15000 }); ok(await page.evaluate(() => LAYERS.some(l => l.text === 'V ONE')), '   an old version opens with its layers to carry on from');
+        ok(!errs2.length, 'no page errors', errs2);
+      } finally { await b.close(); }
+    }
+  } finally { await cleanup(brands, plan.plan?.id); }
+});
+
 await journey('J218', 'The factory views and writes in Messages; the team makes the corrections: the factory has no buttons on its link (it cannot acknowledge, quote, countersign or mark a sample sent), it writes that the proto shipped, the team records it, reviews the sample, and the corrections go out as version 2 while version 1 stays exactly as it was; flats sent again become version 3', async () => {
   const { brands, plan } = await conceptSetup(); await import('../../src/sample-review.js'); const FBSample = globalThis.FBSample;
   const A = (path, o = {}) => call(path, { token: kyleT, ...o });

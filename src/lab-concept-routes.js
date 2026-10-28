@@ -10,6 +10,7 @@ import { ask as realAsk, providerReady } from './intel-llm.js';
 import { categoryLabel } from './lab.js';
 import { createLabData } from './lab-data.js';
 import { generateConcepts, artworkFiles, renderConcept, finishConcept, aiOpinion, closeness, cleanConceptEdit, productBrief, ensureBranding, LOGO_MARKS, LOGO_TECHNIQUES, GRAPHIC_PLACE, GRAPHIC_TECHNIQUES, PRODUCT_TYPES } from './lab-concepts.js';
+import { cleanPin } from './lab-share-routes.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const clip = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
@@ -112,7 +113,7 @@ export function registerLabConceptRoutes(app, d) {
   app.get('/v1/lab/concepts/:id', { preHandler: pre }, async (req, reply) => {
     if (!needId(req, reply)) return;
     const c = await one(req.params.id); if (!c) return bad(reply, 'Not found', 404);
-    const comments = (await pool.query(`select id, name, body, at, by_client from lab_concept_comments where concept_id=$1 order by at, id`, [c.id])).rows.map(r => ({ id: Number(r.id), byClient: r.by_client, name: r.by_client ? `${r.name} (client)` : r.name, body: r.body, at: r.at }));
+    const comments = (await pool.query(`select id, name, body, at, by_client, via, pin, resolved_at from lab_concept_comments where concept_id=$1 order by at, id`, [c.id])).rows.map(r => ({ id: Number(r.id), byClient: r.by_client, via: r.via || '', pin: r.pin || null, resolvedAt: r.resolved_at || null, name: r.by_client && r.via !== 'share' ? `${r.name} (client)` : r.name, body: r.body, at: r.at }));
     const parent = c.parentId ? (await pool.query('select id, name from lab_concepts where id=$1', [c.parentId])).rows[0] : null;
     return { concept: c, comments, parent: parent ? { id: parent.id, name: parent.name } : null };
   });
@@ -151,7 +152,9 @@ export function registerLabConceptRoutes(app, d) {
     if (!needId(req, reply)) return;
     const body = clip(req.body?.body, 1000); if (!body) return bad(reply, 'Write a comment first');
     if (!(await pool.query('select 1 from lab_concepts where id=$1', [req.params.id])).rowCount) return bad(reply, 'Not found', 404);
-    await note(req.params.id, req, body); return reply.code(201).send({ ok: true });
+    const pin = cleanPin(req.body?.pin); // pinned to a spot on the picture or the flats
+    const r = (await pool.query(`insert into lab_concept_comments(concept_id,user_id,name,body,pin) values($1,$2,$3,$4,$5) returning id`, [req.params.id, actorOf(req), await nameOf(req), body, pin ? JSON.stringify(pin) : null])).rows[0];
+    return reply.code(201).send({ ok: true, id: Number(r.id), pin });
   });
 
   app.post('/v1/lab/concepts/:id/approve', { preHandler: pre }, async (req, reply) => {
