@@ -67,6 +67,8 @@ import { labHandoff } from './lab-handoff.js';
 import { registerLabClientRoutes } from './lab-client-routes.js';
 import { registerLabFlatsRoutes } from './lab-flats-routes.js';
 import { createArtService, registerLabArtRoutes } from './lab-art-routes.js';
+import { createLabAccess } from './lab-access.js';
+import { registerLabSelfServeRoutes } from './lab-selfserve-routes.js';
 import { purgeOld as labPurge } from './lab-scan.js';
 import { runDue as intelRunDue, scorePending as intelScore, loadSettings as intelSettings, purgeOld as intelPurge } from './intel-engine.js';
 import { registerBuildRoutes, seedBuilds, ensureHostedBuilds, backfillBuildRepos, moveBuildRepos, syncBuilds } from './builds-routes.js';
@@ -676,21 +678,29 @@ const protos=registerProtoRoutes(app, { pool, authenticate, adminOnly, throttle,
 registerIntelRoutes(app, { pool, authenticate, adminOnly, getSetting, setSetting, throttle, log: app.log });
 // The Design Lab (the Lab module on Team access). Under the journeys its shop reads go to the same stand-in server as the prototypes, with no pause between requests.
 const labArt=createArtService(pool,{log:app.log}); // the graphics the image model draws for the Lab, one at a time
-registerLabArtRoutes(app, { pool, authenticate, adminOnly, art: labArt });
-const lab=registerLabRoutes(app, { pool, authenticate, adminOnly, getSetting, setSetting, log: app.log, art: labArt,
+// Self-serve: a client's room buys Design Lab access (fixed fee, a handful of AI generations included, the rest metered). Staff pass the gate as before;
+// a client passes while their access is live, and from then on every Lab query is scoped to their own plans, concepts, graphics and fonts (src/lab-access.js).
+const labAccess=createLabAccess({ pool, log: app.log, clientHubUrl,
+  shopify: { configured: shopifyConfigured, graphql: shopifyGraphql, DRAFT_ORDER_CREATE, requireNoUserErrors, pollDraftOrderPaid: id => pollDraftOrderPaid(id) },
+  recordPayment: p => recordPayment(pool, { ...p, currency: 'USD', orderName: '', source: 'lab' }),
+  onActivate: clientId => unlockWaitingPacks(clientId), notifyClient: (clientId, m) => notifyClientContact(clientId, m) });
+const labGate=labAccess.gate, labDeps={ authenticate, adminOnly: labGate, staffOnly: adminOnly, lab: labAccess };
+registerLabArtRoutes(app, { pool, ...labDeps, art: labArt });
+const lab=registerLabRoutes(app, { pool, ...labDeps, getSetting, setSetting, log: app.log, art: labArt,
   ...(process.env.PROTOTYPE_TEST_ORIGIN ? { delayMs: 0, crawlOpts: { lookup: async () => [{ address: '93.184.216.34' }], fetchImpl: (u, o) => { const x = new URL(u); return fetch(process.env.PROTOTYPE_TEST_ORIGIN + x.pathname + x.search, { ...o, headers: { ...(o && o.headers), 'x-original-host': x.hostname } }); } } } : {}) });
 // Concepts: an approved one becomes a product in the Future Basics room, with its tech pack drafted from the concept (createClientProduct, shared with the console).
 const learnLabTaste = () => learnTaste({ pool, getSetting, setSetting });
-const labConcepts = registerLabConceptRoutes(app, { pool, authenticate, adminOnly, getSetting, learn: learnLabTaste, log: app.log, art: labArt, createProduct: args => createClientProduct(args), attachArtwork: (productId, items) => attachLabArtwork(productId, items), sendFlats: (id, productId) => labFlats.sendToPack(id, productId), flatsCheck: id => labFlats.startCheck(id) });
-registerLabViewRoutes(app, { pool, authenticate, adminOnly, log: app.log });
-registerLabStudioRoutes(app, { pool, authenticate, adminOnly });
-registerLabLibraryRoutes(app, { pool, authenticate, adminOnly, art: labArt, log: app.log });
-registerLabMaterialsRoutes(app, { pool, authenticate, adminOnly, log: app.log });
-registerLabShareRoutes(app, { pool, authenticate, adminOnly, log: app.log, notifyStaff, sheetSvg: id => labFlats.sheetSvg(id) });
-registerLabTryonRoutes(app, { pool, authenticate, adminOnly, log: app.log });
-registerLabRangeRoutes(app, { pool, authenticate, adminOnly, getSetting, setSetting, editConcept: (...a) => labConcepts.editConcept(...a), notifyStaff, log: app.log });
-const labFlats = registerLabFlatsRoutes(app, { pool, authenticate, adminOnly, log: app.log, attachArtwork: (productId, items) => attachLabArtwork(productId, items), applyHandoff: (productId, h) => applyLabHandoff(productId, h), packChanges: async productId => { const t=(await pool.query('select data,published_data from tech_packs where product_id=$1 order by created_at desc limit 1',[productId])).rows[0]; return t?.published_data?packDiff(normalizeTechPack(t.published_data),normalizeTechPack(t.data)).filter(c=>!/ picture$/.test(c.label)&&!(c.section==='Artwork'&&/^(Spec sheet|Technical flat)/.test(c.label))):null; } /* the flats are drawn again each time they are sent: a new picture alone is no change, and a changed drawing always changes its measurements, construction lines or colours too */ });
+const labConcepts = registerLabConceptRoutes(app, { pool, ...labDeps, getSetting, learn: learnLabTaste, log: app.log, art: labArt, createProduct: args => createClientProduct(args), attachArtwork: (productId, items) => attachLabArtwork(productId, items), sendFlats: (id, productId) => labFlats.sendToPack(id, productId), flatsCheck: id => labFlats.startCheck(id) });
+registerLabViewRoutes(app, { pool, ...labDeps, log: app.log });
+registerLabStudioRoutes(app, { pool, ...labDeps });
+registerLabLibraryRoutes(app, { pool, ...labDeps, art: labArt, log: app.log });
+registerLabMaterialsRoutes(app, { pool, ...labDeps, log: app.log });
+registerLabShareRoutes(app, { pool, ...labDeps, log: app.log, notifyStaff, sheetSvg: id => labFlats.sheetSvg(id) });
+registerLabTryonRoutes(app, { pool, ...labDeps, log: app.log });
+registerLabRangeRoutes(app, { pool, ...labDeps, getSetting, setSetting, editConcept: (...a) => labConcepts.editConcept(...a), notifyStaff, log: app.log });
+const labFlats = registerLabFlatsRoutes(app, { pool, ...labDeps, log: app.log, attachArtwork: (productId, items) => attachLabArtwork(productId, items), applyHandoff: (productId, h) => applyLabHandoff(productId, h), packChanges: async productId => { const t=(await pool.query('select data,published_data from tech_packs where product_id=$1 order by created_at desc limit 1',[productId])).rows[0]; return t?.published_data?packDiff(normalizeTechPack(t.published_data),normalizeTechPack(t.data)).filter(c=>!/ picture$/.test(c.label)&&!(c.section==='Artwork'&&/^(Spec sheet|Technical flat)/.test(c.label))):null; } /* the flats are drawn again each time they are sent: a new picture alone is no change, and a changed drawing always changes its measurements, construction lines or colours too */ });
 registerLabClientRoutes(app, { pool, authenticate, adminOnly, log: app.log, sheetSvg: id => labFlats.sheetSvg(id), notifyStaff, notifyClientContact, hubUrl: () => clientHubUrl, learn: learnLabTaste });
+registerLabSelfServeRoutes(app, { pool, authenticate, adminOnly, lab: labAccess, clientHubUrl, workHubUrl, notifyStaff, notifyClientContact, sendHubEmail, hubEmailShell, replyTo: intakeNotificationEmail, log: app.log });
 const money=registerMoneyRoutes(app, { pool, authenticate, adminOnly, getSetting, setSetting, tokenSeal: sealer(process.env), stateSecret: process.env.JWT_SECRET || 'dev', workUrl: workHubUrl, log: app.log,
   // product development is paid through a Shopify checkout (a draft order for the amount due), see money-routes.js
   shopifyInvoiceLink: async ({ title, amountCents, currency, email, note, number }) => {
@@ -775,7 +785,7 @@ app.get('/pricing',(_req,reply)=>reply.header('cache-control','no-store, max-age
 // the design service's packages (Design Lab work for a client): a price shows only when one is set, otherwise the page says "Quoted"
 const designPrice=v=>{const n=Number(v);return Number.isFinite(n)&&n>0?Math.round(n):null};
 app.get('/v1/pricing',async(_req,reply)=>{const p=techPackPricing();return reply.header('cache-control','public, max-age=60').send({single:p.single,membership:p.membership?{amountCents:p.membership.amountCents,currency:p.membership.currency,period:p.membership.period,url:p.membership.url}:null,billing:billingOn(),
-  design:{pieceCents:designPrice(process.env.DESIGN_PIECE_PRICE_CENTS),lineCents:designPrice(process.env.DESIGN_LINE_PRICE_CENTS),contactUrl:process.env.DESIGN_CONTACT_URL||'https://thefuturebasics.com/pages/contact'}})});
+  design:{pieceCents:designPrice(process.env.DESIGN_PIECE_PRICE_CENTS),lineCents:designPrice(process.env.DESIGN_LINE_PRICE_CENTS),contactUrl:process.env.DESIGN_CONTACT_URL||'https://thefuturebasics.com/pages/contact'},lab:labAccess.pricing()})});
 // Account sign-up without a tech pack: a short form that opens a hub room straight away (see POST /v1/public/join).
 app.get('/join',(_req,reply)=>reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./join.html',import.meta.url),'utf8')));
 // The same page on a short address for texting: /j, or /j/kyle with the sender's name on it (and kept on the room as where it came from).
@@ -3418,11 +3428,12 @@ async function membershipActive(client,q=pool){
   return Boolean(until&&until>new Date());
 }
 // Why this client may run the assistant on this pack: 'free' (first photo draft, or billing off), 'comped', 'client'
-// (a paid invoice in the room), 'member', or 'locked' (the pack must be paid for).
+// (a paid invoice in the room), 'member', 'lab' (the Design Lab is open on the room), or 'locked' (the pack must be paid for).
 async function techPackEntitlement(clientId,packId,q=pool){
   if(!billingOn())return 'free';
   const client=(await q.query('select * from clients where id=$1',[clientId])).rows[0];if(!client)return 'free'; // a room being created in this very transaction: its first pack
   if(client.tech_pack_comped)return 'comped';
+  if(await labAccess.active(client.id))return 'lab'; // the Design Lab is open on the room: tech packs come with it
   // a failed read does not use up the free pack — the client is asked for a better photo, not for money
   const prior=(await q.query(`select count(*)::int n from tech_packs where client_id=$1 and id<>$2 and (ai_status in ('pending','done','skipped') or paid_at is not null)`,[clientId,packId])).rows[0].n;
   if(prior===0)return 'free';
@@ -3511,6 +3522,7 @@ async function runPaymentSync(){
         const r=await recordPayment(pool,{clientId:client.id,productId:p.productId&&pack?p.productId:null,techPackId:pack?.id||null,kind:p.kind,title:p.title,amountCents:p.amountCents,currency:p.currency,orderId:p.orderId,orderName:p.orderName,paidAt:p.paidAt,source:'sync'});
         if(r.inserted||r.changed){imported++;touched.add(client.id)}
         if(await markPackPaidFromOrder(p,client.id)){unlocked++;touched.add(client.id)}
+        if(p.kind==='design-lab'||p.kind==='design-lab-ai'){try{if(await labAccess.fromOrder(p,client.id))touched.add(client.id)}catch(e){app.log.warn({err:e.message,order:p.orderId},'design lab payment not applied')}}
       }
       after=page.pageInfo?.hasNextPage?page.pageInfo.endCursor:null;pages++;
     }while(after&&pages<10);

@@ -398,6 +398,81 @@ export async function migrate() {
       created_at timestamptz not null default now()
     );
     create index if not exists lab_decor_quotes_tech on lab_decor_quotes(technique_id, created_at desc);
+    -- Self-serve Design Lab: a client's room opens the Lab for a period, with some AI generations included and the rest metered (src/lab-access.js).
+    -- Everything a client makes in the Lab carries their client_id, so they see their own work and nothing else; staff see all of it.
+    alter table lab_concepts add column if not exists client_id uuid references clients(id) on delete set null;
+    alter table lab_art add column if not exists client_id uuid references clients(id) on delete set null;
+    alter table lab_fonts add column if not exists client_id uuid references clients(id) on delete cascade;
+    alter table lab_decor_quotes add column if not exists client_id uuid references clients(id) on delete set null;
+    create index if not exists lab_concepts_client on lab_concepts(client_id);
+    create index if not exists lab_art_client on lab_art(client_id);
+    create or replace function lab_concept_client() returns trigger language plpgsql as $$
+      begin if new.plan_id is not null then select client_id into new.client_id from lab_plans where id=new.plan_id; end if; return new; end $$;
+    drop trigger if exists lab_concepts_client on lab_concepts;
+    create trigger lab_concepts_client before insert or update of plan_id on lab_concepts for each row execute function lab_concept_client();
+    create or replace function lab_art_client() returns trigger language plpgsql as $$
+      begin
+        if new.client_id is null and new.concept_id is not null then select client_id into new.client_id from lab_concepts where id=new.concept_id; end if;
+        if new.client_id is null and new.plan_id is not null then select client_id into new.client_id from lab_plans where id=new.plan_id; end if;
+        return new;
+      end $$;
+    drop trigger if exists lab_art_client on lab_art;
+    create trigger lab_art_client before insert on lab_art for each row execute function lab_art_client();
+    create or replace function lab_plan_client_cascade() returns trigger language plpgsql as $$
+      begin
+        update lab_concepts set client_id=new.client_id where plan_id=new.id;
+        update lab_art set client_id=new.client_id where plan_id=new.id or concept_id in (select id from lab_concepts where plan_id=new.id);
+        return null;
+      end $$;
+    drop trigger if exists lab_plans_client_cascade on lab_plans;
+    create trigger lab_plans_client_cascade after update of client_id on lab_plans for each row execute function lab_plan_client_cascade();
+    update lab_concepts c set client_id=p.client_id from lab_plans p where c.plan_id=p.id and c.client_id is distinct from p.client_id;
+    update lab_art a set client_id=coalesce((select client_id from lab_concepts where id=a.concept_id),(select client_id from lab_plans where id=a.plan_id)) where a.client_id is null and (a.concept_id is not null or a.plan_id is not null);
+    create table if not exists lab_access (
+      id uuid primary key default gen_random_uuid(),
+      client_id uuid not null references clients(id) on delete cascade,
+      status text not null default 'pending' check (status in ('pending','active','ended')),
+      source text not null default 'shopify' check (source in ('shopify','comped','dev')),
+      fee_cents int not null default 0,
+      days int not null default 90,
+      included_ai int not null default 40,
+      ai_price_cents int not null default 250,
+      unpaid_cap_cents int,
+      starts_at timestamptz,
+      ends_at timestamptz,
+      pay_draft_order_id text,
+      pay_invoice_url text,
+      pay_order_id text,
+      paid_at timestamptz,
+      ended_at timestamptz,
+      created_by uuid references users(id) on delete set null,
+      created_at timestamptz not null default now()
+    );
+    create index if not exists lab_access_client on lab_access(client_id, status, ends_at desc);
+    create table if not exists lab_ai_usage ( -- every AI generation in the Lab: whose (null for staff), what kind, how many units it counts for
+      id bigserial primary key,
+      client_id uuid references clients(id) on delete cascade,
+      access_id uuid references lab_access(id) on delete set null,
+      user_id uuid references users(id) on delete set null,
+      kind text not null,
+      units int not null default 1,
+      concept_id uuid references lab_concepts(id) on delete set null,
+      created_at timestamptz not null default now()
+    );
+    create index if not exists lab_ai_usage_client on lab_ai_usage(client_id, created_at desc);
+    create table if not exists lab_ai_invoices ( -- generations past the included ones, billed in rounds
+      id uuid primary key default gen_random_uuid(),
+      client_id uuid not null references clients(id) on delete cascade,
+      access_id uuid references lab_access(id) on delete set null,
+      units int not null,
+      amount_cents int not null,
+      draft_order_id text,
+      invoice_url text,
+      order_id text,
+      paid_at timestamptz,
+      created_at timestamptz not null default now()
+    );
+    create index if not exists lab_ai_invoices_client on lab_ai_invoices(client_id, created_at desc);
     do $$ begin
       if exists(select 1 from pg_constraint where conname='lab_art_plan_id_fkey' and confdeltype='c') then
         alter table lab_art drop constraint lab_art_plan_id_fkey; alter table lab_art add constraint lab_art_plan_id_fkey foreign key (plan_id) references lab_plans(id) on delete set null;
@@ -944,6 +1019,20 @@ export async function migrate() {
       created_at timestamptz not null default now(),
       updated_at timestamptz not null default now()
     );
+    create table if not exists make_requests ( -- "ask Future Basics to make this": a client's request for us to produce a tech pack
+      id uuid primary key default gen_random_uuid(),
+      client_id uuid not null references clients(id) on delete cascade,
+      product_id uuid not null references products(id) on delete cascade,
+      tech_pack_id uuid references tech_packs(id) on delete set null,
+      qty int,
+      note text not null default '',
+      status text not null default 'requested' check (status in ('requested','quoting','declined','done')),
+      reply text not null default '',
+      handled_by uuid references users(id) on delete set null,
+      handled_at timestamptz,
+      created_at timestamptz not null default now()
+    );
+    create index if not exists make_requests_open on make_requests(status, created_at desc);
     alter table tech_packs add column if not exists verification jsonb not null default '{}';
     alter table tech_packs add column if not exists locked_at timestamptz;
     alter table tech_packs add column if not exists initiated_by text not null default 'brand';

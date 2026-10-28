@@ -15,7 +15,8 @@ const clip = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
 const STALE_MIN = 20; // a view still "pending" after this long was lost to a restart: it shows as failed and can be made again
 
 export function registerLabViewRoutes(app, d) {
-  const { pool, authenticate, adminOnly, env = process.env, imageCfg = () => imageConfig(env), videoCfg = () => videoConfig(env), fetchImpl = fetch, edit, log = console } = d;
+  const { pool, authenticate, adminOnly, env = process.env, imageCfg = () => imageConfig(env), videoCfg = () => videoConfig(env), fetchImpl = fetch, edit, lab = null, log = console } = d;
+  const own = req => lab?.scope?.(req) || null, charge = async (req, o) => (lab ? lab.charge(req, o) : null); // a client's room: its own concepts, its AI meter
   const pre = [authenticate, adminOnly], bad = (reply, error, code = 422, extra = {}) => reply.code(code).send({ error, ...extra });
   const needId = (req, reply) => UUID.test(req.params.id) || (bad(reply, 'Not found', 404), false);
   const running = new Set(), queue = []; let working = false, idleWaiters = [];
@@ -63,9 +64,10 @@ export function registerLabViewRoutes(app, d) {
     const q = req.query || {}, where = [], args = [];
     if (UUID.test(String(q.plan || ''))) { args.push(q.plan); where.push(`c.plan_id=$${args.length}`); }
     if (q.status === 'approved') where.push(`c.status in ('approved','tech_pack')`); else if (q.status !== 'all') where.push(`c.status <> 'rejected'`);
+    if (own(req)) { args.push(own(req)); where.push(`c.client_id=$${args.length}`); }
     const rows = (await pool.query(`${SELECT} ${where.length ? 'where ' + where.join(' and ') : ''} order by c.category, c.role, c.created_at desc limit 150`, args)).rows;
     const vs = new Map(); for (const r of (await pool.query(`select concept_id, kind, status, note, (updated_at < now() - make_interval(mins => $2)) stale from lab_concept_views where concept_id = any($1::uuid[])`, [rows.map(r => r.id), STALE_MIN])).rows) { if (!vs.has(r.concept_id)) vs.set(r.concept_id, {}); vs.get(r.concept_id)[r.kind] = { status: r.status === 'pending' && r.stale && !running.has(r.concept_id) ? 'failed' : r.status, note: r.note }; }
-    const plans = (await pool.query(`select id, name from lab_plans order by created_at desc limit 40`)).rows;
+    const plans = (await pool.query(`select id, name from lab_plans where ($1::uuid is null or client_id=$1) order by created_at desc limit 40`, [own(req)])).rows;
     const vid = videoCfg(), img = imageCfg();
     return {
       concepts: rows.map(r => ({ id: r.id, colourways: cleanColourways(r.spec?.colourways), materials: Array.isArray(r.spec?.materials) ? r.spec.materials.length : 0, name: r.name, category: r.category, categoryLabel: categoryLabel(r.category), role: r.role, status: r.status, price: r.price_cents == null ? null : r.price_cents / 100, twist: r.twist, planId: r.plan_id, planName: r.plan_name || '', closeness: r.closeness?.verdict || null, hasPicture: r.has_picture, views: vs.get(r.id) || {}, kinds: kindsFor(r.category), canWalk: canWalk(r.category) })),
@@ -96,6 +98,7 @@ export function registerLabViewRoutes(app, d) {
     const asked = Array.isArray(req.body?.kinds) ? req.body.kinds.filter(isKind) : KIND_IDS, kinds = asked.filter(k => kindsFor(c.category).includes(k));
     if (!kinds.length) return bad(reply, 'Nothing to make for this kind of piece.');
     const left = await imageCapLeft(kinds.length); if (left !== true) return bad(reply, `The daily limit of ${left} views is reached. Raise LAB_DAILY_VIEWS.`, 429);
+    try { await charge(req, { kind: 'view', units: kinds.length, conceptId: c.id }); } catch (e) { return bad(reply, e.message, e.status || 500, e.meter ? { code: e.code, meter: e.meter } : {}); }
     const n = await startViews(c, kinds, { redo: Boolean(req.body?.redo) });
     return reply.code(202).send({ started: n, views: await summary(c.id) });
   });
@@ -105,12 +108,14 @@ export function registerLabViewRoutes(app, d) {
     const where = [`c.image is not null`, `c.status <> 'rejected'`], args = [];
     if (Array.isArray(req.body?.ids) && req.body.ids.length) { args.push(req.body.ids.filter(i => UUID.test(String(i))).slice(0, 60)); where.push(`c.id = any($${args.length}::uuid[])`); }
     else if (UUID.test(String(req.body?.plan || ''))) { args.push(req.body.plan); where.push(`c.plan_id=$${args.length}`); }
+    if (own(req)) { args.push(own(req)); where.push(`c.client_id=$${args.length}`); }
     const rows = (await pool.query(`select c.id, c.name, c.category, c.twist, c.spec from lab_concepts c where ${where.join(' and ')} order by c.created_at desc limit 60`, args)).rows;
     const have = new Set((await pool.query(`select concept_id||':'||kind k from lab_concept_views where concept_id = any($1::uuid[]) and (status='ready' or (status='pending' and updated_at > now() - make_interval(mins => $2)))`, [rows.map(r => r.id), STALE_MIN])).rows.map(r => r.k));
     const jobs = rows.map(r => ({ r, kinds: kindsFor(r.category).filter(k => !have.has(`${r.id}:${k}`)) })).filter(j => j.kinds.length);
     const total = jobs.reduce((a, j) => a + j.kinds.length, 0);
     if (!total) return { queued: 0, concepts: 0, views: 0 };
     const left = await imageCapLeft(total); if (left !== true) return bad(reply, `That would make ${total} views and the daily limit is ${left}. Raise LAB_DAILY_VIEWS, or pick fewer concepts.`, 429);
+    try { await charge(req, { kind: 'view', units: total }); } catch (e) { return bad(reply, e.message, e.status || 500, e.meter ? { code: e.code, meter: e.meter } : {}); }
     let started = 0; for (const j of jobs) started += await startViews(j.r, j.kinds);
     return reply.code(202).send({ queued: started, concepts: jobs.length, views: total });
   });
@@ -123,6 +128,7 @@ export function registerLabViewRoutes(app, d) {
     const front = (await pool.query(`select image from lab_concept_views where concept_id=$1 and kind='model_front' and status='ready'`, [c.id])).rows[0]?.image;
     if (!front) return bad(reply, 'Make the on-model views first: the walk starts from the front view.', 409);
     const cap = Number(env.LAB_DAILY_WALKS ?? 6); if (cap >= 0 && (await dayCount(`kind = 'walk'`)) >= cap) return bad(reply, `The daily limit of ${cap} walks is reached. Raise LAB_DAILY_WALKS.`, 429);
+    try { await charge(req, { kind: 'walk', conceptId: c.id }); } catch (e) { return bad(reply, e.message, e.status || 500, e.meter ? { code: e.code, meter: e.meter } : {}); }
     await pool.query(`insert into lab_concept_views(concept_id,kind,status,note) values($1,'walk','pending','') on conflict (concept_id,kind) do update set status='pending', note='', created_at=case when lab_concept_views.status='ready' then now() else lab_concept_views.created_at end, updated_at=now()`, [c.id]);
     const ok = enqueue(`${c.id}:walk`, async () => {
       try { const w = await makeWalk({ concept: { name: c.name, category: c.category, spec: c.spec }, frame: front, cfg, fetchImpl, env }); await pool.query(`update lab_concept_views set status='ready', video=$2, mime=$3, model=$4, note='', updated_at=now() where concept_id=$1 and kind='walk'`, [c.id, w.video, w.mime, w.model || '']); }

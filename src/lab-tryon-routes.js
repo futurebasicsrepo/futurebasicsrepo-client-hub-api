@@ -18,7 +18,8 @@ export function glbInfo(buf) {
 }
 
 export function registerLabTryonRoutes(app, d) {
-  const { pool, authenticate, adminOnly, env = process.env, cfgImpl = () => meshConfig(env), log = console, pollMs = () => Number(env.MESH_POLL_MS) || 5000 } = d;
+  const { pool, authenticate, adminOnly, env = process.env, cfgImpl = () => meshConfig(env), log = console, pollMs = () => Number(env.MESH_POLL_MS) || 5000, lab = null } = d;
+  const charge = async (req, o) => (lab ? lab.charge(req, o) : null);
   const pre = [authenticate, adminOnly], bad = (reply, error, code = 422, extra = {}) => reply.code(code).send({ error, ...extra });
   const actorOf = req => (UUID.test(String(req.auth?.sub || '')) ? req.auth.sub : null);
   const shape = r => ({ id: r.id, status: r.status, source: r.source, error: r.error || '', triangles: r.triangles, textured: Boolean(r.textured), credits: r.credits == null ? null : Number(r.credits), hasModel: Boolean(r.has_model), hasThumb: Boolean(r.has_thumb), createdAt: r.created_at, completedAt: r.completed_at, provider: r.provider });
@@ -68,6 +69,7 @@ export function registerLabTryonRoutes(app, d) {
     if (open) return bad(reply, 'A model is already being made for this concept. Give it a minute.', 409, { id: open.id });
     const cap = Number(env.LAB_DAILY_TRYON ?? 8), n = Number((await pool.query(`select count(*)::int n from lab_concept_models where created_at > now() - interval '24 hours'`)).rows[0].n);
     if (cap >= 0 && n >= cap) return bad(reply, `The daily limit of ${cap} 3D try-ons is reached. It resets tomorrow, or raise LAB_DAILY_TRYON.`, 429);
+    try { await charge(req, { kind: 'tryon', conceptId: c.id }); } catch (e) { return bad(reply, e.message, e.status || 500, e.meter ? { code: e.code, meter: e.meter } : {}); }
     let image = null, source = 'concept';
     if (req.body?.image) { try { image = await photoForMesh(req.body.image); source = 'canvas'; } catch (e) { return bad(reply, `The picture could not be read: ${clip(e.message, 120)}`); } if (!image) return bad(reply, 'Send the picture as a PNG or JPEG data URL'); }
     else { const r = (await pool.query('select image from lab_concepts where id=$1', [c.id])).rows[0]; if (!r?.image) return bad(reply, 'This concept has no picture yet', 409); image = `data:image/jpeg;base64,${Buffer.from(r.image).toString('base64')}`; }

@@ -1992,5 +1992,108 @@ await journey('J231', 'From the studio to the factory: a graphic placed and meas
   } finally { await cleanup(brands, plan.plan?.id); }
 });
 
+await journey('J232', 'The self-serve Design Lab: a client room is locked out until the Lab is opened on it; then their plans, concepts and graphics are theirs alone and staff see everything; AI generations past the included ones are metered, invoiced and capped; tech packs come with it; a pack can go to their own factory for a quotation, or to Future Basics to make', async () => {
+  const { brands, plan: staffPlan, gen } = await conceptSetup(); ok(gen.status === 201, 'a staff plan to compare against', gen.json.error);
+  const email = `lab-client-${stamp}@selfserve.test`, started = await call('/v1/public/start', { body: { email, name: 'Self Serve', title: 'First tee', photos: [jpeg()] } });
+  const cid = started.json.client?.id || sql(`select client_id from users where lower(email)='${email}'`), uid = sql(`select id from users where lower(email)='${email}'`).split('\n')[0], slug = sql(`select slug from clients where id='${cid}'`).split('\n')[0];
+  sql(`update users set email_verified_at=now() where id='${uid}'`);
+  const clientT = await forge({ sub: uid, clientId: cid, client: slug, role: 'client', email }), C = (path, o = {}) => call('/v1/lab' + path, { token: clientT, ...o }), H = (path, o = {}) => call(path, { token: clientT, ...o }), A = (path, o = {}) => call(path, { token: kyleT, ...o });
+  try {
+    // locked out, with the offer
+    const locked = await C('/plans'); ok(locked.status === 403 && locked.json.code === 'LAB_LOCKED' && locked.json.pricing?.feeCents === 49900 && locked.json.pricing.includedAi === 40, 'a client room is locked out of the Lab, and told the price', [locked.status, locked.json]);
+    const offer = await H('/v1/client/lab'); ok(offer.status === 200 && offer.json.open === false && offer.json.access === null && offer.json.pricing.enabled === true && offer.json.pricing.days === 90 && offer.json.pricing.aiPriceCents === 250, 'the hub shows the offer: the fee, the days, what is included, the price past it', offer.json);
+    const co = await H('/v1/client/lab/checkout', { method: 'POST' }); ok(co.status === 503 && /Payments are not set up/.test(co.json.error), 'with no payments connected the checkout says so instead of pretending', [co.status, co.json.error]);
+    ok((await H('/v1/client/lab/landed', { method: 'POST' })).json.paid === false, 'nothing has landed');
+    const pricing = await call('/v1/pricing'); ok(pricing.json.lab?.feeCents === 49900 && pricing.json.lab.enabled === true, 'the public pricing carries the Lab');
+    const lockedPack = await H('/v1/tech-packs', { body: { title: 'Second · before the Lab', projectId: started.json.project.id, photos: [jpeg()] } }); ok(lockedPack.status === 201 && lockedPack.json.ai === 'locked', 'before the Lab, a second photo pack waits for payment as usual', [lockedPack.status, lockedPack.json.ai]);
+
+    // Future Basics opens it (free, with a small allowance so the meter can be seen working)
+    const comp = await A(`/v1/admin/clients/${cid}/lab`, { method: 'PATCH', body: { action: 'comp', includedAi: 2, aiPriceCents: 250, unpaidCapCents: 600 } });
+    ok(comp.status === 200 && comp.json.open === true && comp.json.access.source === 'comped' && comp.json.access.includedAi === 2 && comp.json.meter.used === 0 && comp.json.meter.left === 2, 'staff give access from the room: it opens at once with its own numbers', comp.json);
+    ok(sql(`select ai_status from tech_packs where id='${lockedPack.json.techPack?.id || lockedPack.json.id}'`).split('\n')[0] !== 'locked' || (await (async () => { for (let i = 0; i < 20; i++) { if (sql(`select ai_status from tech_packs where product_id='${lockedPack.json.product.id}'`).split('\n')[0] !== 'locked') return true; await new Promise(r => setTimeout(r, 300)); } return false; })()), 'the pack that was waiting for payment starts: tech packs come with the Lab');
+    const withLab = await H('/v1/tech-packs', { body: { title: 'Third · with the Lab', projectId: started.json.project.id, photos: [jpeg()] } }); ok(withLab.status === 201 && withLab.json.ai !== 'locked' && sql(`select billing from tech_packs where product_id='${withLab.json.product.id}'`).split('\n')[0] === 'lab', 'a new photo pack is not locked, and is marked as covered by the Lab', [withLab.json.ai, sql(`select billing from tech_packs where product_id='${withLab.json.product.id}'`)]);
+    ok((await A(`/v1/admin/clients/${cid}/lab`, { method: 'PATCH', body: { action: 'comp' } })).status === 200 && Number(sql(`select count(*) from lab_access where client_id='${cid}' and status='active'`)) === 1, 'giving it again replaces the period: one live access at a time');
+    await A(`/v1/admin/clients/${cid}/lab`, { method: 'PATCH', body: { action: 'comp', includedAi: 2, aiPriceCents: 250, unpaidCapCents: 600 } });
+
+    // their room, scoped
+    const ov = await C('/overview'); ok(ov.status === 200 && ov.json.client === true && ov.json.brands.length === 0 && ov.json.categories.length > 5 && ov.json.brandCode === null, 'the Lab opens for them without the research side', [ov.status, ov.json.brands?.length]);
+    ok((await C('/brands', { body: { name: 'X', url: 'https://x.test' } })).json.code === 'LAB_STAFF_ONLY' && (await C('/taste')).status === 403 && (await C('/clients')).status === 403 && (await C('/items')).status === 403 && (await C('/materials', { body: { name: 'M' } })).status === 403 && (await C('/library/techniques', { body: { name: 'T' } })).status === 403, 'the research, the taste, the client list and the shared libraries\' edits stay Future Basics only');
+    ok((await C('/materials')).status === 200 && (await C('/library/techniques')).status === 200, 'they read the shared materials and techniques');
+    ok((await C('/plans')).json.plans.length === 0 && (await C(`/plans/${staffPlan.plan.id}`)).status === 404 && (await C('/concepts')).json.concepts.length === 0, 'they see none of our plans or concepts, not even by id');
+    const mine = await C('/plans', { body: { name: 'My first line', season: 'SS28' } }); ok(mine.status === 201 && sql(`select client_id from lab_plans where id='${mine.json.plan.id}'`).split('\n')[0] === cid && /Self Serve/.test(sql(`select brand->>'name' from lab_plans where id='${mine.json.plan.id}'`)), 'a plan they make is theirs, in their brand', [mine.status, mine.json.error]);
+    const pid = mine.json.plan.id, line = await C(`/plans/${pid}/lines`, { body: { category: 'tops', role: 'core', name: 'Heavy tee', brief: 'a heavy cotton tee', price: 78 } }); ok(line.status === 201 || line.status === 200, 'they add a planned piece', line.json.error);
+    const lid = (line.json.lines || (await C(`/plans/${pid}`)).json.lines).find(l => l.name === 'Heavy tee').id;
+    ok((await K(`/plans/${pid}`)).status === 200 && (await K('/plans')).json.plans.some(p => p.id === pid), 'staff see their plan among all plans');
+    ok((await call(`/v1/lab/plans/${pid}`, { token: patT })).status === 403, 'a staff member without the Lab still has no way in');
+    const sl = staffPlan.lines[0], sg = await K(`/plans/${staffPlan.plan.id}/lines/${sl.id}/concepts`, { body: { count: 1 } }); ok(sg.status === 201, 'we make a concept of our own meanwhile', sg.json.error);
+
+    // the meter: 2 included, 250 a generation past them, generations pause at 600 owed
+    const g1 = await C(`/plans/${pid}/lines/${lid}/concepts`, { body: { count: 1 } }); ok(g1.status === 201 && g1.json.concepts.length === 1, 'they make a concept', g1.json.error);
+    ok(sql(`select client_id from lab_concepts where id='${g1.json.concepts[0].id}'`).split('\n')[0] === cid && sql(`select count(*) from lab_art where concept_id='${g1.json.concepts[0].id}' and client_id<>'${cid}'`) === '0', 'the concept and its artwork carry their room');
+    let st = (await H('/v1/client/lab')).json; ok(st.meter.used === 1 && st.meter.left === 1 && st.meter.owedCents === 0, 'the meter counts it: one of two included used', st.meter);
+    await C(`/plans/${pid}/lines/${lid}/concepts`, { body: { count: 1 } }); const g3 = await C(`/plans/${pid}/lines/${lid}/concepts`, { body: { count: 2 } }); ok(g3.status === 201, 'past the included ones generations keep going', g3.json.error);
+    st = (await H('/v1/client/lab')).json; ok(st.meter.used === 4 && st.meter.overUnits === 2 && st.meter.overCents === 500 && st.meter.unbilledCents === 500 && st.meter.owedCents === 500 && st.meter.blocked === false, 'two past the included ones, 500 owed and not yet invoiced', st.meter);
+    const g5 = await C(`/plans/${pid}/lines/${lid}/concepts`, { body: { count: 1 } }); ok(g5.status === 201, 'under the cap: one more', g5.json.error);
+    const g6 = await C(`/plans/${pid}/lines/${lid}/concepts`, { body: { count: 1 } }); ok(g6.status === 402 && /owes \$7\.50/.test(g6.json.error), 'at the cap the room is asked to pay before the next one', [g6.status, g6.json.error]);
+    const redraw = await C(`/concepts/${g1.json.concepts[0].id}/redraw`, { method: 'POST', body: {} }); ok(redraw.status === 402 && redraw.json.code === 'LAB_AI_CAP' && redraw.json.meter?.owedCents === 750, 'every kind of generation is held to it, with the meter in the answer', [redraw.status, redraw.json]);
+    const usage = await H('/v1/client/lab/usage'); ok(usage.json.usage.length === 4 && usage.json.usage.every(u => u.kind === 'concept') && usage.json.usage.reduce((a, u) => a + u.units, 0) === 5, 'the usage is listed, one line a generation');
+    const bill = await A(`/v1/admin/clients/${cid}/lab`, { method: 'PATCH', body: { action: 'bill' } }); ok(bill.status === 200 && bill.json.meter.invoices.length === 1 && bill.json.meter.invoices[0].amountCents === 750 && bill.json.meter.invoices[0].units === 3 && bill.json.meter.unbilledCents === 0 && bill.json.meter.unpaidCents === 750, 'staff invoice the unbilled generations: 3 at 2.50', bill.json.meter);
+    ok((await A(`/v1/admin/clients/${cid}/lab`, { method: 'PATCH', body: { action: 'bill' } })).status === 422, 'nothing left to invoice twice');
+    const inv = bill.json.meter.invoices[0]; ok((await H(`/v1/client/lab/invoices/${inv.id}/landed`, { method: 'POST' })).json.paid === false, 'not paid yet');
+    const paid = await A(`/v1/admin/lab/invoices/${inv.id}/paid`, { method: 'POST', body: { reference: 'check 1042' } }); ok(paid.status === 200 && paid.json.meter.owedCents === 0 && paid.json.meter.blocked === false && Number(sql(`select count(*) from payments where client_id='${cid}' and kind='design-lab-ai' and amount_cents=750`)) === 1, 'paid by other means: the room owes nothing and the ledger has it', paid.json.meter);
+    ok((await A(`/v1/admin/lab/invoices/${inv.id}/paid`, { method: 'POST', body: {} })).status === 404, 'an invoice is paid once');
+    ok((await C(`/plans/${pid}/lines/${lid}/concepts`, { body: { count: 1 } })).status === 201, 'and generations go on');
+    ok(Number(sql(`select count(*) from lab_ai_usage where client_id is null and created_at > now() - interval '10 minutes'`)) >= 1, 'staff generations are counted too, against no room');
+
+    // their concept becomes a tech pack in their room; then: make it
+    const concepts = (await C('/concepts')).json.concepts; ok(concepts.length === 6 && (await K('/concepts')).json.concepts.length > 6, 'they see their six concepts; staff see theirs and ours');
+    const c1 = concepts[0]; ok((await C(`/concepts/${c1.id}/approve`, { method: 'POST', body: {} })).status === 200, 'they approve one');
+    const tp = await C(`/concepts/${c1.id}/tech-pack`, { method: 'POST', body: {} }); ok(tp.status === 201 && sql(`select client_id from products where id='${tp.json.productId}'`).split('\n')[0] === cid, 'it becomes a tech pack in their own room', [tp.status, tp.json.error]);
+    const prod = tp.json.productId, mk0 = await H(`/v1/products/${prod}/make`); ok(mk0.status === 200 && mk0.json.published === false && mk0.json.requests.length === 0 && mk0.json.links.length === 0, 'Make it: nothing yet, and the pack is not published');
+    ok((await H(`/v1/products/${prod}/quote-links`, { body: { label: 'Acme' } })).status === 409, 'their factory cannot be sent an unpublished pack');
+    const ask = await H(`/v1/products/${prod}/make-request`, { body: { qty: 300, note: 'Ship to Philadelphia by March' } }); ok(ask.status === 201 && ask.json.request.status === 'requested' && ask.json.request.qty === 300, 'they ask Future Basics to make it', ask.json);
+    ok((await H(`/v1/products/${prod}/make-request`, { body: {} })).status === 409, 'one open request at a time');
+    const dash = await A('/v1/admin/dashboard'); ok(dash.json.queues.attention.some(x => x.key === `make:${ask.json.request.id}` && x.owner === 'us' && /Asked us to make/.test(x.title) && /300 units/.test(x.title)), 'it lands on Production attention', dash.json.queues.attention.map(x => x.key).slice(0, 5));
+    ok((await A('/v1/admin/make-requests')).json.requests.some(r => r.id === ask.json.request.id && r.clientName === started.json.client.name), 'and on the list');
+    const quoting = await A(`/v1/admin/make-requests/${ask.json.request.id}`, { method: 'PATCH', body: { status: 'quoting', reply: 'Two factories are pricing it' } }); ok(quoting.status === 200 && quoting.json.request.status === 'quoting', 'we say we are pricing it');
+    ok((await H(`/v1/products/${prod}/make`)).json.requests[0].reply === 'Two factories are pricing it', 'they read the reply on the pack');
+    ok((await A(`/v1/admin/make-requests/${ask.json.request.id}`, { method: 'PATCH', body: { status: 'nope' } })).status === 422, 'a status is one of the four');
+    sql(`update tech_packs set published_at=now(), published_data=data, version=1 where product_id='${prod}'`);
+    const link = await H(`/v1/products/${prod}/quote-links`, { body: { label: 'Acme Knits', email: 'rfq@acme.test' } }); ok(link.status === 201 && /\/tp\//.test(link.json.url) && link.json.link.active === true, 'once published, a link for their factory', link.json);
+    const fac = await call(`/v1/tp/${link.json.url.split('/tp/')[1]}`); ok(fac.status === 200 && (fac.json.quoteMode === true || fac.json.kind === 'quote' || fac.json.techPack), 'the factory opens it without an account', [fac.status, Object.keys(fac.json).slice(0, 6)]);
+    ok((await H(`/v1/products/${prod}/make`)).json.links.length === 1, 'it shows on their pack');
+    ok((await H(`/v1/products/${prod}/quote-links`, { body: { label: 'Bad', email: 'not-an-email' } })).status === 422, 'a bad email is refused');
+    ok((await H(`/v1/products/${prod}/quote-links/${link.json.link.id}`, { method: 'DELETE' })).json.ok === true && (await H(`/v1/products/${prod}/make`)).json.links.filter(l => l.active).length === 0, 'they turn it off');
+    const other = (await K('/concepts')).json.concepts.find(c => c.id !== c1.id && !concepts.some(x => x.id === c.id)); ok(other && (await C(`/concepts/${other.id}`)).status === 404 && (await C(`/concepts/${other.id}/image`)).status === 404, 'our concepts are not theirs to open');
+    ok((await H(`/v1/products/${sql(`select id from products where client_id<>'${cid}' limit 1`).split('\n')[0]}/make`)).status === 404, 'nor is another room\'s pack');
+
+    // ending it
+    const end = await A(`/v1/admin/clients/${cid}/lab`, { method: 'PATCH', body: { action: 'end' } }); ok(end.status === 200 && end.json.open === false && end.json.ended?.status === 'ended', 'staff end the access');
+    ok((await C('/plans')).status === 403 && (await K(`/plans/${pid}`)).status === 200, 'the room is locked out again; their plan is still there for us');
+    await A(`/v1/admin/clients/${cid}/lab`, { method: 'PATCH', body: { action: 'comp', includedAi: 2, aiPriceCents: 250, unpaidCapCents: 600 } });
+
+    // in a browser: the hub card and the Lab as a client
+    if (!playwright) { ok(true, 'skipped: no browser here'); return; }
+    const b = await playwright.chromium.launch(), errs = [];
+    try {
+      const cc = await b.newContext({ viewport: { width: 1280, height: 900 } }); await cc.addInitScript(t => { try { localStorage.setItem('fb.client.token', t); } catch {} }, clientT);
+      const page = await cc.newPage(); page.on('pageerror', e => errs.push(String(e))); page.on('dialog', d => d.accept());
+      await page.goto(`${BASE}/`, { waitUntil: 'networkidle' }); await page.waitForSelector('#lab .lab-card', { timeout: 15000 });
+      const card = await page.innerText('#lab'); ok(/The Design Lab/.test(card) && /AI generations: \d+ of 2 included used/i.test(card) && /Nothing owed/i.test(card) && /estimates/i.test(card), 'the hub shows the Lab card with the meter and the estimate note', card.slice(0, 600));
+      ok(!(await page.locator('#navLab').evaluate(e => e.classList.contains('hidden'))), 'and a Design Lab link in the menu');
+      await page.goto(`${BASE}/lab`, { waitUntil: 'networkidle' }); await page.waitForSelector('#app:not(.hidden)', { timeout: 15000 });
+      ok(/Your Design Lab/i.test(await page.innerText('.hero')) && (await page.locator('#grp-research').evaluate(e => e.classList.contains('hidden'))) && (await page.locator('#fbSide').count()) === 0, 'the Lab opens on the client token without the research side or the staff menu', [(await page.innerText('.hero')).slice(0, 80), await page.locator('#grp-research').evaluate(e => e.className), await page.locator('#fbSide').count()]);
+      ok((await page.locator('nav.labnav a[href="/#lab"]').count()) >= 1 && !/research/i.test(await page.locator('nav.labnav').first().innerText()), 'the Lab menu leads back to their hub and has no Research', (await page.locator('nav.labnav').first().innerText()).slice(0, 200));
+      ok((await page.locator('#plans .plan, #plans [data-plan], #planList *').count()) >= 0 && /My first line/.test(await page.innerText('#plans')), 'their plan is on the page', (await page.innerText('#plans')).slice(0, 200));
+      await page.goto(`${BASE}/tech-packs/${prod}`, { waitUntil: 'networkidle' }); await page.waitForSelector('#tabs button[data-tab="make"]', { timeout: 15000 }); await page.click('#tabs button[data-tab="make"]'); await page.waitForSelector('[data-panel="make"].on form[data-form="quotelink"]', { timeout: 15000 });
+      const mkText = await page.innerText('[data-panel="make"]'); ok(/Future Basics is pricing it/i.test(mkText) && /Send it to your own factory/i.test(mkText) && /factory's quote confirms/i.test(mkText), 'the pack has a Make it tab: our pricing in progress, their factory link form, the estimate note', mkText.slice(0, 900));
+      ok(errs.length === 0, 'no page errors', errs);
+    } finally { await b.close(); }
+  } finally {
+    await A(`/v1/admin/clients/${cid}/lab`, { method: 'PATCH', body: { action: 'end' } }).catch(() => {});
+    await cleanup(brands, staffPlan.plan?.id);
+  }
+});
+
 shops.close(); brave.close();
 process.exit(summary() ? 1 : 0);

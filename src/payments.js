@@ -16,6 +16,7 @@ export function paymentFromOrder(order, { membershipProductId = '' } = {}) {
   const tags = (order.tags || []).map(t => String(t).toLowerCase());
   const isPack = Boolean(packUrl) || tags.includes('fb-tech-pack');
   const isMembership = !isPack && membershipProductId && lineProducts.some(id => String(id) === String(membershipProductId) || String(id).endsWith(`/${membershipProductId}`));
+  const isLab = !isPack && tags.includes('fb-design-lab'), isLabAi = !isPack && tags.includes('fb-design-lab-ai');
   const first = order.lineItems?.nodes?.[0]?.title || 'Store order', more = (order.lineItems?.nodes?.length || 0) - 1;
   const productName = attr(order, 'Product');
   const money = order.totalPriceSet?.shopMoney || {};
@@ -26,8 +27,8 @@ export function paymentFromOrder(order, { membershipProductId = '' } = {}) {
     currency: money.currencyCode || 'USD',
     paidAt: order.processedAt || order.createdAt || order.updatedAt || null,
     updatedAt: order.updatedAt || null,
-    kind: isPack ? 'tech-pack' : isMembership ? 'membership' : 'order',
-    title: isPack ? `Tech pack${productName ? ` · ${productName}` : ''}` : isMembership ? 'Studio membership' : `${first}${more > 0 ? ` + ${more} more` : ''}`,
+    kind: isPack ? 'tech-pack' : isLabAi ? 'design-lab-ai' : isLab ? 'design-lab' : isMembership ? 'membership' : 'order',
+    title: isPack ? `Tech pack${productName ? ` · ${productName}` : ''}` : isLabAi ? 'Design Lab · AI generations' : isLab ? 'Design Lab access' : isMembership ? 'Studio membership' : `${first}${more > 0 ? ` + ${more} more` : ''}`,
     productId: UUID.test(packUrl) ? packUrl.match(UUID)[0].toLowerCase() : null,
     email: String(order.customer?.email || order.email || '').trim().toLowerCase(),
     customerId: order.customer?.id || null

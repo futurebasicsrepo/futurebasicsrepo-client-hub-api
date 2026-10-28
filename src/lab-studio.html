@@ -80,7 +80,7 @@ kbd{font:500 10px 'IBM Plex Mono',monospace;border:1px solid var(--line);border-
   <a class="wordmark" href="/home" aria-label="Work home"><img class="brand-logo" src="https://thefuturebasics.com/cdn/shop/files/future_basics_true_vector_fixed.svg?v=1775278873&amp;width=360" alt="Future Basics"><span class="brand-suffix">/ Design Lab studio</span></a>
 </header>
 <div id="pickC" class="hidden" style="max-width:760px;margin:30px auto;padding:0 16px"><nav class="labnav" data-lab="studio"></nav><h1 style="margin-top:14px">The studio</h1><p class="note" style="font-size:14px">The studio opens one concept at a time: its picture as layers to paint, type on, add graphics and parts to, and change with AI. Which concept? Or <a href="/lab/studio?new=graphic">build a graphic for the library</a>.</p><input class="t" id="pickQ" type="search" placeholder="Search concepts" aria-label="Search concepts" style="margin:10px 0;width:100%;max-width:380px"><div id="pickList" style="display:grid;gap:6px"><span class="note">Loading concepts…</span></div></div>
-<div id="needSignin" class="hidden"><h1 style="margin-top:0">Sign in to the work console first</h1><p class="note" style="font-size:14px">This page uses your work console sign-in. Open the console, sign in, then come back here.</p><a class="btn go" href="/admin" style="margin-top:12px">Open the work console</a></div>
+<div id="needSignin" class="hidden"><h1 style="margin-top:0">Sign in first</h1><p class="note" style="font-size:14px">Future Basics signs in at the work console. A client whose room has the Design Lab signs in at their hub, then comes back here.</p><a class="btn go" href="/admin" style="margin-top:12px">Open the work console</a> <a class="btn" href="/" style="margin-top:12px">Client? Open your hub</a></div>
 
 <div class="studio hidden" id="app">
   <div class="bar">
@@ -165,11 +165,13 @@ kbd{font:500 10px 'IBM Plex Mono',monospace;border:1px solid var(--line);border-
 <input type="file" id="fileIn" accept="image/*" multiple class="hidden">
 <script src="/lab/finish.js"></script>
 <script src="/lab/nav.js"></script>
+<script>try{if(!localStorage.getItem('fb.admin.token')&&localStorage.getItem('fb.client.token'))document.documentElement.dataset.labClient='1'}catch{}</script>
 <script src="/console-nav.js" defer></script>
 <script>
 'use strict';
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)],esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const TOKEN=()=>{try{return localStorage.getItem('fb.admin.token')||''}catch{return ''}};
+const TOKEN=()=>{try{return localStorage.getItem('fb.admin.token')||localStorage.getItem('fb.client.token')||''}catch{return ''}}; // staff sign in at the work console; a client with the Design Lab on their room signs in at their hub
+const CLIENT_MODE=()=>{try{return !localStorage.getItem('fb.admin.token')&&Boolean(localStorage.getItem('fb.client.token'))}catch{return false}};
 async function api(path,o={}){const r=await fetch(path,{method:o.method||(o.body?'POST':'GET'),headers:{Authorization:'Bearer '+TOKEN(),...(o.body?{'Content-Type':'application/json'}:{})},body:o.body?JSON.stringify(o.body):undefined});const j=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(new Error(j.error||('Request failed ('+r.status+')')),{status:r.status});return j}
 async function blobOf(path){const r=await fetch(path,{headers:{Authorization:'Bearer '+TOKEN()}});if(!r.ok)throw new Error('The picture could not be loaded ('+r.status+')');return r.blob()}
 const urlOfBlob=b=>new Promise((ok,no)=>{const fr=new FileReader();fr.onload=()=>ok(fr.result);fr.onerror=no;fr.readAsDataURL(b)});
@@ -785,7 +787,7 @@ async function boot(){
     const paint=()=>{const q=($('#pickQ').value||'').toLowerCase(),l=list.filter(c=>!q||`${c.name} ${c.categoryLabel||''} ${c.planName||''}`.toLowerCase().includes(q)).slice(0,60);$('#pickList').innerHTML=l.length?l.map(c=>`<a class="btn q" style="justify-content:space-between" href="/lab/studio?concept=${c.id}" data-pick="${c.id}"><span><b>${esc(c.name)}</b> <span class="note">· ${esc(c.categoryLabel||c.category||'')}${c.planName?' · '+esc(c.planName):''}</span></span><span>→</span></a>`).join(''):'<span class="note">No concepts yet: <a href="/lab#plans">start a line plan</a> and make some.</span>'};
     paint();$('#pickQ').addEventListener('input',paint);return}
   if(false){$('#needSignin').classList.remove('hidden');$('#needSignin h1').textContent='Open a concept first';$('#needSignin p').textContent='The studio opens from a concept in the Design Lab: open one and press Open in the studio.';$('#needSignin a').href='/lab#board';$('#needSignin a').textContent='Open the concepts';return}
-  try{D=await api(`/v1/lab/concepts/${CID}/studio`)}catch(x){const n=$('#needSignin');n.classList.remove('hidden');const no=/access to Design Lab|not turned on|Only Danielle/i.test(x.message);n.querySelector('h1').textContent=x.status===404?'That concept is not there any more':no?'The Design Lab is not turned on for you':'Sign in to the work console first';n.querySelector('p').textContent=x.status===404?'It may have been deleted.':x.message;return}
+  try{D=await api(`/v1/lab/concepts/${CID}/studio`)}catch(x){const n=$('#needSignin');n.classList.remove('hidden');const no=/access to Design Lab|not turned on|Only Danielle/i.test(x.message);n.querySelector('h1').textContent=x.status===404?'That concept is not there any more':no?'The Design Lab is not turned on for you':'Sign in first';n.querySelector('p').textContent=x.status===404?'It may have been deleted.':x.message;return}
   $('#app').classList.remove('hidden');$('#back').href='/lab#board';
   if(D.concept.locked){$('#apply').disabled=true;$('#apply').title='This concept is already a tech pack'}
   busy('Opening the design…');
@@ -802,7 +804,7 @@ async function boot(){
 }
 // a graphic for the library: a clear canvas, or the graphic's picture as a layer over one, with the layers it was built from when it has them
 async function bootGraphic(){
-  try{D=await api('/v1/lab/library/studio'+(GID?'?art='+encodeURIComponent(GID):''))}catch(x){const n=$('#needSignin');n.classList.remove('hidden');n.querySelector('h1').textContent=x.status===404?'That graphic is not in the library':'Sign in to the work console first';n.querySelector('p').textContent=x.message;return}
+  try{D=await api('/v1/lab/library/studio'+(GID?'?art='+encodeURIComponent(GID):''))}catch(x){const n=$('#needSignin');n.classList.remove('hidden');n.querySelector('h1').textContent=x.status===404?'That graphic is not in the library':'Sign in first';n.querySelector('p').textContent=x.message;return}
   D.concept={name:D.graphic?.name||'New graphic',status:'graphic',locked:false,hasImage:Boolean(D.graphic?.hasImage),hasPlain:false,colors:[]};
   $('#app').classList.remove('hidden');$('#back').href='/lab/library';$('#back').textContent='← Graphics library';document.querySelector('.brand-suffix').textContent='/ Graphics studio';
   busy('Opening the graphic…');
@@ -853,7 +855,7 @@ async function checkSize(l){const box=$('#chk');if(!box)return;const s=inchesOf(
   try{const r=await api('/v1/lab/studio/check',{body:{image:artPng(l),widthIn:s.w,heightIn:s.h,techniqueId:l.finish?.id||null,placement:l.placement||null,name:l.name}});
     const ic={fail:'✕',warn:'!',info:'✓'},col={fail:'#b3261e',warn:'#8a5a00',info:'#1e6b3a'};
     box.innerHTML=`<div style="display:grid;gap:6px;margin-top:6px">${r.findings.map(f=>`<p class="note" style="margin:0;color:${col[f.level]||'inherit'}" data-code="${esc(f.code)}"><b>${ic[f.level]||''}</b> ${esc(f.text)}</p>`).join('')||'<p class="note" style="margin:0">Nothing to change at this size.</p>'}
-    <p class="note" style="margin:0" data-cost="${r.cost.perPieceCents}"><b>${money(r.cost.perPieceCents)} a piece</b> as ${esc(r.technique.name)} at ${r.cost.qty} pieces: ${money(r.cost.unitCents)} each and ${money(r.cost.setupCents)} setup. ${r.inks?`${r.inks} ${r.technique.base==='embroidery'?'thread':'ink'} colour${r.inks>1?'s':''}.`:''} A starting figure, before the factory's quote.</p></div>`}
+    <p class="note" style="margin:0" data-cost="${r.cost.perPieceCents}"><b>${money(r.cost.perPieceCents)} a piece</b> as ${esc(r.technique.name)} at ${r.cost.qty} pieces: ${money(r.cost.unitCents)} each and ${money(r.cost.setupCents)} setup. ${r.inks?`${r.inks} ${r.technique.base==='embroidery'?'thread':'ink'} colour${r.inks>1?'s':''}.`:''} An estimate: the factory's quote confirms it.</p></div>`}
   catch(x){box.innerHTML=`<p class="note" style="color:#b3261e">${esc(x.message)}</p>`;toast(x.message)}finally{if(btn)btn.disabled=false}}
 function artPng(l){const a=artOf(l),k=Math.min(1,2400/Math.max(a.width,a.height));if(k>=1)return a.toDataURL('image/png');const c=canvas(a.width*k,a.height*k);c.getContext('2d').drawImage(a,0,0,c.width,c.height);return c.toDataURL('image/png')}
 // the ruler: drag across something whose size is known (a chest width, a pocket), then say how long it is

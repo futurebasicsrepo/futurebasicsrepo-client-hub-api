@@ -30,7 +30,8 @@ const techShape = (r, photos = []) => ({ id: r.id, key: r.key, kind: r.kind, nam
   builtin: r.builtin, hasSample: Boolean(r.has_sample), sampleAt: r.sample_at, photos, updatedAt: r.updated_at });
 
 export function registerLabLibraryRoutes(app, d) {
-  const { pool, authenticate, adminOnly, art, env = process.env, imageCfg = () => imageConfig(env), editImpl = openaiEdit, log = console } = d;
+  const { pool, authenticate, adminOnly, art, env = process.env, imageCfg = () => imageConfig(env), editImpl = openaiEdit, lab = null, log = console } = d;
+  const own = req => lab?.scope?.(req) || null, charge = async (req, o) => (lab ? lab.charge(req, o) : null); // a client's room: its own graphics, its AI meter
   const pre = [authenticate, adminOnly], bad = (reply, error, code = 422, extra = {}) => reply.code(code).send({ error, ...extra });
   const actorOf = req => (UUID.test(String(req.auth?.sub || '')) ? req.auth.sub : null);
   const need = (req, reply, k = 'id') => UUID.test(String(req.params[k])) || (bad(reply, 'Not found', 404), false);
@@ -47,6 +48,7 @@ export function registerLabLibraryRoutes(app, d) {
   // ---- graphics ----
   app.get('/v1/lab/library/graphics', { preHandler: pre }, async req => {
     const q = req.query || {}, where = ['a.in_library'], args = [];
+    if (own(req)) { args.push(own(req)); where.push(`a.client_id=$${args.length}`); }
     if (clip(q.q, 80)) { args.push(`%${clip(q.q, 80).toLowerCase()}%`); where.push(`(lower(a.name) like $${args.length} or lower(a.prompt) like $${args.length} or exists(select 1 from unnest(a.tags) t where t like $${args.length}))`); }
     if (SOURCES.includes(q.source)) { args.push(q.source); where.push(`a.source=$${args.length}`); }
     if (clip(q.tag, 30)) { args.push(clip(q.tag, 30).toLowerCase()); where.push(`$${args.length} = any(a.tags)`); }
@@ -56,7 +58,7 @@ export function registerLabLibraryRoutes(app, d) {
       from lab_art a left join lab_techniques t on t.id=a.technique_id left join lab_plans p on p.id=a.plan_id left join lab_concepts c on c.id=a.concept_id left join users u on u.id=a.created_by
       where ${w} order by a.created_at desc limit ${limit} offset ${offset}`, args)).rows;
     const total = Number((await pool.query(`select count(*)::int n from lab_art a where ${w}`, args)).rows[0].n);
-    const tags = (await pool.query(`select t, count(*)::int n from lab_art, unnest(tags) t where in_library group by t order by n desc, t limit 30`)).rows.map(r => ({ tag: r.t, n: r.n }));
+    const tags = (await pool.query(`select t, count(*)::int n from lab_art, unnest(tags) t where in_library and ($1::uuid is null or client_id=$1) group by t order by n desc, t limit 30`, [own(req)])).rows.map(r => ({ tag: r.t, n: r.n }));
     return { graphics: rows.map(r => ({ id: r.id, name: r.name, tags: r.tags, source: r.source, techniqueId: r.technique_id, techniqueName: r.technique_name || '', from: r.concept_name || r.plan_name || '', by: r.by_name || '', prompt: r.prompt, createdAt: r.created_at, ...(r.meta?.repeat ? { repeat: { ...r.meta.repeat, widthIn: r.meta.widthIn, heightIn: r.meta.heightIn } } : {}) })), total, tags, styles: ART_STYLES, imageConnected: imageCfg().configured };
   });
 
@@ -69,13 +71,14 @@ export function registerLabLibraryRoutes(app, d) {
     if (!art) return bad(reply, 'Artwork cannot be drawn on this service', 501);
     if (!imageCfg().configured) return bad(reply, 'No image model is connected, so graphics cannot be drawn.', 503);
     const count = Math.min(Math.max(Math.round(Number(b.count)) || 1, 1), 3), left = await art.capLeft(count); if (left !== true) return bad(reply, `The daily limit of ${left} artworks is reached. Raise LAB_DAILY_ART.`, 429);
+    try { await charge(req, { kind: 'graphic', units: count }); } catch (e) { return bad(reply, e.message, e.status || 500, e.meter ? { code: e.code, meter: e.meter } : {}); }
     const t = await technique(b.techniqueId), style = ART_STYLES.includes(b.style) ? b.style : clip(b.style, 120);
     const program = { style: [style || 'a vintage, lived-in tee graphic', t?.art_guide ? `Designed for ${t.name.toLowerCase()}: ${t.art_guide}` : ''].filter(Boolean).join('. '), palette: [] };
     const colors = (Array.isArray(b.colors) ? b.colors : String(b.colors || '').split(',')).map(c => clip(c, 30)).filter(Boolean).slice(0, 6), tags = cleanTags(b.tags);
     const name = clip(b.name, 80) || clip(prompt, 60), ids = [], errors = [];
     for (let i = 0; i < count; i++) {
       const g = { name: count > 1 ? `${name} ${i + 1}` : name, kind: 'illustration', idea: count > 1 ? `${prompt} (Take ${i + 1} of ${count}: a different composition from the others.)` : prompt, texts, colors };
-      try { ids.push(await art.drawAndStore(g, { program, technique: t?.base || 'screen print', source: 'library', tags, techniqueId: t?.id || null, createdBy: actorOf(req) })); }
+      try { ids.push(await art.drawAndStore(g, { program, technique: t?.base || 'screen print', source: 'library', tags, techniqueId: t?.id || null, createdBy: actorOf(req), clientId: own(req) })); }
       catch (e) { errors.push(clip(e.message, 160)); }
     }
     if (!ids.length) return bad(reply, `The graphic could not be drawn: ${errors[0] || 'no reason given'}`, 502);
@@ -86,8 +89,8 @@ export function registerLabLibraryRoutes(app, d) {
     const b = req.body || {}, buf = pictureOf(b.image); if (!buf) return bad(reply, 'Send the artwork as a picture');
     let a; try { const m = await sharp(buf).metadata(); if (!m.width) throw new Error(); a = await finishArt(await sharp(buf).ensureAlpha().png().toBuffer()); } catch { return bad(reply, 'The picture could not be read'); }
     const t = await technique(b.techniqueId);
-    const r = (await pool.query(`insert into lab_art(name,png,thumb,prompt,model,source,tags,technique_id,created_by) values($1,$2,$3,'','upload',$4,$5,$6,$7) returning id`,
-      [clip(b.name, 120) || 'Artwork', a.png, a.thumb, b.source === 'studio' ? 'studio' : 'upload', cleanTags(b.tags), t?.id || null, actorOf(req)])).rows[0];
+    const r = (await pool.query(`insert into lab_art(name,png,thumb,prompt,model,source,tags,technique_id,created_by,client_id) values($1,$2,$3,'','upload',$4,$5,$6,$7,$8) returning id`,
+      [clip(b.name, 120) || 'Artwork', a.png, a.thumb, b.source === 'studio' ? 'studio' : 'upload', cleanTags(b.tags), t?.id || null, actorOf(req), own(req)])).rows[0];
     return reply.code(201).send({ id: r.id });
   });
 
@@ -212,7 +215,7 @@ export function registerLabLibraryRoutes(app, d) {
     const c = (await pool.query('select id, status, spec, category from lab_concepts where id=$1', [req.params.id])).rows[0]; if (!c) return bad(reply, 'Not found', 404);
     if (c.status === 'tech_pack') return bad(reply, 'This concept is already a tech pack', 409);
     if (!UUID.test(String(b.art || ''))) return bad(reply, 'Choose a graphic from the library');
-    const a = (await pool.query('select id, name, prompt, technique_id from lab_art where id=$1', [b.art])).rows[0]; if (!a) return bad(reply, 'That graphic is not in the library', 404);
+    const a = (await pool.query('select id, name, prompt, technique_id from lab_art where id=$1 and ($2::uuid is null or client_id=$2)', [b.art, own(req)])).rows[0]; if (!a) return bad(reply, 'That graphic is not in the library', 404);
     const t = await technique(b.techniqueId || a.technique_id), spec = ensureBranding(c.spec || {}, c.category);
     if (spec.graphics.length >= 4) return bad(reply, 'A concept carries up to 4 graphics. Remove one first.', 409);
     const placement = Object.keys(GRAPHIC_PLACE).includes(b.placement) ? b.placement : 'front chest';
