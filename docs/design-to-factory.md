@@ -141,6 +141,8 @@ The concept's own words pick the first sketch: a "pleated tennis skirt" starts o
 
 **Who:** the team, in the work console (`/tech-packs/:id`). For a client's line, the client also sees it in their hub.
 
+**What the Lab wrote stays as the designer set it.** The assistant (Run assistant / Re-run assistant) drafts and checks, but never rewrites rows that came from the Lab: the flats' measurements ("From the flats"), the materials library's BOM lines and colourways ("From the materials library"), the flats' construction lines ("Flats · …") and sample corrections ("Correction · …"). Its own rows go beside them, and the pack's notes say how many Lab rows were kept. What it would question shows in its checks (the Check tab, the exchange), as findings for a person to act on.
+
 **How it starts:** **Send to tech pack** on an approved concept makes the product and its tech pack:
 - in the Future Basics room for our own line;
 - in the client's own room for a client's line, under their brand and without our logo or label files.
@@ -319,6 +321,9 @@ Each guide offers the next one when it ends. The client's own guides for tech pa
 | J216 | The design service: a client's line, shared, with verdicts, replies, privacy, and the tech pack in the client's room. Includes the hub in a browser |
 | J217 | The whole loop over HTTP: concept → tech pack → publish → factory → sample sent → review → version 2 → the factory sees the corrections and the next sample |
 | J218 | The factory views and writes in Messages: no buttons (acknowledge, quote, countersign, sample sent all refused), the team records the shipped sample, the corrections go out as v2 while v1 is kept exactly, flats sent unchanged make no version, flats changed go out as v3. Includes the factory page in a browser |
+| J227 | Every tool in the studio works, clicked one by one in a browser: the rail and zoom, every Add, every Layers control, every AI control (Change it, Make it, Remove the graphic, the fabric), undo, redo, save, export, versions, use as the picture; Remove the graphic takes a printed graphic off the piece in one go |
+| J226 | Range-level work: one instruction across the collection previewed per piece and applied only where ticked; the Lab learning our taste from what is approved and rejected and reading it before it designs; a lookbook in one click; a customer poll whose votes become a demand read per piece. Over HTTP and in a browser, on the plan and on a phone |
+| J225 | Finding your way round: one navigation on every Lab page (Make, Libraries, Research, the flow), concept pickers for the studio and the flats, the sketch pack page (search, ranges, styles, parts) putting a sketch on a concept, the assistant leaving Lab rows alone |
 | J224 | The sample loop: the time-and-action calendar dated from the day the pack goes out, late samples on Production attention; photographs on the review compared with the approved design by the vision model, the differences made corrections. Over HTTP and in a browser |
 | J223 | Reviewing together: pinned comments, done and reopened; studio versions kept on use and on purpose, two side by side with a wipe, an old one's layers reopened; a view-only link for the factory and the client: opens without sign-in, takes a pinned comment, cannot change anything, stops when turned off. Over HTTP and in a browser |
 | J222 | Materials, trims and tags: the library and its tags drawn to size; picks on a concept with the cost breakdown and margin; colourways with Pantones on the board; the BOM, labels and colourways on the tech pack; the studio's fabric picker. Over HTTP and in a browser |
@@ -332,6 +337,8 @@ Each guide offers the next one when it ends. The client's own guides for tech pa
 - `test/lab-flats.test.js`: every sketch in the pack (its file, thumbnail and views), the new styles, the sketch's own proportions, the add-on parts, and the edits;
 - `test/lab-handoff.test.js`: what the flats give the pack;
 - `test/lab-share.test.js`: pins and the link token;
+- `test/lab-keep.test.js`: the assistant leaves the Lab's rows exactly as set;
+- `test/lab-range.test.js`: the taste counts and words, the range change per piece and its cleaning, the poll votes and the demand read, the lookbook PDF;
 - `test/sample-loop.test.js`: the calendar, the comparison's shape and fixture, the written design the model reads, what the pack keeps;
 - `test/lab-materials.test.js`: the starting set, cleaning, the tag drawing, the costing, and what the pack takes;
 - `test/lab-jobfile.test.js`: the job file per technique (separations, underbase, films, settings, stitch count, cut line, the zip);

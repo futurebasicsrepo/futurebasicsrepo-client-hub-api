@@ -17,7 +17,10 @@ const clip = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
 const dataUrl = b => (b ? `data:image/jpeg;base64,${Buffer.from(b).toString('base64')}` : '');
 
 export function registerLabConceptRoutes(app, d) {
-  const { pool, authenticate, adminOnly, getSetting, env = process.env, fetchImpl = fetch, askImpl = realAsk, createProduct, attachArtwork, flatsCheck, imageCfg = () => imageConfig(env), placeImpl, art: artSvc = null, sendFlats = null, log = console } = d;
+  const { pool, authenticate, adminOnly, getSetting, env = process.env, fetchImpl = fetch, askImpl = realAsk, createProduct, attachArtwork, flatsCheck, imageCfg = () => imageConfig(env), placeImpl, art: artSvc = null, sendFlats = null, learn = async () => {}, log = console } = d;
+  // the learned taste (src/lab-taste.js), when the team has not switched it off
+  const loadTaste = async () => { const t = await getSetting('labTaste').catch(() => null); return t && t.use !== false ? t : null; };
+  const relearn = () => Promise.resolve().then(learn).catch(e => log.warn?.({ err: e.message }, 'design lab taste could not be read again'));
   // the artwork of a concept's graphics, as PNGs by id (empty when there is no artwork service)
   const artsFor = async spec => (artSvc ? artSvc.load((spec?.graphics || []).map(g => g.art).filter(Boolean)) : new Map());
   const pre = [authenticate, adminOnly], bad = (reply, error, code = 422, extra = {}) => reply.code(code).send({ error, ...extra });
@@ -59,7 +62,7 @@ export function registerLabConceptRoutes(app, d) {
     const pr = plan?.id ? (await pool.query('select program, brand, client_id from lab_plans where id=$1', [plan.id])).rows[0] : null, program = pr?.program || null;
     // a client's line is written for their brand, and carries their logo (placed by hand), not ours
     const brand = pr?.client_id && pr.brand?.name ? pr.brand : null;
-    const gen = await generateConcepts({ line, plan, refs: refs.map(r => ({ title: r.title, attrs: r.attrs })), trend: cat, program, code: brand ? { ...code, statement: brand.statement || code.statement, exemplars: [] } : code, count, note: steer, parent, brand, askImpl, env, fetchImpl });
+    const gen = await generateConcepts({ line, plan, refs: refs.map(r => ({ title: r.title, attrs: r.attrs })), trend: cat, program, code: brand ? { ...code, statement: brand.statement || code.statement, exemplars: [] } : code, count, note: steer, parent, brand, taste: await loadTaste(), askImpl, env, fetchImpl });
     if (brand) for (const c of gen.concepts) c.spec = { ...c.spec, branding: { ...(c.spec.branding || {}), logo: { ...(c.spec.branding?.logo || {}), mark: 'none' } } };
     if (!gen.concepts.length) throw Object.assign(new Error('The assistant did not come back with usable concepts. Try again, or change the note.'), { status: 502 });
     const cfg = imageCfg(), refLite = refs.map(r => ({ id: r.id, title: r.title, brand: r.brand, attrs: r.attrs || {}, summary: r.summary }));
@@ -125,11 +128,12 @@ export function registerLabConceptRoutes(app, d) {
     return reply.header('content-type', 'image/jpeg').header('cache-control', 'private, no-cache').header('etag', tag).send(r.image);
   });
 
-  app.put('/v1/lab/concepts/:id', { preHandler: pre }, async (req, reply) => {
-    if (!needId(req, reply)) return;
-    const r = (await pool.query('select * from lab_concepts where id=$1', [req.params.id])).rows[0]; if (!r) return bad(reply, 'Not found', 404);
-    if (r.status === 'tech_pack') return bad(reply, 'This concept is already a tech pack. Change it there.', 409);
-    const base = { name: r.name, twist: r.twist, spec: r.spec || {}, priceCents: r.price_cents, costCents: r.cost_cents, qty: r.qty, category: r.category }, e = cleanConceptEdit(req.body || {}, base); if (e.error) return bad(reply, e.error);
+  // Edit a concept's words, price, cost or quantity: the one door for the editor and for a change across the range (src/lab-range-routes.js).
+  // → { concept } or { error, code }. `why` is written on the concept when the change came from somewhere other than the editor.
+  async function editConcept(id, body, req, { why = '' } = {}) {
+    const r = (await pool.query('select * from lab_concepts where id=$1', [id])).rows[0]; if (!r) return { error: 'Not found', code: 404 };
+    if (r.status === 'tech_pack') return { error: 'This concept is already a tech pack. Change it there.', code: 409 };
+    const base = { name: r.name, twist: r.twist, spec: r.spec || {}, priceCents: r.price_cents, costCents: r.cost_cents, qty: r.qty, category: r.category }, e = cleanConceptEdit(body || {}, base); if (e.error) return { error: e.error, code: 422 };
     const changedWords = JSON.stringify([e.name, e.twist, e.spec, e.category]) !== JSON.stringify([base.name, base.twist, base.spec, base.category]);
     const next = { ...r, name: e.name, twist: e.twist, spec: e.spec, category: e.category };
     const { closeness: close } = changedWords ? await runCheck({ name: e.name, spec: e.spec, twist: e.twist, refs: r.refs }, { withAi: false }) : { closeness: r.closeness };
@@ -137,8 +141,15 @@ export function registerLabConceptRoutes(app, d) {
     const reset = changedWords && r.status === 'approved'; // a changed concept has to be approved again
     await pool.query(`update lab_concepts set name=$2, twist=$3, spec=$4, category=$5, price_cents=$6, cost_cents=$7, qty=$8, closeness=$9, status=$10, override_reason=$11, updated_at=now() where id=$1`,
       [r.id, next.name, next.twist, next.spec, next.category, e.priceCents, e.costCents, e.qty, merged, reset ? 'draft' : r.status, reset ? '' : r.override_reason]);
+    if (why) await note(r.id, req, why);
     if (reset) await note(r.id, req, 'Edited after approval: back to draft, to be approved again.');
+    if (reset) relearn();
     return { concept: await one(r.id) };
+  }
+  app.put('/v1/lab/concepts/:id', { preHandler: pre }, async (req, reply) => {
+    if (!needId(req, reply)) return;
+    const out = await editConcept(req.params.id, req.body, req); if (out.error) return bad(reply, out.error, out.code);
+    return out;
   });
 
   app.post('/v1/lab/concepts/:id/check', { preHandler: pre }, async (req, reply) => {
@@ -188,6 +199,7 @@ export function registerLabConceptRoutes(app, d) {
     if (r.line_id) await pool.query(`update lab_plan_lines set status='approved' where id=$1 and status in ('planned','in_concept')`, [r.line_id]);
     await note(r.id, req, `Approved${override && !makeReason ? ` after the "too close" check, because: ${override}` : close.verdict === 'check' ? ' (the check said to look at it side by side)' : ''}${makeReason ? `, although the flats check found ${fails} problem${fails === 1 ? '' : 's'}, because: ${makeReason}` : ''}.`);
     if (startNote) await note(r.id, req, startNote);
+    relearn();
     return { concept: await one(r.id), ...(startNote ? { warning: startNote } : {}) };
   });
   app.post('/v1/lab/concepts/:id/reject', { preHandler: pre }, async (req, reply) => {
@@ -197,7 +209,7 @@ export function registerLabConceptRoutes(app, d) {
     const why = clip(req.body?.reason, 400); if (!why) return bad(reply, 'Say why, so the next concept can be better');
     await pool.query(`update lab_concepts set status='rejected', rejected_reason=$2, approved_by=null, approved_at=null, updated_at=now() where id=$1`, [r.id, why]);
     if (r.line_id) await pool.query(`update lab_plan_lines set status='in_concept' where id=$1 and status='approved' and not exists(select 1 from lab_concepts where line_id=$1 and status in ('approved','tech_pack') and id<>$2)`, [r.line_id, r.id]);
-    await note(r.id, req, `Rejected: ${why}`); return { concept: await one(r.id) };
+    await note(r.id, req, `Rejected: ${why}`); relearn(); return { concept: await one(r.id) };
   });
   app.post('/v1/lab/concepts/:id/reopen', { preHandler: pre }, async (req, reply) => {
     if (!needId(req, reply)) return;
@@ -205,7 +217,7 @@ export function registerLabConceptRoutes(app, d) {
     if (r.status !== 'rejected' && r.status !== 'approved') return bad(reply, 'Only an approved or rejected concept can go back to draft', 409);
     await pool.query(`update lab_concepts set status='draft', approved_by=null, approved_at=null, override_reason='', rejected_reason='', updated_at=now() where id=$1`, [r.id]);
     if (r.line_id) await pool.query(`update lab_plan_lines set status='in_concept' where id=$1 and status='approved' and not exists(select 1 from lab_concepts where line_id=$1 and status in ('approved','tech_pack') and id<>$2)`, [r.line_id, r.id]);
-    await note(r.id, req, 'Back to draft.'); return { concept: await one(r.id) };
+    await note(r.id, req, 'Back to draft.'); relearn(); return { concept: await one(r.id) };
   });
 
   app.post('/v1/lab/concepts/:id/revise', { preHandler: pre }, async (req, reply) => {
@@ -288,4 +300,5 @@ export function registerLabConceptRoutes(app, d) {
     if (r.status === 'tech_pack') return bad(reply, 'A concept that became a tech pack stays as its record', 409);
     await pool.query('delete from lab_concepts where id=$1', [req.params.id]); return { ok: true };
   });
+  return { editConcept, one };
 }

@@ -63,7 +63,7 @@ input[type=range]{width:100%;accent-color:var(--ink)}input[type=color]{width:44p
 <main>
   <div id="needSignin" class="panel hidden"><h1>Sign in to the work console first</h1><p class="note">This page uses your work console sign-in. Open the console, sign in, then come back here.</p><a class="btn go" href="/admin" style="margin-top:12px">Open the work console</a></div>
   <div id="app" class="hidden">
-    <nav class="labtabs" aria-label="Design Lab sections"><a href="/lab#library">Library</a><a href="/lab#trends">What's moving</a><a href="/lab#plans">Line plans</a><a href="/lab#board">Concepts</a><a href="/lab#assort">Assortment board</a><a class="on" href="/lab/library" aria-current="page">Graphics and techniques</a><a href="/lab/materials">Materials, trims and tags</a><a href="/lab#brands">Brands we watch</a><a href="/lab#code">Brand code</a></nav>
+    <nav class="labnav" data-lab="library"></nav>
     <span class="mono" style="display:block;margin-top:14px">Our library</span><h1>Graphics and techniques.</h1>
     <p class="note">Every graphic we make, and every way we make one: embroidery, print, heat transfer, patches and distressing. Built once, used on every piece after, from a concept or in the studio.</p>
     <div class="seg" role="tablist"><button type="button" data-sec="graphics" aria-pressed="true">Graphics</button><button type="button" data-sec="techniques" aria-pressed="false">Techniques</button></div>
@@ -119,6 +119,7 @@ input[type=range]{width:100%;accent-color:var(--ink)}input[type=color]{width:44p
   <div class="rgt" id="tForm"></div></div></dialog>
 
 <script src="/lab/finish.js"></script>
+<script src="/lab/nav.js"></script>
 <script src="/console-nav.js" defer></script>
 <script>
 'use strict';

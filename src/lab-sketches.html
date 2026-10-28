@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>Sketch pack</title>
+<link rel="icon" href="/icons/icon-192.png">
+<style>
+@import url('/fonts/fonts.css');
+:root{--ink:#141416;--paper:#fff;--fog:#f5f5f2;--dim:#727278;--line:rgba(20,20,22,.14);--cue:#4bff9a;--ok:#17603a;--bad:#a02a20}
+*{box-sizing:border-box}html{background:var(--fog)}
+body{margin:0;color:var(--ink);font:400 14px/1.5 'Space Grotesk',system-ui,sans-serif;background:var(--fog);min-height:100vh}
+button,input,select{font:inherit;color:inherit}a{color:inherit}.hidden{display:none!important}
+header{height:72px;background:rgba(20,20,22,.96);color:#fff;padding:0 clamp(16px,4vw,48px);display:flex;align-items:center;gap:14px;position:sticky;top:0;z-index:20}
+.wordmark{display:flex;align-items:center;gap:12px;position:relative;text-decoration:none;color:inherit;text-transform:uppercase;letter-spacing:.08em}
+.wordmark:after{content:"";position:absolute;left:0;bottom:-7px;width:64px;height:2px;background:var(--cue)}
+.brand-logo{display:block;width:200px;max-width:34vw;height:auto;max-height:30px}.brand-suffix{font:500 10px 'IBM Plex Mono',monospace;white-space:nowrap}
+main{max-width:1240px;margin:0 auto;padding:22px clamp(14px,3vw,36px) 90px}
+h1{font-size:clamp(28px,4.4vw,42px);letter-spacing:-.035em;font-weight:500;margin:4px 0;line-height:1.05}h2{font-size:19px;font-weight:500;letter-spacing:-.02em;margin:0}h3{margin:0;font-size:15px;font-weight:500}
+.note{color:var(--dim);font-size:13px;margin:0}.mono{font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}
+.panel{background:#fff;border:1px solid var(--line);border-radius:20px;padding:18px}
+.btn{border:1px solid var(--ink);background:#fff;color:var(--ink);border-radius:999px;padding:8px 16px;font-weight:500;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:8px;min-height:38px}.btn.go{background:var(--ink);color:#fff}.btn.q{border-color:var(--line)}.btn.sm{padding:5px 12px;min-height:32px;font-size:13px}.btn:disabled{opacity:.5;cursor:default}
+.t{border:1px solid var(--line);border-radius:12px;padding:9px 12px;background:#fff;min-height:40px}select.t{appearance:auto}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;background:#fff}.seg button{border:0;background:none;padding:8px 16px;cursor:pointer}.seg button[aria-pressed=true]{background:var(--ink);color:#fff}
+.tools{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:14px 0}
+.two{display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,360px);gap:18px;align-items:start}@media(max-width:900px){.two{grid-template-columns:1fr}}
+.gal{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px}
+.gal button{border:1px solid var(--line);background:#fff;border-radius:14px;padding:8px 8px 10px;cursor:pointer;display:grid;gap:4px;justify-items:center;text-align:center;font-size:12px;line-height:1.2}.gal button:hover{border-color:var(--ink)}.gal button[aria-pressed=true]{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+.gal img{width:100%;aspect-ratio:1;object-fit:contain;background:var(--fog);border-radius:8px}.gal .mono{letter-spacing:.06em}
+.prev{position:sticky;top:150px;display:grid;gap:10px}.prev .big{background:#fff;border:1px solid var(--line);border-radius:16px;padding:10px;display:grid;place-items:center;min-height:300px}.prev .big img{max-width:100%;max-height:420px}
+.parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px}.parts div{border:1px solid var(--line);background:#fff;border-radius:12px;padding:6px;display:grid;gap:4px;justify-items:center;font-size:12px;text-align:center}.parts img{width:100%;aspect-ratio:1;object-fit:contain}
+.msg{font-size:13px;color:var(--dim)}.msg.ok{color:var(--ok)}.msg.bad{color:var(--bad)}
+.pick{display:grid;gap:6px;max-height:280px;overflow:auto}.pick button{border:1px solid var(--line);background:#fff;border-radius:10px;padding:6px 10px;text-align:left;cursor:pointer;display:flex;gap:8px;align-items:center}.pick button:hover{border-color:var(--ink)}
+</style>
+<script src="/feedback.js"></script>
+</head>
+<body>
+<header><a class="wordmark" href="/home" aria-label="Work home"><img class="brand-logo" src="https://thefuturebasics.com/cdn/shop/files/future_basics_true_vector_fixed.svg?v=1775278873&amp;width=360" alt="Future Basics"><span class="brand-suffix">/ Design Lab</span></a></header>
+<main>
+  <div id="needSignin" class="panel hidden"><h1>Sign in to the work console first</h1><p class="note">This page uses your work console sign-in. Open the console, sign in, then come back here.</p><a class="btn go" href="/admin" style="margin-top:12px">Open the work console</a></div>
+  <div id="app" class="hidden">
+    <nav class="labnav" data-lab="sketches"></nav>
+    <span class="mono" style="display:block;margin-top:14px">Our library</span><h1>The sketch pack.</h1>
+    <p class="note">Every flat sketch we draw from: <span id="count">382</span> drawings, men's, women's and accessories, each with its front and back, plus the pockets, zips, collars, trims and buttons cut from them. Pick one to see it large, then put it on a concept: the flats open at that sketch's own proportions.</p>
+    <div class="tools"><div class="seg" role="tablist"><button type="button" data-sec="sketches" aria-pressed="true">Sketches</button><button type="button" data-sec="parts" aria-pressed="false">Parts</button></div>
+      <input class="t" id="q" type="search" placeholder="Search: cargo, pleated, halter, bomber…" aria-label="Search the sketches" style="flex:1;min-width:200px;max-width:380px"><select class="t" id="range" aria-label="Range"><option value="">All ranges</option></select><select class="t" id="style" aria-label="Style"><option value="">All styles</option></select><span class="msg" id="msg" role="status"></span></div>
+    <section id="secSketches"><div class="two"><div class="gal" id="gal"></div>
+      <aside class="prev" id="prev"><div class="big" id="big"><span class="note">Pick a sketch</span></div><div id="pinfo"></div>
+        <div class="panel" style="padding:12px;display:grid;gap:8px"><h3>Put it on a concept</h3><input class="t" id="cq" type="search" placeholder="Search concepts" aria-label="Search concepts"><div class="pick" id="pick"><span class="note">Loading concepts…</span></div><p class="note">The flats open on that concept with this sketch; its measurements start at the sketch's own proportions.</p></div></aside></div></section>
+    <section id="secParts" class="hidden"><div class="row" id="pkinds" style="margin-bottom:10px"></div><div class="parts" id="parts"></div><p class="note" style="margin-top:10px">Parts go on the flats (Design → Parts from the sketch pack) and on a concept or a graphic in the studio (Add → From the sketch pack).</p></section>
+  </div>
+</main>
+<script src="/lab/nav.js"></script>
+<script src="/console-nav.js" defer></script>
+<script type="module">
+import { FLAT_TEMPLATES } from '/lab/lab-flat-templates.js';
+import { FLAT_PARTS, PART_KINDS } from '/lab/lab-flat-parts.js';
+import { STYLES, TEMPLATE_URL } from '/lab/flats.js';
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)],esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const TOKEN=()=>{try{return localStorage.getItem('fb.admin.token')||''}catch{return ''}};
+async function api(path){const r=await fetch(path,{headers:{Authorization:'Bearer '+TOKEN()}});const j=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(new Error(j.error||`Request failed (${r.status})`),{status:r.status});return j}
+const RANGES={mens:"Men's",womens:"Women's",acc:'Accessories'};
+let Q={q:new URLSearchParams(location.search).get('q')||'',range:'',style:''},CUR=null,CONCEPTS=null,PK=Object.keys(PART_KINDS)[0];
+function paintFilters(){const rs=[...new Set(FLAT_TEMPLATES.map(t=>t.range).filter(Boolean))];$('#range').innerHTML='<option value="">All ranges</option>'+rs.map(r=>`<option value="${r}">${esc(RANGES[r]||r)}</option>`).join('');
+  const ss=[...new Set(FLAT_TEMPLATES.map(t=>t.style))].sort((a,b)=>(STYLES[a]?.label||a).localeCompare(STYLES[b]?.label||b));$('#style').innerHTML='<option value="">All styles</option>'+ss.map(s=>`<option value="${s}">${esc(STYLES[s]?.label||s)}</option>`).join('');$('#q').value=Q.q;$('#count').textContent=FLAT_TEMPLATES.length}
+function list(){const words=Q.q.toLowerCase().split(/\s+/).filter(Boolean);return FLAT_TEMPLATES.filter(t=>(!Q.range||t.range===Q.range)&&(!Q.style||t.style===Q.style)&&words.every(w=>`${t.label} ${STYLES[t.style]?.label||''} ${RANGES[t.range]||''}`.toLowerCase().includes(w)))}
+function paint(){const l=list();$('#gal').innerHTML=l.slice(0,240).map(t=>`<button type="button" data-tpl="${t.id}" aria-pressed="${CUR?.id===t.id}"><img loading="lazy" alt="" src="/lab/flat-templates/thumbs/${t.id}.webp">${esc(t.label)}<span class="mono">${esc(STYLES[t.style]?.label||t.style)}</span></button>`).join('')||'<p class="note">No sketch matches. Try fewer words.</p>';
+  $('#msg').textContent=`${l.length} sketch${l.length===1?'':'es'}${l.length>240?' · showing 240, search to narrow it':''}`}
+function show(t){CUR=t;$$('#gal [data-tpl]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.tpl===t.id)));$('#big').innerHTML=`<img src="${TEMPLATE_URL(t.file)}" alt="${esc(t.label)}">`;$('#pinfo').innerHTML=`<h2>${esc(t.label)}</h2><p class="note">${esc(STYLES[t.style]?.label||t.style)} · ${esc(RANGES[t.range]||t.range||'')} · front and back</p>`;paintPick()}
+async function loadConcepts(){try{CONCEPTS=(await api('/v1/lab/concepts?limit=120')).concepts.filter(c=>c.status!=='tech_pack')}catch{CONCEPTS=[]}paintPick()}
+function paintPick(){const p=$('#pick');if(!CONCEPTS)return;const q=($('#cq').value||'').toLowerCase(),l=CONCEPTS.filter(c=>!q||`${c.name} ${c.categoryLabel||''} ${c.planName||''}`.toLowerCase().includes(q)).slice(0,40);
+  p.innerHTML=l.length?l.map(c=>`<button type="button" data-cid="${c.id}" ${CUR?'':'disabled'}><span style="flex:1"><b>${esc(c.name)}</b><br><span class="note">${esc(c.categoryLabel||c.category||'')}${c.planName?' · '+esc(c.planName):''}</span></span><span class="note">→</span></button>`).join(''):'<span class="note">No concepts yet: make some from a line plan.</span>'}
+$('#gal').addEventListener('click',e=>{const b=e.target.closest('[data-tpl]');if(b)show(FLAT_TEMPLATES.find(t=>t.id===b.dataset.tpl))});
+$('#pick').addEventListener('click',e=>{const b=e.target.closest('[data-cid]');if(b&&CUR)location.href=`/lab/flats?concept=${b.dataset.cid}&template=${encodeURIComponent(CUR.id)}`});
+$('#cq').addEventListener('input',paintPick);
+let qT=0;$('#q').addEventListener('input',()=>{Q.q=$('#q').value;clearTimeout(qT);qT=setTimeout(paint,150)});$('#range').addEventListener('change',()=>{Q.range=$('#range').value;paint()});$('#style').addEventListener('change',()=>{Q.style=$('#style').value;paint()});
+document.querySelector('.seg').addEventListener('click',e=>{const b=e.target.closest('[data-sec]');if(!b)return;$$('.seg [data-sec]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));$('#secSketches').classList.toggle('hidden',b.dataset.sec!=='sketches');$('#secParts').classList.toggle('hidden',b.dataset.sec!=='parts');if(b.dataset.sec==='parts')paintParts()});
+function paintParts(){const kinds=Object.entries(PART_KINDS).map(([id,label])=>({id,label:label+'s'}));$('#pkinds').innerHTML=kinds.map(k=>`<button type="button" class="btn sm ${k.id===PK?'':'q'}" data-pk="${k.id}" aria-pressed="${k.id===PK}">${esc(k.label)}</button>`).join('');
+  const l=FLAT_PARTS.filter(p=>p.kind===PK);$('#parts').innerHTML=l.map(p=>`<div><img loading="lazy" alt="" src="/lab/flat-parts/${p.file}">${esc(p.label)}</div>`).join('')||'<p class="note">No parts of this kind.</p>'}
+$('#pkinds').addEventListener('click',e=>{const b=e.target.closest('[data-pk]');if(b){PK=b.dataset.pk;paintParts()}});
+(async()=>{if(!TOKEN()){$('#needSignin').classList.remove('hidden');return}try{await api('/v1/lab/concepts?limit=1')}catch(x){if(x.status===401||x.status===403){$('#needSignin').classList.remove('hidden');return}}
+  $('#app').classList.remove('hidden');paintFilters();paint();loadConcepts();const first=new URLSearchParams(location.search).get('t');if(first){const t=FLAT_TEMPLATES.find(x=>x.id===first);if(t)show(t)}})();
+</script>
+<script src="/helper.js" defer></script>
+</body>
+</html>

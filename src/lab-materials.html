@@ -48,7 +48,7 @@ dialog{border:0;border-radius:24px;padding:0;width:min(900px,96vw);max-height:92
 <main>
   <div id="needSignin" class="panel hidden"><h1>Sign in to the work console first</h1><p class="note">This page uses your work console sign-in. Open the console, sign in, then come back here.</p><a class="btn go" href="/admin" style="margin-top:12px">Open the work console</a></div>
   <div id="app" class="hidden">
-    <nav class="labtabs" aria-label="Design Lab sections"><a href="/lab#library">Library</a><a href="/lab#trends">What's moving</a><a href="/lab#plans">Line plans</a><a href="/lab#board">Concepts</a><a href="/lab#assort">Assortment board</a><a href="/lab/library">Graphics and techniques</a><a class="on" href="/lab/materials" aria-current="page">Materials, trims and tags</a><a href="/lab#brands">Brands we watch</a><a href="/lab#code">Brand code</a></nav>
+    <nav class="labnav" data-lab="materials"></nav>
     <span class="mono" style="display:block;margin-top:14px">Our library</span><h1>Materials, trims and tags.</h1>
     <p class="note">Every fabric, trim and label we buy, with its weight, composition, mill, price and swatch, and every tag in its shape and size: neck labels, size tabs, care labels, hem tags, waistband labels, hang tags. Choose one on a concept and its bill of materials, landed cost and margin follow; the tech pack takes the lines.</p>
     <div class="tools"><div class="seg" role="tablist" id="kinds"></div><input class="t" id="q" type="search" placeholder="Search by name, code, mill, composition…" aria-label="Search" style="max-width:360px"><select class="t" id="forSel" style="max-width:180px;display:none" aria-label="For"></select><button class="btn go" type="button" id="add">Add one</button><span class="msg" id="msg" role="status"></span></div>
@@ -71,6 +71,7 @@ dialog{border:0;border-radius:24px;padding:0;width:min(900px,96vw);max-height:92
   </div></div>
 </div></dialog>
 
+<script src="/lab/nav.js"></script>
 <script src="/console-nav.js" defer></script>
 <script>
 'use strict';

@@ -234,7 +234,27 @@ const HEX_OK = /^#[0-9a-f]{6}$/i;
 const num = (v, d = 2) => (Number.isFinite(Number(v)) ? Number(v).toFixed(d) : '');
 
 // Merges the model's draft into a seeded pack. `seed` comes from seedTechPack for the classified product type.
+// What the Design Lab wrote into a pack (flats, materials, corrections) is the designer's own spec: the assistant may add beside it, never rewrite it.
+const LAB_BOM = r => /^From the (flats|materials library)/.test(String(r?.notes || ''));
+const LAB_CON = r => /^(Flats · |Correction · )/.test(String(r?.area || ''));
+const LAB_CW = r => /^From the (flats|materials library)/.test(String(r?.notes || ''));
+const LAB_POM = r => String(r?.how || '') === 'From the flats';
+export function keepLabRows(seed, pack) {
+  const out = pack, kept = { bom: 0, construction: 0, colorways: 0, pom: 0 };
+  const labBom = (seed.bom || []).filter(LAB_BOM); if (labBom.length) { const key = r => `${r.component}|${r.material}`.toLowerCase(), have = new Set(labBom.map(key)); out.bom = [...labBom, ...(out.bom || []).filter(r => !LAB_BOM(r) && !have.has(key(r)))].slice(0, 120); kept.bom = labBom.length; }
+  const labCon = (seed.construction || []).filter(LAB_CON); if (labCon.length) { const have = new Set(labCon.map(r => r.area)); out.construction = [...labCon, ...(out.construction || []).filter(r => !LAB_CON(r) && !have.has(r.area))].slice(0, 80); kept.construction = labCon.length; }
+  const labCw = (seed.colorways || []).filter(LAB_CW); if (labCw.length) { const have = new Set(labCw.map(c => c.swatch)); out.colorways = [...labCw, ...(out.colorways || []).filter(c => !LAB_CW(c) && !have.has(c.swatch))].slice(0, 16); kept.colorways = labCw.length; }
+  const labPom = new Map((seed.pom || []).filter(LAB_POM).map(r => [String(r.code).toUpperCase(), r]));
+  if (labPom.size) { const seen = new Set(); out.pom = (out.pom || []).map(r => { const k = String(r.code).toUpperCase(); if (labPom.has(k)) { seen.add(k); return structuredClone(labPom.get(k)); } return r; }); for (const [k, r] of labPom) if (!seen.has(k)) out.pom.push(structuredClone(r)); kept.pom = labPom.size; }
+  const n = kept.bom + kept.construction + kept.colorways + kept.pom;
+  if (n) out.notes = [`DESIGN LAB — ${n} row${n === 1 ? '' : 's'} from the flats, the materials library and sample reviews were kept exactly as the designer set them (${[kept.pom && `${kept.pom} measurements`, kept.bom && `${kept.bom} materials`, kept.construction && `${kept.construction} construction`, kept.colorways && `${kept.colorways} colourways`].filter(Boolean).join(', ')}). The assistant adds beside them and flags what it would question in its checks; it does not change them.`, out.notes || ''].filter(Boolean).join('\n\n').slice(0, 7000);
+  return out;
+}
 export async function applyDraftToPack(seed, draft, { photos, sizes, sampleSize, model }) {
+  const pack = keepLabRows(seed, await draftIntoPack(seed, draft, { photos, sizes, sampleSize, model }));
+  return pack;
+}
+async function draftIntoPack(seed, draft, { photos, sizes, sampleSize, model }) {
   const pack = structuredClone(seed);
   const sampleIdx = Math.max(0, sizes.indexOf(sampleSize));
   pack.style = { ...pack.style, styleName: draft.styleName || pack.style.styleName, category: draft.category || pack.style.category, description: draft.description || pack.style.description, fabricSummary: draft.fabricSummary || pack.style.fabricSummary, fitBlock: draft.fitBlock || pack.style.fitBlock, sampleSize };

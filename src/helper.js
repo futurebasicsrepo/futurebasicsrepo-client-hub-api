@@ -49,10 +49,12 @@
       id: 'lab-plan', title: 'Plan a line and make concepts',
       match: () => path() === '/lab' && shown('#app') && !$('#cd[open]'),
       steps: [
-        { target: '#labTabs', title: 'The Design Lab', do: 'Library and What’s moving are what the market is doing; Line plans and Concepts are what we make of it.', why: 'Everything starts from a read of the market, so the line has a reason for every piece.' },
+        { target: '#labTabs', title: 'The Design Lab', do: 'Three groups: Make (line plans, concepts, studio, flats, the board), Libraries (the sketch pack, graphics, materials) and Research (what the market is doing). The flow on the right says where you are.', why: 'Everything starts from a read of the market, so the line has a reason for every piece.' },
         { target: '#planForm [name="name"]', title: 'Start a line plan', do: 'Name the plan and the season, say the idea in a sentence, then press the button to draw it.', why: 'The plan sets the pieces, their roles, the price ladder and the margins before anything is designed.', done: 'input', after: 'Named.' },
         { target: '#planList', title: 'Open a plan', wait: 'Your plans appear here.', do: 'Open a plan to see its pieces, prices and margins.', why: 'Change a price, a quantity or a role and the margins follow.' },
         { target: '#pClient', title: 'Who it is for', optional: true, do: 'Leave it as our own line, or pick the client it is for, add their brand in a sentence, and tick “Show it in their hub” when it is ready.', why: 'A client’s line is designed in their brand, and they approve each piece in their hub.' },
+        { target: '#rangeBox', title: 'Change the whole range', optional: true, do: 'One instruction, every piece: “make every tee 260 gsm”. Preview the change per piece, tick the ones you want, apply.', why: 'A collection moves together; this keeps every piece in step without opening each one.' },
+        { target: '#demandBox', title: 'Test demand first', optional: true, do: 'Download the lookbook, or make a poll link and send it to customers.', why: 'Their votes become a demand read per piece, before a sample is cut.' },
         { target: '[data-mk]', title: 'Make concepts', optional: true, do: 'On a planned piece, press “Make concepts”.', why: 'Several takes on the piece, drawn and checked against what inspired them.', done: 'click', after: 'Drawing concepts…' },
         { target: '#board', title: 'The concepts board', do: 'Open a concept to edit it, check it, finish it and approve it.', why: 'This is where a planned piece becomes a design.' }
       ],
@@ -84,6 +86,16 @@
         { target: '#gGrid', title: 'The factory job file', optional: true, do: 'In a graphic’s window, choose how it is made, the width and the garment colour, read the summary (colours as Pantone, screens or stitches, any warning), then press “Download the job file”.', why: 'The factory or digitiser gets separations, films, the underbase or cut line, the settings and a one-page sheet: nothing to redraw.' }
       ],
       next: { tour: 'lab-studio', label: 'Finish a concept in the studio' }
+    },
+    {
+      id: 'lab-sketches', title: 'The sketch pack',
+      match: () => path() === '/lab/sketches' && shown('#app'),
+      steps: [
+        { target: '#gal', title: 'Every flat sketch we draw from', do: 'Search (cargo, pleated, halter), or filter by range and style. Pick one to see it large with its front and back.', why: 'Men’s, women’s and accessories: 382 drawings in the same lines, so every piece reads the same way to a factory.' },
+        { target: '#pick', title: 'Put it on a concept', do: 'With a sketch picked, choose the concept: its flats open at that sketch’s own proportions.', why: 'The cut comes from the sketch; the measurements and placements follow in inches.' },
+        { target: '.seg', title: 'The parts', optional: true, do: 'Switch to Parts: the pockets, zips, collars, trims and buttons cut from the pack.', why: 'They go on the flats and into the studio in the same lines.' }
+      ],
+      next: { tour: 'lab-flats', label: 'Draw and change the flats' }
     },
     {
       id: 'lab-materials', title: 'Fabrics, trims and tags, costed',

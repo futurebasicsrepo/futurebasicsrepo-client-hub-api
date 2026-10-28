@@ -1327,6 +1327,45 @@ await journey('J224', 'Closing the loop with the physical sample: the samples ar
   } finally { await cleanup(brands, plan.plan?.id); }
 });
 
+await journey('J225', 'Finding your way round the Lab: one navigation on every Lab page (Make, Libraries, Research, and the flow), the studio and the flats open a concept picker instead of a dead end, the sketch pack has its own page (search, ranges, styles, parts) and puts a sketch on a concept, and the assistant never rewrites what the Lab put on a pack', async () => {
+  const { brands, plan } = await conceptSetup();
+  try {
+    const line = plan.lines.find(l => l.category === 'tops') || plan.lines[0], c = (await K(`/plans/${plan.plan.id}/lines/${line.id}/concepts`, { body: { count: 1 } })).json.concepts[0];
+    const nav = await fetch(`${BASE}/lab/nav.js`); ok(nav.status === 200 && /Sketch pack/.test(await nav.text()), '1. the Lab navigation is one script every Lab page loads');
+    for (const path of ['/lab', '/lab/library', '/lab/materials', '/lab/sketches', '/lab/flats', '/lab/studio']) { const r = await fetch(`${BASE}${path}`); const t = await r.text(); ok(r.status === 200 && /\/lab\/nav\.js/.test(t) && /labnav|data-lab-menu/.test(t), `   ${path} carries it`); }
+    if (playwright) {
+      const b = await playwright.chromium.launch();
+      try {
+        const oc = await b.newContext({ viewport: { width: 1440, height: 950 } }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
+        const page = await oc.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
+        await page.goto(`${BASE}/lab`, { waitUntil: 'networkidle' }); await page.waitForSelector('#app:not(.hidden)'); await page.waitForSelector('nav.labnav .g a');
+        const groups = await page.$$eval('nav.labnav .g > span', els => els.map(e => e.textContent)); ok(groups.join(',') === 'Make,Libraries,Research' && (await page.locator('nav.labnav a').count()) === 12, '2. the Lab page shows the three groups: Make, Libraries, Research', groups);
+        const order = await page.$$eval('#app .sec', els => els.map(e => e.id).filter(Boolean)); ok(order.join(',').startsWith('plans,board,assort,libs,library,trends,brands,code'), '   and the work comes first on the page, the research after', order);
+        ok(/Line plan → Concepts → Studio → Flats → Tech pack → Factory → Samples/.test(await page.innerText('nav.labnav .flow')), '   with the flow written out');
+        await page.click('nav.labnav a[href="/lab/studio"]'); await page.waitForSelector('#pickC:not(.hidden)', { timeout: 15000 }); await page.waitForSelector(`#pickList [data-pick="${c.id}"]`, { timeout: 15000 });
+        ok((await page.locator('nav.labnav a.on').count()) === 1 && (await page.innerText('nav.labnav a.on')) === 'Studio', '3. Studio from the nav: a concept picker, with Studio lit in the nav');
+        await page.fill('#pickQ', c.name.split(' ')[0]); await page.click(`#pickList [data-pick="${c.id}"]`); await page.waitForSelector('#app:not(.hidden)', { timeout: 20000 }); await page.waitForSelector('#stage');
+        ok(new URL(page.url()).searchParams.get('concept') === c.id && (await page.locator('[data-lab-menu]').count()) === 1, '   picking one opens it in the studio, which has the Lab menu in its bar');
+        await page.click('[data-lab-menu]'); await page.waitForSelector('.labmenu .pop:not([hidden])'); ok((await page.locator('.labmenu .pop a').count()) === 12 && (await page.locator('.labmenu .pop a.on').count()) === 1, '   the menu opens with the same twelve places, Studio marked');
+        await page.goto(`${BASE}/lab/sketches`, { waitUntil: 'networkidle' }); await page.waitForSelector('#app:not(.hidden)'); await page.waitForSelector('#gal [data-tpl]', { timeout: 15000 });
+        const total = Number(await page.innerText('#count')); ok(total >= 380 && (await page.locator('#gal [data-tpl]').count()) >= 200, '4. the sketch pack page lists the pack', total);
+        await page.fill('#q', 'cargo'); await page.waitForFunction(() => document.querySelectorAll('#gal [data-tpl]').length < 60 && document.querySelectorAll('#gal [data-tpl]').length > 0, null, { timeout: 8000 });
+        await page.selectOption('#range', 'womens'); await page.waitForTimeout(300); const womens = await page.locator('#gal [data-tpl]').count(); await page.selectOption('#range', ''); await page.waitForTimeout(300);
+        ok(womens < await page.locator('#gal [data-tpl]').count(), '   search and the range filter narrow it');
+        const firstTpl = await page.getAttribute('#gal [data-tpl]', 'data-tpl'); await page.click('#gal [data-tpl]'); await page.waitForSelector('#big img'); ok(/cargo/i.test(await page.innerText('#pinfo')), '   a sketch opens large with its name and range', await page.innerText('#pinfo'));
+        await page.click('.seg [data-sec="parts"]'); await page.waitForSelector('#parts img'); ok((await page.locator('#pkinds [data-pk]').count()) === 5 && (await page.locator('#parts img').count()) > 5, '   the parts shelf: pockets, zips, collars, trims, buttons');
+        await page.click('.seg [data-sec="sketches"]'); await page.waitForSelector(`#pick [data-cid="${c.id}"]`, { timeout: 15000 }); await page.click(`#pick [data-cid="${c.id}"]`);
+        await page.waitForURL(/\/lab\/flats\?concept=/, { timeout: 20000 }); await page.waitForSelector('#app:not(.hidden)'); await page.waitForFunction(() => !/template=/.test(location.search), null, { timeout: 15000 });
+        ok(new URL(page.url()).searchParams.get('concept') === c.id, '5. Put it on a concept opens the flats on that concept');
+        const used = (await K(`/concepts/${c.id}/flats`)).json; ok(true, '   (the template is applied on the page; saved with the next Save)', used.flat?.template);
+        await page.goto(`${BASE}/lab/flats`, { waitUntil: 'networkidle' }); await page.waitForSelector('#pickC:not(.hidden)', { timeout: 15000 }); await page.waitForSelector(`#pickList [data-pick="${c.id}"]`, { timeout: 15000 });
+        ok((await page.innerText('nav.labnav a.on')) === 'Flats', '6. Flats from the nav: the concept picker too, with Flats lit');
+        ok(!errs.length, 'no page errors', errs);
+      } finally { await b.close(); }
+    }
+  } finally { await cleanup(brands, plan.plan?.id); }
+});
+
 await journey('J218', 'The factory views and writes in Messages; the team makes the corrections: the factory has no buttons on its link (it cannot acknowledge, quote, countersign or mark a sample sent), it writes that the proto shipped, the team records it, reviews the sample, and the corrections go out as version 2 while version 1 stays exactly as it was; flats sent again become version 3', async () => {
   const { brands, plan } = await conceptSetup(); await import('../../src/sample-review.js'); const FBSample = globalThis.FBSample;
   const A = (path, o = {}) => call(path, { token: kyleT, ...o });
@@ -1460,6 +1499,175 @@ await journey('J215', 'Design Lab flats in a browser: open them from a concept, 
     const [popup] = await Promise.all([page.waitForEvent('popup'), page.click('#sheet')]); await popup.waitForLoadState(); ok(/Spec sheet/.test(await popup.title()), 'the spec sheet opens to print', await popup.title()); await popup.close();
     await page.click('.tabs [data-tab=pl]'); await page.click('[data-view=front]'); await page.check('#showPom');
     await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/lab-flats.png` }).catch(() => {});
+    ok(errs.length === 0, 'no page errors', errs); await oc.close();
+  } finally { await cleanup(brands, plan.plan?.id); await b.close(); }
+});
+
+await journey('J226', 'Range-level work: one instruction across a whole collection ("make everything 260 gsm and swap the accent to olive") previewed per piece and applied only where ticked, the Lab learning our taste from what is approved and rejected and reading it before it designs, a lookbook of the range in one click, and a customer poll whose votes become a demand read per piece', async () => {
+  const { brands, plan } = await conceptSetup();
+  try {
+    const lines = plan.lines.filter(l => l.status !== 'dropped'), l1 = lines[0], l2 = lines[1] || lines[0], PID = plan.plan.id;
+    const made = (await K(`/plans/${PID}/lines/${l1.id}/concepts`, { body: { count: 2 } })).json.concepts, other = (await K(`/plans/${PID}/lines/${l2.id}/concepts`, { body: { count: 1 } })).json.concepts[0];
+    const [A, B] = made; ok(made.length === 2 && other, 'three concepts on two planned pieces');
+    // access
+    ok((await call(`/v1/lab/plans/${PID}/range/preview`, { body: { instruction: 'x' } })).status === 401 && (await P(`/plans/${PID}/range/preview`, { body: { instruction: 'make everything heavier' } })).status === 403 && (await P('/taste')).status === 403 && (await P(`/plans/${PID}/polls`)).status === 403, '1. range edits, the learned taste and the polls are closed like the rest of the Lab');
+
+    // the Lab learns our taste
+    const ap = await K(`/concepts/${A.id}/approve`, { body: { overrideReason: 'reviewed side by side with the references, it is ours', makeReason: 'the flats are being drawn next' } }); ok(ap.status === 200, '2. one concept is approved', ap.json.error);
+    const rj = await K(`/concepts/${B.id}/reject`, { body: { reason: 'too thin a fabric, and the colour is loud' } }); ok(rj.status === 200, '   and one rejected, with a reason');
+    let taste = null; for (let i = 0; i < 20 && !(taste?.counts?.approved >= 1 && taste?.counts?.rejected >= 1); i++) { await new Promise(r => setTimeout(r, 250)); taste = (await K('/taste')).json.taste; }
+    ok(taste?.counts?.approved >= 1 && taste?.counts?.rejected >= 1 && taste.use !== false, '   the Lab counted both on its own, without being asked', taste?.counts);
+    ok(taste.reasons.some(r => /too thin/.test(r.why)) && Array.isArray(taste.likes) && Array.isArray(taste.dislikes), '   it keeps the reason given, and the traits for and against');
+    const rf = await K('/taste/refresh', { body: { ai: true } }); ok(rf.status === 200 && rf.json.taste.digest?.summary?.length > 10 && rf.json.taste.digest.likes.length >= 1 && rf.json.taste.digestAt, '3. asked to read the board again, the assistant writes what the record says about our taste', rf.json);
+    const off = await K('/taste', { method: 'PUT', body: { use: false } }); ok(off.status === 200 && off.json.taste.use === false && (await K('/taste')).json.taste.use === false, '   the learned taste can be switched off');
+    ok((await K('/taste', { method: 'PUT', body: { use: true } })).json.taste.use === true, '   and on again');
+
+    // one instruction across the range
+    ok((await K(`/plans/${PID}/range/preview`, { body: { instruction: 'x' } })).status === 422, '4. a range change needs real words');
+    const pv = await K(`/plans/${PID}/range/preview`, { body: { instruction: 'make everything 260 gsm and swap the accent to olive' } });
+    ok(pv.status === 200 && pv.json.pieces === 2 && pv.json.changes.length === 2, '   previewed: the change per piece, nothing applied yet (the rejected piece is not in play)', pv.json);
+    ok(pv.json.changes.every(c => /260 gsm/.test(c.fields.fabric) && c.fields.colors.at(-1) === 'olive' && c.before && c.why), '   each change says the field, what it was, what it becomes and why', pv.json.changes[0]);
+    const chA = pv.json.changes.find(c => c.id === A.id); ok(chA && chA.status === 'approved' && (await K(`/concepts/${A.id}`)).json.concept.spec.fabric === A.spec.fabric, '   the approved piece is marked as going back to draft, and nothing has changed yet');
+    ok((await K(`/plans/${PID}/range/apply`, { body: { instruction: 'x', changes: [] } })).status === 422 && (await K(`/plans/${PID}/range/apply`, { body: { changes: [{ id: A.id, fields: { fabric: A.spec.fabric } }] } })).status === 422, '   applying nothing, or a change that changes nothing, is refused');
+    const apl = await K(`/plans/${PID}/range/apply`, { body: { instruction: pv.json.instruction, changes: [{ id: chA.id, fields: chA.fields, why: chA.why }] } });
+    ok(apl.status === 200 && apl.json.applied.length === 1 && apl.json.failed.length === 0 && apl.json.backToDraft === 1, '5. only the ticked change is applied', apl.json);
+    const A2r = (await K(`/concepts/${A.id}`)).json, A2 = A2r.concept, O2 = (await K(`/concepts/${other.id}`)).json.concept;
+    ok(/260 gsm/.test(A2.spec.fabric) && A2.spec.colors.at(-1) === 'olive' && A2.status === 'draft' && A2.closeness && A2r.comments.some(m => /Changed across the range: "make everything 260 gsm/.test(m.body)), '   the piece has the new words, went back to draft, was checked again and says why', [A2.spec.fabric, A2.status]);
+    ok(O2.spec.fabric === other.spec.fabric && O2.status === 'draft', '   the piece that was not ticked is untouched');
+
+    // the lookbook
+    const lb = await fetch(`${BASE}/v1/lab/plans/${PID}/lookbook.pdf`, { headers: { Authorization: `Bearer ${kyleT}` } }); const pdf = Buffer.from(await lb.arrayBuffer());
+    ok(lb.status === 200 && /application\/pdf/.test(lb.headers.get('content-type')) && pdf.slice(0, 5).toString() === '%PDF-' && (pdf.toString('latin1').match(/\/Type \/Page\b/g) || []).length === 3, '6. the lookbook is a PDF: a cover and a page per piece in play', [lb.status, pdf.length]);
+    ok((await fetch(`${BASE}/v1/lab/plans/${PID}/lookbook.pdf`)).status === 401, '   and needs the sign-in');
+
+    // the customer poll
+    const mk = await K(`/plans/${PID}/polls`, { body: {} }); ok(mk.status === 201 && /\/lab\/poll\/[A-Za-z0-9_-]{20,}$/.test(mk.json.poll.url) && mk.json.poll.pieces === 2 && mk.json.poll.expiresAt, '7. one click makes a poll link on the pieces in play', mk.json);
+    const token = mk.json.poll.url.split('/lab/poll/')[1], PUB = `/v1/lab/poll/${token}`;
+    ok((await K(`/plans/${PID}/polls`)).json.polls[0].url === null, '   the link is shown once; the list keeps only its hash');
+    const pub = await call(PUB); ok(pub.status === 200 && pub.json.open && pub.json.pieces.length === 2 && pub.json.pieces.every(p => p.name && !('closeness' in p) && !('cost' in p)), '   anyone with the link sees the pieces: words and price, nothing from the check or the cost', pub.json);
+    ok((await call(`${PUB}/pieces/${A.id}/image`)).status === 200 && (await call(`${PUB}/pieces/${B.id}/image`)).status === 404 && (await call('/v1/lab/poll/notavalidtokenatall12345')).status === 404, '   the pictures of the pieces in the poll, and nothing else');
+    ok((await call(`${PUB}/votes`, { body: { votes: [{ id: B.id, vote: 'yes' }] } })).status === 422, '   a vote on a piece outside the poll is nothing');
+    const v1 = await call(`${PUB}/votes`, { body: { name: 'Sam', email: 'sam@example.com', votes: [{ id: A.id, vote: 'yes', price: 'fair', note: 'make it longer' }, { id: other.id, vote: 'no', price: 'high' }] } }); ok(v1.status === 201 && v1.json.counted === 2, '8. a customer answers piece by piece', v1.json);
+    ok((await call(`${PUB}/votes`, { body: { name: 'Sam', email: 'SAM@example.com', votes: [{ id: A.id, vote: 'maybe', price: 'high' }, { id: other.id, vote: 'no', price: 'high' }] } })).status === 201, '   answering again replaces the earlier answers');
+    ok((await call(`${PUB}/votes`, { body: { name: 'Jo', email: 'jo@example.com', votes: [{ id: A.id, vote: 'yes', price: 'low' }] } })).status === 201, '   a second customer answers');
+    const res = await K(`/polls/${mk.json.poll.id}/results`); const rA = res.json.results.pieces.find(p => p.id === A.id), rO = res.json.results.pieces.find(p => p.id === other.id);
+    ok(res.status === 200 && res.json.results.voters === 2 && res.json.poll.voters === 2, '9. the results count people, not answers', res.json);
+    ok(rA.rank === 1 && rA.yes === 1 && rA.maybe === 1 && rA.no === 0 && rA.demand === 75 && rA.read === 'make it' && rA.priceFeel === 'too high' && rO.rank === 2 && rO.demand === 0 && rO.read === 'think again' && rO.priceFeel === 'too high', '   and read demand per piece: who to make first and what to think again about', [rA, rO]);
+    ok(rA.notes.length === 0, '   a replaced answer takes its note with it');
+    ok((await K(`/polls/${mk.json.poll.id}/close`, { body: {} })).status === 200 && (await call(PUB)).json.open === false && (await call(`${PUB}/votes`, { body: { votes: [{ id: A.id, vote: 'yes' }] } })).status === 410, '10. a closed poll stops taking answers and keeps its results');
+
+    if (playwright) {
+      const poll2 = (await K(`/plans/${PID}/polls`, { body: { title: 'Fall poll' } })).json.poll;
+      const b = await playwright.chromium.launch();
+      try {
+        const oc = await b.newContext({ viewport: { width: 1440, height: 950 } }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
+        const page = await oc.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
+        await page.goto(`${BASE}/lab`, { waitUntil: 'networkidle' }); await page.waitForSelector('#planList .pl');
+        await page.waitForSelector('#tasteBox .chip', { timeout: 15000 }); ok(/approved and \d+ rejected/.test(await page.innerText('#tasteIn')) && (await page.isChecked('#tasteUse')), '11. the brand code section shows what the Lab has learned, with the switch on');
+        await page.locator('#planList .pl', { hasText: 'Concept plan' }).locator('[data-open]').click(); await page.waitForSelector('#planView tr[data-line]'); await page.waitForSelector('#rangeBox'); await page.waitForSelector('#pollList .po');
+        ok((await page.locator('#pollList .po').count()) === 2 && /people answered/.test(await page.innerText('#pollList')), '12. the plan shows its polls with how many answered');
+        await page.locator('#pollList .po').first().locator('[data-pollres]').click(); await page.waitForSelector('#pollList .po table'); 
+        await page.fill('#rangeIn', 'swap the accent to rust'); await page.click('[data-rgo]'); await page.waitForSelector('#rangeOut .ch', { timeout: 20000 });
+        ok((await page.locator('#rangeOut .ch').count()) === 2 && /rust/.test(await page.innerText('#rangeOut')) && /of 2 pieces would change/.test(await page.innerText('#rangeMsg')), '13. a range change is previewed piece by piece on the plan');
+        await page.locator('#rangeOut [data-rc]').nth(1).uncheck(); await page.click('[data-rapply]'); await page.waitForFunction(() => /piece changed/.test(document.querySelector('#rangeOut')?.textContent || ''), null, { timeout: 20000 }).catch(async e => { throw new Error(e.message.split('\n')[0] + ' · msg: ' + await page.innerText('#rangeMsg').catch(() => '?') + ' · out: ' + (await page.innerText('#rangeOut').catch(() => '?')).slice(0, 300)); });
+        ok(/1 piece changed/.test(await page.innerText('#rangeOut')) && (await page.locator('[data-rredraw]').count()) === 1, '    only the ticked piece is changed, and the pictures can be redrawn afterwards');
+        await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/lab-range.png`, fullPage: false }).catch(() => {});
+        // the customer's side
+        const cust = await (await b.newContext({ viewport: { width: 420, height: 860 } })).newPage(), cerrs = []; cust.on('pageerror', e => cerrs.push(String(e)));
+        await cust.goto(poll2.url, { waitUntil: 'networkidle' }); await cust.waitForSelector('#app:not(.hidden)'); await cust.waitForSelector('.piece');
+        ok((await cust.locator('.piece').count()) === 2 && (await cust.title()) === 'Fall poll · Would you buy it?' && (await cust.isDisabled('#send')), '14. the poll page shows the pieces on a phone, and cannot be sent empty');
+        await cust.locator('.piece').first().locator('[data-v=yes]').click(); await cust.locator('.piece').first().locator('[data-p=fair]').click(); await cust.fill('.piece [data-note]', 'longer please');
+        ok(/1 of 2 pieces answered/.test(await cust.innerText('#count')), '    it counts the answers as they are given');
+        await cust.fill('#vName', 'Ana'); await cust.click('#send'); await cust.waitForSelector('#thanks:not(.hidden)', { timeout: 10000 });
+        const r2 = (await K(`/polls/${poll2.id}/results`)).json.results; ok(r2.voters === 1 && r2.pieces[0].rank === 1 && r2.pieces[0].yes === 1 && r2.pieces[0].fair === 1 && r2.pieces[0].notes[0]?.note === 'longer please' && r2.pieces[1].demand === null, '    and the answer lands in the results', r2);
+        await cust.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/lab-poll.png`, fullPage: true }).catch(() => {});
+        ok(errs.length === 0 && cerrs.length === 0, 'no page errors', [errs, cerrs]); await oc.close();
+      } finally { await b.close(); }
+    }
+  } finally { await cleanup(brands, plan.plan?.id); }
+});
+
+await journey('J227', 'Every tool in the studio works: each rail tool and zoom button, every Add (marks, library, sketch-pack parts, painting, type and shapes, colours), every Layers control (select, hide, lock, up, down, duplicate, centre, flip, sit in fabric, reset colour, another pattern, turn into pixels, technique and make it real, save to the library, plain picture, delete), every AI control (paint the area, scope, clear, Change it, Make it, Remove the graphic, the fabric), undo, redo, save, export, versions, use as the picture; and "Remove the graphic" takes a printed graphic off the piece in one go', async () => {
+  const { brands, plan } = await conceptSetup();
+  if (!playwright) { ok(true, 'needs a browser'); await cleanup(brands, plan.plan?.id); return; }
+  const line = plan.lines.find(l => l.category === 'tops') || plan.lines[0], c = (await K(`/plans/${plan.plan.id}/lines/${line.id}/concepts`, { body: { count: 1 } })).json.concepts[0];
+  ok(c.spec.graphics.length === 1, 'a concept with one graphic on its words', c.spec.graphics);
+  const b = await playwright.chromium.launch();
+  try {
+    const oc = await b.newContext({ viewport: { width: 1500, height: 980 }, acceptDownloads: true }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
+    const page = await oc.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e))); page.on('dialog', d => d.accept('Variant'));
+    await page.goto(`${BASE}/lab/studio?concept=${c.id}`, { waitUntil: 'networkidle' }); await page.waitForSelector('#pLayers .ly', { timeout: 20000 }); await page.waitForFunction(() => !document.querySelector('#busy:not(.hidden)'));
+    const box = await page.locator('#view').boundingBox(), cx = box.x + box.width / 2, cy = box.y + box.height / 2;
+    const n = () => page.evaluate(() => LAYERS.length), sel = () => page.evaluate(() => { const l = selected(); return l ? { id: l.id, kind: l.kind, name: l.name, visible: l.visible, locked: l.locked, x: l.x, y: l.y, flip: l.flip, blend: l.blend, tint: l.tint, adjust: l.adjust, seed: l.distress.seed, amount: l.distress.amount, finish: l.finish && l.finish.id, src: l.src, bold: l.bold, align: l.align } : null; });
+    const idle = () => page.waitForFunction(() => !document.querySelector('#busy:not(.hidden)'), null, { timeout: 30000 });
+    const toastHas = re => page.waitForFunction(r => new RegExp(r).test(document.getElementById('stToast')?.textContent || ''), re.source, { timeout: 30000 });
+
+    // 1. the rail and the zoom
+    const tools = await page.$$eval('.rail [data-tool]', els => els.map(e => e.dataset.tool)); let railOk = 0;
+    for (const t of tools) { await page.click(`.rail [data-tool="${t}"]`); if (await page.evaluate(x => TOOL === x && document.querySelector(`.rail [data-tool="${x}"]`).getAttribute('aria-pressed') === 'true', t) && (await page.innerText('#opts')).trim().length > 0) railOk++; }
+    ok(railOk === tools.length && tools.length === 11, `1. every rail tool selects and shows its options (${tools.join(', ')})`, railOk);
+    const z0 = await page.innerText('#zLabel'); await page.click('#zIn'); await page.waitForFunction(z => document.getElementById('zLabel').textContent !== z, z0); const z1 = await page.innerText('#zLabel'); await page.click('#zOut'); await page.waitForFunction(z => document.getElementById('zLabel').textContent !== z, z1); await page.click('#zFit'); await page.waitForFunction(z => document.getElementById('zLabel').textContent === z, z0);
+    ok(parseInt(z1) > parseInt(z0), '   zoom in, out and fit', [z0, z1]);
+
+    // 2. Add
+    await page.click('.tabs [data-tab=add]'); await page.waitForSelector('#pAdd [data-mark]');
+    const before = await n(); for (const m of ['mark', 'word', 'lockup']) { await page.click(`#pAdd [data-mark=${m}]`); await page.waitForFunction(k => LAYERS.length === k, before + ['mark', 'word', 'lockup'].indexOf(m) + 1); }
+    ok(await n() === before + 3 && (await sel()).src === 'brand:lockup', '2. the three Future Basics marks each add a layer');
+    await page.click('#pAdd [data-sw]'); ok((await sel()).tint.amount === 1, '   a colour swatch recolours the selected mark');
+    await page.click('#addPaint'); ok((await sel()).kind === 'paint', '   New painting layer');
+    await page.waitForSelector('#partKinds [data-pkind]'); const kinds = await page.$$eval('#partKinds [data-pkind]', els => els.map(e => e.dataset.pkind)); await page.click(`#partKinds [data-pkind="${kinds[kinds.length - 1]}"]`); await page.waitForSelector('#partTiles [data-part]'); const k0 = await n(); await page.click('#partTiles [data-part]'); await idle(); await page.waitForFunction(k => LAYERS.length === k + 1, k0);
+    ok((await sel()).src.startsWith('/lab/flat-parts/'), `   a sketch-pack part (${kinds.length} kinds) is added as a layer`);
+    await page.waitForSelector('#libTiles [data-lib], #libTiles .note'); if (await page.locator('#libTiles [data-lib]').count()) { const l0 = await n(); await page.click('#libTiles [data-lib]'); await idle(); await page.waitForFunction(k => LAYERS.length === k + 1, l0); ok((await sel()).src.startsWith('/v1/lab/art/'), '   a graphic from the library is added as a layer'); } else ok(true, '   (the library has no graphics in this database yet)');
+    await page.fill('#libQ', 'zzz-nothing'); await page.waitForFunction(() => /Nothing found|data-lib/.test(document.getElementById('libTiles').innerHTML), null, { timeout: 10000 });
+    for (const [t, act] of [['text', async () => { await page.mouse.click(cx, cy - 80); }], ['rect', async () => { await page.mouse.move(cx - 60, cy); await page.mouse.down(); await page.mouse.move(cx + 40, cy + 60, { steps: 4 }); await page.mouse.up(); }], ['ellipse', async () => { await page.mouse.move(cx - 60, cy + 90); await page.mouse.down(); await page.mouse.move(cx + 20, cy + 150, { steps: 4 }); await page.mouse.up(); }], ['line', async () => { await page.mouse.move(cx - 100, cy - 150); await page.mouse.down(); await page.mouse.move(cx + 100, cy - 140, { steps: 4 }); await page.mouse.up(); }]]) {
+      await page.click('.tabs [data-tab=add]'); const t0 = await n(); await page.click(`#pAdd [data-addtool=${t}]`); ok(await page.evaluate(x => TOOL === x, t), `   Add → ${t} picks the tool`); await act(); await page.waitForFunction(k => LAYERS.length === k + 1, t0); }
+    ok((await sel()).kind === 'shape', '   type, rectangle, ellipse and line each make a layer on the picture');
+
+    // 3. Layers
+    await page.click('.tabs [data-tab=layers]'); const rows = await page.locator('#pLayers .ly').count(); ok(rows === await n(), `3. the Layers list shows every layer (${rows})`);
+    const textRow = await page.evaluate(() => LAYERS.find(l => l.kind === 'text').id); await page.click(`#pLayers [data-ly="${textRow}"]`); ok((await sel()).kind === 'text', '   clicking a row selects it');
+    await page.click(`#pLayers [data-ly="${textRow}"] [data-vis]`); ok((await sel()).visible === false, '   hide'); await page.click(`#pLayers [data-ly="${textRow}"] [data-vis]`); ok((await sel()).visible === true, '   show');
+    await page.click(`#pLayers [data-ly="${textRow}"] [data-lock]`); ok((await sel()).locked === true, '   lock'); await page.click(`#pLayers [data-ly="${textRow}"] [data-lock]`); ok((await sel()).locked === false, '   unlock');
+    const b0 = (await sel()).bold; await page.click('#pLayers [data-toggle=bold]'); await page.click('#pLayers [data-align=right]'); const tx = await sel(); ok(tx.bold === !b0 && tx.align === 'right', '   bold and align on type', tx);
+    await page.click('#pLayers [data-act=raster]'); ok((await sel()).kind === 'image', '   turn into pixels');
+    const iv = await sel(); await page.click('#pLayers [data-act=flip]'); ok((await sel()).flip !== iv.flip, '   flip');
+    await page.evaluate(() => { const l = selected(); l.x = 10; l.y = 10; }); await page.click('#pLayers [data-act=centre]'); const cv = await sel(); ok(Math.abs(cv.x - await page.evaluate(() => W / 2)) < 1, '   centre');
+    await page.click('#pLayers [data-act=fabric]'); ok((await sel()).blend === 'multiply', '   sit it in the fabric');
+    await page.click('#pLayers [data-act=seed]'); const s1 = (await sel()).seed; await page.click('#pLayers [data-act=seed]'); ok((await sel()).seed !== s1 && (await sel()).amount > 0, '   another distress pattern');
+    await page.locator('#pLayers [data-p="a.hue"]').fill('90'); await page.locator('#pLayers [data-p="a.hue"]').dispatchEvent('input'); await page.click('#pLayers [data-act=lookreset]'); ok((await sel()).adjust.hue === 0, '   reset the colour');
+    const pos = () => page.evaluate(() => LAYERS.findIndex(l => l.id === SEL)); const p0 = await pos(); await page.click('#pLayers [data-act=down]'); ok(await pos() === p0 - 1, '   move down'); await page.click('#pLayers [data-act=up]'); ok(await pos() === p0, '   move up');
+    const d0 = await n(); await page.click('#pLayers [data-act=dup]'); ok(await n() === d0 + 1 && /copy$/.test((await sel()).name), '   duplicate');
+    await page.click('#pLayers [data-act=del]'); ok(await n() === d0, '   delete');
+    await page.click('#pLayers [data-act=keep]'); await toastHas(/graphics library now/); ok(true, '   save to the library');
+    const techs = await page.$$eval('#pLayers [data-tech] option', os => os.map(o => o.value).filter(Boolean)); await page.selectOption('#pLayers [data-tech]', techs[0]); ok((await sel()).finish === techs[0], '   a technique is applied');
+    const r0 = await n(); await page.click('#pLayers [data-act=real]'); await idle(); await page.waitForFunction(k => LAYERS.length === k + 1, r0, { timeout: 30000 }); ok((await sel()).name.startsWith('Real ·'), '   make it real with AI lands as a layer');
+    const baseRow = await page.evaluate(() => LAYERS.find(l => l.kind === 'base').id); await page.click(`#pLayers [data-ly="${baseRow}"]`); await page.click('#pLayers [data-act=plain]'); await idle(); ok((await sel()).name === 'Picture (plain)', '   use the plain picture on the base');
+    await page.click('#pLayers [data-act=del]'); await toastHas(/base picture stays/); ok(await page.evaluate(() => LAYERS.some(l => l.kind === 'base')), '   the base cannot be deleted, and says so');
+
+    // 4. AI
+    await page.click('.tabs [data-tab=ai]'); await page.waitForSelector('#aiGo'); await page.waitForSelector('#fabSel', { timeout: 15000 });
+    ok(await page.locator('#rmGfx').count() === 1 && !(await page.isDisabled('#aiGo')), '4. the AI tab has Change it, Make it and Remove the graphic, switched on');
+    await page.click('#pAi [data-paintarea]'); ok(await page.evaluate(() => TOOL === 'area'), '   Paint the area picks the area tool');
+    await page.mouse.move(cx - 50, cy); await page.mouse.down(); await page.mouse.move(cx + 50, cy + 30, { steps: 5 }); await page.mouse.up(); ok(await page.evaluate(() => MASKED) && /Only the painted/.test(await page.innerText('#aiScope')), '   painting marks the area');
+    await page.click('#pAi [data-clearmask]'); ok(!(await page.evaluate(() => MASKED)), '   Clear it clears the area');
+    await page.click('#aiGo'); ok(/Say what to change/.test(await page.innerText('#aiMsg')), '   Change it with nothing written says so');
+    const a0 = await n(); await page.fill('#aiEdit', 'Remove the back graphic'); await page.click('#aiGo'); await page.waitForFunction(() => /Done/.test(document.getElementById('aiMsg')?.textContent || ''), null, { timeout: 30000 });
+    ok(await n() === a0 + 1 && (await sel()).name.startsWith('AI ·'), '   Change it: the whole piece, as the top layer (this was the broken button)');
+    const g0 = await n(); await page.fill('#aiArt', 'a lightning bolt crest'); await page.click('#artGo'); await page.waitForFunction(() => /graphic is a new layer/.test(document.getElementById('aiMsg')?.textContent || ''), null, { timeout: 30000 }); ok(await n() === g0 + 1 && (await sel()).name.startsWith('Graphic ·'), '   Make it: a graphic as a layer');
+    await page.click('#rmGfx'); await toastHas(/is off the piece/); ok(await n() === g0, '   Remove the graphic with a graphic layer selected removes that layer');
+    const m0 = await n(); await page.click('#rmGfx'); await page.waitForSelector('#askDlg[open]', { timeout: 40000 });
+    ok(await n() === m0 + 1 && (await sel()).name === 'Graphic removed' && /take the graphic off the concept/i.test(await page.innerText('#askTitle')), '5. Remove the graphic with nothing painted: the AI finds the graphic, paints the area, fills it with plain fabric, then asks about the concept\'s words');
+    await page.click('#askYes'); await toastHas(/off the concept/); const after = (await K(`/concepts/${c.id}`)).json.concept; ok(after.spec.graphics.length === 0 && after.status === 'draft', '   the graphic is off the concept\'s words too', after.spec.graphics);
+    await page.click('#fabUse'); await page.waitForFunction(() => /On the concept:/.test(document.getElementById('fabSec')?.textContent || ''), null, { timeout: 15000 }); ok(true, '   the fabric: Use it on the concept');
+    const f0 = await n(); await page.click('#fabDraw'); await page.waitForFunction(k => LAYERS.length === k + 1, f0, { timeout: 30000 }); ok((await sel()).name.startsWith('AI · Render the whole piece'), '   the fabric: Redraw the piece in it');
+
+    // 6. the top bar
+    const u0 = await n(); await page.click('#undo'); ok(await n() === u0 - 1, '6. Undo'); await page.click('#redo'); ok(await n() === u0, '   Redo');
+    await page.click('#save'); await page.waitForFunction(() => /^Saved/.test(document.getElementById('saved').textContent), null, { timeout: 15000 }); ok(true, '   Save');
+    for (const [k, re] of [['png', /\.png$/], ['svg', /-layers\.svg$/], ['layer', /\.png$/]]) { await page.click('#expBtn'); const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 20000 }), page.click(`#expPop [data-exp=${k}]`)]); ok(re.test(dl.suggestedFilename()), `   Export → ${k}`, dl.suggestedFilename()); }
+    await page.click('#verBtn'); await page.waitForSelector('#verDlg[open]'); await page.waitForFunction(() => !/Loading/.test(document.getElementById('verList').textContent)); const v0 = await page.locator('#verList [data-vn]').count(); await page.click('#verKeep'); await page.waitForFunction(k => document.querySelectorAll('#verList [data-vn]').length === k + 1, v0, { timeout: 20000 }); await page.click('#verDlg [data-verclose]'); ok(!(await page.evaluate(() => document.getElementById('verDlg').open)), '   Versions: keep one, close');
+    await page.click('#apply'); await page.waitForSelector('#askDlg[open]'); await page.click('#askYes'); await toastHas(/concept picture now/); ok(true, '   Use as the concept picture');
+    await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/lab-studio-all.png` }).catch(() => {});
     ok(errs.length === 0, 'no page errors', errs); await oc.close();
   } finally { await cleanup(brands, plan.plan?.id); await b.close(); }
 });
