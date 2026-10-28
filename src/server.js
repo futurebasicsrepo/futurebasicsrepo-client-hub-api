@@ -70,6 +70,7 @@ import { createArtService, registerLabArtRoutes } from './lab-art-routes.js';
 import { createLabAccess } from './lab-access.js';
 import { registerLabSelfServeRoutes } from './lab-selfserve-routes.js';
 import { registerRoomTeamRoutes } from './room-team-routes.js';
+import { maskFor as flatMaskFor } from './lab-flat-mask.js';
 import { purgeOld as labPurge } from './lab-scan.js';
 import { runDue as intelRunDue, scorePending as intelScore, loadSettings as intelSettings, purgeOld as intelPurge } from './intel-engine.js';
 import { registerBuildRoutes, seedBuilds, ensureHostedBuilds, backfillBuildRepos, moveBuildRepos, syncBuilds } from './builds-routes.js';
@@ -705,8 +706,10 @@ const learnLabTaste = () => learnTaste({ pool, getSetting, setSetting });
 const labConcepts = registerLabConceptRoutes(app, { pool, ...labDeps, getSetting, learn: learnLabTaste, log: app.log, art: labArt, createProduct: args => createClientProduct(args), attachArtwork: (productId, items) => attachLabArtwork(productId, items), sendFlats: (id, productId) => labFlats.sendToPack(id, productId), flatsCheck: id => labFlats.startCheck(id) });
 registerLabViewRoutes(app, { pool, ...labDeps, log: app.log });
 registerLabStudioRoutes(app, { pool, ...labDeps });
-registerLabLibraryRoutes(app, { pool, ...labDeps, art: labArt, log: app.log });
-registerLabMaterialsRoutes(app, { pool, ...labDeps, log: app.log });
+// their starting techniques and materials are put in once the tables are migrated (seeding while the migration alters them deadlocked)
+let migratedNow; const migrated = new Promise(r => { migratedNow = r; });
+registerLabLibraryRoutes(app, { pool, ...labDeps, art: labArt, log: app.log, ready: migrated });
+registerLabMaterialsRoutes(app, { pool, ...labDeps, log: app.log, ready: migrated });
 registerLabShareRoutes(app, { pool, ...labDeps, log: app.log, notifyStaff, sheetSvg: id => labFlats.sheetSvg(id) });
 registerLabTryonRoutes(app, { pool, ...labDeps, log: app.log });
 registerLabRangeRoutes(app, { pool, ...labDeps, getSetting, setSetting, editConcept: (...a) => labConcepts.editConcept(...a), notifyStaff, log: app.log });
@@ -771,6 +774,13 @@ app.get('/lab/lab-flat-parts.js', (req, reply) => sendPack(req, reply, './lab-fl
 app.get('/lab/flat-templates/:file', (req, reply) => {
   const f = String(req.params.file || ''); if (!/^[a-z0-9-]+\.svg$/.test(f)) return reply.code(404).send('Not found');
   return sendPack(req, reply, `./flat-templates/${f}`, 'image/svg+xml', 86400);
+});
+// a sketch's silhouette, for colouring the garment inside it and nothing outside it (src/lab-flat-mask.js); made once per sketch, then kept
+app.get('/lab/flat-masks/:file', async (req, reply) => {
+  const f = String(req.params.file || ''); if (!/^[a-z0-9-]+\.png$/.test(f)) return reply.code(404).send('Not found');
+  const svg = f.replace(/\.png$/, '.svg');
+  try { const png = await flatMaskFor(svg, file => readFileSync(new URL(`./flat-templates/${file}`, import.meta.url)), file => readFileSync(new URL(`./flat-templates/masks/${file}`, import.meta.url))); return reply.header('cache-control', 'public, max-age=604800').type('image/png').send(png); }
+  catch { return reply.code(404).send('Not found'); }
 });
 app.get('/lab/flat-templates/thumbs/:file', (req, reply) => {
   const f = String(req.params.file || ''); if (!/^[a-z0-9-]+\.webp$/.test(f)) return reply.code(404).send('Not found');
@@ -6128,6 +6138,7 @@ for (const signal of ['SIGTERM', 'SIGINT']) {
 }
 
 await migrate();
+migratedNow();
 billingMode=['on','off'].includes((await getSetting('techPackBilling'))?.mode)?(await getSetting('techPackBilling')).mode:null;
 {const fa=await getSetting('factoryActions');if(fa&&typeof fa.on==='boolean')setFactoryActions(fa.on)}
 await repairPendingShopifyLinks();

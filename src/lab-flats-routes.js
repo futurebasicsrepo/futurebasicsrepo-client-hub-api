@@ -15,10 +15,11 @@
 // has no smooth shading a screen cannot print, and, for embroidery, how many stitches it takes.
 import sharp from 'sharp';
 import { readFileSync } from 'node:fs';
+import { maskFor } from './lab-flat-mask.js';
 import { logoSvg } from './brand-kit.js';
 import { cleanRules } from './lab-library.js';
 import { ensureBranding } from './lab-concepts.js';
-import { STYLES, FITS, SIZES, DETAILS, ALLOVER_BASES, templateOf, fitToTemplate, detectStyle, defaultParams, defaultPlacement, cleanFlat, cleanEdits, describeEdit, placementChecks, overlapChecks, boxesMeet, describe, renderSvg, pomTable, measurementsFor, fmt, fmtCm } from './lab-flats.js';
+import { STYLES, FITS, SIZES, DETAILS, ALLOVER_BASES, templateOf, fitToTemplate, detectStyle, defaultParams, defaultPlacement, cleanFlat, cleanEdits, describeEdit, placementChecks, overlapChecks, boxesMeet, describe, renderSvg, pomTable, measurementsFor, fmt, fmtCm, drawingOf } from './lab-flats.js';
 import { packRows, cleanColourways, costOf, FREIGHT_DUTY_PCT } from './lab-materials.js';
 import { artColours } from './art.js';
 import './pantone-c.js';
@@ -231,6 +232,10 @@ export function registerLabFlatsRoutes(app, d) {
   // the zoom of the frame, which takes half a minute for a close-up
   // the add-on parts as pictures inside the sheet (a data URL, so the sheet stands alone and rasterises without fetching)
   const partData = new Map(), partHref = file => { if (!partData.has(file)) { try { partData.set(file, `data:image/webp;base64,${readFileSync(new URL(`./flat-parts/${file}`, import.meta.url)).toString('base64')}`); } catch { partData.set(file, ''); } } return partData.get(file); };
+  // each sketch's silhouette, as a data URL for the sheet, the PDF and the files: made before drawing (it takes a moment the first time), then kept
+  const masks = new Map(), maskHref = file => masks.get(file) || null;
+  const prepMasks = async p => { for (const v of ['front', 'back']) { const d = drawingOf(p, v, p.size || 'M'); if (!d || masks.has(d.t.file)) continue;
+    try { masks.set(d.t.file, `data:image/png;base64,${(await maskFor(d.t.file, file => readFileSync(new URL(`./flat-templates/${file}`, import.meta.url)), file => readFileSync(new URL(`./flat-templates/masks/${file}`, import.meta.url)))).toString('base64')}`); } catch (e) { log.warn?.({ err: e.message, file: d.t.file }, 'flat silhouette not made'); } } };
   const inline = new Map(), templateSvg = file => { if (!inline.has(file)) { const t = readFileSync(new URL(`./flat-templates/${file}`, import.meta.url), 'utf8'); inline.set(file, t.slice(t.indexOf('>', t.indexOf('<svg')) + 1, t.lastIndexOf('</svg>'))); } return inline.get(file); };
   // the areas the image model redrew, as data URLs for the same reason
   const editHrefsOf = async params => { const ids = [...new Set((params.edits || []).filter(e => e.type === 'ai').map(e => e.art))]; if (!ids.length) return {};
@@ -281,7 +286,8 @@ export function registerLabFlatsRoutes(app, d) {
     for (const q of pl) { const b = await pngOf(q); if (b) hrefs[q.id] = `data:image/png;base64,${(await sharp(b).resize({ width: 600, height: 600, fit: 'inside', withoutEnlargement: true }).png().toBuffer()).toString('base64')}`; }
     const ck = r.check_result || { findings: {}, summary: { fail: 0, warn: 0 } };
     const views = STYLES[p.style].kind === 'cap' || STYLES[p.style].kind === 'top' || STYLES[p.style].kind === 'bottom' ? ['front', 'back'] : ['front'];
-    const editHrefs = await editHrefsOf(p), alloverHref = await alloverHrefOf(p), svgs = views.map(v => renderSvg(p, v, { placements: pl, hrefs, findings: ck.findings, showPom: true, scale: 0, templateHref, partHref, editHrefs, alloverHref }));
+    await prepMasks(p);
+    const editHrefs = await editHrefsOf(p), alloverHref = await alloverHrefOf(p), svgs = views.map(v => renderSvg(p, v, { maskHref, placements: pl, hrefs, findings: ck.findings, showPom: true, scale: 0, templateHref, partHref, editHrefs, alloverHref }));
     // one page, 17 × 11 in at 100 units an inch: the flats across the top, the placements and the measurements under them
     const W = 1700, T = (x, y, s, t, o = {}) => `<text x="${x}" y="${y}" font-size="${s}" font-family="Space Grotesk, Helvetica, Arial, sans-serif" font-weight="${o.w || 400}" fill="${o.c || '#141416'}"${o.a ? ` text-anchor="${o.a}"` : ''}>${esc(t)}</text>`;
     const colW = (W - 120) / svgs.length; let y = 150;
@@ -330,7 +336,7 @@ export function registerLabFlatsRoutes(app, d) {
       // the artwork, and the flat with the placement on it
       const art = s.hrefs[q.id] ? Buffer.from(s.hrefs[q.id].split(',')[1], 'base64') : null, bw = CW * .48, bh = 170;
       doc.rect(L, y, bw, bh).fill('#f3f2ee'); if (art) { try { doc.image(art, L + 10, y + 10, { fit: [bw - 20, bh - 20], align: 'center', valign: 'center' }); } catch { /* left blank */ } } doc.rect(L, y, bw, bh).lineWidth(.6).strokeColor(LINE).stroke();
-      try { const flat = await sharp(Buffer.from(renderSvg(s.p, q.view, { placements: s.pl, hrefs: s.hrefs, selected: q.id, scale: 40, templateSvg, partHref, editHrefs: s.editHrefs, alloverHref: s.alloverHref }))).resize({ width: 900, height: 900, fit: 'inside' }).flatten({ background: '#ffffff' }).png().toBuffer();
+      try { const flat = await sharp(Buffer.from(renderSvg(s.p, q.view, { maskHref, placements: s.pl, hrefs: s.hrefs, selected: q.id, scale: 40, templateSvg, partHref, editHrefs: s.editHrefs, alloverHref: s.alloverHref }))).resize({ width: 900, height: 900, fit: 'inside' }).flatten({ background: '#ffffff' }).png().toBuffer();
         doc.image(flat, L + bw + 12, y, { fit: [CW - bw - 12, bh], align: 'center', valign: 'center' }); } catch { /* no flat picture */ }
       y += bh + 14;
       doc.fillColor(INK).font('SG-B').fontSize(11).text('Where it goes', L, y); doc.fillColor(INK).font('SG').fontSize(10).text(safe(describe(q, s.p)), L, doc.y + 3, { width: CW }); y = doc.y + 12;
@@ -356,7 +362,7 @@ export function registerLabFlatsRoutes(app, d) {
       const bw = CW * .48, bh = 220, tile = s.alloverHref ? Buffer.from(s.alloverHref.split(',')[1], 'base64') : null;
       doc.rect(L, y, bw, bh).fill('#f3f2ee'); if (tile) { try { const t3 = await sharp({ create: { width: 900, height: 900, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } }).composite([{ input: await sharp(tile).resize(300, 300, { fit: 'fill' }).png().toBuffer(), tile: true, left: 0, top: 0 }]).png().toBuffer(); doc.image(t3, L + 10, y + 10, { fit: [bw - 20, bh - 20], align: 'center', valign: 'center' }); } catch { /* left blank */ } }
       doc.rect(L, y, bw, bh).lineWidth(.6).strokeColor(LINE).stroke();
-      try { const flat = await sharp(Buffer.from(renderSvg(s.p, 'front', { scale: 40, templateSvg, partHref, editHrefs: s.editHrefs, alloverHref: s.alloverHref }))).resize({ width: 900, height: 900, fit: 'inside' }).flatten({ background: '#ffffff' }).png().toBuffer(); doc.image(flat, L + bw + 12, y, { fit: [CW - bw - 12, bh], align: 'center', valign: 'center' }); } catch { /* no flat picture */ }
+      try { const flat = await sharp(Buffer.from(renderSvg(s.p, 'front', { maskHref, scale: 40, templateSvg, partHref, editHrefs: s.editHrefs, alloverHref: s.alloverHref }))).resize({ width: 900, height: 900, fit: 'inside' }).flatten({ background: '#ffffff' }).png().toBuffer(); doc.image(flat, L + bw + 12, y, { fit: [CW - bw - 12, bh], align: 'center', valign: 'center' }); } catch { /* no flat picture */ }
       y += bh + 14;
       if (cols.length) { doc.fillColor(INK).font('SG-B').fontSize(11).text('Colours', L, y); table(b, [{ h: '#', w: .08, mono: true }, { h: 'Pantone C', w: .52, mono: true }, { h: 'Share', w: .4, align: 'right', mono: true }], cols.map((x, k) => [String(k + 1), { t: x.pantone || x.name, swatch: x.hex }, `${Math.round(x.share * 100)} %`]), { y: doc.y + 6, fontSize: 9.5 }); y = doc.y + 12; }
       table(b, [{ h: 'Item', w: .22, mono: true }, { h: '', w: .78 }], [['How it is made', ao.base], ['The repeat', `${ao.type}, ${fmtCm(ao.w)} across, ${fmtCm(ao.h)} down; the tile file repeats without a seam`], ['Before cutting', 'Print the panels before they are cut and sewn; line the repeat up at the centre front and keep its direction on every panel.'], ...(dd ? [['Cost', `$${(dd.perPieceCents / 100).toFixed(2)} a piece${dd.basis ? ` (${dd.basis})` : ''}; before the factory's quote`]] : [])], { y, fontSize: 9.5, head: false });
@@ -373,7 +379,7 @@ export function registerLabFlatsRoutes(app, d) {
   async function files(c) {
     const s = await sheet(c); if (!s) return [];
     const out = [{ name: 'Spec sheet · flats, placements and measurements', image: await png(s.svg, 2400) }];
-    for (const v of s.views) out.push({ name: `Technical flat · ${v}`, image: await png(renderSvg(s.p, v, { placements: s.pl, hrefs: s.hrefs, scale: 60, templateSvg, partHref, editHrefs: s.editHrefs, alloverHref: s.alloverHref }), 1800) });
+    for (const v of s.views) out.push({ name: `Technical flat · ${v}`, image: await png(renderSvg(s.p, v, { maskHref, placements: s.pl, hrefs: s.hrefs, scale: 60, templateSvg, partHref, editHrefs: s.editHrefs, alloverHref: s.alloverHref }), 1800) });
     return out;
   }
   const png = async (svg, width) => `data:image/png;base64,${(await sharp(Buffer.from(svg), { density: 150 }).resize({ width }).flatten({ background: '#ffffff' }).png().toBuffer()).toString('base64')}`;

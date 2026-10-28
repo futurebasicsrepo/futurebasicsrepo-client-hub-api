@@ -17,7 +17,7 @@ const shape = r => ({ id: r.id, key: r.key, kind: r.kind, name: r.name, code: r.
 const COLS = 'id, key, kind, name, code, supplier, price_cents, unit, moq, lead_days, spec, colours, notes, (swatch is not null) has_swatch, builtin, updated_at, client_id, (select coalesce(nullif(u.name,\'\'), split_part(u.email,\'@\',1)) from users u where u.id=lab_materials.created_by) by_name, (select name from clients cl where cl.id=lab_materials.client_id) room_name';
 
 export function registerLabMaterialsRoutes(app, d) {
-  const { pool, authenticate, adminOnly, lab = null, log = console } = d;
+  const { pool, authenticate, adminOnly, lab = null, log = console, ready = Promise.resolve() } = d;
   // a room's library: the materials its team adds, plus the built-in starter set it reads and uses but cannot change. Future Basics staff see every room's
   const own = req => lab?.scope?.(req) || null, mine = (req, m) => (own(req) ? m.client_id === own(req) : true);
   const pre = [authenticate, adminOnly], bad = (reply, error, code = 422) => reply.code(code).send({ error });
@@ -26,8 +26,9 @@ export function registerLabMaterialsRoutes(app, d) {
   const P = globalThis.FBPantone;
 
   // the starting set goes in once; after that it is ours to change (a changed row is never put back)
-  // put in at start-up; when that runs before the tables exist (a new database migrates after the routes are registered) it is tried again on next use
+  // put in once the database is migrated (ready); if it still fails it is tried again on next use
   let seeding = null; const seeded = () => (seeding ||= (async () => {
+    await ready;
     for (const m of BUILTIN_MATERIALS) {
       const c = cleanMaterial(m); if (c.error) continue; const x = c.material;
       await pool.query(`insert into lab_materials(key,kind,name,code,supplier,price_cents,unit,moq,lead_days,spec,colours,notes,builtin) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,true) on conflict(key) do nothing`,

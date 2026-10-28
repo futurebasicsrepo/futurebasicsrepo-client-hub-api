@@ -88,7 +88,7 @@ textarea.t{min-height:64px;resize:vertical}
 <script src="/console-nav.js" defer></script>
 <script src="/lab/nav.js"></script>
 <script type="module">
-import { STYLES, FITS, SIZES, DETAILS, STITCHES, defaultDetail, describeEdit, geometry, renderSvg, viewBoxOf, templatesFor, templateOf, defaultTemplate, describe, placementChecks, overlapChecks, pomTable, defaultParams, defaultPlacement, measurementsFor, POM_NAMES, pomName, fitToTemplate, FLAT_PARTS, PART_KINDS, partOf, defaultPart, fmt, fmtCm } from '/lab/flats.js';
+import { STYLES, FITS, SIZES, DETAILS, STITCHES, defaultDetail, describeEdit, geometry, renderSvg, viewBoxOf, templatesFor, templateOf, defaultTemplate, describe, placementChecks, overlapChecks, pomTable, defaultParams, defaultPlacement, measurementsFor, POM_NAMES, pomName, fitToTemplate, FLAT_PARTS, PART_KINDS, partOf, defaultPart, fmt, fmtCm, MASK_URL } from '/lab/flats.js';
 import { FLAT_TEMPLATES } from '/lab/lab-flat-templates.js';
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)],esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const TOKEN=()=>{try{return localStorage.getItem('fb.admin.token')||localStorage.getItem('fb.client.token')||''}catch{return ''}}; // staff sign in at the work console; a client with the Design Lab on their room signs in at their hub
@@ -108,7 +108,7 @@ function touch(){DIRTY=true;$('#saved').className='saved dirty';$('#saved').text
 // the quick checks (the drawing) run here at once; the artwork checks come back from the service a moment later
 function localFindings(){const out={},over=overlapChecks(PL);for(const q of PL){const t=D.techniques.find(x=>x.id===q.techniqueId);const loc=placementChecks(q,P,t?{...t.rules,techniqueName:t.name}:{});const art=(CHECK.findings[q.id]||[]).filter(f=>['FINE_DETAIL','INKS','GRADIENT','STITCHES','TINY'].includes(f.code));out[q.id]=[...loc,...(over[q.id]||[]),...art]}return out}
 function draw(){
-  const F=localFindings(),sz=$('#size').value||P.size,pls=PL.map(q=>{if(!q.grade)return q;const g=q.grade.find(x=>x.sizes.includes(sz));return g?{...q,w:g.w,h:g.h,y:q.y-q.h/2+g.h/2}:q}),svg=renderSvg(P,VIEW,{placements:pls,hrefs:HREF,size:sz,showPom:$('#showPom').checked,showDims:$('#showDims').checked,selected:SEL,findings:F,scale:0,editable:true,selectedEdit:SELE,editHrefs:EHREF,overlay:overlay(),alloverHref:AOHREF});
+  const F=localFindings(),sz=$('#size').value||P.size,pls=PL.map(q=>{if(!q.grade)return q;const g=q.grade.find(x=>x.sizes.includes(sz));return g?{...q,w:g.w,h:g.h,y:q.y-q.h/2+g.h/2}:q}),svg=renderSvg(P,VIEW,{maskHref:MASK_URL,placements:pls,hrefs:HREF,size:sz,showPom:$('#showPom').checked,showDims:$('#showDims').checked,selected:SEL,findings:F,scale:0,editable:true,selectedEdit:SELE,editHrefs:EHREF,overlay:overlay(),alloverHref:AOHREF});
   $('#canvas').innerHTML=svg;const fail=Object.values(F).flat().filter(f=>f.level==='fail').length,warn=Object.values(F).flat().filter(f=>f.level==='warn').length,s=$('#status');
   s.className='status '+(fail?'bad':warn?'warn':'ok');s.innerHTML=fail?`<span class="dot fail"></span>${fail} problem${fail===1?'':'s'} to fix before it can be made`:warn?`<span class="dot warn"></span>Can be made: ${warn} thing${warn===1?'':'s'} to check`:'<span class="dot ok"></span>Can be made as drawn';
   return F}

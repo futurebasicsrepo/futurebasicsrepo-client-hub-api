@@ -30,15 +30,16 @@ const techShape = (r, photos = []) => ({ id: r.id, key: r.key, kind: r.kind, nam
   builtin: r.builtin, hasSample: Boolean(r.has_sample), sampleAt: r.sample_at, photos, updatedAt: r.updated_at, room: r.room_name || '' });
 
 export function registerLabLibraryRoutes(app, d) {
-  const { pool, authenticate, adminOnly, art, env = process.env, imageCfg = () => imageConfig(env), editImpl = openaiEdit, lab = null, log = console } = d;
+  const { pool, authenticate, adminOnly, art, env = process.env, imageCfg = () => imageConfig(env), editImpl = openaiEdit, lab = null, log = console, ready = Promise.resolve() } = d;
   const own = req => lab?.scope?.(req) || null, charge = async (req, o) => (lab ? lab.charge(req, o) : null); // a client's room: its own graphics, its AI meter
   const pre = [authenticate, adminOnly], bad = (reply, error, code = 422, extra = {}) => reply.code(code).send({ error, ...extra });
   const actorOf = req => (UUID.test(String(req.auth?.sub || '')) ? req.auth.sub : null);
   const need = (req, reply, k = 'id') => UUID.test(String(req.params[k])) || (bad(reply, 'Not found', 404), false);
 
   // the starting techniques are put in once; after that they are ours to change
-  // put in at start-up; when that runs before the tables exist (a new database migrates after the routes are registered) it is tried again on next use
+  // put in once the database is migrated (ready); if it still fails it is tried again on next use
   let seeding = null; const seeded = () => (seeding ||= (async () => {
+    await ready;
     for (const t of BUILTIN_TECHNIQUES) await pool.query(`insert into lab_techniques(key,kind,name,summary,base,finish,prompt,art_guide,factory_note,rules,builtin) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,true) on conflict(key) do update set rules=coalesce(lab_techniques.rules, excluded.rules)`,
       [t.key, t.kind, t.name, t.summary, t.base, t.finish, t.prompt, t.artGuide, t.factoryNote, cleanRules(t.rules || {}, t.base)]);
   })().catch(e => { seeding = null; log.warn?.({ err: e.message }, 'design lab techniques could not be put in'); }));
