@@ -194,13 +194,16 @@ function elephant(pat, C, view) {
     const U = ([x, y]) => [x * h, y * h], Us = pts => pts.map(U), far = shade(C.body, .8), farPad = shade(C.contrast, .82), nail = '#efe6d2';
     const smooth = (pts, n = 3) => chaikin(Us(pts), n), open = (pts, n = 2) => chaikin(Us(pts), n, false);
     // the trunk: a centreline from the face to the tip, a width tapering along it, its two edges either side
-    const cl = chaikin([[.215, .25], [.2, .36], [.185, .46], [.16, .545], [.12, .605], [.075, .625], [.045, .6]], 3, false);
-    const wAt = t => .17 * (1 - t) ** 1.6 + .05 * t + .0, edge = sg => cl.map((p, i) => { const q = cl[Math.min(i + 1, cl.length - 1)], o = cl[Math.max(i - 1, 0)], dx = q[0] - o[0], dy = q[1] - o[1], l = Math.hypot(dx, dy) || 1, w = wAt(i / (cl.length - 1)) / 2; return [p[0] + sg * dy / l * w, p[1] - sg * dx / l * w]; });
+    const cl = chaikin([[.21, .25], [.15, .325], [.112, .41], [.09, .48], [.075, .54], [.055, .59], [.02, .622], [-.02, .615], [-.042, .58], [-.048, .545]], 3, false);
+    const wAt = t => .13 * (1 - t) ** 1.3 + .05 * t + .01 * Math.max(0, t - .9) / .1, edge = sg => cl.map((p, i) => { const q = cl[Math.min(i + 1, cl.length - 1)], o = cl[Math.max(i - 1, 0)], dx = q[0] - o[0], dy = q[1] - o[1], l = Math.hypot(dx, dy) || 1, w = wAt(i / (cl.length - 1)) / 2; return [p[0] + sg * dy / l * w, p[1] - sg * dx / l * w]; });
     const front = edge(-1), back = edge(1), tip = cl[cl.length - 1];
     // the head and trunk in one: from under the jaw, round the back of the head, over the crown and brow, down the front of the trunk, round
     // its tip and back up its underside to the jaw
-    const headTrunk = chaikin(Us([[.3, .4], [.42, .41], [.53, .33], [.57, .2], [.5, .07], [.37, .005], [.24, .03], [.165, .12], [.14, .2],
-      ...front.slice(2), [tip[0] - .014, tip[1] - .022], ...back.slice().reverse().filter(([, y]) => y > .335), [.285, .352], [.29, .385]]), 2);
+    // the end of the trunk: its centre, which way it points, and a round cap across it
+    const [p1, p0] = [cl[cl.length - 1], cl[cl.length - 2]], dl = Math.hypot(p1[0] - p0[0], p1[1] - p0[1]) || 1, dir = [(p1[0] - p0[0]) / dl, (p1[1] - p0[1]) / dl], wTip = wAt(1) / 2;
+    const cap = [-.6, 0, .6].map(a => [tip[0] + dir[0] * wTip * .55 * Math.cos(a) - dir[1] * wTip * Math.sin(a), tip[1] + dir[1] * wTip * .55 * Math.cos(a) + dir[0] * wTip * Math.sin(a)]);
+    const headTrunk = chaikin(Us([[.3, .4], [.42, .41], [.53, .33], [.57, .2], [.5, .07], [.37, .005], [.24, .03], [.165, .1], [.148, .16], [.146, .195],
+      ...front.slice(3), ...(front[front.length - 1][0] < back[back.length - 1][0] ? cap : cap.slice().reverse()), ...back.slice().reverse().filter(([, y]) => y > .315), [.27, .33], [.29, .37]]), 3);
     const body = smooth([[.36, .4], [.52, .35], [.7, .42], [.83, .56], [.88, .74], [.83, .9], [.68, .985], [.46, .995], [.32, .92], [.28, .74], [.29, .55]]);
     const legFront = dx => smooth([[.215 + dx, .58], [.26 + dx, .5], [.34 + dx, .5], [.38 + dx, .58], [.375 + dx, .8], [.385 + dx, .965], [.37 + dx, .995], [.3 + dx, 1.0], [.21 + dx, .995], [.195 + dx, .965], [.205 + dx, .8]], 2);
     const sole = dx => smooth([[.2 + dx, .985], [.29 + dx, .978], [.385 + dx, .985], [.29 + dx, 1.004]], 2);
@@ -221,8 +224,9 @@ function elephant(pat, C, view) {
     d.seam(open([[.3, .56], [.3, .97]]), false);
     d.drop(headTrunk, .08, .2, .2); d.shape(headTrunk);
     // the trunk's tip: its end, in contrast, and the rings stitched across it
-    d.shape(ellipse(tip[0] * h - .006 * h, tip[1] * h - .012 * h, .022 * h, .03 * h, 24, .9), C.contrast, .02);
-    for (let k = 2; k <= 6; k++) { const t = k / 10, i = Math.round(t * (cl.length - 1)), a = front[i], c = back[i]; d.line([[(a[0] + (c[0] - a[0]) * .12) * h, (a[1] + (c[1] - a[1]) * .12) * h], [(a[0] + (c[0] - a[0]) * .88) * h, (a[1] + (c[1] - a[1]) * .88) * h]], h * .004, C.stitch); }
+    { const ang = Math.atan2(dir[1], dir[0]) + Math.PI / 2, ex = (tip[0] + dir[0] * wTip * .12) * h, ey = (tip[1] + dir[1] * wTip * .12) * h; d.shape(ellipse(ex, ey, wTip * 1.02 * h, wTip * .45 * h, 28, ang), C.contrast, .025);
+      for (const sg of [-1, 1]) d.fill(ellipse(ex + Math.cos(ang) * sg * wTip * .32 * h, ey + Math.sin(ang) * sg * wTip * .32 * h, wTip * .16 * h, wTip * .11 * h, 12, ang), shade(C.contrast, .55)); }
+    for (let k = 3; k <= 6; k++) { const t = k / 11, i = Math.round(t * (cl.length - 1)), a = front[i], c = back[i]; d.line([[(a[0] + (c[0] - a[0]) * .2) * h, (a[1] + (c[1] - a[1]) * .2) * h], [(a[0] + (c[0] - a[0]) * .8) * h, (a[1] + (c[1] - a[1]) * .8) * h]], h * .004, C.stitch); }
     // the gusset seam over the crown, the brow, the eye, the smile under the trunk
     d.seam(open([[.165, .14], [.25, .04], [.4, .01], [.52, .1]]), false);
     d.line(open([[.24, .158], [.27, .146], [.3, .156]], 1), h * .004, shade(C.body, .7));
