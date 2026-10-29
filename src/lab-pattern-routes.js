@@ -10,7 +10,8 @@ import { STYLES, SIZES, FITS, defaultParams, detectStyle } from './lab-flats.js'
 import { garmentPattern, applyEdits, cleanPatternEdits, patternDxfAama, plushPattern, cleanPlush, plushDefaults, patternSvg, patternDxf, yardage, fillGrams, PLUSH_SHAPES, PLUSH_EARS, PLUSH_FABRICS, PLUSH_EYES, PLUSH_AGES } from './lab-pattern.js';
 import { CATEGORIES } from './lab.js';
 import { silhouette, readShoe, proposal } from './lab-shoe-read.js';
-import { reviewShoe, BAR as REVIEW_BAR } from './lab-shoe-review.js';
+import { reviewShoe, openaiAsk, BAR as REVIEW_BAR } from './lab-shoe-review.js';
+import { trackedFetch, timed } from './telemetry.js';
 import { callJsonSchema } from './studio.js';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -132,25 +133,35 @@ export function registerLabPatternRoutes(app, d) {
   // It runs in the background and the page follows it; nothing is saved until the page uses the result. Reviews with the vision model are
   // capped a day (SHOE_REVIEW_DAILY, 40 by default) so they cannot run the bill up unseen.
   const reviews = new Map(), spent = { day: '', n: 0 };
-  const reviewer = () => {
-    if (env.AI_FIXTURE || !env.ANTHROPIC_API_KEY) { let rounds = null; try { const fx = String(env.SHOE_REVIEW_FIXTURE || '').trim(); rounds = !fx ? null : JSON.parse(fx.startsWith('[') ? fx : readFileSync(fx, 'utf8')); } catch { rounds = null; } if (!Array.isArray(rounds) || !rounds.length) return null; let i = 0; return async () => { const r = rounds[Math.min(i, rounds.length - 1)]; i++; await new Promise(res => setTimeout(res, Number(env.AI_FIXTURE_DELAY_MS) || 0)); return r; }; }
-    return (system, content, schema) => askImpl(system, content, schema, { maxTokens: 2500 });
+  // the judges: Claude and, when OPENAI_API_KEY is set, an OpenAI vision model as a second opinion (SHOE_CHECKER=claude|openai|both, both by
+  // default). SHOE_REVIEW_FIXTURE stands in for them in tests: an array of answers (one judge), or {name: [answers]} for several.
+  const reviewers = () => {
+    if (env.AI_FIXTURE || (!env.ANTHROPIC_API_KEY && !env.OPENAI_API_KEY)) {
+      let fx = null; try { const raw = String(env.SHOE_REVIEW_FIXTURE || '').trim(); fx = !raw ? null : JSON.parse(/^[[{]/.test(raw) ? raw : readFileSync(raw, 'utf8')); } catch { fx = null; }
+      if (!fx) return [];
+      const sets = Array.isArray(fx) ? { Claude: fx } : fx;
+      return Object.entries(sets).filter(([, v]) => Array.isArray(v) && v.length).map(([name, list]) => { let i = 0; return { name, ask: async () => { const r = list[Math.min(i, list.length - 1)]; i++; await new Promise(res => setTimeout(res, Number(env.AI_FIXTURE_DELAY_MS) || 0)); return r; } }; });
+    }
+    const m = String(env.SHOE_CHECKER || 'both').toLowerCase(), out = [];
+    if (env.ANTHROPIC_API_KEY && (m !== 'openai' || !env.OPENAI_API_KEY)) out.push({ name: 'Claude', ask: (system, content, schema) => timed('anthropic', () => askImpl(system, content, schema, { maxTokens: 2500 })) });
+    if (m !== 'claude' && env.OPENAI_API_KEY) out.push({ name: 'ChatGPT', ask: openaiAsk(env, (u, o) => trackedFetch('openai-check', u, o)) });
+    return out;
   };
   app.post('/v1/lab/concepts/:id/pattern/review', { preHandler: pre }, async (req, reply) => {
     const L = await load(req.params.id); if (!L) return bad(reply, 'Not found', 404); if (L.kind !== 'footwear') return bad(reply, 'The developer review is for footwear');
     const img = (await pool.query('select image from lab_concepts where id=$1', [L.c.id])).rows[0]?.image; if (!img) return bad(reply, 'This concept has no picture to check the shoe against');
     if ([...reviews.values()].some(r => r.conceptId === L.c.id && r.status === 'running')) return bad(reply, 'A review of this shoe is already running', 409);
-    let ask = reviewer();
+    let judges = reviewers();
     const today = new Date().toISOString().slice(0, 10); if (spent.day !== today) Object.assign(spent, { day: today, n: 0 });
-    const cap = Number(env.SHOE_REVIEW_DAILY) || 40, capped = Boolean(ask) && spent.n >= cap; if (capped) ask = null; else if (ask) spent.n++;
+    const cap = Number(env.SHOE_REVIEW_DAILY) || 40, capped = judges.length > 0 && spent.n >= cap; if (capped) judges = []; else if (judges.length) spent.n++;
     const spec = req.body?.spec && typeof req.body.spec === 'object' ? { ...cleanFootwear(req.body.spec), ...(L.spec.edits ? { edits: L.spec.edits } : {}) } : L.spec;
     const id = createHash('sha1').update(`${L.c.id}${Date.now()}${Math.random()}`).digest('hex').slice(0, 16), job = { id, conceptId: L.c.id, status: 'running', bar: REVIEW_BAR, rounds: [], outline: null, started: Date.now(), capped };
     if (reviews.size > 200) for (const [k, r] of reviews) if (r.status !== 'running' && Date.now() - r.started > 3600e3) reviews.delete(k);
     reviews.set(id, job);
-    reviewShoe({ spec, photo: img, name: L.c.name, ask, onRound: r => { if (r.n === 0) job.outline = r; else job.rounds = [...job.rounds, r]; } })
+    reviewShoe({ spec, photo: img, name: L.c.name, judges, onRound: r => { if (r.n === 0) job.outline = r; else job.rounds = [...job.rounds, r]; } })
       .then(res => Object.assign(job, res, { result: res.status, status: 'done', note: capped ? `Today's ${cap} developer reviews are used: only the outline and the fixed checks ran. ${res.note}` : res.note }))
       .catch(e => { log.warn?.({ err: e.message }, 'shoe review failed'); Object.assign(job, { status: 'failed', error: 'The review could not finish: try again' }); });
-    return reply.code(202).send({ id, reviewer: Boolean(ask), bar: REVIEW_BAR });
+    return reply.code(202).send({ id, reviewer: judges.length > 0, judges: judges.map(j => j.name), bar: REVIEW_BAR });
   });
   app.get('/v1/lab/concepts/:id/pattern/review/:rid', { preHandler: pre }, async (req, reply) => {
     const job = reviews.get(String(req.params.rid)); if (!job || job.conceptId !== req.params.id) return bad(reply, 'Not found', 404);

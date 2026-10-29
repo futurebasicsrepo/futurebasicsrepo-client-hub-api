@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import sharp from 'sharp';
 import { footwearPattern } from '../src/lab-footwear.js';
 import { assembled, boundsOf } from '../src/lab-pattern.js';
-import { reviewShoe, applyFix, fixedChecks, scoreOf, REVIEW_SCHEMA, CRITERIA, BAR } from '../src/lab-shoe-review.js';
+import { reviewShoe, applyFix, fixedChecks, scoreOf, mergeFixes, openaiAsk, REVIEW_SCHEMA, CRITERIA, BAR } from '../src/lab-shoe-review.js';
 import { silhouette } from '../src/lab-shoe-read.js';
 
 // a picture of a known shoe: its own side view, drawn dark on a pale ground
@@ -58,4 +58,32 @@ test('the score is the developer\'s six points weighted, less what the outline m
   assert.equal(scoreOf(all(90)), 90); assert.equal(scoreOf([{ key: 'silhouette', score: 100 }]), 25);
   const pat = footwearPattern({ style: 'runner' }), sil = await silhouette(await shoePng({ style: 'boot' })), checks = fixedChecks(pat, sil), a = checks.find(c => c.key === 'aspect');
   assert.equal(a.ok, false, 'a runner drawn for a boot\'s picture is out of line'); assert.ok(scoreOf(all(95), checks) < 95);
+});
+
+test('two judges (Claude and ChatGPT) look on their own: the stricter score stands, what they agree on or only one asks for is made, a dispute is left for a person', async () => {
+  const photo = await shoePng({ style: 'runner', eyelets: 7 }); let c = 0, o = 0;
+  const claude = async () => { c++; return c === 1 ? { view: 'side', criteria: all(70), fixes: [{ field: 'eyelets', value: '7', why: 'seven pairs' }, { field: 'toeCap', value: 'false', why: 'no cap' }], beyondDrawing: [], summary: 'Lacing short.' } : { view: 'side', criteria: all(92), fixes: [], beyondDrawing: [], summary: 'Good.' }; };
+  const gpt = async () => { o++; return o === 1 ? { view: 'side', criteria: all(88), fixes: [{ field: 'eyelets', value: '7', why: 'seven eyelets a side' }, { field: 'vamp', value: '0.62', why: 'the vamp line sits further forward' }, { field: 'toeCap', value: 'true', why: 'a cap is stitched on' }], beyondDrawing: ['A heel clip'], summary: 'Close.' } : { view: 'side', criteria: all(96), fixes: [], beyondDrawing: [], summary: 'Matches.' }; };
+  const r = await reviewShoe({ spec: { style: 'runner' }, photo, judges: [{ name: 'Claude', ask: claude }, { name: 'ChatGPT', ask: gpt }] });
+  const r1 = r.rounds[0];
+  assert.equal(r1.score, 70, 'the stricter judge\'s score stands'); assert.equal(r1.disagree, true, 'they are 18 points apart: said'); assert.deepEqual(r1.judges.map(j => [j.name, j.score]), [['Claude', 70], ['ChatGPT', 88]]);
+  assert.deepEqual(r1.conflicts.map(x => x.field), ['toeCap'], 'a toe cap one wants and the other does not is left for a person');
+  assert.deepEqual(r1.changes.map(x => [x.key, x.judges.join('+')]), [['eyelets', 'Claude+ChatGPT'], ['vamp', 'ChatGPT']], 'agreed, and asked for by one and not disputed');
+  assert.equal(r.status, 'passed'); assert.equal(r.score, 92); assert.match(r.note, /stricter of Claude and ChatGPT/); assert.equal(r.spec.eyelets, 7); assert.equal(r.spec.vamp, .62);
+});
+
+test('a judge that cannot answer is left out of the round; numbers the judges nearly agree on are met in the middle', async () => {
+  const photo = await shoePng({ style: 'sneaker' });
+  const r = await reviewShoe({ spec: { style: 'sneaker' }, photo, judges: [{ name: 'Claude', ask: async () => ({ view: 'side', criteria: all(93), fixes: [], beyondDrawing: [], summary: '' }) }, { name: 'ChatGPT', ask: async () => { throw new Error('429'); } }] });
+  assert.equal(r.status, 'passed'); assert.deepEqual(r.rounds[0].missed, ['ChatGPT']);
+  const m = mergeFixes([{ name: 'A', fixes: [{ field: 'collar', value: '3', why: 'a' }] }, { name: 'B', fixes: [{ field: 'collar', value: '3.25 in', why: 'b' }] }]);
+  assert.equal(Number(m.fixes[0].value), 3.125); assert.equal(m.conflicts.length, 0);
+  assert.equal(mergeFixes([{ name: 'A', fixes: [{ field: 'collar', value: '3' }] }, { name: 'B', fixes: [{ field: 'collar', value: '5' }] }]).conflicts.length, 1, 'two inches apart is a dispute');
+});
+
+test('the OpenAI judge is sent the same pictures and words, with the schema held strictly', async () => {
+  let sent = null; const ask = openaiAsk({ OPENAI_API_KEY: 'k', OPENAI_CHECK_MODEL: 'm1' }, async (url, o) => { sent = { url, body: JSON.parse(o.body), auth: o.headers.Authorization }; return { ok: true, json: async () => ({ choices: [{ message: { content: '{"view":"side"}' } }] }) }; });
+  const out = await ask('sys', [{ type: 'text', text: 'pic' }, { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: 'AAAA' } }], REVIEW_SCHEMA);
+  assert.deepEqual(out, { view: 'side' }); assert.match(sent.url, /chat\/completions$/); assert.equal(sent.auth, 'Bearer k'); assert.equal(sent.body.model, 'm1');
+  assert.equal(sent.body.response_format.json_schema.strict, true); assert.equal(sent.body.messages[1].content[1].image_url.url, 'data:image/jpeg;base64,AAAA');
 });

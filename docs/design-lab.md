@@ -902,10 +902,14 @@ developer assistants go over a tech pack (`src/lab-shoe-review.js`):
 
 1. **The outline first, no AI.** The picture's outline sets the collar, the toe spring and the sole (as in *Reading a shoe from its picture*).
    The drawing's length against height is measured against the picture's, and the pattern's warnings and the eyelet spacing are checked.
-2. **Then the footwear developer** (Claude, with vision) looks at the picture and the four views and scores six points out of 100:
+2. **Then two footwear developers** look at the picture and the four views, each on its own: Claude and, when `OPENAI_API_KEY` is set, an
+   OpenAI vision model (`OPENAI_CHECK_MODEL`, as the colourway check). `SHOE_CHECKER=claude|openai|both` (both by default). The stricter score
+   stands, and a gap of 15 points or more between them is shown as worth a look by a person. Each scores six points out of 100:
    silhouette and proportions (25%), toe (10%), collar and topline (15%), lacing and throat (15%), the pieces of the upper (20%) and the sole
    (15%). A drawing whose outline is more than 8% off the picture's loses points whatever the developer says.
-3. **It asks for changes to the shoe's choices**, never to the drawing: the style, the toe, the sole, the upper, the collar, where the vamp and
+3. **They ask for changes to the shoe's choices**, never to the drawing. What both ask for is made (numbers that nearly agree are met in the
+   middle); what only one asks for is made unless the other asks for something else for the same choice, which is left as it is and listed
+   for a person. A judge that cannot answer is left out of that round. The choices are: the style, the toe, the sole, the upper, the collar, where the vamp and
    the lacing sit, the eyelets, the sole's thickness, the heel and the toe spring, a toe cap, a mudguard, a heel overlay and the colours. Each
    is bounded like any other choice and says why. What the choices cannot show (a sock collar, graphics, a carbon plate) is listed for a
    person instead.
@@ -920,4 +924,4 @@ the shoe on the page, saved or not.
   spec, changes, score, beyondDrawing, note}`.
 - Without Claude (no `ANTHROPIC_API_KEY`), only the outline and the fixed checks run (`checks-only`) and it says so. Reviews with Claude are
   capped at `SHOE_REVIEW_DAILY` a day (40 by default); past it, only the outline and the checks run. `SHOE_REVIEW_FIXTURE` (a JSON array of the
-  developer's answers, or a file of one) stands in for Claude in tests.
+  developer's answers for one judge, or `{name: [answers]}` for several, or a file of either) stands in for the judges in tests.
