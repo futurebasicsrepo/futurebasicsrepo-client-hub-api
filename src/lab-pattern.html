@@ -18,6 +18,8 @@ button,input,select{font:inherit;color:inherit}a{color:inherit}.hidden{display:n
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--ink);background:#fff;color:var(--ink);border-radius:999px;padding:6px 13px;text-decoration:none;cursor:pointer;font-weight:600;min-height:34px;font-size:13px;white-space:nowrap}.btn:hover{background:var(--ink);color:#fff}
 .btn.go{background:var(--cue);border-color:var(--cue)}.btn.go:hover{background:#7affb6;color:var(--ink)}.btn.q{border-color:var(--line)}.btn.sm{min-height:28px;padding:3px 10px;font-size:12px}.btn[disabled]{opacity:.45;pointer-events:none}.btn[aria-pressed=true]{background:var(--ink);color:#fff;border-color:var(--ink)}
 .mono{font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+ /* on a phone the bar keeps what to show, Explode it and the size; editing and the files fold behind More */
+#moreBtn{display:none}@media(max-width:700px){#moreBtn{display:inline-flex}.bar:not(.open) .fold{display:none!important}.bar .ttl{flex:1 1 100%}.bar{padding:8px 12px;gap:6px}}
 .bar{display:flex;align-items:center;gap:8px;padding:10px clamp(14px,2vw,24px);background:#fff;border-bottom:1px solid var(--line);flex-wrap:wrap}
 .bar .ttl{margin-right:auto;display:grid;line-height:1.2}.bar .ttl b{font-size:16px}.bar .ttl span{color:var(--dim);font-size:12px}
 .seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;padding:2px;background:#fff}.seg button{border:0;background:none;border-radius:999px;padding:5px 12px;font-size:13px;font-weight:600;cursor:pointer;min-height:30px}.seg button[aria-pressed=true]{background:var(--ink);color:#fff}
@@ -49,12 +51,13 @@ table.pcs tr[data-pid]{cursor:pointer}table.pcs tr.on{background:#effff6}
     <div class="ttl"><b id="ttl">Pattern</b><span id="sub">Loading…</span></div>
     <div class="seg" role="group" aria-label="What to show" id="modeSeg"><button type="button" data-t="0" aria-pressed="true">Product</button><button type="button" data-t="0.45" aria-pressed="false">Exploded</button><button type="button" data-t="1" aria-pressed="false">Cutting layout</button></div>
     <button class="btn go" type="button" id="play" title="Lift the pieces off the product and lay them out flat">Explode it</button>
-    <button class="btn q" type="button" id="editBtn" aria-pressed="false" title="Edit the pieces: points, notches, seam allowance, grain">Edit pieces</button>
+    <button class="fold btn q" type="button" id="editBtn" aria-pressed="false" title="Edit the pieces: points, notches, seam allowance, grain">Edit pieces</button>
     <button class="btn q hidden" type="button" id="lastBtn" aria-pressed="false" title="The shoe on its last in 3D: draw a seam on it, and see the pieces flattened off it">On the last</button>
-    <button class="btn q hidden" type="button" id="skBtn" aria-pressed="false" title="Draw by hand on any view of the shoe, with a Pencil, a mouse or a finger">Sketch</button>
+    <button class="fold btn q hidden" type="button" id="skBtn" aria-pressed="false" title="Draw by hand on any view of the shoe, with a Pencil, a mouse or a finger">Sketch</button>
     <select class="t" id="size" aria-label="Size"></select>
-    <button class="btn q" type="button" id="dxf" title="The pieces as an AAMA/ASTM DXF in this size, for a pattern system (Gerber, Lectra, Optitex, CLO)">DXF</button>
-    <button class="btn q" type="button" id="svgDl" title="The pieces at real size: print at 100%">SVG 1:1</button>
+    <button class="fold btn q" type="button" id="dxf" title="The pieces as an AAMA/ASTM DXF in this size, for a pattern system (Gerber, Lectra, Optitex, CLO)">DXF</button>
+    <button class="fold btn q" type="button" id="svgDl" title="The pieces at real size: print at 100%">SVG 1:1</button>
+    <button class="btn q" type="button" id="moreBtn" aria-expanded="false" title="Edit, sketch and the files">More</button>
   </div>
   <div class="wrap" id="main">
     <div class="stage">
@@ -628,7 +631,7 @@ $('#side').addEventListener('change',async e=>{const f=e.target.closest('[data-u
 // footwear: the size picker lists the size run, the sample size first chosen
 function fwSizes(){const run=sizeRun(SPEC).map(r=>r.size);if(!run.some(v=>String(v)===String(SIZE)))SIZE=SPEC.size;const all=[...new Set([...run,SPEC.size])].sort((a,b)=>a-b);$('#size').classList.remove('hidden');$('#size').innerHTML=all.map(v=>`<option value="${v}"${String(v)===String(SIZE)?' selected':''}>Size ${v}</option>`).join('')}
 async function boot(){
-  if(!/^[0-9a-f-]{36}$/i.test(CID)){$('#main').innerHTML='<div class="empty"><b>Open a concept in Design to see its pattern.</b></div>';return}
+  if(!/^[0-9a-f-]{36}$/i.test(CID)){$('#main').innerHTML='<div class="empty"><b>Open a concept in the Studio to see its pattern.</b></div>';return}
   try{D=await api(`/v1/lab/concepts/${CID}/pattern`)}catch(err){$('#main').innerHTML=`<div class="empty"><b>The pattern could not be opened.</b><p class="note">${esc(err.message)}</p></div>`;return}
   $('#ttl').textContent=D.concept.name;
   if(D.kind==='soon'||D.kind==='none'){$('#sub').textContent='Pattern';$('#modeSeg').classList.add('hidden');$$('#play,#size,#dxf,#svgDl').forEach(x=>x.classList.add('hidden'));
@@ -642,6 +645,7 @@ async function boot(){
   window.FBPattern={logos:()=>SPEC.logos||[],logoAt:id=>{const g=document.querySelector(`#canvas [data-logo="${id}"]`);if(!g)return null;const r=g.getBoundingClientRect();return[r.left+r.width/2,r.top+r.height/2]},ready:()=>true,dirty:()=>DIRTY,sketches:()=>SPEC.sketches||[],spec:()=>SPEC,lines:()=>modelLines(PAT),handleAt:(view,key)=>{const it=LV?.items.find(i=>i.key===view),l=modelLines(PAT).find(x=>x.key===key),s=$('#canvas svg');if(!it||!l||!s)return null;const q=new DOMPoint(...handleAt(it,l)).matrixTransform(s.getScreenCTM());return[q.x,q.y]},sideAt:(view,pt)=>{const it=LV?.items.find(i=>i.key===view),s=$('#canvas svg');if(!it||!s)return null;const q=new DOMPoint(...viewTf(it)(pt)).matrixTransform(s.getScreenCTM());return[q.x,q.y]},materials:()=>MATS,viewAt:(key,pt)=>{const it=LV?.items.find(i=>i.key===key),s=$('#canvas svg');if(!it||!s)return null;const m=s.getScreenCTM(),q=new DOMPoint(pt[0]+it.dx,pt[1]+it.dy).matrixTransform(m);return[q.x,q.y]},explode:()=>goTo(1,3200),at:t=>{T=t;$('#t').value=t;drawPieces()},pattern:()=>PAT,lastAt:(side,pt)=>{if(!LPROJ)return null;const p=LPROJ.pr(onSurface(LPROJ.sh[side],pt));return[p[0],p[1]]}};
 }
 boot();
+document.getElementById('moreBtn').onclick=()=>{const b=document.querySelector('.bar'),o=b.classList.toggle('open');document.getElementById('moreBtn').setAttribute('aria-expanded',String(o))};
 </script>
 </body>
 </html>

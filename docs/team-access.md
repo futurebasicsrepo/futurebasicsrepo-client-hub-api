@@ -30,7 +30,7 @@ Not modules: **My day** (open to everyone on the team, but each part of it only 
 
 ## What a person sees
 
-- The left menu only shows what they can open; a group with nothing in it disappears.
+- The menu only shows what they can open: a part they cannot open is not among the tabs, and a section with nothing in it disappears from the sidebar.
 - A page that belongs to one module (Contracts, Intelligence, Prototypes, Builds, Factories, Platform health, Brand) says "This part of the console is not turned on for you" and who to ask, instead of showing an empty page.
 - On the pages that hold several modules (Sales, the client console) a part they cannot open is refused with the same message at the top of the page.
 - It is enforced by the service, not only hidden: a request for a module they were not given is refused (`403`, `code: MODULE_ACCESS`) whichever way it arrives. This includes the routes staff share with clients to work inside a client's room.

@@ -30,6 +30,8 @@ html[data-focus] body>header,html[data-focus] .fbside,html[data-focus] .fbburger
 html[data-focus] body.fbnav,html[data-focus] body{padding-left:0!important;padding-bottom:0!important}html[data-focus] .studio{height:100dvh}
 html[data-focus] .bar{padding:4px 10px;min-height:44px;gap:6px}
 #panelBtn[aria-pressed=true],#focusBtn[aria-pressed=true]{background:var(--ink);color:#fff}
+/* on a phone the toolbar keeps the piece's steps, its name, Save and the panel; the rest folds behind More */
+#moreBtn{display:none}@media(max-width:700px){#moreBtn{display:inline-flex}.bar:not(.open) .fold{display:none!important}.bar .ttl{min-width:0;flex:1 1 120px}.bar .ttl b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}#pieceSteps{flex:1 1 100%;order:-1}}
 .bar{grid-column:1/-1;display:flex;align-items:center;gap:8px;padding:8px 12px;background:#fff;border-bottom:1px solid var(--line);flex-wrap:wrap;min-height:52px}
 .bar .ttl{display:grid;line-height:1.15;min-width:0;margin-right:auto}.bar .ttl b{font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:38vw}.bar .ttl span{color:var(--dim);font-size:12px}
 .saved{color:var(--dim);font-size:12px;min-width:90px;text-align:right}.saved.dirty{color:#8a5a00}
@@ -40,6 +42,8 @@ html[data-focus] .bar{padding:4px 10px;min-height:44px;gap:6px}
 #readyPop{width:min(380px,92vw);right:0;left:auto;padding:12px;display:grid;gap:8px}#readyPop.hidden{display:none}
 .rd{display:grid;grid-template-columns:18px minmax(0,1fr) auto;gap:4px 8px;align-items:start;font-size:12.5px;padding:6px 0;border-top:1px solid var(--line)}.rd b{font-size:13px}.rd small{grid-column:2/3;color:var(--dim);line-height:1.35}.rd .st{width:14px;height:14px;border-radius:50%;margin-top:2px}.rd .st.done{background:#1f9d55}.rd .st.todo{background:#a02a20}.rd .st.warn{background:#d49a00}
 #readyBtn.ok{border-color:#1f9d55;color:#17603a}
+/* with a piece open, its step bar (Concept · Picture · Flats · Pattern · Tech pack) picks the view; the switch keeps only Front and Back */
+#app.steps #viewSeg [data-v=picture],#app.steps #viewSeg [data-v=pattern]{display:none}
 #matDlg{border:0;border-radius:20px;padding:0;width:min(1180px,96vw);max-height:92vh}#matDlg::backdrop{background:rgba(20,20,22,.35)}.md{padding:18px;display:grid;gap:12px}.md h4{margin:0 0 8px;font-size:13px}
 .mcols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);gap:18px;align-items:start}@media(max-width:820px){.mcols{grid-template-columns:1fr}}
 .mon{display:grid;gap:8px}.mp{display:grid;grid-template-columns:64px minmax(0,1fr) auto;gap:10px;align-items:start;border:1px solid var(--line);border-radius:12px;padding:8px;background:#fff}.mp .th,.mc .th{background:var(--fog);border-radius:8px;overflow:hidden;position:relative;aspect-ratio:4/3}.mp .th>svg,.mc .th>svg,.mp .th>img,.mc .th>img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}.mp .th.tg>svg,.mc .th.tg>svg{inset:6%;width:88%;height:88%}
@@ -115,40 +119,40 @@ html,body{touch-action:manipulation}
 </head>
 <body>
 <header>
-  <a class="wordmark" href="/home" aria-label="Work home"><img class="brand-logo" src="https://thefuturebasics.com/cdn/shop/files/future_basics_true_vector_fixed.svg?v=1775278873&amp;width=360" alt="Future Basics"><span class="brand-suffix">/ Design</span></a>
+  <a class="wordmark" href="/home" aria-label="Work home"><img class="brand-logo" src="https://thefuturebasics.com/cdn/shop/files/future_basics_true_vector_fixed.svg?v=1775278873&amp;width=360" alt="Future Basics"><span class="brand-suffix">/ Studio</span></a>
 </header>
-<div id="pickC" class="hidden" style="max-width:760px;margin:30px auto;padding:0 16px"><nav class="labnav" data-lab="studio"></nav><h1 style="margin-top:14px">Design</h1><p class="note" style="font-size:14px">One concept at a time, in one place: its picture as layers to paint, type on, add graphics and parts to, and change with AI, and its measured flats, front and back, with every graphic placed in inches. Which concept? Or <a href="/lab/studio?new=graphic">build a graphic for the library</a>.</p><form id="scratchF" class="scratch" style="display:grid;gap:8px;margin:12px 0 4px;padding:14px;border:1px solid var(--line);border-radius:14px;background:#fff"><b>Start from scratch</b><span class="note">A blank page to draw on with the Pencil, with the product's outline as a guide, and its flats and pattern pieces from the start.</span><div style="display:flex;gap:8px;flex-wrap:wrap"><input class="t" id="scName" placeholder="Name (optional)" aria-label="Name" style="flex:1;min-width:160px"><select class="t" id="scCat" aria-label="What it is"><option value="tops">Tops and jersey</option><option value="outerwear">Outerwear</option><option value="bottoms">Bottoms</option><option value="dresses">Dresses and sets</option><option value="headwear">Headwear</option><option value="bags">Bags</option><option value="plush">Plush and soft toys</option><option value="footwear">Footwear</option><option value="toys">Toys and objects</option><option value="electronics">Electronics</option></select><select class="t" id="scStyle" aria-label="Style"></select><button class="btn go" type="submit" id="scGo">Start drawing</button></div><span class="note" id="scMsg" role="status"></span></form><input class="t" id="pickQ" type="search" placeholder="Search concepts" aria-label="Search concepts" style="margin:10px 0;width:100%;max-width:380px"><div id="pickList" style="display:grid;gap:6px"><span class="note">Loading concepts…</span></div></div>
+<div id="pickC" class="hidden" style="max-width:760px;margin:30px auto;padding:0 16px"><nav class="labnav" data-lab="studio"></nav><h1 style="margin-top:14px">Studio</h1><p class="note" style="font-size:14px">One concept at a time, in one place: its picture as layers to paint, type on, add graphics and parts to, and change with AI, and its measured flats, front and back, with every graphic placed in inches. Which concept? Or <a href="/lab/studio?new=graphic">build a graphic for the library</a>.</p><form id="scratchF" class="scratch" style="display:grid;gap:8px;margin:12px 0 4px;padding:14px;border:1px solid var(--line);border-radius:14px;background:#fff"><b>Start from scratch</b><span class="note">A blank page to draw on with the Pencil, with the product's outline as a guide, and its flats and pattern pieces from the start.</span><div style="display:flex;gap:8px;flex-wrap:wrap"><input class="t" id="scName" placeholder="Name (optional)" aria-label="Name" style="flex:1;min-width:160px"><select class="t" id="scCat" aria-label="What it is"><option value="tops">Tops and jersey</option><option value="outerwear">Outerwear</option><option value="bottoms">Bottoms</option><option value="dresses">Dresses and sets</option><option value="headwear">Headwear</option><option value="bags">Bags</option><option value="plush">Plush and soft toys</option><option value="footwear">Footwear</option><option value="toys">Toys and objects</option><option value="electronics">Electronics</option></select><select class="t" id="scStyle" aria-label="Style"></select><button class="btn go" type="submit" id="scGo">Start drawing</button></div><span class="note" id="scMsg" role="status"></span></form><input class="t" id="pickQ" type="search" placeholder="Search concepts" aria-label="Search concepts" style="margin:10px 0;width:100%;max-width:380px"><div id="pickList" style="display:grid;gap:6px"><span class="note">Loading concepts…</span></div></div>
 <div id="needSignin" class="hidden"><h1 style="margin-top:0">Sign in to the Design Lab</h1><p class="note" style="font-size:14px">New to the Design Lab? Open a room of your own (free, one minute), then open the Lab on it: the studio, the flats, the sketch pack and the libraries, with tech packs and the factory files that come out of them. Already have a room? Sign in at your hub. Future Basics staff sign in at the work console.</p><div style="display:flex;margin-top:12px;gap:8px;flex-wrap:wrap"><a class="btn go" data-hub="/join?for=lab" href="/join?for=lab">Open the Design Lab</a> <a class="btn" data-hub="/hub#lab" href="/hub#lab">Sign in at your hub</a> <a class="btn" href="/admin">Work console</a></div><script>(()=>{if(!/^work\./.test(location.host))return;for(const a of document.querySelectorAll("[data-hub]"))a.href="https://"+location.host.replace(/^work\./,"hub.")+a.dataset.hub})()</script></div>
 
 <div class="studio hidden" id="app">
   <div class="bar">
-    <button class="btn q sm" type="button" data-lab-menu data-lab="studio">Lab ▾</button><a class="btn q sm" id="back" href="/lab#board">← Concepts</a>
+    <button class="btn q sm" type="button" data-lab-menu data-lab="studio">Lab ▾</button><a class="btn q sm" id="back" href="/lab#board">← Concepts</a><nav id="pieceSteps" class="hidden"></nav>
     <div class="ttl"><b id="cName">Loading…</b><span id="cSub"></span></div>
     <div class="seg" id="viewSeg" role="group" aria-label="What to show"><button type="button" data-v="picture" aria-pressed="true" title="The picture, as layers">Picture</button><button type="button" data-v="front" aria-pressed="false" title="The measured flat, front">Flat front</button><button type="button" data-v="back" aria-pressed="false" title="The measured flat, back">Flat back</button><button type="button" data-v="pattern" aria-pressed="false" title="The pattern pieces: the product exploded into what it is cut from">Pattern</button></div>
-    <div class="seg" id="levelSeg" role="group" aria-label="How much to show"><button type="button" data-level="simple" aria-pressed="false" title="The essentials: the picture, graphics and their place, the flats and the sheets">Simple</button><button type="button" data-level="pro" aria-pressed="false" title="Every tool: distress, warp, the ruler, separations, Illustrator files, points of measure, grading, stitch lines">Pro</button></div>
+    <div class="fold seg" id="levelSeg" role="group" aria-label="How much to show"><button type="button" data-level="simple" aria-pressed="false" title="The essentials: the picture, graphics and their place, the flats and the sheets">Simple</button><button type="button" data-level="pro" aria-pressed="false" title="Every tool: distress, warp, the ruler, separations, Illustrator files, points of measure, grading, stitch lines">Pro</button></div>
     <div class="menu" id="readyWrap"><button class="btn sm q" id="readyBtn" type="button" aria-haspopup="true" aria-expanded="false" title="What it still needs before the tech pack">Checklist</button>
       <div class="pop hidden" id="readyPop" role="dialog" aria-label="Before the tech pack"><div id="readyList"></div></div></div>
-    <button class="btn q sm" id="undo" type="button" title="Undo (Ctrl Z)">Undo</button>
-    <button class="btn q sm" id="redo" type="button" title="Redo (Ctrl Shift Z)">Redo</button>
+    <button class="fold btn q sm" id="undo" type="button" title="Undo (Ctrl Z)">Undo</button>
+    <button class="fold btn q sm" id="redo" type="button" title="Redo (Ctrl Shift Z)">Redo</button>
     <span class="saved pic-only" id="saved" role="status"></span><span class="saved flat-only" id="fsaved" role="status" title="The flats"></span>
-    <button class="btn sm" id="save" type="button" title="Save (Ctrl S)">Save</button>
+    <button class="btn sm" id="save" type="button" title="Save (Ctrl S)">Save</button><button class="btn q sm" id="moreBtn" type="button" aria-expanded="false" title="Every other tool">More</button>
     <button class="btn q sm" id="panelBtn" type="button" aria-pressed="true" title="Show or hide the panel on the right (\)">Panel</button>
-    <button class="btn q sm" id="focusBtn" type="button" aria-pressed="false" title="Make the drawing as big as it goes: hide the header, the menu and the guide, full screen where the browser allows (F)">Focus</button>
-    <button class="btn sm pic-only pro-only" id="impBtn" type="button" title="Bring an SVG back from Illustrator: the studio's own export comes back as layers">Import</button><input type="file" id="svgIn" accept=".svg,image/svg+xml" class="hidden">
-    <button class="btn sm pic-only" id="tryBtn" type="button" title="The design painted on a 3D model, turned round">3D</button>
-    <div class="menu pic-only"><button class="btn sm" id="expBtn" type="button" aria-haspopup="true" aria-expanded="false">Export</button>
+    <button class="fold btn q sm" id="focusBtn" type="button" aria-pressed="false" title="Make the drawing as big as it goes: hide the header, the menu and the guide, full screen where the browser allows (F)">Focus</button>
+    <button class="fold btn sm pic-only pro-only" id="impBtn" type="button" title="Bring an SVG back from Illustrator: the studio's own export comes back as layers">Import</button><input type="file" id="svgIn" accept=".svg,image/svg+xml" class="hidden">
+    <button class="fold btn sm pic-only" id="tryBtn" type="button" title="The design painted on a 3D model, turned round">3D</button>
+    <div class="fold menu pic-only"><button class="btn sm" id="expBtn" type="button" aria-haspopup="true" aria-expanded="false">Export</button>
       <div class="pop hidden" id="expPop" role="menu">
         <button type="button" role="menuitem" data-exp="png"><b>Picture (PNG)</b><small>Everything as one picture, full size</small></button>
         <button type="button" role="menuitem" data-exp="svg" class="pro-only"><b>Layers for Illustrator (SVG)</b><small>One group per layer; type and shapes stay editable</small></button>
         <button type="button" role="menuitem" data-exp="layer"><b>The selected layer (PNG)</b><small>With a clear background, for a print file</small></button>
         <button type="button" role="menuitem" data-exp="keepnew" class="hidden" id="expKeepNew"><b>Keep as a new graphic</b><small>Everything visible goes into the library as its own graphic</small></button>
       </div></div>
-    <button class="btn sm hidden" id="matBtn" type="button" title="The fabrics, trims and labels this garment is made of, from the library: add, change and see what they cost">Fabrics, trims &amp; labels</button>
-    <button class="btn sm q pic-only" id="verBtn" type="button" title="Every picture used as the concept, and any kept on purpose: open two side by side">Versions</button>
+    <button class="fold btn sm hidden" id="matBtn" type="button" title="The fabrics, trims and labels this garment is made of, from the library: add, change and see what they cost">Fabrics, trims &amp; labels</button>
+    <button class="fold btn sm q pic-only" id="verBtn" type="button" title="Every picture used as the concept, and any kept on purpose: open two side by side">Versions</button>
     <button class="btn go sm pic-only" id="apply" type="button">Use as the concept picture</button>
     <button class="btn sm hidden" id="tagAddBtn" type="button" title="Put this label on a garment: it goes on its bill of materials and into its tech pack">Add to a garment</button>
-    <button class="btn sm flat-only" id="specBtn" type="button" title="The flats, measured, as a printable spec sheet">Spec sheet</button>
-    <button class="btn sm flat-only" id="decoBtn" type="button" title="One page per graphic for the decorator: size, Pantones, technique, cost, where it goes">Decoration sheet</button>
+    <button class="fold btn sm flat-only" id="specBtn" type="button" title="The flats, measured, as a printable spec sheet">Spec sheet</button>
+    <button class="fold btn sm flat-only" id="decoBtn" type="button" title="One page per graphic for the decorator: size, Pantones, technique, cost, where it goes">Decoration sheet</button>
     <button class="btn go sm flat-only hidden" id="packBtn" type="button">Send to the tech pack</button>
   </div>
   <nav class="rail" aria-label="Tools">
@@ -941,15 +945,19 @@ $('#scCat')?.addEventListener('change',scStyles);scStyles();
 $('#scratchF')?.addEventListener('submit',async e=>{e.preventDefault();const b=$('#scGo'),cat=$('#scCat').value,st=$('#scStyle').value;b.disabled=true;b.textContent='Starting…';$('#scMsg').textContent='';
   try{const r=await api('/v1/lab/concepts/from-scratch',{body:{name:$('#scName').value,category:cat,...(cat==='plush'?{shape:st}:st?{style:st}:{})}});location.href=r.studio}catch(x){$('#scMsg').textContent=x.message;b.disabled=false;b.textContent='Start drawing'}});
 async function boot(){
+  if(/^[0-9a-f-]{36}$/i.test(CID)&&!GMODE)document.documentElement.dataset.fbtabs='off';
   if(!TOKEN()){$('#needSignin').classList.remove('hidden');return}
   if(GMODE){return bootGraphic()}
   if(!/^[0-9a-f-]{36}$/i.test(CID)){const KEEPQ=['view','template'].filter(k=>QS.get(k)).map(k=>`&${k}=${encodeURIComponent(QS.get(k))}`).join(''),box=$('#pickC');box.classList.remove('hidden');if(window.FBLabNav)box.querySelectorAll('nav.labnav').forEach(n=>window.FBLabNav.render(n));
-    let list=[];try{list=(await api('/v1/lab/concepts?limit=120')).concepts.filter(c=>c.status!=='tech_pack')}catch(x){$('#pickList').innerHTML=`<span class="note">${esc(x.message)}</span>`;return}
-    const paint=()=>{const q=($('#pickQ').value||'').toLowerCase(),l=list.filter(c=>!q||`${c.name} ${c.categoryLabel||''} ${c.planName||''}`.toLowerCase().includes(q)).slice(0,60);$('#pickList').innerHTML=l.length?l.map(c=>`<a class="btn q" style="justify-content:space-between" href="/lab/studio?concept=${c.id}${KEEPQ}" data-pick="${c.id}"><span><b>${esc(c.name)}</b> <span class="note">· ${esc(c.categoryLabel||c.category||'')}${c.planName?' · '+esc(c.planName):''}</span></span><span>→</span></a>`).join(''):'<span class="note">No concepts yet: <a href="/lab#plans">start a line plan</a> and make some.</span>'};
+    let list=[];try{list=(await api('/v1/lab/concepts?limit=120')).concepts}catch(x){$('#pickList').innerHTML=`<span class="note">${esc(x.message)}</span>`;return}
+    const paint=()=>{const q=($('#pickQ').value||'').toLowerCase(),l=list.filter(c=>!q||`${c.name} ${c.categoryLabel||''} ${c.planName||''}`.toLowerCase().includes(q)).slice(0,60);$('#pickList').innerHTML=l.length?l.map(c=>`<a class="btn q" style="justify-content:space-between" href="/lab/studio?concept=${c.id}${KEEPQ}" data-pick="${c.id}"><span><b>${esc(c.name)}</b> <span class="note">· ${esc(c.categoryLabel||c.category||'')}${c.planName?' · '+esc(c.planName):''}${c.status==='tech_pack'?' · has a tech pack':''}</span></span><span>→</span></a>`).join(''):'<span class="note">No concepts yet: <a href="/lab#plans">start a line plan</a> and make some.</span>'};
     paint();$('#pickQ').addEventListener('input',paint);return}
   if(false){$('#needSignin').classList.remove('hidden');$('#needSignin h1').textContent='Open a concept first';$('#needSignin p').textContent='The studio opens from a concept in the Design Lab: open one and press Open in the studio.';$('#needSignin a').href='/lab#board';$('#needSignin a').textContent='Open the concepts';return}
   try{D=await api(`/v1/lab/concepts/${CID}/studio`)}catch(x){const n=$('#needSignin');n.classList.remove('hidden');const no=/access to Design Lab|not turned on|Only Danielle/i.test(x.message);n.querySelector('h1').textContent=x.status===404?'That concept is not there any more':no?'The Design Lab is not turned on for you':'Sign in first';n.querySelector('p').textContent=x.status===404?'It may have been deleted.':x.message;return}
   $('#app').classList.remove('hidden');$('#back').href='/lab#board';
+  // the piece's step bar takes the place of "← Concepts": back to its line plan, and every step of the piece one press away
+  if(window.FBLabNav){$('#back').classList.add('hidden');$('#app').classList.add('steps');$('#pieceSteps').classList.remove('hidden');
+    window.FBLabNav.steps($('#pieceSteps'),D.concept,{at:stepOfView(VMODE),onStep:(st)=>{if(st==='picture'){setVMode('picture');return true}if(st==='flats'){setVMode(VMODE==='back'?'back':'front');return true}if(st==='pattern'){setVMode('pattern');return true}if(st==='techpack'&&!D.concept.productUrl){if($('#readyPop').classList.contains('hidden'))$('#readyBtn').click();return true}return false}})}
   if(D.concept.locked){$('#apply').disabled=true;$('#apply').title='This concept is already a tech pack'}
   busy('Opening the design…');
   try{
@@ -1135,7 +1143,7 @@ pL.addEventListener('input',e=>{if(e.target.dataset.p!=='warpk')return;const l=s
 // ?embed=compact: the drawing alone, for side by side). The header, the view switch and Save are this page's. The frame loads the first
 // time a flat is shown. Saving: unsaved flats first, then the picture, whose placed graphics go onto the flats, which then reload.
 // side by side was dropped: a picture and a flat each want the whole screen
-const VIEWS=['picture','front','back','pattern'];let PLOADED=false;let VMODE='picture',FLOADED=false,TPLUSED=false,FOBS=null;
+const VIEWS=['picture','front','back','pattern'],stepOfView=v=>v==='pattern'?'pattern':v==='front'||v==='back'||v==='split'?'flats':'picture';let PLOADED=false;let VMODE='picture',FLOADED=false,TPLUSED=false,FOBS=null;
 function FF(){try{return FLOADED?$('#flatFrame').contentWindow.FBFlats||null:null}catch{return null}}
 function flatSrc(){const t=QS.get('template');return `/lab/flats?concept=${CID}&embed=${VMODE==='split'?'compact':'full'}&view=${VMODE==='back'?'back':'front'}${t&&!TPLUSED?'&template='+encodeURIComponent(t):''}`}
 function loadFlats(){$('#flatFrame').src=flatSrc();FLOADED=true;TPLUSED=true}
@@ -1229,12 +1237,13 @@ async function setVMode(v,{push=true}={}){
     // the graphics placed on the picture go onto the flats before they are shown
     if(!GMODE&&DIRTY&&(was==='picture'||!FLOADED)){busy('Putting the graphics on the flats…');try{const sent=await syncFlats({before:flatsFirst});if(sent&&FLOADED)reloadFlats()}catch(x){toast('The flats did not take the graphics: '+x.message)}finally{busy()}}
     if(!FLOADED)loadFlats()}
-  VMODE=v;$('#app').dataset.v=v;$$('#viewSeg [data-v]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.v===v)));
+  VMODE=v;$('#app').dataset.v=v;$$('#viewSeg [data-v]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.v===v)));$('#pieceSteps').setStep?.(stepOfView(v));
   const f=FF();if(f&&f.ready()){f.mode(v==='split'?'compact':'full');if(v==='front'||v==='back'){f.setView(v);f.tool?.(TOOL)}}
   if(['warp','pick','ruler'].includes(TOOL)&&v!=='picture')setTool('select');paintOpts();syncUndo();
   if(push){const u=new URL(location.href);if(v==='picture')u.searchParams.delete('view');else u.searchParams.set('view',v);u.searchParams.delete('template');history.replaceState(null,'',u)}
   if(v==='picture'||v==='split')requestAnimationFrame(fit)}
 $$('#viewSeg [data-v]').forEach(b=>b.onclick=()=>setVMode(b.dataset.v));
+$('#moreBtn').onclick=()=>{const o=$('.bar').classList.toggle('open');$('#moreBtn').setAttribute('aria-expanded',String(o))};
 const flatsOr=fn=>()=>{const f=FF();if(!f||!f.ready()){toast('The flats are still loading.');return}fn(f)};
 $('#specBtn').onclick=flatsOr(f=>f.sheet());$('#decoBtn').onclick=flatsOr(f=>f.deco());$('#packBtn').onclick=flatsOr(f=>f.pack());
 // ---------- fabrics, trims and labels on the garment (the concept's bill of materials), from the materials library; on the picture and the flats ----------

@@ -90,7 +90,8 @@ table.tp[data-tbl="bom"] td:nth-child(1),table.tp[data-tbl="bom"] td:nth-child(2
 .srev{border:1px solid var(--line);border-radius:16px;padding:14px;margin:12px 0;display:grid;gap:10px}.ta .st{font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase;border-radius:999px;padding:2px 8px;background:var(--fog);color:var(--dim);white-space:nowrap}.ta .st.late{background:#fbe5e2;color:var(--bad,#a02a20)}.ta .st.soon{background:#fff1d6;color:#8a5a00}.ta .st.done{background:#e4f6ec;color:#17603a}.sphotos{display:flex;gap:8px;flex-wrap:wrap}.sphotos figure{margin:0;width:120px;position:relative}.sphotos img{width:120px;height:120px;object-fit:cover;border-radius:12px;border:1px solid var(--line);display:block}.sphotos button{position:absolute;top:4px;right:4px}.cmpf{display:grid;grid-template-columns:auto 1fr;gap:6px 10px;align-items:start;font-size:13px;border-top:1px solid var(--line);padding:6px 0}.cmpf .sev{font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase;border-radius:999px;padding:2px 8px;white-space:nowrap}.cmpf .sev.major{background:#fbe5e2;color:#a02a20}.cmpf .sev.minor{background:#fff1d6;color:#8a5a00}.cmpf .sev.ok{background:#e4f6ec;color:#17603a}.srevout td{background:#fbeceb}.srevc{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr) auto;gap:8px;align-items:start}.srevlist{margin:4px 0 0;padding-left:18px;font-size:13px}.srevrow td{border-top:0;padding-top:0}.sbtn.on{background:var(--ink);color:#fff}
 .crumbbar{display:flex;flex-wrap:wrap;align-items:center;gap:0 8px;max-width:1180px;margin:0 auto;padding:14px clamp(12px,3vw,36px) 0;font:500 11px/1.5 'IBM Plex Mono',monospace;text-transform:uppercase;letter-spacing:.09em;color:var(--dim);min-width:0}.crumbbar:empty{display:none}.crumbbar .mstatus{display:none;margin-left:auto}.crumbbar .status{color:var(--ink);border-color:var(--line)}
 .crumbbar a{color:var(--dim);text-decoration:none;padding:4px 0;max-width:24ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.crumbbar a:hover,.crumbbar a:focus-visible{color:var(--ink);text-decoration:underline}
-.crumbbar [aria-current]{color:var(--ink);font-weight:600;padding:4px 0}.crumbbar .sep{opacity:.45}.crumbbar .meta{color:var(--dim)}
+.crumbbar [aria-current]{color:var(--ink);font-weight:600;padding:4px 0}
+.labsteps-row{max-width:1180px;margin:8px auto 0;padding:0 clamp(12px,3vw,36px);overflow-x:auto}.crumbbar .sep{opacity:.45}.crumbbar .meta{color:var(--dim)}
 .metric{display:block;margin-top:2px;font-size:10.5px;line-height:1.3;color:#8b8b92;white-space:nowrap}.metric:empty{display:none}/* ---- The pop-up: the design assistant and the developer assistant at work ---- */
 .xchg{position:fixed;inset:0;z-index:80;display:grid;place-items:center;padding:20px;background:radial-gradient(120% 90% at 50% 0%,rgba(20,20,22,.55),rgba(8,8,10,.88));backdrop-filter:blur(14px) saturate(1.1);-webkit-backdrop-filter:blur(14px) saturate(1.1);opacity:0;transition:opacity .35s var(--ease)}
 .xchg[hidden]{display:none}.xchg.on{opacity:1}
@@ -353,7 +354,7 @@ dialog.shopify .pb{padding:18px 20px 20px}dialog.shopify .sx-pick{display:flex;f
 <script src="/tp-units.js"></script>
 <script src="/pantone-c.js"></script>
 <script src="/commercial.js"></script><script src="/sample-review.js"></script><script src="/elec.js"></script><script src="/categories.js"></script>
-<script src="/chat.js"></script><script src="/picker.js"></script>
+<script src="/chat.js"></script><script src="/picker.js"></script><script src="/lab/nav.js" defer></script>
 <script>
 (()=>{
 "use strict";
@@ -364,7 +365,8 @@ const isWork=host.startsWith('work.')||params.get('as')==='work'||((host==='loca
 const MODE=tokenMatch?'factory':productMatch?(isWork?'admin':'client'):'none';
 let TOKEN=MODE==='admin'?localStorage.getItem('fb.admin.token')||'':MODE==='client'?localStorage.getItem('fb.client.token')||'':'';
 let RO=MODE!=='admin';
-const TABS=[['style','Style','M4 6h16M4 12h10M4 18h7'],['calls','Calls','M12 3a5 5 0 0 1 5 5c0 4-5 9-5 9S7 12 7 8a5 5 0 0 1 5-5zM12 8h.01'],['poms','POMs','M3 12h18M6 8v8M12 6v12M18 8v8'],['art','Art','M12 3a9 9 0 1 0 0 18c1.5 0 2-1 2-2s-1-2 0-3 3 0 4-1c2-2 0-6-6-12zM8 10h.01M12 7h.01M16 10h.01'],['bom','BOM','M4 5h16v14H4zM4 10h16M9 10v9'],['sign','Sign','M4 17c3-4 5-6 7-6s1 4 3 4 3-4 6-4M4 21h16']];
+// the same names for everyone who opens the pack (staff, the client and the factory)
+const TABS=[['style','Style','M4 6h16M4 12h10M4 18h7'],['calls','Callouts','M12 3a5 5 0 0 1 5 5c0 4-5 9-5 9S7 12 7 8a5 5 0 0 1 5-5zM12 8h.01'],['poms','Measure','M3 12h18M6 8v8M12 6v12M18 8v8'],['art','Artwork','M12 3a9 9 0 1 0 0 18c1.5 0 2-1 2-2s-1-2 0-3 3 0 4-1c2-2 0-6-6-12zM8 10h.01M12 7h.01M16 10h.01'],['bom','Materials','M4 5h16v14H4zM4 10h16M9 10v9'],['sign','Sign','M4 17c3-4 5-6 7-6s1 4 3 4 3-4 6-4M4 21h16']];
 const SKETCH_VIEWS=['front','back','side','lateral','medial','top','outsole','heel','detail','flat','other'];
 const NAMED=[['Black','#000000'],['White','#ffffff'],['Charcoal','#36454f'],['Slate Grey','#708090'],['Silver','#c0c0c0'],['Ivory','#fffff0'],['Cream','#fffdd0'],['Beige','#f5f5dc'],['Tan','#d2b48c'],['Sand','#c2b280'],['Khaki','#c3b091'],['Camel','#c19a6b'],['Brown','#8b4513'],['Dark Brown','#3b2f2f'],['Chocolate','#7b3f00'],['Rust','#b7410e'],['Burnt Orange','#cc5500'],['Orange','#ff7f00'],['Amber','#ffbf00'],['Gold','#d4af37'],['Mustard','#e1ad01'],['Yellow','#ffd700'],['Olive Green','#556b2f'],['Army Green','#4b5320'],['Moss','#8a9a5b'],['Sage','#9caf88'],['Forest Green','#228b22'],['Green','#2e8b57'],['Mint','#98ff98'],['Teal','#008080'],['Navy','#1f2a44'],['Royal Blue','#4169e1'],['Cobalt','#0047ab'],['Sky Blue','#87ceeb'],['Denim','#1560bd'],['Purple','#6a0dad'],['Lavender','#b57edc'],['Burgundy','#800020'],['Maroon','#5c0a1e'],['Red','#d62828'],['Coral','#ff7f50'],['Pink','#ffb6c1'],['Hot Pink','#ff69b4'],['Peach','#ffdab9'],['Heather Grey','#9a9a9a']];
 let S={lang:'en',translations:{},translating:false,product:null,pack:null,techPack:null,view:null,shares:[],seed:null,completeness:null,tab:'style',sk:0,placing:false,sel:null,artSk:0,preview:false,dirty:false,saving:false,lastSaved:null,workHubUrl:'',clientHubUrl:''};
@@ -1275,6 +1277,12 @@ function renderActs(){const a=$('#acts');const p=S.pack;
 function actMenu(items){const list=items.filter(Boolean);return list.length?`<details class="more"><summary class="btn" aria-label="More actions">More</summary><div class="menu">${list.join('')}</div></details>`:''}
 window.addEventListener('focus',()=>{if(S.dirty&&EDIT()&&!S.saving)save()});
 document.addEventListener('click',e=>document.querySelectorAll('details.more[open]').forEach(m=>{if(!m.contains(e.target)||e.target.closest('[data-act]'))m.open=false}));
+// Future Basics staff get the console's sidebar here too (sections only: the pack's own tabs are the tab row), so leaving the pack is one press
+function staffNav(){if(document.querySelector('script[src="/console-nav.js"]'))return;document.documentElement.dataset.fbtabs='off';const sc=document.createElement('script');sc.src='/console-nav.js';document.body.appendChild(sc)}
+function labSteps(base){let n=$('#labSteps');if(!S.lab||!window.FBLabNav){n?.remove();return}
+  if(!n){n=document.createElement('nav');n.id='labSteps';n.className='noprint labsteps-row';$('#crumb').after(n)}
+  const c={...S.lab,productUrl:location.pathname};window.FBLabNav.steps(n,c,{at:'techpack',onStep:st=>st==='techpack'});
+  if(base)n.querySelectorAll('a[href^="/lab"]').forEach(a=>a.setAttribute('href',base+a.getAttribute('href')))}
 function renderCrumbs(p){
   const el=$('#crumb'),pr=S.product||{},title=(p.style.styleNumber?p.style.styleNumber+' · ':'')+pr.title,here=`<span aria-current="page">Tech pack</span>`;
   const link=(label,href,cls='')=>`<a class="${cls}" href="${esc(href)}">${esc(label)}</a>`,sep='<span class="sep">›</span>';
@@ -1282,13 +1290,14 @@ function renderCrumbs(p){
   document.body.classList.toggle('has-crumbs',MODE==='admin'||MODE==='client');
   // the logo is the way home: the console for staff, the hub for a customer; a factory has no hub, so it is only a mark
   const home=$('#homeLink'),suffix=$('#brandName');
-  if(home){const to=MODE==='admin'?((/^work\./.test(location.hostname)?location.origin:(S.workHubUrl||''))+'/'):MODE==='client'?'/':'';if(to)home.setAttribute('href',to);else home.removeAttribute('href');home.setAttribute('aria-label',to?(MODE==='admin'?'Future Basics work: all clients':'Future Basics client hub: all projects'):'Future Basics')}
+  if(home){const to=MODE==='admin'?((/^work\./.test(location.hostname)?location.origin:(S.workHubUrl||''))+'/home'):MODE==='client'?'/':'';if(to)home.setAttribute('href',to);else home.removeAttribute('href');home.setAttribute('aria-label',to?(MODE==='admin'?'Future Basics work: My day':'Future Basics client hub: all projects'):'Future Basics')}
   if(suffix)suffix.textContent=MODE==='admin'?'/ Work':MODE==='client'?'/ Client Hub':'/ Tech pack';
   if(MODE==='admin'){
     const base=/^work\./.test(location.hostname)?location.origin:(S.workHubUrl||''),room=`${base}/clients/${pr.client_id}`;
-    el.innerHTML=[link('Clients',base+'/'),link(clientName,room),pr.project_id?link(projectName||'Project',`${room}#project=${pr.project_id}`):'',link(title,`${room}#product=${pr.id}`,'parent'),here].filter(Boolean).join(sep)
-      // a pack made from a Design Lab concept leads back to it: the concept and its flats, where the drawing and measurements are changed and sent again
-      +(S.lab?`<span class="sep">·</span><span class="meta">From the Design Lab:</span>${link('concept',`${base}/lab?concept=${S.lab.id}`)}${link('flats',`${base}/lab/studio?concept=${S.lab.id}&view=front`)}`:'');return}
+    el.innerHTML=[link('Clients',base+'/admin#clientsHead'),link(clientName,room),pr.project_id?link(projectName||'Project',`${room}#project=${pr.project_id}`):'',link(title,`${room}#product=${pr.id}`,'parent'),here].filter(Boolean).join(sep)
+    // a pack made from a Design Lab concept shows the piece's step bar under the breadcrumb: back to its concept, picture, flats and pattern, where the
+    // drawing and measurements are changed and sent again
+    labSteps(base);return}
   if(MODE==='client'){
     const proj=pr.project_id?`/projects/${pr.project_id}`:'/';
     el.innerHTML=[link('Projects','/'),pr.project_id?link(projectName||'Project',proj):'',link(title,pr.project_id?`${proj}#product=${pr.id}`:'/','parent'),here].filter(Boolean).join(sep);return}
@@ -1797,7 +1806,7 @@ async function boot(){
   try{
     if(MODE==='admin'){
       if(!TOKEN)return gate('Sign in to the work console','Tech packs are built from the Future Basics work console.','/','Sign in');
-      const d=await api(`/v1/admin/products/${productMatch[1]}/tech-pack`);S.product=d.product;S.cutoutEnabled=Boolean(d.cutoutEnabled);S.suppliers=d.suppliers||[];S.assignment=d.assignment||null;S.techPack=d.techPack;S.pack=d.techPack?d.techPack.data:d.seed;S.seed=d.seed;S.shares=d.shares;S.completeness=d.completeness;S.workHubUrl=d.workHubUrl;S.lab=d.lab||null;S.clientHubUrl=d.clientHubUrl;S.translations=d.translations||{};S.aiEnabled=Boolean(d.aiEnabled);
+      const d=await api(`/v1/admin/products/${productMatch[1]}/tech-pack`);S.product=d.product;S.cutoutEnabled=Boolean(d.cutoutEnabled);S.suppliers=d.suppliers||[];S.assignment=d.assignment||null;S.techPack=d.techPack;S.pack=d.techPack?d.techPack.data:d.seed;S.seed=d.seed;S.shares=d.shares;S.completeness=d.completeness;S.workHubUrl=d.workHubUrl;S.lab=d.lab||null;staffNav();S.clientHubUrl=d.clientHubUrl;S.translations=d.translations||{};S.aiEnabled=Boolean(d.aiEnabled);
       document.title=`Tech pack — ${S.product.title}`;render();autoPantoneC();loadThreads(true);if(d.techPack)loadViews().then(()=>{if(S.views&&!S.dirty)rerender()});if(!d.techPack)toast('Draft generated from the product configuration — edit anything to save it');
       if(d.techPack?.aiStatus==='pending')watchAiDraft();else if(d.techPack?.aiStatus==='failed')aiBanner('failed',d.techPack);else if(d.techPack?.aiStatus==='skipped')$('#noteSlot').insertAdjacentHTML('afterbegin',`<div class="note noprint ai-banner"><strong>Assistant draft was skipped</strong> — the client edited before it finished and the old rule kept their version. <button type="button" class="sbtn dark" data-act="airun" style="margin-left:6px">Run assistant now</button> (their edits are kept).</div>`);
     }else if(MODE==='client'){

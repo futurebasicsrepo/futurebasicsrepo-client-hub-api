@@ -94,13 +94,13 @@ td.pick,th.pick{width:28px;padding-right:0}td.pick input{width:17px;height:17px}
 </head>
 <body>
 <header>
-  <a class="wordmark" href="/sales" aria-label="Sales"><img class="brand-logo" src="https://thefuturebasics.com/cdn/shop/files/future_basics_true_vector_fixed.svg?v=1775278873&amp;width=360" alt="Future Basics"><span class="brand-suffix">/ Sales</span></a>
+  <a class="wordmark" href="/home" aria-label="My day"><img class="brand-logo" src="https://thefuturebasics.com/cdn/shop/files/future_basics_true_vector_fixed.svg?v=1775278873&amp;width=360" alt="Future Basics"><span class="brand-suffix">/ Sales</span></a>
 </header>
 <main>
   <div id="needSignin" class="panel hidden"><h1>Sign in to the work console first</h1><p class="note">This page uses your work console sign-in. Open the console, sign in, then come back here.</p><a class="btn go" href="/">Open the work console</a></div>
   <div id="app" class="hidden">
     <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap"><div><span class="mono" style="color:var(--dim)">Future Basics</span><h1>Sales</h1></div><button class="btn sm" id="shareBtn" type="button">New-customer link</button></div>
-    <div class="tabs" role="tablist"><button class="tab on" data-t="today">Today</button><button class="tab" data-t="pipeline">Pipeline</button><button class="tab" data-t="contacts">Contacts</button><button class="tab" data-t="tasks">Tasks <span id="taskCount"></span></button><button class="tab" data-t="opportunities">Opportunities <span id="oppCount"></span></button><button class="tab" data-t="press">Press</button><button class="tab" data-t="automations">Automations</button><button class="tab" data-t="chats">Chats <span id="chatCount"></span></button></div>
+    <!-- the parts of Sales are the tabs across the top (console-nav.js); this row only keeps the counts they show --><div class="tabs" role="tablist" hidden style="display:none"><button class="tab on" data-t="today">Today</button><button class="tab" data-t="pipeline">Pipeline</button><button class="tab" data-t="contacts">Contacts</button><button class="tab" data-t="tasks">Tasks <span id="taskCount"></span></button><button class="tab" data-t="opportunities">Opportunities <span id="oppCount"></span></button><button class="tab" data-t="press">Press</button><button class="tab" data-t="automations">Automations</button><button class="tab" data-t="chats">Chats <span id="chatCount"></span></button></div>
 
     <section id="t-today"></section>
 

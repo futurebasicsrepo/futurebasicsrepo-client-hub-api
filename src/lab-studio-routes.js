@@ -101,7 +101,7 @@ export function registerLabStudioRoutes(app, d) {
   const note = async (id, req, body) => pool.query(`insert into lab_concept_comments(concept_id,user_id,name,body) values($1,$2,$3,$4)`, [id, actorOf(req), await nameOf(req), clip(body, 1000)]);
   const concept = async (req, reply) => {
     if (!UUID.test(req.params.id)) return bad(reply, 'Not found', 404), null;
-    const r = (await pool.query('select id, name, category, status, spec, plan_id, (raw is not null) has_plain, (image is not null) has_image from lab_concepts where id=$1', [req.params.id])).rows[0];
+    const r = (await pool.query('select id, name, category, status, spec, plan_id, product_id, (raw is not null) has_plain, (image is not null) has_image from lab_concepts where id=$1', [req.params.id])).rows[0];
     if (!r) return bad(reply, 'Not found', 404), null; return r;
   };
   const fontList = async req => (await pool.query('select id, name, family, format, created_at from lab_fonts where ($1::uuid is null or client_id=$1) order by lower(name)', [own(req)])).rows.map(fontShape); // a room has only its own fonts; Future Basics staff see every font
@@ -112,11 +112,12 @@ export function registerLabStudioRoutes(app, d) {
   app.get('/v1/lab/concepts/:id/studio', { preHandler: pre }, async (req, reply) => {
     const c = await concept(req, reply); if (!c) return;
     const s = (await pool.query(`select s.doc, s.updated_at, s.applied_at, (s.original is not null) has_original, coalesce(nullif(u.name,''), split_part(u.email,'@',1)) by_name from lab_studio_docs s left join users u on u.id=s.updated_by where s.concept_id=$1`, [c.id])).rows[0];
-    const program = c.plan_id ? (await pool.query('select program from lab_plans where id=$1', [c.plan_id])).rows[0]?.program : null;
+    const plan = c.plan_id ? (await pool.query('select name, program from lab_plans where id=$1', [c.plan_id])).rows[0] : null, program = plan?.program || null;
     const palette = [...COLORS.map(x => ({ name: x.name, hex: x.hex, from: 'brand' })), ...((program?.palette || []).map(x => ({ name: clip(x.name, 40), hex: x.hex, from: 'program' })))].filter(x => /^#[0-9a-f]{6}$/i.test(x.hex || ''));
     const cfg = imageCfg();
     return {
-      concept: { id: c.id, name: c.name, category: c.category, status: c.status, hasImage: c.has_image, hasPlain: c.has_plain, locked: c.status === 'tech_pack', colors: c.spec?.colors || [], scratch: Boolean(c.spec?.scratch) },
+      concept: { id: c.id, name: c.name, category: c.category, status: c.status, hasImage: c.has_image, hasPlain: c.has_plain, locked: c.status === 'tech_pack', colors: c.spec?.colors || [], scratch: Boolean(c.spec?.scratch),
+        planId: c.plan_id || null, planName: plan?.name || '', productId: c.product_id || null, productUrl: c.product_id ? `/tech-packs/${c.product_id}` : '' }, // for the piece's step bar
       doc: s?.doc || null, savedAt: s?.updated_at || null, savedBy: s?.by_name || '', appliedAt: s?.applied_at || null, canRestore: Boolean(s?.has_original),
       marks: [{ id: 'mark', label: 'Cue mark', svg: logoSvg('mark') }, { id: 'word', label: 'Wordmark', svg: logoSvg('word') }, { id: 'lockup', label: 'Wordmark and cue mark', svg: logoSvg('lockup') }],
       palette, graphics: (c.spec?.graphics || []).filter(g => g.art).map(g => ({ art: g.art, name: clip(g.name, 60) })), graphicNames: (c.spec?.graphics || []).map(g => clip(g.name, 60)).filter(Boolean),

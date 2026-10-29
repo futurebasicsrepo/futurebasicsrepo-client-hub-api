@@ -25,6 +25,7 @@ h1{font-size:clamp(30px,5vw,48px);letter-spacing:-.035em;font-weight:500;margin:
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--ink);background:#fff;color:var(--ink);border-radius:999px;padding:8px 15px;text-decoration:none;cursor:pointer;font-weight:600;min-height:38px}.btn:hover{background:var(--ink);color:#fff}
 .btn.ghost{background:transparent;color:#fff;border-color:rgba(255,255,255,.5)}.btn.ghost:hover{background:#fff;color:var(--ink);border-color:#fff}
 .btn.go{background:var(--cue);border-color:var(--cue);color:var(--ink)}.btn.go:hover{background:#7affb6;color:var(--ink)}.btn.sm{min-height:32px;padding:5px 12px;font-size:13px}.btn[disabled]{opacity:.5;cursor:default}
+.pane-off{display:none!important}.cdsteps{margin:-4px 0 12px;overflow-x:auto}body:not([data-pane="plans"]) .hero{display:none}
 .hero{background:var(--ink);color:#fff;border-radius:28px;padding:clamp(20px,4vw,36px);margin-bottom:22px;position:relative;overflow:hidden;isolation:isolate}
 .hero:before{content:"";position:absolute;inset:0;z-index:-1;background-image:linear-gradient(rgba(255,255,255,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.05) 1px,transparent 1px);background-size:28px 28px}
 .hero .mono{color:#9d9da4}.hero p{color:#c9c9cf;max-width:66ch;margin:6px 0 0;font-size:15px}
@@ -118,7 +119,7 @@ dialog.cd{border:0;border-radius:24px;padding:0;width:min(980px,96vw);max-height
   <div id="app" class="hidden">
     <section class="hero"><span class="mono">Future Basics · Danielle and Kyle only</span><h1>Design Lab.</h1>
       <p>Plan the season, draw the concepts, finish them in the studio, measure them as flats, and send them to a tech pack. The libraries hold what we draw from; the research holds what the market is doing.</p>
-      <div class="row" style="margin-top:14px;gap:8px"><a class="btn" href="#plans" style="background:#fff;color:var(--ink);border-color:#fff">Start a line plan</a><a class="btn ghost" href="#board">Open the concepts</a><button class="btn ghost" type="button" id="howStart">How to start</button><a class="btn ghost" href="/lab/studio">Design</a><a class="btn ghost" href="/lab/flats">Flats</a><a class="btn ghost" href="/lab/sketches">Sketch pack</a></div>
+      <div class="row" style="margin-top:14px;gap:8px"><button class="btn ghost" type="button" id="howStart">How to start</button></div>
       <div class="stats" id="stats"></div></section>
     <!-- the welcome: how to start, shown once to a client's designers (and any time from "How to start") -->
     <section class="panel hidden" id="welcome" aria-labelledby="welcomeH" style="margin-top:14px">
@@ -126,14 +127,14 @@ dialog.cd{border:0;border-radius:24px;padding:0;width:min(980px,96vw);max-height
       <ol style="margin:12px 0 0;padding-left:20px;display:grid;gap:10px;line-height:1.45">
         <li id="welcomeIpad"><b>On an iPad, keep it on the home screen.</b> In Safari tap Share, then Add to Home Screen. Open the Design Lab icon and sign in once with your email; a code arrives by email. The Apple Pencil draws, pressing harder draws wider, and fingers move and pinch the view.</li>
         <li><b>Plan a line, or start from a concept.</b> Line plans hold the pieces, prices and margins; each piece gets concepts drawn from it.</li>
-        <li><b>Design each piece in one place.</b> Open a concept in Design: its picture as layers, and its measured flats, front and back, or side by side. Graphics placed on either side are the same graphic, in inches on the garment.</li>
+        <li><b>Design each piece in one place.</b> Open a concept in the Studio: its picture as layers, and its measured flats, front and back, or side by side. Graphics placed on either side are the same graphic, in inches on the garment.</li>
         <li><b>Simple or Pro.</b> Simple keeps the essentials; Pro adds distress, warp, the ruler, separations, points of measure and grading.</li>
         <li><b>Follow the Checklist to the tech pack.</b> It says what is left (the picture, the flats, the fabric, the approval) and where to fix it, then sends it to a tech pack. Send that to your own factory, or ask Future Basics to make it.</li>
       </ol>
     </section>
-    <nav class="labnav" id="labTabs"></nav>
+    <nav class="labnav" id="labTabs" data-lab="plans"></nav>
 
-    <div class="grp" id="grp-make"><span class="mono">Make</span><p class="note">The work, in the order it happens: plan the season, draw the concepts, finish them in the studio, measure them as flats, send them to a tech pack.</p></div>
+    <div class="grp pane-off" id="grp-make"><span class="mono">Make</span><p class="note">The work, in the order it happens: plan the season, draw the concepts, finish them in the studio, measure them as flats, send them to a tech pack.</p></div>
     <section class="sec" id="plans"><div class="hd"><h2>Line plans</h2><p class="note">An assortment for a season: which pieces, in which role, at what price, with an estimated landed cost and a starting quantity. The assistant builds a first draft from the library and the brand code; you change anything. Landed cost is a share of the shelf price until a concept becomes a real tech pack, where the bill of materials gives the true number.</p></div>
       <div class="panel">
         <form class="form" id="planForm"><div class="two"><label><span>Plan name</span><input class="t" name="name" maxlength="100" placeholder="Fall 2027 capsule" required></label><label><span>Season</span><input class="t" name="season" maxlength="40" placeholder="Fall 2027"></label></div>
@@ -154,9 +155,9 @@ dialog.cd{border:0;border-radius:24px;padding:0;width:min(980px,96vw);max-height
 
     <dialog class="av" id="av" aria-label="Concept views"></dialog>
     <dialog class="cd" id="cd" aria-label="Concept"></dialog>
-    <div class="grp" id="grp-libraries"><span class="mono">Libraries</span><p class="note">What we draw from and build with, kept once and used on every piece.</p></div>
-    <section class="sec" id="libs"><div class="libs"><a class="lib" href="/lab/sketches"><b>Sketch pack</b><span>382 flat sketches, men's, women's and accessories, with their parts. Pick one for any concept.</span></a><a class="lib" href="/lab/library"><b>Graphics &amp; techniques</b><span>Every graphic we have made, and every way we make one: embroidery, print, transfer, patches.</span></a><a class="lib" href="/lab/materials"><b>Materials, trims &amp; tags</b><span>Fabrics with weight and price, trims, and labels and hang tags drawn to size. Costed on every concept.</span></a></div></section>
-    <div class="grp" id="grp-research"><span class="mono">Research</span><p class="note">What the market is doing, read from the public web and held against our brand code.</p></div>
+    <div class="grp pane-off" id="grp-libraries"><span class="mono">Libraries</span><p class="note">What we draw from and build with, kept once and used on every piece.</p></div>
+    <section class="sec pane-off" id="libs"><div class="libs"><a class="lib" href="/lab/sketches"><b>Sketch pack</b><span>382 flat sketches, men's, women's and accessories, with their parts. Pick one for any concept.</span></a><a class="lib" href="/lab/library"><b>Graphics &amp; techniques</b><span>Every graphic we have made, and every way we make one: embroidery, print, transfer, patches.</span></a><a class="lib" href="/lab/materials"><b>Materials, trims &amp; tags</b><span>Fabrics with weight and price, trims, and labels and hang tags drawn to size. Costed on every concept.</span></a></div></section>
+    <div class="grp pane-off" id="grp-research"><span class="mono">Research</span><p class="note">What the market is doing, read from the public web and held against our brand code.</p></div>
     <section class="sec" id="library"><div class="hd"><h2>Library</h2><p class="note">Every piece the Lab has found. <b>Heat</b> comes from the shop's own stock: sizes that have sold out on a newer piece. It is a hint about what is moving, not a sales number.</p></div>
       <div class="panel">
         <div class="filters" id="catPills" role="group" aria-label="Category"></div>
@@ -206,7 +207,7 @@ dialog.cd{border:0;border-radius:24px;padding:0;width:min(980px,96vw);max-height
         <label><span>Notes</span><textarea class="t" name="notes" maxlength="1200"></textarea></label>
         <div class="row"><button class="btn go" type="submit">Save the brand code</button><span class="msg" id="codeMsg" role="status"></span></div>
       </form></div></section>
-    <section class="sec"><div class="hd"><h2>What the Lab has read</h2></div><div class="panel"><ul class="log" id="scans"></ul>
+    <section class="sec" id="scansSec"><div class="hd"><h2>What the Lab has read</h2></div><div class="panel"><ul class="log" id="scans"></ul>
       <p class="fair" style="margin-top:14px">The Lab keeps facts and links, and the address of a picture on the brand's own site. It does not copy pictures, logos, prints or names into our work. Every concept later is checked against what it was inspired by before anyone can approve it.</p></div></section>
   </div>
 </main>
@@ -483,7 +484,7 @@ function brandingHtml(c,locked){
 function conceptHtml(d,img){
   const c=d.concept,v=c.closeness?VERDICT[c.closeness.verdict]:null,s=c.spec||{},st=STAT[c.status],locked=c.status==='tech_pack';
   const ai=c.closeness&&c.closeness.ai;
-  return `<div class="in"><div class="row" style="justify-content:space-between"><div><span class="chip ${st[1]}">${st[0]}</span> <span class="chip">${esc(c.categoryLabel)} · ${esc(c.role)}</span>${d.parent?` <span class="sub">revised from ${esc(d.parent.name)}</span>`:''}</div><button class="btn sm" type="button" data-cclose>Close</button></div>
+  return `<div class="in"><nav class="cdsteps" data-csteps></nav><div class="row" style="justify-content:space-between"><div><span class="chip ${st[1]}">${st[0]}</span> <span class="chip">${esc(c.categoryLabel)} · ${esc(c.role)}</span>${d.parent?` <span class="sub">revised from ${esc(d.parent.name)}</span>`:''}</div><button class="btn sm" type="button" data-cclose>Close</button></div>
   <div class="top"><div class="big">${img?`<img src="${esc(img)}" alt="${esc(c.name)}">`:esc(c.imageNote||'No picture yet')}</div>
   <div class="form" data-cf><label><span>Name</span><input class="t" data-k="name" value="${esc(c.name)}" maxlength="100" ${locked?'disabled':''}></label>
     <label><span>Our twist (the specific thing on this piece that is ours)</span><textarea class="t" data-k="twist" maxlength="400" ${locked?'disabled':''}>${esc(c.twist)}</textarea></label>
@@ -496,7 +497,7 @@ function conceptHtml(d,img){
   <div class="brd" id="matBox" data-mat="${esc(c.id)}" data-cat="${esc(c.category||'')}"><h4>Materials, tags and colourways</h4><div class="sub">What the piece is made of, from the <a href="/lab/materials">materials library</a>: the main fabric, contrast and rib, trims, and the tags and labels in their shapes and sizes. Choosing them sets the landed cost and the margin; the tech pack takes the lines.</div><div id="matIn"><span class="sub">Loading…</span></div></div>
   ${v?`<div class="verdict ${c.closeness.verdict}"><div class="row"><b>${v[0]}</b><span class="sub">${c.closeness.aiChecked?'words and second opinion':'words only: not second-checked'}</span><button class="btn sm" type="button" data-ccheck>Re-check</button></div>${c.closeness.reasons.length?`<ul>${c.closeness.reasons.map(r=>`<li>${esc(r)}</li>`).join('')}</ul>`:'<span class="sub">Nothing close to any piece it was drawn from.</span>'}${ai&&ai.fixes.length?`<div class="sub"><b>To make it ours:</b> ${esc(ai.fixes.join(' · '))}</div>`:''}${c.overrideReason?`<div class="sub"><b>Approved anyway because:</b> ${esc(c.overrideReason)}</div>`:''}<span class="sub">The check reads words, not pictures. Look at the concept next to the pieces below.</span></div>`:''}
   <div><b style="font-size:14px">Drawn from, to look at side by side</b><div class="refs" style="margin-top:8px">${d.concept.refs.map(r=>`<div class="ref"><div class="ph">${safe(r.imageUrl)?`<img src="${esc(safe(r.imageUrl))}" alt="${esc(r.title)}" loading="lazy" referrerpolicy="no-referrer">`:''}</div><div><b>${esc(r.title)}</b><br><span class="sub">${esc(r.brand)}${r.price!=null?' · '+esc(usd(r.price)):''}</span>${safe(r.url)?`<br><a href="${esc(safe(r.url))}" target="_blank" rel="noopener noreferrer">Open</a>`:''}</div></div>`).join('')||'<span class="sub">No library pieces attached.</span>'}</div></div>
-  <div class="row">${locked?'':`<a class="btn" href="/lab/studio?concept=${esc(c.id)}" data-cstudio title="The picture as layers, and its flats, in one workspace">Open in Design</a>`}<a class="btn" href="/lab/studio?concept=${esc(c.id)}&tryon=1" data-ctry title="The design painted on a 3D model, turned round">3D try-on</a><a class="btn" href="/lab/studio?concept=${esc(c.id)}&view=front" data-cflats title="The measured flats, front and back, in the Design workspace">Flats</a>${c.status==='approved'?`<button class="btn go" type="button" data-ctp>Send to tech pack</button>`:''}${c.status==='tech_pack'?`<a class="btn go" href="${esc(c.productUrl)}">Open the tech pack</a>`:''}${c.status==='draft'||c.status==='rejected'?'<button class="btn go" type="button" data-capprove>Approve</button>':''}${c.status==='draft'?'<button class="btn" type="button" data-creject>Reject</button>':''}${c.status==='approved'||c.status==='rejected'?'<button class="btn" type="button" data-creopen>Back to draft</button>':''}${locked?'':'<button class="btn" type="button" data-crevise>Revise…</button><button class="btn" type="button" data-cdel>Delete</button>'}<span class="msg" id="cAct" role="status"></span></div>
+  <div class="row">${locked?'':`<a class="btn" href="/lab/studio?concept=${esc(c.id)}" data-cstudio title="The picture as layers, and its flats, in one workspace">Open in the Studio</a>`}<a class="btn" href="/lab/studio?concept=${esc(c.id)}&tryon=1" data-ctry title="The design painted on a 3D model, turned round">3D try-on</a><a class="btn" href="/lab/studio?concept=${esc(c.id)}&view=front" data-cflats title="The measured flats, front and back, in the Design workspace">Flats</a>${c.status==='approved'?`<button class="btn go" type="button" data-ctp>Send to tech pack</button>`:''}${c.status==='tech_pack'?`<a class="btn go" href="${esc(c.productUrl)}">Open the tech pack</a>`:''}${c.status==='draft'||c.status==='rejected'?'<button class="btn go" type="button" data-capprove>Approve</button>':''}${c.status==='draft'?'<button class="btn" type="button" data-creject>Reject</button>':''}${c.status==='approved'||c.status==='rejected'?'<button class="btn" type="button" data-creopen>Back to draft</button>':''}${locked?'':'<button class="btn" type="button" data-crevise>Revise…</button><button class="btn" type="button" data-cdel>Delete</button>'}<span class="msg" id="cAct" role="status"></span></div>
   ${d.concept.clientId?`<div class="note" style="margin:0 0 10px">${d.concept.clientVerdict?`<b>${esc(d.concept.clientName||'The client')} ${d.concept.clientVerdict==='approved'?'approved this':'asks for changes'}</b>${d.concept.clientNote?`: ${esc(d.concept.clientNote)}`:''}`:`<b>${esc(d.concept.clientName||'The client')}</b> has not given a verdict yet.`}</div>`:''}
   <div class="brd" id="shrBox" data-shr="${esc(c.id)}"><h4>Share for review</h4><div class="sub">A view-only link for a client or a factory: they see the picture, the flats and the comments, and pin their own comments to a spot. They cannot change anything. Turn a link off any time.</div><div id="shrIn"><span class="sub">Loading…</span></div></div>
   <div class="cm"><b style="font-size:14px">Comments</b>${d.comments.map((x,i)=>`<div class="c ${x.resolvedAt?'done':''}" data-cmt="${x.id}">${x.pin?`<span class="n" title="Pinned on the ${esc(x.pin.on)}">${i+1}</span>`:''}<b>${esc(x.name)}</b>${esc(x.body)} <time>${esc(when(x.at))}</time> <button type="button" class="btn sm q" style="min-height:22px;padding:0 8px;font-size:11px" data-cres="${x.id}" data-on="${x.resolvedAt?'0':'1'}">${x.resolvedAt?'Reopen':'Done'}</button></div>`).join('')||'<span class="sub">No comments yet.</span>'}
@@ -549,7 +550,7 @@ async function libPicker(box){
     fillArt(box)}catch(x){box.innerHTML=`<span class="sub">${esc(x.message)}</span>`}}
 async function openConcept(id){
   OPENID=id;const dlg=$('#cd'),d=await api('/v1/lab/concepts/'+id);
-  dlg.innerHTML=conceptHtml(d,'');fillArt(dlg);if(!dlg.open)dlg.showModal();matLoad(id).catch(()=>{});
+  dlg.innerHTML=conceptHtml(d,'');fillArt(dlg);if(window.FBLabNav)window.FBLabNav.steps(dlg.querySelector('[data-csteps]'),d.concept,{at:'concept',onStep:st=>st==='concept'});if(!dlg.open)dlg.showModal();matLoad(id).catch(()=>{});
   CPINS=d.comments;CPIN=null;shrLoad(id).catch(()=>{});
   if(d.concept.hasImage){const u=await blobUrl(id);if(OPENID===id&&u){IMGURL&&URL.revokeObjectURL(IMGURL);IMGURL=u;const b=dlg.querySelector('.big');if(b){b.innerHTML=`<img src="${esc(u)}" alt="${esc(d.concept.name)}">`;paintPins()}}}
 }
@@ -616,11 +617,11 @@ document.addEventListener('click',async e=>{
   if(e.target.closest('[data-motifart]')){const id=e.target.closest('.mt').dataset.mid;try{await api(`/v1/lab/plans/${CUR.plan.id}/program/motifs/${id}/art`,{body:{}});await openPlan(CUR.plan.id,true)}catch(x){alert(x.message)}return}
   if(e.target.closest('[data-motifrm]')){const id=e.target.closest('.mt').dataset.mid;try{CUR=await api(`/v1/lab/plans/${CUR.plan.id}/program`,{method:'PUT',body:{removeMotifs:[id]}});drawPlan();await loadPlans(true)}catch(x){alert(x.message)}return}
   const tr=e.target.closest('tr[data-line]');
-  if(tr&&e.target.closest('[data-view]')){BOARD.line=tr.dataset.line;BOARD.plan=CUR.plan.id;BOARD.status='';loadBoard().then(()=>$('#board').scrollIntoView({behavior:'smooth'})).catch(()=>{});e.preventDefault();return}
+  if(tr&&e.target.closest('[data-view]')){BOARD.line=tr.dataset.line;BOARD.plan=CUR.plan.id;BOARD.status='';loadBoard().then(()=>{location.hash='#board'}).catch(()=>{});e.preventDefault();return}
   if(tr&&e.target.closest('[data-mk]')){
     const steer=await askText('Anything to steer the concepts? (optional, for example “longer back, no pockets”)','');if(steer===null)return;
     const m=$('#lineMsg'),btn=e.target.closest('[data-mk]');m.className='msg';m.textContent='Designing three concepts, drawing them and checking them. This takes up to a minute…';btn.disabled=true;
-    try{await api(`/v1/lab/plans/${CUR.plan.id}/lines/${tr.dataset.line}/concepts`,{body:{count:3,note:steer}});BOARD={status:'',plan:CUR.plan.id,line:tr.dataset.line};await openPlan(CUR.plan.id);await loadBoard();$('#board').scrollIntoView({behavior:'smooth'})}
+    try{await api(`/v1/lab/plans/${CUR.plan.id}/lines/${tr.dataset.line}/concepts`,{body:{count:3,note:steer}});BOARD={status:'',plan:CUR.plan.id,line:tr.dataset.line};await openPlan(CUR.plan.id);await loadBoard();location.hash='#board'}
     catch(x){const mm=$('#lineMsg');if(mm){mm.className='msg bad';mm.textContent=x.message}btn.disabled=false}return}
   if(!$('#cd').open)return;
   if(e.target.closest('[data-csave]')){
@@ -791,22 +792,21 @@ document.addEventListener('keydown',e=>{
   dlg.addEventListener('close',()=>{avStopSpin();if(AV)clearTimeout(AV.poll);AV=null});
 })();
 
-/* the menu's links (/lab#plans …) change the hash without a page load, so the page scrolls to the section itself */
-function toSection(smooth){const id=(location.hash||'').slice(1),el=id&&document.getElementById(id);if(el&&!$('#app').classList.contains('hidden'))el.scrollIntoView({behavior:smooth?'smooth':'auto',block:'start'})}
-window.addEventListener('hashchange',()=>toSection(true));
-// the section tabs: the one you are reading is marked, and a tab press scrolls there
-(()=>{const tabs=[...document.querySelectorAll('#labTabs a')],paint=id=>tabs.forEach(a=>a.classList.toggle('on',a.getAttribute('href')==='#'+id));
-  const ids=tabs.map(a=>a.getAttribute('href').slice(1));let cur=ids[0];paint(cur);
-  const pick=()=>{const line=innerHeight*.35;let best=ids[0];for(const id of ids){const el=document.getElementById(id);if(el&&el.getBoundingClientRect().top<=line)best=id}if(best!==cur){cur=best;paint(cur)}};
-  addEventListener('scroll',pick,{passive:true});addEventListener('hashchange',()=>{const h=(location.hash||'').slice(1);if(ids.includes(h)){cur=h;paint(h)}});
-  const h=(location.hash||'').slice(1);if(ids.includes(h))paint(h);})();
+/* One part of the Lab at a time: the tabs across the top (Line plans, Concepts, Assortment, Research) choose it by the address's #part. An older
+   address for a part of Research (#library, #trends, #brands, #code) opens Research at that part. */
+const PANES={plans:['plans'],board:['board'],assort:['assort'],research:['library','trends','brands','code','scansSec']},INRES=['library','trends','brands','code'];
+function toSection(){const h=(location.hash||'').slice(1),k=PANES[h]?h:INRES.includes(h)?'research':'plans';
+  for(const [key,ids] of Object.entries(PANES))for(const id of ids){const el=document.getElementById(id);if(el)el.classList.toggle('pane-off',key!==k)}
+  document.body.dataset.pane=k;const t=$('#labTabs');if(t)t.dataset.lab=k==='board'?'board':k==='assort'?'assort':k==='research'?'found':'plans';
+  if(INRES.includes(h)&&!$('#app').classList.contains('hidden'))document.getElementById(h)?.scrollIntoView({block:'start'});else scrollTo({top:0})}
+window.addEventListener('hashchange',()=>toSection());toSection();
 (async()=>{
   if(!TOKEN()){$('#needSignin').classList.remove('hidden');return}
   // the welcome: once for a client's designers, any time from How to start; the iPad step is left out once the Lab runs from the home screen
   const WKEY='fb.lab.welcomed',showWelcome=()=>{const w=$('#welcome');w.classList.remove('hidden');let inApp=false;try{inApp=navigator.standalone===true||matchMedia('(display-mode: standalone)').matches}catch{}$('#welcomeIpad').classList.toggle('hidden',inApp)};
   $('#howStart').onclick=()=>{showWelcome();$('#welcome').scrollIntoView({behavior:'smooth',block:'start'})};
   $('#welcomeDone').onclick=()=>{$('#welcome').classList.add('hidden');try{localStorage.setItem(WKEY,'1')}catch{}};
-  try{await refresh();$('#app').classList.remove('hidden');if(O.client){(()=>{let seen=false;try{seen=localStorage.getItem(WKEY)==='1'}catch{}if(!seen)showWelcome()})();document.body.classList.add('lab-client');$('.hero .mono').textContent='Your Design Lab';$('.hero p').textContent='Plan a line, draw the concepts, finish them in the studio, measure them as flats, and turn them into tech packs. Costs here are estimates: the factory\'s quote confirms them.';for(const id of ['grp-research','library','trends','brands','code'])$('#'+id)?.classList.add('hidden')}else{drawCode();loadTaste();await loadItems(true);await loadScans();await loadTrends()}await loadPlans();await loadBoard();await loadAssort();toSection(false);const qc=new URLSearchParams(location.search).get('concept');if(qc){location.hash='#board';openConcept(qc).catch(()=>{})}}
+  try{await refresh();$('#app').classList.remove('hidden');if(O.client){(()=>{let seen=false;try{seen=localStorage.getItem(WKEY)==='1'}catch{}if(!seen)showWelcome()})();document.body.classList.add('lab-client');$('.hero .mono').textContent='Your Design Lab';$('.hero p').textContent='Plan a line, draw the concepts, finish them in the studio, measure them as flats, and turn them into tech packs. Costs here are estimates: the factory\'s quote confirms them.';for(const id of ['grp-research','library','trends','brands','code'])$('#'+id)?.classList.add('hidden')}else{drawCode();loadTaste();await loadItems(true);await loadScans();await loadTrends()}await loadPlans();await loadBoard();await loadAssort();toSection(false);const qc=new URLSearchParams(location.search).get('concept'),qp=new URLSearchParams(location.search).get('plan');if(qp&&/^[0-9a-f-]{36}$/i.test(qp)){if(location.hash!=='#plans')location.hash='#plans';openPlan(qp).catch(()=>{})}if(qc){location.hash='#board';openConcept(qc).catch(()=>{})}}
   catch(x){$('#app').classList.add('hidden');const n=$('#needSignin');n.classList.remove('hidden');const locked=x.data?.code==='LAB_LOCKED',no=/access to Design Lab|not turned on|Only Danielle/i.test(x.message);n.querySelector('h1').textContent=locked?'The Design Lab is not open on your room yet':no?'The Design Lab is not turned on for you':'Sign in first';n.querySelector('.note').textContent=locked?'Open it from the Design Lab card in your hub: a fixed price for the period, with AI generations included.':no?'It is for Danielle and Kyle. If you need it, ask one of them to tick Design Lab for you on Team access.':'Future Basics signs in at the work console. A client whose room has the Design Lab signs in at their hub, then comes back here.'}
 })();
 </script>
