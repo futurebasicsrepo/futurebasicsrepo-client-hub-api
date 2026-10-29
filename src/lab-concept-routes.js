@@ -1,6 +1,7 @@
 // Design Lab concepts API (the Lab module). A planned piece gets several concepts, each drawn and checked against what inspired it; the team comments, approves or
 // rejects; an approved concept becomes a product in the Future Basics room and its tech pack is drafted from the concept.
 //   POST /v1/lab/plans/:id/lines/:lineId/concepts {count?, note?}   make concepts for one planned piece (assistant, then a picture each, then the check)
+//   POST /v1/lab/concepts/from-sketch {template, name?}                a concept from a sketch-pack sketch, no plan, no AI → { concept, studio }
 //   GET  /v1/lab/concepts?plan=&line=&status=                         the board        GET /v1/lab/concepts/:id (with the references and the comments)
 //   GET  /v1/lab/concepts/:id/image                                    the picture (needs the sign-in header, so the page fetches it)
 //   PUT  /v1/lab/concepts/:id                                          edit the words, price, cost or quantity (an approved concept goes back to draft, and is checked again)
@@ -11,6 +12,8 @@ import { categoryLabel } from './lab.js';
 import { createLabData } from './lab-data.js';
 import { generateConcepts, artworkFiles, renderConcept, finishConcept, aiOpinion, closeness, cleanConceptEdit, productBrief, ensureBranding, LOGO_MARKS, LOGO_TECHNIQUES, GRAPHIC_PLACE, GRAPHIC_TECHNIQUES, PRODUCT_TYPES } from './lab-concepts.js';
 import { cleanPin } from './lab-share-routes.js';
+import { FLAT_TEMPLATES } from './lab-flat-templates.js';
+import { STYLES as FLAT_STYLES } from './lab-flats.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const clip = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
@@ -103,6 +106,16 @@ export function registerLabConceptRoutes(app, d) {
     if (!providerReady('anthropic', env)) return bad(reply, 'Claude is not connected (the service needs ANTHROPIC_API_KEY)', 503);
     const line = { id: lr.id, name: lr.name, category: lr.category, role: lr.role, brief: lr.brief, twist: lr.twist, rationale: lr.rationale, priceCents: lr.price_cents, costCents: lr.cost_cents, qty: lr.qty };
     try { return reply.code(201).send({ concepts: await make({ plan, line, count, note: req.body?.note, refIds: lr.refs, req }) }); } catch (e) { return bad(reply, e.message, e.status || 502); }
+  });
+
+  // a concept started from a sketch in the sketch pack, with no plan and no AI: its name, category and silhouette come from the sketch, and the studio
+  // opens on its flats at that sketch's proportions (/lab/studio?concept=…&view=front&template=…)
+  app.post('/v1/lab/concepts/from-sketch', { preHandler: pre }, async (req, reply) => {
+    const t = FLAT_TEMPLATES.find(x => x.id === String(req.body?.template || '')); if (!t) return bad(reply, 'Choose a sketch from the sketch pack', 422);
+    const st = FLAT_STYLES[t.style] || {}, name = clip(req.body?.name, 120) || t.label;
+    const spec = { description: `Started from the sketch pack: ${t.label}.`, silhouette: t.label, fabric: '', fit: '', details: [], trims: '', colors: [], template: t.id };
+    const r = (await pool.query(`insert into lab_concepts(name, category, role, spec, twist, created_by, client_id) values($1,$2,'core',$3,'',$4,$5) returning id`, [name, st.category || 'other', spec, actorOf(req), own(req)])).rows[0];
+    return reply.code(201).send({ concept: await one(r.id), studio: `/lab/studio?concept=${r.id}&view=front&template=${encodeURIComponent(t.id)}` });
   });
 
   app.get('/v1/lab/concepts', { preHandler: pre }, async req => {
