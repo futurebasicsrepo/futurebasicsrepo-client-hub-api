@@ -29,3 +29,12 @@ test('the flats hand the tech pack data it works with, not only pictures', () =>
   assert.equal(again.construction.filter(r => r.area.startsWith('Flats · ')).length, 1); assert.equal(again.sketches.length, 3); assert.equal(again.colorways.length, 1); assert.equal(again.bom.length, 1);
   assert.equal(Number(again.commercial.retailPrice), 48, 'a price someone set is not overwritten'); assert.equal((again.notes.match(/From the Design Lab:/g) || []).length, 1);
 });
+
+test('a label designed in the studio goes in as its own picture, beside the flats', () => {
+  const img = 'data:image/png;base64,iVBORw0KGgo=';
+  const out = labHandoff(normalizeTechPack(emptyTechPack()), { sketches: [{ view: 'front', label: 'Technical flat · front', image: img }, { id: 'lab-label-1', view: 'detail', label: 'Label · Neck label', image: img }, { id: 'lab-label-2', view: 'detail', label: 'Label · Hang tag', image: img }] });
+  const labels = out.sketches.filter(s => /^Label · /.test(s.label));
+  assert.equal(labels.length, 2, 'one picture per designed label');
+  assert.ok(labels.every(s => s.view === 'detail' && s.id.startsWith('lab-label-')), 'as details, each under its own id');
+  assert.equal(labHandoff(out, { sketches: [{ id: 'lab-label-1', view: 'detail', label: 'Label · Neck label', image: img }] }).sketches.filter(s => s.id === 'lab-label-1').length, 1, 'sent again, it replaces itself');
+});

@@ -517,7 +517,14 @@ export function registerLabFlatsRoutes(app, d) {
     const items = await files(c);
     // what the concept is made of goes with it, flats or no flats
     const picks = Array.isArray(c.spec?.materials) ? c.spec.materials : [], materials = picks.length ? packRows(picks) : null, colourways = cleanColourways(c.spec?.colourways);
-    if (!items.length) return materials || colourways.length ? { files: [], lab: { materials, colourways, priceCents: c.price_cents, costCents: c.cost_cents, qty: c.qty, planName: c.plan_name } } : null;
+    // each label whose face was designed in the studio goes in as its own picture, so the factory sees the artwork
+    const labelSketches = [];
+    for (const pk of picks.filter(x => x.kind === 'tag')) {
+      const face = (await pool.query("select coalesce(spec->>'face','') face from lab_materials where id=$1", [pk.id]).catch(() => ({ rows: [] }))).rows[0]?.face;
+      const art = UUID.test(String(face || '')) ? (await pool.query('select png from lab_art where id=$1', [face])).rows[0]?.png : null; if (!art) continue;
+      labelSketches.push({ id: `lab-label-${pk.id}`.slice(0, 60), view: 'detail', label: `Label · ${pk.name}`.slice(0, 120), image: `data:image/png;base64,${(await sharp(art).flatten({ background: '#ffffff' }).png().toBuffer()).toString('base64')}` });
+    }
+    if (!items.length) return materials || colourways.length || labelSketches.length ? { files: [], lab: { materials, colourways, sketches: labelSketches, priceCents: c.price_cents, costCents: c.cost_cents, qty: c.qty, planName: c.plan_name } } : null;
     const r = (await pool.query('select params, placements from lab_flats where concept_id=$1', [c.id])).rows[0], p = r.params, pl = r.placements || [], list = await techniques(c.client_id);
     const S = STYLES[p.style], tpl = templateOf(p), edits = p.edits || [];
     const pom = pomTable(p).map(row => ({ code: row.code, name: row.name, how: 'From the flats', tolerance: String(row.tolerance), values: Object.fromEntries(row.values.map(v => [v.size, String(v.value)])) }));
@@ -535,7 +542,7 @@ export function registerLabFlatsRoutes(app, d) {
     return {
       files: items,
       lab: { pom, sizes: S.oneSize ? ['One size'] : SIZES, construction, bom, materials, colourways, color: p.color ? { hex: p.color, name: 'Main colour' } : null,
-        sketches: items.filter(i => /^Technical flat · /.test(i.name)).map(i => ({ view: i.name.endsWith('back') ? 'back' : 'front', label: i.name, image: i.image })),
+        sketches: [...items.filter(i => /^Technical flat · /.test(i.name)).map(i => ({ view: i.name.endsWith('back') ? 'back' : 'front', label: i.name, image: i.image })), ...labelSketches],
         priceCents: c.price_cents, costCents: c.cost_cents, qty: c.qty, planName: c.plan_name, style: { sampleSize: S.oneSize ? 'One size' : 'M', fitBlock: `${FITS[p.fit] || p.fit} ${S.label.toLowerCase()}${tpl ? ` (${tpl.label})` : ''}` } }
     };
   }

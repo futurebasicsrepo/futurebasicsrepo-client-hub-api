@@ -34,6 +34,8 @@ header{height:72px;background:rgba(20,20,22,.96);color:#fff;padding:0 clamp(16px
 .canvas>svg{display:block;width:100%;height:auto;max-height:calc(100vh - 220px)}
 .mkw{position:absolute;overflow:hidden;pointer-events:none;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}.mkw.on{pointer-events:auto;cursor:crosshair}.mkw.on.hand{cursor:grab}.mkw canvas{position:absolute;display:block}
 .canvas,.canvas svg{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+.fzc{display:inline-flex;align-items:center;gap:2px;border:1px solid var(--line);border-radius:999px;padding:2px 4px;background:#fff;font:600 12px 'IBM Plex Mono',monospace}.fzc button{border:0;background:none;width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:16px;font-weight:700}.fzc button:hover{background:var(--fog)}.fzc span{min-width:44px;text-align:center}
+html,body{touch-action:manipulation}
 .canvas [data-pl]{cursor:grab}.canvas [data-pl]:active{cursor:grabbing}
 .status{display:flex;gap:10px;align-items:center;padding:10px 14px;border-radius:14px;font-weight:600;font-size:14px}.status.ok{background:#e4f6ea;color:var(--ok)}.status.warn{background:#fbf0d9;color:var(--warn)}.status.bad{background:#f8e1de;color:var(--bad)}
 .side{background:#fff;border-left:1px solid var(--line);display:grid;grid-template-rows:auto minmax(0,1fr)}
@@ -90,7 +92,7 @@ textarea.t{min-height:64px;resize:vertical}
     <div class="stage">
       <div class="tools"><div class="seg" role="group" aria-label="View"><button type="button" data-view="front" aria-pressed="true">Front</button><button type="button" data-view="back" aria-pressed="false">Back</button></div>
         <label class="chk"><span class="mono">Size</span><select class="t" id="size" style="width:auto"></select></label>
-        <label class="chk"><input type="checkbox" id="showDims" checked> Placement measurements</label><label class="chk lv-pro"><input type="checkbox" id="showPom"> Points of measure</label><button class="btn sm q hidden" type="button" id="fzFit" title="Show the whole piece">Fit</button></div>
+        <label class="chk"><input type="checkbox" id="showDims" checked> Placement measurements</label><label class="chk lv-pro"><input type="checkbox" id="showPom"> Points of measure</label><span class="fzc" role="group" aria-label="Zoom"><button type="button" id="fzOut" aria-label="Zoom out">−</button><span id="fzLabel">100%</span><button type="button" id="fzIn" aria-label="Zoom in">+</button></span><button class="btn sm q hidden" type="button" id="fzFit" title="Show the whole piece">Fit</button></div>
       <div id="status" class="status ok" role="status"></div>
       <div class="canvas" id="canvas"></div>
       <p class="msg">Drag a logo, graphic or detail to move it; its measurements follow. Measured from the high point of the shoulder (HPS) and the centre front (CF), as a sample room measures. On the front, the viewer's right is the wearer's left.</p>
@@ -314,7 +316,7 @@ function paintPom(){const rows=pomTable(P),sz=rows[0].values.map(v=>v.size);$('#
 function tab(t){TAB=t;if(t!=='design'){MODE=null;DRAFT=[];AIBOX=null}$$('.tabs [data-tab]').forEach(b=>b.setAttribute('aria-selected',String(b.dataset.tab===t)));$('#pPl').classList.toggle('hidden',t!=='pl');$('#pDesign').classList.toggle('hidden',t!=='design');$('#pGarment').classList.toggle('hidden',t!=='garment');$('#pPom').classList.toggle('hidden',t!=='pom');paint()}
 $$('.tabs [data-tab]').forEach(b=>b.onclick=()=>tab(b.dataset.tab));
 function setView(v){VIEW=v;DRAFT=[];AIBOX=null;$$('[data-view]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.view===v)));if(TAB==='design')paint();else draw()}
-$$('[data-view]').forEach(b=>b.onclick=()=>setView(b.dataset.view));$('#fzFit').onclick=fzFit;
+$$('[data-view]').forEach(b=>b.onclick=()=>setView(b.dataset.view));$('#fzFit').onclick=fzFit;$('#fzIn').onclick=()=>{const r=$('#canvas svg')?.getBoundingClientRect();if(r)fzAt(FZ*1.25,r.left+r.width/2,r.top+r.height/2)};$('#fzOut').onclick=()=>{const r=$('#canvas svg')?.getBoundingClientRect();if(r)fzAt(FZ/1.25,r.left+r.width/2,r.top+r.height/2)};
 ['#showDims','#showPom','#size'].forEach(s=>$(s).addEventListener('change',draw));
 let DRAG=null;
 // ---------- zoom on the flats: two fingers pinch and move it (an iPad), Ctrl and the wheel on a computer, one finger moves it once zoomed ----------
@@ -323,26 +325,37 @@ function baseBox(){const svg=$('#canvas svg');if(!svg)return null;const v=(svg.d
 function zoomSvg(){const svg=$('#canvas svg');if(!svg)return;if(!svg.dataset.base)svg.dataset.base=svg.getAttribute('viewBox')||'';const b=baseBox();if(!b)return;
   if(FZ<=1.001){FZ=1;FC=null;svg.setAttribute('viewBox',svg.dataset.base)}
   else{const w=b.w/FZ,h=b.h/FZ,c=FC||[b.x+b.w/2,b.y+b.h/2],cx=Math.min(Math.max(c[0],b.x+w/2),b.x+b.w-w/2),cy=Math.min(Math.max(c[1],b.y+h/2),b.y+b.h-h/2);FC=[cx,cy];svg.setAttribute('viewBox',`${cx-w/2} ${cy-h/2} ${w} ${h}`)}
-  $('#fzFit')?.classList.toggle('hidden',FZ<=1);mkPlace()}
+  $('#fzFit')?.classList.toggle('hidden',FZ<=1);const zl=$('#fzLabel');if(zl)zl.textContent=Math.round(FZ*100)+'%';mkPlace()}
 const unitsPerPx=()=>{const svg=$('#canvas svg'),b=baseBox();if(!svg||!b)return 1;const r=svg.getBoundingClientRect();return Math.max(b.w/FZ/r.width,b.h/FZ/r.height)};
 const centreNow=()=>{const b=baseBox();return FC||(b?[b.x+b.w/2,b.y+b.h/2]:[0,0])};
 function fzFit(){FZ=1;FC=null;zoomSvg()}
 // keeping the pointer is a nicety: where the browser refuses it (Safari can, for a Pencil), the drag still works
 const capt=e=>{try{$('#canvas').setPointerCapture(e.pointerId)}catch{}};
 $('#canvas').addEventListener('pointerdown',e=>{if(e.pointerType==='touch'&&MDRAG&&MDRAG.type==='touch'&&MDRAG.pid!==e.pointerId)mkCancel()},true);
-$('#canvas').addEventListener('pointerdown',e=>{if(e.pointerType!=='touch')return;FPTR.set(e.pointerId,[e.clientX,e.clientY]);if(FPTR.size<2)return;
+// The drawing is rebuilt as it changes, so the element under a finger can be replaced mid-touch, and its lift then reaches nothing: the canvas
+// keeps every touch (pointer capture on the canvas, which is never replaced), and the first finger down clears any finger whose lift went missing
+$('#canvas').addEventListener('pointerdown',e=>{if(e.pointerType!=='touch')return;if(e.isPrimary){for(const k of [...FPTR.keys()])if(k!==e.pointerId)FPTR.delete(k);FG=null}capt(e);FPTR.set(e.pointerId,[e.clientX,e.clientY]);if(FPTR.size<2)return;
   e.stopImmediatePropagation();e.preventDefault();
   if(DRAG){if(DRAG.q&&DRAG.ox!==undefined){DRAG.q.x=DRAG.ox;DRAG.q.y=DRAG.oy}if(DRAG.ed&&DRAG.orig)Object.assign(DRAG.ed,JSON.parse(JSON.stringify(DRAG.orig)));DRAG=null;draw()} // two fingers: a pinch, not a move
-  BOXDRAG=null;FPAN=null;const[a,b]=[...FPTR.values()],r=$('#canvas svg').getBoundingClientRect();FG={d:Math.hypot(a[0]-b[0],a[1]-b[1])||1,m:[(a[0]+b[0])/2,(a[1]+b[1])/2],z:FZ,c:centreNow(),u:unitsPerPx(),rc:[r.left+r.width/2,r.top+r.height/2]}},true);
+  BOXDRAG=null;FPAN=null;const[a,b]=[...FPTR.values()],r=$('#canvas svg').getBoundingClientRect();FG={d:Math.hypot(a[0]-b[0],a[1]-b[1])||1,m:[(a[0]+b[0])/2,(a[1]+b[1])/2],z:FZ,c:centreNow(),u:unitsPerPx(),rc:[r.left+r.width/2,r.top+r.height/2]};
+  // two fingers on a graphic resize it (about its centre, keeping its shape), as in other drawing apps; anywhere else they zoom the view
+  const on=[a,b,FG.m].map(([x,y])=>document.elementFromPoint(x,y)?.closest?.('[data-pl]')).find(Boolean),q=on&&PL.find(x=>x.id===on.dataset.pl);if(q){SEL=q.id;FG.q=q;FG.w0=q.w;FG.h0=q.h}},true);
 $('#canvas').addEventListener('pointermove',e=>{const p=FPTR.get(e.pointerId);if(p){p[0]=e.clientX;p[1]=e.clientY}
   if(FG&&FPTR.size>=2){e.stopImmediatePropagation();const[a,b]=[...FPTR.values()],d=Math.hypot(a[0]-b[0],a[1]-b[1])||1,m=[(a[0]+b[0])/2,(a[1]+b[1])/2];
+    if(FG.q){const k=Math.min(40/FG.w0,40/FG.h0,Math.max(.25/FG.w0,.25/FG.h0,d/FG.d));FG.q.w=r8(FG.w0*k);FG.q.h=r8(FG.h0*k);FG.moved=true;draw();return}
     const P=[FG.c[0]+(FG.m[0]-FG.rc[0])*FG.u,FG.c[1]+(FG.m[1]-FG.rc[1])*FG.u];FZ=Math.min(Math.max(FG.z*d/FG.d,1),6);const u1=FG.u*FG.z/FZ;FC=[P[0]-(m[0]-FG.rc[0])*u1,P[1]-(m[1]-FG.rc[1])*u1];zoomSvg();return}
   if(FPAN){e.stopImmediatePropagation();const u=unitsPerPx();FC=[FPAN.c[0]-(e.clientX-FPAN.x)*u,FPAN.c[1]-(e.clientY-FPAN.y)*u];zoomSvg()}},true);
-const fzUp=e=>{FPTR.delete(e.pointerId);if(FG&&FPTR.size<2){FG=null;e.stopImmediatePropagation()}if(FPAN){FPAN=null;e.stopImmediatePropagation()}};
-['pointerup','pointercancel'].forEach(t=>$('#canvas').addEventListener(t,fzUp,true));
-$('#canvas').addEventListener('wheel',e=>{if(!(e.ctrlKey||e.metaKey))return;e.preventDefault();const r=$('#canvas svg').getBoundingClientRect(),u=unitsPerPx(),c=centreNow(),P=[c[0]+(e.clientX-r.left-r.width/2)*u,c[1]+(e.clientY-r.top-r.height/2)*u];
+const fzUp=e=>{FPTR.delete(e.pointerId);if(FG&&FPTR.size<2){const g=FG;FG=null;e.stopImmediatePropagation();if(g.q&&g.moved){touch();paint()}}if(FPAN){FPAN=null;e.stopImmediatePropagation()}};
+['pointerup','pointercancel','lostpointercapture'].forEach(t=>$('#canvas').addEventListener(t,e=>{if(e.type==='lostpointercapture'&&(!FPTR.has(e.pointerId)||MDRAG?.pid===e.pointerId))return;fzUp(e)},true));
+$('#canvas').addEventListener('wheel',e=>{if(!(e.ctrlKey||e.metaKey)){if(FZ>1){e.preventDefault();const u=unitsPerPx(),c=centreNow();FC=[c[0]+e.deltaX*u,c[1]+e.deltaY*u];zoomSvg()}return} // two fingers on a trackpad move a zoomed flat
+  e.preventDefault();const r=$('#canvas svg').getBoundingClientRect(),u=unitsPerPx(),c=centreNow(),P=[c[0]+(e.clientX-r.left-r.width/2)*u,c[1]+(e.clientY-r.top-r.height/2)*u];
   FZ=Math.min(Math.max(FZ*Math.exp(-e.deltaY*.01),1),6);FC=[P[0]-(e.clientX-r.left-r.width/2)*unitsPerPx(),P[1]-(e.clientY-r.top-r.height/2)*unitsPerPx()];zoomSvg()},{passive:false});
-['gesturestart','gesturechange'].forEach(t=>$('#canvas').addEventListener(t,e=>e.preventDefault()));
+// zoom about a point on the screen: the inch under it stays under it
+function fzAt(nz,cx,cy){const svg=$('#canvas svg');if(!svg)return;const r=svg.getBoundingClientRect(),u=unitsPerPx(),c=centreNow(),P=[c[0]+(cx-r.left-r.width/2)*u,c[1]+(cy-r.top-r.height/2)*u];
+  FZ=Math.min(Math.max(nz,1),6);FC=[P[0]-(cx-r.left-r.width/2)*unitsPerPx(),P[1]-(cy-r.top-r.height/2)*unitsPerPx()];zoomSvg()}
+// Safari's page zoom is never wanted here; a trackpad pinch (Magic Keyboard) arrives only as gesture events, so it zooms the flat under the pointer
+let TPG=null;['gesturestart','gesturechange','gestureend'].forEach(t=>document.addEventListener(t,e=>{e.preventDefault();if(!e.target.closest?.('#canvas')||FPTR.size>=2){TPG=null;return}
+  if(t==='gesturestart')TPG={z:FZ};else if(t==='gesturechange'&&TPG)fzAt(TPG.z*e.scale,e.clientX,e.clientY);else TPG=null},{passive:false}));
 const inch=e=>{const svg=$('#canvas svg'),pt=svg.createSVGPoint();pt.x=e.clientX;pt.y=e.clientY;const m=svg.getScreenCTM().inverse(),r=pt.matrixTransform(m);return[r.x,r.y]};
 $('#canvas').addEventListener('pointerdown',e=>{
   if(MODE==='stitch'||MODE==='block'){const[x,y]=inch(e);DRAFT.push([r8(x),r8(y)]);draw();return}
@@ -374,8 +387,15 @@ const MKW=document.createElement('div');MKW.className='mkw';
 const mkOpts=()=>{const o=HOST()?.drawOpts?.()||{};return {color:o.color||'#141416',size:Number(o.size)||12,dsize:Number(o.dsize)||40,flow:o.flow??1,soft:o.soft||0,pressure:o.pressure!==false}};
 const mkTpl=()=>P?String(P.template||templateOf(P)?.id||'none'):'none';
 function mkReset(){for(const k of Object.keys(MK))delete MK[k];MUNDO.front=[];MUNDO.back=[];MREDO.front=[];MREDO.back=[];if(P)delete P.markup;mkPlace()}
-function mkNew(view){const b=baseBox();if(!b)return null;const res=Math.min(48,2400/Math.max(b.w,b.h)),cv=document.createElement('canvas');cv.width=Math.round(b.w*res);cv.height=Math.round(b.h*res);
+// the drawing covers everything the window shows of the flat at full view (not only the garment's own frame), in inches
+function mkSpan(){const b=baseBox(),svg=$('#canvas svg');if(!b||!svg)return null;const r=svg.getBoundingClientRect();if(!r.width||!r.height)return b;const ea=r.width/r.height,va=b.w/b.h;
+  return ea>va?{x:b.x-(b.h*ea-b.w)/2,y:b.y,w:b.h*ea,h:b.h}:{x:b.x,y:b.y-(b.w/ea-b.h)/2,w:b.w,h:b.w/ea}}
+function mkNew(view){const b=mkSpan();if(!b)return null;const res=Math.min(48,3000/Math.max(b.w,b.h)),cv=document.createElement('canvas');cv.width=Math.round(b.w*res);cv.height=Math.round(b.h*res);
   return MK[view]={cv,x:b.x,y:b.y,w:b.w,h:b.h,tpl:mkTpl(),dirty:false}}
+// a drawing made on a smaller window, or loaded from an older save, grows to the whole window before the next stroke; what is on it stays put
+function mkFit(m){const s=mkSpan();if(!s)return;const x0=Math.min(m.x,s.x),y0=Math.min(m.y,s.y),x1=Math.max(m.x+m.w,s.x+s.w),y1=Math.max(m.y+m.h,s.y+s.h);if(x0>=m.x-.01&&y0>=m.y-.01&&x1<=m.x+m.w+.01&&y1<=m.y+m.h+.01)return;
+  const w=x1-x0,h=y1-y0,res=Math.min(m.cv.width/m.w,3000/Math.max(w,h)),cv=document.createElement('canvas');cv.width=Math.round(w*res);cv.height=Math.round(h*res);
+  cv.getContext('2d').drawImage(m.cv,(m.x-x0)*res,(m.y-y0)*res,m.w*res,m.h*res);Object.assign(m,{cv,x:x0,y:y0,w,h});for(const k of [MUNDO,MREDO])k[VIEW]=[]}
 async function mkLoad(m){mkReset();if(!m)return;P.markup=m;for(const v of ['front','back']){const q=m[v];if(!q?.art)continue;try{const img=new Image();img.src=await blobUrl('/v1/lab/art/'+q.art);await img.decode();
   const cv=document.createElement('canvas');cv.width=img.naturalWidth;cv.height=img.naturalHeight;cv.getContext('2d').drawImage(img,0,0);MK[v]={cv,x:q.x,y:q.y,w:q.w,h:q.h,tpl:m.template||'none',art:q.art,dirty:false}}catch{}}mkPlace()}
 // the view's drawing laid exactly over its box: the box's corners in inches, through the flat's own transform, to the screen
@@ -401,7 +421,7 @@ MKW.addEventListener('pointerdown',e=>{
   if(e.pointerType==='pen')MPEN=true;
   if(MTOOL==='hand'||!MKTOOLS.includes(MTOOL)||(e.pointerType==='touch'&&MPEN))return; // the flat's own handlers move the view
   if(MDRAG&&MDRAG.pid!==e.pointerId){if(MDRAG.type==='touch'&&e.pointerType==='pen')mkCancel();else if(MDRAG.type==='pen'&&e.pointerType==='pen'){MDRAG=null}else return}
-  e.stopPropagation();e.preventDefault();const m=MK[VIEW]||mkNew(VIEW);if(!m)return;mkPlace();try{MKW.setPointerCapture(e.pointerId)}catch{}const o=mkOpts(),p=mkAt(m,e),before=mkSnap(m);
+  e.stopPropagation();e.preventDefault();const m=MK[VIEW]||mkNew(VIEW);if(!m)return;mkFit(m);mkPlace();try{MKW.setPointerCapture(e.pointerId)}catch{}const o=mkOpts(),p=mkAt(m,e),before=mkSnap(m);
   if(MTOOL==='text'){const words=prompt('Type for the flat');if(!words||!words.trim())return;const x=m.cv.getContext('2d');x.save();x.fillStyle=o.color;x.globalAlpha=o.flow;x.font=`600 ${Math.max(12,o.size*.9)*mkK(m)}px 'Space Grotesk','Helvetica Neue',Arial,sans-serif`;x.textBaseline='middle';x.fillText(words.trim(),p[0],p[1]);x.restore();mkDone(m,before);return}
   MDRAG={m,before,last:p,from:p,o,pid:e.pointerId,type:e.pointerType};if(['brush','eraser','distress'].includes(MTOOL))mkStroke(m,p,p,o,e.pointerType==='pen'&&o.pressure?Math.min(Math.max(.15+.85*(e.pressure||.5),.15),1):1)});
 MKW.addEventListener('pointermove',e=>{const g=MDRAG;if(!g||g.pid!==e.pointerId)return;e.stopPropagation();

@@ -2436,6 +2436,12 @@ await journey('J238', 'Welcoming a client\'s designers, and footwear kept off pa
       await page.click('#welcomeDone'); await page.reload({ waitUntil: 'networkidle' }); await page.waitForSelector('#app:not(.hidden)', { timeout: 20000 });
       ok(!(await page.isVisible('#welcome')), '   Got it puts it away for good');
       await page.click('#howStart'); ok(await page.isVisible('#welcome'), '   and How to start brings it back');
+      // every button on the dark welcome panel reads (they were white words on white), and Pieces offers 1, 3 and 6 and lines up with its buttons
+      await page.mouse.move(2, 2);
+      const hero = await page.evaluate(() => [...document.querySelectorAll('.btn.ghost')].map(b => { const c = getComputedStyle(b); return [b.textContent.trim(), c.color, c.backgroundColor]; }));
+      ok(hero.length >= 5 && hero.every(([, c, bg]) => c === 'rgb(255, 255, 255)' && /rgba\(0, 0, 0, 0\)|transparent/.test(bg)), '   the buttons on the dark panel are white words on the panel, not white on white', hero);
+      const pc = await page.evaluate(() => { const sel = document.querySelector('#planForm [name=size]'), go = document.getElementById('planGo'); const a = sel.getBoundingClientRect(), b = go.getBoundingClientRect(); return { opts: [...sel.options].map(o => o.value), dy: Math.abs(a.bottom - b.bottom) }; });
+      ok(['1', '3', '6'].every(v => pc.opts.includes(v)) && pc.dy <= 3, '   Pieces offers 1, 3 and 6, and sits in line with Draft the plan', pc);
       ok(errs.length === 0, 'no page errors', errs); await cc.close();
     } finally { await b.close(); }
   } finally { await cleanup(brands, plan.plan?.id); }
@@ -2556,6 +2562,36 @@ await journey('J240', 'Design on an iPad, as Kyle found it: the ruler takes any 
         ok(await page.evaluate(() => document.documentElement.dataset.focus === '1' && document.getElementById('app').dataset.panel === 'off'), '   and the layout is kept when Design opens again');
         await page.click('#focusBtn'); await page.click('#panelBtn');
         ok(await page.evaluate(() => !document.documentElement.dataset.focus && document.getElementById('app').dataset.panel === 'on'), '   both come back with a press'); }
+      // the whole window draws (not only the garment's frame), and two fingers on a graphic resize it
+      { const Fd = await (await page.waitForSelector('#flatFrame')).contentFrame(); await Fd.waitForFunction(() => window.FBFlats?.ready(), null, { timeout: 20000 });
+        await page.click('.rail [data-tool=brush]');
+        const r = await page.evaluate(() => { const f = document.getElementById('flatFrame').getBoundingClientRect(), s = document.getElementById('flatFrame').contentDocument.querySelector('#canvas svg').getBoundingClientRect(); return { x: f.left + s.left, y: f.top + s.top, w: s.width, h: s.height }; });
+        await pen(r, [[r.w * .02, r.h * .5], [r.w * .05, r.h * .55], [r.w * .97, r.h * .6]]);
+        const cover = await Fd.evaluate(() => { const c = document.querySelector('.mkw canvas').getBoundingClientRect(), s = document.querySelector('#canvas svg').getBoundingClientRect(), x = document.querySelector('.mkw canvas'), k = x.width / c.width, d = x.getContext('2d').getImageData(Math.max(0, (s.left + s.width * .03 - c.left) * k), (s.top + s.height * .52 - c.top) * k, 4, 4).data; return { l: c.left - s.left, r: s.right - c.right, ink: [...d].some((v, i) => i % 4 === 3 && v > 0) }; });
+        ok(cover.l <= 1 && cover.r <= 1 && cover.ink, '7g. the Pencil draws across the whole window, out to its edges, not only inside the garment\'s frame', cover);
+        await page.click('.rail [data-tool=select]');
+        const n0 = await Fd.evaluate(() => FBFlats.placements().length); await Fd.click('.tabs [data-tab=pl]'); await Fd.click('#pPl [data-addmark=mark]'); await Fd.waitForFunction(n => FBFlats.placements().length > n, n0, { timeout: 10000 });
+        const q = await Fd.evaluate(() => FBFlats.placements().filter(x => x.view === 'front').pop());
+        if (q) {
+          const at = await page.evaluate(id => { const f = document.getElementById('flatFrame').getBoundingClientRect(), g = document.getElementById('flatFrame').contentDocument.querySelector(`[data-pl="${id}"]`).getBoundingClientRect(); return { x: f.left + g.left + g.width / 2, y: f.top + g.top + g.height / 2 }; }, q.id);
+          const touch = (type, d) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x: at.x - d, y: at.y, id: 1 }, { x: at.x + d, y: at.y, id: 2 }] });
+          await touch('touchStart', 10); for (const d of [20, 30, 40, 50]) await touch('touchMove', d); await touch('touchEnd', 50);
+          const q2 = await Fd.evaluate(id => FBFlats.placements().find(x => x.id === id), q.id);
+          ok(q2.w > q.w * 2 && Math.abs(q2.w / q2.h - q.w / q.h) < .05 && await Fd.evaluate(() => FBFlats.dirty()), '7h. two fingers spread on a graphic on the flat make it bigger, keeping its shape (the view does not zoom)', [q.w, q2.w]);
+        } else ok(false, '7h. there is a graphic on the front to resize');
+        // zoom on the flat: buttons, a pinch that keeps the point under the fingers where it is, a trackpad scroll that moves it, Fit
+        await Fd.click('#fzIn'); await Fd.click('#fzIn'); ok(/^156%$/.test(await Fd.innerText('#fzLabel')), '7i. the flat has its own zoom buttons: + twice is 156%', await Fd.innerText('#fzLabel'));
+        await Fd.click('#fzFit');
+        { const fr = await page.evaluate(() => { const f = document.getElementById('flatFrame').getBoundingClientRect(), s = document.getElementById('flatFrame').contentDocument.querySelector('#canvas svg').getBoundingClientRect(); return { fx: f.left, fy: f.top, x: s.left + s.width * .1, y: s.top + s.height * .3 }; });
+          const under = () => Fd.evaluate(([x, y]) => { const svg = document.querySelector('#canvas svg'), pt = svg.createSVGPoint(); pt.x = x; pt.y = y; const r = pt.matrixTransform(svg.getScreenCTM().inverse()); return [r.x, r.y]; }, [fr.x, fr.y]);
+          const before = await under(), cx = fr.fx + fr.x, cy = fr.fy + fr.y, t = (type, d) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x: cx - d, y: cy, id: 1 }, { x: cx + d, y: cy, id: 2 }] });
+          await t('touchStart', 15); for (const d of [25, 35, 45, 60]) await t('touchMove', d); await t('touchEnd', 60);
+          const after = await under(), z = await Fd.evaluate(() => FBFlats.zoom());
+          ok(z > 2 && Math.hypot(after[0] - before[0], after[1] - before[1]) < .35, '7j. a pinch on the flat zooms in about the fingers: the point between them stays put', { z, before, after });
+          const vb0 = await Fd.evaluate(() => document.querySelector('#canvas svg').getAttribute('viewBox')); await page.mouse.move(cx, cy); await page.mouse.wheel(0, 120); await page.waitForTimeout(150);
+          ok(await Fd.evaluate(() => document.querySelector('#canvas svg').getAttribute('viewBox')) !== vb0, '   two fingers on a trackpad move the zoomed flat');
+          await Fd.click('#fzFit'); ok(await Fd.evaluate(() => FBFlats.zoom()) === 1, '   and Fit shows the whole piece again'); }
+        await page.click('#save'); await page.waitForFunction(() => !DIRTY, null, { timeout: 30000 }); await Fd.waitForFunction(() => FBFlats.saved(), null, { timeout: 30000 }); }
       F = await (await page.waitForSelector('#flatFrame')).contentFrame(); await F.waitForFunction(() => window.FBFlats?.ready(), null, { timeout: 20000 });
       // a flat saved as a sweatshirt: Redraw from the picture brings the jacket back (the words stand in for the picture here)
       const asSweat = await K(`/concepts/${c.id}/flats`, { method: 'PUT', body: { ...saved, style: 'crewneck', template: undefined, placements: saved.placements } });
@@ -2569,6 +2605,26 @@ await journey('J240', 'Design on an iPad, as Kyle found it: the ruler takes any 
       ok(kept.drawn?.front && kept.drawn?.back && kept.drawn.template === kept.template && sql(`select count(*) from lab_art where id in ('${kept.drawn.front}','${kept.drawn.back}') and source='flat'`) === '2', '   saved: front and back drawn from the picture, tied to the sketch they were drawn on', kept.drawn);
       const sheet = await call(`/v1/lab/concepts/${c.id}/flats/sheet.svg`, { token: kyleT });
       ok(sheet.status === 200 && sheet.text.includes('data:image/png;base64'), '   and the spec sheet draws them', sheet.status);
+      // on the picture: two fingers on the selected graphic resize it; elsewhere they zoom the view
+      await page.click('#viewSeg [data-v=picture]'); await page.waitForTimeout(400); await page.click('.rail [data-tool=select]');
+      const lay = await page.evaluate(() => { const l = LAYERS.find(x => !['base', 'paint', 'picture'].includes(x.kind) && x.visible); if (!l) return null; SEL = l.id; draw(); const r = document.getElementById('view').getBoundingClientRect(); return { id: l.id, s0: l.scale, z0: Z, h: HIST.length, x: r.left + l.x * Z + PX, y: r.top + l.y * Z + PY }; });
+      // on the picture: a pinch on the empty stage zooms about the fingers, and a trackpad pinch (Safari's gesture events) zooms about the pointer
+      { await page.evaluate(() => { SEL = null; draw(); }); const st = await page.evaluate(() => { const r = document.getElementById('view').getBoundingClientRect(); return { x: r.left + 40, y: r.top + r.height / 2 }; });
+        const docAt = () => page.evaluate(([x, y]) => { const r = document.getElementById('view').getBoundingClientRect(); return [(x - r.left - PX) / Z, (y - r.top - PY) / Z, Z]; }, [st.x, st.y]);
+        const b0 = await docAt(), t = (type, d) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x: st.x, y: st.y - d, id: 1 }, { x: st.x, y: st.y + d, id: 2 }] });
+        await t('touchStart', 15); for (const d of [25, 35, 45]) await t('touchMove', d); await t('touchEnd', 45); const a0 = await docAt();
+        ok(a0[2] > b0[2] * 2 && Math.hypot(a0[0] - b0[0], a0[1] - b0[1]) < 3, '12. a pinch on the picture zooms in about the fingers (the point between them stays put)', { b0, a0 });
+        await page.evaluate(([x, y]) => { const el = document.getElementById('view'), ev = (type, scale) => { const e = new Event(type, { bubbles: true, cancelable: true }); Object.assign(e, { scale, clientX: x, clientY: y }); el.dispatchEvent(e); return e.defaultPrevented; };
+          window.__tp = [ev('gesturestart', 1), ev('gesturechange', .5), ev('gestureend', .5)]; }, [st.x, st.y]);
+        const a1 = await docAt();
+        ok(Math.abs(a1[2] - a0[2] * .5) < 1e-6 && Math.hypot(a1[0] - a0[0], a1[1] - a0[1]) < 3 && (await page.evaluate(() => window.__tp)).every(Boolean), '   a trackpad pinch zooms the picture about the pointer, and Safari never zooms the page itself', { a0, a1 });
+        await page.click('#zFit'); }
+      if (lay) {
+        const touch = (type, d) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x: lay.x - d, y: lay.y, id: 1 }, { x: lay.x + d, y: lay.y, id: 2 }] });
+        await touch('touchStart', 8); for (const d of [16, 24, 32]) await touch('touchMove', d); await touch('touchEnd', 32);
+        const after = await page.evaluate(id => { const l = LAYERS.find(x => x.id === id); return { s: l.scale, z: Z, h: HIST.length }; }, lay.id);
+        ok(after.s > lay.s0 * 2.5 && Math.abs(after.z - lay.z0) < 1e-6 && after.h > lay.h, '11. on the picture, two fingers on the selected graphic resize it (one Undo step), and the view stays put', { lay, after });
+      } else ok(false, '11. there is a graphic layer to resize');
       ok(errs.length === 0, 'no page errors', errs); await oc.close();
     } finally { await b.close(); }
   } finally { await cleanup(brands, plan.plan?.id); }
@@ -2621,6 +2677,43 @@ await journey('J241', 'Opportunities for a client\'s room: Future Basics turns i
   }
   await A(`/v1/admin/clients/${room.cid}/opportunities`, { method: 'PATCH', body: { enabled: false } });
   ok((await C('/v1/client/opportunities')).json.enabled === false, '10. turned off in the console, it leaves the hub');
+});
+
+await journey('J242', 'Tags and labels in the studio: a starter neck label opens at its real size with its blank face and its words as type, the words are changed, Use on the tag makes the room its own copy with that design (the shared starter stays as it was), Add to the garment swaps the copy onto the garment, and the library and the tag picture show the design', async () => {
+  const { brands, plan } = await conceptSetup();
+  try {
+    const line = plan.lines[0], c = (await K(`/plans/${plan.plan.id}/lines/${line.id}/concepts`, { body: { count: 1 } })).json.concepts[0];
+    const starter = (await K('/materials?kind=tag')).json.materials.find(m => m.builtin && m.spec.tagKind === 'neck' && (m.spec.text || []).length);
+    ok(Boolean(starter), '0. a starter neck label with words', starter?.name);
+    await K(`/concepts/${c.id}/materials`, { body: { material: starter.id } });
+    if (!playwright) { ok(true, 'needs a browser'); return; }
+    const b = await playwright.chromium.launch();
+    try {
+      const oc = await b.newContext({ viewport: { width: 1366, height: 1024 } }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
+      const page = await oc.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
+      await page.goto(`${BASE}/lab/studio?tag=${starter.id}&for=${c.id}`, { waitUntil: 'networkidle' }); await page.waitForSelector('#pLayers .ly', { timeout: 20000 });
+      const st = await page.evaluate(() => ({ name: document.getElementById('cName').textContent, sub: document.getElementById('cSub').textContent, W, H, ppi: PPI, layers: LAYERS.map(l => [l.kind, l.name, l.text || '']), apply: document.getElementById('apply').textContent, add: !document.getElementById('tagAddBtn').classList.contains('hidden') }));
+      const ratio = starter.spec.widthMm / starter.spec.heightMm;
+      ok(st.name === starter.name && /Tag · /.test(st.sub) && Math.abs(st.W / st.H - ratio) < .05 && Math.abs(st.W / st.ppi - starter.spec.widthMm / 25.4) < .01, '1. the tag opens at its real size (its width in inches is the canvas width)', st);
+      ok(st.layers.some(l => l[1] === 'Tag face') && starter.spec.text.every(t => st.layers.some(l => l[0] === 'text' && l[2] === t)) && st.apply === 'Use on the tag' && st.add, '   its blank face is a layer and each line of its words is type to change; Use on the tag and Add to a garment are there', st.layers);
+      // the words changed, as with any type layer (font, words, colour)
+      await page.evaluate(() => { const l = LAYERS.find(x => x.kind === 'text'); l.text = 'INCHA STUDIOS'; l.font = Object.keys(FONTS).find(k => k !== l.font) || l.font; l.color = '#b8323c'; commit(); draw(); });
+      await page.click('#apply'); await page.waitForFunction(() => /The tag shows this design now/.test(document.getElementById('stToast')?.textContent || ''), null, { timeout: 30000 });
+      const tags = (await K('/materials?kind=tag')).json.materials, copy = tags.find(m => m.name === `${starter.name} (ours)`), again = tags.find(m => m.id === starter.id);
+      ok(copy && /^[0-9a-f-]{36}$/.test(copy.spec.face || '') && !again.spec.face && new URL(page.url()).searchParams.get('tag') === copy.id, '2. Use on the tag: the shared starter is untouched, the room gets its own copy with the design as its face', { copy: copy?.spec?.face, starter: again.spec.face });
+      await page.click('#tagAddBtn'); await page.waitForFunction(() => /The label is on the garment/.test(document.getElementById('stToast')?.textContent || ''), null, { timeout: 30000 });
+      const bom = (await K(`/concepts/${c.id}/materials`)).json.picks.filter(p => p.kind === 'tag').map(p => p.id);
+      ok(bom.includes(copy.id) && !bom.includes(starter.id), '3. Add to the garment: the designed copy takes the starter\'s place on the garment\'s bill of materials', bom);
+      const svg = await call(`/v1/lab/materials/${copy.id}/tag.svg`, { token: kyleT });
+      ok(svg.status === 200 && svg.text.includes('data:image/png;base64') && !starter.spec.text.some(t => svg.text.includes(`>${t}<`)), '4. the tag\'s picture is the design (the words are in it, not typed over it)');
+      // opened again, it carries on from its layers; the library card shows the face
+      await page.goto(`${BASE}/lab/studio?tag=${copy.id}`, { waitUntil: 'networkidle' }); await page.waitForSelector('#pLayers .ly', { timeout: 20000 });
+      ok(await page.evaluate(() => LAYERS.some(l => l.kind === 'text' && l.text === 'INCHA STUDIOS')), '5. opened again, the label carries on from its layers (the changed words are still type)');
+      await page.goto(`${BASE}/lab/materials#tags`, { waitUntil: 'networkidle' }); await page.waitForSelector(`[data-tagsvg="${copy.id}"] svg image`, { timeout: 15000 });
+      ok(await page.locator(`[data-tagsvg="${copy.id}"] .tagdes`).count() === 1, '6. in the library the card shows the design, with a Design button on every tag');
+      ok(errs.length === 0, 'no page errors', errs); await oc.close();
+    } finally { await b.close(); }
+  } finally { await cleanup(brands, plan.plan?.id); }
 });
 
 shops.close(); brave.close();

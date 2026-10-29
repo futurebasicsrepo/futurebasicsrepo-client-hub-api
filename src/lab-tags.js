@@ -31,7 +31,8 @@ export function tagOutline(shape, w, h) {
 }
 
 // → an SVG string of the tag at scale (px per mm), with its fold, eyelet, string and the words on it. `art` is an image href drawn in the middle.
-export function tagSvg(spec = {}, { scale = 3, art = '', textLines = null, fill = '', ink = '#141416', showSize = true } = {}) {
+// `face` is the tag's whole face as designed in the studio (fonts, words, graphics): it fills the outline and stands in for the words
+export function tagSvg(spec = {}, { scale = 3, art = '', face = '', textLines = null, fill = '', ink = '#141416', showSize = true } = {}) {
   const w = Math.max(5, Number(spec.widthMm) || 40), h = Math.max(5, Number(spec.heightMm) || 20), shape = TAG_SHAPES.includes(spec.shape) ? spec.shape : 'rectangle', fold = spec.fold || 'none';
   const mat = String(spec.material || ''), paper = /paper|board|tyvek/.test(mat), leather = /leather/.test(mat), metal = /metal/.test(mat), rubber = /rubber/.test(mat);
   const bg = fill || (paper ? '#f4efe4' : leather ? '#6b4a2b' : metal ? '#b9b9bd' : rubber ? '#2a2a2e' : '#f7f6f2'), fg = fill ? ink : (leather || rubber ? '#f3eee4' : ink);
@@ -44,6 +45,7 @@ export function tagSvg(spec = {}, { scale = 3, art = '', textLines = null, fill 
   let body = `<g transform="translate(${ox} ${oy}) scale(${s})">`;
   body += `<path d="${outline}" fill="${bg}" stroke="${fg}" stroke-width="${.35}" stroke-opacity=".55"/>`;
   if (/woven|jacquard/.test(mat)) body += `<path d="${outline}" fill="url(#weave)" opacity=".35"/>`;
+  if (face) body += `<clipPath id="tf${w}x${h}"><path d="${outline}"/></clipPath><image href="${esc(face)}" x="0" y="0" width="${w}" height="${h}" preserveAspectRatio="none" clip-path="url(#tf${w}x${h})"/>`;
   // folds: a dashed line where the cloth turns, stitching where it is sewn
   if (fold === 'end fold') body += `<path d="M ${w * .12} 0 V ${h} M ${w * .88} 0 V ${h}" stroke="${fg}" stroke-width=".3" stroke-dasharray="1 .8" opacity=".7"/><path d="M ${w * .06} ${h * .15} V ${h * .85} M ${w * .94} ${h * .15} V ${h * .85}" stroke="${fg}" stroke-width=".4" stroke-dasharray=".7 .7"/>`;
   else if (fold === 'centre fold' || fold === 'book fold') body += `<path d="M 0 ${h / 2} H ${w}" stroke="${fg}" stroke-width=".3" stroke-dasharray="1 .8" opacity=".7"/><path d="M ${w * .05} ${h * .06} H ${w * .95}" stroke="${fg}" stroke-width=".4" stroke-dasharray=".7 .7"/>`;
@@ -58,6 +60,7 @@ export function tagSvg(spec = {}, { scale = 3, art = '', textLines = null, fill 
     if (stringLen) body += `<path d="M ${ex} ${ey} C ${ex - w * .25} ${-stringLen * .5}, ${ex + w * .25} ${-stringLen * .8}, ${ex} ${-stringLen}" fill="none" stroke="${/waxed|black/.test(spec.string) ? '#2b2b2b' : /ribbon/.test(spec.string) ? '#b8323c' : '#b7a98a'}" stroke-width="${/ribbon|tape/.test(spec.string) ? 1.6 : .7}" stroke-linecap="round"/>`;
   }
   // the artwork in the middle, the words under it (or on their own)
+  if (face) { lines.length = 0; art = ''; }
   const artH = art ? Math.min(h * .45, w * .5) : 0, textTop = hang ? h * .22 : h * .12, free = h - textTop - h * .12;
   if (art) body += `<image href="${esc(art)}" x="${w / 2 - artH}" y="${textTop + (free - artH - (lines.length ? fs * lines.length * 1.25 : 0)) / 2}" width="${artH * 2}" height="${artH}" preserveAspectRatio="xMidYMid meet"/>`;
   lines.forEach((t, i) => { const y = art ? textTop + (free - artH - fs * lines.length * 1.25) / 2 + artH + fs * (i + 1) * 1.25 : h / 2 + (i - (lines.length - 1) / 2) * fs * 1.3 + fs * .35; body += `<text x="${w / 2}" y="${y}" text-anchor="middle" font-family="'Space Grotesk','Helvetica Neue',Arial,sans-serif" font-weight="${i === 0 ? 600 : 400}" font-size="${i === 0 ? fs : fs * .8}" letter-spacing="${i === 0 ? fs * .08 : 0}" fill="${fg}">${esc(t)}</text>`; });
@@ -70,4 +73,12 @@ export function tagSvg(spec = {}, { scale = 3, art = '', textLines = null, fill 
 export function tagWords(spec = {}) {
   const k = TAG_KINDS.find(x => x.id === spec.tagKind)?.label?.toLowerCase() || 'label';
   return [`${spec.widthMm} × ${spec.heightMm} mm ${spec.material || ''} ${k}`.replace(/\s+/g, ' ').trim(), spec.shape && spec.shape !== 'rectangle' ? spec.shape : '', spec.fold && spec.fold !== 'none' ? spec.fold : '', spec.attach || '', spec.print && spec.print !== 'none' ? spec.print : '', spec.string && spec.string !== 'none' ? `${spec.string}${spec.eyelet === false ? '' : ' through a brass eyelet'}` : ''].filter(Boolean).join(', ');
+}
+
+// → an SVG of the tag's blank face only, exactly its size (no margin, string or words): the base the studio designs the face on
+export function tagFaceSvg(spec = {}, { pxPerMm = 12, fill = '' } = {}) {
+  const w = Math.max(5, Number(spec.widthMm) || 40), h = Math.max(5, Number(spec.heightMm) || 20), shape = TAG_SHAPES.includes(spec.shape) ? spec.shape : 'rectangle', mat = String(spec.material || '');
+  const paper = /paper|board|tyvek/.test(mat), leather = /leather/.test(mat), metal = /metal/.test(mat), rubber = /rubber/.test(mat), bg = fill || (paper ? '#f4efe4' : leather ? '#6b4a2b' : metal ? '#b9b9bd' : rubber ? '#2a2a2e' : '#f7f6f2');
+  const outline = tagOutline(shape, w, h), weave = /woven|jacquard/.test(mat) ? `<path d="${outline}" fill="url(#weave)" opacity=".3"/>` : '';
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${Math.round(w * pxPerMm)}" height="${Math.round(h * pxPerMm)}"><defs><pattern id="weave" width="1.2" height="1.2" patternUnits="userSpaceOnUse"><path d="M0 .6 H1.2 M.6 0 V1.2" stroke="#000" stroke-width=".12"/></pattern></defs><path d="${outline}" fill="${bg}"/>${weave}</svg>`;
 }

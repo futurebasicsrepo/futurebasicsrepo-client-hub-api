@@ -27,9 +27,9 @@ export function labHandoff(pack, lab = {}) {
   // the flats as the pack's front and back sketches (a pack needs both before it can go to a factory); a view the pack already has a picture
   // of keeps it, and the flat is added beside it as a flat
   for (const sk of lab.sketches || []) {
-    const id = `lab-flat-${sk.view}`;
+    const id = sk.id || `lab-flat-${sk.view}`;
     out.sketches = (out.sketches || []).filter(s => s.id !== id);
-    const taken = out.sketches.some(s => s.view === sk.view && s.image);
+    const taken = !sk.id && out.sketches.some(s => s.view === sk.view && s.image);
     if (out.sketches.length < 12) out.sketches.push({ id, view: taken ? 'flat' : sk.view, label: sk.label, image: sk.image, garmentWidthIn: sk.widthIn || null, hero: null, callouts: [] });
   }
   // construction and materials: what came from the flats last time is replaced; the rest stays

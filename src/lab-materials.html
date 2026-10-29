@@ -32,7 +32,7 @@ h1{font-size:clamp(28px,4.4vw,42px);letter-spacing:-.035em;font-weight:500;margi
 .tools{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:14px 0}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,230px),1fr));gap:14px;margin-top:14px}
 .card{background:#fff;border:1px solid var(--line);border-radius:18px;overflow:hidden;cursor:pointer;display:flex;flex-direction:column}.card:hover{border-color:var(--ink)}
-.card .sw{aspect-ratio:4/3;background:var(--fog);display:grid;place-items:center;position:relative;overflow:hidden}.card .sw img{width:100%;height:100%;object-fit:cover}.card .sw>svg{position:absolute;inset:0;width:100%;height:100%}.card .sw[data-tagsvg]>svg{inset:5%;width:90%;height:90%}.card .sw img{position:relative;z-index:1}.card .sw .dots{z-index:2}
+.card .sw{aspect-ratio:4/3;background:var(--fog);display:grid;place-items:center;position:relative;overflow:hidden}.card .sw img{width:100%;height:100%;object-fit:cover}.card .sw>svg{position:absolute;inset:0;width:100%;height:100%}.card .sw .tagdes{position:absolute;right:8px;top:8px;z-index:3;min-height:28px;padding:3px 10px;font-size:12px}.card .sw[data-tagsvg]>svg{inset:5%;width:90%;height:90%}.card .sw img{position:relative;z-index:1}.card .sw .dots{z-index:2}
 .card .sw .dots{position:absolute;left:10px;bottom:10px;display:flex;gap:4px}.card .sw .dots i{width:14px;height:14px;border-radius:50%;border:1px solid rgba(0,0,0,.25);display:block}
 .card .bd{padding:12px 14px;display:grid;gap:4px}.card .bd b{font-weight:500}.card .bd .mono{letter-spacing:.06em}.card .pr{font:500 12px 'IBM Plex Mono',monospace}
 .chip{font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.06em;text-transform:uppercase;border-radius:999px;padding:3px 10px;background:var(--fog);color:var(--dim);white-space:nowrap}
@@ -68,7 +68,7 @@ dialog{border:0;border-radius:24px;padding:0;width:min(900px,96vw);max-height:92
     <div id="dSpec" style="display:grid;gap:10px"></div>
     <div class="f"><span>Colours</span><div class="colours" id="dColours"></div><div class="row"><button class="btn sm q" type="button" id="dAddColour">Add a colour</button></div></div>
     <label class="f"><span>Notes</span><textarea class="t" id="dNotes" maxlength="600"></textarea></label>
-    <div class="row"><button class="btn go" type="button" id="dSave">Save</button><button class="btn q" type="button" id="dDel">Take out of the library</button><span class="msg" id="dMsg" role="status"></span></div>
+    <div class="row"><button class="btn go" type="button" id="dSave">Save</button><a class="btn hidden" id="dDesign" href="#" title="Fonts, words, graphics and drawing on the label itself, with every studio tool; then add it to a garment">Design it in the studio</a><button class="btn q" type="button" id="dDel">Take out of the library</button><span class="msg" id="dMsg" role="status"></span></div>
   </div></div>
 </div></dialog>
 
@@ -101,14 +101,14 @@ function paint(){
 function card(m){
   const s=m.spec||{},line=m.kind==='fabric'?[s.weightGsm?s.weightGsm+' gsm':'',s.construction,s.composition].filter(Boolean).join(' · '):m.kind==='trim'?[s.category,s.size,s.material,s.finish].filter(Boolean).join(' · '):`${s.widthMm} × ${s.heightMm} mm · ${s.shape}${s.fold&&s.fold!=='none'?' · '+s.fold:''} · ${s.material}`;
   const dots=(m.colours||[]).slice(0,6).map(c=>`<i style="background:${esc(c.hex||'#ccc')}" title="${esc(c.name||'')}${c.pantone?' · '+esc(c.pantone):''}"></i>`).join('');
-  const sw=m.kind==='tag'?`<div class="sw" data-tagsvg="${m.id}"></div>`:`<div class="sw" data-draw="${m.id}" ${m.hasSwatch?`data-swatch="${m.id}"`:''}><div class="dots">${dots}</div></div>`;
+  const sw=m.kind==='tag'?`<div class="sw" data-tagsvg="${m.id}"><a class="btn sm tagdes" href="/lab/studio?tag=${encodeURIComponent(m.id)}" title="Design the label in the studio">Design</a></div>`:`<div class="sw" data-draw="${m.id}" ${m.hasSwatch?`data-swatch="${m.id}"`:''}><div class="dots">${dots}</div></div>`;
   return `<article class="card" data-m="${m.id}" tabindex="0" role="button"><${'div'} style="display:contents">${sw}</div><div class="bd"><b>${esc(m.name)}</b>${M?.client?`<span class="note" style="font-size:11px">${m.starter?'Starter library':'Your team'+(m.by?' · '+esc(m.by):'')}</span>`:m.room?`<span class="note" style="font-size:11px">${esc(m.room)}'s room</span>`:''}<span class="note">${esc(line)}</span><div class="row" style="justify-content:space-between"><span class="pr">${money(m.priceCents)} / ${esc(m.unit)}</span>${m.kind==='tag'&&s.for?.length?`<span class="chip">${esc(s.for.join(' · '))}</span>`:m.supplier?`<span class="chip" title="${esc(m.supplier)}">${esc(m.supplier.split(':')[0].slice(0,18))}</span>`:''}</div></div></article>`;
 }
 let SW=null;async function swMod(){if(!SW)SW=await import('/lab/lab-swatches.js');return SW}
 // a drawn swatch under every fabric and trim, so a card without a photo still shows the cloth or the trim
 async function drawAll(g){const S=await swMod().catch(()=>null);if(!S)return;for(const el of g.querySelectorAll('[data-draw]')){if(el.dataset.swatch)continue;const m=M.materials.find(x=>x.id===el.dataset.draw);if(m)el.insertAdjacentHTML('afterbegin',S.materialSvg(m))}}
 async function tagsMod(){if(!TAGS)TAGS=await import('/lab/lab-tags.js');return TAGS}
-async function drawTag(el,m){if(!m)return;const T=await tagsMod();el.innerHTML=T.tagSvg(m.spec,{scale:2.4,showSize:false,fill:(m.colours||[])[0]?.hex||'',ink:(m.colours||[])[0]?.hex&&lum((m.colours||[])[0].hex)<128?'#f3eee4':'#141416'})}
+async function drawTag(el,m){if(!m)return;const T=await tagsMod(),face=m.spec?.face?await blobUrl('/v1/lab/art/'+m.spec.face).catch(()=>''):'';el.querySelector(':scope>svg')?.remove();el.insertAdjacentHTML('afterbegin',T.tagSvg(m.spec,{scale:2.4,showSize:false,face,fill:(m.colours||[])[0]?.hex||'',ink:(m.colours||[])[0]?.hex&&lum((m.colours||[])[0].hex)<128?'#f3eee4':'#141416'}))}
 const lum=h=>{const n=parseInt(h.slice(1),16);return ((n>>16)*299+((n>>8)&255)*587+(n&255)*114)/1000};
 
 // ---- the form ----
@@ -129,14 +129,14 @@ function specForm(kind,s={}){
 function colourRows(list){$('#dColours').innerHTML=(list||[]).map(c=>`<div class="c"><input type="color" value="${esc(c.hex||'#888888')}" aria-label="Colour"><input class="t" placeholder="Name" value="${esc(c.name||'')}" maxlength="40"><input class="t" placeholder="Pantone C (read from the colour if empty)" value="${esc(c.pantone||'')}" maxlength="40"><button class="btn sm q" type="button" data-rmc>✕</button></div>`).join('')}
 function readSpec(){const s={};for(const el of $$('#dSpec [data-s]')){const k=el.dataset.s;s[k]=el.multiple?[...el.selectedOptions].map(o=>o.value):k==='text'?el.value.split(/\n/).map(x=>x.trim()).filter(Boolean):k==='eyelet'?Boolean(el.value):el.value}return s}
 function readColours(){return $$('#dColours .c').map(r=>{const [h,n,p]=r.querySelectorAll('input');return {hex:h.value,name:n.value,pantone:p.value}})}
-async function preview(){const kind=$('#dKind').value,p=$('#dPrev');if(kind==='tag'){const T=await tagsMod(),cs=readColours();p.innerHTML=T.tagSvg(readSpec(),{scale:3,fill:cs[0]?.hex||'',ink:cs[0]?.hex&&lum(cs[0].hex)<128?'#f3eee4':'#141416'});return}
+async function preview(){const kind=$('#dKind').value,p=$('#dPrev');if(kind==='tag'){const T=await tagsMod(),cs=readColours(),fc=CUR?.spec?.face,face=fc?await blobUrl('/v1/lab/art/'+fc).catch(()=>''):'';p.innerHTML=T.tagSvg({...readSpec(),face:fc||''},{face,scale:3,fill:cs[0]?.hex||'',ink:cs[0]?.hex&&lum(cs[0].hex)<128?'#f3eee4':'#141416'});return}
   if(SWATCH){p.innerHTML=`<img src="${esc(SWATCH)}" alt="">`;return}const cs=readColours();{const S=await swMod().catch(()=>null);if(S){p.innerHTML=S.materialSvg({kind,name:$('#dName')?.value||'',spec:readSpec(),colours:cs},'prev');return}}p.innerHTML=cs.length?`<div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center">${cs.map(c=>`<span style="width:56px;height:56px;border-radius:12px;background:${esc(c.hex)};border:1px solid rgba(0,0,0,.15)" title="${esc(c.name)}"></span>`).join('')}</div>`:'<span class="note">No swatch yet</span>'}
 function openForm(m){
   CUR=m||null;SWATCH='';const kind=m?m.kind:KIND;$('#dKind').value=kind;$('#dId').value=m?m.id:'';
   $('#dTitle').textContent=m?m.name:(kind==='fabric'?'Add a fabric':kind==='trim'?'Add a trim':'Add a tag');
   $('#dName').value=m?.name||'';$('#dCode').value=m?.code||'';$('#dPrice').value=m?(m.priceCents/100).toFixed(2):'';$('#dUnit').innerHTML=opt(M.options.units,m?.unit||(kind==='fabric'?'m':'pc'));
   $('#dSupplier').value=m?.supplier||'';$('#dMoq').value=m?.moq||'';$('#dLead').value=m?.leadDays||'';$('#dNotes').value=m?.notes||'';
-  $('#dSpec').innerHTML=specForm(kind,m?.spec||{});colourRows(m?.colours||[]);$('#dDel').classList.toggle('hidden',!m||m.editable===false);$('#dSave').classList.toggle('hidden',Boolean(m&&m.editable===false));$('#dMsg').textContent=m&&m.editable===false?'From the starter library: use it on your pieces. Add your own to change the details.':'';$('#dSwatchRow').classList.toggle('hidden',kind==='tag');
+  $('#dSpec').innerHTML=specForm(kind,m?.spec||{});colourRows(m?.colours||[]);$('#dDel').classList.toggle('hidden',!m||m.editable===false);$('#dSave').classList.toggle('hidden',Boolean(m&&m.editable===false));$('#dMsg').textContent=m&&m.editable===false?'From the starter library: use it on your pieces. Add your own to change the details.':'';$('#dSwatchRow').classList.toggle('hidden',kind==='tag');$('#dDesign').classList.toggle('hidden',!(m&&kind==='tag'));if(m&&kind==='tag')$('#dDesign').href='/lab/studio?tag='+encodeURIComponent(m.id);
   if(m?.hasSwatch)blobUrl(`/v1/lab/materials/${m.id}/swatch`).then(u=>{SWATCH=u;preview()}).catch(()=>{});
   preview();$('#dlg').showModal();
 }
@@ -153,7 +153,7 @@ $('#kinds').addEventListener('click',e=>{const b=e.target.closest('[data-kind]')
 $('#forSel').addEventListener('change',()=>{FOR=$('#forSel').value;load().catch(x=>msg('#msg',esc(x.message),'bad'))});
 let qT=0;$('#q').addEventListener('input',()=>{clearTimeout(qT);qT=setTimeout(()=>load().catch(x=>msg('#msg',esc(x.message),'bad')),250)});
 $('#add').onclick=()=>openForm(null);
-$('#grid').addEventListener('click',e=>{const c=e.target.closest('[data-m]');if(c)openForm(M.materials.find(m=>m.id===c.dataset.m))});
+$('#grid').addEventListener('click',e=>{if(e.target.closest('.tagdes'))return;const c=e.target.closest('[data-m]');if(c)openForm(M.materials.find(m=>m.id===c.dataset.m))});
 $('#grid').addEventListener('keydown',e=>{if(e.key==='Enter'){const c=e.target.closest('[data-m]');if(c)openForm(M.materials.find(m=>m.id===c.dataset.m))}});
 (async()=>{if(!TOKEN()){$('#needSignin').classList.remove('hidden');return}try{await load();$('#app').classList.remove('hidden');if(location.hash==='#tags'){KIND='tag';await load()}}catch(x){if(x.status===401||x.status===403)$('#needSignin').classList.remove('hidden');else{$('#app').classList.remove('hidden');msg('#msg',esc(x.message),'bad')}}})();
 </script>

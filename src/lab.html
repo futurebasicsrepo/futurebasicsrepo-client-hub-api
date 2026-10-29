@@ -23,6 +23,7 @@ h1{font-size:clamp(30px,5vw,48px);letter-spacing:-.035em;font-weight:500;margin:
 .sub{color:var(--dim);font-size:13px}.note{color:var(--dim);margin:4px 0 0;max-width:72ch}
 .panel{background:#fff;border:1px solid var(--line);border-radius:22px;padding:20px 22px}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--ink);background:#fff;color:var(--ink);border-radius:999px;padding:8px 15px;text-decoration:none;cursor:pointer;font-weight:600;min-height:38px}.btn:hover{background:var(--ink);color:#fff}
+.btn.ghost{background:transparent;color:#fff;border-color:rgba(255,255,255,.5)}.btn.ghost:hover{background:#fff;color:var(--ink);border-color:#fff}
 .btn.go{background:var(--cue);border-color:var(--cue);color:var(--ink)}.btn.go:hover{background:#7affb6;color:var(--ink)}.btn.sm{min-height:32px;padding:5px 12px;font-size:13px}.btn[disabled]{opacity:.5;cursor:default}
 .hero{background:var(--ink);color:#fff;border-radius:28px;padding:clamp(20px,4vw,36px);margin-bottom:22px;position:relative;overflow:hidden;isolation:isolate}
 .hero:before{content:"";position:absolute;inset:0;z-index:-1;background-image:linear-gradient(rgba(255,255,255,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.05) 1px,transparent 1px);background-size:28px 28px}
@@ -117,7 +118,7 @@ dialog.cd{border:0;border-radius:24px;padding:0;width:min(980px,96vw);max-height
   <div id="app" class="hidden">
     <section class="hero"><span class="mono">Future Basics · Danielle and Kyle only</span><h1>Design Lab.</h1>
       <p>Plan the season, draw the concepts, finish them in the studio, measure them as flats, and send them to a tech pack. The libraries hold what we draw from; the research holds what the market is doing.</p>
-      <div class="row" style="margin-top:14px;gap:8px"><a class="btn" href="#plans" style="background:#fff;color:var(--ink);border-color:#fff">Start a line plan</a><a class="btn" href="#board" style="color:#fff;border-color:rgba(255,255,255,.5)">Open the concepts</a><button class="btn" type="button" id="howStart" style="color:#fff;border-color:rgba(255,255,255,.5);background:none">How to start</button><a class="btn" href="/lab/studio" style="color:#fff;border-color:rgba(255,255,255,.5)">Design</a><a class="btn" href="/lab/flats" style="color:#fff;border-color:rgba(255,255,255,.5)">Flats</a><a class="btn" href="/lab/sketches" style="color:#fff;border-color:rgba(255,255,255,.5)">Sketch pack</a></div>
+      <div class="row" style="margin-top:14px;gap:8px"><a class="btn" href="#plans" style="background:#fff;color:var(--ink);border-color:#fff">Start a line plan</a><a class="btn ghost" href="#board">Open the concepts</a><button class="btn ghost" type="button" id="howStart">How to start</button><a class="btn ghost" href="/lab/studio">Design</a><a class="btn ghost" href="/lab/flats">Flats</a><a class="btn ghost" href="/lab/sketches">Sketch pack</a></div>
       <div class="stats" id="stats"></div></section>
     <!-- the welcome: how to start, shown once to a client's designers (and any time from "How to start") -->
     <section class="panel hidden" id="welcome" aria-labelledby="welcomeH" style="margin-top:14px">
@@ -137,7 +138,7 @@ dialog.cd{border:0;border-radius:24px;padding:0;width:min(980px,96vw);max-height
       <div class="panel">
         <form class="form" id="planForm"><div class="two"><label><span>Plan name</span><input class="t" name="name" maxlength="100" placeholder="Fall 2027 capsule" required></label><label><span>Season</span><input class="t" name="season" maxlength="40" placeholder="Fall 2027"></label></div>
           <label><span>The idea (optional)</span><textarea class="t" name="brief" maxlength="800" placeholder="A heritage-leaning capsule for guys who dress in quiet, well-cut basics. Lean on outerwear and knit."></textarea></label>
-          <div class="row"><label class="row" style="gap:6px"><span class="sub">Pieces</span><select class="t" name="size" style="flex:0 0 90px"><option>8</option><option selected>12</option><option>16</option><option>24</option></select></label><button class="btn go" type="submit" id="planGo">Draft the plan</button><button class="btn" type="button" id="planBlank">Start blank</button><span class="msg" id="planMsg" role="status"></span></div></form>
+          <div class="row" style="align-items:flex-end"><label><span>Pieces</span><select class="t" name="size" style="width:96px"><option>1</option><option>3</option><option>6</option><option>8</option><option selected>12</option><option>16</option><option>24</option></select></label><button class="btn go" type="submit" id="planGo">Draft the plan</button><button class="btn" type="button" id="planBlank">Start blank</button><span class="msg" id="planMsg" role="status"></span></div></form>
         <div class="plans" id="planList" style="margin-top:16px"></div>
         <div id="planView" class="hidden" style="margin-top:18px;border-top:1px solid var(--line);padding-top:16px"></div>
       </div></section>

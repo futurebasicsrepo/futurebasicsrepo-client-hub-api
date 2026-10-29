@@ -125,6 +125,8 @@ test('the audience is male-driven and unisex in the brand code, the plan and the
   assert.match(seen.system, /male-driven and unisex/); assert.match(seen.system, /no womenswear-only pieces/); assert.ok(!/Categories you may use:.*dresses/.test(seen.user), 'dresses are left out of a plan unless asked for'); assert.deepEqual(WOMENSWEAR_ONLY, ['dresses']);
   await generateLines({ trends, size: 6, categories: ['dresses', 'tops'], env: { ANTHROPIC_API_KEY: 'k', AI_FIXTURE: 'x' }, askImpl: async a => { seen = a; return { json: planFixture({ user: a.user }), usage: {} }; } });
   assert.match(seen.user, /Categories you may use: dresses, tops/, 'but they can be asked for by name');
+  const one = await generateLines({ trends, size: 1, env: { ANTHROPIC_API_KEY: 'k', AI_FIXTURE: 'x' }, askImpl: async a => ({ json: planFixture({ user: a.user }), usage: {} }) });
+  assert.equal(one.lines.length, 1, 'a one-piece plan is one piece (it was raised to three)');
   let call; await generateConcepts({ line: { name: 'Tee', category: 'tops', role: 'core' }, env: ENV, askImpl: async a => { call = a; return { json: conceptFixture({ user: a.user }), usage: {} }; } });
   assert.match(call.system, /male-driven and unisex/); assert.match(call.system, /Future Basics logo/); assert.match(call.system, /internal woven label/); assert.match(call.system, /not limited to our logo or its line and dot/); assert.match(call.system, /crests and emblems, original lettering and numerals/); assert.match(call.user, /"graphics"/);
 });
