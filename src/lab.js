@@ -17,6 +17,9 @@ export const CATEGORIES = [
   { id: 'bags', label: 'Bags', hint: 'Totes, backpacks, duffels, small bags' },
   { id: 'accessories', label: 'Accessories', hint: 'Belts, scarves, socks, eyewear, jewellery, wallets' },
   { id: 'home', label: 'Home and objects', hint: 'Blankets, candles, mugs, things for a room' },
+  { id: 'plush', label: 'Plush and soft toys', hint: 'Plush characters, pillows, keychains' },
+  { id: 'toys', label: 'Toys and objects', hint: 'Collectibles, figures, desk objects, packaging-led pieces' },
+  { id: 'electronics', label: 'Electronics', hint: 'Chargers, speakers, lights, connected things' },
   { id: 'other', label: 'Other', hint: 'Anything that does not fit yet' }
 ];
 export const CATEGORY_IDS = CATEGORIES.map(c => c.id);
@@ -25,6 +28,9 @@ export const cleanCategory = v => { const s = String(v || '').trim().toLowerCase
 
 // Guess the category from the words a shop uses, in an order where the more specific word wins ("knit polo" is knitwear, "sneaker sock" is footwear).
 const RULES = [
+  ['plush', /\b(plush(ie|ies)?|stuffed (animal|toy)s?|soft toys?|teddy bears?|squishmallows?)\b/i],
+  ['electronics', /\b(chargers?|speakers?|headphones?|earbuds?|power ?banks?|usb|bluetooth|wireless charging|led lamps?)\b/i],
+  ['toys', /\b(toys?|figures?|figurines?|collectibles?|vinyl figures?|fingerboards?|blind box)\b/i],
   ['footwear', /\b(sneakers?|trainers?|boots?|loafers?|sandals?|slides?|mules?|clogs?|oxfords?|derbys?|moccasins?|espadrilles?|slippers?|footwear|shoes?|pumps?|heels?)\b/i],
   ['headwear', /\b(caps?|hats?|beanies?|bucket|visors?|balaclavas?|berets?|headband|trucker|fedora|snapback)\b/i],
   ['bags', /\b(bags?|totes?|backpacks?|rucksacks?|duffels?|duffles?|satchels?|crossbody|messenger|clutch|pouch|briefcase|holdall)\b/i],

@@ -272,7 +272,7 @@ export async function finishConcept(raw, concept, { cfg = {}, locate, arts = new
 }
 
 // ---- turning an approved concept into a product ------------------------------------------------------------------------------------------------------
-export const PRODUCT_TYPES = { tops: 'Tops', knitwear: 'Knitwear', outerwear: 'Outerwear', tailoring: 'Tailoring', bottoms: 'Bottoms', dresses: 'Dresses and sets', headwear: 'Headwear', footwear: 'Footwear', bags: 'Bags', accessories: 'Accessories', home: 'Home and objects', other: 'Other' };
+export const PRODUCT_TYPES = { tops: 'Tops', knitwear: 'Knitwear', outerwear: 'Outerwear', tailoring: 'Tailoring', bottoms: 'Bottoms', dresses: 'Dresses and sets', headwear: 'Headwear', footwear: 'Footwear', bags: 'Bags', accessories: 'Accessories', home: 'Home and objects', plush: 'Plush and soft toys', toys: 'Toys and objects', electronics: 'Electronics', other: 'Other' };
 const h = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 // The brief the tech pack assistant reads: the concept in words, our twist, and the commercial targets.
 export function productBrief(concept, plan = {}) {

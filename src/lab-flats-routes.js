@@ -182,12 +182,13 @@ export function registerLabFlatsRoutes(app, d) {
   // where the piece starts: its style, fit and details from its words, and its logo and graphics where the concept said they go
   async function initial(c, read = undefined) {
     if (read === undefined) read = await readPicture(c);
-    let det = detectStyle(c);
+    // a concept started from scratch names its style, and is drawn as a plain outline to draw over, not from a sketch
+    let det = c.spec?.scratch && STYLES[c.spec.style] ? { style: c.spec.style, fit: 'regular', options: {}, template: 'none' } : detectStyle(c);
     // the picture wins over the words: the flat is drawn as the garment the picture shows
     if (read && read.style !== det?.style && !(looksLikeFootwear(c) && !det)) { const words = [c.name, c.spec?.silhouette, c.spec?.fabric, c.spec?.fit, c.spec?.description].join(' '), fit = read.fit || det?.fit || 'regular';
       det = { style: read.style, fit, options: det?.options || {}, template: defaultTemplate(read.style, fit, words, [c.name, c.spec?.silhouette, c.spec?.fabric].join(' ')) }; }
     if (!det) return null;
-    det.template = await pickTemplate(c, det);
+    if (det.template !== 'none' || !c.spec?.scratch) det.template = await pickTemplate(c, det);
     const params = fitToTemplate({ ...defaultParams(det.style, det.fit, det.options), ...(det.template ? { template: det.template } : {}), ...(read?.color ? { color: read.color } : {}) }), spec = ensureBranding(c.spec || {}, c.category), placements = [], list = await techniques(c.client_id);
     const logo = spec.branding?.logo || {};
     if (logo.mark && logo.mark !== 'none') { const mark = logo.mark === 'cue' ? 'mark' : logo.mark, base = LOGO_BASE[logo.technique] || 'embroidery', aspect = await aspectOf({ mark }); const t = techFor(list, { technique: base });

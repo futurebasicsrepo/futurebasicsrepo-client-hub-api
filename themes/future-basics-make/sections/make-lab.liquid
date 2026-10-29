@@ -1,0 +1,217 @@
+{%- comment -%}
+  Make page · the Design Lab. A self-contained section for the Future Basics storefront (the Ritual theme, page.make template).
+  Goes straight after the page's main section (hero, 01 · experience, 02 · platform) and before systems, which becomes 04: the page climbs from
+  what we make, to a free tech pack, to the whole design tool, to software.
+  Matches the page's own system: Space Grotesk and IBM Plex Mono, paper #f7f7f5, ink #141416, green #48f39a, lowercase headings.
+  The screenshots are served by the hub (hub.thefuturebasics.com/help/assets/…); change them in the section settings if you move them.
+  Every class is prefixed .fbl so nothing here touches the rest of the theme.
+{%- endcomment -%}
+{%- assign hub = section.settings.hub_url | default: 'https://hub.thefuturebasics.com' -%}
+{%- assign img = hub | append: '/help/assets/' -%}
+<section class="fbl" id="design-lab" aria-labelledby="fbl-title">
+  <div class="fbl__in">
+    <header class="fbl__head">
+      <div>
+        <p class="fbl__mono">{{ section.settings.eyebrow }}</p>
+        <h2 id="fbl-title" class="fbl__h2"><span>{{ section.settings.title_1 }}</span><span class="fbl__dim">{{ section.settings.title_2 }}</span></h2>
+      </div>
+      <div class="fbl__lede">
+        <p>{{ section.settings.lede }}</p>
+        <div class="fbl__actions">
+          <a class="fbl__btn" href="{{ hub }}/join?for=lab&utm_source=thefuturebasics&utm_medium=site&utm_campaign=make_lab">{{ section.settings.cta }} <span class="fbl__price-chip">${{ section.settings.price }} · {{ section.settings.days }} days</span></a>
+          <a class="fbl__btn fbl__btn--ghost" href="#fbl-flow">see the flow</a>
+        </div>
+        <p class="fbl__fine">{{ section.settings.fine }}</p>
+      </div>
+    </header>
+
+    <figure class="fbl__stage">
+      <div class="fbl__ipad" aria-hidden="true"><div class="fbl__ipad-screen"><img src="{{ img }}lab-studio-flat.jpg" alt="" width="1366" height="955"></div><span class="fbl__pencil"></span></div>
+      <span class="fbl__tag fbl__tag--a"><i></i>apple pencil · pressure and palm rest</span>
+      <span class="fbl__tag fbl__tag--b"><i></i>placements in inches · front and back</span>
+      <span class="fbl__tag fbl__tag--c"><i></i>stitch file · .dst · .exp</span>
+      <figcaption class="fbl__mono">the studio · a flat from the sketch pack, a graphic placed at 3½ in, ready for the tech pack</figcaption>
+    </figure>
+
+    <div class="fbl__flow" id="fbl-flow">
+      <div class="fbl__flow-head"><h3 class="fbl__h3">idea to factory file</h3><p class="fbl__mono">six steps · one room</p></div>
+      <ol class="fbl__steps">
+        <li class="fbl__step"><span class="fbl__mono">01 · plan</span><h4>plan the line</h4><p>Read what is moving, then a line plan: the pieces, a price ladder and the margin on each, with several concepts for every piece, each checked against what inspired it.</p><img src="{{ img }}lab-plan.jpg" alt="A line plan: pieces, median price, blended margin, units and revenue" loading="lazy" width="800" height="440"></li>
+        <li class="fbl__step"><span class="fbl__mono">02 · flat</span><h4>start from a real flat</h4><p>382 professional flat sketches, men's, women's and accessories, with the pockets, zips, collars and trims cut out as parts. Pick one and open it in Design.</p><img src="{{ img }}lab-sketches.jpg" alt="The sketch pack: tees, hoodies, shirts and caps as flat sketches" loading="lazy" width="1116" height="698"></li>
+        <li class="fbl__step"><span class="fbl__mono">03 · draw</span><h4>draw on it, to the inch</h4><p>Layers, type, brushes and an AI that only changes the area you paint, on iPad with Apple Pencil. Every graphic is placed in inches from the shoulder and centre front.</p><img src="{{ img }}lab-flat.jpg" alt="A pullover hoodie flat with the logo placed in inches" loading="lazy" width="1010" height="631"></li>
+        <li class="fbl__step"><span class="fbl__mono">04 · dress</span><h4>real fabric, real cost</h4><p>57 fabrics shown as real cloth, by weight, composition and mill, plus trims and labels you design. The bill of materials and the landed cost follow every pick.</p><img src="{{ img }}lab-materials.jpg" alt="Fabrics as real cloth: canvas, denim, Cordura nylon" loading="lazy" width="1246" height="779"></li>
+        <li class="fbl__step"><span class="fbl__mono">05 · decorate</span><h4>files a decorator can run</h4><p>Colour separations with a film per ink, and embroidery digitized to a Tajima or Melco stitch file: satin and fill, underlay, the thread sequence.</p><img src="{{ img }}lab-embroidery.jpg" alt="An embroidery file sewn out on screen, with its stitch count" loading="lazy" width="1040" height="650"></li>
+        <li class="fbl__step fbl__step--end"><span class="fbl__mono">06 · hand over</span><h4>a tech pack the factory signs</h4><p>Flats, measurements, the bill of materials and every decoration in one pack, in five factory languages. Send it to your own factory for a quote, or to us to make.</p><a class="fbl__btn" href="{{ hub }}/join?for=lab&utm_source=thefuturebasics&utm_medium=site&utm_campaign=make_lab">{{ section.settings.cta }}</a></li>
+      </ol>
+    </div>
+
+    <div class="fbl__beyond">
+      <div class="fbl__flow-head"><h3 class="fbl__h3">not only apparel.<br><span class="fbl__dim">what the lab does for each thing we make.</span></h3><p class="fbl__mono">three parts · one room</p></div>
+      <div class="fbl__tiers">
+        <article class="fbl__tier">
+          <p class="fbl__mono">design it in the lab</p>
+          <h4>apparel and headwear</h4>
+          <p>Tees, hoodies, shirts, outerwear, pants, dresses and swim, plus the six-panel cap and the bucket hat. Each one is drawn on a real flat, dressed in real fabric and placed to the inch.</p>
+          <img src="{{ img }}lab-headwear.jpg" alt="Flat sketches: a six-panel cap, tees, a shirt and hoodies" loading="lazy" width="680" height="425">
+        </article>
+        <article class="fbl__tier">
+          <p class="fbl__mono">decorate anything</p>
+          <h4>graphics, patches and labels</h4>
+          <p>Separations, films and embroidery stitch files work on any product: a plush, a toy box, a uniform, a tote. Patches, woven labels and hang tags are designed at their real size.</p>
+          <img src="{{ img }}lab-labels.jpg" alt="Patches, care labels, hang tags and woven loops at their real sizes" loading="lazy" width="1070" height="620">
+        </article>
+        <article class="fbl__tier fbl__tier--spec">
+          <p class="fbl__mono">spec it in the tech pack</p>
+          <h4>plush, objects, footwear, electronics</h4>
+          <p>The tech pack drafts for each kind of product, with its own measurements, materials, labels and compliance. It is included while the Lab is open.</p>
+          <ul class="fbl__cats">
+            <li><span>plush</span><span>from 300 pcs · 10–16 wks</span></li>
+            <li><span>bags and jewelry</span><span>quoted per style</span></li>
+            <li><span>toys and objects</span><span>tooling-dependent</span></li>
+            <li><span>footwear</span><span>a 6–12 month programme</span></li>
+            <li><span>electronics</span><span>6–12 months, certification, EVT · DVT · PVT</span></li>
+          </ul>
+          <p class="fbl__small">Footwear and electronics are development programmes, not a file you download. Start a project and we'll scope it with you.</p>
+          <a class="fbl__link" href="{{ section.settings.project_url | default: '/pages/contact' }}">start a project →</a>
+        </article>
+      </div>
+    </div>
+
+    <div class="fbl__out">
+      <div><p class="fbl__mono">what comes out</p><h3 class="fbl__h3">not a moodboard.<br><span class="fbl__dim">the files the floor works from.</span></h3></div>
+      <dl class="fbl__files">
+        <div><dt>flats</dt><dd>front and back, measured, graded, placements in inches</dd></div>
+        <div><dt>bill of materials</dt><dd>fabric, trims and labels, with the landed cost and your margin</dd></div>
+        <div><dt>separations</dt><dd>a film per ink with its Pantone, halftones, the white underbase</dd></div>
+        <div><dt>stitch file</dt><dd>.dst and .exp: satin and fill, underlay, trims, the thread sequence</dd></div>
+        <div><dt>tech pack</dt><dd>signed by you and the factory, in five factory languages</dd></div>
+        <div><dt>decoration sheet</dt><dd>every graphic, its size, technique, colours and cost a piece</dd></div>
+      </dl>
+    </div>
+
+    <div class="fbl__deal">
+      <div class="fbl__card fbl__card--go">
+        <p class="fbl__mono">the design lab</p>
+        <p class="fbl__big">${{ section.settings.price }}<small> / {{ section.settings.days }} days</small></p>
+        <ul>
+          <li>The studio, the flats, the sketch pack and every library</li>
+          <li>{{ section.settings.ai_included }} AI generations included, then ${{ section.settings.ai_price }} each</li>
+          <li>Tech packs included while the Lab is open</li>
+          <li>Send a pack to your own factory, or have us make it</li>
+        </ul>
+        <a class="fbl__btn" href="{{ hub }}/join?for=lab&utm_source=thefuturebasics&utm_medium=site&utm_campaign=make_lab">{{ section.settings.cta }}</a>
+      </div>
+      <div class="fbl__compare" role="table" aria-label="Designing a line, three ways">
+        <div class="fbl__row fbl__row--h" role="row"><span role="columnheader">designing a line</span><span role="columnheader">cost</span><span role="columnheader">what the factory gets</span></div>
+        <div class="fbl__row" role="row"><span role="cell">illustrator, spreadsheets, freelancers</span><span role="cell">$300–800 a pack, plus separations and digitizing</span><span role="cell">PDFs to interpret</span></div>
+        <div class="fbl__row" role="row"><span role="cell">enterprise PLM</span><span role="cell">$10,000+ a year</span><span role="cell">yes, once everyone is set up</span></div>
+        <div class="fbl__row fbl__row--us" role="row"><span role="cell"><i></i>the design lab</span><span role="cell">${{ section.settings.price }} for {{ section.settings.days }} days</span><span role="cell">flats, BOM, films, stitch files, a signed pack</span></div>
+      </div>
+    </div>
+
+    <div class="fbl__bridge">
+      <p class="fbl__mono">and when it is ready</p>
+      <h3 class="fbl__h3">we make it.</h3>
+      <p>The same team, the same files. Our factories, our quality control, the landed cost in the open, from 50 pieces.</p>
+      <a class="fbl__btn fbl__btn--ghost" href="{{ section.settings.project_url | default: '/pages/contact' }}">start a project</a>
+    </div>
+  </div>
+</section>
+
+<style>
+  .fbl{--paper:#f7f7f5;--card:#fff;--ink:#141416;--dim:#6b6b72;--line:rgba(20,20,22,.14);--green:#48f39a;--deep:#17603a;--panel:#ecece8;--sans:'Space Grotesk',system-ui,sans-serif;--mono:'IBM Plex Mono',ui-monospace,monospace;--pad:clamp(20px,4vw,58px);
+    background:var(--paper);color:var(--ink);font-family:var(--sans);overflow-x:hidden;border-top:1px solid var(--line)}
+  .fbl *{box-sizing:border-box}.fbl h2,.fbl h3,.fbl h4,.fbl p,.fbl ol,.fbl ul,.fbl dl,.fbl dd,.fbl figure{margin:0;padding:0}
+  .fbl__in{max-width:1440px;margin:0 auto;padding:clamp(64px,9vw,128px) var(--pad);display:grid;gap:clamp(56px,8vw,112px)}
+  .fbl__mono{font:500 10px/1.4 var(--mono);letter-spacing:.18em;text-transform:uppercase;color:var(--dim)}
+  .fbl__h2{font:500 clamp(48px,8.4vw,128px)/.9 var(--sans);letter-spacing:-.045em;text-transform:lowercase;margin-top:18px;display:grid}
+  .fbl__h3{font:500 clamp(30px,3.6vw,52px)/.98 var(--sans);letter-spacing:-.035em;text-transform:lowercase}
+  .fbl__dim{color:#a3a3a8}
+  .fbl__head{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,.75fr);gap:clamp(28px,5vw,80px);align-items:end}
+  .fbl__lede{display:grid;gap:22px}.fbl__lede>p:first-child{font-size:clamp(16px,1.3vw,19px);line-height:1.5;color:#3b3b40;text-wrap:pretty}
+  .fbl__actions{display:flex;flex-wrap:wrap;gap:10px}
+  .fbl__btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;min-height:50px;padding:0 22px;border:1px solid var(--ink);border-radius:999px;background:var(--ink);color:var(--paper)!important;font:500 15px/1 var(--sans);text-transform:lowercase;text-decoration:none;transition:transform .25s,box-shadow .25s}
+  .fbl__btn:hover{transform:translateY(-2px);box-shadow:0 10px 26px rgba(20,20,22,.16)}.fbl__btn:focus-visible{outline:2px solid var(--green);outline-offset:3px}
+  .fbl__btn--ghost{background:transparent;color:var(--ink)!important}
+  .fbl__price-chip{font:500 11px/1 var(--mono);letter-spacing:.08em;background:var(--green);color:var(--ink);border-radius:999px;padding:6px 9px;text-transform:uppercase}
+  .fbl__fine{font:400 11px/1.5 var(--mono);color:var(--dim);letter-spacing:.04em}
+  /* the iPad on stage */
+  .fbl__stage{position:relative;display:grid;place-items:center;padding:clamp(28px,5vw,72px) clamp(8px,3vw,48px) 28px;border-radius:34px;background:radial-gradient(120% 90% at 50% 0%,#fff 0%,var(--panel) 70%);border:1px solid var(--line);gap:22px}
+  .fbl__ipad{position:relative;width:min(100%,1040px);aspect-ratio:1.43;border-radius:clamp(22px,3vw,44px);background:#1b1b1e;padding:clamp(10px,1.4vw,20px);box-shadow:0 50px 90px -40px rgba(20,20,22,.55),0 0 0 1px rgba(255,255,255,.08) inset}
+  .fbl__ipad-screen{width:100%;height:100%;border-radius:clamp(12px,1.8vw,26px);overflow:hidden;background:#fff}.fbl__ipad-screen img{width:100%;height:100%;object-fit:cover;object-position:top left;display:block}
+  .fbl__pencil{position:absolute;right:7%;bottom:10%;width:34%;height:clamp(10px,1.2vw,16px);border-radius:999px;background:linear-gradient(#fafafa,#d9d9dc);transform:rotate(26deg);transform-origin:right center;box-shadow:0 14px 26px -10px rgba(20,20,22,.45)}
+  .fbl__pencil::before{content:"";position:absolute;left:-7%;top:0;bottom:0;width:8%;background:linear-gradient(90deg,#3b3b40,#d9d9dc);clip-path:polygon(0 50%,100% 0,100% 100%)}
+  .fbl__tag{position:absolute;display:inline-flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--line);border-radius:999px;padding:9px 13px;font:500 10px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;box-shadow:0 12px 30px -16px rgba(20,20,22,.35)}
+  .fbl__tag i{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 0 3px rgba(72,243,154,.25)}
+  .fbl__tag--a{left:4%;top:16%}.fbl__tag--b{right:4%;top:40%}.fbl__tag--c{left:8%;bottom:20%}
+  .fbl__stage figcaption{text-align:center}
+  /* the flow */
+  .fbl__flow{display:grid;gap:26px}.fbl__flow-head{display:flex;justify-content:space-between;align-items:end;gap:16px;border-top:1px solid var(--ink);padding-top:18px}
+  .fbl__steps{list-style:none;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border:1px solid var(--line);border-radius:26px;overflow:hidden;background:var(--card)}
+  .fbl__step{display:grid;grid-template-rows:auto auto 1fr auto;gap:10px;padding:22px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);counter-increment:s}
+  .fbl__step:nth-child(3n){border-right:0}.fbl__step:nth-child(n+4){border-bottom:0}
+  .fbl__step h4{font:500 clamp(22px,2vw,28px)/1.02 var(--sans);letter-spacing:-.03em;text-transform:lowercase}
+  .fbl__step p{font-size:14px;line-height:1.5;color:#55555b;max-width:36ch}
+  .fbl__step--end{background:var(--ink);color:var(--paper)}.fbl__step--end p{color:rgba(247,247,245,.72)}.fbl__step--end h4,.fbl__step--end .fbl__mono{color:var(--paper)}.fbl__step--end .fbl__btn{background:var(--green);border-color:var(--green);color:var(--ink)!important;align-self:end;justify-self:start}
+  .fbl__step img{width:100%;height:auto;align-self:end;aspect-ratio:16/10;object-fit:cover;object-position:top center;border-radius:14px;border:1px solid var(--line);background:var(--panel);margin-top:6px}
+  /* what comes out */
+  .fbl__out{display:grid;grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr);gap:clamp(24px,4vw,64px);padding:clamp(28px,4vw,52px);border-radius:30px;background:var(--ink);color:#f7f7f5}
+  .fbl__out .fbl__mono{color:#9a9aa0}.fbl__out .fbl__h3{margin-top:14px}.fbl__out .fbl__dim{color:#7c7c82}
+  .fbl__files{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));border-top:1px solid rgba(255,255,255,.14)}
+  .fbl__files div{padding:16px 16px 16px 0;border-bottom:1px solid rgba(255,255,255,.14);display:grid;gap:6px}
+  .fbl__files dt{font:500 10px/1.4 var(--mono);letter-spacing:.18em;text-transform:uppercase;color:var(--green)}.fbl__files dd{font-size:15px;line-height:1.45;color:#dcdce0}
+  /* the deal */
+  .fbl__deal{display:grid;grid-template-columns:minmax(0,.42fr) minmax(0,.58fr);gap:14px;align-items:stretch}
+  .fbl__card{border-radius:26px;padding:26px;display:grid;gap:14px;align-content:start}
+  .fbl__card--go{background:var(--green);color:var(--ink)}.fbl__card--go .fbl__mono{color:var(--deep)}
+  .fbl__big{font:500 clamp(54px,6vw,84px)/.9 var(--sans);letter-spacing:-.05em}.fbl__big small{font-size:.32em;letter-spacing:-.01em}
+  .fbl__card ul{list-style:none;display:grid;gap:8px;font-size:14px;line-height:1.45}.fbl__card li{padding-left:16px;position:relative}.fbl__card li::before{content:"";position:absolute;left:0;top:.55em;width:6px;height:6px;border-radius:50%;background:var(--ink)}
+  .fbl__card .fbl__btn{justify-self:start;margin-top:6px}
+  .fbl__compare{border:1px solid var(--line);border-radius:26px;background:var(--card);overflow:hidden;align-self:stretch;display:grid;align-content:stretch}
+  .fbl__row{display:grid;grid-template-columns:1.1fr 1fr 1fr;gap:16px;padding:16px 22px;border-bottom:1px solid var(--line);font-size:14px;line-height:1.4;align-items:center}
+  .fbl__row:last-child{border-bottom:0}.fbl__row--h{font:500 10px/1.4 var(--mono);letter-spacing:.18em;text-transform:uppercase;color:var(--dim)}
+  .fbl__row--us{font-weight:600;background:#f2fdf6}.fbl__row--us i{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--green);margin-right:8px;vertical-align:middle}
+  /* the bridge to production */
+  .fbl__bridge{display:grid;grid-template-columns:auto 1fr auto;gap:10px 28px;align-items:end;border-top:1px solid var(--ink);padding-top:22px}
+  .fbl__bridge .fbl__mono{grid-column:1/-1}.fbl__bridge p:not(.fbl__mono){font-size:16px;line-height:1.5;color:#3b3b40;max-width:52ch}
+  @media (max-width:980px){.fbl__head,.fbl__out,.fbl__deal{grid-template-columns:1fr}.fbl__steps{grid-template-columns:repeat(2,minmax(0,1fr))}.fbl__step,.fbl__step:nth-child(3n){border-right:1px solid var(--line);border-bottom:1px solid var(--line)}.fbl__step:nth-child(2n){border-right:0}.fbl__step:nth-child(n+5){border-bottom:0}.fbl__bridge{grid-template-columns:1fr}}
+  @media (max-width:620px){.fbl__steps{grid-template-columns:1fr}.fbl__step{border-right:0!important;border-bottom:1px solid var(--line)!important}.fbl__step:last-child{border-bottom:0!important}.fbl__files{grid-template-columns:1fr}.fbl__tag{display:none}.fbl__row{grid-template-columns:1fr;gap:4px}.fbl__row--h{display:none}.fbl__pencil{display:none}}
+  @media (prefers-reduced-motion:reduce){.fbl__btn{transition:none}.fbl__btn:hover{transform:none}}
+  .fbl__beyond{display:grid;gap:26px}
+  .fbl__tiers{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+  .fbl__tier{display:grid;grid-template-rows:auto auto auto 1fr;gap:10px;padding:22px;border:1px solid var(--line);border-radius:26px;background:var(--card)}
+  .fbl__tier h4{font:500 clamp(22px,2vw,28px)/1.02 var(--sans);letter-spacing:-.03em;text-transform:lowercase}
+  .fbl__tier>p:not(.fbl__mono){font-size:14px;line-height:1.5;color:#3b3b40}
+  .fbl__tier img{width:100%;height:auto;align-self:end;aspect-ratio:16/10;object-fit:cover;object-position:top center;border-radius:14px;border:1px solid var(--line);background:var(--panel);margin-top:6px}
+  .fbl__tier--spec{background:var(--panel);grid-template-rows:none;align-content:start}
+  .fbl__cats{list-style:none;margin:6px 0 0;padding:0;border-top:1px solid var(--line)}
+  .fbl__cats li{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--line);font-size:14px}
+  .fbl__cats li span:last-child{font:500 11px/1.5 var(--mono);color:var(--dim);text-align:right}
+  .fbl__small{font-size:13px!important;color:var(--dim)!important}
+  .fbl__link{color:var(--ink);font-weight:500;text-decoration:underline;text-underline-offset:3px;justify-self:start}
+  @media (max-width:980px){.fbl__tiers{grid-template-columns:1fr 1fr}.fbl__tier--spec{grid-column:1/-1}}
+  @media (max-width:620px){.fbl__tiers{grid-template-columns:1fr}}
+</style>
+
+{% schema %}
+{
+  "name": "Make · Design Lab",
+  "tag": "section",
+  "class": "fbl-section",
+  "settings": [
+    { "type": "text", "id": "eyebrow", "label": "Eyebrow", "default": "03 · design lab" },
+    { "type": "text", "id": "title_1", "label": "Title, first line", "default": "design it here." },
+    { "type": "text", "id": "title_2", "label": "Title, second line (grey)", "default": "hand the factory a file it can make." },
+    { "type": "textarea", "id": "lede", "label": "Lede", "default": "The studio we design real product in, opened up. Plan a line, draw it with an Apple Pencil, start from a professional flat and dress it in real fabrics and trims. What comes out is what a factory works from: flats in inches, a costed bill of materials, separations, stitch files and the tech pack." },
+    { "type": "text", "id": "cta", "label": "Button", "default": "open the design lab" },
+    { "type": "text", "id": "fine", "label": "Small print", "default": "apparel, headwear, and the graphics and labels for anything we make · your own room in a minute · no password" },
+    { "type": "text", "id": "price", "label": "Price ($)", "default": "499" },
+    { "type": "text", "id": "days", "label": "Days open", "default": "90" },
+    { "type": "text", "id": "ai_included", "label": "AI generations included", "default": "40" },
+    { "type": "text", "id": "ai_price", "label": "Price per extra generation ($)", "default": "2.50" },
+    { "type": "url", "id": "project_url", "label": "Start a project link" },
+    { "type": "text", "id": "hub_url", "label": "Hub address (screenshots and sign-up)", "default": "https://hub.thefuturebasics.com" }
+  ],
+  "presets": [{ "name": "Make · Design Lab" }]
+}
+{% endschema %}

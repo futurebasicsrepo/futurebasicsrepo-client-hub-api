@@ -83,13 +83,24 @@
       if(v('company').length<2)return say('Enter your company or brand name.','err');if(v('name').length<2)return say('Enter your name.','err');if(!/^\S+@\S+\.\S+$/.test(v('email')))return say('Enter the email you want to sign in with.','err');
       const go=$('#go');go.disabled=true;$('#goLabel').textContent='Opening your hub…';
       try{const d=await api('/v1/public/join',{company:v('company'),name:v('name'),email:v('email'),phone:v('phone'),website:v('website'),about:v('about'),fax:$('#fax').value,attribution});
-        if(d.token){try{localStorage.setItem(KEY,d.token)}catch{}$('#goLabel').textContent='Opening your hub…';location.href='/hub';return}
+        if(d.token){try{localStorage.setItem(KEY,d.token)}catch{}$('#goLabel').textContent='Opening your hub…';location.href=(new URLSearchParams(location.search).get('for')==='lab'?'/hub#lab':'/hub');return}
         pending=d;$('#codeEmail').textContent=d.email||v('email');$('#joinForm').classList.add('hidden');$('#codeForm').classList.remove('hidden');setTimeout(()=>$('#code').focus(),200);
-      }catch(err){say(err.message,'err');go.disabled=false;$('#goLabel').textContent='Open my hub'}});
+      }catch(err){say(err.message,'err');go.disabled=false;$('#goLabel').textContent=window.GO_LABEL||'Open my hub'}});
     $('#codeForm').addEventListener('submit',async e=>{e.preventDefault();const m=$('#codeMsg');m.textContent='';m.className='msg';const b=e.target.querySelector('button');b.disabled=true;
-      try{const d=await api('/v1/auth/verify',{email:pending.email,code:$('#code').value.trim()});try{localStorage.setItem(KEY,d.token)}catch{}location.href='/hub'}catch(err){m.textContent=err.message;m.className='msg err';b.disabled=false}});
+      try{const d=await api('/v1/auth/verify',{email:pending.email,code:$('#code').value.trim()});try{localStorage.setItem(KEY,d.token)}catch{}location.href=(new URLSearchParams(location.search).get('for')==='lab'?'/hub#lab':'/hub')}catch(err){m.textContent=err.message;m.className='msg err';b.disabled=false}});
     $('#resend').addEventListener('click',async e=>{e.preventDefault();const m=$('#codeMsg');try{await api('/v1/auth/code',{email:pending.email});m.textContent='A new code is on its way. It can take a minute; use the latest one.';m.className='msg ok'}catch(err){m.textContent=err.message;m.className='msg err'}});
-    $('#change').addEventListener('click',e=>{e.preventDefault();$('#codeForm').classList.add('hidden');$('#joinForm').classList.remove('hidden');$('#go').disabled=false;$('#goLabel').textContent='Open my hub';$('#email').focus()});
+    $('#change').addEventListener('click',e=>{e.preventDefault();$('#codeForm').classList.add('hidden');$('#joinForm').classList.remove('hidden');$('#go').disabled=false;$('#goLabel').textContent=window.GO_LABEL||'Open my hub';$('#email').focus()});
   </script>
+<script>
+// /join?for=lab: the same room, opened for the Design Lab, and the hub opens on the Lab when the room is ready
+(()=>{if(new URLSearchParams(location.search).get('for')!=='lab')return;document.title='Open the Design Lab — Future Basics';
+  const h=document.querySelector('.hero h1'),l=document.querySelector('.hero .lede'),m=document.querySelector('.hero .meta');
+  if(m)m.textContent='Design Lab · your own room';if(h)h.innerHTML='Open the <em>Design Lab</em>.';
+  if(l)l.textContent='Design a line on your iPad and hand the factory a file it can sew: line plans, concepts, the studio, flats drawn from 382 professional sketches, materials and trims, separations and embroidery files, and the tech pack. Your room opens in a minute, with no password; the Lab is $499 for 90 days, with 40 AI generations included.';
+  const steps=document.querySelectorAll('.steps li span');if(steps[1])steps[1].textContent='Your room opens straight away.';if(steps[2])steps[2].textContent='Open the Design Lab on it from your hub.';
+  window.GO_LABEL='Open my room';const go=document.getElementById('goLabel');if(go)go.textContent=window.GO_LABEL;
+  const ab=document.getElementById('about');if(ab&&!ab.value)ab.placeholder='A menswear capsule, a merch line, outerwear for my brand…';
+})();
+</script>
 </body>
 </html>

@@ -505,6 +505,13 @@ export async function migrate() {
       updated_at timestamptz not null default now()
     );
     alter table lab_techniques add column if not exists rules jsonb; -- what it can make: finest line, inks, size, clearance, stitch density (src/lab-library.js)
+    create table if not exists lab_patterns ( -- what a concept is cut from: a plush's choices, a garment's seam allowance and fabric width (src/lab-pattern.js)
+      concept_id uuid primary key references lab_concepts(id) on delete cascade,
+      kind text not null,
+      spec jsonb not null default '{}',
+      updated_by uuid references users(id) on delete set null,
+      updated_at timestamptz not null default now()
+    );
     create table if not exists lab_flats ( -- a concept as measured flats, with every placement and the last "can it be made" check (src/lab-flats.js)
       concept_id uuid primary key references lab_concepts(id) on delete cascade,
       style text not null,

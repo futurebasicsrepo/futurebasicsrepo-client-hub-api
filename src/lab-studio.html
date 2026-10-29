@@ -47,6 +47,10 @@ html[data-focus] .bar{padding:4px 10px;min-height:44px;gap:6px}
 .mlib{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-top:10px;max-height:58vh;overflow:auto;padding-bottom:4px}.mc{border:1px solid var(--line);border-radius:12px;background:#fff;overflow:hidden;display:grid}.mc .th{border-radius:0}.mc .bd{padding:8px;display:grid;gap:4px;font-size:12px}.mc .bd b{font-weight:600;font-size:12.5px}.mc .bd .note{font-size:11px}
 .flathost{display:none;min-height:0;min-width:0;background:var(--fog)}.flathost iframe{display:block;width:100%;height:100%;border:0}
 .studio[data-v=picture] .flat-only,.studio:not([data-v]) .flat-only{display:none}
+.pathost{display:none;min-height:0;min-width:0;background:var(--fog)}.pathost iframe{display:block;width:100%;height:100%;min-height:calc(100dvh - 130px);border:0}
+/* the pattern brings its own controls: no tools, no layers, the whole width */
+.studio[data-v=pattern] .side,.studio[data-v=pattern] .stage,.studio[data-v=pattern] .rail,.studio[data-v=pattern] .opts,.studio[data-v=pattern] .flat-only,.studio[data-v=pattern] .pic-only{display:none!important}
+.studio[data-v=pattern] .mid{grid-column:1/-1}.studio[data-v=pattern] .pathost{display:block}
 .studio[data-v=front] .pic-only,.studio[data-v=back] .pic-only{display:none!important}
 /* the flats keep the tool rail and its options: the same tools draw on the flat (the flats bring their own panels, so the layer list goes) */
 .studio[data-v=front] .side,.studio[data-v=back] .side,.studio[data-v=front] .stage,.studio[data-v=back] .stage{display:none}
@@ -113,14 +117,14 @@ html,body{touch-action:manipulation}
 <header>
   <a class="wordmark" href="/home" aria-label="Work home"><img class="brand-logo" src="https://thefuturebasics.com/cdn/shop/files/future_basics_true_vector_fixed.svg?v=1775278873&amp;width=360" alt="Future Basics"><span class="brand-suffix">/ Design</span></a>
 </header>
-<div id="pickC" class="hidden" style="max-width:760px;margin:30px auto;padding:0 16px"><nav class="labnav" data-lab="studio"></nav><h1 style="margin-top:14px">Design</h1><p class="note" style="font-size:14px">One concept at a time, in one place: its picture as layers to paint, type on, add graphics and parts to, and change with AI, and its measured flats, front and back, with every graphic placed in inches. Which concept? Or <a href="/lab/studio?new=graphic">build a graphic for the library</a>.</p><input class="t" id="pickQ" type="search" placeholder="Search concepts" aria-label="Search concepts" style="margin:10px 0;width:100%;max-width:380px"><div id="pickList" style="display:grid;gap:6px"><span class="note">Loading concepts…</span></div></div>
-<div id="needSignin" class="hidden"><h1 style="margin-top:0">Sign in first</h1><p class="note" style="font-size:14px">Future Basics signs in at the work console. A client whose room has the Design Lab signs in at their hub, then comes back here.</p><a class="btn go" href="/admin" style="margin-top:12px">Open the work console</a> <a class="btn" href="/" style="margin-top:12px">Client? Open your hub</a></div>
+<div id="pickC" class="hidden" style="max-width:760px;margin:30px auto;padding:0 16px"><nav class="labnav" data-lab="studio"></nav><h1 style="margin-top:14px">Design</h1><p class="note" style="font-size:14px">One concept at a time, in one place: its picture as layers to paint, type on, add graphics and parts to, and change with AI, and its measured flats, front and back, with every graphic placed in inches. Which concept? Or <a href="/lab/studio?new=graphic">build a graphic for the library</a>.</p><form id="scratchF" class="scratch" style="display:grid;gap:8px;margin:12px 0 4px;padding:14px;border:1px solid var(--line);border-radius:14px;background:#fff"><b>Start from scratch</b><span class="note">A blank page to draw on with the Pencil, with the product's outline as a guide, and its flats and pattern pieces from the start.</span><div style="display:flex;gap:8px;flex-wrap:wrap"><input class="t" id="scName" placeholder="Name (optional)" aria-label="Name" style="flex:1;min-width:160px"><select class="t" id="scCat" aria-label="What it is"><option value="tops">Tops and jersey</option><option value="outerwear">Outerwear</option><option value="bottoms">Bottoms</option><option value="dresses">Dresses and sets</option><option value="headwear">Headwear</option><option value="bags">Bags</option><option value="plush">Plush and soft toys</option><option value="footwear">Footwear</option><option value="toys">Toys and objects</option><option value="electronics">Electronics</option></select><select class="t" id="scStyle" aria-label="Style"></select><button class="btn go" type="submit" id="scGo">Start drawing</button></div><span class="note" id="scMsg" role="status"></span></form><input class="t" id="pickQ" type="search" placeholder="Search concepts" aria-label="Search concepts" style="margin:10px 0;width:100%;max-width:380px"><div id="pickList" style="display:grid;gap:6px"><span class="note">Loading concepts…</span></div></div>
+<div id="needSignin" class="hidden"><h1 style="margin-top:0">Sign in to the Design Lab</h1><p class="note" style="font-size:14px">New to the Design Lab? Open a room of your own (free, one minute), then open the Lab on it: the studio, the flats, the sketch pack and the libraries, with tech packs and the factory files that come out of them. Already have a room? Sign in at your hub. Future Basics staff sign in at the work console.</p><div style="display:flex;margin-top:12px;gap:8px;flex-wrap:wrap"><a class="btn go" data-hub="/join?for=lab" href="/join?for=lab">Open the Design Lab</a> <a class="btn" data-hub="/hub#lab" href="/hub#lab">Sign in at your hub</a> <a class="btn" href="/admin">Work console</a></div><script>(()=>{if(!/^work\./.test(location.host))return;for(const a of document.querySelectorAll("[data-hub]"))a.href="https://"+location.host.replace(/^work\./,"hub.")+a.dataset.hub})()</script></div>
 
 <div class="studio hidden" id="app">
   <div class="bar">
     <button class="btn q sm" type="button" data-lab-menu data-lab="studio">Lab ▾</button><a class="btn q sm" id="back" href="/lab#board">← Concepts</a>
     <div class="ttl"><b id="cName">Loading…</b><span id="cSub"></span></div>
-    <div class="seg" id="viewSeg" role="group" aria-label="What to show"><button type="button" data-v="picture" aria-pressed="true" title="The picture, as layers">Picture</button><button type="button" data-v="front" aria-pressed="false" title="The measured flat, front">Flat front</button><button type="button" data-v="back" aria-pressed="false" title="The measured flat, back">Flat back</button></div>
+    <div class="seg" id="viewSeg" role="group" aria-label="What to show"><button type="button" data-v="picture" aria-pressed="true" title="The picture, as layers">Picture</button><button type="button" data-v="front" aria-pressed="false" title="The measured flat, front">Flat front</button><button type="button" data-v="back" aria-pressed="false" title="The measured flat, back">Flat back</button><button type="button" data-v="pattern" aria-pressed="false" title="The pattern pieces: the product exploded into what it is cut from">Pattern</button></div>
     <div class="seg" id="levelSeg" role="group" aria-label="How much to show"><button type="button" data-level="simple" aria-pressed="false" title="The essentials: the picture, graphics and their place, the flats and the sheets">Simple</button><button type="button" data-level="pro" aria-pressed="false" title="Every tool: distress, warp, the ruler, separations, Illustrator files, points of measure, grading, stitch lines">Pro</button></div>
     <div class="menu" id="readyWrap"><button class="btn sm q" id="readyBtn" type="button" aria-haspopup="true" aria-expanded="false" title="What it still needs before the tech pack">Checklist</button>
       <div class="pop hidden" id="readyPop" role="dialog" aria-label="Before the tech pack"><div id="readyList"></div></div></div>
@@ -175,6 +179,7 @@ html,body{touch-action:manipulation}
       <div class="zoom"><button type="button" id="zOut" aria-label="Zoom out">−</button><span id="zLabel">100%</span><button type="button" id="zIn" aria-label="Zoom in">+</button><button type="button" id="zFit" aria-label="Fit to the screen" title="Fit (0)" style="width:auto;padding:0 6px;font-weight:600">Fit</button></div>
     </div>
     <div class="flathost" id="flatHost"><iframe id="flatFrame" title="The flats: front and back, measured"></iframe></div>
+    <div class="pathost" id="patHost"><iframe id="patFrame" title="The pattern pieces"></iframe></div>
   </div>
   <aside class="side">
     <div class="tabs" role="tablist"><button type="button" role="tab" data-tab="layers" aria-selected="true">Layers</button><button type="button" role="tab" data-tab="add" aria-selected="false">Add</button><button type="button" role="tab" data-tab="ai" aria-selected="false">AI</button></div>
@@ -916,6 +921,25 @@ async function loadLayer(o){
     l._srcRid=l.raster._rid}
   return l;
 }
+// a concept started from scratch: white paper, and under it the product's own outline as a locked guide at real size (the flat's pieces for a
+// garment, the plush's shape), so what is drawn on it is in inches from the start; anything else gets a dot grid
+let GUIDE_PPI=0;
+async function scratchPage(){
+  W=1400;H=1400;const paper=canvas(W,H),px=paper.getContext('2d');px.fillStyle='#ffffff';px.fillRect(0,0,W,H);LAYERS=[{...fresh('base',{name:'Paper',raster:stamp(paper),x:W/2,y:H/2,dirty:true})}];
+  const g=canvas(W,H),gx=g.getContext('2d');let named='Guide: dot grid';
+  try{const P=await api(`/v1/lab/concepts/${CID}/pattern`),M=await import('/lab/lab-pattern.js'),pat=P.kind==='plush'?M.plushPattern(P.spec):P.kind==='garment'&&P.flat?M.garmentPattern(P.flat):null;
+    if(pat){const A=M.assembled(pat),front=A.pieces.filter(x=>x.piece.place.view!=='back'),b=M.boundsOf(front.flatMap(x=>x.pts)),k=Math.min(W*.8/(b.x1-b.x0),H*.82/(b.y1-b.y0)),ox=W/2-(b.x0+b.x1)/2*k,oy=H/2-(b.y0+b.y1)/2*k;
+      gx.strokeStyle='#9c9c96';gx.lineWidth=2.2;gx.setLineDash([10,7]);for(const {pts} of front){gx.beginPath();pts.forEach(([x,y],i)=>i?gx.lineTo(ox+x*k,oy+y*k):gx.moveTo(ox+x*k,oy+y*k));gx.closePath();gx.stroke()}
+      GUIDE_PPI=k;named=`Guide: ${pat.label.toLowerCase()} outline (hide it when you are done)`}}catch{}
+  if(!GUIDE_PPI){gx.fillStyle='#c9c9c4';for(let y=50;y<H;y+=50)for(let x=50;x<W;x+=50){gx.beginPath();gx.arc(x,y,2,0,7);gx.fill()}}
+  LAYERS.push({...fresh('paint',{name:named,raster:stamp(g),x:W/2,y:H/2,dirty:true}),locked:true,opacity:.9});
+  toast('A blank page: draw with the Pencil or the brush. The guide is locked; hide it in Layers when you are done.')}
+// the picker's "Start from scratch": what it is, and for clothes which style; a plush picks its shape on the Pattern view
+const SC_STYLES={tops:[['tee','T-shirt'],['longsleeve','Long-sleeve tee'],['crewneck','Crewneck sweatshirt'],['hoodie','Pullover hoodie'],['ziphoodie','Zip hoodie'],['polo','Polo'],['shirt','Button-up shirt'],['shirtss','Short-sleeve shirt'],['tank','Tank']],outerwear:[['jacket','Zip jacket'],['coat','Coat'],['vest','Vest']],bottoms:[['pants','Pants'],['shorts','Shorts'],['skirt','Skirt'],['leggings','Leggings']],dresses:[['dress','Dress']],headwear:[['cap','Six-panel cap'],['bucket','Bucket hat'],['beanie','Beanie']],bags:[['tote','Tote bag']],plush:[['bear','Bear'],['bean','Bean character'],['bunny','Bunny'],['pillow','Pillow character']]};
+function scStyles(){const c=$('#scCat').value,l=SC_STYLES[c]||[];$('#scStyle').innerHTML=l.map(([k,v])=>`<option value="${k}">${v}</option>`).join('');$('#scStyle').classList.toggle('hidden',!l.length)}
+$('#scCat')?.addEventListener('change',scStyles);scStyles();
+$('#scratchF')?.addEventListener('submit',async e=>{e.preventDefault();const b=$('#scGo'),cat=$('#scCat').value,st=$('#scStyle').value;b.disabled=true;b.textContent='Starting…';$('#scMsg').textContent='';
+  try{const r=await api('/v1/lab/concepts/from-scratch',{body:{name:$('#scName').value,category:cat,...(cat==='plush'?{shape:st}:st?{style:st}:{})}});location.href=r.studio}catch(x){$('#scMsg').textContent=x.message;b.disabled=false;b.textContent='Start drawing'}});
 async function boot(){
   if(!TOKEN()){$('#needSignin').classList.remove('hidden');return}
   if(GMODE){return bootGraphic()}
@@ -932,9 +956,10 @@ async function boot(){
     if(D.doc&&Array.isArray(D.doc.layers)&&D.doc.layers.length){W=D.doc.w;H=D.doc.h;LAYERS=[];for(const o of D.doc.layers){try{LAYERS.push(await loadLayer(o))}catch{toast('A layer could not be loaded and was left out.')}}SEL=D.doc.selected&&LAYERS.some(l=>l.id===D.doc.selected)?D.doc.selected:null;SAVED_AT=D.savedAt}
     else if(D.concept.hasImage){const src=await urlOfBlob(await blobOf(`/v1/lab/concepts/${CID}/image`)),img=await imgOf(src);W=img.naturalWidth;H=img.naturalHeight;const c=canvas(W,H);c.getContext('2d').drawImage(img,0,0);
       LAYERS=[{...fresh('base',{name:'Picture',raster:stamp(c),src,x:W/2,y:H/2})}];LAYERS[0]._srcRid=LAYERS[0].raster._rid}
+    else if(QS.get('scratch')==='1'||D.concept.scratch){await scratchPage()}
     else{W=1024;H=1024;const c=canvas(W,H),x=c.getContext('2d');x.fillStyle='#e9e9e6';x.fillRect(0,0,W,H);LAYERS=[{...fresh('base',{name:'Blank',raster:stamp(c),x:W/2,y:H/2,dirty:true})}]}
   }catch(x){toast(x.message)}finally{busy()}
-  docC.width=W;docC.height=H;mask=canvas(W,H);maskX=mask.getContext('2d');initPpi();
+  docC.width=W;docC.height=H;mask=canvas(W,H);maskX=mask.getContext('2d');initPpi();if(GUIDE_PPI){PPI=GUIDE_PPI;PPISET=true;PPINOTE='the guide\'s own size'}
   await loadFonts();setColor(CUR);paintSub();paintAdd();tab('layers');setTool('select');HIST=[snap()];HI=0;syncUndo();DIRTY=false;showSaved();paintLayers();requestAnimationFrame(fit);
   if(QS.get('tryon')==='1')tryOpen().catch(()=>{});
   setInterval(()=>{if(DIRTY&&!DRAG)save()},90000); // a quiet save every minute and a half while there are changes
@@ -1110,7 +1135,7 @@ pL.addEventListener('input',e=>{if(e.target.dataset.p!=='warpk')return;const l=s
 // ?embed=compact: the drawing alone, for side by side). The header, the view switch and Save are this page's. The frame loads the first
 // time a flat is shown. Saving: unsaved flats first, then the picture, whose placed graphics go onto the flats, which then reload.
 // side by side was dropped: a picture and a flat each want the whole screen
-const VIEWS=['picture','front','back'];let VMODE='picture',FLOADED=false,TPLUSED=false,FOBS=null;
+const VIEWS=['picture','front','back','pattern'];let PLOADED=false;let VMODE='picture',FLOADED=false,TPLUSED=false,FOBS=null;
 function FF(){try{return FLOADED?$('#flatFrame').contentWindow.FBFlats||null:null}catch{return null}}
 function flatSrc(){const t=QS.get('template');return `/lab/flats?concept=${CID}&embed=${VMODE==='split'?'compact':'full'}&view=${VMODE==='back'?'back':'front'}${t&&!TPLUSED?'&template='+encodeURIComponent(t):''}`}
 function loadFlats(){$('#flatFrame').src=flatSrc();FLOADED=true;TPLUSED=true}
@@ -1199,7 +1224,8 @@ function flatRemoved({id,layer}={}){const l=LAYERS.find(x=>(layer&&x.id===layer)
 window.FBDesign={saveAll,showSheet,flatRemoved,drawOpts:()=>({tool:TOOL,color:CUR,size:OPT.size,dsize:OPT.dsize,flow:OPT.flow,soft:OPT.soft,pressure:OPT.pressure}),flatsChanged(){syncUndo()},flatsSaved(){const f=FF();if(f)adoptFlats(f.placements(),{saved:true});setTimeout(loadReady,300)},flatsReady(){const f=FF();if(!f)return;f.mode(VMODE==='split'?'compact':'full');if(VMODE==='front'||VMODE==='back'){f.setView(VMODE);f.tool?.(TOOL)}f.layout?.(LAYOUT);mirrorFlats();f.level?.(LEVEL);$('#packBtn').classList.toggle('hidden',!f.canPack());FLATS={saved:f.saved(),placements:f.placements()};paintLayers();['#specBtn','#decoBtn'].forEach(s=>$(s).disabled=Boolean(f.unsupported()))}};
 async function setVMode(v,{push=true}={}){
   if(!VIEWS.includes(v)||GMODE||!CID)v='picture';const was=VMODE;
-  if(v!=='picture'){
+  if(v==='pattern'){const f=FF();if(f?.dirty?.())toast('The flats have changes that are not saved: save them to see them in the pattern.');$('#patFrame').src=`/lab/pattern?concept=${CID}&embed=1`;PLOADED=true}
+  else if(v!=='picture'){
     // the graphics placed on the picture go onto the flats before they are shown
     if(!GMODE&&DIRTY&&(was==='picture'||!FLOADED)){busy('Putting the graphics on the flats…');try{const sent=await syncFlats({before:flatsFirst});if(sent&&FLOADED)reloadFlats()}catch(x){toast('The flats did not take the graphics: '+x.message)}finally{busy()}}
     if(!FLOADED)loadFlats()}
