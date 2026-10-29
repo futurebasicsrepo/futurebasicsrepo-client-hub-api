@@ -3,11 +3,12 @@
 //   POST /v1/lab/materials {kind, name, spec, price, unit, supplier, code, moq, leadDays, colours, notes, swatch?}    PUT|DELETE /v1/lab/materials/:id
 //   POST /v1/lab/materials/:id/swatch {image}        GET /v1/lab/materials/:id/swatch[?thumb=1]      GET /v1/lab/materials/:id/tag.svg
 //   GET  /v1/lab/concepts/:id/materials              what the concept is made of, what it costs, its colourways
-//   POST /v1/lab/concepts/:id/materials {material, role?, qty?, colour?, note?}     PUT|DELETE /v1/lab/concepts/:id/materials/:mid
+//   POST /v1/lab/concepts/:id/materials {material, role?, part?, qty?, colour?, note?}     PUT|DELETE /v1/lab/concepts/:id/materials/:mid[?part=]
+//                                                    (part: one of the product's parts, PARTS in src/lab-materials-goods.js; a part takes one material)
 //   PUT  /v1/lab/concepts/:id/costing {making?, freightPct?}      PUT /v1/lab/concepts/:id/colourways {colourways:[{name, hex, thread?}]}
 import sharp from 'sharp';
 import './pantone-c.js';
-import { BUILTIN_MATERIALS, MATERIAL_KINDS, FABRIC_CONSTRUCTIONS, FABRIC_FINISHES, TRIM_CATEGORIES, UNITS, ROLES, TAG_OPTIONS, USAGE_M, MAKING_CENTS, FREIGHT_DUTY_PCT, cleanMaterial, cleanPick, costOf, cleanColourways } from './lab-materials.js';
+import { BUILTIN_MATERIALS, MATERIAL_KINDS, FABRIC_CONSTRUCTIONS, FABRIC_FINISHES, TRIM_CATEGORIES, UNITS, ROLES, TAG_OPTIONS, USAGE_M, MAKING_CENTS, FREIGHT_DUTY_PCT, PARTS, GOODS_OPTIONS, cleanMaterial, cleanPick, costOf, cleanColourways } from './lab-materials.js';
 import { tagSvg } from './lab-tags.js';
 import { MATERIAL_PHOTOS, photoFor, photoById, creditOf } from './lab-photos.js';
 
@@ -39,7 +40,7 @@ export function registerLabMaterialsRoutes(app, d) {
   })().catch(e => { seeding = null; log.warn?.({ err: e.message }, 'the starting materials could not be put in'); }));
   seeded();
   const one = async (id, req = null) => (UUID.test(String(id || '')) ? (await pool.query(`select ${COLS} from lab_materials where id=$1 and not archived and ($2::uuid is null or client_id=$2 or (client_id is null and builtin))`, [id, req ? own(req) : null])).rows[0] || null : null);
-  const options = () => ({ kinds: MATERIAL_KINDS, fabric: { constructions: FABRIC_CONSTRUCTIONS, finishes: FABRIC_FINISHES }, trim: { categories: TRIM_CATEGORIES }, tag: TAG_OPTIONS, photos: MATERIAL_PHOTOS.map(p => ({ id: p.id, label: p.label, kind: p.kind, credit: creditOf(p) })), units: UNITS, roles: ROLES, usageM: USAGE_M, makingCents: MAKING_CENTS, freightPct: FREIGHT_DUTY_PCT });
+  const options = () => ({ kinds: MATERIAL_KINDS, fabric: { constructions: FABRIC_CONSTRUCTIONS, finishes: FABRIC_FINISHES }, trim: { categories: TRIM_CATEGORIES }, tag: TAG_OPTIONS, ...GOODS_OPTIONS, parts: PARTS, photos: MATERIAL_PHOTOS.map(p => ({ id: p.id, label: p.label, kind: p.kind, credit: creditOf(p) })), units: UNITS, roles: ROLES, usageM: USAGE_M, makingCents: MAKING_CENTS, freightPct: FREIGHT_DUTY_PCT });
   const withPantone = colours => colours.map(c => ({ ...c, pantone: c.pantone || (c.hex && P ? P.code(c.hex, { hint: c.name }) : '') }));
 
   app.get('/v1/lab/materials', { preHandler: pre }, async req => {
@@ -113,20 +114,22 @@ export function registerLabMaterialsRoutes(app, d) {
     const picks = picksOf(c); if (picks.length >= 40) return bad(reply, 'This concept already lists 40 materials', 409);
     const pick = cleanPick(req.body || {}, shape(m), c.category);
     if (pick.role === 'main' && m.kind === 'fabric') picks.forEach(p => { if (p.role === 'main' && p.kind === 'fabric') p.role = 'contrast'; }); // one main fabric; the one before becomes the contrast
-    const spec = { ...(c.spec || {}), materials: [...picks.filter(p => !(p.id === m.id && p.role === pick.role)), pick] };
+    // a part takes one material: choosing another for it replaces the one before
+    const spec = { ...(c.spec || {}), materials: [...picks.filter(p => pick.part ? p.part !== pick.part : !(p.id === m.id && p.role === pick.role && !p.part)), pick] };
     if (m.kind === 'fabric' && pick.role === 'main') spec.fabric = clip(`${m.name}${pick.colour?.name ? `, ${pick.colour.name}` : ''}`, 160); // the words on the concept follow the fabric
     return reply.code(201).send(await store(c, spec));
   });
   app.put('/v1/lab/concepts/:id/materials/:mid', { preHandler: pre }, async (req, reply) => {
     if (!need(req, reply) || !need(req, reply, 'mid')) return; const c = await concept(req.params.id); if (!c) return bad(reply, 'Not found', 404);
-    const picks = picksOf(c), i = picks.findIndex(p => p.id === req.params.mid); if (i < 0) return bad(reply, 'That material is not on this concept', 404);
+    const part = clip(req.query?.part, 40), picks = picksOf(c), i = picks.findIndex(p => p.id === req.params.mid && (!part || p.part === part)); if (i < 0) return bad(reply, 'That material is not on this concept', 404);
     const m = await one(req.params.mid), base = m ? shape(m) : { id: picks[i].id, kind: picks[i].kind, name: picks[i].name, unit: picks[i].unit, priceCents: picks[i].unitCents, colours: [], spec: picks[i].spec, code: picks[i].code, supplier: picks[i].supplier };
-    picks[i] = cleanPick({ role: picks[i].role, qty: picks[i].qty, colour: picks[i].colour?.hex, note: picks[i].note, ...(req.body || {}) }, base, c.category);
-    return store(c, { ...(c.spec || {}), materials: picks });
+    picks[i] = cleanPick({ role: picks[i].role, part: picks[i].part, qty: picks[i].qty, colour: picks[i].colour?.hex, note: picks[i].note, ...(req.body || {}) }, base, c.category);
+    const moved = picks[i]; // moved onto a part that had another material: that one comes off
+    return store(c, { ...(c.spec || {}), materials: picks.filter((p, j) => j === i || !moved.part || p.part !== moved.part) });
   });
   app.delete('/v1/lab/concepts/:id/materials/:mid', { preHandler: pre }, async (req, reply) => {
     if (!need(req, reply) || !need(req, reply, 'mid')) return; const c = await concept(req.params.id); if (!c) return bad(reply, 'Not found', 404);
-    const picks = picksOf(c).filter(p => p.id !== req.params.mid); if (picks.length === picksOf(c).length) return bad(reply, 'That material is not on this concept', 404);
+    const part = clip(req.query?.part, 40), picks = picksOf(c).filter(p => !(p.id === req.params.mid && (!part || p.part === part))); if (picks.length === picksOf(c).length) return bad(reply, 'That material is not on this concept', 404);
     return store(c, { ...(c.spec || {}), materials: picks });
   });
   app.put('/v1/lab/concepts/:id/costing', { preHandler: pre }, async (req, reply) => {

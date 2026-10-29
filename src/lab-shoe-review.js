@@ -1,11 +1,13 @@
 // A second pair of eyes on a drafted shoe, the way the design and developer assistants go over a tech pack: the shoe's four views (the tech
 // flats, src/lab-footwear-views.js) are checked against the concept's picture until they read as the shoe in it, or a person is needed.
 //   fixedChecks(pat, sil)            → what is measured without AI: the outline in the picture against the drawing's, and the pattern's own checks
-//   reviewShoe({spec, photo, ask})   → the exchange: the outline's measurements go in first; then a footwear developer (a vision model, briefed by
-//                                      REVIEW_SYSTEM) scores the views against the picture on six points, out of 100, and asks for changes to the
-//                                      shoe's choices (never to the drawing). They are made and the views drawn again, round after round, until
-//                                      the score clears the bar, there is nothing left to change, or two rounds in a row gain nothing. The best
-//                                      shoe it saw is the result; nothing is saved here.
+//   reviewShoe({spec, photo, judges}) → the exchange: the outline's measurements go in first; then footwear developers (vision models, Claude
+//                                      and an OpenAI model when both are connected, each on its own, briefed by REVIEW_SYSTEM) score the views
+//                                      against the picture on six points, out of 100; the stricter score stands. They ask for changes to the
+//                                      shoe's choices (never to the drawing): what both ask for, or one asks for and the other does not dispute,
+//                                      is made and the views drawn again, round after round, until the score clears the bar, there is nothing
+//                                      left to change, or two rounds in a row gain nothing. Where the judges disagree it says so, for a person.
+//                                      The best shoe they saw is the result; nothing is saved here.
 // Without a reviewer (Claude not connected) only the fixed checks and the outline run, and the result says so.
 import sharp from 'sharp';
 import { FW_STYLES, TOES, UPPERS, SOLES, cleanFootwear, footwearPattern } from './lab-footwear.js';
@@ -90,7 +92,26 @@ export async function sheetJpeg(spec, name = '') {
 }
 const imageBlock = (buf, type = 'image/jpeg') => ({ type: 'image', source: { type: 'base64', media_type: type, data: buf.toString('base64') } });
 
-export async function reviewShoe({ spec, photo, name = '', ask = null, bar = BAR, rounds = 4, onRound = () => {} } = {}) {
+// two judges: the same changes asked for by both are made (numbers that agree are met in the middle); one asked for by only one is made unless
+// the other asks for something else for the same choice, which is a disagreement for a person and left as it is
+const agree = (f, a, b) => { const k = FIELDS[f]?.kind; if (k === 'num') { const x = Number(String(a).replace(/[^0-9.\-]/g, '')), y = Number(String(b).replace(/[^0-9.\-]/g, '')); return Number.isFinite(x) && Number.isFinite(y) && Math.abs(x - y) <= Math.max(.25, Math.max(Math.abs(x), Math.abs(y)) * .15); } return String(a).trim().toLowerCase() === String(b).trim().toLowerCase(); };
+export function mergeFixes(list) {
+  const by = new Map(), out = [], conflicts = [];
+  for (const { name, fixes } of list) for (const f of (fixes || []).slice(0, 6)) if (FIELDS[f?.field] && !by.get(f.field)?.some(x => x.name === name)) by.set(f.field, [...(by.get(f.field) || []), { name, ...f }]);
+  for (const [field, asks] of by) {
+    if (asks.length === 1) { out.push({ ...asks[0], from: [asks[0].name] }); continue; }
+    if (asks.every(a => agree(field, a.value, asks[0].value))) { const k = FIELDS[field].kind, v = k === 'num' ? String(asks.reduce((s, a) => s + Number(String(a.value).replace(/[^0-9.\-]/g, '')), 0) / asks.length) : asks[0].value; out.push({ field, value: v, why: asks.map(a => a.why).filter(Boolean).join(' / '), from: asks.map(a => a.name) }); }
+    else conflicts.push({ field, asks: asks.map(a => ({ name: a.name, value: String(a.value), why: String(a.why || '').slice(0, 200) })) });
+  }
+  return { fixes: out, conflicts };
+}
+const judged = (name, res, checks) => ({ name, score: scoreOf(res?.criteria, checks), view: res?.view || 'other', summary: String(res?.summary || '').slice(0, 400),
+  criteria: CRITERIA.map(c => { const x = (res?.criteria || []).find(y => y.key === c.key) || {}; return { key: c.key, label: c.label, score: Math.max(0, Math.min(100, Number(x.score) || 0)), note: String(x.note || '').slice(0, 300) }; }),
+  beyondDrawing: (res?.beyondDrawing || []).map(v => String(v).slice(0, 200)).slice(0, 8), fixes: res?.fixes || [] });
+
+// judges: [{name, ask}] (ask as callJsonSchema: system, content blocks, schema). Several judges see the same pictures; the strictest score stands.
+export async function reviewShoe({ spec, photo, name = '', ask = null, judges = null, bar = BAR, rounds = 4, onRound = () => {} } = {}) {
+  const J = judges?.length ? judges : ask ? [{ name: 'Claude', ask }] : [];
   let cur = cleanFootwear(spec), sil = null;
   const changes = [], log = [];
   try { sil = await silhouette(photo); } catch { sil = null; }
@@ -98,29 +119,47 @@ export async function reviewShoe({ spec, photo, name = '', ask = null, bar = BAR
   if (sil && sideView(sil)) { const p = proposal(cur, sil, null); for (const c of p.changes) changes.push({ ...c, round: 0, by: 'outline', why: 'Measured from the picture\'s outline' }); cur = cleanFootwear(p.spec); }
   let checks = fixedChecks(footwearPattern(cur), sil);
   onRound({ n: 0, by: 'outline', checks, changes: changes.slice() });
-  if (!ask) return { status: 'checks-only', spec: cur, changes, checks, rounds: log, bar, score: null, beyondDrawing: [], note: 'The developer review needs Claude: only the outline and the fixed checks ran.' };
+  if (!J.length) return { status: 'checks-only', spec: cur, changes, checks, rounds: log, bar, score: null, beyondDrawing: [], judges: [], note: 'The developer review needs Claude: only the outline and the fixed checks ran.' };
   const pic = await sharp(photo).flatten({ background: '#ffffff' }).resize({ width: 1000, height: 1000, fit: 'inside' }).jpeg({ quality: 82 }).toBuffer();
   let best = null, flat = 0, status = 'needs-person';
   for (let n = 1; n <= rounds; n++) {
     const sheet = await sheetJpeg(cur, name), before = changes.filter(c => c.by !== 'outline').map(c => `round ${c.round}: ${c.key} ${JSON.stringify(c.from)} → ${JSON.stringify(c.to)} (${c.why})`);
-    const res = await ask(REVIEW_SYSTEM, [
+    const content = [
       { type: 'text', text: `The design picture of "${String(name).slice(0, 80)}":` }, imageBlock(pic),
       { type: 'text', text: 'The shoe as drafted, its tech flats:' }, imageBlock(sheet),
-      { type: 'text', text: `The shoe's choices now: ${JSON.stringify(Object.fromEntries(Object.entries(cur).filter(([k]) => !['edits', 'seams', 'picture', 'last3d'].includes(k))))}.\nWhat each change means: ${Object.entries(FIELDS).map(([k, f]) => `${k}${f.kind === 'enum' ? ` (${f.of.join(', ')})` : f.hint ? ` (${f.hint})` : f.kind === 'bool' ? ' (true or false)' : ' (#rrggbb)'}`).join('; ')}.\nMeasured without AI: ${checks.map(c => `${c.label}: ${c.detail}`).join('; ')}.\n${before.length ? `Already changed in earlier rounds: ${before.join('; ')}.` : 'Nothing has been changed by a reviewer yet.'}` }
-    ], REVIEW_SCHEMA);
-    const score = scoreOf(res?.criteria, checks), made = [];
-    const round = { n, score, view: res?.view || 'other', criteria: CRITERIA.map(c => { const x = (res?.criteria || []).find(y => y.key === c.key) || {}; return { key: c.key, label: c.label, score: Math.max(0, Math.min(100, Number(x.score) || 0)), note: String(x.note || '').slice(0, 300) }; }), summary: String(res?.summary || '').slice(0, 400), beyondDrawing: (res?.beyondDrawing || []).map(s => String(s).slice(0, 200)).slice(0, 8), changes: made };
+      { type: 'text', text: `The shoe's choices now: ${JSON.stringify(Object.fromEntries(Object.entries(cur).filter(([k]) => !['edits', 'seams', 'picture', 'last3d', 'sketches'].includes(k))))}.\nWhat each change means: ${Object.entries(FIELDS).map(([k, f]) => `${k}${f.kind === 'enum' ? ` (${f.of.join(', ')})` : f.hint ? ` (${f.hint})` : f.kind === 'bool' ? ' (true or false)' : ' (#rrggbb)'}`).join('; ')}.\nMeasured without AI: ${checks.map(c => `${c.label}: ${c.detail}`).join('; ')}.\n${before.length ? `Already changed in earlier rounds: ${before.join('; ')}.` : 'Nothing has been changed by a reviewer yet.'}` }
+    ];
+    // each judge on its own, at the same time; one that cannot answer is left out of the round
+    const got = await Promise.allSettled(J.map(j => j.ask(REVIEW_SYSTEM, content, REVIEW_SCHEMA)));
+    const ran = got.map((g, i) => g.status === 'fulfilled' && g.value ? judged(J[i].name, g.value, checks) : null).filter(Boolean), missed = J.filter((_, i) => got[i].status !== 'fulfilled' || !got[i].value).map(j => j.name);
+    if (!ran.length) throw new Error('No reviewer could answer');
+    const score = Math.min(...ran.map(r => r.score)), made = [], { fixes, conflicts } = mergeFixes(ran);
+    const round = { n, score, judges: ran.map(({ fixes: _, ...r }) => r), missed, disagree: ran.length > 1 && Math.max(...ran.map(r => r.score)) - score >= 15, conflicts,
+      criteria: CRITERIA.map(c => { const xs = ran.map(r => r.criteria.find(y => y.key === c.key)); const lo = xs.reduce((a, b) => (b.score < a.score ? b : a)); return { key: c.key, label: c.label, score: lo.score, note: xs.map((x, i) => x.note && ran.length > 1 ? `${ran[i].name}: ${x.note}` : x.note).filter(Boolean).join(' · ').slice(0, 500) }; }),
+      summary: ran.map(r => (ran.length > 1 ? `${r.name}: ${r.summary}` : r.summary)).filter(Boolean).join(' ').slice(0, 700), beyondDrawing: [...new Set(ran.flatMap(r => r.beyondDrawing))].slice(0, 10), view: ran[0].view, changes: made };
     if (!best || score > best.score) { best = { score, spec: cur, n }; flat = 0; } else flat++;
     log.push(round);
     if (score >= bar) { status = 'passed'; onRound(round); break; }
     if (flat >= 2 || n === rounds) { onRound(round); break; } // no gain twice running, or out of rounds: the last asks are not tried unseen
     let next = cur;
-    for (const f of (res?.fixes || []).slice(0, 6)) { const a = applyFix(next, f); if (a) { next = a.spec; made.push({ ...a.change, round: n, by: 'developer' }); } }
+    for (const f of fixes) { const a = applyFix(next, f); if (a) { next = a.spec; made.push({ ...a.change, round: n, by: 'developer', judges: f.from }); } }
     onRound(round);
     if (!made.length) break;
     changes.push(...made); cur = next; checks = fixedChecks(footwearPattern(cur), sil);
   }
-  // the shoe the developer scored highest, with the changes that led to it
-  const kept = changes.filter(c => c.by === 'outline' || c.round < best.n);
-  return { status, spec: best.spec, score: best.score, bar, changes: kept, checks: fixedChecks(footwearPattern(best.spec), sil), rounds: log, beyondDrawing: [...new Set(log.flatMap(r => r.beyondDrawing))], note: status === 'passed' ? `The drawing reads as the shoe in the picture (${best.score}/100).` : `Below the bar of ${bar} (${best.score}/100): needs a person.` };
+  // the shoe the judges scored highest (by the strictest of them), with the changes that led to it
+  const kept = changes.filter(c => c.by === 'outline' || c.round < best.n), names = J.map(j => j.name);
+  return { status, spec: best.spec, score: best.score, bar, changes: kept, checks: fixedChecks(footwearPattern(best.spec), sil), rounds: log, judges: names, beyondDrawing: [...new Set(log.flatMap(r => r.beyondDrawing))],
+    note: status === 'passed' ? `The drawing reads as the shoe in the picture (${best.score}/100${names.length > 1 ? `, the stricter of ${names.join(' and ')}` : ''}).` : `Below the bar of ${bar} (${best.score}/100${names.length > 1 ? `, the stricter of ${names.join(' and ')}` : ''}): needs a person.` };
+}
+
+// the second judge: an OpenAI vision model given the same pictures, words and schema (OPENAI_CHECK_MODEL, as the colourway check)
+export function openaiAsk(env = process.env, fetchImpl = globalThis.fetch) {
+  return async (system, content, schema) => {
+    const parts = content.map(b => b.type === 'image' ? { type: 'image_url', image_url: { url: `data:${b.source.media_type};base64,${b.source.data}` } } : { type: 'text', text: b.text });
+    const res = await fetchImpl(`${env.OPENAI_API_ORIGIN || 'https://api.openai.com'}/v1/chat/completions`, { method: 'POST', headers: { Authorization: `Bearer ${env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(120000),
+      body: JSON.stringify({ model: env.OPENAI_CHECK_MODEL || 'gpt-5', response_format: { type: 'json_schema', json_schema: { name: 'shoe_review', strict: true, schema } }, messages: [{ role: 'system', content: system }, { role: 'user', content: parts }] }) });
+    if (!res.ok) throw new Error(`OpenAI review refused (${res.status})`);
+    return JSON.parse((await res.json())?.choices?.[0]?.message?.content || 'null');
+  };
 }

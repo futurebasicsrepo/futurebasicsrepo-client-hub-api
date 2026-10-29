@@ -1169,7 +1169,7 @@ await journey('J222', 'Materials, trims and tags: the library (fabrics with weig
   const A = (path, o = {}) => call(path, { token: kyleT, ...o });
   try {
     const lib = await K('/materials'); const by = key => lib.json.materials.find(m => m.key === key);
-    ok(lib.status === 200 && lib.json.materials.length >= 30 && lib.json.options.kinds.length === 3 && lib.json.options.tag.shapes.includes('shield'), '1. the library opens with the starting fabrics, trims and tags', lib.json.materials?.length);
+    ok(lib.status === 200 && lib.json.materials.length >= 30 && lib.json.options.kinds.map(k => k.id).join() === 'fabric,trim,tag,footwear,plush,plastic' && lib.json.options.tag.shapes.includes('shield'), '1. the library opens with the starting fabrics, trims and tags (and footwear, plush and plastics)', lib.json.materials?.length);
     const pants = (await K('/materials?kind=tag&for=pants')).json.materials; ok(pants.length >= 3 && pants.every(t => t.spec.for.includes('pants')) && pants.some(t => t.spec.tagKind === 'waistband') && pants.some(t => t.spec.tagKind === 'hang' && t.spec.shape === 'square'), '   tags for pants: a waistband label, a back pocket patch, a square kraft hang tag', pants.map(t => t.name));
     const svg = await fetch(`${BASE}/v1/lab/materials/${by('hang-rect').id}/tag.svg`, { headers: { Authorization: 'Bearer ' + kyleT } }); const svgText = await svg.text();
     ok(svg.status === 200 && /image\/svg/.test(svg.headers.get('content-type')) && /50 × 90 mm · rectangle/.test(svgText) && /<circle cx=/.test(svgText), '   a hang tag is drawn to size with its eyelet and string');
@@ -1212,7 +1212,7 @@ await journey('J222', 'Materials, trims and tags: the library (fabrics with weig
         const outside = await page.evaluate(() => [...document.querySelectorAll('[data-tagsvg]')].filter(sw => { const a = sw.getBoundingClientRect(), v = sw.querySelector('svg')?.getBoundingClientRect(); return !v || v.width < 20 || v.left < a.left - 1 || v.right > a.right + 1 || v.top < a.top - 1 || v.bottom > a.bottom + 1; }).length);
         ok(outside === 0, '   every tag, string and all, sits whole inside its tile', outside);
         for (const [tab, what] of [['fabric', 'fabric'], ['trim', 'trim']]) {
-          await page.click(`#kinds [data-kind="${tab}"]`); await page.waitForFunction(() => document.querySelectorAll('#grid .card').length > 0 && [...document.querySelectorAll('#grid [data-draw]')].every(el => el.dataset.swatch || el.querySelector('svg')), null, { timeout: 15000 });
+          await page.click(`#kinds [data-kind="${tab}"]`); await page.waitForFunction(() => document.querySelectorAll('#grid [data-draw]').length > 0 && !document.querySelector('#grid [data-tagsvg]') && [...document.querySelectorAll('#grid [data-draw]')].every(el => el.dataset.swatch || el.querySelector('svg')), null, { timeout: 15000 }); // the tab's own cards, not the tags still showing
           const n = await page.evaluate(() => [...document.querySelectorAll('#grid [data-draw]')].filter(el => el.querySelector('svg[role="img"]')).length), all = await page.locator('#grid .card').count();
           ok(n === all && n >= 10, `   every ${what} without a photo is drawn: its weave or its trim, in its colour`, `${n}/${all}`);
         }
@@ -3013,7 +3013,7 @@ await journey('J249', 'A footwear designer works on the last: the upper is cut f
   } finally { await b.close(); await K(`/concepts/${cid}`, { method: 'DELETE' }); }
 });
 
-await journey('J250', 'A footwear developer checks the shoe against its picture: the outline is measured first, then a second AI scores the four views against the picture out of 100 and asks for changes (seven eyelets, a mudguard); they are made and drawn again until it clears the bar of 90; the page follows the rounds, says what a person must look at, and keeps the changes when they are used', async () => {
+await journey('J250', 'A footwear developer checks the shoe against its picture: the outline is measured first, then two judges (Claude and ChatGPT) each score the four views against the picture out of 100, the stricter score standing, and ask for changes (seven eyelets, a mudguard; a toe cap they dispute is left for a person); what they agree on is made and drawn again until it clears the bar of 90; the page follows the rounds, says what a person must look at, and keeps the changes when they are used', async () => {
   const { footwearPattern } = await import('../../src/lab-footwear.js'), { assembled, boundsOf } = await import('../../src/lab-pattern.js');
   // the picture: a runner from the side, on a pale ground
   const pat = footwearPattern({ style: 'runner', eyelets: 7, mudguard: true }), side = assembled(pat).pieces.filter(x => x.piece.place.view !== 'back'), b = boundsOf(side.flatMap(x => x.pts)), k = 800 / (b.w + 2);
@@ -3024,12 +3024,14 @@ await journey('J250', 'A footwear developer checks the shoe against its picture:
     ok((await K(`/concepts/${cid}/pattern/review`, { method: 'POST', body: {} })).status === 422, '0. with no picture there is nothing to check against');
     await call(`/v1/lab/concepts/${cid}/studio/apply`, { token: kyleT, body: { image: 'data:image/png;base64,' + png.toString('base64') } });
     const go = await K(`/concepts/${cid}/pattern/review`, { method: 'POST', body: {} });
-    ok(go.status === 202 && go.json.reviewer === true && go.json.bar === 90, '1. the review starts in the background, with the developer (AI) and the bar of 90', go.json);
+    ok(go.status === 202 && go.json.reviewer === true && go.json.bar === 90 && go.json.judges.join() === 'Claude,ChatGPT', '1. the review starts in the background, with two judges (Claude and ChatGPT) and the bar of 90', go.json);
     ok((await K(`/concepts/${cid}/pattern/review`, { method: 'POST', body: {} })).status === 409, '   one review of a shoe at a time');
     let j = null; for (let i = 0; i < 40; i++) { await sleep(500); j = (await K(`/concepts/${cid}/pattern/review/${go.json.id}`)).json; if (j.status !== 'running') break; }
     ok(j.status === 'done' && j.result === 'passed' && j.rounds.length === 2 && j.rounds[0].score < 90 && j.rounds[1].score >= 90, '2. round 1 is below the bar, round 2 clears it', j.rounds?.map(r => r.score));
     ok(j.spec.eyelets === 7 && j.spec.mudguard === true && j.changes.some(c => c.key === 'eyelets' && /seven/.test(c.why)), '   the developer\'s changes are made, each with why', j.changes);
     ok(j.outline && j.outline.checks.some(c => c.key === 'aspect'), '   the outline is measured before the developer looks');
+    ok(j.rounds[0].judges.length === 2 && j.rounds[0].score === Math.min(...j.rounds[0].judges.map(x => x.score)) && j.rounds[0].disagree === true, '   each judge scores on its own; the stricter score stands, and a wide gap is said', j.rounds[0].judges);
+    ok(j.rounds[0].conflicts.some(x => x.field === 'toeCap') && j.spec.toeCap !== true && j.changes.find(c => c.key === 'eyelets').judges.length === 2, '   a toe cap one judge wants and the other does not is left for a person; what both ask for is made', j.rounds[0].conflicts);
     ok(j.beyondDrawing.includes('A reflective heel strip'), '   what the drawing cannot show is left for a person');
     ok((await K(`/concepts/${cid}/pattern`)).json.spec.eyelets == null, '   nothing is saved until it is used');
     if (!playwright) { ok(true, 'needs a browser'); return; }
@@ -3042,7 +3044,7 @@ await journey('J250', 'A footwear developer checks the shoe against its picture:
       ok(true, '3. on the Pattern page the check starts from the shoe on the page, and shows it is running');
       await F.waitForSelector('#revVerdict', { timeout: 20000 });
       const txt = await F.innerText('#revBox');
-      ok(/reads as the shoe/.test(txt) && /Round 1/.test(txt) && /Round 2/.test(txt) && /\/100/.test(txt) && /Eyelets a side/.test(txt) && /For a person/.test(txt), '   the rounds with their scores, the changes and what a person must look at', txt.slice(0, 400));
+      ok(/reads as the shoe/.test(txt) && /Round 1/.test(txt) && /Round 2/.test(txt) && /\/100/.test(txt) && /Eyelets a side/.test(txt) && /For a person/.test(txt) && /ChatGPT/.test(txt) && /points apart/.test(txt) && /left as it is, for a person/.test(txt), '   the rounds with their scores, the changes and what a person must look at', txt.slice(0, 400));
       await F.click('#revUse'); await F.waitForFunction(() => /Save the shoe/.test(document.getElementById('saveP').textContent));
       ok(await F.evaluate(() => FBPattern.pattern().spec.eyelets) === 7 && await F.evaluate(() => FBPattern.pattern().pieces.some(q => q.id === 'mudguard')), '4. used: the shoe is redrawn with seven eyelets and a mudguard');
       await F.click('#saveP'); await F.waitForFunction(() => document.getElementById('saveP').textContent === 'Saved', null, { timeout: 10000 });
@@ -3050,6 +3052,140 @@ await journey('J250', 'A footwear developer checks the shoe against its picture:
       ok(errs.length === 0, 'no page errors', errs); await oc.close();
     } finally { await br.close(); }
   } finally { await K(`/concepts/${cid}`, { method: 'DELETE' }); }
+});
+
+await journey('J251', 'A footwear designer draws by hand: lines sketched on the outside, the top and on the last itself (a line on a side shows on both), a hand-drawn line made into a seam that cuts the outside quarter, a photo of a paper sketch laid under the outside view, all kept with the shoe and drawn into the tech flats', async () => {
+  const cid = (await K('/concepts/from-scratch', { body: { category: 'footwear', style: 'sneaker', name: `Hand-drawn sneaker ${stamp}` } })).json.concept.id;
+  try {
+    const p0 = (await K(`/concepts/${cid}/pattern`)).json;
+    const put = await K(`/concepts/${cid}/pattern`, { method: 'PUT', body: { spec: { ...p0.spec, sketches: [{ on: 'lateral', pts: [[4, -1, 1], [5, -1.4, .6]], c: '#C2410C', size: .04 }, { on: 'top', pts: [[6, 0], [7, .4]] }, { on: 'nowhere', pts: [[1, 1]] }] } } });
+    ok(put.status === 200 && put.json.spec.sketches.length === 2 && put.json.spec.sketches[0].c === '#c2410c', '1. lines drawn by hand are kept with the shoe, bounded (one on no view is dropped)', put.json.spec.sketches);
+    const flats = await call(`/v1/lab/concepts/${cid}/flats.svg`, { token: kyleT });
+    ok(flats.status === 200 && /stroke="#c2410c"/.test(flats.text), '   and drawn into the tech flats');
+    await K(`/concepts/${cid}/pattern`, { method: 'PUT', body: { spec: p0.spec } });
+    // a paper sketch: a photo of a drawing, laid under the outside view
+    const paper = await sharp({ create: { width: 900, height: 420, channels: 3, background: '#f4f1ea' } }).composite([{ input: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="900" height="420"><path d="M60 330 C200 340 500 360 840 300 C820 220 700 200 560 150 C420 60 200 80 80 120 Z" fill="none" stroke="#222" stroke-width="6"/></svg>') }]).jpeg().toBuffer();
+    ok((await K(`/concepts/${cid}/pattern/underlays/front`, { method: 'PUT', body: { image: 'data:image/jpeg;base64,' + paper.toString('base64') } })).status === 422, '2. a paper sketch goes under one of the four views');
+    const ul = await K(`/concepts/${cid}/pattern/underlays/lateral`, { method: 'PUT', body: { image: 'data:image/jpeg;base64,' + paper.toString('base64'), place: { x: 0, y: -4.5, w: 11.5, opacity: .5 } } });
+    const list = (await K(`/concepts/${cid}/pattern/underlays`)).json.underlays, img = await call(`/v1/lab/concepts/${cid}/pattern/underlays/lateral`, { token: kyleT });
+    ok(ul.status === 200 && list.length === 1 && list[0].view === 'lateral' && list[0].place.w === 11.5 && img.status === 200, '   laid under the outside view, where it was put', list);
+    ok((await K(`/concepts/${cid}/pattern/underlays/lateral`, { method: 'PATCH', body: { place: { x: .2, y: -4.4, w: 99, opacity: .4 } } })).json.place.w === 24, '   moved and sized, within bounds');
+    if (!playwright) { ok(true, 'needs a browser'); return; }
+    const br = await playwright.chromium.launch();
+    try {
+      const oc = await br.newContext({ viewport: { width: 1366, height: 1024 } }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
+      const page = await oc.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
+      await page.goto(`${BASE}/lab/studio?concept=${cid}&view=pattern`, { waitUntil: 'networkidle' }); const F = await (await page.waitForSelector('#patFrame')).contentFrame(); await F.waitForFunction(() => window.FBPattern?.ready?.(), null, { timeout: 20000 });
+      await F.waitForSelector('#ul-lateral', { state: 'attached', timeout: 10000 });
+      ok(/Replace paper sketch/.test(await F.innerText('#skBox')), '3. the paper sketch lies under the outside view, and the Sketches panel says so');
+      const frameBox = async () => { const fe = await page.$('#patFrame'); return fe.boundingBox(); };
+      const draw = async (view, pts) => { const fb = await frameBox(); const s = []; for (const p of pts) s.push(await F.evaluate(([v, q]) => window.FBPattern.viewAt(v, q), [view, p])); await page.mouse.move(fb.x + s[0][0], fb.y + s[0][1]); await page.mouse.down(); for (const q of s.slice(1)) await page.mouse.move(fb.x + q[0], fb.y + q[1], { steps: 6 }); await page.mouse.up(); await sleep(200); };
+      await F.click('#skBtn'); await F.waitForSelector('#ktools:not(.hidden)');
+      await draw('lateral', [[5, -2.6], [6, -2.2], [7, -1.9]]);
+      let sk = await F.evaluate(() => window.FBPattern.sketches());
+      ok(sk.length === 1 && sk[0].on === 'lateral' && sk[0].pts.length > 4 && Math.abs(sk[0].pts[0][0] - 5) < .2, '4. a line drawn on the outside view is kept on the outside, where it was drawn', sk[0]?.pts?.slice(0, 2));
+      await F.click('#ktools [data-ka="undo"]'); ok((await F.evaluate(() => window.FBPattern.sketches())).length === 0, '   Undo takes it off');
+      await draw('top', [[6.5, -.6], [7.2, 0], [7.8, .5]]); sk = await F.evaluate(() => window.FBPattern.sketches()); ok(sk.length === 1 && sk[0].on === 'top', '   a line on the top view is the top\'s');
+      // a line across the outside quarter, made into a seam
+      await draw('lateral', [[3.05, -.35], [3.15, -1.6], [3.25, -3.1]]);
+      await F.click('#ktools [data-k="seam"]');
+      const mid = await F.evaluate(() => window.FBPattern.viewAt('lateral', [3.15, -1.6])), fb = await frameBox(); await page.mouse.click(fb.x + mid[0], fb.y + mid[1]); await sleep(300);
+      const opts = await F.evaluate(() => [...document.querySelectorAll('#kPiece option')].map(o => o.value));
+      ok(opts.includes('quarter-lat'), '5. a hand-drawn line on the outside offers the pieces it crosses', opts);
+      await F.selectOption('#kPiece', 'quarter-lat'); await F.click('#ktools [data-ka="cut"]');
+      await F.waitForFunction(() => window.FBPattern.pattern().pieces.some(q => q.id === 'quarter-lat-b1'), null, { timeout: 5000 });
+      ok((await F.evaluate(() => window.FBPattern.sketches())).length === 1, '   the outside quarter is cut in two along it; the line became the seam');
+      await F.click('#skBtn');
+      // on the last: a line drawn on its outside shows on the flat outside view too
+      await F.click('#lastBtn'); await F.waitForSelector('#lastCv'); await F.click('#ltools [data-l="sketch"]');
+      const lb = await (await F.$('#lastCv')).boundingBox(), pts = []; for (const q of [[7, -1.4], [7.6, -1.3], [8.2, -1.25], [8.8, -1.2]]) pts.push(await F.evaluate(q => window.FBPattern.lastAt('lateral', q), q));
+      await page.mouse.move(lb.x + pts[0][0], lb.y + pts[0][1]); await page.mouse.down(); for (const q of pts.slice(1)) await page.mouse.move(lb.x + q[0], lb.y + q[1], { steps: 5 }); await page.mouse.up(); await sleep(300);
+      sk = await F.evaluate(() => window.FBPattern.sketches());
+      const onLast = sk.filter(k => k.on === 'lateral'); ok(onLast.length === 1 && onLast[0].pts.length >= 4 && onLast[0].pts.every(p => p[0] > 6.5 && p[0] < 9.4), '6. a line drawn on the last is kept on the outside view\'s own inches, so the flat view shows it too', onLast[0]?.pts?.slice(0, 3));
+      if (process.env.SHOT_DIR) await page.screenshot({ path: process.env.SHOT_DIR + '/sketch-last.png' });
+      await F.click('#lastBtn');
+      if (process.env.SHOT_DIR) await page.screenshot({ path: process.env.SHOT_DIR + '/sketch-flats.png' });
+      await F.click('#saveP'); await F.waitForFunction(() => !window.FBPattern.dirty(), null, { timeout: 10000 });
+      const saved = (await K(`/concepts/${cid}/pattern`)).json;
+      ok(saved.spec.sketches.length === 2 && saved.spec.seams?.length === 1 && saved.pieces.some(q => q.id === 'quarter-lat-f1'), '7. saved: the sketches and the seam made from one', { sketches: saved.spec.sketches.map(k => k.on), seams: saved.spec.seams });
+      ok(errs.length === 0, 'no page errors', errs); await oc.close();
+    } finally { await br.close(); }
+  } finally { await K(`/concepts/${cid}`, { method: 'DELETE' }); }
+});
+
+await journey('J252', 'A plush designer sees the toy as it will be made: Pattern opens a bear on its tech flats (front, back, side: stuffed, with its face, seams, the stuffing opening and the law label), downloads them as an SVG, sketches on the front and the side by hand, lays a paper sketch under the front, and saves', async () => {
+  const cid = (await K('/concepts/from-scratch', { body: { category: 'plush', shape: 'bear', name: `Sketched bear ${stamp}` } })).json.concept.id;
+  try {
+    const flats = await call(`/v1/lab/concepts/${cid}/flats.svg`, { token: kyleT });
+    ok(flats.status === 200 && />Front</.test(flats.text) && />Back</.test(flats.text) && />Side</.test(flats.text) && /12 in/.test(flats.text), '1. the plush\'s tech flats download as one SVG: front, back and side, with its height');
+    const paper = await sharp({ create: { width: 600, height: 800, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } }).composite([{ input: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="600" height="800"><circle cx="300" cy="220" r="150" fill="none" stroke="#333" stroke-width="8"/></svg>') }]).png().toBuffer();
+    ok((await K(`/concepts/${cid}/pattern/underlays/front`, { method: 'PUT', body: { image: 'data:image/png;base64,' + paper.toString('base64'), place: { x: -4, y: -1, w: 8, opacity: .5 } } })).status === 200, '2. a paper sketch (a drawing app\'s PNG, its transparency kept) goes under the front');
+    if (!playwright) { ok(true, 'needs a browser'); return; }
+    const br = await playwright.chromium.launch();
+    try {
+      const oc = await br.newContext({ viewport: { width: 1366, height: 1024 } }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
+      const page = await oc.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
+      await page.goto(`${BASE}/lab/studio?concept=${cid}&view=pattern`, { waitUntil: 'networkidle' }); const F = await (await page.waitForSelector('#patFrame')).contentFrame(); await F.waitForFunction(() => window.FBPattern?.ready?.(), null, { timeout: 20000 });
+      await F.waitForSelector('#ul-front', { state: 'attached', timeout: 10000 });
+      const txt = await F.innerText('#canvas');
+      ok(/Front/.test(txt) && /Back/.test(txt) && /Side/.test(txt) && /12 in/.test(txt), '3. Pattern opens the bear on its tech flats, the paper sketch under the front');
+      const frameBox = async () => (await page.$('#patFrame')).boundingBox();
+      const draw = async (view, pts) => { const fb = await frameBox(); const s = []; for (const p of pts) s.push(await F.evaluate(([v, q]) => window.FBPattern.viewAt(v, q), [view, p])); await page.mouse.move(fb.x + s[0][0], fb.y + s[0][1]); await page.mouse.down(); for (const q of s.slice(1)) await page.mouse.move(fb.x + q[0], fb.y + q[1], { steps: 6 }); await page.mouse.up(); await sleep(200); };
+      await F.click('#skBtn'); await F.waitForSelector('#ktools:not(.hidden)');
+      ok(await F.isHidden('#ktools [data-k="seam"]'), '   (a plush has no seam tool on its views)');
+      await draw('front', [[-1, 7], [0, 7.6], [1, 7]]); await draw('side', [[1, 2], [1.6, 2.4]]);
+      const sk = await F.evaluate(() => window.FBPattern.sketches());
+      ok(sk.length === 2 && sk[0].on === 'front' && sk[1].on === 'side' && Math.abs(sk[0].pts[0][0] + 1) < .2, '4. lines drawn on the front and the side are kept on those views, where they were drawn', sk.map(k => [k.on, k.pts[0]]));
+      if (process.env.SHOT_DIR) await page.screenshot({ path: process.env.SHOT_DIR + '/plush.png' });
+      await F.click('#skBtn'); await F.click('#saveP'); await F.waitForFunction(() => !window.FBPattern.dirty(), null, { timeout: 10000 });
+      const saved = (await K(`/concepts/${cid}/pattern`)).json; ok(saved.spec.sketches?.length === 2 && saved.spec.shape === 'bear', '5. saved with the bear', saved.spec.sketches);
+      ok(/#3a3a3c/.test((await call(`/v1/lab/concepts/${cid}/flats.svg`, { token: kyleT })).text), '   and drawn into its tech flats');
+      ok(errs.length === 0, 'no page errors', errs); await oc.close();
+    } finally { await br.close(); }
+  } finally { await K(`/concepts/${cid}`, { method: 'DELETE' }); }
+});
+
+await journey('J253', 'The materials library takes footwear materials, plush and toy materials, and plastics and acrylics, each drawn as what it is; a shoe\'s parts take swatches from it (suede on the upper, pebble leather on the overlays, a gum cupsole) and its tech flats are drawn in them; an electronics enclosure takes PC/ABS and an acrylic lens, costed', async () => {
+  const libs = {}; for (const k of ['footwear', 'plush', 'plastic']) libs[k] = (await K(`/materials?kind=${k}`)).json;
+  ok(libs.footwear.materials.length >= 10 && libs.plush.materials.length >= 10 && libs.plastic.materials.length >= 10 && libs.plastic.options.parts.electronics.some(p => p.id === 'lens'), '1. the library has footwear, plush and plastic materials to start with, and the parts each product has', Object.fromEntries(Object.entries(libs).map(([k, v]) => [k, v.materials.length])));
+  const own = await K('/materials', { body: { kind: 'plastic', name: `PC/ABS for a charger ${stamp}`, unit: 'kg', price: '4.80', spec: { category: 'PC/ABS', grade: 'FR', ul94: 'V-0', process: 'injection moulding', finish: 'SPI C-1 (matte)', thicknessMm: 2 }, colours: [{ name: 'graphite', hex: '#3a3b3e' }] } });
+  ok(own.status === 201 && own.json.material.spec.ul94 === 'V-0' && own.json.material.unit === 'kg', '2. a plastic is added with its resin, grade, finish and flame rating', own.json.material?.spec);
+  const by = (k, key) => libs[k].materials.find(m => m.key === key);
+  const shoe = (await K('/concepts/from-scratch', { body: { category: 'footwear', style: 'sneaker', name: `Suede sneaker ${stamp}` } })).json.concept.id;
+  const box = (await K('/concepts/from-scratch', { body: { category: 'electronics', name: `Charger ${stamp}` } })).json.concept.id;
+  try {
+    let r = await K(`/concepts/${shoe}/materials`, { body: { material: by('footwear', 'fw-fullgrain').id, part: 'upper' } });
+    r = await K(`/concepts/${shoe}/materials`, { body: { material: by('footwear', 'fw-suede').id, part: 'upper' } });
+    const ups = r.json.picks.filter(p => p.part === 'upper');
+    ok(r.status === 201 && ups.length === 1 && ups[0].name.includes('suede') && ups[0].colour?.name === 'sand' && ups[0].unit === 'sq ft', '3. a part takes one material: suede replaces the leather on the upper, in its first colour, by the square foot', ups);
+    await K(`/concepts/${shoe}/materials`, { body: { material: by('footwear', 'fw-cupsole').id, part: 'outsole', colour: '#b9864f' } });
+    const flats = await call(`/v1/lab/concepts/${shoe}/flats.svg`, { token: kyleT });
+    ok(/#c8a77c/.test(flats.text) && /lk-nap-/.test(flats.text) && /#b9864f/.test(flats.text), '4. the tech flats are drawn in them: a sand suede upper with its nap, a gum sole');
+    await K(`/concepts/${box}/materials`, { body: { material: own.json.material.id, part: 'housing-top' } });
+    const m2 = await K(`/concepts/${box}/materials`, { body: { material: by('plastic', 'ps-acrylic-cast').id, part: 'lens' } });
+    ok(m2.json.picks.length === 2 && m2.json.cost.materialsCents > 0 && m2.json.picks.find(p => p.part === 'lens').colour?.name === 'clear', '5. an electronics enclosure takes PC/ABS on its housing and a clear acrylic lens, and is costed', m2.json.cost);
+    if (!playwright) { ok(true, 'needs a browser'); return; }
+    const br = await playwright.chromium.launch();
+    try {
+      const oc = await br.newContext({ viewport: { width: 1366, height: 1024 } }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
+      const page = await oc.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
+      await page.goto(`${BASE}/lab/studio?concept=${shoe}&view=pattern`, { waitUntil: 'networkidle' }); const F = await (await page.waitForSelector('#patFrame')).contentFrame(); await F.waitForFunction(() => window.FBPattern?.ready?.(), null, { timeout: 20000 });
+      await F.waitForSelector('#mtBox [data-mpart="upper"] .mth svg', { timeout: 10000 });
+      ok(/Cow suede/.test(await F.innerText('#mtBox')) && await F.locator('#canvas [fill^="url(#lk-nap"]').count() > 0, '6. the Pattern page shows each part\'s swatch, and the shoe drawn in them');
+      await F.click('#mtBox [data-mpart="overlay"] [data-mpick]'); await F.waitForSelector('#mtBox [data-mpart="overlay"] [data-muse]');
+      const pebble = by('footwear', 'fw-pebble').id; await F.click(`#mtBox [data-mpart="overlay"] [data-muse="${pebble}"]`);
+      await F.waitForFunction(() => window.FBPattern.materials().some(p => p.part === 'overlay'), null, { timeout: 5000 });
+      ok(await F.locator('#canvas [fill^="url(#lk-pebble"]').count() > 0, '7. pebble leather chosen for the overlays from the library, and drawn on them');
+      await F.selectOption('#mtBox [data-mpart="upper"] [data-mcol]', '#2f4a39'); await F.waitForFunction(() => window.FBPattern.materials().find(p => p.part === 'upper')?.colour?.hex === '#2f4a39', null, { timeout: 5000 });
+      ok(/#2f4a39/.test(await F.innerHTML('#canvas')), '   the upper\'s colour changed to forest, from the colours the suede comes in');
+      if (process.env.SHOT_DIR) await page.screenshot({ path: process.env.SHOT_DIR + '/mats-shoe.png' });
+      const lib = await oc.newPage(); lib.on('pageerror', e => errs.push(String(e))); await lib.goto(`${BASE}/lab/materials`, { waitUntil: 'networkidle' });
+      await lib.click('#kinds [data-kind="plastic"]'); await lib.waitForSelector('.card [data-draw] svg', { timeout: 10000 });
+      ok(/PMMA cast acrylic/.test(await lib.innerText('body')) && await lib.locator('.card [data-draw] svg').count() >= 10, '8. the library page lists the plastics and acrylics, each drawn');
+      if (process.env.SHOT_DIR) await lib.screenshot({ path: process.env.SHOT_DIR + '/mats-lib.png' });
+      ok(errs.length === 0, 'no page errors', errs); await oc.close();
+    } finally { await br.close(); }
+  } finally { await K(`/concepts/${shoe}`, { method: 'DELETE' }); await K(`/concepts/${box}`, { method: 'DELETE' }); await K(`/materials/${own.json.material?.id}`, { method: 'DELETE' }); }
 });
 
 shops.close(); brave.close();

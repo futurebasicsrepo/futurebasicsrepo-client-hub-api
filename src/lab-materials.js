@@ -4,17 +4,20 @@
 // The tag drawing and its enums are in src/lab-tags.js (shared with the page).
 import { photoById } from './lab-photos.js';
 import { TAG_KINDS, TAG_SHAPES, TAG_FOLDS, TAG_MATERIALS, TAG_ATTACH, TAG_PRINTS, TAG_STRINGS, TAG_FOR, tagWords } from './lab-tags.js';
+import { GOODS_KINDS, GOODS_OPTIONS, GOODS_BUILTIN, PARTS, partsFor, partLabel, cleanGoodsSpec, goodsWords } from './lab-materials-goods.js';
+export { PARTS, partsFor, partLabel, goodsWords, GOODS_OPTIONS };
 
 const clip = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
 const num = (v, d, a, b) => { const n = Number(v); return Number.isFinite(n) ? Math.min(b, Math.max(a, n)) : d; };
 const HEX = /^#[0-9a-f]{6}$/i;
 
-export const MATERIAL_KINDS = [{ id: 'fabric', label: 'Fabrics' }, { id: 'trim', label: 'Trims' }, { id: 'tag', label: 'Tags and labels' }];
+export const MATERIAL_KINDS = [{ id: 'fabric', label: 'Fabrics' }, { id: 'trim', label: 'Trims' }, { id: 'tag', label: 'Tags and labels' }, ...GOODS_KINDS];
+const GOODS = new Set(GOODS_KINDS.map(k => k.id));
 export const FABRIC_CONSTRUCTIONS = ['single jersey', 'heavy jersey', 'slub jersey', 'interlock', 'loopback fleece', 'brushed fleece', 'polar fleece', 'sherpa', 'French terry', 'towel terry', 'rib 1×1', 'rib 2×2', 'waffle', 'piqué', 'tricot', 'twill', 'canvas', 'duck canvas', 'denim', 'chambray', 'corduroy', 'poplin', 'oxford', 'flannel', 'nylon ripstop', 'cotton ripstop', 'polyester ripstop', 'nylon taslan', 'nylon taffeta', 'nylon oxford', 'cordura', 'polyester shell', 'softshell', 'stretch woven', 'wool melton', 'knit (jumper)', 'mesh', 'satin', 'other'];
 export const FABRIC_FINISHES = ['garment dyed', 'pigment dyed', 'overdyed', 'enzyme washed', 'stone washed', 'rinsed', 'bleached', 'sun-faded', 'silicone washed', 'peached', 'brushed', 'anti-pill', 'moisture-wicking', 'mercerised', 'DWR coated', 'PU coated', 'silicone coated', 'cire', 'waterproof membrane', 'waxed', 'raw', 'sanforised', 'pre-shrunk', 'none'];
 export const TRIM_CATEGORIES = ['zip', 'button', 'snap', 'rivet', 'eyelet', 'drawcord', 'cord stopper', 'aglet', 'elastic', 'webbing', 'buckle', 'hook and loop', 'thread', 'interlining', 'shoulder pad', 'twill tape', 'binding', 'other'];
-export const UNITS = ['m', 'yd', 'pc', 'pair', 'set', 'cone', 'roll'];
-export const ROLES = [{ id: 'main', label: 'Main fabric' }, { id: 'contrast', label: 'Contrast fabric' }, { id: 'lining', label: 'Lining' }, { id: 'rib', label: 'Rib and trims fabric' }, { id: 'trim', label: 'Trim' }, { id: 'tag', label: 'Tag or label' }];
+export const UNITS = ['m', 'yd', 'pc', 'pair', 'set', 'cone', 'roll', 'sq ft', 'm²', 'kg', 'g', 'sheet'];
+export const ROLES = [{ id: 'main', label: 'Main fabric' }, { id: 'contrast', label: 'Contrast fabric' }, { id: 'lining', label: 'Lining' }, { id: 'rib', label: 'Rib and trims fabric' }, { id: 'trim', label: 'Trim' }, { id: 'tag', label: 'Tag or label' }, { id: 'part', label: 'On a part' }];
 export const TAG_OPTIONS = { kinds: TAG_KINDS, shapes: TAG_SHAPES, folds: TAG_FOLDS, materials: TAG_MATERIALS, attach: TAG_ATTACH, prints: TAG_PRINTS, strings: TAG_STRINGS, for: TAG_FOR };
 
 // How much fabric one piece usually takes (metres at 150 cm wide), by what it is, and the usual cut-make-trim cost per piece (cents) in a good factory.
@@ -132,7 +135,8 @@ export const BUILTIN_MATERIALS = [
   G('Hang tag, square, kraft board', { key: 'hang-square', code: 'FB-H02', supplier: 'Printer: to be confirmed', priceCents: 26, moq: 1000, leadDays: 14, spec: { tagKind: 'hang', shape: 'square', widthMm: 70, heightMm: 70, fold: 'none', material: 'kraft board', attach: 'string through the eyelet, on the belt loop', for: ['pants'], print: 'foil stamp', string: 'waxed cotton cord', eyelet: true, text: ['FUTURE BASICS', 'W32 L32'] }, colours: [{ name: 'kraft', hex: '#b9975b' }] }),
   G('Hang tag, circle, recycled board', { key: 'hang-circle', code: 'FB-H03', supplier: 'Printer: to be confirmed', priceCents: 22, moq: 1000, leadDays: 14, spec: { tagKind: 'hang', shape: 'circle', widthMm: 60, heightMm: 60, fold: 'none', material: 'recycled board 400 gsm', attach: 'string through the eyelet, on the hanger', for: ['headwear', 'accessories'], print: 'letterpress', string: 'black cotton tape', eyelet: true, text: ['FB'] }, colours: [] }),
   G('Hang tag, shield, folded book', { key: 'hang-shield', code: 'FB-H04', supplier: 'Printer: to be confirmed', priceCents: 42, moq: 1000, leadDays: 18, spec: { tagKind: 'hang', shape: 'shield', widthMm: 60, heightMm: 85, fold: 'book fold', material: 'paper 350 gsm', attach: 'string through the eyelet, around the neck label', for: ['outerwear'], print: '4-colour print', string: 'satin ribbon', eyelet: true, text: ['FUTURE BASICS', 'OUTERWEAR', 'CARE INSIDE'] }, colours: [] }),
-  G('Size sticker, round', { key: 'sticker-size', code: 'FB-H05', supplier: 'Printer: to be confirmed', priceCents: 2, moq: 5000, leadDays: 10, spec: { tagKind: 'sticker', shape: 'circle', widthMm: 25, heightMm: 25, fold: 'none', material: 'paper 350 gsm', attach: 'peel-and-stick on the polybag', for: ['shirts', 'pants'], print: 'printed', string: 'none', eyelet: false, text: ['M'] }, colours: [] })
+  G('Size sticker, round', { key: 'sticker-size', code: 'FB-H05', supplier: 'Printer: to be confirmed', priceCents: 2, moq: 5000, leadDays: 10, spec: { tagKind: 'sticker', shape: 'circle', widthMm: 25, heightMm: 25, fold: 'none', material: 'paper 350 gsm', attach: 'peel-and-stick on the polybag', for: ['shirts', 'pants'], print: 'printed', string: 'none', eyelet: false, text: ['M'] }, colours: [] }),
+  ...GOODS_BUILTIN
 ];
 
 // ---- cleaning what people type ----
@@ -142,6 +146,7 @@ function cleanColours(list) {
 // a photo from the library (src/lab-photos.js) chosen by hand, 'none' for the drawing, '' to pick one from what it is
 const photoPick = v => (v === 'none' || photoById(v) ? String(v) : '');
 function cleanSpec(kind, s = {}) {
+  if (GOODS.has(kind)) return cleanGoodsSpec(kind, s);
   if (kind === 'fabric') return { weightGsm: Math.round(num(s.weightGsm, 0, 0, 2000)), composition: clip(s.composition, 120), construction: clip(s.construction, 60), widthCm: Math.round(num(s.widthCm, 0, 0, 400)), finish: clip(s.finish, 60), stretch: clip(s.stretch, 40), shrinkage: clip(s.shrinkage, 40), photo: photoPick(s.photo) };
   if (kind === 'trim') return { category: TRIM_CATEGORIES.includes(s.category) ? s.category : 'other', size: clip(s.size, 80), material: clip(s.material, 80), finish: clip(s.finish, 80), qtyPerPiece: num(s.qtyPerPiece, 1, 0, 500), photo: photoPick(s.photo) };
   const text = (Array.isArray(s.text) ? s.text : String(s.text || '').split(/\n|\//)).map(t => clip(t, 40)).filter(Boolean).slice(0, 4);
@@ -152,22 +157,25 @@ function cleanSpec(kind, s = {}) {
 // → { material } or { error }. `base` is the row being changed: only the fields sent change.
 export function cleanMaterial(b = {}, base = null) {
   const pick = (k, d) => (b[k] === undefined ? (base ? base[k] : undefined) ?? d : b[k]);
-  const kind = pick('kind', 'fabric'); if (!MATERIAL_KINDS.some(k => k.id === kind)) return { error: 'Say whether it is a fabric, a trim or a tag' };
+  const kind = pick('kind', 'fabric'); if (!MATERIAL_KINDS.some(k => k.id === kind)) return { error: 'Say what kind of material it is: a fabric, a trim, a tag, a footwear, plush or toy material, or a plastic' };
   const name = clip(pick('name', ''), 120); if (name.length < 2) return { error: 'Give it a name' };
   let priceCents = base?.priceCents ?? 0; if (b.price !== undefined) { const n = Number(String(b.price).replace(/[^0-9.]/g, '')); if (!Number.isFinite(n) || n < 0 || n > 1e5) return { error: 'That price does not look right' }; priceCents = Math.round(n * 100); } else if (b.priceCents !== undefined) priceCents = Math.round(num(b.priceCents, 0, 0, 1e7));
-  const unit = UNITS.includes(pick('unit', '')) ? pick('unit', '') : kind === 'fabric' ? 'm' : 'pc';
+  const unit = UNITS.includes(pick('unit', '')) ? pick('unit', '') : kind === 'fabric' ? 'm' : kind === 'plastic' ? 'kg' : 'pc';
   return { material: { kind, name, code: clip(pick('code', ''), 40), supplier: clip(pick('supplier', ''), 160), priceCents, unit, moq: Math.round(num(pick('moq', 0), 0, 0, 1e6)), leadDays: Math.round(num(pick('leadDays', 0), 0, 0, 365)),
     spec: cleanSpec(kind, b.spec !== undefined ? { ...(base?.spec || {}), ...(b.spec || {}) } : base?.spec || {}), colours: b.colours !== undefined ? cleanColours(b.colours) : (base?.colours || []), notes: clip(pick('notes', ''), 600) } };
 }
 
 // ---- a concept's materials and what they cost ----
 // what is on the concept: [{ id, role, name, kind, qty, unit, unitCents, colour, note }]
+// a material can go on one of the product's parts (PARTS: a shoe's upper, a plush's body, an enclosure's top): `part` names it
 export function cleanPick(b = {}, m, category = 'other') {
-  const role = ROLES.some(r => r.id === b.role) ? b.role : m.kind === 'tag' ? 'tag' : m.kind === 'trim' ? 'trim' : 'main';
-  const dft = m.kind === 'fabric' ? (USAGE_M[category] ?? 1.2) * (role === 'main' ? 1 : role === 'lining' ? .9 : role === 'contrast' ? .35 : .2) : (m.spec?.qtyPerPiece ?? 1);
+  const part = clip(b.part, 40).toLowerCase().replace(/[^a-z0-9-]/g, '');
+  const role = part ? 'part' : ROLES.some(r => r.id === b.role) ? b.role : m.kind === 'tag' ? 'tag' : m.kind === 'trim' ? 'trim' : GOODS.has(m.kind) ? 'part' : 'main';
+  const dft = m.kind === 'fabric' && role !== 'part' ? (USAGE_M[category] ?? 1.2) * (role === 'main' ? 1 : role === 'lining' ? .9 : role === 'contrast' ? .35 : .2) : (m.spec?.qtyPerPiece ?? 1);
   const qty = Math.round(num(b.qty, dft, 0, 1000) * 100) / 100;
   const colour = m.colours?.find(c => c.hex === String(b.colour || '').toLowerCase() || c.name === b.colour) || (HEX.test(String(b.colour || '')) ? { name: '', hex: String(b.colour).toLowerCase() } : null);
-  return { id: m.id, role, name: m.name, kind: m.kind, code: m.code || '', supplier: m.supplier || '', qty, unit: m.unit, unitCents: m.priceCents, colour: colour ? { name: colour.name, hex: colour.hex } : null, note: clip(b.note, 200), spec: m.spec };
+  const shown = colour || (part ? m.colours?.find(c => HEX.test(String(c.hex || ''))) : null); // on a part it shows in its first colour until another is chosen
+  return { id: m.id, role, ...(part ? { part } : {}), name: m.name, kind: m.kind, code: m.code || '', supplier: m.supplier || '', qty, unit: m.unit, unitCents: m.priceCents, colour: shown ? { name: shown.name || '', hex: shown.hex } : null, note: clip(b.note, 200), spec: m.spec };
 }
 export const marginOf = (priceCents, costCents) => priceCents > 0 && costCents != null ? Math.round((1 - costCents / priceCents) * 1000) / 10 : null;
 // → { lines, materialsCents, makingCents, factoryCents, freightCents, landedCents, marginPct, priceCents }
@@ -186,13 +194,15 @@ export function fabricWords(m) { if (!m || m.kind !== 'fabric') return ''; const
 export const MATERIALS_NOTE = 'From the materials library';
 const ROLE_WORDS = { main: 'Main fabric', contrast: 'Contrast fabric', lining: 'Lining', rib: 'Rib', trim: 'Trim', tag: 'Label' };
 // → { bom: [...], labels: [...] } rows in the pack's shape
-export function packRows(picks = []) {
+export function packRows(picks = [], category = 'other') {
   const bom = [], labels = [];
   for (const p of picks) {
     const s = p.spec || {}, money = (p.unitCents / 100).toFixed(2);
     if (p.kind === 'tag') {
       labels.push({ item: `${TAG_KINDS.find(k => k.id === s.tagKind)?.label || 'Label'} · ${p.name}`.slice(0, 120), spec: `${tagWords(s)}${s.face ? '; artwork designed in the studio (see the label picture)' : s.text?.length ? `; reads "${s.text.join(' / ')}"` : ''}${p.colour?.name ? `; ${p.colour.name}` : ''}${p.code ? ` (${p.code})` : ''}`.slice(0, 400), placement: `${s.attach || ''}${s.for?.length ? ` · ${s.for.join(', ')}` : ''}`.slice(0, 200) });
       bom.push({ component: `${ROLE_WORDS.tag} · ${p.name}`.slice(0, 160), material: s.material || '', spec: `${s.widthMm} × ${s.heightMm} mm, ${s.shape}${s.fold && s.fold !== 'none' ? ', ' + s.fold : ''}`, supplier: p.supplier, ref: p.code, color: p.colour?.hex || '', placement: s.attach || '', qty: String(p.qty), unit: p.unit, cost: money });
+    } else if (GOODS.has(p.kind) || p.role === 'part') {
+      bom.push({ component: (p.part ? partLabel(category, p.part) : s.category ? s.category[0].toUpperCase() + s.category.slice(1) : 'Material').slice(0, 160), material: p.name, spec: (GOODS.has(p.kind) ? goodsWords(p.kind, s) : [s.weightGsm ? `${s.weightGsm} gsm` : '', s.composition, s.construction].filter(Boolean).join(', ')).slice(0, 300), supplier: p.supplier, ref: p.code, color: p.colour?.hex || '', placement: p.part ? partLabel(category, p.part) : p.note || '', qty: String(p.qty), unit: p.unit, cost: money });
     } else if (p.kind === 'fabric') {
       bom.push({ component: ROLE_WORDS[p.role] || 'Fabric', material: p.name, spec: [s.weightGsm ? `${s.weightGsm} gsm` : '', s.composition, s.construction, s.widthCm ? `${s.widthCm} cm wide` : '', s.finish && s.finish !== 'none' ? s.finish : ''].filter(Boolean).join(', ').slice(0, 300), supplier: p.supplier, ref: p.code, color: p.colour?.hex || '', placement: p.role === 'rib' ? 'Cuffs, hem, neck' : p.role === 'lining' ? 'Inside' : p.note || '', qty: String(p.qty), unit: p.unit, cost: money });
     } else {

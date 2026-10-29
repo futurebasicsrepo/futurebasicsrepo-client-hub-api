@@ -7,6 +7,7 @@
 //   footwearChecks, tooling   → what to look at before a sample, and what the lasts and the sole moulds take
 // Lengths are inches; on the side view x runs from the back of the heel to the toe and y up is negative. The last and the pattern are a
 // first draft from the size and the style: a last maker and a pattern engineer true them up on the first fitting sample.
+import { cleanSketches, VIEWS_OF } from './lab-sketch.js';
 import { piece, cubic, tidy, blob, boundsOf, areaOf } from './lab-pattern.js';
 import { shellOf, flattenPiece, splitPiece } from './lab-last-shell.js';
 
@@ -50,7 +51,9 @@ export function cleanFootwear(input = {}) {
   return { style: d.style, system: sys, size, width: widths.includes(input.width) ? input.width : MEDIUM[sys] || 'D', toe: TOES[input.toe] ? input.toe : d.toe, toeCap: input.toeCap == null ? d.toeCap : Boolean(input.toeCap),
     upper: UPPERS[input.upper] ? input.upper : d.upper, lining: LININGS[input.lining] ? input.lining : d.lining, heel: num(input.heel, 0, 4, d.heel, .125), spring: num(input.spring, 0, 1.5, d.spring, .125), runFrom, runTo, halves: input.halves == null ? d.halves : Boolean(input.halves),
     // read from a picture (or set by hand): the lines and the sole, which otherwise come from the style
-    ...cleanLines(input), ...(cleanLast3d(input.last3d) ? { last3d: cleanLast3d(input.last3d) } : {}), ...(cleanSeams(input.seams).length ? { seams: cleanSeams(input.seams) } : {}), ...(input.flatten === false ? { flatten: false } : {}) };
+    ...cleanLines(input), ...(cleanLast3d(input.last3d) ? { last3d: cleanLast3d(input.last3d) } : {}), ...(cleanSeams(input.seams).length ? { seams: cleanSeams(input.seams) } : {}), ...(input.flatten === false ? { flatten: false } : {}),
+    // drawn by hand on the views or on the last (src/lab-sketch.js)
+    ...(cleanSketches(input.sketches, VIEWS_OF.footwear).length ? { sketches: cleanSketches(input.sketches, VIEWS_OF.footwear) } : {}) };
 }
 // a measured 3D last in use (src/lab-last3d.js measures it): its numbers, its side profile (bottom and top, as the side view draws them: x from
 // the heel's back, y downward, the ground under the ball at 0) and its bottom outline (x along, the inside negative), in inches

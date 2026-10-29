@@ -512,6 +512,15 @@ export async function migrate() {
       updated_by uuid references users(id) on delete set null,
       updated_at timestamptz not null default now()
     );
+    create table if not exists lab_pattern_underlays ( -- a paper sketch (a photo or scan) laid under one view of a shoe, to trace or keep (src/lab-pattern-routes.js)
+      concept_id uuid not null references lab_concepts(id) on delete cascade,
+      view text not null,
+      image bytea not null,
+      mime text not null default 'image/jpeg',
+      place jsonb not null default '{}', -- x, y, w in the view's inches, opacity
+      updated_at timestamptz not null default now(),
+      primary key (concept_id, view)
+    );
     create table if not exists lab_lasts ( -- 3D lasts for a footwear concept: imported files, or made by the 3D service from the drafted last (src/lab-last-routes.js)
       id uuid primary key default gen_random_uuid(),
       concept_id uuid not null references lab_concepts(id) on delete cascade,
@@ -578,6 +587,13 @@ export async function migrate() {
       updated_at timestamptz not null default now()
     );
     create index if not exists lab_materials_kind_idx on lab_materials(kind) where not archived;
+    -- footwear, plush and toy materials, and plastics and acrylics, beside fabrics, trims and tags (src/lab-materials-goods.js)
+    do $$ begin
+      if exists (select 1 from pg_constraint where conname='lab_materials_kind_check' and pg_get_constraintdef(oid) not like '%plastic%') then
+        alter table lab_materials drop constraint lab_materials_kind_check;
+        alter table lab_materials add constraint lab_materials_kind_check check (kind in ('fabric','trim','tag','footwear','plush','plastic'));
+      end if;
+    end $$;
     create table if not exists lab_concept_views (
       concept_id uuid not null references lab_concepts(id) on delete cascade,
       kind text not null,

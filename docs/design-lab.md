@@ -530,6 +530,30 @@ These turn a graphic into something a decorator can quote and make. The rules an
 - **The starting library** has 57 fabrics: denim from 5 oz chambray to 16 oz selvedge (raw, rinsed, stone washed, bleached, overdyed black, ecru, stretch), fleece from 280 gsm polar to 520 gsm heavyweight brushed (cotton, CVC, organic, sherpa), French terry and loopback from 240 to 450 gsm, knits (slub, heather, interlock, piqué, waffle, 1×1 and 2×2 rib, 12-gauge merino and 5-gauge cotton jumper knits), polyesters (wicking interlock, tricot, pongee, softshell, 4-way stretch, mesh), ripstop (30D and 40D nylon, cotton, NYCO, 210D polyester), nylon (taffeta cire, 2-layer taslan, 420D oxford, 1000D Cordura) and canvas from 7 oz to 18 oz duck (washed, garment dyed, brushed, waxed, hemp). Mills and prices are starting points to confirm.
 - A starting set of 10 fabrics, 11 trims and 16 tags is put in once; all of it is ours to change. Taking one out of the library leaves it on the concepts that use it.
 
+**Footwear, plush and toys, plastics and acrylics** (`src/lab-materials-goods.js`) sit beside fabrics, trims and tags, each with its own
+details and drawn as what it is (`src/lab-swatches.js`):
+
+- **Footwear materials**: upper leathers (full grain, nappa, pebble, patent), suede and nubuck, synthetic leather, engineered mesh, knit and
+  canvas uppers, linings, collar foam, midsoles (EVA, supercritical PEBA), outsoles (rubber cupsole, carbon rubber, leather sole), insole board,
+  sockliner, counter and toe puff, laces and eyelets: what it is, the finish, thickness, hardness (Shore A), what a pair takes; leather by the
+  square foot. Drawn as a cut hide with its grain, nap or gloss, a mesh with its holes, a foam or sole block, an outsole's tread.
+- **Plush and toy materials**: minky, short pile, velboa, faux fur, felt, fibre fill, polypellets, 12 mm safety eyes, safety noses, embroidery
+  thread: pile height, weight, size, and the safety it is tested to (EN 71, ASTM F963) and its age. Drawn with its pile or fur, a safety eye
+  with its washer.
+- **Plastics and acrylics**: ABS (general and V-0), PC/ABS, clear PC, PP, PA66 GF30, POM, TPU, TPE, LSR silicone, cast and extruded acrylic,
+  frosted acrylic, PETG: the resin, grade, process (injection, overmould, 2K, CNC, laser cut, thermoformed, 3D printed), finish (SPI, MT
+  texture, VDI, soft-touch, UV coat, frosted, polished), opaque, translucent or clear, UL94 rating, wall thickness, density and shrinkage; by the
+  kilo or the sheet. Drawn as a moulded colour plaque with its stepped thickness and finish; clear and translucent ones over a checker.
+
+**On a product's parts.** A shoe, a plush, a toy, a home object and an electronics enclosure have parts (`PARTS`): a shoe's upper, overlays,
+lining, foam, midsole, outsole, insole, stiffeners, laces and eyelets; a plush's body, contrast, eyes, nose, fill and thread; an enclosure's
+housing top and bottom, buttons, lens, light pipe and gasket. A material is put on a part (`POST /v1/lab/concepts/:id/materials {material,
+part}`), in its first colour until another is chosen; a part takes one material, so choosing another replaces it. On the **Pattern** page a
+shoe's and a plush's **Materials** list each part with its swatch, **Choose…** from the library (what suits the part first), its colour and
+**Remove**; the tech flats are drawn in them (`src/lab-looks.js`): each part in its colour, a suede's nap, a mesh's holes, a knit, a pebble grain,
+patent's gloss, a fur's strands, and so is the tech flats SVG. The concept window has **Add a material to a part**, and Design's
+**Fabrics, trims & labels** has the kinds the product takes, each line saying the part it goes on. The tech pack's BOM names the part.
+
 **In Design** (the picture and both flats), **Fabrics, trims & labels** opens the same bill of materials beside the library: each fabric, trim and tag drawn (or its swatch photo), searchable, with **Add to the garment** (the first fabric is the main one, the next the contrast). Each line on the garment can change what it is used as, its colour, how much a piece takes and where it goes (a label's default: how it is attached), or come off; the materials, making, landed cost and margin follow, and the tech pack takes the lines.
 
 **Tags and labels in the studio.** **Design** on a tag's card (or **Design it in the studio** in its form, or **Design it** beside a tag on a garment in Design's Fabrics, trims & labels) opens the tag in the studio (`/lab/studio?tag=<id>`, with `&for=<concept>` from a garment) at its real size: its blank face (shape, fold, weave, colour) is a picture layer and each line of its words is a type layer, and every studio tool works on it (fonts, words, colours, graphics from the library, drawing, the AI). **Use on the tag** (and every save) puts the design on the tag as its face (`spec.face`, a graphic in the library): the library cards, the tag's picture and the sheets draw the face instead of typing the words, and the tech pack names it in the label row and carries a picture of each designed label. Starter tags are shared by every room, so designing one makes a copy, "… (ours)", in your own library. **Add to a garment** puts the label on a garment's bill of materials (straight onto the garment it came from, or one you pick), and a copy takes the starter's place on it. The design is in the graphics library too, so it can be placed on the flat like any graphic.
@@ -902,10 +926,14 @@ developer assistants go over a tech pack (`src/lab-shoe-review.js`):
 
 1. **The outline first, no AI.** The picture's outline sets the collar, the toe spring and the sole (as in *Reading a shoe from its picture*).
    The drawing's length against height is measured against the picture's, and the pattern's warnings and the eyelet spacing are checked.
-2. **Then the footwear developer** (Claude, with vision) looks at the picture and the four views and scores six points out of 100:
+2. **Then two footwear developers** look at the picture and the four views, each on its own: Claude and, when `OPENAI_API_KEY` is set, an
+   OpenAI vision model (`OPENAI_CHECK_MODEL`, as the colourway check). `SHOE_CHECKER=claude|openai|both` (both by default). The stricter score
+   stands, and a gap of 15 points or more between them is shown as worth a look by a person. Each scores six points out of 100:
    silhouette and proportions (25%), toe (10%), collar and topline (15%), lacing and throat (15%), the pieces of the upper (20%) and the sole
    (15%). A drawing whose outline is more than 8% off the picture's loses points whatever the developer says.
-3. **It asks for changes to the shoe's choices**, never to the drawing: the style, the toe, the sole, the upper, the collar, where the vamp and
+3. **They ask for changes to the shoe's choices**, never to the drawing. What both ask for is made (numbers that nearly agree are met in the
+   middle); what only one asks for is made unless the other asks for something else for the same choice, which is left as it is and listed
+   for a person. A judge that cannot answer is left out of that round. The choices are: the style, the toe, the sole, the upper, the collar, where the vamp and
    the lacing sit, the eyelets, the sole's thickness, the heel and the toe spring, a toe cap, a mudguard, a heel overlay and the colours. Each
    is bounded like any other choice and says why. What the choices cannot show (a sock collar, graphics, a carbon plate) is listed for a
    person instead.
@@ -920,4 +948,45 @@ the shoe on the page, saved or not.
   spec, changes, score, beyondDrawing, note}`.
 - Without Claude (no `ANTHROPIC_API_KEY`), only the outline and the fixed checks run (`checks-only`) and it says so. Reviews with Claude are
   capped at `SHOE_REVIEW_DAILY` a day (40 by default); past it, only the outline and the checks run. `SHOE_REVIEW_FIXTURE` (a JSON array of the
-  developer's answers, or a file of one) stands in for Claude in tests.
+  developer's answers for one judge, or `{name: [answers]}` for several, or a file of either) stands in for the judges in tests.
+
+## Drawing by hand: sketches on every view and on the last
+
+A shoe can be designed by hand as freely as with the drafted lines, and the two mix (`src/lab-sketch.js`, shared by the page and the service):
+
+- **Sketch** on the Pattern page draws on any of the four views (outside, inside, top, bottom) with a Pencil, a mouse or a finger. A Pencil
+  draws with its pressure; once a Pencil has been used, fingers never draw, so a palm resting on the screen does nothing. Pen, Eraser (rubs
+  out a whole line), inks (graphite, red, blue, green), Fine/Medium/Bold, Undo.
+- **On the last**, then **Sketch on it**, draws on the last in 3D. A line carried over the top goes on as a new line on the other side.
+- **The sides are one drawing.** A line on the outside or the inside is kept in the side view's own inches (x from the heel's back, y downward),
+  the coordinates the last's surface is mapped from: a line drawn on the last shows on the flat side view, and one drawn on the side view
+  shows on the last. Top and bottom lines stay on their views.
+- **Make a seam** turns a hand-drawn line on a side into a seam: tap it, choose the piece it crosses, and the piece is cut along it (thinned to
+  the points that shape it). The line becomes the seam.
+- **Paper sketches.** A photo or scan of a drawing on paper, or a picture from any drawing app (Procreate, Illustrator, a camera), can lie over
+  any view, blended in, to trace or keep beside the drafted lines: **Paper sketch…** in the Sketches panel, **Move sketch** to line it up, with sliders for
+  its size and how strongly it shows. It is kept straight away, re-encoded (only the pixels are kept), and is not part of the tech flats.
+- The lines are saved with the shoe (`spec.sketches`, up to 300 lines and 30,000 points) and drawn into the tech flats and their SVG, and so
+  the developer check sees them too.
+
+Routes for paper sketches: `GET /v1/lab/concepts/:id/pattern/underlays` (which views have one and where it sits), `GET|PUT|PATCH|DELETE
+/v1/lab/concepts/:id/pattern/underlays/:view` (the picture; `PUT {image: data URL, place?}`, `PATCH {place: {x, y, w, opacity}}`, in the view's
+inches; a picture up to 15 MB).
+
+## Plush tech flats: the toy as it will be made
+
+A plush's product view on the Pattern page, and **Tech flats (SVG)** under Files (`GET /v1/lab/concepts/:id/flats.svg`, 1:1 in inches), draw it
+from the front, the back and the side as it is when stuffed and sewn (`src/lab-plush-views.js`), from the same sizes the pattern is drafted to:
+
+- **Bear:** the head with the gusset's two seams over the crown, round, pointed or long ears with the inner ear in contrast, the muzzle in
+  contrast with an embroidered nose and mouth, arms at the shoulders and legs under the body (their seams), from the side the head's profile
+  as the head side is cut, the foot turned forward with its pad.
+- **Bean and bunny:** the body, ears, arm nubs, a face (eyes, nose, mouth, cheeks), the base's seam just showing; the tail from the back and
+  the side.
+- **Pillow:** the front and back with their seam, and from the side the gusset's depth, thickest in the middle where it is filled.
+- **The eyes as made:** embroidered (satin-stitched), 12 mm safety eyes (with the washer ring) or felt (sewn flat on white).
+- **Construction:** the centre-front and centre-back seams, the opening left to stuff closed with a ladder stitch (as long as the pattern says),
+  the sewn-in law label in its side seam, the height down the front. Long-pile fur is drawn with a tufted edge.
+
+The views can be sketched on by hand and have paper sketches laid over them, as a shoe's can (*Drawing by hand*, above), on `front`, `back`
+and `side`.
