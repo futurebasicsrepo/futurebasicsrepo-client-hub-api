@@ -36,13 +36,21 @@ function palette(pat, given = {}) {
 
 // ---- the side: the last's heel curve and toe drawn in (the pattern's side view is square at both ends) ----
 // near the heel each height is moved in by how far the heel curve is from the back there: the seat rounded under, the heel point the
-// furthest back about an inch up, the back leaning forward to the top; near the toe the same for the toe's rounding above and below its tip
+// furthest back about an inch up, the back leaning forward to the top
 function warpOf(last) {
-  const L = last.length, h = last.heelHeight, sp = last.toeSpring;
-  const db = up => { const u = Math.max(0, up - h); return u < .9 ? .3 * (1 - u / .9) ** 2 : .26 * Math.min(1, (u - .9) / 2.6) ** 1.4; };
-  const df = up => { const v = up - sp; return Math.min(.55, 2.4 * (v - .25) ** 2); }; // the tip a quarter inch up, the toe rounding back above and below it
-  return ([x, y]) => { const up = -y, wb = Math.max(0, 1 - x / 2.2) ** 2, wf = Math.max(0, 1 - (L - x) / 2) ** 2; return [x + wb * db(up) - wf * df(up), y]; };
+  const h = last.heelHeight, db = up => { const u = Math.max(0, up - h); return u < .9 ? .3 * (1 - u / .9) ** 2 : .26 * Math.min(1, (u - .9) / 2.6) ** 1.4; };
+  return ([x, y]) => { const up = -y, wb = Math.max(0, 1 - x / 2.2) ** 2; return [x + wb * db(up), y]; };
 }
+const cubicPts = (a, b, c, d, n = 12) => Array.from({ length: n + 1 }, (_, i) => { const t = i / n, u = 1 - t; return [0, 1].map(k => u * u * u * a[k] + 3 * u * u * t * b[k] + 3 * u * t * t * c[k] + t * t * t * d[k]); });
+// the toe's nose: the top of the toe box rolling over to the tip (about two fifths up the toe) and back under to the sole; the upper is
+// clipped to it, so every piece that reaches the toe ends on the same round
+function noseOf(last) {
+  const L = last.length, b = last.lastBottom(L), c = last.crest(L), x0 = L - 1.1, p0 = [x0, last.crest(x0)], slope = (last.crest(x0 + .1) - last.crest(x0 - .1)) / .2;
+  const tip = [L - .02, b + (c - b) * .42], q = [L - .5, last.lastBottom(L - .5)];
+  const top = cubicPts(p0, [x0 + .55, p0[1] + slope * .55], [tip[0], tip[1] - (tip[1] - p0[1]) * .75], tip), under = cubicPts(tip, [tip[0], tip[1] + (q[1] - tip[1]) * .6], [q[0] + .25, q[1]], q, 8).slice(1);
+  return { edge: [...top, ...under], clip: [[-20, -40], [x0, -40], ...top, ...under, [q[0], 20], [-20, 20]] };
+}
+let SEQ = 0;
 // the sole unit from the side: its top under the last, flared out past the heel; the ground under the tread, bevelled up at the heel and rocked
 // up at the toe with the spring; the outsole a band along the bottom
 function soleSide(pat, W) {
@@ -56,70 +64,126 @@ function soleSide(pat, W) {
   const nose = [[toe[0] + .12, (toe[1] * 2 + toeB[1]) / 3], [toeB[0] + .05, (toe[1] + toeB[1] * 2) / 3]], tail = [[heelB[0] - .14, (heelB[1] * 2 + heelT[1]) / 3], [heelT[0] - .2, (heelB[1] + heelT[1] * 2) / 3]];
   const outline = chaikin([...top, ...nose, ...bot, ...tail], stitched ? 1 : 3);
   const band = chaikin([...bot.map(([x, y]) => [x, y - .14]).reverse(), ...bot], 1).filter(p => p[0] > -.05 && p[0] < L + .02);
-  return { outline, outsole: band };
+  // a stitched sole's welt: a strip standing out round the forepart from the heel's breast to the toe, stitched through to the sole
+  let welt = null, weltStitch = null;
+  if (stitched) { const wx = Array.from({ length: 31 }, (_, i) => breast - .2 + (L + .06 - breast + .2) * i / 30), up = wx.map(x => W([Math.min(x, L), l.lastBottom(Math.min(x, L)) - .05])), dn = wx.map(x => W([Math.min(x, L), l.lastBottom(Math.min(x, L)) + .1])); welt = [...up, ...dn.reverse()]; weltStitch = wx.slice(1, -1).map(x => W([Math.min(x, L - .05), l.lastBottom(Math.min(x, L - .05)) + .025])); }
+  return { outline, outsole: band, welt, weltStitch };
 }
 const visibleOn = (q, side) => q.place.view === 'front' && q.shown && !q.component && !INSIDE.test(q.id) && (side === 'medial' ? !/-lat(-|$)/.test(q.id) && !(q.seamSide === 'lateral') : !/-med(-|$)/.test(q.id) && !(q.seamSide === 'medial'));
 function sideView(pat, side, C) {
   const l = pat.last, W = warpOf(l), fill = q => q.fabric === 'overlay' ? C.overlay : q.fabric === 'lining' ? C.lining : C.upper;
   const pieces = pat.pieces.filter(q => visibleOn(q, side)).sort((a, b) => (a.place.z || 0) - (b.place.z || 0));
-  let svg = '';
+  const nose = noseOf(l), id = `fbn${++SEQ}`;
+  let svg = `<clipPath id="${id}"><path d="${P(nose.clip)}"/></clipPath><g clip-path="url(#${id})">`;
   for (const q of pieces) {
     const pts = chaikin(steady(dense(q.shown, .12).map(W), 1), 2), over = q.fabric === 'overlay' || /eyestay|toe-cap|heel-overlay|mudguard|back-tab/.test(q.id);
     svg += `<path data-pid="${esc(q.id)}" class="pc" d="${P(pts)}" fill="${fill(q)}" stroke="${C.line}" stroke-width=".028" stroke-linejoin="round"/>`;
     if (over || q.id === 'vamp') svg += `<path d="${P(inset(pts, .075))}" fill="none" stroke="${C.stitch}" stroke-width=".014" stroke-dasharray=".07 .05"/>`;
     if (q.id === 'tongue') svg += `<path d="${L_(chaikin(dense(q.shown.slice(0, Math.ceil(q.shown.length / 2)), .2).map(W), 1, false))}" fill="none" stroke="${C.stitch}" stroke-width=".012" stroke-dasharray=".05 .05" opacity=".6"/>`;
   }
+  svg += `</g><path d="${L_(chaikin(nose.edge, 1, false))}" fill="none" stroke="${C.line}" stroke-width=".028" stroke-linecap="round"/>`;
   const eye = (pat.marks?.eyelets || []).map(W);
   svg += eye.map(([x, y]) => `<circle cx="${r3(x)}" cy="${r3(y)}" r=".085" fill="#fff" stroke="${C.line}" stroke-width=".022"/>`).join('');
-  // the laces: from each eyelet over the top to the next, as they show from the side
-  for (let i = 0; i < eye.length - 1; i++) { const a = eye[i], b = eye[i + 1], top = W([(a[0] + b[0]) / 2 + .1, l.crest((a[0] + b[0]) / 2 + .1) + .06]); svg += `<path d="M${r3(a[0])} ${r3(a[1])} Q${r3(top[0] - .15)} ${r3(top[1])} ${r3(top[0] + .1)} ${r3(top[1] - .01)}" fill="none" stroke="${shade(C.lace, .82)}" stroke-width=".11" stroke-linecap="round"/><path d="M${r3(a[0])} ${r3(a[1])} Q${r3(top[0] - .15)} ${r3(top[1])} ${r3(top[0] + .1)} ${r3(top[1] - .01)}" fill="none" stroke="${C.lace}" stroke-width=".07" stroke-linecap="round"/>`; }
-  if (eye.length) { const a = eye[0], k = W([a[0] - .1, l.crest(a[0]) - .05]); svg += `<path d="M${r3(a[0])} ${r3(a[1])} C${r3(k[0] - .3)} ${r3(k[1] - .2)} ${r3(k[0] - .6)} ${r3(k[1] + .5)} ${r3(k[0] - .2)} ${r3(k[1] + 1)}" fill="none" stroke="${C.line}" stroke-width=".09" stroke-linecap="round" opacity=".55"/><path d="M${r3(a[0])} ${r3(a[1])} C${r3(k[0] - .3)} ${r3(k[1] - .2)} ${r3(k[0] - .6)} ${r3(k[1] + .5)} ${r3(k[0] - .2)} ${r3(k[1] + 1)}" fill="none" stroke="${C.lace}" stroke-width=".055" stroke-linecap="round"/>`; }
+  // the laces: from each eyelet over the middle of the opening (on the far side of the tongue) towards the next; the bow at the top
+  const mid = (pat.marks?.lace || []).map(W), lace = (a, c, b) => `<path d="M${r3(a[0])} ${r3(a[1])} Q${r3(c[0])} ${r3(c[1])} ${r3(b[0])} ${r3(b[1])}" fill="none" stroke="${shade(C.lace, .78)}" stroke-width=".11" stroke-linecap="round"/><path d="M${r3(a[0])} ${r3(a[1])} Q${r3(c[0])} ${r3(c[1])} ${r3(b[0])} ${r3(b[1])}" fill="none" stroke="${C.lace}" stroke-width=".07" stroke-linecap="round"/>`;
+  for (let i = 0; i < eye.length - 1 && mid.length === eye.length; i++) { const a = eye[i], m = [(mid[i][0] + mid[i + 1][0]) / 2, (mid[i][1] + mid[i + 1][1]) / 2]; svg += lace(a, [(a[0] + m[0]) / 2 - .05, (a[1] + m[1]) / 2 - .08], m); }
+  if (eye.length && mid.length) { const a = eye[0], m = mid[0]; svg += lace(a, [a[0] - .3, a[1] - .2], [m[0] - .35, m[1] + .1]) + lace([m[0] - .35, m[1] + .1], [m[0] - .9, m[1] + .3], [m[0] - .55, m[1] + 1.1]) + lace([m[0] - .35, m[1] + .1], [m[0] - .5, m[1] + .5], [m[0] - .2, m[1] + 1.25]); }
   const so = soleSide(pat, W);
   svg += `<path d="${P(so.outline)}" fill="${C.sole}" stroke="${C.line}" stroke-width=".03" stroke-linejoin="round"/>`;
   svg += `<path d="${P(so.outsole)}" fill="${C.outsole}" stroke="${C.line}" stroke-width=".02"/>`;
+  if (so.welt) svg += `<path d="${P(so.welt)}" fill="${shade(C.sole, .93)}" stroke="${C.line}" stroke-width=".022"/><path d="${L_(so.weltStitch)}" fill="none" stroke="${C.stitch}" stroke-width=".016" stroke-dasharray=".06 .045"/>`;
   const pts = [...pieces.flatMap(q => q.shown.map(W)), ...so.outline], b = boundsOf(pts);
   const g = side === 'medial' ? `<g transform="translate(${r3(b.x0 + b.x1)} 0) scale(-1 1)">${svg}</g>` : svg;
   return { svg: g, box: { x0: b.x0, y0: b.y0, x1: b.x1, y1: b.y1 }, name: side === 'medial' ? 'Medial (inside)' : 'Lateral (outside)' };
 }
 
-// ---- from above: the pieces carried up onto the last and looked down on (toe right, the outside at the bottom) ----
+// ---- from above (toe right, the outside at the bottom) ----
+// the shoe's outline from above is the foot's, not the last's bottom: a near-straight inside (medial) edge, the outside curving out to the
+// little toe, widest across the ball, a narrow round heel; the upper stands out over the waist, so it does not pinch in there as a sole does
+const spline = (P, k = 8) => { const out = [], n = P.length; for (let i = 0; i < n; i++) { const p0 = P[(i - 1 + n) % n], p1 = P[i], p2 = P[(i + 1) % n], p3 = P[(i + 2) % n]; for (let j = 0; j < k; j++) { const t = j / k, t2 = t * t, t3 = t2 * t; out.push([0, 1].map(d => .5 * (2 * p1[d] + (p2[d] - p0[d]) * t + (2 * p0[d] - 5 * p1[d] + 4 * p2[d] - p3[d]) * t2 + (3 * p1[d] - p0[d] - 3 * p2[d] + p3[d]) * t3))); } } return out; };
+// where a vertical line at x crosses an outline: [least, most]
+const across = (pts, x) => { const ys = []; for (let i = 0; i < pts.length; i++) { const p = pts[i], q = pts[(i + 1) % pts.length]; if ((p[0] - x) * (q[0] - x) <= 0 && p[0] !== q[0]) ys.push(p[1] + (q[1] - p[1]) * (x - p[0]) / (q[0] - p[0])); } return ys.length ? [Math.min(...ys), Math.max(...ys)] : null; };
+function planOf(pat) {
+  const l = pat.last, L = l.length, W = l.ballWidth * 1.1, tf = { round: 1, almond: .84, square: 1.18, pointed: .68 }[pat.spec.toe] || 1;
+  const med = [[.012, -.13], [.05, -.23], [.12, -.285], [.25, -.315], [.42, -.34], [.58, -.42], [.71, -.48], [.83, -.46], [.92, -.37 * tf], [.975, -.22 * tf], [1, -.05]];
+  const lat = [[.995, .05 * tf], [.97, .17 * tf], [.91, .3 * Math.min(1, tf * 1.05)], [.81, .43], [.67, .5], [.56, .48], [.42, .41], [.27, .355], [.12, .31], [.055, .25], [.015, .15]];
+  const outline = spline([[0, 0], ...med, ...lat].map(([x, z]) => [x * L, z * W]), 8);
+  // each side's distance out from the centre line, every tenth of an inch
+  const xs = Array.from({ length: 121 }, (_, i) => L * i / 120), tab = xs.map(x => across(outline, Math.min(Math.max(x, .01), L - .01)) || [0, 0]);
+  const edge = (side, x) => { const t = Math.min(Math.max(x / L, 0), 1) * 120, i = Math.min(119, Math.floor(t)), f = t - i, k = side === 'medial' ? 0 : 1; return tab[i][k] * (1 - f) + tab[i + 1][k] * f; };
+  // a point of the side view (x along, y down the side) carried onto the top: how far up the side it is (0 at the bottom, 1 on the crest)
+  // sets how far in from the edge it shows, on a section that is upright at the sides and rounds over the top
+  const proj = (side, [x, y]) => { const xc = Math.min(Math.max(x, 0), L), b = l.lastBottom(xc), c = l.crest(xc), h = Math.min(1, Math.max(0, (b - y) / ((b - c) || 1))); return [x, edge(side, x) * (1 - h ** 2.6) ** .42]; };
+  return { outline, edge, proj, L };
+}
+// the laced opening from above: half the gap between the eyestays (wider at the top of the lacing), and the eyestay's width
+const gapAt = (m, x) => .3 + .14 * Math.min(1, Math.max(0, (m.vamp - x) / Math.max(.5, m.vamp - m.throat)));
 function topView(pat, C) {
-  const l = pat.last, sh = shellOf(l), plan = q => [q[0], q[2]], fill = q => q.fabric === 'overlay' ? C.overlay : C.upper;
-  const sole = chaikin(inset(dense(l.bottom, .25), -.2), 2);
-  let svg = `<path d="${P(sole)}" fill="${C.sole}" stroke="${C.line}" stroke-width=".03"/>`;
-  // the upper's outline from above: the last at its widest, which is at the feather line (just inside the sole's flare)
-  const silo = chaikin(inset(dense(l.bottom, .25), -.03), 2);
-  svg += `<path d="${P(silo)}" fill="${C.upper}" stroke="${C.line}" stroke-width=".028"/>`;
-  // each piece on its side of the last; one that crosses the top (the vamp, the toe cap, the tongue) on both, joined along the top centre, so
-  // its outline is drawn everywhere but there. The back tab stands above the last and is not seen from above.
-  const pieces = pat.pieces.filter(q => q.place.view === 'front' && q.shown && !q.component && !INSIDE.test(q.id) && q.id !== 'back-tab').sort((a, b) => (a.place.z || 0) - (b.place.z || 0));
+  const l = pat.last, L = l.length, pl = planOf(pat), m = pat.marks || {}, type = pat.sole?.type, id = `fbt${++SEQ}`, line = w => `stroke="${C.line}" stroke-width="${w}" stroke-linejoin="round"`;
+  const sole = inset(pl.outline, type === 'stitched' ? -.14 : type === 'midsole' ? -.26 : -.17);
+  let svg = `<clipPath id="${id}"><path d="${P(pl.outline)}"/></clipPath><path d="${P(sole)}" fill="${C.sole}" ${line('.03')}/><path d="${P(pl.outline)}" fill="${C.upper}" ${line('.03')}/>`;
+  // the pieces, each on its side; one cut whole (the vamp, the toe cap) on both, meeting along the top centre, where no line is drawn
+  const pieces = pat.pieces.filter(q => q.place.view === 'front' && q.shown && !q.component && !INSIDE.test(q.id) && !['back-tab', 'tongue', 'eyestay'].includes(q.id)).sort((a, b) => (a.place.z || 0) - (b.place.z || 0));
+  svg += `<g clip-path="url(#${id})">`;
   for (const q of pieces) {
-    const sides = /-med(-|$)/.test(q.id) ? ['medial'] : /-lat(-|$)/.test(q.id) ? ['lateral'] : ['lateral', 'medial'], over = q.fabric === 'overlay' || /eyestay|toe-cap|heel-overlay|mudguard/.test(q.id);
-    const src = dense(q.shown, .15), atTop = src.map(p => p[1] <= l.crest(Math.min(Math.max(p[0], 0), l.length)) + .03);
+    const sides = /-med(-|$)/.test(q.id) || q.seamSide === 'medial' ? ['medial'] : /-lat(-|$)/.test(q.id) || q.seamSide === 'lateral' ? ['lateral'] : ['lateral', 'medial'], over = q.fabric === 'overlay' || /toe-cap|heel-overlay|mudguard/.test(q.id);
     for (const sd of sides) {
-      // a point on the top edge is on the top centre: the two sides of a piece cut whole meet there
-      const pts = steady(src.map((p, i) => { const c = l.crest(Math.min(Math.max(p[0], 0), l.length)); return plan(atTop[i] && sides.length === 2 ? onSurface(sh[sd], [p[0], c - .02]) : onSurface(sh[sd], [p[0], Math.max(p[1], c + .005)], true)); }));
-      svg += `<path d="${P(chaikin(pts, 2))}" fill="${fill(q)}" stroke="none"/>`;
-      let d = ''; pts.forEach((p, i) => { const j = (i + 1) % pts.length; if (sides.length === 2 && (atTop[i] && atTop[j] || p[0] > l.length - .35 && pts[j][0] > l.length - .35)) return; d += `M${r3(p[0])} ${r3(p[1])} L${r3(pts[j][0])} ${r3(pts[j][1])} `; });
+      const pts = chaikin(dense(q.shown, .1).map(p => { const r = pl.proj(sd, p); return sides.length === 2 && p[1] <= l.crest(Math.min(Math.max(p[0], 0), L)) + .06 ? [r[0], 0] : r; }), 2); // a whole piece's top edge is on the centre line
+      svg += `<path d="${P(pts)}" fill="${q.fabric === 'overlay' ? C.overlay : C.upper}" stroke="none"/>`;
+      let d = ''; pts.forEach((p, i) => { const j = (i + 1) % pts.length; if (sides.length === 2 && (Math.abs(p[1]) < .32 || Math.abs(pts[j][1]) < .32 || p[0] > pl.L - .75)) return; d += `M${r3(p[0])} ${r3(p[1])} L${r3(pts[j][0])} ${r3(pts[j][1])} `; });
       svg += `<path d="${d}" fill="none" stroke="${C.line}" stroke-width=".026" stroke-linecap="round"/>`;
-      if (over && sides.length === 1) svg += `<path d="${P(inset(chaikin(pts, 2), .07))}" fill="none" stroke="${C.stitch}" stroke-width=".013" stroke-dasharray=".07 .05"/>`;
+      if (over) { let st = ''; const ins = inset(pts, .07); ins.forEach((p, i) => { const j = (i + 1) % ins.length; if (Math.abs(p[1]) < .3 || Math.abs(ins[j][1]) < .3) return; st += `M${r3(p[0])} ${r3(p[1])} L${r3(ins[j][0])} ${r3(ins[j][1])} `; }); svg += `<path d="${st}" fill="none" stroke="${C.stitch}" stroke-width=".013" stroke-dasharray=".07 .05"/>`; }
     }
   }
-  // eyelets both sides, and the laces criss-crossing between them
-  const eL = (pat.marks?.eyelets || []).map(p => plan(onSurface(sh.lateral, p, true))), eM = (pat.marks?.eyelets || []).map(p => plan(onSurface(sh.medial, p, true)));
-  for (let i = 0; i < eL.length - 1; i++) for (const [a, b] of [[eL[i], eM[i + 1]], [eM[i], eL[i + 1]]]) svg += `<path d="${L_([a, b])}" stroke="${shade(C.lace, .8)}" stroke-width=".11" stroke-linecap="round"/><path d="${L_([a, b])}" stroke="${C.lace}" stroke-width=".07" stroke-linecap="round"/>`;
-  if (eL.length) { const a = eL[0], b = eM[0]; svg += `<path d="${L_([a, b])}" stroke="${shade(C.lace, .8)}" stroke-width=".11" stroke-linecap="round"/><path d="${L_([a, b])}" stroke="${C.lace}" stroke-width=".07" stroke-linecap="round"/>`; }
-  svg += [...eL, ...eM].map(([x, y]) => `<circle cx="${r3(x)}" cy="${r3(y)}" r=".08" fill="#fff" stroke="${C.line}" stroke-width=".02"/>`).join('');
+  svg += '</g>';
+  // the foot opening: the collar from the back seam round both sides, padded; inside it the lining wall and the sockliner
+  const collar = m.collar || [];
+  let open = null;
+  if (m.shaft) { const a = (m.leg + .1) / 2, cx = a - .08, b = Math.min(1.3, Math.abs(pl.edge('medial', cx)) * .82); open = Array.from({ length: 48 }, (_, i) => { const t = i / 48 * 2 * Math.PI, c = Math.cos(t), s2 = Math.sin(t); return [cx + a * Math.sign(c) * Math.abs(c) ** .8, b * Math.sign(s2) * Math.abs(s2) ** .85]; }); }
+  else if (collar.length) open = chaikin([...collar.map(p => pl.proj('lateral', p)), ...collar.slice().reverse().map(p => pl.proj('medial', p))], 2);
+  if (open) {
+    const rim = inset(open, -.13), wall = shade(C.lining, .8), bed = chaikin(inset(pl.outline, .3), 1), oid = `${id}o`;
+    svg += `<path d="${P(rim)}" fill="${shade(C.upper, .97)}" ${line('.028')}/><path d="${P(open)}" fill="${wall}" ${line('.026')}/>`;
+    svg += `<clipPath id="${oid}"><path d="${P(inset(open, m.shaft ? .28 : .12))}"/></clipPath><path d="${P(bed)}" clip-path="url(#${oid})" fill="${shade(C.lining, 1.03)}" stroke="${shade(C.line, 1.8)}" stroke-width=".02"/>`;
+    svg += `<path d="${P(inset(rim, .065))}" fill="none" stroke="${C.stitch}" stroke-width=".012" stroke-dasharray=".06 .05" opacity=".8"/>`;
+  }
+  if (m.laced) {
+    const e0 = m.shaft ? m.leg : m.throat + .05, e1 = m.vamp + .15, xs = Array.from({ length: 21 }, (_, i) => e0 + (e1 - e0) * i / 20);
+    // the tongue: its padded top over the front of the opening, under the laces to the vamp
+    const t0 = m.shaft ? m.leg - .35 : m.throat - .55, tw = x => .8 - .18 * Math.max(0, (x - t0) / (m.vamp - t0)), tx = Array.from({ length: 13 }, (_, i) => t0 + .25 + (m.vamp - t0 - .25) * i / 12);
+    const tongue = chaikin([...tx.map(x => [x, tw(x)]), ...tx.slice().reverse().map(x => [x, -tw(x)]), ...cubicPts([t0 + .25, -tw(t0)], [t0 - .05, -tw(t0)], [t0 - .1, -.3], [t0 - .1, 0], 5), ...cubicPts([t0 - .1, 0], [t0 - .1, .3], [t0 - .05, tw(t0)], [t0 + .25, tw(t0)], 5).slice(1, -1)], 2);
+    svg += `<path d="${P(tongue)}" fill="${shade(C.upper, 1.02)}" ${line('.026')}/><path d="${P(inset(tongue, .09))}" fill="none" stroke="${C.stitch}" stroke-width=".012" stroke-dasharray=".06 .05" opacity=".7"/>`;
+    // the eyestays either side of the opening, the eyelets in them, the laces across
+    for (const sg of [1, -1]) {
+      const es = chaikin([...xs.map(x => [x, sg * gapAt(m, x)]), ...xs.slice().reverse().map(x => [x, sg * (gapAt(m, x) + .6 - .25 * Math.max(0, (x - e1 + .6) / .6))])], 2);
+      svg += `<path d="${P(es)}" fill="${C.overlay}" ${line('.026')}/><path d="${P(inset(es, .07))}" fill="none" stroke="${C.stitch}" stroke-width=".013" stroke-dasharray=".07 .05"/>`;
+    }
+    const ex = (m.eyelets || pat.marks.eyelets || []).map(p => p[0]).map(x => Math.min(Math.max(x, e0 + .12), e1 - .3)).filter((x, i, all) => i === all.length - 1 || all[i + 1] - x > .3), // up a shaft the eyelets stand over each other: the top one of each stack shows
+      at = (x, sg) => [x, sg * (gapAt(m, x) + .26)];
+    const lace = (a, b) => `<path d="${L_([a, b])}" stroke="${shade(C.lace, .78)}" stroke-width=".12" stroke-linecap="round"/><path d="${L_([a, b])}" stroke="${C.lace}" stroke-width=".08" stroke-linecap="round"/>`;
+    for (let i = ex.length - 1; i > 0; i--) svg += lace(at(ex[i], 1), at(ex[i - 1], -1)) + lace(at(ex[i], -1), at(ex[i - 1], 1));
+    if (ex.length) { const a = at(ex[0], 1), b = at(ex[0], -1), k = [ex[0] - .1, 0]; svg += lace(a, b) + `<path d="M${r3(k[0])} 0 C${r3(k[0] - .7)} -.55 ${r3(k[0] - 1)} -.05 ${r3(k[0])} 0 C${r3(k[0] - 1)} .05 ${r3(k[0] - .7)} .55 ${r3(k[0])} 0 M${r3(k[0])} 0 C${r3(k[0] - .3)} .2 ${r3(k[0] - .6)} .25 ${r3(k[0] - 1.05)} .45 M${r3(k[0])} 0 C${r3(k[0] - .3)} -.15 ${r3(k[0] - .55)} -.3 ${r3(k[0] - .95)} -.42" fill="none" stroke="${C.lace}" stroke-width=".07" stroke-linecap="round"/>`; }
+    svg += ex.flatMap(x => [at(x, 1), at(x, -1)]).map(([x, y]) => `<circle cx="${r3(x)}" cy="${r3(y)}" r=".075" fill="#fff" stroke="${C.line}" stroke-width=".02"/>`).join('');
+  }
   const b = boundsOf(sole);
   return { svg, box: { x0: b.x0, y0: b.y0, x1: b.x1, y1: b.y1 }, name: 'Top' };
 }
 
-// ---- from below: the outsole, with its flex grooves across the forefoot ----
+// ---- from below: the outsole (the outside at the top, as the shoe turned over shows it) ----
 function bottomView(pat, C) {
-  const l = pat.last, sole = chaikin(inset(dense(l.bottom, .25), -.2), 2), pad = chaikin(inset(sole, .12), 1), b = boundsOf(sole), ball = l.ballFromHeel;
-  const across = x => { const ys = []; for (let i = 0; i < sole.length; i++) { const p = sole[i], q = sole[(i + 1) % sole.length]; if ((p[0] - x) * (q[0] - x) <= 0 && p[0] !== q[0]) ys.push(p[1] + (q[1] - p[1]) * (x - p[0]) / (q[0] - p[0])); } return ys.length ? [Math.min(...ys), Math.max(...ys)] : null; };
-  let svg = `<path d="${P(sole)}" fill="${C.sole}" stroke="${C.line}" stroke-width=".03"/><path d="${P(pad)}" fill="${C.outsole}" stroke="${C.line}" stroke-width=".018"/>`;
-  for (const dx of [-.9, -.3, .3, .9, 1.5]) { const x = ball + dx, a = across(x); if (a) svg += `<path d="M${r3(x - .1)} ${r3(a[0] + .3)} L${r3(x + .1)} ${r3(a[1] - .3)}" stroke="${C.line}" stroke-width=".03" opacity=".55"/>`; }
+  const l = pat.last, L = l.length, pl = planOf(pat), type = pat.sole?.type, sole = inset(pl.outline, type === 'stitched' ? -.14 : type === 'midsole' ? -.26 : -.17), b = boundsOf(sole), ball = l.ballFromHeel, line = w => `stroke="${C.line}" stroke-width="${w}"`;
+  let svg = `<path d="${P(sole)}" fill="${C.sole}" ${line('.03')}/>`;
+  const cut = (pts, x0, x1) => { const xs = Array.from({ length: 25 }, (_, i) => x0 + (x1 - x0) * i / 24), w = xs.map(x => across(pts, x)).filter(Boolean); return w.length ? [...xs.slice(0, w.length).map((x, i) => [x, w[i][0]]), ...xs.slice(0, w.length).map((x, i) => [x, w[i][1]]).reverse()] : []; };
+  if (type === 'stitched') {
+    // a leather or rubber sole on a stacked heel: the heel's breast across, the stitching round the forepart
+    const inner = inset(sole, .17), breast = l.F * .27, heel = chaikin(cut(sole, -.3, breast), 1), fore = inner.filter(p => p[0] > breast + .3);
+    svg += `<path d="${P(heel)}" fill="${C.outsole}" ${line('.022')}/><path d="${L_(fore)}" fill="none" stroke="${C.stitch}" stroke-width=".016" stroke-dasharray=".06 .045"/>`;
+  } else {
+    // rubber pads under the forefoot and the heel; the midsole shows through the waist; flex grooves across the ball
+    const pad = inset(sole, .12), fore = chaikin(cut(pad, ball - 2.6, L + 1), 1), heel = chaikin(cut(pad, -1, l.F * .3), 1);
+    svg += `<path d="${P(fore)}" fill="${C.outsole}" ${line('.02')}/><path d="${P(heel)}" fill="${C.outsole}" ${line('.02')}/>`;
+    for (const dx of [-1.6, -.9, -.2, .5, 1.2]) { const x = ball + dx, a = across(pad, x); if (a) svg += `<path d="M${r3(x - .12)} ${r3(a[0] + .22)} Q${r3(x + .05)} ${r3((a[0] + a[1]) / 2)} ${r3(x - .12)} ${r3(a[1] - .22)}" fill="none" ${line('.028')} opacity=".6"/>`; }
+  }
   return { svg: `<g transform="translate(0 ${r3(b.y0 + b.y1)}) scale(1 -1)">${svg}</g>`, box: { x0: b.x0, y0: b.y0, x1: b.x1, y1: b.y1 }, name: 'Bottom' };
 }
 
