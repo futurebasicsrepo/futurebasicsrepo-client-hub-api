@@ -1169,7 +1169,7 @@ await journey('J222', 'Materials, trims and tags: the library (fabrics with weig
   const A = (path, o = {}) => call(path, { token: kyleT, ...o });
   try {
     const lib = await K('/materials'); const by = key => lib.json.materials.find(m => m.key === key);
-    ok(lib.status === 200 && lib.json.materials.length >= 30 && lib.json.options.kinds.length === 3 && lib.json.options.tag.shapes.includes('shield'), '1. the library opens with the starting fabrics, trims and tags', lib.json.materials?.length);
+    ok(lib.status === 200 && lib.json.materials.length >= 30 && lib.json.options.kinds.map(k => k.id).join() === 'fabric,trim,tag,footwear,plush,plastic' && lib.json.options.tag.shapes.includes('shield'), '1. the library opens with the starting fabrics, trims and tags (and footwear, plush and plastics)', lib.json.materials?.length);
     const pants = (await K('/materials?kind=tag&for=pants')).json.materials; ok(pants.length >= 3 && pants.every(t => t.spec.for.includes('pants')) && pants.some(t => t.spec.tagKind === 'waistband') && pants.some(t => t.spec.tagKind === 'hang' && t.spec.shape === 'square'), '   tags for pants: a waistband label, a back pocket patch, a square kraft hang tag', pants.map(t => t.name));
     const svg = await fetch(`${BASE}/v1/lab/materials/${by('hang-rect').id}/tag.svg`, { headers: { Authorization: 'Bearer ' + kyleT } }); const svgText = await svg.text();
     ok(svg.status === 200 && /image\/svg/.test(svg.headers.get('content-type')) && /50 × 90 mm · rectangle/.test(svgText) && /<circle cx=/.test(svgText), '   a hang tag is drawn to size with its eyelet and string');
@@ -1212,7 +1212,7 @@ await journey('J222', 'Materials, trims and tags: the library (fabrics with weig
         const outside = await page.evaluate(() => [...document.querySelectorAll('[data-tagsvg]')].filter(sw => { const a = sw.getBoundingClientRect(), v = sw.querySelector('svg')?.getBoundingClientRect(); return !v || v.width < 20 || v.left < a.left - 1 || v.right > a.right + 1 || v.top < a.top - 1 || v.bottom > a.bottom + 1; }).length);
         ok(outside === 0, '   every tag, string and all, sits whole inside its tile', outside);
         for (const [tab, what] of [['fabric', 'fabric'], ['trim', 'trim']]) {
-          await page.click(`#kinds [data-kind="${tab}"]`); await page.waitForFunction(() => document.querySelectorAll('#grid .card').length > 0 && [...document.querySelectorAll('#grid [data-draw]')].every(el => el.dataset.swatch || el.querySelector('svg')), null, { timeout: 15000 });
+          await page.click(`#kinds [data-kind="${tab}"]`); await page.waitForFunction(() => document.querySelectorAll('#grid [data-draw]').length > 0 && !document.querySelector('#grid [data-tagsvg]') && [...document.querySelectorAll('#grid [data-draw]')].every(el => el.dataset.swatch || el.querySelector('svg')), null, { timeout: 15000 }); // the tab's own cards, not the tags still showing
           const n = await page.evaluate(() => [...document.querySelectorAll('#grid [data-draw]')].filter(el => el.querySelector('svg[role="img"]')).length), all = await page.locator('#grid .card').count();
           ok(n === all && n >= 10, `   every ${what} without a photo is drawn: its weave or its trim, in its colour`, `${n}/${all}`);
         }
@@ -3143,6 +3143,49 @@ await journey('J252', 'A plush designer sees the toy as it will be made: Pattern
       ok(errs.length === 0, 'no page errors', errs); await oc.close();
     } finally { await br.close(); }
   } finally { await K(`/concepts/${cid}`, { method: 'DELETE' }); }
+});
+
+await journey('J253', 'The materials library takes footwear materials, plush and toy materials, and plastics and acrylics, each drawn as what it is; a shoe\'s parts take swatches from it (suede on the upper, pebble leather on the overlays, a gum cupsole) and its tech flats are drawn in them; an electronics enclosure takes PC/ABS and an acrylic lens, costed', async () => {
+  const libs = {}; for (const k of ['footwear', 'plush', 'plastic']) libs[k] = (await K(`/materials?kind=${k}`)).json;
+  ok(libs.footwear.materials.length >= 10 && libs.plush.materials.length >= 10 && libs.plastic.materials.length >= 10 && libs.plastic.options.parts.electronics.some(p => p.id === 'lens'), '1. the library has footwear, plush and plastic materials to start with, and the parts each product has', Object.fromEntries(Object.entries(libs).map(([k, v]) => [k, v.materials.length])));
+  const own = await K('/materials', { body: { kind: 'plastic', name: `PC/ABS for a charger ${stamp}`, unit: 'kg', price: '4.80', spec: { category: 'PC/ABS', grade: 'FR', ul94: 'V-0', process: 'injection moulding', finish: 'SPI C-1 (matte)', thicknessMm: 2 }, colours: [{ name: 'graphite', hex: '#3a3b3e' }] } });
+  ok(own.status === 201 && own.json.material.spec.ul94 === 'V-0' && own.json.material.unit === 'kg', '2. a plastic is added with its resin, grade, finish and flame rating', own.json.material?.spec);
+  const by = (k, key) => libs[k].materials.find(m => m.key === key);
+  const shoe = (await K('/concepts/from-scratch', { body: { category: 'footwear', style: 'sneaker', name: `Suede sneaker ${stamp}` } })).json.concept.id;
+  const box = (await K('/concepts/from-scratch', { body: { category: 'electronics', name: `Charger ${stamp}` } })).json.concept.id;
+  try {
+    let r = await K(`/concepts/${shoe}/materials`, { body: { material: by('footwear', 'fw-fullgrain').id, part: 'upper' } });
+    r = await K(`/concepts/${shoe}/materials`, { body: { material: by('footwear', 'fw-suede').id, part: 'upper' } });
+    const ups = r.json.picks.filter(p => p.part === 'upper');
+    ok(r.status === 201 && ups.length === 1 && ups[0].name.includes('suede') && ups[0].colour?.name === 'sand' && ups[0].unit === 'sq ft', '3. a part takes one material: suede replaces the leather on the upper, in its first colour, by the square foot', ups);
+    await K(`/concepts/${shoe}/materials`, { body: { material: by('footwear', 'fw-cupsole').id, part: 'outsole', colour: '#b9864f' } });
+    const flats = await call(`/v1/lab/concepts/${shoe}/flats.svg`, { token: kyleT });
+    ok(/#c8a77c/.test(flats.text) && /lk-nap-/.test(flats.text) && /#b9864f/.test(flats.text), '4. the tech flats are drawn in them: a sand suede upper with its nap, a gum sole');
+    await K(`/concepts/${box}/materials`, { body: { material: own.json.material.id, part: 'housing-top' } });
+    const m2 = await K(`/concepts/${box}/materials`, { body: { material: by('plastic', 'ps-acrylic-cast').id, part: 'lens' } });
+    ok(m2.json.picks.length === 2 && m2.json.cost.materialsCents > 0 && m2.json.picks.find(p => p.part === 'lens').colour?.name === 'clear', '5. an electronics enclosure takes PC/ABS on its housing and a clear acrylic lens, and is costed', m2.json.cost);
+    if (!playwright) { ok(true, 'needs a browser'); return; }
+    const br = await playwright.chromium.launch();
+    try {
+      const oc = await br.newContext({ viewport: { width: 1366, height: 1024 } }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
+      const page = await oc.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
+      await page.goto(`${BASE}/lab/studio?concept=${shoe}&view=pattern`, { waitUntil: 'networkidle' }); const F = await (await page.waitForSelector('#patFrame')).contentFrame(); await F.waitForFunction(() => window.FBPattern?.ready?.(), null, { timeout: 20000 });
+      await F.waitForSelector('#mtBox [data-mpart="upper"] .mth svg', { timeout: 10000 });
+      ok(/Cow suede/.test(await F.innerText('#mtBox')) && await F.locator('#canvas [fill^="url(#lk-nap"]').count() > 0, '6. the Pattern page shows each part\'s swatch, and the shoe drawn in them');
+      await F.click('#mtBox [data-mpart="overlay"] [data-mpick]'); await F.waitForSelector('#mtBox [data-mpart="overlay"] [data-muse]');
+      const pebble = by('footwear', 'fw-pebble').id; await F.click(`#mtBox [data-mpart="overlay"] [data-muse="${pebble}"]`);
+      await F.waitForFunction(() => window.FBPattern.materials().some(p => p.part === 'overlay'), null, { timeout: 5000 });
+      ok(await F.locator('#canvas [fill^="url(#lk-pebble"]').count() > 0, '7. pebble leather chosen for the overlays from the library, and drawn on them');
+      await F.selectOption('#mtBox [data-mpart="upper"] [data-mcol]', '#2f4a39'); await F.waitForFunction(() => window.FBPattern.materials().find(p => p.part === 'upper')?.colour?.hex === '#2f4a39', null, { timeout: 5000 });
+      ok(/#2f4a39/.test(await F.innerHTML('#canvas')), '   the upper\'s colour changed to forest, from the colours the suede comes in');
+      if (process.env.SHOT_DIR) await page.screenshot({ path: process.env.SHOT_DIR + '/mats-shoe.png' });
+      const lib = await oc.newPage(); lib.on('pageerror', e => errs.push(String(e))); await lib.goto(`${BASE}/lab/materials`, { waitUntil: 'networkidle' });
+      await lib.click('#kinds [data-kind="plastic"]'); await lib.waitForSelector('.card [data-draw] svg', { timeout: 10000 });
+      ok(/PMMA cast acrylic/.test(await lib.innerText('body')) && await lib.locator('.card [data-draw] svg').count() >= 10, '8. the library page lists the plastics and acrylics, each drawn');
+      if (process.env.SHOT_DIR) await lib.screenshot({ path: process.env.SHOT_DIR + '/mats-lib.png' });
+      ok(errs.length === 0, 'no page errors', errs); await oc.close();
+    } finally { await br.close(); }
+  } finally { await K(`/concepts/${shoe}`, { method: 'DELETE' }); await K(`/concepts/${box}`, { method: 'DELETE' }); await K(`/materials/${own.json.material?.id}`, { method: 'DELETE' }); }
 });
 
 shops.close(); brave.close();

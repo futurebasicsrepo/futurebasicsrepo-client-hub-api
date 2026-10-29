@@ -587,6 +587,13 @@ export async function migrate() {
       updated_at timestamptz not null default now()
     );
     create index if not exists lab_materials_kind_idx on lab_materials(kind) where not archived;
+    -- footwear, plush and toy materials, and plastics and acrylics, beside fabrics, trims and tags (src/lab-materials-goods.js)
+    do $$ begin
+      if exists (select 1 from pg_constraint where conname='lab_materials_kind_check' and pg_get_constraintdef(oid) not like '%plastic%') then
+        alter table lab_materials drop constraint lab_materials_kind_check;
+        alter table lab_materials add constraint lab_materials_kind_check check (kind in ('fabric','trim','tag','footwear','plush','plastic'));
+      end if;
+    end $$;
     create table if not exists lab_concept_views (
       concept_id uuid not null references lab_concepts(id) on delete cascade,
       kind text not null,

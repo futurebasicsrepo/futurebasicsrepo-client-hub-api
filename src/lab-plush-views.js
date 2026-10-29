@@ -7,6 +7,7 @@
 // drawn filled out by its stuffing (rounder than the flat piece), with the seams that show as stitch lines, the face as the eyes chosen make it
 // (embroidered, safety eyes or felt), the opening left to stuff closed with a ladder stitch, and the sewn-in law label in its seam.
 import { strokesSvg } from './lab-sketch.js';
+import { lookDefs } from './lab-looks.js';
 
 const r3 = v => Math.round(v * 1000) / 1000, P = pts => 'M' + pts.map(q => `${r3(q[0])} ${r3(q[1])}`).join(' L') + ' Z', L_ = pts => 'M' + pts.map(q => `${r3(q[0])} ${r3(q[1])}`).join(' L');
 const esc = v => String(v).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -24,15 +25,15 @@ function capsule(a, b, r, rb = r, n = 10) {
 };
 const COLOURS = { minky: '#e9dccb', shortpile: '#e3cfb2', velboa: '#ead8bd', fleece: '#e6e1d6', fur: '#dcc39f', terry: '#efe7da' };
 const shade = (hex, k) => { const n = parseInt(hex.slice(1), 16), c = [n >> 16, (n >> 8) & 255, n & 255].map(v => Math.max(0, Math.min(255, Math.round(v * k)))); return '#' + c.map(v => v.toString(16).padStart(2, '0')).join(''); };
-function palette(pat, given = {}) { const c = { ...(pat.spec.colours || {}), ...given }, body = c.body || COLOURS[pat.spec.fabric] || '#e9dccb'; return { body, contrast: c.contrast || shade(body, 1.06), features: c.features || '#2b2724', line: '#2b2a28', stitch: '#6b655d', blush: '#f2c1b4' }; }
+function palette(pat, given = {}) { const c = { ...(pat.spec.colours || {}), ...given }, body = c.body || COLOURS[pat.spec.fabric] || '#e9dccb'; return { body, contrast: c.contrast || shade(body, 1.06), features: c.features || '#2b2724', line: '#2b2a28', stitch: '#6b655d', blush: '#f2c1b4', fur: pat.spec.fabric === 'fur' }; }
 
 // ---- drawing ----
 function painter(pat, C) {
-  const fur = pat.spec.fabric === 'fur', parts = [];
+  const fur = C.fur, parts = [];
   // a long-pile fur outline is tufted: the edge broken into short strokes of pile
   const edge = pts => fur ? pts.map((p, i) => { const q = pts[(i + 1) % pts.length], dx = q[0] - p[0], dy = q[1] - p[1], l = Math.hypot(dx, dy) || 1, k = (i % 3 === 0 ? .09 : .04); return [p[0] + dy / l * k, p[1] - dx / l * k]; }) : pts;
   return {
-    shape: (pts, fill = C.body, w = .03) => parts.push(`<path d="${P(edge(pts))}" fill="${fill}" stroke="${C.line}" stroke-width="${w}" stroke-linejoin="round"/>`),
+    shape: (pts, fill = C.body, w = .03) => parts.push(`<path d="${P(edge(pts))}" fill="${fill}" stroke="${C.line}" stroke-width="${w}" stroke-linejoin="round"/>` + (C.tex?.[fill === C.body ? 'body' : fill === C.contrast ? 'contrast' : ''] ? `<path d="${P(pts)}" fill="url(#lk-${C.tex[fill === C.body ? 'body' : 'contrast']}-${C.uid})"/>` : '')),
     seam: (pts, closed = false) => parts.push(`<path d="${closed ? P(pts) : L_(pts)}" fill="none" stroke="${C.stitch}" stroke-width=".018" stroke-dasharray=".08 .06" stroke-linecap="round"/>`),
     line: (pts, w = .04, col = C.features) => parts.push(`<path d="${L_(pts)}" fill="none" stroke="${col}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"/>`),
     fill: (pts, col, op = 1) => parts.push(`<path d="${P(pts)}" fill="${col}" opacity="${op}" stroke="none"/>`),
@@ -162,14 +163,16 @@ function pillow(pat, C, view) {
 }
 
 const DRAW = { bear, bean, bunny: bean, pillow };
-export function plushViews(pat, { colours = {} } = {}) {
-  const C = palette(pat, colours), draw = DRAW[pat.spec.shape] || bean, out = {}, sk = pat.spec.sketches || [];
+let SEQ = 0;
+export function plushViews(pat, { colours = {}, tex = {} } = {}) {
+  const C = { ...palette(pat, colours), tex, uid: `p${++SEQ}` }; if (tex.body === 'fur') C.fur = true;
+  const defs = lookDefs(C.uid, tex), draw = DRAW[pat.spec.shape] || bean, out = {}, sk = pat.spec.sketches || [];
   for (const key of ['front', 'back', 'side']) {
     const r = draw(pat, C, key); let svg = r.svg;
     const b = box(r.pts);
     if (key === 'front') { const d = painter(pat, C); heightCallout(d, b, pat.spec.height); svg += d.svg(); b.x0 -= 1.3; }
     svg += strokesSvg(sk.filter(k => k.on === key)); // drawn by hand on this view
-    out[key] = { svg, box: b, key, name: { front: 'Front', back: 'Back', side: 'Side' }[key] };
+    out[key] = { svg: (defs ? `<defs>${defs}</defs>` : '') + svg, box: b, key, name: { front: 'Front', back: 'Back', side: 'Side' }[key] };
   }
   return { ...out, colours: C };
 }
@@ -179,8 +182,8 @@ export function plushLayout(v, gap = 1.8) {
   const all = items.flatMap(i => [[i.box.x0, i.box.y0], [i.box.x1, i.box.y1 + .9]]);
   return { items, box: box(all) };
 }
-export function plushSheet(pat, { title = '', viewsMarkup }) {
-  const lay = plushLayout(plushViews(pat)), b = lay.box, W = b.x1 - b.x0 + 2, H = b.y1 - b.y0 + 3.2;
+export function plushSheet(pat, { title = '', viewsMarkup, colours = {}, tex = {} }) {
+  const lay = plushLayout(plushViews(pat, { colours, tex })), b = lay.box, W = b.x1 - b.x0 + 2, H = b.y1 - b.y0 + 3.2;
   const head = `<text x="${r3(b.x0)}" y="${r3(b.y0 - 1.6)}" font-size=".55" font-weight="700">${esc(title || pat.label)}</text><text x="${r3(b.x0)}" y="${r3(b.y0 - .9)}" font-size=".34" fill="#55545a">${esc(pat.label)} · ${esc(pat.size)} · tech flats, 1:1</text>`;
   return `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="${r3(W)}in" height="${r3(H)}in" viewBox="${r3(b.x0 - 1)} ${r3(b.y0 - 2.4)} ${r3(W)} ${r3(H)}" font-family="Helvetica, Arial, sans-serif"><rect x="${r3(b.x0 - 1)}" y="${r3(b.y0 - 2.4)}" width="${r3(W)}" height="${r3(H)}" fill="#fff"/>${head}${viewsMarkup(lay)}</svg>\n`;
 }

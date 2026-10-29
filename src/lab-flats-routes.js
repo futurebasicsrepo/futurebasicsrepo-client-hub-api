@@ -517,7 +517,7 @@ export function registerLabFlatsRoutes(app, d) {
   async function handoff(c) {
     const items = await files(c);
     // what the concept is made of goes with it, flats or no flats
-    const picks = Array.isArray(c.spec?.materials) ? c.spec.materials : [], materials = picks.length ? packRows(picks) : null, colourways = cleanColourways(c.spec?.colourways);
+    const picks = Array.isArray(c.spec?.materials) ? c.spec.materials : [], materials = picks.length ? packRows(picks, c.category) : null, colourways = cleanColourways(c.spec?.colourways);
     // each label whose face was designed in the studio goes in as its own picture, so the factory sees the artwork
     const labelSketches = [];
     for (const pk of picks.filter(x => x.kind === 'tag')) {

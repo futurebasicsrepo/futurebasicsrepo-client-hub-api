@@ -10,6 +10,7 @@
 import { shellOf, onSurface } from './lab-last-shell.js';
 import { boundsOf } from './lab-pattern.js';
 import { strokesSvg } from './lab-sketch.js';
+import { lookDefs } from './lab-looks.js';
 
 const r3 = v => Math.round(v * 1000) / 1000, P = pts => 'M' + pts.map(q => `${r3(q[0])} ${r3(q[1])}`).join(' L') + ' Z', L_ = pts => 'M' + pts.map(q => `${r3(q[0])} ${r3(q[1])}`).join(' L');
 const esc = v => String(v).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -32,7 +33,7 @@ const COLOURS = { mesh: '#f4f4f2', leather: '#f1eee8', synthetic: '#f0efeb', can
 const shade = (hex, k) => { const n = parseInt(hex.slice(1), 16), c = [n >> 16, (n >> 8) & 255, n & 255].map(v => Math.max(0, Math.min(255, Math.round(v * k)))); return '#' + c.map(v => v.toString(16).padStart(2, '0')).join(''); };
 function palette(pat, given = {}) {
   const c = { ...(pat.spec.colours || {}), ...given }, upper = c.upper || COLOURS[pat.spec.upper] || '#f1f0ec';
-  return { upper, overlay: c.overlay || shade(upper, .9), sole: c.sole || '#f3f0e8', outsole: shade(c.sole || '#f3f0e8', .78), lining: c.lining || shade(upper, .94), lace: c.upper || upper, line: '#2b2a28', stitch: '#5d5a55' };
+  return { upper, overlay: c.overlay || shade(upper, .9), sole: c.sole || '#f3f0e8', outsole: c.outsole || shade(c.sole || '#f3f0e8', .78), lining: c.lining || shade(upper, .94), lace: c.lace || c.upper || upper, line: '#2b2a28', stitch: '#5d5a55' };
 }
 
 // ---- the side: the last's heel curve and toe drawn in (the pattern's side view is square at both ends) ----
@@ -73,6 +74,9 @@ function soleSide(pat, W) {
   if (stitched) { const wx = Array.from({ length: 31 }, (_, i) => breast - .2 + (L + .06 - breast + .2) * i / 30), up = wx.map(x => W([Math.min(x, L), l.lastBottom(Math.min(x, L)) - .05])), dn = wx.map(x => W([Math.min(x, L), l.lastBottom(Math.min(x, L)) + .1])); welt = [...up, ...dn.reverse()]; weltStitch = wx.slice(1, -1).map(x => W([Math.min(x, L - .05), l.lastBottom(Math.min(x, L - .05)) + .025])); }
   return { outline, outsole: band, welt, weltStitch };
 }
+// the part a piece is cut in (src/lab-materials-goods.js PARTS): its material's surface goes over its colour
+const partOf = q => q.fabric === 'overlay' || /eyestay|toe-cap|heel-overlay|mudguard|back-tab/.test(q.id) ? 'overlay' : 'upper';
+const surface = (C, q, d) => { const t = C.tex?.[partOf(q)]; return t ? `<path d="${d}" fill="url(#lk-${t}-${C.uid})" stroke="none" pointer-events="none"/>` : ''; };
 const visibleOn = (q, side) => q.place.view === 'front' && q.shown && !q.component && !INSIDE.test(q.id) && (side === 'medial' ? !/-lat(-|$)/.test(q.id) && !(q.seamSide === 'lateral') : !/-med(-|$)/.test(q.id) && !(q.seamSide === 'medial'));
 function sideView(pat, side, C) {
   const l = pat.last, W = warpOf(l), fill = q => q.fabric === 'overlay' ? C.overlay : q.fabric === 'lining' ? C.lining : C.upper;
@@ -81,7 +85,7 @@ function sideView(pat, side, C) {
   let svg = `<clipPath id="${id}"><path d="${P(nose.clip)}"/></clipPath><g clip-path="url(#${id})">`;
   for (const q of pieces) {
     const pts = chaikin(steady(dense(q.shown, .12).map(W), 1), 2), over = q.fabric === 'overlay' || /eyestay|toe-cap|heel-overlay|mudguard|back-tab/.test(q.id);
-    svg += `<path data-pid="${esc(q.id)}" class="pc" d="${P(pts)}" fill="${fill(q)}" stroke="${C.line}" stroke-width=".028" stroke-linejoin="round"/>`;
+    svg += `<path data-pid="${esc(q.id)}" class="pc" d="${P(pts)}" fill="${fill(q)}" stroke="${C.line}" stroke-width=".028" stroke-linejoin="round"/>` + surface(C, q, P(pts));
     if (over || q.id === 'vamp') svg += `<path d="${P(inset(pts, .075))}" fill="none" stroke="${C.stitch}" stroke-width=".014" stroke-dasharray=".07 .05"/>`;
     if (q.id === 'tongue') svg += `<path d="${L_(chaikin(dense(q.shown.slice(0, Math.ceil(q.shown.length / 2)), .2).map(W), 1, false))}" fill="none" stroke="${C.stitch}" stroke-width=".012" stroke-dasharray=".05 .05" opacity=".6"/>`;
   }
@@ -127,7 +131,7 @@ const gapAt = (m, x) => .3 + .14 * Math.min(1, Math.max(0, (m.vamp - x) / Math.m
 function topView(pat, C) {
   const l = pat.last, L = l.length, pl = planOf(pat), m = pat.marks || {}, type = pat.sole?.type, id = `fbt${++SEQ}`, line = w => `stroke="${C.line}" stroke-width="${w}" stroke-linejoin="round"`;
   const sole = inset(pl.outline, type === 'stitched' ? -.14 : type === 'midsole' ? -.26 : -.17);
-  let svg = `<clipPath id="${id}"><path d="${P(pl.outline)}"/></clipPath><path d="${P(sole)}" fill="${C.sole}" ${line('.03')}/><path d="${P(pl.outline)}" fill="${C.upper}" ${line('.03')}/>`;
+  let svg = `<clipPath id="${id}"><path d="${P(pl.outline)}"/></clipPath><path d="${P(sole)}" fill="${C.sole}" ${line('.03')}/><path d="${P(pl.outline)}" fill="${C.upper}" ${line('.03')}/>${C.tex?.upper ? `<path d="${P(pl.outline)}" fill="url(#lk-${C.tex.upper}-${C.uid})"/>` : ''}`;
   // the pieces, each on its side; one cut whole (the vamp, the toe cap) on both, meeting along the top centre, where no line is drawn
   const pieces = pat.pieces.filter(q => q.place.view === 'front' && q.shown && !q.component && !INSIDE.test(q.id) && !['back-tab', 'tongue', 'eyestay'].includes(q.id)).sort((a, b) => (a.place.z || 0) - (b.place.z || 0));
   svg += `<g clip-path="url(#${id})">`;
@@ -135,7 +139,7 @@ function topView(pat, C) {
     const sides = /-med(-|$)/.test(q.id) || q.seamSide === 'medial' ? ['medial'] : /-lat(-|$)/.test(q.id) || q.seamSide === 'lateral' ? ['lateral'] : ['lateral', 'medial'], over = q.fabric === 'overlay' || /toe-cap|heel-overlay|mudguard/.test(q.id);
     for (const sd of sides) {
       const pts = chaikin(dense(q.shown, .1).map(p => { const r = pl.proj(sd, p); return sides.length === 2 && p[1] <= l.crest(Math.min(Math.max(p[0], 0), L)) + .06 ? [r[0], 0] : r; }), 2); // a whole piece's top edge is on the centre line
-      svg += `<path d="${P(pts)}" fill="${q.fabric === 'overlay' ? C.overlay : C.upper}" stroke="none"/>`;
+      svg += `<path d="${P(pts)}" fill="${q.fabric === 'overlay' ? C.overlay : C.upper}" stroke="none"/>` + surface(C, q, P(pts));
       let d = ''; pts.forEach((p, i) => { const j = (i + 1) % pts.length; if (sides.length === 2 && (Math.abs(p[1]) < .32 || Math.abs(pts[j][1]) < .32 || p[0] > pl.L - .75)) return; d += `M${r3(p[0])} ${r3(p[1])} L${r3(pts[j][0])} ${r3(pts[j][1])} `; });
       svg += `<path d="${d}" fill="none" stroke="${C.line}" stroke-width=".026" stroke-linecap="round"/>`;
       if (over) { let st = ''; const ins = inset(pts, .07); ins.forEach((p, i) => { const j = (i + 1) % ins.length; if (Math.abs(p[1]) < .3 || Math.abs(ins[j][1]) < .3) return; st += `M${r3(p[0])} ${r3(p[1])} L${r3(ins[j][0])} ${r3(ins[j][1])} `; }); svg += `<path d="${st}" fill="none" stroke="${C.stitch}" stroke-width=".013" stroke-dasharray=".07 .05"/>`; }
@@ -195,10 +199,11 @@ function bottomView(pat, C) {
   return { svg: `<g transform="translate(0 ${r3(b.y0 + b.y1)}) scale(1 -1)">${svg}</g>`, box: { x0: b.x0, y0: b.y0, x1: b.x1, y1: b.y1 }, name: 'Bottom' };
 }
 
-export function footwearViews(pat, { colours = {} } = {}) {
-  const C = palette(pat, colours);
+export function footwearViews(pat, { colours = {}, tex = {} } = {}) {
+  const C = { ...palette(pat, colours), tex, uid: `v${++SEQ}` };
   const v = { lateral: sideView(pat, 'lateral', C), medial: sideView(pat, 'medial', C), top: topView(pat, C), bottom: bottomView(pat, C) };
-  for (const k of Object.keys(v)) v[k].key = k;
+  const defs = lookDefs(C.uid, tex);
+  for (const k of Object.keys(v)) { v[k].key = k; if (defs) v[k].svg = `<defs>${defs}</defs>` + v[k].svg; }
   return { ...v, colours: C };
 }
 // the four views laid out: lateral at its own place (so a picture can be laid over it), medial to its right, top and bottom below
@@ -212,8 +217,8 @@ export function viewsLayout(v, gap = 1.6) {
 export function viewsMarkup(lay, { label = true, faint = -1 } = {}) {
   return lay.items.map((i, k) => `<g transform="translate(${r3(i.dx)} ${r3(i.dy)})"${k === faint ? ' opacity=".55"' : ''}>${i.svg}</g>${label ? `<text x="${r3(i.box.x0)}" y="${r3(i.box.y1 + .7)}" font-size=".42" fill="#727278">${esc(i.name)}</text>` : ''}`).join('');
 }
-export function flatsSheet(pat, { title = '', colours = {} } = {}) {
-  const v = footwearViews(pat, { colours }), lay = viewsLayout(v), b = lay.box, W = b.x1 - b.x0 + 2, H = b.y1 - b.y0 + 3.2;
+export function flatsSheet(pat, { title = '', colours = {}, tex = {} } = {}) {
+  const v = footwearViews(pat, { colours, tex }), lay = viewsLayout(v), b = lay.box, W = b.x1 - b.x0 + 2, H = b.y1 - b.y0 + 3.2;
   const head = `<text x="${r3(b.x0)}" y="${r3(b.y0 - 1.6)}" font-size=".55" font-weight="700">${esc(title || pat.label)}</text><text x="${r3(b.x0)}" y="${r3(b.y0 - .9)}" font-size=".34" fill="#55545a">${esc(pat.label)} · ${esc(pat.size)} · ${esc(pat.notes[0] || '')} · tech flats, 1:1</text>`;
   return `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="${r3(W)}in" height="${r3(H)}in" viewBox="${r3(b.x0 - 1)} ${r3(b.y0 - 2.4)} ${r3(W)} ${r3(H)}" font-family="Helvetica, Arial, sans-serif"><rect x="${r3(b.x0 - 1)}" y="${r3(b.y0 - 2.4)}" width="${r3(W)}" height="${r3(H)}" fill="#fff"/>${head}${viewsMarkup(lay)}</svg>\n`;
 }

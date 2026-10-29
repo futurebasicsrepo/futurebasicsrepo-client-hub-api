@@ -530,6 +530,30 @@ These turn a graphic into something a decorator can quote and make. The rules an
 - **The starting library** has 57 fabrics: denim from 5 oz chambray to 16 oz selvedge (raw, rinsed, stone washed, bleached, overdyed black, ecru, stretch), fleece from 280 gsm polar to 520 gsm heavyweight brushed (cotton, CVC, organic, sherpa), French terry and loopback from 240 to 450 gsm, knits (slub, heather, interlock, piqué, waffle, 1×1 and 2×2 rib, 12-gauge merino and 5-gauge cotton jumper knits), polyesters (wicking interlock, tricot, pongee, softshell, 4-way stretch, mesh), ripstop (30D and 40D nylon, cotton, NYCO, 210D polyester), nylon (taffeta cire, 2-layer taslan, 420D oxford, 1000D Cordura) and canvas from 7 oz to 18 oz duck (washed, garment dyed, brushed, waxed, hemp). Mills and prices are starting points to confirm.
 - A starting set of 10 fabrics, 11 trims and 16 tags is put in once; all of it is ours to change. Taking one out of the library leaves it on the concepts that use it.
 
+**Footwear, plush and toys, plastics and acrylics** (`src/lab-materials-goods.js`) sit beside fabrics, trims and tags, each with its own
+details and drawn as what it is (`src/lab-swatches.js`):
+
+- **Footwear materials**: upper leathers (full grain, nappa, pebble, patent), suede and nubuck, synthetic leather, engineered mesh, knit and
+  canvas uppers, linings, collar foam, midsoles (EVA, supercritical PEBA), outsoles (rubber cupsole, carbon rubber, leather sole), insole board,
+  sockliner, counter and toe puff, laces and eyelets: what it is, the finish, thickness, hardness (Shore A), what a pair takes; leather by the
+  square foot. Drawn as a cut hide with its grain, nap or gloss, a mesh with its holes, a foam or sole block, an outsole's tread.
+- **Plush and toy materials**: minky, short pile, velboa, faux fur, felt, fibre fill, polypellets, 12 mm safety eyes, safety noses, embroidery
+  thread: pile height, weight, size, and the safety it is tested to (EN 71, ASTM F963) and its age. Drawn with its pile or fur, a safety eye
+  with its washer.
+- **Plastics and acrylics**: ABS (general and V-0), PC/ABS, clear PC, PP, PA66 GF30, POM, TPU, TPE, LSR silicone, cast and extruded acrylic,
+  frosted acrylic, PETG: the resin, grade, process (injection, overmould, 2K, CNC, laser cut, thermoformed, 3D printed), finish (SPI, MT
+  texture, VDI, soft-touch, UV coat, frosted, polished), opaque, translucent or clear, UL94 rating, wall thickness, density and shrinkage; by the
+  kilo or the sheet. Drawn as a moulded colour plaque with its stepped thickness and finish; clear and translucent ones over a checker.
+
+**On a product's parts.** A shoe, a plush, a toy, a home object and an electronics enclosure have parts (`PARTS`): a shoe's upper, overlays,
+lining, foam, midsole, outsole, insole, stiffeners, laces and eyelets; a plush's body, contrast, eyes, nose, fill and thread; an enclosure's
+housing top and bottom, buttons, lens, light pipe and gasket. A material is put on a part (`POST /v1/lab/concepts/:id/materials {material,
+part}`), in its first colour until another is chosen; a part takes one material, so choosing another replaces it. On the **Pattern** page a
+shoe's and a plush's **Materials** list each part with its swatch, **Choose…** from the library (what suits the part first), its colour and
+**Remove**; the tech flats are drawn in them (`src/lab-looks.js`): each part in its colour, a suede's nap, a mesh's holes, a knit, a pebble grain,
+patent's gloss, a fur's strands, and so is the tech flats SVG. The concept window has **Add a material to a part**, and Design's
+**Fabrics, trims & labels** has the kinds the product takes, each line saying the part it goes on. The tech pack's BOM names the part.
+
 **In Design** (the picture and both flats), **Fabrics, trims & labels** opens the same bill of materials beside the library: each fabric, trim and tag drawn (or its swatch photo), searchable, with **Add to the garment** (the first fabric is the main one, the next the contrast). Each line on the garment can change what it is used as, its colour, how much a piece takes and where it goes (a label's default: how it is attached), or come off; the materials, making, landed cost and margin follow, and the tech pack takes the lines.
 
 **Tags and labels in the studio.** **Design** on a tag's card (or **Design it in the studio** in its form, or **Design it** beside a tag on a garment in Design's Fabrics, trims & labels) opens the tag in the studio (`/lab/studio?tag=<id>`, with `&for=<concept>` from a garment) at its real size: its blank face (shape, fold, weave, colour) is a picture layer and each line of its words is a type layer, and every studio tool works on it (fonts, words, colours, graphics from the library, drawing, the AI). **Use on the tag** (and every save) puts the design on the tag as its face (`spec.face`, a graphic in the library): the library cards, the tag's picture and the sheets draw the face instead of typing the words, and the tech pack names it in the label row and carries a picture of each designed label. Starter tags are shared by every room, so designing one makes a copy, "… (ours)", in your own library. **Add to a garment** puts the label on a garment's bill of materials (straight onto the garment it came from, or one you pick), and a copy takes the starter's place on it. The design is in the graphics library too, so it can be placed on the flat like any graphic.

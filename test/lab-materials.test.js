@@ -19,7 +19,7 @@ test('the starting set covers fabrics, trims and tags for shirts, pants, outerwe
 });
 
 test('cleaning what is typed: a price in dollars, a tag with its enums held, a bad kind refused, an edit keeping the rest', () => {
-  assert.equal(cleanMaterial({ kind: 'plant', name: 'x' }).error, 'Say whether it is a fabric, a trim or a tag');
+  assert.equal(cleanMaterial({ kind: 'plant', name: 'x' }).error, 'Say what kind of material it is: a fabric, a trim, a tag, a footwear, plush or toy material, or a plastic');
   assert.equal(cleanMaterial({ kind: 'fabric', name: 'A' }).error, 'Give it a name');
   const f = cleanMaterial({ kind: 'fabric', name: 'Test jersey', price: '12.50', spec: { weightGsm: '240', construction: 'single jersey', composition: '100% cotton' }, colours: [{ hex: '#ABCDEF', name: 'sky' }, { hex: 'nope' }] }).material;
   assert.equal(f.priceCents, 1250); assert.equal(f.unit, 'm'); assert.equal(f.spec.weightGsm, 240); assert.deepEqual(f.colours, [{ hex: '#abcdef', name: 'sky', pantone: '' }]);

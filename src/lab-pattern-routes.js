@@ -21,6 +21,8 @@ import { registerLabLastRoutes } from './lab-last-routes.js';
 import { flatsSheet, viewsMarkup } from './lab-footwear-views.js';
 import { plushSheet } from './lab-plush-views.js';
 import { VIEWS_OF } from './lab-sketch.js';
+import { partLooks } from './lab-looks.js';
+import { partsFor } from './lab-materials-goods.js';
 import { footwearPattern, cleanFootwear, fwDefaults, sizeRun, lastOf, lastSvg, hideArea, FW_STYLES, TOES, SYSTEMS, WIDTHS as SHOE_WIDTHS, UPPERS, LININGS, SIZE_LIMITS } from './lab-footwear.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -71,7 +73,8 @@ export function registerLabPatternRoutes(app, d) {
     const L = await load(req.params.id); if (!L) return bad(reply, 'Not found', 404);
     const pat = patternOf(L, L.flat?.size), extra = pat ? { yardage: yardage(pat, Number(L.spec.width) || 58), ...(pat.kind === 'plush' ? { fillGrams: fillGrams(pat) } : {}), ...(pat.kind === 'footwear' ? footExtra(L.spec, pat) : {}) } : {};
     const hasImage = L.kind === 'footwear' ? Boolean((await pool.query('select image is not null h from lab_concepts where id=$1', [L.c.id])).rows[0]?.h) : false;
-    return { concept: { id: L.c.id, name: L.c.name, category: L.c.category, status: L.c.status, hasImage }, kind: L.kind, flat: L.flat, flatSaved: L.savedFlat, spec: L.spec, saved: L.saved, updatedAt: L.updatedAt, options, ...(L.kind === 'soon' ? { soon: SOON[L.c.category] } : {}), ...extra };
+    const materials = (Array.isArray(L.c.spec?.materials) ? L.c.spec.materials : []).filter(p => p.part); // what goes on the product's parts, drawn on its flats
+    return { concept: { id: L.c.id, name: L.c.name, category: L.c.category, status: L.c.status, hasImage }, materials, parts: partsFor(L.c.category), kind: L.kind, flat: L.flat, flatSaved: L.savedFlat, spec: L.spec, saved: L.saved, updatedAt: L.updatedAt, options, ...(L.kind === 'soon' ? { soon: SOON[L.c.category] } : {}), ...extra };
   });
   app.put('/v1/lab/concepts/:id/pattern', { preHandler: pre, bodyLimit: 4_000_000 }, async (req, reply) => {
     const L = await load(req.params.id); if (!L) return bad(reply, 'Not found', 404);
@@ -108,7 +111,7 @@ export function registerLabPatternRoutes(app, d) {
     const L = await load(req.params.id); if (!L) return bad(reply, 'Not found', 404); if (L.kind !== 'footwear' && L.kind !== 'plush') return bad(reply, 'Tech flats from the pattern are drawn for footwear and plush');
     const pat = patternOf(L, String(req.query?.size || ''));
     reply.header('content-disposition', `attachment; filename="${(L.c.name || 'shoe').replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-tech-flats.svg"`).header('cache-control', 'no-store');
-    return reply.type('image/svg+xml; charset=utf-8').send(L.kind === 'plush' ? plushSheet(pat, { title: L.c.name, viewsMarkup }) : flatsSheet(pat, { title: L.c.name }));
+    return reply.type('image/svg+xml; charset=utf-8').send((looks => L.kind === 'plush' ? plushSheet(pat, { title: L.c.name, viewsMarkup, ...looks }) : flatsSheet(pat, { title: L.c.name, ...looks }))(partLooks(L.c.spec?.materials)));
   });
 
   // read the shoe from the concept's picture: its outline (no AI) and, when Claude is connected, what the eye sees part by part. Nothing is
