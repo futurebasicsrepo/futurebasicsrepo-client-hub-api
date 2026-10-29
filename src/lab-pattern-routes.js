@@ -13,6 +13,7 @@ import { silhouette, readShoe, proposal } from './lab-shoe-read.js';
 import { callJsonSchema } from './studio.js';
 import { createHash } from 'node:crypto';
 import { registerLabLastRoutes } from './lab-last-routes.js';
+import { flatsSheet } from './lab-footwear-views.js';
 import { footwearPattern, cleanFootwear, fwDefaults, sizeRun, lastOf, lastSvg, hideArea, FW_STYLES, TOES, SYSTEMS, WIDTHS as SHOE_WIDTHS, UPPERS, LININGS, SIZE_LIMITS } from './lab-footwear.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -95,6 +96,13 @@ export function registerLabPatternRoutes(app, d) {
     return reply.type('image/svg+xml; charset=utf-8').send(lastSvg(L.spec, size));
   });
   app.get('/v1/lab/concepts/:id/pattern.dxf', { preHandler: pre }, file('dxf'));
+  // a shoe's tech flats: outside, inside, top and bottom, 1:1 (src/lab-footwear-views.js)
+  app.get('/v1/lab/concepts/:id/flats.svg', { preHandler: pre }, async (req, reply) => {
+    const L = await load(req.params.id); if (!L) return bad(reply, 'Not found', 404); if (L.kind !== 'footwear') return bad(reply, 'Tech flats from the pattern are drawn for footwear');
+    const pat = patternOf(L, String(req.query?.size || ''));
+    reply.header('content-disposition', `attachment; filename="${(L.c.name || 'shoe').replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-tech-flats.svg"`).header('cache-control', 'no-store');
+    return reply.type('image/svg+xml; charset=utf-8').send(flatsSheet(pat, { title: L.c.name }));
+  });
 
   // read the shoe from the concept's picture: its outline (no AI) and, when Claude is connected, what the eye sees part by part. Nothing is
   // saved: the page shows what would change, the picture over the shoe, and saves it when it is used. One reading per picture is kept.

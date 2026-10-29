@@ -868,3 +868,26 @@ meets the edges, and named. They are in the AAMA DXF with the rest.
 Seams are kept with the shoe (`spec.seams`: up to 8, each with its side, the piece and its points in side-view inches) and are listed with
 **Remove**. A seam that no longer crosses its piece (after a style change, say) is left out and the pattern's notes say so. A piece cut whole
 (the vamp, the toe cap) is not cut by a seam.
+
+## Tech flats: the shoe from four sides
+
+A shoe's product view on the Pattern page, and **Tech flats (SVG)** under Files (`GET /v1/lab/concepts/:id/flats.svg`, 1:1 in inches), draw the
+shoe as tech flats (`src/lab-footwear-views.js`, shared by the page and the service):
+
+- **Lateral and medial:** each side's own pieces as they show on the shoe. The inside has the inside quarter, a seam drawn on one side shows on
+  that side only, and the inside view is drawn toe left.
+- **Drawing details:**
+  - the heel curve and the rounded toe (the side view the pattern is drafted on is square at both ends);
+  - stitching inside every overlay's edge;
+  - eyelets where the eyestay holds them, and the laces crossing over;
+  - the sole unit as it is moulded. A cupsole or midsole is flared at the heel, bevelled and rocked at the toe, with its outsole. A stitched sole
+    is a thin sole following the last up through the waist, on a stacked heel with its breast square under the heel's front.
+- **Top:** the pieces carried up onto the last's surface and looked down on. A piece cut whole (the vamp, the toe cap) meets itself along the top
+  centre. The eyelets on both sides, the laces criss-crossing, the sole's flare round the outline.
+- **Bottom:** the outsole, with flex grooves across the forefoot.
+
+Colours come from the shoe's colours (read from its picture or set): the upper, the overlays, the sole and the outsole. Without colours the
+shoe is drawn in its upper's natural shade. With the concept's picture, the picture lies under the lateral view, lined up on the ground.
+
+The drawing follows the pattern. The lines (where the vamp, the quarters and the lacing sit) are the style's until they are read from the
+picture by the vision model or set by hand: a picture read by its outline alone gives the shoe's proportions, not its design lines.

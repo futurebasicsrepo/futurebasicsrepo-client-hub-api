@@ -107,7 +107,8 @@ function draftLast(s, sz) {
   const at = (pts, x) => { for (let i = 1; i < pts.length; i++) if (pts[i][0] >= x) { const [a, b] = [pts[i - 1], pts[i]], t = (x - a[0]) / ((b[0] - a[0]) || 1); return a[1] + (b[1] - a[1]) * t; } return pts[pts.length - 1][1]; };
   const lastBottom = x => x <= 0 ? -h : x <= F * .2 ? -h : at(bottom, x);
   // the last's height over its own bottom along the top (the cone, the instep, the ball, the toe), scaled to the girth
-  const H = [[0, 3.35], [F * .3, 3.95], [F * .55, 2.95], [ball, 1.95], [L - .7, 1.05], [L, .5]].map(([x, y]) => [x, y * k]);
+  // the toe box keeps its height well forward of the ball and rounds over at the tip (not a wedge down to it)
+  const H = [[0, 3.35], [F * .3, 3.95], [F * .55, 2.95], [ball, 1.95], [L - 1.6, 1.55], [L - .55, 1.2], [L, .55]].map(([x, y]) => [x, y * k]);
   const heightAt = x => { for (let i = 1; i < H.length; i++) if (H[i][0] >= x) { const [a, b] = [H[i - 1], H[i]], t = (x - a[0]) / ((b[0] - a[0]) || 1), e = t * t * (3 - 2 * t); return a[1] + (b[1] - a[1]) * e; } return H[H.length - 1][1]; };
   const crest = x => lastBottom(x) - heightAt(x);
   const xs = n => Array.from({ length: n + 1 }, (_, i) => L * i / n);
@@ -162,7 +163,7 @@ function symmetric(x0, x1, lean, crest, bot, margin = LAST_MARGIN) {
 // the style's lines, with what was read from the picture (or set by hand) in their place
 export const lineOf = s => { const S = FW_STYLES[s.style]; const collar = s.collar ?? S.collar; return { ...S, collar, throat: s.throat ?? S.throat, sole: s.sole ?? S.sole, shaft: Boolean(S.shaft) || collar > 4.5 }; };
 export function footwearPattern(input = {}, size = null) {
-  const s = cleanFootwear(input), last = lastOf(s, size ?? s.size), { F, L, lastBottom: bot, crest } = last, pieces = [], notes = [], S = lineOf(s);
+  const s = cleanFootwear(input), last = lastOf(s, size ?? s.size), { F, L, lastBottom: bot, crest } = last, pieces = [], notes = [], S = lineOf(s), marks = { eyelets: [] };
   const collarBack = bot(0) - S.collar, ankle = F * .28, throat0 = F * S.throat, vampX = s.vamp ? F * s.vamp : s.style === 'loafer' ? F * .5 : s.style === 'chelsea' ? F * .3 : F * .6, open = S.laced ? .45 : 0;
   // the topline: the collar from the back down past the ankle bone, then the edge of the lace opening (half its width below the crest)
   const topline = x => {
@@ -187,20 +188,24 @@ export function footwearPattern(input = {}, size = null) {
   add('quarter-med', s.style === 'chelsea' ? 'Back quarter, inside' : 'Quarter, inside', quarter.map(([x, y]) => [x, y > topline(x) - .01 && y < topline(x) + .01 ? y + .15 : y]), { z: -1, notes: ['The inside collar sits ⅛ in lower, under the ankle bone'] });
   if (s.style === 'chelsea') { const g = band(F * .24, F * .32, x => bot(0) - S.collar + .2, x => bot(0) - S.collar + 3.6); add('gore', 'Elastic gore', g, { z: 3, margin: 0, cut: 4, fabric: 'elastic', notes: ['Twin-needle stitched under the quarter and the front'] }); }
   if (S.laced) {
-    const eyestay = band(throat0 - .1, vampX + .2, topline, x => topline(x) + .85, { n: 16 });
+    const eyestay = band(throat0 - .1, vampX + .2, topline, x => topline(x) + .85, { n: 16, lean0: .15 });
     const holes = s.eyelets || Math.max(4, Math.round((vampX - throat0) / .55) + (S.shaft ? 3 : 0));
     add('eyestay', 'Eyestay', eyestay, { z: 4, margin: 0, cut: 4, fabric: fabOv, notes: [`${holes} eyelets a side, ${r8((vampX - throat0) / Math.max(holes - 1, 1))} in apart`] });
     notes.push(`Laces: ${holes} pairs of eyelets, about ${Math.round((holes * 2.6 + 18) / 6) * 6} in long`);
+    for (let k = 0; k < holes; k++) { const x = throat0 + .2 + (vampX - throat0 - .4) * k / Math.max(holes - 1, 1); marks.eyelets.push([r3(x), r3(topline(x) + .3)]); }
     // the tongue: from the vamp throat up past the collar, padded
     const tl = Math.hypot(vampX - throat0, crest(vampX) - crest(throat0)) + 2.6 + (s.style === 'boot' ? 3.5 : 0), tw = 2.6;
     const tongue = [[-tw * .38, 0], [tw * .38, 0], ...cubic([tw * .38, 0], [tw * .55, -tl * .5], [tw * .55, -tl * .9], [tw * .3, -tl]).slice(1), ...cubic([-tw * .3, -tl], [-tw * .55, -tl * .9], [-tw * .55, -tl * .5], [-tw * .38, 0]).slice(0, -1)];
-    const shownT = band(throat0 - .7, vampX + .3, x => Math.max(crest(x) - .3, topline(x) - .8), x => crest(x) + .25, { n: 12 }); // it shows a little above the collar
+    // it shows in the throat between the eyestays, just above the laces, and stands a little above the collar at its top
+    const shownT = band(throat0 - .5, vampX + .3, x => Math.max(crest(x) - .12, topline(x) - .5), x => crest(x) + .3, { n: 14, lean0: .2 });
     pieces.push(piece('tongue', 'Tongue', tongue, { shown: shownT, place: sidePlace(0), cut: 2, fabric: s.style === 'runner' ? 'upper' : fabUp, notes: ['Foam-padded, with a woven label at the top'] }));
   }
   if (s.toeCap) { const tc = band(L - 2.4, L - .02, crest, bot, { lean0: .9 }); add('toe-cap', 'Toe cap', tc, { z: 5, sew: symmetric(L - 2.4, L - .02, .9, crest, bot), pair: false, fabric: fabOv }); }
   if (s.mudguard) add('mudguard', 'Mudguard', band(F * .2, L - .02, x => bot(x) - .75, bot, { lean0: .3 }), { z: 4, fabric: 'overlay', notes: ['A low overlay round the foot, over the toe; lasted with the upper'] });
-  if (s.heelOverlay ?? ['sneaker', 'hightop', 'runner', 'boot', 'hiker'].includes(s.style)) add('heel-overlay', 'Heel overlay', band(0, F * .23, x => bot(x) - 2.1 + Math.max(0, x / (F * .23)) * .6, bot, { lean1: -.5 }), { z: 5, fabric: fabOv });
-  add('back-tab', 'Back tab', [[-.05, collarBack - .5], [.75, collarBack - .45], [.7, collarBack + 1.3], [-.05, collarBack + 1.3]], { z: 6, margin: 0, fabric: fabOv, notes: ['Pull loop, sewn into the back seam'] });
+  if (s.heelOverlay ?? ['sneaker', 'hightop', 'runner', 'boot', 'hiker'].includes(s.style)) add('heel-overlay', 'Heel overlay', band(0, F * .23, x => bot(x) - 2.1 + Math.max(0, x / (F * .23)) * .6, bot, { lean1: .35 }), { z: 5, fabric: fabOv });
+  // the pull loop: a narrow tab standing ½ in above the collar, rounded at the top
+  const tab = [[-.06, collarBack + .9], ...cubic([-.06, collarBack - .2], [-.06, collarBack - .52], [.1, collarBack - .56], [.21, collarBack - .56], 6), ...cubic([.21, collarBack - .56], [.32, collarBack - .56], [.48, collarBack - .5], [.48, collarBack - .2], 6), [.48, collarBack + .9]];
+  add('back-tab', 'Back tab', tab, { z: 6, margin: 0, fabric: fabOv, notes: ['Pull loop, sewn into the back seam'] });
   // inside: linings, the collar foam, the stiffeners
   add('quarter-lining', 'Quarter lining', band(0, qEnd + .3, topline, bot), { z: -3, cut: 4, fabric: 'lining', notes: [LININGS[s.lining]] });
   add('vamp-lining', 'Vamp lining', vamp, { z: -3, fabric: 'lining', sew: symmetric(vampX - .35, L - .02, .4, crest, bot, .4), pair: false });
@@ -229,7 +234,7 @@ export function footwearPattern(input = {}, size = null) {
     notes.push(`The upper's pieces are flattened off the last's surface (the stretch in the flattening: ${Math.round(Math.max(flat.lateral.rms, flat.medial.rms) * 1000) / 10}% on average, ${Math.round(Math.max(flat.lateral.max, flat.medial.max) * 100)}% at most)`);
   }
   for (const q of pieces) delete q.half;
-  return { kind: 'footwear', spec: s, label: S.label, flat, ground: r3(under), size: `${SYSTEMS[s.system].replace(/ \(.*$/, '')} ${last.size} ${s.width}`.trim(), sa: .25, pieces, last, views: { front: 'Side', back: 'Bottom' },
+  return { kind: 'footwear', spec: s, label: S.label, flat, ground: r3(under), marks, sole: { type: S.sole, height: r3(sh) }, size: `${SYSTEMS[s.system].replace(/ \(.*$/, '')} ${last.size} ${s.width}`.trim(), sa: .25, pieces, last, views: { front: 'Side', back: 'Bottom' },
     notes: [`${UPPERS[s.upper]} upper, ${LININGS[s.lining].toLowerCase()}`, 'Overlaps ⅜ in, skived and cemented before stitching; the lasting allowance is ⅝ in', ...notes, 'A first draft on the standard of the last: the pattern engineer trues it up on the fitting sample'],
     checks: footwearChecks(s, last), components: components(s, last), tooling: tooling(s) };
 }

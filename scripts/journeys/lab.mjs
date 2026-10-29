@@ -2846,8 +2846,9 @@ await journey('J245', 'Footwear: a shoe started from scratch is drafted on its l
     await page.goto(`${BASE}${sn.studio}`, { waitUntil: 'networkidle' }); await page.waitForSelector('#pLayers .ly', { timeout: 20000 }); await page.waitForFunction(() => !document.querySelector('#busy:not(.hidden)'));
     ok(await page.evaluate(() => /court sneaker/i.test(LAYERS[1]?.name || '') && PPISET), '5. a sneaker from scratch opens on paper with the shoe\'s side as the guide, at real size');
     await page.click('#viewSeg [data-v="pattern"]'); const F = await (await page.waitForSelector('#patFrame')).contentFrame(); await F.waitForFunction(() => window.FBPattern?.ready?.(), null, { timeout: 20000 });
-    ok(/The last/.test(await F.innerText('#side')) && /Size run/.test(await F.innerText('#side')) && /Tooling/.test(await F.innerText('#side')) && await F.locator('#canvas [data-pid="vamp"]').count() === 1, '6. Pattern shows the shoe on its last, the last\'s numbers, the size run and the tooling');
-    ok(/Side/.test(await F.innerText('#canvas')) && /Bottom/.test(await F.innerText('#canvas')), '   the side and the bottom of the shoe');
+    ok(/The last/.test(await F.innerText('#side')) && /Size run/.test(await F.innerText('#side')) && /Tooling/.test(await F.innerText('#side')) && await F.locator('#canvas [data-pid="vamp"]').count() === 2, '6. Pattern shows the shoe on its last, the last\'s numbers, the size run and the tooling');
+    const texts = await F.innerText('#canvas');
+    ok(['Lateral (outside)', 'Medial (inside)', 'Top', 'Bottom'].every(t => new RegExp(t.replace(/[()]/g, '\\$&')).test(texts)), '   the shoe as tech flats: outside, inside, top and bottom', texts);
     await F.selectOption('#size', '12'); await F.waitForFunction(() => /size 12/i.test(document.querySelector('#side').innerText), null, { timeout: 5000 });
     ok(true, '   the size picker redraws it in size 12');
     await F.click('#play'); await F.waitForFunction(() => document.getElementById('tLbl').textContent === 'Cutting layout', null, { timeout: 15000 });
