@@ -652,9 +652,8 @@ the page and the service).
 
   Each piece has its sew line, the cutting line (the seam allowance: ⅜ in for knits, ½ in for wovens, or as chosen), a grain line, notches, and
   how many to cut and from which cloth.
-- **Plush** is drafted from a few choices: a bear (head sides and gusset, muzzle, body front and back, arms, legs, foot pads, ears), a bean
-  character, a bunny or a pillow character. You also choose the height, the ears, the arms, legs and tail, the pile fabric, the eyes and the age.
-  The pieces carry a ¼ in allowance, the pile direction, and the stuffing opening.
+- **Plush** is drafted from a kit: a **body type** and the **parts** that go on it (see *The plush kit* below). The pieces carry a ¼ in
+  allowance, the pile direction, and the stuffing opening.
 - **The exploded view shows every piece cut, at every step.** A piece cut 4 (two pairs, inner and outer) is four outlines; a lining under an
   ear and the pads under the feet lift off with the rest. The inner layers come off beside the outer ones, and once spread no two pieces
   cover each other. Each one is labelled with its count (Front leg 3/4), and the bar says how many there are to cut. A unit test holds this
@@ -666,6 +665,43 @@ the page and the service).
   sits on a rounded haunch with its foot and pad turned forward.
 - **Plush safety checks** follow the age (ASTM F963 and EN 71): safety eyes on a toy for under-3s fail; small appendages and long pile are
   flagged; the law label and tracking label are listed. The page estimates the fill in grams.
+
+### The plush kit: body types and parts
+
+A plush is not drawn as the nearest of a few fixed toys: it is built from a body type and the parts it needs, so a fox, a unicorn, a dragon
+or a shark is drafted and drawn as itself (`PLUSH_SHAPES` and `PLUSH_PARTS` in `src/lab-pattern.js`, drawn by `src/lab-plush-views.js`).
+
+- **Body types:** a standing bear (upright: bears, monkeys, people), **four-legged sitting** (dog, cat, fox, lion, horse, unicorn, deer,
+  dinosaur…: head sides and gusset with its snout, body sides, underbody, front and hind legs on four pads), the elephant, a **sea creature**
+  (whale, shark, dolphin, fish: body sides, a belly in the contrast cloth, side fins, a dorsal fin and a fluke or a tail fin; sized by its
+  length), a bean character, a bunny and a pillow character.
+- **Parts**, each on the body types that take it: a snout (none, short, long, broad), horns (one, two, antlers), a mane (a ruff round the face,
+  or a crest down the back of the neck, in its own colour), wings (lined), spikes down the back, a dorsal fin, the tail's kind (short, long,
+  bushy, tuft, hair; a fluke or a fin at sea) and the head's size against the body (80% to 130%). Ears may also be floppy.
+- Each part adds its pieces, cut and counted (so the exploded view and the cutting layout carry them), and is drawn on the front, back and
+  side. The label says what the toy is and what it is cut as: *Fox · four-legged sitting body*.
+- **From the concept.** The concept's words and the reading of its picture choose the body type and the parts, so a concept opens in Pattern
+  as the animal it shows. A concept saved before the kit keeps its old shape until its picture is read again or its body type is changed.
+
+### The plush developer check
+
+**Developer check** on a plush's Pattern page brings the drawing close to the concept's picture, the same way as a shoe's (below), with
+`src/lab-plush-review.js`:
+
+1. **Two soft-toy developers**, Claude and, when `OPENAI_API_KEY` is set, an OpenAI vision model (`SHOE_CHECKER` picks them, both by
+   default), each look at the picture and the toy's front, back and side on one sheet, on their own, and score six points out of 100: the
+   body type and proportions (25%), the face (20%), the ears (10%), the legs and arms (15%), the parts (15%) and the colours (15%). The
+   stricter score stands.
+2. **They ask for changes to the toy's choices** from the kit, never to the drawing: the body type, ears, snout, horns, mane, tail, wings,
+   spikes, dorsal fin, head size, height, cloth, eyes and colours. A new body type brings its own parts and keeps the colours, cloth, eyes,
+   logos and sketches; a part the body type cannot take is not made. What both ask for is made (numbers within 15%, and colours that nearly
+   match, are met in the middle); where they ask for different things, the choice is left and listed for a person. What the kit cannot show
+   (a scarf, a printed pattern) is listed for a person too.
+3. **Round after round** the toy is drawn again and scored, until it clears **90**, there is nothing left to change, or two rounds gain
+   nothing (at most four). Below 90 it says a person is needed. **Use it** puts the result on the page, to save.
+
+The routes are the shoe's (`POST /v1/lab/concepts/:id/pattern/review`, then `GET …/review/:rid`), with the same daily cap
+(`SHOE_REVIEW_DAILY`). Without Claude it says only the pattern's own checks ran. `PLUSH_REVIEW_FIXTURE` stands in for the judges in tests.
 
 **Product → Exploded → Cutting layout.** The slider (or **Explode it**) lifts the pieces off the product (front and back side by side), spreads
 them out, then lays every cut flat on the cloth. The cutting layout shows each fabric at its width, how much it takes (yards), and how much of
@@ -1114,7 +1150,6 @@ Footwear and plush now take the tools clothing has, where they apply:
 
 - Placing a logo or graphic in inches on a shoe's or a plush's views, with the "can it be made" check: graphics are sized in the studio and
   their place is written on the pack.
-- The developer's two-judge check for a plush (a shoe has it).
 - A shoe or a plush in the range mockup.
 - Toys, home objects and electronics still have no pattern or tooling (Phase C and D).
 

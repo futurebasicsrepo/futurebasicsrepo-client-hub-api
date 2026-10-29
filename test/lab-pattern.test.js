@@ -146,7 +146,7 @@ test('AAMA DXF: a block a piece and a size with its text, the standard layers, i
 test('the exploded view accounts for every piece cut, at every step, for every garment, plush and shoe', async () => {
   const { footwearPattern, FW_STYLES } = await import('../src/lab-footwear.js');
   const pats = [...Object.keys(STYLES).map(s => [s, garmentPattern(defaultParams(s), 'M')]),
-    ...['bear', 'elephant', 'bean', 'bunny', 'pillow'].flatMap(shape => [[shape, plushPattern({ shape })], [`${shape}+`, plushPattern({ shape, arms: true, legs: true, tail: true, fabric: 'leather' })]]),
+    ...['bear', 'quad', 'elephant', 'sea', 'bean', 'bunny', 'pillow'].flatMap(shape => [[shape, plushPattern({ shape })], [`${shape}+`, plushPattern({ shape, arms: true, legs: true, tail: true, fabric: 'leather', horn: 'antlers', mane: 'ruff', wings: true, spikes: true, dorsal: true, snout: 'long' })]]),
     ...Object.keys(FW_STYLES).map(s => [s, footwearPattern({ style: s })])];
   for (const [name, pat] of pats) {
     const lay = layoutOf(pat), cuts = pat.pieces.reduce((s, q) => s + (q.cut || 0), 0), items = lay.flatMap(g => g.items);
