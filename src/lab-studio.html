@@ -34,6 +34,11 @@ header{height:72px;background:rgba(20,20,22,.96);color:#fff;padding:0 clamp(16px
 #readyPop{width:min(380px,92vw);right:0;left:auto;padding:12px;display:grid;gap:8px}#readyPop.hidden{display:none}
 .rd{display:grid;grid-template-columns:18px minmax(0,1fr) auto;gap:4px 8px;align-items:start;font-size:12.5px;padding:6px 0;border-top:1px solid var(--line)}.rd b{font-size:13px}.rd small{grid-column:2/3;color:var(--dim);line-height:1.35}.rd .st{width:14px;height:14px;border-radius:50%;margin-top:2px}.rd .st.done{background:#1f9d55}.rd .st.todo{background:#a02a20}.rd .st.warn{background:#d49a00}
 #readyBtn.ok{border-color:#1f9d55;color:#17603a}
+#matDlg{border:0;border-radius:20px;padding:0;width:min(1180px,96vw);max-height:92vh}#matDlg::backdrop{background:rgba(20,20,22,.35)}.md{padding:18px;display:grid;gap:12px}.md h4{margin:0 0 8px;font-size:13px}
+.mcols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);gap:18px;align-items:start}@media(max-width:820px){.mcols{grid-template-columns:1fr}}
+.mon{display:grid;gap:8px}.mp{display:grid;grid-template-columns:64px minmax(0,1fr) auto;gap:10px;align-items:start;border:1px solid var(--line);border-radius:12px;padding:8px;background:#fff}.mp .th,.mc .th{background:var(--fog);border-radius:8px;overflow:hidden;position:relative;aspect-ratio:4/3}.mp .th>svg,.mc .th>svg,.mp .th>img,.mc .th>img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}.mp .th.tg>svg,.mc .th.tg>svg{inset:6%;width:88%;height:88%}
+.mp .f2{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:6px;margin-top:6px}.mp .f2 label{display:grid;gap:2px;font-size:11px;color:var(--dim)}.mp b{font-size:13px;font-weight:600}.mp .note{font-size:11.5px}
+.mlib{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-top:10px;max-height:58vh;overflow:auto;padding-bottom:4px}.mc{border:1px solid var(--line);border-radius:12px;background:#fff;overflow:hidden;display:grid}.mc .th{border-radius:0}.mc .bd{padding:8px;display:grid;gap:4px;font-size:12px}.mc .bd b{font-weight:600;font-size:12.5px}.mc .bd .note{font-size:11px}
 .flathost{display:none;min-height:0;min-width:0;background:var(--fog)}.flathost iframe{display:block;width:100%;height:100%;border:0}
 .studio[data-v=picture] .flat-only,.studio:not([data-v]) .flat-only{display:none}
 .studio[data-v=front] .pic-only,.studio[data-v=back] .pic-only{display:none!important}
@@ -124,6 +129,7 @@ kbd{font:500 10px 'IBM Plex Mono',monospace;border:1px solid var(--line);border-
         <button type="button" role="menuitem" data-exp="layer"><b>The selected layer (PNG)</b><small>With a clear background, for a print file</small></button>
         <button type="button" role="menuitem" data-exp="keepnew" class="hidden" id="expKeepNew"><b>Keep as a new graphic</b><small>Everything visible goes into the library as its own graphic</small></button>
       </div></div>
+    <button class="btn sm hidden" id="matBtn" type="button" title="The fabrics, trims and labels this garment is made of, from the library: add, change and see what they cost">Fabrics, trims &amp; labels</button>
     <button class="btn sm q pic-only" id="verBtn" type="button" title="Every picture used as the concept, and any kept on purpose: open two side by side">Versions</button>
     <button class="btn go sm pic-only" id="apply" type="button">Use as the concept picture</button>
     <button class="btn sm flat-only" id="specBtn" type="button" title="The flats, measured, as a printable spec sheet">Spec sheet</button>
@@ -166,6 +172,13 @@ kbd{font:500 10px 'IBM Plex Mono',monospace;border:1px solid var(--line);border-
     <div class="pane hidden" id="pAi" role="tabpanel"></div>
   </aside>
 </div>
+<dialog id="matDlg" aria-labelledby="matTitle"><div class="md">
+  <div class="row" style="justify-content:space-between"><h3 id="matTitle" style="margin:0;font-size:16px">Fabrics, trims and labels</h3><div class="row"><a class="btn sm q" href="/lab/materials" target="_blank" rel="noopener">The library</a><button class="btn sm q" type="button" data-matclose>Close</button></div></div>
+  <div class="mcols">
+    <section><h4>On this garment</h4><div id="matOn" class="mon"><span class="note">Loading…</span></div><div id="matCost" class="note"></div></section>
+    <section><h4>Add from the library</h4><div class="row"><div class="seg" id="matKinds"><button type="button" data-mk="fabric" aria-pressed="true">Fabrics</button><button type="button" data-mk="trim" aria-pressed="false">Trims</button><button type="button" data-mk="tag" aria-pressed="false">Tags and labels</button></div><input class="t" id="matQ" placeholder="Search by name, mill, composition…" style="flex:1;min-width:140px"></div><div id="matLib" class="mlib"></div></section>
+  </div>
+</div></dialog>
 <dialog id="verDlg" style="border:0;border-radius:20px;padding:0;width:min(1100px,96vw);max-height:92vh;overflow:auto"><div style="padding:18px;display:grid;gap:12px">
   <div class="row" style="justify-content:space-between"><h3 style="margin:0;font-size:16px">Versions</h3><div class="row"><button class="btn sm" type="button" id="verKeep">Keep this as a version</button><button class="btn sm q" type="button" data-verclose>Close</button></div></div>
   <p class="note" style="margin:0">Every picture used as the concept, and any kept on purpose. Tick two to see them side by side; drag the handle to wipe between them. Open one to carry on from its layers.</p>
@@ -1134,6 +1147,47 @@ async function setVMode(v,{push=true}={}){
 $$('#viewSeg [data-v]').forEach(b=>b.onclick=()=>setVMode(b.dataset.v));
 const flatsOr=fn=>()=>{const f=FF();if(!f||!f.ready()){toast('The flats are still loading.');return}fn(f)};
 $('#specBtn').onclick=flatsOr(f=>f.sheet());$('#decoBtn').onclick=flatsOr(f=>f.deco());$('#packBtn').onclick=flatsOr(f=>f.pack());
+// ---------- fabrics, trims and labels on the garment (the concept's bill of materials), from the materials library; on the picture and the flats ----------
+const MAT={kind:'fabric',q:'',on:null,lib:[]};let MSW=null,MTG=null;
+const matMods=async()=>{if(!MSW)[MSW,MTG]=await Promise.all([import('/lab/lab-swatches.js'),import('/lab/lab-tags.js')]);return[MSW,MTG]};
+const MROLES={fabric:[['main','Main fabric'],['contrast','Contrast'],['lining','Lining'],['rib','Rib and trims']],trim:[['trim','Trim']],tag:[['tag','Tag or label']]};
+const tagInk=h=>{if(!/^#[0-9a-f]{6}$/i.test(h||''))return'#141416';const n=parseInt(h.slice(1),16);return((n>>16)*299+((n>>8)&255)*587+(n&255)*114)/1000<128?'#f3eee4':'#141416'};
+function matThumb(m,colour){const[S,T]=[MSW,MTG];if(m.kind==='tag'){const fill=colour?.hex||(m.colours||[])[0]?.hex||'';return`<div class="th tg">${T.tagSvg(m.spec||{},{scale:2,showSize:false,fill,ink:tagInk(fill)})}</div>`}
+  const cs=colour?[colour,...(m.colours||[])]:(m.colours||[]);return`<div class="th" ${m.hasSwatch?`data-msw="${m.id}"`:''}>${S.materialSvg({...m,colours:cs},'m'+m.id.replace(/-/g,'').slice(0,10)+(colour?.hex||'').slice(1))}</div>`}
+function matPhotos(root){for(const el of root.querySelectorAll('[data-msw]'))fetch(`/v1/lab/materials/${el.dataset.msw}/swatch?thumb=1`,{headers:{Authorization:'Bearer '+TOKEN()}}).then(r=>r.ok?r.blob():null).then(b=>{if(b){const i=new Image();i.alt='';i.src=URL.createObjectURL(b);el.append(i)}}).catch(()=>{})}
+async function matOpen(){await matMods();$('#matDlg').showModal();
+  // the whole library once, so a pick's colours can be offered whichever tab is showing
+  const all=await Promise.all(['fabric','trim','tag'].map(k=>api(`/v1/lab/materials?kind=${k}`).then(r=>r.materials).catch(()=>[])));MAT.lib=all.flat();
+  await Promise.all([matLoadOn(),matLoadLib()])}
+async function matLoadOn(){try{MAT.on=await api(`/v1/lab/concepts/${CID}/materials`)}catch(x){$('#matOn').innerHTML=`<span class="msg bad">${esc(x.message)}</span>`;return}matPaintOn()}
+function matPaintOn(){const o=MAT.on,locked=Boolean(D?.concept?.locked),picks=o?.picks||[];
+  $('#matOn').innerHTML=picks.length?picks.map(p=>{const roles=MROLES[p.kind]||MROLES.trim,cols=(p.colours||[]);return`<div class="mp" data-mp="${esc(p.id)}" data-role="${esc(p.role)}">${matThumb(p,p.colour)}<div><b>${esc(p.name)}</b><div class="note">${esc(money(Math.round(p.qty*p.unitCents)))} a piece · ${esc(p.qty)} ${esc(p.unit)} at ${esc(money(p.unitCents))}${p.supplier?' · '+esc(p.supplier):''}</div>
+    <div class="f2"><label>Used as<select class="t" data-mf="role" ${locked?'disabled':''}>${roles.map(([v,l])=>`<option value="${v}" ${v===p.role?'selected':''}>${l}</option>`).join('')}</select></label>
+    <label>Colour<select class="t" data-mf="colour" ${locked?'disabled':''}><option value="">${p.colour?esc(p.colour.name||p.colour.hex):'Any'}</option>${(MAT.lib.find(m=>m.id===p.id)?.colours||[]).filter(c=>c.hex!==p.colour?.hex).map(c=>`<option value="${esc(c.hex)}">${esc(c.name||c.hex)}</option>`).join('')}</select></label>
+    <label>${p.kind==='fabric'?'Metres a piece':'How many a piece'}<input class="t" type="number" step="any" min="0" inputmode="decimal" data-mf="qty" value="${esc(p.qty)}" ${locked?'disabled':''}></label>
+    <label style="grid-column:1/-1">Where it goes<input class="t" data-mf="note" maxlength="200" placeholder="${p.kind==='tag'?esc(p.spec?.attach||'e.g. sewn into the neck seam'):p.kind==='trim'?'e.g. centre front, 7 buttons':'e.g. body and sleeves'}" value="${esc(p.note||'')}" ${locked?'disabled':''}></label></div></div>
+    <button class="btn sm q" type="button" data-mdel ${locked?'disabled':''} aria-label="Take ${esc(p.name)} off the garment">Remove</button></div>`}).join(''):'<span class="note">Nothing yet. Add the main fabric first, then trims and labels.</span>';
+  const c=o?.cost;$('#matCost').innerHTML=c&&picks.length?`Materials ${money(c.materialsCents)} · making ${money(c.makingCents)} · landed ${money(c.landedCents)} a piece${c.marginPct!=null?` · margin ${c.marginPct}%`:''}. The tech pack takes these lines.`:'';
+  matPhotos($('#matOn'))}
+async function matLoadLib(){const r=await api(`/v1/lab/materials?kind=${MAT.kind}&q=${encodeURIComponent(MAT.q)}`).catch(x=>{$('#matLib').innerHTML=`<span class="msg bad">${esc(x.message)}</span>`;return null});if(!r)return;
+  MAT.lib=[...MAT.lib.filter(m=>m.kind!==MAT.kind||!r.materials.some(x=>x.id===m.id)),...r.materials];const locked=Boolean(D?.concept?.locked),on=new Set((MAT.on?.picks||[]).map(p=>p.id));
+  $('#matLib').innerHTML=r.materials.length?r.materials.map(m=>{const s=m.spec||{},line=m.kind==='fabric'?[s.weightGsm?s.weightGsm+' gsm':'',s.construction,s.composition].filter(Boolean).join(' · '):m.kind==='trim'?[s.size,s.material,s.finish].filter(Boolean).join(' · '):`${s.widthMm} × ${s.heightMm} mm · ${s.material||''}`;
+    return`<div class="mc">${matThumb(m)}<div class="bd"><b>${esc(m.name)}</b><span class="note">${esc(line)}</span><span class="note">${esc(money(m.priceCents))} / ${esc(m.unit)}</span><button class="btn sm ${on.has(m.id)?'q':''}" type="button" data-madd="${m.id}" ${locked?'disabled':''}>${on.has(m.id)?'Add again':'Add to the garment'}</button></div></div>`}).join(''):'<span class="note">Nothing in the library matches.</span>';
+  matPhotos($('#matLib'));if(MAT.on)matPaintOn()}
+$('#matBtn').onclick=()=>matOpen().catch(x=>toast(x.message));
+$('#matDlg').addEventListener('click',async e=>{if(e.target.closest('[data-matclose]')||e.target===$('#matDlg')){$('#matDlg').close();return}
+  const k=e.target.closest('[data-mk]');if(k){MAT.kind=k.dataset.mk;$$('#matKinds [data-mk]').forEach(b=>b.setAttribute('aria-pressed',String(b===k)));matLoadLib();return}
+  const a=e.target.closest('[data-madd]');if(a){const m=MAT.lib.find(x=>x.id===a.dataset.madd),hasMain=(MAT.on?.picks||[]).some(p=>p.kind==='fabric'&&p.role==='main');
+    const r=await FBN.run(a,()=>api(`/v1/lab/concepts/${CID}/materials`,{body:{material:a.dataset.madd,role:m?.kind==='fabric'?(hasMain?'contrast':'main'):undefined}}),{done:m?.kind==='fabric'?(hasMain?'Added as the contrast fabric.':'Added as the main fabric.'):'Added to the garment.'}).catch(()=>null);
+    if(r){MAT.on=r;matPaintOn();matLoadLib();matChanged()}return}
+  const d=e.target.closest('[data-mdel]');if(d){const id=d.closest('[data-mp]').dataset.mp;const r=await FBN.run(d,()=>api(`/v1/lab/concepts/${CID}/materials/${id}`,{method:'DELETE'}),{done:'Taken off the garment.'}).catch(()=>null);if(r){MAT.on=r;matPaintOn();matLoadLib();matChanged()}}});
+$('#matDlg').addEventListener('change',async e=>{const f=e.target.closest('[data-mf]');if(!f)return;const row=f.closest('[data-mp]'),k=f.dataset.mf;let v=f.value;if(k==='qty')v=Number(v);if(k==='colour'&&!v)return;
+  try{MAT.on=await api(`/v1/lab/concepts/${CID}/materials/${row.dataset.mp}`,{method:'PUT',body:{[k]:v}});matPaintOn();matChanged();toast('Saved on the garment.')}catch(x){toast(x.message)}});
+let MQT=0;$('#matQ').addEventListener('input',()=>{clearTimeout(MQT);MQT=setTimeout(()=>{MAT.q=$('#matQ').value.trim();matLoadLib()},250)});
+// the fabric panel in the AI tab and the checklist follow what the garment is made of
+function matChanged(){if(typeof paintFabrics==='function'&&$('#fabSec'))paintFabrics().catch(()=>{});if(typeof loadReady==='function')setTimeout(loadReady,200)}
+if(CID&&!GMODE)$('#matBtn').classList.remove('hidden');
+
 boot();
 </script>
 <script src="/helper.js" defer></script>
