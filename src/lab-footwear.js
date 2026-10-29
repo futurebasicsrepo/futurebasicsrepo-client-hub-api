@@ -86,7 +86,7 @@ export const SOLES = { cupsole: 'Cupsole (rubber, stitched or cemented)', midsol
 function cleanLines(i = {}) {
   const out = {}, put = (k, v) => { if (v != null) out[k] = v; };
   put('collar', opt(i.collar, 1.5, 10)); put('vamp', opt(i.vamp, .4, .75, .01)); put('throat', opt(i.throat, .1, .6, .01)); put('soleHeight', opt(i.soleHeight, .25, 2.5));
-  put('eyelets', opt(i.eyelets, 3, 14, 1)); if (SOLES[i.sole]) out.sole = i.sole; if (typeof i.mudguard === 'boolean') out.mudguard = i.mudguard; if (typeof i.heelOverlay === 'boolean') out.heelOverlay = i.heelOverlay;
+  put('eyelets', opt(i.eyelets, 3, 14, 1)); put('capLen', opt(i.capLen, 1.2, 4, .0625)); put('mudH', opt(i.mudH, .4, 1.6, .0625)); put('heelH', opt(i.heelH, 1, 3.5, .0625)); if (SOLES[i.sole]) out.sole = i.sole; if (typeof i.mudguard === 'boolean') out.mudguard = i.mudguard; if (typeof i.heelOverlay === 'boolean') out.heelOverlay = i.heelOverlay;
   const c = i.colours && typeof i.colours === 'object' ? Object.fromEntries(['upper', 'overlay', 'sole', 'lining'].filter(k => HEX.test(String(i.colours[k] || ''))).map(k => [k, String(i.colours[k]).toLowerCase()])) : {}; if (Object.keys(c).length) out.colours = c;
   const p = i.picture; if (p && typeof p === 'object' && [p.imgW, p.imgH, p.x0, p.y0, p.x1, p.y1].every(v => Number.isFinite(Number(v)) && Number(v) >= 0 && Number(v) < 20000) && Number(p.x1) > Number(p.x0) && Number(p.y1) > Number(p.y0))
     out.picture = { imgW: Math.round(p.imgW), imgH: Math.round(p.imgH), x0: Math.round(p.x0), y0: Math.round(p.y0), x1: Math.round(p.x1), y1: Math.round(p.y1), toeLeft: Boolean(p.toeLeft), at: String(p.at || '').slice(0, 30) };
@@ -220,14 +220,27 @@ export function footwearPattern(input = {}, size = null) {
       : band(throat0 - .5, vampX + .3, x => Math.max(crest(x) - .12, topline(x) - .5), x => crest(x) + .3, { n: 14, lean0: .2 });
     pieces.push(piece('tongue', 'Tongue', tongue, { shown: shownT, place: sidePlace(0), cut: 2, fabric: s.style === 'runner' ? 'upper' : fabUp, notes: ['Foam-padded, with a woven label at the top'] }));
   }
-  if (s.toeCap) { const tc = band(L - 2.4, L - .02, crest, bot, { lean0: .9 }); add('toe-cap', 'Toe cap', tc, { z: 5, sew: symmetric(L - 2.4, L - .02, .9, crest, bot), pair: false, fabric: fabOv }); }
-  if (s.mudguard) add('mudguard', 'Mudguard', band(F * .2, L - .02, x => bot(x) - .75, bot, { lean0: .3 }), { z: 4, fabric: 'overlay', notes: ['A low overlay round the foot, over the toe; lasted with the upper'] });
-  if (s.heelOverlay ?? ['sneaker', 'hightop', 'runner', 'boot', 'hiker'].includes(s.style)) add('heel-overlay', 'Heel overlay', band(0, F * .23, x => bot(x) - 2.1 + Math.max(0, x / (F * .23)) * .6, bot, { lean1: .35 }), { z: 5, fabric: fabOv });
+  const capLen = s.capLen ?? 2.4, mudH = s.mudH ?? .75, heelH = s.heelH ?? 2.1, heelTop = x => bot(x) - heelH + Math.max(0, x / (F * .23)) * .6;
+  if (s.toeCap) { const tc = band(L - capLen, L - .02, crest, bot, { lean0: .9 }); add('toe-cap', 'Toe cap', tc, { z: 5, sew: symmetric(L - capLen, L - .02, .9, crest, bot), pair: false, fabric: fabOv }); }
+  if (s.mudguard) add('mudguard', 'Mudguard', band(F * .2, L - .02, x => bot(x) - mudH, bot, { lean0: .3 }), { z: 4, fabric: 'overlay', notes: ['A low overlay round the foot, over the toe; lasted with the upper'] });
+  const heelOv = s.heelOverlay ?? ['sneaker', 'hightop', 'runner', 'boot', 'hiker'].includes(s.style);
+  if (heelOv) add('heel-overlay', 'Heel overlay', band(0, F * .23, heelTop, bot, { lean1: .35 }), { z: 5, fabric: fabOv });
   // the pull loop: a narrow tab standing ½ in above the collar, rounded at the top
   const tab = [[-.06, collarBack + .9], ...cubic([-.06, collarBack - .2], [-.06, collarBack - .52], [.1, collarBack - .56], [.21, collarBack - .56], 6), ...cubic([.21, collarBack - .56], [.32, collarBack - .56], [.48, collarBack - .5], [.48, collarBack - .2], 6), [.48, collarBack + .9]];
   add('back-tab', 'Back tab', tab, { z: 6, margin: 0, fabric: fabOv, notes: ['Pull loop, sewn into the back seam'] });
   // for the tech flats: the collar line from the back seam to the lace opening (to the vamp on a slip-on), and where the lines are
   { const x1 = S.shaft ? legX : S.laced ? throat0 + .2 : vampX + .1; marks.collar = Array.from({ length: 25 }, (_, i) => { const x = x1 * i / 24; return [r3(x), r3(topline(x))]; }); Object.assign(marks, { shaft: S.shaft, laced: S.laced, throat: r3(throat0), vamp: r3(vampX), leg: r3(legX) }); }
+  // the model's own lines on the side, each with what moves it (src/lab-lines.js): dragged by hand, or put where a hand-drawn line is
+  { const edge = (x, lean, top) => cubic([x, bot(x)], [x + lean * .1, bot(x) - (bot(x) - top(x + lean)) * .4], [x + lean * .8, top(x + lean) + (bot(x) - top(x + lean)) * .3], [x + lean, top(x + lean)], 8).map(p => [r3(p[0]), r3(p[1])]);
+    const run = (x0, x1, f, n = 16) => Array.from({ length: n + 1 }, (_, i) => { const x = x0 + (x1 - x0) * i / n; return [r3(x), r3(f(x))]; });
+    const L1 = (key, label, param, value, per, min, max, axis, pts, step) => ({ key, label, param, value: r3(value), per, min, max, axis, pts, ...(step ? { step } : {}) });
+    marks.lines = [
+      L1('vamp', 'Vamp line', 'vamp', vampX / F, 1 / F, .4, .75, 'x', edge(vampX - .35, .4, crest), .01),
+      ...(S.laced && !S.shaft ? [L1('throat', 'Where the lacing starts', 'throat', throat0 / F, 1 / F, .1, .6, 'x', run(Math.max(0, throat0 - .6), throat0 + .6, topline, 8), .01)] : []),
+      L1('collar', 'Collar', 'collar', S.collar, -1, 1.5, 10, 'y', marks.collar.slice(0, 13), .125),
+      ...(s.toeCap ? [L1('toeCap', 'Toe cap', 'capLen', capLen, -1, 1.2, 4, 'x', edge(L - capLen, .9, crest))] : []),
+      ...(s.mudguard ? [L1('mudguard', 'Mudguard', 'mudH', mudH, -1, .4, 1.6, 'y', run(F * .25, L - .4, x => bot(x) - mudH))] : []),
+      ...(heelOv ? [L1('heelOverlay', 'Heel overlay', 'heelH', heelH, -1, 1, 3.5, 'y', run(0, F * .23, heelTop, 10))] : [])]; }
   // inside: linings, the collar foam, the stiffeners
   add('quarter-lining', 'Quarter lining', band(0, qEnd + .3, topline, bot), { z: -3, cut: 4, fabric: 'lining', notes: [LININGS[s.lining]] });
   add('vamp-lining', 'Vamp lining', vamp, { z: -3, fabric: 'lining', sew: symmetric(vampX - .35, L - .02, .4, crest, bot, .4), pair: false });

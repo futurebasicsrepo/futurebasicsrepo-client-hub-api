@@ -137,8 +137,13 @@ function paint(){const F=draw();paintPl(F);if(TAB==='design')paintDesign();if(TA
 // what is being drawn right now: the points of a stitch line or a colour block, or the box for the image model
 function overlay(){const c='#2a6df4',pts=DRAFT.map(q=>q.join(' ')).join(' L');let o='';
   if(DRAFT.length)o+=`<path d="M${pts}${MODE==='block'&&DRAFT.length>2?' Z':''}" fill="${MODE==='block'?'rgba(42,109,244,.12)':'none'}" stroke="${c}" stroke-width=".05" stroke-dasharray=".2 .1"/>`+DRAFT.map(q=>`<circle cx="${q[0]}" cy="${q[1]}" r=".12" fill="${c}"/>`).join('');
+  // the chosen stitch line or colour block: a dot on each point to drag; double-click the line to add a point, a dot to take it away
+  const se=!MODE&&SELE&&P.edits.find(x=>x.id===SELE&&x.view===VIEW&&(x.type==='stitch'||x.type==='block')&&x.pts);
+  if(se)o+=se.pts.map((q,i)=>`<circle data-vx="${i}" cx="${q[0]}" cy="${q[1]}" r=".16" fill="#fff" stroke="${c}" stroke-width=".05" style="cursor:move;pointer-events:all"><title>Drag to move this point; double-click to take it away</title></circle>`).join('');
   if(MODE==='ai'&&AIBOX)o+=`<rect x="${AIBOX.x-AIBOX.w/2}" y="${AIBOX.y-AIBOX.h/2}" width="${AIBOX.w}" height="${AIBOX.h}" fill="rgba(42,109,244,.08)" stroke="${c}" stroke-width=".06" stroke-dasharray=".25 .12"/>`;
   return o?`<g pointer-events="none">${o}</g>`:''}
+// the nearest segment of a line (closed for a block), for a point put on it
+function nearSeg(pts,p,closed){let best=-1,bd=Infinity,bt=0;const m=closed?pts.length:pts.length-1;for(let k=0;k<m;k++){const a=pts[k],b=pts[(k+1)%pts.length],dx=b[0]-a[0],dy=b[1]-a[1],l=dx*dx+dy*dy,t=l?Math.max(0,Math.min(1,((p[0]-a[0])*dx+(p[1]-a[1])*dy)/l)):0,d=Math.hypot(p[0]-a[0]-t*dx,p[1]-a[1]-t*dy);if(d<bd){bd=d;best=k;bt=t}}return{k:best,d:bd,t:bt}}
 
 // ---------- design: colour, details, stitching, AI redraws ----------
 const SWATCH=['#111111','#f4f1ea','#1f2a44','#b9b9b4','#e8e2d4','#5b5e3a','#6b4a2f','#a02a20','#2a4fbf','#c9a227'];
@@ -160,6 +165,7 @@ function edCard(e){
     +(e.kind==='erase'?'':`<label class="f"><span>Topstitch</span><select class="t" data-ek="stitch">${stitchOpts(e.stitch)}</select></label><div class="kinds">${pick('thread',e.thread,'Thread','Match the lines')}${pick('color',e.color,'Fabric','Same as the piece')}</div>`)}
   if(e.type==='stitch')body=`<label class="f"><span>Stitch</span><select class="t" data-ek="stitch">${stitchOpts(e.stitch)}</select></label><div class="kinds">${pick('thread',e.thread,'Thread','Match the lines')}<label class="pick">Stitches an inch <input class="t" type="number" min="0" max="20" step="1" data-ek="spi" value="${e.spi||''}" style="width:64px"></label></div>`;
   if(e.type==='block')body=`<label class="f"><span>Panel</span><input class="t" data-ek="name" value="${esc(e.name)}" placeholder="Sleeve, yoke, hood lining…"></label>${pick('color',e.color,'Colour')}`;
+  if(e.type==='stitch'||e.type==='block')body+=`<p class="hint" style="margin:0">Reshape it on the flat: drag a dot to move a point, double-click the line to add one, double-click a dot to take it away.</p>`;
   if(e.type==='ai')body=`<p class="msg">“${esc(e.prompt)}”</p>`;
   if(e.type==='part')body=`<label class="f"><span>Name</span><input class="t" data-ek="name" value="${esc(e.name)}" placeholder="Chest pocket, collar…"></label><div class="nums">${num('pw','Width (in)',e.w)}${num('x','From centre (in)',e.x)}${num('top','Top edge down (in)',r8(e.y-e.h/2))}</div><label class="chk"><input type="checkbox" data-ek="flip" ${e.flip?'checked':''}> Mirror it</label>`;
   return `<div class="ed ${e.id===SELE?'on':''}" data-e="${esc(e.id)}"><div class="hd"><b>${esc(title)}</b>${e.type==='detail'||e.type==='block'||e.type==='part'?'<button class="btn sm q" type="button" data-mirror>Mirror</button>':''}<button class="btn sm q" type="button" data-edel aria-label="Remove ${esc(title)}">Remove</button></div>${body}<div class="where">${esc(describeEdit(e,P))}</div></div>`;
@@ -360,6 +366,9 @@ const inch=e=>{const svg=$('#canvas svg'),pt=svg.createSVGPoint();pt.x=e.clientX
 $('#canvas').addEventListener('pointerdown',e=>{
   if(MODE==='stitch'||MODE==='block'){const[x,y]=inch(e);DRAFT.push([r8(x),r8(y)]);draw();return}
   if(MODE==='ai'){const[x,y]=inch(e);BOXDRAG=[x,y];AIBOX={x,y,w:0,h:0};capt(e);return}
+  if(reshapeTap(e)){DRAG=null;return}
+  const vx=e.target.closest('[data-vx]'),ve=vx&&P.edits.find(x=>x.id===SELE);
+  if(ve){DRAG={ed:ve,vx:Number(vx.dataset.vx),orig:JSON.parse(JSON.stringify(ve))};capt(e);return}
   const g=e.target.closest('[data-pl]');
   if(g){const q=PL.find(x=>x.id===g.dataset.pl);SEL=q.id;const[x,y]=inch(e);DRAG={q,dx:x-q.x,dy:y-q.y,ox:q.x,oy:q.y};capt(e);paint();return}
   const ge=e.target.closest('[data-ed]');const ed=ge&&P.edits.find(x=>x.id===ge.dataset.ed);if(!ed){if(FZ>1){FPAN={x:e.clientX,y:e.clientY,c:centreNow()};capt(e)}return}
@@ -367,10 +376,18 @@ $('#canvas').addEventListener('pointerdown',e=>{
 $('#canvas').addEventListener('pointermove',e=>{
   if(BOXDRAG){const[x,y]=inch(e),[a,b]=BOXDRAG;AIBOX={x:r8((a+x)/2),y:r8((b+y)/2),w:r8(Math.abs(x-a)),h:r8(Math.abs(y-b))};draw();return}
   if(!DRAG)return;const[x,y]=inch(e);
+  if(DRAG.ed&&DRAG.vx!=null){DRAG.ed.pts=DRAG.orig.pts.map((q,i)=>i===DRAG.vx?[r8(x),r8(y)]:q);DRAG.moved=true;draw();return}
   if(DRAG.ed){const dx=x-DRAG.start[0],dy=y-DRAG.start[1],o=DRAG.orig;if(o.pts)DRAG.ed.pts=o.pts.map(q=>[r8(q[0]+dx),r8(q[1]+dy)]);else{DRAG.ed.x=r8(o.x+dx);DRAG.ed.y=r8(o.y+dy);if(Math.abs(DRAG.ed.x)<.25&&!(DRAG.ed.type==='part'&&partOf(DRAG.ed.part)?.kind==='pockets')&&!['pocket-patch','pocket-flap','pocket-welt','pocket-cargo','pocket-slant','pocket-jean','pocket-zip','pleat'].includes(DRAG.ed.kind))DRAG.ed.x=0}DRAG.moved=true;draw();return}
   DRAG.q.x=r8(x-DRAG.dx);DRAG.q.y=r8(y-DRAG.dy);if(Math.abs(DRAG.q.x)<.25)DRAG.q.x=0;DRAG.moved=true;draw()});
 const end=()=>{if(BOXDRAG){BOXDRAG=null;if(!AIBOX||AIBOX.w<.5||AIBOX.h<.5)AIBOX=null;paint();setTimeout(()=>$('#aiPrompt')?.focus(),0);return}if(DRAG&&DRAG.moved){touch();paint()}DRAG=null};
-$('#canvas').addEventListener('dblclick',e=>{if(MODE==='stitch'||MODE==='block'){e.preventDefault();finishDraft()}});$('#canvas').addEventListener('pointerup',end);$('#canvas').addEventListener('pointercancel',end);
+$('#canvas').addEventListener('dblclick',e=>{if(MODE==='stitch'||MODE==='block'){e.preventDefault();finishDraft()}});
+// a double tap (or double click) on the chosen stitch line or block: on a dot it takes the point away, on the line it puts one in. Taken from the
+// pointer, not from dblclick: the drawing is redrawn under the first tap, so the browser's own double click can go missing (and a Pencil has none)
+let LASTDOWN=null;
+function reshapeTap(e){const now=performance.now(),dbl=LASTDOWN&&now-LASTDOWN.t<400&&Math.hypot(e.clientX-LASTDOWN.x,e.clientY-LASTDOWN.y)<10;LASTDOWN={t:now,x:e.clientX,y:e.clientY};if(!dbl||MODE)return false;
+  const se=SELE&&P.edits.find(x=>x.id===SELE&&(x.type==='stitch'||x.type==='block')&&x.pts);if(!se)return false;LASTDOWN=null;
+  const vx=e.target.closest('[data-vx]');if(vx){const min=se.type==='block'?3:2;if(se.pts.length<=min){FBN.toast(`A ${se.type==="block"?"block":"stitch line"} keeps at least ${min} points`);return true}se.pts=se.pts.filter((_,i)=>i!==Number(vx.dataset.vx));touch();paint();return true}
+  const[x,y]=inch(e),n=nearSeg(se.pts,[x,y],se.type==='block');if(n.k<0||n.d>.6)return false;const a=se.pts[n.k],b=se.pts[(n.k+1)%se.pts.length];se.pts=[...se.pts.slice(0,n.k+1),[r8(a[0]+(b[0]-a[0])*n.t),r8(a[1]+(b[1]-a[1])*n.t)],...se.pts.slice(n.k+1)];touch();paint();return true}$('#canvas').addEventListener('pointerup',end);$('#canvas').addEventListener('pointercancel',end);
 document.addEventListener('keydown',e=>{if(e.target.closest('input,select,textarea'))return;
   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'&&HOST()&&MUNDO[VIEW]){e.preventDefault();e.shiftKey?mkStep(MREDO,MUNDO):mkStep(MUNDO,MREDO);return}
   if(MODE&&e.key==='Escape'){MODE=null;DRAFT=[];AIBOX=null;paint();return}if((MODE==='stitch'||MODE==='block')&&e.key==='Enter'){e.preventDefault();finishDraft();return}

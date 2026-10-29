@@ -3188,5 +3188,155 @@ await journey('J253', 'The materials library takes footwear materials, plush and
   } finally { await K(`/concepts/${shoe}`, { method: 'DELETE' }); await K(`/concepts/${box}`, { method: 'DELETE' }); await K(`/materials/${own.json.material?.id}`, { method: 'DELETE' }); }
 });
 
+await journey('J254', 'Between the modeller and the hand: on a shoe\'s tech flats a designer drags the model\'s own vamp line along the shoe (the pieces are drafted again), bends a line they drew, makes a hand-drawn line the toe cap, traces the model\'s collar to rework it, reshapes a seam and turns it back into a hand line; on a garment\'s flat a stitch line\'s points are dragged, added and taken away', async () => {
+  const cid = (await K('/concepts/from-scratch', { body: { category: 'footwear', style: 'sneaker', name: `Reshaped sneaker ${stamp}` } })).json.concept.id;
+  const tee = (await K('/concepts/from-scratch', { body: { category: 'tops', style: 'tee', name: `Stitched tee ${stamp}` } })).json.concept.id;
+  try {
+    const g = (await K(`/concepts/${cid}/pattern`)).json;
+    const put = await K(`/concepts/${cid}/pattern`, { method: 'PUT', body: { spec: { ...g.spec, seams: [{ piece: 'quarter-lat', side: 'lateral', pts: [[3.05, -.35], [3.15, -1.6], [3.25, -3.1]], name: 'Seam 1' }] } } });
+    ok(put.status === 200 && put.json.spec.seams?.length === 1, '1. a shoe with a seam cutting its outside quarter', put.json.error);
+    if (!playwright) { ok(true, 'needs a browser'); return; }
+    const br = await playwright.chromium.launch();
+    try {
+      const oc = await br.newContext({ viewport: { width: 1366, height: 1024 } }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
+      const page = await oc.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
+      await page.goto(`${BASE}/lab/studio?concept=${cid}&view=pattern`, { waitUntil: 'networkidle' }); const F = await (await page.waitForSelector('#patFrame')).contentFrame(); await F.waitForFunction(() => window.FBPattern?.ready?.(), null, { timeout: 20000 });
+      const fb = async () => (await page.$('#patFrame')).boundingBox();
+      const drag = async (a, b) => { const f = await fb(); await page.mouse.move(f.x + a[0], f.y + a[1]); await page.mouse.down(); await page.mouse.move(f.x + (a[0] + b[0]) / 2, f.y + (a[1] + b[1]) / 2, { steps: 5 }); await page.mouse.move(f.x + b[0], f.y + b[1], { steps: 5 }); await page.mouse.up(); await sleep(250); };
+      const draw = async (view, pts) => { const s = []; for (const p of pts) s.push(await F.evaluate(([v, q]) => window.FBPattern.sideAt(v, q), [view, p])); const f = await fb(); await page.mouse.move(f.x + s[0][0], f.y + s[0][1]); await page.mouse.down(); for (const q of s.slice(1)) await page.mouse.move(f.x + q[0], f.y + q[1], { steps: 6 }); await page.mouse.up(); await sleep(200); };
+      ok(/Vamp line/.test(await F.innerText('#skBox')) && /Trace by hand/.test(await F.innerText('#skBox')), '2. the Sketches panel lists the shoe\'s own lines, each with where it is');
+      await F.click('#skBtn'); await F.waitForSelector('#ktools:not(.hidden)'); await F.click('#ktools [data-k="shape"]');
+      ok(await F.locator('#canvas [data-mline="vamp"]').count() === 2, '   Reshape shows a dot on each of the model\'s lines, on the outside and the inside');
+      // the vamp line, an inch toward the toe
+      const v0 = await F.evaluate(() => window.FBPattern.lines().find(l => l.key === 'vamp')), h = await F.evaluate(() => window.FBPattern.handleAt('lateral', 'vamp')), h2 = await F.evaluate(([p]) => window.FBPattern.sideAt('lateral', [p[0] + 1, p[1]]), [v0.handle]);
+      const marks0 = await F.evaluate(() => window.FBPattern.pattern().marks.vamp);
+      await drag(h, h2);
+      const v1 = await F.evaluate(() => window.FBPattern.spec().vamp), marks1 = await F.evaluate(() => window.FBPattern.pattern().marks.vamp);
+      ok(v1 > v0.value + .07 && marks1 > marks0 + .7, '3. the model\'s vamp line dragged an inch toward the toe: the vamp is drafted again where it was left', { from: v0.value, to: v1, marks0, marks1 });
+      // a line drawn by hand, bent
+      await F.click('#ktools [data-k="pen"]'); await draw('lateral', [[5, -2.6], [6, -2.4], [7, -2.2]]);
+      const sk0 = (await F.evaluate(() => window.FBPattern.sketches()))[0];
+      await F.click('#ktools [data-k="shape"]'); const mid = await F.evaluate(() => window.FBPattern.sideAt('lateral', [6, -2.4])), up = await F.evaluate(() => window.FBPattern.sideAt('lateral', [6, -3.2]));
+      await drag(mid, up);
+      const sk1 = (await F.evaluate(() => window.FBPattern.sketches()))[0], hi = Math.min(...sk1.pts.map(p => p[1]));
+      ok(sk1.id === sk0.id && hi < -2.9 && Math.abs(sk1.pts[0][1] - sk0.pts[0][1]) < .05, '4. a hand-drawn line bent upward where it was dragged, its ends staying put', { hi, start: [sk0.pts[0], sk1.pts[0]] });
+      // the same line made the model's toe cap
+      const cap0 = await F.evaluate(() => window.FBPattern.lines().find(l => l.key === 'toeCap').value);
+      await F.waitForSelector('#kModel:not(.hidden)'); await F.selectOption('#kModel', 'toeCap'); await F.click('#ktools [data-ka="fit"]'); await sleep(300);
+      const cap1 = await F.evaluate(() => window.FBPattern.spec().capLen);
+      ok(cap1 && cap1 !== cap0 && (await F.evaluate(() => window.FBPattern.sketches())).length === 0, '5. the hand line made the toe cap: the model\'s toe cap moved to it, and the line became the model\'s', { cap0, cap1 });
+      await F.click('#ktools [data-ka="undo"]'); ok((await F.evaluate(() => window.FBPattern.sketches())).length === 1 && !(await F.evaluate(() => window.FBPattern.spec().capLen)), '   Undo brings the hand line back, and the toe cap where it was');
+      // the model's collar traced by hand
+      await F.click('#skBox [data-trace="collar"]'); const tr = (await F.evaluate(() => window.FBPattern.sketches())).at(-1);
+      ok(tr.on === 'lateral' && tr.c === '#2a6df4' && tr.pts.length >= 10, '6. the model\'s collar traced as a blue hand line, to rework by hand', tr.pts.length);
+      // the seam reshaped, then back to a hand line
+      const s0 = (await F.evaluate(() => window.FBPattern.spec().seams))[0], sm = await F.evaluate(() => window.FBPattern.sideAt('lateral', [3.15, -1.6])), sm2 = await F.evaluate(() => window.FBPattern.sideAt('lateral', [3.7, -1.6]));
+      await drag(sm, sm2);
+      const s1 = (await F.evaluate(() => window.FBPattern.spec().seams))[0];
+      ok(s1 && Math.max(...s1.pts.map(p => p[0])) > 3.5 && await F.evaluate(() => window.FBPattern.pattern().pieces.some(q => q.id.startsWith('quarter-lat-b'))), '7. the seam dragged: reshaped where it was left, and the quarter cut again along it', s1?.pts);
+      await F.waitForSelector('#ktools [data-ka="unseam"]:not(.hidden)'); await F.click('#ktools [data-ka="unseam"]'); await sleep(300);
+      ok(!(await F.evaluate(() => window.FBPattern.spec().seams?.length)) && (await F.evaluate(() => window.FBPattern.sketches())).some(k => k.c === '#c2410c'), '   Back to a sketch: the quarter is whole again, the seam a red hand line');
+      if (process.env.SHOT_DIR) await page.screenshot({ path: process.env.SHOT_DIR + '/reshape.png' });
+      await F.click('#skBtn'); await F.click('#saveP'); await F.waitForFunction(() => !window.FBPattern.dirty(), null, { timeout: 10000 });
+      const saved = (await K(`/concepts/${cid}/pattern`)).json.spec;
+      ok(saved.vamp === v1 && !saved.seams && saved.sketches?.length === 3, '8. saved: the moved vamp line and the hand lines', { vamp: saved.vamp, sk: saved.sketches?.length });
+      // a garment: a stitch line's points
+      const tp = await oc.newPage(); tp.on('pageerror', e => errs.push(String(e)));
+      await tp.goto(`${BASE}/lab/studio?concept=${tee}&view=front`, { waitUntil: 'networkidle' }); const G = await (await tp.waitForSelector('#flatFrame, iframe[src*="/lab/flats"]')).contentFrame(); await G.waitForSelector('#canvas svg', { timeout: 20000 });
+      await G.click('[data-tab="design"]');
+      await G.waitForSelector('[data-mode="stitch"]', { timeout: 10000 }); await G.click('[data-mode="stitch"]');
+      const clickAt = async (x, y) => { const p = await G.evaluate(([a, b]) => { const s = document.querySelector('#canvas svg'), m = s.getScreenCTM(), q = new DOMPoint(a, b).matrixTransform(m); return [q.x, q.y]; }, [x, y]); const fe = await (await tp.$('#flatFrame, iframe[src*="/lab/flats"]')).boundingBox(); return [fe.x + p[0], fe.y + p[1]]; };
+      for (const [x, y] of [[-4, 8], [0, 8.5], [4, 8]]) { const p = await clickAt(x, y); await tp.mouse.click(p[0], p[1]); await sleep(80); }
+      await tp.keyboard.press('Enter'); await sleep(300);
+      ok(await G.locator('#canvas [data-vx]').count() === 3, '9. on a tee\'s flat, a stitch line drawn and chosen shows a dot on each of its points');
+      const a = await clickAt(0, 8.5), b = await clickAt(0, 10); await tp.mouse.move(a[0], a[1]); await tp.mouse.down(); await tp.mouse.move(b[0], b[1], { steps: 8 }); await tp.mouse.up(); await sleep(200);
+      const pts = await G.evaluate(() => window.FBFlats?.state?.()?.edits?.find(e => e.type === 'stitch')?.pts || null);
+      const dots = await G.evaluate(() => [...document.querySelectorAll('#canvas [data-vx]')].map(c => [Number(c.getAttribute('cx')), Number(c.getAttribute('cy'))]));
+      ok(dots.some(d => Math.abs(d[0]) < .2 && Math.abs(d[1] - 10) < .2), '   its middle point dragged down an inch and a half', pts || dots);
+      const m1 = await clickAt(-2, 9.2); await tp.mouse.dblclick(m1[0], m1[1]); await sleep(250);
+      ok(await G.locator('#canvas [data-vx]').count() === 4, '   a double-click on the line puts a point in');
+      const d0 = await clickAt(-4, 8); await tp.mouse.dblclick(d0[0], d0[1]); await sleep(200);
+      ok(await G.locator('#canvas [data-vx]').count() === 3, '   a double-click on a dot takes it away');
+      ok(errs.length === 0, 'no page errors', errs); await oc.close();
+    } finally { await br.close(); }
+  } finally { await K(`/concepts/${cid}`, { method: 'DELETE' }); await K(`/concepts/${tee}`, { method: 'DELETE' }); }
+});
+
+await journey('J255', 'Photo-real plush, patterned out like clothing and footwear: a plush planned in a line plan gets AI concepts that say what they are cut as (a bear, a bunny) and are drawn as sewn, stuffed toys; the pattern starts from the concept\'s words, is read again from its picture, drawn photo-real from its pattern in its materials, checked before the tech pack, and its tech flats become the pack\'s front, back and side', async () => {
+  const plan = (await K('/plans', { body: { name: `Plush drop ${stamp}`, season: 'Holiday' } })).json, pid = plan.plan.id;
+  const line = (await K(`/plans/${pid}/lines`, { body: { name: 'Sleepy bear', category: 'plush', role: 'core', price: 28, qty: 300, brief: 'a soft bedtime bear for little ones' } })).json.lines.at(-1);
+  const made = await K(`/plans/${pid}/lines/${line.id}/concepts`, { body: { count: 2 } }), [A, B] = made.json.concepts || [];
+  ok(made.status === 201 && A.spec.plush?.shape === 'bear' && B.spec.plush?.shape === 'bunny' && A.spec.plush.colours?.body, '1. the AI concepts for a plush say what each is cut as, its height, pile, eyes and colours', made.json.error || A?.spec);
+  const one = (await K(`/concepts/${A.id}`)).json.concept;
+  ok(one.hasPicture !== false && (await call(`/v1/lab/concepts/${A.id}/image`, { token: kyleT })).status === 200, '   and each is drawn (an image model draws a plush as a sewn, stuffed toy)');
+  let g = (await K(`/concepts/${A.id}/pattern`)).json;
+  ok(g.kind === 'plush' && g.spec.shape === 'bear' && g.spec.height === 12 && g.spec.colours?.body === A.spec.plush.colours.body && g.concept.hasImage, '2. its pattern starts from the concept\'s words: a 12 in bear in its colours', g.spec);
+  const rd = await K(`/concepts/${A.id}/pattern/from-picture`, { body: {} });
+  ok(rd.status === 200 && rd.json.source === 'vision' && rd.json.spec.shape === 'bunny' && rd.json.changes.some(c => c.key === 'shape' && c.source === 'picture (AI)'), '3. read again from its picture: the eye sees a bunny, and says what would change and why', rd.json);
+  const ready0 = (await K(`/concepts/${A.id}/ready`)).json;
+  ok(ready0.items.find(i => i.id === 'pattern')?.state === 'todo' && !ready0.items.some(i => i.id === 'flats'), '4. its checklist asks for its pattern, not flats', ready0.items.map(i => `${i.id}:${i.state}`));
+  const body = (await K('/materials?kind=plush')).json.materials.find(m => m.key === 'pl-minky') || (await K('/materials?kind=plush')).json.materials[0];
+  ok((await K(`/concepts/${A.id}/materials`, { body: { material: body.id, part: 'body' } })).status === 201, '   its body takes a minky from the library');
+  const save = await K(`/concepts/${A.id}/pattern`, { method: 'PUT', body: { spec: rd.json.spec } }); ok(save.status === 200 && save.json.spec.shape === 'bunny', '   the bunny pattern saved');
+  const ready1 = (await K(`/concepts/${A.id}/ready`)).json, st = id => ready1.items.find(i => i.id === id)?.state;
+  ok(st('pattern') === 'done' && ['done', 'warn'].includes(st('made')) && st('materials') === 'done', '   the pattern, its checks and the body\'s pile are done', ready1.items.map(i => `${i.id}:${i.state}`));
+  const before = (await call(`/v1/lab/concepts/${A.id}/image`, { token: kyleT })).buf?.length || 0;
+  const ren = await K(`/concepts/${A.id}/pattern/render`, { body: { spec: save.json.spec } });
+  ok(ren.status === 200 && ren.json.ok, '5. Make it photo-real: the toy drawn from its tech flats becomes the concept\'s picture', ren.json);
+  ok((await K(`/concepts/${A.id}/approve`, { body: { overrideReason: 'reviewed side by side: it is ours' } })).status === 200, '6. approved');
+  const tp = await K(`/concepts/${A.id}/tech-pack`, { body: {} }); ok(tp.status === 201, '   it becomes a tech pack', tp.json);
+  const pack = (await call(`/v1/admin/products/${tp.json.productId}/tech-pack`, { token: kyleT })).json, sk = pack.techPack?.data?.sketches || [];
+  ok(['front', 'back', 'side'].every(v => sk.some(k => k.view === v && k.image)) && (pack.techPack.data.construction || []).some(r => /Plush/.test(r.area)) && (pack.techPack.data.bom || []).some(r => /Body/.test(r.component)), '7. the tech pack carries its tech flats (front, back, side), the pattern\'s notes and its body\'s pile', sk.map(k => k.view));
+  if (!playwright) { ok(true, 'needs a browser'); return; }
+  const C2 = B.id, br = await playwright.chromium.launch();
+  try {
+    const oc = await br.newContext({ viewport: { width: 1366, height: 1024 } }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
+    const page = await oc.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
+    await page.goto(`${BASE}/lab/studio?concept=${C2}&view=pattern`, { waitUntil: 'networkidle' }); const F = await (await page.waitForSelector('#patFrame')).contentFrame(); await F.waitForFunction(() => window.FBPattern?.ready?.(), null, { timeout: 20000 });
+    await F.waitForSelector('#readBox #useRead', { timeout: 10000 });
+    ok(/bunny/i.test(await F.innerText('#readBox')) || /already matches/.test(await F.innerText('#readBox')), '8. the Pattern page reads the plush from its picture by itself, the first time', await F.innerText('#readBox'));
+    await F.click('#useRead'); ok((await F.evaluate(() => window.FBPattern.spec().shape)) === 'bunny', '   Use it: the bunny is drafted');
+    await F.click('#skBtn'); await F.click('#ktools [data-k="shape"]');
+    const h = await F.evaluate(() => window.FBPattern.handleAt('front', 'height')), fb = await (await page.$('#patFrame')).boundingBox(), up = await F.evaluate(() => { const s = document.querySelector('#canvas svg'), m = s.getScreenCTM(); return 2 * m.a; });
+    const h0 = await F.evaluate(() => window.FBPattern.spec().height);
+    await page.mouse.move(fb.x + h[0], fb.y + h[1]); await page.mouse.down(); await page.mouse.move(fb.x + h[0], fb.y + h[1] - up, { steps: 8 }); await page.mouse.up(); await sleep(300);
+    ok(Math.abs((await F.evaluate(() => window.FBPattern.spec().height)) - (h0 + 2)) <= .5, '9. the toy\'s height dragged up two inches by its dot: drafted again taller', { h0, h1: await F.evaluate(() => window.FBPattern.spec().height) });
+    ok(await F.locator('#renderBox #renderIt').count() === 1, '   and See it made is offered beside it');
+    if (process.env.SHOT_DIR) await page.screenshot({ path: process.env.SHOT_DIR + '/plush-concept.png' });
+    ok(errs.length === 0, 'no page errors', errs); await oc.close();
+  } finally { await br.close(); }
+});
+
+await journey('J256', 'Clothing takes materials on its parts as a shoe and a plush do: a hoodie\'s body, rib and zip each take one from the library on Pattern; the concept\'s main fabric shows on the body until the body takes its own (never counted twice); each piece is drawn in its part\'s cloth and the rib is cut at its own width; the bill of materials names each part', async () => {
+  const cid = (await K('/concepts/from-scratch', { body: { category: 'tops', style: 'hoodie', name: `Parts hoodie ${stamp}` } })).json.concept.id;
+  try {
+    const fabs = (await K('/materials?kind=fabric')).json.materials, trims = (await K('/materials?kind=trim')).json.materials, by = k => fabs.find(m => m.key === k);
+    ok((await K(`/concepts/${cid}/materials`, { body: { material: by('terry-320').id, role: 'main' } })).status === 201, '1. the concept\'s main fabric chosen the usual way (French terry)');
+    const g = (await K(`/concepts/${cid}/pattern`)).json;
+    ok(g.kind === 'garment' && g.parts.map(p => p.id).slice(0, 3).join() === 'self,contrast,rib' && g.allMaterials.some(p => p.role === 'main'), '2. the hoodie has parts: its cloths and trims', g.parts.map(p => p.id));
+    if (!playwright) { ok(true, 'needs a browser'); return; }
+    const br = await playwright.chromium.launch();
+    try {
+      const oc = await br.newContext({ viewport: { width: 1366, height: 1024 } }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
+      const page = await oc.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
+      await page.goto(`${BASE}/lab/studio?concept=${cid}&view=pattern`, { waitUntil: 'networkidle' }); const F = await (await page.waitForSelector('#patFrame')).contentFrame(); await F.waitForFunction(() => window.FBPattern?.ready?.(), null, { timeout: 20000 });
+      await F.waitForSelector('#mtBox [data-mpart="self"]', { timeout: 10000 });
+      ok(/French terry/.test(await F.innerText('#mtBox [data-mpart="self"]')), '3. Pattern lists the hoodie\'s parts, the body showing the concept\'s main fabric');
+      const pickFor = async (part, id, q) => { await F.click(`#mtBox [data-mpart="${part}"] [data-mpick]`); await F.waitForSelector(`#mtBox [data-mpart="${part}"] [data-muse]`); if (q) { await F.fill(`#mtBox [data-mpart="${part}"] [data-mq]`, q); await sleep(150); } await F.click(`#mtBox [data-mpart="${part}"] [data-muse="${id}"]`); await F.waitForFunction(p => window.FBPattern.materials().some(x => x.part === p && !x.fromRole), part, { timeout: 5000 }); };
+      await pickFor('self', by('fleece-380').id, 'brushed'); await pickFor('rib', by('rib-2x2').id, '2×2');
+      const zip = trims.find(t => /zip/i.test(t.spec?.category || t.name)); if (zip) await pickFor('zip', zip.id, zip.name.slice(0, 6));
+      const picks = (await K(`/concepts/${cid}/materials`)).json.picks;
+      ok(picks.filter(p => p.kind === 'fabric' && (p.role === 'main' || p.part === 'self')).length === 1 && picks.some(p => p.part === 'rib'), '4. the body takes brushed fleece in place of the main fabric (counted once); the rib takes 2×2 rib', picks.map(p => `${p.role}/${p.part || ''}:${p.name}`));
+      await F.evaluate(() => window.FBPattern.at(1)); await sleep(200);
+      const lay = await F.innerText('#canvas');
+      ok(/2×2 rib/.test(lay) && !/2×2 rib\s*58 in wide/.test(lay), '5. the cutting layout cuts the rib at its own width (100 cm), named by its material', lay.slice(0, 300));
+      const costing = (await K(`/concepts/${cid}/materials`)).json;
+      ok(costing.cost?.materialsCents > 0, '   and the cost follows', costing.cost);
+      if (process.env.SHOT_DIR) await page.screenshot({ path: process.env.SHOT_DIR + '/garment-parts.png' });
+      ok(errs.length === 0, 'no page errors', errs); await oc.close();
+    } finally { await br.close(); }
+  } finally { await K(`/concepts/${cid}`, { method: 'DELETE' }); }
+});
+
 shops.close(); brave.close();
 process.exit(summary() ? 1 : 0);

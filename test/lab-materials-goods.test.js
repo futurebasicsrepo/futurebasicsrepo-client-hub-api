@@ -25,7 +25,7 @@ test('every starter material is drawn as what it is, and none draws a number tha
 });
 
 test('a material goes on one of the product\'s parts: it takes the usual quantity, its first colour, and the BOM names the part', () => {
-  assert.deepEqual(partsFor('footwear').map(p => p.id).slice(0, 3), ['upper', 'overlay', 'lining']); assert.ok(PARTS.electronics.some(p => p.id === 'lens')); assert.deepEqual(partsFor('tops'), []);
+  assert.deepEqual(partsFor('footwear').map(p => p.id).slice(0, 3), ['upper', 'overlay', 'lining']); assert.ok(PARTS.electronics.some(p => p.id === 'lens')); assert.deepEqual(partsFor('tops').map(p => p.id).slice(0, 3), ['self', 'contrast', 'rib']);
   const suede = { id: 'm1', ...cleanMaterial(BUILTIN_MATERIALS.find(m => m.key === 'fw-suede')).material, priceCents: 430 };
   const pick = cleanPick({ part: 'upper' }, suede, 'footwear');
   assert.equal(pick.role, 'part'); assert.equal(pick.part, 'upper'); assert.equal(pick.qty, 2.4); assert.equal(pick.colour.name, 'sand');

@@ -990,3 +990,109 @@ from the front, the back and the side as it is when stuffed and sewn (`src/lab-p
 
 The views can be sketched on by hand and have paper sketches laid over them, as a shoe's can (*Drawing by hand*, above), on `front`, `back`
 and `side`.
+
+## Lines by hand and by the model, either way
+
+The lines on a shoe's or a plush's tech flats come from two places: the ones a designer draws (sketches and seams) and the model's own (the
+lines the pattern is drafted from). Either can be worked by hand, and either can become the other (`src/lab-lines.js`, shared by the page
+and the service).
+
+**Reshape** (in **Sketch** on the Pattern page) works on every line:
+
+- **The model's lines.** A shoe draws a green dot on each of its own lines, on the outside and the inside:
+  - the vamp line;
+  - where the lacing starts;
+  - the collar;
+  - the toe cap;
+  - the mudguard;
+  - the heel overlay.
+
+  Dragging a dot moves that line, along the shoe or up and down. When it is let go, the shoe is drafted again from where the line was left:
+  the pieces, the last's flattened pattern, the tech flats and the files all follow. Each line is held within what can be made. The toe cap's
+  length (`capLen`), the mudguard's height (`mudH`) and the heel overlay's height (`heelH`) are new settings; the others were already there.
+  A plush has one such dot, at the top of its front view: dragging it changes the toy's height.
+- **Lines drawn by hand.** Drag any part of a line to bend it there. The dragged point moves the whole way and its neighbours follow less
+  further off, as a pencil line is pushed, and the pressure each point was drawn with is kept. **Bend close / soft / wide** sets how much of
+  the line follows. **Smooth** evens the line out, keeping its ends; **Delete** takes it off.
+- **A hand line made the model's.** With a line drawn on the outside or the inside chosen, **Make it the model's line** (vamp line, collar,
+  toe cap…) moves that model line to where the hand line is, and drafts the shoe again. The hand line becomes the model's.
+- **A model line traced by hand.** **Trace by hand** beside each of the shoe's lines (in the Sketches panel, with what each one is now) copies
+  it onto the outside as a blue hand line. It can then be bent, made a seam, or made the model's line again.
+- **Seams.** A seam's line can be dragged too: the piece is cut again along it where it is left. **Back to a sketch** turns a seam back into a
+  red hand line, and the piece is whole again.
+- **Undo** covers all of it (the shoe's lines, its seams and its sketches), as does saving.
+
+**On a garment's flats** (Design tab), a chosen stitch line or colour block shows a dot on each of its points. Drag a dot to move a point.
+Double-tap or double-click the line to put a point in, or a dot to take it away (a stitch line keeps two points, a block three). This works
+with a Pencil too: it is read from the pointer, not from the browser's double click, which goes missing when the drawing is redrawn under
+the first tap.
+
+## Plush concepts: photo-real, then patterned like clothing and footwear
+
+**Concepts.** A plush planned in a line plan gets AI concepts written as plush:
+
+- **What the assistant is told** (`CATEGORY_WORDS` in `src/lab-concepts.js`): a plush is cut from pattern pieces and stuffed. It is told the
+  shapes the pattern can cut, and that the toy is for children unless the brief says otherwise: embroidered eyes for any age, safety eyes only
+  for 3 and up, no small hard parts, no long pile on a baby toy. Its character comes from proportion, the face and colour, with at most one
+  embroidered motif.
+- **What each concept says** (`spec.plush`): what it is cut as (bear, bean, bunny or pillow), its height, ears, arms, legs and tail, the pile,
+  the eyes, the age, and the body and contrast colours. These are the Pattern page's own choices.
+- **Logo and label.** The logo is a small embroidered mark on a foot pad, never laid on the picture. The law label is a tush tag in the side
+  seam.
+- **Footwear concepts** say their style, toe, pieces, upper, sole and colours the same way (`spec.footwear`), and their pattern starts from
+  them.
+
+**The picture** is drawn by the image model as a sewn, stuffed sample: sitting up, real pile with its texture, the seams just visible, the
+embroidery stitched, on a plain background. A shoe is drawn in side profile, so its outline can be read. The board's views of a plush, a toy,
+a gadget or a home object are the product alone, front and back: nobody wears it, so there is no model and no walk.
+
+**The pattern.**
+
+- **First open.** Pattern opens on what the concept said (a 12 in bear in its colours). With a picture, it reads the toy from the picture by
+  itself the first time (`src/lab-plush-read.js`, `POST …/pattern/from-picture`, which now takes a plush): the vision model reads the shape,
+  height, parts, pile, eyes and colours, over the concept's words.
+- **What would change.** The page lists each change and where it came from; **Use it** applies them. A new shape brings its own size and
+  parts but keeps the pile, eyes and age. A toy for under-3s keeps embroidered eyes whatever the picture shows.
+- **Colours.** The colours read are kept on the plush (`spec.colours`) and draw its tech flats until a material is put on the part.
+
+**See it made** (`POST /v1/lab/concepts/:id/pattern/render`, a plush or a shoe):
+
+- The tech flats as they stand (a plush's front, a shoe's outside), in the materials on their parts, go to the image model. It draws the made
+  sample from them, and that becomes the concept's picture. An approved concept goes back to draft, as when the picture changes in the
+  studio.
+- So a toy patterned by hand gets its photo-real picture, and a picture changed by hand can be read back into the pattern.
+- It is capped at `LAB_DAILY_REDRAWS` a day.
+
+## The same tools for every product
+
+Footwear and plush now take the tools clothing has, where they apply:
+
+| Tool | Clothing | Footwear and plush |
+| --- | --- | --- |
+| AI concepts and their picture | yes | written and drawn as what they are (above) |
+| The board's views | flat and on a model | a shoe on feet; a plush, toy, gadget or home object as the product alone |
+| Materials on parts | **now**: body, contrast, rib, lining, pocketing, fusing, zip, buttons, drawcord, thread | yes |
+| Hand sketching, reshaping lines | flats: stitch lines and blocks by their points | every view, the last, the model's lines |
+| Read from the picture | flats from the picture | a shoe and now a plush |
+| See it made (photo-real from the pattern) | the studio's AI | yes |
+| The checklist | flats, the flats check, the main fabric | the pattern saved, its checks (a plush's safety fails hold it up), the material on the upper or the body |
+| Send to the tech pack | flats, spec sheet, measurements | tech flats as the pack's lateral, medial, top and outsole (a plush's front, back and side), the sheet, the pattern's notes, the size run, the materials |
+| Colourways | the flats washed in each | **See it in a colourway** on Pattern draws the upper or the body in it |
+| The studio's scale | a garment's width | a shoe about 11½ in long, a plush about 10 in across, until the ruler sets it; graphics are sized there and their place written on the pack, as "Goes on" lists garment places only |
+
+**Clothing's parts.** A garment's parts are its cloths (each is what its pattern pieces are cut from) and its trims (`src/lab-materials-goods.js`):
+
+- **On Pattern.** The **Materials** list shows each part. The body shows the concept's main fabric until it takes its own: a cloth part takes
+  the place of the concept's fabric of the same role, so nothing is counted twice.
+- **Choosing one.** **Choose…** searches the library.
+- **What follows.** Each piece is drawn in its cloth's colour, with light ink on a dark cloth. The cutting layout cuts each cloth at its own
+  width (a 100 cm rib at 39 in, wider when a piece needs it) and names the material. A cloth part takes its share of the usual metres for the
+  piece (the rib a fifth, the lining nine tenths), and the BOM names the part.
+
+**Not yet:**
+
+- Placing a logo or graphic in inches on a shoe's or a plush's views, with the "can it be made" check: graphics are sized in the studio and
+  their place is written on the pack.
+- The developer's two-judge check for a plush (a shoe has it).
+- A shoe or a plush in the range mockup.
+- Toys, home objects and electronics still have no pattern or tooling (Phase C and D).

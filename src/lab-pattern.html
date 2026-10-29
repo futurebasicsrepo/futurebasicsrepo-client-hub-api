@@ -24,7 +24,7 @@ button,input,select{font:inherit;color:inherit}a{color:inherit}.hidden{display:n
 select.t{border:1px solid var(--line);border-radius:10px;padding:6px 9px;background:#fff;min-height:34px}
 .wrap{display:grid;grid-template-columns:minmax(0,1fr) 340px;min-height:calc(100vh - 56px)}
 .stage{position:relative;display:grid;grid-template-rows:auto minmax(0,1fr);min-width:0}
-.scrub{display:flex;align-items:center;gap:10px;padding:10px clamp(14px,2vw,24px);border-bottom:1px solid var(--line);background:var(--fog)}
+.scrub{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;padding:10px clamp(14px,2vw,24px);border-bottom:1px solid var(--line);background:var(--fog)}
 .scrub input[type=range]{flex:1;accent-color:var(--ink)}.scrub .lbl{font:500 11px 'IBM Plex Mono',monospace;color:var(--dim);min-width:110px;text-align:right}
 #canvas{overflow:auto;padding:12px;min-height:420px}#canvas svg{display:block;width:100%;height:auto;max-height:calc(100vh - 170px)}
 .side{border-left:1px solid var(--line);background:#fff;padding:16px;display:grid;gap:16px;align-content:start;overflow:auto;max-height:calc(100vh - 56px)}
@@ -61,7 +61,7 @@ table.pcs tr[data-pid]{cursor:pointer}table.pcs tr.on{background:#effff6}
       <div class="scrub"><span class="mono">Product</span><input type="range" id="t" min="0" max="1" step="0.01" value="0" aria-label="From the product to the pattern pieces"><span class="mono">Pattern</span><span class="lbl" id="tLbl">On the product</span></div>
       <div class="scrub hidden" id="etools" role="toolbar" aria-label="Edit the piece"><select class="t" id="ePiece" aria-label="Piece"></select><button class="btn sm q" type="button" data-e="undo" title="Undo (Ctrl+Z)">Undo</button><button class="btn sm q" type="button" data-e="redo" title="Redo (Ctrl+Shift+Z)">Redo</button><button class="btn sm q" type="button" data-e="add" title="A point halfway to the next">Add point</button><button class="btn sm q" type="button" data-e="del" title="Delete the chosen points (Delete)">Delete point</button><button class="btn sm q" type="button" data-e="notch" title="A notch at the chosen point (N)">Notch</button><button class="btn sm q" type="button" data-e="reset">Reset piece</button><span class="lbl" id="eHint">Click a point; Shift-click a second to measure a run</span></div>
       <div class="scrub hidden" id="ltools" role="toolbar" aria-label="On the last"><button class="btn sm go" type="button" data-l="draw">Draw a seam</button><button class="btn sm q hidden" type="button" data-l="undo">Undo point</button><button class="btn sm q hidden" type="button" data-l="cancel">Cancel</button><select class="t hidden" id="lPiece" aria-label="Piece to cut"></select><button class="btn sm go hidden" type="button" data-l="cut">Cut it along the seam</button><button class="btn sm q" type="button" data-l="sketch" aria-pressed="false" title="Draw on the last by hand: lines on the sides show on the flat views too">Sketch on it</button><button class="btn sm q hidden" type="button" data-l="skundo">Undo line</button><button class="btn sm q" type="button" data-l="side">Outside</button><button class="btn sm q" type="button" data-l="other">Inside</button><button class="btn sm q" type="button" data-l="top">Top</button><span class="lbl" id="lHint">Drag to turn the last</span></div>
-      <div class="scrub hidden" id="ktools" role="toolbar" aria-label="Sketch"><button class="btn sm q" type="button" data-k="pen" aria-pressed="true">Pen</button><button class="btn sm q" type="button" data-k="erase" aria-pressed="false">Eraser</button><button class="btn sm q" type="button" data-k="seam" aria-pressed="false" title="Make a line you drew into a seam that cuts the piece it crosses">Make a seam</button><button class="btn sm q" type="button" data-k="place" aria-pressed="false" title="Drag a paper sketch to line it up under its view">Move sketch</button><span class="inks" role="group" aria-label="Ink"><button type="button" data-ink="#3a3a3c" aria-label="Graphite" style="background:#3a3a3c"></button><button type="button" data-ink="#c2410c" aria-label="Red" style="background:#c2410c"></button><button type="button" data-ink="#2a6df4" aria-label="Blue" style="background:#2a6df4"></button><button type="button" data-ink="#17603a" aria-label="Green" style="background:#17603a"></button></span><select class="t" id="kSize" aria-label="Line"><option value="0.015">Fine</option><option value="0.03" selected>Medium</option><option value="0.06">Bold</option></select><button class="btn sm q" type="button" data-ka="undo" disabled>Undo</button><select class="t hidden" id="kPiece" aria-label="Piece to cut"></select><button class="btn sm go hidden" type="button" data-ka="cut">Cut the piece along it</button><span class="lbl" id="kHint"></span></div>
+      <div class="scrub hidden" id="ktools" role="toolbar" aria-label="Sketch"><button class="btn sm q" type="button" data-k="pen" aria-pressed="true">Pen</button><button class="btn sm q" type="button" data-k="erase" aria-pressed="false">Eraser</button><button class="btn sm q" type="button" data-k="shape" aria-pressed="false" title="Reshape any line: yours, a seam, or the model's own (drag its dot)">Reshape</button><button class="btn sm q" type="button" data-k="seam" aria-pressed="false" title="Make a line you drew into a seam that cuts the piece it crosses">Make a seam</button><button class="btn sm q" type="button" data-k="place" aria-pressed="false" title="Drag a paper sketch to line it up under its view">Move sketch</button><span class="inks" role="group" aria-label="Ink"><button type="button" data-ink="#3a3a3c" aria-label="Graphite" style="background:#3a3a3c"></button><button type="button" data-ink="#c2410c" aria-label="Red" style="background:#c2410c"></button><button type="button" data-ink="#2a6df4" aria-label="Blue" style="background:#2a6df4"></button><button type="button" data-ink="#17603a" aria-label="Green" style="background:#17603a"></button></span><select class="t" id="kSize" aria-label="Line"><option value="0.015">Fine</option><option value="0.03" selected>Medium</option><option value="0.06">Bold</option></select><button class="btn sm q" type="button" data-ka="undo" disabled>Undo</button><select class="t hidden" id="kReach" aria-label="How much of the line follows"><option value="0.25">Bend close</option><option value="0.8" selected>Bend soft</option><option value="2">Bend wide</option></select><button class="btn sm q hidden" type="button" data-ka="smooth">Smooth</button><button class="btn sm q hidden" type="button" data-ka="unseam" title="The seam goes back to a hand line, and the piece is whole again">Back to a sketch</button><select class="t hidden" id="kModel" aria-label="The model's line"></select><button class="btn sm go hidden" type="button" data-ka="fit" title="The model's line moves to where your line is, and the shoe is drafted again">Make it the model's line</button><button class="btn sm q hidden" type="button" data-ka="del">Delete</button><select class="t hidden" id="kPiece" aria-label="Piece to cut"></select><button class="btn sm go hidden" type="button" data-ka="cut">Cut the piece along it</button><span class="lbl" id="kHint"></span></div>
       <div id="canvas" aria-live="polite"></div>
     </div>
     <aside class="side" id="side"></aside>
@@ -75,6 +75,7 @@ import { shellOf, onSurface, cutOutline } from '/lab/lab-last-shell.js';
 import { footwearViews, viewsLayout, viewsMarkup, sketchPoint, warpOf } from '/lab/lab-footwear-views.js';
 import { INKS, hitStroke, simplify, strokesSvg } from '/lab/lab-sketch.js';
 import { plushViews, plushLayout } from '/lab/lab-plush-views.js';
+import { bend, smooth, nearest, insertAt, handlesOf, modelLines, moveLine, fitLine } from '/lab/lab-lines.js';
 import { partLooks } from '/lab/lab-looks.js';
 import { materialSvg } from '/lab/lab-swatches.js';
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)],esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -89,20 +90,22 @@ function build(){PAT0=D.kind==='footwear'?footwearPattern(SPEC,Number(SIZE)):D.k
 
 // ---------- the drawing ----------
 // t < 1: the pieces on the product, lifted off and spread (the exploded view), flying flat; t = 1: the cutting layout, every piece it takes
+// each cloth's width from the material on its part (cm in the library), and its name on the cutting layout
+const clothWidths=()=>Object.fromEntries(MATS.filter(k=>k.kind==='fabric'&&Number(k.spec?.widthCm)>20).map(k=>[k.part,Math.round(k.spec.widthCm/2.54)]));
 function drawPieces(){
   if(!PAT){$('#canvas').innerHTML='';return}
   if(EDIT)return drawEditor();
   if(LASTV)return drawLast();
-  const lay=layoutOf(PAT,{width:Number(SPEC.width)||58});let body='',bb;
+  const lay=layoutOf(PAT,{width:Number(SPEC.width)||58,widths:clothWidths()});let body='',bb;
   if(T>=.999){
     let y0=0;const items=[];
-    for(const g of lay){body+=`<text x="0" y="${r3(y0-.5)}" font-size=".55" font-weight="700" fill="#141416">${esc(g.name)}</text><text x="${r3(g.width)}" y="${r3(y0-.5)}" font-size=".42" text-anchor="end" fill="#727278">${g.width} in wide · ${g.length} in · ${g.yards} yd · ${g.efficiency}% used</text><rect x="0" y="${r3(y0)}" width="${g.width}" height="${r3(g.length)}" fill="#fff" stroke="#c7c7c2" stroke-width=".04" stroke-dasharray=".3 .2"/>`;
+    for(const g of lay){body+=`<text x="0" y="${r3(y0-.5)}" font-size=".55" font-weight="700" fill="#141416">${esc(g.name)}${(m=>m?` · ${esc(m.name)}`:'')(MATS.find(x=>x.part===g.fabric))}</text><text x="${r3(g.width)}" y="${r3(y0-.5)}" font-size=".42" text-anchor="end" fill="#727278">${g.width} in wide · ${g.length} in · ${g.yards} yd · ${g.efficiency}% used</text><rect x="0" y="${r3(y0)}" width="${g.width}" height="${r3(g.length)}" fill="#fff" stroke="#c7c7c2" stroke-width=".04" stroke-dasharray=".3 .2"/>`;
       for(const it of g.items){const q=it.piece,tf=pts=>pts.map(([x,y])=>[(it.flip?-x+(it.b.x0+it.b.x1):x)+it.x,y+it.y+y0]),sew=tf(q.sew),cut=tf(offsetOf(q.sew,q.sa??PAT.sa)),gr=tf(q.grain),b=boundsOf(sew),fs=Math.min(.55,Math.max(.22,b.w/12));
-        body+=`<g data-pid="${esc(q.id)}" class="pc"><path d="${P(cut)}" fill="${FILL[q.fabric]||'#eee'}" stroke="${SEL===q.id?'#17603a':'#141416'}" stroke-width="${SEL===q.id?.09:.05}"/><path d="${P(sew)}" fill="none" stroke="#141416" stroke-width=".03" stroke-dasharray=".2 .12"/>`
+        const ink=inkOn(q);body+=`<g data-pid="${esc(q.id)}" class="pc"><path d="${P(cut)}" fill="${fillOf(q)}" stroke="${SEL===q.id?'#17603a':'#141416'}" stroke-width="${SEL===q.id?.09:.05}"/><path d="${P(sew)}" fill="none" stroke="${ink}" stroke-width=".03" stroke-dasharray=".2 .12"/>`
           +`<path d="M${r3(gr[0][0])} ${r3(gr[0][1])} L${r3(gr[1][0])} ${r3(gr[1][1])}" stroke="#17603a" stroke-width=".05" marker-start="url(#ga)" marker-end="url(#ga)"/>`
           +tf(q.notches).map(n=>`<circle cx="${r3(n[0])}" cy="${r3(n[1])}" r=".12" fill="#141416"/>`).join('')
           +(q.fold?`<path d="M${r3(it.x)} ${r3(b.y0)} L${r3(it.x)} ${r3(b.y1)}" stroke="#a02a20" stroke-width=".05" stroke-dasharray=".35 .18"/>`:'')
-          +(it.n===0?`<text x="${r3((b.x0+b.x1)/2)}" y="${r3((b.y0+b.y1)/2)}" text-anchor="middle" font-size="${r3(fs)}" font-weight="700">${esc(q.name)}</text><text x="${r3((b.x0+b.x1)/2)}" y="${r3((b.y0+b.y1)/2+fs*1.2)}" text-anchor="middle" font-size="${r3(fs*.75)}" fill="#4a4a50">${esc(cutWords(q))}</text>`:'')+`</g>`;items.push(...cut)}
+          +(it.n===0?`<text x="${r3((b.x0+b.x1)/2)}" y="${r3((b.y0+b.y1)/2)}" text-anchor="middle" font-size="${r3(fs)}" font-weight="700" fill="${ink}">${esc(q.name)}</text><text x="${r3((b.x0+b.x1)/2)}" y="${r3((b.y0+b.y1)/2+fs*1.2)}" text-anchor="middle" font-size="${r3(fs*.75)}" fill="${ink}" opacity=".75">${esc(cutWords(q))}</text>`:'')+`</g>`;items.push(...cut)}
       y0+=g.length+2.4}
     bb=boundsOf(items.length?items:[[0,0],[10,10]]);bb={x0:-.5,y0:-1.4,x1:Math.max(...lay.map(g=>g.width))+.5,y1:y0}
   }else if(D.kind==='footwear'&&T<.02){
@@ -111,11 +114,11 @@ function drawPieces(){
     if(pic){const k=(PAT.last.length+.3)/Math.max(1,pic.x1-pic.x0),tx=pic.toeLeft?pic.x1*k-.1:-pic.x0*k-.1;body+=`<g transform="translate(${r3(tx)} ${r3(-pic.y1*k+(PAT.ground||0))})${pic.toeLeft?' scale(-1 1)':''}" opacity=".9"><image href="${PICURL}" x="0" y="0" width="${r3(pic.imgW*k)}" height="${r3(pic.imgH*k)}" preserveAspectRatio="none"/></g>`}
     LV=lv;
     body+=`<g id="flats">${viewsMarkup(lv,{faint:pic?0:-1})}</g>`+ulMarkup(lv);
-    const hl=SK.on&&SK.sel&&(SPEC.sketches||[]).find(k=>k.id===SK.sel),hi=hl&&lv.items.find(i=>i.key===hl.on);if(hl&&hi){const W=warpOf(PAT.last),b=hi.box,tf=hl.on==='lateral'?p=>{const q=W(p);return[q[0]+hi.dx,q[1]+hi.dy]}:hl.on==='medial'?p=>{const q=W(p);return[b.x0+b.x1-hi.dx-q[0],q[1]+hi.dy]}:hl.on==='bottom'?p=>[p[0]+hi.dx,b.y0+b.y1-hi.dy-p[1]]:p=>[p[0]+hi.dx,p[1]+hi.dy];body+=`<g opacity=".55">${strokesSvg([{...hl,c:'#2a6df4',size:hl.size+.12}],tf)}</g>`}if(SEL)body+=`<style>#flats [data-pid="${SEL}"]{stroke:#17603a;stroke-width:.07}</style>`;
+    body+=reshapeMarkup(lv);if(SEL)body+=`<style>#flats [data-pid="${SEL}"]{stroke:#17603a;stroke-width:.07}</style>`;
     bb={x0:lv.box.x0-.6,y0:lv.box.y0-.6,x1:lv.box.x1+.6,y1:lv.box.y1+.4}
   }else if(D.kind==='plush'&&T<.02){
     // the plush as tech flats: front, back and side, stuffed and sewn (src/lab-plush-views.js)
-    const lv=plushLayout(plushViews(PAT,looks()));LV=lv;body+=`<g id="flats">${viewsMarkup(lv)}</g>`+ulMarkup(lv);bb={x0:lv.box.x0-.6,y0:lv.box.y0-.6,x1:lv.box.x1+.6,y1:lv.box.y1+.4}
+    const lv=plushLayout(plushViews(PAT,looks()));LV=lv;body+=`<g id="flats">${viewsMarkup(lv)}</g>`+ulMarkup(lv)+reshapeMarkup(lv);bb={x0:lv.box.x0-.6,y0:lv.box.y0-.6,x1:lv.box.x1+.6,y1:lv.box.y1+.4}
   }else{
     const fr=explodeAt(PAT,T,lay),A=assembled(PAT),label=T>.2;
     const sorted=fr.slice().sort((a,b)=>(a.piece.place.z||0)-(b.piece.place.z||0));
@@ -124,7 +127,7 @@ function drawPieces(){
     if(pic){const k=(PAT.last.length+.3)/Math.max(1,pic.x1-pic.x0),tx=pic.toeLeft?pic.x1*k-.1:-pic.x0*k-.1;body+=`<g transform="translate(${r3(tx)} ${r3(-pic.y1*k+(PAT.ground||0))})${pic.toeLeft?' scale(-1 1)':''}" opacity="${r3(.9*(1-T/.3))}"><image href="${PICURL}" x="0" y="0" width="${r3(pic.imgW*k)}" height="${r3(pic.imgH*k)}" preserveAspectRatio="none"/></g>`}
     const pieceOp=pic?.45:1;
     for(const {piece:q,pts} of sorted){const b=boundsOf(pts),fs=Math.min(.55,Math.max(.24,b.w/10));
-      body+=`<g data-pid="${esc(q.id)}" class="pc"><path d="${P(pts)}" fill="${FILL[q.fabric]||'#eee'}" fill-opacity="${T<.02?(typeof pieceOp!=='undefined'?pieceOp:1):.94}" stroke="${SEL===q.id||SEL+'-2'===q.id?'#17603a':'#141416'}" stroke-width="${SEL===q.id||SEL+'-2'===q.id?.1:.055}"/>${label&&!q.twin?`<text x="${r3((b.x0+b.x1)/2)}" y="${r3((b.y0+b.y1)/2)}" text-anchor="middle" font-size="${r3(fs)}" font-weight="700" opacity="${Math.min(1,(T-.2)*4)}">${esc(q.name)}</text>`:''}</g>`}
+      body+=`<g data-pid="${esc(q.id)}" class="pc"><path d="${P(pts)}" fill="${fillOf(q)}" fill-opacity="${T<.02?(typeof pieceOp!=='undefined'?pieceOp:1):.94}" stroke="${SEL===q.id||SEL+'-2'===q.id?'#17603a':'#141416'}" stroke-width="${SEL===q.id||SEL+'-2'===q.id?.1:.055}"/>${label&&!q.twin?`<text x="${r3((b.x0+b.x1)/2)}" y="${r3((b.y0+b.y1)/2)}" text-anchor="middle" font-size="${r3(fs)}" font-weight="700" fill="${inkOn(q)}" opacity="${Math.min(1,(T-.2)*4)}">${esc(q.name)}</text>`:''}</g>`}
     if(T<.2&&A.backDx){const fb=A.bounds;body+=`<text x="${r3(fb.x0)}" y="${r3(fb.y1+1.4)}" font-size=".6" fill="#727278">${esc(PAT.views?.front||'Front')}</text><text x="${r3(fb.x0+A.backDx)}" y="${r3(fb.y1+1.4)}" font-size=".6" fill="#727278">${esc(PAT.views?.back||'Back')}</text>`}
     const all=fr.flatMap(x=>x.pts);bb=boundsOf(all.length?all:[[0,0],[10,10]]);bb={x0:Math.min(bb.x0,A.bounds.x0)-1,y0:Math.min(bb.y0,A.bounds.y0)-1,x1:bb.x1+1,y1:Math.max(bb.y1,A.bounds.y1)+2}
   }
@@ -159,7 +162,7 @@ function drawEditor(){
   const run=(s)=>{if(!s||s.pid!==EP)return'';const pts=[];let k=s.i;for(let n=0;n<sew.length&&k!==s.j;n++){pts.push(sew[k]);k=(k+1)%sew.length}pts.push(sew[s.j]);return`<path d="M${pts.map(p=>`${r3(p[0])} ${r3(p[1])}`).join(' L')}" fill="none" stroke="${s===SEAM.a?'#2a6df4':'#c2410c'}" stroke-width="${r*1.4}" stroke-linecap="round"/>`};
   const gr=q.grain;
   $('#canvas').innerHTML=`<svg id="esvg" xmlns="http://www.w3.org/2000/svg" viewBox="${x0} ${y0} ${w} ${h}" role="img" aria-label="Editing ${esc(q.name)}" style="touch-action:none;background:#fff;border-radius:12px" font-family="Space Grotesk, system-ui, sans-serif"><defs><marker id="ga" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="3.2" markerHeight="3.2" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#17603a"/></marker></defs>${g}
-    <path d="${P(cut)}" fill="${FILL[q.fabric]||'#eee'}" fill-opacity=".55" stroke="#141416" stroke-width="${r*.5}" stroke-dasharray="${r*1.4} ${r*.8}"/><path d="${P(sew)}" fill="none" stroke="#141416" stroke-width="${r*.6}"/>${run(SEAM.a)}${run(SEAM.b)}
+    <path d="${P(cut)}" fill="${fillOf(q)}" fill-opacity=".55" stroke="#141416" stroke-width="${r*.5}" stroke-dasharray="${r*1.4} ${r*.8}"/><path d="${P(sew)}" fill="none" stroke="#141416" stroke-width="${r*.6}"/>${run(SEAM.a)}${run(SEAM.b)}
     <path d="M${r3(gr[0][0])} ${r3(gr[0][1])} L${r3(gr[1][0])} ${r3(gr[1][1])}" stroke="#17603a" stroke-width="${r*.6}" marker-start="url(#ga)" marker-end="url(#ga)"/>
     ${q.notches.map(n=>`<path d="M${r3(n[0]-r*1.4)} ${r3(n[1]+r*2)} L${r3(n[0])} ${r3(n[1])} L${r3(n[0]+r*1.4)} ${r3(n[1]+r*2)} Z" fill="#141416"/>`).join('')}
     ${sew.map((p,i)=>`<circle data-pt="${i}" cx="${r3(p[0])}" cy="${r3(p[1])}" r="${r*(SELP.includes(i)?1.6:1.1)}" fill="${SELP.includes(i)?'#2a6df4':'#fff'}" stroke="${SELP.includes(i)?'#2a6df4':'#141416'}" stroke-width="${r*.4}" style="cursor:grab"/>`).join('')}
@@ -213,6 +216,16 @@ $('#side').addEventListener('change',e=>{const k=e.target.dataset.ek;if(!k||!EDI
 // ---------- the side ----------
 const LABEL={style:'Style',toe:'Toe',toeCap:'Toe cap',mudguard:'Mudguard',heelOverlay:'Heel overlay',upper:'Upper',sole:'Sole',eyelets:'Eyelets a side',vamp:'Vamp line (from the heel)',throat:'Lacing starts (from the heel)',collar:'Collar height',heel:'Heel height',spring:'Toe spring',soleHeight:'Sole thickness',colours:'Colours'};
 const show=(k,v)=>{if(v==null)return'the style\'s';if(typeof v==='boolean')return v?'yes':'no';if(k==='colours')return Object.entries(v).map(([a,b])=>`${a} ${b}`).join(', ');if(['vamp','throat'].includes(k))return Math.round(v*100)+'% of the length';if(['collar','heel','spring','soleHeight'].includes(k))return v+' in';const fo=D.options.footwear;return (k==='style'?fo.styles[v]:k==='toe'?fo.toes[v]:k==='upper'?fo.uppers[v]:v)||String(v)};
+// a plush read from the concept's picture (and its words): what would change, used or not
+const PLABEL={shape:'Shape',height:'Height',ears:'Ears',arms:'Arms',legs:'Legs',tail:'Tail',fabric:'Fabric',eyes:'Eyes',age:'For ages',colours:'Colours'};
+const pshow=(k,v)=>{const o=D.options.plush;if(v==null)return'—';if(k==='height')return`${v} in`;if(typeof v==='boolean')return v?'yes':'no';if(k==='colours')return Object.entries(v).map(([a,b])=>`${a} ${b}`).join(', ');return({shape:o.shapes,ears:o.ears,fabric:o.fabrics,eyes:o.eyes,age:o.ages}[k]||{})[v]||String(v)};
+function plushReadBox(){if(!D.concept.hasImage)return'';return`<section class="readbox" id="readBox"><h4>From the concept's picture</h4>${RDBUSY?'<p class="note">Reading the plush in the picture…</p>':RD?`<p class="note">${RD.source==='vision'?'Read by eye (AI), over the concept\'s words':'From the concept\'s words'}${RD.why?`: ${esc(RD.why)}`:''}</p>${RD.changes.length?RD.changes.map(c=>`<div class="find info"><i></i><span><b>${esc(PLABEL[c.key]||c.key)}</b>: ${esc(pshow(c.key,c.from))} → ${esc(pshow(c.key,c.to))}</span></div>`).join(''):'<p class="note">The plush already matches the picture.</p>'}<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn go sm" type="button" id="useRead">Use it</button><button class="btn q sm" type="button" id="dropRead">Not now</button></div>`:`<p class="note">Read the shape, the height, the ears, arms, legs and tail, the pile, the eyes and the colours from the picture, and draft the pattern to them.</p><button class="btn go sm" type="button" id="readPic" style="justify-self:start">Read the plush from the picture</button>`}</section>`}
+// a photo-real picture of it as patterned: the tech flats go to the image model, and the sample it draws becomes the concept's picture
+let RENDERING=false;
+// the tech flats into the tech pack, once the concept is one (its outside and inside are the pack's lateral and medial, a plush's front and back)
+function packBox(){if(!D.concept.productId)return'';return`<section id="packBox"><h4>The tech pack</h4><p class="note">Send the tech flats (every view), the pattern's notes and the materials to the tech pack. Save the pattern first: the pack takes what is saved.</p><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn go sm" type="button" id="toPack">Send to the tech pack</button><a class="btn q sm" href="/tech-packs/${esc(D.concept.productId)}" target="_top">Open the tech pack</a></div></section>`}
+function renderBox(){return packBox()+`<section class="readbox" id="renderBox"><h4>See it made</h4><p class="note">A photo-real picture of the ${D.kind==='plush'?'plush':'shoe'} as it is patterned now, in the materials on its parts, drawn from its tech flats. It becomes the concept's picture${D.concept.status==='approved'?' (and the concept goes back to draft)':''}.</p><button class="btn go sm" type="button" id="renderIt" style="justify-self:start"${RENDERING?' disabled':''}>${RENDERING?'Drawing it…':'Make it photo-real'}</button></section>`}
+async function renderIt(){RENDERING=true;paintSide();try{const r=await api(`/v1/lab/concepts/${CID}/pattern/render`,{body:{spec:SPEC}});D.concept.hasImage=true;if(r.backToDraft)D.concept.status='draft';toast('The photo-real picture is the concept\'s picture now'+(r.backToDraft?': the concept is back to draft':''));HOST()?.pictureChanged?.()}catch(err){toast(err.message)}finally{RENDERING=false;paintSide()}}
 async function readPicture(){RDBUSY=true;paintSide();try{RD=await api(`/v1/lab/concepts/${CID}/pattern/from-picture`,{method:'POST',body:{}})}catch(err){RD=null;toast(err.message)}finally{RDBUSY=false;paintSide()}}
 // the developer's review: a second AI checks the four views against the picture round by round (src/lab-shoe-review.js); the page follows it
 async function startReview(){RV={status:'running',rounds:[],starting:true};paintSide();try{const r=await api(`/v1/lab/concepts/${CID}/pattern/review`,{method:'POST',body:{spec:SPEC}});RV={status:'running',rounds:[],id:r.id,reviewer:r.reviewer};paintSide();pollReview(r.id)}catch(err){RV=null;paintSide();toast(err.message)}}
@@ -232,7 +245,7 @@ function paintSide(){
   const lay=layoutOf(PAT,{width:Number(SPEC.width)||58}),o=D.options,vis=PAT.pieces.filter(q=>q.cut>0);
   const sel=(id,map,v)=>`<select data-k="${id}">${Object.entries(map).map(([k,l])=>`<option value="${esc(k)}"${String(k)===String(v)?' selected':''}>${esc(l)}</option>`).join('')}</select>`;
   let h='';
-  if(D.kind==='plush'){const p=SPEC;h+=`<section><h4>The plush</h4><p class="note">Choose its shape and size: the pieces are drafted to it.</p>
+  if(D.kind==='plush'){const p=SPEC;h+=plushReadBox()+renderBox()+`<section><h4>The plush</h4><p class="note">Choose its shape and size: the pieces are drafted to it.</p>
     <label class="f"><span>Shape</span>${sel('shape',o.plush.shapes,p.shape)}</label>
     <div class="row2"><label class="f"><span>Height (in)</span><input type="number" data-k="height" min="4" max="48" step="0.5" value="${p.height}"></label><label class="f"><span>Ears</span>${sel('ears',o.plush.ears,p.ears)}</label></div>
     ${p.shape==='pillow'?`<label class="f"><span>Gusset depth (in)</span><input type="number" data-k="depth" min="1" max="12" step="0.5" value="${p.depth}"></label>`:''}
@@ -242,7 +255,7 @@ function paintSide(){
     <button class="btn go" type="button" id="saveP"${DIRTY?'':' disabled'}>${DIRTY?'Save the pattern':'Saved'}</button></section>`;h+=matsBox()+sketchBox()}
   else if(D.kind==='footwear'){const f=SPEC,fo=o.footwear,L=PAT.last,run=sizeRun(f),tl=PAT.tooling,hide=hideArea(PAT),ws=fo.widths[f.system]||null,lim=fo.limits[f.system],stp=f.system==='eu'||f.system==='mm'?1:.5;
     h+=`${D.concept.hasImage?`<section class="readbox" id="readBox"><h4>From the concept's picture</h4>${RDBUSY?'<p class="note">Reading the shoe in the picture…</p>':RD?`<p class="note">${RD.source==='vision'?'Read by eye (AI) and by its outline':'Read from its outline (no AI)'}${RD.why?`: ${esc(RD.why)}`:''}</p>${RD.changes.length?RD.changes.map(c=>`<div class="find info"><i></i><span><b>${esc(LABEL[c.key]||c.key)}</b>: ${esc(show(c.key,c.from))} → ${esc(show(c.key,c.to))}</span></div>`).join(''):'<p class="note">The shoe already matches the picture.</p>'}<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn go sm" type="button" id="useRead">Use it</button><button class="btn q sm" type="button" id="dropRead">Not now</button></div>`:`<p class="note">Read the style, the toe, the pieces of the upper and where their seams sit, the sole and the colours from the picture, and line the last up under it.</p><button class="btn go sm" type="button" id="readPic" style="justify-self:start">Read the shoe from the picture</button>`}${SPEC.picture?`<label class="chk"><input type="checkbox" id="showPic"${SHOWPIC?' checked':''}> Show the picture over the shoe</label>`:''}</section>`:''}
-${D.concept.hasImage?revBox():''}${matsBox()}${sketchBox()}
+${D.concept.hasImage?revBox():''}${renderBox()}${matsBox()}${sketchBox()}
     <section><h4>The shoe</h4><p class="note">Choose the style, the size it is sampled in and the last's shape: the last and the upper's pieces are drafted to it.</p>
     <label class="f"><span>Style</span>${sel('style',fo.styles,f.style)}</label>
     <div class="row2"><label class="f"><span>Sizes in</span>${sel('system',fo.systems,f.system)}</label><label class="f"><span>Sample size</span><input type="number" data-k="size" min="${lim[0]}" max="${lim[1]}" step="${stp}" value="${f.size}"></label></div>
@@ -259,7 +272,7 @@ ${D.concept.hasImage?revBox():''}${matsBox()}${sketchBox()}
     <section><h4>Components</h4>${PAT.components.map(c=>`<div class="find info"><i></i><span><b>${esc(c.name)}</b> · ${esc(c.qty)}${c.how?` · ${esc(c.how)}`:''}</span></div>`).join('')}</section>`}
   else h+=`<section><h4>${esc(PAT.label)} · ${esc(PAT.size)}</h4><p class="note">Drafted from the flats' measurements${D.flatSaved?'':' (the flats are not saved yet: these are the style\'s standard measurements)'}. Change the measurements on the Flat front, and the pattern follows.</p>
     <div class="row2"><label class="f"><span>Seam allowance</span><select data-k="sa">${o.seamAllowances.map(v=>`<option value="${v}"${Number(SPEC.sa||PAT.sa)===v?' selected':''}>${{.25:'¼',.375:'⅜',.5:'½',.625:'⅝'}[v]} in</option>`).join('')}</select></label><label class="f"><span>Fabric width</span><select data-k="width">${o.widths.map(v=>`<option value="${v}"${Number(SPEC.width)===v?' selected':''}>${v} in</option>`).join('')}</select></label></div>
-    <button class="btn go" type="button" id="saveP"${DIRTY?'':' disabled'}>${DIRTY?'Save':'Saved'}</button></section>`;
+    <button class="btn go" type="button" id="saveP"${DIRTY?'':' disabled'}>${DIRTY?'Save':'Saved'}</button></section>`+matsBox();
   h+=`<section><h4>Pieces <span class="mono">${vis.length} · ${vis.reduce((a,q)=>a+q.cut,0)} cut</span></h4><table class="pcs"><thead><tr><th>Piece</th><th>Cut</th><th>Fabric</th></tr></thead><tbody>${vis.map(q=>`<tr data-pid="${esc(q.id)}"${SEL===q.id?' class="on"':''}><td><span class="sw" style="background:${FILL[q.fabric]||'#eee'}"></span>${esc(q.name)}${q.notes.length&&SEL===q.id?`<div class="note" style="margin-top:4px">${q.notes.map(esc).join('<br>')}</div>`:''}</td><td>${esc(cutWords(q).replace(/^Cut /,''))}</td><td>${esc(fabricName(q.fabric))}</td></tr>`).join('')}</tbody></table></section>`;
   if(D.kind!=='footwear')h+=`<section><h4>Cloth for one</h4>${lay.map(g=>`<div class="find info"><i></i><span><b>${esc(g.name)}</b>: ${g.yards} yd at ${g.width} in wide (${g.efficiency}% of the cloth used)</span></div>`).join('')}${PAT.kind==='plush'?`<div class="find info"><i></i><span><b>Fill</b>: about ${fillGrams(PAT)} g of ${esc(SPEC.fill)}</span></div>`:''}<p class="note">An estimate from a simple layout; the factory's marker uses less.</p></section>`;
   if(PAT.checks?.length)h+=`<section><h4>${D.kind==='footwear'?'Before the sample':'Safety and testing'}</h4>${PAT.checks.map(c=>`<div class="find ${c.level}"><i></i><span>${esc(c.msg)}</span></div>`).join('')}</section>`;
@@ -277,6 +290,9 @@ $('#side').addEventListener('click',async e=>{
   if(await l3Click(e))return;
   const dl=e.target.closest('[data-dl]');if(dl){download(dl.dataset.dl,dl);return}
   if(e.target.closest('#readPic')){readPicture();return}
+  if(e.target.closest('#renderIt')){renderIt();return}
+  if(e.target.closest('#toPack')){if(DIRTY){toast('Save the pattern first: the tech pack takes what is saved');return}api(`/v1/lab/concepts/${CID}/flats/tech-pack`,{body:{}}).then(()=>toast('The tech flats are on the tech pack')).catch(err=>toast(err.message));return}
+  if(e.target.closest('#useRead')&&D.kind==='plush'){const ed1=SPEC.edits,sk=SPEC.sketches;SPEC=cleanPlush({...RD.spec,sketches:sk});if(ed1)SPEC.edits=ed1;RD=null;DIRTY=true;build();drawPieces();paintSide();toast('Read from the picture: save the plush to keep it');return}
   if(e.target.closest('#useRead')){const ed1=SPEC.edits;SPEC=cleanFootwear(RD.spec);if(ed1)SPEC.edits=ed1;SIZE=SPEC.size;RD=null;DIRTY=true;fwSizes();build();loadPic();drawPieces();paintSide();toast('Read from the picture: save the shoe to keep it');return}
   if(e.target.closest('#dropRead')){RD=null;paintSide();return}
   if(e.target.closest('#revStart')){startReview();return}
@@ -395,7 +411,7 @@ $('#lastBtn').addEventListener('click',()=>{LASTV=!LASTV;if(LASTV&&EDIT)$('#edit
 $('#ltools').addEventListener('click',e=>{const b=e.target.closest('[data-l]');if(!b)return;const a=b.dataset.l;
   if(a==='side'){VIEW={yaw:0,pitch:.35}}else if(a==='other'){VIEW={yaw:Math.PI,pitch:.35}}else if(a==='top'){VIEW={yaw:0,pitch:1.35}}
   else if(a==='sketch'){LSK=!LSK;LDRAW=null;b.setAttribute('aria-pressed',String(LSK));$('#ltools [data-l="skundo"]').classList.toggle('hidden',!LSK);$('#lHint').textContent=LSK?'Draw on the last; turn it with Outside, Inside and Top, or with a finger once the Pencil is used':'Drag to turn the last';drawPieces();return}
-  else if(a==='skundo'){if(SK.undo.length)setSketches(SK.undo.pop(),{undo:false});return}
+  else if(a==='skundo'){skUndo();return}
   else if(a==='draw'){LDRAW={side:null,pts:[]};LSK=false;$('#ltools [data-l="sketch"]').setAttribute('aria-pressed','false');$('#ltools [data-l="skundo"]').classList.add('hidden')}else if(a==='cancel'){LDRAW=null}else if(a==='undo'){LDRAW?.pts.pop();if(LDRAW&&!LDRAW.pts.length)LDRAW.side=null}
   else if(a==='cut'){const id=$('#lPiece').value;if(!id||!LDRAW)return;const n=(SPEC.seams||[]).length+1,nm=PAT.pieces.find(q=>q.id===id)?.name||id;setSeams([...(SPEC.seams||[]),{piece:id,side:LDRAW.side,pts:LDRAW.pts,name:`Seam ${n}`}]);LDRAW=null;toast(`The ${nm.toLowerCase()} is cut in two along the seam: save the shoe to keep it`)}
   lastTools();drawPieces()});
@@ -408,57 +424,122 @@ $('#side').addEventListener('change',e=>{if(e.target.id!=='flatOn')return;e.stop
 
 // ---------- materials on the product's parts (the materials library: src/lab-materials-goods.js PARTS) ----------
 // each part shows its swatch; choosing a material for it puts it on the concept's bill of materials and draws the flats in it
-let MATS=[],MLIB=null,MOPEN='';
-const looks=()=>partLooks(MATS);
+let MATS=[],MLIB=null,MOPEN='',MQ='';
+// what is on each part: a part's own pick, or (on a garment) the concept's fabric of that role (its main fabric is the body), until a part takes it
+const ROLE_PART={main:'self',contrast:'contrast',rib:'rib',lining:'lining'};
+const matsOf=picks=>{const on=(picks||[]).filter(p=>p.part);if(D.kind==='garment')for(const p of picks||[])if(!p.part&&p.kind==='fabric'&&ROLE_PART[p.role]&&!on.some(x=>x.part===ROLE_PART[p.role]))on.push({...p,part:ROLE_PART[p.role],fromRole:true});return on};
+// a piece in its cloth: the colour of the material on its part (a garment's pieces are cut from self, rib, contrast…), or the drafting colour
+const fillOf=q=>MATS.find(x=>x.part===q.fabric)?.colour?.hex||FILL[q.fabric]||'#eee';
+// ink that reads on a piece's cloth: light on a dark cloth
+const inkOn=q=>{const h=fillOf(q);if(!/^#[0-9a-f]{6}$/i.test(h))return'#141416';const n=parseInt(h.slice(1),16),l=(.299*(n>>16)+.587*((n>>8)&255)+.114*(n&255))/255;return l<.45?'#f4f3ef':'#141416'};
+const qPart=k=>k&&!k.fromRole?`?part=${encodeURIComponent(k.part)}`:'';
+// the colourway being looked at, if any: the main part (a shoe's upper, a plush's body) drawn in it, over the material's own colour
+let CW='';const MAINPART=()=>D.kind==='footwear'?'upper':D.kind==='plush'?'body':'';
+const looks=()=>{const m=partLooks(MATS),c={...(SPEC?.colours||{}),...m.colours};if(CW&&MAINPART())c[MAINPART()]=CW;return{colours:c,tex:m.tex}};
 async function mLib(){if(MLIB)return MLIB;const kinds=[...new Set((D.parts||[]).flatMap(p=>p.kinds))];const all=await Promise.all(kinds.map(k=>api(`/v1/lab/materials?kind=${k}`).then(r=>r.materials).catch(()=>[])));MLIB=all.flat();return MLIB}
 const mThumb=(m,hex)=>`<div class="mth">${materialSvg({...m,colours:hex?[{hex},...(m.colours||[])]:m.colours||[]},'pm'+String(m.id).replace(/-/g,'').slice(0,8)+(hex||'').slice(1))}</div>`;
-function matsBox(){const parts=D.parts||[];if(!parts.length)return'';
-  return`<section id="mtBox"><h4>Materials <span class="mono">${MATS.length}/${parts.length}</span></h4><p class="note">What each part is made of, from the <a href="/lab/materials" target="_blank" rel="noopener">materials library</a>. The flats are drawn in it, and the cost and the tech pack's bill of materials follow.</p>
+function matsBox(){const parts=D.parts||[];if(!parts.length)return'';const cws=D.colourways||[];
+  return`<section id="mtBox"><h4>Materials <span class="mono">${MATS.length}/${parts.length}</span></h4>${cws.length&&MAINPART()?`<label class="f"><span>See it in a colourway</span><select class="t" id="cwSel"><option value="">As the materials are</option>${cws.map(c=>`<option value="${esc(c.hex)}"${c.hex===CW?' selected':''}>${esc(c.name||c.hex)}</option>`).join('')}</select></label>`:''}<p class="note">What each part is made of, from the <a href="/lab/materials" target="_blank" rel="noopener">materials library</a>. The flats are drawn in it, and the cost and the tech pack's bill of materials follow.</p>
     ${parts.map(p=>{const k=MATS.find(x=>x.part===p.id),m=k&&MLIB?.find(x=>x.id===k.id);return`<div class="mtrow" data-mpart="${esc(p.id)}">${k?mThumb(m||{kind:k.kind,name:k.name,spec:k.spec,colours:[]},k.colour?.hex):'<div class="mth empty"></div>'}<div class="mtb"><b>${esc(p.label)}</b><span class="note">${k?esc(k.name)+(k.colour?.name?' · '+esc(k.colour.name):''):'Not chosen yet'}</span>
       ${k&&m?.colours?.length>1?`<select class="t" data-mcol aria-label="Colour">${m.colours.map(c=>`<option value="${esc(c.hex)}" ${c.hex===k.colour?.hex?'selected':''}>${esc(c.name||c.hex)}</option>`).join('')}</select>`:''}
       <div class="row"><button class="btn sm q" type="button" data-mpick>${k?'Change':'Choose…'}</button>${k?'<button class="btn sm q" type="button" data-mrm>Remove</button>':''}</div>
-      ${MOPEN===p.id?`<div class="mtlist">${(MLIB||[]).filter(m=>p.kinds.includes(m.kind)).map(m=>[m,(p.cats.includes(m.spec?.category)?0:2)+p.kinds.indexOf(m.kind)*.1]).sort((x,y)=>x[1]-y[1]).map(x=>x[0]).slice(0,24).map(m=>`<button type="button" class="mtc" data-muse="${esc(m.id)}" title="${esc(m.name)}">${mThumb(m)}<span>${esc(m.name)}</span></button>`).join('')||'<span class="note">Nothing in the library for this part yet.</span>'}</div>`:''}</div></div>`}).join('')}</section>`}
+      ${MOPEN===p.id?`<input class="t" type="search" data-mq placeholder="Search the library" value="${esc(MQ)}" aria-label="Search the library for the ${esc(p.label.toLowerCase())}"><div class="mtlist">${(MLIB||[]).filter(m=>p.kinds.includes(m.kind)&&(!MQ||`${m.name} ${m.code||''} ${m.spec?.category||''} ${m.spec?.construction||''}`.toLowerCase().includes(MQ.toLowerCase()))).map(m=>[m,(p.cats.includes(m.spec?.category)?0:2)+p.kinds.indexOf(m.kind)*.1]).sort((x,y)=>x[1]-y[1]).map(x=>x[0]).slice(0,40).map(m=>`<button type="button" class="mtc" data-muse="${esc(m.id)}" title="${esc(m.name)}">${mThumb(m)}<span>${esc(m.name)}</span></button>`).join('')||'<span class="note">Nothing in the library for this part yet.</span>'}</div>`:''}</div></div>`}).join('')}</section>`}
 $('#side').addEventListener('click',async e=>{const row=e.target.closest('[data-mpart]');if(!row)return;const part=row.dataset.mpart;
-  if(e.target.closest('[data-mpick]')){MOPEN=MOPEN===part?'':part;await mLib();paintSide();return}
-  const u=e.target.closest('[data-muse]');if(u){try{const r=await api(`/v1/lab/concepts/${CID}/materials`,{body:{material:u.dataset.muse,part}});MATS=r.picks.filter(p=>p.part);MOPEN='';drawPieces();paintSide();toast('On the '+((D.parts||[]).find(p=>p.id===part)?.label||part).toLowerCase()+': the flats and the cost follow')}catch(x){toast(x.message)}return}
-  if(e.target.closest('[data-mrm]')){const k=MATS.find(x=>x.part===part);if(!k)return;try{const r=await api(`/v1/lab/concepts/${CID}/materials/${k.id}?part=${encodeURIComponent(part)}`,{method:'DELETE'});MATS=r.picks.filter(p=>p.part);drawPieces();paintSide()}catch(x){toast(x.message)}}});
-$('#side').addEventListener('change',async e=>{const s=e.target.closest('[data-mcol]');if(!s)return;const part=s.closest('[data-mpart]').dataset.mpart,k=MATS.find(x=>x.part===part);if(!k)return;
-  try{const r=await api(`/v1/lab/concepts/${CID}/materials/${k.id}?part=${encodeURIComponent(part)}`,{method:'PUT',body:{colour:s.value}});MATS=r.picks.filter(p=>p.part);drawPieces();paintSide()}catch(x){toast(x.message)}});
+  if(e.target.closest('[data-mpick]')){MOPEN=MOPEN===part?'':part;MQ='';await mLib();paintSide();return}
+  const u=e.target.closest('[data-muse]');if(u){try{const r=await api(`/v1/lab/concepts/${CID}/materials`,{body:{material:u.dataset.muse,part}});MATS=matsOf(r.picks);MOPEN='';drawPieces();paintSide();toast('On the '+((D.parts||[]).find(p=>p.id===part)?.label||part).toLowerCase()+': the flats and the cost follow')}catch(x){toast(x.message)}return}
+  if(e.target.closest('[data-mrm]')){const k=MATS.find(x=>x.part===part);if(!k)return;try{const r=await api(`/v1/lab/concepts/${CID}/materials/${k.id}${qPart(k)}`,{method:'DELETE'});MATS=matsOf(r.picks);drawPieces();paintSide()}catch(x){toast(x.message)}}});
+$('#side').addEventListener('input',e=>{const q=e.target.closest('[data-mq]');if(!q)return;MQ=q.value;const at=q.selectionStart;paintSide();const n=document.querySelector('#mtBox [data-mq]');if(n){n.focus();try{n.setSelectionRange(at,at)}catch{}}});
+$('#side').addEventListener('change',async e=>{if(e.target.id==='cwSel'){CW=e.target.value;drawPieces();return}const s=e.target.closest('[data-mcol]');if(!s)return;const part=s.closest('[data-mpart]').dataset.mpart,k=MATS.find(x=>x.part===part);if(!k)return;
+  try{const r=await api(`/v1/lab/concepts/${CID}/materials/${k.id}${qPart(k)}`,{method:'PUT',body:{colour:s.value}});MATS=matsOf(r.picks);drawPieces();paintSide()}catch(x){toast(x.message)}});
 
 // ---------- sketching by hand: on any view, and on the last (src/lab-sketch.js) ----------
 // The Pencil draws with its pressure; once a Pencil has been used, fingers never draw (a palm on the screen does nothing). A stroke on the
 // outside or the inside is kept on the side view's own inches, so it shows on the last too, and the other way round.
-let SK={on:false,tool:'pen',ink:INKS.graphite,size:.03,undo:[],sel:null},LV=null,SKD=null,SKPEN=false,UL={},LSK=false,LSTROKE=null,LRAF=0;
+let SK={on:false,tool:'pen',ink:INKS.graphite,size:.03,undo:[],sel:null,seam:null,reach:.8,prev:null},SKRAF=0,LV=null,SKD=null,SKPEN=false,UL={},LSK=false,LSTROKE=null,LRAF=0;
 const VNAME={lateral:'Outside',medial:'Inside',top:'Top',bottom:'Bottom',front:'Front',back:'Back',side:'Side'},cleanOf=()=>D.kind==='plush'?cleanPlush:cleanFootwear,VIEWKEYS=()=>D.kind==='plush'?['front','back','side']:['lateral','medial','top','bottom'];
 const skPress=e=>e.pointerType==='pen'?Math.min(1,Math.max(.15,.15+.85*(e.pressure||.5))):1;
 const skId=()=>'k'+Date.now().toString(36)+Math.random().toString(36).slice(2,5);
-function setSketches(list,{undo=true}={}){if(undo){SK.undo.push(SPEC.sketches||[]);if(SK.undo.length>60)SK.undo.shift()}const ed=SPEC.edits;SPEC=cleanOf()({...SPEC,sketches:list});if(ed)SPEC.edits=ed;DIRTY=true;build();drawPieces();paintSide();skTools()}
+// undo keeps the shoe or the plush as it was (its lines, seams and sketches), not only the sketches: a reshaped seam or a moved model line undoes too
+const skSnap=()=>{const{edits,...rest}=SPEC;return JSON.parse(JSON.stringify(rest))},skPush=()=>{SK.undo.push(skSnap());if(SK.undo.length>60)SK.undo.shift()};
+function skSet(next,{undo=true}={}){if(undo)skPush();const ed=SPEC.edits;SPEC=cleanOf()(next);if(ed)SPEC.edits=ed;DIRTY=true;build();drawPieces();paintSide();skTools()}
+const skUndo=()=>{if(SK.undo.length){SK.sel=null;SK.seam=null;skSet(SK.undo.pop(),{undo:false})}};
+function setSketches(list,{undo=true}={}){skSet({...SPEC,sketches:list},{undo})}
 function skPt(e){const s=$('#canvas svg');if(!s)return null;const m=s.getScreenCTM();if(!m)return null;const p=new DOMPoint(e.clientX,e.clientY).matrixTransform(m.inverse());return[p.x,p.y]}
 const itemAt=p=>LV?.items.find(i=>p[0]>=i.box.x0-.4&&p[0]<=i.box.x1+.4&&p[1]>=i.box.y0-.4&&p[1]<=i.box.y1+.4)||null;
 const toSketch=(it,p)=>sketchPoint(PAT,{key:it.key,box:{x0:it.box.x0-it.dx,y0:it.box.y0-it.dy,x1:it.box.x1-it.dx,y1:it.box.y1-it.dy}},[p[0]-it.dx,p[1]-it.dy]);
+// a view's own inches to where they are drawn (the other way from toSketch): a shoe's sides are warped at the heel, the inside is mirrored
+function viewTf(it){const b=it.box;if(D.kind!=='footwear')return p=>[p[0]+it.dx,p[1]+it.dy];const W=warpOf(PAT.last);
+  return it.key==='lateral'?p=>{const q=W(p);return[q[0]+it.dx,q[1]+it.dy]}:it.key==='medial'?p=>{const q=W(p);return[b.x0+b.x1-it.dx-q[0],q[1]+it.dy]}:it.key==='bottom'?p=>[p[0]+it.dx,b.y0+b.y1-it.dy-p[1]]:p=>[p[0]+it.dx,p[1]+it.dy]}
+// ---- reshaping: any line, the designer's or the model's (src/lab-lines.js) ----
+// the model's lines on a view: a shoe's on both sides; a plush's height on its front (its handle at the top of the toy)
+const linesOn=it=>modelLines(PAT).filter(l=>D.kind==='footwear'?['lateral','medial'].includes(it.key):l.view===it.key);
+const handleAt=(it,l)=>D.kind==='footwear'?viewTf(it)(l.handle):[(it.box.x0+it.box.x1)/2,it.box.y0];
+const LP=l=>'M'+l.map(q=>`${r3(q[0])} ${r3(q[1])}`).join(' L');
+const seamsOn=key=>D.kind==='footwear'?(SPEC.seams||[]).filter(sm=>sm.side===key):[];
+function reshapeMarkup(lv){if(!SK.on)return'';let h='';
+  const hl=SK.sel&&(SPEC.sketches||[]).find(k=>k.id===SK.sel),hi=hl&&lv.items.find(i=>i.key===hl.on);
+  if(hl&&hi){const tf=viewTf(hi);h+=`<g opacity=".55">${strokesSvg([{...hl,c:'#2a6df4',size:hl.size+.12}],tf)}</g>`;if(SK.tool==='shape')h+=handlesOf(hl.pts,.04).map(k=>{const q=tf(hl.pts[k]);return`<circle cx="${r3(q[0])}" cy="${r3(q[1])}" r=".07" fill="#fff" stroke="#2a6df4" stroke-width=".03"/>`}).join('')}
+  if(SK.tool!=='shape')return h;
+  for(const it of lv.items){const tf=viewTf(it);
+    for(const sm of seamsOn(it.key)){const on=SK.seam===sm.id,pts=(on&&SK.prev?.seam)||sm.pts;h+=`<path d="${LP(pts.map(tf))}" fill="none" stroke="#c2410c" stroke-width="${on?.07:.04}" stroke-linecap="round" data-seam="${esc(sm.id)}"/>`+(on?pts.map(q=>{const d=tf(q);return`<circle cx="${r3(d[0])}" cy="${r3(d[1])}" r=".07" fill="#fff" stroke="#c2410c" stroke-width=".03"/>`}).join(''):'')}
+    for(const l of linesOn(it)){const pv=SK.prev?.line===l.key?SK.prev.d:0,mv=p=>l.axis==='x'?[p[0]+pv,p[1]]:[p[0],p[1]+pv];
+      if(D.kind==='footwear'){h+=`<path d="${LP(l.pts.map(p=>tf(mv(p))))}" fill="none" stroke="#17603a" stroke-width=".035" stroke-dasharray=".14 .1"/>`}
+      else if(pv){h+=`<path d="M${r3(it.box.x0)} ${r3(it.box.y0+pv)} H${r3(it.box.x1)}" stroke="#17603a" stroke-width=".04" stroke-dasharray=".2 .12"/>`}
+      const q=handleAt(it,l),d=l.axis==='x'?[q[0]+(D.kind==='footwear'&&it.key==='medial'?-pv:pv),q[1]]:[q[0],q[1]+pv];
+      h+=`<g data-mline="${esc(l.key)}"><circle cx="${r3(d[0])}" cy="${r3(d[1])}" r=".16" fill="#17603a" stroke="#fff" stroke-width=".04"/><title>${esc(l.label)}: drag to move it</title></g>`}}
+  return h}
+const lineWords=l=>l.param==='vamp'||l.param==='throat'?`${Math.round(l.value*100)}% along the foot`:fr(l.value);
+function skDraw(){if(!SKRAF)SKRAF=requestAnimationFrame(()=>{SKRAF=0;drawPieces()})}
+// pointer down with Reshape: a model line's dot, then a seam, then a line drawn by hand
+function shapeDown(e,it,p){const sp=toSketch(it,p);
+  for(const l of linesOn(it)){const q=handleAt(it,l);if(Math.hypot(q[0]-p[0],q[1]-p[1])<.3){SK.sel=null;SK.seam=null;return{model:l,it,s0:D.kind==='footwear'?sp:p,pid:e.pointerId}}}
+  const sms=seamsOn(it.key),ks=hitStroke(sms.map(sm=>({pts:sm.pts,size:.04})),sp,.15);
+  if(ks>=0){const sm=sms[ks];SK.seam=sm.id;SK.sel=null;let pts=sm.pts.map(q=>[q[0],q[1]]),n=nearest(pts,sp);if(n.d>.1){const r=insertAt(pts,sp);pts=r.pts;n={i:r.i}}SK.prev={seam:pts};skTools();return{seam:sm.id,i:n.i,orig:pts,pid:e.pointerId,it}}
+  const mine=(SPEC.sketches||[]).filter(k=>k.on===it.key),k=hitStroke(mine,sp,.15);
+  if(k<0){SK.sel=null;SK.seam=null;SK.prev=null;skTools();drawPieces();return null}
+  const st=mine[k];SK.sel=st.id;SK.seam=null;skPush();skTools();return{sk:st.id,i:nearest(st.pts,sp).i,orig:st.pts,pid:e.pointerId,it}}
+function shapeMove(p){const d=SKD,sp=toSketch(d.it,p);
+  if(d.model){const l=d.model,q=D.kind==='footwear'?sp:p;SK.prev={line:l.key,d:l.axis==='x'?q[0]-d.s0[0]:q[1]-d.s0[1]};skDraw();return}
+  if(d.seam){SK.prev={seam:bend(d.orig,d.i,sp,SK.reach)};skDraw();return}
+  const st=(SPEC.sketches||[]).find(k=>k.id===d.sk);if(st){st.pts=bend(d.orig,d.i,sp,SK.reach);skDraw()}}
+function shapeUp(d){
+  if(d.model){const pv=SK.prev?.d||0;SK.prev=null;if(Math.abs(pv)<.02){drawPieces();return}const patch=moveLine(d.model,pv);skSet({...SPEC,...patch});toast(`${d.model.label}: ${lineWords({...d.model,value:patch[d.model.param]})}. The pieces are drafted again: save to keep it`);return}
+  if(d.seam){const pts=SK.prev?.seam;SK.prev=null;if(!pts){drawPieces();return}skSet({...SPEC,seams:(SPEC.seams||[]).map(sm=>sm.id===d.seam?{...sm,pts:pts.map(q=>[q[0],q[1]])}:sm)});toast('The seam is reshaped and the piece cut again along it: save to keep it');return}
+  skSet({...SPEC,sketches:SPEC.sketches},{undo:false})}
 function skTools(){const t=$('#ktools');if(!t)return;$$('#ktools [data-k]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.k===SK.tool)));$$('#ktools [data-ink]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.ink===SK.ink)));
   $('#ktools [data-ka="undo"]').disabled=!SK.undo.length;const s=SK.sel&&(SPEC.sketches||[]).find(k=>k.id===SK.sel),cands=s?cuttable(s.on).filter(q=>cutOutline(q.shown,simplify(s.pts,.03))):[];
   $('#kPiece').classList.toggle('hidden',!cands.length);$('#ktools [data-ka="cut"]').classList.toggle('hidden',!cands.length);$('#kPiece').innerHTML=cands.map(q=>`<option value="${esc(q.id)}">${esc(q.name)}</option>`).join('');
-  $('#ktools [data-k="seam"]').classList.toggle('hidden',D.kind!=='footwear');$('#kHint').textContent=SK.tool==='pen'?(D.kind==='plush'?'Draw on the front, the back or the side':'Draw on any view: the outside, the inside, the top or the bottom'):SK.tool==='erase'?'Rub out a stroke':SK.tool==='place'?'Drag a paper sketch to line it up under its view':!s?'Tap a line you drew on the outside or the inside':cands.length?'Cut the piece along it':'It does not cross a piece from edge to edge: draw it across one'}
+  const sh=SK.tool==='shape',sel=SK.sel&&(SPEC.sketches||[]).find(k=>k.id===SK.sel),fits=sh&&sel&&D.kind==='footwear'&&['lateral','medial'].includes(sel.on)?modelLines(PAT):[];
+  $('#kReach').classList.toggle('hidden',!sh);$('#ktools [data-ka="smooth"]').classList.toggle('hidden',!(sh&&(sel||SK.seam)));$('#ktools [data-ka="del"]').classList.toggle('hidden',!(sh&&(sel||SK.seam)));
+  $('#ktools [data-ka="unseam"]').classList.toggle('hidden',!(sh&&SK.seam));$('#kModel').classList.toggle('hidden',!fits.length);$('#ktools [data-ka="fit"]').classList.toggle('hidden',!fits.length);
+  if(fits.length&&$('#kModel').dataset.for!==sel.id){$('#kModel').dataset.for=sel.id;$('#kModel').innerHTML=fits.map(l=>`<option value="${esc(l.key)}">${esc(l.label)}</option>`).join('')}
+  if(sh){$('#kPiece').classList.add('hidden');$('#ktools [data-ka="cut"]').classList.add('hidden')}
+  $('#ktools [data-k="seam"]').classList.toggle('hidden',D.kind!=='footwear');$('#kHint').textContent=SK.tool==='pen'?(D.kind==='plush'?'Draw on the front, the back or the side':'Draw on any view: the outside, the inside, the top or the bottom'):SK.tool==='erase'?'Rub out a stroke':SK.tool==='place'?'Drag a paper sketch to line it up under its view':sh?(SK.seam?'Drag the seam to reshape it; the piece is cut again where you leave it':sel?'Drag the line to bend it'+(fits.length?', or make it one of the model\'s lines':''):D.kind==='footwear'?'Drag a green dot to move the shoe\'s own line, or drag any line, yours or a seam, to bend it':'Drag the green dot to change the height, or drag a line you drew to bend it'):!s?'Tap a line you drew on the outside or the inside':cands.length?'Cut the piece along it':'It does not cross a piece from edge to edge: draw it across one'}
 $('#skBtn').addEventListener('click',()=>{SK.on=!SK.on;SK.sel=null;if(SK.on){if(LASTV)$('#lastBtn').click();if(EDIT)$('#editBtn').click();cancelAnimationFrame(ANIM);T=0;$('#t').value=0}
   $('#skBtn').setAttribute('aria-pressed',String(SK.on));$('#skBtn').textContent=SK.on?'Done sketching':'Sketch';$('#ktools').classList.toggle('hidden',!SK.on);document.querySelector('.scrub:not(#etools):not(#ltools):not(#ktools)').classList.toggle('hidden',SK.on);
   $$('#modeSeg,#play,#editBtn,#lastBtn').forEach(x=>x.classList.toggle('hidden',SK.on||(x.id==='lastBtn'&&D.kind!=='footwear')));$('#canvas').style.touchAction=SK.on?'none':'';skTools();drawPieces();paintSide()});
 $('#ktools').addEventListener('click',e=>{const b=e.target.closest('[data-k],[data-ink],[data-ka]');if(!b)return;
   if(b.dataset.k){SK.tool=b.dataset.k;SK.sel=null}else if(b.dataset.ink){SK.ink=b.dataset.ink}
-  else if(b.dataset.ka==='undo'&&SK.undo.length){setSketches(SK.undo.pop(),{undo:false});return}
+  else if(b.dataset.ka==='undo'){skUndo();return}
+  else if(b.dataset.ka==='smooth'){if(SK.seam)skSet({...SPEC,seams:(SPEC.seams||[]).map(sm=>sm.id===SK.seam?{...sm,pts:smooth(sm.pts,2)}:sm)});else if(SK.sel)skSet({...SPEC,sketches:(SPEC.sketches||[]).map(k=>k.id===SK.sel?{...k,pts:smooth(k.pts,3)}:k)});return}
+  else if(b.dataset.ka==='del'){if(SK.seam){const id=SK.seam;SK.seam=null;skSet({...SPEC,seams:(SPEC.seams||[]).filter(sm=>sm.id!==id)});toast('Seam removed: the piece is whole again')}else if(SK.sel){const id=SK.sel;SK.sel=null;skSet({...SPEC,sketches:(SPEC.sketches||[]).filter(k=>k.id!==id)})}return}
+  else if(b.dataset.ka==='unseam'){const sm=(SPEC.seams||[]).find(x=>x.id===SK.seam);if(!sm)return;const id=skId();SK.seam=null;SK.sel=id;skSet({...SPEC,seams:(SPEC.seams||[]).filter(x=>x.id!==sm.id),sketches:[...(SPEC.sketches||[]),{id,on:sm.side,pts:sm.pts.map(q=>[q[0],q[1],1]),c:INKS.red,size:.03}]});toast('The seam is a hand line again, and the piece whole: reshape it, or make it a seam again');return}
+  else if(b.dataset.ka==='fit'){const st=(SPEC.sketches||[]).find(k=>k.id===SK.sel),l=modelLines(PAT).find(x=>x.key===$('#kModel').value);if(!st||!l)return;const patch=fitLine(l,st.pts);SK.sel=null;skSet({...SPEC,...patch,sketches:(SPEC.sketches||[]).filter(k=>k.id!==st.id)});toast(`${l.label} moved to your line (${lineWords({...l,value:patch[l.param]})}): the shoe is drafted again`);return}
   else if(b.dataset.ka==='cut'){const s=(SPEC.sketches||[]).find(k=>k.id===SK.sel),id=$('#kPiece').value;if(!s||!id)return;const n=(SPEC.seams||[]).length+1,nm=PAT.pieces.find(q=>q.id===id)?.name||id;
-    SK.undo.push(SPEC.sketches||[]);const ed=SPEC.edits;SPEC=cleanOf()({...SPEC,sketches:(SPEC.sketches||[]).filter(k=>k.id!==s.id),seams:[...(SPEC.seams||[]),{piece:id,side:s.on,pts:simplify(s.pts,.03).slice(0,60),name:`Seam ${n}`}]});if(ed)SPEC.edits=ed;SK.sel=null;DIRTY=true;build();drawPieces();paintSide();skTools();toast(`The ${nm.toLowerCase()} is cut in two along your line: save the shoe to keep it`);return}
+    skPush();const ed=SPEC.edits;SPEC=cleanOf()({...SPEC,sketches:(SPEC.sketches||[]).filter(k=>k.id!==s.id),seams:[...(SPEC.seams||[]),{piece:id,side:s.on,pts:simplify(s.pts,.03).slice(0,60),name:`Seam ${n}`}]});if(ed)SPEC.edits=ed;SK.sel=null;DIRTY=true;build();drawPieces();paintSide();skTools();toast(`The ${nm.toLowerCase()} is cut in two along your line: save the shoe to keep it`);return}
   skTools();drawPieces()});
-$('#kSize').addEventListener('change',e=>{SK.size=Number(e.target.value)||.03});
+$('#kSize').addEventListener('change',e=>{SK.size=Number(e.target.value)||.03});$('#kReach').addEventListener('change',e=>{SK.reach=Number(e.target.value)||.8});
 // the canvas: a stroke at a time; nothing else on the canvas answers while sketching
 $('#canvas').addEventListener('click',e=>{if(SK.on)e.stopImmediatePropagation()},true);
+// the canvas keeps the pointer (not what is under it, which is redrawn as the pointer moves, so a drag ending off it still ends)
 $('#canvas').addEventListener('pointerdown',e=>{
   if(LASTV&&LSK&&e.target.id==='lastCv'){if(e.pointerType==='pen')SKPEN=true;if(SKPEN&&e.pointerType==='touch')return;e.stopImmediatePropagation();e.target.setPointerCapture?.(e.pointerId);LSTROKE={side:null,pts:[],done:[],pid:e.pointerId};lastSketchAt(e);return}
   if(!SK.on||LASTV||EDIT)return;if(e.pointerType==='pen')SKPEN=true;if(SKPEN&&e.pointerType==='touch')return;if(SKD)return;
-  const p=skPt(e),it=p&&itemAt(p);if(!it)return;e.preventDefault();try{e.target.setPointerCapture(e.pointerId)}catch{}
+  const p=skPt(e),it=p&&itemAt(p);if(!it)return;e.preventDefault();try{$('#canvas').setPointerCapture(e.pointerId)}catch{}
   if(SK.tool==='pen'){const svg=$('#canvas svg'),path=document.createElementNS('http://www.w3.org/2000/svg','path');path.setAttribute('fill','none');path.setAttribute('stroke',SK.ink);path.setAttribute('stroke-width',String(SK.size));path.setAttribute('stroke-linecap','round');path.setAttribute('stroke-linejoin','round');path.setAttribute('id','skLive');svg.append(path);
     SKD={it,pid:e.pointerId,pts:[[...toSketch(it,p),skPress(e)]],disp:[p],path};path.setAttribute('d',`M${p[0]} ${p[1]} L${p[0]+.001} ${p[1]}`)}
   else if(SK.tool==='erase'){SKD={it,pid:e.pointerId,erase:true,first:true};skErase(e)}
+  else if(SK.tool==='shape'){const d=shapeDown(e,it,p);if(d)SKD={...d,shape:true};else drawPieces()}
   else if(SK.tool==='seam'){const list=SPEC.sketches||[],mine=list.filter(k=>k.on===it.key),k=hitStroke(mine,toSketch(it,p),.15);if(k<0){SK.sel=null;skTools();drawPieces();return}
     if(!['lateral','medial'].includes(it.key)){toast('A seam is drawn on a side: on the outside or the inside view, or on the last');return}SK.sel=mine[k].id;skTools();drawPieces()}
   else if(SK.tool==='place'&&UL[it.key]){SKD={it,pid:e.pointerId,place:true,p0:p,x0:UL[it.key].place.x,y0:UL[it.key].place.y}}},true);
@@ -467,6 +548,7 @@ $('#canvas').addEventListener('pointermove',e=>{
   if(!SKD||e.pointerId!==SKD.pid)return;const evs=e.getCoalescedEvents?.()||[e];
   for(const ev of evs){const p=skPt(ev);if(!p)continue;
     if(SKD.erase){skErase(ev);continue}
+    if(SKD.shape){shapeMove(p);continue}
     if(SKD.place){const u=UL[SKD.it.key];u.place={...u.place,x:Math.round((SKD.x0+p[0]-SKD.p0[0])*1000)/1000,y:Math.round((SKD.y0+p[1]-SKD.p0[1])*1000)/1000};const im=$(`#ul-${SKD.it.key}`);if(im){im.setAttribute('x',u.place.x);im.setAttribute('y',u.place.y)}continue}
     const last=SKD.disp[SKD.disp.length-1];if(Math.hypot(p[0]-last[0],p[1]-last[1])<.015)continue;SKD.disp.push(p);SKD.pts.push([...toSketch(SKD.it,p),skPress(ev)])}
   if(SKD.path)SKD.path.setAttribute('d','M'+SKD.disp.map(q=>`${q[0].toFixed(3)} ${q[1].toFixed(3)}`).join(' L'))},true);
@@ -475,10 +557,11 @@ const skEnd=e=>{
   if(!SKD||e.pointerId!==SKD.pid)return;const d=SKD;SKD=null;
   if(d.place){const u=UL[d.it.key];api(`/v1/lab/concepts/${CID}/pattern/underlays/${d.it.key}`,{method:'PATCH',body:{place:u.place}}).catch(err=>toast(err.message));return}
   if(d.erase)return;
+  if(d.shape){shapeUp(d);return}
   if(d.pts.length)setSketches([...(SPEC.sketches||[]),{id:skId(),on:d.it.key,pts:d.pts,c:SK.ink,size:SK.size}]);else drawPieces()};
 $('#canvas').addEventListener('pointerup',skEnd,true);$('#canvas').addEventListener('pointercancel',skEnd,true);
 function skErase(e){const p=skPt(e);if(!p)return;const it=SKD.it,list=SPEC.sketches||[],mine=list.filter(k=>k.on===it.key),k=hitStroke(mine,toSketch(it,p),.08);if(k<0)return;
-  if(SKD.first){SK.undo.push(list);SKD.first=false}const ed=SPEC.edits;SPEC=cleanOf()({...SPEC,sketches:list.filter(s=>s.id!==mine[k].id)});if(ed)SPEC.edits=ed;DIRTY=true;build();drawPieces();skTools();
+  if(SKD.first){skPush();SKD.first=false}const ed=SPEC.edits;SPEC=cleanOf()({...SPEC,sketches:list.filter(s=>s.id!==mine[k].id)});if(ed)SPEC.edits=ed;DIRTY=true;build();drawPieces();skTools();
   try{$('#canvas svg')?.setPointerCapture?.(SKD.pid)}catch{}}
 // on the last: each point under the pen on the surface; carried over the top onto the other side, the stroke goes on as a new one there
 function lastSketchAt(e){const r=LCV.getBoundingClientRect(),hit=pickLast(e.clientX-r.left,e.clientY-r.top);if(!hit)return;const s=LSTROKE;
@@ -487,10 +570,12 @@ function lastSketchAt(e){const r=LCV.getBoundingClientRect(),hit=pickLast(e.clie
 // paper sketches: a picture of a hand drawing laid over a view, blended in (it darkens what is under it), to trace
 async function loadUnderlays(){try{const r=await api(`/v1/lab/concepts/${CID}/pattern/underlays`);for(const u of r.underlays){const b=await fetch(`/v1/lab/concepts/${CID}/pattern/underlays/${u.view}?v=${encodeURIComponent(u.updated_at)}`,{headers:{Authorization:'Bearer '+TOKEN()}});if(!b.ok)continue;const url=URL.createObjectURL(await b.blob()),im=new Image();im.src=url;await im.decode().catch(()=>{});UL[u.view]={url,place:u.place,iw:im.naturalWidth||1,ih:im.naturalHeight||1}}drawPieces();paintSide()}catch{}}
 const ulMarkup=lv=>lv.items.map(i=>{const u=UL[i.key];return u?`<g transform="translate(${i.dx} ${i.dy})" class="ul"><image id="ul-${i.key}" href="${u.url}" x="${u.place.x}" y="${u.place.y}" width="${u.place.w}" height="${Math.round(u.place.w*u.ih/u.iw*1000)/1000}" opacity="${u.place.opacity}" preserveAspectRatio="none" style="mix-blend-mode:multiply;pointer-events:none"/></g>`:''}).join('');
+function modelLinesBox(){const ls=modelLines(PAT);if(!ls.length)return'';return`<div class="skrow" style="display:grid;gap:4px"><b>The ${D.kind==='plush'?'toy':'shoe'}'s own lines</b><span class="dim">With <b>Sketch</b> then <b>Reshape</b>, drag a green dot to move one${D.kind==='footwear'?', make a line you drew into one, or trace one to rework it by hand':''}.</span>${ls.map(l=>`<span style="display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;align-items:center"><span>${esc(l.label)}</span><span class="dim" style="white-space:nowrap;font-variant-numeric:tabular-nums">${esc(lineWords(l))}</span>${D.kind==='footwear'?`<button class="btn sm q" type="button" data-trace="${esc(l.key)}" title="A copy of the line as a hand line on the outside, to bend, make a seam, or give back">Trace by hand</button>`:''}</span>`).join('')}</div>`}
 function sketchBox(){const by=v=>(SPEC.sketches||[]).filter(k=>k.on===v).length;
-  return`<section id="skBox"><h4>Sketches <span class="mono">${(SPEC.sketches||[]).length}</span></h4><p class="note">${D.kind==='plush'?'Draw by hand on the front, the back or the side (<b>Sketch</b>), with a Pencil, a mouse or a finger.':'Draw by hand on any view (<b>Sketch</b>), or on the last (<b>On the last</b>, then <b>Sketch on it</b>), with a Pencil, a mouse or a finger. Lines on the outside and the inside show on the last too, and the other way round, and any of them can be made a seam.'} A photo or scan of a paper sketch, or a picture from any drawing app, can lie under a view to trace. The sketches go out with the tech flats.</p>
+  return`<section id="skBox"><h4>Sketches <span class="mono">${(SPEC.sketches||[]).length}</span></h4>${modelLinesBox()}<p class="note">${D.kind==='plush'?'Draw by hand on the front, the back or the side (<b>Sketch</b>), with a Pencil, a mouse or a finger.':'Draw by hand on any view (<b>Sketch</b>), or on the last (<b>On the last</b>, then <b>Sketch on it</b>), with a Pencil, a mouse or a finger. Lines on the outside and the inside show on the last too, and the other way round, and any of them can be made a seam.'} A photo or scan of a paper sketch, or a picture from any drawing app, can lie under a view to trace. The sketches go out with the tech flats.</p>
     ${VIEWKEYS().map(v=>{const u=UL[v];return`<div class="skrow"><b>${VNAME[v]}</b><span class="dim">${by(v)} line${by(v)===1?'':'s'}</span>${by(v)?`<button class="btn sm q" type="button" data-skclear="${v}">Clear</button>`:''}<label class="btn sm q" title="A photo or scan of a hand drawing, laid under this view">${u?'Replace paper sketch':'Paper sketch…'}<input type="file" accept="image/*" data-ulv="${v}" class="hidden"></label>${u?`<button class="btn sm q" type="button" data-ulrm="${v}">Remove it</button><label class="skr">Size<input type="range" min="2" max="24" step=".1" value="${u.place.w}" data-ulw="${v}" aria-label="Size of the paper sketch under the ${VNAME[v].toLowerCase()} view"></label><label class="skr">Show<input type="range" min=".05" max="1" step=".05" value="${u.place.opacity}" data-ulo="${v}" aria-label="How strongly the paper sketch shows"></label>`:''}</div>`}).join('')}</section>`}
-$('#side').addEventListener('click',e=>{const c=e.target.closest('[data-skclear]');if(c){setSketches((SPEC.sketches||[]).filter(k=>k.on!==c.dataset.skclear));toast(`The ${VNAME[c.dataset.skclear].toLowerCase()}'s lines are cleared: Undo brings them back`);return}
+$('#side').addEventListener('click',e=>{const tr=e.target.closest('[data-trace]');if(tr){const l=modelLines(PAT).find(x=>x.key===tr.dataset.trace);if(!l)return;const id=skId();setSketches([...(SPEC.sketches||[]),{id,on:'lateral',pts:l.pts.map(q=>[q[0],q[1],1]),c:INKS.blue,size:.03}]);if(!SK.on)$('#skBtn').click();SK.tool='shape';SK.sel=id;skTools();drawPieces();toast(`The ${l.label.toLowerCase()} is traced on the outside as a blue hand line: bend it, make it a seam, or make it the model's line again`);return}
+  const c=e.target.closest('[data-skclear]');if(c){setSketches((SPEC.sketches||[]).filter(k=>k.on!==c.dataset.skclear));toast(`The ${VNAME[c.dataset.skclear].toLowerCase()}'s lines are cleared: Undo brings them back`);return}
   const r=e.target.closest('[data-ulrm]');if(r){const v=r.dataset.ulrm;api(`/v1/lab/concepts/${CID}/pattern/underlays/${v}`,{method:'DELETE'}).then(()=>{delete UL[v];drawPieces();paintSide();toast('Paper sketch removed')}).catch(err=>toast(err.message))}});
 $('#side').addEventListener('change',async e=>{const f=e.target.closest('[data-ulv]');if(f&&f.files?.[0]){const v=f.dataset.ulv,file=f.files[0];if(file.size>15e6){toast('That picture is over 15 MB');return}
     const data=await new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(r.result);r.onerror=no;r.readAsDataURL(file)}),it=LV?.items.find(i=>i.key===v),b=it?{x:Math.round((it.box.x0-it.dx)*1000)/1000,y:Math.round((it.box.y0-it.dy)*1000)/1000,w:Math.round((it.box.x1-it.box.x0)*1000)/1000}:{x:0,y:0,w:11};
@@ -505,13 +590,13 @@ async function boot(){
   $('#ttl').textContent=D.concept.name;
   if(D.kind==='soon'||D.kind==='none'){$('#sub').textContent='Pattern';$('#modeSeg').classList.add('hidden');$$('#play,#size,#dxf,#svgDl').forEach(x=>x.classList.add('hidden'));
     $('#main').innerHTML=`<div class="empty"><b>${D.kind==='soon'?esc(D.soon):'The Lab cannot draft a pattern for this piece yet.'}</b><p class="note">${D.kind==='soon'?'Until then the tech pack carries its specification, and you can draw it on the Picture.':'Set what the piece is on the Flat front (the style), and its pattern pieces appear here.'}</p></div>`;return}
-  SPEC=D.spec;SIZE=D.flat?.size||'M';MATS=(D.materials||[]).filter(p=>p.part);if((D.parts||[]).length)mLib().then(()=>paintSide()).catch(()=>{});const S=D.flat?STYLES[D.flat.style]:null;
-  if(D.kind==='plush'){$('#skBtn').classList.remove('hidden');loadUnderlays()}
+  SPEC=D.spec;SIZE=D.flat?.size||'M';MATS=matsOf([...(D.materials||[]),...(D.allMaterials||[])]);if((D.parts||[]).length)mLib().then(()=>paintSide()).catch(()=>{});const S=D.flat?STYLES[D.flat.style]:null;
+  if(D.kind==='plush'){$('#skBtn').classList.remove('hidden');loadUnderlays();if(D.concept.hasImage&&!D.saved)setTimeout(readPicture,50)}
   if(D.kind==='footwear'){SIZE=SPEC.size;fwSizes();l3Refresh();$('#lastBtn').classList.remove('hidden');$('#skBtn').classList.remove('hidden');loadUnderlays();if(D.concept.hasImage){loadPic();if(!D.saved)setTimeout(readPicture,50)}}
   else if(D.kind==='garment'&&!S?.oneSize)$('#size').innerHTML=D.options.sizes.map(s=>`<option${s===SIZE?' selected':''}>${s}</option>`).join('');else $('#size').classList.add('hidden');
   build();$('#sub').textContent=`Pattern · ${PAT.label} · ${PAT.size} · ${PAT.pieces.filter(q=>q.cut>0).length} pieces`;
   T=new URLSearchParams(location.search).get('t')==='1'?1:0;$('#t').value=T;drawPieces();paintSide();
-  window.FBPattern={ready:()=>true,dirty:()=>DIRTY,sketches:()=>SPEC.sketches||[],materials:()=>MATS,viewAt:(key,pt)=>{const it=LV?.items.find(i=>i.key===key),s=$('#canvas svg');if(!it||!s)return null;const m=s.getScreenCTM(),q=new DOMPoint(pt[0]+it.dx,pt[1]+it.dy).matrixTransform(m);return[q.x,q.y]},explode:()=>goTo(1,3200),at:t=>{T=t;$('#t').value=t;drawPieces()},pattern:()=>PAT,lastAt:(side,pt)=>{if(!LPROJ)return null;const p=LPROJ.pr(onSurface(LPROJ.sh[side],pt));return[p[0],p[1]]}};
+  window.FBPattern={ready:()=>true,dirty:()=>DIRTY,sketches:()=>SPEC.sketches||[],spec:()=>SPEC,lines:()=>modelLines(PAT),handleAt:(view,key)=>{const it=LV?.items.find(i=>i.key===view),l=modelLines(PAT).find(x=>x.key===key),s=$('#canvas svg');if(!it||!l||!s)return null;const q=new DOMPoint(...handleAt(it,l)).matrixTransform(s.getScreenCTM());return[q.x,q.y]},sideAt:(view,pt)=>{const it=LV?.items.find(i=>i.key===view),s=$('#canvas svg');if(!it||!s)return null;const q=new DOMPoint(...viewTf(it)(pt)).matrixTransform(s.getScreenCTM());return[q.x,q.y]},materials:()=>MATS,viewAt:(key,pt)=>{const it=LV?.items.find(i=>i.key===key),s=$('#canvas svg');if(!it||!s)return null;const m=s.getScreenCTM(),q=new DOMPoint(pt[0]+it.dx,pt[1]+it.dy).matrixTransform(m);return[q.x,q.y]},explode:()=>goTo(1,3200),at:t=>{T=t;$('#t').value=t;drawPieces()},pattern:()=>PAT,lastAt:(side,pt)=>{if(!LPROJ)return null;const p=LPROJ.pr(onSurface(LPROJ.sh[side],pt));return[p[0],p[1]]}};
 }
 boot();
 </script>

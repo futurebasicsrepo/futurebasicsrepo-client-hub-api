@@ -14,9 +14,10 @@ export const VIEW_KINDS = [
 export const SPIN_KINDS = ['model_front', 'model_34', 'model_side', 'model_back']; // the order the board turns through
 export const KIND_IDS = VIEW_KINDS.map(k => k.id);
 export const isKind = k => KIND_IDS.includes(k);
-// a home or object has nobody to wear it, so it gets the flat views only
-export const kindsFor = category => (category === 'home' ? VIEW_KINDS.filter(k => k.group === 'flat').map(k => k.id) : KIND_IDS);
-export const canWalk = category => category !== 'home';
+// nobody wears a home object, a plush, a toy or a gadget, so they get the product views only (front and back), and no walk
+const UNWORN = ['home', 'plush', 'toys', 'electronics'];
+export const kindsFor = category => (UNWORN.includes(category) ? VIEW_KINDS.filter(k => k.group === 'flat').map(k => k.id) : KIND_IDS);
+export const canWalk = category => !UNWORN.includes(category);
 
 const clip = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
 
@@ -44,7 +45,7 @@ export function viewPrompt(concept, kind) {
   const cat = concept.category || 'other', name = clip(concept.name, 90), label = categoryLabel(cat).toLowerCase();
   if (kind === 'flat_front' || kind === 'flat_back') {
     const side = kind === 'flat_front' ? 'FRONT' : 'BACK';
-    const shape = cat === 'footwear' ? FLAT_SHOE : cat === 'bags' || cat === 'headwear' || cat === 'accessories' ? `the item standing alone, ${kind === 'flat_front' ? 'seen from the front' : 'seen from the back'}` : `the piece laid flat and shot straight on, symmetrical, ${kind === 'flat_front' ? 'front' : 'back'} side up`;
+    const shape = cat === 'footwear' ? FLAT_SHOE : cat === 'plush' ? `the plush toy sitting upright on its own, ${kind === 'flat_front' ? 'seen from the front' : 'seen from directly behind'}, its pile texture and seams visible` : cat === 'bags' || cat === 'headwear' || cat === 'accessories' ? `the item standing alone, ${kind === 'flat_front' ? 'seen from the front' : 'seen from the back'}` : `the piece laid flat and shot straight on, symmetrical, ${kind === 'flat_front' ? 'front' : 'back'} side up`;
     return [`The reference picture is a concept for a ${label} piece for a menswear and unisex brand: ${name}.`,
       `Draw the same piece as a clean flat product photograph on a seamless white background with soft, even light: ${shape}. This is the ${side} view.`,
       kind === 'flat_back' ? 'The back is plain except for details that continue logically from the front (seams, a yoke, a hood, a back pocket, a closure). Add no logo, graphic or text that the reference does not show on its back.' : '',

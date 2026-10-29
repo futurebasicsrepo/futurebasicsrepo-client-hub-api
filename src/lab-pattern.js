@@ -202,6 +202,8 @@ export function cleanPlush(input = {}) {
   const d = plushDefaults(PLUSH_SHAPES[input.shape] ? input.shape : 'bear'), num = (v, lo, hi, def) => { const n = Number(v); return Number.isFinite(n) ? r8(Math.min(Math.max(n, lo), hi)) : def; };
   return { shape: d.shape, height: num(input.height, 4, 48, d.height), ears: PLUSH_EARS[input.ears] ? input.ears : d.ears, arms: input.arms == null ? d.arms : Boolean(input.arms), legs: input.legs == null ? d.legs : Boolean(input.legs), tail: input.tail == null ? d.tail : Boolean(input.tail),
     fabric: PLUSH_FABRICS[input.fabric] ? input.fabric : d.fabric, eyes: PLUSH_EYES[input.eyes] ? input.eyes : d.eyes, age: PLUSH_AGES[input.age] ? input.age : d.age, fill: String(input.fill || d.fill).slice(0, 60), depth: num(input.depth, 1, 12, d.depth || 3),
+    // the body's and the contrast's colours, read from a picture or a concept's words (a material on the part, when chosen, wins over them)
+    ...(input.colours && typeof input.colours === 'object' && ['body', 'contrast'].some(k => /^#[0-9a-f]{6}$/i.test(String(input.colours[k] || ''))) ? { colours: Object.fromEntries(['body', 'contrast'].filter(k => /^#[0-9a-f]{6}$/i.test(String(input.colours[k] || ''))).map(k => [k, String(input.colours[k]).toLowerCase()])) } : {}),
     ...(cleanSketches(input.sketches, VIEWS_OF.plush).length ? { sketches: cleanSketches(input.sketches, VIEWS_OF.plush) } : {}) }; // drawn by hand on its views (src/lab-sketch.js)
 }
 function earOf(kind, w) {
@@ -275,12 +277,12 @@ export function fillGrams(pat) {
 // where a piece sits on the product (its own coordinates turned and moved onto the front or back view)
 export function placed(q, pts = q.shown || q.sew) { const pl = q.place || {}, a = (pl.rot || 0) * Math.PI / 180, c = Math.cos(a), s = Math.sin(a); return pts.map(([x, y]) => { const xx = pl.flip ? -x : x; return [pl.x + xx * c - y * s, pl.y + xx * s + y * c]; }); }
 // the cutting layout: pieces (each cut it takes, pairs flipped) packed in rows across the fabric width, by fabric; → [{ fabric, width, length, items:[{piece, n, x, y, flip}] }]
-export function layoutOf(pat, { width = 58, sa = pat.sa, gap = .4 } = {}) {
+export function layoutOf(pat, { width = 58, widths = {}, sa = pat.sa, gap = .4 } = {}) { // `widths`: a cloth's own width, by the cloth (from the material on its part)
   const groups = new Map();
   for (const q of pat.pieces) { if (q.hidden || !q.cut) continue; const cutl = offsetOf(q.sew, q.sa ?? sa), b = boundsOf(cutl); const g = groups.get(q.fabric) || []; for (let n = 0; n < q.cut; n++) g.push({ piece: q, n, flip: q.pair && n % 2 === 1, b }); groups.set(q.fabric, g); }
   const out = [];
   for (const [fabric, items] of groups) {
-    items.sort((a, b) => b.b.h - a.b.h); let x = 0, y = 0, rowH = 0; const W = Math.max(width, ...items.map(i => i.b.w + gap * 2));
+    items.sort((a, b) => b.b.h - a.b.h); let x = 0, y = 0, rowH = 0; const W = Math.max(Number(widths[fabric]) > 10 ? Number(widths[fabric]) : width, ...items.map(i => i.b.w + gap * 2));
     for (const it of items) { if (x + it.b.w > W) { x = 0; y += rowH + gap; rowH = 0; } it.x = x - it.b.x0; it.y = y - it.b.y0; x += it.b.w + gap; rowH = Math.max(rowH, it.b.h); }
     const length = y + rowH, used = items.reduce((s, it) => s + areaOf(offsetOf(it.piece.sew, it.piece.sa ?? sa)), 0);
     out.push({ fabric, name: fabricName(fabric), width: W, length: r8(length), yards: Math.round(length / 36 * 100) / 100, efficiency: Math.round(used / (W * Math.max(length, 1)) * 100), items });

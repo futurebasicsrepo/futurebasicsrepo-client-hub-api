@@ -8,7 +8,7 @@
 //   PUT  /v1/lab/concepts/:id/costing {making?, freightPct?}      PUT /v1/lab/concepts/:id/colourways {colourways:[{name, hex, thread?}]}
 import sharp from 'sharp';
 import './pantone-c.js';
-import { BUILTIN_MATERIALS, MATERIAL_KINDS, FABRIC_CONSTRUCTIONS, FABRIC_FINISHES, TRIM_CATEGORIES, UNITS, ROLES, TAG_OPTIONS, USAGE_M, MAKING_CENTS, FREIGHT_DUTY_PCT, PARTS, GOODS_OPTIONS, cleanMaterial, cleanPick, costOf, cleanColourways } from './lab-materials.js';
+import { BUILTIN_MATERIALS, MATERIAL_KINDS, FABRIC_CONSTRUCTIONS, FABRIC_FINISHES, TRIM_CATEGORIES, UNITS, ROLES, TAG_OPTIONS, USAGE_M, MAKING_CENTS, FREIGHT_DUTY_PCT, PARTS, GOODS_OPTIONS, clothPart, cleanMaterial, cleanPick, costOf, cleanColourways } from './lab-materials.js';
 import { tagSvg } from './lab-tags.js';
 import { MATERIAL_PHOTOS, photoFor, photoById, creditOf } from './lab-photos.js';
 
@@ -115,8 +115,10 @@ export function registerLabMaterialsRoutes(app, d) {
     const pick = cleanPick(req.body || {}, shape(m), c.category);
     if (pick.role === 'main' && m.kind === 'fabric') picks.forEach(p => { if (p.role === 'main' && p.kind === 'fabric') p.role = 'contrast'; }); // one main fabric; the one before becomes the contrast
     // a part takes one material: choosing another for it replaces the one before
-    const spec = { ...(c.spec || {}), materials: [...picks.filter(p => pick.part ? p.part !== pick.part : !(p.id === m.id && p.role === pick.role && !p.part)), pick] };
-    if (m.kind === 'fabric' && pick.role === 'main') spec.fabric = clip(`${m.name}${pick.colour?.name ? `, ${pick.colour.name}` : ''}`, 160); // the words on the concept follow the fabric
+    // a garment's cloth part takes the place of the concept's fabric of that role (the body is the main fabric), so it is counted once
+    const cp = pick.part ? clothPart(pick.part) : null, was = cp?.role ? picks.find(p => !p.part && p.role === cp.role && p.kind === 'fabric') : null;
+    const spec = { ...(c.spec || {}), materials: [...picks.filter(p => p !== was && (pick.part ? p.part !== pick.part : !(p.id === m.id && p.role === pick.role && !p.part))), pick] };
+    if (m.kind === 'fabric' && (pick.role === 'main' || cp?.role === 'main')) spec.fabric = clip(`${m.name}${pick.colour?.name ? `, ${pick.colour.name}` : ''}`, 160); // the words on the concept follow the fabric
     return reply.code(201).send(await store(c, spec));
   });
   app.put('/v1/lab/concepts/:id/materials/:mid', { preHandler: pre }, async (req, reply) => {
