@@ -10,6 +10,7 @@
 import { shellOf, onSurface } from './lab-last-shell.js';
 import { boundsOf } from './lab-pattern.js';
 import { strokesSvg } from './lab-sketch.js';
+import { logoMarkup } from './lab-logos.js';
 import { lookDefs } from './lab-looks.js';
 
 const r3 = v => Math.round(v * 1000) / 1000, P = pts => 'M' + pts.map(q => `${r3(q[0])} ${r3(q[1])}`).join(' L') + ' Z', L_ = pts => 'M' + pts.map(q => `${r3(q[0])} ${r3(q[1])}`).join(' L');
@@ -103,7 +104,8 @@ function sideView(pat, side, C) {
   // drawn by hand on this side (or on the last on this side), over the shoe
   svg += strokesSvg((pat.spec?.sketches || []).filter(k => k.on === side), W);
   const pts = [...pieces.flatMap(q => q.shown.map(W)), ...so.outline], b = boundsOf(pts);
-  const g = side === 'medial' ? `<g transform="translate(${r3(b.x0 + b.x1)} 0) scale(-1 1)">${svg}</g>` : svg;
+  // the logos last, outside the inside view's mirroring, so they read the right way round
+  const g = (side === 'medial' ? `<g transform="translate(${r3(b.x0 + b.x1)} 0) scale(-1 1)">${svg}</g>` : svg) + logoMarkup(pat.spec?.logos, side, W, C.hrefs || {}, side === 'medial' ? b.x0 + b.x1 : null);
   return { svg: g, box: { x0: b.x0, y0: b.y0, x1: b.x1, y1: b.y1 }, name: side === 'medial' ? 'Medial (inside)' : 'Lateral (outside)' };
 }
 
@@ -175,7 +177,7 @@ function topView(pat, C) {
     if (ex.length) { const a = at(ex[0], 1), b = at(ex[0], -1), k = [ex[0] - .1, 0]; svg += lace(a, b) + `<path d="M${r3(k[0])} 0 C${r3(k[0] - .7)} -.55 ${r3(k[0] - 1)} -.05 ${r3(k[0])} 0 C${r3(k[0] - 1)} .05 ${r3(k[0] - .7)} .55 ${r3(k[0])} 0 M${r3(k[0])} 0 C${r3(k[0] - .3)} .2 ${r3(k[0] - .6)} .25 ${r3(k[0] - 1.05)} .45 M${r3(k[0])} 0 C${r3(k[0] - .3)} -.15 ${r3(k[0] - .55)} -.3 ${r3(k[0] - .95)} -.42" fill="none" stroke="${C.lace}" stroke-width=".07" stroke-linecap="round"/>`; }
     svg += ex.flatMap(x => [at(x, 1), at(x, -1)]).map(([x, y]) => `<circle cx="${r3(x)}" cy="${r3(y)}" r=".075" fill="#fff" stroke="${C.line}" stroke-width=".02"/>`).join('');
   }
-  svg += strokesSvg((pat.spec?.sketches || []).filter(k => k.on === 'top'));
+  svg += strokesSvg((pat.spec?.sketches || []).filter(k => k.on === 'top')) + logoMarkup(pat.spec?.logos, 'top', p => p, C.hrefs || {});
   const b = boundsOf(sole);
   return { svg, box: { x0: b.x0, y0: b.y0, x1: b.x1, y1: b.y1 }, name: 'Top' };
 }
@@ -199,8 +201,8 @@ function bottomView(pat, C) {
   return { svg: `<g transform="translate(0 ${r3(b.y0 + b.y1)}) scale(1 -1)">${svg}</g>`, box: { x0: b.x0, y0: b.y0, x1: b.x1, y1: b.y1 }, name: 'Bottom' };
 }
 
-export function footwearViews(pat, { colours = {}, tex = {} } = {}) {
-  const C = { ...palette(pat, colours), tex, uid: `v${++SEQ}` };
+export function footwearViews(pat, { colours = {}, tex = {}, hrefs = {} } = {}) {
+  const C = { ...palette(pat, colours), tex, hrefs, uid: `v${++SEQ}` };
   const v = { lateral: sideView(pat, 'lateral', C), medial: sideView(pat, 'medial', C), top: topView(pat, C), bottom: bottomView(pat, C) };
   const defs = lookDefs(C.uid, tex);
   for (const k of Object.keys(v)) { v[k].key = k; if (defs) v[k].svg = `<defs>${defs}</defs>` + v[k].svg; }
@@ -217,8 +219,8 @@ export function viewsLayout(v, gap = 1.6) {
 export function viewsMarkup(lay, { label = true, faint = -1 } = {}) {
   return lay.items.map((i, k) => `<g transform="translate(${r3(i.dx)} ${r3(i.dy)})"${k === faint ? ' opacity=".55"' : ''}>${i.svg}</g>${label ? `<text x="${r3(i.box.x0)}" y="${r3(i.box.y1 + .7)}" font-size=".42" fill="#727278">${esc(i.name)}</text>` : ''}`).join('');
 }
-export function flatsSheet(pat, { title = '', colours = {}, tex = {} } = {}) {
-  const v = footwearViews(pat, { colours, tex }), lay = viewsLayout(v), b = lay.box, W = b.x1 - b.x0 + 2, H = b.y1 - b.y0 + 3.2;
+export function flatsSheet(pat, { title = '', colours = {}, tex = {}, hrefs = {} } = {}) {
+  const v = footwearViews(pat, { colours, tex, hrefs }), lay = viewsLayout(v), b = lay.box, W = b.x1 - b.x0 + 2, H = b.y1 - b.y0 + 3.2;
   const head = `<text x="${r3(b.x0)}" y="${r3(b.y0 - 1.6)}" font-size=".55" font-weight="700">${esc(title || pat.label)}</text><text x="${r3(b.x0)}" y="${r3(b.y0 - .9)}" font-size=".34" fill="#55545a">${esc(pat.label)} · ${esc(pat.size)} · ${esc(pat.notes[0] || '')} · tech flats, 1:1</text>`;
   return `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="${r3(W)}in" height="${r3(H)}in" viewBox="${r3(b.x0 - 1)} ${r3(b.y0 - 2.4)} ${r3(W)} ${r3(H)}" font-family="Helvetica, Arial, sans-serif"><rect x="${r3(b.x0 - 1)}" y="${r3(b.y0 - 2.4)}" width="${r3(W)}" height="${r3(H)}" fill="#fff"/>${head}${viewsMarkup(lay)}</svg>\n`;
 }

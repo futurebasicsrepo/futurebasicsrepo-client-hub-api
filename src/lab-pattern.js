@@ -4,8 +4,10 @@
 // (for the exploded view, which lifts the pieces off the product and lays them out flat) and where it goes in the cutting layout.
 // The same file runs in the page (served as /lab/pattern.js) and on the service (the DXF and the SVG), so it uses neither the DOM nor Node.
 // All lengths are inches; y runs down. A pattern from here is a first block from the measurements: a pattern maker trues it up on the sample.
+import { dxfR12 } from './lab-dxf.js';
 import { STYLES, measurementsFor, SIZES } from './lab-flats.js';
 import { cleanSketches, VIEWS_OF } from './lab-sketch.js';
+import { cleanLogos } from './lab-logos.js';
 
 const r3 = v => Math.round(v * 1000) / 1000;
 const r8 = v => Math.round(v * 8) / 8;
@@ -45,11 +47,11 @@ export function offsetOf(pts, d) {
 // ---- the pieces ----
 // a piece: { id, name, fabric, cut, pair, fold, sew (closed outline, the whole piece), grain [[x,y],[x,y]], notches [[x,y]], notes [], place {view, x, y, rot, flip, z} }
 // fold: the piece is cut on the fold of the cloth along x = 0 (its own centre line); the drawing shows it whole and marks the fold
-const FABRIC_NAMES = { self: 'Self (main fabric)', rib: 'Rib', lining: 'Lining', fusing: 'Fusing', pocketing: 'Pocketing', board: 'Board', knit: 'Knit (to shape)', pile: 'Plush pile', felt: 'Felt', contrast: 'Contrast', upper: 'Upper', overlay: 'Overlays', foam: 'Foam', elastic: 'Elastic gore', stiffener: 'Stiffener (thermoplastic)', rubber: 'Rubber (moulded)', eva: 'EVA (moulded)' };
+const FABRIC_NAMES = { self: 'Self (main fabric)', rib: 'Rib', lining: 'Lining', fusing: 'Fusing', pocketing: 'Pocketing', board: 'Board', knit: 'Knit (to shape)', pile: 'Plush pile', leather: 'Leather', felt: 'Felt', contrast: 'Contrast', upper: 'Upper', overlay: 'Overlays', foam: 'Foam', elastic: 'Elastic gore', stiffener: 'Stiffener (thermoplastic)', rubber: 'Rubber (moulded)', eva: 'EVA (moulded)' };
 export const fabricName = f => FABRIC_NAMES[f] || f;
 function piece(id, name, sew, o = {}) {
   const s = tidy(sew), b = boundsOf(s);
-  return { id, name, fabric: o.fabric || 'self', cut: o.cut ?? 1, ...(o.cut === 0 && /-2$/.test(id) ? { twin: true } : {}), pair: Boolean(o.pair), fold: Boolean(o.fold), sew: s, grain: o.grain || [[(b.x0 + b.x1) / 2, b.y0 + b.h * .2], [(b.x0 + b.x1) / 2, b.y1 - b.h * .2]], notches: o.notches || [], notes: o.notes || [], place: { view: 'front', x: 0, y: 0, rot: 0, flip: false, z: 0, ...(o.place || {}) }, sa: o.sa ?? null, marks: o.marks || [], ...(o.shown ? { shown: tidy(o.shown) } : {}), ...(o.component ? { component: true } : {}) };
+  return { id, name, fabric: o.fabric || 'self', cut: o.cut ?? 1, ...(o.cut === 0 && /-2$/.test(id) ? { twin: true } : {}), pair: Boolean(o.pair), fold: Boolean(o.fold), sew: s, grain: o.grain || [[(b.x0 + b.x1) / 2, b.y0 + b.h * .2], [(b.x0 + b.x1) / 2, b.y1 - b.h * .2]], notches: o.notches || [], notes: o.notes || [], place: { view: 'front', x: 0, y: 0, rot: 0, flip: false, z: 0, ...(o.place || {}) }, sa: o.sa ?? null, marks: o.marks || [], ...(o.shown ? { shown: tidy(o.shown) } : {}), ...(o.component ? { component: true } : {}), ...(o.hidden ? { hidden: true } : {}) };
 }
 // the other one of a pair: drawn on the product and in the exploded view, never cut twice (its cut count is on the first)
 const twin = (id, name, sew, place) => ({ ...piece(id, name, sew, { cut: 0, place }), twin: true });
@@ -192,19 +194,24 @@ export function garmentPattern(p, size = p.size || 'M') {
 }
 
 // ---- plush ----
-export const PLUSH_SHAPES = { bear: 'Bear (head, body, arms, legs)', bean: 'Bean character (one body, a base)', bunny: 'Bunny (bean body, long ears)', pillow: 'Pillow character (front, back, side gusset)' };
-export const PLUSH_EARS = { round: 'Round', pointed: 'Pointed', long: 'Long', none: 'None' };
-export const PLUSH_FABRICS = { minky: 'Minky, 3 mm pile', shortpile: 'Short-pile plush', velboa: 'Velboa', fleece: 'Anti-pill fleece', fur: 'Faux fur, 10 mm pile', terry: 'Terry' };
+export const PLUSH_SHAPES = { bear: 'Bear (head, body, arms, legs)', elephant: 'Elephant (sitting: trunk, big ears, four legs, tail)', bean: 'Bean character (one body, a base)', bunny: 'Bunny (bean body, long ears)', pillow: 'Pillow character (front, back, side gusset)' };
+export const PLUSH_EARS = { round: 'Round', pointed: 'Pointed', long: 'Long', big: 'Big and floppy (lined)', none: 'None' };
+export const PLUSH_FABRICS = { minky: 'Minky, 3 mm pile', shortpile: 'Short-pile plush', velboa: 'Velboa', fleece: 'Anti-pill fleece', fur: 'Faux fur, 10 mm pile', terry: 'Terry', leather: 'Nappa lambskin, 0.7 mm', vegan: 'Vegan leather (PU), 0.8 mm', suede: 'Suede', velvet: 'Cotton velvet', boucle: 'Bouclé' };
+// cloths with no stretch and a cut edge that shows: sewn with a wider allowance, the pieces eased, the pile (or the grain) not a factor
+export const PLUSH_FIRM = ['leather', 'vegan', 'suede'];
 export const PLUSH_EYES = { embroidered: 'Embroidered (any age)', safety: 'Safety eyes, 12 mm (3 years and up)', felt: 'Felt, sewn flat' };
 export const PLUSH_AGES = { '0+': 'All ages, under 3 included', '3+': '3 years and up', '14+': 'Collectible, 14 and up' };
-export function plushDefaults(shape = 'bear') { return { shape: PLUSH_SHAPES[shape] ? shape : 'bear', height: shape === 'pillow' ? 14 : 12, ears: shape === 'bunny' ? 'long' : shape === 'pillow' ? 'pointed' : 'round', arms: shape !== 'pillow', legs: shape === 'bear', tail: shape === 'bunny', fabric: 'minky', eyes: 'embroidered', age: '0+', fill: 'polyester fibre', depth: shape === 'pillow' ? 3 : 0 }; }
+export function plushDefaults(shape = 'bear') { return { shape: PLUSH_SHAPES[shape] ? shape : 'bear', height: shape === 'pillow' ? 14 : 12, ears: shape === 'bunny' ? 'long' : shape === 'pillow' ? 'pointed' : shape === 'elephant' ? 'big' : 'round', arms: shape !== 'pillow', legs: shape === 'bear' || shape === 'elephant', tail: shape === 'bunny' || shape === 'elephant', fabric: 'minky', eyes: 'embroidered', age: '0+', fill: 'polyester fibre', depth: shape === 'pillow' ? 3 : 0 }; }
 export function cleanPlush(input = {}) {
   const d = plushDefaults(PLUSH_SHAPES[input.shape] ? input.shape : 'bear'), num = (v, lo, hi, def) => { const n = Number(v); return Number.isFinite(n) ? r8(Math.min(Math.max(n, lo), hi)) : def; };
   return { shape: d.shape, height: num(input.height, 4, 48, d.height), ears: PLUSH_EARS[input.ears] ? input.ears : d.ears, arms: input.arms == null ? d.arms : Boolean(input.arms), legs: input.legs == null ? d.legs : Boolean(input.legs), tail: input.tail == null ? d.tail : Boolean(input.tail),
     fabric: PLUSH_FABRICS[input.fabric] ? input.fabric : d.fabric, eyes: PLUSH_EYES[input.eyes] ? input.eyes : d.eyes, age: PLUSH_AGES[input.age] ? input.age : d.age, fill: String(input.fill || d.fill).slice(0, 60), depth: num(input.depth, 1, 12, d.depth || 3),
+    // what the character is (an elephant, a fox…), in words: the shape it is drafted as is the nearest the pattern has
+    ...(String(input.animal || '').trim() ? { animal: String(input.animal).replace(/[^a-zA-Z \-']/g, '').replace(/\s+/g, ' ').trim().slice(0, 30).toLowerCase() } : {}),
     // the body's and the contrast's colours, read from a picture or a concept's words (a material on the part, when chosen, wins over them)
     ...(input.colours && typeof input.colours === 'object' && ['body', 'contrast'].some(k => /^#[0-9a-f]{6}$/i.test(String(input.colours[k] || ''))) ? { colours: Object.fromEntries(['body', 'contrast'].filter(k => /^#[0-9a-f]{6}$/i.test(String(input.colours[k] || ''))).map(k => [k, String(input.colours[k]).toLowerCase()])) } : {}),
-    ...(cleanSketches(input.sketches, VIEWS_OF.plush).length ? { sketches: cleanSketches(input.sketches, VIEWS_OF.plush) } : {}) }; // drawn by hand on its views (src/lab-sketch.js)
+    ...(cleanSketches(input.sketches, VIEWS_OF.plush).length ? { sketches: cleanSketches(input.sketches, VIEWS_OF.plush) } : {}),
+    ...(cleanLogos(input.logos, 'plush').length ? { logos: cleanLogos(input.logos, 'plush') } : {}) }; // drawn by hand on its views (src/lab-sketch.js)
 }
 function earOf(kind, w) {
   if (kind === 'long') return blob([[0, 0], [w * .55, -w * .4], [w * .5, -w * 2.4], [0, -w * 2.9], [-w * .5, -w * 2.4], [-w * .55, -w * .4]], .9).map(([x, y]) => [x, y + w * 2.9]);
@@ -231,6 +238,27 @@ export function plushPattern(input = {}) {
       pieces.push(piece('foot-pad', 'Foot pad', ellipse(legH * .28, legH * .2, 28), { cut: 2, fabric: 'contrast', notes: ['Contrast, set into the bottom of each leg'], place: { view: 'back', x: 0, y: h * .96, z: 3 } })); }
     if (ears) { const ew = hh * (s.ears === 'long' ? .22 : .32), ear = earOf(s.ears, ew); for (const sg of [1, -1]) pieces.push(piece(sg > 0 ? 'ear' : 'ear-2', 'Ear', ear, { cut: sg > 0 ? 4 : 0, pair: true, notes: sg > 0 ? ['Two outer, two inner (inner in contrast if you like)', 'Set into a slit in the head side, or sewn on by hand'] : [], place: { view: 'front', x: sg * hw * .42, y: s.ears === 'long' ? -ew * 2.5 : -ew * .5, rot: sg * 12, z: 1 }, hidden: sg < 0 })); }
     notes.push(`Face: ${PLUSH_EYES[s.eyes]}, about ${r8(hh * .3)} in apart, on the line ${r8(hh * .52)} in below the top of the head`);
+  } else if (s.shape === 'elephant') {
+    // a sitting elephant: the head in two sides with a gusset from the brow over the crown, the trunk cut in one with the head sides (their
+    // front edges join down its underside, the gusset runs down its top); big ears in self, lined in contrast; a body in two sides and an
+    // underbody gusset; four legs, each in two, on contrast foot pads; a tail with a tuft
+    const hh = h * .46, hw = hh, tr = h * .34, bh = h * .58, bw = h * .62, legF = h * .3, legH = h * .22;
+    const headSide = blob([[0, hh * .5], [hw * .1, hh * .16], [hw * .4, 0], [hw * .66, hh * .14], [hw * .72, hh * .5], [hw * .5, hh * .86], [hw * .22, hh * .9], [hw * .1, hh * .9 + tr * .5], [hw * .06, hh * .9 + tr], [-hw * .1, hh * .9 + tr * .98], [-hw * .02, hh * .9 + tr * .5], [-hw * .04, hh * .78]], .7);
+    pieces.push(piece('head-side', 'Head side and trunk', headSide, { cut: 2, pair: true, notches: [[0, hh * .5], [-hw * .04, hh * .78]], notes: ['Cut in one with the trunk: the two sides meet down the underside of the trunk', 'Notches: where the gusset starts, where the trunk leaves the face'], place: { view: 'front', x: -hw * .08, y: 0, flip: true, z: 3 } }));
+    pieces.push(piece('head-side-2', 'Head side and trunk', headSide, { cut: 0, place: { view: 'front', x: hw * .08, y: 0, z: 3 }, hidden: true }));
+    pieces.push(piece('gusset', 'Head and trunk gusset', blob([[0, 0], [hw * .2, hh * .3], [hw * .22, hh * .8], [hw * .1, hh + tr * .6], [0, hh + tr * .95], [-hw * .1, hh + tr * .6], [-hw * .22, hh * .8], [-hw * .2, hh * .3]], .9), { cut: 1, notes: ['From the back of the head over the crown, down the brow and the top of the trunk to its tip'], place: { view: 'front', x: 0, y: 0, z: 4 } }));
+    const earW = hw * .9, ear = blob([[0, 0], [earW * .42, -earW * .12], [earW * .78, earW * .12], [earW * .82, earW * .62], [earW * .5, earW * 1.02], [earW * .12, earW * .9], [-earW * .04, earW * .5]], .85);
+    for (const sg of [1, -1]) pieces.push(piece(sg > 0 ? 'ear' : 'ear-2', 'Ear', ear, { cut: sg > 0 ? 2 : 0, pair: true, notes: sg > 0 ? ['Two in self (the backs)'] : [], place: { view: 'front', x: sg * hw * .42 + (sg < 0 ? -earW * .8 : 0), y: hh * .12, flip: sg < 0, z: 1 }, hidden: sg < 0 }));
+    pieces.push(piece('ear-lining', 'Ear lining', ear.map(([x, y]) => [x * .96, y * .96]), { cut: 2, pair: true, fabric: 'contrast', notes: ['Contrast: the face of each ear; sewn to the back right sides together, turned, topstitched, then pleated into the head side seam'], place: { view: 'front', x: hw * .45, y: hh * .14, z: 2 }, hidden: true }));
+    const bodySide = blob([[0, 0], [bw * .3, -bh * .02], [bw * .62, bh * .2], [bw * .74, bh * .6], [bw * .62, bh * .96], [bw * .2, bh], [-bw * .02, bh * .7], [-bw * .06, bh * .3]], .8);
+    pieces.push(piece('body-side', 'Body side', bodySide, { cut: 2, pair: true, notes: [`Leave a ${r8(Math.max(2.5, h * .2))} in opening in the back seam to stuff, closed by hand with a ladder stitch`], place: { view: 'back', x: -bw * .36, y: hh * .74, z: 1 } }));
+    pieces.push(piece('underbody', 'Underbody gusset', blob([[0, 0], [bw * .16, bh * .08], [bw * .2, bh * .7], [0, bh * .82], [-bw * .2, bh * .7], [-bw * .16, bh * .08]], .9), { cut: 1, notes: ['From the chest between the front legs to the seat'], place: { view: 'front', x: 0, y: hh * .82, z: 1 } }));
+    const legFr = blob([[0, 0], [legF * .44, 0], [legF * .48, legF], [-legF * .04, legF]], .6), legHi = blob([[0, 0], [legH * .6, -legH * .1], [legH * .8, legH * .7], [legH * .1, legH * .8]], .7);
+    for (const sg of [1, -1]) pieces.push(piece(sg > 0 ? 'leg-front' : 'leg-front-2', 'Front leg', legFr, { cut: sg > 0 ? 4 : 0, pair: true, notes: sg > 0 ? ['Two pairs: inner and outer, the pad set in at the bottom'] : [], place: { view: 'front', x: sg * bw * .14 + (sg < 0 ? -legF * .44 : 0), y: h - legF, flip: sg < 0, z: 5 }, hidden: sg < 0 }));
+    for (const sg of [1, -1]) pieces.push(piece(sg > 0 ? 'leg-hind' : 'leg-hind-2', 'Hind leg', legHi, { cut: sg > 0 ? 4 : 0, pair: true, notes: sg > 0 ? ['Two pairs; sewn to the body side at the haunch, the foot turned forward'] : [], place: { view: 'front', x: sg * bw * .36 + (sg < 0 ? -legH * .8 : 0), y: h - legH * .8, flip: sg < 0, z: 4 }, hidden: sg < 0 }));
+    pieces.push(piece('foot-pad', 'Foot pad', ellipse(legF * .2, legF * .17, 28), { cut: 4, fabric: 'contrast', notes: ['Contrast, one in the bottom of each leg'], place: { view: 'back', x: 0, y: h * .96, z: 3 } }));
+    if (s.tail) pieces.push(piece('tail', 'Tail', blob([[0, 0], [h * .03, 0], [h * .025, h * .16], [0, h * .16]], .4), { cut: 2, notes: ['Two strips, sewn and turned; the tuft is yarn knotted into the tip, sewn into the back seam'], place: { view: 'back', x: 0, y: hh * .74 + bh * .72, z: 2 } }));
+    notes.push(`Face: ${PLUSH_EYES[s.eyes]}, about ${r8(hw * .44)} in apart, ${r8(hh * .45)} in below the top of the head, either side of the trunk`, 'The ears are the character: interfacing in the ear backs keeps them standing out from the head');
   } else if (s.shape === 'pillow') {
     const w = h * .82, front = blob([[0, 0], [w * .45, h * .05], [w * .5, h * .55], [w * .3, h], [-w * .3, h], [-w * .5, h * .55], [-w * .45, h * .05]], .85);
     pieces.push(piece('front', 'Front', front, { cut: 1, notes: ['The face is embroidered before sewing'], place: { view: 'front', x: 0, y: 0, z: 2 } }));
@@ -250,9 +278,11 @@ export function plushPattern(input = {}) {
     if (s.tail) pieces.push(piece('tail', 'Tail', ellipse(h * .07, h * .07, 24), { cut: 1, fabric: 'contrast', notes: ['A gathered circle, stuffed'], place: { view: 'back', x: 0, y: h * .78, z: 2 } }));
     notes.push(`Face: ${PLUSH_EYES[s.eyes]}, about ${r8(w * .28)} in apart, ${r8(h * .38)} in below the top`);
   }
-  for (const q of pieces) if (q.fabric === 'self') q.fabric = 'pile';
-  notes.push(`${PLUSH_FABRICS[s.fabric]}: the pile runs down the grain arrow`, '¼ in seam allowance, sewn at 10–12 stitches an inch, backstitched at the opening');
-  return { kind: 'plush', spec: s, label: PLUSH_SHAPES[s.shape], size: `${s.height} in tall`, sa: .25, pieces, notes, checks: plushChecks(s, pieces) };
+  const firm = PLUSH_FIRM.includes(s.fabric);
+  for (const q of pieces) if (q.fabric === 'self') q.fabric = firm ? 'leather' : 'pile';
+  notes.push(...(firm ? [`${PLUSH_FABRICS[s.fabric]}: it does not stretch, so the pieces are eased and the curves notched; cut each piece from sound skin, the grain running down the toy`, '⅜ in seam allowance, sewn at 8–9 stitches an inch with a leather needle and bonded nylon thread; seams pressed open with a roller, not an iron', 'Stuffed firm and slowly: leather shows every lump']
+    : [`${PLUSH_FABRICS[s.fabric]}: the pile runs down the grain arrow`, '¼ in seam allowance, sewn at 10–12 stitches an inch, backstitched at the opening']));
+  return { kind: 'plush', spec: s, label: s.animal && !PLUSH_SHAPES[s.shape].toLowerCase().startsWith(s.animal) ? `${s.animal[0].toUpperCase()}${s.animal.slice(1)} · drafted as: ${PLUSH_SHAPES[s.shape]}` : PLUSH_SHAPES[s.shape], size: `${s.height} in tall`, sa: firm ? .375 : .25, pieces, notes, checks: plushChecks(s, pieces) };
 }
 // the safety a plush is tested against (ASTM F963 and EN 71): what the choices mean for the age it is for
 export function plushChecks(s, pieces = []) {
@@ -260,6 +290,7 @@ export function plushChecks(s, pieces = []) {
   if (under3 && s.eyes === 'safety') out.push({ level: 'fail', msg: 'Safety eyes are a small part for under-3s: embroider the eyes (and the nose), or mark it 3 years and up.' });
   if (under3) out.push({ level: 'info', msg: 'Under 3: every part passes the small-parts cylinder (1¼ in), seams take a 15 lbf pull, nothing comes off in the torque and tension tests (ASTM F963 / EN 71-1).' });
   if (under3 && pieces.some(q => /tail/.test(q.id))) out.push({ level: 'warn', msg: 'The tail is small: sew it into a seam, not on by hand, so it passes the tension test.' });
+  if (PLUSH_FIRM.includes(s.fabric) && under3) out.push({ level: 'warn', msg: 'Leather on a toy for under-3s: check it is chrome-free and passes the restricted-substances tests (azo dyes, chromium VI); most baby toys are made in pile instead.' });
   if (s.fabric === 'fur') out.push({ level: 'warn', msg: 'Long-pile fur sheds at the seams: brush the pile out of every seam after turning, and test for fibre loss.' });
   if (s.height < 6 && under3) out.push({ level: 'warn', msg: `At ${s.height} in, check the whole toy is not itself a choking hazard for under-3s.` });
   out.push({ level: 'info', msg: 'A sewn-in law label in a side seam (fill content and registration numbers for the states that ask), a CPSIA tracking label, and the age grading on the hang tag.' });
@@ -279,7 +310,8 @@ export function placed(q, pts = q.shown || q.sew) { const pl = q.place || {}, a 
 // the cutting layout: pieces (each cut it takes, pairs flipped) packed in rows across the fabric width, by fabric; → [{ fabric, width, length, items:[{piece, n, x, y, flip}] }]
 export function layoutOf(pat, { width = 58, widths = {}, sa = pat.sa, gap = .4 } = {}) { // `widths`: a cloth's own width, by the cloth (from the material on its part)
   const groups = new Map();
-  for (const q of pat.pieces) { if (q.hidden || !q.cut) continue; const cutl = offsetOf(q.sew, q.sa ?? sa), b = boundsOf(cutl); const g = groups.get(q.fabric) || []; for (let n = 0; n < q.cut; n++) g.push({ piece: q, n, flip: q.pair && n % 2 === 1, b }); groups.set(q.fabric, g); }
+  for (const q of pat.pieces) { if (!q.cut) continue; // every piece cut, shown on the product or not (an ear lining, a pad under the foot)
+    const cutl = offsetOf(q.sew, q.sa ?? sa), b = boundsOf(cutl); const g = groups.get(q.fabric) || []; for (let n = 0; n < q.cut; n++) g.push({ piece: q, n, flip: q.pair && n % 2 === 1, b }); groups.set(q.fabric, g); }
   const out = [];
   for (const [fabric, items] of groups) {
     items.sort((a, b) => b.b.h - a.b.h); let x = 0, y = 0, rowH = 0; const W = Math.max(Number(widths[fabric]) > 10 ? Number(widths[fabric]) : width, ...items.map(i => i.b.w + gap * 2));
@@ -303,24 +335,54 @@ export function assembled(pat) {
   return { pieces, bounds: boundsOf(pieces.flatMap(x => x.pts)), backDx };
 }
 // the exploded view, t from 0 (the product) to 1 (the cutting layout): first the pieces lift off and spread out from the middle of their own
-// view (to t = .45), then each flies flat to its place in the layout, beside the product → [{ piece, pts }]
+// view (to t = .45), then each flies flat to its place in the layout, beside the product → [{ piece, pts, n, of, layer }]
+// Every cut the pattern takes is in it, at every t: a piece cut 4 (two pairs: inner and outer) is four outlines, the ones the product does
+// not show (the inner pair, a lining under its face) lifting off from under the one that does, stacked a little behind it, so what is spread
+// out is exactly what is cut; a piece that is not cut (a moulded sole) lifts off and stays by the product.
 export function explodeAt(pat, t, layout = layoutOf(pat)) {
   const A = assembled(pat), B = A.bounds, spread = Math.min(Math.max(t, 0) / .45, 1), fly = Math.min(Math.max((t - .45) / .55, 0), 1), e = fly * fly * (3 - 2 * fly);
   const centre = view => { const ps = A.pieces.filter(x => (x.piece.place.view === 'back') === (view === 'back')).flatMap(x => x.pts), b = boundsOf(ps); return [(b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2]; };
-  const C = { front: centre('front'), back: centre('back') }, slot = new Map();
-  for (const g of layout) for (const it of g.items) { const l = slot.get(it.piece.id) || []; l[it.n] = it; slot.set(it.piece.id, l); }
-  const goff = new Map(); let yo = B.y0; for (const g of layout) { goff.set(g, yo); yo += g.length + 3; }
-  const lx = B.x1 + 6;
-  return A.pieces.map(({ piece: q, pts }) => {
-    const pb = boundsOf(pts), pc = [(pb.x0 + pb.x1) / 2, (pb.y0 + pb.y1) / 2], c = C[q.place.view === 'back' ? 'back' : 'front'], dx = pc[0] - c[0], dy = pc[1] - c[1], d = Math.hypot(dx, dy) || 1;
-    const push = (2.5 + Math.abs(q.place.z || 0) * .8) * spread, moved = pts.map(([x, y]) => [x + dx / d * push, y + dy / d * push]);
-    // where it lands: its first cut in the layout (a twin lands on its pair's spot, beside it)
-    const list = q.twin ? slot.get(q.id.replace(/-2$/, '')) : slot.get(q.id), own = list && (q.twin ? list[1] || list[0] : list[0]), g = own && layout.find(G => G.items.includes(own));
-    if (!own || e === 0) return { piece: q, pts: moved };
-    let tgt = q.sew.map(([x, y]) => [(own.flip ? -x + (own.b.x0 + own.b.x1) : x) + own.x + lx, y + own.y + goff.get(g)]), from = moved;
+  const C = { front: centre('front'), back: centre('back') }, goff = new Map(); let yo = B.y0; for (const g of layout) { goff.set(g, yo); yo += g.length + 3; }
+  const lx = B.x1 + 6, base = q => q.twin ? q.id.replace(/-2$/, '') : q.id, onProduct = new Map();
+  // the outlines on the product a piece is cut for: itself, then its twin (the other side)
+  for (const x of A.pieces) { const l = onProduct.get(base(x.piece)) || []; if (x.piece.twin) l.push(x); else l.unshift(x); onProduct.set(base(x.piece), l); }
+  const lift = (q, pts, layer, spread) => { const pb = boundsOf(pts), c = C[q.place.view === 'back' ? 'back' : 'front'], dx = (pb.x0 + pb.x1) / 2 - c[0], dy = (pb.y0 + pb.y1) / 2 - c[1], d = Math.hypot(dx, dy) || 1;
+    // spread from the middle in proportion (the further out, the further it goes), so pieces that overlap on the product come apart; a layer
+    // under the outer one (the inner pair) comes off beside it, outward, so each cut reads as its own piece
+    const push = (2.5 + Math.abs(q.place.z || 0) * .8 + d * .45) * spread, sx = layer * (pb.x1 - pb.x0 + .6) * (dx < 0 ? -1 : 1) * spread, sy = layer * .4 * spread;
+    return pts.map(([x, y]) => [x + dx / d * push + sx, y + dy / d * push + sy]); };
+  // every cut: where it comes from on the product, and where it lands in the layout
+  const list = [], used = new Set();
+  for (const g of layout) for (const it of g.items) {
+    // a piece under another on the product (an ear's lining under its back) comes off one layer further out than what it is under
+    const q = it.piece, srcs = onProduct.get(q.id) || [], src = srcs.length ? srcs[it.n % srcs.length] : null, layer = (srcs.length ? Math.floor(it.n / srcs.length) : 0) + (q.hidden && !q.twin ? 1 : 0);
+    if (src) used.add(src);
+    list.push({ q, src, layer, n: it.n, tgt: q.sew.map(([x, y]) => [(it.flip ? -x + (it.b.x0 + it.b.x1) : x) + it.x + lx, y + it.y + goff.get(g)]) });
+  }
+  // what is on the product but not cut (moulded parts) lifts off and stays
+  for (const x of A.pieces) if (!used.has(x) && !(x.piece.twin && (onProduct.get(base(x.piece)) || []).some(y => used.has(y)))) list.push({ q: x.piece, src: x, layer: 0, n: 0, tgt: null, uncut: true });
+  // spread all the way, no two pieces may cover each other (on one view, or one view's against the other's beside it): they are nudged apart (their boxes, a little margin between) and the nudge grows
+  // with the spread, so the product comes apart smoothly into pieces that can each be seen
+  const full = list.map(x => x.src ? boundsOf(lift(x.src.piece, x.src.pts, x.layer, 1)) : null), off = list.map(() => [0, 0]);
+  for (let pass = 0; pass < 60; pass++) {
+    let moved = false;
+    for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
+      const a = full[i], b = full[j]; if (!a || !b) continue;
+      const m = .35, ox = Math.min(a.x1 + off[i][0], b.x1 + off[j][0]) - Math.max(a.x0 + off[i][0], b.x0 + off[j][0]) + m, oy = Math.min(a.y1 + off[i][1], b.y1 + off[j][1]) - Math.max(a.y0 + off[i][1], b.y0 + off[j][1]) + m;
+      if (ox <= 0 || oy <= 0) continue; moved = true;
+      const ca = [(a.x0 + a.x1) / 2 + off[i][0], (a.y0 + a.y1) / 2 + off[i][1]], cb = [(b.x0 + b.x1) / 2 + off[j][0], (b.y0 + b.y1) / 2 + off[j][1]];
+      if (ox < oy) { const sg = ca[0] < cb[0] || (ca[0] === cb[0] && i < j) ? -1 : 1; off[i][0] += sg * ox / 2; off[j][0] -= sg * ox / 2; }
+      else { const sg = ca[1] < cb[1] || (ca[1] === cb[1] && i < j) ? -1 : 1; off[i][1] += sg * oy / 2; off[j][1] -= sg * oy / 2; }
+    }
+    if (!moved) break;
+  }
+  const out = list.map((x, k) => {
+    let from = x.src ? lift(x.src.piece, x.src.pts, x.layer, spread).map(([px, py]) => [px + off[k][0] * spread, py + off[k][1] * spread]) : x.tgt, tgt = x.tgt;
+    if (x.uncut || e === 0) return { piece: x.q, pts: from, n: x.n, of: x.q.cut || 0, layer: x.layer, cut: !x.uncut };
     if (tgt.length !== from.length) { from = resample(from); tgt = resample(tgt); }
-    return { piece: q, pts: from.map((m, i) => [m[0] * (1 - e) + tgt[i][0] * e, m[1] * (1 - e) + tgt[i][1] * e]) };
+    return { piece: x.q, pts: from.map((m, i) => [m[0] * (1 - e) + tgt[i][0] * e, m[1] * (1 - e) + tgt[i][1] * e]), n: x.n, of: x.q.cut, layer: x.layer, cut: true };
   });
+  return out;
 }
 // ---- the files ----
 // SVG of the pieces, laid out flat at real size (1 in = 1 in when printed at 100%): sew line, cutting line, grain, notches, name and cut
@@ -344,23 +406,25 @@ export function patternSvg(pat, { width = 58, title = '' } = {}) {
   const W = Math.max(...lay.map(g => g.width), 20) + .5, H = y0;
   return `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="${r3(W)}in" height="${r3(H)}in" viewBox="-.25 0 ${r3(W)} ${r3(H)}"><title>${esc(title || pat.label)} · pattern · ${esc(pat.size)}</title><defs><marker id="ga" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="4" markerHeight="4" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#17603a"/></marker></defs>${body}</svg>\n`;
 }
-// DXF (R12, inches): one block of polylines a piece, on layers a pattern system reads: CUT (the cutting line), SEW (the sew line), GRAIN, NOTCH, TEXT
+// DXF (R12, inches): one set of polylines a cut, on layers a pattern system reads: CUT (the cutting line), SEW (the sew line), GRAIN, NOTCH,
+// TEXT. Written whole (src/lab-dxf.js), so strict readers open it too.
 export function patternDxf(pat, { width = 58 } = {}) {
-  const lay = layoutOf(pat, { width }), out = ['0', 'SECTION', '2', 'HEADER', '9', '$INSUNITS', '70', '1', '9', '$MEASUREMENT', '70', '0', '0', 'ENDSEC', '0', 'SECTION', '2', 'ENTITIES'];
-  const poly = (pts, layer, closed = true) => { out.push('0', 'POLYLINE', '8', layer, '66', '1', '70', closed ? '1' : '0'); for (const [x, y] of pts) out.push('0', 'VERTEX', '8', layer, '10', String(r3(x)), '20', String(r3(-y))); out.push('0', 'SEQEND'); };
-  const text = (x, y, s, h, layer = 'TEXT') => out.push('0', 'TEXT', '8', layer, '10', String(r3(x)), '20', String(r3(-y)), '40', String(r3(h)), '1', String(s).replace(/[\r\n]+/g, ' '));
+  const lay = layoutOf(pat, { width }), d = dxfR12(), up = pts => pts.map(([x, y]) => [x, -y]);
+  for (const [l, c] of [['CUT', 7], ['SEW', 8], ['GRAIN', 3], ['NOTCH', 1], ['TEXT', 5]]) d.layer(l, c);
   let y0 = 0;
   for (const g of lay) {
     for (const it of g.items) {
       const q = it.piece, tf = pts => pts.map(([x, y]) => [(it.flip ? -x + (it.b.x0 + it.b.x1) : x) + it.x, y + it.y + y0]);
-      poly(tf(offsetOf(q.sew, q.sa ?? pat.sa)), 'CUT'); poly(tf(q.sew), 'SEW'); poly(tf(q.grain), 'GRAIN', false);
-      for (const [x, y] of tf(q.notches)) poly([[x - .09, y], [x + .09, y]], 'NOTCH', false);
-      const bb = boundsOf(tf(q.sew)); text(bb.x0 + .3, (bb.y0 + bb.y1) / 2, `${q.name} - ${cutWords(q)} - ${fabricName(q.fabric)} - ${pat.size}`, .25);
+      d.poly(d.ents, up(tf(offsetOf(q.sew, q.sa ?? pat.sa))), 'CUT'); d.poly(d.ents, up(tf(q.sew)), 'SEW'); d.poly(d.ents, up(tf(q.grain)), 'GRAIN', false);
+      for (const [x, y] of tf(q.notches)) d.poly(d.ents, [[x - .09, -y], [x + .09, -y]], 'NOTCH', false);
+      // the name, then how many and from what, inside the piece and sized to it, so neighbours' labels never run into each other
+      const bb = boundsOf(tf(q.sew)), w = bb.x1 - bb.x0, cx = bb.x0 + w * .1, cy = (bb.y0 + bb.y1) / 2, l2 = `${cutWords(q)} - ${fabricName(q.fabric)} - ${pat.size}`;
+      const h1 = Math.max(.08, Math.min(.25, w * .8 / (String(q.name).length * .7 || 1))), h2 = Math.max(.06, Math.min(.16, w * .8 / (l2.length * .7)));
+      d.text(d.ents, cx, -cy, q.name, h1, 'TEXT'); d.text(d.ents, cx, -(cy + h1 * 1.6), l2, h2, 'TEXT');
     }
     y0 += g.length + 3;
   }
-  out.push('0', 'ENDSEC', '0', 'EOF');
-  return out.join('\n') + '\n';
+  return d.toString({ units: 'in' });
 }
 
 
@@ -428,39 +492,36 @@ export function runLength(pts, i, j) { let L = 0, k = i; const n = pts.length; f
 // the piece's text (Piece Name, Quantity, Size, Material); the file's own text (Style Name, Sample Size, Units); every block INSERTed
 // where it lies in the layout. Inches or millimetres.
 export function patternDxfAama(pats, { width = 58, units = 'in', style = 'Style', author = 'Future Basics Design Lab' } = {}) {
-  const list = Array.isArray(pats) ? pats : [pats], k = units === 'mm' ? 25.4 : 1, f = v => String(r3(v * k)), out = [];
-  const head = ['0', 'SECTION', '2', 'HEADER', '9', '$ACADVER', '1', 'AC1009', '9', '$MEASUREMENT', '70', units === 'mm' ? '1' : '0', '0', 'ENDSEC'];
-  const layers = ['1', '2', '3', '4', '7', '8', '14', '15'], tables = ['0', 'SECTION', '2', 'TABLES', '0', 'TABLE', '2', 'LAYER', '70', String(layers.length), ...layers.flatMap(l => ['0', 'LAYER', '2', l, '70', '0', '62', '7', '6', 'CONTINUOUS']), '0', 'ENDTAB', '0', 'ENDSEC'];
-  const blocks = ['0', 'SECTION', '2', 'BLOCKS'], ents = ['0', 'SECTION', '2', 'ENTITIES'];
-  const text = (arr, x, y, s, h, layer = '1') => arr.push('0', 'TEXT', '8', layer, '10', f(x), '20', f(-y), '40', f(h), '1', String(s).replace(/[\r\n]+/g, ' ').slice(0, 250));
-  const poly = (arr, pts, layer, closed = true) => { arr.push('0', 'POLYLINE', '8', layer, '66', '1', '10', '0', '20', '0', '70', closed ? '1' : '0'); for (const [x, y] of pts) arr.push('0', 'VERTEX', '8', layer, '10', f(x), '20', f(-y)); arr.push('0', 'SEQEND', '8', layer); };
-  const line = (arr, a, b, layer) => arr.push('0', 'LINE', '8', layer, '10', f(a[0]), '20', f(-a[1]), '11', f(b[0]), '21', f(-b[1]));
+  const list = Array.isArray(pats) ? pats : [pats], k = units === 'mm' ? 25.4 : 1, d = dxfR12(), B = d.blocks, E = d.ents;
+  // the pattern's inches (y down) to the file's units (y up)
+  const P = ([x, y]) => [x * k, -y * k], Ps = pts => pts.map(P);
+  for (const l of ['1', '2', '3', '4', '7', '8', '14', '15']) d.layer(l, 7);
   const sizes = [...new Set(list.map(p => p.size))];
-  text(ents, 0, -3, `Style Name: ${style}`, .25); text(ents, 0, -2.6, `Sample Size: ${list[0]?.size ?? ''}`, .2); text(ents, 0, -2.25, `Units: ${units === 'mm' ? 'METRIC' : 'ENGLISH'}`, .2);
-  text(ents, 0, -1.9, `Size List: ${sizes.join(' ')}`, .2); text(ents, 0, -1.55, `Author: ${author}`, .2); text(ents, 0, -1.2, `Creation Date: ${new Date().toISOString().slice(0, 10)}`, .2);
+  d.text(E, ...P([0, -3]), `Style Name: ${style}`, .25 * k, '1'); d.text(E, ...P([0, -2.6]), `Sample Size: ${list[0]?.size ?? ''}`, .2 * k, '1'); d.text(E, ...P([0, -2.25]), `Units: ${units === 'mm' ? 'METRIC' : 'ENGLISH'}`, .2 * k, '1');
+  d.text(E, ...P([0, -1.9]), `Size List: ${sizes.join(' ')}`, .2 * k, '1'); d.text(E, ...P([0, -1.55]), `Author: ${author}`, .2 * k, '1'); d.text(E, ...P([0, -1.2]), `Creation Date: ${new Date().toISOString().slice(0, 10)}`, .2 * k, '1');
   let y0 = 0, n = 0;
   for (const pat of list) {
-    const lay = layoutOf(pat, { width });
+    const lay = layoutOf(pat, { width }), gy = new Map(); let acc = 0; for (const g of lay) { gy.set(g, acc); acc += g.length + 3; } // each cloth's layout below the last
     for (const g of lay) for (const it of g.items) {
       if (it.n !== 0) continue; // one block a piece and a size; the quantity is in its text
       const q = it.piece, sa = q.sa ?? pat.sa, cutl = offsetOf(q.sew, sa), name = `${String(q.name).replace(/[^A-Za-z0-9]+/g, '_').slice(0, 24)}_${String(pat.size).replace(/[^A-Za-z0-9.]+/g, '')}_${++n}`;
-      blocks.push('0', 'BLOCK', '8', '0', '2', name, '70', '0', '10', '0', '20', '0', '3', name);
-      poly(blocks, cutl, '1'); for (const p of cutl) blocks.push('0', 'POINT', '8', '2', '10', f(p[0]), '20', f(-p[1]));
-      poly(blocks, q.sew, '14'); line(blocks, q.grain[0], q.grain[1], '7');
-      // a notch: a ¼ in cut in from the cutting line, square to the edge, at the notch on the sew line
-      for (const nt of q.notches) { let bi = 0, bd = Infinity; for (let i = 0; i < q.sew.length; i++) { const d = Math.hypot(q.sew[i][0] - nt[0], q.sew[i][1] - nt[1]); if (d < bd) { bd = d; bi = i; } }
+      d.begin(name);
+      d.poly(B, Ps(cutl), '1'); for (const p of cutl) d.point(B, P(p), '2');
+      d.poly(B, Ps(q.sew), '14'); d.line(B, P(q.grain[0]), P(q.grain[1]), '7');
+      // a notch: a 1/4 in cut in from the cutting line, square to the edge, at the notch on the sew line
+      for (const nt of q.notches) { let bi = 0, bd = Infinity; for (let i = 0; i < q.sew.length; i++) { const dd = Math.hypot(q.sew[i][0] - nt[0], q.sew[i][1] - nt[1]); if (dd < bd) { bd = dd; bi = i; } }
         const a = q.sew[(bi - 1 + q.sew.length) % q.sew.length], b = q.sew[(bi + 1) % q.sew.length], dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy) || 1, nx = dy / L, ny = -dx / L;
-        line(blocks, [nt[0] + nx * sa, nt[1] + ny * sa], [nt[0] + nx * (sa - .25), nt[1] + ny * (sa - .25)], '4'); }
+        d.line(B, P([nt[0] + nx * sa, nt[1] + ny * sa]), P([nt[0] + nx * (sa - .25), nt[1] + ny * (sa - .25)]), '4'); }
       const b = boundsOf(q.sew), cx = b.x0 + .2, cy = (b.y0 + b.y1) / 2;
-      text(blocks, cx, cy - .45, `Piece Name: ${q.name}`, .18); text(blocks, cx, cy - .2, `Quantity: ${q.cut}${q.pair ? ' (pairs)' : ''}`, .16); text(blocks, cx, cy + .05, `Size: ${pat.size}`, .16);
-      text(blocks, cx, cy + .3, `Material: ${fabricName(q.fabric).toUpperCase()}`, .16); if (q.fold) text(blocks, cx, cy + .55, 'Annotation: CUT ON FOLD', .14, '15');
-      blocks.push('0', 'ENDBLK', '8', '0');
-      ents.push('0', 'INSERT', '8', '1', '2', name, '10', f(it.x), '20', f(-(it.y + y0)));
+      d.text(B, ...P([cx, cy - .45]), `Piece Name: ${q.name}`, .18 * k, '1'); d.text(B, ...P([cx, cy - .2]), `Quantity: ${q.cut}${q.pair ? ' (pairs)' : ''}`, .16 * k, '1'); d.text(B, ...P([cx, cy + .05]), `Size: ${pat.size}`, .16 * k, '1');
+      d.text(B, ...P([cx, cy + .3]), `Material: ${fabricName(q.fabric).toUpperCase()}`, .16 * k, '1'); if (q.fold) d.text(B, ...P([cx, cy + .55]), 'Annotation: CUT ON FOLD', .14 * k, '15');
+      d.end();
+      const cb = boundsOf(cutl), [ix, iy] = P([it.x, it.y + y0 + gy.get(g)]);
+      d.insert(name, ix, iy, { x0: cb.x0 * k, x1: cb.x1 * k, y0: -cb.y1 * k, y1: -cb.y0 * k }, '1');
     }
     y0 += lay.reduce((t, g) => t + g.length + 3, 0) + 4;
   }
-  blocks.push('0', 'ENDSEC'); ents.push('0', 'ENDSEC');
-  return [...head, ...tables, ...blocks, ...ents, '0', 'EOF'].join('\n') + '\n';
+  return d.toString({ units });
 }
 
 // what the pattern costs in cloth: yards of each fabric for one piece, from the layout

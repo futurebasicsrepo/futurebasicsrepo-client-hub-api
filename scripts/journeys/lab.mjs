@@ -2783,7 +2783,7 @@ await journey('J244', 'From scratch to pattern pieces: a hoodie started from not
   const fl = (await K(`/concepts/${cid}/flats`)).json.flat; ok(fl?.style === 'hoodie' && fl.template === 'none', '   its flats are the hoodie as a plain outline to draw over, not a sketch', { style: fl?.style, template: fl?.template });
   const pat = (await K(`/concepts/${cid}/pattern`)).json; ok(pat.kind === 'garment' && pat.flat.style === 'hoodie' && pat.yardage.some(y => y.fabric === 'self' && y.yards > .8), '2. the pattern is drafted from the flats, with the cloth it takes', { kind: pat.kind, yardage: pat.yardage });
   const dxf = await call(`/v1/lab/concepts/${cid}/pattern.dxf?size=L`, { token: kyleT }), svg = await call(`/v1/lab/concepts/${cid}/pattern.svg`, { token: kyleT });
-  ok(dxf.status === 200 && /POLYLINE\n8\nCUT/.test(dxf.text) && /POLYLINE\n8\nSEW/.test(dxf.text) && /Hood side/.test(dxf.text), '   a DXF with cutting and sewing lines for every piece, in the size asked for');
+  ok(dxf.status === 200 && /POLYLINE\n5\n[0-9A-F]+\n8\nCUT/.test(dxf.text) && /POLYLINE\n5\n[0-9A-F]+\n8\nSEW/.test(dxf.text) && /\$ACADVER\n1\nAC1009/.test(dxf.text) && /TABLE\n2\nLAYER/.test(dxf.text) && /Hood side/.test(dxf.text), '   a DXF with cutting and sewing lines for every piece, in the size asked for');
   ok(svg.status === 200 && /width="[\d.]+in"/.test(svg.text) && /Kangaroo pocket/.test(svg.text), '   and an SVG at real size');
   ok((await K(`/concepts/${cid}/pattern`, { method: 'PUT', body: { spec: { sa: .625, width: 60 } } })).json.spec.width === 60 && (await K(`/concepts/${cid}/pattern`)).json.spec.sa === .625, '   the seam allowance and the cloth width are kept');
   // a plush
@@ -2807,9 +2807,9 @@ await journey('J244', 'From scratch to pattern pieces: a hoodie started from not
     await page.click('#viewSeg [data-v="pattern"]'); const F = await (await page.waitForSelector('#patFrame')).contentFrame(); await F.waitForFunction(() => window.FBPattern?.ready?.(), null, { timeout: 20000 });
     const rows = await F.locator('table.pcs tbody tr').count(); ok(rows >= 7 && /Pattern · Pullover hoodie/.test(await F.innerText('#sub')), '6. Pattern lists the pieces of the hoodie', rows);
     ok(await F.locator('#canvas [data-pid="front"]').count() === 1 && await F.innerText('#tLbl') === 'On the product', '   it opens on the product, made of its pieces');
-    await F.click('#play'); await F.waitForFunction(() => document.getElementById('tLbl').textContent === 'Cutting layout', null, { timeout: 15000 });
+    await F.click('#play'); await F.waitForFunction(() => document.getElementById('tLbl').textContent.startsWith('Cutting layout'), null, { timeout: 15000 });
     ok(await F.locator('#canvas [data-pid="hood"]').count() >= 2 && /yd/.test(await F.innerText('#canvas')), '7. Explode it: the pieces lift off and lay out flat on the cloth, every cut and the yardage shown');
-    await F.click('#modeSeg [data-t="0.45"]'); await page.waitForTimeout(1200); ok(await F.innerText('#tLbl') === 'Exploded', '   and the exploded view in between');
+    await F.click('#modeSeg [data-t="0.45"]'); await page.waitForTimeout(1200); ok((await F.innerText('#tLbl')).startsWith('Exploded'), '   and the exploded view in between');
     const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 15000 }), F.click('#dxf')]); ok(/pattern-.*\.dxf$/.test(dl.suggestedFilename()), '   the DXF downloads', dl.suggestedFilename());
     // the plush in its own Pattern view: change the height, save
     await page.goto(`${BASE}/lab/studio?concept=${pid}&view=pattern`, { waitUntil: 'networkidle' }); const G = await (await page.waitForSelector('#patFrame')).contentFrame(); await G.waitForFunction(() => window.FBPattern?.ready?.(), null, { timeout: 20000 });
@@ -2833,7 +2833,7 @@ await journey('J245', 'Footwear: a shoe started from scratch is drafted on its l
   await K(`/concepts/${cid}/pattern`, { method: 'PUT', body: { spec: saved.spec } });
   const last = await call(`/v1/lab/concepts/${cid}/last.svg?size=12`, { token: kyleT }), dxf = await call(`/v1/lab/concepts/${cid}/pattern.dxf?size=12`, { token: kyleT });
   ok(last.status === 200 && /size 12 E/.test(last.text) && /ball girth/.test(last.text), '3. the last is drawn for the last maker in the size asked for');
-  ok(dxf.status === 200 && /Elastic gore - Cut 4/.test(dxf.text) && /Back quarter, outside/.test(dxf.text) && /US men's 12 E/.test(dxf.text), '   and the upper as a DXF in that size');
+  ok(dxf.status === 200 && /\n1\nElastic gore\n/.test(dxf.text) && /\n1\nCut 4/.test(dxf.text) && /Back quarter, outside/.test(dxf.text) && /US men's 12 E/.test(dxf.text), '   and the upper as a DXF in that size');
   ok((await K('/concepts/from-scratch', { body: { category: 'footwear', style: 'stiletto' } })).json.concept && true, '   an unknown shoe style starts as a sneaker');
   if (!playwright) { ok(true, 'needs a browser'); return; }
   const b = await playwright.chromium.launch();
@@ -2851,7 +2851,7 @@ await journey('J245', 'Footwear: a shoe started from scratch is drafted on its l
     ok(['Lateral (outside)', 'Medial (inside)', 'Top', 'Bottom'].every(t => new RegExp(t.replace(/[()]/g, '\\$&')).test(texts)), '   the shoe as tech flats: outside, inside, top and bottom', texts);
     await F.selectOption('#size', '12'); await F.waitForFunction(() => /size 12/i.test(document.querySelector('#side').innerText), null, { timeout: 5000 });
     ok(true, '   the size picker redraws it in size 12');
-    await F.click('#play'); await F.waitForFunction(() => document.getElementById('tLbl').textContent === 'Cutting layout', null, { timeout: 15000 });
+    await F.click('#play'); await F.waitForFunction(() => document.getElementById('tLbl').textContent.startsWith('Cutting layout'), null, { timeout: 15000 });
     ok(await F.locator('#canvas [data-pid="quarter-lat"]').count() >= 2 && !(await F.locator('#canvas [data-pid="sole"]').count()), '7. exploded into the cutting: every cut of the upper, and the moulded sole left out');
     const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 15000 }), F.click('#lastDl')]); ok(/last-12\.svg$/.test(dl.suggestedFilename()), '   the last spec downloads', dl.suggestedFilename());
     await F.selectOption('[data-k="style"]', 'derby'); await F.waitForFunction(() => /Save the shoe/.test(document.getElementById('saveP').textContent)); await F.click('#saveP'); await F.waitForFunction(() => document.getElementById('saveP').textContent === 'Saved', null, { timeout: 10000 });
@@ -3336,6 +3336,56 @@ await journey('J256', 'Clothing takes materials on its parts as a shoe and a plu
       ok(errs.length === 0, 'no page errors', errs); await oc.close();
     } finally { await br.close(); }
   } finally { await K(`/concepts/${cid}`, { method: 'DELETE' }); }
+});
+
+await journey('J257', 'A luxury elephant, made as an elephant: started as an elephant (trunk, big lined ears, four legs, tail) and drawn as one from the front, back and side; made in nappa lambskin (a wider allowance, a leather grain); our wordmark placed on its chest in inches, dragged, made as a deboss and checked against the leather; saved, drawn into its tech flats, and the placement written into its tech pack', async () => {
+  const cid = (await K('/concepts/from-scratch', { body: { category: 'plush', shape: 'elephant', name: `Leather elephant ${stamp}` } })).json.concept?.id;
+  try {
+    const g = (await K(`/concepts/${cid}/pattern`)).json;
+    ok(g.kind === 'plush' && g.spec.shape === 'elephant' && g.spec.ears === 'big' && g.options.plush.shapes.elephant && g.options.plush.fabrics.leather && g.marks?.word, '1. an elephant is a shape of its own, with big ears; leather is a cloth; our marks come with the page', g.spec);
+    if (!playwright) { ok(true, 'needs a browser'); return; }
+    const br = await playwright.chromium.launch();
+    try {
+      const oc = await br.newContext({ viewport: { width: 1366, height: 1024 } }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
+      const page = await oc.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
+      await page.goto(`${BASE}/lab/studio?concept=${cid}&view=pattern`, { waitUntil: 'networkidle' }); const F = await (await page.waitForSelector('#patFrame')).contentFrame(); await F.waitForFunction(() => window.FBPattern?.ready?.(), null, { timeout: 20000 });
+      ok(/Elephant/.test(await F.innerText('#sub')) && /Front/.test(await F.innerText('#canvas')) && /Side/.test(await F.innerText('#canvas')), '2. Pattern opens on the elephant, drawn from the front, the back and the side');
+      await F.selectOption('#side select[data-k="fabric"]', 'leather'); await sleep(200);
+      ok((await F.evaluate(() => window.FBPattern.pattern().sa)) === .375 && await F.locator('#canvas [fill^="url(#lk-pebble"]').count() > 0, '3. made in nappa lambskin: a ⅜ in allowance, drawn with a leather grain');
+      await F.click('#lgBox [data-lgadd="word"]'); await F.waitForSelector('#canvas [data-logo]');
+      const l0 = (await F.evaluate(() => window.FBPattern.logos()))[0];
+      ok(l0 && l0.view === 'front' && l0.mark === 'word' && /deboss/.test(l0.technique), '4. the wordmark goes on the chest, made as a deboss in leather (not embroidered through it)', l0);
+      const a = await F.evaluate(id => window.FBPattern.logoAt(id), l0.id), fb = await (await page.$('#patFrame')).boundingBox(), px = await F.evaluate(() => document.querySelector('#canvas svg').getScreenCTM().a);
+      await page.mouse.move(fb.x + a[0], fb.y + a[1]); await page.mouse.down(); await page.mouse.move(fb.x + a[0], fb.y + a[1] + px, { steps: 6 }); await page.mouse.up(); await sleep(250);
+      const l1 = (await F.evaluate(() => window.FBPattern.logos()))[0];
+      ok(Math.abs(l1.y - l0.y - 1) < .15 && Math.abs(l1.x - l0.x) < .1, '5. dragged an inch down the chest: its place in inches follows', { from: [l0.x, l0.y], to: [l1.x, l1.y] });
+      await F.selectOption(`#lgBox [data-lg="${l0.id}"] [data-lgk="technique"]`, 'embroidery'); await sleep(200);
+      ok(/perforates leather/.test(await F.innerText('#lgBox')), '6. made as embroidery instead, the check says it perforates leather');
+      await F.selectOption(`#lgBox [data-lg="${l0.id}"] [data-lgk="technique"]`, 'deboss'); await F.fill(`#lgBox [data-lg="${l0.id}"] [data-lgk="w"]`, '2'); await F.dispatchEvent(`#lgBox [data-lg="${l0.id}"] [data-lgk="w"]`, 'change'); await sleep(200);
+      const l2 = (await F.evaluate(() => window.FBPattern.logos()))[0]; ok(l2.w === 2 && Math.abs(l2.h / l2.w - l0.h / l0.w) < .01, '   back to a deboss, 2 in wide, its proportions kept');
+      if (process.env.SHOT_DIR) await page.screenshot({ path: process.env.SHOT_DIR + '/elephant.png' });
+      ok(await F.locator('#canvas [fill^="url(#vol-"]').count() > 10 && await F.locator('#canvas [filter^="url(#soft-"]').count() > 3, '   drawn in the round: each stuffed part shaded, the ear, head and legs throwing their shadows');
+      // the exploded view, at every step, is every piece the elephant is cut as: pairs, the inner and outer legs, the linings and the pads
+      const cuts = await F.evaluate(() => window.FBPattern.pattern().pieces.reduce((n, q) => n + (q.cut || 0), 0));
+      for (const t of ['0.45', '1']) {
+        await F.click(`#modeSeg [data-t="${t}"]`); await sleep(1700);
+        const shown = await F.locator('#canvas g.pc').count(), said = Number(await F.getAttribute('#canvas', 'data-cuts'));
+        ok(shown === cuts && said === cuts && (await F.innerText('#tLbl')).includes(`${cuts} to cut`) && (t === '1' || /Ear lining/.test(await F.innerText('#canvas'))), `${t === '1' ? '   laid out to cut' : '6b. exploded'}: all ${cuts} pieces it is cut as, each one shown (${shown})`);
+        if (process.env.SHOT_DIR) await page.screenshot({ path: process.env.SHOT_DIR + `/elephant-explode-${t}.png` });
+      }
+      await F.click('#modeSeg [data-t="0"]'); await sleep(1700);
+      await F.click('#saveP'); await F.waitForFunction(() => !window.FBPattern.dirty(), null, { timeout: 10000 });
+      const saved = (await K(`/concepts/${cid}/pattern`)).json.spec;
+      ok(saved.fabric === 'leather' && saved.logos?.[0]?.technique === 'deboss' && saved.logos[0].w === 2, '7. saved: the leather and the placed wordmark', saved.logos);
+      const sheet = (await call(`/v1/lab/concepts/${cid}/flats.svg`, { token: kyleT })).text;
+      ok(/data-logo=/.test(sheet) && /data:image\/svg\+xml;base64/.test(sheet), '8. the tech flats SVG carries the wordmark where it was placed');
+      ok(errs.length === 0, 'no page errors', errs); await oc.close();
+    } finally { await br.close(); }
+    await K(`/concepts/${cid}`, { method: 'PUT', body: { twist: 'Our debossed wordmark on a red-lined ear, in black lambskin' } });
+    ok((await K(`/concepts/${cid}/approve`, { body: { overrideReason: 'started from scratch: ours' } })).status === 200, '9. approved');
+    const tp = await K(`/concepts/${cid}/tech-pack`, { body: {} }), pack = (await call(`/v1/admin/products/${tp.json.productId}/tech-pack`, { token: kyleT })).json.techPack?.data || {};
+    ok(tp.status === 201 && (pack.construction || []).some(r => /Logo/.test(r.area) && /deboss, 2 in wide/.test(r.detail)) && ['front', 'back', 'side'].every(v => (pack.sketches || []).some(k => k.view === v)), '   its tech pack carries the elephant\'s tech flats and the wordmark\'s placement in words', (pack.construction || []).filter(r => /Logo/.test(r.area)));
+  } finally { if (cid) await K(`/concepts/${cid}`, { method: 'DELETE' }); }
 });
 
 shops.close(); brave.close();

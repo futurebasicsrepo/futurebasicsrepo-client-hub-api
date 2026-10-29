@@ -655,6 +655,15 @@ the page and the service).
 - **Plush** is drafted from a few choices: a bear (head sides and gusset, muzzle, body front and back, arms, legs, foot pads, ears), a bean
   character, a bunny or a pillow character. You also choose the height, the ears, the arms, legs and tail, the pile fabric, the eyes and the age.
   The pieces carry a ¼ in allowance, the pile direction, and the stuffing opening.
+- **The exploded view shows every piece cut, at every step.** A piece cut 4 (two pairs, inner and outer) is four outlines; a lining under an
+  ear and the pads under the feet lift off with the rest. The inner layers come off beside the outer ones, and once spread no two pieces
+  cover each other. Each one is labelled with its count (Front leg 3/4), and the bar says how many there are to cut. A unit test holds this
+  for every garment style, every plush shape and every shoe style: the shown cuts equal the sum of the pieces' cuts at each step, and each
+  lands on its own place in the cutting layout.
+- **The plush views are drawn in the round.** Each stuffed part is shaded (lit from the upper front, with a sharper sheen for leather). On
+  the side view, the far ear, arm and leg are a tone deeper behind the body. The head, the ears, the arm and the haunch throw soft shadows,
+  and the toy sits on a ground shadow. The bear's legs are sewn on outside the body at the hip, as a jointed bear's are, and the elephant
+  sits on a rounded haunch with its foot and pad turned forward.
 - **Plush safety checks** follow the age (ASTM F963 and EN 71): safety eyes on a toy for under-3s fail; small appendages and long pile are
   flagged; the law label and tracking label are listed. The page estimates the fill in grams.
 
@@ -797,6 +806,18 @@ Optitex and CLO import as a graded pattern:
 
 The file comes in one size or the whole run (`&sizes=all`), in inches or millimetres (`&units=mm`). The plain DXF (CUT/SEW/GRAIN/NOTCH/TEXT
 layers) is still there for anything else.
+
+**Both DXFs are written whole** (`src/lab-dxf.js`). A strict reader such as GroupDocs/Aspose, or a cutting-room system, opens them. The first
+plain DXF had only a header and the entities, and strict readers failed on it with "Object reference not set to an instance of an object". Each
+file now has:
+- **Header:** the R12 version (AC1009) and the drawing's extents.
+- **Tables:** viewport, line type, every layer it draws on, text style, application id and dimension style.
+- **Blocks:** model and paper space.
+- **Entities:** each with a handle.
+
+Text is plain ASCII. In the AAMA file, each cloth's layout sits below the last, so contrast pieces no longer land on the self pieces. The
+plain DXF's labels are sized to their piece: the name, then the cut. Every file checked passes ezdxf's strict reader and auditor with no errors
+and no fixes, and dxf-parser reads them all.
 
 ## 3D lasts: importing one, having one made, drafting on it
 
@@ -1096,3 +1117,50 @@ Footwear and plush now take the tools clothing has, where they apply:
 - The developer's two-judge check for a plush (a shoe has it).
 - A shoe or a plush in the range mockup.
 - Toys, home objects and electronics still have no pattern or tooling (Phase C and D).
+
+## An elephant, leather, and logos on a shoe or a plush
+
+**The elephant** is a plush shape of its own (`src/lab-pattern.js`, `src/lab-plush-views.js`). It sits, with:
+
+- a head and trunk cut in one (two sides that meet down the trunk's underside, and a gusset from the back of the head over the brow and down the top of the trunk);
+- big ears, in self and lined in contrast;
+- a body in two sides with an underbody gusset;
+- four legs, each in two, on contrast foot pads;
+- a tail with a yarn tuft.
+
+It is drawn from the front, the back and the side.
+
+**Other characters.** A concept, a picture reading and the page each keep what the character is (`spec.animal`: "elephant", "fox"…). When the
+pattern has no shape for it, it is drafted as the nearest one and the page says so: reshape and sketch over it to make it the character.
+
+**The bear's side view** is drawn again:
+
+- a round head with the muzzle standing out in front;
+- the ear at the back of the crown;
+- the arm hanging in front of a fuller belly;
+- the foot turned forward on its pad.
+
+**Leather and other cloths for a plush.** Nappa lambskin, vegan leather, suede, cotton velvet and bouclé join the piles.
+
+- **The concept assistant** is told to make a plush in the material the brief names: a luxury plush in leather is ours to make.
+- **The flats** show leather with a grain and suede and velvet with a nap.
+- **The pattern:**
+  - Leather and suede are sewn with a ⅜ in allowance.
+  - The notes say to ease the pieces and notch the curves.
+  - The notes also say to sew with a leather needle and bonded thread and to press the seams with a roller.
+  - A leather toy for under-3s is flagged for chrome-free leather and the restricted-substances tests.
+
+**Logos and graphics on a shoe's or a plush's views** (`src/lab-logos.js`, the Pattern page's **Logos and graphics**):
+
+- **Placing one.** Our cue mark, wordmark or lockup, or a graphic from the library, goes on a view in inches:
+  - a shoe's outside, inside or top, in the side view's inches, as its sketches are;
+  - a plush's front, back or side.
+- **Moving and sizing.** Each placed logo is framed so it can be seen and grabbed; drag it to move it. Set its width (its proportions are
+  kept), its view, how it is made and, for a mark, a dark or a light ink. A mark on a dark cloth starts in the light ink.
+- **The checks:**
+  - **Size:** within its technique's sizes, for example embroidery 0.4–4 in and a deboss 0.3–3 in.
+  - **On a shoe:** which piece it lands on, whether it crosses a seam, or whether it is off the upper.
+  - **On a plush's cloth:** embroidery perforates leather, so deboss it or use an appliqué; a pile cannot be debossed.
+  - **On a baby toy:** a label is sewn flat on all four sides.
+- **Where they go:** the tech flats and their SVG, and the tech pack, which also gets each placement written out in words (what, how, how big,
+  on which piece, where its centre is). The photo-real picture (**See it made**) is drawn without them, since an image model redraws lettering.

@@ -63,7 +63,7 @@ test('the exploded view and the layout work for a shoe: pieces off the side and 
   assert.ok(lay.some(g => g.fabric === 'upper') && lay.some(g => g.fabric === 'lining') && lay.some(g => g.fabric === 'foam'));
   for (const t of [0, .3, .7, 1]) assert.ok(explodeAt(pat, t, lay).every(x => ok(x.pts)), `t ${t}`);
   const hide = hideArea(pat); assert.ok(hide.upper > 1 && hide.upper < 6, `a pair of runners takes a few square feet of upper (${hide.upper})`);
-  assert.match(patternDxf(pat), /Vamp - Cut 2/);
+  assert.match(patternDxf(pat), /\n1\nVamp\n[^]*?\n1\nCut 2/); // the name, then how many
 });
 
 test('cleaning the choices, the last drawing, and reading a style from the words', () => {
