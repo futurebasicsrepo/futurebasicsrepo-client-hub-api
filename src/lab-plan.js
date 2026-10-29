@@ -144,7 +144,7 @@ export function generateSystem(code) {
 // → { summary, lines: [...clean lines, ready to save], costCents }. `trends` is a trendRead result.
 export async function generateLines({ trends, code = DEFAULT_BRAND_CODE, brief = '', season = '', size = 12, categories = [], askImpl = realAsk, env = process.env, fetchImpl = fetch } = {}) {
   if (!providerReady('anthropic', env)) throw new Error('Claude is not connected (the service needs ANTHROPIC_API_KEY)');
-  const n = Math.min(Math.max(Math.round(size) || 12, 3), 30), mix = roleMix(n), allowed = (categories.length ? categories : CATEGORY_IDS.filter(c => !WOMENSWEAR_ONLY.includes(c))).filter(c => CATEGORY_IDS.includes(c));
+  const n = Math.min(Math.max(Math.round(size) || 12, 1), 30), mix = roleMix(n), allowed = (categories.length ? categories : CATEGORY_IDS.filter(c => !WOMENSWEAR_ONLY.includes(c))).filter(c => CATEGORY_IDS.includes(c));
   const econ = cleanEconomics(code.economics), refMap = new Map(); let r = 0;
   const digest = { mix, season: clip(season, 40), economics: econ, categories: trends.categories.filter(c => c.count && allowed.includes(c.id)).map(c => ({
     id: c.id, label: c.label, count: c.count, hotShare: c.hotShare, newShare: c.newShare, ladder: c.ladder, colors: c.colors.map(x => x.name), fabrics: c.fabrics.map(x => x.name), silhouettes: c.silhouettes.map(x => x.name), details: c.details.map(x => x.name),

@@ -2436,6 +2436,12 @@ await journey('J238', 'Welcoming a client\'s designers, and footwear kept off pa
       await page.click('#welcomeDone'); await page.reload({ waitUntil: 'networkidle' }); await page.waitForSelector('#app:not(.hidden)', { timeout: 20000 });
       ok(!(await page.isVisible('#welcome')), '   Got it puts it away for good');
       await page.click('#howStart'); ok(await page.isVisible('#welcome'), '   and How to start brings it back');
+      // every button on the dark welcome panel reads (they were white words on white), and Pieces offers 1, 3 and 6 and lines up with its buttons
+      await page.mouse.move(2, 2);
+      const hero = await page.evaluate(() => [...document.querySelectorAll('.btn.ghost')].map(b => { const c = getComputedStyle(b); return [b.textContent.trim(), c.color, c.backgroundColor]; }));
+      ok(hero.length >= 5 && hero.every(([, c, bg]) => c === 'rgb(255, 255, 255)' && /rgba\(0, 0, 0, 0\)|transparent/.test(bg)), '   the buttons on the dark panel are white words on the panel, not white on white', hero);
+      const pc = await page.evaluate(() => { const sel = document.querySelector('#planForm [name=size]'), go = document.getElementById('planGo'); const a = sel.getBoundingClientRect(), b = go.getBoundingClientRect(); return { opts: [...sel.options].map(o => o.value), dy: Math.abs(a.bottom - b.bottom) }; });
+      ok(['1', '3', '6'].every(v => pc.opts.includes(v)) && pc.dy <= 3, '   Pieces offers 1, 3 and 6, and sits in line with Draft the plan', pc);
       ok(errs.length === 0, 'no page errors', errs); await cc.close();
     } finally { await b.close(); }
   } finally { await cleanup(brands, plan.plan?.id); }

@@ -37,7 +37,7 @@ test('the price ladder follows the price anchor when it has been read, and says 
 });
 
 test('role mix always adds up and keeps a hero', () => {
-  for (const n of [3, 8, 12, 16, 24, 30]) { const m = roleMix(n); assert.equal(m.core + m.trend + m.hero + m.entry, n, `n=${n}`); assert.ok(m.hero >= 1 && m.core >= 0); }
+  for (const n of [1, 3, 6, 8, 12, 16, 24, 30]) { const m = roleMix(n); assert.equal(m.core + m.trend + m.hero + m.entry, n, `n=${n}`); assert.ok(m.hero >= 1 && m.core >= 0); }
   assert.deepEqual(roleMix(12), { core: 4, trend: 4, hero: 2, entry: 2 });
 });
 
