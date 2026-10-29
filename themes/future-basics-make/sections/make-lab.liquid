@@ -45,6 +45,38 @@
       </ol>
     </div>
 
+    <div class="fbl__beyond">
+      <div class="fbl__flow-head"><h3 class="fbl__h3">not only apparel.<br><span class="fbl__dim">what the lab does for each thing we make.</span></h3><p class="fbl__mono">three parts · one room</p></div>
+      <div class="fbl__tiers">
+        <article class="fbl__tier">
+          <p class="fbl__mono">design it in the lab</p>
+          <h4>apparel and headwear</h4>
+          <p>Tees, hoodies, shirts, outerwear, pants, dresses and swim, plus the six-panel cap and the bucket hat. Each one is drawn on a real flat, dressed in real fabric and placed to the inch.</p>
+          <img src="{{ img }}lab-headwear.jpg" alt="Flat sketches: a six-panel cap, tees, a shirt and hoodies" loading="lazy" width="680" height="425">
+        </article>
+        <article class="fbl__tier">
+          <p class="fbl__mono">decorate anything</p>
+          <h4>graphics, patches and labels</h4>
+          <p>Separations, films and embroidery stitch files work on any product: a plush, a toy box, a uniform, a tote. Patches, woven labels and hang tags are designed at their real size.</p>
+          <img src="{{ img }}lab-labels.jpg" alt="Patches, care labels, hang tags and woven loops at their real sizes" loading="lazy" width="1070" height="620">
+        </article>
+        <article class="fbl__tier fbl__tier--spec">
+          <p class="fbl__mono">spec it in the tech pack</p>
+          <h4>plush, objects, footwear, electronics</h4>
+          <p>The tech pack drafts for each kind of product, with its own measurements, materials, labels and compliance. It is included while the Lab is open.</p>
+          <ul class="fbl__cats">
+            <li><span>plush</span><span>from 300 pcs · 10–16 wks</span></li>
+            <li><span>bags and jewelry</span><span>quoted per style</span></li>
+            <li><span>toys and objects</span><span>tooling-dependent</span></li>
+            <li><span>footwear</span><span>a 6–12 month programme</span></li>
+            <li><span>electronics</span><span>6–12 months, certification, EVT · DVT · PVT</span></li>
+          </ul>
+          <p class="fbl__small">Footwear and electronics are development programmes, not a file you download. Start a project and we'll scope it with you.</p>
+          <a class="fbl__link" href="{{ section.settings.project_url | default: '/pages/contact' }}">start a project →</a>
+        </article>
+      </div>
+    </div>
+
     <div class="fbl__out">
       <div><p class="fbl__mono">what comes out</p><h3 class="fbl__h3">not a moodboard.<br><span class="fbl__dim">the files the floor works from.</span></h3></div>
       <dl class="fbl__files">
@@ -145,6 +177,20 @@
   @media (max-width:980px){.fbl__head,.fbl__out,.fbl__deal{grid-template-columns:1fr}.fbl__steps{grid-template-columns:repeat(2,minmax(0,1fr))}.fbl__step,.fbl__step:nth-child(3n){border-right:1px solid var(--line);border-bottom:1px solid var(--line)}.fbl__step:nth-child(2n){border-right:0}.fbl__step:nth-child(n+5){border-bottom:0}.fbl__bridge{grid-template-columns:1fr}}
   @media (max-width:620px){.fbl__steps{grid-template-columns:1fr}.fbl__step{border-right:0!important;border-bottom:1px solid var(--line)!important}.fbl__step:last-child{border-bottom:0!important}.fbl__files{grid-template-columns:1fr}.fbl__tag{display:none}.fbl__row{grid-template-columns:1fr;gap:4px}.fbl__row--h{display:none}.fbl__pencil{display:none}}
   @media (prefers-reduced-motion:reduce){.fbl__btn{transition:none}.fbl__btn:hover{transform:none}}
+  .fbl__beyond{display:grid;gap:26px}
+  .fbl__tiers{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+  .fbl__tier{display:grid;grid-template-rows:auto auto auto 1fr;gap:10px;padding:22px;border:1px solid var(--line);border-radius:26px;background:var(--card)}
+  .fbl__tier h4{font:500 clamp(22px,2vw,28px)/1.02 var(--sans);letter-spacing:-.03em;text-transform:lowercase}
+  .fbl__tier>p:not(.fbl__mono){font-size:14px;line-height:1.5;color:#3b3b40}
+  .fbl__tier img{width:100%;height:auto;align-self:end;aspect-ratio:16/10;object-fit:cover;object-position:top center;border-radius:14px;border:1px solid var(--line);background:var(--panel);margin-top:6px}
+  .fbl__tier--spec{background:var(--panel);grid-template-rows:none;align-content:start}
+  .fbl__cats{list-style:none;margin:6px 0 0;padding:0;border-top:1px solid var(--line)}
+  .fbl__cats li{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--line);font-size:14px}
+  .fbl__cats li span:last-child{font:500 11px/1.5 var(--mono);color:var(--dim);text-align:right}
+  .fbl__small{font-size:13px!important;color:var(--dim)!important}
+  .fbl__link{color:var(--ink);font-weight:500;text-decoration:underline;text-underline-offset:3px;justify-self:start}
+  @media (max-width:980px){.fbl__tiers{grid-template-columns:1fr 1fr}.fbl__tier--spec{grid-column:1/-1}}
+  @media (max-width:620px){.fbl__tiers{grid-template-columns:1fr}}
 </style>
 
 {% schema %}
@@ -155,10 +201,10 @@
   "settings": [
     { "type": "text", "id": "eyebrow", "label": "Eyebrow", "default": "03 · design lab" },
     { "type": "text", "id": "title_1", "label": "Title, first line", "default": "design it here." },
-    { "type": "text", "id": "title_2", "label": "Title, second line (grey)", "default": "hand the factory a file it can sew." },
+    { "type": "text", "id": "title_2", "label": "Title, second line (grey)", "default": "hand the factory a file it can make." },
     { "type": "textarea", "id": "lede", "label": "Lede", "default": "The studio we design real product in, opened up. Plan a line, draw it with an Apple Pencil, start from a professional flat and dress it in real fabrics and trims. What comes out is what a factory works from: flats in inches, a costed bill of materials, separations, stitch files and the tech pack." },
     { "type": "text", "id": "cta", "label": "Button", "default": "open the design lab" },
-    { "type": "text", "id": "fine", "label": "Small print", "default": "your own room in a minute · no password · built and used by a production studio" },
+    { "type": "text", "id": "fine", "label": "Small print", "default": "apparel, headwear, and the graphics and labels for anything we make · your own room in a minute · no password" },
     { "type": "text", "id": "price", "label": "Price ($)", "default": "499" },
     { "type": "text", "id": "days", "label": "Days open", "default": "90" },
     { "type": "text", "id": "ai_included", "label": "AI generations included", "default": "40" },

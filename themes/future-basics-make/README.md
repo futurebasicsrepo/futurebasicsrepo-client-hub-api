@@ -9,7 +9,13 @@ It is self-contained: its own styles (every class starts `.fbl`), no scripts, an
   Apple Pencil, dress it in real fabric, and get out the files a factory and a decorator work from.
 - **Who it is for:** independent designers, small brands, product developers and technical designers. It is for anyone who would otherwise
   pay $300–800 a pack in Illustrator, spreadsheets and freelancers, or who can't justify $10,000+ a year for enterprise PLM.
-- **The promise:** "design it here. hand the factory a file it can sew."
+- **The promise:** "design it here. hand the factory a file it can make."
+- **Beyond apparel, said truthfully:** after the six steps, a "not only apparel" band splits the Lab into three parts:
+  - **Design it in the Lab:** apparel and headwear (the sketch pack has the six-panel cap and the bucket hat).
+  - **Decorate anything:** separations, films, embroidery stitch files, patches, woven labels and hang tags, for any product.
+  - **Spec it in the tech pack:** plush, bags and jewelry, toys and objects, footwear and electronics, with each one's minimum and lead time.
+    Footwear and electronics are development programmes, so they point to "start a project".
+  The Lab doesn't draw plush patterns, shoe lasts, hard-goods tooling or electronics, so the page doesn't claim it does.
 - **Where it sits:** the Make page climbs a ladder: 01 · experience (what we make) → 02 · platform (a free tech pack) → **03 · design lab** (the
   whole design tool, $499 for 90 days) → 04 · systems (software). The section ends on "we make it", which leads the Lab back into production work.
 
