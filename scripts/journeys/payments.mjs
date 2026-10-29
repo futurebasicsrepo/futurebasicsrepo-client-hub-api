@@ -273,7 +273,7 @@ await journey('J105', 'the tech pack header carries the brand like the rest of t
     await pg.evaluate(() => scrollTo(0, 0)); await shot('client', pg); ok(pg.errs.length === 0, 'customer: no script errors', pg.errs); await ctx.close();
     // staff, desktop
     ({ ctx, pg } = await open('admin', admin, `http://work.localhost:3127/tech-packs/${pid}`, 1280, 860)); m = await probe(pg);
-    ok(m.logo && m.logo.width >= 120 && /^\/ ?Work$/i.test(m.suffix) && /\/$/.test(m.href || '') && /work/i.test(m.label), 'staff: logo, "/ Work", and the logo goes to the console', [m.suffix, m.href, m.label]);
+    ok(m.logo && m.logo.width >= 120 && /^\/ ?Work$/i.test(m.suffix) && /\/home$/.test(m.href || '') && /work/i.test(m.label), 'staff: logo, "/ Work", and the logo goes to My day', [m.suffix, m.href, m.label]);
     ok(m.crumbs.top >= m.tabs.bottom - 1 && /Clients/i.test(m.crumbText) && /Tech pack/i.test(m.crumbText), 'staff: the long breadcrumb (Clients › room › project › product) sits in the page, not in the bar', m.crumbText);
     await pg.click('#acts details.more summary'); ok(await pg.isVisible('[data-act="airun"]'), 'staff: Run assistant is in More on a published pack too (it redrafts the working copy, not the published versions)');
     await shot('staff', pg); ok(pg.errs.length === 0, 'staff: no script errors', pg.errs); await ctx.close();

@@ -237,7 +237,7 @@ await journey('J171', 'The client hub carries the agreement: a contract is tied 
       await pg.waitForSelector('#agreements:not(.hidden)', { timeout: 10000 }).catch(() => {}); const txt = await pg.locator('#agreements').innerText().catch(() => '');
       ok(/Hub agreement/i.test(txt) && /Hub autopay/i.test(txt), 'the hub page lists the agreements when signed in', txt.slice(0, 160));
       ok(/Add your payment details/i.test(await pg.locator('#waiting').innerText().catch(() => '')), 'and Waiting on you asks for the payment details');
-      ok(await pg.locator('#navAgreements').isVisible(), 'the top menu has an Agreements link'); await pg.click('#navAgreements'); await sleep(900);
+      await pg.click('#hubMenu'); ok(await pg.locator('#navAgreements').isVisible(), 'the top menu (on a phone, behind Menu) has an Agreements link'); await pg.click('#navAgreements'); await sleep(900);
       ok(await pg.evaluate(() => { const r = document.getElementById('agreements').getBoundingClientRect(); return r.top < innerHeight && r.bottom > 0; }), 'and it takes them to the agreements');
       ok(errs.length === 0, 'no page errors on the hub', errs);
     } finally { await b.close(); }

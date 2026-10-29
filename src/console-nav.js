@@ -151,7 +151,7 @@ body.fbcollapsed .fbside a .dot{position:absolute;top:6px;right:8px;width:8px;he
     for (const it of ITEMS) {
       const t = split(it.href); let s = 0;
       if (platform) s = t.p === '/platform' ? 9 : 0;
-      else if (t.p === p && (t.h ? t.h === h : !location.hash)) s = t.h ? 8 : 7;
+      else if (t.p === p && (!t.h || t.h === h)) s = t.h ? 8 : 7; // a page's own #part (the library's #graphics) is still that page
       else if ((it.also || []).some(a => a.includes('#') ? full === a || (a.split('#')[0] === p && a.split('#')[1] === h) : p === a || p.startsWith(a + '/'))) s = 6;
       if (s > score) { score = s; best = it; }
     }

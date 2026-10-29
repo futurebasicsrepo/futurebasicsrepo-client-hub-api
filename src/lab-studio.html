@@ -957,7 +957,7 @@ async function boot(){
   $('#app').classList.remove('hidden');$('#back').href='/lab#board';
   // the piece's step bar takes the place of "← Concepts": back to its line plan, and every step of the piece one press away
   if(window.FBLabNav){$('#back').classList.add('hidden');$('#app').classList.add('steps');$('#pieceSteps').classList.remove('hidden');
-    window.FBLabNav.steps($('#pieceSteps'),D.concept,{at:stepOfView(VMODE),onStep:(st)=>{if(st==='picture'){setVMode('picture');return true}if(st==='flats'){setVMode(VMODE==='back'?'back':'front');return true}if(st==='pattern'){setVMode('pattern');return true}if(st==='techpack'&&!D.concept.productUrl){if($('#readyPop').classList.contains('hidden'))$('#readyBtn').click();return true}return false}})}
+    window.FBLabNav.steps($('#pieceSteps'),D.concept,{at:stepOfView(VMODE),onStep:(st)=>{if(st==='picture'){setVMode('picture');return true}if(st==='flats'){setVMode(VMODE==='back'?'back':'front');return true}if(st==='pattern'){setVMode('pattern');return true}if(st==='techpack'&&!D.concept.productUrl){setTimeout(()=>{if($('#readyPop').classList.contains('hidden'))$('#readyBtn').click()});return true}return false}})}
   if(D.concept.locked){$('#apply').disabled=true;$('#apply').title='This concept is already a tech pack'}
   busy('Opening the design…');
   try{

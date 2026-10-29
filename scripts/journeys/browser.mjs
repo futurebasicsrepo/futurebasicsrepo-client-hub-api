@@ -790,7 +790,8 @@ await journey('J118', 'the work console menu: eight sections down the left, the 
   await page.click('header a[aria-label="My day"], header .wordmark, header .homelink'); await page.waitForURL(/\/home$/, { timeout: 10000 });
   ok(/My day/.test(await page.innerText('.fbside a.on')) && await page.locator('.fbtabs').isHidden(), 'the logo goes to My day; a section of one part has no tab row');
   // Jump to lists every part that matches
-  await page.fill('#fbJump', 'pipel'); ok(await page.locator('#fbJumpList a').count() === 1 && /Sales/.test(await page.innerText('#fbJumpList a')), 'Jump to lists what matches, with its section');
+  await page.waitForFunction(() => { const a = document.querySelector('.fbtabs a[data-href="/sales#pipeline"]'); return a && !a.hidden; }, null, { timeout: 8000 }); // what this person may open is known
+  await page.fill('#fbJump', 'pipel'); ok(await page.locator('#fbJumpList a').count() === 1 && /sales/i.test(await page.innerText('#fbJumpList a')), 'Jump to lists what matches, with its section', await page.innerHTML('#fbJumpList'));
   await page.press('#fbJump', 'Enter'); await page.waitForURL(/\/sales#pipeline/, { timeout: 10000 }); ok(true, 'and Enter opens it');
 
   // collapse, and it is remembered
@@ -812,12 +813,12 @@ await journey('J118', 'the work console menu: eight sections down the left, the 
   await ph.click('.fbburger'); await sleep(350); ok(await ph.$eval('.fbside', e => e.getBoundingClientRect().left) >= -1 && /Sales/.test(await ph.innerText('.fbside')), 'the button opens the drawer');
   await ph.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/j118-phone.png` }).catch(() => {});
   // on a short phone the drawer scrolls under a finger to its last item, and a drag on the dimmed page does not move the page behind it
-  await ph.setViewportSize({ width: 390, height: 380 }); await sleep(300); const cdp = await pc.newCDPSession(ph);
+  await ph.setViewportSize({ width: 390, height: 300 }); await sleep(300); const cdp = await pc.newCDPSession(ph);
   const swipe = async (x, y0, dy) => { await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y: y0 }] }); for (let i = 1; i <= 12; i++) { await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: y0 + dy * i / 12 }] }); await sleep(16); } await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); await sleep(600); };
   const state = () => ph.evaluate(() => { const a = document.querySelector('.fbside'), links = [...a.querySelectorAll('nav a')].filter(x => x.offsetParent); return { page: Math.round(scrollY), aside: Math.round(a.scrollTop), room: a.scrollHeight - a.clientHeight, tall: Math.round(a.getBoundingClientRect().height), vh: innerHeight, last: Math.round(links[links.length - 1].getBoundingClientRect().bottom) }; });
   const s0 = await state(); ok(s0.room > 0 && s0.tall === s0.vh, 'on a short phone the drawer is as tall as the screen and has more below', JSON.stringify(s0));
   await swipe(350, 300, -150); ok((await state()).page === 0, 'dragging the dimmed page behind the drawer does not scroll the page');
-  await swipe(100, 340, -300); await swipe(100, 340, -300); const s1 = await state(); ok(s1.aside > 0 && s1.last <= s1.vh - 8, 'a finger scrolls the drawer to its last item, clear of the screen edge', JSON.stringify(s1));
+  await swipe(100, 270, -220); await swipe(100, 270, -220); const s1 = await state(); ok(s1.aside > 0 && s1.last <= s1.vh - 8, 'a finger scrolls the drawer to its last item, clear of the screen edge', JSON.stringify(s1));
   await ph.setViewportSize({ width: 390, height: 844 }); await sleep(300);
   await ph.click('.fbside a[data-section="inbox"]'); await sleep(800);
   ok(await ph.$eval('.fbside', e => e.getBoundingClientRect().right) <= 1 && /\/admin#inbox/.test(ph.url()), 'choosing a section closes it and goes there');
