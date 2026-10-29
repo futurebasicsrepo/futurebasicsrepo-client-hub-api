@@ -2975,5 +2975,42 @@ await journey('J248', 'A footwear developer brings in the 3D last from the last 
   } finally { await b.close(); await K(`/concepts/${cid}`, { method: 'DELETE' }); }
 });
 
+await journey('J249', 'A footwear designer works on the last: the upper is cut flattened off the last\'s surface (with its stretch stated); in the On the last view the shoe\'s lines are on the last in 3D, turned by dragging; a seam drawn on it across the outside quarter cuts it into a back and a front quarter, which come out in the AAMA DXF; the seam is removed again', async () => {
+  const made = await K('/concepts/from-scratch', { body: { category: 'footwear', style: 'sneaker', name: `On the last ${stamp}` } }), cid = made.json.concept?.id;
+  const p = (await K(`/concepts/${cid}/pattern`)).json;
+  ok(p.flat && p.flat.lateral.rms < .15 && p.flat.medial.rms < .15 && p.pieces.some(q => q.id === 'quarter-lat'), '1. the upper is flattened off the last, with little stretch', p.flat);
+  const put = await K(`/concepts/${cid}/pattern`, { method: 'PUT', body: { spec: { ...p.spec, seams: [{ piece: 'quarter-lat', side: 'lateral', pts: [[3, .2], [3.2, -3.5]], name: 'Back quarter seam' }] } } });
+  ok(put.status === 200 && put.json.pieces.some(q => q.name === 'Quarter, outside (back)') && put.json.pieces.some(q => q.name === 'Quarter, outside (front)'), '2. a seam across the outside quarter cuts it into a back and a front quarter', put.json.pieces);
+  const aama = await call(`/v1/lab/concepts/${cid}/pattern.dxf?format=aama`, { token: kyleT });
+  ok(aama.status === 200 && /Quarter, outside \(back\)/.test(aama.text) && /Quarter, outside \(front\)/.test(aama.text), '   both are in the AAMA DXF');
+  await K(`/concepts/${cid}/pattern`, { method: 'PUT', body: { spec: p.spec } });
+  if (!playwright) { ok(true, 'needs a browser'); return; }
+  const b = await playwright.chromium.launch();
+  try {
+    const oc = await b.newContext({ viewport: { width: 1366, height: 1024 } }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
+    const page = await oc.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
+    await page.goto(`${BASE}/lab/studio?concept=${cid}&view=pattern`, { waitUntil: 'networkidle' }); const Fr = await (await page.waitForSelector('#patFrame')).contentFrame(); await Fr.waitForFunction(() => window.FBPattern?.ready?.(), null, { timeout: 20000 });
+    await Fr.click('#lastBtn'); await Fr.waitForSelector('#lastCv');
+    ok(/On the last/.test(await Fr.innerText('#side')) && /Stretch in the flattening/.test(await Fr.innerText('#side')), '3. On the last shows the shoe on its last, and the stretch in the flattening');
+    const box = await (await Fr.$('#lastCv')).boundingBox(), shot0 = await (await Fr.$('#lastCv')).screenshot();
+    await page.mouse.move(box.x + box.width / 2, box.y + 300); await page.mouse.down(); await page.mouse.move(box.x + box.width / 2 + 120, box.y + 320, { steps: 6 }); await page.mouse.up();
+    ok(!(await (await Fr.$('#lastCv')).screenshot()).equals(shot0), '   dragging turns the last');
+    await Fr.click('#ltools [data-l="side"]'); await Fr.click('#ltools [data-l="draw"]');
+    for (const pt of [[3, -.4], [3.1, -1.4], [3.2, -2.2]]) { const at = await Fr.evaluate(q => window.FBPattern.lastAt('lateral', q), pt); await page.mouse.click(box.x + at[0], box.y + at[1]); await sleep(150); }
+    await Fr.waitForSelector('#lPiece:not(.hidden)', { timeout: 5000 });
+    const opts = await Fr.evaluate(() => [...document.querySelectorAll('#lPiece option')].map(o => o.value));
+    ok(opts.includes('quarter-lat'), '4. a seam is drawn by clicking on the last; the pieces it crosses are offered', opts);
+    await Fr.selectOption('#lPiece', 'quarter-lat'); await Fr.click('#ltools [data-l="cut"]');
+    await Fr.waitForFunction(() => window.FBPattern.pattern().pieces.some(q => q.id === 'quarter-lat-b1'), null, { timeout: 5000 });
+    ok(/Seam 1/.test(await Fr.innerText('#side')), '5. the quarter is cut in two along it; the seam is listed');
+    await Fr.click('#saveP'); await Fr.waitForFunction(() => !window.FBPattern.dirty(), null, { timeout: 10000 });
+    const saved = (await K(`/concepts/${cid}/pattern`)).json;
+    ok(saved.spec.seams?.length === 1 && saved.spec.seams[0].piece === 'quarter-lat' && saved.pieces.some(q => q.id === 'quarter-lat-f1'), '   and it is saved with the shoe', saved.spec.seams);
+    await Fr.click('[data-lrm="0"]'); await Fr.waitForFunction(() => !window.FBPattern.pattern().pieces.some(q => q.id === 'quarter-lat-b1'));
+    ok(/None yet/.test(await Fr.innerText('#side')), '6. the seam is removed again');
+    ok(!errs.length, '   no page errors', errs);
+  } finally { await b.close(); await K(`/concepts/${cid}`, { method: 'DELETE' }); }
+});
+
 shops.close(); brave.close();
 process.exit(summary() ? 1 : 0);

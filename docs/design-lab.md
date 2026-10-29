@@ -831,3 +831,40 @@ Routes:
 - `POST …/lasts/generate`;
 - `POST …/lasts/:lid/use` and `POST …/lasts/unuse`;
 - `DELETE …/lasts/:lid`.
+
+## On the last: the upper flattened off the last, seams drawn on it
+
+The side view draws a height as it looks from the side. Over the instep and round the heel the surface turns away, so the distance up the
+last is longer, and a pattern cut to the side view comes up short there. The upper's pieces are now cut **flattened off the last's surface**
+(`src/lab-last-shell.js`, shared by the page and the service).
+
+**The shell.** Each section of the last is taken from the feather line (where the side meets the bottom) up to the top centre, on the
+outside and on the inside. The sections come from the last in use: the drafted one, or a measured 3D last's side profile and bottom outline.
+
+**Flattening.** Each half is flattened the way a taped forme is peeled off a last, by a least-squares conformal map: the angles are kept and
+the stretch is spread evenly. It is scaled to the surface's own area and lined up over the side view. The page states the stretch: about 8%
+on average and up to about 25% at the toe's tip, where the last turns tightest. A pattern engineer trues up the toe on the fitting sample, as
+before.
+
+**The pieces.** Each piece of the upper is carried from the side view onto the surface and off it, flat:
+
+- the pieces of the inside quarter on the inside half, the rest on the outside;
+- the lasting allowance below the feather line and a boot's shaft above the last carried straight on;
+- a piece cut whole (the vamp, the toe cap) flattened on one side and mirrored over its flattened centre line;
+- its side-view outline kept for how it shows on the shoe.
+
+Over the instep the flattened quarters and vamp come out taller than the side view, as they should. Untick **Cut the pieces flattened off the
+last's surface** to go back to the side view.
+
+**On the last** (on the Pattern view, for footwear) shows the shoe on its last in 3D, with every piece's lines on it:
+
+- drag to turn it, or use **Outside**, **Inside** and **Top**;
+- **Draw a seam**: click along the last where it runs, across a piece from edge to edge (the line is carried on to meet the edges);
+- choose the piece it crosses, then **Cut it along the seam**.
+
+The piece is cut in two, for example the outside quarter into a back and a front quarter. Both halves are flattened, notched where the seam
+meets the edges, and named. They are in the AAMA DXF with the rest.
+
+Seams are kept with the shoe (`spec.seams`: up to 8, each with its side, the piece and its points in side-view inches) and are listed with
+**Remove**. A seam that no longer crosses its piece (after a style change, say) is left out and the pattern's notes say so. A piece cut whole
+(the vamp, the toe cap) is not cut by a seam.

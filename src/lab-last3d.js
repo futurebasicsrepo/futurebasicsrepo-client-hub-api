@@ -13,6 +13,7 @@
 //   stlOf(pos)                      → a binary STL in millimetres, Z up, as CAD and the last makers' software expect
 import sharp from 'sharp';
 import './stl-viewer.js';
+import { loftFrom } from './lab-last-shell.js';
 import { lastOf, cleanFootwear, cleanLast3d, sizeFromFoot, SIZE_LIMITS, TOES } from './lab-footwear.js';
 
 const r3 = v => Math.round(v * 1000) / 1000, r8 = v => Math.round(v * 8) / 8;
@@ -274,26 +275,7 @@ function reground(out) {
 }
 
 // ---- a last lofted from the drafted one: its side view gives the bottom and the top of each section, its bottom view the width ----
-export function loftLast(spec, size = null) {
-  const l = lastOf(spec, size), L = l.length, B = l.bottom, M = 36;
-  const across = x => { const ys = []; for (let i = 0; i < B.length; i++) { const p = B[i], q = B[(i + 1) % B.length]; if ((p[0] - x) * (q[0] - x) <= 0 && p[0] !== q[0]) ys.push(p[1] + (q[1] - p[1]) * (x - p[0]) / (q[0] - p[0])); } return ys.length ? [Math.min(...ys), Math.max(...ys)] : [0, 0]; };
-  const N = 64, xs = Array.from({ length: N + 1 }, (_, k) => L * (1 - Math.cos(Math.PI * k / N)) / 2).map(x => Math.min(L - .005, Math.max(.005, x)));
-  const ring = x => {
-    const yb = -l.lastBottom(x), yt = -l.crest(x), [z0, z1] = across(x), zc = (z0 + z1) / 2, hw = Math.max(.05, (z1 - z0) / 2), hh = Math.max(.05, (yt - yb) / 2), yc = (yb + yt) / 2;
-    return Array.from({ length: M }, (_, i) => { const a = 2 * Math.PI * i / M, c = Math.cos(a), s = Math.sin(a), p = s < 0 ? 6 : 2.2, sp = v => Math.sign(v) * Math.abs(v) ** (2 / p);
-      return [x, yc + hh * sp(s), zc + hw * (s > 0 ? 1 - .2 * s : 1) * sp(c)]; });
-  };
-  const R = xs.map(ring), tri = [];
-  const put = (a, b, c) => tri.push(...a, ...b, ...c);
-  for (let k = 0; k < N; k++) for (let i = 0; i < M; i++) { const a = R[k][i], b = R[k][(i + 1) % M], c = R[k + 1][(i + 1) % M], d = R[k + 1][i]; put(a, b, c); put(a, c, d); }
-  const cap = (r, x, rev) => { const cy = r.reduce((s, p) => s + p[1], 0) / M, cz = r.reduce((s, p) => s + p[2], 0) / M, o = [x, cy, cz]; for (let i = 0; i < M; i++) { const a = r[i], b = r[(i + 1) % M]; if (rev) put(o, b, a); else put(o, a, b); } };
-  cap(R[0], 0, true); cap(R[N], L, false);
-  const pos = Float32Array.from(tri);
-  // outward: the volume comes out positive
-  let vol = 0; for (let t = 0; t < pos.length; t += 9) vol += pos[t] * (pos[t + 4] * pos[t + 8] - pos[t + 5] * pos[t + 7]) - pos[t + 1] * (pos[t + 3] * pos[t + 8] - pos[t + 5] * pos[t + 6]) + pos[t + 2] * (pos[t + 3] * pos[t + 7] - pos[t + 4] * pos[t + 6]);
-  if (vol < 0) for (let t = 0; t < pos.length; t += 9) for (let k = 0; k < 3; k++) { const a = pos[t + 3 + k]; pos[t + 3 + k] = pos[t + 6 + k]; pos[t + 6 + k] = a; }
-  return pos;
-}
+export const loftLast = (spec, size = null) => loftFrom(lastOf(spec, size)); // the drafted (or measured) last lofted into 3D (src/lab-last-shell.js)
 
 // ---- files ----
 // a binary STL in millimetres with Z up (x along the last, y across, z up): our frame turned a quarter about x, so nothing is mirrored

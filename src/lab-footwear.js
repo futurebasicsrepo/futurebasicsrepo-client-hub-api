@@ -8,6 +8,7 @@
 // Lengths are inches; on the side view x runs from the back of the heel to the toe and y up is negative. The last and the pattern are a
 // first draft from the size and the style: a last maker and a pattern engineer true them up on the first fitting sample.
 import { piece, cubic, tidy, blob, boundsOf, areaOf } from './lab-pattern.js';
+import { shellOf, flattenPiece, splitPiece } from './lab-last-shell.js';
 
 const r3 = v => Math.round(v * 1000) / 1000, r8 = v => Math.round(v * 8) / 8, r1 = v => Math.round(v * 10) / 10;
 export const FW_STYLES = {
@@ -49,7 +50,7 @@ export function cleanFootwear(input = {}) {
   return { style: d.style, system: sys, size, width: widths.includes(input.width) ? input.width : MEDIUM[sys] || 'D', toe: TOES[input.toe] ? input.toe : d.toe, toeCap: input.toeCap == null ? d.toeCap : Boolean(input.toeCap),
     upper: UPPERS[input.upper] ? input.upper : d.upper, lining: LININGS[input.lining] ? input.lining : d.lining, heel: num(input.heel, 0, 4, d.heel, .125), spring: num(input.spring, 0, 1.5, d.spring, .125), runFrom, runTo, halves: input.halves == null ? d.halves : Boolean(input.halves),
     // read from a picture (or set by hand): the lines and the sole, which otherwise come from the style
-    ...cleanLines(input), ...(cleanLast3d(input.last3d) ? { last3d: cleanLast3d(input.last3d) } : {}) };
+    ...cleanLines(input), ...(cleanLast3d(input.last3d) ? { last3d: cleanLast3d(input.last3d) } : {}), ...(cleanSeams(input.seams).length ? { seams: cleanSeams(input.seams) } : {}), ...(input.flatten === false ? { flatten: false } : {}) };
 }
 // a measured 3D last in use (src/lab-last3d.js measures it): its numbers, its side profile (bottom and top, as the side view draws them: x from
 // the heel's back, y downward, the ground under the ball at 0) and its bottom outline (x along, the inside negative), in inches
@@ -62,6 +63,15 @@ export function cleanLast3d(i) {
     footLen: n(i.footLen, 5, 16), length: n(i.length, 5, 18), ballFromHeel: n(i.ballFromHeel, 2, 14), ballGirth: n(i.ballGirth, 5, 16), instepGirth: n(i.instepGirth, 5, 17), ballWidth: n(i.ballWidth, 1.5, 6), heelWidth: n(i.heelWidth, 1, 4.5),
     heelHeight: n(i.heelHeight, 0, 5), toeSpring: n(i.toeSpring, 0, 2.5), whichFoot: i.whichFoot === 'left' ? 'left' : 'right', bottom: pts(i.bottom, 140), top: pts(i.top, 140), outline: pts(i.outline, 200) };
   return ['footLen', 'length', 'ballFromHeel', 'ballGirth', 'instepGirth', 'ballWidth', 'heelWidth', 'heelHeight', 'toeSpring', 'bottom', 'top', 'outline'].every(k => o[k] != null) ? o : null;
+}
+// seams drawn on the last (the Pattern page's On the last view): side-view points along the line, the piece it cuts, which side it is on
+export function cleanSeams(list) {
+  if (!Array.isArray(list)) return [];
+  return list.slice(0, 8).map((sm, k) => {
+    if (!sm || typeof sm !== 'object' || !/^[a-z0-9-]{1,40}$/.test(String(sm.piece || '')) || !Array.isArray(sm.pts)) return null;
+    const pts = sm.pts.slice(0, 60).filter(p => Array.isArray(p) && p.length === 2 && p.every(v => Number.isFinite(Number(v)) && Math.abs(Number(v)) < 40)).map(p => [r3(Number(p[0])), r3(Number(p[1]))]);
+    return pts.length >= 2 ? { id: /^s[a-z0-9]{1,12}$/.test(String(sm.id || '')) ? String(sm.id) : `s${k + 1}`, n: k + 1, name: String(sm.name || `Seam ${k + 1}`).replace(/\s+/g, ' ').trim().slice(0, 40), side: sm.side === 'medial' ? 'medial' : 'lateral', piece: String(sm.piece), pts } : null;
+  }).filter(Boolean);
 }
 // the size a foot length is in a system (the other way from footLength)
 export function sizeFromFoot(system, F) { return system === 'us-w' ? F * 3 - 21 : system === 'uk' ? F * 3 - 23 : system === 'eu' ? (F + .55) * 2.54 * 1.5 : system === 'mm' ? F * 25.4 : F * 3 - 22; }
@@ -143,7 +153,7 @@ function symmetric(x0, x1, lean, crest, bot, margin = LAST_MARGIN) {
   const front = cubic([x1, bot(x1) + margin], [x1 + .25, bot(x1)], [x1 + .2, B[1] + .3], B, 6).slice(1);
   const lower = [...back, ...along, ...front], dx = B[0] - A[0], dy = B[1] - A[1], L2 = dx * dx + dy * dy || 1;
   const refl = ([x, y]) => { const t = ((x - A[0]) * dx + (y - A[1]) * dy) / L2, px = A[0] + t * dx, py = A[1] + t * dy; return [2 * px - x, 2 * py - y]; };
-  return [...lower, ...lower.slice(1, -1).reverse().map(refl)];
+  return Object.assign([...lower, ...lower.slice(1, -1).reverse().map(refl)], { lower }); // the lower half kept: flattened off the last, it is mirrored again
 }
 
 // the style's lines, with what was read from the picture (or set by hand) in their place
@@ -161,7 +171,7 @@ export function footwearPattern(input = {}, size = null) {
   };
   const up = s.upper, fabUp = 'upper', fabOv = s.toeCap || s.style === 'sneaker' ? 'overlay' : 'upper';
   const sidePlace = z => ({ view: 'front', x: 0, y: 0, z });
-  const add = (id, name, shown, o = {}) => { const sew = o.sew || withMargin(shown, bot, o.margin ?? LAST_MARGIN); pieces.push(piece(id, name, sew, { shown, place: sidePlace(o.z ?? 0), cut: o.cut ?? 2, pair: o.pair ?? true, fabric: o.fabric || fabUp, notes: o.notes || [], grain: o.grain })); };
+  const add = (id, name, shown, o = {}) => { const sew = o.sew || withMargin(shown, bot, o.margin ?? LAST_MARGIN), pc = piece(id, name, sew, { shown, place: sidePlace(o.z ?? 0), cut: o.cut ?? 2, pair: o.pair ?? true, fabric: o.fabric || fabUp, notes: o.notes || [], grain: o.grain }); if (sew.lower) pc.half = sew.lower; pieces.push(pc); };
   // the vamp: from the vamp line to the toe, the whole width of the forefoot; it runs ⅜ in under the quarters
   const vamp = band(vampX - .35, L - .02, crest, bot, { lean0: .4, lean1: 0 });
   add('vamp', s.style === 'chelsea' ? 'Front (vamp and shaft)' : 'Vamp', s.style === 'chelsea' ? band(throat0 + .2, L - .02, x => x < F * .3 ? bot(0) - S.collar + (crest(F * .3) - bot(0) + S.collar) * Math.max(0, (x - throat0) / (F * .3 - throat0)) ** 2 : crest(x), bot) : vamp,
@@ -202,7 +212,20 @@ export function footwearPattern(input = {}, size = null) {
   const sh = s.soleHeight || (S.sole === 'cupsole' ? 1.1 : S.sole === 'midsole' ? 1.35 : .55), soleSide = [...Array.from({ length: 31 }, (_, i) => { const x = -.1 + (L + .2) * i / 30; return [x, bot(Math.min(Math.max(x, 0), L)) + .05]; }), ...Array.from({ length: 31 }, (_, i) => { const x = L + .2 - (L + .3) * i / 30; const xx = Math.min(Math.max(x, 0), L); return [x, xx <= last.ballFromHeel ? 0 : bot(xx) - bot(last.ballFromHeel)]; })]; // the tread on the ground to the ball, then up with the toe spring
   const soleName = S.sole === 'cupsole' ? 'Cupsole (rubber)' : S.sole === 'midsole' ? 'Midsole (EVA) and outsole' : 'Outsole and heel (rubber, stitched)';
   pieces.push(piece('sole', soleName, soleSide, { cut: 0, component: true, fabric: S.sole === 'midsole' ? 'eva' : 'rubber', place: { view: 'front', x: 0, y: 0, z: 7 }, notes: ['Moulded, not cut: one mould for each pair of half sizes'] }));
-  return { kind: 'footwear', spec: s, label: S.label, size: `${SYSTEMS[s.system].replace(/ \(.*$/, '')} ${last.size} ${s.width}`.trim(), sa: .25, pieces, last, views: { front: 'Side', back: 'Bottom' },
+  // seams drawn on the last cut a piece in two; then every piece of the upper is flattened off the last's surface (src/lab-last-shell.js),
+  // its side-view outline kept for how it shows on the shoe
+  for (const sm of s.seams || []) {
+    const k = pieces.findIndex(q => q.id === sm.piece); if (k < 0) { notes.push(`The seam "${sm.name}" is on a piece the shoe no longer has`); continue; }
+    const parts = pieces[k].half ? null : splitPiece(pieces[k], sm); if (parts) pieces.splice(k, 1, ...parts); else notes.push(`The seam "${sm.name}" does not cross the ${pieces[k].name.toLowerCase()} from edge to edge`);
+  }
+  let flat = null;
+  if (s.flatten !== false) {
+    const shell = shellOf(last); flat = { lateral: shell.lateral.stretch, medial: shell.medial.stretch };
+    for (let k = 0; k < pieces.length; k++) { const q = pieces[k]; if (q.place.view === 'front' && !q.component && q.cut > 0 && q.id !== 'tongue') pieces[k] = flattenPiece(q, shell); }
+    notes.push(`The upper's pieces are flattened off the last's surface (the stretch in the flattening: ${Math.round(Math.max(flat.lateral.rms, flat.medial.rms) * 1000) / 10}% on average, ${Math.round(Math.max(flat.lateral.max, flat.medial.max) * 100)}% at most)`);
+  }
+  for (const q of pieces) delete q.half;
+  return { kind: 'footwear', spec: s, label: S.label, flat, size: `${SYSTEMS[s.system].replace(/ \(.*$/, '')} ${last.size} ${s.width}`.trim(), sa: .25, pieces, last, views: { front: 'Side', back: 'Bottom' },
     notes: [`${UPPERS[s.upper]} upper, ${LININGS[s.lining].toLowerCase()}`, 'Overlaps ⅜ in, skived and cemented before stitching; the lasting allowance is ⅝ in', ...notes, 'A first draft on the standard of the last: the pattern engineer trues it up on the fitting sample'],
     checks: footwearChecks(s, last), components: components(s, last), tooling: tooling(s) };
 }
