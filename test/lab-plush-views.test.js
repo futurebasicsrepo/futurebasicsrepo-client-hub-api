@@ -7,8 +7,11 @@ import { viewsMarkup } from '../src/lab-footwear-views.js';
 test('every plush is drawn stuffed from the front, the back and the side, at its height', () => {
   for (const shape of Object.keys(PLUSH_SHAPES)) {
     const pat = plushPattern({ shape, height: 12 }), v = plushViews(pat);
-    for (const k of ['front', 'back', 'side']) { const b = v[k].box; assert.ok(!/NaN|Infinity/.test(v[k].svg), `${shape} ${k}`); assert.ok(b.y1 - b.y0 > 11 && b.y1 - b.y0 < 17, `${shape} ${k} stands about its height (${(b.y1 - b.y0).toFixed(2)})`); }
-    assert.match(v.front.svg, /12 in/, 'the front carries its height'); assert.match(v.back.svg, /<rect[^>]+fill="#fff"/, `${shape}: the law label in its seam, from the back`);
+    // a sea creature's size is its length: its side is that long, its front about two fifths of it high
+    for (const k of ['front', 'back', 'side']) { const b = v[k].box; assert.ok(!/NaN|Infinity/.test(v[k].svg), `${shape} ${k}`);
+      if (shape === 'sea') assert.ok(k === 'side' ? b.x1 - b.x0 > 11 && b.x1 - b.x0 < 15 : b.y1 - b.y0 > 4 && b.y1 - b.y0 < 8, `sea ${k} at its length (${(b.x1 - b.x0).toFixed(2)} × ${(b.y1 - b.y0).toFixed(2)})`);
+      else assert.ok(b.y1 - b.y0 > 11 && b.y1 - b.y0 < 17, `${shape} ${k} stands about its height (${(b.y1 - b.y0).toFixed(2)})`); }
+    assert.match(v.front.svg, shape === 'sea' ? /\d in</ : /12 in/, 'the front carries its height'); assert.match(v.back.svg, /<rect[^>]+fill="#fff"/, `${shape}: the law label in its seam, from the back`);
     const lay = plushLayout(v), [F, B, S] = lay.items.map(i => i.box); assert.ok(F.x1 <= B.x0 && B.x1 <= S.x0, 'side by side, apart');
   }
 });

@@ -28,8 +28,8 @@ test('a luxury plush can be leather or suede: it is sewn with a wider allowance,
 test('the picture of an elephant is read as an elephant, and a character the pattern has no shape for keeps its name over the nearest shape', () => {
   const p = plushProposal({}, { plush: true, animal: 'Elephant', shape: 'elephant', heightIn: 14, ears: 'big', arms: false, legs: true, tail: true, fabric: 'leather', eyes: 'embroidered', colours: { body: '#1c1b1c', contrast: '#a8141c' }, why: 'A black elephant with red-lined ears' });
   assert.equal(p.spec.shape, 'elephant'); assert.equal(p.spec.animal, 'elephant'); assert.equal(p.spec.fabric, 'leather');
-  const fox = plushPattern(cleanPlush({ shape: 'bean', animal: 'fox' })); assert.match(fox.label, /^Fox · drafted as: Bean/);
-  assert.equal(plushPattern({ shape: 'elephant', animal: 'elephant' }).label.startsWith('Elephant ('), true);
+  const fox = plushPattern(cleanPlush({ shape: 'bean', animal: 'fox' })); assert.match(fox.label, /^Fox · bean character body/);
+  assert.equal(plushPattern({ shape: 'elephant', animal: 'elephant' }).label, 'Elephant');
 });
 test('logos are kept on the views a product has, bounded, and drawn the right way round on a shoe\'s inside', () => {
   const ls = cleanLogos([{ view: 'front', x: 0, y: 9, w: 2, h: .6, mark: 'word' }, { view: 'lateral', x: 1, y: 1, w: 1, h: 1, mark: 'cue' }, { view: 'back', x: 0, y: 5, w: 40, h: 1, art: 'nope' }], 'plush');

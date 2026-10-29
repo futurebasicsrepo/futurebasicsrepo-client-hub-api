@@ -8,7 +8,7 @@
 //   POST /v1/lab/concepts/from-scratch           {name?, category, style?, shape?} a concept with nothing drawn yet: a blank page in Design to draw on,
 //                                                with a guide (the flat's outline for a garment, the plush's shape) → { concept, studio }
 import { STYLES, SIZES, FITS, defaultParams, detectStyle } from './lab-flats.js';
-import { garmentPattern, applyEdits, cleanPatternEdits, patternDxfAama, plushPattern, cleanPlush, plushDefaults, patternSvg, patternDxf, yardage, fillGrams, PLUSH_SHAPES, PLUSH_EARS, PLUSH_FABRICS, PLUSH_EYES, PLUSH_AGES } from './lab-pattern.js';
+import { PLUSH_TYPE, garmentPattern, applyEdits, cleanPatternEdits, patternDxfAama, plushPattern, cleanPlush, plushDefaults, patternSvg, patternDxf, yardage, fillGrams, PLUSH_SHAPES, PLUSH_EARS, PLUSH_FABRICS, PLUSH_EYES, PLUSH_AGES } from './lab-pattern.js';
 import { CATEGORIES } from './lab.js';
 import { silhouette, readShoe, proposal } from './lab-shoe-read.js';
 import { readPlush, plushProposal } from './lab-plush-read.js';
@@ -272,7 +272,7 @@ export function registerLabPatternRoutes(app, d) {
     const b = req.body || {}, category = CATEGORIES.some(x => x.id === b.category) ? b.category : null; if (!category) return bad(reply, 'Choose what you are designing');
     const shoe = category === 'footwear' ? (FW_STYLES[b.style] ? b.style : 'sneaker') : null, style = !shoe && STYLES[b.style] ? b.style : null, shape = PLUSH_SHAPES[b.shape] ? b.shape : 'bear';
     if (style && STYLES[style].category !== category && !(category === 'knitwear' && STYLES[style].category === 'tops')) return bad(reply, 'That style is not in that category');
-    const label = shoe ? FW_STYLES[shoe].label : category === 'plush' ? PLUSH_SHAPES[shape].replace(/ \(.*$/, '') : style ? STYLES[style].label : CATEGORIES.find(x => x.id === category).label;
+    const label = shoe ? FW_STYLES[shoe].label : category === 'plush' ? PLUSH_TYPE[shape] : style ? STYLES[style].label : CATEGORIES.find(x => x.id === category).label;
     const name = clip(b.name, 120) || `Untitled ${label.toLowerCase()}`;
     const spec = { description: 'Started from scratch in Design.', silhouette: style ? STYLES[style].label : category === 'plush' || shoe ? label : '', fabric: '', fit: '', details: [], trims: '', colors: [], scratch: true, ...(style ? { style, template: 'none' } : {}), ...(category === 'plush' ? { plush: { shape } } : {}), ...(shoe ? { footwear: { style: shoe } } : {}) };
     const r = (await pool.query(`insert into lab_concepts(name, category, role, spec, twist, created_by, client_id) values($1,$2,'core',$3,'',$4,$5) returning id`, [name, category, spec, actorOf(req), own(req)])).rows[0];
