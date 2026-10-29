@@ -85,7 +85,8 @@ export function registerLabMaterialsRoutes(app, d) {
   app.get('/v1/lab/materials/:id/tag.svg', { preHandler: pre }, async (req, reply) => {
     if (!need(req, reply)) return; const m = await one(req.params.id); if (!m || m.kind !== 'tag') return bad(reply, 'Not found', 404);
     const q = req.query || {}, text = q.text ? String(q.text).split('/').map(t => clip(t, 40)).filter(Boolean) : null;
-    return reply.header('content-type', 'image/svg+xml').header('cache-control', 'private, max-age=600').send(tagSvg(m.spec, { scale: Number(q.scale) || 3, textLines: text, art: UUID.test(String(m.spec?.art || '')) ? `/v1/lab/art/${m.spec.art}` : '' }));
+    const facePng = UUID.test(String(m.spec?.face || '')) ? (await pool.query('select png from lab_art where id=$1', [m.spec.face])).rows[0]?.png : null; // the designed face goes inside the picture, so it shows wherever the SVG is opened
+    return reply.header('content-type', 'image/svg+xml').header('cache-control', 'private, max-age=600').send(tagSvg(m.spec, { scale: Number(q.scale) || 3, textLines: text, art: UUID.test(String(m.spec?.art || '')) ? `/v1/lab/art/${m.spec.art}` : '', face: facePng ? `data:image/png;base64,${facePng.toString('base64')}` : '' }));
   });
 
   // ---- what a concept is made of ----

@@ -2679,5 +2679,42 @@ await journey('J241', 'Opportunities for a client\'s room: Future Basics turns i
   ok((await C('/v1/client/opportunities')).json.enabled === false, '10. turned off in the console, it leaves the hub');
 });
 
+await journey('J242', 'Tags and labels in the studio: a starter neck label opens at its real size with its blank face and its words as type, the words are changed, Use on the tag makes the room its own copy with that design (the shared starter stays as it was), Add to the garment swaps the copy onto the garment, and the library and the tag picture show the design', async () => {
+  const { brands, plan } = await conceptSetup();
+  try {
+    const line = plan.lines[0], c = (await K(`/plans/${plan.plan.id}/lines/${line.id}/concepts`, { body: { count: 1 } })).json.concepts[0];
+    const starter = (await K('/materials?kind=tag')).json.materials.find(m => m.builtin && m.spec.tagKind === 'neck' && (m.spec.text || []).length);
+    ok(Boolean(starter), '0. a starter neck label with words', starter?.name);
+    await K(`/concepts/${c.id}/materials`, { body: { material: starter.id } });
+    if (!playwright) { ok(true, 'needs a browser'); return; }
+    const b = await playwright.chromium.launch();
+    try {
+      const oc = await b.newContext({ viewport: { width: 1366, height: 1024 } }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
+      const page = await oc.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
+      await page.goto(`${BASE}/lab/studio?tag=${starter.id}&for=${c.id}`, { waitUntil: 'networkidle' }); await page.waitForSelector('#pLayers .ly', { timeout: 20000 });
+      const st = await page.evaluate(() => ({ name: document.getElementById('cName').textContent, sub: document.getElementById('cSub').textContent, W, H, ppi: PPI, layers: LAYERS.map(l => [l.kind, l.name, l.text || '']), apply: document.getElementById('apply').textContent, add: !document.getElementById('tagAddBtn').classList.contains('hidden') }));
+      const ratio = starter.spec.widthMm / starter.spec.heightMm;
+      ok(st.name === starter.name && /Tag · /.test(st.sub) && Math.abs(st.W / st.H - ratio) < .05 && Math.abs(st.W / st.ppi - starter.spec.widthMm / 25.4) < .01, '1. the tag opens at its real size (its width in inches is the canvas width)', st);
+      ok(st.layers.some(l => l[1] === 'Tag face') && starter.spec.text.every(t => st.layers.some(l => l[0] === 'text' && l[2] === t)) && st.apply === 'Use on the tag' && st.add, '   its blank face is a layer and each line of its words is type to change; Use on the tag and Add to a garment are there', st.layers);
+      // the words changed, as with any type layer (font, words, colour)
+      await page.evaluate(() => { const l = LAYERS.find(x => x.kind === 'text'); l.text = 'INCHA STUDIOS'; l.font = Object.keys(FONTS).find(k => k !== l.font) || l.font; l.color = '#b8323c'; commit(); draw(); });
+      await page.click('#apply'); await page.waitForFunction(() => /The tag shows this design now/.test(document.getElementById('stToast')?.textContent || ''), null, { timeout: 30000 });
+      const tags = (await K('/materials?kind=tag')).json.materials, copy = tags.find(m => m.name === `${starter.name} (ours)`), again = tags.find(m => m.id === starter.id);
+      ok(copy && /^[0-9a-f-]{36}$/.test(copy.spec.face || '') && !again.spec.face && new URL(page.url()).searchParams.get('tag') === copy.id, '2. Use on the tag: the shared starter is untouched, the room gets its own copy with the design as its face', { copy: copy?.spec?.face, starter: again.spec.face });
+      await page.click('#tagAddBtn'); await page.waitForFunction(() => /The label is on the garment/.test(document.getElementById('stToast')?.textContent || ''), null, { timeout: 30000 });
+      const bom = (await K(`/concepts/${c.id}/materials`)).json.picks.filter(p => p.kind === 'tag').map(p => p.id);
+      ok(bom.includes(copy.id) && !bom.includes(starter.id), '3. Add to the garment: the designed copy takes the starter\'s place on the garment\'s bill of materials', bom);
+      const svg = await call(`/v1/lab/materials/${copy.id}/tag.svg`, { token: kyleT });
+      ok(svg.status === 200 && svg.text.includes('data:image/png;base64') && !starter.spec.text.some(t => svg.text.includes(`>${t}<`)), '4. the tag\'s picture is the design (the words are in it, not typed over it)');
+      // opened again, it carries on from its layers; the library card shows the face
+      await page.goto(`${BASE}/lab/studio?tag=${copy.id}`, { waitUntil: 'networkidle' }); await page.waitForSelector('#pLayers .ly', { timeout: 20000 });
+      ok(await page.evaluate(() => LAYERS.some(l => l.kind === 'text' && l.text === 'INCHA STUDIOS')), '5. opened again, the label carries on from its layers (the changed words are still type)');
+      await page.goto(`${BASE}/lab/materials#tags`, { waitUntil: 'networkidle' }); await page.waitForSelector(`[data-tagsvg="${copy.id}"] svg image`, { timeout: 15000 });
+      ok(await page.locator(`[data-tagsvg="${copy.id}"] .tagdes`).count() === 1, '6. in the library the card shows the design, with a Design button on every tag');
+      ok(errs.length === 0, 'no page errors', errs); await oc.close();
+    } finally { await b.close(); }
+  } finally { await cleanup(brands, plan.plan?.id); }
+});
+
 shops.close(); brave.close();
 process.exit(summary() ? 1 : 0);

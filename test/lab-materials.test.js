@@ -64,3 +64,14 @@ test('the tech pack takes the materials as BOM lines with unit costs and the tag
   const twice = normalizeTechPack(labHandoff(once, { materials: packRows(picks.slice(0, 1)), colourways: [] }));
   assert.equal(twice.bom.length, 2); assert.equal(twice.labels.length, 1); assert.equal(twice.colorways.length, 2, 'colourways sent empty are left as they were');
 });
+
+test('a tag whose face was designed in the studio says so in the tech pack, and its picture is the design', async () => {
+  const { packRows } = await import('../src/lab-materials.js'), { tagSvg, tagFaceSvg } = await import('../src/lab-tags.js');
+  const spec = { tagKind: 'neck', shape: 'rectangle', widthMm: 60, heightMm: 15, fold: 'end fold', material: 'damask woven', text: ['FUTURE BASICS'], face: '11111111-1111-1111-1111-111111111111' };
+  const { labels } = packRows([{ id: 'x', kind: 'tag', name: 'Neck label', role: 'tag', qty: 1, unit: 'pc', unitCents: 9, spec }]);
+  assert.match(labels[0].spec, /artwork designed in the studio/); assert.doesNotMatch(labels[0].spec, /reads "FUTURE BASICS"/);
+  const svg = tagSvg(spec, { face: 'data:image/png;base64,AAAA', showSize: false });
+  assert.match(svg, /<image href="data:image\/png;base64,AAAA"[^>]*clip-path/); assert.doesNotMatch(svg, />FUTURE BASICS</, 'the words are in the design, not typed over it');
+  assert.match(tagFaceSvg(spec, { pxPerMm: 10 }), /width="600" height="150"/, 'the blank face is the tag at its size');
+});
+

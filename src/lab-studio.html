@@ -141,6 +141,7 @@ html,body{touch-action:manipulation}
     <button class="btn sm hidden" id="matBtn" type="button" title="The fabrics, trims and labels this garment is made of, from the library: add, change and see what they cost">Fabrics, trims &amp; labels</button>
     <button class="btn sm q pic-only" id="verBtn" type="button" title="Every picture used as the concept, and any kept on purpose: open two side by side">Versions</button>
     <button class="btn go sm pic-only" id="apply" type="button">Use as the concept picture</button>
+    <button class="btn sm hidden" id="tagAddBtn" type="button" title="Put this label on a garment: it goes on its bill of materials and into its tech pack">Add to a garment</button>
     <button class="btn sm flat-only" id="specBtn" type="button" title="The flats, measured, as a printable spec sheet">Spec sheet</button>
     <button class="btn sm flat-only" id="decoBtn" type="button" title="One page per graphic for the decorator: size, Pantones, technique, cost, where it goes">Decoration sheet</button>
     <button class="btn go sm flat-only hidden" id="packBtn" type="button">Send to the tech pack</button>
@@ -188,6 +189,10 @@ html,body{touch-action:manipulation}
     <section><h4>Add from the library</h4><div class="row"><div class="seg" id="matKinds"><button type="button" data-mk="fabric" aria-pressed="true">Fabrics</button><button type="button" data-mk="trim" aria-pressed="false">Trims</button><button type="button" data-mk="tag" aria-pressed="false">Tags and labels</button></div><input class="t" id="matQ" placeholder="Search by name, mill, composition…" style="flex:1;min-width:140px"></div><div id="matLib" class="mlib"></div></section>
   </div>
 </div></dialog>
+<dialog id="tagAddDlg" aria-labelledby="tagAddH" style="border:0;border-radius:18px;padding:18px;width:min(460px,94vw)"><div style="display:grid;gap:12px">
+  <h3 id="tagAddH" style="margin:0;font-size:16px">Add the label to a garment</h3><p class="note" style="margin:0">It goes on the garment's bill of materials and into its tech pack, with this design. To show it on the flat too, place it from the graphics on the flat (it is in the graphics library).</p>
+  <select class="t" id="tagAddSel" aria-label="The garment"><option value="">Loading the concepts…</option></select>
+  <div class="row" style="justify-content:flex-end"><button class="btn sm q" type="button" data-tagaddclose>Cancel</button><button class="btn go sm" type="button" id="tagAddGo">Add it</button></div></div></dialog>
 <dialog id="verDlg" style="border:0;border-radius:20px;padding:0;width:min(1100px,96vw);max-height:92vh;overflow:auto"><div style="padding:18px;display:grid;gap:12px">
   <div class="row" style="justify-content:space-between"><h3 style="margin:0;font-size:16px">Versions</h3><div class="row"><button class="btn sm" type="button" id="verKeep">Keep this as a version</button><button class="btn sm q" type="button" data-verclose>Close</button></div></div>
   <p class="note" style="margin:0">Every picture used as the concept, and any kept on purpose. Tick two to see them side by side; drag the handle to wipe between them. Open one to carry on from its layers.</p>
@@ -234,7 +239,10 @@ const uid=()=>'l'+Math.random().toString(36).slice(2,9);
 const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
 const QS=new URLSearchParams(location.search),CID=QS.get('concept')||'';
 // the same studio builds graphics for the library: ?new=graphic starts on a clear canvas, ?art=<id> reworks a graphic; nothing here is a concept then
-let GID=QS.get('art')||'';const GMODE=!CID&&(Boolean(GID)||QS.get('new')==='graphic');
+// a tag or label (?tag=<material id>) opens as a graphic the size of the tag: its blank face and its words as layers, every tool on them; saved,
+// the design becomes the tag's face (cards, sheets and the tech pack draw it) and can go on a garment (?for=<concept id> adds it straight there)
+let TAG=QS.get('tag')||'',TAGM=null;const FORC=QS.get('for')||'';
+let GID=QS.get('art')||'';const GMODE=!CID&&(Boolean(GID)||QS.get('new')==='graphic'||Boolean(TAG));
 const AI_URL=()=>GMODE?'/v1/lab/library/studio/ai':`/v1/lab/concepts/${CID}/studio/ai`;
 let PARTS=null,PKIND='pockets';
 
@@ -748,8 +756,11 @@ async function save(){const b=$('#save');b.disabled=true;$('#saved').textContent
   try{if(!GMODE){const sent=await syncFlats({before:flatsFirst}).catch(x=>{toast('The flats did not take the graphics: '+x.message);return false});if(sent)reloadFlats()}const doc=serialize(),at=EDITS;let r;
     if(GMODE){compose();const image=docC.toDataURL('image/png');
       // a graphic not yet in the library goes in with its first save; after that its layers are saved on it
-      if(!GID){const k=await api('/v1/lab/library/studio/keep',{body:{image,name:D.concept.name,doc}});GID=k.id;D.concept.hasImage=true;history.replaceState(null,'',`/lab/studio?art=${GID}`);r={savedAt:new Date().toISOString()}}
-      else r=await api(`/v1/lab/library/graphics/${GID}/studio`,{method:'PUT',body:{doc}})}
+      if(!GID){const k=await api('/v1/lab/library/studio/keep',{body:{image,name:TAGM?`Label · ${TAGM.name}`.slice(0,120):D.concept.name,doc}});GID=k.id;D.concept.hasImage=true;if(!TAGM)history.replaceState(null,'',`/lab/studio?art=${GID}`);r={savedAt:new Date().toISOString()}}
+      // a tag's face is its picture: every save puts the new picture on it, not only the layers
+      else if(TAGM)r={...(await api(`/v1/lab/library/graphics/${GID}/studio/apply`,{body:{image,doc}})),savedAt:new Date().toISOString()};
+      else r=await api(`/v1/lab/library/graphics/${GID}/studio`,{method:'PUT',body:{doc}});
+      if(TAGM){await linkTag();paintSub()}}
     else r=await api(`/v1/lab/concepts/${CID}/studio`,{method:'PUT',body:{doc}});
     // what was sent is now what the layers come from
     for(const l of LAYERS){const s=doc.layers.find(x=>x.id===l.id);if(s&&isRaster(l)){l.src=s.src;l.dirty=false;l._srcRid=l.raster._rid}}
@@ -847,6 +858,7 @@ $('#tryDlg').addEventListener('click',async e=>{if(e.target.closest('[data-trycl
   const dl=e.target.closest('[data-trydel]');if(dl){try{await api(`/v1/lab/concepts/${CID}/tryon/${dl.dataset.trydel}`,{method:'DELETE'});if(TRYSHOWN===dl.dataset.trydel&&TRYVIEW){TRYVIEW.destroy();TRYVIEW=null;TRYSHOWN='';$('#tryEmpty').classList.remove('hidden')}await tryRefresh()}catch(x){$('#tryMsg').className='msg bad';$('#tryMsg').textContent=x.message}}});
 function ask(title,text,yes='Yes'){return new Promise(ok=>{const d=$('#askDlg');$('#askTitle').textContent=title;$('#askText').textContent=text;$('#askYes').textContent=yes;d.returnValue='';d.onclose=()=>ok(d.returnValue==='yes');d.showModal()})}
 $('#apply').onclick=async()=>{
+  if(GMODE&&TAGM){busy('Putting the design on the tag…');try{await tagSaveAll();toast('The tag shows this design now: in the materials library, on the garments that use it and in their tech packs.')}catch(x){toast(x.message)}finally{busy()}return}
   if(GMODE){busy(GID?'Updating the graphic…':'Keeping it in the library…');
     try{compose();const image=docC.toDataURL('image/png'),doc=serialize();
       if(GID){await api(`/v1/lab/library/graphics/${GID}/studio/apply`,{body:{image,doc}});toast('The graphic is updated in the library. Pieces that already use it keep what they had.','/lab/library')}
@@ -859,7 +871,8 @@ $('#apply').onclick=async()=>{
 // ---------- small things ----------
 function busy(text){const b=$('#busy');if(!text){b.classList.add('hidden');return}$('#busyText').textContent=text;b.classList.remove('hidden')}
 let TT=0;function toast(text,href){if(!text)return;let el=$('#stToast');if(!el){el=document.createElement('div');el.id='stToast';el.setAttribute('role','status');el.style.cssText='position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:#141416;color:#fff;border-radius:14px;padding:10px 16px;font-size:13px;z-index:60;max-width:min(92vw,560px)';document.body.appendChild(el)}el.innerHTML=esc(text)+(href?` <a href="${esc(href)}" style="color:#4bff9a">Open the concepts</a>`:'');el.hidden=false;clearTimeout(TT);TT=setTimeout(()=>{el.hidden=true},6500)}
-function paintSub(){const c=D.concept;$('#tryBtn').classList.toggle('hidden',GMODE);if(GMODE){$('#cName').textContent=c.name;$('#cSub').textContent=`${GID?'Graphic in the library':'New graphic, not kept yet'} · ${W}×${H}px · clear background`;$('#apply').textContent=GID?'Update the graphic':'Keep in the library';$('#expKeepNew').classList.toggle('hidden',!GID);return}const st={draft:'Draft',approved:'Approved',rejected:'Rejected',tech_pack:'Tech pack'}[c.status]||c.status;$('#cName').textContent=c.name;$('#cSub').innerHTML=`${esc(st)} · ${W}×${H}px${D.canRestore?' · <button class="btn sm q" type="button" id="restore" style="min-height:22px;padding:0 8px">Put the old picture back</button>':''}`;const r=$('#restore');if(r)r.onclick=async()=>{if(!await ask('Put the old picture back?','The concept gets the picture it had before the studio. Your design here stays as it is.','Put it back'))return;try{await api(`/v1/lab/concepts/${CID}/studio/restore`,{body:{}});D.canRestore=false;paintSub();toast('The old picture is back on the concept.')}catch(x){toast(x.message)}}}
+function paintSub(){const c=D.concept;$('#tryBtn').classList.toggle('hidden',GMODE);if(GMODE&&TAGM){const t=TAGM.spec;$('#cName').textContent=c.name;$('#cSub').textContent=`Tag · ${t.widthMm} × ${t.heightMm} mm · ${t.shape}${t.fold&&t.fold!=='none'?' · '+t.fold:''} · ${t.material}${TAGM.spec.face?'':' · not designed yet'}`;$('#apply').textContent='Use on the tag';$('#expKeepNew').classList.add('hidden');return}
+  if(GMODE){$('#cName').textContent=c.name;$('#cSub').textContent=`${GID?'Graphic in the library':'New graphic, not kept yet'} · ${W}×${H}px · clear background`;$('#apply').textContent=GID?'Update the graphic':'Keep in the library';$('#expKeepNew').classList.toggle('hidden',!GID);return}const st={draft:'Draft',approved:'Approved',rejected:'Rejected',tech_pack:'Tech pack'}[c.status]||c.status;$('#cName').textContent=c.name;$('#cSub').innerHTML=`${esc(st)} · ${W}×${H}px${D.canRestore?' · <button class="btn sm q" type="button" id="restore" style="min-height:22px;padding:0 8px">Put the old picture back</button>':''}`;const r=$('#restore');if(r)r.onclick=async()=>{if(!await ask('Put the old picture back?','The concept gets the picture it had before the studio. Your design here stays as it is.','Put it back'))return;try{await api(`/v1/lab/concepts/${CID}/studio/restore`,{body:{}});D.canRestore=false;paintSub();toast('The old picture is back on the concept.')}catch(x){toast(x.message)}}}
 document.addEventListener('keydown',e=>{
   if(!D)return;const typing=e.target.closest&&e.target.closest('input,textarea,select,[contenteditable]'),mod=e.ctrlKey||e.metaKey;
   if(mod&&e.key.toLowerCase()==='s'){e.preventDefault();saveAll();return}
@@ -915,12 +928,15 @@ async function boot(){
 // a graphic for the library: a clear canvas, or the graphic's picture as a layer over one, with the layers it was built from when it has them
 async function bootGraphic(){
   ['#viewSeg','#readyWrap'].forEach(s=>$(s).classList.add('hidden')); // a graphic for the library has no flats and no tech pack
-  try{D=await api('/v1/lab/library/studio'+(GID?'?art='+encodeURIComponent(GID):''))}catch(x){const n=$('#needSignin');n.classList.remove('hidden');n.querySelector('h1').textContent=x.status===404?'That graphic is not in the library':'Sign in first';n.querySelector('p').textContent=x.message;return}
+  try{if(TAG){const r=await api('/v1/lab/materials?kind=tag');TAGM=r.materials.find(m=>m.id===TAG)||null;if(!TAGM)throw Object.assign(new Error('That tag is not in the materials library'),{status:404});if(TAGM.spec?.face&&!GID)GID=TAGM.spec.face}
+    D=await api('/v1/lab/library/studio'+(GID?'?art='+encodeURIComponent(GID):''))}catch(x){const n=$('#needSignin');n.classList.remove('hidden');n.querySelector('h1').textContent=x.status===404?'That graphic is not in the library':'Sign in first';n.querySelector('p').textContent=x.message;return}
   D.concept={name:D.graphic?.name||'New graphic',status:'graphic',locked:false,hasImage:Boolean(D.graphic?.hasImage),hasPlain:false,colors:[]};
   $('#app').classList.remove('hidden');$('#back').href='/lab/library';$('#back').textContent='← Graphics library';document.querySelector('.brand-suffix').textContent='/ Graphics studio';
+  if(TAGM){D.concept.name=TAGM.name;$('#back').href=FORC?`/lab/studio?concept=${encodeURIComponent(FORC)}`:'/lab/materials#tags';$('#back').textContent=FORC?'← Back to the garment':'← Materials, trims & tags';document.querySelector('.brand-suffix').textContent='/ Tag and label studio';$('#tagAddBtn').classList.remove('hidden')}
   busy('Opening the graphic…');
   try{
     if(D.doc&&Array.isArray(D.doc.layers)&&D.doc.layers.length){W=D.doc.w;H=D.doc.h;LAYERS=[];for(const o of D.doc.layers){try{LAYERS.push(await loadLayer(o))}catch{toast('A layer could not be loaded and was left out.')}}SEL=D.doc.selected&&LAYERS.some(l=>l.id===D.doc.selected)?D.doc.selected:null}
+    else if(TAGM)await tagStart();
     else{W=1024;H=1024;const clear=canvas(W,H);LAYERS=[{...fresh('base',{name:'Clear background',raster:stamp(clear),x:W/2,y:H/2,dirty:true})}];
       if(GID&&D.concept.hasImage){const src=await urlOfBlob(await blobOf('/v1/lab/art/'+GID)),img=await imgOf(src);W=Math.max(1024,img.naturalWidth);H=Math.max(1024,img.naturalHeight);const c2=canvas(W,H);LAYERS[0].raster=stamp(c2);LAYERS[0].x=W/2;LAYERS[0].y=H/2;
         const c=canvas(img.naturalWidth,img.naturalHeight);c.getContext('2d').drawImage(img,0,0);LAYERS.push(fresh('image',{name:D.concept.name.slice(0,40),raster:stamp(c),src:'/v1/lab/art/'+GID,_srcRid:c._rid,scale:1,x:W/2,y:H/2}));LAYERS[1]._srcRid=LAYERS[1].raster._rid}}
@@ -938,7 +954,7 @@ function garmentSpan(){ // how wide the piece is in the picture, in pixels: ever
   const d=x.getImageData(0,0,w,h).data,px=(i,j)=>{const o=(j*w+i)*4;return[d[o],d[o+1],d[o+2],d[o+3]]},cs=[px(0,0),px(w-1,0),px(0,h-1),px(w-1,h-1)],bg=[0,1,2].map(i=>cs.reduce((s,c)=>s+c[i],0)/4);
   const cols=new Array(w).fill(0);for(let j=0;j<h;j++)for(let i=0;i<w;i++){const p=px(i,j);if(p[3]>20&&Math.abs(p[0]-bg[0])+Math.abs(p[1]-bg[1])+Math.abs(p[2]-bg[2])>36)cols[i]++}
   const min=Math.max(2,h*.02);let a=cols.findIndex(v=>v>=min),z=w-1-[...cols].reverse().findIndex(v=>v>=min);if(a<0||z<=a)return 0;return(z-a+1)/k}
-function initPpi(){RULER=null;
+function initPpi(){RULER=null;if(TAGM){PPI=W/(TAGM.spec.widthMm/25.4);PPISET=true;PPINOTE='the tag\'s own size';return}
   if(D.doc&&Number(D.doc.ppi)>1){PPI=Number(D.doc.ppi);PPISET=Boolean(D.doc.ppiSet);PPINOTE=PPISET?'set with the ruler':'estimated';return}
   PPISET=false;if(GMODE){PPI=W/14;PPINOTE='estimated: the canvas taken as 14 in across';return}
   const words=`${D.concept.category||''} ${D.concept.name||''}`.toLowerCase(),g=(GARMENT_IN.find(([re])=>re.test(words))||[0,26])[1],span=garmentSpan();
@@ -1171,8 +1187,11 @@ const MAT={kind:'fabric',q:'',on:null,lib:[]};let MSW=null,MTG=null;
 const matMods=async()=>{if(!MSW)[MSW,MTG]=await Promise.all([import('/lab/lab-swatches.js'),import('/lab/lab-tags.js')]);return[MSW,MTG]};
 const MROLES={fabric:[['main','Main fabric'],['contrast','Contrast'],['lining','Lining'],['rib','Rib and trims']],trim:[['trim','Trim']],tag:[['tag','Tag or label']]};
 const tagInk=h=>{if(!/^#[0-9a-f]{6}$/i.test(h||''))return'#141416';const n=parseInt(h.slice(1),16);return((n>>16)*299+((n>>8)&255)*587+(n&255)*114)/1000<128?'#f3eee4':'#141416'};
-function matThumb(m,colour){const[S,T]=[MSW,MTG];if(m.kind==='tag'){const fill=colour?.hex||(m.colours||[])[0]?.hex||'';return`<div class="th tg">${T.tagSvg(m.spec||{},{scale:2,showSize:false,fill,ink:tagInk(fill)})}</div>`}
+function matThumb(m,colour){const[S,T]=[MSW,MTG];if(m.kind==='tag'){const fill=colour?.hex||(m.colours||[])[0]?.hex||'';return`<div class="th tg" ${m.spec?.face?`data-tagface="${esc(m.spec.face)}" data-tagfill="${esc(fill)}"`:''}>${T.tagSvg(m.spec||{},{scale:2,showSize:false,fill,ink:tagInk(fill)})}</div>`}
   const cs=colour?[colour,...(m.colours||[])]:(m.colours||[]);return`<div class="th" ${m.hasSwatch?`data-msw="${m.id}"`:''}>${S.materialSvg({...m,colours:cs},'m'+m.id.replace(/-/g,'').slice(0,10)+(colour?.hex||'').slice(1))}</div>`}
+// a tag designed in the studio shows its face (fetched with the sign-in, then drawn into the tag)
+function matFaces(root,list){for(const el of root.querySelectorAll('[data-tagface]')){const m=list.find(x=>x.spec?.face===el.dataset.tagface);if(!m)continue;
+  fetch('/v1/lab/art/'+el.dataset.tagface,{headers:{Authorization:'Bearer '+TOKEN()}}).then(r=>r.ok?r.blob():null).then(b=>{if(!b)return;const f=el.dataset.tagfill;el.innerHTML=MTG.tagSvg(m.spec,{scale:2,showSize:false,face:URL.createObjectURL(b),fill:f,ink:tagInk(f)})}).catch(()=>{})}}
 function matPhotos(root){for(const el of root.querySelectorAll('[data-msw]'))fetch(`/v1/lab/materials/${el.dataset.msw}/swatch?thumb=1`,{headers:{Authorization:'Bearer '+TOKEN()}}).then(r=>r.ok?r.blob():null).then(b=>{if(b){const i=new Image();i.alt='';i.src=URL.createObjectURL(b);el.append(i)}}).catch(()=>{})}
 async function matOpen(){await matMods();$('#matDlg').showModal();
   // the whole library once, so a pick's colours can be offered whichever tab is showing
@@ -1180,19 +1199,19 @@ async function matOpen(){await matMods();$('#matDlg').showModal();
   await Promise.all([matLoadOn(),matLoadLib()])}
 async function matLoadOn(){try{MAT.on=await api(`/v1/lab/concepts/${CID}/materials`)}catch(x){$('#matOn').innerHTML=`<span class="msg bad">${esc(x.message)}</span>`;return}matPaintOn()}
 function matPaintOn(){const o=MAT.on,locked=Boolean(D?.concept?.locked),picks=o?.picks||[];
-  $('#matOn').innerHTML=picks.length?picks.map(p=>{const roles=MROLES[p.kind]||MROLES.trim,cols=(p.colours||[]);return`<div class="mp" data-mp="${esc(p.id)}" data-role="${esc(p.role)}">${matThumb(p,p.colour)}<div><b>${esc(p.name)}</b><div class="note">${esc(money(Math.round(p.qty*p.unitCents)))} a piece · ${esc(p.qty)} ${esc(p.unit)} at ${esc(money(p.unitCents))}${p.supplier?' · '+esc(p.supplier):''}</div>
+  $('#matOn').innerHTML=picks.length?picks.map(p0=>{const p={...p0,spec:MAT.lib.find(m=>m.id===p0.id)?.spec||p0.spec},roles=MROLES[p.kind]||MROLES.trim,cols=(p.colours||[]);return`<div class="mp" data-mp="${esc(p.id)}" data-role="${esc(p.role)}">${matThumb(p,p.colour)}<div><b>${esc(p.name)}</b><div class="note">${esc(money(Math.round(p.qty*p.unitCents)))} a piece · ${esc(p.qty)} ${esc(p.unit)} at ${esc(money(p.unitCents))}${p.supplier?' · '+esc(p.supplier):''}</div>
     <div class="f2"><label>Used as<select class="t" data-mf="role" ${locked?'disabled':''}>${roles.map(([v,l])=>`<option value="${v}" ${v===p.role?'selected':''}>${l}</option>`).join('')}</select></label>
     <label>Colour<select class="t" data-mf="colour" ${locked?'disabled':''}><option value="">${p.colour?esc(p.colour.name||p.colour.hex):'Any'}</option>${(MAT.lib.find(m=>m.id===p.id)?.colours||[]).filter(c=>c.hex!==p.colour?.hex).map(c=>`<option value="${esc(c.hex)}">${esc(c.name||c.hex)}</option>`).join('')}</select></label>
     <label>${p.kind==='fabric'?'Metres a piece':'How many a piece'}<input class="t" type="number" step="any" min="0" inputmode="decimal" data-mf="qty" value="${esc(p.qty)}" ${locked?'disabled':''}></label>
     <label style="grid-column:1/-1">Where it goes<input class="t" data-mf="note" maxlength="200" placeholder="${p.kind==='tag'?esc(p.spec?.attach||'e.g. sewn into the neck seam'):p.kind==='trim'?'e.g. centre front, 7 buttons':'e.g. body and sleeves'}" value="${esc(p.note||'')}" ${locked?'disabled':''}></label></div></div>
-    <button class="btn sm q" type="button" data-mdel ${locked?'disabled':''} aria-label="Take ${esc(p.name)} off the garment">Remove</button></div>`}).join(''):'<span class="note">Nothing yet. Add the main fabric first, then trims and labels.</span>';
+    <div style="display:grid;gap:6px;align-content:start">${p.kind==='tag'?`<a class="btn sm" href="/lab/studio?tag=${encodeURIComponent(p.id)}&for=${encodeURIComponent(CID)}" title="Fonts, words, graphics and drawing on the label, with every studio tool">Design it</a>`:''}<button class="btn sm q" type="button" data-mdel ${locked?'disabled':''} aria-label="Take ${esc(p.name)} off the garment">Remove</button></div></div>`}).join(''):'<span class="note">Nothing yet. Add the main fabric first, then trims and labels.</span>';
   const c=o?.cost;$('#matCost').innerHTML=c&&picks.length?`Materials ${money(c.materialsCents)} · making ${money(c.makingCents)} · landed ${money(c.landedCents)} a piece${c.marginPct!=null?` · margin ${c.marginPct}%`:''}. The tech pack takes these lines.`:'';
-  matPhotos($('#matOn'))}
+  matPhotos($('#matOn'));matFaces($('#matOn'),[...(MAT.on?.picks||[]).map(p=>({...p,spec:MAT.lib.find(m=>m.id===p.id)?.spec||p.spec})),...MAT.lib])}
 async function matLoadLib(){const r=await api(`/v1/lab/materials?kind=${MAT.kind}&q=${encodeURIComponent(MAT.q)}`).catch(x=>{$('#matLib').innerHTML=`<span class="msg bad">${esc(x.message)}</span>`;return null});if(!r)return;
   MAT.lib=[...MAT.lib.filter(m=>m.kind!==MAT.kind||!r.materials.some(x=>x.id===m.id)),...r.materials];const locked=Boolean(D?.concept?.locked),on=new Set((MAT.on?.picks||[]).map(p=>p.id));
   $('#matLib').innerHTML=r.materials.length?r.materials.map(m=>{const s=m.spec||{},line=m.kind==='fabric'?[s.weightGsm?s.weightGsm+' gsm':'',s.construction,s.composition].filter(Boolean).join(' · '):m.kind==='trim'?[s.size,s.material,s.finish].filter(Boolean).join(' · '):`${s.widthMm} × ${s.heightMm} mm · ${s.material||''}`;
     return`<div class="mc">${matThumb(m)}<div class="bd"><b>${esc(m.name)}</b><span class="note">${esc(line)}</span><span class="note">${esc(money(m.priceCents))} / ${esc(m.unit)}</span><button class="btn sm ${on.has(m.id)?'q':''}" type="button" data-madd="${m.id}" ${locked?'disabled':''}>${on.has(m.id)?'Add again':'Add to the garment'}</button></div></div>`}).join(''):'<span class="note">Nothing in the library matches.</span>';
-  matPhotos($('#matLib'));if(MAT.on)matPaintOn()}
+  matPhotos($('#matLib'));matFaces($('#matLib'),MAT.lib);if(MAT.on)matPaintOn()}
 $('#matBtn').onclick=()=>matOpen().catch(x=>toast(x.message));
 $('#matDlg').addEventListener('click',async e=>{if(e.target.closest('[data-matclose]')||e.target===$('#matDlg')){$('#matDlg').close();return}
   const k=e.target.closest('[data-mk]');if(k){MAT.kind=k.dataset.mk;$$('#matKinds [data-mk]').forEach(b=>b.setAttribute('aria-pressed',String(b===k)));matLoadLib();return}
@@ -1218,6 +1237,31 @@ function applyLayout({full=false}={}){$('#app').dataset.panel=LAYOUT.panel?'on':
 $('#panelBtn').onclick=()=>{LAYOUT.panel=!LAYOUT.panel;applyLayout()};$('#focusBtn').onclick=()=>{LAYOUT.focus=!LAYOUT.focus;applyLayout({full:true})};
 document.addEventListener('keydown',e=>{if(e.target.closest?.('input,textarea,select,[contenteditable]')||e.metaKey||e.ctrlKey||e.altKey)return;if(e.key==='\\'){e.preventDefault();$('#panelBtn').click()}else if(e.key==='f'||e.key==='F'){e.preventDefault();$('#focusBtn').click()}});
 applyLayout();
+
+// ---------- tags and labels in the studio ----------
+async function tagStart(){const t=TAGM.spec,k=Math.max(6,Math.min(24,1600/Math.max(t.widthMm,t.heightMm)));W=Math.round(t.widthMm*k);H=Math.round(t.heightMm*k);
+  const fill=(TAGM.colours||[])[0]?.hex||'',T=await import('/lab/lab-tags.js'),img=await imgOf('data:image/svg+xml;charset=utf-8,'+encodeURIComponent(T.tagFaceSvg(t,{pxPerMm:k,fill}))),face=canvas(W,H);face.getContext('2d').drawImage(img,0,0,W,H);
+  const dark=fill?(()=>{const n=parseInt(fill.slice(1),16);return((n>>16)*299+((n>>8)&255)*587+(n&255)*114)/1000<128})():/leather|rubber/.test(t.material||''),ink=dark?'#f3eee4':'#141416';
+  LAYERS=[fresh('base',{name:'Clear background',raster:stamp(canvas(W,H)),x:W/2,y:H/2,dirty:true}),fresh('image',{name:'Tag face',raster:stamp(face),x:W/2,y:H/2,scale:1,dirty:true})];
+  // its words, each its own type layer: change the font, the words, the size and the colour like any type
+  const lines=(t.text||[]).slice(0,4),fs=Math.max(12,Math.min(H*.26,W*.86/(Math.max(6,...lines.map(l=>l.length))*.62)));
+  lines.forEach((line,i)=>LAYERS.push(fresh('text',{name:line.slice(0,30),x:W/2,y:H/2+(i-(lines.length-1)/2)*fs*1.3,text:line,font:'grotesk',size:Math.round(i?fs*.8:fs),bold:i===0,italic:false,track:Math.round(fs*.06),lead:1.1,align:'center',arc:0,color:ink,outline:0,outlineColor:'#ffffff'})));
+  setTimeout(()=>{DIRTY=true;showSaved()},0)}
+// the design is the tag's face: put on the tag (a starter tag a room cannot change is copied into the room's own library first)
+async function linkTag(){if(!TAGM||!GID||TAGM.spec?.face===GID)return;
+  if(TAGM.editable!==false&&!TAGM.builtin){TAGM=(await api(`/v1/lab/materials/${TAG}`,{method:'PUT',body:{spec:{face:GID}}})).material;return} // the starter set is everyone's: designing one makes your own copy
+  const m=TAGM,r=await api('/v1/lab/materials',{body:{kind:'tag',name:`${m.name} (ours)`.slice(0,120),code:m.code,supplier:m.supplier,priceCents:m.priceCents,unit:m.unit,moq:m.moq,leadDays:m.leadDays,spec:{...m.spec,face:GID},colours:m.colours,notes:m.notes}});
+  TAGM=r.material;TAG=TAGM.id;const u=new URL(location.href);u.searchParams.set('tag',TAG);u.searchParams.delete('art');history.replaceState(null,'',u);paintSub();toast('Starter tags are shared, so a copy with this design is in your own library now.')}
+async function tagSaveAll(){if(!(await save()))throw new Error('It could not be saved')} // the save puts the picture on the tag
+async function tagAdd(cid){await tagSaveAll();const orig=QS.get('tag');
+  // designing a starter tag made a copy: on this garment the copy takes the starter's place
+  if(orig&&orig!==TAG){const on=await api(`/v1/lab/concepts/${cid}/materials`).catch(()=>null);if(on?.picks?.some(p=>p.id===orig))await api(`/v1/lab/concepts/${cid}/materials/${orig}`,{method:'DELETE'}).catch(()=>{})}
+  await api(`/v1/lab/concepts/${cid}/materials`,{body:{material:TAG}});return cid}
+$('#tagAddBtn').onclick=async()=>{const b=$('#tagAddBtn');
+  if(FORC){try{await FBN.run(b,()=>tagAdd(FORC),{done:'On the garment.'});toast('The label is on the garment, with this design. Back to it with ← Back to the garment.')}catch(x){toast(x.message)}return}
+  $('#tagAddDlg').showModal();try{const r=await api('/v1/lab/concepts');const list=(r.concepts||[]).filter(c=>c.status!=='rejected');$('#tagAddSel').innerHTML=list.length?list.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}${c.status==='tech_pack'?' · tech pack':''}</option>`).join(''):'<option value="">No concepts yet</option>'}catch(x){$('#tagAddSel').innerHTML=`<option value="">${esc(x.message)}</option>`}};
+$('#tagAddDlg').addEventListener('click',e=>{if(e.target.closest('[data-tagaddclose]')||e.target===$('#tagAddDlg'))$('#tagAddDlg').close()});
+$('#tagAddGo').onclick=async()=>{const cid=$('#tagAddSel').value,b=$('#tagAddGo');if(!cid)return;try{await FBN.run(b,()=>tagAdd(cid),{done:'On the garment.'});$('#tagAddDlg').close();toast(`On "${$('#tagAddSel').selectedOptions[0]?.textContent||'the garment'}", with this design.`)}catch(x){toast(x.message)}};
 
 boot();
 </script>
