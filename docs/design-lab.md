@@ -1096,3 +1096,50 @@ Footwear and plush now take the tools clothing has, where they apply:
 - The developer's two-judge check for a plush (a shoe has it).
 - A shoe or a plush in the range mockup.
 - Toys, home objects and electronics still have no pattern or tooling (Phase C and D).
+
+## An elephant, leather, and logos on a shoe or a plush
+
+**The elephant** is a plush shape of its own (`src/lab-pattern.js`, `src/lab-plush-views.js`). It sits, with:
+
+- a head and trunk cut in one (two sides that meet down the trunk's underside, and a gusset from the back of the head over the brow and down the top of the trunk);
+- big ears, in self and lined in contrast;
+- a body in two sides with an underbody gusset;
+- four legs, each in two, on contrast foot pads;
+- a tail with a yarn tuft.
+
+It is drawn from the front, the back and the side.
+
+**Other characters.** A concept, a picture reading and the page each keep what the character is (`spec.animal`: "elephant", "fox"…). When the
+pattern has no shape for it, it is drafted as the nearest one and the page says so: reshape and sketch over it to make it the character.
+
+**The bear's side view** is drawn again:
+
+- a round head with the muzzle standing out in front;
+- the ear at the back of the crown;
+- the arm hanging in front of a fuller belly;
+- the foot turned forward on its pad.
+
+**Leather and other cloths for a plush.** Nappa lambskin, vegan leather, suede, cotton velvet and bouclé join the piles.
+
+- **The concept assistant** is told to make a plush in the material the brief names: a luxury plush in leather is ours to make.
+- **The flats** show leather with a grain and suede and velvet with a nap.
+- **The pattern:**
+  - Leather and suede are sewn with a ⅜ in allowance.
+  - The notes say to ease the pieces and notch the curves.
+  - The notes also say to sew with a leather needle and bonded thread and to press the seams with a roller.
+  - A leather toy for under-3s is flagged for chrome-free leather and the restricted-substances tests.
+
+**Logos and graphics on a shoe's or a plush's views** (`src/lab-logos.js`, the Pattern page's **Logos and graphics**):
+
+- **Placing one.** Our cue mark, wordmark or lockup, or a graphic from the library, goes on a view in inches:
+  - a shoe's outside, inside or top, in the side view's inches, as its sketches are;
+  - a plush's front, back or side.
+- **Moving and sizing.** Each placed logo is framed so it can be seen and grabbed; drag it to move it. Set its width (its proportions are
+  kept), its view, how it is made and, for a mark, a dark or a light ink. A mark on a dark cloth starts in the light ink.
+- **The checks:**
+  - **Size:** within its technique's sizes, for example embroidery 0.4–4 in and a deboss 0.3–3 in.
+  - **On a shoe:** which piece it lands on, whether it crosses a seam, or whether it is off the upper.
+  - **On a plush's cloth:** embroidery perforates leather, so deboss it or use an appliqué; a pile cannot be debossed.
+  - **On a baby toy:** a label is sewn flat on all four sides.
+- **Where they go:** the tech flats and their SVG, and the tech pack, which also gets each placement written out in words (what, how, how big,
+  on which piece, where its centre is). The photo-real picture (**See it made**) is drawn without them, since an image model redraws lettering.

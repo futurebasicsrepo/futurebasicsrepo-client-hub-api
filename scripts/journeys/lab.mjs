@@ -3338,5 +3338,45 @@ await journey('J256', 'Clothing takes materials on its parts as a shoe and a plu
   } finally { await K(`/concepts/${cid}`, { method: 'DELETE' }); }
 });
 
+await journey('J257', 'A luxury elephant, made as an elephant: started as an elephant (trunk, big lined ears, four legs, tail) and drawn as one from the front, back and side; made in nappa lambskin (a wider allowance, a leather grain); our wordmark placed on its chest in inches, dragged, made as a deboss and checked against the leather; saved, drawn into its tech flats, and the placement written into its tech pack', async () => {
+  const cid = (await K('/concepts/from-scratch', { body: { category: 'plush', shape: 'elephant', name: `Leather elephant ${stamp}` } })).json.concept?.id;
+  try {
+    const g = (await K(`/concepts/${cid}/pattern`)).json;
+    ok(g.kind === 'plush' && g.spec.shape === 'elephant' && g.spec.ears === 'big' && g.options.plush.shapes.elephant && g.options.plush.fabrics.leather && g.marks?.word, '1. an elephant is a shape of its own, with big ears; leather is a cloth; our marks come with the page', g.spec);
+    if (!playwright) { ok(true, 'needs a browser'); return; }
+    const br = await playwright.chromium.launch();
+    try {
+      const oc = await br.newContext({ viewport: { width: 1366, height: 1024 } }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
+      const page = await oc.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
+      await page.goto(`${BASE}/lab/studio?concept=${cid}&view=pattern`, { waitUntil: 'networkidle' }); const F = await (await page.waitForSelector('#patFrame')).contentFrame(); await F.waitForFunction(() => window.FBPattern?.ready?.(), null, { timeout: 20000 });
+      ok(/Elephant/.test(await F.innerText('#sub')) && /Front/.test(await F.innerText('#canvas')) && /Side/.test(await F.innerText('#canvas')), '2. Pattern opens on the elephant, drawn from the front, the back and the side');
+      await F.selectOption('#side select[data-k="fabric"]', 'leather'); await sleep(200);
+      ok((await F.evaluate(() => window.FBPattern.pattern().sa)) === .375 && await F.locator('#canvas [fill^="url(#lk-pebble"]').count() > 0, '3. made in nappa lambskin: a ⅜ in allowance, drawn with a leather grain');
+      await F.click('#lgBox [data-lgadd="word"]'); await F.waitForSelector('#canvas [data-logo]');
+      const l0 = (await F.evaluate(() => window.FBPattern.logos()))[0];
+      ok(l0 && l0.view === 'front' && l0.mark === 'word' && /deboss/.test(l0.technique), '4. the wordmark goes on the chest, made as a deboss in leather (not embroidered through it)', l0);
+      const a = await F.evaluate(id => window.FBPattern.logoAt(id), l0.id), fb = await (await page.$('#patFrame')).boundingBox(), px = await F.evaluate(() => document.querySelector('#canvas svg').getScreenCTM().a);
+      await page.mouse.move(fb.x + a[0], fb.y + a[1]); await page.mouse.down(); await page.mouse.move(fb.x + a[0], fb.y + a[1] + px, { steps: 6 }); await page.mouse.up(); await sleep(250);
+      const l1 = (await F.evaluate(() => window.FBPattern.logos()))[0];
+      ok(Math.abs(l1.y - l0.y - 1) < .15 && Math.abs(l1.x - l0.x) < .1, '5. dragged an inch down the chest: its place in inches follows', { from: [l0.x, l0.y], to: [l1.x, l1.y] });
+      await F.selectOption(`#lgBox [data-lg="${l0.id}"] [data-lgk="technique"]`, 'embroidery'); await sleep(200);
+      ok(/perforates leather/.test(await F.innerText('#lgBox')), '6. made as embroidery instead, the check says it perforates leather');
+      await F.selectOption(`#lgBox [data-lg="${l0.id}"] [data-lgk="technique"]`, 'deboss'); await F.fill(`#lgBox [data-lg="${l0.id}"] [data-lgk="w"]`, '2'); await F.dispatchEvent(`#lgBox [data-lg="${l0.id}"] [data-lgk="w"]`, 'change'); await sleep(200);
+      const l2 = (await F.evaluate(() => window.FBPattern.logos()))[0]; ok(l2.w === 2 && Math.abs(l2.h / l2.w - l0.h / l0.w) < .01, '   back to a deboss, 2 in wide, its proportions kept');
+      if (process.env.SHOT_DIR) await page.screenshot({ path: process.env.SHOT_DIR + '/elephant.png' });
+      await F.click('#saveP'); await F.waitForFunction(() => !window.FBPattern.dirty(), null, { timeout: 10000 });
+      const saved = (await K(`/concepts/${cid}/pattern`)).json.spec;
+      ok(saved.fabric === 'leather' && saved.logos?.[0]?.technique === 'deboss' && saved.logos[0].w === 2, '7. saved: the leather and the placed wordmark', saved.logos);
+      const sheet = (await call(`/v1/lab/concepts/${cid}/flats.svg`, { token: kyleT })).text;
+      ok(/data-logo=/.test(sheet) && /data:image\/svg\+xml;base64/.test(sheet), '8. the tech flats SVG carries the wordmark where it was placed');
+      ok(errs.length === 0, 'no page errors', errs); await oc.close();
+    } finally { await br.close(); }
+    await K(`/concepts/${cid}`, { method: 'PUT', body: { twist: 'Our debossed wordmark on a red-lined ear, in black lambskin' } });
+    ok((await K(`/concepts/${cid}/approve`, { body: { overrideReason: 'started from scratch: ours' } })).status === 200, '9. approved');
+    const tp = await K(`/concepts/${cid}/tech-pack`, { body: {} }), pack = (await call(`/v1/admin/products/${tp.json.productId}/tech-pack`, { token: kyleT })).json.techPack?.data || {};
+    ok(tp.status === 201 && (pack.construction || []).some(r => /Logo/.test(r.area) && /deboss, 2 in wide/.test(r.detail)) && ['front', 'back', 'side'].every(v => (pack.sketches || []).some(k => k.view === v)), '   its tech pack carries the elephant\'s tech flats and the wordmark\'s placement in words', (pack.construction || []).filter(r => /Logo/.test(r.area)));
+  } finally { if (cid) await K(`/concepts/${cid}`, { method: 'DELETE' }); }
+});
+
 shops.close(); brave.close();
 process.exit(summary() ? 1 : 0);

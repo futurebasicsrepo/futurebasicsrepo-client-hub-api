@@ -9,14 +9,15 @@ import { PLUSH_SHAPES, PLUSH_EARS, PLUSH_FABRICS, PLUSH_EYES, PLUSH_AGES, cleanP
 const HEX = /^#[0-9a-f]{6}$/i;
 export const PLUSH_READ_SCHEMA = {
   type: 'object', additionalProperties: false,
-  required: ['plush', 'view', 'shape', 'heightIn', 'ears', 'arms', 'legs', 'tail', 'fabric', 'eyes', 'colours', 'why'],
+  required: ['plush', 'view', 'animal', 'shape', 'heightIn', 'ears', 'arms', 'legs', 'tail', 'fabric', 'eyes', 'colours', 'why'],
   properties: {
     plush: { type: 'boolean', description: 'the picture shows a plush or soft toy' },
     view: { type: 'string', enum: ['front', 'three-quarter', 'side', 'back', 'other'] },
-    shape: { type: 'string', enum: Object.keys(PLUSH_SHAPES), description: 'which of the shapes it is cut as: a bear has a separate head, body, arms and legs; a bean is one rounded body; a bunny is a bean with long ears; a pillow is flat with a side gusset' },
+    animal: { type: 'string', description: 'what animal or character it is, in one or two words (elephant, bear, fox…)' },
+    shape: { type: 'string', enum: Object.keys(PLUSH_SHAPES), description: 'which of the shapes it is cut as (the nearest, when the animal has no shape of its own): a bear has a separate head, body, arms and legs; an elephant sits, with a trunk, big ears and four legs; a bean is one rounded body; a bunny is a bean with long ears; a pillow is flat with a side gusset' },
     heightIn: { type: 'number', description: 'its height in inches, standing or sitting as shown, judged from its proportions and any scale in the picture (usually 6 to 24)' },
     ears: { type: 'string', enum: Object.keys(PLUSH_EARS) }, arms: { type: 'boolean' }, legs: { type: 'boolean' }, tail: { type: 'boolean' },
-    fabric: { type: 'string', enum: Object.keys(PLUSH_FABRICS), description: 'the pile it is sewn from' },
+    fabric: { type: 'string', enum: Object.keys(PLUSH_FABRICS), description: 'what it is sewn from: a pile, or leather, suede, velvet or bouclé' },
     eyes: { type: 'string', enum: Object.keys(PLUSH_EYES) },
     colours: { type: 'object', additionalProperties: false, required: ['body', 'contrast'], properties: { body: { type: 'string', description: '#rrggbb' }, contrast: { type: 'string', description: '#rrggbb: the muzzle, inner ears or pads' } } },
     why: { type: 'string', description: 'one sentence on what you see' }
@@ -41,7 +42,7 @@ export function plushProposal(spec, vision, words = null) {
     const h = Number(o.heightIn ?? o.height); if (h >= 4 && h <= 48) set('height', Math.round(h * 2) / 2, src);
     set('ears', PLUSH_EARS[o.ears] ? o.ears : null, src);
     for (const k of ['arms', 'legs', 'tail']) set(k, typeof o[k] === 'boolean' ? o[k] : null, src);
-    set('fabric', PLUSH_FABRICS[o.fabric] ? o.fabric : null, src); set('eyes', PLUSH_EYES[o.eyes] ? o.eyes : null, src); set('age', PLUSH_AGES[o.age] ? o.age : null, src);
+    set('fabric', PLUSH_FABRICS[o.fabric] ? o.fabric : null, src); set('animal', typeof o.animal === 'string' && o.animal.trim() ? o.animal.trim().toLowerCase().slice(0, 30) : null, src); set('eyes', PLUSH_EYES[o.eyes] ? o.eyes : null, src); set('age', PLUSH_AGES[o.age] ? o.age : null, src);
     const c = Object.fromEntries(['body', 'contrast'].filter(k => HEX.test(String(o.colours?.[k] || ''))).map(k => [k, String(o.colours[k]).toLowerCase()])); if (Object.keys(c).length) set('colours', { ...(next.colours || {}), ...c }, src);
   };
   take(words, 'concept');

@@ -19,6 +19,7 @@ import { plushPattern } from './lab-pattern.js';
 import { footwearViews, flatsSheet, viewsMarkup } from './lab-footwear-views.js';
 import { plushViews, plushSheet } from './lab-plush-views.js';
 import { partLooks } from './lab-looks.js';
+import { logoWords } from './lab-logos.js';
 import sharp from 'sharp';
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
@@ -569,11 +570,13 @@ export function registerLabFlatsRoutes(app, d) {
     if (c.category !== 'footwear' && c.category !== 'plush') return null;
     const row = (await pool.query('select spec from lab_patterns where concept_id=$1', [c.id])).rows[0]; if (!row) return null;
     const foot = c.category === 'footwear', pat = foot ? footwearPattern(row.spec) : plushPattern(row.spec), m = partLooks(picks), looks = { colours: { ...(pat.spec.colours || {}), ...m.colours }, tex: m.tex };
-    const views = foot ? footwearViews(pat, looks) : plushViews(pat, looks), keys = foot ? [['lateral', 'lateral', 'Outside'], ['medial', 'medial', 'Inside'], ['top', 'top', 'Top'], ['bottom', 'outsole', 'Bottom']] : [['front', 'front', 'Front'], ['back', 'back', 'Back'], ['side', 'side', 'Side']];
+    // our logos and library graphics, drawn on the views as they are placed (src/lab-logos.js)
+    const hrefs = {}; for (const l of pat.spec.logos || []) { if (l.mark) { hrefs[`mark:${l.mark}`] = `data:image/svg+xml;base64,${Buffer.from(logoSvg(l.mark === 'cue' ? 'mark' : l.mark)).toString('base64')}`; hrefs[`mark:${l.mark}:light`] = `data:image/svg+xml;base64,${Buffer.from(logoSvg(l.mark === 'cue' ? 'mark' : l.mark, { fill: '#ffffff' })).toString('base64')}`; } if (l.art && !hrefs[`art:${l.art}`]) { const png = (await pool.query('select png from lab_art where id=$1', [l.art]).catch(() => ({ rows: [] }))).rows[0]?.png; if (png) hrefs[`art:${l.art}`] = `data:image/png;base64,${Buffer.from(png).toString('base64')}`; } }
+    const views = foot ? footwearViews(pat, { ...looks, hrefs }) : plushViews(pat, { ...looks, hrefs }), keys = foot ? [['lateral', 'lateral', 'Outside'], ['medial', 'medial', 'Inside'], ['top', 'top', 'Top'], ['bottom', 'outsole', 'Bottom']] : [['front', 'front', 'Front'], ['back', 'back', 'Back'], ['side', 'side', 'Side']];
     const one = async v => { const b = v.box, pad = .8, w = b.x1 - b.x0 + 2 * pad, h = b.y1 - b.y0 + 2 * pad; return png(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="${b.x0 - pad} ${b.y0 - pad} ${w} ${h}" width="${Math.round(w * 100)}" height="${Math.round(h * 100)}"><rect x="${b.x0 - pad}" y="${b.y0 - pad}" width="${w}" height="${h}" fill="#fff"/>${v.svg}</svg>`, 1600); };
     const sketches = []; for (const [k, view, label] of keys) sketches.push({ id: `lab-pattern-${k}`, view, label: `Technical flat · ${label}`, image: await one(views[k]) });
-    const sheet = foot ? flatsSheet(pat, { title: c.name, ...looks }) : plushSheet(pat, { title: c.name, viewsMarkup, ...looks });
-    return { sketches, files: [{ name: 'Tech flats · every view', image: await png(sheet, 2400) }], construction: [{ area: 'Pattern', detail: `${pat.label}, ${pat.size}: drafted in the Design Lab.` }, ...pat.notes.map(n => ({ area: foot ? 'Footwear' : 'Plush', detail: String(n).slice(0, 400) }))].slice(0, 40),
+    const sheet = foot ? flatsSheet(pat, { title: c.name, ...looks, hrefs }) : plushSheet(pat, { title: c.name, viewsMarkup, ...looks, hrefs });
+    return { sketches, files: [{ name: 'Tech flats · every view', image: await png(sheet, 2400) }], construction: [{ area: 'Pattern', detail: `${pat.label}, ${pat.size}: drafted in the Design Lab.` }, ...(pat.spec.logos || []).map(l => ({ area: `Logo · ${l.name}`, detail: logoWords(pat, l) })), ...pat.notes.map(n => ({ area: foot ? 'Footwear' : 'Plush', detail: String(n).slice(0, 400) }))].slice(0, 40),
       sizes: foot ? sizeRun(pat.spec).map(r => String(r.size)).slice(0, 14) : ['One size'] };
   }
   const sendToPack = async (c, productId = c.product_id) => { const h = await handoff(c); return h ? applyHandoff(productId, h) : null; };

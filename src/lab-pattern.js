@@ -6,6 +6,7 @@
 // All lengths are inches; y runs down. A pattern from here is a first block from the measurements: a pattern maker trues it up on the sample.
 import { STYLES, measurementsFor, SIZES } from './lab-flats.js';
 import { cleanSketches, VIEWS_OF } from './lab-sketch.js';
+import { cleanLogos } from './lab-logos.js';
 
 const r3 = v => Math.round(v * 1000) / 1000;
 const r8 = v => Math.round(v * 8) / 8;
@@ -45,7 +46,7 @@ export function offsetOf(pts, d) {
 // ---- the pieces ----
 // a piece: { id, name, fabric, cut, pair, fold, sew (closed outline, the whole piece), grain [[x,y],[x,y]], notches [[x,y]], notes [], place {view, x, y, rot, flip, z} }
 // fold: the piece is cut on the fold of the cloth along x = 0 (its own centre line); the drawing shows it whole and marks the fold
-const FABRIC_NAMES = { self: 'Self (main fabric)', rib: 'Rib', lining: 'Lining', fusing: 'Fusing', pocketing: 'Pocketing', board: 'Board', knit: 'Knit (to shape)', pile: 'Plush pile', felt: 'Felt', contrast: 'Contrast', upper: 'Upper', overlay: 'Overlays', foam: 'Foam', elastic: 'Elastic gore', stiffener: 'Stiffener (thermoplastic)', rubber: 'Rubber (moulded)', eva: 'EVA (moulded)' };
+const FABRIC_NAMES = { self: 'Self (main fabric)', rib: 'Rib', lining: 'Lining', fusing: 'Fusing', pocketing: 'Pocketing', board: 'Board', knit: 'Knit (to shape)', pile: 'Plush pile', leather: 'Leather', felt: 'Felt', contrast: 'Contrast', upper: 'Upper', overlay: 'Overlays', foam: 'Foam', elastic: 'Elastic gore', stiffener: 'Stiffener (thermoplastic)', rubber: 'Rubber (moulded)', eva: 'EVA (moulded)' };
 export const fabricName = f => FABRIC_NAMES[f] || f;
 function piece(id, name, sew, o = {}) {
   const s = tidy(sew), b = boundsOf(s);
@@ -192,19 +193,24 @@ export function garmentPattern(p, size = p.size || 'M') {
 }
 
 // ---- plush ----
-export const PLUSH_SHAPES = { bear: 'Bear (head, body, arms, legs)', bean: 'Bean character (one body, a base)', bunny: 'Bunny (bean body, long ears)', pillow: 'Pillow character (front, back, side gusset)' };
-export const PLUSH_EARS = { round: 'Round', pointed: 'Pointed', long: 'Long', none: 'None' };
-export const PLUSH_FABRICS = { minky: 'Minky, 3 mm pile', shortpile: 'Short-pile plush', velboa: 'Velboa', fleece: 'Anti-pill fleece', fur: 'Faux fur, 10 mm pile', terry: 'Terry' };
+export const PLUSH_SHAPES = { bear: 'Bear (head, body, arms, legs)', elephant: 'Elephant (sitting: trunk, big ears, four legs, tail)', bean: 'Bean character (one body, a base)', bunny: 'Bunny (bean body, long ears)', pillow: 'Pillow character (front, back, side gusset)' };
+export const PLUSH_EARS = { round: 'Round', pointed: 'Pointed', long: 'Long', big: 'Big and floppy (lined)', none: 'None' };
+export const PLUSH_FABRICS = { minky: 'Minky, 3 mm pile', shortpile: 'Short-pile plush', velboa: 'Velboa', fleece: 'Anti-pill fleece', fur: 'Faux fur, 10 mm pile', terry: 'Terry', leather: 'Nappa lambskin, 0.7 mm', vegan: 'Vegan leather (PU), 0.8 mm', suede: 'Suede', velvet: 'Cotton velvet', boucle: 'Bouclé' };
+// cloths with no stretch and a cut edge that shows: sewn with a wider allowance, the pieces eased, the pile (or the grain) not a factor
+export const PLUSH_FIRM = ['leather', 'vegan', 'suede'];
 export const PLUSH_EYES = { embroidered: 'Embroidered (any age)', safety: 'Safety eyes, 12 mm (3 years and up)', felt: 'Felt, sewn flat' };
 export const PLUSH_AGES = { '0+': 'All ages, under 3 included', '3+': '3 years and up', '14+': 'Collectible, 14 and up' };
-export function plushDefaults(shape = 'bear') { return { shape: PLUSH_SHAPES[shape] ? shape : 'bear', height: shape === 'pillow' ? 14 : 12, ears: shape === 'bunny' ? 'long' : shape === 'pillow' ? 'pointed' : 'round', arms: shape !== 'pillow', legs: shape === 'bear', tail: shape === 'bunny', fabric: 'minky', eyes: 'embroidered', age: '0+', fill: 'polyester fibre', depth: shape === 'pillow' ? 3 : 0 }; }
+export function plushDefaults(shape = 'bear') { return { shape: PLUSH_SHAPES[shape] ? shape : 'bear', height: shape === 'pillow' ? 14 : 12, ears: shape === 'bunny' ? 'long' : shape === 'pillow' ? 'pointed' : shape === 'elephant' ? 'big' : 'round', arms: shape !== 'pillow', legs: shape === 'bear' || shape === 'elephant', tail: shape === 'bunny' || shape === 'elephant', fabric: 'minky', eyes: 'embroidered', age: '0+', fill: 'polyester fibre', depth: shape === 'pillow' ? 3 : 0 }; }
 export function cleanPlush(input = {}) {
   const d = plushDefaults(PLUSH_SHAPES[input.shape] ? input.shape : 'bear'), num = (v, lo, hi, def) => { const n = Number(v); return Number.isFinite(n) ? r8(Math.min(Math.max(n, lo), hi)) : def; };
   return { shape: d.shape, height: num(input.height, 4, 48, d.height), ears: PLUSH_EARS[input.ears] ? input.ears : d.ears, arms: input.arms == null ? d.arms : Boolean(input.arms), legs: input.legs == null ? d.legs : Boolean(input.legs), tail: input.tail == null ? d.tail : Boolean(input.tail),
     fabric: PLUSH_FABRICS[input.fabric] ? input.fabric : d.fabric, eyes: PLUSH_EYES[input.eyes] ? input.eyes : d.eyes, age: PLUSH_AGES[input.age] ? input.age : d.age, fill: String(input.fill || d.fill).slice(0, 60), depth: num(input.depth, 1, 12, d.depth || 3),
+    // what the character is (an elephant, a fox…), in words: the shape it is drafted as is the nearest the pattern has
+    ...(String(input.animal || '').trim() ? { animal: String(input.animal).replace(/[^a-zA-Z \-']/g, '').replace(/\s+/g, ' ').trim().slice(0, 30).toLowerCase() } : {}),
     // the body's and the contrast's colours, read from a picture or a concept's words (a material on the part, when chosen, wins over them)
     ...(input.colours && typeof input.colours === 'object' && ['body', 'contrast'].some(k => /^#[0-9a-f]{6}$/i.test(String(input.colours[k] || ''))) ? { colours: Object.fromEntries(['body', 'contrast'].filter(k => /^#[0-9a-f]{6}$/i.test(String(input.colours[k] || ''))).map(k => [k, String(input.colours[k]).toLowerCase()])) } : {}),
-    ...(cleanSketches(input.sketches, VIEWS_OF.plush).length ? { sketches: cleanSketches(input.sketches, VIEWS_OF.plush) } : {}) }; // drawn by hand on its views (src/lab-sketch.js)
+    ...(cleanSketches(input.sketches, VIEWS_OF.plush).length ? { sketches: cleanSketches(input.sketches, VIEWS_OF.plush) } : {}),
+    ...(cleanLogos(input.logos, 'plush').length ? { logos: cleanLogos(input.logos, 'plush') } : {}) }; // drawn by hand on its views (src/lab-sketch.js)
 }
 function earOf(kind, w) {
   if (kind === 'long') return blob([[0, 0], [w * .55, -w * .4], [w * .5, -w * 2.4], [0, -w * 2.9], [-w * .5, -w * 2.4], [-w * .55, -w * .4]], .9).map(([x, y]) => [x, y + w * 2.9]);
@@ -231,6 +237,27 @@ export function plushPattern(input = {}) {
       pieces.push(piece('foot-pad', 'Foot pad', ellipse(legH * .28, legH * .2, 28), { cut: 2, fabric: 'contrast', notes: ['Contrast, set into the bottom of each leg'], place: { view: 'back', x: 0, y: h * .96, z: 3 } })); }
     if (ears) { const ew = hh * (s.ears === 'long' ? .22 : .32), ear = earOf(s.ears, ew); for (const sg of [1, -1]) pieces.push(piece(sg > 0 ? 'ear' : 'ear-2', 'Ear', ear, { cut: sg > 0 ? 4 : 0, pair: true, notes: sg > 0 ? ['Two outer, two inner (inner in contrast if you like)', 'Set into a slit in the head side, or sewn on by hand'] : [], place: { view: 'front', x: sg * hw * .42, y: s.ears === 'long' ? -ew * 2.5 : -ew * .5, rot: sg * 12, z: 1 }, hidden: sg < 0 })); }
     notes.push(`Face: ${PLUSH_EYES[s.eyes]}, about ${r8(hh * .3)} in apart, on the line ${r8(hh * .52)} in below the top of the head`);
+  } else if (s.shape === 'elephant') {
+    // a sitting elephant: the head in two sides with a gusset from the brow over the crown, the trunk cut in one with the head sides (their
+    // front edges join down its underside, the gusset runs down its top); big ears in self, lined in contrast; a body in two sides and an
+    // underbody gusset; four legs, each in two, on contrast foot pads; a tail with a tuft
+    const hh = h * .46, hw = hh, tr = h * .34, bh = h * .58, bw = h * .62, legF = h * .3, legH = h * .22;
+    const headSide = blob([[0, hh * .5], [hw * .1, hh * .16], [hw * .4, 0], [hw * .66, hh * .14], [hw * .72, hh * .5], [hw * .5, hh * .86], [hw * .22, hh * .9], [hw * .1, hh * .9 + tr * .5], [hw * .06, hh * .9 + tr], [-hw * .1, hh * .9 + tr * .98], [-hw * .02, hh * .9 + tr * .5], [-hw * .04, hh * .78]], .7);
+    pieces.push(piece('head-side', 'Head side and trunk', headSide, { cut: 2, pair: true, notches: [[0, hh * .5], [-hw * .04, hh * .78]], notes: ['Cut in one with the trunk: the two sides meet down the underside of the trunk', 'Notches: where the gusset starts, where the trunk leaves the face'], place: { view: 'front', x: -hw * .08, y: 0, flip: true, z: 3 } }));
+    pieces.push(piece('head-side-2', 'Head side and trunk', headSide, { cut: 0, place: { view: 'front', x: hw * .08, y: 0, z: 3 }, hidden: true }));
+    pieces.push(piece('gusset', 'Head and trunk gusset', blob([[0, 0], [hw * .2, hh * .3], [hw * .22, hh * .8], [hw * .1, hh + tr * .6], [0, hh + tr * .95], [-hw * .1, hh + tr * .6], [-hw * .22, hh * .8], [-hw * .2, hh * .3]], .9), { cut: 1, notes: ['From the back of the head over the crown, down the brow and the top of the trunk to its tip'], place: { view: 'front', x: 0, y: 0, z: 4 } }));
+    const earW = hw * .9, ear = blob([[0, 0], [earW * .42, -earW * .12], [earW * .78, earW * .12], [earW * .82, earW * .62], [earW * .5, earW * 1.02], [earW * .12, earW * .9], [-earW * .04, earW * .5]], .85);
+    for (const sg of [1, -1]) pieces.push(piece(sg > 0 ? 'ear' : 'ear-2', 'Ear', ear, { cut: sg > 0 ? 2 : 0, pair: true, notes: sg > 0 ? ['Two in self (the backs)'] : [], place: { view: 'front', x: sg * hw * .42 + (sg < 0 ? -earW * .8 : 0), y: hh * .12, flip: sg < 0, z: 1 }, hidden: sg < 0 }));
+    pieces.push(piece('ear-lining', 'Ear lining', ear.map(([x, y]) => [x * .96, y * .96]), { cut: 2, pair: true, fabric: 'contrast', notes: ['Contrast: the face of each ear; sewn to the back right sides together, turned, topstitched, then pleated into the head side seam'], place: { view: 'front', x: hw * .45, y: hh * .14, z: 2 }, hidden: true }));
+    const bodySide = blob([[0, 0], [bw * .3, -bh * .02], [bw * .62, bh * .2], [bw * .74, bh * .6], [bw * .62, bh * .96], [bw * .2, bh], [-bw * .02, bh * .7], [-bw * .06, bh * .3]], .8);
+    pieces.push(piece('body-side', 'Body side', bodySide, { cut: 2, pair: true, notes: [`Leave a ${r8(Math.max(2.5, h * .2))} in opening in the back seam to stuff, closed by hand with a ladder stitch`], place: { view: 'back', x: -bw * .36, y: hh * .74, z: 1 } }));
+    pieces.push(piece('underbody', 'Underbody gusset', blob([[0, 0], [bw * .16, bh * .08], [bw * .2, bh * .7], [0, bh * .82], [-bw * .2, bh * .7], [-bw * .16, bh * .08]], .9), { cut: 1, notes: ['From the chest between the front legs to the seat'], place: { view: 'front', x: 0, y: hh * .82, z: 1 } }));
+    const legFr = blob([[0, 0], [legF * .44, 0], [legF * .48, legF], [-legF * .04, legF]], .6), legHi = blob([[0, 0], [legH * .6, -legH * .1], [legH * .8, legH * .7], [legH * .1, legH * .8]], .7);
+    for (const sg of [1, -1]) pieces.push(piece(sg > 0 ? 'leg-front' : 'leg-front-2', 'Front leg', legFr, { cut: sg > 0 ? 4 : 0, pair: true, notes: sg > 0 ? ['Two pairs: inner and outer, the pad set in at the bottom'] : [], place: { view: 'front', x: sg * bw * .14 + (sg < 0 ? -legF * .44 : 0), y: h - legF, flip: sg < 0, z: 5 }, hidden: sg < 0 }));
+    for (const sg of [1, -1]) pieces.push(piece(sg > 0 ? 'leg-hind' : 'leg-hind-2', 'Hind leg', legHi, { cut: sg > 0 ? 4 : 0, pair: true, notes: sg > 0 ? ['Two pairs; sewn to the body side at the haunch, the foot turned forward'] : [], place: { view: 'front', x: sg * bw * .36 + (sg < 0 ? -legH * .8 : 0), y: h - legH * .8, flip: sg < 0, z: 4 }, hidden: sg < 0 }));
+    pieces.push(piece('foot-pad', 'Foot pad', ellipse(legF * .2, legF * .17, 28), { cut: 4, fabric: 'contrast', notes: ['Contrast, one in the bottom of each leg'], place: { view: 'back', x: 0, y: h * .96, z: 3 } }));
+    if (s.tail) pieces.push(piece('tail', 'Tail', blob([[0, 0], [h * .03, 0], [h * .025, h * .16], [0, h * .16]], .4), { cut: 2, notes: ['Two strips, sewn and turned; the tuft is yarn knotted into the tip, sewn into the back seam'], place: { view: 'back', x: 0, y: hh * .74 + bh * .72, z: 2 } }));
+    notes.push(`Face: ${PLUSH_EYES[s.eyes]}, about ${r8(hw * .44)} in apart, ${r8(hh * .45)} in below the top of the head, either side of the trunk`, 'The ears are the character: interfacing in the ear backs keeps them standing out from the head');
   } else if (s.shape === 'pillow') {
     const w = h * .82, front = blob([[0, 0], [w * .45, h * .05], [w * .5, h * .55], [w * .3, h], [-w * .3, h], [-w * .5, h * .55], [-w * .45, h * .05]], .85);
     pieces.push(piece('front', 'Front', front, { cut: 1, notes: ['The face is embroidered before sewing'], place: { view: 'front', x: 0, y: 0, z: 2 } }));
@@ -250,9 +277,11 @@ export function plushPattern(input = {}) {
     if (s.tail) pieces.push(piece('tail', 'Tail', ellipse(h * .07, h * .07, 24), { cut: 1, fabric: 'contrast', notes: ['A gathered circle, stuffed'], place: { view: 'back', x: 0, y: h * .78, z: 2 } }));
     notes.push(`Face: ${PLUSH_EYES[s.eyes]}, about ${r8(w * .28)} in apart, ${r8(h * .38)} in below the top`);
   }
-  for (const q of pieces) if (q.fabric === 'self') q.fabric = 'pile';
-  notes.push(`${PLUSH_FABRICS[s.fabric]}: the pile runs down the grain arrow`, '¼ in seam allowance, sewn at 10–12 stitches an inch, backstitched at the opening');
-  return { kind: 'plush', spec: s, label: PLUSH_SHAPES[s.shape], size: `${s.height} in tall`, sa: .25, pieces, notes, checks: plushChecks(s, pieces) };
+  const firm = PLUSH_FIRM.includes(s.fabric);
+  for (const q of pieces) if (q.fabric === 'self') q.fabric = firm ? 'leather' : 'pile';
+  notes.push(...(firm ? [`${PLUSH_FABRICS[s.fabric]}: it does not stretch, so the pieces are eased and the curves notched; cut each piece from sound skin, the grain running down the toy`, '⅜ in seam allowance, sewn at 8–9 stitches an inch with a leather needle and bonded nylon thread; seams pressed open with a roller, not an iron', 'Stuffed firm and slowly: leather shows every lump']
+    : [`${PLUSH_FABRICS[s.fabric]}: the pile runs down the grain arrow`, '¼ in seam allowance, sewn at 10–12 stitches an inch, backstitched at the opening']));
+  return { kind: 'plush', spec: s, label: s.animal && !PLUSH_SHAPES[s.shape].toLowerCase().startsWith(s.animal) ? `${s.animal[0].toUpperCase()}${s.animal.slice(1)} · drafted as: ${PLUSH_SHAPES[s.shape]}` : PLUSH_SHAPES[s.shape], size: `${s.height} in tall`, sa: firm ? .375 : .25, pieces, notes, checks: plushChecks(s, pieces) };
 }
 // the safety a plush is tested against (ASTM F963 and EN 71): what the choices mean for the age it is for
 export function plushChecks(s, pieces = []) {
@@ -260,6 +289,7 @@ export function plushChecks(s, pieces = []) {
   if (under3 && s.eyes === 'safety') out.push({ level: 'fail', msg: 'Safety eyes are a small part for under-3s: embroider the eyes (and the nose), or mark it 3 years and up.' });
   if (under3) out.push({ level: 'info', msg: 'Under 3: every part passes the small-parts cylinder (1¼ in), seams take a 15 lbf pull, nothing comes off in the torque and tension tests (ASTM F963 / EN 71-1).' });
   if (under3 && pieces.some(q => /tail/.test(q.id))) out.push({ level: 'warn', msg: 'The tail is small: sew it into a seam, not on by hand, so it passes the tension test.' });
+  if (PLUSH_FIRM.includes(s.fabric) && under3) out.push({ level: 'warn', msg: 'Leather on a toy for under-3s: check it is chrome-free and passes the restricted-substances tests (azo dyes, chromium VI); most baby toys are made in pile instead.' });
   if (s.fabric === 'fur') out.push({ level: 'warn', msg: 'Long-pile fur sheds at the seams: brush the pile out of every seam after turning, and test for fibre loss.' });
   if (s.height < 6 && under3) out.push({ level: 'warn', msg: `At ${s.height} in, check the whole toy is not itself a choking hazard for under-3s.` });
   out.push({ level: 'info', msg: 'A sewn-in law label in a side seam (fill content and registration numbers for the states that ask), a CPSIA tracking label, and the age grading on the hang tag.' });
