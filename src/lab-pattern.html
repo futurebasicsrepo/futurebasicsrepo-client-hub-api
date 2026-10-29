@@ -63,21 +63,22 @@ table.pcs tr[data-pid]{cursor:pointer}table.pcs tr.on{background:#effff6}
 <script type="module">
 import { garmentPattern, plushPattern, cleanPlush, layoutOf, explodeAt, assembled, offsetOf, boundsOf, areaOf, fabricName, cutWords, fillGrams } from '/lab/lab-pattern.js';
 import { STYLES } from '/lab/lab-flats.js';
+import { footwearPattern, cleanFootwear, sizeRun, hideArea } from '/lab/lab-footwear.js';
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)],esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const TOKEN=()=>{try{return localStorage.getItem('fb.admin.token')||localStorage.getItem('fb.client.token')||''}catch{return ''}};
 async function api(path,o={}){const r=await fetch(path,{method:o.method||(o.body?'POST':'GET'),headers:{Authorization:'Bearer '+TOKEN(),...(o.body?{'Content-Type':'application/json'}:{})},body:o.body?JSON.stringify(o.body):undefined});const j=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(new Error(j.error||'Something went wrong'),{status:r.status});return j}
 const toast=m=>{const t=document.createElement('div');t.className='toast';t.setAttribute('role','status');t.textContent=m;document.body.append(t);setTimeout(()=>t.remove(),2600)};
 const CID=new URLSearchParams(location.search).get('concept')||'',HOST=()=>{try{return parent!==window?parent.FBDesign:null}catch{return null}};
-const FILL={self:'#e9e4d8',pile:'#efe2cf',rib:'#d6e4ef',lining:'#e6dcef',fusing:'#f1efe6',pocketing:'#e3ecdf',board:'#dcdcdc',knit:'#e0e9d6',contrast:'#f3d3cc',felt:'#f1e2b8'};
+const FILL={upper:'#e6d8c3',overlay:'#d9c2a3',foam:'#f3efc9',stiffener:'#dcdfe6',rubber:'#bdbdb8',eva:'#e8e8e2',elastic:'#cfd6c8',self:'#e9e4d8',pile:'#efe2cf',rib:'#d6e4ef',lining:'#e6dcef',fusing:'#f1efe6',pocketing:'#e3ecdf',board:'#dcdcdc',knit:'#e0e9d6',contrast:'#f3d3cc',felt:'#f1e2b8'};
 let D=null,PAT=null,SPEC=null,SIZE='M',T=0,ANIM=0,SEL=null,DIRTY=false;
 const r3=v=>Math.round(v*1000)/1000,P=pts=>'M'+pts.map(q=>`${r3(q[0])} ${r3(q[1])}`).join(' L')+' Z';
-function build(){PAT=D.kind==='plush'?plushPattern(SPEC):D.kind==='garment'&&D.flat?garmentPattern(D.flat,SIZE):null;if(PAT&&D.kind==='garment'&&SPEC.sa)PAT={...PAT,sa:SPEC.sa}}
+function build(){PAT=D.kind==='footwear'?footwearPattern(SPEC,Number(SIZE)):D.kind==='plush'?plushPattern(SPEC):D.kind==='garment'&&D.flat?garmentPattern(D.flat,SIZE):null;if(PAT&&D.kind==='garment'&&SPEC.sa)PAT={...PAT,sa:SPEC.sa}}
 
 // ---------- the drawing ----------
 // t < 1: the pieces on the product, lifted off and spread (the exploded view), flying flat; t = 1: the cutting layout, every piece it takes
 function drawPieces(){
   if(!PAT){$('#canvas').innerHTML='';return}
-  const lay=layoutOf(PAT,{width:SPEC.width||58});let body='',bb;
+  const lay=layoutOf(PAT,{width:Number(SPEC.width)||58});let body='',bb;
   if(T>=.999){
     let y0=0;const items=[];
     for(const g of lay){body+=`<text x="0" y="${r3(y0-.5)}" font-size=".55" font-weight="700" fill="#141416">${esc(g.name)}</text><text x="${r3(g.width)}" y="${r3(y0-.5)}" font-size=".42" text-anchor="end" fill="#727278">${g.width} in wide · ${g.length} in · ${g.yards} yd · ${g.efficiency}% used</text><rect x="0" y="${r3(y0)}" width="${g.width}" height="${r3(g.length)}" fill="#fff" stroke="#c7c7c2" stroke-width=".04" stroke-dasharray=".3 .2"/>`;
@@ -94,7 +95,7 @@ function drawPieces(){
     const sorted=fr.slice().sort((a,b)=>(a.piece.place.z||0)-(b.piece.place.z||0));
     for(const {piece:q,pts} of sorted){const b=boundsOf(pts),fs=Math.min(.55,Math.max(.24,b.w/10));
       body+=`<g data-pid="${esc(q.id)}" class="pc"><path d="${P(pts)}" fill="${FILL[q.fabric]||'#eee'}" fill-opacity="${T<.02?1:.94}" stroke="${SEL===q.id||SEL+'-2'===q.id?'#17603a':'#141416'}" stroke-width="${SEL===q.id||SEL+'-2'===q.id?.1:.055}"/>${label&&!q.twin?`<text x="${r3((b.x0+b.x1)/2)}" y="${r3((b.y0+b.y1)/2)}" text-anchor="middle" font-size="${r3(fs)}" font-weight="700" opacity="${Math.min(1,(T-.2)*4)}">${esc(q.name)}</text>`:''}</g>`}
-    if(T<.2&&A.backDx){const fb=A.bounds;body+=`<text x="${r3(fb.x0)}" y="${r3(fb.y1+1.4)}" font-size=".6" fill="#727278">Front</text><text x="${r3(fb.x0+A.backDx)}" y="${r3(fb.y1+1.4)}" font-size=".6" fill="#727278">Back</text>`}
+    if(T<.2&&A.backDx){const fb=A.bounds;body+=`<text x="${r3(fb.x0)}" y="${r3(fb.y1+1.4)}" font-size=".6" fill="#727278">${esc(PAT.views?.front||'Front')}</text><text x="${r3(fb.x0+A.backDx)}" y="${r3(fb.y1+1.4)}" font-size=".6" fill="#727278">${esc(PAT.views?.back||'Back')}</text>`}
     const all=fr.flatMap(x=>x.pts);bb=boundsOf(all.length?all:[[0,0],[10,10]]);bb={x0:Math.min(bb.x0,A.bounds.x0)-1,y0:Math.min(bb.y0,A.bounds.y0)-1,x1:bb.x1+1,y1:Math.max(bb.y1,A.bounds.y1)+2}
   }
   const w=bb.x1-bb.x0,h=bb.y1-bb.y0;
@@ -108,7 +109,7 @@ function goTo(target,ms=1500){cancelAnimationFrame(ANIM);const from=T,t0=perform
 // ---------- the side ----------
 function paintSide(){
   const s=$('#side');if(!PAT){s.innerHTML='';return}
-  const lay=layoutOf(PAT,{width:SPEC.width||58}),o=D.options,vis=PAT.pieces.filter(q=>q.cut>0);
+  const lay=layoutOf(PAT,{width:Number(SPEC.width)||58}),o=D.options,vis=PAT.pieces.filter(q=>q.cut>0);
   const sel=(id,map,v)=>`<select data-k="${id}">${Object.entries(map).map(([k,l])=>`<option value="${esc(k)}"${String(k)===String(v)?' selected':''}>${esc(l)}</option>`).join('')}</select>`;
   let h='';
   if(D.kind==='plush'){const p=SPEC;h+=`<section><h4>The plush</h4><p class="note">Choose its shape and size: the pieces are drafted to it.</p>
@@ -119,31 +120,50 @@ function paintSide(){
     <label class="f"><span>Fabric</span>${sel('fabric',o.plush.fabrics,p.fabric)}</label>
     <div class="row2"><label class="f"><span>Eyes</span>${sel('eyes',o.plush.eyes,p.eyes)}</label><label class="f"><span>For ages</span>${sel('age',o.plush.ages,p.age)}</label></div>
     <button class="btn go" type="button" id="saveP"${DIRTY?'':' disabled'}>${DIRTY?'Save the pattern':'Saved'}</button></section>`}
+  else if(D.kind==='footwear'){const f=SPEC,fo=o.footwear,L=PAT.last,run=sizeRun(f),tl=PAT.tooling,hide=hideArea(PAT),ws=fo.widths[f.system]||null,lim=fo.limits[f.system],stp=f.system==='eu'||f.system==='mm'?1:.5;
+    h+=`<section><h4>The shoe</h4><p class="note">Choose the style, the size it is sampled in and the last's shape: the last and the upper's pieces are drafted to it.</p>
+    <label class="f"><span>Style</span>${sel('style',fo.styles,f.style)}</label>
+    <div class="row2"><label class="f"><span>Sizes in</span>${sel('system',fo.systems,f.system)}</label><label class="f"><span>Sample size</span><input type="number" data-k="size" min="${lim[0]}" max="${lim[1]}" step="${stp}" value="${f.size}"></label></div>
+    <div class="row2">${ws?`<label class="f"><span>Width</span>${sel('width',Object.fromEntries(ws.map(w=>[w,w])),f.width)}</label>`:'<span></span>'}<label class="f"><span>Toe</span>${sel('toe',fo.toes,f.toe)}</label></div>
+    <div class="row2"><label class="f"><span>Heel height (in)</span><input type="number" data-k="heel" min="0" max="4" step="0.125" value="${f.heel}"></label><label class="f"><span>Toe spring (in)</span><input type="number" data-k="spring" min="0" max="1.5" step="0.125" value="${f.spring}"></label></div>
+    <div class="row2"><label class="f"><span>Upper</span>${sel('upper',fo.uppers,f.upper)}</label><label class="f"><span>Lining</span>${sel('lining',fo.linings,f.lining)}</label></div>
+    <div class="row2"><label class="f"><span>Size run from</span><input type="number" data-k="runFrom" min="${lim[0]}" max="${lim[1]}" step="${stp}" value="${f.runFrom}"></label><label class="f"><span>to</span><input type="number" data-k="runTo" min="${lim[0]}" max="${lim[1]}" step="${stp}" value="${f.runTo}"></label></div>
+    <div style="display:flex;gap:14px;flex-wrap:wrap"><label class="chk"><input type="checkbox" data-k="toeCap"${f.toeCap?' checked':''}> Toe cap</label>${f.system==='eu'||f.system==='mm'?'':`<label class="chk"><input type="checkbox" data-k="halves"${f.halves?' checked':''}> Half sizes</label>`}</div>
+    <button class="btn go" type="button" id="saveP"${DIRTY?'':' disabled'}>${DIRTY?'Save the shoe':'Saved'}</button></section>
+    <section><h4>The last <span class="mono">size ${esc(String(SIZE))}</span></h4>${[['Last length',`${L.length.toFixed(2)} in (${Math.round(L.length*25.4)} mm)`],['Foot length',`${L.foot.toFixed(2)} in`],['Ball girth',`${L.ballGirth} in`],['Instep girth',`${L.instepGirth} in`],['Ball width',`${L.ballWidth} in`],['Heel width',`${L.heelWidth} in`],['Heel height',`${L.heelHeight} in`],['Toe spring',`${L.toeSpring} in`],['Ball from the heel',`${L.ballFromHeel} in`]].map(([k,v])=>`<div class="find info"><i></i><span><b>${k}</b>: ${v}</span></div>`).join('')}<button class="btn q sm" type="button" id="lastDl" style="justify-self:start">Last spec (SVG)</button></section>
+    <section><h4>Size run <span class="mono">${run.length} sizes</span></h4><div style="overflow-x:auto"><table class="pcs"><thead><tr><th>Size</th><th>Last mm</th><th>Ball girth</th><th>EU</th><th>UK</th><th>Mould</th></tr></thead><tbody>${run.map(r=>`<tr${String(r.size)===String(SIZE)?' class="on"':''}><td>${r.size}</td><td>${r.lastMm}</td><td>${r.ballGirth}</td><td>${r.eu}</td><td>${r.uk}</td><td>${esc(r.mould)}</td></tr>`).join('')}</tbody></table></div></section>
+    <section><h4>Tooling</h4><div class="find info"><i></i><span>${esc(tl.note)}</span></div><div class="find info"><i></i><span><b>Lasts</b>: $${tl.lastCost[0].toLocaleString()}–${tl.lastCost[1].toLocaleString()} · <b>Sole moulds</b>: $${tl.mouldCost[0].toLocaleString()}–${tl.mouldCost[1].toLocaleString()}</span></div><p class="note">Rough ranges to plan with; the factory quotes the real numbers.</p></section>
+    <section><h4>Leather and lining for a pair</h4>${Object.entries(hide).map(([k,v])=>`<div class="find info"><i></i><span><b>${esc(fabricName(k))}</b>: about ${v} sq ft (a quarter allowed for the cutting round the hide)</span></div>`).join('')}</section>
+    <section><h4>Components</h4>${PAT.components.map(c=>`<div class="find info"><i></i><span><b>${esc(c.name)}</b> · ${esc(c.qty)}${c.how?` · ${esc(c.how)}`:''}</span></div>`).join('')}</section>`}
   else h+=`<section><h4>${esc(PAT.label)} · ${esc(PAT.size)}</h4><p class="note">Drafted from the flats' measurements${D.flatSaved?'':' (the flats are not saved yet: these are the style\'s standard measurements)'}. Change the measurements on the Flat front, and the pattern follows.</p>
     <div class="row2"><label class="f"><span>Seam allowance</span><select data-k="sa">${o.seamAllowances.map(v=>`<option value="${v}"${Number(SPEC.sa||PAT.sa)===v?' selected':''}>${{.25:'¼',.375:'⅜',.5:'½',.625:'⅝'}[v]} in</option>`).join('')}</select></label><label class="f"><span>Fabric width</span><select data-k="width">${o.widths.map(v=>`<option value="${v}"${Number(SPEC.width)===v?' selected':''}>${v} in</option>`).join('')}</select></label></div>
     <button class="btn go" type="button" id="saveP"${DIRTY?'':' disabled'}>${DIRTY?'Save':'Saved'}</button></section>`;
   h+=`<section><h4>Pieces <span class="mono">${vis.length} · ${vis.reduce((a,q)=>a+q.cut,0)} cut</span></h4><table class="pcs"><thead><tr><th>Piece</th><th>Cut</th><th>Fabric</th></tr></thead><tbody>${vis.map(q=>`<tr data-pid="${esc(q.id)}"${SEL===q.id?' class="on"':''}><td><span class="sw" style="background:${FILL[q.fabric]||'#eee'}"></span>${esc(q.name)}${q.notes.length&&SEL===q.id?`<div class="note" style="margin-top:4px">${q.notes.map(esc).join('<br>')}</div>`:''}</td><td>${esc(cutWords(q).replace(/^Cut /,''))}</td><td>${esc(fabricName(q.fabric))}</td></tr>`).join('')}</tbody></table></section>`;
-  h+=`<section><h4>Cloth for one</h4>${lay.map(g=>`<div class="find info"><i></i><span><b>${esc(g.name)}</b>: ${g.yards} yd at ${g.width} in wide (${g.efficiency}% of the cloth used)</span></div>`).join('')}${PAT.kind==='plush'?`<div class="find info"><i></i><span><b>Fill</b>: about ${fillGrams(PAT)} g of ${esc(SPEC.fill)}</span></div>`:''}<p class="note">An estimate from a simple layout; the factory's marker uses less.</p></section>`;
-  if(PAT.checks?.length)h+=`<section><h4>Safety and testing</h4>${PAT.checks.map(c=>`<div class="find ${c.level}"><i></i><span>${esc(c.msg)}</span></div>`).join('')}</section>`;
+  if(D.kind!=='footwear')h+=`<section><h4>Cloth for one</h4>${lay.map(g=>`<div class="find info"><i></i><span><b>${esc(g.name)}</b>: ${g.yards} yd at ${g.width} in wide (${g.efficiency}% of the cloth used)</span></div>`).join('')}${PAT.kind==='plush'?`<div class="find info"><i></i><span><b>Fill</b>: about ${fillGrams(PAT)} g of ${esc(SPEC.fill)}</span></div>`:''}<p class="note">An estimate from a simple layout; the factory's marker uses less.</p></section>`;
+  if(PAT.checks?.length)h+=`<section><h4>${D.kind==='footwear'?'Before the sample':'Safety and testing'}</h4>${PAT.checks.map(c=>`<div class="find ${c.level}"><i></i><span>${esc(c.msg)}</span></div>`).join('')}</section>`;
   h+=`<section><h4>Notes for the pattern maker</h4>${PAT.notes.map(n=>`<p class="note">${esc(n)}</p>`).join('')}</section>`;
   s.innerHTML=h;
 }
 $('#side').addEventListener('change',e=>{const k=e.target.dataset.k;if(!k)return;const v=e.target.type==='checkbox'?e.target.checked:e.target.type==='number'?Number(e.target.value):e.target.value;
+  if(D.kind==='footwear'){const was=SPEC.style;SPEC=cleanFootwear({...SPEC,[k]:v,...(k==='style'&&v!==was?{heel:undefined,spring:undefined,toe:undefined}:{}),...(k==='system'?{size:undefined,width:undefined,runFrom:undefined,runTo:undefined}:{})});if(['size','system','style'].includes(k))SIZE=SPEC.size;fwSizes();DIRTY=true;build();drawPieces();paintSide();return}
   SPEC=D.kind==='plush'?cleanPlush({...SPEC,[k]:v,...(k==='shape'?{ears:v==='bunny'?'long':SPEC.ears==='long'?'round':SPEC.ears}:{})}):{...SPEC,[k]:Number(v)};DIRTY=true;build();drawPieces();paintSide()});
 $('#side').addEventListener('click',async e=>{
   if(e.target.closest('#saveP')){const b=e.target.closest('#saveP');b.disabled=true;b.textContent='Saving…';try{const r=await api(`/v1/lab/concepts/${CID}/pattern`,{method:'PUT',body:{spec:SPEC}});SPEC=r.spec;DIRTY=false;toast('Pattern saved');paintSide();HOST()?.patternSaved?.()}catch(err){toast(err.message);b.disabled=false;b.textContent='Save'}return}
+  if(e.target.closest('#lastDl')){download('last');return}
   const tr=e.target.closest('tr[data-pid]');if(tr){SEL=SEL===tr.dataset.pid?null:tr.dataset.pid;drawPieces();paintSide()}});
 $('#canvas').addEventListener('click',e=>{const g=e.target.closest('[data-pid]');SEL=g?g.dataset.pid.replace(/-2$/,''):null;drawPieces();paintSide()});
 $('#t').addEventListener('input',e=>{cancelAnimationFrame(ANIM);T=Number(e.target.value);drawPieces()});
 $('#modeSeg').addEventListener('click',e=>{const b=e.target.closest('button[data-t]');if(b)goTo(Number(b.dataset.t),900)});
 $('#play').addEventListener('click',()=>{if(T>.97){T=0;drawPieces()}goTo(1,3200)});
 $('#size').addEventListener('change',e=>{SIZE=e.target.value;build();drawPieces();paintSide()});
-async function download(ext){const b=ext==='dxf'?$('#dxf'):$('#svgDl'),label=b.textContent;b.disabled=true;b.textContent='Preparing…';
-  try{const r=await fetch(`/v1/lab/concepts/${CID}/pattern.${ext}?size=${encodeURIComponent(SIZE)}&width=${SPEC.width||58}`,{headers:{Authorization:'Bearer '+TOKEN()}});if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||'The file could not be made');
+async function download(ext){const b=ext==='dxf'?$('#dxf'):ext==='last'?$('#lastDl'):$('#svgDl'),label=b.textContent;b.disabled=true;b.textContent='Preparing…';
+  try{const r=await fetch(`/v1/lab/concepts/${CID}/${ext==='last'?'last.svg':'pattern.'+ext}?size=${encodeURIComponent(SIZE)}&width=${Number(SPEC.width)||58}`,{headers:{Authorization:'Bearer '+TOKEN()}});if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||'The file could not be made');
     const name=(/filename="([^"]+)"/.exec(r.headers.get('content-disposition')||'')||[])[1]||`pattern.${ext}`,u=URL.createObjectURL(await r.blob()),a=document.createElement('a');a.href=u;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),4000);toast(`Downloaded ${name}`)}
   catch(err){toast(err.message)}finally{b.disabled=false;b.textContent=label}}
 $('#dxf').addEventListener('click',()=>download('dxf'));$('#svgDl').addEventListener('click',()=>download('svg'));
 
+// footwear: the size picker lists the size run, the sample size first chosen
+function fwSizes(){const run=sizeRun(SPEC).map(r=>r.size);if(!run.some(v=>String(v)===String(SIZE)))SIZE=SPEC.size;const all=[...new Set([...run,SPEC.size])].sort((a,b)=>a-b);$('#size').classList.remove('hidden');$('#size').innerHTML=all.map(v=>`<option value="${v}"${String(v)===String(SIZE)?' selected':''}>Size ${v}</option>`).join('')}
 async function boot(){
   if(!/^[0-9a-f-]{36}$/i.test(CID)){$('#main').innerHTML='<div class="empty"><b>Open a concept in Design to see its pattern.</b></div>';return}
   try{D=await api(`/v1/lab/concepts/${CID}/pattern`)}catch(err){$('#main').innerHTML=`<div class="empty"><b>The pattern could not be opened.</b><p class="note">${esc(err.message)}</p></div>`;return}
@@ -151,7 +171,8 @@ async function boot(){
   if(D.kind==='soon'||D.kind==='none'){$('#sub').textContent='Pattern';$('#modeSeg').classList.add('hidden');$$('#play,#size,#dxf,#svgDl').forEach(x=>x.classList.add('hidden'));
     $('#main').innerHTML=`<div class="empty"><b>${D.kind==='soon'?esc(D.soon):'The Lab cannot draft a pattern for this piece yet.'}</b><p class="note">${D.kind==='soon'?'Until then the tech pack carries its specification, and you can draw it on the Picture.':'Set what the piece is on the Flat front (the style), and its pattern pieces appear here.'}</p></div>`;return}
   SPEC=D.spec;SIZE=D.flat?.size||'M';const S=D.flat?STYLES[D.flat.style]:null;
-  if(D.kind==='garment'&&!S?.oneSize)$('#size').innerHTML=D.options.sizes.map(s=>`<option${s===SIZE?' selected':''}>${s}</option>`).join('');else $('#size').classList.add('hidden');
+  if(D.kind==='footwear'){SIZE=SPEC.size;fwSizes()}
+  else if(D.kind==='garment'&&!S?.oneSize)$('#size').innerHTML=D.options.sizes.map(s=>`<option${s===SIZE?' selected':''}>${s}</option>`).join('');else $('#size').classList.add('hidden');
   build();$('#sub').textContent=`Pattern · ${PAT.label} · ${PAT.size} · ${PAT.pieces.filter(q=>q.cut>0).length} pieces`;
   T=new URLSearchParams(location.search).get('t')==='1'?1:0;$('#t').value=T;drawPieces();paintSide();
   window.FBPattern={ready:()=>true,dirty:()=>DIRTY,explode:()=>goTo(1,3200),at:t=>{T=t;$('#t').value=t;drawPieces()},pattern:()=>PAT};

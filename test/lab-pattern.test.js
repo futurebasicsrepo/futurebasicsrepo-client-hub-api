@@ -90,7 +90,8 @@ test('the files: a DXF a pattern system reads (closed cut and sew polylines per 
 test('what kind of pattern a concept is cut from', () => {
   assert.equal(kindOf({ category: 'plush' }), 'plush');
   assert.equal(kindOf({ category: 'tops', name: 'Heavy hoodie' }), 'garment');
-  assert.equal(kindOf({ category: 'footwear', name: 'Court sneaker' }), 'soon');
+  assert.equal(kindOf({ category: 'footwear', name: 'Court sneaker' }), 'footwear');
+  assert.equal(kindOf({ category: 'toys', name: 'Figure' }), 'soon');
   assert.equal(kindOf({ category: 'electronics', name: 'Charger' }), 'soon');
   assert.equal(kindOf({ category: 'other', name: 'Thing' }, 'tee'), 'garment');
   assert.deepEqual(cleanPatternSpec('garment', { sa: 3, width: 9 }), { sa: null, width: 58 });

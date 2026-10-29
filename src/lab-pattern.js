@@ -44,11 +44,11 @@ export function offsetOf(pts, d) {
 // ---- the pieces ----
 // a piece: { id, name, fabric, cut, pair, fold, sew (closed outline, the whole piece), grain [[x,y],[x,y]], notches [[x,y]], notes [], place {view, x, y, rot, flip, z} }
 // fold: the piece is cut on the fold of the cloth along x = 0 (its own centre line); the drawing shows it whole and marks the fold
-const FABRIC_NAMES = { self: 'Self (main fabric)', rib: 'Rib', lining: 'Lining', fusing: 'Fusing', pocketing: 'Pocketing', board: 'Brim board', knit: 'Knit (to shape)', pile: 'Plush pile', felt: 'Felt', contrast: 'Contrast' };
+const FABRIC_NAMES = { self: 'Self (main fabric)', rib: 'Rib', lining: 'Lining', fusing: 'Fusing', pocketing: 'Pocketing', board: 'Board', knit: 'Knit (to shape)', pile: 'Plush pile', felt: 'Felt', contrast: 'Contrast', upper: 'Upper', overlay: 'Overlays', foam: 'Foam', elastic: 'Elastic gore', stiffener: 'Stiffener (thermoplastic)', rubber: 'Rubber (moulded)', eva: 'EVA (moulded)' };
 export const fabricName = f => FABRIC_NAMES[f] || f;
 function piece(id, name, sew, o = {}) {
   const s = tidy(sew), b = boundsOf(s);
-  return { id, name, fabric: o.fabric || 'self', cut: o.cut ?? 1, ...(o.cut === 0 && /-2$/.test(id) ? { twin: true } : {}), pair: Boolean(o.pair), fold: Boolean(o.fold), sew: s, grain: o.grain || [[(b.x0 + b.x1) / 2, b.y0 + b.h * .2], [(b.x0 + b.x1) / 2, b.y1 - b.h * .2]], notches: o.notches || [], notes: o.notes || [], place: { view: 'front', x: 0, y: 0, rot: 0, flip: false, z: 0, ...(o.place || {}) }, sa: o.sa ?? null, marks: o.marks || [] };
+  return { id, name, fabric: o.fabric || 'self', cut: o.cut ?? 1, ...(o.cut === 0 && /-2$/.test(id) ? { twin: true } : {}), pair: Boolean(o.pair), fold: Boolean(o.fold), sew: s, grain: o.grain || [[(b.x0 + b.x1) / 2, b.y0 + b.h * .2], [(b.x0 + b.x1) / 2, b.y1 - b.h * .2]], notches: o.notches || [], notes: o.notes || [], place: { view: 'front', x: 0, y: 0, rot: 0, flip: false, z: 0, ...(o.place || {}) }, sa: o.sa ?? null, marks: o.marks || [], ...(o.shown ? { shown: tidy(o.shown) } : {}), ...(o.component ? { component: true } : {}) };
 }
 // the other one of a pair: drawn on the product and in the exploded view, never cut twice (its cut count is on the first)
 const twin = (id, name, sew, place) => ({ ...piece(id, name, sew, { cut: 0, place }), twin: true });
@@ -271,7 +271,7 @@ export function fillGrams(pat) {
 
 // ---- the views ----
 // where a piece sits on the product (its own coordinates turned and moved onto the front or back view)
-export function placed(q, pts = q.sew) { const pl = q.place || {}, a = (pl.rot || 0) * Math.PI / 180, c = Math.cos(a), s = Math.sin(a); return pts.map(([x, y]) => { const xx = pl.flip ? -x : x; return [pl.x + xx * c - y * s, pl.y + xx * s + y * c]; }); }
+export function placed(q, pts = q.shown || q.sew) { const pl = q.place || {}, a = (pl.rot || 0) * Math.PI / 180, c = Math.cos(a), s = Math.sin(a); return pts.map(([x, y]) => { const xx = pl.flip ? -x : x; return [pl.x + xx * c - y * s, pl.y + xx * s + y * c]; }); }
 // the cutting layout: pieces (each cut it takes, pairs flipped) packed in rows across the fabric width, by fabric; → [{ fabric, width, length, items:[{piece, n, x, y, flip}] }]
 export function layoutOf(pat, { width = 58, sa = pat.sa, gap = .4 } = {}) {
   const groups = new Map();
@@ -283,6 +283,12 @@ export function layoutOf(pat, { width = 58, sa = pat.sa, gap = .4 } = {}) {
     const length = y + rowH, used = items.reduce((s, it) => s + areaOf(offsetOf(it.piece.sew, it.piece.sa ?? sa)), 0);
     out.push({ fabric, name: fabricName(fabric), width: W, length: r8(length), yards: Math.round(length / 36 * 100) / 100, efficiency: Math.round(used / (W * Math.max(length, 1)) * 100), items });
   }
+  return out;
+}
+// a closed outline as n points evenly spaced along it, so two outlines of a piece (as it sits on the product, as it is cut) can be blended
+export function resample(pts, n = 64) {
+  const ring = [...pts, pts[0]], seg = ring.slice(1).map((q, i) => Math.hypot(q[0] - ring[i][0], q[1] - ring[i][1])), total = seg.reduce((a, b) => a + b, 0) || 1, out = [];
+  let i = 0, acc = 0; for (let k = 0; k < n; k++) { const d = total * k / n; while (i < seg.length - 1 && acc + seg[i] < d) { acc += seg[i]; i++; } const t = seg[i] ? (d - acc) / seg[i] : 0; out.push([ring[i][0] + (ring[i + 1][0] - ring[i][0]) * t, ring[i][1] + (ring[i + 1][1] - ring[i][1]) * t]); }
   return out;
 }
 // the product as its pieces: the front view, and the back view beside it; → { pieces: [{piece, pts}], bounds, backDx }
@@ -307,8 +313,9 @@ export function explodeAt(pat, t, layout = layoutOf(pat)) {
     // where it lands: its first cut in the layout (a twin lands on its pair's spot, beside it)
     const list = q.twin ? slot.get(q.id.replace(/-2$/, '')) : slot.get(q.id), own = list && (q.twin ? list[1] || list[0] : list[0]), g = own && layout.find(G => G.items.includes(own));
     if (!own || e === 0) return { piece: q, pts: moved };
-    const tgt = q.sew.map(([x, y]) => [(own.flip ? -x + (own.b.x0 + own.b.x1) : x) + own.x + lx, y + own.y + goff.get(g)]);
-    return { piece: q, pts: moved.map((m, i) => [m[0] * (1 - e) + tgt[i][0] * e, m[1] * (1 - e) + tgt[i][1] * e]) };
+    let tgt = q.sew.map(([x, y]) => [(own.flip ? -x + (own.b.x0 + own.b.x1) : x) + own.x + lx, y + own.y + goff.get(g)]), from = moved;
+    if (tgt.length !== from.length) { from = resample(from); tgt = resample(tgt); }
+    return { piece: q, pts: from.map((m, i) => [m[0] * (1 - e) + tgt[i][0] * e, m[1] * (1 - e) + tgt[i][1] * e]) };
   });
 }
 // ---- the files ----
@@ -354,4 +361,4 @@ export function patternDxf(pat, { width = 58 } = {}) {
 
 // what the pattern costs in cloth: yards of each fabric for one piece, from the layout
 export const yardage = (pat, width = 58) => layoutOf(pat, { width }).map(g => ({ fabric: g.fabric, name: g.name, yards: g.yards, efficiency: g.efficiency }));
-export { SIZES };
+export { SIZES, piece, twin, cubic, tidy, blob, tail, mirrorX, lenOf };

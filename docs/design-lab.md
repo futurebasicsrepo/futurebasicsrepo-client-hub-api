@@ -642,5 +642,52 @@ Files: `GET /v1/lab/concepts/:id/pattern.dxf` (R12, inches, on the CUT, SEW, GRA
 and `pattern.svg` (every piece at real size: print at 100%), each for the size asked for (`?size=L&width=60`). A plush's choices, and a
 garment's seam allowance and cloth width, are kept in `lab_patterns` (`GET|PUT /v1/lab/concepts/:id/pattern`).
 
-A pattern from the Lab is a **first block from the measurements**: a pattern maker trues it up on the first sample. Footwear (the last and the
-upper pattern), toys and objects (tooling) and electronics (the engineering) say so on the Pattern view: they come next, one at a time.
+A pattern from the Lab is a **first block from the measurements**: a pattern maker trues it up on the first sample. Toys and objects (tooling) and
+electronics (the engineering) say so on the Pattern view: they come next, one at a time.
+
+## Footwear: the last, the size run, and the upper in pieces
+
+A footwear concept (`src/lab-footwear.js`, shared by the page and the service) starts from its style:
+
+- court sneaker (cupsole), runner (EVA midsole), derby, penny loafer, Chelsea boot, or 6 in lace-up boot;
+- or the style is read from its words.
+
+Pattern shows the shoe on its **last**. The page also lists the last's numbers, the size run, the tooling, the leather and the components.
+
+**The last** is drafted from:
+
+- **the size**, in US men's, US women's, UK, EU (Paris points) or Mondopoint. A full US size is ⅓ in of foot.
+- **the width**: B to EEEE for men, AA to E for women.
+- **the toe shape**, which sets the toe allowance (round ½ in, almond ¾ in, square ⅝ in, pointed 1¼ in).
+- **the heel height and toe spring** (each style has its own defaults).
+
+From those, the page gives the last's length, foot length, ball and instep girths (a men's D at US 9 is 9⅜ in round the ball, graded ¼ in a size
+and a width), ball and heel widths, and where the ball sits. **Last spec (SVG)** draws the side and the bottom with those numbers for the last
+maker, in any size (`GET /v1/lab/concepts/:id/last.svg?size=`).
+
+**The upper** is drafted on the last's standard (its flattened side):
+
+- **Pieces of the upper:** the vamp (cut whole: the half on the standard mirrored over the centre line), the quarters (outside and inside, the
+  inside collar ⅛ in lower), the eyestays and the tongue for laced styles, the toe cap, the heel overlay, the back tab, the elastic gores of a
+  Chelsea, and the moc apron of a loafer.
+- **Inside the shoe:** the linings, the collar foam, the heel counter and toe puff (thermoplastic), the insole board and the sockliner.
+- **Allowances:** each piece carries the ⅝ in lasting allowance and ⅜ in overlaps.
+- **The sole unit** (cupsole, EVA midsole, or a stitched outsole and heel) is shown as a moulded component: it is never cut.
+
+Product → Exploded → Cutting layout works as for clothes, with the side and the bottom of the shoe side by side. The size picker redraws the
+whole shoe in any size of the run; the DXF and SVG come in the size asked for.
+
+**The size run** covers every size from and to, in half sizes or not. For each size it gives the last length in mm, the ball girth, the EU and UK
+equivalents, and which sole **mould** the size shares (one mould for each pair of half sizes).
+
+**Tooling** counts the lasts (a pair a size) and the moulds, with rough cost ranges and how many weeks they take. **Leather** is given in square
+feet for a pair, with a quarter allowed for cutting round the hide's flaws.
+
+**Before the sample**, the page flags:
+
+- a heel outside the style's usual range;
+- a high heel with too little toe spring;
+- a pointed athletic toe;
+- a collar that sits on the ankle bone.
+
+It then lists the fitting and size-run samples and the tests (sole bond, flex, abrasion, colour fastness, restricted substances).

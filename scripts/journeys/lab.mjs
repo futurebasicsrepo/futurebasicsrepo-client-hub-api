@@ -2235,8 +2235,8 @@ await journey('J234', 'One Design workspace: a concept opens on its picture, and
       const oc = await b.newContext({ viewport: { width: 1440, height: 950 } }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
       const page = await oc.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
       await page.goto(`${BASE}/lab/studio?concept=${c.id}`, { waitUntil: 'networkidle' }); await page.waitForSelector('#pLayers .ly', { timeout: 20000 }); await page.waitForFunction(() => !document.querySelector('#busy:not(.hidden)'));
-      ok((await page.locator('#viewSeg [data-v]').count()) === 3 && await page.getAttribute('#viewSeg [data-v=picture]', 'aria-pressed') === 'true' && await page.isVisible('#stage') && !(await page.isVisible('#specBtn')) && !(await page.getAttribute('#flatFrame', 'src')),
-        '1. a concept opens on its picture: the switch reads Picture, Flat front, Flat back, and the flats wait until they are asked for');
+      ok((await page.locator('#viewSeg [data-v]').count()) === 4 && await page.getAttribute('#viewSeg [data-v=picture]', 'aria-pressed') === 'true' && await page.isVisible('#stage') && !(await page.isVisible('#specBtn')) && !(await page.getAttribute('#flatFrame', 'src')),
+        '1. a concept opens on its picture: the switch reads Picture, Flat front, Flat back, Pattern, and the flats wait until they are asked for');
       // a wordmark placed on the picture, not saved
       await page.click('.tabs [data-tab=add]'); await page.click('#pAdd [data-mark=word]'); await page.waitForFunction(() => LAYERS.length >= 2); await page.click('.tabs [data-tab=layers]'); await page.waitForSelector('#sizeRead');
       await page.fill('#pLayers [data-win]', '3.5'); await page.dispatchEvent('#pLayers [data-win]', 'change'); await page.selectOption('#pLayers [data-placement]', 'left chest');
@@ -2527,7 +2527,7 @@ await journey('J240', 'Design on an iPad, as Kyle found it: the ruler takes any 
       const oc = await b.newContext({ viewport: { width: 1366, height: 1024 }, hasTouch: true }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
       const page = await oc.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
       await page.goto(`${BASE}/lab/studio?concept=${c.id}`, { waitUntil: 'networkidle' }); await page.waitForSelector('#pLayers .ly', { timeout: 20000 }); await page.waitForFunction(() => !document.querySelector('#busy:not(.hidden)'));
-      ok(!(await page.$('#viewSeg [data-v=split]')) && (await page.locator('#viewSeg [data-v]').count()) === 3, '2. no Side by side: Picture, Flat front, Flat back');
+      ok(!(await page.$('#viewSeg [data-v=split]')) && (await page.locator('#viewSeg [data-v]').count()) === 4, '2. no Side by side: Picture, Flat front, Flat back, Pattern');
       // the ruler's length: any number, 0.54 included
       ok(await page.evaluate(() => { const i = document.getElementById('rulerIn'); i.value = '0.54'; return i.checkValidity(); }), '3. the ruler takes 0.54 in (it said "Enter a valid value")');
       // a Pencil stroke whose lift was never reported, then a new one
@@ -2775,7 +2775,7 @@ await journey('J243', 'A newcomer finds their way into the Design Lab: signed ou
   } finally { await b.close(); }
 });
 
-await journey('J244', 'From scratch to pattern pieces: a hoodie started from nothing opens on white paper with its outline as a locked guide at real size, its flats are a plain outline to draw over, and Pattern explodes it into the pieces it is cut from, laid out on the cloth, with a DXF and a 1:1 SVG; a plush is drafted from its shape and checked for its age; footwear says what comes next', async () => {
+await journey('J244', 'From scratch to pattern pieces: a hoodie started from nothing opens on white paper with its outline as a locked guide at real size, its flats are a plain outline to draw over, and Pattern explodes it into the pieces it is cut from, laid out on the cloth, with a DXF and a 1:1 SVG; a plush is drafted from its shape and checked for its age; toys say what comes next', async () => {
   const made = await K('/concepts/from-scratch', { body: { category: 'tops', style: 'hoodie', name: `Scratch hoodie ${stamp}` } });
   ok(made.status === 201 && /scratch=1/.test(made.json.studio), '1. Start from scratch makes a concept and opens Design on it', [made.status, made.json]);
   const cid = made.json.concept.id;
@@ -2791,8 +2791,8 @@ await journey('J244', 'From scratch to pattern pieces: a hoodie started from not
   const pp = (await K(`/concepts/${pid}/pattern`)).json; ok(pl.status === 201 && pp.kind === 'plush' && pp.spec.shape === 'bunny' && pp.spec.ears === 'long' && pp.fillGrams > 0, '3. a plush starts as its shape: a bunny with long ears, and the fill it takes', pp.spec);
   const unsafe = (await K(`/concepts/${pid}/pattern`, { method: 'PUT', body: { spec: { ...pp.spec, eyes: 'safety', age: '0+' } } })).json;
   ok(unsafe.checks?.some(c => c.level === 'fail' && /Safety eyes/.test(c.msg)), '   safety eyes on a toy for under-3s are flagged', unsafe.checks);
-  const shoe = await K('/concepts/from-scratch', { body: { category: 'footwear', name: `Scratch shoe ${stamp}` } }), sp = (await K(`/concepts/${shoe.json.concept.id}/pattern`)).json;
-  ok(sp.kind === 'soon' && /last/.test(sp.soon) && (await K(`/concepts/${shoe.json.concept.id}/pattern.dxf`)).status === 422, '   footwear says the last and the upper pattern come next, and makes no file', sp.soon);
+  const shoe = await K('/concepts/from-scratch', { body: { category: 'toys', name: `Scratch toy ${stamp}` } }), sp = (await K(`/concepts/${shoe.json.concept.id}/pattern`)).json;
+  ok(sp.kind === 'soon' && /tooling/.test(sp.soon) && (await K(`/concepts/${shoe.json.concept.id}/pattern.dxf`)).status === 422, '   toys and objects say the tooling comes next, and make no file', sp.soon);
   if (!playwright) { ok(true, 'needs a browser'); return; }
   const b = await playwright.chromium.launch();
   try {
@@ -2820,6 +2820,44 @@ await journey('J244', 'From scratch to pattern pieces: a hoodie started from not
     ok(await pp2.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), '   the pattern fits a phone');
     ok(errs.length === 0, 'no page errors', errs); await oc.close(); await ph.close();
   } finally { await b.close(); for (const id of [cid, pid, shoe.json.concept?.id]) if (id) await K(`/concepts/${id}`, { method: 'DELETE' }); }
+});
+
+await journey('J245', 'Footwear: a shoe started from scratch is drafted on its last (length, girths, heel, toe spring from the size and the style), with the size run, the moulds and lasts it takes, and the upper exploded into its pieces off the side and the bottom; the style, size and width change it; the last is drawn for the last maker; the files come out in the size asked for', async () => {
+  const made = await K('/concepts/from-scratch', { body: { category: 'footwear', style: 'runner', name: `Scratch runner ${stamp}` } }), cid = made.json.concept?.id;
+  const p = (await K(`/concepts/${cid}/pattern`)).json;
+  ok(made.status === 201 && p.kind === 'footwear' && p.spec.style === 'runner' && p.spec.upper === 'mesh' && Math.abs(p.last.length - (31 / 3 + .5)) < .01 && p.last.ballGirth === 9.375, '1. a runner starts on a US 9 D last, 10⅞ in long, 9⅜ in round the ball, in mesh', { spec: p.spec, last: p.last });
+  ok(p.sizeRun.length === 13 && p.tooling.moulds === 7 && p.tooling.lastPairs === 13 && p.components.some(c => /EVA midsole/.test(c.name)) && p.hide.upper > 1, '   with its size run (7 to 13 in halves), 7 sole moulds and 13 pairs of lasts, its components, and the square feet it takes', { tooling: p.tooling, hide: p.hide });
+  const saved = (await K(`/concepts/${cid}/pattern`, { method: 'PUT', body: { spec: { ...p.spec, style: 'chelsea', size: 10.5, width: 'E', heel: 1.25, toe: 'almond' } } })).json;
+  ok(saved.spec.style === 'chelsea' && saved.spec.width === 'E' && saved.last.ballGirth === 9.375 + .375 + .25 && saved.components.some(c => /Elastic gore/.test(c.name)), '2. changed to a Chelsea boot in 10½ E: the last grows a quarter inch a size and a width, and the gores come in', saved.last);
+  ok((await K(`/concepts/${cid}/pattern`, { method: 'PUT', body: { spec: { ...saved.spec, heel: 3.5 } } })).json.checks.some(c => c.level === 'warn' && /heel/.test(c.msg)), '   a 3½ in heel on a Chelsea is flagged');
+  await K(`/concepts/${cid}/pattern`, { method: 'PUT', body: { spec: saved.spec } });
+  const last = await call(`/v1/lab/concepts/${cid}/last.svg?size=12`, { token: kyleT }), dxf = await call(`/v1/lab/concepts/${cid}/pattern.dxf?size=12`, { token: kyleT });
+  ok(last.status === 200 && /size 12 E/.test(last.text) && /ball girth/.test(last.text), '3. the last is drawn for the last maker in the size asked for');
+  ok(dxf.status === 200 && /Elastic gore - Cut 4/.test(dxf.text) && /Back quarter, outside/.test(dxf.text) && /US men's 12 E/.test(dxf.text), '   and the upper as a DXF in that size');
+  ok((await K('/concepts/from-scratch', { body: { category: 'footwear', style: 'stiletto' } })).json.concept && true, '   an unknown shoe style starts as a sneaker');
+  if (!playwright) { ok(true, 'needs a browser'); return; }
+  const b = await playwright.chromium.launch();
+  try {
+    const oc = await b.newContext({ viewport: { width: 1366, height: 1024 } }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
+    const page = await oc.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
+    await page.goto(`${BASE}/lab/studio`, { waitUntil: 'networkidle' }); await page.waitForSelector('#scratchF'); await page.selectOption('#scCat', 'footwear');
+    ok((await page.evaluate(() => [...document.querySelectorAll('#scStyle option')].map(o => o.value).join())).includes('chelsea'), '4. the picker offers the shoe styles');
+    const sn = (await K('/concepts/from-scratch', { body: { category: 'footwear', style: 'sneaker', name: `Scratch sneaker ${stamp}` } })).json;
+    await page.goto(`${BASE}${sn.studio}`, { waitUntil: 'networkidle' }); await page.waitForSelector('#pLayers .ly', { timeout: 20000 }); await page.waitForFunction(() => !document.querySelector('#busy:not(.hidden)'));
+    ok(await page.evaluate(() => /court sneaker/i.test(LAYERS[1]?.name || '') && PPISET), '5. a sneaker from scratch opens on paper with the shoe\'s side as the guide, at real size');
+    await page.click('#viewSeg [data-v="pattern"]'); const F = await (await page.waitForSelector('#patFrame')).contentFrame(); await F.waitForFunction(() => window.FBPattern?.ready?.(), null, { timeout: 20000 });
+    ok(/The last/.test(await F.innerText('#side')) && /Size run/.test(await F.innerText('#side')) && /Tooling/.test(await F.innerText('#side')) && await F.locator('#canvas [data-pid="vamp"]').count() === 1, '6. Pattern shows the shoe on its last, the last\'s numbers, the size run and the tooling');
+    ok(/Side/.test(await F.innerText('#canvas')) && /Bottom/.test(await F.innerText('#canvas')), '   the side and the bottom of the shoe');
+    await F.selectOption('#size', '12'); await F.waitForFunction(() => /size 12/i.test(document.querySelector('#side').innerText), null, { timeout: 5000 });
+    ok(true, '   the size picker redraws it in size 12');
+    await F.click('#play'); await F.waitForFunction(() => document.getElementById('tLbl').textContent === 'Cutting layout', null, { timeout: 15000 });
+    ok(await F.locator('#canvas [data-pid="quarter-lat"]').count() >= 2 && !(await F.locator('#canvas [data-pid="sole"]').count()), '7. exploded into the cutting: every cut of the upper, and the moulded sole left out');
+    const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 15000 }), F.click('#lastDl')]); ok(/last-12\.svg$/.test(dl.suggestedFilename()), '   the last spec downloads', dl.suggestedFilename());
+    await F.selectOption('[data-k="style"]', 'derby'); await F.waitForFunction(() => /Save the shoe/.test(document.getElementById('saveP').textContent)); await F.click('#saveP'); await F.waitForFunction(() => document.getElementById('saveP').textContent === 'Saved', null, { timeout: 10000 });
+    ok((await K(`/concepts/${sn.concept.id}/pattern`)).json.spec.style === 'derby', '8. the style changed on the page is saved');
+    ok(errs.length === 0, 'no page errors', errs); await oc.close();
+    await K(`/concepts/${sn.concept.id}`, { method: 'DELETE' });
+  } finally { await b.close(); if (cid) await K(`/concepts/${cid}`, { method: 'DELETE' }); }
 });
 
 shops.close(); brave.close();
