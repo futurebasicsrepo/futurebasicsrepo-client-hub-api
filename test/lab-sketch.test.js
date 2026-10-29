@@ -1,12 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanSketches, strokesSvg, hitStroke, simplify, SKETCH_LIMITS } from '../src/lab-sketch.js';
+import { cleanSketches, strokesSvg, hitStroke, simplify, SKETCH_LIMITS, VIEWS_OF } from '../src/lab-sketch.js';
 import { footwearPattern } from '../src/lab-footwear.js';
 import { footwearViews, sketchPoint, warpOf } from '../src/lab-footwear-views.js';
 
-test('what is drawn by hand is kept as drawn, and bounded', () => {
-  const c = cleanSketches([{ on: 'lateral', pts: [[1.23456, -2, 2], [2, -2.5]], c: '#ABCDEF', size: 9 }, { on: 'front', pts: [[1, 1]] }, { on: 'top', pts: [[99, 0]] }, { on: 'top', pts: [[1, 2]], c: 'red', id: 'bad id' }]);
-  assert.deepEqual(c.map(k => k.on), ['lateral', 'top'], 'a stroke on no view, or with no point inside the drawing, is dropped');
+test('what is drawn by hand is kept as drawn, on the views the product has, and bounded', () => {
+  assert.equal(cleanSketches([{ on: 'front', pts: [[1, 1]] }], VIEWS_OF.plush).length, 1, 'a plush has a front');
+  const c = cleanSketches([{ on: 'lateral', pts: [[1.23456, -2, 2], [2, -2.5]], c: '#ABCDEF', size: 9 }, { on: 'front', pts: [[1, 1]] }, { on: 'top', pts: [[99, 0]] }, { on: 'top', pts: [[1, 2]], c: 'red', id: 'bad id' }], VIEWS_OF.footwear);
+  assert.deepEqual(c.map(k => k.on), ['lateral', 'top'], 'a stroke on a view a shoe does not have, or with no point inside the drawing, is dropped');
   assert.deepEqual(c[0].pts, [[1.235, -2, 1], [2, -2.5, 1]], 'pressure is 0.1 to 1 (1 when not given)'); assert.equal(c[0].size, .3); assert.equal(c[0].c, '#abcdef');
   assert.equal(c[1].c, '#3a3a3c', 'a colour that is not a hex is graphite'); assert.match(c[1].id, /^k\d+$/);
   const many = Array.from({ length: 40 }, () => ({ on: 'top', pts: Array.from({ length: 1500 }, (_, i) => [i / 100, 0]) }));

@@ -1,22 +1,23 @@
-// Hand sketching on a shoe's views (shared by the Pattern page and the service; no DOM, no Node). A designer draws freely, with a Pencil or a
+// Hand sketching on a shoe's (or a plush's) views (shared by the Pattern page and the service; no DOM, no Node). A designer draws freely, with a Pencil or a
 // mouse, on any view: the outside, the inside, the top, the bottom, or on the last in 3D. The strokes are kept with the shoe (spec.sketches)
 // as they were drawn, and are drawn into the tech flats and their SVG. A stroke on a side is kept on the side view's own inches (x from the
 // heel's back, y downward), the coordinates the last's surface is mapped from, so a stroke drawn on the last shows on the flat side view and
 // one drawn on the side view shows on the last. Any stroke on a side can be made a seam, which cuts the pieces it crosses.
-//   cleanSketches(list)           → the strokes, bounded (what a page or a picture sends is never trusted)
+//   cleanSketches(list, views)    → the strokes on those views, bounded (what a page or a picture sends is never trusted)
 //   strokesSvg(strokes, tf)       → the strokes as SVG, each point through tf (the view's own drawing of its coordinates)
 //   hitStroke(strokes, pt, tol)   → the index of the stroke passing within tol of pt, the last drawn first (-1 when none)
 //   simplify(pts, tol)            → a stroke thinned to the points that shape it (Douglas–Peucker), for a seam
-export const SKETCH_VIEWS = ['lateral', 'medial', 'top', 'bottom'];
+export const SKETCH_VIEWS = ['lateral', 'medial', 'top', 'bottom', 'front', 'back', 'side']; // a shoe's four views; a plush's three
+export const VIEWS_OF = { footwear: ['lateral', 'medial', 'top', 'bottom'], plush: ['front', 'back', 'side'] };
 export const INKS = { graphite: '#3a3a3c', red: '#c2410c', blue: '#2a6df4', green: '#17603a', white: '#ffffff' };
 export const SKETCH_LIMITS = { strokes: 300, points: 1500, total: 30000 };
 const r3 = v => Math.round(v * 1000) / 1000, HEX = /^#[0-9a-f]{6}$/i;
 
-export function cleanSketches(list) {
+export function cleanSketches(list, views = SKETCH_VIEWS) {
   if (!Array.isArray(list)) return [];
   const out = []; let total = 0;
   for (const s of list.slice(0, SKETCH_LIMITS.strokes)) {
-    if (!s || typeof s !== 'object' || !SKETCH_VIEWS.includes(s.on) || !Array.isArray(s.pts)) continue;
+    if (!s || typeof s !== 'object' || !views.includes(s.on) || !Array.isArray(s.pts)) continue;
     const pts = s.pts.slice(0, SKETCH_LIMITS.points).filter(p => Array.isArray(p) && p.length >= 2 && Number.isFinite(Number(p[0])) && Number.isFinite(Number(p[1])) && Math.abs(p[0]) < 40 && Math.abs(p[1]) < 40)
       .map(p => [r3(Number(p[0])), r3(Number(p[1])), Math.round(Math.min(1, Math.max(.1, Number.isFinite(Number(p[2])) ? Number(p[2]) : 1)) * 100) / 100]);
     if (!pts.length || total + pts.length > SKETCH_LIMITS.total) continue;

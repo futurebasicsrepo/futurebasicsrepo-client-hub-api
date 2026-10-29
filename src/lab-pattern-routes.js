@@ -18,7 +18,9 @@ import { createHash } from 'node:crypto';
 import sharp from 'sharp';
 import { readFileSync } from 'node:fs';
 import { registerLabLastRoutes } from './lab-last-routes.js';
-import { flatsSheet } from './lab-footwear-views.js';
+import { flatsSheet, viewsMarkup } from './lab-footwear-views.js';
+import { plushSheet } from './lab-plush-views.js';
+import { VIEWS_OF } from './lab-sketch.js';
 import { footwearPattern, cleanFootwear, fwDefaults, sizeRun, lastOf, lastSvg, hideArea, FW_STYLES, TOES, SYSTEMS, WIDTHS as SHOE_WIDTHS, UPPERS, LININGS, SIZE_LIMITS } from './lab-footwear.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -103,10 +105,10 @@ export function registerLabPatternRoutes(app, d) {
   app.get('/v1/lab/concepts/:id/pattern.dxf', { preHandler: pre }, file('dxf'));
   // a shoe's tech flats: outside, inside, top and bottom, 1:1 (src/lab-footwear-views.js)
   app.get('/v1/lab/concepts/:id/flats.svg', { preHandler: pre }, async (req, reply) => {
-    const L = await load(req.params.id); if (!L) return bad(reply, 'Not found', 404); if (L.kind !== 'footwear') return bad(reply, 'Tech flats from the pattern are drawn for footwear');
+    const L = await load(req.params.id); if (!L) return bad(reply, 'Not found', 404); if (L.kind !== 'footwear' && L.kind !== 'plush') return bad(reply, 'Tech flats from the pattern are drawn for footwear and plush');
     const pat = patternOf(L, String(req.query?.size || ''));
     reply.header('content-disposition', `attachment; filename="${(L.c.name || 'shoe').replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-tech-flats.svg"`).header('cache-control', 'no-store');
-    return reply.type('image/svg+xml; charset=utf-8').send(flatsSheet(pat, { title: L.c.name }));
+    return reply.type('image/svg+xml; charset=utf-8').send(L.kind === 'plush' ? plushSheet(pat, { title: L.c.name, viewsMarkup }) : flatsSheet(pat, { title: L.c.name }));
   });
 
   // read the shoe from the concept's picture: its outline (no AI) and, when Claude is connected, what the eye sees part by part. Nothing is
@@ -172,7 +174,7 @@ export function registerLabPatternRoutes(app, d) {
 
   // paper sketches under the views: a photo or scan of a hand drawing (or a picture from any drawing app) laid under one view of the shoe, to
   // trace on the page or keep beside the drafted lines. Kept straight away (not with Save); the picture is re-encoded, so nothing but pixels is kept.
-  const VIEWS = ['lateral', 'medial', 'top', 'bottom'], cleanPlace = p => { const n = (v, a, b, d) => { const x = Number(v); return Number.isFinite(x) ? Math.round(Math.min(b, Math.max(a, x)) * 1000) / 1000 : d; }; return { x: n(p?.x, -30, 30, 0), y: n(p?.y, -30, 30, 0), w: n(p?.w, .5, 24, 11), opacity: n(p?.opacity, .05, 1, .55) }; };
+  const VIEWS = ['lateral', 'medial', 'top', 'bottom', 'front', 'back', 'side'], cleanPlace = p => { const n = (v, a, b, d) => { const x = Number(v); return Number.isFinite(x) ? Math.round(Math.min(b, Math.max(a, x)) * 1000) / 1000 : d; }; return { x: n(p?.x, -30, 30, 0), y: n(p?.y, -30, 30, 0), w: n(p?.w, .5, 24, 11), opacity: n(p?.opacity, .05, 1, .55) }; };
   app.get('/v1/lab/concepts/:id/pattern/underlays', { preHandler: pre }, async (req, reply) => {
     const L = await load(req.params.id); if (!L) return bad(reply, 'Not found', 404);
     return { underlays: (await pool.query('select view, place, updated_at from lab_pattern_underlays where concept_id=$1 order by view', [L.c.id])).rows };
@@ -183,7 +185,7 @@ export function registerLabPatternRoutes(app, d) {
     return reply.type(r.mime).header('cache-control', 'private, no-store').send(r.image);
   });
   app.put('/v1/lab/concepts/:id/pattern/underlays/:view', { preHandler: pre, bodyLimit: 16_000_000 }, async (req, reply) => {
-    const L = await load(req.params.id); if (!L) return bad(reply, 'Not found', 404); if (!VIEWS.includes(req.params.view)) return bad(reply, 'Choose a view: outside, inside, top or bottom');
+    const L = await load(req.params.id); if (!L) return bad(reply, 'Not found', 404); if (!(VIEWS_OF[L.kind] || []).includes(req.params.view)) return bad(reply, L.kind === 'plush' ? 'Choose a view: front, back or side' : L.kind === 'footwear' ? 'Choose a view: outside, inside, top or bottom' : 'Paper sketches go under a shoe\'s or a plush\'s views');
     const m = /^data:image\/(png|jpe?g|webp|heic|heif|gif);base64,([A-Za-z0-9+/=\s]+)$/i.exec(String(req.body?.image || '')); if (!m) return bad(reply, 'Choose a picture of the sketch (PNG, JPEG, WebP or HEIC)');
     let out, mime;
     try { const img = sharp(Buffer.from(m[2], 'base64'), { limitInputPixels: 80e6 }).rotate(), meta = await img.metadata(); const sized = img.resize({ width: 2400, height: 2400, fit: 'inside', withoutEnlargement: true });

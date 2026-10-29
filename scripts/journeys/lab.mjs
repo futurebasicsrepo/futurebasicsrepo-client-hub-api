@@ -3113,5 +3113,37 @@ await journey('J251', 'A footwear designer draws by hand: lines sketched on the 
   } finally { await K(`/concepts/${cid}`, { method: 'DELETE' }); }
 });
 
+await journey('J252', 'A plush designer sees the toy as it will be made: Pattern opens a bear on its tech flats (front, back, side: stuffed, with its face, seams, the stuffing opening and the law label), downloads them as an SVG, sketches on the front and the side by hand, lays a paper sketch under the front, and saves', async () => {
+  const cid = (await K('/concepts/from-scratch', { body: { category: 'plush', shape: 'bear', name: `Sketched bear ${stamp}` } })).json.concept.id;
+  try {
+    const flats = await call(`/v1/lab/concepts/${cid}/flats.svg`, { token: kyleT });
+    ok(flats.status === 200 && />Front</.test(flats.text) && />Back</.test(flats.text) && />Side</.test(flats.text) && /12 in/.test(flats.text), '1. the plush\'s tech flats download as one SVG: front, back and side, with its height');
+    const paper = await sharp({ create: { width: 600, height: 800, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } }).composite([{ input: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="600" height="800"><circle cx="300" cy="220" r="150" fill="none" stroke="#333" stroke-width="8"/></svg>') }]).png().toBuffer();
+    ok((await K(`/concepts/${cid}/pattern/underlays/front`, { method: 'PUT', body: { image: 'data:image/png;base64,' + paper.toString('base64'), place: { x: -4, y: -1, w: 8, opacity: .5 } } })).status === 200, '2. a paper sketch (a drawing app\'s PNG, its transparency kept) goes under the front');
+    if (!playwright) { ok(true, 'needs a browser'); return; }
+    const br = await playwright.chromium.launch();
+    try {
+      const oc = await br.newContext({ viewport: { width: 1366, height: 1024 } }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
+      const page = await oc.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
+      await page.goto(`${BASE}/lab/studio?concept=${cid}&view=pattern`, { waitUntil: 'networkidle' }); const F = await (await page.waitForSelector('#patFrame')).contentFrame(); await F.waitForFunction(() => window.FBPattern?.ready?.(), null, { timeout: 20000 });
+      await F.waitForSelector('#ul-front', { state: 'attached', timeout: 10000 });
+      const txt = await F.innerText('#canvas');
+      ok(/Front/.test(txt) && /Back/.test(txt) && /Side/.test(txt) && /12 in/.test(txt), '3. Pattern opens the bear on its tech flats, the paper sketch under the front');
+      const frameBox = async () => (await page.$('#patFrame')).boundingBox();
+      const draw = async (view, pts) => { const fb = await frameBox(); const s = []; for (const p of pts) s.push(await F.evaluate(([v, q]) => window.FBPattern.viewAt(v, q), [view, p])); await page.mouse.move(fb.x + s[0][0], fb.y + s[0][1]); await page.mouse.down(); for (const q of s.slice(1)) await page.mouse.move(fb.x + q[0], fb.y + q[1], { steps: 6 }); await page.mouse.up(); await sleep(200); };
+      await F.click('#skBtn'); await F.waitForSelector('#ktools:not(.hidden)');
+      ok(await F.isHidden('#ktools [data-k="seam"]'), '   (a plush has no seam tool on its views)');
+      await draw('front', [[-1, 7], [0, 7.6], [1, 7]]); await draw('side', [[1, 2], [1.6, 2.4]]);
+      const sk = await F.evaluate(() => window.FBPattern.sketches());
+      ok(sk.length === 2 && sk[0].on === 'front' && sk[1].on === 'side' && Math.abs(sk[0].pts[0][0] + 1) < .2, '4. lines drawn on the front and the side are kept on those views, where they were drawn', sk.map(k => [k.on, k.pts[0]]));
+      if (process.env.SHOT_DIR) await page.screenshot({ path: process.env.SHOT_DIR + '/plush.png' });
+      await F.click('#skBtn'); await F.click('#saveP'); await F.waitForFunction(() => !window.FBPattern.dirty(), null, { timeout: 10000 });
+      const saved = (await K(`/concepts/${cid}/pattern`)).json; ok(saved.spec.sketches?.length === 2 && saved.spec.shape === 'bear', '5. saved with the bear', saved.spec.sketches);
+      ok(/#3a3a3c/.test((await call(`/v1/lab/concepts/${cid}/flats.svg`, { token: kyleT })).text), '   and drawn into its tech flats');
+      ok(errs.length === 0, 'no page errors', errs); await oc.close();
+    } finally { await br.close(); }
+  } finally { await K(`/concepts/${cid}`, { method: 'DELETE' }); }
+});
+
 shops.close(); brave.close();
 process.exit(summary() ? 1 : 0);

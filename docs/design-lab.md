@@ -939,8 +939,8 @@ A shoe can be designed by hand as freely as with the drafted lines, and the two 
   shows on the last. Top and bottom lines stay on their views.
 - **Make a seam** turns a hand-drawn line on a side into a seam: tap it, choose the piece it crosses, and the piece is cut along it (thinned to
   the points that shape it). The line becomes the seam.
-- **Paper sketches.** A photo or scan of a drawing on paper, or a picture from any drawing app (Procreate, Illustrator, a camera), can lie under
-  any view to trace or keep beside the drafted lines: **Paper sketch…** in the Sketches panel, **Move sketch** to line it up, with sliders for
+- **Paper sketches.** A photo or scan of a drawing on paper, or a picture from any drawing app (Procreate, Illustrator, a camera), can lie over
+  any view, blended in, to trace or keep beside the drafted lines: **Paper sketch…** in the Sketches panel, **Move sketch** to line it up, with sliders for
   its size and how strongly it shows. It is kept straight away, re-encoded (only the pixels are kept), and is not part of the tech flats.
 - The lines are saved with the shoe (`spec.sketches`, up to 300 lines and 30,000 points) and drawn into the tech flats and their SVG, and so
   the developer check sees them too.
@@ -948,3 +948,21 @@ A shoe can be designed by hand as freely as with the drafted lines, and the two 
 Routes for paper sketches: `GET /v1/lab/concepts/:id/pattern/underlays` (which views have one and where it sits), `GET|PUT|PATCH|DELETE
 /v1/lab/concepts/:id/pattern/underlays/:view` (the picture; `PUT {image: data URL, place?}`, `PATCH {place: {x, y, w, opacity}}`, in the view's
 inches; a picture up to 15 MB).
+
+## Plush tech flats: the toy as it will be made
+
+A plush's product view on the Pattern page, and **Tech flats (SVG)** under Files (`GET /v1/lab/concepts/:id/flats.svg`, 1:1 in inches), draw it
+from the front, the back and the side as it is when stuffed and sewn (`src/lab-plush-views.js`), from the same sizes the pattern is drafted to:
+
+- **Bear:** the head with the gusset's two seams over the crown, round, pointed or long ears with the inner ear in contrast, the muzzle in
+  contrast with an embroidered nose and mouth, arms at the shoulders and legs under the body (their seams), from the side the head's profile
+  as the head side is cut, the foot turned forward with its pad.
+- **Bean and bunny:** the body, ears, arm nubs, a face (eyes, nose, mouth, cheeks), the base's seam just showing; the tail from the back and
+  the side.
+- **Pillow:** the front and back with their seam, and from the side the gusset's depth, thickest in the middle where it is filled.
+- **The eyes as made:** embroidered (satin-stitched), 12 mm safety eyes (with the washer ring) or felt (sewn flat on white).
+- **Construction:** the centre-front and centre-back seams, the opening left to stuff closed with a ladder stitch (as long as the pattern says),
+  the sewn-in law label in its side seam, the height down the front. Long-pile fur is drawn with a tufted edge.
+
+The views can be sketched on by hand and have paper sketches laid over them, as a shoe's can (*Drawing by hand*, above), on `front`, `back`
+and `side`.
