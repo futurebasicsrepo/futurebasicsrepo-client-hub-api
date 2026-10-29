@@ -898,6 +898,8 @@ app.get('/chat.js',(_req,reply)=>reply.header('cache-control','public, max-age=3
 const FONT_FILES=new Set(['fonts.css','space-grotesk-latin.woff2','space-grotesk-latin-ext.woff2','ibm-plex-mono-400.woff2','ibm-plex-mono-500.woff2']);
 app.get('/fonts/:file',(req,reply)=>{const f=String(req.params.file);if(!FONT_FILES.has(f))return reply.code(404).send({error:'Not found'});
   return reply.header('cache-control',f.endsWith('.css')?'public, max-age=3600':'public, max-age=31536000, immutable').header('access-control-allow-origin','*').type(f.endsWith('.css')?'text/css':'font/woff2').send(readFileSync(new URL('./fonts/'+f,import.meta.url)))});
+// the shared daylight look of the hub and the console (see cue.css), loaded last on each of their pages
+app.get('/cue.css',(_req,reply)=>reply.header('cache-control','public, max-age=300').type('text/css').send(readFileSync(new URL('./cue.css',import.meta.url),'utf8')));
 app.get('/chat.css',(_req,reply)=>reply.header('cache-control','public, max-age=300').type('text/css').send(readFileSync(new URL('./chat.css',import.meta.url),'utf8')));
 app.get('/photo-prep.js',(_req,reply)=>reply.header('cache-control','public, max-age=300').type('application/javascript').send(readFileSync(new URL('./photo-prep.js',import.meta.url),'utf8')));
 app.get('/tech-packs/new', sendStart);
