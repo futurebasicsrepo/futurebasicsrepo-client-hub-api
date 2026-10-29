@@ -4,6 +4,7 @@
 // (for the exploded view, which lifts the pieces off the product and lays them out flat) and where it goes in the cutting layout.
 // The same file runs in the page (served as /lab/pattern.js) and on the service (the DXF and the SVG), so it uses neither the DOM nor Node.
 // All lengths are inches; y runs down. A pattern from here is a first block from the measurements: a pattern maker trues it up on the sample.
+import { dxfR12 } from './lab-dxf.js';
 import { STYLES, measurementsFor, SIZES } from './lab-flats.js';
 import { cleanSketches, VIEWS_OF } from './lab-sketch.js';
 import { cleanLogos } from './lab-logos.js';
@@ -405,23 +406,25 @@ export function patternSvg(pat, { width = 58, title = '' } = {}) {
   const W = Math.max(...lay.map(g => g.width), 20) + .5, H = y0;
   return `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="${r3(W)}in" height="${r3(H)}in" viewBox="-.25 0 ${r3(W)} ${r3(H)}"><title>${esc(title || pat.label)} · pattern · ${esc(pat.size)}</title><defs><marker id="ga" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="4" markerHeight="4" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#17603a"/></marker></defs>${body}</svg>\n`;
 }
-// DXF (R12, inches): one block of polylines a piece, on layers a pattern system reads: CUT (the cutting line), SEW (the sew line), GRAIN, NOTCH, TEXT
+// DXF (R12, inches): one set of polylines a cut, on layers a pattern system reads: CUT (the cutting line), SEW (the sew line), GRAIN, NOTCH,
+// TEXT. Written whole (src/lab-dxf.js), so strict readers open it too.
 export function patternDxf(pat, { width = 58 } = {}) {
-  const lay = layoutOf(pat, { width }), out = ['0', 'SECTION', '2', 'HEADER', '9', '$INSUNITS', '70', '1', '9', '$MEASUREMENT', '70', '0', '0', 'ENDSEC', '0', 'SECTION', '2', 'ENTITIES'];
-  const poly = (pts, layer, closed = true) => { out.push('0', 'POLYLINE', '8', layer, '66', '1', '70', closed ? '1' : '0'); for (const [x, y] of pts) out.push('0', 'VERTEX', '8', layer, '10', String(r3(x)), '20', String(r3(-y))); out.push('0', 'SEQEND'); };
-  const text = (x, y, s, h, layer = 'TEXT') => out.push('0', 'TEXT', '8', layer, '10', String(r3(x)), '20', String(r3(-y)), '40', String(r3(h)), '1', String(s).replace(/[\r\n]+/g, ' '));
+  const lay = layoutOf(pat, { width }), d = dxfR12(), up = pts => pts.map(([x, y]) => [x, -y]);
+  for (const [l, c] of [['CUT', 7], ['SEW', 8], ['GRAIN', 3], ['NOTCH', 1], ['TEXT', 5]]) d.layer(l, c);
   let y0 = 0;
   for (const g of lay) {
     for (const it of g.items) {
       const q = it.piece, tf = pts => pts.map(([x, y]) => [(it.flip ? -x + (it.b.x0 + it.b.x1) : x) + it.x, y + it.y + y0]);
-      poly(tf(offsetOf(q.sew, q.sa ?? pat.sa)), 'CUT'); poly(tf(q.sew), 'SEW'); poly(tf(q.grain), 'GRAIN', false);
-      for (const [x, y] of tf(q.notches)) poly([[x - .09, y], [x + .09, y]], 'NOTCH', false);
-      const bb = boundsOf(tf(q.sew)); text(bb.x0 + .3, (bb.y0 + bb.y1) / 2, `${q.name} - ${cutWords(q)} - ${fabricName(q.fabric)} - ${pat.size}`, .25);
+      d.poly(d.ents, up(tf(offsetOf(q.sew, q.sa ?? pat.sa))), 'CUT'); d.poly(d.ents, up(tf(q.sew)), 'SEW'); d.poly(d.ents, up(tf(q.grain)), 'GRAIN', false);
+      for (const [x, y] of tf(q.notches)) d.poly(d.ents, [[x - .09, -y], [x + .09, -y]], 'NOTCH', false);
+      // the name, then how many and from what, inside the piece and sized to it, so neighbours' labels never run into each other
+      const bb = boundsOf(tf(q.sew)), w = bb.x1 - bb.x0, cx = bb.x0 + w * .1, cy = (bb.y0 + bb.y1) / 2, l2 = `${cutWords(q)} - ${fabricName(q.fabric)} - ${pat.size}`;
+      const h1 = Math.max(.08, Math.min(.25, w * .8 / (String(q.name).length * .7 || 1))), h2 = Math.max(.06, Math.min(.16, w * .8 / (l2.length * .7)));
+      d.text(d.ents, cx, -cy, q.name, h1, 'TEXT'); d.text(d.ents, cx, -(cy + h1 * 1.6), l2, h2, 'TEXT');
     }
     y0 += g.length + 3;
   }
-  out.push('0', 'ENDSEC', '0', 'EOF');
-  return out.join('\n') + '\n';
+  return d.toString({ units: 'in' });
 }
 
 
@@ -489,39 +492,36 @@ export function runLength(pts, i, j) { let L = 0, k = i; const n = pts.length; f
 // the piece's text (Piece Name, Quantity, Size, Material); the file's own text (Style Name, Sample Size, Units); every block INSERTed
 // where it lies in the layout. Inches or millimetres.
 export function patternDxfAama(pats, { width = 58, units = 'in', style = 'Style', author = 'Future Basics Design Lab' } = {}) {
-  const list = Array.isArray(pats) ? pats : [pats], k = units === 'mm' ? 25.4 : 1, f = v => String(r3(v * k)), out = [];
-  const head = ['0', 'SECTION', '2', 'HEADER', '9', '$ACADVER', '1', 'AC1009', '9', '$MEASUREMENT', '70', units === 'mm' ? '1' : '0', '0', 'ENDSEC'];
-  const layers = ['1', '2', '3', '4', '7', '8', '14', '15'], tables = ['0', 'SECTION', '2', 'TABLES', '0', 'TABLE', '2', 'LAYER', '70', String(layers.length), ...layers.flatMap(l => ['0', 'LAYER', '2', l, '70', '0', '62', '7', '6', 'CONTINUOUS']), '0', 'ENDTAB', '0', 'ENDSEC'];
-  const blocks = ['0', 'SECTION', '2', 'BLOCKS'], ents = ['0', 'SECTION', '2', 'ENTITIES'];
-  const text = (arr, x, y, s, h, layer = '1') => arr.push('0', 'TEXT', '8', layer, '10', f(x), '20', f(-y), '40', f(h), '1', String(s).replace(/[\r\n]+/g, ' ').slice(0, 250));
-  const poly = (arr, pts, layer, closed = true) => { arr.push('0', 'POLYLINE', '8', layer, '66', '1', '10', '0', '20', '0', '70', closed ? '1' : '0'); for (const [x, y] of pts) arr.push('0', 'VERTEX', '8', layer, '10', f(x), '20', f(-y)); arr.push('0', 'SEQEND', '8', layer); };
-  const line = (arr, a, b, layer) => arr.push('0', 'LINE', '8', layer, '10', f(a[0]), '20', f(-a[1]), '11', f(b[0]), '21', f(-b[1]));
+  const list = Array.isArray(pats) ? pats : [pats], k = units === 'mm' ? 25.4 : 1, d = dxfR12(), B = d.blocks, E = d.ents;
+  // the pattern's inches (y down) to the file's units (y up)
+  const P = ([x, y]) => [x * k, -y * k], Ps = pts => pts.map(P);
+  for (const l of ['1', '2', '3', '4', '7', '8', '14', '15']) d.layer(l, 7);
   const sizes = [...new Set(list.map(p => p.size))];
-  text(ents, 0, -3, `Style Name: ${style}`, .25); text(ents, 0, -2.6, `Sample Size: ${list[0]?.size ?? ''}`, .2); text(ents, 0, -2.25, `Units: ${units === 'mm' ? 'METRIC' : 'ENGLISH'}`, .2);
-  text(ents, 0, -1.9, `Size List: ${sizes.join(' ')}`, .2); text(ents, 0, -1.55, `Author: ${author}`, .2); text(ents, 0, -1.2, `Creation Date: ${new Date().toISOString().slice(0, 10)}`, .2);
+  d.text(E, ...P([0, -3]), `Style Name: ${style}`, .25 * k, '1'); d.text(E, ...P([0, -2.6]), `Sample Size: ${list[0]?.size ?? ''}`, .2 * k, '1'); d.text(E, ...P([0, -2.25]), `Units: ${units === 'mm' ? 'METRIC' : 'ENGLISH'}`, .2 * k, '1');
+  d.text(E, ...P([0, -1.9]), `Size List: ${sizes.join(' ')}`, .2 * k, '1'); d.text(E, ...P([0, -1.55]), `Author: ${author}`, .2 * k, '1'); d.text(E, ...P([0, -1.2]), `Creation Date: ${new Date().toISOString().slice(0, 10)}`, .2 * k, '1');
   let y0 = 0, n = 0;
   for (const pat of list) {
-    const lay = layoutOf(pat, { width });
+    const lay = layoutOf(pat, { width }), gy = new Map(); let acc = 0; for (const g of lay) { gy.set(g, acc); acc += g.length + 3; } // each cloth's layout below the last
     for (const g of lay) for (const it of g.items) {
       if (it.n !== 0) continue; // one block a piece and a size; the quantity is in its text
       const q = it.piece, sa = q.sa ?? pat.sa, cutl = offsetOf(q.sew, sa), name = `${String(q.name).replace(/[^A-Za-z0-9]+/g, '_').slice(0, 24)}_${String(pat.size).replace(/[^A-Za-z0-9.]+/g, '')}_${++n}`;
-      blocks.push('0', 'BLOCK', '8', '0', '2', name, '70', '0', '10', '0', '20', '0', '3', name);
-      poly(blocks, cutl, '1'); for (const p of cutl) blocks.push('0', 'POINT', '8', '2', '10', f(p[0]), '20', f(-p[1]));
-      poly(blocks, q.sew, '14'); line(blocks, q.grain[0], q.grain[1], '7');
-      // a notch: a ¼ in cut in from the cutting line, square to the edge, at the notch on the sew line
-      for (const nt of q.notches) { let bi = 0, bd = Infinity; for (let i = 0; i < q.sew.length; i++) { const d = Math.hypot(q.sew[i][0] - nt[0], q.sew[i][1] - nt[1]); if (d < bd) { bd = d; bi = i; } }
+      d.begin(name);
+      d.poly(B, Ps(cutl), '1'); for (const p of cutl) d.point(B, P(p), '2');
+      d.poly(B, Ps(q.sew), '14'); d.line(B, P(q.grain[0]), P(q.grain[1]), '7');
+      // a notch: a 1/4 in cut in from the cutting line, square to the edge, at the notch on the sew line
+      for (const nt of q.notches) { let bi = 0, bd = Infinity; for (let i = 0; i < q.sew.length; i++) { const dd = Math.hypot(q.sew[i][0] - nt[0], q.sew[i][1] - nt[1]); if (dd < bd) { bd = dd; bi = i; } }
         const a = q.sew[(bi - 1 + q.sew.length) % q.sew.length], b = q.sew[(bi + 1) % q.sew.length], dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy) || 1, nx = dy / L, ny = -dx / L;
-        line(blocks, [nt[0] + nx * sa, nt[1] + ny * sa], [nt[0] + nx * (sa - .25), nt[1] + ny * (sa - .25)], '4'); }
+        d.line(B, P([nt[0] + nx * sa, nt[1] + ny * sa]), P([nt[0] + nx * (sa - .25), nt[1] + ny * (sa - .25)]), '4'); }
       const b = boundsOf(q.sew), cx = b.x0 + .2, cy = (b.y0 + b.y1) / 2;
-      text(blocks, cx, cy - .45, `Piece Name: ${q.name}`, .18); text(blocks, cx, cy - .2, `Quantity: ${q.cut}${q.pair ? ' (pairs)' : ''}`, .16); text(blocks, cx, cy + .05, `Size: ${pat.size}`, .16);
-      text(blocks, cx, cy + .3, `Material: ${fabricName(q.fabric).toUpperCase()}`, .16); if (q.fold) text(blocks, cx, cy + .55, 'Annotation: CUT ON FOLD', .14, '15');
-      blocks.push('0', 'ENDBLK', '8', '0');
-      ents.push('0', 'INSERT', '8', '1', '2', name, '10', f(it.x), '20', f(-(it.y + y0)));
+      d.text(B, ...P([cx, cy - .45]), `Piece Name: ${q.name}`, .18 * k, '1'); d.text(B, ...P([cx, cy - .2]), `Quantity: ${q.cut}${q.pair ? ' (pairs)' : ''}`, .16 * k, '1'); d.text(B, ...P([cx, cy + .05]), `Size: ${pat.size}`, .16 * k, '1');
+      d.text(B, ...P([cx, cy + .3]), `Material: ${fabricName(q.fabric).toUpperCase()}`, .16 * k, '1'); if (q.fold) d.text(B, ...P([cx, cy + .55]), 'Annotation: CUT ON FOLD', .14 * k, '15');
+      d.end();
+      const cb = boundsOf(cutl), [ix, iy] = P([it.x, it.y + y0 + gy.get(g)]);
+      d.insert(name, ix, iy, { x0: cb.x0 * k, x1: cb.x1 * k, y0: -cb.y1 * k, y1: -cb.y0 * k }, '1');
     }
     y0 += lay.reduce((t, g) => t + g.length + 3, 0) + 4;
   }
-  blocks.push('0', 'ENDSEC'); ents.push('0', 'ENDSEC');
-  return [...head, ...tables, ...blocks, ...ents, '0', 'EOF'].join('\n') + '\n';
+  return d.toString({ units });
 }
 
 // what the pattern costs in cloth: yards of each fabric for one piece, from the layout

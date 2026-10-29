@@ -2783,7 +2783,7 @@ await journey('J244', 'From scratch to pattern pieces: a hoodie started from not
   const fl = (await K(`/concepts/${cid}/flats`)).json.flat; ok(fl?.style === 'hoodie' && fl.template === 'none', '   its flats are the hoodie as a plain outline to draw over, not a sketch', { style: fl?.style, template: fl?.template });
   const pat = (await K(`/concepts/${cid}/pattern`)).json; ok(pat.kind === 'garment' && pat.flat.style === 'hoodie' && pat.yardage.some(y => y.fabric === 'self' && y.yards > .8), '2. the pattern is drafted from the flats, with the cloth it takes', { kind: pat.kind, yardage: pat.yardage });
   const dxf = await call(`/v1/lab/concepts/${cid}/pattern.dxf?size=L`, { token: kyleT }), svg = await call(`/v1/lab/concepts/${cid}/pattern.svg`, { token: kyleT });
-  ok(dxf.status === 200 && /POLYLINE\n8\nCUT/.test(dxf.text) && /POLYLINE\n8\nSEW/.test(dxf.text) && /Hood side/.test(dxf.text), '   a DXF with cutting and sewing lines for every piece, in the size asked for');
+  ok(dxf.status === 200 && /POLYLINE\n5\n[0-9A-F]+\n8\nCUT/.test(dxf.text) && /POLYLINE\n5\n[0-9A-F]+\n8\nSEW/.test(dxf.text) && /\$ACADVER\n1\nAC1009/.test(dxf.text) && /TABLE\n2\nLAYER/.test(dxf.text) && /Hood side/.test(dxf.text), '   a DXF with cutting and sewing lines for every piece, in the size asked for');
   ok(svg.status === 200 && /width="[\d.]+in"/.test(svg.text) && /Kangaroo pocket/.test(svg.text), '   and an SVG at real size');
   ok((await K(`/concepts/${cid}/pattern`, { method: 'PUT', body: { spec: { sa: .625, width: 60 } } })).json.spec.width === 60 && (await K(`/concepts/${cid}/pattern`)).json.spec.sa === .625, '   the seam allowance and the cloth width are kept');
   // a plush
@@ -2833,7 +2833,7 @@ await journey('J245', 'Footwear: a shoe started from scratch is drafted on its l
   await K(`/concepts/${cid}/pattern`, { method: 'PUT', body: { spec: saved.spec } });
   const last = await call(`/v1/lab/concepts/${cid}/last.svg?size=12`, { token: kyleT }), dxf = await call(`/v1/lab/concepts/${cid}/pattern.dxf?size=12`, { token: kyleT });
   ok(last.status === 200 && /size 12 E/.test(last.text) && /ball girth/.test(last.text), '3. the last is drawn for the last maker in the size asked for');
-  ok(dxf.status === 200 && /Elastic gore - Cut 4/.test(dxf.text) && /Back quarter, outside/.test(dxf.text) && /US men's 12 E/.test(dxf.text), '   and the upper as a DXF in that size');
+  ok(dxf.status === 200 && /\n1\nElastic gore\n/.test(dxf.text) && /\n1\nCut 4/.test(dxf.text) && /Back quarter, outside/.test(dxf.text) && /US men's 12 E/.test(dxf.text), '   and the upper as a DXF in that size');
   ok((await K('/concepts/from-scratch', { body: { category: 'footwear', style: 'stiletto' } })).json.concept && true, '   an unknown shoe style starts as a sneaker');
   if (!playwright) { ok(true, 'needs a browser'); return; }
   const b = await playwright.chromium.launch();

@@ -807,6 +807,18 @@ Optitex and CLO import as a graded pattern:
 The file comes in one size or the whole run (`&sizes=all`), in inches or millimetres (`&units=mm`). The plain DXF (CUT/SEW/GRAIN/NOTCH/TEXT
 layers) is still there for anything else.
 
+**Both DXFs are written whole** (`src/lab-dxf.js`). A strict reader such as GroupDocs/Aspose, or a cutting-room system, opens them. The first
+plain DXF had only a header and the entities, and strict readers failed on it with "Object reference not set to an instance of an object". Each
+file now has:
+- **Header:** the R12 version (AC1009) and the drawing's extents.
+- **Tables:** viewport, line type, every layer it draws on, text style, application id and dimension style.
+- **Blocks:** model and paper space.
+- **Entities:** each with a handle.
+
+Text is plain ASCII. In the AAMA file, each cloth's layout sits below the last, so contrast pieces no longer land on the self pieces. The
+plain DXF's labels are sized to their piece: the name, then the cut. Every file checked passes ezdxf's strict reader and auditor with no errors
+and no fixes, and dxf-parser reads them all.
+
 ## 3D lasts: importing one, having one made, drafting on it
 
 A footwear concept can work from a real last instead of the drafted one. The **3D last** panel on the Pattern view handles this

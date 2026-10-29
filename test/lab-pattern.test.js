@@ -81,8 +81,13 @@ test('plush: each shape drafts its pieces, the choices are bounded, and the safe
 test('the files: a DXF a pattern system reads (closed cut and sew polylines per piece, inches) and a 1:1 SVG', () => {
   const pat = garmentPattern(defaultParams('tee')), dxf = patternDxf(pat), cuts = pat.pieces.reduce((s, q) => s + q.cut, 0);
   assert.match(dxf, /^0\nSECTION\n2\nHEADER/); assert.match(dxf, /EOF\n$/);
-  assert.equal((dxf.match(/\nPOLYLINE\n8\nCUT\n/g) || []).length, cuts); assert.equal((dxf.match(/\nPOLYLINE\n8\nSEW\n/g) || []).length, cuts);
-  assert.ok(/\$INSUNITS\n70\n1/.test(dxf), 'inches');
+  assert.equal((dxf.match(/\nPOLYLINE\n5\n[0-9A-F]+\n8\nCUT\n/g) || []).length, cuts); assert.equal((dxf.match(/\nPOLYLINE\n5\n[0-9A-F]+\n8\nSEW\n/g) || []).length, cuts);
+  assert.ok(/\$MEASUREMENT\n70\n0/.test(dxf), 'inches');
+  // written whole, so strict readers open it: the version, the tables (the layers it draws on declared), the model and paper space blocks
+  assert.match(dxf, /\$ACADVER\n1\nAC1009/); for (const t of ['VPORT', 'LTYPE', 'LAYER', 'STYLE', 'APPID', 'DIMSTYLE']) assert.ok(dxf.includes(`TABLE\n2\n${t}\n`), t);
+  for (const l of ['CUT', 'SEW', 'GRAIN', 'NOTCH', 'TEXT']) assert.ok(dxf.includes(`LAYER\n2\n${l}\n`), l);
+  assert.ok(dxf.includes('$MODEL_SPACE') && dxf.includes('$PAPER_SPACE')); assert.ok(!/NaN|Infinity|undefined/.test(dxf)); assert.ok(/^[\x09\x0a\x20-\x7e]*$/.test(dxf), 'plain ASCII');
+  const handles = dxf.match(/\n5\n([0-9A-F]+)\n/g); assert.equal(new Set(handles).size, handles.length, 'every handle its own');
   const svg = patternSvg(plushPattern({ shape: 'bean' }), { title: 'Bean <test>' });
   assert.match(svg, /width="[\d.]+in"/); assert.match(svg, /Bean &lt;test&gt;/); assert.ok(!/NaN/.test(svg));
 });
@@ -128,13 +133,13 @@ test('a run of an outline is measured forward round it, and the outline is simpl
 
 test('AAMA DXF: a block a piece and a size with its text, the standard layers, inserts, metric or English', () => {
   const p = defaultParams('pants'), pats = ['S', 'M', 'L'].map(z => garmentPattern(p, z)), dxf = patternDxfAama(pats, { style: 'Pleated pant', units: 'in' });
-  const blocks = (dxf.match(/\n0\nBLOCK\n/g) || []).length, perSize = pats[0].pieces.filter(q => q.cut > 0).length;
+  const blocks = (dxf.match(/\n0\nBLOCK\n/g) || []).length - 2, perSize = pats[0].pieces.filter(q => q.cut > 0).length;
   assert.equal(blocks, perSize * 3); assert.equal((dxf.match(/\n0\nINSERT\n/g) || []).length, blocks);
   for (const t of ['Style Name: Pleated pant', 'Units: ENGLISH', 'Size List: S M L', 'Piece Name: Front leg', 'Quantity: 2 (pairs)', 'Material: POCKETING']) assert.ok(dxf.includes(t), t);
   for (const layer of ['1', '2', '4', '7', '14']) assert.ok(new RegExp(`\\n8\\n${layer}\\n`).test(dxf), `layer ${layer}`);
   assert.match(dxf, /\$ACADVER\n1\nAC1009/); assert.match(dxf, /EOF\n$/);
   const mm = patternDxfAama(pats[1], { units: 'mm' }); assert.ok(mm.includes('Units: METRIC') && mm.includes('$MEASUREMENT\n70\n1'));
-  const xs = s => [...s.matchAll(/\nVERTEX\n8\n14\n10\n(-?[\d.]+)/g)].map(m => Number(m[1]));
+  const xs = s => [...s.matchAll(/\nVERTEX\n5\n[0-9A-F]+\n8\n14\n10\n(-?[\d.]+)/g)].map(m => Number(m[1]));
   assert.ok(Math.abs(Math.max(...xs(mm)) / Math.max(...xs(patternDxfAama(pats[1]))) - 25.4) < .01, 'millimetres are inches times 25.4');
 });
 
