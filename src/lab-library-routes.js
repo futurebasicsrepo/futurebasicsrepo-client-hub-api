@@ -16,7 +16,8 @@ import sharp from 'sharp';
 import { imageConfig, openaiEdit } from './check.js';
 import { finishArt, ART_STYLES } from './lab-art.js';
 import { jobZip, jobFile } from './lab-jobfile.js';
-import { traceVector, stitchPlan, dstOf, stitchPreview } from './lab-vector.js';
+import { traceVector, stitchPlan, dstOf, expOf, stitchPreview } from './lab-vector.js';
+import { digitizeOptions } from './lab-digitize.js';
 import { makeRepeat, cleanRepeat, REPEAT_TYPES } from './lab-repeat.js';
 import { brandHits, cleanGraphics, ensureBranding, GRAPHIC_PLACE, GRAPHIC_TECHNIQUES } from './lab-concepts.js';
 import { BUILTIN_TECHNIQUES, TECHNIQUE_KINDS, EFFECTS, cleanTechnique, cleanRules, realPrompt } from './lab-library.js';
@@ -122,10 +123,11 @@ export function registerLabLibraryRoutes(app, d) {
   app.get('/v1/lab/library/graphics/:id/embroidery', { preHandler: pre }, async (req, reply) => {
     if (!need(req, reply)) return; const a = await artRow(req.params.id); if (!a) return bad(reply, 'Not found', 404);
     const w = Number(req.query?.widthIn) || 4; if (!(w >= .5 && w <= 16)) return bad(reply, 'An embroidery runs from ½ in to 16 in wide');
-    const p = await stitchPlan(a.png, { widthIn: w });
-    if (req.query?.format === 'dst') { const d = dstOf(p, a.name); return reply.header('content-type', 'application/octet-stream').header('content-disposition', `attachment; filename="${fileName(a, 'dst')}"`).header('cache-control', 'no-store').send(d.file); }
-    const preview = await sharp(Buffer.from(stitchPreview(p, { px: 700 }))).png().toBuffer();
-    return { widthMm: p.widthMm, heightMm: p.heightMm, stitches: p.stitches, jumps: p.jumps, colours: p.colours, preview: `data:image/png;base64,${preview.toString('base64')}` };
+    const q = req.query || {}, garment = /^#?[0-9a-f]{6}$/i.test(String(q.garment || '')) ? '#' + String(q.garment).replace('#', '') : '', p = await stitchPlan(a.png, { widthIn: w, garment, ...digitizeOptions(q) });
+    if (q.format === 'dst') { const d = dstOf(p, a.name); return reply.header('content-type', 'application/octet-stream').header('content-disposition', `attachment; filename="${fileName(a, 'dst')}"`).header('cache-control', 'no-store').send(d.file); }
+    if (q.format === 'exp') { const d = expOf(p); return reply.header('content-type', 'application/octet-stream').header('content-disposition', `attachment; filename="${fileName(a, 'exp')}"`).header('cache-control', 'no-store').send(d.file); }
+    const preview = await sharp(Buffer.from(stitchPreview(p, { px: 900, garment: garment || '#ecebe6' }))).png().toBuffer();
+    return { widthMm: p.widthMm, heightMm: p.heightMm, stitches: p.stitches, jumps: p.jumps, stats: p.stats, colours: p.colours, warnings: p.warnings, preview: `data:image/png;base64,${preview.toString('base64')}` };
   });
   // ---- an all-over repeat ----
   app.post('/v1/lab/library/repeat', { preHandler: pre }, async (req, reply) => {

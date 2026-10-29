@@ -23,7 +23,8 @@ import { imageConfig, openaiEdit, openaiImage } from './check.js';
 import { locateMarks } from './lab-place.js';
 import { artInfo, artFindings } from './lab-flats-routes.js';
 import { sizeFindings, decorationCost, PLACEMENTS, calibrationOf } from './lab-decor.js';
-import { traceVector, stitchPlan, dstOf, stitchPreview } from './lab-vector.js';
+import { traceVector, stitchPlan, dstOf, expOf, stitchPreview } from './lab-vector.js';
+import { digitizeOptions } from './lab-digitize.js';
 import { jobFile, jobZip } from './lab-jobfile.js';
 import { cleanRules } from './lab-library.js';
 import { GRAPHIC_PLACE } from './lab-concepts.js';
@@ -145,11 +146,13 @@ export function registerLabStudioRoutes(app, d) {
     if (b.zip) { const z = await jobZip(img, { name, technique, widthIn: w, garmentColour: garment }); return reply.header('content-type', 'application/zip').header('content-disposition', `attachment; filename="${z.zipName}"`).send(z.zip); }
     const { job, files } = await jobFile(img, { name, technique, widthIn: w, garmentColour: garment });
     // each plate small enough to show: the ink in its colour on a clear background
+    // each plate small enough to show: the ink as it prints, and its film (screened when the art has tones), on white
+    const small = async (buf, px = 360) => `data:image/png;base64,${(await sharp(buf).resize({ width: px, height: px, fit: 'inside', kernel: 'mitchell' }).png().toBuffer()).toString('base64')}`;
     const plates = [];
-    for (const col of job.colours) { const f = files.find(x => x.name === col.ink); if (!f) continue; const small = await sharp(f.data).resize({ width: 360, height: 360, fit: 'inside' }).png().toBuffer(); plates.push({ n: col.n, pantone: col.pantone, hex: col.hex, coverage: col.coverage, image: `data:image/png;base64,${small.toString('base64')}` }); }
+    for (const col of job.colours) { const f = files.find(x => x.name === col.ink); if (!f) continue; const fm = col.film && files.find(x => x.name === col.film); plates.push({ n: col.n, pantone: col.pantone, hex: col.hex, coverage: col.coverage, angle: col.angle ?? null, image: await small(f.data), film: fm ? await small(fm.data) : null }); }
     const under = files.find(x => x.name === 'underbase.png');
-    return { job: { name: job.name, technique: job.technique, size: job.size, coverage: job.coverage, colours: job.colours.map(c => ({ n: c.n, pantone: c.pantone, hex: c.hex, coverage: c.coverage })), warnings: job.warnings, print: job.print || null, embroidery: job.embroidery || null, transfer: job.transfer || null, patch: job.patch || null },
-      plates, underbase: under ? `data:image/png;base64,${(await sharp(under.data).resize({ width: 360, height: 360, fit: 'inside' }).png().toBuffer()).toString('base64')}` : null };
+    return { job: { name: job.name, technique: job.technique, size: job.size, coverage: job.coverage, tones: job.tones, knockouts: job.knockouts, colours: job.colours.map(c => ({ n: c.n, pantone: c.pantone, hex: c.hex, coverage: c.coverage, angle: c.angle ?? null })), warnings: job.warnings, print: job.print || null, embroidery: job.embroidery || null, transfer: job.transfer || null, patch: job.patch || null },
+      plates, underbase: under ? await small(under.data) : null };
   });
 
   // ---- a layer as vector paths (for a screen printer) and as a stitch file (for an embroidery machine) ----
@@ -158,13 +161,19 @@ export function registerLabStudioRoutes(app, d) {
     const w = Number(b.widthIn), v = await traceVector(img, { widthIn: w > 0 && w < 80 ? w : null, name: clip(b.name, 60) || 'Graphic' });
     return { svg: v.svg, paths: v.paths, colours: v.colours, width: v.width, height: v.height };
   });
+  // digitizing: the layer as a stitch file (src/lab-digitize.js), with the settings a digitiser changes; format dst | exp | zip (the whole job:
+  // both files, the sew-out preview, the thread sequence and the sheet), else the preview and the numbers
   app.post('/v1/lab/studio/embroidery', { preHandler: pre, bodyLimit: 32_000_000 }, async (req, reply) => {
     const b = req.body || {}, img = pictureOf(b.image); if (!img) return bad(reply, 'Send the layer as a picture');
     const w = Number(b.widthIn) || 4; if (!(w >= .5 && w <= 16)) return bad(reply, 'An embroidery runs from ½ in to 16 in wide');
-    const name = clip(b.name, 60) || 'Graphic', p = await stitchPlan(img, { widthIn: w });
-    if (b.format === 'dst') { const d = dstOf(p, name); return reply.header('content-type', 'application/octet-stream').header('content-disposition', `attachment; filename="${name.replace(/[^a-z0-9]+/gi, '-').toLowerCase() || 'graphic'}.dst"`).send(d.file); }
-    const preview = await sharp(Buffer.from(stitchPreview(p, { px: 700 }))).png().toBuffer();
-    return { widthMm: p.widthMm, heightMm: p.heightMm, stitches: p.stitches, jumps: p.jumps, colours: p.colours, preview: `data:image/png;base64,${preview.toString('base64')}` };
+    const name = clip(b.name, 60) || 'Graphic', garment = /^#[0-9a-f]{6}$/i.test(String(b.garment || '')) ? b.garment : '', opts = digitizeOptions(b);
+    const file = name.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase() || 'graphic';
+    if (b.format === 'zip') { const t = await techOf(b.techniqueId), tech = t.kind === 'embroidery' ? t : { id: null, name: 'Embroidery', kind: 'embroidery', base: 'embroidery', finish: {}, rules: {} }; const z = await jobZip(img, { name, technique: { ...tech, rules: { ...cleanRules(tech.rules || {}, tech.base), maxW: 16, maxH: 16 } }, widthIn: w, garmentColour: garment, digitizeOpts: opts }); return reply.header('content-type', 'application/zip').header('content-disposition', `attachment; filename="${file}-embroidery.zip"`).send(z.zip); }
+    const p = await stitchPlan(img, { widthIn: w, garment, ...opts });
+    if (b.format === 'dst') { const d = dstOf(p, name); return reply.header('content-type', 'application/octet-stream').header('content-disposition', `attachment; filename="${file}.dst"`).send(d.file); }
+    if (b.format === 'exp') { const d = expOf(p); return reply.header('content-type', 'application/octet-stream').header('content-disposition', `attachment; filename="${file}.exp"`).send(d.file); }
+    const preview = await sharp(Buffer.from(stitchPreview(p, { px: 900, garment: garment || '#ecebe6' }))).png().toBuffer();
+    return { widthMm: p.widthMm, heightMm: p.heightMm, stitches: p.stitches, jumps: p.jumps, stats: p.stats, colours: p.colours, threads: p.threads.map((t, i) => ({ ...t, pantone: p.colours[i]?.pantone || '' })), objects: p.objects, warnings: p.warnings, knockouts: p.knockouts, settings: p.settings, preview: `data:image/png;base64,${preview.toString('base64')}` };
   });
 
   // ---- fonts ----

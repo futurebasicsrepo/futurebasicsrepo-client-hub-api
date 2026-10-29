@@ -290,9 +290,9 @@ From the library a graphic goes:
 
 | Technique | What is inside |
 | --- | --- |
-| Every job | `artwork-300dpi.png`; one `ink-NN-<pantone>.png` (the colour on a clear ground) and `film-NN-<pantone>.png` (black-on-white film positive) per colour; `job-sheet.pdf` (one page: size in inches and mm, colours as Pantone C with coverage, settings, warnings); `job.json`; `README.txt` |
-| Screen print | `underbase.png` when the garment is dark (white under every light colour, choked); mesh count, lpi, angle and dot shape, ink type, flash and cure, from the technique (plastisol, water-based, discharge, halftone, puff, foil, flock, rubber, vintage) |
-| Embroidery | the threads to match (Pantone), the stitch (satin, tatami fill, chain, satin over foam), backing, underlay, pull compensation, the smallest satin column, and an estimated stitch count from the technique's density and the area covered |
+| Every job | `artwork-300dpi.png`; one `ink-NN-<pantone>.png` (the colour on a clear ground, as strong as it prints) and, for print, `film-NN-<pantone>.png` (black-on-white film positive with registration marks; gradients screened as halftone dots at the plate's angle) per colour; `job-sheet.pdf` (one page: size in inches and mm, colours as Pantone C with coverage, settings, warnings); `job.json`; `README.txt` |
+| Screen print | `underbase.png` when the garment is dark (white under every ink that is not near-black, choked half a point); the press order (underbase and flash, then lightest to darkest); mesh count, lpi and dot shape when there are tones to screen, ink type, flash and cure, from the technique (plastisol, water-based, discharge, halftone, puff, foil, flock, rubber, vintage) |
+| Embroidery | the design digitized: `<name>.dst` (Tajima) and `<name>.exp` (Melco), `stitch-preview.png` (the sew-out), the stitch count, trims, colour changes and minutes a piece, the thread sequence with Pantones; the stitch, backing, underlay, pull compensation and the smallest satin column |
 | Heat transfer | `artwork-mirrored-300dpi.png` for the carrier, finish, carrier, press settings |
 | Patches | `cut-line.png` (the shape grown by 2 mm), edge finish (merrowed or laser-cut), base and backing |
 
@@ -369,6 +369,7 @@ Each guide offers the next one when it ends. The client's own guides for tech pa
 - `test/lab-materials.test.js`: the starting set, cleaning, the tag drawing, the costing, and what the pack takes;
 - `test/lab-decor.test.js`: placement words and sizes, the size findings, the decoration cost by technique (screens, stitches, area, its own numbers) and how it counts in the landed cost, artwork by garment size, inks per colourway, the quote calibration, and what the flats keep;
 - `test/lab-vector.test.js`: the vector trace, the stitch plan and the .dst file read back, and the repeats;
+- `test/lab-digitize.test.js`: separations (small inks kept, soft edges and resampled edges not inks, gradients as tones, JPG backgrounds, knockouts, halftones, the choke) and digitizing (satin or fill by width, settings, ties and trims, .dst and .exp read back);
 - `test/room-team.test.js`: the team list (owner first, invited addresses, removed people and staff left out) and the gate's rules (a room reaches only its own rows, plus the starter set to read);
 - `test/lab-access.test.js`: the Lab's pricing from the environment, the meter (included, over, billed, paid, the cap), the gate (staff, a locked room, the staff-only parts, a row that is not theirs), and the payment sync reading the Lab's orders;
 - `test/lab-jobfile.test.js`: the job file per technique (separations, underbase, films, settings, stitch count, cut line, the zip);
