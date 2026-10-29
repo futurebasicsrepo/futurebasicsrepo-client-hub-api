@@ -10,7 +10,7 @@
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const num = (v, d) => { const n = Number(v); return Number.isFinite(n) && n >= 0 ? Math.round(n) : d; };
 // what each kind of generation counts for: a picture is one; a walk (video) and a 3D model cost many times a picture
-export const UNITS = { concept: 1, redraw: 1, studio: 1, graphic: 1, sample: 1, view: 1, flat: 1, motif: 1, walk: 4, tryon: 3 };
+export const UNITS = { concept: 1, redraw: 1, studio: 1, graphic: 1, sample: 1, view: 1, flat: 1, motif: 1, walk: 4, tryon: 3, last: 3 };
 
 export function pricingFrom(env = process.env) {
   return {

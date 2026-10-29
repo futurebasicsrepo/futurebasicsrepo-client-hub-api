@@ -642,5 +642,192 @@ Files: `GET /v1/lab/concepts/:id/pattern.dxf` (R12, inches, on the CUT, SEW, GRA
 and `pattern.svg` (every piece at real size: print at 100%), each for the size asked for (`?size=L&width=60`). A plush's choices, and a
 garment's seam allowance and cloth width, are kept in `lab_patterns` (`GET|PUT /v1/lab/concepts/:id/pattern`).
 
-A pattern from the Lab is a **first block from the measurements**: a pattern maker trues it up on the first sample. Footwear (the last and the
-upper pattern), toys and objects (tooling) and electronics (the engineering) say so on the Pattern view: they come next, one at a time.
+A pattern from the Lab is a **first block from the measurements**: a pattern maker trues it up on the first sample. Toys and objects (tooling) and
+electronics (the engineering) say so on the Pattern view: they come next, one at a time.
+
+## Footwear: the last, the size run, and the upper in pieces
+
+A footwear concept (`src/lab-footwear.js`, shared by the page and the service) starts from its style:
+
+- court sneaker (cupsole), runner (EVA midsole), derby, penny loafer, Chelsea boot, or 6 in lace-up boot;
+- or the style is read from its words.
+
+Pattern shows the shoe on its **last**. The page also lists the last's numbers, the size run, the tooling, the leather and the components.
+
+**The last** is drafted from:
+
+- **the size**, in US men's, US women's, UK, EU (Paris points) or Mondopoint. A full US size is ⅓ in of foot.
+- **the width**: B to EEEE for men, AA to E for women.
+- **the toe shape**, which sets the toe allowance (round ½ in, almond ¾ in, square ⅝ in, pointed 1¼ in).
+- **the heel height and toe spring** (each style has its own defaults).
+
+From those, the page gives the last's length, foot length, ball and instep girths (a men's D at US 9 is 9⅜ in round the ball, graded ¼ in a size
+and a width), ball and heel widths, and where the ball sits. **Last spec (SVG)** draws the side and the bottom with those numbers for the last
+maker, in any size (`GET /v1/lab/concepts/:id/last.svg?size=`).
+
+**The upper** is drafted on the last's standard (its flattened side):
+
+- **Pieces of the upper:** the vamp (cut whole: the half on the standard mirrored over the centre line), the quarters (outside and inside, the
+  inside collar ⅛ in lower), the eyestays and the tongue for laced styles, the toe cap, the heel overlay, the back tab, the elastic gores of a
+  Chelsea, and the moc apron of a loafer.
+- **Inside the shoe:** the linings, the collar foam, the heel counter and toe puff (thermoplastic), the insole board and the sockliner.
+- **Allowances:** each piece carries the ⅝ in lasting allowance and ⅜ in overlaps.
+- **The sole unit** (cupsole, EVA midsole, or a stitched outsole and heel) is shown as a moulded component: it is never cut.
+
+Product → Exploded → Cutting layout works as for clothes, with the side and the bottom of the shoe side by side. The size picker redraws the
+whole shoe in any size of the run; the DXF and SVG come in the size asked for.
+
+**The size run** covers every size from and to, in half sizes or not. For each size it gives the last length in mm, the ball girth, the EU and UK
+equivalents, and which sole **mould** the size shares (one mould for each pair of half sizes).
+
+**Tooling** counts the lasts (a pair a size) and the moulds, with rough cost ranges and how many weeks they take. **Leather** is given in square
+feet for a pair, with a quarter allowed for cutting round the hide's flaws.
+
+**Before the sample**, the page flags:
+
+- a heel outside the style's usual range;
+- a high heel with too little toe spring;
+- a pointed athletic toe;
+- a collar that sits on the ankle bone.
+
+It then lists the fitting and size-run samples and the tests (sole bond, flex, abrasion, colour fastness, restricted substances).
+
+### Reading a shoe from its picture
+
+A footwear concept with a picture (an AI concept, the studio's picture, or a photo) is read by `src/lab-shoe-read.js`, so its last and its upper
+follow what was designed. The styles cover athletic shoes and boots alike: court sneaker, high-top, runner, derby, loafer, Chelsea, lace-up boot
+and hiking boot.
+
+**The outline** (no AI) separates the shoe from a plain background and finds which way the toe points. From the top and bottom edges, heel to
+toe, it measures:
+
+- the collar height (just in front of a pull tab);
+- whether it has a shaft;
+- the dip at the ankle and the toe spring.
+
+It suggests a high-top or a boot when the collar says so. A front, top or sole view is not read as a side.
+
+**The eye** (the vision model, when Claude is connected) reads:
+
+- the style and the toe;
+- the toe cap, the mudguard and the heel overlay;
+- the upper and the sole;
+- the eyelets a side, where the vamp seam and the lacing sit along the length, the collar, the heel and the sole thickness;
+- the colour of each part.
+
+The outline's collar wins over the eye's guess. A new style brings its own heel, toe spring and toe until the picture says otherwise.
+
+`POST /v1/lab/concepts/:id/pattern/from-picture` returns the shoe the picture asks for and what would change, each change with where it came from.
+Nothing is saved. Pattern does this by itself the first time a pictured shoe is opened with no shoe chosen yet. It shows the changes, and **Use it**
+applies them. The concept's picture is then laid over the shoe's side, lined up on the last (its length is the last's, its bottom the ground), so
+the drafted pieces can be checked against the design. The picture can be hidden. **Read the shoe from the picture** reads it again, for example after
+the picture changes.
+
+What the picture sets can also be set by hand, and every value is bounded:
+
+- the collar height and the sole thickness;
+- the vamp line and where the lacing starts (as shares of the length);
+- the eyelets, the mudguard and the heel overlay;
+- the sole type and the colours.
+
+## Editing pieces and the AAMA/ASTM DXF
+
+A drafted pattern is a start: a pattern maker can change every piece on the Pattern view and keep what they changed.
+
+**Edit pieces** turns the drawing into the chosen piece on a 1 in grid. In edit mode:
+
+- **Points:** drag a point, or move it with the arrow keys (1/16 in; ¼ in with Shift). You can also type its position in fractions (`24 1/4`).
+  **Add point** puts one between the chosen point and the next; **Delete point** (or Delete) removes it. A piece keeps at least three.
+- **Notches:** **Notch** (or N) puts a notch on the chosen point, or takes it off.
+- **The piece:** rename it, and set how many to cut, the cloth, the seam allowance, the grain angle and whether it is cut in mirrored pairs.
+  **Duplicate** copies the piece; **New piece** starts a 6 × 8 in rectangle; **Remove piece** takes it out of the pattern.
+- **Undo, redo and reset:** Undo and Redo (Ctrl+Z, Shift+Ctrl+Z) go back and forward through every change. **Reset piece** returns a piece to
+  its draft.
+- **Measure and walk a seam:** Shift-click a second point to measure the run along the sew line between the two. Set that run as seam A, then
+  set its partner on another piece as seam B. The page gives both lengths and how much one is shorter, so the seams can be walked before sewing.
+
+**Save the pattern** keeps the changes in `lab_patterns.spec.edits`:
+
+- the size they were made in;
+- for each changed piece, its sew line, notches, box and settings;
+- the added pieces and the removed ones.
+
+Changing the shoe, the plush or the seam allowance keeps the edits.
+
+**Grading the edits.** At other sizes, an edited outline is carried from its box to the drafted piece's box at that size, so a change grades in
+proportion with the draft. A pattern maker checks the graded nest before sending it.
+
+**The AAMA/ASTM DXF** (`pattern.dxf?format=aama`, the **DXF** button and **Files**) is the exchange file Gerber AccuMark, Lectra Modaris,
+Optitex and CLO import as a graded pattern:
+
+- **Pieces and sizes:** one block for each piece in each size.
+- **Layers:**
+  - 1: the cut line;
+  - 2: the turn points;
+  - 4: the notches;
+  - 7: the grain line;
+  - 14: the sew line;
+  - 15: the annotation.
+- **Text on each piece:** Piece Name, Quantity, Size and Material.
+- **Text on the file:** Style Name, Sample Size, Units and the Size List.
+
+The file comes in one size or the whole run (`&sizes=all`), in inches or millimetres (`&units=mm`). The plain DXF (CUT/SEW/GRAIN/NOTCH/TEXT
+layers) is still there for anything else.
+
+## 3D lasts: importing one, having one made, drafting on it
+
+A footwear concept can work from a real last instead of the drafted one. The **3D last** panel on the Pattern view handles this
+(`src/lab-last3d.js` measures, `src/lab-last-routes.js` serves).
+
+**Import a last** takes the file a last maker or a scanner made: STL (binary or text), OBJ or GLB, up to 75 MB. The units (mm, cm, inches or
+metres) are worked out from its length, or chosen. The Lab then:
+
+- **stands it the way a last stands**, whatever way the file has it:
+  - heel to toe along its length;
+  - the cone up;
+  - the tread level across the ball;
+  - turned only, never mirrored, so a left last stays a left last;
+- **measures it** as a last maker would:
+  - last length and the ball's place;
+  - ball and instep girths, taken round the outside of the section like a tape;
+  - ball and heel widths at the feather line;
+  - heel height and toe spring;
+  - back and toe heights, and volume;
+  - which foot it is;
+- **compares it** with the drafted last in the same size, number by number;
+- **flags holes:** a few small holes, as scans often have, are said and do not matter. Large ones are flagged.
+
+**Heel height.** Give the heel height the last was made for; the shoe's own heel is offered. The last is then rocked about the ball until the
+heel seat stands exactly that high, and the toe spring is measured from there. Leave it empty and the last is stood on its ball as an
+estimate. That is close for a low heel and can be off by a few degrees on a high one, because a last's bottom is nearly flat round the ball.
+
+**Draft the shoe on it** puts the measured last in the shoe (`spec.last3d`):
+
+- the size becomes the nearest one in the shoe's system;
+- the heel height and the toe spring become the last's;
+- the upper is drafted on its side profile and its bottom outline;
+- other sizes grade from it as the drafted last grades: the length by the draft's own steps, the sections by ¼ in of ball girth a size.
+
+**Stop drafting on it** goes back to the drafted last.
+
+**Make one with the 3D service** (Meshy, `MESHY_API_KEY`) draws the drafted last from four sides and sends the pictures to the service's
+multi-view model. **From pictures of a last…** sends one to four photos of a real last instead. The service's model has no units, so it is:
+
+- scaled to the drafted size's length;
+- scaled across until its ball girth is the size's;
+- stood on the heel height;
+- measured like an imported one.
+
+Making a last counts as three AI generations on a client's meter, and the service makes at most `LAB_DAILY_LASTS` (6) a day.
+
+Files:
+
+- each last as an STL (`/lasts/:lid/last.stl`), in mm with Z up, turned the way it stands;
+- the drafted last, or the one in use, lofted into 3D at any size (`GET /v1/lab/concepts/:id/last.stl?size=`), for CAD or a last maker.
+
+Routes:
+
+- `GET|POST /v1/lab/concepts/:id/lasts`;
+- `POST …/lasts/generate`;
+- `POST …/lasts/:lid/use` and `POST …/lasts/unuse`;
+- `DELETE …/lasts/:lid`.

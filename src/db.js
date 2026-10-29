@@ -512,6 +512,31 @@ export async function migrate() {
       updated_by uuid references users(id) on delete set null,
       updated_at timestamptz not null default now()
     );
+    create table if not exists lab_lasts ( -- 3D lasts for a footwear concept: imported files, or made by the 3D service from the drafted last (src/lab-last-routes.js)
+      id uuid primary key default gen_random_uuid(),
+      concept_id uuid not null references lab_concepts(id) on delete cascade,
+      source text not null default 'upload' check (source in ('upload','draft','photos')),
+      name text not null default '',
+      status text not null default 'done' check (status in ('running','done','failed')),
+      provider text not null default '',
+      model text,
+      task_id text,
+      endpoint text not null default 'image',
+      target jsonb not null default '{}',
+      stl bytea,
+      thumb bytea,
+      measures jsonb,
+      warnings jsonb not null default '[]',
+      units text not null default '',
+      file_format text not null default '',
+      triangles integer,
+      credits numeric,
+      error text not null default '',
+      requested_by uuid references users(id) on delete set null,
+      created_at timestamptz not null default now(),
+      completed_at timestamptz
+    );
+    create index if not exists lab_lasts_idx on lab_lasts (concept_id, created_at desc);
     create table if not exists lab_flats ( -- a concept as measured flats, with every placement and the last "can it be made" check (src/lab-flats.js)
       concept_id uuid primary key references lab_concepts(id) on delete cascade,
       style text not null,

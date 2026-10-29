@@ -44,11 +44,11 @@ export function offsetOf(pts, d) {
 // ---- the pieces ----
 // a piece: { id, name, fabric, cut, pair, fold, sew (closed outline, the whole piece), grain [[x,y],[x,y]], notches [[x,y]], notes [], place {view, x, y, rot, flip, z} }
 // fold: the piece is cut on the fold of the cloth along x = 0 (its own centre line); the drawing shows it whole and marks the fold
-const FABRIC_NAMES = { self: 'Self (main fabric)', rib: 'Rib', lining: 'Lining', fusing: 'Fusing', pocketing: 'Pocketing', board: 'Brim board', knit: 'Knit (to shape)', pile: 'Plush pile', felt: 'Felt', contrast: 'Contrast' };
+const FABRIC_NAMES = { self: 'Self (main fabric)', rib: 'Rib', lining: 'Lining', fusing: 'Fusing', pocketing: 'Pocketing', board: 'Board', knit: 'Knit (to shape)', pile: 'Plush pile', felt: 'Felt', contrast: 'Contrast', upper: 'Upper', overlay: 'Overlays', foam: 'Foam', elastic: 'Elastic gore', stiffener: 'Stiffener (thermoplastic)', rubber: 'Rubber (moulded)', eva: 'EVA (moulded)' };
 export const fabricName = f => FABRIC_NAMES[f] || f;
 function piece(id, name, sew, o = {}) {
   const s = tidy(sew), b = boundsOf(s);
-  return { id, name, fabric: o.fabric || 'self', cut: o.cut ?? 1, ...(o.cut === 0 && /-2$/.test(id) ? { twin: true } : {}), pair: Boolean(o.pair), fold: Boolean(o.fold), sew: s, grain: o.grain || [[(b.x0 + b.x1) / 2, b.y0 + b.h * .2], [(b.x0 + b.x1) / 2, b.y1 - b.h * .2]], notches: o.notches || [], notes: o.notes || [], place: { view: 'front', x: 0, y: 0, rot: 0, flip: false, z: 0, ...(o.place || {}) }, sa: o.sa ?? null, marks: o.marks || [] };
+  return { id, name, fabric: o.fabric || 'self', cut: o.cut ?? 1, ...(o.cut === 0 && /-2$/.test(id) ? { twin: true } : {}), pair: Boolean(o.pair), fold: Boolean(o.fold), sew: s, grain: o.grain || [[(b.x0 + b.x1) / 2, b.y0 + b.h * .2], [(b.x0 + b.x1) / 2, b.y1 - b.h * .2]], notches: o.notches || [], notes: o.notes || [], place: { view: 'front', x: 0, y: 0, rot: 0, flip: false, z: 0, ...(o.place || {}) }, sa: o.sa ?? null, marks: o.marks || [], ...(o.shown ? { shown: tidy(o.shown) } : {}), ...(o.component ? { component: true } : {}) };
 }
 // the other one of a pair: drawn on the product and in the exploded view, never cut twice (its cut count is on the first)
 const twin = (id, name, sew, place) => ({ ...piece(id, name, sew, { cut: 0, place }), twin: true });
@@ -271,7 +271,7 @@ export function fillGrams(pat) {
 
 // ---- the views ----
 // where a piece sits on the product (its own coordinates turned and moved onto the front or back view)
-export function placed(q, pts = q.sew) { const pl = q.place || {}, a = (pl.rot || 0) * Math.PI / 180, c = Math.cos(a), s = Math.sin(a); return pts.map(([x, y]) => { const xx = pl.flip ? -x : x; return [pl.x + xx * c - y * s, pl.y + xx * s + y * c]; }); }
+export function placed(q, pts = q.shown || q.sew) { const pl = q.place || {}, a = (pl.rot || 0) * Math.PI / 180, c = Math.cos(a), s = Math.sin(a); return pts.map(([x, y]) => { const xx = pl.flip ? -x : x; return [pl.x + xx * c - y * s, pl.y + xx * s + y * c]; }); }
 // the cutting layout: pieces (each cut it takes, pairs flipped) packed in rows across the fabric width, by fabric; → [{ fabric, width, length, items:[{piece, n, x, y, flip}] }]
 export function layoutOf(pat, { width = 58, sa = pat.sa, gap = .4 } = {}) {
   const groups = new Map();
@@ -283,6 +283,12 @@ export function layoutOf(pat, { width = 58, sa = pat.sa, gap = .4 } = {}) {
     const length = y + rowH, used = items.reduce((s, it) => s + areaOf(offsetOf(it.piece.sew, it.piece.sa ?? sa)), 0);
     out.push({ fabric, name: fabricName(fabric), width: W, length: r8(length), yards: Math.round(length / 36 * 100) / 100, efficiency: Math.round(used / (W * Math.max(length, 1)) * 100), items });
   }
+  return out;
+}
+// a closed outline as n points evenly spaced along it, so two outlines of a piece (as it sits on the product, as it is cut) can be blended
+export function resample(pts, n = 64) {
+  const ring = [...pts, pts[0]], seg = ring.slice(1).map((q, i) => Math.hypot(q[0] - ring[i][0], q[1] - ring[i][1])), total = seg.reduce((a, b) => a + b, 0) || 1, out = [];
+  let i = 0, acc = 0; for (let k = 0; k < n; k++) { const d = total * k / n; while (i < seg.length - 1 && acc + seg[i] < d) { acc += seg[i]; i++; } const t = seg[i] ? (d - acc) / seg[i] : 0; out.push([ring[i][0] + (ring[i + 1][0] - ring[i][0]) * t, ring[i][1] + (ring[i + 1][1] - ring[i][1]) * t]); }
   return out;
 }
 // the product as its pieces: the front view, and the back view beside it; → { pieces: [{piece, pts}], bounds, backDx }
@@ -307,8 +313,9 @@ export function explodeAt(pat, t, layout = layoutOf(pat)) {
     // where it lands: its first cut in the layout (a twin lands on its pair's spot, beside it)
     const list = q.twin ? slot.get(q.id.replace(/-2$/, '')) : slot.get(q.id), own = list && (q.twin ? list[1] || list[0] : list[0]), g = own && layout.find(G => G.items.includes(own));
     if (!own || e === 0) return { piece: q, pts: moved };
-    const tgt = q.sew.map(([x, y]) => [(own.flip ? -x + (own.b.x0 + own.b.x1) : x) + own.x + lx, y + own.y + goff.get(g)]);
-    return { piece: q, pts: moved.map((m, i) => [m[0] * (1 - e) + tgt[i][0] * e, m[1] * (1 - e) + tgt[i][1] * e]) };
+    let tgt = q.sew.map(([x, y]) => [(own.flip ? -x + (own.b.x0 + own.b.x1) : x) + own.x + lx, y + own.y + goff.get(g)]), from = moved;
+    if (tgt.length !== from.length) { from = resample(from); tgt = resample(tgt); }
+    return { piece: q, pts: from.map((m, i) => [m[0] * (1 - e) + tgt[i][0] * e, m[1] * (1 - e) + tgt[i][1] * e]) };
   });
 }
 // ---- the files ----
@@ -352,6 +359,106 @@ export function patternDxf(pat, { width = 58 } = {}) {
   return out.join('\n') + '\n';
 }
 
+
+// ---- editing: a pattern engineer's changes, kept as overrides on the drafted pattern ----
+// edits = { size, pieces: { [id]: { sew, notches, sa?, grain?, name?, cut?, fabric?, box: [x0, y0, w, h] } }, added: [piece-like], removed: [ids] }
+// An edited piece keeps its outline at the size it was edited in; in another size of the run it is moved and scaled with the drafted
+// piece (its box to the drafted piece's box): proportional grading, until grade rules are set point by point.
+const fin = v => Number.isFinite(Number(v)), num3 = v => r3(Math.min(Math.max(Number(v), -400), 400));
+const cleanPts = (a, n) => Array.isArray(a) ? a.slice(0, n).filter(q => Array.isArray(q) && fin(q[0]) && fin(q[1])).map(q => [num3(q[0]), num3(q[1])]) : [];
+const SAS = [0, .125, .25, .375, .5, .625, .75, 1];
+function cleanEditPiece(e = {}, id = '') {
+  const sew = cleanPts(e.sew, 600); if (sew.length < 3) return null;
+  const box = Array.isArray(e.box) && e.box.length === 4 && e.box.every(fin) && e.box[2] > 0 && e.box[3] > 0 ? e.box.map(num3) : (b => [b.x0, b.y0, b.w || 1, b.h || 1].map(num3))(boundsOf(sew));
+  const out = { sew, notches: cleanPts(e.notches, 80), box };
+  if (SAS.includes(Number(e.sa))) out.sa = Number(e.sa);
+  if (fin(e.grain)) out.grain = Math.round(((Number(e.grain) % 360) + 360) % 360);
+  if (e.name) out.name = String(e.name).replace(/\s+/g, ' ').trim().slice(0, 60);
+  if (fin(e.cut)) out.cut = Math.min(Math.max(Math.round(Number(e.cut)), 0), 24);
+  if (e.fabric && FABRIC_NAMES[e.fabric]) out.fabric = e.fabric;
+  if (e.pair != null) out.pair = Boolean(e.pair);
+  if (id) out.id = id;
+  return out;
+}
+export function cleanPatternEdits(input) {
+  if (!input || typeof input !== 'object') return null;
+  const pieces = {}; for (const [id, e] of Object.entries(input.pieces || {}).slice(0, 80)) { if (!/^[a-z0-9-]{1,40}$/.test(id)) continue; const c = cleanEditPiece(e); if (c) pieces[id] = c; }
+  const added = (Array.isArray(input.added) ? input.added : []).slice(0, 30).map((e, i) => cleanEditPiece(e, /^x[a-z0-9-]{1,30}$/.test(String(e?.id || '')) ? e.id : `x${i + 1}`)).filter(Boolean).map(e => ({ ...e, name: e.name || 'New piece', cut: e.cut ?? 1 }));
+  const removed = (Array.isArray(input.removed) ? input.removed : []).filter(id => /^[a-z0-9-]{1,40}$/.test(String(id))).slice(0, 80);
+  if (!Object.keys(pieces).length && !added.length && !removed.length) return null;
+  return { size: String(input.size ?? '').slice(0, 12), pieces, added, removed };
+}
+// a point of an edit, carried from the box it was made in to the drafted piece's box now
+const same = (from, to) => Math.abs(from[0] - to.x0) < .002 && Math.abs(from[1] - to.y0) < .002 && Math.abs(from[2] - to.w) < .002 && Math.abs(from[3] - to.h) < .002;
+const carry = (from, to) => same(from, to) ? q => q.slice() : from[2] && from[3] ? ([x, y]) => [r3(to.x0 + (x - from[0]) * (to.w / from[2])), r3(to.y0 + (y - from[1]) * (to.h / from[3]))] : q => q;
+const grainAt = (sew, deg) => { const b = boundsOf(sew), cx = (b.x0 + b.x1) / 2, cy = (b.y0 + b.y1) / 2, a = deg * Math.PI / 180, L = Math.max(b.h, b.w) * .3, dx = Math.sin(a) * L, dy = Math.cos(a) * L; return [[r3(cx - dx), r3(cy - dy)], [r3(cx + dx), r3(cy + dy)]]; };
+export function applyEdits(pat, edits) {
+  const E = edits && typeof edits === 'object' ? edits : null; if (!pat || !E) return pat;
+  const gone = new Set(E.removed || []), pieces = [];
+  for (const q of pat.pieces) {
+    const baseId = q.twin ? q.id.replace(/-2$/, '') : q.id; if (gone.has(baseId)) continue;
+    const e = E.pieces?.[baseId]; if (!e) { pieces.push(q); continue; }
+    const now = boundsOf(q.sew), mv = carry(e.box, now), sew = e.sew.map(mv);
+    const next = { ...q, sew, notches: e.notches.map(mv), edited: true, ...(e.sa != null ? { sa: e.sa } : {}), ...(e.name ? { name: e.name } : {}), ...(e.fabric ? { fabric: e.fabric } : {}), ...(e.pair != null && !q.twin ? { pair: e.pair } : {}), ...(e.cut != null && !q.twin ? { cut: e.cut } : {}) };
+    next.grain = e.grain != null ? grainAt(sew, e.grain) : q.grain.map(mv);
+    pieces.push(next);
+  }
+  for (const e of E.added || []) pieces.push({ ...piece(e.id, e.name, e.sew, { cut: e.cut ?? 1, pair: Boolean(e.pair), fabric: e.fabric || 'self', notches: e.notches, sa: e.sa ?? null, place: { view: 'back', x: 0, y: -2, z: 9 }, grain: e.grain != null ? grainAt(e.sew, e.grain) : undefined }), added: true });
+  return { ...pat, pieces, edited: true };
+}
+// an outline with fewer points where they add nothing (Douglas–Peucker, closed): what a pattern engineer edits, not every sampled point
+export function simplifyClosed(pts, tol = .02) {
+  if (pts.length < 8) return pts.map(q => q.slice());
+  const dp = (a) => { if (a.length < 3) return a; const [p, q] = [a[0], a[a.length - 1]], dx = q[0] - p[0], dy = q[1] - p[1], L = Math.hypot(dx, dy) || 1; let k = 0, m = 0;
+    for (let i = 1; i < a.length - 1; i++) { const d = Math.abs(dy * a[i][0] - dx * a[i][1] + q[0] * p[1] - q[1] * p[0]) / L; if (d > m) { m = d; k = i; } }
+    return m > tol ? [...dp(a.slice(0, k + 1)).slice(0, -1), ...dp(a.slice(k))] : [p, q]; };
+  // split at the point furthest from the first, so the two halves are each an open run
+  let far = 0, fd = 0; for (let i = 1; i < pts.length; i++) { const d = Math.hypot(pts[i][0] - pts[0][0], pts[i][1] - pts[0][1]); if (d > fd) { fd = d; far = i; } }
+  return [...dp(pts.slice(0, far + 1)).slice(0, -1), ...dp([...pts.slice(far), pts[0]]).slice(0, -1)];
+}
+// the length of an outline's run from point i to point j, going forward round it (a seam, for walking it against its pair)
+export function runLength(pts, i, j) { let L = 0, k = i; const n = pts.length; for (let s = 0; s < n && k !== j; s++) { const nx = (k + 1) % n; L += Math.hypot(pts[nx][0] - pts[k][0], pts[nx][1] - pts[k][1]); k = nx; } return r3(L); }
+
+// ---- AAMA / ASTM DXF: what Gerber, Lectra, Optitex and the cutting rooms read ----
+// one BLOCK a piece (and a size): the cut line on layer 1 with its turn points on 2, notches on 4, the grain on 7, the sew line on 14, and
+// the piece's text (Piece Name, Quantity, Size, Material); the file's own text (Style Name, Sample Size, Units); every block INSERTed
+// where it lies in the layout. Inches or millimetres.
+export function patternDxfAama(pats, { width = 58, units = 'in', style = 'Style', author = 'Future Basics Design Lab' } = {}) {
+  const list = Array.isArray(pats) ? pats : [pats], k = units === 'mm' ? 25.4 : 1, f = v => String(r3(v * k)), out = [];
+  const head = ['0', 'SECTION', '2', 'HEADER', '9', '$ACADVER', '1', 'AC1009', '9', '$MEASUREMENT', '70', units === 'mm' ? '1' : '0', '0', 'ENDSEC'];
+  const layers = ['1', '2', '3', '4', '7', '8', '14', '15'], tables = ['0', 'SECTION', '2', 'TABLES', '0', 'TABLE', '2', 'LAYER', '70', String(layers.length), ...layers.flatMap(l => ['0', 'LAYER', '2', l, '70', '0', '62', '7', '6', 'CONTINUOUS']), '0', 'ENDTAB', '0', 'ENDSEC'];
+  const blocks = ['0', 'SECTION', '2', 'BLOCKS'], ents = ['0', 'SECTION', '2', 'ENTITIES'];
+  const text = (arr, x, y, s, h, layer = '1') => arr.push('0', 'TEXT', '8', layer, '10', f(x), '20', f(-y), '40', f(h), '1', String(s).replace(/[\r\n]+/g, ' ').slice(0, 250));
+  const poly = (arr, pts, layer, closed = true) => { arr.push('0', 'POLYLINE', '8', layer, '66', '1', '10', '0', '20', '0', '70', closed ? '1' : '0'); for (const [x, y] of pts) arr.push('0', 'VERTEX', '8', layer, '10', f(x), '20', f(-y)); arr.push('0', 'SEQEND', '8', layer); };
+  const line = (arr, a, b, layer) => arr.push('0', 'LINE', '8', layer, '10', f(a[0]), '20', f(-a[1]), '11', f(b[0]), '21', f(-b[1]));
+  const sizes = [...new Set(list.map(p => p.size))];
+  text(ents, 0, -3, `Style Name: ${style}`, .25); text(ents, 0, -2.6, `Sample Size: ${list[0]?.size ?? ''}`, .2); text(ents, 0, -2.25, `Units: ${units === 'mm' ? 'METRIC' : 'ENGLISH'}`, .2);
+  text(ents, 0, -1.9, `Size List: ${sizes.join(' ')}`, .2); text(ents, 0, -1.55, `Author: ${author}`, .2); text(ents, 0, -1.2, `Creation Date: ${new Date().toISOString().slice(0, 10)}`, .2);
+  let y0 = 0, n = 0;
+  for (const pat of list) {
+    const lay = layoutOf(pat, { width });
+    for (const g of lay) for (const it of g.items) {
+      if (it.n !== 0) continue; // one block a piece and a size; the quantity is in its text
+      const q = it.piece, sa = q.sa ?? pat.sa, cutl = offsetOf(q.sew, sa), name = `${String(q.name).replace(/[^A-Za-z0-9]+/g, '_').slice(0, 24)}_${String(pat.size).replace(/[^A-Za-z0-9.]+/g, '')}_${++n}`;
+      blocks.push('0', 'BLOCK', '8', '0', '2', name, '70', '0', '10', '0', '20', '0', '3', name);
+      poly(blocks, cutl, '1'); for (const p of cutl) blocks.push('0', 'POINT', '8', '2', '10', f(p[0]), '20', f(-p[1]));
+      poly(blocks, q.sew, '14'); line(blocks, q.grain[0], q.grain[1], '7');
+      // a notch: a ¼ in cut in from the cutting line, square to the edge, at the notch on the sew line
+      for (const nt of q.notches) { let bi = 0, bd = Infinity; for (let i = 0; i < q.sew.length; i++) { const d = Math.hypot(q.sew[i][0] - nt[0], q.sew[i][1] - nt[1]); if (d < bd) { bd = d; bi = i; } }
+        const a = q.sew[(bi - 1 + q.sew.length) % q.sew.length], b = q.sew[(bi + 1) % q.sew.length], dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy) || 1, nx = dy / L, ny = -dx / L;
+        line(blocks, [nt[0] + nx * sa, nt[1] + ny * sa], [nt[0] + nx * (sa - .25), nt[1] + ny * (sa - .25)], '4'); }
+      const b = boundsOf(q.sew), cx = b.x0 + .2, cy = (b.y0 + b.y1) / 2;
+      text(blocks, cx, cy - .45, `Piece Name: ${q.name}`, .18); text(blocks, cx, cy - .2, `Quantity: ${q.cut}${q.pair ? ' (pairs)' : ''}`, .16); text(blocks, cx, cy + .05, `Size: ${pat.size}`, .16);
+      text(blocks, cx, cy + .3, `Material: ${fabricName(q.fabric).toUpperCase()}`, .16); if (q.fold) text(blocks, cx, cy + .55, 'Annotation: CUT ON FOLD', .14, '15');
+      blocks.push('0', 'ENDBLK', '8', '0');
+      ents.push('0', 'INSERT', '8', '1', '2', name, '10', f(it.x), '20', f(-(it.y + y0)));
+    }
+    y0 += lay.reduce((t, g) => t + g.length + 3, 0) + 4;
+  }
+  blocks.push('0', 'ENDSEC'); ents.push('0', 'ENDSEC');
+  return [...head, ...tables, ...blocks, ...ents, '0', 'EOF'].join('\n') + '\n';
+}
+
 // what the pattern costs in cloth: yards of each fabric for one piece, from the layout
 export const yardage = (pat, width = 58) => layoutOf(pat, { width }).map(g => ({ fabric: g.fabric, name: g.name, yards: g.yards, efficiency: g.efficiency }));
-export { SIZES };
+export { SIZES, piece, twin, cubic, tidy, blob, tail, mirrorX, lenOf };
