@@ -2533,6 +2533,18 @@ await journey('J240', 'Design on an iPad, as Kyle found it: the ruler takes any 
         await page.reload({ waitUntil: 'networkidle' }); const F2 = await (await page.waitForSelector('#flatFrame')).contentFrame(); await F2.waitForFunction(() => window.FBFlats?.ready(), null, { timeout: 20000 });
         ok(await F2.evaluate(() => { const c = document.querySelector('.mkw canvas'); return Boolean(c && c.width > 10); }), '   opened again, the drawing is back on the flat'); }
       await page.click('.rail [data-tool=select]');
+      // fabrics, trims and labels from the library, added to the garment from Design (here on the flat; the same button is on the picture)
+      await page.click('#matBtn'); await page.waitForSelector('#matDlg[open] #matLib [data-madd]', { timeout: 15000 }); await page.waitForSelector('#matLib .mc svg[role="img"]');
+      await page.click('#matLib [data-madd]'); await page.waitForSelector('#matOn [data-mp][data-role="main"]', { timeout: 15000 });
+      await page.click('#matKinds [data-mk=tag]'); await page.waitForSelector('#matLib .th.tg svg'); await page.click('#matLib [data-madd]'); await page.waitForSelector('#matOn [data-mp][data-role="tag"]', { timeout: 15000 });
+      let bom = (await K(`/concepts/${c.id}/materials`)).json;
+      ok(bom.picks.some(p => p.kind === 'fabric' && p.role === 'main') && bom.picks.some(p => p.kind === 'tag') && bom.cost.landedCents > 0 && /landed/.test(await page.innerText('#matCost')), '7e. from Design, a fabric goes on the garment as its main fabric and a label as a tag, each drawn, and the landed cost follows', bom.picks.map(p => [p.kind, p.role]));
+      const tagRow = '#matOn [data-mp][data-role="tag"]'; await page.fill(`${tagRow} [data-mf=note]`, 'sewn into the neck seam, centre back'); await page.dispatchEvent(`${tagRow} [data-mf=note]`, 'change');
+      await page.waitForFunction(() => /Saved on the garment/.test(document.getElementById('stToast')?.textContent || ''), null, { timeout: 10000 });
+      await page.click(`${tagRow} [data-mdel]`); await page.waitForFunction(() => !document.querySelector('#matOn [data-mp][data-role="tag"]'), null, { timeout: 10000 });
+      bom = (await K(`/concepts/${c.id}/materials`)).json;
+      ok(!bom.picks.some(p => p.kind === 'tag') && bom.picks.some(p => p.role === 'main'), '   where it goes is kept, and a label taken off the garment is gone from its bill of materials');
+      await page.click('#matDlg [data-matclose]');
       F = await (await page.waitForSelector('#flatFrame')).contentFrame(); await F.waitForFunction(() => window.FBFlats?.ready(), null, { timeout: 20000 });
       // a flat saved as a sweatshirt: Redraw from the picture brings the jacket back (the words stand in for the picture here)
       const asSweat = await K(`/concepts/${c.id}/flats`, { method: 'PUT', body: { ...saved, style: 'crewneck', template: undefined, placements: saved.placements } });
