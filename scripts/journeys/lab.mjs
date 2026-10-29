@@ -2895,5 +2895,41 @@ await journey('J246', 'A shoe read from its picture: a concept\'s side view (her
   } finally { await br.close(); await K(`/concepts/${cid}`, { method: 'DELETE' }); }
 });
 
+await journey('J247', 'A pattern engineer edits the pieces: a point moved by the arrow keys and typed in fractions, a point added, a notch, the piece renamed and its seam allowance changed, the front side seam walked against the back, a piece removed and brought back with Undo; saved, the edits follow the size run, and the AAMA DXF carries every size', async () => {
+  const made = (await K('/concepts/from-scratch', { body: { category: 'tops', style: 'tee', name: `Edited tee ${stamp}` } })).json, cid = made.concept.id;
+  if (!playwright) { ok(true, 'needs a browser'); return; }
+  const b = await playwright.chromium.launch();
+  try {
+    const oc = await b.newContext({ viewport: { width: 1366, height: 1024 } }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
+    const page = await oc.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
+    await page.goto(`${BASE}/lab/studio?concept=${cid}&view=pattern`, { waitUntil: 'networkidle' }); const F = await (await page.waitForSelector('#patFrame')).contentFrame(); await F.waitForFunction(() => window.FBPattern?.ready?.(), null, { timeout: 20000 });
+    await F.click('#editBtn'); await F.waitForSelector('#esvg circle[data-pt]');
+    ok(await F.inputValue('#ePiece') === 'front' && await F.locator('#esvg circle[data-pt]').count() >= 8, '1. Edit pieces opens the front, its points ready to move');
+    const pt = () => F.evaluate(() => FBPattern.pattern().pieces.find(q => q.id === 'front').sew);
+    const before = await pt(), i = before.findIndex(([x, y]) => x > 5 && y > 20);
+    await F.click(`#esvg circle[data-pt="${i}"]`); await F.press('body', 'ArrowRight'); await F.press('body', 'ArrowRight');
+    const moved = await pt(); ok(Math.abs(moved[i][0] - before[i][0] - .125) < .001 && moved[i][1] === before[i][1], '2. two presses of the arrow key move the point ⅛ in', [before[i], moved[i]]);
+    await F.fill('[data-ek="py"]', '20 1/2'); await F.dispatchEvent('[data-ek="py"]', 'change'); ok((await pt())[i][1] === 20.5, '   and a height typed as 20 1/2 puts it there');
+    const n0 = (await pt()).length; await F.click('[data-e="add"]'); ok((await pt()).length === n0 + 1, '3. a point is added');
+    await F.click('[data-e="notch"]'); ok(await F.evaluate(() => FBPattern.pattern().pieces.find(q => q.id === 'front').notches.length) >= 3, '   and a notch set on it');
+    await F.fill('[data-ek="name"]', 'Front body'); await F.dispatchEvent('[data-ek="name"]', 'change'); await F.selectOption('[data-ek="sa"]', '0.5');
+    ok(await F.evaluate(() => { const q = FBPattern.pattern().pieces.find(x => x.id === 'front'); return q.name === 'Front body' && q.sa === .5; }), '4. renamed and given a ½ in seam allowance');
+    // the side seam: from the underarm to the hem on the front, then on the back
+    const seamEnds = id => F.evaluate(id => { const s = FBPattern.pattern().pieces.find(q => q.id === id).sew; let ua = 0, hem = 0; s.forEach(([x, y], k) => { if (x > 0 && y < 15 && y > 8 && x >= s[ua][0] - .01 && (s[ua][1] > 15 || s[ua][1] < 8 || y > s[ua][1] || ua === 0)) ua = k; if (x > 0 && y > s[hem][1] - .01 && x >= s[hem][0] - .01) hem = k; }); return [ua, hem]; }, id);
+    let [a, h] = await seamEnds('front'); await F.click(`#esvg circle[data-pt="${a}"]`); await F.click(`#esvg circle[data-pt="${h}"]`, { modifiers: ['Shift'] }); await F.click('[data-e2="seamA"]');
+    await F.selectOption('#ePiece', 'back'); await F.waitForFunction(() => document.querySelector('#esvg text')?.textContent.startsWith('Back'));
+    [a, h] = await seamEnds('back'); await F.click(`#esvg circle[data-pt="${a}"]`); await F.click(`#esvg circle[data-pt="${h}"]`, { modifiers: ['Shift'] }); await F.click('[data-e2="seamB"]');
+    const walk = await F.innerText('#side'); ok(/A Front body: \d/.test(walk) && /B Back: \d/.test(walk) && /(They match|longer by|shorter by)/.test(walk), '5. the front side seam is walked against the back, and the difference is shown', walk.match(/A Front[^\n]*|B Back[^\n]*|They match|[A-Za-z]+ by [^:\n]*/g));
+    await F.selectOption('#ePiece', 'neck-rib'); await F.click('[data-e2="remove"]'); ok(!(await F.evaluate(() => FBPattern.pattern().pieces.some(q => q.id === 'neck-rib'))), '6. the neck rib removed');
+    await F.click('[data-e="undo"]'); ok(await F.evaluate(() => FBPattern.pattern().pieces.some(q => q.id === 'neck-rib')), '   and Undo brings it back');
+    await F.click('#saveP'); await F.waitForFunction(() => document.getElementById('saveP')?.textContent === 'Saved', null, { timeout: 10000 });
+    const saved = (await K(`/concepts/${cid}/pattern`)).json.spec.edits; ok(saved?.pieces?.front?.name === 'Front body' && saved.pieces.front.sa === .5 && !(saved.removed || []).length, '7. saved with the pattern', saved && Object.keys(saved.pieces));
+    const aama = await call(`/v1/lab/concepts/${cid}/pattern.dxf?format=aama&sizes=all`, { token: kyleT });
+    ok(aama.status === 200 && /Piece Name: Front body/.test(aama.text) && /Size List: XS S M L XL XXL/.test(aama.text) && (aama.text.match(/\n0\nBLOCK\n/g) || []).length >= 6 * 4, '8. the AAMA DXF has every size, the edited front in each', (aama.text.match(/\n0\nBLOCK\n/g) || []).length);
+    await F.click('#editBtn'); ok(await F.locator('#canvas [data-pid="front"]').count() === 1, '   Done editing goes back to the product, made of the edited pieces');
+    ok(errs.length === 0, 'no page errors', errs); await oc.close();
+  } finally { await b.close(); await K(`/concepts/${cid}`, { method: 'DELETE' }); }
+});
+
 shops.close(); brave.close();
 process.exit(summary() ? 1 : 0);

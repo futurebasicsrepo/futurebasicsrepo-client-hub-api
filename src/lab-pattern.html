@@ -29,8 +29,8 @@ select.t{border:1px solid var(--line);border-radius:10px;padding:6px 9px;backgro
 #canvas{overflow:auto;padding:12px;min-height:420px}#canvas svg{display:block;width:100%;height:auto;max-height:calc(100vh - 170px)}
 .side{border-left:1px solid var(--line);background:#fff;padding:16px;display:grid;gap:16px;align-content:start;overflow:auto;max-height:calc(100vh - 56px)}
 .side h4{margin:0 0 6px;font-size:14px}.side section{display:grid;gap:8px}
-.f{display:grid;gap:4px;font-size:12.5px}.f span{color:var(--dim)}.row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.f input[type=number],.f select{border:1px solid var(--line);border-radius:10px;padding:6px 9px;min-height:34px;background:#fff;width:100%}
+.f{display:grid;gap:4px;font-size:12.5px}.f span{color:var(--dim)}.row2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
+.f input[type=number],.f input[type=text],.f input:not([type]),.f select{border:1px solid var(--line);border-radius:10px;padding:6px 9px;min-height:34px;background:#fff;width:100%}
 .chk{display:flex;gap:6px;align-items:center;font-size:13px}
 table.pcs{width:100%;border-collapse:collapse;font-size:12.5px}table.pcs td,table.pcs th{text-align:left;padding:5px 4px;border-bottom:1px solid var(--line);vertical-align:top}table.pcs th{font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}
 table.pcs tr[data-pid]{cursor:pointer}table.pcs tr.on{background:#effff6}
@@ -48,20 +48,22 @@ table.pcs tr[data-pid]{cursor:pointer}table.pcs tr.on{background:#effff6}
     <div class="ttl"><b id="ttl">Pattern</b><span id="sub">Loading…</span></div>
     <div class="seg" role="group" aria-label="What to show" id="modeSeg"><button type="button" data-t="0" aria-pressed="true">Product</button><button type="button" data-t="0.45" aria-pressed="false">Exploded</button><button type="button" data-t="1" aria-pressed="false">Cutting layout</button></div>
     <button class="btn go" type="button" id="play" title="Lift the pieces off the product and lay them out flat">Explode it</button>
+    <button class="btn q" type="button" id="editBtn" aria-pressed="false" title="Edit the pieces: points, notches, seam allowance, grain">Edit pieces</button>
     <select class="t" id="size" aria-label="Size"></select>
-    <button class="btn q" type="button" id="dxf" title="The pieces as a DXF, for a pattern system (Gerber, Lectra, Optitex, CLO)">DXF</button>
+    <button class="btn q" type="button" id="dxf" title="The pieces as an AAMA/ASTM DXF in this size, for a pattern system (Gerber, Lectra, Optitex, CLO)">DXF</button>
     <button class="btn q" type="button" id="svgDl" title="The pieces at real size: print at 100%">SVG 1:1</button>
   </div>
   <div class="wrap" id="main">
     <div class="stage">
       <div class="scrub"><span class="mono">Product</span><input type="range" id="t" min="0" max="1" step="0.01" value="0" aria-label="From the product to the pattern pieces"><span class="mono">Pattern</span><span class="lbl" id="tLbl">On the product</span></div>
+      <div class="scrub hidden" id="etools" role="toolbar" aria-label="Edit the piece"><select class="t" id="ePiece" aria-label="Piece"></select><button class="btn sm q" type="button" data-e="undo" title="Undo (Ctrl+Z)">Undo</button><button class="btn sm q" type="button" data-e="redo" title="Redo (Ctrl+Shift+Z)">Redo</button><button class="btn sm q" type="button" data-e="add" title="A point halfway to the next">Add point</button><button class="btn sm q" type="button" data-e="del" title="Delete the chosen points (Delete)">Delete point</button><button class="btn sm q" type="button" data-e="notch" title="A notch at the chosen point (N)">Notch</button><button class="btn sm q" type="button" data-e="reset">Reset piece</button><span class="lbl" id="eHint">Click a point; Shift-click a second to measure a run</span></div>
       <div id="canvas" aria-live="polite"></div>
     </div>
     <aside class="side" id="side"></aside>
   </div>
 </div>
 <script type="module">
-import { garmentPattern, plushPattern, cleanPlush, layoutOf, explodeAt, assembled, offsetOf, boundsOf, areaOf, fabricName, cutWords, fillGrams } from '/lab/lab-pattern.js';
+import { garmentPattern, applyEdits, simplifyClosed, runLength, plushPattern, cleanPlush, layoutOf, explodeAt, assembled, offsetOf, boundsOf, areaOf, fabricName, cutWords, fillGrams } from '/lab/lab-pattern.js';
 import { STYLES } from '/lab/lab-flats.js';
 import { footwearPattern, cleanFootwear, sizeRun, hideArea } from '/lab/lab-footwear.js';
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)],esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -70,14 +72,15 @@ async function api(path,o={}){const r=await fetch(path,{method:o.method||(o.body
 const toast=m=>{const t=document.createElement('div');t.className='toast';t.setAttribute('role','status');t.textContent=m;document.body.append(t);setTimeout(()=>t.remove(),2600)};
 const CID=new URLSearchParams(location.search).get('concept')||'',HOST=()=>{try{return parent!==window?parent.FBDesign:null}catch{return null}};
 const FILL={upper:'#e6d8c3',overlay:'#d9c2a3',foam:'#f3efc9',stiffener:'#dcdfe6',rubber:'#bdbdb8',eva:'#e8e8e2',elastic:'#cfd6c8',self:'#e9e4d8',pile:'#efe2cf',rib:'#d6e4ef',lining:'#e6dcef',fusing:'#f1efe6',pocketing:'#e3ecdf',board:'#dcdcdc',knit:'#e0e9d6',contrast:'#f3d3cc',felt:'#f1e2b8'};
-let D=null,PAT=null,SPEC=null,SIZE='M',T=0,ANIM=0,SEL=null,DIRTY=false,RD=null,RDBUSY=false,PICURL='',SHOWPIC=true;
+let PAT0=null,EDIT=false,EP=null,SELP=[],SEAM={a:null,b:null},EH=[],EHI=-1,DRAG=null,D=null,PAT=null,SPEC=null,SIZE='M',T=0,ANIM=0,SEL=null,DIRTY=false,RD=null,RDBUSY=false,PICURL='',SHOWPIC=true;
 const r3=v=>Math.round(v*1000)/1000,P=pts=>'M'+pts.map(q=>`${r3(q[0])} ${r3(q[1])}`).join(' L')+' Z';
-function build(){PAT=D.kind==='footwear'?footwearPattern(SPEC,Number(SIZE)):D.kind==='plush'?plushPattern(SPEC):D.kind==='garment'&&D.flat?garmentPattern(D.flat,SIZE):null;if(PAT&&D.kind==='garment'&&SPEC.sa)PAT={...PAT,sa:SPEC.sa}}
+function build(){PAT0=D.kind==='footwear'?footwearPattern(SPEC,Number(SIZE)):D.kind==='plush'?plushPattern(SPEC):D.kind==='garment'&&D.flat?garmentPattern(D.flat,SIZE):null;if(PAT0&&D.kind==='garment'&&SPEC.sa)PAT0={...PAT0,sa:SPEC.sa};PAT=PAT0?applyEdits(PAT0,SPEC.edits):null}
 
 // ---------- the drawing ----------
 // t < 1: the pieces on the product, lifted off and spread (the exploded view), flying flat; t = 1: the cutting layout, every piece it takes
 function drawPieces(){
   if(!PAT){$('#canvas').innerHTML='';return}
+  if(EDIT)return drawEditor();
   const lay=layoutOf(PAT,{width:Number(SPEC.width)||58});let body='',bb;
   if(T>=.999){
     let y0=0;const items=[];
@@ -110,6 +113,80 @@ function drawPieces(){
 function goTo(target,ms=1500){cancelAnimationFrame(ANIM);const from=T,t0=performance.now();if(matchMedia('(prefers-reduced-motion: reduce)').matches)ms=1;
   const step=now=>{const k=Math.min(1,(now-t0)/ms),e=k<.5?2*k*k:1-Math.pow(-2*k+2,2)/2;T=from+(target-from)*e;$('#t').value=T;drawPieces();if(k<1)ANIM=requestAnimationFrame(step)};ANIM=requestAnimationFrame(step)}
 
+
+// ---------- editing a piece ----------
+// the piece being edited, as it is now (with the edits), and its drafted self (without them), in this size
+const pieceNow=id=>PAT.pieces.find(q=>q.id===id),pieceRaw=id=>PAT0.pieces.find(q=>q.id===id),edits=()=>(SPEC.edits||(SPEC.edits={size:String(SIZE),pieces:{},added:[],removed:[]}));
+const F16=v=>Math.round(v*16)/16,fr=v=>{const n=Math.round(Math.abs(v)*16),w=Math.floor(n/16),r=n%16,g=(a,b)=>b?g(b,a%b):a,d=r?g(r,16):1;return `${v<0?'−':''}${w||!r?w:''}${r?`${w?' ':''}${r/d}/${16/d}`:''} in`};
+const parseIn=t=>{const m=String(t).trim().replace('−','-').match(/^(-?)(\d+)?(?:\s*(\d+)\/(\d+))?(?:\.(\d+))?/);if(!m)return NaN;const v=Number(String(t).replace('−','-'));if(Number.isFinite(v))return v;const sg=m[1]?-1:1;return sg*((Number(m[2])||0)+(m[3]?Number(m[3])/Number(m[4]):0))};
+function cur(){const q=pieceNow(EP);if(!q)return null;const e=SPEC.edits?.pieces?.[EP]||SPEC.edits?.added?.find(a=>a.id===EP);return{q,e}}
+function snapHist(){EH=EH.slice(0,EHI+1);EH.push(JSON.stringify(SPEC.edits||null));if(EH.length>80)EH.shift();EHI=EH.length-1}
+// a change to the piece: written into the edits (with the drafted piece's box in this size, so other sizes follow), redrawn
+function commitPiece(next){const E=edits(),add=E.added.find(a=>a.id===EP);
+  if(add)Object.assign(add,next,{box:(b=>[b.x0,b.y0,b.w,b.h])(boundsOf(next.sew||add.sew))});
+  else{const raw=pieceRaw(EP),b=boundsOf(raw.sew),was=E.pieces[EP]||{sew:pieceNow(EP).sew,notches:pieceNow(EP).notches};E.pieces[EP]={...was,...next,box:was.box&&E.pieces[EP]?was.box:[b.x0,b.y0,b.w,b.h]}}
+  E.size=String(SIZE);DIRTY=true;build();snapHist();drawPieces();paintSide()}
+function startEdit(id){EP=id||EP||PAT.pieces.find(q=>q.cut>0)?.id;SELP=[];const q=pieceNow(EP);
+  // the first edit of a drafted piece starts from its outline with the points that add nothing taken out
+  if(q&&!q.edited&&!q.added){const E=edits(),raw=pieceRaw(EP),b=boundsOf(raw.sew);E.pieces[EP]={sew:simplifyClosed(q.sew,.015),notches:q.notches.slice(),box:[b.x0,b.y0,b.w,b.h]};build()}
+  $('#ePiece').innerHTML=PAT.pieces.filter(x=>x.cut>0||x.added).map(x=>`<option value="${esc(x.id)}"${x.id===EP?' selected':''}>${esc(x.name)}${x.edited||x.added?' ·':''}</option>`).join('');if(EHI<0)snapHist();drawPieces();paintSide()}
+function drawEditor(){
+  const c=cur();if(!c){$('#canvas').innerHTML='';return}const q=c.q,sew=q.sew,cut=offsetOf(sew,q.sa??PAT.sa),b=boundsOf(cut),pad=1.2,x0=Math.floor(b.x0-pad),w=Math.ceil(b.x1+pad)-x0,h0=Math.ceil(b.y1+pad)-Math.floor(b.y0-pad),r=Math.max(w,h0)/150,head=Math.ceil(r*15),y0=Math.floor(b.y0-pad)-head,h=h0+head;
+  let g='';for(let x=x0;x<=x0+w;x++)g+=`<path d="M${x} ${y0} V${y0+h}" stroke="${x%6?'#e6e6e1':'#cfcfc9'}" stroke-width="${r*.25}"/>`;for(let y=y0;y<=y0+h;y++)g+=`<path d="M${x0} ${y} H${x0+w}" stroke="${y%6?'#e6e6e1':'#cfcfc9'}" stroke-width="${r*.25}"/>`;
+  const run=(s)=>{if(!s||s.pid!==EP)return'';const pts=[];let k=s.i;for(let n=0;n<sew.length&&k!==s.j;n++){pts.push(sew[k]);k=(k+1)%sew.length}pts.push(sew[s.j]);return`<path d="M${pts.map(p=>`${r3(p[0])} ${r3(p[1])}`).join(' L')}" fill="none" stroke="${s===SEAM.a?'#2a6df4':'#c2410c'}" stroke-width="${r*1.4}" stroke-linecap="round"/>`};
+  const gr=q.grain;
+  $('#canvas').innerHTML=`<svg id="esvg" xmlns="http://www.w3.org/2000/svg" viewBox="${x0} ${y0} ${w} ${h}" role="img" aria-label="Editing ${esc(q.name)}" style="touch-action:none;background:#fff;border-radius:12px" font-family="Space Grotesk, system-ui, sans-serif"><defs><marker id="ga" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="3.2" markerHeight="3.2" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#17603a"/></marker></defs>${g}
+    <path d="${P(cut)}" fill="${FILL[q.fabric]||'#eee'}" fill-opacity=".55" stroke="#141416" stroke-width="${r*.5}" stroke-dasharray="${r*1.4} ${r*.8}"/><path d="${P(sew)}" fill="none" stroke="#141416" stroke-width="${r*.6}"/>${run(SEAM.a)}${run(SEAM.b)}
+    <path d="M${r3(gr[0][0])} ${r3(gr[0][1])} L${r3(gr[1][0])} ${r3(gr[1][1])}" stroke="#17603a" stroke-width="${r*.6}" marker-start="url(#ga)" marker-end="url(#ga)"/>
+    ${q.notches.map(n=>`<path d="M${r3(n[0]-r*1.4)} ${r3(n[1]+r*2)} L${r3(n[0])} ${r3(n[1])} L${r3(n[0]+r*1.4)} ${r3(n[1]+r*2)} Z" fill="#141416"/>`).join('')}
+    ${sew.map((p,i)=>`<circle data-pt="${i}" cx="${r3(p[0])}" cy="${r3(p[1])}" r="${r*(SELP.includes(i)?1.6:1.1)}" fill="${SELP.includes(i)?'#2a6df4':'#fff'}" stroke="${SELP.includes(i)?'#2a6df4':'#141416'}" stroke-width="${r*.4}" style="cursor:grab"/>`).join('')}
+    <text x="${x0+.4}" y="${y0+r*8}" font-size="${r*7}" font-weight="700">${esc(q.name)} · ${esc(String(PAT.size))}</text><text x="${x0+.4}" y="${y0+r*14}" font-size="${r*5}" fill="#727278">1 in grid · ${sew.length} points · seam allowance ${fr(q.sa??PAT.sa)}</text></svg>`;
+}
+const svgPt=e=>{const sv=$('#esvg'),pt=sv.createSVGPoint();pt.x=e.clientX;pt.y=e.clientY;const m=sv.getScreenCTM().inverse(),q=pt.matrixTransform(m);return[q.x,q.y]};
+$('#canvas').addEventListener('pointerdown',e=>{if(!EDIT)return;const c=e.target.closest('[data-pt]');if(!c){if(!e.shiftKey){SELP=[];drawPieces();paintSide()}return}const i=Number(c.dataset.pt);
+  if(e.shiftKey){SELP=SELP.includes(i)?SELP.filter(x=>x!==i):[...SELP.slice(-1),i]}else if(!SELP.includes(i))SELP=[i];
+  DRAG={i,start:svgPt(e),pts:cur().q.sew.map(p=>p.slice()),moved:false};$('#esvg').setPointerCapture?.(e.pointerId);drawPieces();paintSide()});
+$('#canvas').addEventListener('pointermove',e=>{if(!EDIT||!DRAG)return;const p=svgPt(e),dx=F16(p[0]-DRAG.start[0]),dy=F16(p[1]-DRAG.start[1]);if(!dx&&!dy&&!DRAG.moved)return;DRAG.moved=true;
+  const sew=DRAG.pts.map((q,i)=>SELP.includes(i)?[F16(q[0]+dx),F16(q[1]+dy)]:q);const E=edits(),t=E.pieces[EP]||E.added.find(a=>a.id===EP);if(t){t.sew=sew;build();drawPieces()}});
+const endDrag=()=>{if(!DRAG)return;const m=DRAG.moved;DRAG=null;if(m){DIRTY=true;snapHist();paintSide()}};
+$('#canvas').addEventListener('pointerup',endDrag);$('#canvas').addEventListener('pointercancel',endDrag);
+function editAct(a){const c=cur();if(!c)return;const sew=c.q.sew.map(p=>p.slice());
+  if(a==='undo'||a==='redo'){const k=a==='undo'?EHI-1:EHI+1;if(k<0||k>=EH.length)return;EHI=k;SPEC.edits=JSON.parse(EH[k]);DIRTY=true;build();if(!pieceNow(EP))EP=PAT.pieces[0]?.id;SELP=[];drawPieces();paintSide();return}
+  if(a==='add'){const i=SELP[0]??0,j=(i+1)%sew.length;sew.splice(i+1,0,[F16((sew[i][0]+sew[j][0])/2),F16((sew[i][1]+sew[j][1])/2)]);SELP=[i+1];return commitPiece({sew})}
+  if(a==='del'){if(!SELP.length||sew.length-SELP.length<3){toast('A piece keeps at least three points');return}const keep=sew.filter((p,i)=>!SELP.includes(i));SELP=[];return commitPiece({sew:keep})}
+  if(a==='notch'){if(SELP.length!==1){toast('Choose one point for the notch');return}const p=sew[SELP[0]],ns=c.q.notches.slice(),k=ns.findIndex(n=>Math.hypot(n[0]-p[0],n[1]-p[1])<.06);if(k>=0)ns.splice(k,1);else ns.push(p.slice());return commitPiece({notches:ns})}
+  if(a==='reset'){const E=edits();if(EP.startsWith('x')){toast('A piece you added has no draft to go back to: remove it instead');return}delete E.pieces[EP];DIRTY=true;build();snapHist();SELP=[];startEdit(EP);toast('The piece is back as drafted');return}
+  if(a==='dup'){const E=edits(),id='x'+Date.now().toString(36).slice(-5),q=c.q;E.added.push({id,name:`${q.name} (copy)`,sew:q.sew.map(p=>[p[0]+1,p[1]+1]),notches:q.notches.map(p=>[p[0]+1,p[1]+1]),sa:q.sa??PAT.sa,cut:q.cut||1,fabric:q.fabric,box:[0,0,1,1]});DIRTY=true;build();snapHist();startEdit(id);return}
+  if(a==='new'){const E=edits(),id='x'+Date.now().toString(36).slice(-5);E.added.push({id,name:'New piece',sew:[[0,0],[6,0],[6,8],[0,8]],notches:[],sa:PAT.sa,cut:1,fabric:'self',box:[0,0,6,8]});DIRTY=true;build();snapHist();startEdit(id);return}
+  if(a==='remove'){const E=edits();if(EP.startsWith('x'))E.added=E.added.filter(x=>x.id!==EP);else{E.removed=[...new Set([...E.removed,EP])];delete E.pieces[EP]}DIRTY=true;build();snapHist();EP=null;startEdit();toast('Piece removed (Undo brings it back)');return}
+  if(a==='seamA'||a==='seamB'){if(SELP.length!==2){toast('Choose two points: the ends of the seam, in order round the piece');return}const s={pid:EP,i:SELP[0],j:SELP[1],len:runLength(sew,SELP[0],SELP[1]),name:c.q.name};if(a==='seamA')SEAM.a=s;else SEAM.b=s;drawPieces();paintSide();return}
+}
+$('#etools').addEventListener('click',e=>{const b=e.target.closest('[data-e]');if(b)editAct(b.dataset.e)});
+$('#ePiece').addEventListener('change',e=>{SELP=[];startEdit(e.target.value)});
+document.addEventListener('keydown',e=>{if(!EDIT||/INPUT|SELECT|TEXTAREA/.test(document.activeElement?.tagName||''))return;
+  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();editAct(e.shiftKey?'redo':'undo');return}
+  if(e.key==='Delete'||e.key==='Backspace'){e.preventDefault();editAct('del');return}if(e.key==='n'||e.key==='N'){editAct('notch');return}
+  const d={ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,-1],ArrowDown:[0,1]}[e.key];if(!d||!SELP.length)return;e.preventDefault();const st=e.shiftKey?.25:1/16,sew=cur().q.sew.map((p,i)=>SELP.includes(i)?[F16(p[0]+d[0]*st),F16(p[1]+d[1]*st)]:p);commitPiece({sew})});
+$('#editBtn').addEventListener('click',()=>{EDIT=!EDIT;$('#editBtn').setAttribute('aria-pressed',String(EDIT));$('#editBtn').textContent=EDIT?'Done editing':'Edit pieces';$('#etools').classList.toggle('hidden',!EDIT);document.querySelector('.scrub:not(#etools)').classList.toggle('hidden',EDIT);$('#modeSeg').classList.toggle('hidden',EDIT);$('#play').classList.toggle('hidden',EDIT);if(EDIT)startEdit();else{drawPieces();paintSide()}});
+function editSide(){const c=cur();if(!c)return'';const q=c.q,p=SELP.length===1?q.sew[SELP[0]]:null,o=D.options;
+  const seam=s=>s?`${esc(s.name)}: ${fr(s.len)}`:'—',diff=SEAM.a&&SEAM.b?Math.round((SEAM.a.len-SEAM.b.len)*1000)/1000:null;
+  return`<section class="readbox"><h4>${esc(q.name)} <span class="mono">${q.edited||q.added?'edited':'as drafted'}</span></h4>
+    <label class="f"><span>Name</span><input data-ek="name" value="${esc(q.name)}"></label>
+    <div class="row2"><label class="f"><span>Cut</span><input type="number" data-ek="cut" min="0" max="24" step="1" value="${q.cut}"></label><label class="f"><span>Cloth</span><select data-ek="fabric">${Object.keys(FILL).map(k=>`<option value="${k}"${k===q.fabric?' selected':''}>${esc(fabricName(k))}</option>`).join('')}</select></label></div>
+    <div class="row2"><label class="f"><span>Seam allowance</span><select data-ek="sa">${[0,.125,.25,.375,.5,.625,.75,1].map(v=>`<option value="${v}"${Number(q.sa??PAT.sa)===v?' selected':''}>${fr(v)}</option>`).join('')}</select></label><label class="f"><span>Grain (degrees)</span><input type="number" data-ek="grain" min="0" max="359" step="1" value="${c.e?.grain??0}"></label></div>
+    <label class="chk"><input type="checkbox" data-ek="pair"${q.pair?' checked':''}> Cut in mirrored pairs</label>
+    ${p?`<div class="row2"><label class="f"><span>Point X</span><input data-ek="px" value="${fr(p[0]).replace(' in','')}"></label><label class="f"><span>Point Y</span><input data-ek="py" value="${fr(p[1]).replace(' in','')}"></label></div><p class="note">Arrow keys move it 1/16 in (Shift: ¼ in). Fractions work: 3 7/8.</p>`:SELP.length===2?`<p class="note">Run between the two points: <b>${fr(runLength(q.sew,SELP[0],SELP[1]))}</b></p>`:'<p class="note">Click a point to move it; Shift-click a second to measure the run between them.</p>'}
+    <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm q" type="button" data-e2="dup">Duplicate</button><button class="btn sm q" type="button" data-e2="new">New piece</button><button class="btn sm q" type="button" data-e2="remove">Remove piece</button></div></section>
+    <section><h4>Walk a seam</h4><p class="note">Pick the two ends of a seam on one piece and set it as A, then its partner on the other piece as B: the lengths should match (or differ by the ease you mean).</p>
+    <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm q" type="button" data-e2="seamA">Set seam A</button><button class="btn sm q" type="button" data-e2="seamB">Set seam B</button></div>
+    <div class="find info"><i></i><span><b>A</b> ${seam(SEAM.a)}</span></div><div class="find info"><i></i><span><b>B</b> ${seam(SEAM.b)}</span></div>
+    ${diff!=null?`<div class="find ${Math.abs(diff)<=1/16?'info':'warn'}"><i></i><span>${Math.abs(diff)<=1/16?'They match':`A is ${diff>0?'longer':'shorter'} by ${fr(Math.abs(diff))}`}${Math.abs(diff)>1/16?': ease it in, or move a point':''}</span></div>`:''}</section>
+    <button class="btn go" type="button" id="saveP"${DIRTY?'':' disabled'}>${DIRTY?'Save the pattern':'Saved'}</button>`}
+$('#side').addEventListener('click',e=>{const b=e.target.closest('[data-e2]');if(b)editAct(b.dataset.e2)});
+$('#side').addEventListener('change',e=>{const k=e.target.dataset.ek;if(!k||!EDIT)return;e.stopImmediatePropagation();const c=cur(),v=e.target.type==='checkbox'?e.target.checked:e.target.value;
+  if(k==='px'||k==='py'){const n=parseIn(v);if(!Number.isFinite(n)){toast('Type a length in inches, like 3 7/8');return}const sew=c.q.sew.map((p,i)=>i===SELP[0]?(k==='px'?[F16(n),p[1]]:[p[0],F16(n)]):p);return commitPiece({sew})}
+  commitPiece({[k]:k==='cut'||k==='sa'||k==='grain'?Number(v):v})},true);
+
 // ---------- the side ----------
 const LABEL={style:'Style',toe:'Toe',toeCap:'Toe cap',mudguard:'Mudguard',heelOverlay:'Heel overlay',upper:'Upper',sole:'Sole',eyelets:'Eyelets a side',vamp:'Vamp line (from the heel)',throat:'Lacing starts (from the heel)',collar:'Collar height',heel:'Heel height',spring:'Toe spring',soleHeight:'Sole thickness',colours:'Colours'};
 const show=(k,v)=>{if(v==null)return'the style\'s';if(typeof v==='boolean')return v?'yes':'no';if(k==='colours')return Object.entries(v).map(([a,b])=>`${a} ${b}`).join(', ');if(['vamp','throat'].includes(k))return Math.round(v*100)+'% of the length';if(['collar','heel','spring','soleHeight'].includes(k))return v+' in';const fo=D.options.footwear;return (k==='style'?fo.styles[v]:k==='toe'?fo.toes[v]:k==='upper'?fo.uppers[v]:v)||String(v)};
@@ -117,6 +194,7 @@ async function readPicture(){RDBUSY=true;paintSide();try{RD=await api(`/v1/lab/c
 async function loadPic(){if(PICURL||!D.concept.hasImage)return;try{const r=await fetch(`/v1/lab/concepts/${CID}/image`,{headers:{Authorization:'Bearer '+TOKEN()}});if(r.ok){PICURL=URL.createObjectURL(await r.blob());drawPieces()}}catch{}}
 function paintSide(){
   const s=$('#side');if(!PAT){s.innerHTML='';return}
+  if(EDIT){s.innerHTML=editSide();return}
   const lay=layoutOf(PAT,{width:Number(SPEC.width)||58}),o=D.options,vis=PAT.pieces.filter(q=>q.cut>0);
   const sel=(id,map,v)=>`<select data-k="${id}">${Object.entries(map).map(([k,l])=>`<option value="${esc(k)}"${String(k)===String(v)?' selected':''}>${esc(l)}</option>`).join('')}</select>`;
   let h='';
@@ -150,17 +228,19 @@ function paintSide(){
   h+=`<section><h4>Pieces <span class="mono">${vis.length} · ${vis.reduce((a,q)=>a+q.cut,0)} cut</span></h4><table class="pcs"><thead><tr><th>Piece</th><th>Cut</th><th>Fabric</th></tr></thead><tbody>${vis.map(q=>`<tr data-pid="${esc(q.id)}"${SEL===q.id?' class="on"':''}><td><span class="sw" style="background:${FILL[q.fabric]||'#eee'}"></span>${esc(q.name)}${q.notes.length&&SEL===q.id?`<div class="note" style="margin-top:4px">${q.notes.map(esc).join('<br>')}</div>`:''}</td><td>${esc(cutWords(q).replace(/^Cut /,''))}</td><td>${esc(fabricName(q.fabric))}</td></tr>`).join('')}</tbody></table></section>`;
   if(D.kind!=='footwear')h+=`<section><h4>Cloth for one</h4>${lay.map(g=>`<div class="find info"><i></i><span><b>${esc(g.name)}</b>: ${g.yards} yd at ${g.width} in wide (${g.efficiency}% of the cloth used)</span></div>`).join('')}${PAT.kind==='plush'?`<div class="find info"><i></i><span><b>Fill</b>: about ${fillGrams(PAT)} g of ${esc(SPEC.fill)}</span></div>`:''}<p class="note">An estimate from a simple layout; the factory's marker uses less.</p></section>`;
   if(PAT.checks?.length)h+=`<section><h4>${D.kind==='footwear'?'Before the sample':'Safety and testing'}</h4>${PAT.checks.map(c=>`<div class="find ${c.level}"><i></i><span>${esc(c.msg)}</span></div>`).join('')}</section>`;
+  h+=`<section><h4>Files</h4><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm q" type="button" data-dl="aama">DXF · AAMA, this size</button><button class="btn sm q" type="button" data-dl="aama-all">DXF · every size (in)</button><button class="btn sm q" type="button" data-dl="aama-all-mm">DXF · every size (mm)</button><button class="btn sm q" type="button" data-dl="svg">SVG 1:1</button><button class="btn sm q" type="button" data-dl="plain">DXF · simple layers</button></div><p class="note">AAMA/ASTM: one block a piece and a size, cut line on layer 1, notches 4, grain 7, sew line 14, with the piece's name, quantity, size and material, for Gerber, Lectra, Optitex and CLO.</p></section>`;
   h+=`<section><h4>Notes for the pattern maker</h4>${PAT.notes.map(n=>`<p class="note">${esc(n)}</p>`).join('')}</section>`;
   s.innerHTML=h;
 }
 $('#side').addEventListener('change',e=>{if(e.target.id==='showPic'){SHOWPIC=e.target.checked;drawPieces();return}const k=e.target.dataset.k;if(!k)return;const v=e.target.type==='checkbox'?e.target.checked:e.target.type==='number'?Number(e.target.value):e.target.value;
-  if(D.kind==='footwear'){const was=SPEC.style;SPEC=cleanFootwear({...SPEC,[k]:v,...(k==='style'&&v!==was?{heel:undefined,spring:undefined,toe:undefined}:{}),...(k==='system'?{size:undefined,width:undefined,runFrom:undefined,runTo:undefined}:{})});if(['size','system','style'].includes(k))SIZE=SPEC.size;fwSizes();DIRTY=true;build();drawPieces();paintSide();return}
-  SPEC=D.kind==='plush'?cleanPlush({...SPEC,[k]:v,...(k==='shape'?{ears:v==='bunny'?'long':SPEC.ears==='long'?'round':SPEC.ears}:{})}):{...SPEC,[k]:Number(v)};DIRTY=true;build();drawPieces();paintSide()});
+  if(D.kind==='footwear'){const was=SPEC.style,ed=SPEC.edits;SPEC=cleanFootwear({...SPEC,[k]:v,...(k==='style'&&v!==was?{heel:undefined,spring:undefined,toe:undefined}:{}),...(k==='system'?{size:undefined,width:undefined,runFrom:undefined,runTo:undefined}:{})});if(ed)SPEC.edits=ed;if(['size','system','style'].includes(k))SIZE=SPEC.size;fwSizes();DIRTY=true;build();drawPieces();paintSide();return}
+  const ed0=SPEC.edits;SPEC=D.kind==='plush'?cleanPlush({...SPEC,[k]:v,...(k==='shape'?{ears:v==='bunny'?'long':SPEC.ears==='long'?'round':SPEC.ears}:{})}):{...SPEC,[k]:Number(v)};if(ed0)SPEC.edits=ed0;DIRTY=true;build();drawPieces();paintSide()});
 $('#side').addEventListener('click',async e=>{
-  if(e.target.closest('#saveP')){const b=e.target.closest('#saveP');b.disabled=true;b.textContent='Saving…';try{const r=await api(`/v1/lab/concepts/${CID}/pattern`,{method:'PUT',body:{spec:SPEC}});SPEC=r.spec;DIRTY=false;toast('Pattern saved');paintSide();HOST()?.patternSaved?.()}catch(err){toast(err.message);b.disabled=false;b.textContent='Save'}return}
+  if(e.target.closest('#saveP')){const b=e.target.closest('#saveP');b.disabled=true;b.textContent='Saving…';try{const r=await api(`/v1/lab/concepts/${CID}/pattern`,{method:'PUT',body:{spec:SPEC}});SPEC=r.spec;DIRTY=false;build();drawPieces();toast('Pattern saved');paintSide();HOST()?.patternSaved?.()}catch(err){toast(err.message);b.disabled=false;b.textContent='Save'}return}
   if(e.target.closest('#lastDl')){download('last');return}
+  const dl=e.target.closest('[data-dl]');if(dl){download(dl.dataset.dl,dl);return}
   if(e.target.closest('#readPic')){readPicture();return}
-  if(e.target.closest('#useRead')){SPEC=cleanFootwear(RD.spec);SIZE=SPEC.size;RD=null;DIRTY=true;fwSizes();build();loadPic();drawPieces();paintSide();toast('Read from the picture: save the shoe to keep it');return}
+  if(e.target.closest('#useRead')){const ed1=SPEC.edits;SPEC=cleanFootwear(RD.spec);if(ed1)SPEC.edits=ed1;SIZE=SPEC.size;RD=null;DIRTY=true;fwSizes();build();loadPic();drawPieces();paintSide();toast('Read from the picture: save the shoe to keep it');return}
   if(e.target.closest('#dropRead')){RD=null;paintSide();return}
   const tr=e.target.closest('tr[data-pid]');if(tr){SEL=SEL===tr.dataset.pid?null:tr.dataset.pid;drawPieces();paintSide()}});
 $('#canvas').addEventListener('click',e=>{const g=e.target.closest('[data-pid]');SEL=g?g.dataset.pid.replace(/-2$/,''):null;drawPieces();paintSide()});
@@ -168,8 +248,8 @@ $('#t').addEventListener('input',e=>{cancelAnimationFrame(ANIM);T=Number(e.targe
 $('#modeSeg').addEventListener('click',e=>{const b=e.target.closest('button[data-t]');if(b)goTo(Number(b.dataset.t),900)});
 $('#play').addEventListener('click',()=>{if(T>.97){T=0;drawPieces()}goTo(1,3200)});
 $('#size').addEventListener('change',e=>{SIZE=e.target.value;build();drawPieces();paintSide()});
-async function download(ext){const b=ext==='dxf'?$('#dxf'):ext==='last'?$('#lastDl'):$('#svgDl'),label=b.textContent;b.disabled=true;b.textContent='Preparing…';
-  try{const r=await fetch(`/v1/lab/concepts/${CID}/${ext==='last'?'last.svg':'pattern.'+ext}?size=${encodeURIComponent(SIZE)}&width=${Number(SPEC.width)||58}`,{headers:{Authorization:'Bearer '+TOKEN()}});if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||'The file could not be made');
+async function download(kind,btn){const ext=kind==='svg'?'svg':kind==='last'?'last':'dxf',q=kind==='dxf'||kind==='aama'?'&format=aama':kind==='aama-all'?'&format=aama&sizes=all':kind==='aama-all-mm'?'&format=aama&sizes=all&units=mm':'',b=btn||(ext==='dxf'?$('#dxf'):ext==='last'?$('#lastDl'):$('#svgDl')),label=b.textContent;b.disabled=true;b.textContent='Preparing…';
+  try{const r=await fetch(`/v1/lab/concepts/${CID}/${ext==='last'?'last.svg':'pattern.'+ext}?size=${encodeURIComponent(SIZE)}&width=${Number(SPEC.width)||58}${q}`,{headers:{Authorization:'Bearer '+TOKEN()}});if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||'The file could not be made');
     const name=(/filename="([^"]+)"/.exec(r.headers.get('content-disposition')||'')||[])[1]||`pattern.${ext}`,u=URL.createObjectURL(await r.blob()),a=document.createElement('a');a.href=u;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),4000);toast(`Downloaded ${name}`)}
   catch(err){toast(err.message)}finally{b.disabled=false;b.textContent=label}}
 $('#dxf').addEventListener('click',()=>download('dxf'));$('#svgDl').addEventListener('click',()=>download('svg'));

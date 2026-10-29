@@ -97,3 +97,43 @@ test('what kind of pattern a concept is cut from', () => {
   assert.deepEqual(cleanPatternSpec('garment', { sa: 3, width: 9 }), { sa: null, width: 58 });
   assert.deepEqual(cleanPatternSpec('garment', { sa: .625, width: 60 }), { sa: .625, width: 60 });
 });
+
+import { applyEdits, cleanPatternEdits, simplifyClosed, runLength, patternDxfAama } from '../src/lab-pattern.js';
+
+test('edits: a piece edited in one size is kept exactly there, and follows the drafted piece in another size; removed and added pieces', () => {
+  const p = defaultParams('tee'), M = garmentPattern(p, 'M'), XL = garmentPattern(p, 'XL'), fr = M.pieces.find(q => q.id === 'front'), b = boundsOf(fr.sew);
+  const sew = simplifyClosed(fr.sew, .015).map(([x, y]) => [x, y > 20 ? y + 1 : y]);
+  const edits = cleanPatternEdits({ size: 'M', pieces: { front: { sew, notches: [[0, 10]], box: [b.x0, b.y0, b.w, b.h], sa: .5, name: 'Front body', grain: 90 } }, removed: ['neck-rib'], added: [{ id: 'xpocket', sew: [[0, 0], [5, 0], [5, 6], [0, 6]], name: 'Patch pocket', cut: 2 }] });
+  const e = applyEdits(M, edits), f = e.pieces.find(q => q.id === 'front');
+  assert.deepEqual(f.sew, sew, 'exactly as edited in its own size'); assert.equal(f.name, 'Front body'); assert.equal(f.sa, .5); assert.ok(f.edited);
+  assert.ok(Math.abs(f.grain[0][1] - f.grain[1][1]) < .01, 'grain turned to 90 degrees: across the piece');
+  assert.ok(!e.pieces.some(q => q.id === 'neck-rib') && e.pieces.some(q => q.id === 'xpocket' && q.cut === 2 && q.added));
+  const fx = applyEdits(XL, edits).pieces.find(q => q.id === 'front'), bx = boundsOf(XL.pieces.find(q => q.id === 'front').sew), be = boundsOf(sew);
+  assert.ok(Math.abs(boundsOf(fx.sew).w - be.w * bx.w / b.w) < .01, 'in XL it grows with the drafted front');
+  assert.equal(applyEdits(M, null), M);
+});
+
+test('cleaning edits: bounded, and nothing kept from junk', () => {
+  assert.equal(cleanPatternEdits({}), null); assert.equal(cleanPatternEdits({ pieces: { front: { sew: [[0, 0], [1, 1]] } } }), null, 'two points is not a piece');
+  const c = cleanPatternEdits({ pieces: { 'Bad Id!': { sew: [[0, 0], [1, 0], [1, 1]] }, front: { sew: [[0, 0], [1e9, 0], [1, 1]], sa: 7, cut: 99, fabric: 'gold', grain: 450 } }, removed: ['x;drop'] });
+  assert.deepEqual(Object.keys(c.pieces), ['front']); assert.equal(c.pieces.front.sew[1][0], 400); assert.ok(!('sa' in c.pieces.front)); assert.equal(c.pieces.front.cut, 24); assert.ok(!('fabric' in c.pieces.front)); assert.equal(c.pieces.front.grain, 90); assert.deepEqual(c.removed, []);
+});
+
+test('a run of an outline is measured forward round it, and the outline is simplified without losing its shape', () => {
+  const sq = [[0, 0], [4, 0], [4, 3], [0, 3]];
+  assert.equal(runLength(sq, 0, 2), 7); assert.equal(runLength(sq, 2, 0), 7); assert.equal(runLength(sq, 3, 1), 7);
+  const hood = garmentPattern(defaultParams('hoodie')).pieces.find(q => q.id === 'hood').sew, s = simplifyClosed(hood, .015);
+  assert.ok(s.length < hood.length && s.length >= 8); assert.ok(Math.abs(areaOf(s) - areaOf(hood)) / areaOf(hood) < .01, 'area within 1%');
+});
+
+test('AAMA DXF: a block a piece and a size with its text, the standard layers, inserts, metric or English', () => {
+  const p = defaultParams('pants'), pats = ['S', 'M', 'L'].map(z => garmentPattern(p, z)), dxf = patternDxfAama(pats, { style: 'Pleated pant', units: 'in' });
+  const blocks = (dxf.match(/\n0\nBLOCK\n/g) || []).length, perSize = pats[0].pieces.filter(q => q.cut > 0).length;
+  assert.equal(blocks, perSize * 3); assert.equal((dxf.match(/\n0\nINSERT\n/g) || []).length, blocks);
+  for (const t of ['Style Name: Pleated pant', 'Units: ENGLISH', 'Size List: S M L', 'Piece Name: Front leg', 'Quantity: 2 (pairs)', 'Material: POCKETING']) assert.ok(dxf.includes(t), t);
+  for (const layer of ['1', '2', '4', '7', '14']) assert.ok(new RegExp(`\\n8\\n${layer}\\n`).test(dxf), `layer ${layer}`);
+  assert.match(dxf, /\$ACADVER\n1\nAC1009/); assert.match(dxf, /EOF\n$/);
+  const mm = patternDxfAama(pats[1], { units: 'mm' }); assert.ok(mm.includes('Units: METRIC') && mm.includes('$MEASUREMENT\n70\n1'));
+  const xs = s => [...s.matchAll(/\nVERTEX\n8\n14\n10\n(-?[\d.]+)/g)].map(m => Number(m[1]));
+  assert.ok(Math.abs(Math.max(...xs(mm)) / Math.max(...xs(patternDxfAama(pats[1]))) - 25.4) < .01, 'millimetres are inches times 25.4');
+});

@@ -7,7 +7,7 @@
 //   POST /v1/lab/concepts/from-scratch           {name?, category, style?, shape?} a concept with nothing drawn yet: a blank page in Design to draw on,
 //                                                with a guide (the flat's outline for a garment, the plush's shape) → { concept, studio }
 import { STYLES, SIZES, FITS, defaultParams, detectStyle } from './lab-flats.js';
-import { garmentPattern, plushPattern, cleanPlush, plushDefaults, patternSvg, patternDxf, yardage, fillGrams, PLUSH_SHAPES, PLUSH_EARS, PLUSH_FABRICS, PLUSH_EYES, PLUSH_AGES } from './lab-pattern.js';
+import { garmentPattern, applyEdits, cleanPatternEdits, patternDxfAama, plushPattern, cleanPlush, plushDefaults, patternSvg, patternDxf, yardage, fillGrams, PLUSH_SHAPES, PLUSH_EARS, PLUSH_FABRICS, PLUSH_EYES, PLUSH_AGES } from './lab-pattern.js';
 import { CATEGORIES } from './lab.js';
 import { silhouette, readShoe, proposal } from './lab-shoe-read.js';
 import { callJsonSchema } from './studio.js';
@@ -27,7 +27,8 @@ export function kindOf(c, flatStyle = null) {
   return detectStyle(c) ? 'garment' : 'none';
 }
 const cleanGarment = (s = {}) => ({ sa: [.25, .375, .5, .625].includes(Number(s.sa)) ? Number(s.sa) : null, width: WIDTHS.includes(Number(s.width)) ? Number(s.width) : 58 });
-export const cleanPatternSpec = (kind, s) => kind === 'plush' ? cleanPlush(s || {}) : kind === 'footwear' ? cleanFootwear(s || {}) : cleanGarment(s || {});
+// the choices, and the pattern engineer's edits on top (src/lab-pattern.js applyEdits)
+export const cleanPatternSpec = (kind, s) => { const base = kind === 'plush' ? cleanPlush(s || {}) : kind === 'footwear' ? cleanFootwear(s || {}) : cleanGarment(s || {}), edits = cleanPatternEdits(s?.edits); return edits ? { ...base, edits } : base; };
 
 // a footwear concept's style from its words, until it is chosen
 export const guessShoe = c => { const t = [c.name, c.spec?.silhouette, c.spec?.description].join(' ').toLowerCase(); return /chelsea/.test(t) ? 'chelsea' : /hik(e|er|ing)/.test(t) ? 'hiker' : /high[- ]?top|basketball/.test(t) ? 'hightop' : /\bboots?\b/.test(t) ? 'boot' : /loafer|penny|moc/.test(t) ? 'loafer' : /derby|oxford|blucher|dress shoe/.test(t) ? 'derby' : /run|trainer|jog/.test(t) ? 'runner' : 'sneaker'; };
@@ -45,10 +46,12 @@ export function registerLabPatternRoutes(app, d) {
     let flat = f, det = null;
     if (!flat && c.category !== 'plush') { det = c.spec?.style && STYLES[c.spec.style] ? { style: c.spec.style, fit: 'regular', options: {} } : detectStyle(c); if (det) flat = { ...defaultParams(det.style, det.fit, det.options), ...(det.template ? { template: det.template } : {}) }; }
     const kind = kindOf(c, flat?.style);
-    const spec = kind === 'plush' ? cleanPlush(row?.kind === 'plush' ? row.spec : plushDefaults(c.spec?.plush?.shape || 'bear')) : kind === 'footwear' ? cleanFootwear(row?.kind === 'footwear' ? row.spec : fwDefaults(c.spec?.footwear?.style || guessShoe(c))) : cleanGarment(row?.spec);
+    const spec0 = kind === 'plush' ? cleanPlush(row?.kind === 'plush' ? row.spec : plushDefaults(c.spec?.plush?.shape || 'bear')) : kind === 'footwear' ? cleanFootwear(row?.kind === 'footwear' ? row.spec : fwDefaults(c.spec?.footwear?.style || guessShoe(c))) : cleanGarment(row?.spec);
+    const ed = cleanPatternEdits(row?.spec?.edits), spec = ed ? { ...spec0, edits: ed } : spec0;
     return { c, kind, flat, spec, saved: Boolean(row), savedFlat: Boolean(f), updatedAt: row?.updated_at || null };
   }
-  const patternOf = (L, size) => L.kind === 'plush' ? plushPattern(L.spec) : L.kind === 'footwear' ? footwearPattern(L.spec, size !== '' && size != null && Number.isFinite(Number(size)) ? Number(size) : null) : L.kind === 'garment' && L.flat ? (p => p && L.spec.sa ? { ...p, sa: L.spec.sa } : p)(garmentPattern(L.flat, SIZES.includes(size) ? size : L.flat.size || 'M')) : null;
+  const patternOf = (L, size) => applyEdits(draft(L, size), L.spec.edits);
+  const draft = (L, size) => L.kind === 'plush' ? plushPattern(L.spec) : L.kind === 'footwear' ? footwearPattern(L.spec, size !== '' && size != null && Number.isFinite(Number(size)) ? Number(size) : null) : L.kind === 'garment' && L.flat ? (p => p && L.spec.sa ? { ...p, sa: L.spec.sa } : p)(garmentPattern(L.flat, SIZES.includes(size) ? size : L.flat.size || 'M')) : null;
   const options = { footwear: { styles: Object.fromEntries(Object.entries(FW_STYLES).map(([k, v]) => [k, v.label])), toes: Object.fromEntries(Object.entries(TOES).map(([k, v]) => [k, v.label])), systems: SYSTEMS, widths: SHOE_WIDTHS, uppers: UPPERS, linings: LININGS, limits: SIZE_LIMITS }, plush: { shapes: PLUSH_SHAPES, ears: PLUSH_EARS, fabrics: PLUSH_FABRICS, eyes: PLUSH_EYES, ages: PLUSH_AGES }, widths: WIDTHS, seamAllowances: [.25, .375, .5, .625], sizes: SIZES, fits: FITS,
     styles: Object.fromEntries(Object.entries(STYLES).map(([k, v]) => [k, { label: v.label, kind: v.kind, category: v.category }])), soon: SOON };
 
@@ -71,6 +74,13 @@ export function registerLabPatternRoutes(app, d) {
     const pat = patternOf(L, String(req.query?.size || '')); if (!pat) return bad(reply, L.kind === 'soon' ? SOON[L.c.category] : 'This piece has no pattern the Lab can draft yet');
     const width = WIDTHS.includes(Number(req.query?.width)) ? Number(req.query.width) : Number(L.spec.width) || 58, name = `${(L.c.name || 'pattern').replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase() || 'pattern'}-pattern-${String(pat.size).replace(/[^a-z0-9]+/gi, '').toLowerCase()}`;
     reply.header('content-disposition', `attachment; filename="${name}.${ext}"`).header('cache-control', 'no-store');
+    if (ext === 'dxf' && req.query?.format === 'aama') {
+      // the AAMA/ASTM file for a pattern system: one size, or every size of the run
+      const all = req.query?.sizes === 'all', sizes = !all ? [null] : L.kind === 'garment' ? (STYLES[L.flat.style]?.oneSize ? [null] : SIZES) : L.kind === 'footwear' ? sizeRun(L.spec).map(r => r.size) : [null];
+      const pats = sizes.map(z => z == null ? pat : patternOf(L, String(z))).filter(Boolean), units = req.query?.units === 'mm' ? 'mm' : 'in';
+      reply.header('content-disposition', `attachment; filename="${name}${all ? '-all-sizes' : ''}-aama.dxf"`);
+      return reply.type('application/dxf').send(patternDxfAama(pats, { width, units, style: L.c.name }));
+    }
     return ext === 'svg' ? reply.type('image/svg+xml; charset=utf-8').send(patternSvg(pat, { width, title: L.c.name })) : reply.type('application/dxf').send(patternDxf(pat, { width }));
   };
   app.get('/v1/lab/concepts/:id/pattern.svg', { preHandler: pre }, file('svg'));

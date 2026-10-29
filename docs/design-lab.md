@@ -729,3 +729,47 @@ What the picture sets can also be set by hand, and every value is bounded:
 - the vamp line and where the lacing starts (as shares of the length);
 - the eyelets, the mudguard and the heel overlay;
 - the sole type and the colours.
+
+## Editing pieces and the AAMA/ASTM DXF
+
+A drafted pattern is a start: a pattern maker can change every piece on the Pattern view and keep what they changed.
+
+**Edit pieces** turns the drawing into the chosen piece on a 1 in grid. In edit mode:
+
+- **Points:** drag a point, or move it with the arrow keys (1/16 in; ¼ in with Shift). You can also type its position in fractions (`24 1/4`).
+  **Add point** puts one between the chosen point and the next; **Delete point** (or Delete) removes it. A piece keeps at least three.
+- **Notches:** **Notch** (or N) puts a notch on the chosen point, or takes it off.
+- **The piece:** rename it, and set how many to cut, the cloth, the seam allowance, the grain angle and whether it is cut in mirrored pairs.
+  **Duplicate** copies the piece; **New piece** starts a 6 × 8 in rectangle; **Remove piece** takes it out of the pattern.
+- **Undo, redo and reset:** Undo and Redo (Ctrl+Z, Shift+Ctrl+Z) go back and forward through every change. **Reset piece** returns a piece to
+  its draft.
+- **Measure and walk a seam:** Shift-click a second point to measure the run along the sew line between the two. Set that run as seam A, then
+  set its partner on another piece as seam B. The page gives both lengths and how much one is shorter, so the seams can be walked before sewing.
+
+**Save the pattern** keeps the changes in `lab_patterns.spec.edits`:
+
+- the size they were made in;
+- for each changed piece, its sew line, notches, box and settings;
+- the added pieces and the removed ones.
+
+Changing the shoe, the plush or the seam allowance keeps the edits.
+
+**Grading the edits.** At other sizes, an edited outline is carried from its box to the drafted piece's box at that size, so a change grades in
+proportion with the draft. A pattern maker checks the graded nest before sending it.
+
+**The AAMA/ASTM DXF** (`pattern.dxf?format=aama`, the **DXF** button and **Files**) is the exchange file Gerber AccuMark, Lectra Modaris,
+Optitex and CLO import as a graded pattern:
+
+- **Pieces and sizes:** one block for each piece in each size.
+- **Layers:**
+  - 1: the cut line;
+  - 2: the turn points;
+  - 4: the notches;
+  - 7: the grain line;
+  - 14: the sew line;
+  - 15: the annotation.
+- **Text on each piece:** Piece Name, Quantity, Size and Material.
+- **Text on the file:** Style Name, Sample Size, Units and the Size List.
+
+The file comes in one size or the whole run (`&sizes=all`), in inches or millimetres (`&units=mm`). The plain DXF (CUT/SEW/GRAIN/NOTCH/TEXT
+layers) is still there for anything else.
