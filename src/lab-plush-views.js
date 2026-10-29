@@ -88,7 +88,8 @@ function bear(pat, C, view) {
     // the crown, the far arm and leg showing past the body), then the body; the near leg sewn on outside it at the hip, as a jointed bear's
     // is, the foot turned forward on its pad; the head over the body throwing its shadow on the chest; the arm hanging in front
     const far = shade(C.body, .8), hx = hw * .5, head = ellipse(hx, hh * .5, hw * .4, hh * .48, 48);
-    const mz = chaikin([[hx - hw * .26, hh * .5], [hx - hw * .5, hh * .54], [hx - hw * .56, hh * .66], [hx - hw * .48, hh * .78], [hx - hw * .26, hh * .8]], 2, false), muzzle = chaikin([...mz, [hx - hw * .2, hh * .66]], 2);
+    // the muzzle: a rounded snout standing out of the face, its back blending into the cheek (no edge where it is sewn into the head)
+    const mcx = hx - hw * .37, muzzle = ellipse(mcx, hh * .655, hw * .21, hh * .14, 48, -.08);
     const body = chaikin([[hx - bw * .2, y0 - hh * .04], [hx - bw * .5, y0 + bh * .28], [hx - bw * .52, y0 + bh * .68], [hx - bw * .3, y0 + bh * .98], [hx + bw * .14, y0 + bh], [hx + bw * .4, y0 + bh * .82], [hx + bw * .42, y0 + bh * .36], [hx + bw * .24, y0 + bh * .02]], 3);
     const lx = hx + bw * .04, legOf = (dx, dy = 0) => ({ leg: capsule([lx + dx, y0 + bh * .6 + dy], [lx - bw * .06 + dx, h - legH * .34 + dy], legH * .34, legH * .29),
       foot: chaikin([[lx - legH * .6, h - legH * .02], [lx - legH * .66, h - legH * .3], [lx - legH * .34, h - legH * .52], [lx + legH * .3, h - legH * .42], [lx + legH * .34, h], [lx - legH * .3, h + .02]].map(([x, y]) => [x + dx, y + dy]), 3),
@@ -101,8 +102,13 @@ function bear(pat, C, view) {
     if (s.legs !== false) { const N = legOf(0); d.drop(N.leg, .1, .06, .14); d.shape(N.leg); d.shape(N.foot); d.fill(N.pad, C.contrast); all.push(...N.leg, ...N.foot); }
     if (ear) { const e = earShape(s.ears, ear * .8, hx + hw * .2, hh * .12, .55); d.shape(e.out); all.push(...e.out); }
     d.drop(head, .05, .18, .2); d.shape(head); d.seam(chaikin([[hx - hw * .3, hh * .44], [hx - hw * .12, hh * .08], [hx + hw * .2, hh * .04], [hx + hw * .38, hh * .32]], 2, false));
-    d.drop(muzzle, .03, .08, .14); d.shape(muzzle, C.contrast, .025); d.fill(chaikin([[hx - hw * .58, hh * .6], [hx - hw * .5, hh * .57], [hx - hw * .5, hh * .67]], 2), C.features);
-    d.line(chaikin([[hx - hw * .5, hh * .72], [hx - hw * .42, hh * .76], [hx - hw * .34, hh * .74]], 1, false), hh * .012);
+    { const mp = painter(pat, { ...C, line: 'none' }); mp.drop(muzzle, .03, .08, .14); mp.shape(muzzle, C.contrast, 0);
+      d.raw(`<linearGradient id="mzf-${C.uid}" gradientUnits="userSpaceOnUse" x1="${r3(mcx + hw * .02)}" y1="0" x2="${r3(mcx + hw * .19)}" y2="0"><stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient><mask id="mzm-${C.uid}" maskUnits="userSpaceOnUse" x="-999" y="-999" width="9999" height="9999"><rect x="-999" y="-999" width="9999" height="9999" fill="url(#mzf-${C.uid})"/></mask><g mask="url(#mzm-${C.uid})">${mp.svg()}</g>`);
+      d.raw(`<path d="${L_(muzzle.filter(([x]) => x < mcx + hw * .03))}" fill="none" stroke="${C.line}" stroke-width=".025" stroke-linecap="round"/>`); }
+    // the nose at the tip of the snout, the mouth under it
+    d.fill(chaikin([[hx - hw * .6, hh * .6], [hx - hw * .52, hh * .575], [hx - hw * .5, hh * .64], [hx - hw * .57, hh * .66]], 2), C.features);
+    d.line(chaikin([[hx - hw * .545, hh * .655], [hx - hw * .53, hh * .72]], 1, false), hh * .01);
+    d.line(chaikin([[hx - hw * .53, hh * .72], [hx - hw * .47, hh * .755], [hx - hw * .4, hh * .745]], 2, false), hh * .011);
     eyes(d, C, s.eyes, [[hx - hw * .2, hh * .44]], hh * .045);
     if (s.arms !== false) { const [a, b] = armOf(0), arm = capsule(a, b, armL * .2, armL * .21); d.drop(arm, .1, .08, .16); d.shape(arm); d.seam(capsule(a, b, armL * .1, armL * .11).slice(0, 11), false); all.push(...arm); }
     all.push(...head, ...muzzle);
@@ -203,12 +209,13 @@ function elephant(pat, C, view) {
     // the end of the trunk: its centre, which way it points, and a round cap across it
     const [p1, p0] = [cl[cl.length - 1], cl[cl.length - 2]], dl = Math.hypot(p1[0] - p0[0], p1[1] - p0[1]) || 1, dir = [(p1[0] - p0[0]) / dl, (p1[1] - p0[1]) / dl], wTip = wAt(1) / 2;
     const cap = [[tip[0] + dir[0] * wTip * .5, tip[1] + dir[1] * wTip * .5]];
-    const headTrunk = chaikin(Us([[.3, .4], [.42, .41], [.53, .33], [.57, .2], [.5, .07], [.37, .005], [.24, .03], [.185, .085],
-      ...front.slice(2), ...cap, ...back.slice().reverse().filter(([x, y]) => !(y < .33 && x > .2)), [.27, .33], [.29, .37]]), 3);
-    const body = smooth([[.36, .4], [.52, .35], [.7, .42], [.83, .56], [.88, .74], [.83, .9], [.68, .985], [.46, .995], [.32, .92], [.28, .74], [.29, .55]]);
-    const legFront = dx => smooth([[.215 + dx, .58], [.26 + dx, .5], [.34 + dx, .5], [.38 + dx, .58], [.375 + dx, .8], [.385 + dx, .965], [.37 + dx, .995], [.3 + dx, 1.0], [.21 + dx, .995], [.195 + dx, .965], [.205 + dx, .8]], 2);
-    const sole = dx => smooth([[.2 + dx, .985], [.29 + dx, .978], [.385 + dx, .985], [.29 + dx, 1.004]], 2);
-    const toes = dx => [[.222 + dx, .962], [.262 + dx, .968]].map(([x, y]) => smooth([[x - .015, y + .02], [x - .012, y + .004], [x, y - .004], [x + .012, y + .004], [x + .015, y + .02]], 2));
+    const headTrunk = chaikin(Us([[.36, .405], [.44, .41], [.53, .33], [.57, .2], [.5, .07], [.37, .005], [.24, .03], [.185, .085],
+      ...front.slice(2), ...cap, ...back.slice().reverse().filter(([x, y]) => !(y < .33 && x > .2)), [.255, .335], [.29, .37], [.325, .392]]), 3);
+    const body = smooth([[.36, .4], [.52, .35], [.7, .42], [.83, .56], [.88, .74], [.83, .9], [.68, .985], [.46, .995], [.33, .93], [.265, .8], [.25, .62], [.29, .47]]);
+    // the front leg comes down out of the shoulder, under the head: its top is inside the body, its front edge carries on the chest's line
+    const legFront = dx => smooth([[.27 + dx, .44], [.4 + dx, .44], [.405 + dx, .62], [.39 + dx, .8], [.4 + dx, .965], [.385 + dx, .995], [.31 + dx, 1.0], [.235 + dx, .995], [.22 + dx, .965], [.232 + dx, .78], [.26 + dx, .64], [.275 + dx, .56]], 2);
+    const sole = dx => smooth([[.226 + dx, .985], [.31 + dx, .978], [.395 + dx, .985], [.31 + dx, 1.004]], 2);
+    const toes = dx => [[.246 + dx, .962], [.286 + dx, .968]].map(([x, y]) => smooth([[x - .015, y + .02], [x - .012, y + .004], [x, y - .004], [x + .012, y + .004], [x + .015, y + .02]], 2));
     const haunch = ellipse(.66 * h, .76 * h, .2 * h, .215 * h, 48, -.15);
     const hindLeg = dy => smooth([[.72, .84 + dy], [.6, .82 + dy], [.47, .83 + dy], [.415, .86 + dy], [.405, .93 + dy], [.43, .99 + dy], [.55, .998 + dy], [.7, .995 + dy]], 2);
     const pad = (dx, dy) => ellipse((.415 + dx) * h, (.912 + dy) * h, .028 * h, .072 * h, 32, .06);
@@ -218,11 +225,15 @@ function elephant(pat, C, view) {
     { const fl = legFront(.09); d.shape(fl, far); d.fill(sole(.09), farPad); all.push(...fl); }
     d.shape(pad(-.035, -.025), far); d.fill(pad(-.035, -.025).map(([x, y]) => [x - .004 * h, y]), farPad);
     if (s.tail) { const t = capsule([.86 * h, .72 * h], [.95 * h, .9 * h], h * .016, h * .012); d.shape(t, C.body, .03, true); for (let k = -2; k <= 2; k++) d.line([[.95 * h, .9 * h], [(.95 + k * .012) * h, .965 * h]], h * .012, C.contrast); all.push(...t); }
-    d.shape(body); d.seam(open([[.36, .42], [.31, .6], [.33, .82], [.42, .99]]), false);
+    d.shape(body);
     d.drop(haunch, .08, .1, .14); d.shape(haunch); d.seam(ellipse(.66 * h, .76 * h, .155 * h, .17 * h, 48, -.15).slice(30, 48), false);
     const hl = hindLeg(0); d.drop(hl, .05, .05, .12); d.shape(hl); d.shape(pad(0, 0), C.contrast, .025); d.seam(ellipse(.415 * h, .912 * h, .02 * h, .058 * h, 32, .06), true);
-    const fl = legFront(0); d.drop(fl, .08, .02, .14); d.shape(fl); d.fill(sole(0), C.contrast); for (const t of toes(0)) d.shape(t, nail, .015);
-    d.seam(open([[.3, .56], [.3, .97]]), false);
+    // the near front leg: its cloth and volume fading in below the shoulder (so it grows out of the body, no line across the top), then
+    // its outline down the front, round the sole and up the back
+    const fl = legFront(0), legEdge = fl.filter(([x, y]) => y > (x < .31 * h ? .66 : .86) * h), lp = painter(pat, { ...C, line: 'none' }); lp.drop(fl, .1, .02, .12); lp.shape(fl, C.body, 0);
+    d.raw(`<linearGradient id="lf-${C.uid}" gradientUnits="userSpaceOnUse" x1="0" y1="${r3(.5 * h)}" x2="0" y2="${r3(.63 * h)}"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#fff"/></linearGradient><mask id="lm-${C.uid}" maskUnits="userSpaceOnUse" x="-999" y="-999" width="9999" height="9999"><rect x="-999" y="-999" width="9999" height="9999" fill="url(#lf-${C.uid})"/></mask><g mask="url(#lm-${C.uid})">${lp.svg()}</g>`);
+    d.raw(`<path d="${L_(legEdge)}" fill="none" stroke="${C.line}" stroke-width=".03" stroke-linejoin="round" stroke-linecap="round"/>`);
+    d.fill(sole(0), C.contrast); for (const t of toes(0)) d.shape(t, nail, .015);
     d.drop(headTrunk, .08, .2, .2); d.shape(headTrunk);
     // the trunk is a stuffed tube, not a flat strip: lit along its outer side, turning into shadow along its inner side and where it curls
     // under, each band kept inside the outline
@@ -238,7 +249,7 @@ function elephant(pat, C, view) {
     d.seam(open([[.165, .14], [.25, .04], [.4, .01], [.52, .1]]), false);
     d.line(open([[.24, .158], [.27, .146], [.3, .156]], 1), h * .004, shade(C.body, .7));
     eyes(d, C, s.eyes, [U([.265, .2])], h * .018);
-    d.line(open([[.29, .355], [.315, .372], [.345, .362]], 1), h * .005, shade(C.body, .55));
+    d.line(open([[.268, .336], [.292, .356], [.322, .362], [.345, .352]], 2), h * .005, shade(C.body, .55));
     if (big) { d.drop(ear, .14, .12, .22); d.shape(ear); d.seam(ear.map(([x, y]) => [.49 * h + (x - .49 * h) * .88, .29 * h + (y - .29 * h) * .88]), true);
       // its fold, where it is pleated into the head seam
       d.line(open([[.39, .16], [.41, .28], [.4, .4]]), h * .005, shade(C.body, .66)); all.push(...ear); }
@@ -252,7 +263,16 @@ function elephant(pat, C, view) {
   d.shape(body); all.push(...body);
   if (view === 'front') {
     for (const sg of [1, -1]) { const foot = ellipse(sg * bw * .4, h - h * .075, h * .1, h * .075); d.shape(foot); d.fill(ellipse(sg * bw * .4, h - h * .075, h * .075, h * .055), C.contrast); all.push(...foot); }
-    for (const sg of [1, -1]) { const leg = capsule([sg * bw * .15, y0 + bh * .3], [sg * bw * .16, h - h * .095], h * .085, h * .095); d.shape(leg); d.fill(ellipse(sg * bw * .16, h - h * .01, h * .085, h * .022), C.contrast); all.push(...leg); }
+    // the front legs come down out of the chest, as in the side view: their cloth fades in below the shoulder, no line across their tops;
+    // each stands on its sole, three toenails at the front
+    d.raw(`<linearGradient id="lff-${C.uid}" gradientUnits="userSpaceOnUse" x1="0" y1="${r3(.52 * h)}" x2="0" y2="${r3(.64 * h)}"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#fff"/></linearGradient><mask id="lmf-${C.uid}" maskUnits="userSpaceOnUse" x="-999" y="-999" width="9999" height="9999"><rect x="-999" y="-999" width="9999" height="9999" fill="url(#lff-${C.uid})"/></mask>`);
+    for (const sg of [1, -1]) {
+      const c = sg * h * .1, w = h * .165, leg = chaikin([[c - w * .56, h * .46], [c + w * .56, h * .46], [c + w * .5, h * .62], [c + w * .47, h * .8], [c + w * .52, h * .965], [c + w * .44, h], [c - w * .44, h], [c - w * .52, h * .965], [c - w * .47, h * .8], [c - w * .5, h * .62]], 2);
+      const lp = painter(pat, { ...C, line: 'none' }); lp.drop(leg, sg * .06, .02, .12); lp.shape(leg, C.body, 0); d.raw(`<g mask="url(#lmf-${C.uid})">${lp.svg()}</g>`);
+      d.raw(`<path d="${L_(leg.filter(([, y]) => y > h * .66))}" fill="none" stroke="${C.line}" stroke-width=".03" stroke-linejoin="round"/>`);
+      d.fill(ellipse(c, h - h * .008, w * .46, h * .018), C.contrast);
+      for (const k of [-1, 0, 1]) d.shape(chaikin([[c + k * w * .24 - h * .016, h * .99], [c + k * w * .24 - h * .012, h * .97], [c + k * w * .24, h * .962], [c + k * w * .24 + h * .012, h * .97], [c + k * w * .24 + h * .016, h * .99]], 2), '#efe6d2', .015);
+      all.push(...leg); }
   } else {
     const op = Math.max(2.5, h * .2), m = y0 + bh * .42; d.seam(chaikin([[0, y0 + bh * .02], [0, h * .99]], 1, false)); ladder(d, C, [0, m - op / 2], [0, m + op / 2]); lawLabel(d, edgeAt(body, y0 + bh * .7, -1) + .05, y0 + bh * .7, -1);
     if (s.tail) { const t = capsule([0, y0 + bh * .7], [h * .03, y0 + bh * .9], h * .016, h * .014); d.shape(t); for (let k = -2; k <= 2; k++) d.line([[h * .03, y0 + bh * .9], [h * .03 + k * h * .012, y0 + bh * .9 + h * .06]], h * .012, C.contrast); }
@@ -261,9 +281,21 @@ function elephant(pat, C, view) {
   if (view === 'front') {
     // the gusset's seams from the brow over the crown, the eyes either side of the trunk, the trunk hanging to the chest, its tip turned out
     for (const sg of [1, -1]) d.seam(chaikin([[sg * hw * .1, hh * .62], [sg * hw * .18, hh * .3], [sg * hw * .2, hh * .02]], 2, false));
-    const trunk = chaikin([[-hw * .16, hh * .6], [-hw * .14, hh + tr * .4], [-hw * .08, hh + tr * .82], [-hw * .14, hh + tr * .96], [hw * .04, hh + tr], [hw * .14, hh + tr * .86], [hw * .12, hh + tr * .4], [hw * .16, hh * .6]], 3);
-    d.shape(trunk); all.push(...trunk); for (let k = 1; k <= 5; k++) { const y = hh * .78 + tr * .15 * k; d.line([[-hw * .11, y], [hw * .11, y + tr * .01]], h * .004, C.stitch); }
-    d.fill(ellipse(0, hh + tr * .97, hw * .1, hw * .04), C.contrast);
+    // the trunk, as in the side view: out from between the eyes towards us, down, and curling to one side to rest by the front leg, its
+    // end and nostrils turned up; a stuffed tube, lit on one side and in shadow on the other; its root fades into the face
+    const cl = chaikin([[0, .25], [0, .36], [-.006, .46], [-.025, .56], [-.065, .645], [-.12, .69], [-.175, .675], [-.205, .63], [-.21, .59]].map(([x, y]) => [x * h, y * h]), 3, false);
+    const wT = t => h * (.13 * (1 - t) ** 1.1 + .062 * t), side = f => cl.map((p, i) => { const q = cl[Math.min(i + 1, cl.length - 1)], o = cl[Math.max(i - 1, 0)], dx = q[0] - o[0], dy = q[1] - o[1], l = Math.hypot(dx, dy) || 1, w = wT(i / (cl.length - 1)) / 2; return [p[0] + f * dy / l * w, p[1] - f * dx / l * w]; });
+    const tp = cl[cl.length - 1], tq = cl[cl.length - 2], tl = Math.hypot(tp[0] - tq[0], tp[1] - tq[1]) || 1, td = [(tp[0] - tq[0]) / tl, (tp[1] - tq[1]) / tl], tw = wT(1) / 2;
+    const trunk = chaikin([...side(-1), [tp[0] + td[0] * tw * .5, tp[1] + td[1] * tw * .5], ...side(1).reverse()], 2);
+    d.raw(`<linearGradient id="tf-${C.uid}" gradientUnits="userSpaceOnUse" x1="0" y1="${r3(.25 * h)}" x2="0" y2="${r3(.31 * h)}"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#fff"/></linearGradient><mask id="tm-${C.uid}" maskUnits="userSpaceOnUse" x="-999" y="-999" width="9999" height="9999"><rect x="-999" y="-999" width="9999" height="9999" fill="url(#tf-${C.uid})"/></mask>`);
+    const tpn = painter(pat, C); tpn.drop(trunk, .06, .1, .16); tpn.shape(trunk);
+    tpn.raw(`<clipPath id="tcf-${C.uid}"><path d="${P(trunk)}"/></clipPath><g clip-path="url(#tcf-${C.uid})"><path d="${P([...side(-.9), ...side(-.3).reverse()])}" fill="#fff" opacity=".2" filter="url(#soft-${C.uid})"/><path d="${P([...side(.35), ...side(1.2).reverse()])}" fill="#1d1712" opacity=".2" filter="url(#soft-${C.uid})"/></g>`);
+    for (let k = 2; k <= 6; k++) { const i = Math.round(k / 15 * (cl.length - 1)), a = side(-1)[i], c = side(1)[i]; tpn.line([[a[0] + (c[0] - a[0]) * .2, a[1] + (c[1] - a[1]) * .2], [a[0] + (c[0] - a[0]) * .8, a[1] + (c[1] - a[1]) * .8]], h * .004, C.stitch); }
+    { const ang = Math.atan2(td[1], td[0]) + Math.PI / 2, ex = tp[0] + td[0] * tw * .12, ey = tp[1] + td[1] * tw * .12; tpn.shape(ellipse(ex, ey, tw * 1.02, tw * .45, 28, ang), C.contrast, .025);
+      for (const sg of [-1, 1]) tpn.fill(ellipse(ex + Math.cos(ang) * sg * tw * .32, ey + Math.sin(ang) * sg * tw * .32, tw * .16, tw * .11, 12, ang), shade(C.contrast, .55)); }
+    d.raw(`<g mask="url(#tm-${C.uid})">${tpn.svg()}</g>`); all.push(...trunk);
+    // the smile either side of the trunk's root
+    for (const sg of [1, -1]) d.line(chaikin([[sg * h * .072, h * .372], [sg * h * .095, h * .388], [sg * h * .125, h * .382]], 2, false), h * .005, shade(C.body, .55));
     eyes(d, C, s.eyes, [[-hw * .23, hh * .48], [hw * .23, hh * .48]], hh * .04);
   } else for (const sg of [1, -1]) d.seam(chaikin([[sg * hw * .2, hh * .02], [sg * hw * .22, hh * .4], [sg * hw * .14, hh * .9]], 2, false));
   return { svg: d.svg(), pts: all };
