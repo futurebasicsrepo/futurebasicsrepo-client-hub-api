@@ -3013,5 +3013,44 @@ await journey('J249', 'A footwear designer works on the last: the upper is cut f
   } finally { await b.close(); await K(`/concepts/${cid}`, { method: 'DELETE' }); }
 });
 
+await journey('J250', 'A footwear developer checks the shoe against its picture: the outline is measured first, then a second AI scores the four views against the picture out of 100 and asks for changes (seven eyelets, a mudguard); they are made and drawn again until it clears the bar of 90; the page follows the rounds, says what a person must look at, and keeps the changes when they are used', async () => {
+  const { footwearPattern } = await import('../../src/lab-footwear.js'), { assembled, boundsOf } = await import('../../src/lab-pattern.js');
+  // the picture: a runner from the side, on a pale ground
+  const pat = footwearPattern({ style: 'runner', eyelets: 7, mudguard: true }), side = assembled(pat).pieces.filter(x => x.piece.place.view !== 'back'), b = boundsOf(side.flatMap(x => x.pts)), k = 800 / (b.w + 2);
+  const paths = side.sort((a, c) => (a.piece.place.z || 0) - (c.piece.place.z || 0)).map(x => `<path d="M${x.pts.map(([px, py]) => `${(px - b.x0 + 1) * k} ${(py - b.y0 + 1) * k}`).join(' L')} Z" fill="${x.piece.fabric === 'overlay' ? '#1d2b3a' : '#2f4a66'}" stroke="#111" stroke-width="2"/>`).join('');
+  const png = await sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="${Math.round((b.h + 2) * k + 160)}"><rect width="100%" height="100%" fill="#efede8"/><g transform="translate(60 80)">${paths}</g></svg>`)).png().toBuffer();
+  const cid = (await K('/concepts/from-scratch', { body: { category: 'footwear', style: 'runner', name: `Checked runner ${stamp}` } })).json.concept.id;
+  try {
+    ok((await K(`/concepts/${cid}/pattern/review`, { method: 'POST', body: {} })).status === 422, '0. with no picture there is nothing to check against');
+    await call(`/v1/lab/concepts/${cid}/studio/apply`, { token: kyleT, body: { image: 'data:image/png;base64,' + png.toString('base64') } });
+    const go = await K(`/concepts/${cid}/pattern/review`, { method: 'POST', body: {} });
+    ok(go.status === 202 && go.json.reviewer === true && go.json.bar === 90, '1. the review starts in the background, with the developer (AI) and the bar of 90', go.json);
+    ok((await K(`/concepts/${cid}/pattern/review`, { method: 'POST', body: {} })).status === 409, '   one review of a shoe at a time');
+    let j = null; for (let i = 0; i < 40; i++) { await sleep(500); j = (await K(`/concepts/${cid}/pattern/review/${go.json.id}`)).json; if (j.status !== 'running') break; }
+    ok(j.status === 'done' && j.result === 'passed' && j.rounds.length === 2 && j.rounds[0].score < 90 && j.rounds[1].score >= 90, '2. round 1 is below the bar, round 2 clears it', j.rounds?.map(r => r.score));
+    ok(j.spec.eyelets === 7 && j.spec.mudguard === true && j.changes.some(c => c.key === 'eyelets' && /seven/.test(c.why)), '   the developer\'s changes are made, each with why', j.changes);
+    ok(j.outline && j.outline.checks.some(c => c.key === 'aspect'), '   the outline is measured before the developer looks');
+    ok(j.beyondDrawing.includes('A reflective heel strip'), '   what the drawing cannot show is left for a person');
+    ok((await K(`/concepts/${cid}/pattern`)).json.spec.eyelets == null, '   nothing is saved until it is used');
+    if (!playwright) { ok(true, 'needs a browser'); return; }
+    const br = await playwright.chromium.launch();
+    try {
+      const oc = await br.newContext({ viewport: { width: 1366, height: 1024 } }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
+      const page = await oc.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
+      await page.goto(`${BASE}/lab/studio?concept=${cid}&view=pattern`, { waitUntil: 'networkidle' }); const F = await (await page.waitForSelector('#patFrame')).contentFrame(); await F.waitForFunction(() => window.FBPattern?.ready?.(), null, { timeout: 20000 });
+      await F.click('#revStart'); await F.waitForSelector('#revBox[aria-busy="true"]', { timeout: 5000 });
+      ok(true, '3. on the Pattern page the check starts from the shoe on the page, and shows it is running');
+      await F.waitForSelector('#revVerdict', { timeout: 20000 });
+      const txt = await F.innerText('#revBox');
+      ok(/reads as the shoe/.test(txt) && /Round 1/.test(txt) && /Round 2/.test(txt) && /\/100/.test(txt) && /Eyelets a side/.test(txt) && /For a person/.test(txt), '   the rounds with their scores, the changes and what a person must look at', txt.slice(0, 400));
+      await F.click('#revUse'); await F.waitForFunction(() => /Save the shoe/.test(document.getElementById('saveP').textContent));
+      ok(await F.evaluate(() => FBPattern.pattern().spec.eyelets) === 7 && await F.evaluate(() => FBPattern.pattern().pieces.some(q => q.id === 'mudguard')), '4. used: the shoe is redrawn with seven eyelets and a mudguard');
+      await F.click('#saveP'); await F.waitForFunction(() => document.getElementById('saveP').textContent === 'Saved', null, { timeout: 10000 });
+      const saved = (await K(`/concepts/${cid}/pattern`)).json; ok(saved.spec.eyelets === 7 && saved.spec.mudguard === true, '   and saved', saved.spec);
+      ok(errs.length === 0, 'no page errors', errs); await oc.close();
+    } finally { await br.close(); }
+  } finally { await K(`/concepts/${cid}`, { method: 'DELETE' }); }
+});
+
 shops.close(); brave.close();
 process.exit(summary() ? 1 : 0);
