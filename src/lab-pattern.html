@@ -29,6 +29,7 @@ select.t{border:1px solid var(--line);border-radius:10px;padding:6px 9px;backgro
 #canvas{overflow:auto;padding:12px;min-height:420px}#canvas svg{display:block;width:100%;height:auto;max-height:calc(100vh - 170px)}
 .side{border-left:1px solid var(--line);background:#fff;padding:16px;display:grid;gap:16px;align-content:start;overflow:auto;max-height:calc(100vh - 56px)}
 .side h4{margin:0 0 6px;font-size:14px}.side section{display:grid;gap:8px}
+.l3view{height:240px;border:1px solid var(--line);border-radius:12px;background:#f6f5f1;position:relative;overflow:hidden}.l3view .ph{position:absolute;inset:0;display:grid;place-items:center;font-size:12.5px;color:var(--dim);text-align:center;padding:12px}.l3card{border:1px solid var(--line);border-radius:12px;padding:10px;display:grid;gap:6px}.l3card.on{border-color:#17603a;background:#f3fff8}.l3card table{font-size:12px;border-collapse:collapse;width:100%}.l3card td,.l3card th{padding:2px 4px;text-align:right;font-variant-numeric:tabular-nums}.l3card td:first-child,.l3card th:first-child{text-align:left}.l3card .bad,.note.bad{color:var(--bad)}
 .f{display:grid;gap:4px;font-size:12.5px}.f span{color:var(--dim)}.row2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
 .f input[type=number],.f input[type=text],.f input:not([type]),.f select{border:1px solid var(--line);border-radius:10px;padding:6px 9px;min-height:34px;background:#fff;width:100%}
 .chk{display:flex;gap:6px;align-items:center;font-size:13px}
@@ -217,7 +218,7 @@ function paintSide(){
     <div class="row2"><label class="f"><span>Size run from</span><input type="number" data-k="runFrom" min="${lim[0]}" max="${lim[1]}" step="${stp}" value="${f.runFrom}"></label><label class="f"><span>to</span><input type="number" data-k="runTo" min="${lim[0]}" max="${lim[1]}" step="${stp}" value="${f.runTo}"></label></div>
     <div style="display:flex;gap:14px;flex-wrap:wrap"><label class="chk"><input type="checkbox" data-k="toeCap"${f.toeCap?' checked':''}> Toe cap</label>${f.system==='eu'||f.system==='mm'?'':`<label class="chk"><input type="checkbox" data-k="halves"${f.halves?' checked':''}> Half sizes</label>`}</div>
     <button class="btn go" type="button" id="saveP"${DIRTY?'':' disabled'}>${DIRTY?'Save the shoe':'Saved'}</button></section>
-    <section><h4>The last <span class="mono">size ${esc(String(SIZE))}</span></h4>${[['Last length',`${L.length.toFixed(2)} in (${Math.round(L.length*25.4)} mm)`],['Foot length',`${L.foot.toFixed(2)} in`],['Ball girth',`${L.ballGirth} in`],['Instep girth',`${L.instepGirth} in`],['Ball width',`${L.ballWidth} in`],['Heel width',`${L.heelWidth} in`],['Heel height',`${L.heelHeight} in`],['Toe spring',`${L.toeSpring} in`],['Ball from the heel',`${L.ballFromHeel} in`]].map(([k,v])=>`<div class="find info"><i></i><span><b>${k}</b>: ${v}</span></div>`).join('')}<button class="btn q sm" type="button" id="lastDl" style="justify-self:start">Last spec (SVG)</button></section>
+    <section><h4>The last <span class="mono">size ${esc(String(SIZE))}</span></h4>${[['Last length',`${L.length.toFixed(2)} in (${Math.round(L.length*25.4)} mm)`],['Foot length',`${L.foot.toFixed(2)} in`],['Ball girth',`${L.ballGirth} in`],['Instep girth',`${L.instepGirth} in`],['Ball width',`${L.ballWidth} in`],['Heel width',`${L.heelWidth} in`],['Heel height',`${L.heelHeight} in`],['Toe spring',`${L.toeSpring} in`],['Ball from the heel',`${L.ballFromHeel} in`]].map(([k,v])=>`<div class="find info"><i></i><span><b>${k}</b>: ${v}</span></div>`).join('')}<button class="btn q sm" type="button" id="lastDl" style="justify-self:start">Last spec (SVG)</button></section>${l3Section()}
     <section><h4>Size run <span class="mono">${run.length} sizes</span></h4><div style="overflow-x:auto"><table class="pcs"><thead><tr><th>Size</th><th>Last mm</th><th>Ball girth</th><th>EU</th><th>UK</th><th>Mould</th></tr></thead><tbody>${run.map(r=>`<tr${String(r.size)===String(SIZE)?' class="on"':''}><td>${r.size}</td><td>${r.lastMm}</td><td>${r.ballGirth}</td><td>${r.eu}</td><td>${r.uk}</td><td>${esc(r.mould)}</td></tr>`).join('')}</tbody></table></div></section>
     <section><h4>Tooling</h4><div class="find info"><i></i><span>${esc(tl.note)}</span></div><div class="find info"><i></i><span><b>Lasts</b>: $${tl.lastCost[0].toLocaleString()}–${tl.lastCost[1].toLocaleString()} · <b>Sole moulds</b>: $${tl.mouldCost[0].toLocaleString()}–${tl.mouldCost[1].toLocaleString()}</span></div><p class="note">Rough ranges to plan with; the factory quotes the real numbers.</p></section>
     <section><h4>Leather and lining for a pair</h4>${Object.entries(hide).map(([k,v])=>`<div class="find info"><i></i><span><b>${esc(fabricName(k))}</b>: about ${v} sq ft (a quarter allowed for the cutting round the hide)</span></div>`).join('')}</section>
@@ -231,6 +232,7 @@ function paintSide(){
   h+=`<section><h4>Files</h4><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm q" type="button" data-dl="aama">DXF · AAMA, this size</button><button class="btn sm q" type="button" data-dl="aama-all">DXF · every size (in)</button><button class="btn sm q" type="button" data-dl="aama-all-mm">DXF · every size (mm)</button><button class="btn sm q" type="button" data-dl="svg">SVG 1:1</button><button class="btn sm q" type="button" data-dl="plain">DXF · simple layers</button></div><p class="note">AAMA/ASTM: one block a piece and a size, cut line on layer 1, notches 4, grain 7, sew line 14, with the piece's name, quantity, size and material, for Gerber, Lectra, Optitex and CLO.</p></section>`;
   h+=`<section><h4>Notes for the pattern maker</h4>${PAT.notes.map(n=>`<p class="note">${esc(n)}</p>`).join('')}</section>`;
   s.innerHTML=h;
+  const slot=$('#l3Slot');if(slot)slot.replaceWith(L3EL);
 }
 $('#side').addEventListener('change',e=>{if(e.target.id==='showPic'){SHOWPIC=e.target.checked;drawPieces();return}const k=e.target.dataset.k;if(!k)return;const v=e.target.type==='checkbox'?e.target.checked:e.target.type==='number'?Number(e.target.value):e.target.value;
   if(D.kind==='footwear'){const was=SPEC.style,ed=SPEC.edits;SPEC=cleanFootwear({...SPEC,[k]:v,...(k==='style'&&v!==was?{heel:undefined,spring:undefined,toe:undefined}:{}),...(k==='system'?{size:undefined,width:undefined,runFrom:undefined,runTo:undefined}:{})});if(ed)SPEC.edits=ed;if(['size','system','style'].includes(k))SIZE=SPEC.size;fwSizes();DIRTY=true;build();drawPieces();paintSide();return}
@@ -238,6 +240,7 @@ $('#side').addEventListener('change',e=>{if(e.target.id==='showPic'){SHOWPIC=e.t
 $('#side').addEventListener('click',async e=>{
   if(e.target.closest('#saveP')){const b=e.target.closest('#saveP');b.disabled=true;b.textContent='Saving…';try{const r=await api(`/v1/lab/concepts/${CID}/pattern`,{method:'PUT',body:{spec:SPEC}});SPEC=r.spec;DIRTY=false;build();drawPieces();toast('Pattern saved');paintSide();HOST()?.patternSaved?.()}catch(err){toast(err.message);b.disabled=false;b.textContent='Save'}return}
   if(e.target.closest('#lastDl')){download('last');return}
+  if(await l3Click(e))return;
   const dl=e.target.closest('[data-dl]');if(dl){download(dl.dataset.dl,dl);return}
   if(e.target.closest('#readPic')){readPicture();return}
   if(e.target.closest('#useRead')){const ed1=SPEC.edits;SPEC=cleanFootwear(RD.spec);if(ed1)SPEC.edits=ed1;SIZE=SPEC.size;RD=null;DIRTY=true;fwSizes();build();loadPic();drawPieces();paintSide();toast('Read from the picture: save the shoe to keep it');return}
@@ -254,6 +257,59 @@ async function download(kind,btn){const ext=kind==='svg'?'svg':kind==='last'?'la
   catch(err){toast(err.message)}finally{b.disabled=false;b.textContent=label}}
 $('#dxf').addEventListener('click',()=>download('dxf'));$('#svgDl').addEventListener('click',()=>download('svg'));
 
+// ---- 3D lasts (src/lab-last-routes.js): import one (STL, OBJ, GLB) or have the 3D service make one; each is measured; the shoe can be drafted on it ----
+let L3=null,L3MSG='',L3SHOWN='',L3VIEW=null,L3POLL=0,L3BUSY='';
+const L3EL=document.createElement('div');L3EL.className='l3view';L3EL.id='l3View';L3EL.innerHTML='<div class="ph">Choose a last to see it in 3D: drag to turn it, scroll to zoom.</div>';
+const L3SRC={upload:'Imported',draft:'3D service · from the drafted last',photos:'3D service · from pictures'};
+function loadStl(){return window.FBStl?Promise.resolve():new Promise((res,rej)=>{const s=document.createElement('script');s.src='/stl-viewer.js';s.onload=res;s.onerror=()=>rej(new Error('The 3D viewer could not be loaded'));document.head.appendChild(s)})}
+async function l3Refresh(){if(D?.kind!=='footwear')return;try{L3=await api(`/v1/lab/concepts/${CID}/lasts`)}catch(x){L3MSG=x.message}
+  clearTimeout(L3POLL);if(L3?.lasts.some(l=>l.status==='running'))L3POLL=setTimeout(l3Refresh,4000);if(!EDIT)paintSide()}
+async function l3Show(id){L3SHOWN=id;try{await loadStl();const path=id==='draft'?`/v1/lab/concepts/${CID}/last.stl?size=${encodeURIComponent(SIZE)}`:`/v1/lab/concepts/${CID}/lasts/${id}/last.stl`;
+  const r=await fetch(path,{headers:{Authorization:'Bearer '+TOKEN()}});if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||'The last could not be loaded');const ab=await r.arrayBuffer();
+  if(L3VIEW){L3VIEW.destroy();L3VIEW=null}L3EL.innerHTML='';L3VIEW=window.FBStl.mount(L3EL,ab,{upAxis:'z'});L3EL.dataset.shown=id}catch(x){L3EL.innerHTML=`<div class="ph">${esc(x.message)}</div>`}if(!EDIT)paintSide()}
+const fileUrl=f=>new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=()=>rej(new Error('The file could not be read'));r.readAsDataURL(f)});
+function l3Section(){
+  if(!L3)return`<section><h4>3D last</h4><p class="note">${L3MSG?esc(L3MSG):'Loading…'}</p><div id="l3Slot"></div></section>`;
+  const use=L3.lasts.find(l=>l.inUse),num=v=>v==null?'—':Number(v).toFixed(2);
+  const card=l=>{const m=l.measures;return`<div class="l3card${l.inUse?' on':''}" data-l3card="${l.id}"><div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline"><b>${esc(l.name||'Last')}</b><span class="mono">${esc(L3SRC[l.source]||l.source)}</span></div>
+    ${l.status==='running'?'<p class="note">The 3D service is making it: a few minutes. It appears here, measured, when it is done.</p>':l.status==='failed'?`<p class="note bad">${esc(l.error||'It could not be made.')}</p>`:
+    `<p class="note">${m.whichFoot==='left'?'Left':'Right'} last · ${l.triangles?.toLocaleString?.()||'—'} triangles · ${l.units==='fitted'?'fitted to the size':esc(l.units)} · heel ${m.heelFrom==='given'?'as given':'estimated'}</p>
+    ${l.compare?`<table><thead><tr><th></th><th>Measured</th><th>Drafted ${esc(String(l.size))}</th><th>Diff</th></tr></thead><tbody>${l.compare.map(c=>`<tr><td>${esc(c.label)}</td><td>${num(c.measured)}</td><td>${num(c.drafted)}</td><td>${c.diff>0?'+':''}${num(c.diff)}</td></tr>`).join('')}</tbody></table><p class="note">Inches. Volume ${num(m.volume)} cu in · back height ${num(m.backHeight)} · toe height ${num(m.toeHeight)}.</p>`:''}
+    ${(l.warnings||[]).map(w=>`<div class="find warn"><i></i><span>${esc(w)}</span></div>`).join('')}
+    <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm q" type="button" data-l3show="${l.id}">${L3SHOWN===l.id?'Shown':'Show in 3D'}</button>${l.inUse?`<button class="btn sm q" type="button" data-l3unuse>Stop drafting on it</button>`:`<button class="btn sm go" type="button" data-l3use="${l.id}">Draft the shoe on it</button>`}<button class="btn sm q" type="button" data-l3dl="${l.id}">STL</button><button class="btn sm q" type="button" data-l3del="${l.id}">Remove</button></div>`}</div>`};
+  return`<section id="l3"><h4>3D last <span class="mono">${use?'drafting on '+esc(use.name):'drafted'}</span></h4><div id="l3Slot"></div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm q" type="button" data-l3show="draft">${L3SHOWN==='draft'?'Shown':'Show the drafted last'}</button><button class="btn sm q" type="button" id="l3Draft">Drafted last (STL)</button></div>
+    <p class="note">Bring in the last your last maker or a scanner made (STL, OBJ or GLB): it is turned the way a last stands, measured, and the shoe can be drafted on it. Or have the 3D service make one from the drafted last.</p>
+    <div class="row2"><label class="f"><span>File units</span><select id="l3Units"><option value="auto">Work it out</option><option value="mm">mm</option><option value="cm">cm</option><option value="in">inches</option><option value="m">metres</option></select></label><label class="f"><span>Its heel height (in)</span><input id="l3Heel" value="${esc(String(L3.heel??''))}" placeholder="leave empty to estimate"></label></div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm go" type="button" id="l3Imp"${L3BUSY?' disabled':''}>${L3BUSY==='import'?'Measuring…':'Import a last…'}</button><button class="btn sm q" type="button" id="l3Gen"${L3.connected&&!L3BUSY?'':' disabled'}>${L3BUSY==='gen'?'Starting…':'Make one with the 3D service'}</button><button class="btn sm q" type="button" id="l3Pics"${L3.connected&&!L3BUSY?'':' disabled'}>From pictures of a last…</button></div>
+    <input type="file" id="l3File" accept=".stl,.obj,.glb,model/stl" hidden><input type="file" id="l3PicFile" accept="image/png,image/jpeg,image/webp" multiple hidden>
+    ${L3.connected?'':`<p class="note">${esc(L3.note)}</p>`}${L3MSG?`<p class="note bad" id="l3Msg">${esc(L3MSG)}</p>`:''}
+    ${L3.lasts.map(card).join('')}</section>`;
+}
+async function l3Click(e){
+  const t=e.target;let b;
+  if((b=t.closest('[data-l3show]'))){l3Show(b.dataset.l3show);return true}
+  if(t.closest('#l3Draft')){await l3Download(`/v1/lab/concepts/${CID}/last.stl?size=${encodeURIComponent(SIZE)}`,t.closest('#l3Draft'));return true}
+  if((b=t.closest('[data-l3dl]'))){await l3Download(`/v1/lab/concepts/${CID}/lasts/${b.dataset.l3dl}/last.stl`,b);return true}
+  if(t.closest('#l3Imp')){$('#l3File').click();return true}
+  if(t.closest('#l3Pics')){$('#l3PicFile').click();return true}
+  if(t.closest('#l3Gen')){await l3Generate({from:'draft'});return true}
+  if((b=t.closest('[data-l3use]'))){b.disabled=true;b.textContent='Drafting…';try{const r=await api(`/v1/lab/concepts/${CID}/lasts/${b.dataset.l3use}/use`,{method:'POST',body:{}});l3Apply(r.spec);toast('The shoe is drafted on the measured last')}catch(x){L3MSG=x.message}await l3Refresh();return true}
+  if(t.closest('[data-l3unuse]')){try{const r=await api(`/v1/lab/concepts/${CID}/lasts/unuse`,{method:'POST',body:{}});l3Apply(r.spec);toast('Back to the drafted last')}catch(x){L3MSG=x.message}await l3Refresh();return true}
+  if((b=t.closest('[data-l3del]'))){if(!confirm('Remove this last?'))return true;try{await api(`/v1/lab/concepts/${CID}/lasts/${b.dataset.l3del}`,{method:'DELETE'});if(L3SHOWN===b.dataset.l3del&&L3VIEW){L3VIEW.destroy();L3VIEW=null;L3SHOWN='';L3EL.innerHTML='<div class="ph">Removed.</div>'}const r=await api(`/v1/lab/concepts/${CID}/pattern`);if(JSON.stringify(r.spec.last3d||null)!==JSON.stringify(SPEC.last3d||null))l3Apply(r.spec)}catch(x){L3MSG=x.message}await l3Refresh();return true}
+  return false}
+function l3Apply(spec){SPEC=spec;D.spec=spec;SIZE=SPEC.size;DIRTY=false;fwSizes();build();drawPieces();$('#sub').textContent=`Pattern · ${PAT.label} · ${PAT.size} · ${PAT.pieces.filter(q=>q.cut>0).length} pieces`}
+async function l3Download(path,b){const label=b.textContent;b.disabled=true;b.textContent='Preparing…';try{const r=await fetch(path,{headers:{Authorization:'Bearer '+TOKEN()}});if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||'The file could not be made');
+  const name=(/filename="([^"]+)"/.exec(r.headers.get('content-disposition')||'')||[])[1]||'last.stl',u=URL.createObjectURL(await r.blob()),a=document.createElement('a');a.href=u;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),4000);toast(`Downloaded ${name}`)}catch(x){toast(x.message)}finally{b.disabled=false;b.textContent=label}}
+const l3HeelVal=()=>{const v=($('#l3Heel')?.value||'').trim();return v===''?'estimate':v};
+async function l3Generate(body){L3BUSY='gen';L3MSG='';paintSide();try{const r=await api(`/v1/lab/concepts/${CID}/lasts/generate`,{body:{...body,heelHeight:l3HeelVal()}});toast('The 3D service is making the last: a few minutes')}catch(x){L3MSG=x.message}L3BUSY='';await l3Refresh()}
+$('#side').addEventListener('change',async e=>{
+  if(e.target.id==='l3File'){const f=e.target.files[0];if(!f)return;e.stopImmediatePropagation();L3BUSY='import';L3MSG='';const units=$('#l3Units').value,heelHeight=l3HeelVal();paintSide();
+    try{const r=await api(`/v1/lab/concepts/${CID}/lasts`,{body:{name:f.name.replace(/\.[^.]+$/,''),file:await fileUrl(f),units,heelHeight}});L3BUSY='';await l3Refresh();l3Show(r.last.id);toast('The last is measured')}
+    catch(x){L3BUSY='';L3MSG=x.status===422&&/units/i.test(x.message)?x.message+' Choose the file units above and import it again.':x.message;await l3Refresh()}return}
+  if(e.target.id==='l3PicFile'){const fs=[...e.target.files].slice(0,4);if(!fs.length)return;e.stopImmediatePropagation();await l3Generate({from:'photos',images:await Promise.all(fs.map(fileUrl))});return}
+},true);
+
 // footwear: the size picker lists the size run, the sample size first chosen
 function fwSizes(){const run=sizeRun(SPEC).map(r=>r.size);if(!run.some(v=>String(v)===String(SIZE)))SIZE=SPEC.size;const all=[...new Set([...run,SPEC.size])].sort((a,b)=>a-b);$('#size').classList.remove('hidden');$('#size').innerHTML=all.map(v=>`<option value="${v}"${String(v)===String(SIZE)?' selected':''}>Size ${v}</option>`).join('')}
 async function boot(){
@@ -263,7 +319,7 @@ async function boot(){
   if(D.kind==='soon'||D.kind==='none'){$('#sub').textContent='Pattern';$('#modeSeg').classList.add('hidden');$$('#play,#size,#dxf,#svgDl').forEach(x=>x.classList.add('hidden'));
     $('#main').innerHTML=`<div class="empty"><b>${D.kind==='soon'?esc(D.soon):'The Lab cannot draft a pattern for this piece yet.'}</b><p class="note">${D.kind==='soon'?'Until then the tech pack carries its specification, and you can draw it on the Picture.':'Set what the piece is on the Flat front (the style), and its pattern pieces appear here.'}</p></div>`;return}
   SPEC=D.spec;SIZE=D.flat?.size||'M';const S=D.flat?STYLES[D.flat.style]:null;
-  if(D.kind==='footwear'){SIZE=SPEC.size;fwSizes();if(D.concept.hasImage){loadPic();if(!D.saved)setTimeout(readPicture,50)}}
+  if(D.kind==='footwear'){SIZE=SPEC.size;fwSizes();l3Refresh();if(D.concept.hasImage){loadPic();if(!D.saved)setTimeout(readPicture,50)}}
   else if(D.kind==='garment'&&!S?.oneSize)$('#size').innerHTML=D.options.sizes.map(s=>`<option${s===SIZE?' selected':''}>${s}</option>`).join('');else $('#size').classList.add('hidden');
   build();$('#sub').textContent=`Pattern · ${PAT.label} · ${PAT.size} · ${PAT.pieces.filter(q=>q.cut>0).length} pieces`;
   T=new URLSearchParams(location.search).get('t')==='1'?1:0;$('#t').value=T;drawPieces();paintSide();

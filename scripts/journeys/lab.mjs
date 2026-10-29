@@ -2931,5 +2931,49 @@ await journey('J247', 'A pattern engineer edits the pieces: a point moved by the
   } finally { await b.close(); await K(`/concepts/${cid}`, { method: 'DELETE' }); }
 });
 
+await journey('J248', 'A footwear developer brings in the 3D last from the last maker (an STL in mm, turned any way): it is stood the way a last stands and measured; a file in the wrong units is refused with what to do; the shoe is drafted on the measured last, in its size and graded to the run; then the 3D service makes a last from the drafted one, fitted to the size and measured; both download as STL; in the page the last is imported, shown in 3D and drafted on', async () => {
+  const L3 = await import('../../src/lab-last3d.js'), F = await import('../../src/lab-footwear.js');
+  const turn = pos => { const a = .7, b = -.4, c = 1.1, R = [[Math.cos(a) * Math.cos(b), Math.cos(a) * Math.sin(b) * Math.sin(c) - Math.sin(a) * Math.cos(c), Math.cos(a) * Math.sin(b) * Math.cos(c) + Math.sin(a) * Math.sin(c)], [Math.sin(a) * Math.cos(b), Math.sin(a) * Math.sin(b) * Math.sin(c) + Math.cos(a) * Math.cos(c), Math.sin(a) * Math.sin(b) * Math.cos(c) - Math.cos(a) * Math.sin(c)], [-Math.sin(b), Math.cos(b) * Math.sin(c), Math.cos(b) * Math.cos(c)]], q = new Float32Array(pos.length); for (let i = 0; i < pos.length; i += 3) for (let j = 0; j < 3; j++) q[i + j] = R[j][0] * pos[i] + R[j][1] * pos[i + 1] + R[j][2] * pos[i + 2] + [3, -1, 9][j]; return q; };
+  const made = await K('/concepts/from-scratch', { body: { category: 'footwear', style: 'sneaker', name: `Last import ${stamp}` } }), cid = made.json.concept?.id;
+  const want = F.lastOf({ style: 'sneaker' }, 10.5), stl = L3.stlOf(turn(L3.loftLast({ style: 'sneaker', size: 10.5 }))), file = stl.toString('base64');
+  const empty = (await K(`/concepts/${cid}/lasts`)).json;
+  ok(Array.isArray(empty.lasts) && empty.lasts.length === 0 && empty.connected === true && typeof empty.heel === 'number', '1. a new shoe has no 3D last yet; the 3D service is connected and the shoe\'s heel height is offered', empty);
+  const imp = await K(`/concepts/${cid}/lasts`, { body: { name: 'Last maker scan', file, heelHeight: .45 } }), m = imp.json.last?.measures;
+  ok(imp.status === 201 && imp.json.last.units === 'mm' && Math.abs(m.length - want.length) < .06 && m.heelHeight === .45 && m.whichFoot === 'right' && Math.abs(m.ballWidth - want.ballWidth) < .3, '2. the STL is read as millimetres, turned the way a last stands and measured: its length, a right last, the heel as given, the ball width', m);
+  ok(imp.json.last.size === 10.5 && imp.json.last.compare.find(c => c.key === 'length').diff < .06, '   it reads as a 10½, and is compared with the drafted 10½', imp.json.last.compare);
+  const odd = L3.stlOf(turn(L3.loftLast({ style: 'sneaker' })).map(v => v * 7 / 25.4)), bad = await K(`/concepts/${cid}/lasts`, { body: { name: 'Odd units', file: odd.toString('base64') } });
+  ok(bad.status === 422 && bad.json.code === 'units' && /Say which units/.test(bad.json.error), '3. a model in units the Lab cannot tell is refused, asking which units it is in', bad.json);
+  const use = await K(`/concepts/${cid}/lasts/${imp.json.last.id}/use`, { body: {} });
+  ok(use.status === 200 && use.json.spec.size === 10.5 && use.json.spec.last3d?.id === imp.json.last.id, '4. the shoe is drafted on the measured last, in its size', use.json.spec?.size);
+  const p = (await K(`/concepts/${cid}/pattern`)).json;
+  ok(p.last.measured?.name === 'Last maker scan' && Math.abs(p.last.length - m.length) < .02 && p.sizeRun.find(r => r.size === 12)?.lastMm > p.sizeRun.find(r => r.size === 10.5)?.lastMm, '   the pattern\'s last is the measured one, and the size run grades from it', p.last);
+  const aama = await call(`/v1/lab/concepts/${cid}/pattern.dxf?format=aama&sizes=all`, { token: kyleT });
+  ok(aama.status === 200 && /Vamp/.test(aama.text) && /US men's 12/.test(aama.text), '   the upper drafted on it comes out as the AAMA DXF for every size');
+  const gen = await K(`/concepts/${cid}/lasts/generate`, { body: { from: 'draft' } });
+  ok(gen.status === 201 && gen.json.last.status === 'running' && gen.json.last.source === 'draft', '5. the 3D service is asked for a last from the drafted one (drawn from four sides)', gen.json);
+  let g = null; for (let i = 0; i < 60 && (!g || g.status === 'running'); i++) { await sleep(500); g = (await K(`/concepts/${cid}/lasts`)).json.lasts.find(l => l.id === gen.json.last.id); }
+  ok(g?.status === 'done' && g.units === 'fitted' && g.target?.size === 10.5 && Math.abs(g.measures.length - g.target.length) < .05 && Math.abs(g.measures.ballGirth - g.target.ballGirth) < .08, '   it comes back, fitted to the drafted size (its length, its ball girth) and measured', g);
+  const dl = await fetch(`${BASE}/v1/lab/concepts/${cid}/lasts/${imp.json.last.id}/last.stl`, { headers: { Authorization: 'Bearer ' + kyleT } }), buf = Buffer.from(await dl.arrayBuffer());
+  const dr = await fetch(`${BASE}/v1/lab/concepts/${cid}/last.stl?size=11`, { headers: { Authorization: 'Bearer ' + kyleT } }), dbuf = Buffer.from(await dr.arrayBuffer());
+  ok(dl.status === 200 && buf.length === 84 + buf.readUInt32LE(80) * 50 && dr.status === 200 && dbuf.length === 84 + dbuf.readUInt32LE(80) * 50 && /last-11/.test(dr.headers.get('content-disposition') || ''), '6. the measured last and the drafted last (any size) download as STL, in mm with Z up');
+  const un = await K(`/concepts/${cid}/lasts/unuse`, { body: {} });
+  ok(un.status === 200 && !un.json.spec.last3d && (await K(`/concepts/${cid}/lasts/${g.id}`, { method: 'DELETE' })).status === 200, '7. back to the drafted last; a last is removed');
+  if (!playwright) { ok(true, 'needs a browser'); return; }
+  const b = await playwright.chromium.launch();
+  try {
+    const oc = await b.newContext({ viewport: { width: 1366, height: 1024 } }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
+    const page = await oc.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
+    await page.goto(`${BASE}/lab/studio?concept=${cid}&view=pattern`, { waitUntil: 'networkidle' }); const Fr = await (await page.waitForSelector('#patFrame')).contentFrame(); await Fr.waitForFunction(() => window.FBPattern?.ready?.(), null, { timeout: 20000 });
+    await Fr.waitForSelector('#l3Imp'); ok(/3D last/.test(await Fr.innerText('#l3')) && (await Fr.$$('[data-l3card]')).length === 1, '8. the Pattern view has the 3D last panel, with the last brought in before');
+    await Fr.fill('#l3Heel', '0.45'); await Fr.setInputFiles('#l3File', { name: 'second-scan.stl', mimeType: 'model/stl', buffer: stl });
+    await Fr.waitForFunction(() => document.querySelectorAll('[data-l3card]').length === 2, null, { timeout: 20000 }); await Fr.waitForSelector('#l3View canvas', { timeout: 20000 });
+    ok(/second-scan/.test(await Fr.innerText('#l3')) && /Measured/.test(await Fr.innerText('#l3')), '9. a last is imported in the page: measured, compared with the draft, and shown in 3D');
+    const card = await Fr.$('[data-l3card]:has-text("second-scan")'); await (await card.$('[data-l3use]')).click();
+    await Fr.waitForFunction(() => /drafting on/.test(document.querySelector('#l3 h4')?.textContent || ''), null, { timeout: 20000 });
+    ok(/10\.5/.test(await Fr.innerText('#sub')) && /drafting on second-scan/i.test(await Fr.textContent('#l3 h4')), '10. the shoe is drafted on it: the page moves to its size', await Fr.innerText('#sub'));
+    ok(!errs.length, '   no page errors', errs);
+  } finally { await b.close(); await K(`/concepts/${cid}`, { method: 'DELETE' }); }
+});
+
 shops.close(); brave.close();
 process.exit(summary() ? 1 : 0);

@@ -49,8 +49,22 @@ export function cleanFootwear(input = {}) {
   return { style: d.style, system: sys, size, width: widths.includes(input.width) ? input.width : MEDIUM[sys] || 'D', toe: TOES[input.toe] ? input.toe : d.toe, toeCap: input.toeCap == null ? d.toeCap : Boolean(input.toeCap),
     upper: UPPERS[input.upper] ? input.upper : d.upper, lining: LININGS[input.lining] ? input.lining : d.lining, heel: num(input.heel, 0, 4, d.heel, .125), spring: num(input.spring, 0, 1.5, d.spring, .125), runFrom, runTo, halves: input.halves == null ? d.halves : Boolean(input.halves),
     // read from a picture (or set by hand): the lines and the sole, which otherwise come from the style
-    ...cleanLines(input) };
+    ...cleanLines(input), ...(cleanLast3d(input.last3d) ? { last3d: cleanLast3d(input.last3d) } : {}) };
 }
+// a measured 3D last in use (src/lab-last3d.js measures it): its numbers, its side profile (bottom and top, as the side view draws them: x from
+// the heel's back, y downward, the ground under the ball at 0) and its bottom outline (x along, the inside negative), in inches
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export function cleanLast3d(i) {
+  if (!i || typeof i !== 'object') return null;
+  const n = (v, a, b) => { const x = Number(v); return v != null && v !== '' && Number.isFinite(x) && x >= a && x <= b ? r3(x) : null; };
+  const pts = (a, max) => Array.isArray(a) && a.length >= 4 && a.length <= max && a.every(p => Array.isArray(p) && p.length === 2 && p.every(v => Number.isFinite(Number(v)) && Math.abs(Number(v)) < 40)) ? a.map(p => [r3(Number(p[0])), r3(Number(p[1]))]) : null;
+  const o = { id: UUID.test(String(i.id || '')) ? String(i.id) : '', name: String(i.name || '').replace(/\s+/g, ' ').trim().slice(0, 80), source: ['upload', 'draft', 'photos'].includes(i.source) ? i.source : 'upload',
+    footLen: n(i.footLen, 5, 16), length: n(i.length, 5, 18), ballFromHeel: n(i.ballFromHeel, 2, 14), ballGirth: n(i.ballGirth, 5, 16), instepGirth: n(i.instepGirth, 5, 17), ballWidth: n(i.ballWidth, 1.5, 6), heelWidth: n(i.heelWidth, 1, 4.5),
+    heelHeight: n(i.heelHeight, 0, 5), toeSpring: n(i.toeSpring, 0, 2.5), whichFoot: i.whichFoot === 'left' ? 'left' : 'right', bottom: pts(i.bottom, 140), top: pts(i.top, 140), outline: pts(i.outline, 200) };
+  return ['footLen', 'length', 'ballFromHeel', 'ballGirth', 'instepGirth', 'ballWidth', 'heelWidth', 'heelHeight', 'toeSpring', 'bottom', 'top', 'outline'].every(k => o[k] != null) ? o : null;
+}
+// the size a foot length is in a system (the other way from footLength)
+export function sizeFromFoot(system, F) { return system === 'us-w' ? F * 3 - 21 : system === 'uk' ? F * 3 - 23 : system === 'eu' ? (F + .55) * 2.54 * 1.5 : system === 'mm' ? F * 25.4 : F * 3 - 22; }
 const HEX = /^#[0-9a-f]{6}$/i, opt = (v, a, b, step = .125) => { if (v == null || v === '') return null; const n = Number(v); return Number.isFinite(n) ? Math.round(Math.min(Math.max(n, a), b) / step) * step : null; };
 export const SOLES = { cupsole: 'Cupsole (rubber, stitched or cemented)', midsole: 'EVA midsole and rubber outsole', stitched: 'Stitched leather or rubber sole and heel' };
 function cleanLines(i = {}) {
@@ -65,7 +79,12 @@ function cleanLines(i = {}) {
 
 // ---- the last ----
 export function lastOf(input = {}, size = null) {
-  const s = cleanFootwear(input), S = FW_STYLES[s.style], sz = size ?? s.size, F = footLength(s.system, sz), L = F + TOES[s.toe].allowance;
+  const s = cleanFootwear(input), sz = size ?? s.size, d = draftLast(s, sz);
+  return s.last3d ? measuredLast(s, sz, d) : d;
+}
+// the last drafted from the size, the width, the toe, the heel and the spring
+function draftLast(s, sz) {
+  const S = FW_STYLES[s.style], F = footLength(s.system, sz), L = F + TOES[s.toe].allowance;
   const widths = WIDTHS[s.system] || WIDTHS['us-m'], wStep = widths.indexOf(s.width) - widths.indexOf(MEDIUM[s.system] || 'D');
   // girths, graded ¼ in a full size and a width (men's D at US 9 is 9⅜ in round the ball)
   const usEq = s.system === 'us-w' ? F * 3 - 21 - 1.5 : F * 3 - 22, G = 9.375 + (usEq - 9) * .25 + wStep * .25 - (s.system === 'us-w' ? .5 : 0);
@@ -85,6 +104,18 @@ export function lastOf(input = {}, size = null) {
   const bottomView = blob([[0, 0], [F * .12, -heelW / 2], [F * .45, -waistW * .32], [F * .73, -ballW * .55], tip[0], tip[1], tip[2], [F * .66, ballW * .45], [F * .45, waistW * .66], [F * .12, heelW / 2]], .75);
   return { style: s.style, size: sz, system: s.system, foot: r3(F), length: r3(L), ballGirth: r8(G), instepGirth: r8(G + .25), ballWidth: r8(ballW), heelWidth: r8(heelW), heelHeight: h, toeSpring: sp, ballFromHeel: r8(ball), toeAllowance: TOES[s.toe].allowance,
     side: tidy(side), bottom: tidy(bottomView), lastBottom, crest, F, L, G, S, s };
+}
+// a measured last (a 3D file, or one the 3D service made), in its own size and graded to the others as the draft grades: its length by the
+// draft's length from size to size, its sections by the draft's ball girth (¼ in a size)
+function measuredLast(s, sz, d) {
+  const m = s.last3d, base = draftLast(s, sizeFromFoot(s.system, m.footLen)), kx = d.L / base.L, dG = d.G - base.G, G = m.ballGirth + dG, kg = G / m.ballGirth;
+  const at = (P, x) => { if (x <= P[0][0]) return P[0][1]; for (let i = 1; i < P.length; i++) if (P[i][0] >= x) { const a = P[i - 1], b = P[i], t = (x - a[0]) / ((b[0] - a[0]) || 1); return a[1] + (b[1] - a[1]) * t; } return P[P.length - 1][1]; };
+  const L = m.length * kx, F = L - TOES[s.toe].allowance;
+  const lastBottom = x => at(m.bottom, x / kx), crest = x => { const b = at(m.bottom, x / kx); return b + (at(m.top, x / kx) - b) * kg; };
+  const xs = n => Array.from({ length: n + 1 }, (_, i) => L * i / n);
+  const side = [...xs(40).map(x => [x, lastBottom(x)]), ...xs(40).reverse().map(x => [x, crest(x)])];
+  return { ...d, foot: r3(F), length: r3(L), ballGirth: r8(G), instepGirth: r8(m.instepGirth + dG), ballWidth: r8(m.ballWidth * kg), heelWidth: r8(m.heelWidth * kg), heelHeight: r8(m.heelHeight), toeSpring: r8(m.toeSpring), ballFromHeel: r8(m.ballFromHeel * kx),
+    side: tidy(side), bottom: tidy(m.outline.map(([x, z]) => [x * kx, z * kg])), lastBottom, crest, F, L, G, measured: { id: m.id, name: m.name, source: m.source, whichFoot: m.whichFoot } };
 }
 // every size in the run, and which outsole mould each shares (a mould is cut for two half sizes)
 export function sizeRun(input = {}) {

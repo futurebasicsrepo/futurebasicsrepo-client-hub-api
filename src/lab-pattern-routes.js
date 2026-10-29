@@ -12,6 +12,7 @@ import { CATEGORIES } from './lab.js';
 import { silhouette, readShoe, proposal } from './lab-shoe-read.js';
 import { callJsonSchema } from './studio.js';
 import { createHash } from 'node:crypto';
+import { registerLabLastRoutes } from './lab-last-routes.js';
 import { footwearPattern, cleanFootwear, fwDefaults, sizeRun, lastOf, lastSvg, hideArea, FW_STYLES, TOES, SYSTEMS, WIDTHS as SHOE_WIDTHS, UPPERS, LININGS, SIZE_LIMITS } from './lab-footwear.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -32,7 +33,7 @@ export const cleanPatternSpec = (kind, s) => { const base = kind === 'plush' ? c
 
 // a footwear concept's style from its words, until it is chosen
 export const guessShoe = c => { const t = [c.name, c.spec?.silhouette, c.spec?.description].join(' ').toLowerCase(); return /chelsea/.test(t) ? 'chelsea' : /hik(e|er|ing)/.test(t) ? 'hiker' : /high[- ]?top|basketball/.test(t) ? 'hightop' : /\bboots?\b/.test(t) ? 'boot' : /loafer|penny|moc/.test(t) ? 'loafer' : /derby|oxford|blucher|dress shoe/.test(t) ? 'derby' : /run|trainer|jog/.test(t) ? 'runner' : 'sneaker'; };
-const footExtra = (spec, pat) => ({ last: { length: pat.last.length, foot: pat.last.foot, ballGirth: pat.last.ballGirth, instepGirth: pat.last.instepGirth, ballWidth: pat.last.ballWidth, heelWidth: pat.last.heelWidth, heelHeight: pat.last.heelHeight, toeSpring: pat.last.toeSpring, ballFromHeel: pat.last.ballFromHeel }, sizeRun: sizeRun(spec), tooling: pat.tooling, components: pat.components, hide: hideArea(pat), checks: pat.checks });
+const footExtra = (spec, pat) => ({ last: { length: pat.last.length, foot: pat.last.foot, ballGirth: pat.last.ballGirth, instepGirth: pat.last.instepGirth, ballWidth: pat.last.ballWidth, heelWidth: pat.last.heelWidth, heelHeight: pat.last.heelHeight, toeSpring: pat.last.toeSpring, ballFromHeel: pat.last.ballFromHeel, measured: pat.last.measured || null }, sizeRun: sizeRun(spec), tooling: pat.tooling, components: pat.components, hide: hideArea(pat), checks: pat.checks });
 export function registerLabPatternRoutes(app, d) {
   const { pool, authenticate, adminOnly, lab = null, env = process.env, askImpl = callJsonSchema, log = console } = d;
   const own = req => lab?.scope?.(req) || null, pre = [authenticate, adminOnly], bad = (reply, error, code = 422) => reply.code(code).send({ error });
@@ -50,6 +51,9 @@ export function registerLabPatternRoutes(app, d) {
     const ed = cleanPatternEdits(row?.spec?.edits), spec = ed ? { ...spec0, edits: ed } : spec0;
     return { c, kind, flat, spec, saved: Boolean(row), savedFlat: Boolean(f), updatedAt: row?.updated_at || null };
   }
+  const save = async (L, spec0, actor) => { const spec = cleanPatternSpec(L.kind, spec0); await pool.query(`insert into lab_patterns(concept_id, kind, spec, updated_by) values($1,$2,$3,$4) on conflict(concept_id) do update set kind=excluded.kind, spec=excluded.spec, updated_by=excluded.updated_by, updated_at=now()`, [L.c.id, L.kind, spec, actor]); return spec; };
+  // a footwear concept's 3D lasts (imported or made by the 3D service), measured, and the shoe drafted on one (src/lab-last-routes.js)
+  registerLabLastRoutes(app, { ...d, load, save });
   const patternOf = (L, size) => applyEdits(draft(L, size), L.spec.edits);
   const draft = (L, size) => L.kind === 'plush' ? plushPattern(L.spec) : L.kind === 'footwear' ? footwearPattern(L.spec, size !== '' && size != null && Number.isFinite(Number(size)) ? Number(size) : null) : L.kind === 'garment' && L.flat ? (p => p && L.spec.sa ? { ...p, sa: L.spec.sa } : p)(garmentPattern(L.flat, SIZES.includes(size) ? size : L.flat.size || 'M')) : null;
   const options = { footwear: { styles: Object.fromEntries(Object.entries(FW_STYLES).map(([k, v]) => [k, v.label])), toes: Object.fromEntries(Object.entries(TOES).map(([k, v]) => [k, v.label])), systems: SYSTEMS, widths: SHOE_WIDTHS, uppers: UPPERS, linings: LININGS, limits: SIZE_LIMITS }, plush: { shapes: PLUSH_SHAPES, ears: PLUSH_EARS, fabrics: PLUSH_FABRICS, eyes: PLUSH_EYES, ages: PLUSH_AGES }, widths: WIDTHS, seamAllowances: [.25, .375, .5, .625], sizes: SIZES, fits: FITS,
@@ -64,8 +68,7 @@ export function registerLabPatternRoutes(app, d) {
   app.put('/v1/lab/concepts/:id/pattern', { preHandler: pre }, async (req, reply) => {
     const L = await load(req.params.id); if (!L) return bad(reply, 'Not found', 404);
     if (!['plush', 'garment', 'footwear'].includes(L.kind)) return bad(reply, L.kind === 'soon' ? SOON[L.c.category] : 'This piece has no pattern the Lab can draft yet');
-    const spec = cleanPatternSpec(L.kind, req.body?.spec);
-    await pool.query(`insert into lab_patterns(concept_id, kind, spec, updated_by) values($1,$2,$3,$4) on conflict(concept_id) do update set kind=excluded.kind, spec=excluded.spec, updated_by=excluded.updated_by, updated_at=now()`, [L.c.id, L.kind, spec, actorOf(req)]);
+    const spec = await save(L, req.body?.spec, actorOf(req));
     const pat = patternOf({ ...L, spec }, L.flat?.size);
     return { ok: true, spec, yardage: yardage(pat, Number(spec.width) || 58), ...(pat.kind === 'plush' ? { fillGrams: fillGrams(pat), checks: pat.checks } : {}), ...(pat.kind === 'footwear' ? footExtra(spec, pat) : {}) };
   });

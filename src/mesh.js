@@ -9,7 +9,8 @@
 import sharp from 'sharp';
 import { trackedFetch } from './telemetry.js';
 
-const API = 'https://api.meshy.ai/openapi/v1/image-to-3d';
+const API = 'https://api.meshy.ai/openapi/v1/image-to-3d', MULTI_API = 'https://api.meshy.ai/openapi/v1/multi-image-to-3d';
+const apiOf = endpoint => endpoint === 'multi' ? MULTI_API : API;
 const MAX_STL_BYTES = 80 * 1024 * 1024;
 const clip = (s, n) => String(s ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
 
@@ -106,26 +107,30 @@ const vendorError = async res => {
   e.status = res.status; return e;
 };
 
-// → { taskId }. `texture` asks the service to paint the picture onto the model (the Lab's 3D try-on); `formats` is what to download (stl for the tech pack, glb for a textured model)
-export async function startMesh({ imageDataUrl, cfg = meshConfig(), env = process.env, texture = false, formats = ['stl'] }) {
-  if (cfg.provider === 'fixture') return { taskId: 'fixture-' + Date.now().toString(36) };
+// → { taskId, endpoint }. `texture` asks the service to paint the picture onto the model (the Lab's 3D try-on); `formats` is what to download (stl for the tech pack, glb for a textured model).
+// `images` (one to four views of the same object, as data URLs) goes to the multi-view endpoint instead: the Lab's last generator sends the drafted
+// last from four sides; keep the endpoint to poll it.
+export async function startMesh({ imageDataUrl, images = null, cfg = meshConfig(), env = process.env, texture = false, formats = ['stl'] }) {
+  const endpoint = Array.isArray(images) && images.length ? 'multi' : 'image';
+  if (cfg.provider === 'fixture') return { taskId: 'fixture-' + Date.now().toString(36), endpoint };
   if (!cfg.configured) throw new Error('No 3D service is connected: set MESHY_API_KEY on the service.');
-  const body = { image_url: imageDataUrl, ai_model: cfg.model, should_texture: texture || env.MESH_TEXTURE === 'on', target_formats: formats, image_enhancement: true, auto_size: true };
-  const res = await trackedFetch('meshy', API, { method: 'POST', headers: headers(env.MESHY_API_KEY), body: JSON.stringify(body), signal: AbortSignal.timeout(60000) });
+  const body = endpoint === 'multi' ? { image_urls: images.slice(0, 4), ai_model: cfg.model, should_texture: texture, target_formats: formats, image_enhancement: true }
+    : { image_url: imageDataUrl, ai_model: cfg.model, should_texture: texture || env.MESH_TEXTURE === 'on', target_formats: formats, image_enhancement: true, auto_size: true };
+  const res = await trackedFetch('meshy', apiOf(endpoint), { method: 'POST', headers: headers(env.MESHY_API_KEY), body: JSON.stringify(body), signal: AbortSignal.timeout(60000) });
   if (!res.ok) throw await vendorError(res);
   const out = await res.json(); const taskId = out.result || out.id;
   if (!taskId) throw new Error('Meshy did not return a task.');
-  return { taskId: String(taskId) };
+  return { taskId: String(taskId), endpoint };
 }
 
 // → { status: 'running'|'done'|'failed', progress, stlUrl, thumbUrl, credits, error }
-export async function pollMesh(taskId, { cfg = meshConfig(), env = process.env } = {}) {
+export async function pollMesh(taskId, { cfg = meshConfig(), env = process.env, endpoint = 'image' } = {}) {
   if (cfg.provider === 'fixture') {
     const t = Number(process.env.MESH_FIXTURE_MS) || 1200, born = parseInt(String(taskId).replace('fixture-', ''), 36) || 0;
     if (/fail/i.test(env.MESH_FIXTURE_MODE || '')) return { status: 'failed', progress: 0, error: 'Test fixture: the service could not make a model.' };
     return Date.now() - born < t ? { status: 'running', progress: 40 } : { status: 'done', progress: 100, stlUrl: 'fixture:stl', glbUrl: 'fixture:glb', thumbUrl: 'fixture:thumb', credits: 0 };
   }
-  const res = await trackedFetch('meshy', `${API}/${encodeURIComponent(taskId)}`, { headers: { Authorization: `Bearer ${env.MESHY_API_KEY}` }, signal: AbortSignal.timeout(30000) });
+  const res = await trackedFetch('meshy', `${apiOf(endpoint)}/${encodeURIComponent(taskId)}`, { headers: { Authorization: `Bearer ${env.MESHY_API_KEY}` }, signal: AbortSignal.timeout(30000) });
   if (!res.ok) throw await vendorError(res);
   const t = await res.json(), st = String(t.status || '').toUpperCase();
   if (st === 'SUCCEEDED') return t.model_urls?.stl || t.model_urls?.glb ? { status: 'done', progress: 100, stlUrl: t.model_urls.stl || null, glbUrl: t.model_urls.glb || null, thumbUrl: t.thumbnail_url || null, credits: t.consumed_credits ?? null } : { status: 'failed', progress: 100, error: 'Meshy finished but returned no STL file.' };

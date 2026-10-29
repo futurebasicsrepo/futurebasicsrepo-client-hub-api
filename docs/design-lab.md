@@ -773,3 +773,61 @@ Optitex and CLO import as a graded pattern:
 
 The file comes in one size or the whole run (`&sizes=all`), in inches or millimetres (`&units=mm`). The plain DXF (CUT/SEW/GRAIN/NOTCH/TEXT
 layers) is still there for anything else.
+
+## 3D lasts: importing one, having one made, drafting on it
+
+A footwear concept can work from a real last instead of the drafted one. The **3D last** panel on the Pattern view handles this
+(`src/lab-last3d.js` measures, `src/lab-last-routes.js` serves).
+
+**Import a last** takes the file a last maker or a scanner made: STL (binary or text), OBJ or GLB, up to 75 MB. The units (mm, cm, inches or
+metres) are worked out from its length, or chosen. The Lab then:
+
+- **stands it the way a last stands**, whatever way the file has it:
+  - heel to toe along its length;
+  - the cone up;
+  - the tread level across the ball;
+  - turned only, never mirrored, so a left last stays a left last;
+- **measures it** as a last maker would:
+  - last length and the ball's place;
+  - ball and instep girths, taken round the outside of the section like a tape;
+  - ball and heel widths at the feather line;
+  - heel height and toe spring;
+  - back and toe heights, and volume;
+  - which foot it is;
+- **compares it** with the drafted last in the same size, number by number;
+- **flags holes:** a few small holes, as scans often have, are said and do not matter. Large ones are flagged.
+
+**Heel height.** Give the heel height the last was made for; the shoe's own heel is offered. The last is then rocked about the ball until the
+heel seat stands exactly that high, and the toe spring is measured from there. Leave it empty and the last is stood on its ball as an
+estimate. That is close for a low heel and can be off by a few degrees on a high one, because a last's bottom is nearly flat round the ball.
+
+**Draft the shoe on it** puts the measured last in the shoe (`spec.last3d`):
+
+- the size becomes the nearest one in the shoe's system;
+- the heel height and the toe spring become the last's;
+- the upper is drafted on its side profile and its bottom outline;
+- other sizes grade from it as the drafted last grades: the length by the draft's own steps, the sections by ¼ in of ball girth a size.
+
+**Stop drafting on it** goes back to the drafted last.
+
+**Make one with the 3D service** (Meshy, `MESHY_API_KEY`) draws the drafted last from four sides and sends the pictures to the service's
+multi-view model. **From pictures of a last…** sends one to four photos of a real last instead. The service's model has no units, so it is:
+
+- scaled to the drafted size's length;
+- scaled across until its ball girth is the size's;
+- stood on the heel height;
+- measured like an imported one.
+
+Making a last counts as three AI generations on a client's meter, and the service makes at most `LAB_DAILY_LASTS` (6) a day.
+
+Files:
+
+- each last as an STL (`/lasts/:lid/last.stl`), in mm with Z up, turned the way it stands;
+- the drafted last, or the one in use, lofted into 3D at any size (`GET /v1/lab/concepts/:id/last.stl?size=`), for CAD or a last maker.
+
+Routes:
+
+- `GET|POST /v1/lab/concepts/:id/lasts`;
+- `POST …/lasts/generate`;
+- `POST …/lasts/:lid/use` and `POST …/lasts/unuse`;
+- `DELETE …/lasts/:lid`.
