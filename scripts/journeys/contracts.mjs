@@ -128,7 +128,7 @@ await journey('J165', 'Contracts in a browser: staff draft one from a deal with 
     const ctx = await b.newContext({ viewport: { width: 1280, height: 900 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyle);
     const page = await ctx.newPage(); page.on('pageerror', e => errs.push(String(e))); page.on('dialog', d => d.accept());
     await page.goto(`${BASE}/contracts`, { waitUntil: 'networkidle' }); await page.waitForSelector('#app:not(.hidden)', { timeout: 15000 });
-    ok(await page.locator('.fbside a[href="/contracts"]').count() === 1, 'Contracts is in the console menu under Win');
+    ok(await page.locator('.fbtabs a[href="/contracts"]').count() === 1 && /Contracts/.test(await page.innerText('.fbtabs a.on')), 'Contracts is a part of Clients in the console menu, marked');
     await page.click('#newBtn'); await page.waitForSelector(`[data-deal="${deal2}"]`); ok(true, 'new contract: the deal is offered');
     await page.click(`[data-deal="${deal2}"]`); await page.waitForSelector('#eBody [data-k="client.company"]');
     ok((await page.inputValue('[data-k="client.company"]')).startsWith('Olive Salon') && (await page.inputValue('[data-k="client.signerEmail"]')) === SIGNER && (await page.inputValue('#feeIn')) === '24000.00', 'the editor opens with the client, the signer and the fee from the deal');

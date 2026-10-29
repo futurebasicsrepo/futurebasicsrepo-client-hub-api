@@ -50,9 +50,32 @@ From a shop's own feed: the share of sizes sold out, weighted by how recently th
 
 ## Finding your way round
 
-Every Lab page carries the same navigation (`src/lab-nav.js`, served as `/lab/nav.js`), in three groups and the order the work happens: **Make** (Line plans, Concepts, Design, Assortment board), **Libraries** (Sketch pack, Graphics & techniques, Materials, trims & tags) and **Research** (Pieces we found, What's moving, Brands we watch, Brand code), with the flow written out on the right (Line plan → Concepts → Design → Tech pack → Factory → Samples) and the current step marked. Design shows the same groups as a **Lab ▾** menu in its bar. Opening the studio or the flats from the navigation, without a concept, shows a concept picker. The console's Design Lab link opens `/lab`, where the work comes first on the page (plans, concepts, the board), then the three libraries as cards, then the research.
+The Design Lab is one section of the work console (`docs/work-console-nav.md`). Its parts are the tabs across the top of every Lab page, in the
+order the work goes: **Line plans · Concepts · Studio · Assortment · Sketch pack · Graphics & techniques · Materials · Research**. Each is
+its own page: on `/lab`, Line plans, Concepts, Assortment and Research each show on their own. A client in their own Lab gets the same row
+(`src/lab-nav.js`, served as `/lab/nav.js`), with **← Your hub** first and no Research. Opening the Studio from the tabs, without a concept,
+shows a concept picker, including the concepts that already have a tech pack.
 
-**The sketch pack** (`/lab/sketches`): every flat sketch we draw from, searchable and filtered by range (men's, women's, accessories) and style, each opening large with its front and back; **Open in Design** starts a new concept from that sketch (its name, category and silhouette from the sketch; no plan and no AI needed; `POST /v1/lab/concepts/from-sketch {template}`) and opens Design on its front flat at the sketch's proportions (a double-click on a picked sketch does the same); **Put it on a concept** opens that concept in Design on its flat front, drawn from the sketch (`/lab/studio?concept=…&view=front&template=…`). A second shelf shows the parts (pockets, zips, collars, trims, buttons).
+**A piece's step bar.** Wherever a concept is open, the same bar says where it is in the work and makes every step one press away:
+
+  ‹ *its line plan*    **Concept · Picture · Flats · Pattern · Tech pack**
+
+- It is at the top of the concept (the concept window on `/lab`), in the Studio's toolbar (in place of the old **Lab ▾** menu and
+  **← Concepts**), and under the tech pack's breadcrumb.
+- In the Studio, **Picture**, **Flats** and **Pattern** switch the view in place; on the flats, **Front** and **Back** sit beside it.
+- **Tech pack** opens the pack once there is one. Before that, in the Studio it opens the checklist that says what is still needed.
+- The step you are on is dark; on a phone the bar scrolls so it stays in sight.
+- The ‹ link goes back to the concept's own line plan (`/lab?plan=…`), not the top of the Lab.
+- It is `FBLabNav.steps(el, concept, { at, onStep })` in `src/lab-nav.js`. The Studio's data (`GET /v1/lab/concepts/:id/studio`) and the tech pack's (`lab`) carry the plan and the pack it needs.
+
+So line plan → concept → Studio → pattern → tech pack is one press per step.
+
+**The Studio's name** is the Studio everywhere: the tab, its title, "Open in the Studio" on a concept and a sketch.
+
+**On a phone** the Studio's toolbar keeps the step bar, the piece's name, Save and the panel; the rest folds behind **More**. The Pattern view
+keeps what to show, Explode it and the size, and folds editing and the files the same way.
+
+**The sketch pack** (`/lab/sketches`): every flat sketch we draw from, searchable and filtered by range (men's, women's, accessories) and style, each opening large with its front and back; **Open in the Studio** starts a new concept from that sketch (its name, category and silhouette from the sketch; no plan and no AI needed; `POST /v1/lab/concepts/from-sketch {template}`) and opens the Studio on its front flat at the sketch's proportions (a double-click on a picked sketch does the same); **Put it on a concept** opens that concept in the Studio on its flat front, drawn from the sketch (`/lab/studio?concept=…&view=front&template=…`). A second shelf shows the parts (pockets, zips, collars, trims, buttons).
 
 ## The page
 
@@ -352,7 +375,7 @@ When nothing holds it up, the list offers **Send to the tech pack**; once it is 
 
 ### The studio: the picture, by hand and with AI
 
-**Open in Design** on a concept (or on its card in the assortment viewer) opens it on its picture. It is a layered editor that runs in the page itself, with no outside software.
+**Open in the Studio** on a concept (or **Picture** in its step bar) opens it on its picture. It is a layered editor that runs in the page itself, with no outside software.
 
 - **Layers.** The concept's picture is the base layer. You can add type, shapes, paintings, our marks (cue mark, wordmark, lockup), the concept's own graphics, and your own pictures (button, drop or paste). Each layer can be hidden, locked, reordered, duplicated or deleted. It has an opacity and a blend mode. **Multiply** makes a print take the fabric's folds, and **Sit it in the fabric** sets that with a little wear in one click.
 - **By hand.**
@@ -641,7 +664,7 @@ done. A garment started from scratch draws its flats as a plain outline to draw 
 
 ## Patterns: the product exploded into the pieces it is cut from
 
-**Pattern** sits beside Picture, Flat front and Flat back in Design (`/lab/pattern`, in a frame; the drafting is `src/lab-pattern.js`, shared by
+**Pattern** is a step of the piece in the Studio, after Picture and Flats (`/lab/pattern`, in a frame; the drafting is `src/lab-pattern.js`, shared by
 the page and the service).
 
 - **Garments** are drafted from the flats' own measurements, so the pattern grades with the size picked:

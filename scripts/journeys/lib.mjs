@@ -53,6 +53,13 @@ import { crc32 } from 'node:zlib';
 export const hugeHeaderPng = async () => { const b = await sharp({ create: { width: 100, height: 100, channels: 3, background: '#888' } }).png().toBuffer(); b.writeUInt32BE(20000, 16); b.writeUInt32BE(20000, 20); b.writeUInt32BE(crc32(b.subarray(12, 29)) >>> 0, 29); return `data:image/png;base64,${b.toString('base64')}`; };
 export const codeFrom = (log, email) => { const lines = readFileSync(log, 'utf8').trim().split('\n').reverse(); for (const l of lines) { try { const j = JSON.parse(l); if (j.email === email && j.code) return j.code; } catch {} } return null; };
 export const sleep = ms => new Promise(r => setTimeout(r, ms));
+// The work console's menu (console-nav.js): a part of a section is a tab across the top, shown while you are in its section. navTo opens the
+// section from the sidebar when the part is not on screen, then presses the part.
+export async function navTo(page, href) {
+  const tab = page.locator(`.fbtabs a[data-href="${href}"]`);
+  if (!(await tab.isVisible())) { const sec = await tab.evaluate(a => a.closest('[data-tabs]').dataset.tabs); await page.click(`.fbside a[data-section="${sec}"]`); await tab.waitFor({ state: 'visible', timeout: 15000 }); }
+  await tab.click();
+}
 export async function waitAi(call, token, productId, ms = 25000) {
   const t = Date.now(); let last;
   while (Date.now() - t < ms) { last = await call(`/v1/products/${productId}/tech-pack/draft`, { token }); const st = last.json?.techPack?.aiStatus; if (st && st !== 'pending') return last; await sleep(400); }

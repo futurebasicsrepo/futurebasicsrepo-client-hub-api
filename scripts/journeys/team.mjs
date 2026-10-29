@@ -91,8 +91,8 @@ await journey('J191', 'Team access in a browser: the owners open the page and gi
     const page = await oc.newPage(); page.on('pageerror', e => errs.push(String(e))); page.on('dialog', d => d.accept());
     await O('/defaults', { method: 'PUT', body: { modules: [] } }); await sql(`delete from staff_access where user_id='${patId}'`);
     await page.goto(`${BASE}/team`, { waitUntil: 'networkidle' }); await page.waitForSelector('#team .who');
-    await page.waitForFunction(() => document.querySelector('.fbside a[data-nav="Team access"]') && !document.querySelector('.fbside a[data-nav="Team access"]').hidden, null, { timeout: 8000 }).catch(() => {});
-    { const h1 = await page.innerText('.hero h1'), links = await page.locator('.fbside a[data-nav="Team access"]:not([hidden])').count(); ok(/Who sees what/.test(h1) && links === 1, 'the Team access page opens for an owner, with its place in the menu', [h1, links, await page.locator('.fbside').count()]); }
+    await page.waitForFunction(() => document.querySelector('.fbtabs a[data-nav="Team access"]') && !document.querySelector('.fbtabs a[data-nav="Team access"]').hidden, null, { timeout: 8000 }).catch(() => {});
+    { const h1 = await page.innerText('.hero h1'), links = await page.locator('.fbtabs a[data-nav="Team access"]:not([hidden])').count(); ok(/Who sees what/.test(h1) && links === 1, 'the Team access page opens for an owner, with its place in the menu', [h1, links, await page.locator('.fbside').count()]); }
     const card = page.locator(`.who[data-id="${patId}"]`); ok(await card.count() === 1 && /no access yet/i.test(await card.locator('.chip').innerText()) && await card.evaluate(n => n.open), 'a new person is listed, open, and marked as having no access yet');
     { const seen = await card.locator('[data-seen]').innerText(); ok(/First signed in .+ · last signed in /i.test(seen), 'the card says when they joined and when they last signed in', seen); }
     await card.locator('[data-preset="sales"]').click(); ok(await card.locator('input[data-m="crm"]').isChecked() && !(await card.locator('input[data-m="clients"]').isChecked()), 'the Sales preset ticks the sales modules and not the client ones');
@@ -107,10 +107,11 @@ await journey('J191', 'Team access in a browser: the owners open the page and gi
     const pc = await b.newContext({ viewport: { width: 1280, height: 900 } }); await pc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, patT);
     const pp = await pc.newPage(); pp.on('pageerror', e => errs.push(String(e)));
     await pp.goto(`${BASE}/contracts`, { waitUntil: 'networkidle' }); await pp.waitForSelector('.fbside');
-    await pp.waitForFunction(() => document.querySelector('.fbside a[data-module="contracts"]') && !document.querySelector('.fbside a[data-module="contracts"]').hidden, null, { timeout: 8000 });
-    const shown = await pp.$$eval('.fbside a:not(.gicon):not([hidden])', as => as.map(a => a.textContent.trim()));
-    ok(shown.includes('Contracts') && shown.includes('Brand and assets') && shown.includes('My day') && !shown.includes('Pipeline') && !shown.includes('Factories') && !shown.includes('Team access') && !shown.includes('Payment gate') && !shown.includes('Platform health'), 'the menu shows only My day, Contracts and Brand', shown.join(' | '));
-    ok(await pp.locator('.fbside .grp:has(a[data-module="crm"]):visible').count() === 0 || (await pp.locator('.fbside .grp:visible').allInnerTexts()).every(t => !/Contacts/.test(t)), 'groups with nothing to open are hidden');
+    await pp.waitForFunction(() => document.querySelector('.fbtabs a[data-module="contracts"]') && !document.querySelector('.fbtabs a[data-module="contracts"]').hidden, null, { timeout: 8000 });
+    const shown = await pp.$$eval('.fbtabs a[data-nav]:not([hidden])', as => as.map(a => a.textContent.trim()));
+    ok(shown.includes('Contracts') && shown.includes('Brand and assets') && shown.includes('My day') && !shown.includes('Pipeline') && !shown.includes('Factories') && !shown.includes('Team access') && !shown.includes('Payment gate') && !shown.includes('Platform health'), 'the menu has only My day, Contracts and Brand', shown.join(' | '));
+    const sections = await pp.$$eval('.fbside a[data-section]:not([hidden])', as => as.map(a => a.dataset.section));
+    ok(sections.join(',') === 'home,clients,settings', 'sections with nothing to open are hidden: My day, Clients (Contracts) and Settings (Brand)', sections.join(','));
     await pp.goto(`${BASE}/factories`, { waitUntil: 'networkidle' }); await pp.waitForSelector('#fbWall', { timeout: 8000 });
     ok(/not turned on for you/.test(await pp.innerText('#fbWall')) && /Factories/.test(await pp.innerText('#fbWall')) && /Kyle or Danielle/.test(await pp.innerText('#fbWall')), 'a page they were not given says so and who to ask');
     await pp.goto(`${BASE}/team`, { waitUntil: 'networkidle' }); ok(await pp.locator('#fbWall, #needSignin:not(.hidden)').count() >= 1, 'the Team access page is closed to them');

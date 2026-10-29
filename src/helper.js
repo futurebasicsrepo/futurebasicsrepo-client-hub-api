@@ -35,7 +35,7 @@
       match: () => path() === '/lab' && !!$('#cd[open]'),
       steps: [
         { target: '#cd .big', title: 'The concept', do: 'Read the picture, the twist and the check: how close it sits to what inspired it.', why: 'Only what is ours is approved. A "too close" concept needs a written reason or a change.' },
-        { target: '[data-cstudio]', title: 'Finish it in Design', optional: true, do: 'Press “Open in Design” to change the picture by hand or with AI: colours, graphics, distressing, a painted area redrawn.', why: 'The studio’s finished picture becomes the concept’s, and the tech pack’s first sketch.' },
+        { target: '[data-cstudio]', title: 'Finish it in the Studio', optional: true, do: 'Press “Open in the Studio” to change the picture by hand or with AI: colours, graphics, distressing, a painted area redrawn.', why: 'The studio’s finished picture becomes the concept’s, and the tech pack’s first sketch.' },
         { target: '[data-cpin]', title: 'Pin a comment to a spot', optional: true, do: 'Press “Pin to a spot”, click the place on the picture, write the comment. Press Done on a comment once it is dealt with.', why: 'Feedback sits on the design, not in a chat: everyone sees exactly which pocket.' },
         { target: '#shrBox', title: 'Share for review', optional: true, do: 'Make a view-only link for the client or the factory and send it. They comment and pin; they cannot change anything. Turn it off any time.', why: 'One link, no sign-in: the fastest way to a decision.' },
         { target: '#matBox', title: 'What it is made of', optional: true, do: 'Add the main fabric, rib, trims and the tags from the materials library; set colourways.', why: 'The landed cost and margin update as you choose, and the tech pack takes the BOM lines and labels.' },
@@ -49,7 +49,7 @@
       id: 'lab-plan', title: 'Plan a line and make concepts',
       match: () => path() === '/lab' && shown('#app') && !$('#cd[open]'),
       steps: [
-        { target: '#labTabs', title: 'The Design Lab', do: 'Three groups: Make (line plans, concepts, studio, flats, the board), Libraries (the sketch pack, graphics, materials) and Research (what the market is doing). The flow on the right says where you are.', why: 'Everything starts from a read of the market, so the line has a reason for every piece.' },
+        { target: '#fbTabs', title: 'The Design Lab', do: 'Its parts are the tabs across the top, in the order the work goes: Line plans, Concepts, the Studio, the Assortment, then the libraries (the sketch pack, graphics, materials) and Research (what the market is doing).', why: 'Everything starts from a read of the market, so the line has a reason for every piece.' },
         { target: '#planForm [name="name"]', title: 'Start a line plan', do: 'Name the plan and the season, say the idea in a sentence, then press the button to draw it.', why: 'The plan sets the pieces, their roles, the price ladder and the margins before anything is designed.', done: 'input', after: 'Named.' },
         { target: '#planList', title: 'Open a plan', wait: 'Your plans appear here.', do: 'Open a plan to see its pieces, prices and margins.', why: 'Change a price, a quantity or a role and the margins follow.' },
         { target: '#pClient', title: 'Who it is for', optional: true, do: 'Leave it as our own line, or pick the client it is for, add their brand in a sentence, and tick “Show it in their hub” when it is ready.', why: 'A client’s line is designed in their brand, and they approve each piece in their hub.' },
@@ -62,10 +62,10 @@
       next: { tour: 'lab-concept', label: 'Take a concept to a tech pack' }
     },
     {
-      id: 'lab-studio', title: 'Finish a concept in Design',
+      id: 'lab-studio', title: 'Finish a concept in the Studio',
       match: () => path() === '/lab/studio' && shown('#app') && !['front', 'back'].includes($('#app')?.dataset.v),
       steps: [
-        { target: '#viewSeg', title: 'One workspace', optional: true, do: 'Switch between the picture, the flat front and the flat back.', why: 'The picture and its measured flats are the same piece: change one, look at the other, without leaving.' },
+        { target: '#pieceSteps', title: 'The piece, step by step', optional: true, do: 'The bar across the top: Concept, Picture, Flats, Pattern, Tech pack. Press a step to go there; the one you are on is dark.', why: 'The picture, its measured flats and its pattern are the same piece: change one, look at the next, without leaving.' },
         { target: '#levelSeg', title: 'Simple or Pro', optional: true, do: 'Simple keeps the essentials; Pro adds distress, warp, the ruler, separations, points of measure and grading.', why: 'Everyone works in the same place, at the depth they need.' },
         { target: '#readyBtn', title: 'What is left before the tech pack', optional: true, do: 'Open the Checklist: each item says whether it is done and where to fix it.', why: 'When nothing holds it up, it offers Send to the tech pack.' },
         { target: '#stage', title: 'The concept, in layers', do: 'Draw, paint, type, add our marks or a graphic; each is a layer you can move or hide.', why: 'Finish it by hand where the AI got close but not right.' },
@@ -73,7 +73,7 @@
         { target: '#pAi', title: 'Change it with AI', optional: true, do: 'Say what to change, for the whole piece or a painted area, or make a new graphic.', why: 'Quicker than drawing, and only the area you paint changes.' },
         { target: '#verBtn', title: 'Versions, side by side', optional: true, do: 'Every picture used as the concept is kept; keep one on purpose any time. Tick two to compare with a wipe, or open an old one’s layers.', why: 'Nothing is lost, and the client can see what changed between rounds.' },
         { target: '#apply', title: 'Use it as the concept', do: 'Press the button to make this the concept’s picture.', why: 'The finished picture is what the client sees and what the tech pack starts from.', done: 'click', after: 'Done.' },
-        { target: '#back', title: 'Back to the concepts', do: 'Go back to the concept to draw its flats.', why: 'The flats come next: the piece measured, ready for a factory.' }
+        { target: '#pieceSteps [data-step=flats]', title: 'On to the flats', do: 'Press Flats to draw its flats.', why: 'The flats come next: the piece measured, ready for a factory.' }
       ],
       next: { tour: 'lab-flats', label: 'Draw and change the flats' }
     },
@@ -114,7 +114,7 @@
       id: 'lab-flats', title: 'Draw and change the flats',
       match: () => path() === '/lab/studio' && shown('#app') && ['front', 'back'].includes($('#app')?.dataset.v),
       steps: [
-        { target: '#viewSeg', title: 'Front or back', do: 'Switch between the flat front and back here, or go back to the picture.', why: 'Graphics placed on the picture land on the flats at their size when you switch or save.' },
+        { target: '#viewSeg', title: 'Front or back', do: 'Switch between the flat front and back here; Picture in the step bar takes you back to the picture.', why: 'Graphics placed on the picture land on the flats at their size when you switch or save.' },
         { target: '#flatHost', title: 'The flats and their panel', do: 'Drag a logo or graphic: its inches from the HPS and centre front follow. On the right: Placements, Design (colour, pockets, pleats, stitch lines, AI redraws), Garment (style, fit, the sketch) and Measurements.', why: 'This is how a sample room measures, so the factory reads it the same way.' },
         { target: '#save', title: 'Save and check', do: 'Press Save: the flats and the picture are saved together.', why: 'It checks everything can be made: on the piece, clear of seams and zips, within the technique.', done: 'click', after: 'Saved.' },
         { target: ['#packBtn:not(.hidden)', '#specBtn'], title: 'Send it on', do: 'Print the spec sheet or the decoration sheet, or once it is a tech pack, press “Send to the tech pack”.', why: 'The pack takes the measurements, the sketches and every placement.' }
@@ -193,7 +193,7 @@
         { target: '#reach', title: 'Reach out today', do: 'Who is most likely to buy, and who has been waiting for an answer. Open one and send a personal note.', why: 'A note from a person who read their situation beats any campaign.' },
         { target: '#protoPanel', title: 'Prototypes that close deals', optional: true, do: 'Prototypes sent to prospects, with who has opened them.', why: 'Showing a prospect a working version of their own site makes the conversation easy.' },
         { target: '#projPanel', title: 'Projects in flight', do: 'Every software and product project you are delivering. Filter by state.', why: 'It keeps delivery in view while you sell.' },
-        { target: '.fbside', title: 'The menu follows the work', optional: true, do: 'Left menu: My day, Inbox, People, Win, Deliver, Money, Sites and health.', why: 'It is ordered the way a day goes, from who wrote to you, to winning work, to delivering it and getting paid.' }
+        { target: '.fbside', title: 'The menu follows the work', optional: true, do: 'Left menu: the sections, My day, Inbox, Clients, Sales, Design Lab, Money, Sites & health, Settings. The section you are in shows its parts as tabs across the top.', why: 'Two levels, the same on every page: a section on the left, its part across the top.' }
       ]
     },
     {

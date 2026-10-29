@@ -79,7 +79,7 @@ For a client's line, the window also shows:
 
 ## 3. Studio
 
-**Who:** the design team, from **Open in Design** on a concept: the **Picture** view of the Design workspace (`/lab/studio?concept=…`), which also shows the flats (step 4).
+**Who:** the design team, from **Open in the Studio** on a concept: the **Picture** view of the Studio (`/lab/studio?concept=…`), which also shows the flats (step 4).
 
 **What it does:** the concept's picture opens as layers. You can:
 - paint, type, and add marks and library graphics;
@@ -304,7 +304,12 @@ Parts from the sketch pack (pockets, zips, collars, trims, buttons) go the same 
 
 Every page loads `/feedback.js`.
 
-- **Working:** a button that starts something keeps its words; a light sheen sweeps across it and a thin green line creeps along its bottom edge while it runs.
+- **Working:** the moment it is pressed, a light sheen sweeps across the button and a thin green line creeps along its bottom edge.
+- **Thinking:** work that takes more than a moment (a third of a second) is said on the button itself, with three pulsing dots:
+  "Designing three concepts…", "Saving…", "Sending…", or "Thinking…". The button keeps its width, and its own words come back when the
+  work is done. The page's "working on it" line (a status line ending in …) goes onto the button instead of showing further down the page;
+  its full words are the button's tooltip. The page's answer (done, or what went wrong) shows where it always did. A press that asks a
+  question first ("Anything to steer the concepts?") shows the work on the button that asked it.
 - **Worked:** the line runs home and the button glows green for a moment; a note rises at the bottom of the screen ("Save: done"), with a hairline that drains while it stays.
 - **Failed:** the line turns red and the button shakes, with a note that says what failed and why, in the service's own words: "Approve: Say what to change", "Send: you are signed out: sign in again", or "could not reach the service".
 - **Failed without saying so:** a press whose work fails and nothing else reports it is reported the same way.
@@ -313,6 +318,8 @@ Every page loads `/feedback.js`.
 - `FBN.toast(text, kind)` adds a note.
 - `FBN.run(button, work)` shows the same states for work that is not a request.
 - `data-fb="off"` on a button leaves it alone.
+- `data-fb-busy="Drawing…"` names what a button says while it works.
+- `FBN.begin(button, words)` and `FBN.end(button, ok)` show the working state for work the page follows itself.
 
 ## Pip, the guide
 
@@ -320,7 +327,7 @@ Every page loads `/feedback.js`.
 | --- | --- | --- |
 | Plan a line and make concepts | `/lab` | the Lab's sections, a new plan, who it is for, making concepts, the board |
 | Take a concept to a tech pack | `/lab`, a concept open | the check, the studio, the flats, approve, send to tech pack |
-| Finish a concept in Design | `/lab/studio`, the picture | the view switch, layers, AI changes, use as the concept picture |
+| Finish a concept in the Studio | `/lab/studio`, the picture | the step bar, layers, AI changes, use as the concept picture |
 | Draw and change the flats | `/lab/studio`, a flat view | front, back or side by side, the flats and their panel, one Save, the sheets and the tech pack |
 | Publish, send to a factory, review samples | a tech pack, work console | where it came from, publish, assign a factory, samples, review a sample |
 | Review your line | the client's hub | the line, flats, approve, ask for changes |
@@ -348,7 +355,7 @@ Each guide offers the next one when it ends. The client's own guides for tech pa
 | J228 | The smaller items: our own fonts (uploaded, served, set in type, listed in the library), the Illustrator round-trip (the studio SVG back as editable layers; a foreign SVG as picture layers), the 3D try-on (from the concept picture and from the canvas, the GLB shown painted in our viewer) |
 | J227 | Every tool in the studio works, clicked one by one in a browser: the rail and zoom, every Add, every Layers control, every AI control (Change it, Make it, Remove the graphic, the fabric), undo, redo, save, export, versions, use as the picture; Remove the graphic takes a printed graphic off the piece in one go |
 | J226 | Range-level work: one instruction across the collection previewed per piece and applied only where ticked; the Lab learning our taste from what is approved and rejected and reading it before it designs; a lookbook in one click; a customer poll whose votes become a demand read per piece. Over HTTP and in a browser, on the plan and on a phone |
-| J225 | Finding your way round: one navigation on every Lab page (Make, Libraries, Research, the flow), concept pickers for the studio and the flats, the sketch pack page (search, ranges, styles, parts) putting a sketch on a concept, the assistant leaving Lab rows alone |
+| J225 | Finding your way round: the Lab's parts as the console's tab row, one at a time, the piece's step bar (Concept · Picture · Flats · Pattern · Tech pack) in the Studio and on the concept, concept pickers for the Studio and the flats, the sketch pack page (search, ranges, styles, parts) putting a sketch on a concept, the assistant leaving Lab rows alone |
 | J224 | The sample loop: the time-and-action calendar dated from the day the pack goes out, late samples on Production attention; photographs on the review compared with the approved design by the vision model, the differences made corrections. Over HTTP and in a browser |
 | J223 | Reviewing together: pinned comments, done and reopened; studio versions kept on use and on purpose, two side by side with a wipe, an old one's layers reopened; a view-only link for the factory and the client: opens without sign-in, takes a pinned comment, cannot change anything, stops when turned off. Over HTTP and in a browser |
 | J222 | Materials, trims and tags: the library and its tags drawn to size; picks on a concept with the cost breakdown and margin; colourways with Pantones on the board; the BOM, labels and colourways on the tech pack; the studio's fabric picker. Over HTTP and in a browser |
