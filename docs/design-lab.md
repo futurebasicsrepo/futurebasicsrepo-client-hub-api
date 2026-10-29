@@ -196,12 +196,14 @@ The Lab installs as its own home-screen app (`/lab.webmanifest`: standalone, ope
 | The Pencil | draws, erases and distresses; pressing harder draws wider (**Pencil pressure** in the brush options); every sample it reports is used, so quick curves stay smooth |
 | A finger, before any Pencil | draws like a mouse |
 | A finger, once the Pencil has been used | moves the view; a palm resting on the screen paints nothing, and the Pencil wins over it |
-| Two fingers | pinch to zoom and move the view; a stroke a finger had started is undone |
+| Two fingers | on the selected graphic (Select tool): resize it, turn it and move it, as one Undo step; anywhere else: pinch to zoom and move the view. A stroke a finger had started is undone |
 | Handles | corners and the turn knob take a fingertip (a bigger target than for a mouse); the tool rail and zoom buttons are 46 px on a touch screen |
 
 The flats zoom too: two fingers pinch and move them, one finger moves them once zoomed (a placement under the finger still drags), Ctrl and the wheel zoom on a computer, and **Fit** shows the whole piece again. A pinch that starts while a placement is being dragged puts it back where it was. On Design, and on any console page on a touch screen narrower than a desktop, the console menu starts folded to its icons (a person's own choice is kept). Installed, exports (the picture, a layer, the Illustrator SVG, the stitch file, the separations) open in the app's sheet with Share and Save rather than as a download that leaves the app.
 
 **Room to draw.** **Panel** (or `\`) folds the right-hand panel away, on the picture and on both flats, so the drawing takes the width. **Focus** (or `F`) hides the page header, the console menu and the Guide switch, trims the words around the flat, and asks for full screen where the browser allows it. Both are kept on the device for the next time Design opens, and a second press brings them back.
+
+**On the flats**, two fingers on a graphic resize it about its centre, keeping its shape (anywhere else they zoom the flat). What is drawn on a flat covers the whole window, not only the garment's frame: the drawing spans all the window shows at full view, and an older, smaller drawing grows to the window before the next stroke, keeping what is on it.
 
 **Scribble.** iPadOS can take a Pencil on a web page as handwriting (Scribble) or the start of a text selection, and then the stroke never reaches the drawing. The stage on the picture and the drawing layer on the flats hold the Pencil's own touches (`touchType` stylus) so they stay strokes; fingers are left alone.
 

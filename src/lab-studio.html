@@ -381,8 +381,11 @@ const PTRS=new Map();let PEN=false,GEST=null;
 const capture=e=>{try{view.setPointerCapture(e.pointerId)}catch{}};
 const pressOf=e=>e.pointerType==='pen'&&OPT.pressure?clamp(.15+.85*(e.pressure||.5),.15,1):1;
 const tolOf=e=>e.pointerType==='mouse'?10:22; // a fingertip or a Pencil tip needs a bigger target than a cursor
-function gestStart(){const[a,b]=[...PTRS.values()];GEST={d:Math.hypot(a.x-b.x,a.y-b.y)||1,mx:(a.x+b.x)/2,my:(a.y+b.y)/2,Z,PX,PY}}
+// Two fingers: on the selected graphic (Select tool) they resize, turn and move it, as in other drawing apps; anywhere else they zoom and move the view
+function gestStart(){const[a,b]=[...PTRS.values()];GEST={d:Math.hypot(a.x-b.x,a.y-b.y)||1,mx:(a.x+b.x)/2,my:(a.y+b.y)/2,Z,PX,PY,ang:Math.atan2(b.y-a.y,b.x-a.x)};
+  const l=selected();if(TOOL==='select'&&l&&!fixed(l)&&!l.locked&&l.visible&&[[a.x,a.y],[b.x,b.y],[GEST.mx,GEST.my]].some(([x,y])=>hit(dx(x),dy(y))===l))GEST.layer={l,s0:l.scale,r0:l.rot||0,x0:l.x,y0:l.y}}
 function gestMove(){const[a,b]=[...PTRS.values()];if(!a||!b||!GEST)return;const d=Math.hypot(a.x-b.x,a.y-b.y)||1,mx=(a.x+b.x)/2,my=(a.y+b.y)/2,nz=clamp(GEST.Z*d/GEST.d,.05,8);
+  if(GEST.layer){const g=GEST.layer;g.l.scale=clamp(g.s0*d/GEST.d,.02,40);g.l.rot=g.r0+Math.atan2(b.y-a.y,b.x-a.x)-GEST.ang;g.l.x=Math.round(g.x0+(mx-GEST.mx)/Z);g.l.y=Math.round(g.y0+(my-GEST.my)/Z);g.moved=true;draw();paintFields();return}
   PX=mx-(GEST.mx-GEST.PX)*nz/GEST.Z;PY=my-(GEST.my-GEST.PY)*nz/GEST.Z;Z=nz;draw()}
 function cancelTouchStroke(){const g=DRAG;if(!g)return;if(g.mode==='stroke'&&g.orig){g.l.raster=g.orig;g.l.raster._rid=RID++}DRAG=null;draw()}
 view.addEventListener('pointerdown',e=>{
@@ -436,7 +439,7 @@ view.addEventListener('pointermove',e=>{
     else{let w=Math.abs(x-g.x0),h=Math.abs(y-g.y0);if(e.shiftKey)w=h=Math.max(w,h);l.w=Math.max(4,Math.round(w));l.h=Math.max(4,Math.round(h));l.x=g.x0+(x<g.x0?-w:w)/2;l.y=g.y0+(y<g.y0?-h:h)/2}}
   draw();if(g.mode!=='pan'&&g.mode!=='area')paintFields();
 });
-const endDrag=e=>{if(e&&e.pointerId!==undefined){PTRS.delete(e.pointerId);if(GEST){if(PTRS.size<2)GEST=null;return}if(DRAG&&DRAG.pid!==undefined&&DRAG.pid!==e.pointerId)return}const g=DRAG;DRAG=null;if(!g)return;if(g.mode==='ruler'){rulerDone(g);draw();return}if(g.mode==='stroke'||g.mode==='area'||(g.mode==='shape'&&g.l)||g.moved){if(g.mode!=='area')commit();if(g.mode==='shape')setTool('select');paintPanels()}draw()};
+const endDrag=e=>{if(e&&e.pointerId!==undefined){PTRS.delete(e.pointerId);if(GEST){if(PTRS.size<2){const g=GEST.layer;GEST=null;if(g?.moved){commit();paintPanels()}}return}if(DRAG&&DRAG.pid!==undefined&&DRAG.pid!==e.pointerId)return}const g=DRAG;DRAG=null;if(!g)return;if(g.mode==='ruler'){rulerDone(g);draw();return}if(g.mode==='stroke'||g.mode==='area'||(g.mode==='shape'&&g.l)||g.moved){if(g.mode!=='area')commit();if(g.mode==='shape')setTool('select');paintPanels()}draw()};
 view.addEventListener('pointerup',endDrag);view.addEventListener('pointercancel',endDrag);view.addEventListener('lostpointercapture',e=>{if(DRAG&&DRAG.pid===e.pointerId)endDrag(e)});view.addEventListener('pointerleave',e=>{if(e.pointerType==='mouse'||e.pointerType==='pen'&&!DRAG){HOVER=null;draw()}});
 // iPad: a Pencil on the page can be taken as handwriting (Scribble) or the start of a text selection, and then never reaches the canvas as a
 // stroke; holding the Pencil's touches on the stage keeps them ours (fingers are left alone: they move and pinch through the pointer events)

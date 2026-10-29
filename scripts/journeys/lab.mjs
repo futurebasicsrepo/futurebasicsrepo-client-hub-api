@@ -2556,6 +2556,24 @@ await journey('J240', 'Design on an iPad, as Kyle found it: the ruler takes any 
         ok(await page.evaluate(() => document.documentElement.dataset.focus === '1' && document.getElementById('app').dataset.panel === 'off'), '   and the layout is kept when Design opens again');
         await page.click('#focusBtn'); await page.click('#panelBtn');
         ok(await page.evaluate(() => !document.documentElement.dataset.focus && document.getElementById('app').dataset.panel === 'on'), '   both come back with a press'); }
+      // the whole window draws (not only the garment's frame), and two fingers on a graphic resize it
+      { const Fd = await (await page.waitForSelector('#flatFrame')).contentFrame(); await Fd.waitForFunction(() => window.FBFlats?.ready(), null, { timeout: 20000 });
+        await page.click('.rail [data-tool=brush]');
+        const r = await page.evaluate(() => { const f = document.getElementById('flatFrame').getBoundingClientRect(), s = document.getElementById('flatFrame').contentDocument.querySelector('#canvas svg').getBoundingClientRect(); return { x: f.left + s.left, y: f.top + s.top, w: s.width, h: s.height }; });
+        await pen(r, [[r.w * .02, r.h * .5], [r.w * .05, r.h * .55], [r.w * .97, r.h * .6]]);
+        const cover = await Fd.evaluate(() => { const c = document.querySelector('.mkw canvas').getBoundingClientRect(), s = document.querySelector('#canvas svg').getBoundingClientRect(), x = document.querySelector('.mkw canvas'), k = x.width / c.width, d = x.getContext('2d').getImageData(Math.max(0, (s.left + s.width * .03 - c.left) * k), (s.top + s.height * .52 - c.top) * k, 4, 4).data; return { l: c.left - s.left, r: s.right - c.right, ink: [...d].some((v, i) => i % 4 === 3 && v > 0) }; });
+        ok(cover.l <= 1 && cover.r <= 1 && cover.ink, '7g. the Pencil draws across the whole window, out to its edges, not only inside the garment\'s frame', cover);
+        await page.click('.rail [data-tool=select]');
+        const n0 = await Fd.evaluate(() => FBFlats.placements().length); await Fd.click('.tabs [data-tab=pl]'); await Fd.click('#pPl [data-addmark=mark]'); await Fd.waitForFunction(n => FBFlats.placements().length > n, n0, { timeout: 10000 });
+        const q = await Fd.evaluate(() => FBFlats.placements().filter(x => x.view === 'front').pop());
+        if (q) {
+          const at = await page.evaluate(id => { const f = document.getElementById('flatFrame').getBoundingClientRect(), g = document.getElementById('flatFrame').contentDocument.querySelector(`[data-pl="${id}"]`).getBoundingClientRect(); return { x: f.left + g.left + g.width / 2, y: f.top + g.top + g.height / 2 }; }, q.id);
+          const touch = (type, d) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x: at.x - d, y: at.y, id: 1 }, { x: at.x + d, y: at.y, id: 2 }] });
+          await touch('touchStart', 10); for (const d of [20, 30, 40, 50]) await touch('touchMove', d); await touch('touchEnd', 50);
+          const q2 = await Fd.evaluate(id => FBFlats.placements().find(x => x.id === id), q.id);
+          ok(q2.w > q.w * 2 && Math.abs(q2.w / q2.h - q.w / q.h) < .05 && await Fd.evaluate(() => FBFlats.dirty()), '7h. two fingers spread on a graphic on the flat make it bigger, keeping its shape (the view does not zoom)', [q.w, q2.w]);
+        } else ok(false, '7h. there is a graphic on the front to resize');
+        await page.click('#save'); await page.waitForFunction(() => !DIRTY, null, { timeout: 30000 }); await Fd.waitForFunction(() => FBFlats.saved(), null, { timeout: 30000 }); }
       F = await (await page.waitForSelector('#flatFrame')).contentFrame(); await F.waitForFunction(() => window.FBFlats?.ready(), null, { timeout: 20000 });
       // a flat saved as a sweatshirt: Redraw from the picture brings the jacket back (the words stand in for the picture here)
       const asSweat = await K(`/concepts/${c.id}/flats`, { method: 'PUT', body: { ...saved, style: 'crewneck', template: undefined, placements: saved.placements } });
@@ -2569,6 +2587,15 @@ await journey('J240', 'Design on an iPad, as Kyle found it: the ruler takes any 
       ok(kept.drawn?.front && kept.drawn?.back && kept.drawn.template === kept.template && sql(`select count(*) from lab_art where id in ('${kept.drawn.front}','${kept.drawn.back}') and source='flat'`) === '2', '   saved: front and back drawn from the picture, tied to the sketch they were drawn on', kept.drawn);
       const sheet = await call(`/v1/lab/concepts/${c.id}/flats/sheet.svg`, { token: kyleT });
       ok(sheet.status === 200 && sheet.text.includes('data:image/png;base64'), '   and the spec sheet draws them', sheet.status);
+      // on the picture: two fingers on the selected graphic resize it; elsewhere they zoom the view
+      await page.click('#viewSeg [data-v=picture]'); await page.waitForTimeout(400); await page.click('.rail [data-tool=select]');
+      const lay = await page.evaluate(() => { const l = LAYERS.find(x => !['base', 'paint', 'picture'].includes(x.kind) && x.visible); if (!l) return null; SEL = l.id; draw(); const r = document.getElementById('view').getBoundingClientRect(); return { id: l.id, s0: l.scale, z0: Z, h: HIST.length, x: r.left + l.x * Z + PX, y: r.top + l.y * Z + PY }; });
+      if (lay) {
+        const touch = (type, d) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x: lay.x - d, y: lay.y, id: 1 }, { x: lay.x + d, y: lay.y, id: 2 }] });
+        await touch('touchStart', 8); for (const d of [16, 24, 32]) await touch('touchMove', d); await touch('touchEnd', 32);
+        const after = await page.evaluate(id => { const l = LAYERS.find(x => x.id === id); return { s: l.scale, z: Z, h: HIST.length }; }, lay.id);
+        ok(after.s > lay.s0 * 2.5 && Math.abs(after.z - lay.z0) < 1e-6 && after.h > lay.h, '11. on the picture, two fingers on the selected graphic resize it (one Undo step), and the view stays put', { lay, after });
+      } else ok(false, '11. there is a graphic layer to resize');
       ok(errs.length === 0, 'no page errors', errs); await oc.close();
     } finally { await b.close(); }
   } finally { await cleanup(brands, plan.plan?.id); }
