@@ -925,3 +925,26 @@ the shoe on the page, saved or not.
 - Without Claude (no `ANTHROPIC_API_KEY`), only the outline and the fixed checks run (`checks-only`) and it says so. Reviews with Claude are
   capped at `SHOE_REVIEW_DAILY` a day (40 by default); past it, only the outline and the checks run. `SHOE_REVIEW_FIXTURE` (a JSON array of the
   developer's answers for one judge, or `{name: [answers]}` for several, or a file of either) stands in for the judges in tests.
+
+## Drawing by hand: sketches on every view and on the last
+
+A shoe can be designed by hand as freely as with the drafted lines, and the two mix (`src/lab-sketch.js`, shared by the page and the service):
+
+- **Sketch** on the Pattern page draws on any of the four views (outside, inside, top, bottom) with a Pencil, a mouse or a finger. A Pencil
+  draws with its pressure; once a Pencil has been used, fingers never draw, so a palm resting on the screen does nothing. Pen, Eraser (rubs
+  out a whole line), inks (graphite, red, blue, green), Fine/Medium/Bold, Undo.
+- **On the last**, then **Sketch on it**, draws on the last in 3D. A line carried over the top goes on as a new line on the other side.
+- **The sides are one drawing.** A line on the outside or the inside is kept in the side view's own inches (x from the heel's back, y downward),
+  the coordinates the last's surface is mapped from: a line drawn on the last shows on the flat side view, and one drawn on the side view
+  shows on the last. Top and bottom lines stay on their views.
+- **Make a seam** turns a hand-drawn line on a side into a seam: tap it, choose the piece it crosses, and the piece is cut along it (thinned to
+  the points that shape it). The line becomes the seam.
+- **Paper sketches.** A photo or scan of a drawing on paper, or a picture from any drawing app (Procreate, Illustrator, a camera), can lie under
+  any view to trace or keep beside the drafted lines: **Paper sketch…** in the Sketches panel, **Move sketch** to line it up, with sliders for
+  its size and how strongly it shows. It is kept straight away, re-encoded (only the pixels are kept), and is not part of the tech flats.
+- The lines are saved with the shoe (`spec.sketches`, up to 300 lines and 30,000 points) and drawn into the tech flats and their SVG, and so
+  the developer check sees them too.
+
+Routes for paper sketches: `GET /v1/lab/concepts/:id/pattern/underlays` (which views have one and where it sits), `GET|PUT|PATCH|DELETE
+/v1/lab/concepts/:id/pattern/underlays/:view` (the picture; `PUT {image: data URL, place?}`, `PATCH {place: {x, y, w, opacity}}`, in the view's
+inches; a picture up to 15 MB).

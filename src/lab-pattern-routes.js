@@ -4,6 +4,7 @@
 //   PUT  /v1/lab/concepts/:id/pattern            save {kind, spec} (a plush's choices; a garment's seam allowance and fabric width)
 //   GET  /v1/lab/concepts/:id/pattern.svg        every piece laid out at real size (print at 100%), ?size=M&width=58
 //   GET  /v1/lab/concepts/:id/pattern.dxf        the same as a DXF (R12, inches) on CUT, SEW, GRAIN, NOTCH and TEXT layers, for a pattern system
+//   GET|PUT|PATCH|DELETE /v1/lab/concepts/:id/pattern/underlays[/:view]   a paper sketch laid under a view of a shoe (its picture, and where it sits)
 //   POST /v1/lab/concepts/from-scratch           {name?, category, style?, shape?} a concept with nothing drawn yet: a blank page in Design to draw on,
 //                                                with a guide (the flat's outline for a garment, the plush's shape) → { concept, studio }
 import { STYLES, SIZES, FITS, defaultParams, detectStyle } from './lab-flats.js';
@@ -14,6 +15,7 @@ import { reviewShoe, openaiAsk, BAR as REVIEW_BAR } from './lab-shoe-review.js';
 import { trackedFetch, timed } from './telemetry.js';
 import { callJsonSchema } from './studio.js';
 import { createHash } from 'node:crypto';
+import sharp from 'sharp';
 import { readFileSync } from 'node:fs';
 import { registerLabLastRoutes } from './lab-last-routes.js';
 import { flatsSheet } from './lab-footwear-views.js';
@@ -69,7 +71,7 @@ export function registerLabPatternRoutes(app, d) {
     const hasImage = L.kind === 'footwear' ? Boolean((await pool.query('select image is not null h from lab_concepts where id=$1', [L.c.id])).rows[0]?.h) : false;
     return { concept: { id: L.c.id, name: L.c.name, category: L.c.category, status: L.c.status, hasImage }, kind: L.kind, flat: L.flat, flatSaved: L.savedFlat, spec: L.spec, saved: L.saved, updatedAt: L.updatedAt, options, ...(L.kind === 'soon' ? { soon: SOON[L.c.category] } : {}), ...extra };
   });
-  app.put('/v1/lab/concepts/:id/pattern', { preHandler: pre }, async (req, reply) => {
+  app.put('/v1/lab/concepts/:id/pattern', { preHandler: pre, bodyLimit: 4_000_000 }, async (req, reply) => {
     const L = await load(req.params.id); if (!L) return bad(reply, 'Not found', 404);
     if (!['plush', 'garment', 'footwear'].includes(L.kind)) return bad(reply, L.kind === 'soon' ? SOON[L.c.category] : 'This piece has no pattern the Lab can draft yet');
     const spec = await save(L, req.body?.spec, actorOf(req));
@@ -166,6 +168,38 @@ export function registerLabPatternRoutes(app, d) {
   app.get('/v1/lab/concepts/:id/pattern/review/:rid', { preHandler: pre }, async (req, reply) => {
     const job = reviews.get(String(req.params.rid)); if (!job || job.conceptId !== req.params.id) return bad(reply, 'Not found', 404);
     return job;
+  });
+
+  // paper sketches under the views: a photo or scan of a hand drawing (or a picture from any drawing app) laid under one view of the shoe, to
+  // trace on the page or keep beside the drafted lines. Kept straight away (not with Save); the picture is re-encoded, so nothing but pixels is kept.
+  const VIEWS = ['lateral', 'medial', 'top', 'bottom'], cleanPlace = p => { const n = (v, a, b, d) => { const x = Number(v); return Number.isFinite(x) ? Math.round(Math.min(b, Math.max(a, x)) * 1000) / 1000 : d; }; return { x: n(p?.x, -30, 30, 0), y: n(p?.y, -30, 30, 0), w: n(p?.w, .5, 24, 11), opacity: n(p?.opacity, .05, 1, .55) }; };
+  app.get('/v1/lab/concepts/:id/pattern/underlays', { preHandler: pre }, async (req, reply) => {
+    const L = await load(req.params.id); if (!L) return bad(reply, 'Not found', 404);
+    return { underlays: (await pool.query('select view, place, updated_at from lab_pattern_underlays where concept_id=$1 order by view', [L.c.id])).rows };
+  });
+  app.get('/v1/lab/concepts/:id/pattern/underlays/:view', { preHandler: pre }, async (req, reply) => {
+    if (!UUID.test(String(req.params.id)) || !VIEWS.includes(req.params.view)) return bad(reply, 'Not found', 404);
+    const r = (await pool.query('select image, mime from lab_pattern_underlays where concept_id=$1 and view=$2', [req.params.id, req.params.view])).rows[0]; if (!r) return bad(reply, 'Not found', 404);
+    return reply.type(r.mime).header('cache-control', 'private, no-store').send(r.image);
+  });
+  app.put('/v1/lab/concepts/:id/pattern/underlays/:view', { preHandler: pre, bodyLimit: 16_000_000 }, async (req, reply) => {
+    const L = await load(req.params.id); if (!L) return bad(reply, 'Not found', 404); if (!VIEWS.includes(req.params.view)) return bad(reply, 'Choose a view: outside, inside, top or bottom');
+    const m = /^data:image\/(png|jpe?g|webp|heic|heif|gif);base64,([A-Za-z0-9+/=\s]+)$/i.exec(String(req.body?.image || '')); if (!m) return bad(reply, 'Choose a picture of the sketch (PNG, JPEG, WebP or HEIC)');
+    let out, mime;
+    try { const img = sharp(Buffer.from(m[2], 'base64'), { limitInputPixels: 80e6 }).rotate(), meta = await img.metadata(); const sized = img.resize({ width: 2400, height: 2400, fit: 'inside', withoutEnlargement: true });
+      if (meta.hasAlpha) { out = await sized.png().toBuffer(); mime = 'image/png'; } else { out = await sized.jpeg({ quality: 85 }).toBuffer(); mime = 'image/jpeg'; } } catch { return bad(reply, 'That picture could not be read'); }
+    const place = cleanPlace(req.body?.place);
+    await pool.query(`insert into lab_pattern_underlays(concept_id, view, image, mime, place) values($1,$2,$3,$4,$5) on conflict(concept_id, view) do update set image=excluded.image, mime=excluded.mime, place=excluded.place, updated_at=now()`, [L.c.id, req.params.view, out, mime, place]);
+    return { view: req.params.view, place };
+  });
+  app.patch('/v1/lab/concepts/:id/pattern/underlays/:view', { preHandler: pre }, async (req, reply) => {
+    if (!UUID.test(String(req.params.id)) || !VIEWS.includes(req.params.view)) return bad(reply, 'Not found', 404);
+    const place = cleanPlace(req.body?.place), r = await pool.query('update lab_pattern_underlays set place=$3, updated_at=now() where concept_id=$1 and view=$2', [req.params.id, req.params.view, place]);
+    return r.rowCount ? { view: req.params.view, place } : bad(reply, 'Not found', 404);
+  });
+  app.delete('/v1/lab/concepts/:id/pattern/underlays/:view', { preHandler: pre }, async (req, reply) => {
+    if (!UUID.test(String(req.params.id)) || !VIEWS.includes(req.params.view)) return bad(reply, 'Not found', 404);
+    await pool.query('delete from lab_pattern_underlays where concept_id=$1 and view=$2', [req.params.id, req.params.view]); return { ok: true };
   });
 
   // a concept started from nothing: no plan, no AI, no sketch. A garment opens on a blank page with its flat's outline as a guide; a plush opens

@@ -3054,5 +3054,64 @@ await journey('J250', 'A footwear developer checks the shoe against its picture:
   } finally { await K(`/concepts/${cid}`, { method: 'DELETE' }); }
 });
 
+await journey('J251', 'A footwear designer draws by hand: lines sketched on the outside, the top and on the last itself (a line on a side shows on both), a hand-drawn line made into a seam that cuts the outside quarter, a photo of a paper sketch laid under the outside view, all kept with the shoe and drawn into the tech flats', async () => {
+  const cid = (await K('/concepts/from-scratch', { body: { category: 'footwear', style: 'sneaker', name: `Hand-drawn sneaker ${stamp}` } })).json.concept.id;
+  try {
+    const p0 = (await K(`/concepts/${cid}/pattern`)).json;
+    const put = await K(`/concepts/${cid}/pattern`, { method: 'PUT', body: { spec: { ...p0.spec, sketches: [{ on: 'lateral', pts: [[4, -1, 1], [5, -1.4, .6]], c: '#C2410C', size: .04 }, { on: 'top', pts: [[6, 0], [7, .4]] }, { on: 'nowhere', pts: [[1, 1]] }] } } });
+    ok(put.status === 200 && put.json.spec.sketches.length === 2 && put.json.spec.sketches[0].c === '#c2410c', '1. lines drawn by hand are kept with the shoe, bounded (one on no view is dropped)', put.json.spec.sketches);
+    const flats = await call(`/v1/lab/concepts/${cid}/flats.svg`, { token: kyleT });
+    ok(flats.status === 200 && /stroke="#c2410c"/.test(flats.text), '   and drawn into the tech flats');
+    await K(`/concepts/${cid}/pattern`, { method: 'PUT', body: { spec: p0.spec } });
+    // a paper sketch: a photo of a drawing, laid under the outside view
+    const paper = await sharp({ create: { width: 900, height: 420, channels: 3, background: '#f4f1ea' } }).composite([{ input: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="900" height="420"><path d="M60 330 C200 340 500 360 840 300 C820 220 700 200 560 150 C420 60 200 80 80 120 Z" fill="none" stroke="#222" stroke-width="6"/></svg>') }]).jpeg().toBuffer();
+    ok((await K(`/concepts/${cid}/pattern/underlays/front`, { method: 'PUT', body: { image: 'data:image/jpeg;base64,' + paper.toString('base64') } })).status === 422, '2. a paper sketch goes under one of the four views');
+    const ul = await K(`/concepts/${cid}/pattern/underlays/lateral`, { method: 'PUT', body: { image: 'data:image/jpeg;base64,' + paper.toString('base64'), place: { x: 0, y: -4.5, w: 11.5, opacity: .5 } } });
+    const list = (await K(`/concepts/${cid}/pattern/underlays`)).json.underlays, img = await call(`/v1/lab/concepts/${cid}/pattern/underlays/lateral`, { token: kyleT });
+    ok(ul.status === 200 && list.length === 1 && list[0].view === 'lateral' && list[0].place.w === 11.5 && img.status === 200, '   laid under the outside view, where it was put', list);
+    ok((await K(`/concepts/${cid}/pattern/underlays/lateral`, { method: 'PATCH', body: { place: { x: .2, y: -4.4, w: 99, opacity: .4 } } })).json.place.w === 24, '   moved and sized, within bounds');
+    if (!playwright) { ok(true, 'needs a browser'); return; }
+    const br = await playwright.chromium.launch();
+    try {
+      const oc = await br.newContext({ viewport: { width: 1366, height: 1024 } }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
+      const page = await oc.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
+      await page.goto(`${BASE}/lab/studio?concept=${cid}&view=pattern`, { waitUntil: 'networkidle' }); const F = await (await page.waitForSelector('#patFrame')).contentFrame(); await F.waitForFunction(() => window.FBPattern?.ready?.(), null, { timeout: 20000 });
+      await F.waitForSelector('#ul-lateral', { state: 'attached', timeout: 10000 });
+      ok(/Replace paper sketch/.test(await F.innerText('#skBox')), '3. the paper sketch lies under the outside view, and the Sketches panel says so');
+      const frameBox = async () => { const fe = await page.$('#patFrame'); return fe.boundingBox(); };
+      const draw = async (view, pts) => { const fb = await frameBox(); const s = []; for (const p of pts) s.push(await F.evaluate(([v, q]) => window.FBPattern.viewAt(v, q), [view, p])); await page.mouse.move(fb.x + s[0][0], fb.y + s[0][1]); await page.mouse.down(); for (const q of s.slice(1)) await page.mouse.move(fb.x + q[0], fb.y + q[1], { steps: 6 }); await page.mouse.up(); await sleep(200); };
+      await F.click('#skBtn'); await F.waitForSelector('#ktools:not(.hidden)');
+      await draw('lateral', [[5, -2.6], [6, -2.2], [7, -1.9]]);
+      let sk = await F.evaluate(() => window.FBPattern.sketches());
+      ok(sk.length === 1 && sk[0].on === 'lateral' && sk[0].pts.length > 4 && Math.abs(sk[0].pts[0][0] - 5) < .2, '4. a line drawn on the outside view is kept on the outside, where it was drawn', sk[0]?.pts?.slice(0, 2));
+      await F.click('#ktools [data-ka="undo"]'); ok((await F.evaluate(() => window.FBPattern.sketches())).length === 0, '   Undo takes it off');
+      await draw('top', [[6.5, -.6], [7.2, 0], [7.8, .5]]); sk = await F.evaluate(() => window.FBPattern.sketches()); ok(sk.length === 1 && sk[0].on === 'top', '   a line on the top view is the top\'s');
+      // a line across the outside quarter, made into a seam
+      await draw('lateral', [[3.05, -.35], [3.15, -1.6], [3.25, -3.1]]);
+      await F.click('#ktools [data-k="seam"]');
+      const mid = await F.evaluate(() => window.FBPattern.viewAt('lateral', [3.15, -1.6])), fb = await frameBox(); await page.mouse.click(fb.x + mid[0], fb.y + mid[1]); await sleep(300);
+      const opts = await F.evaluate(() => [...document.querySelectorAll('#kPiece option')].map(o => o.value));
+      ok(opts.includes('quarter-lat'), '5. a hand-drawn line on the outside offers the pieces it crosses', opts);
+      await F.selectOption('#kPiece', 'quarter-lat'); await F.click('#ktools [data-ka="cut"]');
+      await F.waitForFunction(() => window.FBPattern.pattern().pieces.some(q => q.id === 'quarter-lat-b1'), null, { timeout: 5000 });
+      ok((await F.evaluate(() => window.FBPattern.sketches())).length === 1, '   the outside quarter is cut in two along it; the line became the seam');
+      await F.click('#skBtn');
+      // on the last: a line drawn on its outside shows on the flat outside view too
+      await F.click('#lastBtn'); await F.waitForSelector('#lastCv'); await F.click('#ltools [data-l="sketch"]');
+      const lb = await (await F.$('#lastCv')).boundingBox(), pts = []; for (const q of [[7, -1.4], [7.6, -1.3], [8.2, -1.25], [8.8, -1.2]]) pts.push(await F.evaluate(q => window.FBPattern.lastAt('lateral', q), q));
+      await page.mouse.move(lb.x + pts[0][0], lb.y + pts[0][1]); await page.mouse.down(); for (const q of pts.slice(1)) await page.mouse.move(lb.x + q[0], lb.y + q[1], { steps: 5 }); await page.mouse.up(); await sleep(300);
+      sk = await F.evaluate(() => window.FBPattern.sketches());
+      const onLast = sk.filter(k => k.on === 'lateral'); ok(onLast.length === 1 && onLast[0].pts.length >= 4 && onLast[0].pts.every(p => p[0] > 6.5 && p[0] < 9.4), '6. a line drawn on the last is kept on the outside view\'s own inches, so the flat view shows it too', onLast[0]?.pts?.slice(0, 3));
+      if (process.env.SHOT_DIR) await page.screenshot({ path: process.env.SHOT_DIR + '/sketch-last.png' });
+      await F.click('#lastBtn');
+      if (process.env.SHOT_DIR) await page.screenshot({ path: process.env.SHOT_DIR + '/sketch-flats.png' });
+      await F.click('#saveP'); await F.waitForFunction(() => !window.FBPattern.dirty(), null, { timeout: 10000 });
+      const saved = (await K(`/concepts/${cid}/pattern`)).json;
+      ok(saved.spec.sketches.length === 2 && saved.spec.seams?.length === 1 && saved.pieces.some(q => q.id === 'quarter-lat-f1'), '7. saved: the sketches and the seam made from one', { sketches: saved.spec.sketches.map(k => k.on), seams: saved.spec.seams });
+      ok(errs.length === 0, 'no page errors', errs); await oc.close();
+    } finally { await br.close(); }
+  } finally { await K(`/concepts/${cid}`, { method: 'DELETE' }); }
+});
+
 shops.close(); brave.close();
 process.exit(summary() ? 1 : 0);
