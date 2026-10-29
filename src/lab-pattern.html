@@ -50,6 +50,7 @@ table.pcs tr[data-pid]{cursor:pointer}table.pcs tr.on{background:#effff6}
     <div class="seg" role="group" aria-label="What to show" id="modeSeg"><button type="button" data-t="0" aria-pressed="true">Product</button><button type="button" data-t="0.45" aria-pressed="false">Exploded</button><button type="button" data-t="1" aria-pressed="false">Cutting layout</button></div>
     <button class="btn go" type="button" id="play" title="Lift the pieces off the product and lay them out flat">Explode it</button>
     <button class="btn q" type="button" id="editBtn" aria-pressed="false" title="Edit the pieces: points, notches, seam allowance, grain">Edit pieces</button>
+    <button class="btn q hidden" type="button" id="lastBtn" aria-pressed="false" title="The shoe on its last in 3D: draw a seam on it, and see the pieces flattened off it">On the last</button>
     <select class="t" id="size" aria-label="Size"></select>
     <button class="btn q" type="button" id="dxf" title="The pieces as an AAMA/ASTM DXF in this size, for a pattern system (Gerber, Lectra, Optitex, CLO)">DXF</button>
     <button class="btn q" type="button" id="svgDl" title="The pieces at real size: print at 100%">SVG 1:1</button>
@@ -58,6 +59,7 @@ table.pcs tr[data-pid]{cursor:pointer}table.pcs tr.on{background:#effff6}
     <div class="stage">
       <div class="scrub"><span class="mono">Product</span><input type="range" id="t" min="0" max="1" step="0.01" value="0" aria-label="From the product to the pattern pieces"><span class="mono">Pattern</span><span class="lbl" id="tLbl">On the product</span></div>
       <div class="scrub hidden" id="etools" role="toolbar" aria-label="Edit the piece"><select class="t" id="ePiece" aria-label="Piece"></select><button class="btn sm q" type="button" data-e="undo" title="Undo (Ctrl+Z)">Undo</button><button class="btn sm q" type="button" data-e="redo" title="Redo (Ctrl+Shift+Z)">Redo</button><button class="btn sm q" type="button" data-e="add" title="A point halfway to the next">Add point</button><button class="btn sm q" type="button" data-e="del" title="Delete the chosen points (Delete)">Delete point</button><button class="btn sm q" type="button" data-e="notch" title="A notch at the chosen point (N)">Notch</button><button class="btn sm q" type="button" data-e="reset">Reset piece</button><span class="lbl" id="eHint">Click a point; Shift-click a second to measure a run</span></div>
+      <div class="scrub hidden" id="ltools" role="toolbar" aria-label="On the last"><button class="btn sm go" type="button" data-l="draw">Draw a seam</button><button class="btn sm q hidden" type="button" data-l="undo">Undo point</button><button class="btn sm q hidden" type="button" data-l="cancel">Cancel</button><select class="t hidden" id="lPiece" aria-label="Piece to cut"></select><button class="btn sm go hidden" type="button" data-l="cut">Cut it along the seam</button><button class="btn sm q" type="button" data-l="side">Outside</button><button class="btn sm q" type="button" data-l="other">Inside</button><button class="btn sm q" type="button" data-l="top">Top</button><span class="lbl" id="lHint">Drag to turn the last</span></div>
       <div id="canvas" aria-live="polite"></div>
     </div>
     <aside class="side" id="side"></aside>
@@ -67,6 +69,7 @@ table.pcs tr[data-pid]{cursor:pointer}table.pcs tr.on{background:#effff6}
 import { garmentPattern, applyEdits, simplifyClosed, runLength, plushPattern, cleanPlush, layoutOf, explodeAt, assembled, offsetOf, boundsOf, areaOf, fabricName, cutWords, fillGrams } from '/lab/lab-pattern.js';
 import { STYLES } from '/lab/lab-flats.js';
 import { footwearPattern, cleanFootwear, sizeRun, hideArea } from '/lab/lab-footwear.js';
+import { shellOf, onSurface, cutOutline } from '/lab/lab-last-shell.js';
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)],esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const TOKEN=()=>{try{return localStorage.getItem('fb.admin.token')||localStorage.getItem('fb.client.token')||''}catch{return ''}};
 async function api(path,o={}){const r=await fetch(path,{method:o.method||(o.body?'POST':'GET'),headers:{Authorization:'Bearer '+TOKEN(),...(o.body?{'Content-Type':'application/json'}:{})},body:o.body?JSON.stringify(o.body):undefined});const j=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(new Error(j.error||'Something went wrong'),{status:r.status});return j}
@@ -82,6 +85,7 @@ function build(){PAT0=D.kind==='footwear'?footwearPattern(SPEC,Number(SIZE)):D.k
 function drawPieces(){
   if(!PAT){$('#canvas').innerHTML='';return}
   if(EDIT)return drawEditor();
+  if(LASTV)return drawLast();
   const lay=layoutOf(PAT,{width:Number(SPEC.width)||58});let body='',bb;
   if(T>=.999){
     let y0=0;const items=[];
@@ -196,6 +200,7 @@ async function loadPic(){if(PICURL||!D.concept.hasImage)return;try{const r=await
 function paintSide(){
   const s=$('#side');if(!PAT){s.innerHTML='';return}
   if(EDIT){s.innerHTML=editSide();return}
+  if(LASTV){s.innerHTML=lastSide();return}
   const lay=layoutOf(PAT,{width:Number(SPEC.width)||58}),o=D.options,vis=PAT.pieces.filter(q=>q.cut>0);
   const sel=(id,map,v)=>`<select data-k="${id}">${Object.entries(map).map(([k,l])=>`<option value="${esc(k)}"${String(k)===String(v)?' selected':''}>${esc(l)}</option>`).join('')}</select>`;
   let h='';
@@ -310,6 +315,61 @@ $('#side').addEventListener('change',async e=>{
   if(e.target.id==='l3PicFile'){const fs=[...e.target.files].slice(0,4);if(!fs.length)return;e.stopImmediatePropagation();await l3Generate({from:'photos',images:await Promise.all(fs.map(fileUrl))});return}
 },true);
 
+// ---- On the last: the shoe's pieces on its last in 3D (src/lab-last-shell.js); a seam drawn on it cuts a piece in two ----
+let LASTV=false,VIEW={yaw:0,pitch:.35},LDRAW=null,LDRAG=null,LCV=null,LITEMS=[],LPROJ=null;
+const SIDEOF=q=>/-med(-|$)/.test(q.id)?'medial':'lateral';
+const cuttable=side=>PAT.pieces.filter(q=>q.place.view==='front'&&!q.component&&q.cut>0&&q.id!=='tongue'&&q.shown&&!/^(vamp|toe-cap|vamp-lining|apron)$/.test(q.id)&&SIDEOF(q)===side);
+function lastProj(W,H){const sh=shellOf(PAT.last),L=PAT.last.length,c=[L/2,1.8,0],cy=Math.cos(VIEW.yaw),sy=Math.sin(VIEW.yaw),cp=Math.cos(VIEW.pitch),sp=Math.sin(VIEW.pitch),k=Math.min(W/(L+2.4),H/7.5);
+  const rot=p=>{const x=p[0]-c[0],y=p[1]-c[1],z=p[2]-c[2],xr=cy*x-sy*z,zr=sy*x+cy*z;return[xr,cp*y-sp*zr,sp*y+cp*zr]};
+  return{sh,rot,pr:p=>{const r=rot(p);return[W/2+k*r[0],H*.55-k*r[1],r[2]]}}}
+function drawLast(){
+  const box=$('#canvas');if(!LCV||!box.contains(LCV)){box.innerHTML='<canvas id="lastCv" style="width:100%;height:560px;display:block;background:#fbfaf7;border-radius:12px;touch-action:none;cursor:grab" aria-label="The shoe on its last: drag to turn it"></canvas>';LCV=$('#lastCv')}
+  const dpr=window.devicePixelRatio||1,W=LCV.clientWidth||900,H=560;LCV.width=W*dpr;LCV.height=H*dpr;const g=LCV.getContext('2d');g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,W,H);
+  const P=lastProj(W,H);LPROJ=P;const items=[],light=[-.3,.6,.75],ll=Math.hypot(...light);
+  for(const side of ['lateral','medial']){const h=P.sh[side],m=h.m,at=(i,j)=>h.pts[i*(m+1)+j];
+    for(let i=0;i<h.n;i++)for(let j=0;j<m;j++){const q=[at(i,j),at(i+1,j),at(i+1,j+1),at(i,j+1)],s=q.map(P.pr),r=q.map(P.rot),u=[r[2][0]-r[0][0],r[2][1]-r[0][1],r[2][2]-r[0][2]],v=[r[3][0]-r[1][0],r[3][1]-r[1][1],r[3][2]-r[1][2]],nn=[u[1]*v[2]-u[2]*v[1],u[2]*v[0]-u[0]*v[2],u[0]*v[1]-u[1]*v[0]],nl=Math.hypot(...nn)||1;
+      const sh=.45+.55*Math.abs((nn[0]*light[0]+nn[1]*light[1]+nn[2]*light[2])/(nl*ll));items.push({d:s.reduce((a,p)=>a+p[2],0)/4,quad:s,col:`rgb(${Math.round(233*sh)},${Math.round(225*sh)},${Math.round(211*sh)})`,side,q})}}
+  // the bottom, between the two feather lines
+  const fe=side=>{const h=P.sh[side];return Array.from({length:h.n+1},(_,i)=>h.pts[i*(h.m+1)])},bot=[...fe('lateral'),...fe('medial').reverse()].map(P.pr);items.push({d:Math.min(...bot.map(p=>p[2]))-1,poly:bot,col:'#cfc8bb'});
+  // the pieces' lines, and the seams, on the surface
+  const line=(side,pts,col,w,dash)=>{const h=P.sh[side];let prev=null;for(const pt of pts){const s3=P.pr(onSurface(h,pt,true));if(prev)items.push({d:(prev[2]+s3[2])/2+.04,seg:[prev,s3],col,w,dash});prev=s3}};
+  const dense=(pts,closed)=>{const out=[];const n=closed?pts.length:pts.length-1;for(let i=0;i<n;i++){const a=pts[i],b=pts[(i+1)%pts.length],k=Math.max(1,Math.ceil(Math.hypot(b[0]-a[0],b[1]-a[1])/.3));for(let t=0;t<k;t++)out.push([a[0]+(b[0]-a[0])*t/k,a[1]+(b[1]-a[1])*t/k])}if(!closed)out.push(pts[pts.length-1]);else out.push(out[0]);return out};
+  for(const q of PAT.pieces){if(q.place.view!=='front'||q.component||!q.shown||/lining|foam|counter|puff|tongue/.test(q.id))continue;const pts=dense(q.shown,true),sides=/^(vamp|toe-cap|apron)$/.test(q.id)?['lateral','medial']:/-med(-|$)/.test(q.id)?['medial']:/-lat(-|$)/.test(q.id)?['lateral']:['lateral','medial'];for(const sd of sides)line(sd,pts,SEL===q.id?'#17603a':'#3d3a36',SEL===q.id?2.4:1.2)}
+  for(const sm of SPEC.seams||[])line(sm.side,dense(sm.pts,false),'#c2410c',2.6);
+  if(LDRAW&&LDRAW.pts.length)line(LDRAW.side,dense(LDRAW.pts,false),'#2a6df4',2.6,true);
+  items.sort((a,b)=>a.d-b.d);LITEMS=items;
+  for(const it of items){g.beginPath();if(it.seg){g.moveTo(it.seg[0][0],it.seg[0][1]);g.lineTo(it.seg[1][0],it.seg[1][1]);g.strokeStyle=it.col;g.lineWidth=it.w;g.setLineDash(it.dash?[5,4]:[]);g.stroke();g.setLineDash([]);continue}
+    const pl=it.quad||it.poly;g.moveTo(pl[0][0],pl[0][1]);for(const p of pl.slice(1))g.lineTo(p[0],p[1]);g.closePath();g.fillStyle=it.col;g.fill();if(it.quad){g.strokeStyle=it.col;g.lineWidth=.6;g.stroke()}}
+  if(LDRAW)for(const pt of LDRAW.pts){const s3=P.pr(onSurface(P.sh[LDRAW.side],pt,true));g.beginPath();g.arc(s3[0],s3[1],3.5,0,7);g.fillStyle='#2a6df4';g.fill()}
+}
+// the place on the surface under the pointer: the nearest quad that holds it, as a side-view point (x along, y downward) and its side
+function pickLast(px,py){for(let k=LITEMS.length-1;k>=0;k--){const it=LITEMS[k];if(!it.quad)continue;const s=it.quad;
+  for(const [a,b,c,ia,ib,ic] of [[s[0],s[1],s[2],0,1,2],[s[0],s[2],s[3],0,2,3]]){const d=(b[1]-c[1])*(a[0]-c[0])+(c[0]-b[0])*(a[1]-c[1]);if(Math.abs(d)<1e-9)continue;const w0=((b[1]-c[1])*(px-c[0])+(c[0]-b[0])*(py-c[1]))/d,w1=((c[1]-a[1])*(px-c[0])+(a[0]-c[0])*(py-c[1]))/d,w2=1-w0-w1;
+    if(w0>=-1e-6&&w1>=-1e-6&&w2>=-1e-6){const q=it.q,p3=[0,1,2].map(t=>w0*q[ia][t]+w1*q[ib][t]+w2*q[ic][t]);return{side:it.side,pt:[Math.round(p3[0]*1000)/1000,Math.round(-p3[1]*1000)/1000]}}}}return null}
+function lastTools(){const d=Boolean(LDRAW);$$('#ltools [data-l="undo"],#ltools [data-l="cancel"]').forEach(b=>b.classList.toggle('hidden',!d));const cands=d&&LDRAW.pts.length>=2?cuttable(LDRAW.side).filter(q=>cutOutline(q.shown,LDRAW.pts)):[];
+  $('#lPiece').classList.toggle('hidden',!cands.length);$('#ltools [data-l="cut"]').classList.toggle('hidden',!cands.length);$('#ltools [data-l="draw"]').classList.toggle('hidden',d);
+  $('#lPiece').innerHTML=cands.map(q=>`<option value="${esc(q.id)}">${esc(q.name)}</option>`).join('');
+  $('#lHint').textContent=!d?'Drag to turn the last':!LDRAW.pts.length?'Click on the last where the seam starts':cands.length?'Click to carry the seam on, or cut the piece along it':'Click on to carry the seam across a piece, from edge to edge'}
+function lastSide(){const f=PAT.flat,pct=v=>`${Math.round(v*1000)/10}%`;
+  return`<section class="readbox"><h4>On the last</h4><p class="note">The shoe's pieces on its last${PAT.last.measured?` (the measured last: ${esc(PAT.last.measured.name)})`:''}. Drag to turn it. <b>Draw a seam</b>: click along the last where it runs, from one edge of a piece to the other, then cut the piece along it. The two pieces are flattened off the last with the rest.</p></section>
+    <section><h4>Flattened off the last</h4><label class="chk"><input type="checkbox" id="flatOn"${SPEC.flatten===false?'':' checked'}> Cut the pieces flattened off the last's surface</label>
+    ${f?`<p class="note">The side of the last is peeled flat like a taped forme (a conformal map: the angles kept). Stretch in the flattening, outside: ${pct(f.lateral.rms)} on average, ${pct(f.lateral.max)} at most; inside: ${pct(f.medial.rms)}, ${pct(f.medial.max)}. The most is at the toe's tip, where the last turns tightest.</p>`:'<p class="note">The pieces are cut as the side view draws them.</p>'}</section>
+    <section><h4>Seams drawn on the last <span class="mono">${(SPEC.seams||[]).length}</span></h4>${(SPEC.seams||[]).map((sm,k)=>`<div class="find info"><i></i><span><b>${esc(sm.name)}</b>: cuts the ${esc((PAT0.pieces.find(q=>q.id.startsWith(sm.piece))||{name:sm.piece}).name.replace(/ \((front|back)\)$/,'').toLowerCase())} (${sm.side==='medial'?'inside':'outside'}) · <button class="btn sm q" type="button" data-lrm="${k}">Remove</button></span></div>`).join('')||'<p class="note">None yet.</p>'}
+    <button class="btn go" type="button" id="saveP"${DIRTY?'':' disabled'}>${DIRTY?'Save the shoe':'Saved'}</button></section>`}
+function setSeams(seams){const ed=SPEC.edits;SPEC=cleanFootwear({...SPEC,seams});if(ed)SPEC.edits=ed;DIRTY=true;build();drawPieces();paintSide();$('#sub').textContent=`Pattern · ${PAT.label} · ${PAT.size} · ${PAT.pieces.filter(q=>q.cut>0).length} pieces`}
+$('#lastBtn').addEventListener('click',()=>{LASTV=!LASTV;if(LASTV&&EDIT)$('#editBtn').click();LDRAW=null;$('#lastBtn').setAttribute('aria-pressed',String(LASTV));$('#lastBtn').textContent=LASTV?'Done':'On the last';$('#ltools').classList.toggle('hidden',!LASTV);document.querySelector('.scrub:not(#etools):not(#ltools)').classList.toggle('hidden',LASTV);$('#modeSeg').classList.toggle('hidden',LASTV);$('#play').classList.toggle('hidden',LASTV);$('#editBtn').classList.toggle('hidden',LASTV);LCV=null;if(LASTV)lastTools();drawPieces();paintSide()});
+$('#ltools').addEventListener('click',e=>{const b=e.target.closest('[data-l]');if(!b)return;const a=b.dataset.l;
+  if(a==='side'){VIEW={yaw:0,pitch:.35}}else if(a==='other'){VIEW={yaw:Math.PI,pitch:.35}}else if(a==='top'){VIEW={yaw:0,pitch:1.35}}
+  else if(a==='draw'){LDRAW={side:null,pts:[]}}else if(a==='cancel'){LDRAW=null}else if(a==='undo'){LDRAW?.pts.pop();if(LDRAW&&!LDRAW.pts.length)LDRAW.side=null}
+  else if(a==='cut'){const id=$('#lPiece').value;if(!id||!LDRAW)return;const n=(SPEC.seams||[]).length+1,nm=PAT.pieces.find(q=>q.id===id)?.name||id;setSeams([...(SPEC.seams||[]),{piece:id,side:LDRAW.side,pts:LDRAW.pts,name:`Seam ${n}`}]);LDRAW=null;toast(`The ${nm.toLowerCase()} is cut in two along the seam: save the shoe to keep it`)}
+  lastTools();drawPieces()});
+$('#canvas').addEventListener('pointerdown',e=>{if(!LASTV||e.target.id!=='lastCv')return;LDRAG={x:e.clientX,y:e.clientY,yaw:VIEW.yaw,pitch:VIEW.pitch,moved:false};e.target.setPointerCapture?.(e.pointerId)});
+$('#canvas').addEventListener('pointermove',e=>{if(!LASTV||!LDRAG)return;const dx=e.clientX-LDRAG.x,dy=e.clientY-LDRAG.y;if(!LDRAG.moved&&Math.hypot(dx,dy)<5)return;LDRAG.moved=true;VIEW.yaw=LDRAG.yaw+dx*.01;VIEW.pitch=Math.max(-1.4,Math.min(1.5,LDRAG.pitch+dy*.01));drawLast()});
+$('#canvas').addEventListener('pointerup',e=>{if(!LASTV||!LDRAG)return;const moved=LDRAG.moved;LDRAG=null;if(moved||!LDRAW)return;const r=LCV.getBoundingClientRect(),hit=pickLast(e.clientX-r.left,e.clientY-r.top);if(!hit)return;
+  if(LDRAW.side&&hit.side!==LDRAW.side){toast(`The seam is on the ${LDRAW.side==='medial'?'inside':'outside'}: keep to that side, or turn the last`);return}LDRAW.side=hit.side;LDRAW.pts.push(hit.pt);lastTools();drawLast()});
+$('#side').addEventListener('click',e=>{const b=e.target.closest('[data-lrm]');if(!b)return;const k=Number(b.dataset.lrm);setSeams((SPEC.seams||[]).filter((_,i)=>i!==k));toast('Seam removed: save the shoe to keep it')});
+$('#side').addEventListener('change',e=>{if(e.target.id!=='flatOn')return;e.stopImmediatePropagation();const ed=SPEC.edits;SPEC=cleanFootwear({...SPEC,flatten:e.target.checked});if(ed)SPEC.edits=ed;DIRTY=true;build();drawPieces();paintSide()},true);
+
 // footwear: the size picker lists the size run, the sample size first chosen
 function fwSizes(){const run=sizeRun(SPEC).map(r=>r.size);if(!run.some(v=>String(v)===String(SIZE)))SIZE=SPEC.size;const all=[...new Set([...run,SPEC.size])].sort((a,b)=>a-b);$('#size').classList.remove('hidden');$('#size').innerHTML=all.map(v=>`<option value="${v}"${String(v)===String(SIZE)?' selected':''}>Size ${v}</option>`).join('')}
 async function boot(){
@@ -319,11 +379,11 @@ async function boot(){
   if(D.kind==='soon'||D.kind==='none'){$('#sub').textContent='Pattern';$('#modeSeg').classList.add('hidden');$$('#play,#size,#dxf,#svgDl').forEach(x=>x.classList.add('hidden'));
     $('#main').innerHTML=`<div class="empty"><b>${D.kind==='soon'?esc(D.soon):'The Lab cannot draft a pattern for this piece yet.'}</b><p class="note">${D.kind==='soon'?'Until then the tech pack carries its specification, and you can draw it on the Picture.':'Set what the piece is on the Flat front (the style), and its pattern pieces appear here.'}</p></div>`;return}
   SPEC=D.spec;SIZE=D.flat?.size||'M';const S=D.flat?STYLES[D.flat.style]:null;
-  if(D.kind==='footwear'){SIZE=SPEC.size;fwSizes();l3Refresh();if(D.concept.hasImage){loadPic();if(!D.saved)setTimeout(readPicture,50)}}
+  if(D.kind==='footwear'){SIZE=SPEC.size;fwSizes();l3Refresh();$('#lastBtn').classList.remove('hidden');if(D.concept.hasImage){loadPic();if(!D.saved)setTimeout(readPicture,50)}}
   else if(D.kind==='garment'&&!S?.oneSize)$('#size').innerHTML=D.options.sizes.map(s=>`<option${s===SIZE?' selected':''}>${s}</option>`).join('');else $('#size').classList.add('hidden');
   build();$('#sub').textContent=`Pattern · ${PAT.label} · ${PAT.size} · ${PAT.pieces.filter(q=>q.cut>0).length} pieces`;
   T=new URLSearchParams(location.search).get('t')==='1'?1:0;$('#t').value=T;drawPieces();paintSide();
-  window.FBPattern={ready:()=>true,dirty:()=>DIRTY,explode:()=>goTo(1,3200),at:t=>{T=t;$('#t').value=t;drawPieces()},pattern:()=>PAT};
+  window.FBPattern={ready:()=>true,dirty:()=>DIRTY,explode:()=>goTo(1,3200),at:t=>{T=t;$('#t').value=t;drawPieces()},pattern:()=>PAT,lastAt:(side,pt)=>{if(!LPROJ)return null;const p=LPROJ.pr(onSurface(LPROJ.sh[side],pt));return[p[0],p[1]]}};
 }
 boot();
 </script>
