@@ -8,11 +8,12 @@
 //   POST /v1/lab/concepts/from-scratch           {name?, category, style?, shape?} a concept with nothing drawn yet: a blank page in Design to draw on,
 //                                                with a guide (the flat's outline for a garment, the plush's shape) → { concept, studio }
 import { STYLES, SIZES, FITS, defaultParams, detectStyle } from './lab-flats.js';
-import { garmentPattern, applyEdits, cleanPatternEdits, patternDxfAama, plushPattern, cleanPlush, plushDefaults, patternSvg, patternDxf, yardage, fillGrams, PLUSH_SHAPES, PLUSH_EARS, PLUSH_FABRICS, PLUSH_EYES, PLUSH_AGES } from './lab-pattern.js';
+import { PLUSH_TYPE, PLUSH_SNOUTS, PLUSH_HORNS, PLUSH_MANES, PLUSH_TAILS, PLUSH_PARTS, garmentPattern, applyEdits, cleanPatternEdits, patternDxfAama, plushPattern, cleanPlush, plushDefaults, patternSvg, patternDxf, yardage, fillGrams, PLUSH_SHAPES, PLUSH_EARS, PLUSH_FABRICS, PLUSH_EYES, PLUSH_AGES } from './lab-pattern.js';
 import { CATEGORIES } from './lab.js';
 import { silhouette, readShoe, proposal } from './lab-shoe-read.js';
 import { readPlush, plushProposal } from './lab-plush-read.js';
 import { reviewShoe, openaiAsk, BAR as REVIEW_BAR } from './lab-shoe-review.js';
+import { reviewPlush } from './lab-plush-review.js';
 import { trackedFetch, timed } from './telemetry.js';
 import { callJsonSchema } from './studio.js';
 import { createHash } from 'node:crypto';
@@ -77,7 +78,7 @@ export function registerLabPatternRoutes(app, d) {
   const looksOf = L => { const m = partLooks(L.c.spec?.materials); return { colours: { ...(L.spec?.colours || {}), ...m.colours }, tex: m.tex }; };
   const patternOf = (L, size) => applyEdits(draft(L, size), L.spec.edits);
   const draft = (L, size) => L.kind === 'plush' ? plushPattern(L.spec) : L.kind === 'footwear' ? footwearPattern(L.spec, size !== '' && size != null && Number.isFinite(Number(size)) ? Number(size) : null) : L.kind === 'garment' && L.flat ? (p => p && L.spec.sa ? { ...p, sa: L.spec.sa } : p)(garmentPattern(L.flat, SIZES.includes(size) ? size : L.flat.size || 'M')) : null;
-  const options = { footwear: { styles: Object.fromEntries(Object.entries(FW_STYLES).map(([k, v]) => [k, v.label])), toes: Object.fromEntries(Object.entries(TOES).map(([k, v]) => [k, v.label])), systems: SYSTEMS, widths: SHOE_WIDTHS, uppers: UPPERS, linings: LININGS, limits: SIZE_LIMITS }, plush: { shapes: PLUSH_SHAPES, ears: PLUSH_EARS, fabrics: PLUSH_FABRICS, eyes: PLUSH_EYES, ages: PLUSH_AGES }, widths: WIDTHS, seamAllowances: [.25, .375, .5, .625], sizes: SIZES, fits: FITS,
+  const options = { footwear: { styles: Object.fromEntries(Object.entries(FW_STYLES).map(([k, v]) => [k, v.label])), toes: Object.fromEntries(Object.entries(TOES).map(([k, v]) => [k, v.label])), systems: SYSTEMS, widths: SHOE_WIDTHS, uppers: UPPERS, linings: LININGS, limits: SIZE_LIMITS }, plush: { shapes: PLUSH_SHAPES, types: PLUSH_TYPE, ears: PLUSH_EARS, fabrics: PLUSH_FABRICS, eyes: PLUSH_EYES, ages: PLUSH_AGES, snouts: PLUSH_SNOUTS, horns: PLUSH_HORNS, manes: PLUSH_MANES, tails: PLUSH_TAILS, parts: PLUSH_PARTS }, widths: WIDTHS, seamAllowances: [.25, .375, .5, .625], sizes: SIZES, fits: FITS,
     styles: Object.fromEntries(Object.entries(STYLES).map(([k, v]) => [k, { label: v.label, kind: v.kind, category: v.category }])), soon: SOON };
 
   app.get('/v1/lab/concepts/:id/pattern', { preHandler: pre }, async (req, reply) => {
@@ -168,9 +169,10 @@ export function registerLabPatternRoutes(app, d) {
   const reviews = new Map(), spent = { day: '', n: 0 };
   // the judges: Claude and, when OPENAI_API_KEY is set, an OpenAI vision model as a second opinion (SHOE_CHECKER=claude|openai|both, both by
   // default). SHOE_REVIEW_FIXTURE stands in for them in tests: an array of answers (one judge), or {name: [answers]} for several.
-  const reviewers = () => {
+  // a plush is checked the same way (src/lab-plush-review.js); PLUSH_REVIEW_FIXTURE stands in for its judges in tests
+  const reviewers = (fixture = 'SHOE_REVIEW_FIXTURE') => {
     if (env.AI_FIXTURE || (!env.ANTHROPIC_API_KEY && !env.OPENAI_API_KEY)) {
-      let fx = null; try { const raw = String(env.SHOE_REVIEW_FIXTURE || '').trim(); fx = !raw ? null : JSON.parse(/^[[{]/.test(raw) ? raw : readFileSync(raw, 'utf8')); } catch { fx = null; }
+      let fx = null; try { const raw = String(env[fixture] || '').trim(); fx = !raw ? null : JSON.parse(/^[[{]/.test(raw) ? raw : readFileSync(raw, 'utf8')); } catch { fx = null; }
       if (!fx) return [];
       const sets = Array.isArray(fx) ? { Claude: fx } : fx;
       return Object.entries(sets).filter(([, v]) => Array.isArray(v) && v.length).map(([name, list]) => { let i = 0; return { name, ask: async () => { const r = list[Math.min(i, list.length - 1)]; i++; await new Promise(res => setTimeout(res, Number(env.AI_FIXTURE_DELAY_MS) || 0)); return r; } }; });
@@ -181,19 +183,20 @@ export function registerLabPatternRoutes(app, d) {
     return out;
   };
   app.post('/v1/lab/concepts/:id/pattern/review', { preHandler: pre }, async (req, reply) => {
-    const L = await load(req.params.id); if (!L) return bad(reply, 'Not found', 404); if (L.kind !== 'footwear') return bad(reply, 'The developer review is for footwear');
-    const img = (await pool.query('select image from lab_concepts where id=$1', [L.c.id])).rows[0]?.image; if (!img) return bad(reply, 'This concept has no picture to check the shoe against');
-    if ([...reviews.values()].some(r => r.conceptId === L.c.id && r.status === 'running')) return bad(reply, 'A review of this shoe is already running', 409);
-    let judges = reviewers();
+    const L = await load(req.params.id); if (!L) return bad(reply, 'Not found', 404); if (L.kind !== 'footwear' && L.kind !== 'plush') return bad(reply, 'The developer review is for footwear and plush');
+    const thing = L.kind === 'plush' ? 'toy' : 'shoe';
+    const img = (await pool.query('select image from lab_concepts where id=$1', [L.c.id])).rows[0]?.image; if (!img) return bad(reply, `This concept has no picture to check the ${thing} against`);
+    if ([...reviews.values()].some(r => r.conceptId === L.c.id && r.status === 'running')) return bad(reply, `A review of this ${thing} is already running`, 409);
+    let judges = reviewers(L.kind === 'plush' ? 'PLUSH_REVIEW_FIXTURE' : 'SHOE_REVIEW_FIXTURE');
     const today = new Date().toISOString().slice(0, 10); if (spent.day !== today) Object.assign(spent, { day: today, n: 0 });
     const cap = Number(env.SHOE_REVIEW_DAILY) || 40, capped = judges.length > 0 && spent.n >= cap; if (capped) judges = []; else if (judges.length) spent.n++;
-    const spec = req.body?.spec && typeof req.body.spec === 'object' ? { ...cleanFootwear(req.body.spec), ...(L.spec.edits ? { edits: L.spec.edits } : {}) } : L.spec;
+    const spec = req.body?.spec && typeof req.body.spec === 'object' ? (L.kind === 'plush' ? cleanPlush(req.body.spec) : { ...cleanFootwear(req.body.spec), ...(L.spec.edits ? { edits: L.spec.edits } : {}) }) : L.spec;
     const id = createHash('sha1').update(`${L.c.id}${Date.now()}${Math.random()}`).digest('hex').slice(0, 16), job = { id, conceptId: L.c.id, status: 'running', bar: REVIEW_BAR, rounds: [], outline: null, started: Date.now(), capped };
     if (reviews.size > 200) for (const [k, r] of reviews) if (r.status !== 'running' && Date.now() - r.started > 3600e3) reviews.delete(k);
     reviews.set(id, job);
-    reviewShoe({ spec, photo: img, name: L.c.name, judges, onRound: r => { if (r.n === 0) job.outline = r; else job.rounds = [...job.rounds, r]; } })
-      .then(res => Object.assign(job, res, { result: res.status, status: 'done', note: capped ? `Today's ${cap} developer reviews are used: only the outline and the fixed checks ran. ${res.note}` : res.note }))
-      .catch(e => { log.warn?.({ err: e.message }, 'shoe review failed'); Object.assign(job, { status: 'failed', error: 'The review could not finish: try again' }); });
+    (L.kind === 'plush' ? reviewPlush : reviewShoe)({ spec, photo: img, name: L.c.name, judges, onRound: r => { if (r.n === 0) job.outline = r; else job.rounds = [...job.rounds, r]; } })
+      .then(res => Object.assign(job, res, { result: res.status, status: 'done', note: capped ? `Today's ${cap} developer reviews are used: only the fixed checks ran. ${res.note}` : res.note }))
+      .catch(e => { log.warn?.({ err: e.message }, `${thing} review failed`); Object.assign(job, { status: 'failed', error: 'The review could not finish: try again' }); });
     return reply.code(202).send({ id, reviewer: judges.length > 0, judges: judges.map(j => j.name), bar: REVIEW_BAR });
   });
   app.get('/v1/lab/concepts/:id/pattern/review/:rid', { preHandler: pre }, async (req, reply) => {
@@ -272,7 +275,7 @@ export function registerLabPatternRoutes(app, d) {
     const b = req.body || {}, category = CATEGORIES.some(x => x.id === b.category) ? b.category : null; if (!category) return bad(reply, 'Choose what you are designing');
     const shoe = category === 'footwear' ? (FW_STYLES[b.style] ? b.style : 'sneaker') : null, style = !shoe && STYLES[b.style] ? b.style : null, shape = PLUSH_SHAPES[b.shape] ? b.shape : 'bear';
     if (style && STYLES[style].category !== category && !(category === 'knitwear' && STYLES[style].category === 'tops')) return bad(reply, 'That style is not in that category');
-    const label = shoe ? FW_STYLES[shoe].label : category === 'plush' ? PLUSH_SHAPES[shape].replace(/ \(.*$/, '') : style ? STYLES[style].label : CATEGORIES.find(x => x.id === category).label;
+    const label = shoe ? FW_STYLES[shoe].label : category === 'plush' ? PLUSH_TYPE[shape] : style ? STYLES[style].label : CATEGORIES.find(x => x.id === category).label;
     const name = clip(b.name, 120) || `Untitled ${label.toLowerCase()}`;
     const spec = { description: 'Started from scratch in Design.', silhouette: style ? STYLES[style].label : category === 'plush' || shoe ? label : '', fabric: '', fit: '', details: [], trims: '', colors: [], scratch: true, ...(style ? { style, template: 'none' } : {}), ...(category === 'plush' ? { plush: { shape } } : {}), ...(shoe ? { footwear: { style: shoe } } : {}) };
     const r = (await pool.query(`insert into lab_concepts(name, category, role, spec, twist, created_by, client_id) values($1,$2,'core',$3,'',$4,$5) returning id`, [name, category, spec, actorOf(req), own(req)])).rows[0];

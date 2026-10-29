@@ -3388,5 +3388,43 @@ await journey('J257', 'A luxury elephant, made as an elephant: started as an ele
   } finally { if (cid) await K(`/concepts/${cid}`, { method: 'DELETE' }); }
 });
 
+await journey('J258', 'A fox, drawn as a fox and checked against its picture: a plush concept started as a four-legged sitting animal opens on that body with the kit\'s parts to choose (snout, horn, mane, tail, head size, wings, spikes); a horn is put on and taken off; then Claude and ChatGPT each score the front, back and side against the concept\'s picture, ask for a long snout, a bushy tail and the fox\'s colours (and disagree on the head, left for a person), the toy is drawn again and clears 90, and the result is used and saved', async () => {
+  const cid = (await K('/concepts/from-scratch', { body: { category: 'plush', shape: 'quad', name: `Fox ${stamp}` } })).json.concept?.id;
+  try {
+    const g = (await K(`/concepts/${cid}/pattern`)).json;
+    ok(g.kind === 'plush' && g.spec.shape === 'quad' && g.options.plush.types.quad === 'Four-legged sitting' && g.options.plush.parts.horn.includes('quad') && g.options.plush.tails.bushy, '1. a four-legged sitting body is a type of its own, with the kit\'s parts', g.spec);
+    // the concept's picture: an orange fox, sitting, drawn by the kit itself
+    const { plushPattern } = await import('../../src/lab-pattern.js'), { plushViews } = await import('../../src/lab-plush-views.js');
+    const fv = plushViews(plushPattern({ shape: 'quad', snout: 'long', ears: 'pointed', tailType: 'bushy', colours: { body: '#d9772e', contrast: '#f4ead8' } })).side, fb = fv.box;
+    const pic = await sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="${fb.x0 - 1} ${fb.y0 - 1} ${fb.x1 - fb.x0 + 2} ${fb.y1 - fb.y0 + 2}" width="900"><rect x="-99" y="-99" width="999" height="999" fill="#efede8"/>${fv.svg}</svg>`)).png().toBuffer();
+    await call(`/v1/lab/concepts/${cid}/studio/apply`, { token: kyleT, body: { image: 'data:image/png;base64,' + pic.toString('base64') } });
+    if (!playwright) { ok(true, 'needs a browser'); return; }
+    const br = await playwright.chromium.launch();
+    try {
+      const oc = await br.newContext({ viewport: { width: 1366, height: 1024 } }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
+      const page = await oc.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
+      await page.goto(`${BASE}/lab/studio?concept=${cid}&view=pattern`, { waitUntil: 'networkidle' }); const F = await (await page.waitForSelector('#patFrame')).contentFrame(); await F.waitForFunction(() => window.FBPattern?.ready?.(), null, { timeout: 20000 });
+      const sels = await F.$$eval('#side select[data-k]', s => s.map(x => x.dataset.k));
+      ok(['shape', 'snout', 'horn', 'mane', 'tailType'].every(k => sels.includes(k)) && await F.locator('#side input[data-k="head"]').count() === 1 && await F.locator('#side input[data-k="wings"]').count() === 1 && await F.locator('#side input[data-k="spikes"]').count() === 1, '2. the panel offers the parts this body takes: snout, horn, mane, tail, head size, wings, spikes', sels);
+      const before = await F.innerHTML('#canvas');
+      await F.selectOption('#side select[data-k="horn"]', 'one'); await sleep(250);
+      ok((await F.evaluate(() => window.FBPattern.spec().horn)) === 'one' && (await F.innerHTML('#canvas')) !== before && (await F.evaluate(() => window.FBPattern.pattern().pieces.some(q => q.id === 'horn'))), '3. a horn put on: drawn on the views, and cut as a piece');
+      await F.selectOption('#side select[data-k="horn"]', 'none'); await sleep(200);
+      await F.click('#revStart'); await F.waitForSelector('#revVerdict', { timeout: 30000 });
+      const box = await F.innerText('#revBox');
+      ok(/clears|reads as the toy/i.test(box) && /Round 1/.test(box) && /Round 2/.test(box) && /Claude 54/.test(box) && /ChatGPT 49/.test(box), '4. two judges score round 1 (the stricter, 49, stands), the toy is changed and round 2 clears the bar', box.slice(0, 600));
+      ok(/Snout/.test(box) && /Tail kind/.test(box) && /Head size/.test(box) && /left as it is, for a person/.test(box) && /scarf/.test(box), '   what they agreed on is made (the snout, the tail); the head they disagree on is left for a person; the scarf is for a person too');
+      await F.click('#revUse'); await sleep(250);
+      const sp = await F.evaluate(() => window.FBPattern.spec());
+      ok(sp.snout === 'long' && sp.tailType === 'bushy' && /^#d[9a]7/.test(sp.colours?.body || '') && sp.head === 1 && sp.horn === 'none', '5. used: a long snout, a bushy tail, the fox\'s orange; the head as it was', sp);
+      if (process.env.SHOT_DIR) await page.screenshot({ path: process.env.SHOT_DIR + '/fox.png' });
+      await F.click('#saveP'); await F.waitForFunction(() => !window.FBPattern.dirty(), null, { timeout: 10000 });
+      const saved = (await K(`/concepts/${cid}/pattern`)).json.spec;
+      ok(saved.shape === 'quad' && saved.snout === 'long' && saved.tailType === 'bushy', '6. saved with the concept', saved);
+      ok(errs.length === 0, 'no page errors', errs); await oc.close();
+    } finally { await br.close(); }
+  } finally { if (cid) await K(`/concepts/${cid}`, { method: 'DELETE' }); }
+});
+
 shops.close(); brave.close();
 process.exit(summary() ? 1 : 0);

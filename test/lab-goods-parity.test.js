@@ -17,7 +17,7 @@ test('a plush concept says what its pattern is drafted from, and is drawn as a s
   assert.equal(cleanSpec({ plush: { shape: 'dragon' } }).plush, undefined, 'a shape the pattern cannot cut is not kept');
   const p = imagePrompt({ name: 'Barley', category: 'plush', spec: s });
   assert.match(p, /plush soft toy/); assert.match(p, /about 11 inches tall/); assert.match(p, /faux fur/); assert.match(p, /seams/); assert.doesNotMatch(p, /menswear/);
-  assert.match(CATEGORY_WORDS.plush, /embroidered eyes for any age/); assert.match(CATEGORY_JSON.plush, /"shape":"bear\|elephant\|bean\|bunny\|pillow \(the nearest\)"/); assert.match(CATEGORY_JSON.plush, /"animal"/); assert.match(CATEGORY_JSON.plush, /leather/);
+  assert.match(CATEGORY_WORDS.plush, /embroidered eyes for any age/); assert.match(CATEGORY_JSON.plush, /"shape":"bear\|quad\|elephant\|sea\|bean\|bunny\|pillow \(its body type/); assert.match(CATEGORY_JSON.plush, /"horn":"none\|one\|two\|antlers"/); assert.match(CATEGORY_JSON.plush, /"animal"/); assert.match(CATEGORY_JSON.plush, /leather/);
   assert.match(labelWords('plush'), /tush tag/); assert.equal(LOGO_PLACE.plush[1], null, 'the logo is not laid on a plush\'s picture');
   const fx = conceptFixture({ user: 'Make 2 different concepts\nPlanned piece: Bear\n(category plush, role core)' });
   assert.equal(fx.concepts[1].plush.shape, 'bunny');

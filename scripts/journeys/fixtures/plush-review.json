@@ -1,0 +1,209 @@
+{
+ "Claude": [
+  {
+   "view": "three-quarter",
+   "criteria": [
+    {
+     "key": "body",
+     "score": 54,
+     "note": "the snout and tail are not a fox's"
+    },
+    {
+     "key": "face",
+     "score": 54,
+     "note": "the snout and tail are not a fox's"
+    },
+    {
+     "key": "ears",
+     "score": 54,
+     "note": "the snout and tail are not a fox's"
+    },
+    {
+     "key": "limbs",
+     "score": 54,
+     "note": "the snout and tail are not a fox's"
+    },
+    {
+     "key": "parts",
+     "score": 54,
+     "note": "the snout and tail are not a fox's"
+    },
+    {
+     "key": "colour",
+     "score": 54,
+     "note": "the snout and tail are not a fox's"
+    }
+   ],
+   "fixes": [
+    {
+     "field": "snout",
+     "value": "long",
+     "why": "A fox's long, pointed snout"
+    },
+    {
+     "field": "tailType",
+     "value": "bushy",
+     "why": "A big bushy tail with a white tip"
+    },
+    {
+     "field": "colours.body",
+     "value": "#d9772e",
+     "why": "Fox orange"
+    },
+    {
+     "field": "colours.contrast",
+     "value": "#f4ead8",
+     "why": "The cream chest, ear insides and tail tip"
+    },
+    {
+     "field": "head",
+     "value": "1.15",
+     "why": "A slightly bigger head"
+    }
+   ],
+   "beyondDrawing": [
+    "A knitted scarf round its neck"
+   ],
+   "summary": "A fox in the picture, a cat-like sitting body in the drawing."
+  },
+  {
+   "view": "three-quarter",
+   "criteria": [
+    {
+     "key": "body",
+     "score": 93,
+     "note": ""
+    },
+    {
+     "key": "face",
+     "score": 93,
+     "note": ""
+    },
+    {
+     "key": "ears",
+     "score": 93,
+     "note": ""
+    },
+    {
+     "key": "limbs",
+     "score": 93,
+     "note": ""
+    },
+    {
+     "key": "parts",
+     "score": 93,
+     "note": ""
+    },
+    {
+     "key": "colour",
+     "score": 93,
+     "note": ""
+    }
+   ],
+   "fixes": [],
+   "beyondDrawing": [
+    "A knitted scarf round its neck"
+   ],
+   "summary": "Reads as the fox in the picture."
+  }
+ ],
+ "ChatGPT": [
+  {
+   "view": "three-quarter",
+   "criteria": [
+    {
+     "key": "body",
+     "score": 49,
+     "note": "the snout is too short"
+    },
+    {
+     "key": "face",
+     "score": 49,
+     "note": "the snout is too short"
+    },
+    {
+     "key": "ears",
+     "score": 49,
+     "note": "the snout is too short"
+    },
+    {
+     "key": "limbs",
+     "score": 49,
+     "note": "the snout is too short"
+    },
+    {
+     "key": "parts",
+     "score": 49,
+     "note": "the snout is too short"
+    },
+    {
+     "key": "colour",
+     "score": 49,
+     "note": "the snout is too short"
+    }
+   ],
+   "fixes": [
+    {
+     "field": "snout",
+     "value": "long",
+     "why": "Long, pointed muzzle"
+    },
+    {
+     "field": "tailType",
+     "value": "bushy",
+     "why": "Bushy tail"
+    },
+    {
+     "field": "colours.body",
+     "value": "#db7a30",
+     "why": "Orange body"
+    },
+    {
+     "field": "head",
+     "value": "0.9",
+     "why": "The head looks smaller"
+    }
+   ],
+   "beyondDrawing": [],
+   "summary": "Wrong snout and tail."
+  },
+  {
+   "view": "three-quarter",
+   "criteria": [
+    {
+     "key": "body",
+     "score": 91,
+     "note": ""
+    },
+    {
+     "key": "face",
+     "score": 91,
+     "note": ""
+    },
+    {
+     "key": "ears",
+     "score": 91,
+     "note": ""
+    },
+    {
+     "key": "limbs",
+     "score": 91,
+     "note": ""
+    },
+    {
+     "key": "parts",
+     "score": 91,
+     "note": ""
+    },
+    {
+     "key": "colour",
+     "score": 91,
+     "note": ""
+    }
+   ],
+   "fixes": [],
+   "beyondDrawing": [],
+   "summary": "Close to the picture."
+  }
+ ]
+}
