@@ -304,7 +304,12 @@ Parts from the sketch pack (pockets, zips, collars, trims, buttons) go the same 
 
 Every page loads `/feedback.js`.
 
-- **Working:** a button that starts something keeps its words; a light sheen sweeps across it and a thin green line creeps along its bottom edge while it runs.
+- **Working:** the moment it is pressed, a light sheen sweeps across the button and a thin green line creeps along its bottom edge.
+- **Thinking:** work that takes more than a moment (a third of a second) is said on the button itself, with three pulsing dots:
+  "Designing three concepts…", "Saving…", "Sending…", or "Thinking…". The button keeps its width, and its own words come back when the
+  work is done. The page's "working on it" line (a status line ending in …) goes onto the button instead of showing further down the page;
+  its full words are the button's tooltip. The page's answer (done, or what went wrong) shows where it always did. A press that asks a
+  question first ("Anything to steer the concepts?") shows the work on the button that asked it.
 - **Worked:** the line runs home and the button glows green for a moment; a note rises at the bottom of the screen ("Save: done"), with a hairline that drains while it stays.
 - **Failed:** the line turns red and the button shakes, with a note that says what failed and why, in the service's own words: "Approve: Say what to change", "Send: you are signed out: sign in again", or "could not reach the service".
 - **Failed without saying so:** a press whose work fails and nothing else reports it is reported the same way.
@@ -313,6 +318,8 @@ Every page loads `/feedback.js`.
 - `FBN.toast(text, kind)` adds a note.
 - `FBN.run(button, work)` shows the same states for work that is not a request.
 - `data-fb="off"` on a button leaves it alone.
+- `data-fb-busy="Drawing…"` names what a button says while it works.
+- `FBN.begin(button, words)` and `FBN.end(button, ok)` show the working state for work the page follows itself.
 
 ## Pip, the guide
 
