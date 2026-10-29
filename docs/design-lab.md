@@ -868,3 +868,56 @@ meets the edges, and named. They are in the AAMA DXF with the rest.
 Seams are kept with the shoe (`spec.seams`: up to 8, each with its side, the piece and its points in side-view inches) and are listed with
 **Remove**. A seam that no longer crosses its piece (after a style change, say) is left out and the pattern's notes say so. A piece cut whole
 (the vamp, the toe cap) is not cut by a seam.
+
+## Tech flats: the shoe from four sides
+
+A shoe's product view on the Pattern page, and **Tech flats (SVG)** under Files (`GET /v1/lab/concepts/:id/flats.svg`, 1:1 in inches), draw the
+shoe as tech flats (`src/lab-footwear-views.js`, shared by the page and the service):
+
+- **Lateral and medial:** each side's own pieces as they show on the shoe. The inside has the inside quarter, a seam drawn on one side shows on
+  that side only, and the inside view is drawn toe left.
+- **Drawing details:**
+  - the heel curve and the rounded toe (the side view the pattern is drafted on is square at both ends);
+  - stitching inside every overlay's edge;
+  - eyelets where the eyestay holds them, and the laces crossing over;
+  - the sole unit as it is moulded. A cupsole or midsole is flared at the heel, bevelled and rocked at the toe, with its outsole. A stitched sole
+    is a thin sole following the last up through the waist, on a stacked heel with its breast square under the heel's front.
+- **Top:** the shoe from above in the foot's shape, not the last's bottom: a near-straight inside edge, the outside curving out to the little
+  toe, widest across the ball, a narrow round heel, no pinch at the waist. It shows the foot opening (the padded collar, the lining wall and
+  the sockliner inside), the tongue's top at the front of the opening, the eyestays with their eyelets and the laces over the instep, and the
+  midsole or welt round the edge. A boot or high-top shows its leg opening. The pieces' lines are carried round from the side.
+- **Bottom:** the same outline: rubber pads under the forefoot and the heel with flex grooves across the ball, or a stacked heel and the welt's
+  stitching on a stitched sole.
+
+Colours come from the shoe's colours (read from its picture or set): the upper, the overlays, the sole and the outsole. Without colours the
+shoe is drawn in its upper's natural shade. With the concept's picture, the picture lies under the lateral view, lined up on the ground.
+
+The drawing follows the pattern. The lines (where the vamp, the quarters and the lacing sit) are the style's until they are read from the
+picture by the vision model or set by hand: a picture read by its outline alone gives the shoe's proportions, not its design lines.
+
+### The developer check
+
+**Developer check** on the Pattern page (with the concept's picture) has the drawing checked against the picture, the way the design and
+developer assistants go over a tech pack (`src/lab-shoe-review.js`):
+
+1. **The outline first, no AI.** The picture's outline sets the collar, the toe spring and the sole (as in *Reading a shoe from its picture*).
+   The drawing's length against height is measured against the picture's, and the pattern's warnings and the eyelet spacing are checked.
+2. **Then the footwear developer** (Claude, with vision) looks at the picture and the four views and scores six points out of 100:
+   silhouette and proportions (25%), toe (10%), collar and topline (15%), lacing and throat (15%), the pieces of the upper (20%) and the sole
+   (15%). A drawing whose outline is more than 8% off the picture's loses points whatever the developer says.
+3. **It asks for changes to the shoe's choices**, never to the drawing: the style, the toe, the sole, the upper, the collar, where the vamp and
+   the lacing sit, the eyelets, the sole's thickness, the heel and the toe spring, a toe cap, a mudguard, a heel overlay and the colours. Each
+   is bounded like any other choice and says why. What the choices cannot show (a sock collar, graphics, a carbon plate) is listed for a
+   person instead.
+4. **Round after round** the changes are made, the views drawn again and scored, until the score clears **90**, there is nothing left to change,
+   or two rounds in a row gain nothing (at most four rounds). The result is the best-scoring shoe; below 90 it says a person is needed.
+
+The page follows each round as it runs. Nothing is saved: **Use it** puts the changes on the shoe on the page, to save. The review starts from
+the shoe on the page, saved or not.
+
+- `POST /v1/lab/concepts/:id/pattern/review` `{spec?}` starts it → `202 {id, reviewer, bar}` (one review of a shoe at a time: `409`).
+- `GET /v1/lab/concepts/:id/pattern/review/:rid` → `{status: running|done|failed, result: passed|needs-person|checks-only, rounds, outline,
+  spec, changes, score, beyondDrawing, note}`.
+- Without Claude (no `ANTHROPIC_API_KEY`), only the outline and the fixed checks run (`checks-only`) and it says so. Reviews with Claude are
+  capped at `SHOE_REVIEW_DAILY` a day (40 by default); past it, only the outline and the checks run. `SHOE_REVIEW_FIXTURE` (a JSON array of the
+  developer's answers, or a file of one) stands in for Claude in tests.

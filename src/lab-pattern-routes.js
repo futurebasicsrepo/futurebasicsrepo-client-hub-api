@@ -10,9 +10,12 @@ import { STYLES, SIZES, FITS, defaultParams, detectStyle } from './lab-flats.js'
 import { garmentPattern, applyEdits, cleanPatternEdits, patternDxfAama, plushPattern, cleanPlush, plushDefaults, patternSvg, patternDxf, yardage, fillGrams, PLUSH_SHAPES, PLUSH_EARS, PLUSH_FABRICS, PLUSH_EYES, PLUSH_AGES } from './lab-pattern.js';
 import { CATEGORIES } from './lab.js';
 import { silhouette, readShoe, proposal } from './lab-shoe-read.js';
+import { reviewShoe, BAR as REVIEW_BAR } from './lab-shoe-review.js';
 import { callJsonSchema } from './studio.js';
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { registerLabLastRoutes } from './lab-last-routes.js';
+import { flatsSheet } from './lab-footwear-views.js';
 import { footwearPattern, cleanFootwear, fwDefaults, sizeRun, lastOf, lastSvg, hideArea, FW_STYLES, TOES, SYSTEMS, WIDTHS as SHOE_WIDTHS, UPPERS, LININGS, SIZE_LIMITS } from './lab-footwear.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -95,6 +98,13 @@ export function registerLabPatternRoutes(app, d) {
     return reply.type('image/svg+xml; charset=utf-8').send(lastSvg(L.spec, size));
   });
   app.get('/v1/lab/concepts/:id/pattern.dxf', { preHandler: pre }, file('dxf'));
+  // a shoe's tech flats: outside, inside, top and bottom, 1:1 (src/lab-footwear-views.js)
+  app.get('/v1/lab/concepts/:id/flats.svg', { preHandler: pre }, async (req, reply) => {
+    const L = await load(req.params.id); if (!L) return bad(reply, 'Not found', 404); if (L.kind !== 'footwear') return bad(reply, 'Tech flats from the pattern are drawn for footwear');
+    const pat = patternOf(L, String(req.query?.size || ''));
+    reply.header('content-disposition', `attachment; filename="${(L.c.name || 'shoe').replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-tech-flats.svg"`).header('cache-control', 'no-store');
+    return reply.type('image/svg+xml; charset=utf-8').send(flatsSheet(pat, { title: L.c.name }));
+  });
 
   // read the shoe from the concept's picture: its outline (no AI) and, when Claude is connected, what the eye sees part by part. Nothing is
   // saved: the page shows what would change, the picture over the shoe, and saves it when it is used. One reading per picture is kept.
@@ -116,6 +126,35 @@ export function registerLabPatternRoutes(app, d) {
     const p = proposal(L.spec, got.sil, got.vision);
     if (!p.side && !got.vision) return bad(reply, 'The picture is not a side view of the shoe, so its outline cannot be read: make or upload a side view, or set the shoe by hand');
     return { spec: p.spec, changes: p.changes, shape: p.shape, side: p.side, source: got.source, why: p.why, view: got.vision?.view || (p.side ? 'side' : 'other') };
+  });
+
+  // the developer's review: the shoe on the page (saved or not) checked against the concept's picture, round by round (src/lab-shoe-review.js).
+  // It runs in the background and the page follows it; nothing is saved until the page uses the result. Reviews with the vision model are
+  // capped a day (SHOE_REVIEW_DAILY, 40 by default) so they cannot run the bill up unseen.
+  const reviews = new Map(), spent = { day: '', n: 0 };
+  const reviewer = () => {
+    if (env.AI_FIXTURE || !env.ANTHROPIC_API_KEY) { let rounds = null; try { const fx = String(env.SHOE_REVIEW_FIXTURE || '').trim(); rounds = !fx ? null : JSON.parse(fx.startsWith('[') ? fx : readFileSync(fx, 'utf8')); } catch { rounds = null; } if (!Array.isArray(rounds) || !rounds.length) return null; let i = 0; return async () => { const r = rounds[Math.min(i, rounds.length - 1)]; i++; await new Promise(res => setTimeout(res, Number(env.AI_FIXTURE_DELAY_MS) || 0)); return r; }; }
+    return (system, content, schema) => askImpl(system, content, schema, { maxTokens: 2500 });
+  };
+  app.post('/v1/lab/concepts/:id/pattern/review', { preHandler: pre }, async (req, reply) => {
+    const L = await load(req.params.id); if (!L) return bad(reply, 'Not found', 404); if (L.kind !== 'footwear') return bad(reply, 'The developer review is for footwear');
+    const img = (await pool.query('select image from lab_concepts where id=$1', [L.c.id])).rows[0]?.image; if (!img) return bad(reply, 'This concept has no picture to check the shoe against');
+    if ([...reviews.values()].some(r => r.conceptId === L.c.id && r.status === 'running')) return bad(reply, 'A review of this shoe is already running', 409);
+    let ask = reviewer();
+    const today = new Date().toISOString().slice(0, 10); if (spent.day !== today) Object.assign(spent, { day: today, n: 0 });
+    const cap = Number(env.SHOE_REVIEW_DAILY) || 40, capped = Boolean(ask) && spent.n >= cap; if (capped) ask = null; else if (ask) spent.n++;
+    const spec = req.body?.spec && typeof req.body.spec === 'object' ? { ...cleanFootwear(req.body.spec), ...(L.spec.edits ? { edits: L.spec.edits } : {}) } : L.spec;
+    const id = createHash('sha1').update(`${L.c.id}${Date.now()}${Math.random()}`).digest('hex').slice(0, 16), job = { id, conceptId: L.c.id, status: 'running', bar: REVIEW_BAR, rounds: [], outline: null, started: Date.now(), capped };
+    if (reviews.size > 200) for (const [k, r] of reviews) if (r.status !== 'running' && Date.now() - r.started > 3600e3) reviews.delete(k);
+    reviews.set(id, job);
+    reviewShoe({ spec, photo: img, name: L.c.name, ask, onRound: r => { if (r.n === 0) job.outline = r; else job.rounds = [...job.rounds, r]; } })
+      .then(res => Object.assign(job, res, { result: res.status, status: 'done', note: capped ? `Today's ${cap} developer reviews are used: only the outline and the fixed checks ran. ${res.note}` : res.note }))
+      .catch(e => { log.warn?.({ err: e.message }, 'shoe review failed'); Object.assign(job, { status: 'failed', error: 'The review could not finish: try again' }); });
+    return reply.code(202).send({ id, reviewer: Boolean(ask), bar: REVIEW_BAR });
+  });
+  app.get('/v1/lab/concepts/:id/pattern/review/:rid', { preHandler: pre }, async (req, reply) => {
+    const job = reviews.get(String(req.params.rid)); if (!job || job.conceptId !== req.params.id) return bad(reply, 'Not found', 404);
+    return job;
   });
 
   // a concept started from nothing: no plan, no AI, no sketch. A garment opens on a blank page with its flat's outline as a guide; a plush opens

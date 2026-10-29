@@ -1,0 +1,7 @@
+[
+  { "view": "side", "criteria": [{ "key": "silhouette", "score": 80, "note": "" }, { "key": "toe", "score": 80, "note": "" }, { "key": "collar", "score": 75, "note": "" }, { "key": "lacing", "score": 55, "note": "The picture has seven pairs of eyelets" }, { "key": "panels", "score": 60, "note": "A mudguard runs round the foot" }, { "key": "sole", "score": 85, "note": "" }],
+    "fixes": [{ "field": "eyelets", "value": "7", "why": "The picture has seven pairs of eyelets" }, { "field": "mudguard", "value": "true", "why": "A low overlay runs round the foot above the sole" }],
+    "beyondDrawing": ["A reflective heel strip"], "summary": "The lacing is short and the mudguard is missing." },
+  { "view": "side", "criteria": [{ "key": "silhouette", "score": 92, "note": "" }, { "key": "toe", "score": 90, "note": "" }, { "key": "collar", "score": 92, "note": "" }, { "key": "lacing", "score": 93, "note": "" }, { "key": "panels", "score": 92, "note": "" }, { "key": "sole", "score": 92, "note": "" }],
+    "fixes": [], "beyondDrawing": [], "summary": "It reads as the shoe in the picture." }
+]
