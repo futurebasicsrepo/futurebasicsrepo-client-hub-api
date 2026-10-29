@@ -691,3 +691,41 @@ feet for a pair, with a quarter allowed for cutting round the hide's flaws.
 - a collar that sits on the ankle bone.
 
 It then lists the fitting and size-run samples and the tests (sole bond, flex, abrasion, colour fastness, restricted substances).
+
+### Reading a shoe from its picture
+
+A footwear concept with a picture (an AI concept, the studio's picture, or a photo) is read by `src/lab-shoe-read.js`, so its last and its upper
+follow what was designed. The styles cover athletic shoes and boots alike: court sneaker, high-top, runner, derby, loafer, Chelsea, lace-up boot
+and hiking boot.
+
+**The outline** (no AI) separates the shoe from a plain background and finds which way the toe points. From the top and bottom edges, heel to
+toe, it measures:
+
+- the collar height (just in front of a pull tab);
+- whether it has a shaft;
+- the dip at the ankle and the toe spring.
+
+It suggests a high-top or a boot when the collar says so. A front, top or sole view is not read as a side.
+
+**The eye** (the vision model, when Claude is connected) reads:
+
+- the style and the toe;
+- the toe cap, the mudguard and the heel overlay;
+- the upper and the sole;
+- the eyelets a side, where the vamp seam and the lacing sit along the length, the collar, the heel and the sole thickness;
+- the colour of each part.
+
+The outline's collar wins over the eye's guess. A new style brings its own heel, toe spring and toe until the picture says otherwise.
+
+`POST /v1/lab/concepts/:id/pattern/from-picture` returns the shoe the picture asks for and what would change, each change with where it came from.
+Nothing is saved. Pattern does this by itself the first time a pictured shoe is opened with no shoe chosen yet. It shows the changes, and **Use it**
+applies them. The concept's picture is then laid over the shoe's side, lined up on the last (its length is the last's, its bottom the ground), so
+the drafted pieces can be checked against the design. The picture can be hidden. **Read the shoe from the picture** reads it again, for example after
+the picture changes.
+
+What the picture sets can also be set by hand, and every value is bounded:
+
+- the collar height and the sole thickness;
+- the vamp line and where the lacing starts (as shares of the length);
+- the eyelets, the mudguard and the heel overlay;
+- the sole type and the colours.

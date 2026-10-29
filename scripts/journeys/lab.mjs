@@ -2860,5 +2860,40 @@ await journey('J245', 'Footwear: a shoe started from scratch is drafted on its l
   } finally { await b.close(); if (cid) await K(`/concepts/${cid}`, { method: 'DELETE' }); }
 });
 
+await journey('J246', 'A shoe read from its picture: a concept\'s side view (here a high-top) gives the last and the upper: the style, the collar and the toe spring from its outline; the page reads it by itself the first time, shows what would change, lays the picture over the shoe, and keeps it when used', async () => {
+  const { footwearPattern } = await import('../../src/lab-footwear.js'), { assembled, boundsOf } = await import('../../src/lab-pattern.js');
+  // the picture: a high-top from the side, toe to the left, on a pale ground (what a concept's picture of a shoe looks like to the outline)
+  const pat = footwearPattern({ style: 'hightop' }), side = assembled(pat).pieces.filter(x => x.piece.place.view !== 'back'), b = boundsOf(side.flatMap(x => x.pts)), k = 800 / (b.w + 2);
+  const tx = ([x, y]) => [(b.x1 - x + 1) * k, (y - b.y0 + 1) * k];
+  const paths = side.sort((a, c) => (a.piece.place.z || 0) - (c.piece.place.z || 0)).map(x => `<path d="M${x.pts.map(tx).map(q => q.join(' ')).join(' L')} Z" fill="${['rubber', 'eva'].includes(x.piece.fabric) ? '#e4e2dc' : x.piece.fabric === 'overlay' ? '#1d2b3a' : '#2f4a66'}" stroke="#111" stroke-width="2"/>`).join('');
+  const png = await sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="${Math.round((b.h + 2) * k + 160)}"><rect width="100%" height="100%" fill="#efede8"/><g transform="translate(60 80)">${paths}</g></svg>`)).png().toBuffer();
+  const made = (await K('/concepts/from-scratch', { body: { category: 'footwear', style: 'sneaker', name: `Pictured high-top ${stamp}` } })).json, cid = made.concept.id;
+  sql(`delete from lab_patterns where concept_id='${cid}'`); // as if it came from a line plan: no shoe chosen yet
+  ok((await K(`/concepts/${cid}/pattern/from-picture`, { method: 'POST', body: {} })).status === 422, '0. with no picture there is nothing to read');
+  const applied = await call(`/v1/lab/concepts/${cid}/studio/apply`, { token: kyleT, body: { image: 'data:image/png;base64,' + png.toString('base64') } });
+  ok(applied.status === 200, '   the picture is set as the concept\'s picture', applied.json?.error);
+  const r = await K(`/concepts/${cid}/pattern/from-picture`, { method: 'POST', body: {} });
+  ok(r.status === 200 && r.json.side && r.json.source === 'shape' && r.json.spec.style === 'hightop' && Math.abs(r.json.spec.collar - 5.2) <= .5 && r.json.spec.picture?.toeLeft === true, '1. the outline reads a high-top: its style, its collar at about 5¼ in, and which way it faces', { spec: r.json.spec, changes: r.json.changes });
+  ok(r.json.changes.some(c => c.key === 'style' && c.to === 'hightop' && c.source === 'picture (shape)'), '   and says what would change, and from what');
+  ok((await K(`/concepts/${cid}/pattern`)).json.spec.style === 'sneaker', '   nothing is saved until it is used');
+  if (!playwright) { ok(true, 'needs a browser'); return; }
+  const br = await playwright.chromium.launch();
+  try {
+    const oc = await br.newContext({ viewport: { width: 1366, height: 1024 } }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
+    const page = await oc.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
+    await page.goto(`${BASE}/lab/studio?concept=${cid}&view=pattern`, { waitUntil: 'networkidle' }); const F = await (await page.waitForSelector('#patFrame')).contentFrame(); await F.waitForFunction(() => window.FBPattern?.ready?.(), null, { timeout: 20000 });
+    await F.waitForSelector('#useRead', { timeout: 15000 });
+    ok(/High-top sneaker/.test(await F.innerText('#readBox')) && /Collar height/.test(await F.innerText('#readBox')), '2. the first time it opens, Pattern reads the picture by itself and shows what would change');
+    await F.click('#useRead'); await F.waitForFunction(() => /Save the shoe/.test(document.getElementById('saveP').textContent));
+    ok(await F.evaluate(() => FBPattern.pattern().spec.style) === 'hightop', '   used: the shoe is redrawn as a high-top');
+    ok(await F.locator('#canvas image').count() === 1, '3. the picture lies over the shoe, lined up on the last');
+    await F.click('#saveP'); await F.waitForFunction(() => document.getElementById('saveP').textContent === 'Saved', null, { timeout: 10000 });
+    const saved = (await K(`/concepts/${cid}/pattern`)).json;
+    ok(saved.spec.style === 'hightop' && saved.spec.picture?.x1 > saved.spec.picture?.x0 && saved.components.some(c => /cupsole/i.test(c.name)), '4. saved: the high-top, its collar, and where the picture sits', saved.spec);
+    await F.click('#showPic'); ok(await F.locator('#canvas image').count() === 0, '   the picture can be hidden');
+    ok(errs.length === 0, 'no page errors', errs); await oc.close();
+  } finally { await br.close(); await K(`/concepts/${cid}`, { method: 'DELETE' }); }
+});
+
 shops.close(); brave.close();
 process.exit(summary() ? 1 : 0);
