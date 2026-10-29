@@ -2545,6 +2545,17 @@ await journey('J240', 'Design on an iPad, as Kyle found it: the ruler takes any 
       bom = (await K(`/concepts/${c.id}/materials`)).json;
       ok(!bom.picks.some(p => p.kind === 'tag') && bom.picks.some(p => p.role === 'main'), '   where it goes is kept, and a label taken off the garment is gone from its bill of materials');
       await page.click('#matDlg [data-matclose]');
+      // more room to draw: the panel on the right folds away (on the flat too), Focus hides the header and the menu, and both are kept
+      { const w0 = await page.evaluate(() => document.getElementById('flatFrame').contentDocument.querySelector('#canvas svg').getBoundingClientRect().width);
+        await page.click('#panelBtn'); await page.waitForTimeout(300);
+        const fl = await page.evaluate(() => { const d = document.getElementById('flatFrame').contentDocument; return { side: getComputedStyle(d.querySelector('.side')).display, w: d.querySelector('#canvas svg').getBoundingClientRect().width }; });
+        await page.click('#focusBtn'); await page.waitForTimeout(300);
+        const fo = await page.evaluate(() => ({ header: getComputedStyle(document.querySelector('body>header')).display, h: document.getElementById('app').getBoundingClientRect().height, vh: innerHeight }));
+        ok(fl.side === 'none' && fl.w > w0 && fo.header === 'none' && fo.h >= fo.vh - 2, '7f. Panel folds the right side away (the flat grows) and Focus hides the header and menu so Design fills the screen', { w0, fl, fo });
+        await page.reload({ waitUntil: 'networkidle' }); await page.waitForSelector('#app:not(.hidden)');
+        ok(await page.evaluate(() => document.documentElement.dataset.focus === '1' && document.getElementById('app').dataset.panel === 'off'), '   and the layout is kept when Design opens again');
+        await page.click('#focusBtn'); await page.click('#panelBtn');
+        ok(await page.evaluate(() => !document.documentElement.dataset.focus && document.getElementById('app').dataset.panel === 'on'), '   both come back with a press'); }
       F = await (await page.waitForSelector('#flatFrame')).contentFrame(); await F.waitForFunction(() => window.FBFlats?.ready(), null, { timeout: 20000 });
       // a flat saved as a sweatshirt: Redraw from the picture brings the jacket back (the words stand in for the picture here)
       const asSweat = await K(`/concepts/${c.id}/flats`, { method: 'PUT', body: { ...saved, style: 'crewneck', template: undefined, placements: saved.placements } });

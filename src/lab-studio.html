@@ -24,6 +24,12 @@ header{height:72px;background:rgba(20,20,22,.96);color:#fff;padding:0 clamp(16px
 #needSignin{max-width:620px;margin:40px auto;background:#fff;border:1px solid var(--line);border-radius:22px;padding:22px}
 /* the studio: a bar, the tools, the stage, the panel */
 .studio{display:grid;grid-template-columns:52px minmax(0,1fr) 330px;grid-template-rows:auto minmax(0,1fr);height:calc(100dvh - 72px)}
+/* more room for the drawing: the right panel folds away, and Focus hides the page header, the menu and the guide */
+.studio[data-panel=off] .side{display:none}.studio[data-panel=off] .mid{grid-column:2/-1}
+html[data-focus] body>header,html[data-focus] .fbside,html[data-focus] .fbburger,html[data-focus] .fbh-tog:not(.on){display:none!important}
+html[data-focus] body.fbnav,html[data-focus] body{padding-left:0!important;padding-bottom:0!important}html[data-focus] .studio{height:100dvh}
+html[data-focus] .bar{padding:4px 10px;min-height:44px;gap:6px}
+#panelBtn[aria-pressed=true],#focusBtn[aria-pressed=true]{background:var(--ink);color:#fff}
 .bar{grid-column:1/-1;display:flex;align-items:center;gap:8px;padding:8px 12px;background:#fff;border-bottom:1px solid var(--line);flex-wrap:wrap;min-height:52px}
 .bar .ttl{display:grid;line-height:1.15;min-width:0;margin-right:auto}.bar .ttl b{font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:38vw}.bar .ttl span{color:var(--dim);font-size:12px}
 .saved{color:var(--dim);font-size:12px;min-width:90px;text-align:right}.saved.dirty{color:#8a5a00}
@@ -120,6 +126,8 @@ kbd{font:500 10px 'IBM Plex Mono',monospace;border:1px solid var(--line);border-
     <button class="btn q sm" id="redo" type="button" title="Redo (Ctrl Shift Z)">Redo</button>
     <span class="saved pic-only" id="saved" role="status"></span><span class="saved flat-only" id="fsaved" role="status" title="The flats"></span>
     <button class="btn sm" id="save" type="button" title="Save (Ctrl S)">Save</button>
+    <button class="btn q sm" id="panelBtn" type="button" aria-pressed="true" title="Show or hide the panel on the right (\)">Panel</button>
+    <button class="btn q sm" id="focusBtn" type="button" aria-pressed="false" title="Make the drawing as big as it goes: hide the header, the menu and the guide, full screen where the browser allows (F)">Focus</button>
     <button class="btn sm pic-only pro-only" id="impBtn" type="button" title="Bring an SVG back from Illustrator: the studio's own export comes back as layers">Import</button><input type="file" id="svgIn" accept=".svg,image/svg+xml" class="hidden">
     <button class="btn sm pic-only" id="tryBtn" type="button" title="The design painted on a 3D model, turned round">3D</button>
     <div class="menu pic-only"><button class="btn sm" id="expBtn" type="button" aria-haspopup="true" aria-expanded="false">Export</button>
@@ -1132,7 +1140,7 @@ function showSheet(blob,name,title){let d=$('#sheetDlg');if(!d){d=document.creat
   d.showModal()}
 // a graphic removed on the flats leaves the garment here too (it stays on the picture as a layer); without this the next save puts it back
 function flatRemoved({id,layer}={}){const l=LAYERS.find(x=>(layer&&x.id===layer)||(id&&x.fromFlat===id));if(!l||!l.placement)return;l.placement=undefined;l.fromFlat=undefined;commit();paintLayers();draw();toast(`${l.name} is off the garment. It is still a layer on the picture: delete it in Layers if you do not want it there either.`)}
-window.FBDesign={saveAll,showSheet,flatRemoved,drawOpts:()=>({tool:TOOL,color:CUR,size:OPT.size,dsize:OPT.dsize,flow:OPT.flow,soft:OPT.soft,pressure:OPT.pressure}),flatsChanged(){syncUndo()},flatsSaved(){const f=FF();if(f)adoptFlats(f.placements(),{saved:true});setTimeout(loadReady,300)},flatsReady(){const f=FF();if(!f)return;f.mode(VMODE==='split'?'compact':'full');if(VMODE==='front'||VMODE==='back'){f.setView(VMODE);f.tool?.(TOOL)}mirrorFlats();f.level?.(LEVEL);$('#packBtn').classList.toggle('hidden',!f.canPack());FLATS={saved:f.saved(),placements:f.placements()};paintLayers();['#specBtn','#decoBtn'].forEach(s=>$(s).disabled=Boolean(f.unsupported()))}};
+window.FBDesign={saveAll,showSheet,flatRemoved,drawOpts:()=>({tool:TOOL,color:CUR,size:OPT.size,dsize:OPT.dsize,flow:OPT.flow,soft:OPT.soft,pressure:OPT.pressure}),flatsChanged(){syncUndo()},flatsSaved(){const f=FF();if(f)adoptFlats(f.placements(),{saved:true});setTimeout(loadReady,300)},flatsReady(){const f=FF();if(!f)return;f.mode(VMODE==='split'?'compact':'full');if(VMODE==='front'||VMODE==='back'){f.setView(VMODE);f.tool?.(TOOL)}f.layout?.(LAYOUT);mirrorFlats();f.level?.(LEVEL);$('#packBtn').classList.toggle('hidden',!f.canPack());FLATS={saved:f.saved(),placements:f.placements()};paintLayers();['#specBtn','#decoBtn'].forEach(s=>$(s).disabled=Boolean(f.unsupported()))}};
 async function setVMode(v,{push=true}={}){
   if(!VIEWS.includes(v)||GMODE||!CID)v='picture';const was=VMODE;
   if(v!=='picture'){
@@ -1187,6 +1195,18 @@ let MQT=0;$('#matQ').addEventListener('input',()=>{clearTimeout(MQT);MQT=setTime
 // the fabric panel in the AI tab and the checklist follow what the garment is made of
 function matChanged(){if(typeof paintFabrics==='function'&&$('#fabSec'))paintFabrics().catch(()=>{});if(typeof loadReady==='function')setTimeout(loadReady,200)}
 if(CID&&!GMODE)$('#matBtn').classList.remove('hidden');
+
+// ---------- room for the drawing: the panel on the right folds away, Focus takes the whole screen (both kept for next time) ----------
+const LAYOUT={panel:true,focus:false};try{const v=JSON.parse(localStorage.getItem('fb.design.layout')||'{}');if(typeof v.panel==='boolean')LAYOUT.panel=v.panel;if(typeof v.focus==='boolean')LAYOUT.focus=v.focus}catch{}
+function applyLayout({full=false}={}){$('#app').dataset.panel=LAYOUT.panel?'on':'off';if(LAYOUT.focus)document.documentElement.dataset.focus='1';else delete document.documentElement.dataset.focus;
+  $('#panelBtn').setAttribute('aria-pressed',String(LAYOUT.panel));$('#focusBtn').setAttribute('aria-pressed',String(LAYOUT.focus));FF()?.layout?.(LAYOUT);
+  try{localStorage.setItem('fb.design.layout',JSON.stringify(LAYOUT))}catch{}
+  // full screen only on a press (browsers allow it only then), and left again with Focus
+  if(full){const d=document,el=d.documentElement,on=d.fullscreenElement||d.webkitFullscreenElement;try{if(LAYOUT.focus&&!on)(el.requestFullscreen||el.webkitRequestFullscreen)?.call(el)?.catch?.(()=>{});else if(!LAYOUT.focus&&on)(d.exitFullscreen||d.webkitExitFullscreen)?.call(d)?.catch?.(()=>{})}catch{}}
+  requestAnimationFrame(()=>{if(VMODE==='picture')fit()})}
+$('#panelBtn').onclick=()=>{LAYOUT.panel=!LAYOUT.panel;applyLayout()};$('#focusBtn').onclick=()=>{LAYOUT.focus=!LAYOUT.focus;applyLayout({full:true})};
+document.addEventListener('keydown',e=>{if(e.target.closest?.('input,textarea,select,[contenteditable]')||e.metaKey||e.ctrlKey||e.altKey)return;if(e.key==='\\'){e.preventDefault();$('#panelBtn').click()}else if(e.key==='f'||e.key==='F'){e.preventDefault();$('#focusBtn').click()}});
+applyLayout();
 
 boot();
 </script>

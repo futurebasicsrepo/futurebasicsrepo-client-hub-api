@@ -68,6 +68,9 @@ textarea.t{min-height:64px;resize:vertical}
 [data-embed] header,[data-embed] .bar,[data-embed] #pickC{display:none!important}
 [data-embed] .wrap{min-height:100vh}[data-embed] .pane{max-height:calc(100vh - 46px)}[data-embed] .canvas>svg{max-height:calc(100vh - 150px)}
 [data-embed=full] .tools .seg{display:none}
+/* the Design workspace's layout: the panel folds away, Focus trims the words around the drawing so it gets the room */
+[data-embed][data-panel=off] .wrap{grid-template-columns:minmax(0,1fr)}[data-embed][data-panel=off] .side{display:none}
+[data-embed][data-focus] .stage>p.msg,[data-embed][data-focus] .status.ok{display:none}[data-embed][data-focus] .stage{padding-top:8px;padding-bottom:8px;gap:8px}[data-embed][data-focus] .canvas>svg{max-height:calc(100vh - 70px)}
 /* Simple, set by the Design workspace: the essentials; Pro shows everything */
 [data-level=simple] .lv-pro{display:none!important}
 [data-embed=compact] .wrap{grid-template-columns:1fr}[data-embed=compact] .side,[data-embed=compact] .stage>.msg{display:none}[data-embed=compact] .stage{padding:10px}
@@ -472,6 +475,7 @@ if(EMBED)window.FBFlats={dirty:()=>Boolean(D&&P&&DIRTY),ready:()=>Boolean(D&&P),
   placements:()=>(P?PL.map(q=>({id:q.id,name:q.name,view:q.view,x:q.x,y:q.y,w:q.w,h:q.h,source:q.source,layer:q.layer||null,art:q.art||null,mark:q.mark||null,techniqueId:q.techniqueId||null,added:Boolean(q.added),where:describe(q,P)})):[]),saved:()=>Boolean(D&&P&&!DIRTY),
   select:id=>{const q=PL.find(x=>x.id===id);if(!q)return;if(q.view!==VIEW)setView(q.view);SEL=id;tab('pl');paint();document.querySelector(`#pPl [data-q="${id}"]`)?.scrollIntoView({block:'nearest'})},
   check:()=>({...(CHECK.summary||{}),saved:Boolean(D&&P&&!DIRTY)}),
+  layout:({panel=true,focus=false}={})=>{const r=document.documentElement;r.dataset.panel=panel?'on':'off';if(focus)r.dataset.focus='1';else delete r.dataset.focus;if(P)draw()},
   zoom:()=>FZ,
   // the Design workspace's tools, on the flat: the Pencil, brush, eraser, shapes and type draw on the view; undo and redo step through them
   tool:t=>{MTOOL=t||'select';if(t==='area'){if(P&&MODE!=='ai'){MODE='ai';AIBOX=null;if(TAB!=='design')tab('design');paint()}}else if(MODE==='ai'&&!AIBOX){MODE=null;if(P)paint()}mkPlace()},
