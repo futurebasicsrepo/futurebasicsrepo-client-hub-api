@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>Pattern</title>
+<script>// the pattern lives inside the Design workspace (/lab/studio): this page runs there in a frame; opened on its own it goes to the workspace
+(function(){var q=new URLSearchParams(location.search);if(q.get('embed')||window.top!==window){document.documentElement.dataset.embed='full';return}
+var c=q.get('concept')||'';location.replace('/lab/studio'+(/^[0-9a-f-]{36}$/i.test(c)?'?concept='+c+'&view=pattern':''))})()</script>
+<link rel="icon" href="/icons/icon-192.png">
+<style>
+@import url('/fonts/fonts.css');
+:root{--ink:#141416;--paper:#fff;--fog:#f5f5f2;--dim:#727278;--line:rgba(20,20,22,.14);--cue:#4bff9a;--ok:#17603a;--bad:#a02a20;--warn:#8a5a00}
+*{box-sizing:border-box}html{background:var(--fog)}
+body{margin:0;color:var(--ink);font:400 14px/1.45 'Space Grotesk',system-ui,sans-serif;background:var(--fog);min-height:100vh}
+button,input,select{font:inherit;color:inherit}a{color:inherit}.hidden{display:none!important}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--ink);background:#fff;color:var(--ink);border-radius:999px;padding:6px 13px;text-decoration:none;cursor:pointer;font-weight:600;min-height:34px;font-size:13px;white-space:nowrap}.btn:hover{background:var(--ink);color:#fff}
+.btn.go{background:var(--cue);border-color:var(--cue)}.btn.go:hover{background:#7affb6;color:var(--ink)}.btn.q{border-color:var(--line)}.btn.sm{min-height:28px;padding:3px 10px;font-size:12px}.btn[disabled]{opacity:.45;pointer-events:none}.btn[aria-pressed=true]{background:var(--ink);color:#fff;border-color:var(--ink)}
+.mono{font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+.bar{display:flex;align-items:center;gap:8px;padding:10px clamp(14px,2vw,24px);background:#fff;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.bar .ttl{margin-right:auto;display:grid;line-height:1.2}.bar .ttl b{font-size:16px}.bar .ttl span{color:var(--dim);font-size:12px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;padding:2px;background:#fff}.seg button{border:0;background:none;border-radius:999px;padding:5px 12px;font-size:13px;font-weight:600;cursor:pointer;min-height:30px}.seg button[aria-pressed=true]{background:var(--ink);color:#fff}
+select.t{border:1px solid var(--line);border-radius:10px;padding:6px 9px;background:#fff;min-height:34px}
+.wrap{display:grid;grid-template-columns:minmax(0,1fr) 340px;min-height:calc(100vh - 56px)}
+.stage{position:relative;display:grid;grid-template-rows:auto minmax(0,1fr);min-width:0}
+.scrub{display:flex;align-items:center;gap:10px;padding:10px clamp(14px,2vw,24px);border-bottom:1px solid var(--line);background:var(--fog)}
+.scrub input[type=range]{flex:1;accent-color:var(--ink)}.scrub .lbl{font:500 11px 'IBM Plex Mono',monospace;color:var(--dim);min-width:110px;text-align:right}
+#canvas{overflow:auto;padding:12px;min-height:420px}#canvas svg{display:block;width:100%;height:auto;max-height:calc(100vh - 170px)}
+.side{border-left:1px solid var(--line);background:#fff;padding:16px;display:grid;gap:16px;align-content:start;overflow:auto;max-height:calc(100vh - 56px)}
+.side h4{margin:0 0 6px;font-size:14px}.side section{display:grid;gap:8px}
+.f{display:grid;gap:4px;font-size:12.5px}.f span{color:var(--dim)}.row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.f input[type=number],.f select{border:1px solid var(--line);border-radius:10px;padding:6px 9px;min-height:34px;background:#fff;width:100%}
+.chk{display:flex;gap:6px;align-items:center;font-size:13px}
+table.pcs{width:100%;border-collapse:collapse;font-size:12.5px}table.pcs td,table.pcs th{text-align:left;padding:5px 4px;border-bottom:1px solid var(--line);vertical-align:top}table.pcs th{font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}
+table.pcs tr[data-pid]{cursor:pointer}table.pcs tr.on{background:#effff6}
+.sw{display:inline-block;width:10px;height:10px;border-radius:3px;border:1px solid rgba(20,20,22,.3);vertical-align:-1px;margin-right:6px}
+.note{font-size:12.5px;color:#4a4a50;margin:0}.find{font-size:12.5px;display:flex;gap:8px;align-items:flex-start}.find i{flex:none;width:8px;height:8px;border-radius:50%;margin-top:5px;background:var(--dim)}.find.fail i{background:var(--bad)}.find.warn i{background:#d9a300}.find.info i{background:var(--ok)}
+.empty{max-width:560px;margin:40px auto;padding:22px;background:#fff;border:1px solid var(--line);border-radius:16px;display:grid;gap:10px}
+.toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:9px 14px;border-radius:999px;font-size:13px;z-index:50}
+@media(max-width:900px){.wrap{grid-template-columns:1fr}.side{border-left:0;border-top:1px solid var(--line);max-height:none}#canvas svg{max-height:62vh}}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="bar">
+    <div class="ttl"><b id="ttl">Pattern</b><span id="sub">Loading…</span></div>
+    <div class="seg" role="group" aria-label="What to show" id="modeSeg"><button type="button" data-t="0" aria-pressed="true">Product</button><button type="button" data-t="0.45" aria-pressed="false">Exploded</button><button type="button" data-t="1" aria-pressed="false">Cutting layout</button></div>
+    <button class="btn go" type="button" id="play" title="Lift the pieces off the product and lay them out flat">Explode it</button>
+    <select class="t" id="size" aria-label="Size"></select>
+    <button class="btn q" type="button" id="dxf" title="The pieces as a DXF, for a pattern system (Gerber, Lectra, Optitex, CLO)">DXF</button>
+    <button class="btn q" type="button" id="svgDl" title="The pieces at real size: print at 100%">SVG 1:1</button>
+  </div>
+  <div class="wrap" id="main">
+    <div class="stage">
+      <div class="scrub"><span class="mono">Product</span><input type="range" id="t" min="0" max="1" step="0.01" value="0" aria-label="From the product to the pattern pieces"><span class="mono">Pattern</span><span class="lbl" id="tLbl">On the product</span></div>
+      <div id="canvas" aria-live="polite"></div>
+    </div>
+    <aside class="side" id="side"></aside>
+  </div>
+</div>
+<script type="module">
+import { garmentPattern, plushPattern, cleanPlush, layoutOf, explodeAt, assembled, offsetOf, boundsOf, areaOf, fabricName, cutWords, fillGrams } from '/lab/lab-pattern.js';
+import { STYLES } from '/lab/lab-flats.js';
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)],esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const TOKEN=()=>{try{return localStorage.getItem('fb.admin.token')||localStorage.getItem('fb.client.token')||''}catch{return ''}};
+async function api(path,o={}){const r=await fetch(path,{method:o.method||(o.body?'POST':'GET'),headers:{Authorization:'Bearer '+TOKEN(),...(o.body?{'Content-Type':'application/json'}:{})},body:o.body?JSON.stringify(o.body):undefined});const j=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(new Error(j.error||'Something went wrong'),{status:r.status});return j}
+const toast=m=>{const t=document.createElement('div');t.className='toast';t.setAttribute('role','status');t.textContent=m;document.body.append(t);setTimeout(()=>t.remove(),2600)};
+const CID=new URLSearchParams(location.search).get('concept')||'',HOST=()=>{try{return parent!==window?parent.FBDesign:null}catch{return null}};
+const FILL={self:'#e9e4d8',pile:'#efe2cf',rib:'#d6e4ef',lining:'#e6dcef',fusing:'#f1efe6',pocketing:'#e3ecdf',board:'#dcdcdc',knit:'#e0e9d6',contrast:'#f3d3cc',felt:'#f1e2b8'};
+let D=null,PAT=null,SPEC=null,SIZE='M',T=0,ANIM=0,SEL=null,DIRTY=false;
+const r3=v=>Math.round(v*1000)/1000,P=pts=>'M'+pts.map(q=>`${r3(q[0])} ${r3(q[1])}`).join(' L')+' Z';
+function build(){PAT=D.kind==='plush'?plushPattern(SPEC):D.kind==='garment'&&D.flat?garmentPattern(D.flat,SIZE):null;if(PAT&&D.kind==='garment'&&SPEC.sa)PAT={...PAT,sa:SPEC.sa}}
+
+// ---------- the drawing ----------
+// t < 1: the pieces on the product, lifted off and spread (the exploded view), flying flat; t = 1: the cutting layout, every piece it takes
+function drawPieces(){
+  if(!PAT){$('#canvas').innerHTML='';return}
+  const lay=layoutOf(PAT,{width:SPEC.width||58});let body='',bb;
+  if(T>=.999){
+    let y0=0;const items=[];
+    for(const g of lay){body+=`<text x="0" y="${r3(y0-.5)}" font-size=".55" font-weight="700" fill="#141416">${esc(g.name)}</text><text x="${r3(g.width)}" y="${r3(y0-.5)}" font-size=".42" text-anchor="end" fill="#727278">${g.width} in wide · ${g.length} in · ${g.yards} yd · ${g.efficiency}% used</text><rect x="0" y="${r3(y0)}" width="${g.width}" height="${r3(g.length)}" fill="#fff" stroke="#c7c7c2" stroke-width=".04" stroke-dasharray=".3 .2"/>`;
+      for(const it of g.items){const q=it.piece,tf=pts=>pts.map(([x,y])=>[(it.flip?-x+(it.b.x0+it.b.x1):x)+it.x,y+it.y+y0]),sew=tf(q.sew),cut=tf(offsetOf(q.sew,q.sa??PAT.sa)),gr=tf(q.grain),b=boundsOf(sew),fs=Math.min(.55,Math.max(.22,b.w/12));
+        body+=`<g data-pid="${esc(q.id)}" class="pc"><path d="${P(cut)}" fill="${FILL[q.fabric]||'#eee'}" stroke="${SEL===q.id?'#17603a':'#141416'}" stroke-width="${SEL===q.id?.09:.05}"/><path d="${P(sew)}" fill="none" stroke="#141416" stroke-width=".03" stroke-dasharray=".2 .12"/>`
+          +`<path d="M${r3(gr[0][0])} ${r3(gr[0][1])} L${r3(gr[1][0])} ${r3(gr[1][1])}" stroke="#17603a" stroke-width=".05" marker-start="url(#ga)" marker-end="url(#ga)"/>`
+          +tf(q.notches).map(n=>`<circle cx="${r3(n[0])}" cy="${r3(n[1])}" r=".12" fill="#141416"/>`).join('')
+          +(q.fold?`<path d="M${r3(it.x)} ${r3(b.y0)} L${r3(it.x)} ${r3(b.y1)}" stroke="#a02a20" stroke-width=".05" stroke-dasharray=".35 .18"/>`:'')
+          +(it.n===0?`<text x="${r3((b.x0+b.x1)/2)}" y="${r3((b.y0+b.y1)/2)}" text-anchor="middle" font-size="${r3(fs)}" font-weight="700">${esc(q.name)}</text><text x="${r3((b.x0+b.x1)/2)}" y="${r3((b.y0+b.y1)/2+fs*1.2)}" text-anchor="middle" font-size="${r3(fs*.75)}" fill="#4a4a50">${esc(cutWords(q))}</text>`:'')+`</g>`;items.push(...cut)}
+      y0+=g.length+2.4}
+    bb=boundsOf(items.length?items:[[0,0],[10,10]]);bb={x0:-.5,y0:-1.4,x1:Math.max(...lay.map(g=>g.width))+.5,y1:y0}
+  }else{
+    const fr=explodeAt(PAT,T,lay),A=assembled(PAT),label=T>.2;
+    const sorted=fr.slice().sort((a,b)=>(a.piece.place.z||0)-(b.piece.place.z||0));
+    for(const {piece:q,pts} of sorted){const b=boundsOf(pts),fs=Math.min(.55,Math.max(.24,b.w/10));
+      body+=`<g data-pid="${esc(q.id)}" class="pc"><path d="${P(pts)}" fill="${FILL[q.fabric]||'#eee'}" fill-opacity="${T<.02?1:.94}" stroke="${SEL===q.id||SEL+'-2'===q.id?'#17603a':'#141416'}" stroke-width="${SEL===q.id||SEL+'-2'===q.id?.1:.055}"/>${label&&!q.twin?`<text x="${r3((b.x0+b.x1)/2)}" y="${r3((b.y0+b.y1)/2)}" text-anchor="middle" font-size="${r3(fs)}" font-weight="700" opacity="${Math.min(1,(T-.2)*4)}">${esc(q.name)}</text>`:''}</g>`}
+    if(T<.2&&A.backDx){const fb=A.bounds;body+=`<text x="${r3(fb.x0)}" y="${r3(fb.y1+1.4)}" font-size=".6" fill="#727278">Front</text><text x="${r3(fb.x0+A.backDx)}" y="${r3(fb.y1+1.4)}" font-size=".6" fill="#727278">Back</text>`}
+    const all=fr.flatMap(x=>x.pts);bb=boundsOf(all.length?all:[[0,0],[10,10]]);bb={x0:Math.min(bb.x0,A.bounds.x0)-1,y0:Math.min(bb.y0,A.bounds.y0)-1,x1:bb.x1+1,y1:Math.max(bb.y1,A.bounds.y1)+2}
+  }
+  const w=bb.x1-bb.x0,h=bb.y1-bb.y0;
+  $('#canvas').innerHTML=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="${r3(bb.x0)} ${r3(bb.y0)} ${r3(w)} ${r3(h)}" role="img" aria-label="${esc(PAT.label)} pattern pieces" font-family="Space Grotesk, system-ui, sans-serif"><defs><marker id="ga" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="3.2" markerHeight="3.2" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#17603a"/></marker></defs>${body}</svg>`;
+  $('#tLbl').textContent=T<.02?'On the product':T<.5?'Exploded':T<.999?'Laying out flat':'Cutting layout';
+  $$('#modeSeg button').forEach(b=>b.setAttribute('aria-pressed',String(Math.abs(Number(b.dataset.t)-T)<.03||(b.dataset.t==='0.45'&&T>.03&&T<.97))));
+}
+function goTo(target,ms=1500){cancelAnimationFrame(ANIM);const from=T,t0=performance.now();if(matchMedia('(prefers-reduced-motion: reduce)').matches)ms=1;
+  const step=now=>{const k=Math.min(1,(now-t0)/ms),e=k<.5?2*k*k:1-Math.pow(-2*k+2,2)/2;T=from+(target-from)*e;$('#t').value=T;drawPieces();if(k<1)ANIM=requestAnimationFrame(step)};ANIM=requestAnimationFrame(step)}
+
+// ---------- the side ----------
+function paintSide(){
+  const s=$('#side');if(!PAT){s.innerHTML='';return}
+  const lay=layoutOf(PAT,{width:SPEC.width||58}),o=D.options,vis=PAT.pieces.filter(q=>q.cut>0);
+  const sel=(id,map,v)=>`<select data-k="${id}">${Object.entries(map).map(([k,l])=>`<option value="${esc(k)}"${String(k)===String(v)?' selected':''}>${esc(l)}</option>`).join('')}</select>`;
+  let h='';
+  if(D.kind==='plush'){const p=SPEC;h+=`<section><h4>The plush</h4><p class="note">Choose its shape and size: the pieces are drafted to it.</p>
+    <label class="f"><span>Shape</span>${sel('shape',o.plush.shapes,p.shape)}</label>
+    <div class="row2"><label class="f"><span>Height (in)</span><input type="number" data-k="height" min="4" max="48" step="0.5" value="${p.height}"></label><label class="f"><span>Ears</span>${sel('ears',o.plush.ears,p.ears)}</label></div>
+    ${p.shape==='pillow'?`<label class="f"><span>Gusset depth (in)</span><input type="number" data-k="depth" min="1" max="12" step="0.5" value="${p.depth}"></label>`:''}
+    <div style="display:flex;gap:14px;flex-wrap:wrap">${p.shape!=='pillow'?`<label class="chk"><input type="checkbox" data-k="arms"${p.arms?' checked':''}> Arms</label>`:''}${p.shape==='bear'?`<label class="chk"><input type="checkbox" data-k="legs"${p.legs?' checked':''}> Legs</label>`:''}${p.shape!=='bear'&&p.shape!=='pillow'?`<label class="chk"><input type="checkbox" data-k="tail"${p.tail?' checked':''}> Tail</label>`:''}</div>
+    <label class="f"><span>Fabric</span>${sel('fabric',o.plush.fabrics,p.fabric)}</label>
+    <div class="row2"><label class="f"><span>Eyes</span>${sel('eyes',o.plush.eyes,p.eyes)}</label><label class="f"><span>For ages</span>${sel('age',o.plush.ages,p.age)}</label></div>
+    <button class="btn go" type="button" id="saveP"${DIRTY?'':' disabled'}>${DIRTY?'Save the pattern':'Saved'}</button></section>`}
+  else h+=`<section><h4>${esc(PAT.label)} · ${esc(PAT.size)}</h4><p class="note">Drafted from the flats' measurements${D.flatSaved?'':' (the flats are not saved yet: these are the style\'s standard measurements)'}. Change the measurements on the Flat front, and the pattern follows.</p>
+    <div class="row2"><label class="f"><span>Seam allowance</span><select data-k="sa">${o.seamAllowances.map(v=>`<option value="${v}"${Number(SPEC.sa||PAT.sa)===v?' selected':''}>${{.25:'¼',.375:'⅜',.5:'½',.625:'⅝'}[v]} in</option>`).join('')}</select></label><label class="f"><span>Fabric width</span><select data-k="width">${o.widths.map(v=>`<option value="${v}"${Number(SPEC.width)===v?' selected':''}>${v} in</option>`).join('')}</select></label></div>
+    <button class="btn go" type="button" id="saveP"${DIRTY?'':' disabled'}>${DIRTY?'Save':'Saved'}</button></section>`;
+  h+=`<section><h4>Pieces <span class="mono">${vis.length} · ${vis.reduce((a,q)=>a+q.cut,0)} cut</span></h4><table class="pcs"><thead><tr><th>Piece</th><th>Cut</th><th>Fabric</th></tr></thead><tbody>${vis.map(q=>`<tr data-pid="${esc(q.id)}"${SEL===q.id?' class="on"':''}><td><span class="sw" style="background:${FILL[q.fabric]||'#eee'}"></span>${esc(q.name)}${q.notes.length&&SEL===q.id?`<div class="note" style="margin-top:4px">${q.notes.map(esc).join('<br>')}</div>`:''}</td><td>${esc(cutWords(q).replace(/^Cut /,''))}</td><td>${esc(fabricName(q.fabric))}</td></tr>`).join('')}</tbody></table></section>`;
+  h+=`<section><h4>Cloth for one</h4>${lay.map(g=>`<div class="find info"><i></i><span><b>${esc(g.name)}</b>: ${g.yards} yd at ${g.width} in wide (${g.efficiency}% of the cloth used)</span></div>`).join('')}${PAT.kind==='plush'?`<div class="find info"><i></i><span><b>Fill</b>: about ${fillGrams(PAT)} g of ${esc(SPEC.fill)}</span></div>`:''}<p class="note">An estimate from a simple layout; the factory's marker uses less.</p></section>`;
+  if(PAT.checks?.length)h+=`<section><h4>Safety and testing</h4>${PAT.checks.map(c=>`<div class="find ${c.level}"><i></i><span>${esc(c.msg)}</span></div>`).join('')}</section>`;
+  h+=`<section><h4>Notes for the pattern maker</h4>${PAT.notes.map(n=>`<p class="note">${esc(n)}</p>`).join('')}</section>`;
+  s.innerHTML=h;
+}
+$('#side').addEventListener('change',e=>{const k=e.target.dataset.k;if(!k)return;const v=e.target.type==='checkbox'?e.target.checked:e.target.type==='number'?Number(e.target.value):e.target.value;
+  SPEC=D.kind==='plush'?cleanPlush({...SPEC,[k]:v,...(k==='shape'?{ears:v==='bunny'?'long':SPEC.ears==='long'?'round':SPEC.ears}:{})}):{...SPEC,[k]:Number(v)};DIRTY=true;build();drawPieces();paintSide()});
+$('#side').addEventListener('click',async e=>{
+  if(e.target.closest('#saveP')){const b=e.target.closest('#saveP');b.disabled=true;b.textContent='Saving…';try{const r=await api(`/v1/lab/concepts/${CID}/pattern`,{method:'PUT',body:{spec:SPEC}});SPEC=r.spec;DIRTY=false;toast('Pattern saved');paintSide();HOST()?.patternSaved?.()}catch(err){toast(err.message);b.disabled=false;b.textContent='Save'}return}
+  const tr=e.target.closest('tr[data-pid]');if(tr){SEL=SEL===tr.dataset.pid?null:tr.dataset.pid;drawPieces();paintSide()}});
+$('#canvas').addEventListener('click',e=>{const g=e.target.closest('[data-pid]');SEL=g?g.dataset.pid.replace(/-2$/,''):null;drawPieces();paintSide()});
+$('#t').addEventListener('input',e=>{cancelAnimationFrame(ANIM);T=Number(e.target.value);drawPieces()});
+$('#modeSeg').addEventListener('click',e=>{const b=e.target.closest('button[data-t]');if(b)goTo(Number(b.dataset.t),900)});
+$('#play').addEventListener('click',()=>{if(T>.97){T=0;drawPieces()}goTo(1,3200)});
+$('#size').addEventListener('change',e=>{SIZE=e.target.value;build();drawPieces();paintSide()});
+async function download(ext){const b=ext==='dxf'?$('#dxf'):$('#svgDl'),label=b.textContent;b.disabled=true;b.textContent='Preparing…';
+  try{const r=await fetch(`/v1/lab/concepts/${CID}/pattern.${ext}?size=${encodeURIComponent(SIZE)}&width=${SPEC.width||58}`,{headers:{Authorization:'Bearer '+TOKEN()}});if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||'The file could not be made');
+    const name=(/filename="([^"]+)"/.exec(r.headers.get('content-disposition')||'')||[])[1]||`pattern.${ext}`,u=URL.createObjectURL(await r.blob()),a=document.createElement('a');a.href=u;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),4000);toast(`Downloaded ${name}`)}
+  catch(err){toast(err.message)}finally{b.disabled=false;b.textContent=label}}
+$('#dxf').addEventListener('click',()=>download('dxf'));$('#svgDl').addEventListener('click',()=>download('svg'));
+
+async function boot(){
+  if(!/^[0-9a-f-]{36}$/i.test(CID)){$('#main').innerHTML='<div class="empty"><b>Open a concept in Design to see its pattern.</b></div>';return}
+  try{D=await api(`/v1/lab/concepts/${CID}/pattern`)}catch(err){$('#main').innerHTML=`<div class="empty"><b>The pattern could not be opened.</b><p class="note">${esc(err.message)}</p></div>`;return}
+  $('#ttl').textContent=D.concept.name;
+  if(D.kind==='soon'||D.kind==='none'){$('#sub').textContent='Pattern';$('#modeSeg').classList.add('hidden');$$('#play,#size,#dxf,#svgDl').forEach(x=>x.classList.add('hidden'));
+    $('#main').innerHTML=`<div class="empty"><b>${D.kind==='soon'?esc(D.soon):'The Lab cannot draft a pattern for this piece yet.'}</b><p class="note">${D.kind==='soon'?'Until then the tech pack carries its specification, and you can draw it on the Picture.':'Set what the piece is on the Flat front (the style), and its pattern pieces appear here.'}</p></div>`;return}
+  SPEC=D.spec;SIZE=D.flat?.size||'M';const S=D.flat?STYLES[D.flat.style]:null;
+  if(D.kind==='garment'&&!S?.oneSize)$('#size').innerHTML=D.options.sizes.map(s=>`<option${s===SIZE?' selected':''}>${s}</option>`).join('');else $('#size').classList.add('hidden');
+  build();$('#sub').textContent=`Pattern · ${PAT.label} · ${PAT.size} · ${PAT.pieces.filter(q=>q.cut>0).length} pieces`;
+  T=new URLSearchParams(location.search).get('t')==='1'?1:0;$('#t').value=T;drawPieces();paintSide();
+  window.FBPattern={ready:()=>true,dirty:()=>DIRTY,explode:()=>goTo(1,3200),at:t=>{T=t;$('#t').value=t;drawPieces()},pattern:()=>PAT};
+}
+boot();
+</script>
+</body>
+</html>

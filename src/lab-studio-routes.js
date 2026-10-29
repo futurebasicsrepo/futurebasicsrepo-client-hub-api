@@ -116,7 +116,7 @@ export function registerLabStudioRoutes(app, d) {
     const palette = [...COLORS.map(x => ({ name: x.name, hex: x.hex, from: 'brand' })), ...((program?.palette || []).map(x => ({ name: clip(x.name, 40), hex: x.hex, from: 'program' })))].filter(x => /^#[0-9a-f]{6}$/i.test(x.hex || ''));
     const cfg = imageCfg();
     return {
-      concept: { id: c.id, name: c.name, category: c.category, status: c.status, hasImage: c.has_image, hasPlain: c.has_plain, locked: c.status === 'tech_pack', colors: c.spec?.colors || [] },
+      concept: { id: c.id, name: c.name, category: c.category, status: c.status, hasImage: c.has_image, hasPlain: c.has_plain, locked: c.status === 'tech_pack', colors: c.spec?.colors || [], scratch: Boolean(c.spec?.scratch) },
       doc: s?.doc || null, savedAt: s?.updated_at || null, savedBy: s?.by_name || '', appliedAt: s?.applied_at || null, canRestore: Boolean(s?.has_original),
       marks: [{ id: 'mark', label: 'Cue mark', svg: logoSvg('mark') }, { id: 'word', label: 'Wordmark', svg: logoSvg('word') }, { id: 'lockup', label: 'Wordmark and cue mark', svg: logoSvg('lockup') }],
       palette, graphics: (c.spec?.graphics || []).filter(g => g.art).map(g => ({ art: g.art, name: clip(g.name, 60) })), graphicNames: (c.spec?.graphics || []).map(g => clip(g.name, 60)).filter(Boolean),

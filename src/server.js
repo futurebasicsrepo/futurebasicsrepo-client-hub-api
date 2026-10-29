@@ -69,6 +69,7 @@ import { compareSampleToDesign, findingsToCorrections } from './sample-compare.j
 import { labHandoff } from './lab-handoff.js';
 import { registerLabClientRoutes } from './lab-client-routes.js';
 import { registerLabFlatsRoutes } from './lab-flats-routes.js';
+import { registerLabPatternRoutes } from './lab-pattern-routes.js';
 import { createArtService, registerLabArtRoutes } from './lab-art-routes.js';
 import { createLabAccess } from './lab-access.js';
 import { registerLabSelfServeRoutes } from './lab-selfserve-routes.js';
@@ -721,6 +722,7 @@ registerLabMaterialsRoutes(app, { pool, ...labDeps, log: app.log, ready: migrate
 registerLabShareRoutes(app, { pool, ...labDeps, log: app.log, notifyStaff, sheetSvg: id => labFlats.sheetSvg(id) });
 registerLabTryonRoutes(app, { pool, ...labDeps, log: app.log });
 registerLabRangeRoutes(app, { pool, ...labDeps, getSetting, setSetting, editConcept: (...a) => labConcepts.editConcept(...a), notifyStaff, log: app.log });
+registerLabPatternRoutes(app, { pool, ...labDeps });
 const labFlats = registerLabFlatsRoutes(app, { pool, ...labDeps, log: app.log, attachArtwork: (productId, items) => attachLabArtwork(productId, items), applyHandoff: (productId, h) => applyLabHandoff(productId, h), packChanges: async productId => { const t=(await pool.query('select data,published_data from tech_packs where product_id=$1 order by created_at desc limit 1',[productId])).rows[0]; return t?.published_data?packDiff(normalizeTechPack(t.published_data),normalizeTechPack(t.data)).filter(c=>!/ picture$/.test(c.label)&&!(c.section==='Artwork'&&/^(Spec sheet|Technical flat)/.test(c.label))):null; } /* the flats are drawn again each time they are sent: a new picture alone is no change, and a changed drawing always changes its measurements, construction lines or colours too */ });
 registerLabClientRoutes(app, { pool, authenticate, adminOnly, log: app.log, sheetSvg: id => labFlats.sheetSvg(id), notifyStaff, notifyClientContact, hubUrl: () => clientHubUrl, learn: learnLabTaste });
 registerRoomTeamRoutes(app, { pool, authenticate, clientHubUrl, sendHubEmail, hubEmailShell, emailEscape, replyTo: intakeNotificationEmail, forgetUser, log: app.log });
@@ -771,6 +773,10 @@ app.get('/lab/material-photos/:file', async (req, reply) => { const m = /^([a-z0
 app.get('/lab/lab-swatches.js', (_req, reply) => reply.header('cache-control', 'public, max-age=300').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-swatches.js', import.meta.url), 'utf8')));
 // the flats page runs inside the Design workspace (/lab/studio) in a frame: it may be framed by this site's own pages and nobody else's
 app.get('/lab/flats', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').header('content-security-policy', "upgrade-insecure-requests; default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob: https:; connect-src 'self' https://thefuturebasics.com; frame-ancestors 'self'; base-uri 'self'; form-action 'self'").type('text/html').send(readFileSync(new URL('./lab-flats.html', import.meta.url), 'utf8')));
+// the pattern page runs inside Design (/lab/studio) in a frame, like the flats; its drafting is shared with the service (src/lab-pattern.js)
+app.get('/lab/pattern', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').header('content-security-policy', "upgrade-insecure-requests; default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'self'; base-uri 'self'; form-action 'self'").type('text/html').send(readFileSync(new URL('./lab-pattern.html', import.meta.url), 'utf8')));
+app.get('/lab/lab-pattern.js', (_req, reply) => reply.header('cache-control', 'public, max-age=300').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-pattern.js', import.meta.url), 'utf8')));
+app.get('/lab/lab-flats.js', (_req, reply) => reply.header('cache-control', 'public, max-age=300').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-flats.js', import.meta.url), 'utf8')));
 app.get('/lab/flats.js', (_req, reply) => reply.header('cache-control', 'public, max-age=300').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-flats.js', import.meta.url), 'utf8')));
 // the flat-sketch pack is large (nearly 400 sketches, their measurements and the add-on parts), so the text files go gzipped to any browser that takes it
 const packGz = new Map(), sendPack = (req, reply, rel, type, maxAge) => {

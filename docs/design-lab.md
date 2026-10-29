@@ -601,3 +601,46 @@ Routes: `src/lab-materials-routes.js` (`/v1/lab/materials…`, `/v1/lab/concepts
   - the check's verdict.
 - **The tech pack.** When an approved concept becomes a tech pack, the spec sheet and the front and back flats go into its artwork. **Add to the tech pack** on the flats page adds them again after a change.
 - Routes: `src/lab-flats-routes.js` (`GET/PUT /v1/lab/concepts/:id/flats`, `POST …/flats/check`, `GET …/flats/sheet.svg`, `POST …/flats/tech-pack`). The templates, measurements, grading, wording and drawing checks are in `src/lab-flats.js`, shared with the page as `/lab/flats.js`. The page is `src/lab-flats.html`, and the table is `lab_flats` (with `lab_techniques.rules`).
+
+## Starting from scratch
+
+**Design** (`/lab/studio`, with no concept chosen) offers **Start from scratch**: name it (optional), choose what it is and, for clothes, the style
+(`POST /v1/lab/concepts/from-scratch {name?, category, style?, shape?}`). The concept has no plan and uses no AI. Design opens on white paper with
+the product's own outline under it as a locked **guide**:
+
+- a garment shows its flat's pieces;
+- a plush shows its shape;
+- footwear, toys and electronics get a dot grid.
+
+The guide is drawn at real size, so the studio knows the inches from the start (no ruler needed). Hide or delete the guide in Layers when you are
+done. A garment started from scratch draws its flats as a plain outline to draw over (`template: 'none'`), not from a sketch in the sketch pack.
+
+## Patterns: the product exploded into the pieces it is cut from
+
+**Pattern** sits beside Picture, Flat front and Flat back in Design (`/lab/pattern`, in a frame; the drafting is `src/lab-pattern.js`, shared by
+the page and the service).
+
+- **Garments** are drafted from the flats' own measurements, so the pattern grades with the size picked:
+  - tops: front and back on the fold (a pair of fronts when it opens), sleeves whose cap is sized to the armhole, neck, cuff and hem ribs,
+    hood sides, the kangaroo pocket, and for shirts a yoke, collar, stand and cuffs;
+  - bottoms: front and back legs (the back crotch longer), the waistband, pocket bags in pocketing, the fly facing, back pockets;
+  - caps: six crown panels, the brim with its board, the sweatband; bucket hats, beanies (knit to shape) and totes too.
+
+  Each piece has its sew line, the cutting line (the seam allowance: ⅜ in for knits, ½ in for wovens, or as chosen), a grain line, notches, and
+  how many to cut and from which cloth.
+- **Plush** is drafted from a few choices: a bear (head sides and gusset, muzzle, body front and back, arms, legs, foot pads, ears), a bean
+  character, a bunny or a pillow character. You also choose the height, the ears, the arms, legs and tail, the pile fabric, the eyes and the age.
+  The pieces carry a ¼ in allowance, the pile direction, and the stuffing opening.
+- **Plush safety checks** follow the age (ASTM F963 and EN 71): safety eyes on a toy for under-3s fail; small appendages and long pile are
+  flagged; the law label and tracking label are listed. The page estimates the fill in grams.
+
+**Product → Exploded → Cutting layout.** The slider (or **Explode it**) lifts the pieces off the product (front and back side by side), spreads
+them out, then lays every cut flat on the cloth. The cutting layout shows each fabric at its width, how much it takes (yards), and how much of
+the cloth is used. That is an estimate from a simple row layout; the factory's marker does better.
+
+Files: `GET /v1/lab/concepts/:id/pattern.dxf` (R12, inches, on the CUT, SEW, GRAIN, NOTCH and TEXT layers, for Gerber, Lectra, Optitex or CLO)
+and `pattern.svg` (every piece at real size: print at 100%), each for the size asked for (`?size=L&width=60`). A plush's choices, and a
+garment's seam allowance and cloth width, are kept in `lab_patterns` (`GET|PUT /v1/lab/concepts/:id/pattern`).
+
+A pattern from the Lab is a **first block from the measurements**: a pattern maker trues it up on the first sample. Footwear (the last and the
+upper pattern), toys and objects (tooling) and electronics (the engineering) say so on the Pattern view: they come next, one at a time.
