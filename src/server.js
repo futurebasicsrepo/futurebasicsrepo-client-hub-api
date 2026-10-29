@@ -60,6 +60,7 @@ import { registerLabViewRoutes } from './lab-view-routes.js';
 import { registerLabStudioRoutes } from './lab-studio-routes.js';
 import { registerLabLibraryRoutes } from './lab-library-routes.js';
 import { registerLabMaterialsRoutes } from './lab-materials-routes.js';
+import { photoJpeg } from './lab-photo-tint.js';
 import { registerLabShareRoutes } from './lab-share-routes.js';
 import { registerLabRangeRoutes } from './lab-range-routes.js';
 import { registerLabTryonRoutes } from './lab-tryon-routes.js';
@@ -764,6 +765,9 @@ app.get('/lab/sketches', (_req, reply) => reply.header('cache-control', 'no-stor
 app.get('/lab/nav.js', (_req, reply) => reply.header('cache-control', 'public, max-age=300').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-nav.js', import.meta.url), 'utf8')));
 app.get('/lab/materials', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').type('text/html').send(readFileSync(new URL('./lab-materials.html', import.meta.url), 'utf8')));
 app.get('/lab/lab-tags.js', (_req, reply) => reply.header('cache-control', 'public, max-age=300').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-tags.js', import.meta.url), 'utf8')));
+app.get('/lab/lab-photos.js', (_req, reply) => reply.header('cache-control', 'public, max-age=300').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-photos.js', import.meta.url), 'utf8')));
+// the materials library's photos, recoloured: /lab/material-photos/denim.jpg?c=2b3a5c&s=320 (free-licence close-ups, nothing private, so open)
+app.get('/lab/material-photos/:file', async (req, reply) => { const m = /^([a-z0-9-]+)\.jpg$/.exec(String(req.params.file || '')); const buf = m ? await photoJpeg(m[1], req.query?.c ? '#' + String(req.query.c).replace('#', '') : '', req.query?.s).catch(() => null) : null; if (!buf) return reply.code(404).send({ error: 'Not found' }); return reply.header('cache-control', 'public, max-age=604800').type('image/jpeg').send(buf); });
 app.get('/lab/lab-swatches.js', (_req, reply) => reply.header('cache-control', 'public, max-age=300').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-swatches.js', import.meta.url), 'utf8')));
 // the flats page runs inside the Design workspace (/lab/studio) in a frame: it may be framed by this site's own pages and nobody else's
 app.get('/lab/flats', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').header('content-security-policy', "upgrade-insecure-requests; default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob: https:; connect-src 'self' https://thefuturebasics.com; frame-ancestors 'self'; base-uri 'self'; form-action 'self'").type('text/html').send(readFileSync(new URL('./lab-flats.html', import.meta.url), 'utf8')));

@@ -1183,12 +1183,14 @@ $$('#viewSeg [data-v]').forEach(b=>b.onclick=()=>setVMode(b.dataset.v));
 const flatsOr=fn=>()=>{const f=FF();if(!f||!f.ready()){toast('The flats are still loading.');return}fn(f)};
 $('#specBtn').onclick=flatsOr(f=>f.sheet());$('#decoBtn').onclick=flatsOr(f=>f.deco());$('#packBtn').onclick=flatsOr(f=>f.pack());
 // ---------- fabrics, trims and labels on the garment (the concept's bill of materials), from the materials library; on the picture and the flats ----------
-const MAT={kind:'fabric',q:'',on:null,lib:[]};let MSW=null,MTG=null;
-const matMods=async()=>{if(!MSW)[MSW,MTG]=await Promise.all([import('/lab/lab-swatches.js'),import('/lab/lab-tags.js')]);return[MSW,MTG]};
+const MAT={kind:'fabric',q:'',on:null,lib:[]};let MSW=null,MTG=null,MPH=null;
+const matMods=async()=>{if(!MSW)[MSW,MTG,MPH]=await Promise.all([import('/lab/lab-swatches.js'),import('/lab/lab-tags.js'),import('/lab/lab-photos.js').catch(()=>null)]);return[MSW,MTG]};
 const MROLES={fabric:[['main','Main fabric'],['contrast','Contrast'],['lining','Lining'],['rib','Rib and trims']],trim:[['trim','Trim']],tag:[['tag','Tag or label']]};
 const tagInk=h=>{if(!/^#[0-9a-f]{6}$/i.test(h||''))return'#141416';const n=parseInt(h.slice(1),16);return((n>>16)*299+((n>>8)&255)*587+(n&255)*114)/1000<128?'#f3eee4':'#141416'};
 function matThumb(m,colour){const[S,T]=[MSW,MTG];if(m.kind==='tag'){const fill=colour?.hex||(m.colours||[])[0]?.hex||'';return`<div class="th tg" ${m.spec?.face?`data-tagface="${esc(m.spec.face)}" data-tagfill="${esc(fill)}"`:''}>${T.tagSvg(m.spec||{},{scale:2,showSize:false,fill,ink:tagInk(fill)})}</div>`}
-  const cs=colour?[colour,...(m.colours||[])]:(m.colours||[]);return`<div class="th" ${m.hasSwatch?`data-msw="${m.id}"`:''}>${S.materialSvg({...m,colours:cs},'m'+m.id.replace(/-/g,'').slice(0,10)+(colour?.hex||'').slice(1))}</div>`}
+  // a photo of the cloth or trim in the colour chosen on the garment, over the drawing (which shows while it loads, or when no photo fits)
+  const cs=colour?[colour,...(m.colours||[])]:(m.colours||[]),ph=!m.hasSwatch&&MPH?MPH.photoFor({...m,colours:cs}):'',hex=(cs.find(c=>c?.hex)?.hex||'').replace('#','');
+  return`<div class="th" ${m.hasSwatch?`data-msw="${m.id}"`:''}>${S.materialSvg({...m,colours:cs},'m'+m.id.replace(/-/g,'').slice(0,10)+(colour?.hex||'').slice(1))}${ph?`<img src="/lab/material-photos/${esc(ph)}.jpg?c=${esc(hex)}&s=320" alt="" loading="lazy" onerror="this.remove()">`:''}</div>`}
 // a tag designed in the studio shows its face (fetched with the sign-in, then drawn into the tag)
 function matFaces(root,list){for(const el of root.querySelectorAll('[data-tagface]')){const m=list.find(x=>x.spec?.face===el.dataset.tagface);if(!m)continue;
   fetch('/v1/lab/art/'+el.dataset.tagface,{headers:{Authorization:'Bearer '+TOKEN()}}).then(r=>r.ok?r.blob():null).then(b=>{if(!b)return;const f=el.dataset.tagfill;el.innerHTML=MTG.tagSvg(m.spec,{scale:2,showSize:false,face:URL.createObjectURL(b),fill:f,ink:tagInk(f)})}).catch(()=>{})}}
