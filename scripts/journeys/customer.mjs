@@ -1678,7 +1678,7 @@ await journey('J102', 'samples and inspection: the usual stages in one press, a 
       const ctx = await bw.newContext({ viewport: { width: 1280, height: 900 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.client.token', t); } catch {} }, m.token);
       const p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message));
       await p.goto(`${BASE}/tech-packs/${m.id}`, { waitUntil: 'domcontentloaded' }); await p.waitForSelector('#tabs button[data-tab="bom"]', { timeout: 20000 }); await p.keyboard.press('Escape'); await p.click('#tabs button[data-tab="bom"]');
-      await p.waitForSelector('[data-sampling] [data-act="sampstages"]'); await p.click('[data-sampling] [data-act="sampstages"]'); await p.waitForFunction(() => document.querySelectorAll('[data-sampling] tbody tr').length === 4);
+      await p.waitForSelector('[data-sampling] [data-act="sampstages"]'); await p.click('[data-sampling] [data-act="sampstages"]'); await p.waitForFunction(() => document.querySelectorAll('[data-sampling] > .tablewrap tbody tr').length === 4);
       await p.locator('[data-inspection] textarea').fill('Final inspection to ISO 2859-1, AQL 2.5 major / 4.0 minor.'); await p.locator('[data-inspection] input.t').first().fill('2.5');
       await p.click('[data-inspection] [data-act="add"]'); await p.locator('[data-inspection] tbody tr').first().locator('input.t').first().fill('Wash fastness');
       await p.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j102-samples.png` }).catch(() => {});

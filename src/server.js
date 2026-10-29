@@ -3487,7 +3487,7 @@ async function techPackEntitlement(clientId,packId,q=pool){
   if(!billingOn())return 'free';
   const client=(await q.query('select * from clients where id=$1',[clientId])).rows[0];if(!client)return 'free'; // a room being created in this very transaction: its first pack
   if(client.tech_pack_comped)return 'comped';
-  if(await labAccess.active(client.id))return 'lab'; // the Design Lab is open on the room: tech packs come with it
+  if(await labAccess.active(client.id,q))return 'lab'; // the Design Lab is open on the room: tech packs come with it
   // a failed read does not use up the free pack — the client is asked for a better photo, not for money
   const prior=(await q.query(`select count(*)::int n from tech_packs where client_id=$1 and id<>$2 and (ai_status in ('pending','done','skipped') or paid_at is not null)`,[clientId,packId])).rows[0].n;
   if(prior===0)return 'free';
