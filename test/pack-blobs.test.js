@@ -110,3 +110,19 @@ test('the cache is bounded', async () => {
   for (let i = 0; i < 6; i++) { const b = toBlob(picture(10 + i)); await layer.save(new Map([[b.row.hash, b.row]])); }
   assert.ok(layer.stats().cachedBytes <= 10 * 1024 + 8 * 1024 && layer.stats().cachedPictures < 6, JSON.stringify(layer.stats()));
 });
+
+test('a checked-out connection stores and reads its pictures on itself, never asks the pool for a second one, and a picture written in a transaction is stored again after it', async () => {
+  const pool = fakeDb(), conn = fakeDb(), layer = createBlobLayer(pool.rawQuery);
+  // the connection: transaction control, pack_blobs, and the json row
+  const own = async (text, values) => (/^(begin|commit|rollback)/i.test(text) ? { rows: [], fields: [] } : /pack_blobs/.test(text) ? conn.rawQuery(text, values) : conn.run(text, values));
+  const q = layer.wrap(own, { own: true });
+  await q('begin'); await q('insert into t(data) values($1)', [{ hero: A }]); await q('rollback');
+  assert.deepEqual(pool.calls, [], 'the pool was never asked');
+  assert.ok(conn.blobs.size === 1, 'the picture went in on the same connection');
+  conn.blobs.clear(); // the rollback took the picture with it
+  await q('insert into t(data) values($1)', [{ hero: A }]);
+  assert.equal(conn.blobs.size, 1, 'so the next write stores it again instead of trusting a row that was rolled back');
+  const back = await q('select data from t');
+  assert.equal(back.rows[0].data.hero, A, 'and it reads back whole, through the same connection');
+  assert.deepEqual(pool.calls, []);
+});

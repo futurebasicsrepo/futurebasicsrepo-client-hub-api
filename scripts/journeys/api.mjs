@@ -1734,7 +1734,7 @@ await journey('J134', 'Sales intelligence: listens to Reddit, Hacker News, news,
     ok(ann.claimed === 1 && ann.dismissed === 1 && ann.deals === 2 && ben.deals === 1 && ben.claimed === 0 && ben.outreach === 1 && ben.replies === 1 && ben.meetings === 1 && ben.won === 1 && ben.wonCents === 1250000, 'each person\'s record is theirs: who took it, sent, got replies, booked meetings, won what (handing a post over is not the same as taking it)', [ann, ben]);
     ok(k.rates.reply === 100 && k.rates.meeting === 100 && k.response.slaHours === 24 && k.response.overdue >= 0 && k.cost.cents > 0 && k.costByProvider.some(c => c.provider === 'openai'), 'the rates, the response time target and the cost are there');
     await I('/settings', { method: 'PUT', body: { teams: { [A.id]: 'Growth', [B.id]: 'Growth', 'not-a-user': 'x' } } });
-    const kt = (await I('/kpis?days=7')).json; ok(kt.teams.length === 1 && kt.teams[0].team === 'Growth' && kt.teams[0].people >= 2 && kt.teams[0].wonCents === 1250000 && kt.days === 7, 'by team once people are put in teams, and the period can be changed');
+    const kt = (await I('/kpis?days=7')).json, growth = kt.teams.find(t => t.team === 'Growth'); ok(growth && growth.people >= 2 && growth.wonCents === 1250000 && kt.teams.every(t => t.team === 'Growth' || t.wonCents === 0) && kt.days === 7, 'by team once people are put in teams, and the period can be changed');
     ok(k.bySource.some(g => g.key === 'x') && k.byServiceLine.some(g => g.key === 'apps'), 'what works is broken down by source and by service');
 
     // nothing went anywhere

@@ -1267,6 +1267,7 @@ await journey('J126', 'the Press tab in a browser: the menu entry opens it, a pi
     await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || '/tmp'}/j126-editor.png` }).catch(() => {});
     await page.selectOption('#prStatus', 'ready'); await page.click('#prform button[type=submit]');
     await page.waitForSelector('#prdlg:not([open])', { state: 'attached', timeout: 5000 }).catch(async e => { throw new Error(`editor did not close: ${await page.innerText('#prMsg')} / ${page.errs.join(';')}`); });
+    await page.waitForSelector('[data-pid]', { timeout: 5000 }).catch(() => {}); // the editor closes first, then the list reloads
     ok(await page.locator('#prdlg[open]').count() === 0 && await page.locator('[data-pid]').count() === 1, 'it saves (the editor does not stop a draft with brackets from being saved)');
     ok(await page.locator('[data-pid] [data-psend]').isDisabled() === false, 'it is marked ready, so Send is offered');
     // the brackets stop it going
@@ -1921,7 +1922,10 @@ await journey('J163', 'Pip, more guides: the client’s quote, messages and requ
   await pr.click('#projectPageBody .mc-send'); await pr.waitForFunction(() => /sent/i.test(document.querySelector('.fbh-b')?.innerText || ''), null, { timeout: 8000 }); ok(true, 'sending completes the guide');
   ok(pr.errs.length === 0, 'no script errors in the project room', pr.errs.join(' | ')); await pr.close();
   // the hub home: pick a guide from the list
-  const hub = await open(ctx, `${BASE}/hub`, '#newRequest'); await hub.click('.fbh-b button[data-a="guides"]');
+  const hub = await open(ctx, `${BASE}/hub`, '#newRequest');
+  // when the hub's own buttons are not on screen Pip has no guide (and no Guides button): say what the page showed instead of timing out blind
+  await hub.waitForSelector('.fbh-b button[data-a="guides"]', { timeout: 15000 }).catch(async () => { throw new Error('no Guides button on the hub: ' + JSON.stringify(await hub.evaluate(() => ({ pip: document.querySelector('.fbh-b')?.innerText.slice(0, 120), request: !!document.querySelector('#newRequest')?.offsetParent, techPack: !!document.querySelector('#newTechPack')?.offsetParent, signIn: !!document.querySelector('#send')?.offsetParent || !!document.querySelector('#verify')?.offsetParent, dialogs: [...document.querySelectorAll('dialog[open]')].map(d => d.id) })))); });
+  await hub.click('.fbh-b button[data-a="guides"]');
   const listed = await hub.locator('.fbh-list button:not([disabled])').allInnerTexts(); ok(listed.some(t => /ask for something/i.test(t)) && listed.some(t => /start a tech pack/i.test(t)), 'the Guides list offers the guides that fit this page first', listed.join(' | '));
   await hub.click('.fbh-list button[data-id="hub-request"]'); await hub.waitForFunction(() => document.querySelector('.fbh-b h3')?.textContent === 'Start a request', null, { timeout: 5000 });
   await hub.click('#newRequest'); await hub.waitForFunction(() => document.querySelector('.fbh-b h3')?.textContent === 'Which product', null, { timeout: 8000 }); ok(await hub.evaluate(() => document.querySelector('.fbh').parentElement.tagName === 'DIALOG'), 'the request form: the guide moves into the dialog and carries on', await title(hub)); await hub.close();

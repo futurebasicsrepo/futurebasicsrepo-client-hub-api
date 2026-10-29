@@ -24,7 +24,7 @@ pool.query = packBlobs.wrap(rawQuery);
 pool.connect = async (...args) => {
   if (args.length) return connectOnce(...args);
   const client = await connectOnce(), release = client.release.bind(client);
-  client.query = packBlobs.wrap(client.query.bind(client));
+  client.query = packBlobs.wrap(client.query.bind(client), { own: true });
   client.release = err => { delete client.query; return release(err ?? (client.__dead ? true : undefined)); };
   return client;
 };

@@ -64,18 +64,22 @@ export function createBlobLayer(rawQuery, { cacheBytes = 96 * 1024 * 1024, log =
   const known = new Set(), cache = new Map(); let cached = 0;
   const remember = (hash, row) => { if (cache.has(hash)) return; const size = row.bytes.length; cache.set(hash, row); cached += size; while (cached > cacheBytes && cache.size > 1) { const [h, r] = cache.entries().next().value; cache.delete(h); cached -= r.bytes.length; } };
 
-  async function save(blobs) {
+  // q runs the query: the pool by default, or a checked-out client's own connection. A request inside a transaction must store and read its pictures on that
+  // connection: asking the pool for a second one while holding locks starves it under load (every connection held, each waiting for one more).
+  // A row written inside a transaction may still be rolled back, so it only counts as known once it was written outside one.
+  async function save(blobs, q = rawQuery, inTx = false) {
     for (const row of blobs.values()) {
       if (known.has(row.hash)) continue;
-      await rawQuery(`insert into pack_blobs(hash,mime,kind,bytes,size) values($1,$2,$3,$4,$5) on conflict (hash) do nothing`, [row.hash, row.mime, row.kind, row.bytes, row.bytes.length]);
-      known.add(row.hash); remember(row.hash, row);
+      await q(`insert into pack_blobs(hash,mime,kind,bytes,size) values($1,$2,$3,$4,$5) on conflict (hash) do nothing`, [row.hash, row.mime, row.kind, row.bytes, row.bytes.length]);
+      if (!inTx) known.add(row.hash);
+      remember(row.hash, row);
     }
   }
-  async function load(hashes) {
+  async function load(hashes, q = rawQuery) {
     const out = new Map(), missing = [];
     for (const h of hashes) { const c = cache.get(h); if (c) out.set(h, c); else missing.push(h); }
     if (missing.length) {
-      const r = await rawQuery(`select hash,mime,kind,bytes from pack_blobs where hash = any($1::text[])`, [missing]);
+      const r = await q(`select hash,mime,kind,bytes from pack_blobs where hash = any($1::text[])`, [missing]);
       for (const row of r.rows) { out.set(row.hash, row); known.add(row.hash); remember(row.hash, row); }
     }
     return out;
@@ -83,7 +87,7 @@ export function createBlobLayer(rawQuery, { cacheBytes = 96 * 1024 * 1024, log =
 
   // the parameters of a query, with big pictures swapped for references (bytes stored first). Plain objects are looked at; a string is looked at only when the query itself
   // casts that placeholder to json/jsonb ($6::jsonb), because that is the one case where it is certain the text is JSON going into a column that is read back through this layer.
-  async function prepareParams(values, text = '') {
+  async function prepareParams(values, text = '', q = rawQuery, inTx = false) {
     if (!Array.isArray(values)) return values;
     let blobs = null, out = values, casts = null;
     const jsonCast = i => { if (!casts) casts = new Set([...String(text).matchAll(/\$(\d+)\s*::\s*jsonb?\b/gi)].map(m => Number(m[1]) - 1)); return casts.has(i); };
@@ -99,11 +103,11 @@ export function createBlobLayer(rawQuery, { cacheBytes = 96 * 1024 * 1024, log =
       }
       if (n !== p) { if (out === values) out = values.slice(); out[i] = n; }
     }
-    if (blobs && blobs.size) await save(blobs);
+    if (blobs && blobs.size) await save(blobs, q, inTx);
     return out;
   }
   // json/jsonb columns of a result, references swapped back into the data URLs they stand for
-  async function hydrate(res) {
+  async function hydrate(res, q = rawQuery) {
     for (const r of Array.isArray(res) ? res : [res]) {
       if (!r || !r.rows || !r.rows.length || !r.fields) continue;
       const cols = r.fields.map((f, i) => [f.name, i, JSON_TYPES.has(f.dataTypeID)]).filter(c => c[2]);
@@ -112,20 +116,24 @@ export function createBlobLayer(rawQuery, { cacheBytes = 96 * 1024 * 1024, log =
       const refs = new Set();
       for (const row of r.rows) for (const c of cols) { const v = cell(row, c); if (v !== null && typeof v === 'object') collectRefs(v, refs); }
       if (!refs.size) continue;
-      const got = await load([...refs]);
+      const got = await load([...refs], q);
       const get = h => { const b = got.get(h); if (b) return fromBlob(b); log.error(`pack picture ${h} is missing from pack_blobs`); return REF_PREFIX + h; };
       for (const row of r.rows) for (const c of cols) { const v = cell(row, c); if (v !== null && typeof v === 'object') set(row, c, resolveRefs(v, get)); }
     }
     return res;
   }
-  // wraps a query function (pool.query or client.query) so parameters go in externalized and results come back hydrated
-  function wrap(run) {
+  // wraps a query function (pool.query or client.query) so parameters go in externalized and results come back hydrated.
+  // For a checked-out client, pass { own: true }: its pictures are stored and read on that same connection (see save).
+  function wrap(run, { own = false } = {}) {
+    let inTx = false;
+    const q = own ? (text, values) => run(text, values) : rawQuery;
     return async function (...args) {
       if (typeof args[args.length - 1] === 'function') return run(...args); // callback style: not used by this service, left alone
-      const first = args[0];
-      if (first && typeof first === 'object' && !Array.isArray(first) && typeof first.text === 'string') args[0] = { ...first, values: await prepareParams(first.values, first.text) };
-      else if (args.length > 1) args[1] = await prepareParams(args[1], typeof first === 'string' ? first : '');
-      return hydrate(await run(...args));
+      const first = args[0], text = typeof first === 'string' ? first : first && typeof first.text === 'string' ? first.text : '';
+      if (own) { const w = /^\s*(begin|start\s+transaction|commit|end|rollback|abort)\b/i.exec(text); if (w && !/^rollback\s+to\b/i.test(text.trim())) inTx = /^(begin|start)/i.test(w[1]); }
+      if (first && typeof first === 'object' && !Array.isArray(first) && typeof first.text === 'string') args[0] = { ...first, values: await prepareParams(first.values, first.text, q, own && inTx) };
+      else if (args.length > 1) args[1] = await prepareParams(args[1], text, q, own && inTx);
+      return hydrate(await run(...args), q);
     };
   }
   return { wrap, prepareParams, hydrate, save, load, stats: () => ({ cachedBytes: cached, cachedPictures: cache.size, known: known.size }) };

@@ -32,12 +32,13 @@ export function createLabAccess(d) {
   const { pool, env = process.env, log = console, shopify = {}, clientHubUrl = '', recordPayment = async () => ({}), onActivate = async () => {}, notifyClient = async () => false } = d;
   const pricing = () => pricingFrom(env);
   const row = r => (r ? { id: r.id, status: r.status, source: r.source, feeCents: r.fee_cents, days: r.days, includedAi: r.included_ai, aiPriceCents: r.ai_price_cents, unpaidCapCents: r.unpaid_cap_cents, startsAt: r.starts_at, endsAt: r.ends_at, paidAt: r.paid_at, endedAt: r.ended_at, checkoutUrl: r.pay_invoice_url || null, free: Boolean(r.free) } : null);
-  const paidActive = async clientId => (UUID.test(String(clientId || '')) ? (await pool.query(`select * from lab_access where client_id=$1 and status='active' and (ends_at is null or ends_at > now()) order by ends_at desc nulls first limit 1`, [clientId])).rows[0] || null : null);
+  const paidActive = async (clientId, q = pool) => (UUID.test(String(clientId || '')) ? (await q.query(`select * from lab_access where client_id=$1 and status='active' and (ends_at is null or ends_at > now()) order by ends_at desc nulls first limit 1`, [clientId])).rows[0] || null : null);
   // charges off on a room (clients.lab_free, the work console's switch, like free tech pack access): the Lab is open with no fee and no end,
   // and AI generations are counted but never billed or paused. A paid period still running keeps its row; it simply stops costing anything.
-  const isFree = async clientId => UUID.test(String(clientId || '')) && (await pool.query('select lab_free from clients where id=$1', [clientId])).rows[0]?.lab_free === true;
+  const isFree = async (clientId, q = pool) => UUID.test(String(clientId || '')) && (await q.query('select lab_free from clients where id=$1', [clientId])).rows[0]?.lab_free === true;
   const FREE = clientId => ({ id: null, client_id: clientId, status: 'active', source: 'free', fee_cents: 0, days: null, included_ai: 0, ai_price_cents: 0, unpaid_cap_cents: 0, starts_at: null, ends_at: null, paid_at: null, ended_at: null, free: true });
-  const active = async clientId => { const a = await paidActive(clientId); if (await isFree(clientId)) return a ? { ...a, free: true } : FREE(clientId); return a; };
+  // q: a transaction's own connection when called inside one (never ask the pool for a second connection while holding one)
+  const active = async (clientId, q = pool) => { const a = await paidActive(clientId, q); if (await isFree(clientId, q)) return a ? { ...a, free: true } : FREE(clientId); return a; };
   const pending = async clientId => (await pool.query(`select * from lab_access where client_id=$1 and status='pending' order by created_at desc limit 1`, [clientId])).rows[0] || null;
   const latest = async clientId => (await pool.query(`select * from lab_access where client_id=$1 order by (status='active') desc, created_at desc limit 1`, [clientId])).rows[0] || null;
 
