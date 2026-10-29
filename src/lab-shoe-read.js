@@ -1,13 +1,14 @@
 // Reading a shoe from its picture (a concept's picture, AI-made or a photo), so its last and its upper's pattern follow what was designed:
 //   silhouette(buffer)          → the shoe's outline in the picture (separated from a plain background): its box, which way the toe points, and
 //                                 its top and bottom edges from the heel to the toe. No AI: works on any side view.
-//   shapeOf(sil, lengthIn)      → what the outline says in inches on the last: the collar height at the back, a shaft, the dip at the ankle, the
-//                                 toe spring, the sole's thickness where it shows, and a style it suggests
+//   shapeOf(sil, lengthIn, sole) → what the outline says in inches on the last: the collar height at the back above the insole (the outline's
+//                                 height there less the sole's thickness at the heel), a shaft, the dip at the ankle, the toe spring, and a
+//                                 style it suggests
 //   readShoe(buffer, opts)      → the vision model's reading (style, toe, toe cap, mudguard, upper, sole, eyelets, where the vamp and the lacing
 //                                 sit, the colours of each part), when Claude is connected
 //   proposal(spec, sil, vision) → the footwear choices the picture asks for, and what each came from
 import sharp from 'sharp';
-import { FW_STYLES, TOES, UPPERS, SOLES, cleanFootwear, lastOf } from './lab-footwear.js';
+import { FW_STYLES, TOES, UPPERS, SOLES, cleanFootwear, lastOf, soleHeightOf } from './lab-footwear.js';
 
 const r8 = v => Math.round(v * 8) / 8, HEX = /^#[0-9a-f]{6}$/i;
 export async function silhouette(buf, { width = 600 } = {}) {
@@ -33,15 +34,15 @@ export async function silhouette(buf, { width = 600 } = {}) {
 }
 // is it a side view at all? A shoe from the side is 1¼ (a boot) to 4½ times as long as it is tall and fills most of its box
 export const sideView = sil => Boolean(sil && sil.aspect > 1.15 && sil.aspect < 4.8 && sil.fill > .38);
-export function shapeOf(sil, lengthIn) {
+export function shapeOf(sil, lengthIn, sole = 0) {
   if (!sideView(sil)) return null;
   const P = sil.profile, at = (t, k) => { const i = Math.min(P.length - 1, Math.max(0, Math.round(t * (P.length - 1)))); return P[i][k] * lengthIn; };
   // the collar just in front of where a pull tab stands up at the back
-  const collar = Math.max(...P.filter(p => p.t >= .07 && p.t <= .11).map(p => p.top)) * lengthIn;
-  const dip = Math.min(...P.filter(p => p.t >= .12 && p.t <= .42).map(p => p.top)) * lengthIn;
+  const collar = Math.max(...P.filter(p => p.t >= .07 && p.t <= .11).map(p => p.top)) * lengthIn - sole;
+  const dip = Math.min(...P.filter(p => p.t >= .12 && p.t <= .42).map(p => p.top)) * lengthIn - sole;
   const spring = Math.max(0, at(.985, 'bottom'));
   const toeTop = at(.9, 'top');
-  return { collar: r8(collar), ankleDip: r8(dip), shaft: collar > 4.5, spring: r8(Math.min(spring, 1.4)), toeHeight: r8(toeTop), suggests: collar > 6.9 ? 'boot' : collar > 4.6 ? 'hightop' : null };
+  return { collar: r8(collar), ankleDip: r8(dip), shaft: collar > 3.6, spring: r8(Math.min(spring, 1.4)), toeHeight: r8(toeTop - sole), sole: r8(sole), suggests: collar > 5.6 ? 'boot' : collar > 3.7 ? 'hightop' : null };
 }
 
 // ---- the vision model's reading ----
@@ -90,10 +91,12 @@ export function proposal(spec, sil, vision) {
     const c = Object.fromEntries(['upper', 'overlay', 'sole', 'lining'].filter(k => HEX.test(String(v.colours?.[k] || ''))).map(k => [k, String(v.colours[k]).toLowerCase()])); if (Object.keys(c).length) set('colours', c, 'picture (AI)');
   }
   // the outline measures what the eye guesses: the collar, the toe spring, and a style when only the shape can say it
-  const L = lastOf(next).length + .3, sh = sideView(sil) ? shapeOf(sil, L) : null;
+  // the outline is from the ground: the sole's thickness at the heel (as the eye read it, or the style's usual sole) comes off the collar
+  const L = lastOf(next).length + .3, sole = soleHeightOf(next), sh = sideView(sil) ? shapeOf(sil, L, sole) : null;
   if (sh) {
-    if (!v && sh.suggests && !FW_STYLES[base.style]?.shaft) set('style', sh.suggests, 'picture (shape)');
-    set('collar', sh.collar - (next.heel || 0), 'picture (shape)'); // the outline is from the ground; the collar is from the last's bottom, which sits on the heel set('spring', Math.min(1.25, Math.max(.125, sh.spring)), 'picture (shape)');
+    if (!v && sh.suggests && !FW_STYLES[base.style]?.shaft) { set('style', sh.suggests, 'picture (shape)'); const s2 = soleHeightOf(next); if (s2 !== sole) Object.assign(sh, shapeOf(sil, L, s2)); }
+    set('collar', sh.collar, 'picture (shape)');
+    set('spring', Math.min(1.25, Math.max(.125, sh.spring)), 'picture (shape)');
   }
   if (sil) next.picture = { imgW: sil.imgW, imgH: sil.imgH, x0: sil.x0, y0: sil.y0, x1: sil.x1, y1: sil.y1, toeLeft: sil.toeLeft, at: new Date().toISOString().slice(0, 19) };
   const out = cleanFootwear(next);

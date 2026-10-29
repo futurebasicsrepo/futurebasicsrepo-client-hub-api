@@ -73,6 +73,9 @@ export function cleanSeams(list) {
     return pts.length >= 2 ? { id: /^s[a-z0-9]{1,12}$/.test(String(sm.id || '')) ? String(sm.id) : `s${k + 1}`, n: k + 1, name: String(sm.name || `Seam ${k + 1}`).replace(/\s+/g, ' ').trim().slice(0, 40), side: sm.side === 'medial' ? 'medial' : 'lateral', piece: String(sm.piece), pts } : null;
   }).filter(Boolean);
 }
+// the sole unit's thickness at the heel: as read or set, or the heel height on the sole's usual thickness under the forefoot (a cupsole about
+// ⅝ in, an EVA midsole about 1 in, a stitched sole about ¼ in)
+export const soleHeightOf = (input = {}) => { const s = input.style && FW_STYLES[input.style] && input.heel != null ? input : cleanFootwear(input), S = lineOf(s); return s.soleHeight || r8(s.heel + (S.sole === 'cupsole' ? .65 : S.sole === 'midsole' ? .95 : .3)); };
 // the size a foot length is in a system (the other way from footLength)
 export function sizeFromFoot(system, F) { return system === 'us-w' ? F * 3 - 21 : system === 'uk' ? F * 3 - 23 : system === 'eu' ? (F + .55) * 2.54 * 1.5 : system === 'mm' ? F * 25.4 : F * 3 - 22; }
 const HEX = /^#[0-9a-f]{6}$/i, opt = (v, a, b, step = .125) => { if (v == null || v === '') return null; const n = Number(v); return Number.isFinite(n) ? Math.round(Math.min(Math.max(n, a), b) / step) * step : null; };
@@ -209,7 +212,8 @@ export function footwearPattern(input = {}, size = null) {
   const bplace = z => ({ view: 'back', x: 0, y: 0, z });
   pieces.push(piece('insole', 'Insole board', sole, { cut: 2, pair: true, fabric: 'board', place: bplace(1), sa: 0, notes: ['Cellulose board, 2 mm; the upper is lasted onto it'] }));
   pieces.push(piece('sockliner', 'Sockliner', sock, { cut: 2, pair: true, fabric: 'foam', place: bplace(2), sa: 0, notes: ['4 mm foam with a printed top cover'] }));
-  const sh = s.soleHeight || (S.sole === 'cupsole' ? 1.1 : S.sole === 'midsole' ? 1.35 : .55), soleSide = [...Array.from({ length: 31 }, (_, i) => { const x = -.1 + (L + .2) * i / 30; return [x, bot(Math.min(Math.max(x, 0), L)) + .05]; }), ...Array.from({ length: 31 }, (_, i) => { const x = L + .2 - (L + .3) * i / 30; const xx = Math.min(Math.max(x, 0), L); return [x, xx <= last.ballFromHeel ? 0 : bot(xx) - bot(last.ballFromHeel)]; })]; // the tread on the ground to the ball, then up with the toe spring
+  // the sole unit: its full thickness at the heel (the heel height and the foam or rubber under the forefoot), so the shoe stands on it
+  const sh = soleHeightOf(s), under = Math.max(.2, sh - s.heel), soleSide = [...Array.from({ length: 31 }, (_, i) => { const x = -.1 + (L + .2) * i / 30; return [x, bot(Math.min(Math.max(x, 0), L)) + .05]; }), ...Array.from({ length: 31 }, (_, i) => { const x = L + .2 - (L + .3) * i / 30; const xx = Math.min(Math.max(x, 0), L); return [x, under + (xx <= last.ballFromHeel ? 0 : bot(xx) - bot(last.ballFromHeel))]; })]; // the tread on the ground to the ball, then up with the toe spring
   const soleName = S.sole === 'cupsole' ? 'Cupsole (rubber)' : S.sole === 'midsole' ? 'Midsole (EVA) and outsole' : 'Outsole and heel (rubber, stitched)';
   pieces.push(piece('sole', soleName, soleSide, { cut: 0, component: true, fabric: S.sole === 'midsole' ? 'eva' : 'rubber', place: { view: 'front', x: 0, y: 0, z: 7 }, notes: ['Moulded, not cut: one mould for each pair of half sizes'] }));
   // seams drawn on the last cut a piece in two; then every piece of the upper is flattened off the last's surface (src/lab-last-shell.js),
@@ -225,7 +229,7 @@ export function footwearPattern(input = {}, size = null) {
     notes.push(`The upper's pieces are flattened off the last's surface (the stretch in the flattening: ${Math.round(Math.max(flat.lateral.rms, flat.medial.rms) * 1000) / 10}% on average, ${Math.round(Math.max(flat.lateral.max, flat.medial.max) * 100)}% at most)`);
   }
   for (const q of pieces) delete q.half;
-  return { kind: 'footwear', spec: s, label: S.label, flat, size: `${SYSTEMS[s.system].replace(/ \(.*$/, '')} ${last.size} ${s.width}`.trim(), sa: .25, pieces, last, views: { front: 'Side', back: 'Bottom' },
+  return { kind: 'footwear', spec: s, label: S.label, flat, ground: r3(under), size: `${SYSTEMS[s.system].replace(/ \(.*$/, '')} ${last.size} ${s.width}`.trim(), sa: .25, pieces, last, views: { front: 'Side', back: 'Bottom' },
     notes: [`${UPPERS[s.upper]} upper, ${LININGS[s.lining].toLowerCase()}`, 'Overlaps ⅜ in, skived and cemented before stitching; the lasting allowance is ⅝ in', ...notes, 'A first draft on the standard of the last: the pattern engineer trues it up on the fitting sample'],
     checks: footwearChecks(s, last), components: components(s, last), tooling: tooling(s) };
 }

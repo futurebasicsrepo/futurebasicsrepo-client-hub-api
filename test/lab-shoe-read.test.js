@@ -25,7 +25,7 @@ test('the outline: the shoe is found on its ground, which way the toe points, an
 test('the outline measures the collar and suggests the style a shape can tell: low, high-top, boot', async () => {
   for (const [style, want] of [['sneaker', null], ['hightop', 'hightop'], ['boot', 'boot']]) {
     const sil = await silhouette(await shoePng(style)), p = proposal({ style: 'sneaker' }, sil, null), S = FW_STYLES[style];
-    assert.equal(shapeOf(sil, 11).suggests, want, style);
+    assert.equal(shapeOf(sil, 11, 1.1).suggests, want, style); // read as if it stood on a sneaker's cupsole, as the reader does before it knows the style
     assert.equal(p.spec.style, want || 'sneaker'); assert.ok(Math.abs(p.spec.collar - S.collar) <= .5, `${style}: collar ${p.spec.collar} for ${S.collar}`);
     assert.ok(p.spec.picture && p.spec.picture.x1 > p.spec.picture.x0, 'the picture\'s place is kept, to lay it over the shoe');
   }
@@ -59,4 +59,11 @@ test('what a picture sets is bounded', () => {
   const c = cleanFootwear({ collar: 99, vamp: .1, throat: 2, eyelets: 40, soleHeight: -1, sole: 'jelly', colours: { upper: 'blue', sole: '#ABCDEF' }, picture: { imgW: 10, imgH: 10, x0: 5, y0: 5, x1: 2, y1: 9 } });
   assert.equal(c.collar, 10); assert.equal(c.vamp, .4); assert.equal(c.throat, .6); assert.equal(c.eyelets, 14); assert.equal(c.soleHeight, .25);
   assert.ok(!('sole' in c)); assert.deepEqual(c.colours, { sole: '#abcdef' }); assert.ok(!('picture' in c), 'a picture box that is back to front is dropped');
+});
+
+test('a thick-soled racer: the collar is read above the insole (the sole comes off), and the toe spring is taken from the outline', async () => {
+  const sil = await silhouette(await shoePng('runner', { spec: { soleHeight: 1.5, spring: 1.25 } })), p = proposal({ style: 'runner' }, sil, null);
+  assert.equal(p.spec.style, 'runner', 'a thick sole is not read as a high-top');
+  assert.ok(Math.abs(p.spec.collar - FW_STYLES.runner.collar) <= .5, `collar ${p.spec.collar}`);
+  assert.ok(p.changes.some(c => c.key === 'spring' && c.source === 'picture (shape)') && p.spec.spring >= 1, `spring ${p.spec.spring}`);
 });
