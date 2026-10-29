@@ -49,6 +49,23 @@ export const PARTS = {
     { id: 'gasket', label: 'Gasket and feet', kinds: ['plastic'], cats: ['TPU', 'TPE', 'silicone (LSR)'] }
   ]
 };
+// clothing: its cloths (a part's id is the cloth its pattern pieces are cut from, src/lab-pattern.js) and its trims. A cloth part takes the place of
+// the concept's fabric of the same role (`role`), so a fabric is never counted twice.
+const CLOTH = [
+  { id: 'self', label: 'Body (main fabric)', kinds: ['fabric'], cats: [], role: 'main', usage: 1 },
+  { id: 'contrast', label: 'Contrast panels', kinds: ['fabric'], cats: [], role: 'contrast', usage: .35 },
+  { id: 'rib', label: 'Rib (cuffs, hem, neck)', kinds: ['fabric'], cats: [], role: 'rib', usage: .2 },
+  { id: 'lining', label: 'Lining', kinds: ['fabric'], cats: [], role: 'lining', usage: .9 },
+  { id: 'pocketing', label: 'Pocketing', kinds: ['fabric'], cats: [], usage: .15 },
+  { id: 'fusing', label: 'Fusing and interlining', kinds: ['fabric'], cats: [], usage: .1 }
+];
+const TRIMMING = [
+  { id: 'zip', label: 'Zip', kinds: ['trim'], cats: ['zip'] }, { id: 'buttons', label: 'Buttons and snaps', kinds: ['trim'], cats: ['button', 'snap', 'rivet'] },
+  { id: 'drawcord', label: 'Drawcord and aglets', kinds: ['trim'], cats: ['drawcord', 'aglet', 'cord'] }, { id: 'thread', label: 'Thread', kinds: ['trim'], cats: ['thread'] }
+];
+export const APPAREL = ['tops', 'knitwear', 'outerwear', 'tailoring', 'bottoms', 'dresses', 'headwear', 'bags', 'accessories', 'other'];
+for (const c of APPAREL) PARTS[c] = [...CLOTH.filter(p => !(c === 'headwear' && p.id === 'rib') && !(['bags', 'accessories'].includes(c) && p.id === 'rib')), ...TRIMMING.filter(t => !(c === 'headwear' && t.id === 'drawcord'))];
+export const clothPart = id => CLOTH.find(p => p.id === id) || null;
 PARTS.toys = [{ id: 'body', label: 'Body', kinds: ['plastic', 'plush'], cats: [] }, { id: 'parts', label: 'Other parts', kinds: ['plastic'], cats: [] }, { id: 'base', label: 'Base or stand', kinds: ['plastic'], cats: [] }];
 PARTS.home = [{ id: 'body', label: 'Body', kinds: ['plastic', 'fabric'], cats: [] }, { id: 'parts', label: 'Other parts', kinds: ['plastic'], cats: [] }];
 export const partsFor = category => PARTS[category] || [];

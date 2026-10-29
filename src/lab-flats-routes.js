@@ -14,6 +14,11 @@
 // The check ("can it be made"): every placement is on the piece and clear of seams, ribs, zips, pockets and collars (the drawing alone); within the
 // technique's size; and its artwork, at the size it is placed, holds the technique's finest line, needs no more inks than the technique is priced for,
 // has no smooth shading a screen cannot print, and, for embroidery, how many stitches it takes.
+import { footwearChecks, footwearPattern, sizeRun } from './lab-footwear.js';
+import { plushPattern } from './lab-pattern.js';
+import { footwearViews, flatsSheet, viewsMarkup } from './lab-footwear-views.js';
+import { plushViews, plushSheet } from './lab-plush-views.js';
+import { partLooks } from './lab-looks.js';
 import sharp from 'sharp';
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
@@ -287,9 +292,16 @@ export function registerLabFlatsRoutes(app, d) {
   // what the concept still needs before it becomes a tech pack: the Design workspace's checklist (src/lab-ready.js)
   app.get('/v1/lab/concepts/:id/ready', { preHandler: pre }, async (req, reply) => {
     if (!UUID.test(String(req.params.id))) return bad(reply, 'Not found', 404);
-    const c = (await pool.query('select id, status, spec, twist, closeness, product_id, client_verdict, (image is not null) has_image from lab_concepts where id=$1', [req.params.id])).rows[0]; if (!c) return bad(reply, 'Not found', 404);
+    const c = (await pool.query('select id, status, category, spec, twist, closeness, product_id, client_verdict, (image is not null) has_image from lab_concepts where id=$1', [req.params.id])).rows[0]; if (!c) return bad(reply, 'Not found', 404);
     const doc = (await pool.query('select doc from lab_studio_docs where concept_id=$1', [c.id])).rows[0]?.doc || null, f = (await pool.query('select check_result from lab_flats where concept_id=$1', [c.id])).rows[0];
-    return readiness({ concept: c, studioDoc: doc, flat: f ? { check: f.check_result } : null });
+    // a shoe or a plush is made from its pattern: whether it is saved, its checks, and the material on its main part
+    let pattern = null;
+    if (c.category === 'footwear' || c.category === 'plush') {
+      const row = (await pool.query('select kind, spec from lab_patterns where concept_id=$1', [c.id])).rows[0], foot = c.category === 'footwear';
+      let checks = []; try { checks = row ? (foot ? footwearChecks(row.spec) : plushPattern(row.spec).checks) : []; } catch { checks = []; }
+      pattern = { saved: Boolean(row), checks, main: foot ? 'upper' : 'body', mainLabel: foot ? 'upper\'s material' : 'body\'s pile' };
+    }
+    return readiness({ concept: c, studioDoc: doc, flat: f ? { check: f.check_result } : null, pattern });
   });
   const take = async (req, reply) => {
     const c = await concept(req.params.id); if (!c) return bad(reply, 'Not found', 404), null;
@@ -525,7 +537,13 @@ export function registerLabFlatsRoutes(app, d) {
       const art = UUID.test(String(face || '')) ? (await pool.query('select png from lab_art where id=$1', [face])).rows[0]?.png : null; if (!art) continue;
       labelSketches.push({ id: `lab-label-${pk.id}`.slice(0, 60), view: 'detail', label: `Label · ${pk.name}`.slice(0, 120), image: `data:image/png;base64,${(await sharp(art).flatten({ background: '#ffffff' }).png().toBuffer()).toString('base64')}` });
     }
-    if (!items.length) return materials || colourways.length || labelSketches.length ? { files: [], lab: { materials, colourways, sketches: labelSketches, priceCents: c.price_cents, costCents: c.cost_cents, qty: c.qty, planName: c.plan_name } } : null;
+    if (!items.length) {
+      // a shoe or a plush has no flats: its tech flats are drawn from its pattern (src/lab-footwear-views.js, src/lab-plush-views.js), each view a
+      // sketch on the pack (a shoe's outside and inside are the pack's lateral and medial), the sheet as a file, the pattern's notes as construction
+      const fromPattern = await patternHandoff(c, picks).catch(e => { log.warn?.({ err: e.message }, 'pattern tech flats for the pack failed'); return null; });
+      const sketches = [...(fromPattern?.sketches || []), ...labelSketches];
+      return materials || colourways.length || sketches.length ? { files: fromPattern?.files || [], lab: { materials, colourways, sketches, ...(fromPattern ? { construction: fromPattern.construction, sizes: fromPattern.sizes } : {}), priceCents: c.price_cents, costCents: c.cost_cents, qty: c.qty, planName: c.plan_name } } : null;
+    }
     const r = (await pool.query('select params, placements from lab_flats where concept_id=$1', [c.id])).rows[0], p = r.params, pl = r.placements || [], list = await techniques(c.client_id);
     const S = STYLES[p.style], tpl = templateOf(p), edits = p.edits || [];
     const pom = pomTable(p).map(row => ({ code: row.code, name: row.name, how: 'From the flats', tolerance: String(row.tolerance), values: Object.fromEntries(row.values.map(v => [v.size, String(v.value)])) }));
@@ -547,12 +565,23 @@ export function registerLabFlatsRoutes(app, d) {
         priceCents: c.price_cents, costCents: c.cost_cents, qty: c.qty, planName: c.plan_name, style: { sampleSize: S.oneSize ? 'One size' : 'M', fitBlock: `${FITS[p.fit] || p.fit} ${S.label.toLowerCase()}${tpl ? ` (${tpl.label})` : ''}` } }
     };
   }
+  async function patternHandoff(c, picks) {
+    if (c.category !== 'footwear' && c.category !== 'plush') return null;
+    const row = (await pool.query('select spec from lab_patterns where concept_id=$1', [c.id])).rows[0]; if (!row) return null;
+    const foot = c.category === 'footwear', pat = foot ? footwearPattern(row.spec) : plushPattern(row.spec), m = partLooks(picks), looks = { colours: { ...(pat.spec.colours || {}), ...m.colours }, tex: m.tex };
+    const views = foot ? footwearViews(pat, looks) : plushViews(pat, looks), keys = foot ? [['lateral', 'lateral', 'Outside'], ['medial', 'medial', 'Inside'], ['top', 'top', 'Top'], ['bottom', 'outsole', 'Bottom']] : [['front', 'front', 'Front'], ['back', 'back', 'Back'], ['side', 'side', 'Side']];
+    const one = async v => { const b = v.box, pad = .8, w = b.x1 - b.x0 + 2 * pad, h = b.y1 - b.y0 + 2 * pad; return png(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="${b.x0 - pad} ${b.y0 - pad} ${w} ${h}" width="${Math.round(w * 100)}" height="${Math.round(h * 100)}"><rect x="${b.x0 - pad}" y="${b.y0 - pad}" width="${w}" height="${h}" fill="#fff"/>${v.svg}</svg>`, 1600); };
+    const sketches = []; for (const [k, view, label] of keys) sketches.push({ id: `lab-pattern-${k}`, view, label: `Technical flat · ${label}`, image: await one(views[k]) });
+    const sheet = foot ? flatsSheet(pat, { title: c.name, ...looks }) : plushSheet(pat, { title: c.name, viewsMarkup, ...looks });
+    return { sketches, files: [{ name: 'Tech flats · every view', image: await png(sheet, 2400) }], construction: [{ area: 'Pattern', detail: `${pat.label}, ${pat.size}: drafted in the Design Lab.` }, ...pat.notes.map(n => ({ area: foot ? 'Footwear' : 'Plush', detail: String(n).slice(0, 400) }))].slice(0, 40),
+      sizes: foot ? sizeRun(pat.spec).map(r => String(r.size)).slice(0, 14) : ['One size'] };
+  }
   const sendToPack = async (c, productId = c.product_id) => { const h = await handoff(c); return h ? applyHandoff(productId, h) : null; };
   app.post('/v1/lab/concepts/:id/flats/tech-pack', { preHandler: pre }, async (req, reply) => {
     const c = await concept(req.params.id); if (!c) return bad(reply, 'Not found', 404);
     if (!c.product_id) return bad(reply, 'This concept has no tech pack yet. Approve it and send it to a tech pack first.', 409);
     if (!applyHandoff) return bad(reply, 'Flats cannot be sent to tech packs on this service', 501);
-    const sent = await sendToPack(c); if (!sent) return bad(reply, 'Save the flats first', 409);
+    const sent = await sendToPack(c); if (!sent) return bad(reply, c.category === 'footwear' || c.category === 'plush' ? 'Save the pattern first' : 'Save the flats first', 409);
     // a tech pack already published keeps that version as it was: the flats go out as the next version, which the factory sees with what changed
     const tp = (await pool.query('select version, published_at from tech_packs where product_id=$1 order by created_at desc limit 1', [c.product_id])).rows[0];
     const changes = tp?.published_at && d.packChanges ? await d.packChanges(c.product_id) : null;

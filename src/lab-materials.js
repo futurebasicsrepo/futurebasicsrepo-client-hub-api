@@ -4,8 +4,8 @@
 // The tag drawing and its enums are in src/lab-tags.js (shared with the page).
 import { photoById } from './lab-photos.js';
 import { TAG_KINDS, TAG_SHAPES, TAG_FOLDS, TAG_MATERIALS, TAG_ATTACH, TAG_PRINTS, TAG_STRINGS, TAG_FOR, tagWords } from './lab-tags.js';
-import { GOODS_KINDS, GOODS_OPTIONS, GOODS_BUILTIN, PARTS, partsFor, partLabel, cleanGoodsSpec, goodsWords } from './lab-materials-goods.js';
-export { PARTS, partsFor, partLabel, goodsWords, GOODS_OPTIONS };
+import { GOODS_KINDS, GOODS_OPTIONS, GOODS_BUILTIN, PARTS, partsFor, partLabel, cleanGoodsSpec, goodsWords, clothPart } from './lab-materials-goods.js';
+export { PARTS, partsFor, partLabel, goodsWords, GOODS_OPTIONS, clothPart };
 
 const clip = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
 const num = (v, d, a, b) => { const n = Number(v); return Number.isFinite(n) ? Math.min(b, Math.max(a, n)) : d; };
@@ -171,7 +171,8 @@ export function cleanMaterial(b = {}, base = null) {
 export function cleanPick(b = {}, m, category = 'other') {
   const part = clip(b.part, 40).toLowerCase().replace(/[^a-z0-9-]/g, '');
   const role = part ? 'part' : ROLES.some(r => r.id === b.role) ? b.role : m.kind === 'tag' ? 'tag' : m.kind === 'trim' ? 'trim' : GOODS.has(m.kind) ? 'part' : 'main';
-  const dft = m.kind === 'fabric' && role !== 'part' ? (USAGE_M[category] ?? 1.2) * (role === 'main' ? 1 : role === 'lining' ? .9 : role === 'contrast' ? .35 : .2) : (m.spec?.qtyPerPiece ?? 1);
+  const cp = part && m.kind === 'fabric' ? clothPart(part) : null; // a garment's cloth part: the share of the usual metres a piece takes
+  const dft = m.kind === 'fabric' && (role !== 'part' || cp) ? (USAGE_M[category] ?? 1.2) * (cp ? cp.usage : role === 'main' ? 1 : role === 'lining' ? .9 : role === 'contrast' ? .35 : .2) : (m.spec?.qtyPerPiece ?? 1);
   const qty = Math.round(num(b.qty, dft, 0, 1000) * 100) / 100;
   const colour = m.colours?.find(c => c.hex === String(b.colour || '').toLowerCase() || c.name === b.colour) || (HEX.test(String(b.colour || '')) ? { name: '', hex: String(b.colour).toLowerCase() } : null);
   const shown = colour || (part ? m.colours?.find(c => HEX.test(String(c.hex || ''))) : null); // on a part it shows in its first colour until another is chosen
@@ -201,12 +202,12 @@ export function packRows(picks = [], category = 'other') {
     if (p.kind === 'tag') {
       labels.push({ item: `${TAG_KINDS.find(k => k.id === s.tagKind)?.label || 'Label'} · ${p.name}`.slice(0, 120), spec: `${tagWords(s)}${s.face ? '; artwork designed in the studio (see the label picture)' : s.text?.length ? `; reads "${s.text.join(' / ')}"` : ''}${p.colour?.name ? `; ${p.colour.name}` : ''}${p.code ? ` (${p.code})` : ''}`.slice(0, 400), placement: `${s.attach || ''}${s.for?.length ? ` · ${s.for.join(', ')}` : ''}`.slice(0, 200) });
       bom.push({ component: `${ROLE_WORDS.tag} · ${p.name}`.slice(0, 160), material: s.material || '', spec: `${s.widthMm} × ${s.heightMm} mm, ${s.shape}${s.fold && s.fold !== 'none' ? ', ' + s.fold : ''}`, supplier: p.supplier, ref: p.code, color: p.colour?.hex || '', placement: s.attach || '', qty: String(p.qty), unit: p.unit, cost: money });
-    } else if (GOODS.has(p.kind) || p.role === 'part') {
+    } else if (GOODS.has(p.kind) || (p.role === 'part' && p.kind !== 'fabric' && p.kind !== 'trim')) {
       bom.push({ component: (p.part ? partLabel(category, p.part) : s.category ? s.category[0].toUpperCase() + s.category.slice(1) : 'Material').slice(0, 160), material: p.name, spec: (GOODS.has(p.kind) ? goodsWords(p.kind, s) : [s.weightGsm ? `${s.weightGsm} gsm` : '', s.composition, s.construction].filter(Boolean).join(', ')).slice(0, 300), supplier: p.supplier, ref: p.code, color: p.colour?.hex || '', placement: p.part ? partLabel(category, p.part) : p.note || '', qty: String(p.qty), unit: p.unit, cost: money });
     } else if (p.kind === 'fabric') {
-      bom.push({ component: ROLE_WORDS[p.role] || 'Fabric', material: p.name, spec: [s.weightGsm ? `${s.weightGsm} gsm` : '', s.composition, s.construction, s.widthCm ? `${s.widthCm} cm wide` : '', s.finish && s.finish !== 'none' ? s.finish : ''].filter(Boolean).join(', ').slice(0, 300), supplier: p.supplier, ref: p.code, color: p.colour?.hex || '', placement: p.role === 'rib' ? 'Cuffs, hem, neck' : p.role === 'lining' ? 'Inside' : p.note || '', qty: String(p.qty), unit: p.unit, cost: money });
+      bom.push({ component: p.part ? partLabel(category, p.part) : ROLE_WORDS[p.role] || 'Fabric', material: p.name, spec: [s.weightGsm ? `${s.weightGsm} gsm` : '', s.composition, s.construction, s.widthCm ? `${s.widthCm} cm wide` : '', s.finish && s.finish !== 'none' ? s.finish : ''].filter(Boolean).join(', ').slice(0, 300), supplier: p.supplier, ref: p.code, color: p.colour?.hex || '', placement: p.part ? partLabel(category, p.part) : p.role === 'rib' ? 'Cuffs, hem, neck' : p.role === 'lining' ? 'Inside' : p.note || '', qty: String(p.qty), unit: p.unit, cost: money });
     } else {
-      bom.push({ component: `${s.category ? s.category[0].toUpperCase() + s.category.slice(1) : 'Trim'}`, material: p.name, spec: [s.size, s.material, s.finish].filter(Boolean).join(', ').slice(0, 300), supplier: p.supplier, ref: p.code, color: p.colour?.hex || '', placement: p.note || '', qty: String(p.qty), unit: p.unit, cost: money });
+      bom.push({ component: p.part ? partLabel(category, p.part) : `${s.category ? s.category[0].toUpperCase() + s.category.slice(1) : 'Trim'}`, material: p.name, spec: [s.size, s.material, s.finish].filter(Boolean).join(', ').slice(0, 300), supplier: p.supplier, ref: p.code, color: p.colour?.hex || '', placement: p.part ? partLabel(category, p.part) : p.note || '', qty: String(p.qty), unit: p.unit, cost: money });
     }
   }
   return { bom, labels };

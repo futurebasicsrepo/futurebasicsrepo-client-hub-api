@@ -11,6 +11,7 @@ import { STYLES, SIZES, FITS, defaultParams, detectStyle } from './lab-flats.js'
 import { garmentPattern, applyEdits, cleanPatternEdits, patternDxfAama, plushPattern, cleanPlush, plushDefaults, patternSvg, patternDxf, yardage, fillGrams, PLUSH_SHAPES, PLUSH_EARS, PLUSH_FABRICS, PLUSH_EYES, PLUSH_AGES } from './lab-pattern.js';
 import { CATEGORIES } from './lab.js';
 import { silhouette, readShoe, proposal } from './lab-shoe-read.js';
+import { readPlush, plushProposal } from './lab-plush-read.js';
 import { reviewShoe, openaiAsk, BAR as REVIEW_BAR } from './lab-shoe-review.js';
 import { trackedFetch, timed } from './telemetry.js';
 import { callJsonSchema } from './studio.js';
@@ -19,7 +20,10 @@ import sharp from 'sharp';
 import { readFileSync } from 'node:fs';
 import { registerLabLastRoutes } from './lab-last-routes.js';
 import { flatsSheet, viewsMarkup } from './lab-footwear-views.js';
-import { plushSheet } from './lab-plush-views.js';
+import { plushSheet, plushViews } from './lab-plush-views.js';
+import { footwearViews } from './lab-footwear-views.js';
+import { imageConfig, openaiEdit } from './check.js';
+import { PLUSH_FABRICS as PF, PLUSH_EYES as PE } from './lab-pattern.js';
 import { VIEWS_OF } from './lab-sketch.js';
 import { partLooks } from './lab-looks.js';
 import { partsFor } from './lab-materials-goods.js';
@@ -48,7 +52,7 @@ export function registerLabPatternRoutes(app, d) {
   const { pool, authenticate, adminOnly, lab = null, env = process.env, askImpl = callJsonSchema, log = console } = d;
   const own = req => lab?.scope?.(req) || null, pre = [authenticate, adminOnly], bad = (reply, error, code = 422) => reply.code(code).send({ error });
   const actorOf = req => (UUID.test(String(req.auth?.sub || '')) ? req.auth.sub : null);
-  const concept = async id => (UUID.test(String(id)) ? (await pool.query('select id, name, category, status, spec, client_id from lab_concepts where id=$1', [id])).rows[0] : null);
+  const concept = async id => (UUID.test(String(id)) ? (await pool.query('select id, name, category, status, spec, client_id, product_id from lab_concepts where id=$1', [id])).rows[0] : null);
   // everything the page and the files need: the concept, its flat (for a garment), the saved choices
   async function load(id) {
     const c = await concept(id); if (!c) return null;
@@ -57,13 +61,15 @@ export function registerLabPatternRoutes(app, d) {
     let flat = f, det = null;
     if (!flat && c.category !== 'plush') { det = c.spec?.style && STYLES[c.spec.style] ? { style: c.spec.style, fit: 'regular', options: {} } : detectStyle(c); if (det) flat = { ...defaultParams(det.style, det.fit, det.options), ...(det.template ? { template: det.template } : {}) }; }
     const kind = kindOf(c, flat?.style);
-    const spec0 = kind === 'plush' ? cleanPlush(row?.kind === 'plush' ? row.spec : plushDefaults(c.spec?.plush?.shape || 'bear')) : kind === 'footwear' ? cleanFootwear(row?.kind === 'footwear' ? row.spec : fwDefaults(c.spec?.footwear?.style || guessShoe(c))) : cleanGarment(row?.spec);
+    const spec0 = kind === 'plush' ? cleanPlush(row?.kind === 'plush' ? row.spec : plushProposal(plushDefaults(c.spec?.plush?.shape || 'bear'), null, c.spec?.plush).spec) : kind === 'footwear' ? cleanFootwear(row?.kind === 'footwear' ? row.spec : { ...fwDefaults(c.spec?.footwear?.style || guessShoe(c)), ...(c.spec?.footwear || {}) }) : cleanGarment(row?.spec);
     const ed = cleanPatternEdits(row?.spec?.edits), spec = ed ? { ...spec0, edits: ed } : spec0;
     return { c, kind, flat, spec, saved: Boolean(row), savedFlat: Boolean(f), updatedAt: row?.updated_at || null };
   }
   const save = async (L, spec0, actor) => { const spec = cleanPatternSpec(L.kind, spec0); await pool.query(`insert into lab_patterns(concept_id, kind, spec, updated_by) values($1,$2,$3,$4) on conflict(concept_id) do update set kind=excluded.kind, spec=excluded.spec, updated_by=excluded.updated_by, updated_at=now()`, [L.c.id, L.kind, spec, actor]); return spec; };
   // a footwear concept's 3D lasts (imported or made by the 3D service), measured, and the shoe drafted on one (src/lab-last-routes.js)
   registerLabLastRoutes(app, { ...d, load, save });
+  // the colours a plush or a shoe is drawn in: a material on a part wins over the colours read from its picture or its words
+  const looksOf = L => { const m = partLooks(L.c.spec?.materials); return { colours: { ...(L.spec?.colours || {}), ...m.colours }, tex: m.tex }; };
   const patternOf = (L, size) => applyEdits(draft(L, size), L.spec.edits);
   const draft = (L, size) => L.kind === 'plush' ? plushPattern(L.spec) : L.kind === 'footwear' ? footwearPattern(L.spec, size !== '' && size != null && Number.isFinite(Number(size)) ? Number(size) : null) : L.kind === 'garment' && L.flat ? (p => p && L.spec.sa ? { ...p, sa: L.spec.sa } : p)(garmentPattern(L.flat, SIZES.includes(size) ? size : L.flat.size || 'M')) : null;
   const options = { footwear: { styles: Object.fromEntries(Object.entries(FW_STYLES).map(([k, v]) => [k, v.label])), toes: Object.fromEntries(Object.entries(TOES).map(([k, v]) => [k, v.label])), systems: SYSTEMS, widths: SHOE_WIDTHS, uppers: UPPERS, linings: LININGS, limits: SIZE_LIMITS }, plush: { shapes: PLUSH_SHAPES, ears: PLUSH_EARS, fabrics: PLUSH_FABRICS, eyes: PLUSH_EYES, ages: PLUSH_AGES }, widths: WIDTHS, seamAllowances: [.25, .375, .5, .625], sizes: SIZES, fits: FITS,
@@ -72,9 +78,9 @@ export function registerLabPatternRoutes(app, d) {
   app.get('/v1/lab/concepts/:id/pattern', { preHandler: pre }, async (req, reply) => {
     const L = await load(req.params.id); if (!L) return bad(reply, 'Not found', 404);
     const pat = patternOf(L, L.flat?.size), extra = pat ? { yardage: yardage(pat, Number(L.spec.width) || 58), ...(pat.kind === 'plush' ? { fillGrams: fillGrams(pat) } : {}), ...(pat.kind === 'footwear' ? footExtra(L.spec, pat) : {}) } : {};
-    const hasImage = L.kind === 'footwear' ? Boolean((await pool.query('select image is not null h from lab_concepts where id=$1', [L.c.id])).rows[0]?.h) : false;
+    const hasImage = L.kind === 'footwear' || L.kind === 'plush' ? Boolean((await pool.query('select image is not null h from lab_concepts where id=$1', [L.c.id])).rows[0]?.h) : false;
     const materials = (Array.isArray(L.c.spec?.materials) ? L.c.spec.materials : []).filter(p => p.part); // what goes on the product's parts, drawn on its flats
-    return { concept: { id: L.c.id, name: L.c.name, category: L.c.category, status: L.c.status, hasImage }, materials, parts: partsFor(L.c.category), kind: L.kind, flat: L.flat, flatSaved: L.savedFlat, spec: L.spec, saved: L.saved, updatedAt: L.updatedAt, options, ...(L.kind === 'soon' ? { soon: SOON[L.c.category] } : {}), ...extra };
+    return { concept: { id: L.c.id, name: L.c.name, category: L.c.category, status: L.c.status, hasImage, productId: L.c.product_id || null }, colourways: (Array.isArray(L.c.spec?.colourways) ? L.c.spec.colourways : []).filter(c => /^#[0-9a-f]{6}$/i.test(String(c?.hex || ''))).slice(0, 8).map(c => ({ name: clip(c.name, 60), hex: String(c.hex).toLowerCase() })), materials, allMaterials: (Array.isArray(L.c.spec?.materials) ? L.c.spec.materials : []).filter(p => p.kind === 'fabric' && !p.part), parts: partsFor(L.c.category), kind: L.kind, flat: L.flat, flatSaved: L.savedFlat, spec: L.spec, saved: L.saved, updatedAt: L.updatedAt, options, ...(L.kind === 'soon' ? { soon: SOON[L.c.category] } : {}), ...extra };
   });
   app.put('/v1/lab/concepts/:id/pattern', { preHandler: pre, bodyLimit: 4_000_000 }, async (req, reply) => {
     const L = await load(req.params.id); if (!L) return bad(reply, 'Not found', 404);
@@ -111,16 +117,30 @@ export function registerLabPatternRoutes(app, d) {
     const L = await load(req.params.id); if (!L) return bad(reply, 'Not found', 404); if (L.kind !== 'footwear' && L.kind !== 'plush') return bad(reply, 'Tech flats from the pattern are drawn for footwear and plush');
     const pat = patternOf(L, String(req.query?.size || ''));
     reply.header('content-disposition', `attachment; filename="${(L.c.name || 'shoe').replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-tech-flats.svg"`).header('cache-control', 'no-store');
-    return reply.type('image/svg+xml; charset=utf-8').send((looks => L.kind === 'plush' ? plushSheet(pat, { title: L.c.name, viewsMarkup, ...looks }) : flatsSheet(pat, { title: L.c.name, ...looks }))(partLooks(L.c.spec?.materials)));
+    return reply.type('image/svg+xml; charset=utf-8').send((looks => L.kind === 'plush' ? plushSheet(pat, { title: L.c.name, viewsMarkup, ...looks }) : flatsSheet(pat, { title: L.c.name, ...looks }))(looksOf(L)));
   });
 
   // read the shoe from the concept's picture: its outline (no AI) and, when Claude is connected, what the eye sees part by part. Nothing is
   // saved: the page shows what would change, the picture over the shoe, and saves it when it is used. One reading per picture is kept.
   const shoeReads = new Map();
   app.post('/v1/lab/concepts/:id/pattern/from-picture', { preHandler: pre }, async (req, reply) => {
-    const L = await load(req.params.id); if (!L) return bad(reply, 'Not found', 404); if (L.kind !== 'footwear') return bad(reply, 'Only a shoe is read from its picture here');
+    const L = await load(req.params.id); if (!L) return bad(reply, 'Not found', 404); if (L.kind !== 'footwear' && L.kind !== 'plush') return bad(reply, 'Only a shoe or a plush is read from its picture here');
     const img = (await pool.query('select image from lab_concepts where id=$1', [L.c.id])).rows[0]?.image; if (!img) return bad(reply, 'This concept has no picture to read');
-    const key = createHash('sha1').update(img).digest('hex');
+    const key = createHash('sha1').update(img).digest('hex') + L.kind;
+    if (L.kind === 'plush') {
+      // a plush: the eye reads the shape, size, parts, pile, eyes and colours; the concept's own words go under what the picture shows
+      let got = shoeReads.get(key);
+      if (!got) {
+        let vision = null;
+        if (env.AI_FIXTURE || !env.ANTHROPIC_API_KEY) { try { const f = env.PLUSH_READ_FIXTURE || ''; vision = f ? JSON.parse(f.trim().startsWith('{') ? f : readFileSync(f, 'utf8')) : null; } catch { vision = null; } }
+        else { try { vision = await readPlush(img, { ask: askImpl, name: L.c.name }); } catch (e) { log.warn?.({ err: e.message }, 'plush picture read failed'); } }
+        got = { vision }; if (shoeReads.size > 300) shoeReads.clear(); shoeReads.set(key, got);
+      }
+      if (got.vision && got.vision.plush === false) return bad(reply, 'The picture does not show a plush');
+      if (!got.vision && !L.c.spec?.plush) return bad(reply, 'The picture can only be read with Claude connected: set the plush by hand');
+      const p = plushProposal(L.spec, got.vision, L.c.spec?.plush);
+      return { spec: p.spec, changes: p.changes, source: got.vision ? 'vision' : 'words', why: p.why, view: got.vision?.view || 'other' };
+    }
     let got = shoeReads.get(key);
     if (!got) {
       let sil = null, vision = null, source = 'shape';
@@ -209,6 +229,38 @@ export function registerLabPatternRoutes(app, d) {
 
   // a concept started from nothing: no plan, no AI, no sketch. A garment opens on a blank page with its flat's outline as a guide; a plush opens
   // on its shape; anything else on a plain page.
+  // a photo-real picture of the plush or the shoe as it is patterned (the page's choices, saved or not, in the materials on its parts): its front (a
+  // shoe's outside) drawn as tech flats goes to the image model, which draws the made sample from it. It becomes the concept's picture (an
+  // approved concept goes back to draft, as when the picture changes in the studio); the old picture's views are dropped. LAB_DAILY_REDRAWS a day.
+  const renders = new Map();
+  app.post('/v1/lab/concepts/:id/pattern/render', { preHandler: pre, bodyLimit: 4_000_000 }, async (req, reply) => {
+    const L = await load(req.params.id); if (!L) return bad(reply, 'Not found', 404); if (L.kind !== 'plush' && L.kind !== 'footwear') return bad(reply, 'A photo-real picture is drawn from the pattern for a plush or a shoe');
+    if (L.c.status === 'tech_pack') return bad(reply, 'This concept is already a tech pack', 409);
+    const cfg = (d.imageCfg || imageConfig)(); if (!cfg.configured) return bad(reply, 'No image model is connected, so there is no picture to draw.', 503);
+    const day = new Date().toISOString().slice(0, 10), cap = Number(env.LAB_DAILY_REDRAWS ?? 30); if (cap >= 0 && (renders.get(day) || 0) >= cap) return bad(reply, `The daily limit of ${cap} pictures is reached. Raise LAB_DAILY_REDRAWS.`, 429);
+    const spec = req.body?.spec ? cleanPatternSpec(L.kind, req.body.spec) : L.spec, L2 = { ...L, spec }, pat = patternOf(L2, null), looks = looksOf(L2);
+    const v = L.kind === 'plush' ? plushViews(pat, looks).front : footwearViews(pat, looks).lateral, b = v.box, pad = 1;
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${b.x0 - pad} ${b.y0 - pad} ${b.x1 - b.x0 + 2 * pad} ${b.y1 - b.y0 + 2 * pad}" width="1024" height="${Math.round(1024 * (b.y1 - b.y0 + 2 * pad) / (b.x1 - b.x0 + 2 * pad))}"><rect x="${b.x0 - pad}" y="${b.y0 - pad}" width="${b.x1 - b.x0 + 2 * pad}" height="${b.y1 - b.y0 + 2 * pad}" fill="#fff"/>${v.svg}</svg>`;
+    const flat = await sharp(Buffer.from(svg)).flatten({ background: '#ffffff' }).resize({ width: 1024, height: 1024, fit: 'contain', background: '#ffffff' }).png().toBuffer();
+    const mats = (Array.isArray(L.c.spec?.materials) ? L.c.spec.materials : []).filter(m => m.part).map(m => `${m.part}: ${clip(m.name, 60)}${m.colour?.name ? ' in ' + clip(m.colour.name, 30) : ''}`).join('; ');
+    const prompt = L.kind === 'plush'
+      ? [`The attached picture is the technical flat of a plush soft toy, front view: ${clip(L.c.name, 80)}, ${pat.size}, ${PF[spec.fabric] || 'minky'}, ${(PE[spec.eyes] || 'embroidered').replace(/ \(.*$/, '').toLowerCase()} eyes.`, mats ? `Materials: ${mats}.` : '',
+          'Draw it as a photorealistic studio photograph of the real sample, sewn from these pattern pieces and stuffed: the same shape, proportions, parts, face and colours as the flat, sitting upright, seen from the front and a little to one side, on a plain light-grey background with soft light. Real pile with its texture, the seams just visible, embroidery stitched.',
+          'Leave out the flat\'s lines, dimension arrows, labels and lettering: they are drawing notes, not on the toy. No text, no logos, no people, no hands.'].filter(Boolean).join('\n')
+      : [`The attached picture is the technical flat of a shoe, the outside in side profile: ${clip(L.c.name, 80)}, ${pat.label}, ${pat.size}.`, mats ? `Materials: ${mats}.` : '',
+          'Draw it as a photorealistic studio photograph of the real shoe made from these pieces: the same pieces, seams, stitching, sole and colours as the flat, in side profile at eye level, on a plain light-grey background with soft light, the whole shoe in frame.',
+          'Leave out the flat\'s construction lines, dimension marks, labels and lettering. No text, no logos, no feet, no people.'].filter(Boolean).join('\n');
+    let out;
+    try { out = cfg.provider === 'fixture' ? await sharp(flat).flatten({ background: '#e6e7ea' }).jpeg({ quality: 88 }).toBuffer() : await openaiEdit({ images: [flat], prompt, cfg: { ...cfg, size: env.HERO_SIZE || cfg.size || '1024x1024' } }); }
+    catch (e) { return bad(reply, `The picture could not be drawn: ${clip(e.message, 160)}`, 502); }
+    renders.set(day, (renders.get(day) || 0) + 1);
+    const image = await sharp(out).rotate().resize({ width: 1400, height: 1400, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 90 }).toBuffer(), thumb = await sharp(image).resize({ width: 420, height: 420, fit: 'inside' }).jpeg({ quality: 72 }).toBuffer();
+    const back = L.c.status === 'approved';
+    await pool.query(`update lab_concepts set image=$2, thumb=$3, raw=$2, image_note='', status=case when $4 then 'draft' else status end, updated_at=now() where id=$1`, [L.c.id, image, thumb, back]);
+    await pool.query('delete from lab_concept_views where concept_id=$1', [L.c.id]);
+    return { ok: true, backToDraft: back, model: cfg.model || cfg.provider };
+  });
+
   app.post('/v1/lab/concepts/from-scratch', { preHandler: pre }, async (req, reply) => {
     const b = req.body || {}, category = CATEGORIES.some(x => x.id === b.category) ? b.category : null; if (!category) return bad(reply, 'Choose what you are designing');
     const shoe = category === 'footwear' ? (FW_STYLES[b.style] ? b.style : 'sneaker') : null, style = !shoe && STYLES[b.style] ? b.style : null, shape = PLUSH_SHAPES[b.shape] ? b.shape : 'bear';
