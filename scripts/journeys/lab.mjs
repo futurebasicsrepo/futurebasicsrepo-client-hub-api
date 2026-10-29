@@ -2753,5 +2753,27 @@ await journey('J242', 'Tags and labels in the studio: a starter neck label opens
   } finally { await cleanup(brands, plan.plan?.id); }
 });
 
+await journey('J243', 'A newcomer finds their way into the Design Lab: signed out, the Lab says how to open it; /join?for=lab opens a room for the Lab and lands on the Lab in the hub with its offer; on a phone it fits', async () => {
+  if (!playwright) { ok(true, 'needs a browser'); return; }
+  const b = await playwright.chromium.launch(), errs = [], email = `lab-new-${stamp}@newcomer.test`;
+  try {
+    const oc = await b.newContext({ viewport: { width: 1180, height: 820 } }), page = await oc.newPage(); page.on('pageerror', e => errs.push(String(e)));
+    await page.goto(`${BASE}/lab`, { waitUntil: 'networkidle' }); await page.waitForSelector('#needSignin:not(.hidden)', { timeout: 15000 });
+    const panel = await page.evaluate(() => [...document.querySelectorAll('#needSignin a')].map(a => [a.textContent.trim(), a.getAttribute('href')]));
+    ok(panel.some(([t, h]) => t === 'Open the Design Lab' && h === '/join?for=lab') && panel.some(([, h]) => h === '/hub#lab') && !panel.some(([, h]) => h === '/'), '1. signed out, the Lab offers to open it, to sign in at the hub, or the work console (never the bare home)', panel);
+    await page.click('#needSignin a[href="/join?for=lab"]'); await page.waitForURL(/\/join\?for=lab/);
+    const head = await page.evaluate(() => [document.title, document.querySelector('.hero h1').textContent, document.querySelector('.hero .lede').textContent, document.getElementById('goLabel').textContent]);
+    ok(/Design Lab/.test(head[0]) && /Design Lab/.test(head[1]) && /\$499/.test(head[2]) && head[3] === 'Open my room', '2. the join page speaks to the Lab: its title, what it does, its price', head);
+    await page.fill('#company', `Newcomer Studio ${stamp}`); await page.fill('#name', 'Nia Newcomer'); await page.fill('#email', email); await page.click('#go');
+    await page.waitForURL(/\/hub#lab$/, { timeout: 20000 }); await page.waitForSelector('#lab:not(.hidden)', { timeout: 20000 });
+    const lab = await page.evaluate(() => document.getElementById('lab').textContent);
+    ok(/\$499/.test(lab) && /90 days/.test(lab), '3. the room opens on the hub\'s Design Lab, with its offer in view', lab.slice(0, 200));
+    ok(sql(`select count(*) from clients c join users u on u.client_id=c.id where lower(u.email)='${email}'`) === '1', '   one room is made for them');
+    const ph = await b.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }), pp = await ph.newPage(); pp.on('pageerror', e => errs.push(String(e)));
+    for (const path of ['/join?for=lab', '/lab']) { await pp.goto(`${BASE}${path}`, { waitUntil: 'networkidle' }); ok(await pp.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `4. ${path} fits a phone`); }
+    ok(errs.length === 0, 'no page errors', errs); await oc.close(); await ph.close();
+  } finally { await b.close(); }
+});
+
 shops.close(); brave.close();
 process.exit(summary() ? 1 : 0);
