@@ -59,7 +59,7 @@ html body .tabs button:focus-visible{outline-color:var(--ink)}
 
 /* the orbits: a line and a dot, not a black disc */
 html body :is(.orb,.orbit){border-color:rgba(20,20,22,.3)}
-html body .orb::before,html body .orbit::before{background:transparent;box-shadow:0 0 0 13px transparent,0 0 0 14px rgba(20,20,22,.22);border:1px solid rgba(20,20,22,.3)}
+html body .orb::before,html body .orbit::before{background:transparent;box-shadow:none;border:1px solid rgba(20,20,22,.3)}
 html body .orb::after,html body .orbit::after{box-shadow:0 0 0 1.5px var(--ink)}
 
 /* a client with no picture yet: paper, not a black block */
@@ -67,7 +67,7 @@ html body .client-cover{background:var(--fog);border-bottom:1px solid var(--line
 
 
 /* page heroes (Design Lab, Team, Brand): white on the paper, the grid inside them in ink */
-html body .hero{background:#fff;color:var(--ink);border:1px solid var(--line)}
+html body .hero:not(:has(.orb)){background:#fff;color:var(--ink);border:1px solid var(--line)}
 html body .hero::before{background-image:linear-gradient(rgba(20,20,22,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(20,20,22,.04) 1px,transparent 1px)}
 html body .hero .mono{color:var(--dim)}
 html body .hero p{color:#3d4047}
@@ -76,7 +76,27 @@ html body .hero .stat span{color:var(--dim)}
 html body .hero :is(.btn,button):not(.go){background:#fff;color:var(--ink);border-color:rgba(20,20,22,.28)}
 html body .hero :is(.btn,button):not(.go):hover{background:var(--fog)}
 
+
+/* the hub's menu on a phone: the same tray as the console, an ink sheet under the header, the places in big light type, fanned from one dot */
+@media (max-width:620px){
+  html body .hubmenu{border-color:var(--line);color:var(--ink)}
+  html body .hubmenu[aria-expanded="true"]{background:var(--ink);color:#fff;border-color:var(--ink)}
+  html body>header:has(.hubnav.open){-webkit-backdrop-filter:none;backdrop-filter:none;background:var(--fog)} /* a blurred header would hold the fixed sheet inside itself */
+  html body .hubnav.open{position:fixed;top:60px;left:0;right:0;bottom:0;z-index:60;display:flex;flex-direction:column;align-items:flex-end;justify-content:center;gap:6px;padding:24px 22px calc(40px + env(safe-area-inset-bottom,0px));background:var(--ink);border:0;border-radius:0;box-shadow:none;overflow-y:auto}
+  html body .hubnav.open>a:not(.hidden){display:block;position:relative;z-index:1;opacity:1;color:#f4f4f2;font:300 30px/1.2 'Space Grotesk',system-ui,sans-serif;letter-spacing:-.015em;text-transform:none;padding:6px 4px;border-radius:8px;animation:cueIn .5s cubic-bezier(.2,.8,.2,1) both}
+  html body .hubnav.open>a:nth-of-type(2){animation-delay:.04s}html body .hubnav.open>a:nth-of-type(3){animation-delay:.08s}html body .hubnav.open>a:nth-of-type(4){animation-delay:.12s}html body .hubnav.open>a:nth-of-type(5){animation-delay:.16s}html body .hubnav.open>a:nth-of-type(6){animation-delay:.2s}html body .hubnav.open>a:nth-of-type(7){animation-delay:.24s}html body .hubnav.open>a:nth-of-type(8){animation-delay:.28s}
+  html body .hubnav.open>a:hover{background:rgba(255,255,255,.06)}
+  html body .hubnav.open>a[aria-current]{text-decoration:underline;text-decoration-color:var(--cue);text-decoration-thickness:2px;text-underline-offset:7px}
+  html body .hubnav.open .sitelink{order:9;margin:18px 0 0;border:1px solid rgba(255,255,255,.25);font:500 11px 'IBM Plex Mono',monospace!important;letter-spacing:.1em!important;text-transform:uppercase!important;padding:9px 14px!important;border-radius:999px!important}
+  html body .hubnav.open .state{order:10;color:rgba(255,255,255,.6)}
+  html body .hubnav.open .cuefan{display:block}
+}
+html body .cuefan{display:none;position:absolute;left:0;top:0;pointer-events:none;z-index:0}
+html body .cuefan path{fill:none;stroke:rgba(75,255,154,.55);stroke-width:1;stroke-dasharray:var(--len,600);stroke-dashoffset:var(--len,600);animation:cueDraw 1s cubic-bezier(.3,.7,.2,1) forwards}
+@keyframes cueIn{from{opacity:0;transform:translateX(18px)}}
+@keyframes cueDraw{to{stroke-dashoffset:0}}
+
 /* inputs and focus */
 html body :is(input,select,textarea):focus-visible{outline:2px solid var(--ink);outline-offset:1px}
 }
-@media screen and (prefers-reduced-motion:reduce){html body{background-attachment:scroll}}
+@media screen and (prefers-reduced-motion:reduce){html body{background-attachment:scroll}html body .hubnav.open>a,html body .cuefan path{animation:none}html body .cuefan path{stroke-dashoffset:0}}

@@ -83,8 +83,10 @@ body.fbnav:has(#auth:not(.hidden))>header,body.fbnav:has(#needSignin:not(.hidden
 body.fbnav:has(#auth:not(.hidden)) .fbside,body.fbnav:has(#needSignin:not(.hidden)) .fbside,body.fbnav:has(#auth:not(.hidden)) .fbburger,body.fbnav:has(#needSignin:not(.hidden)) .fbburger,body.fbnav:has(#auth:not(.hidden)) .fbtabs,body.fbnav:has(#needSignin:not(.hidden)) .fbtabs{display:none}
 .fbside nav{padding:12px 10px 8px;display:grid;gap:2px;flex:1;align-content:start}
 .fbside a{display:flex;align-items:center;gap:11px;color:inherit;text-decoration:none;border-radius:10px;padding:9px 10px;position:relative;white-space:nowrap;font-weight:500}
-.fbside a[hidden]{display:none!important}.fbside a:hover{background:#f5f5f2}.fbside a:focus-visible{outline:2px solid #141416;outline-offset:1px}
-.fbside a.on{background:#141416;color:#fff}
+.fbside a[hidden]{display:none!important}.fbside a:hover{background:#f1f1ec}.fbside a:focus-visible{outline:2px solid #141416;outline-offset:1px}
+.fbside a.on{background:#f1f1ec;color:#141416;font-weight:600;box-shadow:inset 0 0 0 1px rgba(20,20,22,.1)}
+.fbside a.on::after{content:"";position:absolute;left:25px;top:6px;width:7px;height:7px;border-radius:50%;background:#4bff9a;box-shadow:0 0 0 1.5px #141416}
+body.fbcollapsed .fbside a.on::after{left:auto;right:12px}
 .fbside a svg{flex:none}
 .fbside .quick{padding:12px 10px 0;display:grid;gap:8px;position:relative}
 .fbside .quick button.start{display:flex;align-items:center;justify-content:center;gap:8px;border:0;border-radius:999px;background:#4bff9a;color:#141416;font:600 13.5px 'Space Grotesk',system-ui,sans-serif;padding:10px 14px;cursor:pointer}.fbside .quick button.start:hover{background:#38e888}.fbside .quick button.start:focus-visible{outline:2px solid #141416;outline-offset:2px}
@@ -93,7 +95,7 @@ body.fbnav:has(#auth:not(.hidden)) .fbside,body.fbnav:has(#needSignin:not(.hidde
 .fbjump a{display:grid;gap:1px;padding:7px 9px;border-radius:8px;text-decoration:none;color:#141416;font-size:13.5px;white-space:normal}.fbjump a small{font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#727278}
 .fbjump a:hover,.fbjump a.first{background:#f5f5f2}.fbjump p{margin:0;padding:8px 9px;color:#727278;font-size:13px}
 body.fbcollapsed .fbside .quick input,body.fbcollapsed .fbjump{display:none}body.fbcollapsed .fbside .quick button.start span{display:none}body.fbcollapsed .fbside .quick button.start{padding:10px}
-.fbtabs{position:sticky;top:72px;z-index:12;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding:10px clamp(14px,2.2vw,28px);background:var(--fog,#f5f5f2);border-bottom:1px solid rgba(20,20,22,.1);font:500 13px/1.3 'Space Grotesk',system-ui,sans-serif;align-items:center}
+.fbtabs{position:sticky;top:72px;z-index:12;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding:10px clamp(14px,2.2vw,28px);background:rgba(241,241,236,.9);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border-bottom:1px solid rgba(20,20,22,.1);font:500 13px/1.3 'Space Grotesk',system-ui,sans-serif;align-items:center}
 .fbtabs::-webkit-scrollbar{display:none}.fbtabs[hidden],html[data-fbtabs="off"] .fbtabs{display:none}
 .fbtabs>b{flex:none;font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color:#727278;margin-right:6px}
 .fbtabs a{flex:none;display:inline-flex;align-items:center;gap:6px;border:1px solid rgba(20,20,22,.14);background:#fff;border-radius:999px;padding:6px 13px;text-decoration:none;color:#141416;font-weight:600;white-space:nowrap}
@@ -112,8 +114,8 @@ body.fbcollapsed .fbside .quick input,body.fbcollapsed .fbjump{display:none}body
 body.fbcollapsed .fbside .lbl,body.fbcollapsed .fbside .bdg,body.fbcollapsed .fbside .foot b{display:none}
 body.fbcollapsed .fbside a{justify-content:center;padding:10px}body.fbcollapsed .fbside .foot svg{transform:rotate(180deg)}body.fbcollapsed .fbside .foot button{justify-content:center}
 body.fbcollapsed .fbside a .dot{position:absolute;top:6px;right:8px;width:8px;height:8px;border-radius:50%;background:#d8451f}.fbside a .dot{display:none}body.fbcollapsed .fbside a .dot:not([hidden]){display:block}
-.fbburger{display:none;border:1px solid rgba(255,255,255,.3);background:transparent;color:#fff;border-radius:10px;width:40px;height:40px;cursor:pointer;align-items:center;justify-content:center;flex:none}
-.fbscrim{display:none}
+.fbburger{display:none;border:1px solid rgba(20,20,22,.18);background:transparent;color:#141416;border-radius:10px;width:40px;height:40px;cursor:pointer;align-items:center;justify-content:center;flex:none}
+.fbscrim{display:none}.fbclose,.fbfan{display:none}
 @media(max-width:900px){
  body.fbnav{padding-left:0}body.fbnav>header{margin-left:0}
  .fbburger{display:inline-flex}
@@ -121,6 +123,26 @@ body.fbcollapsed .fbside a .dot{position:absolute;top:6px;right:8px;width:8px;he
  /* The drawer is its own scroller: a block (not a flex column), exactly as tall as what is visible (dvh follows the phone's address bar), with room under the last item for the home indicator, and a drag on it or on the dimmed page never moves the page behind. */
  .fbside{top:0;bottom:auto;height:100vh;height:100dvh;display:block;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-y;width:min(300px,86vw);transform:translateX(-102%);transition:transform .22s;z-index:40}
  .fbside nav{padding-bottom:calc(32px + env(safe-area-inset-bottom,0px))}
+ /* the tray: on a phone the menu is an ink sheet over the whole screen, the sections in big light type at the right, joined by lines to one dot */
+ .fbside{width:100vw;background:#141416;color:#fff;transform:translateY(-102%);transition:transform .32s cubic-bezier(.2,.8,.2,1)}
+ body.fbopen .fbside{box-shadow:none}
+ .fbside .quick{padding:14px 64px 0 18px;position:relative;z-index:2}
+ .fbside .quick input{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.18);color:#fff}.fbside .quick input::placeholder{color:rgba(255,255,255,.55)}
+ .fbclose{display:grid;place-items:center;position:absolute;top:10px;right:10px;width:44px;height:44px;border:0;border-radius:12px;background:transparent;color:#fff;cursor:pointer;z-index:3}
+ .fbclose:focus-visible{outline:2px solid #4bff9a}
+ .fbside nav{position:relative;z-index:2;padding:22px 22px calc(40px + env(safe-area-inset-bottom,0px));gap:4px}
+ .fbside nav a{justify-content:flex-end;font:300 30px/1.2 'Space Grotesk',system-ui,sans-serif;letter-spacing:-.015em;padding:8px 4px;border-radius:8px;color:#f4f4f2}
+ .fbside nav a svg{display:none}
+ .fbside nav a:hover{background:rgba(255,255,255,.06)}
+ .fbside nav a.on{background:transparent;box-shadow:none;font-weight:400;color:#fff}
+ .fbside nav a.on .lbl{text-decoration:underline;text-decoration-color:#4bff9a;text-decoration-thickness:2px;text-underline-offset:7px}
+ .fbside nav a.on::after{display:none}
+ .fbside nav a .bdg{margin-left:0;order:-1;align-self:center;margin-right:10px}
+ body.fbopen .fbside nav a{animation:fbIn .5s cubic-bezier(.2,.8,.2,1) both}
+ body.fbopen .fbside nav a:nth-child(2){animation-delay:.04s}body.fbopen .fbside nav a:nth-child(3){animation-delay:.08s}body.fbopen .fbside nav a:nth-child(4){animation-delay:.12s}body.fbopen .fbside nav a:nth-child(5){animation-delay:.16s}body.fbopen .fbside nav a:nth-child(6){animation-delay:.2s}body.fbopen .fbside nav a:nth-child(7){animation-delay:.24s}body.fbopen .fbside nav a:nth-child(8){animation-delay:.28s}
+ .fbfan{display:block;position:absolute;left:0;top:0;pointer-events:none;z-index:1}
+ .fbfan path{fill:none;stroke:rgba(75,255,154,.55);stroke-width:1;stroke-dasharray:var(--len,600);stroke-dashoffset:var(--len,600)}
+ body.fbopen .fbfan path{animation:fbDraw 1s cubic-bezier(.3,.7,.2,1) forwards}
  body.fbopen{overflow:hidden}html:has(body.fbopen){overflow:hidden}
  body.fbopen .fbside{transform:none;box-shadow:0 20px 60px rgba(20,20,22,.3)} /* the shadow only while open: closed, it bled onto the page's left edge */
  body.fbopen .fbscrim{display:block;position:fixed;inset:0;background:rgba(20,20,22,.5);z-index:35;touch-action:none;overscroll-behavior:contain}
@@ -129,13 +151,15 @@ body.fbcollapsed .fbside a .dot{position:absolute;top:6px;right:8px;width:8px;he
  body.fbcollapsed .fbside .quick input{display:block}body.fbcollapsed .fbside .quick button.start span{display:inline}
  body.fbcollapsed .fbside .bdg{display:inline-block}
 }
-@media(prefers-reduced-motion:reduce){.fbside,body.fbnav{transition:none}}
+@keyframes fbIn{from{opacity:0;transform:translateX(18px)}}@keyframes fbDraw{to{stroke-dashoffset:0}}
+@media(prefers-reduced-motion:reduce){.fbside,body.fbnav{transition:none}body.fbopen .fbside nav a,body.fbopen .fbfan path{animation:none}.fbfan path{stroke-dashoffset:0}}
 `;
 
   const attrs = it => `data-nav="${esc(it.key || it.label)}" data-href="${esc(it.href)}"${it.gated ? ` data-gated="${esc(it.gated)}" hidden` : ''}${it.module ? ` data-module="${esc(it.module)}" hidden` : ''}${it.owner ? ' data-owner="1" hidden' : ''}`;
   function render() {
     return `<div class="quick"><button type="button" class="start" id="fbStart" title="Start a tech pack for a client"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>Start a tech pack</span></button><input type="search" id="fbJump" placeholder="Jump to…  ( / )" autocomplete="off" aria-label="Jump to a page" aria-controls="fbJumpList"><div class="fbjump" id="fbJumpList" role="listbox" hidden></div></div>
     <nav aria-label="Work console">${NAV.map(n => `<a href="${esc(n.items[0].href)}" data-section="${n.id}" data-href="${esc(n.items[0].href)}" title="${esc(n.label)}">${svg(n.icon)}<span class="lbl">${esc(n.label)}</span><span class="bdg" data-sum hidden></span><span class="dot" data-sum-dot hidden></span>${n.id === 'settings' ? '<span class="bdg" data-waiting hidden></span>' : ''}</a>`).join('')}</nav>
+    <button type="button" class="fbclose" id="fbClose" aria-label="Close the menu"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button><svg class="fbfan" id="fbFan" aria-hidden="true"></svg>
     <div class="foot"><button type="button" id="fbCollapse" aria-label="Collapse the menu"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 6l-6 6 6 6"/></svg><b style="font-weight:400">Collapse</b></button></div>`;
   }
   // the tab row: every section's parts are drawn once (so a person's access hides them the same way) and only the current section's show
@@ -199,6 +223,14 @@ body.fbcollapsed .fbside a .dot{position:absolute;top:6px;right:8px;width:8px;he
   // a client's own room has its own rail, and Design (the picture and its flats) needs the width: both start collapsed, as does any page on a
 // touch screen narrower than a desktop (an iPad), unless the person has chosen
 const autoCollapse = () => { if (!chosen()) { let touch = false; try { touch = matchMedia('(pointer:coarse)').matches && innerWidth < 1400; } catch {} setCollapsed(location.pathname.startsWith('/clients/') || location.pathname === '/lab/studio' || touch, false); } };
+  // the tray's lines: one dot at the left, a curve to each section's name; drawn each time it opens, from where the names actually are
+  function drawFan() {
+    const side = document.getElementById('fbSide'), svgEl = document.getElementById('fbFan'); if (!side || !svgEl) return;
+    const links = [...side.querySelectorAll('nav a:not([hidden]) .lbl')], box = side.getBoundingClientRect(); if (!links.length) return;
+    const H = side.scrollHeight, W = box.width, mid = links.map(l => l.getBoundingClientRect()), oy = (mid[0].top + mid[mid.length - 1].bottom) / 2 - box.top + side.scrollTop, ox = 26;
+    svgEl.setAttribute('width', W); svgEl.setAttribute('height', H); svgEl.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    svgEl.innerHTML = mid.map(r => { const x = r.left - box.left - 12, y = (r.top + r.bottom) / 2 - box.top + side.scrollTop; return `<path style="--len:${Math.round(Math.hypot(x - ox, y - oy) * 1.4)}" d="M${ox} ${oy} C ${ox + 90} ${oy}, ${x - 110} ${y}, ${x} ${y}"/>`; }).join('') + `<circle cx="${ox}" cy="${oy}" r="7" fill="#141416" stroke="#4bff9a" stroke-width="1.5"/><circle cx="${ox}" cy="${oy}" r="2.5" fill="#4bff9a"/>`;
+  }
   function closeDrawer() { document.body.classList.remove('fbopen'); const b = document.querySelector('.fbburger'); if (b) b.setAttribute('aria-expanded', 'false'); }
 
   // Menu items only some people may see (Money) stay hidden until the service says this person is allowed.
@@ -320,8 +352,9 @@ const autoCollapse = () => { if (!chosen()) { let touch = false; try { touch = m
     const tabs = document.createElement('nav'); tabs.className = 'fbtabs'; tabs.id = 'fbTabs'; tabs.setAttribute('aria-label', 'In this section'); tabs.hidden = true; tabs.innerHTML = renderTabs();
     if (head) head.insertAdjacentElement('afterend', tabs); else document.body.prepend(tabs);
     tabs.addEventListener('click', go);
-    if (head) { const b = document.createElement('button'); b.className = 'fbburger'; b.type = 'button'; b.setAttribute('aria-label', 'Menu'); b.setAttribute('aria-controls', 'fbSide'); b.setAttribute('aria-expanded', 'false'); b.innerHTML = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>'; b.addEventListener('click', () => { const o = document.body.classList.toggle('fbopen'); b.setAttribute('aria-expanded', String(o)); }); head.prepend(b); }
+    if (head) { const b = document.createElement('button'); b.className = 'fbburger'; b.type = 'button'; b.setAttribute('aria-label', 'Menu'); b.setAttribute('aria-controls', 'fbSide'); b.setAttribute('aria-expanded', 'false'); b.innerHTML = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>'; b.addEventListener('click', () => { const o = document.body.classList.toggle('fbopen'); b.setAttribute('aria-expanded', String(o)); if (o) { requestAnimationFrame(drawFan); const c = document.getElementById('fbClose'); if (c) c.focus({ preventScroll: true }); } }); head.prepend(b); }
     side.addEventListener('click', go);
+    document.getElementById('fbClose').addEventListener('click', () => { closeDrawer(); const b = document.querySelector('.fbburger'); if (b) b.focus(); });
     document.getElementById('fbStart').addEventListener('click', () => { closeDrawer(); startTechPack(); });
     const jin = document.getElementById('fbJump');
     jin.addEventListener('input', () => jump(jin.value));
