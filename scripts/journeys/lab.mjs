@@ -2495,12 +2495,19 @@ await journey('J240', 'Design on an iPad, as Kyle found it: the ruler takes any 
         at('pointerdown', 42, 300, 300); at('pointermove', 42, 340, 320); at('pointermove', 42, 380, 340); at('pointerup', 42, 380, 340);
         return { drag: DRAG === null, painted: LAYERS.filter(l => l.kind === 'paint').length }; });
       ok(stroke.drag && stroke.painted >= 1 && await page.evaluate(n => LAYERS.length > n, n0 - 1), '4. a new Pencil stroke draws even after one whose lift never arrived; nothing is left holding the canvas', stroke);
+
+      // a real Pencil, through the browser's own hit testing (not an event handed to the canvas): it reaches the canvas and draws
+      const cdp = await oc.newCDPSession(page), pen = async (r, pts) => { const m = (type, [x, y]) => cdp.send('Input.dispatchMouseEvent', { type, x: r.x + x, y: r.y + y, button: 'left', buttons: type === 'mouseReleased' ? 0 : 1, clickCount: 1, pointerType: 'pen', force: .5 });
+        await m('mousePressed', pts[0]); for (const q of pts.slice(1)) await m('mouseMoved', q); await m('mouseReleased', pts[pts.length - 1]); };
+      { const r = await page.evaluate(() => { const b = document.getElementById('view').getBoundingClientRect(); return { x: b.left, y: b.top }; }), rid0 = await page.evaluate(() => LAYERS.find(l => l.id === SEL)?.raster?._rid);
+        await pen(r, [[300, 260], [330, 280], [360, 300], [400, 320]]);
+        ok(await page.evaluate(r0 => { const l = LAYERS.find(x => x.id === SEL); return l?.kind === 'paint' && l.raster._rid !== r0; }, rid0) && await page.evaluate(() => DRAG === null), '4b. a real Pencil stroke on the picture lands on the canvas and paints'); }
       // a wordmark on the chest, shown on the flats, then removed there
       await page.click('[data-tool=select]');
       await page.click('.tabs [data-tab=add]'); await page.click('#pAdd [data-mark=word]'); await page.waitForFunction(() => LAYERS.some(l => l.kind !== 'base' && l.kind !== 'paint' && l.kind !== 'picture')); await page.click('.tabs [data-tab=layers]'); await page.waitForSelector('#sizeRead');
       await page.fill('#pLayers [data-win]', '3.5'); await page.dispatchEvent('#pLayers [data-win]', 'change'); await page.selectOption('#pLayers [data-placement]', 'left chest');
       await page.click('#save'); await page.waitForFunction(() => !DIRTY, null, { timeout: 30000 });
-      await page.click('#viewSeg [data-v=front]'); const F = await (await page.waitForSelector('#flatFrame')).contentFrame(); await F.waitForSelector('#pPl [data-q]', { timeout: 20000 });
+      await page.click('#viewSeg [data-v=front]'); let F = await (await page.waitForSelector('#flatFrame')).contentFrame(); await F.waitForSelector('#pPl [data-q]', { timeout: 20000 });
       const sq = await F.evaluate(() => FBFlats.placements().find(q => q.source === 'studio')?.id);
       ok(Boolean(sq), '5. the wordmark is on the flat');
       await F.click(`#pPl [data-q="${sq}"] [data-del]`);
@@ -2508,6 +2515,25 @@ await journey('J240', 'Design on an iPad, as Kyle found it: the ruler takes any 
       await page.click('#save'); await page.waitForFunction(() => !DIRTY, null, { timeout: 30000 }); await page.waitForTimeout(500);
       const saved = (await K(`/concepts/${c.id}/flats`)).json.flat;
       ok(!saved.placements.some(q => q.source === 'studio'), '7. after Save it stays off the flat: the save no longer puts it back', saved.placements.map(q => q.source));
+      // the same tools on the flat: the rail stays, the Pencil draws on the flat, Undo and Redo step through it, and Save keeps it for the tech pack
+      ok(await page.isVisible('.rail [data-tool=brush]') && !(await page.isVisible('.rail [data-tool=warp]')), '7b. on the flat the tool rail stays (warp, pick and the ruler, which only make sense on the picture, step aside)');
+      await page.click('.rail [data-tool=brush]'); ok(/Draws on the flat/.test(await page.innerText('#opts')), '   the brush says it draws on the flat');
+      { const r = await page.evaluate(() => { const f = document.getElementById('flatFrame').getBoundingClientRect(), s = document.getElementById('flatFrame').contentDocument.querySelector('#canvas svg').getBoundingClientRect(); return { x: f.left + s.left, y: f.top + s.top, w: s.width, h: s.height }; });
+        const at = (u, v) => [r.w * u, r.h * v];
+        await pen(r, [at(.35, .3), at(.42, .36), at(.5, .42), at(.58, .46)]);
+        ok(await F.evaluate(() => FBFlats.canUndo() && FBFlats.dirty()), '7c. a Pencil stroke draws on the flat');
+        ok(!(await page.$eval('#undo', b => b.disabled)), '   Undo is offered for it'); await page.click('#undo');
+        ok(await F.evaluate(() => !FBFlats.canUndo() && FBFlats.canRedo()), '   Undo takes it off, Redo is offered'); await page.click('#redo');
+        await page.click('.rail [data-tool=rect]'); await pen(r, [at(.3, .6), at(.45, .7), at(.6, .75)]);
+        await page.click('#save'); await page.waitForFunction(() => !DIRTY, null, { timeout: 30000 }); await page.waitForTimeout(400);
+        const mk = (await K(`/concepts/${c.id}/flats`)).json.flat.markup;
+        ok(mk?.front?.art && mk.front.w > 0 && sql(`select source from lab_art where id='${mk.front.art}'`) === 'flat', '7d. saved: what was drawn on the front is kept with the flat, laid over it in inches', mk);
+        const sh = await call(`/v1/lab/concepts/${c.id}/flats/sheet.svg`, { token: kyleT });
+        ok(sh.status === 200 && /preserveAspectRatio="none" pointer-events="none"/.test(sh.text), '   and the spec sheet (and so the tech pack) draws it', sh.status);
+        await page.reload({ waitUntil: 'networkidle' }); const F2 = await (await page.waitForSelector('#flatFrame')).contentFrame(); await F2.waitForFunction(() => window.FBFlats?.ready(), null, { timeout: 20000 });
+        ok(await F2.evaluate(() => { const c = document.querySelector('.mkw canvas'); return Boolean(c && c.width > 10); }), '   opened again, the drawing is back on the flat'); }
+      await page.click('.rail [data-tool=select]');
+      F = await (await page.waitForSelector('#flatFrame')).contentFrame(); await F.waitForFunction(() => window.FBFlats?.ready(), null, { timeout: 20000 });
       // a flat saved as a sweatshirt: Redraw from the picture brings the jacket back (the words stand in for the picture here)
       const asSweat = await K(`/concepts/${c.id}/flats`, { method: 'PUT', body: { ...saved, style: 'crewneck', template: undefined, placements: saved.placements } });
       const redo = await K(`/concepts/${c.id}/flats/from-picture`);

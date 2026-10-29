@@ -37,8 +37,11 @@ header{height:72px;background:rgba(20,20,22,.96);color:#fff;padding:0 clamp(16px
 .flathost{display:none;min-height:0;min-width:0;background:var(--fog)}.flathost iframe{display:block;width:100%;height:100%;border:0}
 .studio[data-v=picture] .flat-only,.studio:not([data-v]) .flat-only{display:none}
 .studio[data-v=front] .pic-only,.studio[data-v=back] .pic-only{display:none!important}
-.studio[data-v=front] .rail,.studio[data-v=front] .mid,.studio[data-v=front] .side,.studio[data-v=back] .rail,.studio[data-v=back] .mid,.studio[data-v=back] .side{display:none}
-.studio[data-v=front] .flathost,.studio[data-v=back] .flathost{display:block;grid-column:1/-1}
+/* the flats keep the tool rail and its options: the same tools draw on the flat (the flats bring their own panels, so the layer list goes) */
+.studio[data-v=front] .side,.studio[data-v=back] .side,.studio[data-v=front] .stage,.studio[data-v=back] .stage{display:none}
+.studio[data-v=front] .mid,.studio[data-v=back] .mid{grid-column:2/-1}
+.studio[data-v=front] .flathost,.studio[data-v=back] .flathost{display:block}
+.studio[data-v=front] .rail [data-tool=warp],.studio[data-v=back] .rail [data-tool=warp],.studio[data-v=front] .rail [data-tool=pick],.studio[data-v=back] .rail [data-tool=pick],.studio[data-v=front] .rail [data-tool=ruler],.studio[data-v=back] .rail [data-tool=ruler]{display:none}
 .studio[data-v=split]{grid-template-columns:52px minmax(0,1fr) minmax(0,1fr) 330px}
 .studio[data-v=split] .rail{grid-column:1;grid-row:2}.studio[data-v=split] .mid{grid-column:2;grid-row:2}.studio[data-v=split] .flathost{display:block;grid-column:3;grid-row:2;border-left:1px solid var(--line)}.studio[data-v=split] .side{grid-column:4;grid-row:2}
 .rail{background:#fff;border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 0;overflow-y:auto}
@@ -53,7 +56,7 @@ header{height:72px;background:rgba(20,20,22,.96);color:#fff;padding:0 clamp(16px
 .opts label{display:inline-flex;align-items:center;gap:6px}.opts input[type=range]{width:110px}.opts .hint{color:var(--dim)}
 .stage{position:relative;overflow:hidden;background:var(--stage);background-image:linear-gradient(rgba(20,20,22,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(20,20,22,.05) 1px,transparent 1px);background-size:24px 24px;touch-action:none}
 .stage canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
-.stage,.stage canvas{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
+.stage,.stage canvas{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;touch-action:none}
 /* a finger or a Pencil: bigger targets on the tool rail and the zoom */
 @media (pointer:coarse){.studio{grid-template-columns:60px minmax(0,1fr) 330px}.rail button{width:46px;height:46px}.zoom button{min-width:40px;min-height:40px}.seg button{padding:8px 14px}}
 .zoom{position:absolute;right:12px;bottom:12px;display:flex;gap:4px;align-items:center;background:#fff;border:1px solid var(--line);border-radius:999px;padding:3px 6px;font-size:12px}
@@ -108,8 +111,8 @@ kbd{font:500 10px 'IBM Plex Mono',monospace;border:1px solid var(--line);border-
     <div class="seg" id="levelSeg" role="group" aria-label="How much to show"><button type="button" data-level="simple" aria-pressed="false" title="The essentials: the picture, graphics and their place, the flats and the sheets">Simple</button><button type="button" data-level="pro" aria-pressed="false" title="Every tool: distress, warp, the ruler, separations, Illustrator files, points of measure, grading, stitch lines">Pro</button></div>
     <div class="menu" id="readyWrap"><button class="btn sm q" id="readyBtn" type="button" aria-haspopup="true" aria-expanded="false" title="What it still needs before the tech pack">Checklist</button>
       <div class="pop hidden" id="readyPop" role="dialog" aria-label="Before the tech pack"><div id="readyList"></div></div></div>
-    <button class="btn q sm pic-only" id="undo" type="button" title="Undo (Ctrl Z)">Undo</button>
-    <button class="btn q sm pic-only" id="redo" type="button" title="Redo (Ctrl Shift Z)">Redo</button>
+    <button class="btn q sm" id="undo" type="button" title="Undo (Ctrl Z)">Undo</button>
+    <button class="btn q sm" id="redo" type="button" title="Redo (Ctrl Shift Z)">Redo</button>
     <span class="saved pic-only" id="saved" role="status"></span><span class="saved flat-only" id="fsaved" role="status" title="The flats"></span>
     <button class="btn sm" id="save" type="button" title="Save (Ctrl S)">Save</button>
     <button class="btn sm pic-only pro-only" id="impBtn" type="button" title="Bring an SVG back from Illustrator: the studio's own export comes back as layers">Import</button><input type="file" id="svgIn" accept=".svg,image/svg+xml" class="hidden">
@@ -154,6 +157,7 @@ kbd{font:500 10px 'IBM Plex Mono',monospace;border:1px solid var(--line);border-
       <div class="drop hidden" id="drop">Drop a picture to add it as a layer</div>
       <div class="zoom"><button type="button" id="zOut" aria-label="Zoom out">−</button><span id="zLabel">100%</span><button type="button" id="zIn" aria-label="Zoom in">+</button><button type="button" id="zFit" aria-label="Fit to the screen" title="Fit (0)" style="width:auto;padding:0 6px;font-weight:600">Fit</button></div>
     </div>
+    <div class="flathost" id="flatHost"><iframe id="flatFrame" title="The flats: front and back, measured"></iframe></div>
   </div>
   <aside class="side">
     <div class="tabs" role="tablist"><button type="button" role="tab" data-tab="layers" aria-selected="true">Layers</button><button type="button" role="tab" data-tab="add" aria-selected="false">Add</button><button type="button" role="tab" data-tab="ai" aria-selected="false">AI</button></div>
@@ -161,7 +165,6 @@ kbd{font:500 10px 'IBM Plex Mono',monospace;border:1px solid var(--line);border-
     <div class="pane hidden" id="pAdd" role="tabpanel"></div>
     <div class="pane hidden" id="pAi" role="tabpanel"></div>
   </aside>
-  <div class="flathost" id="flatHost"><iframe id="flatFrame" title="The flats: front and back, measured"></iframe></div>
 </div>
 <dialog id="verDlg" style="border:0;border-radius:20px;padding:0;width:min(1100px,96vw);max-height:92vh;overflow:auto"><div style="padding:18px;display:grid;gap:12px">
   <div class="row" style="justify-content:space-between"><h3 style="margin:0;font-size:16px">Versions</h3><div class="row"><button class="btn sm" type="button" id="verKeep">Keep this as a version</button><button class="btn sm q" type="button" data-verclose>Close</button></div></div>
@@ -238,8 +241,9 @@ const copyL=l=>({...l,adjust:{...l.adjust},tint:{...l.tint},distress:{...l.distr
 const snap=()=>({sel:SEL,layers:LAYERS.map(copyL)});
 function commit(){HIST=HIST.slice(0,HI+1);HIST.push(snap());if(HIST.length>60)HIST.shift();HI=HIST.length-1;touch();syncUndo()}
 function restore(s){LAYERS=s.layers.map(copyL);SEL=s.sel&&layerOf(s.sel)?s.sel:null;touch();paintPanels();draw()}
-function undo(){if(HI>0){HI--;restore(HIST[HI]);syncUndo()}}function redo(){if(HI<HIST.length-1){HI++;restore(HIST[HI]);syncUndo()}}
-function syncUndo(){$('#undo').disabled=HI<=0;$('#redo').disabled=HI>=HIST.length-1}
+const onFlat=()=>(VMODE==='front'||VMODE==='back')&&FF()?.undo;
+function undo(){if(onFlat()){FF().undo();syncUndo();return}if(HI>0){HI--;restore(HIST[HI]);syncUndo()}}function redo(){if(onFlat()){FF().redo();syncUndo();return}if(HI<HIST.length-1){HI++;restore(HIST[HI]);syncUndo()}}
+function syncUndo(){if(onFlat()){const f=FF();$('#undo').disabled=!f.canUndo();$('#redo').disabled=!f.canRedo();return}$('#undo').disabled=HI<=0;$('#redo').disabled=HI>=HIST.length-1}
 let EDITS=0;function touch(){DIRTY=true;EDITS++;showSaved()}
 function showSaved(){const s=$('#saved');s.className='saved'+(DIRTY?' dirty':'');s.textContent=DIRTY?'Not saved':SAVED_AT?'Saved '+new Date(SAVED_AT).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}):''}
 
@@ -413,13 +417,16 @@ view.addEventListener('pointermove',e=>{
 });
 const endDrag=e=>{if(e&&e.pointerId!==undefined){PTRS.delete(e.pointerId);if(GEST){if(PTRS.size<2)GEST=null;return}if(DRAG&&DRAG.pid!==undefined&&DRAG.pid!==e.pointerId)return}const g=DRAG;DRAG=null;if(!g)return;if(g.mode==='ruler'){rulerDone(g);draw();return}if(g.mode==='stroke'||g.mode==='area'||(g.mode==='shape'&&g.l)||g.moved){if(g.mode!=='area')commit();if(g.mode==='shape')setTool('select');paintPanels()}draw()};
 view.addEventListener('pointerup',endDrag);view.addEventListener('pointercancel',endDrag);view.addEventListener('lostpointercapture',e=>{if(DRAG&&DRAG.pid===e.pointerId)endDrag(e)});view.addEventListener('pointerleave',e=>{if(e.pointerType==='mouse'||e.pointerType==='pen'&&!DRAG){HOVER=null;draw()}});
+// iPad: a Pencil on the page can be taken as handwriting (Scribble) or the start of a text selection, and then never reaches the canvas as a
+// stroke; holding the Pencil's touches on the stage keeps them ours (fingers are left alone: they move and pinch through the pointer events)
+['touchstart','touchmove'].forEach(t=>$('#stage').addEventListener(t,e=>{if([...e.changedTouches].some(x=>x.touchType==='stylus'))e.preventDefault()},{passive:false}));
 // Safari's own pinch would zoom the whole page; on the stage the pinch is ours
 ['gesturestart','gesturechange'].forEach(t=>$('#stage').addEventListener(t,e=>e.preventDefault()));
 view.addEventListener('wheel',e=>{e.preventDefault();const[px,py]=pt(e);if(e.ctrlKey||e.metaKey)zoomAt(Math.exp(-e.deltaY*.01),px,py);else{PX-=e.deltaX;PY-=e.deltaY;draw()}},{passive:false});
 $('#zIn').onclick=()=>{const r=view.getBoundingClientRect();zoomAt(1.25,r.width/2,r.height/2)};$('#zOut').onclick=()=>{const r=view.getBoundingClientRect();zoomAt(.8,r.width/2,r.height/2)};$('#zFit').onclick=fit;
 
 // ---------- tools and their options ----------
-function setTool(t){TOOL=t;$$('.rail [data-tool]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.tool===t)));view.style.cursor=t==='hand'?'grab':t==='select'?'default':t==='text'?'text':'crosshair';paintOpts();draw()}
+function setTool(t){TOOL=t;if(VMODE==='front'||VMODE==='back')FF()?.tool?.(t);$$('.rail [data-tool]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.tool===t)));view.style.cursor=t==='hand'?'grab':t==='select'?'default':t==='text'?'text':'crosshair';paintOpts();draw()}
 const pressHtml=()=>`<label class="chk" title="With an Apple Pencil, pressing harder makes the line wider"><input type="checkbox" data-press ${OPT.pressure?'checked':''}> Pencil pressure</label>`;
 $('#opts').addEventListener('change',e=>{if(e.target.matches('[data-press]'))OPT.pressure=e.target.checked});
 function paintOpts(){
@@ -430,6 +437,9 @@ function paintOpts(){
   else if(TOOL==='distress')o.innerHTML=rg('dsize','Size',4,600)+rg('flow','Strength',.05,1,.05,'')+'<span class="hint">Wears the selected layer away, like an old print. For an even wear across the layer, use Distress in its settings.</span>';
   else if(TOOL==='area')o.innerHTML=rg('area','Size',4,600)+'<span class="hint">Paint over what the AI should change. Hold Alt to rub out.</span><button class="btn sm" type="button" data-clearmask>Clear the area</button>';
   else o.innerHTML=`<span class="hint">${help[TOOL]||''}</span>`;
+  // on the flats the same tools draw on the flat itself, saved with it and carried into the tech pack
+  if(VMODE==='front'||VMODE==='back'){const fh={select:'Drag a graphic to move it; its size and place, in inches, are in the panel on the right.',hand:'Drag to move around once zoomed in; pinch or Ctrl and the wheel zooms.',brush:'Draws on the flat. It is saved with the flat and goes into the tech pack. With the Pencil, fingers move and pinch the view.',eraser:'Rubs out what was drawn on the flat (the sketch stays).',distress:'Wears away what was drawn on the flat.',text:'Tap where the type should go, then type it.',rect:'Drag to draw a box on the flat.',ellipse:'Drag to draw a ring on the flat.',line:'Drag to draw a line on the flat.',area:'Drag a box on the flat over what the AI should redraw, then say what to change.'}[TOOL];
+    o.querySelector('[data-clearmask]')?.remove();const h=o.querySelector('.hint');if(h&&fh)h.textContent=fh;else if(fh)o.insertAdjacentHTML('beforeend',`<span class="hint">${fh}</span>`)}
 }
 $('#opts').addEventListener('input',e=>{const k=e.target.dataset.o;if(!k)return;OPT[k]=Number(e.target.value);e.target.nextElementSibling.textContent=OPT[k]+(['flow','soft'].includes(k)?'':'px');draw()});
 $('#opts').addEventListener('click',e=>{if(e.target.closest('[data-clearmask]'))clearMask()});
@@ -1109,7 +1119,7 @@ function showSheet(blob,name,title){let d=$('#sheetDlg');if(!d){d=document.creat
   d.showModal()}
 // a graphic removed on the flats leaves the garment here too (it stays on the picture as a layer); without this the next save puts it back
 function flatRemoved({id,layer}={}){const l=LAYERS.find(x=>(layer&&x.id===layer)||(id&&x.fromFlat===id));if(!l||!l.placement)return;l.placement=undefined;l.fromFlat=undefined;commit();paintLayers();draw();toast(`${l.name} is off the garment. It is still a layer on the picture: delete it in Layers if you do not want it there either.`)}
-window.FBDesign={saveAll,showSheet,flatRemoved,flatsChanged(){},flatsSaved(){const f=FF();if(f)adoptFlats(f.placements(),{saved:true});setTimeout(loadReady,300)},flatsReady(){const f=FF();if(!f)return;f.mode(VMODE==='split'?'compact':'full');if(VMODE==='front'||VMODE==='back')f.setView(VMODE);mirrorFlats();f.level?.(LEVEL);$('#packBtn').classList.toggle('hidden',!f.canPack());FLATS={saved:f.saved(),placements:f.placements()};paintLayers();['#specBtn','#decoBtn'].forEach(s=>$(s).disabled=Boolean(f.unsupported()))}};
+window.FBDesign={saveAll,showSheet,flatRemoved,drawOpts:()=>({tool:TOOL,color:CUR,size:OPT.size,dsize:OPT.dsize,flow:OPT.flow,soft:OPT.soft,pressure:OPT.pressure}),flatsChanged(){syncUndo()},flatsSaved(){const f=FF();if(f)adoptFlats(f.placements(),{saved:true});setTimeout(loadReady,300)},flatsReady(){const f=FF();if(!f)return;f.mode(VMODE==='split'?'compact':'full');if(VMODE==='front'||VMODE==='back'){f.setView(VMODE);f.tool?.(TOOL)}mirrorFlats();f.level?.(LEVEL);$('#packBtn').classList.toggle('hidden',!f.canPack());FLATS={saved:f.saved(),placements:f.placements()};paintLayers();['#specBtn','#decoBtn'].forEach(s=>$(s).disabled=Boolean(f.unsupported()))}};
 async function setVMode(v,{push=true}={}){
   if(!VIEWS.includes(v)||GMODE||!CID)v='picture';const was=VMODE;
   if(v!=='picture'){
@@ -1117,7 +1127,8 @@ async function setVMode(v,{push=true}={}){
     if(!GMODE&&DIRTY&&(was==='picture'||!FLOADED)){busy('Putting the graphics on the flats…');try{const sent=await syncFlats({before:flatsFirst});if(sent&&FLOADED)reloadFlats()}catch(x){toast('The flats did not take the graphics: '+x.message)}finally{busy()}}
     if(!FLOADED)loadFlats()}
   VMODE=v;$('#app').dataset.v=v;$$('#viewSeg [data-v]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.v===v)));
-  const f=FF();if(f&&f.ready()){f.mode(v==='split'?'compact':'full');if(v==='front'||v==='back')f.setView(v)}
+  const f=FF();if(f&&f.ready()){f.mode(v==='split'?'compact':'full');if(v==='front'||v==='back'){f.setView(v);f.tool?.(TOOL)}}
+  if(['warp','pick','ruler'].includes(TOOL)&&v!=='picture')setTool('select');paintOpts();syncUndo();
   if(push){const u=new URL(location.href);if(v==='picture')u.searchParams.delete('view');else u.searchParams.set('view',v);u.searchParams.delete('template');history.replaceState(null,'',u)}
   if(v==='picture'||v==='split')requestAnimationFrame(fit)}
 $$('#viewSeg [data-v]').forEach(b=>b.onclick=()=>setVMode(b.dataset.v));

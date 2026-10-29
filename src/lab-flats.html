@@ -32,6 +32,8 @@ header{height:72px;background:rgba(20,20,22,.96);color:#fff;padding:0 clamp(16px
 .seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;background:#fff}.seg button{border:0;background:none;padding:6px 14px;font-weight:600;cursor:pointer;font-size:13px}.seg button[aria-pressed=true]{background:var(--ink);color:#fff}
 .canvas{background:#fff;border:1px solid var(--line);border-radius:20px;overflow:hidden;touch-action:none;position:relative}
 .canvas>svg{display:block;width:100%;height:auto;max-height:calc(100vh - 220px)}
+.mkw{position:absolute;overflow:hidden;pointer-events:none;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}.mkw.on{pointer-events:auto;cursor:crosshair}.mkw.on.hand{cursor:grab}.mkw canvas{position:absolute;display:block}
+.canvas,.canvas svg{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 .canvas [data-pl]{cursor:grab}.canvas [data-pl]:active{cursor:grabbing}
 .status{display:flex;gap:10px;align-items:center;padding:10px 14px;border-radius:14px;font-weight:600;font-size:14px}.status.ok{background:#e4f6ea;color:var(--ok)}.status.warn{background:#fbf0d9;color:var(--warn)}.status.bad{background:#f8e1de;color:var(--bad)}
 .side{background:#fff;border-left:1px solid var(--line);display:grid;grid-template-rows:auto minmax(0,1fr)}
@@ -114,7 +116,7 @@ let PKIND='pockets',SELE=null,MODE=null,DRAFT=[],AIBOX=null,BOXDRAG=null,EHREF={
 let D=null,P=null,PL=[],VIEW='front',SEL=null,CHECK={findings:{},summary:{fail:0,warn:0}},WHERE={},DIRTY=false,TAB='pl',HREF={},MARKS={};
 const r8=v=>Math.round(v*8)/8;
 const techName=q=>(D.techniques.find(t=>t.id===q.techniqueId)||{}).name||q.technique;
-const flatBody=()=>({style:P.style,fit:P.fit,size:P.size,m:P.m,options:P.options,template:P.template||templateOf(P)?.id||'none',color:P.color||'',edits:P.edits||[],placements:PL,allover:P.allover||null,drawn:P.drawn||null});
+const flatBody=()=>({style:P.style,fit:P.fit,size:P.size,m:P.m,options:P.options,template:P.template||templateOf(P)?.id||'none',color:P.color||'',edits:P.edits||[],placements:PL,allover:P.allover||null,drawn:P.drawn||null,markup:P.markup||null});
 let AOHREF='',DECOS=null,CAL=null,REPS=null;
 function touch(){DIRTY=true;$('#saved').className='saved dirty';$('#saved').textContent='Not saved';recheckSoon();HOST()?.flatsChanged?.()}
 
@@ -281,6 +283,7 @@ function galTiles(){const words=GQ.q.toLowerCase().split(/\s+/).filter(Boolean),
   const tiles=list.slice(0,150).map(t=>`<button type="button" data-tpl="${t.id}" aria-pressed="${t.id===cur}" title="${esc(t.label)} · ${esc(D.styles[t.style]?.label||t.style)}"><img loading="lazy" alt="" src="/lab/flat-templates/thumbs/${t.id}.webp">${esc(t.label)}${t.style!==P.style?`<span class="mono">${esc(D.styles[t.style]?.label||'')}</span>`:''}</button>`).join('');
   return (tiles||'<p class="msg">No sketch matches. Try fewer words, or tick Every style.</p>')+(list.length>150?`<p class="msg">Showing 150 of ${list.length}: search to narrow it.</p>`:'')+(!GQ.q&&!GQ.all?`<button type="button" data-tpl="none" aria-pressed="${cur==='none'}">Simple outline</button>`:'')}
 function useTemplate(id){
+  if(Object.keys(MK).length&&id!==(P.template||templateOf(P)?.id||'none'))mkReset();
   const t=FLAT_TEMPLATES.find(x=>x.id===id);
   if(id==='none'){P.template='none';touch();paintGarment();paint();FBN.toast('Drawn as a simple outline');return}
   if(!t)return;
@@ -317,12 +320,13 @@ function baseBox(){const svg=$('#canvas svg');if(!svg)return null;const v=(svg.d
 function zoomSvg(){const svg=$('#canvas svg');if(!svg)return;if(!svg.dataset.base)svg.dataset.base=svg.getAttribute('viewBox')||'';const b=baseBox();if(!b)return;
   if(FZ<=1.001){FZ=1;FC=null;svg.setAttribute('viewBox',svg.dataset.base)}
   else{const w=b.w/FZ,h=b.h/FZ,c=FC||[b.x+b.w/2,b.y+b.h/2],cx=Math.min(Math.max(c[0],b.x+w/2),b.x+b.w-w/2),cy=Math.min(Math.max(c[1],b.y+h/2),b.y+b.h-h/2);FC=[cx,cy];svg.setAttribute('viewBox',`${cx-w/2} ${cy-h/2} ${w} ${h}`)}
-  $('#fzFit')?.classList.toggle('hidden',FZ<=1)}
+  $('#fzFit')?.classList.toggle('hidden',FZ<=1);mkPlace()}
 const unitsPerPx=()=>{const svg=$('#canvas svg'),b=baseBox();if(!svg||!b)return 1;const r=svg.getBoundingClientRect();return Math.max(b.w/FZ/r.width,b.h/FZ/r.height)};
 const centreNow=()=>{const b=baseBox();return FC||(b?[b.x+b.w/2,b.y+b.h/2]:[0,0])};
 function fzFit(){FZ=1;FC=null;zoomSvg()}
 // keeping the pointer is a nicety: where the browser refuses it (Safari can, for a Pencil), the drag still works
 const capt=e=>{try{$('#canvas').setPointerCapture(e.pointerId)}catch{}};
+$('#canvas').addEventListener('pointerdown',e=>{if(e.pointerType==='touch'&&MDRAG&&MDRAG.type==='touch'&&MDRAG.pid!==e.pointerId)mkCancel()},true);
 $('#canvas').addEventListener('pointerdown',e=>{if(e.pointerType!=='touch')return;FPTR.set(e.pointerId,[e.clientX,e.clientY]);if(FPTR.size<2)return;
   e.stopImmediatePropagation();e.preventDefault();
   if(DRAG){if(DRAG.q&&DRAG.ox!==undefined){DRAG.q.x=DRAG.ox;DRAG.q.y=DRAG.oy}if(DRAG.ed&&DRAG.orig)Object.assign(DRAG.ed,JSON.parse(JSON.stringify(DRAG.orig)));DRAG=null;draw()} // two fingers: a pinch, not a move
@@ -352,14 +356,68 @@ $('#canvas').addEventListener('pointermove',e=>{
 const end=()=>{if(BOXDRAG){BOXDRAG=null;if(!AIBOX||AIBOX.w<.5||AIBOX.h<.5)AIBOX=null;paint();setTimeout(()=>$('#aiPrompt')?.focus(),0);return}if(DRAG&&DRAG.moved){touch();paint()}DRAG=null};
 $('#canvas').addEventListener('dblclick',e=>{if(MODE==='stitch'||MODE==='block'){e.preventDefault();finishDraft()}});$('#canvas').addEventListener('pointerup',end);$('#canvas').addEventListener('pointercancel',end);
 document.addEventListener('keydown',e=>{if(e.target.closest('input,select,textarea'))return;
+  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'&&HOST()&&MUNDO[VIEW]){e.preventDefault();e.shiftKey?mkStep(MREDO,MUNDO):mkStep(MUNDO,MREDO);return}
   if(MODE&&e.key==='Escape'){MODE=null;DRAFT=[];AIBOX=null;paint();return}if((MODE==='stitch'||MODE==='block')&&e.key==='Enter'){e.preventDefault();finishDraft();return}
   const ed=TAB==='design'&&P.edits.find(x=>x.id===SELE);
   if(ed){if(e.key==='Delete'||e.key==='Backspace'){e.preventDefault();P.edits=P.edits.filter(x=>x!==ed);SELE=null;touch();paint();return}const s=e.shiftKey?1:.125,mv={ArrowLeft:[-s,0],ArrowRight:[s,0],ArrowUp:[0,-s],ArrowDown:[0,s]}[e.key];if(mv){e.preventDefault();if(ed.pts)ed.pts=ed.pts.map(q=>[r8(q[0]+mv[0]),r8(q[1]+mv[1])]);else{ed.x=r8(ed.x+mv[0]);ed.y=r8(ed.y+mv[1])}touch();paint();return}}
   const q=PL.find(x=>x.id===SEL);if(!q)return;const s=e.shiftKey?1:.125;let hit=true;if(e.key==='ArrowLeft')q.x-=s;else if(e.key==='ArrowRight')q.x+=s;else if(e.key==='ArrowUp')q.y-=s;else if(e.key==='ArrowDown')q.y+=s;else hit=false;if(hit){e.preventDefault();q.x=r8(q.x);q.y=r8(q.y);touch();paint()}if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'){e.preventDefault();HOST()?HOST().saveAll():save()}});
 
+// ---------- drawing on the flat: the Design workspace's tools (the Pencil, brush, eraser, distress, shapes, type) ----------
+// Each view has one drawing, a picture laid over the view's own box in inches, so it zooms with the flat and goes into the sheets and the tech
+// pack. It sits over the graphics; while a drawing tool is chosen it takes the pointer, otherwise the flat works as before. Once a Pencil has been
+// used, fingers never draw: one finger moves the view when zoomed in, two pinch, so a resting palm does nothing.
+const MK={},MUNDO={front:[],back:[]},MREDO={front:[],back:[]},MKTOOLS=['brush','eraser','distress','text','rect','ellipse','line'];let MTOOL='select',MDRAG=null,MPEN=false;
+const MKW=document.createElement('div');MKW.className='mkw';
+const mkOpts=()=>{const o=HOST()?.drawOpts?.()||{};return {color:o.color||'#141416',size:Number(o.size)||12,dsize:Number(o.dsize)||40,flow:o.flow??1,soft:o.soft||0,pressure:o.pressure!==false}};
+const mkTpl=()=>P?String(P.template||templateOf(P)?.id||'none'):'none';
+function mkReset(){for(const k of Object.keys(MK))delete MK[k];MUNDO.front=[];MUNDO.back=[];MREDO.front=[];MREDO.back=[];if(P)delete P.markup;mkPlace()}
+function mkNew(view){const b=baseBox();if(!b)return null;const res=Math.min(48,2400/Math.max(b.w,b.h)),cv=document.createElement('canvas');cv.width=Math.round(b.w*res);cv.height=Math.round(b.h*res);
+  return MK[view]={cv,x:b.x,y:b.y,w:b.w,h:b.h,tpl:mkTpl(),dirty:false}}
+async function mkLoad(m){mkReset();if(!m)return;P.markup=m;for(const v of ['front','back']){const q=m[v];if(!q?.art)continue;try{const img=new Image();img.src=await blobUrl('/v1/lab/art/'+q.art);await img.decode();
+  const cv=document.createElement('canvas');cv.width=img.naturalWidth;cv.height=img.naturalHeight;cv.getContext('2d').drawImage(img,0,0);MK[v]={cv,x:q.x,y:q.y,w:q.w,h:q.h,tpl:m.template||'none',art:q.art,dirty:false}}catch{}}mkPlace()}
+// the view's drawing laid exactly over its box: the box's corners in inches, through the flat's own transform, to the screen
+function mkPlace(){const c=$('#canvas'),svg=c&&c.querySelector('svg');if(!svg){MKW.remove();return}if(MKW.parentNode!==c)c.append(MKW);
+  const r=svg.getBoundingClientRect(),cr=c.getBoundingClientRect(),M=svg.getScreenCTM();Object.assign(MKW.style,{left:(r.left-cr.left-c.clientLeft)+'px',top:(r.top-cr.top-c.clientTop)+'px',width:r.width+'px',height:r.height+'px'});
+  const on=Boolean(HOST())&&(MKTOOLS.includes(MTOOL)||MTOOL==='hand');MKW.classList.toggle('on',on);MKW.classList.toggle('hand',MTOOL==='hand');
+  const m=MK[VIEW];if(!m||!M){MKW.replaceChildren();return}if(m.cv.parentNode!==MKW)MKW.replaceChildren(m.cv);
+  Object.assign(m.cv.style,{left:(M.a*m.x+M.e-r.left)+'px',top:(M.d*m.y+M.f-r.top)+'px',width:(M.a*m.w)+'px',height:(M.d*m.h)+'px'})}
+window.addEventListener('resize',()=>mkPlace());
+// a point on the screen → the drawing's own pixels; k: drawing pixels per screen pixel
+function mkAt(m,e){const[x,y]=inch(e);return[(x-m.x)/m.w*m.cv.width,(y-m.y)/m.h*m.cv.height]}
+const mkK=m=>{const M=$('#canvas svg')?.getScreenCTM();return M?m.cv.width/(M.a*m.w):1};
+const mkSnap=m=>m.cv.getContext('2d').getImageData(0,0,m.cv.width,m.cv.height);
+function mkStroke(m,a,b,o,pr){const x=m.cv.getContext('2d'),k=mkK(m),t=MTOOL,w=Math.max(.6,(t==='distress'?o.dsize*.35:o.size*.5)*pr)*k;x.save();x.lineCap='round';x.lineJoin='round';x.lineWidth=w;x.globalAlpha=o.flow;
+  if(t==='brush'){x.strokeStyle=o.color;if(o.soft){x.shadowColor=o.color;x.shadowBlur=w*o.soft}}else{x.globalCompositeOperation='destination-out';x.strokeStyle='#000';if(t==='distress'){x.setLineDash([w*.12,w*.3]);x.globalAlpha=Math.min(1,o.flow*.8)}}
+  x.beginPath();x.moveTo(a[0],a[1]);x.lineTo(b[0]+.01,b[1]);x.stroke();x.restore()}
+function mkShape(m,g,p){const x=m.cv.getContext('2d'),o=g.o,k=mkK(m);x.putImageData(g.before,0,0);x.save();x.strokeStyle=o.color;x.globalAlpha=o.flow;x.lineWidth=Math.min(Math.max(o.size*.15,1.5),12)*k;x.lineCap='round';x.beginPath();
+  const[a,b]=g.from;if(MTOOL==='line'){x.moveTo(a,b);x.lineTo(p[0],p[1])}else if(MTOOL==='rect')x.rect(Math.min(a,p[0]),Math.min(b,p[1]),Math.abs(p[0]-a),Math.abs(p[1]-b));else x.ellipse((a+p[0])/2,(b+p[1])/2,Math.abs(p[0]-a)/2,Math.abs(p[1]-b)/2,0,0,Math.PI*2);x.stroke();x.restore()}
+function mkDone(m,before){MUNDO[VIEW].push(before);if(MUNDO[VIEW].length>30)MUNDO[VIEW].shift();MREDO[VIEW]=[];m.dirty=true;touch();HOST()?.flatsChanged?.()}
+function mkCancel(){const g=MDRAG;MDRAG=null;if(g?.m&&g.before)g.m.cv.getContext('2d').putImageData(g.before,0,0)}
+function mkStep(from,to){const st=from[VIEW],m=MK[VIEW];if(!st?.length||!m)return false;to[VIEW].push(mkSnap(m));m.cv.getContext('2d').putImageData(st.pop(),0,0);m.dirty=true;touch();HOST()?.flatsChanged?.();return true}
+MKW.addEventListener('pointerdown',e=>{
+  if(e.pointerType==='pen')MPEN=true;
+  if(MTOOL==='hand'||!MKTOOLS.includes(MTOOL)||(e.pointerType==='touch'&&MPEN))return; // the flat's own handlers move the view
+  if(MDRAG&&MDRAG.pid!==e.pointerId){if(MDRAG.type==='touch'&&e.pointerType==='pen')mkCancel();else if(MDRAG.type==='pen'&&e.pointerType==='pen'){MDRAG=null}else return}
+  e.stopPropagation();e.preventDefault();const m=MK[VIEW]||mkNew(VIEW);if(!m)return;mkPlace();try{MKW.setPointerCapture(e.pointerId)}catch{}const o=mkOpts(),p=mkAt(m,e),before=mkSnap(m);
+  if(MTOOL==='text'){const words=prompt('Type for the flat');if(!words||!words.trim())return;const x=m.cv.getContext('2d');x.save();x.fillStyle=o.color;x.globalAlpha=o.flow;x.font=`600 ${Math.max(12,o.size*.9)*mkK(m)}px 'Space Grotesk','Helvetica Neue',Arial,sans-serif`;x.textBaseline='middle';x.fillText(words.trim(),p[0],p[1]);x.restore();mkDone(m,before);return}
+  MDRAG={m,before,last:p,from:p,o,pid:e.pointerId,type:e.pointerType};if(['brush','eraser','distress'].includes(MTOOL))mkStroke(m,p,p,o,e.pointerType==='pen'&&o.pressure?Math.min(Math.max(.15+.85*(e.pressure||.5),.15),1):1)});
+MKW.addEventListener('pointermove',e=>{const g=MDRAG;if(!g||g.pid!==e.pointerId)return;e.stopPropagation();
+  if(['brush','eraser','distress'].includes(MTOOL)){const ev=e.getCoalescedEvents?.()||[];for(const c of ev.length?ev:[e]){const p=mkAt(g.m,c);mkStroke(g.m,g.last,p,g.o,c.pointerType==='pen'&&g.o.pressure?Math.min(Math.max(.15+.85*(c.pressure||.5),.15),1):1);g.last=p}}
+  else mkShape(g.m,g,mkAt(g.m,e))});
+const mkUp=e=>{const g=MDRAG;if(!g||(e.pointerId!==undefined&&g.pid!==e.pointerId))return;e.stopPropagation();MDRAG=null;mkDone(g.m,g.before)};
+['pointerup','pointercancel'].forEach(t=>MKW.addEventListener(t,mkUp));MKW.addEventListener('lostpointercapture',e=>{if(MDRAG&&MDRAG.pid===e.pointerId)mkUp(e)});
+// iPad: a Pencil on the page can be taken as handwriting (Scribble) or a text selection before it reaches the drawing; holding its touches here stops that
+['touchstart','touchmove'].forEach(t=>$('#canvas').addEventListener(t,e=>{if(MKW.classList.contains('on')&&[...e.changedTouches].some(x=>x.touchType==='stylus'))e.preventDefault()},{passive:false}));
+// at save: each view drawn on since the last save is kept as a picture; one rubbed out completely is dropped
+async function mkUpload(){const tpl=mkTpl();for(const v of ['front','back']){const m=MK[v];if(!m)continue;if(m.tpl!==tpl){delete MK[v];if(P.markup)delete P.markup[v];continue}if(!m.dirty)continue;
+    const d=mkSnap(m).data;let ink=false;for(let i=3;i<d.length;i+=4)if(d[i]){ink=true;break}
+    if(!ink){if(P.markup)delete P.markup[v];m.dirty=false;continue}
+    const r=await api(`/v1/lab/concepts/${CID}/flats/markup`,{body:{view:v,png:m.cv.toDataURL('image/png')}});m.art=r.art;m.dirty=false;P.markup={...(P.markup||{}),template:tpl,[v]:{art:r.art,x:m.x,y:m.y,w:m.w,h:m.h}}}
+  if(P.markup&&!P.markup.front&&!P.markup.back)delete P.markup;else if(P.markup)P.markup.template=tpl}
+
 // ---------- the service: the artwork check, saving, the spec sheet, the tech pack ----------
 let CT=0;function recheckSoon(){clearTimeout(CT);CT=setTimeout(async()=>{try{const r=await api(`/v1/lab/concepts/${CID}/flats/check`,{body:flatBody()});CHECK=r.check;WHERE=r.where;paint()}catch{}},700)}
-async function save(){const b=$('#save');b.disabled=true;$('#saved').textContent='Saving…';try{const r=await api(`/v1/lab/concepts/${CID}/flats`,{method:'PUT',body:flatBody()});CHECK=r.check;DECOS=r.decorations||null;DIRTY=false;$('#cSub').textContent=`${D.styles[P.style].label} · ${FITS[P.fit]} fit`;$('#saved').className='saved';const dc=(r.decorations||[]).reduce((t,d)=>t+(d.perPieceCents||0),0);HOST()?.flatsSaved?.();$('#saved').textContent='Saved '+new Date().toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})+(r.decorations&&r.decorations.length?` · decoration $${(dc/100).toFixed(2)} a piece, in the cost`:'');$('#saved').title=(r.decorations||[]).map(d=>`${d.name}: ${d.technique}, ${d.widthIn} × ${d.heightIn} in, ${d.colours} colour${d.colours>1?'s':''}, $${(d.perPieceCents/100).toFixed(2)} a piece`).join('\n')+(r.cost&&r.cost.landedCents?`\nLanded cost $${(r.cost.landedCents/100).toFixed(2)}${r.cost.marginPct!=null?`, margin ${r.cost.marginPct}%`:''}`:'');paint();return true}catch(x){$('#saved').className='saved dirty';$('#saved').textContent=x.message;return false}finally{b.disabled=false}}
+async function save(){const b=$('#save');b.disabled=true;$('#saved').textContent='Saving…';try{await mkUpload();const r=await api(`/v1/lab/concepts/${CID}/flats`,{method:'PUT',body:flatBody()});CHECK=r.check;DECOS=r.decorations||null;DIRTY=false;$('#cSub').textContent=`${D.styles[P.style].label} · ${FITS[P.fit]} fit`;$('#saved').className='saved';const dc=(r.decorations||[]).reduce((t,d)=>t+(d.perPieceCents||0),0);HOST()?.flatsSaved?.();$('#saved').textContent='Saved '+new Date().toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})+(r.decorations&&r.decorations.length?` · decoration $${(dc/100).toFixed(2)} a piece, in the cost`:'');$('#saved').title=(r.decorations||[]).map(d=>`${d.name}: ${d.technique}, ${d.widthIn} × ${d.heightIn} in, ${d.colours} colour${d.colours>1?'s':''}, $${(d.perPieceCents/100).toFixed(2)} a piece`).join('\n')+(r.cost&&r.cost.landedCents?`\nLanded cost $${(r.cost.landedCents/100).toFixed(2)}${r.cost.marginPct!=null?`, margin ${r.cost.marginPct}%`:''}`:'');paint();return true}catch(x){$('#saved').className='saved dirty';$('#saved').textContent=x.message;return false}finally{b.disabled=false}}
 $('#save').onclick=save;
 $('#sheet').onclick=async()=>{if(DIRTY&&!(await save()))return;const r=await fetch(`/v1/lab/concepts/${CID}/flats/sheet.svg?size=${encodeURIComponent($('#size').value)}`,{headers:{Authorization:'Bearer '+TOKEN()}});if(!r.ok){$('#saved').textContent='The spec sheet could not be made';return}const bl=await r.blob();if(INAPP()&&HOST()?.showSheet){HOST().showSheet(bl,`spec-sheet-${slugOf()}.svg`,`Spec sheet · ${D.concept.name}`);return}const u=URL.createObjectURL(bl),w=window.open('','_blank');if(w){w.document.write(`<!doctype html><title>Spec sheet · ${esc(D.concept.name)}</title><style>@page{size:17in 11in;margin:.3in}body{margin:0}img{width:100%;display:block}</style><img src="${u}" alt="Spec sheet" onload="setTimeout(()=>print(),300)">`);w.document.close()}else location.href=u};
 $('#decoSheet').onclick=async()=>{const b=$('#decoSheet');if(DIRTY&&!(await save()))return;if(!PL.length){FBN.toast('Place a graphic on the flat first: the sheet has a page per graphic.','info');return}b.disabled=true;const w=INAPP()?null:window.open('','_blank');try{const r=await fetch(`/v1/lab/concepts/${CID}/flats/decorations.pdf`,{headers:{Authorization:'Bearer '+TOKEN()}});if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||'The decoration sheet could not be made');const bl=await r.blob();if(INAPP()&&HOST()?.showSheet){HOST().showSheet(bl,`decoration-sheet-${slugOf()}.pdf`,`Decoration sheet · ${D.concept.name}`);return}const u=URL.createObjectURL(bl);if(w)w.location.href=u;else location.href=u;FBN.toast('Decoration sheet ready','ok')}catch(x){if(w)w.close();$('#saved').className='saved dirty';$('#saved').textContent=x.message}finally{b.disabled=false}};
@@ -396,6 +454,7 @@ async function useFlat(f){
   $('#cSub').textContent=`${D.styles[P.style].label} · ${FITS[P.fit]} fit${f.saved?'':' · worked out from the concept: check it, then save'}`;
   if(D.concept.productId)$('#toPack').classList.remove('hidden');
   for(const q of PL)HREF[q.id]=await hrefOf(q);
+  await mkLoad(f.markup);
   DIRTY=!f.saved;$('#saved').className='saved'+(DIRTY?' dirty':'');$('#saved').textContent=f.saved?'Saved':'Not saved yet';
 }
 // the picture shows another garment than the saved flat: say so, and redraw it from the picture on request (not saved until Save)
@@ -414,6 +473,9 @@ if(EMBED)window.FBFlats={dirty:()=>Boolean(D&&P&&DIRTY),ready:()=>Boolean(D&&P),
   select:id=>{const q=PL.find(x=>x.id===id);if(!q)return;if(q.view!==VIEW)setView(q.view);SEL=id;tab('pl');paint();document.querySelector(`#pPl [data-q="${id}"]`)?.scrollIntoView({block:'nearest'})},
   check:()=>({...(CHECK.summary||{}),saved:Boolean(D&&P&&!DIRTY)}),
   zoom:()=>FZ,
+  // the Design workspace's tools, on the flat: the Pencil, brush, eraser, shapes and type draw on the view; undo and redo step through them
+  tool:t=>{MTOOL=t||'select';if(t==='area'){if(P&&MODE!=='ai'){MODE='ai';AIBOX=null;if(TAB!=='design')tab('design');paint()}}else if(MODE==='ai'&&!AIBOX){MODE=null;if(P)paint()}mkPlace()},
+  undo:()=>mkStep(MUNDO,MREDO),redo:()=>mkStep(MREDO,MUNDO),canUndo:()=>Boolean(MUNDO[VIEW]?.length),canRedo:()=>Boolean(MREDO[VIEW]?.length),
   level:m=>{document.documentElement.dataset.level=m==='simple'?'simple':'pro';if(m==='simple'&&TAB==='pom')tab('pl');if(m==='simple'&&MODE==='stitch'){MODE=null;DRAFT=[];if(P)paint()}}};
 boot();
 </script>

@@ -295,6 +295,7 @@ export function registerLabFlatsRoutes(app, d) {
     const { params, placements, error } = cleanFlat(req.body || {}); if (error) return bad(reply, error), null;
     for (const q of placements) if (q.art && !(await pool.query('select 1 from lab_art where id=$1', [q.art])).rowCount) return bad(reply, `${q.name}: that graphic is not in the library`, 422), null;
     for (const e of params.edits) if (e.type === 'ai' && !(await pool.query('select 1 from lab_art where id=$1', [e.art])).rowCount) return bad(reply, 'A redrawn area is missing its picture', 422), null;
+    for (const v of ['front', 'back']) if (params.markup?.[v] && !(await pool.query('select 1 from lab_art where id=$1', [params.markup[v].art])).rowCount) return bad(reply, `What was drawn on the ${v} is missing its picture`, 422), null;
     return { c, params, placements };
   };
   app.post('/v1/lab/concepts/:id/flats/check', { preHandler: pre }, async (req, reply) => { const t = await take(req, reply); if (!t) return; const ck = await check(t.params, t.placements, t.c.client_id); return { check: ck, where: Object.fromEntries(t.placements.map(q => [q.id, describe(q, t.params)])) }; });
@@ -322,7 +323,7 @@ export function registerLabFlatsRoutes(app, d) {
     try { masks.set(d.t.file, `data:image/png;base64,${(await maskFor(d.t.file, file => readFileSync(new URL(`./flat-templates/${file}`, import.meta.url)), file => readFileSync(new URL(`./flat-templates/masks/${file}`, import.meta.url)))).toString('base64')}`); } catch (e) { log.warn?.({ err: e.message, file: d.t.file }, 'flat silhouette not made'); } } };
   const inline = new Map(), templateSvg = file => { if (!inline.has(file)) { const t = readFileSync(new URL(`./flat-templates/${file}`, import.meta.url), 'utf8'); inline.set(file, t.slice(t.indexOf('>', t.indexOf('<svg')) + 1, t.lastIndexOf('</svg>'))); } return inline.get(file); };
   // the areas the image model redrew, as data URLs for the same reason
-  const editHrefsOf = async params => { const ids = [...new Set([...(params.edits || []).filter(e => e.type === 'ai').map(e => e.art), ...['front', 'back'].map(v => params.drawn?.[v]).filter(Boolean)])]; if (!ids.length) return {};
+  const editHrefsOf = async params => { const ids = [...new Set([...(params.edits || []).filter(e => e.type === 'ai').map(e => e.art), ...['front', 'back'].map(v => params.drawn?.[v]).filter(Boolean), ...['front', 'back'].map(v => params.markup?.[v]?.art).filter(Boolean)])]; if (!ids.length) return {};
     return Object.fromEntries((await pool.query('select id, png from lab_art where id = any($1::uuid[])', [ids])).rows.map(r => [r.id, `data:image/png;base64,${r.png.toString('base64')}`])); };
 
   // ---- an area of the flat redrawn by the image model ----
@@ -367,6 +368,15 @@ export function registerLabFlatsRoutes(app, d) {
   // Each view: the sketch as it stands (framed square on its own box) and the concept's picture go to the image model, which draws the flat
   // of the garment in the picture on the sketch's frame and in its colours. The result replaces the sketch inside the same box, so every
   // placement, dimension and point of measure stays in inches; its outline (everything not joined to the white background) is the cloth.
+  // what was drawn on a view by hand (the Pencil, a brush, shapes, type): kept as a picture, which the flat then lays over that view in inches
+  app.post('/v1/lab/concepts/:id/flats/markup', { preHandler: pre, bodyLimit: 20_000_000 }, async (req, reply) => {
+    const c = await concept(req.params.id); if (!c) return bad(reply, 'Not found', 404);
+    const view = req.body?.view === 'back' ? 'back' : 'front', m = /^data:image\/png;base64,(.+)$/.exec(String(req.body?.png || '')); if (!m) return bad(reply, 'Send the drawing as a PNG');
+    let png; try { png = await sharp(Buffer.from(m[1], 'base64')).png().toBuffer(); const meta = await sharp(png).metadata(); if (!(meta.width <= 4096 && meta.height <= 4096)) return bad(reply, 'The drawing is too large'); } catch { return bad(reply, 'That drawing could not be read'); }
+    const thumb = await sharp(png).resize({ width: 256, height: 256, fit: 'inside' }).png().toBuffer();
+    const art = (await pool.query(`insert into lab_art(concept_id,name,png,thumb,prompt,source,in_library,created_by) values($1,$2,$3,$4,$5,'flat',false,$6) returning id`, [c.id, `Flat ${view}: drawn on`, png, thumb, 'drawn by hand', actorOf(req)])).rows[0].id;
+    return { art };
+  });
   app.post('/v1/lab/concepts/:id/flats/draw', { preHandler: pre }, async (req, reply) => {
     const t = await take(req, reply); if (!t) return;
     if (t.c.status === 'tech_pack' && !t.c.product_id) return bad(reply, 'This concept is already a tech pack', 409);
