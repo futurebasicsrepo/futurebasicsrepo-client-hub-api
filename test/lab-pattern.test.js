@@ -137,3 +137,23 @@ test('AAMA DXF: a block a piece and a size with its text, the standard layers, i
   const xs = s => [...s.matchAll(/\nVERTEX\n8\n14\n10\n(-?[\d.]+)/g)].map(m => Number(m[1]));
   assert.ok(Math.abs(Math.max(...xs(mm)) / Math.max(...xs(patternDxfAama(pats[1]))) - 25.4) < .01, 'millimetres are inches times 25.4');
 });
+
+test('the exploded view accounts for every piece cut, at every step, for every garment, plush and shoe', async () => {
+  const { footwearPattern, FW_STYLES } = await import('../src/lab-footwear.js');
+  const pats = [...Object.keys(STYLES).map(s => [s, garmentPattern(defaultParams(s), 'M')]),
+    ...['bear', 'elephant', 'bean', 'bunny', 'pillow'].flatMap(shape => [[shape, plushPattern({ shape })], [`${shape}+`, plushPattern({ shape, arms: true, legs: true, tail: true, fabric: 'leather' })]]),
+    ...Object.keys(FW_STYLES).map(s => [s, footwearPattern({ style: s })])];
+  for (const [name, pat] of pats) {
+    const lay = layoutOf(pat), cuts = pat.pieces.reduce((s, q) => s + (q.cut || 0), 0), items = lay.flatMap(g => g.items);
+    assert.equal(items.length, cuts, `${name}: the cutting layout holds every cut (${items.length} of ${cuts})`);
+    for (const t of [0, .1, .45, .7, 1]) {
+      const ex = explodeAt(pat, t, lay), cut = ex.filter(x => x.cut);
+      assert.equal(cut.length, cuts, `${name} at ${t}: ${cut.length} of ${cuts} cuts shown`);
+      for (const q of pat.pieces.filter(q => q.cut)) assert.equal(cut.filter(x => x.piece.id === q.id).length, q.cut, `${name} at ${t}: ${q.id} ×${q.cut}`);
+      assert.ok(ex.every(x => ok(x.pts)), `${name} at ${t}`);
+    }
+    // at the end each cut sits on its own place in the layout
+    const end = explodeAt(pat, 1, lay).filter(x => x.cut), centres = new Set(end.map(x => { const b = boundsOf(x.pts); return `${Math.round((b.x0 + b.x1) * 5)},${Math.round((b.y0 + b.y1) * 5)}`; }));
+    assert.equal(centres.size, end.length, `${name}: no two cuts land on one place`);
+  }
+});

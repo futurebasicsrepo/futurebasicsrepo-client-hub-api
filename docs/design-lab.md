@@ -655,6 +655,15 @@ the page and the service).
 - **Plush** is drafted from a few choices: a bear (head sides and gusset, muzzle, body front and back, arms, legs, foot pads, ears), a bean
   character, a bunny or a pillow character. You also choose the height, the ears, the arms, legs and tail, the pile fabric, the eyes and the age.
   The pieces carry a ¼ in allowance, the pile direction, and the stuffing opening.
+- **The exploded view shows every piece cut, at every step.** A piece cut 4 (two pairs, inner and outer) is four outlines; a lining under an
+  ear and the pads under the feet lift off with the rest. The inner layers come off beside the outer ones, and once spread no two pieces
+  cover each other. Each one is labelled with its count (Front leg 3/4), and the bar says how many there are to cut. A unit test holds this
+  for every garment style, every plush shape and every shoe style: the shown cuts equal the sum of the pieces' cuts at each step, and each
+  lands on its own place in the cutting layout.
+- **The plush views are drawn in the round.** Each stuffed part is shaded (lit from the upper front, with a sharper sheen for leather). On
+  the side view, the far ear, arm and leg are a tone deeper behind the body. The head, the ears, the arm and the haunch throw soft shadows,
+  and the toy sits on a ground shadow. The bear's legs are sewn on outside the body at the hip, as a jointed bear's are, and the elephant
+  sits on a rounded haunch with its foot and pad turned forward.
 - **Plush safety checks** follow the age (ASTM F963 and EN 71): safety eyes on a toy for under-3s fail; small appendages and long pile are
   flagged; the law label and tracking label are listed. The page estimates the fill in grams.
 

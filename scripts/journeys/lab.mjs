@@ -2807,9 +2807,9 @@ await journey('J244', 'From scratch to pattern pieces: a hoodie started from not
     await page.click('#viewSeg [data-v="pattern"]'); const F = await (await page.waitForSelector('#patFrame')).contentFrame(); await F.waitForFunction(() => window.FBPattern?.ready?.(), null, { timeout: 20000 });
     const rows = await F.locator('table.pcs tbody tr').count(); ok(rows >= 7 && /Pattern · Pullover hoodie/.test(await F.innerText('#sub')), '6. Pattern lists the pieces of the hoodie', rows);
     ok(await F.locator('#canvas [data-pid="front"]').count() === 1 && await F.innerText('#tLbl') === 'On the product', '   it opens on the product, made of its pieces');
-    await F.click('#play'); await F.waitForFunction(() => document.getElementById('tLbl').textContent === 'Cutting layout', null, { timeout: 15000 });
+    await F.click('#play'); await F.waitForFunction(() => document.getElementById('tLbl').textContent.startsWith('Cutting layout'), null, { timeout: 15000 });
     ok(await F.locator('#canvas [data-pid="hood"]').count() >= 2 && /yd/.test(await F.innerText('#canvas')), '7. Explode it: the pieces lift off and lay out flat on the cloth, every cut and the yardage shown');
-    await F.click('#modeSeg [data-t="0.45"]'); await page.waitForTimeout(1200); ok(await F.innerText('#tLbl') === 'Exploded', '   and the exploded view in between');
+    await F.click('#modeSeg [data-t="0.45"]'); await page.waitForTimeout(1200); ok((await F.innerText('#tLbl')).startsWith('Exploded'), '   and the exploded view in between');
     const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 15000 }), F.click('#dxf')]); ok(/pattern-.*\.dxf$/.test(dl.suggestedFilename()), '   the DXF downloads', dl.suggestedFilename());
     // the plush in its own Pattern view: change the height, save
     await page.goto(`${BASE}/lab/studio?concept=${pid}&view=pattern`, { waitUntil: 'networkidle' }); const G = await (await page.waitForSelector('#patFrame')).contentFrame(); await G.waitForFunction(() => window.FBPattern?.ready?.(), null, { timeout: 20000 });
@@ -2851,7 +2851,7 @@ await journey('J245', 'Footwear: a shoe started from scratch is drafted on its l
     ok(['Lateral (outside)', 'Medial (inside)', 'Top', 'Bottom'].every(t => new RegExp(t.replace(/[()]/g, '\\$&')).test(texts)), '   the shoe as tech flats: outside, inside, top and bottom', texts);
     await F.selectOption('#size', '12'); await F.waitForFunction(() => /size 12/i.test(document.querySelector('#side').innerText), null, { timeout: 5000 });
     ok(true, '   the size picker redraws it in size 12');
-    await F.click('#play'); await F.waitForFunction(() => document.getElementById('tLbl').textContent === 'Cutting layout', null, { timeout: 15000 });
+    await F.click('#play'); await F.waitForFunction(() => document.getElementById('tLbl').textContent.startsWith('Cutting layout'), null, { timeout: 15000 });
     ok(await F.locator('#canvas [data-pid="quarter-lat"]').count() >= 2 && !(await F.locator('#canvas [data-pid="sole"]').count()), '7. exploded into the cutting: every cut of the upper, and the moulded sole left out');
     const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 15000 }), F.click('#lastDl')]); ok(/last-12\.svg$/.test(dl.suggestedFilename()), '   the last spec downloads', dl.suggestedFilename());
     await F.selectOption('[data-k="style"]', 'derby'); await F.waitForFunction(() => /Save the shoe/.test(document.getElementById('saveP').textContent)); await F.click('#saveP'); await F.waitForFunction(() => document.getElementById('saveP').textContent === 'Saved', null, { timeout: 10000 });
@@ -3364,6 +3364,16 @@ await journey('J257', 'A luxury elephant, made as an elephant: started as an ele
       await F.selectOption(`#lgBox [data-lg="${l0.id}"] [data-lgk="technique"]`, 'deboss'); await F.fill(`#lgBox [data-lg="${l0.id}"] [data-lgk="w"]`, '2'); await F.dispatchEvent(`#lgBox [data-lg="${l0.id}"] [data-lgk="w"]`, 'change'); await sleep(200);
       const l2 = (await F.evaluate(() => window.FBPattern.logos()))[0]; ok(l2.w === 2 && Math.abs(l2.h / l2.w - l0.h / l0.w) < .01, '   back to a deboss, 2 in wide, its proportions kept');
       if (process.env.SHOT_DIR) await page.screenshot({ path: process.env.SHOT_DIR + '/elephant.png' });
+      ok(await F.locator('#canvas [fill^="url(#vol-"]').count() > 10 && await F.locator('#canvas [filter^="url(#soft-"]').count() > 3, '   drawn in the round: each stuffed part shaded, the ear, head and legs throwing their shadows');
+      // the exploded view, at every step, is every piece the elephant is cut as: pairs, the inner and outer legs, the linings and the pads
+      const cuts = await F.evaluate(() => window.FBPattern.pattern().pieces.reduce((n, q) => n + (q.cut || 0), 0));
+      for (const t of ['0.45', '1']) {
+        await F.click(`#modeSeg [data-t="${t}"]`); await sleep(1700);
+        const shown = await F.locator('#canvas g.pc').count(), said = Number(await F.getAttribute('#canvas', 'data-cuts'));
+        ok(shown === cuts && said === cuts && (await F.innerText('#tLbl')).includes(`${cuts} to cut`) && (t === '1' || /Ear lining/.test(await F.innerText('#canvas'))), `${t === '1' ? '   laid out to cut' : '6b. exploded'}: all ${cuts} pieces it is cut as, each one shown (${shown})`);
+        if (process.env.SHOT_DIR) await page.screenshot({ path: process.env.SHOT_DIR + `/elephant-explode-${t}.png` });
+      }
+      await F.click('#modeSeg [data-t="0"]'); await sleep(1700);
       await F.click('#saveP'); await F.waitForFunction(() => !window.FBPattern.dirty(), null, { timeout: 10000 });
       const saved = (await K(`/concepts/${cid}/pattern`)).json.spec;
       ok(saved.fabric === 'leather' && saved.logos?.[0]?.technique === 'deboss' && saved.logos[0].w === 2, '7. saved: the leather and the placed wordmark', saved.logos);

@@ -50,7 +50,7 @@ const FABRIC_NAMES = { self: 'Self (main fabric)', rib: 'Rib', lining: 'Lining',
 export const fabricName = f => FABRIC_NAMES[f] || f;
 function piece(id, name, sew, o = {}) {
   const s = tidy(sew), b = boundsOf(s);
-  return { id, name, fabric: o.fabric || 'self', cut: o.cut ?? 1, ...(o.cut === 0 && /-2$/.test(id) ? { twin: true } : {}), pair: Boolean(o.pair), fold: Boolean(o.fold), sew: s, grain: o.grain || [[(b.x0 + b.x1) / 2, b.y0 + b.h * .2], [(b.x0 + b.x1) / 2, b.y1 - b.h * .2]], notches: o.notches || [], notes: o.notes || [], place: { view: 'front', x: 0, y: 0, rot: 0, flip: false, z: 0, ...(o.place || {}) }, sa: o.sa ?? null, marks: o.marks || [], ...(o.shown ? { shown: tidy(o.shown) } : {}), ...(o.component ? { component: true } : {}) };
+  return { id, name, fabric: o.fabric || 'self', cut: o.cut ?? 1, ...(o.cut === 0 && /-2$/.test(id) ? { twin: true } : {}), pair: Boolean(o.pair), fold: Boolean(o.fold), sew: s, grain: o.grain || [[(b.x0 + b.x1) / 2, b.y0 + b.h * .2], [(b.x0 + b.x1) / 2, b.y1 - b.h * .2]], notches: o.notches || [], notes: o.notes || [], place: { view: 'front', x: 0, y: 0, rot: 0, flip: false, z: 0, ...(o.place || {}) }, sa: o.sa ?? null, marks: o.marks || [], ...(o.shown ? { shown: tidy(o.shown) } : {}), ...(o.component ? { component: true } : {}), ...(o.hidden ? { hidden: true } : {}) };
 }
 // the other one of a pair: drawn on the product and in the exploded view, never cut twice (its cut count is on the first)
 const twin = (id, name, sew, place) => ({ ...piece(id, name, sew, { cut: 0, place }), twin: true });
@@ -309,7 +309,8 @@ export function placed(q, pts = q.shown || q.sew) { const pl = q.place || {}, a 
 // the cutting layout: pieces (each cut it takes, pairs flipped) packed in rows across the fabric width, by fabric; → [{ fabric, width, length, items:[{piece, n, x, y, flip}] }]
 export function layoutOf(pat, { width = 58, widths = {}, sa = pat.sa, gap = .4 } = {}) { // `widths`: a cloth's own width, by the cloth (from the material on its part)
   const groups = new Map();
-  for (const q of pat.pieces) { if (q.hidden || !q.cut) continue; const cutl = offsetOf(q.sew, q.sa ?? sa), b = boundsOf(cutl); const g = groups.get(q.fabric) || []; for (let n = 0; n < q.cut; n++) g.push({ piece: q, n, flip: q.pair && n % 2 === 1, b }); groups.set(q.fabric, g); }
+  for (const q of pat.pieces) { if (!q.cut) continue; // every piece cut, shown on the product or not (an ear lining, a pad under the foot)
+    const cutl = offsetOf(q.sew, q.sa ?? sa), b = boundsOf(cutl); const g = groups.get(q.fabric) || []; for (let n = 0; n < q.cut; n++) g.push({ piece: q, n, flip: q.pair && n % 2 === 1, b }); groups.set(q.fabric, g); }
   const out = [];
   for (const [fabric, items] of groups) {
     items.sort((a, b) => b.b.h - a.b.h); let x = 0, y = 0, rowH = 0; const W = Math.max(Number(widths[fabric]) > 10 ? Number(widths[fabric]) : width, ...items.map(i => i.b.w + gap * 2));
@@ -333,24 +334,54 @@ export function assembled(pat) {
   return { pieces, bounds: boundsOf(pieces.flatMap(x => x.pts)), backDx };
 }
 // the exploded view, t from 0 (the product) to 1 (the cutting layout): first the pieces lift off and spread out from the middle of their own
-// view (to t = .45), then each flies flat to its place in the layout, beside the product → [{ piece, pts }]
+// view (to t = .45), then each flies flat to its place in the layout, beside the product → [{ piece, pts, n, of, layer }]
+// Every cut the pattern takes is in it, at every t: a piece cut 4 (two pairs: inner and outer) is four outlines, the ones the product does
+// not show (the inner pair, a lining under its face) lifting off from under the one that does, stacked a little behind it, so what is spread
+// out is exactly what is cut; a piece that is not cut (a moulded sole) lifts off and stays by the product.
 export function explodeAt(pat, t, layout = layoutOf(pat)) {
   const A = assembled(pat), B = A.bounds, spread = Math.min(Math.max(t, 0) / .45, 1), fly = Math.min(Math.max((t - .45) / .55, 0), 1), e = fly * fly * (3 - 2 * fly);
   const centre = view => { const ps = A.pieces.filter(x => (x.piece.place.view === 'back') === (view === 'back')).flatMap(x => x.pts), b = boundsOf(ps); return [(b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2]; };
-  const C = { front: centre('front'), back: centre('back') }, slot = new Map();
-  for (const g of layout) for (const it of g.items) { const l = slot.get(it.piece.id) || []; l[it.n] = it; slot.set(it.piece.id, l); }
-  const goff = new Map(); let yo = B.y0; for (const g of layout) { goff.set(g, yo); yo += g.length + 3; }
-  const lx = B.x1 + 6;
-  return A.pieces.map(({ piece: q, pts }) => {
-    const pb = boundsOf(pts), pc = [(pb.x0 + pb.x1) / 2, (pb.y0 + pb.y1) / 2], c = C[q.place.view === 'back' ? 'back' : 'front'], dx = pc[0] - c[0], dy = pc[1] - c[1], d = Math.hypot(dx, dy) || 1;
-    const push = (2.5 + Math.abs(q.place.z || 0) * .8) * spread, moved = pts.map(([x, y]) => [x + dx / d * push, y + dy / d * push]);
-    // where it lands: its first cut in the layout (a twin lands on its pair's spot, beside it)
-    const list = q.twin ? slot.get(q.id.replace(/-2$/, '')) : slot.get(q.id), own = list && (q.twin ? list[1] || list[0] : list[0]), g = own && layout.find(G => G.items.includes(own));
-    if (!own || e === 0) return { piece: q, pts: moved };
-    let tgt = q.sew.map(([x, y]) => [(own.flip ? -x + (own.b.x0 + own.b.x1) : x) + own.x + lx, y + own.y + goff.get(g)]), from = moved;
+  const C = { front: centre('front'), back: centre('back') }, goff = new Map(); let yo = B.y0; for (const g of layout) { goff.set(g, yo); yo += g.length + 3; }
+  const lx = B.x1 + 6, base = q => q.twin ? q.id.replace(/-2$/, '') : q.id, onProduct = new Map();
+  // the outlines on the product a piece is cut for: itself, then its twin (the other side)
+  for (const x of A.pieces) { const l = onProduct.get(base(x.piece)) || []; if (x.piece.twin) l.push(x); else l.unshift(x); onProduct.set(base(x.piece), l); }
+  const lift = (q, pts, layer, spread) => { const pb = boundsOf(pts), c = C[q.place.view === 'back' ? 'back' : 'front'], dx = (pb.x0 + pb.x1) / 2 - c[0], dy = (pb.y0 + pb.y1) / 2 - c[1], d = Math.hypot(dx, dy) || 1;
+    // spread from the middle in proportion (the further out, the further it goes), so pieces that overlap on the product come apart; a layer
+    // under the outer one (the inner pair) comes off beside it, outward, so each cut reads as its own piece
+    const push = (2.5 + Math.abs(q.place.z || 0) * .8 + d * .45) * spread, sx = layer * (pb.x1 - pb.x0 + .6) * (dx < 0 ? -1 : 1) * spread, sy = layer * .4 * spread;
+    return pts.map(([x, y]) => [x + dx / d * push + sx, y + dy / d * push + sy]); };
+  // every cut: where it comes from on the product, and where it lands in the layout
+  const list = [], used = new Set();
+  for (const g of layout) for (const it of g.items) {
+    // a piece under another on the product (an ear's lining under its back) comes off one layer further out than what it is under
+    const q = it.piece, srcs = onProduct.get(q.id) || [], src = srcs.length ? srcs[it.n % srcs.length] : null, layer = (srcs.length ? Math.floor(it.n / srcs.length) : 0) + (q.hidden && !q.twin ? 1 : 0);
+    if (src) used.add(src);
+    list.push({ q, src, layer, n: it.n, tgt: q.sew.map(([x, y]) => [(it.flip ? -x + (it.b.x0 + it.b.x1) : x) + it.x + lx, y + it.y + goff.get(g)]) });
+  }
+  // what is on the product but not cut (moulded parts) lifts off and stays
+  for (const x of A.pieces) if (!used.has(x) && !(x.piece.twin && (onProduct.get(base(x.piece)) || []).some(y => used.has(y)))) list.push({ q: x.piece, src: x, layer: 0, n: 0, tgt: null, uncut: true });
+  // spread all the way, no two pieces may cover each other (on one view, or one view's against the other's beside it): they are nudged apart (their boxes, a little margin between) and the nudge grows
+  // with the spread, so the product comes apart smoothly into pieces that can each be seen
+  const full = list.map(x => x.src ? boundsOf(lift(x.src.piece, x.src.pts, x.layer, 1)) : null), off = list.map(() => [0, 0]);
+  for (let pass = 0; pass < 60; pass++) {
+    let moved = false;
+    for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
+      const a = full[i], b = full[j]; if (!a || !b) continue;
+      const m = .35, ox = Math.min(a.x1 + off[i][0], b.x1 + off[j][0]) - Math.max(a.x0 + off[i][0], b.x0 + off[j][0]) + m, oy = Math.min(a.y1 + off[i][1], b.y1 + off[j][1]) - Math.max(a.y0 + off[i][1], b.y0 + off[j][1]) + m;
+      if (ox <= 0 || oy <= 0) continue; moved = true;
+      const ca = [(a.x0 + a.x1) / 2 + off[i][0], (a.y0 + a.y1) / 2 + off[i][1]], cb = [(b.x0 + b.x1) / 2 + off[j][0], (b.y0 + b.y1) / 2 + off[j][1]];
+      if (ox < oy) { const sg = ca[0] < cb[0] || (ca[0] === cb[0] && i < j) ? -1 : 1; off[i][0] += sg * ox / 2; off[j][0] -= sg * ox / 2; }
+      else { const sg = ca[1] < cb[1] || (ca[1] === cb[1] && i < j) ? -1 : 1; off[i][1] += sg * oy / 2; off[j][1] -= sg * oy / 2; }
+    }
+    if (!moved) break;
+  }
+  const out = list.map((x, k) => {
+    let from = x.src ? lift(x.src.piece, x.src.pts, x.layer, spread).map(([px, py]) => [px + off[k][0] * spread, py + off[k][1] * spread]) : x.tgt, tgt = x.tgt;
+    if (x.uncut || e === 0) return { piece: x.q, pts: from, n: x.n, of: x.q.cut || 0, layer: x.layer, cut: !x.uncut };
     if (tgt.length !== from.length) { from = resample(from); tgt = resample(tgt); }
-    return { piece: q, pts: from.map((m, i) => [m[0] * (1 - e) + tgt[i][0] * e, m[1] * (1 - e) + tgt[i][1] * e]) };
+    return { piece: x.q, pts: from.map((m, i) => [m[0] * (1 - e) + tgt[i][0] * e, m[1] * (1 - e) + tgt[i][1] * e]), n: x.n, of: x.q.cut, layer: x.layer, cut: true };
   });
+  return out;
 }
 // ---- the files ----
 // SVG of the pieces, laid out flat at real size (1 in = 1 in when printed at 100%): sew line, cutting line, grain, notches, name and cut

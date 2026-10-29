@@ -106,7 +106,7 @@ function drawPieces(){
           +`<path d="M${r3(gr[0][0])} ${r3(gr[0][1])} L${r3(gr[1][0])} ${r3(gr[1][1])}" stroke="#17603a" stroke-width=".05" marker-start="url(#ga)" marker-end="url(#ga)"/>`
           +tf(q.notches).map(n=>`<circle cx="${r3(n[0])}" cy="${r3(n[1])}" r=".12" fill="#141416"/>`).join('')
           +(q.fold?`<path d="M${r3(it.x)} ${r3(b.y0)} L${r3(it.x)} ${r3(b.y1)}" stroke="#a02a20" stroke-width=".05" stroke-dasharray=".35 .18"/>`:'')
-          +(it.n===0?`<text x="${r3((b.x0+b.x1)/2)}" y="${r3((b.y0+b.y1)/2)}" text-anchor="middle" font-size="${r3(fs)}" font-weight="700" fill="${ink}">${esc(q.name)}</text><text x="${r3((b.x0+b.x1)/2)}" y="${r3((b.y0+b.y1)/2+fs*1.2)}" text-anchor="middle" font-size="${r3(fs*.75)}" fill="${ink}" opacity=".75">${esc(cutWords(q))}</text>`:'')+`</g>`;items.push(...cut)}
+          +(it.n===0?`<text x="${r3((b.x0+b.x1)/2)}" y="${r3((b.y0+b.y1)/2)}" text-anchor="middle" font-size="${r3(fs)}" font-weight="700" fill="${ink}">${esc(q.name)}</text><text x="${r3((b.x0+b.x1)/2)}" y="${r3((b.y0+b.y1)/2+fs*1.2)}" text-anchor="middle" font-size="${r3(fs*.75)}" fill="${ink}" opacity=".75">${esc(cutWords(q))}</text>`:`<text x="${r3((b.x0+b.x1)/2)}" y="${r3((b.y0+b.y1)/2)}" text-anchor="middle" font-size="${r3(fs*.75)}" fill="${ink}" opacity=".75">${esc(q.name)} ${it.n+1}/${q.cut}</text>`)+`</g>`;items.push(...cut)}
       y0+=g.length+2.4}
     bb=boundsOf(items.length?items:[[0,0],[10,10]]);bb={x0:-.5,y0:-1.4,x1:Math.max(...lay.map(g=>g.width))+.5,y1:y0}
   }else if(D.kind==='footwear'&&T<.02){
@@ -122,19 +122,19 @@ function drawPieces(){
     const lv=plushLayout(plushViews(PAT,looks()));LV=lv;body+=`<g id="flats">${viewsMarkup(lv)}</g>`+ulMarkup(lv)+reshapeMarkup(lv)+logoBoxes(lv);bb={x0:lv.box.x0-.6,y0:lv.box.y0-.6,x1:lv.box.x1+.6,y1:lv.box.y1+.4}
   }else{
     const fr=explodeAt(PAT,T,lay),A=assembled(PAT),label=T>.2;
-    const sorted=fr.slice().sort((a,b)=>(a.piece.place.z||0)-(b.piece.place.z||0));
+    const sorted=fr.slice().sort((a,b)=>(a.piece.place.z||0)-(b.piece.place.z||0)||(b.layer||0)-(a.layer||0));
     // the concept's picture laid over the shoe's side, lined up on the last: the outline's length is the shoe's, its bottom the ground
     const pic=D.kind==='footwear'&&PICURL&&SHOWPIC&&SPEC.picture&&T<.3?SPEC.picture:null;
     if(pic){const k=(PAT.last.length+.3)/Math.max(1,pic.x1-pic.x0),tx=pic.toeLeft?pic.x1*k-.1:-pic.x0*k-.1;body+=`<g transform="translate(${r3(tx)} ${r3(-pic.y1*k+(PAT.ground||0))})${pic.toeLeft?' scale(-1 1)':''}" opacity="${r3(.9*(1-T/.3))}"><image href="${PICURL}" x="0" y="0" width="${r3(pic.imgW*k)}" height="${r3(pic.imgH*k)}" preserveAspectRatio="none"/></g>`}
     const pieceOp=pic?.45:1;
-    for(const {piece:q,pts} of sorted){const b=boundsOf(pts),fs=Math.min(.55,Math.max(.24,b.w/10));
-      body+=`<g data-pid="${esc(q.id)}" class="pc"><path d="${P(pts)}" fill="${fillOf(q)}" fill-opacity="${T<.02?(typeof pieceOp!=='undefined'?pieceOp:1):.94}" stroke="${SEL===q.id||SEL+'-2'===q.id?'#17603a':'#141416'}" stroke-width="${SEL===q.id||SEL+'-2'===q.id?.1:.055}"/>${label&&!q.twin?`<text x="${r3((b.x0+b.x1)/2)}" y="${r3((b.y0+b.y1)/2)}" text-anchor="middle" font-size="${r3(fs)}" font-weight="700" fill="${inkOn(q)}" opacity="${Math.min(1,(T-.2)*4)}">${esc(q.name)}</text>`:''}</g>`}
+    for(const {piece:q,pts,n,of,layer} of sorted){const b=boundsOf(pts),fs=Math.min(.55,Math.max(.24,b.w/10));
+      body+=`<g data-pid="${esc(q.id)}" class="pc"><path d="${P(pts)}" fill="${fillOf(q)}" fill-opacity="${T<.02?(typeof pieceOp!=='undefined'?pieceOp:1):.94}" stroke="${SEL===q.id||SEL+'-2'===q.id?'#17603a':'#141416'}" stroke-width="${SEL===q.id||SEL+'-2'===q.id?.1:.055}"/>${label?`<text x="${r3((b.x0+b.x1)/2)}" y="${r3((b.y0+b.y1)/2)}" text-anchor="middle" font-size="${r3(fs)}" font-weight="700" fill="${inkOn(q)}" opacity="${Math.min(1,(T-.2)*4)}">${esc(q.name)}${of>1?`<tspan font-weight="400" font-size="${r3(fs*.8)}"> ${n+1}/${of}</tspan>`:''}</text>`:''}</g>`}
     if(T<.2&&A.backDx){const fb=A.bounds;body+=`<text x="${r3(fb.x0)}" y="${r3(fb.y1+1.4)}" font-size=".6" fill="#727278">${esc(PAT.views?.front||'Front')}</text><text x="${r3(fb.x0+A.backDx)}" y="${r3(fb.y1+1.4)}" font-size=".6" fill="#727278">${esc(PAT.views?.back||'Back')}</text>`}
     const all=fr.flatMap(x=>x.pts);bb=boundsOf(all.length?all:[[0,0],[10,10]]);bb={x0:Math.min(bb.x0,A.bounds.x0)-1,y0:Math.min(bb.y0,A.bounds.y0)-1,x1:bb.x1+1,y1:Math.max(bb.y1,A.bounds.y1)+2}
   }
   const w=bb.x1-bb.x0,h=bb.y1-bb.y0;
   $('#canvas').innerHTML=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="${r3(bb.x0)} ${r3(bb.y0)} ${r3(w)} ${r3(h)}" role="img" aria-label="${esc(PAT.label)} pattern pieces" font-family="Space Grotesk, system-ui, sans-serif"><defs><marker id="ga" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="3.2" markerHeight="3.2" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#17603a"/></marker></defs>${body}</svg>`;
-  $('#tLbl').textContent=T<.02?'On the product':T<.5?'Exploded':T<.999?'Laying out flat':'Cutting layout';
+  const nCut=lay.reduce((s,g)=>s+g.items.length,0);$('#tLbl').textContent=(T<.02?'On the product':T<.5?'Exploded':T<.999?'Laying out flat':'Cutting layout')+(T<.02?'':` · ${nCut} to cut`);$('#canvas').dataset.cuts=String(nCut);
   $$('#modeSeg button').forEach(b=>b.setAttribute('aria-pressed',String(Math.abs(Number(b.dataset.t)-T)<.03||(b.dataset.t==='0.45'&&T>.03&&T<.97))));
 }
 function goTo(target,ms=1500){cancelAnimationFrame(ANIM);const from=T,t0=performance.now();if(matchMedia('(prefers-reduced-motion: reduce)').matches)ms=1;

@@ -36,7 +36,12 @@ function painter(pat, C) {
   // a long-pile fur outline is tufted: the edge broken into short strokes of pile
   const edge = pts => fur ? pts.map((p, i) => { const q = pts[(i + 1) % pts.length], dx = q[0] - p[0], dy = q[1] - p[1], l = Math.hypot(dx, dy) || 1, k = (i % 3 === 0 ? .09 : .04); return [p[0] + dy / l * k, p[1] - dx / l * k]; }) : pts;
   return {
-    shape: (pts, fill = C.body, w = .03) => parts.push(`<path d="${P(edge(pts))}" fill="${fill}" stroke="${C.line}" stroke-width="${w}" stroke-linejoin="round"/>` + (C.tex?.[fill === C.body ? 'body' : fill === C.contrast ? 'contrast' : ''] ? `<path d="${P(pts)}" fill="url(#lk-${C.tex[fill === C.body ? 'body' : 'contrast']}-${C.uid})"/>` : '')),
+    // a stuffed part: its cloth, the cloth's surface, then its volume (lit from the upper front, turning into shadow underneath and at the
+    // back; a leather's sheen sharper), then its outline over all of it
+    shape: (pts, fill = C.body, w = .03, flat = false) => { const e = P(edge(pts)), tk = C.tex?.[fill === C.body ? 'body' : fill === C.contrast ? 'contrast' : ''];
+      parts.push(`<path d="${e}" fill="${fill}" stroke="none"/>` + (tk ? `<path d="${P(pts)}" fill="url(#lk-${tk}-${C.uid})"/>` : '') + (flat ? '' : `<path d="${e}" fill="url(#vol-${C.uid})"/>`) + `<path d="${e}" fill="none" stroke="${C.line}" stroke-width="${w}" stroke-linejoin="round"/>`); },
+    // the soft shadow one part throws on what is behind it (a head on its body, an arm on its side)
+    drop: (pts, dx, dy, op = .16) => parts.push(`<path d="${P(pts.map(([x, y]) => [x + dx, y + dy]))}" fill="#1d1712" opacity="${op}" filter="url(#soft-${C.uid})"/>`),
     seam: (pts, closed = false) => parts.push(`<path d="${closed ? P(pts) : L_(pts)}" fill="none" stroke="${C.stitch}" stroke-width=".018" stroke-dasharray=".08 .06" stroke-linecap="round"/>`),
     line: (pts, w = .04, col = C.features) => parts.push(`<path d="${L_(pts)}" fill="none" stroke="${col}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"/>`),
     fill: (pts, col, op = 1) => parts.push(`<path d="${P(pts)}" fill="${col}" opacity="${op}" stroke="none"/>`),
@@ -79,22 +84,28 @@ function bear(pat, C, view) {
   const s = pat.spec, h = s.height, hh = h * .42, hw = hh * 1.05, bh = h * .44, bw = bh * .78, legH = h * .26, armL = h * .3, y0 = hh * .92, d = painter(pat, C), all = [];
   const ear = s.ears !== 'none' ? (s.ears === 'long' ? .22 : .32) * hh : 0;
   if (view === 'side') {
-    // the bear from its left, facing left: a round head with the muzzle standing out in front, the ear at the back of the crown, the body
-    // fuller at the belly than the back, the arm hanging in front of it, the leg down from the hip with the foot turned forward on its pad
-    const hx = hw * .5, head = ellipse(hx, hh * .5, hw * .4, hh * .48, 48);
+    // the bear from its left, facing left, in the round: what is on its far side first, a tone deeper (the far ear ahead of the near one on
+    // the crown, the far arm and leg showing past the body), then the body; the near leg sewn on outside it at the hip, as a jointed bear's
+    // is, the foot turned forward on its pad; the head over the body throwing its shadow on the chest; the arm hanging in front
+    const far = shade(C.body, .8), hx = hw * .5, head = ellipse(hx, hh * .5, hw * .4, hh * .48, 48);
     const mz = chaikin([[hx - hw * .26, hh * .5], [hx - hw * .5, hh * .54], [hx - hw * .56, hh * .66], [hx - hw * .48, hh * .78], [hx - hw * .26, hh * .8]], 2, false), muzzle = chaikin([...mz, [hx - hw * .2, hh * .66]], 2);
     const body = chaikin([[hx - bw * .2, y0 - hh * .04], [hx - bw * .5, y0 + bh * .28], [hx - bw * .52, y0 + bh * .68], [hx - bw * .3, y0 + bh * .98], [hx + bw * .14, y0 + bh], [hx + bw * .4, y0 + bh * .82], [hx + bw * .42, y0 + bh * .36], [hx + bw * .24, y0 + bh * .02]], 3);
-    const hip = [hx + bw * .02, y0 + bh * .66], leg = capsule(hip, [hx - bw * .04, h - legH * .32], legH * .32, legH * .28), foot = chaikin([[hx - bw * .04 - legH * .56, h - legH * .02], [hx - bw * .04 - legH * .62, h - legH * .3], [hx - bw * .04 - legH * .3, h - legH * .5], [hx - bw * .04 + legH * .3, h - legH * .4], [hx - bw * .04 + legH * .32, h], [hx - bw * .04 - legH * .3, h + .02]], 3);
-    const arm = capsule([hx - bw * .1, y0 + bh * .1], [hx - bw * .36, y0 + armL * .86], armL * .2, armL * .21);
-    if (s.legs !== false) { d.shape(leg); d.shape(foot); d.fill(chaikin([[hx - bw * .04 - legH * .6, h - legH * .02], [hx - bw * .04 - legH * .62, h - legH * .28], [hx - bw * .04 - legH * .5, h - legH * .32], [hx - bw * .04 - legH * .44, h - legH * .02]], 2), C.contrast); all.push(...leg, ...foot); }
-    d.shape(body); d.seam(chaikin([[hx + bw * .14, y0 + bh * .02], [hx + bw * .3, y0 + bh * .5], [hx + bw * .1, y0 + bh * .98]], 2, false));
-    if (ear) { const e = earShape(s.ears, ear * .8, hx + hw * .16, hh * .12, .5); d.shape(e.out); all.push(...e.out); }
-    d.shape(head); d.seam(chaikin([[hx - hw * .3, hh * .44], [hx - hw * .12, hh * .08], [hx + hw * .2, hh * .04], [hx + hw * .38, hh * .32]], 2, false));
-    d.shape(muzzle, C.contrast, .025); d.fill(chaikin([[hx - hw * .58, hh * .6], [hx - hw * .5, hh * .57], [hx - hw * .5, hh * .67]], 2), C.features);
+    const lx = hx + bw * .04, legOf = (dx, dy = 0) => ({ leg: capsule([lx + dx, y0 + bh * .6 + dy], [lx - bw * .06 + dx, h - legH * .34 + dy], legH * .34, legH * .29),
+      foot: chaikin([[lx - legH * .6, h - legH * .02], [lx - legH * .66, h - legH * .3], [lx - legH * .34, h - legH * .52], [lx + legH * .3, h - legH * .42], [lx + legH * .34, h], [lx - legH * .3, h + .02]].map(([x, y]) => [x + dx, y + dy]), 3),
+      pad: chaikin([[lx - legH * .64, h - legH * .02], [lx - legH * .66, h - legH * .28], [lx - legH * .54, h - legH * .33], [lx - legH * .47, h - legH * .02]].map(([x, y]) => [x + dx, y + dy]), 2) });
+    const armOf = (dx, dy = 0) => [[hx - bw * .1 + dx, y0 + bh * .1 + dy], [hx - bw * .36 + dx, y0 + armL * .86 + dy]];
+    if (ear) { const e = earShape(s.ears, ear * .8, hx - hw * .06, hh * .1, .2); d.shape(e.out, far); all.push(...e.out); }
+    if (s.arms !== false) { const [a, b] = armOf(-bw * .1, -armL * .05), arm = capsule(a, b, armL * .19, armL * .2); d.shape(arm, far); all.push(...arm); }
+    if (s.legs !== false) { const F = legOf(-legH * .2, -legH * .05); d.shape(F.foot, far); d.fill(F.pad, shade(C.contrast, .82)); d.shape(F.leg, far); all.push(...F.foot); }
+    d.shape(body); d.seam(chaikin([[hx + bw * .14, y0 + bh * .02], [hx + bw * .3, y0 + bh * .5], [hx + bw * .1, y0 + bh * .98]], 2, false)); all.push(...body);
+    if (s.legs !== false) { const N = legOf(0); d.drop(N.leg, .1, .06, .14); d.shape(N.leg); d.shape(N.foot); d.fill(N.pad, C.contrast); all.push(...N.leg, ...N.foot); }
+    if (ear) { const e = earShape(s.ears, ear * .8, hx + hw * .2, hh * .12, .55); d.shape(e.out); all.push(...e.out); }
+    d.drop(head, .05, .18, .2); d.shape(head); d.seam(chaikin([[hx - hw * .3, hh * .44], [hx - hw * .12, hh * .08], [hx + hw * .2, hh * .04], [hx + hw * .38, hh * .32]], 2, false));
+    d.drop(muzzle, .03, .08, .14); d.shape(muzzle, C.contrast, .025); d.fill(chaikin([[hx - hw * .58, hh * .6], [hx - hw * .5, hh * .57], [hx - hw * .5, hh * .67]], 2), C.features);
     d.line(chaikin([[hx - hw * .5, hh * .72], [hx - hw * .42, hh * .76], [hx - hw * .34, hh * .74]], 1, false), hh * .012);
     eyes(d, C, s.eyes, [[hx - hw * .2, hh * .44]], hh * .045);
-    if (s.arms !== false) { d.shape(arm); d.seam(capsule([hx - bw * .1, y0 + bh * .1], [hx - bw * .36, y0 + armL * .86], armL * .1, armL * .11).slice(0, 11), false); all.push(...arm); }
-    all.push(...head, ...body, ...muzzle);
+    if (s.arms !== false) { const [a, b] = armOf(0), arm = capsule(a, b, armL * .2, armL * .21); d.drop(arm, .1, .08, .16); d.shape(arm); d.seam(capsule(a, b, armL * .1, armL * .11).slice(0, 11), false); all.push(...arm); }
+    all.push(...head, ...muzzle);
     return { svg: d.svg(), pts: all };
   }
   // front and back: the legs behind the body, the arms at the shoulders, the head over the neck
@@ -174,20 +185,33 @@ function elephant(pat, C, view) {
   const earOut = (sg, k = 1) => chaikin([[sg * hw * .32, hh * .14], [sg * hw * (.62 + .16 * k), -hh * .04], [sg * hw * (.98 + .12 * k), hh * .18], [sg * hw * (1.06 + .1 * k), hh * .56], [sg * hw * (.9 + .06 * k), hh * .9], [sg * hw * .58, hh * .98], [sg * hw * .36, hh * .74]], 3);
   const earIn = sg => earOut(sg).map(([x, y]) => [sg * hw * .36 + (x - sg * hw * .36) * .84, hh * .5 + (y - hh * .5) * .84]);
   if (view === 'side') {
-    // from its left, facing left: the domed head, the trunk hanging in front with its tip turned out, the big ear flat on the side of the
-    // head, the body sitting back on its haunch, the front leg straight under the chest, the hind leg folded with the foot forward on its pad
-    const hx = bw * .2, head = chaikin([[hx - hw * .42, hh * .5], [hx - hw * .3, hh * .1], [hx, -hh * .02], [hx + hw * .3, hh * .1], [hx + hw * .38, hh * .5], [hx + hw * .2, hh * .86], [hx - hw * .2, hh * .9], [hx - hw * .4, hh * .76]], 3);
+    // from its left, facing left, in the round: on its far side, a tone deeper, the far ear's rim showing over the crown, the far front leg and
+    // hind foot past the near ones; then the body sitting back on its haunch, the haunch a round volume of its own with the hind foot
+    // turned forward on its pad, the front leg straight under the chest, the head over the body (its shadow on the shoulder), the trunk
+    // hanging in front with its tip turned out, and the big ear hanging off the side of the head, standing a little off it (its shadow behind)
+    const far = shade(C.body, .8), hx = bw * .2, head = chaikin([[hx - hw * .42, hh * .5], [hx - hw * .3, hh * .1], [hx, -hh * .02], [hx + hw * .3, hh * .1], [hx + hw * .38, hh * .5], [hx + hw * .2, hh * .86], [hx - hw * .2, hh * .9], [hx - hw * .4, hh * .76]], 3);
     const trunk = chaikin([[hx - hw * .42, hh * .56], [hx - hw * .52, hh * .9], [hx - hw * .5, hh + tr * .6], [hx - hw * .62, hh + tr * .9], [hx - hw * .74, hh + tr * .86], [hx - hw * .72, hh + tr * .74], [hx - hw * .62, hh + tr * .7], [hx - hw * .34, hh + tr * .5], [hx - hw * .26, hh * .86]], 3);
     const body = chaikin([[hx - bw * .2, y0], [hx + bw * .3, y0 - bh * .02], [hx + bw * .62, y0 + bh * .26], [hx + bw * .74, y0 + bh * .66], [hx + bw * .62, h - bh * .02], [hx - bw * .1, h], [hx - bw * .3, y0 + bh * .6]], 3);
-    const front = capsule([hx - bw * .12, y0 + bh * .3], [hx - bw * .16, h - h * .095], h * .085, h * .095), hind = chaikin([[hx + bw * .2, h - bh * .5], [hx + bw * .5, h - bh * .46], [hx + bw * .44, h - h * .02], [hx - bw * .02, h], [hx - bw * .06, h - h * .14], [hx + bw * .1, h - h * .2]], 3);
-    if (s.tail) { const t = capsule([hx + bw * .7, y0 + bh * .56], [hx + bw * .84, y0 + bh * .9], h * .016, h * .014); d.shape(t); for (let k = -2; k <= 2; k++) d.line([[hx + bw * .84, y0 + bh * .9], [hx + bw * .84 + k * h * .012, y0 + bh * .9 + h * .06]], h * .012, C.contrast); all.push(...t); }
-    d.shape(body); d.shape(hind); d.fill(ellipse(hx - bw * .02 + h * .02, h - h * .07, h * .05, h * .07), C.contrast); d.shape(front); d.fill(ellipse(hx - bw * .16, h - h * .006, h * .09, h * .02), C.contrast);
-    d.seam(chaikin([[hx + bw * .2, y0 + bh * .02], [hx + bw * .46, y0 + bh * .5], [hx + bw * .36, h - .1]], 2, false));
-    d.shape(trunk); for (let k = 1; k <= 4; k++) { const y = hh * .95 + tr * .14 * k; d.line([[hx - hw * .54, y], [hx - hw * .36, y - tr * .02]], h * .004, C.stitch); }
-    d.shape(head); d.seam(chaikin([[hx - hw * .4, hh * .56], [hx - hw * .26, hh * .12], [hx + hw * .1, -hh * .01], [hx + hw * .34, hh * .26]], 2, false));
+    const frontOf = dx => capsule([hx - bw * .1 + dx, y0 + bh * .46], [hx - bw * .16 + dx, h - h * .095], h * .085, h * .095);
+    const haunch = ellipse(hx + bw * .36, h - bh * .32, bw * .3, bh * .31, 40, -.2);
+    const footOf = (dx, dy = 0) => capsule([hx + bw * .26 + dx, h - h * .1 + dy], [hx - bw * .02 + dx, h - h * .085 + dy], h * .09, h * .085);
+    const padOf = (dx, dy = 0) => ellipse(hx - bw * .02 - h * .07 + dx, h - h * .085 + dy, h * .03, h * .072);
+    const ear = ex => chaikin([[ex - hw * .02, hh * .18], [ex + hw * .22, hh * .06], [ex + hw * .42, hh * .26], [ex + hw * .46, hh * .62], [ex + hw * .36, hh * .92], [ex + hw * .2, hh * .98], [ex + hw * .1, hh * .9], [ex, hh * .8], [ex - hw * .07, hh * .5]], 3);
+    if (s.tail) { const t = capsule([hx + bw * .7, y0 + bh * .56], [hx + bw * .84, y0 + bh * .9], h * .016, h * .014); d.shape(t, C.body, .03, true); for (let k = -2; k <= 2; k++) d.line([[hx + bw * .84, y0 + bh * .9], [hx + bw * .84 + k * h * .012, y0 + bh * .9 + h * .06]], h * .012, C.contrast); all.push(...t); }
+    if (big) { const e = ear(hx + hw * .02).map(([x, y]) => [x + hw * .06, y - hh * .12]); d.shape(e, far); all.push(...e); }
+    { const f = frontOf(-bw * .1); d.shape(f, far); d.fill(ellipse(hx - bw * .26, h - h * .006, h * .09, h * .02), shade(C.contrast, .82)); d.shape(footOf(-bw * .12, -h * .04), far); d.fill(padOf(-bw * .12, -h * .04), shade(C.contrast, .82)); all.push(...f); }
+    d.shape(body); d.seam(chaikin([[hx + bw * .2, y0 + bh * .02], [hx + bw * .5, y0 + bh * .3], [hx + bw * .62, y0 + bh * .5]], 2, false));
+    d.drop(haunch, .08, .1, .14); d.shape(haunch); d.seam(ellipse(hx + bw * .36, h - bh * .32, bw * .22, bh * .23, 40, -.2).slice(4, 24), false);
+    const foot = footOf(0); d.shape(foot); d.fill(padOf(0), C.contrast); d.seam(ellipse(hx - bw * .02 - h * .07, h - h * .085, h * .045, h * .085).slice(9, 28), false);
+    const front = frontOf(0); d.drop(front, .1, .02, .14); d.shape(front); d.fill(ellipse(hx - bw * .16, h - h * .006, h * .09, h * .02), C.contrast);
+    d.drop(head, .08, .2, .2); d.shape(head); d.seam(chaikin([[hx - hw * .4, hh * .56], [hx - hw * .26, hh * .12], [hx + hw * .1, -hh * .01], [hx + hw * .34, hh * .26]], 2, false));
+    d.drop(trunk, .1, .06, .16); d.shape(trunk); for (let k = 1; k <= 4; k++) { const y = hh * .95 + tr * .14 * k, l = edgeAt(trunk, y, -1), r = edgeAt(trunk, y, 1), m = (r - l) * .12; d.line([[l + m, y], [r - m, y - tr * .02]], h * .004, C.stitch); } // its ridges, across the trunk
+    d.fill(ellipse(hx - hw * .73, hh + tr * .8, hw * .035, hw * .07, 16, .5), C.contrast);
     eyes(d, C, s.eyes, [[hx - hw * .2, hh * .46]], hh * .04);
-    if (big) { const ex = hx + hw * .14, e = chaikin([[ex - hw * .02, hh * .2], [ex + hw * .2, hh * .1], [ex + hw * .38, hh * .32], [ex + hw * .38, hh * .7], [ex + hw * .2, hh * .9], [ex, hh * .8], [ex - hw * .06, hh * .5]], 3); d.shape(e); d.seam(e.map(([x, y]) => [ex + hw * .16 + (x - ex - hw * .16) * .86, hh * .5 + (y - hh * .5) * .86]), true); all.push(...e); }
-    all.push(...head, ...trunk, ...body, ...front, ...hind);
+    if (big) { const ex = hx + hw * .14, e = ear(ex); d.drop(e, .14, .12, .22); d.shape(e); d.seam(e.map(([x, y]) => [ex + hw * .18 + (x - ex - hw * .18) * .86, hh * .5 + (y - hh * .5) * .86]), true);
+      // the ear's fold where it is pleated into the head seam, and its lining showing at the rim
+      d.line(chaikin([[ex + hw * .02, hh * .3], [ex + hw * .08, hh * .5], [ex + hw * .04, hh * .7]], 2, false), h * .006, shade(C.body, .7)); all.push(...e); }
+    all.push(...head, ...trunk, ...body, ...front, ...haunch, ...foot);
     return { svg: d.svg(), pts: all };
   }
   // front and back: the ears either side of the head, the body below, the front legs straight down, the hind feet out in front showing their pads
@@ -219,10 +243,13 @@ let SEQ = 0;
 export function plushViews(pat, { colours = {}, tex = {}, hrefs = {} } = {}) {
   const surf = { ...(SURFACE[pat.spec.fabric] && !tex.body ? { body: SURFACE[pat.spec.fabric] } : {}), ...tex }; tex = surf;
   const C = { ...palette(pat, colours), tex, uid: `p${++SEQ}` }; if (tex.body === 'fur') C.fur = true;
-  const defs = lookDefs(C.uid, tex), draw = DRAW[pat.spec.shape] || bean, out = {}, sk = pat.spec.sketches || [];
+  const firm = /leather|vegan/.test(pat.spec.fabric || ''), vol = `<radialGradient id="vol-${C.uid}" cx=".36" cy=".3" r=".78" fx=".32" fy=".24"><stop offset="0" stop-color="#fff" stop-opacity="${firm ? .42 : .26}"/><stop offset="${firm ? .22 : .4}" stop-color="#fff" stop-opacity="0"/><stop offset=".72" stop-color="#000" stop-opacity=".05"/><stop offset="1" stop-color="#000" stop-opacity="${firm ? .3 : .24}"/></radialGradient>`
+    + `<filter id="soft-${C.uid}" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation=".12"/></filter><radialGradient id="gnd-${C.uid}"><stop offset="0" stop-color="#000" stop-opacity=".22"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient>`;
+  const defs = lookDefs(C.uid, tex) + vol, draw = DRAW[pat.spec.shape] || bean, out = {}, sk = pat.spec.sketches || [];
   for (const key of ['front', 'back', 'side']) {
-    const r = draw(pat, C, key); let svg = r.svg;
-    const b = box(r.pts);
+    const r = draw(pat, C, key), b = box(r.pts);
+    // it stands (or sits) on the ground: a soft shadow under it
+    let svg = `<ellipse cx="${r3((b.x0 + b.x1) / 2)}" cy="${r3(b.y1 - .05)}" rx="${r3((b.x1 - b.x0) * .52)}" ry="${r3(Math.max(.3, (b.x1 - b.x0) * .07))}" fill="url(#gnd-${C.uid})"/>` + r.svg;
     if (key === 'front') { const d = painter(pat, C); heightCallout(d, b, pat.spec.height); svg += d.svg(); b.x0 -= 1.3; }
     svg += strokesSvg(sk.filter(k => k.on === key)); // drawn by hand on this view
     svg += logoMarkup(pat.spec.logos, key, p => p, hrefs); // our logos and graphics on it
