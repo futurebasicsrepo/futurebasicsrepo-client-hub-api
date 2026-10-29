@@ -2573,6 +2573,18 @@ await journey('J240', 'Design on an iPad, as Kyle found it: the ruler takes any 
           const q2 = await Fd.evaluate(id => FBFlats.placements().find(x => x.id === id), q.id);
           ok(q2.w > q.w * 2 && Math.abs(q2.w / q2.h - q.w / q.h) < .05 && await Fd.evaluate(() => FBFlats.dirty()), '7h. two fingers spread on a graphic on the flat make it bigger, keeping its shape (the view does not zoom)', [q.w, q2.w]);
         } else ok(false, '7h. there is a graphic on the front to resize');
+        // zoom on the flat: buttons, a pinch that keeps the point under the fingers where it is, a trackpad scroll that moves it, Fit
+        await Fd.click('#fzIn'); await Fd.click('#fzIn'); ok(/^156%$/.test(await Fd.innerText('#fzLabel')), '7i. the flat has its own zoom buttons: + twice is 156%', await Fd.innerText('#fzLabel'));
+        await Fd.click('#fzFit');
+        { const fr = await page.evaluate(() => { const f = document.getElementById('flatFrame').getBoundingClientRect(), s = document.getElementById('flatFrame').contentDocument.querySelector('#canvas svg').getBoundingClientRect(); return { fx: f.left, fy: f.top, x: s.left + s.width * .1, y: s.top + s.height * .3 }; });
+          const under = () => Fd.evaluate(([x, y]) => { const svg = document.querySelector('#canvas svg'), pt = svg.createSVGPoint(); pt.x = x; pt.y = y; const r = pt.matrixTransform(svg.getScreenCTM().inverse()); return [r.x, r.y]; }, [fr.x, fr.y]);
+          const before = await under(), cx = fr.fx + fr.x, cy = fr.fy + fr.y, t = (type, d) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x: cx - d, y: cy, id: 1 }, { x: cx + d, y: cy, id: 2 }] });
+          await t('touchStart', 15); for (const d of [25, 35, 45, 60]) await t('touchMove', d); await t('touchEnd', 60);
+          const after = await under(), z = await Fd.evaluate(() => FBFlats.zoom());
+          ok(z > 2 && Math.hypot(after[0] - before[0], after[1] - before[1]) < .35, '7j. a pinch on the flat zooms in about the fingers: the point between them stays put', { z, before, after });
+          const vb0 = await Fd.evaluate(() => document.querySelector('#canvas svg').getAttribute('viewBox')); await page.mouse.move(cx, cy); await page.mouse.wheel(0, 120); await page.waitForTimeout(150);
+          ok(await Fd.evaluate(() => document.querySelector('#canvas svg').getAttribute('viewBox')) !== vb0, '   two fingers on a trackpad move the zoomed flat');
+          await Fd.click('#fzFit'); ok(await Fd.evaluate(() => FBFlats.zoom()) === 1, '   and Fit shows the whole piece again'); }
         await page.click('#save'); await page.waitForFunction(() => !DIRTY, null, { timeout: 30000 }); await Fd.waitForFunction(() => FBFlats.saved(), null, { timeout: 30000 }); }
       F = await (await page.waitForSelector('#flatFrame')).contentFrame(); await F.waitForFunction(() => window.FBFlats?.ready(), null, { timeout: 20000 });
       // a flat saved as a sweatshirt: Redraw from the picture brings the jacket back (the words stand in for the picture here)
@@ -2590,6 +2602,17 @@ await journey('J240', 'Design on an iPad, as Kyle found it: the ruler takes any 
       // on the picture: two fingers on the selected graphic resize it; elsewhere they zoom the view
       await page.click('#viewSeg [data-v=picture]'); await page.waitForTimeout(400); await page.click('.rail [data-tool=select]');
       const lay = await page.evaluate(() => { const l = LAYERS.find(x => !['base', 'paint', 'picture'].includes(x.kind) && x.visible); if (!l) return null; SEL = l.id; draw(); const r = document.getElementById('view').getBoundingClientRect(); return { id: l.id, s0: l.scale, z0: Z, h: HIST.length, x: r.left + l.x * Z + PX, y: r.top + l.y * Z + PY }; });
+      // on the picture: a pinch on the empty stage zooms about the fingers, and a trackpad pinch (Safari's gesture events) zooms about the pointer
+      { await page.evaluate(() => { SEL = null; draw(); }); const st = await page.evaluate(() => { const r = document.getElementById('view').getBoundingClientRect(); return { x: r.left + 40, y: r.top + r.height / 2 }; });
+        const docAt = () => page.evaluate(([x, y]) => { const r = document.getElementById('view').getBoundingClientRect(); return [(x - r.left - PX) / Z, (y - r.top - PY) / Z, Z]; }, [st.x, st.y]);
+        const b0 = await docAt(), t = (type, d) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x: st.x, y: st.y - d, id: 1 }, { x: st.x, y: st.y + d, id: 2 }] });
+        await t('touchStart', 15); for (const d of [25, 35, 45]) await t('touchMove', d); await t('touchEnd', 45); const a0 = await docAt();
+        ok(a0[2] > b0[2] * 2 && Math.hypot(a0[0] - b0[0], a0[1] - b0[1]) < 3, '12. a pinch on the picture zooms in about the fingers (the point between them stays put)', { b0, a0 });
+        await page.evaluate(([x, y]) => { const el = document.getElementById('view'), ev = (type, scale) => { const e = new Event(type, { bubbles: true, cancelable: true }); Object.assign(e, { scale, clientX: x, clientY: y }); el.dispatchEvent(e); return e.defaultPrevented; };
+          window.__tp = [ev('gesturestart', 1), ev('gesturechange', .5), ev('gestureend', .5)]; }, [st.x, st.y]);
+        const a1 = await docAt();
+        ok(Math.abs(a1[2] - a0[2] * .5) < 1e-6 && Math.hypot(a1[0] - a0[0], a1[1] - a0[1]) < 3 && (await page.evaluate(() => window.__tp)).every(Boolean), '   a trackpad pinch zooms the picture about the pointer, and Safari never zooms the page itself', { a0, a1 });
+        await page.click('#zFit'); }
       if (lay) {
         const touch = (type, d) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x: lay.x - d, y: lay.y, id: 1 }, { x: lay.x + d, y: lay.y, id: 2 }] });
         await touch('touchStart', 8); for (const d of [16, 24, 32]) await touch('touchMove', d); await touch('touchEnd', 32);

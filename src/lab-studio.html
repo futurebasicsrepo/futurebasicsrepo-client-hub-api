@@ -104,6 +104,7 @@ input[type=range]{width:100%;accent-color:var(--ink)}
 .mask-on{color:#b0261c!important}
 kbd{font:500 10px 'IBM Plex Mono',monospace;border:1px solid var(--line);border-radius:4px;padding:0 4px;color:var(--dim)}
 @media(max-width:980px){.seg .wideonly{display:none}.studio[data-v=front] .flathost,.studio[data-v=back] .flathost{height:calc(100dvh - 140px)}.studio[data-v=split]{grid-template-columns:48px minmax(0,1fr);grid-template-rows:auto 62vh 70vh auto}.studio[data-v=split] .flathost{grid-column:1/-1;grid-row:3;border-left:0}.studio[data-v=split] .side{grid-column:1/-1;grid-row:4}body{overflow:auto;height:auto}.studio{grid-template-columns:48px minmax(0,1fr);grid-template-rows:auto 62vh auto;height:auto}.side{grid-column:1/-1;border-left:0;border-top:1px solid var(--line);min-height:420px}.bar .ttl b{max-width:60vw}}
+html,body{touch-action:manipulation}
 </style>
 <script src="/feedback.js"></script>
 </head>
@@ -334,8 +335,10 @@ function corners(l){const[w,h]=dims(l),c=Math.cos(l.rot),s=Math.sin(l.rot),f=l.f
 // ---------- the view ----------
 let RAF=0;function draw(){if(!RAF)RAF=requestAnimationFrame(()=>{RAF=0;render()})}
 const sx=x=>x*Z+PX,sy=y=>y*Z+PY,dx=x=>(x-PX)/Z,dy=y=>(y-PY)/Z;
+// moving or zooming the view changes no layer, so the picture is not put together again for those frames (it was, every frame: a slow, jumpy zoom)
+let VIEWONLY=0;const viewOnly=()=>Boolean((GEST&&!GEST.layer)||(DRAG&&DRAG.mode==='pan')||VIEWONLY>performance.now());
 function render(){
-  compose();const r=view.getBoundingClientRect();DPR=window.devicePixelRatio||1;const cw=Math.round(r.width*DPR),ch=Math.round(r.height*DPR);if(view.width!==cw||view.height!==ch){view.width=cw;view.height=ch}
+  if(!viewOnly()||!render.done){compose();render.done=true}const r=view.getBoundingClientRect();DPR=window.devicePixelRatio||1;const cw=Math.round(r.width*DPR),ch=Math.round(r.height*DPR);if(view.width!==cw||view.height!==ch){view.width=cw;view.height=ch}
   vx.setTransform(DPR,0,0,DPR,0,0);vx.clearRect(0,0,r.width,r.height);vx.save();vx.shadowColor='rgba(20,20,22,.18)';vx.shadowBlur=24;vx.fillStyle='#fff';vx.fillRect(PX,PY,W*Z,H*Z);vx.restore();
   vx.imageSmoothingQuality='high';vx.drawImage(docC,PX,PY,W*Z,H*Z);
   if(MASKED&&(TOOL==='area'||TAB==='ai')){vx.save();vx.globalAlpha=.42;vx.drawImage(mask,PX,PY,W*Z,H*Z);vx.restore()}
@@ -348,7 +351,7 @@ function render(){
 }
 function rotKnob(l){const p=corners(l).map(([a,b])=>[sx(a),sy(b)]),tm=[(p[0][0]+p[1][0])/2,(p[0][1]+p[1][1])/2],c=[sx(l.x),sy(l.y)],d=Math.hypot(tm[0]-c[0],tm[1]-c[1])||1;return[tm[0]+(tm[0]-c[0])/d*28,tm[1]+(tm[1]-c[1])/d*28]}
 function fit(){const r=$('#stage').getBoundingClientRect();Z=Math.min((r.width-48)/W,(r.height-48)/H,2);PX=(r.width-W*Z)/2;PY=(r.height-H*Z)/2;draw()}
-function zoomAt(f,cx,cy){const nz=clamp(Z*f,.05,8);PX=cx-(cx-PX)*nz/Z;PY=cy-(cy-PY)*nz/Z;Z=nz;draw()}
+function zoomAt(f,cx,cy){VIEWONLY=performance.now()+120;const nz=clamp(Z*f,.05,8);PX=cx-(cx-PX)*nz/Z;PY=cy-(cy-PY)*nz/Z;Z=nz;draw()}
 new ResizeObserver(()=>draw()).observe($('#stage'));
 
 // ---------- pointer work on the stage ----------
@@ -389,7 +392,7 @@ function gestMove(){const[a,b]=[...PTRS.values()];if(!a||!b||!GEST)return;const 
   PX=mx-(GEST.mx-GEST.PX)*nz/GEST.Z;PY=my-(GEST.my-GEST.PY)*nz/GEST.Z;Z=nz;draw()}
 function cancelTouchStroke(){const g=DRAG;if(!g)return;if(g.mode==='stroke'&&g.orig){g.l.raster=g.orig;g.l.raster._rid=RID++}DRAG=null;draw()}
 view.addEventListener('pointerdown',e=>{
-  if(!D)return;const[qx,qy]=pt(e);
+  if(!D)return;VIEWONLY=0;const[qx,qy]=pt(e);
   // a pointer whose lift the iPad never reported must not hold the canvas: there is one Pencil, so a new Pencil touch ends any stroke still
   // open from an earlier one, and the first finger down means no other finger is still down
   if(e.pointerType==='pen'){for(const[k,q]of PTRS)if(q.type==='pen'&&k!==e.pointerId)PTRS.delete(k);if(DRAG&&DRAG.type==='pen'&&DRAG.pid!==e.pointerId)endDrag({pointerId:DRAG.pid})}
@@ -445,8 +448,13 @@ view.addEventListener('pointerup',endDrag);view.addEventListener('pointercancel'
 // stroke; holding the Pencil's touches on the stage keeps them ours (fingers are left alone: they move and pinch through the pointer events)
 ['touchstart','touchmove'].forEach(t=>$('#stage').addEventListener(t,e=>{if([...e.changedTouches].some(x=>x.touchType==='stylus'))e.preventDefault()},{passive:false}));
 // Safari's own pinch would zoom the whole page; on the stage the pinch is ours
-['gesturestart','gesturechange'].forEach(t=>$('#stage').addEventListener(t,e=>e.preventDefault()));
-view.addEventListener('wheel',e=>{e.preventDefault();const[px,py]=pt(e);if(e.ctrlKey||e.metaKey)zoomAt(Math.exp(-e.deltaY*.01),px,py);else{PX-=e.deltaX;PY-=e.deltaY;draw()}},{passive:false});
+// Safari's page zoom (a pinch or a double tap anywhere in Design) is never wanted here: it threw the whole layout off. A trackpad pinch (Magic
+// Keyboard) arrives only as these gesture events, so it zooms the picture under the pointer; a pinch with fingers is handled by the pointers above
+let TPG=null;
+['gesturestart','gesturechange','gestureend'].forEach(t=>document.addEventListener(t,e=>{e.preventDefault();if(VMODE!=='picture'||!e.target.closest?.('#stage'))return;
+  if([...PTRS.values()].filter(q=>q.type==='touch').length>=2){TPG=null;return}const r=view.getBoundingClientRect(),cx=e.clientX-r.left,cy=e.clientY-r.top;
+  if(t==='gesturestart')TPG={z:Z};else if(t==='gesturechange'&&TPG){zoomAt(clamp(TPG.z*e.scale,.05,8)/Z,cx,cy)}else TPG=null},{passive:false}));
+view.addEventListener('wheel',e=>{e.preventDefault();const[px,py]=pt(e);if(e.ctrlKey||e.metaKey)zoomAt(Math.exp(-e.deltaY*.01),px,py);else{VIEWONLY=performance.now()+120;PX-=e.deltaX;PY-=e.deltaY;draw()}},{passive:false});
 $('#zIn').onclick=()=>{const r=view.getBoundingClientRect();zoomAt(1.25,r.width/2,r.height/2)};$('#zOut').onclick=()=>{const r=view.getBoundingClientRect();zoomAt(.8,r.width/2,r.height/2)};$('#zFit').onclick=fit;
 
 // ---------- tools and their options ----------
