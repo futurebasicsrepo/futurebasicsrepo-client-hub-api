@@ -1379,6 +1379,18 @@ await journey('J225', 'Finding your way round the Lab: one navigation on every L
         const ff = page.frameLocator('#flatFrame'); await ff.locator('#app:not(.hidden)').waitFor({ timeout: 20000 });
         ok(new URL(page.url()).searchParams.get('concept') === c.id && /template=/.test(await page.getAttribute('#flatFrame', 'src')), '5. Put it on a concept opens that concept in Design on its flat front, with the sketch handed to the flats');
         const used = (await K(`/concepts/${c.id}/flats`)).json; ok(true, '   (the template is applied on the page; saved with the next Save)', used.flat?.template);
+        // 6. straight from a sketch into Design: a new concept from it, opened on its front flat
+        ok((await K('/concepts/from-sketch', { body: { template: 'nope' } })).status === 422, '6. a sketch that is not in the pack is refused');
+        await page.goto(`${BASE}/lab/sketches`, { waitUntil: 'networkidle' }); await page.waitForSelector('#app:not(.hidden)'); await page.fill('#q', 'pullover hoodie'); await page.waitForFunction(() => document.querySelectorAll('#gal [data-tpl]').length > 0 && document.querySelectorAll('#gal [data-tpl]').length < 40, null, { timeout: 8000 });
+        ok(await page.isDisabled('#openDesign'), '   Open in Design waits for a sketch');
+        const tplId = await page.getAttribute('#gal [data-tpl]', 'data-tpl'); await page.click('#gal [data-tpl]'); await page.waitForSelector('#big img');
+        ok(/Open the .+ in Design/.test(await page.innerText('#openDesign')) && !(await page.isDisabled('#openDesign')), '   picked: Open in Design names the sketch', await page.innerText('#openDesign'));
+        await page.click('#openDesign'); await page.waitForURL(/\/lab\/studio\?concept=/, { timeout: 20000 }); await page.waitForSelector('#app[data-v="front"]', { timeout: 20000 });
+        const newId = new URL(page.url()).searchParams.get('concept'), nc = (await K(`/concepts/${newId}`)).json.concept;
+        await page.frameLocator('#flatFrame').locator('#app:not(.hidden)').waitFor({ timeout: 20000 });
+        ok(newId && newId !== c.id && nc && nc.category === 'tops' && nc.spec.template === tplId && new RegExp(`template=${tplId}`).test(await page.getAttribute('#flatFrame', 'src') || ''), '   a new concept from that sketch opens in Design on its front flat, the sketch handed to the flats', { tplId, nc: nc && { name: nc.name, category: nc.category, spec: nc.spec } });
+        ok((await K('/concepts?limit=120')).json.concepts.some(x => x.id === newId), '   and it is on the concepts board with the rest');
+        await K(`/concepts/${newId}`, { method: 'DELETE' });
         await page.goto(`${BASE}/lab/flats`, { waitUntil: 'networkidle' }); await page.waitForURL(/\/lab\/studio/, { timeout: 15000 }); await page.waitForSelector('#pickC:not(.hidden)', { timeout: 15000 }); await page.waitForSelector(`#pickList [data-pick="${c.id}"]`, { timeout: 15000 });
         ok((await page.innerText('nav.labnav a.on')) === 'Design', '6. the old flats address lands on the Design picker, with Design lit');
         ok(!errs.length, 'no page errors', errs);
