@@ -32,7 +32,7 @@ h1{font-size:clamp(28px,4.4vw,42px);letter-spacing:-.035em;font-weight:500;margi
 .tools{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:14px 0}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,230px),1fr));gap:14px;margin-top:14px}
 .card{background:#fff;border:1px solid var(--line);border-radius:18px;overflow:hidden;cursor:pointer;display:flex;flex-direction:column}.card:hover{border-color:var(--ink)}
-.card .sw{aspect-ratio:4/3;background:var(--fog);display:grid;place-items:center;position:relative;overflow:hidden}.card .sw img{width:100%;height:100%;object-fit:cover}.card .sw svg{max-width:92%;max-height:92%}
+.card .sw{aspect-ratio:4/3;background:var(--fog);display:grid;place-items:center;position:relative;overflow:hidden}.card .sw img{width:100%;height:100%;object-fit:cover}.card .sw>svg{position:absolute;inset:0;width:100%;height:100%}.card .sw[data-tagsvg]>svg{inset:5%;width:90%;height:90%}.card .sw img{position:relative;z-index:1}.card .sw .dots{z-index:2}
 .card .sw .dots{position:absolute;left:10px;bottom:10px;display:flex;gap:4px}.card .sw .dots i{width:14px;height:14px;border-radius:50%;border:1px solid rgba(0,0,0,.25);display:block}
 .card .bd{padding:12px 14px;display:grid;gap:4px}.card .bd b{font-weight:500}.card .bd .mono{letter-spacing:.06em}.card .pr{font:500 12px 'IBM Plex Mono',monospace}
 .chip{font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.06em;text-transform:uppercase;border-radius:999px;padding:3px 10px;background:var(--fog);color:var(--dim);white-space:nowrap}
@@ -95,16 +95,20 @@ function paint(){
   $('#add').textContent=KIND==='fabric'?'Add a fabric':KIND==='trim'?'Add a trim':'Add a tag';
   const g=$('#grid');g.innerHTML=M.materials.length?M.materials.map(card).join(''):'<p class="note">Nothing here yet.</p>';
   for(const el of g.querySelectorAll('[data-swatch]'))blobUrl(`/v1/lab/materials/${el.dataset.swatch}/swatch?thumb=1`).then(u=>{const i=new Image();i.alt='';i.src=u;el.prepend(i)}).catch(()=>{});
+  drawAll(g);
   for(const el of g.querySelectorAll('[data-tagsvg]'))drawTag(el,M.materials.find(m=>m.id===el.dataset.tagsvg));
 }
 function card(m){
   const s=m.spec||{},line=m.kind==='fabric'?[s.weightGsm?s.weightGsm+' gsm':'',s.construction,s.composition].filter(Boolean).join(' · '):m.kind==='trim'?[s.category,s.size,s.material,s.finish].filter(Boolean).join(' · '):`${s.widthMm} × ${s.heightMm} mm · ${s.shape}${s.fold&&s.fold!=='none'?' · '+s.fold:''} · ${s.material}`;
   const dots=(m.colours||[]).slice(0,6).map(c=>`<i style="background:${esc(c.hex||'#ccc')}" title="${esc(c.name||'')}${c.pantone?' · '+esc(c.pantone):''}"></i>`).join('');
-  const sw=m.kind==='tag'?`<div class="sw" data-tagsvg="${m.id}"></div>`:`<div class="sw" ${m.hasSwatch?`data-swatch="${m.id}"`:''}>${m.hasSwatch?'':`<span class="mono" style="letter-spacing:.06em">${esc(m.kind==='fabric'?(s.construction||'fabric'):(s.category||'trim'))}</span>`}<div class="dots">${dots}</div></div>`;
+  const sw=m.kind==='tag'?`<div class="sw" data-tagsvg="${m.id}"></div>`:`<div class="sw" data-draw="${m.id}" ${m.hasSwatch?`data-swatch="${m.id}"`:''}><div class="dots">${dots}</div></div>`;
   return `<article class="card" data-m="${m.id}" tabindex="0" role="button"><${'div'} style="display:contents">${sw}</div><div class="bd"><b>${esc(m.name)}</b>${M?.client?`<span class="note" style="font-size:11px">${m.starter?'Starter library':'Your team'+(m.by?' · '+esc(m.by):'')}</span>`:m.room?`<span class="note" style="font-size:11px">${esc(m.room)}'s room</span>`:''}<span class="note">${esc(line)}</span><div class="row" style="justify-content:space-between"><span class="pr">${money(m.priceCents)} / ${esc(m.unit)}</span>${m.kind==='tag'&&s.for?.length?`<span class="chip">${esc(s.for.join(' · '))}</span>`:m.supplier?`<span class="chip" title="${esc(m.supplier)}">${esc(m.supplier.split(':')[0].slice(0,18))}</span>`:''}</div></div></article>`;
 }
+let SW=null;async function swMod(){if(!SW)SW=await import('/lab/lab-swatches.js');return SW}
+// a drawn swatch under every fabric and trim, so a card without a photo still shows the cloth or the trim
+async function drawAll(g){const S=await swMod().catch(()=>null);if(!S)return;for(const el of g.querySelectorAll('[data-draw]')){if(el.dataset.swatch)continue;const m=M.materials.find(x=>x.id===el.dataset.draw);if(m)el.insertAdjacentHTML('afterbegin',S.materialSvg(m))}}
 async function tagsMod(){if(!TAGS)TAGS=await import('/lab/lab-tags.js');return TAGS}
-async function drawTag(el,m){if(!m)return;const T=await tagsMod();el.innerHTML=T.tagSvg(m.spec,{scale:2.4,fill:(m.colours||[])[0]?.hex||'',ink:(m.colours||[])[0]?.hex&&lum((m.colours||[])[0].hex)<128?'#f3eee4':'#141416'})}
+async function drawTag(el,m){if(!m)return;const T=await tagsMod();el.innerHTML=T.tagSvg(m.spec,{scale:2.4,showSize:false,fill:(m.colours||[])[0]?.hex||'',ink:(m.colours||[])[0]?.hex&&lum((m.colours||[])[0].hex)<128?'#f3eee4':'#141416'})}
 const lum=h=>{const n=parseInt(h.slice(1),16);return ((n>>16)*299+((n>>8)&255)*587+(n&255)*114)/1000};
 
 // ---- the form ----
@@ -126,7 +130,7 @@ function colourRows(list){$('#dColours').innerHTML=(list||[]).map(c=>`<div class
 function readSpec(){const s={};for(const el of $$('#dSpec [data-s]')){const k=el.dataset.s;s[k]=el.multiple?[...el.selectedOptions].map(o=>o.value):k==='text'?el.value.split(/\n/).map(x=>x.trim()).filter(Boolean):k==='eyelet'?Boolean(el.value):el.value}return s}
 function readColours(){return $$('#dColours .c').map(r=>{const [h,n,p]=r.querySelectorAll('input');return {hex:h.value,name:n.value,pantone:p.value}})}
 async function preview(){const kind=$('#dKind').value,p=$('#dPrev');if(kind==='tag'){const T=await tagsMod(),cs=readColours();p.innerHTML=T.tagSvg(readSpec(),{scale:3,fill:cs[0]?.hex||'',ink:cs[0]?.hex&&lum(cs[0].hex)<128?'#f3eee4':'#141416'});return}
-  if(SWATCH){p.innerHTML=`<img src="${esc(SWATCH)}" alt="">`;return}const cs=readColours();p.innerHTML=cs.length?`<div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center">${cs.map(c=>`<span style="width:56px;height:56px;border-radius:12px;background:${esc(c.hex)};border:1px solid rgba(0,0,0,.15)" title="${esc(c.name)}"></span>`).join('')}</div>`:'<span class="note">No swatch yet</span>'}
+  if(SWATCH){p.innerHTML=`<img src="${esc(SWATCH)}" alt="">`;return}const cs=readColours();{const S=await swMod().catch(()=>null);if(S){p.innerHTML=S.materialSvg({kind,name:$('#dName')?.value||'',spec:readSpec(),colours:cs},'prev');return}}p.innerHTML=cs.length?`<div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center">${cs.map(c=>`<span style="width:56px;height:56px;border-radius:12px;background:${esc(c.hex)};border:1px solid rgba(0,0,0,.15)" title="${esc(c.name)}"></span>`).join('')}</div>`:'<span class="note">No swatch yet</span>'}
 function openForm(m){
   CUR=m||null;SWATCH='';const kind=m?m.kind:KIND;$('#dKind').value=kind;$('#dId').value=m?m.id:'';
   $('#dTitle').textContent=m?m.name:(kind==='fabric'?'Add a fabric':kind==='trim'?'Add a trim':'Add a tag');

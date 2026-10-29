@@ -1209,6 +1209,14 @@ await journey('J222', 'Materials, trims and tags: the library (fabrics with weig
         const page = await oc.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
         await page.goto(`${BASE}/lab/materials#tags`, { waitUntil: 'networkidle' }); await page.waitForSelector('#app:not(.hidden)'); await page.waitForSelector('[data-tagsvg] svg', { timeout: 15000 });
         ok(await page.locator('[data-tagsvg] svg').count() >= 10, '8. in a browser the tags page draws every tag to size', await page.locator('[data-tagsvg] svg').count());
+        const outside = await page.evaluate(() => [...document.querySelectorAll('[data-tagsvg]')].filter(sw => { const a = sw.getBoundingClientRect(), v = sw.querySelector('svg')?.getBoundingClientRect(); return !v || v.width < 20 || v.left < a.left - 1 || v.right > a.right + 1 || v.top < a.top - 1 || v.bottom > a.bottom + 1; }).length);
+        ok(outside === 0, '   every tag, string and all, sits whole inside its tile', outside);
+        for (const [tab, what] of [['fabric', 'fabric'], ['trim', 'trim']]) {
+          await page.click(`#kinds [data-kind="${tab}"]`); await page.waitForFunction(() => document.querySelectorAll('#grid .card').length > 0 && [...document.querySelectorAll('#grid [data-draw]')].every(el => el.dataset.swatch || el.querySelector('svg')), null, { timeout: 15000 });
+          const n = await page.evaluate(() => [...document.querySelectorAll('#grid [data-draw]')].filter(el => el.querySelector('svg[role="img"]')).length), all = await page.locator('#grid .card').count();
+          ok(n === all && n >= 10, `   every ${what} without a photo is drawn: its weave or its trim, in its colour`, `${n}/${all}`);
+        }
+        await page.click('#kinds [data-kind="tag"]'); await page.waitForSelector('#forSel:not([style*="none"])');
         await page.selectOption('#forSel', 'pants'); await page.waitForFunction(() => document.querySelectorAll('#grid .card').length < 12 && document.querySelectorAll('#grid .card').length > 0); ok(/Waistband label/.test(await page.innerText('#grid')), '   filtered to pants: the waistband label is there');
         await page.click('#add'); await page.waitForSelector('#dlg[open]'); await page.fill('[data-s="widthMm"]', '70'); await page.fill('[data-s="heightMm"]', '30'); await page.selectOption('[data-s="shape"]', 'rounded');
         await page.waitForFunction(() => /70 × 30 mm · rounded/.test(document.querySelector('#dPrev').textContent), null, { timeout: 5000 }); ok(true, '   a new tag is drawn as it is typed: 70 × 30 mm, rounded');

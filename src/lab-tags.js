@@ -39,7 +39,7 @@ export function tagSvg(spec = {}, { scale = 3, art = '', textLines = null, fill 
   const W = (w + pad * 2) * scale, H = (h + pad * 2 + stringLen) * scale, ox = pad * scale, oy = (pad + stringLen) * scale, s = scale;
   const outline = tagOutline(shape, w, h);
   const lines = (Array.isArray(textLines) ? textLines : Array.isArray(spec.text) ? spec.text : String(spec.text || '').split(/\n|\//)).map(t => String(t).trim()).filter(Boolean).slice(0, 4);
-  const fs = Math.max(2.2, Math.min(h * .28, w / Math.max(6, Math.max(...lines.map(l => l.length), 1)) * 1.7));
+  const fs = Math.max(2.2, Math.min(h * .28, w * .86 / (Math.max(6, Math.max(...lines.map(l => l.length), 1)) * .7)));
   const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   let body = `<g transform="translate(${ox} ${oy}) scale(${s})">`;
   body += `<path d="${outline}" fill="${bg}" stroke="${fg}" stroke-width="${.35}" stroke-opacity=".55"/>`;
