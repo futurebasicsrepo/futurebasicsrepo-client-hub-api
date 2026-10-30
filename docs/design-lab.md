@@ -1334,7 +1334,34 @@ screen, the drawing and the files agree. Routes: `src/lab-assembly-routes.js`; s
 - **Parts that open.** A CD loader's tray, with the disc on it, slides out toward the product's front (`frontOf`: the way its front panel
   looks) as the view pulls apart, so the laser sled on its rails and the spindle show; the exploded STL and drawing show it open.
 - **The board's fixing.** Its mounting holes are cut through (M3 clearance), each with a pan-head screw on a brass hex standoff.
-- **Files** (from the saved assembly): STL assembled, exploded, or one part (mm); the exploded isometric drawing with balloons and the parts
+- **Design it from the concept** (Start from…, `src/lab-assembly-compose.js`): for a product none of the starting points fit (a bike light,
+  a drone, a kettle), Claude lays out every part from the concept's picture and words in the engine's own terms (its shapes, materials,
+  processes, finishes and electronic parts, with its rules for units, placement, walls and draft), so it is checked, wired, costed and
+  certified like any other. What the checks find wrong goes back to be fixed, twice at most; a repair that makes it worse is not taken.
+  The result is saved as a start; the review takes it on from there. `ENGINEERING_COMPOSE_DAILY` (30) caps a day's;
+  `ASSEMBLY_COMPOSE_FIXTURE` stands in for Claude in tests.
+- **Engineering review** (Checks tab, `src/lab-assembly-review.js`): product engineers (Claude, and an OpenAI model when
+  `OPENAI_API_KEY` is set; `ENGINEERING_CHECKER=claude|openai|both`) look at the assembly against the concept's picture (or its words) and
+  at what a product of its kind needs. They see it assembled and pulled apart (its real parts), its parts list and the engine's read, and
+  score six points out of 100: reads as the concept, nothing missing, made the way it should be, goes together, works and is safe, cost
+  holds up. The stricter judge's score stands, less 10 for each problem the engine still finds (up to 30); 90 passes. They ask for edits
+  as bounded operations (set one field of a part, add a part, remove one): what both ask for (numbers and sizes met in the middle), or one
+  asks for and the other does not dispute, is made, unless it adds a problem to the engine's checks, when it is refused and they are told
+  why. Rounds repeat until the bar, nothing left to change, or two rounds without gain; the best assembly seen is the result. What the parts
+  cannot show (a gasket groove, a living hinge) is listed for an engineer, and disagreements are shown. Nothing is saved until **Use these
+  changes**. Capped at `ENGINEERING_REVIEW_DAILY` (40) a day; `ENGINEERING_REVIEW_FIXTURE` stands in for the judges in tests.
+- **Costs calibrated from factory quotes** (`src/lab-cost-calibration.js`, table `lab_cost_samples`): each time a factory quotes a tech
+  pack whose product was engineered here (from the factory's link, or entered by staff for it), the quote is kept beside the engine's
+  estimate for that assembly as it is then: the unit price at the quote's tier nearest the costed volume, the tooling and the lead time.
+  For electronics and for other goods apart, the median of quote ÷ estimate is pulled toward 1 while samples are few (weight n / (n + 3))
+  and kept between 0.4 and 2.5; quotes in another currency than USD are kept but not counted. The summary then shows the unit, tooling and
+  weeks *on quotes* beside the engine's own figures, with how many quotes they rest on. A factory's unit price includes its margin, so the
+  unit factor carries that gap too. `GET /v1/lab/engineering/calibration` lists the factors and samples; `POST …/calibration/learn` re-reads
+  every quote (staff).
+- **Files** (from the saved assembly): **STEP** for CAD (`src/lab-step.js`, AP214, mm): every part an exact solid at its real place, flat
+  faces as planes and rounded or round faces as cylinders with their radii, named and coloured, so SolidWorks, Fusion or a toolmaker can
+  measure and edit it (an elliptical part is faceted, a ball a faceted ellipsoid; all closed solids, checked with OpenCascade); STL
+  assembled, exploded, or one part (mm); the exploded isometric drawing with balloons and the parts
   list (SVG); the parts list (CSV); the block diagram (SVG). The STL and the drawing carry the **parts' real shapes**, the same 3D parts the
   page shows (the driver's basket and cone, the board with its chips and passives, bosses and ribs inside a housing), built on the server
   (`src/lab-parts-mesh.js`, three.js without textures; a texture's ground colour is kept, so a board reads as solder mask). The drawing's
@@ -1348,7 +1375,7 @@ screen, the drawing and the files agree. Routes: `src/lab-assembly-routes.js`; s
   with reference designators (U1, J1, SW1–SW5, W1…), the certifications (one the pack already has keeps its status) and the electrical facts
   the pack has not filled in. Sending again replaces what engineering sent last time and nothing else; a published pack goes out as the next
   version with what changed, as the flats do.
-- **The factory's production package** gains `engineering/`: the assembly in place (STL, real shapes), one STL per part the factory makes
+- **The factory's production package** gains `engineering/`: the assembly for CAD (STEP) and in place (STL, real shapes), a STEP and an STL per part the factory makes
   (`parts/NN-name.stl`, NN its item on the parts list) for the toolmaker, the exploded drawing, the parts list, the cables and the block
   diagram, all without our costs. The README says what each is; when the engineering changed after the version was published, it says so.
 

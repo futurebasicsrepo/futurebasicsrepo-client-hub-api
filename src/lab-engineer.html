@@ -55,6 +55,8 @@ table.t td.r,table.t th.r{text-align:right;font-variant-numeric:tabular-nums}tab
 .sw{display:inline-block;width:11px;height:11px;border-radius:3px;border:1px solid rgba(20,20,22,.3);vertical-align:-1px;margin-right:6px}
 .find{font-size:12.5px;display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px;align-items:start;padding:7px 9px;border-radius:10px;background:var(--fog);cursor:pointer}.find i{width:8px;height:8px;border-radius:50%;margin-top:5px;background:var(--ok)}.find.bad i{background:var(--bad)}.find.warn i{background:#c9a24a}.find.bad{background:#fff3f1}
 .card{border:1px solid var(--line);border-radius:14px;padding:12px;display:grid;gap:8px}
+#sum em.cal{font-style:normal;color:#0f7a43;font-weight:600}
+.rv .sc{display:flex;align-items:baseline;gap:8px}.rv .sc b{font:700 26px/1 'Space Grotesk',sans-serif}.rv .sc.pass b{color:var(--ok)}.rv .crit{display:grid;grid-template-columns:1fr auto;gap:2px 10px;font-size:12.5px}.rv .crit span.v{font-variant-numeric:tabular-nums;font-weight:600}.rv ul{margin:0;padding-left:18px;font-size:12.5px;display:grid;gap:3px}.rv .row{display:flex;gap:6px;flex-wrap:wrap}
 .kv{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;font-size:12.5px}.kv span{color:var(--dim)}.kv b{font-variant-numeric:tabular-nums;text-align:right}
 .blk{border:1px solid var(--line);border-radius:12px;overflow-x:auto;background:#fff}.blk svg{display:block;min-width:620px;width:100%;height:auto}
 ol.steps{margin:0;padding-left:0;list-style:none;display:grid;gap:6px;font-size:13px}ol.steps li{padding:7px 10px;border-radius:10px;background:var(--fog)}
@@ -78,6 +80,7 @@ dialog form{display:grid;gap:10px}
     <div class="menu"><button class="btn q" type="button" id="startBtn" aria-expanded="false" title="Start the assembly again from a kind of product, at a size">Start from…</button></div>
     <div class="menu"><button class="btn q" type="button" id="fileBtn" aria-expanded="false" title="STL for 3D printing and CAD, the exploded drawing, the parts list, the block diagram">Files</button>
       <div class="pop hidden" id="filePop" role="menu">
+        <button type="button" data-dl="step">STEP, for CAD<small>Every part an exact solid with true planes and radii, in mm: SolidWorks, Fusion, Creo, a toolmaker</small></button>
         <button type="button" data-dl="stl0">STL, assembled<small>Every part in place, in mm: CAD, a 3D print, a renderer</small></button>
         <button type="button" data-dl="stl1">STL, exploded<small>The parts pulled apart</small></button>
         <button type="button" data-dl="stlp" id="dlPart">STL, the chosen part<small>Pick a part first</small></button>
@@ -109,7 +112,7 @@ dialog form{display:grid;gap:10px}
   <div class="g3"><label class="f"><span>Width (mm)</span><input id="sW" type="number" min="5" max="2000" inputmode="decimal"></label><label class="f"><span>Depth (mm)</span><input id="sD" type="number" min="5" max="2000" inputmode="decimal"></label><label class="f"><span>Height (mm)</span><input id="sH" type="number" min="5" max="2000" inputmode="decimal"></label></div>
   <div class="g3" id="sElec"><label class="f"><span>Radio</span><select id="sRadio"><option value="ble">Bluetooth LE</option><option value="wifi">Wi-Fi + BLE</option><option value="none">None</option></select></label><label class="f"><span>Battery (mAh)</span><input id="sMah" type="number" min="0" max="20000" step="50" inputmode="numeric" placeholder="0 = plugs in"></label><label class="f"><span>Buttons</span><input id="sBtn" type="number" min="0" max="12" inputmode="numeric"></label></div>
   <p class="note" id="sWhy"></p>
-  <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end"><button class="btn q" type="button" id="sRead" title="Read the kind, size and features from the concept's picture">Read the picture</button><button class="btn q" value="cancel" formnovalidate>Cancel</button><button class="btn go" type="button" id="sGo">Start from this</button></div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end"><button class="btn q" type="button" id="sCompose" title="For a product none of these kinds fit: Claude lays out every part from the concept's picture and words, and the checks' problems go back to be fixed">Design it from the concept</button><button class="btn q" type="button" id="sRead" title="Read the kind, size and features from the concept's picture">Read the picture</button><button class="btn q" value="cancel" formnovalidate>Cancel</button><button class="btn go" type="button" id="sGo">Start from this</button></div>
 </form></dialog>
 <script type="module">
 import { engineer, cleanAssembly, cleanPart, explodeOffsets, extentOf, blockSvg, RESINS, SHAPES, ELEC, ARCHES, housingsOf, faceOfPart, compsOnBoard, frontOf, cablePath, CABLE_INK, bomRows } from '/lab/lab-assembly.js';
@@ -119,7 +122,7 @@ async function api(path,o={}){const r=await fetch(path,{method:o.method||(o.body
 const toast=m=>{const t=document.createElement('div');t.className='toast';t.setAttribute('role','status');t.textContent=m;document.body.append(t);setTimeout(()=>t.remove(),2800)};
 const CID=new URLSearchParams(location.search).get('concept')||'',HOST=()=>{try{return parent!==window?parent.FBDesign:null}catch{return null}};
 const money=v=>'$'+(v>=1000?Math.round(v).toLocaleString('en-US'):Number(v||0).toFixed(2)),mm=v=>`${Math.round(v*10)/10}`;
-let D=null,SPEC=null,E=null,SEL=null,T=0,TAB='parts',DIRTY=false,NUMS=true,XRAY=false,CABS=true,ANIM=0;
+let D=null,SPEC=null,E=null,SEL=null,T=0,TAB='parts',DIRTY=false,NUMS=true,XRAY=false,CABS=true,ANIM=0,RV=null;
 
 // ---------- the 3D view: three.js, served from this site, every part drawn as the real thing (src/lab-parts3d.js) ----------
 const V={T:null,r:null,scene:null,cam:null,ctl:null,root:null,kit:null,nodes:new Map(),keys:new Map(),ground:null,sun:null,outline:null,need:true,zoom:1,dir:null};
@@ -203,7 +206,9 @@ function recompute(){SPEC=cleanAssembly(SPEC);E=engineer(SPEC);paintSum();paintT
 function changed(){DIRTY=true;$('#save').classList.add('go');$('#save').textContent='Save';recompute()}
 function paintSum(){
   const bad=E.checks.filter(c=>c.level==='bad').length;
-  $('#sum').innerHTML=`<div><b>${money(E.unit)}</b><span>unit cost at ${SPEC.volume.toLocaleString('en-US')} a year</span></div><div><b>${money(E.toolCost)}</b><span>tooling, ${E.tools.length} tool${E.tools.length===1?'':'s'}</span></div><div><b>${E.weeks?`${E.weeks} wk`:'—'}</b><span>to first samples (T1)</span></div>`
+  // the engine's figures, and beside them the same on the basis of factory quotes when there are some for this kind of product
+  const f=D?.calibration?.[SPEC.kind==='electronics'?'electronics':'goods'],q=f?.n?{unit:E.unit*f.unit,tool:Math.round(E.toolCost*f.tool/100)*100,weeks:Math.round(E.weeks*f.weeks)}:null,on=n=>`<br><em class="cal" title="The engine's figure × what factories have quoted against it (${f.n} quote${f.n>1?'s':''} on ${SPEC.kind==='electronics'?'electronic products':'hard goods'})">${n} on quotes (${f.n})</em>`;
+  $('#sum').innerHTML=`<div><b>${money(E.unit)}</b><span>unit cost at ${SPEC.volume.toLocaleString('en-US')} a year${q?on(money(q.unit)):''}</span></div><div><b>${money(E.toolCost)}</b><span>tooling, ${E.tools.length} tool${E.tools.length===1?'':'s'}${q&&f.nTool?on(money(q.tool)):''}</span></div><div><b>${E.weeks?`${E.weeks} wk`:'—'}</b><span>to first samples (T1)${q&&f.nWeeks&&E.weeks?on(`${q.weeks} wk`):''}</span></div>`
     +`<div><b>${E.mass} g</b><span>${E.extent.map(v=>Math.round(v)).join(' × ')} mm</span></div><div><b>${SPEC.parts.length}</b><span>parts, ${E.steps.length} steps</span></div><div><b style="color:${bad?'var(--bad)':'var(--ok)'}">${bad?`${bad} to fix`:'Clear'}</b><span>engineering checks</span></div>`;
   $('#sub').textContent=`${ARCHES[SPEC.arch]?.label||'Assembly'} · ${SPEC.kind==='electronics'?'electronic product':'hard goods'}${D.saved||DIRTY?'':' · a starting assembly, not saved yet'}`;
   $('#dlBlk').classList.toggle('hidden',SPEC.kind!=='electronics');
@@ -213,6 +218,29 @@ function paintTabs(){const bad=E.checks.filter(c=>c.level==='bad').length,warn=E
   $('#tabs').innerHTML=TABS().map(([k,l])=>`<button type="button" role="tab" data-tab="${k}" aria-selected="${k===TAB}">${l}${k==='checks'&&(bad||warn)?`<span class="n${bad?'':' w'}">${bad||warn}</span>`:''}</button>`).join('')}
 $('#tabs').addEventListener('click',e=>{const b=e.target.closest('[data-tab]');if(!b)return;TAB=b.dataset.tab;paintTabs();paintPane()});
 const opt=(list,cur)=>list.map(v=>Array.isArray(v)?`<option value="${esc(v[0])}"${v[0]===cur?' selected':''}>${esc(v[1])}</option>`:`<option${v===cur?' selected':''}>${esc(v)}</option>`).join('');
+// ---------- the engineering review: product engineers (Claude, and an OpenAI model when connected) against the concept, round by round ----------
+function reviewCard(){
+  const R=RV,crit=c=>`<span>${esc(c.label)}${c.note?`<br><span class="note">${esc(c.note)}</span>`:''}</span><span class="v">${c.score}</span>`;
+  if(!R)return`<section class="card rv"><h4 style="margin:0">Engineering review</h4><p class="note">Product engineers look at the assembly against the concept${D?.concept?' and its picture':''}: does it read as the product, is anything missing, will it mould and go together, does it work, does the cost hold. They score it out of 100 (90 to pass), ask for changes and see them made round by round; a change that adds a problem the checks catch is refused. Nothing is saved until you use it.</p><div class="row"><button class="btn sm go" type="button" id="rvGo">Review the engineering</button></div></section>`;
+  const last=R.rounds?.at(-1),done=R.status==='done',sc=done?R.score:last?.score;
+  return`<section class="card rv"><h4 style="margin:0">Engineering review${R.judges?.length>1?` · ${esc(R.judges.join(' and '))}`:''}</h4>
+    ${R.status==='running'?`<p class="note">Round ${(R.rounds?.length||0)+1} is being looked at${R.picture?' against the concept\'s picture':' against the concept\'s words (it has no picture)'}…</p>`:''}
+    ${R.status==='failed'?`<p class="note">${esc(R.error||'The review could not finish')}</p>`:''}
+    ${sc!=null?`<div class="sc ${sc>=(R.bar||90)?'pass':''}"><b>${sc}</b><span class="note">/ 100, bar ${R.bar||90}${R.rounds?.length?` · ${R.rounds.length} round${R.rounds.length>1?'s':''}`:''}</span></div>`:''}
+    ${done&&R.note?`<p class="note"><b>${esc(R.note)}</b></p>`:''}
+    ${last?`<div class="crit">${last.criteria.map(crit).join('')}</div>${last.summary?`<p class="note">${esc(last.summary)}</p>`:''}`:''}
+    ${(R.changes||[]).length?`<div><span class="note"><b>Changes made</b></span><ul>${R.changes.map(c=>`<li>${esc(c.op==='set'?`${c.name}: ${c.field} ${JSON.stringify(c.from)} → ${JSON.stringify(c.to)}`:c.op==='add'?`Added ${c.name}`:`Removed ${c.name}`)}${c.why?` <span class="note">(${esc(c.why)})</span>`:''}</li>`).join('')}</ul></div>`:''}
+    ${(R.rejected||[]).length?`<div><span class="note"><b>Refused (the checks found a new problem)</b></span><ul>${R.rejected.map(c=>`<li>${esc(c.name)}${c.field?`: ${esc(c.field)}`:''} <span class="note">(${esc(c.reason)})</span></li>`).join('')}</ul></div>`:''}
+    ${(R.beyondModel||[]).length?`<div><span class="note"><b>For an engineer</b> (what these parts cannot show)</span><ul>${R.beyondModel.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div>`:''}
+    ${(last?.conflicts||[]).length?`<div><span class="note"><b>The reviewers disagree</b></span><ul>${last.conflicts.map(c=>`<li>${esc(c.key)}: ${c.asks.map(a=>`${esc(a.name)} ${esc(a.value)}`).join(' / ')}</li>`).join('')}</ul></div>`:''}
+    <div class="row">${done&&(R.changes||[]).length?'<button class="btn sm go" type="button" id="rvUse">Use these changes</button><button class="btn sm q" type="button" id="rvKeep">Keep mine</button>':''}${R.status!=='running'?'<button class="btn sm q" type="button" id="rvGo">Review again</button>':''}</div></section>`;
+}
+function wireReview(){
+  const go=$('#rvGo');if(go)go.onclick=async()=>{go.disabled=true;go.textContent='Starting…';try{const j=await api(`/v1/lab/concepts/${CID}/assembly/review`,{method:'POST',body:{spec:SPEC}});RV={status:'running',bar:j.bar,judges:j.judges,picture:j.picture,rounds:[]};paintPane();pollReview(j.id)}catch(e){toast(e.message||'The review could not start');go.disabled=false;go.textContent='Review the engineering'}};
+  const use=$('#rvUse');if(use)use.onclick=()=>{SPEC=RV.spec;const n=RV.changes.length;RV={...RV,changes:[],used:true};changed();toast(`${n} change${n>1?'s':''} made: save to keep ${n>1?'them':'it'}`)};
+  const keep=$('#rvKeep');if(keep)keep.onclick=()=>{RV=null;paintPane();toast('Kept as it was')};
+}
+async function pollReview(id){for(let i=0;i<400;i++){await new Promise(r=>setTimeout(r,1500));let j;try{j=await api(`/v1/lab/concepts/${CID}/assembly/review/${id}`)}catch{continue}RV=j;if(TAB==='checks')paintPane();if(j.status!=='running'){toast(j.status==='done'?(j.note||'Review done'):(j.error||'The review failed'));return}}}
 function paintPane(){
   const pane=$('#pane'),byId=Object.fromEntries(SPEC.parts.map(p=>[p.id,p])),eng=Object.fromEntries(E.parts.map(x=>[x.id,x]));
   if(TAB==='parts'){
@@ -233,9 +261,10 @@ function paintPane(){
   if(TAB==='checks'){
     const order={bad:0,warn:1,ok:2},list=[...E.checks].sort((a,b)=>order[a.level]-order[b.level]);
     pane.innerHTML=`<section><h4>Engineering checks</h4><p class="note">Walls and draft for the moulder, undercuts, clear parts, food contact, each part's fit in its housing, parts in one another's space${SPEC.kind==='electronics'?', the port, the radio, the board and the heat':''}${SPEC.age==='0+'||SPEC.age==='3+'?', and small parts for young children':''}. Tap one to see the part.</p></section>
+      ${reviewCard()}
       <section class="card"><label class="f"><span>Who it is for</span><select data-s="age">${opt(Object.entries({'0+':'All ages, under 3 included','3+':'3 years and up','8+':'8 years and up','14+':'Adults and 14 and up'}),SPEC.age)}</select></label></section>
       <section>${list.map(c=>`<div class="find ${c.level}" data-p="${esc(c.id)}"><i></i><span>${esc(c.text)}</span></div>`).join('')||'<p class="note">No checks to show.</p>'}</section>`;
-    return wireSpecInputs();
+    wireReview();return wireSpecInputs();
   }
   if(TAB==='elec'){
     const pw=E.power,pcb=E.pcb,cell=SPEC.parts.find(p=>['battery','aa'].includes(p.elec?.kind));
@@ -313,6 +342,7 @@ addEventListener('beforeunload',e=>{if(DIRTY){e.preventDefault();e.returnValue='
 $('#startBtn').onclick=()=>{const ex=extentOf(SPEC.parts).size;$('#sArch').innerHTML=opt(Object.entries(ARCHES).map(([k,v])=>[k,v.label]),SPEC.arch);$('#sW').value=Math.round(ex[0]);$('#sD').value=Math.round(ex[1]);$('#sH').value=Math.round(ex[2]);const cell=SPEC.parts.find(p=>p.elec?.kind==='battery');$('#sMah').value=cell?cell.elec.mah:'';$('#sBtn').value='';$('#sWhy').textContent='';syncStart();$('#startDlg').showModal()};
 const syncStart=()=>$('#sElec').classList.toggle('hidden',ARCHES[$('#sArch').value]?.kind!=='electronics');$('#sRadio').value=['cdplayer','cassette'].includes($('#sArch').value)&&!$('#sRadio').dataset.touched?'none':$('#sRadio').value;$('#sArch').onchange=syncStart;$('#sRadio').onchange=()=>{$('#sRadio').dataset.touched='1'};
 $('#sRead').onclick=async()=>{const b=$('#sRead');b.disabled=true;b.textContent='Reading…';try{const j=await api(`/v1/lab/concepts/${CID}/assembly/read`,{method:'POST',body:{}}),r=j.read;if(r.arch)$('#sArch').value=r.arch;if(r.w)$('#sW').value=Math.round(r.w);if(r.d)$('#sD').value=Math.round(r.d);if(r.h)$('#sH').value=Math.round(r.h);if(r.radio)$('#sRadio').value=r.radio;if(r.mah!=null)$('#sMah').value=r.mah||'';if(r.buttons!=null)$('#sBtn').value=r.buttons;$('#sWhy').textContent=(j.source==='vision'?'Read from the picture: ':'')+j.why;syncStart()}catch(e){$('#sWhy').textContent=e.message}finally{b.disabled=false;b.textContent='Read the picture'}};
+$('#sCompose').onclick=async()=>{const b=$('#sCompose');b.disabled=true;b.textContent='Designing… (up to a minute)';try{const v=id=>$(id).value===''?undefined:Number($(id).value),j=await api(`/v1/lab/concepts/${CID}/assembly/compose`,{method:'POST',body:{w:v('#sW'),d:v('#sD'),h:v('#sH')}});SPEC=j.spec;D.saved=true;DIRTY=false;SEL=null;$('#startDlg').close();$('#save').textContent='Saved ✓';$('#save').classList.remove('go');recompute();resetView();toast(j.compose.status==='clear'?`Designed: ${SPEC.parts.length} parts, the checks are clear. Run the review next.`:`Designed: ${SPEC.parts.length} parts; some checks still need work (see Checks)`)}catch(e){toast(e.message)}finally{b.disabled=false;b.textContent='Design it from the concept'}};
 $('#sGo').onclick=async()=>{const b=$('#sGo');b.disabled=true;b.textContent='Starting…';try{const v=id=>$(id).value===''?undefined:Number($(id).value),j=await api(`/v1/lab/concepts/${CID}/assembly/start`,{method:'POST',body:{arch:$('#sArch').value,w:v('#sW'),d:v('#sD'),h:v('#sH'),radio:$('#sRadio').value,mah:v('#sMah'),buttons:v('#sBtn')}});SPEC=j.spec;D.saved=true;DIRTY=false;SEL=null;$('#startDlg').close();$('#save').textContent='Saved ✓';$('#save').classList.remove('go');recompute();resetView();toast('Started again: saved')}catch(e){toast(e.message)}finally{b.disabled=false;b.textContent='Start from this'}};
 $('#fileBtn').onclick=e=>{e.stopPropagation();const p=$('#filePop'),open=p.classList.toggle('hidden')===false;$('#fileBtn').setAttribute('aria-expanded',String(open))};
 document.addEventListener('click',e=>{if(!e.target.closest('#filePop'))$('#filePop').classList.add('hidden')});
@@ -324,7 +354,7 @@ $('#filePop').addEventListener('click',async e=>{const b=e.target.closest('[data
     catch(e){toast(e.message||'The tech pack could not be updated')}finally{fb.disabled=false;fb.textContent='Files'}return}
   const k=b.dataset.dl,base=`/v1/lab/concepts/${CID}`,slug=(D.concept.name||'assembly').replace(/[^a-z0-9]+/gi,'-').replace(/^-|-$/g,'');
   if(k==='stlp'&&!SEL)return toast('Choose a part first');
-  const [path,name]={stl0:[`${base}/assembly.stl?t=0`,`${slug}.stl`],stl1:[`${base}/assembly.stl?t=1`,`${slug}-exploded.stl`],stlp:[`${base}/assembly.stl?part=${encodeURIComponent(SEL||'')}`,`${slug}-${SEL}.stl`],svg:[`${base}/assembly.svg?t=1&download=1`,`${slug}-exploded.svg`],csv:[`${base}/bom.csv`,`${slug}-bom.csv`],blk:[`${base}/block.svg?download=1`,`${slug}-block-diagram.svg`]}[k];
+  const [path,name]={step:[`${base}/assembly.step`,`${slug}.step`],stl0:[`${base}/assembly.stl?t=0`,`${slug}.stl`],stl1:[`${base}/assembly.stl?t=1`,`${slug}-exploded.stl`],stlp:[`${base}/assembly.stl?part=${encodeURIComponent(SEL||'')}`,`${slug}-${SEL}.stl`],svg:[`${base}/assembly.svg?t=1&download=1`,`${slug}-exploded.svg`],csv:[`${base}/bom.csv`,`${slug}-bom.csv`],blk:[`${base}/block.svg?download=1`,`${slug}-block-diagram.svg`]}[k];
   try{const r=await fetch(path,{headers:{Authorization:'Bearer '+TOKEN()}});if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||'The file could not be made');const url=URL.createObjectURL(await r.blob()),a=document.createElement('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),4000);toast(`${name} downloaded`)}catch(err){toast(err.message)}});
 
 // ---------- start ----------
