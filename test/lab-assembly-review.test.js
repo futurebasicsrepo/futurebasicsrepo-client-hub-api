@@ -47,3 +47,24 @@ test('what the judges read: the parts with materials and the engine\'s open chec
   const s = archetype('puck'); s.parts.find(p => p.id === 'bottom').wall = .5; const bad = engineer(s);
   assert.equal(scoreOf(all(100), engineer(archetype('puck'))), 100); assert.ok(scoreOf(all(100), bad) <= 90);
 });
+
+test('designed from the concept: laid out in the engine\'s terms, the checks\' problems sent back and fixed', async () => {
+  const { composeAssembly, COMPOSE_SCHEMA } = await import('../src/lab-assembly-compose.js'), { readFileSync } = await import('node:fs');
+  const answers = JSON.parse(readFileSync(new URL('../scripts/journeys/fixtures/assembly-compose.json', import.meta.url), 'utf8')), seen = [];
+  let i = 0; const ask = async (system, content, schema) => { seen.push(content.at(-1).text); assert.equal(schema, COMPOSE_SCHEMA); return answers[i++]; };
+  const r = await composeAssembly({ concept: { name: 'Bike front light', category: 'electronics', description: 'A USB-C rechargeable front light' }, ask });
+  assert.equal(r.status, 'clear'); assert.equal(r.rounds.length, 2); assert.match(r.rounds[0].bad[0], /too thin/); assert.deepEqual(r.rounds[1].bad, []);
+  assert.match(seen[1], /The engine found these problems:\n- Body: a 0\.6 mm wall/); assert.equal(r.spec.arch, 'custom'); assert.equal(r.spec.kind, 'electronics');
+  assert.ok(r.spec.parts.find(p => p.id === 'led').elec.kind === 'ledcob' && r.eng.harness.some(c => c.label === 'LED') && r.eng.certs.some(c => /IEC 62471/.test(c.name)), 'checked, wired and certified like any other');
+  assert.equal((await composeAssembly({ concept: { name: 'A poem' }, ask: async () => ({ product: false, kind: 'goods', parts: [], why: 'Not a physical product' }) })).status, 'not-a-product');
+  // a repair that makes it worse is not taken
+  let k = 0; const worse = await composeAssembly({ concept: { name: 'x' }, ask: async () => (k++ === 0 ? answers[0] : { ...answers[0], parts: answers[0].parts.map(p => (p.id === 'top' ? { ...p, wall: .4 } : p)) }) });
+  assert.equal(worse.status, 'needs-work'); assert.equal(worse.rounds.length, 1);
+});
+
+test('a designed product\'s cell is priced from its capacity, not left free', async () => {
+  const { composeAssembly } = await import('../src/lab-assembly-compose.js'), { readFileSync } = await import('node:fs');
+  const a = JSON.parse(readFileSync(new URL('../scripts/journeys/fixtures/assembly-compose.json', import.meta.url), 'utf8'))[1];
+  const r = await composeAssembly({ concept: { name: 'Bike light' }, ask: async () => a });
+  assert.ok(r.eng.parts.find(p => p.id === 'battery').unit > 1, 'a 2000 mAh cell costs something'); assert.ok(r.eng.parts.find(p => p.id === 'mcu').unit > .5);
+});

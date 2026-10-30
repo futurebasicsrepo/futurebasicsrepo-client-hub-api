@@ -548,8 +548,8 @@ const CABLES = {
   cartridge: { to: 'board', label: 'Tonearm wiring', type: '4-wire 38 AWG litz, shielded, to the phono input', cost: .9, per: .06, kind: 'signal' },
   hpdriver: { to: 'board', label: 'Driver', type: '2-wire 32 AWG litz, soldered', cost: .08, per: .02, kind: 'power' },
   li18650: { to: 'board', label: 'Cells', type: '2-wire 18 AWG on nickel strip, JST VH', cost: .2, per: .03, kind: 'power' },
-  ledcob: { to: 'board', label: 'LED', type: '2-wire 22 AWG, up the stem', cost: .12, per: .02, kind: 'power' },
-  touch: { to: 'board', label: 'Touch pad', type: '3-wire 30 AWG, up the stem', cost: .1, per: .02, kind: 'signal' },
+  ledcob: { to: 'board', label: 'LED', type: '2-wire 22 AWG, JST PH', cost: .12, per: .02, kind: 'power' },
+  touch: { to: 'board', label: 'Touch pad', type: '3-wire 30 AWG, JST SH', cost: .1, per: .02, kind: 'signal' },
   dcjack: { to: 'board', label: 'DC input', type: '2-wire 20 AWG, JST VH', cost: .1, per: .02, kind: 'power' },
   antenna: { to: 'board', label: 'Antenna', type: 'U.FL to RP-SMA, 1.13 mm coax', cost: .35, per: .05, kind: 'coax' }
 };

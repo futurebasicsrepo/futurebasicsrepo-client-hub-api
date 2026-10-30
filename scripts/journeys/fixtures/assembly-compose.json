@@ -1,0 +1,822 @@
+[
+ {
+  "product": true,
+  "kind": "electronics",
+  "age": "14+",
+  "parts": [
+   {
+    "id": "body",
+    "name": "Body",
+    "shape": "shell",
+    "size": [
+     38,
+     90,
+     22
+    ],
+    "at": [
+     0,
+     0,
+     11
+    ],
+    "wall": 0.6,
+    "open": "+",
+    "r": 6,
+    "resin": "PC/ABS",
+    "process": "injection moulding",
+    "finish": "soft-touch paint",
+    "draft": 1.5,
+    "undercuts": 1,
+    "fix": "place",
+    "order": 1,
+    "dir": [
+     0,
+     0,
+     -1
+    ],
+    "lvl": 0,
+    "colour": "#1d1e20"
+   },
+   {
+    "id": "battery",
+    "name": "Li-ion cell, 2000 mAh",
+    "shape": "box",
+    "size": [
+     30,
+     46,
+     7
+    ],
+    "at": [
+     0,
+     -16,
+     6.4
+    ],
+    "resin": "bought in",
+    "process": "bought in",
+    "fix": "adhesive",
+    "order": 2,
+    "parent": "body",
+    "elec": {
+     "kind": "battery",
+     "mah": 2000
+    },
+    "dir": [
+     0,
+     0,
+     1
+    ],
+    "lvl": 0.8
+   },
+   {
+    "id": "pcb",
+    "name": "Main board",
+    "shape": "pcb",
+    "size": [
+     32,
+     24,
+     1.2
+    ],
+    "at": [
+     0,
+     16,
+     12
+    ],
+    "fix": "screws",
+    "fixQty": 2,
+    "order": 3,
+    "parent": "body",
+    "dir": [
+     0,
+     0,
+     1
+    ],
+    "lvl": 1.4
+   },
+   {
+    "id": "mcu",
+    "name": "Microcontroller (STM32G0)",
+    "shape": "box",
+    "size": [
+     7,
+     7,
+     1
+    ],
+    "at": [
+     0,
+     12,
+     13.1
+    ],
+    "resin": "bought in",
+    "process": "bought in",
+    "fix": "solder",
+    "order": 3,
+    "parent": "pcb",
+    "elec": {
+     "kind": "mcu"
+    },
+    "dir": [
+     0,
+     0,
+     1
+    ],
+    "lvl": 1.4
+   },
+   {
+    "id": "chg",
+    "name": "Li-ion charger (BQ25180)",
+    "shape": "box",
+    "size": [
+     3,
+     3,
+     1
+    ],
+    "at": [
+     9,
+     22,
+     13.1
+    ],
+    "resin": "bought in",
+    "process": "bought in",
+    "fix": "solder",
+    "order": 3,
+    "parent": "pcb",
+    "elec": {
+     "kind": "charger"
+    },
+    "dir": [
+     0,
+     0,
+     1
+    ],
+    "lvl": 1.4
+   },
+   {
+    "id": "drv",
+    "name": "LED driver, constant current, dimmable",
+    "shape": "box",
+    "size": [
+     4,
+     4,
+     1
+    ],
+    "at": [
+     -9,
+     22,
+     13.1
+    ],
+    "resin": "bought in",
+    "process": "bought in",
+    "fix": "solder",
+    "order": 3,
+    "parent": "pcb",
+    "elec": {
+     "kind": "leddrv"
+    },
+    "dir": [
+     0,
+     0,
+     1
+    ],
+    "lvl": 1.4
+   },
+   {
+    "id": "sw",
+    "name": "Tact switch",
+    "shape": "box",
+    "size": [
+     6,
+     6,
+     3.5
+    ],
+    "at": [
+     0,
+     20,
+     14.35
+    ],
+    "resin": "bought in",
+    "process": "bought in",
+    "fix": "solder",
+    "order": 3,
+    "parent": "pcb",
+    "elec": {
+     "kind": "button"
+    },
+    "dir": [
+     0,
+     0,
+     1
+    ],
+    "lvl": 1.4
+   },
+   {
+    "id": "usb",
+    "name": "USB-C receptacle",
+    "shape": "box",
+    "size": [
+     9,
+     7.5,
+     3.2
+    ],
+    "at": [
+     0,
+     -41.25,
+     14
+    ],
+    "resin": "bought in",
+    "process": "bought in",
+    "fix": "screws",
+    "order": 3,
+    "parent": "body",
+    "elec": {
+     "kind": "usbc"
+    },
+    "dir": [
+     0,
+     -1,
+     0
+    ],
+    "lvl": 0.8
+   },
+   {
+    "id": "led",
+    "name": "LED module, 6 W COB",
+    "shape": "box",
+    "size": [
+     28,
+     3,
+     26
+    ],
+    "at": [
+     0,
+     41,
+     17
+    ],
+    "resin": "bought in",
+    "process": "bought in",
+    "fix": "screws",
+    "fixQty": 2,
+    "order": 4,
+    "parent": "body",
+    "elec": {
+     "kind": "ledcob"
+    },
+    "dir": [
+     0,
+     1,
+     0
+    ],
+    "lvl": 0.8
+   },
+   {
+    "id": "top",
+    "name": "Top cover",
+    "shape": "shell",
+    "size": [
+     38,
+     90,
+     12
+    ],
+    "at": [
+     0,
+     0,
+     28
+    ],
+    "wall": 1.8,
+    "open": "-",
+    "r": 6,
+    "resin": "PC/ABS",
+    "process": "injection moulding",
+    "finish": "soft-touch paint",
+    "draft": 1.5,
+    "fix": "snap",
+    "order": 6,
+    "dir": [
+     0,
+     0,
+     1
+    ],
+    "lvl": 3,
+    "colour": "#1d1e20"
+   },
+   {
+    "id": "lens",
+    "name": "Front lens",
+    "shape": "box",
+    "size": [
+     32,
+     2,
+     26
+    ],
+    "r": 3,
+    "at": [
+     0,
+     46,
+     17
+    ],
+    "resin": "PMMA (acrylic)",
+    "process": "injection moulding",
+    "finish": "SPI A-2 (high gloss)",
+    "draft": 1,
+    "fix": "adhesive",
+    "order": 7,
+    "dir": [
+     0,
+     1,
+     0
+    ],
+    "lvl": 2.4
+   },
+   {
+    "id": "key",
+    "name": "Button cap",
+    "shape": "cyl",
+    "size": [
+     10,
+     10,
+     1.5
+    ],
+    "at": [
+     0,
+     20,
+     34.75
+    ],
+    "resin": "silicone (LSR)",
+    "process": "LSR moulding",
+    "fix": "press",
+    "order": 7,
+    "dir": [
+     0,
+     0,
+     1
+    ],
+    "lvl": 4
+   },
+   {
+    "id": "mount",
+    "name": "Handlebar mount",
+    "shape": "box",
+    "size": [
+     24,
+     40,
+     6
+    ],
+    "r": 3,
+    "at": [
+     0,
+     0,
+     -3
+    ],
+    "resin": "TPU",
+    "process": "injection moulding",
+    "finish": "SPI C-1 (matte)",
+    "draft": 1,
+    "undercuts": 1,
+    "fix": "snap",
+    "order": 8,
+    "dir": [
+     0,
+     0,
+     -1
+    ],
+    "lvl": 2
+   },
+   {
+    "id": "screws",
+    "name": "Screw, M2 × 6",
+    "shape": "cyl",
+    "size": [
+     2,
+     2,
+     6
+    ],
+    "at": [
+     12,
+     30,
+     26
+    ],
+    "resin": "bought in",
+    "process": "bought in",
+    "cost": 0.02,
+    "qty": 4,
+    "fix": "screws",
+    "order": 8,
+    "dir": [
+     0,
+     0,
+     1
+    ],
+    "lvl": 5
+   }
+  ],
+  "why": "An aluminium-look PC/ABS body and top cover split at mid height, the cell at the back, the board behind the LED module at the front, USB-C at the back end, one button on top and a handlebar mount underneath."
+ },
+ {
+  "product": true,
+  "kind": "electronics",
+  "age": "14+",
+  "parts": [
+   {
+    "id": "body",
+    "name": "Body",
+    "shape": "shell",
+    "size": [
+     38,
+     90,
+     22
+    ],
+    "at": [
+     0,
+     0,
+     11
+    ],
+    "wall": 1.8,
+    "open": "+",
+    "r": 6,
+    "resin": "PC/ABS",
+    "process": "injection moulding",
+    "finish": "soft-touch paint",
+    "draft": 1.5,
+    "undercuts": 1,
+    "fix": "place",
+    "order": 1,
+    "dir": [
+     0,
+     0,
+     -1
+    ],
+    "lvl": 0,
+    "colour": "#1d1e20"
+   },
+   {
+    "id": "battery",
+    "name": "Li-ion cell, 2000 mAh",
+    "shape": "box",
+    "size": [
+     30,
+     46,
+     7
+    ],
+    "at": [
+     0,
+     -16,
+     6.4
+    ],
+    "resin": "bought in",
+    "process": "bought in",
+    "fix": "adhesive",
+    "order": 2,
+    "parent": "body",
+    "elec": {
+     "kind": "battery",
+     "mah": 2000
+    },
+    "dir": [
+     0,
+     0,
+     1
+    ],
+    "lvl": 0.8
+   },
+   {
+    "id": "pcb",
+    "name": "Main board",
+    "shape": "pcb",
+    "size": [
+     32,
+     24,
+     1.2
+    ],
+    "at": [
+     0,
+     16,
+     12
+    ],
+    "fix": "screws",
+    "fixQty": 2,
+    "order": 3,
+    "parent": "body",
+    "dir": [
+     0,
+     0,
+     1
+    ],
+    "lvl": 1.4
+   },
+   {
+    "id": "mcu",
+    "name": "Microcontroller (STM32G0)",
+    "shape": "box",
+    "size": [
+     7,
+     7,
+     1
+    ],
+    "at": [
+     0,
+     12,
+     13.1
+    ],
+    "resin": "bought in",
+    "process": "bought in",
+    "fix": "solder",
+    "order": 3,
+    "parent": "pcb",
+    "elec": {
+     "kind": "mcu"
+    },
+    "dir": [
+     0,
+     0,
+     1
+    ],
+    "lvl": 1.4
+   },
+   {
+    "id": "chg",
+    "name": "Li-ion charger (BQ25180)",
+    "shape": "box",
+    "size": [
+     3,
+     3,
+     1
+    ],
+    "at": [
+     9,
+     22,
+     13.1
+    ],
+    "resin": "bought in",
+    "process": "bought in",
+    "fix": "solder",
+    "order": 3,
+    "parent": "pcb",
+    "elec": {
+     "kind": "charger"
+    },
+    "dir": [
+     0,
+     0,
+     1
+    ],
+    "lvl": 1.4
+   },
+   {
+    "id": "drv",
+    "name": "LED driver, constant current, dimmable",
+    "shape": "box",
+    "size": [
+     4,
+     4,
+     1
+    ],
+    "at": [
+     -9,
+     22,
+     13.1
+    ],
+    "resin": "bought in",
+    "process": "bought in",
+    "fix": "solder",
+    "order": 3,
+    "parent": "pcb",
+    "elec": {
+     "kind": "leddrv"
+    },
+    "dir": [
+     0,
+     0,
+     1
+    ],
+    "lvl": 1.4
+   },
+   {
+    "id": "sw",
+    "name": "Tact switch",
+    "shape": "box",
+    "size": [
+     6,
+     6,
+     3.5
+    ],
+    "at": [
+     0,
+     20,
+     14.35
+    ],
+    "resin": "bought in",
+    "process": "bought in",
+    "fix": "solder",
+    "order": 3,
+    "parent": "pcb",
+    "elec": {
+     "kind": "button"
+    },
+    "dir": [
+     0,
+     0,
+     1
+    ],
+    "lvl": 1.4
+   },
+   {
+    "id": "usb",
+    "name": "USB-C receptacle",
+    "shape": "box",
+    "size": [
+     9,
+     7.5,
+     3.2
+    ],
+    "at": [
+     0,
+     -41.25,
+     14
+    ],
+    "resin": "bought in",
+    "process": "bought in",
+    "fix": "screws",
+    "order": 3,
+    "parent": "body",
+    "elec": {
+     "kind": "usbc"
+    },
+    "dir": [
+     0,
+     -1,
+     0
+    ],
+    "lvl": 0.8
+   },
+   {
+    "id": "led",
+    "name": "LED module, 6 W COB",
+    "shape": "box",
+    "size": [
+     28,
+     3,
+     26
+    ],
+    "at": [
+     0,
+     41,
+     17
+    ],
+    "resin": "bought in",
+    "process": "bought in",
+    "fix": "screws",
+    "fixQty": 2,
+    "order": 4,
+    "parent": "body",
+    "elec": {
+     "kind": "ledcob"
+    },
+    "dir": [
+     0,
+     1,
+     0
+    ],
+    "lvl": 0.8
+   },
+   {
+    "id": "top",
+    "name": "Top cover",
+    "shape": "shell",
+    "size": [
+     38,
+     90,
+     12
+    ],
+    "at": [
+     0,
+     0,
+     28
+    ],
+    "wall": 1.8,
+    "open": "-",
+    "r": 6,
+    "resin": "PC/ABS",
+    "process": "injection moulding",
+    "finish": "soft-touch paint",
+    "draft": 1.5,
+    "fix": "snap",
+    "order": 6,
+    "dir": [
+     0,
+     0,
+     1
+    ],
+    "lvl": 3,
+    "colour": "#1d1e20"
+   },
+   {
+    "id": "lens",
+    "name": "Front lens",
+    "shape": "box",
+    "size": [
+     32,
+     2,
+     26
+    ],
+    "r": 3,
+    "at": [
+     0,
+     46,
+     17
+    ],
+    "resin": "PMMA (acrylic)",
+    "process": "injection moulding",
+    "finish": "SPI A-2 (high gloss)",
+    "draft": 1,
+    "fix": "adhesive",
+    "order": 7,
+    "dir": [
+     0,
+     1,
+     0
+    ],
+    "lvl": 2.4
+   },
+   {
+    "id": "key",
+    "name": "Button cap",
+    "shape": "cyl",
+    "size": [
+     10,
+     10,
+     1.5
+    ],
+    "at": [
+     0,
+     20,
+     34.75
+    ],
+    "resin": "silicone (LSR)",
+    "process": "LSR moulding",
+    "fix": "press",
+    "order": 7,
+    "dir": [
+     0,
+     0,
+     1
+    ],
+    "lvl": 4
+   },
+   {
+    "id": "mount",
+    "name": "Handlebar mount",
+    "shape": "box",
+    "size": [
+     24,
+     40,
+     6
+    ],
+    "r": 3,
+    "at": [
+     0,
+     0,
+     -3
+    ],
+    "resin": "TPU",
+    "process": "injection moulding",
+    "finish": "SPI C-1 (matte)",
+    "draft": 1,
+    "undercuts": 1,
+    "fix": "snap",
+    "order": 8,
+    "dir": [
+     0,
+     0,
+     -1
+    ],
+    "lvl": 2
+   },
+   {
+    "id": "screws",
+    "name": "Screw, M2 × 6",
+    "shape": "cyl",
+    "size": [
+     2,
+     2,
+     6
+    ],
+    "at": [
+     12,
+     30,
+     26
+    ],
+    "resin": "bought in",
+    "process": "bought in",
+    "cost": 0.02,
+    "qty": 4,
+    "fix": "screws",
+    "order": 8,
+    "dir": [
+     0,
+     0,
+     1
+    ],
+    "lvl": 5
+   }
+  ],
+  "why": "An aluminium-look PC/ABS body and top cover split at mid height, the cell at the back, the board behind the LED module at the front, USB-C at the back end, one button on top and a handlebar mount underneath."
+ }
+]

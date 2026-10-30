@@ -17,6 +17,7 @@ import { realMeshes, isoPicture } from './lab-parts-mesh.js';
 import { packFromAssembly } from './lab-assembly.js';
 import { stepOf } from './lab-step.js';
 import { reviewAssembly, BAR as REVIEW_BAR } from './lab-assembly-review.js';
+import { composeAssembly } from './lab-assembly-compose.js';
 import { openaiAsk } from './lab-shoe-review.js';
 import { trackedFetch, timed } from './telemetry.js';
 import { archetype, cleanAssembly, engineer, guessArch, radioOf, stlOf, drawingSvg, blockSvg, bomCsv, bomRows, ARCHES, RESINS, PROCESSES, FINISHES, FIXES, SHAPES, ELEC, AGES } from './lab-assembly.js';
@@ -72,6 +73,26 @@ export function registerLabAssemblyRoutes(app, d) {
     const s = archetype(arch, { w: b.w, d: b.d, h: b.h }, { mah: b.mah || null, radio: ['none', 'ble', 'wifi'].includes(b.radio) ? b.radio : radioOf(c), display: b.display, buttons: b.buttons, colour: b.colour });
     s.name = c.name; if (AGES[b.age]) s.age = b.age; else if (c.category === 'toys') s.age = '3+';
     const spec = await save(c, s, actorOf(req)); return { ok: true, spec, eng: read(engineer(spec)) };
+  });
+  // ---- designed from the concept (src/lab-assembly-compose.js), for a product no starting point fits: Claude lays out the parts in the
+  // engine's terms, the checks' problems go back to be fixed, and the result is saved like a start. ASSEMBLY_COMPOSE_FIXTURE (a list of
+  // answers, one per call) stands in for Claude in tests; ENGINEERING_COMPOSE_DAILY (30) caps a day's.
+  const composed = { day: '', n: 0 };
+  app.post('/v1/lab/concepts/:id/assembly/compose', { preHandler: pre }, async (req, reply) => {
+    const c = await concept(req.params.id); if (!c) return bad(reply, 'Not found', 404);
+    let ask = null;
+    if (env.AI_FIXTURE || !env.ANTHROPIC_API_KEY) { let list = null; try { const f = String(env.ASSEMBLY_COMPOSE_FIXTURE || '').trim(); list = f ? JSON.parse(f.startsWith('[') ? f : readFileSync(f, 'utf8')) : null; } catch { list = null; } if (Array.isArray(list) && list.length) { let i = 0; ask = async () => list[Math.min(i++, list.length - 1)]; } }
+    else ask = (system, content, schema) => timed('anthropic', () => askImpl(system, content, schema, { maxTokens: 12000 }));
+    if (!ask) return bad(reply, 'Designing from the concept needs Claude connected', 503);
+    const today = new Date().toISOString().slice(0, 10); if (composed.day !== today) Object.assign(composed, { day: today, n: 0 });
+    if (composed.n >= (Number(env.ENGINEERING_COMPOSE_DAILY) || 30)) return bad(reply, 'Today\'s designs from concepts are used: start from a kind of product instead, or try tomorrow', 429); composed.n++;
+    const photo = (await pool.query('select image from lab_concepts where id=$1', [c.id])).rows[0]?.image || null, b = req.body || {};
+    let out; try { out = await composeAssembly({ concept: { name: c.name, category: c.category, description: c.spec?.description, twist: c.twist, size: [b.w, b.d, b.h].some(Number) ? `about ${[b.w, b.d, b.h].map(v => Number(v) || '?').join(' × ')} mm` : '' }, photo, ask }); }
+    catch (e) { log.warn?.({ err: e.message }, 'assembly compose failed'); return bad(reply, 'The design could not be made: try again', 502); }
+    if (out.status === 'not-a-product') return bad(reply, out.why);
+    const s = out.spec; s.name = c.name; if (c.category === 'toys' && !s.age) s.age = '3+';
+    const spec = await save(c, s, actorOf(req));
+    return { ok: true, spec, eng: read(engineer(spec)), compose: { status: out.status, rounds: out.rounds, why: out.why } };
   });
   // the picture read once per picture (it does not change), then kept; ASSEMBLY_READ_FIXTURE stands in for the model in tests
   const reads = new Map();

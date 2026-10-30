@@ -1334,6 +1334,12 @@ screen, the drawing and the files agree. Routes: `src/lab-assembly-routes.js`; s
 - **Parts that open.** A CD loader's tray, with the disc on it, slides out toward the product's front (`frontOf`: the way its front panel
   looks) as the view pulls apart, so the laser sled on its rails and the spindle show; the exploded STL and drawing show it open.
 - **The board's fixing.** Its mounting holes are cut through (M3 clearance), each with a pan-head screw on a brass hex standoff.
+- **Design it from the concept** (Start from…, `src/lab-assembly-compose.js`): for a product none of the starting points fit (a bike light,
+  a drone, a kettle), Claude lays out every part from the concept's picture and words in the engine's own terms (its shapes, materials,
+  processes, finishes and electronic parts, with its rules for units, placement, walls and draft), so it is checked, wired, costed and
+  certified like any other. What the checks find wrong goes back to be fixed, twice at most; a repair that makes it worse is not taken.
+  The result is saved as a start; the review takes it on from there. `ENGINEERING_COMPOSE_DAILY` (30) caps a day's;
+  `ASSEMBLY_COMPOSE_FIXTURE` stands in for Claude in tests.
 - **Engineering review** (Checks tab, `src/lab-assembly-review.js`): product engineers (Claude, and an OpenAI model when
   `OPENAI_API_KEY` is set; `ENGINEERING_CHECKER=claude|openai|both`) look at the assembly against the concept's picture (or its words) and
   at what a product of its kind needs. They see it assembled and pulled apart (its real parts), its parts list and the engine's read, and

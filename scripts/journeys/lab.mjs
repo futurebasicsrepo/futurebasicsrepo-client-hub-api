@@ -3881,6 +3881,11 @@ await journey('J267', 'Hard goods and electronics are engineered as 3D parts: an
       const nc = await K('/concepts/from-scratch', { body: { category: 'electronics', name: `${nm} ${stamp}` } }), nid = nc.json.concept?.id; made.push(nid);
       const ng = await K(`/concepts/${nid}/assembly`); ok(ng.json.spec?.arch === arch && !ng.json.eng.checks.some(c => c.level === 'bad') && ng.json.eng.harness.length > 0, `6f. "${nm}" opens as a ${arch}, wired and with nothing to fix`, { arch: ng.json.spec?.arch, bad: ng.json.eng?.checks?.filter(c => c.level === 'bad').map(c => c.text) });
     }
+    // designed from the concept: a product no starting point fits (a bike light), laid out by Claude, the thin wall the checks caught fixed
+    const bl = await K('/concepts/from-scratch', { body: { category: 'electronics', name: `Bike front light ${stamp}` } }), blid = bl.json.concept?.id; made.push(blid);
+    const cp = await K(`/concepts/${blid}/assembly/compose`, { body: {} });
+    ok(cp.status === 200 && cp.json.spec.arch === 'custom' && cp.json.spec.parts.length === 14 && cp.json.compose.status === 'clear' && cp.json.compose.rounds.length === 2 && /too thin/.test(cp.json.compose.rounds[0].bad[0]) && !cp.json.eng.checks.some(c => c.level === 'bad'), '6g. designed from the concept: a bike light laid out part by part, the too-thin wall the checks caught sent back and fixed, saved', cp.json.compose);
+    ok((await K(`/concepts/${blid}/assembly`)).json.spec.parts.some(p => p.elec?.kind === 'ledcob') && cp.json.eng.certs.some(c => /IEC 62471/.test(c.name)), '   and it is costed, wired and certified like any other (the LED brings IEC 62471)');
     // into the tech pack and the factory's production package
     const cs = await K(`/concepts/${cdid}/assembly/start`, { body: { arch: 'cdplayer' } }); await K(`/concepts/${cdid}/assembly`, { method: 'PUT', body: { spec: cs.json.spec } });
     ok((await K(`/concepts/${cdid}/assembly/tech-pack`, { body: {} })).status === 409, '6c. before the concept has a tech pack, its engineering has nowhere to go');
