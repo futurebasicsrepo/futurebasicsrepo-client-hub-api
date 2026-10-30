@@ -1309,6 +1309,15 @@ screen, the drawing and the files agree. Routes: `src/lab-assembly-routes.js`; s
   each line named by its bus), the power budget (run time, standby, charge time, Wh; the share of time each part is on can be set), the board
   (size, layers, how full, placements, fab and SMT cost), the USB-C port at the wall, the radio clear of the battery and of metal, the heat
   with everything on, and the certifications to plan for (`src/elec.js`).
+- **Cables.** Every electronic part off the board is wired to what drives it (`harnessOf`): the supply to the board, mains in through the
+  inlet to the supply, a driver to the amplifier, a loader or a display by a flat flex cable, controls and sockets by a small multi-wire
+  lead; each cable is numbered (C1, C2…), typed (wires, gauge, connector), sized (the run with a fifth for slack) and costed. They are on the
+  parts list, in the assembly steps ("Connect C1…") and the time, listed under Assembly → Cables, and drawn in the view as runs between
+  their parts, coloured by what they carry (red power, grey mains, amber flex, white signal, black coax) with their numbers; the **Cables**
+  button shows or hides them. The drawing carries them too.
+- **Parts that open.** A CD loader's tray, with the disc on it, slides out toward the product's front (`frontOf`: the way its front panel
+  looks) as the view pulls apart, so the laser sled on its rails and the spindle show; the exploded STL and drawing show it open.
+- **The board's fixing.** Its mounting holes are cut through (M3 clearance), each with a pan-head screw on a brass hex standoff.
 - **Files** (from the saved assembly): STL assembled, exploded, or one part (mm); the exploded isometric drawing with balloons and the parts
   list (SVG); the parts list (CSV); the block diagram (SVG). The STL and the drawing carry the **parts' real shapes**, the same 3D parts the
   page shows (the driver's basket and cone, the board with its chips and passives, bosses and ribs inside a housing), built on the server

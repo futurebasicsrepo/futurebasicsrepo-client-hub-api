@@ -48,7 +48,7 @@ export function registerLabAssemblyRoutes(app, d) {
     return { c, spec, saved: Boolean(row), updatedAt: row?.updated_at || null };
   }
   const save = async (c, spec, actor) => { const s = cleanAssembly({ ...spec, name: spec.name || c.name }); await pool.query(`insert into lab_assemblies(concept_id, spec, updated_by) values($1,$2,$3) on conflict(concept_id) do update set spec=excluded.spec, updated_by=excluded.updated_by, updated_at=now()`, [c.id, s, actor]); return s; };
-  const read = E => ({ parts: E.parts, tools: E.tools, toolCost: E.toolCost, weeks: E.weeks, checks: E.checks, steps: E.steps, labour: E.labour, unit: E.unit, amort: E.amort, landed: E.landed, mass: E.mass, pcb: E.pcb, power: E.power, certs: E.certs, extent: E.extent, bom: bomRows(E) });
+  const read = E => ({ parts: E.parts, tools: E.tools, toolCost: E.toolCost, weeks: E.weeks, checks: E.checks, steps: E.steps, labour: E.labour, unit: E.unit, amort: E.amort, landed: E.landed, mass: E.mass, pcb: E.pcb, power: E.power, certs: E.certs, extent: E.extent, harness: E.harness, bom: bomRows(E) });
   const options = { archetypes: Object.fromEntries(Object.entries(ARCHES).map(([k, v]) => [k, v])), resins: Object.keys(RESINS), processes: Object.keys(PROCESSES), finishes: FINISHES, fixes: Object.keys(FIXES), shapes: SHAPES, elec: Object.fromEntries(Object.entries(ELEC).map(([k, v]) => [k, v.name])), ages: AGES };
 
   app.get('/v1/lab/concepts/:id/assembly', { preHandler: pre }, async (req, reply) => {
@@ -89,14 +89,14 @@ export function registerLabAssemblyRoutes(app, d) {
   // download of the same product does not build them again); ?simple=1 gives the engineering's plain boxes and shells instead
   const realCache = new Map(), keyOf = (s, ...x) => createHash('sha1').update(JSON.stringify([s.parts, s.name, ...x])).digest('hex');
   const cached = async (k, make) => { if (realCache.has(k)) { const v = realCache.get(k); realCache.delete(k); realCache.set(k, v); return v; } const v = await make(); realCache.set(k, v); while (realCache.size > 12) realCache.delete(realCache.keys().next().value); return v; };
-  const realOf = (s, name) => cached(keyOf(s, 'mesh'), () => realMeshes(s, { name }));
-  const pictureOf = (s, t, name) => cached(keyOf(s, 'pic', t), async () => isoPicture(s, { t, real: await realOf(s, name) }));
+  const realOf = (s, name, t) => cached(keyOf(s, 'mesh', t), () => realMeshes(s, { name, t }));
+  const pictureOf = (s, t, name) => cached(keyOf(s, 'pic', t), async () => isoPicture(s, { t, real: await realOf(s, name, t) }));
   const simple = q => q?.simple === '1' || q?.simple === 'true';
   const tOf = q => Math.min(Math.max(Number(q?.t ?? 0) || 0, 0), 1), slug = c => String(c.name || 'assembly').replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').slice(0, 60) || 'assembly';
   app.get('/v1/lab/concepts/:id/assembly.stl', { preHandler: pre }, async (req, reply) => {
     const L = await load(req.params.id); if (!L) return bad(reply, 'Not found', 404);
     const only = req.query?.part && L.spec.parts.some(p => p.id === req.query.part) ? req.query.part : null;
-    return reply.header('content-disposition', `attachment; filename="${slug(L.c)}${only ? `-${only}` : ''}.stl"`).type('model/stl').send(Buffer.from(stlOf(L.spec, { t: tOf(req.query), only, real: simple(req.query) ? null : await realOf(L.spec, L.c.name) })));
+    return reply.header('content-disposition', `attachment; filename="${slug(L.c)}${only ? `-${only}` : ''}.stl"`).type('model/stl').send(Buffer.from(stlOf(L.spec, { t: tOf(req.query), only, real: simple(req.query) ? null : await realOf(L.spec, L.c.name, tOf(req.query)) })));
   });
   app.get('/v1/lab/concepts/:id/assembly.svg', { preHandler: pre }, async (req, reply) => {
     const L = await load(req.params.id); if (!L) return bad(reply, 'Not found', 404);

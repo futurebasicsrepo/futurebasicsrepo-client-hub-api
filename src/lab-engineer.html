@@ -33,7 +33,7 @@ button,input,select{font:inherit;color:inherit}a{color:inherit}.hidden{display:n
 #view canvas{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:grab}#view canvas:active{cursor:grabbing}
 #tags{position:absolute;inset:0;pointer-events:none}
 #tags b{position:absolute;transform:translate(-50%,-50%);min-width:20px;height:20px;padding:0 5px;border-radius:999px;background:#fff;border:1px solid var(--ink);font:700 11px/18px 'Space Grotesk',sans-serif;text-align:center;pointer-events:auto;cursor:pointer;box-shadow:0 2px 6px rgba(20,20,22,.12)}
-#tags b.on{background:var(--cue);border-color:var(--ok)}#tags b.bad{border-color:var(--bad);color:var(--bad)}
+#tags b.on{background:var(--cue);border-color:var(--ok)}#tags i{position:absolute;transform:translate(-50%,-50%);padding:1px 7px;border-radius:999px;background:#141416;color:#fff;font:600 10.5px/16px 'Space Grotesk',sans-serif;font-style:normal;white-space:nowrap;pointer-events:auto;cursor:default}#tags b.bad{border-color:var(--bad);color:var(--bad)}
 #hint{position:absolute;left:12px;bottom:10px;font-size:11.5px;color:var(--dim);background:rgba(255,255,255,.8);padding:4px 9px;border-radius:999px}
 #fallback{position:absolute;inset:0;display:grid;place-items:center;padding:16px}#fallback img{max-width:100%;max-height:100%;background:#fff;border-radius:12px}
 .side{border-left:1px solid var(--line);background:#fff;display:grid;grid-template-rows:auto auto minmax(0,1fr);max-height:calc(100vh - 56px);min-width:0}
@@ -91,7 +91,7 @@ dialog form{display:grid;gap:10px}
   <div class="wrap" id="main">
     <div class="stage">
       <div class="scrub"><span class="mono">Assembled</span><input type="range" id="t" min="0" max="1" step="0.01" value="0" aria-label="From the assembled product to every part pulled apart"><span class="mono">Exploded</span><span class="lbl" id="tLbl">Assembled</span>
-        <button class="btn sm q" type="button" id="numBtn" aria-pressed="true" title="Show the item numbers on the parts">Numbers</button><button class="btn sm q" type="button" id="xray" aria-pressed="false" title="See through the housings to the parts inside">See inside</button><button class="btn sm q" type="button" id="fit" title="Turn back to the starting view (double-click the view)">Reset view</button></div>
+        <button class="btn sm q" type="button" id="numBtn" aria-pressed="true" title="Show the item numbers on the parts">Numbers</button><button class="btn sm q" type="button" id="cabBtn" aria-pressed="true" title="Show the cables between the parts, each with its number">Cables</button><button class="btn sm q" type="button" id="xray" aria-pressed="false" title="See through the housings to the parts inside">See inside</button><button class="btn sm q" type="button" id="fit" title="Turn back to the starting view (double-click the view)">Reset view</button></div>
       <div id="view"><canvas id="gl" aria-label="The product in 3D: drag to turn, pinch or scroll to zoom, tap a part to choose it"></canvas><div id="tags"></div><div id="hint">Drag to turn · pinch or scroll to zoom · tap a part</div><div id="fallback" class="hidden"></div></div>
     </div>
     <aside class="side">
@@ -111,14 +111,14 @@ dialog form{display:grid;gap:10px}
   <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end"><button class="btn q" type="button" id="sRead" title="Read the kind, size and features from the concept's picture">Read the picture</button><button class="btn q" value="cancel" formnovalidate>Cancel</button><button class="btn go" type="button" id="sGo">Start from this</button></div>
 </form></dialog>
 <script type="module">
-import { engineer, cleanAssembly, cleanPart, explodeOffsets, extentOf, blockSvg, RESINS, SHAPES, ELEC, ARCHES, housingsOf, faceOfPart, compsOnBoard } from '/lab/lab-assembly.js';
+import { engineer, cleanAssembly, cleanPart, explodeOffsets, extentOf, blockSvg, RESINS, SHAPES, ELEC, ARCHES, housingsOf, faceOfPart, compsOnBoard, frontOf, cablePath, CABLE_INK, bomRows } from '/lab/lab-assembly.js';
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)],esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const TOKEN=()=>{try{return localStorage.getItem('fb.admin.token')||localStorage.getItem('fb.client.token')||''}catch{return ''}};
 async function api(path,o={}){const r=await fetch(path,{method:o.method||(o.body?'POST':'GET'),headers:{Authorization:'Bearer '+TOKEN(),...(o.body?{'Content-Type':'application/json'}:{})},body:o.body?JSON.stringify(o.body):undefined});const j=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(new Error(j.error||'Something went wrong'),{status:r.status});return j}
 const toast=m=>{const t=document.createElement('div');t.className='toast';t.setAttribute('role','status');t.textContent=m;document.body.append(t);setTimeout(()=>t.remove(),2800)};
 const CID=new URLSearchParams(location.search).get('concept')||'',HOST=()=>{try{return parent!==window?parent.FBDesign:null}catch{return null}};
 const money=v=>'$'+(v>=1000?Math.round(v).toLocaleString('en-US'):Number(v||0).toFixed(2)),mm=v=>`${Math.round(v*10)/10}`;
-let D=null,SPEC=null,E=null,SEL=null,T=0,TAB='parts',DIRTY=false,NUMS=true,XRAY=false,ANIM=0;
+let D=null,SPEC=null,E=null,SEL=null,T=0,TAB='parts',DIRTY=false,NUMS=true,XRAY=false,CABS=true,ANIM=0;
 
 // ---------- the 3D view: three.js, served from this site, every part drawn as the real thing (src/lab-parts3d.js) ----------
 const V={T:null,r:null,scene:null,cam:null,ctl:null,root:null,kit:null,nodes:new Map(),keys:new Map(),ground:null,sun:null,outline:null,need:true,zoom:1,dir:null};
@@ -157,24 +157,30 @@ const housings=()=>housingsOf(SPEC),faceOf=p=>faceOfPart(SPEC,p),compsOn=b=>comp
 const disposeNode=n=>n.traverse(o=>{if(o.isMesh||o.isInstancedMesh){o.geometry?.dispose?.();for(const m of[].concat(o.material||[]))m.dispose?.()}});
 function syncScene(){
   const byId=Object.fromEntries(SPEC.parts.map(p=>[p.id,p]));
-  for(const p of SPEC.parts){const face=faceOf(p),comps=p.shape==='pcb'?compsOn(p):null,key=JSON.stringify([p.shape,p.axis,p.size,p.wall,p.open,p.r,p.resin,p.finish,p.colour,p.name,p.elec,p.layers,face,comps]);
+  for(const p of SPEC.parts){const face=faceOf(p),comps=p.shape==='pcb'?compsOn(p):null,front=frontOf(SPEC),key=JSON.stringify([p.shape,p.axis,p.size,p.wall,p.open,p.r,p.resin,p.finish,p.colour,p.name,p.elec,p.layers,face,comps,front]);
     if(V.keys.get(p.id)===key)continue;const old=V.nodes.get(p.id);if(old){V.root.remove(old);disposeNode(old)}
-    const n=V.kit.buildPart(p,{face,comps,name:SPEC.name||D?.concept?.name});n.traverse(o=>{if(o.isMesh)for(const m of[].concat(o.material))m.userData.base={t:m.transparent,o:m.opacity,dw:m.depthWrite}});V.root.add(n);V.nodes.set(p.id,n);V.keys.set(p.id,key)}
+    const n=V.kit.buildPart(p,{face,comps,front,name:SPEC.name||D?.concept?.name});n.traverse(o=>{if(o.isMesh)for(const m of[].concat(o.material))m.userData.base={t:m.transparent,o:m.opacity,dw:m.depthWrite}});V.root.add(n);V.nodes.set(p.id,n);V.keys.set(p.id,key)}
   for(const id of[...V.nodes.keys()])if(!byId[id]){const n=V.nodes.get(id);V.root.remove(n);disposeNode(n);V.nodes.delete(id);V.keys.delete(id)}
 }
+// the cables between the parts (E.harness): each run rebuilt as the parts pull apart, coloured by what it carries, a ribbon flat
+function cables(){const T3=V.T;if(!V.cab){V.cab=new T3.Group();V.root.add(V.cab)}for(const o of[...V.cab.children]){V.cab.remove(o);o.geometry.dispose();o.material.dispose()}
+  V.cab.visible=CABS;if(!CABS)return;for(const c of E?.harness||[]){const pts=cablePath(SPEC,c,OFF);if(pts.length<2)continue;const cur=new T3.CatmullRomCurve3(pts.map(q=>new T3.Vector3(...q))),ribbon=c.kind==='ribbon',g=new T3.TubeGeometry(cur,48,ribbon?1.1:c.kind==='mains'?2.2:1.3,ribbon?2:10,false);
+    const m=new T3.MeshPhysicalMaterial({color:CABLE_INK[c.kind]||'#888',roughness:ribbon?.35:.55,metalness:0,clearcoat:ribbon?.4:.15}),o=new T3.Mesh(g,m);o.castShadow=true;o.userData.cable=c.id;V.cab.add(o)}}
 // See inside: the housings go faint so the parts in them show
 function applyLook(){const hs=new Set(housings().map(p=>p.id));for(const[id,n]of V.nodes){const x=XRAY&&hs.has(id);n.traverse(o=>{if(!o.isMesh)return;for(const m of[].concat(o.material)){const b=m.userData.base||{t:m.transparent,o:m.opacity,dw:m.depthWrite};m.transparent=x?true:b.t;m.opacity=x?.14:b.o;m.depthWrite=x?false:b.dw;m.needsUpdate=true}});n.renderOrder=x?2:0}}
 function outline(){const T=V.T;if(V.outline){V.scene.remove(V.outline);V.outline.geometry.dispose();V.outline=null}const p=SEL&&SPEC.parts.find(q=>q.id===SEL);if(!p)return;const o=OFF[p.id]||[0,0,0];V.outline=new T.LineSegments(new T.EdgesGeometry(new T.BoxGeometry(p.size[0]+1.2,p.size[1]+1.2,p.size[2]+1.2)),new T.LineBasicMaterial({color:'#17a35a'}));V.outline.position.set(...p.at.map((v,k)=>v+o[k]));V.scene.add(V.outline)}
 function draw(){
   if(!SPEC)return;OFF=explodeOffsets(SPEC,T);
   if(!V.r){paintTags();return}
-  syncScene();for(const p of SPEC.parts){const n=V.nodes.get(p.id);if(n)n.position.set(...p.at.map((v,k)=>v+(OFF[p.id]?.[k]||0)))}
-  applyLook();outline();if(V.focus)focusOn(V.focus);else frame(false);
+  syncScene();for(const p of SPEC.parts){const n=V.nodes.get(p.id);if(n){n.position.set(...p.at.map((v,k)=>v+(OFF[p.id]?.[k]||0)));n.userData.explode?.(T)}}
+  cables();applyLook();outline();if(V.focus)focusOn(V.focus);else frame(false);
 }
 const badIds=()=>new Set((E?.checks||[]).filter(c=>c.level==='bad').map(c=>c.id));
 function paintTags(){
-  const box=$('#tags');if(!NUMS||!V.cam||!SPEC){box.innerHTML='';return}const bad=badIds(),c=$('#gl'),w=c.clientWidth,h=c.clientHeight,v=new V.T.Vector3();
-  box.innerHTML=SPEC.parts.map((p,i)=>{v.set(...p.at.map((x,k)=>x+(OFF[p.id]?.[k]||0))).project(V.cam);if(v.z>1)return'';return`<b data-p="${esc(p.id)}" class="${p.id===SEL?'on':''}${bad.has(p.id)?' bad':''}" style="left:${((v.x+1)/2*w).toFixed(1)}px;top:${((1-v.y)/2*h).toFixed(1)}px" title="${esc(p.name)}">${i+1}</b>`}).join('');
+  const box=$('#tags');if(!V.cam||!SPEC||!(NUMS||CABS)){box.innerHTML='';return}const bad=badIds(),c=$('#gl'),w=c.clientWidth,h=c.clientHeight,v=new V.T.Vector3();
+  // a cable's label sits at the middle of its run; labels that would land on one another step down until they are clear
+  const placed=[],cab=CABS?(E?.harness||[]).map(c=>{const pts=cablePath(SPEC,c,OFF);if(!pts.length)return'';v.set(...pts[12]).project(V.cam);if(v.z>1)return'';const t=`${c.n} ${c.label}`,lw=t.length*6.4+16,x=(v.x+1)/2*w;let y=(1-v.y)/2*h;for(let k=0;k<12&&placed.some(q=>Math.abs(q.x-x)<(q.w+lw)/2&&Math.abs(q.y-y)<18);k++)y+=18;placed.push({x,y,w:lw});return`<i style="left:${x.toFixed(1)}px;top:${y.toFixed(1)}px" title="${esc(c.type)} · ${c.mm} mm" data-c="${esc(c.id)}">${esc(t)}</i>`}).join(''):'';
+  box.innerHTML=cab+(!NUMS?'':SPEC.parts.map((p,i)=>{v.set(...p.at.map((x,k)=>x+(OFF[p.id]?.[k]||0))).project(V.cam);if(v.z>1)return'';return`<b data-p="${esc(p.id)}" class="${p.id===SEL?'on':''}${bad.has(p.id)?' bad':''}" style="left:${((v.x+1)/2*w).toFixed(1)}px;top:${((1-v.y)/2*h).toFixed(1)}px" title="${esc(p.name)}">${i+1}</b>`}).join(''));
 }
 // a tap on the view: the part the ray meets first
 function pick(x,y){if(!V.r)return null;const T=V.T,c=$('#gl'),rc=new T.Raycaster();rc.setFromCamera(new T.Vector2(x/c.clientWidth*2-1,1-y/c.clientHeight*2),V.cam);for(const h of rc.intersectObjects(V.root.children,true)){let o=h.object;while(o&&!o.userData.id)o=o.parent;if(o)return o.userData.id}return null}
@@ -241,9 +247,10 @@ function paintPane(){
       <section><h4>Certifications to plan for</h4>${E.certs.map(c=>`<div class="find warn" style="cursor:default"><i></i><span><b>${esc(c.name)}</b> · ${esc(c.market)}<br>${esc(c.why)}</span></div>`).join('')}<p class="note">A starting list for whoever books the testing, not advice from a lab.</p></section>`;
     return wireSpecInputs();
   }
-  pane.innerHTML=`<section><h4>Assembly sequence</h4><ol class="steps">${E.steps.map(s=>`<li>${esc(s.replace(/^\d+\. /,''))}</li>`).join('')}</ol></section>
+  const byN=Object.fromEntries(SPEC.parts.map(q=>[q.id,q.name])),cabs=(E.harness||[]).length?`<section><h4>Cables</h4><table class="t"><thead><tr><th>#</th><th>From → to</th><th>Cable</th><th class="r">mm</th><th class="r">Unit</th></tr></thead><tbody>${E.harness.map(c=>`<tr><td>${c.n}</td><td><b>${esc(c.label)}</b><br><span style="color:var(--dim);font-size:11.5px">${esc(byN[c.from]||'')} → ${esc(byN[c.to]||'')}</span></td><td>${esc(c.type)}</td><td class="r">${c.mm}</td><td class="r">$${c.unit.toFixed(2)}</td></tr>`).join('')}</tbody></table></section>`:'';
+  pane.innerHTML=cabs+`<section><h4>Assembly sequence</h4><ol class="steps">${E.steps.map(s=>`<li>${esc(s.replace(/^\d+\. /,''))}</li>`).join('')}</ol></section>
     <section class="card"><div class="g2"><label class="f"><span>Line labour ($ an hour)</span><input type="number" min="1" max="80" step="0.5" data-s="labour" value="${SPEC.labour}" inputmode="decimal"></label><div class="kv" style="align-content:end"><span>Assembly and test</span><b>${E.assemblySecs||'—'} s · ${money(E.labour)}</b></div></div></section>
-    <section><h4>Parts list</h4><table class="t"><thead><tr><th>#</th><th>Part</th><th class="r">Qty</th><th class="r">Unit</th><th class="r">Tool</th></tr></thead><tbody>${E.bom.map(r=>`<tr${byId[r.id]?` data-p="${esc(r.id)}"`:''}><td>${r.item}</td><td>${esc(r.name)}<br><span class="note">${esc([r.material,r.process,r.finish].filter(Boolean).join(' · '))}</span></td><td class="r">${r.qty}</td><td class="r">${money(r.unit)}</td><td class="r">${r.tool?money(r.tool):''}</td></tr>`).join('')}</tbody></table></section>`;
+    <section><h4>Parts list</h4><table class="t"><thead><tr><th>#</th><th>Part</th><th class="r">Qty</th><th class="r">Unit</th><th class="r">Tool</th></tr></thead><tbody>${(E.bom||bomRows(E)).map(r=>`<tr${byId[r.id]?` data-p="${esc(r.id)}"`:''}><td>${r.item}</td><td>${esc(r.name)}<br><span class="note">${esc([r.material,r.process,r.finish].filter(Boolean).join(' · '))}</span></td><td class="r">${r.qty}</td><td class="r">${money(r.unit)}</td><td class="r">${r.tool?money(r.tool):''}</td></tr>`).join('')}</tbody></table></section>`;
   wireSpecInputs();
 }
 // the chosen part, every field it has
@@ -294,6 +301,7 @@ $$('#modeSeg [data-t]').forEach(b=>b.onclick=()=>animateTo(Number(b.dataset.t)))
 $('#play').onclick=()=>animateTo(T>.5?0:1);
 function animateTo(to){cancelAnimationFrame(ANIM);if(matchMedia('(prefers-reduced-motion: reduce)').matches)return setT(to);const from=T,t0=performance.now(),dur=1100;const step=now=>{const k=Math.min(1,(now-t0)/dur),e=k<.5?2*k*k:1-Math.pow(-2*k+2,2)/2;setT(from+(to-from)*e);if(k<1)ANIM=requestAnimationFrame(step)};ANIM=requestAnimationFrame(step);$('#play').textContent=to>.5?'Put it together':'Explode it'}
 $('#numBtn').onclick=()=>{NUMS=!NUMS;$('#numBtn').setAttribute('aria-pressed',String(NUMS));draw()};
+$('#cabBtn').onclick=()=>{CABS=!CABS;$('#cabBtn').setAttribute('aria-pressed',String(CABS));draw()};
 $('#xray').onclick=()=>{XRAY=!XRAY;$('#xray').setAttribute('aria-pressed',String(XRAY));draw()};
 $('#fit').onclick=resetView;
 

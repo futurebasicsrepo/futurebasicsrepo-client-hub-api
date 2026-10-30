@@ -1,14 +1,14 @@
 // The real shapes of an assembly's parts for the files (STL and the exploded drawing): the same three.js parts the Engineering page shows
 // (src/lab-parts3d.js), built on the server without textures, placed by the same rules (src/lab-assembly.js), and read back as triangles.
-//   realMeshes(spec) → { [part id]: [{ tri: Float32Array (x,y,z × 3 per triangle, mm, about the part's centre), colour: '#rrggbb' }] }
+//   realMeshes(spec, { t }) → (a part that opens as the view pulls apart, a CD tray, is opened by t) { [part id]: [{ tri: Float32Array (x,y,z × 3 per triangle, mm, about the part's centre), colour: '#rrggbb' }] }
 //   isoPicture(spec, { t, real }) → { href: a PNG data URL, box } for drawingSvg: the parts pulled apart by t, seen as the drawing sees
 //     them, rendered with a depth buffer (so detail that pokes through another part is hidden properly), lit, with ink lines where one
-//     part meets another or the surface steps away, on a clear ground
+//     part meets another or the surface steps away, on a clear ground; the cables (harnessOf) run between their parts as in the page
 // Decals (printed labels and key symbols: transparent planes laid on a surface) carry no shape and are left out.
 import * as THREE from 'three';
 import { makeKit } from './lab-parts3d.js';
 import sharp from 'sharp';
-import { faceOfPart, compsOnBoard, explodeOffsets, isoOf, isoDepth } from './lab-assembly.js';
+import { faceOfPart, compsOnBoard, frontOf, explodeOffsets, isoOf, isoDepth, harnessOf, cablePath, CABLE_INK } from './lab-assembly.js';
 
 // a part's colour: its material's, tinted by the ground of its texture where it has one (the board's green, a chip's black)
 const hex = m => { const c = new THREE.Color(m?.color ?? '#8a8d90'), ink = m?.map?.userData?.ink; if (ink) c.multiply(new THREE.Color(ink)); return '#' + c.getHexString(THREE.SRGBColorSpace); };
@@ -17,12 +17,12 @@ function trianglesOf(o, M) {
   for (let i = 0; i < n; i++) { v.fromBufferAttribute(pos, idx ? idx.getX(i) : i).applyMatrix4(M); out[i * 3] = v.x; out[i * 3 + 1] = v.y; out[i * 3 + 2] = v.z; }
   return out;
 }
-export function realMeshes(s, { name = '' } = {}) {
-  const kit = makeKit(THREE), out = {}, M = new THREE.Matrix4(), I = new THREE.Matrix4();
+export function realMeshes(s, { name = '', t = 0 } = {}) {
+  const kit = makeKit(THREE), out = {}, front = frontOf(s), M = new THREE.Matrix4(), I = new THREE.Matrix4();
   try {
     for (const p of s.parts) {
-      const node = kit.buildPart(p, { face: faceOfPart(s, p), comps: p.shape === 'pcb' ? compsOnBoard(s, p) : null, name: name || s.name });
-      node.updateMatrixWorld(true); const list = [];
+      const node = kit.buildPart(p, { face: faceOfPart(s, p), comps: p.shape === 'pcb' ? compsOnBoard(s, p) : null, name: name || s.name, front });
+      node.userData.explode?.(t); node.updateMatrixWorld(true); const list = [];
       node.traverse(o => {
         if (!o.isMesh || !o.geometry?.attributes?.position) return;
         const mat = [].concat(o.material)[0]; if (mat?.transparent && mat.opacity >= .99 && mat.map) return; // a decal
@@ -40,9 +40,10 @@ const L1 = [-.45, -.35, .82], L2 = [.6, .7, .25], rgbOf = h => [parseInt(h.slice
 const unit = v => { const l = Math.hypot(...v) || 1; return v.map(x => x / l); }, A = unit(L1), B = unit(L2);
 // fit: the picture's size on the drawing in px (drawingSvg's area is about 520 × 530); it renders at 4× that and keeps 2× for print
 export async function isoPicture(s, { t = 1, real = null, fit = [520, 530] } = {}) {
-  real ||= realMeshes(s); const off = explodeOffsets(s, t), tris = [];
+  real ||= realMeshes(s, { t }); const off = explodeOffsets(s, t), tris = [];
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-  s.parts.forEach((p, pi) => { const at = p.at.map((v, k) => v + off[p.id][k]); for (const m of real[p.id] || []) { const c = rgbOf(m.colour), q = m.tri;
+  const zero = [0, 0, 0], runs = harnessOf(s).map(c => { const g = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(cablePath(s, c, off).map(q => new THREE.Vector3(...q))), 48, c.kind === 'mains' ? 2.2 : c.kind === 'ribbon' ? 1.1 : 1.3, c.kind === 'ribbon' ? 2 : 8, false); return { id: c.id, list: [{ tri: trianglesOf(new THREE.Mesh(g), new THREE.Matrix4()), colour: CABLE_INK[c.kind] || '#888888' }] }; });
+  [...s.parts, ...runs].forEach((p, pi) => { const at = p.at ? p.at.map((v, k) => v + off[p.id][k]) : zero; for (const m of (p.list || real[p.id] || [])) { const c = rgbOf(m.colour), q = m.tri;
     for (let i = 0; i < q.length; i += 9) { const a = [q[i] + at[0], q[i + 1] + at[1], q[i + 2] + at[2]], b = [q[i + 3] + at[0], q[i + 4] + at[1], q[i + 5] + at[2]], d = [q[i + 6] + at[0], q[i + 7] + at[1], q[i + 8] + at[2]];
       const u = b.map((v, k) => v - a[k]), v = d.map((x, k) => x - a[k]), n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]], l = Math.hypot(...n); if (l < 1e-12) continue;
       const nn = n.map(x => x / l), lit = .42 + .5 * Math.abs(nn[0] * A[0] + nn[1] * A[1] + nn[2] * A[2]) + .16 * Math.abs(nn[0] * B[0] + nn[1] * B[1] + nn[2] * B[2]);

@@ -391,6 +391,63 @@ export function compsOnBoard(s, b) {
   const a = AX.indexOf(b.axis || 'z'), xi = [0, 1, 2].find(k => k !== a), Z = [0, 1, 2].map(k => k === a ? 1 : 0), X = [0, 1, 2].map(k => k === xi ? 1 : 0), Y = [Z[1] * X[2] - Z[2] * X[1], Z[2] * X[0] - Z[0] * X[2], Z[0] * X[1] - Z[1] * X[0]], yi = Y.findIndex(v => Math.abs(v) > .5);
   return s.parts.filter(q => q.parent === b.id && q.elec && !['battery', 'speaker'].includes(q.elec.kind)).map(q => { const d = q.at.map((v, k) => v - b.at[k]); return { x: +(d[xi]).toFixed(2), y: +(d[0] * Y[0] + d[1] * Y[1] + d[2] * Y[2]).toFixed(2), w: q.size[xi], d: q.size[yi], kind: q.elec.kind }; });
 }
+// ---- the cables: every part off the board wired to what drives it ---------------------------------------------------------------------------------
+// What each kind is wired with, and to what: the main board, the supply (mains comes in through the inlet), or the amplifier (drivers).
+// cost is the cable assembly at volume, plus per 100 mm of length; the length is the run between the two parts with a fifth for slack.
+const CABLES = {
+  psu: { to: 'board', label: 'DC power', type: '2-wire 18 AWG, JST VH', cost: .3, per: .04, kind: 'power' },
+  iec: { to: 'psu', label: 'Mains in', type: '3-wire 18 AWG, crimped and sleeved', cost: .4, per: .06, kind: 'mains' },
+  battery: { to: 'board', label: 'Battery', type: '2-wire 26 AWG, JST PH', cost: .1, per: .02, kind: 'power' },
+  aa: { to: 'board', label: 'Battery', type: '2-wire 26 AWG, JST PH', cost: .1, per: .02, kind: 'power' },
+  speaker: { to: 'amp', label: 'Speaker', type: '2-wire 24 AWG, JST PH', cost: .1, per: .02, kind: 'power' },
+  woofer: { to: 'amp', label: 'Woofer', type: '2-wire 18 AWG, 6.3 mm spade', cost: .18, per: .03, kind: 'power' },
+  tweeter: { to: 'amp', label: 'Tweeter', type: '2-wire 20 AWG, 2.8 mm spade', cost: .15, per: .03, kind: 'power' },
+  amp2: { to: 'board', label: 'Amplifier', type: '6-wire 22 AWG (12 V, I2S), JST XH', cost: .25, per: .03, kind: 'signal' },
+  cdmech: { to: 'board', label: 'Loader', type: '24-pin FFC, 0.5 mm pitch', cost: .3, per: .03, kind: 'ribbon' },
+  tapemech: { to: 'board', label: 'Transport', type: '8-wire 28 AWG, JST SH', cost: .2, per: .02, kind: 'signal' },
+  vfd: { to: 'board', label: 'Display', type: '20-pin FFC, 1.0 mm pitch', cost: .25, per: .03, kind: 'ribbon' },
+  lcd: { to: 'board', label: 'Display', type: '40-pin FPC, 0.5 mm pitch', cost: .3, per: .03, kind: 'ribbon' },
+  oled: { to: 'board', label: 'Display', type: '24-pin FPC, 0.5 mm pitch', cost: .25, per: .03, kind: 'ribbon' },
+  button: { to: 'board', label: 'Buttons', type: '6-wire 28 AWG, JST SH', cost: .15, per: .02, kind: 'signal' },
+  ir: { to: 'board', label: 'IR receiver', type: '3-wire 28 AWG, JST SH', cost: .1, per: .02, kind: 'signal' },
+  encoder: { to: 'board', label: 'Encoder', type: '5-wire 28 AWG, JST SH', cost: .12, per: .02, kind: 'signal' },
+  pot: { to: 'board', label: 'Volume', type: '3-wire 28 AWG, JST SH', cost: .1, per: .02, kind: 'signal' },
+  jack: { to: 'board', label: 'Headphones', type: '4-wire 28 AWG, JST SH', cost: .1, per: .02, kind: 'signal' },
+  usbc: { to: 'board', label: 'USB-C', type: '6-wire 26 AWG, JST GH', cost: .2, per: .02, kind: 'signal' },
+  rca: { to: 'board', label: 'Line out', type: 'shielded 3-wire 28 AWG, JST SH', cost: .18, per: .03, kind: 'signal' },
+  motor: { to: 'board', label: 'Motor', type: '2-wire 28 AWG, JST SH', cost: .08, per: .02, kind: 'power' },
+  mic: { to: 'board', label: 'Microphone', type: '5-wire 30 AWG, JST SH', cost: .12, per: .02, kind: 'signal' },
+  led: { to: 'board', label: 'LED', type: '4-wire 28 AWG, JST SH', cost: .08, per: .02, kind: 'signal' },
+  antenna: { to: 'board', label: 'Antenna', type: 'U.FL to RP-SMA, 1.13 mm coax', cost: .35, per: .05, kind: 'coax' }
+};
+export const CABLE_INK = { power: '#b3261e', mains: '#3a3d40', signal: '#e8e6df', ribbon: '#c98b2b', coax: '#141416' };
+// a cable's two ends sit on the faces of the parts' boxes that look at each other
+function endOf(p, to) { const d = to.map((v, k) => v - p.at[k]), t = Math.min(...[0, 1, 2].map(k => Math.abs(d[k]) < 1e-9 ? Infinity : p.size[k] / 2 / Math.abs(d[k]))); const at = p.at.map((v, k) => v + d[k] * Math.min(t, 1)), k = [0, 1, 2].reduce((a, b) => Math.abs(d[b]) * p.size[a] > Math.abs(d[a]) * p.size[b] ? b : a, 0); return { at, n: [0, 1, 2].map(i => i === k ? Math.sign(d[k]) || 1 : 0) }; }
+// which way the product faces: the way its front panel (or its display, or its buttons) looks, else toward -y
+export function frontOf(s) {
+  const flat = p => p && Math.abs(p.dir[2]) < .5 && Math.hypot(p.dir[0], p.dir[1]) > .5, p = s.parts.find(q => /front|panel|fascia|bezel/i.test(q.name) && flat(q)) || s.parts.find(q => ['vfd', 'lcd', 'oled', 'button'].includes(q.elec?.kind) && flat(q));
+  return p ? [Math.round(p.dir[0]), Math.round(p.dir[1]), 0] : [0, -1, 0];
+}
+export function harnessOf(s) {
+  if (s.kind !== 'electronics') return [];
+  const byId = Object.fromEntries(s.parts.map(p => [p.id, p])), boards = s.parts.filter(p => p.shape === 'pcb').sort((a, b) => b.size[0] * b.size[1] * b.size[2] - a.size[0] * a.size[1] * a.size[2]), board = boards[0];
+  const onBoard = p => p.parent && byId[p.parent]?.shape === 'pcb', find = k => s.parts.find(q => q.elec?.kind === k && !onBoard(q));
+  const out = [];
+  for (const p of s.parts) {
+    const c = p.elec && CABLES[p.elec.kind]; if (!c || onBoard(p)) continue;
+    const to = c.to === 'psu' ? find('psu') || board : c.to === 'amp' ? find('amp2') || board : board; if (!to || to.id === p.id) continue;
+    const a = endOf(p, to.at), b = endOf(to, p.at), mm = Math.round(Math.hypot(...a.at.map((v, k) => v - b.at[k])) * 1.2 / 10) * 10 + 40;
+    out.push({ id: `cable-${p.id}`, from: p.id, to: to.id, label: c.label, type: c.type, kind: c.kind, mm, unit: r2(c.cost + c.per * mm / 100) });
+  }
+  return out.map((c, i) => ({ ...c, n: `C${i + 1}` }));
+}
+// the cable's run, pulled apart with its parts: a curve leaving each end square to its face, as an assembler routes it (24 points)
+export function cablePath(s, c, off = {}) {
+  const A = s.parts.find(p => p.id === c.from), B = s.parts.find(p => p.id === c.to); if (!A || !B) return [];
+  const mv = p => ({ ...p, at: p.at.map((v, k) => v + (off[p.id]?.[k] || 0)) }), a = endOf(mv(A), mv(B).at), b = endOf(mv(B), mv(A).at), L = Math.hypot(...a.at.map((v, k) => v - b.at[k])), h = Math.max(8, L * .35);
+  const P0 = a.at, P1 = a.at.map((v, k) => v + a.n[k] * h), P2 = b.at.map((v, k) => v + b.n[k] * h), P3 = b.at;
+  return Array.from({ length: 24 }, (_, i) => { const t = i / 23, u = 1 - t; return [0, 1, 2].map(k => u * u * u * P0[k] + 3 * u * u * t * P1[k] + 3 * u * t * t * P2[k] + t * t * t * P3[k]); });
+}
 export function partEng(p, s) {
   const R = RESINS[p.resin], pr = PROCESSES[p.process], v = pr.tool === 'roto' || pr.tool === 'blow' ? Math.min(volumeOf(p), surfaceOf(p) * 2) : volumeOf(p), g = p.resin === 'bought in' ? null : r1(v / 1000 * R.rho), shots = s.volume * p.qty * s.years, A = projectedCm2(p);
   const out = { id: p.id, mass: g, volume: r0(v), tool: null, unit: 0 };
@@ -532,17 +589,19 @@ export function engineer(s0) {
   const pcb = s.kind === 'electronics' ? pcbOf(s) : null, pw = s.kind === 'electronics' ? power(s) : null;
   const seq = [...s.parts].sort((a, b) => a.order - b.order || (a.parent ? 1 : 0) - (b.parent ? 1 : 0)).filter((p, i, a) => !(p.parent && byId[p.parent]?.shape === 'pcb' && p.fix === 'solder' && a.findIndex(x => x.parent === p.parent && x.fix === 'solder') !== i));
   const steps = seq.map((p, i) => { const f = FIXES[p.fix], onBoard = p.parent && byId[p.parent]?.shape === 'pcb' && p.fix === 'solder'; return onBoard ? `${i + 1}. Build the board: reflow the parts on ${byId[p.parent].name.toLowerCase()} (SMT), test it on the fixture` : `${i + 1}. ${f.verb} ${p.qty > 1 ? `${p.qty} × ` : ''}${p.name.toLowerCase()}${p.parent && byId[p.parent] ? ` into ${byId[p.parent].name.toLowerCase()}` : ''}${p.fixQty ? ` (${p.fixQty} screw${p.fixQty > 1 ? 's' : ''})` : ''}`; });
-  const secs = s.parts.reduce((t, p) => t + (p.fix === 'solder' ? 0 : FIXES[p.fix].s * p.qty + p.fixQty * 5), 0) + (s.kind === 'electronics' ? 45 : 15);
-  const labour = r2(secs / 3600 * s.labour), parts$ = parts.reduce((t, x) => t + x.unit * (byId[x.id].qty), 0) + (pcb ? pcb.fab + pcb.smt : 0);
+  const harness = harnessOf(s); harness.forEach(c => steps.push(`${steps.length + 1}. Connect ${c.n}, ${c.label.toLowerCase()} (${c.type}): ${byId[c.from].name.toLowerCase()} to ${byId[c.to].name.toLowerCase()}`));
+  const secs = s.parts.reduce((t, p) => t + (p.fix === 'solder' ? 0 : FIXES[p.fix].s * p.qty + p.fixQty * 5), 0) + (s.kind === 'electronics' ? 45 : 15) + harness.length * 8;
+  const labour = r2(secs / 3600 * s.labour), parts$ = parts.reduce((t, x) => t + x.unit * (byId[x.id].qty), 0) + (pcb ? pcb.fab + pcb.smt : 0) + harness.reduce((t, c) => t + c.unit, 0);
   const unit = r2(parts$ + labour), amort = r2(toolCost / Math.max(1, s.volume));
   const laser = s.parts.some(p => p.elec && ELEC[p.elec.kind].laser) ? [{ name: 'IEC 60825-1 laser product, Class 1', market: 'All markets', why: 'A CD pickup is a laser: the product is labelled Class 1 and the report kept.' }, { name: 'FDA 21 CFR 1040.10 laser product report (CDRH)', market: 'US', why: 'A product with a laser needs a product report filed with the FDA before it is imported.' }] : [];
   const certs = s.kind === 'electronics' ? [...(globalThis.FBElec?.certSuggestions?.(elecFacts(s), s.name) || []), ...laser] : s.age === '0+' || s.age === '3+' ? [{ name: 'ASTM F963', market: 'US', why: 'Toy safety for children under 14.' }, { name: 'CPSIA lead and phthalates, with a CPC', market: 'US', why: 'A children\'s product needs third-party testing and a certificate.' }, { name: 'EN 71-1, -2, -3 and the CE mark', market: 'EU', why: 'Toy Safety Directive 2009/48/EC.' }, { name: 'UKCA (Toys Safety Regulations 2011)', market: 'UK', why: 'Toys sold in Great Britain.' }] : s.parts.some(p => p.food) ? [{ name: 'FDA 21 CFR food contact (resins)', market: 'US', why: 'Parts that touch food or drink.' }, { name: 'EU 10/2011 and LFGB migration tests', market: 'EU, Germany', why: 'Plastics in contact with food.' }, { name: 'Prop 65 (BPA and phthalates)', market: 'California', why: 'A warning or a clean test.' }] : [{ name: 'Prop 65', market: 'California', why: 'A warning or a clean test for listed chemicals.' }, { name: 'REACH SVHC declaration', market: 'EU', why: 'Substances of very high concern.' }];
-  return { spec: s, parts, tools, toolCost, weeks: weeks ? weeks + 2 : 0, checks: dfm(s), steps, labour, assemblySecs: secs, unit, amort, landed: r2(unit + amort), mass: r1(parts.reduce((t, x) => t + (x.mass || 0) * byId[x.id].qty, 0)), pcb, power: pw, certs, extent: extentOf(s.parts).size.map(r1) };
+  return { spec: s, parts, tools, toolCost, weeks: weeks ? weeks + 2 : 0, checks: dfm(s), steps, labour, assemblySecs: secs, unit, amort, landed: r2(unit + amort), mass: r1(parts.reduce((t, x) => t + (x.mass || 0) * byId[x.id].qty, 0)), pcb, power: pw, certs, harness, extent: extentOf(s.parts).size.map(r1) };
 }
 // the parts list as rows, for the page, the drawing and the CSV: item, part, qty, material and process, finish, unit cost, tool
 export function bomRows(E) {
   const byId = Object.fromEntries(E.spec.parts.map(p => [p.id, p])), rows = E.parts.map((x, i) => { const p = byId[x.id]; return { item: i + 1, id: p.id, name: p.name, qty: p.qty, material: p.resin === 'bought in' ? 'Bought in' : p.resin, process: p.process === 'bought in' ? (p.resin === 'bought in' ? '' : 'bought in') : p.process, finish: p.finish === 'none' ? '' : p.finish, colour: p.colour, mass: x.mass, unit: x.unit, tool: x.tool?.cost || 0 }; });
   if (E.pcb) rows.push({ item: rows.length + 1, id: 'pcba', name: `Board assembly (${E.pcb.layers}-layer, ${E.pcb.placements} placements)`, qty: 1, material: 'FR-4', process: 'PCB fab and SMT', finish: '', colour: '', mass: null, unit: r2(E.pcb.fab + E.pcb.smt), tool: 0 });
+  for (const c of E.harness || []) rows.push({ item: rows.length + 1, id: c.id, name: `Cable ${c.n}: ${c.label}, ${c.mm} mm`, qty: 1, material: c.type, process: 'Cable assembly', finish: '', colour: '', mass: null, unit: c.unit, tool: 0 });
   rows.push({ item: rows.length + 1, id: 'labour', name: `Final assembly and test (${E.assemblySecs} s)`, qty: 1, material: '', process: 'Labour', finish: '', colour: '', mass: null, unit: E.labour, tool: 0 });
   return rows;
 }

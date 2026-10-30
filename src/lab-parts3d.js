@@ -164,7 +164,13 @@ export function makeKit(THREE, { maxAniso = 8 } = {}) {
   }
   function pcb(p, [w, d, h], ctx) {
     const comps = ctx.comps || [], tex = boardTex(p.id, w, d, comps, ctx.name), top = std({ map: tex, roughness: .32, clearcoat: .7, clearcoatRoughness: .2 });
-    const bodyG = rbox(w, d, h, p.r ?? .5, 0); return group(mesh(bodyG, [M.mask(), M.fr4()]), plane(w - .05, d - .05, top, h / 2 + .012), (() => { const b = plane(w - .05, d - .05, M.mask('#18492f'), -h / 2 - .012); b.rotation.x = PI; return b; })(), passives(p.id, w, d, comps, h / 2));
+    // the mounting holes are cut through (M3 clearance, 3.2 mm) where the silkscreen rings are, each with a pan-head screw on a brass hex
+    // standoff that the chassis boss would carry
+    const holes = w >= 20 && d >= 20 ? [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([sx, sy]) => [sx * (w / 2 - 3.2), sy * (d / 2 - 3.2)]) : [];
+    const outline = rr(w, d, p.r ?? .5); for (const [x, y] of holes) { const c = new T.Path(); c.absarc(x, y, 1.6, 0, PI * 2, true); outline.holes.push(c); }
+    const g = group(mesh(extrude(outline, h, 0), [M.mask(), M.fr4()]), plane(w - .05, d - .05, top, h / 2 + .012), (() => { const b = plane(w - .05, d - .05, M.mask('#18492f'), -h / 2 - .012); b.rotation.x = PI; return b; })(), passives(p.id, w, d, comps, h / 2));
+    for (const [x, y] of holes) g.add(mesh(lathe([[0, h / 2 + 1.7], [2.2, h / 2 + 1.7], [2.75, h / 2 + 1.1], [2.75, h / 2], [0, h / 2]], 32), M.zinc(), x, y, 0), mesh(new T.BoxGeometry(2.6, .5, .5), M.plastic('#050505', .9), x, y, h / 2 + 1.55), mesh(new T.BoxGeometry(.5, 2.6, .5), M.plastic('#050505', .9), x, y, h / 2 + 1.55), mesh(thread(1.45, h + 4, .5), M.zinc(), x, y, -2), mesh(new T.CylinderGeometry(2.75, 2.75, 5, 6).rotateX(PI / 2), M.brass(), x, y, -h / 2 - 2.5));
+    return g;
   }
   // ---- the electronic parts ----
   const MARK = { mcu: ['STM32G0', '31K8U6'], ble: ['nRF52840', 'QIAA'], wifi: ['ESP32-S3', 'WROOM-1'], dac: ['PCM5102A', ''], amp: ['98357A', ''], amp2: ['TPA3116', 'D2'], charger: ['BQ25180', ''], reg: ['3V3', ''], preamp: ['TA7668', ''], hpamp: ['TPA6132', ''], imu: ['LSM6', ''], env: ['SHT40', ''], ir: ['', ''] };
@@ -290,15 +296,18 @@ export function makeKit(THREE, { maxAniso = 8 } = {}) {
     return g;
   }
   function motor(p, [w, d, h]) { const R = Math.min(w, d) / 2; return group(mesh(rcyl(R * 2, R * 2, h * .7, .3), M.nickel(), 0, 0, -h * .15), mesh(new T.CylinderGeometry(R * .9, R * .9, h * .25, 32, 1, false, 0, PI).rotateX(PI / 2), M.brass(), 0, 0, h / 2 - h * .125)); }
-  function cdLoader(p, [w, d, h]) {
+  // the tray (with the disc on it) slides out toward the product's front as the view pulls apart, so the laser sled on its rails shows
+  function cdLoader(p, [w, d, h], ctx = {}) {
     const g = group(), fH = h * .55, frame = rr(w, d, 2); frame.holes.push(hole(rr(w - 3, d - 3, 1.2)));
     g.add(mesh(extrude(frame, fH, .3), M.zinc(), 0, 0, -h / 2 + fH / 2), mesh(rbox(w, d, 1, 2), M.zinc(), 0, 0, -h / 2 + .5));
-    const tray = rr(w * .9, d * .95, 3); g.add(mesh(extrude(tray, 4, .4), M.plastic('#141416', .45), 0, -d * .02, h / 2 - 6));
+    const trayG = new T.Group(), f = ctx.front || [0, -1, 0], along = Math.abs(f[0]) > Math.abs(f[1]) ? [Math.sign(f[0]), 0] : [0, Math.sign(f[1]) || -1], reach = (along[0] ? w : d) * .8;
+    g.userData.explode = t => trayG.position.set(along[0] * reach * t, along[1] * reach * t, 0); g.add(trayG);
+    const tray = rr(w * .9, d * .95, 3); trayG.add(mesh(extrude(tray, 4, .4), M.plastic('#141416', .45), 0, -d * .02, h / 2 - 6));
     const R = Math.min(60, Math.min(w, d) * .42), cx = 0, cy = -d * .02, cz = h / 2 - 3.4;
-    g.add(mesh(lathe([[R + 1.5, cz - 1.8], [R + 1.5, cz - .6]], 96), M.plastic('#0b0b0c', .6), cx, cy, 0));
+    trayG.add(mesh(lathe([[R + 1.5, cz - 1.8], [R + 1.5, cz - .6]], 96), M.plastic('#0b0b0c', .6), cx, cy, 0));
     const disc = mesh(lathe([[7.5, -.6], [R, -.6], [R, .6], [7.5, .6]], 128), std({ color: '#d9dde2', metalness: 1, roughness: .12, iridescence: 1, iridescenceIOR: 1.6, iridescenceThicknessMinimum: 180, iridescenceThicknessMaximum: 620, clearcoat: 1 }), cx, cy, cz);
     const label = mesh(new T.RingGeometry(R * .38, R * .985, 128), std({ map: labelTex('cdlabel', 1024, 1024, (c, W, H) => { const gr = c.createRadialGradient(W / 2, H / 2, W * .18, W / 2, H / 2, W / 2); gr.addColorStop(0, '#141416'); gr.addColorStop(1, '#2a2d33'); c.fillStyle = gr; c.fillRect(0, 0, W, H); c.fillStyle = '#4bff9a'; c.font = '700 70px Helvetica'; c.textAlign = 'center'; c.fillText('FUTURE BASICS', W / 2, H * .3); c.fillStyle = '#c9ced6'; c.font = '500 40px Helvetica'; c.fillText('COMPACT DISC · DIGITAL AUDIO', W / 2, H * .78); }), roughness: .4 }), cx, cy, cz + .62);
-    g.add(disc, label, mesh(rcyl(15, 15, 1.4, .3), M.glass('#ffffff', .1), cx, cy, cz));
+    trayG.add(disc, label, mesh(rcyl(15, 15, 1.4, .3), M.glass('#ffffff', .1), cx, cy, cz));
     const sx = w * .32, rails = [-1, 1].map(s => between([sx + s * 7, -d * .4, -h / 2 + fH * .6], [sx + s * 7, d * .25, -h / 2 + fH * .6], .9, M.chrome()));
     g.add(...rails, mesh(rbox(16, 12, 6, 1, .3), M.plastic('#1b1c1e', .45), sx, -d * .18, -h / 2 + fH * .6 + 1.5), mesh(new T.SphereGeometry(2.4, 24, 12, 0, PI * 2, 0, PI / 2).rotateX(PI / 2), std({ color: '#2f5bd4', transmission: .7, roughness: .02, metalness: .3, ior: 1.7, thickness: 1, transparent: true }), sx, -d * .18, -h / 2 + fH * .6 + 4.6));
     g.add(mesh(rcyl(14, 14, 10, .4), M.nickel(), cx, cy, -h / 2 + 6), mesh(rcyl(18, 18, 2, .2), std({ color: '#f2f0ea', roughness: .5 }), -w * .36, d * .32, -h / 2 + fH - 3), mesh(new T.BoxGeometry(14, d * .5, .15), M.kapton(), -w * .3, -d * .05, -h / 2 + 1.2));
@@ -321,7 +330,7 @@ export function makeKit(THREE, { maxAniso = 8 } = {}) {
     ble: (p, s) => module_(p, s, 'ble'), wifi: (p, s) => module_(p, s, 'wifi'), mcu: (p, s) => chip(p, s, 'mcu'), dac: (p, s) => chip(p, s, 'dac'), amp: (p, s) => chip(p, s, 'amp'), charger: (p, s) => chip(p, s, 'charger'), reg: (p, s) => chip(p, s, 'reg'),
     preamp: (p, s) => chip(p, s, 'preamp'), hpamp: (p, s) => chip(p, s, 'hpamp'), imu: (p, s) => chip(p, s, 'imu'), env: (p, s) => chip(p, s, 'env'), usbc, led, button: tact, mic, battery: pouch, aa: aaHolder,
     speaker: (p, s) => driver(p, s), woofer: (p, s) => driver(p, s), tweeter: (p, s) => driver(p, s, true), amp2, psu, iec, rca, jack, encoder, pot: wheel, ir: irRx, vfd: (p, s) => screen(p, s, 'vfd'), oled: (p, s) => screen(p, s, 'oled'), lcd: (p, s) => screen(p, s, 'lcd'),
-    motor, cdmech: cdLoader, tapemech: tapeTransport, antenna
+    motor, cdmech: (p, s, c) => cdLoader(p, s, c), tapemech: tapeTransport, antenna
   };
   // ---- the mechanical parts ----
   function housing(p, [w, d, h], m) {
@@ -359,10 +368,10 @@ export function makeKit(THREE, { maxAniso = 8 } = {}) {
     const face = ctx.face || { axis: p.axis || 'z', sign: p.shape !== 'pcb' && p.open === '-' && !p.elec ? 1 : 1 }, { m, dims } = frameOf(p, face);
     let inner = null;
     if (p.shape === 'pcb') inner = pcb(p, dims, ctx);
-    else if (p.elec && ELEC[p.elec.kind]) inner = ELEC[p.elec.kind](p, dims);
+    else if (p.elec && ELEC[p.elec.kind]) { const f = ctx.front && new T.Vector3(...ctx.front).applyMatrix4(new T.Matrix4().copy(m).invert()); inner = ELEC[p.elec.kind](p, dims, { front: f && [f.x, f.y, f.z] }); }
     if (!inner) inner = mech(p, dims) || group(mesh(rbox(...dims, 1), matOf(p)));
     inner.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
-    const outer = new T.Group(); inner.setRotationFromMatrix(m); outer.add(inner); outer.userData.id = p.id; return outer;
+    const outer = new T.Group(); inner.setRotationFromMatrix(m); outer.add(inner); outer.userData.id = p.id; if (inner.userData.explode) outer.userData.explode = inner.userData.explode; return outer;
   }
   return { buildPart, matOf, dispose() { for (const t of texCache.values()) t.dispose(); texCache.clear(); } };
 }
