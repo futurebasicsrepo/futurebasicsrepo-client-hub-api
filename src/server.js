@@ -804,6 +804,15 @@ app.get('/lab/lab-pattern.js', (_req, reply) => reply.header('cache-control', 'n
 // the engineering page (hard goods and electronics) runs inside Design in the same frame as the pattern; its engineering is shared (src/lab-assembly.js)
 app.get('/lab/engineer', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').header('content-security-policy', "upgrade-insecure-requests; default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'self'; base-uri 'self'; form-action 'self'").type('text/html').send(readFileSync(new URL('./lab-engineer.html', import.meta.url), 'utf8')));
 app.get('/lab/lab-assembly.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-assembly.js', import.meta.url), 'utf8')));
+app.get('/lab/lab-parts3d.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-parts3d.js', import.meta.url), 'utf8')));
+// three.js for the engineering page's 3D view, from this site (the pages load no outside scripts): the build and the few addons it imports
+const THREE_DIR = new URL('../node_modules/three/', import.meta.url);
+app.get('/lab/vendor/three/*', (req, reply) => {
+  const rel = String(req.params['*'] || '');
+  if (!/^(build\/three\.(module|core)\.js|examples\/jsm\/(controls|environments|utils)\/[A-Za-z0-9]+\.js)$/.test(rel)) return reply.code(404).send({ error: 'Not found' });
+  let body; try { body = readFileSync(new URL(rel, THREE_DIR), 'utf8'); } catch { return reply.code(404).send({ error: 'Not found' }); }
+  return reply.header('cache-control', 'public, max-age=2592000, immutable').type('application/javascript; charset=utf-8').send(body);
+});
 app.get('/lab/lab-flats.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-flats.js', import.meta.url), 'utf8')));
 app.get('/lab/flats.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-flats.js', import.meta.url), 'utf8')));
 // the flat-sketch pack is large (nearly 400 sketches, their measurements and the add-on parts), so the text files go gzipped to any browser that takes it

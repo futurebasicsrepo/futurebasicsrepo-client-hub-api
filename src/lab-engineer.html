@@ -9,6 +9,7 @@
 (function(){var q=new URLSearchParams(location.search);if(q.get('embed')||window.top!==window){document.documentElement.dataset.embed='full';return}
 var c=q.get('concept')||'';location.replace('/lab/studio'+(/^[0-9a-f-]{36}$/i.test(c)?'?concept='+c+'&view=pattern':''))})()</script>
 <link rel="icon" href="/icons/icon-192.png">
+<script type="importmap">{"imports":{"three":"/lab/vendor/three/build/three.module.js","three/addons/":"/lab/vendor/three/examples/jsm/"}}</script>
 <script src="/elec.js"></script>
 <style>
 @import url('/fonts/fonts.css');
@@ -81,6 +82,7 @@ dialog form{display:grid;gap:10px}
         <button type="button" data-dl="stl1">STL, exploded<small>The parts pulled apart</small></button>
         <button type="button" data-dl="stlp" id="dlPart">STL, the chosen part<small>Pick a part first</small></button>
         <button type="button" data-dl="svg">Exploded drawing (SVG)<small>Ballooned parts and the parts list, for the tech pack</small></button>
+        <button type="button" data-dl="png">Picture of this view (PNG)<small>The 3D view as it is now, for a deck or a message</small></button>
         <button type="button" data-dl="csv">Parts list (CSV)<small>Materials, processes, unit and tool costs</small></button>
         <button type="button" data-dl="blk" id="dlBlk">Block diagram (SVG)<small>Power, the main chip and what it drives</small></button>
       </div></div>
@@ -109,7 +111,7 @@ dialog form{display:grid;gap:10px}
   <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end"><button class="btn q" type="button" id="sRead" title="Read the kind, size and features from the concept's picture">Read the picture</button><button class="btn q" value="cancel" formnovalidate>Cancel</button><button class="btn go" type="button" id="sGo">Start from this</button></div>
 </form></dialog>
 <script type="module">
-import { engineer, cleanAssembly, cleanPart, meshOf, explodeOffsets, extentOf, blockSvg, RESINS, SHAPES, ELEC, ARCHES } from '/lab/lab-assembly.js';
+import { engineer, cleanAssembly, cleanPart, explodeOffsets, extentOf, blockSvg, RESINS, SHAPES, ELEC, ARCHES } from '/lab/lab-assembly.js';
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)],esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const TOKEN=()=>{try{return localStorage.getItem('fb.admin.token')||localStorage.getItem('fb.client.token')||''}catch{return ''}};
 async function api(path,o={}){const r=await fetch(path,{method:o.method||(o.body?'POST':'GET'),headers:{Authorization:'Bearer '+TOKEN(),...(o.body?{'Content-Type':'application/json'}:{})},body:o.body?JSON.stringify(o.body):undefined});const j=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(new Error(j.error||'Something went wrong'),{status:r.status});return j}
@@ -118,80 +120,86 @@ const CID=new URLSearchParams(location.search).get('concept')||'',HOST=()=>{try{
 const money=v=>'$'+(v>=1000?Math.round(v).toLocaleString('en-US'):Number(v||0).toFixed(2)),mm=v=>`${Math.round(v*10)/10}`;
 let D=null,SPEC=null,E=null,SEL=null,T=0,TAB='parts',DIRTY=false,NUMS=true,XRAY=false,ANIM=0;
 
-// ---------- the 3D view (WebGL, no outside scripts) ----------
-const V={yaw:-.75,pitch:.5,dist:1,gl:null,prog:null,bufs:new Map()};
-function initGl(){
-  const c=$('#gl'),gl=c.getContext('webgl',{antialias:true,premultipliedAlpha:false})||c.getContext('experimental-webgl');if(!gl)return false;
-  const sh=(t,s)=>{const o=gl.createShader(t);gl.shaderSource(o,s);gl.compileShader(o);return o};
-  const vs=`attribute vec3 p;attribute vec3 n;uniform mat4 m;uniform vec3 off;varying vec3 vn;varying vec3 vp;void main(){vec3 w=p+off;vn=n;vp=w;gl_Position=m*vec4(w,1.);}`;
-  const fs=`precision mediump float;varying vec3 vn;varying vec3 vp;uniform vec3 col;uniform float a;uniform vec3 eye;uniform float hi;void main(){vec3 N=normalize(vn);vec3 L1=normalize(vec3(-.4,-.6,.9));vec3 V=normalize(eye-vp);float d=abs(dot(N,L1))*.55+abs(dot(N,V))*.35+.22;float s=pow(max(abs(dot(N,normalize(L1+V))),0.),40.)*.18;vec3 c=col*d+s;c=mix(c,vec3(.29,1.,.6),hi*.45);gl_FragColor=vec4(c,a);}`;
-  const pr=gl.createProgram();gl.attachShader(pr,sh(gl.VERTEX_SHADER,vs));gl.attachShader(pr,sh(gl.FRAGMENT_SHADER,fs));gl.linkProgram(pr);if(!gl.getProgramParameter(pr,gl.LINK_STATUS))return false;
-  V.gl=gl;V.prog=pr;gl.enable(gl.DEPTH_TEST);gl.clearColor(0,0,0,0);return true;
-}
-// each part's triangles with a flat normal per face; built once per part shape and moved by its explode offset in the shader
-function bufferFor(p){
-  const key=JSON.stringify([p.shape,p.axis,p.size,p.at,p.wall,p.open,p.r]),old=V.bufs.get(p.id);if(old&&old.key===key)return old;
-  const gl=V.gl,m=meshOf(p),n=new Float32Array(m.length);
-  for(let i=0;i<m.length;i+=9){const u=[m[i+3]-m[i],m[i+4]-m[i+1],m[i+5]-m[i+2]],v=[m[i+6]-m[i],m[i+7]-m[i+1],m[i+8]-m[i+2]],c=[u[1]*v[2]-u[2]*v[1],u[2]*v[0]-u[0]*v[2],u[0]*v[1]-u[1]*v[0]],l=Math.hypot(...c)||1;for(let k=0;k<3;k++)n.set([c[0]/l,c[1]/l,c[2]/l],i+k*3)}
-  if(old){gl.deleteBuffer(old.pb);gl.deleteBuffer(old.nb)}
-  const pb=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,pb);gl.bufferData(gl.ARRAY_BUFFER,m,gl.STATIC_DRAW);const nb=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,nb);gl.bufferData(gl.ARRAY_BUFFER,n,gl.STATIC_DRAW);
-  const b={key,pb,nb,count:m.length/3};V.bufs.set(p.id,b);return b;
-}
-const hex3=h=>{const n=parseInt(h.slice(1),16);return[(n>>16&255)/255,(n>>8&255)/255,(n&255)/255]};
-function camera(){
-  // framed on the parts where they are now (pulled apart or not), so an exploded product stays in view
-  const c=$('#gl'),w=c.clientWidth,h=c.clientHeight,lo=[Infinity,Infinity,Infinity],hi=[-Infinity,-Infinity,-Infinity];
-  for(const p of SPEC.parts){const o=OFF[p.id]||[0,0,0];for(let k=0;k<3;k++){lo[k]=Math.min(lo[k],p.at[k]+o[k]-p.size[k]/2);hi[k]=Math.max(hi[k],p.at[k]+o[k]+p.size[k]/2)}}
-  const tgt=lo.map((v,k)=>(v+hi[k])/2),R=Math.hypot(...hi.map((v,k)=>v-lo[k]))*1.05*V.dist/Math.min(1,Math.max(.55,w/Math.max(h,1))),cy=Math.cos(V.pitch);
-  const eye=[tgt[0]+R*cy*Math.cos(V.yaw),tgt[1]+R*cy*Math.sin(V.yaw),tgt[2]+R*Math.sin(V.pitch)],f=norm(sub(tgt,eye)),s=norm(cross(f,[0,0,1])),u=cross(s,f);
-  const view=[s[0],u[0],-f[0],0,s[1],u[1],-f[1],0,s[2],u[2],-f[2],0,-dot(s,eye),-dot(u,eye),dot(f,eye),1],fov=.75,a=w/Math.max(h,1),near=R/50,far=R*20,t=1/Math.tan(fov/2);
-  const proj=[t/a,0,0,0,0,t,0,0,0,0,(far+near)/(near-far),-1,0,0,2*far*near/(near-far),0];return{eye,m:mul(proj,view),w,h,s,u,f,t,a};
-}
-const sub=(a,b)=>a.map((v,i)=>v-b[i]),dot=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2],cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]],norm=a=>{const l=Math.hypot(...a)||1;return a.map(v=>v/l)};
-function mul(a,b){const o=new Array(16).fill(0);for(let c=0;c<4;c++)for(let r=0;r<4;r++)for(let k=0;k<4;k++)o[c*4+r]+=a[k*4+r]*b[c*4+k];return o}
-const project=(cam,q)=>{const m=cam.m,x=m[0]*q[0]+m[4]*q[1]+m[8]*q[2]+m[12],y=m[1]*q[0]+m[5]*q[1]+m[9]*q[2]+m[13],w=m[3]*q[0]+m[7]*q[1]+m[11]*q[2]+m[15];return w<=0?null:[(x/w*.5+.5)*cam.w,(1-(y/w*.5+.5))*cam.h]};
+// ---------- the 3D view: three.js, served from this site, every part drawn as the real thing (src/lab-parts3d.js) ----------
+const V={T:null,r:null,scene:null,cam:null,ctl:null,root:null,kit:null,nodes:new Map(),keys:new Map(),ground:null,sun:null,outline:null,need:true,zoom:1,dir:null};
 let OFF={};
+async function initGl(){
+  try{
+    const T=await import('three'),{OrbitControls}=await import('three/addons/controls/OrbitControls.js'),{RoomEnvironment}=await import('three/addons/environments/RoomEnvironment.js'),{makeKit}=await import('/lab/lab-parts3d.js');
+    const c=$('#gl'),r=new T.WebGLRenderer({canvas:c,antialias:true,alpha:true});
+    r.setPixelRatio(Math.min(devicePixelRatio||1,2));r.toneMapping=T.ACESFilmicToneMapping;r.toneMappingExposure=1.05;r.outputColorSpace=T.SRGBColorSpace;r.shadowMap.enabled=true;r.shadowMap.type=T.PCFShadowMap;
+    const scene=new T.Scene(),pm=new T.PMREMGenerator(r);scene.environment=pm.fromScene(new RoomEnvironment(),.04).texture;scene.environmentIntensity=.9;
+    const cam=new T.PerspectiveCamera(32,1,1,50000);cam.up.set(0,0,1);
+    const sun=new T.DirectionalLight('#ffffff',1.7);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);sun.shadow.bias=-.0003;sun.shadow.normalBias=.5;sun.shadow.radius=4;scene.add(sun,sun.target,new T.HemisphereLight('#ffffff','#d6d2ca',.35));
+    const ground=new T.Mesh(new T.PlaneGeometry(1,1),new T.ShadowMaterial({opacity:.2}));ground.receiveShadow=true;scene.add(ground);
+    const root=new T.Group();scene.add(root);
+    const ctl=new OrbitControls(cam,c);ctl.enableDamping=true;ctl.dampingFactor=.09;ctl.screenSpacePanning=true;ctl.addEventListener('change',()=>{V.need=true});ctl.addEventListener('end',()=>{const f=fitDist();if(f)V.zoom=cam.position.distanceTo(ctl.target)/f});
+    Object.assign(V,{T,r,scene,cam,ctl,root,ground,sun,kit:makeKit(T,{maxAniso:Math.min(8,r.capabilities.getMaxAnisotropy())})});
+    const loop=()=>{requestAnimationFrame(loop);const moved=ctl.update();if(moved||V.need){V.need=false;resize();r.render(scene,cam);paintTags()}};loop();
+    return true;
+  }catch(e){console.warn('3D view',e);return false}
+}
+function resize(){const c=$('#gl'),w=c.clientWidth,h=c.clientHeight;if(!w||!h)return;const s=V.r.getSize(new V.T.Vector2());if(s.x!==w||s.y!==h){V.r.setSize(w,h,false);V.cam.aspect=w/h;V.cam.updateProjectionMatrix()}}
+// where the parts are now (pulled apart or not): the camera, the shadow and the ground follow it
+function boundsNow(){const lo=[Infinity,Infinity,Infinity],hi=[-Infinity,-Infinity,-Infinity];for(const p of SPEC.parts){const o=OFF[p.id]||[0,0,0];for(let k=0;k<3;k++){lo[k]=Math.min(lo[k],p.at[k]+o[k]-p.size[k]/2);hi[k]=Math.max(hi[k],p.at[k]+o[k]+p.size[k]/2)}}return{lo,hi,c:lo.map((v,k)=>(v+hi[k])/2),r:Math.hypot(...hi.map((v,k)=>v-lo[k]))/2||50}}
+function fitDist(){if(!V.cam)return 0;const b=boundsNow(),v=V.cam.fov*Math.PI/180,h=2*Math.atan(Math.tan(v/2)*(V.cam.aspect||1));return b.r/Math.sin(Math.min(v,h)/2)*1.04}
+function frame(reset){
+  const T=V.T,b=boundsNow(),c=new T.Vector3(...b.c);resize();
+  // the first view looks across the way the parts pull apart: from the side for a product that explodes front to back, from the front-left for one that explodes sideways, from above at an angle for one that explodes upward
+  const w=[0,0,0];for(const p of SPEC.parts)for(let k=0;k<3;k++)w[k]+=Math.abs(p.dir[k])*Math.abs(p.lvl);const dom=w.indexOf(Math.max(...w)),[yaw,pitch]=dom===1?[-.28,.38]:dom===0?[-1.3,.4]:[-.75,.5];
+  const dir=reset||!V.dir?new T.Vector3(Math.cos(pitch)*Math.cos(yaw),Math.cos(pitch)*Math.sin(yaw),Math.sin(pitch)):V.cam.position.clone().sub(V.ctl.target).normalize();V.dir=true;
+  V.ctl.target.copy(c);V.cam.position.copy(c).addScaledVector(dir,fitDist()*V.zoom);V.cam.near=b.r/40;V.cam.far=b.r*60;V.cam.updateProjectionMatrix();
+  V.ground.position.set(b.c[0],b.c[1],b.lo[2]-.3);V.ground.scale.set(b.r*10,b.r*10,1);
+  V.sun.position.set(b.c[0]-b.r*1.2,b.c[1]-b.r*2,b.c[2]+b.r*3.2);V.sun.target.position.copy(c);const sc=V.sun.shadow.camera;sc.left=sc.bottom=-b.r*1.4;sc.right=sc.top=b.r*1.4;sc.near=b.r*.5;sc.far=b.r*8;sc.updateProjectionMatrix();V.need=true;
+}
+// which way a part faces: a socket toward the nearest outside wall, a part on a board away from the board, the rest by how it explodes
+const PORTS=new Set(['usbc','iec','rca','jack','antenna']),AX=['x','y','z'];
+function housings(){const all=extentOf(SPEC.parts).size.reduce((a,b)=>a*b,1);return SPEC.parts.filter(q=>['shell','cup'].includes(q.shape)&&!RESINS[q.resin]?.clear&&q.size[0]*q.size[1]*q.size[2]>=all*.2)}
+function faceOf(p,byId){
+  if(p.elec&&PORTS.has(p.elec.kind)){const hs=housings(),e=extentOf(hs.length?hs:SPEC.parts);let best=null;for(let k=0;k<3;k++)for(const s of[-1,1]){const g=s>0?e.hi[k]-(p.at[k]+p.size[k]/2):(p.at[k]-p.size[k]/2)-e.lo[k];if(!best||g<best.g)best={g,axis:AX[k],sign:s}}return{axis:best.axis,sign:best.sign}}
+  const par=p.parent&&byId[p.parent];if(par&&par.shape==='pcb'&&p.elec){const a=AX.indexOf(par.axis||'z');return{axis:par.axis||'z',sign:p.at[a]>=par.at[a]?1:-1}}
+  if(p.elec||/screw/i.test(p.name)){const k=p.dir.findIndex(v=>Math.abs(v)>.9);if(k>=0)return{axis:AX[k],sign:Math.sign(p.dir[k])}}
+  return{axis:p.axis||'z',sign:1};
+}
+// the parts on a board, in the board's own frame, so its traces, pads and silkscreen are drawn under them
+function compsOn(b,byId){const a=AX.indexOf(b.axis||'z'),xi=[0,1,2].find(k=>k!==a),Z=[0,1,2].map(k=>k===a?1:0),X=[0,1,2].map(k=>k===xi?1:0),Y=[Z[1]*X[2]-Z[2]*X[1],Z[2]*X[0]-Z[0]*X[2],Z[0]*X[1]-Z[1]*X[0]],yi=Y.findIndex(v=>Math.abs(v)>.5);
+  return SPEC.parts.filter(q=>q.parent===b.id&&q.elec&&!['battery','speaker'].includes(q.elec.kind)).map(q=>{const d=q.at.map((v,k)=>v-b.at[k]);return{x:+(d[xi]).toFixed(2),y:+(d[0]*Y[0]+d[1]*Y[1]+d[2]*Y[2]).toFixed(2),w:q.size[xi],d:q.size[yi],kind:q.elec.kind}})}
+const disposeNode=n=>n.traverse(o=>{if(o.isMesh||o.isInstancedMesh){o.geometry?.dispose?.();for(const m of[].concat(o.material||[]))m.dispose?.()}});
+function syncScene(){
+  const byId=Object.fromEntries(SPEC.parts.map(p=>[p.id,p]));
+  for(const p of SPEC.parts){const face=faceOf(p,byId),comps=p.shape==='pcb'?compsOn(p,byId):null,key=JSON.stringify([p.shape,p.axis,p.size,p.wall,p.open,p.r,p.resin,p.finish,p.colour,p.name,p.elec,p.layers,face,comps]);
+    if(V.keys.get(p.id)===key)continue;const old=V.nodes.get(p.id);if(old){V.root.remove(old);disposeNode(old)}
+    const n=V.kit.buildPart(p,{face,comps,name:SPEC.name||D?.concept?.name});n.traverse(o=>{if(o.isMesh)for(const m of[].concat(o.material))m.userData.base={t:m.transparent,o:m.opacity,dw:m.depthWrite}});V.root.add(n);V.nodes.set(p.id,n);V.keys.set(p.id,key)}
+  for(const id of[...V.nodes.keys()])if(!byId[id]){const n=V.nodes.get(id);V.root.remove(n);disposeNode(n);V.nodes.delete(id);V.keys.delete(id)}
+}
+// See inside: the housings go faint so the parts in them show
+function applyLook(){const hs=new Set(housings().map(p=>p.id));for(const[id,n]of V.nodes){const x=XRAY&&hs.has(id);n.traverse(o=>{if(!o.isMesh)return;for(const m of[].concat(o.material)){const b=m.userData.base||{t:m.transparent,o:m.opacity,dw:m.depthWrite};m.transparent=x?true:b.t;m.opacity=x?.14:b.o;m.depthWrite=x?false:b.dw;m.needsUpdate=true}});n.renderOrder=x?2:0}}
+function outline(){const T=V.T;if(V.outline){V.scene.remove(V.outline);V.outline.geometry.dispose();V.outline=null}const p=SEL&&SPEC.parts.find(q=>q.id===SEL);if(!p)return;const o=OFF[p.id]||[0,0,0];V.outline=new T.LineSegments(new T.EdgesGeometry(new T.BoxGeometry(p.size[0]+1.2,p.size[1]+1.2,p.size[2]+1.2)),new T.LineBasicMaterial({color:'#17a35a'}));V.outline.position.set(...p.at.map((v,k)=>v+o[k]));V.scene.add(V.outline)}
 function draw(){
   if(!SPEC)return;OFF=explodeOffsets(SPEC,T);
-  if(!V.gl){paintTags(null);return}
-  const gl=V.gl,c=$('#gl'),dpr=Math.min(devicePixelRatio||1,2),W=Math.round(c.clientWidth*dpr),H=Math.round(c.clientHeight*dpr);if(c.width!==W||c.height!==H){c.width=W;c.height=H}
-  gl.viewport(0,0,W,H);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);const cam=camera(),pr=V.prog;gl.useProgram(pr);
-  gl.uniformMatrix4fv(gl.getUniformLocation(pr,'m'),false,new Float32Array(cam.m));gl.uniform3fv(gl.getUniformLocation(pr,'eye'),cam.eye);
-  const P=gl.getAttribLocation(pr,'p'),N=gl.getAttribLocation(pr,'n');gl.enableVertexAttribArray(P);gl.enableVertexAttribArray(N);
-  const clear=p=>RESINS[p.resin]?.clear||(XRAY&&(p.shape==='shell'||p.shape==='cup')&&!p.elec);
-  const one=p=>{const b=bufferFor(p);gl.bindBuffer(gl.ARRAY_BUFFER,b.pb);gl.vertexAttribPointer(P,3,gl.FLOAT,false,0,0);gl.bindBuffer(gl.ARRAY_BUFFER,b.nb);gl.vertexAttribPointer(N,3,gl.FLOAT,false,0,0);
-    gl.uniform3fv(gl.getUniformLocation(pr,'off'),OFF[p.id]||[0,0,0]);gl.uniform3fv(gl.getUniformLocation(pr,'col'),hex3(p.colour));gl.uniform1f(gl.getUniformLocation(pr,'a'),clear(p)?(XRAY&&!RESINS[p.resin]?.clear?.22:.5):1);gl.uniform1f(gl.getUniformLocation(pr,'hi'),p.id===SEL?1:0);gl.drawArrays(gl.TRIANGLES,0,b.count)};
-  gl.disable(gl.BLEND);gl.depthMask(true);for(const p of SPEC.parts)if(!clear(p))one(p);
-  gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);gl.depthMask(false);for(const p of SPEC.parts)if(clear(p))one(p);gl.depthMask(true);
-  for(const id of [...V.bufs.keys()])if(!SPEC.parts.some(p=>p.id===id)){const b=V.bufs.get(id);gl.deleteBuffer(b.pb);gl.deleteBuffer(b.nb);V.bufs.delete(id)}
-  paintTags(cam);
+  if(!V.r){paintTags();return}
+  syncScene();for(const p of SPEC.parts){const n=V.nodes.get(p.id);if(n)n.position.set(...p.at.map((v,k)=>v+(OFF[p.id]?.[k]||0)))}
+  applyLook();outline();if(V.focus)focusOn(V.focus);else frame(false);
 }
 const badIds=()=>new Set((E?.checks||[]).filter(c=>c.level==='bad').map(c=>c.id));
-function paintTags(cam){
-  const box=$('#tags');if(!NUMS||!cam){box.innerHTML='';return}const bad=badIds();
-  box.innerHTML=SPEC.parts.map((p,i)=>{const q=project(cam,p.at.map((v,k)=>v+(OFF[p.id]?.[k]||0)));return q?`<b data-p="${esc(p.id)}" class="${p.id===SEL?'on':''}${bad.has(p.id)?' bad':''}" style="left:${q[0].toFixed(1)}px;top:${q[1].toFixed(1)}px" title="${esc(p.name)}">${i+1}</b>`:''}).join('');
+function paintTags(){
+  const box=$('#tags');if(!NUMS||!V.cam||!SPEC){box.innerHTML='';return}const bad=badIds(),c=$('#gl'),w=c.clientWidth,h=c.clientHeight,v=new V.T.Vector3();
+  box.innerHTML=SPEC.parts.map((p,i)=>{v.set(...p.at.map((x,k)=>x+(OFF[p.id]?.[k]||0))).project(V.cam);if(v.z>1)return'';return`<b data-p="${esc(p.id)}" class="${p.id===SEL?'on':''}${bad.has(p.id)?' bad':''}" style="left:${((v.x+1)/2*w).toFixed(1)}px;top:${((1-v.y)/2*h).toFixed(1)}px" title="${esc(p.name)}">${i+1}</b>`}).join('');
 }
-// a tap on the view: the smallest part whose box the ray goes through (so a part inside a housing can be chosen through it)
-function pick(x,y){
-  if(!V.gl)return null;const cam=camera(),nx=(x/cam.w)*2-1,ny=1-(y/cam.h)*2,dir=norm([cam.f[0]+cam.s[0]*nx*cam.a/cam.t+cam.u[0]*ny/cam.t,cam.f[1]+cam.s[1]*nx*cam.a/cam.t+cam.u[1]*ny/cam.t,cam.f[2]+cam.s[2]*nx*cam.a/cam.t+cam.u[2]*ny/cam.t]);
-  let best=null;for(const p of SPEC.parts){const o=OFF[p.id]||[0,0,0],lo=p.size.map((s,k)=>p.at[k]+o[k]-s/2),hi=p.size.map((s,k)=>p.at[k]+o[k]+s/2);let t0=-Infinity,t1=Infinity;
-    for(let k=0;k<3;k++){if(Math.abs(dir[k])<1e-9){if(cam.eye[k]<lo[k]||cam.eye[k]>hi[k]){t0=Infinity;break}continue}const a=(lo[k]-cam.eye[k])/dir[k],b=(hi[k]-cam.eye[k])/dir[k];t0=Math.max(t0,Math.min(a,b));t1=Math.min(t1,Math.max(a,b))}
-    if(t0<=t1&&t1>0){const v=p.size[0]*p.size[1]*p.size[2];if(!best||v<best.v)best={id:p.id,v}}}
-  return best?.id||null;
-}
+// a tap on the view: the part the ray meets first
+function pick(x,y){if(!V.r)return null;const T=V.T,c=$('#gl'),rc=new T.Raycaster();rc.setFromCamera(new T.Vector2(x/c.clientWidth*2-1,1-y/c.clientHeight*2),V.cam);for(const h of rc.intersectObjects(V.root.children,true)){let o=h.object;while(o&&!o.userData.id)o=o.parent;if(o)return o.userData.id}return null}
 function wireView(){
-  const c=$('#gl'),pts=new Map();let g=null,moved=false;
-  c.addEventListener('pointerdown',e=>{c.setPointerCapture?.(e.pointerId);pts.set(e.pointerId,[e.clientX,e.clientY]);moved=false;if(pts.size===2){const[a,b]=[...pts.values()];g={d:Math.hypot(a[0]-b[0],a[1]-b[1])||1,dist:V.dist}}});
-  c.addEventListener('pointermove',e=>{const p=pts.get(e.pointerId);if(!p)return;const dx=e.clientX-p[0],dy=e.clientY-p[1];pts.set(e.pointerId,[e.clientX,e.clientY]);if(Math.abs(dx)+Math.abs(dy)>2)moved=true;
-    if(pts.size===2&&g){const[a,b]=[...pts.values()];V.dist=Math.min(4,Math.max(.25,g.dist*g.d/(Math.hypot(a[0]-b[0],a[1]-b[1])||1)));draw();return}
-    if(pts.size===1){V.yaw-=dx*.008;V.pitch=Math.min(1.5,Math.max(-1.5,V.pitch+dy*.008));draw()}});
-  const up=e=>{const was=pts.size;pts.delete(e.pointerId);if(pts.size<2)g=null;if(was===1&&!moved){const r=c.getBoundingClientRect(),id=pick(e.clientX-r.left,e.clientY-r.top);choose(id)}};
-  c.addEventListener('pointerup',up);c.addEventListener('pointercancel',e=>{pts.delete(e.pointerId);g=null});
-  c.addEventListener('wheel',e=>{e.preventDefault();V.dist=Math.min(4,Math.max(.25,V.dist*Math.exp(e.deltaY*.0012)));draw()},{passive:false});
+  const c=$('#gl');let down=null;
+  c.addEventListener('pointerdown',e=>{down=[e.clientX,e.clientY,e.pointerId]});
+  c.addEventListener('pointerup',e=>{if(down&&down[2]===e.pointerId&&Math.hypot(e.clientX-down[0],e.clientY-down[1])<6){const r=c.getBoundingClientRect();choose(pick(e.clientX-r.left,e.clientY-r.top))}down=null});
   c.addEventListener('dblclick',resetView);$('#tags').addEventListener('click',e=>{const b=e.target.closest('[data-p]');if(b)choose(b.dataset.p)});
-  new ResizeObserver(()=>draw()).observe($('#view'));
+  new ResizeObserver(()=>{V.need=true;if(V.r)frame(false)}).observe($('#view'));
 }
-function resetView(){V.yaw=-.75;V.pitch=.5;V.dist=1;draw()}
+function resetView(){V.zoom=1;V.focus=null;if(V.r)frame(true)}
+// close in on one part (where it is now), the camera keeping its angle; Reset view goes back to the whole product
+function focusOn(id){const p=SPEC.parts.find(q=>q.id===id);if(!p||!V.r)return;V.focus=id;const T=V.T,o=OFF[p.id]||[0,0,0],c=new T.Vector3(...p.at.map((v,k)=>v+o[k])),r=Math.max(Math.hypot(...p.size)/2,6),v=V.cam.fov*Math.PI/180,h=2*Math.atan(Math.tan(v/2)*(V.cam.aspect||1)),dir=V.cam.position.clone().sub(V.ctl.target).normalize();V.ctl.target.copy(c);V.cam.position.copy(c).addScaledVector(dir,r/Math.sin(Math.min(v,h)/2)*1.15);V.cam.near=r/30;V.cam.updateProjectionMatrix();V.need=true}
+// a picture of the view as it is, for a deck or a message
+function shot(){return new Promise(res=>{V.r.render(V.scene,V.cam);V.r.domElement.toBlob(res,'image/png')})}
 
 // ---------- the read: recomputed on every change, here as on the service ----------
 function recompute(){SPEC=cleanAssembly(SPEC);E=engineer(SPEC);paintSum();paintTabs();paintPane();draw()}
@@ -252,7 +260,7 @@ function paintPane(){
 function editor(p){
   const idx=SPEC.parts.indexOf(p)+1,shell=['shell','cup','ring'].includes(p.shape),tool=p.draft!=null,others=SPEC.parts.filter(q=>q.id!==p.id);
   const n=(k,label,v,step=.1,extra='')=>`<label class="f"><span>${label}</span><input type="number" step="${step}" data-k="${k}" value="${v}" inputmode="decimal"${extra}></label>`;
-  return `<section class="edit" aria-label="The chosen part"><div class="hd"><span class="num">${idx}</span><b>${esc(p.name)}</b><button class="btn sm q" type="button" data-act="dup">Duplicate</button><button class="btn sm q" type="button" data-act="del">Remove</button><button class="btn sm q" type="button" data-act="close" aria-label="Close">✕</button></div>
+  return `<section class="edit" aria-label="The chosen part"><div class="hd"><span class="num">${idx}</span><b>${esc(p.name)}</b><button class="btn sm q" type="button" data-act="zoom" title="Close in on this part in the 3D view">Zoom to part</button><button class="btn sm q" type="button" data-act="dup">Duplicate</button><button class="btn sm q" type="button" data-act="del">Remove</button><button class="btn sm q" type="button" data-act="close" aria-label="Close">✕</button></div>
     <label class="f"><span>Name</span><input data-k="name" value="${esc(p.name)}" maxlength="60"></label>
     <div class="g2"><label class="f"><span>Shape</span><select data-k="shape">${opt(Object.entries(SHAPES),p.shape)}</select></label><label class="f"><span>Lies along</span><select data-k="axis">${opt([['z','Up (z)'],['y','Front to back (y)'],['x','Side to side (x)']],p.axis)}</select></label></div>
     <div class="g3">${n('size0','Width x (mm)',p.size[0])}${n('size1','Depth y (mm)',p.size[1])}${n('size2','Height z (mm)',p.size[2])}</div>
@@ -272,7 +280,7 @@ function wireEditor(){
     else if(['name','shape','axis','open','resin','process','finish','colour','fix'].includes(k)){p[k]=v;if(k==='resin'&&RESINS[v])p.colour=RESINS[v].col;if(k==='shape'&&['shell','cup','ring'].includes(v)&&p.wall==null)p.wall=2}else p[k]=Number(v);changed();if(['shape','resin','process','name'].includes(k))paintPane()};
   $$('.edit [data-k]').forEach(el=>el.addEventListener('change',()=>set(el.dataset.k,el.value)));
   $$('.edit input[type=number][data-k]').forEach(el=>el.addEventListener('input',()=>{if(el.value!==''&&Number.isFinite(Number(el.value)))set(el.dataset.k,el.value)}));
-  $('.edit [data-act=close]').onclick=()=>choose(null);
+  $('.edit [data-act=close]').onclick=()=>choose(null);$('.edit [data-act=zoom]').onclick=()=>focusOn(p.id);
   $('.edit [data-act=del]').onclick=()=>{if(SPEC.parts.length<2)return toast('An assembly keeps at least one part');SPEC.parts=SPEC.parts.filter(q=>q.id!==p.id).map(q=>q.parent===p.id?{...q,parent:null}:q);SEL=null;changed();toast(`${p.name} removed`)};
   $('.edit [data-act=dup]').onclick=()=>{const c=JSON.parse(JSON.stringify(p));c.id=newId();c.name=(p.name+' copy').slice(0,60);c.at=[p.at[0]+p.size[0]+4,p.at[1],p.at[2]];SPEC.parts.push(c);SEL=c.id;changed()};
 }
@@ -310,6 +318,7 @@ $('#sGo').onclick=async()=>{const b=$('#sGo');b.disabled=true;b.textContent='Sta
 $('#fileBtn').onclick=e=>{e.stopPropagation();const p=$('#filePop'),open=p.classList.toggle('hidden')===false;$('#fileBtn').setAttribute('aria-expanded',String(open))};
 document.addEventListener('click',e=>{if(!e.target.closest('#filePop'))$('#filePop').classList.add('hidden')});
 $('#filePop').addEventListener('click',async e=>{const b=e.target.closest('[data-dl]');if(!b)return;$('#filePop').classList.add('hidden');
+  if(b.dataset.dl==='png'){if(!V.r)return toast('The 3D view is not available here');const bl=await shot(),u=URL.createObjectURL(bl),a2=document.createElement('a');a2.href=u;a2.download=`${(D.concept.name||'assembly').replace(/[^a-z0-9]+/gi,'-')}-view.png`;document.body.append(a2);a2.click();a2.remove();setTimeout(()=>URL.revokeObjectURL(u),4000);return toast('Picture downloaded')}
   if(DIRTY){toast('Save first: the files are made from the saved assembly');return}
   const k=b.dataset.dl,base=`/v1/lab/concepts/${CID}`,slug=(D.concept.name||'assembly').replace(/[^a-z0-9]+/gi,'-').replace(/^-|-$/g,'');
   if(k==='stlp'&&!SEL)return toast('Choose a part first');
@@ -320,11 +329,11 @@ $('#filePop').addEventListener('click',async e=>{const b=e.target.closest('[data
 (async function boot(){
   try{D=await api(`/v1/lab/concepts/${CID}/assembly`)}catch(e){$('#main').innerHTML=`<div class="card" style="margin:30px auto;max-width:520px;background:#fff"><b>${esc(e.message)}</b></div>`;$('#sub').textContent='';return}
   SPEC=D.spec;$('#ttl').textContent=D.concept.name||'Engineering';document.title=`Engineering · ${D.concept.name||''}`;
-  if(!initGl()){$('#fallback').classList.remove('hidden');$('#gl').classList.add('hidden');$('#hint').classList.add('hidden');$('#fallback').innerHTML=`<img alt="The exploded drawing" src="data:image/svg+xml;charset=utf-8,${encodeURIComponent((await fetch(`/v1/lab/concepts/${CID}/assembly.svg?t=1`,{headers:{Authorization:'Bearer '+TOKEN()}}).then(r=>r.text()).catch(()=>'')))}">`}
+  if(!(await initGl())){$('#fallback').classList.remove('hidden');$('#gl').classList.add('hidden');$('#hint').classList.add('hidden');$('#fallback').innerHTML=`<img alt="The exploded drawing" src="data:image/svg+xml;charset=utf-8,${encodeURIComponent((await fetch(`/v1/lab/concepts/${CID}/assembly.svg?t=1`,{headers:{Authorization:'Bearer '+TOKEN()}}).then(r=>r.text()).catch(()=>'')))}">`}
   else wireView();
   if(!D.saved){$('#save').classList.add('go')}
   recompute();resetView();
-  window.FBEngineer={ready:()=>true,dirty:()=>DIRTY,spec:()=>SPEC,read:()=>E,setT,choose,save,pickAt:(x,y)=>pick(x,y),tagAt:id=>{const b=document.querySelector(`#tags [data-p="${CSS.escape(id)}"]`);if(!b)return null;const r=b.getBoundingClientRect();return[r.left+r.width/2,r.top+r.height/2]}};
+  window.FBEngineer={webgl:()=>!!V.r,shot,focus:focusOn,reset:resetView,ready:()=>true,dirty:()=>DIRTY,spec:()=>SPEC,read:()=>E,setT,choose,save,pickAt:(x,y)=>pick(x,y),tagAt:id=>{const b=document.querySelector(`#tags [data-p="${CSS.escape(id)}"]`);if(!b)return null;const r=b.getBoundingClientRect();return[r.left+r.width/2,r.top+r.height/2]}};
 })();
 </script>
 </body>

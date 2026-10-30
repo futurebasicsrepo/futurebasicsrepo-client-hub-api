@@ -3883,7 +3883,8 @@ await journey('J267', 'Hard goods and electronics are engineered as 3D parts: an
         await page.waitForFunction(() => [...document.querySelectorAll('iframe')].some(f => /\/lab\/engineer/.test(f.src)), null, { timeout: 30000 });
         const fr = () => page.frames().find(x => /\/lab\/engineer/.test(x.url())); await fr().waitForFunction(() => window.FBEngineer?.ready?.(), null, { timeout: 30000 });
         ok((await page.locator('#viewSeg [data-v=pattern]').innerText()).trim() === 'Engineering' && /Engineering/.test(await page.locator('#pieceSteps [data-step=pattern]').innerText()), '8. in Design the step and the tab read Engineering, and open the 3D parts');
-        ok(await fr().evaluate(() => !!document.getElementById('gl').getContext('webgl') && document.querySelectorAll('#tags b').length === FBEngineer.spec().parts.length), '   drawn in 3D, every part numbered');
+        await fr().waitForFunction(() => document.querySelectorAll('#tags b').length > 0, null, { timeout: 30000 });
+        ok(await fr().evaluate(() => FBEngineer.webgl() && document.querySelectorAll('#tags b').length === FBEngineer.spec().parts.length), '   drawn in 3D (three.js, from this site), every part numbered');
         await fr().click('#play'); await fr().waitForFunction(() => document.getElementById('tLbl').textContent === 'Exploded', null, { timeout: 5000 });
         const zs = await fr().evaluate(() => ['bottom', 'pcb', 'top'].map(id => FBEngineer.tagAt(id)[1]));
         ok(zs[0] > zs[1] && zs[1] > zs[2], '   Explode it pulls the parts apart: the top housing above the board above the bottom', zs);

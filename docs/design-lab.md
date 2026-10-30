@@ -1285,7 +1285,17 @@ screen, the drawing and the files agree. Routes: `src/lab-assembly-routes.js`; s
   the energy at its cell. Every socket (USB-C, mains, RCA, the jack) is checked against the outside of the housing on all three axes. With nothing saved, the page shows the one the concept's words point to.
   **Read the picture** asks Claude for the kind, size and features (`ASSEMBLY_READ_FIXTURE` stands in for it in tests); without a picture or
   a key it reads the words.
-- **The 3D view** (own WebGL, no outside scripts): drag to turn, pinch or scroll to zoom, double-click to reset. **Explode it** or the slider
+- **The 3D view** is three.js served from this site (`/lab/vendor/three/…`, the npm package; no outside scripts), with physically based
+  materials, reflections from a studio environment, tone mapping and soft shadows. Every part is drawn as the real thing by
+  `src/lab-parts3d.js`, at the exact size the engineering uses: chips with their markings and pins, radio modules under shield cans, the
+  board with traces, pads, vias and silkscreen drawn under the real parts and small passives around them, USB-C, RCA, the mains inlet, the
+  jack, tact switches, LEDs, encoders, a glowing VFD and screens, the battery pouch with its label and protection board, AA cells with
+  springs, woofer and tweeter (basket, cone, surround, dust cap, spider, magnet; silk dome), the class-D board and heatsink, the open-frame
+  supply (transformer, capacitors, fuse), the CD loader with an iridescent disc, the tape transport with a cassette in it; housings with
+  bevelled edges and the bosses and ribs inside, clear parts that transmit light, brushed and anodised metal, painted steel, MDF grain, grille
+  cloth, knurled knobs, screws with threads. A socket faces the nearest outside wall, a part on a board faces away from it. The first view
+  looks across the way the parts pull apart. **Zoom to part** closes in on the chosen part; **Files → Picture of this view** saves a PNG.
+  Drag to turn, pinch or scroll to zoom, two fingers to move, double-click to reset. **Explode it** or the slider
   pulls every part away along its own direction; **Numbers** puts the item number on each part; **See inside** makes the housings clear.
   Tap a part (or its number, or its row) to edit it; everything is checked and costed again at once.
 - **Tooling.** Per part: the tool (injection mould, LSR, rotocast, blow, die-cast, stamping or a cutting die), the steel picked from the

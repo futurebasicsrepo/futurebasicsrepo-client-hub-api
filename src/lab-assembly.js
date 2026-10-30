@@ -307,19 +307,19 @@ export function archetype(arch, dims = {}, { mah = null, radio = null, display =
     // board stands at the back with the mains inlet, line input and volume through the back panel; a bass port at the top of the back
     const W = num(dims.w, 130, 400, 170), D = num(dims.d, 190, 450, 230), H = num(dims.h, 220, 600, 280), t = 15, bf = 18, rad = radio === 'none' ? 'mcu' : radio === 'wifi' ? 'wifi' : 'ble';
     const area = 2 * (W * H + D * H + W * D) / 1e6, wd = Math.max(70, Math.min(130, W - 30, H - 2 * t - 100)), tz = H - t - 46, wz = Math.max(t + 5 + wd / 2, Math.min(H * .36, tz - 45 - wd / 2 - 5)); // the tweeter at the top, the woofer below it with 5 mm between
-    add({ id: 'cab', name: 'Cabinet', shape: 'shell', axis: 'y', size: [W, D - bf, H], r: 3, at: [0, -D / 2 + bf + (D - bf) / 2, H / 2], wall: t, open: '-', resin: 'MDF', process: 'CNC routed', cost: r2(3 + area * 8), finish: 'spray paint', fix: 'glue', order: 1, lvl: 0, main: true });
+    add({ id: 'cab', name: 'Cabinet', shape: 'shell', axis: 'y', size: [W, D - bf, H], r: 3, at: [0, -D / 2 + bf + (D - bf) / 2, H / 2], wall: t, open: '-', resin: 'MDF', process: 'CNC routed', cost: r2(4.5 + area * 11), finish: 'none', fix: 'glue', order: 1, lvl: 0, main: true });
     add({ id: 'feet', name: 'Foot pad', shape: 'cyl', size: [16, 16, 2], at: [W * .35, D * .35, -1], resin: 'silicone (LSR)', process: 'LSR moulding', qty: 4, fix: 'adhesive', order: 2, dir: [0, 0, -1], lvl: 1.2 });
-    elec('psu', { at: [0, 11.5, t + .4 + 15], parent: 'cab', fix: 'screws', fixQty: 4, order: 2, lvl: 1.2 }); // the inside lifts out of the top in the exploded view
+    elec('psu', { at: [0, 11.5, t + .4 + 15], parent: 'cab', fix: 'screws', fixQty: 4, order: 2, lvl: 3.6 }); // the inside lifts out of the top in the exploded view
     const py = D / 2 - t - 14, pz = t + 4 + H * .225, ff = py - .8, bb = py + .8;
-    add({ id: 'pcb', name: 'Amplifier board', shape: 'pcb', axis: 'y', size: [W - 2 * t - 6, 1.6, H * .45], at: [0, py, pz], fix: 'screws', fixQty: 4, order: 3, parent: 'cab', lvl: 1.8, layers: 4 });
-    const front = (k, x, z) => { const e = ELEC[k].size; elec(k, { axis: 'y', size: [e[0], e[2], e[1]], at: [x, ff - e[2] / 2, z], parent: 'pcb', order: 3, lvl: 1.8 }); };
+    add({ id: 'pcb', name: 'Amplifier board', shape: 'pcb', axis: 'y', size: [W - 2 * t - 6, 1.6, H * .45], at: [0, py, pz], fix: 'screws', fixQty: 4, order: 3, parent: 'cab', lvl: 4.6, layers: 4 });
+    const front = (k, x, z) => { const e = ELEC[k].size; elec(k, { axis: 'y', size: [e[0], e[2], e[1]], at: [x, ff - e[2] / 2, z], parent: 'pcb', order: 3, lvl: 4.6 }); };
     front('amp2', -W * .18, pz - H * .08); front(rad, W * .15, pz + H * .12); front('dac', W * .16, pz - H * .06); front('reg', -W * .25, pz + H * .14);
-    elec('iec', { at: [-W * .2, D / 2 - 10.5, pz - H * .13], parent: 'pcb', fix: 'screws', fixQty: 2, order: 3, lvl: 1.8 });
-    elec('rca', { at: [W * .12, D / 2 - 7.5, pz - H * .13], parent: 'pcb', order: 3, lvl: 1.8 });
-    elec('encoder', { at: [W * .12, D / 2 - 10.5, pz + H * .1], parent: 'pcb', order: 3, lvl: 1.8 });
-    add({ id: 'knob', name: 'Volume knob', shape: 'cyl', axis: 'y', size: [30, 16, 30], at: [W * .12, D / 2 + 8, pz + H * .1], resin: 'aluminium 6061', process: 'CNC machined', cost: 1.2, finish: 'anodised', fix: 'press', order: 9, lvl: 2.4 });
-    add({ id: 'port', name: 'Bass port tube', shape: 'ring', axis: 'y', size: [50, 110, 50], wall: 2.5, at: [0, D / 2 - 55, H * .82], resin: 'ABS', finish: 'SPI C-1 (matte)', draft: 1, fix: 'glue', order: 4, lvl: 3 });
-    add({ id: 'baffle', name: 'Baffle', shape: 'box', axis: 'y', size: [W, bf, H], r: 3, at: [0, -D / 2 + bf / 2, H / 2], resin: 'MDF', process: 'CNC routed', cost: r2(1 + W * H / 1e6 * 8), finish: 'spray paint', fix: 'glue', order: 6, dir: [0, -1, 0], lvl: 1.2 });
+    elec('iec', { at: [-W * .2, D / 2 - 10.5, pz - H * .13], parent: 'pcb', fix: 'screws', fixQty: 2, order: 3, lvl: 4.6 });
+    elec('rca', { at: [W * .12, D / 2 - 7.5, pz - H * .13], parent: 'pcb', order: 3, lvl: 4.6 });
+    elec('encoder', { at: [W * .12, D / 2 - 10.5, pz + H * .1], parent: 'pcb', order: 3, lvl: 4.6 });
+    add({ id: 'knob', name: 'Volume knob', shape: 'cyl', axis: 'y', size: [30, 16, 30], at: [W * .12, D / 2 + 8, pz + H * .1], resin: 'aluminium 6061', process: 'CNC machined', cost: 1.2, finish: 'anodised', fix: 'press', order: 9, lvl: 5.4 });
+    add({ id: 'port', name: 'Bass port tube', shape: 'ring', axis: 'y', size: [50, 110, 50], wall: 2.5, at: [0, D / 2 - 55, H * .82], resin: 'ABS', finish: 'SPI C-1 (matte)', draft: 1, fix: 'glue', order: 4, lvl: 6 });
+    add({ id: 'baffle', name: 'Baffle', shape: 'box', axis: 'y', size: [W, bf, H], r: 3, at: [0, -D / 2 + bf / 2, H / 2], resin: 'MDF', process: 'CNC routed', cost: r2(1.5 + W * H / 1e6 * 11), finish: 'none', fix: 'glue', order: 6, dir: [0, -1, 0], lvl: 1.2 });
     elec('woofer', { axis: 'y', size: [wd, 70, wd], at: [0, -D / 2 - 1 + 35, wz], parent: 'baffle', fix: 'screws', fixQty: 4, order: 7, dir: [0, -1, 0], lvl: 1.8 });
     elec('tweeter', { axis: 'y', size: [80, 40, 80], at: [0, -D / 2 - 1 + 20, tz], parent: 'baffle', fix: 'screws', fixQty: 4, order: 7, dir: [0, -1, 0], lvl: 1.8 });
     add({ id: 'grille', name: 'Grille (cloth on a frame)', shape: 'shell', axis: 'y', size: [W - 4, 10, H - 4], r: 3, at: [0, -D / 2 - 7, H / 2], wall: 2, open: '+', resin: 'ABS', finish: 'none', draft: 1, fix: 'press', order: 10, dir: [0, -1, 0], lvl: 2.8 });
