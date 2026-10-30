@@ -79,7 +79,7 @@ dialog{width:min(1160px,95vw);max-height:92vh;border:0;padding:0;background:var(
 .actgroup button,.actgroup a{font-size:12px;padding:7px 12px;border-radius:999px;border:1px solid var(--line);background:#fff;color:var(--ink);text-decoration:none;cursor:pointer}.actgroup button:hover,.actgroup a:hover{border-color:var(--ink);background:#fff;color:var(--ink);transform:none}.actgroup button.rush{background:var(--warn);border-color:var(--ink)}
 #clientPage .ptabs{display:flex;gap:2px;flex-wrap:nowrap;overflow-x:auto;margin:14px 0 16px;border-bottom:1px solid var(--line);scrollbar-width:none}#clientPage .ptabs::-webkit-scrollbar{display:none}
 #clientPage .ptabs button{background:transparent;border:0;border-bottom:2px solid transparent;border-radius:0;padding:10px 14px;font-size:13px;color:var(--dim);white-space:nowrap;margin-bottom:-1px}#clientPage .ptabs button:hover{color:var(--ink)}#clientPage .ptabs button.on{background:transparent;color:var(--ink);border-bottom-color:var(--ink)}
-@media(max-width:900px){.actgroups{grid-template-columns:1fr}.tpstrip{flex-direction:column;align-items:stretch;gap:12px}.tpstrip .go{text-align:center}.more .menu{right:auto;left:0}}
+@media(max-width:900px){.actgroups{grid-template-columns:1fr}.tpstrip{flex-direction:column;align-items:stretch;gap:12px}.tpstrip .go{text-align:center}.more .menu{right:auto;left:0}@media(max-width:600px){.more .menu{max-width:calc(100vw - 32px)}}}
 
 /* Console home: jump links in the header, a shorter hero, an inbox that scrolls instead of pushing Clients off the page */
 header .homelink{color:inherit;text-decoration:none;display:flex;align-items:center;margin-right:auto}header{gap:18px}
@@ -861,4 +861,5 @@ window.downloadVersion=async(id,name)=>{let r=await fetch(API+'/v1/asset-version
   addEventListener('hashchange',show);addEventListener('popstate',show);if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',show);else show()})();
 </script><script src="/console-nav.js" defer></script>
 <script src="/helper.js" defer></script>
+<script>/* a "more" menu opened near the edge of a phone screen is moved back inside it */document.addEventListener("toggle",e=>{const d=e.target;if(!d.matches?.(".more")||!d.open)return;const m=d.querySelector(".menu");if(!m)return;m.style.transform="";const b=m.getBoundingClientRect(),W=document.documentElement.clientWidth;let dx=0;if(b.right>W-8)dx=W-8-b.right;if(b.left+dx<8)dx=8-b.left;if(dx)m.style.transform=`translateX(${Math.round(dx)}px)`},true)</script>
 </body></html>

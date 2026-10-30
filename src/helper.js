@@ -424,9 +424,11 @@ dialog .fbh-tog.on{display:none}
 /* on a phone the switch is the mouse and its toggle only, and the page keeps room under its last line so the switch never sits on it */
 @media(max-width:600px){.fbh-tog{padding:5px 8px 5px 6px;gap:6px}.fbh-tog>span:nth-child(2){display:none}body{padding-bottom:calc(64px + env(safe-area-inset-bottom,0px))}}
 /* off, on a phone, it is the mouse alone, tucked against the edge; it steps aside while a field is being typed in, and inside a form on a small screen (Alt+Shift+G still turns it on) */
-@media(max-width:600px){.fbh-tog:not(.on){left:0!important;padding:4px 6px 4px 4px;border-left:0;border-radius:0 999px 999px 0;opacity:.92}.fbh-tog:not(.on) .sw{display:none}
+@media(max-width:600px),(hover:none){.fbh-tog:not(.on){left:0!important;padding:4px 6px 4px 4px;border-left:0;border-radius:0 999px 999px 0;opacity:.92}.fbh-tog:not(.on) .sw,.fbh-tog:not(.on)>span:nth-child(2){display:none}
   body:has(:is(input:not([type=checkbox]):not([type=radio]):not([type=range]),textarea,select):focus) .fbh-tog:not(.on){display:none}}
-@media(max-width:900px){dialog .fbh-tog:not(.on){display:none}}
+@media(max-width:900px),(hover:none){dialog .fbh-tog:not(.on){display:none}}
+/* off, with a mouse, it is the mouse alone until pointed at, so it covers as little of the page as it can */
+@media(hover:hover){.fbh-tog:not(.on):not(:hover):not(:focus-visible){padding:6px 8px;gap:0}.fbh-tog:not(.on):not(:hover):not(:focus-visible)>:not(.face){display:none}}
 .fbh-tog:hover{transform:translateY(-1px)}.fbh-tog:focus-visible,.fbh button:focus-visible{outline:3px solid #4bff9a;outline-offset:2px}
 .fbh-tog .face{width:30px;height:24px;display:block}.fbh-tog .face svg{width:100%;height:100%;display:block}
 .fbh-tog .sw{width:30px;height:18px;border-radius:999px;background:#c9c9ce;position:relative;transition:background .2s}.fbh-tog .sw:after{content:'';position:absolute;left:2px;top:2px;width:14px;height:14px;border-radius:50%;background:#fff;transition:left .2s}

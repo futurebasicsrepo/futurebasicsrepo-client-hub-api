@@ -128,7 +128,8 @@
     .lang-switch{display:inline-flex;gap:2px;padding:3px;border:1px solid rgba(255,255,255,.22);border-radius:999px}.lang-switch button{border:0;background:transparent;color:#fff;font:500 11px/1 'IBM Plex Mono',ui-monospace,monospace;padding:6px 8px;border-radius:999px;cursor:pointer;opacity:.7}.lang-switch button[aria-pressed="true"]{background:#fff;color:#141416;opacity:1}.lang-switch button:focus-visible{outline:2px solid #4bff9a;outline-offset:2px}
     @media(max-width:520px){.lang-switch button{padding:6px 6px;font-size:10px}}
     @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition:none!important}.hero::before,.hero::after{animation:none!important}h1 em::after{transform:scaleX(1)}}
-  </style>
+  /* a touch screen zooms in on a field under 16px and stays zoomed: fields are 16px there */@media (hover:none),(pointer:coarse){html{-webkit-text-size-adjust:100%;text-size-adjust:100%}input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]),select,textarea{font-size:16px!important}}
+</style>
 <script src="/feedback.js"></script>
 </head>
 <body>

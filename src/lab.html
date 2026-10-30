@@ -29,7 +29,7 @@ h1{font-size:clamp(30px,5vw,48px);letter-spacing:-.035em;font-weight:500;margin:
 .hero{background:var(--ink);color:#fff;border-radius:28px;padding:clamp(20px,4vw,36px);margin-bottom:22px;position:relative;overflow:hidden;isolation:isolate}
 .hero:before{content:"";position:absolute;inset:0;z-index:-1;background-image:linear-gradient(rgba(255,255,255,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.05) 1px,transparent 1px);background-size:28px 28px}
 .hero .mono{color:#9d9da4}.hero p{color:#c9c9cf;max-width:66ch;margin:6px 0 0;font-size:15px}
-.stats{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}
+.stats{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}@media(max-width:600px){.stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.stats .stat{min-width:0}.stats .stat:last-child:nth-child(odd){grid-column:1/-1}}
 .stat{border:1px solid rgba(255,255,255,.18);border-radius:14px;padding:8px 14px;min-width:110px}.stat b{display:block;font-size:22px;font-weight:500;letter-spacing:-.02em}.stat span{font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#9d9da4}
 .grp{margin:26px 0 10px;display:grid;gap:4px}.grp .note{max-width:70ch}.libs{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:12px}.lib{display:grid;gap:6px;background:#fff;border:1px solid var(--line);border-radius:18px;padding:16px;text-decoration:none;color:inherit}.lib:hover{border-color:var(--ink)}.lib b{font-size:16px;font-weight:500}.lib span{color:var(--dim);font-size:13px}
 .labtabs{position:sticky;top:72px;z-index:12;display:flex;gap:6px;overflow-x:auto;margin:14px -4px 0;padding:8px 4px;background:var(--fog,#f5f5f2);scrollbar-width:none}.labtabs::-webkit-scrollbar{display:none}
@@ -61,7 +61,8 @@ dialog.av{border:0;border-radius:24px;padding:0;width:min(1040px,96vw);max-heigh
 .chip.ok{background:#e4f6ec;color:var(--ok)}.chip.warn{background:#fff1d6;color:var(--warn)}.chip.bad{background:#fbe5e2;color:var(--bad)}.chip.hot{background:var(--ink);color:var(--cue)}
 .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .t,select.t{border:1px solid var(--line);border-radius:12px;padding:8px 12px;background:#fff;min-width:0;flex:1 1 180px}textarea.t{width:100%;min-height:76px;resize:vertical}
-.msg{font-size:13px;min-height:18px;color:var(--ok)}.msg.bad{color:var(--bad)}
+.msg{font-size:13px;min-height:18px;color:var(--ok)}
+#planForm .row .msg{flex:1 0 100%}@media(max-width:520px){#planForm .row>label{flex:0 0 96px}#planGo{flex:1 1 auto}#planBlank{flex:1 0 100%}}.msg.bad{color:var(--bad)}
 .filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
 .pill{border:1px solid var(--line);background:#fff;border-radius:999px;padding:5px 12px;font:500 12px 'IBM Plex Mono',monospace;cursor:pointer;min-height:32px}.pill:hover{border-color:var(--ink)}.pill[aria-pressed="true"]{background:var(--ink);color:#fff;border-color:var(--ink)}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px}
@@ -91,7 +92,7 @@ dialog.av{border:0;border-radius:24px;padding:0;width:min(1040px,96vw);max-heigh
 @keyframes plGlow{from{box-shadow:0 0 0 1px #4bff9a,0 0 0 0 rgba(75,255,154,.0)}to{box-shadow:0 0 0 1px #4bff9a,0 0 26px 2px rgba(75,255,154,.45)}}
 @media(prefers-reduced-motion:reduce){#planList.focus .pl.on{animation:none;box-shadow:0 0 0 1px #4bff9a,0 0 18px rgba(75,255,154,.35)}}.pl .nm{flex:1 1 220px;min-width:0;display:grid}.pl .nm b{overflow-wrap:anywhere}
 .rg{display:grid;gap:8px;margin-top:10px}.rg .ch{display:grid;grid-template-columns:auto 1fr;gap:10px;align-items:start;background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:13px}.rg .ch b{display:block}.rg .ch .f{color:var(--dim)}.rg .ch .f s{color:#a02a20;text-decoration:line-through;margin-right:6px}.rg .ch .f em{font-style:normal;color:var(--ink)}.rg .sk{font-size:12px;color:var(--dim)}
-.pl{display:grid;gap:10px;margin-top:10px}.pl .po{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 12px;display:grid;gap:8px;font-size:13px}.pl .po input{font:500 12px 'IBM Plex Mono',monospace}.dm{font:500 12px 'IBM Plex Mono',monospace;letter-spacing:.04em}.dm.go{color:var(--ok)}.dm.no{color:#a02a20}
+.pl{display:grid;gap:10px;margin-top:10px}@media(min-width:600px){.pl{display:flex;flex-wrap:wrap;align-items:center}.pl .chip{flex:none}}.pl .po{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 12px;display:grid;gap:8px;font-size:13px}.pl .po input{font:500 12px 'IBM Plex Mono',monospace}.dm{font:500 12px 'IBM Plex Mono',monospace;letter-spacing:.04em}.dm.go{color:var(--ok)}.dm.no{color:#a02a20}
 .tiles{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0}.tile{border:1px solid var(--line);border-radius:14px;padding:8px 14px;min-width:110px;background:#fff}.tile b{display:block;font-size:20px;font-weight:500;letter-spacing:-.02em}.tile span{font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
 .lad{display:grid;grid-template-columns:minmax(110px,150px) 1fr;gap:10px;align-items:center;font-size:13px;margin:6px 0}.track{position:relative;height:22px;border-radius:999px;background:var(--fog)}.track .rng{position:absolute;top:8px;height:6px;border-radius:999px;background:#c9c9cf}.track .dot{position:absolute;top:3px;width:16px;height:16px;margin-left:-8px;border-radius:50%;background:var(--ink);border:2px solid #fff}.track .dot.warn{background:var(--bad)}.track .tk{position:absolute;top:0;bottom:0;width:1px;background:var(--dim)}
 .lt{width:100%;border-collapse:collapse;font-size:13px}.lt th{font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);text-align:left;padding:6px 6px;border-bottom:1px solid var(--line)}.lt td{padding:8px 6px;border-bottom:1px solid var(--line);vertical-align:top}
@@ -228,6 +229,10 @@ const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)],esc
 const TOKEN=()=>{try{return localStorage.getItem('fb.admin.token')||localStorage.getItem('fb.client.token')||''}catch{return ''}}; // staff sign in at the work console; a client with the Design Lab on their room signs in at their hub
 const CLIENT_MODE=()=>{try{return !localStorage.getItem('fb.admin.token')&&Boolean(localStorage.getItem('fb.client.token'))}catch{return false}};
 const safe=u=>/^https?:\/\//i.test(String(u||''))?String(u):'';
+// concept work answers 202 with a job when it runs longer than a request should stay open: ask after it until it is done (a dropped check is asked again)
+async function settle(j,m){const t0=Date.now();while(j&&j.job&&j.status==='running'){await new Promise(r=>setTimeout(r,3000));if(m)m.textContent=`Still working (${Math.round((Date.now()-t0)/1000)+20}s). You can leave this page; finished concepts land on the board.`;
+  try{j={...await api('/v1/lab/jobs/'+j.job),job:j.job}}catch(x){if(x.status===404)throw x;if(Date.now()-t0>900e3)throw x}}
+  if(j&&j.status==='failed')throw new Error(j.error||'That did not work');return j}
 async function api(path,o={}){const r=await fetch(path,{method:o.method||(o.body?'POST':'GET'),headers:{Authorization:'Bearer '+TOKEN(),...(o.body?{'Content-Type':'application/json'}:{})},body:o.body?JSON.stringify(o.body):undefined});let j={};try{j=await r.json()}catch{}if(!r.ok){const e=new Error(j.error||'That did not work');e.status=r.status;e.data=j;throw e}return j}
 let O=null,F={category:'',offset:0},LIST=[],TOTAL=0,POLL=null;
 const when=d=>{try{return d?new Date(d).toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):'never'}catch{return ''}};
@@ -634,9 +639,9 @@ document.addEventListener('click',async e=>{
   if(tr&&e.target.closest('[data-view]')){BOARD.line=tr.dataset.line;BOARD.plan=CUR.plan.id;BOARD.status='';loadBoard().then(()=>{location.hash='#board'}).catch(()=>{});e.preventDefault();return}
   if(tr&&e.target.closest('[data-mk]')){
     const steer=await askText('Anything to steer the concepts? (optional, for example “longer back, no pockets”)','');if(steer===null)return;
-    const m=$('#lineMsg'),btn=e.target.closest('[data-mk]');m.className='msg';m.textContent='Designing three concepts, drawing them and checking them. This takes up to a minute…';btn.disabled=true;
-    try{await api(`/v1/lab/plans/${CUR.plan.id}/lines/${tr.dataset.line}/concepts`,{body:{count:3,note:steer}});BOARD={status:'',plan:CUR.plan.id,line:tr.dataset.line};await openPlan(CUR.plan.id);await loadBoard();location.hash='#board'}
-    catch(x){const mm=$('#lineMsg');if(mm){mm.className='msg bad';mm.textContent=x.message}btn.disabled=false}return}
+    const m=$('#lineMsg'),btn=e.target.closest('[data-mk]');m.className='msg';m.textContent='Designing three concepts, drawing them and checking them. This takes a few minutes…';btn.disabled=true;
+    try{await settle(await api(`/v1/lab/plans/${CUR.plan.id}/lines/${tr.dataset.line}/concepts`,{body:{count:3,note:steer}}),m);BOARD={status:'',plan:CUR.plan.id,line:tr.dataset.line};await openPlan(CUR.plan.id);await loadBoard();location.hash='#board'}
+    catch(x){const mm=$('#lineMsg');if(mm){mm.className='msg bad';mm.textContent=x instanceof TypeError?'The connection dropped, but the concepts are still being made. Look on the board in a few minutes.':x.message}btn.disabled=false}return}
   if(!$('#cd').open)return;
   if(e.target.closest('[data-csave]')){
     const f=document.querySelector('[data-cf]'),g=k=>f.querySelector(`[data-k="${k}"]`).value,m=$('#cMsg');m.className='msg';m.textContent='Saving…';
@@ -661,7 +666,7 @@ document.addEventListener('click',async e=>{
       const why=await askText(x.message+'\n\nWhy is it fine to approve anyway? (this is recorded)','');if(!why||why.trim().length<10)return;body[make?'makeReason':'overrideReason']=why}}return}
   if(e.target.closest('[data-creject]')){const why=await askText('Why? So the next concept can be better.','');if(why&&why.trim())actC('/reject',{reason:why}).catch(()=>{});return}
   if(e.target.closest('[data-creopen]')){actC('/reopen').catch(()=>{});return}
-  if(e.target.closest('[data-crevise]')){const n=await askText('What should change? For example “less boxy, a longer back”','');if(n&&n.trim()){const m=$('#cAct');m.className='msg';m.textContent='Designing, drawing and checking a revised concept…';try{const j=await api(`/v1/lab/concepts/${OPENID}/revise`,{body:{note:n}});await loadBoard();await openConcept(j.concept.id)}catch(x){m.className='msg bad';m.textContent=x.message}}return}
+  if(e.target.closest('[data-crevise]')){const n=await askText('What should change? For example “less boxy, a longer back”','');if(n&&n.trim()){const m=$('#cAct');m.className='msg';m.textContent='Designing, drawing and checking a revised concept…';try{const j=await settle(await api(`/v1/lab/concepts/${OPENID}/revise`,{body:{note:n}}),m);await loadBoard();await openConcept(j.concept.id)}catch(x){m.className='msg bad';m.textContent=x.message}}return}
   if(e.target.closest('[data-ctp]')){const m=$('#cAct');m.className='msg';m.textContent='Making the product and starting the tech pack…';try{const j=await api(`/v1/lab/concepts/${OPENID}/tech-pack`,{body:{}});await openConcept(OPENID);await loadBoard();if(CUR)await openPlan(CUR.plan.id)}catch(x){m.className='msg bad';m.textContent=x.message}return}
   if(e.target.closest('[data-cdel]')){if(!confirm('Delete this concept?'))return;try{await api('/v1/lab/concepts/'+OPENID,{method:'DELETE'});$('#cd').close();await loadBoard()}catch(x){alert(x.message)}return}
   if(e.target.closest('[data-ccom]')){const v=$('#cNew').value.trim();if(!v)return;try{await api(`/v1/lab/concepts/${OPENID}/comments`,{body:{body:($('#cToClient')?.checked?'For the client: ':'')+v,pin:CPIN}});CPIN=null;await openConcept(OPENID)}catch(x){alert(x.message)}return}
