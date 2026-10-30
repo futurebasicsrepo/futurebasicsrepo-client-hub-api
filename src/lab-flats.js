@@ -319,12 +319,16 @@ function bounds(pts) { const xs = pts.map(q => q[0]), ys = pts.map(q => q[1]); r
 // ---- placements: where each logo and graphic sits, measured ----
 // a placement: { id, name, view, x, y (its centre, inches), w, h (inches), art? (library art id), mark? (cue|word|lockup), techniqueId?, technique (on the tech pack) }
 const inside = (pt, poly) => { let c = false; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) { const [xi, yi] = poly[i], [xj, yj] = poly[j]; if ((yi > pt[1]) !== (yj > pt[1]) && pt[0] < (xj - xi) * (pt[1] - yi) / (yj - yi) + xi) c = !c; } return c; };
-const corners = q => [[q.x - q.w / 2, q.y - q.h / 2], [q.x + q.w / 2, q.y - q.h / 2], [q.x + q.w / 2, q.y + q.h / 2], [q.x - q.w / 2, q.y + q.h / 2]];
+// a placement can be turned to match the picture: rot is in degrees, clockwise, about its centre (0 when it is straight)
+export const rotOf = q => { const n = Number(q?.rot); return Number.isFinite(n) ? Math.round((((n % 360) + 540) % 360 - 180) * 2) / 2 : 0; };
+const corners = q => { const a = rotOf(q) * Math.PI / 180, c = Math.cos(a), s = Math.sin(a), h = [[-q.w / 2, -q.h / 2], [q.w / 2, -q.h / 2], [q.w / 2, q.h / 2], [-q.w / 2, q.h / 2]];
+  return h.map(([dx, dy]) => [q.x + dx * c - dy * s, q.y + dx * s + dy * c]); };
 const segX = (a, b, c, d) => { const o = (p, q, r) => Math.sign((q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0])); return o(a, b, c) !== o(a, b, d) && o(c, d, a) !== o(c, d, b); };
 const overlaps = (box, poly) => box.some(c => inside(c, poly)) || poly.some(c => inside(c, box)) || box.some((a, i) => poly.some((c, j) => segX(a, box[(i + 1) % 4], c, poly[(j + 1) % poly.length])));
 export function regionOf(q, g) { for (const [name, poly] of Object.entries(g.regions)) if (poly.length && inside([q.x, q.y], poly)) return name; return null; }
 // the words a sample room uses for where it is
-export function describe(q, p) {
+export function describe(q, p) { const at = describeAt(q, p), r = rotOf(q); return r ? `${at}, turned ${Math.abs(r)}° ${r > 0 ? 'clockwise' : 'anticlockwise'}` : at; }
+function describeAt(q, p) {
   const g = geometry(p, q.view), S = STYLES[p.style], top = q.y - q.h / 2, reg = regionOf(q, g), side = q.x > 0 ? 'left' : 'right';
   const across = Math.abs(q.x) < .125 ? 'centred' : null;
   if (S.kind === 'top') {
@@ -561,7 +565,8 @@ export function renderSvg(p, view = 'front', { placements = [], hrefs = {}, size
   let pl = '';
   for (const q of placements.filter(z => z.view === view)) {
     const lv = (findings[q.id] || []).some(f => f.level === 'fail') ? '#a02a20' : (findings[q.id] || []).some(f => f.level === 'warn') ? '#b07a00' : '#17603a';
-    pl += `<g data-pl="${esc(q.id)}"><rect x="${q.x - q.w / 2 - .3}" y="${q.y - q.h / 2 - .3}" width="${q.w + .6}" height="${q.h + .6}" fill="#ffffff" fill-opacity="0"/>${hrefs[q.id] ? `<image href="${esc(hrefs[q.id])}" x="${q.x - q.w / 2}" y="${q.y - q.h / 2}" width="${q.w}" height="${q.h}" preserveAspectRatio="none"/>` : `<rect x="${q.x - q.w / 2}" y="${q.y - q.h / 2}" width="${q.w}" height="${q.h}" fill="#4bff9a" opacity=".35"/>`}<rect x="${q.x - q.w / 2}" y="${q.y - q.h / 2}" width="${q.w}" height="${q.h}" fill="none" stroke="${lv}" stroke-width="${q.id === selected ? .07 : .04}"${q.id === selected ? '' : ' stroke-dasharray=".2 .12"'}/></g>`;
+    const rt = rotOf(q), turn = rt ? ` transform="rotate(${rt} ${q.x} ${q.y})"` : '', knob = q.id === selected ? `<line x1="${q.x}" y1="${q.y - q.h / 2}" x2="${q.x}" y2="${q.y - q.h / 2 - 1.1}" stroke="#17603a" stroke-width=".04" pointer-events="none"/><circle data-rot="${esc(q.id)}" cx="${q.x}" cy="${q.y - q.h / 2 - 1.1}" r=".38" fill="#4bff9a" stroke="#141416" stroke-width=".05" style="cursor:grab"><title>Drag to turn it</title></circle>` : '';
+    pl += `<g data-pl="${esc(q.id)}"${turn}><rect x="${q.x - q.w / 2 - .3}" y="${q.y - q.h / 2 - .3}" width="${q.w + .6}" height="${q.h + .6}" fill="#ffffff" fill-opacity="0"/>${hrefs[q.id] ? `<image href="${esc(hrefs[q.id])}" x="${q.x - q.w / 2}" y="${q.y - q.h / 2}" width="${q.w}" height="${q.h}" preserveAspectRatio="none"/>` : `<rect x="${q.x - q.w / 2}" y="${q.y - q.h / 2}" width="${q.w}" height="${q.h}" fill="#4bff9a" opacity=".35"/>`}<rect x="${q.x - q.w / 2}" y="${q.y - q.h / 2}" width="${q.w}" height="${q.h}" fill="none" stroke="${lv}" stroke-width="${q.id === selected ? .07 : .04}"${q.id === selected ? '' : ' stroke-dasharray=".2 .12"'}/>${knob}</g>`;
     if (showDims) {
       const top = q.y - q.h / 2, S = STYLES[p.style];
       if (S.kind === 'top' && regionOf(q, g) === 'body') { pl += arrow([q.x, 0], [q.x, top], fmt(top)); if (Math.abs(q.x) >= .125) pl += arrow([0, q.y], [q.x, q.y], fmt(q.x)); }
@@ -615,7 +620,7 @@ export function cleanFlat(input = {}) {
   const params = { style, fit, size: SIZES.includes(input.size) ? input.size : 'M', m, options, ...(template ? { template } : {}), color: hexOf(input.color), edits: cleanEdits(input.edits), ...(allover ? { allover } : {}), ...(Object.keys(drawn).length ? { drawn: { template, ...drawn } } : {}), ...(Object.keys(markup).length ? { markup: { template: template || 'none', ...markup } } : {}) };
   const placements = (Array.isArray(input.placements) ? input.placements : []).slice(0, 12).map((q, i) => ({
     id: /^[a-z0-9-]{1,40}$/i.test(String(q.id || '')) ? String(q.id) : 'p' + i, name: String(q.name || 'Graphic').replace(/\s+/g, ' ').trim().slice(0, 60) || 'Graphic', view: q.view === 'back' ? 'back' : 'front',
-    x: r8(Math.min(Math.max(Number(q.x) || 0, -60), 60)), y: r8(Math.min(Math.max(Number(q.y) || 0, -30), 80)), w: r8(Math.min(Math.max(Number(q.w) || 1, .25), 40)), h: r8(Math.min(Math.max(Number(q.h) || 1, .25), 40)),
+    x: r8(Math.min(Math.max(Number(q.x) || 0, -60), 60)), y: r8(Math.min(Math.max(Number(q.y) || 0, -30), 80)), w: r8(Math.min(Math.max(Number(q.w) || 1, .25), 40)), h: r8(Math.min(Math.max(Number(q.h) || 1, .25), 40)), ...(rotOf(q) ? { rot: rotOf(q) } : {}),
     ...(/^[0-9a-f-]{36}$/i.test(String(q.art || '')) ? { art: q.art } : {}), ...(['cue', 'mark', 'word', 'lockup'].includes(q.mark) ? { mark: q.mark === 'cue' ? 'mark' : q.mark } : {}),
     ...(/^[0-9a-f-]{36}$/i.test(String(q.techniqueId || '')) ? { techniqueId: q.techniqueId } : {}), technique: String(q.technique || 'screen print').slice(0, 40), source: ['logo', 'graphic', 'extra', 'studio'].includes(q.source) ? q.source : 'extra',
     ...(/^l[a-z0-9]{1,12}$/.test(String(q.layer || '')) ? { layer: String(q.layer) } : {}), ...(q.added === true && q.source !== 'studio' ? { added: true } : {}), ...cleanGrade(q), ...cleanInks(q.inks)
