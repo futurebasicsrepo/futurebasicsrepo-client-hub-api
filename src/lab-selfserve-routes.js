@@ -29,6 +29,29 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': 
 const hash = v => createHash('sha256').update(String(v)).digest('hex');
 const STATUSES = ['requested', 'quoting', 'declined', 'done'];
 
+// The "your Design Lab is open" email's body: a dark card that holds its colours in light and dark mail apps, the three things the Lab
+// does in order, a big button straight into the Lab, and the hub as a second way in. Tables and inline styles so Outlook, Gmail and
+// Apple Mail draw it the same.
+export function labOpenEmail(hubUrl, { free = false, how = '' } = {}) {
+  const base = String(hubUrl || '').replace(/\/$/, ''), lab = `${base}/lab`, host = base.replace(/^https?:\/\//, '');
+  const step = (n, t, s) => `<tr><td style="padding:0 0 14px 0;vertical-align:top;width:34px"><div style="width:26px;height:26px;border-radius:13px;background:#26272b;color:#4bff9a;font:700 12px/26px Arial,Helvetica,sans-serif;text-align:center">${n}</div></td><td style="padding:2px 0 14px 10px;vertical-align:top"><div style="font:700 15px/1.3 Arial,Helvetica,sans-serif;color:#ffffff">${t}</div><div style="font:400 13px/1.45 Arial,Helvetica,sans-serif;color:#a9abb0">${s}</div></td></tr>`;
+  return `<p style="margin:0 0 18px">${how || `Future Basics opened the Design Lab on your room${free ? ', free' : ''}. Everything you make there turns into tech packs a factory can quote from.`}</p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate;background:#141416;border-radius:18px;margin:6px 0 10px">
+<tr><td style="padding:24px 24px 6px 24px">
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td style="vertical-align:middle;padding-right:8px"><div style="width:9px;height:9px;border-radius:5px;background:#4bff9a"></div></td><td style="font:700 11px/1 Arial,Helvetica,sans-serif;letter-spacing:.16em;text-transform:uppercase;color:#4bff9a">Design Lab · open${free ? ' · free on your room' : ''}</td></tr></table>
+  <div style="font:700 22px/1.25 Arial,Helvetica,sans-serif;color:#ffffff;margin:14px 0 18px">From an idea to a tech pack, in one place.</div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+    ${step(1, 'Plan a line', 'The pieces, their prices and the margin, in one plan.')}
+    ${step(2, 'Draw the concepts', 'Pictures from a few words or a sketch, finished in Design.')}
+    ${step(3, 'Make them tech packs', 'Measured flats, materials and costs, ready for a factory.')}
+  </table>
+</td></tr>
+<tr><td style="padding:6px 24px 24px 24px">
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td style="border-radius:999px;background:#4bff9a"><a href="${esc(lab)}" style="display:inline-block;padding:15px 26px;font:700 16px/1 Arial,Helvetica,sans-serif;color:#141416;text-decoration:none;border-radius:999px">Open the Design Lab &rarr;</a></td></tr></table>
+  <div style="font:400 12px/1.5 Arial,Helvetica,sans-serif;color:#a9abb0;margin-top:14px">Or go to your hub: <a href="${esc(base)}" style="color:#ffffff;text-decoration:underline">${esc(host)}</a></div>
+</td></tr></table>`;
+}
+
 export function registerLabSelfServeRoutes(app, d) {
   const { pool, authenticate, adminOnly, lab, clientHubUrl = '', workHubUrl = '', notifyStaff = async () => false, notifyClientContact = async () => false, sendHubEmail = async () => false, hubEmailShell = (t, b) => b, replyTo = '', forgetUser = () => {}, clientForEmail = async () => null, log = console } = d;
   const bad = (reply, error, code = 422, extra = {}) => reply.code(code).send({ error, ...extra });
@@ -119,12 +142,12 @@ export function registerLabSelfServeRoutes(app, d) {
     if (!need(req, reply)) return; const c = await client(req.params.id); if (!c) return bad(reply, 'Client not found', 404);
     const b = req.body || {}, by = UUID.test(String(req.auth.sub || '')) ? req.auth.sub : null;
     try {
-      if (b.action === 'comp') { await lab.comp(c.id, { by, days: b.days, includedAi: b.includedAi, aiPriceCents: b.aiPriceCents, unpaidCapCents: b.unpaidCapCents }); notifyClientContact(c.id, { subject: 'Your Design Lab is open', body: `<p>Future Basics opened the Design Lab on your room: plan a line, draw concepts, finish them in the studio, measure them as flats and turn them into tech packs.</p><p><a href="${esc(clientHubUrl)}/lab">Open the Design Lab</a></p>` }).catch(() => {}); }
+      if (b.action === 'comp') { await lab.comp(c.id, { by, days: b.days, includedAi: b.includedAi, aiPriceCents: b.aiPriceCents, unpaidCapCents: b.unpaidCapCents }); notifyClientContact(c.id, { subject: 'Your Design Lab is open', body: labOpenEmail(clientHubUrl) }).catch(() => {}); }
       else if (b.action === 'end') await lab.end(c.id, by);
       else if (b.action === 'bill') { const inv = await lab.billOverage(c.id, { force: true, by }); if (!inv) return bad(reply, 'Nothing is unbilled on this room'); }
       else if (b.action === 'free' || b.action === 'charge') {
         const wasOpen = Boolean(await lab.active(c.id)), changed = await lab.setFree(c.id, b.action === 'free', by);
-        if (changed && b.action === 'free' && !wasOpen) notifyClientContact(c.id, { subject: 'Your Design Lab is open', body: '<p>Future Basics opened the Design Lab on your room, free: plan a line, draw concepts, finish them in Design and turn them into tech packs. Open it from your hub.</p>' }).catch(() => {});
+        if (changed && b.action === 'free' && !wasOpen) notifyClientContact(c.id, { subject: 'Your Design Lab is open', body: labOpenEmail(clientHubUrl, { free: true }) }).catch(() => {});
       }
       else return bad(reply, 'action must be comp, end, bill, free or charge');
     } catch (e) { return fail(reply, e); }

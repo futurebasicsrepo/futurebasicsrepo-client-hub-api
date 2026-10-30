@@ -2826,7 +2826,7 @@ await journey('J244', 'From scratch to pattern pieces: a hoodie started from not
   const unsafe = (await K(`/concepts/${pid}/pattern`, { method: 'PUT', body: { spec: { ...pp.spec, eyes: 'safety', age: '0+' } } })).json;
   ok(unsafe.checks?.some(c => c.level === 'fail' && /Safety eyes/.test(c.msg)), '   safety eyes on a toy for under-3s are flagged', unsafe.checks);
   const shoe = await K('/concepts/from-scratch', { body: { category: 'toys', name: `Scratch toy ${stamp}` } }), sp = (await K(`/concepts/${shoe.json.concept.id}/pattern`)).json;
-  ok(sp.kind === 'soon' && /tooling/.test(sp.soon) && (await K(`/concepts/${shoe.json.concept.id}/pattern.dxf`)).status === 422, '   toys and objects say the tooling comes next, and make no file', sp.soon);
+  ok(sp.kind === 'soon' && /engineered as 3D parts/.test(sp.soon) && (await K(`/concepts/${shoe.json.concept.id}/pattern.dxf`)).status === 422, '   toys and objects are engineered as 3D parts (the Engineering page), not cut from a pattern', sp.soon);
   if (!playwright) { ok(true, 'needs a browser'); return; }
   const b = await playwright.chromium.launch();
   try {
@@ -3826,6 +3826,82 @@ await journey('J265', 'One board and components in the Studio: Board shows the p
     ok(await page.evaluate(() => LAYERS.filter(l => BOARD.isCopy(l)).length) === 1 && await page.locator('#pLayers .inst').count() === 1, '7. saved and opened again, the copy is still a copy');
     ok(errs.length === 0, '   no page errors', errs);
   } finally { await b.close(); await cleanup(brands, plan.plan?.id); }
+});
+
+await journey('J267', 'Hard goods and electronics are engineered as 3D parts: an electronic concept opens Engineering (not a pattern) with a starting assembly drawn from its words; it starts again as a handheld at a size, with the board, battery, radio and keys laid out clean; the moulding and fit checks catch a thin wall and the parts list, tooling, power budget and certifications follow; the files (STL assembled, exploded and one part, the exploded drawing, the block diagram, the BOM) download; a tumbler and a figure are hard goods with their own checks (food contact, small parts); another room cannot read it; and in a browser the parts explode, a tapped part opens to edit, and the change is saved', async () => {
+  const A = (path, o = {}) => call(path, { token: kyleT, ...o }), made = [];
+  try {
+    const sp = await K('/concepts/from-scratch', { body: { category: 'electronics', name: `Bluetooth speaker ${stamp}` } }), cid = sp.json.concept?.id; made.push(cid);
+    let g = await K(`/concepts/${cid}/assembly`);
+    ok(g.status === 200 && g.json.engineered && !g.json.saved && g.json.spec.arch === 'puck' && g.json.spec.kind === 'electronics', '1. an electronic concept is engineered: a round speaker read from its words, not saved yet', { arch: g.json.spec?.arch, saved: g.json.saved });
+    ok(g.json.eng.unit > 0 && g.json.eng.toolCost > 0 && g.json.eng.weeks > 0 && !g.json.eng.checks.some(c => c.level === 'bad'), '   with a unit cost, tooling and weeks to first samples, and nothing to fix', g.json.eng.checks.filter(c => c.level === 'bad'));
+    ok(g.json.eng.certs.some(c => /FCC Part 15C/.test(c.name)) && g.json.eng.power.runtime > 0 && g.json.eng.pcb?.layers >= 2, '   its certifications, run time and board', { run: g.json.eng.power?.runtime });
+    const st = await K(`/concepts/${cid}/assembly/start`, { body: { arch: 'handheld', w: 50, d: 140, h: 20, mah: 1500, radio: 'wifi', buttons: 6 } });
+    ok(st.status === 200 && st.json.spec.arch === 'handheld' && st.json.spec.parts.filter(p => p.elec?.kind === 'button').length === 6 && st.json.eng.pcb.layers === 4, '2. started again as a 50 × 140 × 20 mm handheld with Wi-Fi and six keys: a 4-layer board', { parts: st.json.spec?.parts?.length });
+    ok(!st.json.eng.checks.some(c => c.level === 'bad'), '   laid out clean: nothing in another part\'s space, the port at the wall', st.json.eng.checks.filter(c => c.level === 'bad').map(c => c.text));
+    g = await K(`/concepts/${cid}/assembly`); ok(g.json.saved && g.json.spec.arch === 'handheld', '   and saved');
+    const thin = JSON.parse(JSON.stringify(g.json.spec)); thin.parts.find(p => p.id === 'bottom').wall = .6;
+    const put = await K(`/concepts/${cid}/assembly`, { method: 'PUT', body: { spec: thin } });
+    ok(put.status === 200 && put.json.eng.checks.some(c => c.level === 'bad' && /Bottom housing: a 0\.6 mm wall is too thin for PC\/ABS/.test(c.text)), '3. a 0.6 mm housing wall is caught: too thin for PC/ABS to fill', put.json.eng.checks.filter(c => c.level === 'bad').map(c => c.text));
+    ok((await K(`/concepts/${cid}/assembly`, { method: 'PUT', body: { spec: { parts: [] } } })).status === 422, '   an assembly with no parts is refused');
+    thin.parts.find(p => p.id === 'bottom').wall = 1.6; await K(`/concepts/${cid}/assembly`, { method: 'PUT', body: { spec: thin } });
+    const bin = async u => { const r = await fetch(`${BASE}/v1/lab/concepts/${cid}/${u}`, { headers: { Authorization: 'Bearer ' + kyleT } }); return { status: r.status, type: r.headers.get('content-type'), buf: Buffer.from(await r.arrayBuffer()) }; };
+    const s0 = await bin('assembly.stl?t=0'), s1 = await bin('assembly.stl?t=1'), sp1 = await bin('assembly.stl?part=pcb'), tri = b => b.readUInt32LE(80);
+    ok(s0.status === 200 && s0.buf.length === 84 + tri(s0.buf) * 50 && tri(s0.buf) > 500 && s1.buf.length === s0.buf.length && sp1.buf.length < s0.buf.length / 4, '4. STL: the assembly, the same parts pulled apart, and one part on its own', { tris: tri(s0.buf), part: sp1.buf.length });
+    const dsvg = await bin('assembly.svg'), blk = await bin('block.svg'), csv = await bin('bom.csv');
+    ok(/Parts list/.test(dsvg.buf) && /T1 samples in \d+ weeks/.test(dsvg.buf) && /svg/.test(dsvg.type), '   the exploded drawing with balloons and the parts list');
+    ok(blk.status === 200 && /Block diagram/.test(blk.buf) && /Wi-Fi/.test(blk.buf), '   the block diagram'); ok(/^Item,Part,Qty,Material,Process/.test(String(csv.buf)) && /Board assembly \(4-layer/.test(String(csv.buf)), '   the parts list as CSV, with the board assembly');
+    const rd = await K(`/concepts/${cid}/assembly/read`, { body: {} }); ok(rd.status === 200 && rd.json.source === 'words' && rd.json.read.arch === 'puck', '   with no picture, the read falls back to the concept\'s words', rd.json);
+    const tb = await K('/concepts/from-scratch', { body: { category: 'home', name: `Insulated tumbler ${stamp}` } }), tid = tb.json.concept?.id; made.push(tid);
+    g = await K(`/concepts/${tid}/assembly`);
+    ok(g.json.spec.arch === 'tumbler' && g.json.spec.kind === 'goods' && g.json.eng.certs.some(c => /FDA 21 CFR/.test(c.name)) && (await K(`/concepts/${tid}/block.svg`)).status === 422, '5. a tumbler is hard goods: food-contact certifications, no block diagram', g.json.spec.arch);
+    const abs = JSON.parse(JSON.stringify(g.json.spec)); abs.parts.find(p => p.id === 'lid').resin = 'ABS';
+    ok((await K(`/concepts/${tid}/assembly`, { method: 'PUT', body: { spec: abs } })).json.eng.checks.some(c => c.level === 'bad' && /Lid: touches food or drink, and ABS is not food-contact grade/.test(c.text)), '   an ABS lid is refused for food contact');
+    const fg = await K('/concepts/from-scratch', { body: { category: 'toys', name: `Vinyl collectible ${stamp}` } }), fid = fg.json.concept?.id; made.push(fid);
+    g = await K(`/concepts/${fid}/assembly`); const kid = { ...g.json.spec, age: '0+' };
+    const fk = await K(`/concepts/${fid}/assembly`, { method: 'PUT', body: { spec: kid } });
+    ok(g.json.spec.arch === 'figure' && fk.json.eng.checks.some(c => c.level === 'bad' && /small-parts cylinder/.test(c.text)) && fk.json.eng.certs.some(c => /ASTM F963/.test(c.name)), '6. a figure for under-3s: the arms are small parts, and toy safety testing is listed');
+    // audio: a CD player, a cassette player and a powered speaker, each with the parts it is made of
+    const cdp = await K('/concepts/from-scratch', { body: { category: 'electronics', name: `Retro CD player ${stamp}` } }), cdid = cdp.json.concept?.id; made.push(cdid);
+    g = await K(`/concepts/${cdid}/assembly`); const kinds = sp => new Set(sp.parts.filter(p => p.elec).map(p => p.elec.kind));
+    ok(g.json.spec.arch === 'cdplayer' && ['cdmech', 'psu', 'iec', 'dac', 'vfd', 'rca'].every(k => kinds(g.json.spec).has(k)) && !g.json.eng.checks.some(c => c.level === 'bad'), '6b. a CD player: the loader, mains supply and inlet, DAC, display and line outputs, nothing to fix', [...kinds(g.json.spec)]);
+    ok(g.json.eng.certs.some(c => /IEC 60825-1/.test(c.name)) && g.json.eng.certs.some(c => /CE-LVD/.test(c.name)) && g.json.eng.power.mains, '   with the laser and mains safety certifications, powered from the mains');
+    const ts = await K(`/concepts/${cdid}/assembly/start`, { body: { arch: 'cassette' } }), ss = await K(`/concepts/${cdid}/assembly/start`, { body: { arch: 'speaker', radio: 'ble' } });
+    ok(ts.json.eng.power.cell === 'aa' && ts.json.eng.power.runtime > 8 && kinds(ts.json.spec).has('tapemech') && !ts.json.eng.checks.some(c => c.level === 'bad'), '   a cassette player runs on two AA cells, with the tape transport', { run: ts.json.eng.power.runtime });
+    ok(['woofer', 'tweeter', 'amp2'].every(k => kinds(ss.json.spec).has(k)) && ss.json.spec.parts.some(p => p.resin === 'MDF') && !ss.json.eng.checks.some(c => c.level === 'bad'), '   a powered speaker: MDF cabinet, woofer, tweeter and a 2 × 20 W amplifier');
+    const email = `eng-${stamp}@selfserve.test`, started = await call('/v1/public/start', { body: { email, name: 'Other Room Co', title: 'Lamp', photos: [jpeg()] } });
+    const ocid = started.json.client?.id || sql(`select client_id from users where lower(email)='${email}'`), ouid = sql(`select id from users where lower(email)='${email}'`).split('\n')[0], oslug = sql(`select slug from clients where id='${ocid}'`).split('\n')[0];
+    sql(`update users set email_verified_at=now() where id='${ouid}'`); sql(`update clients set lab_free=true where id='${ocid}'`);
+    const otherT = await forge({ sub: ouid, clientId: ocid, client: oslug, role: 'client', email });
+    ok((await call(`/v1/lab/concepts/${cid}/assembly`, { token: otherT })).status === 404 && (await call(`/v1/lab/concepts/${cid}/assembly.stl`, { token: otherT })).status === 404, '7. another room cannot read the assembly or its files');
+    if (playwright) {
+      const b = await playwright.chromium.launch({ args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader'] }), shots = process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp';
+      try {
+        const ctx = await b.newContext({ viewport: { width: 1440, height: 950 }, acceptDownloads: true }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
+        const page = await ctx.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
+        await page.goto(`${BASE}/lab/studio?concept=${cid}&view=pattern`, { waitUntil: 'networkidle' });
+        await page.waitForFunction(() => [...document.querySelectorAll('iframe')].some(f => /\/lab\/engineer/.test(f.src)), null, { timeout: 30000 });
+        const fr = () => page.frames().find(x => /\/lab\/engineer/.test(x.url())); await fr().waitForFunction(() => window.FBEngineer?.ready?.(), null, { timeout: 30000 });
+        ok((await page.locator('#viewSeg [data-v=pattern]').innerText()).trim() === 'Engineering' && /Engineering/.test(await page.locator('#pieceSteps [data-step=pattern]').innerText()), '8. in Design the step and the tab read Engineering, and open the 3D parts');
+        await fr().waitForFunction(() => document.querySelectorAll('#tags b').length > 0, null, { timeout: 30000 });
+        ok(await fr().evaluate(() => FBEngineer.webgl() && document.querySelectorAll('#tags b').length === FBEngineer.spec().parts.length), '   drawn in 3D (three.js, from this site), every part numbered');
+        await fr().click('#play'); await fr().waitForFunction(() => document.getElementById('tLbl').textContent === 'Exploded', null, { timeout: 5000 });
+        const zs = await fr().evaluate(() => ['bottom', 'pcb', 'top'].map(id => FBEngineer.tagAt(id)[1]));
+        ok(zs[0] > zs[1] && zs[1] > zs[2], '   Explode it pulls the parts apart: the top housing above the board above the bottom', zs);
+        await page.screenshot({ path: `${shots}/lab-engineer-exploded.png` }).catch(() => {});
+        const at = await fr().evaluate(() => FBEngineer.tagAt('top')), fb = await page.locator('#patFrame').boundingBox(); await page.mouse.click(fb.x + at[0], fb.y + at[1]);
+        await fr().waitForSelector('.edit [data-k=wall]'); ok(/Top housing/.test(await fr().locator('.edit .hd b').innerText()), '9. a tapped part opens to edit');
+        await fr().fill('.edit [data-k=wall]', '0.6'); await fr().dispatchEvent('.edit [data-k=wall]', 'change'); await fr().waitForFunction(() => /to fix/.test(document.getElementById('sum').textContent));
+        ok(true, '   a thinner wall turns the checks red at once');
+        await fr().fill('.edit [data-k=wall]', '1.8'); await fr().dispatchEvent('.edit [data-k=wall]', 'change'); await fr().click('#save'); await fr().waitForFunction(() => !FBEngineer.dirty() && /Saved/.test(document.getElementById('save').textContent), null, { timeout: 15000 });
+        ok((await K(`/concepts/${cid}/assembly`)).json.spec.parts.find(p => p.id === 'top').wall === 1.8, '   and saved', null);
+        await fr().click('#fileBtn'); const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 15000 }), fr().click('[data-dl=stl1]')]);
+        ok(/exploded\.stl$/.test(dl.suggestedFilename()), '10. Files → STL, exploded downloads', dl.suggestedFilename());
+        await fr().click('#tabs [data-tab=elec]'); ok(await fr().locator('#pane .blk svg').count() === 1 && /Use on a charge/.test(await fr().locator('#pane').innerText()), '   the Electronics tab: the block diagram and the power budget');
+        ok(await fr().evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), '   nothing slides sideways'); ok(errs.length === 0, '   no page errors', errs);
+      } finally { await b.close(); }
+    }
+  } finally { for (const id of made) if (id) await K(`/concepts/${id}`, { method: 'DELETE' }); }
 });
 
 shops.close(); brave.close();

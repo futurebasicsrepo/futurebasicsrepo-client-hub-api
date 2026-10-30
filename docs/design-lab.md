@@ -1261,3 +1261,55 @@ pattern has no shape for it, it is drafted as the nearest one and the page says 
   - **On a baby toy:** a label is sewn flat on all four sides.
 - **Where they go:** the tech flats and their SVG, and the tech pack, which also gets each placement written out in words (what, how, how big,
   on which piece, where its centre is). The photo-real picture (**See it made**) is drawn without them, since an image model redraws lettering.
+
+## Engineering: hard goods, toys, home objects and electronics as 3D parts
+
+Electronics, toys and home objects are not cut from a pattern, so for them the piece's fourth step reads **Engineering** (the Flats step is
+left out). It opens `/lab/engineer` in the Design frame; the engineering is `src/lab-assembly.js`, shared by the page and the service, so the
+screen, the drawing and the files agree. Routes: `src/lab-assembly-routes.js`; stored in `lab_assemblies` (one row a concept).
+
+- **The parts.** Each part is a real solid in millimetres: a box, a shell (a housing open on one side), a cylinder, a cup (a round shell), a
+  ring, a ball or a circuit board, lying along x, y or z, with its material (resin, metal, foam, FR-4 or bought in), process, finish, colour,
+  quantity, draft, undercuts, how it is fixed, what it sits in, the order it is built, and the direction and distance it explodes.
+- **Starting points** (`Start from…`), drawn to the size you give: a round device (speaker, hub), a handheld (remote, power bank), a desk
+  device with a display, a tumbler, a case, a figure, or one part; and audio with its full parts count:
+  - **CD player** (hi-fi component): stamped steel chassis and cover, aluminium front panel and button caps, the CD loader (tray, laser
+    pickup, spindle), a 100–240 V supply and IEC inlet, the main board with the DAC and RCA outputs, a VFD display behind a window, the IR
+    receiver. A radio brings an external antenna (a steel case blocks it); the laser brings IEC 60825-1 and the FDA laser report; mains in a
+    steel case brings the earth bond.
+  - **Cassette player** (portable): the tape transport (motor, capstan, heads) behind a clear door, two AA cells (replaceable: no lithium
+    shipping tests, run time from 7.5 Wh), the board with the tape preamp and headphone amp, keys on top, the jack and the volume wheel.
+  - **Powered speaker** (bookshelf, Bluetooth): MDF cabinet and baffle (CNC routed), woofer and tweeter, bass port, grille, the 2 × 20 W
+    amplifier board standing at the back with the mains inlet, line in and volume through the back panel.
+  Each part draws at its own rail (`v`): a 12 V amplifier and a 5 V CD loader are counted in watts, and a battery's run time comes from
+  the energy at its cell. Every socket (USB-C, mains, RCA, the jack) is checked against the outside of the housing on all three axes. With nothing saved, the page shows the one the concept's words point to.
+  **Read the picture** asks Claude for the kind, size and features (`ASSEMBLY_READ_FIXTURE` stands in for it in tests); without a picture or
+  a key it reads the words.
+- **The 3D view** is three.js served from this site (`/lab/vendor/three/…`, the npm package; no outside scripts), with physically based
+  materials, reflections from a studio environment, tone mapping and soft shadows. Every part is drawn as the real thing by
+  `src/lab-parts3d.js`, at the exact size the engineering uses: chips with their markings and pins, radio modules under shield cans, the
+  board with traces, pads, vias and silkscreen drawn under the real parts and small passives around them, USB-C, RCA, the mains inlet, the
+  jack, tact switches, LEDs, encoders, a glowing VFD and screens, the battery pouch with its label and protection board, AA cells with
+  springs, woofer and tweeter (basket, cone, surround, dust cap, spider, magnet; silk dome), the class-D board and heatsink, the open-frame
+  supply (transformer, capacitors, fuse), the CD loader with an iridescent disc, the tape transport with a cassette in it; housings with
+  bevelled edges and the bosses and ribs inside, clear parts that transmit light, brushed and anodised metal, painted steel, MDF grain, grille
+  cloth, knurled knobs, screws with threads. A socket faces the nearest outside wall, a part on a board faces away from it. The first view
+  looks across the way the parts pull apart. **Zoom to part** closes in on the chosen part; **Files → Picture of this view** saves a PNG.
+  Drag to turn, pinch or scroll to zoom, two fingers to move, double-click to reset. **Explode it** or the slider
+  pulls every part away along its own direction; **Numbers** puts the item number on each part; **See inside** makes the housings clear.
+  Tap a part (or its number, or its row) to edit it; everything is checked and costed again at once.
+- **Tooling.** Per part: the tool (injection mould, LSR, rotocast, blow, die-cast, stamping or a cutting die), the steel picked from the
+  volume over the tools' life (aluminium to 10,000 shots, P20 to 300,000, hardened H13 beyond), cavities, side actions, press tonnage, cycle,
+  tool cost and weeks; T1 samples are the longest tool plus two weeks. Unit cost is resin, machine time, finish, bought-in parts, the board
+  and the line's labour; estimates to plan with until a factory quotes.
+- **Checks.** Wall against the resin's range (ribs and bosses sized from it), draft for the finish (3° for a texture), undercuts, clear parts
+  without an SPI A polish, solid sections that will sink, parts over 600 mm, food contact (PP, Tritan, PETG, LSR, 304), each part inside its
+  housing with clearance (a housing and the half that closes it are one space), two parts in one space, and small parts for under-3s.
+- **Electronics.** The parts on the board are parts like any other. The page adds the block diagram (power → the main chip → what it drives,
+  each line named by its bus), the power budget (run time, standby, charge time, Wh; the share of time each part is on can be set), the board
+  (size, layers, how full, placements, fab and SMT cost), the USB-C port at the wall, the radio clear of the battery and of metal, the heat
+  with everything on, and the certifications to plan for (`src/elec.js`).
+- **Files** (from the saved assembly): STL assembled, exploded, or one part (mm); the exploded isometric drawing with balloons and the parts
+  list (SVG); the parts list (CSV); the block diagram (SVG).
+
+The client's room uses the same page on its own concepts; another room's concept answers 404. Journey **J267**.

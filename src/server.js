@@ -70,6 +70,7 @@ import { labHandoff } from './lab-handoff.js';
 import { registerLabClientRoutes } from './lab-client-routes.js';
 import { registerLabFlatsRoutes } from './lab-flats-routes.js';
 import { registerLabPatternRoutes } from './lab-pattern-routes.js';
+import { registerLabAssemblyRoutes } from './lab-assembly-routes.js';
 import { createArtService, registerLabArtRoutes } from './lab-art-routes.js';
 import { createLabAccess } from './lab-access.js';
 import { registerLabSelfServeRoutes } from './lab-selfserve-routes.js';
@@ -732,6 +733,7 @@ registerLabShareRoutes(app, { pool, ...labDeps, log: app.log, notifyStaff, sheet
 registerLabTryonRoutes(app, { pool, ...labDeps, log: app.log });
 registerLabRangeRoutes(app, { pool, ...labDeps, getSetting, setSetting, editConcept: (...a) => labConcepts.editConcept(...a), notifyStaff, log: app.log });
 const labPattern = registerLabPatternRoutes(app, { pool, ...labDeps, log: app.log });
+registerLabAssemblyRoutes(app, { pool, ...labDeps, log: app.log }); // hard goods and electronics: parts, tooling, the board (src/lab-assembly.js)
 const labFlats = registerLabFlatsRoutes(app, { pool, ...labDeps, log: app.log, attachArtwork: (productId, items) => attachLabArtwork(productId, items), applyHandoff: (productId, h) => applyLabHandoff(productId, h), packChanges: async productId => { const t=(await pool.query('select data,published_data from tech_packs where product_id=$1 order by created_at desc limit 1',[productId])).rows[0]; return t?.published_data?packDiff(normalizeTechPack(t.published_data),normalizeTechPack(t.data)).filter(c=>!/ picture$/.test(c.label)&&!(c.section==='Artwork'&&/^(Spec sheet|Technical flat)/.test(c.label))):null; } /* the flats are drawn again each time they are sent: a new picture alone is no change, and a changed drawing always changes its measurements, construction lines or colours too */ });
 registerLabClientRoutes(app, { pool, authenticate, adminOnly, log: app.log, sheetSvg: id => labFlats.sheetSvg(id), notifyStaff, notifyClientContact, hubUrl: () => clientHubUrl, learn: learnLabTaste });
 registerRoomTeamRoutes(app, { pool, authenticate, clientHubUrl, sendHubEmail, hubEmailShell, emailEscape, replyTo: intakeNotificationEmail, forgetUser, log: app.log });
@@ -799,6 +801,18 @@ app.get('/lab/lab-looks.js', (_req, reply) => reply.header('cache-control', 'no-
 app.get('/lab/lab-plush-views.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-plush-views.js', import.meta.url), 'utf8')));
 app.get('/lab/lab-last-shell.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-last-shell.js', import.meta.url), 'utf8')));
 app.get('/lab/lab-pattern.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-pattern.js', import.meta.url), 'utf8')));
+// the engineering page (hard goods and electronics) runs inside Design in the same frame as the pattern; its engineering is shared (src/lab-assembly.js)
+app.get('/lab/engineer', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').header('content-security-policy', "upgrade-insecure-requests; default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'self'; base-uri 'self'; form-action 'self'").type('text/html').send(readFileSync(new URL('./lab-engineer.html', import.meta.url), 'utf8')));
+app.get('/lab/lab-assembly.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-assembly.js', import.meta.url), 'utf8')));
+app.get('/lab/lab-parts3d.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-parts3d.js', import.meta.url), 'utf8')));
+// three.js for the engineering page's 3D view, from this site (the pages load no outside scripts): the build and the few addons it imports
+const THREE_DIR = new URL('../node_modules/three/', import.meta.url);
+app.get('/lab/vendor/three/*', (req, reply) => {
+  const rel = String(req.params['*'] || '');
+  if (!/^(build\/three\.(module|core)\.js|examples\/jsm\/(controls|environments|utils)\/[A-Za-z0-9]+\.js)$/.test(rel)) return reply.code(404).send({ error: 'Not found' });
+  let body; try { body = readFileSync(new URL(rel, THREE_DIR), 'utf8'); } catch { return reply.code(404).send({ error: 'Not found' }); }
+  return reply.header('cache-control', 'public, max-age=2592000, immutable').type('application/javascript; charset=utf-8').send(body);
+});
 app.get('/lab/lab-flats.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-flats.js', import.meta.url), 'utf8')));
 app.get('/lab/flats.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-flats.js', import.meta.url), 'utf8')));
 // the flat-sketch pack is large (nearly 400 sketches, their measurements and the add-on parts), so the text files go gzipped to any browser that takes it

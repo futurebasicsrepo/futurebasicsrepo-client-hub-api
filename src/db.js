@@ -512,6 +512,12 @@ export async function migrate() {
       updated_by uuid references users(id) on delete set null,
       updated_at timestamptz not null default now()
     );
+    create table if not exists lab_assemblies ( -- a hard good's or an electronic product's engineering: its 3D parts, materials, processes and the board (src/lab-assembly.js)
+      concept_id uuid primary key references lab_concepts(id) on delete cascade,
+      spec jsonb not null default '{}',
+      updated_by uuid references users(id) on delete set null,
+      updated_at timestamptz not null default now()
+    );
     create table if not exists lab_pattern_underlays ( -- a paper sketch (a photo or scan) laid under one view of a shoe, to trace or keep (src/lab-pattern-routes.js)
       concept_id uuid not null references lab_concepts(id) on delete cascade,
       view text not null,

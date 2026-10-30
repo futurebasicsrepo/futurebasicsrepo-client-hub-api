@@ -635,6 +635,7 @@ async function boot(){
   if(!/^[0-9a-f-]{36}$/i.test(CID)){$('#main').innerHTML='<div class="empty"><b>Open a concept in the Studio to see its pattern.</b></div>';return}
   try{D=await api(`/v1/lab/concepts/${CID}/pattern`)}catch(err){$('#main').innerHTML=`<div class="empty"><b>The pattern could not be opened.</b><p class="note">${esc(err.message)}</p></div>`;return}
   $('#ttl').textContent=D.concept.name;
+  if(D.kind==='soon'){location.replace(`/lab/engineer?concept=${CID}&embed=1`);return} // engineered as 3D parts (src/lab-engineer.html)
   if(D.kind==='soon'||D.kind==='none'){$('#sub').textContent='Pattern';$('#modeSeg').classList.add('hidden');$$('#play,#size,#dxf,#svgDl').forEach(x=>x.classList.add('hidden'));
     $('#main').innerHTML=`<div class="empty"><b>${D.kind==='soon'?esc(D.soon):'The Lab cannot draft a pattern for this piece yet.'}</b><p class="note">${D.kind==='soon'?'Until then the tech pack carries its specification, and you can draw it on the Picture.':'Set what the piece is on the Flat front (the style), and its pattern pieces appear here.'}</p></div>`;return}
   SPEC=D.spec;SIZE=D.flat?.size||'M';if(D.kind==='plush'||D.kind==='footwear')logoHrefs().then(()=>drawPieces());MATS=matsOf([...(D.materials||[]),...(D.allMaterials||[])]);if((D.parts||[]).length)mLib().then(()=>paintSide()).catch(()=>{});const S=D.flat?STYLES[D.flat.style]:null;

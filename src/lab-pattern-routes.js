@@ -37,7 +37,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const clip = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
 const WIDTHS = [36, 44, 54, 58, 60, 72];
 // what kind of pattern a concept is cut from: plush has its own drafting; a garment needs a style the flats know; the rest is still to come
-export const SOON = { toys: 'Toys and objects: tooling and the parts come next', electronics: 'Electronics: the engineering comes next', home: 'Home and objects: tooling and the parts come next' };
+export const SOON = { toys: 'Toys and objects are engineered as 3D parts', electronics: 'Electronics are engineered as 3D parts with the board', home: 'Home and objects are engineered as 3D parts' }; // the page sends these to /lab/engineer (src/lab-assembly.js)
 export function kindOf(c, flatStyle = null) {
   if (c.category === 'plush') return 'plush';
   if (c.category === 'footwear') return 'footwear';

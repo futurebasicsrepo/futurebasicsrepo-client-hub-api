@@ -978,6 +978,8 @@ async function boot(){
   // the piece's step bar takes the place of "← Concepts": back to its line plan, and every step of the piece one press away
   if(window.FBLabNav){$('#back').classList.add('hidden');$('#app').classList.add('steps');$('#pieceSteps').classList.remove('hidden');
     window.FBLabNav.steps($('#pieceSteps'),D.concept,{at:stepOfView(VMODE),onStep:(st)=>{if(st==='picture'){setVMode('picture');return true}if(st==='flats'){setVMode(VMODE==='back'?'back':'front');return true}if(st==='pattern'){setVMode('pattern');return true}if(st==='techpack'&&!D.concept.productUrl){setTimeout(()=>{if($('#readyPop').classList.contains('hidden'))$('#readyBtn').click()});return true}return false}})}
+  // hard goods, toys, home objects and electronics are engineered as 3D parts (src/lab-engineer.html) rather than cut from a pattern
+  if(ENGD()){$$('#viewSeg [data-v=front],#viewSeg [data-v=back]').forEach(x=>x.classList.add('hidden'));const b=$('#viewSeg [data-v=pattern]');b.textContent='Engineering';b.title='The product as 3D parts: exploded, with materials, tooling, checks and (for electronics) the board'}
   if(D.concept.locked){$('#apply').disabled=true;$('#apply').title='This concept is already a tech pack'}
   busy('Opening the design…');
   try{
@@ -1249,10 +1251,11 @@ function showSheet(blob,name,title){let d=$('#sheetDlg');if(!d){d=document.creat
   d.showModal()}
 // a graphic removed on the flats leaves the garment here too (it stays on the picture as a layer); without this the next save puts it back
 function flatRemoved({id,layer}={}){const l=LAYERS.find(x=>(layer&&x.id===layer)||(id&&x.fromFlat===id));if(!l||!l.placement)return;l.placement=undefined;l.fromFlat=undefined;commit();paintLayers();draw();toast(`${l.name} is off the garment. It is still a layer on the picture: delete it in Layers if you do not want it there either.`)}
+const ENGD=()=>['electronics','toys','home'].includes(D?.concept?.category);
 window.FBDesign={saveAll,showSheet,flatRemoved,drawOpts:()=>({tool:TOOL,color:CUR,size:OPT.size,dsize:OPT.dsize,flow:OPT.flow,soft:OPT.soft,pressure:OPT.pressure}),flatsChanged(){syncUndo()},flatsSaved(){const f=FF();if(f)adoptFlats(f.placements(),{saved:true});setTimeout(loadReady,300)},flatsReady(){const f=FF();if(!f)return;f.mode(VMODE==='split'?'compact':'full');if(VMODE==='front'||VMODE==='back'){f.setView(VMODE);f.tool?.(TOOL)}f.layout?.(LAYOUT);mirrorFlats();f.level?.(LEVEL);$('#packBtn').classList.toggle('hidden',!f.canPack());FLATS={saved:f.saved(),placements:f.placements()};paintLayers();['#specBtn','#decoBtn'].forEach(s=>$(s).disabled=Boolean(f.unsupported()))}};
 async function setVMode(v,{push=true}={}){
   if(!VIEWS.includes(v)||GMODE||!CID)v='picture';const was=VMODE;
-  if(v==='pattern'){const f=FF();if(f?.dirty?.())toast('The flats have changes that are not saved: save them to see them in the pattern.');$('#patFrame').src=`/lab/pattern?concept=${CID}&embed=1`;PLOADED=true}
+  if(v==='pattern'){const f=FF();if(f?.dirty?.())toast('The flats have changes that are not saved: save them to see them in the pattern.');$('#patFrame').src=`/lab/${ENGD()?'engineer':'pattern'}?concept=${CID}&embed=1`;PLOADED=true}
   else if(v!=='picture'){
     // the graphics placed on the picture go onto the flats before they are shown
     if(!GMODE&&DIRTY&&(was==='picture'||!FLOADED)){busy('Putting the graphics on the flats…');try{const sent=await syncFlats({before:flatsFirst});if(sent&&FLOADED)reloadFlats()}catch(x){toast('The flats did not take the graphics: '+x.message)}finally{busy()}}
