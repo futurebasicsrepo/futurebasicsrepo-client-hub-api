@@ -6240,7 +6240,8 @@ async function backfillCardsFromTechPacks(){
   await setSetting('cardBackfillV1',{done:true,at:new Date().toISOString(),products:rows.length,changed});app.log.info({products:rows.length,changed},'product cards filled from existing tech packs');return changed;
 }
 jobEvery('Product cards from tech packs', 24 * 60 * 60 * 1000, backfillCardsFromTechPacks, { delay: 20 * 1000 });
-jobEvery('Payment check for locked packs', 5 * 60 * 1000, runPaymentSweep);
+// PAYMENT_SWEEP=off is for the journeys only: their servers share one database with different payment gates, and a server with the gate off would start other servers' locked packs
+if (process.env.PAYMENT_SWEEP !== 'off') jobEvery('Payment check for locked packs', 5 * 60 * 1000, runPaymentSweep); else declareJob('Payment check for locked packs', 5 * 60 * 1000, 'switched off (PAYMENT_SWEEP=off)');
 if (shopifyConfigured()) jobEvery('Sample deposits', 5 * 60 * 1000, runDepositSweep, { delay: 35 * 1000 }); else declareJob('Sample deposits', 5 * 60 * 1000, 'Shopify is not connected: staff mark deposits paid in the console');
 offerJob();
 await app.listen({ port: Number(process.env.PORT || 3000), host: '0.0.0.0' });
