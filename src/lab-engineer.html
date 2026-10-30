@@ -78,6 +78,7 @@ dialog form{display:grid;gap:10px}
     <div class="menu"><button class="btn q" type="button" id="startBtn" aria-expanded="false" title="Start the assembly again from a kind of product, at a size">Start from…</button></div>
     <div class="menu"><button class="btn q" type="button" id="fileBtn" aria-expanded="false" title="STL for 3D printing and CAD, the exploded drawing, the parts list, the block diagram">Files</button>
       <div class="pop hidden" id="filePop" role="menu">
+        <button type="button" data-dl="step">STEP, for CAD<small>Every part an exact solid with true planes and radii, in mm: SolidWorks, Fusion, Creo, a toolmaker</small></button>
         <button type="button" data-dl="stl0">STL, assembled<small>Every part in place, in mm: CAD, a 3D print, a renderer</small></button>
         <button type="button" data-dl="stl1">STL, exploded<small>The parts pulled apart</small></button>
         <button type="button" data-dl="stlp" id="dlPart">STL, the chosen part<small>Pick a part first</small></button>
@@ -324,7 +325,7 @@ $('#filePop').addEventListener('click',async e=>{const b=e.target.closest('[data
     catch(e){toast(e.message||'The tech pack could not be updated')}finally{fb.disabled=false;fb.textContent='Files'}return}
   const k=b.dataset.dl,base=`/v1/lab/concepts/${CID}`,slug=(D.concept.name||'assembly').replace(/[^a-z0-9]+/gi,'-').replace(/^-|-$/g,'');
   if(k==='stlp'&&!SEL)return toast('Choose a part first');
-  const [path,name]={stl0:[`${base}/assembly.stl?t=0`,`${slug}.stl`],stl1:[`${base}/assembly.stl?t=1`,`${slug}-exploded.stl`],stlp:[`${base}/assembly.stl?part=${encodeURIComponent(SEL||'')}`,`${slug}-${SEL}.stl`],svg:[`${base}/assembly.svg?t=1&download=1`,`${slug}-exploded.svg`],csv:[`${base}/bom.csv`,`${slug}-bom.csv`],blk:[`${base}/block.svg?download=1`,`${slug}-block-diagram.svg`]}[k];
+  const [path,name]={step:[`${base}/assembly.step`,`${slug}.step`],stl0:[`${base}/assembly.stl?t=0`,`${slug}.stl`],stl1:[`${base}/assembly.stl?t=1`,`${slug}-exploded.stl`],stlp:[`${base}/assembly.stl?part=${encodeURIComponent(SEL||'')}`,`${slug}-${SEL}.stl`],svg:[`${base}/assembly.svg?t=1&download=1`,`${slug}-exploded.svg`],csv:[`${base}/bom.csv`,`${slug}-bom.csv`],blk:[`${base}/block.svg?download=1`,`${slug}-block-diagram.svg`]}[k];
   try{const r=await fetch(path,{headers:{Authorization:'Bearer '+TOKEN()}});if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||'The file could not be made');const url=URL.createObjectURL(await r.blob()),a=document.createElement('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),4000);toast(`${name} downloaded`)}catch(err){toast(err.message)}});
 
 // ---------- start ----------

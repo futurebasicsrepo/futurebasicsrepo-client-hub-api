@@ -15,6 +15,7 @@ import { readFileSync } from 'node:fs';
 import { callJsonSchema } from './studio.js';
 import { realMeshes, isoPicture } from './lab-parts-mesh.js';
 import { packFromAssembly } from './lab-assembly.js';
+import { stepOf } from './lab-step.js';
 import { archetype, cleanAssembly, engineer, guessArch, radioOf, stlOf, drawingSvg, blockSvg, bomCsv, bomRows, ARCHES, RESINS, PROCESSES, FINISHES, FIXES, SHAPES, ELEC, AGES } from './lab-assembly.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -99,6 +100,12 @@ export function registerLabAssemblyRoutes(app, d) {
     const only = req.query?.part && L.spec.parts.some(p => p.id === req.query.part) ? req.query.part : null;
     return reply.header('content-disposition', `attachment; filename="${slug(L.c)}${only ? `-${only}` : ''}.stl"`).type('model/stl').send(Buffer.from(stlOf(L.spec, { t: tOf(req.query), only, real: simple(req.query) ? null : await realOf(L.spec, L.c.name, tOf(req.query)) })));
   });
+  // STEP (AP214) for a toolmaker's CAD: every part an exact solid (planes and cylinders), named and coloured, in mm (src/lab-step.js)
+  app.get('/v1/lab/concepts/:id/assembly.step', { preHandler: pre }, async (req, reply) => {
+    const L = await load(req.params.id); if (!L) return bad(reply, 'Not found', 404);
+    const only = req.query?.part && L.spec.parts.some(p => p.id === req.query.part) ? req.query.part : null;
+    return reply.header('content-disposition', `attachment; filename="${slug(L.c)}${only ? `-${only}` : ''}.step"`).type('model/step').send(stepOf(L.spec, { t: tOf(req.query), only, title: L.c.name }));
+  });
   app.get('/v1/lab/concepts/:id/assembly.svg', { preHandler: pre }, async (req, reply) => {
     const L = await load(req.params.id); if (!L) return bad(reply, 'Not found', 404);
     const t = req.query?.t == null ? 1 : tOf(req.query), svg = drawingSvg(L.spec, { t, title: L.c.name, picture: simple(req.query) ? null : await pictureOf(L.spec, t, L.c.name) });
@@ -148,9 +155,10 @@ export function registerLabAssemblyRoutes(app, d) {
       // the assembly in place (the exploded one is the same triangles moved apart, so it stays on the page's Files menu; the drawing shows it)
       const shut = await realOf(s, name, 0); out.push({ name: 'engineering/assembly.stl', data: Buffer.from(stlOf(s, { t: 0, real: shut })) });
       // one file per part a factory makes (moulded, machined, stamped, cut), for the toolmaker; bought-in parts come from their makers
-      s.parts.filter(p => p.process !== 'bought in' && p.shape !== 'pcb').forEach(p => out.push({ name: `engineering/parts/${String(s.parts.indexOf(p) + 1).padStart(2, '0')}-${safe(p.name)}.stl`, data: Buffer.from(stlOf(s, { t: 0, only: p.id, real: shut })) }));
+      s.parts.filter(p => p.process !== 'bought in' && p.shape !== 'pcb').forEach(p => { const base = `engineering/parts/${String(s.parts.indexOf(p) + 1).padStart(2, '0')}-${safe(p.name)}`; out.push({ name: `${base}.stl`, data: Buffer.from(stlOf(s, { t: 0, only: p.id, real: shut })) }, { name: `${base}.step`, data: Buffer.from(stepOf(s, { only: p.id, title: `${name}: ${p.name}` })) }); });
       const pic = await pictureOf(s, 1, name); out.push({ name: 'engineering/exploded-drawing.svg', data: Buffer.from(drawingSvg(s, { t: 1, title: name, picture: pic, costs: false })) });
     } catch (e) { notes.push(`The 3D files could not be made (${String(e.message).slice(0, 120)})`); }
+    out.push({ name: 'engineering/assembly.step', data: Buffer.from(stepOf(s, { title: name })) });
     out.push({ name: 'engineering/parts-list.csv', data: Buffer.from(bomCsv(E, { costs: false })) });
     const H = E.harness; if (H.length) { const q = v => /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v); out.push({ name: 'engineering/cables.csv', data: Buffer.from(['Ref,Cable,From,To,Type,Length (mm)', ...H.map(c => [c.n, c.label, s.parts.find(p => p.id === c.from)?.name, s.parts.find(p => p.id === c.to)?.name, c.type, c.mm].map(q).join(','))].join('\n')) }); }
     if (s.kind === 'electronics') out.push({ name: 'engineering/block-diagram.svg', data: Buffer.from(blockSvg(s)) });

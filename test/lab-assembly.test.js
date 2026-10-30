@@ -177,3 +177,14 @@ test('turntable, headphones, smart speaker, power bank and lamp: read from their
   assert.ok(!pb.checks.some(c => /^Heat/.test(c.text) && c.level !== 'ok'), 'its output leaves through the cable: only the loss warms it');
   const sm = engineer(archetype('smartspeaker')); assert.ok(sm.harness.some(c => c.label === 'Board to board' && /FFC/.test(c.type)), 'the top board joins the main one by a flex cable');
 });
+
+test('STEP for CAD: every part an exact solid (planes, and cylinders for rounded and round faces), named, coloured, in mm', async () => {
+  const { stepOf } = await import('../src/lab-step.js'), s = archetype('cdplayer'), txt = stepOf(s, { title: 'CD player' });
+  assert.match(txt, /^ISO-10303-21;/); assert.match(txt, /FILE_SCHEMA\(\('AUTOMOTIVE_DESIGN/); assert.match(txt, /SI_UNIT\(\.MILLI\.,\.METRE\.\)/); assert.match(txt, /END-ISO-10303-21;\n$/);
+  const solids = [...txt.matchAll(/MANIFOLD_SOLID_BREP\('([^']*)'/g)].map(m => m[1]); assert.equal(solids.length, s.parts.length); assert.ok(solids.includes('Top cover') && solids.includes('Front panel'));
+  assert.equal((txt.match(/STYLED_ITEM\(/g) || []).length, s.parts.length); assert.ok(/CYLINDRICAL_SURFACE\(/.test(txt) && /CIRCLE\(/.test(txt), 'rounded corners and round parts are true cylinders');
+  const one = stepOf(s, { only: 'cover' }); assert.equal((one.match(/MANIFOLD_SOLID_BREP/g) || []).length, 1);
+  // every id is defined once and every reference points at a defined id
+  const ids = new Set([...txt.matchAll(/^#(\d+)=/gm)].map(m => m[1])); for (const m of txt.matchAll(/#(\d+)(?!=)/g)) assert.ok(ids.has(m[1]), `#${m[1]} is defined`);
+  for (const a of Object.keys(ARCHES)) assert.equal((stepOf(archetype(a)).match(/MANIFOLD_SOLID_BREP/g) || []).length, cleanAssembly(archetype(a)).parts.length, a);
+});
