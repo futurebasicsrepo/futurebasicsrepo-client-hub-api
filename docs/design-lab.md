@@ -402,6 +402,12 @@ When nothing holds it up, the list offers **Send to the tech pack**; once it is 
   - **Type** and **shapes:** stay editable. Type can be bold or italic, spaced, outlined and **arched** (for a college or rock-tee arc). **Turn into pixels** lets you paint on type or a shape and rub it out.
   - **Eyedropper:** picks a colour from the picture.
   - Undo and redo cover every step.
+- **Working like a designer** (`src/lab-studio-pro.js`, served at `/lab/studio-pro.js`).
+  - **Several layers at once.** Shift-click a layer on the picture or in the list to add it to the choice or take it away, drag a box on the empty picture (or over the garment photo) to choose every layer it touches, or press ⌘A. Chosen layers move, nudge (arrows, Shift for 10), duplicate (⌘D) and delete together. Esc chooses none.
+  - **Smart guides.** A layer, or several, being dragged snaps its edges and middle to the picture's edges and middle and to every other layer's, with the line shown in magenta. Hold Alt to move freely.
+  - **Align and space.** The bar above the picture, with the select tool, aligns the choice left, centre, right, top, middle or bottom (to each other, or to the picture when one layer is chosen) and spaces three or more evenly. The keys are Alt A, H, D, W, V and S.
+  - **Where it is, typed.** X, Y, W and H are in the Place section, in inches once the picture has a size (pixels until then). They measure the ink, not the empty margin round type.
+  - **⌘K** finds any command by name: tools, align, zoom, the views, every export, embroidery, Made as, versions, 3D, the sheets, New design. **?** lists every key. The tools already had one-letter keys: V, H, B, E, D, T, R, O, L, I, M, U and W.
 - **Colour.** Every layer has hue, saturation, brightness and contrast. **Recolour** turns a mark or graphic into one colour. The swatches are the Future Basics colours and the plan's graphic-program palette; clicking one with a layer selected colours that layer.
 - **Distress.** Every layer has an even wear: a worn print (specks and grain), cracked ink, or faded and washed out. You set the amount and grain size, and **Another pattern** gives a new one.
 - **AI.**

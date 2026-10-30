@@ -3573,5 +3573,78 @@ await journey('J261', 'One way in for everyone: staff and a client each find New
   } finally { await br.close(); }
 });
 
+await journey('J262', 'The Studio feels like a designer\'s tool: Shift-click and a box round them choose several layers, they move together and snap to the picture\'s middle with the guide shown (Alt moves freely), align and space them evenly from the bar or Alt + a letter, X/Y/W/H typed in inches, ⌘A, ⌘K runs any command by name, ? lists the keys', async () => {
+  const { brands, plan } = await conceptSetup();
+  if (!playwright) { ok(true, 'needs a browser'); await cleanup(brands, plan.plan?.id); return; }
+  const line = plan.lines.find(l => l.category === 'tops') || plan.lines[0], c = (await K(`/plans/${plan.plan.id}/lines/${line.id}/concepts`, { body: { count: 1 } })).json.concepts[0];
+  const b = await playwright.chromium.launch();
+  try {
+    const oc = await b.newContext({ viewport: { width: 1500, height: 980 } }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); localStorage.setItem('fb.helper.on', '0'); } catch {} }, kyleT);
+    const page = await oc.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
+    await page.goto(`${BASE}/lab/studio?concept=${c.id}`, { waitUntil: 'networkidle' }); await page.waitForSelector('#pLayers .ly', { timeout: 20000 }); await page.waitForFunction(() => !document.querySelector('#busy:not(.hidden)'));
+    ok(await page.evaluate(() => Boolean(window.PRO)), '1. the professional layer is loaded');
+    // three shapes, apart from each other, to work with
+    await page.evaluate(() => { for (const [i, x] of [[0, .2], [1, .45], [2, .8]]) { const l = addLayer(fresh('shape', { name: `Box ${i + 1}`, shape: 'rect', w: Math.round(W / 12), h: Math.round(W / 12), radius: 0, fill: true, fillColor: '#ff3355', stroke: false, strokeW: 2, strokeColor: '#000', x: Math.round(W * x), y: Math.round(H * (.3 + i * .08)) })); } setTool('select'); fit(); draw(); });
+    const at = name => page.evaluate(n => { const l = LAYERS.find(q => q.name === n), r = view.getBoundingClientRect(); return [r.left + sx(l.x), r.top + sy(l.y)]; }, name);
+    const ids = () => page.evaluate(() => PRO.chosen().map(l => l.name).sort());
+    let [x1, y1] = await at('Box 1'); await page.mouse.click(x1, y1);
+    let [x2, y2] = await at('Box 2'); await page.keyboard.down('Shift'); await page.mouse.click(x2, y2); await page.keyboard.up('Shift');
+    ok(JSON.stringify(await ids()) === '["Box 1","Box 2"]', '2. Shift-click adds a second layer to the choice', await ids());
+    ok(/2 layers chosen/i.test(await page.textContent('#pLayers')) && await page.locator('#pLayers .ly.on').count() === 2, '   the panel says what is chosen and both rows are lit');
+    ok(await page.locator('#opts .proar [data-arr="left"]:not([disabled])').count() === 1 && /2 chosen/.test(await page.innerText('#opts')), '   and the bar above the picture offers to align them');
+    // move them together
+    const before = await page.evaluate(() => ['Box 1', 'Box 2'].map(n => { const l = LAYERS.find(q => q.name === n); return [l.x, l.y]; }));
+    await page.mouse.move(x1, y1); await page.mouse.down(); await page.mouse.move(x1 + 40, y1 + 25, { steps: 5 }); await page.mouse.up();
+    const after = await page.evaluate(() => ['Box 1', 'Box 2'].map(n => { const l = LAYERS.find(q => q.name === n); return [l.x, l.y]; }));
+    ok(after[0][0] - before[0][0] === after[1][0] - before[1][0] && after[0][0] !== before[0][0], '3. dragging one moves both by the same amount', { before, after });
+    await page.keyboard.press('Control+z'); ok(JSON.stringify(await page.evaluate(() => ['Box 1', 'Box 2'].map(n => { const l = LAYERS.find(q => q.name === n); return [l.x, l.y]; }))) === JSON.stringify(before), '   one undo puts both back');
+    // a box round them
+    await page.keyboard.press('Escape'); ok((await ids()).length === 0, '4. Esc chooses none');
+    const r = await page.evaluate(() => { const v = view.getBoundingClientRect(); return { x0: v.left + sx(W * .05), y0: v.top + sy(H * .05), x1: v.left + sx(W * .97), y1: v.top + sy(H * .2) }; });
+    [x1, y1] = await at('Box 1'); [x2, y2] = await at('Box 3');
+    await page.mouse.move(Math.min(x1, x2) - 60, Math.min(y1, y2) - 60); await page.mouse.down(); await page.mouse.move(Math.max(x1, x2) + 60, Math.max(y1, y2) + 60, { steps: 6 });
+    ok(await page.evaluate(() => Boolean(document.querySelector('#view'))), '   the drag box is drawn while dragging');
+    await page.mouse.up();
+    const boxed = await ids();
+    ok(['Box 1', 'Box 2', 'Box 3'].every(n => boxed.includes(n)), '5. dragging a box on the picture chooses every layer it touches', boxed);
+    // align and space them
+    await page.evaluate(() => { PRO.SELS.clear(); for (const l of LAYERS.filter(q => /^Box/.test(q.name))) PRO.SELS.add(l.id); SEL = LAYERS.find(q => q.name === 'Box 3').id; paintPanels(); draw(); });
+    await page.click('#opts .proar [data-arr="top"]');
+    const tops = await page.evaluate(() => LAYERS.filter(q => /^Box/.test(q.name)).map(l => Math.round(PRO.box(l).y0)));
+    ok(tops.every(t => Math.abs(t - tops[0]) <= 1), '6. Align top lines their tops up', tops);
+    await page.keyboard.press('Alt+KeyV'); const mids = await page.evaluate(() => LAYERS.filter(q => /^Box/.test(q.name)).map(l => Math.round(PRO.box(l).cy)));
+    ok(mids.every(t => Math.abs(t - mids[0]) <= 1), '   Alt V lines their middles up', mids);
+    await page.click('#opts .proar [data-dist="h"]');
+    const gaps = await page.evaluate(() => { const bs = LAYERS.filter(q => /^Box/.test(q.name)).map(l => PRO.box(l)).sort((a, b) => a.x0 - b.x0); return [bs[1].x0 - bs[0].x1, bs[2].x0 - bs[1].x1].map(Math.round); });
+    ok(Math.abs(gaps[0] - gaps[1]) <= 2, '7. Space evenly across leaves the same gap between each', gaps);
+    // smart guide: one box dragged near the middle snaps to it
+    await page.keyboard.press('Escape'); [x1, y1] = await at('Box 2');
+    const mid = await page.evaluate(() => { const v = view.getBoundingClientRect(), l = LAYERS.find(q => q.name === 'Box 2'); return v.left + sx(W / 2) - (sx(l.x) - sx(PRO.box(l).cx)); });
+    await page.mouse.move(x1, y1); await page.mouse.down(); await page.mouse.move(mid + 3, y1 + 2, { steps: 6 });
+    const guide = await page.evaluate(() => { const l = LAYERS.find(q => q.name === 'Box 2'); return Math.abs(PRO.box(l).cx - W / 2); });
+    await page.mouse.up();
+    ok(guide < 1, '8. moved close to the middle, it snaps onto it (the guide is drawn)', guide);
+    // inches
+    await page.evaluate(() => { PPI = PPI || 50; paintPanels(); });
+    await page.waitForSelector('#pLayers [data-geo="x"]');
+    await page.fill('#pLayers [data-geo="x"]', '2'); await page.press('#pLayers [data-geo="x"]', 'Enter'); await page.locator('#pLayers [data-geo="w"]').focus();
+    const gx = await page.evaluate(() => { const l = selected(); return PRO.box(l).x0 / PPI; });
+    ok(Math.abs(gx - 2) < .03, '9. X typed in inches puts its left edge there', gx);
+    await page.fill('#pLayers [data-geo="w"]', '3'); await page.press('#pLayers [data-geo="w"]', 'Enter');
+    const gw = await page.evaluate(() => PRO.box(selected()).w / PPI); ok(Math.abs(gw - 3) < .05, '   and W sizes it to 3 inches', gw);
+    // ⌘A, ⌘K, ?
+    await page.locator('#view').click({ position: { x: 5, y: 5 } }); await page.keyboard.press('Control+a');
+    ok(JSON.stringify(await ids()) === JSON.stringify(await page.evaluate(() => LAYERS.filter(l => l.visible && !fixed(l) && l.kind !== 'base').map(l => l.name).sort())), '10. ⌘A chooses every layer that moves', await ids());
+    await page.keyboard.press('Escape'); await page.keyboard.press('Control+k'); await page.waitForSelector('#proPal[open]');
+    await page.keyboard.type('zoom to fit'); ok(/Zoom to fit/.test(await page.innerText('#proPal li[aria-selected=true]')), '11. ⌘K finds a command by name');
+    await page.keyboard.press('Enter'); await page.waitForFunction(() => !document.querySelector('#proPal[open]'));
+    await page.keyboard.press('Control+k'); await page.keyboard.type('embroid'); ok(/Embroidery/.test(await page.innerText('#proPal li[aria-selected=true]')), '   and finds the embroidery tool too');
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Shift+Slash'); await page.waitForSelector('#proKeys[open]'); ok(/Align top/.test(await page.innerText('#proKeys')), '12. ? lists the keys');
+    await page.click('#proKeys [data-close]');
+    ok(errs.length === 0, '   no page errors', errs);
+  } finally { await b.close(); await cleanup(brands, plan.plan?.id); }
+});
+
 shops.close(); brave.close();
 process.exit(summary() ? 1 : 0);
