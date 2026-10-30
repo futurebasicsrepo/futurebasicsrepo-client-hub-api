@@ -105,7 +105,26 @@ html body .cuefan path{fill:none;stroke:rgba(75,255,154,.55);stroke-width:1;stro
 @keyframes cueIn{from{opacity:0;transform:translateX(18px)}}
 @keyframes cueDraw{to{stroke-dashoffset:0}}
 
+
+/* the hub's sign-in: one paper card in two halves and one graphic, the three steps joined by a line that draws itself down to the sign-in.
+   The rings, the sweep and the floating dots it had did not line up where the halves meet, on a phone least of all. */
+html body .gate{box-shadow:none;border:1px solid var(--line)}
+html body .intro{background:var(--fog);color:var(--ink);border-right:1px solid var(--line)}
+html body .intro p{color:#3d4047}
+html body .intro .meta{color:var(--dim)}
+html body :is(.intro,.signin)::before,html body .intro::after,html body .intro .motion-rails{display:none}
+html body .steps{position:relative}
+html body .steps::before{content:"";position:absolute;left:14px;top:14px;bottom:14px;width:1px;background:var(--ink);transform-origin:top;animation:cueGrow 1.4s .3s cubic-bezier(.3,.7,.2,1) both}
+html body .step b{position:relative;z-index:1;background:#fff;border-color:var(--ink);color:var(--ink)}
+html body .step:last-child b{background:var(--cue);box-shadow:0 0 0 4px rgba(75,255,154,.25)}
+@keyframes cueGrow{from{transform:scaleY(0)}}
+@media (max-width:760px){html body .intro{border-right:0;border-bottom:1px solid var(--line)}}
+
+
+/* a phone page never pans sideways: something too wide is cut at the edge of the screen, the page itself stays put (clip, unlike hidden, keeps sticky headers working) */
+@media (max-width:900px){html,html body{overflow-x:clip;max-width:100%}html body :is(img,video){max-width:100%}}
+
 /* inputs and focus */
 html body :is(input,select,textarea):focus-visible{outline:2px solid var(--ink);outline-offset:1px}
 }
-@media screen and (prefers-reduced-motion:reduce){html body{background-attachment:scroll}html body .hubnav.open>a,html body .cuefan path{animation:none}html body .cuefan path{stroke-dashoffset:0}}
+@media screen and (prefers-reduced-motion:reduce){html body{background-attachment:scroll}html body .hubnav.open>a,html body .cuefan path,html body .steps::before{animation:none}html body .cuefan path{stroke-dashoffset:0}}
