@@ -809,8 +809,8 @@ await journey('J118', 'the work console menu: eight sections down the left, the 
   const pc = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }); await pc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
   const ph = await pc.newPage(); ph.errs = []; ph.on('pageerror', e => ph.errs.push(e.message)); const over = () => ph.evaluate(() => document.documentElement.scrollWidth - innerWidth);
   await ph.goto(`${W}/sales`, { waitUntil: 'networkidle' }); await ph.waitForSelector('.tiles', { timeout: 15000 });
-  ok(await ph.locator('.fbburger').isVisible() && await ph.$eval('.fbside', e => e.getBoundingClientRect().right) <= 1 && await over() <= 1 && await ph.locator('.fbtabs').isVisible(), 'on a phone the menu is closed behind a button, the tabs stay across the top, and nothing sticks out', await over());
-  await ph.click('.fbburger'); await sleep(350); ok(await ph.$eval('.fbside', e => e.getBoundingClientRect().left) >= -1 && /Sales/.test(await ph.innerText('.fbside')), 'the button opens the drawer');
+  ok(await ph.locator('.fbburger').isVisible() && await ph.$eval('.fbside', e => { const r = e.getBoundingClientRect(); return r.right <= 1 || r.bottom <= 1; }) && await over() <= 1 && await ph.locator('.fbtabs').isVisible(), 'on a phone the menu is closed behind a button, the tabs stay across the top, and nothing sticks out', await over());
+  await ph.click('.fbburger'); await sleep(350); ok(await ph.$eval('.fbside', e => { const r = e.getBoundingClientRect(); return r.left >= -1 && r.top >= -1; }) && /Sales/.test(await ph.innerText('.fbside')), 'the button opens the drawer');
   await ph.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/j118-phone.png` }).catch(() => {});
   // on a short phone the drawer scrolls under a finger to its last item, and a drag on the dimmed page does not move the page behind it
   await ph.setViewportSize({ width: 390, height: 300 }); await sleep(300); const cdp = await pc.newCDPSession(ph);
@@ -821,7 +821,7 @@ await journey('J118', 'the work console menu: eight sections down the left, the 
   await swipe(100, 270, -220); await swipe(100, 270, -220); const s1 = await state(); ok(s1.aside > 0 && s1.last <= s1.vh - 8, 'a finger scrolls the drawer to its last item, clear of the screen edge', JSON.stringify(s1));
   await ph.setViewportSize({ width: 390, height: 844 }); await sleep(300);
   await ph.click('.fbside a[data-section="inbox"]'); await sleep(800);
-  ok(await ph.$eval('.fbside', e => e.getBoundingClientRect().right) <= 1 && /\/admin#inbox/.test(ph.url()), 'choosing a section closes it and goes there');
+  ok(await ph.$eval('.fbside', e => { const r = e.getBoundingClientRect(); return r.right <= 1 || r.bottom <= 1; }) && /\/admin#inbox/.test(ph.url()), 'choosing a section closes it and goes there');
   ok(ph.errs.length === 0, 'no script errors on the phone', ph.errs); await pc.close();
 });
 
