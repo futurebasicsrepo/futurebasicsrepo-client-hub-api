@@ -38,3 +38,24 @@ test('a label designed in the studio goes in as its own picture, beside the flat
   assert.ok(labels.every(s => s.view === 'detail' && s.id.startsWith('lab-label-')), 'as details, each under its own id');
   assert.equal(labHandoff(out, { sketches: [{ id: 'lab-label-1', view: 'detail', label: 'Label · Neck label', image: img }] }).sketches.filter(s => s.id === 'lab-label-1').length, 1, 'sent again, it replaces itself');
 });
+
+test('engineering goes into the pack: views, parts and cables, steps and tooling, and an electronic product\'s components and certifications', async () => {
+  await import('../src/elec.js');
+  const { archetype, engineer, packFromAssembly } = await import('../src/lab-assembly.js'), { ENG_NOTE } = await import('../src/lab-handoff.js');
+  const E = engineer(archetype('cdplayer')), P = packFromAssembly(E), png = 'data:image/png;base64,iVBORw0KGgo=';
+  const before = normalizeTechPack({ ...emptyTechPack(), bom: [{ component: 'Gift box', material: 'E-flute', notes: 'Packaging' }], construction: [{ area: 'Packing', detail: 'One per box' }], electronics: { enabled: false, certifications: [{ name: 'FCC Part 15B', market: 'US', status: 'passed' }] } });
+  const lab = { engineering: { ...P, sketches: [{ id: 'lab-eng-assembled', view: 'front', label: 'Assembled', image: png }, { id: 'lab-eng-exploded', view: 'other', label: 'Exploded', image: png }] } };
+  const once = normalizeTechPack(labHandoff(before, lab)), twice = normalizeTechPack(labHandoff(once, lab));
+  assert.equal(once.bom.filter(r => r.notes === ENG_NOTE).length, P.bom.length); assert.ok(once.bom.some(r => r.component === 'Gift box'), 'the pack\'s own lines stay');
+  assert.ok(once.bom.some(r => /^Cable W1:/.test(r.component)) && once.bom.find(r => r.component === 'Chassis').cost === '2.07');
+  assert.ok(once.construction.some(r => /^Assembly · \d+$/.test(r.area)) && once.construction.some(r => /^Tooling · Chassis$/.test(r.area)) && once.construction.some(r => r.area === 'Packing'));
+  assert.ok(!once.construction.some(r => /\$/.test(r.detail)), 'no tool costs in the pack');
+  assert.equal(once.sketches.filter(x => x.id.startsWith('lab-eng-')).length, 2); assert.equal(once.sketches.find(x => x.id === 'lab-eng-assembled').view, 'front');
+  const e = once.electronics; assert.equal(e.enabled, true); assert.ok(e.components.some(c => c.ref === 'U2' && /PCM5102A/.test(c.part) && c.mpn === 'PCM5102A'));
+  assert.ok(e.components.some(c => c.ref === 'W3' && /FFC/.test(c.notes))); assert.equal(e.specs.inputPower, 'AC mains, 100–240 V');
+  assert.equal(e.certifications.find(c => c.name === 'FCC Part 15B').status, 'passed', 'a certification already in the pack keeps its status');
+  assert.ok(e.certifications.some(c => /IEC 60825-1/.test(c.name) && c.status === 'needed'), 'the laser product is added');
+  assert.deepEqual([twice.bom.length, twice.construction.length, twice.sketches.length, twice.electronics.components.length, twice.electronics.certifications.length], [once.bom.length, once.construction.length, once.sketches.length, once.electronics.components.length, once.electronics.certifications.length], 'sending again replaces, it does not add');
+  const taken = normalizeTechPack(labHandoff(normalizeTechPack({ ...emptyTechPack(), sketches: [{ id: 'front-photo', view: 'front', label: 'Photo', image: png }] }), lab));
+  assert.equal(taken.sketches.find(x => x.id === 'lab-eng-assembled').view, 'other', 'a front the pack already has a picture of keeps it');
+});

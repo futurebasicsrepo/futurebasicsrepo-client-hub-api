@@ -14,6 +14,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { callJsonSchema } from './studio.js';
 import { realMeshes, isoPicture } from './lab-parts-mesh.js';
+import { packFromAssembly } from './lab-assembly.js';
 import { archetype, cleanAssembly, engineer, guessArch, radioOf, stlOf, drawingSvg, blockSvg, bomCsv, bomRows, ARCHES, RESINS, PROCESSES, FINISHES, FIXES, SHAPES, ELEC, AGES } from './lab-assembly.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -39,7 +40,7 @@ export function registerLabAssemblyRoutes(app, d) {
   const { pool, authenticate, adminOnly, env = process.env, askImpl = callJsonSchema, log = console } = d;
   const pre = [authenticate, adminOnly], bad = (reply, error, code = 422) => reply.code(code).send({ error });
   const actorOf = req => (UUID.test(String(req.auth?.sub || '')) ? req.auth.sub : null);
-  const concept = async id => (UUID.test(String(id)) ? (await pool.query('select id, name, category, spec from lab_concepts where id=$1', [id])).rows[0] : null);
+  const concept = async id => (UUID.test(String(id)) ? (await pool.query('select id, name, category, spec, product_id from lab_concepts where id=$1', [id])).rows[0] : null);
   const proposal = c => { const s = archetype(guessArch(c), dimsOf(c), { radio: radioOf(c), display: /\boled\b/i.test(c.spec?.description || '') ? 'oled' : 'lcd' }); s.name = c.name; if (c.category === 'toys') s.age = '3+'; return s; };
   async function load(id) {
     const c = await concept(id); if (!c) return null;
@@ -53,7 +54,7 @@ export function registerLabAssemblyRoutes(app, d) {
 
   app.get('/v1/lab/concepts/:id/assembly', { preHandler: pre }, async (req, reply) => {
     const L = await load(req.params.id); if (!L) return bad(reply, 'Not found', 404);
-    return { concept: { id: L.c.id, name: L.c.name, category: L.c.category }, engineered: ENGINEERED.includes(L.c.category), spec: L.spec, saved: L.saved, updatedAt: L.updatedAt, options, eng: read(engineer(L.spec)) };
+    return { concept: { id: L.c.id, name: L.c.name, category: L.c.category, productId: L.c.product_id || null }, engineered: ENGINEERED.includes(L.c.category), spec: L.spec, saved: L.saved, updatedAt: L.updatedAt, options, eng: read(engineer(L.spec)) };
   });
   app.put('/v1/lab/concepts/:id/assembly', { preHandler: pre, bodyLimit: 2_000_000 }, async (req, reply) => {
     const c = await concept(req.params.id); if (!c) return bad(reply, 'Not found', 404);
@@ -113,5 +114,47 @@ export function registerLabAssemblyRoutes(app, d) {
     const L = await load(req.params.id); if (!L) return bad(reply, 'Not found', 404);
     return reply.header('content-disposition', `attachment; filename="${slug(L.c)}-bom.csv"`).type('text/csv; charset=utf-8').send(bomCsv(engineer(L.spec)));
   });
-  return { load };
+  // ---- into the tech pack: the views, the parts and cables, the steps and tools, and an electronic product's components and certifications ----
+  // (src/lab-handoff.js lays them in). A pack already published keeps that version: what changed goes out as the next one, as the flats do.
+  const packPictures = async (L) => {
+    const [shut, open] = await Promise.all([pictureOf(L.spec, 0, L.c.name), pictureOf(L.spec, 1, L.c.name)]);
+    return [shut && { id: 'lab-eng-assembled', view: 'front', label: `${L.c.name}: assembled (Engineering)`, image: shut.href }, open && { id: 'lab-eng-exploded', view: 'other', label: `${L.c.name}: exploded, every part (Engineering)`, image: open.href }].filter(Boolean);
+  };
+  app.post('/v1/lab/concepts/:id/assembly/tech-pack', { preHandler: pre }, async (req, reply) => {
+    const L = await load(req.params.id); if (!L) return bad(reply, 'Not found', 404);
+    if (!L.c.product_id) return bad(reply, 'This concept has no tech pack yet. Approve it and send it to a tech pack first.', 409);
+    if (!L.saved) return bad(reply, 'Save the engineering first', 409);
+    if (!d.applyHandoff) return bad(reply, 'Engineering cannot be sent to tech packs on this service', 501);
+    const P = packFromAssembly(engineer(L.spec)), sketches = await packPictures(L).catch(e => { log.warn?.({ err: e.message }, 'engineering: the views could not be drawn'); return []; });
+    const sent = await d.applyHandoff(L.c.product_id, { files: [], lab: { engineering: { ...P, sketches } } }); if (!sent) return bad(reply, 'The tech pack could not be found', 404);
+    const tp = (await pool.query('select version, published_at from tech_packs where product_id=$1 order by created_at desc limit 1', [L.c.product_id])).rows[0];
+    const changes = tp?.published_at && d.packChanges ? await d.packChanges(L.c.product_id) : null, same = Boolean(tp?.published_at && changes && !changes.length);
+    let version = null, publishError = null;
+    if (tp?.published_at && !same) {
+      const note = `Engineering updated in the Design Lab (${L.c.name})`;
+      const res = await app.inject({ method: 'POST', url: `/v1/admin/products/${L.c.product_id}/tech-pack/publish`, headers: { authorization: req.headers.authorization || '' }, payload: { note, override: `${note}; v${tp.version} stays as it was` } });
+      const body = (() => { try { return JSON.parse(res.body); } catch { return {}; } })();
+      if (res.statusCode < 300) version = body.techPack?.version || null; else publishError = body.error || `The next version could not be published (${res.statusCode})`;
+    }
+    return { ok: true, productId: L.c.product_id, bom: P.bom.length, construction: P.construction.length, components: P.electronics?.components.length || 0, certifications: P.electronics?.certifications.length || 0, sketches: sketches.length, version, previousVersion: tp?.published_at ? tp.version : null, unchanged: same, changes: (changes || []).slice(0, 12).map(x => `${x.section}: ${x.label}`), publishError };
+  });
+
+  // ---- the factory's production package (src/server.js factoryPackage): the engineering as files, with no costs in them ----
+  async function productionFiles(id) {
+    const L = await load(id), out = [], notes = []; if (!L) return { files: out, notes };
+    if (!L.saved) { if (ENGINEERED.includes(L.c.category)) notes.push('The engineering has not been saved yet, so its files are not in this package'); return { files: out, notes }; }
+    const E = engineer(L.spec), s = E.spec, name = L.c.name, safe = v => String(v).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40);
+    try {
+      // the assembly in place (the exploded one is the same triangles moved apart, so it stays on the page's Files menu; the drawing shows it)
+      const shut = await realOf(s, name, 0); out.push({ name: 'engineering/assembly.stl', data: Buffer.from(stlOf(s, { t: 0, real: shut })) });
+      // one file per part a factory makes (moulded, machined, stamped, cut), for the toolmaker; bought-in parts come from their makers
+      s.parts.filter(p => p.process !== 'bought in' && p.shape !== 'pcb').forEach(p => out.push({ name: `engineering/parts/${String(s.parts.indexOf(p) + 1).padStart(2, '0')}-${safe(p.name)}.stl`, data: Buffer.from(stlOf(s, { t: 0, only: p.id, real: shut })) }));
+      const pic = await pictureOf(s, 1, name); out.push({ name: 'engineering/exploded-drawing.svg', data: Buffer.from(drawingSvg(s, { t: 1, title: name, picture: pic, costs: false })) });
+    } catch (e) { notes.push(`The 3D files could not be made (${String(e.message).slice(0, 120)})`); }
+    out.push({ name: 'engineering/parts-list.csv', data: Buffer.from(bomCsv(E, { costs: false })) });
+    const H = E.harness; if (H.length) { const q = v => /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v); out.push({ name: 'engineering/cables.csv', data: Buffer.from(['Ref,Cable,From,To,Type,Length (mm)', ...H.map(c => [c.n, c.label, s.parts.find(p => p.id === c.from)?.name, s.parts.find(p => p.id === c.to)?.name, c.type, c.mm].map(q).join(','))].join('\n')) }); }
+    if (s.kind === 'electronics') out.push({ name: 'engineering/block-diagram.svg', data: Buffer.from(blockSvg(s)) });
+    return { files: out, notes };
+  }
+  return { load, productionFiles };
 }

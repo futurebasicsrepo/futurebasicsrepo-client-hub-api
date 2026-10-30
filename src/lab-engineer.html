@@ -85,6 +85,7 @@ dialog form{display:grid;gap:10px}
         <button type="button" data-dl="png">Picture of this view (PNG)<small>The 3D view as it is now, for a deck or a message</small></button>
         <button type="button" data-dl="csv">Parts list (CSV)<small>Materials, processes, unit and tool costs</small></button>
         <button type="button" data-dl="blk" id="dlBlk">Block diagram (SVG)<small>Power, the main chip and what it drives</small></button>
+        <button type="button" data-dl="pack" id="toPack">Send to the tech pack<small>The views, parts, cables, steps, tooling and certifications go into the product's pack</small></button>
       </div></div>
     <button class="btn" type="button" id="save" title="Save the assembly (Ctrl+S)">Save</button>
   </div>
@@ -318,6 +319,9 @@ document.addEventListener('click',e=>{if(!e.target.closest('#filePop'))$('#fileP
 $('#filePop').addEventListener('click',async e=>{const b=e.target.closest('[data-dl]');if(!b)return;$('#filePop').classList.add('hidden');
   if(b.dataset.dl==='png'){if(!V.r)return toast('The 3D view is not available here');const bl=await shot(),u=URL.createObjectURL(bl),a2=document.createElement('a');a2.href=u;a2.download=`${(D.concept.name||'assembly').replace(/[^a-z0-9]+/gi,'-')}-view.png`;document.body.append(a2);a2.click();a2.remove();setTimeout(()=>URL.revokeObjectURL(u),4000);return toast('Picture downloaded')}
   if(DIRTY){toast('Save first: the files are made from the saved assembly');return}
+  if(b.dataset.dl==='pack'){if(!D.concept.productId)return toast('Approve the concept and send it to a tech pack first');const fb=$('#fileBtn');fb.disabled=true;fb.textContent='Sending…';
+    try{const j=await api(`/v1/lab/concepts/${CID}/assembly/tech-pack`,{method:'POST',body:{}});toast(j.publishError?`In the pack, but not published: ${j.publishError}`:j.version?`Sent: v${j.version} published with the engineering (v${j.previousVersion} stays as it was)`:j.unchanged?'Sent: nothing a factory reads changed':`Sent: ${j.bom} parts and cables, ${j.construction} steps and tooling lines${j.components?`, ${j.components} components, ${j.certifications} certifications`:''}`)}
+    catch(e){toast(e.message||'The tech pack could not be updated')}finally{fb.disabled=false;fb.textContent='Files'}return}
   const k=b.dataset.dl,base=`/v1/lab/concepts/${CID}`,slug=(D.concept.name||'assembly').replace(/[^a-z0-9]+/gi,'-').replace(/^-|-$/g,'');
   if(k==='stlp'&&!SEL)return toast('Choose a part first');
   const [path,name]={stl0:[`${base}/assembly.stl?t=0`,`${slug}.stl`],stl1:[`${base}/assembly.stl?t=1`,`${slug}-exploded.stl`],stlp:[`${base}/assembly.stl?part=${encodeURIComponent(SEL||'')}`,`${slug}-${SEL}.stl`],svg:[`${base}/assembly.svg?t=1&download=1`,`${slug}-exploded.svg`],csv:[`${base}/bom.csv`,`${slug}-bom.csv`],blk:[`${base}/block.svg?download=1`,`${slug}-block-diagram.svg`]}[k];

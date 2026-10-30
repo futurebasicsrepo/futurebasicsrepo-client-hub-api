@@ -439,7 +439,7 @@ export function harnessOf(s) {
     const a = endOf(p, to.at), b = endOf(to, p.at), mm = Math.round(Math.hypot(...a.at.map((v, k) => v - b.at[k])) * 1.2 / 10) * 10 + 40;
     out.push({ id: `cable-${p.id}`, from: p.id, to: to.id, label: c.label, type: c.type, kind: c.kind, mm, unit: r2(c.cost + c.per * mm / 100) });
   }
-  return out.map((c, i) => ({ ...c, n: `C${i + 1}` }));
+  return out.map((c, i) => ({ ...c, n: `W${i + 1}` })); // W: a cable assembly's reference designator (IEEE 315)
 }
 // the cable's run, pulled apart with its parts: a curve leaving each end square to its face, as an assembler routes it (24 points)
 export function cablePath(s, c, off = {}) {
@@ -605,7 +605,31 @@ export function bomRows(E) {
   rows.push({ item: rows.length + 1, id: 'labour', name: `Final assembly and test (${E.assemblySecs} s)`, qty: 1, material: '', process: 'Labour', finish: '', colour: '', mass: null, unit: E.labour, tool: 0 });
   return rows;
 }
-export function bomCsv(E) { const q = v => /[",\n]/.test(String(v ?? '')) ? `"${String(v).replace(/"/g, '""')}"` : String(v ?? ''); return ['Item,Part,Qty,Material,Process,Finish,Colour,Mass (g),Unit cost ($),Tool cost ($)', ...bomRows(E).map(r => [r.item, r.name, r.qty, r.material, r.process, r.finish, r.colour, r.mass ?? '', r.unit, r.tool].map(q).join(','))].join('\n'); }
+// costs: false for a factory (it quotes its own; our estimates stay with us)
+export function bomCsv(E, { costs = true } = {}) { const q = v => /[",\n]/.test(String(v ?? '')) ? `"${String(v).replace(/"/g, '""')}"` : String(v ?? ''); return [`Item,Part,Qty,Material,Process,Finish,Colour,Mass (g)${costs ? ',Unit cost ($),Tool cost ($)' : ''}`, ...bomRows(E).filter(r => costs || r.id !== 'labour').map(r => [r.item, r.name, r.qty, r.material, r.process, r.finish, r.colour, r.mass ?? '', ...(costs ? [r.unit, r.tool] : [])].map(q).join(','))].join('\n'); }
+
+// ---- the tech pack: what the engineering lays into the product's pack (src/lab-handoff.js merges it) ---------------------------------------------
+// The parts and cables as BOM lines, the assembly steps and the tools as construction lines, and for an electronic product the components, the
+// certifications and the electrical facts. Unit costs go on the BOM lines (the pack hides them from factories); tool costs stay in the Lab.
+const REFS = { mcu: 'U', ble: 'U', wifi: 'U', dac: 'U', amp: 'U', amp2: 'U', charger: 'U', reg: 'U', preamp: 'U', hpamp: 'U', imu: 'U', env: 'U', mic: 'MK', usbc: 'J', iec: 'J', rca: 'J', jack: 'J', antenna: 'ANT', button: 'SW', encoder: 'SW', pot: 'VR', led: 'D', speaker: 'LS', woofer: 'LS', tweeter: 'LS', battery: 'BT', aa: 'BT', motor: 'M', ir: 'U', vfd: 'DS', oled: 'DS', lcd: 'DS', psu: 'PS', cdmech: 'MECH', tapemech: 'MECH' };
+export function packFromAssembly(E0) {
+  const E = E0.spec ? E0 : engineer(E0), s = E.spec, byId = Object.fromEntries(s.parts.map(p => [p.id, p])), onBoard = p => p.parent && byId[p.parent]?.shape === 'pcb';
+  const bom = bomRows(E).filter(r => r.id !== 'labour').map(r => { const p = byId[r.id]; return { component: r.name, material: r.material || '', spec: [r.process, r.finish, p && !p.elec && p.shape !== 'pcb' && p.wall ? `${p.wall} mm wall` : ''].filter(Boolean).join(' · '), color: r.colour && !/^#/.test(r.colour) ? r.colour : (p && !p.elec ? r.colour || '' : ''), placement: p?.parent && byId[p.parent] ? `In ${byId[p.parent].name.toLowerCase()}` : '', qty: String(r.qty), unit: 'pcs', cost: r.unit ? r.unit.toFixed(2) : '' }; });
+  const construction = [
+    ...E.steps.map(t => ({ area: `Assembly · ${t.match(/^(\d+)\./)?.[1] || ''}`.trim(), detail: t.replace(/^\d+\.\s*/, '') })),
+    ...E.tools.map(t => ({ area: `Tooling · ${t.name}`, detail: [t.steel, t.cavities && `${t.cavities} cavit${t.cavities > 1 ? 'ies' : 'y'}`, t.actions ? `${t.actions} side action${t.actions > 1 ? 's' : ''}` : 'no side actions', t.weeks && `${t.weeks} weeks to T1`].filter(Boolean).join(', ') })),
+    ...E.checks.filter(c => c.level !== 'ok').slice(0, 12).map(c => ({ area: `Engineering check · ${c.level === 'bad' ? 'fix before tooling' : 'watch'}`, detail: c.text }))
+  ];
+  let electronics = null;
+  if (s.kind === 'electronics') {
+    const n = {}, f = elecFacts(s), pw = E.power || {};
+    const components = s.parts.filter(p => p.elec).map(p => { const k = p.elec.kind, pre = REFS[k] || 'X'; n[pre] = (n[pre] || 0) + p.qty; const c = E.harness.find(h => h.from === p.id); return { ref: p.qty > 1 ? `${pre}${n[pre] - p.qty + 1}–${pre}${n[pre]}` : `${pre}${n[pre]}`, part: p.name, mpn: (ELEC[k]?.name.match(/\(([A-Z0-9][A-Z0-9-]{3,})\)/) || [])[1] || '', maker: '', qty: String(p.qty), notes: onBoard(p) ? 'On the main board (SMT)' : c ? `Off the board, cable ${c.n} (${c.type})` : 'Off the board' }; });
+    for (const c of E.harness) components.push({ ref: c.n, part: `Cable: ${c.label}, ${c.mm} mm`, mpn: '', maker: '', qty: '1', notes: c.type });
+    const specs = { ...f, weight: `${Math.round(E.mass)} g`, ...(pw.runtime ? { runtime: `${pw.runtime} h` } : {}), ...(pw.chargeH ? { chargeTime: `${pw.chargeH} h` } : {}), ...(E.pcb ? {} : {}) };
+    electronics = { specs: Object.fromEntries(Object.entries(specs).filter(([, v]) => v != null && String(v) !== '').map(([k, v]) => [k, String(v)])), components, certifications: E.certs.map(c => ({ name: c.name, market: c.market || '', notes: c.why || '' })) };
+  }
+  return { bom, construction, electronics, extent: E.extent, mass: E.mass };
+}
 
 // ---- files: STL and the exploded drawing ------------------------------------------------------------------------------------------------------------
 // binary STL in mm, one solid for every part (qty drawn once), pulled apart by t (0 = assembled); with real (the parts' true shapes from
@@ -624,7 +648,7 @@ const shade = (hex, k) => { const n = parseInt(hex.slice(1), 16), f = c => Math.
 // an isometric drawing, pulled apart, each part ballooned with its item number, and the parts list beside it. With picture (the parts'
 // true shapes rendered by src/lab-parts-mesh.js: { href, box: [x0, y0, x1, y1] in isoOf units }) it shows that; otherwise it paints the
 // engineering's boxes far to near
-export function drawingSvg(s0, { t = 1, title = '', picture = null } = {}) {
+export function drawingSvg(s0, { t = 1, title = '', picture = null, costs = true } = {}) {
   const E = engineer(s0), s = E.spec, off = explodeOffsets(s, t), pr = isoOf, depth = isoDepth;
   const L = [-.45, -.35, .82], ll = Math.hypot(...L), tris = [];
   if (!picture) for (const p of s.parts) { const m = meshOf(p, off[p.id]); for (let i = 0; i < m.length; i += 9) { const a = [m[i], m[i + 1], m[i + 2]], b = [m[i + 3], m[i + 4], m[i + 5]], c = [m[i + 6], m[i + 7], m[i + 8]], u = b.map((v, k) => v - a[k]), v = c.map((x, k) => x - a[k]), nn = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]], l = Math.hypot(...nn); if (l < 1e-9) continue; const lit = Math.abs(nn[0] * L[0] + nn[1] * L[1] + nn[2] * L[2]) / l / ll; tris.push({ d: (depth(a) + depth(b) + depth(c)) / 3, pts: [a, b, c].map(pr), col: shade(p.colour, .62 + .45 * lit) }); } }
@@ -633,14 +657,14 @@ export function drawingSvg(s0, { t = 1, title = '', picture = null } = {}) {
   if (picture) [x0, y0, x1, y1] = picture.box;
   const VW = 640, VH = 620, pad = 60, k = Math.min((VW - 2 * pad) / (x1 - x0 || 1), (VH - 2 * pad - 30) / (y1 - y0 || 1)), X = x => pad + (x - x0) * k, Y = y => pad + 30 + (y - y0) * k;
   const body = picture ? `<image href="${picture.href}" x="${X(x0).toFixed(1)}" y="${Y(y0).toFixed(1)}" width="${((x1 - x0) * k).toFixed(1)}" height="${((y1 - y0) * k).toFixed(1)}" preserveAspectRatio="none"/>` : tris.map(t3 => `<path d="M${t3.pts.map(([x, y]) => `${X(x).toFixed(1)} ${Y(y).toFixed(1)}`).join('L')}Z" fill="${t3.col}" stroke="${t3.col}" stroke-width=".4"/>`).join('');
-  const rows = bomRows(E), mid = (VW) / 2;
+  const rows = bomRows(E).filter(r => costs || r.id !== 'labour'), mid = (VW) / 2;
   const balloons = s.parts.map((p, i) => { const c = pr(p.at.map((v, kk) => v + off[p.id][kk])), px = X(c[0]), py = Y(c[1]), side = px < mid ? -1 : 1, bx = side < 0 ? 24 : VW - 24, by = Math.min(VH - 20, Math.max(50, py)); return { i: i + 1, px, py, bx, by }; });
   // keep balloons on each side from landing on one another
   for (const side of [24, VW - 24]) { const b = balloons.filter(q => q.bx === side).sort((a, c) => a.by - c.by); for (let i = 1; i < b.length; i++) if (b[i].by - b[i - 1].by < 22) b[i].by = b[i - 1].by + 22; }
   const ball = balloons.map(b => `<line x1="${b.px.toFixed(1)}" y1="${b.py.toFixed(1)}" x2="${b.bx + (b.bx < mid ? 10 : -10)}" y2="${b.by.toFixed(1)}" stroke="#141416" stroke-width=".7"/><circle cx="${b.px.toFixed(1)}" cy="${b.py.toFixed(1)}" r="1.8" fill="#141416"/><circle cx="${b.bx}" cy="${b.by.toFixed(1)}" r="10" fill="#fff" stroke="#141416" stroke-width="1"/><text x="${b.bx}" y="${(b.by + 3.5).toFixed(1)}" text-anchor="middle" font-size="10" font-weight="700">${b.i}</text>`).join('');
   const TX = VW + 20, rowH = 17, TW = 540, th = 40 + rows.length * rowH + 60, H = Math.max(VH, th + 20);
-  const tab = `<text x="${TX}" y="44" font-size="13" font-weight="700">Parts list</text><g font-size="9.5"><text x="${TX}" y="64" font-weight="700">#</text><text x="${TX + 22}" y="64" font-weight="700">Part</text><text x="${TX + 220}" y="64" font-weight="700">Qty</text><text x="${TX + 250}" y="64" font-weight="700">Material · process</text><text x="${TX + TW - 10}" y="64" text-anchor="end" font-weight="700">Unit $</text>${rows.map((r, i) => `<text x="${TX}" y="${82 + i * rowH}">${r.item}</text><text x="${TX + 22}" y="${82 + i * rowH}">${esc(clip(r.name, 34))}</text><text x="${TX + 220}" y="${82 + i * rowH}">${r.qty}</text><text x="${TX + 250}" y="${82 + i * rowH}" fill="#3a3d40">${esc(clip([r.material, r.process].filter(Boolean).join(' · '), 42))}</text><text x="${TX + TW - 10}" y="${82 + i * rowH}" text-anchor="end">${r.unit.toFixed(2)}</text>`).join('')}</g>
-    <line x1="${TX}" x2="${TX + TW - 10}" y1="${70 + rows.length * rowH}" y2="${70 + rows.length * rowH}" stroke="#141416" stroke-width=".8"/><text x="${TX}" y="${88 + rows.length * rowH}" font-size="10" font-weight="700">Unit cost $${E.unit.toFixed(2)} · tooling $${E.toolCost.toLocaleString('en-US')} · T1 samples in ${E.weeks} weeks · ${E.mass} g</text>`;
+  const tab = `<text x="${TX}" y="44" font-size="13" font-weight="700">Parts list</text><g font-size="9.5"><text x="${TX}" y="64" font-weight="700">#</text><text x="${TX + 22}" y="64" font-weight="700">Part</text><text x="${TX + 220}" y="64" font-weight="700">Qty</text><text x="${TX + 250}" y="64" font-weight="700">Material · process</text>${costs ? `<text x="${TX + TW - 10}" y="64" text-anchor="end" font-weight="700">Unit $</text>` : ''}${rows.map((r, i) => `<text x="${TX}" y="${82 + i * rowH}">${r.item}</text><text x="${TX + 22}" y="${82 + i * rowH}">${esc(clip(r.name, 34))}</text><text x="${TX + 220}" y="${82 + i * rowH}">${r.qty}</text><text x="${TX + 250}" y="${82 + i * rowH}" fill="#3a3d40">${esc(clip([r.material, r.process].filter(Boolean).join(' · '), 42))}</text>${costs ? `<text x="${TX + TW - 10}" y="${82 + i * rowH}" text-anchor="end">${r.unit.toFixed(2)}</text>` : ''}`).join('')}</g>
+    <line x1="${TX}" x2="${TX + TW - 10}" y1="${70 + rows.length * rowH}" y2="${70 + rows.length * rowH}" stroke="#141416" stroke-width=".8"/><text x="${TX}" y="${88 + rows.length * rowH}" font-size="10" font-weight="700">${costs ? `Unit cost $${E.unit.toFixed(2)} · tooling $${E.toolCost.toLocaleString('en-US')} · ` : ''}T1 samples in ${E.weeks} weeks · ${E.mass} g</text>`;
   const W = VW + TW + 30;
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" font-family="Helvetica, Arial, sans-serif" fill="#141416"><rect width="${W}" height="${H}" fill="#fff"/><text x="24" y="30" font-size="15" font-weight="700">${esc(title || s.name || 'Assembly')}</text><text x="24" y="46" font-size="10" fill="#55585c">Exploded view, isometric, not to scale · ${E.extent.join(' × ')} mm assembled</text>${body}${ball}${tab}</svg>`;
 }

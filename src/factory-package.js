@@ -7,6 +7,8 @@
 //                                               the thread list and sew-out (embroidery), the job sheet, and the artwork traced to vector
 //   decorations/decoration-sheet.pdf, flats/    the decoration sheet and the spec sheet as a vector
 //   pattern/, last/                             the pattern (every size as AAMA DXF, the base size as DXF and SVG) and, for a shoe, the last
+//   engineering/                                hard goods and electronics: the assembly in 3D (STL), each made part for its toolmaker, the
+//                                               exploded drawing, the parts list, the cables and the block diagram, all without our costs
 //   README.txt                                  what each file is, and what could not be made
 // The Lab files come from the design as it stands; when it changed after this version was published, the README says so and the PDF governs.
 import { zip } from './zip.js';
@@ -41,6 +43,12 @@ const DESCRIBE = [
   [/artwork-300dpi\.png$/, 'The artwork at its placed size, 300 dpi.'],
   [/^decorations\/[^/]+\/(film|ink|plate|underbase)/i, 'A separation for this placement: one plate or film per ink.'],
   [/^decorations\//, 'Production file for this placement.'],
+  [/^engineering\/assembly\.stl$/, 'The product assembled, every part at its real shape, in millimetres (STL).'],
+  [/^engineering\/parts\//, 'One part the factory makes (moulded, machined, stamped or cut), on its own for the toolmaker (STL, mm). The number is its item on the parts list.'],
+  [/^engineering\/exploded-drawing\.svg$/, 'The exploded drawing: every part ballooned with its item number, and the parts list.'],
+  [/^engineering\/parts-list\.csv$/, 'The parts list: item, part, quantity, material, process, finish, colour and mass.'],
+  [/^engineering\/cables\.csv$/, 'The cables: each one\'s reference (W1…), what it joins, its wires and connectors, and its length.'],
+  [/^engineering\/block-diagram\.svg$/, 'The electronics block diagram: power, the main chip, and what it drives, each line named by its bus.'],
   [/^flats\/spec-sheet\.svg$/, 'Spec sheet as a vector: the flats with placements and measurements.'],
   [/^flats\/tech-flats\.svg$/, 'Technical flats drawn from the pattern, every view.'],
   [/aama\.dxf$/, 'The pattern, every size of the run, AAMA/ASTM DXF in inches (opens in Gerber, Lectra, Optitex and most CAD).'],

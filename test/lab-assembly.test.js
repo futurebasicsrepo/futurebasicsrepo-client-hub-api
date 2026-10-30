@@ -98,8 +98,8 @@ test('the cables: every part off the board is wired to what drives it, costed, i
   assert.equal(byKind('iec').to, s.parts.find(p => p.elec?.kind === 'psu').id, 'mains comes in to the supply'); assert.equal(byKind('psu').to, 'pcb', 'the supply feeds the board');
   assert.equal(byKind('cdmech').kind, 'ribbon'); assert.match(byKind('cdmech').type, /FFC/);
   assert.ok(!H.some(c => s.parts.find(p => p.id === c.from).parent === 'pcb'), 'parts soldered on the board need no cable');
-  assert.deepEqual(H.map(c => c.n), H.map((_, i) => `C${i + 1}`)); assert.ok(H.every(c => c.mm >= 40 && c.unit > 0));
-  const rows = bomRows(E); assert.equal(rows.filter(r => /^Cable C\d+:/.test(r.name)).length, H.length); assert.ok(E.steps.some(t => /Connect C1, dc power/.test(t)));
+  assert.deepEqual(H.map(c => c.n), H.map((_, i) => `W${i + 1}`)); assert.ok(H.every(c => c.mm >= 40 && c.unit > 0));
+  const rows = bomRows(E); assert.equal(rows.filter(r => /^Cable W\d+:/.test(r.name)).length, H.length); assert.ok(E.steps.some(t => /Connect W1, dc power/.test(t)));
   const noCab = engineer({ ...s, parts: s.parts.filter(p => !['psu', 'iec', 'cdmech', 'vfd', 'ir', 'button'].includes(p.elec?.kind)) }); assert.ok(E.unit > noCab.unit - 30, 'cables are costed');
   const path = cablePath(s, H[0]), path1 = cablePath(s, H[0], explodeOffsets(s, 1)); assert.equal(path.length, 24); assert.notDeepEqual(path[0], path1[0], 'the run follows its parts as they pull apart');
   assert.deepEqual(engineer(archetype('tumbler')).harness, [], 'a product with no electronics has no cables');
@@ -147,4 +147,10 @@ test('audio: a CD player, a cassette player and a powered speaker, with the part
   assert.equal(guessArch({ category: 'electronics', name: 'Retro CD player' }), 'cdplayer'); assert.equal(guessArch({ category: 'electronics', name: 'Walkman cassette player' }), 'cassette'); assert.equal(guessArch({ category: 'electronics', name: 'Bookshelf speakers' }), 'speaker'); assert.equal(guessArch({ category: 'electronics', name: 'Bluetooth speaker' }), 'puck');
   const moved = archetype('speaker'); moved.parts.find(p => p.elec?.kind === 'iec').at[1] -= 40;
   assert.ok(engineer(moved).checks.some(c => c.level === 'bad' && /IEC C8 mains inlet: .* in from the outside wall/.test(c.text)), 'a mains inlet pulled inside is caught');
+});
+
+test('a factory\'s files carry no costs: the parts list and the drawing without unit or tool costs', () => {
+  const s = archetype('cdplayer'), E = engineer(s), csv = bomCsv(E, { costs: false }), svg = drawingSvg(s, { costs: false });
+  assert.equal(csv.split('\n')[0], 'Item,Part,Qty,Material,Process,Finish,Colour,Mass (g)'); assert.ok(!/Labour|Final assembly/.test(csv));
+  assert.ok(!/Unit \$|Unit cost|tooling \$/.test(svg) && /T1 samples in \d+ weeks/.test(svg)); assert.match(drawingSvg(s), /Unit cost \$/);
 });

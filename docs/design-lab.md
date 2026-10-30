@@ -1311,8 +1311,8 @@ screen, the drawing and the files agree. Routes: `src/lab-assembly-routes.js`; s
   with everything on, and the certifications to plan for (`src/elec.js`).
 - **Cables.** Every electronic part off the board is wired to what drives it (`harnessOf`): the supply to the board, mains in through the
   inlet to the supply, a driver to the amplifier, a loader or a display by a flat flex cable, controls and sockets by a small multi-wire
-  lead; each cable is numbered (C1, C2…), typed (wires, gauge, connector), sized (the run with a fifth for slack) and costed. They are on the
-  parts list, in the assembly steps ("Connect C1…") and the time, listed under Assembly → Cables, and drawn in the view as runs between
+  lead; each cable is numbered W1, W2… (W, a cable's reference designator), typed (wires, gauge, connector), sized (the run with a fifth for slack) and costed. They are on the
+  parts list, in the assembly steps ("Connect W1…") and the time, listed under Assembly → Cables, and drawn in the view as runs between
   their parts, coloured by what they carry (red power, grey mains, amber flex, white signal, black coax) with their numbers; the **Cables**
   button shows or hides them. The drawing carries them too.
 - **Parts that open.** A CD loader's tray, with the disc on it, slides out toward the product's front (`frontOf`: the way its front panel
@@ -1324,5 +1324,16 @@ screen, the drawing and the files agree. Routes: `src/lab-assembly-routes.js`; s
   (`src/lab-parts-mesh.js`, three.js without textures; a texture's ground colour is kept, so a board reads as solder mask). The drawing's
   picture is rendered with a depth buffer and ink lines where parts meet; balloons and the parts list stay vector. `?simple=1` gives the
   engineering's plain boxes and shells (a lighter STL). The last dozen products' shapes are kept in memory, so a second download is quick.
+
+- **Into the tech pack.** Files → *Send to the tech pack* (once the concept has a pack) lays the engineering into it (`packFromAssembly`,
+  merged by `src/lab-handoff.js`): the assembled and exploded views as sketches; every part, the board assembly and each cable as BOM
+  lines (marked *From engineering*, with unit costs, which the pack hides from factories); the assembly steps, each tool (steel, cavities,
+  side actions, weeks to T1, no tool cost) and the checks still open as construction lines; and for an electronic product its components
+  with reference designators (U1, J1, SW1–SW5, W1…), the certifications (one the pack already has keeps its status) and the electrical facts
+  the pack has not filled in. Sending again replaces what engineering sent last time and nothing else; a published pack goes out as the next
+  version with what changed, as the flats do.
+- **The factory's production package** gains `engineering/`: the assembly in place (STL, real shapes), one STL per part the factory makes
+  (`parts/NN-name.stl`, NN its item on the parts list) for the toolmaker, the exploded drawing, the parts list, the cables and the block
+  diagram, all without our costs. The README says what each is; when the engineering changed after the version was published, it says so.
 
 The client's room uses the same page on its own concepts; another room's concept answers 404. Journey **J267**.
