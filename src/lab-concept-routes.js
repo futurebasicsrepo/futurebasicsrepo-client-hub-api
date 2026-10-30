@@ -6,6 +6,7 @@
 //   GET  /v1/lab/concepts/:id/image                                    the picture (needs the sign-in header, so the page fetches it)
 //   PUT  /v1/lab/concepts/:id                                          edit the words, price, cost or quantity (an approved concept goes back to draft, and is checked again)
 //   POST /v1/lab/concepts/:id/check | comments | approve | reject | reopen | revise | tech-pack      DELETE /v1/lab/concepts/:id
+import { randomUUID } from 'node:crypto';
 import { imageConfig } from './check.js';
 import { ask as realAsk, providerReady } from './intel-llm.js';
 import { categoryLabel } from './lab.js';
@@ -96,6 +97,26 @@ export function registerLabConceptRoutes(app, d) {
   }
   const capLeft = async n => { const cap = Number(env.LAB_DAILY_CONCEPTS ?? 30); if (cap < 0) return true; return Number((await pool.query(`select count(*) c from lab_concepts where created_at > now() - interval '24 hours'`)).rows[0].c) + n <= cap ? true : cap; };
 
+  // Making concepts takes minutes (designing, drawing each picture and its artwork, checking each), longer than a phone keeps a request open (a locked
+  // screen, a switched app). So a request waits a short while; if the work is not done, it answers 202 with a job to ask after, and the work carries on.
+  const jobs = new Map(), JOB_WAIT = Number(env.LAB_JOB_WAIT_MS ?? 20000);
+  async function asJob(req, reply, work) {
+    for (const [k, j] of jobs) if (Date.now() - j.at > 3600e3) jobs.delete(k);
+    const id = randomUUID(), job = { status: 'running', owner: own(req), actor: actorOf(req), at: Date.now() }; jobs.set(id, job);
+    const p = work().then(r => { job.status = 'done'; job.result = r; }, e => { job.status = 'failed'; job.error = e.message; job.code = e.status || 502; });
+    const wait = req.query?.wait != null ? Math.min(JOB_WAIT, Math.max(0, Number(req.query.wait) * 1000 || 0)) : JOB_WAIT; // ?wait=0 asks for the job at once
+    let timer; const done = await Promise.race([p.then(() => true), new Promise(r => { timer = setTimeout(() => r(false), wait); })]); clearTimeout(timer);
+    if (!done) return reply.code(202).send({ job: id, status: 'running' });
+    jobs.delete(id);
+    return job.status === 'done' ? reply.code(201).send(job.result) : bad(reply, job.error, job.code);
+  }
+  app.get('/v1/lab/jobs/:job', { preHandler: pre }, async (req, reply) => {
+    const j = jobs.get(String(req.params.job)); if (!j || j.owner !== own(req) || j.actor !== actorOf(req)) return bad(reply, 'That work is no longer tracked. Finished concepts are kept on the board.', 404);
+    if (j.status === 'running') return { status: 'running' };
+    jobs.delete(String(req.params.job));
+    return j.status === 'done' ? { status: 'done', ...j.result } : { status: 'failed', error: j.error };
+  });
+
   app.post('/v1/lab/plans/:id/lines/:lineId/concepts', { preHandler: pre }, async (req, reply) => {
     if (!needId(req, reply) || !UUID.test(req.params.lineId)) return bad(reply, 'Not found', 404);
     const plan = (await pool.query('select id,name,season,brief from lab_plans where id=$1', [req.params.id])).rows[0]; if (!plan) return bad(reply, 'Not found', 404);
@@ -105,7 +126,7 @@ export function registerLabConceptRoutes(app, d) {
     if (left !== true) return bad(reply, `The daily limit of ${left} concepts is reached. Raise LAB_DAILY_CONCEPTS, or review the ones already made.`, 429);
     if (!providerReady('anthropic', env)) return bad(reply, 'Claude is not connected (the service needs ANTHROPIC_API_KEY)', 503);
     const line = { id: lr.id, name: lr.name, category: lr.category, role: lr.role, brief: lr.brief, twist: lr.twist, rationale: lr.rationale, priceCents: lr.price_cents, costCents: lr.cost_cents, qty: lr.qty };
-    try { return reply.code(201).send({ concepts: await make({ plan, line, count, note: req.body?.note, refIds: lr.refs, req }) }); } catch (e) { return bad(reply, e.message, e.status || 502); }
+    return asJob(req, reply, async () => ({ concepts: await make({ plan, line, count, note: req.body?.note, refIds: lr.refs, req }) }));
   });
 
   // a concept started from a sketch in the sketch pack, with no plan and no AI: its name, category and silhouette come from the sketch, and the studio
@@ -245,8 +266,7 @@ export function registerLabConceptRoutes(app, d) {
     if (!providerReady('anthropic', env)) return bad(reply, 'Claude is not connected (the service needs ANTHROPIC_API_KEY)', 503);
     const lr = r.line_id ? (await pool.query('select * from lab_plan_lines where id=$1', [r.line_id])).rows[0] : null;
     const line = { id: lr?.id || null, name: lr?.name || r.name, category: r.category, role: r.role, brief: lr?.brief || r.spec?.description || '', twist: lr?.twist || r.twist, rationale: lr?.rationale || '', priceCents: r.price_cents, costCents: r.cost_cents, qty: r.qty };
-    try { const out = await make({ plan: { id: r.plan_id, name: r.plan_name, season: r.season, brief: r.plan_brief }, line, count: 1, note: steer, parent: { id: r.id, name: r.name, spec: r.spec }, refIds: r.refs, req }); await note(r.id, req, `Revised: ${steer}`); return reply.code(201).send({ concept: out[0] }); }
-    catch (e) { return bad(reply, e.message, e.status || 502); }
+    return asJob(req, reply, async () => { const out = await make({ plan: { id: r.plan_id, name: r.plan_name, season: r.season, brief: r.plan_brief }, line, count: 1, note: steer, parent: { id: r.id, name: r.name, spec: r.spec }, refIds: r.refs, req }); await note(r.id, req, `Revised: ${steer}`); return { concept: out[0] }; });
   });
 
   // draw the picture again from the concept as it is now (after its words, logo or graphics were changed), with the Future Basics marks put back on

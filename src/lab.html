@@ -228,6 +228,10 @@ const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)],esc
 const TOKEN=()=>{try{return localStorage.getItem('fb.admin.token')||localStorage.getItem('fb.client.token')||''}catch{return ''}}; // staff sign in at the work console; a client with the Design Lab on their room signs in at their hub
 const CLIENT_MODE=()=>{try{return !localStorage.getItem('fb.admin.token')&&Boolean(localStorage.getItem('fb.client.token'))}catch{return false}};
 const safe=u=>/^https?:\/\//i.test(String(u||''))?String(u):'';
+// concept work answers 202 with a job when it runs longer than a request should stay open: ask after it until it is done (a dropped check is asked again)
+async function settle(j,m){const t0=Date.now();while(j&&j.job&&j.status==='running'){await new Promise(r=>setTimeout(r,3000));if(m)m.textContent=`Still working (${Math.round((Date.now()-t0)/1000)+20}s). You can leave this page; finished concepts land on the board.`;
+  try{j={...await api('/v1/lab/jobs/'+j.job),job:j.job}}catch(x){if(x.status===404)throw x;if(Date.now()-t0>900e3)throw x}}
+  if(j&&j.status==='failed')throw new Error(j.error||'That did not work');return j}
 async function api(path,o={}){const r=await fetch(path,{method:o.method||(o.body?'POST':'GET'),headers:{Authorization:'Bearer '+TOKEN(),...(o.body?{'Content-Type':'application/json'}:{})},body:o.body?JSON.stringify(o.body):undefined});let j={};try{j=await r.json()}catch{}if(!r.ok){const e=new Error(j.error||'That did not work');e.status=r.status;e.data=j;throw e}return j}
 let O=null,F={category:'',offset:0},LIST=[],TOTAL=0,POLL=null;
 const when=d=>{try{return d?new Date(d).toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):'never'}catch{return ''}};
@@ -634,9 +638,9 @@ document.addEventListener('click',async e=>{
   if(tr&&e.target.closest('[data-view]')){BOARD.line=tr.dataset.line;BOARD.plan=CUR.plan.id;BOARD.status='';loadBoard().then(()=>{location.hash='#board'}).catch(()=>{});e.preventDefault();return}
   if(tr&&e.target.closest('[data-mk]')){
     const steer=await askText('Anything to steer the concepts? (optional, for example “longer back, no pockets”)','');if(steer===null)return;
-    const m=$('#lineMsg'),btn=e.target.closest('[data-mk]');m.className='msg';m.textContent='Designing three concepts, drawing them and checking them. This takes up to a minute…';btn.disabled=true;
-    try{await api(`/v1/lab/plans/${CUR.plan.id}/lines/${tr.dataset.line}/concepts`,{body:{count:3,note:steer}});BOARD={status:'',plan:CUR.plan.id,line:tr.dataset.line};await openPlan(CUR.plan.id);await loadBoard();location.hash='#board'}
-    catch(x){const mm=$('#lineMsg');if(mm){mm.className='msg bad';mm.textContent=x.message}btn.disabled=false}return}
+    const m=$('#lineMsg'),btn=e.target.closest('[data-mk]');m.className='msg';m.textContent='Designing three concepts, drawing them and checking them. This takes a few minutes…';btn.disabled=true;
+    try{await settle(await api(`/v1/lab/plans/${CUR.plan.id}/lines/${tr.dataset.line}/concepts`,{body:{count:3,note:steer}}),m);BOARD={status:'',plan:CUR.plan.id,line:tr.dataset.line};await openPlan(CUR.plan.id);await loadBoard();location.hash='#board'}
+    catch(x){const mm=$('#lineMsg');if(mm){mm.className='msg bad';mm.textContent=x instanceof TypeError?'The connection dropped, but the concepts are still being made. Look on the board in a few minutes.':x.message}btn.disabled=false}return}
   if(!$('#cd').open)return;
   if(e.target.closest('[data-csave]')){
     const f=document.querySelector('[data-cf]'),g=k=>f.querySelector(`[data-k="${k}"]`).value,m=$('#cMsg');m.className='msg';m.textContent='Saving…';
@@ -661,7 +665,7 @@ document.addEventListener('click',async e=>{
       const why=await askText(x.message+'\n\nWhy is it fine to approve anyway? (this is recorded)','');if(!why||why.trim().length<10)return;body[make?'makeReason':'overrideReason']=why}}return}
   if(e.target.closest('[data-creject]')){const why=await askText('Why? So the next concept can be better.','');if(why&&why.trim())actC('/reject',{reason:why}).catch(()=>{});return}
   if(e.target.closest('[data-creopen]')){actC('/reopen').catch(()=>{});return}
-  if(e.target.closest('[data-crevise]')){const n=await askText('What should change? For example “less boxy, a longer back”','');if(n&&n.trim()){const m=$('#cAct');m.className='msg';m.textContent='Designing, drawing and checking a revised concept…';try{const j=await api(`/v1/lab/concepts/${OPENID}/revise`,{body:{note:n}});await loadBoard();await openConcept(j.concept.id)}catch(x){m.className='msg bad';m.textContent=x.message}}return}
+  if(e.target.closest('[data-crevise]')){const n=await askText('What should change? For example “less boxy, a longer back”','');if(n&&n.trim()){const m=$('#cAct');m.className='msg';m.textContent='Designing, drawing and checking a revised concept…';try{const j=await settle(await api(`/v1/lab/concepts/${OPENID}/revise`,{body:{note:n}}),m);await loadBoard();await openConcept(j.concept.id)}catch(x){m.className='msg bad';m.textContent=x.message}}return}
   if(e.target.closest('[data-ctp]')){const m=$('#cAct');m.className='msg';m.textContent='Making the product and starting the tech pack…';try{const j=await api(`/v1/lab/concepts/${OPENID}/tech-pack`,{body:{}});await openConcept(OPENID);await loadBoard();if(CUR)await openPlan(CUR.plan.id)}catch(x){m.className='msg bad';m.textContent=x.message}return}
   if(e.target.closest('[data-cdel]')){if(!confirm('Delete this concept?'))return;try{await api('/v1/lab/concepts/'+OPENID,{method:'DELETE'});$('#cd').close();await loadBoard()}catch(x){alert(x.message)}return}
   if(e.target.closest('[data-ccom]')){const v=$('#cNew').value.trim();if(!v)return;try{await api(`/v1/lab/concepts/${OPENID}/comments`,{body:{body:($('#cToClient')?.checked?'For the client: ':'')+v,pin:CPIN}});CPIN=null;await openConcept(OPENID)}catch(x){alert(x.message)}return}

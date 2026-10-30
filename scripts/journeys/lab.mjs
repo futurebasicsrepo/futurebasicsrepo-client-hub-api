@@ -379,6 +379,11 @@ await journey('J198', 'Design Lab concepts: several takes on a planned piece, dr
     ok((await K(`/concepts/${A.id}`, { method: 'PUT', body: { name: 'x' } })).status === 409 && (await K(`/concepts/${A.id}`, { method: 'DELETE' })).status === 409 && (await K(`/concepts/${A.id}/reject`, { body: { reason: 'nope nope' } })).status === 409, 'a concept that became a tech pack is a record: it cannot be changed, rejected or deleted');
     ok((await K(`/concepts/${rev.json.concept.id}`, { method: 'DELETE' })).status === 200 && (await K(`/concepts/${rev.json.concept.id}`)).status === 404 && (await K('/concepts/nope')).status === 404, 'a draft concept can be deleted');
 
+    // work longer than a request should stay open answers 202 with a job; the page asks after it until the concepts are there (a phone drops a long request)
+    const slow = await K(`/plans/${plan.plan.id}/lines/${line.id}/concepts?wait=0`, { body: { count: 1 } }); ok(slow.status === 202 && slow.json.job, 'concepts that take a while answer with a job to ask after', [slow.status, slow.json]);
+    let jd = { status: 'running' }; for (let i = 0; i < 60 && jd.status === 'running'; i++) { await sleep(500); jd = (await K(`/jobs/${slow.json.job}`)).json; }
+    ok(jd.status === 'done' && jd.concepts?.length === 1 && (await P(`/jobs/${slow.json.job}`)).status !== 200, 'the job hands over the finished concept, and only to whoever asked', jd);
+
     // the daily limit
     let limited = 0; for (let i = 0; i < 12; i++) { const g = await mk({ count: 4 }, plan.lines.find(l => l.id !== line.id)); if (g.status !== 201) { limited = g.status; ok(/daily limit/.test(g.json.error), 'the limit says what it is'); break; } }
     ok(limited === 429, 'making concepts has a daily limit so a stuck button cannot spend the allowance', limited);
