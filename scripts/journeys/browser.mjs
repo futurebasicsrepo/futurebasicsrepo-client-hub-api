@@ -232,7 +232,7 @@ await journey('J38', 'the whole customer path with the payment gate on, then off
         await setMode('on');
         const third = await mk(`Third, gate ${mode}`); ok(third.ai === 'locked', `${tag}: a third pack is locked again once the gate is back`, third.ai);
         ok((await call(`/v1/admin/clients/${seed.clientId}`, { method: 'PATCH', token: admin, body: { techPackComped: true } })).status === 200, `${tag}: (the console gives a different client free access)`);
-        const room2 = await call('/v1/admin/clients', { method: 'POST', token: admin, body: { name: `Gifted ${stamp}${mode}`, slug: `gifted-${stamp}-${mode}`, allowedEmails: [`gift38-${stamp}@creator.test`], techPackComped: true } }); ok(room2.status === 200 && room2.json.tech_pack_comped, `${tag}: a creator can be given free access ahead of time`);
+        const room2 = await call('/v1/admin/clients', { method: 'POST', token: admin, body: { name: `Gifted ${stamp}${mode}`, slug: `gifted-${stamp}-${mode}`, allowedEmails: [`gift38-${stamp}-${mode}@creator.test`], techPackComped: true } }); ok(room2.status === 200 && room2.json.tech_pack_comped, `${tag}: a creator can be given free access ahead of time`);
       } else {
         ok(second.ai === 'pending' || second.ai === 'done', `${tag}: the second pack is not locked, the assistant runs`, second.ai);
         const t2 = await settle(token, second.product.id); ok(t2.aiStatus === 'done', `${tag}: and finishes`, t2.aiStatus);
