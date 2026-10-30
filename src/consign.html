@@ -29,6 +29,7 @@ input,textarea,select{font:inherit;padding:8px 10px;border:1px solid var(--line)
 button{font:inherit;padding:9px 14px;border-radius:8px;border:1px solid var(--ink);background:var(--ink);color:#fff;cursor:pointer;font-weight:600}button.ghost{background:#fff;color:var(--ink)}button.hot{background:var(--hot);border-color:var(--hot)}button:disabled{opacity:.5}
 .empty{padding:48px;color:var(--dim);text-align:center}.msg{color:var(--hot);font-size:13px;min-height:18px}
 @media(max-width:900px){main{grid-template-columns:1fr}.list{max-height:40vh}}
+/* a touch screen zooms in on a field under 16px and stays zoomed: fields are 16px there */@media (hover:none),(pointer:coarse){html{-webkit-text-size-adjust:100%;text-size-adjust:100%}input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]),select,textarea{font-size:16px!important}}
 </style>
 <script src="/feedback.js"></script>
 </head>

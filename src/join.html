@@ -38,7 +38,8 @@
     .hp{position:absolute;left:-9999px;width:1px;height:1px;opacity:0}
     .steps{display:grid;gap:10px;margin:0 0 20px;padding:0;list-style:none;font-size:14px;color:#33333a}.steps li{display:grid;grid-template-columns:22px 1fr;gap:10px}.steps b{font:500 11px 'IBM Plex Mono',monospace;color:var(--ok);padding-top:2px}
     @media(prefers-reduced-motion:no-preference){.card{animation:rise .7s var(--ease) both}@keyframes rise{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:none}}}
-  </style>
+  /* a touch screen zooms in on a field under 16px and stays zoomed: fields are 16px there */@media (hover:none),(pointer:coarse){html{-webkit-text-size-adjust:100%;text-size-adjust:100%}input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]),select,textarea{font-size:16px!important}}
+</style>
 <script src="/feedback.js"></script>
 </head>
 <body>

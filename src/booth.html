@@ -36,6 +36,7 @@ h2{font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);
 .filters{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px}
 .empty{color:var(--dim);text-align:center;padding:26px 10px}
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--ink);color:#fff;padding:11px 18px;border-radius:999px;font-size:14px;z-index:10;max-width:90vw}
+/* a touch screen zooms in on a field under 16px and stays zoomed: fields are 16px there */@media (hover:none),(pointer:coarse){html{-webkit-text-size-adjust:100%;text-size-adjust:100%}input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]),select,textarea{font-size:16px!important}}
 </style>
 <script src="/feedback.js"></script>
 </head>

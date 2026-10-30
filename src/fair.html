@@ -57,7 +57,8 @@
     .hidden{display:none!important}
     @media(max-width:800px){body.zh-first .door:not(.dark){order:-1}.doors{grid-template-columns:minmax(0,1fr)}.steps{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.steps li:nth-child(3){padding-left:0;border-left:0}}
     @media(max-width:480px){form{grid-template-columns:minmax(0,1fr)}header img{width:120px}.steps{grid-template-columns:minmax(0,1fr)}.steps li+li{padding-left:0;border-left:0;border-top:1px solid var(--line);padding-top:12px}}
-  </style>
+  /* a touch screen zooms in on a field under 16px and stays zoomed: fields are 16px there */@media (hover:none),(pointer:coarse){html{-webkit-text-size-adjust:100%;text-size-adjust:100%}input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]),select,textarea{font-size:16px!important}}
+</style>
 <script src="/feedback.js"></script>
 </head>
 <body>

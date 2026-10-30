@@ -124,6 +124,10 @@ html body .step:last-child b{background:var(--cue);box-shadow:0 0 0 4px rgba(75,
 /* a phone page never pans sideways: something too wide is cut at the edge of the screen, the page itself stays put (clip, unlike hidden, keeps sticky headers working) */
 @media (max-width:900px){html,html body{overflow-x:clip;max-width:100%}html body :is(img,video){max-width:100%}}
 
+/* a touch screen (phone, iPad) zooms the whole page in on a field whose text is under 16px, and stays zoomed after: the page then slides left and
+   right and the logo is cut off. Fields are 16px there, so nothing zooms. */
+@media (hover:none),(pointer:coarse){html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
+  html body :is(input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]),select,textarea){font-size:16px!important}}
 /* a form in a dialog fits the screen: its fields shrink to the width there is, however long an option or a file name */
 html body dialog{max-width:calc(100vw - 16px)}
 html body dialog :is(form,.modal-body,label){min-width:0}

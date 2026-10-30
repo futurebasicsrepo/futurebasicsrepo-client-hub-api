@@ -27,6 +27,7 @@ button,input,textarea{font:inherit}
 .hp{position:absolute;left:-9999px;width:1px;height:1px;opacity:0}
 .off{padding:28px 20px;text-align:center;color:var(--dim)}
 @media(prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
+/* a touch screen zooms in on a field under 16px and stays zoomed: fields are 16px there */@media (hover:none),(pointer:coarse){html{-webkit-text-size-adjust:100%;text-size-adjust:100%}input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]),select,textarea{font-size:16px!important}}
 </style>
 <script src="/feedback.js"></script>
 </head>

@@ -2253,5 +2253,25 @@ await journey('J185', 'Brand and assets in a browser: the page shows the wordmar
   const sess = await browser.newContext({ viewport: { width: 1280, height: 900 } }); const sp = await sess.newPage(); await sp.goto(`${W}/brand`, { waitUntil: 'networkidle' }); ok(!(await sp.locator('#needSignin').isHidden()), 'signed out, it asks to sign in and shows no assets'); await sess.close();
 });
 
+await journey('J266', 'Touch screens never zoom or slide sideways: on a phone and an iPad every field in the hub, the Lab, the studio and the console is at least 16px (smaller, and the screen zooms in on it and stays zoomed, the page sliding left and right), and nothing sits past the edge of the screen', async () => {
+  const r = await room('266', { wait: false }), admin = await ownerOf(r.clientId);
+  ok((await call(`/v1/admin/clients/${r.clientId}/lab`, { method: 'PATCH', token: admin, body: { action: 'free' } })).status === 200, 'setup: the Lab is open on the room');
+  const pages = [['client', '/'], ['client', '/lab#plans'], ['client', '/lab/studio'], ['client', '/lab/library'], ['admin', '/admin'], ['admin', `/clients/${r.clientId}`]];
+  for (const [w, h] of [[390, 844], [820, 1180]]) for (const [who, path] of pages) {
+    const ctx = await browser.newContext({ viewport: { width: w, height: h }, isMobile: true, hasTouch: true });
+    await ctx.addInitScript(([k, t]) => { try { localStorage.setItem(k, t); } catch {} }, who === 'admin' ? ['fb.admin.token', admin] : ['fb.client.token', r.token]);
+    const page = await ctx.newPage(); await page.goto(BASE + path, { waitUntil: 'networkidle' }).catch(() => {}); await sleep(500);
+    const m = await page.evaluate(() => {
+      const small = [...document.querySelectorAll('input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=hidden]):not([type=file]):not([type=color]),select,textarea')].filter(e => parseFloat(getComputedStyle(e).fontSize) < 16).length;
+      const W = document.documentElement.clientWidth, past = [];
+      for (const e of document.querySelectorAll('body *')) { if (e.closest('details:not([open])')) continue; const b = e.getBoundingClientRect(); if (!b.width || (b.right <= W + 1 && b.left >= -1)) continue; let a = e.parentElement, held = false; while (a && a !== document.body) { if (/(auto|scroll|hidden|clip)/.test(getComputedStyle(a).overflowX)) { const ab = a.getBoundingClientRect(); if (ab.right <= W + 1 && ab.left >= -1) { held = true; break; } } a = a.parentElement; } if (!held) past.push(e.tagName + (e.className && typeof e.className === 'string' ? '.' + e.className.split(' ')[0] : '')); }
+      return { small, past: past.slice(0, 4) };
+    });
+    ok(m.small === 0, `${w}px ${path}: no field small enough to zoom the screen`, m.small);
+    ok(!m.past.length, `${w}px ${path}: nothing sits past the edge of the screen`, m.past);
+    await ctx.close();
+  }
+});
+
 await browser.close();
 const bad = summary(); process.exit(bad ? 1 : 0);

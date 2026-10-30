@@ -46,7 +46,8 @@
     .center{max-width:520px;margin:60px auto;text-align:center;padding:0 18px}.center h1{font-size:34px}
     @media print{header,.bar,.sign,.noprint{display:none!important}body{background:#fff}main{padding:0}}
     @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
-  </style>
+  /* a touch screen zooms in on a field under 16px and stays zoomed: fields are 16px there */@media (hover:none),(pointer:coarse){html{-webkit-text-size-adjust:100%;text-size-adjust:100%}input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]),select,textarea{font-size:16px!important}}
+</style>
 <script src="/feedback.js"></script>
 </head>
 <body>
