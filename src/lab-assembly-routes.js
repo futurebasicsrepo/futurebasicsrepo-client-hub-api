@@ -16,6 +16,9 @@ import { callJsonSchema } from './studio.js';
 import { realMeshes, isoPicture } from './lab-parts-mesh.js';
 import { packFromAssembly } from './lab-assembly.js';
 import { stepOf } from './lab-step.js';
+import { reviewAssembly, BAR as REVIEW_BAR } from './lab-assembly-review.js';
+import { openaiAsk } from './lab-shoe-review.js';
+import { trackedFetch, timed } from './telemetry.js';
 import { archetype, cleanAssembly, engineer, guessArch, radioOf, stlOf, drawingSvg, blockSvg, bomCsv, bomRows, ARCHES, RESINS, PROCESSES, FINISHES, FIXES, SHAPES, ELEC, AGES } from './lab-assembly.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -41,7 +44,7 @@ export function registerLabAssemblyRoutes(app, d) {
   const { pool, authenticate, adminOnly, env = process.env, askImpl = callJsonSchema, log = console } = d;
   const pre = [authenticate, adminOnly], bad = (reply, error, code = 422) => reply.code(code).send({ error });
   const actorOf = req => (UUID.test(String(req.auth?.sub || '')) ? req.auth.sub : null);
-  const concept = async id => (UUID.test(String(id)) ? (await pool.query('select id, name, category, spec, product_id from lab_concepts where id=$1', [id])).rows[0] : null);
+  const concept = async id => (UUID.test(String(id)) ? (await pool.query('select id, name, category, spec, product_id, twist from lab_concepts where id=$1', [id])).rows[0] : null);
   const proposal = c => { const s = archetype(guessArch(c), dimsOf(c), { radio: radioOf(c), display: /\boled\b/i.test(c.spec?.description || '') ? 'oled' : 'lcd' }); s.name = c.name; if (c.category === 'toys') s.age = '3+'; return s; };
   async function load(id) {
     const c = await concept(id); if (!c) return null;
@@ -121,6 +124,43 @@ export function registerLabAssemblyRoutes(app, d) {
     const L = await load(req.params.id); if (!L) return bad(reply, 'Not found', 404);
     return reply.header('content-disposition', `attachment; filename="${slug(L.c)}-bom.csv"`).type('text/csv; charset=utf-8').send(bomCsv(engineer(L.spec)));
   });
+  // ---- the engineering review (src/lab-assembly-review.js): the assembly on the page (saved or not) looked at by product engineers against
+  // the concept's picture (or words), round by round. It runs in the background and the page follows it; nothing is saved until the page
+  // uses the result. Claude and, with OPENAI_API_KEY, an OpenAI model (ENGINEERING_CHECKER=claude|openai|both, both by default); a day's
+  // reviews are capped (ENGINEERING_REVIEW_DAILY, 40). ENGINEERING_REVIEW_FIXTURE stands in for the judges in tests: an array of answers
+  // (one judge) or {name: [answers]} for several.
+  const reviews = new Map(), spent = { day: '', n: 0 };
+  const reviewers = () => {
+    if (env.AI_FIXTURE || (!env.ANTHROPIC_API_KEY && !env.OPENAI_API_KEY)) {
+      let fx = null; try { const raw = String(env.ENGINEERING_REVIEW_FIXTURE || '').trim(); fx = !raw ? null : JSON.parse(/^[[{]/.test(raw) ? raw : readFileSync(raw, 'utf8')); } catch { fx = null; }
+      if (!fx) return [];
+      return Object.entries(Array.isArray(fx) ? { Claude: fx } : fx).filter(([, v]) => Array.isArray(v) && v.length).map(([name, list]) => { let i = 0; return { name, ask: async () => { const a = list[Math.min(i, list.length - 1)]; i++; await new Promise(res => setTimeout(res, Number(env.AI_FIXTURE_DELAY_MS) || 0)); return a; } }; });
+    }
+    const m = String(env.ENGINEERING_CHECKER || 'both').toLowerCase(), out = [];
+    if (env.ANTHROPIC_API_KEY && (m !== 'openai' || !env.OPENAI_API_KEY)) out.push({ name: 'Claude', ask: (system, content, schema) => timed('anthropic', () => askImpl(system, content, schema, { maxTokens: 4000 })) });
+    if (m !== 'claude' && env.OPENAI_API_KEY) out.push({ name: 'ChatGPT', ask: openaiAsk(env, (u, o) => trackedFetch('openai-check', u, o)) });
+    return out;
+  };
+  app.post('/v1/lab/concepts/:id/assembly/review', { preHandler: pre }, async (req, reply) => {
+    const L = await load(req.params.id); if (!L) return bad(reply, 'Not found', 404);
+    if ([...reviews.values()].some(r => r.conceptId === L.c.id && r.status === 'running')) return bad(reply, 'A review of this product is already running', 409);
+    let judges = reviewers(); const today = new Date().toISOString().slice(0, 10); if (spent.day !== today) Object.assign(spent, { day: today, n: 0 });
+    const cap = Number(env.ENGINEERING_REVIEW_DAILY) || 40, capped = judges.length > 0 && spent.n >= cap; if (capped) judges = []; else if (judges.length) spent.n++;
+    const spec = req.body?.spec && typeof req.body.spec === 'object' ? cleanAssembly({ ...req.body.spec, name: req.body.spec.name || L.c.name }) : L.spec;
+    const photo = (await pool.query('select image from lab_concepts where id=$1', [L.c.id])).rows[0]?.image || null;
+    const id = createHash('sha1').update(`${L.c.id}${Date.now()}${Math.random()}`).digest('hex').slice(0, 16), job = { id, conceptId: L.c.id, status: 'running', bar: REVIEW_BAR, rounds: [], started: Date.now(), capped, picture: Boolean(photo) };
+    if (reviews.size > 200) for (const [k, r] of reviews) if (r.status !== 'running' && Date.now() - r.started > 3600e3) reviews.delete(k);
+    reviews.set(id, job);
+    reviewAssembly({ spec, photo, concept: { name: L.c.name, category: L.c.category, description: L.c.spec?.description, twist: L.c.twist }, judges, onRound: r => { if (r.n > 0) job.rounds = [...job.rounds, r]; else job.checks = r.checks; } })
+      .then(res => Object.assign(job, res, { result: res.status, status: 'done', eng: engineer(res.spec), note: capped ? `Today's ${cap} engineering reviews are used: only the engine's checks ran. ${res.note}` : res.note }))
+      .catch(e => { log.warn?.({ err: e.message }, 'engineering review failed'); Object.assign(job, { status: 'failed', error: 'The review could not finish: try again' }); });
+    return reply.code(202).send({ id, reviewer: judges.length > 0, judges: judges.map(j => j.name), bar: REVIEW_BAR, picture: Boolean(photo) });
+  });
+  app.get('/v1/lab/concepts/:id/assembly/review/:rid', { preHandler: pre }, async (req, reply) => {
+    const job = reviews.get(String(req.params.rid)); if (!job || job.conceptId !== req.params.id) return bad(reply, 'Not found', 404);
+    const { eng, ...rest } = job; return { ...rest, ...(eng ? { eng: read(eng) } : {}) };
+  });
+
   // ---- into the tech pack: the views, the parts and cables, the steps and tools, and an electronic product's components and certifications ----
   // (src/lab-handoff.js lays them in). A pack already published keeps that version: what changed goes out as the next one, as the flats do.
   const packPictures = async (L) => {

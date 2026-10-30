@@ -1,0 +1,15 @@
+{
+  "Claude": [
+    { "criteria": [{ "key": "likeness", "score": 86, "note": "Reads as a round speaker" }, { "key": "complete", "score": 78, "note": "The top cover is thin for a pressed grille" }, { "key": "moulding", "score": 84, "note": "" }, { "key": "assembly", "score": 85, "note": "" }, { "key": "function", "score": 84, "note": "" }, { "key": "cost", "score": 88, "note": "" }],
+      "fixes": [{ "op": "set", "part": "top", "field": "wall", "value": "2.4", "why": "The top flexes when the buttons are pressed" }, { "op": "set", "part": "bottom", "field": "wall", "value": "0.5", "why": "Lighter" }],
+      "beyondModel": ["A gasket groove under the grille for splash resistance"], "summary": "Close: stiffen the top." },
+    { "criteria": [{ "key": "likeness", "score": 93, "note": "" }, { "key": "complete", "score": 92, "note": "" }, { "key": "moulding", "score": 92, "note": "" }, { "key": "assembly", "score": 91, "note": "" }, { "key": "function", "score": 92, "note": "" }, { "key": "cost", "score": 92, "note": "" }],
+      "fixes": [], "beyondModel": [], "summary": "Ready for a toolmaker." }
+  ],
+  "ChatGPT": [
+    { "criteria": [{ "key": "likeness", "score": 84, "note": "" }, { "key": "complete", "score": 76, "note": "Thin top" }, { "key": "moulding", "score": 82, "note": "" }, { "key": "assembly", "score": 84, "note": "" }, { "key": "function", "score": 82, "note": "" }, { "key": "cost", "score": 86, "note": "" }],
+      "fixes": [{ "op": "set", "part": "top", "field": "wall", "value": "2.4", "why": "Stiffer under the buttons" }], "beyondModel": [], "summary": "Not yet." },
+    { "criteria": [{ "key": "likeness", "score": 92, "note": "" }, { "key": "complete", "score": 91, "note": "" }, { "key": "moulding", "score": 91, "note": "" }, { "key": "assembly", "score": 90, "note": "" }, { "key": "function", "score": 91, "note": "" }, { "key": "cost", "score": 91, "note": "" }],
+      "fixes": [], "beyondModel": [], "summary": "Fine." }
+  ]
+}

@@ -55,6 +55,7 @@ table.t td.r,table.t th.r{text-align:right;font-variant-numeric:tabular-nums}tab
 .sw{display:inline-block;width:11px;height:11px;border-radius:3px;border:1px solid rgba(20,20,22,.3);vertical-align:-1px;margin-right:6px}
 .find{font-size:12.5px;display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px;align-items:start;padding:7px 9px;border-radius:10px;background:var(--fog);cursor:pointer}.find i{width:8px;height:8px;border-radius:50%;margin-top:5px;background:var(--ok)}.find.bad i{background:var(--bad)}.find.warn i{background:#c9a24a}.find.bad{background:#fff3f1}
 .card{border:1px solid var(--line);border-radius:14px;padding:12px;display:grid;gap:8px}
+.rv .sc{display:flex;align-items:baseline;gap:8px}.rv .sc b{font:700 26px/1 'Space Grotesk',sans-serif}.rv .sc.pass b{color:var(--ok)}.rv .crit{display:grid;grid-template-columns:1fr auto;gap:2px 10px;font-size:12.5px}.rv .crit span.v{font-variant-numeric:tabular-nums;font-weight:600}.rv ul{margin:0;padding-left:18px;font-size:12.5px;display:grid;gap:3px}.rv .row{display:flex;gap:6px;flex-wrap:wrap}
 .kv{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;font-size:12.5px}.kv span{color:var(--dim)}.kv b{font-variant-numeric:tabular-nums;text-align:right}
 .blk{border:1px solid var(--line);border-radius:12px;overflow-x:auto;background:#fff}.blk svg{display:block;min-width:620px;width:100%;height:auto}
 ol.steps{margin:0;padding-left:0;list-style:none;display:grid;gap:6px;font-size:13px}ol.steps li{padding:7px 10px;border-radius:10px;background:var(--fog)}
@@ -120,7 +121,7 @@ async function api(path,o={}){const r=await fetch(path,{method:o.method||(o.body
 const toast=m=>{const t=document.createElement('div');t.className='toast';t.setAttribute('role','status');t.textContent=m;document.body.append(t);setTimeout(()=>t.remove(),2800)};
 const CID=new URLSearchParams(location.search).get('concept')||'',HOST=()=>{try{return parent!==window?parent.FBDesign:null}catch{return null}};
 const money=v=>'$'+(v>=1000?Math.round(v).toLocaleString('en-US'):Number(v||0).toFixed(2)),mm=v=>`${Math.round(v*10)/10}`;
-let D=null,SPEC=null,E=null,SEL=null,T=0,TAB='parts',DIRTY=false,NUMS=true,XRAY=false,CABS=true,ANIM=0;
+let D=null,SPEC=null,E=null,SEL=null,T=0,TAB='parts',DIRTY=false,NUMS=true,XRAY=false,CABS=true,ANIM=0,RV=null;
 
 // ---------- the 3D view: three.js, served from this site, every part drawn as the real thing (src/lab-parts3d.js) ----------
 const V={T:null,r:null,scene:null,cam:null,ctl:null,root:null,kit:null,nodes:new Map(),keys:new Map(),ground:null,sun:null,outline:null,need:true,zoom:1,dir:null};
@@ -214,6 +215,29 @@ function paintTabs(){const bad=E.checks.filter(c=>c.level==='bad').length,warn=E
   $('#tabs').innerHTML=TABS().map(([k,l])=>`<button type="button" role="tab" data-tab="${k}" aria-selected="${k===TAB}">${l}${k==='checks'&&(bad||warn)?`<span class="n${bad?'':' w'}">${bad||warn}</span>`:''}</button>`).join('')}
 $('#tabs').addEventListener('click',e=>{const b=e.target.closest('[data-tab]');if(!b)return;TAB=b.dataset.tab;paintTabs();paintPane()});
 const opt=(list,cur)=>list.map(v=>Array.isArray(v)?`<option value="${esc(v[0])}"${v[0]===cur?' selected':''}>${esc(v[1])}</option>`:`<option${v===cur?' selected':''}>${esc(v)}</option>`).join('');
+// ---------- the engineering review: product engineers (Claude, and an OpenAI model when connected) against the concept, round by round ----------
+function reviewCard(){
+  const R=RV,crit=c=>`<span>${esc(c.label)}${c.note?`<br><span class="note">${esc(c.note)}</span>`:''}</span><span class="v">${c.score}</span>`;
+  if(!R)return`<section class="card rv"><h4 style="margin:0">Engineering review</h4><p class="note">Product engineers look at the assembly against the concept${D?.concept?' and its picture':''}: does it read as the product, is anything missing, will it mould and go together, does it work, does the cost hold. They score it out of 100 (90 to pass), ask for changes and see them made round by round; a change that adds a problem the checks catch is refused. Nothing is saved until you use it.</p><div class="row"><button class="btn sm go" type="button" id="rvGo">Review the engineering</button></div></section>`;
+  const last=R.rounds?.at(-1),done=R.status==='done',sc=done?R.score:last?.score;
+  return`<section class="card rv"><h4 style="margin:0">Engineering review${R.judges?.length>1?` · ${esc(R.judges.join(' and '))}`:''}</h4>
+    ${R.status==='running'?`<p class="note">Round ${(R.rounds?.length||0)+1} is being looked at${R.picture?' against the concept\'s picture':' against the concept\'s words (it has no picture)'}…</p>`:''}
+    ${R.status==='failed'?`<p class="note">${esc(R.error||'The review could not finish')}</p>`:''}
+    ${sc!=null?`<div class="sc ${sc>=(R.bar||90)?'pass':''}"><b>${sc}</b><span class="note">/ 100, bar ${R.bar||90}${R.rounds?.length?` · ${R.rounds.length} round${R.rounds.length>1?'s':''}`:''}</span></div>`:''}
+    ${done&&R.note?`<p class="note"><b>${esc(R.note)}</b></p>`:''}
+    ${last?`<div class="crit">${last.criteria.map(crit).join('')}</div>${last.summary?`<p class="note">${esc(last.summary)}</p>`:''}`:''}
+    ${(R.changes||[]).length?`<div><span class="note"><b>Changes made</b></span><ul>${R.changes.map(c=>`<li>${esc(c.op==='set'?`${c.name}: ${c.field} ${JSON.stringify(c.from)} → ${JSON.stringify(c.to)}`:c.op==='add'?`Added ${c.name}`:`Removed ${c.name}`)}${c.why?` <span class="note">(${esc(c.why)})</span>`:''}</li>`).join('')}</ul></div>`:''}
+    ${(R.rejected||[]).length?`<div><span class="note"><b>Refused (the checks found a new problem)</b></span><ul>${R.rejected.map(c=>`<li>${esc(c.name)}${c.field?`: ${esc(c.field)}`:''} <span class="note">(${esc(c.reason)})</span></li>`).join('')}</ul></div>`:''}
+    ${(R.beyondModel||[]).length?`<div><span class="note"><b>For an engineer</b> (what these parts cannot show)</span><ul>${R.beyondModel.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div>`:''}
+    ${(last?.conflicts||[]).length?`<div><span class="note"><b>The reviewers disagree</b></span><ul>${last.conflicts.map(c=>`<li>${esc(c.key)}: ${c.asks.map(a=>`${esc(a.name)} ${esc(a.value)}`).join(' / ')}</li>`).join('')}</ul></div>`:''}
+    <div class="row">${done&&(R.changes||[]).length?'<button class="btn sm go" type="button" id="rvUse">Use these changes</button><button class="btn sm q" type="button" id="rvKeep">Keep mine</button>':''}${R.status!=='running'?'<button class="btn sm q" type="button" id="rvGo">Review again</button>':''}</div></section>`;
+}
+function wireReview(){
+  const go=$('#rvGo');if(go)go.onclick=async()=>{go.disabled=true;go.textContent='Starting…';try{const j=await api(`/v1/lab/concepts/${CID}/assembly/review`,{method:'POST',body:{spec:SPEC}});RV={status:'running',bar:j.bar,judges:j.judges,picture:j.picture,rounds:[]};paintPane();pollReview(j.id)}catch(e){toast(e.message||'The review could not start');go.disabled=false;go.textContent='Review the engineering'}};
+  const use=$('#rvUse');if(use)use.onclick=()=>{SPEC=RV.spec;const n=RV.changes.length;RV={...RV,changes:[],used:true};changed();toast(`${n} change${n>1?'s':''} made: save to keep ${n>1?'them':'it'}`)};
+  const keep=$('#rvKeep');if(keep)keep.onclick=()=>{RV=null;paintPane();toast('Kept as it was')};
+}
+async function pollReview(id){for(let i=0;i<400;i++){await new Promise(r=>setTimeout(r,1500));let j;try{j=await api(`/v1/lab/concepts/${CID}/assembly/review/${id}`)}catch{continue}RV=j;if(TAB==='checks')paintPane();if(j.status!=='running'){toast(j.status==='done'?(j.note||'Review done'):(j.error||'The review failed'));return}}}
 function paintPane(){
   const pane=$('#pane'),byId=Object.fromEntries(SPEC.parts.map(p=>[p.id,p])),eng=Object.fromEntries(E.parts.map(x=>[x.id,x]));
   if(TAB==='parts'){
@@ -234,9 +258,10 @@ function paintPane(){
   if(TAB==='checks'){
     const order={bad:0,warn:1,ok:2},list=[...E.checks].sort((a,b)=>order[a.level]-order[b.level]);
     pane.innerHTML=`<section><h4>Engineering checks</h4><p class="note">Walls and draft for the moulder, undercuts, clear parts, food contact, each part's fit in its housing, parts in one another's space${SPEC.kind==='electronics'?', the port, the radio, the board and the heat':''}${SPEC.age==='0+'||SPEC.age==='3+'?', and small parts for young children':''}. Tap one to see the part.</p></section>
+      ${reviewCard()}
       <section class="card"><label class="f"><span>Who it is for</span><select data-s="age">${opt(Object.entries({'0+':'All ages, under 3 included','3+':'3 years and up','8+':'8 years and up','14+':'Adults and 14 and up'}),SPEC.age)}</select></label></section>
       <section>${list.map(c=>`<div class="find ${c.level}" data-p="${esc(c.id)}"><i></i><span>${esc(c.text)}</span></div>`).join('')||'<p class="note">No checks to show.</p>'}</section>`;
-    return wireSpecInputs();
+    wireReview();return wireSpecInputs();
   }
   if(TAB==='elec'){
     const pw=E.power,pcb=E.pcb,cell=SPEC.parts.find(p=>['battery','aa'].includes(p.elec?.kind));
