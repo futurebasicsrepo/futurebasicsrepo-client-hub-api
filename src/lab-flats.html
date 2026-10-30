@@ -48,7 +48,7 @@ html,body{touch-action:manipulation}
 .chk{display:flex;gap:8px;align-items:center;font-size:13px}
 .pl{border:1px solid var(--line);border-radius:14px;padding:10px 12px;display:grid;gap:8px}.pl.on{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
 .pl .hd{display:flex;gap:8px;align-items:center}.pl .hd b{flex:1;font-size:14px}.pl .where{font-size:12.5px;color:#45454c}
-.nums{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}.nums label{display:grid;gap:2px;font-size:11px;color:var(--dim)}
+.nums{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}.nums.turn{grid-template-columns:minmax(0,1fr) auto;align-items:end;margin-top:6px}.nums.turn .row{display:flex;gap:4px;flex-wrap:wrap}.nums label{display:grid;gap:2px;font-size:11px;color:var(--dim)}
 .fx{display:grid;gap:6px;border-top:1px dashed var(--line);padding-top:8px}.fx h5{margin:0;font-size:12px}.fx .rowx{display:flex;gap:6px;flex-wrap:wrap;align-items:center}.fx .gr{display:grid;grid-template-columns:1fr 90px 70px;gap:6px;align-items:center;font-size:12.5px}
 .sw{display:inline-block;width:16px;height:16px;border-radius:5px;border:1px solid rgba(20,20,22,.2);vertical-align:middle}.ink{display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:12px}.ink input[type=color]{width:30px;height:24px;padding:0;border:1px solid var(--line);border-radius:6px}
 .dc{border:1px solid var(--line);border-radius:12px;padding:8px 10px;display:grid;gap:6px;font-size:12.5px}.dc .qf{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}.dc .qf label{display:grid;gap:2px;font-size:11px;color:var(--dim)}
@@ -219,6 +219,7 @@ function paintPl(F=localFindings()){
     <div class="hd"><span class="dot ${lv}"></span><b>${esc(q.name)}</b><select class="t" data-k="view" style="width:auto"><option value="front" ${q.view==='front'?'selected':''}>Front</option><option value="back" ${q.view==='back'?'selected':''}>Back</option></select><button class="btn sm q" type="button" data-del aria-label="Remove ${esc(q.name)}">Remove</button></div>
     <label class="f"><span>Made as</span><select class="t" data-k="techniqueId">${techOpts(q.techniqueId)}</select></label>
     <div class="nums"><label>Width (in)<input class="t" type="number" step="0.125" min="0.25" data-k="w" value="${q.w}"></label><label>From ${STYLES[P.style].kind==='top'?'CF':'centre'} (in)<input class="t" type="number" step="0.125" data-k="x" value="${q.x}"></label><label>${STYLES[P.style].kind==='cap'?'Above brim (in)':'Top edge down (in)'}<input class="t" type="number" step="0.125" data-k="top" value="${STYLES[P.style].kind==='cap'?r8(-(q.y+q.h/2)):r8(q.y-q.h/2)}"></label></div>
+    <div class="nums turn"><label>Turn (°)<input class="t" type="number" step="1" min="-180" max="180" data-k="rot" value="${q.rot||0}"></label><span class="row"><button class="btn sm" type="button" data-turn="-15" title="Turn 15° anticlockwise">↺ 15°</button><button class="btn sm" type="button" data-turn="15" title="Turn 15° clockwise">↻ 15°</button><button class="btn sm" type="button" data-turn="0" title="Straight again">Straight</button></span></div>
     <div class="where">${esc(describe(q,P))} · ${esc(fmt(q.w))} × ${esc(fmt(q.h))}${q.source==='studio'?' · from the studio':''}</div>${q.id===SEL?factoryHtml(q):''}
     ${f.length?`<div class="find">${f.map(x=>`<div class="${x.level}">${esc(x.text)}</div>`).join('')}</div>`:''}</div>`}).join(''):'<p class="msg">Nothing placed yet.</p>'}</div>
   <div class="sec"><h4>Add</h4><div class="row" style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm" type="button" data-addmark="mark">Cue mark</button><button class="btn sm" type="button" data-addmark="word">Wordmark</button><button class="btn sm" type="button" data-addmark="lockup">Lockup</button></div>
@@ -267,8 +268,11 @@ $('#pPl').addEventListener('change',e=>{const card=e.target.closest('[data-q]'),
   if(e.target.dataset.ao==='base'&&P.allover){P.allover.base=e.target.value;touch();return}});
 let LIB=null,lt=0;
 async function libTiles(){const box=$('#libTiles');if(!box)return;try{if(!LIB){const q=($('#libQ')?.value||'').trim();LIB=(await api('/v1/lab/library/graphics?limit=16'+(q?'&q='+encodeURIComponent(q):''))).graphics}box.innerHTML=LIB.map(g=>`<button type="button" data-lib="${g.id}" title="${esc(g.name)}"><img alt="" data-src="/v1/lab/art/${g.id}?thumb=1">${esc((g.name||'').slice(0,18))}</button>`).join('')||'<span class="msg">Nothing found.</span>';for(const i of box.querySelectorAll('img[data-src]'))blobUrl(i.dataset.src).then(u=>{i.src=u})}catch(x){box.innerHTML=`<span class="msg">${esc(x.message)}</span>`}}
+// a graphic turned to match the picture: degrees clockwise, -180 to 180, to the half degree
+const turnTo=v=>{const n=((Number(v)||0)%360+540)%360-180;return Math.round(n*2)/2||0};
+$('#pPl').addEventListener('click',e=>{const b=e.target.closest('[data-turn]');if(!b)return;const card=b.closest('[data-q]'),q=card&&PL.find(x=>x.id===card.dataset.q);if(!q)return;const d=Number(b.dataset.turn);q.rot=d?turnTo((q.rot||0)+d):0;touch();paint()});
 $('#pPl').addEventListener('input',e=>{if(e.target.id==='libQ'){clearTimeout(lt);lt=setTimeout(()=>{LIB=null;libTiles()},250);return}const card=e.target.closest('[data-q]'),k=e.target.dataset.k;if(!card||!k||e.target.tagName==='SELECT')return;const q=PL.find(x=>x.id===card.dataset.q),v=Number(e.target.value);if(!Number.isFinite(v))return;
-  if(k==='w'){const a=q.w/q.h,top=q.y-q.h/2;q.w=Math.max(.25,v);q.h=r8(q.w/a);q.y=STYLES[P.style].kind==='cap'?q.y:top+q.h/2}if(k==='x')q.x=v;if(k==='top')q.y=STYLES[P.style].kind==='cap'?-v-q.h/2:v+q.h/2;touch();draw()});
+  if(k==='w'){const a=q.w/q.h,top=q.y-q.h/2;q.w=Math.max(.25,v);q.h=r8(q.w/a);q.y=STYLES[P.style].kind==='cap'?q.y:top+q.h/2}if(k==='rot')q.rot=turnTo(v);if(k==='x')q.x=v;if(k==='top')q.y=STYLES[P.style].kind==='cap'?-v-q.h/2:v+q.h/2;touch();draw()});
 $('#pPl').addEventListener('change',e=>{const card=e.target.closest('[data-q]');if(!card)return;const q=PL.find(x=>x.id===card.dataset.q),k=e.target.dataset.k;if(!k)return;if(k==='view'){q.view=e.target.value;setView(q.view)}if(k==='techniqueId'){q.techniqueId=e.target.value;q.technique=(D.techniques.find(t=>t.id===q.techniqueId)||{}).base||q.technique}touch();paint()});
 $('#pPl').addEventListener('click',async e=>{
   const card=e.target.closest('[data-q]');
@@ -345,11 +349,11 @@ $('#canvas').addEventListener('pointerdown',e=>{if(e.pointerType!=='touch')retur
   e.stopImmediatePropagation();e.preventDefault();
   if(DRAG){if(DRAG.q&&DRAG.ox!==undefined){DRAG.q.x=DRAG.ox;DRAG.q.y=DRAG.oy}if(DRAG.ed&&DRAG.orig)Object.assign(DRAG.ed,JSON.parse(JSON.stringify(DRAG.orig)));DRAG=null;draw()} // two fingers: a pinch, not a move
   BOXDRAG=null;FPAN=null;const[a,b]=[...FPTR.values()],r=$('#canvas svg').getBoundingClientRect();FG={d:Math.hypot(a[0]-b[0],a[1]-b[1])||1,m:[(a[0]+b[0])/2,(a[1]+b[1])/2],z:FZ,c:centreNow(),u:unitsPerPx(),rc:[r.left+r.width/2,r.top+r.height/2]};
-  // two fingers on a graphic resize it (about its centre, keeping its shape), as in other drawing apps; anywhere else they zoom the view
-  const on=[a,b,FG.m].map(([x,y])=>document.elementFromPoint(x,y)?.closest?.('[data-pl]')).find(Boolean),q=on&&PL.find(x=>x.id===on.dataset.pl);if(q){SEL=q.id;FG.q=q;FG.w0=q.w;FG.h0=q.h}},true);
+  // two fingers on a graphic resize and turn it (about its centre, keeping its shape), as in other drawing apps; anywhere else they zoom the view
+  const on=[a,b,FG.m].map(([x,y])=>document.elementFromPoint(x,y)?.closest?.('[data-pl]')).find(Boolean),q=on&&PL.find(x=>x.id===on.dataset.pl);if(q){SEL=q.id;FG.q=q;FG.w0=q.w;FG.h0=q.h;FG.r0=q.rot||0;FG.a0=Math.atan2(b[1]-a[1],b[0]-a[0])}},true);
 $('#canvas').addEventListener('pointermove',e=>{const p=FPTR.get(e.pointerId);if(p){p[0]=e.clientX;p[1]=e.clientY}
   if(FG&&FPTR.size>=2){e.stopImmediatePropagation();const[a,b]=[...FPTR.values()],d=Math.hypot(a[0]-b[0],a[1]-b[1])||1,m=[(a[0]+b[0])/2,(a[1]+b[1])/2];
-    if(FG.q){const k=Math.min(40/FG.w0,40/FG.h0,Math.max(.25/FG.w0,.25/FG.h0,d/FG.d));FG.q.w=r8(FG.w0*k);FG.q.h=r8(FG.h0*k);FG.moved=true;draw();return}
+    if(FG.q){const k=Math.min(40/FG.w0,40/FG.h0,Math.max(.25/FG.w0,.25/FG.h0,d/FG.d));FG.q.w=r8(FG.w0*k);FG.q.h=r8(FG.h0*k);FG.q.rot=turnTo(FG.r0+(Math.atan2(b[1]-a[1],b[0]-a[0])-FG.a0)*180/Math.PI);FG.moved=true;draw();return}
     const P=[FG.c[0]+(FG.m[0]-FG.rc[0])*FG.u,FG.c[1]+(FG.m[1]-FG.rc[1])*FG.u];FZ=Math.min(Math.max(FG.z*d/FG.d,1),6);const u1=FG.u*FG.z/FZ;FC=[P[0]-(m[0]-FG.rc[0])*u1,P[1]-(m[1]-FG.rc[1])*u1];zoomSvg();return}
   if(FPAN){e.stopImmediatePropagation();const u=unitsPerPx();FC=[FPAN.c[0]-(e.clientX-FPAN.x)*u,FPAN.c[1]-(e.clientY-FPAN.y)*u];zoomSvg()}},true);
 const fzUp=e=>{FPTR.delete(e.pointerId);if(FG&&FPTR.size<2){const g=FG;FG=null;e.stopImmediatePropagation();if(g.q&&g.moved){touch();paint()}}if(FPAN){FPAN=null;e.stopImmediatePropagation()}};
@@ -370,6 +374,8 @@ $('#canvas').addEventListener('pointerdown',e=>{
   if(reshapeTap(e)){DRAG=null;return}
   const vx=e.target.closest('[data-vx]'),ve=vx&&P.edits.find(x=>x.id===SELE);
   if(ve){DRAG={ed:ve,vx:Number(vx.dataset.vx),orig:JSON.parse(JSON.stringify(ve))};capt(e);return}
+  const rk=e.target.closest('[data-rot]');
+  if(rk){const q=PL.find(x=>x.id===rk.dataset.rot);if(q){SEL=q.id;DRAG={turn:q,o:q.rot||0};capt(e);return}}
   const g=e.target.closest('[data-pl]');
   if(g){const q=PL.find(x=>x.id===g.dataset.pl);SEL=q.id;const[x,y]=inch(e);DRAG={q,dx:x-q.x,dy:y-q.y,ox:q.x,oy:q.y};capt(e);paint();return}
   const ge=e.target.closest('[data-ed]');const ed=ge&&P.edits.find(x=>x.id===ge.dataset.ed);if(!ed){if(FZ>1){FPAN={x:e.clientX,y:e.clientY,c:centreNow()};capt(e)}return}
@@ -377,6 +383,8 @@ $('#canvas').addEventListener('pointerdown',e=>{
 $('#canvas').addEventListener('pointermove',e=>{
   if(BOXDRAG){const[x,y]=inch(e),[a,b]=BOXDRAG;AIBOX={x:r8((a+x)/2),y:r8((b+y)/2),w:r8(Math.abs(x-a)),h:r8(Math.abs(y-b))};draw();return}
   if(!DRAG)return;const[x,y]=inch(e);
+  // the knob above a graphic turns it about its centre; it settles on every 15° when it comes near one
+  if(DRAG.turn){const q=DRAG.turn;let a=Math.atan2(x-q.x,-(y-q.y))*180/Math.PI;const s15=Math.round(a/15)*15;if(Math.abs(a-s15)<4||e.shiftKey)a=s15;q.rot=turnTo(a);DRAG.moved=true;draw();return}
   if(DRAG.ed&&DRAG.vx!=null){DRAG.ed.pts=DRAG.orig.pts.map((q,i)=>i===DRAG.vx?[r8(x),r8(y)]:q);DRAG.moved=true;draw();return}
   if(DRAG.ed){const dx=x-DRAG.start[0],dy=y-DRAG.start[1],o=DRAG.orig;if(o.pts)DRAG.ed.pts=o.pts.map(q=>[r8(q[0]+dx),r8(q[1]+dy)]);else{DRAG.ed.x=r8(o.x+dx);DRAG.ed.y=r8(o.y+dy);if(Math.abs(DRAG.ed.x)<.25&&!(DRAG.ed.type==='part'&&partOf(DRAG.ed.part)?.kind==='pockets')&&!['pocket-patch','pocket-flap','pocket-welt','pocket-cargo','pocket-slant','pocket-jean','pocket-zip','pleat'].includes(DRAG.ed.kind))DRAG.ed.x=0}DRAG.moved=true;draw();return}
   DRAG.q.x=r8(x-DRAG.dx);DRAG.q.y=r8(y-DRAG.dy);if(Math.abs(DRAG.q.x)<.25)DRAG.q.x=0;DRAG.moved=true;draw()});

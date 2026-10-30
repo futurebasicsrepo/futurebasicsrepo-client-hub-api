@@ -2643,7 +2643,7 @@ await journey('J240', 'Design on an iPad, as Kyle found it: the ruler takes any 
         const n0 = await Fd.evaluate(() => FBFlats.placements().length); await Fd.click('.tabs [data-tab=pl]'); await Fd.click('#pPl [data-addmark=mark]'); await Fd.waitForFunction(n => FBFlats.placements().length > n, n0, { timeout: 10000 });
         const q = await Fd.evaluate(() => FBFlats.placements().filter(x => x.view === 'front').pop());
         if (q) {
-          const at = await page.evaluate(id => { const f = document.getElementById('flatFrame').getBoundingClientRect(), g = document.getElementById('flatFrame').contentDocument.querySelector(`[data-pl="${id}"]`).getBoundingClientRect(); return { x: f.left + g.left + g.width / 2, y: f.top + g.top + g.height / 2 }; }, q.id);
+          const at = await page.evaluate(id => { const f = document.getElementById('flatFrame').getBoundingClientRect(), g = document.getElementById('flatFrame').contentDocument.querySelector(`[data-pl="${id}"] rect`).getBoundingClientRect(); return { x: f.left + g.left + g.width / 2, y: f.top + g.top + g.height / 2 }; }, q.id); // the graphic itself, not its turn knob above
           const touch = (type, d) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x: at.x - d, y: at.y, id: 1 }, { x: at.x + d, y: at.y, id: 2 }] });
           await touch('touchStart', 10); for (const d of [20, 30, 40, 50]) await touch('touchMove', d); await touch('touchEnd', 50);
           const q2 = await Fd.evaluate(id => FBFlats.placements().find(x => x.id === id), q.id);

@@ -224,3 +224,14 @@ test('a tall graphic down the back of a tee ends above the hem, keeping its shap
   const big = F.fitTall({ view: 'back', x: 0, y: 5 + 12, w: 11, h: 24 }, p);
   assert.ok(big.y - big.h / 2 === 5 && big.y + big.h / 2 <= m.length - 2 && Math.abs(big.w / big.h - 11 / 24) < 0.02, JSON.stringify(big));
 });
+
+test('a graphic on a flat can be turned to match the picture: kept to the half degree, drawn turned, checked by its turned outline and named in the words', async () => {
+  const F = await import('../src/lab-flats.js'), p = { ...F.defaultParams('tee'), size: 'M' };
+  const c = F.cleanFlat({ style: 'tee', placements: [{ id: 'a', view: 'front', x: 0, y: 9, w: 8, h: 5, rot: 372.3 }, { id: 'b', view: 'front', x: 0, y: 14, w: 3, h: 2, rot: 0 }] });
+  assert.equal(c.placements[0].rot, 12.5); assert.ok(!('rot' in c.placements[1]), 'a straight graphic carries no turn');
+  const q = { ...c.placements[0], name: 'Route' };
+  assert.match(F.renderSvg(p, 'front', { placements: [q], selected: 'a' }), /rotate\(12\.5 0 9\)[\s\S]*data-rot="a"/);
+  assert.match(F.describe(q, p), /turned 12\.5° clockwise$/);
+  const straight = F.placementChecks({ ...q, rot: 0 }, p).some(f => f.code === 'KEEPOUT_NECK' || f.level === 'fail'), turned = F.placementChecks({ ...q, rot: 90 }, p).some(f => f.level === 'fail');
+  assert.ok(!straight && turned, 'turned on end, the same graphic reaches the neck and the check says so');
+});

@@ -68,7 +68,7 @@ export async function artColours(input, { max = 4 } = {}) {
 
 // Is the file big enough to print at the width it will be used? 300 dpi is the usual ask; 150 holds up for a bold, simple print; below that it will look soft.
 export function printCheck({ widthPx, heightPx, widthIn = 4 }) {
-  const w = Math.max(1, Math.round(widthPx)), h = Math.round(heightPx || 0), inch = widthIn > 0 ? widthIn : 4, dpi = Math.round(w / inch), maxIn = Math.floor(w / 300 * 10) / 10;
+  const w = Math.max(1, Math.round(widthPx)), h = Math.round(heightPx || 0), inch = Math.round((widthIn > 0 ? widthIn : 4) * 100) / 100, dpi = Math.round(w / inch), maxIn = Math.floor(w / 300 * 10) / 10;
   const level = dpi >= 300 ? 'ok' : dpi >= 150 ? 'low' : 'poor', size = `${w} × ${h} px`;
   const message = level === 'ok' ? `${size}: sharp enough to print up to ${maxIn} in wide.`
     : level === 'low' ? `${size} is ${dpi} dpi at ${inch} in wide; print wants 300. It holds up to ${maxIn} in wide, or send a larger or vector file (AI, EPS, SVG).`
