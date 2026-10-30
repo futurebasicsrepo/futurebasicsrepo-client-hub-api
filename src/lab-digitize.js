@@ -13,7 +13,7 @@
 //      shape from edge to edge, with a centre-walk underlay and pull compensation on both edges. A straight stroke takes one angle, the one that
 //      crosses it shortest. Where rows at one angle would run along the stroke (a ring, an O, script, an arc) the satin turns with it: the shape is
 //      thinned to its centre line, traced into columns (split at junctions, where strokes that run straight through stay one column and the others
-//      stop at its edge, and at sharp corners, which are mitred), and each column is walked with every stitch square to the line, its ends found by
+//      stop at its edge, and at sharp corners, where one column runs through the corner and the next starts at its edge), and each column is walked with every stitch square to the line, its ends found by
 //      casting out to the shape's edge. The rows are spaced on the outside of a curve; on the inside, a needle point that would land on the last
 //      one is pulled in to a short stitch. When the centre line cannot be traced cleanly, the one angle is kept.
 //      Wider shapes are sewn as tatami fill: rows `rowMm` apart at `fillAngle`, needle points staggered over three rows so the fill shows no
@@ -182,8 +182,8 @@ function centreLines(dt) {
   }
   return out;
 }
-// a column cut where its centre line turns a sharp corner (over ~55° within the stroke's depth): each piece runs on to the corner's edge, the way
-// a digitiser mitres a square corner instead of fanning the stitches round it
+// a column cut where its centre line turns a sharp corner (over ~55° within the stroke's depth): the piece before runs on to the corner's
+// outer edge and the piece after starts at its side, the way a digitiser butts two columns at a square corner instead of fanning round it
 function corners(cl, depth) {
   const P = cl.pts, n = P.length, cyc = cl.closed, at = i => P[cyc ? (i % n + n) % n : Math.max(0, Math.min(n - 1, i))], ang = new Float32Array(n);
   for (let i = 0; i < n; i++) { const k = Math.max(3, Math.round(depth(P[i]))); if (!cyc && (i < k || i > n - 1 - k)) continue; const a = at(i - k), b = P[i], c = at(i + k);
@@ -192,7 +192,8 @@ function corners(cl, depth) {
   if (!cuts.length) return [cl];
   const out = [], seq = cyc ? [...cuts, cuts[0] + n] : [0, ...cuts, n - 1];
   for (let c = 0; c < seq.length - 1; c++) { const pts = []; for (let i = seq[c]; i <= seq[c + 1]; i++) pts.push(at(i));
-    out.push({ pts, closed: false, cut: [!cyc && c === 0 ? cl.cut[0] : 0, !cyc && c === seq.length - 2 ? cl.cut[1] : 0], free: [cyc || c > 0 || cl.free[0], cyc || c < seq.length - 2 || cl.free[1]], joins: cl.joins }); }
+    const atCorner = cyc || c > 0; // the piece before runs on through the corner square; this one starts at its edge, so the corner is sewn once
+    out.push({ pts, closed: false, cut: [atCorner ? depth(pts[0]) : cl.cut[0], !cyc && c === seq.length - 2 ? cl.cut[1] : 0], free: [!atCorner && cl.free[0], cyc || c < seq.length - 2 || cl.free[1]], joins: cl.joins }); }
   return out;
 }
 // one column of turning satin as needle points (px): its centre line smoothed and walked, at each step a ray out to either edge along the
