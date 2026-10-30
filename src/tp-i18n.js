@@ -8,7 +8,7 @@ const pl=(n,one,many)=>Number(n)===1?one:many;
 const LANGS={};
 
 LANGS.zh={native:'简体中文',label:'Chinese (Simplified)',html:'zh-Hans',
-  dict:{'Style':'款式','Calls':'工艺点','POMs':'尺寸','Art':'图案','BOM':'物料','Sign':'签核','Callouts':'工艺点','Measure':'尺寸','Artwork':'图案','Materials':'物料','PDF':'PDF',
+  dict:{'Production files':'生产文件包','Style':'款式','Calls':'工艺点','POMs':'尺寸','Art':'图案','BOM':'物料','Sign':'签核','Callouts':'工艺点','Measure':'尺寸','Artwork':'图案','Materials':'物料','PDF':'PDF',
 'Tech pack':'工艺单','Draft':'草稿','Published':'已发布','not yet published':'尚未发布','Style no.':'款号','Season':'季度','Category':'品类','Sample size':'样品尺码','Size run':'尺码范围','Designer':'设计师','Colour rendering':'配色效果图','Reference photo':'参考图','colour rendering to follow':'配色效果图待补','Rendering':'效果图','Shown on the cover':'显示在封面',
 'colour renderings':'配色效果图','Colour Renderings':'配色效果图','style summary':'款式概要','revision history':'版本记录','Revisions':'版本记录','Not yet published.':'尚未发布。','callouts':'工艺点','measurements':'尺寸','Points of Measure':'测量部位','artwork & colour':'图案与颜色','Pantone Extraction':'潘通色提取','placement':'位置','Position on Garment':'图案在成品上的位置','bill of materials':'物料清单','Materials & Trims':'面辅料','construction':'工艺','Construction':'工艺做法','labels, packaging & care':'唛头、包装与洗护','Labels, Packaging & Care':'唛头、包装与洗护','sign-off':'签核','Tech Pack Sign-Off':'工艺单签核','access':'访问权限','Who can see this':'谁可以查看',
 'Code':'代码','POM':'测量部位','Point of measure':'测量部位','How to measure':'测量方法','Tolerance':'公差','Tol.':'公差','Component':'部件','Material':'材料','Spec':'规格','Supplier':'供应商','Ref':'编号','Color':'颜色','Placement':'位置','Qty':'数量','Unit':'单位','Notes':'备注','Area':'部位','Detail':'做法','Detail — stitch, seam, thread, SPI, finish':'做法 — 线迹、缝型、缝线、针距、后整理','Label / item':'唛头 / 项目',
@@ -38,7 +38,7 @@ LANGS.zh={native:'简体中文',label:'Chinese (Simplified)',html:'zh-Hans',
   note:(who,ver,date)=>`<p class="note noprint">由 Future Basics 为 <strong>${who||'贵厂'}</strong> 准备 · 版本 ${ver}，发布于 ${date}。请在 <strong>工艺点</strong> 页逐条确认，在 <strong>图案</strong> 页下载图案文件，然后在 <strong>签核</strong> 页会签。</p>`};
 
 LANGS['zh-hant']={native:'繁體中文',label:'Chinese (Traditional)',html:'zh-Hant',
-  dict:{'Style':'款式','Calls':'工藝點','POMs':'尺寸','Art':'圖案','BOM':'物料','Sign':'簽核','Callouts':'工藝點','Measure':'尺寸','Artwork':'圖案','Materials':'物料','PDF':'PDF',
+  dict:{'Production files':'生產文件包','Style':'款式','Calls':'工藝點','POMs':'尺寸','Art':'圖案','BOM':'物料','Sign':'簽核','Callouts':'工藝點','Measure':'尺寸','Artwork':'圖案','Materials':'物料','PDF':'PDF',
 'Tech pack':'工藝單','Draft':'草稿','Published':'已發布','not yet published':'尚未發布','Style no.':'款號','Season':'季度','Category':'品類','Sample size':'樣品尺碼','Size run':'尺碼範圍','Designer':'設計師','Colour rendering':'配色效果圖','Reference photo':'參考圖','colour rendering to follow':'配色效果圖待補','Rendering':'效果圖','Shown on the cover':'顯示在封面',
 'colour renderings':'配色效果圖','Colour Renderings':'配色效果圖','style summary':'款式概要','revision history':'版本記錄','Revisions':'版本記錄','Not yet published.':'尚未發布。','callouts':'工藝點','measurements':'尺寸','Points of Measure':'測量部位','artwork & colour':'圖案與顏色','Pantone Extraction':'潘通色提取','placement':'位置','Position on Garment':'圖案在成品上的位置','bill of materials':'物料清單','Materials & Trims':'面輔料','construction':'工藝','Construction':'工藝做法','labels, packaging & care':'嘜頭、包裝與洗護','Labels, Packaging & Care':'嘜頭、包裝與洗護','sign-off':'簽核','Tech Pack Sign-Off':'工藝單簽核','access':'存取權限','Who can see this':'誰可以查看',
 'Code':'代碼','POM':'測量部位','Point of measure':'測量部位','How to measure':'測量方法','Tolerance':'公差','Tol.':'公差','Component':'部件','Material':'材料','Spec':'規格','Supplier':'供應商','Ref':'編號','Color':'顏色','Placement':'位置','Qty':'數量','Unit':'單位','Notes':'備註','Area':'部位','Detail':'做法','Detail — stitch, seam, thread, SPI, finish':'做法 — 線跡、縫型、縫線、針距、後整理','Label / item':'嘜頭 / 項目',
@@ -68,7 +68,7 @@ LANGS['zh-hant']={native:'繁體中文',label:'Chinese (Traditional)',html:'zh-H
   note:(who,ver,date)=>`<p class="note noprint">由 Future Basics 為 <strong>${who||'貴廠'}</strong> 準備 · 版本 ${ver}，發布於 ${date}。請在 <strong>工藝點</strong> 頁逐條確認，在 <strong>圖案</strong> 頁下載圖案檔案，然後在 <strong>簽核</strong> 頁會簽。</p>`};
 
 LANGS.es={native:'Español',label:'Spanish',html:'es',
-  dict:{
+  dict:{'Production files':'Archivos de producción',
 "Style":"Estilo",
 "Calls":"Indic.",
 "POMs":"Medidas",
@@ -250,7 +250,7 @@ LANGS.es={native:'Español',label:'Spanish',html:'es',
   note:(who,ver,date)=>`<p class="note noprint">Preparada por Future Basics para <strong>${who||'su fábrica'}</strong> · versión ${ver}, emitida el ${date}. Confirme cada indicación en <strong>Indic.</strong>, descargue el arte en <strong>Arte</strong> y contrafirme en <strong>Firma</strong>.</p>`};
 
 LANGS.pt={native:'Português',label:'Portuguese',html:'pt-PT',
-  dict:{
+  dict:{'Production files':'Ficheiros de produção',
 "Style":"Estilo",
 "Calls":"Indic.",
 "POMs":"Medidas",
@@ -432,7 +432,7 @@ LANGS.pt={native:'Português',label:'Portuguese',html:'pt-PT',
   note:(who,ver,date)=>`<p class="note noprint">Preparada pela Future Basics para <strong>${who||'a sua fábrica'}</strong> · versão ${ver}, emitida em ${date}. Confirme cada indicação em <strong>Indic.</strong>, transfira a arte em <strong>Arte</strong> e contra-assine em <strong>Assinatura</strong>.</p>`};
 
 LANGS.it={native:'Italiano',label:'Italian',html:'it',
-  dict:{
+  dict:{'Production files':'File di produzione',
 "Style":"Stile",
 "Calls":"Indic.",
 "POMs":"Misure",

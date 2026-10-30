@@ -177,6 +177,24 @@ The assistant drafts what the concept did not give, such as materials, care and 
 
 **On its link, the factory reads and writes in Messages.** It reads every version and what changed in it, and writes to Future Basics in **Messages**, about the whole pack or about a single callout (**Ask about this**). It has no buttons that change anything.
 
+**Production files, in one download.** The factory's link has a **Production files** button (translated with the rest of the page). It downloads a zip with everything needed to start work, so nothing waits on an email (`GET /v1/tp/:token/package.zip`, built by `src/factory-package.js`). The same zip is under **Download the production package** in the work console's pack menu, for staff to check or send on (`GET /v1/admin/products/:id/tech-pack/package.zip`, published packs only).
+
+| In the zip | What it is |
+| --- | --- |
+| `tech-pack.pdf`, `tech-pack.xlsx` | The pack as published, as the factory sees it: no costs, no margins |
+| `artwork/`, `sketches/` | Every artwork picture, technical flat and reference picture on the pack, each once |
+| `decorations/NN-name/` | For each placement on the flats, made at its placed size: the separations (one ink and one film per colour, underbase, halftone settings) for a print, or the stitch files (`.dst` Tajima, `.exp` Melco), thread sequence and sew-out preview for embroidery; the job sheet (PDF and JSON); the artwork at 300 dpi and traced to vector |
+| `decorations/not-placed-NN-name/` | A concept graphic not placed on the flats yet, made at 10 in wide, with a note saying so |
+| `decorations/decoration-sheet.pdf` | Every placement with its technique, size, position, threads or inks and checks. The factory's copy leaves out our cost estimates: its quote sets them |
+| `flats/spec-sheet.svg` | The spec sheet as a vector |
+| `pattern/` | The pattern: every size of the run as one AAMA/ASTM DXF in inches, the base size as plain DXF and SVG |
+| `last/`, `flats/tech-flats.svg` | For footwear: the last drawn (SVG) and lofted to 3D (STL, mm), and the tech flats from the pattern. Plush gets its sheet |
+| `README.txt` | What each file is, and anything that could not be made and why |
+
+The decoration, pattern and last files are made from the design as it is when the zip is downloaded. If the flats or the pattern changed after the version was published, the README says so and says the PDF governs. A pack made outside the Lab gets the PDF, the workbook and its pictures, and the README explains why there are no decoration or pattern files.
+
+**Artwork from the Lab arrives on the pack ready for production.** Each picture carries its colours as Pantone C, measured the way an upload's are. A Lab graphic also keeps its graphics-library id, so the pack's **Artwork job file** button works on it. Logo marks are measured from their own drawing like any artwork, so the cue mark shows as two threads or two screens (ink and the green dot), not one.
+
 **The team records what the factory says:**
 - its quote (Sign tab, **Record a quote**);
 - that it acknowledges the callouts and countersigns (**for the factory**, each marked as done by Future Basics);

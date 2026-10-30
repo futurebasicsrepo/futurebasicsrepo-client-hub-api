@@ -3484,5 +3484,40 @@ await journey('J259', 'A sketch picked opens straight away: on a phone, tapping 
   } finally { await br.close(); if (cid) await K(`/concepts/${cid}`, { method: 'DELETE' }); }
 });
 
+await journey('J260', 'The factory gets everything to start work in one download: from its pack link, a production package with the tech pack PDF and workbook, every artwork and sketch, and for each decoration placed in the Lab its job files at the placed size (stitch files .dst/.exp and thread list for embroidery, separations for print, the job sheet, a vector), the decoration sheet without our cost estimates, and the pattern in every size as DXF; Lab artwork on the pack carries its Pantones', async () => {
+  const { plan } = await conceptSetup(); const A = (path, o = {}) => call(path, { token: kyleT, ...o });
+  const names = buf => { const out = []; const i = buf.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06])); let p = buf.readUInt32LE(i + 16); for (let k = 0, n = buf.readUInt16LE(i + 10); k < n; k++) { const len = buf.readUInt16LE(p + 28), ex = buf.readUInt16LE(p + 30), cm = buf.readUInt16LE(p + 32); out.push(buf.slice(p + 46, p + 46 + len).toString('utf8')); p += 46 + len + ex + cm; } return out; };
+  const fileOf = (buf, name) => { let p = 0; while ((p = buf.indexOf(Buffer.from([0x50, 0x4b, 0x03, 0x04]), p)) >= 0) { const size = buf.readUInt32LE(p + 18), len = buf.readUInt16LE(p + 26), ex = buf.readUInt16LE(p + 28), n = buf.slice(p + 30, p + 30 + len).toString('utf8'); if (n.endsWith(name)) return buf.slice(p + 30 + len + ex, p + 30 + len + ex + size); p += 30 + len + ex + size; } return null; };
+  const line = plan.lines.find(l => l.category === 'tops') || plan.lines[0], c = (await K(`/plans/${plan.plan.id}/lines/${line.id}/concepts`, { body: { count: 1 } })).json.concepts[0];
+  await K(`/concepts/${c.id}/approve`, { body: { overrideReason: 'reviewed side by side with the references: it is ours' } });
+  const fl = (await K(`/concepts/${c.id}/flats`)).json; await K(`/concepts/${c.id}/flats`, { method: 'PUT', body: fl.flat });
+  ok((fl.flat.placements || []).length > 0, '1. the flats carry placements (the logo, the graphics)', (fl.flat.placements || []).map(q => `${q.name}:${q.technique}`));
+  const pid = (await K(`/concepts/${c.id}/tech-pack`, { body: {} })).json.productId;
+  const art = (await A(`/v1/admin/products/${pid}/tech-pack`)).json.techPack.data.artwork.filter(a => a.note === 'From the Design Lab' && !/^(Spec sheet|Technical flat)/.test(a.name));
+  ok(art.length > 0 && art.every(a => a.pantones.length > 0), '2. Lab artwork lands on the pack with its colours as Pantone C', art.map(a => `${a.name}: ${a.pantones.map(p => p.code).join(' ')}`));
+  ok((await A(`/v1/admin/products/${pid}/tech-pack/package.zip`)).status === 409, '3. no package before the pack is published');
+  ok((await A(`/v1/admin/products/${pid}/tech-pack/publish`, { method: 'POST', body: { override: 'journey: production package' } })).status === 200, '4. version 1 is published');
+  const sup = (await A('/v1/admin/suppliers', { method: 'POST', body: { name: `Package Mill ${stamp}` } })).json;
+  const tok = (await A(`/v1/admin/products/${pid}/tech-pack/factory`, { method: 'POST', body: { supplierId: sup.id, mode: 'review' } })).json.assignment.packUrl.split('/tp/')[1];
+  const r = await fetch(`${BASE}/v1/tp/${tok}/package.zip`), buf = Buffer.from(await r.arrayBuffer());
+  ok(r.status === 200 && /application\/zip/.test(r.headers.get('content-type') || '') && /production\.zip/.test(r.headers.get('content-disposition') || ''), '5. the factory link downloads the production package, no sign-in', r.status);
+  if (process.env.SHOT_DIR && r.status === 200) writeFileSync(process.env.SHOT_DIR + '/production-package.zip', buf);
+  const ls = r.status === 200 ? names(buf).map(n => n.split('/').slice(1).join('/')) : [];
+  for (const f of ['README.txt', 'tech-pack.pdf', 'tech-pack.xlsx', 'decorations/decoration-sheet.pdf', 'flats/spec-sheet.svg', 'pattern/pattern-all-sizes-aama.dxf']) ok(ls.includes(f), `6. it holds ${f}`);
+  ok(ls.some(n => /^artwork\/.+\.png$/.test(n)) && ls.some(n => /^sketches\/.+\.png$/.test(n)), '7. every artwork and sketch on the pack, as files', ls.filter(n => /^(artwork|sketches)\//.test(n)));
+  const deco = ls.filter(n => /^decorations\/\d\d-/.test(n));
+  ok(deco.some(n => /\.dst$/.test(n)) && deco.some(n => /\.exp$/.test(n)), '8. an embroidered placement comes with its stitch files (.dst for Tajima, .exp for Melco)', deco);
+  ok(deco.some(n => /job-sheet\.pdf$/.test(n)) && deco.some(n => /artwork-vector\.svg$/.test(n)), '9. every placement has its job sheet and a vector of its artwork');
+  const dst = ls.find(n => /\.dst$/.test(n)), d = dst && fileOf(buf, dst);
+  ok(d && d.length > 512 && /LA:/.test(d.slice(0, 512).toString('latin1')), '10. the .dst is a real Tajima file (its header and stitches)', d?.length);
+  const sheet = fileOf(buf, 'decorations/decoration-sheet.pdf');
+  ok(sheet && /^%PDF/.test(sheet.slice(0, 5).toString()) && !/costs are estimates/.test(sheet.toString('latin1')), '11. the decoration sheet goes without our cost estimates');
+  const rd = fileOf(buf, 'README.txt')?.toString() || '';
+  ok(/tech pack v1/.test(rd) && /Tajima DST/.test(rd) && /AAMA\/ASTM DXF/.test(rd), '12. the README names each file and what it is for');
+  const st = await fetch(`${BASE}/v1/admin/products/${pid}/tech-pack/package.zip`, { headers: { Authorization: 'Bearer ' + kyleT } });
+  ok(st.status === 200, '13. the work console downloads the same package to check or send on');
+  ok((await call('/v1/tp/not-a-real-token-at-all-000000/package.zip')).status === 404, '14. a made-up link gets nothing');
+});
+
 shops.close(); brave.close();
 process.exit(summary() ? 1 : 0);
