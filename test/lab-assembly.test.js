@@ -154,3 +154,26 @@ test('a factory\'s files carry no costs: the parts list and the drawing without 
   assert.equal(csv.split('\n')[0], 'Item,Part,Qty,Material,Process,Finish,Colour,Mass (g)'); assert.ok(!/Labour|Final assembly/.test(csv));
   assert.ok(!/Unit \$|Unit cost|tooling \$/.test(svg) && /T1 samples in \d+ weeks/.test(svg)); assert.match(drawingSvg(s), /Unit cost \$/);
 });
+
+test('turntable, headphones, smart speaker, power bank and lamp: read from their words, made of their real parts, nothing to fix', async () => {
+  const want = {
+    turntable: ['Belt-drive turntable with a phono preamp', ['ttmotor', 'cartridge', 'phono', 'rca', 'dcjack'], /External adapter/],
+    headphones: ['Wireless over-ear headphones', ['hpdriver', 'battery', 'ble', 'usbc', 'mic'], /EN 50332/],
+    smartspeaker: ['Smart speaker with a voice assistant', ['wifi', 'mic', 'led', 'speaker', 'amp', 'dcjack'], /CE-RED/],
+    powerbank: ['10,000 mAh power bank', ['li18650', 'pbms', 'usbc', 'led'], /UN 38\.3/],
+    lamp: ['Cordless table lamp', ['ledcob', 'leddrv', 'touch', 'battery', 'usbc'], /IEC 62471/]
+  };
+  const { realMeshes } = await import('../src/lab-parts-mesh.js');
+  for (const [a, [name, kinds, cert]] of Object.entries(want)) {
+    assert.equal(guessArch({ name, category: 'electronics' }), a, name);
+    const s = archetype(a), E = engineer(s), k = new Set(s.parts.filter(p => p.elec).map(p => p.elec.kind));
+    assert.ok(kinds.every(x => k.has(x)), `${a}: ${kinds.filter(x => !k.has(x))} missing`);
+    assert.deepEqual(E.checks.filter(c => c.level === 'bad').map(c => c.text), [], a);
+    assert.ok(E.certs.some(c => cert.test(c.name)), `${a}: ${cert}`); assert.ok(E.harness.length >= 1 && E.unit > 0, a);
+    const real = realMeshes(s); assert.ok(s.parts.every(p => real[p.id]?.length), `${a}: every part is built in 3D`);
+  }
+  const pb = engineer(archetype('powerbank', {}, { mah: 12000 })); assert.match(pb.spec.parts.find(p => p.elec?.kind === 'li18650').name, /4 × 18650, 12000 mAh/);
+  assert.ok(pb.power.runtime > 1 && pb.power.runtime < 6, 'a power bank lasts hours at half its rated output');
+  assert.ok(!pb.checks.some(c => /^Heat/.test(c.text) && c.level !== 'ok'), 'its output leaves through the cable: only the loss warms it');
+  const sm = engineer(archetype('smartspeaker')); assert.ok(sm.harness.some(c => c.label === 'Board to board' && /FFC/.test(c.type)), 'the top board joins the main one by a flex cable');
+});

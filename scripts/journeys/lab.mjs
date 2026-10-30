@@ -3871,6 +3871,10 @@ await journey('J267', 'Hard goods and electronics are engineered as 3D parts: an
     const ts = await K(`/concepts/${cdid}/assembly/start`, { body: { arch: 'cassette' } }), ss = await K(`/concepts/${cdid}/assembly/start`, { body: { arch: 'speaker', radio: 'ble' } });
     ok(ts.json.eng.power.cell === 'aa' && ts.json.eng.power.runtime > 8 && kinds(ts.json.spec).has('tapemech') && !ts.json.eng.checks.some(c => c.level === 'bad'), '   a cassette player runs on two AA cells, with the tape transport', { run: ts.json.eng.power.runtime });
     ok(['woofer', 'tweeter', 'amp2'].every(k => kinds(ss.json.spec).has(k)) && ss.json.spec.parts.some(p => p.resin === 'MDF') && !ss.json.eng.checks.some(c => c.level === 'bad'), '   a powered speaker: MDF cabinet, woofer, tweeter and a 2 × 20 W amplifier');
+    for (const [nm, arch] of [['Belt-drive turntable', 'turntable'], ['Wireless over-ear headphones', 'headphones'], ['Smart speaker with a voice assistant', 'smartspeaker'], ['10,000 mAh power bank', 'powerbank'], ['Cordless table lamp', 'lamp']]) {
+      const nc = await K('/concepts/from-scratch', { body: { category: 'electronics', name: `${nm} ${stamp}` } }), nid = nc.json.concept?.id; made.push(nid);
+      const ng = await K(`/concepts/${nid}/assembly`); ok(ng.json.spec?.arch === arch && !ng.json.eng.checks.some(c => c.level === 'bad') && ng.json.eng.harness.length > 0, `6f. "${nm}" opens as a ${arch}, wired and with nothing to fix`, { arch: ng.json.spec?.arch, bad: ng.json.eng?.checks?.filter(c => c.level === 'bad').map(c => c.text) });
+    }
     // into the tech pack and the factory's production package
     const cs = await K(`/concepts/${cdid}/assembly/start`, { body: { arch: 'cdplayer' } }); await K(`/concepts/${cdid}/assembly`, { method: 'PUT', body: { spec: cs.json.spec } });
     ok((await K(`/concepts/${cdid}/assembly/tech-pack`, { body: {} })).status === 409, '6c. before the concept has a tech pack, its engineering has nowhere to go');
