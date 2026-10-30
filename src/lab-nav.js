@@ -44,14 +44,16 @@
     el.innerHTML = `<a class="hub" href="/#lab">← Your hub</a><a class="new" href="/lab?new=1" data-new-design>+ New design</a>` + TABS.filter(t => !t.staff).map(t => `<a href="${t.href}" class="${t.id === cur ? 'on' : ''}"${t.id === cur ? ' aria-current="page"' : ''}>${esc(t.label)}</a>`).join('');
   }
   // the step bar
+  // hard goods, toys, home objects and electronics are engineered as 3D parts, not cut from a pattern: the same step, named for what it is
+  const ENGINEERED = ['electronics', 'toys', 'home'];
   const hrefOf = (c, id) => ({ concept: `/lab?concept=${c.id}`, picture: `/lab/studio?concept=${c.id}&view=picture`, flats: `/lab/studio?concept=${c.id}&view=front`, pattern: `/lab/studio?concept=${c.id}&view=pattern`, techpack: c.productUrl || '' })[id];
   function steps(el, c, o = {}) {
     style(); if (!el || !c || !c.id) return;
     const up = c.planId ? { href: `/lab?plan=${c.planId}#plans`, label: c.planName || 'Its line plan', title: 'Its line plan' } : { href: '/lab#board', label: 'Concepts', title: 'Every concept' };
     el.classList.add('labsteps'); el.setAttribute('aria-label', 'This piece');
-    el.innerHTML = `<a class="up" href="${esc(up.href)}" title="${esc(up.title)}">‹ <span>${esc(up.label)}</span></a><ol>${STEPS.map((s, i) => {
+    el.innerHTML = `<a class="up" href="${esc(up.href)}" title="${esc(up.title)}">‹ <span>${esc(up.label)}</span></a><ol>${STEPS.filter(s => !(s.id === 'flats' && ENGINEERED.includes(c.category))).map((s, i) => {
       const href = hrefOf(c, s.id), todo = s.id === 'techpack' && !href;
-      return `<li><a href="${esc(href || '#')}" data-step="${s.id}" title="${esc(todo ? 'Not made yet: the checklist says what it still needs, then send it to a tech pack' : s.hint)}"${s.id === o.at ? ' aria-current="step"' : ''}${todo ? ' class="todo"' : ''}><span class="n">${i + 1}</span>${esc(s.label)}</a></li>`;
+      return `<li><a href="${esc(href || '#')}" data-step="${s.id}" title="${esc(todo ? 'Not made yet: the checklist says what it still needs, then send it to a tech pack' : s.hint)}"${s.id === o.at ? ' aria-current="step"' : ''}${todo ? ' class="todo"' : ''}><span class="n">${i + 1}</span>${esc(s.id === 'pattern' && ENGINEERED.includes(c.category) ? 'Engineering' : s.label)}</a></li>`;
     }).join('')}</ol>`;
     el.onclick = e => {
       const a = e.target.closest('a[data-step]'); if (!a || e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;

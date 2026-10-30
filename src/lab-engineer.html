@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>Engineering</title>
+<script>// the engineering lives inside the Design workspace (/lab/studio), in the frame the pattern uses; opened on its own it goes to the workspace
+(function(){var q=new URLSearchParams(location.search);if(q.get('embed')||window.top!==window){document.documentElement.dataset.embed='full';return}
+var c=q.get('concept')||'';location.replace('/lab/studio'+(/^[0-9a-f-]{36}$/i.test(c)?'?concept='+c+'&view=pattern':''))})()</script>
+<link rel="icon" href="/icons/icon-192.png">
+<script src="/elec.js"></script>
+<style>
+@import url('/fonts/fonts.css');
+:root{--ink:#141416;--paper:#fff;--fog:#f5f5f2;--dim:#727278;--line:rgba(20,20,22,.14);--cue:#4bff9a;--ok:#17603a;--bad:#a02a20;--warn:#8a5a00}
+*{box-sizing:border-box}html{background:var(--fog)}
+body{margin:0;color:var(--ink);font:400 14px/1.45 'Space Grotesk',system-ui,sans-serif;background:var(--fog);min-height:100vh;overflow-x:hidden}
+button,input,select{font:inherit;color:inherit}a{color:inherit}.hidden{display:none!important}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--ink);background:#fff;color:var(--ink);border-radius:999px;padding:6px 13px;text-decoration:none;cursor:pointer;font-weight:600;min-height:34px;font-size:13px;white-space:nowrap}.btn:hover{background:var(--ink);color:#fff}
+.btn.go{background:var(--cue);border-color:var(--cue)}.btn.go:hover{background:#7affb6;color:var(--ink)}.btn.q{border-color:var(--line)}.btn.sm{min-height:28px;padding:3px 10px;font-size:12px}.btn[disabled]{opacity:.45;pointer-events:none}.btn[aria-pressed=true]{background:var(--ink);color:#fff;border-color:var(--ink)}
+.mono{font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+.bar{display:flex;align-items:center;gap:8px;padding:10px clamp(14px,2vw,24px);background:#fff;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.bar .ttl{margin-right:auto;display:grid;line-height:1.2;min-width:0}.bar .ttl b{font-size:16px}.bar .ttl span{color:var(--dim);font-size:12px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;padding:2px;background:#fff}.seg button{border:0;background:none;border-radius:999px;padding:5px 12px;font-size:13px;font-weight:600;cursor:pointer;min-height:30px}.seg button[aria-pressed=true]{background:var(--ink);color:#fff}
+.menu{position:relative}.menu .pop{position:absolute;right:0;top:calc(100% + 6px);background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:0 12px 40px rgba(20,20,22,.16);padding:6px;display:grid;min-width:230px;z-index:30}
+.menu .pop button{border:0;background:none;text-align:left;padding:8px 10px;border-radius:10px;cursor:pointer;font-size:13px}.menu .pop button:hover{background:var(--fog)}.menu .pop small{display:block;color:var(--dim);font-size:11.5px}
+.wrap{display:grid;grid-template-columns:minmax(0,1fr) 380px;min-height:calc(100vh - 56px)}
+.stage{position:relative;display:grid;grid-template-rows:auto minmax(0,1fr);min-width:0}
+.scrub{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;padding:10px clamp(14px,2vw,24px);border-bottom:1px solid var(--line);background:var(--fog)}
+.scrub input[type=range]{flex:1;min-width:120px;accent-color:var(--ink)}.scrub .lbl{font:500 11px 'IBM Plex Mono',monospace;color:var(--dim);min-width:90px;text-align:right}
+#view{position:relative;min-height:440px;background:radial-gradient(120% 90% at 50% 20%,#fbfbf9 0%,#ecebe6 100%);overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none}
+#view canvas{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:grab}#view canvas:active{cursor:grabbing}
+#tags{position:absolute;inset:0;pointer-events:none}
+#tags b{position:absolute;transform:translate(-50%,-50%);min-width:20px;height:20px;padding:0 5px;border-radius:999px;background:#fff;border:1px solid var(--ink);font:700 11px/18px 'Space Grotesk',sans-serif;text-align:center;pointer-events:auto;cursor:pointer;box-shadow:0 2px 6px rgba(20,20,22,.12)}
+#tags b.on{background:var(--cue);border-color:var(--ok)}#tags b.bad{border-color:var(--bad);color:var(--bad)}
+#hint{position:absolute;left:12px;bottom:10px;font-size:11.5px;color:var(--dim);background:rgba(255,255,255,.8);padding:4px 9px;border-radius:999px}
+#fallback{position:absolute;inset:0;display:grid;place-items:center;padding:16px}#fallback img{max-width:100%;max-height:100%;background:#fff;border-radius:12px}
+.side{border-left:1px solid var(--line);background:#fff;display:grid;grid-template-rows:auto auto minmax(0,1fr);max-height:calc(100vh - 56px);min-width:0}
+.sum{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;background:var(--line);border-bottom:1px solid var(--line)}
+.sum div{background:#fff;padding:10px 12px;display:grid;gap:2px}.sum b{font-size:17px;font-variant-numeric:tabular-nums}.sum span{font-size:11px;color:var(--dim)}
+.tabs{display:flex;flex-wrap:wrap;gap:4px;padding:8px 10px;border-bottom:1px solid var(--line)}.tabs::-webkit-scrollbar{display:none}
+.tabs button{border:1px solid transparent;background:none;border-radius:999px;padding:5px 11px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap}.tabs button[aria-selected=true]{background:var(--ink);color:#fff}
+.tabs .n{display:inline-block;min-width:17px;height:17px;border-radius:999px;background:var(--bad);color:#fff;font-size:10.5px;line-height:17px;text-align:center;margin-left:4px;padding:0 4px}.tabs .n.w{background:#c9a24a}
+.pane{overflow:auto;padding:14px 16px 24px;display:grid;gap:14px;align-content:start;min-width:0}
+.pane h4{margin:0;font-size:14px}.pane section{display:grid;gap:8px}
+.note{font-size:12.5px;color:#4a4a50;margin:0}
+.f{display:grid;gap:3px;font-size:12px;min-width:0}.f span{color:var(--dim)}
+.f input,.f select{border:1px solid var(--line);border-radius:10px;padding:6px 8px;min-height:34px;background:#fff;width:100%;min-width:0}
+.f input[type=color]{padding:2px;height:34px}
+.g2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.g3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+table.t{width:100%;border-collapse:collapse;font-size:12.5px}table.t td,table.t th{text-align:left;padding:6px 4px;border-bottom:1px solid var(--line);vertical-align:top}table.t th{font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}
+table.t td.r,table.t th.r{text-align:right;font-variant-numeric:tabular-nums}table.t tr[data-p]{cursor:pointer}table.t tr.on{background:#effff6}
+.num{display:inline-grid;place-items:center;min-width:20px;height:20px;border-radius:999px;border:1px solid var(--ink);font-size:11px;font-weight:700;padding:0 4px}
+.sw{display:inline-block;width:11px;height:11px;border-radius:3px;border:1px solid rgba(20,20,22,.3);vertical-align:-1px;margin-right:6px}
+.find{font-size:12.5px;display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px;align-items:start;padding:7px 9px;border-radius:10px;background:var(--fog);cursor:pointer}.find i{width:8px;height:8px;border-radius:50%;margin-top:5px;background:var(--ok)}.find.bad i{background:var(--bad)}.find.warn i{background:#c9a24a}.find.bad{background:#fff3f1}
+.card{border:1px solid var(--line);border-radius:14px;padding:12px;display:grid;gap:8px}
+.kv{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;font-size:12.5px}.kv span{color:var(--dim)}.kv b{font-variant-numeric:tabular-nums;text-align:right}
+.blk{border:1px solid var(--line);border-radius:12px;overflow-x:auto;background:#fff}.blk svg{display:block;min-width:620px;width:100%;height:auto}
+ol.steps{margin:0;padding-left:0;list-style:none;display:grid;gap:6px;font-size:13px}ol.steps li{padding:7px 10px;border-radius:10px;background:var(--fog)}
+.edit{border:1px solid var(--ok);border-radius:14px;padding:12px;display:grid;gap:10px;background:#f7fffa}
+.edit .hd{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.edit .hd b{margin-right:auto}
+.toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:9px 14px;border-radius:999px;font-size:13px;z-index:70;max-width:calc(100vw - 24px)}
+dialog{border:0;border-radius:18px;padding:18px;max-width:min(460px,calc(100vw - 24px));width:100%;box-shadow:0 20px 60px rgba(20,20,22,.3)}dialog::backdrop{background:rgba(20,20,22,.35)}
+dialog form{display:grid;gap:10px}
+@media(max-width:900px){.wrap{grid-template-columns:1fr}.side{border-left:0;border-top:1px solid var(--line);max-height:none}#view{min-height:58vh}}
+@media(max-width:700px){.bar{padding:8px 12px;gap:6px}.bar .ttl{flex:1 1 100%}#modeSeg,.scrub .mono,.scrub .lbl{display:none}.scrub{padding:8px 12px}.bar .btn{padding:5px 11px}.sum b{font-size:15px}.g3{grid-template-columns:repeat(3,minmax(0,1fr))}.scrub .lbl{min-width:0}}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+<link rel="stylesheet" href="/cue.css">
+</head>
+<body>
+<div id="app">
+  <div class="bar">
+    <div class="ttl"><b id="ttl">Engineering</b><span id="sub">Loading…</span></div>
+    <div class="seg" role="group" aria-label="What to show" id="modeSeg"><button type="button" data-t="0" aria-pressed="true">Assembled</button><button type="button" data-t="1" aria-pressed="false">Exploded</button></div>
+    <button class="btn go" type="button" id="play" title="Pull every part away from the product along its own direction">Explode it</button>
+    <div class="menu"><button class="btn q" type="button" id="startBtn" aria-expanded="false" title="Start the assembly again from a kind of product, at a size">Start from…</button></div>
+    <div class="menu"><button class="btn q" type="button" id="fileBtn" aria-expanded="false" title="STL for 3D printing and CAD, the exploded drawing, the parts list, the block diagram">Files</button>
+      <div class="pop hidden" id="filePop" role="menu">
+        <button type="button" data-dl="stl0">STL, assembled<small>Every part in place, in mm: CAD, a 3D print, a renderer</small></button>
+        <button type="button" data-dl="stl1">STL, exploded<small>The parts pulled apart</small></button>
+        <button type="button" data-dl="stlp" id="dlPart">STL, the chosen part<small>Pick a part first</small></button>
+        <button type="button" data-dl="svg">Exploded drawing (SVG)<small>Ballooned parts and the parts list, for the tech pack</small></button>
+        <button type="button" data-dl="csv">Parts list (CSV)<small>Materials, processes, unit and tool costs</small></button>
+        <button type="button" data-dl="blk" id="dlBlk">Block diagram (SVG)<small>Power, the main chip and what it drives</small></button>
+      </div></div>
+    <button class="btn" type="button" id="save" title="Save the assembly (Ctrl+S)">Save</button>
+  </div>
+  <div class="wrap" id="main">
+    <div class="stage">
+      <div class="scrub"><span class="mono">Assembled</span><input type="range" id="t" min="0" max="1" step="0.01" value="0" aria-label="From the assembled product to every part pulled apart"><span class="mono">Exploded</span><span class="lbl" id="tLbl">Assembled</span>
+        <button class="btn sm q" type="button" id="numBtn" aria-pressed="true" title="Show the item numbers on the parts">Numbers</button><button class="btn sm q" type="button" id="xray" aria-pressed="false" title="See through the housings to the parts inside">See inside</button><button class="btn sm q" type="button" id="fit" title="Turn back to the starting view (double-click the view)">Reset view</button></div>
+      <div id="view"><canvas id="gl" aria-label="The product in 3D: drag to turn, pinch or scroll to zoom, tap a part to choose it"></canvas><div id="tags"></div><div id="hint">Drag to turn · pinch or scroll to zoom · tap a part</div><div id="fallback" class="hidden"></div></div>
+    </div>
+    <aside class="side">
+      <div class="sum" id="sum"></div>
+      <div class="tabs" role="tablist" id="tabs"></div>
+      <div class="pane" id="pane" role="tabpanel"></div>
+    </aside>
+  </div>
+</div>
+<dialog id="startDlg"><form method="dialog" id="startForm">
+  <b style="font-size:16px">Start the assembly from…</b>
+  <p class="note">A starting set of parts drawn to the size you give, with materials, processes and (for electronics) the board. You can change every part after. This replaces the parts you have.</p>
+  <label class="f"><span>Kind of product</span><select id="sArch"></select></label>
+  <div class="g3"><label class="f"><span>Width (mm)</span><input id="sW" type="number" min="5" max="2000" inputmode="decimal"></label><label class="f"><span>Depth (mm)</span><input id="sD" type="number" min="5" max="2000" inputmode="decimal"></label><label class="f"><span>Height (mm)</span><input id="sH" type="number" min="5" max="2000" inputmode="decimal"></label></div>
+  <div class="g3" id="sElec"><label class="f"><span>Radio</span><select id="sRadio"><option value="ble">Bluetooth LE</option><option value="wifi">Wi-Fi + BLE</option><option value="none">None</option></select></label><label class="f"><span>Battery (mAh)</span><input id="sMah" type="number" min="0" max="20000" step="50" inputmode="numeric" placeholder="0 = plugs in"></label><label class="f"><span>Buttons</span><input id="sBtn" type="number" min="0" max="12" inputmode="numeric"></label></div>
+  <p class="note" id="sWhy"></p>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end"><button class="btn q" type="button" id="sRead" title="Read the kind, size and features from the concept's picture">Read the picture</button><button class="btn q" value="cancel" formnovalidate>Cancel</button><button class="btn go" type="button" id="sGo">Start from this</button></div>
+</form></dialog>
+<script type="module">
+import { engineer, cleanAssembly, cleanPart, meshOf, explodeOffsets, extentOf, blockSvg, RESINS, SHAPES, ELEC, ARCHES } from '/lab/lab-assembly.js';
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)],esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const TOKEN=()=>{try{return localStorage.getItem('fb.admin.token')||localStorage.getItem('fb.client.token')||''}catch{return ''}};
+async function api(path,o={}){const r=await fetch(path,{method:o.method||(o.body?'POST':'GET'),headers:{Authorization:'Bearer '+TOKEN(),...(o.body?{'Content-Type':'application/json'}:{})},body:o.body?JSON.stringify(o.body):undefined});const j=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(new Error(j.error||'Something went wrong'),{status:r.status});return j}
+const toast=m=>{const t=document.createElement('div');t.className='toast';t.setAttribute('role','status');t.textContent=m;document.body.append(t);setTimeout(()=>t.remove(),2800)};
+const CID=new URLSearchParams(location.search).get('concept')||'',HOST=()=>{try{return parent!==window?parent.FBDesign:null}catch{return null}};
+const money=v=>'$'+(v>=1000?Math.round(v).toLocaleString('en-US'):Number(v||0).toFixed(2)),mm=v=>`${Math.round(v*10)/10}`;
+let D=null,SPEC=null,E=null,SEL=null,T=0,TAB='parts',DIRTY=false,NUMS=true,XRAY=false,ANIM=0;
+
+// ---------- the 3D view (WebGL, no outside scripts) ----------
+const V={yaw:-.75,pitch:.5,dist:1,gl:null,prog:null,bufs:new Map()};
+function initGl(){
+  const c=$('#gl'),gl=c.getContext('webgl',{antialias:true,premultipliedAlpha:false})||c.getContext('experimental-webgl');if(!gl)return false;
+  const sh=(t,s)=>{const o=gl.createShader(t);gl.shaderSource(o,s);gl.compileShader(o);return o};
+  const vs=`attribute vec3 p;attribute vec3 n;uniform mat4 m;uniform vec3 off;varying vec3 vn;varying vec3 vp;void main(){vec3 w=p+off;vn=n;vp=w;gl_Position=m*vec4(w,1.);}`;
+  const fs=`precision mediump float;varying vec3 vn;varying vec3 vp;uniform vec3 col;uniform float a;uniform vec3 eye;uniform float hi;void main(){vec3 N=normalize(vn);vec3 L1=normalize(vec3(-.4,-.6,.9));vec3 V=normalize(eye-vp);float d=abs(dot(N,L1))*.55+abs(dot(N,V))*.35+.22;float s=pow(max(abs(dot(N,normalize(L1+V))),0.),40.)*.18;vec3 c=col*d+s;c=mix(c,vec3(.29,1.,.6),hi*.45);gl_FragColor=vec4(c,a);}`;
+  const pr=gl.createProgram();gl.attachShader(pr,sh(gl.VERTEX_SHADER,vs));gl.attachShader(pr,sh(gl.FRAGMENT_SHADER,fs));gl.linkProgram(pr);if(!gl.getProgramParameter(pr,gl.LINK_STATUS))return false;
+  V.gl=gl;V.prog=pr;gl.enable(gl.DEPTH_TEST);gl.clearColor(0,0,0,0);return true;
+}
+// each part's triangles with a flat normal per face; built once per part shape and moved by its explode offset in the shader
+function bufferFor(p){
+  const key=JSON.stringify([p.shape,p.axis,p.size,p.at,p.wall,p.open,p.r]),old=V.bufs.get(p.id);if(old&&old.key===key)return old;
+  const gl=V.gl,m=meshOf(p),n=new Float32Array(m.length);
+  for(let i=0;i<m.length;i+=9){const u=[m[i+3]-m[i],m[i+4]-m[i+1],m[i+5]-m[i+2]],v=[m[i+6]-m[i],m[i+7]-m[i+1],m[i+8]-m[i+2]],c=[u[1]*v[2]-u[2]*v[1],u[2]*v[0]-u[0]*v[2],u[0]*v[1]-u[1]*v[0]],l=Math.hypot(...c)||1;for(let k=0;k<3;k++)n.set([c[0]/l,c[1]/l,c[2]/l],i+k*3)}
+  if(old){gl.deleteBuffer(old.pb);gl.deleteBuffer(old.nb)}
+  const pb=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,pb);gl.bufferData(gl.ARRAY_BUFFER,m,gl.STATIC_DRAW);const nb=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,nb);gl.bufferData(gl.ARRAY_BUFFER,n,gl.STATIC_DRAW);
+  const b={key,pb,nb,count:m.length/3};V.bufs.set(p.id,b);return b;
+}
+const hex3=h=>{const n=parseInt(h.slice(1),16);return[(n>>16&255)/255,(n>>8&255)/255,(n&255)/255]};
+function camera(){
+  // framed on the parts where they are now (pulled apart or not), so an exploded product stays in view
+  const c=$('#gl'),w=c.clientWidth,h=c.clientHeight,lo=[Infinity,Infinity,Infinity],hi=[-Infinity,-Infinity,-Infinity];
+  for(const p of SPEC.parts){const o=OFF[p.id]||[0,0,0];for(let k=0;k<3;k++){lo[k]=Math.min(lo[k],p.at[k]+o[k]-p.size[k]/2);hi[k]=Math.max(hi[k],p.at[k]+o[k]+p.size[k]/2)}}
+  const tgt=lo.map((v,k)=>(v+hi[k])/2),R=Math.hypot(...hi.map((v,k)=>v-lo[k]))*1.05*V.dist/Math.min(1,Math.max(.55,w/Math.max(h,1))),cy=Math.cos(V.pitch);
+  const eye=[tgt[0]+R*cy*Math.cos(V.yaw),tgt[1]+R*cy*Math.sin(V.yaw),tgt[2]+R*Math.sin(V.pitch)],f=norm(sub(tgt,eye)),s=norm(cross(f,[0,0,1])),u=cross(s,f);
+  const view=[s[0],u[0],-f[0],0,s[1],u[1],-f[1],0,s[2],u[2],-f[2],0,-dot(s,eye),-dot(u,eye),dot(f,eye),1],fov=.75,a=w/Math.max(h,1),near=R/50,far=R*20,t=1/Math.tan(fov/2);
+  const proj=[t/a,0,0,0,0,t,0,0,0,0,(far+near)/(near-far),-1,0,0,2*far*near/(near-far),0];return{eye,m:mul(proj,view),w,h,s,u,f,t,a};
+}
+const sub=(a,b)=>a.map((v,i)=>v-b[i]),dot=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2],cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]],norm=a=>{const l=Math.hypot(...a)||1;return a.map(v=>v/l)};
+function mul(a,b){const o=new Array(16).fill(0);for(let c=0;c<4;c++)for(let r=0;r<4;r++)for(let k=0;k<4;k++)o[c*4+r]+=a[k*4+r]*b[c*4+k];return o}
+const project=(cam,q)=>{const m=cam.m,x=m[0]*q[0]+m[4]*q[1]+m[8]*q[2]+m[12],y=m[1]*q[0]+m[5]*q[1]+m[9]*q[2]+m[13],w=m[3]*q[0]+m[7]*q[1]+m[11]*q[2]+m[15];return w<=0?null:[(x/w*.5+.5)*cam.w,(1-(y/w*.5+.5))*cam.h]};
+let OFF={};
+function draw(){
+  if(!SPEC)return;OFF=explodeOffsets(SPEC,T);
+  if(!V.gl){paintTags(null);return}
+  const gl=V.gl,c=$('#gl'),dpr=Math.min(devicePixelRatio||1,2),W=Math.round(c.clientWidth*dpr),H=Math.round(c.clientHeight*dpr);if(c.width!==W||c.height!==H){c.width=W;c.height=H}
+  gl.viewport(0,0,W,H);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);const cam=camera(),pr=V.prog;gl.useProgram(pr);
+  gl.uniformMatrix4fv(gl.getUniformLocation(pr,'m'),false,new Float32Array(cam.m));gl.uniform3fv(gl.getUniformLocation(pr,'eye'),cam.eye);
+  const P=gl.getAttribLocation(pr,'p'),N=gl.getAttribLocation(pr,'n');gl.enableVertexAttribArray(P);gl.enableVertexAttribArray(N);
+  const clear=p=>RESINS[p.resin]?.clear||(XRAY&&(p.shape==='shell'||p.shape==='cup')&&!p.elec);
+  const one=p=>{const b=bufferFor(p);gl.bindBuffer(gl.ARRAY_BUFFER,b.pb);gl.vertexAttribPointer(P,3,gl.FLOAT,false,0,0);gl.bindBuffer(gl.ARRAY_BUFFER,b.nb);gl.vertexAttribPointer(N,3,gl.FLOAT,false,0,0);
+    gl.uniform3fv(gl.getUniformLocation(pr,'off'),OFF[p.id]||[0,0,0]);gl.uniform3fv(gl.getUniformLocation(pr,'col'),hex3(p.colour));gl.uniform1f(gl.getUniformLocation(pr,'a'),clear(p)?(XRAY&&!RESINS[p.resin]?.clear?.22:.5):1);gl.uniform1f(gl.getUniformLocation(pr,'hi'),p.id===SEL?1:0);gl.drawArrays(gl.TRIANGLES,0,b.count)};
+  gl.disable(gl.BLEND);gl.depthMask(true);for(const p of SPEC.parts)if(!clear(p))one(p);
+  gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);gl.depthMask(false);for(const p of SPEC.parts)if(clear(p))one(p);gl.depthMask(true);
+  for(const id of [...V.bufs.keys()])if(!SPEC.parts.some(p=>p.id===id)){const b=V.bufs.get(id);gl.deleteBuffer(b.pb);gl.deleteBuffer(b.nb);V.bufs.delete(id)}
+  paintTags(cam);
+}
+const badIds=()=>new Set((E?.checks||[]).filter(c=>c.level==='bad').map(c=>c.id));
+function paintTags(cam){
+  const box=$('#tags');if(!NUMS||!cam){box.innerHTML='';return}const bad=badIds();
+  box.innerHTML=SPEC.parts.map((p,i)=>{const q=project(cam,p.at.map((v,k)=>v+(OFF[p.id]?.[k]||0)));return q?`<b data-p="${esc(p.id)}" class="${p.id===SEL?'on':''}${bad.has(p.id)?' bad':''}" style="left:${q[0].toFixed(1)}px;top:${q[1].toFixed(1)}px" title="${esc(p.name)}">${i+1}</b>`:''}).join('');
+}
+// a tap on the view: the smallest part whose box the ray goes through (so a part inside a housing can be chosen through it)
+function pick(x,y){
+  if(!V.gl)return null;const cam=camera(),nx=(x/cam.w)*2-1,ny=1-(y/cam.h)*2,dir=norm([cam.f[0]+cam.s[0]*nx*cam.a/cam.t+cam.u[0]*ny/cam.t,cam.f[1]+cam.s[1]*nx*cam.a/cam.t+cam.u[1]*ny/cam.t,cam.f[2]+cam.s[2]*nx*cam.a/cam.t+cam.u[2]*ny/cam.t]);
+  let best=null;for(const p of SPEC.parts){const o=OFF[p.id]||[0,0,0],lo=p.size.map((s,k)=>p.at[k]+o[k]-s/2),hi=p.size.map((s,k)=>p.at[k]+o[k]+s/2);let t0=-Infinity,t1=Infinity;
+    for(let k=0;k<3;k++){if(Math.abs(dir[k])<1e-9){if(cam.eye[k]<lo[k]||cam.eye[k]>hi[k]){t0=Infinity;break}continue}const a=(lo[k]-cam.eye[k])/dir[k],b=(hi[k]-cam.eye[k])/dir[k];t0=Math.max(t0,Math.min(a,b));t1=Math.min(t1,Math.max(a,b))}
+    if(t0<=t1&&t1>0){const v=p.size[0]*p.size[1]*p.size[2];if(!best||v<best.v)best={id:p.id,v}}}
+  return best?.id||null;
+}
+function wireView(){
+  const c=$('#gl'),pts=new Map();let g=null,moved=false;
+  c.addEventListener('pointerdown',e=>{c.setPointerCapture?.(e.pointerId);pts.set(e.pointerId,[e.clientX,e.clientY]);moved=false;if(pts.size===2){const[a,b]=[...pts.values()];g={d:Math.hypot(a[0]-b[0],a[1]-b[1])||1,dist:V.dist}}});
+  c.addEventListener('pointermove',e=>{const p=pts.get(e.pointerId);if(!p)return;const dx=e.clientX-p[0],dy=e.clientY-p[1];pts.set(e.pointerId,[e.clientX,e.clientY]);if(Math.abs(dx)+Math.abs(dy)>2)moved=true;
+    if(pts.size===2&&g){const[a,b]=[...pts.values()];V.dist=Math.min(4,Math.max(.25,g.dist*g.d/(Math.hypot(a[0]-b[0],a[1]-b[1])||1)));draw();return}
+    if(pts.size===1){V.yaw-=dx*.008;V.pitch=Math.min(1.5,Math.max(-1.5,V.pitch+dy*.008));draw()}});
+  const up=e=>{const was=pts.size;pts.delete(e.pointerId);if(pts.size<2)g=null;if(was===1&&!moved){const r=c.getBoundingClientRect(),id=pick(e.clientX-r.left,e.clientY-r.top);choose(id)}};
+  c.addEventListener('pointerup',up);c.addEventListener('pointercancel',e=>{pts.delete(e.pointerId);g=null});
+  c.addEventListener('wheel',e=>{e.preventDefault();V.dist=Math.min(4,Math.max(.25,V.dist*Math.exp(e.deltaY*.0012)));draw()},{passive:false});
+  c.addEventListener('dblclick',resetView);$('#tags').addEventListener('click',e=>{const b=e.target.closest('[data-p]');if(b)choose(b.dataset.p)});
+  new ResizeObserver(()=>draw()).observe($('#view'));
+}
+function resetView(){V.yaw=-.75;V.pitch=.5;V.dist=1;draw()}
+
+// ---------- the read: recomputed on every change, here as on the service ----------
+function recompute(){SPEC=cleanAssembly(SPEC);E=engineer(SPEC);paintSum();paintTabs();paintPane();draw()}
+function changed(){DIRTY=true;$('#save').classList.add('go');$('#save').textContent='Save';recompute()}
+function paintSum(){
+  const bad=E.checks.filter(c=>c.level==='bad').length;
+  $('#sum').innerHTML=`<div><b>${money(E.unit)}</b><span>unit cost at ${SPEC.volume.toLocaleString('en-US')} a year</span></div><div><b>${money(E.toolCost)}</b><span>tooling, ${E.tools.length} tool${E.tools.length===1?'':'s'}</span></div><div><b>${E.weeks?`${E.weeks} wk`:'—'}</b><span>to first samples (T1)</span></div>`
+    +`<div><b>${E.mass} g</b><span>${E.extent.map(v=>Math.round(v)).join(' × ')} mm</span></div><div><b>${SPEC.parts.length}</b><span>parts, ${E.steps.length} steps</span></div><div><b style="color:${bad?'var(--bad)':'var(--ok)'}">${bad?`${bad} to fix`:'Clear'}</b><span>engineering checks</span></div>`;
+  $('#sub').textContent=`${ARCHES[SPEC.arch]?.label||'Assembly'} · ${SPEC.kind==='electronics'?'electronic product':'hard goods'}${D.saved||DIRTY?'':' · a starting assembly, not saved yet'}`;
+  $('#dlBlk').classList.toggle('hidden',SPEC.kind!=='electronics');
+}
+const TABS=()=>[['parts','Parts'],['tooling','Tooling'],['checks','Checks'],...(SPEC.kind==='electronics'?[['elec','Electronics']]:[]),['build','Assembly']];
+function paintTabs(){const bad=E.checks.filter(c=>c.level==='bad').length,warn=E.checks.filter(c=>c.level==='warn').length;if(!TABS().some(t=>t[0]===TAB))TAB='parts';
+  $('#tabs').innerHTML=TABS().map(([k,l])=>`<button type="button" role="tab" data-tab="${k}" aria-selected="${k===TAB}">${l}${k==='checks'&&(bad||warn)?`<span class="n${bad?'':' w'}">${bad||warn}</span>`:''}</button>`).join('')}
+$('#tabs').addEventListener('click',e=>{const b=e.target.closest('[data-tab]');if(!b)return;TAB=b.dataset.tab;paintTabs();paintPane()});
+const opt=(list,cur)=>list.map(v=>Array.isArray(v)?`<option value="${esc(v[0])}"${v[0]===cur?' selected':''}>${esc(v[1])}</option>`:`<option${v===cur?' selected':''}>${esc(v)}</option>`).join('');
+function paintPane(){
+  const pane=$('#pane'),byId=Object.fromEntries(SPEC.parts.map(p=>[p.id,p])),eng=Object.fromEntries(E.parts.map(x=>[x.id,x]));
+  if(TAB==='parts'){
+    const p=SEL&&byId[SEL];
+    pane.innerHTML=(p?editor(p):`<p class="note">Tap a part in the view, or its row, to change its size, place, material and process. Every change is checked and costed as you go.</p>`)
+      +`<section><div style="display:flex;align-items:center;gap:8px"><h4 style="margin-right:auto">Parts</h4><button class="btn sm q" type="button" id="addPart">+ Add a part</button></div>
+      <table class="t"><thead><tr><th>#</th><th>Part</th><th>Material · process</th><th class="r">Unit</th></tr></thead><tbody>${SPEC.parts.map((q,i)=>`<tr data-p="${esc(q.id)}" class="${q.id===SEL?'on':''}"><td><span class="num">${i+1}</span></td><td><span class="sw" style="background:${q.colour}"></span>${esc(q.name)}${q.qty>1?` × ${q.qty}`:''}</td><td>${esc(q.resin==='bought in'?'Bought in':q.resin)}<br><span class="mono" style="letter-spacing:.04em">${esc(q.process)}</span></td><td class="r">${money(eng[q.id]?.unit||0)}</td></tr>`).join('')}</tbody></table></section>`;
+    return wireEditor();
+  }
+  if(TAB==='tooling'){
+    pane.innerHTML=`<section class="card"><h4>Volume</h4><div class="g2"><label class="f"><span>Units a year</span><input type="number" min="50" step="500" data-s="volume" value="${SPEC.volume}" inputmode="numeric"></label><label class="f"><span>Years the tools must last</span><input type="number" min="1" max="10" data-s="years" value="${SPEC.years}" inputmode="numeric"></label></div>
+      <p class="note">The volume picks the tool steel (aluminium for short runs, P20 for thousands, hardened H13 past 300,000 shots) and the cavities.</p></section>
+      <section><h4>Tools</h4>${E.tools.length?`<table class="t"><thead><tr><th>Part</th><th>Tool</th><th class="r">Cost</th><th class="r">Weeks</th></tr></thead><tbody>${E.tools.map(t=>`<tr data-p="${esc(t.id)}" class="${t.id===SEL?'on':''}"><td>${esc(t.name)}</td><td>${esc(t.kind)}<br><span class="note">${esc(t.steel)} · ${t.cavities} cavit${t.cavities>1?'ies':'y'}${t.slides?` · ${t.slides} side action${t.slides>1?'s':''}`:''}${t.tons?` · ${t.tons} t press`:''} · ${t.cycle} s cycle</span></td><td class="r">${money(t.cost)}</td><td class="r">${t.weeks}</td></tr>`).join('')}</tbody></table>`:'<p class="note">Nothing here needs a tool: every part is bought in or machined.</p>'}</section>
+      <section class="card"><div class="kv"><span>Tooling, all tools</span><b>${money(E.toolCost)}</b><span>First samples (T1), longest tool + 2 weeks</span><b>${E.weeks} weeks</b><span>Tooling per unit over the first year</span><b>${money(E.amort)}</b><span>Unit cost</span><b>${money(E.unit)}</b><span>Unit cost with tooling paid off in year one</span><b>${money(E.landed)}</b></div>
+      <p class="note">Estimates to plan and compare with: a factory's quote replaces them.</p></section>`;
+    return wireSpecInputs();
+  }
+  if(TAB==='checks'){
+    const order={bad:0,warn:1,ok:2},list=[...E.checks].sort((a,b)=>order[a.level]-order[b.level]);
+    pane.innerHTML=`<section><h4>Engineering checks</h4><p class="note">Walls and draft for the moulder, undercuts, clear parts, food contact, each part's fit in its housing, parts in one another's space${SPEC.kind==='electronics'?', the port, the radio, the board and the heat':''}${SPEC.age==='0+'||SPEC.age==='3+'?', and small parts for young children':''}. Tap one to see the part.</p></section>
+      <section class="card"><label class="f"><span>Who it is for</span><select data-s="age">${opt(Object.entries({'0+':'All ages, under 3 included','3+':'3 years and up','8+':'8 years and up','14+':'Adults and 14 and up'}),SPEC.age)}</select></label></section>
+      <section>${list.map(c=>`<div class="find ${c.level}" data-p="${esc(c.id)}"><i></i><span>${esc(c.text)}</span></div>`).join('')||'<p class="note">No checks to show.</p>'}</section>`;
+    return wireSpecInputs();
+  }
+  if(TAB==='elec'){
+    const pw=E.power,pcb=E.pcb,cell=SPEC.parts.find(p=>p.elec?.kind==='battery');
+    pane.innerHTML=`<section><h4>Block diagram</h4><div class="blk">${blockSvg(SPEC).replace(/ width="[\d.]+" height="[\d.]+"/,'')}</div></section>
+      <section class="card"><h4>Power budget</h4><div class="g2">${cell?`<label class="f"><span>Battery (mAh)</span><input type="number" min="50" max="20000" step="50" data-cell="mah" value="${cell.elec.mah}" inputmode="numeric"></label>`:''}<label class="f"><span>Charge current (mA)</span><input type="number" min="50" max="5000" step="50" data-s="chargeMa" value="${SPEC.chargeMa}" inputmode="numeric"></label></div>
+      <div class="kv">${pw.mah?`<span>Use on a charge</span><b>${pw.runtime} h</b><span>Standby</span><b>${pw.standby!=null?`${pw.standby} days`:'—'}</b><span>Charge from empty</span><b>${pw.charge} h</b><span>Energy</span><b>${pw.wh} Wh</b>`:'<span>Power</span><b>Plugs in (no battery)</b>'}<span>Average draw</span><b>${pw.avg} mA</b><span>Peak, everything on</span><b>${pw.peak} mA</b><span>Asleep</span><b>${pw.sleepUa} µA</b></div>
+      <table class="t"><thead><tr><th>Part</th><th class="r">On</th><th class="r">Share on</th><th class="r">Average</th></tr></thead><tbody>${pw.rows.map(r=>`<tr data-p="${esc(r.id)}"><td>${esc(r.name)}${r.qty>1?` × ${r.qty}`:''}</td><td class="r">${r.ma} mA</td><td class="r"><input type="number" min="0" max="100" step="5" data-duty="${esc(r.id)}" value="${Math.round(r.duty*100)}" style="width:58px;border:1px solid var(--line);border-radius:8px;padding:3px 5px;text-align:right">%</td><td class="r">${r.avg} mA</td></tr>`).join('')}</tbody></table></section>
+      ${pcb?`<section class="card"><h4>Board</h4><div class="kv"><span>Size</span><b>${pcb.w} × ${pcb.d} mm</b><span>Layers</span><b><select data-pcb="layers" style="border:1px solid var(--line);border-radius:8px;padding:2px 6px">${opt([[2,'2'],[4,'4'],[6,'6']].map(([v,l])=>[String(v),l]),String(SPEC.parts.find(p=>p.id===pcb.id).layers))}</select></b><span>Area</span><b>${pcb.areaCm2} cm²</b><span>Parts cover</span><b>${pcb.fill}%</b><span>Placements</span><b>${pcb.placements}</b><span>Tallest part</span><b>${pcb.tallest} mm</b><span>Board, made</span><b>${money(pcb.fab)}</b><span>Assembly (SMT)</span><b>${money(pcb.smt)}</b></div></section>`:''}
+      <section><h4>Add a part to the board</h4><div style="display:flex;gap:8px"><select id="elecKind" class="f" style="flex:1;border:1px solid var(--line);border-radius:10px;padding:6px 8px;min-height:34px">${opt(Object.entries(ELEC).filter(([k])=>k!=='battery').map(([k,v])=>[k,v.name]),'imu')}</select><button class="btn sm q" type="button" id="addElec">Add</button></div></section>
+      <section><h4>Certifications to plan for</h4>${E.certs.map(c=>`<div class="find warn" style="cursor:default"><i></i><span><b>${esc(c.name)}</b> · ${esc(c.market)}<br>${esc(c.why)}</span></div>`).join('')}<p class="note">A starting list for whoever books the testing, not advice from a lab.</p></section>`;
+    return wireSpecInputs();
+  }
+  pane.innerHTML=`<section><h4>Assembly sequence</h4><ol class="steps">${E.steps.map(s=>`<li>${esc(s.replace(/^\d+\. /,''))}</li>`).join('')}</ol></section>
+    <section class="card"><div class="g2"><label class="f"><span>Line labour ($ an hour)</span><input type="number" min="1" max="80" step="0.5" data-s="labour" value="${SPEC.labour}" inputmode="decimal"></label><div class="kv" style="align-content:end"><span>Assembly and test</span><b>${E.assemblySecs||'—'} s · ${money(E.labour)}</b></div></div></section>
+    <section><h4>Parts list</h4><table class="t"><thead><tr><th>#</th><th>Part</th><th class="r">Qty</th><th class="r">Unit</th><th class="r">Tool</th></tr></thead><tbody>${E.bom.map(r=>`<tr${byId[r.id]?` data-p="${esc(r.id)}"`:''}><td>${r.item}</td><td>${esc(r.name)}<br><span class="note">${esc([r.material,r.process,r.finish].filter(Boolean).join(' · '))}</span></td><td class="r">${r.qty}</td><td class="r">${money(r.unit)}</td><td class="r">${r.tool?money(r.tool):''}</td></tr>`).join('')}</tbody></table></section>`;
+  wireSpecInputs();
+}
+// the chosen part, every field it has
+function editor(p){
+  const idx=SPEC.parts.indexOf(p)+1,shell=['shell','cup','ring'].includes(p.shape),tool=p.draft!=null,others=SPEC.parts.filter(q=>q.id!==p.id);
+  const n=(k,label,v,step=.1,extra='')=>`<label class="f"><span>${label}</span><input type="number" step="${step}" data-k="${k}" value="${v}" inputmode="decimal"${extra}></label>`;
+  return `<section class="edit" aria-label="The chosen part"><div class="hd"><span class="num">${idx}</span><b>${esc(p.name)}</b><button class="btn sm q" type="button" data-act="dup">Duplicate</button><button class="btn sm q" type="button" data-act="del">Remove</button><button class="btn sm q" type="button" data-act="close" aria-label="Close">✕</button></div>
+    <label class="f"><span>Name</span><input data-k="name" value="${esc(p.name)}" maxlength="60"></label>
+    <div class="g2"><label class="f"><span>Shape</span><select data-k="shape">${opt(Object.entries(SHAPES),p.shape)}</select></label><label class="f"><span>Lies along</span><select data-k="axis">${opt([['z','Up (z)'],['y','Front to back (y)'],['x','Side to side (x)']],p.axis)}</select></label></div>
+    <div class="g3">${n('size0','Width x (mm)',p.size[0])}${n('size1','Depth y (mm)',p.size[1])}${n('size2','Height z (mm)',p.size[2])}</div>
+    <div class="g3">${n('at0','Centre x',p.at[0])}${n('at1','Centre y',p.at[1])}${n('at2','Centre z',p.at[2])}</div>
+    ${shell?`<div class="g3">${n('wall','Wall (mm)',p.wall,.1)}<label class="f"><span>Open side</span><select data-k="open">${opt([['+','Far end (+)'],['-','Near end (−)']],p.open||'+')}</select></label>${p.r!=null?n('r','Corner radius',p.r,.5):'<span></span>'}</div>`:p.r!=null?`<div class="g3">${n('r','Corner radius',p.r,.5)}</div>`:''}
+    <div class="g2"><label class="f"><span>Material</span><select data-k="resin">${opt(Object.keys(RESINS),p.resin)}</select></label><label class="f"><span>Process</span><select data-k="process">${opt(D.options.processes,p.process)}</select></label></div>
+    <div class="g2"><label class="f"><span>Finish</span><select data-k="finish">${opt(D.options.finishes,p.finish)}</select></label><label class="f"><span>Colour</span><input type="color" data-k="colour" value="${p.colour}"></label></div>
+    ${tool?`<div class="g3">${n('draft','Draft (°)',p.draft,.5)}${n('undercuts','Undercuts',p.undercuts,1,' min="0" max="12"')}${n('qty','Quantity',p.qty,1,' min="1"')}</div>`:`<div class="g3">${n('qty','Quantity',p.qty,1,' min="1"')}${p.cost!=null?n('cost','Unit cost ($)',p.cost,.01,' min="0"'):'<span></span>'}<span></span></div>`}
+    <div class="g3"><label class="f"><span>Fixed by</span><select data-k="fix">${opt(D.options.fixes,p.fix)}</select></label>${n('fixQty','Screws',p.fixQty,1,' min="0"')}<label class="f"><span>Sits in</span><select data-k="parent"><option value="">— nothing —</option>${others.map(q=>`<option value="${esc(q.id)}"${q.id===p.parent?' selected':''}>${esc(q.name)}</option>`).join('')}</select></label></div>
+    <div class="g3">${n('order','Order built',p.order,1,' min="0"')}<label class="f"><span>Explodes</span><select data-k="dirn">${opt([['0,0,1','Up'],['0,0,-1','Down'],['0,-1,0','Forward'],['0,1,0','Back'],['-1,0,0','Left'],['1,0,0','Right']],p.dir.map(v=>Math.round(v)).join(','))}</select></label>${n('lvl','How far',p.lvl,.1)}</div>
+    ${p.food?'<p class="note">Touches food or drink.</p>':''}
+  </section>`;
+}
+function wireEditor(){
+  const p=SPEC.parts.find(q=>q.id===SEL);wireSpecInputs();if(!p)return;
+  const set=(k,v)=>{if(/^size[012]$/.test(k))p.size[+k[4]]=Number(v);else if(/^at[012]$/.test(k))p.at[+k[2]]=Number(v);else if(k==='dirn')p.dir=v.split(',').map(Number);else if(k==='parent')p.parent=v||null;
+    else if(['name','shape','axis','open','resin','process','finish','colour','fix'].includes(k)){p[k]=v;if(k==='resin'&&RESINS[v])p.colour=RESINS[v].col;if(k==='shape'&&['shell','cup','ring'].includes(v)&&p.wall==null)p.wall=2}else p[k]=Number(v);changed();if(['shape','resin','process','name'].includes(k))paintPane()};
+  $$('.edit [data-k]').forEach(el=>el.addEventListener('change',()=>set(el.dataset.k,el.value)));
+  $$('.edit input[type=number][data-k]').forEach(el=>el.addEventListener('input',()=>{if(el.value!==''&&Number.isFinite(Number(el.value)))set(el.dataset.k,el.value)}));
+  $('.edit [data-act=close]').onclick=()=>choose(null);
+  $('.edit [data-act=del]').onclick=()=>{if(SPEC.parts.length<2)return toast('An assembly keeps at least one part');SPEC.parts=SPEC.parts.filter(q=>q.id!==p.id).map(q=>q.parent===p.id?{...q,parent:null}:q);SEL=null;changed();toast(`${p.name} removed`)};
+  $('.edit [data-act=dup]').onclick=()=>{const c=JSON.parse(JSON.stringify(p));c.id=newId();c.name=(p.name+' copy').slice(0,60);c.at=[p.at[0]+p.size[0]+4,p.at[1],p.at[2]];SPEC.parts.push(c);SEL=c.id;changed()};
+}
+const newId=()=>{let i=SPEC.parts.length+1;while(SPEC.parts.some(p=>p.id===`p${i}`))i++;return `p${i}`};
+function wireSpecInputs(){
+  const pane=$('#pane');
+  pane.querySelectorAll('[data-s]').forEach(el=>el.addEventListener('change',()=>{SPEC[el.dataset.s]=el.tagName==='SELECT'?el.value:Number(el.value);changed()}));
+  pane.querySelectorAll('[data-cell]').forEach(el=>el.addEventListener('change',()=>{const c=SPEC.parts.find(p=>p.elec?.kind==='battery');c.elec.mah=Number(el.value);c.name=`Li-ion cell, ${c.elec.mah} mAh`;changed()}));
+  pane.querySelectorAll('[data-duty]').forEach(el=>el.addEventListener('change',()=>{const p=SPEC.parts.find(q=>q.id===el.dataset.duty);if(p){p.elec.duty=Math.min(1,Math.max(0,Number(el.value)/100));changed()}}));
+  pane.querySelectorAll('[data-pcb]').forEach(el=>el.addEventListener('change',()=>{const b=SPEC.parts.find(p=>p.shape==='pcb');b.layers=Number(el.value);changed()}));
+  pane.querySelectorAll('tr[data-p],.find[data-p]').forEach(el=>el.addEventListener('click',e=>{if(e.target.closest('input,select'))return;choose(el.dataset.p,true)}));
+  const add=$('#addPart');if(add)add.onclick=()=>{const ex=extentOf(SPEC.parts),p=cleanPart({id:newId(),name:'New part',shape:'box',size:[20,20,10],at:[ex.hi[0]+20,0,5],r:2,resin:'ABS',draft:1,order:SPEC.parts.length+1,lvl:1},SPEC.parts.length);SPEC.parts.push(p);SEL=p.id;TAB='parts';changed()};
+  const ae=$('#addElec');if(ae)ae.onclick=()=>{const k=$('#elecKind').value,e=ELEC[k],b=SPEC.parts.find(p=>p.shape==='pcb');if(!b)return toast('Add a circuit board first');const top=b.at[2]+b.size[2]/2;const p=cleanPart({id:newId(),name:e.name,shape:e.round?'cyl':'box',size:e.size,at:[b.at[0],b.at[1],top+e.size[2]/2],resin:'bought in',process:'bought in',cost:e.cost,fix:'solder',parent:b.id,elec:{kind:k},order:b.order,lvl:b.lvl+.3,r:.3},SPEC.parts.length);SPEC.parts.push(p);SEL=p.id;changed();toast(`${e.name} added: place it on the board`)};
+}
+function choose(id,scroll){SEL=id&&SPEC.parts.some(p=>p.id===id)?id:null;if(SEL&&TAB!=='parts'&&!scroll)TAB='parts';paintTabs();paintPane();draw();$('#dlPart').querySelector('small').textContent=SEL?SPEC.parts.find(p=>p.id===SEL).name:'Pick a part first';if(SEL&&TAB==='parts')$('#pane').scrollTop=0}
+
+// ---------- explode ----------
+function setT(t,{silent}={}){T=Math.min(1,Math.max(0,t));$('#t').value=T;$('#tLbl').textContent=T<.01?'Assembled':T>.99?'Exploded':`${Math.round(T*100)}% apart`;$$('#modeSeg [data-t]').forEach(b=>b.setAttribute('aria-pressed',String(Math.abs(Number(b.dataset.t)-T)<.01)));if(!silent)draw()}
+$('#t').addEventListener('input',e=>{cancelAnimationFrame(ANIM);setT(Number(e.target.value))});
+$$('#modeSeg [data-t]').forEach(b=>b.onclick=()=>animateTo(Number(b.dataset.t)));
+$('#play').onclick=()=>animateTo(T>.5?0:1);
+function animateTo(to){cancelAnimationFrame(ANIM);if(matchMedia('(prefers-reduced-motion: reduce)').matches)return setT(to);const from=T,t0=performance.now(),dur=1100;const step=now=>{const k=Math.min(1,(now-t0)/dur),e=k<.5?2*k*k:1-Math.pow(-2*k+2,2)/2;setT(from+(to-from)*e);if(k<1)ANIM=requestAnimationFrame(step)};ANIM=requestAnimationFrame(step);$('#play').textContent=to>.5?'Put it together':'Explode it'}
+$('#numBtn').onclick=()=>{NUMS=!NUMS;$('#numBtn').setAttribute('aria-pressed',String(NUMS));draw()};
+$('#xray').onclick=()=>{XRAY=!XRAY;$('#xray').setAttribute('aria-pressed',String(XRAY));draw()};
+$('#fit').onclick=resetView;
+
+// ---------- save, start over, files ----------
+async function save(){const b=$('#save');b.disabled=true;b.textContent='Saving…';try{const j=await api(`/v1/lab/concepts/${CID}/assembly`,{method:'PUT',body:{spec:SPEC}});SPEC=j.spec;D.saved=true;DIRTY=false;b.textContent='Saved ✓';b.classList.remove('go');recompute();HOST()?.patternSaved?.()}catch(e){b.textContent='Save';toast(e.message)}finally{b.disabled=false}}
+$('#save').onclick=save;addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'){e.preventDefault();save()}});
+addEventListener('beforeunload',e=>{if(DIRTY){e.preventDefault();e.returnValue=''}});
+$('#startBtn').onclick=()=>{const ex=extentOf(SPEC.parts).size;$('#sArch').innerHTML=opt(Object.entries(ARCHES).map(([k,v])=>[k,v.label]),SPEC.arch);$('#sW').value=Math.round(ex[0]);$('#sD').value=Math.round(ex[1]);$('#sH').value=Math.round(ex[2]);const cell=SPEC.parts.find(p=>p.elec?.kind==='battery');$('#sMah').value=cell?cell.elec.mah:'';$('#sBtn').value='';$('#sWhy').textContent='';syncStart();$('#startDlg').showModal()};
+const syncStart=()=>$('#sElec').classList.toggle('hidden',ARCHES[$('#sArch').value]?.kind!=='electronics');$('#sArch').onchange=syncStart;
+$('#sRead').onclick=async()=>{const b=$('#sRead');b.disabled=true;b.textContent='Reading…';try{const j=await api(`/v1/lab/concepts/${CID}/assembly/read`,{method:'POST',body:{}}),r=j.read;if(r.arch)$('#sArch').value=r.arch;if(r.w)$('#sW').value=Math.round(r.w);if(r.d)$('#sD').value=Math.round(r.d);if(r.h)$('#sH').value=Math.round(r.h);if(r.radio)$('#sRadio').value=r.radio;if(r.mah!=null)$('#sMah').value=r.mah||'';if(r.buttons!=null)$('#sBtn').value=r.buttons;$('#sWhy').textContent=(j.source==='vision'?'Read from the picture: ':'')+j.why;syncStart()}catch(e){$('#sWhy').textContent=e.message}finally{b.disabled=false;b.textContent='Read the picture'}};
+$('#sGo').onclick=async()=>{const b=$('#sGo');b.disabled=true;b.textContent='Starting…';try{const v=id=>$(id).value===''?undefined:Number($(id).value),j=await api(`/v1/lab/concepts/${CID}/assembly/start`,{method:'POST',body:{arch:$('#sArch').value,w:v('#sW'),d:v('#sD'),h:v('#sH'),radio:$('#sRadio').value,mah:v('#sMah'),buttons:v('#sBtn')}});SPEC=j.spec;D.saved=true;DIRTY=false;SEL=null;$('#startDlg').close();$('#save').textContent='Saved ✓';$('#save').classList.remove('go');recompute();resetView();toast('Started again: saved')}catch(e){toast(e.message)}finally{b.disabled=false;b.textContent='Start from this'}};
+$('#fileBtn').onclick=e=>{e.stopPropagation();const p=$('#filePop'),open=p.classList.toggle('hidden')===false;$('#fileBtn').setAttribute('aria-expanded',String(open))};
+document.addEventListener('click',e=>{if(!e.target.closest('#filePop'))$('#filePop').classList.add('hidden')});
+$('#filePop').addEventListener('click',async e=>{const b=e.target.closest('[data-dl]');if(!b)return;$('#filePop').classList.add('hidden');
+  if(DIRTY){toast('Save first: the files are made from the saved assembly');return}
+  const k=b.dataset.dl,base=`/v1/lab/concepts/${CID}`,slug=(D.concept.name||'assembly').replace(/[^a-z0-9]+/gi,'-').replace(/^-|-$/g,'');
+  if(k==='stlp'&&!SEL)return toast('Choose a part first');
+  const [path,name]={stl0:[`${base}/assembly.stl?t=0`,`${slug}.stl`],stl1:[`${base}/assembly.stl?t=1`,`${slug}-exploded.stl`],stlp:[`${base}/assembly.stl?part=${encodeURIComponent(SEL||'')}`,`${slug}-${SEL}.stl`],svg:[`${base}/assembly.svg?t=1&download=1`,`${slug}-exploded.svg`],csv:[`${base}/bom.csv`,`${slug}-bom.csv`],blk:[`${base}/block.svg?download=1`,`${slug}-block-diagram.svg`]}[k];
+  try{const r=await fetch(path,{headers:{Authorization:'Bearer '+TOKEN()}});if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||'The file could not be made');const url=URL.createObjectURL(await r.blob()),a=document.createElement('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),4000);toast(`${name} downloaded`)}catch(err){toast(err.message)}});
+
+// ---------- start ----------
+(async function boot(){
+  try{D=await api(`/v1/lab/concepts/${CID}/assembly`)}catch(e){$('#main').innerHTML=`<div class="card" style="margin:30px auto;max-width:520px;background:#fff"><b>${esc(e.message)}</b></div>`;$('#sub').textContent='';return}
+  SPEC=D.spec;$('#ttl').textContent=D.concept.name||'Engineering';document.title=`Engineering · ${D.concept.name||''}`;
+  if(!initGl()){$('#fallback').classList.remove('hidden');$('#gl').classList.add('hidden');$('#hint').classList.add('hidden');$('#fallback').innerHTML=`<img alt="The exploded drawing" src="data:image/svg+xml;charset=utf-8,${encodeURIComponent((await fetch(`/v1/lab/concepts/${CID}/assembly.svg?t=1`,{headers:{Authorization:'Bearer '+TOKEN()}}).then(r=>r.text()).catch(()=>'')))}">`}
+  else wireView();
+  if(!D.saved){$('#save').classList.add('go')}
+  recompute();resetView();
+  window.FBEngineer={ready:()=>true,dirty:()=>DIRTY,spec:()=>SPEC,read:()=>E,setT,choose,save,pickAt:(x,y)=>pick(x,y),tagAt:id=>{const b=document.querySelector(`#tags [data-p="${CSS.escape(id)}"]`);if(!b)return null;const r=b.getBoundingClientRect();return[r.left+r.width/2,r.top+r.height/2]}};
+})();
+</script>
+</body>
+</html>
