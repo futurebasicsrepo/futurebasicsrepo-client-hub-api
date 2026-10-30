@@ -1399,6 +1399,13 @@ export async function migrate() {
       updated_at timestamptz not null default now()
     );
     create index if not exists factory_quotes_pack_idx on factory_quotes(tech_pack_id, updated_at desc);
+    create table if not exists lab_cost_samples ( -- a factory's quote beside the engine's estimate for that assembly, to calibrate the estimates (src/lab-cost-calibration.js)
+      quote_id uuid primary key references factory_quotes(id) on delete cascade,
+      concept_id uuid references lab_concepts(id) on delete set null,
+      kind text not null,
+      sample jsonb not null,
+      updated_at timestamptz not null default now()
+    );
     -- A conversation between Future Basics and a factory about one pack, one thread per factory link. The client never sees it.
     create table if not exists factory_messages (
       id uuid primary key default gen_random_uuid(),

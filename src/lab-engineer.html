@@ -55,6 +55,7 @@ table.t td.r,table.t th.r{text-align:right;font-variant-numeric:tabular-nums}tab
 .sw{display:inline-block;width:11px;height:11px;border-radius:3px;border:1px solid rgba(20,20,22,.3);vertical-align:-1px;margin-right:6px}
 .find{font-size:12.5px;display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px;align-items:start;padding:7px 9px;border-radius:10px;background:var(--fog);cursor:pointer}.find i{width:8px;height:8px;border-radius:50%;margin-top:5px;background:var(--ok)}.find.bad i{background:var(--bad)}.find.warn i{background:#c9a24a}.find.bad{background:#fff3f1}
 .card{border:1px solid var(--line);border-radius:14px;padding:12px;display:grid;gap:8px}
+#sum em.cal{font-style:normal;color:#0f7a43;font-weight:600}
 .rv .sc{display:flex;align-items:baseline;gap:8px}.rv .sc b{font:700 26px/1 'Space Grotesk',sans-serif}.rv .sc.pass b{color:var(--ok)}.rv .crit{display:grid;grid-template-columns:1fr auto;gap:2px 10px;font-size:12.5px}.rv .crit span.v{font-variant-numeric:tabular-nums;font-weight:600}.rv ul{margin:0;padding-left:18px;font-size:12.5px;display:grid;gap:3px}.rv .row{display:flex;gap:6px;flex-wrap:wrap}
 .kv{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;font-size:12.5px}.kv span{color:var(--dim)}.kv b{font-variant-numeric:tabular-nums;text-align:right}
 .blk{border:1px solid var(--line);border-radius:12px;overflow-x:auto;background:#fff}.blk svg{display:block;min-width:620px;width:100%;height:auto}
@@ -205,7 +206,9 @@ function recompute(){SPEC=cleanAssembly(SPEC);E=engineer(SPEC);paintSum();paintT
 function changed(){DIRTY=true;$('#save').classList.add('go');$('#save').textContent='Save';recompute()}
 function paintSum(){
   const bad=E.checks.filter(c=>c.level==='bad').length;
-  $('#sum').innerHTML=`<div><b>${money(E.unit)}</b><span>unit cost at ${SPEC.volume.toLocaleString('en-US')} a year</span></div><div><b>${money(E.toolCost)}</b><span>tooling, ${E.tools.length} tool${E.tools.length===1?'':'s'}</span></div><div><b>${E.weeks?`${E.weeks} wk`:'—'}</b><span>to first samples (T1)</span></div>`
+  // the engine's figures, and beside them the same on the basis of factory quotes when there are some for this kind of product
+  const f=D?.calibration?.[SPEC.kind==='electronics'?'electronics':'goods'],q=f?.n?{unit:E.unit*f.unit,tool:Math.round(E.toolCost*f.tool/100)*100,weeks:Math.round(E.weeks*f.weeks)}:null,on=n=>`<br><em class="cal" title="The engine's figure × what factories have quoted against it (${f.n} quote${f.n>1?'s':''} on ${SPEC.kind==='electronics'?'electronic products':'hard goods'})">${n} on quotes (${f.n})</em>`;
+  $('#sum').innerHTML=`<div><b>${money(E.unit)}</b><span>unit cost at ${SPEC.volume.toLocaleString('en-US')} a year${q?on(money(q.unit)):''}</span></div><div><b>${money(E.toolCost)}</b><span>tooling, ${E.tools.length} tool${E.tools.length===1?'':'s'}${q&&f.nTool?on(money(q.tool)):''}</span></div><div><b>${E.weeks?`${E.weeks} wk`:'—'}</b><span>to first samples (T1)${q&&f.nWeeks&&E.weeks?on(`${q.weeks} wk`):''}</span></div>`
     +`<div><b>${E.mass} g</b><span>${E.extent.map(v=>Math.round(v)).join(' × ')} mm</span></div><div><b>${SPEC.parts.length}</b><span>parts, ${E.steps.length} steps</span></div><div><b style="color:${bad?'var(--bad)':'var(--ok)'}">${bad?`${bad} to fix`:'Clear'}</b><span>engineering checks</span></div>`;
   $('#sub').textContent=`${ARCHES[SPEC.arch]?.label||'Assembly'} · ${SPEC.kind==='electronics'?'electronic product':'hard goods'}${D.saved||DIRTY?'':' · a starting assembly, not saved yet'}`;
   $('#dlBlk').classList.toggle('hidden',SPEC.kind!=='electronics');

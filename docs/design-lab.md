@@ -1350,6 +1350,14 @@ screen, the drawing and the files agree. Routes: `src/lab-assembly-routes.js`; s
   why. Rounds repeat until the bar, nothing left to change, or two rounds without gain; the best assembly seen is the result. What the parts
   cannot show (a gasket groove, a living hinge) is listed for an engineer, and disagreements are shown. Nothing is saved until **Use these
   changes**. Capped at `ENGINEERING_REVIEW_DAILY` (40) a day; `ENGINEERING_REVIEW_FIXTURE` stands in for the judges in tests.
+- **Costs calibrated from factory quotes** (`src/lab-cost-calibration.js`, table `lab_cost_samples`): each time a factory quotes a tech
+  pack whose product was engineered here (from the factory's link, or entered by staff for it), the quote is kept beside the engine's
+  estimate for that assembly as it is then: the unit price at the quote's tier nearest the costed volume, the tooling and the lead time.
+  For electronics and for other goods apart, the median of quote ÷ estimate is pulled toward 1 while samples are few (weight n / (n + 3))
+  and kept between 0.4 and 2.5; quotes in another currency than USD are kept but not counted. The summary then shows the unit, tooling and
+  weeks *on quotes* beside the engine's own figures, with how many quotes they rest on. A factory's unit price includes its margin, so the
+  unit factor carries that gap too. `GET /v1/lab/engineering/calibration` lists the factors and samples; `POST …/calibration/learn` re-reads
+  every quote (staff).
 - **Files** (from the saved assembly): **STEP** for CAD (`src/lab-step.js`, AP214, mm): every part an exact solid at its real place, flat
   faces as planes and rounded or round faces as cylinders with their radii, named and coloured, so SolidWorks, Fusion or a toolmaker can
   measure and edit it (an elliptical part is faceted, a ball a faceted ellipsoid; all closed solids, checked with OpenCascade); STL

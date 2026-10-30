@@ -18,6 +18,7 @@ import { packFromAssembly } from './lab-assembly.js';
 import { stepOf } from './lab-step.js';
 import { reviewAssembly, BAR as REVIEW_BAR } from './lab-assembly-review.js';
 import { composeAssembly } from './lab-assembly-compose.js';
+import { sampleOf, factorsOf, calibrated } from './lab-cost-calibration.js';
 import { openaiAsk } from './lab-shoe-review.js';
 import { trackedFetch, timed } from './telemetry.js';
 import { archetype, cleanAssembly, engineer, guessArch, radioOf, stlOf, drawingSvg, blockSvg, bomCsv, bomRows, ARCHES, RESINS, PROCESSES, FINISHES, FIXES, SHAPES, ELEC, AGES } from './lab-assembly.js';
@@ -59,7 +60,8 @@ export function registerLabAssemblyRoutes(app, d) {
 
   app.get('/v1/lab/concepts/:id/assembly', { preHandler: pre }, async (req, reply) => {
     const L = await load(req.params.id); if (!L) return bad(reply, 'Not found', 404);
-    return { concept: { id: L.c.id, name: L.c.name, category: L.c.category, productId: L.c.product_id || null }, engineered: ENGINEERED.includes(L.c.category), spec: L.spec, saved: L.saved, updatedAt: L.updatedAt, options, eng: read(engineer(L.spec)) };
+    const E = engineer(L.spec);
+    return { concept: { id: L.c.id, name: L.c.name, category: L.c.category, productId: L.c.product_id || null }, engineered: ENGINEERED.includes(L.c.category), spec: L.spec, saved: L.saved, updatedAt: L.updatedAt, options, eng: { ...read(E), calibrated: calibrated(E, (await calibration())[E.spec.kind === 'electronics' ? 'electronics' : 'goods']) }, calibration: await calibration() };
   });
   app.put('/v1/lab/concepts/:id/assembly', { preHandler: pre, bodyLimit: 2_000_000 }, async (req, reply) => {
     const c = await concept(req.params.id); if (!c) return bad(reply, 'Not found', 404);
@@ -225,5 +227,31 @@ export function registerLabAssemblyRoutes(app, d) {
     if (s.kind === 'electronics') out.push({ name: 'engineering/block-diagram.svg', data: Buffer.from(blockSvg(s)) });
     return { files: out, notes };
   }
-  return { load, productionFiles };
+  // ---- costs against factory quotes (src/lab-cost-calibration.js): each quote on a pack whose product was engineered here is kept beside
+  // the engine's estimate for that assembly as it stood; the factors from them are kept in memory and read again after each new sample
+  let calib = null, calibAt = 0;
+  async function calibration(force = false) {
+    if (!force && calib && Date.now() - calibAt < 600e3) return calib;
+    const rows = (await pool.query('select sample from lab_cost_samples')).rows.map(r => r.sample);
+    calib = { electronics: factorsOf(rows, 'electronics'), goods: factorsOf(rows, 'goods') }; calibAt = Date.now(); return calib;
+  }
+  // a quote (a factory_quotes row) learnt from: its pack's product, the concept engineered for it, the estimate now
+  async function learnFromQuote(q) {
+    const c = (await pool.query(`select c.id from tech_packs tp join lab_concepts c on c.product_id=tp.product_id join lab_assemblies a on a.concept_id=c.id where tp.id=$1 order by c.updated_at desc limit 1`, [q.tech_pack_id])).rows[0];
+    if (!c) return null; const L = await load(c.id); if (!L?.saved) return null;
+    const smp = sampleOf(engineer(L.spec), q); if (!smp) return null;
+    await pool.query(`insert into lab_cost_samples(quote_id, concept_id, kind, sample) values($1,$2,$3,$4) on conflict(quote_id) do update set concept_id=excluded.concept_id, kind=excluded.kind, sample=excluded.sample, updated_at=now()`, [q.id, c.id, smp.kind, smp]);
+    await calibration(true); return smp;
+  }
+  app.get('/v1/lab/engineering/calibration', { preHandler: pre }, async () => {
+    const rows = (await pool.query(`select s.sample, s.updated_at, c.name, q.company from lab_cost_samples s left join lab_concepts c on c.id=s.concept_id left join factory_quotes q on q.id=s.quote_id order by s.updated_at desc limit 200`)).rows;
+    return { factors: await calibration(true), samples: rows.map(r => ({ ...r.sample, product: r.name, factory: r.company, at: r.updated_at })) };
+  });
+  // the quotes already on file, learnt from once (a quote saved later is learnt from as it is saved)
+  app.post('/v1/lab/engineering/calibration/learn', { preHandler: pre }, async () => {
+    const qs = (await pool.query('select * from factory_quotes order by updated_at desc limit 2000')).rows; let n = 0;
+    for (const q of qs) if (await learnFromQuote(q).catch(() => null)) n++;
+    return { learnt: n, quotes: qs.length, factors: await calibration(true) };
+  });
+  return { load, productionFiles, learnFromQuote };
 }
