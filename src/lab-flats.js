@@ -76,7 +76,7 @@ export function detectStyle(c = {}) {
   else if (has(/\bvest\b|gilet|waistcoat/) && !has(/vest top/)) style = 'vest';
   // a jacket is a jacket whichever line it sits in: a trucker in a Tops line is not drawn as a sweatshirt
   else if (cat === 'outerwear' || cat === 'tailoring' || has(/\bjacket\b|trucker|bomber|chore coat|overshirt jacket|shacket|harrington|coach(?:es)? jacket|windbreaker|anorak|blouson|\bparka\b|overcoat|trench coat|peacoat/)) style = has(/\bcoat\b|overcoat|topcoat|parka|trench|\bmac\b/) ? 'coat' : has(/hood/) ? 'ziphoodie' : 'jacket';
-  else if (['tops', 'knitwear'].includes(cat)) style = has(/zip/) && has(/hood/) ? 'ziphoodie' : has(/hood/) ? 'hoodie' : has(/polo|rugby|johnny collar/) ? 'polo' : has(/crew|sweatshirt|sweater|jumper|fleece|knit/) ? 'crewneck' : has(/tank|sleeveless|singlet|muscle/) ? 'tank' : has(/(?<!t-)\bshirt\b|overshirt|shacket|button[- ]?(up|down)|camp collar|oxford|flannel|western/) ? (has(/short[- ]sleeve|camp|bowling|cuban/) ? 'shirtss' : 'shirt') : has(/long[- ]?sleeve|\bl\/s\b|longsleeve/) ? 'longsleeve' : has(/jacket|coach|bomber/) ? 'jacket' : 'tee';
+  else if (['tops', 'knitwear'].includes(cat)) style = has(/zip/) && has(/hood/) ? 'ziphoodie' : has(/hood/) ? 'hoodie' : has(/polo|rugby|johnny collar/) ? 'polo' : has(/\bt-?shirts?\b|\btees?\b/) && !has(/sweatshirt|sweater|jumper|fleece/) ? (has(/long[- ]?sleeve|\bl\/s\b|longsleeve/) ? 'longsleeve' : has(/tank|sleeveless|singlet|muscle/) ? 'tank' : 'tee') : has(/crew|sweatshirt|sweater|jumper|fleece|knit/) ? 'crewneck' : has(/tank|sleeveless|singlet|muscle/) ? 'tank' : has(/(?<!t-)\bshirt\b|overshirt|shacket|button[- ]?(up|down)|camp collar|oxford|flannel|western/) ? (has(/short[- ]sleeve|camp|bowling|cuban/) ? 'shirtss' : 'shirt') : has(/long[- ]?sleeve|\bl\/s\b|longsleeve/) ? 'longsleeve' : has(/jacket|coach|bomber/) ? 'jacket' : 'tee';
   if (!style) return null;
   const fit = has(/oversiz/) ? 'oversized' : has(/boxy|cropped and wide|box fit/) ? 'boxy' : has(/wide[- ]leg|\bwide\b/) && STYLES[style].kind === 'bottom' ? 'wide' : has(/relaxed|loose|baggy/) ? 'relaxed' : has(/slim|fitted|tapered/) ? 'slim' : 'regular';
   const options = {
@@ -355,9 +355,17 @@ export function overlapChecks(placements) {
   return out;
 }
 // where a concept's logo and graphics start out, from the words it was designed with
+// a placement on a top that would run past the hem (a size read off the picture, a tall graphic) is scaled down, keeping its shape and its top
+export function fitTall(q, p) {
+  const S = STYLES[p.style], m = measurementsFor(p, p.size || 'M'); if (S?.kind !== 'top' || !m.length || !(q.h > 0)) return q;
+  const top = q.y - q.h / 2, room = Math.min(16, m.length - (m.hemRib || 0) - 2 - top); if (q.h <= room || room <= 1) return q;
+  const k = room / q.h; return { ...q, w: r8(q.w * k), h: r8(room), y: r8(top + room / 2) };
+}
 export function defaultPlacement(kind, p, { aspect = 1, label = '' } = {}) {
   const S = STYLES[p.style], m = measurementsFor(p, p.size || 'M'), t = String(label).toLowerCase();
-  const box = (view, x, y, w) => ({ view, x: r8(x), y: r8(y + w / aspect / 2), w: r8(w), h: r8(w / aspect) });
+  // a tall graphic (a route down the back, a stacked name) is sized by its height, so it ends clear of the hem (and no taller than a print runs, 16 in)
+  const room = y => S.kind === 'top' && m.length ? Math.min(16, m.length - (m.hemRib || 0) - 2 - y) : Infinity;
+  const box = (view, x, y, w) => { if (w / aspect > room(y)) w = Math.max(1, room(y)) * aspect; return { view, x: r8(x), y: r8(y + w / aspect / 2), w: r8(w), h: r8(w / aspect) }; };
   if (S.kind === 'top') {
     const nd = m.neckDropFront;
     if (/back yoke|back neck|nape/.test(t)) return box('back', 0, m.neckDropBack + 2.5, 3);

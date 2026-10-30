@@ -29,7 +29,7 @@ import { cleanRules } from './lab-library.js';
 import { jobFile } from './lab-jobfile.js';
 import { traceVector } from './lab-vector.js';
 import { ensureBranding } from './lab-concepts.js';
-import { STYLES, FITS, SIZES, DETAILS, ALLOVER_BASES, templateOf, fitToTemplate, detectStyle, defaultTemplate, looksLikeFootwear, defaultParams, defaultPlacement, cleanFlat, cleanEdits, describeEdit, placementChecks, overlapChecks, boxesMeet, describe, renderSvg, pomTable, measurementsFor, fmt, fmtCm, drawingOf } from './lab-flats.js';
+import { STYLES, FITS, SIZES, DETAILS, ALLOVER_BASES, templateOf, fitToTemplate, detectStyle, defaultTemplate, looksLikeFootwear, defaultParams, defaultPlacement, fitTall, cleanFlat, cleanEdits, describeEdit, placementChecks, overlapChecks, boxesMeet, describe, renderSvg, pomTable, measurementsFor, fmt, fmtCm, drawingOf } from './lab-flats.js';
 import { packRows, cleanColourways, costOf, FREIGHT_DUTY_PCT } from './lab-materials.js';
 import { artColours } from './art.js';
 import './pantone-c.js';
@@ -186,7 +186,7 @@ export function registerLabFlatsRoutes(app, d) {
     return { style: read.style, label: STYLES[read.style].label, color: read.color, reasons: reasons.length ? reasons : stock.reasons };
   }
   // a graphic measured in the studio keeps its size: the spot's top edge stays where the spot puts it
-  const sized = (box, g) => { const w = Number(g.widthIn), h = Number(g.heightIn); if (!(w > 0 && h > 0)) return box; const top = box.y - box.h / 2; return { ...box, w: Math.round(w * 8) / 8, h: Math.round(h * 8) / 8, y: Math.round((top + h / 2) * 8) / 8 }; };
+  const sized = (box, g, params) => { const w = Number(g.widthIn), h = Number(g.heightIn); if (!(w > 0 && h > 0)) return box; const top = box.y - box.h / 2; return fitTall({ ...box, w: Math.round(w * 8) / 8, h: Math.round(h * 8) / 8, y: Math.round((top + h / 2) * 8) / 8 }, params); };
   // where the piece starts: its style, fit and details from its words, and its logo and graphics where the concept said they go
   async function initial(c, read = undefined) {
     if (read === undefined) read = await readPicture(c);
@@ -204,7 +204,7 @@ export function registerLabFlatsRoutes(app, d) {
     // the branding pass keeps a graphic's words; what the studio measured (its layer and size) is read from the concept as saved
     const raw = Array.isArray(c.spec?.graphics) ? c.spec.graphics : [];
     for (const [i, g0] of (spec.graphics || []).entries()) { if (!g0.art) continue; const r0 = raw.find(x => x.art === g0.art && x.studioLayer) || {}, g = { ...g0, ...(r0.studioLayer ? { placement: r0.placement || g0.placement } : {}), studioLayer: r0.studioLayer, widthIn: r0.widthIn, heightIn: r0.heightIn }; const aspect = await aspectOf({ art: g.art }), t = techFor(list, { techniqueId: g.finish?.id, technique: g.technique });
-      placements.push({ id: g.studioLayer ? 's-' + g.studioLayer : 'g' + i, name: g.name || `Graphic ${i + 1}`, source: g.studioLayer ? 'studio' : 'graphic', ...(g.studioLayer ? { layer: g.studioLayer } : {}), art: g.art, technique: t.base, techniqueId: t.id, ...sized(defaultPlacement('graphic', params, { aspect, label: g.placement || '' }), g) }); }
+      placements.push({ id: g.studioLayer ? 's-' + g.studioLayer : 'g' + i, name: g.name || `Graphic ${i + 1}`, source: g.studioLayer ? 'studio' : 'graphic', ...(g.studioLayer ? { layer: g.studioLayer } : {}), art: g.art, technique: t.base, techniqueId: t.id, ...sized(defaultPlacement('graphic', params, { aspect, label: g.placement || '' }), g, params) }); }
     // a logo that would sit on a graphic goes to the back neck instead
     const lg = placements.find(q => q.source === 'logo');
     if (lg && placements.some(q => q !== lg && boxesMeet(lg, q))) Object.assign(lg, defaultPlacement('logo', params, { aspect: lg.w / lg.h, label: 'back neck' }));
@@ -640,7 +640,7 @@ export function registerLabFlatsRoutes(app, d) {
       const params = r.params, old = r.placements || [], claimed = new Set(graphics.map(g => g.fromFlat).filter(Boolean)), keep = old.filter(q => q.source !== 'studio' && !claimed.has(q.id)), studio = [];
       for (const g of graphics) {
         const prev = old.find(q => q.source === 'studio' && q.layer === g.studioLayer) || (g.fromFlat ? old.find(q => q.id === g.fromFlat && q.source !== 'studio') : null), t = techFor(list, { techniqueId: g.finish?.id, technique: g.technique });
-        const base = prev ? { view: prev.view, x: prev.x, y: prev.y - prev.h / 2 + g.heightIn / 2, w: g.widthIn, h: g.heightIn } : sized(defaultPlacement('graphic', params, { aspect: g.widthIn / g.heightIn, label: g.placement }), g);
+        const base = prev ? { view: prev.view, x: prev.x, y: prev.y - prev.h / 2 + g.heightIn / 2, w: g.widthIn, h: g.heightIn } : sized(defaultPlacement('graphic', params, { aspect: g.widthIn / g.heightIn, label: g.placement }), g, params);
         studio.push({ ...(prev || {}), mark: undefined, added: undefined, id: 's-' + g.studioLayer, name: g.name, source: 'studio', layer: g.studioLayer, art: g.art, technique: t.base, techniqueId: t.id, ...base });
       }
       const { params: p2, placements } = cleanFlat({ ...params, placements: [...keep, ...studio] }), ck = await check(p2, placements, c.client_id);

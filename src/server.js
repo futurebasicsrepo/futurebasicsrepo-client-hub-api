@@ -683,7 +683,7 @@ app.get('/', async (req, reply) => {
 const sendBuilds = (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').type('text/html').send(readFileSync(new URL('./builds.html', import.meta.url), 'utf8'));
 app.get('/builds', sendBuilds);
 // the work console's left-hand navigation, shared by the staff pages (it draws itself; see console-nav.js)
-app.get('/console-nav.js', (_req, reply) => reply.header('cache-control', 'public, max-age=300').type('application/javascript').send(readFileSync(new URL('./console-nav.js', import.meta.url), 'utf8')));
+app.get('/console-nav.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript').send(readFileSync(new URL('./console-nav.js', import.meta.url), 'utf8')));
 app.get('/sales', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').type('text/html').send(readFileSync(new URL('./sales.html', import.meta.url), 'utf8')));
 registerSalesRoutes(app, { pool, authenticate, adminOnly, log: app.log });
 const salesEmail = registerSalesEmailRoutes(app, { pool, authenticate, adminOnly, secret, getSetting, setSetting, sendHubEmail, hubEmailShell, emailEscape, notifyTo: intakeNotificationEmail, publicUrl: clientHubUrl, hubUrl: clientHubUrl, workUrl: workHubUrl, log: app.log, fetchImpl: (url, opts) => trackedFetch('resend', url, opts) });
@@ -714,7 +714,14 @@ const lab=registerLabRoutes(app, { pool, ...labDeps, getSetting, setSetting, log
   ...(process.env.PROTOTYPE_TEST_ORIGIN ? { delayMs: 0, crawlOpts: { lookup: async () => [{ address: '93.184.216.34' }], fetchImpl: (u, o) => { const x = new URL(u); return fetch(process.env.PROTOTYPE_TEST_ORIGIN + x.pathname + x.search, { ...o, headers: { ...(o && o.headers), 'x-original-host': x.hostname } }); } } } : {}) });
 // Concepts: an approved one becomes a product in the Future Basics room, with its tech pack drafted from the concept (createClientProduct, shared with the console).
 const learnLabTaste = () => learnTaste({ pool, getSetting, setSetting });
-const labConcepts = registerLabConceptRoutes(app, { pool, ...labDeps, getSetting, learn: learnLabTaste, log: app.log, art: labArt, createProduct: args => createClientProduct(args), attachArtwork: (productId, items) => attachLabArtwork(productId, items), sendFlats: (id, productId) => labFlats.sendToPack(id, productId), flatsCheck: id => labFlats.startCheck(id) });
+// a tech pack a client makes from their own Lab concept is their draft to finish in the hub's editor, not one waiting on Future Basics to publish
+async function claimClientPack(productId,clientId,userId){
+  const p=(await pool.query('select * from products where id=$1 and client_id=$2',[productId,clientId])).rows[0];if(!p)return;
+  const up=await pool.query(`update tech_packs set initiated_by='client',created_by=coalesce(created_by,$3),source='lab',billing=coalesce(billing,'admin') where product_id=$1 and client_id=$2 and published_at is null returning id`,[productId,clientId,userId||null]);
+  if(up.rowCount)return;
+  await pool.query(`insert into tech_packs(product_id,client_id,status,data,created_by,initiated_by,source,billing) values($1,$2,'draft',$3,$4,'client','lab','admin') on conflict(product_id) do nothing`,[productId,clientId,normalizeTechPack(seedTechPack({product:p})),userId||null]);
+}
+const labConcepts = registerLabConceptRoutes(app, { pool, ...labDeps, claimClientPack, getSetting, learn: learnLabTaste, log: app.log, art: labArt, createProduct: args => createClientProduct(args), attachArtwork: (productId, items) => attachLabArtwork(productId, items), sendFlats: (id, productId) => labFlats.sendToPack(id, productId), flatsCheck: id => labFlats.startCheck(id) });
 registerLabViewRoutes(app, { pool, ...labDeps, log: app.log });
 registerLabStudioRoutes(app, { pool, ...labDeps });
 // their starting techniques and materials are put in once the tables are migrated (seeding while the migration alters them deadlocked)
@@ -766,34 +773,34 @@ app.get('/lab/library', (_req, reply) => reply.header('cache-control', 'no-store
 app.get('/lab/share/:token', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').header('referrer-policy', 'no-referrer').type('text/html').send(readFileSync(new URL('./lab-share.html', import.meta.url), 'utf8')));
 app.get('/lab/poll/:token', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').header('referrer-policy', 'no-referrer').type('text/html').send(readFileSync(new URL('./lab-poll.html', import.meta.url), 'utf8')));
 app.get('/lab/sketches', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').type('text/html').send(readFileSync(new URL('./lab-sketches.html', import.meta.url), 'utf8')));
-app.get('/lab/nav.js', (_req, reply) => reply.header('cache-control', 'public, max-age=300').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-nav.js', import.meta.url), 'utf8')));
-app.get('/lab/studio-pro.js', (_req, reply) => reply.header('cache-control', 'public, max-age=300').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-studio-pro.js', import.meta.url), 'utf8')));
-app.get('/lab/studio-vec.js', (_req, reply) => reply.header('cache-control', 'public, max-age=300').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-studio-vec.js', import.meta.url), 'utf8')));
-app.get('/lab/studio-emb.js', (_req, reply) => reply.header('cache-control', 'public, max-age=300').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-studio-emb.js', import.meta.url), 'utf8')));
-app.get('/lab/studio-board.js', (_req, reply) => reply.header('cache-control', 'public, max-age=300').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-studio-board.js', import.meta.url), 'utf8')));
+app.get('/lab/nav.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-nav.js', import.meta.url), 'utf8')));
+app.get('/lab/studio-pro.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-studio-pro.js', import.meta.url), 'utf8')));
+app.get('/lab/studio-vec.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-studio-vec.js', import.meta.url), 'utf8')));
+app.get('/lab/studio-emb.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-studio-emb.js', import.meta.url), 'utf8')));
+app.get('/lab/studio-board.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-studio-board.js', import.meta.url), 'utf8')));
 app.get('/lab/vendor/polygon-clipping.js', (_req, reply) => reply.header('cache-control', 'public, max-age=86400').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./vendor/polygon-clipping.min.js', import.meta.url), 'utf8')));
 app.get('/lab/materials', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').type('text/html').send(readFileSync(new URL('./lab-materials.html', import.meta.url), 'utf8')));
-app.get('/lab/lab-tags.js', (_req, reply) => reply.header('cache-control', 'public, max-age=300').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-tags.js', import.meta.url), 'utf8')));
-app.get('/lab/lab-photos.js', (_req, reply) => reply.header('cache-control', 'public, max-age=300').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-photos.js', import.meta.url), 'utf8')));
+app.get('/lab/lab-tags.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-tags.js', import.meta.url), 'utf8')));
+app.get('/lab/lab-photos.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-photos.js', import.meta.url), 'utf8')));
 // the materials library's photos, recoloured: /lab/material-photos/denim.jpg?c=2b3a5c&s=320 (free-licence close-ups, nothing private, so open)
 app.get('/lab/material-photos/:file', async (req, reply) => { const m = /^([a-z0-9-]+)\.jpg$/.exec(String(req.params.file || '')); const buf = m ? await photoJpeg(m[1], req.query?.c ? '#' + String(req.query.c).replace('#', '') : '', req.query?.s).catch(() => null) : null; if (!buf) return reply.code(404).send({ error: 'Not found' }); return reply.header('cache-control', 'public, max-age=604800').type('image/jpeg').send(buf); });
-app.get('/lab/lab-swatches.js', (_req, reply) => reply.header('cache-control', 'public, max-age=300').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-swatches.js', import.meta.url), 'utf8')));
+app.get('/lab/lab-swatches.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-swatches.js', import.meta.url), 'utf8')));
 // the flats page runs inside the Design workspace (/lab/studio) in a frame: it may be framed by this site's own pages and nobody else's
 app.get('/lab/flats', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').header('content-security-policy', "upgrade-insecure-requests; default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob: https:; connect-src 'self' https://thefuturebasics.com; frame-ancestors 'self'; base-uri 'self'; form-action 'self'").type('text/html').send(readFileSync(new URL('./lab-flats.html', import.meta.url), 'utf8')));
 // the pattern page runs inside Design (/lab/studio) in a frame, like the flats; its drafting is shared with the service (src/lab-pattern.js)
 app.get('/lab/pattern', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').header('content-security-policy', "upgrade-insecure-requests; default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'self'; base-uri 'self'; form-action 'self'").type('text/html').send(readFileSync(new URL('./lab-pattern.html', import.meta.url), 'utf8')));
-app.get('/lab/lab-footwear.js', (_req, reply) => reply.header('cache-control', 'public, max-age=300').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-footwear.js', import.meta.url), 'utf8')));
-app.get('/lab/lab-footwear-views.js', (_req, reply) => reply.header('cache-control', 'public, max-age=300').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-footwear-views.js', import.meta.url), 'utf8')));
-app.get('/lab/lab-sketch.js', (_req, reply) => reply.header('cache-control', 'public, max-age=300').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-sketch.js', import.meta.url), 'utf8')));
-app.get('/lab/lab-logos.js', (_req, reply) => reply.header('cache-control', 'public, max-age=300').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-logos.js', import.meta.url), 'utf8')));
-app.get('/lab/lab-lines.js', (_req, reply) => reply.header('cache-control', 'public, max-age=300').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-lines.js', import.meta.url), 'utf8')));
-app.get('/lab/lab-dxf.js', (_req, reply) => reply.header('cache-control', 'public, max-age=300').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-dxf.js', import.meta.url), 'utf8')));
-app.get('/lab/lab-looks.js', (_req, reply) => reply.header('cache-control', 'public, max-age=300').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-looks.js', import.meta.url), 'utf8')));
-app.get('/lab/lab-plush-views.js', (_req, reply) => reply.header('cache-control', 'public, max-age=300').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-plush-views.js', import.meta.url), 'utf8')));
-app.get('/lab/lab-last-shell.js', (_req, reply) => reply.header('cache-control', 'public, max-age=300').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-last-shell.js', import.meta.url), 'utf8')));
-app.get('/lab/lab-pattern.js', (_req, reply) => reply.header('cache-control', 'public, max-age=300').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-pattern.js', import.meta.url), 'utf8')));
-app.get('/lab/lab-flats.js', (_req, reply) => reply.header('cache-control', 'public, max-age=300').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-flats.js', import.meta.url), 'utf8')));
-app.get('/lab/flats.js', (_req, reply) => reply.header('cache-control', 'public, max-age=300').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-flats.js', import.meta.url), 'utf8')));
+app.get('/lab/lab-footwear.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-footwear.js', import.meta.url), 'utf8')));
+app.get('/lab/lab-footwear-views.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-footwear-views.js', import.meta.url), 'utf8')));
+app.get('/lab/lab-sketch.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-sketch.js', import.meta.url), 'utf8')));
+app.get('/lab/lab-logos.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-logos.js', import.meta.url), 'utf8')));
+app.get('/lab/lab-lines.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-lines.js', import.meta.url), 'utf8')));
+app.get('/lab/lab-dxf.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-dxf.js', import.meta.url), 'utf8')));
+app.get('/lab/lab-looks.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-looks.js', import.meta.url), 'utf8')));
+app.get('/lab/lab-plush-views.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-plush-views.js', import.meta.url), 'utf8')));
+app.get('/lab/lab-last-shell.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-last-shell.js', import.meta.url), 'utf8')));
+app.get('/lab/lab-pattern.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-pattern.js', import.meta.url), 'utf8')));
+app.get('/lab/lab-flats.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-flats.js', import.meta.url), 'utf8')));
+app.get('/lab/flats.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-flats.js', import.meta.url), 'utf8')));
 // the flat-sketch pack is large (nearly 400 sketches, their measurements and the add-on parts), so the text files go gzipped to any browser that takes it
 const packGz = new Map(), sendPack = (req, reply, rel, type, maxAge) => {
   let body; try { body = readFileSync(new URL(rel, import.meta.url)); } catch { return reply.code(404).send('Not found'); }
@@ -825,7 +832,7 @@ app.get('/lab/flat-parts/:file', (req, reply) => {
   const f = String(req.params.file || ''); if (!/^[a-z0-9-]+\.webp$/.test(f)) return reply.code(404).send('Not found');
   try { return reply.header('cache-control', 'public, max-age=86400').type('image/webp').send(readFileSync(new URL(`./flat-parts/${f}`, import.meta.url))); } catch { return reply.code(404).send('Not found'); }
 });
-app.get('/lab/finish.js', (_req, reply) => reply.header('cache-control', 'public, max-age=300').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-finish.js', import.meta.url), 'utf8')));
+app.get('/lab/finish.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-finish.js', import.meta.url), 'utf8')));
 app.get('/team', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').type('text/html').send(readFileSync(new URL('./team.html', import.meta.url), 'utf8')));
 app.get('/brand', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').type('text/html').send(readFileSync(new URL('./brand.html', import.meta.url), 'utf8')));
 registerBrandRoutes(app, { authenticate, adminOnly });
@@ -869,11 +876,11 @@ app.get('/booth',(_req,reply)=>reply.header('cache-control','no-store, max-age=0
 app.get('/fair',(_req,reply)=>reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./fair.html',import.meta.url),'utf8')));
 // The factory sign-up as a home-screen tile (Add to Home Screen on the fair page): opens the factory door in Chinese, full screen, ready to hand across a table.
 app.get('/factory-signup.webmanifest',(_req,reply)=>reply.header('cache-control','public, max-age=3600').type('application/manifest+json').send({id:'/fair?side=factory',name:'Future Basics Factory Sign-up',short_name:'FB Factory',description:'Factories: get your own link for your buyers.',start_url:'/fair?side=factory&lang=zh&src=tile',scope:'/',display:'standalone',background_color:'#f6f6f2',theme_color:'#141416',icons:[{src:'/icons/icon-192.png',sizes:'192x192',type:'image/png'},{src:'/icons/icon-512.png',sizes:'512x512',type:'image/png'},{src:'/icons/icon-maskable-512.png',sizes:'512x512',type:'image/png',purpose:'maskable'}]}));
-app.get('/hub-i18n.js',(_req,reply)=>reply.header('cache-control','public, max-age=300').type('application/javascript').send(readFileSync(new URL('./hub-i18n.js',import.meta.url),'utf8')));
+app.get('/hub-i18n.js',(_req,reply)=>reply.header('cache-control','no-cache').type('application/javascript').send(readFileSync(new URL('./hub-i18n.js',import.meta.url),'utf8')));
 app.get('/qrcode.js',(_req,reply)=>reply.header('cache-control','public, max-age=86400').type('application/javascript').send(readFileSync(new URL('./qrcode.js',import.meta.url),'utf8'))); // qrcode-generator, MIT (Kazuhiko Arase)
 app.get('/help',(_req,reply)=>reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./help.html',import.meta.url),'utf8')));
 app.get('/how-it-works',(_req,reply)=>reply.redirect('/help'));
-app.get('/help/guide.pdf',(_req,reply)=>{try{return reply.header('cache-control','public, max-age=300').header('content-disposition','inline; filename="future-basics-client-hub-guide.pdf"').type('application/pdf').send(readFileSync(new URL('future-basics-client-hub-guide.pdf',helpAssets)))}catch{return reply.code(404).send({error:'Guide PDF not built yet'})}});
+app.get('/help/guide.pdf',(_req,reply)=>{try{return reply.header('cache-control','no-cache').header('content-disposition','inline; filename="future-basics-client-hub-guide.pdf"').type('application/pdf').send(readFileSync(new URL('future-basics-client-hub-guide.pdf',helpAssets)))}catch{return reply.code(404).send({error:'Guide PDF not built yet'})}});
 app.get('/help/assets/:file',(req,reply)=>{const f=String(req.params.file||'');if(!/^[a-z0-9-]+\.(jpg|png|webp)$/.test(f))return reply.code(404).send({error:'Not found'});try{return reply.header('cache-control','public, max-age=86400').type(f.endsWith('.png')?'image/png':f.endsWith('.webp')?'image/webp':'image/jpeg').send(readFileSync(new URL(f,helpAssets)))}catch{return reply.code(404).send({error:'Not found'})}});
 // Home-screen icon and web app manifest: the hub installs as a standalone app, the work console keeps opening in the browser so Google sign-in round-trips cleanly.
 const iconDir=new URL('./icons/',import.meta.url);
@@ -888,27 +895,28 @@ app.get('/apple-touch-icon.png',(_req,reply)=>reply.redirect('/icons/apple-touch
 app.get('/favicon.ico',(_req,reply)=>reply.redirect('/icons/icon-192.png'));
 // The shared chat thread (script and styles), used by the Message Center, the room's project thread and the hub's project messages.
 // Pip, the helper mouse: a guide that follows the pointer and walks a person through the page (see helper.js and docs/helper-mouse.md)
-app.get('/feedback.js',(_req,reply)=>reply.header('cache-control','public, max-age=300').type('application/javascript').send(readFileSync(new URL('./feedback.js',import.meta.url),'utf8')));
-app.get('/helper.js',(_req,reply)=>reply.header('cache-control','public, max-age=300').type('application/javascript').send(readFileSync(new URL('./helper.js',import.meta.url),'utf8')));
+app.get('/feedback.js',(_req,reply)=>reply.header('cache-control','no-cache').type('application/javascript').send(readFileSync(new URL('./feedback.js',import.meta.url),'utf8')));
+app.get('/helper.js',(_req,reply)=>reply.header('cache-control','no-cache').type('application/javascript').send(readFileSync(new URL('./helper.js',import.meta.url),'utf8')));
 app.get('/ball.js',(_req,reply)=>reply.header('cache-control','public, max-age=3600').type('application/javascript').send(readFileSync(new URL('./ball.js',import.meta.url),'utf8')));
 app.get('/categories.js',(_req,reply)=>reply.header('cache-control','public, max-age=3600').type('application/javascript').send(readFileSync(new URL('./categories.js',import.meta.url),'utf8')));
-app.get('/sample-review.js',(_req,reply)=>reply.header('cache-control','public, max-age=300').type('application/javascript').send(readFileSync(new URL('./sample-review.js',import.meta.url),'utf8')));
-app.get('/commercial.js',(_req,reply)=>reply.header('cache-control','public, max-age=300').type('application/javascript').send(readFileSync(new URL('./commercial.js',import.meta.url),'utf8')));
+app.get('/sample-review.js',(_req,reply)=>reply.header('cache-control','no-cache').type('application/javascript').send(readFileSync(new URL('./sample-review.js',import.meta.url),'utf8')));
+app.get('/commercial.js',(_req,reply)=>reply.header('cache-control','no-cache').type('application/javascript').send(readFileSync(new URL('./commercial.js',import.meta.url),'utf8')));
 app.get('/elec.js',(_req,reply)=>reply.header('cache-control','public, max-age=3600').type('application/javascript').send(readFileSync(new URL('./elec.js',import.meta.url),'utf8')));
 app.get('/pantone-c.js',(_req,reply)=>reply.header('cache-control','public, max-age=3600').type('application/javascript').send(readFileSync(new URL('./pantone-c.js',import.meta.url),'utf8')));
-app.get('/stl-viewer.js',(_req,reply)=>reply.header('cache-control','public, max-age=300').type('application/javascript').send(readFileSync(new URL('./stl-viewer.js',import.meta.url),'utf8')));
-app.get('/tp-units.js',(_req,reply)=>reply.header('cache-control','public, max-age=300').type('application/javascript').send(readFileSync(new URL('./tp-units.js',import.meta.url),'utf8')));
-app.get('/tp-i18n.js',(_req,reply)=>reply.header('cache-control','public, max-age=300').type('application/javascript').send(readFileSync(new URL('./tp-i18n.js',import.meta.url),'utf8')));
-app.get('/picker.js',(_req,reply)=>reply.header('cache-control','public, max-age=300').type('application/javascript').send(readFileSync(new URL('./picker.js',import.meta.url),'utf8')));
-app.get('/chat.js',(_req,reply)=>reply.header('cache-control','public, max-age=300').type('application/javascript').send(readFileSync(new URL('./chat.js',import.meta.url),'utf8')));
+app.get('/stl-viewer.js',(_req,reply)=>reply.header('cache-control','no-cache').type('application/javascript').send(readFileSync(new URL('./stl-viewer.js',import.meta.url),'utf8')));
+app.get('/tp-units.js',(_req,reply)=>reply.header('cache-control','no-cache').type('application/javascript').send(readFileSync(new URL('./tp-units.js',import.meta.url),'utf8')));
+app.get('/tp-i18n.js',(_req,reply)=>reply.header('cache-control','no-cache').type('application/javascript').send(readFileSync(new URL('./tp-i18n.js',import.meta.url),'utf8')));
+app.get('/picker.js',(_req,reply)=>reply.header('cache-control','no-cache').type('application/javascript').send(readFileSync(new URL('./picker.js',import.meta.url),'utf8')));
+app.get('/chat.js',(_req,reply)=>reply.header('cache-control','no-cache').type('application/javascript').send(readFileSync(new URL('./chat.js',import.meta.url),'utf8')));
 // Self-hosted fonts (see src/fonts/fonts.css): the file names are fixed, so they cache for a year.
 const FONT_FILES=new Set(['fonts.css','space-grotesk-latin.woff2','space-grotesk-latin-ext.woff2','ibm-plex-mono-400.woff2','ibm-plex-mono-500.woff2']);
 app.get('/fonts/:file',(req,reply)=>{const f=String(req.params.file);if(!FONT_FILES.has(f))return reply.code(404).send({error:'Not found'});
   return reply.header('cache-control',f.endsWith('.css')?'public, max-age=3600':'public, max-age=31536000, immutable').header('access-control-allow-origin','*').type(f.endsWith('.css')?'text/css':'font/woff2').send(readFileSync(new URL('./fonts/'+f,import.meta.url)))});
 // the shared daylight look of the hub and the console (see cue.css), loaded last on each of their pages
-app.get('/cue.css',(_req,reply)=>reply.header('cache-control','public, max-age=300').type('text/css').send(readFileSync(new URL('./cue.css',import.meta.url),'utf8')));
-app.get('/chat.css',(_req,reply)=>reply.header('cache-control','public, max-age=300').type('text/css').send(readFileSync(new URL('./chat.css',import.meta.url),'utf8')));
-app.get('/photo-prep.js',(_req,reply)=>reply.header('cache-control','public, max-age=300').type('application/javascript').send(readFileSync(new URL('./photo-prep.js',import.meta.url),'utf8')));
+// the pages' own scripts and styles are 'no-cache': a phone keeping a five-minute-old copy after a deploy showed the old look under the new page
+app.get('/cue.css',(_req,reply)=>reply.header('cache-control','no-cache').type('text/css').send(readFileSync(new URL('./cue.css',import.meta.url),'utf8')));
+app.get('/chat.css',(_req,reply)=>reply.header('cache-control','no-cache').type('text/css').send(readFileSync(new URL('./chat.css',import.meta.url),'utf8')));
+app.get('/photo-prep.js',(_req,reply)=>reply.header('cache-control','no-cache').type('application/javascript').send(readFileSync(new URL('./photo-prep.js',import.meta.url),'utf8')));
 app.get('/tech-packs/new', sendStart);
 app.get('/tech-packs/:productId', sendTechPack);
 const sendConsign=(_req,reply)=>reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./consign.html',import.meta.url),'utf8'));
@@ -3310,7 +3318,7 @@ app.get('/r/:id/:sig',async(req,reply)=>{
   // The picture is selected inside a json object so the database layer swaps its stored reference ("fbblob:…") back into the data URL; a text column (->>) comes back as the bare reference and is no picture.
   const row=(await pool.query(`select jsonb_build_object('image',coalesce(coalesce(published_data,data)->'renderings'->0->'image',coalesce(published_data,data)->'sketches'->0->'image')) pic from tech_packs where product_id=$1`,[id])).rows[0];
   const m=/^data:(image\/(?:png|jpeg|jpg|webp));base64,([a-z0-9+/=]+)$/i.exec(typeof row?.pic?.image==='string'?row.pic.image:'');if(!m)return reply.code(404).send({error:'No rendering'});
-  return reply.header('cache-control','public, max-age=300').type(m[1]).send(Buffer.from(m[2],'base64'));
+  return reply.header('cache-control','no-cache').type(m[1]).send(Buffer.from(m[2],'base64'));
 });
 // Photo-start follow-ups. Someone who uploads a screenshot and then does nothing (no edits, no submit, no message) gets one
 // nudge email with their draft link after FOLLOWUP_AFTER_HOURS (default 3), and the work console gets a notice so Future Basics

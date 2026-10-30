@@ -31,7 +31,13 @@ html[data-focus] body.fbnav,html[data-focus] body{padding-left:0!important;paddi
 html[data-focus] .bar{padding:4px 10px;min-height:44px;gap:6px}
 #panelBtn[aria-pressed=true],#focusBtn[aria-pressed=true]{background:var(--ink);color:#fff}
 /* on a phone the toolbar keeps the piece's steps, its name, Save and the panel; the rest folds behind More */
-#moreBtn{display:none}@media(max-width:700px){#moreBtn{display:inline-flex}.bar:not(.open) .fold{display:none!important}.bar .ttl{min-width:0;flex:1 1 120px}.bar .ttl b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}#pieceSteps{flex:1 1 100%;order:-1}}
+#moreBtn{display:none}/* a phone: a menu from the header (the Checklist, Export) opens across the screen under its button, never hanging off the left edge */
+@media(max-width:700px){.bar .menu .pop,.bar #readyPop{position:fixed;left:12px;right:12px;top:auto;width:auto;min-width:0;max-height:70dvh;overflow:auto;margin-top:6px}}
+/* a phone: the steps, then the name on its own line, then what to show across the width, then one row of actions; nothing squeezed beside the name */
+@media(max-width:700px){.bar{row-gap:8px;padding:8px 12px 10px}.bar>[data-lab-menu],.bar>#back{order:-2}.bar .ttl{order:0;flex:1 1 100%;margin-right:0}.bar .ttl b{max-width:none;font-size:16px}
+  #viewSeg{order:1;flex:1 1 100%;display:flex}#viewSeg>button{flex:1 1 0;min-width:0;padding-left:4px;padding-right:4px}
+  .bar>:not(#pieceSteps):not(.ttl):not(#viewSeg):not([data-lab-menu]):not(#back){order:2}.bar>.saved{order:3!important;flex:1 1 100%;font-size:12px}.bar>.saved:empty{display:none}}
+@media(max-width:700px){#moreBtn{display:inline-flex}.bar:not(.open) .fold{display:none!important}.bar .ttl{min-width:0;flex:1 1 120px}.bar .ttl b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}#pieceSteps{flex:1 1 100%;order:-1}}
 .bar{grid-column:1/-1;display:flex;align-items:center;gap:8px;padding:8px 12px;background:#fff;border-bottom:1px solid var(--line);flex-wrap:wrap;min-height:52px}
 .bar .ttl{display:grid;line-height:1.15;min-width:0;margin-right:auto}.bar .ttl b{font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:38vw}.bar .ttl span{color:var(--dim);font-size:12px}
 .saved{color:var(--dim);font-size:12px;min-width:90px;text-align:right}.saved.dirty{color:#8a5a00}
