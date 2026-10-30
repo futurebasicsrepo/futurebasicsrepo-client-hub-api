@@ -306,6 +306,9 @@ await journey('J36', 'payment gate: free access per client, a global switch, and
   const auto = await adm('/v1/admin/tech-pack-billing', { method: 'PUT', body: { mode: 'auto' } }); ok(auto.json.mode === 'auto' && auto.json.effective === true, 'back to automatic, the gate is on again');
   ok((await hubPack('Sixth · gate on')).ai === 'locked', 'and new packs are locked again');
   const made = await adm('/v1/admin/clients', { method: 'POST', body: { name: `Gifted ${stamp}`, slug: `gifted-${stamp}`, allowedEmails: [`gift-${stamp}@creator.test`], techPackComped: true } }); ok(made.status === 200 && made.json.tech_pack_comped === true, 'a creator can be added with free access from the start', [made.status, made.json.tech_pack_comped]);
+  // one person, one room: a second room for the same address is refused unless the console says to make it anyway
+  const twice = await adm('/v1/admin/clients', { method: 'POST', body: { name: `Gifted again ${stamp}`, slug: `gifted-again-${stamp}`, contactEmail: `Gift-${stamp}@creator.test` } }); ok(twice.status === 409 && twice.json.existing?.id === made.json.id, 'a second room for the same address points at the first', [twice.status, twice.json.error]);
+  ok((await adm('/v1/admin/clients', { method: 'POST', body: { name: `Gifted again ${stamp}`, slug: `gifted-again-${stamp}`, contactEmail: `gift-${stamp}@creator.test`, force: true } })).status === 200, 'and is made when the console says to anyway');
   const fresh = await start(`gift-${stamp}@creator.test`, { title: 'First of theirs' }); const signed = await signIn(`gift-${stamp}@creator.test`); const t2 = await call('/v1/tech-packs', { token: signed.token, body: { title: 'Their second', projectId: fresh.json.project.id, photos: [runner] } }); ok(t2.json.ai && t2.json.ai !== 'locked', 'and their second pack is not locked', t2.json.ai);
   } finally { if (restore) await restore(); } // never leave the shared test database with the gate switched
 });

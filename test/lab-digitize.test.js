@@ -89,3 +89,64 @@ test('the files: a Tajima DST that reads back stitch for stitch, a Melco EXP, an
   assert.equal(colours, 4); assert.deepEqual([x, y], last);
   const pic = await sharp(Buffer.from(stitchSvg(d, { px: 400, garment: '#222222' }))).png().toBuffer(); assert.equal((await sharp(pic).metadata()).width, 400);
 });
+
+// the longest top satin stitch in a design, in 0.1 mm (underlay, ties and travel runs left out)
+const longestSatin = d => { let m = 0; for (const b of d.plan) { let prev = null; for (const q of b.pts) { if (q.trim) { prev = null; continue; } if (prev && !q.jump && !q.u && !q.tie && !q.run && d.objects[q.o]?.kind === 'satin') m = Math.max(m, Math.hypot(q.p[0] - prev[0], q.p[1] - prev[1])); prev = q.p; } } return m; };
+const RING = '<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="1000"><circle cx="500" cy="500" r="420" fill="none" stroke="#c8202a" stroke-width="30"/></svg>';
+const S_STROKE = '<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="1000"><path d="M720 220 C 600 100, 280 120, 300 330 C 320 520, 700 460, 700 680 C 700 900, 340 900, 260 780" fill="none" stroke="#1d3f8a" stroke-width="30" stroke-linecap="round"/></svg>';
+
+test('turning satin: a ring and an S curve are sewn square to the stroke all the way round, with no long floats', async () => {
+  const { digitizeReview } = await import('../src/lab-sewout.js');
+  for (const art of [RING, S_STROKE]) {
+    const png = await svg(art), d = await digitize(png, { widthIn: 4 }), [ob] = d.objects;
+    assert.equal(d.objects.length, 1); assert.equal(ob.kind, 'satin'); assert.ok(ob.turning, 'the satin turns with the stroke');
+    const L = longestSatin(d); assert.ok(L <= 16 * ob.widthMm, `longest stitch ${L / 10} mm on a ${ob.widthMm} mm stroke`); // one angle left floats of 10–15 mm here
+    assert.ok(d.plan[0].pts.some(q => q.u) && d.plan[0].pts.every(q => q.o === 0 || q.tie || q.trim), 'a centre-walk underlay, and every point carries its shape');
+    const r = await digitizeReview(d, png, { widthIn: 4 });
+    assert.ok(!r.items.some(i => i.code === 'long-stitch'), JSON.stringify(r.items.filter(i => i.level !== 'ok')));
+    assert.ok(r.fidelity.coverage >= .98 && r.fidelity.iou >= .8, JSON.stringify(r.fidelity));
+    // the same edges as one angle gave (with the pull compensation off: it now widens the column all the way round, not only where rows crossed it)
+    const bare = await digitize(png, { widthIn: 4, pullMm: 0 }), rb = await digitizeReview(bare, png, { widthIn: 4 }); assert.ok(rb.fidelity.iou >= .89, JSON.stringify(rb.fidelity));
+    // the file reads back stitch for stitch
+    const dst = dstOf(d, 'Ring'), back = readDst(dst.file); assert.equal(back.filter(m => m.kind === 'stitch').length, dst.stitches); assert.deepEqual([back.at(-2).x, back.at(-2).y], d.plan.at(-1).pts.at(-1).p);
+  }
+  // a ring in a badge: the review no longer asks for it to be sewn as fill
+  const badge = await svg('<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1200"><circle cx="600" cy="600" r="560" fill="#14284b"/><circle cx="600" cy="600" r="455" fill="none" stroke="#e8b923" stroke-width="40"/><text x="600" y="680" font-family="DejaVu Sans" font-weight="bold" font-size="220" text-anchor="middle" fill="#e8b923">FB</text></svg>');
+  const d = await digitize(badge, { widthIn: 4 }), r = await digitizeReview(d, badge, { widthIn: 4 });
+  assert.ok(!r.items.some(i => i.code === 'long-stitch')); assert.ok(r.fidelity.iou > .95, JSON.stringify(r.fidelity)); assert.ok(longestSatin(d) <= 70);
+});
+
+test('turning satin: a straight bar keeps its one angle, and branches and corners become columns of their own', async () => {
+  const bar = await digitize(await svg('<svg xmlns="http://www.w3.org/2000/svg" width="800" height="400"><rect x="60" y="180" width="680" height="30" fill="#c8202a"/></svg>'), { widthIn: 4 });
+  assert.equal(bar.objects[0].angle, 90); assert.ok(!bar.objects[0].turning); assert.ok(bar.stats.stitches > 400 && bar.stats.stitches < 480, String(bar.stats.stitches));
+  // an arch with a post through it and a crossbar: every column follows its own stroke, none of them runs along another
+  const arcs = await digitize(await svg('<svg xmlns="http://www.w3.org/2000/svg" width="800" height="800"><path d="M100 600 Q 400 0 700 600" fill="none" stroke="#a00" stroke-width="26"/><path d="M100 700 L 700 700" stroke="#a00" stroke-width="26"/><path d="M400 300 L 400 760" stroke="#a00" stroke-width="20"/></svg>'), { widthIn: 4 });
+  assert.equal(arcs.objects.length, 1); assert.ok(arcs.objects[0].turning); assert.ok(longestSatin(arcs) <= 16 * arcs.objects[0].widthMm, String(longestSatin(arcs)));
+  // a square-cornered letter: the corner is butted, not fanned (no stitch wider than the stroke allows)
+  const f = await digitize(await svg('<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600"><path d="M150 520 V 80 H 450 M 150 300 H 380" fill="none" stroke="#111" stroke-width="40"/></svg>'), { widthIn: 3 });
+  assert.equal(f.objects.length, 1); assert.equal(f.objects[0].kind, 'satin'); assert.ok(f.objects[0].turning); assert.ok(longestSatin(f) <= 16 * f.objects[0].widthMm, String(longestSatin(f)));
+});
+
+test('turning satin: the counters of letters (B, O, A, e) stay open, at badge size and at an inch', async () => {
+  const art = await svg('<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="400"><text x="500" y="300" font-family="DejaVu Sans" font-weight="bold" font-size="300" text-anchor="middle" fill="#e8b923">BOAe</text></svg>');
+  for (const widthIn of [4, 1.2]) {
+    const d = await digitize(art, { widthIn }); assert.ok(d.objects.filter(o => o.turning).length >= 2, `${widthIn} in: ${d.objects.map(o => o.kind + (o.turning ? ' turning' : '')).join()}`);
+    // the art on a 0.05 mm grid: its counters (the pieces of ground the letters close round) and how far each point of ground is from a letter
+    const pr = .05, W = Math.round(d.widthMm / pr), H = Math.round(d.heightMm / pr), { data } = await sharp(art).flatten({ background: '#ffffff' }).resize(W, H).raw().toBuffer({ resolveWithObject: true });
+    const ink = new Uint8Array(W * H), seen = new Uint8Array(W * H), dist = new Float32Array(W * H), counters = [];
+    for (let p = 0; p < W * H; p++) { ink[p] = data[p * 3 + 2] < 140 ? 1 : 0; dist[p] = ink[p] ? 0 : 1e6; }
+    for (let s = 0; s < W * H; s++) { if (ink[s] || seen[s]) continue; const px = [s], st = [s]; let edge = false; seen[s] = 1;
+      while (st.length) { const p = st.pop(), x = p % W, y = (p - x) / W; if (!x || !y || x === W - 1 || y === H - 1) edge = true; for (const q of [x ? p - 1 : -1, x < W - 1 ? p + 1 : -1, y ? p - W : -1, y < H - 1 ? p + W : -1]) if (q >= 0 && !ink[q] && !seen[q]) { seen[q] = 1; px.push(q); st.push(q); } }
+      if (!edge) counters.push(px); }
+    assert.ok(counters.length >= 4, `${widthIn} in: ${counters.length} counters`); // the B's two, the O's, the A's and the e's
+    for (const [a, z, s] of [[0, W * H, 1], [W * H - 1, -1, -1]]) for (let i = a; i !== z; i += s) { const x = i % W; for (const [dx, dy, c] of [[-1, 0, 1], [0, -1, 1], [-1, -1, 1.414], [1, -1, 1.414]]) { const X = x + dx * s, j = i + (dy * W + dx) * s; if (X >= 0 && X < W && j >= 0 && j < W * H) dist[i] = Math.min(dist[i], dist[j] + c); } }
+    // the stitches drawn as thread 0.42 mm wide, as the review draws them. Thread within the pull compensation and its own half width of an
+    // edge is expected; any further into a counter is stitching on the ground
+    const lay = new Uint8Array(W * H), r = .21 / pr, k = 1 / (pr * 10); let prev = null;
+    for (const q of d.plan[0].pts) { if (q.trim) { prev = null; continue; } if (prev && !q.jump) { const ax = prev[0] * k + W / 2, ay = prev[1] * k + H / 2, bx = q.p[0] * k + W / 2, by = q.p[1] * k + H / 2, dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy || 1e-9;
+      for (let y = Math.max(0, Math.floor(Math.min(ay, by) - r)); y <= Math.min(H - 1, Math.ceil(Math.max(ay, by) + r)); y++) for (let x = Math.max(0, Math.floor(Math.min(ax, bx) - r)); x <= Math.min(W - 1, Math.ceil(Math.max(ax, bx) + r)); x++) { const wx = x + .5 - ax, wy = y + .5 - ay, t = Math.max(0, Math.min(1, (wx * dx + wy * dy) / L2)); if ((wx - dx * t) ** 2 + (wy - dy * t) ** 2 <= r * r) lay[y * W + x] = 1; } }
+      prev = q.p; }
+    const beyond = (d.settings.pullMm + .21 + .05) / pr;
+    for (const c of counters) { const over = c.filter(p => lay[p] && dist[p] > beyond).length / c.length; assert.ok(over < .05, `${widthIn} in: ${(over * 100).toFixed(1)}% of a ${(c.length * pr * pr).toFixed(1)} mm² counter sewn over`); }
+  }
+});

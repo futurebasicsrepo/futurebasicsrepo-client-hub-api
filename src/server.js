@@ -1118,6 +1118,9 @@ app.post('/v1/admin/shopify/sync',{preHandler:[authenticate,adminOnly]},async(re
 app.post('/v1/admin/clients',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const {name,slug,emailDomains=[],allowedEmails=[],contactName,contactEmail,contactPhone,websiteUrl,notes,shopifyCustomerId,techPackComped}=req.body||{};if(!name||!slug)return reply.code(400).send({error:'name and slug required'});
   const domains=await validateClientDomains(emailDomains);
+  // one person, one room: an address that already signs in to a room is not quietly given a second, which their hub would never open
+  if(req.body?.force!==true){for(const email of normalizeEmails([...(Array.isArray(allowedEmails)?allowedEmails:[]),contactEmail].filter(Boolean))){
+    const room=await clientForEmail(email);if(room)return reply.code(409).send({error:`${email} already signs in to ${room.name}`,email,existing:{id:room.id,name:room.name}})}}
   const client=(await pool.query(`insert into clients(name,slug,email_domains,allowed_emails,contact_name,contact_email,contact_phone,website_url,notes,shopify_customer_id,tech_pack_comped)
     values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) returning *`,[name,slug,domains,normalizeEmails(allowedEmails),contactName||null,contactEmail||null,contactPhone||null,websiteUrl||null,notes||null,shopifyCustomerId||null,techPackComped===true||techPackComped==='true'])).rows[0];
   await pool.query(`insert into projects(client_id,name,status,milestone) values($1,'General development','active','In progress') on conflict(client_id,name) do nothing`,[client.id]);
