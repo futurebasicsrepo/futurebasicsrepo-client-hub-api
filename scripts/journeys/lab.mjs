@@ -2258,8 +2258,8 @@ await journey('J234', 'One Design workspace: a concept opens on its picture, and
       const oc = await b.newContext({ viewport: { width: 1440, height: 950 } }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
       const page = await oc.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
       await page.goto(`${BASE}/lab/studio?concept=${c.id}`, { waitUntil: 'networkidle' }); await page.waitForSelector('#pLayers .ly', { timeout: 20000 }); await page.waitForFunction(() => !document.querySelector('#busy:not(.hidden)'));
-      ok((await page.locator('#viewSeg [data-v]').count()) === 4 && await page.getAttribute('#viewSeg [data-v=picture]', 'aria-pressed') === 'true' && await page.isVisible('#stage') && !(await page.isVisible('#specBtn')) && !(await page.getAttribute('#flatFrame', 'src')),
-        '1. a concept opens on its picture: the switch reads Picture, Flat front, Flat back, Pattern, and the flats wait until they are asked for');
+      ok((await page.locator('#viewSeg [data-v]').count()) === 5 && await page.getAttribute('#viewSeg [data-v=picture]', 'aria-pressed') === 'true' && await page.isVisible('#stage') && !(await page.isVisible('#specBtn')) && !(await page.getAttribute('#flatFrame', 'src')),
+        '1. a concept opens on its picture: the switch reads Picture, Flat front, Flat back, Pattern, Board, and the flats wait until they are asked for');
       // a wordmark placed on the picture, not saved
       await page.click('.tabs [data-tab=add]'); await page.click('#pAdd [data-mark=word]'); await page.waitForFunction(() => LAYERS.length >= 2); await page.click('.tabs [data-tab=layers]'); await page.waitForSelector('#sizeRead');
       await page.fill('#pLayers [data-win]', '3.5'); await page.dispatchEvent('#pLayers [data-win]', 'change'); await page.selectOption('#pLayers [data-placement]', 'left chest');
@@ -3638,7 +3638,7 @@ await journey('J262', 'The Studio feels like a designer\'s tool: Shift-click and
     await page.keyboard.press('Escape'); await page.keyboard.press('Control+k'); await page.waitForSelector('#proPal[open]');
     await page.keyboard.type('zoom to fit'); ok(/Zoom to fit/.test(await page.innerText('#proPal li[aria-selected=true]')), '11. ⌘K finds a command by name');
     await page.keyboard.press('Enter'); await page.waitForFunction(() => !document.querySelector('#proPal[open]'));
-    await page.keyboard.press('Control+k'); await page.keyboard.type('embroid'); ok(/Embroidery/.test(await page.innerText('#proPal li[aria-selected=true]')), '   and finds the embroidery tool too');
+    await page.keyboard.press('Control+k'); await page.keyboard.type('embroid'); const sel = await page.evaluate(() => ({ v: document.querySelector('#proPal input').value, s: document.querySelector('#proPal li[aria-selected=true]')?.textContent, ae: document.activeElement?.outerHTML?.slice(0, 80) })); ok(/Embroidery/.test(sel.s), '   and finds the embroidery tool too', sel);
     await page.keyboard.press('Escape');
     await page.keyboard.press('Shift+Slash'); await page.waitForSelector('#proKeys[open]'); ok(/Align top/.test(await page.innerText('#proKeys')), '12. ? lists the keys');
     await page.click('#proKeys [data-close]');
@@ -3766,6 +3766,54 @@ await journey('J264', 'Embroidery without a digitiser: the Studio digitizes a gr
     ok(await page.evaluate(() => document.querySelector('#embRow').value) === '0.45', '6. the fix "rows 0.45 mm" sets the density to it');
     await page.waitForFunction(() => document.querySelector('#embReview')?.dataset.score !== '70', null, { timeout: 60000 });
     const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 60000 }), page.click('#embDlg [data-embdl="dst"]')]); ok(/\.dst$/.test(dl.suggestedFilename()), '7. and the machine file downloads as reviewed', dl.suggestedFilename());
+    ok(errs.length === 0, '   no page errors', errs);
+  } finally { await b.close(); await cleanup(brands, plan.plan?.id); }
+});
+
+await journey('J265', 'One board and components in the Studio: Board shows the picture, the flat front and back, and the flat in each colourway side by side, and a frame opens its view; a layer made a component goes into the library and its copies are marked, chosen together, swapped together for another library graphic at the same size, and detached', async () => {
+  const { brands, plan } = await conceptSetup();
+  if (!playwright) { ok(true, 'needs a browser'); await cleanup(brands, plan.plan?.id); return; }
+  const line = plan.lines.find(l => l.category === 'tops') || plan.lines[0], c = (await K(`/plans/${plan.plan.id}/lines/${line.id}/concepts`, { body: { count: 1 } })).json.concepts[0];
+  await K(`/concepts/${c.id}/colourways`, { method: 'PUT', body: { colourways: [{ name: 'Washed black', hex: '#1f1f22' }, { name: 'Moss', hex: '#5b6648' }] } });
+  const b = await playwright.chromium.launch(), shots = process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp';
+  try {
+    const oc = await b.newContext({ viewport: { width: 1500, height: 980 } }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); localStorage.setItem('fb.helper.on', '0'); } catch {} }, kyleT);
+    const page = await oc.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
+    await page.goto(`${BASE}/lab/studio?concept=${c.id}`, { waitUntil: 'networkidle' }); await page.waitForSelector('#pLayers .ly', { timeout: 20000 }); await page.waitForFunction(() => !document.querySelector('#busy:not(.hidden)'));
+    // the board
+    await page.click('#viewSeg [data-v=board]'); await page.waitForFunction(() => document.getElementById('boardHost')?.dataset.ready === '1', null, { timeout: 60000 });
+    const fr = await page.evaluate(() => ({ piece: [...document.querySelectorAll('#bPiece figcaption span')].map(e => e.textContent), cws: [...document.querySelectorAll('#boardBody [data-cw] figcaption span')].map(e => e.textContent), svgs: document.querySelectorAll('#boardBody figure svg').length, fills: [...document.querySelectorAll('#boardBody [data-cw] .fr')].map(f => f.innerHTML.replace(/_b\d+/g, '')), art: document.querySelector('#bPiece [data-bopen=front] svg image') != null }));
+    ok(JSON.stringify(fr.piece) === '["Picture","Flat front","Flat back"]', '1. Board: the picture and the flat front and back side by side', fr.piece);
+    ok(fr.cws.length === 2 && /Washed black/.test(fr.cws[0]) && fr.fills[0] !== fr.fills[1], '   and the flat in each colourway, in its colour', { cws: fr.cws });
+    ok(fr.art, '   the flats carry the graphics placed on them');
+    await page.screenshot({ path: `${shots}/lab-studio-board.png` }).catch(() => {});
+    await page.click('#bPiece [data-bopen=back]'); await page.waitForFunction(() => VMODE === 'back');
+    ok(true, '2. a frame opens its view (the flat back)');
+    await page.evaluate(() => setVMode('picture')); await page.waitForFunction(() => VMODE === 'picture');
+    // components
+    await page.click('.tabs [data-tab=add]'); await page.click('#pAdd [data-mark=word]'); await page.waitForFunction(() => LAYERS.length >= 2); await page.click('.tabs [data-tab=layers]');
+    await page.waitForSelector('#pLayers [data-comp=make]'); await page.click('#pLayers [data-comp=make]');
+    await page.waitForFunction(() => BOARD.isCopy(selected()), null, { timeout: 30000 });
+    const id1 = await page.evaluate(() => selected().src);
+    ok(/^\/v1\/lab\/art\/[0-9a-f-]{36}$/.test(id1) && await page.locator('#pLayers .ly.on .inst').count() === 1, '3. Make a component: it is in the library, and the layer is its first copy, marked ◇', id1);
+    await page.keyboard.press('Control+d'); await page.waitForFunction(() => BOARD.copiesOf(selected()).length === 2);
+    ok(await page.locator('#pLayers .inst').count() === 2, '   a duplicate is another copy');
+    await page.click('#pLayers [data-comp=all]'); ok((await page.evaluate(() => PRO.chosen().length)) === 2, '4. Choose every copy');
+    await page.evaluate(() => { PRO.SELS.clear(); paintPanels(); });
+    // another library graphic to swap to
+    // another graphic in the library to swap to
+    const up = await K('/library/graphics/upload', { body: { image: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAAAgCAYAAACinX6EAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAbUlEQVRogeXOIQEAIBAAsUvymv4paMXHmEDMrzvn/Swd0NIBLR3Q0gEtHdDSAS0d0NIBLR3Q0gEtHdDSAS0d0NIBLR3Q0gEtHdDSAS0d0NIBLR3Q0gEtHdDSAS0d0NIBLR3Q0gEtHdDSAS0d0BZVvWjxH6zVuQAAAABJRU5ErkJggg==', name: `Red bar ${Date.now()}`, source: 'studio' } });
+    ok(up.status < 300 && up.json.id, '   (a second graphic in the library)', up.json);
+    const w0 = await page.evaluate(() => PRO.box(selected()).w);
+    await page.click('#pLayers [data-comp=swap]'); await page.waitForSelector('#compDlg[open] [data-swap]', { timeout: 20000 });
+    ok(await page.locator('#compAll').isChecked(), '5. Swap offers every copy at once');
+    await page.locator('#compDlg [data-swap]').first().click(); await page.waitForFunction(s => !document.querySelector('#compDlg[open]') && selected().src !== s, id1, { timeout: 30000 });
+    const after = await page.evaluate(() => ({ srcs: [...new Set(LAYERS.filter(l => BOARD.isCopy(l)).map(l => l.src))], copies: BOARD.copiesOf(selected()).length, w: PRO.box(selected()).w }));
+    ok(after.copies === 2 && !after.srcs.includes(id1) && Math.abs(after.w - w0) / w0 < .05, '   both copies are the other graphic now, at the same width', { after, w0 });
+    await page.click('#pLayers [data-comp=detach]'); ok(await page.evaluate(() => !BOARD.isCopy(selected()) && BOARD.copiesOf(LAYERS.find(l => BOARD.isCopy(l))).length === 1), '6. Detach: a plain picture, the other copy still linked');
+    await page.evaluate(() => saveAll()); await page.waitForFunction(() => !DIRTY, null, { timeout: 20000 });
+    await page.reload({ waitUntil: 'networkidle' }); await page.waitForSelector('#pLayers .ly', { timeout: 20000 });
+    ok(await page.evaluate(() => LAYERS.filter(l => BOARD.isCopy(l)).length) === 1 && await page.locator('#pLayers .inst').count() === 1, '7. saved and opened again, the copy is still a copy');
     ok(errs.length === 0, '   no page errors', errs);
   } finally { await b.close(); await cleanup(brands, plan.plan?.id); }
 });

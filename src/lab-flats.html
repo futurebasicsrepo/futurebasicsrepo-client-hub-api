@@ -518,6 +518,9 @@ if(EMBED)window.FBFlats={dirty:()=>Boolean(D&&P&&DIRTY),ready:()=>Boolean(D&&P),
   // the Design workspace's tools, on the flat: the Pencil, brush, eraser, shapes and type draw on the view; undo and redo step through them
   tool:t=>{MTOOL=t||'select';if(t==='area'){if(P&&MODE!=='ai'){MODE='ai';AIBOX=null;if(TAB!=='design')tab('design');paint()}}else if(MODE==='ai'&&!AIBOX){MODE=null;if(P)paint()}mkPlace()},
   undo:()=>mkStep(MUNDO,MREDO),redo:()=>mkStep(MREDO,MUNDO),canUndo:()=>Boolean(MUNDO[VIEW]?.length),canRedo:()=>Boolean(MREDO[VIEW]?.length),
+  // a flat drawn for the Studio's board: the drawing alone, in a colourway's colour or at a size (the artwork as graded for it)
+  frame:(view,{color,size}={})=>{if(!P)return '';const sz=size||P.size,pls=PL.map(q=>{if(!q.grade)return q;const g=q.grade.find(x=>x.sizes.includes(sz));return g?{...q,w:g.w,h:g.h,y:q.y-q.h/2+g.h/2}:q});return renderSvg(color?{...P,color}:P,view,{maskHref:MASK_URL,placements:pls,hrefs:HREF,size:sz,showPom:false,showDims:false,scale:0,editHrefs:EHREF,alloverHref:AOHREF,plain:true,withArt:true})},
+  sizes:()=>[...document.querySelectorAll('#size option')].map(o=>o.value).filter(Boolean),graded:()=>Boolean(P&&PL.some(q=>q.grade)),size:()=>P?.size||'',colourways:()=>D?.colourways||[],
   level:m=>{document.documentElement.dataset.level=m==='simple'?'simple':'pro';if(m==='simple'&&TAB==='pom')tab('pl');if(m==='simple'&&MODE==='stitch'){MODE=null;DRAFT=[];if(P)paint()}}};
 boot();
 </script>

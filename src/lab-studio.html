@@ -428,7 +428,8 @@ function gestMove(){const[a,b]=[...PTRS.values()];if(!a||!b||!GEST)return;const 
   PX=mx-(GEST.mx-GEST.PX)*nz/GEST.Z;PY=my-(GEST.my-GEST.PY)*nz/GEST.Z;Z=nz;draw()}
 function cancelTouchStroke(){const g=DRAG;if(!g)return;if(g.mode==='stroke'&&g.orig){g.l.raster=g.orig;g.l.raster._rid=RID++}DRAG=null;draw()}
 view.addEventListener('pointerdown',e=>{
-  if(!D)return;VIEWONLY=0;const[qx,qy]=pt(e);
+  if(!D)return;VIEWONLY=0;if(document.activeElement?.matches?.('input,textarea,select'))document.activeElement.blur(); // the picture takes the keys back from a field in the panel
+  const[qx,qy]=pt(e);
   // a pointer whose lift the iPad never reported must not hold the canvas: there is one Pencil, so a new Pencil touch ends any stroke still
   // open from an earlier one, and the first finger down means no other finger is still down
   if(e.pointerType==='pen'){for(const[k,q]of PTRS)if(q.type==='pen'&&k!==e.pointerId)PTRS.delete(k);if(DRAG&&DRAG.type==='pen'&&DRAG.pid!==e.pointerId)endDrag({pointerId:DRAG.pid})}
@@ -527,7 +528,7 @@ function addLayer(l,{silent=false,top=false}={}){
   SEL=l.id;if(!silent)commit();paintPanels();draw();return l}
 function removeLayer(l){if(l.kind==='base'&&LAYERS.filter(x=>x.kind==='base').length<2){toast('The base picture stays. Hide it instead if you need to.');return}LAYERS=LAYERS.filter(x=>x!==l);SEL=LAYERS.length?LAYERS[LAYERS.length-1].id:null;commit();paintPanels();draw()}
 function moveLayer(l,d){const i=LAYERS.indexOf(l),j=clamp(i+d,0,LAYERS.length-1);if(i===j)return;LAYERS.splice(i,1);LAYERS.splice(j,0,l);commit();paintPanels();draw()}
-function duplicate(l){const c={...copyL(l),id:uid(),name:l.name+' copy',_pc:null,_pk:null};if(isRaster(l))c.raster=cloneCanvas(l.raster);if(c.kind==='base'){c.kind='image';c.locked=false}if(!fixed(c)){c.x+=20;c.y+=20}addLayer(c)}
+function duplicate(l){const c={...copyL(l),id:uid(),name:l.name+' copy',_pc:null,_pk:null};if(isRaster(l)){c.raster=cloneCanvas(l.raster);if(l.raster._rid===l._srcRid)c._srcRid=c.raster._rid}if(c.kind==='base'){c.kind='image';c.locked=false}if(!fixed(c)){c.x+=20;c.y+=20}addLayer(c)}
 // type and shapes become a picture layer (with their look baked in), so they can be painted on, rubbed out and distressed by hand
 function rasterize(l){const c=processed(l),r=cloneCanvas(c),n={...fresh('image',{name:l.name}),x:l.x,y:l.y,scale:l.scale,rot:l.rot,flip:l.flip,opacity:l.opacity,blend:l.blend,raster:r,src:null,dirty:true};const i=LAYERS.indexOf(l);LAYERS[i]=n;SEL=n.id;commit();paintPanels();draw()}
 const thumbOf=l=>{try{const c=processed(l),t=canvas(80,80),x=t.getContext('2d'),k=Math.min(80/c.width,80/c.height);x.drawImage(c,(80-c.width*k)/2,(80-c.height*k)/2,c.width*k,c.height*k);return t.toDataURL('image/png')}catch{return ''}};
@@ -909,7 +910,7 @@ let TT=0;function toast(text,href){if(!text)return;let el=$('#stToast');if(!el){
 function paintSub(){const c=D.concept;$('#tryBtn').classList.toggle('hidden',GMODE);if(GMODE&&TAGM){const t=TAGM.spec;$('#cName').textContent=c.name;$('#cSub').textContent=`Tag · ${t.widthMm} × ${t.heightMm} mm · ${t.shape}${t.fold&&t.fold!=='none'?' · '+t.fold:''} · ${t.material}${TAGM.spec.face?'':' · not designed yet'}`;$('#apply').textContent='Use on the tag';$('#expKeepNew').classList.add('hidden');return}
   if(GMODE){$('#cName').textContent=c.name;$('#cSub').textContent=`${GID?'Graphic in the library':'New graphic, not kept yet'} · ${W}×${H}px · clear background`;$('#apply').textContent=GID?'Update the graphic':'Keep in the library';$('#expKeepNew').classList.toggle('hidden',!GID);return}const st={draft:'Draft',approved:'Approved',rejected:'Rejected',tech_pack:'Tech pack'}[c.status]||c.status;$('#cName').textContent=c.name;$('#cSub').innerHTML=`${esc(st)} · ${W}×${H}px${D.canRestore?' · <button class="btn sm q" type="button" id="restore" style="min-height:22px;padding:0 8px">Put the old picture back</button>':''}`;const r=$('#restore');if(r)r.onclick=async()=>{if(!await ask('Put the old picture back?','The concept gets the picture it had before the studio. Your design here stays as it is.','Put it back'))return;try{await api(`/v1/lab/concepts/${CID}/studio/restore`,{body:{}});D.canRestore=false;paintSub();toast('The old picture is back on the concept.')}catch(x){toast(x.message)}}}
 document.addEventListener('keydown',e=>{
-  if(!D)return;if(window.VEC?.key(e)||window.PRO?.key(e))return;const typing=e.target.closest&&e.target.closest('input,textarea,select,[contenteditable]'),mod=e.ctrlKey||e.metaKey;
+  if(!D)return;if(window.VEC?.key(e)||window.PRO?.key(e))return;const typing=e.target.closest&&e.target.closest('input,textarea,select,[contenteditable]')&&!e.target.closest('dialog:not([open])'),mod=e.ctrlKey||e.metaKey;
   if(mod&&e.key.toLowerCase()==='s'){e.preventDefault();saveAll();return}
   if(typing||VMODE==='front'||VMODE==='back')return; // the flats take their own keys, in their frame
   if(mod&&e.key.toLowerCase()==='z'){e.preventDefault();e.shiftKey?redo():undo();return}if(mod&&e.key.toLowerCase()==='y'){e.preventDefault();redo();return}
@@ -1352,6 +1353,7 @@ boot();
 <script src="/lab/vendor/polygon-clipping.js"></script>
 <script src="/lab/studio-vec.js"></script>
 <script src="/lab/studio-emb.js"></script>
+<script src="/lab/studio-board.js"></script>
 <script src="/helper.js" defer></script>
 </body>
 </html>
