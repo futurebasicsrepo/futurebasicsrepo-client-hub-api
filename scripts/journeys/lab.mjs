@@ -3861,6 +3861,14 @@ await journey('J267', 'Hard goods and electronics are engineered as 3D parts: an
     g = await K(`/concepts/${fid}/assembly`); const kid = { ...g.json.spec, age: '0+' };
     const fk = await K(`/concepts/${fid}/assembly`, { method: 'PUT', body: { spec: kid } });
     ok(g.json.spec.arch === 'figure' && fk.json.eng.checks.some(c => c.level === 'bad' && /small-parts cylinder/.test(c.text)) && fk.json.eng.certs.some(c => /ASTM F963/.test(c.name)), '6. a figure for under-3s: the arms are small parts, and toy safety testing is listed');
+    // audio: a CD player, a cassette player and a powered speaker, each with the parts it is made of
+    const cdp = await K('/concepts/from-scratch', { body: { category: 'electronics', name: `Retro CD player ${stamp}` } }), cdid = cdp.json.concept?.id; made.push(cdid);
+    g = await K(`/concepts/${cdid}/assembly`); const kinds = sp => new Set(sp.parts.filter(p => p.elec).map(p => p.elec.kind));
+    ok(g.json.spec.arch === 'cdplayer' && ['cdmech', 'psu', 'iec', 'dac', 'vfd', 'rca'].every(k => kinds(g.json.spec).has(k)) && !g.json.eng.checks.some(c => c.level === 'bad'), '6b. a CD player: the loader, mains supply and inlet, DAC, display and line outputs, nothing to fix', [...kinds(g.json.spec)]);
+    ok(g.json.eng.certs.some(c => /IEC 60825-1/.test(c.name)) && g.json.eng.certs.some(c => /CE-LVD/.test(c.name)) && g.json.eng.power.mains, '   with the laser and mains safety certifications, powered from the mains');
+    const ts = await K(`/concepts/${cdid}/assembly/start`, { body: { arch: 'cassette' } }), ss = await K(`/concepts/${cdid}/assembly/start`, { body: { arch: 'speaker', radio: 'ble' } });
+    ok(ts.json.eng.power.cell === 'aa' && ts.json.eng.power.runtime > 8 && kinds(ts.json.spec).has('tapemech') && !ts.json.eng.checks.some(c => c.level === 'bad'), '   a cassette player runs on two AA cells, with the tape transport', { run: ts.json.eng.power.runtime });
+    ok(['woofer', 'tweeter', 'amp2'].every(k => kinds(ss.json.spec).has(k)) && ss.json.spec.parts.some(p => p.resin === 'MDF') && !ss.json.eng.checks.some(c => c.level === 'bad'), '   a powered speaker: MDF cabinet, woofer, tweeter and a 2 × 20 W amplifier');
     const email = `eng-${stamp}@selfserve.test`, started = await call('/v1/public/start', { body: { email, name: 'Other Room Co', title: 'Lamp', photos: [jpeg()] } });
     const ocid = started.json.client?.id || sql(`select client_id from users where lower(email)='${email}'`), ouid = sql(`select id from users where lower(email)='${email}'`).split('\n')[0], oslug = sql(`select slug from clients where id='${ocid}'`).split('\n')[0];
     sql(`update users set email_verified_at=now() where id='${ouid}'`); sql(`update clients set lab_free=true where id='${ocid}'`);

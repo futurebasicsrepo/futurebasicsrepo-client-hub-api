@@ -1272,7 +1272,17 @@ screen, the drawing and the files agree. Routes: `src/lab-assembly-routes.js`; s
   ring, a ball or a circuit board, lying along x, y or z, with its material (resin, metal, foam, FR-4 or bought in), process, finish, colour,
   quantity, draft, undercuts, how it is fixed, what it sits in, the order it is built, and the direction and distance it explodes.
 - **Starting points** (`Start from…`), drawn to the size you give: a round device (speaker, hub), a handheld (remote, power bank), a desk
-  device with a display, a tumbler, a case, a figure, or one part. With nothing saved, the page shows the one the concept's words point to.
+  device with a display, a tumbler, a case, a figure, or one part; and audio with its full parts count:
+  - **CD player** (hi-fi component): stamped steel chassis and cover, aluminium front panel and button caps, the CD loader (tray, laser
+    pickup, spindle), a 100–240 V supply and IEC inlet, the main board with the DAC and RCA outputs, a VFD display behind a window, the IR
+    receiver. A radio brings an external antenna (a steel case blocks it); the laser brings IEC 60825-1 and the FDA laser report; mains in a
+    steel case brings the earth bond.
+  - **Cassette player** (portable): the tape transport (motor, capstan, heads) behind a clear door, two AA cells (replaceable: no lithium
+    shipping tests, run time from 7.5 Wh), the board with the tape preamp and headphone amp, keys on top, the jack and the volume wheel.
+  - **Powered speaker** (bookshelf, Bluetooth): MDF cabinet and baffle (CNC routed), woofer and tweeter, bass port, grille, the 2 × 20 W
+    amplifier board standing at the back with the mains inlet, line in and volume through the back panel.
+  Each part draws at its own rail (`v`): a 12 V amplifier and a 5 V CD loader are counted in watts, and a battery's run time comes from
+  the energy at its cell. Every socket (USB-C, mains, RCA, the jack) is checked against the outside of the housing on all three axes. With nothing saved, the page shows the one the concept's words point to.
   **Read the picture** asks Claude for the kind, size and features (`ASSEMBLY_READ_FIXTURE` stands in for it in tests); without a picture or
   a key it reads the words.
 - **The 3D view** (own WebGL, no outside scripts): drag to turn, pinch or scroll to zoom, double-click to reset. **Explode it** or the slider

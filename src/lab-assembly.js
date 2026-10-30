@@ -38,13 +38,15 @@ export const RESINS = {
   'stainless 304': { rho: 7.9, kg: 4, wall: [.4, 20], shrink: 0, clamp: 0, col: '#aeb2b6', metal: true, food: true },
   'zinc (Zamak 3)': { rho: 6.6, kg: 3.5, wall: [.8, 6], shrink: .7, clamp: .7, col: '#a7aaad', metal: true },
   'FR-4': { rho: 1.85, kg: 0, wall: [.4, 3.2], shrink: 0, clamp: 0, col: '#1f5c3a' },
+  'steel SPCC': { rho: 7.85, kg: 1.1, wall: [.5, 3], shrink: 0, clamp: 0, col: '#36383b', metal: true },
+  'MDF': { rho: .75, kg: 1.2, wall: [9, 25], shrink: 0, clamp: 0, col: '#b89a74' },
   'bought in': { rho: 1.5, kg: 0, wall: [0, 99], shrink: 0, clamp: 0, col: '#55585c' }
 };
 // how a part is made: does it need a tool, and what the tool is
 export const PROCESSES = {
   'injection moulding': { tool: 'mould' }, 'overmoulding': { tool: 'mould', k: 1.6 }, 'LSR moulding': { tool: 'mould', k: 1.3 },
   'rotocasting': { tool: 'roto' }, 'blow moulding': { tool: 'blow' }, 'die casting': { tool: 'die' }, 'stamping': { tool: 'stamp' },
-  'CNC machined': { tool: null }, '3D printed': { tool: null }, 'die cut': { tool: 'rule' }, 'PCB fab and SMT': { tool: null }, 'bought in': { tool: null }
+  'CNC machined': { tool: null }, 'CNC routed': { tool: null }, '3D printed': { tool: null }, 'die cut': { tool: 'rule' }, 'PCB fab and SMT': { tool: null }, 'bought in': { tool: null }
 };
 export const FINISHES = ['SPI A-2 (high gloss)', 'SPI B-1 (semi-gloss)', 'SPI C-1 (matte)', 'SPI D-2 (textured)', 'MT-11010 (fine texture)', 'soft-touch paint', 'spray paint', 'pad print', 'anodised', 'brushed', 'none'];
 const TEXTURED = /SPI D|MT-|texture/i;
@@ -72,8 +74,30 @@ export const ELEC = {
   'oled': { name: 'OLED display, 1.3 in', ma: 20, ua: 5, duty: .3, cost: 3.5, size: [35, 33, 1.5], bus: 'SPI' },
   'lcd': { name: 'IPS LCD, 2.4 in, with backlight', ma: 60, ua: 10, duty: .4, cost: 4.8, size: [42, 60, 2.6], bus: 'SPI' },
   'motor': { name: 'Vibration motor', ma: 80, ua: 0, duty: .02, cost: .4, size: [10, 10, 3], bus: 'PWM', round: true },
-  'battery': { name: 'Li-ion pouch cell, 3.7 V', ma: 0, ua: 0, duty: 0, cost: 0, size: [34, 50, 6], bus: 'power' }
+  'battery': { name: 'Li-ion pouch cell, 3.7 V', ma: 0, ua: 0, duty: 0, cost: 0, size: [34, 50, 6], bus: 'power' },
+  // audio and hi-fi: the mechanisms, the signal chain, the drivers, mains power and the sockets on the back. `v` is the rail a part draws from
+  // (3.7 V, the cell, when not given), so a 12 V amplifier and a 5 V CD loader are counted in watts, not as if they ran on the cell
+  'cdmech': { name: 'CD loader (tray, laser pickup, spindle)', ma: 450, ua: 0, duty: .7, cost: 9.5, size: [150, 140, 32], bus: 'servo + I2S', v: 5, laser: true },
+  'tapemech': { name: 'Cassette transport (motor, capstan, heads)', ma: 150, ua: 0, duty: 1, cost: 6.5, size: [96, 16, 64], bus: 'motor', v: 3 },
+  'dac': { name: 'Audio DAC (PCM5102A)', ma: 20, ua: 5, duty: 1, cost: 1.4, size: [5, 6.5, 1.2], bus: 'I2S', v: 3.3 },
+  'preamp': { name: 'Tape head preamp', ma: 8, ua: 0, duty: 1, cost: .45, size: [5, 4, 1.5], bus: 'analog', v: 3 },
+  'hpamp': { name: 'Headphone amplifier', ma: 12, ua: 0, duty: 1, cost: .6, size: [3, 3, 1], bus: 'analog', v: 3 },
+  'amp2': { name: 'Stereo class-D amplifier, 2 × 20 W (TPA3116)', ma: 1500, ua: 10, duty: .35, cost: 2.6, size: [30, 22, 16], bus: 'I2S', v: 12 },
+  'woofer': { name: 'Woofer, 5.25 in', ma: 0, ua: 0, duty: 0, cost: 7.5, size: [130, 70, 130], bus: 'amp', round: true },
+  'tweeter': { name: 'Tweeter, 1 in silk dome', ma: 0, ua: 0, duty: 0, cost: 3.2, size: [80, 40, 80], bus: 'amp', round: true },
+  'psu': { name: 'AC-DC power supply, 100–240 V in, 12 V 36 W', ma: 0, ua: 0, duty: 0, cost: 5.5, size: [100, 60, 30], bus: 'power', mains: true },
+  'iec': { name: 'IEC C8 mains inlet', ma: 0, ua: 0, duty: 0, cost: .45, size: [28, 20, 22], bus: 'power', port: true },
+  'rca': { name: 'RCA jacks, stereo pair', ma: 0, ua: 0, duty: 0, cost: .4, size: [30, 14, 14], bus: 'line', port: true },
+  'jack': { name: '3.5 mm headphone jack', ma: 0, ua: 0, duty: 0, cost: .15, size: [8, 8, 14], bus: 'analog out', port: true },
+  'encoder': { name: 'Rotary encoder with push', ma: 0, ua: 0, duty: 0, cost: .45, size: [12, 20, 12], bus: 'GPIO' },
+  'pot': { name: 'Volume wheel (potentiometer)', ma: 0, ua: 0, duty: 0, cost: .3, size: [6, 6, 16], bus: 'analog' },
+  'ir': { name: 'IR remote receiver', ma: .4, ua: 350, duty: 1, cost: .25, size: [6, 6, 7], bus: 'GPIO', v: 3.3 },
+  'vfd': { name: 'VFD display, 16 characters', ma: 80, ua: 0, duty: .9, cost: 6.5, size: [110, 26, 6], bus: 'SPI', v: 5 },
+  'antenna': { name: 'External antenna, 2.4 GHz (on the back)', ma: 0, ua: 0, duty: 0, cost: 1.2, size: [10, 22, 10], bus: 'RF', port: true, round: true },
+  'aa': { name: 'Battery holder, 2 × AA (replaceable)', ma: 0, ua: 0, duty: 0, cost: .35, size: [29, 14.5, 50], bus: 'power' }
 };
+// the cells a product runs from: a Li-ion pouch (3.7 V) or two AA cells (3 V, 2,500 mAh alkaline)
+const CELLS = { battery: { v: 3.7 }, aa: { v: 3 } };
 // a pouch cell's size and price from its capacity (about 500 Wh/L packed, 5 mm thick until it gets large)
 export function cellOf(mah) {
   const m = num(mah, 50, 20000, 1000), vol = m * 3.7 / 500 * 1e6 / 1000, t = m > 3000 ? 8 : m > 1200 ? 6 : 5, a = vol / t, w = Math.sqrt(a * .62), l = a / w;
@@ -162,15 +186,16 @@ export function cleanPart(q = {}, i = 0) {
   if (shellLike(p)) { p.wall = r2(num(q.wall, .3, 20, 2)); p.open = q.open === '-' ? '-' : '+'; }
   if (shape === 'box' || shape === 'shell' || shape === 'pcb') p.r = r1(num(q.r, 0, 500, shape === 'pcb' ? .5 : 2));
   if (PROCESSES[process].tool) { p.draft = r1(num(q.draft, 0, 10, 1)); p.undercuts = Math.round(num(q.undercuts, 0, 12, 0)); }
-  if (process === 'bought in' || process === 'CNC machined' || process === '3D printed' || process === 'PCB fab and SMT') p.cost = r2(num(q.cost, 0, 5000, 0));
+  if (process === 'bought in' || process === 'CNC machined' || process === 'CNC routed' || process === '3D printed' || process === 'PCB fab and SMT') p.cost = r2(num(q.cost, 0, 5000, 0));
   if (q.food) p.food = true;
   if (q.small === false) p.small = false;
-  if (q.elec && ELEC[q.elec.kind]) { const e = ELEC[q.elec.kind]; p.elec = { kind: q.elec.kind, ma: r2(num(q.elec.ma, 0, 5000, e.ma)), ua: r2(num(q.elec.ua, 0, 1e5, e.ua)), duty: r2(num(q.elec.duty, 0, 1, e.duty)) }; if (q.elec.kind === 'battery') p.elec.mah = Math.round(num(q.elec.mah, 50, 20000, 1000)); }
+  if (q.elec && ELEC[q.elec.kind]) { const e = ELEC[q.elec.kind]; p.elec = { kind: q.elec.kind, ma: r2(num(q.elec.ma, 0, 5000, e.ma)), ua: r2(num(q.elec.ua, 0, 1e5, e.ua)), duty: r2(num(q.elec.duty, 0, 1, e.duty)) }; if (CELLS[q.elec.kind]) p.elec.mah = Math.round(num(q.elec.mah, 50, 20000, q.elec.kind === 'aa' ? 2500 : 1000)); }
   if (shape === 'pcb') { p.resin = 'FR-4'; p.process = 'PCB fab and SMT'; p.layers = [2, 4, 6].includes(Number(q.layers)) ? Number(q.layers) : 2; p.colour = /^#[0-9a-f]{6}$/i.test(q.colour || '') ? p.colour : RESINS['FR-4'].col; }
   return p;
 }
 export const ARCHES = { puck: { kind: 'electronics', label: 'Round device (speaker, hub, puck)' }, handheld: { kind: 'electronics', label: 'Handheld (remote, power bank, tracker)' }, desk: { kind: 'electronics', label: 'Desk device with a display (clock, station)' },
-  tumbler: { kind: 'goods', label: 'Tumbler or bottle (cup, lid, gasket, straw)' }, case: { kind: 'goods', label: 'Case or box (base, lid, hinge, latch)' }, figure: { kind: 'goods', label: 'Figure (vinyl collectible on a base)' }, custom: { kind: 'goods', label: 'Start from one part' } };
+  tumbler: { kind: 'goods', label: 'Tumbler or bottle (cup, lid, gasket, straw)' }, case: { kind: 'goods', label: 'Case or box (base, lid, hinge, latch)' }, figure: { kind: 'goods', label: 'Figure (vinyl collectible on a base)' },
+  cdplayer: { kind: 'electronics', label: 'CD player (hi-fi component)' }, cassette: { kind: 'electronics', label: 'Cassette player (portable)' }, speaker: { kind: 'electronics', label: 'Powered speaker (bookshelf, Bluetooth)' }, custom: { kind: 'goods', label: 'Start from one part' } };
 export const AGES = { '0+': 'All ages, under 3 included', '3+': '3 years and up', '8+': '8 years and up', '14+': 'Collectible, 14 and up' };
 export function cleanAssembly(s = {}) {
   const arch = ARCHES[s.arch] ? s.arch : 'custom', parts = (Array.isArray(s.parts) ? s.parts : []).slice(0, 80).map(cleanPart);
@@ -208,7 +233,7 @@ export function archetype(arch, dims = {}, { mah = null, radio = null, display =
     const W = num(dims.w, 25, 200, 46), Lg = num(dims.d, 50, 300, 128), H = num(dims.h, 8, 80, 18), w = 1.6, rad = radio === 'none' ? 'mcu' : radio === 'wifi' ? 'wifi' : 'ble', hb = H / 2, room = [W - 2 * w - 2, Lg - 2 * w - 13, hb - w - .5], mA = fitCell(mah || 1200, room, Boolean(mah)), cell = cellOf(mA);
     add({ id: 'bottom', name: 'Bottom housing', shape: 'shell', size: [W, Lg, hb], at: [0, 0, hb / 2], r: 8, wall: w, open: '+', resin: 'PC/ABS', finish: 'soft-touch paint', draft: 1.5, undercuts: 1, order: 1, lvl: 0, main: true });
     add({ id: 'screws', name: 'Screw, M1.6 × 5', shape: 'cyl', size: [1.6, 1.6, 5], at: [0, Lg * .35, -2.5], resin: 'bought in', process: 'bought in', cost: .02, qty: 4, fix: 'screws', order: 8, dir: [0, 0, -1], lvl: 2 });
-    const bs = cell.size[0] > room[0] && cell.size[1] <= room[0] ? [cell.size[1], cell.size[0], cell.size[2]] : cell.size; // turned to lie along the handheld when that fits better
+    const bs = cell.size[1] > room[1] || cell.size[0] > room[0] ? [cell.size[1], cell.size[0], cell.size[2]] : cell.size; // turned to lie along the handheld when that fits better
     add({ id: 'battery', name: `Li-ion cell, ${mA} mAh`, shape: 'box', size: bs, at: [0, -Lg / 2 + w + 11 + bs[1] / 2, w + .4 + bs[2] / 2], resin: 'bought in', process: 'bought in', cost: cell.cost, fix: 'adhesive', order: 2, parent: 'bottom', elec: { kind: 'battery', mah: mA }, lvl: .7 });
     // the board runs the length of the inside: the status light at the top, the keys below it, then the radio module and the power parts,
     // and the USB-C port at the bottom end
@@ -235,6 +260,69 @@ export function archetype(arch, dims = {}, { mah = null, radio = null, display =
     add({ id: 'back', name: 'Back housing', shape: 'shell', axis: 'y', size: [W, db, H], at: [0, D / 2 - db / 2, H / 2], r: 6, wall: w, open: '-', resin: 'PC/ABS', finish: 'SPI B-1 (semi-gloss)', draft: 1, undercuts: 1, fix: 'place', order: 1, dir: [0, 1, 0], lvl: 0, main: true });
     add({ id: 'screws', name: 'Screw, M2 × 8 self-tapping', shape: 'cyl', axis: 'y', size: [2, 8, 2], at: [W * .35, D / 2 + 4, H * .8], resin: 'bought in', process: 'bought in', cost: .02, qty: 4, fix: 'screws', order: 8, dir: [0, 1, 0], lvl: 2.5 });
     add({ id: 'feet', name: 'Foot pad', shape: 'cyl', size: [10, 10, 1.5], at: [W * .35, 0, -.75], resin: 'silicone (LSR)', process: 'LSR moulding', qty: 4, fix: 'adhesive', order: 9, dir: [0, 0, -1], lvl: 1.2 });
+  } else if (arch === 'cdplayer') {
+    // a hi-fi component: a stamped steel chassis and cover, an aluminium front panel, the CD loader at the front, the mains supply at the back left,
+    // the main board at the back right with the line outputs through the back panel, the display and IR window behind the front panel
+    const W = num(dims.w, 290, 500, 430), D = num(dims.d, 230, 450, 300), H = num(dims.h, 60, 160, 88), w = 1, tb = Math.min(30, H * .4), so = 6, rad = radio === 'ble' ? 'ble' : radio === 'wifi' ? 'wifi' : 'mcu', cm = ELEC.cdmech.size;
+    const steel = { resin: 'steel SPCC', process: 'stamping', finish: 'spray paint', r: 1, wall: w };
+    add({ id: 'chassis', name: 'Chassis', shape: 'shell', size: [W, D, tb], at: [0, 0, tb / 2], open: '+', ...steel, fix: 'place', order: 1, lvl: 0, main: true });
+    add({ id: 'feet', name: 'Foot', shape: 'cup', size: [36, 36, 10], at: [W * .4, D * .35, -5], wall: 2, open: '+', resin: 'ABS', finish: 'SPI C-1 (matte)', draft: 1, qty: 4, fix: 'screws', order: 2, dir: [0, 0, -1], lvl: 1 });
+    elec('psu', { at: [-W / 2 + w + 6 + 50, D / 2 - w - 8 - 30, w + so + 15], parent: 'chassis', fix: 'screws', fixQty: 4, order: 2, lvl: 1 });
+    elec('iec', { at: [-W / 2 + w + 6 + 100 + 30, D / 2 - 10.5, w + so + 20], parent: 'chassis', fix: 'screws', fixQty: 2, order: 2, dir: [0, 1, 0], lvl: 1 });
+    elec('cdmech', { at: [-W / 2 + w + 4 + cm[0] / 2, -D / 2 + w + 2 + cm[1] / 2, w + so + cm[2] / 2], parent: 'chassis', fix: 'screws', fixQty: 4, order: 3, lvl: 1.4 });
+    const x0 = -W / 2 + w + 6 + 104, x1 = W / 2 - w - 4, y0 = -D / 2 + w + 2 + cm[1] + 4, y1 = D / 2 - w - 3, pw = x1 - x0, pd = y1 - y0, px = (x0 + x1) / 2, py = (y0 + y1) / 2, top = w + so + 1.6; // behind the loader, right of the supply
+    add({ id: 'pcb', name: 'Main board', shape: 'pcb', size: [pw, pd, 1.6], at: [px, py, w + so + .8], fix: 'screws', fixQty: 4, order: 3, parent: 'chassis', lvl: 1.1 });
+    elec(rad, { at: [px - pw * .2, py, top + ELEC[rad].size[2] / 2], parent: 'pcb', order: 3, lvl: 1.3 }); elec('dac', { at: [px + pw * .1, py - pd * .2, top + .6], parent: 'pcb', order: 3, lvl: 1.3 });
+    elec('reg', { at: [px + pw * .3, py + pd * .1, top + .5], parent: 'pcb', order: 3, lvl: 1.3 }); elec('rca', { at: [px + pw * .25, D / 2 - 7.5, top + 7], parent: 'pcb', order: 3, dir: [0, 1, 0], lvl: 1.3 });
+    const dx = W / 2 - w - 12 - 55, dz = H * .62;
+    if (rad !== 'mcu') elec('antenna', { axis: 'y', at: [W / 2 - 40, D / 2 - 1, H * .6], parent: 'cover', fix: 'screws', order: 8, dir: [0, 1, 0], lvl: 3.4 }); // a steel case: the radio needs its antenna outside
+    elec('vfd', { axis: 'y', size: [110, 6, 26], at: [dx, -D / 2 + w + 3.4, dz], parent: 'chassis', fix: 'screws', fixQty: 2, order: 4, dir: [0, -1, 0], lvl: .6 });
+    elec('ir', { at: [W / 2 - w - 6, -D / 2 + w + 4, dz], parent: 'chassis', order: 4, dir: [0, -1, 0], lvl: .6 });
+    elec('button', { name: 'Tact switches (play, pause, stop, skip, open)', qty: 5, at: [W * .3, -D / 2 + w + 3.4, H * .28], parent: 'chassis', order: 4, dir: [0, -1, 0], lvl: .6 });
+    add({ id: 'cover', name: 'Top cover', shape: 'shell', size: [W, D, H - tb], at: [0, 0, tb + (H - tb) / 2], open: '-', ...steel, fix: 'screws', fixQty: 6, order: 7, lvl: 3.2, main: true });
+    add({ id: 'panel', name: 'Front panel', shape: 'box', axis: 'y', size: [W, 8, H], r: 1, at: [0, -D / 2 - 4, H / 2], resin: 'aluminium 6061', process: 'CNC machined', cost: r2(4 + W * H / 1e4 * 1.2), finish: 'anodised', fix: 'screws', fixQty: 4, order: 8, dir: [0, -1, 0], lvl: 1.6 });
+    add({ id: 'window', name: 'Display window', shape: 'box', axis: 'y', size: [124, 1.5, 34], r: 2, at: [dx, -D / 2 - 8 - .75, dz], resin: 'PMMA (acrylic)', finish: 'SPI A-2 (high gloss)', draft: .5, fix: 'adhesive', order: 9, dir: [0, -1, 0], lvl: 2.4 });
+    add({ id: 'caps', name: 'Button caps', shape: 'box', axis: 'y', size: [12, 6, 8], r: 1, at: [W * .3, -D / 2 - 8 - 3, H * .28], resin: 'aluminium 6061', process: 'CNC machined', cost: .3, finish: 'anodised', qty: 5, fix: 'press', order: 9, dir: [0, -1, 0], lvl: 2.4 });
+  } else if (arch === 'cassette') {
+    // a portable cassette player standing up: the transport behind a clear door at the front left, two AA cells beside it, the board behind
+    // both, the keys along the top, the headphone jack on top and the volume wheel on the right side, a belt clip on the back
+    const W = num(dims.w, 120, 220, 136), D = num(dims.d, 26, 70, 34), H = num(dims.h, 75, 180, 90), w = 1.6, df = D / 2, ms = ELEC.tapemech.size;
+    const mx = -W / 2 + w + .6 + ms[0] / 2, my = -D / 2 + w + .6 + ms[1] / 2, mz = Math.max(w + .6 + ms[2] / 2, H / 2 + 1);
+    add({ id: 'back', name: 'Back housing', shape: 'shell', axis: 'y', size: [W, D - df, H], r: 6, at: [0, D / 2 - (D - df) / 2, H / 2], wall: w, open: '-', resin: 'ABS', finish: 'SPI B-1 (semi-gloss)', draft: 1, undercuts: 1, fix: 'place', order: 1, dir: [0, 1, 0], lvl: 1.6, main: true });
+    elec('aa', { at: [W / 2 - w - .6 - 14.5, -D / 2 + w + .6 + 7.25, w + .6 + 25], parent: 'front', fix: 'place', order: 2, dir: [0, -1, 0], lvl: 1.4, elec: { kind: 'aa', mah: mah || 2500 } });
+    elec('tapemech', { at: [mx, my, mz], parent: 'front', fix: 'screws', fixQty: 3, order: 3, dir: [0, -1, 0], lvl: 1.6 });
+    const by = my + ms[1] / 2 + 1.5, pz = w + 2 + (H - 2 * w - 22) / 2, bk = by + .5;
+    add({ id: 'pcb', name: 'Main board', shape: 'pcb', axis: 'y', size: [W - 2 * w - 4, 1, H - 2 * w - 22], at: [0, by, pz], fix: 'screws', fixQty: 3, order: 4, parent: 'back', dir: [0, 1, 0], lvl: .4 });
+    const back = (k, x, z) => { const e = ELEC[k].size; elec(k, { axis: 'y', size: [e[0], e[2], e[1]], at: [x, bk + e[2] / 2, z], parent: 'pcb', order: 4, dir: [0, 1, 0], lvl: .7 }); };
+    back('preamp', -W * .25, pz + 10); back('hpamp', W * .18, pz + 10); back('mcu', 0, pz - 8); back('reg', W * .3, pz - 12);
+    elec('jack', { at: [W / 2 - w - 14, by + 3, H - 7.2], order: 5, dir: [0, 0, 1], lvl: .8 });
+    elec('pot', { at: [W / 2 - 2.6, by + 6, H * .78], order: 5, dir: [1, 0, 0], lvl: .8 });
+    elec('button', { name: 'Tact switches (play, stop, rewind, fast-forward, record)', qty: 5, at: [-W * .15, by + 2, H - w - 2.5], order: 5, dir: [0, 0, 1], lvl: .6 });
+    add({ id: 'keys', name: 'Keys', shape: 'shell', size: [W * .5, 10, 8], r: 1.5, at: [-W * .15, by + 1, H + 2], wall: 1.5, open: '-', resin: 'ABS', finish: 'SPI C-1 (matte)', draft: 1, fix: 'place', order: 6, dir: [0, 0, 1], lvl: 1.4 });
+    add({ id: 'front', name: 'Front housing', shape: 'shell', axis: 'y', size: [W, df, H], r: 6, at: [0, -D / 2 + df / 2, H / 2], wall: w, open: '+', resin: 'ABS', finish: 'SPI B-1 (semi-gloss)', draft: 1, undercuts: 1, fix: 'snap', order: 7, dir: [0, -1, 0], lvl: 2.6, main: true });
+    add({ id: 'door', name: 'Cassette door with window', shape: 'box', axis: 'y', size: [ms[0] + 4, 1.5, ms[2] + 2], r: 3, at: [mx, -D / 2 - .75, mz], resin: 'PC clear', finish: 'SPI A-2 (high gloss)', draft: .5, undercuts: 1, fix: 'snap', order: 8, dir: [0, -1, 0], lvl: 3.4 });
+    add({ id: 'clip', name: 'Belt clip', shape: 'box', axis: 'y', size: [36, 2.5, 50], r: 3, at: [0, D / 2 + 1.25, H * .55], resin: 'POM (acetal)', finish: 'SPI C-1 (matte)', draft: 1, fix: 'screws', fixQty: 2, order: 9, dir: [0, 1, 0], lvl: 2.6 });
+  } else if (arch === 'speaker') {
+    // a powered bookshelf speaker: an MDF cabinet open at the front, closed by the baffle that carries the woofer and tweeter; the amplifier
+    // board stands at the back with the mains inlet, line input and volume through the back panel; a bass port at the top of the back
+    const W = num(dims.w, 130, 400, 170), D = num(dims.d, 190, 450, 230), H = num(dims.h, 220, 600, 280), t = 15, bf = 18, rad = radio === 'none' ? 'mcu' : radio === 'wifi' ? 'wifi' : 'ble';
+    const area = 2 * (W * H + D * H + W * D) / 1e6, wd = Math.max(70, Math.min(130, W - 30, H - 2 * t - 100)), tz = H - t - 46, wz = Math.max(t + 5 + wd / 2, Math.min(H * .36, tz - 45 - wd / 2 - 5)); // the tweeter at the top, the woofer below it with 5 mm between
+    add({ id: 'cab', name: 'Cabinet', shape: 'shell', axis: 'y', size: [W, D - bf, H], r: 3, at: [0, -D / 2 + bf + (D - bf) / 2, H / 2], wall: t, open: '-', resin: 'MDF', process: 'CNC routed', cost: r2(3 + area * 8), finish: 'spray paint', fix: 'glue', order: 1, lvl: 0, main: true });
+    add({ id: 'feet', name: 'Foot pad', shape: 'cyl', size: [16, 16, 2], at: [W * .35, D * .35, -1], resin: 'silicone (LSR)', process: 'LSR moulding', qty: 4, fix: 'adhesive', order: 2, dir: [0, 0, -1], lvl: 1.2 });
+    elec('psu', { at: [0, 11.5, t + .4 + 15], parent: 'cab', fix: 'screws', fixQty: 4, order: 2, lvl: 1.2 }); // the inside lifts out of the top in the exploded view
+    const py = D / 2 - t - 14, pz = t + 4 + H * .225, ff = py - .8, bb = py + .8;
+    add({ id: 'pcb', name: 'Amplifier board', shape: 'pcb', axis: 'y', size: [W - 2 * t - 6, 1.6, H * .45], at: [0, py, pz], fix: 'screws', fixQty: 4, order: 3, parent: 'cab', lvl: 1.8, layers: 4 });
+    const front = (k, x, z) => { const e = ELEC[k].size; elec(k, { axis: 'y', size: [e[0], e[2], e[1]], at: [x, ff - e[2] / 2, z], parent: 'pcb', order: 3, lvl: 1.8 }); };
+    front('amp2', -W * .18, pz - H * .08); front(rad, W * .15, pz + H * .12); front('dac', W * .16, pz - H * .06); front('reg', -W * .25, pz + H * .14);
+    elec('iec', { at: [-W * .2, D / 2 - 10.5, pz - H * .13], parent: 'pcb', fix: 'screws', fixQty: 2, order: 3, lvl: 1.8 });
+    elec('rca', { at: [W * .12, D / 2 - 7.5, pz - H * .13], parent: 'pcb', order: 3, lvl: 1.8 });
+    elec('encoder', { at: [W * .12, D / 2 - 10.5, pz + H * .1], parent: 'pcb', order: 3, lvl: 1.8 });
+    add({ id: 'knob', name: 'Volume knob', shape: 'cyl', axis: 'y', size: [30, 16, 30], at: [W * .12, D / 2 + 8, pz + H * .1], resin: 'aluminium 6061', process: 'CNC machined', cost: 1.2, finish: 'anodised', fix: 'press', order: 9, lvl: 2.4 });
+    add({ id: 'port', name: 'Bass port tube', shape: 'ring', axis: 'y', size: [50, 110, 50], wall: 2.5, at: [0, D / 2 - 55, H * .82], resin: 'ABS', finish: 'SPI C-1 (matte)', draft: 1, fix: 'glue', order: 4, lvl: 3 });
+    add({ id: 'baffle', name: 'Baffle', shape: 'box', axis: 'y', size: [W, bf, H], r: 3, at: [0, -D / 2 + bf / 2, H / 2], resin: 'MDF', process: 'CNC routed', cost: r2(1 + W * H / 1e6 * 8), finish: 'spray paint', fix: 'glue', order: 6, dir: [0, -1, 0], lvl: 1.2 });
+    elec('woofer', { axis: 'y', size: [wd, 70, wd], at: [0, -D / 2 - 1 + 35, wz], parent: 'baffle', fix: 'screws', fixQty: 4, order: 7, dir: [0, -1, 0], lvl: 1.8 });
+    elec('tweeter', { axis: 'y', size: [80, 40, 80], at: [0, -D / 2 - 1 + 20, tz], parent: 'baffle', fix: 'screws', fixQty: 4, order: 7, dir: [0, -1, 0], lvl: 1.8 });
+    add({ id: 'grille', name: 'Grille (cloth on a frame)', shape: 'shell', axis: 'y', size: [W - 4, 10, H - 4], r: 3, at: [0, -D / 2 - 7, H / 2], wall: 2, open: '+', resin: 'ABS', finish: 'none', draft: 1, fix: 'press', order: 10, dir: [0, -1, 0], lvl: 2.8 });
   } else if (arch === 'tumbler') {
     const D = num(dims.w, 50, 160, 88), H = num(dims.h, 80, 400, 180), w = 2.2, lh = 18;
     add({ id: 'body', name: 'Cup body', shape: 'cup', size: [D, D, H - lh + 4], at: [0, 0, (H - lh + 4) / 2], wall: w, open: '+', resin: 'Tritan', finish: 'SPI A-2 (high gloss)', draft: 1, fix: 'place', order: 1, lvl: 0, food: true, main: true });
@@ -265,6 +353,9 @@ export function archetype(arch, dims = {}, { mah = null, radio = null, display =
 // the archetype a concept reads as, from its words (the designer's own words first)
 export function guessArch(c = {}) {
   const t = [c.name, c.spec?.silhouette, c.spec?.description, c.spec?.category].join(' ').toLowerCase();
+  if (/\b(cd|compact disc|disc player)\b/.test(t) && /\b(player|deck|hi-?fi|component|stereo|disc)\b/.test(t)) return 'cdplayer';
+  if (/\b(cassette|walkman|tape (player|deck))\b/.test(t)) return 'cassette';
+  if (/\b(bookshelf|studio monitors?|powered speakers?|monitor speakers?|stereo speakers?|hi-?fi speakers?|floorstanding)\b/.test(t)) return 'speaker';
   if (c.category === 'electronics' || /\b(bluetooth|speaker|battery|usb|charger|electronic)\b/.test(t)) return /\b(remote|controller|power ?bank|handheld|tracker|clicker|key ?finder|fob|wand)\b/.test(t) ? 'handheld' : /\b(display|screen|clock|monitor|station|radio|frame)\b/.test(t) ? 'desk' : 'puck';
   if (/\b(tumbler|bottle|cup|mug|flask|drinkware|thermos|shaker)\b/.test(t)) return 'tumbler';
   if (/\b(figure|figurine|vinyl|collectible|doll|action figure|statue|mascot)\b/.test(t)) return 'figure';
@@ -323,7 +414,7 @@ export function dfm(s) {
       if (big > 600) say(p.id, 'bad', `${p.name}: ${r0(big)} mm long needs a press over 500 t; split it or check the factory's largest press.`);
     }
     if (p.food && !R.food) say(p.id, 'bad', `${p.name}: touches food or drink, and ${p.resin} is not food-contact grade. Use PP, Tritan, PETG, LSR silicone or 304 stainless (FDA 21 CFR 177 / EU 10/2011).`);
-    if (p.parent && byId[p.parent]) {
+    if (p.parent && byId[p.parent] && !(p.elec && (ELEC[p.elec.kind].port || p.elec.kind === 'usbc'))) { // a socket goes through its wall: the socket check below places it
       const par = byId[p.parent], room = shellLike(par) ? roomOf(par, s.parts) : bboxOf(par), b = bboxOf(p), clr = p.shape === 'pcb' ? .5 : .3;
       let worst = Infinity, axis = -1; for (let k = 0; k < 3; k++) { const m = Math.min(b.lo[k] - room.lo[k], room.hi[k] - b.hi[k]); if (m < worst) { worst = m; axis = k; } }
       if (shellLike(par) || par.shape === 'pcb') {
@@ -351,32 +442,48 @@ export function dfm(s) {
 
 // ---- electronics engineering ----------------------------------------------------------------------------------------------------------------------
 const elecParts = s => s.parts.filter(p => p.elec);
+// each part's draw at its own rail (`v`), summed as power and turned back into current at the cell: a 12 V amplifier and a 3 V tape motor
+// add up honestly. Mains products have no cell: their figures are in watts.
 export function power(s) {
-  const es = elecParts(s), cell = es.find(p => p.elec.kind === 'battery'), mah = cell?.elec.mah || 0;
-  const rows = es.filter(p => p.elec.kind !== 'battery').map(p => ({ id: p.id, name: p.name, qty: p.qty, ma: p.elec.ma * p.qty, ua: p.elec.ua * p.qty, duty: p.elec.duty, avg: r2(p.qty * (p.elec.ma * p.elec.duty + p.elec.ua / 1000 * (1 - p.elec.duty))) }));
-  const avg = rows.reduce((t, r) => t + r.avg, 0), sleep = rows.reduce((t, r) => t + r.ua, 0) / 1000, peak = rows.reduce((t, r) => t + r.ma, 0);
-  return { rows, mah, wh: mah ? r2(mah * 3.7 / 1000) : 0, avg: r2(avg), peak: r1(peak), sleepUa: r1(sleep * 1000), runtime: mah && avg ? r1(mah * .85 / avg) : null, standby: mah && sleep ? r0(mah * .85 / sleep / 24) : null, charge: mah ? r1(mah / s.chargeMa * 1.15 + .3) : null, watts: r2(peak * 3.7 / 1000) };
+  const es = elecParts(s), cell = es.find(p => CELLS[p.elec.kind]), cv = cell ? CELLS[cell.elec.kind].v : 3.7, mah = cell?.elec.mah || 0, vOf = p => ELEC[p.elec.kind].v || 3.7;
+  const rows = es.filter(p => !CELLS[p.elec.kind]).map(p => ({ id: p.id, name: p.name, qty: p.qty, ma: p.elec.ma * p.qty, ua: p.elec.ua * p.qty, duty: p.elec.duty, v: vOf(p), avg: r2(p.qty * (p.elec.ma * p.elec.duty + p.elec.ua / 1000 * (1 - p.elec.duty))) }));
+  const mw = rows.reduce((t, r) => t + r.avg * r.v, 0), sleepMw = rows.reduce((t, r) => t + r.ua / 1000 * r.v, 0), peakMw = rows.reduce((t, r) => t + r.ma * r.v, 0);
+  const avg = mw / cv, sleep = sleepMw / cv, li = cell?.elec.kind === 'battery';
+  return { rows, mah, cell: cell ? cell.elec.kind : null, volts: cv, wh: mah ? r2(mah * cv / 1000) : 0, avg: r2(avg), peak: r1(peakMw / cv), avgW: r2(mw / 1000), peakW: r2(peakMw / 1000), sleepUa: r1(sleep * 1000), runtime: mah && avg ? r1(mah * .85 / avg) : null, standby: mah && sleep ? r0(mah * .85 / sleep / 24) : null, charge: mah && li ? r1(mah / s.chargeMa * 1.15 + .3) : null, watts: r2(peakMw / 1000), mains: es.some(p => ELEC[p.elec.kind].mains) };
 }
 export function pcbOf(s) {
   const b = s.parts.find(p => p.shape === 'pcb'); if (!b) return null;
   const ax = b.axis === 'y' ? 1 : b.axis === 'x' ? 0 : 2, dims = [0, 1, 2].filter(k => k !== ax).map(k => b.size[k]), areaCm2 = r1(dims[0] * dims[1] / 100);
   const on = s.parts.filter(p => p.parent === b.id && p.elec), used = on.reduce((t, p) => { const d = [0, 1, 2].filter(k => k !== ax).map(k => p.size[k]); return t + d[0] * d[1] * p.qty; }, 0) / 100;
-  const placements = on.reduce((t, p) => t + p.qty * (p.elec.kind === 'battery' || p.elec.kind === 'speaker' ? 0 : 6), 12);
+  const placements = on.reduce((t, p) => t + p.qty * (CELLS[p.elec.kind] || ['speaker', 'woofer', 'tweeter', 'psu', 'cdmech', 'tapemech'].includes(p.elec.kind) ? 0 : 6), 12);
   const fab = r2(areaCm2 * (b.layers >= 4 ? .09 : .05) + .3), smt = r2(.4 + placements * .012);
   return { id: b.id, w: r1(dims[0]), d: r1(dims[1]), layers: b.layers, areaCm2, fill: Math.round(used / areaCm2 * 100), placements, fab, smt, tallest: r1(Math.max(0, ...on.map(p => p.size[ax]))) };
 }
 function elecChecks(s) {
   const out = [], say = (id, level, text) => out.push({ id, level, text }), byId = Object.fromEntries(s.parts.map(p => [p.id, p])), pw = power(s), pcb = pcbOf(s);
   const radio = elecParts(s).find(p => ELEC[p.elec.kind].radio), metal = s.parts.filter(p => RESINS[p.resin].metal && shellLike(p));
-  if (radio && metal.length) say(radio.id, 'bad', `${radio.name}: the ${metal.map(m => m.name.toLowerCase()).join(' and ')} ${metal.length > 1 ? 'are' : 'is'} metal and will block the radio. Use a plastic housing, or a plastic window over the antenna.`);
-  const cell = elecParts(s).find(p => p.elec.kind === 'battery');
+  if (radio && metal.length && !elecParts(s).some(p => p.elec.kind === 'antenna')) say(radio.id, 'bad', `${radio.name}: the ${metal.map(m => m.name.toLowerCase()).join(' and ')} ${metal.length > 1 ? 'are' : 'is'} metal and will block the radio. Use a plastic housing, or a plastic window over the antenna.`);
+  const cell = elecParts(s).find(p => CELLS[p.elec.kind]);
   if (radio && cell) { const A = bboxOf(radio), B = bboxOf(cell), gap = Math.max(...[0, 1, 2].map(k => Math.max(B.lo[k] - A.hi[k], A.lo[k] - B.hi[k]))); if (gap < 5) say(radio.id, 'warn', `${radio.name}: the battery is ${r1(Math.max(gap, 0))} mm from the antenna; keep 5 mm of clear space (no copper, metal or battery) around its end.`); else say(radio.id, 'ok', `${radio.name}: ${r1(gap)} mm clear of the battery.`); }
-  const usb = elecParts(s).find(p => p.elec.kind === 'usbc');
-  if (usb) { const hs = s.parts.filter(p => shellLike(p) && !RESINS[p.resin].clear), u = bboxOf(usb); let best = Infinity; for (const h of hs) { const b = bboxOf(h); for (let k = 0; k < 2; k++) best = Math.min(best, Math.abs(b.hi[k] - u.hi[k]), Math.abs(u.lo[k] - b.lo[k])); } if (best > 3.2) say(usb.id, 'bad', `${usb.name}: ${r1(best)} mm in from the outside wall; a plug reaches about 6.5 mm in, so bring the port to the wall (within ${r1(hs[0]?.wall + 1.2 || 3)} mm).`); else say(usb.id, 'ok', `${usb.name}: at the wall (${r1(best)} mm), with an opening in the housing (one side action in the tool).`); }
+  // every socket a plug goes into (USB-C, mains, RCA, the headphone jack) has to reach the outside wall on one of its faces
+  // the housings: shells that make up a good share of the product (not keys, feet, a grille or a lid insert)
+  const all = extentOf(s.parts).size.reduce((a, b) => a * b, 1), hs = s.parts.filter(p => shellLike(p) && !RESINS[p.resin].clear && p.shape !== 'ring' && p.size[0] * p.size[1] * p.size[2] >= all * .2);
+  for (const u0 of elecParts(s).filter(p => p.elec.kind === 'usbc' || ELEC[p.elec.kind].port)) {
+    // against the whole housing, so the line where two halves meet is not taken for an outside wall; standing proud of the wall counts as at it
+    const u = bboxOf(u0), b = extentOf(hs); let best = Infinity; for (let k = 0; k < 3; k++) best = Math.min(best, Math.max(0, b.hi[k] - u.hi[k]), Math.max(0, u.lo[k] - b.lo[k]));
+    if (best > 3.2) say(u0.id, 'bad', `${u0.name}: ${r1(best)} mm in from the outside wall; a plug reaches only a few mm in, so bring it to the wall (within ${r1((hs[0]?.wall || 2) + 1.2)} mm).`);
+    else say(u0.id, 'ok', `${u0.name}: at the wall (${r1(best)} mm), through an opening in the housing${hs.some(h => PROCESSES[h.process].tool === 'mould') ? ' (a side action in the tool)' : ''}.`);
+  }
+  // mains inside: a certified supply, creepage, and the earth on a metal case
+  const psu = elecParts(s).find(p => ELEC[p.elec.kind].mains);
+  if (psu) { say(psu.id, 'ok', `${psu.name}: buy it already certified to IEC 62368-1, keep 6.4 mm from anything at mains voltage to any metal a person can touch, and fuse the inlet.`);
+    const mc = s.parts.filter(p => RESINS[p.resin].metal && shellLike(p)); if (mc.length) say(psu.id, 'warn', `Mains in a metal case (${mc.map(m => m.name.toLowerCase()).join(', ')}): bond the case to earth through a 3-pin inlet (Class I) with a green-yellow lead and a star washer, or use a double-insulated (Class II) supply and a 2-pin inlet.`); }
+  const laser = elecParts(s).find(p => ELEC[p.elec.kind].laser);
+  if (laser) say(laser.id, 'ok', `${laser.name}: a Class 1 laser product; buy the loader with its IEC 60825-1 report, and keep the interlock that stops the laser with the tray open.`);
   if (pcb) { if (pcb.fill > 70) say(pcb.id, 'warn', `${byId[pcb.id].name}: parts cover ${pcb.fill}% of it; above 70% the routing gets hard: go to ${pcb.layers >= 4 ? 'a larger board' : '4 layers'}.`); else say(pcb.id, 'ok', `${byId[pcb.id].name}: ${pcb.w} × ${pcb.d} mm, ${pcb.layers} layers, ${pcb.fill}% covered.`); }
   if (pw.mah && pw.runtime != null && pw.runtime < 4) say(cell?.id || 'pcb', 'warn', `Battery: ${pw.runtime} h of use on a charge; a larger cell or a lower duty is worth a look.`);
-  if (cell && pw.wh > 100) say(cell.id, 'bad', `Battery: ${pw.wh} Wh is over 100 Wh: it ships as dangerous goods (Class 9) by sea only.`);
-  if (s.parts.some(p => p.elec?.kind === 'battery') && (s.age === '0+' || s.age === '3+')) say(cell.id, 'warn', 'A battery in a toy: the compartment must need a tool to open (a screw), per 16 CFR 1250 and EN 62115.');
+  if (cell?.elec.kind === 'battery' && pw.wh > 100) say(cell.id, 'bad', `Battery: ${pw.wh} Wh is over 100 Wh: it ships as dangerous goods (Class 9) by sea only.`);
+  if (cell && (s.age === '0+' || s.age === '3+')) say(cell.id, 'warn', 'A battery in a toy: the compartment must need a tool to open (a screw), per 16 CFR 1250 and EN 62115.');
   // heat: everything working at once, inside the housing's outside area, cooled by still air (h ≈ 10 W/m²K)
   const e = extentOf(s.parts.filter(p => shellLike(p))), aM2 = e.size.every(Number.isFinite) ? 2 * (e.size[0] * e.size[1] + e.size[0] * e.size[2] + e.size[1] * e.size[2]) / 1e6 : 0, rise = aM2 ? r1(pw.watts * .5 / (10 * aM2)) : 0;
   if (rise > 25) say(pcb?.id || 'pcb', 'bad', `Heat: about ${rise} °C over the room with everything on; the outside will pass 45 °C. Add vents, a spreader or lower the power.`); else if (rise > 15) say(pcb?.id || 'pcb', 'warn', `Heat: about ${rise} °C over the room with everything on; check touch temperatures against IEC 62368-1.`); else say(pcb?.id || 'pcb', 'ok', `Heat: about ${rise} °C over the room with everything on.`);
@@ -384,19 +491,19 @@ function elecChecks(s) {
 }
 // what the block diagram and the certification rules read: the radios, the battery, the power input
 export function elecFacts(s) {
-  const es = elecParts(s), radios = [...new Set(es.map(p => ELEC[p.elec.kind].radio).filter(Boolean))].join(', '), cell = es.find(p => p.elec.kind === 'battery');
-  return { radios: radios || 'none', batteryChemistry: cell ? 'Li-ion' : 'none', batteryCapacity: cell ? String(cell.elec.mah) : '', batteryVoltage: cell ? '3.7' : '', inputPower: es.some(p => p.elec.kind === 'usbc') ? 'USB-C, 5 V' : '' };
+  const es = elecParts(s), radios = [...new Set(es.map(p => ELEC[p.elec.kind].radio).filter(Boolean))].join(', '), cell = es.find(p => CELLS[p.elec.kind]), aa = cell?.elec.kind === 'aa';
+  return { radios: radios || 'none', batteryChemistry: cell ? (aa ? 'Alkaline AA, replaceable' : 'Li-ion') : 'none', batteryCapacity: cell ? String(cell.elec.mah) : '', batteryVoltage: cell ? (aa ? '3' : '3.7') : '', inputPower: es.some(p => ELEC[p.elec.kind].mains) ? 'AC mains, 100–240 V' : es.some(p => p.elec.kind === 'usbc') ? 'USB-C, 5 V' : '' };
 }
 // the block diagram: power on the left, the brain in the middle, what it talks to on the right, each line named by its bus
 export function blockSvg(s) {
-  const es = elecParts(s), core = es.find(p => ELEC[p.elec.kind].bus === 'core'), pw = ['usbc', 'charger', 'battery', 'reg'].map(k => es.find(p => p.elec.kind === k)).filter(Boolean);
-  const per0 = es.filter(p => !['core', 'power'].includes(ELEC[p.elec.kind].bus)), per = [...per0.filter(p => ELEC[p.elec.kind].bus !== 'amp'), ...per0.filter(p => ELEC[p.elec.kind].bus === 'amp')].sort((a, b) => (a.elec.kind === 'amp' ? 0 : ELEC[a.elec.kind].bus === 'amp' ? .5 : 1) - (b.elec.kind === 'amp' ? 0 : ELEC[b.elec.kind].bus === 'amp' ? .5 : 1)), W = 760, rowH = 46, H = Math.max(pw.length, per.length, 3) * rowH + 70;
+  const es = elecParts(s), core = es.find(p => ELEC[p.elec.kind].bus === 'core'), pw = ['iec', 'psu', 'usbc', 'charger', 'battery', 'aa', 'reg'].map(k => es.find(p => p.elec.kind === k)).filter(Boolean);
+  const per0 = es.filter(p => !['core', 'power'].includes(ELEC[p.elec.kind].bus)), per = [...per0.filter(p => ELEC[p.elec.kind].bus !== 'amp'), ...per0.filter(p => ELEC[p.elec.kind].bus === 'amp')].sort((a, b) => (/^amp2?$/.test(a.elec.kind) ? 0 : ELEC[a.elec.kind].bus === 'amp' ? .5 : 1) - (/^amp2?$/.test(b.elec.kind) ? 0 : ELEC[b.elec.kind].bus === 'amp' ? .5 : 1)), W = 760, rowH = 46, H = Math.max(pw.length, per.length, 3) * rowH + 70;
   const box = (x, y, w, t, sub, fill) => `<g><rect x="${x}" y="${y}" width="${w}" height="34" rx="8" fill="${fill}" stroke="#141416" stroke-width="1.2"/><text x="${x + w / 2}" y="${y + 15}" text-anchor="middle" font-size="11" font-weight="600">${esc(t)}</text><text x="${x + w / 2}" y="${y + 28}" text-anchor="middle" font-size="9" fill="#55585c">${esc(sub)}</text></g>`;
   let g = `<text x="20" y="22" font-size="13" font-weight="700">Block diagram</text><text x="${W - 20}" y="22" text-anchor="end" font-size="10" fill="#55585c">power → brain → what it drives</text>`;
-  pw.forEach((p, i) => { const y = 40 + i * rowH; g += box(20, y, 190, ELEC[p.elec.kind].name.replace(/ \(.*/, ''), p.elec.kind === 'battery' ? `${p.elec.mah} mAh, 3.7 V` : p.elec.kind === 'usbc' ? '5 V in' : p.elec.kind === 'reg' ? '3.3 V rail' : 'charges the cell', '#f4f1e8'); if (i) g += `<line x1="115" y1="${y - rowH + 34}" x2="115" y2="${y}" stroke="#c0392b" stroke-width="2" marker-end="url(#ar)"/>`; });
+  pw.forEach((p, i) => { const y = 40 + i * rowH; g += box(20, y, 190, ELEC[p.elec.kind].name.replace(/ \(.*/, ''), p.elec.kind === 'battery' ? `${p.elec.mah} mAh, 3.7 V` : p.elec.kind === 'aa' ? `${p.elec.mah} mAh, 3 V` : p.elec.kind === 'usbc' ? '5 V in' : p.elec.kind === 'reg' ? '3.3 V rail' : p.elec.kind === 'iec' ? '100–240 V in' : p.elec.kind === 'psu' ? '12 V out' : 'charges the cell', '#f4f1e8'); if (i) g += `<line x1="115" y1="${y - rowH + 34}" x2="115" y2="${y}" stroke="#c0392b" stroke-width="2" marker-end="url(#ar)"/>`; });
   const cy = 40 + (Math.max(pw.length, per.length, 1) - 1) * rowH / 2;
   if (core) { g += box(290, cy, 180, ELEC[core.elec.kind].name.replace(/ \(.*/, ''), ELEC[core.elec.kind].radio || 'microcontroller', '#e3f6ea'); if (pw.length) g += `<path d="M210 ${40 + (pw.length - 1) * rowH + 17} C 250 ${40 + (pw.length - 1) * rowH + 17}, 250 ${cy + 17}, 290 ${cy + 17}" fill="none" stroke="#c0392b" stroke-width="2" marker-end="url(#ar)"/><text x="250" y="${cy + 12}" font-size="9" fill="#c0392b" text-anchor="middle">3.3 V</text>`; if (ELEC[core.elec.kind].radio) g += `<path d="M380 ${cy} l 0 -14 m -8 0 l 8 -8 l 8 8" fill="none" stroke="#17603a" stroke-width="1.6"/>`; }
-  const ampY = per.findIndex(p => p.elec.kind === 'amp');
+  const ampY = per.findIndex(p => /^amp2?$/.test(p.elec.kind));
   per.forEach((p, i) => { const y = 40 + i * rowH, bus = ELEC[p.elec.kind].bus; g += box(550, y, 190, ELEC[p.elec.kind].name.replace(/ \(.*/, '') + (p.qty > 1 ? ` × ${p.qty}` : ''), `${p.elec.ma} mA when on`, '#eef1f6');
     if (bus === 'amp' && ampY >= 0) { const ya = 40 + ampY * rowH; g += `<path d="M740 ${ya + 17} C 762 ${ya + 17}, 762 ${y + 17}, 742 ${y + 17}" fill="none" stroke="#141416" stroke-width="1.2" marker-end="url(#ar)"/><text x="${756}" y="${(ya + y) / 2 + 20}" font-size="9" text-anchor="middle" fill="#3a3d40" transform="rotate(-90 756 ${(ya + y) / 2 + 20})">speaker out</text>`; }
     else if (core) g += `<path d="M470 ${cy + 17} C 510 ${cy + 17}, 510 ${y + 17}, 550 ${y + 17}" fill="none" stroke="#141416" stroke-width="1.2" marker-end="url(#ar)"/><text x="546" y="${y + 12}" font-size="9" text-anchor="end" fill="#3a3d40">${esc(bus)}</text>`; });
@@ -413,7 +520,8 @@ export function engineer(s0) {
   const secs = s.parts.reduce((t, p) => t + (p.fix === 'solder' ? 0 : FIXES[p.fix].s * p.qty + p.fixQty * 5), 0) + (s.kind === 'electronics' ? 45 : 15);
   const labour = r2(secs / 3600 * s.labour), parts$ = parts.reduce((t, x) => t + x.unit * (byId[x.id].qty), 0) + (pcb ? pcb.fab + pcb.smt : 0);
   const unit = r2(parts$ + labour), amort = r2(toolCost / Math.max(1, s.volume));
-  const certs = s.kind === 'electronics' ? (globalThis.FBElec?.certSuggestions?.(elecFacts(s), s.name) || []) : s.age === '0+' || s.age === '3+' ? [{ name: 'ASTM F963', market: 'US', why: 'Toy safety for children under 14.' }, { name: 'CPSIA lead and phthalates, with a CPC', market: 'US', why: 'A children\'s product needs third-party testing and a certificate.' }, { name: 'EN 71-1, -2, -3 and the CE mark', market: 'EU', why: 'Toy Safety Directive 2009/48/EC.' }, { name: 'UKCA (Toys Safety Regulations 2011)', market: 'UK', why: 'Toys sold in Great Britain.' }] : s.parts.some(p => p.food) ? [{ name: 'FDA 21 CFR food contact (resins)', market: 'US', why: 'Parts that touch food or drink.' }, { name: 'EU 10/2011 and LFGB migration tests', market: 'EU, Germany', why: 'Plastics in contact with food.' }, { name: 'Prop 65 (BPA and phthalates)', market: 'California', why: 'A warning or a clean test.' }] : [{ name: 'Prop 65', market: 'California', why: 'A warning or a clean test for listed chemicals.' }, { name: 'REACH SVHC declaration', market: 'EU', why: 'Substances of very high concern.' }];
+  const laser = s.parts.some(p => p.elec && ELEC[p.elec.kind].laser) ? [{ name: 'IEC 60825-1 laser product, Class 1', market: 'All markets', why: 'A CD pickup is a laser: the product is labelled Class 1 and the report kept.' }, { name: 'FDA 21 CFR 1040.10 laser product report (CDRH)', market: 'US', why: 'A product with a laser needs a product report filed with the FDA before it is imported.' }] : [];
+  const certs = s.kind === 'electronics' ? [...(globalThis.FBElec?.certSuggestions?.(elecFacts(s), s.name) || []), ...laser] : s.age === '0+' || s.age === '3+' ? [{ name: 'ASTM F963', market: 'US', why: 'Toy safety for children under 14.' }, { name: 'CPSIA lead and phthalates, with a CPC', market: 'US', why: 'A children\'s product needs third-party testing and a certificate.' }, { name: 'EN 71-1, -2, -3 and the CE mark', market: 'EU', why: 'Toy Safety Directive 2009/48/EC.' }, { name: 'UKCA (Toys Safety Regulations 2011)', market: 'UK', why: 'Toys sold in Great Britain.' }] : s.parts.some(p => p.food) ? [{ name: 'FDA 21 CFR food contact (resins)', market: 'US', why: 'Parts that touch food or drink.' }, { name: 'EU 10/2011 and LFGB migration tests', market: 'EU, Germany', why: 'Plastics in contact with food.' }, { name: 'Prop 65 (BPA and phthalates)', market: 'California', why: 'A warning or a clean test.' }] : [{ name: 'Prop 65', market: 'California', why: 'A warning or a clean test for listed chemicals.' }, { name: 'REACH SVHC declaration', market: 'EU', why: 'Substances of very high concern.' }];
   return { spec: s, parts, tools, toolCost, weeks: weeks ? weeks + 2 : 0, checks: dfm(s), steps, labour, assemblySecs: secs, unit, amort, landed: r2(unit + amort), mass: r1(parts.reduce((t, x) => t + (x.mass || 0) * byId[x.id].qty, 0)), pcb, power: pw, certs, extent: extentOf(s.parts).size.map(r1) };
 }
 // the parts list as rows, for the page, the drawing and the CSV: item, part, qty, material and process, finish, unit cost, tool

@@ -40,7 +40,7 @@ test('fit: a part too big for its housing, two parts in one space, a USB-C port 
   let c = dfm(cleanAssembly(s)); assert.ok(c.some(x => x.level === 'bad' && /does not fit inside Bottom housing: .* too big along x/.test(x.text)), c.map(x => x.text).join('\n'));
   const s2 = archetype('handheld'), b = s2.parts.find(p => p.id === 'battery'); b.at = [...s2.parts.find(p => p.id === 'pcb').at];
   c = dfm(cleanAssembly(s2)); assert.ok(c.some(x => /take the same space/.test(x.text)));
-  const s3 = archetype('handheld'), u = s3.parts.find(p => p.elec?.kind === 'usbc'); u.at[1] -= 20;
+  const s3 = archetype('handheld'), u = s3.parts.find(p => p.elec?.kind === 'usbc'); u.at[1] += 20; // pulled 20 mm in from the bottom end
   c = dfm(cleanAssembly(s3)); assert.ok(c.some(x => x.level === 'bad' && /USB-C receptacle: .* in from the outside wall/.test(x.text)));
   const s4 = archetype('puck'); s4.parts.find(p => p.id === 'bottom').resin = 'aluminium 6061';
   c = dfm(cleanAssembly(s4)); assert.ok(c.some(x => x.level === 'bad' && /metal and will block the radio/.test(x.text)));
@@ -91,4 +91,26 @@ test('the archetype and radio are read from the concept\'s words; cleaning keeps
   const s = cleanAssembly({ arch: 'puck', parts: [{ id: 'a', parent: 'missing' }, { id: 'a' }] }); assert.equal(s.parts[0].parent, null); assert.notEqual(s.parts[0].id, s.parts[1].id); assert.equal(s.kind, 'electronics');
   const c = cellOf(2000); assert.ok(c.size[0] * c.size[1] * c.size[2] > 12000 && c.wh === 7.4);
   assert.equal(power(archetype('desk')).runtime, null);
+});
+
+test('audio: a CD player, a cassette player and a powered speaker, with the parts they are made of', () => {
+  const cd = engineer(archetype('cdplayer')), kinds = E => new Set(E.spec.parts.filter(p => p.elec).map(p => p.elec.kind));
+  for (const k of ['cdmech', 'psu', 'iec', 'dac', 'vfd', 'ir', 'rca']) assert.ok(kinds(cd).has(k), `CD player: ${k}`);
+  assert.deepEqual(cd.checks.filter(c => c.level === 'bad'), []);
+  assert.ok(cd.power.mains && cd.power.runtime === null && cd.power.peakW > 1, 'mains: in watts, no run time');
+  assert.ok(cd.certs.some(c => /IEC 60825-1/.test(c.name)) && cd.certs.some(c => /FDA 21 CFR 1040\.10/.test(c.name)) && cd.certs.some(c => /CE-LVD/.test(c.name)), cd.certs.map(c => c.name).join(', '));
+  assert.ok(cd.checks.some(c => c.level === 'warn' && /bond the case to earth/.test(c.text)), 'mains in a steel case: earth it');
+  const cdr = engineer(archetype('cdplayer', {}, { radio: 'wifi' })); assert.ok(kinds(cdr).has('antenna') && !cdr.checks.some(c => c.level === 'bad'), 'a radio in a steel case brings its antenna outside');
+  const tape = engineer(archetype('cassette'));
+  for (const k of ['tapemech', 'aa', 'preamp', 'hpamp', 'jack', 'pot']) assert.ok(kinds(tape).has(k), `cassette: ${k}`);
+  assert.deepEqual(tape.checks.filter(c => c.level === 'bad'), []); assert.equal(tape.power.cell, 'aa'); assert.equal(tape.power.wh, 7.5);
+  assert.ok(tape.power.runtime > 8 && tape.power.runtime < 20 && tape.power.charge === null, String(tape.power.runtime));
+  assert.ok(!tape.certs.some(c => /UN 38\.3/.test(c.name)) && tape.certs.some(c => /Battery safety and marking/.test(c.name)), 'AA cells are not lithium');
+  const sp = engineer(archetype('speaker'));
+  for (const k of ['woofer', 'tweeter', 'amp2', 'psu', 'iec', 'rca', 'encoder', 'ble']) assert.ok(kinds(sp).has(k), `speaker: ${k}`);
+  assert.deepEqual(sp.checks.filter(c => c.level === 'bad'), []); assert.ok(sp.spec.parts.some(p => p.resin === 'MDF') && sp.power.peakW > 15, 'an MDF cabinet and a 12 V amplifier counted in watts');
+  const svg = blockSvg(sp.spec); assert.match(svg, /speaker out/); assert.match(svg, /100–240 V in/);
+  assert.equal(guessArch({ category: 'electronics', name: 'Retro CD player' }), 'cdplayer'); assert.equal(guessArch({ category: 'electronics', name: 'Walkman cassette player' }), 'cassette'); assert.equal(guessArch({ category: 'electronics', name: 'Bookshelf speakers' }), 'speaker'); assert.equal(guessArch({ category: 'electronics', name: 'Bluetooth speaker' }), 'puck');
+  const moved = archetype('speaker'); moved.parts.find(p => p.elec?.kind === 'iec').at[1] -= 40;
+  assert.ok(engineer(moved).checks.some(c => c.level === 'bad' && /IEC C8 mains inlet: .* in from the outside wall/.test(c.text)), 'a mains inlet pulled inside is caught');
 });
