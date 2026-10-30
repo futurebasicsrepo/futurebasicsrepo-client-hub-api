@@ -714,7 +714,14 @@ const lab=registerLabRoutes(app, { pool, ...labDeps, getSetting, setSetting, log
   ...(process.env.PROTOTYPE_TEST_ORIGIN ? { delayMs: 0, crawlOpts: { lookup: async () => [{ address: '93.184.216.34' }], fetchImpl: (u, o) => { const x = new URL(u); return fetch(process.env.PROTOTYPE_TEST_ORIGIN + x.pathname + x.search, { ...o, headers: { ...(o && o.headers), 'x-original-host': x.hostname } }); } } } : {}) });
 // Concepts: an approved one becomes a product in the Future Basics room, with its tech pack drafted from the concept (createClientProduct, shared with the console).
 const learnLabTaste = () => learnTaste({ pool, getSetting, setSetting });
-const labConcepts = registerLabConceptRoutes(app, { pool, ...labDeps, getSetting, learn: learnLabTaste, log: app.log, art: labArt, createProduct: args => createClientProduct(args), attachArtwork: (productId, items) => attachLabArtwork(productId, items), sendFlats: (id, productId) => labFlats.sendToPack(id, productId), flatsCheck: id => labFlats.startCheck(id) });
+// a tech pack a client makes from their own Lab concept is their draft to finish in the hub's editor, not one waiting on Future Basics to publish
+async function claimClientPack(productId,clientId,userId){
+  const p=(await pool.query('select * from products where id=$1 and client_id=$2',[productId,clientId])).rows[0];if(!p)return;
+  const up=await pool.query(`update tech_packs set initiated_by='client',created_by=coalesce(created_by,$3),source='lab',billing=coalesce(billing,'admin') where product_id=$1 and client_id=$2 and published_at is null returning id`,[productId,clientId,userId||null]);
+  if(up.rowCount)return;
+  await pool.query(`insert into tech_packs(product_id,client_id,status,data,created_by,initiated_by,source,billing) values($1,$2,'draft',$3,$4,'client','lab','admin') on conflict(product_id) do nothing`,[productId,clientId,normalizeTechPack(seedTechPack({product:p})),userId||null]);
+}
+const labConcepts = registerLabConceptRoutes(app, { pool, ...labDeps, claimClientPack, getSetting, learn: learnLabTaste, log: app.log, art: labArt, createProduct: args => createClientProduct(args), attachArtwork: (productId, items) => attachLabArtwork(productId, items), sendFlats: (id, productId) => labFlats.sendToPack(id, productId), flatsCheck: id => labFlats.startCheck(id) });
 registerLabViewRoutes(app, { pool, ...labDeps, log: app.log });
 registerLabStudioRoutes(app, { pool, ...labDeps });
 // their starting techniques and materials are put in once the tables are migrated (seeding while the migration alters them deadlocked)

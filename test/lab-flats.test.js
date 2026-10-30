@@ -215,3 +215,12 @@ test('a jacket is drawn as a jacket whichever line it sits in: a trucker in a To
   assert.equal(detectStyle({ name: 'Crew Sweat', category: 'tops', spec: { silhouette: 'crewneck sweatshirt' } })?.style, 'crewneck', 'a sweatshirt is still a sweatshirt');
   assert.equal(detectStyle({ name: 'Heavy Tee', category: 'tops', spec: {} })?.style, 'tee');
 });
+
+test('a tall graphic down the back of a tee ends above the hem, keeping its shape, whether placed by its words or sized from the picture', async () => {
+  const F = await import('../src/lab-flats.js'), p = { ...F.defaultParams('tee'), size: 'M' }, m = F.measurementsFor(p, 'M');
+  const q = { ...F.defaultPlacement('graphic', p, { aspect: 0.45, label: 'full back' }), name: 'route' };
+  assert.ok(q.y + q.h / 2 <= m.length - 2 + 1e-6 && q.h <= 16, `ends ${q.y + q.h / 2} in down a ${m.length} in back`);
+  assert.ok(Math.abs(q.w / q.h - 0.45) < 0.02 && !F.placementChecks(q, p).some(c => c.level === 'fail'));
+  const big = F.fitTall({ view: 'back', x: 0, y: 5 + 12, w: 11, h: 24 }, p);
+  assert.ok(big.y - big.h / 2 === 5 && big.y + big.h / 2 <= m.length - 2 && Math.abs(big.w / big.h - 11 / 24) < 0.02, JSON.stringify(big));
+});

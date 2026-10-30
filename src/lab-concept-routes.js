@@ -21,7 +21,7 @@ const clip = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
 const dataUrl = b => (b ? `data:image/jpeg;base64,${Buffer.from(b).toString('base64')}` : '');
 
 export function registerLabConceptRoutes(app, d) {
-  const { pool, authenticate, adminOnly, getSetting, env = process.env, fetchImpl = fetch, askImpl = realAsk, createProduct, attachArtwork, flatsCheck, imageCfg = () => imageConfig(env), placeImpl, art: artSvc = null, sendFlats = null, learn = async () => {}, lab = null, log = console } = d;
+  const { pool, authenticate, adminOnly, getSetting, env = process.env, fetchImpl = fetch, askImpl = realAsk, createProduct, claimClientPack, attachArtwork, flatsCheck, imageCfg = () => imageConfig(env), placeImpl, art: artSvc = null, sendFlats = null, learn = async () => {}, lab = null, log = console } = d;
   const own = req => lab?.scope?.(req) || null, charge = async (req, o) => (lab ? lab.charge(req, o) : null); // a client's room: its own concepts, its AI meter
   // the learned taste (src/lab-taste.js), when the team has not switched it off
   const loadTaste = async () => { const t = await getSetting('labTaste').catch(() => null); return t && t.use !== false ? t : null; };
@@ -328,6 +328,7 @@ export function registerLabConceptRoutes(app, d) {
     // the flats go with it when they were drawn: as files, as its front and back sketches, its measurements, details, stitching and colour
     let flats = null; if (sendFlats) { try { flats = await sendFlats(r.id, product.id); if (flats) art += flats.files; } catch (e) { log.warn?.({ err: e.message }, 'design lab flats not sent'); } }
     if (r.line_id) await pool.query(`update lab_plan_lines set status='tech_pack' where id=$1`, [r.line_id]);
+    if (own(req) && claimClientPack) { try { await claimClientPack(product.id, own(req), actorOf(req)); } catch (e) { log.warn?.({ err: e.message }, 'design lab pack not handed to the client'); } }
     await note(r.id, req, `Sent to a tech pack (${product.autoDraft?.ai === 'pending' ? 'the assistant is drafting it from the concept' + (art ? `; ${art} artwork files attached: the logo, the woven label and the graphics` : '') + (flats ? `; the flats gave it ${flats.pom} measurements, its front and back sketches and ${flats.construction} construction lines` : '') : product.autoDraft?.ai === 'off' ? 'the assistant is off, so it starts empty' : 'started'}).`);
     return reply.code(201).send({ productId: product.id, url: productUrl(product.id), autoDraft: product.autoDraft || null, concept: await one(r.id) });
   });

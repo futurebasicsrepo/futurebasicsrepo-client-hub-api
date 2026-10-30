@@ -1117,6 +1117,9 @@ export async function migrate() {
     alter table tech_packs add column if not exists billing text;
     alter table tech_packs add column if not exists pay_draft_order_id text;
     alter table tech_packs add column if not exists pay_invoice_url text;
+    -- a pack made from a client's own Design Lab line, by the client, before such packs were theirs to finish: hand it to them (still a draft)
+    update tech_packs t set initiated_by='client', source='lab', billing=coalesce(t.billing,'admin') from lab_concepts c join lab_plans p on p.id=c.plan_id join users u on u.id=p.created_by
+      where c.product_id=t.product_id and p.client_id=t.client_id and u.role='client' and t.initiated_by='brand' and t.published_at is null;
     alter table tech_packs add column if not exists pay_order_id text;
     alter table tech_packs add column if not exists paid_at timestamptz;
     alter table tech_packs add column if not exists ai_draft jsonb;
