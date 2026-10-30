@@ -376,6 +376,21 @@ export function explodeOffsets(s, t = 1) {
 // ---- the engineering --------------------------------------------------------------------------------------------------------------------------
 const toolSteel = shots => shots <= 10000 ? { steel: 'Aluminium 7075 (soft tool)', base: 2500, perCm2: 25, weeks: 3 } : shots <= 300000 ? { steel: 'P20 pre-hardened steel', base: 6000, perCm2: 45, weeks: 6 } : { steel: 'H13 hardened steel', base: 9000, perCm2: 65, weeks: 9 };
 // one part: mass, the tool it needs, its cycle and its cost
+// ---- how each part sits, for the 3D parts (src/lab-parts3d.js) in the page and in the files ----------------------------------------------------
+// the outer housings (big opaque shells); which way a part faces: a socket toward the nearest outside wall, a part on a board away from the
+// board, the rest by how it explodes; and the parts on a board in the board's own frame, so its traces, pads and silkscreen sit under them
+const PORTS = new Set(['usbc', 'iec', 'rca', 'jack', 'antenna']), AX = ['x', 'y', 'z'];
+export function housingsOf(s) { const all = extentOf(s.parts).size.reduce((a, b) => a * b, 1); return s.parts.filter(q => ['shell', 'cup'].includes(q.shape) && !RESINS[q.resin]?.clear && q.size[0] * q.size[1] * q.size[2] >= all * .2); }
+export function faceOfPart(s, p) {
+  if (p.elec && PORTS.has(p.elec.kind)) { const hs = housingsOf(s), e = extentOf(hs.length ? hs : s.parts); let best = null; for (let k = 0; k < 3; k++) for (const g of [-1, 1]) { const gap = g > 0 ? e.hi[k] - (p.at[k] + p.size[k] / 2) : (p.at[k] - p.size[k] / 2) - e.lo[k]; if (!best || gap < best.gap) best = { gap, axis: AX[k], sign: g }; } return { axis: best.axis, sign: best.sign }; }
+  const par = p.parent && s.parts.find(q => q.id === p.parent); if (par && par.shape === 'pcb' && p.elec) { const a = AX.indexOf(par.axis || 'z'); return { axis: par.axis || 'z', sign: p.at[a] >= par.at[a] ? 1 : -1 }; }
+  if (p.elec || /screw/i.test(p.name)) { const k = p.dir.findIndex(v => Math.abs(v) > .9); if (k >= 0) return { axis: AX[k], sign: Math.sign(p.dir[k]) }; }
+  return { axis: p.axis || 'z', sign: 1 };
+}
+export function compsOnBoard(s, b) {
+  const a = AX.indexOf(b.axis || 'z'), xi = [0, 1, 2].find(k => k !== a), Z = [0, 1, 2].map(k => k === a ? 1 : 0), X = [0, 1, 2].map(k => k === xi ? 1 : 0), Y = [Z[1] * X[2] - Z[2] * X[1], Z[2] * X[0] - Z[0] * X[2], Z[0] * X[1] - Z[1] * X[0]], yi = Y.findIndex(v => Math.abs(v) > .5);
+  return s.parts.filter(q => q.parent === b.id && q.elec && !['battery', 'speaker'].includes(q.elec.kind)).map(q => { const d = q.at.map((v, k) => v - b.at[k]); return { x: +(d[xi]).toFixed(2), y: +(d[0] * Y[0] + d[1] * Y[1] + d[2] * Y[2]).toFixed(2), w: q.size[xi], d: q.size[yi], kind: q.elec.kind }; });
+}
 export function partEng(p, s) {
   const R = RESINS[p.resin], pr = PROCESSES[p.process], v = pr.tool === 'roto' || pr.tool === 'blow' ? Math.min(volumeOf(p), surfaceOf(p) * 2) : volumeOf(p), g = p.resin === 'bought in' ? null : r1(v / 1000 * R.rho), shots = s.volume * p.qty * s.years, A = projectedCm2(p);
   const out = { id: p.id, mass: g, volume: r0(v), tool: null, unit: 0 };
@@ -534,24 +549,31 @@ export function bomRows(E) {
 export function bomCsv(E) { const q = v => /[",\n]/.test(String(v ?? '')) ? `"${String(v).replace(/"/g, '""')}"` : String(v ?? ''); return ['Item,Part,Qty,Material,Process,Finish,Colour,Mass (g),Unit cost ($),Tool cost ($)', ...bomRows(E).map(r => [r.item, r.name, r.qty, r.material, r.process, r.finish, r.colour, r.mass ?? '', r.unit, r.tool].map(q).join(','))].join('\n'); }
 
 // ---- files: STL and the exploded drawing ------------------------------------------------------------------------------------------------------------
-// binary STL in mm, one solid for every part (qty drawn once), pulled apart by t (0 = assembled)
-export function stlOf(s, { t = 0, only = null } = {}) {
-  const off = explodeOffsets(s, t), meshes = s.parts.filter(p => !only || p.id === only).map(p => meshOf(p, off[p.id])), n = meshes.reduce((a, m) => a + m.length / 9, 0);
+// binary STL in mm, one solid for every part (qty drawn once), pulled apart by t (0 = assembled); with real (the parts' true shapes from
+// src/lab-parts-mesh.js, about each part's centre) it writes those, otherwise the engineering's own boxes and shells
+export function stlOf(s, { t = 0, only = null, real = null } = {}) {
+  const off = explodeOffsets(s, t), meshes = s.parts.filter(p => !only || p.id === only).flatMap(p => real?.[p.id] ? real[p.id].map(m => moved(m.tri, p.at.map((v, k) => v + off[p.id][k]))) : [meshOf(p, off[p.id])]), n = meshes.reduce((a, m) => a + m.length / 9, 0);
   const buf = new ArrayBuffer(84 + n * 50), dv = new DataView(buf), head = 'Future Basics Design Lab assembly, mm'; for (let i = 0; i < head.length; i++) dv.setUint8(i, head.charCodeAt(i)); dv.setUint32(80, n, true);
   let o = 84; for (const m of meshes) for (let i = 0; i < m.length; i += 9) { const a = [m[i], m[i + 1], m[i + 2]], b = [m[i + 3], m[i + 4], m[i + 5]], c = [m[i + 6], m[i + 7], m[i + 8]], u = b.map((v, k) => v - a[k]), v = c.map((x, k) => x - a[k]), nn = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]], l = Math.hypot(...nn) || 1; for (const x of [...nn.map(q => q / l), ...a, ...b, ...c]) { dv.setFloat32(o, x, true); o += 4; } o += 2; }
   return new Uint8Array(buf);
 }
+const moved = (tri, d) => { const o = new Float32Array(tri.length); for (let i = 0; i < tri.length; i += 3) { o[i] = tri[i] + d[0]; o[i + 1] = tri[i + 1] + d[1]; o[i + 2] = tri[i + 2] + d[2]; } return o; };
+// the drawing's isometric projection, seen from (+x, +y, +z): [across, down] and how near (the larger, the nearer)
+const ISO_C = Math.cos(Math.PI / 6), ISO_S = Math.sin(Math.PI / 6);
+export const isoOf = ([x, y, z]) => [(x - y) * ISO_C, -z + (x + y) * ISO_S], isoDepth = ([x, y, z]) => x + y + z;
 const shade = (hex, k) => { const n = parseInt(hex.slice(1), 16), f = c => Math.max(0, Math.min(255, Math.round(c * k))); return `rgb(${f(n >> 16 & 255)},${f(n >> 8 & 255)},${f(n & 255)})`; };
-// an isometric drawing, pulled apart, painted far to near, each part ballooned with its item number, and the parts list beside it
-export function drawingSvg(s0, { t = 1, title = '' } = {}) {
-  const E = engineer(s0), s = E.spec, off = explodeOffsets(s, t), cx = Math.cos(Math.PI / 6), sx = Math.sin(Math.PI / 6);
-  const pr = ([x, y, z]) => [(x - y) * cx, -z + (x + y) * sx], depth = ([x, y, z]) => x + y + z; // seen from (+x, +y, +z): the larger, the nearer
+// an isometric drawing, pulled apart, each part ballooned with its item number, and the parts list beside it. With picture (the parts'
+// true shapes rendered by src/lab-parts-mesh.js: { href, box: [x0, y0, x1, y1] in isoOf units }) it shows that; otherwise it paints the
+// engineering's boxes far to near
+export function drawingSvg(s0, { t = 1, title = '', picture = null } = {}) {
+  const E = engineer(s0), s = E.spec, off = explodeOffsets(s, t), pr = isoOf, depth = isoDepth;
   const L = [-.45, -.35, .82], ll = Math.hypot(...L), tris = [];
-  for (const p of s.parts) { const m = meshOf(p, off[p.id]); for (let i = 0; i < m.length; i += 9) { const a = [m[i], m[i + 1], m[i + 2]], b = [m[i + 3], m[i + 4], m[i + 5]], c = [m[i + 6], m[i + 7], m[i + 8]], u = b.map((v, k) => v - a[k]), v = c.map((x, k) => x - a[k]), nn = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]], l = Math.hypot(...nn); if (l < 1e-9) continue; const lit = Math.abs(nn[0] * L[0] + nn[1] * L[1] + nn[2] * L[2]) / l / ll; tris.push({ d: (depth(a) + depth(b) + depth(c)) / 3, pts: [a, b, c].map(pr), col: shade(p.colour, .62 + .45 * lit) }); } }
+  if (!picture) for (const p of s.parts) { const m = meshOf(p, off[p.id]); for (let i = 0; i < m.length; i += 9) { const a = [m[i], m[i + 1], m[i + 2]], b = [m[i + 3], m[i + 4], m[i + 5]], c = [m[i + 6], m[i + 7], m[i + 8]], u = b.map((v, k) => v - a[k]), v = c.map((x, k) => x - a[k]), nn = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]], l = Math.hypot(...nn); if (l < 1e-9) continue; const lit = Math.abs(nn[0] * L[0] + nn[1] * L[1] + nn[2] * L[2]) / l / ll; tris.push({ d: (depth(a) + depth(b) + depth(c)) / 3, pts: [a, b, c].map(pr), col: shade(p.colour, .62 + .45 * lit) }); } }
   tris.sort((p, q) => p.d - q.d);
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; for (const t3 of tris) for (const [x, y] of t3.pts) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+  if (picture) [x0, y0, x1, y1] = picture.box;
   const VW = 640, VH = 620, pad = 60, k = Math.min((VW - 2 * pad) / (x1 - x0 || 1), (VH - 2 * pad - 30) / (y1 - y0 || 1)), X = x => pad + (x - x0) * k, Y = y => pad + 30 + (y - y0) * k;
-  const body = tris.map(t3 => `<path d="M${t3.pts.map(([x, y]) => `${X(x).toFixed(1)} ${Y(y).toFixed(1)}`).join('L')}Z" fill="${t3.col}" stroke="${t3.col}" stroke-width=".4"/>`).join('');
+  const body = picture ? `<image href="${picture.href}" x="${X(x0).toFixed(1)}" y="${Y(y0).toFixed(1)}" width="${((x1 - x0) * k).toFixed(1)}" height="${((y1 - y0) * k).toFixed(1)}" preserveAspectRatio="none"/>` : tris.map(t3 => `<path d="M${t3.pts.map(([x, y]) => `${X(x).toFixed(1)} ${Y(y).toFixed(1)}`).join('L')}Z" fill="${t3.col}" stroke="${t3.col}" stroke-width=".4"/>`).join('');
   const rows = bomRows(E), mid = (VW) / 2;
   const balloons = s.parts.map((p, i) => { const c = pr(p.at.map((v, kk) => v + off[p.id][kk])), px = X(c[0]), py = Y(c[1]), side = px < mid ? -1 : 1, bx = side < 0 ? 24 : VW - 24, by = Math.min(VH - 20, Math.max(50, py)); return { i: i + 1, px, py, bx, by }; });
   // keep balloons on each side from landing on one another

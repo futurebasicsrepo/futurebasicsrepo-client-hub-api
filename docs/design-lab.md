@@ -1310,6 +1310,10 @@ screen, the drawing and the files agree. Routes: `src/lab-assembly-routes.js`; s
   (size, layers, how full, placements, fab and SMT cost), the USB-C port at the wall, the radio clear of the battery and of metal, the heat
   with everything on, and the certifications to plan for (`src/elec.js`).
 - **Files** (from the saved assembly): STL assembled, exploded, or one part (mm); the exploded isometric drawing with balloons and the parts
-  list (SVG); the parts list (CSV); the block diagram (SVG).
+  list (SVG); the parts list (CSV); the block diagram (SVG). The STL and the drawing carry the **parts' real shapes**, the same 3D parts the
+  page shows (the driver's basket and cone, the board with its chips and passives, bosses and ribs inside a housing), built on the server
+  (`src/lab-parts-mesh.js`, three.js without textures; a texture's ground colour is kept, so a board reads as solder mask). The drawing's
+  picture is rendered with a depth buffer and ink lines where parts meet; balloons and the parts list stay vector. `?simple=1` gives the
+  engineering's plain boxes and shells (a lighter STL). The last dozen products' shapes are kept in memory, so a second download is quick.
 
 The client's room uses the same page on its own concepts; another room's concept answers 404. Journey **J267**.

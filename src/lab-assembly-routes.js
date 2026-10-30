@@ -13,6 +13,7 @@ import sharp from 'sharp';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { callJsonSchema } from './studio.js';
+import { realMeshes, isoPicture } from './lab-parts-mesh.js';
 import { archetype, cleanAssembly, engineer, guessArch, radioOf, stlOf, drawingSvg, blockSvg, bomCsv, bomRows, ARCHES, RESINS, PROCESSES, FINISHES, FIXES, SHAPES, ELEC, AGES } from './lab-assembly.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -84,15 +85,22 @@ export function registerLabAssemblyRoutes(app, d) {
     const clean = { arch: ARCHES[v.arch] ? v.arch : words.arch, w: Number(v.w) || undefined, d: Number(v.d) || undefined, h: Number(v.h) || undefined, radio: ['none', 'ble', 'wifi'].includes(v.radio) ? v.radio : words.radio, display: v.display || 'none', buttons: Number.isFinite(Number(v.buttons)) ? Number(v.buttons) : undefined, mah: Number(v.mah) || undefined, colour: /^#[0-9a-f]{6}$/i.test(v.colour || '') ? v.colour : undefined };
     return { source: 'vision', read: clean, why: String(v.why || '').slice(0, 300) };
   });
+  // the parts' real shapes (src/lab-parts-mesh.js) for the STL and the drawing, kept for the last few assemblies asked for (a second
+  // download of the same product does not build them again); ?simple=1 gives the engineering's plain boxes and shells instead
+  const realCache = new Map(), keyOf = (s, ...x) => createHash('sha1').update(JSON.stringify([s.parts, s.name, ...x])).digest('hex');
+  const cached = async (k, make) => { if (realCache.has(k)) { const v = realCache.get(k); realCache.delete(k); realCache.set(k, v); return v; } const v = await make(); realCache.set(k, v); while (realCache.size > 12) realCache.delete(realCache.keys().next().value); return v; };
+  const realOf = (s, name) => cached(keyOf(s, 'mesh'), () => realMeshes(s, { name }));
+  const pictureOf = (s, t, name) => cached(keyOf(s, 'pic', t), async () => isoPicture(s, { t, real: await realOf(s, name) }));
+  const simple = q => q?.simple === '1' || q?.simple === 'true';
   const tOf = q => Math.min(Math.max(Number(q?.t ?? 0) || 0, 0), 1), slug = c => String(c.name || 'assembly').replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').slice(0, 60) || 'assembly';
   app.get('/v1/lab/concepts/:id/assembly.stl', { preHandler: pre }, async (req, reply) => {
     const L = await load(req.params.id); if (!L) return bad(reply, 'Not found', 404);
     const only = req.query?.part && L.spec.parts.some(p => p.id === req.query.part) ? req.query.part : null;
-    return reply.header('content-disposition', `attachment; filename="${slug(L.c)}${only ? `-${only}` : ''}.stl"`).type('model/stl').send(Buffer.from(stlOf(L.spec, { t: tOf(req.query), only })));
+    return reply.header('content-disposition', `attachment; filename="${slug(L.c)}${only ? `-${only}` : ''}.stl"`).type('model/stl').send(Buffer.from(stlOf(L.spec, { t: tOf(req.query), only, real: simple(req.query) ? null : await realOf(L.spec, L.c.name) })));
   });
   app.get('/v1/lab/concepts/:id/assembly.svg', { preHandler: pre }, async (req, reply) => {
     const L = await load(req.params.id); if (!L) return bad(reply, 'Not found', 404);
-    const svg = drawingSvg(L.spec, { t: req.query?.t == null ? 1 : tOf(req.query), title: L.c.name });
+    const t = req.query?.t == null ? 1 : tOf(req.query), svg = drawingSvg(L.spec, { t, title: L.c.name, picture: simple(req.query) ? null : await pictureOf(L.spec, t, L.c.name) });
     if (req.query?.download) reply.header('content-disposition', `attachment; filename="${slug(L.c)}-exploded.svg"`);
     return reply.header('cache-control', 'no-store').type('image/svg+xml').send(svg);
   });

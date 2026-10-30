@@ -111,7 +111,7 @@ dialog form{display:grid;gap:10px}
   <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end"><button class="btn q" type="button" id="sRead" title="Read the kind, size and features from the concept's picture">Read the picture</button><button class="btn q" value="cancel" formnovalidate>Cancel</button><button class="btn go" type="button" id="sGo">Start from this</button></div>
 </form></dialog>
 <script type="module">
-import { engineer, cleanAssembly, cleanPart, explodeOffsets, extentOf, blockSvg, RESINS, SHAPES, ELEC, ARCHES } from '/lab/lab-assembly.js';
+import { engineer, cleanAssembly, cleanPart, explodeOffsets, extentOf, blockSvg, RESINS, SHAPES, ELEC, ARCHES, housingsOf, faceOfPart, compsOnBoard } from '/lab/lab-assembly.js';
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)],esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const TOKEN=()=>{try{return localStorage.getItem('fb.admin.token')||localStorage.getItem('fb.client.token')||''}catch{return ''}};
 async function api(path,o={}){const r=await fetch(path,{method:o.method||(o.body?'POST':'GET'),headers:{Authorization:'Bearer '+TOKEN(),...(o.body?{'Content-Type':'application/json'}:{})},body:o.body?JSON.stringify(o.body):undefined});const j=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(new Error(j.error||'Something went wrong'),{status:r.status});return j}
@@ -152,22 +152,12 @@ function frame(reset){
   V.ground.position.set(b.c[0],b.c[1],b.lo[2]-.3);V.ground.scale.set(b.r*10,b.r*10,1);
   V.sun.position.set(b.c[0]-b.r*1.2,b.c[1]-b.r*2,b.c[2]+b.r*3.2);V.sun.target.position.copy(c);const sc=V.sun.shadow.camera;sc.left=sc.bottom=-b.r*1.4;sc.right=sc.top=b.r*1.4;sc.near=b.r*.5;sc.far=b.r*8;sc.updateProjectionMatrix();V.need=true;
 }
-// which way a part faces: a socket toward the nearest outside wall, a part on a board away from the board, the rest by how it explodes
-const PORTS=new Set(['usbc','iec','rca','jack','antenna']),AX=['x','y','z'];
-function housings(){const all=extentOf(SPEC.parts).size.reduce((a,b)=>a*b,1);return SPEC.parts.filter(q=>['shell','cup'].includes(q.shape)&&!RESINS[q.resin]?.clear&&q.size[0]*q.size[1]*q.size[2]>=all*.2)}
-function faceOf(p,byId){
-  if(p.elec&&PORTS.has(p.elec.kind)){const hs=housings(),e=extentOf(hs.length?hs:SPEC.parts);let best=null;for(let k=0;k<3;k++)for(const s of[-1,1]){const g=s>0?e.hi[k]-(p.at[k]+p.size[k]/2):(p.at[k]-p.size[k]/2)-e.lo[k];if(!best||g<best.g)best={g,axis:AX[k],sign:s}}return{axis:best.axis,sign:best.sign}}
-  const par=p.parent&&byId[p.parent];if(par&&par.shape==='pcb'&&p.elec){const a=AX.indexOf(par.axis||'z');return{axis:par.axis||'z',sign:p.at[a]>=par.at[a]?1:-1}}
-  if(p.elec||/screw/i.test(p.name)){const k=p.dir.findIndex(v=>Math.abs(v)>.9);if(k>=0)return{axis:AX[k],sign:Math.sign(p.dir[k])}}
-  return{axis:p.axis||'z',sign:1};
-}
-// the parts on a board, in the board's own frame, so its traces, pads and silkscreen are drawn under them
-function compsOn(b,byId){const a=AX.indexOf(b.axis||'z'),xi=[0,1,2].find(k=>k!==a),Z=[0,1,2].map(k=>k===a?1:0),X=[0,1,2].map(k=>k===xi?1:0),Y=[Z[1]*X[2]-Z[2]*X[1],Z[2]*X[0]-Z[0]*X[2],Z[0]*X[1]-Z[1]*X[0]],yi=Y.findIndex(v=>Math.abs(v)>.5);
-  return SPEC.parts.filter(q=>q.parent===b.id&&q.elec&&!['battery','speaker'].includes(q.elec.kind)).map(q=>{const d=q.at.map((v,k)=>v-b.at[k]);return{x:+(d[xi]).toFixed(2),y:+(d[0]*Y[0]+d[1]*Y[1]+d[2]*Y[2]).toFixed(2),w:q.size[xi],d:q.size[yi],kind:q.elec.kind}})}
+// which way a part faces and the parts on a board come from the engine (src/lab-assembly.js), so the files build the same parts
+const housings=()=>housingsOf(SPEC),faceOf=p=>faceOfPart(SPEC,p),compsOn=b=>compsOnBoard(SPEC,b);
 const disposeNode=n=>n.traverse(o=>{if(o.isMesh||o.isInstancedMesh){o.geometry?.dispose?.();for(const m of[].concat(o.material||[]))m.dispose?.()}});
 function syncScene(){
   const byId=Object.fromEntries(SPEC.parts.map(p=>[p.id,p]));
-  for(const p of SPEC.parts){const face=faceOf(p,byId),comps=p.shape==='pcb'?compsOn(p,byId):null,key=JSON.stringify([p.shape,p.axis,p.size,p.wall,p.open,p.r,p.resin,p.finish,p.colour,p.name,p.elec,p.layers,face,comps]);
+  for(const p of SPEC.parts){const face=faceOf(p),comps=p.shape==='pcb'?compsOn(p):null,key=JSON.stringify([p.shape,p.axis,p.size,p.wall,p.open,p.r,p.resin,p.finish,p.colour,p.name,p.elec,p.layers,face,comps]);
     if(V.keys.get(p.id)===key)continue;const old=V.nodes.get(p.id);if(old){V.root.remove(old);disposeNode(old)}
     const n=V.kit.buildPart(p,{face,comps,name:SPEC.name||D?.concept?.name});n.traverse(o=>{if(o.isMesh)for(const m of[].concat(o.material))m.userData.base={t:m.transparent,o:m.opacity,dw:m.depthWrite}});V.root.add(n);V.nodes.set(p.id,n);V.keys.set(p.id,key)}
   for(const id of[...V.nodes.keys()])if(!byId[id]){const n=V.nodes.get(id);V.root.remove(n);disposeNode(n);V.nodes.delete(id);V.keys.delete(id)}

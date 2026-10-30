@@ -1,6 +1,7 @@
 // Design Lab engineering, drawn as the real thing: every part of an assembly built in three.js with the detail that says what it is, at the
 // exact size the engineering uses (src/lab-assembly.js), with physically based materials. The page (src/lab-engineer.html) asks for one part
-// at a time and places it; the engineering never reads these meshes (its own boxes stay the reference for fit, STL and the drawing).
+// at a time and places it; the files (STL, the exploded drawing) build the same parts on the server (src/lab-parts-mesh.js). The engineering's
+// checks never read these meshes: its own boxes and shells stay the reference for fit, mass and cost.
 //   - electronics by kind: chips with their marking and pins, radio modules under shield cans, the board with its traces, pads, silkscreen and
 //     the small passives around the chips, USB-C, RCA, mains inlet, jack, tact switches, LEDs, encoders, a VFD and screens that glow, battery
 //     pouches and AA cells, speaker drivers (basket, cone, surround, dust cap, spider, magnet), the class-D board with its heatsink, an open-frame
@@ -13,10 +14,19 @@ export function makeKit(THREE, { maxAniso = 8 } = {}) {
   // ---- textures, drawn on canvases (no files to fetch) ----
   const canvasTex = (key, w, h, draw, { srgb = true, repeat = null } = {}) => {
     if (texCache.has(key)) return texCache.get(key);
+    // on the server (the STL and the drawing) there is no canvas: the drawing runs against a stand-in that keeps its ground colour, so a
+    // blank texture carries the colour the part reads as (the board's solder mask, a chip's epoxy) in userData.ink
+    if (typeof document === 'undefined') { const t = new T.Texture(); t.userData.ink = groundOf(w, h, draw); if (repeat) t.repeat.set(repeat[0], repeat[1]); texCache.set(key, t); return t; }
     const c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d'); draw(g, w, h);
     const t = new T.CanvasTexture(c); t.anisotropy = maxAniso; if (srgb) t.colorSpace = T.SRGBColorSpace;
     if (repeat) { t.wrapS = t.wrapT = T.RepeatWrapping; t.repeat.set(repeat[0], repeat[1]); }
     texCache.set(key, t); return t;
+  };
+  const groundOf = (w, h, draw) => {
+    let ink = null; const st = { fillStyle: '#000000', data: null }, any = () => ({ addColorStop() {}, width: 0, data: new Uint8ClampedArray(4) });
+    const g = new Proxy(st, { get: (o, k) => k === 'fillRect' ? (x, y, ww, hh) => { if (!ink && typeof o.fillStyle === 'string' && ww * hh >= w * h * .5) ink = o.fillStyle; } : k in o ? o[k] : any, set: (o, k, v) => { o[k] = v; return true; } });
+    try { draw(g, w, h); } catch { /* a drawing that needs a real canvas: no colour */ }
+    return ink && /^#[0-9a-f]{6}$/i.test(ink) ? ink : null;
   };
   const rng = seed => { let s = (seed >>> 0) || 1; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); };
   const hashStr = s => { let h = 2166136261; for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619); return h >>> 0; };

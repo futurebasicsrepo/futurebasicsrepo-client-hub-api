@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import '../src/elec.js';
+import { realMeshes, isoPicture } from '../src/lab-parts-mesh.js';
 import { archetype, engineer, cleanAssembly, cleanPart, meshOf, volumeOf, explodeOffsets, stlOf, drawingSvg, blockSvg, bomRows, bomCsv, guessArch, radioOf, power, cellOf, ARCHES, dfm } from '../src/lab-assembly.js';
 
 test('every starting assembly fits together: no part in another\'s space, nothing too big for its housing', () => {
@@ -76,6 +77,19 @@ test('the drawing, the BOM and the CSV', () => {
   assert.match(svg, /Desk clock/); assert.match(svg, /Parts list/); assert.match(svg, /T1 samples in \d+ weeks/);
   const rows = bomRows(E); assert.ok(rows.some(r => /Board assembly \(4-layer/.test(r.name)) && rows.at(-1).process === 'Labour');
   const csv = bomCsv(E).split('\n'); assert.equal(csv[0], 'Item,Part,Qty,Material,Process,Finish,Colour,Mass (g),Unit cost ($),Tool cost ($)'); assert.equal(csv.length, rows.length + 1);
+});
+
+test('the files carry the parts\' real shapes: the same 3D parts the page shows, built on the server', async () => {
+  const s = archetype('cdplayer'), real = realMeshes(s), tris = id => real[id].reduce((a, m) => a + m.tri.length / 9, 0);
+  assert.deepEqual(Object.keys(real).sort(), s.parts.map(p => p.id).sort(), 'every part is built');
+  for (const p of s.parts) { assert.ok(tris(p.id) >= 12, `${p.name} has a shape`); let lo = Infinity, hi = -Infinity; for (const m of real[p.id]) for (let i = 0; i < m.tri.length; i++) { lo = Math.min(lo, m.tri[i]); hi = Math.max(hi, m.tri[i]); } assert.ok(hi - lo <= Math.hypot(...p.size) * 1.6 + 2, `${p.name} stays near its own size`); }
+  const board = s.parts.find(p => p.shape === 'pcb'), green = real[board.id].some(m => { const [r, g, b] = [1, 3, 5].map(i => parseInt(m.colour.slice(i, i + 2), 16)); return g > r + 20 && g > b; });
+  assert.ok(green, 'the board reads as solder mask, not a blank texture');
+  const box = stlOf(s, { t: 0 }), rl = stlOf(s, { t: 0, real }), n = new DataView(rl.buffer).getUint32(80, true);
+  assert.equal(rl.length, 84 + n * 50); assert.ok(n > 20 * new DataView(box.buffer).getUint32(80, true), 'many times the detail of the boxes');
+  assert.ok(stlOf(s, { only: board.id, real }).length < rl.length);
+  const pic = await isoPicture(s, { t: 1, real }); assert.match(pic.href, /^data:image\/png;base64,/); assert.ok(pic.box[2] > pic.box[0] && pic.box[3] > pic.box[1]);
+  const svg = drawingSvg(s, { title: 'CD player', picture: pic }); assert.match(svg, /<image href="data:image\/png/); assert.ok(!/<path d="M/.test(svg), 'the picture replaces the painted boxes'); assert.match(svg, /Parts list/);
 });
 
 test('the archetype and radio are read from the concept\'s words; cleaning keeps values in range', () => {
