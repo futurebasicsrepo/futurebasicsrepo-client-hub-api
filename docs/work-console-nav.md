@@ -42,6 +42,6 @@ A page with its own way through can leave the tab row out with `<html data-fbtab
 - **The tech pack** has the sidebar too (sections only; its own tabs are the tab row), so leaving it is one press.
 - **Badges** mirror counts the page already draws (`#mcCount` Messages, `#chatCount` Chats, `#taskCount` Tasks, `#oppCount` Opportunities, `#newCount` Builds showcase): on the part, and added up on its section.
 - **Desktop:** "Collapse" shrinks the sidebar to an icon rail, with a dot on a section that has something waiting (remembered; a client's room and the Studio start collapsed).
-- **Phone:** a button in the header opens the sidebar as a drawer of the eight sections; the tab row stays across the top and scrolls sideways.
+- **Phone:** a button in the header opens the menu as a tray: an ink sheet over the screen with the eight sections in big light type, joined by lines to one dot, the current one underlined in cue, and a close button (Escape closes it too). The tab row stays across the top and scrolls sideways. The look is described in [daylight.md](daylight.md).
 
 To add a part, add it to its section in `NAV` at the top of `console-nav.js`.

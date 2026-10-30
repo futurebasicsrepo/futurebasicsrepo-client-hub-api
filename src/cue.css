@@ -1,0 +1,110 @@
+/* Cue Field, daylight: the shared look of the client hub and the work console.
+   Loaded last on every hub and console page, so it sets the tokens and the shared pieces the pages' own styles build on.
+   Paper is the ground, white is what sits on it, ink is for type, lines and a few moments, and cue green is a fill (the dot, the one main action),
+   never text on paper. Print keeps each page's own styles: everything here is for the screen. */
+@media screen {
+:root{--ink:#141416;--paper:#fff;--fog:#f1f1ec;--dim:#5b5e66;--line:rgba(20,20,22,.14);--cue:#4bff9a;--cue-text:#067a3e;--cue-line:#12b864}
+html body{background-color:var(--fog);background-image:linear-gradient(rgba(20,20,22,.045) 1px,transparent 1px),linear-gradient(90deg,rgba(20,20,22,.045) 1px,transparent 1px);background-size:96px 96px;background-attachment:fixed}
+html body .ambient,html body .cursor-glow{display:none}
+
+/* the header: paper, a hairline under it, the wordmark in ink with the cue mark after it */
+html body>header,html body .top{background:rgba(241,241,236,.9);color:var(--ink);border-bottom:1px solid var(--line);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}
+html body>header .brand-logo,html body .top .brand-logo{filter:brightness(0)}
+html body>header .wordmark,html body .top .wordmark{color:var(--ink)}
+html body>header .brand-suffix,html body .top .brand-suffix{color:var(--dim)}
+html body>header .fbburger{border-color:var(--line);color:var(--ink)}
+html body>header :is(a,button):focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+
+/* type: one light, huge headline per page; labels in mono */
+html body :is(.hero,.hub-hero,.greet,.page-head,.client-page-head,.project-hero) h1,html body h1.display{font-weight:300;letter-spacing:-.045em;line-height:.95}
+
+/* headlines are light: one big, quiet line at the top of each page */
+html body h1{font-weight:300}
+html body h1 b,html body h1 strong{font-weight:500}
+
+/* thinking: the button goes ink while it works, with the cue dots running */
+html body .fbn-busy.fbn-thinking{background:var(--ink)!important;color:#fff!important;border-color:var(--ink)!important}
+html body .fbn-busy.fbn-thinking .fbn-dots i{background:var(--cue)}
+
+/* the cue dot, wherever a page draws one, sits in an ink ring so it reads on paper */
+html body .cue-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--cue);box-shadow:0 0 0 1.5px var(--ink)}
+
+/* panels that used to be ink become white panels on the paper: a hairline, no shadow */
+html body :is(.waiting,.share,.work-financial,#shopifyConnection,.cover,.lab-hero-day){background:#fff;color:var(--ink);border:1px solid var(--line)}
+html body :is(.waiting,.share,.work-financial,#shopifyConnection,.cover) :is(.meta,.mono,small,figcaption){color:var(--dim)}
+html body :is(.waiting,.share,.work-financial,#shopifyConnection,.cover) :is(p,.sub){color:#3d4047}
+html body :is(.waiting,.share,.work-financial,#shopifyConnection,.cover) .stamp{color:var(--cue-text)}
+html body .waiting .wait-item{background:var(--fog);border:1px solid var(--line);color:var(--ink)}
+html body .share .btn{background:#fff;color:var(--ink);border-color:rgba(20,20,22,.28)}
+html body .share .btn:hover{background:var(--fog)}
+html body .share .btn.go{background:var(--cue);color:var(--ink);border-color:var(--cue)}
+html body .share .msg{color:var(--cue-text)}
+html body .work-financial-kpi,html body .cover .kv span{border-color:var(--line);background:var(--fog)}
+html body .work-financial .source{background:var(--fog);border-color:var(--line);color:var(--dim)}
+html body #shopifyConnection{border-color:var(--line)}
+html body #shopifyConnection::after{color:var(--cue-text)}
+html body #shopifyConnection button{background:var(--ink);color:#fff;border-color:var(--ink)}
+html body .cover img{border-color:var(--line);background:var(--fog)}
+html body :is(.modal-head,.modalhead){background:rgba(255,255,255,.96);color:var(--ink);border-bottom:1px solid var(--line)}
+html body :is(.modal-head,.modalhead) :is(button,.close){color:var(--ink);border-color:var(--line);background:transparent}
+
+
+/* header controls drawn for the old dark bar: ink on paper */
+html body .hubnav a{color:var(--ink);opacity:.72}
+html body .hubnav a:is(:hover,:focus-visible,[aria-current]){opacity:1;background:rgba(20,20,22,.06)}
+html body .hubnav .sitelink{border-color:var(--line)}
+html body .hubnav.open{background:#fff;border-color:var(--line);box-shadow:0 18px 40px rgba(20,20,22,.14)}
+html body .top .acts :is(.btn,summary.btn,.status,button):not(.go):not(.primary):not([data-act="publish"]){color:var(--ink);border-color:rgba(20,20,22,.22);background:transparent}
+html body .top .acts .more[open]>summary.btn,html body .top .acts .more>summary.btn:hover{background:var(--ink);color:#fff}
+
+/* the tech pack's section bar: paper, the open section in cue */
+html body .tabs{background:rgba(255,255,255,.88);color:var(--ink);border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+html body .tabs button{color:var(--dim)}
+html body .tabs button:hover{color:var(--ink);background:rgba(20,20,22,.05)}
+html body .tabs button.on{background:var(--cue);color:var(--ink)}
+html body .tabs button .bdg{color:var(--cue-text)}
+html body .tabs button:focus-visible{outline-color:var(--ink)}
+
+/* the orbits: a line and a dot, not a black disc */
+html body :is(.orb,.orbit){border-color:rgba(20,20,22,.3)}
+html body .orb::before,html body .orbit::before{background:transparent;box-shadow:none;border:1px solid rgba(20,20,22,.3)}
+html body .orb::after,html body .orbit::after{box-shadow:0 0 0 1.5px var(--ink)}
+
+/* a client with no picture yet: paper, not a black block */
+html body .client-cover{background:var(--fog);border-bottom:1px solid var(--line)}
+
+
+/* page heroes (Design Lab, Team, Brand): white on the paper, the grid inside them in ink */
+html body .hero:not(:has(.orb,.orbit)){background:#fff;color:var(--ink);border:1px solid var(--line)}
+html body .hero::before{background-image:linear-gradient(rgba(20,20,22,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(20,20,22,.04) 1px,transparent 1px)}
+html body .hero .mono{color:var(--dim)}
+html body .hero p{color:#3d4047}
+html body .hero .stat{border-color:var(--line);background:var(--fog)}
+html body .hero .stat span{color:var(--dim)}
+html body .hero :is(.btn,button):not(.go){background:#fff;color:var(--ink);border-color:rgba(20,20,22,.28)}
+html body .hero :is(.btn,button):not(.go):hover{background:var(--fog)}
+
+
+/* the hub's menu on a phone: the same tray as the console, an ink sheet under the header, the places in big light type, fanned from one dot */
+@media (max-width:620px){
+  html body .hubmenu{border-color:var(--line);color:var(--ink)}
+  html body .hubmenu[aria-expanded="true"]{background:var(--ink);color:#fff;border-color:var(--ink)}
+  html body>header:has(.hubnav.open){-webkit-backdrop-filter:none;backdrop-filter:none;background:var(--fog)} /* a blurred header would hold the fixed sheet inside itself */
+  html body .hubnav.open{position:fixed;top:60px;left:0;right:0;bottom:0;z-index:60;display:flex;flex-direction:column;align-items:flex-end;justify-content:center;gap:6px;padding:24px 22px calc(40px + env(safe-area-inset-bottom,0px));background:var(--ink);border:0;border-radius:0;box-shadow:none;overflow-y:auto}
+  html body .hubnav.open>a:not(.hidden){display:block;position:relative;z-index:1;opacity:1;color:#f4f4f2;font:300 30px/1.2 'Space Grotesk',system-ui,sans-serif;letter-spacing:-.015em;text-transform:none;padding:6px 4px;border-radius:8px;animation:cueIn .5s cubic-bezier(.2,.8,.2,1) both}
+  html body .hubnav.open>a:nth-of-type(2){animation-delay:.04s}html body .hubnav.open>a:nth-of-type(3){animation-delay:.08s}html body .hubnav.open>a:nth-of-type(4){animation-delay:.12s}html body .hubnav.open>a:nth-of-type(5){animation-delay:.16s}html body .hubnav.open>a:nth-of-type(6){animation-delay:.2s}html body .hubnav.open>a:nth-of-type(7){animation-delay:.24s}html body .hubnav.open>a:nth-of-type(8){animation-delay:.28s}
+  html body .hubnav.open>a:hover{background:rgba(255,255,255,.06)}
+  html body .hubnav.open>a[aria-current]{text-decoration:underline;text-decoration-color:var(--cue);text-decoration-thickness:2px;text-underline-offset:7px}
+  html body .hubnav.open .sitelink{order:9;margin:18px 0 0;border:1px solid rgba(255,255,255,.25);font:500 11px 'IBM Plex Mono',monospace!important;letter-spacing:.1em!important;text-transform:uppercase!important;padding:9px 14px!important;border-radius:999px!important}
+  html body .hubnav.open .state{order:10;color:rgba(255,255,255,.6)}
+  html body .hubnav.open .cuefan{display:block}
+}
+html body .cuefan{display:none;position:absolute;left:0;top:0;pointer-events:none;z-index:0}
+html body .cuefan path{fill:none;stroke:rgba(75,255,154,.55);stroke-width:1;stroke-dasharray:var(--len,600);stroke-dashoffset:var(--len,600);animation:cueDraw 1s cubic-bezier(.3,.7,.2,1) forwards}
+@keyframes cueIn{from{opacity:0;transform:translateX(18px)}}
+@keyframes cueDraw{to{stroke-dashoffset:0}}
+
+/* inputs and focus */
+html body :is(input,select,textarea):focus-visible{outline:2px solid var(--ink);outline-offset:1px}
+}
+@media screen and (prefers-reduced-motion:reduce){html body{background-attachment:scroll}html body .hubnav.open>a,html body .cuefan path{animation:none}html body .cuefan path{stroke-dashoffset:0}}
