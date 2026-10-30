@@ -5,6 +5,7 @@
 //   labHandoff(pack, lab) → the pack with the Lab's part laid in (a normalised pack in, a normalised pack out: the caller normalises)
 import { MATERIALS_NOTE } from './lab-materials.js';
 export const FLATS_NOTE = 'From the flats';
+export const ENG_NOTE = 'From engineering';
 const LAB_LINE = /^From the Design Lab: .*$/m;
 const money = cents => (cents == null || !Number.isFinite(Number(cents)) ? '' : (Number(cents) / 100).toFixed(2));
 
@@ -54,6 +55,29 @@ export function labHandoff(pack, lab = {}) {
   if (lab.priceCents != null && out.commercial && !out.commercial.retailPrice) out.commercial.retailPrice = money(lab.priceCents);
   const line = [lab.priceCents != null && `target retail $${money(lab.priceCents)}`, lab.costCents != null && `target landed cost $${money(lab.costCents)}`, lab.qty && `planned quantity ${lab.qty}`, lab.planName && `line plan "${lab.planName}"`].filter(Boolean).join(', ');
   if (line) out.notes = (LAB_LINE.test(out.notes || '') ? out.notes.replace(LAB_LINE, `From the Design Lab: ${line}.`) : [`From the Design Lab: ${line}.`, out.notes].filter(Boolean).join('\n\n')).slice(0, 6000);
+  // engineering (src/lab-assembly.js packFromAssembly, for hard goods and electronics): the assembled and exploded views as sketches, the parts
+  // and cables as BOM lines, the steps, tools and open checks as construction lines, and for an electronic product its components, its
+  // certifications (a certification the pack already has keeps its status) and the electrical facts the pack has not filled in yet. Sending
+  // it again replaces what engineering sent last time and nothing else.
+  const eng = lab.engineering;
+  if (eng) {
+    for (const sk of eng.sketches || []) {
+      out.sketches = (out.sketches || []).filter(x => x.id !== sk.id);
+      const taken = out.sketches.some(x => x.view === sk.view && x.image);
+      if (out.sketches.length < 12) out.sketches.push({ id: sk.id, view: taken ? 'other' : sk.view, label: sk.label, image: sk.image, garmentWidthIn: null, hero: null, callouts: [] });
+    }
+    if (eng.bom) out.bom = [...(out.bom || []).filter(r => r.notes !== ENG_NOTE), ...eng.bom.map(r => ({ component: '', material: '', spec: '', supplier: '', ref: '', color: '', placement: '', qty: '', unit: '', cost: '', ...r, notes: ENG_NOTE }))].slice(0, 120);
+    const ENG_AREA = /^(Assembly|Tooling|Engineering check) · /;
+    if (eng.construction) out.construction = [...(out.construction || []).filter(r => !ENG_AREA.test(String(r.area))), ...eng.construction].slice(0, 80);
+    if (eng.electronics && out.electronics) {
+      const e = out.electronics, been = r => String(r.notes || '').startsWith(ENG_NOTE) || /^(On the main board|Off the board)/.test(String(r.notes || '')) || /^W\d+$/.test(String(r.ref || ''));
+      e.enabled = true;
+      e.components = [...eng.electronics.components, ...(e.components || []).filter(r => !been(r))].slice(0, 120);
+      const have = new Set((e.certifications || []).map(c => String(c.name).toLowerCase()));
+      e.certifications = [...(e.certifications || []), ...eng.electronics.certifications.filter(c => !have.has(c.name.toLowerCase())).map(c => ({ name: c.name, market: c.market, required: true, status: 'needed', lab: '', notes: c.notes }))].slice(0, 40);
+      e.specs = { ...(e.specs || {}) }; for (const [k, v] of Object.entries(eng.electronics.specs || {})) if (!e.specs[k]) e.specs[k] = v;
+    }
+  }
   // the style's empty fields
   for (const [k, v] of Object.entries(lab.style || {})) if (v && out.style && !out.style[k]) out.style[k] = String(v).slice(0, 200);
   return out;

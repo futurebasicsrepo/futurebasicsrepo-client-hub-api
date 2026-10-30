@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import '../src/elec.js';
+import { realMeshes, isoPicture } from '../src/lab-parts-mesh.js';
+import { harnessOf, cablePath, frontOf } from '../src/lab-assembly.js';
 import { archetype, engineer, cleanAssembly, cleanPart, meshOf, volumeOf, explodeOffsets, stlOf, drawingSvg, blockSvg, bomRows, bomCsv, guessArch, radioOf, power, cellOf, ARCHES, dfm } from '../src/lab-assembly.js';
 
 test('every starting assembly fits together: no part in another\'s space, nothing too big for its housing', () => {
@@ -78,6 +80,38 @@ test('the drawing, the BOM and the CSV', () => {
   const csv = bomCsv(E).split('\n'); assert.equal(csv[0], 'Item,Part,Qty,Material,Process,Finish,Colour,Mass (g),Unit cost ($),Tool cost ($)'); assert.equal(csv.length, rows.length + 1);
 });
 
+test('the files carry the parts\' real shapes: the same 3D parts the page shows, built on the server', async () => {
+  const s = archetype('cdplayer'), real = realMeshes(s), tris = id => real[id].reduce((a, m) => a + m.tri.length / 9, 0);
+  assert.deepEqual(Object.keys(real).sort(), s.parts.map(p => p.id).sort(), 'every part is built');
+  for (const p of s.parts) { assert.ok(tris(p.id) >= 12, `${p.name} has a shape`); let lo = Infinity, hi = -Infinity; for (const m of real[p.id]) for (let i = 0; i < m.tri.length; i++) { lo = Math.min(lo, m.tri[i]); hi = Math.max(hi, m.tri[i]); } assert.ok(hi - lo <= Math.hypot(...p.size) * 1.6 + 2, `${p.name} stays near its own size`); }
+  const board = s.parts.find(p => p.shape === 'pcb'), green = real[board.id].some(m => { const [r, g, b] = [1, 3, 5].map(i => parseInt(m.colour.slice(i, i + 2), 16)); return g > r + 20 && g > b; });
+  assert.ok(green, 'the board reads as solder mask, not a blank texture');
+  const box = stlOf(s, { t: 0 }), rl = stlOf(s, { t: 0, real }), n = new DataView(rl.buffer).getUint32(80, true);
+  assert.equal(rl.length, 84 + n * 50); assert.ok(n > 20 * new DataView(box.buffer).getUint32(80, true), 'many times the detail of the boxes');
+  assert.ok(stlOf(s, { only: board.id, real }).length < rl.length);
+  const pic = await isoPicture(s, { t: 1, real }); assert.match(pic.href, /^data:image\/png;base64,/); assert.ok(pic.box[2] > pic.box[0] && pic.box[3] > pic.box[1]);
+  const svg = drawingSvg(s, { title: 'CD player', picture: pic }); assert.match(svg, /<image href="data:image\/png/); assert.ok(!/<path d="M/.test(svg), 'the picture replaces the painted boxes'); assert.match(svg, /Parts list/);
+});
+
+test('the cables: every part off the board is wired to what drives it, costed, in the steps and the parts list, and routed between its parts', () => {
+  const s = archetype('cdplayer'), E = engineer(s), H = E.harness, byKind = k => H.find(c => s.parts.find(p => p.id === c.from).elec?.kind === k);
+  assert.equal(byKind('iec').to, s.parts.find(p => p.elec?.kind === 'psu').id, 'mains comes in to the supply'); assert.equal(byKind('psu').to, 'pcb', 'the supply feeds the board');
+  assert.equal(byKind('cdmech').kind, 'ribbon'); assert.match(byKind('cdmech').type, /FFC/);
+  assert.ok(!H.some(c => s.parts.find(p => p.id === c.from).parent === 'pcb'), 'parts soldered on the board need no cable');
+  assert.deepEqual(H.map(c => c.n), H.map((_, i) => `W${i + 1}`)); assert.ok(H.every(c => c.mm >= 40 && c.unit > 0));
+  const rows = bomRows(E); assert.equal(rows.filter(r => /^Cable W\d+:/.test(r.name)).length, H.length); assert.ok(E.steps.some(t => /Connect W1, dc power/.test(t)));
+  const noCab = engineer({ ...s, parts: s.parts.filter(p => !['psu', 'iec', 'cdmech', 'vfd', 'ir', 'button'].includes(p.elec?.kind)) }); assert.ok(E.unit > noCab.unit - 30, 'cables are costed');
+  const path = cablePath(s, H[0]), path1 = cablePath(s, H[0], explodeOffsets(s, 1)); assert.equal(path.length, 24); assert.notDeepEqual(path[0], path1[0], 'the run follows its parts as they pull apart');
+  assert.deepEqual(engineer(archetype('tumbler')).harness, [], 'a product with no electronics has no cables');
+  assert.deepEqual(frontOf(s), [0, -1, 0], 'the CD player faces the way its front panel does');
+});
+
+test('the CD tray opens as the view pulls apart: the disc goes out the front, the laser sled is left in view', () => {
+  const s = archetype('cdplayer'), id = s.parts.find(p => p.elec?.kind === 'cdmech').id, ext = list => { let lo = Infinity; for (const m of list) for (let i = 1; i < m.tri.length; i += 3) lo = Math.min(lo, m.tri[i]); return lo; };
+  const shut = realMeshes(s, { t: 0 })[id], open = realMeshes(s, { t: 1 })[id];
+  assert.ok(ext(open) < ext(shut) - 80, `the tray reaches out toward the front (-y): ${ext(shut).toFixed(0)} → ${ext(open).toFixed(0)} mm`);
+});
+
 test('the archetype and radio are read from the concept\'s words; cleaning keeps values in range', () => {
   assert.equal(guessArch({ category: 'electronics', name: 'Pocket remote' }), 'handheld');
   assert.equal(guessArch({ category: 'electronics', name: 'Bedside clock with display' }), 'desk');
@@ -113,4 +147,33 @@ test('audio: a CD player, a cassette player and a powered speaker, with the part
   assert.equal(guessArch({ category: 'electronics', name: 'Retro CD player' }), 'cdplayer'); assert.equal(guessArch({ category: 'electronics', name: 'Walkman cassette player' }), 'cassette'); assert.equal(guessArch({ category: 'electronics', name: 'Bookshelf speakers' }), 'speaker'); assert.equal(guessArch({ category: 'electronics', name: 'Bluetooth speaker' }), 'puck');
   const moved = archetype('speaker'); moved.parts.find(p => p.elec?.kind === 'iec').at[1] -= 40;
   assert.ok(engineer(moved).checks.some(c => c.level === 'bad' && /IEC C8 mains inlet: .* in from the outside wall/.test(c.text)), 'a mains inlet pulled inside is caught');
+});
+
+test('a factory\'s files carry no costs: the parts list and the drawing without unit or tool costs', () => {
+  const s = archetype('cdplayer'), E = engineer(s), csv = bomCsv(E, { costs: false }), svg = drawingSvg(s, { costs: false });
+  assert.equal(csv.split('\n')[0], 'Item,Part,Qty,Material,Process,Finish,Colour,Mass (g)'); assert.ok(!/Labour|Final assembly/.test(csv));
+  assert.ok(!/Unit \$|Unit cost|tooling \$/.test(svg) && /T1 samples in \d+ weeks/.test(svg)); assert.match(drawingSvg(s), /Unit cost \$/);
+});
+
+test('turntable, headphones, smart speaker, power bank and lamp: read from their words, made of their real parts, nothing to fix', async () => {
+  const want = {
+    turntable: ['Belt-drive turntable with a phono preamp', ['ttmotor', 'cartridge', 'phono', 'rca', 'dcjack'], /External adapter/],
+    headphones: ['Wireless over-ear headphones', ['hpdriver', 'battery', 'ble', 'usbc', 'mic'], /EN 50332/],
+    smartspeaker: ['Smart speaker with a voice assistant', ['wifi', 'mic', 'led', 'speaker', 'amp', 'dcjack'], /CE-RED/],
+    powerbank: ['10,000 mAh power bank', ['li18650', 'pbms', 'usbc', 'led'], /UN 38\.3/],
+    lamp: ['Cordless table lamp', ['ledcob', 'leddrv', 'touch', 'battery', 'usbc'], /IEC 62471/]
+  };
+  const { realMeshes } = await import('../src/lab-parts-mesh.js');
+  for (const [a, [name, kinds, cert]] of Object.entries(want)) {
+    assert.equal(guessArch({ name, category: 'electronics' }), a, name);
+    const s = archetype(a), E = engineer(s), k = new Set(s.parts.filter(p => p.elec).map(p => p.elec.kind));
+    assert.ok(kinds.every(x => k.has(x)), `${a}: ${kinds.filter(x => !k.has(x))} missing`);
+    assert.deepEqual(E.checks.filter(c => c.level === 'bad').map(c => c.text), [], a);
+    assert.ok(E.certs.some(c => cert.test(c.name)), `${a}: ${cert}`); assert.ok(E.harness.length >= 1 && E.unit > 0, a);
+    const real = realMeshes(s); assert.ok(s.parts.every(p => real[p.id]?.length), `${a}: every part is built in 3D`);
+  }
+  const pb = engineer(archetype('powerbank', {}, { mah: 12000 })); assert.match(pb.spec.parts.find(p => p.elec?.kind === 'li18650').name, /4 × 18650, 12000 mAh/);
+  assert.ok(pb.power.runtime > 1 && pb.power.runtime < 6, 'a power bank lasts hours at half its rated output');
+  assert.ok(!pb.checks.some(c => /^Heat/.test(c.text) && c.level !== 'ok'), 'its output leaves through the cable: only the loss warms it');
+  const sm = engineer(archetype('smartspeaker')); assert.ok(sm.harness.some(c => c.label === 'Board to board' && /FFC/.test(c.type)), 'the top board joins the main one by a flex cable');
 });

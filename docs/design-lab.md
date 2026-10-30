@@ -1281,6 +1281,22 @@ screen, the drawing and the files agree. Routes: `src/lab-assembly-routes.js`; s
     shipping tests, run time from 7.5 Wh), the board with the tape preamp and headphone amp, keys on top, the jack and the volume wheel.
   - **Powered speaker** (bookshelf, Bluetooth): MDF cabinet and baffle (CNC routed), woofer and tweeter, bass port, grille, the 2 × 20 W
     amplifier board standing at the back with the mains inlet, line in and volume through the back panel.
+  - **Turntable** (belt drive): MDF plinth on a steel plate with isolation feet, the main bearing and the 12 V motor inside, a 300 mm
+    aluminium platter and felt mat, the tonearm on a cored zinc pillar with its counterweight and an offset headshell carrying the
+    moving-magnet cartridge over the record, the phono preamp board with RCA outputs and a DC input at the back, speed buttons, a clear dust
+    cover on two hinges. The tonearm wiring (shielded litz) runs to the phono input; the plug-in adapter brings its own listing.
+  - **Over-ear headphones** (Bluetooth): two PC/ABS cups with a 40 mm driver behind each baffle and memory-foam pads, nylon yokes,
+    aluminium sliders, a stainless spring band under its cushion; the board, buttons, LED and USB-C in the right cup, the cell in the left
+    (its wires run through the band). Brings EN 50332 (sound pressure limits) as well as the radio and battery approvals.
+  - **Smart speaker** (Wi-Fi): a base with the main board, Wi-Fi module, amplifier and DC input; an up-firing 3 in driver under a fabric
+    grille; a top cap with its own board (four microphones, twelve LEDs for the light ring, four buttons) joined to the main board by a
+    flex cable.
+  - **Power bank**: 2 to 4 × 18650 cells side by side (from the capacity asked for), the PD controller board with USB-C in and out, a
+    four-LED fuel gauge behind its window and a button, in two textured shells. Its controller carries the output (20 W at half load), so
+    the run time is how long it lasts in use, and since that power leaves through the cable only the converter's loss counts as heat.
+  - **Cordless lamp**: a die-cast weighted base with the cell, the board (charger, LED driver) and USB-C, an aluminium stem the wires run up,
+    a pressed aluminium shade with the COB LED on its heat sink, an opal diffuser and a touch dimmer on top. Brings IEC 62471
+    (photobiological safety) and the EU light-source ecodesign and energy label.
   Each part draws at its own rail (`v`): a 12 V amplifier and a 5 V CD loader are counted in watts, and a battery's run time comes from
   the energy at its cell. Every socket (USB-C, mains, RCA, the jack) is checked against the outside of the housing on all three axes. With nothing saved, the page shows the one the concept's words point to.
   **Read the picture** asks Claude for the kind, size and features (`ASSEMBLY_READ_FIXTURE` stands in for it in tests); without a picture or
@@ -1309,7 +1325,31 @@ screen, the drawing and the files agree. Routes: `src/lab-assembly-routes.js`; s
   each line named by its bus), the power budget (run time, standby, charge time, Wh; the share of time each part is on can be set), the board
   (size, layers, how full, placements, fab and SMT cost), the USB-C port at the wall, the radio clear of the battery and of metal, the heat
   with everything on, and the certifications to plan for (`src/elec.js`).
+- **Cables.** Every electronic part off the board is wired to what drives it (`harnessOf`): the supply to the board, mains in through the
+  inlet to the supply, a driver to the amplifier, a loader or a display by a flat flex cable, controls and sockets by a small multi-wire
+  lead, and a second board joins the main one by a flat flex cable; each cable is numbered W1, W2… (W, a cable's reference designator), typed (wires, gauge, connector), sized (the run with a fifth for slack) and costed. They are on the
+  parts list, in the assembly steps ("Connect W1…") and the time, listed under Assembly → Cables, and drawn in the view as runs between
+  their parts, coloured by what they carry (red power, grey mains, amber flex, white signal, black coax) with their numbers; the **Cables**
+  button shows or hides them. The drawing carries them too.
+- **Parts that open.** A CD loader's tray, with the disc on it, slides out toward the product's front (`frontOf`: the way its front panel
+  looks) as the view pulls apart, so the laser sled on its rails and the spindle show; the exploded STL and drawing show it open.
+- **The board's fixing.** Its mounting holes are cut through (M3 clearance), each with a pan-head screw on a brass hex standoff.
 - **Files** (from the saved assembly): STL assembled, exploded, or one part (mm); the exploded isometric drawing with balloons and the parts
-  list (SVG); the parts list (CSV); the block diagram (SVG).
+  list (SVG); the parts list (CSV); the block diagram (SVG). The STL and the drawing carry the **parts' real shapes**, the same 3D parts the
+  page shows (the driver's basket and cone, the board with its chips and passives, bosses and ribs inside a housing), built on the server
+  (`src/lab-parts-mesh.js`, three.js without textures; a texture's ground colour is kept, so a board reads as solder mask). The drawing's
+  picture is rendered with a depth buffer and ink lines where parts meet; balloons and the parts list stay vector. `?simple=1` gives the
+  engineering's plain boxes and shells (a lighter STL). The last dozen products' shapes are kept in memory, so a second download is quick.
+
+- **Into the tech pack.** Files → *Send to the tech pack* (once the concept has a pack) lays the engineering into it (`packFromAssembly`,
+  merged by `src/lab-handoff.js`): the assembled and exploded views as sketches; every part, the board assembly and each cable as BOM
+  lines (marked *From engineering*, with unit costs, which the pack hides from factories); the assembly steps, each tool (steel, cavities,
+  side actions, weeks to T1, no tool cost) and the checks still open as construction lines; and for an electronic product its components
+  with reference designators (U1, J1, SW1–SW5, W1…), the certifications (one the pack already has keeps its status) and the electrical facts
+  the pack has not filled in. Sending again replaces what engineering sent last time and nothing else; a published pack goes out as the next
+  version with what changed, as the flats do.
+- **The factory's production package** gains `engineering/`: the assembly in place (STL, real shapes), one STL per part the factory makes
+  (`parts/NN-name.stl`, NN its item on the parts list) for the toolmaker, the exploded drawing, the parts list, the cables and the block
+  diagram, all without our costs. The README says what each is; when the engineering changed after the version was published, it says so.
 
 The client's room uses the same page on its own concepts; another room's concept answers 404. Journey **J267**.

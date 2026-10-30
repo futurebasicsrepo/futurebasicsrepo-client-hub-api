@@ -394,9 +394,11 @@ function render(){
   window.PRO?.overlay(vx);window.VEC?.overlay(vx);overlay();$('#zLabel').textContent=Math.round(Z*100)+'%';
 }
 function rotKnob(l){const p=corners(l).map(([a,b])=>[sx(a),sy(b)]),tm=[(p[0][0]+p[1][0])/2,(p[0][1]+p[1][1])/2],c=[sx(l.x),sy(l.y)],d=Math.hypot(tm[0]-c[0],tm[1]-c[1])||1;return[tm[0]+(tm[0]-c[0])/d*28,tm[1]+(tm[1]-c[1])/d*28]}
-function fit(){const r=$('#stage').getBoundingClientRect();Z=Math.min((r.width-48)/W,(r.height-48)/H,2);PX=(r.width-W*Z)/2;PY=(r.height-H*Z)/2;draw()}
-function zoomAt(f,cx,cy){VIEWONLY=performance.now()+120;const nz=clamp(Z*f,.05,8);PX=cx-(cx-PX)*nz/Z;PY=cy-(cy-PY)*nz/Z;Z=nz;draw()}
-new ResizeObserver(()=>draw()).observe($('#stage'));
+// FITTED: the view is still the fit, so a stage that settles or resizes keeps it fitted
+let FITTED=false;
+function fit(){FITTED=true;const r=$('#stage').getBoundingClientRect();Z=Math.min((r.width-48)/W,(r.height-48)/H,2);PX=(r.width-W*Z)/2;PY=(r.height-H*Z)/2;draw()}
+function zoomAt(f,cx,cy){FITTED=false;VIEWONLY=performance.now()+120;const nz=clamp(Z*f,.05,8);PX=cx-(cx-PX)*nz/Z;PY=cy-(cy-PY)*nz/Z;Z=nz;draw()}
+new ResizeObserver(()=>FITTED?fit():draw()).observe($('#stage'));
 
 // ---------- pointer work on the stage ----------
 let DRAG=null,HOVER=null,SPACE=false;
@@ -433,7 +435,7 @@ function gestStart(){const[a,b]=[...PTRS.values()];GEST={d:Math.hypot(a.x-b.x,a.
   const l=selected();if(TOOL==='select'&&l&&!fixed(l)&&!l.locked&&l.visible&&[[a.x,a.y],[b.x,b.y],[GEST.mx,GEST.my]].some(([x,y])=>hit(dx(x),dy(y))===l))GEST.layer={l,s0:l.scale,r0:l.rot||0,x0:l.x,y0:l.y}}
 function gestMove(){const[a,b]=[...PTRS.values()];if(!a||!b||!GEST)return;const d=Math.hypot(a.x-b.x,a.y-b.y)||1,mx=(a.x+b.x)/2,my=(a.y+b.y)/2,nz=clamp(GEST.Z*d/GEST.d,.05,8);
   if(GEST.layer){const g=GEST.layer;g.l.scale=clamp(g.s0*d/GEST.d,.02,40);g.l.rot=g.r0+Math.atan2(b.y-a.y,b.x-a.x)-GEST.ang;g.l.x=Math.round(g.x0+(mx-GEST.mx)/Z);g.l.y=Math.round(g.y0+(my-GEST.my)/Z);g.moved=true;draw();paintFields();return}
-  PX=mx-(GEST.mx-GEST.PX)*nz/GEST.Z;PY=my-(GEST.my-GEST.PY)*nz/GEST.Z;Z=nz;draw()}
+  FITTED=false;PX=mx-(GEST.mx-GEST.PX)*nz/GEST.Z;PY=my-(GEST.my-GEST.PY)*nz/GEST.Z;Z=nz;draw()}
 function cancelTouchStroke(){const g=DRAG;if(!g)return;if(g.mode==='stroke'&&g.orig){g.l.raster=g.orig;g.l.raster._rid=RID++}DRAG=null;draw()}
 view.addEventListener('pointerdown',e=>{
   if(!D)return;VIEWONLY=0;if(document.activeElement?.matches?.('input,textarea,select'))document.activeElement.blur(); // the picture takes the keys back from a field in the panel
@@ -476,7 +478,7 @@ view.addEventListener('pointermove',e=>{
   if(window.PRO?.move(g,x,y,e)||window.VEC?.move(g,x,y,e))return;
   // the Pencil reports more samples than the screen draws: take all of them, so a quick curve stays a curve
   if(g.mode==='stroke'){const ev=e.getCoalescedEvents?.()||[];for(const c of ev.length?ev:[e]){const[cx,cy]=pt(c),ux=dx(cx),uy=dy(cy);dab(g.l,g.x,g.y,ux,uy,TOOL,pressOf(c));g.x=ux;g.y=uy}draw();paintFields();return}
-  if(g.mode==='pan'){PX=g.PX+px-g.px;PY=g.PY+py-g.py}
+  if(g.mode==='pan'){FITTED=false;PX=g.PX+px-g.px;PY=g.PY+py-g.py}
   else if(g.mode==='area'){maskDab(g.x,g.y,x,y,g.erase);g.x=x;g.y=y}
   else if(g.mode==='stroke'){dab(g.l,g.x,g.y,x,y,TOOL);g.x=x;g.y=y}
   else if(g.mode==='move'){if(window.PRO)PRO.snap1(g,x,y,e);else{g.l.x=Math.round(x-g.ox);g.l.y=Math.round(y-g.oy);g.moved=true}}
@@ -502,7 +504,7 @@ let TPG=null;
 ['gesturestart','gesturechange','gestureend'].forEach(t=>document.addEventListener(t,e=>{e.preventDefault();if(VMODE!=='picture'||!e.target.closest?.('#stage'))return;
   if([...PTRS.values()].filter(q=>q.type==='touch').length>=2){TPG=null;return}const r=view.getBoundingClientRect(),cx=e.clientX-r.left,cy=e.clientY-r.top;
   if(t==='gesturestart')TPG={z:Z};else if(t==='gesturechange'&&TPG){zoomAt(clamp(TPG.z*e.scale,.05,8)/Z,cx,cy)}else TPG=null},{passive:false}));
-view.addEventListener('wheel',e=>{e.preventDefault();const[px,py]=pt(e);if(e.ctrlKey||e.metaKey)zoomAt(Math.exp(-e.deltaY*.01),px,py);else{VIEWONLY=performance.now()+120;PX-=e.deltaX;PY-=e.deltaY;draw()}},{passive:false});
+view.addEventListener('wheel',e=>{e.preventDefault();const[px,py]=pt(e);if(e.ctrlKey||e.metaKey)zoomAt(Math.exp(-e.deltaY*.01),px,py);else{VIEWONLY=performance.now()+120;FITTED=false;PX-=e.deltaX;PY-=e.deltaY;draw()}},{passive:false});
 $('#zIn').onclick=()=>{const r=view.getBoundingClientRect();zoomAt(1.25,r.width/2,r.height/2)};$('#zOut').onclick=()=>{const r=view.getBoundingClientRect();zoomAt(.8,r.width/2,r.height/2)};$('#zFit').onclick=fit;
 
 // ---------- tools and their options ----------
