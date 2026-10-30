@@ -91,16 +91,17 @@ html body .hero :is(.btn,button):not(.go):hover{background:var(--fog)}
   html body .hubmenu[aria-expanded="true"]{background:var(--ink);color:#fff;border-color:var(--ink)}
   html body>header:has(.hubnav.open){-webkit-backdrop-filter:none;backdrop-filter:none;background:var(--fog)} /* a blurred header would hold the fixed sheet inside itself */
   html body .hubnav.open{position:fixed;top:60px;left:0;right:0;bottom:0;z-index:60;display:flex;flex-direction:column;align-items:flex-end;justify-content:center;gap:6px;padding:24px 22px calc(40px + env(safe-area-inset-bottom,0px));background:var(--ink);border:0;border-radius:0;box-shadow:none;overflow-y:auto}
-  html body .hubnav.open>a:not(.hidden){display:block;position:relative;z-index:1;opacity:1;color:#f4f4f2;font:300 30px/1.2 'Space Grotesk',system-ui,sans-serif;letter-spacing:-.015em;text-transform:none;padding:6px 4px;border-radius:8px;animation:cueIn .5s cubic-bezier(.2,.8,.2,1) both}
-  html body .hubnav.open>a:nth-of-type(2){animation-delay:.04s}html body .hubnav.open>a:nth-of-type(3){animation-delay:.08s}html body .hubnav.open>a:nth-of-type(4){animation-delay:.12s}html body .hubnav.open>a:nth-of-type(5){animation-delay:.16s}html body .hubnav.open>a:nth-of-type(6){animation-delay:.2s}html body .hubnav.open>a:nth-of-type(7){animation-delay:.24s}html body .hubnav.open>a:nth-of-type(8){animation-delay:.28s}
+  html body .hubnav.open>a:not(.hidden){display:block;position:relative;z-index:1;opacity:1;color:#f4f4f2;font:300 30px/1.2 'Space Grotesk',system-ui,sans-serif;letter-spacing:-.015em;text-transform:none;padding:6px 4px;border-radius:8px;animation:cueIn .7s .18s cubic-bezier(.2,.8,.2,1) both}
+  html body .hubnav.open>a:nth-of-type(2){animation-delay:0.25s}html body .hubnav.open>a:nth-of-type(3){animation-delay:0.32s}html body .hubnav.open>a:nth-of-type(4){animation-delay:0.39s}html body .hubnav.open>a:nth-of-type(5){animation-delay:0.46s}html body .hubnav.open>a:nth-of-type(6){animation-delay:0.53s}html body .hubnav.open>a:nth-of-type(7){animation-delay:0.60s}html body .hubnav.open>a:nth-of-type(8){animation-delay:0.67s}
   html body .hubnav.open>a:hover{background:rgba(255,255,255,.06)}
-  html body .hubnav.open>a[aria-current]{text-decoration:underline;text-decoration-color:var(--cue);text-decoration-thickness:2px;text-underline-offset:7px}
+  html body .hubnav.open>a:not(.sitelink)::after{content:"";display:inline-block;vertical-align:middle;width:10px;height:10px;margin:0 2px 0 14px;border-radius:50%}
+  html body .hubnav.open>a[aria-current]::after{background:var(--cue);box-shadow:0 0 0 4px rgba(75,255,154,.18),0 0 18px rgba(75,255,154,.55)}
   html body .hubnav.open .sitelink{order:9;margin:18px 0 0;border:1px solid rgba(255,255,255,.25);font:500 11px 'IBM Plex Mono',monospace!important;letter-spacing:.1em!important;text-transform:uppercase!important;padding:9px 14px!important;border-radius:999px!important}
   html body .hubnav.open .state{order:10;color:rgba(255,255,255,.6)}
   html body .hubnav.open .cuefan{display:block}
 }
 html body .cuefan{display:none;position:absolute;left:0;top:0;pointer-events:none;z-index:0}
-html body .cuefan path{fill:none;stroke:rgba(75,255,154,.55);stroke-width:1;stroke-dasharray:var(--len,600);stroke-dashoffset:var(--len,600);animation:cueDraw 1s cubic-bezier(.3,.7,.2,1) forwards}
+html body .cuefan path{fill:none;stroke:rgba(75,255,154,.55);stroke-width:1;stroke-dasharray:var(--len,600);stroke-dashoffset:var(--len,600);animation:cueDraw 1.8s .3s cubic-bezier(.3,.7,.2,1) forwards}
 @keyframes cueIn{from{opacity:0;transform:translateX(18px)}}
 @keyframes cueDraw{to{stroke-dashoffset:0}}
 
