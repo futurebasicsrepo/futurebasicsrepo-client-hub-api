@@ -89,3 +89,40 @@ test('the files: a Tajima DST that reads back stitch for stitch, a Melco EXP, an
   assert.equal(colours, 4); assert.deepEqual([x, y], last);
   const pic = await sharp(Buffer.from(stitchSvg(d, { px: 400, garment: '#222222' }))).png().toBuffer(); assert.equal((await sharp(pic).metadata()).width, 400);
 });
+
+// the longest top satin stitch in a design, in 0.1 mm (underlay, ties and travel runs left out)
+const longestSatin = d => { let m = 0; for (const b of d.plan) { let prev = null; for (const q of b.pts) { if (q.trim) { prev = null; continue; } if (prev && !q.jump && !q.u && !q.tie && !q.run && d.objects[q.o]?.kind === 'satin') m = Math.max(m, Math.hypot(q.p[0] - prev[0], q.p[1] - prev[1])); prev = q.p; } } return m; };
+const RING = '<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="1000"><circle cx="500" cy="500" r="420" fill="none" stroke="#c8202a" stroke-width="30"/></svg>';
+const S_STROKE = '<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="1000"><path d="M720 220 C 600 100, 280 120, 300 330 C 320 520, 700 460, 700 680 C 700 900, 340 900, 260 780" fill="none" stroke="#1d3f8a" stroke-width="30" stroke-linecap="round"/></svg>';
+
+test('turning satin: a ring and an S curve are sewn square to the stroke all the way round, with no long floats', async () => {
+  const { digitizeReview } = await import('../src/lab-sewout.js');
+  for (const art of [RING, S_STROKE]) {
+    const png = await svg(art), d = await digitize(png, { widthIn: 4 }), [ob] = d.objects;
+    assert.equal(d.objects.length, 1); assert.equal(ob.kind, 'satin'); assert.ok(ob.turning, 'the satin turns with the stroke');
+    const L = longestSatin(d); assert.ok(L <= 16 * ob.widthMm, `longest stitch ${L / 10} mm on a ${ob.widthMm} mm stroke`); // one angle left floats of 10–15 mm here
+    assert.ok(d.plan[0].pts.some(q => q.u) && d.plan[0].pts.every(q => q.o === 0 || q.tie || q.trim), 'a centre-walk underlay, and every point carries its shape');
+    const r = await digitizeReview(d, png, { widthIn: 4 });
+    assert.ok(!r.items.some(i => i.code === 'long-stitch'), JSON.stringify(r.items.filter(i => i.level !== 'ok')));
+    assert.ok(r.fidelity.coverage >= .98 && r.fidelity.iou >= .8, JSON.stringify(r.fidelity));
+    // the same edges as one angle gave (with the pull compensation off: it now widens the column all the way round, not only where rows crossed it)
+    const bare = await digitize(png, { widthIn: 4, pullMm: 0 }), rb = await digitizeReview(bare, png, { widthIn: 4 }); assert.ok(rb.fidelity.iou >= .89, JSON.stringify(rb.fidelity));
+    // the file reads back stitch for stitch
+    const dst = dstOf(d, 'Ring'), back = readDst(dst.file); assert.equal(back.filter(m => m.kind === 'stitch').length, dst.stitches); assert.deepEqual([back.at(-2).x, back.at(-2).y], d.plan.at(-1).pts.at(-1).p);
+  }
+  // a ring in a badge: the review no longer asks for it to be sewn as fill
+  const badge = await svg('<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1200"><circle cx="600" cy="600" r="560" fill="#14284b"/><circle cx="600" cy="600" r="455" fill="none" stroke="#e8b923" stroke-width="40"/><text x="600" y="680" font-family="DejaVu Sans" font-weight="bold" font-size="220" text-anchor="middle" fill="#e8b923">FB</text></svg>');
+  const d = await digitize(badge, { widthIn: 4 }), r = await digitizeReview(d, badge, { widthIn: 4 });
+  assert.ok(!r.items.some(i => i.code === 'long-stitch')); assert.ok(r.fidelity.iou > .95, JSON.stringify(r.fidelity)); assert.ok(longestSatin(d) <= 70);
+});
+
+test('turning satin: a straight bar keeps its one angle, and branches and corners become columns of their own', async () => {
+  const bar = await digitize(await svg('<svg xmlns="http://www.w3.org/2000/svg" width="800" height="400"><rect x="60" y="180" width="680" height="30" fill="#c8202a"/></svg>'), { widthIn: 4 });
+  assert.equal(bar.objects[0].angle, 90); assert.ok(!bar.objects[0].turning); assert.ok(bar.stats.stitches > 400 && bar.stats.stitches < 480, String(bar.stats.stitches));
+  // an arch with a post through it and a crossbar: every column follows its own stroke, none of them runs along another
+  const arcs = await digitize(await svg('<svg xmlns="http://www.w3.org/2000/svg" width="800" height="800"><path d="M100 600 Q 400 0 700 600" fill="none" stroke="#a00" stroke-width="26"/><path d="M100 700 L 700 700" stroke="#a00" stroke-width="26"/><path d="M400 300 L 400 760" stroke="#a00" stroke-width="20"/></svg>'), { widthIn: 4 });
+  assert.equal(arcs.objects.length, 1); assert.ok(arcs.objects[0].turning); assert.ok(longestSatin(arcs) <= 16 * arcs.objects[0].widthMm, String(longestSatin(arcs)));
+  // a square-cornered letter: the corner is mitred, not fanned (no stitch wider than the stroke allows)
+  const f = await digitize(await svg('<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600"><path d="M150 520 V 80 H 450 M 150 300 H 380" fill="none" stroke="#111" stroke-width="40"/></svg>'), { widthIn: 3 });
+  assert.equal(f.objects.length, 1); assert.equal(f.objects[0].kind, 'satin'); assert.ok(f.objects[0].turning); assert.ok(longestSatin(f) <= 16 * f.objects[0].widthMm, String(longestSatin(f)));
+});
