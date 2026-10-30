@@ -41,3 +41,5 @@ These are starting rules written from how the hub already uses the brand; edit t
 * **Headers**: the cue line under the name, as the console headers draw it, is now also on `/start`, the help page, the factory sign-up, the factory tech-pack page and the quote invite.
 * **Email**: `hubEmailShell` opens with the line and dot, drawn in plain HTML (no image to block).
 * **Not changed**: PDFs (the dot after the name in the letterhead already is the mark), the Tech Pack app icons, external listings (Stripe checkout, Google sign-in, Shopify, Resend). Use the icon files from the Brand page for those.
+
+The hub and the console share one look built from these colours and fonts: see [daylight.md](daylight.md).
