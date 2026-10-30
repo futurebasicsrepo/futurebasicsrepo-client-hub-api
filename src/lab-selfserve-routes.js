@@ -157,7 +157,12 @@ export function registerLabSelfServeRoutes(app, d) {
         html: hubEmailShell('Your Design Lab is ready', `<p>${first ? `Hi ${first},` : 'Hello,'}</p><p>Future Basics has set you up in the Design Lab for <strong>${esc(c.name)}</strong>: plan a line, design each piece on its picture and its measured flats, and send it to a tech pack and a factory.</p>
           <p><b>On an iPad</b> (the best way to work, with an Apple Pencil): open <a href="${esc(url)}">${esc(url)}</a> in Safari, tap Share, then Add to Home Screen. Open the Design Lab icon and sign in with this address; a code arrives by email.</p>
           <p><b>On a computer</b>: open the same link and sign in the same way.</p>
-          <p>Inside: <b>Design</b> holds the picture and its flats side by side; <b>Simple</b> keeps the essentials and <b>Pro</b> shows every tool; the <b>Checklist</b> says what is left before the tech pack.${open ? '' : ' The Lab opens on your room once Future Basics turns it on; until then you will see the offer.'}</p>
+          <p>Inside:</p><ul style="padding-left:18px;margin:0 0 12px">
+            <li><b>New design</b> starts a piece from a few words (AI concepts), one of our sketches, or a blank page.</li>
+            <li>The <b>Studio</b> holds the picture as layers, its measured flats and the <b>Board</b> with every colourway. The pen, shapes and Illustrator files work as you expect; press <b>⌘K</b> for any command and <b>?</b> for the keys.</li>
+            <li><b>Embroidery</b> digitizes a graphic, shows it sewn on your fabric, plays it back stitch by stitch and reviews it like a digitiser would.</li>
+            <li>The <b>Checklist</b> says what is left before the tech pack; the pack's <b>Production files</b> are everything a factory needs, in one download.</li>
+          </ul>${open ? '' : '<p>The Lab opens on your room once Future Basics turns it on; until then you will see the offer.</p>'}
           <p><a href="${esc(url)}" style="display:inline-block;background:#141416;color:#fff;padding:10px 18px;border-radius:999px;text-decoration:none">Open the Design Lab</a></p>`) });
     } catch (e) { log.warn?.({ err: e.message }, 'design lab invite email not sent'); }
     return { ok: true, email, emailed, open };

@@ -2495,7 +2495,7 @@ await journey('J238', 'Welcoming a client\'s designers, and footwear kept off pa
       const cc = await b.newContext({ viewport: { width: 1194, height: 834 } }); await cc.addInitScript(t => { try { localStorage.setItem('fb.client.token', t); } catch {} }, ct);
       const page = await cc.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
       await page.goto(`${BASE}/lab`, { waitUntil: 'networkidle' }); await page.waitForSelector('#app:not(.hidden)', { timeout: 20000 });
-      ok(await page.isVisible('#welcome') && /Add to Home Screen/.test(await page.innerText('#welcome')) && /Checklist/.test(await page.innerText('#welcome')), '5. the first time in, a client\'s designer sees How to start: the iPad, the line, Design, Simple or Pro, the Checklist');
+      ok(await page.isVisible('#welcome') && /Add to Home Screen/.test(await page.innerText('#welcome')) && /Checklist/.test(await page.innerText('#welcome')) && /New design/.test(await page.innerText('#welcome')) && /Embroidery/.test(await page.innerText('#welcome')), '5. the first time in, a client\'s designer sees How to start: the iPad, the line, Design, Simple or Pro, the Checklist');
       await page.click('#welcomeDone'); await page.reload({ waitUntil: 'networkidle' }); await page.waitForSelector('#app:not(.hidden)', { timeout: 20000 });
       ok(!(await page.isVisible('#welcome')), '   Got it puts it away for good');
       await page.click('#howStart'); ok(await page.isVisible('#welcome'), '   and How to start brings it back');
