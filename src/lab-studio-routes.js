@@ -25,7 +25,7 @@ import { artInfo, artFindings } from './lab-flats-routes.js';
 import { sizeFindings, decorationCost, PLACEMENTS, calibrationOf } from './lab-decor.js';
 import { traceVector, stitchPlan, dstOf, expOf } from './lab-vector.js';
 import { digitizeOptions } from './lab-digitize.js';
-import { sewoutPng, sewoutFrames, digitizeReview } from './lab-sewout.js';
+import { sewoutBox, sewoutPng, sewoutFrames, digitizeReview } from './lab-sewout.js';
 import { jobFile, jobZip } from './lab-jobfile.js';
 import { cleanRules } from './lab-library.js';
 import { GRAPHIC_PLACE } from './lab-concepts.js';
@@ -183,9 +183,10 @@ export function registerLabStudioRoutes(app, d) {
     // the sew-out as it will look in thread on the garment (a JPEG: the thread and cloth texture make a PNG several MB), the digitiser's review,
     // and the stitches as a stream the studio plays back (src/lab-sewout.js)
     const fabric = ['knit', 'woven', 'twill', 'fleece'].includes(b.fabric) ? b.fabric : 'knit';
-    const [preview, review] = await Promise.all([sewoutPng(p, { px: 1100, garment: garment || '#ecebe6', fabric, format: 'jpeg' }), digitizeReview(p, img, { widthIn: w })]);
+    // onGarment: the thread alone (and its shadow), with the area it covers, for the studio to lay over the picture of the garment
+    const [preview, review, clear] = await Promise.all([sewoutPng(p, { px: 1100, garment: garment || '#ecebe6', fabric, format: 'jpeg' }), digitizeReview(p, img, { widthIn: w }), b.onGarment ? sewoutPng(p, { px: 900, fabric, clear: true }) : null]);
     const frames = sewoutFrames(p); frames.colours = frames.colours.map((c, i) => ({ ...c, name: c.name || p.colours[i]?.pantone || undefined }));
-    return { widthMm: p.widthMm, heightMm: p.heightMm, stitches: p.stitches, jumps: p.jumps, stats: p.stats, colours: p.colours, threads: p.threads.map((t, i) => ({ ...t, pantone: p.colours[i]?.pantone || '' })), objects: p.objects, warnings: p.warnings, knockouts: p.knockouts, settings: p.settings, preview: `data:image/jpeg;base64,${preview.toString('base64')}`, review, frames, fabric };
+    return { widthMm: p.widthMm, heightMm: p.heightMm, stitches: p.stitches, jumps: p.jumps, stats: p.stats, colours: p.colours, threads: p.threads.map((t, i) => ({ ...t, pantone: p.colours[i]?.pantone || '' })), objects: p.objects, warnings: p.warnings, knockouts: p.knockouts, settings: p.settings, preview: `data:image/jpeg;base64,${preview.toString('base64')}`, review, frames, fabric, ...(clear ? { onGarment: { image: `data:image/png;base64,${clear.toString('base64')}`, box: sewoutBox(p) } } : {}) };
   });
 
   // ---- fonts ----

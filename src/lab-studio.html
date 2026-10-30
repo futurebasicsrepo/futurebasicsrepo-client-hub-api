@@ -1121,13 +1121,13 @@ $('#sepDlg').addEventListener('click',async e=>{const d=$('#sepDlg');if(e.target
   catch(x){toast(x.message)}finally{b.disabled=false}});
 // ---------- embroidery: the layer digitized for a machine (src/lab-digitize.js), with the settings a digitiser changes ----------
 let EMB=null;
-const embBody=()=>{const l=layerOf(EMB);return{image:artPng(l),name:l.name,widthIn:Number($('#embW').value)||inchesOf(l).w,garment:GMODE?'':fabricUnder(l),techniqueId:l.finish?.id||null,fillAngle:$('#embAngle').value,rowMm:$('#embRow').value,satinMaxMm:$('#embSatin').value,pullMm:$('#embPull').value,underlay:$('#embUnder').value==='1'}};
-async function embOpen(l){if(!l||l.kind==='base'){toast('Choose a graphic, mark or type layer first.');return}EMB=l.id;$('#embWho').textContent=l.name;$('#embW').value=fin(Math.min(16,Math.max(.5,inchesOf(l).w)));$('#embDlg').showModal();embRun()}
+const embBody=()=>{const l=layerOf(EMB);return{image:artPng(l),name:l.name,widthIn:Number($('#embW').value)||inchesOf(l).w,garment:GMODE?'':fabricUnder(l),techniqueId:l.finish?.id||null,fillAngle:$('#embAngle').value,rowMm:$('#embRow').value,satinMaxMm:$('#embSatin').value,pullMm:$('#embPull').value,underlay:$('#embUnder').value==='1',...(window.EMBX?.body()||{})}};
+async function embOpen(l){if(!l||l.kind==='base'){toast('Choose a graphic, mark or type layer first.');return}EMB=l.id;window.EMBX?.reset();$('#embWho').textContent=l.name;$('#embW').value=fin(Math.min(16,Math.max(.5,inchesOf(l).w)));$('#embDlg').showModal();embRun()}
 async function embRun(){const l=layerOf(EMB);if(!l)return;$('#embWait').classList.remove('hidden');$('#embImg').style.opacity=.35;$('#embRun').disabled=true;
   try{const r=await api('/v1/lab/studio/embroidery',{body:embBody()}),st=r.stats;$('#embImg').src=r.preview;$('#embImg').style.opacity=1;$('#embWait').classList.add('hidden');$('#embDlg').dataset.stitches=r.stitches;
     $('#embStats').innerHTML=`<b>${st.stitches.toLocaleString('en-US')} stitches</b> · ${r.widthMm} × ${r.heightMm} mm · ${st.colours} thread${st.colours===1?'':'s'}, ${st.colourChanges} change${st.colourChanges===1?'':'s'} · ${st.trims} trims · about ${Math.max(1,Math.round(st.minutes))} min a piece · ${st.satin} satin, ${st.fill} fill`;
     $('#embSeq').innerHTML='<tr><td></td><td><b>Sequence</b></td><td class="n"><b>Stitches</b></td><td><b>Sewn as</b></td></tr>'+r.threads.map(t=>`<tr><td class="n">${t.n}</td><td><i style="background:${t.hex}"></i> ${esc(t.pantone||t.hex)}</td><td class="n">${t.stitches.toLocaleString('en-US')}</td><td>${[t.satin?`${t.satin} satin`:'',t.fill?`${t.fill} fill`:''].filter(Boolean).join(', ')}</td></tr>`).join('');
-    $('#embWarn').innerHTML=[...(r.knockouts||[]).map(k=>`${k} is the garment colour, so it is not sewn.`),...(r.warnings||[])].map(w=>`<p class="note" style="margin:0;color:#8a4b00">! ${esc(w)}</p>`).join('')}
+    $('#embWarn').innerHTML=[...(r.knockouts||[]).map(k=>`${k} is the garment colour, so it is not sewn.`),...(r.warnings||[])].map(w=>`<p class="note" style="margin:0;color:#8a4b00">! ${esc(w)}</p>`).join('');window.EMBX?.show(r)}
   catch(x){$('#embWait').textContent=x.message;toast(x.message)}finally{$('#embRun').disabled=false}}
 $('#embRun').onclick=embRun;['#embAngle','#embRow','#embSatin','#embPull','#embUnder'].forEach(s=>$(s).addEventListener('change',embRun));$('#embW').addEventListener('change',embRun);
 $('#embDlg').addEventListener('click',async e=>{const d=$('#embDlg');if(e.target.closest('[data-embclose]')||e.target===d){d.close();return}const b=e.target.closest('[data-embdl]');if(!b)return;const f=b.dataset.embdl;b.disabled=true;
@@ -1351,6 +1351,7 @@ boot();
 <script src="/lab/studio-pro.js"></script>
 <script src="/lab/vendor/polygon-clipping.js"></script>
 <script src="/lab/studio-vec.js"></script>
+<script src="/lab/studio-emb.js"></script>
 <script src="/helper.js" defer></script>
 </body>
 </html>

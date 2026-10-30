@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import sharp from 'sharp';
 import { digitize } from '../src/lab-digitize.js';
-import { sewoutPng, sewoutFrames, decodeFrames, digitizeReview } from '../src/lab-sewout.js';
+import { sewoutPng, sewoutBox, sewoutFrames, decodeFrames, digitizeReview } from '../src/lab-sewout.js';
 
 const svg = s => sharp(Buffer.from(s)).png().toBuffer();
 const CIRCLE = '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="800"><circle cx="400" cy="400" r="380" fill="#c8202a"/></svg>';
@@ -68,4 +68,13 @@ test('POST /v1/lab/studio/embroidery: the sew-out preview, the review and the pl
   assert.match(r.preview, /^data:image\/jpeg;base64,/); assert.equal(r.fabric, 'twill');
   assert.ok(['ready', 'check', 'fix'].includes(r.review.verdict) && r.review.items.length > 2 && r.review.fidelity.iou > .8);
   assert.equal(decodeFrames(r.frames.s).filter(m => m[2] === 0).length, r.stats.stitches);
+});
+
+test('clear: the thread alone, see-through round it, over the same area as the sew-out, to lay on a picture of the garment', async () => {
+  const d = await digitize(await svg(CIRCLE), { widthIn: 2 });
+  const png = await sewoutPng(d, { px: 300, clear: true }), { data, info } = await sharp(png).raw().toBuffer({ resolveWithObject: true });
+  assert.equal(info.channels, 4); const b = sewoutBox(d); assert.ok(Math.abs(info.height / info.width - (b.y1 - b.y0) / (b.x1 - b.x0)) < .02);
+  const a = (x, y) => data[(y * info.width + x) * 4 + 3];
+  assert.equal(a(1, 1), 0, 'the corner is clear'); assert.ok(a(150, Math.round(info.height / 2)) > 240, 'the middle is thread');
+  const m = (Math.round(info.height / 2) * info.width + 150) * 4; assert.ok(data[m] > data[m + 2] + 40, 'and the thread is red');
 });

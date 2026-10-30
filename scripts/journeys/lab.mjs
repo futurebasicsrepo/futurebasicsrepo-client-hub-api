@@ -3717,5 +3717,58 @@ await journey('J263', 'Drawing with paths in the Studio: the pen draws sharp poi
   } finally { await b.close(); await cleanup(brands, plan.plan?.id); }
 });
 
+await journey('J264', 'Embroidery without a digitiser: the Studio digitizes a graphic and shows what the machine will make (thread on the cloth, on four fabrics), plays the stitches back in sewing order, lays the thread on the garment picture, and reviews it like a digitiser (score, verdict, what to fix) with each fix one click', async () => {
+  const { brands, plan } = await conceptSetup();
+  if (!playwright) { ok(true, 'needs a browser'); await cleanup(brands, plan.plan?.id); return; }
+  const line = plan.lines.find(l => l.category === 'tops') || plan.lines[0], c = (await K(`/plans/${plan.plan.id}/lines/${line.id}/concepts`, { body: { count: 1 } })).json.concepts[0];
+  const b = await playwright.chromium.launch(), shots = process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp';
+  try {
+    const oc = await b.newContext({ viewport: { width: 1440, height: 980 } }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); localStorage.setItem('fb.helper.on', '0'); } catch {} }, kyleT);
+    const page = await oc.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
+    await page.goto(`${BASE}/lab/studio?concept=${c.id}`, { waitUntil: 'networkidle' }); await page.waitForSelector('#pLayers .ly', { timeout: 20000 }); await page.waitForFunction(() => !document.querySelector('#busy:not(.hidden)'));
+    await page.click('.tabs [data-tab=add]'); await page.click('#pAdd [data-mark=word]'); await page.waitForFunction(() => LAYERS.length >= 2); await page.click('.tabs [data-tab=layers]'); await page.waitForSelector('#sizeRead');
+    await page.fill('#pLayers [data-win]', '3.5'); await page.dispatchEvent('#pLayers [data-win]', 'change');
+    const t0 = Date.now(); await page.evaluate(() => embOpen(selected())); await page.waitForSelector('#embDlg[open]');
+    await page.waitForFunction(() => document.querySelector('#embReview')?.dataset.score && document.querySelector('#embImg').naturalWidth > 0, null, { timeout: 60000 });
+    const rv = await page.evaluate(() => ({ score: Number(document.querySelector('#embReview').dataset.score), verdict: document.querySelector('#embReview').dataset.verdict, text: document.querySelector('#embReview').innerText, src: document.querySelector('#embImg').src.slice(0, 22) }));
+    ok(rv.src === 'data:image/jpeg;base64' && rv.score >= 0 && rv.score <= 100 && ['ready', 'check', 'fix'].includes(rv.verdict), '1. digitized: the sew-out, and a review with a score and a verdict', { ...rv, text: rv.text.slice(0, 200), ms: Date.now() - t0 });
+    ok(/Matches the artwork \d+%/.test(rv.text) && /(Ready to sew|Worth a check|Fix before production)/.test(rv.text), '   the review says how close the stitches are to the artwork, in words', rv.text.slice(0, 160));
+    await page.locator('#embDlg .embgrid').screenshot({ path: `${shots}/lab-embroidery-sewn.png` }).catch(() => {});
+    // the fabric
+    const before = await page.getAttribute('#embImg', 'src'); await page.selectOption('#embFab', 'fleece');
+    await page.waitForFunction(s => document.querySelector('#embImg').src !== s, before, { timeout: 60000 });
+    ok(true, '2. another fabric draws it again on that cloth');
+    // playback
+    await page.click('#embSeg [data-embview="play"]'); await page.waitForFunction(() => Number(document.querySelector('#embPos').value) > 0, null, { timeout: 10000 });
+    const p1 = await page.evaluate(() => Number(document.querySelector('#embPos').value)); await page.waitForTimeout(600); const p2 = await page.evaluate(() => Number(document.querySelector('#embPos').value));
+    ok(p2 > p1 && /Stitch [\d,]+ of [\d,]+ · thread \d of \d/.test(await page.innerText('#embAt')), '3. Sewing plays the stitches back in order, with where it is', { p1, p2, at: await page.innerText('#embAt') });
+    await page.click('#embPP'); const max = await page.evaluate(() => Number(document.querySelector('#embPos').max));
+    await page.fill('#embPos', String(Math.round(max / 2))); await page.dispatchEvent('#embPos', 'input');
+    ok(Math.abs(await page.evaluate(() => Number(document.querySelector('#embPos').value)) - Math.round(max / 2)) <= 1, '   pause and drag to any stitch');
+    await page.locator('#embDlg .embgrid').screenshot({ path: `${shots}/lab-embroidery-sewing.png` }).catch(() => {});
+    // on the garment
+    await page.click('#embSeg [data-embview="garment"]'); await page.waitForFunction(() => { const c = document.querySelector('#embOn'); return c && !c.classList.contains('hidden') && c.dataset.ready === '1'; }, null, { timeout: 60000 });
+    const lit = await page.evaluate(() => { const c = document.querySelector('#embOn'), d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 0) n++; return n / (d.length / 4); });
+    ok(lit > .9, '4. On the garment: the thread laid on the picture where the artwork is', lit);
+    await page.locator('#embDlg .embgrid').screenshot({ path: `${shots}/lab-embroidery-garment.png` }).catch(() => {});
+    // a fix, one click
+    await page.click('#embSeg [data-embview="sewn"]');
+    const fixes = await page.locator('#embReview [data-embfix]').count();
+    if (fixes) {
+      const s0 = await page.evaluate(() => document.querySelector('#embReview').dataset.score), n0 = await page.getAttribute('#embDlg', 'data-runs');
+      await page.locator('#embReview [data-embfix]').first().click(); await page.waitForFunction(n => document.querySelector('#embDlg').dataset.runs !== n, n0, { timeout: 60000 });
+      ok(true, '5. a fix in the review is one click, and it digitizes again with it', { before: s0, after: await page.evaluate(() => document.querySelector('#embReview').dataset.score) });
+    } else ok(/Ready to sew/.test(rv.text), '5. nothing to fix: ready to sew');
+    // a fix that is a setting of the window sets it: rows too close → the density control
+    await page.evaluate(() => { document.querySelector('#embRow').value = '0.35'; });
+    ok(await page.evaluate(() => { const items = [{ level: 'warn', code: 'density-high', text: 'x', fix: { rowMm: 0.45 } }]; EMBX.show({ review: { score: 70, verdict: 'check', fidelity: {}, items }, frames: null }); return true; }), '   (a review with a density fix)');
+    await page.click('#embReview [data-embfix="0"]'); await page.waitForFunction(() => document.querySelector('#embRow').value === '0.45', null, { timeout: 5000 });
+    ok(await page.evaluate(() => document.querySelector('#embRow').value) === '0.45', '6. the fix "rows 0.45 mm" sets the density to it');
+    await page.waitForFunction(() => document.querySelector('#embReview')?.dataset.score !== '70', null, { timeout: 60000 });
+    const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 60000 }), page.click('#embDlg [data-embdl="dst"]')]); ok(/\.dst$/.test(dl.suggestedFilename()), '7. and the machine file downloads as reviewed', dl.suggestedFilename());
+    ok(errs.length === 0, '   no page errors', errs);
+  } finally { await b.close(); await cleanup(brands, plan.plan?.id); }
+});
+
 shops.close(); brave.close();
 process.exit(summary() ? 1 : 0);

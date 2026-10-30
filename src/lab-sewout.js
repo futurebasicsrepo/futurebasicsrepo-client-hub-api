@@ -84,12 +84,17 @@ function clothHeight(W, H, pmm, fabric, seed = 7) {
 }
 
 // ---- the render ----
-export async function sewoutPng(d, { px = 1400, garment = '', fabric = 'knit', format = 'png' } = {}) {
-  const segs = segments(d), pts = segs.flatMap(s => [s.a, s.b]);
-  const grgb = hexRgb(garment) || hexRgb(d.settings?.garment) || hexRgb('#ecebe6');
+// the area the sew-out is drawn over, in 0.1 mm round the design's centre: the design and a margin of cloth
+export function sewoutBox(d, segs = segments(d)) {
   let x0 = -(d.widthMm || 50) * 5, y0 = -(d.heightMm || 50) * 5, x1 = -x0, y1 = -y0;
-  for (const p of pts) { if (p[0] < x0) x0 = p[0]; if (p[0] > x1) x1 = p[0]; if (p[1] < y0) y0 = p[1]; if (p[1] > y1) y1 = p[1]; }
-  const m = Math.max(40, .07 * Math.max(x1 - x0, y1 - y0)); x0 -= m; y0 -= m; x1 += m; y1 += m;
+  for (const sg of segs) for (const p of [sg.a, sg.b]) { if (p[0] < x0) x0 = p[0]; if (p[0] > x1) x1 = p[0]; if (p[1] < y0) y0 = p[1]; if (p[1] > y1) y1 = p[1]; }
+  const m = Math.max(40, .07 * Math.max(x1 - x0, y1 - y0)); return { x0: x0 - m, y0: y0 - m, x1: x1 + m, y1: y1 + m };
+}
+// clear: no cloth, only the thread and the shadow it casts (a PNG with transparency), to lay over a picture of the garment
+export async function sewoutPng(d, { px = 1400, garment = '', fabric = 'knit', format = 'png', clear = false } = {}) {
+  const segs = segments(d);
+  const grgb = hexRgb(garment) || hexRgb(d.settings?.garment) || hexRgb('#ecebe6');
+  const { x0, y0, x1, y1 } = sewoutBox(d, segs);
   const W = Math.max(16, Math.round(px)), sc = W / (x1 - x0), H = Math.max(16, Math.round((y1 - y0) * sc)), N = W * H, pmm = sc * 10;
   // thread buffers: albedo, coverage, height, surface normal (x, y), sheen
   const R = new Float32Array(N), G = new Float32Array(N), B = new Float32Array(N), A = new Float32Array(N), Hh = new Float32Array(N), NX = new Float32Array(N), NY = new Float32Array(N), SH = new Float32Array(N);
@@ -129,7 +134,7 @@ export async function sewoutPng(d, { px = 1400, garment = '', fabric = 'knit', f
   const Lx = -.42, Ly = -.55, Lz = .72, Ln = Math.hypot(Lx, Ly, Lz), lx = Lx / Ln, ly = Ly / Ln, lz = Lz / Ln, hx = lx, hy = ly, hz = lz + 1, hn = Math.hypot(hx, hy, hz);
   const sh = blur(Float32Array.from(Hh), W, H, r * .9), ao = blur(Float32Array.from(Hh), W, H, r * 3.2), off = r * 1.6, ox = Math.round(lx * off / Math.hypot(lx, ly)), oy = Math.round(ly * off / Math.hypot(lx, ly));
   const cloth = clothHeight(W, H, pmm, fabric), fs = fabric === 'fleece' ? .9 : 2.2;
-  const out = Buffer.alloc(N * 3), vx = new Float32Array(W), vy = new Float32Array(H), d2 = (W * W + H * H) / 4;
+  const out = Buffer.alloc(N * (clear ? 4 : 3)), vx = new Float32Array(W), vy = new Float32Array(H), d2 = (W * W + H * H) / 4;
   for (let x = 0; x < W; x++) vx[x] = (x - W / 2) ** 2 / d2; for (let y = 0; y < H; y++) vy[y] = (y - H / 2) ** 2 / d2;
   const p8 = v => { v *= v; v *= v; return v * v; }, gain = .8 / lz, sh0 = .35 * r, shK = 1 / (2.2 * r), aoK = 1 / (2.5 * r);
   const fx = Math.round(ox * 2.2), fy = Math.round(oy * 2.2), farK = 1 / (1.4 * r);
@@ -141,6 +146,17 @@ export async function sewoutPng(d, { px = 1400, garment = '', fabric = 'knit', f
       const shadow = clamp((sh[j] - hi - sh0) * shK) * .55, occl = clamp((ao[i] - hi - .15 * r) * aoK) * .32, dim = (1 - shadow) * (1 - occl);
       const vig = 1 - .1 * (vx[x] + vy[y]) + .03 * (1 - (x + y) / (W + H)), a = A[i];
       let r0 = 0, g0 = 0, b0 = 0;
+      if (clear) { // no cloth: the thread over its own shadow
+        const sa = Math.min(1, shadow * .9 + occl * .5 + (1 - (1 - clamp(ao[yf + clampI(x + fx, W)] * farK) * .22)) * .8), o4 = i * 4;
+        let qr = 0, qg = 0, qb = 0;
+        if (a > 0) { const inv = 1 / a, nx = NX[i] * inv, ny = NY[i] * inv, n2 = nx * nx + ny * ny, nz = n2 < .96 ? Math.sqrt(1 - n2) : .2, nl = 1 / Math.sqrt(n2 + nz * nz);
+          const nX = nx * nl, nY = ny * nl, nZ = nz * nl, diff = Math.max(0, nX * lx + nY * ly + nZ * lz), nh = Math.max(0, (nX * hx + nY * hy + nZ * hz) / hn);
+          const n8 = p8(nh), n32 = (n8 * n8) * (n8 * n8), lit = (.36 + .9 * diff) * dim, sp = (n32 * nh * nh * nh * nh * nh * nh * .62 + n8 * .1) * SH[i] * inv * (1 - shadow * .8) * 255;
+          const tr = R[i] * inv, tg = G[i] * inv, tb = B[i] * inv; qr = tr * lit + sp * (.85 + .15 * tr / 255); qg = tg * lit + sp * (.85 + .15 * tg / 255); qb = tb * lit + sp * (.85 + .15 * tb / 255); }
+        const al = a + sa * (1 - a), k = al > 0 ? a / al : 0;
+        out[o4] = Math.min(255, Math.max(0, qr * k)); out[o4 + 1] = Math.min(255, Math.max(0, qg * k)); out[o4 + 2] = Math.min(255, Math.max(0, qb * k)); out[o4 + 3] = Math.round(al * 255);
+        continue;
+      }
       if (a < .999) { // the cloth, lit from its own height field
         const gx = (cloth[row + (x < W - 1 ? x + 1 : x)] - cloth[row + (x > 0 ? x - 1 : x)]) * fs, gy = (cloth[yd + x] - cloth[yu + x]) * fs;
         const fn = 1 / Math.sqrt(gx * gx + gy * gy + 1), fdiff = Math.max(0, (-gx * lx - gy * ly + lz) * fn), fh = Math.max(0, (-gx * hx - gy * hy + hz) * fn / hn);
@@ -158,6 +174,7 @@ export async function sewoutPng(d, { px = 1400, garment = '', fabric = 'knit', f
       const o3 = i * 3; out[o3] = r0 < 0 ? 0 : r0 > 255 ? 255 : r0; out[o3 + 1] = g0 < 0 ? 0 : g0 > 255 ? 255 : g0; out[o3 + 2] = b0 < 0 ? 0 : b0 > 255 ? 255 : b0;
     }
   }
+  if (clear) return sharp(out, { raw: { width: W, height: H, channels: 4 } }).png({ compressionLevel: 6 }).toBuffer();
   const img = sharp(out, { raw: { width: W, height: H, channels: 3 } });
   return format === 'jpeg' ? img.jpeg({ quality: 86, chromaSubsampling: '4:4:4' }).toBuffer() : img.png({ compressionLevel: 4 }).toBuffer();
 }
@@ -238,6 +255,8 @@ export async function digitizeReview(d, png, { widthIn } = {}) {
   const coverage = nArt ? both / nArt : 1, overstitch = nSew ? (nSew - both) / nSew : 0, iou = nArt + nSew - both ? both / (nArt + nSew - both) : 1;
   const fidelity = { coverage: Math.round(coverage * 1000) / 1000, overstitch: Math.round(overstitch * 1000) / 1000, iou: Math.round(iou * 1000) / 1000 };
   if (iou >= .8 && coverage >= .92) add('ok', 'fidelity', `The stitches follow the artwork: ${Math.round(coverage * 100)}% of it is sewn and ${Math.round(overstitch * 100)}% of the thread lands outside its edges (pull compensation).`);
+  // which way it is off: shapes not sewn, or thread spreading past thin strokes (lettering and fine lines sew wider than they are drawn)
+  else if (coverage >= .92) add(iou < .6 ? 'fail' : 'warn', 'fidelity', `The thread spreads past the artwork: all of it is sewn, but ${Math.round(overstitch * 100)}% of the thread lands outside its edges, so thin strokes and lettering sew heavier than drawn. Less pull compensation or a larger size keeps them crisp.`, { pullMm: 0 });
   else add(iou < .6 || coverage < .75 ? 'fail' : 'warn', 'fidelity', `The stitches miss part of the artwork: ${Math.round(coverage * 100)}% of it is sewn and ${Math.round(overstitch * 100)}% of the thread lands outside it. Look at the sew-out for shapes that are missing or have spread.`, coverage < .85 ? sizeFix(1.25) : null);
   // details too small to sew: pieces of the artwork the stitches mostly miss
   const comp = components(art, W, H), cnt = new Int32Array(comp.n), hit = new Int32Array(comp.n);
