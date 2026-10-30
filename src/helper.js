@@ -669,3 +669,15 @@ dialog .fbh-tog.on{display:none}
   };
   if (document.body) start(); else document.addEventListener('DOMContentLoaded', start);
 })();
+
+// A touch screen that zoomed in on a field (a page from before fields were 16px, or a pinch while typing) is set back to the page's width when
+// the field is left: a moment of maximum-scale=1 on the viewport does that, then the viewport is put back so pinching still works.
+(() => {
+  if (typeof matchMedia !== 'function' || !matchMedia('(hover:none),(pointer:coarse)').matches) return;
+  document.addEventListener('focusout', e => {
+    if (!e.target?.matches?.('input,select,textarea')) return;
+    const m = document.querySelector('meta[name=viewport]'); if (!m || m.dataset.fbz) return;
+    const was = m.content; m.dataset.fbz = '1'; m.content = was.replace(/,?\s*maximum-scale=[^,]*/, '') + ',maximum-scale=1';
+    setTimeout(() => { m.content = was; delete m.dataset.fbz; }, 400);
+  }, true);
+})();
