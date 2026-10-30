@@ -1406,6 +1406,17 @@ export async function migrate() {
       sample jsonb not null,
       updated_at timestamptz not null default now()
     );
+    create table if not exists lab_benchmark_runs ( -- the engineering measured against known products (src/lab-benchmark.js)
+      id uuid primary key default gen_random_uuid(),
+      status text not null default 'running',
+      started_by uuid references users(id) on delete set null,
+      judges text[] not null default '{}',
+      items jsonb not null default '[]',
+      summary jsonb,
+      error text,
+      started_at timestamptz not null default now(),
+      finished_at timestamptz
+    );
     -- A conversation between Future Basics and a factory about one pack, one thread per factory link. The client never sees it.
     create table if not exists factory_messages (
       id uuid primary key default gen_random_uuid(),
