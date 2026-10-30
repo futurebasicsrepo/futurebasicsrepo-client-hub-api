@@ -66,7 +66,8 @@ await new Promise(r => brave.listen(3133, '127.0.0.1', r));
 // the page asks its questions in its own box (the browser's prompt() can be switched off): type the answer and continue
 const say = async (page, text) => { await page.waitForSelector('dialog.ask[open] textarea', { timeout: 8000 }); await page.fill('dialog.ask[open] textarea', text); await page.click('dialog.ask[open] button.go'); await page.waitForFunction(() => !document.querySelector('dialog.ask[open]'), null, { timeout: 4000 }); };
 const SCAN = async (id) => (await K(`/brands/${id}/scan?wait=1`, { method: 'POST', body: {} }));
-const mkBrand = async (name, site, role = 'reference') => (await K('/brands', { body: { name: `${name} ${stamp}`, site, role } })).json.brand;
+// a brand on the watchlist; a refusal says why, rather than leaving the next line to read a property of nothing
+const mkBrand = async (name, site, role = 'reference') => { const r = await K('/brands', { body: { name: `${name} ${stamp}`, site, role } }); if (!r.json.brand) throw new Error(`mkBrand ${name}: ${r.status} ${r.json.error || ''}`); return r.json.brand; };
 
 await journey('J193', 'Design Lab: closed to everyone but the owners, reads a shop\'s feed, falls back to search when a site says no, obeys robots.txt, keeps no duplicates', async () => {
   try {
@@ -303,6 +304,8 @@ await journey('J197', 'Design Lab line plans in a browser: what is moving, draft
 
 // a plan with a few pieces, made from a reference shop, a price anchor and a jacket shop; returns what the concept journeys need
 async function conceptSetup() {
+  // a journey that stopped before its cleanup leaves these brands behind, and the names are taken for every later journey of the run
+  for (const id of sql(`select id from lab_brands where name in ('Concept Ref ${stamp}', 'Concept Anchor ${stamp}', 'Concept Jackets ${stamp}')`).split('\n').filter(Boolean)) await K(`/brands/${id}`, { method: 'DELETE' });
   const refB = await mkBrand('Concept Ref', 'https://feedshop.test'), anchorB = await mkBrand('Concept Anchor', 'https://anchorshop.test', 'price'), jackB = await mkBrand('Concept Jackets', 'https://jacketshop.test');
   for (const b of [refB, anchorB, jackB]) await SCAN(b.id);
   const gen = await K('/plans/generate', { body: { name: 'Concept plan', season: 'Fall 2027', brief: 'quiet heritage basics', size: 6 } });
@@ -1212,7 +1215,7 @@ await journey('J222', 'Materials, trims and tags: the library (fabrics with weig
         const outside = await page.evaluate(() => [...document.querySelectorAll('[data-tagsvg]')].filter(sw => { const a = sw.getBoundingClientRect(), v = sw.querySelector('svg')?.getBoundingClientRect(); return !v || v.width < 20 || v.left < a.left - 1 || v.right > a.right + 1 || v.top < a.top - 1 || v.bottom > a.bottom + 1; }).length);
         ok(outside === 0, '   every tag, string and all, sits whole inside its tile', outside);
         for (const [tab, what] of [['fabric', 'fabric'], ['trim', 'trim']]) {
-          await page.click(`#kinds [data-kind="${tab}"]`); await page.waitForFunction(() => document.querySelectorAll('#grid [data-draw]').length > 0 && !document.querySelector('#grid [data-tagsvg]') && [...document.querySelectorAll('#grid [data-draw]')].every(el => el.dataset.swatch || el.querySelector('svg')), null, { timeout: 15000 }); // the tab's own cards, not the tags still showing
+          await page.click(`#kinds [data-kind="${tab}"]`); await page.waitForFunction(t => document.getElementById('grid').dataset.kind === t && document.querySelectorAll('#grid [data-draw]').length > 0 && !document.querySelector('#grid [data-tagsvg]') && [...document.querySelectorAll('#grid [data-draw]')].every(el => el.dataset.swatch || el.querySelector('svg')), tab, { timeout: 15000 }); // the tab's own cards, not the tags still showing
           const n = await page.evaluate(() => [...document.querySelectorAll('#grid [data-draw]')].filter(el => el.querySelector('svg[role="img"]')).length), all = await page.locator('#grid .card').count();
           ok(n === all && n >= 10, `   every ${what} without a photo is drawn: its weave or its trim, in its colour`, `${n}/${all}`);
         }
@@ -3486,7 +3489,7 @@ await journey('J259', 'A sketch picked opens straight away: on a phone, tapping 
 });
 
 await journey('J260', 'The factory gets everything to start work in one download: from its pack link, a production package with the tech pack PDF and workbook, every artwork and sketch, and for each decoration placed in the Lab its job files at the placed size (stitch files .dst/.exp and thread list for embroidery, separations for print, the job sheet, a vector), the decoration sheet without our cost estimates, and the pattern in every size as DXF; Lab artwork on the pack carries its Pantones', async () => {
-  const { plan } = await conceptSetup(); const A = (path, o = {}) => call(path, { token: kyleT, ...o });
+  const { brands, plan } = await conceptSetup(); const A = (path, o = {}) => call(path, { token: kyleT, ...o });
   const names = buf => { const out = []; const i = buf.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06])); let p = buf.readUInt32LE(i + 16); for (let k = 0, n = buf.readUInt16LE(i + 10); k < n; k++) { const len = buf.readUInt16LE(p + 28), ex = buf.readUInt16LE(p + 30), cm = buf.readUInt16LE(p + 32); out.push(buf.slice(p + 46, p + 46 + len).toString('utf8')); p += 46 + len + ex + cm; } return out; };
   const fileOf = (buf, name) => { let p = 0; while ((p = buf.indexOf(Buffer.from([0x50, 0x4b, 0x03, 0x04]), p)) >= 0) { const size = buf.readUInt32LE(p + 18), len = buf.readUInt16LE(p + 26), ex = buf.readUInt16LE(p + 28), n = buf.slice(p + 30, p + 30 + len).toString('utf8'); if (n.endsWith(name)) return buf.slice(p + 30 + len + ex, p + 30 + len + ex + size); p += 30 + len + ex + size; } return null; };
   const line = plan.lines.find(l => l.category === 'tops') || plan.lines[0], c = (await K(`/plans/${plan.plan.id}/lines/${line.id}/concepts`, { body: { count: 1 } })).json.concepts[0];
@@ -3518,10 +3521,11 @@ await journey('J260', 'The factory gets everything to start work in one download
   const st = await fetch(`${BASE}/v1/admin/products/${pid}/tech-pack/package.zip`, { headers: { Authorization: 'Bearer ' + kyleT } });
   ok(st.status === 200, '13. the work console downloads the same package to check or send on');
   ok((await call('/v1/tp/not-a-real-token-at-all-000000/package.zip')).status === 404, '14. a made-up link gets nothing');
+  await cleanup(brands, plan.plan?.id);
 });
 
 await journey('J261', 'One way in for everyone: staff and a client each find New design at the head of the Lab (the console tab row, the client\'s own row, an empty Concepts page, the hub); it offers AI concepts from a few words, a sketch, a blank page and a whole line; a few words make concepts on the room\'s own Quick concepts plan; From scratch lands on the blank-page form; and a client downloads the production package of their published pack and sends a factory the link themselves', async () => {
-  await conceptSetup(); const A = (path, o = {}) => call(path, { token: kyleT, ...o });
+  const { brands, plan } = await conceptSetup(); const A = (path, o = {}) => call(path, { token: kyleT, ...o });
   const email = `newdesign-${stamp}@selfserve.test`, started = await call('/v1/public/start', { body: { email, name: 'New Design Co', title: 'Field jacket', photos: [jpeg()] } });
   const cid = started.json.client?.id || sql(`select client_id from users where lower(email)='${email}'`), uid = sql(`select id from users where lower(email)='${email}'`).split('\n')[0], slug = sql(`select slug from clients where id='${cid}'`).split('\n')[0];
   sql(`update users set email_verified_at=now() where id='${uid}'`); sql(`update clients set lab_free=true where id='${cid}'`);
@@ -3538,7 +3542,7 @@ await journey('J261', 'One way in for everyone: staff and a client each find New
   ok(ql.status === 201 && /\/tp\//.test(ql.json.url || ''), '3. the client makes a factory link to send themselves', ql.json.error);
   const fz = await fetch(`${BASE}/v1/tp/${ql.json.url.split('/tp/')[1]}/package.zip`);
   ok(fz.status === 200, '   and the factory downloads the same package from it, no sign-in', fz.status);
-  if (!playwright) { ok(true, 'needs a browser'); return; }
+  if (!playwright) { ok(true, 'needs a browser'); await cleanup(brands, plan.plan?.id); return; }
   const br = await playwright.chromium.launch();
   try {
     // staff: New design leads the Design Lab row; a few words make concepts on our own Quick concepts plan
@@ -3570,7 +3574,7 @@ await journey('J261', 'One way in for everyone: staff and a client each find New
     await cp.goto(`${BASE}/tech-packs/${pid}`, { waitUntil: 'networkidle' }); await cp.waitForSelector('details.more>summary');
     await cp.click('details.more>summary'); ok(await cp.locator('.menu [data-act="package"]').isVisible() && await cp.locator('.menu [data-act="tofactory"]').isVisible(), '9. on a phone, the pack\'s menu offers the production files and Send to a factory');
     ok(cerrs.length === 0, '   no page errors', cerrs); await cc.close();
-  } finally { await br.close(); }
+  } finally { await br.close(); await cleanup(brands, plan.plan?.id); }
 });
 
 await journey('J262', 'The Studio feels like a designer\'s tool: Shift-click and a box round them choose several layers, they move together and snap to the picture\'s middle with the guide shown (Alt moves freely), align and space them evenly from the bar or Alt + a letter, X/Y/W/H typed in inches, ⌘A, ⌘K runs any command by name, ? lists the keys', async () => {
