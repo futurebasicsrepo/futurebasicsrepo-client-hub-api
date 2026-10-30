@@ -89,12 +89,12 @@ const money=c=>'$'+(c/100).toFixed(2);
 let M={materials:[],options:null},KIND='fabric',FOR='',CUR=null,TAGS=null,SWATCH='';
 const opt=(list,v,labelOf=x=>x)=>list.map(x=>{const id=x.id||x;return `<option value="${esc(id)}" ${id===v?'selected':''}>${esc(labelOf(x))}</option>`}).join('');
 
-async function load(){const r=await api(`/v1/lab/materials?kind=${KIND}&q=${encodeURIComponent($('#q').value.trim())}${FOR?'&for='+encodeURIComponent(FOR):''}`);M=r;paint()}
+async function load(){const k=KIND,r=await api(`/v1/lab/materials?kind=${k}&q=${encodeURIComponent($('#q').value.trim())}${FOR?'&for='+encodeURIComponent(FOR):''}`);if(k!==KIND)return;M=r;M.kind=k;paint()} // a tab left before its list came back does not paint over the one chosen since
 function paint(){
   const o=M.options;$('#kinds').innerHTML=o.kinds.map(k=>`<button type="button" data-kind="${k.id}" aria-pressed="${k.id===KIND}">${esc(k.label)}</button>`).join('');
   const fs=$('#forSel');fs.style.display=KIND==='tag'?'':'none';if(KIND==='tag')fs.innerHTML=`<option value="">For anything</option>${o.tag.for.map(f=>`<option value="${f}" ${f===FOR?'selected':''}>For ${f}</option>`).join('')}`;
   $('#add').textContent={fabric:'Add a fabric',trim:'Add a trim',tag:'Add a tag',footwear:'Add a footwear material',plush:'Add a plush or toy material',plastic:'Add a plastic'}[KIND]||'Add a material';
-  const g=$('#grid');g.innerHTML=M.materials.length?M.materials.map(card).join(''):'<p class="note">Nothing here yet.</p>';
+  const g=$('#grid');g.dataset.kind=M.kind||KIND;g.innerHTML=M.materials.length?M.materials.map(card).join(''):'<p class="note">Nothing here yet.</p>';
   for(const el of g.querySelectorAll('[data-swatch]'))blobUrl(`/v1/lab/materials/${el.dataset.swatch}/swatch?thumb=1`).then(u=>{const i=new Image();i.alt='';i.src=u;el.prepend(i)}).catch(()=>{});
   drawAll(g);
   for(const el of g.querySelectorAll('[data-tagsvg]'))drawTag(el,M.materials.find(m=>m.id===el.dataset.tagsvg));
