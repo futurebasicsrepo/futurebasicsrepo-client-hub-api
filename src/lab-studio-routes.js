@@ -11,7 +11,7 @@
 //   GET  /v1/lab/library/studio?art=<id>          the graphic (or nothing, for a new one), its saved layers, the marks, colours and techniques
 //   PUT  /v1/lab/library/graphics/:id/studio      save the layers {doc}
 //   POST /v1/lab/library/studio/ai                the same AI edits as above, for a graphic
-//   POST /v1/lab/studio/vector {image, widthIn?} the layer traced to vector paths · POST /v1/lab/studio/embroidery {image, widthIn, format?} its stitch plan or .dst
+//   POST /v1/lab/studio/vector {image, widthIn?} the layer traced to vector paths · POST /v1/lab/studio/embroidery {image, widthIn, format?, fabric?} its stitch plan, sew-out and review, or .dst
 //   POST /v1/lab/studio/check {image, widthIn, heightIn, techniqueId?, placement?}   a layer measured with the ruler: size against where it goes and how it is
 //        made, the finest line and the colours at that size, and what it costs a piece        POST /v1/lab/studio/separations {image, techniqueId?, widthIn, garment?, zip?}
 //        the colour separations: one plate per ink or thread with its Pantone, the coverage, and the job file to download
@@ -23,8 +23,9 @@ import { imageConfig, openaiEdit, openaiImage } from './check.js';
 import { locateMarks } from './lab-place.js';
 import { artInfo, artFindings } from './lab-flats-routes.js';
 import { sizeFindings, decorationCost, PLACEMENTS, calibrationOf } from './lab-decor.js';
-import { traceVector, stitchPlan, dstOf, expOf, stitchPreview } from './lab-vector.js';
+import { traceVector, stitchPlan, dstOf, expOf } from './lab-vector.js';
 import { digitizeOptions } from './lab-digitize.js';
+import { sewoutBox, sewoutPng, sewoutFrames, digitizeReview } from './lab-sewout.js';
 import { jobFile, jobZip } from './lab-jobfile.js';
 import { cleanRules } from './lab-library.js';
 import { GRAPHIC_PLACE } from './lab-concepts.js';
@@ -52,6 +53,11 @@ export function cleanDoc(input) {
     if (!l || typeof l !== 'object' || !LAYER_KINDS.has(l.kind)) return { error: 'A layer of an unknown kind' };
     for (const k of ['src', 'mask', 'distressMap']) if (l[k] != null && l[k] !== '' && !SRC_OK.test(String(l[k]))) return { error: 'A layer points at a picture outside the design' };
     if (l.text != null && String(l.text).length > 400) return { error: 'A line of type is too long (400 characters at most)' };
+    if (l.paths != null) { // a drawn path: parts of points, each point six numbers
+      if (!Array.isArray(l.paths) || l.paths.length > 400) return { error: 'A path has too many parts' };
+      let n = 0; for (const p of l.paths) { if (!p || !Array.isArray(p.nodes)) return { error: 'A path is not readable' }; n += p.nodes.length; if (!p.nodes.every(q => Array.isArray(q) && q.length === 6 && q.every(Number.isFinite))) return { error: 'A path is not readable' }; }
+      if (n > 40000) return { error: 'A path has too many points (40,000 at most)' };
+    }
   }
   const ppi = Number(d.ppi), doc = { v: 1, w, h, layers: d.layers, selected: typeof d.selected === 'string' ? d.selected.slice(0, 40) : null, ...(ppi > 1 && ppi < 2000 ? { ppi: Math.round(ppi * 100) / 100, ppiSet: Boolean(d.ppiSet) } : {}),
     // the flats placements already brought onto the picture: a layer taken off the picture is not brought back
@@ -163,7 +169,8 @@ export function registerLabStudioRoutes(app, d) {
     return { svg: v.svg, paths: v.paths, colours: v.colours, width: v.width, height: v.height };
   });
   // digitizing: the layer as a stitch file (src/lab-digitize.js), with the settings a digitiser changes; format dst | exp | zip (the whole job:
-  // both files, the sew-out preview, the thread sequence and the sheet), else the preview and the numbers
+  // both files, the sew-out preview, the thread sequence and the sheet), else the numbers, the sew-out `preview` (a data URL), the `review`
+  // ({score, verdict, fidelity, items: [{level, code, text, fix?}]}, each fix a setting to post back) and the `frames` to play the sew-out back
   app.post('/v1/lab/studio/embroidery', { preHandler: pre, bodyLimit: 32_000_000 }, async (req, reply) => {
     const b = req.body || {}, img = pictureOf(b.image); if (!img) return bad(reply, 'Send the layer as a picture');
     const w = Number(b.widthIn) || 4; if (!(w >= .5 && w <= 16)) return bad(reply, 'An embroidery runs from ½ in to 16 in wide');
@@ -173,8 +180,13 @@ export function registerLabStudioRoutes(app, d) {
     const p = await stitchPlan(img, { widthIn: w, garment, ...opts });
     if (b.format === 'dst') { const d = dstOf(p, name); return reply.header('content-type', 'application/octet-stream').header('content-disposition', `attachment; filename="${file}.dst"`).send(d.file); }
     if (b.format === 'exp') { const d = expOf(p); return reply.header('content-type', 'application/octet-stream').header('content-disposition', `attachment; filename="${file}.exp"`).send(d.file); }
-    const preview = await sharp(Buffer.from(stitchPreview(p, { px: 900, garment: garment || '#ecebe6' }))).png().toBuffer();
-    return { widthMm: p.widthMm, heightMm: p.heightMm, stitches: p.stitches, jumps: p.jumps, stats: p.stats, colours: p.colours, threads: p.threads.map((t, i) => ({ ...t, pantone: p.colours[i]?.pantone || '' })), objects: p.objects, warnings: p.warnings, knockouts: p.knockouts, settings: p.settings, preview: `data:image/png;base64,${preview.toString('base64')}` };
+    // the sew-out as it will look in thread on the garment (a JPEG: the thread and cloth texture make a PNG several MB), the digitiser's review,
+    // and the stitches as a stream the studio plays back (src/lab-sewout.js)
+    const fabric = ['knit', 'woven', 'twill', 'fleece'].includes(b.fabric) ? b.fabric : 'knit';
+    // onGarment: the thread alone (and its shadow), with the area it covers, for the studio to lay over the picture of the garment
+    const [preview, review, clear] = await Promise.all([sewoutPng(p, { px: 1100, garment: garment || '#ecebe6', fabric, format: 'jpeg' }), digitizeReview(p, img, { widthIn: w }), b.onGarment ? sewoutPng(p, { px: 900, fabric, clear: true }) : null]);
+    const frames = sewoutFrames(p); frames.colours = frames.colours.map((c, i) => ({ ...c, name: c.name || p.colours[i]?.pantone || undefined }));
+    return { widthMm: p.widthMm, heightMm: p.heightMm, stitches: p.stitches, jumps: p.jumps, stats: p.stats, colours: p.colours, threads: p.threads.map((t, i) => ({ ...t, pantone: p.colours[i]?.pantone || '' })), objects: p.objects, warnings: p.warnings, knockouts: p.knockouts, settings: p.settings, preview: `data:image/jpeg;base64,${preview.toString('base64')}`, review, frames, fabric, ...(clear ? { onGarment: { image: `data:image/png;base64,${clear.toString('base64')}`, box: sewoutBox(p) } } : {}) };
   });
 
   // ---- fonts ----

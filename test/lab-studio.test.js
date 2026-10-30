@@ -25,3 +25,11 @@ test('the AI is told to keep everything outside the painted area, and never to b
   for (const p of [editPrompt('x', { masked: false }), artPrompt('a bolt')]) assert.match(p, /any other company's name, logo or trade dress/);
   assert.match(artPrompt('a bolt'), /transparent background/);
 });
+
+test('a drawn path is kept, within bounds: six numbers a point, 40,000 points at most', () => {
+  const path = paths => doc({ layers: [{ id: 'a', kind: 'base' }, { id: 'p', kind: 'shape', shape: 'path', paths }] });
+  assert.ok(cleanDoc(path([{ closed: true, nodes: [[0, 0, 0, 0, 0, 0], [10, 0, 10, 0, 10, 0], [5, 8, 4, 8, 6, 8]] }])).doc);
+  assert.match(cleanDoc(path([{ closed: true, nodes: [[0, 0, 0, 0, 0]] }])).error, /not readable/);
+  assert.match(cleanDoc(path([{ closed: true, nodes: [[0, 0, 0, 0, 0, 'x']] }])).error, /not readable/);
+  assert.match(cleanDoc(path([{ closed: true, nodes: Array.from({ length: 40001 }, () => [0, 0, 0, 0, 0, 0]) }])).error, /too many points/);
+});

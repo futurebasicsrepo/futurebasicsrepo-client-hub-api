@@ -3,6 +3,8 @@
 //   dstOf(d, name)        → a Tajima .dst (every commercial machine reads it)        expOf(d) → a Melco .exp
 //   readDst(buf)          → the moves back out of a .dst, to check one
 //   stitchSvg(d, opts)    → the stitches drawn as thread, for a look before it goes out
+//   Each plan point is { p: [x, y] } plus what it is: jump, trim, tie (a lock stitch), u (underlay), run (a travel run inside a shape), and o
+//   (the index of its shape in `objects`); the sew-out render and the review (src/lab-sewout.js) read these.
 // How a design is built:
 //   1. The graphic is separated into thread colours (src/lab-separate.js): every colour that fills an area of its own, however small, keeps its
 //      thread; soft edges go to the nearer thread; a thread the colour of the garment is left unsewn (the garment shows through). Specks under
@@ -22,7 +24,7 @@ export const DIGITIZE_DEFAULTS = { widthIn: 4, rowMm: .4, satinSpacingMm: .22, s
 // the settings from a request, each held to what a machine can sew
 export function digitizeOptions(b = {}) {
   const n = (v, a, z) => { const x = Number(v); return Number.isFinite(x) && v !== '' && v !== null ? Math.min(z, Math.max(a, x)) : undefined; };
-  return Object.fromEntries(Object.entries({ fillAngle: n(b.fillAngle, 0, 179), rowMm: n(b.rowMm, .25, 1), satinMaxMm: n(b.satinMaxMm, 2, 10), pullMm: n(b.pullMm, 0, .6), stitchMm: n(b.stitchMm, 2, 6), maxThreads: n(b.maxThreads, 1, 15), underlay: b.underlay === undefined ? undefined : Boolean(b.underlay) }).filter(([, v]) => v !== undefined));
+  return Object.fromEntries(Object.entries({ fillAngle: n(b.fillAngle, 0, 179), rowMm: n(b.rowMm, .25, 1), satinMaxMm: n(b.satinMaxMm, 2, 10), pullMm: n(b.pullMm, 0, .6), stitchMm: n(b.stitchMm, 2, 6), maxThreads: n(b.maxThreads, 1, 15), trimMm: n(b.trimMm, 1, 12), underlay: b.underlay === undefined ? undefined : Boolean(b.underlay) }).filter(([, v]) => v !== undefined));
 }
 
 // ---- shapes ----
@@ -120,7 +122,7 @@ function satinSection(sec, sc, { pullPx, splitPx, underlay, walkPx }) {
   if (underlay && rows.length > 2) { // centre walk to the far end first, then the satin comes back over it
     const mids = rows.map(r => pt(sc, r.o, (r.r[0] + r.r[1]) / 2)), u = [mids[0]]; let acc = 0;
     for (let i = 1; i < mids.length; i++) { acc += Math.hypot(mids[i][0] - mids[i - 1][0], mids[i][1] - mids[i - 1][1]); if (acc >= walkPx || i === mids.length - 1) { u.push(mids[i]); acc = 0; } }
-    pts.push(...u); rows.reverse();
+    pts.push(...u); pts.nu = u.length; rows.reverse();
   }
   rows.forEach((row, k) => {
     const a = row.r[0] - pullPx, b = row.r[1] + pullPx, from = k % 2 ? b : a, to = k % 2 ? a : b, L = Math.abs(to - from);
@@ -148,10 +150,10 @@ export async function digitize(png, opts = {}) {
     const rid = regs.indexOf(r);
     for (const p of r.px) mask[p] = 1;
     const { width, box } = widthOf(r, W), widthMm = width * pxMm, satin = widthMm <= o.satinMaxMm;
-    const shape = { rid, colour: c, kind: satin ? 'satin' : 'fill', widthMm: Math.round(widthMm * 10) / 10, areaMm2: Math.round(r.n * pxMm * pxMm), parts: [] };
+    const shape = { rid, colour: c, kind: satin ? 'satin' : 'fill', widthMm: Math.round(widthMm * 10) / 10, areaMm2: Math.round(r.n * pxMm * pxMm), box: [box[0], box[1], box[2] + 1, box[3] + 1].map((v, k) => Math.round((v - (k % 2 ? H : W) / 2) * pxMm * 10)), pbox: box, parts: [] };
     if (satin) {
       const ang = crossAngle(mask, W, H, box, o.satinSpacingMm * mmPx), sc = scan(mask, W, H, box, ang, o.satinSpacingMm * mmPx, .5);
-      for (const s of sections(sc)) { const ul = o.underlay && widthMm > 1.2 && s.rows.length > 2, pts = satinSection(s, sc, { pullPx: o.pullMm * mmPx, splitPx: o.splitMm * mmPx, underlay: ul, walkPx: 2 * mmPx }); if (pts.length > 1) shape.parts.push({ pts, under: false, rev: !ul }); }
+      for (const s of sections(sc)) { const ul = o.underlay && widthMm > 1.2 && s.rows.length > 2, pts = satinSection(s, sc, { pullPx: o.pullMm * mmPx, splitPx: o.splitMm * mmPx, underlay: ul, walkPx: 2 * mmPx }); if (pts.length > 1) shape.parts.push({ pts, under: false, rev: !ul, nu: pts.nu || 0 }); }
       shape.angle = ang;
     } else {
       if (o.underlay) { const sc = scan(mask, W, H, box, o.fillAngle + 90, 2 * mmPx, .5); for (const s of sections(sc)) { const pts = fillSection(s, sc, { lenPx: 3 * mmPx, pullPx: 0, inset: .5 * mmPx }); if (pts.length > 1) shape.parts.push({ pts, under: true, rev: true }); } }
@@ -163,11 +165,29 @@ export async function digitize(png, opts = {}) {
     if (shape.parts.length) objects.push(shape);
   }
   // ---- sew it: colour by colour, the nearest shape next; in a shape its underlay, then its top, each section nearest-first. A move inside the same
-  // shape runs there in small stitches (the top covers them); any other move over 1 mm jumps with a lock stitch either side, and trims when long ----
+  // shape runs there in small stitches, routed through the part not yet sewn so the top covers them (never across finished stitching, where
+  // they would show); any other move over 1 mm jumps with a lock stitch either side, and trims when long ----
   const to01 = ([x, y]) => [Math.round((x - W / 2) * pxMm * 10), Math.round((y - H / 2) * pxMm * 10)];
   const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
-  const inside = (a, b, rid) => { const n = Math.ceil(dist(a, b) / .7); for (let i = 0; i <= n; i++) { const x = Math.floor(a[0] + (b[0] - a[0]) * i / n), y = Math.floor(a[1] + (b[1] - a[1]) * i / n); if (x < 0 || y < 0 || x >= W || y >= H || label[y * W + x] !== rid) return false; } return true; };
-  const nearest = (list, from) => { let bi = 0, bd = Infinity, rev = false; list.forEach((q, i) => { const da = dist(from, q.pts[0]); if (da < bd) { bd = da; bi = i; rev = false; } if (q.rev) { const dz = dist(from, q.pts.at(-1)); if (dz < bd) { bd = dz; bi = i; rev = true; } } }); const q = list.splice(bi, 1)[0]; return rev ? q.pts.slice().reverse() : q.pts; };
+  const nearest = (list, from) => { let bi = 0, bd = Infinity, rev = false; list.forEach((q, i) => { const da = dist(from, q.pts[0]); if (da < bd) { bd = da; bi = i; rev = false; } if (q.rev) { const dz = dist(from, q.pts.at(-1)); if (dz < bd) { bd = dz; bi = i; rev = true; } } }); const q = list.splice(bi, 1)[0]; return { pts: rev ? q.pts.slice().reverse() : q.pts, under: q.under, nu: rev ? 0 : q.nu || 0 }; };
+  // what the top stitching has covered so far, and a travel path that stays inside the shape and off it (bar the first and last mm)
+  const sewn = new Uint8Array(W * H);
+  const markR = Math.max(1, Math.ceil(Math.max(o.rowMm, .4) * .6 * mmPx)); // each stitch marked as wide as a row of thread, so the rows join up
+  const mark = pts => { for (let k = 1; k < pts.length; k++) { const a = pts[k - 1], b = pts[k], L = dist(a, b), n = Math.max(1, Math.ceil(L)), ux = L ? -(b[1] - a[1]) / L : 0, uy = L ? (b[0] - a[0]) / L : 0;
+    for (let i = 0; i <= n; i++) { const cx = a[0] + (b[0] - a[0]) * i / n, cy = a[1] + (b[1] - a[1]) * i / n; for (let j = -markR; j <= markR; j++) { const x = Math.floor(cx + ux * j), y = Math.floor(cy + uy * j); if (x >= 0 && y >= 0 && x < W && y < H) sewn[y * W + x] = 1; } } } };
+  const clear = (a, b, rid) => { const L = dist(a, b), n = Math.max(1, Math.ceil(L / .7)); for (let i = 0; i <= n; i++) { const s = L * i / n, x = Math.floor(a[0] + (b[0] - a[0]) * i / n), y = Math.floor(a[1] + (b[1] - a[1]) * i / n); if (x < 0 || y < 0 || x >= W || y >= H || label[y * W + x] !== rid) return false; if (s > mmPx && s < L - mmPx && sewn[y * W + x]) return false; } return true; };
+  const route = (a, b, rid, [bx0, by0, bx1, by1]) => { // breadth-first over 0.5 mm cells of the shape not yet sewn; null when there is no way through
+    const c = Math.max(2, Math.round(.5 * mmPx)), gw = Math.floor((bx1 - bx0) / c) + 1, gh = Math.floor((by1 - by0) / c) + 1, cell = q => Math.min(gh - 1, Math.max(0, Math.floor((q[1] - by0) / c))) * gw + Math.min(gw - 1, Math.max(0, Math.floor((q[0] - bx0) / c)));
+    const ctr = k => [bx0 + (k % gw) * c + c / 2, by0 + Math.floor(k / gw) * c + c / 2], from = cell(a), to = cell(b), back = new Int32Array(gw * gh).fill(-2), q = new Int32Array(gw * gh); let h = 0, t = 0;
+    const free = k => { const [x, y] = ctr(k).map(Math.floor); return x < W && y < H && label[y * W + x] === rid && !sewn[y * W + x]; };
+    back[from] = -1; q[t++] = from;
+    while (h < t && back[to] === -2) { const k = q[h++], kx = k % gw, ky = (k - kx) / gw; for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { const nx = kx + dx, ny = ky + dy, n = ny * gw + nx; if ((dx || dy) && nx >= 0 && ny >= 0 && nx < gw && ny < gh && back[n] === -2 && (n === to || free(n))) { back[n] = k; q[t++] = n; } } }
+    if (back[to] === -2) return null;
+    const cells = []; for (let k = back[to]; k >= 0 && k !== from; k = back[k]) cells.unshift(ctr(k));
+    const path = [a, ...cells, b], out = [a]; let i = 0;
+    while (i < path.length - 1) { let j = path.length - 1; while (j > i + 1 && !clear(path[i], path[j], rid)) j--; out.push(path[j]); i = j; }
+    return out;
+  };
   const plan = []; let cur = [W / 2, H / 2], trims = 0, jumps = 0;
   const one = mmPx, trimPx = o.trimMm * mmPx, travelPx = 2.5 * mmPx;
   for (const c of order) {
@@ -176,15 +196,19 @@ export async function digitize(png, opts = {}) {
     while (left.length) {
       let bi = 0, bd = Infinity; left.forEach((sh, i) => { for (const q of sh.parts) { const d = Math.min(dist(cur, q.pts[0]), q.rev ? dist(cur, q.pts.at(-1)) : Infinity); if (d < bd) { bd = d; bi = i; } } });
       const sh = left.splice(bi, 1)[0], under = sh.parts.filter(q => q.under), top = sh.parts.filter(q => !q.under), seq = [];
-      while (under.length) { const pts = nearest(under, seq.length ? seq.at(-1).at(-1) : cur); seq.push(pts); }
-      while (top.length) { const pts = nearest(top, seq.length ? seq.at(-1).at(-1) : cur); seq.push(pts); }
-      for (const pts of seq) {
+      while (under.length) seq.push(nearest(under, seq.length ? seq.at(-1).pts.at(-1) : cur));
+      while (top.length) seq.push(nearest(top, seq.length ? seq.at(-1).pts.at(-1) : cur));
+      const oi = objects.indexOf(sh);
+      let way = null;
+      for (const { pts, under: ul, nu } of seq) {
+        const tag = i => (ul || i < nu ? { o: oi, u: true } : { o: oi });
         const start = pts[0], gap = dist(cur, start);
-        if (first) { add(start, { jump: true }); jumps++; tie(block.pts, to01(start), to01(pts[1] || start)); }
-        else if (gap <= one) add(start);
-        else if (sh.rid === prev && inside(cur, start, sh.rid)) { const n = Math.ceil(gap / travelPx); for (let i = 1; i <= n; i++) add([cur[0] + (start[0] - cur[0]) * i / n, cur[1] + (start[1] - cur[1]) * i / n]); }
-        else { tie(block.pts, to01(cur), block.pts.at(-2)?.p); if (gap > trimPx) { block.pts.push({ p: to01(cur), trim: true }); trims++; } add(start, { jump: true }); jumps++; tie(block.pts, to01(start), to01(pts[1] || start)); }
-        let last = start; for (let i = 1; i < pts.length; i++) { const q = pts[i]; if (dist(q, last) < .3 * mmPx && i < pts.length - 1) continue; add(q); last = q; }
+        if (first) { add(start, { jump: true, o: oi }); jumps++; tie(block.pts, to01(start), to01(pts[1] || start)); }
+        else if (gap <= one) add(start, tag(0));
+        else if (sh.rid === prev && (way = clear(cur, start, sh.rid) ? [cur, start] : route(cur, start, sh.rid, sh.pbox))) { for (let k = 1; k < way.length; k++) { const a = way[k - 1], b = way[k], n = Math.ceil(dist(a, b) / travelPx); for (let i = 1; i <= n; i++) add([a[0] + (b[0] - a[0]) * i / n, a[1] + (b[1] - a[1]) * i / n], { o: oi, run: true }); } }
+        else { tie(block.pts, to01(cur), block.pts.at(-2)?.p); if (gap > trimPx) { block.pts.push({ p: to01(cur), trim: true }); trims++; } add(start, { jump: true, o: oi }); jumps++; tie(block.pts, to01(start), to01(pts[1] || start)); }
+        let last = start; for (let i = 1; i < pts.length; i++) { const q = pts[i]; if (dist(q, last) < .3 * mmPx && i < pts.length - 1) continue; add(q, tag(i)); last = q; }
+        if (!ul) mark(pts);
         cur = last; first = false; prev = sh.rid;
       }
     }
@@ -196,7 +220,7 @@ export async function digitize(png, opts = {}) {
   const minutes = stitches / 750 + plan.length * .3 + trims * .1;
   const threads = plan.map((b, i) => ({ n: i + 1, hex: b.hex, stitches: b.pts.filter(p => !p.jump && !p.trim).length, shapes: objects.filter(s => s.colour === b.colour).length, satin: objects.filter(s => s.colour === b.colour && s.kind === 'satin').length, fill: objects.filter(s => s.colour === b.colour && s.kind === 'fill').length }));
   const narrow = objects.filter(s => s.kind === 'satin' && s.widthMm < 1);
-  return { plan, threads, objects: objects.map(({ parts, ...s }) => ({ ...s, thread: order.indexOf(s.colour) + 1 })), widthMm: Math.round(wMm * 10) / 10, heightMm: Math.round(hMm * 10) / 10, knockouts: sep.inks.filter(i => i.knockout).map(i => i.hex), settings: o,
+  return { plan, threads, objects: objects.map(({ parts, pbox, ...s }) => ({ ...s, thread: order.indexOf(s.colour) + 1 })), widthMm: Math.round(wMm * 10) / 10, heightMm: Math.round(hMm * 10) / 10, knockouts: sep.inks.filter(i => i.knockout).map(i => i.hex), settings: o,
     stats: { stitches, colours: plan.length, colourChanges: Math.max(0, plan.length - 1), trims, jumps, threadM: Math.round(threadM * 1.6 * 10) / 10, minutes: Math.round(minutes * 10) / 10, satin: objects.filter(s => s.kind === 'satin').length, fill: objects.filter(s => s.kind === 'fill').length },
     warnings: [...(narrow.length ? [`${narrow.length} shape${narrow.length > 1 ? 's are' : ' is'} under 1 mm wide: thin lines may not sew cleanly; thicken them or make the graphic bigger.`] : []), ...(stitches > 20000 ? [`${stitches.toLocaleString('en-US')} stitches is heavy for a garment: it will be stiff. A smaller design, an open fill or a patch is lighter.`] : [])] };
 }

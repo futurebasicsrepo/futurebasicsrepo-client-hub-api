@@ -168,6 +168,8 @@ html,body{touch-action:manipulation}
     <button type="button" data-tool="rect" title="Rectangle (R)" aria-label="Rectangle"><svg viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" rx="1.5"/></svg></button>
     <button type="button" data-tool="ellipse" title="Ellipse (O)" aria-label="Ellipse"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="8" ry="6"/></svg></button>
     <button type="button" data-tool="line" title="Line (L)" aria-label="Line"><svg viewBox="0 0 24 24"><path d="M5 19L19 5"/></svg></button>
+    <button type="button" data-tool="pen" title="Pen (P): click for points, drag for curves" aria-label="Pen"><svg viewBox="0 0 24 24"><path d="M12 3l6 9-6 9-6-9zM12 3v8M10.5 12.5h3"/></svg></button>
+    <button type="button" data-tool="node" title="Edit points (A)" aria-label="Edit points"><svg viewBox="0 0 24 24"><path d="M6 4l11 6-5 1.5L9.5 17z"/><rect x="15" y="15" width="5" height="5"/></svg></button>
     <button type="button" class="pro-only" data-tool="ruler" title="Ruler (U): drag across something you know the size of, to set the real size" aria-label="Ruler"><svg viewBox="0 0 24 24"><path d="M3 17L17 3l4 4L7 21z"/><path d="M7 13l2 2M10 10l2 2M13 7l2 2"/></svg></button>
     <button type="button" class="pro-only" data-tool="warp" title="Warp (W): bend the selected mark to the piece" aria-label="Warp"><svg viewBox="0 0 24 24"><path d="M4 7c5-3 11-3 16 0M4 17c5-3 11-3 16 0M4 7v10M20 7v10M12 5.5v9"/></svg></button>
     <button type="button" class="pro-only" data-tool="pick" title="Pick a colour from the picture (I)" aria-label="Pick a colour"><svg viewBox="0 0 24 24"><path d="M14 4l6 6-2 2-6-6zM12 6l-8 8v4h4l8-8"/></svg></button>
@@ -292,7 +294,7 @@ const fixed=l=>l.kind==='base'||l.kind==='paint'; // full-size layers that do no
 
 // ---------- history (rasters are copied before they change, so a step keeps its own) ----------
 let HIST=[],HI=-1;
-const copyL=l=>({...l,adjust:{...l.adjust},tint:{...l.tint},distress:{...l.distress},finish:l.finish?{...l.finish,distress:{...l.finish.distress}}:null,...(l.warp?{warp:{...l.warp,pts:l.warp.pts.map(p=>[...p])}}:{})});
+const copyL=l=>({...l,adjust:{...l.adjust},tint:{...l.tint},distress:{...l.distress},finish:l.finish?{...l.finish,distress:{...l.finish.distress}}:null,...(l.warp?{warp:{...l.warp,pts:l.warp.pts.map(p=>[...p])}}:{}),...(l.paths?{paths:l.paths.map(p=>({closed:p.closed,nodes:p.nodes.map(n=>[...n])}))}:{})});
 const snap=()=>({sel:SEL,layers:LAYERS.map(copyL)});
 function commit(){HIST=HIST.slice(0,HI+1);HIST.push(snap());if(HIST.length>60)HIST.shift();HI=HIST.length-1;touch();syncUndo()}
 function restore(s){LAYERS=s.layers.map(copyL);SEL=s.sel&&layerOf(s.sel)?s.sel:null;touch();paintPanels();draw()}
@@ -333,6 +335,7 @@ function contentOf(l){
     x.font=font;x.textBaseline='middle';x.lineJoin='round';x.fillStyle=l.color;x.strokeStyle=l.outlineColor;x.lineWidth=(l.outline||0)*2;
     lines.forEach((t,i)=>{let px=l.align==='left'?pad:l.align==='right'?w-pad-lw[i]:(w-lw[i])/2;const py=pad+lh*i+lh/2;for(const g of[...t]){if(l.outline)x.strokeText(g,px,py);x.fillText(g,px,py);px+=x.measureText(g).width+l.track}});
     return c}
+  if(l.kind==='shape'&&l.shape==='path'&&window.VEC)return VEC.content(l);
   if(l.kind==='shape'){
     const sw=l.stroke?l.strokeW:0,pad=Math.ceil(sw/2+2),c=canvas(l.w+pad*2,(l.shape==='line'?Math.max(sw,2):l.h)+pad*2),x=c.getContext('2d');
     x.lineWidth=sw;x.strokeStyle=l.strokeColor;x.fillStyle=l.fillColor;x.lineCap='round';x.lineJoin='round';x.beginPath();
@@ -343,7 +346,7 @@ function contentOf(l){
   return canvas(1,1);
 }
 const unitOf=l=>{const u=(W/1000)/(fixed(l)?1:l.scale);return Math.pow(1.15,Math.round(Math.log(u)/Math.log(1.15)))}; // stitches and dots keep a real size: one step per 15% of scale
-const sig=l=>JSON.stringify([l.finish,l.finish?unitOf(l):0,l.kind,l.raster?l.raster._rid:0,l.text,l.font,l.size,l.bold,l.italic,l.track,l.lead,l.align,l.arc,l.color,l.outline,l.outlineColor,l.shape,l.w,l.h,l.radius,l.fill,l.fillColor,l.stroke,l.strokeW,l.strokeColor,l.adjust,l.tint,l.distress,l.warp]);
+const sig=l=>JSON.stringify([l.finish,l.finish?unitOf(l):0,l.kind,l.raster?l.raster._rid:0,l.text,l.font,l.size,l.bold,l.italic,l.track,l.lead,l.align,l.arc,l.color,l.outline,l.outlineColor,l.shape,l.w,l.h,l.radius,l.fill,l.fillColor,l.stroke,l.strokeW,l.strokeColor,l.pv,l.adjust,l.tint,l.distress,l.warp]);
 const plainLook=l=>l.adjust.hue===0&&l.adjust.sat===100&&l.adjust.bright===100&&l.adjust.contrast===100;
 // the layer with its colour adjustments, its recolouring and its distressing: cached until any of them change
 function processed(l){
@@ -376,11 +379,11 @@ function render(){
   vx.imageSmoothingQuality='high';vx.drawImage(docC,PX,PY,W*Z,H*Z);
   if(MASKED&&(TOOL==='area'||TAB==='ai')){vx.save();vx.globalAlpha=.42;vx.drawImage(mask,PX,PY,W*Z,H*Z);vx.restore()}
   const l=selected();
-  if(l&&l.visible&&!fixed(l)&&TOOL==='select'){const p=corners(l).map(([a,b])=>[sx(a),sy(b)]);vx.strokeStyle='#141416';vx.lineWidth=1;vx.setLineDash([5,4]);vx.beginPath();p.forEach(([a,b],i)=>i?vx.lineTo(a,b):vx.moveTo(a,b));vx.closePath();vx.stroke();vx.setLineDash([]);
+  if(l&&l.visible&&!fixed(l)&&TOOL==='select'&&!window.PRO?.multi()){const p=corners(l).map(([a,b])=>[sx(a),sy(b)]);vx.strokeStyle='#141416';vx.lineWidth=1;vx.setLineDash([5,4]);vx.beginPath();p.forEach(([a,b],i)=>i?vx.lineTo(a,b):vx.moveTo(a,b));vx.closePath();vx.stroke();vx.setLineDash([]);
     if(!l.locked){const tm=[(p[0][0]+p[1][0])/2,(p[0][1]+p[1][1])/2],rk=rotKnob(l);vx.beginPath();vx.moveTo(tm[0],tm[1]);vx.lineTo(rk[0],rk[1]);vx.stroke();
       for(const[a,b]of p){vx.fillStyle='#fff';vx.fillRect(a-5,b-5,10,10);vx.strokeRect(a-5,b-5,10,10)}vx.beginPath();vx.arc(rk[0],rk[1],6,0,Math.PI*2);vx.fillStyle='#4bff9a';vx.fill();vx.stroke()}}
   if(HOVER&&['brush','eraser','distress','area'].includes(TOOL)){const rad=(TOOL==='distress'?OPT.dsize:TOOL==='area'?OPT.area:OPT.size)/2*Z;vx.strokeStyle='rgba(20,20,22,.8)';vx.lineWidth=1;vx.beginPath();vx.arc(HOVER[0],HOVER[1],Math.max(rad,2),0,Math.PI*2);vx.stroke();vx.strokeStyle='rgba(255,255,255,.8)';vx.beginPath();vx.arc(HOVER[0],HOVER[1],Math.max(rad,2)+1,0,Math.PI*2);vx.stroke()}
-  overlay();$('#zLabel').textContent=Math.round(Z*100)+'%';
+  window.PRO?.overlay(vx);window.VEC?.overlay(vx);overlay();$('#zLabel').textContent=Math.round(Z*100)+'%';
 }
 function rotKnob(l){const p=corners(l).map(([a,b])=>[sx(a),sy(b)]),tm=[(p[0][0]+p[1][0])/2,(p[0][1]+p[1][1])/2],c=[sx(l.x),sy(l.y)],d=Math.hypot(tm[0]-c[0],tm[1]-c[1])||1;return[tm[0]+(tm[0]-c[0])/d*28,tm[1]+(tm[1]-c[1])/d*28]}
 function fit(){const r=$('#stage').getBoundingClientRect();Z=Math.min((r.width-48)/W,(r.height-48)/H,2);PX=(r.width-W*Z)/2;PY=(r.height-H*Z)/2;draw()}
@@ -446,10 +449,12 @@ view.addEventListener('pointerdown',e=>{
   if(['rect','ellipse','line'].includes(TOOL)){DRAG={mode:'shape',x0:x,y0:y,l:null,pid:e.pointerId,type:e.pointerType};return}
   if(TOOL==='ruler'){RULER=null;DRAG={mode:'ruler',x0:x,y0:y,x1:x,y1:y,pid:e.pointerId,type:e.pointerType};draw();return}
   if(TOOL==='warp'){DRAG=warpDown(x,y,px,py);if(DRAG){DRAG.pid=e.pointerId;DRAG.type=e.pointerType}draw();return}
+  if(window.VEC?.down(e,x,y))return; // the pen and Edit points
   // select: a handle of the chosen layer first, then whatever is under the pointer
   const l=selected();
-  if(l&&!fixed(l)&&!l.locked&&l.visible){const rk=rotKnob(l);if(Math.hypot(px-rk[0],py-rk[1])<tolOf(e)+1){DRAG={mode:'rot',l,a0:Math.atan2(y-l.y,x-l.x)-l.rot,pid:e.pointerId,type:e.pointerType};return}
+  if(l&&!fixed(l)&&!l.locked&&l.visible&&!window.PRO?.multi()){const rk=rotKnob(l);if(Math.hypot(px-rk[0],py-rk[1])<tolOf(e)+1){DRAG={mode:'rot',l,a0:Math.atan2(y-l.y,x-l.x)-l.rot,pid:e.pointerId,type:e.pointerType};return}
     const k=corners(l).findIndex(([a,b])=>Math.hypot(sx(a)-px,sy(b)-py)<tolOf(e));if(k>=0){DRAG={mode:'scale',l,d0:Math.hypot(x-l.x,y-l.y)||1,s0:l.scale,pid:e.pointerId,type:e.pointerType};return}}
+  if(window.PRO?.down(e,x,y))return; // several layers, a box round them, Shift-click: the professional layer
   const h=hit(x,y);SEL=h?h.id:(l&&fixed(l)?l.id:null);paintPanels();
   if(h&&!h.locked&&!fixed(h))DRAG={mode:'move',l:h,ox:x-h.x,oy:y-h.y,moved:false,pid:e.pointerId,type:e.pointerType};draw();
 });
@@ -457,14 +462,15 @@ view.addEventListener('pointermove',e=>{
   const[px,py]=pt(e),q=PTRS.get(e.pointerId);if(q){q.x=px;q.y=py}
   if(GEST){gestMove();return}
   if(DRAG&&DRAG.pid!==undefined&&DRAG.pid!==e.pointerId)return;
-  if(e.pointerType!=='touch')HOVER=[px,py];if(!DRAG){if(['brush','eraser','distress','area'].includes(TOOL))draw();return}
+  if(e.pointerType!=='touch')HOVER=[px,py];if(!DRAG){if(['brush','eraser','distress','area'].includes(TOOL))draw();window.VEC?.hover();return}
   const x=dx(px),y=dy(py),g=DRAG;
+  if(window.PRO?.move(g,x,y,e)||window.VEC?.move(g,x,y,e))return;
   // the Pencil reports more samples than the screen draws: take all of them, so a quick curve stays a curve
   if(g.mode==='stroke'){const ev=e.getCoalescedEvents?.()||[];for(const c of ev.length?ev:[e]){const[cx,cy]=pt(c),ux=dx(cx),uy=dy(cy);dab(g.l,g.x,g.y,ux,uy,TOOL,pressOf(c));g.x=ux;g.y=uy}draw();paintFields();return}
   if(g.mode==='pan'){PX=g.PX+px-g.px;PY=g.PY+py-g.py}
   else if(g.mode==='area'){maskDab(g.x,g.y,x,y,g.erase);g.x=x;g.y=y}
   else if(g.mode==='stroke'){dab(g.l,g.x,g.y,x,y,TOOL);g.x=x;g.y=y}
-  else if(g.mode==='move'){g.l.x=Math.round(x-g.ox);g.l.y=Math.round(y-g.oy);g.moved=true}
+  else if(g.mode==='move'){if(window.PRO)PRO.snap1(g,x,y,e);else{g.l.x=Math.round(x-g.ox);g.l.y=Math.round(y-g.oy);g.moved=true}}
   else if(g.mode==='scale'){g.l.scale=clamp(g.s0*Math.hypot(x-g.l.x,y-g.l.y)/g.d0,.02,40);g.moved=true}
   else if(g.mode==='rot'){let a=Math.atan2(y-g.l.y,x-g.l.x)-g.a0;if(e.shiftKey)a=Math.round(a/(Math.PI/12))*(Math.PI/12);g.l.rot=a;g.moved=true}
   else if(g.mode==='ruler'){g.x1=x;g.y1=y;if(e.shiftKey){if(Math.abs(x-g.x0)>Math.abs(y-g.y0))g.y1=g.y0;else g.x1=g.x0}}
@@ -475,7 +481,7 @@ view.addEventListener('pointermove',e=>{
     else{let w=Math.abs(x-g.x0),h=Math.abs(y-g.y0);if(e.shiftKey)w=h=Math.max(w,h);l.w=Math.max(4,Math.round(w));l.h=Math.max(4,Math.round(h));l.x=g.x0+(x<g.x0?-w:w)/2;l.y=g.y0+(y<g.y0?-h:h)/2}}
   draw();if(g.mode!=='pan'&&g.mode!=='area')paintFields();
 });
-const endDrag=e=>{if(e&&e.pointerId!==undefined){PTRS.delete(e.pointerId);if(GEST){if(PTRS.size<2){const g=GEST.layer;GEST=null;if(g?.moved){commit();paintPanels()}}return}if(DRAG&&DRAG.pid!==undefined&&DRAG.pid!==e.pointerId)return}const g=DRAG;DRAG=null;if(!g)return;if(g.mode==='ruler'){rulerDone(g);draw();return}if(g.mode==='stroke'||g.mode==='area'||(g.mode==='shape'&&g.l)||g.moved){if(g.mode!=='area')commit();if(g.mode==='shape')setTool('select');paintPanels()}draw()};
+const endDrag=e=>{if(e&&e.pointerId!==undefined){PTRS.delete(e.pointerId);if(GEST){if(PTRS.size<2){const g=GEST.layer;GEST=null;if(g?.moved){commit();paintPanels()}}return}if(DRAG&&DRAG.pid!==undefined&&DRAG.pid!==e.pointerId)return}const g=DRAG;DRAG=null;if(!g)return;if(window.PRO?.end(g)||window.VEC?.end(g))return;if(g.mode==='ruler'){rulerDone(g);draw();return}if(g.mode==='stroke'||g.mode==='area'||(g.mode==='shape'&&g.l)||g.moved){if(g.mode!=='area')commit();if(g.mode==='shape')setTool('select');paintPanels()}draw()};
 view.addEventListener('pointerup',endDrag);view.addEventListener('pointercancel',endDrag);view.addEventListener('lostpointercapture',e=>{if(DRAG&&DRAG.pid===e.pointerId)endDrag(e)});view.addEventListener('pointerleave',e=>{if(e.pointerType==='mouse'||e.pointerType==='pen'&&!DRAG){HOVER=null;draw()}});
 // iPad: a Pencil on the page can be taken as handwriting (Scribble) or the start of a text selection, and then never reaches the canvas as a
 // stroke; holding the Pencil's touches on the stage keeps them ours (fingers are left alone: they move and pinch through the pointer events)
@@ -496,7 +502,7 @@ const pressHtml=()=>`<label class="chk" title="With an Apple Pencil, pressing ha
 $('#opts').addEventListener('change',e=>{if(e.target.matches('[data-press]'))OPT.pressure=e.target.checked});
 function paintOpts(){
   const o=$('#opts'),rg=(k,lab,min,max,step=1,unit='px')=>`<label>${lab}<input type="range" data-o="${k}" min="${min}" max="${max}" step="${step}" value="${OPT[k]}"><output>${OPT[k]}${unit}</output></label>`;
-  const help={select:'Click a layer to choose it. Drag to move, a corner to resize, the green knob to turn (Shift: 15° steps). Arrows nudge.',hand:'Drag to move around. Ctrl and the wheel, or a pinch, zooms.',text:'Click where the type should go.',rect:'Drag to draw. Shift makes a square.',ellipse:'Drag to draw. Shift makes a circle.',line:'Drag to draw a line.',pick:'Click the picture to take its colour.',ruler:'Drag across something whose size you know, then say how long it is. Shift keeps the line straight.',warp:'Choose a layer, then drag its points to bend it to the piece. Presets are in the layer settings.'};
+  const help={pen:'Click for a sharp point, drag for a curve. Click the first point to close the shape; Enter or Esc leaves it open. Shift keeps to 45°. Backspace takes the last point back.',node:'Drag a point or a handle. Alt-click a point to make it sharp or smooth, click the line to add a point, Delete takes the chosen point away. Alt while dragging a handle breaks it from its pair.',select:'Click a layer to choose it. Drag to move, a corner to resize, the green knob to turn (Shift: 15° steps). Arrows nudge.',hand:'Drag to move around. Ctrl and the wheel, or a pinch, zooms.',text:'Click where the type should go.',rect:'Drag to draw. Shift makes a square.',ellipse:'Drag to draw. Shift makes a circle.',line:'Drag to draw a line.',pick:'Click the picture to take its colour.',ruler:'Drag across something whose size you know, then say how long it is. Shift keeps the line straight.',warp:'Choose a layer, then drag its points to bend it to the piece. Presets are in the layer settings.'};
   if(TOOL==='brush')o.innerHTML=rg('size','Size',1,400)+rg('flow','Opacity',.05,1,.05,'')+rg('soft','Softness',0,1,.05,'')+pressHtml()+'<span class="hint">Paints on the selected painting layer, or starts a new one. With the Pencil, fingers move and pinch the view.</span>';
   else if(TOOL==='eraser')o.innerHTML=rg('size','Size',1,400)+rg('flow','Strength',.05,1,.05,'')+pressHtml()+'<span class="hint">Rubs out the selected layer.</span>';
   else if(TOOL==='distress')o.innerHTML=rg('dsize','Size',4,600)+rg('flow','Strength',.05,1,.05,'')+'<span class="hint">Wears the selected layer away, like an old print. For an even wear across the layer, use Distress in its settings.</span>';
@@ -505,6 +511,7 @@ function paintOpts(){
   // on the flats the same tools draw on the flat itself, saved with it and carried into the tech pack
   if(VMODE==='front'||VMODE==='back'){const fh={select:'Drag a graphic to move it; its size and place, in inches, are in the panel on the right.',hand:'Drag to move around once zoomed in; pinch or Ctrl and the wheel zooms.',brush:'Draws on the flat. It is saved with the flat and goes into the tech pack. With the Pencil, fingers move and pinch the view.',eraser:'Rubs out what was drawn on the flat (the sketch stays).',distress:'Wears away what was drawn on the flat.',text:'Tap where the type should go, then type it.',rect:'Drag to draw a box on the flat.',ellipse:'Drag to draw a ring on the flat.',line:'Drag to draw a line on the flat.',area:'Drag a box on the flat over what the AI should redraw, then say what to change.'}[TOOL];
     o.querySelector('[data-clearmask]')?.remove();const h=o.querySelector('.hint');if(h&&fh)h.textContent=fh;else if(fh)o.insertAdjacentHTML('beforeend',`<span class="hint">${fh}</span>`)}
+  window.PRO?.opts(o);
 }
 $('#opts').addEventListener('input',e=>{const k=e.target.dataset.o;if(!k)return;OPT[k]=Number(e.target.value);e.target.nextElementSibling.textContent=OPT[k]+(['flow','soft'].includes(k)?'':'px');draw()});
 $('#opts').addEventListener('click',e=>{if(e.target.closest('[data-clearmask]'))clearMask()});
@@ -531,11 +538,12 @@ function tab(t){TAB=t;$$('.tabs [data-tab]').forEach(b=>b.setAttribute('aria-sel
 $$('.tabs [data-tab]').forEach(b=>b.onclick=()=>tab(b.dataset.tab));
 
 const rng2=(p,lab,min,max,step,v,unit='')=>`<label class="f"><span>${lab}</span><input type="range" data-p="${p}" min="${min}" max="${max}" step="${step}" value="${v}"><output>${v}${unit}</output></label>`;
-function paintPanels(){paintLayers();if(TAB==='ai')paintAiState()}
+function paintPanels(){paintLayers();window.PRO?.optsRefresh();if(TAB==='ai')paintAiState()}
 function paintLayers(){
   const p=$('#pLayers'),l=selected();
   const list=[...LAYERS].reverse().map(x=>`<div class="ly ${x.id===SEL?'on':''} ${x.visible?'':'off'}" data-ly="${x.id}" tabindex="0" role="button" aria-pressed="${x.id===SEL}"><button type="button" data-vis title="${x.visible?'Hide':'Show'}" aria-label="${x.visible?'Hide':'Show'} ${esc(x.name)}">${x.visible?EYE:SHUT}</button>${x.kind==='text'?`<span class="th">T</span>`:`<img alt="" src="${thumbOf(x)}">`}<span class="nm">${esc(x.name)}<small>${KIND[x.kind]}${x.blend!=='source-over'?' · '+esc(BLENDS.find(b=>b[0]===x.blend)?.[1].split(' (')[0]):''}${x.finish?' · '+esc(x.finish.name):x.distress.amount?' · distressed':''}</small></span><button type="button" data-lock title="${x.locked?'Unlock':'Lock'}" aria-label="${x.locked?'Unlock':'Lock'} ${esc(x.name)}">${x.locked?LOCK:OPEN}</button></div>`).join('');
-  p.innerHTML=`<div class="sec"><h4>Layers · top first</h4><div class="layers">${list}</div></div>${garmentHtml()}${l?fieldsHtml(l):'<p class="note">Choose a layer to change it. Add type, our marks, your own pictures and AI graphics from the Add and AI tabs.</p>'}`;
+  p.innerHTML=`<div class="sec"><h4>Layers · top first</h4><div class="layers">${list}</div></div>${garmentHtml()}${window.PRO?.multi()?PRO.multiHtml():l?fieldsHtml(l):'<p class="note">Choose a layer to change it. Add type, our marks, your own pictures and AI graphics from the Add and AI tabs.</p>'}`;
+  window.PRO?.rows();
 }
 function fieldsHtml(l){
   const a=l.adjust,t=l.tint,d=l.distress,col=(p,v)=>`<input type="color" data-p="${p}" value="${v}">`;
@@ -546,10 +554,11 @@ function fieldsHtml(l){
     ${rng2('size','Size',8,600,1,l.size,'px')}${rng2('track','Spacing',-20,120,1,l.track)}${rng2('lead','Line height',.7,2.5,.05,l.lead)}${rng2('arc','Arch',-100,100,1,l.arc)}
     <label class="f w"><span>Colour</span>${col('color',l.color)}</label>${rng2('outline','Outline',0,40,1,l.outline,'px')}<label class="f w"><span>Outline colour</span>${col('outlineColor',l.outlineColor)}</label>
     <p class="note">Arch bends one line of type, for a college or rock-tee arc. Our fonts are kept in the Lab, so type sets the same on every machine; add one with its file.</p></div>`;
-  if(l.kind==='shape')kind=`<div class="sec"><h4>Shape</h4>${rng2('w','Width',4,Math.max(W,H)*2,1,l.w,'px')}${l.shape==='line'?'':rng2('h','Height',4,Math.max(W,H)*2,1,l.h,'px')}${l.shape==='rect'?rng2('radius','Corners',0,600,1,l.radius,'px'):''}
+  if(l.kind==='shape'&&l.shape==='path'&&window.VEC)kind=VEC.fieldsHtml(l);
+  else if(l.kind==='shape')kind=`<div class="sec"><h4>Shape</h4>${rng2('w','Width',4,Math.max(W,H)*2,1,l.w,'px')}${l.shape==='line'?'':rng2('h','Height',4,Math.max(W,H)*2,1,l.h,'px')}${l.shape==='rect'?rng2('radius','Corners',0,600,1,l.radius,'px'):''}
     ${l.shape==='line'?'':`<label class="f w"><span>Fill</span><span class="row"><input type="checkbox" data-p="fill" ${l.fill?'checked':''} aria-label="Fill">${col('fillColor',l.fillColor)}</span></label>`}
-    <label class="f w"><span>${l.shape==='line'?'Line':'Outline'}</span><span class="row">${l.shape==='line'?'':`<input type="checkbox" data-p="stroke" ${l.stroke?'checked':''} aria-label="Outline">`}${col('strokeColor',l.strokeColor)}</span></label>${rng2('strokeW','Thickness',1,120,1,l.strokeW,'px')}</div>`;
-  const pos=fixed(l)?'':`<div class="sec"><h4>Place</h4>${rng2('scale','Size',.02,6,.01,+l.scale.toFixed(2),'×')}${rng2('rotd','Turn',-180,180,1,Math.round(l.rot*180/Math.PI),'°')}<div class="row"><button class="btn sm q" type="button" data-act="centre">Centre</button><button class="btn sm q" type="button" data-act="flip">Flip</button><button class="btn sm q" type="button" data-act="fabric" title="Multiply, a little worn: the way a print sits in cloth">Sit it in the fabric</button></div></div>${l.kind==='base'?'':sizeHtml(l)}`;
+    <label class="f w"><span>${l.shape==='line'?'Line':'Outline'}</span><span class="row">${l.shape==='line'?'':`<input type="checkbox" data-p="stroke" ${l.stroke?'checked':''} aria-label="Outline">`}${col('strokeColor',l.strokeColor)}</span></label>${rng2('strokeW','Thickness',1,120,1,l.strokeW,'px')}${window.VEC?VEC.convertHtml():''}</div>`;
+  const pos=fixed(l)?'':`<div class="sec"><h4>Place</h4>${window.PRO?PRO.geoHtml(l):''}${rng2('scale','Size',.02,6,.01,+l.scale.toFixed(2),'×')}${rng2('rotd','Turn',-180,180,1,Math.round(l.rot*180/Math.PI),'°')}<div class="row"><button class="btn sm q" type="button" data-act="centre">Centre</button><button class="btn sm q" type="button" data-act="flip">Flip</button><button class="btn sm q" type="button" data-act="fabric" title="Multiply, a little worn: the way a print sits in cloth">Sit it in the fabric</button></div></div>${l.kind==='base'?'':sizeHtml(l)}`;
   return `<div class="sec"><h4>${esc(KIND[l.kind])}</h4><input class="t" data-p="name" value="${esc(l.name)}" maxlength="60" aria-label="Layer name">
     ${rng2('opacity','Opacity',0,1,.01,l.opacity)}<label class="f w"><span>Blend</span><select class="t" data-p="blend">${BLENDS.map(([k,v])=>`<option value="${k}" ${k===l.blend?'selected':''}>${esc(v)}</option>`).join('')}</select></label></div>
   ${l.kind==='base'?'':techHtml(l)}
@@ -618,7 +627,7 @@ pL.addEventListener('input',e=>{const p=e.target.dataset.p,l=selected();if(!p||!
 pL.addEventListener('change',e=>{if(e.target.matches('[data-tech]')){const l=selected();if(l){applyTech(l,e.target.value);commit();paintLayers();draw()}return}if(!e.target.dataset.p)return;commit();if(['name','blend','d.amount','text'].includes(e.target.dataset.p)||e.target.tagName==='SELECT'||e.target.type==='checkbox')paintLayers()});
 pL.addEventListener('click',e=>{
   const row=e.target.closest('[data-ly]');
-  if(row){const l=layerOf(row.dataset.ly);if(e.target.closest('[data-vis]')){l.visible=!l.visible;commit()}else if(e.target.closest('[data-lock]')){l.locked=!l.locked;commit()}else SEL=l.id;paintLayers();draw();return}
+  if(row){const l=layerOf(row.dataset.ly);if(e.target.closest('[data-vis]')){l.visible=!l.visible;commit()}else if(e.target.closest('[data-lock]')){l.locked=!l.locked;commit()}else if(e.shiftKey&&window.PRO)PRO.toggle(l.id);else SEL=l.id;paintPanels();draw();return}
   const l=selected();if(!l)return;const tg=e.target.closest('[data-toggle]'),al=e.target.closest('[data-align]'),ac=e.target.closest('[data-act]');
   const tk=e.target.closest('[data-tkind]');if(tk){TKIND=tk.dataset.tkind;paintLayers();return}
   const ta=e.target.closest('[data-tapply]');if(ta){applyTech(l,ta.dataset.tapply);commit();paintLayers();draw();return}
@@ -811,7 +820,7 @@ function svgDoc(){
     if(l.kind==='text'&&live&&!l.arc){const{font,lines,lw}=textMetrics(l),fill=l.tint.amount===1?l.tint.color:l.color,lh=l.size*l.lead,pad=Math.ceil(l.size*.35+(l.outline||0)*2+4),w=c.width,h=c.height;
       inner=lines.map((t,i)=>{const x0=l.align==='left'?pad:l.align==='right'?w-pad-lw[i]:(w-lw[i])/2;return `<text x="${(x0-w/2).toFixed(1)}" y="${(pad+lh*i+lh/2-h/2).toFixed(1)}" dominant-baseline="middle" font-family="${xa(FONTS[l.font][0])}" font-size="${l.size}" font-weight="${l.bold?700:400}"${l.italic?' font-style="italic"':''} letter-spacing="${l.track}" fill="${xa(fill)}"${l.outline?` stroke="${xa(l.outlineColor)}" stroke-width="${l.outline*2}" paint-order="stroke" stroke-linejoin="round"`:''} xml:space="preserve">${esc(t)}</text>`}).join('')}
     else if(l.kind==='shape'&&live){const fill=l.tint.amount===1?l.tint.color:l.fillColor,sk=l.tint.amount===1?l.tint.color:l.strokeColor;
-      inner=l.shape==='line'?`<line x1="${-l.w/2}" y1="0" x2="${l.w/2}" y2="0" stroke="${xa(l.stroke?sk:fill)}" stroke-width="${Math.max(l.strokeW,1)}" stroke-linecap="round"/>`:
+      inner=l.shape==='path'&&window.VEC?VEC.svg(l,fill,sk):l.shape==='line'?`<line x1="${-l.w/2}" y1="0" x2="${l.w/2}" y2="0" stroke="${xa(l.stroke?sk:fill)}" stroke-width="${Math.max(l.strokeW,1)}" stroke-linecap="round"/>`:
         l.shape==='ellipse'?`<ellipse cx="0" cy="0" rx="${l.w/2}" ry="${l.h/2}" fill="${l.fill?xa(fill):'none'}"${l.stroke?` stroke="${xa(sk)}" stroke-width="${l.strokeW}"`:''}/>`:
         `<rect x="${-l.w/2}" y="${-l.h/2}" width="${l.w}" height="${l.h}" rx="${Math.min(l.radius||0,l.w/2,l.h/2)}" fill="${l.fill?xa(fill):'none'}"${l.stroke?` stroke="${xa(sk)}" stroke-width="${l.strokeW}"`:''}/>`}
     else inner=`<image x="${-c.width/2}" y="${-c.height/2}" width="${c.width}" height="${c.height}" href="${c.toDataURL('image/png')}"/>`;
@@ -852,6 +861,7 @@ async function importSvg(file){
       else if(mine&&kids.length===1&&['rect','ellipse','line'].includes(kids[0].localName)){const s=kids[0],n=s.localName,A=a=>parseFloat(svgAttr(s,a));l=old&&old.kind==='shape'?copyL(old):fresh('shape',{});l.shape=n;
         if(n==='rect'){l.w=A('width')||l.w;l.h=A('height')||l.h;l.radius=A('rx')||0}else if(n==='ellipse'){l.w=A('rx')*2||l.w;l.h=A('ry')*2||l.h}else l.w=Math.abs(A('x2')-A('x1'))||l.w;
         const fill=svgAttr(s,'fill'),sk=svgAttr(s,'stroke');if(n!=='line'){l.fill=Boolean(fill&&fill!=='none');if(l.fill)l.fillColor=fill}if(sk&&sk!=='none'){l.stroke=true;l.strokeColor=sk;l.strokeW=A('stroke-width')||l.strokeW;if(n==='line')l.fillColor=sk}else if(n!=='line')l.stroke=false;l.tint={...l.tint,amount:0};common(l)}
+      else if(kids.length===1&&kids[0].localName==='path'&&window.VEC&&(l=VEC.fromSvg(kids[0],old,svgAttr))){common(l);VEC.normalize(l)}
       else if(kids.length===1&&kids[0].localName==='image'&&/^data:image\//.test(kids[0].getAttribute('href')||kids[0].getAttributeNS('http://www.w3.org/1999/xlink','href')||'')){const href=kids[0].getAttribute('href')||kids[0].getAttributeNS('http://www.w3.org/1999/xlink','href'),img=await imgOf(href),c=canvas(img.naturalWidth,img.naturalHeight);c.getContext('2d').drawImage(img,0,0);
         l=old&&(old.kind==='base'||old.kind==='paint')?copyL(old):fresh('image',{});l.raster=stamp(c);l.src=null;l.dirty=true;l._srcRid=l.raster._rid;common(l);
         if(fixed(l)){l.x=W/2;l.y=H/2;l.scale=1;l.rot=0;l.flip=false;if(c.width!==W||c.height!==H){const f=canvas(W,H);f.getContext('2d').drawImage(c,0,0,W,H);l.raster=stamp(f);l._srcRid=l.raster._rid}}}
@@ -899,7 +909,7 @@ let TT=0;function toast(text,href){if(!text)return;let el=$('#stToast');if(!el){
 function paintSub(){const c=D.concept;$('#tryBtn').classList.toggle('hidden',GMODE);if(GMODE&&TAGM){const t=TAGM.spec;$('#cName').textContent=c.name;$('#cSub').textContent=`Tag · ${t.widthMm} × ${t.heightMm} mm · ${t.shape}${t.fold&&t.fold!=='none'?' · '+t.fold:''} · ${t.material}${TAGM.spec.face?'':' · not designed yet'}`;$('#apply').textContent='Use on the tag';$('#expKeepNew').classList.add('hidden');return}
   if(GMODE){$('#cName').textContent=c.name;$('#cSub').textContent=`${GID?'Graphic in the library':'New graphic, not kept yet'} · ${W}×${H}px · clear background`;$('#apply').textContent=GID?'Update the graphic':'Keep in the library';$('#expKeepNew').classList.toggle('hidden',!GID);return}const st={draft:'Draft',approved:'Approved',rejected:'Rejected',tech_pack:'Tech pack'}[c.status]||c.status;$('#cName').textContent=c.name;$('#cSub').innerHTML=`${esc(st)} · ${W}×${H}px${D.canRestore?' · <button class="btn sm q" type="button" id="restore" style="min-height:22px;padding:0 8px">Put the old picture back</button>':''}`;const r=$('#restore');if(r)r.onclick=async()=>{if(!await ask('Put the old picture back?','The concept gets the picture it had before the studio. Your design here stays as it is.','Put it back'))return;try{await api(`/v1/lab/concepts/${CID}/studio/restore`,{body:{}});D.canRestore=false;paintSub();toast('The old picture is back on the concept.')}catch(x){toast(x.message)}}}
 document.addEventListener('keydown',e=>{
-  if(!D)return;const typing=e.target.closest&&e.target.closest('input,textarea,select,[contenteditable]'),mod=e.ctrlKey||e.metaKey;
+  if(!D)return;if(window.VEC?.key(e)||window.PRO?.key(e))return;const typing=e.target.closest&&e.target.closest('input,textarea,select,[contenteditable]'),mod=e.ctrlKey||e.metaKey;
   if(mod&&e.key.toLowerCase()==='s'){e.preventDefault();saveAll();return}
   if(typing||VMODE==='front'||VMODE==='back')return; // the flats take their own keys, in their frame
   if(mod&&e.key.toLowerCase()==='z'){e.preventDefault();e.shiftKey?redo():undo();return}if(mod&&e.key.toLowerCase()==='y'){e.preventDefault();redo();return}
@@ -1111,13 +1121,13 @@ $('#sepDlg').addEventListener('click',async e=>{const d=$('#sepDlg');if(e.target
   catch(x){toast(x.message)}finally{b.disabled=false}});
 // ---------- embroidery: the layer digitized for a machine (src/lab-digitize.js), with the settings a digitiser changes ----------
 let EMB=null;
-const embBody=()=>{const l=layerOf(EMB);return{image:artPng(l),name:l.name,widthIn:Number($('#embW').value)||inchesOf(l).w,garment:GMODE?'':fabricUnder(l),techniqueId:l.finish?.id||null,fillAngle:$('#embAngle').value,rowMm:$('#embRow').value,satinMaxMm:$('#embSatin').value,pullMm:$('#embPull').value,underlay:$('#embUnder').value==='1'}};
-async function embOpen(l){if(!l||l.kind==='base'){toast('Choose a graphic, mark or type layer first.');return}EMB=l.id;$('#embWho').textContent=l.name;$('#embW').value=fin(Math.min(16,Math.max(.5,inchesOf(l).w)));$('#embDlg').showModal();embRun()}
+const embBody=()=>{const l=layerOf(EMB);return{image:artPng(l),name:l.name,widthIn:Number($('#embW').value)||inchesOf(l).w,garment:GMODE?'':fabricUnder(l),techniqueId:l.finish?.id||null,fillAngle:$('#embAngle').value,rowMm:$('#embRow').value,satinMaxMm:$('#embSatin').value,pullMm:$('#embPull').value,underlay:$('#embUnder').value==='1',...(window.EMBX?.body()||{})}};
+async function embOpen(l){if(!l||l.kind==='base'){toast('Choose a graphic, mark or type layer first.');return}EMB=l.id;window.EMBX?.reset();$('#embWho').textContent=l.name;$('#embW').value=fin(Math.min(16,Math.max(.5,inchesOf(l).w)));$('#embDlg').showModal();embRun()}
 async function embRun(){const l=layerOf(EMB);if(!l)return;$('#embWait').classList.remove('hidden');$('#embImg').style.opacity=.35;$('#embRun').disabled=true;
   try{const r=await api('/v1/lab/studio/embroidery',{body:embBody()}),st=r.stats;$('#embImg').src=r.preview;$('#embImg').style.opacity=1;$('#embWait').classList.add('hidden');$('#embDlg').dataset.stitches=r.stitches;
     $('#embStats').innerHTML=`<b>${st.stitches.toLocaleString('en-US')} stitches</b> · ${r.widthMm} × ${r.heightMm} mm · ${st.colours} thread${st.colours===1?'':'s'}, ${st.colourChanges} change${st.colourChanges===1?'':'s'} · ${st.trims} trims · about ${Math.max(1,Math.round(st.minutes))} min a piece · ${st.satin} satin, ${st.fill} fill`;
     $('#embSeq').innerHTML='<tr><td></td><td><b>Sequence</b></td><td class="n"><b>Stitches</b></td><td><b>Sewn as</b></td></tr>'+r.threads.map(t=>`<tr><td class="n">${t.n}</td><td><i style="background:${t.hex}"></i> ${esc(t.pantone||t.hex)}</td><td class="n">${t.stitches.toLocaleString('en-US')}</td><td>${[t.satin?`${t.satin} satin`:'',t.fill?`${t.fill} fill`:''].filter(Boolean).join(', ')}</td></tr>`).join('');
-    $('#embWarn').innerHTML=[...(r.knockouts||[]).map(k=>`${k} is the garment colour, so it is not sewn.`),...(r.warnings||[])].map(w=>`<p class="note" style="margin:0;color:#8a4b00">! ${esc(w)}</p>`).join('')}
+    $('#embWarn').innerHTML=[...(r.knockouts||[]).map(k=>`${k} is the garment colour, so it is not sewn.`),...(r.warnings||[])].map(w=>`<p class="note" style="margin:0;color:#8a4b00">! ${esc(w)}</p>`).join('');window.EMBX?.show(r)}
   catch(x){$('#embWait').textContent=x.message;toast(x.message)}finally{$('#embRun').disabled=false}}
 $('#embRun').onclick=embRun;['#embAngle','#embRow','#embSatin','#embPull','#embUnder'].forEach(s=>$(s).addEventListener('change',embRun));$('#embW').addEventListener('change',embRun);
 $('#embDlg').addEventListener('click',async e=>{const d=$('#embDlg');if(e.target.closest('[data-embclose]')||e.target===d){d.close();return}const b=e.target.closest('[data-embdl]');if(!b)return;const f=b.dataset.embdl;b.disabled=true;
@@ -1338,6 +1348,10 @@ $('#tagAddGo').onclick=async()=>{const cid=$('#tagAddSel').value,b=$('#tagAddGo'
 
 boot();
 </script>
+<script src="/lab/studio-pro.js"></script>
+<script src="/lab/vendor/polygon-clipping.js"></script>
+<script src="/lab/studio-vec.js"></script>
+<script src="/lab/studio-emb.js"></script>
 <script src="/helper.js" defer></script>
 </body>
 </html>

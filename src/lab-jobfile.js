@@ -13,7 +13,8 @@ import { printCheck } from './art.js';
 import { nearestName } from './studio.js';
 import './pantone-c.js';
 import { separate, halftone, choke, SCREEN_ANGLES } from './lab-separate.js';
-import { digitize, dstOf, expOf, stitchSvg } from './lab-digitize.js';
+import { digitize, dstOf, expOf } from './lab-digitize.js';
+import { sewoutPng, digitizeReview } from './lab-sewout.js';
 import { cleanRules } from './lab-library.js';
 import { brandDoc, fact, table, safe, INK, DIM, LINE } from './brand-pdf.js';
 import { zip } from './zip.js';
@@ -117,10 +118,12 @@ export async function jobFile(png, { name = 'Graphic', technique = null, widthIn
   } else if (kind === 'embroidery') {
     const s = embroiderySettings(t, rules), d = await digitize(png, { widthIn: w, garment: garmentColour, ...(t.finish?.stitch === 'fill' ? { satinMaxMm: 3 } : {}), ...digitizeOpts });
     const dst = dstOf(d, name), exp = expOf(d), name8 = slug(name).slice(0, 24) || 'design';
-    files.push({ name: `${name8}.dst`, data: dst.file }, { name: `${name8}.exp`, data: exp.file }, { name: 'stitch-preview.png', data: await sharp(Buffer.from(stitchSvg(d, { px: 1400, garment: /^#[0-9a-f]{6}$/i.test(garmentColour) ? garmentColour : '#ecebe6' }))).png().toBuffer() });
+    files.push({ name: `${name8}.dst`, data: dst.file }, { name: `${name8}.exp`, data: exp.file }, { name: 'stitch-preview.png', data: await sewoutPng(d, { px: 1400, garment: /^#[0-9a-f]{6}$/i.test(garmentColour) ? garmentColour : '#ecebe6' }) });
+    const review = await digitizeReview(d, png, { widthIn: w });
     job.embroidery = { ...s, stitches: d.stats.stitches, stitchEstimate: d.stats.stitches, trims: d.stats.trims, colourChanges: d.stats.colourChanges, minutes: d.stats.minutes, threadM: d.stats.threadM, satinShapes: d.stats.satin, fillShapes: d.stats.fill, files: { dst: `${name8}.dst`, exp: `${name8}.exp`, preview: 'stitch-preview.png' },
       sequence: d.threads.map(th => ({ n: th.n, hex: th.hex, pantone: lum(th.hex) > 245 ? 'White' : (P ? P.code(th.hex) || '' : ''), stitches: th.stitches, satin: th.satin, fill: th.fill })),
-      threads: d.threads.map(th => ({ n: th.n, pantone: lum(th.hex) > 245 ? 'White' : (P ? P.code(th.hex) || '' : ''), hex: th.hex, thread: '' })) };
+      threads: d.threads.map(th => ({ n: th.n, pantone: lum(th.hex) > 245 ? 'White' : (P ? P.code(th.hex) || '' : ''), hex: th.hex, thread: '' })),
+      review: { score: review.score, verdict: review.verdict, fidelity: review.fidelity, items: review.items.filter(i => i.level !== 'ok').map(({ level, code, text }) => ({ level, code, text })) } };
     job.warnings.push(...d.warnings);
     if (d.stats.stitches > 15000 && !d.warnings.some(x => /stitches/.test(x))) job.warnings.push(`${d.stats.stitches.toLocaleString('en-US')} stitches: heavy for a knit; consider a smaller fill or a patch.`);
   } else if (kind === 'heat_transfer') {
