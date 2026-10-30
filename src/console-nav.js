@@ -189,7 +189,7 @@ body.fbcollapsed .fbside a .dot{position:absolute;top:6px;right:8px;width:8px;he
     document.querySelectorAll('.fbside a[data-section]').forEach(a => { const on = a.dataset.section === w.section; a.classList.toggle('on', on); if (on) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
     if (tabs) {
       tabs.querySelectorAll('[data-tabs]').forEach(g => { g.hidden = g.dataset.tabs !== w.section; g.style.display = g.hidden ? 'none' : 'contents'; });
-      const shown = tabs.querySelector(`[data-tabs="${w.section}"]`), visible = shown ? [...shown.querySelectorAll('a')].filter(a => !a.hidden).length : 0;
+      const shown = tabs.querySelector(`[data-tabs="${w.section}"]`), visible = shown ? [...shown.querySelectorAll('a:not(.act)')].filter(a => !a.hidden).length : 0;
       tabs.hidden = visible < 2;
       tabs.querySelectorAll('a[data-href]').forEach(a => { const on = Boolean(w.item) && a.dataset.href === w.item.href; a.classList.toggle('on', on); if (on) { a.setAttribute('aria-current', 'page'); if (!a.dataset.seen) { a.dataset.seen = '1'; try { a.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch {} } } else { a.removeAttribute('aria-current'); delete a.dataset.seen; } });
     }
@@ -248,7 +248,7 @@ const autoCollapse = () => { if (!chosen()) { let touch = false; try { touch = m
   // a section shows when this person can open any of its parts, and leads to the first of them
   function sections() {
     document.querySelectorAll('.fbside a[data-section]').forEach(a => {
-      const first = [...document.querySelectorAll(`.fbtabs [data-tabs="${a.dataset.section}"] a`)].find(x => !x.hidden);
+      const first = [...document.querySelectorAll(`.fbtabs [data-tabs="${a.dataset.section}"] a:not(.act)`)].find(x => !x.hidden); // the section's action (New design) is not one of its parts
       a.hidden = !first; if (first) { a.setAttribute('href', first.getAttribute('href')); a.dataset.href = first.dataset.href; }
     });
     paintActive();

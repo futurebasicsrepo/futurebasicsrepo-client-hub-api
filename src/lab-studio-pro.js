@@ -158,7 +158,7 @@
 
   // ---- several at once: delete, duplicate, nudge, choose all ----
   function delAll() { const ls = chosen().filter(l => !l.locked); if (!ls.length) return; const ids = new Set(ls.map(l => l.id)); LAYERS = LAYERS.filter(l => !ids.has(l.id)); SELS.clear(); SEL = null; commit(); paintPanels(); draw(); }
-  function dupAll() { const ls = chosen(), made = []; for (const l of ls) { const c = { ...copyL(l), id: uid(), name: l.name + ' copy', _pc: null, _pk: null }; if (isRaster(l)) c.raster = cloneCanvas(l.raster); c.x += 20; c.y += 20; LAYERS.splice(LAYERS.indexOf(l) + 1 + made.length * 0, 0, c); made.push(c); } SELS.clear(); for (const c of made) SELS.add(c.id); SEL = made[made.length - 1]?.id || null; commit(); paintPanels(); draw(); }
+  function dupAll() { const ls = chosen(), made = []; for (const l of ls) { const c = { ...copyL(l), id: uid(), name: l.name + ' copy', _pc: null, _pk: null }; if (isRaster(l)) { c.raster = cloneCanvas(l.raster); if (l.raster._rid === l._srcRid) c._srcRid = c.raster._rid; } /* a component's copy stays a copy */ c.x += 20; c.y += 20; LAYERS.splice(LAYERS.indexOf(l) + 1 + made.length * 0, 0, c); made.push(c); } SELS.clear(); for (const c of made) SELS.add(c.id); SEL = made[made.length - 1]?.id || null; commit(); paintPanels(); draw(); }
   function selectAll() { const ls = LAYERS.filter(movable); if (!ls.length) return; SELS.clear(); for (const l of ls) SELS.add(l.id); SEL = ls[ls.length - 1].id; setTool('select'); paintPanels(); draw(); }
   function toggle(id) { ensure(); if (SELS.has(id) && SELS.size > 1) { SELS.delete(id); SEL = [...SELS].pop(); } else { SELS.add(id); SEL = id; } }
   // the layer list: every chosen row lit, not only the first
@@ -166,7 +166,7 @@
 
   // ---- keys (the Studio asks first; true = handled here) ----
   function key(e) {
-    const mod = e.metaKey || e.ctrlKey, typing = e.target.closest?.('input,textarea,select,[contenteditable]'), k = e.key.toLowerCase();
+    const mod = e.metaKey || e.ctrlKey, typing = e.target.closest?.('input,textarea,select,[contenteditable]') && !e.target.closest('dialog:not([open])'), k = e.key.toLowerCase(); // a field left focused in a closed window is not typing
     if (document.querySelector('dialog[open]')) return false;
     if (mod && k === 'k') { e.preventDefault(); palette(); return true; }
     if (typing || VMODE !== 'picture') return false;
@@ -232,11 +232,11 @@
     const score = (c, q) => { const s = (c.label + ' ' + c.kind).toLowerCase(), w = q.split(/\s+/).filter(Boolean); if (!w.every(x => s.includes(x))) return -1; return (c.label.toLowerCase().startsWith(w[0] || '') ? 2 : 0) + (s.includes(q) ? 1 : 0); };
     const paint = () => { const q = input.value.trim().toLowerCase(); shown = list.map(c => [c, score(c, q)]).filter(([, s]) => s >= 0).sort((a, b) => b[1] - a[1]).map(([c]) => c).slice(0, 40); at = Math.min(at, Math.max(0, shown.length - 1));
       ul.innerHTML = shown.length ? shown.map((c, i) => `<li role="option" data-i="${i}" aria-selected="${i === at}"><span>${esc(c.label)}</span><em>${esc(c.kind)}</em>${c.keys ? `<small>${esc(c.keys)}</small>` : ''}</li>`).join('') : '<li class="none">No command by that name.</li>'; ul.querySelector('[aria-selected=true]')?.scrollIntoView({ block: 'nearest' }); };
-    const run = i => { const c = shown[i]; if (!c) return; d.close(); setTimeout(() => c.run(), 0); };
+    const run = i => { const c = shown[i]; if (!c) return; d.close(); input.blur(); setTimeout(() => c.run(), 0); };
     input.oninput = () => { at = 0; paint(); };
-    input.onkeydown = e => { if (e.key === 'ArrowDown') { e.preventDefault(); at = Math.min(at + 1, shown.length - 1); paint(); } else if (e.key === 'ArrowUp') { e.preventDefault(); at = Math.max(at - 1, 0); paint(); } else if (e.key === 'Enter') { e.preventDefault(); run(at); } else if (e.key === 'Escape') { e.preventDefault(); d.close(); } };
-    const back = document.activeElement; d.onclose = () => { input.blur(); if (back && back !== document.body && back.isConnected) back.focus?.(); };
-    input.value = ''; paint(); d.showModal(); input.focus();
+    input.onkeydown = e => { if (e.key === 'ArrowDown') { e.preventDefault(); at = Math.min(at + 1, shown.length - 1); paint(); } else if (e.key === 'ArrowUp') { e.preventDefault(); at = Math.max(at - 1, 0); paint(); } else if (e.key === 'Enter') { e.preventDefault(); run(at); } else if (e.key === 'Escape') { e.preventDefault(); d.close(); input.blur(); } };
+    const back = document.activeElement; d.onclose = () => { if (d.open) return; input.blur(); /* a close that lands after the next ⌘K must not take its focus */ if (back && back !== document.body && back.isConnected) back.focus?.(); };
+    input.value = ''; paint(); d.showModal(); input.focus(); requestAnimationFrame(() => { if (d.open) input.focus(); });
   }
   function keysSheet() {
     css(); let d = document.getElementById('proKeys');
