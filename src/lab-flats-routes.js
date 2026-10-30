@@ -195,7 +195,7 @@ export function registerLabFlatsRoutes(app, d) {
       det = { style: read.style, fit, options: det?.options || {}, template: defaultTemplate(read.style, fit, words, [c.name, c.spec?.silhouette, c.spec?.fabric].join(' ')) }; }
     if (!det) return null;
     if (det.template !== 'none' || !c.spec?.scratch) det.template = await pickTemplate(c, det);
-    const params = fitToTemplate({ ...defaultParams(det.style, det.fit, det.options), ...(det.template ? { template: det.template } : {}), ...(read?.color ? { color: read.color } : {}) }), spec = ensureBranding(c.spec || {}, c.category), placements = [], list = await techniques(c.client_id);
+    const params = fitToTemplate({ ...defaultParams(det.style, det.fit, det.options), ...(det.template ? { template: det.template } : {}), ...(read?.color ? { color: read.color } : /^#[0-9a-f]{6}$/.test(String(c.spec?.color || '')) ? { color: c.spec.color } : {}) }), spec = ensureBranding(c.spec || {}, c.category), placements = [], list = await techniques(c.client_id);
     const logo = spec.branding?.logo || {};
     if (logo.mark && logo.mark !== 'none') { const mark = logo.mark === 'cue' ? 'mark' : logo.mark, base = LOGO_BASE[logo.technique] || 'embroidery', aspect = await aspectOf({ mark }); const t = techFor(list, { technique: base });
       placements.push({ id: 'logo', name: 'Future Basics logo', source: 'logo', mark, technique: base, techniqueId: t.id, ...defaultPlacement('logo', params, { aspect, label: logo.placement || '' }) }); }

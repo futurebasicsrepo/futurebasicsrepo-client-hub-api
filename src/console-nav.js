@@ -107,6 +107,7 @@ body.fbcollapsed .fbside .quick input,body.fbcollapsed .fbjump{display:none}body
 .fbdlg input,.fbdlg select,.fbdlg textarea{font:400 15px 'Space Grotesk',system-ui,sans-serif;letter-spacing:0;text-transform:none;color:#141416;border:1px solid rgba(20,20,22,.2);border-radius:12px;padding:10px 12px;background:#fff;width:100%}
 .fbdlg .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;align-items:center}.fbdlg .row .err{margin-right:auto;color:#9a2419;font-size:13px}
 .fbdlg button{border:1px solid #141416;background:#fff;color:#141416;border-radius:999px;padding:10px 18px;font:600 14px 'Space Grotesk',system-ui,sans-serif;cursor:pointer}.fbdlg button.go{background:#141416;color:#fff}.fbdlg button:disabled{opacity:.5;cursor:default}
+.fbside .bdg[hidden],.fbtabs .bdg[hidden]{display:none!important}
 .fbside .bdg,.fbtabs .bdg{margin-left:auto;background:#d8451f;color:#fff;border-radius:999px;font:500 10px 'IBM Plex Mono',monospace;padding:1px 7px;min-width:20px;text-align:center}.fbtabs .bdg{margin-left:0}
 .fbside .foot{padding:8px 10px 14px;border-top:1px solid rgba(20,20,22,.14)}
 .fbside .foot button{display:flex;align-items:center;gap:10px;width:100%;border:0;background:none;cursor:pointer;color:#727278;font:inherit;font-size:13px;padding:8px 10px;border-radius:10px}.fbside .foot button:hover{background:#f5f5f2;color:#141416}
@@ -124,7 +125,7 @@ body.fbcollapsed .fbside a .dot{position:absolute;top:6px;right:8px;width:8px;he
  .fbside{top:0;bottom:auto;height:100vh;height:100dvh;display:block;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-y;width:min(300px,86vw);transform:translateX(-102%);transition:transform .22s;z-index:40}
  .fbside nav{padding-bottom:calc(32px + env(safe-area-inset-bottom,0px))}
  /* the tray: on a phone the menu is an ink sheet over the whole screen, the sections in big light type at the right, joined by lines to one dot */
- .fbside{width:100vw;background:#141416;color:#fff;transform:translateY(-102%);transition:transform .32s cubic-bezier(.2,.8,.2,1)}
+ .fbside{width:100vw;background:#141416;color:#fff;transform:translateY(-102%);transition:transform .5s cubic-bezier(.2,.8,.2,1)}
  body.fbopen .fbside{box-shadow:none}
  .fbside .quick{padding:14px 64px 0 18px;position:relative;z-index:2}
  .fbside .quick input{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.18);color:#fff}.fbside .quick input::placeholder{color:rgba(255,255,255,.55)}
@@ -135,21 +136,21 @@ body.fbcollapsed .fbside a .dot{position:absolute;top:6px;right:8px;width:8px;he
  .fbside nav a svg{display:none}
  .fbside nav a:hover{background:rgba(255,255,255,.06)}
  .fbside nav a.on{background:transparent;box-shadow:none;font-weight:400;color:#fff}
- .fbside nav a.on .lbl{text-decoration:underline;text-decoration-color:#4bff9a;text-decoration-thickness:2px;text-underline-offset:7px}
- .fbside nav a.on::after{display:none}
+ .fbside nav a.on::after,body.fbcollapsed .fbside nav a.on::after{display:block;position:static;flex:none;order:3;width:10px;height:10px;margin:0 2px 0 14px;border-radius:50%;background:#4bff9a;box-shadow:0 0 0 4px rgba(75,255,154,.18),0 0 18px rgba(75,255,154,.55)}
+ .fbside nav a:not(.on)::after{display:block;content:"";flex:none;order:3;width:10px;height:10px;margin:0 2px 0 14px}
  .fbside nav a .bdg{margin-left:0;order:-1;align-self:center;margin-right:10px}
- body.fbopen .fbside nav a{animation:fbIn .5s cubic-bezier(.2,.8,.2,1) both}
- body.fbopen .fbside nav a:nth-child(2){animation-delay:.04s}body.fbopen .fbside nav a:nth-child(3){animation-delay:.08s}body.fbopen .fbside nav a:nth-child(4){animation-delay:.12s}body.fbopen .fbside nav a:nth-child(5){animation-delay:.16s}body.fbopen .fbside nav a:nth-child(6){animation-delay:.2s}body.fbopen .fbside nav a:nth-child(7){animation-delay:.24s}body.fbopen .fbside nav a:nth-child(8){animation-delay:.28s}
+ body.fbopen .fbside nav a{animation:fbIn .7s .18s cubic-bezier(.2,.8,.2,1) both}
+ body.fbopen .fbside nav a:nth-child(2){animation-delay:0.25s}body.fbopen .fbside nav a:nth-child(3){animation-delay:0.32s}body.fbopen .fbside nav a:nth-child(4){animation-delay:0.39s}body.fbopen .fbside nav a:nth-child(5){animation-delay:0.46s}body.fbopen .fbside nav a:nth-child(6){animation-delay:0.53s}body.fbopen .fbside nav a:nth-child(7){animation-delay:0.60s}body.fbopen .fbside nav a:nth-child(8){animation-delay:0.67s}
  .fbfan{display:block;position:absolute;left:0;top:0;pointer-events:none;z-index:1}
  .fbfan path{fill:none;stroke:rgba(75,255,154,.55);stroke-width:1;stroke-dasharray:var(--len,600);stroke-dashoffset:var(--len,600)}
- body.fbopen .fbfan path{animation:fbDraw 1s cubic-bezier(.3,.7,.2,1) forwards}
+ body.fbopen .fbfan path{animation:fbDraw 1.8s .3s cubic-bezier(.3,.7,.2,1) forwards}
  body.fbopen{overflow:hidden}html:has(body.fbopen){overflow:hidden}
  body.fbopen .fbside{transform:none;box-shadow:0 20px 60px rgba(20,20,22,.3)} /* the shadow only while open: closed, it bled onto the page's left edge */
  body.fbopen .fbscrim{display:block;position:fixed;inset:0;background:rgba(20,20,22,.5);z-index:35;touch-action:none;overscroll-behavior:contain}
- body.fbcollapsed .fbside .lbl{display:revert}body.fbcollapsed .fbside a{justify-content:flex-start;padding:9px 10px}body.fbcollapsed .fbside a .dot{display:none!important}
+ body.fbcollapsed .fbside .lbl{display:revert}body.fbcollapsed .fbside a{justify-content:flex-start;padding:9px 10px}body.fbcollapsed .fbside nav a{justify-content:flex-end;padding:8px 4px}body.fbcollapsed .fbside a .dot{display:none!important}
  .fbside .foot{display:none}
  body.fbcollapsed .fbside .quick input{display:block}body.fbcollapsed .fbside .quick button.start span{display:inline}
- body.fbcollapsed .fbside .bdg{display:inline-block}
+ body.fbcollapsed .fbside .bdg:not([hidden]){display:inline-block}
 }
 @keyframes fbIn{from{opacity:0;transform:translateX(18px)}}@keyframes fbDraw{to{stroke-dashoffset:0}}
 @media(prefers-reduced-motion:reduce){.fbside,body.fbnav{transition:none}body.fbopen .fbside nav a,body.fbopen .fbfan path{animation:none}.fbfan path{stroke-dashoffset:0}}
@@ -226,10 +227,14 @@ const autoCollapse = () => { if (!chosen()) { let touch = false; try { touch = m
   // the tray's lines: one dot at the left, a curve to each section's name; drawn each time it opens, from where the names actually are
   function drawFan() {
     const side = document.getElementById('fbSide'), svgEl = document.getElementById('fbFan'); if (!side || !svgEl) return;
-    const links = [...side.querySelectorAll('nav a:not([hidden]) .lbl')], box = side.getBoundingClientRect(); if (!links.length) return;
-    const H = side.scrollHeight, W = box.width, mid = links.map(l => l.getBoundingClientRect()), oy = (mid[0].top + mid[mid.length - 1].bottom) / 2 - box.top + side.scrollTop, ox = 26;
+    // each line ends just before the name, or before its count when it has one
+    const left = a => [...a.querySelectorAll('.lbl, .bdg:not([hidden])')].map(e => e.getBoundingClientRect()).filter(r => r.width).reduce((m, r) => (r.left < m.left ? r : m));
+    const links = [...side.querySelectorAll('nav a:not([hidden])')], box = side.getBoundingClientRect(); if (!links.length) return;
+    // measured where the names come to rest, not mid-slide (they start a little to the right)
+    links.forEach(a => { a.style.animation = 'none'; }); const rest = links.map(left); links.forEach(a => { a.style.animation = ''; });
+    const H = side.scrollHeight, W = box.width, mid = rest, oy = (mid[0].top + mid[mid.length - 1].bottom) / 2 - box.top + side.scrollTop, ox = 26;
     svgEl.setAttribute('width', W); svgEl.setAttribute('height', H); svgEl.setAttribute('viewBox', `0 0 ${W} ${H}`);
-    svgEl.innerHTML = mid.map(r => { const x = r.left - box.left - 12, y = (r.top + r.bottom) / 2 - box.top + side.scrollTop; return `<path style="--len:${Math.round(Math.hypot(x - ox, y - oy) * 1.4)}" d="M${ox} ${oy} C ${ox + 90} ${oy}, ${x - 110} ${y}, ${x} ${y}"/>`; }).join('') + `<circle cx="${ox}" cy="${oy}" r="7" fill="#141416" stroke="#4bff9a" stroke-width="1.5"/><circle cx="${ox}" cy="${oy}" r="2.5" fill="#4bff9a"/>`;
+    svgEl.innerHTML = mid.map(r => { const x = r.left - box.left - 12, y = (r.top + r.bottom) / 2 - box.top + side.scrollTop; return `<path style="--len:${Math.round(Math.hypot(x - ox, y - oy) * 1.4)}" d="M${ox} ${oy} C ${ox + (x - ox) * .45} ${oy}, ${x - (x - ox) * .45} ${y}, ${x} ${y}"/>`; }).join('') + `<circle cx="${ox}" cy="${oy}" r="7" fill="#141416" stroke="#4bff9a" stroke-width="1.5"/><circle cx="${ox}" cy="${oy}" r="2.5" fill="#4bff9a"/>`;
   }
   function closeDrawer() { document.body.classList.remove('fbopen'); const b = document.querySelector('.fbburger'); if (b) b.setAttribute('aria-expanded', 'false'); }
 

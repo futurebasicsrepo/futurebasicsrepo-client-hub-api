@@ -83,7 +83,13 @@ dialog.av{border:0;border-radius:24px;padding:0;width:min(1040px,96vw);max-heigh
 .bar{height:6px;border-radius:999px;background:var(--fog);overflow:hidden}.bar i{display:block;height:100%;background:var(--ink)}
 .kv{display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:13px}.kv>b{font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin-right:2px}
 .mv{display:flex;justify-content:space-between;gap:8px;font-size:13px;border-top:1px solid var(--line);padding-top:6px}.mv span:first-child{min-width:0;overflow-wrap:anywhere}
-.plans{display:grid;gap:8px}.pl{display:flex;gap:10px;align-items:center;flex-wrap:wrap;border:1px solid var(--line);border-radius:14px;padding:10px 14px;background:#fff}.pl.on{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink)}.pl .nm{flex:1 1 220px;min-width:0;display:grid}.pl .nm b{overflow-wrap:anywhere}
+.plans{display:grid;gap:8px}.pl{display:flex;gap:10px;align-items:center;flex-wrap:wrap;border:1px solid var(--line);border-radius:14px;padding:10px 14px;background:#fff}.pl.on{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink)}
+/* an open plan: the list folds to that one plan, glowing, with a way back to all of them */
+#planList.focus .pl:not(.on){display:none}
+#planList.focus .pl.on{border-color:#12b864;animation:plGlow 2.6s ease-in-out infinite alternate}
+#planList .plall{margin-top:10px}#planList{scroll-margin-top:150px}
+@keyframes plGlow{from{box-shadow:0 0 0 1px #4bff9a,0 0 0 0 rgba(75,255,154,.0)}to{box-shadow:0 0 0 1px #4bff9a,0 0 26px 2px rgba(75,255,154,.45)}}
+@media(prefers-reduced-motion:reduce){#planList.focus .pl.on{animation:none;box-shadow:0 0 0 1px #4bff9a,0 0 18px rgba(75,255,154,.35)}}.pl .nm{flex:1 1 220px;min-width:0;display:grid}.pl .nm b{overflow-wrap:anywhere}
 .rg{display:grid;gap:8px;margin-top:10px}.rg .ch{display:grid;grid-template-columns:auto 1fr;gap:10px;align-items:start;background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:13px}.rg .ch b{display:block}.rg .ch .f{color:var(--dim)}.rg .ch .f s{color:#a02a20;text-decoration:line-through;margin-right:6px}.rg .ch .f em{font-style:normal;color:var(--ink)}.rg .sk{font-size:12px;color:var(--dim)}
 .pl{display:grid;gap:10px;margin-top:10px}.pl .po{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 12px;display:grid;gap:8px;font-size:13px}.pl .po input{font:500 12px 'IBM Plex Mono',monospace}.dm{font:500 12px 'IBM Plex Mono',monospace;letter-spacing:.04em}.dm.go{color:var(--ok)}.dm.no{color:#a02a20}
 .tiles{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0}.tile{border:1px solid var(--line);border-radius:14px;padding:8px 14px;min-width:110px;background:#fff}.tile b{display:block;font-size:20px;font-weight:500;letter-spacing:-.02em}.tile span{font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
@@ -328,10 +334,13 @@ async function loadTrends(){
 }
 
 /* ---------- line plans ---------- */
-let CUR=null;
+let CUR=null,PLANS_ALL=false;
 async function loadPlans(keep){
   const j=await api('/v1/lab/plans');
-  $('#planList').innerHTML=j.plans.map(p=>`<div class="pl ${CUR&&CUR.plan.id===p.id?'on':''}" data-plan="${p.id}"><span class="nm"><b>${esc(p.name)}</b><span class="sub">${esc(p.season||'No season')} · ${p.lines} pieces · ${esc(when(p.updatedAt))}</span></span><span class="chip ${p.status==='approved'?'ok':''}">${p.status}</span><button class="btn sm" type="button" data-open>Open</button><button class="btn sm" type="button" data-pdel>Delete</button></div>`).join('')||'<p class="note">No plans yet. Describe an idea above and the assistant will draft one from the library.</p>';
+  $('#planList').innerHTML=j.plans.map(p=>`<div class="pl ${CUR&&CUR.plan.id===p.id?'on':''}" data-plan="${p.id}"><span class="nm"><b>${esc(p.name)}</b><span class="sub">${esc(p.season||'No season')} · ${p.lines} pieces · ${esc(when(p.updatedAt))}</span></span><span class="chip ${p.status==='approved'?'ok':''}">${p.status}</span>${CUR&&CUR.plan.id===p.id?'<button class="btn sm" type="button" data-pclose>Close</button>':'<button class="btn sm" type="button" data-open>Open</button>'}<button class="btn sm" type="button" data-pdel>Delete</button></div>`).join('')||'<p class="note">No plans yet. Describe an idea above and the assistant will draft one from the library.</p>';
+  // with a plan open, the list folds to that plan; the button brings the rest back (and opening another folds it again)
+  const list=$('#planList'),folded=!!(CUR&&j.plans.some(p=>p.id===CUR.plan.id))&&j.plans.length>1&&!PLANS_ALL;list.classList.toggle('focus',folded);
+  if(CUR&&j.plans.length>1)list.insertAdjacentHTML('beforeend',`<button class="btn sm plall" type="button" data-plall aria-expanded="${!folded}">${folded?`Show all ${j.plans.length} plans`:'Fold to the open plan'}</button>`);
   if(!keep)$('#planView').classList.toggle('hidden',!CUR);
 }
 function ladderRows(P){
@@ -431,7 +440,9 @@ document.addEventListener('change',e=>{
 });
 document.addEventListener('click',async e=>{
   const pl=e.target.closest('.pl');
-  if(pl&&e.target.closest('[data-open]')){openPlan(pl.dataset.plan).catch(x=>alert(x.message));return}
+  if(e.target.closest('[data-pclose]')){CUR=null;PLANS_ALL=false;clearTimeout(PLANPOLL);$('#planView').classList.add('hidden');loadPlans().catch(()=>{});return}
+  if(e.target.closest('[data-plall]')){PLANS_ALL=!PLANS_ALL;loadPlans(true).catch(()=>{});return}
+  if(pl&&e.target.closest('[data-open]')){PLANS_ALL=false;openPlan(pl.dataset.plan).then(()=>{const l=$('#planList');if(l)l.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'start'})}).catch(x=>alert(x.message));return}
   if(pl&&e.target.closest('[data-pdel]')){if(!confirm('Delete this plan and all its pieces?'))return;try{await api('/v1/lab/plans/'+pl.dataset.plan,{method:'DELETE'});if(CUR&&CUR.plan.id===pl.dataset.plan)CUR=null;await loadPlans()}catch(x){alert(x.message)}return}
   const tr=e.target.closest('tr[data-line]');
   if(tr&&e.target.closest('[data-drop]')){const l=CUR.lines.find(x=>x.id===tr.dataset.line);putLine(tr,{status:l.status==='dropped'?'planned':'dropped'});return}

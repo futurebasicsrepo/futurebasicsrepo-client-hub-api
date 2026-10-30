@@ -1,7 +1,7 @@
 // Design Lab concepts API (the Lab module). A planned piece gets several concepts, each drawn and checked against what inspired it; the team comments, approves or
 // rejects; an approved concept becomes a product in the Future Basics room and its tech pack is drafted from the concept.
 //   POST /v1/lab/plans/:id/lines/:lineId/concepts {count?, note?}   make concepts for one planned piece (assistant, then a picture each, then the check)
-//   POST /v1/lab/concepts/from-sketch {template, name?}                a concept from a sketch-pack sketch, no plan, no AI → { concept, studio }
+//   POST /v1/lab/concepts/from-sketch {template, name?, colour?: {name, hex}}  a concept from a sketch-pack sketch, no plan, no AI → { concept, studio }
 //   GET  /v1/lab/concepts?plan=&line=&status=                         the board        GET /v1/lab/concepts/:id (with the references and the comments)
 //   GET  /v1/lab/concepts/:id/image                                    the picture (needs the sign-in header, so the page fetches it)
 //   PUT  /v1/lab/concepts/:id                                          edit the words, price, cost or quantity (an approved concept goes back to draft, and is checked again)
@@ -113,7 +113,9 @@ export function registerLabConceptRoutes(app, d) {
   app.post('/v1/lab/concepts/from-sketch', { preHandler: pre }, async (req, reply) => {
     const t = FLAT_TEMPLATES.find(x => x.id === String(req.body?.template || '')); if (!t) return bad(reply, 'Choose a sketch from the sketch pack', 422);
     const st = FLAT_STYLES[t.style] || {}, name = clip(req.body?.name, 120) || t.label;
-    const spec = { description: `Started from the sketch pack: ${t.label}.`, silhouette: t.label, fabric: '', fit: '', details: [], trims: '', colors: [], template: t.id };
+    // a colour chosen with the sketch: its name goes in the words, its hex is the flat's main colour (the flats start in it, src/lab-flats-routes.js)
+    const hex = /^#[0-9a-f]{6}$/i.test(String(req.body?.colour?.hex || '')) ? String(req.body.colour.hex).toLowerCase() : '', cname = clip(req.body?.colour?.name, 40);
+    const spec = { description: `Started from the sketch pack: ${t.label}.`, silhouette: t.label, fabric: '', fit: '', details: [], trims: '', colors: hex ? [cname || hex] : [], template: t.id, ...(hex ? { color: hex } : {}) };
     const r = (await pool.query(`insert into lab_concepts(name, category, role, spec, twist, created_by, client_id) values($1,$2,'core',$3,'',$4,$5) returning id`, [name, st.category || 'other', spec, actorOf(req), own(req)])).rows[0];
     return reply.code(201).send({ concept: await one(r.id), studio: `/lab/studio?concept=${r.id}&view=front&template=${encodeURIComponent(t.id)}` });
   });

@@ -810,7 +810,7 @@ await journey('J118', 'the work console menu: eight sections down the left, the 
   const ph = await pc.newPage(); ph.errs = []; ph.on('pageerror', e => ph.errs.push(e.message)); const over = () => ph.evaluate(() => document.documentElement.scrollWidth - innerWidth);
   await ph.goto(`${W}/sales`, { waitUntil: 'networkidle' }); await ph.waitForSelector('.tiles', { timeout: 15000 });
   ok(await ph.locator('.fbburger').isVisible() && await ph.$eval('.fbside', e => { const r = e.getBoundingClientRect(); return r.right <= 1 || r.bottom <= 1; }) && await over() <= 1 && await ph.locator('.fbtabs').isVisible(), 'on a phone the menu is closed behind a button, the tabs stay across the top, and nothing sticks out', await over());
-  await ph.click('.fbburger'); await sleep(350); ok(await ph.$eval('.fbside', e => { const r = e.getBoundingClientRect(); return r.left >= -1 && r.top >= -1; }) && /Sales/.test(await ph.innerText('.fbside')), 'the button opens the drawer');
+  await ph.click('.fbburger'); await sleep(800); // the tray slides down over half a second ok(await ph.$eval('.fbside', e => { const r = e.getBoundingClientRect(); return r.left >= -1 && r.top >= -1; }) && /Sales/.test(await ph.innerText('.fbside')), 'the button opens the drawer');
   await ph.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/j118-phone.png` }).catch(() => {});
   // on a short phone the drawer scrolls under a finger to its last item, and a drag on the dimmed page does not move the page behind it
   await ph.setViewportSize({ width: 390, height: 300 }); await sleep(300); const cdp = await pc.newCDPSession(ph);

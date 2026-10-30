@@ -75,7 +75,13 @@ So line plan → concept → Studio → pattern → tech pack is one press per s
 **On a phone** the Studio's toolbar keeps the step bar, the piece's name, Save and the panel; the rest folds behind **More**. The Pattern view
 keeps what to show, Explode it and the size, and folds editing and the files the same way.
 
-**The sketch pack** (`/lab/sketches`): every flat sketch we draw from, searchable and filtered by range (men's, women's, accessories) and style, each opening large with its front and back; **Open in the Studio** starts a new concept from that sketch (its name, category and silhouette from the sketch; no plan and no AI needed; `POST /v1/lab/concepts/from-sketch {template}`) and opens the Studio on its front flat at the sketch's proportions (a double-click on a picked sketch does the same); **Put it on a concept** opens that concept in the Studio on its flat front, drawn from the sketch (`/lab/studio?concept=…&view=front&template=…`). A second shelf shows the parts (pockets, zips, collars, trims, buttons).
+**The sketch pack** (`/lab/sketches`): every flat sketch we draw from, searchable and filtered by range (men's, women's, accessories) and style. Picking a sketch opens it in a sheet over the gallery (from the side on a wide screen, from the bottom on a phone), so nobody scrolls to find what to do next. In the sheet:
+
+1. **Cloth.** The room's fabrics as swatches, or **Decide later**. A cloth starts in its own first colour.
+2. **Colour.** The cloth's own colours first, then a house set, then any colour from the wheel. The sketch is redrawn in the colour as it is picked (its white cloth swapped for it).
+3. **Open in the Studio.** Starts a new concept from that sketch (its name, category and silhouette from the sketch; no plan and no AI; `POST /v1/lab/concepts/from-sketch {template, colour?: {name, hex}}`), puts the cloth on it as its main fabric in that colour (`POST /v1/lab/concepts/:id/materials`), and opens the Studio on its front flat at the sketch's proportions, drawn in the colour (the flats start in `spec.color` until they are saved).
+
+**Or put this sketch on a concept you already have** (folded at the foot of the sheet) opens that concept in the Studio on its flat front, drawn from the sketch (`/lab/studio?concept=…&view=front&template=…`). A second shelf shows the parts (pockets, zips, collars, trims, buttons).
 
 ## The page
 
@@ -179,6 +185,8 @@ A client can open the Design Lab on their own room, from the hub, for a fixed pr
 **Buying it.** The hub's Design Lab card shows the offer and opens a Shopify checkout (a draft order tagged `fb-design-lab`). The payment sync recognises the order by its tag and opens the Lab; the hub's "I have paid" asks straight away. With Shopify not connected, the card says payments are not set up, and staff open the Lab from the room instead (**Give access** on the client's room in the console, with the days, the included generations, the price and the cap as fields when they should differ). Staff can also end it, invoice the unbilled generations now, and mark an invoice paid by other means.
 
 **Scoping.** Every Lab route runs the gate (`labAccess.gate`) instead of `adminOnly`: staff pass as before; a client passes while their access is live and then `req.lab.clientId` scopes the lists (plans, concepts, graphics, fonts, decoration quotes) and the gate checks that the `:id` in the url (a concept, a plan, a graphic, a font, a quote, a poll) belongs to their room. `client_id` is kept on `lab_concepts`, `lab_art`, `lab_fonts` and `lab_decor_quotes` by triggers from the plan, so a plan moved to a client carries its concepts and artwork with it.
+
+**In the hub.** Once the Lab is open, the hub's Design Lab section is part of the room, not a page apart: the Lab's tools as pills (Line plans and concepts, Studio, Sketches, Graphics and techniques, Materials and trims), then the room's line plans as project cards like the room's projects (season, pieces, status, last change; **Open line plan** goes to `/lab?plan=<id>`, which opens and folds the list to that plan), and a **New line plan** card. Past six plans a link leads to all of them.
 
 **Estimates.** Every cost the Lab shows a client (the plan's cost column, the decoration costs on the flats and the decoration sheet, the studio check, the tech pack's cost block) says it is an estimate: the factory's quote confirms it.
 
