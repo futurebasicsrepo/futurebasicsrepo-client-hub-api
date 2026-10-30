@@ -171,7 +171,7 @@ await journey('J195', 'Design Lab in a browser: the library, filters, save and h
     ok((await page.locator('#items .card').count()) >= 3 && !(await page.isVisible('#plans')), 'Research opens on its own, with the pieces found in it');
     ok((await page.locator('#catPills .pill').allInnerTexts()).some(t => /Footwear/.test(t)) && (await page.locator('#catPills .pill').allInnerTexts()).some(t => /Headwear/.test(t)), 'the category filter covers hats and footwear, not only clothes');
     await page.waitForFunction(() => { const a = document.querySelector('.fbside a[data-section="lab"]'); return a && !a.hidden; }, null, { timeout: 8000 }).catch(() => {});
-    ok(await page.locator('.fbside a[data-section="lab"]:not([hidden])').count() === 1 && await page.locator('.fbtabs [data-tabs="lab"] a:visible').count() === 8 && /Research/.test(await page.innerText('.fbtabs a.on')), 'the owner sees the Design Lab in the menu as one section, with its eight parts as the tabs across the top, Research marked');
+    ok(await page.locator('.fbside a[data-section="lab"]:not([hidden])').count() === 1 && await page.locator('.fbtabs [data-tabs="lab"] a:not(.act):visible').count() === 8 && /Research/.test(await page.innerText('.fbtabs a.on')), 'the owner sees the Design Lab in the menu as one section, with its eight parts as the tabs across the top, Research marked');
     await page.click('.fbtabs a[data-href="/lab#plans"]'); await page.waitForFunction(() => document.getElementById('plans').offsetParent && !document.getElementById('library').offsetParent, null, { timeout: 8000 }).catch(() => {});
     ok(await page.isVisible('#plans') && !(await page.isVisible('#items')) && /Line plans/.test(await page.innerText('.fbtabs a.on')), 'the Line plans tab shows the plans on their own');
     await page.click('.fbtabs a[data-href="/lab#research"]'); await page.waitForSelector('#items .card');
@@ -2551,7 +2551,7 @@ await journey('J240', 'Design on an iPad, as Kyle found it: the ruler takes any 
       const oc = await b.newContext({ viewport: { width: 1366, height: 1024 }, hasTouch: true }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
       const page = await oc.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
       await page.goto(`${BASE}/lab/studio?concept=${c.id}`, { waitUntil: 'networkidle' }); await page.waitForSelector('#pLayers .ly', { timeout: 20000 }); await page.waitForFunction(() => !document.querySelector('#busy:not(.hidden)'));
-      ok(!(await page.$('#viewSeg [data-v=split]')) && (await page.locator('#viewSeg [data-v]').count()) === 4, '2. no Side by side: Picture, Flat front, Flat back, Pattern');
+      ok(!(await page.$('#viewSeg [data-v=split]')) && (await page.locator('#viewSeg [data-v]').count()) === 5, '2. no Side by side: Picture, Flat front, Flat back, Pattern, Board');
       // the ruler's length: any number, 0.54 included
       ok(await page.evaluate(() => { const i = document.getElementById('rulerIn'); i.value = '0.54'; return i.checkValidity(); }), '3. the ruler takes 0.54 in (it said "Enter a valid value")');
       // a Pencil stroke whose lift was never reported, then a new one
