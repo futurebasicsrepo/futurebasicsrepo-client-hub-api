@@ -1662,7 +1662,7 @@ await journey('J227', 'Every tool in the studio works: each rail tool and zoom b
     // 1. the rail and the zoom
     const tools = await page.$$eval('.rail [data-tool]', els => els.map(e => e.dataset.tool)); let railOk = 0;
     for (const t of tools) { await page.click(`.rail [data-tool="${t}"]`); if (await page.evaluate(x => TOOL === x && document.querySelector(`.rail [data-tool="${x}"]`).getAttribute('aria-pressed') === 'true', t) && (await page.innerText('#opts')).trim().length > 0) railOk++; }
-    ok(railOk === tools.length && tools.length === 13, `1. every rail tool selects and shows its options (${tools.join(', ')})`, railOk);
+    ok(railOk === tools.length && tools.length === 15, `1. every rail tool selects and shows its options (${tools.join(', ')})`, railOk);
     const z0 = await page.innerText('#zLabel'); await page.click('#zIn'); await page.waitForFunction(z => document.getElementById('zLabel').textContent !== z, z0); const z1 = await page.innerText('#zLabel'); await page.click('#zOut'); await page.waitForFunction(z => document.getElementById('zLabel').textContent !== z, z1); await page.click('#zFit'); await page.waitForFunction(z => document.getElementById('zLabel').textContent === z, z0);
     ok(parseInt(z1) > parseInt(z0), '   zoom in, out and fit', [z0, z1]);
 
@@ -3642,6 +3642,77 @@ await journey('J262', 'The Studio feels like a designer\'s tool: Shift-click and
     await page.keyboard.press('Escape');
     await page.keyboard.press('Shift+Slash'); await page.waitForSelector('#proKeys[open]'); ok(/Align top/.test(await page.innerText('#proKeys')), '12. ? lists the keys');
     await page.click('#proKeys [data-close]');
+    ok(errs.length === 0, '   no page errors', errs);
+  } finally { await b.close(); await cleanup(brands, plan.plan?.id); }
+});
+
+await journey('J263', 'Drawing with paths in the Studio: the pen draws sharp points and curves and closes the shape, Edit points drags a point and adds one on the line, a rectangle and an ellipse turn into paths and combine (union, subtract, intersect, exclude), and a path goes out to Illustrator as a <path> and comes back as a path, saved with the design', async () => {
+  const { brands, plan } = await conceptSetup();
+  if (!playwright) { ok(true, 'needs a browser'); await cleanup(brands, plan.plan?.id); return; }
+  const line = plan.lines.find(l => l.category === 'tops') || plan.lines[0], c = (await K(`/plans/${plan.plan.id}/lines/${line.id}/concepts`, { body: { count: 1 } })).json.concepts[0];
+  const b = await playwright.chromium.launch();
+  try {
+    const oc = await b.newContext({ viewport: { width: 1500, height: 980 } }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); localStorage.setItem('fb.helper.on', '0'); } catch {} }, kyleT);
+    const page = await oc.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
+    await page.goto(`${BASE}/lab/studio?concept=${c.id}`, { waitUntil: 'networkidle' }); await page.waitForSelector('#pLayers .ly', { timeout: 20000 }); await page.waitForFunction(() => !document.querySelector('#busy:not(.hidden)'));
+    ok(await page.evaluate(() => Boolean(window.VEC && window.polygonClipping)), '1. the path tools are loaded');
+    const scr = (fx, fy) => page.evaluate(([a, b]) => { const r = view.getBoundingClientRect(); return [r.left + sx(W * a), r.top + sy(H * b)]; }, [fx, fy]);
+    await page.keyboard.press('p'); ok(await page.evaluate(() => TOOL === 'pen'), '2. P picks the pen', await page.evaluate(() => TOOL));
+    const n0 = await page.evaluate(() => LAYERS.length);
+    // a triangle-ish shape: a sharp point, a curve (drag), a sharp point, then close on the first
+    let [x, y] = await scr(.3, .3); await page.mouse.click(x, y);
+    [x, y] = await scr(.5, .25); await page.mouse.move(x, y); await page.mouse.down(); await page.mouse.move(x + 60, y, { steps: 4 }); await page.mouse.up();
+    [x, y] = await scr(.45, .45); await page.mouse.click(x, y);
+    [x, y] = await scr(.3, .3); await page.mouse.click(x, y);
+    const p1 = await page.evaluate(() => { const l = selected(); return l && { shape: l.shape, closed: l.paths[0].closed, n: l.paths[0].nodes.length, curve: l.paths[0].nodes.some(q => q[4] !== q[0]), fill: l.fill, w: l.w, h: l.h }; });
+    ok(p1 && p1.shape === 'path' && p1.closed && p1.n === 3 && p1.curve && p1.fill, '3. three points, one of them a curve, closed by clicking the first point (and filled)', p1);
+    ok(await page.evaluate(n => LAYERS.length === n + 1, n0), '   it is one new layer');
+    // Edit points: drag the first point, add a point on a line
+    await page.keyboard.press('a'); ok(await page.evaluate(() => TOOL === 'node'), '4. A picks Edit points');
+    const first = await page.evaluate(() => { const l = selected(), q = l.paths[0].nodes[0], c = Math.cos(l.rot), s = Math.sin(l.rot), a = q[0] * l.scale, bb = q[1] * l.scale, u = l.x + a * c - bb * s, v = l.y + a * s + bb * c, r = view.getBoundingClientRect(); return [r.left + sx(u), r.top + sy(v), u, v]; });
+    await page.mouse.move(first[0], first[1]); await page.mouse.down(); await page.mouse.move(first[0] - 40, first[1] - 30, { steps: 5 }); await page.mouse.up();
+    const moved = await page.evaluate(() => { const l = selected(), q = l.paths[0].nodes[0], c = Math.cos(l.rot), s = Math.sin(l.rot), a = q[0] * l.scale, bb = q[1] * l.scale; return [l.x + a * c - bb * s, l.y + a * s + bb * c]; });
+    const zz = await page.evaluate(() => Z);
+    ok(Math.abs(moved[0] - (first[2] - 40 / zz)) < 2 && Math.abs(moved[1] - (first[3] - 30 / zz)) < 2, '5. dragging a point moves it, and only it', { first, moved });
+    const mid = await page.evaluate(() => { const l = selected(), [a, b2] = [l.paths[0].nodes[2], l.paths[0].nodes[0]], q = [(a[0] + b2[0]) / 2, (a[1] + b2[1]) / 2], c = Math.cos(l.rot), s = Math.sin(l.rot), u = l.x + q[0] * l.scale * c - q[1] * l.scale * s, v = l.y + q[0] * l.scale * s + q[1] * l.scale * c, r = view.getBoundingClientRect(); return [r.left + sx(u), r.top + sy(v)]; });
+    await page.mouse.click(mid[0], mid[1]);
+    ok(await page.evaluate(() => selected().paths[0].nodes.length) === 4, '6. clicking the line adds a point on it', await page.evaluate(() => selected().paths[0].nodes.length));
+    await page.keyboard.press('Delete'); ok(await page.evaluate(() => selected().paths[0].nodes.length) === 3, '   and Delete takes it away again');
+    ok(/3 points in 1 part, closed/.test(await page.textContent('#pLayers')), '7. the panel says what the path is');
+    await page.keyboard.press('Control+z'); ok(await page.evaluate(() => selected()?.paths?.[0]?.nodes.length) === 4, '   undo brings the point back', await page.evaluate(() => selected()?.paths?.[0]?.nodes.length));
+    // booleans: a square and a circle overlapping
+    await page.keyboard.press('v');
+    await page.evaluate(() => { for (const [name, shape, x] of [['Sq', 'rect', .6], ['Ci', 'ellipse', .66]]) addLayer(fresh('shape', { name, shape, w: 200, h: 200, radius: 0, fill: true, fillColor: '#2244ff', stroke: false, strokeW: 2, strokeColor: '#000', x: Math.round(W * x), y: Math.round(H * .6) })); draw(); });
+    const area = () => page.evaluate(() => { const l = selected(), ring = polygonClipping.union(...l.paths.map(p => [p.nodes.map(q => [q[0], q[1]])])); let A = 0; for (const poly of ring) poly.forEach((r, k) => { let a = 0; for (let i = 0; i < r.length - 1; i++) a += r[i][0] * r[i + 1][1] - r[i + 1][0] * r[i][1]; A += (k ? -1 : 1) * Math.abs(a / 2); }); return Math.round(A * l.scale * l.scale); });
+    const pick = () => page.evaluate(() => { PRO.SELS.clear(); for (const l of LAYERS.filter(q => q.name === 'Sq' || q.name === 'Ci')) PRO.SELS.add(l.id); SEL = LAYERS.find(q => q.name === 'Ci').id; paintPanels(); draw(); });
+    await pick();
+    ok(await page.locator('#opts [data-bool="union"]').count() === 1 && await page.locator('#pLayers [data-bool="subtract"]').count() === 1, '8. with two shapes chosen, the bar and the panel offer to combine them');
+    const results = {};
+    for (const op of ['union', 'subtract', 'intersect', 'exclude']) {
+      await pick(); await page.click(`#opts [data-bool="${op}"]`);
+      const r = await page.evaluate(() => { const l = selected(); return { shape: l?.shape, name: l?.name, toast: document.getElementById('stToast')?.textContent, left: LAYERS.filter(q => q.name === 'Sq' || q.name === 'Ci').length }; });
+      if (r.shape !== 'path') { ok(false, `   ${op} made a path`, r); continue; }
+      results[op] = { ...r, area: await area() };
+      await page.keyboard.press('Control+z');
+    }
+    // the square is 200×200 at x, the circle r=100 centred 0.06·W to the right; check the areas add up
+    const sq = 40000, ci = Math.PI * 10000, { union: u, subtract: s1, intersect: i1, exclude: x1 } = Object.fromEntries(Object.entries(results).map(([k, v]) => [k, v.area]));
+    ok(Object.values(results).every(r => r.shape === 'path' && r.left === 0), '9. each one makes a single path in their place', results);
+    ok(Math.abs(u - (sq + ci - i1)) < sq * .02 && Math.abs(s1 - (sq - i1)) < sq * .02 && Math.abs(x1 - (u - i1)) < sq * .02 && i1 > 1000, '   and the shapes are right: union = both less the overlap, subtract = square less the overlap, exclude = union less the overlap', { u, s1, i1, x1 });
+    ok(await page.evaluate(() => LAYERS.filter(q => q.name === 'Sq' || q.name === 'Ci').length) === 2, '   undo brings the two shapes back');
+    // a rectangle into a path
+    await page.evaluate(() => { SEL = LAYERS.find(q => q.name === 'Sq').id; PRO.SELS.clear(); paintPanels(); });
+    await page.click('#pLayers [data-vec="topath"]');
+    ok(await page.evaluate(() => { const l = selected(); return l.shape === 'path' && l.paths[0].nodes.length === 4 && Math.round(l.w) === 200; }), '10. Turn into a path makes a rectangle four points, the same size');
+    // out to Illustrator and back
+    const svgText = await page.evaluate(() => svgDoc());
+    ok(/<path d="M[^"]+C[^"]+Z" fill-rule="evenodd"/.test(svgText), '11. the SVG for Illustrator has the drawn path as a <path>');
+    const back = await page.evaluate(async t => { const before = LAYERS.filter(l => l.shape === 'path').map(l => [l.name, Math.round(l.x), Math.round(l.y), Math.round(l.w), l.paths[0].nodes.length]); const yes = setInterval(() => { const d = document.getElementById('askDlg'); if (d?.open) { d.returnValue = 'yes'; d.close(); } }, 50); await importSvg(new File([t], 'back.svg', { type: 'image/svg+xml' })); clearInterval(yes); const after = LAYERS.filter(l => l.shape === 'path').map(l => [l.name, Math.round(l.x), Math.round(l.y), Math.round(l.w), l.paths[0].nodes.length]); return { before, after }; }, svgText);
+    ok(back.after.length === back.before.length && back.after.every((a, i) => a.every((v, k) => typeof v === 'string' ? v === back.before[i][k] : Math.abs(v - back.before[i][k]) <= 1)), '   and back from it, each is a path again, where it was and the same size', back);
+    // saved with the design
+    await page.evaluate(() => saveAll()); await page.waitForFunction(() => !DIRTY, null, { timeout: 15000 });
+    await page.reload({ waitUntil: 'networkidle' }); await page.waitForSelector('#pLayers .ly', { timeout: 20000 });
+    ok(await page.evaluate(() => LAYERS.filter(l => l.shape === 'path').length) === back.after.length, '12. the paths are saved with the design and come back on opening it');
     ok(errs.length === 0, '   no page errors', errs);
   } finally { await b.close(); await cleanup(brands, plan.plan?.id); }
 });

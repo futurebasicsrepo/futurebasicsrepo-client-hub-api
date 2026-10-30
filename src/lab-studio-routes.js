@@ -52,6 +52,11 @@ export function cleanDoc(input) {
     if (!l || typeof l !== 'object' || !LAYER_KINDS.has(l.kind)) return { error: 'A layer of an unknown kind' };
     for (const k of ['src', 'mask', 'distressMap']) if (l[k] != null && l[k] !== '' && !SRC_OK.test(String(l[k]))) return { error: 'A layer points at a picture outside the design' };
     if (l.text != null && String(l.text).length > 400) return { error: 'A line of type is too long (400 characters at most)' };
+    if (l.paths != null) { // a drawn path: parts of points, each point six numbers
+      if (!Array.isArray(l.paths) || l.paths.length > 400) return { error: 'A path has too many parts' };
+      let n = 0; for (const p of l.paths) { if (!p || !Array.isArray(p.nodes)) return { error: 'A path is not readable' }; n += p.nodes.length; if (!p.nodes.every(q => Array.isArray(q) && q.length === 6 && q.every(Number.isFinite))) return { error: 'A path is not readable' }; }
+      if (n > 40000) return { error: 'A path has too many points (40,000 at most)' };
+    }
   }
   const ppi = Number(d.ppi), doc = { v: 1, w, h, layers: d.layers, selected: typeof d.selected === 'string' ? d.selected.slice(0, 40) : null, ...(ppi > 1 && ppi < 2000 ? { ppi: Math.round(ppi * 100) / 100, ppiSet: Boolean(d.ppiSet) } : {}),
     // the flats placements already brought onto the picture: a layer taken off the picture is not brought back

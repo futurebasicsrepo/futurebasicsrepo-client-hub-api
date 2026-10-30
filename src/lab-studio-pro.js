@@ -125,7 +125,7 @@
     o.insertAdjacentHTML('afterbegin', `<span class="proar" role="group" aria-label="Arrange">${ALIGN.map(([k, t, key, d]) => `<button type="button" class="ico" data-arr="${k}" title="${t} ${to} (${key})" aria-label="${t}" ${n ? '' : 'disabled'}>${icon(d)}</button>`).join('')}<i></i>${DIST.map(([k, t, d]) => `<button type="button" class="ico" data-dist="${k}" title="${t} (three or more)" aria-label="${t}" ${n > 2 ? '' : 'disabled'}>${icon(d)}</button>`).join('')}${n > 1 ? `<b>${n} chosen</b>` : ''}</span>`);
   }
   // the selection changed: the bar's buttons follow it, without redrawing the rest of the bar
-  function optsRefresh() { const o = document.getElementById('opts'); if (!o) return; o.querySelector('.proar')?.remove(); opts(o); }
+  function optsRefresh() { const o = document.getElementById('opts'); if (!o) return; o.querySelector('.proar')?.remove(); window.PRO.opts(o); }
   document.addEventListener('click', e => { const a = e.target.closest('#opts [data-arr]'), d = e.target.closest('#opts [data-dist]'); if (a) align(a.dataset.arr); else if (d) distribute(d.dataset.dist); });
 
   // ---- the panel: where it is, typed in inches (one layer), or what is chosen (several) ----
@@ -235,6 +235,7 @@
     const run = i => { const c = shown[i]; if (!c) return; d.close(); setTimeout(() => c.run(), 0); };
     input.oninput = () => { at = 0; paint(); };
     input.onkeydown = e => { if (e.key === 'ArrowDown') { e.preventDefault(); at = Math.min(at + 1, shown.length - 1); paint(); } else if (e.key === 'ArrowUp') { e.preventDefault(); at = Math.max(at - 1, 0); paint(); } else if (e.key === 'Enter') { e.preventDefault(); run(at); } else if (e.key === 'Escape') { e.preventDefault(); d.close(); } };
+    const back = document.activeElement; d.onclose = () => { input.blur(); if (back && back !== document.body && back.isConnected) back.focus?.(); };
     input.value = ''; paint(); d.showModal(); input.focus();
   }
   function keysSheet() {
