@@ -1381,9 +1381,10 @@ await journey('J225', 'Finding your way round the Lab: the Design Lab is one sec
         await page.fill('#q', 'cargo'); await page.waitForFunction(() => document.querySelectorAll('#gal [data-tpl]').length < 60 && document.querySelectorAll('#gal [data-tpl]').length > 0, null, { timeout: 8000 });
         await page.selectOption('#range', 'womens'); await page.waitForTimeout(300); const womens = await page.locator('#gal [data-tpl]').count(); await page.selectOption('#range', ''); await page.waitForTimeout(300);
         ok(womens < await page.locator('#gal [data-tpl]').count(), '   search and the range filter narrow it');
-        const firstTpl = await page.getAttribute('#gal [data-tpl]', 'data-tpl'); await page.click('#gal [data-tpl]'); await page.waitForSelector('#big img'); ok(/cargo/i.test(await page.innerText('#pinfo')), '   a sketch opens large with its name and range', await page.innerText('#pinfo'));
+        const firstTpl = await page.getAttribute('#gal [data-tpl]', 'data-tpl'); await page.click('#gal [data-tpl]'); await page.waitForSelector('#sheet[open] #shArt img'); ok(/cargo/i.test(await page.innerText('#shName')) && /men|women|acc/i.test(await page.innerText('#shKind')), '   a sketch opens large in its sheet with its name and range', await page.innerText('#shName'));
+        await page.click('#sheet .x');
         await page.click('.seg [data-sec="parts"]'); await page.waitForSelector('#parts img'); ok((await page.locator('#pkinds [data-pk]').count()) === 5 && (await page.locator('#parts img').count()) > 5, '   the parts shelf: pockets, zips, collars, trims, buttons');
-        await page.click('.seg [data-sec="sketches"]'); await page.waitForSelector(`#pick [data-cid="${c.id}"]`, { timeout: 15000 }); await page.click(`#pick [data-cid="${c.id}"]`);
+        await page.click('.seg [data-sec="sketches"]'); await page.click('#gal [data-tpl]'); await page.waitForSelector('#sheet[open]'); await page.click('#sheet .onto summary'); await page.waitForSelector(`#pick [data-cid="${c.id}"]`, { timeout: 15000 }); await page.click(`#pick [data-cid="${c.id}"]`);
         await page.waitForURL(/\/lab\/studio\?concept=/, { timeout: 20000 }); await page.waitForSelector('#app[data-v="front"]', { timeout: 20000 }); await page.waitForFunction(() => !/template=/.test(location.search), null, { timeout: 15000 });
         const ff = page.frameLocator('#flatFrame'); await ff.locator('#app:not(.hidden)').waitFor({ timeout: 20000 });
         ok(new URL(page.url()).searchParams.get('concept') === c.id && /template=/.test(await page.getAttribute('#flatFrame', 'src')), '5. Put it on a concept opens that concept in Design on its flat front, with the sketch handed to the flats');
@@ -1391,8 +1392,8 @@ await journey('J225', 'Finding your way round the Lab: the Design Lab is one sec
         // 6. straight from a sketch into Design: a new concept from it, opened on its front flat
         ok((await K('/concepts/from-sketch', { body: { template: 'nope' } })).status === 422, '6. a sketch that is not in the pack is refused');
         await page.goto(`${BASE}/lab/sketches`, { waitUntil: 'networkidle' }); await page.waitForSelector('#app:not(.hidden)'); await page.fill('#q', 'pullover hoodie'); await page.waitForFunction(() => document.querySelectorAll('#gal [data-tpl]').length > 0 && document.querySelectorAll('#gal [data-tpl]').length < 40, null, { timeout: 8000 });
-        ok(await page.isDisabled('#openDesign'), '   Open in the Studio waits for a sketch');
-        const tplId = await page.getAttribute('#gal [data-tpl]', 'data-tpl'); await page.click('#gal [data-tpl]'); await page.waitForSelector('#big img');
+        ok(!(await page.isVisible('#openDesign')), '   Open in the Studio waits for a sketch (it is in the sheet a sketch opens)');
+        const tplId = await page.getAttribute('#gal [data-tpl]', 'data-tpl'); await page.click('#gal [data-tpl]'); await page.waitForSelector('#sheet[open] #shArt img');
         ok(/Open the .+ in the Studio/.test(await page.innerText('#openDesign')) && !(await page.isDisabled('#openDesign')), '   picked: Open in the Studio names the sketch', await page.innerText('#openDesign'));
         await page.click('#openDesign'); await page.waitForURL(/\/lab\/studio\?concept=/, { timeout: 20000 }); await page.waitForSelector('#app[data-v="front"]', { timeout: 20000 });
         const newId = new URL(page.url()).searchParams.get('concept'), nc = (await K(`/concepts/${newId}`)).json.concept;
@@ -3447,6 +3448,40 @@ await journey('J258', 'A fox, drawn as a fox and checked against its picture: a 
       ok(errs.length === 0, 'no page errors', errs); await oc.close();
     } finally { await br.close(); }
   } finally { if (cid) await K(`/concepts/${cid}`, { method: 'DELETE' }); }
+});
+
+await journey('J259', 'A sketch picked opens straight away: on a phone, tapping a sketch in the sketch pack opens a sheet over the gallery (no scrolling to the bottom); the designer picks a cloth and a colour, the sketch is drawn in that colour, and Open in the Studio makes the concept with the cloth as its main fabric and the flats in that colour', async () => {
+  const fabs = (await K('/materials?kind=fabric')).json.materials, fab = fabs.find(m => (m.colours || []).some(c => /^#[0-9a-f]{6}$/i.test(c.hex || ''))) || fabs[0];
+  ok(Boolean(fab), '1. the library has a cloth to choose');
+  const api1 = await K('/concepts/from-sketch', { body: { template: 'tee-oversized', colour: { name: 'Navy', hex: '#1F2A44' } } }), c1 = api1.json.concept?.id;
+  try {
+    ok(api1.status === 201 && api1.json.concept.spec.color === '#1f2a44' && api1.json.concept.spec.colors[0] === 'Navy', '2. a concept from a sketch keeps the colour chosen with it', api1.json.concept?.spec);
+    const fl = (await K(`/concepts/${c1}/flats`)).json.flat;
+    ok(fl?.color === '#1f2a44', '3. its flats start in that colour', fl?.color);
+  } finally { if (c1) await K(`/concepts/${c1}`, { method: 'DELETE' }); }
+  if (!playwright) { ok(true, 'needs a browser'); return; }
+  const br = await playwright.chromium.launch(); let cid = null;
+  try {
+    const oc = await br.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); localStorage.setItem('fb.helper.on', '0'); } catch {} }, kyleT);
+    const page = await oc.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
+    await page.goto(`${BASE}/lab/sketches?q=oversized%20tee`, { waitUntil: 'networkidle' });
+    await page.tap('#gal [data-tpl="tee-oversized"]'); await page.waitForSelector('#sheet[open] #shArt img', { timeout: 10000 }); await page.waitForFunction(() => !document.getAnimations().some(a => a.playState === 'running'), null, { timeout: 5000 }).catch(() => {});
+    const box = await page.evaluate(() => { const r = document.querySelector('#openDesign').getBoundingClientRect(); return { top: r.top, bottom: r.bottom, vh: innerHeight, sw: document.documentElement.scrollWidth, sheetW: document.querySelector('#sheet').getBoundingClientRect().width }; });
+    ok(box.bottom <= box.vh && box.top > 0 && box.sw <= 390 && box.sheetW <= 390, '4. the sheet opens over the gallery with Open in the Studio on screen, nothing wider than the phone', box);
+    await page.waitForSelector(`#mats [data-mat="${fab.id}"]`); await page.tap(`#mats [data-mat="${fab.id}"]`);
+    const own = (fab.colours || []).find(c => /^#[0-9a-f]{6}$/i.test(c.hex || ''));
+    ok(!own || await page.getAttribute(`#cols [data-col="${own.hex.toLowerCase()}"]`, 'aria-checked') === 'true', '5. the cloth starts in its own first colour');
+    await page.tap('#cols [data-col="#5b5f3a"]'); await sleep(200);
+    ok(/Olive/.test(await page.innerText('#shSum')) && /olive|#5b5f3a/i.test(await page.innerText('#colNote')), '6. a colour picked: the summary says the cloth and the colour', await page.innerText('#shSum'));
+    ok(await page.getAttribute('#shArt', 'data-hex') === '#5b5f3a', '7. the sketch is drawn in that colour (its white cloth swapped for it)', await page.getAttribute('#shArt', 'data-hex'));
+    await Promise.all([page.waitForURL(/\/lab\/studio\?concept=/, { timeout: 15000 }), page.tap('#openDesign')]);
+    cid = new URL(page.url()).searchParams.get('concept');
+    const c = (await K(`/concepts/${cid}`)).json.concept, picks = (await K(`/concepts/${cid}/materials`)).json.picks, fl = (await K(`/concepts/${cid}/flats`)).json.flat;
+    ok(c.spec.template === 'tee-oversized' && c.spec.color === '#5b5f3a', '8. the Studio opens on a concept from that sketch in that colour', c.spec);
+    ok(picks.some(p => p.id === fab.id && p.role === 'main' && p.colour?.hex === '#5b5f3a'), '9. the cloth is its main fabric, in the colour picked', picks.map(p => `${p.role}:${p.name}:${p.colour?.hex}`));
+    ok(fl?.color === '#5b5f3a', '10. and the flats are drawn in it', fl?.color);
+    ok(errs.length === 0, 'no page errors', errs); await oc.close();
+  } finally { await br.close(); if (cid) await K(`/concepts/${cid}`, { method: 'DELETE' }); }
 });
 
 shops.close(); brave.close();

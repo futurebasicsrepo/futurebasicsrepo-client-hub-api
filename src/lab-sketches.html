@@ -33,6 +33,32 @@ h1{font-size:clamp(28px,4.4vw,42px);letter-spacing:-.035em;font-weight:500;margi
 .prev{position:sticky;top:150px;display:grid;gap:10px}.prev .big{background:#fff;border:1px solid var(--line);border-radius:16px;padding:10px;display:grid;place-items:center;min-height:300px}.prev .big img{max-width:100%;max-height:420px}
 .parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px}.parts div{border:1px solid var(--line);background:#fff;border-radius:12px;padding:6px;display:grid;gap:4px;justify-items:center;font-size:12px;text-align:center}.parts img{width:100%;aspect-ratio:1;object-fit:contain}
 .msg{font-size:13px;color:var(--dim)}.msg.ok{color:var(--ok)}.msg.bad{color:var(--bad)}
+/* the sheet a picked sketch opens in: on a phone it rises from the bottom and fills the screen, on a wide screen it sits beside the gallery */
+#sheet{border:0;padding:0;margin:0 0 0 auto;height:100%;max-height:100dvh;width:min(560px,100vw);max-width:100vw;background:#fff;color:var(--ink);box-shadow:-30px 0 60px rgba(20,20,22,.18)}
+#sheet::backdrop{background:rgba(20,20,22,.36)}
+#sheet[open]{animation:shIn .45s cubic-bezier(.2,.8,.2,1)}@keyframes shIn{from{transform:translateX(40px);opacity:0}}
+.sh{display:grid;grid-template-rows:auto 1fr auto;height:100%;margin:0}
+.shTop{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:16px 18px 12px;border-bottom:1px solid var(--line)}.shTop h2{font-size:24px;font-weight:400;letter-spacing:-.03em}
+.x{width:40px;height:40px;border-radius:50%;border:1px solid var(--line);background:#fff;font-size:22px;line-height:1;cursor:pointer;flex:none}
+.shBody{overflow:auto;overscroll-behavior:contain;padding:16px 18px;display:grid;grid-template-columns:minmax(0,1fr);gap:18px;align-content:start}.shBody>*,.shSteps>*{min-width:0}
+.shArt{position:relative;border:1px solid var(--line);border-radius:16px;overflow:hidden;background:#fff;display:grid;place-items:center;height:min(42vh,340px)}
+#sheet .shArt img{width:100%;height:100%;max-width:none;object-fit:contain;padding:5%;box-sizing:border-box}
+.shSteps{display:grid;grid-template-columns:minmax(0,1fr);gap:18px}.step h3{display:flex;align-items:center;gap:10px;margin-bottom:10px;font-size:16px}.step h3 b{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;border:1px solid var(--ink);font:500 11px 'IBM Plex Mono',monospace}
+.step.done h3 b{background:var(--cue);border-color:var(--cue);box-shadow:0 0 0 1.5px var(--ink)}
+.mats{display:grid;grid-auto-flow:column;grid-auto-columns:112px;gap:10px;overflow-x:auto;padding:2px 2px 8px;scroll-snap-type:x mandatory}
+.mats button{scroll-snap-align:start;border:1px solid var(--line);background:#fff;border-radius:14px;padding:6px 6px 8px;display:grid;gap:6px;text-align:left;font-size:12px;line-height:1.25;cursor:pointer}
+.mats button .sw{aspect-ratio:1;border-radius:10px;background:var(--fog) center/cover;display:block}.mats button small{color:var(--dim)}
+.mats button[aria-checked=true],.cols button[aria-checked=true]{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink),0 0 0 5px rgba(75,255,154,.45)}
+.cols{display:flex;flex-wrap:wrap;gap:8px}.cols button,.cols label{width:44px;height:44px;border-radius:50%;border:1px solid var(--line);cursor:pointer;padding:0;position:relative}
+.cols label{display:grid;place-items:center;background:conic-gradient(#e64,#ec4,#4c6,#4ae,#a6e,#e64);overflow:hidden}.cols label input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.onto{border-top:1px solid var(--line);padding-top:12px}.onto summary{cursor:pointer;font-weight:500}.onto[open]{display:grid;gap:8px}
+.shFoot{display:flex;gap:12px;align-items:center;justify-content:space-between;padding:12px 18px calc(12px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--line);background:rgba(255,255,255,.96)}
+.shFoot .btn.go{background:var(--cue);color:var(--ink);border-color:var(--cue);font-weight:600;min-height:48px;padding:10px 20px}
+@media (max-width:620px){#sheet{width:100vw;height:calc(100dvh - 24px);margin:auto 0 0;border-radius:20px 20px 0 0;box-shadow:0 -20px 50px rgba(20,20,22,.2)}#sheet[open]{animation-name:shUp}.shFoot{flex-direction:column;align-items:stretch}.shFoot .btn.go{justify-content:center}}
+@keyframes shUp{from{transform:translateY(60px);opacity:0}}
+@media (max-width:620px){#sheet .fbh-tog{display:none}} /* the guide switch follows into an open dialog; on a phone it would sit on the Studio button */
+@media (prefers-reduced-motion:reduce){#sheet[open]{animation:none}}
+.gal{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
 .pick{display:grid;gap:6px;max-height:280px;overflow:auto}.pick button{border:1px solid var(--line);background:#fff;border-radius:10px;padding:6px 10px;text-align:left;cursor:pointer;display:flex;gap:8px;align-items:center}.pick button:hover{border-color:var(--ink)}
 </style>
 <script src="/feedback.js"></script>
@@ -45,13 +71,23 @@ h1{font-size:clamp(28px,4.4vw,42px);letter-spacing:-.035em;font-weight:500;margi
   <div id="app" class="hidden">
     <nav class="labnav" data-lab="sketches"></nav>
     <span class="mono" style="display:block;margin-top:14px">Our library</span><h1>The sketch pack.</h1>
-    <p class="note">Every flat sketch we draw from: <span id="count">382</span> drawings, men's, women's and accessories, each with its front and back, plus the pockets, zips, collars, trims and buttons cut from them. Pick one to see it large, then open it in Design (a new concept from that sketch) or put it on a concept you already have: the flats open at that sketch's own proportions. Or <a href="/lab/studio">start from scratch</a> on a blank page.</p>
+    <p class="note">Every flat sketch we draw from: <span id="count">382</span> drawings, men's, women's and accessories, each with its front and back, plus the pockets, zips, collars, trims and buttons cut from them. Pick one: choose its cloth and its colour, and it opens in the Studio with both in place. Or <a href="/lab/studio">start from scratch</a> on a blank page.</p>
     <div class="tools"><div class="seg" role="tablist"><button type="button" data-sec="sketches" aria-pressed="true">Sketches</button><button type="button" data-sec="parts" aria-pressed="false">Parts</button></div>
       <input class="t" id="q" type="search" placeholder="Search: cargo, pleated, halter, bomber…" aria-label="Search the sketches" style="flex:1;min-width:200px;max-width:380px"><select class="t" id="range" aria-label="Range"><option value="">All ranges</option></select><select class="t" id="style" aria-label="Style"><option value="">All styles</option></select><span class="msg" id="msg" role="status"></span></div>
-    <section id="secSketches"><div class="two"><div class="gal" id="gal"></div>
-      <aside class="prev" id="prev"><div class="big" id="big"><span class="note">Pick a sketch</span></div><div id="pinfo"></div>
-        <div class="panel" style="padding:12px;display:grid;gap:8px"><button class="btn go" type="button" id="openDesign" disabled title="A new concept from this sketch, opened in the Studio on its front flat">Open in Design</button><p class="note" style="margin:0">Starts a new concept from this sketch and opens Design on its flats, ready to draw on.</p></div>
-        <div class="panel" style="padding:12px;display:grid;gap:8px"><h3>Or put it on a concept</h3><input class="t" id="cq" type="search" placeholder="Search concepts" aria-label="Search concepts"><div class="pick" id="pick"><span class="note">Loading concepts…</span></div><p class="note">The flats open on that concept with this sketch; its measurements start at the sketch's own proportions.</p></div></aside></div></section>
+    <section id="secSketches"><div class="gal" id="gal"></div></section>
+    <!-- a sketch picked opens here, over the gallery: the cloth, then the colour, then the Studio with both in place -->
+    <dialog id="sheet" aria-labelledby="shName"><form method="dialog" class="sh">
+      <div class="shTop"><div><span class="mono" id="shKind"></span><h2 id="shName">Sketch</h2></div><button class="x" value="close" aria-label="Close">×</button></div>
+      <div class="shBody">
+        <div class="shArt" id="shArt" role="img" aria-label="The sketch in the chosen colour"></div>
+        <div class="shSteps">
+          <section class="step"><h3><b>1</b>Cloth</h3><div class="mats" id="mats" role="radiogroup" aria-label="Cloth"><span class="note">Loading the library…</span></div></section>
+          <section class="step"><h3><b>2</b>Colour</h3><div class="cols" id="cols" role="radiogroup" aria-label="Colour"></div><p class="note" id="colNote"></p></section>
+          <details class="onto"><summary>Or put this sketch on a concept you already have</summary><input class="t" id="cq" type="search" placeholder="Search concepts" aria-label="Search concepts"><div class="pick" id="pick"><span class="note">Loading concepts…</span></div><p class="note">The flats open on that concept with this sketch, at the sketch's own proportions.</p></details>
+        </div>
+      </div>
+      <div class="shFoot"><span class="note" id="shSum"></span><button class="btn go" type="button" id="openDesign">Open in the Studio</button></div>
+    </form></dialog>
     <section id="secParts" class="hidden"><div class="row" id="pkinds" style="margin-bottom:10px"></div><div class="parts" id="parts"></div><p class="note" style="margin-top:10px">Parts go on the flats (Design → Parts from the sketch pack) and on a concept or a graphic in the studio (Add → From the sketch pack).</p></section>
   </div>
 </main>
@@ -73,19 +109,48 @@ function paintFilters(){const rs=[...new Set(FLAT_TEMPLATES.map(t=>t.range).filt
 function list(){const words=Q.q.toLowerCase().split(/\s+/).filter(Boolean);return FLAT_TEMPLATES.filter(t=>(!Q.range||t.range===Q.range)&&(!Q.style||t.style===Q.style)&&words.every(w=>`${t.label} ${STYLES[t.style]?.label||''} ${RANGES[t.range]||''}`.toLowerCase().includes(w)))}
 function paint(){const l=list();$('#gal').innerHTML=l.slice(0,240).map(t=>`<button type="button" data-tpl="${t.id}" aria-pressed="${CUR?.id===t.id}"><img loading="lazy" alt="" src="/lab/flat-templates/thumbs/${t.id}.webp">${esc(t.label)}<span class="mono">${esc(STYLES[t.style]?.label||t.style)}</span></button>`).join('')||'<p class="note">No sketch matches. Try fewer words.</p>';
   $('#msg').textContent=`${l.length} sketch${l.length===1?'':'es'}${l.length>240?' · showing 240, search to narrow it':''}`}
-function show(t){CUR=t;$('#openDesign').disabled=false;$('#openDesign').textContent=`Open the ${t.label.toLowerCase()} in the Studio`;$$('#gal [data-tpl]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.tpl===t.id)));$('#big').innerHTML=`<img src="${TEMPLATE_URL(t.file)}" alt="${esc(t.label)}">`;$('#pinfo').innerHTML=`<h2>${esc(t.label)}</h2><p class="note">${esc(STYLES[t.style]?.label||t.style)} · ${esc(RANGES[t.range]||t.range||'')} · front and back</p>`;paintPick()}
+// a sketch picked opens the sheet: its cloth, then its colour, drawn on the sketch as they are chosen, then the Studio with both in place
+const HOUSE=[['Black','#141416'],['Off white','#f2efe6'],['Heather grey','#9b9ca0'],['Navy','#1f2a44'],['Olive','#5b5f3a'],['Sand','#d8c9a8'],['Rust','#a5502c'],['Cue green','#4bff9a']];
+let MATS=null,MAT=null,COL=null,SVG='',SVGS={};
+const photoSrc=(m,hex)=>m.photo?`/lab/material-photos/${encodeURIComponent(m.photo)}.jpg?c=${encodeURIComponent((hex||m.colours?.[0]?.hex||'').replace('#',''))}&s=200`:'';
+async function loadMats(){if(MATS)return;try{MATS=(await api('/v1/lab/materials?kind=fabric')).materials}catch{MATS=[]}}
+// the sketch drawn as a picture of its own (its styles stay inside it), its white cloth swapped for the chosen colour
+let ARTURL='';function paintArt(){const hex=COL?.hex;if(!SVG){$('#shArt').innerHTML='';return}const svg=hex?SVG.replace(/fill:\s*#fff(fff)?\b/gi,'fill: '+hex).replace(/fill="#fff(fff)?"/gi,`fill="${hex}"`):SVG;
+  if(ARTURL)URL.revokeObjectURL(ARTURL);ARTURL=URL.createObjectURL(new Blob([svg],{type:'image/svg+xml'}));$('#shArt').innerHTML=`<img src="${ARTURL}" alt="">`;$('#shArt').dataset.hex=svg===SVG?'':hex}
+function paintMats(){const el=$('#mats');if(!MATS){el.innerHTML='<span class="note">Loading the library…</span>';return}
+  el.innerHTML=`<button type="button" role="radio" data-mat="" aria-checked="${!MAT}"><span class="sw" style="background:repeating-linear-gradient(45deg,#fff 0 6px,#f1f1ec 6px 12px)"></span><b>Decide later</b><small>Choose it in the Studio</small></button>`+MATS.map(m=>`<button type="button" role="radio" data-mat="${m.id}" aria-checked="${MAT?.id===m.id}"><span class="sw" style="${m.photo?`background-image:url('${esc(photoSrc(m,MAT?.id===m.id?COL?.hex:''))}')`:`background:${esc(m.colours?.[0]?.hex||'#f1f1ec')}`}"></span><b>${esc(m.name)}</b><small>${esc(m.spec?.composition||m.spec?.construction||m.code||'')}</small></button>`).join('');
+  $('#mats').closest('.step').classList.toggle('done',Boolean(MAT))}
+function paintCols(){const own=(MAT?.colours||[]).filter(c=>/^#[0-9a-f]{6}$/i.test(c.hex||'')),seen=new Set(own.map(c=>c.hex.toLowerCase())),all=[...own.map(c=>[c.name||c.hex,c.hex]),...HOUSE.filter(([,h])=>!seen.has(h))];
+  $('#cols').innerHTML=`<button type="button" role="radio" data-col="" aria-checked="${!COL}" title="As drawn (white)" aria-label="As drawn" style="background:#fff"></button>`+all.map(([n,h])=>`<button type="button" role="radio" data-col="${h}" data-name="${esc(n)}" aria-checked="${COL?.hex===h.toLowerCase()}" title="${esc(n)}" aria-label="${esc(n)}" style="background:${h}"></button>`).join('')+`<label title="Any colour" aria-label="Any colour"><input type="color" id="colAny" value="${COL?.hex||'#4bff9a'}"></label>`;
+  $('#colNote').textContent=COL?`${COL.name||COL.hex}${MAT&&own.some(c=>c.hex.toLowerCase()===COL.hex)?` · a colour ${MAT.name} comes in`:''}`:own.length?`${MAT.name} comes in ${own.length} colour${own.length===1?'':'s'}, first in the row. Or any colour.`:'Pick one, or any colour with the wheel.';
+  $('#cols').closest('.step').classList.toggle('done',Boolean(COL))}
+function paintSum(){$('#shSum').textContent=[MAT?.name||'Cloth later',COL?(COL.name||COL.hex):'as drawn'].join(' · ');$('#openDesign').textContent=`Open the ${CUR.label.toLowerCase()} in the Studio`}
+async function show(t){CUR=t;MAT=null;COL=null;$$('#gal [data-tpl]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.tpl===t.id)));
+  $('#shName').textContent=t.label;$('#shKind').textContent=[STYLES[t.style]?.label||t.style,RANGES[t.range]||''].filter(Boolean).join(' · ');
+  SVG=SVGS[t.id]||'';paintArt();paintMats();paintCols();paintSum();paintPick();const d=$('#sheet');if(!d.open)d.showModal();$('#sheet .shBody').scrollTop=0;
+  if(!SVG){try{const r=await fetch(TEMPLATE_URL(t.file));if(!r.ok)throw 0;SVG=SVGS[t.id]=await r.text()}catch{$('#shArt').innerHTML=`<img src="${TEMPLATE_URL(t.file)}" alt="">`;return}if(CUR===t)paintArt()}
+  await loadMats();if(CUR===t)paintMats()}
+$('#mats').addEventListener('click',e=>{const b=e.target.closest('[data-mat]');if(!b)return;MAT=MATS.find(m=>m.id===b.dataset.mat)||null;
+  const own=(MAT?.colours||[]).filter(c=>/^#[0-9a-f]{6}$/i.test(c.hex||''));if(MAT&&own.length&&!(COL&&own.some(c=>c.hex.toLowerCase()===COL.hex)))COL={name:own[0].name||'',hex:own[0].hex.toLowerCase()}; // a cloth starts in its own first colour
+  paintMats();paintCols();paintArt();paintSum()});
+$('#cols').addEventListener('click',e=>{const b=e.target.closest('[data-col]');if(!b)return;COL=b.dataset.col?{name:b.dataset.name||'',hex:b.dataset.col.toLowerCase()}:null;paintCols();paintMats();paintArt();paintSum()});
+$('#cols').addEventListener('input',e=>{if(e.target.id!=='colAny')return;COL={name:'',hex:e.target.value.toLowerCase()};paintArt();paintSum();$('#cols [aria-checked=true]')?.setAttribute('aria-checked','false');$('#cols').closest('.step').classList.add('done');$('#colNote').textContent=COL.hex});
+$('#cols').addEventListener('change',e=>{if(e.target.id==='colAny'){paintCols();paintMats()}});
 async function loadConcepts(){try{CONCEPTS=(await api('/v1/lab/concepts?limit=120')).concepts.filter(c=>c.status!=='tech_pack')}catch{CONCEPTS=[]}paintPick()}
 function paintPick(){const p=$('#pick');if(!CONCEPTS)return;const q=($('#cq').value||'').toLowerCase(),l=CONCEPTS.filter(c=>!q||`${c.name} ${c.categoryLabel||''} ${c.planName||''}`.toLowerCase().includes(q)).slice(0,40);
   p.innerHTML=l.length?l.map(c=>`<button type="button" data-cid="${c.id}" ${CUR?'':'disabled'}><span style="flex:1"><b>${esc(c.name)}</b><br><span class="note">${esc(c.categoryLabel||c.category||'')}${c.planName?' · '+esc(c.planName):''}</span></span><span class="note">→</span></button>`).join(''):'<span class="note">No concepts yet: make some from a line plan.</span>'}
 $('#gal').addEventListener('click',e=>{const b=e.target.closest('[data-tpl]');if(b)show(FLAT_TEMPLATES.find(t=>t.id===b.dataset.tpl))});
 $('#pick').addEventListener('click',e=>{const b=e.target.closest('[data-cid]');if(b&&CUR)location.href=`/lab/studio?concept=${b.dataset.cid}&view=front&template=${encodeURIComponent(CUR.id)}`});
 $('#cq').addEventListener('input',paintPick);
-// a new concept from the sketch, straight into Design
+// a new concept from the sketch in the chosen colour, the cloth put on it as its main fabric, then straight into the Studio
 $('#openDesign').addEventListener('click',async()=>{if(!CUR)return;const b=$('#openDesign');b.disabled=true;const was=b.textContent;b.textContent='Opening…';
-  try{const r=await fetch('/v1/lab/concepts/from-sketch',{method:'POST',headers:{Authorization:'Bearer '+TOKEN(),'Content-Type':'application/json'},body:JSON.stringify({template:CUR.id})}),j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'The concept could not be started');location.href=j.studio}
-  catch(x){b.disabled=false;b.textContent=was;$('#msg').textContent=x.message}});
-// a sketch opened twice (double-click) goes straight to Design too
-$('#gal').addEventListener('dblclick',e=>{const b=e.target.closest('[data-tpl]');if(b&&CUR?.id===b.dataset.tpl)$('#openDesign').click()});
+  try{const post=async(path,body)=>{const r=await fetch(path,{method:'POST',headers:{Authorization:'Bearer '+TOKEN(),'Content-Type':'application/json'},body:JSON.stringify(body)}),j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'The concept could not be started');return j};
+    const j=await post('/v1/lab/concepts/from-sketch',{template:CUR.id,...(COL?{colour:COL}:{})});
+    if(MAT)await post(`/v1/lab/concepts/${j.concept.id}/materials`,{material:MAT.id,role:'main',...(COL?{colour:COL.hex}:{})}).catch(()=>FBN?.toast?.('The concept is made; add the cloth in the Studio'));
+    location.href=j.studio}
+  catch(x){b.disabled=false;b.textContent=was;$('#shSum').textContent=x.message}});
+$('#sheet').addEventListener('click',e=>{if(e.target===$('#sheet'))$('#sheet').close()}); // a tap on the shade closes it
+$('#sheet').addEventListener('close',()=>{$$('#gal [data-tpl]').forEach(b=>b.setAttribute('aria-pressed','false'))});
 let qT=0;$('#q').addEventListener('input',()=>{Q.q=$('#q').value;clearTimeout(qT);qT=setTimeout(paint,150)});$('#range').addEventListener('change',()=>{Q.range=$('#range').value;paint()});$('#style').addEventListener('change',()=>{Q.style=$('#style').value;paint()});
 document.querySelector('.seg').addEventListener('click',e=>{const b=e.target.closest('[data-sec]');if(!b)return;$$('.seg [data-sec]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));$('#secSketches').classList.toggle('hidden',b.dataset.sec!=='sketches');$('#secParts').classList.toggle('hidden',b.dataset.sec!=='parts');if(b.dataset.sec==='parts')paintParts()});
 function paintParts(){const kinds=Object.entries(PART_KINDS).map(([id,label])=>({id,label:label+'s'}));$('#pkinds').innerHTML=kinds.map(k=>`<button type="button" class="btn sm ${k.id===PK?'':'q'}" data-pk="${k.id}" aria-pressed="${k.id===PK}">${esc(k.label)}</button>`).join('');
