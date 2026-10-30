@@ -18,6 +18,14 @@ html body>header :is(a,button):focus-visible{outline:2px solid var(--ink);outlin
 /* type: one light, huge headline per page; labels in mono */
 html body :is(.hero,.hub-hero,.greet,.page-head,.client-page-head,.project-hero) h1,html body h1.display{font-weight:300;letter-spacing:-.045em;line-height:.95}
 
+/* headlines are light: one big, quiet line at the top of each page */
+html body h1{font-weight:300}
+html body h1 b,html body h1 strong{font-weight:500}
+
+/* thinking: the button goes ink while it works, with the cue dots running */
+html body .fbn-busy.fbn-thinking{background:var(--ink)!important;color:#fff!important;border-color:var(--ink)!important}
+html body .fbn-busy.fbn-thinking .fbn-dots i{background:var(--cue)}
+
 /* the cue dot, wherever a page draws one, sits in an ink ring so it reads on paper */
 html body .cue-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--cue);box-shadow:0 0 0 1.5px var(--ink)}
 
@@ -67,7 +75,7 @@ html body .client-cover{background:var(--fog);border-bottom:1px solid var(--line
 
 
 /* page heroes (Design Lab, Team, Brand): white on the paper, the grid inside them in ink */
-html body .hero:not(:has(.orb)){background:#fff;color:var(--ink);border:1px solid var(--line)}
+html body .hero:not(:has(.orb,.orbit)){background:#fff;color:var(--ink);border:1px solid var(--line)}
 html body .hero::before{background-image:linear-gradient(rgba(20,20,22,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(20,20,22,.04) 1px,transparent 1px)}
 html body .hero .mono{color:var(--dim)}
 html body .hero p{color:#3d4047}
