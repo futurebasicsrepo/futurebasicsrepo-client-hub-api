@@ -177,7 +177,12 @@ The assistant drafts what the concept did not give, such as materials, care and 
 
 **On its link, the factory reads and writes in Messages.** It reads every version and what changed in it, and writes to Future Basics in **Messages**, about the whole pack or about a single callout (**Ask about this**). It has no buttons that change anything.
 
-**Production files, in one download.** The factory's link has a **Production files** button (translated with the rest of the page). It downloads a zip with everything needed to start work, so nothing waits on an email (`GET /v1/tp/:token/package.zip`, built by `src/factory-package.js`). The same zip is under **Download the production package** in the work console's pack menu, for staff to check or send on (`GET /v1/admin/products/:id/tech-pack/package.zip`, published packs only).
+**Production files, in one download.** The factory's link has a **Production files** button (translated with the rest of the page). It downloads a zip with everything needed to start work, so nothing waits on an email (`GET /v1/tp/:token/package.zip`, built by `src/factory-package.js`). Everyone can get it:
+- **The factory**, from its link.
+- **The client**, from their pack in the hub: **Production files** in the header (in **More** on a phone), and again under *Send it to your own factory* on the **Make it** tab (`GET /v1/products/:id/tech-pack/package.zip`, their own published packs only).
+- **Staff**, from **Download the production package** in the work console's pack menu (`GET /v1/admin/products/:id/tech-pack/package.zip`, published packs only).
+
+**Sending the link by hand.** A client's **Send to a factory** (header, or the Make it tab) makes a private link and copies it, to paste into an email or a chat; giving the factory's email sends it for them instead. Staff have the same from the pack's factory and quotation sections. Whoever opens the link reads the pack, downloads the production files and can send a quote, with no account.
 
 | In the zip | What it is |
 | --- | --- |

@@ -45,7 +45,7 @@
       { label: 'Builds showcase', href: '/builds/admin#builds', badge: '#newCount', module: 'builds', words: 'demos software' },
       { label: 'Automations', href: '/sales#automations', module: 'automations', words: 'emails rules' },
       { label: 'Press', href: '/sales#press', module: 'press', words: 'pitch media releases' }] },
-    { id: 'lab', label: 'Design Lab', key: 'Design Lab', icon: 'brand', also: ['/lab'], items: [
+    { id: 'lab', label: 'Design Lab', key: 'Design Lab', icon: 'brand', also: ['/lab'], action: { label: 'New design', href: '/lab?new=1', data: 'data-new-design' }, items: [
       { label: 'Line plans', href: '/lab#plans', module: 'lab', words: 'season assortment plan' },
       { label: 'Concepts', href: '/lab#board', module: 'lab', words: 'board approve' },
       { label: 'Studio', href: '/lab/studio', module: 'lab', also: ['/lab/flats', '/lab/pattern'], words: 'design picture flats pattern draw' },
@@ -99,7 +99,7 @@ body.fbcollapsed .fbside .quick input,body.fbcollapsed .fbjump{display:none}body
 .fbtabs::-webkit-scrollbar{display:none}.fbtabs[hidden],html[data-fbtabs="off"] .fbtabs{display:none}
 .fbtabs>b{flex:none;font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color:#727278;margin-right:6px}
 .fbtabs a{flex:none;display:inline-flex;align-items:center;gap:6px;border:1px solid rgba(20,20,22,.14);background:#fff;border-radius:999px;padding:6px 13px;text-decoration:none;color:#141416;font-weight:600;white-space:nowrap}
-.fbtabs a:hover{background:#efefeb}.fbtabs a.on{background:#141416;border-color:#141416;color:#fff}.fbtabs a:focus-visible{outline:2px solid #141416;outline-offset:2px}.fbtabs a[hidden]{display:none}
+.fbtabs a.act{background:#4bff9a;border-color:#4bff9a;color:#141416}.fbtabs a.act:hover{background:#3df08c}.fbtabs a:hover{background:#efefeb}.fbtabs a.on{background:#141416;border-color:#141416;color:#fff}.fbtabs a:focus-visible{outline:2px solid #141416;outline-offset:2px}.fbtabs a[hidden]{display:none}
 .fbdlg{position:fixed;inset:0;z-index:70;background:rgba(20,20,22,.5);display:grid;place-items:center;padding:16px;font:400 14px/1.45 'Space Grotesk',system-ui,sans-serif;color:#141416}
 .fbdlg form{background:#fff;border-radius:22px;padding:22px;width:min(480px,100%);max-height:92vh;overflow:auto;display:grid;gap:12px;box-shadow:0 24px 70px rgba(20,20,22,.35)}
 .fbdlg h2{margin:0;font-size:22px;font-weight:500;letter-spacing:-.02em}.fbdlg p{margin:0;color:#727278;font-size:13px}
@@ -165,7 +165,8 @@ body.fbcollapsed .fbside a .dot{position:absolute;top:6px;right:8px;width:8px;he
   }
   // the tab row: every section's parts are drawn once (so a person's access hides them the same way) and only the current section's show
   function renderTabs() {
-    return NAV.map(n => `<div data-tabs="${n.id}" hidden style="display:contents"><b>${esc(n.label)}</b>${n.items.map(it => `<a href="${esc(it.href)}" ${attrs(it)}>${esc(it.label)}${it.badge ? `<span class="bdg" data-badge="${esc(it.badge)}" hidden></span>` : ''}</a>`).join('')}</div>`).join('');
+    // a section's one action (Design Lab: New design) leads its row, in cue, before the parts
+    return NAV.map(n => `<div data-tabs="${n.id}" hidden style="display:contents"><b>${esc(n.label)}</b>${n.action ? `<a class="act" href="${esc(n.action.href)}" ${n.action.data || ''}><span aria-hidden="true">+</span> ${esc(n.action.label)}</a>` : ''}${n.items.map(it => `<a href="${esc(it.href)}" ${attrs(it)}>${esc(it.label)}${it.badge ? `<span class="bdg" data-badge="${esc(it.badge)}" hidden></span>` : ''}</a>`).join('')}</div>`).join('');
   }
 
   // where you are: the part whose address matches best (its path and #section, then any other address that belongs to it), and its section

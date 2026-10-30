@@ -3278,6 +3278,18 @@ app.get('/v1/tp/:token/package.zip',async(req,reply)=>{
   if(row.quote)data.style={...data.style,designer:''}; // a quotation link never carries the client's name
   return sendPackage(reply,await factoryPackage({productId:row.product_id,packData:data,title:row.title,version:row.version,publishedAt:row.published_at,revisions:row.quote?[]:row.revisions,verification:row.quote?null:row.verification,lockedAt:row.locked_at}));
 });
+// the client's own copy: the same package their factory gets from its link, to keep or to send on by hand (the published version only)
+app.get('/v1/products/:id/tech-pack/package.zip',{preHandler:authenticate},async(req,reply)=>{
+  if(!/^[0-9a-f-]{36}$/i.test(req.params.id))return reply.code(404).send({error:'Tech pack not found'});
+  if(req.auth.role==='admin'&&!req.auth.preview)return reply.code(403).send({error:'Staff download from the work console'});
+  if(!throttle(`clientpackage:${req.auth.clientId}`,{limit:30,windowMs:3600_000}))return reply.code(429).send({error:'Too many downloads: try again in a while'});
+  const row=(await pool.query(`select tp.version,tp.published_data,tp.published_at,tp.revisions,tp.verification,tp.locked_at,p.title from tech_packs tp join products p on p.id=tp.product_id
+    where tp.product_id=$1 and tp.client_id=$2 and tp.published_at is not null
+    and not exists(select 1 from projects ap where ap.id=p.project_id and (ap.archived_at is not null or ap.status in ('archive','archived')))`,[req.params.id,req.auth.clientId])).rows[0];
+  if(!row)return reply.code(404).send({error:'The production package is made from the published pack: once v1 is published it is here'});
+  const data=publishedTechPackView(row,{audience:'factory'}).techPack.data;
+  return sendPackage(reply,await factoryPackage({productId:req.params.id,packData:data,title:row.title,version:row.version,publishedAt:row.published_at,revisions:row.revisions,verification:row.verification,lockedAt:row.locked_at}));
+});
 // the same package from the work console, made from the published version: what the factory gets, to check it or send it on
 app.get('/v1/admin/products/:id/tech-pack/package.zip',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const ctx=await loadAdminTechPack(req.params.id);if(!ctx?.techPack?.published_at)return reply.code(409).send({error:'Publish the tech pack first: the package is made from the published version'});
