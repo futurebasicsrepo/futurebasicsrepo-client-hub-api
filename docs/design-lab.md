@@ -75,6 +75,15 @@ So line plan → concept → Studio → pattern → tech pack is one press per s
 **On a phone** the Studio's toolbar keeps the step bar, the piece's name, Save and the panel; the rest folds behind **More**. The Pattern view
 keeps what to show, Explode it and the size, and folds editing and the files the same way.
 
+**New design: one way in.** Staff and clients start a piece the same way: **+ New design** leads the Design Lab's row of tabs (the console's for staff, the Lab's own row for a client), sits on an empty Concepts page and in the Studio's concept picker, and leads the hub's Design Lab pills (`/lab?new=1` opens it on any Lab page). It offers:
+- **With AI:** what it is, a category and a few optional words. The piece is added to the room's own *Quick concepts* plan (made the first time; staff use one with no room) and 1–4 concepts are drawn for it, then the board opens on that plan.
+- **From a sketch:** the sketch pack (below).
+- **From scratch:** the Studio's blank-page form, focused (`/lab/studio?start=scratch`).
+- **A whole line:** Line plans, where the assistant drafts a season's pieces.
+- **Carry on:** every concept.
+
+The launcher lives in `src/lab-nav.js` (`FBLabNav.openNew()`); anything marked `data-new-design` opens it.
+
 **The sketch pack** (`/lab/sketches`): every flat sketch we draw from, searchable and filtered by range (men's, women's, accessories) and style. Picking a sketch opens it in a sheet over the gallery (from the side on a wide screen, from the bottom on a phone), so nobody scrolls to find what to do next. In the sheet:
 
 1. **Cloth.** The room's fabrics as swatches, or **Decide later**. A cloth starts in its own first colour.

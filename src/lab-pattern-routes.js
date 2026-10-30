@@ -20,6 +20,7 @@ import { createHash } from 'node:crypto';
 import sharp from 'sharp';
 import { readFileSync } from 'node:fs';
 import { registerLabLastRoutes } from './lab-last-routes.js';
+import { loftLast, stlOf, orient } from './lab-last3d.js';
 import { flatsSheet, viewsMarkup } from './lab-footwear-views.js';
 import { plushSheet, plushViews } from './lab-plush-views.js';
 import { footwearViews } from './lab-footwear-views.js';
@@ -109,6 +110,27 @@ export function registerLabPatternRoutes(app, d) {
     }
     return ext === 'svg' ? reply.type('image/svg+xml; charset=utf-8').send(patternSvg(pat, { width, title: L.c.name })) : reply.type('application/dxf').send(patternDxf(pat, { width }));
   };
+  // the pattern files a factory cuts from (src/factory-package.js puts them in the package): every size of the run as one AAMA/ASTM DXF (inches),
+  // the base size as a plain DXF and as a drawing; for a shoe also the last (drawn, and lofted to 3D in mm) and its tech flats; for a plush its sheet
+  async function productionFiles(id) {
+    const L = await load(id), out = [], notes = []; if (!L) return { files: out, notes };
+    const pat = patternOf(L, ''); if (!pat) { if (L.kind === 'soon') notes.push(SOON[L.c.category] || 'The Lab does not draft a pattern for this kind of piece yet'); return { files: out, notes }; }
+    const width = Number(L.spec?.width) || 58, sizes = L.kind === 'garment' ? (STYLES[L.flat?.style]?.oneSize ? [null] : SIZES) : L.kind === 'footwear' ? sizeRun(L.spec).map(r => r.size) : [null];
+    const pats = sizes.map(z => z == null ? pat : patternOf(L, String(z))).filter(Boolean);
+    out.push({ name: 'pattern/pattern-all-sizes-aama.dxf', data: Buffer.from(patternDxfAama(pats, { width, units: 'in', style: L.c.name })) });
+    out.push({ name: `pattern/pattern-${String(pat.size).replace(/[^a-z0-9]+/gi, '').toLowerCase() || 'base'}.dxf`, data: Buffer.from(patternDxf(pat, { width })) });
+    out.push({ name: 'pattern/pattern.svg', data: Buffer.from(patternSvg(pat, { width, title: L.c.name })) });
+    if (L.kind === 'footwear' || L.kind === 'plush') {
+      const hrefs = await hrefsFor(L.spec), looks = looksOf(L);
+      out.push({ name: 'flats/tech-flats.svg', data: Buffer.from(L.kind === 'plush' ? plushSheet(pat, { title: L.c.name, viewsMarkup, ...looks, hrefs }) : flatsSheet(pat, { title: L.c.name, ...looks, hrefs })) });
+    }
+    if (L.kind === 'footwear') {
+      out.push({ name: 'last/last.svg', data: Buffer.from(lastSvg(L.spec, null)) });
+      try { const l = lastOf(L.spec, null); out.push({ name: `last/last-${l.size}.stl`, data: Buffer.from(stlOf(orient(loftLast(L.spec, null), 1, { heelHeight: l.heelHeight }), { name: `Future Basics last ${l.size}` })) }); }
+      catch (e) { notes.push(`The 3D last could not be lofted (${String(e.message).slice(0, 120)})`); }
+    }
+    return { files: out, notes };
+  }
   app.get('/v1/lab/concepts/:id/pattern.svg', { preHandler: pre }, file('svg'));
   // the last, drawn for the last maker: side and bottom with its length, girths, widths, heel and toe spring
   app.get('/v1/lab/concepts/:id/last.svg', { preHandler: pre }, async (req, reply) => {
@@ -283,5 +305,5 @@ export function registerLabPatternRoutes(app, d) {
     if (category === 'plush') await pool.query(`insert into lab_patterns(concept_id, kind, spec, updated_by) values($1,'plush',$2,$3) on conflict do nothing`, [r.id, plushDefaults(shape), actorOf(req)]);
     return reply.code(201).send({ concept: { id: r.id, name, category }, studio: `/lab/studio?concept=${r.id}&scratch=1` });
   });
-  return { load, patternOf };
+  return { load, patternOf, productionFiles };
 }

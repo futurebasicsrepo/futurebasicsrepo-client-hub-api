@@ -97,6 +97,8 @@ import { conceptRender, conceptPlacement } from './concept.js';
 import { packDiff, diffSummary, carriedAcks } from './pack-diff.js';
 import { buildShopifyExport, exportToShopify, planSummary } from './pack-export.js';
 import { packSheets, toXlsx, toCsv, exportName, SHEET_KEYS } from './pack-sheets.js';
+import { buildFactoryPackage } from './factory-package.js';
+import { techPackPdf } from './tp-pdf.js';
 import { appConfig, shopDomain, authorizeUrl, verifyOAuthQuery, verifyWebhook, newState, exchangeCode, sealer, SHOP_INFO_QUERY, UNINSTALL_WEBHOOK, merchantExec } from './shopify-merchant.js';
 import { Readable } from 'node:stream';
 import { cleanArt, artColours, printCheck, graphicCrop, parseImage } from './art.js';
@@ -722,7 +724,7 @@ registerLabMaterialsRoutes(app, { pool, ...labDeps, log: app.log, ready: migrate
 registerLabShareRoutes(app, { pool, ...labDeps, log: app.log, notifyStaff, sheetSvg: id => labFlats.sheetSvg(id) });
 registerLabTryonRoutes(app, { pool, ...labDeps, log: app.log });
 registerLabRangeRoutes(app, { pool, ...labDeps, getSetting, setSetting, editConcept: (...a) => labConcepts.editConcept(...a), notifyStaff, log: app.log });
-registerLabPatternRoutes(app, { pool, ...labDeps, log: app.log });
+const labPattern = registerLabPatternRoutes(app, { pool, ...labDeps, log: app.log });
 const labFlats = registerLabFlatsRoutes(app, { pool, ...labDeps, log: app.log, attachArtwork: (productId, items) => attachLabArtwork(productId, items), applyHandoff: (productId, h) => applyLabHandoff(productId, h), packChanges: async productId => { const t=(await pool.query('select data,published_data from tech_packs where product_id=$1 order by created_at desc limit 1',[productId])).rows[0]; return t?.published_data?packDiff(normalizeTechPack(t.published_data),normalizeTechPack(t.data)).filter(c=>!/ picture$/.test(c.label)&&!(c.section==='Artwork'&&/^(Spec sheet|Technical flat)/.test(c.label))):null; } /* the flats are drawn again each time they are sent: a new picture alone is no change, and a changed drawing always changes its measurements, construction lines or colours too */ });
 registerLabClientRoutes(app, { pool, authenticate, adminOnly, log: app.log, sheetSvg: id => labFlats.sheetSvg(id), notifyStaff, notifyClientContact, hubUrl: () => clientHubUrl, learn: learnLabTaste });
 registerRoomTeamRoutes(app, { pool, authenticate, clientHubUrl, sendHubEmail, hubEmailShell, emailEscape, replyTo: intakeNotificationEmail, forgetUser, log: app.log });
@@ -1148,17 +1150,19 @@ async function labPack(productId){
 }
 // files from the Lab replace the ones of the same name sent before (flats sent again after a change), so the pack never fills with copies
 const labArtworkInto=(data,items)=>{const names=new Set(items.map(i=>i.name)),kept=data.artwork.filter(a=>!(a.note==='From the Design Lab'&&names.has(a.name))),have=new Set(kept.map(a=>a.image));
-  const add=items.filter(i=>i.image&&!have.has(i.image)).map((i,n)=>({id:`art-lab-${Date.now().toString(36)}${n}`,name:i.name,image:i.image,source:'lab',note:'From the Design Lab',pantones:[],placements:[]}));
+  const add=items.filter(i=>i.image&&!have.has(i.image)).map((i,n)=>({id:`art-lab-${Date.now().toString(36)}${n}`,name:i.name,image:i.image,source:'lab',note:'From the Design Lab',libraryArt:i.libraryArt||'',pantones:Array.isArray(i.pantones)?i.pantones:[],placements:[]}));
   data.artwork=[...add,...kept].slice(0,12);return add.length;};
+// each Lab picture's colours, measured and matched to Pantone C, so the pack's artwork shows them as an upload's does
+const withPantones=async items=>Promise.all((items||[]).map(async i=>{if(i.pantones||!/^data:image\/png;base64,/.test(i.image||''))return i;try{return {...i,pantones:(await artColours(Buffer.from(i.image.split(',')[1],'base64'))).map(({hex,name,code})=>({hex,name,code}))}}catch{return i}}));
 async function attachLabArtwork(productId,items){
   if(!items?.length)return 0;const pack=await labPack(productId);if(!pack)return 0;
-  const data=normalizeTechPack(pack.data),n=labArtworkInto(data,items);if(!n)return 0;
+  const data=normalizeTechPack(pack.data),n=labArtworkInto(data,await withPantones(items));if(!n)return 0;
   await pool.query('update tech_packs set data=$2,updated_at=now() where id=$1',[pack.id,data]);return n;
 }
 // the flats handed to the pack (src/lab-handoff.js): files, sketches, measurements, construction, materials, colour and the plan's numbers
 async function applyLabHandoff(productId,{files,lab}){
   const pack=await labPack(productId);if(!pack)return null;
-  const data=normalizeTechPack(labHandoff(normalizeTechPack(pack.data),lab)),n=labArtworkInto(data,files||[]);
+  const data=normalizeTechPack(labHandoff(normalizeTechPack(pack.data),lab)),n=labArtworkInto(data,await withPantones((files||[]).filter(f=>!/^(Spec sheet|Technical flat)/.test(f.name))).then(a=>[...a,...(files||[]).filter(f=>/^(Spec sheet|Technical flat)/.test(f.name))]));
   await pool.query('update tech_packs set data=$2,updated_at=now() where id=$1',[pack.id,data]);
   return {files:n,pom:data.pom.filter(r=>r.how==='From the flats').length,construction:data.construction.filter(r=>r.area.startsWith('Flats · ')).length,sketches:data.sketches.filter(x=>x.id.startsWith('lab-flat-')).length};
 }
@@ -3254,6 +3258,43 @@ app.get('/v1/tp/:token/export',async(req,reply)=>{
   const data=normalizeTechPack(publishedTechPackView(row,{audience:'factory',shareLabel:row.share_label}).techPack.data);
   if(row.quote)data.style={...data.style,designer:''}; // a quotation link never carries the client's name
   return sendPackSheets(reply,{data,title:row.title,version:row.version,audience:'factory',format:req.query?.format,sheet:req.query?.sheet});
+});
+// the production package (src/factory-package.js): the pack as the factory sees it (PDF, workbook, its pictures) and, when it was designed in the Lab,
+// every production file the Lab makes for it: separations and films, stitch files, job sheets, vectors, the decoration sheet, the pattern and the last
+async function factoryPackage({productId,packData,title,version,publishedAt,revisions=[],verification=null,lockedAt=null}){
+  const data=normalizeTechPack(packData),c=(await pool.query(`select c.id,(select updated_at from lab_flats f where f.concept_id=c.id) flats_at,(select updated_at from lab_patterns p where p.concept_id=c.id) pattern_at from lab_concepts c where c.product_id=$1 order by c.updated_at desc limit 1`,[productId])).rows[0];
+  let lab=null;
+  if(c){const a=await labFlats.productionFiles(c.id).catch(e=>({files:[],notes:[`Decoration files could not be made (${String(e.message).slice(0,120)})`]})),b=await labPattern.productionFiles(c.id).catch(e=>({files:[],notes:[`Pattern files could not be made (${String(e.message).slice(0,120)})`]}));
+    const changed=[c.flats_at,c.pattern_at].some(t=>t&&publishedAt&&new Date(t)>new Date(publishedAt));
+    lab={files:[...a.files,...b.files],notes:[...a.notes,...b.notes],stale:changed}}
+  const pdf=await techPackPdf({pack:data,product:{title},version,publishedAt,verification:verification?normalizeVerification(verification,version):null,revisions:(Array.isArray(revisions)?revisions:[]).filter(r=>r.version<=version),lockedAt}).catch(e=>{app.log.warn({err:e.message},'production package: the PDF could not be made');return null});
+  return buildFactoryPackage({data,title,version,publishedAt,pdf,sheets:toXlsx(packSheets(data,{audience:'factory',title})),lab});
+}
+const sendPackage=(reply,p)=>reply.header('content-type','application/zip').header('content-disposition',`attachment; filename="${p.name}"`).header('cache-control','no-store').send(p.zip);
+app.get('/v1/tp/:token/package.zip',async(req,reply)=>{
+  if(!throttle(`tppackage:${req.ip}`,{limit:30,windowMs:3600_000}))return reply.code(429).send({error:'Too many downloads: try again in a while'});
+  const {row,error}=await loadShareByToken(req.params.token);if(error)return reply.code(error.code).send({error:error.message});
+  const v=publishedTechPackView(row,{audience:'factory',shareLabel:row.share_label}).techPack,data=v.data;
+  if(row.quote)data.style={...data.style,designer:''}; // a quotation link never carries the client's name
+  return sendPackage(reply,await factoryPackage({productId:row.product_id,packData:data,title:row.title,version:row.version,publishedAt:row.published_at,revisions:row.quote?[]:row.revisions,verification:row.quote?null:row.verification,lockedAt:row.locked_at}));
+});
+// the client's own copy: the same package their factory gets from its link, to keep or to send on by hand (the published version only)
+app.get('/v1/products/:id/tech-pack/package.zip',{preHandler:authenticate},async(req,reply)=>{
+  if(!/^[0-9a-f-]{36}$/i.test(req.params.id))return reply.code(404).send({error:'Tech pack not found'});
+  if(req.auth.role==='admin'&&!req.auth.preview)return reply.code(403).send({error:'Staff download from the work console'});
+  if(!throttle(`clientpackage:${req.auth.clientId}`,{limit:30,windowMs:3600_000}))return reply.code(429).send({error:'Too many downloads: try again in a while'});
+  const row=(await pool.query(`select tp.version,tp.published_data,tp.published_at,tp.revisions,tp.verification,tp.locked_at,p.title from tech_packs tp join products p on p.id=tp.product_id
+    where tp.product_id=$1 and tp.client_id=$2 and tp.published_at is not null
+    and not exists(select 1 from projects ap where ap.id=p.project_id and (ap.archived_at is not null or ap.status in ('archive','archived')))`,[req.params.id,req.auth.clientId])).rows[0];
+  if(!row)return reply.code(404).send({error:'The production package is made from the published pack: once v1 is published it is here'});
+  const data=publishedTechPackView(row,{audience:'factory'}).techPack.data;
+  return sendPackage(reply,await factoryPackage({productId:req.params.id,packData:data,title:row.title,version:row.version,publishedAt:row.published_at,revisions:row.revisions,verification:row.verification,lockedAt:row.locked_at}));
+});
+// the same package from the work console, made from the published version: what the factory gets, to check it or send it on
+app.get('/v1/admin/products/:id/tech-pack/package.zip',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const ctx=await loadAdminTechPack(req.params.id);if(!ctx?.techPack?.published_at)return reply.code(409).send({error:'Publish the tech pack first: the package is made from the published version'});
+  const tp=ctx.techPack,data=publishedTechPackView(tp,{audience:'factory'}).techPack.data;
+  return sendPackage(reply,await factoryPackage({productId:ctx.product.id,packData:data,title:ctx.product.title,version:tp.version,publishedAt:tp.published_at,revisions:tp.revisions,verification:tp.verification,lockedAt:tp.locked_at}));
 });
 app.get('/r/:id/:sig',async(req,reply)=>{
   const id=String(req.params.id),sig=String(req.params.sig).replace(/\.jpe?g$/i,'');

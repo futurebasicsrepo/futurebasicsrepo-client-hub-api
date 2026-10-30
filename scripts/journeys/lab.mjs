@@ -1359,7 +1359,8 @@ await journey('J225', 'Finding your way round the Lab: the Design Lab is one sec
         const oc = await b.newContext({ viewport: { width: 1440, height: 950 } }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
         const page = await oc.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
         await page.goto(`${BASE}/lab`, { waitUntil: 'networkidle' }); await page.waitForSelector('#app:not(.hidden)'); await page.waitForSelector('.fbtabs [data-tabs="lab"] a', { state: 'visible' });
-        const tabs = await page.$$eval('.fbtabs [data-tabs="lab"] a', els => els.map(e => e.textContent.trim()));
+        const tabs = await page.$$eval('.fbtabs [data-tabs="lab"] a:not(.act)', els => els.map(e => e.textContent.trim())); // the parts; New design leads the row as its one action
+        ok(/New design/.test(await page.innerText('.fbtabs [data-tabs="lab"] a.act')), '   New design leads the row');
         ok(tabs.join(',') === 'Line plans,Concepts,Studio,Assortment,Sketch pack,Graphics & techniques,Materials,Research' && await page.locator('nav.labnav a').count() === 0 && await page.locator('[data-lab-menu]').count() === 0, '2. the Lab\'s parts are the one row of tabs across the top (no second Lab menu on the page)', tabs);
         ok(/Line plans/.test(await page.innerText('.fbtabs a.on')) && await page.isVisible('#plans') && !(await page.isVisible('#board')) && !(await page.isVisible('#library')), '   the Lab opens on Line plans, on its own: the concepts and the research are their own tabs');
         await page.click('.fbtabs a[data-href="/lab#board"]'); await page.waitForFunction(() => document.getElementById('board').offsetParent && !document.getElementById('plans').offsetParent);
@@ -3482,6 +3483,94 @@ await journey('J259', 'A sketch picked opens straight away: on a phone, tapping 
     ok(fl?.color === '#5b5f3a', '10. and the flats are drawn in it', fl?.color);
     ok(errs.length === 0, 'no page errors', errs); await oc.close();
   } finally { await br.close(); if (cid) await K(`/concepts/${cid}`, { method: 'DELETE' }); }
+});
+
+await journey('J260', 'The factory gets everything to start work in one download: from its pack link, a production package with the tech pack PDF and workbook, every artwork and sketch, and for each decoration placed in the Lab its job files at the placed size (stitch files .dst/.exp and thread list for embroidery, separations for print, the job sheet, a vector), the decoration sheet without our cost estimates, and the pattern in every size as DXF; Lab artwork on the pack carries its Pantones', async () => {
+  const { plan } = await conceptSetup(); const A = (path, o = {}) => call(path, { token: kyleT, ...o });
+  const names = buf => { const out = []; const i = buf.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06])); let p = buf.readUInt32LE(i + 16); for (let k = 0, n = buf.readUInt16LE(i + 10); k < n; k++) { const len = buf.readUInt16LE(p + 28), ex = buf.readUInt16LE(p + 30), cm = buf.readUInt16LE(p + 32); out.push(buf.slice(p + 46, p + 46 + len).toString('utf8')); p += 46 + len + ex + cm; } return out; };
+  const fileOf = (buf, name) => { let p = 0; while ((p = buf.indexOf(Buffer.from([0x50, 0x4b, 0x03, 0x04]), p)) >= 0) { const size = buf.readUInt32LE(p + 18), len = buf.readUInt16LE(p + 26), ex = buf.readUInt16LE(p + 28), n = buf.slice(p + 30, p + 30 + len).toString('utf8'); if (n.endsWith(name)) return buf.slice(p + 30 + len + ex, p + 30 + len + ex + size); p += 30 + len + ex + size; } return null; };
+  const line = plan.lines.find(l => l.category === 'tops') || plan.lines[0], c = (await K(`/plans/${plan.plan.id}/lines/${line.id}/concepts`, { body: { count: 1 } })).json.concepts[0];
+  await K(`/concepts/${c.id}/approve`, { body: { overrideReason: 'reviewed side by side with the references: it is ours' } });
+  const fl = (await K(`/concepts/${c.id}/flats`)).json; await K(`/concepts/${c.id}/flats`, { method: 'PUT', body: fl.flat });
+  ok((fl.flat.placements || []).length > 0, '1. the flats carry placements (the logo, the graphics)', (fl.flat.placements || []).map(q => `${q.name}:${q.technique}`));
+  const pid = (await K(`/concepts/${c.id}/tech-pack`, { body: {} })).json.productId;
+  const art = (await A(`/v1/admin/products/${pid}/tech-pack`)).json.techPack.data.artwork.filter(a => a.note === 'From the Design Lab' && !/^(Spec sheet|Technical flat)/.test(a.name));
+  ok(art.length > 0 && art.every(a => a.pantones.length > 0), '2. Lab artwork lands on the pack with its colours as Pantone C', art.map(a => `${a.name}: ${a.pantones.map(p => p.code).join(' ')}`));
+  ok((await A(`/v1/admin/products/${pid}/tech-pack/package.zip`)).status === 409, '3. no package before the pack is published');
+  ok((await A(`/v1/admin/products/${pid}/tech-pack/publish`, { method: 'POST', body: { override: 'journey: production package' } })).status === 200, '4. version 1 is published');
+  const sup = (await A('/v1/admin/suppliers', { method: 'POST', body: { name: `Package Mill ${stamp}` } })).json;
+  const tok = (await A(`/v1/admin/products/${pid}/tech-pack/factory`, { method: 'POST', body: { supplierId: sup.id, mode: 'review' } })).json.assignment.packUrl.split('/tp/')[1];
+  const r = await fetch(`${BASE}/v1/tp/${tok}/package.zip`), buf = Buffer.from(await r.arrayBuffer());
+  ok(r.status === 200 && /application\/zip/.test(r.headers.get('content-type') || '') && /production\.zip/.test(r.headers.get('content-disposition') || ''), '5. the factory link downloads the production package, no sign-in', r.status);
+  if (process.env.SHOT_DIR && r.status === 200) writeFileSync(process.env.SHOT_DIR + '/production-package.zip', buf);
+  const ls = r.status === 200 ? names(buf).map(n => n.split('/').slice(1).join('/')) : [];
+  for (const f of ['README.txt', 'tech-pack.pdf', 'tech-pack.xlsx', 'decorations/decoration-sheet.pdf', 'flats/spec-sheet.svg', 'pattern/pattern-all-sizes-aama.dxf']) ok(ls.includes(f), `6. it holds ${f}`);
+  ok(ls.some(n => /^artwork\/.+\.png$/.test(n)) && ls.some(n => /^sketches\/.+\.png$/.test(n)), '7. every artwork and sketch on the pack, as files', ls.filter(n => /^(artwork|sketches)\//.test(n)));
+  const deco = ls.filter(n => /^decorations\/\d\d-/.test(n));
+  ok(deco.some(n => /\.dst$/.test(n)) && deco.some(n => /\.exp$/.test(n)), '8. an embroidered placement comes with its stitch files (.dst for Tajima, .exp for Melco)', deco);
+  ok(deco.some(n => /job-sheet\.pdf$/.test(n)) && deco.some(n => /artwork-vector\.svg$/.test(n)), '9. every placement has its job sheet and a vector of its artwork');
+  const dst = ls.find(n => /\.dst$/.test(n)), d = dst && fileOf(buf, dst);
+  ok(d && d.length > 512 && /LA:/.test(d.slice(0, 512).toString('latin1')), '10. the .dst is a real Tajima file (its header and stitches)', d?.length);
+  const sheet = fileOf(buf, 'decorations/decoration-sheet.pdf');
+  ok(sheet && /^%PDF/.test(sheet.slice(0, 5).toString()) && !/costs are estimates/.test(sheet.toString('latin1')), '11. the decoration sheet goes without our cost estimates');
+  const rd = fileOf(buf, 'README.txt')?.toString() || '';
+  ok(/tech pack v1/.test(rd) && /Tajima DST/.test(rd) && /AAMA\/ASTM DXF/.test(rd), '12. the README names each file and what it is for');
+  const st = await fetch(`${BASE}/v1/admin/products/${pid}/tech-pack/package.zip`, { headers: { Authorization: 'Bearer ' + kyleT } });
+  ok(st.status === 200, '13. the work console downloads the same package to check or send on');
+  ok((await call('/v1/tp/not-a-real-token-at-all-000000/package.zip')).status === 404, '14. a made-up link gets nothing');
+});
+
+await journey('J261', 'One way in for everyone: staff and a client each find New design at the head of the Lab (the console tab row, the client\'s own row, an empty Concepts page, the hub); it offers AI concepts from a few words, a sketch, a blank page and a whole line; a few words make concepts on the room\'s own Quick concepts plan; From scratch lands on the blank-page form; and a client downloads the production package of their published pack and sends a factory the link themselves', async () => {
+  await conceptSetup(); const A = (path, o = {}) => call(path, { token: kyleT, ...o });
+  const email = `newdesign-${stamp}@selfserve.test`, started = await call('/v1/public/start', { body: { email, name: 'New Design Co', title: 'Field jacket', photos: [jpeg()] } });
+  const cid = started.json.client?.id || sql(`select client_id from users where lower(email)='${email}'`), uid = sql(`select id from users where lower(email)='${email}'`).split('\n')[0], slug = sql(`select slug from clients where id='${cid}'`).split('\n')[0];
+  sql(`update users set email_verified_at=now() where id='${uid}'`); sql(`update clients set lab_free=true where id='${cid}'`);
+  const clientT = await forge({ sub: uid, clientId: cid, client: slug, role: 'client', email }), H = (path, o = {}) => call(path, { token: clientT, ...o });
+  const pid = started.json.product?.id || sql(`select id from products where client_id='${cid}' limit 1`).split('\n')[0];
+  // the client's own production package and factory link
+  ok((await A(`/v1/admin/products/${pid}/tech-pack/publish`, { method: 'POST', body: { override: 'journey: client package' } })).status === 200, '1. the client\'s pack is published');
+  const pk = await fetch(`${BASE}/v1/products/${pid}/tech-pack/package.zip`, { headers: { Authorization: 'Bearer ' + clientT } }), pb = Buffer.from(await pk.arrayBuffer());
+  ok(pk.status === 200 && pb.slice(0, 2).toString() === 'PK' && /README\.txt/.test(pb.toString('latin1')) && /tech-pack\.pdf/.test(pb.toString('latin1')), '2. the client downloads the production package of their published pack', pk.status);
+  ok((await A(`/v1/products/${pid}/tech-pack/package.zip`)).status === 403, '   staff take it from the work console instead');
+  const other = (await call('/v1/public/start', { body: { email: `other-${stamp}@selfserve.test`, name: 'Other Co', title: 'Tee', photos: [jpeg()] } })).json.product?.id;
+  ok(!other || (await H(`/v1/products/${other}/tech-pack/package.zip`)).status === 404, '   and never another room\'s');
+  const ql = await H(`/v1/products/${pid}/quote-links`, { body: { label: 'Our own mill' } });
+  ok(ql.status === 201 && /\/tp\//.test(ql.json.url || ''), '3. the client makes a factory link to send themselves', ql.json.error);
+  const fz = await fetch(`${BASE}/v1/tp/${ql.json.url.split('/tp/')[1]}/package.zip`);
+  ok(fz.status === 200, '   and the factory downloads the same package from it, no sign-in', fz.status);
+  if (!playwright) { ok(true, 'needs a browser'); return; }
+  const br = await playwright.chromium.launch();
+  try {
+    // staff: New design leads the Design Lab row; a few words make concepts on our own Quick concepts plan
+    const sc = await br.newContext({ viewport: { width: 1366, height: 900 } }); await sc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); localStorage.setItem('fb.helper.on', '0'); } catch {} }, kyleT);
+    const sp = await sc.newPage(), errs = []; sp.on('pageerror', e => errs.push(String(e)));
+    await sp.goto(`${BASE}/lab#board`, { waitUntil: 'networkidle' }); await sp.waitForSelector('.fbtabs [data-tabs="lab"] a.act', { state: 'visible' });
+    await sp.click('.fbtabs [data-tabs="lab"] a.act'); await sp.waitForSelector('#fbNew[open]');
+    const ways = await sp.$$eval('#fbNew .way .k', els => els.map(e => e.textContent.trim()));
+    ok(['With AI', 'From a sketch', 'From scratch', 'A whole line'].every(w => ways.includes(w)), '4. New design offers AI concepts, a sketch, a blank page and a whole line', ways);
+    await sp.waitForFunction(() => document.querySelectorAll('#fbNew select[name=category] option').length > 3);
+    await sp.fill('#fbNew input[name=name]', `Boxy hoodie ${stamp}`); await sp.selectOption('#fbNew select[name=category]', 'tops'); await sp.selectOption('#fbNew select[name=count]', '1');
+    await Promise.all([sp.waitForURL(/\/lab\?plan=.+#board/, { timeout: 60000 }), sp.click('#fbNew button[type=submit]')]);
+    const planId = new URL(sp.url()).searchParams.get('plan'), qp = (await K(`/plans/${planId}`)).json;
+    ok(qp.plan?.name === 'Quick concepts' && !qp.plan.clientId && qp.lines.some(l => l.name === `Boxy hoodie ${stamp}`), '5. a few words become a piece on our own Quick concepts plan', qp.plan);
+    const made = (await K(`/concepts?plan=${planId}`)).json.concepts || [];
+    ok(made.length >= 1, '   and concepts are drawn for it', made.length);
+    ok(errs.length === 0, '   no page errors', errs); await sc.close();
+    // a client: New design in their own row, from the hub, and From scratch lands on the blank page
+    const cc = await br.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }); await cc.addInitScript(t => { try { localStorage.setItem('fb.client.token', t); localStorage.setItem('fb.lab.welcomed', '1'); localStorage.setItem('fb.helper.on', '0'); } catch {} }, clientT);
+    const cp = await cc.newPage(), cerrs = []; cp.on('pageerror', e => cerrs.push(String(e)));
+    await cp.goto(`${BASE}/`, { waitUntil: 'networkidle' }); await cp.waitForSelector('#lab .lab-pills a[href="/lab?new=1"]', { timeout: 15000 });
+    ok(/New design/.test(await cp.innerText('#lab .lab-pills a[href="/lab?new=1"]')), '6. the hub\'s Design Lab leads with New design');
+    await cp.click('#lab .lab-pills a[href="/lab?new=1"]'); await cp.waitForSelector('#fbNew[open]', { timeout: 15000 });
+    ok(!/new=1/.test(cp.url()), '   it opens New design in the Lab (and leaves the address clean)', cp.url());
+    await cp.click('#fbNew [data-close]'); ok(await cp.locator('nav.labnav a.new').first().isVisible(), '7. and New design leads the client\'s own Lab row');
+    await cp.goto(`${BASE}/lab/studio?start=scratch`, { waitUntil: 'networkidle' }); await cp.waitForSelector('#scratchF');
+    await cp.waitForFunction(() => document.activeElement?.id === 'scName', null, { timeout: 5000 }).catch(() => {});
+    ok(await cp.evaluate(() => document.activeElement?.id === 'scName'), '8. From scratch lands on the blank-page form, ready to name it');
+    await cp.goto(`${BASE}/tech-packs/${pid}`, { waitUntil: 'networkidle' }); await cp.waitForSelector('details.more>summary');
+    await cp.click('details.more>summary'); ok(await cp.locator('.menu [data-act="package"]').isVisible() && await cp.locator('.menu [data-act="tofactory"]').isVisible(), '9. on a phone, the pack\'s menu offers the production files and Send to a factory');
+    ok(cerrs.length === 0, '   no page errors', cerrs); await cc.close();
+  } finally { await br.close(); }
 });
 
 shops.close(); brave.close();

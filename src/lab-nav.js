@@ -41,7 +41,7 @@
   function render(el) {
     style(); if (!isClient()) { el.innerHTML = ''; el.hidden = true; return; }
     const cur = current(el); el.hidden = false; el.setAttribute('aria-label', 'Design Lab');
-    el.innerHTML = `<a class="hub" href="/#lab">← Your hub</a>` + TABS.filter(t => !t.staff).map(t => `<a href="${t.href}" class="${t.id === cur ? 'on' : ''}"${t.id === cur ? ' aria-current="page"' : ''}>${esc(t.label)}</a>`).join('');
+    el.innerHTML = `<a class="hub" href="/#lab">← Your hub</a><a class="new" href="/lab?new=1" data-new-design>+ New design</a>` + TABS.filter(t => !t.staff).map(t => `<a href="${t.href}" class="${t.id === cur ? 'on' : ''}"${t.id === cur ? ' aria-current="page"' : ''}>${esc(t.label)}</a>`).join('');
   }
   // the step bar
   const hrefOf = (c, id) => ({ concept: `/lab?concept=${c.id}`, picture: `/lab/studio?concept=${c.id}&view=picture`, flats: `/lab/studio?concept=${c.id}&view=front`, pattern: `/lab/studio?concept=${c.id}&view=pattern`, techpack: c.productUrl || '' })[id];
@@ -64,8 +64,68 @@
     requestAnimationFrame(inView);
     return el;
   }
+  // ---- New design: the one way in, for a client and for staff alike. Four starts, each a press away:
+  //   AI concepts from a few words (a piece is added to the room's "Quick concepts" plan and concepts are drawn for it), a sketch from the sketch pack,
+  //   a blank page from scratch, or a whole line plan. Opened by anything marked [data-new-design], and by ?new=1 on any Lab page (the hub links there).
+  const TOKEN = () => { try { return localStorage.getItem('fb.admin.token') || localStorage.getItem('fb.client.token') || ''; } catch { return ''; } };
+  const call = async (path, body) => { const r = await fetch(path, { method: body ? 'POST' : 'GET', headers: { Authorization: 'Bearer ' + TOKEN(), ...(body ? { 'Content-Type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined }); const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || `Request failed (${r.status})`); return j; };
+  const NCSS = `#fbNew{border:0;padding:0;width:min(760px,100vw);max-width:100vw;max-height:min(92dvh,900px);border-radius:22px;background:#fff;color:#141416;box-shadow:0 30px 80px rgba(20,20,22,.25);font:400 14px/1.5 'Space Grotesk',system-ui,sans-serif}
+#fbNew::backdrop{background:rgba(20,20,22,.4)}#fbNew[open]{animation:fbNewIn .35s cubic-bezier(.2,.8,.2,1)}@keyframes fbNewIn{from{transform:translateY(16px);opacity:0}}
+#fbNew .hd{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:20px 22px 6px}#fbNew h2{margin:0;font:300 34px/1 'Space Grotesk',system-ui,sans-serif;letter-spacing:-.03em}#fbNew .x{width:40px;height:40px;border-radius:50%;border:1px solid rgba(20,20,22,.14);background:#fff;font-size:22px;cursor:pointer;flex:none}
+#fbNew .sub{margin:4px 22px 14px;color:#5b5e66}#fbNew .ways{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:0 22px 22px}
+#fbNew .way{border:1px solid rgba(20,20,22,.14);border-radius:18px;padding:16px;display:grid;gap:8px;align-content:start;text-decoration:none;color:inherit;background:#fff;min-width:0}#fbNew a.way:hover{border-color:#141416}
+#fbNew .way.ai{grid-column:1/-1;background:#f1f1ec;border-color:transparent}#fbNew .way b{font-size:17px;font-weight:500}#fbNew .way small{color:#5b5e66;font-size:13px}#fbNew .way .go{justify-self:start;margin-top:4px}
+#fbNew .k{font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color:#5b5e66}
+#fbNew .row{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) auto;gap:8px}#fbNew input,#fbNew select,#fbNew textarea{font:inherit;border:1px solid rgba(20,20,22,.18);border-radius:12px;padding:9px 12px;background:#fff;min-width:0;width:100%;box-sizing:border-box}
+#fbNew textarea{min-height:64px;resize:vertical}#fbNew .btn{border:1px solid #141416;border-radius:999px;padding:10px 18px;font:600 14px 'Space Grotesk',sans-serif;cursor:pointer;background:#fff;color:#141416}#fbNew .btn.go{background:#4bff9a;border-color:#4bff9a}#fbNew .btn:disabled{opacity:.6;cursor:default}
+#fbNew .msg{font-size:13px;color:#5b5e66}#fbNew .msg.bad{color:#a02a20}
+@media(max-width:620px){#fbNew .fbh-tog{display:none}#fbNew{width:100vw;max-height:94dvh;margin:auto 0 0;border-radius:20px 20px 0 0}#fbNew .ways{grid-template-columns:1fr}#fbNew .row{grid-template-columns:1fr}#fbNew h2{font-size:28px}}
+@media(prefers-reduced-motion:reduce){#fbNew[open]{animation:none}}
+.labnav a.new{background:#4bff9a;border-color:#4bff9a}`;
+  let CATS = null;
+  async function openNew() {
+    if (!document.getElementById('fbNewCss')) { const st = document.createElement('style'); st.id = 'fbNewCss'; st.textContent = NCSS; document.head.appendChild(st); }
+    let d = document.getElementById('fbNew');
+    if (!d) {
+      d = document.createElement('dialog'); d.id = 'fbNew'; d.setAttribute('aria-labelledby', 'fbNewH');
+      d.innerHTML = `<div class="hd"><h2 id="fbNewH">New design</h2><button class="x" type="button" data-close aria-label="Close">×</button></div>
+        <p class="sub">Start a new piece, or carry on with one. Every way in ends in the Studio, then the flats, the pattern and a tech pack the factory makes it from.</p>
+        <div class="ways">
+          <form class="way ai" id="fbNewAi"><span class="k">With AI</span><b>Describe it, and concepts are drawn</b><small>A few words are enough. Three concepts come back, each checked against what inspired it, to open in the Studio.</small>
+            <div class="row"><input name="name" required maxlength="100" placeholder="What is it? e.g. Boxy heavyweight hoodie" aria-label="What is it"><select name="category" aria-label="Category"></select><select name="count" aria-label="How many"><option value="3">3 concepts</option><option value="1">1</option><option value="2">2</option><option value="4">4</option></select></div>
+            <textarea name="brief" maxlength="400" placeholder="Anything else: the feel, the fabric, a detail, who it is for (optional)" aria-label="Anything else"></textarea>
+            <button class="btn go" type="submit">Draw concepts</button><span class="msg" role="status"></span></form>
+          <a class="way" href="/lab/sketches"><span class="k">From a sketch</span><b>Start from a flat sketch</b><small>Pick one of our professional flats, choose its cloth and colour, and it opens in the Studio with both in place.</small></a>
+          <a class="way" href="/lab/studio?start=scratch"><span class="k">From scratch</span><b>A blank page</b><small>Draw it yourself with the product's outline as a guide; its flats and pattern pieces follow.</small></a>
+          <a class="way" href="/lab#plans"><span class="k">A whole line</span><b>Plan a line</b><small>Describe a season or a drop; the assistant drafts the pieces, then concepts for each.</small></a>
+          <a class="way" href="/lab#board"><span class="k">Carry on</span><b>Open a concept you have</b><small>Every concept, by status and by plan.</small></a>
+        </div>`;
+      document.body.appendChild(d);
+      d.addEventListener('click', e => { if (e.target === d || e.target.closest('[data-close]')) d.close(); });
+      d.querySelector('#fbNewAi').addEventListener('submit', async e => {
+        e.preventDefault(); const f = e.target, b = f.querySelector('button[type=submit]'), m = f.querySelector('.msg'), name = f.name.value.trim(); if (!name) return;
+        b.disabled = true; b.textContent = 'Drawing concepts…'; m.className = 'msg'; m.textContent = 'This takes a minute or two.';
+        try {
+          const plans = (await call('/v1/lab/plans')).plans || [];
+          let plan = plans.find(p => p.name === 'Quick concepts' && (isClient() || !p.clientId)); // staff see every room's plans: theirs is the one with no room
+          const planId = plan ? plan.id : (await call('/v1/lab/plans', { name: 'Quick concepts', brief: 'Pieces started from New design, one at a time.' })).plan.id;
+          const after = await call(`/v1/lab/plans/${planId}/lines`, { category: f.category.value, name, brief: f.brief.value.trim() });
+          const line = [...(after.lines || [])].reverse().find(l => l.name === name) || (after.lines || []).slice(-1)[0];
+          await call(`/v1/lab/plans/${planId}/lines/${line.id}/concepts`, { count: Number(f.count.value) || 3 });
+          location.href = `/lab?plan=${planId}#board`;
+        } catch (x) { b.disabled = false; b.textContent = 'Draw concepts'; m.className = 'msg bad'; m.textContent = x.message; }
+      });
+    }
+    d.showModal();
+    if (!CATS) { CATS = await call('/v1/lab/overview').then(o => o.categories || []).catch(() => []); const sel = d.querySelector('select[name=category]'); sel.innerHTML = CATS.map(c => `<option value="${esc(c.id)}">${esc(c.label)}</option>`).join('') || '<option value="other">Other</option>'; }
+    d.querySelector('input[name=name]').focus();
+  }
+  document.addEventListener('click', e => { const t = e.target.closest('[data-new-design]'); if (!t || e.metaKey || e.ctrlKey || e.shiftKey) return; e.preventDefault(); openNew(); });
   // a toolbar's old "Lab ▾" button (data-lab-menu) is gone: the step bar and the console's tabs lead everywhere it did
-  function boot() { document.querySelectorAll('nav.labnav').forEach(render); document.querySelectorAll('[data-lab-menu]').forEach(b => b.remove()); if (location.pathname === '/lab') window.addEventListener('hashchange', () => document.querySelectorAll('nav.labnav').forEach(render)); }
-  window.FBLabNav = { TABS, STEPS, render, steps, isClient };
+  function boot() {
+    // arrived from the hub's New design (or any ?new=1): open it once, and take the flag off the address
+    const q = new URLSearchParams(location.search); if (q.get('new') === '1' && TOKEN()) { q.delete('new'); history.replaceState(null, '', location.pathname + (q.toString() ? '?' + q : '') + location.hash); setTimeout(openNew, 300); }
+    document.querySelectorAll('nav.labnav').forEach(render); document.querySelectorAll('[data-lab-menu]').forEach(b => b.remove()); if (location.pathname === '/lab') window.addEventListener('hashchange', () => document.querySelectorAll('nav.labnav').forEach(render)); }
+  window.FBLabNav = { TABS, STEPS, render, steps, isClient, openNew };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
 })();

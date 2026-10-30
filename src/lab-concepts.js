@@ -322,7 +322,7 @@ export async function artworkFiles(concept, { arts = new Map() } = {}) {
   out.push({ name: 'Future Basics internal woven label', image: await png(logoSvg('lockup', { fill: '#FFFFFF', bg: BRAND_INK, pad: 90 }), 1200) });
   for (const g of spec.graphics) {
     const label = `Graphic · ${g.name}${g.texts.length ? ' (' + g.texts.join(' / ') + ')' : ''} · ${g.finish?.name || g.technique}`;
-    if (g.art && arts.get(g.art)) out.push({ name: label, image: `data:image/png;base64,${Buffer.from(arts.get(g.art)).toString('base64')}` });
+    if (g.art && arts.get(g.art)) out.push({ name: label, image: `data:image/png;base64,${Buffer.from(arts.get(g.art)).toString('base64')}`, libraryArt: g.art }); // the graphic it is, so the pack can make its job file
     else if (g.svg) out.push({ name: label, image: await png(g.svg, 1400) });
   }
   return out;
