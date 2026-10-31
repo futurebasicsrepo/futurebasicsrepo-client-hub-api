@@ -3,6 +3,9 @@
 //   GET  /v1/lab/clients                         the client rooms a line can be designed for
 //   PUT  /v1/lab/plans/:id/client                {clientId|null, brand: {name, statement, audience}, shared} who the line is for, in their words, and
 //                                                whether they see it in their hub (sharing it emails them)
+//   GET  /v1/admin/clients/:id/design           the work console's view of a room's Design Lab: every line plan on the room (the client's own and the
+//                                                ones Future Basics designs for them, shared or not), each with its concepts, the client's say and the
+//                                                tech packs they became, and the concepts made outside a plan
 // The client (their hub, signed in to their own room):
 //   GET  /v1/client/design                       the lines shared with them: each concept's picture, words, price and status, its flats, their say on it
 //   GET  /v1/client/design/concepts/:id/image    a concept's picture
@@ -38,6 +41,26 @@ export function registerLabClientRoutes(app, d) {
       await notifyClientContact(client.id, { subject: `Your line "${cur.name}" is ready to review`, body: `<p>The concepts for <strong>${esc(cur.name)}</strong> are in your hub under <strong>Design</strong>. Approve the ones you want made, or ask for changes on any of them: each approved piece becomes its tech pack.</p><p><a href="${esc(hubUrl())}/#design">Open your hub</a></p>` });
     }
     return { plan: { id: r.id, clientId: r.client_id, brand: r.brand, sharedAt: r.shared_at } };
+  });
+
+  // ---- the work console: what the room has in the Design Lab, as the client's hub shows it and more (unshared lines, drafts) ----
+  app.get('/v1/admin/clients/:id/design', { preHandler: pre }, async (req, reply) => {
+    if (!UUID.test(req.params.id)) return bad(reply, 'Not found', 404);
+    const client = (await pool.query('select id, name from clients where id=$1', [req.params.id])).rows[0]; if (!client) return bad(reply, 'Not found', 404);
+    const plans = (await pool.query(`select p.id, p.name, p.season, p.brief, p.status, p.brand, p.shared_at, p.created_at, p.updated_at, u.role creator_role, coalesce(u.name, split_part(u.email,'@',1)) creator,
+        (select count(*)::int from lab_plan_lines l where l.plan_id=p.id and l.status<>'dropped') lines
+      from lab_plans p left join users u on u.id=p.created_by where p.client_id=$1 order by p.updated_at desc limit 60`, [client.id])).rows;
+    const concepts = (await pool.query(`select c.id, c.plan_id, c.name, c.category, c.twist, c.price_cents, c.qty, c.status, c.product_id, c.client_verdict, c.client_note, c.client_at, c.updated_at, (c.image is not null) has_image,
+        exists(select 1 from lab_flats f where f.concept_id=c.id) has_flats from lab_concepts c
+      where (c.plan_id = any($2::uuid[]) or (c.plan_id is null and c.client_id=$1)) and c.status<>'rejected' order by c.updated_at desc limit 300`, [client.id, plans.map(p => p.id)])).rows;
+    const notes = concepts.length ? (await pool.query(`select concept_id, count(*)::int n, max(at) last from lab_concept_comments where concept_id = any($1::uuid[]) and by_client group by 1`, [concepts.map(c => c.id)])).rows : [];
+    const shape = c => { const n = notes.find(x => x.concept_id === c.id);
+      return { id: c.id, planId: c.plan_id, name: c.name, category: c.category, twist: c.twist, price: c.price_cents == null ? null : c.price_cents / 100, qty: c.qty, status: c.status,
+        stage: c.product_id ? 'tech_pack' : c.status === 'approved' ? 'approved' : 'in_design', productId: c.product_id, image: c.has_image ? `/v1/lab/concepts/${c.id}/image` : null, flats: c.has_flats,
+        verdict: c.client_verdict, note: c.client_note, verdictAt: c.client_at, clientNotes: n?.n || 0, lastClientNote: n?.last || null, updatedAt: c.updated_at }; };
+    return { client, plans: plans.map(p => ({ id: p.id, name: p.name, season: p.season, brief: p.brief, status: p.status, lines: p.lines, updatedAt: p.updated_at, createdAt: p.created_at,
+      by: p.creator_role === 'client' ? 'client' : 'future-basics', creator: p.creator || null, brandName: p.brand?.name || '', sharedAt: p.shared_at,
+      concepts: concepts.filter(c => c.plan_id === p.id).map(shape) })), loose: concepts.filter(c => !c.plan_id).map(shape) };
   });
 
   // ---- the client's side ----
