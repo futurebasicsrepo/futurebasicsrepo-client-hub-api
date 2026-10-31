@@ -6,6 +6,7 @@
 <meta name="robots" content="noindex,nofollow">
 <title>Engineering benchmark</title>
 <link rel="icon" href="/icons/icon-192.png">
+<link rel="stylesheet" href="/cue.css">
 <style>
 @import url('/fonts/fonts.css');
 :root{--ink:#141416;--paper:#fff;--fog:#f5f5f2;--dim:#727278;--line:rgba(20,20,22,.14);--cue:#4bff9a;--ok:#17603a;--bad:#a02a20;--warn:#8a5a00}
@@ -16,8 +17,10 @@ button,select{font:inherit;color:inherit}.hidden{display:none!important}
 .btn.go{background:var(--cue);border-color:var(--cue)}.btn[disabled]{opacity:.45;pointer-events:none}
 .mono{font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
 main{max-width:1100px;margin:0 auto;padding:22px clamp(16px,3vw,32px) 60px;display:grid;gap:18px}main>*{min-width:0}
-header{display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px}header h1{margin:0;font-size:26px;letter-spacing:-.01em;text-wrap:balance}header p{margin:4px 0 0;color:var(--dim);max-width:64ch}
-header .act{margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap}select{border:1px solid var(--line);border-radius:999px;padding:6px 10px;background:#fff;min-height:34px}
+body>header{height:72px;padding:0 clamp(16px,4vw,48px);display:flex;align-items:center;justify-content:space-between;gap:14px;position:sticky;top:0;z-index:20}
+.wordmark{display:flex;align-items:center;gap:12px;text-decoration:none;color:inherit;text-transform:uppercase;letter-spacing:.08em}.brand-logo{display:block;width:200px;max-width:34vw;height:auto;max-height:30px}.brand-suffix{font:500 10px 'IBM Plex Mono',monospace;white-space:nowrap}
+.pagehead{display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px}.pagehead h1{margin:0;font-size:26px;letter-spacing:-.01em;text-wrap:balance}.pagehead p{margin:4px 0 0;color:var(--dim);max-width:64ch}
+.pagehead .act{margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap}select{border:1px solid var(--line);border-radius:999px;padding:6px 10px;background:#fff;min-height:34px}
 .panel{background:#fff;border:1px solid var(--line);border-radius:16px;padding:16px 18px}
 .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
 .tile b{display:block;font-size:28px;font-variant-numeric:tabular-nums;line-height:1.1}.tile span{color:var(--dim);font-size:12.5px}
@@ -33,12 +36,13 @@ details summary{cursor:pointer;font-weight:600}
 </style>
 </head>
 <body>
+<header><a class="wordmark" href="/home" aria-label="My day"><img class="brand-logo" src="https://thefuturebasics.com/cdn/shop/files/future_basics_true_vector_fixed.svg?v=1775278873&amp;width=360" alt="Future Basics"><span class="brand-suffix">/ Sites &amp; health</span></a></header>
 <main>
-  <header>
+  <div class="pagehead">
     <div><span class="mono">Design Lab · Engineering</span><h1>Engineering benchmark</h1>
       <p>Known products designed from their words alone, reviewed, then scored against what is known about them: size, the parts they cannot do without, the engine's checks, part count, cost to make and tooling.</p></div>
     <div class="act"><select id="only" aria-label="Products to run"><option value="">All products</option></select><button class="btn go" id="run">Run the benchmark</button></div>
-  </header>
+  </div>
   <div class="status" id="status" role="status"></div>
   <section class="panel hidden" id="sum"></section>
   <section class="panel hidden" id="table"></section>
