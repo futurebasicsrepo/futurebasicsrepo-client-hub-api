@@ -45,4 +45,6 @@ export async function fixturePrint(p, pngs) {
 }
 
 // the name it is kept under
-export const printName = (p, names = []) => p.name || (p.mode === 'style' ? `${clip(p.subject, 50)} · after ${names[0] || 'a print'}` : `${names[0] || 'Print'} × ${names[1] || 'print'}`);
+// a print made from prints keeps a short name: only the first part of a name that already says "after" or "×"
+const short = n => clip(String(n || '').split(/ · | × /)[0], 40);
+export const printName = (p, names = []) => clip(p.name || (p.mode === 'style' ? `${clip(p.subject, 50)} · after ${short(names[0]) || 'a print'}` : `${short(names[0]) || 'Print'} × ${short(names[1]) || 'print'}`), 80);

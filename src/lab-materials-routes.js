@@ -5,11 +5,14 @@
 //   GET  /v1/lab/concepts/:id/materials              what the concept is made of, what it costs, its colourways
 //   POST /v1/lab/concepts/:id/materials {material, role?, part?, qty?, colour?, note?}     PUT|DELETE /v1/lab/concepts/:id/materials/:mid[?part=]
 //                                                    (part: one of the product's parts, PARTS in src/lab-materials-goods.js; a part takes one material)
+//   PUT|DELETE /v1/lab/concepts/:id/fabric-accept {reason}   keep a fabric the fit check calls wrong, on purpose, with the reason
 //   PUT  /v1/lab/concepts/:id/costing {making?, freightPct?}      PUT /v1/lab/concepts/:id/colourways {colourways:[{name, hex, thread?}]}
 import sharp from 'sharp';
 import './pantone-c.js';
 import { BUILTIN_MATERIALS, MATERIAL_KINDS, FABRIC_CONSTRUCTIONS, FABRIC_FINISHES, TRIM_CATEGORIES, UNITS, ROLES, TAG_OPTIONS, USAGE_M, MAKING_CENTS, FREIGHT_DUTY_PCT, PARTS, GOODS_OPTIONS, clothPart, cleanMaterial, cleanPick, costOf, cleanColourways } from './lab-materials.js';
 import { tagSvg } from './lab-tags.js';
+import { fabricFit, withAccept, mainOf } from './lab-fabric-fit.js';
+import { FLAT_TEMPLATES } from './lab-flat-templates.js';
 import { MATERIAL_PHOTOS, photoFor, photoById, creditOf } from './lab-photos.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -104,9 +107,27 @@ export function registerLabMaterialsRoutes(app, d) {
     await pool.query('update lab_concepts set spec=$2, cost_cents=$3, updated_at=now() where id=$1', [c.id, spec, landed]);
     return { ...s, cost: { ...s.cost, landedCents: landed ?? s.cost.landedCents } };
   };
+  // does the fabric suit the style? (src/lab-fabric-fit.js) The style is the flats' own, or the sketch the concept started from
+  const styleOf = async c => { const f = (await pool.query(`select style, params->>'fit' fit from lab_flats where concept_id=$1`, [c.id])).rows[0]; return { style: f?.style || FLAT_TEMPLATES.find(t => t.id === c.spec?.template)?.style || '', fit: f?.fit || '' }; };
+  const withFit = async (c, s) => { const st = await styleOf(c); return { ...s, style: st.style, fit: st.style ? withAccept(fabricFit({ style: st.style, fit: st.fit, materials: s.picks }), c.spec?.fabricAccept, s.picks) : null }; };
   app.get('/v1/lab/concepts/:id/materials', { preHandler: pre }, async (req, reply) => {
     if (!need(req, reply)) return; const c = await concept(req.params.id); if (!c) return bad(reply, 'Not found', 404);
-    return summary(c);
+    return withFit(c, summary(c));
+  });
+  // keep a fabric the check calls wrong, on purpose, with the reason written down (who and when are kept with it); DELETE takes it back
+  app.put('/v1/lab/concepts/:id/fabric-accept', { preHandler: pre }, async (req, reply) => {
+    if (!need(req, reply)) return; const c = await concept(req.params.id); if (!c) return bad(reply, 'Not found', 404);
+    const reason = clip(req.body?.reason, 300); if (reason.length < 8) return bad(reply, 'Say why this fabric is right for it, in a few words');
+    const main = mainOf(picksOf(c)); if (!main) return bad(reply, 'Choose the main fabric first', 409);
+    const by = (await pool.query(`select coalesce(nullif(name,''), split_part(email,'@',1)) n from users where id=$1`, [actorOf(req)])).rows[0]?.n || '';
+    const spec = { ...(c.spec || {}), fabricAccept: { reason, by, at: new Date().toISOString(), main: main.id } };
+    await pool.query('update lab_concepts set spec=$2, updated_at=now() where id=$1', [c.id, spec]);
+    return withFit({ ...c, spec }, summary({ ...c, spec }));
+  });
+  app.delete('/v1/lab/concepts/:id/fabric-accept', { preHandler: pre }, async (req, reply) => {
+    if (!need(req, reply)) return; const c = await concept(req.params.id); if (!c) return bad(reply, 'Not found', 404);
+    const { fabricAccept, ...spec } = c.spec || {}; await pool.query('update lab_concepts set spec=$2, updated_at=now() where id=$1', [c.id, spec]);
+    return withFit({ ...c, spec }, summary({ ...c, spec }));
   });
   app.post('/v1/lab/concepts/:id/materials', { preHandler: pre }, async (req, reply) => {
     if (!need(req, reply)) return; const c = await concept(req.params.id); if (!c) return bad(reply, 'Not found', 404);
@@ -119,7 +140,7 @@ export function registerLabMaterialsRoutes(app, d) {
     const cp = pick.part ? clothPart(pick.part) : null, was = cp?.role ? picks.find(p => !p.part && p.role === cp.role && p.kind === 'fabric') : null;
     const spec = { ...(c.spec || {}), materials: [...picks.filter(p => p !== was && (pick.part ? p.part !== pick.part : !(p.id === m.id && p.role === pick.role && !p.part))), pick] };
     if (m.kind === 'fabric' && (pick.role === 'main' || cp?.role === 'main')) spec.fabric = clip(`${m.name}${pick.colour?.name ? `, ${pick.colour.name}` : ''}`, 160); // the words on the concept follow the fabric
-    return reply.code(201).send(await store(c, spec));
+    return reply.code(201).send(await withFit({ ...c, spec }, await store(c, spec)));
   });
   app.put('/v1/lab/concepts/:id/materials/:mid', { preHandler: pre }, async (req, reply) => {
     if (!need(req, reply) || !need(req, reply, 'mid')) return; const c = await concept(req.params.id); if (!c) return bad(reply, 'Not found', 404);
@@ -127,12 +148,14 @@ export function registerLabMaterialsRoutes(app, d) {
     const m = await one(req.params.mid), base = m ? shape(m) : { id: picks[i].id, kind: picks[i].kind, name: picks[i].name, unit: picks[i].unit, priceCents: picks[i].unitCents, colours: [], spec: picks[i].spec, code: picks[i].code, supplier: picks[i].supplier };
     picks[i] = cleanPick({ role: picks[i].role, part: picks[i].part, qty: picks[i].qty, colour: picks[i].colour?.hex, note: picks[i].note, ...(req.body || {}) }, base, c.category);
     const moved = picks[i]; // moved onto a part that had another material: that one comes off
-    return store(c, { ...(c.spec || {}), materials: picks.filter((p, j) => j === i || !moved.part || p.part !== moved.part) });
+    const spec = { ...(c.spec || {}), materials: picks.filter((p, j) => j === i || !moved.part || p.part !== moved.part) };
+    return withFit({ ...c, spec }, await store(c, spec));
   });
   app.delete('/v1/lab/concepts/:id/materials/:mid', { preHandler: pre }, async (req, reply) => {
     if (!need(req, reply) || !need(req, reply, 'mid')) return; const c = await concept(req.params.id); if (!c) return bad(reply, 'Not found', 404);
     const part = clip(req.query?.part, 40), picks = picksOf(c).filter(p => !(p.id === req.params.mid && (!part || p.part === part))); if (picks.length === picksOf(c).length) return bad(reply, 'That material is not on this concept', 404);
-    return store(c, { ...(c.spec || {}), materials: picks });
+    const spec = { ...(c.spec || {}), materials: picks };
+    return withFit({ ...c, spec }, await store(c, spec));
   });
   app.put('/v1/lab/concepts/:id/costing', { preHandler: pre }, async (req, reply) => {
     if (!need(req, reply)) return; const c = await concept(req.params.id); if (!c) return bad(reply, 'Not found', 404);

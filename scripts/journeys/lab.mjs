@@ -1396,7 +1396,7 @@ await journey('J225', 'Finding your way round the Lab: the Design Lab is one sec
         await page.goto(`${BASE}/lab`, { waitUntil: 'networkidle' }); await page.waitForSelector('#app:not(.hidden)'); await page.waitForSelector('.fbtabs [data-tabs="lab"] a', { state: 'visible' });
         const tabs = await page.$$eval('.fbtabs [data-tabs="lab"] a:not(.act)', els => els.map(e => e.textContent.trim())); // the parts; New design leads the row as its one action
         ok(/New design/.test(await page.innerText('.fbtabs [data-tabs="lab"] a.act')), '   New design leads the row');
-        ok(tabs.join(',') === 'Line plans,Concepts,Studio,Assortment,Sketch pack,Graphics & techniques,Materials,Research' && await page.locator('nav.labnav a').count() === 0 && await page.locator('[data-lab-menu]').count() === 0, '2. the Lab\'s parts are the one row of tabs across the top (no second Lab menu on the page)', tabs);
+        ok(tabs.join(',') === 'Line plans,Concepts,Studio,Assortment,Recipe menu,Sketch pack,Graphics & techniques,Materials,Research' && await page.locator('nav.labnav a').count() === 0 && await page.locator('[data-lab-menu]').count() === 0, '2. the Lab\'s parts are the one row of tabs across the top (no second Lab menu on the page)', tabs);
         ok(/Line plans/.test(await page.innerText('.fbtabs a.on')) && await page.isVisible('#plans') && !(await page.isVisible('#board')) && !(await page.isVisible('#library')), '   the Lab opens on Line plans, on its own: the concepts and the research are their own tabs');
         await page.click('.fbtabs a[data-href="/lab#board"]'); await page.waitForFunction(() => document.getElementById('board').offsetParent && !document.getElementById('plans').offsetParent);
         ok(/Concepts/.test(await page.innerText('.fbtabs a.on')) && page.url().endsWith('#board'), '   Concepts shows the board on its own, the address follows');
@@ -4037,6 +4037,69 @@ await journey('J268', 'Design by picking, the fabric checked, and new prints fro
     for (const id of made) if (id) await K(`/concepts/${id}`, { method: 'DELETE' });
     for (const id of arts) if (id) await K(`/library/graphics/${id}`, { method: 'DELETE' });
   }
+});
+
+await journey('J269', 'Easy to find and clear to use: the recipe menu is in the staff tab row, the hub\'s Design Lab and the client room in Work; on a phone the bases scroll sideways and a bar at the foot shows the piece as it is picked, with no stray line; New print opens from the library header (saying what to do when the room has no graphics yet) and from the Studio; the fabric check shows in the Studio\'s fabric window with each library fabric marked, a wrong fabric can be kept on purpose with a reason that clears the checklist, and taking it back holds the tech pack up again; another room cannot touch it', async () => {
+  const email = `phase1-${stamp}@selfserve.test`, started = await call('/v1/public/start', { body: { email, name: 'Phase One Co', title: 'Tee', photos: [jpeg()] } });
+  const cid = started.json.client?.id || sql(`select client_id from users where lower(email)='${email}'`), uid = sql(`select id from users where lower(email)='${email}'`).split('\n')[0], slug = sql(`select slug from clients where id='${cid}'`).split('\n')[0];
+  sql(`update users set email_verified_at=now() where id='${uid}'`); sql(`update clients set lab_free=true where id='${cid}'`);
+  const clientT = await forge({ sub: uid, clientId: cid, client: slug, role: 'client', email }), H = (path, o = {}) => call('/v1/lab' + path, { token: clientT, ...o });
+  const made = [];
+  try {
+    // the fabric check and keeping a wrong one on purpose (over HTTP first)
+    const leg = await K('/concepts/from-recipe', { body: { base: 'leggings', system: 'mono' } }); made.push(leg.json.concept.id); const L = leg.json.concept.id;
+    const mats = (await K('/materials?kind=fabric')).json.materials, twill = mats.find(m => /cotton twill/.test(m.name));
+    const added = await K(`/concepts/${L}/materials`, { body: { material: twill.id, role: 'main' } });
+    ok(added.json.style === 'leggings' && added.json.fit?.verdict === 'wrong', '1. adding a fabric answers with the check: a twill on leggings is wrong', { style: added.json.style, fit: added.json.fit?.verdict });
+    ok((await K(`/concepts/${L}/fabric-accept`, { method: 'PUT', body: { reason: 'ok' } })).status === 422, '   keeping it needs a reason');
+    const kept = await K(`/concepts/${L}/fabric-accept`, { method: 'PUT', body: { reason: 'A woven legging is the idea for this capsule' } });
+    ok(kept.status === 200 && kept.json.fit?.accepted?.reason && /Kept on purpose/.test(kept.json.fit.summary), '   kept on purpose, with who and why', kept.json.fit);
+    const rd = async () => (await K(`/concepts/${L}/ready`)).json.items.find(i => i.id === 'fabric');
+    ok((await rd())?.state === 'done' && /woven legging is the idea/.test((await rd()).note), '   the checklist shows the reason and no longer holds it up');
+    const other = await H(`/concepts/${L}/fabric-accept`, { method: 'DELETE' });
+    ok([403, 404].includes(other.status), '   another room cannot take it back', other.status);
+    await K(`/concepts/${L}/fabric-accept`, { method: 'DELETE' });
+    ok((await rd())?.state === 'todo', '   taken back, it holds the tech pack up again');
+    await K(`/concepts/${L}/fabric-accept`, { method: 'PUT', body: { reason: 'A woven legging is the idea for this capsule' } });
+    const jersey = mats.find(m => /180 gsm single jersey/.test(m.name)); await K(`/concepts/${L}/materials`, { body: { material: jersey.id, role: 'main' } });
+    ok(!(await K(`/concepts/${L}/materials`)).json.fit?.accepted, '   a new main fabric is checked afresh: the reason was for the twill');
+    if (!playwright) { ok(true, 'needs a browser'); return; }
+    const b = await playwright.chromium.launch();
+    try {
+      const ctx = async (tok, key, w, h) => { const c = await b.newContext({ viewport: { width: w, height: h } }); await c.addInitScript(([t, k]) => { try { localStorage.setItem(k, t); localStorage.setItem('fb.helper.on', '0'); } catch {} }, [tok, key]); const pg = await c.newPage(); pg.errs = []; pg.on('pageerror', e => pg.errs.push(String(e))); return pg; };
+      // the client, on a phone
+      const p = await ctx(clientT, 'fb.client.token', 390, 844);
+      await p.goto(`${BASE}/hub`, { waitUntil: 'networkidle' }); await p.waitForSelector('#lab a[href="/lab/recipe"]', { timeout: 20000 }).catch(() => {});
+      ok(await p.evaluate(() => Boolean(document.querySelector('#lab a[href="/lab/recipe"]'))), '2. the hub\'s Design Lab offers the recipe menu');
+      await p.goto(`${BASE}/lab/recipe`, { waitUntil: 'networkidle' }); await p.waitForSelector('#bases [data-base]');
+      await p.click('[data-base=hoodie]'); await p.click('[data-addon=kangaroo]');
+      const m = await p.evaluate(() => ({ mini: getComputedStyle(document.querySelector('#mini')).display, art: Boolean(document.querySelector('#miniArt svg')), name: document.querySelector('#miniName').textContent, rows: getComputedStyle(document.querySelector('#bases')).gridAutoFlow, line: getComputedStyle(document.querySelector('.rsteps'), '::before').content, over: document.documentElement.scrollWidth > innerWidth + 1 }));
+      ok(m.mini === 'flex' && m.art && /hoodie/i.test(m.name) && m.rows === 'column' && m.line === 'none' && !m.over, '   on a phone the bases scroll sideways and a bar at the foot shows the piece, with no stray line', m);
+      await p.click('#miniOpen'); await p.waitForURL(/\/lab\/studio\?concept=/, { timeout: 20000 }); made.push(new URL(p.url()).searchParams.get('concept'));
+      ok(true, '   and Open in the bar makes it and opens the Studio');
+      await p.goto(`${BASE}/lab/library`, { waitUntil: 'networkidle' }); await p.click('#npGo'); await p.waitForSelector('#npDlg[open]');
+      ok(/Nothing here yet/.test(await p.textContent('#npA')) && await p.isDisabled('#npMake'), '3. New print opens from the library header, and says what to do when the room has no graphics yet');
+      ok(p.errs.length === 0, '   no page errors for the client', p.errs);
+      // staff, on a desktop
+      const s = await ctx(kyleT, 'fb.admin.token', 1366, 900);
+      await s.goto(`${BASE}/lab/recipe`, { waitUntil: 'networkidle' });
+      ok(await s.evaluate(() => [...document.querySelectorAll('a[href="/lab/recipe"]')].some(a => a.offsetParent)), '4. staff find the recipe menu in the tab row');
+      const art = (await K('/library/graphics/upload', { body: { image: await png(160, 120, [40, 90, 60]), name: 'Phase one motif' } })).json.id;
+      await s.goto(`${BASE}/lab/library?print=1&art=${art}`, { waitUntil: 'networkidle' }); await s.waitForSelector('#npDlg[open]', { timeout: 15000 });
+      ok(await s.evaluate(id => document.querySelector(`#npA [data-np="${id}"]`)?.getAttribute('aria-checked') === 'true', art), '   the Studio\'s link opens New print with the graphic picked');
+      await s.fill('#npSubj', 'ferns and moths'); await s.click('#npMake'); await s.waitForFunction(() => !document.querySelector('#npOut').classList.contains('hidden'), null, { timeout: 20000 });
+      const pr = await s.textContent('#npInfo'); ok(/ferns and moths/.test(pr), '   and the print is made and kept', pr);
+      sql(`delete from lab_art where id='${art}' or (source='print' and name like 'ferns and moths%')`);
+      await s.goto(`${BASE}/lab/studio?concept=${L}&fabric=1`, { waitUntil: 'networkidle' }); await s.waitForSelector('#matDlg[open] #matFit:not(.hidden)', { timeout: 30000 });
+      await K(`/concepts/${L}/fabric-accept`, { method: 'DELETE' }); await K(`/concepts/${L}/materials`, { body: { material: twill.id, role: 'main' } }); // back to the twill, with nothing kept on purpose
+      await s.evaluate(() => matLoadOn()); await s.waitForFunction(() => /does not suit/.test(document.querySelector('#matFit').textContent), null, { timeout: 15000 });
+      const marks = await s.evaluate(() => [...document.querySelectorAll('#matLib .mok')].map(x => x.className));
+      ok(marks.length > 3 && marks.some(c => /good/.test(c)) && /good/.test(marks[0]), '5. the Studio\'s fabric window shows the check, marks every fabric, the ones that suit first', marks.slice(0, 4));
+      await s.fill('#fitWhy', 'Woven on purpose for the capsule'); await s.click('[data-fitkeep]'); await s.waitForFunction(() => /Kept on purpose/.test(document.querySelector('#matFit').textContent), null, { timeout: 15000 });
+      ok((await rd())?.state === 'done', '   Keep it, with a reason, clears the checklist');
+      ok(s.errs.length === 0, '   no page errors for staff', s.errs);
+    } finally { await b.close(); }
+  } finally { for (const id of made) if (id) await K(`/concepts/${id}`, { method: 'DELETE' }); }
 });
 
 shops.close(); brave.close();

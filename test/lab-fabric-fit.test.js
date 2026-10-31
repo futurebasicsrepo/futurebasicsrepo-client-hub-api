@@ -41,3 +41,11 @@ test('nothing to check says so', () => {
   assert.equal(fabricFit({ style: 'tee', materials: [] }).verdict, 'unknown');
   assert.equal(fabricFit({ style: '', materials: [jersey] }).verdict, 'unknown');
 });
+
+import { withAccept } from '../src/lab-fabric-fit.js';
+test('a wrong fabric kept on purpose holds only while it is still the main fabric', () => {
+  const tw = { ...twill, id: 'tw' }, f = fabricFit({ style: 'leggings', materials: [tw] }), acc = { reason: 'Woven on purpose', by: 'kyle', main: 'tw' };
+  const k = withAccept(f, acc, [tw]); assert.equal(k.accepted.reason, 'Woven on purpose'); assert.match(k.summary, /Kept on purpose: Woven on purpose \(kyle\)/);
+  assert.equal(withAccept(f, acc, [{ ...jersey, id: 'js' }]).accepted, undefined);
+  assert.equal(withAccept(fabricFit({ style: 'tee', materials: [jersey] }), acc, [jersey]).accepted, undefined); // nothing to keep when it suits
+});

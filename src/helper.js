@@ -83,6 +83,7 @@
       steps: [
         { target: '#gPrompt', title: 'Draw one with AI', optional: true, do: 'Say what the graphic is, the words on it, the ink colours and what it is made for, then press Draw.', why: 'The technique’s own rules go to the image model, so what comes back can be made.' },
         { target: '#uFiles', title: 'Or add our own artwork', optional: true, do: 'Drop a PNG, JPEG or WebP.', why: 'Transparency is kept, so it sits on fabric as it is.' },
+        { target: '#npGo', title: 'A new print from one you have', optional: true, do: 'Press Make a new print, pick a graphic by its picture, and say what the new one shows, or pick a second to blend with.', why: 'The image model keeps the style and makes something new; it is kept here, ready to repeat or put on a piece.' },
         { target: '#buildGo', title: 'Or build one in the studio', optional: true, do: 'Press it: the studio opens on a clear canvas. Draw with AI, paint, type, add marks and parts from the sketch pack, then press “Keep in the library”.', why: 'The layers are kept with the graphic, so it can be reworked later exactly as it was built.' },
         { target: '#gGrid', title: 'Everything we have made', do: 'Search by words, tag, where it came from or technique. Open a graphic to see it on fabric, made as any technique.', why: 'Nothing is lost: graphics drawn for a plan, a concept, in the studio or added by hand all live here.' },
         { target: '#fQ', title: 'Put it on anything', do: 'Open a graphic: “Put it on a concept” places it on a concept’s picture; “Put it on a product” searches any client’s products and adds it to the tech pack as artwork, placed on the front.', why: 'One library, every piece: the pack carries the graphic, its Pantones and its placement.' },
@@ -97,6 +98,18 @@
         { target: '#gal', title: 'Every flat sketch we draw from', do: 'Search (cargo, pleated, halter), or filter by range and style. Pick one to see it large with its front and back.', why: 'Men’s, women’s and accessories: 382 drawings in the same lines, so every piece reads the same way to a factory.' },
         { target: '#pick', title: 'Put it on a concept', do: 'With a sketch picked, choose the concept: its flats open at that sketch’s own proportions.', why: 'The cut comes from the sketch; the measurements and placements follow in inches.' },
         { target: '.seg', title: 'The parts', optional: true, do: 'Switch to Parts: the pockets, zips, collars, trims and buttons cut from the pack.', why: 'They go on the flats and into the studio in the same lines.' }
+      ],
+      next: { tour: 'lab-flats', label: 'Draw and change the flats' }
+    },
+    {
+      id: 'lab-recipe', title: 'Design by picking',
+      match: () => path() === '/lab/recipe' && shown('#app'),
+      steps: [
+        { target: '#bases', title: 'Pick a base', do: 'Choose a staple: a boxy tee, a hoodie, wide trousers, a cap.', why: 'It starts at its usual fit and measurements, drawn from our own flat sketches.' },
+        { target: '#addons', title: 'Add what you want on it', do: 'Tap pockets, closures and finishes to add or take them away.', why: 'Only the ones that suit the base are shown, and each lands where that detail usually goes.' },
+        { target: '#systems', title: 'Pick a colour system', do: 'Choose a set of colours, or your own four, then which one the garment is.', why: 'The next colour is the stitching, and every colour becomes a colourway on the tech pack.' },
+        { target: '#mats', title: 'The cloth, if you know it', optional: true, do: 'Pick a fabric, or leave it for later.', why: 'You are told straight away if it does not suit the piece: too light, too heavy, or no stretch where it needs it.' },
+        { target: '#open', title: 'Open it in the Studio', do: 'Press Open in the Studio.', why: 'The piece, its flats and its colourways are made in one go, ready to add graphics and finish.' }
       ],
       next: { tour: 'lab-flats', label: 'Draw and change the flats' }
     },
