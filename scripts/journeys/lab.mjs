@@ -1013,6 +1013,12 @@ await journey('J216', 'Design service: a line designed for a client in their bra
     const after = (await C('')).json.plans[0].concepts.find(c => c.id === a.id);
     ok(after.stage === 'tech_pack' && after.productId === tp.json.productId && (await C(`/concepts/${a.id}/verdict`, { body: { verdict: 'changes', note: 'make it longer' } })).status === 409, 'the hub shows it as a tech pack, where changes are asked for from now on');
     if (fl.flat) { const f = await fetch(BASE + after.flats, { headers: { Authorization: 'Bearer ' + ctoken } }); ok(f.status === 200 && /<svg/.test(await f.text()), 'the client reads its flats and measurements'); }
+    // the work console sees the room's design work too: its line plans with their concepts, the client's say, and the tech packs they became
+    const wd = (await call(`/v1/admin/clients/${cid}/design`, { token: kyleT })).json, wp = wd.plans?.find(x => x.id === plan.plan.id), wa = wp?.concepts.find(c => c.id === a.id), wb = wp?.concepts.find(c => c.id === b.id);
+    ok(wp && wp.by === 'future-basics' && wp.sharedAt && wp.brandName === 'Tidewater' && wa?.stage === 'tech_pack' && wa.productId === tp.json.productId && wb?.verdict === 'changes' && /key pocket/.test(wb.note) && wb.clientNotes >= 1, 'the work console\'s room shows the line, each concept with the client\'s say, and the tech pack it became', wp || wd);
+    ok((await call(`/v1/admin/clients/${other.client.id}/design`, { token: kyleT })).json.plans.length === 0 && (await call(`/v1/admin/clients/${cid}/design`, { token: ctoken })).status === 403, '   another room shows none of it, and a client cannot read it');
+    const pr = (await K(`/plans?client=${cid}`)).json.plans, po = (await K(`/plans?client=${other.client.id}`)).json.plans;
+    ok(pr.some(x => x.id === plan.plan.id && x.clientName) && !po.some(x => x.id === plan.plan.id) && (await K('/plans')).json.plans.find(x => x.id === plan.plan.id)?.clientName, '   in the Lab, each plan names its room, and the list narrows to one room', pr.map(x => x.clientName));
     // in a browser: the hub's Design section
     if (playwright) {
       const bw = await playwright.chromium.launch(); try {
@@ -1024,6 +1030,19 @@ await journey('J216', 'Design service: a line designed for a client in their bra
         if (await card.count()) { await card.locator('[data-dzask]').click(); await card.locator('textarea').fill('Can it come in navy?'); await card.locator('[data-dzv="changes"]').click();
           await page.waitForFunction(() => /Changes asked for/.test(document.getElementById('design').innerText), null, { timeout: 15000 }); ok(true, 'a client asks for changes from the hub'); }
         await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/hub-design.png`, fullPage: false }).catch(() => {});
+        const wctx = await bw.newContext({ viewport: { width: 1280, height: 900 } }), wpg = await wctx.newPage(); wpg.on('pageerror', e => errs.push('work: ' + e.message));
+        await wctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
+        await wpg.goto(`http://work.localhost:${new URL(BASE).port}/clients/${cid}`, { waitUntil: 'domcontentloaded' }); await wpg.waitForSelector('#roomDesignPeek .rd-plan', { timeout: 20000 });
+        ok(/Tidewater|Design Lab/.test(await wpg.innerText('#roomDesignPeek')) && await wpg.locator('#workbar a.wb[data-sel="design"]').count() === 1, 'the work console\'s room shows the line plans on its overview, with Design Lab in its rail');
+        await wpg.click('#workbar a.wb[data-sel="design"]'); await wpg.waitForSelector('#roomDesignBox .rd-card', { timeout: 15000 });
+        ok(await wpg.locator('#roomDesignBox .rd-card').count() >= 2 && /Client asks for changes/.test(await wpg.innerText('#roomDesignBox')) && /Tech pack started/.test(await wpg.innerText('#roomDesignBox')), '   and its Design Lab shows the concepts with the client\'s say, as the hub draws them');
+        await wpg.click('#roomDesignBox [data-rdf="changes"]'); ok(await wpg.locator('#roomDesignBox .rd-card').count() >= 1 && !/Tech pack started/.test(await wpg.innerText('#roomDesignBox .rd-grid')), '   narrowed to the changes the client asked for');
+        await wpg.click('#roomDesignBox [data-rdf="all"]'); await wpg.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/work-room-design.png`, fullPage: true }).catch(() => {});
+        await wpg.setViewportSize({ width: 390, height: 844 }); await wpg.waitForTimeout(300); ok(await wpg.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), '   on a phone it fits the screen', await wpg.evaluate(() => document.documentElement.scrollWidth));
+        await wpg.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/work-room-design-phone.png`, fullPage: false }).catch(() => {});
+        const lp = await wctx.newPage(); lp.on('pageerror', e => errs.push('lab: ' + e.message)); await lp.goto(`http://work.localhost:${new URL(BASE).port}/lab?client=${cid}#plans`, { waitUntil: 'domcontentloaded' }); await lp.waitForSelector(`#planList [data-plan="${plan.plan.id}"]`, { timeout: 20000 });
+        ok(await lp.inputValue('#planRoom') === cid && /Tidewater|dana/i.test(await lp.innerText(`#planList [data-plan="${plan.plan.id}"]`)) && await lp.locator('#planList [data-plan]').count() === (await K(`/plans?client=${cid}`)).json.plans.length, '   "Line plans for this room" opens the Lab on this room\'s plans, each named with its room');
+        await wctx.close();
         ok(errs.length === 0, 'no page errors', errs);
       } finally { await bw.close(); }
     }

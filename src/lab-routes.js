@@ -184,7 +184,12 @@ export function registerLabRoutes(app, d) {
     const days = Math.min(Math.max(Number(req.query?.days) || 180, 7), 720), code = await loadCode();
     return { days, ...(await trendsFor(days)), economics: code.economics, anchor: code.priceAnchor.name };
   });
-  app.get('/v1/lab/plans', { preHandler: pre }, async req => ({ plans: (await pool.query(`select p.*, (select count(*) from lab_plan_lines l where l.plan_id=p.id and l.status<>'dropped') lines from lab_plans p where ($1::uuid is null or p.client_id=$1) order by p.updated_at desc limit 100`, [own(req)])).rows.map(planShape) }));
+  // staff see every room's plans, each named with its room, and can narrow them to one room (?client=<id>, or ?client=none for Future Basics' own)
+  app.get('/v1/lab/plans', { preHandler: pre }, async req => {
+    const mine = own(req), q = String(req.query?.client || ''), room = mine || (UUID.test(q) ? q : null), ours = !mine && q === 'none';
+    return { plans: (await pool.query(`select p.*, k.name client_name, (select count(*) from lab_plan_lines l where l.plan_id=p.id and l.status<>'dropped') lines from lab_plans p left join clients k on k.id=p.client_id
+      where ($1::uuid is null or p.client_id=$1) and (not $2 or p.client_id is null) order by p.updated_at desc limit 100`, [room, ours])).rows.map(r => ({ ...planShape(r), clientName: mine ? undefined : r.client_name || null })) };
+  });
   app.post('/v1/lab/plans', { preHandler: pre }, async (req, reply) => {
     const name = clip(req.body?.name, 100); if (!name) return bad(reply, 'Give the plan a name');
     const cid = own(req), r = (await pool.query(`insert into lab_plans(name,season,brief,created_by,client_id,brand) values($1,$2,$3,$4,$5,$6) returning *`, [name, clip(req.body?.season, 40), clip(req.body?.brief, 800), actorOf(req), cid, cid ? await roomBrand(cid) : null])).rows[0];
