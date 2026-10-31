@@ -1358,6 +1358,17 @@ screen, the drawing and the files agree. Routes: `src/lab-assembly-routes.js`; s
   weeks *on quotes* beside the engine's own figures, with how many quotes they rest on. A factory's unit price includes its margin, so the
   unit factor carries that gap too. `GET /v1/lab/engineering/calibration` lists the factors and samples; `POST …/calibration/learn` re-reads
   every quote (staff).
+- **Benchmark** (`/lab/engineering/benchmark`, staff; `src/lab-benchmark.js`, table `lab_benchmark_runs`): how good the engineering is,
+  measured. Twelve kinds of product (a power bank, a waterproof Bluetooth speaker, a rear bike light, a wireless mouse, a Wi-Fi smart plug,
+  a kitchen scale, a handheld fan, an LED desk lamp, a sonic toothbrush, a Bluetooth tracker, an insulated bottle, a phone stand), each
+  with what is known about it: its size (published dimensions of the common products of its kind), the parts it cannot do without, a part
+  count from public teardowns, and ranges for the cost to make at 5,000 a year and its tooling. **Run the benchmark** designs each from its
+  words alone, reviews it with the judges configured, and scores it out of 100 before and after the review: size 20, must-have parts 25,
+  the engine's checks 15, part count 10, cost to make 20, tooling 10 (in range scores full, falling to nothing at twice or half). The
+  summary gives the averages, the weakest measures, what is most often missing, and whether the review's verdict agrees (a 90 on review
+  against 80 here); a product that passed the review but scores weakly here is named, as that is where the review's 90 is not enough. One
+  run at a time in the background, the table filling as each product finishes (about half an hour for all twelve); one product can be run
+  alone. `ENGINEERING_BENCHMARK_DAILY` (3) caps a day's runs; with the fixtures, the same answers stand in for every product.
 - **Files** (from the saved assembly): **STEP** for CAD (`src/lab-step.js`, AP214, mm): every part an exact solid at its real place, flat
   faces as planes and rounded or round faces as cylinders with their radii, named and coloured, so SolidWorks, Fusion or a toolmaker can
   measure and edit it (an elliptical part is faceted, a ball a faceted ellipsoid; all closed solids, checked with OpenCascade); STL

@@ -19,6 +19,7 @@ import { stepOf } from './lab-step.js';
 import { reviewAssembly, BAR as REVIEW_BAR } from './lab-assembly-review.js';
 import { composeAssembly } from './lab-assembly-compose.js';
 import { sampleOf, factorsOf, calibrated } from './lab-cost-calibration.js';
+import { REFERENCE, runBenchmark } from './lab-benchmark.js';
 import { openaiAsk } from './lab-shoe-review.js';
 import { trackedFetch, timed } from './telemetry.js';
 import { archetype, cleanAssembly, engineer, guessArch, radioOf, stlOf, drawingSvg, blockSvg, bomCsv, bomRows, ARCHES, RESINS, PROCESSES, FINISHES, FIXES, SHAPES, ELEC, AGES } from './lab-assembly.js';
@@ -80,11 +81,13 @@ export function registerLabAssemblyRoutes(app, d) {
   // engine's terms, the checks' problems go back to be fixed, and the result is saved like a start. ASSEMBLY_COMPOSE_FIXTURE (a list of
   // answers, one per call) stands in for Claude in tests; ENGINEERING_COMPOSE_DAILY (30) caps a day's.
   const composed = { day: '', n: 0 };
+  const composeAsk = () => {
+    if (env.AI_FIXTURE || !env.ANTHROPIC_API_KEY) { let list = null; try { const f = String(env.ASSEMBLY_COMPOSE_FIXTURE || '').trim(); list = f ? JSON.parse(f.startsWith('[') ? f : readFileSync(f, 'utf8')) : null; } catch { list = null; } if (!Array.isArray(list) || !list.length) return null; let i = 0; return async () => list[Math.min(i++, list.length - 1)]; }
+    return (system, content, schema) => timed('anthropic', () => askImpl(system, content, schema, { maxTokens: 12000 }));
+  };
   app.post('/v1/lab/concepts/:id/assembly/compose', { preHandler: pre }, async (req, reply) => {
     const c = await concept(req.params.id); if (!c) return bad(reply, 'Not found', 404);
-    let ask = null;
-    if (env.AI_FIXTURE || !env.ANTHROPIC_API_KEY) { let list = null; try { const f = String(env.ASSEMBLY_COMPOSE_FIXTURE || '').trim(); list = f ? JSON.parse(f.startsWith('[') ? f : readFileSync(f, 'utf8')) : null; } catch { list = null; } if (Array.isArray(list) && list.length) { let i = 0; ask = async () => list[Math.min(i++, list.length - 1)]; } }
-    else ask = (system, content, schema) => timed('anthropic', () => askImpl(system, content, schema, { maxTokens: 12000 }));
+    const ask = composeAsk();
     if (!ask) return bad(reply, 'Designing from the concept needs Claude connected', 503);
     const today = new Date().toISOString().slice(0, 10); if (composed.day !== today) Object.assign(composed, { day: today, n: 0 });
     if (composed.n >= (Number(env.ENGINEERING_COMPOSE_DAILY) || 30)) return bad(reply, 'Today\'s designs from concepts are used: start from a kind of product instead, or try tomorrow', 429); composed.n++;
@@ -227,6 +230,31 @@ export function registerLabAssemblyRoutes(app, d) {
     if (s.kind === 'electronics') out.push({ name: 'engineering/block-diagram.svg', data: Buffer.from(blockSvg(s)) });
     return { files: out, notes };
   }
+  // ---- the engineering measured (src/lab-benchmark.js): known products designed from their words, reviewed, and scored against what is
+  // known about them, before and after the review. One run at a time, in the background; ENGINEERING_BENCHMARK_DAILY (3) runs a day, as a
+  // run is a dozen designs and their reviews. With the fixtures (tests) the same answers stand in for every product.
+  let benchRunning = null; const benched = { day: '', n: 0 };
+  app.post('/v1/lab/engineering/benchmark', { preHandler: pre }, async (req, reply) => {
+    if (benchRunning) return bad(reply, 'A benchmark is already running', 409);
+    const ask = composeAsk(); if (!ask) return bad(reply, 'The benchmark needs Claude connected', 503);
+    const today = new Date().toISOString().slice(0, 10); if (benched.day !== today) Object.assign(benched, { day: today, n: 0 });
+    if (benched.n >= (Number(env.ENGINEERING_BENCHMARK_DAILY) || 3)) return bad(reply, 'Today\'s benchmark runs are used: try tomorrow', 429);
+    const ids = REFERENCE.map(r => r.id), only = Array.isArray(req.body?.only) ? req.body.only.filter(x => ids.includes(x)) : null;
+    if (only && !only.length) return bad(reply, 'None of those products is in the benchmark');
+    benched.n++; const judges = reviewers();
+    const run = (await pool.query('insert into lab_benchmark_runs(started_by, judges) values($1,$2) returning id, started_at', [actorOf(req), judges.map(j => j.name)])).rows[0];
+    const items = []; benchRunning = run.id;
+    runBenchmark({ ask, judges, only, onItem: it => { items.push(it); pool.query('update lab_benchmark_runs set items=$2 where id=$1', [run.id, JSON.stringify(items)]).catch(() => {}); } })
+      .then(res => pool.query(`update lab_benchmark_runs set status='done', items=$2, summary=$3, finished_at=now() where id=$1`, [run.id, JSON.stringify(res.items), res.summary]))
+      .catch(e => { log.warn?.({ err: e.message }, 'engineering benchmark failed'); return pool.query(`update lab_benchmark_runs set status='failed', error=$2, finished_at=now() where id=$1`, [run.id, String(e.message).slice(0, 300)]); })
+      .finally(() => { benchRunning = null; });
+    return reply.code(202).send({ id: run.id, products: (only || ids).length, judges: judges.map(j => j.name) });
+  });
+  app.get('/v1/lab/engineering/benchmark', { preHandler: pre }, async () => {
+    const runs = (await pool.query('select id, status, judges, items, summary, error, started_at, finished_at from lab_benchmark_runs order by started_at desc limit 10')).rows;
+    for (const r of runs) if (r.status === 'running' && r.id !== benchRunning) Object.assign(r, { status: 'failed', error: 'The service restarted during the run' }); // the run lived in a process that is gone
+    return { reference: REFERENCE.map(r => ({ id: r.id, name: r.name, category: r.category, description: r.description, size: r.size, must: r.must.map(m => m.label), count: r.count, unit: r.unit, tool: r.tool })), running: benchRunning, runs };
+  });
   // ---- costs against factory quotes (src/lab-cost-calibration.js): each quote on a pack whose product was engineered here is kept beside
   // the engine's estimate for that assembly as it stood; the factors from them are kept in memory and read again after each new sample
   let calib = null, calibAt = 0;
