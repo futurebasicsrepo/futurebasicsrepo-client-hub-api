@@ -9,7 +9,7 @@
 (function () {
   const TABS = [
     { id: 'plans', label: 'Line plans', href: '/lab#plans' }, { id: 'board', label: 'Concepts', href: '/lab#board' }, { id: 'studio', label: 'Studio', href: '/lab/studio' },
-    { id: 'assort', label: 'Assortment', href: '/lab#assort' }, { id: 'sketches', label: 'Sketch pack', href: '/lab/sketches' }, { id: 'library', label: 'Graphics & techniques', href: '/lab/library' },
+    { id: 'assort', label: 'Assortment', href: '/lab#assort' }, { id: 'recipe', label: 'Recipe menu', href: '/lab/recipe' }, { id: 'sketches', label: 'Sketch pack', href: '/lab/sketches' }, { id: 'library', label: 'Graphics & techniques', href: '/lab/library' },
     { id: 'materials', label: 'Materials', href: '/lab/materials' }, { id: 'found', label: 'Research', href: '/lab#research', staff: true }
   ];
   const STEPS = [
@@ -74,7 +74,7 @@
   const NCSS = `#fbNew{border:0;padding:0;width:min(760px,100vw);max-width:100vw;max-height:min(92dvh,900px);border-radius:22px;background:#fff;color:#141416;box-shadow:0 30px 80px rgba(20,20,22,.25);font:400 14px/1.5 'Space Grotesk',system-ui,sans-serif}
 #fbNew::backdrop{background:rgba(20,20,22,.4)}#fbNew[open]{animation:fbNewIn .35s cubic-bezier(.2,.8,.2,1)}@keyframes fbNewIn{from{transform:translateY(16px);opacity:0}}
 #fbNew .hd{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:20px 22px 6px}#fbNew h2{margin:0;font:300 34px/1 'Space Grotesk',system-ui,sans-serif;letter-spacing:-.03em}#fbNew .x{width:40px;height:40px;border-radius:50%;border:1px solid rgba(20,20,22,.14);background:#fff;font-size:22px;cursor:pointer;flex:none}
-#fbNew .sub{margin:4px 22px 14px;color:#5b5e66}#fbNew .ways{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:0 22px 22px}
+#fbNew .sub{margin:4px 22px 14px;color:#5b5e66}#fbNew .ways{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:0 22px 22px}.ways .way:last-child:nth-child(odd){grid-column:1/-1}
 #fbNew .way{border:1px solid rgba(20,20,22,.14);border-radius:18px;padding:16px;display:grid;gap:8px;align-content:start;text-decoration:none;color:inherit;background:#fff;min-width:0}#fbNew a.way:hover{border-color:#141416}
 #fbNew .way.ai{grid-column:1/-1;background:#f1f1ec;border-color:transparent}#fbNew .way b{font-size:17px;font-weight:500}#fbNew .way small{color:#5b5e66;font-size:13px}#fbNew .way .go{justify-self:start;margin-top:4px}
 #fbNew .k{font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color:#5b5e66}
@@ -97,6 +97,7 @@
             <div class="row"><input name="name" required maxlength="100" placeholder="What is it? e.g. Boxy heavyweight hoodie" aria-label="What is it"><select name="category" aria-label="Category"></select><select name="count" aria-label="How many"><option value="3">3 concepts</option><option value="1">1</option><option value="2">2</option><option value="4">4</option></select></div>
             <textarea name="brief" maxlength="400" placeholder="Anything else: the feel, the fabric, a detail, who it is for (optional)" aria-label="Anything else"></textarea>
             <button class="btn go" type="submit">Draw concepts</button><span class="msg" role="status"></span></form>
+          <a class="way" href="/lab/recipe"><span class="k">By recipe</span><b>Pick a base, add-ons and colours</b><small>A staple tee, hoodie or trouser, the pockets and finishes you want and a colour system. It is drawn as you pick and opens in the Studio.</small></a>
           <a class="way" href="/lab/sketches"><span class="k">From a sketch</span><b>Start from a flat sketch</b><small>Pick one of our professional flats, choose its cloth and colour, and it opens in the Studio with both in place.</small></a>
           <a class="way" href="/lab/studio?start=scratch"><span class="k">From scratch</span><b>A blank page</b><small>Draw it yourself with the product's outline as a guide; its flats and pattern pieces follow.</small></a>
           <a class="way" href="/lab#plans"><span class="k">A whole line</span><b>Plan a line</b><small>Describe a season or a drop; the assistant drafts the pieces, then concepts for each.</small></a>

@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>Recipe menu</title>
+<link rel="icon" href="/icons/icon-192.png">
+<link rel="manifest" href="/lab.webmanifest"><link rel="apple-touch-icon" href="/icons/apple-touch-icon.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Design Lab"><meta name="apple-mobile-web-app-status-bar-style" content="black"><meta name="theme-color" content="#141416">
+<style>
+@import url('/fonts/fonts.css');
+:root{--ink:#141416;--paper:#fff;--fog:#f5f5f2;--dim:#727278;--line:rgba(20,20,22,.14);--cue:#4bff9a;--ok:#17603a;--warn:#8a5a00;--bad:#a02a20}
+*{box-sizing:border-box}html{background:var(--fog)}
+body{margin:0;color:var(--ink);font:400 14px/1.5 'Space Grotesk',system-ui,sans-serif;background:var(--fog);min-height:100vh}
+button,input,select{font:inherit;color:inherit}a{color:inherit}.hidden{display:none!important}
+header{height:72px;background:rgba(20,20,22,.96);color:#fff;padding:0 clamp(16px,4vw,48px);display:flex;align-items:center;gap:14px;position:sticky;top:0;z-index:20}
+.wordmark{display:flex;align-items:center;gap:12px;position:relative;text-decoration:none;color:inherit;text-transform:uppercase;letter-spacing:.08em}
+.wordmark:after{content:"";position:absolute;left:0;bottom:-7px;width:64px;height:2px;background:var(--cue)}
+.brand-logo{display:block;width:200px;max-width:34vw;height:auto;max-height:30px}.brand-suffix{font:500 10px 'IBM Plex Mono',monospace;white-space:nowrap}
+main{max-width:1240px;margin:0 auto;padding:22px clamp(14px,3vw,36px) 90px}main>*{min-width:0}
+h1{font-size:clamp(28px,4.4vw,42px);letter-spacing:-.035em;font-weight:500;margin:4px 0;line-height:1.05}h2{font-size:17px;font-weight:500;letter-spacing:-.02em;margin:0;display:flex;align-items:center;gap:10px}
+h2 b{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;border:1px solid var(--ink);font:600 12px 'IBM Plex Mono',monospace;flex:none}.step.done h2 b{background:var(--cue);border-color:var(--cue);box-shadow:0 0 0 1.5px var(--ink)}
+.note{color:var(--dim);font-size:13px;margin:0}.mono{font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}
+.btn{border:1px solid var(--ink);background:#fff;color:var(--ink);border-radius:999px;padding:8px 16px;font-weight:500;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:8px;min-height:40px}.btn.go{background:var(--ink);color:#fff}.btn:disabled{opacity:.5;cursor:default}
+.t{border:1px solid var(--line);border-radius:12px;padding:9px 12px;background:#fff;min-height:40px;width:100%}
+.lay{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,420px);gap:22px;align-items:start;margin-top:18px}@media(max-width:920px){.lay{grid-template-columns:minmax(0,1fr)}}
+.steps{display:grid;gap:16px;min-width:0}
+.step{background:#fff;border:1px solid var(--line);border-radius:20px;padding:16px 18px;display:grid;gap:12px;min-width:0}
+.bases{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:8px}
+.bases button{border:1px solid var(--line);background:#fff;border-radius:14px;padding:6px 6px 9px;cursor:pointer;display:grid;gap:4px;text-align:left;font-size:12.5px;line-height:1.25}
+.bases button img{width:100%;aspect-ratio:1;object-fit:contain;background:var(--fog);border-radius:9px}.bases button small{color:var(--dim);font-size:11px}
+.bases button[aria-checked=true]{border-color:var(--ink);box-shadow:0 0 0 1.5px var(--ink)}
+.grp{display:grid;gap:6px}.grp .mono{letter-spacing:.08em}
+.chips{display:flex;flex-wrap:wrap;gap:6px}.chips button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:7px 13px;cursor:pointer;font-size:13px}
+.chips button[aria-pressed=true]{background:var(--ink);color:#fff;border-color:var(--ink)}.chips button[aria-pressed=true]:before{content:"✓ "}
+.systems{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.systems button{border:1px solid var(--line);background:#fff;border-radius:14px;padding:8px;cursor:pointer;display:grid;gap:6px;text-align:left;font-size:12.5px;line-height:1.25}
+.systems button[aria-checked=true]{border-color:var(--ink);box-shadow:0 0 0 1.5px var(--ink)}.systems small{color:var(--dim);font-size:11px}
+.strip{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;height:28px;border-radius:8px;overflow:hidden;border:1px solid var(--line)}
+.mains{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.mains button{width:38px;height:38px;border-radius:50%;border:1px solid var(--line);cursor:pointer}.mains button[aria-checked=true]{box-shadow:0 0 0 2px #fff,0 0 0 4px var(--ink)}
+.own{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.own input[type=color]{width:38px;height:38px;border:1px solid var(--line);border-radius:10px;padding:2px;background:#fff}
+.mats{display:grid;grid-auto-flow:column;grid-auto-columns:110px;gap:8px;overflow-x:auto;padding:2px 2px 6px}
+.mats button{border:1px solid var(--line);background:#fff;border-radius:14px;padding:6px;display:grid;gap:4px;text-align:left;font-size:12px;line-height:1.25;cursor:pointer}.mats button .sw{aspect-ratio:1;border-radius:9px;background:var(--fog) center/cover;display:block}.mats button small{color:var(--dim)}
+.mats button[aria-checked=true]{border-color:var(--ink);box-shadow:0 0 0 1.5px var(--ink)}
+.fitnote{padding:8px 10px;border-radius:10px;border:1px solid var(--line);font-size:12.5px;line-height:1.4;margin:0}.fitnote[data-verdict=good]{color:var(--ok);background:rgba(23,96,58,.06)}.fitnote[data-verdict=check]{color:var(--warn);background:rgba(138,90,0,.06)}.fitnote[data-verdict=wrong]{color:var(--bad);background:rgba(160,42,32,.06)}
+.prev{position:sticky;top:96px;background:#fff;border:1px solid var(--line);border-radius:20px;padding:14px;display:grid;gap:10px;min-width:0}@media(max-width:920px){.prev{position:static}}
+.art{position:relative;border-radius:14px;background:var(--fog);display:grid;place-items:center;aspect-ratio:1/1.05;overflow:hidden}.art svg{position:absolute;inset:4%;width:92%;height:92%;display:block}.art svg>rect:first-child{fill:transparent}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;background:#fff}.seg button{border:0;background:none;padding:6px 14px;cursor:pointer;font-size:13px}.seg button[aria-pressed=true]{background:var(--ink);color:#fff}
+.sum{font-size:13px;line-height:1.45}.sum b{font-weight:600}.cw{display:flex;gap:4px;flex-wrap:wrap}.cw span{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);border-radius:999px;padding:2px 9px 2px 3px;font-size:12px}.cw i{width:16px;height:16px;border-radius:50%;border:1px solid var(--line)}
+.msg{font-size:13px;color:var(--dim);margin:0}.msg.bad{color:var(--bad)}
+</style>
+<script src="/feedback.js"></script>
+<link rel="stylesheet" href="/cue.css">
+</head>
+<body>
+<header><a class="wordmark" href="/home" aria-label="Work home"><img class="brand-logo" src="https://thefuturebasics.com/cdn/shop/files/future_basics_true_vector_fixed.svg?v=1775278873&amp;width=360" alt="Future Basics"><span class="brand-suffix">/ Design Lab</span></a></header>
+<main>
+  <div id="needSignin" class="step hidden"><h1>Sign in to the Design Lab</h1><p class="note" style="font-size:14px">The recipe menu is part of the Design Lab. Staff sign in at the work console; a client with the Design Lab on their room signs in at their hub.</p><div style="display:flex;margin-top:12px;gap:8px;flex-wrap:wrap"><a class="btn go" href="/join?for=lab">Open the Design Lab</a> <a class="btn" href="/hub#lab">Sign in at your hub</a> <a class="btn" href="/admin">Work console</a></div></div>
+  <div id="app" class="hidden">
+    <nav class="labnav" data-lab="recipe"></nav>
+    <span class="mono" style="display:block;margin-top:14px">Design by picking</span><h1>The recipe menu.</h1>
+    <p class="note" style="max-width:62ch">Choose a base, add the pockets, closures and finishes you want, and pick a colour system. The piece is drawn as you go, on a real flat with real measurements, and opens in the Studio ready to finish.</p>
+    <div class="lay">
+      <div class="steps">
+        <section class="step" id="stBase"><h2><b>1</b>The base</h2><div class="bases" id="bases" role="radiogroup" aria-label="Base"></div></section>
+        <section class="step" id="stAdd"><h2><b>2</b>Add-ons</h2><p class="note" id="addNote">Choose a base first.</p><div id="addons" style="display:grid;gap:12px"></div></section>
+        <section class="step" id="stCol"><h2><b>3</b>A colour system</h2><p class="note">The first colour is the garment and the next one is the stitching. Every colour in the system becomes a colourway on the tech pack.</p>
+          <div class="systems" id="systems" role="radiogroup" aria-label="Colour system"></div>
+          <div id="ownBox" class="hidden"><p class="mono" style="margin:0 0 6px">Your own colours</p><div class="own" id="own"></div></div>
+          <div class="grp"><span class="mono">Garment colour</span><div class="mains" id="mains" role="radiogroup" aria-label="Garment colour"></div></div></section>
+        <section class="step" id="stMat"><h2><b>4</b>The cloth <span class="note" style="font-weight:400">(optional)</span></h2><div class="mats" id="mats" role="radiogroup" aria-label="Cloth"><span class="note">Loading the library…</span></div><p class="fitnote hidden" id="matFit" role="status"></p></section>
+      </div>
+      <aside class="prev" aria-label="The piece so far">
+        <div class="row" style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span class="mono" id="pvKind">Pick a base</span><div class="seg" role="tablist"><button type="button" data-view="front" aria-pressed="true">Front</button><button type="button" data-view="back" aria-pressed="false">Back</button></div></div>
+        <div class="art" id="art" role="img" aria-label="The flat drawing of the piece"></div>
+        <label class="note" for="name">Name</label><input class="t" id="name" maxlength="120" placeholder="Named for you as you pick">
+        <div class="sum" id="sum"></div>
+        <button class="btn go" type="button" id="open" disabled>Open in the Studio</button><p class="msg" id="msg" role="status"></p>
+      </aside>
+    </div>
+  </div>
+</main>
+<script src="/lab/nav.js"></script>
+<script>try{if(!localStorage.getItem('fb.admin.token')&&localStorage.getItem('fb.client.token'))document.documentElement.dataset.labClient='1'}catch{}</script>
+<script src="/console-nav.js" defer></script>
+<script type="module">
+import { RECIPE_BASES, RECIPE_ADDONS, RECIPE_GROUPS, COLOUR_SYSTEMS, addonsFor, cookRecipe } from '/lab/lab-recipe.js';
+import { renderSvg, MASK_URL, defaultTemplate, STYLES } from '/lab/lab-flats.js';
+import { fabricFit } from '/lab/lab-fabric-fit.js';
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)],esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const TOKEN=()=>{try{return localStorage.getItem('fb.admin.token')||localStorage.getItem('fb.client.token')||''}catch{return ''}};
+async function api(path,body){const r=await fetch(path,{method:body?'POST':'GET',headers:{Authorization:'Bearer '+TOKEN(),...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});const j=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(new Error(j.error||`Request failed (${r.status})`),{status:r.status});return j}
+// the picks; OWN is the colour system of your own (four colours)
+const S={base:null,addons:[],system:'earth',colour:0,view:'front',mat:null};let OWN=['#2b2b2e','#e9e4d8','#8c6a4a','#5e6b7a'],MATS=null,COOKED=null,NAMED=false;
+const sys=()=>S.system==='own'?{id:'own',name:'Your own colours',colours:OWN.map((h,i)=>({name:`Colour ${i+1}`,hex:h}))}:COLOUR_SYSTEMS.find(x=>x.id===S.system);
+const sysArg=()=>S.system==='own'?{name:'Our colours',colours:sys().colours}:S.system;
+function paintBases(){$('#bases').innerHTML=RECIPE_BASES.map(b=>{const t=defaultTemplate(b.style,b.fit);return `<button type="button" role="radio" data-base="${b.id}" aria-checked="${S.base===b.id}" title="${esc(b.note)}">${t?`<img loading="lazy" alt="" src="/lab/flat-templates/thumbs/${t}.webp">`:''}<b>${esc(b.label)}</b><small>${esc(b.note)}</small></button>`}).join('');$('#stBase').classList.toggle('done',Boolean(S.base))}
+function paintAddons(){const fits=S.base?addonsFor(S.base):[];$('#addNote').textContent=!S.base?'Choose a base first.':fits.length?'Tap to add or take away. Only the ones that suit this base are shown.':'This base has no add-ons yet: it opens as it is.';
+  $('#addons').innerHTML=RECIPE_GROUPS.map(g=>{const l=fits.filter(a=>a.group===g);return l.length?`<div class="grp"><span class="mono">${esc(g)}</span><div class="chips">${l.map(a=>`<button type="button" data-addon="${a.id}" aria-pressed="${S.addons.includes(a.id)}">${esc(a.label)}</button>`).join('')}</div></div>`:''}).join('');$('#stAdd').classList.toggle('done',S.addons.length>0)}
+function paintSystems(){$('#systems').innerHTML=[...COLOUR_SYSTEMS,{id:'own',name:'Your own',mood:'Pick four colours',colours:OWN.map(h=>({hex:h}))}].map(s=>`<button type="button" role="radio" data-sys="${s.id}" aria-checked="${S.system===s.id}"><span class="strip">${s.colours.map(c=>`<i style="background:${c.hex}"></i>`).join('')}</span><b>${esc(s.name)}</b><small>${esc(s.mood)}</small></button>`).join('');
+  $('#ownBox').classList.toggle('hidden',S.system!=='own');$('#own').innerHTML=OWN.map((h,i)=>`<input type="color" value="${h}" data-own="${i}" aria-label="Colour ${i+1}">`).join('');
+  const c=sys().colours;if(S.colour>=c.length)S.colour=0;$('#mains').innerHTML=c.map((x,i)=>`<button type="button" role="radio" data-main="${i}" aria-checked="${S.colour===i}" title="${esc(x.name)}" aria-label="${esc(x.name)}" style="background:${x.hex}"></button>`).join('');$('#stCol').classList.add('done')}
+const photoSrc=m=>m.photo?`/lab/material-photos/${encodeURIComponent(m.photo)}.jpg?c=${encodeURIComponent((sys().colours[S.colour]?.hex||'').replace('#',''))}&s=200`:'';
+function paintMats(){if(!MATS){return}$('#mats').innerHTML=`<button type="button" role="radio" data-mat="" aria-checked="${!S.mat}"><span class="sw" style="background:repeating-linear-gradient(45deg,#fff 0 6px,#f1f1ec 6px 12px)"></span><b>Decide later</b><small>In the Studio</small></button>`+MATS.map(m=>`<button type="button" role="radio" data-mat="${m.id}" aria-checked="${S.mat===m.id}"><span class="sw" style="${photoSrc(m)?`background-image:url('${photoSrc(m)}')`:`background:${esc(sys().colours[S.colour]?.hex||'#eee')}`}"></span><b>${esc(m.name)}</b><small>${esc([m.spec?.weightGsm?m.spec.weightGsm+' gsm':'',m.spec?.construction||''].filter(Boolean).join(' · '))}</small></button>`).join('');
+  const el=$('#matFit'),m=MATS.find(x=>x.id===S.mat),b=RECIPE_BASES.find(x=>x.id===S.base);$('#stMat').classList.toggle('done',Boolean(m));
+  if(!m||!b){el.classList.add('hidden');return}const f=fabricFit({style:b.style,fit:b.fit,materials:[{kind:'fabric',role:'main',name:m.name,spec:m.spec||{}}]});if(f.verdict==='unknown'){el.classList.add('hidden');return}
+  el.classList.remove('hidden');el.dataset.verdict=f.verdict;el.textContent=f.verdict==='good'?`✓ ${f.summary}`:`${f.verdict==='wrong'?'✕':'!'} ${f.findings[0].msg} ${f.findings[0].fix}`}
+// the drawing: the picks cooked into flats, drawn the way the flats page draws them
+function paintPreview(){COOKED=S.base?cookRecipe({base:S.base,addons:S.addons,system:sysArg(),colour:S.colour}):null;$('#open').disabled=!COOKED||Boolean(COOKED.error);
+  if(!COOKED||COOKED.error){$('#art').innerHTML=`<p class="note" style="padding:20px;text-align:center">${esc(COOKED?.error||'Pick a base to see it drawn.')}</p>`;$('#sum').innerHTML='';$('#pvKind').textContent='Pick a base';return}
+  try{$('#art').innerHTML=renderSvg(COOKED.params,S.view,{maskHref:MASK_URL,showDims:false,scale:0,plain:true})}catch(x){$('#art').innerHTML=`<p class="note" style="padding:20px">${esc(x.message)}</p>`}
+  if(!NAMED)$('#name').placeholder=COOKED.name;$('#pvKind').textContent=`${STYLES[COOKED.style]?.label||COOKED.style}${COOKED.sketch?' · '+COOKED.sketch:''}`;
+  $('#sum').innerHTML=`<p style="margin:0 0 6px">${esc(COOKED.words)}</p>${COOKED.colourways.length?`<div class="cw" aria-label="Colourways">${COOKED.colourways.map(c=>`<span><i style="background:${c.hex}"></i>${esc(c.name)}</span>`).join('')}</div>`:''}`}
+function paintAll(){paintBases();paintAddons();paintSystems();paintMats();paintPreview()}
+$('#bases').addEventListener('click',e=>{const b=e.target.closest('[data-base]');if(!b)return;S.base=b.dataset.base;const ok=addonsFor(S.base).map(a=>a.id);S.addons=S.addons.filter(a=>ok.includes(a));paintAll()});
+$('#addons').addEventListener('click',e=>{const b=e.target.closest('[data-addon]');if(!b)return;const id=b.dataset.addon,a=RECIPE_ADDONS.find(x=>x.id===id);
+  if(S.addons.includes(id))S.addons=S.addons.filter(x=>x!==id);else{if(a.one)S.addons=S.addons.filter(x=>RECIPE_ADDONS.find(y=>y.id===x)?.one!==a.one);S.addons.push(id)}paintAddons();paintPreview()});
+$('#systems').addEventListener('click',e=>{const b=e.target.closest('[data-sys]');if(!b)return;S.system=b.dataset.sys;S.colour=0;paintSystems();paintMats();paintPreview()});
+$('#mains').addEventListener('click',e=>{const b=e.target.closest('[data-main]');if(!b)return;S.colour=Number(b.dataset.main);paintSystems();paintMats();paintPreview()});
+$('#own').addEventListener('input',e=>{const i=e.target.dataset.own;if(i==null)return;OWN[Number(i)]=e.target.value.toLowerCase();$$('#systems [data-sys=own] .strip i')[i].style.background=e.target.value;$$('#mains [data-main]')[i]&&($$('#mains [data-main]')[i].style.background=e.target.value);paintPreview()});
+$('#mats').addEventListener('click',e=>{const b=e.target.closest('[data-mat]');if(!b)return;S.mat=b.dataset.mat||null;paintMats()});
+document.querySelector('.seg').addEventListener('click',e=>{const b=e.target.closest('[data-view]');if(!b)return;S.view=b.dataset.view;$$('.seg [data-view]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));paintPreview()});
+$('#name').addEventListener('input',()=>{NAMED=Boolean($('#name').value.trim())});
+// the concept, its flats and colourways made in one go; the cloth put on it as its main fabric; then the Studio
+$('#open').addEventListener('click',async()=>{const b=$('#open');FBN?.begin?.(b);$('#msg').textContent='';
+  try{const j=await api('/v1/lab/concepts/from-recipe',{base:S.base,addons:S.addons,system:sysArg(),colour:S.colour,name:$('#name').value.trim()});
+    const main=sys().colours[S.colour];if(S.mat)await api(`/v1/lab/concepts/${j.concept.id}/materials`,{material:S.mat,role:'main',colour:main?.hex}).catch(()=>FBN?.toast?.('The piece is made; add the cloth in the Studio'));
+    FBN?.end?.(b,true);location.href=j.studio}
+  catch(x){FBN?.end?.(b,false);$('#msg').textContent=x.message;$('#msg').classList.add('bad')}});
+(async()=>{if(!TOKEN()){$('#needSignin').classList.remove('hidden');return}try{await api('/v1/lab/concepts?limit=1')}catch(x){if(x.status===401||x.status===403){$('#needSignin').classList.remove('hidden');return}}
+  $('#app').classList.remove('hidden');const q=new URLSearchParams(location.search);if(RECIPE_BASES.some(b=>b.id===q.get('base')))S.base=q.get('base');paintAll();
+  try{MATS=(await api('/v1/lab/materials?kind=fabric')).materials}catch{MATS=[]}paintMats()})();
+</script>
+<script src="/helper.js" defer></script>
+</body>
+</html>

@@ -15,6 +15,8 @@ import { generateConcepts, artworkFiles, renderConcept, finishConcept, aiOpinion
 import { cleanPin } from './lab-share-routes.js';
 import { FLAT_TEMPLATES } from './lab-flat-templates.js';
 import { STYLES as FLAT_STYLES } from './lab-flats.js';
+import { RECIPE_BASES, RECIPE_ADDONS, RECIPE_GROUPS, COLOUR_SYSTEMS, addonsFor, baseOf, cookRecipe } from './lab-recipe.js';
+import { cleanColourways } from './lab-materials.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const clip = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
@@ -139,6 +141,20 @@ export function registerLabConceptRoutes(app, d) {
     const spec = { description: `Started from the sketch pack: ${t.label}.`, silhouette: t.label, fabric: '', fit: '', details: [], trims: '', colors: hex ? [cname || hex] : [], template: t.id, ...(hex ? { color: hex } : {}) };
     const r = (await pool.query(`insert into lab_concepts(name, category, role, spec, twist, created_by, client_id) values($1,$2,'core',$3,'',$4,$5) returning id`, [name, st.category || 'other', spec, actorOf(req), own(req)])).rows[0];
     return reply.code(201).send({ concept: await one(r.id), studio: `/lab/studio?concept=${r.id}&view=front&template=${encodeURIComponent(t.id)}` });
+  });
+
+  // the recipe menu (/lab/recipe): a base, its add-ons and a colour system → a concept with its flats already measured, drawn and coloured
+  // (src/lab-recipe.js), and the colour system as its colourways; no AI, so nothing is charged
+  app.get('/v1/lab/recipe', { preHandler: pre }, async () => ({ bases: RECIPE_BASES.map(b => ({ ...b, styleLabel: FLAT_STYLES[b.style]?.label || b.style, category: FLAT_STYLES[b.style]?.category || 'other', addons: addonsFor(b).map(a => a.id) })),
+    addons: RECIPE_ADDONS.map(({ detail, shown, ...a }) => ({ ...a, detail: Boolean(detail) })), groups: RECIPE_GROUPS, systems: COLOUR_SYSTEMS }));
+  app.post('/v1/lab/concepts/from-recipe', { preHandler: pre }, async (req, reply) => {
+    const b = req.body || {}, r = cookRecipe({ base: b.base, addons: b.addons, system: b.system || null, colour: b.colour, name: clip(b.name, 120) }); if (r.error) return bad(reply, r.error);
+    const colourways = cleanColourways(r.colourways);
+    const spec = { description: `Made from the recipe menu. ${r.words}`, silhouette: baseOf(b.base).label, fabric: '', fit: r.params.fit, details: r.details, trims: '', colors: colourways.map(c => c.name), ...(r.template ? { template: r.template } : {}), ...(r.colour ? { color: r.colour.hex } : {}), ...(colourways.length ? { colourways } : {}),
+      recipe: { base: baseOf(b.base).id, addons: r.addons, system: typeof b.system === 'string' ? b.system : b.system ? 'own' : null } };
+    const c = (await pool.query(`insert into lab_concepts(name, category, role, spec, twist, created_by, client_id) values($1,$2,'core',$3,'',$4,$5) returning id`, [r.name, r.category, spec, actorOf(req), own(req)])).rows[0];
+    await pool.query(`insert into lab_flats(concept_id, style, params, placements, check_result, checked_at, updated_by) values($1,$2,$3,'[]',$4,now(),$5)`, [c.id, r.style, r.params, { findings: {}, summary: { fail: 0, warn: 0, placements: 0 }, at: new Date().toISOString() }, actorOf(req)]);
+    return reply.code(201).send({ concept: await one(c.id), studio: `/lab/studio?concept=${c.id}&view=front${r.template ? `&template=${encodeURIComponent(r.template)}` : ''}` });
   });
 
   app.get('/v1/lab/concepts', { preHandler: pre }, async req => {

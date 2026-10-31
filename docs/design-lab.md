@@ -692,6 +692,54 @@ Routes: `src/lab-materials-routes.js` (`/v1/lab/materials…`, `/v1/lab/concepts
 - **The tech pack.** When an approved concept becomes a tech pack, the spec sheet and the front and back flats go into its artwork. **Add to the tech pack** on the flats page adds them again after a change.
 - Routes: `src/lab-flats-routes.js` (`GET/PUT /v1/lab/concepts/:id/flats`, `POST …/flats/check`, `GET …/flats/sheet.svg`, `POST …/flats/tech-pack`). The templates, measurements, grading, wording and drawing checks are in `src/lab-flats.js`, shared with the page as `/lab/flats.js`. The page is `src/lab-flats.html`, and the table is `lab_flats` (with `lab_techniques.rules`).
 
+## The recipe menu: design by picking
+
+Design Lab → **Recipe menu** (`/lab/recipe`), also the first way in on **+ New design**. It is for someone who is not a designer: they choose a piece the way they would order it.
+
+1. **The base.** A staple at its usual fit: classic, boxy or oversized tee, long-sleeve, tank, polo, crewneck, hoodie, zip hoodie, button-up and camp shirts, zip jacket, vest, straight or wide trousers, shorts, leggings and a six-panel cap.
+2. **Add-ons.** Pockets (chest, flap, kangaroo, zip, slant, jean, cargo, back welts), closures (quarter zip, button placket, drawcord waist) and finishes (front pleats, cropped, dropped shoulder, raw hem). Only the add-ons that suit the base are shown, and only one front pocket can be picked.
+3. **A colour system.** Washed earth, Workwear, Monochrome, Coastal, Forest, Sport, Pastel, Future Basics, or four colours of your own. The chosen colour is the garment. The next colour in the system is the stitching. Every colour becomes a colourway on the tech pack.
+4. **The cloth** (optional), with the fabric check below shown as you pick.
+
+The piece is drawn as you pick, on the same flats the Studio uses. **Open in the Studio** makes the concept, its flats and its colourways in one go, and opens it there.
+
+How the drawing is made (`src/lab-recipe.js`, `cookRecipe`):
+- The add-ons choose the sketch from the sketch pack. For example, cargo pockets pick the cargo trousers and pleats pick the pleated trouser.
+- A detail the sketch already draws is not drawn again: a hoodie's kangaroo pocket, or a chino's front and back pockets.
+- Anything else is added as a flats detail, placed where that kind of detail usually goes. Pairs are mirrored left and right.
+
+The concept keeps `spec.recipe` (base, add-ons, colour system), so it can be read later. No AI is used, so nothing is charged.
+
+Routes:
+- `GET /v1/lab/recipe` returns the menu.
+- `POST /v1/lab/concepts/from-recipe {base, addons, system (an id or {name, colours}), colour, name?}` returns `{concept, studio}`.
+
+## Does the fabric suit the style?
+
+`src/lab-fabric-fit.js` checks each chosen cloth against what the garment needs:
+- **Knit or woven.** A tee, hoodie or polo is cut from a knit; a shirt, coat or tote from a woven.
+- **Weight.** Each style has a usual range in gsm. A 180 gsm hoodie is light; a 400 gsm tee is heavy.
+- **Stretch.** Leggings, swim and sports bras need four-way stretch. A slim woven trouser wants 2–3% elastane.
+- **The rib and the lining.** A rib must be a stretch knit. A lining should be lighter than the shell.
+
+Stretch is read from the cloth's stretch words, the elastane in its composition, and a knit's own give.
+
+Where it shows:
+- On the **checklist** as **The fabric suits the style**, once a fabric and the flats are both there. A real problem holds the tech pack up, for example a twill on leggings. Anything else is worth a look and does not hold it up.
+- On the **sketch pack** sheet and the **recipe menu**, the moment a cloth is picked.
+
+## New prints from old
+
+In the graphics library, open a graphic and use **A new print from this one**:
+- **In this style, showing something new.** The image model draws a new textile print with the same marks, palette, density and technique, showing what you name (for example "palm leaves and surfboards").
+- **Blend with another print.** Two library graphics are fused into one design. The mix slider leans toward either one.
+
+Untick **Fill the square** for a single graphic instead of an all-over fabric. The result is kept in the library as a **New print**. From there it can be made into an all-over repeat or put on a piece.
+
+Route: `POST /v1/lab/library/prints {mode: style|blend, art, subject?, mix?, fill?, name?}`. It counts toward `LAB_DAILY_ART` and charges a room one graphic.
+
+A room's graphics stay its own: a new print, and an all-over repeat, can only be made from the room's own graphics, and are kept in that room.
+
 ## Starting from scratch
 
 **Design** (`/lab/studio`, with no concept chosen) offers **Start from scratch**: name it (optional), choose what it is and, for clothes, the style

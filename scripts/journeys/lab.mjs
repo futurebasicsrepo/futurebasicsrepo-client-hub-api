@@ -3979,5 +3979,65 @@ await journey('J267', 'Hard goods and electronics are engineered as 3D parts: an
   } finally { for (const id of made) if (id) await K(`/concepts/${id}`, { method: 'DELETE' }); }
 });
 
+await journey('J268', 'Design by picking, the fabric checked, and new prints from old: the recipe menu lists its bases, add-ons and colour systems; a cargo trouser with a drawcord in Workwear is made with its flats drawn on the cargo sketch, coloured, its colourways set, and opens in the Studio; a kangaroo pocket on a hoodie is left to the sketch and a crewneck gets one drawn; a light jersey on that hoodie and a twill on leggings are flagged on the checklist, a heavy fleece passes; and a graphic makes a new print in its style and a blend with another, both kept in the library', async () => {
+  const made = [], arts = [];
+  try {
+    const menu = (await K('/recipe')).json;
+    ok(menu.bases?.length >= 15 && menu.systems?.length >= 6 && menu.groups?.includes('Pockets'), '1. the recipe menu: bases, add-ons in groups, colour systems', { bases: menu.bases?.length, systems: menu.systems?.length });
+    ok(menu.bases.find(b => b.id === 'pants').addons.includes('cargo') && !menu.bases.find(b => b.id === 'pants').addons.includes('kangaroo'), '   each base lists only the add-ons that suit it');
+    const r = await K('/concepts/from-recipe', { body: { base: 'pants', addons: ['cargo', 'waist-drawcord', 'kangaroo'], system: 'workwear' } }); made.push(r.json.concept?.id);
+    ok(r.status === 201 && /cargo/i.test(r.json.concept.name) && r.json.concept.category === 'bottoms', '2. a cargo trouser in Workwear is made', { status: r.status, name: r.json.concept?.name });
+    ok(/^\/lab\/studio\?concept=/.test(r.json.studio), '   and opens in the Studio', r.json.studio);
+    const flat = sql(`select params->>'template' || '|' || (params->>'color') || '|' || jsonb_array_length(params->'edits') from lab_flats where concept_id='${r.json.concept.id}'`).split('|');
+    ok(/cargo/.test(flat[0]) && flat[1] === '#7a5a3a', '   its flats are on the cargo sketch, in duck brown', flat);
+    const cw = (await K(`/concepts/${r.json.concept.id}/materials`)).json.colourways || [];
+    ok(cw.length === 4 && cw[0].name === 'Duck brown', '   the colour system is its colourways', cw.map(c => c.name));
+    const hood = await K('/concepts/from-recipe', { body: { base: 'hoodie', addons: ['kangaroo'], system: 'mono' } }); made.push(hood.json.concept?.id);
+    const crew = await K('/concepts/from-recipe', { body: { base: 'crewneck', addons: ['kangaroo'], system: 'mono', colour: 1 } }); made.push(crew.json.concept?.id);
+    const edits = id => Number(sql(`select jsonb_array_length(params->'edits') from lab_flats where concept_id='${id}'`));
+    ok(edits(hood.json.concept.id) === 0 && edits(crew.json.concept.id) === 1, '3. the hoodie sketch keeps its own kangaroo pocket; the crewneck gets one drawn', { hood: edits(hood.json.concept.id), crew: edits(crew.json.concept.id) });
+    ok((await K('/concepts/from-recipe', { body: { base: 'ballgown' } })).status === 422, '   an unknown base is refused');
+    // the fabric against the style
+    const mats = (await K('/materials?kind=fabric')).json.materials, by = re => mats.find(m => re.test(m.name));
+    const ready = async id => (await K(`/concepts/${id}/ready`)).json.items.find(i => i.id === 'fabric');
+    await K(`/concepts/${hood.json.concept.id}/materials`, { body: { material: by(/180 gsm single jersey/).id, role: 'main' } });
+    const light = await ready(hood.json.concept.id);
+    ok(light?.state === 'warn' && /light for a hoodie/.test(light.note), '4. a 180 gsm jersey on a hoodie is worth a look', light);
+    const leg = await K('/concepts/from-recipe', { body: { base: 'leggings', system: 'mono' } }); made.push(leg.json.concept?.id);
+    await K(`/concepts/${leg.json.concept.id}/materials`, { body: { material: by(/cotton twill/).id, role: 'main' } });
+    const stiff = await ready(leg.json.concept.id);
+    ok(stiff?.state === 'todo' && /four-way stretch/.test(stiff.note), '   a twill on leggings holds the tech pack up', stiff);
+    await K(`/concepts/${crew.json.concept.id}/materials`, { body: { material: by(/450 gsm loopback/).id, role: 'main' } });
+    ok((await ready(crew.json.concept.id))?.state === 'done', '   a heavy fleece on a crewneck passes');
+    // new prints from old
+    for (const [name, rgb] of [['Wave motif', [30, 60, 120]], ['Check motif', [200, 60, 40]]]) arts.push((await K('/library/graphics/upload', { body: { image: await png(240, 160, rgb), name } })).json.id);
+    ok((await K('/library/prints', { body: { mode: 'style', art: [arts[0]] } })).status === 422, '5. a print in a style needs to say what it shows');
+    const st = await K('/library/prints', { body: { mode: 'style', art: [arts[0]], subject: 'palm leaves and surfboards' } }); arts.push(st.json.id);
+    ok(st.status === 201 && /palm leaves/.test(st.json.name) && /^data:image\/png/.test(st.json.image), '   a new print in its style is made', { status: st.status, name: st.json.name });
+    const bl = await K('/library/prints', { body: { mode: 'blend', art: [arts[0], arts[1]], mix: 70 } }); arts.push(bl.json.id);
+    ok(bl.status === 201 && bl.json.name === 'Wave motif × Check motif', '   and a blend of two', { status: bl.status, name: bl.json.name });
+    const kept = (await K('/library/graphics?source=print')).json.graphics.filter(g => [st.json.id, bl.json.id].includes(g.id));
+    ok(kept.length === 2 && kept.every(g => g.tags.includes('print')), '   both are in the library as new prints, ready to repeat', kept.map(g => g.name));
+    ok((await K('/library/prints', { body: { mode: 'blend', art: [arts[0], '00000000-0000-0000-0000-000000000000'] } })).status === 404, '   a graphic that is not there is refused');
+    if (playwright) {
+      const b = await playwright.chromium.launch();
+      try {
+        const page = await (await b.newContext({ viewport: { width: 390, height: 844 } })).newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
+        await page.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); localStorage.setItem('fb.helper.on', '0'); } catch {} }, kyleT);
+        await page.goto(`${BASE}/lab/recipe`, { waitUntil: 'networkidle' }); await page.waitForSelector('#bases [data-base]');
+        await page.click('[data-base=shorts]'); await page.click('[data-addon=cargo]'); await page.click('[data-sys=coastal]');
+        const v = await page.evaluate(() => ({ svg: Boolean(document.querySelector('#art svg')), words: document.querySelector('#sum').textContent, over: document.documentElement.scrollWidth > innerWidth }));
+        ok(v.svg && /cargo pockets/i.test(v.words) && !v.over, '6. on a phone the piece is drawn as it is picked, with nothing off the side', v);
+        await page.click('#open'); await page.waitForURL(/\/lab\/studio\?concept=/, { timeout: 20000 });
+        made.push(new URL(page.url()).searchParams.get('concept'));
+        ok(errs.length === 0, '   and Open in the Studio makes it and goes there', errs);
+      } finally { await b.close(); }
+    } else ok(true, 'needs a browser');
+  } finally {
+    for (const id of made) if (id) await K(`/concepts/${id}`, { method: 'DELETE' });
+    for (const id of arts) if (id) await K(`/library/graphics/${id}`, { method: 'DELETE' });
+  }
+});
+
 shops.close(); brave.close();
 process.exit(summary() ? 1 : 0);

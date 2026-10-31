@@ -90,7 +90,7 @@ input[type=range]{width:100%;accent-color:var(--ink)}input[type=color]{width:44p
           <h2 style="margin-top:6px">Fonts</h2><p class="note">Fonts the studio sets type in, the same on every machine. Upload a font once (TTF, OTF, WOFF or WOFF2); it is kept here and loaded wherever the studio opens.</p>
           <div class="row"><button class="btn" type="button" id="fontGo">Add a font…</button><input type="file" id="fontFile" accept=".ttf,.otf,.woff,.woff2" class="hidden"><span class="msg" id="fontMsg" role="status"></span></div><div class="chips" id="fontList"></div></div>
       </div>
-      <div class="filters"><input class="t" id="fQ" type="search" placeholder="Search names, words and tags" aria-label="Search graphics"><select class="t" id="fSource" aria-label="Where they came from"><option value="">From anywhere</option><option value="library">Drawn here</option><option value="plan">Line plans</option><option value="concept">Concepts</option><option value="studio">The studio</option><option value="upload">Our uploads</option></select><select class="t" id="fTech" aria-label="Technique"><option value="">Any technique</option></select><span class="msg" id="fCount"></span></div>
+      <div class="filters"><input class="t" id="fQ" type="search" placeholder="Search names, words and tags" aria-label="Search graphics"><select class="t" id="fSource" aria-label="Where they came from"><option value="">From anywhere</option><option value="library">Drawn here</option><option value="plan">Line plans</option><option value="concept">Concepts</option><option value="studio">The studio</option><option value="upload">Our uploads</option><option value="repeat">All-over repeats</option><option value="print">New prints</option></select><select class="t" id="fTech" aria-label="Technique"><option value="">Any technique</option></select><span class="msg" id="fCount"></span></div>
       <div class="chips" id="fTags"></div>
       <div class="cards" id="gGrid" style="margin-top:12px"></div>
       <div class="row" style="margin-top:14px"><button class="btn q hidden" type="button" id="gMore">Show more</button></div>
@@ -119,6 +119,13 @@ input[type=range]{width:100%;accent-color:var(--ink)}input[type=color]{width:44p
       <label class="f"><span>Ground</span><span class="row"><input type="color" id="grBg" value="#f2efe6" aria-label="Ground colour"><label class="note" style="display:flex;gap:4px;align-items:center"><input type="checkbox" id="grClear" checked> Clear (the garment's colour)</label></span></label>
       <img id="grImg" alt="The repeat" class="hidden" style="width:100%;border-radius:12px;border:1px solid rgba(20,20,22,.12)"><p class="msg" id="grInfo" role="status"></p>
       <div class="row"><button class="btn" type="button" id="grGo">Preview</button><button class="btn go" type="button" id="grKeep">Keep in the library</button></div></div>
+    <div class="sec" id="gPrint"><h4>A new print from this one</h4><p class="note" style="margin:0">The image model draws a new print using this graphic as the reference. It goes in the library, ready to make an all-over repeat or put on a piece.</p>
+      <div class="row" role="radiogroup" aria-label="How to make it"><label class="note" style="display:flex;gap:4px;align-items:center"><input type="radio" name="gpMode" value="style" checked> In this style, showing something new</label><label class="note" style="display:flex;gap:4px;align-items:center"><input type="radio" name="gpMode" value="blend"> Blend with another print</label></div>
+      <label class="f" id="gpSubjF"><span id="gpSubjL">What it shows</span><input class="t" id="gpSubj" maxlength="300" placeholder="Palm leaves and surfboards"></label>
+      <div id="gpBlendF" class="hidden"><label class="f"><span>Blend with</span><select class="t" id="gpWith"></select></label><label class="f"><span>Mix: <span id="gpMixV">even</span></span><input id="gpMix" type="range" min="0" max="100" step="10" value="50" aria-label="How much of each print"></label></div>
+      <label class="note" style="display:flex;gap:4px;align-items:center"><input type="checkbox" id="gpFill" checked> Fill the square as fabric (untick for a single graphic)</label>
+      <img id="gpImg" alt="The new print" class="hidden" style="width:100%;max-width:320px;border-radius:12px;border:1px solid rgba(20,20,22,.12)"><p class="msg" id="gpInfo" role="status"></p>
+      <div class="row"><button class="btn go" type="button" id="gpGo">Make the print</button><button class="btn q hidden" type="button" id="gpOpen">Open it</button></div></div>
     <div class="sec"><h4>Put it on a product</h4><label class="f"><span>Product</span><input class="t" id="gpQ" type="search" placeholder="Search products and clients" aria-label="Search products"></label><select class="t" id="gpProduct" size="4" aria-label="Products"></select>
       <div class="grid2"><label class="f"><span>Where</span><input class="t" id="gpPlace" maxlength="120" placeholder="Left chest" value="Front"></label><label class="f"><span>Width (in)</span><input class="t" id="gpWidth" type="number" step="0.25" min="0.25" placeholder="3.5"></label></div>
       <div class="row"><button class="btn go" type="button" id="gpPut">Put it on the product</button></div><p class="note">Any product, in any client's room: the graphic goes on its tech pack as artwork, placed on the front view. The pack is made first if the product has none yet.</p></div>
@@ -144,7 +151,7 @@ const BLOBS=new Map();async function blobUrl(path){if(BLOBS.has(path))return BLO
 const imgOf=src=>new Promise((ok,no)=>{const i=new Image();i.onload=()=>ok(i);i.onerror=()=>no(new Error('A picture could not be read'));i.src=src});
 const fileUrl=f=>new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(r.result);r.onerror=no;r.readAsDataURL(f)});
 const when=d=>{try{return new Date(d).toLocaleDateString([], {month:'short',day:'numeric',year:'numeric'})}catch{return ''}};
-const SRC={library:'Drawn here',plan:'Line plan',concept:'Concept',studio:'Studio',upload:'Upload',repeat:'All-over repeat'};
+const SRC={library:'Drawn here',plan:'Line plan',concept:'Concept',studio:'Studio',upload:'Upload',repeat:'All-over repeat',print:'New print'};
 let G={graphics:[],total:0,tags:[],styles:[]},T={techniques:[],kinds:[]},TAG='',OFF=0,CUR=null,TCUR=null,CONCEPTS=null;
 const FX=window.FBFinish;
 const techOpts=(v,none)=>`${none?`<option value="">${esc(none)}</option>`:''}${T.kinds.map(k=>{const l=T.techniques.filter(t=>t.kind===k.id);return l.length?`<optgroup label="${esc(k.label)}">${l.map(t=>`<option value="${t.id}" ${t.id===v?'selected':''}>${esc(t.name)}</option>`).join('')}</optgroup>`:''}).join('')}`;
@@ -186,7 +193,7 @@ async function openGraphic(id){
   $('#gdPlace').innerHTML=['front chest','left chest','front centre','full front','chest band','sleeve','back','back yoke','hem'].map(p=>`<option>${p}</option>`).join('');msg('#gdMsg','');
   if(CUR.room)$('#gdMeta').textContent+=' · '+CUR.room+'\'s room';
   $('#gdStudio').href='/lab/studio?art='+id;$('#gpProduct').innerHTML='';$('#gpQ').value='';loadProducts('');
-  $('#gjTech').innerHTML=techOpts(CUR.techniqueId,'Screen print (default)');msg('#gjInfo','');jobPreview();$('#gjEmb').innerHTML='';$('#grImg').classList.add('hidden');msg('#grInfo','');
+  $('#gjTech').innerHTML=techOpts(CUR.techniqueId,'Screen print (default)');msg('#gjInfo','');jobPreview();$('#gjEmb').innerHTML='';$('#grImg').classList.add('hidden');msg('#grInfo','');$('#gpImg').classList.add('hidden');$('#gpOpen').classList.add('hidden');msg('#gpInfo','');$('#gpSubj').value='';paintPrint();
   d.showModal();GIMG=null;const u=await blobUrl('/v1/lab/art/'+id);$('#gdDown').href=u;$('#gdDown').download=(CUR.name||'graphic').replace(/[^a-z0-9]+/gi,'-').toLowerCase()+'.png';GIMG=await imgOf(u);drawGraphic();
   if(!CONCEPTS){try{CONCEPTS=(await api('/v1/lab/concepts?limit=120')).concepts.filter(c=>c.status!=='tech_pack')}catch{CONCEPTS=[]}}
   $('#gdConcept').innerHTML=CONCEPTS.length?CONCEPTS.map(c=>`<option value="${c.id}">${esc(c.name)} · ${esc(c.categoryLabel)}${c.planName?' · '+esc(c.planName):''}</option>`).join(''):'<option value="">No concepts to put it on yet</option>';
@@ -221,6 +228,16 @@ const repBody=keep=>({art:CUR.id,type:$('#grType').value,repeatIn:Number($('#grI
 async function repeatGo(keep){const b=keep?$('#grKeep'):$('#grGo');FBN.begin(b);try{const r=await api('/v1/lab/library/repeat',{body:repBody(keep)});$('#grImg').src=r.preview;$('#grImg').classList.remove('hidden');
   $('#grInfo').textContent=`${r.typeLabel} repeat, ${r.widthIn} × ${r.heightIn} in a tile.${keep?` Kept as "${r.name}": choose it under All-over print on a piece's flats.`:''}`;FBN.end(b,true);if(keep){FBN.toast('The repeat is in the library','ok');loadGraphics().catch(()=>{})}}catch(x){FBN.end(b,false);FBN.toast(x.message,'err')}}
 $('#grGo').onclick=()=>repeatGo(false);$('#grKeep').onclick=()=>repeatGo(true);
+// a new print from this one: in its style showing something else, or blended with another graphic
+const gpMode=()=>($$('input[name=gpMode]').find(r=>r.checked)||{}).value||'style';
+function paintPrint(){const blend=gpMode()==='blend';$('#gpBlendF').classList.toggle('hidden',!blend);$('#gpSubjL').textContent=blend?'Steer it (optional)':'What it shows';$('#gpSubj').placeholder=blend?'Softer, more open spacing':'Palm leaves and surfboards';
+  $('#gpWith').innerHTML=G.graphics.filter(g=>CUR&&g.id!==CUR.id).map(g=>`<option value="${g.id}">${esc(g.name||'Untitled')}</option>`).join('')||'<option value="">No other graphics yet</option>';const m=Number($('#gpMix').value);$('#gpMixV').textContent=m<=30?'mostly this one':m>=70?'mostly the other':'even'}
+$$('input[name=gpMode]').forEach(r=>r.addEventListener('change',paintPrint));$('#gpMix').addEventListener('input',()=>{const m=Number($('#gpMix').value);$('#gpMixV').textContent=m<=30?'mostly this one':m>=70?'mostly the other':'even'});
+let PRINTED=null;
+$('#gpGo').onclick=async()=>{const b=$('#gpGo'),mode=gpMode(),art=mode==='blend'?[CUR.id,$('#gpWith').value]:[CUR.id];if(mode==='blend'&&!art[1]){FBN.toast('Choose a graphic to blend with','err');return}
+  FBN.begin(b);try{const r=await api('/v1/lab/library/prints',{body:{mode,art,subject:$('#gpSubj').value.trim(),mix:Number($('#gpMix').value),fill:$('#gpFill').checked}});PRINTED=r.id;$('#gpImg').src=r.image;$('#gpImg').classList.remove('hidden');$('#gpOpen').classList.remove('hidden');
+    $('#gpInfo').textContent=`Kept in the library as "${r.name}".`;FBN.end(b,true);FBN.toast('The new print is in the library','ok');loadGraphics().catch(()=>{})}catch(x){FBN.end(b,false);FBN.toast(x.message,'err')}};
+$('#gpOpen').onclick=()=>{if(PRINTED&&G.graphics.find(g=>g.id===PRINTED))openGraphic(PRINTED)};
 // any product's tech pack
 let pqT=0;async function loadProducts(q){try{const r=await api('/v1/admin/products/search?q='+encodeURIComponent(q));$('#gpProduct').innerHTML=r.products.length?r.products.map(p=>`<option value="${p.id}">${esc(p.clientName)} · ${esc(p.title)}${p.hasPack?'':' (no tech pack yet)'}</option>`).join(''):'<option value="">No products found</option>'}catch(x){$('#gpProduct').innerHTML=`<option value="">${esc(x.message)}</option>`}}
 $('#gpQ').addEventListener('input',()=>{clearTimeout(pqT);pqT=setTimeout(()=>loadProducts($('#gpQ').value.trim()),250)});
