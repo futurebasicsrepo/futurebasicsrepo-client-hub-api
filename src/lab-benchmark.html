@@ -32,6 +32,11 @@ td{padding:8px;border-bottom:1px solid var(--line);vertical-align:top}td small{d
 .pill.ok{color:var(--ok);border-color:rgba(23,96,58,.35);background:rgba(23,96,58,.06)}.pill.warn{color:var(--warn);border-color:rgba(138,90,0,.35);background:rgba(138,90,0,.06)}.pill.bad{color:var(--bad);border-color:rgba(160,42,32,.35);background:rgba(160,42,32,.06)}
 .meter{display:grid;grid-template-columns:repeat(6,14px);gap:2px;margin-top:4px}.meter i{height:6px;border-radius:2px;background:var(--line)}
 .status{color:var(--dim);font-size:13px}.err{color:var(--bad)}
+.bcards{display:none;gap:12px}.bcard{border:1px solid var(--line);border-radius:14px;padding:12px 14px;display:grid;gap:8px}.bcard .top{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center}.bcard .top b{flex:1 1 100%;font-size:15px}
+.bcard dl{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;margin:0;font-size:13px}.bcard dt{color:var(--dim)}.bcard dd{margin:0;font-variant-numeric:tabular-nums}.bcard dd small{color:var(--dim)}
+@media(max-width:760px){#table .scroll{display:none}.bcards{display:grid}}
+.runs{display:grid;gap:8px;margin-top:8px}.runrow{display:grid;grid-template-columns:1fr auto;gap:2px 12px;align-items:center;text-align:left;width:100%;border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:#fff;cursor:pointer;font:inherit;color:inherit}.runrow:hover,.runrow[aria-pressed=true]{border-color:var(--ink)}.runrow small{color:var(--dim);font-size:12px}.runrow .sc{grid-row:span 2;font-variant-numeric:tabular-nums;font-weight:600}
+.viewing{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:13px;color:var(--dim)}.viewing button{border:1px solid var(--ink);background:#fff;border-radius:999px;padding:4px 12px;font:600 12px inherit;cursor:pointer}
 details summary{cursor:pointer;font-weight:600}
 </style>
 </head>
@@ -56,7 +61,7 @@ async function api(path,o={}){const r=await fetch(path,{method:o.method||(o.body
 const money=v=>v==null?'–':'$'+(v>=1000?Math.round(v).toLocaleString():Number(v).toFixed(2)),range=([a,b],f=money)=>`${f(a)}–${f(b)}`;
 const tone=s=>s>=80?'ok':s>=60?'warn':'bad',LABEL={size:'Size',must:'Must-have parts',checks:'Engine checks',count:'Part count',unit:'Cost to make',tool:'Tooling'};
 const meter=p=>`<span class="meter" aria-hidden="true">${['size','must','checks','count','unit','tool'].map(k=>`<i title="${LABEL[k]} ${Math.round(p[k]*100)}%" style="background:${p[k]>=.8?'var(--ok)':p[k]>=.5?'#d7a43a':'var(--bad)'}"></i>`).join('')}</span>`;
-let REF=[],timer=null;
+let REF=[],timer=null,VIEW=null,RUNS=[];
 function summary(run){const s=run.summary;if(!s)return '';
   return `<div class="tiles"><div class="tile"><b>${s.after??'–'}</b><span>Average score after the review (${s.before??'–'} before)</span></div>
   <div class="tile"><b>${s.reviewPassed}/${s.done}</b><span>Reached the review's bar of 90</span></div>
@@ -75,19 +80,28 @@ function rows(run){const items=run.items||[];if(!items.length)return '<p class="
     <td>${a.partCount}<small>known ${w.count[0]}–${w.count[1]}</small></td>
     <td>${money(a.unit)}<small>known ${range(w.unit)}</small></td>
     <td>${money(a.toolCost)}<small>known ${range(w.tool)}</small></td>
-    <td>${a.missing.length?esc(a.missing.join(', ')):'<small>none</small>'}${a.bad?`<small>${a.bad} engine problem${a.bad>1?'s':''}</small>`:''}</td></tr>`}).join('')}</tbody></table></div>`}
+    <td>${a.missing.length?esc(a.missing.join(', ')):'<small>none</small>'}${a.bad?`<small>${a.bad} engine problem${a.bad>1?'s':''}</small>`:''}</td></tr>`}).join('')}</tbody></table></div>`+cards(items)}
+// on a phone the same figures as cards, so cost to make and tooling are on screen without swiping the table sideways
+function cards(items){return `<div class="bcards">${items.map(i=>{if(i.error)return `<div class="bcard"><b>${esc(i.name)}</b><p class="err">${esc(i.error)}</p></div>`;const a=i.after,b=i.before,w=i.want;
+  return `<article class="bcard"><div class="top"><b>${esc(i.name)}</b><span class="pill ${tone(a.score)}">${a.score}</span><small class="status">${b.score} before the review</small>${i.review.score==null?'':`<span class="pill ${i.review.score>=90?'ok':'warn'}">review ${i.review.score}</span>`}</div>${meter(a.parts)}
+    <dl><dt>Size, mm</dt><dd>${a.size.join(' × ')} <small>known ${[...w.size].sort((x,y)=>x-y).join(' × ')}</small></dd><dt>Parts</dt><dd>${a.partCount} <small>known ${w.count[0]}–${w.count[1]}</small></dd>
+    <dt>Cost to make</dt><dd>${money(a.unit)} <small>known ${range(w.unit)}</small></dd><dt>Tooling</dt><dd>${money(a.toolCost)} <small>known ${range(w.tool)}</small></dd>
+    <dt>Missing</dt><dd>${a.missing.length?esc(a.missing.join(', ')):'<small>none</small>'}${a.bad?` <small>· ${a.bad} engine problem${a.bad>1?'s':''}</small>`:''}</dd>
+    <dt>Review</dt><dd>${i.review.score==null?'<small>checks only</small>':`${i.review.changes} change${i.review.changes===1?'':'s'}, ${i.review.rejected} refused`}</dd><dt>Took</dt><dd>${Math.round(i.secs/60)||1} min <small>· designed in ${i.compose.rounds} round${i.compose.rounds>1?'s':''}</small></dd></dl></article>`}).join('')}</div>`}
 async function load(){
   let d;try{d=await api('/v1/lab/engineering/benchmark')}catch(e){$('#status').innerHTML=`<span class="err">${esc(e.message)}</span>`;return}
   if(!REF.length){REF=d.reference;$('#only').innerHTML+=REF.map(r=>`<option value="${r.id}">${esc(r.name)}</option>`).join('');
     $('#ref').innerHTML=`<table><thead><tr><th>Product</th><th>Size, mm</th><th>Must have</th><th>Parts</th><th>Cost to make</th><th>Tooling</th></tr></thead><tbody>${REF.map(r=>`<tr><td><b>${esc(r.name)}</b><small>${esc(r.description)}</small></td><td>${r.size.join(' × ')}</td><td>${esc(r.must.join(', '))}</td><td>${r.count[0]}–${r.count[1]}</td><td>${range(r.unit)}</td><td>${range(r.tool)}</td></tr>`).join('')}</tbody></table><p class="status">Ranges for the common products of each kind: sizes from published dimensions, part counts from public teardowns, costs to make at 5,000 a year before margin. Factory quotes narrow the costs over time.</p>`}
-  const run=d.runs[0],live=Boolean(d.running);$('#run').disabled=live;
+  RUNS=d.runs;const live=Boolean(d.running),run=(VIEW&&d.runs.find(r=>r.id===VIEW))||d.runs[0];$('#run').disabled=live;
   if(!run){$('#status').textContent='No benchmark has run yet. A full run designs and reviews 12 products and takes about half an hour.';return}
-  $('#status').textContent=live?`Running: ${run.items.length} product${run.items.length===1?'':'s'} done so far. The table fills in as each finishes.`:run.status==='failed'?`The last run failed: ${run.error||'unknown error'}`:'';
+  if(run!==d.runs[0])$('#status').innerHTML=`<span class="viewing">Showing the run of ${esc(new Date(run.started_at).toLocaleString())} <button type="button" id="latest">Back to the latest</button></span>`;else $('#status').textContent=live?`Running: ${run.items.length} product${run.items.length===1?'':'s'} done so far. The table fills in as each finishes.`:run.status==='failed'?`The last run failed: ${run.error||'unknown error'}`:'';
   $('#sum').classList.toggle('hidden',!run.summary);$('#sum').innerHTML=summary(run);$('#table').classList.remove('hidden');$('#table').innerHTML=rows(run);
-  const old=d.runs.slice(1).filter(r=>r.summary);$('#older').classList.toggle('hidden',!old.length);$('#older').innerHTML=`<span class="mono">Earlier runs</span><div class="scroll"><table><thead><tr><th>When</th><th>Products</th><th>After review</th><th>Before</th><th>Passed review</th><th>Agreement</th></tr></thead><tbody>${old.map(r=>`<tr><td>${new Date(r.started_at).toLocaleString()}</td><td>${r.summary.done}</td><td>${r.summary.after??'–'}</td><td>${r.summary.before??'–'}</td><td>${r.summary.reviewPassed}</td><td>${r.summary.agreement==null?'–':Math.round(r.summary.agreement*100)+'%'}</td></tr>`).join('')}</tbody></table></div>`;
+  const others=d.runs.filter(r=>r.id!==run.id&&(r.summary||r.items?.length));$('#older').classList.toggle('hidden',!others.length);
+  $('#older').innerHTML=`<span class="mono">Other runs · tap one to see it</span><div class="runs">${others.map(r=>`<button type="button" class="runrow" data-run="${r.id}"><span>${esc((r.items||[]).map(x=>x.name).join(', ')||'No product finished')}</span><span class="sc">${r.summary?.after??'–'}</span><small>${esc(new Date(r.started_at).toLocaleString())} · ${r.status==='failed'?'did not finish':`${r.summary?.before??'–'} before the review · review passed ${r.summary?.reviewPassed??0}`}</small></button>`).join('')}</div>`;
   clearTimeout(timer);if(live)timer=setTimeout(load,8000)}
+document.addEventListener('click',e=>{const r=e.target.closest('[data-run]');if(r){VIEW=r.dataset.run;load();scrollTo({top:0,behavior:'smooth'});return}if(e.target.id==='latest'){VIEW=null;load()}});
 $('#run').addEventListener('click',async()=>{const v=$('#only').value,b=$('#run');b.disabled=true;b.textContent='Starting…';
-  try{const r=await api('/v1/lab/engineering/benchmark',{body:v?{only:[v]}:{}});$('#status').textContent=`Started: ${r.products} product${r.products>1?'s':''}, judged by ${r.judges.join(' + ')||'the engine checks only'}.`;await load()}
+  try{const r=await api('/v1/lab/engineering/benchmark',{body:v?{only:[v]}:{}});VIEW=null;$('#status').textContent=`Started: ${r.products} product${r.products>1?'s':''}, judged by ${r.judges.join(' + ')||'the engine checks only'}.`;await load()}
   catch(e){$('#status').innerHTML=`<span class="err">${esc(e.message)}</span>`;b.disabled=false}finally{b.textContent='Run the benchmark'}});
 load();
 </script>
