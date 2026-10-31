@@ -1042,6 +1042,14 @@ await journey('J216', 'Design service: a line designed for a client in their bra
         await wpg.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/work-room-design-phone.png`, fullPage: false }).catch(() => {});
         const lp = await wctx.newPage(); lp.on('pageerror', e => errs.push('lab: ' + e.message)); await lp.goto(`http://work.localhost:${new URL(BASE).port}/lab?client=${cid}#plans`, { waitUntil: 'domcontentloaded' }); await lp.waitForSelector(`#planList [data-plan="${plan.plan.id}"]`, { timeout: 20000 });
         ok(await lp.inputValue('#planRoom') === cid && /Tidewater|dana/i.test(await lp.innerText(`#planList [data-plan="${plan.plan.id}"]`)) && await lp.locator('#planList [data-plan]').count() === (await K(`/plans?client=${cid}`)).json.plans.length, '   "Line plans for this room" opens the Lab on this room\'s plans, each named with its room');
+        // Sites & health: the Design Lab's cards on Platform health, and the benchmark one click away
+        const hp = await wctx.newPage(); hp.on('pageerror', e => errs.push('platform: ' + e.message)); await hp.goto(`http://work.localhost:${new URL(BASE).port}/platform`, { waitUntil: 'domcontentloaded' }); await hp.waitForSelector('#pf-engineering', { timeout: 30000 });
+        ok(await hp.locator('#pf-lab-rooms').count() === 1 && /Design Lab and engineering/.test(await hp.innerText('body')) && await hp.locator('#pf-engineering .pf-act a[href="/lab/engineering/benchmark"]').count() === 1, 'Platform health has a Design Lab and engineering section, with a button to the benchmark');
+        await hp.locator('#pf-engineering').scrollIntoViewIfNeeded(); await hp.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/platform-design.png` }).catch(() => {});
+        const tab = hp.locator('.fbtabs a[href="/lab/engineering/benchmark"], .fbside a[href="/lab/engineering/benchmark"]').first();
+        ok(await tab.count() === 1, '   Sites & health lists the engineering benchmark');
+        await tab.click(); await hp.waitForURL(/\/lab\/engineering\/benchmark/, { timeout: 15000 }); await hp.waitForSelector('#run', { timeout: 15000 });
+        ok(/Run the benchmark/.test(await hp.innerText('#run')) && await hp.locator('.fbside').count() === 1, '   which opens the benchmark page, inside the console');
         await wctx.close();
         ok(errs.length === 0, 'no page errors', errs);
       } finally { await bw.close(); }

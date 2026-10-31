@@ -58,7 +58,8 @@
       { label: 'Money', href: '/money', gated: 'money', words: 'invoices payouts ledger' }] },
     { id: 'health', label: 'Sites & health', icon: 'pulse', items: [
       { label: 'Platform health', href: '/platform', key: 'platform', module: 'platform', words: 'status uptime sites watch' },
-      { label: 'Connections', href: '/admin#connections', module: 'platform', words: 'shopify resend quickbooks' }] },
+      { label: 'Connections', href: '/admin#connections', module: 'platform', words: 'shopify resend quickbooks' },
+      { label: 'Engineering benchmark', href: '/lab/engineering/benchmark', module: 'lab', words: 'benchmark engineering known products score review accuracy' }] },
     { id: 'settings', label: 'Settings', icon: 'gear', items: [
       { label: 'Team access', href: '/team', owner: true, waiting: true, words: 'staff permissions' },
       { label: 'Brand and assets', href: '/brand', module: 'brand', words: 'logo fonts colours' },
