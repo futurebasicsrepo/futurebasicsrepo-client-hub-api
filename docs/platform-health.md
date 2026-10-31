@@ -9,6 +9,7 @@
 | Listening and AI readers | ChatGPT and Grok (a free "list models" call tells whether the key is good), Reddit (signs in with the key), Hacker News and news, Brave web search, X, Discord, and the listening pipeline as a whole (watches on or failing, posts waiting, today's reading limit, spend, the automatic job) |
 | Sales, email and chat | Sales email (key, a verified sending domain, the webhook secret that brings replies and bounces back, the postal address in the footer, and bounces in the last 7 days), website chat (visitors left waiting for a person), sales automations (paused, stuck steps) |
 | Builds, stores and delivery | The showcase's GitHub sync (token and requests left), client stores (Shopify, Square, Wix connections and pushes in the last 7 days) |
+| Design Lab and engineering | The Design Lab on client rooms (paid, free, checkouts not paid, AI generations in the last 7 days, AI usage unpaid; warns when an invoice sits unpaid past 14 days) and the engineering (who reviews, the daily limits, the last benchmark and its score, the factory quotes calibrating costs; warns when the last benchmark did not finish or scored under 70). Each card has a button to its page; the Engineering benchmark is also a tab under Sites & health |
 
 Below the cards: payments, the web server, background jobs, **settings that can quietly go wrong** (now including the listening keys, the AI readers, sales email setup, the GitHub token and the sealing key for client store tokens), and recent failures.
 

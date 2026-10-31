@@ -1,5 +1,6 @@
 // Platform health for the parts of the platform that grew after the first checks: the AI readers and listening sources, the sales email,
-// website chat, automations, the showcase's GitHub sync, and the client stores builds are pushed to. Read-only, and free: a check never
+// website chat, automations, the showcase's GitHub sync, the client stores builds are pushed to, and the Design Lab (the rooms it is open on, and
+// the engineering: its reviewers, its daily limits, the last benchmark against known products and the factory quotes that calibrate its costs). Read-only, and free: a check never
 // spends paid quota (Brave and X are judged from their last real listening run, not a test search). No secret is ever returned.
 import { KEY_ENV, PROVIDER_LABEL, modelFor, originFor, providerReady } from './intel-llm.js';
 import { KEY_NEEDS, KIND_LABEL } from './intel-sources.js';
@@ -194,6 +195,26 @@ export function leadSearchVerdict({ hasKey, s }) {
   return { status: 'ok', summary: `Key set · ${plural(s.done7, 'search', 'searches')} in the last 7 days${s.last_at ? `, last ${ago(s.last_at)}` : ''} · ${plural(s.schedulesOn, 'saved search', 'saved searches')} running by themselves` };
 }
 
+// The Design Lab on client rooms: open where it should be, and nobody stopped by an unpaid AI invoice for long.
+// r: { open, free, gens7, unpaidCents, blocked, oldestUnpaidDays }
+export function labRoomsVerdict(r) {
+  if (!r.open && !r.free) return { status: 'off', summary: 'The Design Lab is not open on any client room yet' };
+  if (r.blocked) return { status: 'warn', summary: `${plural(r.blocked, 'room')} paused: AI generations wait on an unpaid invoice` };
+  if (r.unpaidCents && r.oldestUnpaidDays > 14) return { status: 'warn', summary: `$${(r.unpaidCents / 100).toFixed(2)} of AI usage unpaid, the oldest ${r.oldestUnpaidDays} days` };
+  return { status: 'ok', summary: `Open on ${plural(r.open + r.free, 'room')}${r.free ? ` (${r.free} free)` : ''} · ${plural(r.gens7, 'generation')} in the last 7 days` };
+}
+// The engineering: who reviews it, and how the last benchmark against known products went.
+// e: { claude, openai, checker, bench: { status, after, agreement, weakest, at } | null, interrupted, samples }
+export function engineeringVerdict(e) {
+  if (!e.claude && !e.openai) return { status: 'off', summary: 'Needs ANTHROPIC_API_KEY: without it the review only runs the engine\'s checks, and designing from the concept is off' };
+  if (!e.claude) return { status: 'warn', summary: 'No ANTHROPIC_API_KEY: ChatGPT reviews alone, and designing from the concept and the benchmark are off' };
+  const b = e.bench, judges = e.checker === 'claude' || !e.openai ? 'Claude' : e.checker === 'openai' ? 'ChatGPT' : 'Claude and ChatGPT';
+  if (b?.status === 'failed') return { status: 'warn', summary: `The last benchmark did not finish${e.interrupted ? ' (the service restarted during it)' : ''}: run it again` };
+  if (b?.status === 'done' && b.after != null && b.after < 70) return { status: 'warn', summary: `Last benchmark: ${b.after}/100 on known products; weakest ${(b.weakest || []).join(' and ') || 'not known'}` };
+  if (b?.status === 'done') return { status: 'ok', summary: `Reviewed by ${judges} · last benchmark ${b.after}/100${b.agreement != null ? `, the review agreed ${Math.round(b.agreement * 100)}% of the time` : ''}` };
+  return { status: 'ok', summary: `Reviewed by ${judges} · no benchmark run yet: run it from Sites & health` };
+}
+
 export async function coverageChecks(d) {
   const { pool, env = process.env, telemetry, getSetting, fetchImpl = fetch } = d, one = async (sql, args = []) => (await pool.query(sql, args)).rows[0];
   const job = name => (telemetry?.jobs || []).find(j => j.name === name) || null;
@@ -209,7 +230,7 @@ export async function coverageChecks(d) {
       const keyName = KEY_ENV[provider], hasKey = Boolean(env[keyName]), model = modelFor(provider, env), u = await usage7(provider);
       let probe = null; if (hasKey) probe = await soft(async () => ({ status: (await reach(PROVIDER_LABEL[provider], fetchImpl(`${originFor(provider, env)}/v1/models`, { headers: { Authorization: `Bearer ${env[keyName]}` } }))).status }));
       const v = readerVerdict({ label: PROVIDER_LABEL[provider], keyName, hasKey, probe, selected: settings.provider === provider, usage: u.calls ? u : null });
-      return { ...v, facts: [['Model', model], ['Chosen to read new posts', settings.provider === provider ? 'yes' : 'no'], ['Calls, last 7 days', String(u.calls)], ['Estimated spend, last 7 days', `$${(u.cents / 100).toFixed(2)}`], ...(provider === 'openai' ? [['Same key also used for', 'spec-check renders and colourway checks']] : [])] };
+      return { ...v, facts: [['Model', model], ['Chosen to read new posts', settings.provider === provider ? 'yes' : 'no'], ['Calls, last 7 days', String(u.calls)], ['Estimated spend, last 7 days', `$${(u.cents / 100).toFixed(2)}`], ...(provider === 'openai' ? [['Same key also used for', 'spec-check renders, colourway checks, and the second reviewer on shoe and engineering reviews'], ...(telemetry?.integrations?.['openai-check'] ? [['Second reviewer calls since deploy', `${telemetry.integrations['openai-check'].calls}${telemetry.integrations['openai-check'].errors ? ` · ${telemetry.integrations['openai-check'].errors} failed` : ''}`]] : [])] : [])] };
     }));
   }
 
@@ -330,6 +351,29 @@ export async function coverageChecks(d) {
     return { ...v, facts: [['Shopify stores connected', String(s.shopify_ok)], ['Shopify stores needing reconnect', String(s.shopify_bad)], ['Square connections', String(s.sq)], ['Wix connections', String(s.wix)], ['Pushes that worked, last 7 days', String(s.push_ok)], ['Pushes that failed, last 7 days', String(s.push_bad)], ['Last push', s.last_push ? ago(s.last_push) : 'none yet']] };
   }));
 
+  // The Design Lab: the rooms it is open on, and the engineering (reviewers, daily limits, the benchmark, the factory quotes that calibrate costs).
+  listing.push(row('lab-rooms', 'Design Lab on client rooms', 'design', async () => {
+    const r = await one(`select (select count(distinct client_id)::int from lab_access where status='active' and (ends_at is null or ends_at > now())) open,
+        (select count(*)::int from clients where lab_free and archived_at is null) free,
+        (select coalesce(sum(units),0)::int from lab_ai_usage where created_at > now() - interval '7 days') gens7,
+        (select coalesce(sum(amount_cents),0)::int from lab_ai_invoices where paid_at is null) unpaid_cents,
+        (select coalesce(max(extract(day from now() - created_at)),0)::int from lab_ai_invoices where paid_at is null) oldest_unpaid,
+        (select count(*)::int from lab_access where status='pending') pending`);
+    const v = labRoomsVerdict({ open: r.open, free: r.free, gens7: r.gens7, unpaidCents: r.unpaid_cents, blocked: 0, oldestUnpaidDays: r.oldest_unpaid });
+    return { ...v, facts: [['Rooms with the Lab paid for', String(r.open)], ['Rooms with charges off', String(r.free)], ['Checkouts started, not paid', String(r.pending)], ['AI generations, last 7 days', String(r.gens7)], ['AI usage invoiced, unpaid', `$${(r.unpaid_cents / 100).toFixed(2)}`]] };
+  }));
+  listing.push(row('engineering', 'Design Lab engineering', 'design', async () => {
+    const b = await one(`select status, summary, error, started_at, finished_at from lab_benchmark_runs order by started_at desc limit 1`).catch(() => null);
+    const n = await one(`select count(*)::int samples, count(*) filter (where kind='electronics')::int el from lab_cost_samples`).catch(() => ({ samples: 0, el: 0 }));
+    const checker = String(env.ENGINEERING_CHECKER || 'both').toLowerCase(), running = b?.status === 'running' && b.started_at && Date.now() - new Date(b.started_at).getTime() < 3 * 3600e3;
+    const bench = b ? { status: running ? 'running' : b.status === 'running' ? 'failed' : b.status, after: b.summary?.after ?? null, agreement: b.summary?.agreement ?? null, weakest: b.summary?.weakest || [], at: b.finished_at || b.started_at } : null;
+    const v = engineeringVerdict({ claude: Boolean(env.ANTHROPIC_API_KEY), openai: Boolean(env.OPENAI_API_KEY), checker, bench, interrupted: b?.status === 'running' && !running, samples: n.samples });
+    return { ...v, facts: [['Reviewers', [env.ANTHROPIC_API_KEY && checker !== 'openai' ? 'Claude' : '', env.OPENAI_API_KEY && checker !== 'claude' ? 'ChatGPT' : ''].filter(Boolean).join(' and ') || 'none: engine checks only'],
+      ['Daily limits', `${env.ENGINEERING_REVIEW_DAILY || 40} reviews · ${env.ENGINEERING_COMPOSE_DAILY || 30} designs from a concept · ${env.ENGINEERING_BENCHMARK_DAILY || 3} benchmark runs`],
+      ['Last benchmark', !bench ? 'never run' : bench.status === 'running' ? `running since ${ago(b.started_at)}` : bench.status === 'done' ? `${bench.after}/100 after the review (${b.summary?.before ?? '–'} before) · ${b.summary?.done ?? 0} products · ${ago(bench.at)}` : `did not finish · ${ago(bench.at)}`],
+      ['Factory quotes calibrating costs', n.samples ? `${n.samples} (${n.el} electronics, ${n.samples - n.el} other goods)` : 'none yet: they arrive as factories quote engineered packs']] };
+  }));
+
   return Promise.all(listing);
 }
 
@@ -349,6 +393,7 @@ export function coverageConfig({ env = process.env } = {}) {
   add('salesmail', 'Sales email setup', !sendKey ? 'info' : env.RESEND_WEBHOOK_SECRET && env.SALES_POSTAL_ADDRESS ? 'ok' : 'warn', !sendKey ? 'No key: the Sales page cannot send email.' : env.RESEND_WEBHOOK_SECRET && env.SALES_POSTAL_ADDRESS ? 'Key, webhook secret and postal address are all set.' : `Missing: ${[!env.RESEND_WEBHOOK_SECRET && 'RESEND_WEBHOOK_SECRET (replies and bounces)', !env.SALES_POSTAL_ADDRESS && 'SALES_POSTAL_ADDRESS (email footer)'].filter(Boolean).join(' and ')}.`);
   add('githubtoken', 'Showcase GitHub token', env.BUILDS_GITHUB_TOKEN || env.GITHUB_TOKEN ? 'ok' : 'info', env.BUILDS_GITHUB_TOKEN || env.GITHUB_TOKEN ? 'Set: the showcase can follow app updates.' : 'Not set: the showcase does not follow app updates (BUILDS_GITHUB_TOKEN).');
   add('tokenkey', 'Sealing key for client store tokens', env.SHOPIFY_TOKEN_KEY ? 'ok' : env.SHOPIFY_APP_CLIENT_SECRET ? 'info' : 'warn', env.SHOPIFY_TOKEN_KEY ? 'SHOPIFY_TOKEN_KEY seals saved Square and Wix credentials.' : env.SHOPIFY_APP_CLIENT_SECRET ? 'Using a key derived from the Shopify app secret. Set SHOPIFY_TOKEN_KEY to keep the tokens readable if that secret ever changes.' : 'Neither SHOPIFY_TOKEN_KEY nor the Shopify app secret is set, so Square and Wix credentials cannot be saved.');
+  add('engjudges', 'Engineering reviewers', env.ANTHROPIC_API_KEY && env.OPENAI_API_KEY ? 'ok' : env.ANTHROPIC_API_KEY ? 'info' : 'warn', env.ANTHROPIC_API_KEY && env.OPENAI_API_KEY ? `Claude and ChatGPT both review (ENGINEERING_CHECKER=${env.ENGINEERING_CHECKER || 'both'}); the stricter score stands.` : env.ANTHROPIC_API_KEY ? 'Claude reviews alone. Add OPENAI_API_KEY for a second, independent reviewer.' : 'No ANTHROPIC_API_KEY: engineering reviews only run the engine\'s checks.');
   return out;
 }
 

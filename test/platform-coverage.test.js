@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readerVerdict, sourceVerdict, pipelineVerdict, salesEmailVerdict, chatVerdict, automationsVerdict, githubVerdict, storesVerdict, moneyVerdict, prototypesVerdict, leadSearchVerdict, payoutsVerdict, coverageConfig, redactSecrets } from '../src/platform-coverage.js';
+import { readerVerdict, sourceVerdict, pipelineVerdict, salesEmailVerdict, chatVerdict, automationsVerdict, githubVerdict, storesVerdict, moneyVerdict, prototypesVerdict, leadSearchVerdict, payoutsVerdict, coverageConfig, redactSecrets, labRoomsVerdict, engineeringVerdict } from '../src/platform-coverage.js';
 
 test('an AI reader is off without a key, down when refused, a warning when out of credit', () => {
   const base = { label: 'Grok (xAI)', keyName: 'XAI_API_KEY' };
@@ -132,4 +132,24 @@ test('Shopify Payments payouts: off until connected and read, a warning for a mi
   assert.equal(payoutsVerdict({ configured: true, st: { lastSyncAt: '2026-10-10T09:00:00Z' }, now }).status, 'warn');
   const v = payoutsVerdict({ configured: true, st: ok, p: { total: 4, fee30: 31250, gross30: 1_000_000 }, now });
   assert.equal(v.status, 'ok'); assert.match(v.summary, /4 payouts read.*\$313.*3\.1% of sales/);
+});
+
+test('Design Lab on client rooms: off until a room has it, a warning when AI usage sits unpaid, otherwise how much it is used', () => {
+  assert.equal(labRoomsVerdict({ open: 0, free: 0, gens7: 0, unpaidCents: 0, blocked: 0, oldestUnpaidDays: 0 }).status, 'off');
+  const ok = labRoomsVerdict({ open: 2, free: 1, gens7: 14, unpaidCents: 0, blocked: 0, oldestUnpaidDays: 0 });
+  assert.equal(ok.status, 'ok'); assert.match(ok.summary, /3 rooms \(1 free\) · 14 generations/);
+  assert.equal(labRoomsVerdict({ open: 1, free: 0, gens7: 3, unpaidCents: 1200, blocked: 0, oldestUnpaidDays: 20 }).status, 'warn');
+  assert.equal(labRoomsVerdict({ open: 1, free: 0, gens7: 3, unpaidCents: 1200, blocked: 0, oldestUnpaidDays: 3 }).status, 'ok', 'a fresh invoice is not a problem yet');
+});
+
+test('Design Lab engineering: needs Claude, names its reviewers, and reads the last benchmark', () => {
+  assert.equal(engineeringVerdict({ claude: false, openai: false, checker: 'both', bench: null }).status, 'off');
+  assert.match(engineeringVerdict({ claude: false, openai: true, checker: 'both', bench: null }).summary, /ChatGPT reviews alone/, 'with only OpenAI the review still runs');
+  assert.match(engineeringVerdict({ claude: true, openai: true, checker: 'both', bench: null }).summary, /Claude and ChatGPT · no benchmark run yet/);
+  assert.match(engineeringVerdict({ claude: true, openai: false, checker: 'both', bench: null }).summary, /Reviewed by Claude ·/);
+  const good = engineeringVerdict({ claude: true, openai: true, checker: 'both', bench: { status: 'done', after: 84, agreement: .75, weakest: ['size'] } });
+  assert.equal(good.status, 'ok'); assert.match(good.summary, /84\/100.*75%/);
+  const weak = engineeringVerdict({ claude: true, openai: true, checker: 'both', bench: { status: 'done', after: 61, agreement: .5, weakest: ['size', 'must'] } });
+  assert.equal(weak.status, 'warn'); assert.match(weak.summary, /61\/100.*size and must/);
+  assert.equal(engineeringVerdict({ claude: true, openai: true, checker: 'both', bench: { status: 'failed' }, interrupted: true }).status, 'warn');
 });

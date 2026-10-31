@@ -325,11 +325,14 @@ await journey('J39', 'platform health page: staff only, complete, honest about t
   const b = h.json, ids = (b.checks || []).map(c => c.id);
   for (const id of ['postgres', 'shopify', 'anthropic', 'resend', 'google', 'cutout', 'storage', 'host']) ok(ids.includes(id), `health lists ${id}`, ids);
   ok(['healthy', 'degraded', 'down'].includes(b.overall), 'one overall word for the banner', b.overall);
-  ok(b.checks.every(c => ['ok', 'warn', 'down', 'off', 'info'].includes(c.status) && c.name && c.summary && ['infrastructure', 'integration', 'listening', 'sales', 'delivery'].includes(c.group)), 'every check has a status, a name, a one-line summary and a group');
+  ok(b.checks.every(c => ['ok', 'warn', 'down', 'off', 'info'].includes(c.status) && c.name && c.summary && ['infrastructure', 'integration', 'listening', 'sales', 'delivery', 'design'].includes(c.group)), 'every check has a status, a name, a one-line summary and a group');
   const pg = b.checks.find(c => c.id === 'postgres'); ok(pg.status === 'ok' || (pg.status === 'warn' && /waiting for a connection/.test(pg.summary)), 'the database reads healthy (or honestly says requests are queueing on this deliberately tiny pool)', pg.summary);
   ok(pg.latencyMs >= 0 && pg.facts.some(f => f[0] === 'Version'), 'with a latency and a version');
   ok(b.checks.find(c => c.id === 'shopify').status === 'off' && /not connected/i.test(b.checks.find(c => c.id === 'shopify').summary), 'Shopify is reported as not connected here (it is not configured), not as fine');
   ok(b.checks.find(c => c.id === 'anthropic').status === 'warn', 'the assistant reads "warn" while a test fixture stands in for it', b.checks.find(c => c.id === 'anthropic'));
+  const lr = b.checks.find(c => c.id === 'lab-rooms'), en = b.checks.find(c => c.id === 'engineering');
+  ok(lr && lr.group === 'design' && lr.status !== 'down' && lr.facts.some(f => f[0] === 'AI generations, last 7 days') && en && en.group === 'design' && en.status !== 'down' && en.facts.some(f => f[0] === 'Last benchmark') && en.facts.some(f => f[0] === 'Daily limits'), 'Sites & health covers the Design Lab: the rooms it is open on, and the engineering (reviewers, limits, the last benchmark, the quotes that calibrate costs)', [lr, en]);
+  ok(b.config.some(c => c.id === 'engjudges'), 'and says who reviews the engineering');
   ok(b.config.find(c => c.id === 'bypass').status === 'ok', 'the sign-in bypass is reported off');
   ok(b.config.find(c => c.id === 'fixture').status === 'warn', 'and the test fixture is flagged');
   ok(b.jobs.some(j => j.name === 'Assistant recovery') && b.jobs.every(j => ['ok', 'warn', 'wait', 'off'].includes(j.health)), 'background jobs are listed, each with a state', b.jobs.map(j => j.name));

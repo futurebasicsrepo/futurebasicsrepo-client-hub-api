@@ -87,5 +87,6 @@ $('#run').addEventListener('click',async()=>{const v=$('#only').value,b=$('#run'
   catch(e){$('#status').innerHTML=`<span class="err">${esc(e.message)}</span>`;b.disabled=false}finally{b.textContent='Run the benchmark'}});
 load();
 </script>
+<script src="/console-nav.js" defer></script>
 </body>
 </html>
