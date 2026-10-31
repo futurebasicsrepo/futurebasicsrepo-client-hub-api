@@ -682,6 +682,9 @@ function elecChecks(s) {
     if (best > 3.2) say(u0.id, 'bad', `${u0.name}: ${r1(best)} mm in from the outside wall; a plug reaches only a few mm in, so bring it to the wall (within ${r1((hs[0]?.wall || 2) + 1.2)} mm).`);
     else say(u0.id, 'ok', `${u0.name}: at the wall (${r1(best)} mm), through an opening in the housing${hs.some(h => PROCESSES[h.process].tool === 'mould') ? ' (a side action in the tool)' : ''}.`);
   }
+  // a power source: something that draws power needs a cell, a mains supply or a socket to feed it (a review must not take the battery away)
+  const draws = elecParts(s).filter(p => !CELLS[p.elec.kind] && (ELEC[p.elec.kind].ma || 0) > 0), feeds = elecParts(s).filter(p => CELLS[p.elec.kind] || ELEC[p.elec.kind].mains || ['usbc', 'dcjack', 'iec'].includes(p.elec.kind)); // a charger or regulator passes power on; it does not supply it
+  if (draws.length && !feeds.length) say(draws[0].id, 'bad', `No power source: ${draws.slice(0, 3).map(p => p.name).join(', ')}${draws.length > 3 ? '…' : ''} need power, and there is no battery, mains supply or power socket. Add one.`);
   // mains inside: a certified supply, creepage, and the earth on a metal case
   const psu = elecParts(s).find(p => ELEC[p.elec.kind].mains);
   if (psu) { say(psu.id, 'ok', `${psu.name}: buy it already certified to IEC 62368-1, keep 6.4 mm from anything at mains voltage to any metal a person can touch, and fuse the inlet.`);

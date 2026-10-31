@@ -1351,7 +1351,9 @@ screen, the drawing and the files agree. Routes: `src/lab-assembly-routes.js`; s
   holds up. The stricter judge's score stands, less 10 for each problem the engine still finds (up to 30); 90 passes. They ask for edits
   as bounded operations (set one field of a part, add a part, remove one): what both ask for (numbers and sizes met in the middle), or one
   asks for and the other does not dispute, is made, unless it adds a problem to the engine's checks, when it is refused and they are told
-  why. Rounds repeat until the bar, nothing left to change, or two rounds without gain; the best assembly seen is the result. What the parts
+  why. The last part of its kind the product works by (its only battery, radio, amplifier or board) is never just removed: a judge replaces it
+  (additions are made before removals) or changes it, and the engine flags an electronic product left with no battery, mains supply or
+  power socket. Rounds repeat until the bar, nothing left to change, or two rounds without gain; the best assembly seen is the result. What the parts
   cannot show (a gasket groove, a living hinge) is listed for an engineer, and disagreements are shown. Nothing is saved until **Use these
   changes**. Capped at `ENGINEERING_REVIEW_DAILY` (40) a day; `ENGINEERING_REVIEW_FIXTURE` stands in for the judges in tests.
 - **Costs calibrated from factory quotes** (`src/lab-cost-calibration.js`, table `lab_cost_samples`): each time a factory quotes a tech

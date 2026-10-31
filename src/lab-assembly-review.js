@@ -55,7 +55,11 @@ export const scoreOf = (criteria, E) => { const by = Object.fromEntries((criteri
 export function applyFix(spec, fix) {
   const s = cleanAssembly(spec), op = fix?.op, id = String(fix?.part || '').trim(), before = new Set(bads(engineer(s)).map(c => c.text));
   let parts, change;
-  if (op === 'remove') { const p = s.parts.find(q => q.id === id); if (!p || s.parts.length < 2) return null; parts = s.parts.filter(q => q.id !== id).map(q => (q.parent === id ? { ...q, parent: p.parent || null } : q)); change = { op, part: id, name: p.name, from: p.name, to: null }; }
+  if (op === 'remove') { const p = s.parts.find(q => q.id === id); if (!p || s.parts.length < 2) return null;
+    // the last part of its kind that the product works by (its battery, its radio, its amplifier, its board) is never just taken away: a judge
+    // who wants it different replaces it (adds the new one first: additions are made before removals) or changes it in place
+    const kind = p.elec?.kind || (p.shape === 'pcb' ? 'pcb' : null);
+    if (kind && !s.parts.some(q => q.id !== id && (q.elec?.kind || (q.shape === 'pcb' ? 'pcb' : null)) === kind)) return { rejected: true, change: { op, part: id, name: p.name, from: p.name, to: null, why: String(fix.why || '').slice(0, 300) }, reason: `${p.name} is the only ${kind === 'pcb' ? 'circuit board' : String(ELEC[kind]?.name || kind).toLowerCase()} in the product, and the product needs it: replace it (add the new one) or change it, rather than remove it` }; parts = s.parts.filter(q => q.id !== id).map(q => (q.parent === id ? { ...q, parent: p.parent || null } : q)); change = { op, part: id, name: p.name, from: p.name, to: null }; }
   else if (op === 'add') {
     const v = parseValue(fix.value); if (!v || typeof v !== 'object' || !/^[a-z0-9-]{1,32}$/.test(id) || s.parts.some(q => q.id === id)) return null;
     if (v.elec && !ELEC[v.elec.kind]) return null; if (!v.elec && v.shape && !SHAPES[v.shape]) return null;
@@ -141,7 +145,8 @@ export async function reviewAssembly({ spec, photo = null, concept = {}, judges 
     if (score >= bar) { status = 'passed'; onRound(round); break; }
     if (flat >= 2 || n === rounds) { onRound(round); break; }
     let next = cur;
-    for (const f of fixes) { const a = applyFix(next, f); if (!a) continue; if (a.rejected) { const r = { ...a.change, round: n, reason: a.reason }; rejected.push(r); round.refused.push(r); continue; } next = a.spec; made.push({ ...a.change, round: n, judges: f.from }); }
+    const order = { add: 0, set: 1, remove: 2 }; // a replacement goes in before what it replaces comes out
+    for (const f of [...fixes].sort((a, b) => (order[a.op] ?? 1) - (order[b.op] ?? 1))) { const a = applyFix(next, f); if (!a) continue; if (a.rejected) { const r = { ...a.change, round: n, reason: a.reason }; rejected.push(r); round.refused.push(r); continue; } next = a.spec; made.push({ ...a.change, round: n, judges: f.from }); }
     onRound(round);
     if (!made.length) break;
     changes.push(...made); cur = next; E = engineer(cur);

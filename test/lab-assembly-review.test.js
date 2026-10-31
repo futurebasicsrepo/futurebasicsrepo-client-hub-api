@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import '../src/elec.js';
-import { archetype, engineer } from '../src/lab-assembly.js';
+import { archetype, engineer, cleanAssembly } from '../src/lab-assembly.js';
 import { applyFix, mergeFixes, reviewAssembly, scoreOf, engineeringText, CRITERIA, BAR } from '../src/lab-assembly-review.js';
 
 const all = n => CRITERIA.map(c => ({ key: c.key, score: n, note: '' }));
@@ -67,4 +67,20 @@ test('a designed product\'s cell is priced from its capacity, not left free', as
   const a = JSON.parse(readFileSync(new URL('../scripts/journeys/fixtures/assembly-compose.json', import.meta.url), 'utf8'))[1];
   const r = await composeAssembly({ concept: { name: 'Bike light' }, ask: async () => a });
   assert.ok(r.eng.parts.find(p => p.id === 'battery').unit > 1, 'a 2000 mAh cell costs something'); assert.ok(r.eng.parts.find(p => p.id === 'mcu').unit > .5);
+});
+
+test('the review never takes away the last part of its kind the product works by; a replacement goes in first', () => {
+  const s = archetype('powerbank'), cell = s.parts.find(p => p.elec && ['battery', 'li18650'].includes(p.elec.kind));
+  const gone = applyFix(s, { op: 'remove', part: cell.id, why: 'simplify' });
+  assert.ok(gone?.rejected && /only .* the product needs it/.test(gone.reason), gone?.reason);
+  const board = s.parts.find(p => p.shape === 'pcb'); assert.ok(applyFix(s, { op: 'remove', part: board.id })?.rejected, 'nor the only board');
+  // a replacement first, then the old one may come out
+  const extra = applyFix(s, { op: 'add', part: 'cell-2', value: JSON.stringify({ name: 'Second cell', shape: 'box', size: [20, 20, 6], at: cell.at, parent: cell.parent, elec: { kind: cell.elec.kind, mah: 3000 } }) });
+  if (extra && !extra.rejected) { const out = applyFix(extra.spec, { op: 'remove', part: cell.id }); assert.ok(!out?.rejected || !/only/.test(out.reason || ''), 'with another of its kind it is no longer the only one'); }
+});
+
+test('the engine flags an electronic product with nothing to power it', () => {
+  const s = archetype('handheld'), cut = { ...s, parts: s.parts.filter(p => !(p.elec && (['battery', 'aa', 'li18650', 'psu', 'usbc', 'dcjack'].includes(p.elec.kind)))) };
+  const E = engineer(cleanAssembly(cut)); assert.ok(E.checks.some(c => c.level === 'bad' && /No power source/.test(c.text)), E.checks.filter(c => c.level === 'bad').map(c => c.text));
+  assert.ok(!engineer(s).checks.some(c => /No power source/.test(c.text)), 'the starting point has its power');
 });
