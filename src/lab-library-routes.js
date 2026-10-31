@@ -11,6 +11,7 @@
 //   GET  /v1/lab/library/graphics/:id/vector.svg?widthIn=          the graphic traced to vector paths, one per ink (for a screen printer)
 //   GET  /v1/lab/library/graphics/:id/embroidery?widthIn=[&format=dst]   a stitch plan (count, threads, a preview) or the Tajima .dst file
 //   POST /v1/lab/library/repeat {art, type, repeatIn, scale, rotate, background, keep?, name?}   an all-over repeat of a graphic: a preview, or kept
+//   POST /v1/lab/library/prints {mode: style|blend, art: [id] | [id, id], subject?, mix?, fill?, name?}   a new print from library graphics, kept (src/lab-prints.js)
 //   GET  /v1/lab/library/graphics/:id/job?technique=&widthIn=&garment=[&preview=1]   the production job file (a zip: separations, settings, sheet), or its summary
 import sharp from 'sharp';
 import { imageConfig, openaiEdit } from './check.js';
@@ -19,12 +20,13 @@ import { jobZip, jobFile } from './lab-jobfile.js';
 import { traceVector, stitchPlan, dstOf, expOf, stitchPreview } from './lab-vector.js';
 import { digitizeOptions } from './lab-digitize.js';
 import { makeRepeat, cleanRepeat, REPEAT_TYPES } from './lab-repeat.js';
+import { cleanPrint, printPrompt, fixturePrint, printName, PRINT_MODES } from './lab-prints.js';
 import { brandHits, cleanGraphics, ensureBranding, GRAPHIC_PLACE, GRAPHIC_TECHNIQUES } from './lab-concepts.js';
 import { BUILTIN_TECHNIQUES, TECHNIQUE_KINDS, EFFECTS, cleanTechnique, cleanRules, realPrompt } from './lab-library.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const clip = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
-const SOURCES = ['library', 'studio', 'upload', 'plan', 'concept', 'repeat'];
+const SOURCES = ['library', 'studio', 'upload', 'plan', 'concept', 'repeat', 'print'];
 const cleanTags = t => [...new Set((Array.isArray(t) ? t : String(t || '').split(',')).map(x => clip(x, 30).toLowerCase()).filter(Boolean))].slice(0, 12);
 export const pictureOf = dataUrl => { const m = /^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/=]+)$/i.exec(String(dataUrl || '')); return m ? Buffer.from(m[2], 'base64') : null; };
 const techShape = (r, photos = []) => ({ id: r.id, key: r.key, kind: r.kind, name: r.name, summary: r.summary, base: r.base, finish: r.finish, rules: cleanRules(r.rules || {}, r.base), prompt: r.prompt, artGuide: r.art_guide, factoryNote: r.factory_note,
@@ -113,7 +115,8 @@ export function registerLabLibraryRoutes(app, d) {
   });
 
   // ---- vector and embroidery files from a graphic ----
-  const artRow = async id => (await pool.query('select id, name, png from lab_art where id=$1', [id])).rows[0];
+  // a room reaches only its own graphics; Future Basics staff reach every one
+  const artRow = async (id, req = null) => (await pool.query('select id, name, png from lab_art where id=$1 and ($2::uuid is null or client_id=$2)', [id, req ? own(req) : null])).rows[0];
   const fileName = (a, ext) => `${String(a.name || 'graphic').replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase() || 'graphic'}.${ext}`;
   app.get('/v1/lab/library/graphics/:id/vector.svg', { preHandler: pre }, async (req, reply) => {
     if (!need(req, reply)) return; const a = await artRow(req.params.id); if (!a) return bad(reply, 'Not found', 404);
@@ -132,13 +135,32 @@ export function registerLabLibraryRoutes(app, d) {
   // ---- an all-over repeat ----
   app.post('/v1/lab/library/repeat', { preHandler: pre }, async (req, reply) => {
     const b = req.body || {}; if (!UUID.test(String(b.art || ''))) return bad(reply, 'Choose a graphic from the library');
-    const a = await artRow(b.art); if (!a) return bad(reply, 'That graphic is not in the library', 404);
+    const a = await artRow(b.art, req); if (!a) return bad(reply, 'That graphic is not in the library', 404);
     const r = await makeRepeat(a.png, cleanRepeat(b)), out = { type: r.type, typeLabel: REPEAT_TYPES[r.type], widthIn: r.widthIn, heightIn: r.heightIn, preview: `data:image/png;base64,${r.preview.toString('base64')}` };
     if (!b.keep) return out;
     const thumb = await sharp(r.preview).resize({ width: 256, height: 256, fit: 'cover' }).png().toBuffer(), name = clip(b.name, 80) || `${a.name} · ${REPEAT_TYPES[r.type].toLowerCase()} repeat`;
-    const id = (await pool.query(`insert into lab_art(name,png,thumb,prompt,source,in_library,tags,meta,created_by) values($1,$2,$3,$4,'repeat',true,$5,$6,$7) returning id`,
-      [name, r.tile, thumb, `All-over repeat of ${a.name}`, ['repeat', 'all-over'], { repeat: { from: a.id, type: r.type, repeatIn: r.repeatIn, scale: r.scale, rotate: r.rotate, background: r.background }, widthIn: r.widthIn, heightIn: r.heightIn }, actorOf(req)])).rows[0].id;
+    const id = (await pool.query(`insert into lab_art(name,png,thumb,prompt,source,in_library,tags,meta,created_by,client_id) values($1,$2,$3,$4,'repeat',true,$5,$6,$7,$8) returning id`,
+      [name, r.tile, thumb, `All-over repeat of ${a.name}`, ['repeat', 'all-over'], { repeat: { from: a.id, type: r.type, repeatIn: r.repeatIn, scale: r.scale, rotate: r.rotate, background: r.background }, widthIn: r.widthIn, heightIn: r.heightIn }, actorOf(req), own(req)])).rows[0].id;
     return reply.code(201).send({ ...out, id, name });
+  });
+
+  // ---- new prints from prints: in the style of one, or a blend of two ----
+  app.post('/v1/lab/library/prints', { preHandler: pre }, async (req, reply) => {
+    const p = cleanPrint(req.body || {}); if (p.error) return bad(reply, p.error);
+    const rows = []; for (const id of p.art) { const a = await artRow(id, req); if (!a) return bad(reply, 'That graphic is not in the library', 404); rows.push(a); }
+    const hits = brandHits([p.subject, p.name].join(' '), (await pool.query('select name from lab_brands')).rows.map(r => r.name));
+    if (hits.length) return bad(reply, `Leave other brands out (${hits.slice(0, 3).join(', ')}). Describe the look in your own words.`);
+    const cfg = imageCfg(); if (!cfg.configured) return bad(reply, 'No image model is connected, so new prints cannot be made.', 503);
+    if (art) { const left = await art.capLeft(1); if (left !== true) return bad(reply, `The daily limit of ${left} artworks is reached. Raise LAB_DAILY_ART.`, 429); }
+    try { await charge(req, { kind: 'graphic', units: 1 }); } catch (e) { return bad(reply, e.message, e.status || 500, e.meter ? { code: e.code, meter: e.meter } : {}); }
+    const names = rows.map(r => r.name), prompt = printPrompt(p, names), refs = await Promise.all(rows.map(r => sharp(r.png).flatten({ background: '#ffffff' }).resize({ width: 1024, height: 1024, fit: 'inside' }).png().toBuffer()));
+    let out; try { out = cfg.provider === 'fixture' ? await fixturePrint(p, refs) : await editImpl({ images: refs, prompt, cfg: { ...cfg, size: '1024x1024' } }); }
+    catch (e) { return bad(reply, `The image model could not make the print: ${clip(e.message, 200)}`, 502); }
+    const png = await sharp(out).resize({ width: 1600, height: 1600, fit: 'inside', withoutEnlargement: true }).png().toBuffer(), thumb = await sharp(png).resize({ width: 360, height: 360, fit: 'inside' }).png().toBuffer();
+    const name = printName(p, names), tags = ['print', p.mode === 'style' ? 'restyled' : 'blend'];
+    const id = (await pool.query(`insert into lab_art(name,png,thumb,prompt,model,source,in_library,tags,meta,created_by,client_id) values($1,$2,$3,$4,$5,'print',true,$6,$7,$8,$9) returning id`,
+      [name, png, thumb, prompt, cfg.provider === 'fixture' ? 'fixture' : cfg.model, tags, { print: { mode: p.mode, from: p.art, subject: p.subject, mix: p.mode === 'blend' ? p.mix : null, fill: p.fill } }, actorOf(req), own(req)])).rows[0].id;
+    return reply.code(201).send({ id, name, mode: p.mode, modeLabel: PRINT_MODES[p.mode], image: `data:image/png;base64,${thumb.toString('base64')}` });
   });
 
   // ---- techniques ----

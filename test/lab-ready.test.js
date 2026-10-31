@@ -42,3 +42,12 @@ test('too close shows as worth a look; a tech pack points at the pack', () => {
 test('materials without a fabric are a warning, not missing', () => {
   assert.equal(by(readiness({ concept: { ...base, spec: { materials: [{ kind: 'trim', role: 'trim' }] } } }), 'materials').state, 'warn');
 });
+
+test('the fabric is checked against the style once both are known', () => {
+  const twill = { kind: 'fabric', role: 'main', name: '8 oz twill', spec: { weightGsm: 270, construction: 'twill', stretch: 'none' } };
+  const flat = { check: { summary: { fail: 0, warn: 0 } }, style: 'leggings', fit: 'slim' };
+  const wrong = readiness({ concept: { ...base, spec: { materials: [twill] } }, flat });
+  assert.equal(by(wrong, 'fabric').state, 'todo'); assert.match(by(wrong, 'fabric').note, /four-way stretch/);
+  assert.equal(by(readiness({ concept: { ...base, spec: { materials: [twill] } }, flat: { ...flat, style: 'pants', fit: 'regular' } }), 'fabric').state, 'done');
+  assert.equal(by(readiness({ concept: base, flat }), 'fabric'), undefined); // no fabric yet: nothing to check
+});

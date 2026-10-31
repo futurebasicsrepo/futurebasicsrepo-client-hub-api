@@ -296,7 +296,7 @@ export function registerLabFlatsRoutes(app, d) {
   app.get('/v1/lab/concepts/:id/ready', { preHandler: pre }, async (req, reply) => {
     if (!UUID.test(String(req.params.id))) return bad(reply, 'Not found', 404);
     const c = (await pool.query('select id, status, category, spec, twist, closeness, product_id, client_verdict, (image is not null) has_image from lab_concepts where id=$1', [req.params.id])).rows[0]; if (!c) return bad(reply, 'Not found', 404);
-    const doc = (await pool.query('select doc from lab_studio_docs where concept_id=$1', [c.id])).rows[0]?.doc || null, f = (await pool.query('select check_result from lab_flats where concept_id=$1', [c.id])).rows[0];
+    const doc = (await pool.query('select doc from lab_studio_docs where concept_id=$1', [c.id])).rows[0]?.doc || null, f = (await pool.query(`select check_result, style, params->>'fit' fit from lab_flats where concept_id=$1`, [c.id])).rows[0];
     // a shoe or a plush is made from its pattern: whether it is saved, its checks, and the material on its main part
     let pattern = null;
     if (c.category === 'footwear' || c.category === 'plush') {
@@ -304,7 +304,7 @@ export function registerLabFlatsRoutes(app, d) {
       let checks = []; try { checks = row ? (foot ? footwearChecks(row.spec) : plushPattern(row.spec).checks) : []; } catch { checks = []; }
       pattern = { saved: Boolean(row), checks, main: foot ? 'upper' : 'body', mainLabel: foot ? 'upper\'s material' : 'body\'s pile' };
     }
-    return readiness({ concept: c, studioDoc: doc, flat: f ? { check: f.check_result } : null, pattern });
+    return readiness({ concept: c, studioDoc: doc, flat: f ? { check: f.check_result, style: f.style || '', fit: f.fit || '' } : null, pattern });
   });
   const take = async (req, reply) => {
     const c = await concept(req.params.id); if (!c) return bad(reply, 'Not found', 404), null;

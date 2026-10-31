@@ -48,6 +48,7 @@ h1{font-size:clamp(28px,4.4vw,42px);letter-spacing:-.035em;font-weight:500;margi
 .mats{display:grid;grid-auto-flow:column;grid-auto-columns:112px;gap:10px;overflow-x:auto;padding:2px 2px 8px;scroll-snap-type:x mandatory}
 .mats button{scroll-snap-align:start;border:1px solid var(--line);background:#fff;border-radius:14px;padding:6px 6px 8px;display:grid;gap:6px;text-align:left;font-size:12px;line-height:1.25;cursor:pointer}
 .mats button .sw{aspect-ratio:1;border-radius:10px;background:var(--fog) center/cover;display:block}.mats button small{color:var(--dim)}
+.fitnote{margin:6px 0 0;padding:8px 10px;border-radius:10px;border:1px solid var(--line);font-size:12.5px;line-height:1.4}.fitnote[data-verdict=good]{color:#17603a;background:rgba(23,96,58,.06)}.fitnote[data-verdict=check]{color:#8a5a00;background:rgba(138,90,0,.06)}.fitnote[data-verdict=wrong]{color:#a02a20;background:rgba(160,42,32,.06)}
 .mats button[aria-checked=true],.cols button[aria-checked=true]{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink),0 0 0 5px rgba(75,255,154,.45)}
 .cols{display:flex;flex-wrap:wrap;gap:8px}.cols button,.cols label{width:44px;height:44px;border-radius:50%;border:1px solid var(--line);cursor:pointer;padding:0;position:relative}
 .cols label{display:grid;place-items:center;background:conic-gradient(#e64,#ec4,#4c6,#4ae,#a6e,#e64);overflow:hidden}.cols label input{position:absolute;inset:0;opacity:0;cursor:pointer}
@@ -81,7 +82,7 @@ h1{font-size:clamp(28px,4.4vw,42px);letter-spacing:-.035em;font-weight:500;margi
       <div class="shBody">
         <div class="shArt" id="shArt" role="img" aria-label="The sketch in the chosen colour"></div>
         <div class="shSteps">
-          <section class="step"><h3><b>1</b>Cloth</h3><div class="mats" id="mats" role="radiogroup" aria-label="Cloth"><span class="note">Loading the library…</span></div></section>
+          <section class="step"><h3><b>1</b>Cloth</h3><div class="mats" id="mats" role="radiogroup" aria-label="Cloth"><span class="note">Loading the library…</span></div><p class="note fitnote hidden" id="matFit" role="status"></p></section>
           <section class="step"><h3><b>2</b>Colour</h3><div class="cols" id="cols" role="radiogroup" aria-label="Colour"></div><p class="note" id="colNote"></p></section>
           <details class="onto"><summary>Or put this sketch on a concept you already have</summary><input class="t" id="cq" type="search" placeholder="Search concepts" aria-label="Search concepts"><div class="pick" id="pick"><span class="note">Loading concepts…</span></div><p class="note">The flats open on that concept with this sketch, at the sketch's own proportions.</p></details>
         </div>
@@ -98,6 +99,7 @@ h1{font-size:clamp(28px,4.4vw,42px);letter-spacing:-.035em;font-weight:500;margi
 import { FLAT_TEMPLATES } from '/lab/lab-flat-templates.js';
 import { FLAT_PARTS, PART_KINDS } from '/lab/lab-flat-parts.js';
 import { STYLES, TEMPLATE_URL } from '/lab/flats.js';
+import { fabricFit } from '/lab/lab-fabric-fit.js';
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)],esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const TOKEN=()=>{try{return localStorage.getItem('fb.admin.token')||localStorage.getItem('fb.client.token')||''}catch{return ''}}; // staff sign in at the work console; a client with the Design Lab on their room signs in at their hub
 const CLIENT_MODE=()=>{try{return !localStorage.getItem('fb.admin.token')&&Boolean(localStorage.getItem('fb.client.token'))}catch{return false}};
@@ -119,7 +121,10 @@ let ARTURL='';function paintArt(){const hex=COL?.hex;if(!SVG){$('#shArt').innerH
   if(ARTURL)URL.revokeObjectURL(ARTURL);ARTURL=URL.createObjectURL(new Blob([svg],{type:'image/svg+xml'}));$('#shArt').innerHTML=`<img src="${ARTURL}" alt="">`;$('#shArt').dataset.hex=svg===SVG?'':hex}
 function paintMats(){const el=$('#mats');if(!MATS){el.innerHTML='<span class="note">Loading the library…</span>';return}
   el.innerHTML=`<button type="button" role="radio" data-mat="" aria-checked="${!MAT}"><span class="sw" style="background:repeating-linear-gradient(45deg,#fff 0 6px,#f1f1ec 6px 12px)"></span><b>Decide later</b><small>Choose it in the Studio</small></button>`+MATS.map(m=>`<button type="button" role="radio" data-mat="${m.id}" aria-checked="${MAT?.id===m.id}"><span class="sw" style="${m.photo?`background-image:url('${esc(photoSrc(m,MAT?.id===m.id?COL?.hex:''))}')`:`background:${esc(m.colours?.[0]?.hex||'#f1f1ec')}`}"></span><b>${esc(m.name)}</b><small>${esc(m.spec?.composition||m.spec?.construction||m.code||'')}</small></button>`).join('');
-  $('#mats').closest('.step').classList.toggle('done',Boolean(MAT))}
+  $('#mats').closest('.step').classList.toggle('done',Boolean(MAT));paintFit()}
+// does the cloth suit this sketch's style? (src/lab-fabric-fit.js)
+function paintFit(){const el=$('#matFit');if(!MAT||!CUR){el.classList.add('hidden');return}const f=fabricFit({style:CUR.style,materials:[{kind:'fabric',role:'main',name:MAT.name,spec:MAT.spec||{}}]});
+  if(f.verdict==='unknown'){el.classList.add('hidden');return}el.classList.remove('hidden');el.dataset.verdict=f.verdict;el.textContent=f.verdict==='good'?`✓ ${f.summary}`:`${f.verdict==='wrong'?'✕':'!'} ${f.findings[0].msg} ${f.findings[0].fix}`}
 function paintCols(){const own=(MAT?.colours||[]).filter(c=>/^#[0-9a-f]{6}$/i.test(c.hex||'')),seen=new Set(own.map(c=>c.hex.toLowerCase())),all=[...own.map(c=>[c.name||c.hex,c.hex]),...HOUSE.filter(([,h])=>!seen.has(h))];
   $('#cols').innerHTML=`<button type="button" role="radio" data-col="" aria-checked="${!COL}" title="As drawn (white)" aria-label="As drawn" style="background:#fff"></button>`+all.map(([n,h])=>`<button type="button" role="radio" data-col="${h}" data-name="${esc(n)}" aria-checked="${COL?.hex===h.toLowerCase()}" title="${esc(n)}" aria-label="${esc(n)}" style="background:${h}"></button>`).join('')+`<label title="Any colour" aria-label="Any colour"><input type="color" id="colAny" value="${COL?.hex||'#4bff9a'}"></label>`;
   $('#colNote').textContent=COL?`${COL.name||COL.hex}${MAT&&own.some(c=>c.hex.toLowerCase()===COL.hex)?` · a colour ${MAT.name} comes in`:''}`:own.length?`${MAT.name} comes in ${own.length} colour${own.length===1?'':'s'}, first in the row. Or any colour.`:'Pick one, or any colour with the wheel.';
