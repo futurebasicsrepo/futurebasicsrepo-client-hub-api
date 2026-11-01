@@ -4337,6 +4337,9 @@ await journey('J274', 'Easy on a phone: every step of a piece fits the step bar,
         ok(steps.length >= 5 && steps.every(s => s.l >= 0 && s.r <= 390 && s.h >= 32), '1. on a phone every step of the piece fits the step bar, none cut at the edge', steps);
         const tiny = await p.$$eval('#readyBtn,#save,#moreBtn,#panelBtn', bs => bs.filter(x => x.getBoundingClientRect().height && x.getBoundingClientRect().height < 34).map(x => x.id));
         ok(tiny.length === 0, '2. the Studio\'s buttons are a thumb\'s size', tiny);
+        const row = await p.$$eval('#readyBtn,#save,#moreBtn,#panelBtn', bs => [...new Set(bs.filter(x => x.offsetParent).map(x => Math.round(x.getBoundingClientRect().top)))]);
+        ok(row.length === 1 && !(await p.isVisible('#recipeBtn')), '   its actions sit on one row (Edit recipe waits under More)', row);
+        await p.click('#moreBtn'); ok(await p.isVisible('#recipeBtn'), '   and More brings Edit recipe out'); await p.click('#moreBtn');
         // the concept list
         await p.goto(`${BASE}/lab/studio`, { waitUntil: 'networkidle' }); await p.waitForSelector('#pickList a', { timeout: 20000 });
         ok(await outside() === 0, '3. the Studio\'s concept list stays inside the screen');
@@ -4348,11 +4351,13 @@ await journey('J274', 'Easy on a phone: every step of a piece fits the step bar,
         await p.goto(`${BASE}/lab/sketches`, { waitUntil: 'networkidle' }); await p.waitForSelector('.fbh-tog');
         await p.evaluate(() => scrollBy(0, 600)); await p.waitForTimeout(150);
         const away = await p.$eval('.fbh-tog', x => x.classList.contains('away')); await p.waitForTimeout(1300);
-        ok(away && !(await p.$eval('.fbh-tog', x => x.classList.contains('away'))), '5. the help tab fades aside while the page scrolls, and comes back when it rests');
+        const tab = await p.$eval('.fbh-tog', x => { const r = x.getBoundingClientRect(); return { l: Math.round(r.left), w: Math.round(r.width), h: Math.round(r.height) }; });
+        ok(away && !(await p.$eval('.fbh-tog', x => x.classList.contains('away'))) && tab.l >= 0 && tab.w <= 26 && tab.h >= 34, '5. the help tab fades aside while the page scrolls, comes back when it rests, and at rest is a slim handle in the side gutter', tab);
         // clients
         await p.goto(`${BASE}/admin`, { waitUntil: 'networkidle' }); await p.waitForSelector('#app:not(.hidden)', { timeout: 20000 });
         const hero = await p.evaluate(() => ({ g: getComputedStyle(document.querySelector('#app .hero-graphic')).display, h: Math.round(document.querySelector('#app .hero').getBoundingClientRect().height) }));
-        ok(hero.g === 'none' && hero.h < 120, '6. the Clients page opens with a one-line heading, not a screen-high banner', hero);
+        const head = await p.$eval('#clientsHead', x => Math.round(x.getBoundingClientRect().top));
+        ok(hero.g === 'none' && hero.h === 0 && head < 200, '6. the Clients page opens on its clients, with no banner above them', { ...hero, head });
         ok(errs.length === 0, '   no page errors', errs);
       } finally { await b.close(); }
     } else ok(true, 'needs a browser');
