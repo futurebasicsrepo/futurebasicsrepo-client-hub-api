@@ -1,4 +1,4 @@
-import { fabricFit } from './lab-fabric-fit.js';
+import { fabricFit, withAccept } from './lab-fabric-fit.js';
 // What a concept still needs before it becomes a tech pack, read from everything the Design workspace touches: the picture, the graphics placed
 // on the garment, the flats and their check, the materials, the twist, the "too close" check and the approval. Pure (the route reads the rows);
 // the Design workspace shows it as a checklist, each item with where to fix it.
@@ -30,8 +30,8 @@ export function readiness({ concept, studioDoc = null, flat = null, pattern = nu
     const fabric = picks.some(m => m && (m.kind === 'fabric' || /fabric|main|shell|body/i.test(String(m.role || ''))));
     add('materials', 'The main fabric chosen', fabric ? 'done' : picks.length ? 'warn' : 'todo', fabric ? `${picks.length} material${picks.length > 1 ? 's' : ''} chosen.` : picks.length ? 'Materials are chosen but none is marked as the fabric.' : 'Choose the main fabric and trims on the concept (What it is made of).', card);
     // the fabric against the style: a woven on a tee, a no-stretch cloth on leggings, a 600 gsm tee (src/lab-fabric-fit.js)
-    const fit = fabric && flat?.style ? fabricFit({ style: flat.style, fit: flat.fit, materials: picks }) : null;
-    if (fit && fit.verdict !== 'unknown') add('fabric', 'The fabric suits the style', fit.verdict === 'wrong' ? 'todo' : fit.verdict === 'check' ? 'warn' : 'done', fit.summary + (fit.findings[0]?.fix ? ` ${fit.findings[0].fix}` : ''), card);
+    const fit = fabric && flat?.style ? withAccept(fabricFit({ style: flat.style, fit: flat.fit, materials: picks }), spec.fabricAccept, picks) : null;
+    if (fit && fit.verdict !== 'unknown') add('fabric', 'The fabric suits the style', fit.accepted ? 'done' : fit.verdict === 'wrong' ? 'todo' : fit.verdict === 'check' ? 'warn' : 'done', fit.accepted ? fit.summary : fit.summary + (fit.findings[0]?.fix ? ` ${fit.findings[0].fix}` : ''), { href: `/lab/studio?concept=${c.id}&fabric=1` });
   }
   const twist = String(c.twist || '').trim().length >= 15;
   add('twist', 'Our twist written down', twist ? 'done' : 'todo', twist ? 'The twist says what is ours.' : 'Write what our twist is on the concept: approval needs it.', card);

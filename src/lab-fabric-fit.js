@@ -75,3 +75,11 @@ export function fabricFit({ style = '', fit = '', materials = [] } = {}) {
   return { findings, checked, verdict: fails ? 'wrong' : warns ? 'check' : 'good',
     summary: fails ? `${fails} fabric problem${fails > 1 ? 's' : ''}: ${findings.find(f => f.level === 'fail').msg}` : warns ? `${warns} thing${warns > 1 ? 's' : ''} to check: ${findings[0].msg}` : `The fabric suits ${a}.` };
 }
+
+// A fabric the check calls wrong can be kept on purpose (a woven legging, a deliberately light hoodie), with the reason written down:
+// spec.fabricAccept = { reason, by, at, main } holds while the main fabric is still the one it was given for. → the result, marked accepted.
+export const mainOf = materials => (Array.isArray(materials) ? materials : []).find(m => isCloth(m) && partOf(m) === 'main') || null;
+export function withAccept(fit, accept, materials) {
+  const main = mainOf(materials), ok = fit && fit.verdict !== 'good' && fit.verdict !== 'unknown' && accept && accept.reason && main && accept.main === main.id;
+  return ok ? { ...fit, accepted: { reason: accept.reason, by: accept.by || '', at: accept.at || null }, summary: `Kept on purpose: ${accept.reason}${accept.by ? ` (${accept.by})` : ''}. The check said: ${fit.findings[0]?.msg || fit.summary}` } : fit;
+}

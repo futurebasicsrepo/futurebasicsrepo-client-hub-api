@@ -694,7 +694,7 @@ Routes: `src/lab-materials-routes.js` (`/v1/lab/materials…`, `/v1/lab/concepts
 
 ## The recipe menu: design by picking
 
-Design Lab → **Recipe menu** (`/lab/recipe`), also the first way in on **+ New design**. It is for someone who is not a designer: they choose a piece the way they would order it.
+Design Lab → **Recipe menu** (`/lab/recipe`): in the staff tab row, the hub's Design Lab, the client room's Design Lab view in Work, and on **+ New design**. On a phone the bases scroll sideways and a bar at the foot shows the piece as it is picked, with **Open** to hand. Pip has a guide for it. It is for someone who is not a designer: they choose a piece the way they would order it.
 
 1. **The base.** A staple at its usual fit: classic, boxy or oversized tee, long-sleeve, tank, polo, crewneck, hoodie, zip hoodie, button-up and camp shirts, zip jacket, vest, straight or wide trousers, shorts, leggings and a six-panel cap.
 2. **Add-ons.** Pockets (chest, flap, kangaroo, zip, slant, jean, cargo, back welts), closures (quarter zip, button placket, drawcord waist) and finishes (front pleats, cropped, dropped shoulder, raw hem). Only the add-ons that suit the base are shown, and only one front pocket can be picked.
@@ -725,12 +725,14 @@ Routes:
 Stretch is read from the cloth's stretch words, the elastane in its composition, and a knit's own give.
 
 Where it shows:
+- In the Studio's **Fabrics, trims and labels** window, at the top of "On this garment". Every fabric in the library is marked as it is listed (suits it, worth a look, or not for this piece), and the ones that suit come first. The Studio's AI tab shows it under **The fabric** too.
+- **Keep it on purpose**: when the check calls a fabric wrong (a woven legging that is the whole idea), anyone working on the piece can keep it, with a reason. The reason, who gave it and when are kept on the concept and shown on the checklist, and the item no longer holds the tech pack up. It holds only while that fabric is the main one; choose another and it is checked afresh. **Take it back** undoes it. Route: `PUT|DELETE /v1/lab/concepts/:id/fabric-accept {reason}`.
 - On the **checklist** as **The fabric suits the style**, once a fabric and the flats are both there. A real problem holds the tech pack up, for example a twill on leggings. Anything else is worth a look and does not hold it up.
 - On the **sketch pack** sheet and the **recipe menu**, the moment a cloth is picked.
 
 ## New prints from old
 
-In the graphics library, open a graphic and use **A new print from this one**:
+In the graphics library press **Make a new print** (under Build one yourself), pick the graphic by its picture and, to blend, a second one. The Studio's AI tab links to it too (`/lab/library?print=1`, with `&art=` to start from one graphic). Or open a graphic and use **A new print from this one**:
 - **In this style, showing something new.** The image model draws a new textile print with the same marks, palette, density and technique, showing what you name (for example "palm leaves and surfboards").
 - **Blend with another print.** Two library graphics are fused into one design. The mix slider leans toward either one.
 
