@@ -367,6 +367,8 @@ header{display:flex;align-items:center;gap:20px}header .homelink{color:inherit;t
     let LAB=null;const labSec=document.getElementById('lab'),labNav=document.getElementById('navLab');
     const usd=c=>'$'+(Number(c||0)/100).toLocaleString(undefined,{minimumFractionDigits:Number(c||0)%100?2:0,maximumFractionDigits:2});
     async function loadLab(){try{LAB=await api('/v1/client/lab')}catch{LAB=null}
+      // the Lab open on this room: fetch its session cookie quietly (src/guard.js), so opening the Lab goes straight in
+      try{if(LAB&&LAB.open&&token&&!sessionStorage.getItem('fb.lab.warm')){sessionStorage.setItem('fb.lab.warm','1');fetch('/v1/lab/door',{headers:{Authorization:'Bearer '+token}}).catch(()=>{})}}catch{}
       if(LAB&&!LAB.open&&LAB.access?.status==='pending'){try{const r=await api('/v1/client/lab/landed',{method:'POST'});if(r.paid)LAB=r}catch{}}
       LAB_PLANS=LAB&&LAB.open?await api('/v1/lab/plans').then(j=>j.plans||[]).catch(()=>[]):[];
       renderLab();

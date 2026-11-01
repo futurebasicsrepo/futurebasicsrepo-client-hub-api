@@ -4388,5 +4388,50 @@ await journey('J275', 'Polish: a sync problem shared by several builds is said o
   } finally { for (const id of ids) if (id) await A(`/v1/admin/builds/${id}`, { method: 'DELETE' }); }
 });
 
+await journey('J276', 'The Lab\'s own work stays with the people it is open to: its pages, engines and drawings need a Lab session from the door (a valid sign-in with the Lab open), forged or borrowed cookies do not work, share and poll links stay open, a browser already signed in goes straight through, and robots.txt and noindex keep the app out of search engines and AI crawlers', async () => {
+  const raw = (path, headers = {}) => fetch(BASE + path, { headers, redirect: 'manual' });
+  // signed out: the engines and drawings answer 401, a page answers with the door (not the Lab's code)
+  for (const p of ['/lab/lab-pattern.js', '/lab/lab-assembly.js', '/lab/lab-footwear.js', '/lab/lab-recipe.js', '/lab/flat-templates/x.png']) ok((await raw(p)).status === 401, `1. signed out, ${p} is refused`);
+  const door = await (await raw('/lab/studio')).text();
+  ok(/Opening the Design Lab/.test(door) && !/pieceSteps|viewSeg/.test(door) && door.length < 8000, '   and /lab/studio is only the door, not the Studio', door.length);
+  for (const p of ['/lab/nav.js', '/lab/vendor/polygon-clipping.js']) ok((await raw(p)).status === 200, `2. ${p} stays open (the tech pack nav, open-source code)`);
+  ok((await raw('/lab/share/nope')).status === 200 && (await raw('/lab/poll/nope')).status === 200, '   share and poll pages stay open: their own token is the key');
+  // the door: the same checks as the Lab's API
+  ok((await raw('/v1/lab/door')).status === 401, '3. the door needs a sign-in');
+  const email = `door-${stamp}@selfserve.test`, started = await call('/v1/public/start', { body: { email, name: 'Door Check', title: 'First tee', photos: [jpeg()] } });
+  const cid = started.json.client?.id || sql(`select client_id from users where lower(email)='${email}'`), uid = sql(`select id from users where lower(email)='${email}'`).split('\n')[0], slug = sql(`select slug from clients where id='${cid}'`).split('\n')[0];
+  sql(`update users set email_verified_at=now() where id='${uid}'`);
+  const clientT = await forge({ sub: uid, clientId: cid, client: slug, role: 'client', email });
+  const locked = await raw('/v1/lab/door', { Authorization: 'Bearer ' + clientT }); ok(locked.status === 403 && (await locked.json()).code === 'LAB_LOCKED' && !locked.headers.get('set-cookie'), '   a client whose room has no Lab gets no session');
+  const open = await raw('/v1/lab/door', { Authorization: 'Bearer ' + kyleT }), sc = open.headers.get('set-cookie') || '';
+  ok(open.status === 200 && /^fb_lab=/.test(sc) && /HttpOnly/i.test(sc) && /Path=\/lab/.test(sc) && /SameSite=Lax/i.test(sc), '4. staff with the Lab get an HttpOnly session cookie scoped to /lab', sc.slice(0, 120));
+  const cookie = sc.split(';')[0];
+  const eng = await raw('/lab/lab-pattern.js', { Cookie: cookie });
+  ok(eng.status === 200 && /private/.test(eng.headers.get('cache-control') || ''), '   it opens the engines, marked private so no cache hands them on', eng.headers.get('cache-control'));
+  ok((await raw('/lab/studio', { Cookie: cookie }).then(r => r.text())).includes('viewSeg'), '   and the Studio itself');
+  // forged and borrowed cookies
+  ok((await raw('/lab/lab-pattern.js', { Cookie: 'fb_lab=' + kyleT })).status === 401, '5. a sign-in token passed off as the Lab cookie is refused (wrong audience)');
+  ok((await raw('/lab/lab-pattern.js', { Cookie: cookie.slice(0, -4) + 'abcd' })).status === 401, '   a tampered cookie is refused');
+  // robots
+  const robots = await (await raw('/robots.txt')).text();
+  ok(/User-agent: GPTBot\nDisallow: \//.test(robots) && /User-agent: ClaudeBot\nDisallow: \//.test(robots) && /Allow: \/pricing\$/.test(robots) && /User-agent: \*[\s\S]*Disallow: \/\n?$/.test(robots.trim() + '\n'), '6. robots.txt turns AI crawlers away and lets search see only the public pages');
+  ok(/noindex/.test((await raw('/admin')).headers.get('x-robots-tag') || '') && !(await raw('/pricing')).headers.get('x-robots-tag'), '   the app says noindex; the pricing page does not');
+  if (playwright) {
+    const b = await playwright.chromium.launch();
+    try {
+      const view = async (key, t, url) => { const c = await b.newContext(); if (t) await c.addInitScript(([k, v]) => { try { localStorage.setItem(k, v); } catch {} }, [key, t]); const p = await c.newPage(); await p.goto(BASE + url, { waitUntil: 'networkidle' }); return { c, p }; };
+      let { c, p } = await view('fb.admin.token', kyleT, '/lab/studio');
+      await p.waitForFunction(() => /Design Lab/.test(document.title) && document.querySelector('#viewSeg') && !document.querySelector('main.box#needSignin'), null, { timeout: 20000 }); ok(true, '7. a browser already signed in goes through the door to the Studio on its own');
+      await c.close(); ({ c, p } = await view('fb.admin.token', kyleT, '/lab#board'));
+      await p.waitForFunction(() => location.hash === '#board' && !document.querySelector('main.box#needSignin'), null, { timeout: 20000 }); ok(true, '   a link to a part of the Lab (#board) lands there too');
+      await c.close(); ({ c, p } = await view('', '', '/lab/studio'));
+      await p.waitForFunction(() => /Sign in first/.test(document.querySelector('h1')?.textContent || ''), null, { timeout: 10000 }); ok(true, '8. signed out, the door says to sign in');
+      await c.close(); ({ c, p } = await view('fb.client.token', clientT, '/lab'));
+      await p.waitForFunction(() => /not open on your room yet/.test(document.querySelector('h1')?.textContent || ''), null, { timeout: 10000 }); ok(true, '   and a client without the Lab is told how to open it');
+      await c.close();
+    } finally { await b.close(); }
+  } else ok(true, 'needs a browser');
+});
+
 shops.close(); brave.close();
 process.exit(summary() ? 1 : 0);

@@ -3,6 +3,7 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
 import { SignJWT, createRemoteJWKSet, jwtVerify } from 'jose';
+import { registerGuard } from './guard.js';
 import { createHash, createHmac, timingSafeEqual, randomBytes, randomInt, randomUUID } from 'node:crypto';
 import { createReadStream, createWriteStream, mkdirSync, readFileSync } from 'node:fs';
 import { unlink, writeFile, mkdir, readFile } from 'node:fs/promises';
@@ -713,6 +714,8 @@ const labAccess=createLabAccess({ pool, log: app.log, clientHubUrl,
 // is not counted: the charge is given back once the response has gone (src/lab-access.js refund)
 app.addHook('onResponse',async(req,reply)=>{if(req.labCharges?.length&&reply.statusCode>=500)await labAccess.refund(req).catch(err=>app.log.warn({err:err.message},'design lab charge not given back'))});
 const labGate=labAccess.gate, labDeps={ authenticate, adminOnly: labGate, staffOnly: adminOnly, lab: labAccess };
+// the Lab's pages, engines and drawings only for the people the Lab is open to; robots.txt and noindex for everything but the public pages (src/guard.js)
+registerGuard(app, { secret, authenticate, labGate });
 registerLabArtRoutes(app, { pool, ...labDeps, art: labArt });
 const lab=registerLabRoutes(app, { pool, ...labDeps, getSetting, setSetting, log: app.log, art: labArt,
   ...(process.env.PROTOTYPE_TEST_ORIGIN ? { delayMs: 0, crawlOpts: { lookup: async () => [{ address: '93.184.216.34' }], fetchImpl: (u, o) => { const x = new URL(u); return fetch(process.env.PROTOTYPE_TEST_ORIGIN + x.pathname + x.search, { ...o, headers: { ...(o && o.headers), 'x-original-host': x.hostname } }); } } } : {}) });
