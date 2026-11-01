@@ -4358,5 +4358,29 @@ await journey('J274', 'Easy on a phone: every step of a piece fits the step bar,
   } finally { for (const id of made) if (id) await K(`/concepts/${id}`, { method: 'DELETE' }); }
 });
 
+await journey('J275', 'Polish: a sync problem shared by several builds is said once above them (each card points up to it), and the Brand page\'s menu reads like every other page\'s', async () => {
+  const ids = [], A = (path, o = {}) => call(path, { token: kyleT, ...o }), err = `Polish check token refused ${stamp}`;
+  try {
+    for (const n of [1, 2]) { const r = await A('/v1/admin/builds', { body: { name: `Polish build ${n} ${stamp}`, slug: `polish-${n}-${stamp}`, repoUrl: `https://github.com/example/polish-${n}` } }); ok(r.status === 201, `build ${n} added`, [r.status, r.json.error]); ids.push(r.json.id); }
+    sql(`update builds set sync_error='${err}' where id in ('${ids.join("','")}')`);
+    if (playwright) {
+      const b = await playwright.chromium.launch();
+      try {
+        const c = await b.newContext({ viewport: { width: 1440, height: 900 } }); await c.addInitScript(x => { try { localStorage.setItem('fb.admin.token', x); } catch {} }, kyleT);
+        const p = await c.newPage(), errs = []; p.on('pageerror', e => errs.push(String(e)));
+        await p.goto(`${BASE}/builds/admin`, { waitUntil: 'networkidle' }); await p.waitForSelector('#list .bcard', { timeout: 20000 });
+        const txt = await p.innerText('#list'), times = txt.split(err).length - 1;
+        ok(times === 1 && /GitHub sync is failing for \d+ builds/.test(txt), '1. the shared sync problem is said once, above the builds', times);
+        const pointers = await p.$$eval('#list .bcard', (cs, ids) => cs.filter(x => ids.includes(x.dataset.id)).map(x => /Not synced: see above/.test(x.innerText)), ids);
+        ok(pointers.length === 2 && pointers.every(Boolean), '   and each of those cards points up to it', pointers);
+        await p.goto(`${BASE}/brand`, { waitUntil: 'networkidle' }); await p.waitForSelector('.fbside .lbl', { timeout: 20000 });
+        const st = await p.$eval('.fbside .lbl', x => ({ t: getComputedStyle(x).textTransform, f: getComputedStyle(x).fontFamily }));
+        ok(st.t === 'none' && !/Mono/i.test(st.f), '2. the Brand page\'s menu reads like the rest (its own label style stays on the page)', st);
+        ok(errs.length === 0, '   no page errors', errs);
+      } finally { await b.close(); }
+    } else ok(true, 'needs a browser');
+  } finally { for (const id of ids) if (id) await A(`/v1/admin/builds/${id}`, { method: 'DELETE' }); }
+});
+
 shops.close(); brave.close();
 process.exit(summary() ? 1 : 0);

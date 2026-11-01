@@ -1507,3 +1507,11 @@ Journey J273 covers all four.
 - **The Clients page** on a phone opens with a one-line heading; the orbit and the moving rail are hidden. A client cover photo that fails to load is removed rather than shown broken.
 
 Journey J274 covers these.
+
+## Polish (audit, phase 3)
+
+- **Builds:** when several builds share one sync problem (a refused GitHub token, say), it is said once above the builds, and each of those cards reads "Not synced: see above". A problem only one build has stays on its card.
+- **The work console menu** resets `.lbl` inside the sidebar, so a page's own label style (the Brand page's small uppercase mono) no longer restyles the menu.
+- **Controls with no name:** the sweep's flags on /help, /join, /prototypes and the tech pack were false positives. Each control has visible text, or is the hidden spam trap on /join, so nothing changed.
+
+Journey J275 covers the first two.
