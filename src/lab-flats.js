@@ -320,7 +320,9 @@ function beanieGeom(m, view) {
 function toteGeom(m, view) {
   const w = m.width / 2, H = m.height, d = m.handleDrop, hw = m.handleWidth, P = pts => 'M' + pts.map(q => q.map(n => +n.toFixed(3)).join(' ')).join(' L');
   const poly = [[-w, 0], [w, 0], [w, H], [-w, H]], parts = [{ d: P(poly) + ' Z', kind: 'outline' }, { d: P([[-w + .1, 1.25], [w - .1, 1.25]]), kind: 'stitch' }];
-  for (const off of [0, hw]) parts.push({ d: P([[-w * .45 + off, 0], ...cubic([-w * .45 + off, 0], [-w * .45 + off, -d * 1.25 + off], [w * .45 - off, -d * 1.25 + off], [w * .45 - off, 0]).slice(1)]), kind: 'outline' });
+  // the handle is one strap: its outer edge over and its inner edge back, so it is filled as a band and the space inside the loop stays open
+  const arc = off => cubic([-w * .45 + off, 0], [-w * .45 + off, -d * 1.25 + off], [w * .45 - off, -d * 1.25 + off], [w * .45 - off, 0], 32);
+  parts.push({ d: P([...arc(0), ...arc(hw).reverse()]) + ' Z', kind: 'outline' });
   for (const sg of [1, -1]) parts.push({ d: P([[sg * w * .45 - hw / 2, .1], [sg * w * .45 + hw / 2, .1], [sg * w * .45 + hw / 2, 1.6], [sg * w * .45 - hw / 2, 1.6]]) + ' Z', kind: 'stitch' });
   return { outline: poly, parts, regions: { body: poly }, keepouts: [{ name: 'the top hem and handles', poly: [[-w - 1, -1], [w + 1, -1], [w + 1, 2.25], [-w - 1, 2.25]], why: 'hem', level: 'fail' }], pom: [{ key: 'width', from: [-w, H + .7], to: [w, H + .7] }, { key: 'height', from: [w + .7, 0], to: [w + .7, H] }], bounds: bounds([...poly, [0, -d * .95]]), anchorName: 'the top edge' };
 }
@@ -496,6 +498,7 @@ export function defaultDetail(kind, p, view = 'front') {
   if (kind === 'pocket-zip') return at(half * .45, top ? m.length * .4 : 6, 5, .3);
   if (kind === 'pocket-slant' || kind === 'pocket-jean') return at(half * .62, bottom ? (m.waistband || 1.5) + 2.2 : 12, half * .45, 4.5, { flip: false });
   if (kind === 'pocket-cargo') return at(bottom ? half * .8 : half * .5, bottom ? (m.rise || 12) + 3 : m.length * .55, 7, 8);
+  if (kind === 'button') return at(0, top ? (m.neckDropFront || 3) + 1 : 1, .5, .5); // a button: on the centre front, under the neck (or on the waistband)
   if (kind === 'erase') return at(top ? 0 : half * .5, top ? m.length * .62 : 8, 6, 5);
   return at(half * (top ? .5 : .55), top ? 9.5 : bottom ? 6 : 3, top ? 4.5 : 6, top ? 5 : 6.5);
 }

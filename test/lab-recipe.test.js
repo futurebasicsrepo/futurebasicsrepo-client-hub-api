@@ -122,3 +122,10 @@ test('a button-down collar puts a button on each collar point', () => {
   const b = r.params.edits.filter(e => e.kind === 'button');
   assert.equal(b.length, 2); assert.equal(b[0].x, -b[1].x); assert.ok(b[0].y > 3 && b[0].y < 8, `${b[0].y}`);
 });
+
+test('a tote\'s handle is one strap: only the band takes the colour, the loop stays open', async () => {
+  const { geometry, defaultParams, defaultDetail } = await import('../src/lab-flats.js');
+  const g = geometry(defaultParams('tote', 'regular'), 'front'), handles = g.parts.filter(q => q.kind === 'outline' && q.d !== g.parts[0].d);
+  assert.equal(handles.length, 1); assert.match(handles[0].d, /Z$/); // outer edge over and inner edge back, closed
+  const b = defaultDetail('button', defaultParams('shirt', 'regular')); assert.ok(b.w <= .6 && b.x === 0, 'a button added by hand is button-sized');
+});

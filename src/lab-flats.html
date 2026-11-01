@@ -148,7 +148,7 @@ function nearSeg(pts,p,closed){let best=-1,bd=Infinity,bt=0;const m=closed?pts.l
 
 // ---------- design: colour, details, stitching, AI redraws ----------
 const SWATCH=['#111111','#f4f1ea','#1f2a44','#b9b9b4','#e8e2d4','#5b5e3a','#6b4a2f','#a02a20','#2a4fbf','#c9a227'];
-const GROUPS=[['Pockets',['pocket-patch','pocket-flap','pocket-welt','pocket-cargo','pocket-kangaroo','pocket-slant','pocket-jean','pocket-zip']],['Pleats, closures and trims',['pleat','drawcord','zip','placket']],['Change the sketch',['erase']]];
+const GROUPS=[['Pockets',['pocket-patch','pocket-flap','pocket-welt','pocket-cargo','pocket-kangaroo','pocket-slant','pocket-jean','pocket-zip']],['Pleats, closures and trims',['pleat','drawcord','zip','placket','button']],['Change the sketch',['erase']]];
 const SUGG=['Make this a cargo pocket with a flap','Add double forward pleats','Add an elastic waist with a drawstring','Remove the pocket','Make this a welt pocket','Add a zip pocket','Make the cuff a rib cuff','Add a hood drawstring with metal aglets'];
 const stitchOpts=v=>Object.entries(STITCHES).map(([k,l])=>`<option value="${k}" ${k===v?'selected':''}>${l}</option>`).join('');
 const pick=(k,v,label,clear)=>`<label class="pick"><input type="color" data-ek="${k}" value="${v||'#141416'}" aria-label="${label}">${label}${v&&clear?` <button class="btn sm q" type="button" data-clear="${k}">${clear}</button>`:''}</label>`;
