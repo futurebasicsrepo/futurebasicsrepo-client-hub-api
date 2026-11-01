@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>Platform map</title>
+<link rel="icon" href="/icons/icon-192.png">
+<style>
+@import url('/fonts/fonts.css');
+:root{--paper:#f5f5f2;--sheet:#fff;--ink:#141416;--ink2:#4c4c52;--ink3:#727278;--rule:rgba(20,20,22,.14);--rule2:#ececE8;
+  --sig:#17603a;--sig-soft:#dcf5e6;--ext:#8a5a00;--ext-soft:#f6ecd8;--gate:#4a3f8f;--gate-soft:#e8e5f6;--dim:.22;--cue:#4bff9a;
+  --f-display:'Space Grotesk',system-ui,sans-serif;--f-body:'Space Grotesk',system-ui,sans-serif;--f-mono:'IBM Plex Mono',ui-monospace,Menlo,monospace}
+html{background:var(--paper)}body{margin:0;color:var(--ink);font:400 14.5px/1.55 var(--f-body);background:var(--paper);min-height:100vh}
+button{font:inherit}.hidden{display:none!important}
+header.top{height:72px;background:rgba(20,20,22,.96);color:#fff;padding:0 clamp(16px,4vw,48px);display:flex;align-items:center;gap:14px;position:sticky;top:0;z-index:20}
+.wordmark{display:flex;align-items:center;gap:12px;position:relative;text-decoration:none;color:inherit;text-transform:uppercase;letter-spacing:.08em}
+.wordmark:after{content:"";position:absolute;left:0;bottom:-7px;width:64px;height:2px;background:var(--cue)}
+.brand-logo{display:block;width:200px;max-width:34vw;height:auto;max-height:30px}.brand-suffix{font:500 10px 'IBM Plex Mono',monospace;white-space:nowrap}
+.gatebox{max-width:620px;margin:40px auto;background:#fff;border:1px solid var(--rule);border-radius:22px;padding:22px}
+.gatebox a{display:inline-flex;margin-top:12px;border:1px solid var(--ink);border-radius:999px;padding:8px 15px;text-decoration:none;color:var(--ink);font-weight:600}
+h1{font-weight:500!important;letter-spacing:-.035em!important}
+*{box-sizing:border-box}
+
+.wrap{max-width:1680px;margin:0 auto;display:grid;gap:22px;padding:26px clamp(14px,3vw,36px) 90px}
+h1,h2,h3{font-family:var(--f-display);text-wrap:balance;margin:0}
+h1{font-size:clamp(30px,4.2vw,48px);font-weight:760;font-stretch:88%;letter-spacing:-.02em;line-height:1.02}
+h2{font-size:22px;font-weight:700;font-stretch:92%;letter-spacing:-.01em}
+.lede{max-width:72ch;color:var(--ink2);margin:10px 0 0}
+.mono{font-family:var(--f-mono);font-size:12.5px}
+.eyebrow{font:500 11px/1 var(--f-mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ink3)}
+.stats{display:flex;flex-wrap:wrap;gap:8px 22px;margin-top:16px}
+.stats div{display:grid}
+.stats b{font:700 22px/1.1 var(--f-display);font-stretch:85%;font-variant-numeric:tabular-nums}
+.stats span{font-size:12px;color:var(--ink3)}
+/* flows */
+.flows{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.flows .eyebrow{margin-right:6px}
+.chip{font:500 13.5px/1 var(--f-body);border:1px solid var(--rule);background:var(--sheet);color:var(--ink);padding:9px 14px;border-radius:999px;cursor:pointer;min-height:36px}
+.chip:hover{border-color:var(--ink3)}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--sheet);border-color:var(--ink)}
+.chip:focus-visible,.node:focus-visible,.btn:focus-visible{outline:2px solid var(--sig);outline-offset:2px}
+/* main grid */
+.main{display:grid;grid-template-columns:minmax(0,1fr);gap:18px;align-items:start}
+@media (min-width:1640px){.main{grid-template-columns:minmax(0,1fr) 360px}}
+.mapbox{background:var(--sheet);border:1px solid var(--rule);border-radius:14px;overflow-x:auto;min-width:0}
+.map{position:relative;min-width:1180px;padding:18px 18px 22px;display:grid;grid-template-columns:150px 170px minmax(0,1fr) 170px;gap:26px}
+.lane{display:flex;flex-direction:column;gap:10px;position:relative;z-index:1}
+.lane>.eyebrow{margin-bottom:2px;min-height:14px}
+.host{border:1.5px dashed var(--rule);border-radius:12px;padding:10px 12px 14px;display:grid;grid-template-columns:150px minmax(0,1fr) 150px;gap:22px;position:relative}
+.hostlbl{grid-column:1/-1;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:baseline;border-bottom:1px solid var(--rule2);padding-bottom:8px}
+.hostlbl b{font:700 14px/1.2 var(--f-display);font-stretch:92%}
+.svcgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.node{all:unset;box-sizing:border-box;display:block;cursor:pointer;background:var(--sheet);border:1px solid var(--rule);border-radius:9px;padding:9px 11px;transition:opacity .25s,border-color .2s,box-shadow .2s;position:relative}
+.node b{display:block;font:600 13.5px/1.25 var(--f-body)}
+.node small{display:block;font:400 11.5px/1.35 var(--f-mono);color:var(--ink3);margin-top:3px}
+.node:hover{border-color:var(--ink3)}
+.node.t-person{border-left:3px solid var(--ink)}
+.node.t-gate{background:var(--gate-soft);border-color:color-mix(in srgb,var(--gate) 35%,var(--rule))}
+.node.t-ext{background:var(--ext-soft);border-color:color-mix(in srgb,var(--ext) 35%,var(--rule))}
+.node.t-data{background:var(--rule2)}
+.node.sel{box-shadow:0 0 0 2px var(--ink)}
+.map.focus .node{opacity:var(--dim)}
+.map.focus .node.on{opacity:1;border-color:var(--sig)}
+.map.focus .node.cur{box-shadow:0 0 0 2.5px var(--sig);opacity:1}
+.node .step{position:absolute;top:-8px;right:-8px;min-width:20px;height:20px;border-radius:10px;background:var(--sig);color:var(--sheet);font:600 11px/20px var(--f-mono);text-align:center;padding:0 5px;display:none}
+.map.focus .node.on .step{display:block}
+svg.edges{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:0;overflow:visible}
+svg.edges path{fill:none;stroke:var(--rule);stroke-width:1.2}
+svg.edges path.hot{stroke:var(--sig);stroke-width:2.2}
+svg.edges path.cur{stroke-width:3.2}
+.map.focus svg.edges path:not(.hot){opacity:.25}
+.legend{display:flex;flex-wrap:wrap;gap:14px;padding:10px 18px 14px;border-top:1px solid var(--rule2);font-size:12.5px;color:var(--ink2)}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:-1px;border:1px solid var(--rule)}
+/* side panel */
+.panel{background:var(--sheet);border:1px solid var(--rule);border-radius:14px;padding:18px;display:grid;gap:14px;position:sticky;top:max(12px,env(safe-area-inset-top,0px));max-height:calc(100vh - 24px);overflow:auto;min-width:0}
+@media (max-width:1639px){.panel{position:static;max-height:none}}
+.panel h3{font-size:20px;font-weight:700;font-stretch:92%}
+.panel p{margin:0;color:var(--ink2)}
+.panel dl{margin:0;display:grid;gap:10px}
+.panel dt{font:500 11px/1 var(--f-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--ink3);margin-bottom:4px}
+.panel dd{margin:0;font-size:14px}
+.panel code{font:400 12.5px/1.4 var(--f-mono);background:var(--rule2);padding:1px 5px;border-radius:4px;word-break:break-word}
+.steps{margin:0;padding:0;list-style:none;display:grid;gap:4px;counter-reset:s}
+.steps li{display:grid;grid-template-columns:26px 1fr;gap:8px;padding:8px;border-radius:8px;cursor:pointer;font-size:14px;color:var(--ink2)}
+.steps li::before{counter-increment:s;content:counter(s);font:600 12px/22px var(--f-mono);text-align:center;width:22px;height:22px;border-radius:11px;border:1px solid var(--rule)}
+.steps li.cur{background:var(--sig-soft);color:var(--ink)}
+.steps li.cur::before{background:var(--sig);border-color:var(--sig);color:var(--sheet)}
+.steps li b{color:var(--ink);font-weight:600}
+.player{display:flex;gap:8px;align-items:center}
+.btn{font:500 13.5px/1 var(--f-body);border:1px solid var(--rule);background:var(--sheet);color:var(--ink);padding:9px 14px;border-radius:8px;cursor:pointer;min-height:36px}
+.btn.go{background:var(--sig);color:var(--sheet);border-color:var(--sig)}
+.btn:disabled{opacity:.4;cursor:default}
+.player .mono{margin-left:auto;color:var(--ink3)}
+/* below */
+.below{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:18px}
+.card{background:var(--sheet);border:1px solid var(--rule);border-radius:14px;padding:18px;display:grid;gap:10px;align-content:start;min-width:0}
+.card p,.card li{color:var(--ink2);font-size:14px}
+.card ul,.card ol{margin:0;padding-left:18px;display:grid;gap:6px}
+.card b{color:var(--ink)}
+.req{display:grid;gap:0;margin:0;padding:0;list-style:none}
+.req li{display:grid;grid-template-columns:22px 1fr;gap:10px;padding:8px 0;border-top:1px solid var(--rule2)}
+.req li:first-child{border-top:0}
+.req li span{width:10px;height:10px;border-radius:5px;background:var(--gate);margin-top:6px;justify-self:center}
+.foot{color:var(--ink3);font-size:12.5px}
+@media (prefers-reduced-motion:reduce){.node{transition:none}}
+</style>
+<script src="/feedback.js"></script>
+<link rel="stylesheet" href="/cue.css">
+</head>
+<body>
+<header class="top">
+  <a class="wordmark" href="/home" aria-label="Work home"><img class="brand-logo" src="https://thefuturebasics.com/cdn/shop/files/future_basics_true_vector_fixed.svg?v=1775278873&amp;width=360" alt="Future Basics"><span class="brand-suffix">/ Platform map</span></a>
+</header>
+<div id="needSignin" class="gatebox hidden"><h1>Sign in to the work console first</h1><p class="note">The map uses your work console sign-in.</p><a href="/admin">Open the work console</a></div>
+<div class="wrap hidden" id="app">
+  <header>
+    <div class="eyebrow">Sites &amp; health · for the team and technical partners</div>
+    <h1>How the platform works</h1>
+    <p class="lede">How the client hub, the work console and the Design Lab fit together: who comes in where, how every request is checked, what each part of the service does, where data lives and which outside services it calls. Pick a flow to step through it, or click any box for its details.</p>
+    <div class="stats" id="stats"></div>
+  </header>
+
+  <nav class="flows" aria-label="Flows">
+    <span class="eyebrow">Flows</span>
+    <button class="chip" data-flow="all" aria-pressed="true" type="button">Whole system</button>
+    <button class="chip" data-flow="lab" aria-pressed="false" type="button">Design Lab to factory</button>
+    <button class="chip" data-flow="photo" aria-pressed="false" type="button">Photo to tech pack</button>
+    <button class="chip" data-flow="cash" aria-pressed="false" type="button">Lead to cash</button>
+    <button class="chip" data-flow="request" aria-pressed="false" type="button">How a request is checked</button>
+    <button class="chip" data-flow="jobs" aria-pressed="false" type="button">What runs on its own</button>
+  </nav>
+
+  <div class="main">
+    <section class="mapbox" aria-label="System map">
+      <div class="map" id="map">
+        <svg class="edges" id="edges" aria-hidden="true"></svg>
+        <div class="lane" data-lane="people"><span class="eyebrow">People</span></div>
+        <div class="lane" data-lane="doors"><span class="eyebrow">Front doors</span></div>
+        <div class="host">
+          <div class="hostlbl"><b>The service on Railway</b><span class="mono">Docker · one Node 22 / Fastify process · Postgres · file volume</span></div>
+          <div class="lane" data-lane="gate"><span class="eyebrow">Checks</span></div>
+          <div class="lane" data-lane="svc"><span class="eyebrow">Services (src/*.js)</span><div class="svcgrid" id="svc"></div></div>
+          <div class="lane" data-lane="data"><span class="eyebrow">Data</span></div>
+        </div>
+        <div class="lane" data-lane="ext"><span class="eyebrow">Outside services</span></div>
+      </div>
+      <div class="legend">
+        <span><i style="background:var(--sheet);border-left:3px solid var(--ink)"></i>People</span>
+        <span><i style="background:var(--sheet)"></i>Pages and services</span>
+        <span><i style="background:var(--gate-soft)"></i>Checks on every request</span>
+        <span><i style="background:var(--rule2)"></i>Data</span>
+        <span><i style="background:var(--ext-soft)"></i>Outside services</span>
+      </div>
+    </section>
+
+    <aside class="panel" id="panel" aria-live="polite"></aside>
+  </div>
+
+  <section class="below">
+    <div class="card">
+      <h2>One request, start to finish</h2>
+      <ol class="req">
+        <li><span></span><div><b>Cloudflare Access</b> on work.thefuturebasics.com: staff sign in with Google Workspace before the console loads. A staff session that did not come through it is refused.</div></li>
+        <li><span></span><div><b>Sign-in check</b>: a signed JWT (7 days) is verified, then the person's standing: signed out everywhere, taken off their room's team, moved to another room.</div></li>
+        <li><span></span><div><b>Access</b>: staff are held to the modules ticked for them on Team access; a client's queries are scoped to their own room.</div></li>
+        <li><span></span><div><b>Lab door</b>: pages and engine code under <code>/lab</code> need a 12-hour HttpOnly Lab cookie from <code>/v1/lab/door</code>.</div></li>
+        <li><span></span><div><b>Copy watch</b>: library pulls are counted per account per hour; clients far past normal are paused. Every download is logged with a reference, written into Lab files.</div></li>
+        <li><span></span><div><b>On the way out</b>: security headers (CSP, HSTS, no framing), <code>private</code> caching for the Lab, <code>noindex</code> everywhere but the public pages, gzip.</div></li>
+      </ol>
+    </div>
+    <div class="card">
+      <h2>Build, test, deploy</h2>
+      <ul>
+        <li><b>Code</b>: plain ES modules, no build step. Pages are static HTML with their own scripts; the server renders nothing.</li>
+        <li><b>Schema</b>: <code>src/db.js</code> creates and migrates tables at start-up, idempotently.</li>
+        <li><b>Dependencies</b>: pinned by <code>package-lock.json</code>, installed with <code>npm ci</code>; <code>npm run audit:deps</code> checks advisories.</li>
+        <li><b>Tests</b>: <code>npm test</code> (unit, incl. a check that every API route needs a sign-in or has a stated reason) and <code>npm run journeys</code> (end-to-end journeys against a real server, Postgres and headless Chromium/WebKit, with stand-ins for paid services).</li>
+        <li><b>Deploy</b>: Railway builds the Dockerfile on merge to main; <code>/health</code> gates the rollout.</li>
+        <li><b>Watching it</b>: Platform health in the work console checks every connection, job and setting without spending paid quota.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h2>Where to read more</h2>
+      <ul>
+        <li><code>docs/design-lab.md</code>: the Lab, its engines and pages</li>
+        <li><code>docs/design-to-factory.md</code>: concept to tech pack to factory</li>
+        <li><code>docs/security.md</code>: sign-in, access, the Lab door, copy watch</li>
+        <li><code>docs/platform-health.md</code>: checks and background jobs</li>
+        <li><code>docs/sales-os.md</code>, <code>docs/money.md</code>, <code>docs/contracts.md</code>, <code>docs/autopay.md</code></li>
+        <li><code>docs/factories.md</code>, <code>docs/builds-showcase.md</code>, <code>docs/site-prototypes.md</code></li>
+      </ul>
+      <p class="foot">Paths are in the client-hub-api repository. The counts at the top are read live from this running service.</p>
+    </div>
+  </section>
+</div>
+
+
+<script src="/console-nav.js" defer></script>
+<script>
+
+let N=[],EDGES=[],FLOWS={};
+const $ = s => document.querySelector(s), map = $('#map'), svg = $('#edges'), panel = $('#panel');
+const el = {};let byId={};
+function build(){
+for (const n of N) {
+  const b = document.createElement('button'); b.type = 'button'; b.className = 'node' + (n.t ? ' t-' + n.t : ''); b.id = 'n-' + n.id; b.dataset.id = n.id;
+  b.innerHTML = `<span class="step"></span><b>${n.name}</b><small>${n.sub}</small>`;
+  b.setAttribute('aria-label', `${n.name}, ${n.sub}`);
+  (n.lane === 'svc' ? $('#svc') : map.querySelector(`[data-lane="${n.lane}"]`)).appendChild(b); el[n.id] = b;
+}
+byId = Object.fromEntries(N.map(n => [n.id, n]));
+}
+let flow = 'all', at = 0, sel = null;
+
+function pt(id, side) {
+  const r = el[id].getBoundingClientRect(), m = map.getBoundingClientRect();
+  return { x: (side === 'r' ? r.right : side === 'l' ? r.left : r.left + r.width / 2) - m.left, y: r.top + r.height / 2 - m.top };
+}
+function curve(a, b) {
+  const ra = el[a].getBoundingClientRect(), rb = el[b].getBoundingClientRect();
+  let p, q;
+  if (rb.left >= ra.right - 4) { p = pt(a, 'r'); q = pt(b, 'l'); }
+  else if (ra.left >= rb.right - 4) { p = pt(a, 'l'); q = pt(b, 'r'); }
+  else { const m = map.getBoundingClientRect(), down = rb.top > ra.top; p = { x: ra.left + ra.width / 2 - m.left, y: (down ? ra.bottom : ra.top) - m.top }; q = { x: rb.left + rb.width / 2 - m.left, y: (down ? rb.top : rb.bottom) - m.top }; return `M${p.x},${p.y} C${p.x},${(p.y + q.y) / 2} ${q.x},${(p.y + q.y) / 2} ${q.x},${q.y}`; }
+  const dx = Math.max(30, Math.abs(q.x - p.x) * .45) * (q.x > p.x ? 1 : -1);
+  return `M${p.x},${p.y} C${p.x + dx},${p.y} ${q.x - dx},${q.y} ${q.x},${q.y}`;
+}
+function draw() {
+  const f = FLOWS[flow], pairs = f ? f.steps.slice(1).map((s, i) => [f.steps[i][0], s[0], i + 1]) : [];
+  const base = f ? [] : EDGES.map(e => [e[0], e[1], -1]);
+  svg.innerHTML = [...base, ...pairs].map(([a, b, i]) => `<path d="${curve(a, b)}" class="${i >= 0 ? 'hot' + (i === at ? ' cur' : '') : ''}"/>`).join('');
+}
+function paint() {
+  const f = FLOWS[flow];
+  map.classList.toggle('focus', Boolean(f));
+  for (const n of N) { const b = el[n.id]; b.classList.remove('on', 'cur'); b.querySelector('.step').textContent = ''; b.classList.toggle('sel', sel === n.id); }
+  if (f) f.steps.forEach(([id], i) => { const b = el[id]; b.classList.add('on'); const s = b.querySelector('.step'); s.textContent = s.textContent ? s.textContent + ',' + (i + 1) : String(i + 1); if (i === at) b.classList.add('cur'); });
+  document.querySelectorAll('.chip').forEach(c => c.setAttribute('aria-pressed', String(c.dataset.flow === flow)));
+  draw(); side();
+}
+function detail(n) {
+  const list = a => a.map(x => `<code>${x}</code>`).join(' ');
+  return `<div><div class="eyebrow">${({people:'People',doors:'Front door',gate:'Check',svc:'Service',data:'Data',ext:'Outside service'})[n.lane]}</div><h3>${n.name}</h3></div>
+    <p>${n.what}</p><dl>
+    ${n.code.length ? `<div><dt>In the code</dt><dd>${list(n.code)}</dd></div>` : ''}
+    ${n.data.length ? `<div><dt>Data</dt><dd>${list(n.data)}</dd></div>` : ''}
+    ${n.talks.length ? `<div><dt>Talks to</dt><dd>${n.talks.map(t => byId[t].name).join(' · ')}</dd></div>` : ''}</dl>`;
+}
+function side() {
+  const f = FLOWS[flow];
+  if (!f) {
+    panel.innerHTML = sel ? detail(byId[sel]) + `<button class="btn" type="button" id="clr">Back to the overview</button>` :
+      `<div><div class="eyebrow">Whole system</div><h3>Start anywhere</h3></div><p>Click a box to see what it does, where it lives in the code, what data it keeps and what it talks to. Pick a flow above to follow one piece of work across the whole system, step by step.</p>
+       <dl><div><dt>Shape</dt><dd>One Node service on Railway serves every page and API. Pages are static HTML; all data goes through <code>/v1</code> routes behind the checks.</dd></div>
+       <div><dt>Hosts</dt><dd><code>hub.</code> for clients, <code>work.</code> for staff (Cloudflare Access), <code>builds.</code> for the showcase; the same service answers all three.</dd></div>
+       <div><dt>Isolation</dt><dd>Each client room sees only its own rows. Factories and signers use token links and never get an account.</dd></div></dl>`;
+    return;
+  }
+  const [id, text] = f.steps[at];
+  panel.innerHTML = `<div><div class="eyebrow">Flow · step ${at + 1} of ${f.steps.length}</div><h3>${f.name}</h3></div><p>${f.lede}</p>
+    <div class="player"><button class="btn" type="button" id="prev" ${at ? '' : 'disabled'}>Back</button><button class="btn go" type="button" id="next" ${at < f.steps.length - 1 ? '' : 'disabled'}>Next step</button><span class="mono">${byId[id].name}</span></div>
+    <ol class="steps">${f.steps.map(([sid, t], i) => `<li data-i="${i}" class="${i === at ? 'cur' : ''}"><span><b>${byId[sid].name}.</b> ${t}</span></li>`).join('')}</ol>
+    <details><summary class="eyebrow" style="cursor:pointer">About ${byId[id].name}</summary><div style="display:grid;gap:12px;margin-top:10px">${detail(byId[id])}</div></details>`;
+}
+document.addEventListener('click', e => {
+  const c = e.target.closest('.chip'); if (c) { flow = c.dataset.flow; at = 0; sel = null; try { location.hash = flow === 'all' ? '' : flow; } catch {} paint(); return; }
+  const n = e.target.closest('.node'); if (n) { const id = n.dataset.id; if (FLOWS[flow]) { const i = FLOWS[flow].steps.findIndex(s => s[0] === id); if (i >= 0) { at = i; paint(); return; } flow = 'all'; } sel = id; paint(); return; }
+  if (e.target.id === 'next') { at++; paint(); return; }
+  if (e.target.id === 'prev') { at--; paint(); return; }
+  if (e.target.id === 'clr') { sel = null; paint(); return; }
+  const li = e.target.closest('.steps li'); if (li) { at = Number(li.dataset.i); paint(); }
+});
+document.addEventListener('keydown', e => { const f = FLOWS[flow]; if (!f || /input|textarea/i.test(e.target.tagName)) return; if (e.key === 'ArrowRight' && at < f.steps.length - 1) { at++; paint(); } if (e.key === 'ArrowLeft' && at > 0) { at--; paint(); } });
+const fromHash = () => { const h = location.hash.slice(1); flow = FLOWS[h] ? h : 'all'; at = 0; sel = null; paint(); };
+window.addEventListener('hashchange', fromHash);
+(async()=>{
+  let t='';try{t=localStorage.getItem('fb.admin.token')||''}catch{}
+  const fail=m=>{$('#needSignin').classList.remove('hidden');if(m)$('#needSignin h1').textContent=m};
+  if(!t)return fail();
+  let r;try{r=await fetch('/v1/admin/platform/map',{headers:{Authorization:'Bearer '+t}})}catch{return fail('The map could not load. Try again in a moment.')}
+  if(r.status===403){const j=await r.json().catch(()=>({}));return fail(j.code==='MODULE_ACCESS'?'Platform health is not turned on for you':'Staff only')}
+  if(!r.ok)return fail();
+  const d=await r.json();N=d.nodes;EDGES=d.edges;FLOWS=d.flows;for(const n of N)if(n.id==='pg')n.sub=Number(d.stats.tables).toLocaleString()+' tables';
+  const st=d.stats,fmt=n=>Number(n).toLocaleString();
+  $('#stats').innerHTML=[[1,'Node service ('+st.node+')'],[fmt(st.apiRoutes),'API routes'],[fmt(st.pages),'pages'],[fmt(st.tables),'Postgres tables'],[fmt(st.jobs),'background jobs']].map(([b,s])=>'<div><b>'+b+'</b><span>'+s+'</span></div>').join('');
+  $('#app').classList.remove('hidden');build();
+  new ResizeObserver(() => draw()).observe(map);document.fonts?.ready?.then(draw);fromHash();
+})();
+
+</script>
+</body>
+</html>
