@@ -5,8 +5,9 @@ import multipart from '@fastify/multipart';
 import { SignJWT, createRemoteJWKSet, jwtVerify } from 'jose';
 import { registerGuard } from './guard.js';
 import { createWatch } from './watch.js';
+import { NODES as MAP_NODES, EDGES as MAP_EDGES, FLOWS as MAP_FLOWS } from './platform-map.js';
 import { createHash, createHmac, timingSafeEqual, randomBytes, randomInt, randomUUID } from 'node:crypto';
-import { createReadStream, createWriteStream, mkdirSync, readFileSync } from 'node:fs';
+import { createReadStream, createWriteStream, mkdirSync, readFileSync, readdirSync } from 'node:fs';
 import { unlink, writeFile, mkdir, readFile } from 'node:fs/promises';
 import { pipeline } from 'node:stream/promises';
 import { gzip as gzipCb, gzipSync } from 'node:zlib';
@@ -108,6 +109,8 @@ import { cleanArt, artColours, printCheck, graphicCrop, parseImage } from './art
 import { nextFreeStep, nextPaidStep, nurtureEmail, marketingFooter, parseCaseStudies, pickCaseStudy, unsubscribeToken, validUnsubscribeToken } from './nurture.js';
 
 const app = Fastify({ logger: true, bodyLimit: 1_000_000, trustProxy: true });
+// every API route, counted as it is declared: the platform map shows the live number
+const apiRoutes=new Set();app.addHook('onRoute',r=>{if(String(r.url).startsWith('/v1/'))for(const m of [].concat(r.method))if(m!=='HEAD')apiRoutes.add(`${m} ${r.url}`)});
 // Platform health: every answer is counted, and failures are kept in the database (the newest 500) so they survive a deploy.
 app.addHook('onResponse', async (req, reply) => { try { recordRequest(req.routeOptions?.url || '(no route)', reply.statusCode, reply.elapsedTime); } catch {} });
 setSink(async ({ source, level, message, detail }) => {
@@ -877,6 +880,7 @@ registerBrandRoutes(app, { authenticate, adminOnly });
 app.get('/admin', sendAdmin);
 app.get('/clients/:id', sendAdmin);
 app.get('/platform', sendAdmin);
+app.get('/platform/map',(_req,reply)=>reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./platform-map.html',import.meta.url),'utf8')));
 app.get('/hub', sendClientHub);
 app.get('/projects/:id', async (req,reply)=>String(req.headers.host||'').toLowerCase().startsWith('work.')?sendAdmin(req,reply):sendClientHub(req,reply));
 // Tech pack page: editor on work., read-only viewer on the client hub, token viewer for factories.
@@ -1052,6 +1056,12 @@ app.get('/v1/admin/platform/health',{preHandler:[authenticate,adminOnly]},async 
   const body={generatedAt:new Date().toISOString(),overall:overallStatus([...checks,...config.map(c=>({id:'setting',status:c.status}))]),checks,config,
     jobs:telemetry.jobs.map(j=>({...j,health:jobHealth(j)})),telemetry:{since:telemetry.since,uptimeSec:telemetry.uptimeSec,integrations:telemetry.integrations,requests:telemetry.requests,eventLoop:telemetry.eventLoop},events,payments:{recent:recentPayments,unmatched:payState.unmatched||[],lastRunAt:payState.lastRunAt||null,lastOkAt:payState.lastOkAt||null,lastError:payState.lastError||null,runs:payState.runs||0,stats:payStats}};
   const safe=redactSecrets(body);healthCache={at:Date.now(),body:safe};return safe;
+});
+// the platform map (src/platform-map.js): the parts, links and flows, with live counts from this running service; staff only
+app.get('/v1/admin/platform/map',{preHandler:[authenticate,adminOnly]},async()=>{
+  const tables=Number((await pool.query(`select count(*)::int n from information_schema.tables where table_schema='public' and table_type='BASE TABLE'`).catch(()=>({rows:[{n:0}]}))).rows[0].n);
+  const pages=readdirSync(new URL('./',import.meta.url)).filter(f=>f.endsWith('.html')).length;
+  return {nodes:MAP_NODES,edges:MAP_EDGES,flows:MAP_FLOWS,stats:{apiRoutes:apiRoutes.size,pages,tables,jobs:telemetrySnapshot().jobs.length,node:process.version,uptimeSec:Math.round(process.uptime())}};
 });
 // trace a file found elsewhere back to the export it came from (the reference is inside the file, or in its x-export-ref header)
 app.get('/v1/admin/exports/:ref',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{const r=await watch.lookup(req.params.ref);return r?{export:r}:reply.code(404).send({error:'No export has that reference'})});

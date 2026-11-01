@@ -4490,5 +4490,38 @@ await journey('J278', 'Sign out everywhere: a person ends every session they hol
   ok((await call('/v1/session', { token: kyleT })).status === 200, '   and the staff member who did it is still signed in');
 });
 
+await journey('J279', 'The platform map in Sites & health: staff open it from the menu, see every part with live counts, click a part for its details and step through a flow; its contents never reach a client or someone signed out', async () => {
+  ok((await call('/v1/admin/platform/map')).status === 401, '1. signed out, the map\'s contents are refused');
+  const email = `map-${stamp}@selfserve.test`, started = await call('/v1/public/start', { body: { email, name: 'Map Check', title: 'First tee', photos: [jpeg()] } });
+  const cid = started.json.client?.id || sql(`select client_id from users where lower(email)='${email}'`), uid = sql(`select id from users where lower(email)='${email}'`).split('\n')[0], slug = sql(`select slug from clients where id='${cid}'`).split('\n')[0];
+  sql(`update users set email_verified_at=now() where id='${uid}'`);
+  ok((await call('/v1/admin/platform/map', { token: await forge({ sub: uid, clientId: cid, client: slug, role: 'client', email }) })).status === 403, '   and a client cannot read them');
+  const m = await call('/v1/admin/platform/map', { token: kyleT }), st = m.json.stats || {};
+  ok(m.status === 200 && m.json.nodes.length > 25 && Object.keys(m.json.flows).length === 5 && st.apiRoutes > 500 && st.tables > 100 && st.pages > 30 && st.jobs > 5, '2. staff get every part, the five flows and live counts', st);
+  const ids = new Set(m.json.nodes.map(n => n.id));
+  ok(m.json.edges.every(([a, b]) => ids.has(a) && ids.has(b)) && Object.values(m.json.flows).every(f => f.steps.every(([id]) => ids.has(id))), '   every link and every flow step names a real part');
+  ok(!/sk-[A-Za-z0-9]|API_KEY|SECRET|password/i.test(JSON.stringify(m.json)), '   and nothing in it is a key or secret');
+  const page = await (await fetch(`${BASE}/platform/map`)).text();
+  ok(!/lab-assembly\.js|sales_contacts|intel_signals/.test(page), '3. the page itself is an empty shell: what the map says comes only from the staff API');
+  if (!playwright) { ok(true, 'needs a browser'); return; }
+  const b = await playwright.chromium.launch();
+  try {
+    const c = await b.newContext({ viewport: { width: 1440, height: 1000 } }); await c.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
+    const p = await c.newPage(); const errs = []; p.on('pageerror', e => errs.push(e.message));
+    await p.goto(`${BASE}/platform`, { waitUntil: 'domcontentloaded' });
+    await p.waitForSelector('a[href="/platform/map"]', { timeout: 15000 }); ok(true, '4. Platform map is in the Sites & health menu, next to Platform health');
+    await p.goto(`${BASE}/platform/map`, { waitUntil: 'networkidle' });
+    await p.waitForFunction(() => document.querySelectorAll('.node').length > 25 && document.querySelectorAll('#edges path').length > 20, null, { timeout: 15000 });
+    ok(/\d+/.test(await p.textContent('#stats')) && (await p.textContent('#n-pg small')).match(/\d+ tables/), '   it draws every part and its links, with the live counts', await p.textContent('#stats'));
+    await p.click('#n-guard'); await p.waitForFunction(() => /src\/guard\.js/.test(document.querySelector('#panel').textContent));
+    ok(true, '5. clicking a part shows what it does and where it lives in the code');
+    await p.click('.chip[data-flow="request"]'); await p.waitForFunction(() => document.querySelectorAll('.node.on').length >= 6 && /step 1 of/.test(document.querySelector('#panel').textContent));
+    await p.click('#next'); await p.waitForFunction(() => /step 2 of/.test(document.querySelector('#panel').textContent) && location.hash === '#request');
+    ok(true, '6. a flow lights its parts in order and steps on with Next, with its own link (#request)');
+    ok(errs.length === 0 && await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth), '   no errors and no sideways scroll', errs);
+    await c.close();
+  } finally { await b.close(); }
+});
+
 shops.close(); brave.close();
 process.exit(summary() ? 1 : 0);

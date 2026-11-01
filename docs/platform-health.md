@@ -11,6 +11,8 @@
 | Builds, stores and delivery | The showcase's GitHub sync (token and requests left), client stores (Shopify, Square, Wix connections and pushes in the last 7 days) |
 | Design Lab and engineering | The Design Lab on client rooms (paid, free, checkouts not paid, AI generations in the last 7 days, AI usage unpaid; warns when an invoice sits unpaid past 14 days) and the engineering (who reviews, the daily limits, the last benchmark and its score, the factory quotes calibrating costs; warns when the last benchmark did not finish or scored under 70). Each card has a button to its page; the Engineering benchmark is also a tab under Sites & health |
 
+**Platform map** (`/platform/map`, Sites & health → Platform map) is an interactive map of how the platform fits together, for the team and for technical partners they walk through it. It shows people, front doors, the checks on every request, the services, the data and outside services, and has five flows to step through. Click a box for what it does, its files, its tables and what it talks to. The parts and flows live in `src/platform-map.js` (keep them in step when a part is added or moved). They come from `GET /v1/admin/platform/map` (staff with Platform health only), with live counts of API routes, pages, tables and jobs. J279 checks it.
+
 Below the cards: payments, the web server, background jobs, **settings that can quietly go wrong** (now including the listening keys, the AI readers, sales email setup, the GitHub token and the sealing key for client store tokens), and recent failures.
 
 Rules:
