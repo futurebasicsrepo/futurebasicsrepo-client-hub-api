@@ -32,7 +32,8 @@
 .labsteps li a:hover{background:#efefeb}.labsteps li a[aria-current]{background:#141416;color:#fff}.labsteps li a:focus-visible{outline:2px solid #141416;outline-offset:1px}
 .labsteps li a .n{font:500 10px 'IBM Plex Mono',monospace;opacity:.55}.labsteps li a.todo{color:#727278}.labsteps li a.todo .n:after{content:"·"}
 .labsteps li+li:before{content:"";width:8px;height:1px;background:rgba(20,20,22,.2);margin:0 1px}
-@media(max-width:700px){.labsteps .up span{display:none}.labsteps li a .n{display:none}.labsteps li a{padding:5px 9px}}`;
+@media(max-width:700px){.labsteps .up span{display:none}.labsteps li a .n{display:none}.labsteps li a{padding:5px 9px}}
+@media(max-width:440px){.labsteps{gap:2px}.labsteps .up{padding:6px 4px}.labsteps li+li:before{display:none}.labsteps li a{padding:6px 8px;font-size:12.5px;min-height:32px}.labsteps ol{gap:0}}`;
   const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   function style() { if (document.getElementById('labnav-css')) return; const s = document.createElement('style'); s.id = 'labnav-css'; s.textContent = CSS; document.head.appendChild(s); }
   const HASHES = { '#plans': 'plans', '#board': 'board', '#assort': 'assort', '#research': 'found', '#library': 'found', '#trends': 'found', '#brands': 'found', '#code': 'found' };

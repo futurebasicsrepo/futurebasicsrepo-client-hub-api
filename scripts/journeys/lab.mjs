@@ -4320,5 +4320,43 @@ await journey('J273', 'What clients and prospects see first: the pricing plans s
   } finally { for (const id of made) if (id) await C(`/concepts/${id}`, { method: 'DELETE' }); }
 });
 
+await journey('J274', 'Easy on a phone: every step of a piece fits the step bar, the Materials kinds sit in one sliding row, the Studio\'s concept list stays inside the screen, the things you tap are a thumb\'s size, the help tab slides aside while the page scrolls, and the Clients page opens on its clients', async () => {
+  const made = [];
+  try {
+    const t = await K('/concepts/from-recipe', { body: { base: 'tee', system: 'mono' } }); const T = t.json.concept?.id; made.push(T);
+    if (playwright) {
+      const b = await playwright.chromium.launch();
+      try {
+        const c = await b.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }); await c.addInitScript(x => { try { localStorage.setItem('fb.admin.token', x); } catch {} }, kyleT);
+        const p = await c.newPage(), errs = []; p.on('pageerror', e => errs.push(String(e)));
+        const outside = () => p.evaluate(() => [...document.querySelectorAll('body *')].filter(e => { const r = e.getBoundingClientRect(), s = getComputedStyle(e); if (!(r.width && r.height) || s.visibility === 'hidden' || r.right <= innerWidth + 2) return false; let a = e.parentElement; while (a && a !== document.body) { if (/auto|scroll|hidden|clip/.test(getComputedStyle(a).overflowX)) return false; a = a.parentElement; } return true; }).length);
+        // the Studio: all five steps in view, and its buttons a thumb's size
+        await p.goto(`${BASE}/lab/studio?concept=${T}`, { waitUntil: 'networkidle' }); await p.waitForSelector('#pieceSteps a[data-step]', { timeout: 30000 }); await p.waitForTimeout(600);
+        const steps = await p.$$eval('#pieceSteps a[data-step]', as => as.map(a => { const r = a.getBoundingClientRect(); return { l: r.left, r: r.right, h: r.height }; }));
+        ok(steps.length >= 5 && steps.every(s => s.l >= 0 && s.r <= 390 && s.h >= 32), '1. on a phone every step of the piece fits the step bar, none cut at the edge', steps);
+        const tiny = await p.$$eval('#readyBtn,#save,#moreBtn,#panelBtn', bs => bs.filter(x => x.getBoundingClientRect().height && x.getBoundingClientRect().height < 34).map(x => x.id));
+        ok(tiny.length === 0, '2. the Studio\'s buttons are a thumb\'s size', tiny);
+        // the concept list
+        await p.goto(`${BASE}/lab/studio`, { waitUntil: 'networkidle' }); await p.waitForSelector('#pickList a', { timeout: 20000 });
+        ok(await outside() === 0, '3. the Studio\'s concept list stays inside the screen');
+        // materials
+        await p.goto(`${BASE}/lab/materials`, { waitUntil: 'networkidle' }); await p.waitForSelector('#kinds button');
+        const tops = await p.$$eval('#kinds button', bs => [...new Set(bs.map(x => Math.round(x.getBoundingClientRect().top)))]);
+        ok(tops.length === 1 && await outside() === 0, '4. the Materials kinds sit in one row that slides, nothing past the edge', tops);
+        // the help tab
+        await p.goto(`${BASE}/lab/sketches`, { waitUntil: 'networkidle' }); await p.waitForSelector('.fbh-tog');
+        await p.evaluate(() => scrollBy(0, 600)); await p.waitForTimeout(150);
+        const away = await p.$eval('.fbh-tog', x => x.classList.contains('away')); await p.waitForTimeout(1300);
+        ok(away && !(await p.$eval('.fbh-tog', x => x.classList.contains('away'))), '5. the help tab slides aside while the page scrolls, and comes back when it rests');
+        // clients
+        await p.goto(`${BASE}/admin`, { waitUntil: 'networkidle' }); await p.waitForSelector('#app:not(.hidden)', { timeout: 20000 });
+        const hero = await p.evaluate(() => ({ g: getComputedStyle(document.querySelector('#app .hero-graphic')).display, h: Math.round(document.querySelector('#app .hero').getBoundingClientRect().height) }));
+        ok(hero.g === 'none' && hero.h < 120, '6. the Clients page opens with a one-line heading, not a screen-high banner', hero);
+        ok(errs.length === 0, '   no page errors', errs);
+      } finally { await b.close(); }
+    } else ok(true, 'needs a browser');
+  } finally { for (const id of made) if (id) await K(`/concepts/${id}`, { method: 'DELETE' }); }
+});
+
 shops.close(); brave.close();
 process.exit(summary() ? 1 : 0);

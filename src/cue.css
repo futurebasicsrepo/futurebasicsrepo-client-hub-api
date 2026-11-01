@@ -135,6 +135,11 @@ html body dialog :is(form,.modal-body)>*{min-width:0}
 html body dialog :is(input:not([type=checkbox]):not([type=radio]),select,textarea){max-width:100%;min-width:0;box-sizing:border-box}
 html body dialog label>:is(input:not([type=checkbox]):not([type=radio]),select,textarea){width:100%}
 
+/* on a phone, things you tap are big enough for a thumb: buttons, pills and chips at least 36px tall, check boxes 20px */
+@media (pointer:coarse),(max-width:600px){
+  html body :is(.btn,.pill,.chip,.fchip,.seg>button,.labsteps li a){min-height:36px!important}
+  html body input:is([type=checkbox],[type=radio]){width:20px;height:20px;flex:none}
+}
 /* inputs and focus */
 html body :is(input,select,textarea):focus-visible{outline:2px solid var(--ink);outline-offset:1px}
 }
