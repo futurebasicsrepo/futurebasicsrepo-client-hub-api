@@ -87,7 +87,7 @@ export const RECIPE_ADDONS = [
   D('pleats', 'Front pleats', 'Finishes', ['pants', 'shorts', 'skirt'], null, { option: { pleats: 1 }, words: 'pleat trouser', sketch: { 'pants-wide': ['pants', 'pt-pleated-wide-trousers'], skirt: ['skirt', 'sk-pleated-tennis-skirt'] } }),
   // cropped: drawn on a cropped sketch of the piece (only where the pack has one). A dropped shoulder and a raw hem are not offered here: the
   // sketches set the shoulder and the hem, so picking them changed nothing that could be seen (the flats page still has both)
-  D('cropped', 'Cropped', 'Finishes', ['tee', 'crewneck', 'hoodie', 'ziphoodie', 'tank', 'jacket'], null, { option: { cropped: true }, words: 'cropped', sketch: { hoodie: ['hoodie', 'hood-cropped-hoodie'], ziphoodie: ['ziphoodie', 'zip-cropped-zip-hoodie'], jacket: ['jacket', 'jk-zip-blouson'] } }),
+  D('cropped', 'Cropped', 'Finishes', ['tee', 'crewneck', 'hoodie', 'ziphoodie', 'tank', 'jacket'], null, { option: { cropped: true }, words: 'cropped', shown: /crop/i, sketch: { hoodie: ['hoodie', 'hood-cropped-hoodie'], ziphoodie: ['ziphoodie', 'zip-cropped-zip-hoodie'], jacket: ['jacket', 'jk-zip-blouson'] } }),
   D('contrast', 'Contrast pockets and trims', 'Finishes', null, null, { contrast: true }),
 ];
 export const RECIPE_GROUPS = ['Pockets', 'Closures', 'Collars', 'Finishes'];
