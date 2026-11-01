@@ -29,7 +29,7 @@ h2 b{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;bo
 .mini{display:none}
 @media(max-width:920px){.bases{grid-auto-flow:column;grid-auto-columns:132px;grid-template-columns:none;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:6px}.bases button{scroll-snap-align:start}
   .mini{display:flex;position:fixed;left:96px;right:12px;bottom:12px;z-index:30;background:#fff;border:1px solid var(--line);border-radius:18px;box-shadow:0 12px 30px rgba(20,20,22,.16);padding:8px;gap:10px;align-items:center}
-  .mini .th{width:58px;height:58px;flex:none;border-radius:10px;background:var(--fog);position:relative;overflow:hidden}.mini .th svg{position:absolute;inset:6%;width:88%;height:88%}.mini .th svg>rect:first-child{fill:transparent}
+  .mini .th{width:58px;height:58px;flex:none;border-radius:10px;background:var(--fog);position:relative;overflow:hidden}.mini .th>svg{position:absolute;inset:6%;width:88%;height:88%}.mini .th>svg>rect:first-child{fill:transparent}
   .mini .tx{flex:1;min-width:0;font-size:12.5px;line-height:1.3}.mini .tx b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.mini .tx button{border:0;background:none;padding:0;color:var(--dim);text-decoration:underline;font:inherit;cursor:pointer}
   .mini .btn{min-height:40px;padding:8px 14px;white-space:nowrap}main{padding-bottom:110px}}
 .step{background:#fff;border:1px solid var(--line);border-radius:20px;padding:16px 18px;display:grid;gap:12px;min-width:0}
@@ -51,9 +51,12 @@ h2 b{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;bo
 .mats button[aria-checked=true]{border-color:var(--ink);box-shadow:0 0 0 1.5px var(--ink)}
 .fitnote{padding:8px 10px;border-radius:10px;border:1px solid var(--line);font-size:12.5px;line-height:1.4;margin:0}.fitnote[data-verdict=good]{color:var(--ok);background:rgba(23,96,58,.06)}.fitnote[data-verdict=check]{color:var(--warn);background:rgba(138,90,0,.06)}.fitnote[data-verdict=wrong]{color:var(--bad);background:rgba(160,42,32,.06)}
 .prev{position:sticky;top:96px;background:#fff;border:1px solid var(--line);border-radius:20px;padding:14px;display:grid;gap:10px;min-width:0}@media(max-width:920px){.prev{position:static}}
-.art{position:relative;border-radius:14px;background:var(--fog);display:grid;place-items:center;aspect-ratio:1/1.05;overflow:hidden}.art svg{position:absolute;inset:4%;width:92%;height:92%;display:block}.art svg>rect:first-child{fill:transparent}
+.art{position:relative;border-radius:14px;background:var(--fog);display:grid;place-items:center;aspect-ratio:1/1.05;overflow:hidden}.art>svg{position:absolute;inset:4%;width:92%;height:92%;display:block}.art>svg>rect:first-child{fill:transparent}
 .seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;background:#fff}.seg button{border:0;background:none;padding:6px 14px;cursor:pointer;font-size:13px}.seg button[aria-pressed=true]{background:var(--ink);color:#fff}
 .sum{font-size:13px;line-height:1.45}.sum b{font-weight:600}.cw{display:flex;gap:4px;flex-wrap:wrap}.cw span{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);border-radius:999px;padding:2px 9px 2px 3px;font-size:12px}.cw i{width:16px;height:16px;border-radius:50%;border:1px solid var(--line)}
+.fitgrid{display:grid;gap:12px}.fitrow{display:grid;grid-template-columns:minmax(92px,auto) minmax(0,1fr) 64px;gap:10px;align-items:center;font-size:13px}.fitrow output{font:500 12px 'IBM Plex Mono',monospace;text-align:right;color:var(--ink)}
+.fitrow input[type=range]{width:100%;accent-color:var(--ink);min-height:32px}.fitpart{border-top:1px solid var(--line);padding-top:10px;display:grid;gap:6px}.fitpart>.flab{font-weight:600;font-size:13px}
+html body .rsteps .step:last-child h2 b{background:#fff;box-shadow:none}html body .rsteps .step.done:last-child h2 b{background:var(--cue);border-color:var(--cue);box-shadow:0 0 0 1.5px var(--ink)}
 .msg{font-size:13px;color:var(--dim);margin:0}.msg.bad{color:var(--bad)}
 </style>
 <script src="/feedback.js"></script>
@@ -76,6 +79,8 @@ h2 b{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;bo
           <div id="ownBox" class="hidden"><p class="mono" style="margin:0 0 6px">Your own colours</p><div class="own" id="own"></div></div>
           <div class="grp"><span class="mono">Garment colour</span><div class="mains" id="mains" role="radiogroup" aria-label="Garment colour"></div></div></section>
         <section class="step" id="stMat"><h2><b>4</b>The cloth <span class="note" style="font-weight:400">(optional)</span></h2><div class="mats" id="mats" role="radiogroup" aria-label="Cloth"><span class="note">Loading the library…</span></div><p class="fitnote hidden" id="matFit" role="status"></p></section>
+        <section class="step" id="stFit"><h2><b>5</b>Fit it together <span class="note" style="font-weight:400">(optional)</span></h2><p class="note" id="fitNote">Make the body wider, narrower, longer or shorter, and each add-on bigger, smaller or moved, until they sit right. The drawing follows as you slide.</p>
+          <div class="fitgrid" id="fitBox"></div><div><button class="btn" type="button" id="fitReset">Put it back as it was</button></div></section>
       </div>
       <aside class="prev" aria-label="The piece so far">
         <div class="row" style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span class="mono" id="pvKind">Pick a base</span><div class="seg" role="tablist"><button type="button" data-view="front" aria-pressed="true">Front</button><button type="button" data-view="back" aria-pressed="false">Back</button></div></div>
@@ -99,7 +104,7 @@ const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)],esc
 const TOKEN=()=>{try{return localStorage.getItem('fb.admin.token')||localStorage.getItem('fb.client.token')||''}catch{return ''}};
 async function api(path,body,method){const r=await fetch(path,{method:method||(body?'POST':'GET'),headers:{Authorization:'Bearer '+TOKEN(),...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});const j=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(new Error(j.error||`Request failed (${r.status})`),{status:r.status});return j}
 // the picks; OWN is the colour system of your own (four colours)
-const S={base:null,addons:[],system:'earth',colour:0,view:'front',mat:null};let OWN=['#2b2b2e','#e9e4d8','#8c6a4a','#5e6b7a'],MATS=null,COOKED=null,NAMED=false;
+const S={base:null,addons:[],system:'earth',colour:0,view:'front',mat:null,fit:{m:{},adjust:{}}};let OWN=['#2b2b2e','#e9e4d8','#8c6a4a','#5e6b7a'],MATS=null,COOKED=null,NAMED=false;
 const sys=()=>S.system==='own'?{id:'own',name:'Your own colours',colours:OWN.map((h,i)=>({name:`Colour ${i+1}`,hex:h}))}:COLOUR_SYSTEMS.find(x=>x.id===S.system);
 const sysArg=()=>S.system==='own'?{name:'Our colours',colours:sys().colours}:S.system;
 function paintBases(){$('#bases').innerHTML=RECIPE_BASES.map(b=>{const t=defaultTemplate(b.style,b.fit);return `<button type="button" role="radio" data-base="${b.id}" aria-checked="${S.base===b.id}" title="${esc(b.note)}">${t?`<img loading="lazy" alt="" src="/lab/flat-templates/thumbs/${t}.webp">`:''}<b>${esc(b.label)}</b><small>${esc(b.note)}</small></button>`}).join('');$('#stBase').classList.toggle('done',Boolean(S.base))}
@@ -114,7 +119,7 @@ function paintMats(){if(!MATS){return}$('#mats').innerHTML=`<button type="button
   if(!m||!b){el.classList.add('hidden');return}const f=fabricFit({style:b.style,fit:b.fit,materials:[{kind:'fabric',role:'main',name:m.name,spec:m.spec||{}}]});if(f.verdict==='unknown'){el.classList.add('hidden');return}
   el.classList.remove('hidden');el.dataset.verdict=f.verdict;el.textContent=f.verdict==='good'?`✓ ${f.summary}`:`${f.verdict==='wrong'?'✕':'!'} ${f.findings[0].msg} ${f.findings[0].fix}`}
 // the drawing: the picks cooked into flats, drawn the way the flats page draws them
-function paintPreview(){COOKED=S.base?cookRecipe({base:S.base,addons:S.addons,system:sysArg(),colour:S.colour}):null;$('#open').disabled=!COOKED||Boolean(COOKED.error)||LOCKED;$('#miniOpen').disabled=$('#open').disabled;queueMicrotask(paintMini);
+function paintPreview(){COOKED=S.base?cookRecipe({base:S.base,addons:S.addons,system:sysArg(),colour:S.colour,fit:S.fit}):null;$('#open').disabled=!COOKED||Boolean(COOKED.error)||LOCKED;$('#miniOpen').disabled=$('#open').disabled;queueMicrotask(paintMini);
   if(!COOKED||COOKED.error){$('#art').innerHTML=`<p class="note" style="padding:20px;text-align:center">${esc(COOKED?.error||'Pick a base to see it drawn.')}</p>`;$('#sum').innerHTML='';$('#pvKind').textContent='Pick a base';return}
   try{$('#art').innerHTML=renderSvg(COOKED.params,S.view,{maskHref:MASK_URL,showDims:false,scale:0,plain:true})}catch(x){$('#art').innerHTML=`<p class="note" style="padding:20px">${esc(x.message)}</p>`}
   if(!NAMED)$('#name').placeholder=COOKED.name;$('#pvKind').textContent=`${STYLES[COOKED.style]?.label||COOKED.style}${COOKED.sketch?' · '+COOKED.sketch:''}`;
@@ -124,10 +129,29 @@ function paintMini(){if(!COOKED||COOKED.error){$('#miniArt').innerHTML='';$('#mi
   $('#miniArt').innerHTML=$('#art').innerHTML;$('#miniName').textContent=$('#name').value.trim()||COOKED.name}
 $('#miniSee').addEventListener('click',()=>$('.prev').scrollIntoView({behavior:'smooth',block:'start'}));
 $('#miniOpen').addEventListener('click',()=>$('#open').click());
-function paintAll(){paintBases();paintAddons();paintSystems();paintMats();paintPreview()}
+// Fit it together: the base's lines (body width, length) and each placed add-on's size and place, in inches; the drawing follows as you slide
+const inch=v=>{const n=Math.abs(v),w=Math.floor(n),f=Math.round((n-w)*8),fr=['','⅛','¼','⅜','½','⅝','¾','⅞'][f];return v?`${v>0?'+':'−'}${w||''}${fr}${w||fr?'':'0'} in`:'as drawn'};
+const FIT_ROWS={size:['Size',50,180,5,v=>`${v}%`],dy:['Up / down',-8,8,.25,v=>v?`${inch(v).replace('+','↓ ').replace('−','↑ ')}`:'as placed'],dx:['Across',-6,6,.25,v=>v?inch(v):'as placed']};
+const placed=()=>COOKED&&!COOKED.error?COOKED.addons.map(id=>RECIPE_ADDONS.find(a=>a.id===id)).filter(a=>a?.detail&&COOKED.params.edits.some(e=>e.id===`r-${a.id}`)):[];
+const adj=id=>S.fit.adjust[id]||{size:1,dy:0,dx:0};
+function fitRow(key,label,min,max,step,val,shown){return `<label class="fitrow"><span>${esc(label)}</span><input type="range" min="${min}" max="${max}" step="${step}" value="${val}" data-fit="${key}"><output>${esc(shown)}</output></label>`}
+function paintFit(){const box=$('#fitBox');if(!COOKED||COOKED.error){box.innerHTML='<p class="note">Choose a base first.</p>';$('#fitReset').disabled=true;return}
+  const lines=[['width','Body width'],['length','Length']].map(([k,l])=>fitRow(`m.${k}`,l,-6,6,.25,S.fit.m[k]||0,inch(S.fit.m[k]||0))).join('');
+  const parts=placed().map(a=>{const v=adj(a.id),[,,,,szF]=FIT_ROWS.size;return `<div class="fitpart" data-part="${a.id}"><span class="flab">${esc(a.label)}</span>${fitRow(`${a.id}.size`,'Size',50,180,5,Math.round(v.size*100),szF(Math.round(v.size*100)))}${fitRow(`${a.id}.dy`,'Up / down',-8,8,.25,v.dy,FIT_ROWS.dy[4](v.dy))}${fitRow(`${a.id}.dx`,a.detail.pair?'Apart':'Across',-6,6,.25,v.dx,a.detail.pair?(v.dx?`${v.dx>0?'wider ':'closer '}${inch(Math.abs(v.dx)).replace('+','')}`:'as placed'):FIT_ROWS.dx[4](v.dx))}</div>`}).join('');
+  // add-ons the sketch draws itself (a collar, jean pockets on the five-pocket sketch) move with the body, so they have no sliders of their own
+  const own=COOKED.addons.map(id=>RECIPE_ADDONS.find(a=>a.id===id)).filter(a=>a&&(a.sketch||(a.detail&&!placed().includes(a))));
+  box.innerHTML=`<div class="fitpart" style="border:0;padding:0"><span class="flab">The base</span>${lines}</div>${parts}${own.length?`<p class="note">${esc(own.map(a=>a.label).join(', '))}: drawn on the ${esc(COOKED.sketch.toLowerCase()||'base')} sketch itself, so ${own.length>1?'they sit':'it sits'} right whatever the body's size.</p>`:''}${!parts&&!own.length?'<p class="note">Add a pocket or other add-on to size and move it here.</p>':''}`;
+  const any=Object.keys(S.fit.m).length||Object.keys(S.fit.adjust).length;$('#fitReset').disabled=!any;$('#stFit').classList.toggle('done',Boolean(any))}
+$('#fitBox').addEventListener('input',e=>{const r=e.target.closest('[data-fit]');if(!r)return;const [id,k]=r.dataset.fit.split('.'),v=Number(r.value);
+  if(id==='m'){if(v)S.fit.m[k]=v;else delete S.fit.m[k];r.nextElementSibling.value=inch(v)}
+  else{const a=RECIPE_ADDONS.find(x=>x.id===id),cur={...adj(id),[k]:k==='size'?v/100:v};if(cur.size===1&&!cur.dy&&!cur.dx)delete S.fit.adjust[id];else S.fit.adjust[id]=cur;
+    r.nextElementSibling.value=k==='size'?`${v}%`:k==='dy'?FIT_ROWS.dy[4](v):a?.detail?.pair?(v?`${v>0?'wider ':'closer '}${inch(Math.abs(v)).replace('+','')}`:'as placed'):FIT_ROWS.dx[4](v)}
+  const any=Object.keys(S.fit.m).length||Object.keys(S.fit.adjust).length;$('#fitReset').disabled=!any;$('#stFit').classList.toggle('done',Boolean(any));paintPreview()});
+$('#fitReset').addEventListener('click',()=>{S.fit={m:{},adjust:{}};paintPreview();paintFit()});
+function paintAll(){paintBases();paintAddons();paintSystems();paintMats();paintPreview();paintFit()}
 $('#bases').addEventListener('click',e=>{const b=e.target.closest('[data-base]');if(!b)return;S.base=b.dataset.base;const ok=addonsFor(S.base).map(a=>a.id);S.addons=S.addons.filter(a=>ok.includes(a));paintAll()});
 $('#addons').addEventListener('click',e=>{const b=e.target.closest('[data-addon]');if(!b)return;const id=b.dataset.addon,a=RECIPE_ADDONS.find(x=>x.id===id);
-  if(S.addons.includes(id))S.addons=S.addons.filter(x=>x!==id);else{if(a.one)S.addons=S.addons.filter(x=>RECIPE_ADDONS.find(y=>y.id===x)?.one!==a.one);S.addons.push(id)}paintAddons();paintPreview()});
+  if(S.addons.includes(id))S.addons=S.addons.filter(x=>x!==id);else{if(a.one)S.addons=S.addons.filter(x=>RECIPE_ADDONS.find(y=>y.id===x)?.one!==a.one);S.addons.push(id)}paintAddons();paintPreview();paintFit()});
 $('#systems').addEventListener('click',e=>{const b=e.target.closest('[data-sys]');if(!b)return;S.system=b.dataset.sys;S.colour=0;paintSystems();paintMats();paintPreview()});
 $('#mains').addEventListener('click',e=>{const b=e.target.closest('[data-main]');if(!b)return;S.colour=Number(b.dataset.main);paintSystems();paintMats();paintPreview()});
 $('#own').addEventListener('input',e=>{const i=e.target.dataset.own;if(i==null)return;OWN[Number(i)]=e.target.value.toLowerCase();$$('#systems [data-sys=own] .strip i')[i].style.background=e.target.value;$$('#mains [data-main]')[i]&&($$('#mains [data-main]')[i].style.background=e.target.value);paintPreview()});
@@ -138,13 +162,13 @@ $('#name').addEventListener('input',()=>{NAMED=Boolean($('#name').value.trim())}
 // (?concept=…) cooks its flats again from the new picks instead, keeping the graphics placed on them
 const EDIT=new URLSearchParams(location.search).get('concept')||'';let LOCKED=false;
 $('#open').addEventListener('click',async()=>{const b=$('#open');FBN?.begin?.(b);$('#msg').textContent='';
-  try{const body={base:S.base,addons:S.addons,system:sysArg(),colour:S.colour,name:$('#name').value.trim()},j=EDIT?await api(`/v1/lab/concepts/${EDIT}/recipe`,body,'PUT'):await api('/v1/lab/concepts/from-recipe',body);
+  try{const keep=placed().map(a=>a.id),body={base:S.base,addons:S.addons,system:sysArg(),colour:S.colour,name:$('#name').value.trim(),fit:{m:S.fit.m,adjust:Object.fromEntries(Object.entries(S.fit.adjust).filter(([k])=>keep.includes(k)))}},j=EDIT?await api(`/v1/lab/concepts/${EDIT}/recipe`,body,'PUT'):await api('/v1/lab/concepts/from-recipe',body);
     const main=sys().colours[S.colour];if(S.mat)await api(`/v1/lab/concepts/${j.concept.id}/materials`,{material:S.mat,role:'main',colour:main?.hex}).catch(()=>FBN?.toast?.('The piece is made; add the cloth in the Studio'));
     FBN?.end?.(b,true);location.href=j.studio}
   catch(x){FBN?.end?.(b,false);$('#msg').textContent=x.message;$('#msg').classList.add('bad')}});
 (async()=>{if(!TOKEN()){$('#needSignin').classList.remove('hidden');return}try{await api('/v1/lab/concepts?limit=1')}catch(x){if(x.status===401||x.status===403){$('#needSignin').classList.remove('hidden');return}}
   $('#app').classList.remove('hidden');const q=new URLSearchParams(location.search);if(RECIPE_BASES.some(b=>b.id===q.get('base')))S.base=q.get('base');
-  if(EDIT){try{const r=await api(`/v1/lab/concepts/${EDIT}/recipe`),rc=r.recipe;S.base=rc.base;S.addons=rc.addons||[];if(rc.system==='own'&&rc.colours?.length){OWN=rc.colours.map(c=>c.hex).concat(OWN).slice(0,Math.max(4,rc.colours.length));S.system='own'}else if(rc.system)S.system=rc.system;S.colour=Number(rc.colour)||0;
+  if(EDIT){try{const r=await api(`/v1/lab/concepts/${EDIT}/recipe`),rc=r.recipe;S.base=rc.base;S.addons=rc.addons||[];if(rc.system==='own'&&rc.colours?.length){OWN=rc.colours.map(c=>c.hex).concat(OWN).slice(0,Math.max(4,rc.colours.length));S.system='own'}else if(rc.system)S.system=rc.system;S.colour=Number(rc.colour)||0;if(rc.fit)S.fit={m:{...(rc.fit.m||{})},adjust:{...(rc.fit.adjust||{})}};
       $('#name').value=r.name;NAMED=true;$('#eyebrow').textContent='Edit the recipe';$('#title').textContent=r.name;$('#open').textContent='Save the changes';$('#miniOpen').textContent='Save';
       if(r.locked){LOCKED=true;$('#msg').textContent='This piece is already a tech pack: change it there.'}}catch(x){$('#msg').textContent=x.message;$('#msg').classList.add('bad')}}
   paintAll();

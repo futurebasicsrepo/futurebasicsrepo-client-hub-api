@@ -1,13 +1,16 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { RECIPE_BASES, RECIPE_ADDONS, COLOUR_SYSTEMS, addonsFor, cookRecipe, systemOf } from '../src/lab-recipe.js';
-import { STYLES } from '../src/lab-flats.js';
+import { RECIPE_BASES, RECIPE_ADDONS, COLOUR_SYSTEMS, addonsFor, cookRecipe, systemOf, cleanFit } from '../src/lab-recipe.js';
+import { STYLES, drawingOf } from '../src/lab-flats.js';
+import { FLAT_TEMPLATES } from '../src/lab-flat-templates.js';
 
 test('every base cooks with all of its add-ons into clean flats', () => {
   for (const b of RECIPE_BASES) {
     const r = cookRecipe({ base: b.id, addons: addonsFor(b).map(a => a.id), system: 'earth' });
     assert.ok(!r.error, `${b.id}: ${r.error}`);
-    assert.equal(r.params.style, b.style); assert.equal(r.category, STYLES[b.style].category);
+    // a collar draws the piece on the sketch that has it (a tee with a polo collar is a polo); otherwise it stays the base's style
+    const neck = r.addons.map(id => RECIPE_ADDONS.find(a => a.id === id)).find(a => a.sketch?.[b.style]);
+    assert.equal(r.params.style, neck ? neck.sketch[b.style][0] : b.style); assert.equal(r.category, STYLES[r.style].category);
     assert.equal(r.params.color, COLOUR_SYSTEMS[0].colours[0].hex);
     assert.equal(r.colourways.length, 4);
   }
@@ -52,12 +55,37 @@ test('women\'s pieces, hats and a tote are on the menu, each with add-ons that s
   assert.ok(addonsFor('skirt').some(a => a.id === 'slant-side') && addonsFor('dress').some(a => a.id === 'zip-front'));
 });
 
-test('a collar comes from the sketch pack, one at a time, and contrast colours the pockets', () => {
-  const r = cookRecipe({ base: 'tee', addons: ['collar-polo', 'collar-tipped', 'chest-pocket', 'contrast'], system: 'coastal' });
-  assert.deepEqual(r.addons, ['collar-polo', 'chest-pocket', 'contrast']); // the second collar is dropped
-  const part = r.params.edits.find(e => e.type === 'part'), pocket = r.params.edits.find(e => e.kind === 'pocket-patch');
-  assert.equal(part.part, 'collars-7-3'); assert.ok(part.y < 6, 'the collar sits at the neck');
+test('a collar is drawn by the sketch that has it, one at a time, and contrast colours the pockets', () => {
+  const r = cookRecipe({ base: 'tee', addons: ['neck-polo', 'neck-johnny', 'chest-pocket', 'contrast'], system: 'coastal' });
+  assert.deepEqual(r.addons, ['neck-polo', 'chest-pocket', 'contrast']); // the second collar is dropped
+  // the collar is not laid over the tee's crew neck: the piece is drawn on the polo sketch, and becomes a polo
+  assert.equal(r.style, 'polo'); assert.equal(r.template, 'polo-classic-polo'); assert.ok(!r.params.edits.some(e => e.type === 'part'));
+  const pocket = r.params.edits.find(e => e.kind === 'pocket-patch');
   assert.equal(pocket.color, '#e9ece6'); assert.equal(r.colourIndex, 0);
   assert.equal(cookRecipe({ base: 'tee', addons: ['chest-pocket'], system: 'coastal' }).params.edits[0].color, ''); // no contrast: the pocket is the garment's colour
-  assert.match(r.name, /polo collar and placket/);
+  assert.match(r.name, /classic polo with chest pocket/); assert.equal(r.silhouette, 'Classic polo');
+  // every collar names a sketch that exists, of the style it says
+  for (const a of RECIPE_ADDONS.filter(x => x.sketch)) for (const [base, [style, id]] of Object.entries(a.sketch)) {
+    const t = FLAT_TEMPLATES.find(x => x.id === id); assert.ok(t && t.style === style, `${a.id} on ${base}: ${id}`);
+    assert.ok(addonsFor(RECIPE_BASES.find(b => b.style === base)?.id || base).some(x => x.id === a.id) || !RECIPE_BASES.some(b => b.style === base), `${a.id} is offered on ${base}`);
+  }
+  assert.equal(cookRecipe({ base: 'crewneck', addons: ['neck-rugby'] }).template, 'polo-rugby-collar-sweatshirt');
+});
+
+test('fitting it together: the base\'s width and length stretch the sketch, and each add-on is sized and moved', () => {
+  assert.deepEqual(cleanFit({ m: { width: 9, length: 'x' }, adjust: { 'chest-pocket': { size: 1.42 }, 'BAD id': { size: 2 }, kangaroo: { size: 1, dy: 0 } } }),
+    { m: { width: 6 }, adjust: { 'chest-pocket': { size: 1.4, dy: 0, dx: 0 } } }); // clamped, rounded, and nothing kept that changes nothing
+  const plain = cookRecipe({ base: 'tee', addons: ['chest-pocket'] }), d0 = drawingOf(plain.params);
+  const wide = cookRecipe({ base: 'tee', addons: ['chest-pocket'], fit: { m: { width: 4 } } }), short = cookRecipe({ base: 'tee', addons: ['chest-pocket'], fit: { m: { length: -4 } } });
+  assert.equal(wide.params.m.chest, plain.params.m.chest + 2); assert.equal(short.params.m.length, plain.params.m.length - 4);
+  // wider: the drawing is wider for the same height; shorter: the same width, less tall
+  assert.ok(drawingOf(wide.params).sx < d0.sx && Math.abs(drawingOf(wide.params).sy - d0.sy) < 1e-9);
+  assert.ok(drawingOf(short.params).sy > d0.sy && Math.abs(drawingOf(short.params).sx - d0.sx) < 1e-9);
+  const big = cookRecipe({ base: 'tee', addons: ['chest-pocket'], fit: { adjust: { 'chest-pocket': { size: 1.5, dy: -1, dx: .5 } } } });
+  const p0 = plain.params.edits[0], p1 = big.params.edits[0];
+  assert.equal(p1.w, Math.round(p0.w * 1.5 * 8) / 8); assert.equal(p1.y, p0.y - 1); assert.equal(p1.x, p0.x + .5);
+  assert.deepEqual(big.fit.adjust['chest-pocket'], { size: 1.5, dy: -1, dx: .5 });
+  // a pair moves apart (or closer) together, mirrored
+  const pair = cookRecipe({ base: 'skirt', addons: ['slant-side'], fit: { adjust: { 'slant-side': { dx: 1 } } } }).params.edits, pair0 = cookRecipe({ base: 'skirt', addons: ['slant-side'] }).params.edits;
+  assert.equal(Math.abs(pair[0].x), Math.abs(pair0[0].x) + 1); assert.equal(pair[1].x, -pair[0].x);
 });

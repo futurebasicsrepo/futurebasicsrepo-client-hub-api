@@ -148,7 +148,7 @@ export function registerLabConceptRoutes(app, d) {
   app.get('/v1/lab/recipe', { preHandler: pre }, async () => ({ bases: RECIPE_BASES.map(b => ({ ...b, styleLabel: FLAT_STYLES[b.style]?.label || b.style, category: FLAT_STYLES[b.style]?.category || 'other', addons: addonsFor(b).map(a => a.id) })),
     addons: RECIPE_ADDONS.map(({ detail, shown, ...a }) => ({ ...a, detail: Boolean(detail) })), groups: RECIPE_GROUPS, systems: COLOUR_SYSTEMS }));
   // what the concept keeps of its recipe, so the menu can open on it again (Edit recipe)
-  const recipeOf = (b, r) => ({ base: baseOf(b.base).id, addons: r.addons, system: typeof b.system === 'string' ? b.system : b.system ? 'own' : null, colour: r.colourIndex, ...(b.system && typeof b.system === 'object' ? { colours: r.colourways.length ? systemOf(b.system)?.colours || [] : [] } : {}) });
+  const recipeOf = (b, r) => ({ base: baseOf(b.base).id, addons: r.addons, system: typeof b.system === 'string' ? b.system : b.system ? 'own' : null, colour: r.colourIndex, ...(Object.keys(r.fit.m).length || Object.keys(r.fit.adjust).length ? { fit: r.fit } : {}), ...(b.system && typeof b.system === 'object' ? { colours: r.colourways.length ? systemOf(b.system)?.colours || [] : [] } : {}) });
   app.get('/v1/lab/concepts/:id/recipe', { preHandler: pre }, async (req, reply) => {
     if (!needId(req, reply)) return; const c = (await pool.query('select id, name, status, spec from lab_concepts where id=$1', [req.params.id])).rows[0]; if (!c) return bad(reply, 'Not found', 404);
     if (!c.spec?.recipe) return bad(reply, 'This concept was not made from the recipe menu', 404);
@@ -159,19 +159,19 @@ export function registerLabConceptRoutes(app, d) {
   app.put('/v1/lab/concepts/:id/recipe', { preHandler: pre }, async (req, reply) => {
     if (!needId(req, reply)) return; const c = (await pool.query('select id, name, status, spec from lab_concepts where id=$1', [req.params.id])).rows[0]; if (!c) return bad(reply, 'Not found', 404);
     if (c.status === 'tech_pack') return bad(reply, 'This concept is already a tech pack. Change it there.', 409);
-    const b = req.body || {}, r = cookRecipe({ base: b.base, addons: b.addons, system: b.system || null, colour: b.colour, name: clip(b.name, 120) }); if (r.error) return bad(reply, r.error);
+    const b = req.body || {}, r = cookRecipe({ base: b.base, addons: b.addons, system: b.system || null, colour: b.colour, name: clip(b.name, 120), fit: b.fit || null }); if (r.error) return bad(reply, r.error);
     const f = (await pool.query('select params, placements from lab_flats where concept_id=$1', [c.id])).rows[0];
     const kept = (f?.params?.edits || []).filter(e => !String(e.id || '').startsWith('r-')), placements = f?.placements || [];
     const params = { ...r.params, edits: [...r.params.edits, ...kept], ...(f?.params?.allover ? { allover: f.params.allover } : {}) }, colourways = cleanColourways(r.colourways);
-    const spec = { ...(c.spec || {}), silhouette: baseOf(b.base).label, fit: r.params.fit, details: r.details, colors: colourways.map(x => x.name), ...(r.template ? { template: r.template } : {}), ...(r.colour ? { color: r.colour.hex } : {}), colourways, recipe: recipeOf(b, r), description: `Made from the recipe menu. ${r.words}` };
+    const spec = { ...(c.spec || {}), silhouette: r.silhouette, fit: r.params.fit, details: r.details, colors: colourways.map(x => x.name), ...(r.template ? { template: r.template } : {}), ...(r.colour ? { color: r.colour.hex } : {}), colourways, recipe: recipeOf(b, r), description: `Made from the recipe menu. ${r.words}` };
     await pool.query('update lab_concepts set spec=$2, category=$3, name=coalesce(nullif($4,\'\'), name), updated_at=now() where id=$1', [c.id, spec, r.category, clip(b.name, 120)]);
     await pool.query(`insert into lab_flats(concept_id, style, params, placements, updated_by) values($1,$2,$3,$4,$5) on conflict(concept_id) do update set style=excluded.style, params=excluded.params, placements=excluded.placements, updated_by=excluded.updated_by, updated_at=now()`, [c.id, r.style, params, JSON.stringify(placements), actorOf(req)]);
     return { concept: await one(c.id), studio: `/lab/studio?concept=${c.id}&view=front` };
   });
   app.post('/v1/lab/concepts/from-recipe', { preHandler: pre }, async (req, reply) => {
-    const b = req.body || {}, r = cookRecipe({ base: b.base, addons: b.addons, system: b.system || null, colour: b.colour, name: clip(b.name, 120) }); if (r.error) return bad(reply, r.error);
+    const b = req.body || {}, r = cookRecipe({ base: b.base, addons: b.addons, system: b.system || null, colour: b.colour, name: clip(b.name, 120), fit: b.fit || null }); if (r.error) return bad(reply, r.error);
     const colourways = cleanColourways(r.colourways);
-    const spec = { description: `Made from the recipe menu. ${r.words}`, silhouette: baseOf(b.base).label, fabric: '', fit: r.params.fit, details: r.details, trims: '', colors: colourways.map(c => c.name), ...(r.template ? { template: r.template } : {}), ...(r.colour ? { color: r.colour.hex } : {}), ...(colourways.length ? { colourways } : {}),
+    const spec = { description: `Made from the recipe menu. ${r.words}`, silhouette: r.silhouette, fabric: '', fit: r.params.fit, details: r.details, trims: '', colors: colourways.map(c => c.name), ...(r.template ? { template: r.template } : {}), ...(r.colour ? { color: r.colour.hex } : {}), ...(colourways.length ? { colourways } : {}),
       recipe: recipeOf(b, r) };
     const c = (await pool.query(`insert into lab_concepts(name, category, role, spec, twist, created_by, client_id) values($1,$2,'core',$3,'',$4,$5) returning id`, [r.name, r.category, spec, actorOf(req), own(req)])).rows[0];
     await pool.query(`insert into lab_flats(concept_id, style, params, placements, check_result, checked_at, updated_by) values($1,$2,$3,'[]',$4,now(),$5)`, [c.id, r.style, r.params, { findings: {}, summary: { fail: 0, warn: 0, placements: 0 }, at: new Date().toISOString() }, actorOf(req)]);

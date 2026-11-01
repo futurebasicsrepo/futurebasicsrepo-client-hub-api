@@ -167,14 +167,24 @@ export function templateOf(p) {
   return FLAT_TEMPLATES.find(t => t.id === p.template && t.style === p.style) || FLAT_TEMPLATES.find(t => t.id === defaultTemplate(p.style, p.fit)) || null;
 }
 // how a sketch's view lines up with the piece: its origin (the HPS on the centre line, the top of the waistband, the brim seam) and its
-// scale across (chest or waist) and down (length, held within 12% of the scale across so the sketch is never visibly stretched), in
+// scale across (chest or waist) and down (length: at the start within 12% of the scale across, as the sketch was drawn; then following the length), in
 // sketch units an inch; box is the view in inches
 export function drawingOf(p, view = 'front', size = p.size || 'M') {
   const t = templateOf(p), v = t?.views[view]; if (!v) return null;
   const m = measurementsFor(p, size), kind = STYLES[p.style].kind, clamp = (a, x) => Math.min(Math.max(a, x * .88), x * 1.12);
+  // how tall the sketch is drawn. A piece starts either at its style's usual measurements or fitted to the sketch's own proportions
+  // (fitToTemplate); at either start the height follows the width within 12%, as the sketch was drawn. A length moved from that start
+  // (the recipe's Fit it together, a measurement typed in) then stretches the drawing that way only, so a shorter body looks shorter.
+  const lenOf = q => (kind === 'top' ? q.length : STYLES[p.style].skirt ? q.length : q.rise + q.inseam), d0 = { ...defaultParams(p.style, p.fit, p.options || {}), template: p.template, size };
+  const H = kind === 'top' ? v.hemY - v.hpsY : v.hemY - v.topY, W = kind === 'top' ? v.chest : v.waist, wOf = q => (kind === 'top' ? q.chest : q.waist);
   let sx, sy, oy;
-  if (kind === 'top') { sx = v.chest / m.chest; oy = v.hpsY; sy = clamp((v.hemY - v.hpsY) / m.length, sx); }
-  else if (kind === 'bottom') { sx = v.waist / m.waist; oy = v.topY; sy = clamp((v.hemY - v.topY) / (STYLES[p.style].skirt ? m.length : m.rise + m.inseam), sx); }
+  if (kind === 'top' || kind === 'bottom') {
+    const L = lenOf(m), starts = [measurementsFor(d0, size), measurementsFor(fitToTemplate(d0), size)].filter(q => lenOf(q) > 0);
+    const ref = starts.sort((a, b) => Math.abs(Math.log(lenOf(a) / L)) - Math.abs(Math.log(lenOf(b) / L)))[0];
+    sx = W / wOf(m); oy = kind === 'top' ? v.hpsY : v.topY;
+    sy = ref && L > 0 ? clamp(H / lenOf(ref), W / wOf(ref)) * lenOf(ref) / L : clamp(H / L, sx);
+    sy = Math.min(Math.max(sy, sx * .6), sx * 1.7);
+  }
   else { sx = v.width / m.crownWidth; oy = v.seamY; sy = sx; }
   if (!(sx > 0 && sy > 0)) return null;
   const [bx, by, bw, bh] = v.box;

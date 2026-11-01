@@ -4,7 +4,7 @@
 //   3. a colour system: a few colours that work together; the first is the garment, the next becomes the stitching, and every one is a colourway
 // cookRecipe() turns the picks into real flats (src/lab-flats.js params, with each add-on as a detail placed where it usually goes), so the
 // piece opens in the studio already measured, drawn and coloured. Shared by the page (/lab/recipe) and the service (POST /v1/lab/concepts/from-recipe).
-import { STYLES, FITS, defaultParams, defaultDetail, defaultPart, defaultTemplate, cleanFlat } from './lab-flats.js';
+import { STYLES, FITS, defaultParams, defaultDetail, defaultTemplate, fitToTemplate, cleanFlat } from './lab-flats.js';
 import { FLAT_TEMPLATES } from './lab-flat-templates.js';
 
 const B = (id, label, style, fit, note, options = {}) => ({ id, label, style, fit, note, options });
@@ -60,11 +60,21 @@ export const RECIPE_ADDONS = [
   D('waist-drawcord', 'Drawcord waist', 'Closures', ['pants', 'shorts', 'leggings', 'skirt'], { kind: 'drawcord' }, { words: 'drawcord', shown: /drawcord|sweat|jogger|track/i }),
   D('zip-front', 'Zip front', 'Closures', ['dress', 'skirt', 'tote'], { kind: 'zip' }),
   D('button-front', 'Button front', 'Closures', ['dress', 'cami', 'bodysuit'], { kind: 'placket' }),
-  // collars: parts cut from the sketch pack, on pieces whose sketch has none (src/lab-flat-parts.js)
-  D('collar-polo', 'Polo collar and placket', 'Collars', ['tee', 'longsleeve'], null, { part: 'collars-7-3', one: 'collar' }),
-  D('collar-zip', 'Zip collar', 'Collars', ['crewneck', 'longsleeve'], null, { part: 'collars-7-14', one: 'collar' }),
-  D('collar-tipped', 'Tipped knit collar', 'Collars', ['tee', 'crewneck'], null, { part: 'collars-7-11', one: 'collar' }),
-  D('collar-shearling', 'Shearling collar', 'Collars', ['jacket', 'coat'], null, { part: 'collars-7-6', one: 'collar' }),
+  // collars and necklines: each is a sketch from the sketch pack drawn with that collar, so the collar and the body are one drawing that fits
+  // (a polo collar on a tee draws it as a polo). `sketch` names the sketch for each base it suits; `style` changes the piece's kind with it.
+  D('neck-polo', 'Polo collar', 'Collars', ['tee', 'longsleeve'], null, { one: 'collar', sketch: { tee: ['polo', 'polo-classic-polo'], longsleeve: ['polo', 'polo-long-sleeve-polo'] } }),
+  D('neck-johnny', 'Johnny collar', 'Collars', ['tee', 'longsleeve', 'crewneck'], null, { one: 'collar', sketch: { tee: ['polo', 'polo-johnny-collar-polo'], longsleeve: ['polo', 'polo-johnny-collar-long-sleeve-polo'], crewneck: ['polo', 'polo-johnny-collar-sweatshirt'] } }),
+  D('neck-retro', 'Retro knit collar', 'Collars', ['tee'], null, { one: 'collar', sketch: { tee: ['polo', 'polo-retro-collar-jersey'] } }),
+  D('neck-halfzip', 'Half-zip collar', 'Collars', ['tee', 'crewneck'], null, { one: 'collar', sketch: { tee: ['polo', 'polo-half-zip-polo'], crewneck: ['crewneck', 'crew-half-zip-pullover'] } }),
+  D('neck-rugby', 'Rugby collar', 'Collars', ['crewneck'], null, { one: 'collar', sketch: { crewneck: ['polo', 'polo-rugby-collar-sweatshirt'] } }),
+  D('neck-henley', 'Henley neck', 'Collars', ['crewneck'], null, { one: 'collar', sketch: { crewneck: ['polo', 'polo-henley-sweatshirt'] } }),
+  D('neck-vneck', 'V-neck', 'Collars', ['tee', 'longsleeve'], null, { one: 'collar', sketch: { tee: ['tee', 'tee-vneck'], longsleeve: ['longsleeve', 'ls-v-neck-long-sleeve-jersey'] } }),
+  D('neck-shearling', 'Shearling collar', 'Collars', ['jacket'], null, { one: 'collar', sketch: { jacket: ['jacket', 'jk-shearling-aviator-jacket'] } }),
+  D('neck-shirtcollar', 'Shirt collar', 'Collars', ['jacket'], null, { one: 'collar', sketch: { jacket: ['jacket', 'jk-collared-bomber'] } }),
+  D('neck-stand', 'Stand collar', 'Collars', ['jacket'], null, { one: 'collar', sketch: { jacket: ['jacket', 'jk-stand-collar-bomber'] } }),
+  D('neck-band', 'Band collar', 'Collars', ['shirt'], null, { one: 'collar', sketch: { shirt: ['shirt', 'shirt-band-collar-shirt'] } }),
+  D('neck-camp', 'Camp collar', 'Collars', ['shirt'], null, { one: 'collar', sketch: { shirt: ['shirt', 'shirt-camp-collar-long-sleeve-shirt'] } }),
+  D('neck-buttondown', 'Button-down collar', 'Collars', ['shirt'], null, { one: 'collar', sketch: { shirt: ['shirt', 'shirt-button-down-shirt'] } }),
   D('pleats', 'Front pleats', 'Finishes', ['pants', 'shorts', 'skirt'], null, { option: { pleats: 1 }, words: 'pleat trouser' }),
   D('cropped', 'Cropped', 'Finishes', ['tee', 'longsleeve', 'crewneck', 'hoodie', 'tank', 'cami', 'jacket'], null, { option: { cropped: true }, words: 'cropped' }),
   D('drop', 'Dropped shoulder', 'Finishes', ['tee', 'longsleeve', 'crewneck', 'hoodie', 'ziphoodie', 'shirt', 'shirtss'], null, { option: { drop: true } }),
@@ -89,7 +99,7 @@ const HEX = /^#[0-9a-f]{6}$/i;
 
 export const baseOf = id => RECIPE_BASES.find(b => b.id === id) || null;
 // the add-ons a base can take
-export const addonsFor = base => { const b = typeof base === 'string' ? baseOf(base) : base; if (!b) return []; const own = RECIPE_ADDONS.filter(a => a.on?.includes(b.style)); return own.some(a => a.detail || a.part) ? [...own, ...RECIPE_ADDONS.filter(a => !a.on)] : own; };
+export const addonsFor = base => { const b = typeof base === 'string' ? baseOf(base) : base; if (!b) return []; const own = RECIPE_ADDONS.filter(a => a.on?.includes(b.style)); return own.some(a => a.detail || a.sketch) ? [...own, ...RECIPE_ADDONS.filter(a => !a.on)] : own; };
 // a colour system by id, or one of our own ({ name, colours: [{name, hex}] }, from a plan's graphic programme or typed in)
 export function systemOf(s) {
   if (typeof s === 'string') return COLOUR_SYSTEMS.find(x => x.id === s) || null;
@@ -99,7 +109,21 @@ export function systemOf(s) {
 
 // the picks → { params, placements, name, words, colourways, category, style, template, addons } or { error }
 //   colour: which colour of the system is the garment (an index; the rest become colourways, the next one the stitching)
-export function cookRecipe({ base, addons = [], system = null, colour = 0, name = '' } = {}) {
+// how a piece is fitted by hand after it is picked (the Adjust panel): the base's lines and each add-on's size and place, all in inches.
+//   m:      changes to the base's measurements: body width (chest or waist) and length; the sketch is drawn to them
+//   adjust: per add-on: size (0.5–1.8 of its usual size), dy (up −, down +), dx (across; for a pair, how far apart)
+export const FIT_LINES = { width: 'Body width', length: 'Length' };
+const num = (v, lo, hi, d = 0, step = 8) => { const n = Number(v); return Number.isFinite(n) ? Math.min(hi, Math.max(lo, Math.round(n * step) / step)) : d; };
+export function cleanFit(f = {}) {
+  const m = {}, adjust = {};
+  for (const k of Object.keys(FIT_LINES)) { const v = num(f.m?.[k], -6, 6); if (v) m[k] = v; }
+  for (const [id, a] of Object.entries(f.adjust || {}).slice(0, 20)) {
+    if (!/^[a-z-]{2,30}$/.test(id)) continue; const size = num(a?.size, .5, 1.8, 1, 20), dy = num(a?.dy, -8, 8), dx = num(a?.dx, -6, 6);
+    if (size !== 1 || dy || dx) adjust[id] = { size, dy, dx };
+  }
+  return { m, adjust };
+}
+export function cookRecipe({ base, addons = [], system = null, colour = 0, name = '', fit = null } = {}) {
   const b = baseOf(base); if (!b) return { error: 'Choose a base to start from' };
   const fits = addonsFor(b), picked = [], seenOne = new Set();
   for (const id of Array.isArray(addons) ? addons : []) {
@@ -110,24 +134,31 @@ export function cookRecipe({ base, addons = [], system = null, colour = 0, name 
   const sys = system ? systemOf(system) : null; if (system && !sys) return { error: 'That colour system is not known' };
   const i = Math.min(Math.max(Math.round(Number(colour) || 0), 0), (sys?.colours.length || 1) - 1), main = sys?.colours[i] || null, accent = sys ? sys.colours[(i + 1) % sys.colours.length] : null;
   const options = Object.assign({}, b.options, ...picked.filter(a => a.option).map(a => a.option));
-  const p = defaultParams(b.style, b.fit, options), edits = [];
+  // a collar chosen: the piece is drawn on the sketch that has that collar (and becomes that kind of piece: a tee with a polo collar is a polo)
+  const neck = picked.find(a => a.sketch?.[b.style]), [style, neckSketch] = neck ? neck.sketch[b.style] : [b.style, null];
+  const words = picked.map(a => a.words).filter(Boolean).join(' '), template = neckSketch || defaultTemplate(style, b.fit, words) || undefined, sketch = FLAT_TEMPLATES.find(t => t.id === template)?.label || '';
+  // measured as the sketch is drawn (its length in proportion, as the flats page does when a sketch is picked), then fitted by hand
+  const p = fitToTemplate({ ...defaultParams(style, FITS[b.fit] ? b.fit : 'regular', options), template }), edits = [], F = cleanFit(fit || {});
+  // the base's lines moved by hand: the sketch stretches to its width and length (src/lab-flats.js drawingOf)
+  const wKey = 'chest' in p.m ? 'chest' : 'waist' in p.m ? 'waist' : 'width' in p.m ? 'width' : null, lKey = 'length' in p.m ? 'length' : 'inseam' in p.m ? 'inseam' : 'height' in p.m ? 'height' : null;
+  const bump = (k, d, lo = 1) => { if (k && d) p.m[k] = Math.max(lo, Math.round((p.m[k] + d) * 8) / 8); };
+  bump(wKey, F.m.width / 2); bump(lKey, F.m.length);
+  const fitted = (e, id, pair = false) => { const a = F.adjust[id]; if (!a) return e; const w = e.w * a.size, h = e.h * a.size, dx = pair ? Math.sign(e.x || 1) * a.dx : a.dx;
+    return { ...e, w: Math.round(w * 8) / 8, h: Math.round(h * 8) / 8, x: Math.round((e.x + dx) * 8) / 8, y: Math.round((e.y + a.dy) * 8) / 8 }; };
   const contrast = picked.some(a => a.contrast);
-  const words = picked.map(a => a.words).filter(Boolean).join(' '), template = defaultTemplate(b.style, b.fit, words) || undefined, sketch = FLAT_TEMPLATES.find(t => t.id === template)?.label || '';
   for (const a of picked.filter(x => x.detail && !(x.shown && x.shown.test(sketch)))) {
     const view = a.detail.view || 'front', d = defaultDetail(a.detail.kind, p, view), extra = { ...(a.detail.h ? { h: a.detail.h, y: d.y - d.h / 2 + a.detail.h / 2 } : {}) };
-    const one = { ...d, ...extra, id: `r-${a.id}`, type: 'detail', ...(accent && main && accent.hex !== main.hex ? { thread: accent.hex } : {}), ...(contrast && accent && /^pocket/.test(a.detail.kind) ? { color: accent.hex } : {}) };
+    const one = fitted({ ...d, ...extra, id: `r-${a.id}`, type: 'detail', ...(accent && main && accent.hex !== main.hex ? { thread: accent.hex } : {}), ...(contrast && accent && /^pocket/.test(a.detail.kind) ? { color: accent.hex } : {}) }, a.id, Boolean(a.detail.pair));
     edits.push(one);
     // a pair: its twin mirrored across the centre (left and right front pockets, both back welts)
     if (a.detail.pair && Math.abs(one.x) > .01) edits.push({ ...one, id: `r-${a.id}-2`, x: -one.x, flip: !one.flip });
   }
-  // a collar from the sketch pack goes on where collars go
-  for (const a of picked.filter(x => x.part)) { const q = defaultPart(a.part, p, 'front'); if (q) edits.push({ ...q, id: `r-${a.id}`, view: 'front' }); }
   const f = cleanFlat({ ...p, template, color: main?.hex || '', edits }); if (f.error) return { error: f.error };
-  const labels = picked.map(a => a.label), pockets = picked.filter(a => a.detail || a.part).map(a => a.label);
+  const labels = picked.map(a => a.label), pockets = picked.filter(a => a.detail).map(a => a.label), kind = neck ? (sketch || b.label) : b.label; // a collar names the piece by its sketch: a tee with a polo collar is a classic polo
   return {
-    params: f.params, placements: f.placements, style: b.style, template: f.params.template || null, category: STYLES[b.style].category, addons: picked.map(a => a.id),
-    name: String(name || '').replace(/\s+/g, ' ').trim().slice(0, 120) || (main ? `${main.name} ${b.label.toLowerCase()}` : b.label) + (pockets.length ? ` with ${pockets.slice(0, 2).join(' and ').toLowerCase()}` : ''), sketch,
+    params: f.params, placements: f.placements, style, template: f.params.template || null, category: STYLES[style].category, addons: picked.map(a => a.id),
+    name: String(name || '').replace(/\s+/g, ' ').trim().slice(0, 120) || (main ? `${main.name} ${kind.toLowerCase()}` : kind) + (pockets.length ? ` with ${pockets.slice(0, 2).join(' and ').toLowerCase()}` : ''), sketch,
     words: `${b.label}${labels.length ? ': ' + labels.join(', ').toLowerCase() : ''}.${sys ? ` In the ${sys.name} colours.` : ''}`,
-    colourIndex: i, details: labels, colourways: sys ? [...sys.colours.slice(i), ...sys.colours.slice(0, i)].map(c => ({ name: c.name, hex: c.hex })) : [], colour: main,
+    colourIndex: i, fit: F, silhouette: kind, details: labels, colourways: sys ? [...sys.colours.slice(i), ...sys.colours.slice(0, i)].map(c => ({ name: c.name, hex: c.hex })) : [], colour: main,
   };
 }
