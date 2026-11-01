@@ -1388,7 +1388,8 @@ await journey('J225', 'Finding your way round the Lab: the Design Lab is one sec
   try {
     const line = plan.lines.find(l => l.category === 'tops') || plan.lines[0], c = (await K(`/plans/${plan.plan.id}/lines/${line.id}/concepts`, { body: { count: 1 } })).json.concepts[0];
     const nav = await fetch(`${BASE}/lab/nav.js`); ok(nav.status === 200 && /Sketch pack/.test(await nav.text()), '1. the Lab navigation is one script every Lab page loads');
-    for (const path of ['/lab', '/lab/library', '/lab/materials', '/lab/sketches', '/lab/flats', '/lab/studio']) { const r = await fetch(`${BASE}${path}`); const t = await r.text(); ok(r.status === 200 && /\/lab\/nav\.js/.test(t), `   ${path} carries it`); }
+    const labCookie = ((await fetch(`${BASE}/v1/lab/door`, { headers: { Authorization: 'Bearer ' + kyleT } })).headers.get('set-cookie') || '').split(';')[0]; // the Lab's pages need the Lab session (src/guard.js)
+    for (const path of ['/lab', '/lab/library', '/lab/materials', '/lab/sketches', '/lab/flats', '/lab/studio']) { const r = await fetch(`${BASE}${path}`, { headers: { Cookie: labCookie } }); const t = await r.text(); ok(r.status === 200 && /\/lab\/nav\.js/.test(t), `   ${path} carries it`); }
     if (playwright) {
       const b = await playwright.chromium.launch();
       try {
@@ -1537,7 +1538,7 @@ await journey('J215', 'Design Lab flats in a browser: open them from a concept, 
     ok(await page.getAttribute('#viewSeg [data-v=front]', 'aria-pressed') === 'true' && await page.isVisible('#flatHost') && !(await page.isVisible('#stage')), 'Flats opens the concept in Design on its flat front: one workspace, the picture one press away');
     await F.waitForSelector('#canvas svg [data-pl]', { timeout: 15000 });
     const sketch = await F.locator('#canvas svg image[href^="/lab/flat-templates/"]').getAttribute('href').catch(() => null);
-    ok(sketch && (await fetch(BASE + sketch)).status === 200 && /not saved yet/i.test(await page.innerText('#fsaved')), 'the flats open on a professional flat sketch, worked out from the concept, waiting to be saved', sketch);
+    ok(sketch && (await page.evaluate(async u => (await fetch(u)).status, sketch)) === 200 && /not saved yet/i.test(await page.innerText('#fsaved')), 'the flats open on a professional flat sketch, worked out from the concept, waiting to be saved', sketch);
     const logoCard = F.locator('#pPl .pl').first(); ok(/below the HPS/.test(await logoCard.innerText()), 'the logo says where it sits, in inches from the HPS', await logoCard.innerText());
     // drag the logo up against the collar: the measurement follows and the check catches it
     const g = F.locator('#canvas [data-pl]').first(), bb = await g.boundingBox();
@@ -2379,6 +2380,7 @@ await journey('J235', 'Design, one placement model and two levels: a graphic\'s 
       ok(errs.length === 0, 'no page errors', errs); await oc.close();
       // a client's room starts on Simple
       const cc = await b.newContext({ viewport: { width: 1280, height: 900 } }); await cc.addInitScript(() => { try { localStorage.setItem('fb.client.token', 'x'); } catch {} });
+      { const lc = ((await fetch(`${BASE}/v1/lab/door`, { headers: { Authorization: 'Bearer ' + kyleT } })).headers.get('set-cookie') || '').split(';')[0].split('='); await cc.addCookies([{ name: lc[0], value: lc.slice(1).join('='), domain: new URL(BASE).hostname, path: '/lab' }]); } // the page itself needs the Lab session (src/guard.js); the client-mode default is what is checked
       const cp = await cc.newPage(); await cp.goto(`${BASE}/lab/studio?concept=${c.id}`, { waitUntil: 'domcontentloaded' }); await cp.waitForSelector('#app', { state: 'attached' });
       ok(await cp.getAttribute('#app', 'data-level') === 'simple', '9. signed in from a client\'s hub, Design starts on Simple'); await cc.close();
     } finally { await b.close(); }
@@ -3935,7 +3937,7 @@ await journey('J267', 'Hard goods and electronics are engineered as 3D parts: an
     const bitem = br?.runs?.[0]?.items?.[0];
     ok(bk.status === 202 && bk.json.products === 1 && br.runs[0].status === 'done' && bitem?.id === 'bikelight' && bitem.before && bitem.after && bitem.review && br.runs[0].summary?.done === 1 && br.reference.length === 12, '6i. the benchmark designs a known product from its words, reviews it and scores it against what is known about it', bitem || br?.runs?.[0]);
     ok(Array.isArray(bitem?.after?.missing) && bitem.after.size.length === 3 && typeof bitem.after.unit === 'number' && (await K('/engineering/benchmark', { body: { only: ['nothing-like-this'] } })).status === 422, '   with what it missed, its size and cost beside the known ranges; an unknown product is refused', bitem?.after);
-    ok((await fetch(`${BASE}/lab/engineering/benchmark`)).status === 200, '   and its page is served');
+    { const lc = ((await fetch(`${BASE}/v1/lab/door`, { headers: { Authorization: 'Bearer ' + kyleT } })).headers.get('set-cookie') || '').split(';')[0], bp = await fetch(`${BASE}/lab/engineering/benchmark`, { headers: { Cookie: lc } }); ok(bp.status === 200 && !/Opening the Design Lab/.test(await bp.text()), '   and its page is served to someone the Lab is open to'); }
     const esup = (await call('/v1/admin/suppliers', { token: kyleT, method: 'POST', body: { name: `Hi-fi Works ${stamp}` } })).json, etok = (await call(`/v1/admin/products/${epid}/tech-pack/factory`, { token: kyleT, method: 'POST', body: { supplierId: esup.id, mode: 'review' } })).json.assignment.packUrl.split('/tp/')[1];
     const zr = await fetch(`${BASE}/v1/tp/${etok}/package.zip`), zb = Buffer.from(await zr.arrayBuffer()), zf = {};
     { const e = zb.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06])); let q = zb.readUInt32LE(e + 16); for (let i = 0, n = zb.readUInt16LE(e + 10); i < n; i++) { const nl = zb.readUInt16LE(q + 28), size = zb.readUInt32LE(q + 20), off = zb.readUInt32LE(q + 42), nm = zb.toString('utf8', q + 46, q + 46 + nl).split('/').slice(1).join('/'); zf[nm] = zb.subarray(off + 30 + zb.readUInt16LE(off + 26) + zb.readUInt16LE(off + 28)).subarray(0, size); q += 46 + nl + zb.readUInt16LE(q + 30) + zb.readUInt16LE(q + 32); } }
@@ -4425,7 +4427,7 @@ await journey('J276', 'The Lab\'s own work stays with the people it is open to: 
       await c.close(); ({ c, p } = await view('fb.admin.token', kyleT, '/lab#board'));
       await p.waitForFunction(() => location.hash === '#board' && !document.querySelector('main.box#needSignin'), null, { timeout: 20000 }); ok(true, '   a link to a part of the Lab (#board) lands there too');
       await c.close(); ({ c, p } = await view('', '', '/lab/studio'));
-      await p.waitForFunction(() => /Sign in first/.test(document.querySelector('h1')?.textContent || ''), null, { timeout: 10000 }); ok(true, '8. signed out, the door says to sign in');
+      await p.waitForFunction(() => /Sign in to the Design Lab/.test(document.querySelector('h1')?.textContent || '') && document.querySelector('#needSignin a[href="/join?for=lab"]'), null, { timeout: 10000 }); ok(true, '8. signed out, the door gives the Lab\'s own invitation: open the Lab, sign in at the hub, or the work console');
       await c.close(); ({ c, p } = await view('fb.client.token', clientT, '/lab'));
       await p.waitForFunction(() => /not open on your room yet/.test(document.querySelector('h1')?.textContent || ''), null, { timeout: 10000 }); ok(true, '   and a client without the Lab is told how to open it');
       await c.close();

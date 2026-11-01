@@ -75,7 +75,9 @@ const DOOR = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta n
 .wait{color:#5b5e66}.hidden{display:none}</style></head><body><main class="box" id="needSignin" aria-live="polite"><h1>Opening the Design Lab…</h1><p class="note wait">Checking your sign-in.</p><div class="row hidden"></div></main>
 <script>(async()=>{const box=document.getElementById('needSignin'),h=box.querySelector('h1'),n=box.querySelector('.note'),row=box.querySelector('.row');
 const say=(t,m,links)=>{h.textContent=t;n.textContent=m;n.classList.remove('wait');row.innerHTML=links.map(([l,u,go])=>'<a href="'+u+'"'+(go?' class="go"':'')+'>'+l+'</a>').join('');row.classList.remove('hidden')};
-const signin=()=>say('Sign in first','Future Basics signs in at the work console. A client whose room has the Design Lab signs in at their hub, then comes back here.',[['Your hub','/',true],['Work console','/admin']]);
+// signed out: the Lab's own invitation (open a room and the Lab on it, sign in at the hub, or the work console); on work.* the hub links go to hub.*
+const hub=p=>/^work\\./.test(location.host)?'https://'+location.host.replace(/^work\\./,'hub.')+p:p;
+const signin=()=>say('Sign in to the Design Lab','New to the Design Lab? Open a room of your own (free, one minute), then open the Lab on it: the studio, the flats, the sketch pack and the libraries, with tech packs and the factory files that come out of them. Already have a room? Sign in at your hub. Future Basics staff sign in at the work console.',[['Open the Design Lab',hub('/join?for=lab'),true],['Sign in at your hub',hub('/hub#lab')],['Work console','/admin']]);
 let t='';try{t=localStorage.getItem('fb.admin.token')||localStorage.getItem('fb.client.token')||''}catch{}
 if(!t)return signin();
 let tried=0;try{tried=Number(sessionStorage.getItem('fb.lab.door')||0)}catch{}
