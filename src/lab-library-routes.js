@@ -145,8 +145,14 @@ export function registerLabLibraryRoutes(app, d) {
   });
 
   // ---- new prints from prints: in the style of one, or a blend of two ----
+  // A print is made as a draft (in_library false, meta.print.draft) and shown first: Keep it puts it in the library, Try again makes another
+  // (one more generation) and drops this one, Discard drops it. Drafts nobody kept are cleared after a day. If the image model fails, the
+  // generation is given back (src/lab-access.js refund, on the 502).
+  const draftOf = async (id, req) => (await pool.query(`select id, name, meta from lab_art where id=$1 and source='print' and not in_library and coalesce(meta->'print'->>'draft','false')='true' and ($2::uuid is null or client_id=$2)`, [id, own(req)])).rows[0];
   app.post('/v1/lab/library/prints', { preHandler: pre }, async (req, reply) => {
     const p = cleanPrint(req.body || {}); if (p.error) return bad(reply, p.error);
+    await pool.query(`delete from lab_art where source='print' and not in_library and coalesce(meta->'print'->>'draft','false')='true' and created_at < now() - interval '1 day'`).catch(() => {});
+    const replaces = UUID.test(String(req.body?.replaces || '')) ? await draftOf(req.body.replaces, req) : null; // Try again: the draft it replaces
     const rows = []; for (const id of p.art) { const a = await artRow(id, req); if (!a) return bad(reply, 'That graphic is not in the library', 404); rows.push(a); }
     const hits = brandHits([p.subject, p.name].join(' '), (await pool.query('select name from lab_brands')).rows.map(r => r.name));
     if (hits.length) return bad(reply, `Leave other brands out (${hits.slice(0, 3).join(', ')}). Describe the look in your own words.`);
@@ -157,10 +163,26 @@ export function registerLabLibraryRoutes(app, d) {
     let out; try { out = cfg.provider === 'fixture' ? await fixturePrint(p, refs) : await editImpl({ images: refs, prompt, cfg: { ...cfg, size: '1024x1024' } }); }
     catch (e) { return bad(reply, `The image model could not make the print: ${clip(e.message, 200)}`, 502); }
     const png = await sharp(out).resize({ width: 1600, height: 1600, fit: 'inside', withoutEnlargement: true }).png().toBuffer(), thumb = await sharp(png).resize({ width: 360, height: 360, fit: 'inside' }).png().toBuffer();
+    const view = await sharp(png).resize({ width: 768, height: 768, fit: 'inside' }).webp({ quality: 86 }).toBuffer(); // the preview: big enough to judge
     const name = printName(p, names), tags = ['print', p.mode === 'style' ? 'restyled' : 'blend'];
-    const id = (await pool.query(`insert into lab_art(name,png,thumb,prompt,model,source,in_library,tags,meta,created_by,client_id) values($1,$2,$3,$4,$5,'print',true,$6,$7,$8,$9) returning id`,
-      [name, png, thumb, prompt, cfg.provider === 'fixture' ? 'fixture' : cfg.model, tags, { print: { mode: p.mode, from: p.art, subject: p.subject, mix: p.mode === 'blend' ? p.mix : null, fill: p.fill } }, actorOf(req), own(req)])).rows[0].id;
-    return reply.code(201).send({ id, name, mode: p.mode, modeLabel: PRINT_MODES[p.mode], image: `data:image/png;base64,${thumb.toString('base64')}` });
+    const id = (await pool.query(`insert into lab_art(name,png,thumb,prompt,model,source,in_library,tags,meta,created_by,client_id) values($1,$2,$3,$4,$5,'print',false,$6,$7,$8,$9) returning id`,
+      [name, png, thumb, prompt, cfg.provider === 'fixture' ? 'fixture' : cfg.model, tags, { print: { mode: p.mode, from: p.art, subject: p.subject, mix: p.mode === 'blend' ? p.mix : null, fill: p.fill, draft: true } }, actorOf(req), own(req)])).rows[0].id;
+    if (replaces) await pool.query('delete from lab_art where id=$1', [replaces.id]);
+    return reply.code(201).send({ id, name, draft: true, mode: p.mode, modeLabel: PRINT_MODES[p.mode], image: `data:image/webp;base64,${view.toString('base64')}` });
+  });
+  // keep the draft: it goes in the library under its name (or the one given)
+  app.post('/v1/lab/library/prints/:id/keep', { preHandler: pre }, async (req, reply) => {
+    if (!UUID.test(String(req.params.id))) return bad(reply, 'Not found', 404); const d = await draftOf(req.params.id, req);
+    if (!d) return bad(reply, 'That print is not waiting to be kept: it was kept already, discarded, or cleared after a day', 404);
+    const name = clip(req.body?.name, 80) || d.name;
+    await pool.query(`update lab_art set in_library=true, name=$2, meta=jsonb_set(meta, '{print,draft}', 'false') where id=$1`, [d.id, name]);
+    return { id: d.id, name, kept: true };
+  });
+  // discard the draft
+  app.delete('/v1/lab/library/prints/:id', { preHandler: pre }, async (req, reply) => {
+    if (!UUID.test(String(req.params.id))) return bad(reply, 'Not found', 404); const d = await draftOf(req.params.id, req);
+    if (!d) return bad(reply, 'That print is not a draft any more', 404);
+    await pool.query('delete from lab_art where id=$1', [d.id]); return { ok: true };
   });
 
   // ---- techniques ----

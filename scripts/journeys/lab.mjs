@@ -4013,11 +4013,12 @@ await journey('J268', 'Design by picking, the fabric checked, and new prints fro
     for (const [name, rgb] of [['Wave motif', [30, 60, 120]], ['Check motif', [200, 60, 40]]]) arts.push((await K('/library/graphics/upload', { body: { image: await png(240, 160, rgb), name } })).json.id);
     ok((await K('/library/prints', { body: { mode: 'style', art: [arts[0]] } })).status === 422, '5. a print in a style needs to say what it shows');
     const st = await K('/library/prints', { body: { mode: 'style', art: [arts[0]], subject: 'palm leaves and surfboards' } }); arts.push(st.json.id);
-    ok(st.status === 201 && /palm leaves/.test(st.json.name) && /^data:image\/png/.test(st.json.image), '   a new print in its style is made', { status: st.status, name: st.json.name });
+    ok(st.status === 201 && /palm leaves/.test(st.json.name) && /^data:image\/(png|webp)/.test(st.json.image) && st.json.draft === true, '   a new print in its style is made, shown first as a draft', { status: st.status, name: st.json.name });
     const bl = await K('/library/prints', { body: { mode: 'blend', art: [arts[0], arts[1]], mix: 70 } }); arts.push(bl.json.id);
     ok(bl.status === 201 && bl.json.name === 'Wave motif × Check motif', '   and a blend of two', { status: bl.status, name: bl.json.name });
+    for (const d of [st, bl]) await K(`/library/prints/${d.json.id}/keep`, { body: {} });
     const kept = (await K('/library/graphics?source=print')).json.graphics.filter(g => [st.json.id, bl.json.id].includes(g.id));
-    ok(kept.length === 2 && kept.every(g => g.tags.includes('print')), '   both are in the library as new prints, ready to repeat', kept.map(g => g.name));
+    ok(kept.length === 2 && kept.every(g => g.tags.includes('print')), '   kept, both are in the library as new prints, ready to repeat', kept.map(g => g.name));
     ok((await K('/library/prints', { body: { mode: 'blend', art: [arts[0], '00000000-0000-0000-0000-000000000000'] } })).status === 404, '   a graphic that is not there is refused');
     if (playwright) {
       const b = await playwright.chromium.launch();
@@ -4088,7 +4089,9 @@ await journey('J269', 'Easy to find and clear to use: the recipe menu is in the 
       await s.goto(`${BASE}/lab/library?print=1&art=${art}`, { waitUntil: 'networkidle' }); await s.waitForSelector('#npDlg[open]', { timeout: 15000 });
       ok(await s.evaluate(id => document.querySelector(`#npA [data-np="${id}"]`)?.getAttribute('aria-checked') === 'true', art), '   the Studio\'s link opens New print with the graphic picked');
       await s.fill('#npSubj', 'ferns and moths'); await s.click('#npMake'); await s.waitForFunction(() => !document.querySelector('#npOut').classList.contains('hidden'), null, { timeout: 20000 });
-      const pr = await s.textContent('#npInfo'); ok(/ferns and moths/.test(pr), '   and the print is made and kept', pr);
+      ok(/ferns and moths/.test(await s.inputValue('#npName')), '   and the print is made, shown before it is kept', await s.inputValue('#npName'));
+      await s.click('#npKeep'); await s.waitForFunction(() => /Kept in the library/.test(document.querySelector('#npInfo').textContent), null, { timeout: 15000 });
+      const pr = await s.textContent('#npInfo'); ok(/ferns and moths/.test(pr), '   Keep it puts it in the library', pr);
       sql(`delete from lab_art where id='${art}' or (source='print' and name like 'ferns and moths%')`);
       await s.goto(`${BASE}/lab/studio?concept=${L}&fabric=1`, { waitUntil: 'networkidle' }); await s.waitForSelector('#matDlg[open] #matFit:not(.hidden)', { timeout: 30000 });
       await K(`/concepts/${L}/fabric-accept`, { method: 'DELETE' }); await K(`/concepts/${L}/materials`, { body: { material: twill.id, role: 'main' } }); // back to the twill, with nothing kept on purpose
@@ -4158,6 +4161,67 @@ await journey('J270', 'The recipe flow finished: a tee with a polo collar (drawn
       } finally { await b.close(); }
     } else ok(true, 'needs a browser');
   } finally { for (const id of made) if (id) await K(`/concepts/${id}`, { method: 'DELETE' }); }
+});
+
+await journey('J271', 'Prints you can judge before they are kept: a new print comes back as a draft to keep (with its own name), try again or discard, and drafts never show in the library; another room cannot touch it; when the image step fails the generation is given back; in the library the blend partner is picked by its picture, and a kept print becomes an all-over repeat in one press', async () => {
+  const email = `phase3-${stamp}@selfserve.test`, started = await call('/v1/public/start', { body: { email, name: 'Phase Three Co', title: 'Tee', photos: [jpeg()] } });
+  const cid = started.json.client?.id || sql(`select client_id from users where lower(email)='${email}'`), uid = sql(`select id from users where lower(email)='${email}'`).split('\n')[0], slug = sql(`select slug from clients where id='${cid}'`).split('\n')[0];
+  sql(`update users set email_verified_at=now() where id='${uid}'`); sql(`update clients set lab_free=true where id='${cid}'`);
+  const clientT = await forge({ sub: uid, clientId: cid, client: slug, role: 'client', email }), H = (path, o = {}) => call('/v1/lab' + path, { token: clientT, ...o });
+  const arts = [];
+  try {
+    for (const [name, rgb] of [['Draft wave', [30, 60, 120]], ['Draft check', [200, 60, 40]]]) arts.push((await K('/library/graphics/upload', { body: { image: await png(240, 160, rgb), name } })).json.id);
+    const inLib = async id => (await K('/library/graphics?source=print&limit=200')).json.graphics.some(g => g.id === id);
+    const d1 = await K('/library/prints', { body: { mode: 'style', art: [arts[0]], subject: 'night jasmine' } });
+    ok(d1.status === 201 && d1.json.draft === true && !(await inLib(d1.json.id)), '1. a new print comes back as a draft, not yet in the library', { status: d1.status, draft: d1.json.draft });
+    const d2 = await K('/library/prints', { body: { mode: 'style', art: [arts[0]], subject: 'night jasmine', replaces: d1.json.id } });
+    ok(d2.status === 201 && d2.json.id !== d1.json.id && sql(`select count(*) from lab_art where id='${d1.json.id}'`) === '0', '2. Try again makes another and drops the one it replaces');
+    ok((await H(`/library/prints/${d2.json.id}/keep`, { body: {} })).status === 404 && (await H(`/library/prints/${d2.json.id}`, { method: 'DELETE' })).status === 404, '   another room cannot keep or discard it');
+    const kept = await K(`/library/prints/${d2.json.id}/keep`, { body: { name: 'Jasmine nights' } });
+    ok(kept.status === 200 && kept.json.name === 'Jasmine nights' && await inLib(d2.json.id), '3. Keep it puts it in the library under the name given', kept.json);
+    ok((await K(`/library/prints/${d2.json.id}/keep`, { body: {} })).status === 404 && (await K(`/library/prints/${d2.json.id}`, { method: 'DELETE' })).status === 404, '   a kept print is no longer a draft to keep or discard');
+    const d3 = await K('/library/prints', { body: { mode: 'blend', art: [arts[0], arts[1]] } });
+    ok((await K(`/library/prints/${d3.json.id}`, { method: 'DELETE' })).status === 200 && sql(`select count(*) from lab_art where id='${d3.json.id}'`) === '0', '4. Discard drops it');
+    // a stale draft is cleared by the next print anyone makes
+    const d4 = await K('/library/prints', { body: { mode: 'style', art: [arts[1]], subject: 'old moths' } }); sql(`update lab_art set created_at=now()-interval '2 days' where id='${d4.json.id}'`);
+    const d5 = await K('/library/prints', { body: { mode: 'style', art: [arts[1]], subject: 'new moths' } });
+    ok(sql(`select count(*) from lab_art where id='${d4.json.id}'`) === '0', '   a draft nobody kept is cleared after a day'); await K(`/library/prints/${d5.json.id}`, { method: 'DELETE' });
+    // the image step fails after the charge: the generation is given back (the room's own, and staff's)
+    const roomArt = (await H('/library/graphics/upload', { body: { image: await png(200, 140, [90, 40, 140]), name: 'Room motif' } })).json.id;
+    sql(`update lab_art set png=decode('6e6f74206120706e67','hex') where id='${roomArt}'`); // not a picture: the print cannot be drawn
+    const used = () => Number(sql(`select count(*) from lab_ai_usage where client_id='${cid}'`));
+    const u0 = used(), bad = await H('/library/prints', { body: { mode: 'style', art: [roomArt], subject: 'anything' } }); await new Promise(r => setTimeout(r, 400));
+    ok(bad.status >= 500 && used() === u0, '5. when the image step fails, the room is not charged for it', { status: bad.status, before: u0, after: used() });
+    const good = await H('/library/prints', { body: { mode: 'style', art: [(await H('/library/graphics/upload', { body: { image: await png(200, 140, [20, 120, 90]), name: 'Room motif 2' } })).json.id], subject: 'ferns' } });
+    ok(good.status === 201 && used() === u0 + 1, '   and a print that is made is counted once', { status: good.status, used: used() });
+    if (playwright) {
+      const b = await playwright.chromium.launch();
+      try {
+        const c = await b.newContext({ viewport: { width: 1366, height: 900 } }); await c.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); localStorage.setItem('fb.helper.on', '0'); } catch {} }, kyleT);
+        const p = await c.newPage(), errs = []; p.on('pageerror', e => errs.push(String(e)));
+        await p.goto(`${BASE}/lab/library`, { waitUntil: 'networkidle' }); await p.waitForFunction(() => typeof openGraphic === 'function' && G.graphics.length > 0, null, { timeout: 15000 });
+        await p.evaluate(id => openGraphic(id), arts[0]); await p.waitForSelector('#gDlg[open]');
+        await p.check('input[name=gpMode][value=blend]'); await p.waitForSelector(`#gpWith [data-np="${arts[1]}"] img`, { timeout: 15000 });
+        ok(!(await p.$(`#gpWith [data-np="${arts[0]}"]`)), '6. in a graphic\'s panel the blend partner is picked by its picture (and not the graphic itself)');
+        await p.click(`#gpWith [data-np="${arts[1]}"]`); await p.click('#gpGo'); await p.waitForSelector('#gpDraftRow:not(.hidden)', { timeout: 20000 });
+        const first = await p.evaluate(() => GPD); await p.click('#gpAgain'); ok(await p.isDisabled('#gpKeep'), '   while it draws again, Keep it waits'); await p.waitForFunction(id => GPD && GPD !== id && !document.querySelector('#gpKeep').disabled, first, { timeout: 20000 });
+        ok(await p.isVisible('#gpImg') && await p.isVisible('#gpKeep') && await p.isVisible('#gpDrop'), '   the print is shown large with Keep it, Try again and Discard');
+        await p.fill('#gpName', 'Wave check blend'); await p.click('#gpKeep'); await p.waitForSelector('#gpKeptRow:not(.hidden)', { timeout: 15000 });
+        ok(/Wave check blend/.test(await p.textContent('#gpInfo')), '   kept under the name typed', await p.textContent('#gpInfo'));
+        await p.click('#gpRep'); await p.waitForFunction(() => !document.querySelector('#grImg').classList.contains('hidden') && /repeat/.test(document.querySelector('#grInfo').textContent), null, { timeout: 20000 });
+        ok(/Wave check blend/.test(await p.inputValue('#gdName')) && /Half-drop/i.test(await p.textContent('#grInfo')), '7. Make it a repeat opens the kept print at its all-over repeat, a first one already drawn', await p.textContent('#grInfo'));
+        const kid = await p.evaluate(() => CUR.id); arts.push(kid);
+        await p.click('#grKeep'); await p.waitForFunction(() => /Kept as/.test(document.querySelector('#grInfo').textContent), null, { timeout: 15000 });
+        ok(true, '   and Keep in the library keeps the repeat');
+        // the header's New print: closed with a draft still showing, the draft goes
+        await p.keyboard.press('Escape'); await p.click('#npGo'); await p.waitForSelector('#npDlg[open]'); await p.click(`#npA [data-np="${arts[0]}"]`);
+        await p.fill('#npSubj', 'paper lanterns'); await p.click('#npMake'); await p.waitForSelector('#npDraftRow:not(.hidden)', { timeout: 20000 });
+        const nd = await p.evaluate(() => NPD); await p.click('[data-npclose]'); await p.waitForTimeout(600);
+        ok(nd && sql(`select count(*) from lab_art where id='${nd}'`) === '0', '8. closing New print with a draft showing discards it', nd);
+        ok(errs.length === 0, '   no page errors', errs);
+      } finally { await b.close(); }
+    } else ok(true, 'needs a browser');
+  } finally { sql(`delete from lab_art where id in (${arts.map(a => `'${a}'`).join(',') || "''"}) or name in ('Jasmine nights','Wave check blend') or (source='repeat' and name like 'Wave check blend%') or client_id='${cid}'`); }
 });
 
 shops.close(); brave.close();

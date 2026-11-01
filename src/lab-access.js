@@ -50,7 +50,7 @@ export function createLabAccess(d) {
     [/^\/v1\/lab\/plans\/[^/]+\/client$/, null]
   ];
   // which table owns the :id in the url, so one check in the gate keeps every loader behind it to the room's own rows
-  const OWNER = [[/^\/v1\/lab\/concepts\/([^/]+)/, 'lab_concepts'], [/^\/v1\/lab\/plans\/([^/]+)/, 'lab_plans'], [/^\/v1\/lab\/(?:art|library\/graphics)\/([^/]+)/, 'lab_art'], [/^\/v1\/lab\/fonts\/([^/]+)/, 'lab_fonts'], [/^\/v1\/lab\/decor\/quotes\/([^/]+)/, 'lab_decor_quotes'], [/^\/v1\/lab\/polls\/([^/]+)/, 'lab_polls'],
+  const OWNER = [[/^\/v1\/lab\/concepts\/([^/]+)/, 'lab_concepts'], [/^\/v1\/lab\/plans\/([^/]+)/, 'lab_plans'], [/^\/v1\/lab\/(?:art|library\/graphics|library\/prints)\/([^/]+)/, 'lab_art'], [/^\/v1\/lab\/fonts\/([^/]+)/, 'lab_fonts'], [/^\/v1\/lab\/decor\/quotes\/([^/]+)/, 'lab_decor_quotes'], [/^\/v1\/lab\/polls\/([^/]+)/, 'lab_polls'],
     [/^\/v1\/lab\/materials\/([^/]+)/, 'lab_materials'], [/^\/v1\/lab\/library\/techniques\/([^/]+)/, 'lab_techniques'], [/^\/v1\/lab\/library\/technique-photos\/([^/]+)/, 'lab_technique_photos']];
   // whose row it is: a room reads and changes only its own rows. The one exception is the built-in starter set of materials and techniques
   // (screen print, embroidery, the base fabrics) that the flats and costing need: a room reads and uses those, never changes them.
@@ -91,14 +91,25 @@ export function createLabAccess(d) {
   // before an AI generation: staff always may; a client may while the room owes less than the cap. Records the use when allowed.
   async function charge(req, { kind = 'studio', units = null, conceptId = null } = {}) {
     const n = Math.max(1, Math.round(Number(units ?? UNITS[kind] ?? 1))), who = UUID.test(String(req?.auth?.sub || '')) ? req.auth.sub : null, cid = scope(req);
-    if (!cid) { await pool.query(`insert into lab_ai_usage(client_id, access_id, user_id, kind, units, concept_id) values(null, null, $1, $2, $3, $4)`, [who, kind, n, UUID.test(String(conceptId || '')) ? conceptId : null]).catch(() => {}); return null; }
+    const kept = r => { const id = r?.rows?.[0]?.id; if (id != null && req) (req.labCharges ||= []).push(id); return r; }; // what this request was charged, so a failure can give it back (refund)
+    if (!cid) { await pool.query(`insert into lab_ai_usage(client_id, access_id, user_id, kind, units, concept_id) values(null, null, $1, $2, $3, $4) returning id`, [who, kind, n, UUID.test(String(conceptId || '')) ? conceptId : null]).then(kept).catch(() => {}); return null; }
     const a = req.lab.access, m = await meter(cid, a);
-    if (a.free) { await pool.query(`insert into lab_ai_usage(client_id, access_id, user_id, kind, units, concept_id) values($1, $2, $3, $4, $5, $6)`, [cid, a.id, who, kind, n, UUID.test(String(conceptId || '')) ? conceptId : null]); return { ...m, used: m.used + n }; } // charges off: counted, never billed
+    if (a.free) { kept(await pool.query(`insert into lab_ai_usage(client_id, access_id, user_id, kind, units, concept_id) values($1, $2, $3, $4, $5, $6) returning id`, [cid, a.id, who, kind, n, UUID.test(String(conceptId || '')) ? conceptId : null])); return { ...m, used: m.used + n }; } // charges off: counted, never billed
     if (m.blocked) throw Object.assign(new Error(`Your room owes $${(m.owedCents / 100).toFixed(2)} for AI generations past the ${m.included} included. Pay the open invoice in your hub to keep going.`), { status: 402, code: 'LAB_AI_CAP', meter: m });
-    await pool.query(`insert into lab_ai_usage(client_id, access_id, user_id, kind, units, concept_id) values($1, $2, $3, $4, $5, $6)`, [cid, a.id, who, kind, n, UUID.test(String(conceptId || '')) ? conceptId : null]);
+    kept(await pool.query(`insert into lab_ai_usage(client_id, access_id, user_id, kind, units, concept_id) values($1, $2, $3, $4, $5, $6) returning id`, [cid, a.id, who, kind, n, UUID.test(String(conceptId || '')) ? conceptId : null]));
     const after = { ...m, used: m.used + n }; // bill a round in the background once the unbilled part adds up
     if ((after.used - after.included - after.billedUnits) * after.aiPriceCents >= pricing().billAtCents) setImmediate(() => billOverage(cid).catch(e => log.warn?.({ err: e.message, clientId: cid }, 'design lab overage not billed')));
     return after;
+  }
+
+  // when the AI step fails after the charge (the image model errors or times out), the generation is given back: the usage rows this
+  // request recorded are removed, so nothing failed counts against the room's included generations or is billed. Called for every
+  // Lab response with a server-side error status (registered in server.js), and by a route that fails in another way.
+  async function refund(req) {
+    const ids = (req?.labCharges || []).filter(id => /^\d+$/.test(String(id))); if (!ids.length) return 0; req.labCharges = [];
+    const r = await pool.query('delete from lab_ai_usage where id = any($1::bigint[]) returning units', [ids]);
+    const units = r.rows.reduce((a, x) => a + Number(x.units || 0), 0); if (units) log.info?.({ units, path: String(req.url || '').split('?')[0] }, 'design lab: AI generation failed, charge given back');
+    return units;
   }
 
   // ---- buying access ----
@@ -201,5 +212,5 @@ export function createLabAccess(d) {
     if (r) await pool.query(`insert into activities(client_id, actor_id, type, summary, metadata) values($1, $2, 'design', $3, $4)`, [clientId, by, on ? `Design Lab charges turned off for ${r.name}: the Lab is free` : `Design Lab charges turned back on for ${r.name}`, { labFree: Boolean(on) }]).catch(() => {});
     return Boolean(r);
   }
-  return { pricing, gate, scope, ownId, active, isFree, setFree, meter, charge, checkout, landed, activate, comp, end, billOverage, invoicePaid, invoiceLanded, fromOrder, status, usage, row };
+  return { pricing, gate, scope, ownId, active, isFree, setFree, meter, charge, refund, checkout, landed, activate, comp, end, billOverage, invoicePaid, invoiceLanded, fromOrder, status, usage, row };
 }
