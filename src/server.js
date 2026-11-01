@@ -709,6 +709,9 @@ const labAccess=createLabAccess({ pool, log: app.log, clientHubUrl,
   shopify: { configured: shopifyConfigured, graphql: shopifyGraphql, DRAFT_ORDER_CREATE, requireNoUserErrors, pollDraftOrderPaid: id => pollDraftOrderPaid(id) },
   recordPayment: p => recordPayment(pool, { ...p, currency: 'USD', orderName: '', source: 'lab' }),
   onActivate: clientId => unlockWaitingPacks(clientId), notifyClient: (clientId, m) => notifyClientContact(clientId, m) });
+// a Lab AI generation that ends in a server-side failure (the image model errored, timed out, or the server failed after the charge)
+// is not counted: the charge is given back once the response has gone (src/lab-access.js refund)
+app.addHook('onResponse',async(req,reply)=>{if(req.labCharges?.length&&reply.statusCode>=500)await labAccess.refund(req).catch(err=>app.log.warn({err:err.message},'design lab charge not given back'))});
 const labGate=labAccess.gate, labDeps={ authenticate, adminOnly: labGate, staffOnly: adminOnly, lab: labAccess };
 registerLabArtRoutes(app, { pool, ...labDeps, art: labArt });
 const lab=registerLabRoutes(app, { pool, ...labDeps, getSetting, setSetting, log: app.log, art: labArt,

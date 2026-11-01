@@ -217,6 +217,8 @@ A client can open the Design Lab on their own room, from the hub, for a fixed pr
 | `DESIGN_LAB_AI_BILL_AT_CENTS` | the billing round (default 2500) |
 | `DESIGN_LAB_AI_UNPAID_CAP_CENTS` | generations pause past this much owed (default 15000; 0 for no cap) |
 
+**A failed generation is not counted.** Every AI step records its charge on the request. If the step then fails (the image model errors or times out, or the server fails after the charge), the response is a server error and the charge is given back (`refund` in `src/lab-access.js`, run for every Lab response of 500 or above). Nothing failed counts against the included generations or is billed.
+
 Routes: `GET /v1/client/lab`, `POST /v1/client/lab/checkout`, `POST /v1/client/lab/landed`, `POST /v1/client/lab/invoices/:id/landed`, `GET /v1/client/lab/usage`; `GET /v1/products/:id/make`, `POST /v1/products/:id/make-request`, `POST|DELETE /v1/products/:id/quote-links[/:sid]`; staff `GET|PATCH /v1/admin/clients/:id/lab` (`comp`, `end`, `bill`), `POST /v1/admin/lab/invoices/:id/paid`, `GET|PATCH /v1/admin/make-requests[/:id]`. Tables: `lab_access`, `lab_ai_usage`, `lab_ai_invoices`, `make_requests`. Tests: `test/lab-access.test.js`, journey J232.
 
 **The flat follows the picture.** A concept's flat is drawn as the garment its picture shows: the vision model reads the picture (cached per picture) for the garment type, its fit and the colour of its main cloth, and the picture wins over the line's category, so a trucker jacket in a Tops line is drawn from a jacket sketch in its denim colour, not as a sweatshirt. The words still decide when there is no picture, and a jacket is a jacket in any line (trucker, bomber, chore coat, shacket, anorak…). A flat saved before as another garment says so above the drawing (**The picture shows a … ; this flat is drawn as a …**) with **Redraw from the picture**: the garment, fit and colour come from the picture, the graphics come along, and nothing is kept until Save. `GET /v1/lab/concepts/:id/flats/from-picture`.
@@ -744,9 +746,17 @@ In the graphics library press **Make a new print** (under Build one yourself), p
 - **In this style, showing something new.** The image model draws a new textile print with the same marks, palette, density and technique, showing what you name (for example "palm leaves and surfboards").
 - **Blend with another print.** Two library graphics are fused into one design. The mix slider leans toward either one.
 
-Untick **Fill the square** for a single graphic instead of an all-over fabric. The result is kept in the library as a **New print**. From there it can be made into an all-over repeat or put on a piece.
+Untick **Fill the square** for a single graphic instead of an all-over fabric. In a graphic's panel the print to blend with is picked by its picture too.
 
-Route: `POST /v1/lab/library/prints {mode: style|blend, art, subject?, mix?, fill?, name?}`. It counts toward `LAB_DAILY_ART` and charges a room one graphic.
+**See it before it is kept.** The print comes back as a draft, shown large with its name:
+- **Keep it** puts it in the library as a **New print**, under the name in the box.
+- **Try again** draws another from the same picks (one more generation) and drops this one. Keep it and Discard wait while it draws.
+- **Discard** drops it. Closing New print with a draft still showing discards it too.
+- A draft is never in the library listing. One nobody kept is cleared after a day.
+
+Once kept, **Make it a repeat** opens it at its all-over repeat with a half-drop already drawn (no AI: the repeat is made from the picture); **Keep in the library** keeps the repeat for a piece's flats. This is the way to turn a print that came out as a single scene into fabric. **Open it** puts it on a piece.
+
+Routes: `POST /v1/lab/library/prints {mode: style|blend, art, subject?, mix?, fill?, name?, replaces?}` (a draft; `replaces` is the draft Try again drops), `POST /v1/lab/library/prints/:id/keep {name?}`, `DELETE /v1/lab/library/prints/:id` (a draft only). A print counts toward `LAB_DAILY_ART` and charges a room one graphic.
 
 A room's graphics stay its own: a new print, and an all-over repeat, can only be made from the room's own graphics, and are kept in that room.
 
