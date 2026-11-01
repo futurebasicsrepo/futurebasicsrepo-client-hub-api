@@ -1,4 +1,4 @@
-import { fabricFit, withAccept } from './lab-fabric-fit.js';
+import { materialFit, withAccept } from './lab-fabric-fit.js';
 // What a concept still needs before it becomes a tech pack, read from everything the Design workspace touches: the picture, the graphics placed
 // on the garment, the flats and their check, the materials, the twist, the "too close" check and the approval. Pure (the route reads the rows);
 // the Design workspace shows it as a checklist, each item with where to fix it.
@@ -22,6 +22,11 @@ export function readiness({ concept, studioDoc = null, flat = null, pattern = nu
       !pattern.saved ? 'The pattern\'s checks run once it is saved.' : fails.length ? `${fails.length} problem${fails.length > 1 ? 's' : ''} to fix first: ${fails[0].msg}` : warns.length ? `Can be made: ${warns.length} thing${warns.length > 1 ? 's' : ''} to check (${warns[0].msg})` : 'The pattern\'s checks pass.', go);
     const on = picks.filter(m => m?.part), main = on.some(m => m.part === pattern.main);
     add('materials', `The ${pattern.mainLabel || 'main material'} chosen`, main ? 'done' : on.length ? 'warn' : 'todo', main ? `${on.length} part${on.length > 1 ? 's have' : ' has'} a material.` : on.length ? `Materials are on ${on.length} part${on.length > 1 ? 's' : ''}, but not yet on the ${String(pattern.mainLabel || 'main part').toLowerCase()}.` : 'Choose a material for each part on Pattern (Materials).', go);
+    // a shoe's and a plush's materials against what the part needs (src/lab-fabric-fit.js footwearFit, plushFit)
+    const mfit = main ? materialFit({ category: c.category, materials: picks }) : null;
+    if (mfit && mfit.verdict !== 'unknown') { const f = withAccept(mfit, spec.fabricAccept, picks);
+      add('fabric', c.category === 'plush' ? 'The materials suit a plush' : 'The materials suit a shoe', f.accepted ? 'done' : f.verdict === 'wrong' ? 'todo' : f.verdict === 'check' || f.asks?.length ? 'warn' : 'done',
+        f.accepted ? f.summary : f.summary + (f.findings[0]?.fix ? ` ${f.findings[0].fix}` : f.asks?.[0]?.msg ? ` ${f.asks[0].msg}` : ''), go); }
   } else {
     add('flats', 'The flats saved', flat ? 'done' : 'todo', flat ? 'The measured flats are saved.' : 'Open the flats, check the measurements and save them.', { view: 'front' });
     const fails = Number(flat?.check?.summary?.fail || 0), warns = Number(flat?.check?.summary?.warn || 0);
@@ -30,8 +35,8 @@ export function readiness({ concept, studioDoc = null, flat = null, pattern = nu
     const fabric = picks.some(m => m && (m.kind === 'fabric' || /fabric|main|shell|body/i.test(String(m.role || ''))));
     add('materials', 'The main fabric chosen', fabric ? 'done' : picks.length ? 'warn' : 'todo', fabric ? `${picks.length} material${picks.length > 1 ? 's' : ''} chosen.` : picks.length ? 'Materials are chosen but none is marked as the fabric.' : 'Choose the main fabric and trims on the concept (What it is made of).', card);
     // the fabric against the style: a woven on a tee, a no-stretch cloth on leggings, a 600 gsm tee (src/lab-fabric-fit.js)
-    const fit = fabric && flat?.style ? withAccept(fabricFit({ style: flat.style, fit: flat.fit, materials: picks }), spec.fabricAccept, picks) : null;
-    if (fit && fit.verdict !== 'unknown') add('fabric', 'The fabric suits the style', fit.accepted ? 'done' : fit.verdict === 'wrong' ? 'todo' : fit.verdict === 'check' ? 'warn' : 'done', fit.accepted ? fit.summary : fit.summary + (fit.findings[0]?.fix ? ` ${fit.findings[0].fix}` : ''), { href: `/lab/studio?concept=${c.id}&fabric=1` });
+    const fit = fabric && flat?.style ? withAccept(materialFit({ category: c.category, style: flat.style, fit: flat.fit, materials: picks }), spec.fabricAccept, picks) : null;
+    if (fit && fit.verdict !== 'unknown') add('fabric', 'The fabric suits the style', fit.accepted ? 'done' : fit.verdict === 'wrong' ? 'todo' : fit.verdict === 'check' || fit.asks?.length ? 'warn' : 'done', fit.accepted ? fit.summary : fit.summary + (fit.findings[0]?.fix ? ` ${fit.findings[0].fix}` : fit.asks?.[0]?.msg ? ` ${fit.asks[0].msg}` : ''), { href: `/lab/studio?concept=${c.id}&fabric=1` });
   }
   const twist = String(c.twist || '').trim().length >= 15;
   add('twist', 'Our twist written down', twist ? 'done' : 'todo', twist ? 'The twist says what is ours.' : 'Write what our twist is on the concept: approval needs it.', card);

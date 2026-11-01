@@ -49,3 +49,67 @@ test('a wrong fabric kept on purpose holds only while it is still the main fabri
   assert.equal(withAccept(f, acc, [{ ...jersey, id: 'js' }]).accepted, undefined);
   assert.equal(withAccept(fabricFit({ style: 'tee', materials: [jersey] }), acc, [jersey]).accepted, undefined); // nothing to keep when it suits
 });
+
+// ---- Phase 4: what the check cannot see is asked for; shoes and plush are checked on their parts ----
+import { materialFit, footwearFit, plushFit } from '../src/lab-fabric-fit.js';
+import { askHtml, ASK_FIELDS } from '../src/lab-fit-ask.js';
+
+test('a fabric missing its weight or what it is gets asked for, not guessed', () => {
+  const noWeight = fabricFit({ style: 'tee', materials: [{ id: 'm1', kind: 'fabric', role: 'main', name: 'Mystery jersey', spec: { construction: 'single jersey' } }] });
+  assert.equal(noWeight.verdict, 'good'); assert.deepEqual(noWeight.asks.map(a => a.fields), [['weightGsm']]); assert.equal(noWeight.asks[0].id, 'm1');
+  assert.match(noWeight.summary, /Nothing wrong so far, but 1 detail is missing/);
+  const nothing = fabricFit({ style: 'tee', materials: [{ id: 'm2', kind: 'fabric', role: 'main', name: 'Bolt 7', spec: {} }] });
+  assert.equal(nothing.verdict, 'check'); assert.deepEqual(nothing.asks[0].fields, ['construction', 'weightGsm']);
+  // leggings with a fabric that says nothing about stretch: asked, not failed as "no stretch"
+  const legs = fabricFit({ style: 'leggings', materials: [{ id: 'm3', kind: 'fabric', role: 'main', name: 'Swatch 12', spec: { construction: 'interlock', weightGsm: 240 } }] });
+  assert.ok(!legs.findings.some(f => f.level === 'fail'));
+  const legs2 = fabricFit({ style: 'leggings', materials: [{ id: 'm4', kind: 'fabric', role: 'main', name: 'Twill 3', spec: { construction: 'twill', weightGsm: 240 } }] });
+  assert.ok(legs2.asks.some(a => a.fields.includes('stretch')) && legs2.verdict !== 'wrong', 'a woven that does not say its stretch is asked about');
+  const legs3 = fabricFit({ style: 'leggings', materials: [{ id: 'm5', kind: 'fabric', role: 'main', name: 'Twill 3', spec: { construction: 'twill', weightGsm: 240, composition: '100% cotton' } }] });
+  assert.equal(legs3.verdict, 'wrong', 'once it says 100% cotton, the check can tell');
+});
+
+test('a shoe is checked on its parts: upper thickness and patent, lining, sole hardness and thickness', () => {
+  const up = (spec, o = {}) => ({ id: 'u', kind: 'footwear', part: 'upper', name: 'Upper', spec: { category: 'upper leather', ...spec }, ...o });
+  const sole = spec => ({ id: 's', kind: 'footwear', part: 'outsole', name: 'Sole', spec: { category: 'outsole', ...spec } });
+  assert.equal(footwearFit({ materials: [] }).verdict, 'unknown');
+  const good = footwearFit({ materials: [up({ thicknessMm: 1.4 }), sole({ hardness: '65', thicknessMm: 4 })] });
+  assert.equal(good.verdict, 'good'); assert.equal(good.asks.length, 0); assert.match(good.summary, /suit a shoe/);
+  const thin = footwearFit({ materials: [up({ thicknessMm: .6 }), sole({ hardness: '50', thicknessMm: 2 })] });
+  assert.equal(thin.verdict, 'check'); assert.ok(thin.findings.some(f => /thin for an upper/.test(f.msg)) && thin.findings.some(f => /soft for an outsole/.test(f.msg)) && thin.findings.some(f => /thin for an outsole/.test(f.msg)));
+  assert.ok(footwearFit({ materials: [up({ category: 'patent leather', thicknessMm: 1.2 }), sole({ hardness: '65' })] }).findings.some(f => /cracks where the foot bends/.test(f.msg)));
+  const lining = footwearFit({ materials: [up({ thicknessMm: 1.0 }), { id: 'l', kind: 'footwear', part: 'lining', name: 'Lining', spec: { category: 'lining', thicknessMm: 1.4 } }, sole({ hardness: '65' })] });
+  assert.ok(lining.findings.some(f => f.part === 'lining'));
+  const unknown = footwearFit({ materials: [up({}), sole({})] });
+  assert.deepEqual(unknown.asks.map(a => a.fields[0]).sort(), ['hardness', 'thicknessMm']);
+  assert.ok(footwearFit({ materials: [up({ thicknessMm: 1.4 })] }).asks.some(a => /sole/.test(a.msg)), 'no sole chosen yet: it says so');
+  const cloth = footwearFit({ materials: [{ id: 'c', kind: 'fabric', part: 'upper', name: 'Canvas 180', spec: { construction: 'plain weave', weightGsm: 180 } }, sole({ hardness: '65' })] });
+  assert.ok(cloth.findings.some(f => /backer/.test(f.fix)));
+});
+
+test('a plush is checked on its parts: the body pile and weight, hard eyes and pellets for small children', () => {
+  const body = spec => ({ id: 'b', kind: 'plush', part: 'body', name: 'Minky', spec: { category: 'pile fabric', ...spec } });
+  const fill = { id: 'f', kind: 'plush', part: 'fill', name: 'Fibre fill', spec: { category: 'fill' } };
+  assert.equal(plushFit({ materials: [] }).verdict, 'unknown');
+  assert.equal(plushFit({ materials: [body({ pileMm: 3, weightGsm: 320 }), fill] }).verdict, 'good');
+  assert.ok(plushFit({ materials: [body({ pileMm: 30, weightGsm: 320 }), fill] }).findings.some(f => /hides the face/.test(f.msg)));
+  assert.ok(plushFit({ materials: [body({ pileMm: 3, weightGsm: 120 }), fill] }).findings.some(f => /light for a plush body/.test(f.msg)));
+  assert.ok(plushFit({ materials: [{ ...body({ weightGsm: 300 }), spec: { category: 'felt', weightGsm: 300 } }, fill] }).findings.some(f => /felt/.test(f.msg)));
+  const eyes = plushFit({ materials: [body({ pileMm: 3, weightGsm: 320 }), fill, { id: 'e', kind: 'plush', part: 'eyes', name: 'Safety eyes 12 mm', spec: { category: 'safety eye' } }] });
+  assert.ok(eyes.findings.some(f => /under-3s/.test(f.msg)) && eyes.asks.some(a => a.fields.includes('safety')));
+  const ok3 = plushFit({ materials: [body({ pileMm: 3, weightGsm: 320 }), fill, { id: 'e', kind: 'plush', part: 'eyes', name: 'Safety eyes', spec: { category: 'safety eye', safety: 'EN71-1, 3+' } }] });
+  assert.ok(!ok3.findings.some(f => f.part === 'eyes'), 'marked 3+: the eyes pass');
+  assert.ok(plushFit({ materials: [body({ pileMm: 3, weightGsm: 320 }), { id: 'p', kind: 'plush', part: 'fill', name: 'Pellets', spec: { category: 'pellets' } }] }).findings.some(f => /inner bag/.test(f.msg)));
+  assert.ok(plushFit({ materials: [{ id: 'w', kind: 'fabric', part: 'body', name: 'Cotton twill', spec: { construction: 'twill', weightGsm: 260 } }, fill] }).findings.some(f => /woven/.test(f.msg)));
+});
+
+test('materialFit picks the check by category; the ask form names its fields', () => {
+  assert.equal(materialFit({ category: 'footwear', materials: [] }).summary, 'Choose the upper to check the materials suit a shoe.');
+  assert.equal(materialFit({ category: 'plush', materials: [] }).summary, 'Choose the body fabric to check the materials suit a plush.');
+  assert.equal(materialFit({ category: 'tops', style: '', materials: [] }), null);
+  assert.equal(materialFit({ category: 'tops', style: 'tee', materials: [] }).verdict, 'unknown');
+  const h = askHtml({ id: 'abc', part: 'outsole', fields: ['hardness', 'nope'], msg: 'How hard?' });
+  assert.match(h, /data-mid="abc"/); assert.match(h, /name="hardness"/); assert.doesNotMatch(h, /nope/);
+  assert.doesNotMatch(askHtml({ id: null, fields: [], msg: 'Choose the sole too.' }), /<form/);
+  assert.ok(Object.keys(ASK_FIELDS).length >= 8);
+});

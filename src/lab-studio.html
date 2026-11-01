@@ -1318,11 +1318,17 @@ function matPaintOn(){const o=MAT.on,locked=Boolean(D?.concept?.locked),picks=o?
   matPhotos($('#matOn'));matFaces($('#matOn'),[...(MAT.on?.picks||[]).map(p=>({...p,spec:MAT.lib.find(m=>m.id===p.id)?.spec||p.spec})),...MAT.lib])}
 // does the fabric suit the style? the service's answer (src/lab-fabric-fit.js), and a way to keep a "wrong" one on purpose, with the reason
 let FFIT=null;const fitMod=async()=>FFIT||(FFIT=await import('/lab/lab-fabric-fit.js'));
+// what the check could not see (a fabric with no weight, a sole with no hardness): asked for right under it, filled in on this piece
+let FASK=null;const askMod=async()=>{if(FASK)return FASK;FASK=await import('/lab/lab-fit-ask.js');const st=document.createElement('style');st.textContent=FASK.askCss;document.head.append(st);return FASK};
+function paintAsks(el,f,locked){if(locked||!f?.asks?.length)return;askMod().then(A=>{if(MAT.on?.fit!==f)return;el.insertAdjacentHTML('beforeend',`<div class="fitasks">${f.asks.slice(0,3).map((a,i)=>A.askHtml(a,i)).join('')}</div>`)}).catch(()=>{})}
 function paintMatFit(){const el=$('#matFit'),f=MAT.on?.fit,locked=Boolean(D?.concept?.locked);if(!el)return;if(!f||f.verdict==='unknown'){el.classList.add('hidden');return}
   const v=f.accepted?'accepted':f.verdict;el.dataset.v=v;el.classList.remove('hidden');
   el.innerHTML=f.accepted?`<span>✓ ${esc(f.summary)}</span>${locked?'':'<div class="row"><button class="btn sm q" type="button" data-fitundo>Take it back</button></div>'}`
-    :v==='good'?`<span>✓ ${esc(f.summary)}</span>`
-    :`<span><b>${v==='wrong'?'✕ This fabric does not suit it':'! Worth a look'}</b>: ${esc(f.findings[0].msg)} <span class="why">${esc(f.findings[0].fix)}</span>${f.findings.length>1?` (and ${f.findings.length-1} more)`:''}</span>${locked?'':`<div class="row"><input class="t" id="fitWhy" maxlength="300" placeholder="Keep it on purpose? Say why (e.g. a woven legging is the idea)" aria-label="Why this fabric is right"><button class="btn sm" type="button" data-fitkeep>Keep it</button></div>`}`}
+    :v==='good'?`<span>${f.asks?.length?'':'✓ '}${esc(f.summary)}</span>`
+    :`<span><b>${v==='wrong'?'✕ This fabric does not suit it':'! Worth a look'}</b>: ${esc(f.findings[0].msg)} <span class="why">${esc(f.findings[0].fix)}</span>${f.findings.length>1?` (and ${f.findings.length-1} more)`:''}</span>${locked?'':`<div class="row"><input class="t" id="fitWhy" maxlength="300" placeholder="Keep it on purpose? Say why (e.g. a woven legging is the idea)" aria-label="Why this fabric is right"><button class="btn sm" type="button" data-fitkeep>Keep it</button></div>`}`;paintAsks(el,f,locked)}
+$('#matDlg').addEventListener('submit',async e=>{const fm=e.target.closest('form.fitask');if(!fm)return;e.preventDefault();const A=await askMod(),b=fm.querySelector('button[type=submit]');
+  const r=await FBN.run(b,()=>api(`/v1/lab/concepts/${CID}/materials/${fm.dataset.mid}/spec${fm.dataset.part?`?part=${encodeURIComponent(fm.dataset.part)}`:''}`,{method:'PUT',body:A.askBody(fm)}),{done:'Saved: the check reads it now.'}).catch(()=>null);
+  if(r){MAT.on=r;matPaintOn();matChanged()}});
 $('#matDlg').addEventListener('click',async e=>{const k=e.target.closest('[data-fitkeep]'),u=e.target.closest('[data-fitundo]');if(!k&&!u)return;
   const r=await FBN.run(k||u,()=>api(`/v1/lab/concepts/${CID}/fabric-accept`,k?{method:'PUT',body:{reason:$('#fitWhy').value}}:{method:'DELETE'}),{done:k?'Kept, with your reason on the checklist.':'Taken back: the check counts again.'}).catch(()=>null);
   if(r){MAT.on=r;matPaintOn();matChanged()}});

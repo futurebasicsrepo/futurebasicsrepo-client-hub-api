@@ -11,7 +11,7 @@ import sharp from 'sharp';
 import './pantone-c.js';
 import { BUILTIN_MATERIALS, MATERIAL_KINDS, FABRIC_CONSTRUCTIONS, FABRIC_FINISHES, TRIM_CATEGORIES, UNITS, ROLES, TAG_OPTIONS, USAGE_M, MAKING_CENTS, FREIGHT_DUTY_PCT, PARTS, GOODS_OPTIONS, clothPart, cleanMaterial, cleanPick, costOf, cleanColourways } from './lab-materials.js';
 import { tagSvg } from './lab-tags.js';
-import { fabricFit, withAccept, mainOf } from './lab-fabric-fit.js';
+import { materialFit, withAccept, mainOf } from './lab-fabric-fit.js';
 import { FLAT_TEMPLATES } from './lab-flat-templates.js';
 import { MATERIAL_PHOTOS, photoFor, photoById, creditOf } from './lab-photos.js';
 
@@ -109,7 +109,25 @@ export function registerLabMaterialsRoutes(app, d) {
   };
   // does the fabric suit the style? (src/lab-fabric-fit.js) The style is the flats' own, or the sketch the concept started from
   const styleOf = async c => { const f = (await pool.query(`select style, params->>'fit' fit from lab_flats where concept_id=$1`, [c.id])).rows[0]; return { style: f?.style || FLAT_TEMPLATES.find(t => t.id === c.spec?.template)?.style || '', fit: f?.fit || '' }; };
-  const withFit = async (c, s) => { const st = await styleOf(c); return { ...s, style: st.style, fit: st.style ? withAccept(fabricFit({ style: st.style, fit: st.fit, materials: s.picks }), c.spec?.fabricAccept, s.picks) : null }; };
+  // a shoe and a plush are checked on their parts whatever their style; clothing on its fabric against the flats' style
+  const withFit = async (c, s) => { const st = await styleOf(c), f = materialFit({ category: c.category, style: st.style, fit: st.fit, materials: s.picks }); return { ...s, style: st.style, fit: f ? withAccept(f, c.spec?.fabricAccept, s.picks) : null }; };
+  // what the check could not see, filled in where it asks: on this piece's pick, and on the library's own material when the caller may change
+  // it (staff, or the room that added it; never the built-in starter set), so it is known the next time too
+  const FILL = { construction: v => clip(v, 60), weightGsm: v => { const n = Math.round(Number(v)); return n >= 10 && n <= 2000 ? n : undefined; },
+    stretch: v => (['none', 'mechanical', '2-way', '4-way'].includes(String(v)) ? String(v) : undefined), composition: v => clip(v, 120),
+    thicknessMm: v => { const n = Math.round(Number(v) * 100) / 100; return n > 0 && n <= 200 ? n : undefined; }, hardness: v => { const n = Math.round(Number(v)); return n >= 5 && n <= 100 ? String(n) : undefined; },
+    pileMm: v => { const n = Math.round(Number(v) * 10) / 10; return n > 0 && n <= 80 ? n : undefined; }, safety: v => clip(v, 80) };
+  app.put('/v1/lab/concepts/:id/materials/:mid/spec', { preHandler: pre }, async (req, reply) => {
+    if (!need(req, reply) || !need(req, reply, 'mid')) return; const c = await concept(req.params.id); if (!c) return bad(reply, 'Not found', 404);
+    // `part` is a shoe's or plush's part, or for clothing the role the check names (main, contrast, rib, lining)
+    const part = clip(req.query?.part, 40), picks = picksOf(c), i = picks.findIndex(p => p.id === req.params.mid && (!part || p.part === part || (!p.part && p.role === part))); if (i < 0) return bad(reply, 'That material is not on this concept', 404);
+    const b = req.body || {}, got = {}; for (const [k, f] of Object.entries(FILL)) if (b[k] !== undefined && b[k] !== '') { const v = f(b[k]); if (v !== undefined && v !== '') got[k] = v; }
+    if (!Object.keys(got).length) return bad(reply, 'Fill in at least one detail (for example its weight in gsm)');
+    picks[i] = { ...picks[i], spec: { ...(picks[i].spec || {}), ...got } };
+    const spec = { ...(c.spec || {}), materials: picks };
+    const lib = (await pool.query(`update lab_materials set spec = spec || $2::jsonb, updated_at = now() where id = $1 and not builtin and ($3::uuid is null or client_id = $3) returning id`, [req.params.mid, JSON.stringify(got), own(req)]).catch(() => ({ rowCount: 0 }))).rowCount > 0;
+    return { ...(await withFit({ ...c, spec }, await store(c, spec))), filled: Object.keys(got), library: lib };
+  });
   app.get('/v1/lab/concepts/:id/materials', { preHandler: pre }, async (req, reply) => {
     if (!need(req, reply)) return; const c = await concept(req.params.id); if (!c) return bad(reply, 'Not found', 404);
     return withFit(c, summary(c));
