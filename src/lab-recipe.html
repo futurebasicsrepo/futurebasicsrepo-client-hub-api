@@ -27,28 +27,34 @@ h2 b{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;bo
 .rsteps{display:grid;gap:16px;min-width:0}
 /* on a phone: the bases scroll sideways, and a bar at the foot shows the piece as it is picked, with Open in the Studio to hand */
 .mini{display:none}
-@media(max-width:920px){.bases{grid-auto-flow:column;grid-auto-columns:132px;grid-template-columns:none;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:6px}.bases button{scroll-snap-align:start}
+@media(max-width:920px){.bases{grid-auto-flow:column;grid-auto-columns:132px;grid-template-columns:none;overflow-x:auto;scroll-snap-type:x mandatory;padding:10px 10px 14px;margin:-8px -8px -6px;scroll-padding:10px}.bases button{scroll-snap-align:start}
   .mini{display:flex;position:fixed;left:96px;right:12px;bottom:12px;z-index:30;background:#fff;border:1px solid var(--line);border-radius:18px;box-shadow:0 12px 30px rgba(20,20,22,.16);padding:8px;gap:10px;align-items:center}
   .mini .th{width:58px;height:58px;flex:none;border-radius:10px;background:var(--fog);position:relative;overflow:hidden}.mini .th>svg{position:absolute;inset:6%;width:88%;height:88%}.mini .th>svg>rect:first-child{fill:transparent}
   .mini .tx{flex:1;min-width:0;font-size:12.5px;line-height:1.3}.mini .tx b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.mini .tx button{border:0;background:none;padding:8px 0;margin:-8px 0;color:var(--dim);text-decoration:underline;font:inherit;cursor:pointer}
   .mini .btn{min-height:40px;padding:8px 14px;white-space:nowrap}main{padding-bottom:110px}}
+:root{--pick:#12b864;--pick-glow:0 0 0 1.5px #4bff9a,0 0 18px 3px rgba(75,255,154,.45)}
+/* a choice made: our green glow, with a short swell as it is picked */
+.bases button[aria-checked=true],.systems button[aria-checked=true],.mats button[aria-checked=true]{animation:pickIn .5s ease-out}
+@keyframes pickIn{from{box-shadow:0 0 0 1.5px #4bff9a,0 0 0 0 rgba(75,255,154,0)}50%{box-shadow:0 0 0 2px #4bff9a,0 0 26px 6px rgba(75,255,154,.6)}to{box-shadow:var(--pick-glow)}}
+@media(prefers-reduced-motion:reduce){.bases button[aria-checked=true],.systems button[aria-checked=true],.mats button[aria-checked=true]{animation:none}}
 .step{background:#fff;border:1px solid var(--line);border-radius:20px;padding:16px 18px;display:grid;gap:12px;min-width:0}
 .bases{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:8px}
 .bases button{border:1px solid var(--line);background:#fff;border-radius:14px;padding:6px 6px 9px;cursor:pointer;display:grid;gap:4px;text-align:left;font-size:12.5px;line-height:1.25}
 .bases button img{width:100%;aspect-ratio:1;object-fit:contain;background:var(--fog);border-radius:9px}.bases button small{color:var(--dim);font-size:11px}
-.bases button[aria-checked=true]{border-color:var(--ink);box-shadow:0 0 0 1.5px var(--ink)}
+.bases button[aria-checked=true]{border-color:var(--pick);box-shadow:var(--pick-glow)}
 .grp{display:grid;gap:6px}.grp .mono{letter-spacing:.08em}
 .chips{display:flex;flex-wrap:wrap;gap:6px}.chips button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:7px 13px;cursor:pointer;font-size:13px}
-.chips button[aria-pressed=true]{background:var(--ink);color:#fff;border-color:var(--ink)}.chips button[aria-pressed=true]:before{content:"✓ "}
+.chips button[aria-pressed=true]{background:#ebfff3;color:var(--ink);border-color:var(--pick);box-shadow:0 0 0 1px var(--cue,#4bff9a),0 0 12px rgba(75,255,154,.45);font-weight:600}.chips button[aria-pressed=true]:before{content:"✓ ";color:var(--pick)}
+.chips button.drawn{cursor:default;background:#f6f6f2;color:var(--mute,#6b6b66);border-style:dashed}.chips button.drawn small{font-size:11px;margin-left:2px}
 .systems{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
 .systems button{border:1px solid var(--line);background:#fff;border-radius:14px;padding:8px;cursor:pointer;display:grid;gap:6px;text-align:left;font-size:12.5px;line-height:1.25}
-.systems button[aria-checked=true]{border-color:var(--ink);box-shadow:0 0 0 1.5px var(--ink)}.systems small{color:var(--dim);font-size:11px}
+.systems button[aria-checked=true]{border-color:var(--pick);box-shadow:var(--pick-glow)}.systems small{color:var(--dim);font-size:11px}
 .strip{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;height:28px;border-radius:8px;overflow:hidden;border:1px solid var(--line)}
-.mains{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.mains button{width:38px;height:38px;border-radius:50%;border:1px solid var(--line);cursor:pointer}.mains button[aria-checked=true]{box-shadow:0 0 0 2px #fff,0 0 0 4px var(--ink)}
+.mains{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.mains button{width:38px;height:38px;border-radius:50%;border:1px solid var(--line);cursor:pointer}.mains button[aria-checked=true]{box-shadow:0 0 0 2px #fff,0 0 0 4px var(--pick),0 0 16px 5px rgba(75,255,154,.5)}.mains{padding:6px}
 .own{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.own input[type=color]{width:38px;height:38px;border:1px solid var(--line);border-radius:10px;padding:2px;background:#fff}
-.mats{display:grid;grid-auto-flow:column;grid-auto-columns:110px;gap:8px;overflow-x:auto;padding:2px 2px 6px}
+.mats{display:grid;grid-auto-flow:column;grid-auto-columns:110px;gap:10px;overflow-x:auto;padding:10px 10px 14px;margin:-8px -8px -8px}
 .mats button{border:1px solid var(--line);background:#fff;border-radius:14px;padding:6px;display:grid;gap:4px;text-align:left;font-size:12px;line-height:1.25;cursor:pointer}.mats button .sw{aspect-ratio:1;border-radius:9px;background:var(--fog) center/cover;display:block}.mats button small{color:var(--dim)}
-.mats button[aria-checked=true]{border-color:var(--ink);box-shadow:0 0 0 1.5px var(--ink)}
+.mats button[aria-checked=true]{border-color:var(--pick);box-shadow:var(--pick-glow)}
 .fitnote{padding:8px 10px;border-radius:10px;border:1px solid var(--line);font-size:12.5px;line-height:1.4;margin:0}.fitnote[data-verdict=good]{color:var(--ok);background:rgba(23,96,58,.06)}.fitnote[data-verdict=check]{color:var(--warn);background:rgba(138,90,0,.06)}.fitnote[data-verdict=wrong]{color:var(--bad);background:rgba(160,42,32,.06)}
 .prev{position:sticky;top:96px;background:#fff;border:1px solid var(--line);border-radius:20px;padding:14px;display:grid;gap:10px;min-width:0}@media(max-width:920px){.prev{position:static}}
 .art{position:relative;border-radius:14px;background:var(--fog);display:grid;place-items:center;aspect-ratio:1/1.05;overflow:hidden}.art>svg{position:absolute;inset:4%;width:92%;height:92%;display:block}.art>svg>rect:first-child{fill:transparent}
@@ -97,7 +103,7 @@ html body .rsteps .step:last-child h2 b{background:#fff;box-shadow:none}html bod
 <script>try{if(!localStorage.getItem('fb.admin.token')&&localStorage.getItem('fb.client.token'))document.documentElement.dataset.labClient='1'}catch{}</script>
 <script src="/console-nav.js" defer></script>
 <script type="module">
-import { RECIPE_BASES, RECIPE_ADDONS, RECIPE_GROUPS, COLOUR_SYSTEMS, addonsFor, cookRecipe } from '/lab/lab-recipe.js';
+import { RECIPE_BASES, RECIPE_ADDONS, RECIPE_GROUPS, COLOUR_SYSTEMS, addonsFor, cookRecipe, baseSketch, toggleAddon, drawnOn, pocketless } from '/lab/lab-recipe.js';
 import { renderSvg, MASK_URL, defaultTemplate, STYLES } from '/lab/lab-flats.js';
 import { fabricFit } from '/lab/lab-fabric-fit.js';
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)],esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -107,9 +113,9 @@ async function api(path,body,method){const r=await fetch(path,{method:method||(b
 const S={base:null,addons:[],system:'earth',colour:0,view:'front',mat:null,fit:{m:{},adjust:{}}};let OWN=['#2b2b2e','#e9e4d8','#8c6a4a','#5e6b7a'],MATS=null,COOKED=null,NAMED=false;
 const sys=()=>S.system==='own'?{id:'own',name:'Your own colours',colours:OWN.map((h,i)=>({name:`Colour ${i+1}`,hex:h}))}:COLOUR_SYSTEMS.find(x=>x.id===S.system);
 const sysArg=()=>S.system==='own'?{name:'Our colours',colours:sys().colours}:S.system;
-function paintBases(){$('#bases').innerHTML=RECIPE_BASES.map(b=>{const t=defaultTemplate(b.style,b.fit);return `<button type="button" role="radio" data-base="${b.id}" aria-checked="${S.base===b.id}" title="${esc(b.note)}">${t?`<img loading="lazy" alt="" src="/lab/flat-templates/thumbs/${t}.webp">`:''}<b>${esc(b.label)}</b><small>${esc(b.note)}</small></button>`}).join('');$('#stBase').classList.toggle('done',Boolean(S.base))}
-function paintAddons(){const fits=S.base?addonsFor(S.base):[];$('#addNote').textContent=!S.base?'Choose a base first.':fits.length?'Tap to add or take away. Only the ones that suit this base are shown.':'This base has no add-ons yet: it opens as it is.';
-  $('#addons').innerHTML=RECIPE_GROUPS.map(g=>{const l=fits.filter(a=>a.group===g);return l.length?`<div class="grp"><span class="mono">${esc(g)}</span><div class="chips">${l.map(a=>`<button type="button" data-addon="${a.id}" aria-pressed="${S.addons.includes(a.id)}">${esc(a.label)}</button>`).join('')}</div></div>`:''}).join('');$('#stAdd').classList.toggle('done',S.addons.length>0)}
+function paintBases(){$('#bases').innerHTML=RECIPE_BASES.map(b=>{const t=baseSketch(b);return `<button type="button" role="radio" data-base="${b.id}" aria-checked="${S.base===b.id}" title="${esc(b.note)}">${t?`<img loading="lazy" alt="" src="/lab/flat-templates/thumbs/${t}.webp">`:''}<b>${esc(b.label)}</b><small>${esc(b.note)}</small></button>`}).join('');$('#stBase').classList.toggle('done',Boolean(S.base))}
+function paintAddons(){const fits=S.base?addonsFor(S.base):[],drawn=S.base?drawnOn(S.base,S.addons):[],bare=S.base&&pocketless(S.base,S.addons);$('#addNote').textContent=!S.base?'Choose a base first.':fits.length?'Tap to add or take away. Only the ones that suit this base are shown.':'This base has no add-ons yet: it opens as it is.';
+  $('#addons').innerHTML=RECIPE_GROUPS.map(g=>{const l=fits.filter(a=>a.group===g);return l.length?`<div class="grp"><span class="mono">${esc(g)}</span><div class="chips">${l.map(a=>drawn.includes(a.id)?`<button type="button" class="drawn" disabled title="The sketch already draws this">${esc(a.label)} <small>on the sketch</small></button>`:a.contrast&&bare&&!S.addons.includes(a.id)?`<button type="button" class="drawn" disabled title="Contrast colours the pockets: add a pocket first">${esc(a.label)} <small>add a pocket first</small></button>`:`<button type="button" data-addon="${a.id}" aria-pressed="${S.addons.includes(a.id)}">${esc(a.label)}</button>`).join('')}</div></div>`:''}).join('');$('#stAdd').classList.toggle('done',S.addons.length>0)}
 function paintSystems(){$('#systems').innerHTML=[...COLOUR_SYSTEMS,{id:'own',name:'Your own',mood:'Pick four colours',colours:OWN.map(h=>({hex:h}))}].map(s=>`<button type="button" role="radio" data-sys="${s.id}" aria-checked="${S.system===s.id}"><span class="strip">${s.colours.map(c=>`<i style="background:${c.hex}"></i>`).join('')}</span><b>${esc(s.name)}</b><small>${esc(s.mood)}</small></button>`).join('');
   $('#ownBox').classList.toggle('hidden',S.system!=='own');$('#own').innerHTML=OWN.map((h,i)=>`<input type="color" value="${h}" data-own="${i}" aria-label="Colour ${i+1}">`).join('');
   const c=sys().colours;if(S.colour>=c.length)S.colour=0;$('#mains').innerHTML=c.map((x,i)=>`<button type="button" role="radio" data-main="${i}" aria-checked="${S.colour===i}" title="${esc(x.name)}" aria-label="${esc(x.name)}" style="background:${x.hex}"></button>`).join('');$('#stCol').classList.add('done')}
@@ -151,7 +157,7 @@ $('#fitReset').addEventListener('click',()=>{S.fit={m:{},adjust:{}};paintPreview
 function paintAll(){paintBases();paintAddons();paintSystems();paintMats();paintPreview();paintFit()}
 $('#bases').addEventListener('click',e=>{const b=e.target.closest('[data-base]');if(!b)return;S.base=b.dataset.base;const ok=addonsFor(S.base).map(a=>a.id);S.addons=S.addons.filter(a=>ok.includes(a));paintAll()});
 $('#addons').addEventListener('click',e=>{const b=e.target.closest('[data-addon]');if(!b)return;const id=b.dataset.addon,a=RECIPE_ADDONS.find(x=>x.id===id);
-  if(S.addons.includes(id))S.addons=S.addons.filter(x=>x!==id);else{if(a.one)S.addons=S.addons.filter(x=>RECIPE_ADDONS.find(y=>y.id===x)?.one!==a.one);S.addons.push(id)}paintAddons();paintPreview();paintFit()});
+  S.addons=toggleAddon(S.addons,id,S.base);paintAddons();paintPreview();paintFit()});
 $('#systems').addEventListener('click',e=>{const b=e.target.closest('[data-sys]');if(!b)return;S.system=b.dataset.sys;S.colour=0;paintSystems();paintMats();paintPreview()});
 $('#mains').addEventListener('click',e=>{const b=e.target.closest('[data-main]');if(!b)return;S.colour=Number(b.dataset.main);paintSystems();paintMats();paintPreview()});
 $('#own').addEventListener('input',e=>{const i=e.target.dataset.own;if(i==null)return;OWN[Number(i)]=e.target.value.toLowerCase();$$('#systems [data-sys=own] .strip i')[i].style.background=e.target.value;$$('#mains [data-main]')[i]&&($$('#mains [data-main]')[i].style.background=e.target.value);paintPreview()});

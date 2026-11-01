@@ -7,59 +7,67 @@
 import { STYLES, FITS, defaultParams, defaultDetail, defaultTemplate, fitToTemplate, cleanFlat } from './lab-flats.js';
 import { FLAT_TEMPLATES } from './lab-flat-templates.js';
 
-const B = (id, label, style, fit, note, options = {}) => ({ id, label, style, fit, note, options });
+// sketch: the sketch the base is drawn on (the style's usual one when not named): a plain body, so the add-ons are what make it different
+const B = (id, label, style, fit, note, options = {}, sketch = null) => ({ id, label, style, fit, note, options, ...(sketch ? { sketch } : {}) });
 export const RECIPE_BASES = [
   B('tee', 'Classic tee', 'tee', 'regular', 'The everyday crew-neck tee.'),
   B('tee-boxy', 'Boxy tee', 'tee', 'boxy', 'Short and wide, with a dropped shoulder.'),
   B('tee-over', 'Oversized tee', 'tee', 'oversized', 'Long, roomy and relaxed.'),
-  B('longsleeve', 'Long-sleeve tee', 'longsleeve', 'regular', 'A tee with long sleeves and ribbed cuffs.'),
+  B('longsleeve', 'Long-sleeve tee', 'longsleeve', 'regular', 'A tee with long sleeves and ribbed cuffs.', {}, 'ls-long-sleeve-tee'),
   B('tank', 'Tank', 'tank', 'regular', 'Sleeveless, for summer and the gym.'),
   B('polo', 'Polo', 'polo', 'regular', 'A knit polo with a short placket.'),
   B('crewneck', 'Crewneck sweatshirt', 'crewneck', 'relaxed', 'A fleece crew with rib cuffs and hem.'),
   B('hoodie', 'Pullover hoodie', 'hoodie', 'relaxed', 'The heavyweight hoodie, drawcord in the hood.'),
   B('ziphoodie', 'Zip hoodie', 'ziphoodie', 'regular', 'A full-zip hoodie.'),
-  B('shirt', 'Button-up shirt', 'shirt', 'regular', 'A woven shirt with a collar and placket.'),
+  B('shirt', 'Button-up shirt', 'shirt', 'regular', 'A woven shirt with a collar and placket.', {}, 'shirt-classic-shirt'),
   B('shirtss', 'Camp shirt', 'shirtss', 'boxy', 'A short-sleeve woven shirt, cut boxy.'),
   B('jacket', 'Zip jacket', 'jacket', 'regular', 'A light zip-front jacket.'),
-  B('vest', 'Vest', 'vest', 'regular', 'A sleeveless layer.'),
+  B('vest', 'Vest', 'vest', 'regular', 'A sleeveless zip layer.', {}, 'vest-zip-fleece-vest'),
   B('pants', 'Straight trousers', 'pants', 'regular', 'A straight-leg trouser.'),
-  B('pants-wide', 'Wide trousers', 'pants', 'wide', 'A wide, easy leg.'),
+  B('pants-wide', 'Wide trousers', 'pants', 'wide', 'A wide, easy leg.', {}, 'pt-wide-leg-trousers'),
   B('shorts', 'Shorts', 'shorts', 'regular', 'An everyday short.'),
   B('leggings', 'Leggings', 'leggings', 'slim', 'Close-fitting, for training.'),
-  B('coat', 'Coat', 'coat', 'regular', 'A long outer layer.'),
-  B('dress', 'Dress', 'dress', 'regular', 'A one-piece dress.'),
-  B('skirt', 'Skirt', 'skirt', 'regular', 'A skirt from the waistband.'),
+  B('coat', 'Coat', 'coat', 'regular', 'A long outer layer.', {}, 'coat-overcoat'),
+  B('dress', 'Dress', 'dress', 'regular', 'A one-piece dress.', {}, 'dr-t-shirt-dress'),
+  B('skirt', 'Skirt', 'skirt', 'regular', 'A skirt from the waistband.', {}, 'sk-flared-mini-skirt'),
   B('cami', 'Cami top', 'cami', 'regular', 'A strappy top.'),
   B('bodysuit', 'Bodysuit', 'bodysuit', 'slim', 'Close-fitting, snaps at the base.'),
   B('cap', 'Six-panel cap', 'cap', 'regular', 'A classic cap.'),
   B('bucket', 'Bucket hat', 'bucket', 'regular', 'A soft, all-round brim.'),
   B('beanie', 'Cuffed beanie', 'beanie', 'regular', 'A knit beanie with a cuff.'),
   B('tote', 'Tote bag', 'tote', 'regular', 'A carry-all with two handles.'),
-].filter(b => STYLES[b.style] && FITS[b.fit]);
+].filter(b => STYLES[b.style] && FITS[b.fit] && (!b.sketch || FLAT_TEMPLATES.some(t => t.id === b.sketch && t.style === b.style)));
+// the sketch a base is drawn on before anything is added
+export const baseSketch = b => b.sketch || defaultTemplate(b.style, b.fit) || null;
 
 // an add-on: a detail placed on the piece, or an option on its make. `on` says which bases it suits (style keys).
 //   words  steer which sketch from the sketch pack the piece is drawn on (src/lab-flats.js defaultTemplate): "cargo" picks the cargo trousers
 //   shown  when the chosen sketch's name matches it, the sketch already draws this, so no detail is added on top (a hoodie's kangaroo pocket,
 //          a chino's slant pockets); otherwise the detail is drawn where that kind of detail usually goes
 //   one    add-ons where only one can be chosen (two kinds of front pocket would sit on top of each other)
+//   sketch the sketch the piece is drawn on with this add-on, per base id or style ([style, sketch id]): a collar, a cropped body. Only one
+//          add-on that changes the sketch can be picked at a time (see reshapes), so two never quietly cancel each other out
+//   place  where the detail goes on this piece, in inches, when its usual place is wrong for it (p: the piece's params)
 const D = (id, label, group, on, detail, extra = {}) => ({ id, label, group, on, detail, ...extra });
+// where the button-down collar's buttons sit on the plain shirt sketch (shirt-classic-shirt), in inches from the centre front and the neck point
+const BUTTON_DOWN = { x: 2.2, y: 5.45 };
 const BOTTOMS_WITH_POCKETS = /chino|jean|trouser|pleat|carpenter|work|cargo|denim|five-pocket|jort|walk|wide|straight|barrel|flare|skinny|slim|baggy|tailor/i;
 export const RECIPE_ADDONS = [
   D('chest-pocket', 'Chest pocket', 'Pockets', ['tee', 'longsleeve', 'crewneck', 'shirt', 'shirtss', 'jacket', 'vest', 'coat'], { kind: 'pocket-patch' }, { one: 'chest' }),
-  D('front-pocket', 'Front pocket', 'Pockets', ['tote'], { kind: 'pocket-patch' }),
+  D('front-pocket', 'Front pocket', 'Pockets', ['tote'], { kind: 'pocket-patch', place: p => ({ x: 0, y: (p.m.height || 15) * .55, w: 6, h: 6.5 }) }),
   D('flap-pocket', 'Flap chest pocket', 'Pockets', ['shirt', 'shirtss', 'jacket', 'vest', 'coat'], { kind: 'pocket-flap' }, { one: 'chest' }),
-  D('kangaroo', 'Kangaroo pocket', 'Pockets', ['crewneck', 'hoodie', 'longsleeve'], { kind: 'pocket-kangaroo' }, { shown: /hood/i }),
+  D('kangaroo', 'Kangaroo pocket', 'Pockets', ['crewneck', 'hoodie', 'longsleeve'], { kind: 'pocket-kangaroo' }, { shown: /^(Boxy hoodie|Pullover hoodie|Drawcord pullover hoodie)$/i }),
   D('zip-pocket', 'Zip pocket', 'Pockets', ['jacket', 'vest', 'ziphoodie', 'hoodie', 'coat', 'tote'], { kind: 'pocket-zip' }),
   D('slant-side', 'Side pockets', 'Pockets', ['dress', 'skirt'], { kind: 'pocket-slant', pair: true }),
   D('slant-pockets', 'Slant front pockets', 'Pockets', ['pants', 'shorts'], { kind: 'pocket-slant', pair: true }, { one: 'front', words: 'chino', shown: BOTTOMS_WITH_POCKETS }),
-  D('jean-pockets', 'Jean front pockets', 'Pockets', ['pants', 'shorts'], { kind: 'pocket-jean', pair: true }, { one: 'front', words: 'five-pocket jean denim', shown: /jean|denim|five-pocket|jort/i }),
-  D('cargo', 'Cargo pockets', 'Pockets', ['pants', 'shorts'], { kind: 'pocket-cargo', pair: true }, { words: 'cargo', shown: /cargo/i }),
+  D('jean-pockets', 'Jean front pockets', 'Pockets', ['pants', 'shorts'], { kind: 'pocket-jean', pair: true }, { one: 'front', words: 'five-pocket jean denim', shown: /jean|denim|five-pocket|jort/i, sketch: { 'pants-wide': ['pants', 'pt-wide-leg-jeans'] } }),
+  D('cargo', 'Cargo pockets', 'Pockets', ['pants', 'shorts'], { kind: 'pocket-cargo', pair: true }, { words: 'cargo', shown: /cargo/i, sketch: { 'pants-wide': ['pants', 'pt-baggy-cargo-pants'] } }),
   D('back-welts', 'Back welt pockets', 'Pockets', ['pants', 'shorts'], { kind: 'pocket-welt', pair: true, view: 'back' }, { shown: BOTTOMS_WITH_POCKETS }),
-  D('quarter-zip', 'Quarter zip', 'Closures', ['crewneck', 'longsleeve', 'polo'], { kind: 'zip', h: 7 }, { words: 'quarter-zip', shown: /zip/i }),
+  D('quarter-zip', 'Quarter zip', 'Closures', ['crewneck', 'longsleeve', 'polo'], { kind: 'zip', h: 7 }, { words: 'quarter-zip', shown: /zip/i, sketch: { polo: ['polo', 'polo-half-zip-polo'] } }),
   D('placket', 'Button placket', 'Closures', ['tee', 'longsleeve', 'crewneck'], { kind: 'placket' }),
-  D('waist-drawcord', 'Drawcord waist', 'Closures', ['pants', 'shorts', 'leggings', 'skirt'], { kind: 'drawcord' }, { words: 'drawcord', shown: /drawcord|sweat|jogger|track/i }),
-  D('zip-front', 'Zip front', 'Closures', ['dress', 'skirt', 'tote'], { kind: 'zip' }),
-  D('button-front', 'Button front', 'Closures', ['dress', 'cami', 'bodysuit'], { kind: 'placket' }),
+  D('waist-drawcord', 'Drawcord waist', 'Closures', ['pants', 'shorts', 'leggings', 'skirt'], { kind: 'drawcord' }, { words: 'drawcord', shown: /drawcord|sweat|jogger|track/i, sketch: { 'pants-wide': ['pants', 'pt-wide-leg-sweatpants'] } }),
+  D('zip-front', 'Zip front', 'Closures', ['dress', 'skirt'], { kind: 'zip' }),
+  D('button-front', 'Button front', 'Closures', ['dress', 'bodysuit'], { kind: 'placket' }),
   // collars and necklines: each is a sketch from the sketch pack drawn with that collar, so the collar and the body are one drawing that fits
   // (a polo collar on a tee draws it as a polo). `sketch` names the sketch for each base it suits; `style` changes the piece's kind with it.
   D('neck-polo', 'Polo collar', 'Collars', ['tee', 'longsleeve'], null, { one: 'collar', sketch: { tee: ['polo', 'polo-classic-polo'], longsleeve: ['polo', 'polo-long-sleeve-polo'] } }),
@@ -74,12 +82,13 @@ export const RECIPE_ADDONS = [
   D('neck-stand', 'Stand collar', 'Collars', ['jacket'], null, { one: 'collar', sketch: { jacket: ['jacket', 'jk-stand-collar-bomber'] } }),
   D('neck-band', 'Band collar', 'Collars', ['shirt'], null, { one: 'collar', sketch: { shirt: ['shirt', 'shirt-band-collar-shirt'] } }),
   D('neck-camp', 'Camp collar', 'Collars', ['shirt'], null, { one: 'collar', sketch: { shirt: ['shirt', 'shirt-camp-collar-long-sleeve-shirt'] } }),
-  D('neck-buttondown', 'Button-down collar', 'Collars', ['shirt'], null, { one: 'collar', sketch: { shirt: ['shirt', 'shirt-button-down-shirt'] } }),
-  D('pleats', 'Front pleats', 'Finishes', ['pants', 'shorts', 'skirt'], null, { option: { pleats: 1 }, words: 'pleat trouser' }),
-  D('cropped', 'Cropped', 'Finishes', ['tee', 'longsleeve', 'crewneck', 'hoodie', 'tank', 'cami', 'jacket'], null, { option: { cropped: true }, words: 'cropped' }),
-  D('drop', 'Dropped shoulder', 'Finishes', ['tee', 'longsleeve', 'crewneck', 'hoodie', 'ziphoodie', 'shirt', 'shirtss'], null, { option: { drop: true } }),
+  // the button-down sketch in the pack has a chest pocket and no buttons on its collar, so the collar's two buttons are drawn on the plain shirt
+  D('neck-buttondown', 'Button-down collar', 'Collars', ['shirt'], { kind: 'button', pair: true, place: () => ({ x: BUTTON_DOWN.x, y: BUTTON_DOWN.y, w: .46, h: .46 }) }, { one: 'collar' }),
+  D('pleats', 'Front pleats', 'Finishes', ['pants', 'shorts', 'skirt'], null, { option: { pleats: 1 }, words: 'pleat trouser', sketch: { 'pants-wide': ['pants', 'pt-pleated-wide-trousers'], skirt: ['skirt', 'sk-pleated-tennis-skirt'] } }),
+  // cropped: drawn on a cropped sketch of the piece (only where the pack has one). A dropped shoulder and a raw hem are not offered here: the
+  // sketches set the shoulder and the hem, so picking them changed nothing that could be seen (the flats page still has both)
+  D('cropped', 'Cropped', 'Finishes', ['tee', 'crewneck', 'hoodie', 'ziphoodie', 'tank', 'jacket'], null, { option: { cropped: true }, words: 'cropped', sketch: { hoodie: ['hoodie', 'hood-cropped-hoodie'], ziphoodie: ['ziphoodie', 'zip-cropped-zip-hoodie'], jacket: ['jacket', 'jk-zip-blouson'] } }),
   D('contrast', 'Contrast pockets and trims', 'Finishes', null, null, { contrast: true }),
-  D('raw-hem', 'Raw hem, no rib', 'Finishes', ['crewneck', 'hoodie', 'ziphoodie', 'longsleeve'], null, { option: { rib: false } }),
 ];
 export const RECIPE_GROUPS = ['Pockets', 'Closures', 'Collars', 'Finishes'];
 
@@ -98,6 +107,38 @@ export const COLOUR_SYSTEMS = [
 const HEX = /^#[0-9a-f]{6}$/i;
 
 export const baseOf = id => RECIPE_BASES.find(b => b.id === id) || null;
+// the sketch an add-on puts the piece on, for this base: [style, sketch id], or null
+export const sketchOf = (a, b) => (a?.sketch && (a.sketch[b.id] || a.sketch[b.style])) || null;
+// whether an add-on, picked on its own, draws the piece on a different sketch than the base (a collar, a cropped body, cargo trousers):
+// two of these cannot both be had, the second would quietly replace the first, so picking one puts the other down
+const RESHAPES = new Map();
+export function reshapes(a, base) {
+  const b = typeof base === 'string' ? baseOf(base) : base; if (!a || !b) return false;
+  const k = `${b.id}|${a.id}`; if (RESHAPES.has(k)) return RESHAPES.get(k);
+  const v = Boolean(sketchOf(a, b)) || (Boolean(a.words) && !b.sketch && defaultTemplate(b.style, b.fit, a.words) !== baseSketch(b));
+  RESHAPES.set(k, v); return v;
+}
+// the picks after tapping one add-on: on or off, putting down any it cannot be had with (the same `one`, or both change the sketch)
+export function toggleAddon(picks, id, base) {
+  const b = typeof base === 'string' ? baseOf(base) : base, a = RECIPE_ADDONS.find(x => x.id === id); if (!a || !b) return picks;
+  if (picks.includes(id)) return picks.filter(x => x !== id);
+  const other = x => RECIPE_ADDONS.find(y => y.id === x);
+  return [...picks.filter(x => { const o = other(x); return !(o && ((a.one && o.one === a.one) || (reshapes(a, b) && reshapes(o, b)))); }), id];
+}
+// the sketch a base is drawn on with these add-ons: a collar or cropped body names its own, otherwise the base's, or one the add-ons' words pick
+function sketchFor(b, picked) {
+  const neck = picked.find(a => sketchOf(a, b)), [style, neckSketch] = neck ? sketchOf(neck, b) : [b.style, null];
+  const words = picked.map(a => a.words).filter(Boolean).join(' '), template = neckSketch || (b.sketch ? b.sketch : defaultTemplate(style, b.fit, words)) || undefined;
+  return { neck, style, template, sketch: FLAT_TEMPLATES.find(t => t.id === template)?.label || '' };
+}
+// the add-ons the sketch already draws, with these picks (a pullover hoodie's kangaroo pocket, a chino's slant pockets): the page shows them as on it
+export function drawnOn(base, picks = []) {
+  const b = typeof base === 'string' ? baseOf(base) : base; if (!b) return [];
+  const fits = addonsFor(b), picked = picks.map(id => fits.find(a => a.id === id)).filter(Boolean), { sketch } = sketchFor(b, picked);
+  return fits.filter(a => a.shown && a.shown.test(sketch) && !picks.includes(a.id)).map(a => a.id);
+}
+// whether these picks draw no pocket of their own, so contrast (which colours the pockets we draw) has nothing to colour yet
+export const pocketless = (base, picks = []) => !(cookRecipe({ base: typeof base === 'string' ? base : base?.id, addons: picks }).params?.edits || []).some(e => /^pocket/.test(e.kind));
 // the add-ons a base can take
 export const addonsFor = base => { const b = typeof base === 'string' ? baseOf(base) : base; if (!b) return []; const own = RECIPE_ADDONS.filter(a => a.on?.includes(b.style)); return own.some(a => a.detail || a.sketch) ? [...own, ...RECIPE_ADDONS.filter(a => !a.on)] : own; };
 // a colour system by id, or one of our own ({ name, colours: [{name, hex}] }, from a plan's graphic programme or typed in)
@@ -129,14 +170,15 @@ export function cookRecipe({ base, addons = [], system = null, colour = 0, name 
   for (const id of Array.isArray(addons) ? addons : []) {
     const a = fits.find(x => x.id === id); if (!a || picked.includes(a)) continue;
     if (a.one) { if (seenOne.has(a.one)) continue; seenOne.add(a.one); }
+    if (reshapes(a, b) && picked.some(x => reshapes(x, b))) continue; // one change of sketch at a time (toggleAddon keeps the page to that)
     picked.push(a);
   }
   const sys = system ? systemOf(system) : null; if (system && !sys) return { error: 'That colour system is not known' };
   const i = Math.min(Math.max(Math.round(Number(colour) || 0), 0), (sys?.colours.length || 1) - 1), main = sys?.colours[i] || null, accent = sys ? sys.colours[(i + 1) % sys.colours.length] : null;
   const options = Object.assign({}, b.options, ...picked.filter(a => a.option).map(a => a.option));
   // a collar chosen: the piece is drawn on the sketch that has that collar (and becomes that kind of piece: a tee with a polo collar is a polo)
-  const neck = picked.find(a => a.sketch?.[b.style]), [style, neckSketch] = neck ? neck.sketch[b.style] : [b.style, null];
-  const words = picked.map(a => a.words).filter(Boolean).join(' '), template = neckSketch || defaultTemplate(style, b.fit, words) || undefined, sketch = FLAT_TEMPLATES.find(t => t.id === template)?.label || '';
+  // a base with a sketch of its own keeps it unless an add-on names another (the sketch-picking words would wander off to a pocketed one)
+  const { neck, style, template, sketch } = sketchFor(b, picked);
   // measured as the sketch is drawn (its length in proportion, as the flats page does when a sketch is picked), then fitted by hand
   const p = fitToTemplate({ ...defaultParams(style, FITS[b.fit] ? b.fit : 'regular', options), template }), edits = [], F = cleanFit(fit || {});
   // the base's lines moved by hand: the sketch stretches to its width and length (src/lab-flats.js drawingOf)
@@ -147,7 +189,7 @@ export function cookRecipe({ base, addons = [], system = null, colour = 0, name 
     return { ...e, w: Math.round(w * 8) / 8, h: Math.round(h * 8) / 8, x: Math.round((e.x + dx) * 8) / 8, y: Math.round((e.y + a.dy) * 8) / 8 }; };
   const contrast = picked.some(a => a.contrast);
   for (const a of picked.filter(x => x.detail && !(x.shown && x.shown.test(sketch)))) {
-    const view = a.detail.view || 'front', d = defaultDetail(a.detail.kind, p, view), extra = { ...(a.detail.h ? { h: a.detail.h, y: d.y - d.h / 2 + a.detail.h / 2 } : {}) };
+    const view = a.detail.view || 'front', d = defaultDetail(a.detail.kind, p, view), extra = a.detail.place ? a.detail.place(p) : { ...(a.detail.h ? { h: a.detail.h, y: d.y - d.h / 2 + a.detail.h / 2 } : {}) };
     const one = fitted({ ...d, ...extra, id: `r-${a.id}`, type: 'detail', ...(accent && main && accent.hex !== main.hex ? { thread: accent.hex } : {}), ...(contrast && accent && /^pocket/.test(a.detail.kind) ? { color: accent.hex } : {}) }, a.id, Boolean(a.detail.pair));
     edits.push(one);
     // a pair: its twin mirrored across the centre (left and right front pockets, both back welts)

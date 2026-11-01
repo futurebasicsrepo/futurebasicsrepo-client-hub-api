@@ -8,10 +8,15 @@ import { cleanProgram } from './lab-program.js';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const clip = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
 
+// The daily safety limit on artwork across the whole platform (LAB_DAILY_ART, 40 by default; a negative number turns it off): true when
+// `n` more fit with `used` made in the last 24 hours, otherwise the limit, for the message.
+export const artCap = (env = process.env) => { const v = Number(env.LAB_DAILY_ART ?? 40); return Number.isFinite(v) ? v : 40; };
+export const artCapVerdict = (used, n, cap) => (cap < 0 || used + n <= cap ? true : cap);
+
 // One place that draws artwork, one piece at a time, so the image model is not flooded; the program's motifs are filled in as each lands.
 export function createArtService(pool, { env = process.env, imageCfg = () => imageConfig(env), draw, log = console } = {}) {
   const queue = []; let working = false, waiters = [];
-  const capLeft = async n => { const cap = Number(env.LAB_DAILY_ART ?? 40); if (cap < 0) return true; return Number((await pool.query(`select count(*)::int n from lab_art where created_at > now() - interval '24 hours'`)).rows[0].n) + n <= cap ? true : cap; };
+  const capLeft = async n => { const cap = artCap(env); if (cap < 0) return true; return artCapVerdict(Number((await pool.query(`select count(*)::int n from lab_art where created_at > now() - interval '24 hours'`)).rows[0].n), n, cap); };
   async function pump() {
     if (working) return; working = true;
     try { while (queue.length) { const job = queue.shift(); try { await job(); } catch (e) { log.warn?.({ err: e.message }, 'design lab artwork failed'); } } }

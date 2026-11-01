@@ -23,7 +23,8 @@ export JOURNEY_TMP="$(mktemp -d)"; T="$JOURNEY_TMP"; mkdir -p "$T/uploads"
 [ -z "${PLAYWRIGHT_PATH:-}" ] && [ -d /opt/node22/lib/node_modules/playwright ] && export PLAYWRIGHT_PATH=/opt/node22/lib/node_modules/playwright
 psql "$DATABASE_URL" -qAtc "delete from app_settings where key='techPackBilling'" >/dev/null 2>&1 # start every run with the payment gate on automatic
 for port in 3123 3124 3125 3126 3127 3128 3129 3130 3131 3132 3133 3135; do for p in $(ss -ltnp 2>/dev/null | grep ":$port " | grep -o 'pid=[0-9]*' | cut -d= -f2); do kill -9 "$p"; done; done
-COMMON=(DATABASE_URL="$DATABASE_URL" FACTORY_ACTIONS=on JWT_SECRET=smoke-secret STAFF_ACCESS_DEFAULT=all LAB_AUTO=off UPLOAD_DIR="$T/uploads" FOLLOWUPS_DISABLED=true VENDOR_DATA_KEY=00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff VENDOR_REVEAL_EMAILS=@chaos.test)
+# LAB_DAILY_ART: the platform-wide daily artwork limit (40) is a spend guard for real image models; a full run makes more than 40 stand-in artworks in one day, so the journeys raise it (the limit itself is covered by test/lab-art-cap.test.js)
+COMMON=(DATABASE_URL="$DATABASE_URL" LAB_DAILY_ART=5000 FACTORY_ACTIONS=on JWT_SECRET=smoke-secret STAFF_ACCESS_DEFAULT=all LAB_AUTO=off UPLOAD_DIR="$T/uploads" FOLLOWUPS_DISABLED=true VENDOR_DATA_KEY=00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff VENDOR_REVEAL_EMAILS=@chaos.test)
 FIX=scripts/journeys/fixtures/ai-runner.json
 # Servers with the payment gate off do not run the locked-pack sweep (PAYMENT_SWEEP=off): they share this database, and would start the
 # packs that the gated servers' journeys expect to stay locked.

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { RECIPE_BASES, RECIPE_ADDONS, COLOUR_SYSTEMS, addonsFor, cookRecipe, systemOf, cleanFit } from '../src/lab-recipe.js';
+import { RECIPE_BASES, RECIPE_ADDONS, COLOUR_SYSTEMS, addonsFor, cookRecipe, systemOf, cleanFit, toggleAddon, drawnOn, baseSketch, pocketless } from '../src/lab-recipe.js';
 import { STYLES, drawingOf } from '../src/lab-flats.js';
 import { FLAT_TEMPLATES } from '../src/lab-flat-templates.js';
 
@@ -50,7 +50,7 @@ test('a colour system of our own, and the errors', () => {
 
 test('women\'s pieces, hats and a tote are on the menu, each with add-ons that suit it', () => {
   for (const id of ['dress', 'skirt', 'cami', 'bodysuit', 'coat', 'bucket', 'beanie', 'tote']) assert.ok(RECIPE_BASES.some(b => b.id === id), id);
-  assert.deepEqual(addonsFor('tote').map(a => a.id).sort(), ['contrast', 'front-pocket', 'zip-front', 'zip-pocket']);
+  assert.deepEqual(addonsFor('tote').map(a => a.id).sort(), ['contrast', 'front-pocket', 'zip-pocket']);
   assert.deepEqual(addonsFor('beanie'), []); // nothing to add to a beanie, and so no contrast either
   assert.ok(addonsFor('skirt').some(a => a.id === 'slant-side') && addonsFor('dress').some(a => a.id === 'zip-front'));
 });
@@ -88,4 +88,44 @@ test('fitting it together: the base\'s width and length stretch the sketch, and 
   // a pair moves apart (or closer) together, mirrored
   const pair = cookRecipe({ base: 'skirt', addons: ['slant-side'], fit: { adjust: { 'slant-side': { dx: 1 } } } }).params.edits, pair0 = cookRecipe({ base: 'skirt', addons: ['slant-side'] }).params.edits;
   assert.equal(Math.abs(pair[0].x), Math.abs(pair0[0].x) + 1); assert.equal(pair[1].x, -pair[0].x);
+});
+
+// what a client sees: every chip on the menu changes the drawing, or says the sketch already has it
+test('every add-on a base offers changes the drawing, or is shown as already on the sketch', () => {
+  const look = r => JSON.stringify([r.template, r.style, r.params.edits.map(e => [e.kind, e.x, e.y, e.w, e.h, e.color]), r.params.options || null]);
+  for (const b of RECIPE_BASES) {
+    const plain = look(cookRecipe({ base: b.id })), drawn = drawnOn(b);
+    for (const a of addonsFor(b)) {
+      if (drawn.includes(a.id)) continue;
+      // contrast colours the pockets: it is checked with a pocket on
+      const pocket = addonsFor(b).find(x => cookRecipe({ base: b.id, addons: [x.id] }).params.edits.some(e => /^pocket/.test(e.kind)));
+      if (a.contrast) { if (pocket) assert.notEqual(look(cookRecipe({ base: b.id, addons: [pocket.id, a.id], system: 'coastal' })), look(cookRecipe({ base: b.id, addons: [pocket.id], system: 'coastal' })), `contrast on ${b.id}`); continue; }
+      assert.notEqual(look(cookRecipe({ base: b.id, addons: [a.id] })), plain, `${a.label} on ${b.label} changes nothing`);
+    }
+  }
+  assert.ok(pocketless('pants') && !pocketless('tee', ['chest-pocket'])); // contrast waits for a pocket it can colour
+  assert.ok(drawnOn('hoodie').includes('kangaroo')); // the pullover hoodie draws its kangaroo pocket
+  assert.ok(!drawnOn('hoodie', ['cropped']).includes('kangaroo')); // the cropped hoodie does not, so it can be added
+});
+
+test('a second pocket in the same place replaces the first, and one change of sketch replaces another', () => {
+  assert.deepEqual(toggleAddon(['chest-pocket'], 'flap-pocket', 'shirt'), ['flap-pocket']);
+  assert.deepEqual(toggleAddon(['flap-pocket'], 'flap-pocket', 'shirt'), []);
+  const s = cookRecipe({ base: 'shirt', addons: ['flap-pocket'] });
+  assert.equal(s.params.edits.filter(e => /^pocket/.test(e.kind)).length, 1); // the shirt's sketch has no pocket of its own to stack it on
+  assert.equal(baseSketch(RECIPE_BASES.find(b => b.id === 'shirt')), 'shirt-classic-shirt');
+  const t = toggleAddon(['neck-polo'], 'neck-johnny', 'tee'); assert.deepEqual(t, ['neck-johnny']);
+});
+
+test('a button-down collar puts a button on each collar point', () => {
+  const r = cookRecipe({ base: 'shirt', addons: ['neck-buttondown'] });
+  const b = r.params.edits.filter(e => e.kind === 'button');
+  assert.equal(b.length, 2); assert.equal(b[0].x, -b[1].x); assert.ok(b[0].y > 3 && b[0].y < 8, `${b[0].y}`);
+});
+
+test('a tote\'s handle is one strap: only the band takes the colour, the loop stays open', async () => {
+  const { geometry, defaultParams, defaultDetail } = await import('../src/lab-flats.js');
+  const g = geometry(defaultParams('tote', 'regular'), 'front'), handles = g.parts.filter(q => q.kind === 'outline' && q.d !== g.parts[0].d);
+  assert.equal(handles.length, 1); assert.match(handles[0].d, /Z$/); // outer edge over and inner edge back, closed
+  const b = defaultDetail('button', defaultParams('shirt', 'regular')); assert.ok(b.w <= .6 && b.x === 0, 'a button added by hand is button-sized');
 });
