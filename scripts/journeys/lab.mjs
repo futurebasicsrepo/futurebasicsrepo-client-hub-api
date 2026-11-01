@@ -4076,7 +4076,10 @@ await journey('J269', 'Easy to find and clear to use: the recipe menu is in the 
       await p.goto(`${BASE}/hub`, { waitUntil: 'networkidle' }); await p.waitForSelector('#lab a[href="/lab/recipe"]', { timeout: 20000 }).catch(() => {});
       ok(await p.evaluate(() => Boolean(document.querySelector('#lab a[href="/lab/recipe"]'))), '2. the hub\'s Design Lab offers the recipe menu');
       await p.goto(`${BASE}/lab/recipe`, { waitUntil: 'networkidle' }); await p.waitForSelector('#bases [data-base]');
-      await p.click('[data-base=hoodie]'); await p.click('[data-addon=kangaroo]');
+      await p.click('[data-base=hoodie]');
+      ok(await p.evaluate(() => [...document.querySelectorAll('#addons button.drawn')].some(b => /Kangaroo pocket/.test(b.textContent) && /on the sketch/.test(b.textContent) && b.disabled)), '   the hoodie\'s own kangaroo pocket shows as on the sketch, not as one to add on top');
+      await p.click('[data-addon=zip-pocket]');
+      ok(await p.evaluate(() => document.querySelector('[data-addon=zip-pocket]').getAttribute('aria-pressed') === 'true' && getComputedStyle(document.querySelector('[data-addon=zip-pocket]')).boxShadow.includes('rgba(75, 255, 154')), '   a picked add-on glows green');
       const m = await p.evaluate(() => ({ mini: getComputedStyle(document.querySelector('#mini')).display, art: Boolean(document.querySelector('#miniArt svg')), name: document.querySelector('#miniName').textContent, rows: getComputedStyle(document.querySelector('#bases')).gridAutoFlow, line: getComputedStyle(document.querySelector('.rsteps'), '::before').content, over: document.documentElement.scrollWidth > innerWidth + 1 }));
       ok(m.mini === 'flex' && m.art && /hoodie/i.test(m.name) && m.rows === 'column' && m.line === 'none' && !m.over, '   on a phone the bases scroll sideways and a bar at the foot shows the piece, with no stray line', m);
       await p.click('#miniOpen'); await p.waitForURL(/\/lab\/studio\?concept=/, { timeout: 20000 }); made.push(new URL(p.url()).searchParams.get('concept'));

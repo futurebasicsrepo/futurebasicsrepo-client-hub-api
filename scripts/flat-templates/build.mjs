@@ -9,6 +9,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, unlink
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
+import { maskOf, views, outlineOf } from './shapes.mjs';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..'), HERE = dirname(fileURLToPath(import.meta.url)), sharp = createRequire(join(ROOT, 'package.json'))('sharp');
 const SRC = process.argv[2]; if (!SRC) { console.error('usage: build.mjs <download folder>'); process.exit(1); }
 const tsv = f => readFileSync(join(HERE, f), 'utf8').split('\n').filter(l => l && !l.startsWith('#')).map(l => l.split('\t'));
@@ -16,52 +17,7 @@ const tsv = f => readFileSync(join(HERE, f), 'utf8').split('\n').filter(l => l &
 const PICK = tsv('catalogue.tsv');
 // the sample-size measurements each style is drawn to (the same as src/lab-flats.js, size M, regular fit), for the first look of each drawing
 const KIND = { tee: 'top', longsleeve: 'top', crewneck: 'top', hoodie: 'top', ziphoodie: 'top', jacket: 'top', shirt: 'top', shirtss: 'top', polo: 'top', tank: 'top', vest: 'top', coat: 'top', dress: 'top', bodysuit: 'top', swimsuit: 'top', bra: 'top', cami: 'top', bikini: 'bikini', pants: 'bottom', shorts: 'bottom', skirt: 'bottom', leggings: 'bottom', cap: 'cap', bucket: 'cap' };
-const S = 3; // pixels per SVG unit when measuring
 
-async function maskOf(file) {
-  const svg = readFileSync(file), meta = await sharp(svg).metadata();
-  const vb = /viewBox="([\d.\s-]+)"/.exec(svg.toString())?.[1].trim().split(/\s+/).map(Number) || [0, 0, meta.width, meta.height];
-  const { data, info } = await sharp(svg, { density: 72 * S * (vb[2] / meta.width) }).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
-  const W = info.width, H = info.height, m = new Uint8Array(W * H), dark = new Uint8Array(W * H);
-  for (let i = 0; i < W * H; i++) { m[i] = data[i * 4 + 3] > 100 ? 1 : 0; dark[i] = m[i] && data[i * 4] + data[i * 4 + 1] + data[i * 4 + 2] < 270 ? 1 : 0; }
-  // a view drawn as lines with no white fill is still cloth inside its outline: whatever the page's edge cannot reach is filled in
-  const out = new Uint8Array(W * H), st = [];
-  for (let x = 0; x < W; x++) st.push(x, (H - 1) * W + x); for (let y = 0; y < H; y++) st.push(y * W, y * W + W - 1);
-  while (st.length) { const i = st.pop(); if (out[i] || m[i]) continue; out[i] = 1; const x = i % W; if (x > 0) st.push(i - 1); if (x < W - 1) st.push(i + 1); if (i >= W) st.push(i - W); if (i < W * (H - 1)) st.push(i + W); }
-  for (let i = 0; i < W * H; i++) if (!out[i]) m[i] = 1;
-  return { m, dark, W, H, vb, k: W / vb[2], data, info };
-}
-// the views on the page: cut it along empty rows and columns (a row crossed only by a hanging drawcord counts as empty; a column must be
-// truly empty, or a thin trouser leg would count as a gap), then, inside each piece,
-// take the connected shapes after closing small gaps, for drawings laid out on a diagonal whose boxes overlap
-function views(M) {
-  const { m, W, H } = M, lab = new Int32Array(W * H), out = []; let n = 0;
-  const cut = (x0, y0, x1, y1, depth = 0) => {
-    const rows = new Int32Array(y1 - y0 + 1), cols = new Int32Array(x1 - x0 + 1);
-    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (m[y * W + x]) { rows[y - y0]++; cols[x - x0]++; }
-    const trim = (a) => { let i = 0, j = a.length - 1; while (i < a.length && !a[i]) i++; while (j > i && !a[j]) j--; return [i, j]; };
-    const [ry0, ry1] = trim(rows), [cx0, cx1] = trim(cols); if (ry0 > ry1 || cx0 > cx1) return;
-    const best = (a, i0, i1, thr) => { let b = null, s = -1; for (let i = i0; i <= i1 + 1; i++) { const empty = i <= i1 && a[i] <= thr; if (empty && s < 0) s = i; if (!empty && s >= 0) { if (s > i0 && i - s >= 3 && (!b || i - s > b[1] - b[0])) b = [s, i]; s = -1; } } return b; };
-    const gr = best(rows, ry0, ry1, Math.max(1, (cx1 - cx0) * .012)), gc = best(cols, cx0, cx1, 2);
-    const g = gr && (!gc || gr[1] - gr[0] >= gc[1] - gc[0]) ? ['r', gr] : gc ? ['c', gc] : null;
-    if (g && depth < 8) { const [a, b] = g[1]; if (g[0] === 'r') { cut(x0, y0, x1, y0 + a - 1, depth + 1); cut(x0, y0 + b, x1, y1, depth + 1); } else { cut(x0, y0, x0 + a - 1, y1, depth + 1); cut(x0 + b, y0, x1, y1, depth + 1); } return; }
-    comps(x0 + cx0, y0 + ry0, x0 + cx1, y0 + ry1);
-  };
-  const comps = (X0, Y0, X1, Y1) => {
-    const w = X1 - X0 + 1, h = Y1 - Y0 + 1, r = 3, d = new Uint8Array(w * h), d2 = new Uint8Array(w * h), l = new Int32Array(w * h), found = [];
-    for (let y = 0; y < h; y++) { let run = 0; for (let x = w - 1; x >= -r; x--) { const on = x >= 0 && m[(y + Y0) * W + x + X0]; run = on ? r * 2 + 1 : run - 1; if (run > 0) for (let k = Math.max(0, x); k <= Math.min(w - 1, x + r); k++) d[y * w + k] = 1; } }
-    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (d[y * w + x]) for (let k = Math.max(0, y - r); k <= Math.min(h - 1, y + r); k++) d2[k * w + x] = 1;
-    let c = 0;
-    for (let i = 0; i < w * h; i++) { if (!d2[i] || l[i]) continue; c++; const st = [i]; l[i] = c; let x0 = w, y0 = h, x1 = 0, y1 = 0, a = 0;
-      while (st.length) { const p = st.pop(), x = p % w, y = (p / w) | 0; if (m[(y + Y0) * W + x + X0]) a++; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
-        if (x > 0 && d2[p - 1] && !l[p - 1]) { l[p - 1] = c; st.push(p - 1); } if (x < w - 1 && d2[p + 1] && !l[p + 1]) { l[p + 1] = c; st.push(p + 1); }
-        if (y > 0 && d2[p - w] && !l[p - w]) { l[p - w] = c; st.push(p - w); } if (y < h - 1 && d2[p + w] && !l[p + w]) { l[p + w] = c; st.push(p + w); } }
-      found.push({ c, x0: x0 + X0, y0: y0 + Y0, x1: x1 + X0, y1: y1 + Y0, a }); }
-    for (const f of found) { if (f.a < W * H * .01) continue; n++; for (let y = f.y0; y <= f.y1; y++) for (let x = f.x0; x <= f.x1; x++) if (l[(y - Y0) * w + x - X0] === f.c && m[y * W + x]) lab[y * W + x] = n; out.push({ n, x0: f.x0, y0: f.y0, x1: f.x1, y1: f.y1, a: f.a }); }
-  };
-  cut(0, 0, W - 1, H - 1);
-  return { comps: out, lab };
-}
 // the front and the back: the two pieces most alike in size; the front is the upper-left one
 function frontBack(comps) {
   let best = null;
@@ -114,25 +70,12 @@ function measure(M, lab, c, kind, collar) {
     const ws = rows.map(r => r.runs.length ? r.runs[r.runs.length - 1][1] - r.runs[0][0] + 1 : 0), widest = ws.indexOf(Math.max(...ws));
     Object.assign(out, { width: U(ws[widest]), seamY: Y(rows[widest].y), topY: Y(c.y0), hemY: Y(rows[hem].y) });
   }
-  // the view's own outline (each row from its leftmost to its rightmost cloth, a little outside), so a neighbouring view or a drawcord
-  // that reaches into its box is not drawn with it
-  const pad = 2 * M.k, stepR = Math.max(1, Math.round(rows.length / 90)), L = [], R = [];
-  for (let i = 0; i < rows.length; i += stepR) { const band = rows.slice(i, i + stepR).flatMap(r => r.runs); if (!band.length) continue; const y = rows[i].y;
-    L.push([X(Math.max(c.x0, Math.min(...band.map(q => q[0])) - pad)), Y(y)]); R.push([X(Math.min(c.x1 + 1, Math.max(...band.map(q => q[1])) + pad)), Y(y)]); }
-  if (L.length) { const yTop = Y(c.y0 - pad), yBot = Y(c.y1 + 1 + pad); L.unshift([L[0][0], yTop]); R.unshift([R[0][0], yTop]); L.push([L[L.length - 1][0], yBot]); R.push([R[R.length - 1][0], yBot]); out.clip = simplify([...L, ...R.reverse()], .8); }
+  // the view's own outline, so a neighbouring view or a drawcord that reaches into its box is not drawn with it (scripts/flat-templates/shapes.mjs)
+  const clip = outlineOf(M, lab, c); if (clip) out.clip = clip;
   // the drawing's own proportions: a top's length from its chest, a bottom's from its waist, so a piece drawn from it starts at its length
   if (out.chest && out.hemY > out.hpsY) out.ratio = +((out.hemY - out.hpsY) / out.chest).toFixed(3);
   if (out.waist && out.hemY > out.topY) out.ratio = +((out.hemY - out.topY) / out.waist).toFixed(3);
   return out;
-}
-// fewer points on an outline, none further than tol from it (Ramer–Douglas–Peucker), to keep the generated module small
-function simplify(pts, tol) {
-  if (pts.length < 4) return pts;
-  const keep = new Uint8Array(pts.length); keep[0] = keep[pts.length - 1] = 1; const st = [[0, pts.length - 1]];
-  while (st.length) { const [a, b] = st.pop(); let far = -1, fd = tol; const [ax, ay] = pts[a], [bx, by] = pts[b], L = Math.hypot(bx - ax, by - ay) || 1;
-    for (let i = a + 1; i < b; i++) { const d = Math.abs((bx - ax) * (ay - pts[i][1]) - (ax - pts[i][0]) * (by - ay)) / L; if (d > fd) { fd = d; far = i; } }
-    if (far > 0) { keep[far] = 1; st.push([a, far], [far, b]); } }
-  return pts.filter((_, i) => keep[i]);
 }
 // a bikini's views: its top and bottom are separate pieces, the front ones on the left and the back ones on the right
 function sideGroups(comps, lab, W) {

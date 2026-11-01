@@ -407,7 +407,7 @@ export function defaultPlacement(kind, p, { aspect = 1, label = '' } = {}) {
 // The garment's colour (p.color) and each block recolour the sketch itself: white cloth takes the colour, its lines and shading stay.
 export const DETAILS = {
   'pocket-patch': 'Patch pocket', 'pocket-flap': 'Flap pocket', 'pocket-welt': 'Welt pocket', 'pocket-cargo': 'Cargo pocket', 'pocket-kangaroo': 'Kangaroo pocket',
-  'pocket-slant': 'Slant pocket', 'pocket-jean': 'Jean front pocket', 'pocket-zip': 'Zip pocket', pleat: 'Pleats', drawcord: 'Drawcord', zip: 'Zip', placket: 'Button placket', erase: 'Cover up'
+  'pocket-slant': 'Slant pocket', 'pocket-jean': 'Jean front pocket', 'pocket-zip': 'Zip pocket', pleat: 'Pleats', drawcord: 'Drawcord', zip: 'Zip', placket: 'Button placket', button: 'Button', erase: 'Cover up'
 };
 export const STITCHES = { single: 'Single needle', double: 'Double needle', triple: 'Triple needle', chain: 'Chain stitch', cover: 'Coverstitch', zigzag: 'Zigzag', bartack: 'Bartack', blind: 'Blind hem' };
 const HEX = /^#[0-9a-f]{6}$/i, INK = '#141416';
@@ -477,6 +477,8 @@ export function detailSvg(e, cloth = '#ffffff') {
       stitch = ts([[e.x - .38, y0], [e.x - .38, y1]]) + ts([[e.x + .38, y0], [e.x + .38, y1]]); break;
     case 'placket': { const nb = Math.max(2, Math.round(e.h / 3)); body = shape(rect(x0, y0, x1, y1)); for (let i = 0; i < nb; i++) body += dot(e.x, y0 + (i + .5) * e.h / nb, Math.min(.22, e.w * .22));
       stitch = ts([[x0 + .12, y0], [x0 + .12, y1]]) + ts([[x1 - .12, y0], [x1 - .12, y1]]); break; }
+    // one button (a button-down collar's point, a cuff): a disc with its two holes
+    case 'button': { const r = Math.max(.08, Math.min(e.w, e.h) / 2); body = dot(e.x, e.y, n3(r)) + `<circle cx="${n3(e.x - r * .32)}" cy="${n3(e.y)}" r="${n3(r * .16)}" fill="${lc}"/><circle cx="${n3(e.x + r * .32)}" cy="${n3(e.y)}" r="${n3(r * .16)}" fill="${lc}"/>`; break; }
     case 'erase': body = `<rect x="${n3(x0)}" y="${n3(y0)}" width="${n3(e.w)}" height="${n3(e.h)}" rx=".15" fill="${fill}"/>`; break;
   }
   return { body, stitch };
