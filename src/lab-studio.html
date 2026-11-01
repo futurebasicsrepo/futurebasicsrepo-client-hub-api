@@ -54,6 +54,7 @@ html[data-focus] .bar{padding:4px 10px;min-height:44px;gap:6px}
 #app.steps #viewSeg [data-v=picture],#app.steps #viewSeg [data-v=pattern]{display:none}
 .mfit{border:1px solid rgba(20,20,22,.14);border-radius:12px;padding:10px 12px;margin:0 0 10px;font-size:13px;line-height:1.45;display:grid;gap:8px}.mfit[data-v=good],.mfit[data-v=accepted]{background:rgba(23,96,58,.06);color:#17603a}.mfit[data-v=check]{background:rgba(138,90,0,.06);color:#8a5a00}.mfit[data-v=wrong]{background:rgba(160,42,32,.06);color:#a02a20}.mfit .row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}.mfit input{flex:1;min-width:160px}.mfit .why{color:#141416}
 .mok{font-size:11.5px;line-height:1.3}.mok.good{color:#17603a}.mok.check{color:#8a5a00}.mok.wrong{color:#a02a20}
+.fpbar{position:fixed;left:50%;transform:translateX(-50%);bottom:18px;z-index:60;width:min(720px,calc(100vw - 24px));background:#fff;border:1px solid rgba(20,20,22,.14);border-radius:18px;box-shadow:0 14px 34px rgba(20,20,22,.18);padding:12px 14px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;font-size:13px;line-height:1.4}.fpbar span{flex:1 1 280px}
 #matDlg{border:0;border-radius:20px;padding:0;width:min(1180px,96vw);max-height:92vh}#matDlg::backdrop{background:rgba(20,20,22,.35)}.md{padding:18px;display:grid;gap:12px}.md h4{margin:0 0 8px;font-size:13px}
 .mcols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);gap:18px;align-items:start}@media(max-width:820px){.mcols{grid-template-columns:1fr}}
 .mon{display:grid;gap:8px}.mp{display:grid;grid-template-columns:64px minmax(0,1fr) auto;gap:10px;align-items:start;border:1px solid var(--line);border-radius:12px;padding:8px;background:#fff}.mp .th,.mc .th{background:var(--fog);border-radius:8px;overflow:hidden;position:relative;aspect-ratio:4/3}.mp .th>svg,.mc .th>svg,.mp .th>img,.mc .th>img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}.mp .th.tg>svg,.mc .th.tg>svg{inset:6%;width:88%;height:88%}
@@ -146,6 +147,7 @@ html,body{touch-action:manipulation}
     <button class="fold btn q sm" id="undo" type="button" title="Undo (Ctrl Z)">Undo</button>
     <button class="fold btn q sm" id="redo" type="button" title="Redo (Ctrl Shift Z)">Redo</button>
     <span class="saved pic-only" id="saved" role="status"></span><span class="saved flat-only" id="fsaved" role="status" title="The flats"></span>
+    <a class="btn q sm hidden" id="recipeBtn" href="#" title="Change the base, add-ons or colours this piece was picked with">Edit recipe</a>
     <button class="btn sm" id="save" type="button" title="Save (Ctrl S)">Save</button><button class="btn q sm" id="moreBtn" type="button" aria-expanded="false" title="Every other tool">More</button>
     <button class="btn q sm" id="panelBtn" type="button" aria-pressed="true" title="Show or hide the panel on the right (\)">Panel</button>
     <button class="fold btn q sm" id="focusBtn" type="button" aria-pressed="false" title="Make the drawing as big as it goes: hide the header, the menu and the guide, full screen where the browser allows (F)">Focus</button>
@@ -205,6 +207,7 @@ html,body{touch-action:manipulation}
     <div class="pane hidden" id="pAi" role="tabpanel"></div>
   </aside>
 </div>
+<div id="flatPicBar" class="fpbar hidden" role="region" aria-label="No picture yet"><span><b>No picture yet.</b> Draw it from the flats: the image model turns this flat, in its colour and with its details, into a product photograph. One AI generation.</span><button class="btn sm go" type="button" id="flatPicGo">Draw the picture from the flats</button><button class="btn sm q" type="button" id="flatPicX" aria-label="Not now">Not now</button></div>
 <dialog id="matDlg" aria-labelledby="matTitle"><div class="md">
   <div class="row" style="justify-content:space-between"><h3 id="matTitle" style="margin:0;font-size:16px">Fabrics, trims and labels</h3><div class="row"><a class="btn sm q" href="/lab/materials" target="_blank" rel="noopener">The library</a><button class="btn sm q" type="button" data-matclose>Close</button></div></div>
   <div class="mcols">
@@ -998,6 +1001,7 @@ async function boot(){
   if(QS.get('tryon')==='1')tryOpen().catch(()=>{});
   setInterval(()=>{if(DIRTY&&!DRAG)save()},90000); // a quiet save every minute and a half while there are changes
   (D.doc?.linked||[]).forEach(id=>LINKING.add(id));setVMode(QS.get('view')||'picture');loadFlatsRecord();loadReady();
+  if(D.concept.recipe&&!D.concept.locked){$('#recipeBtn').href=`/lab/recipe?concept=${CID}`;$('#recipeBtn').classList.remove('hidden')}paintFlatPic(); // a piece from the recipe menu: change its recipe; no picture yet: draw it from the flats
 }
 // a graphic for the library: a clear canvas, or the graphic's picture as a layer over one, with the layers it was built from when it has them
 async function bootGraphic(){
@@ -1237,6 +1241,11 @@ $$('#levelSeg [data-level]').forEach(b=>b.onclick=()=>setLevel(b.dataset.level))
 // ---------- the checklist: what it still needs before the tech pack ----------
 let READY=null;
 async function loadReady(){if(GMODE||!CID)return;try{READY=await api(`/v1/lab/concepts/${CID}/ready`)}catch{return}paintReady()}
+// a piece with flats but no picture (from the recipe menu or a sketch): draw the picture from the flats in one go
+function paintFlatPic(){const show=Boolean(CID&&!GMODE&&D?.concept&&!D.concept.hasImage&&D.concept.hasFlats&&!D.concept.locked&&D.ai?.connected);$('#flatPicBar').classList.toggle('hidden',!show)}
+$('#flatPicX').onclick=()=>$('#flatPicBar').classList.add('hidden');
+$('#flatPicGo').onclick=async()=>{const b=$('#flatPicGo');busy('Drawing the picture from the flats. About a minute…');
+  try{await FBN.run(b,()=>api(`/v1/lab/concepts/${CID}/flats/picture`,{body:{}}),{done:'The picture is drawn: it is the concept picture now.'});location.href=`/lab/studio?concept=${CID}&view=picture`}catch{}finally{busy()}};
 function paintReady(){const b=$('#readyBtn');if(!READY){b.textContent='Checklist';return}
   b.textContent=READY.isPack?'Tech pack ✓':`Checklist ${READY.done}/${READY.total}`;b.classList.toggle('ok',READY.ready);
   $('#readyList').innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b style="font-size:14px">${READY.isPack?'It is a tech pack':READY.ready?'Ready for the tech pack':'Before the tech pack'}</b>${READY.next?`<a class="btn sm go" href="${esc(READY.next.href)}" data-readynext>${esc(READY.next.label)}</a>`:''}</div>`

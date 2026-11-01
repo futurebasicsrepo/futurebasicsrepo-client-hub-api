@@ -4102,5 +4102,63 @@ await journey('J269', 'Easy to find and clear to use: the recipe menu is in the 
   } finally { for (const id of made) if (id) await K(`/concepts/${id}`, { method: 'DELETE' }); }
 });
 
+await journey('J270', 'The recipe flow finished: a tee with a polo collar (drawn on the polo sketch, so it sits on the neckline) and a contrast pocket made bigger by hand is made; with flats and no picture, the checklist and the Studio offer to draw the picture from the flats, and one press makes it the concept picture (refused when there is one, unless asked to replace it, and for another room); Edit recipe opens the menu on the piece\'s own picks (and how it was fitted together), and saving new ones cooks the flats again in the new colour while the graphic placed on them stays; a tech pack cannot be changed this way; women\'s pieces, hats and a tote are on the menu; on the page the body\'s width and length and each add-on\'s size and place are set with sliders', async () => {
+  const email = `phase2-${stamp}@selfserve.test`, started = await call('/v1/public/start', { body: { email, name: 'Phase Two Co', title: 'Tee', photos: [jpeg()] } });
+  const cid = started.json.client?.id || sql(`select client_id from users where lower(email)='${email}'`), uid = sql(`select id from users where lower(email)='${email}'`).split('\n')[0], slug = sql(`select slug from clients where id='${cid}'`).split('\n')[0];
+  sql(`update users set email_verified_at=now() where id='${uid}'`); sql(`update clients set lab_free=true where id='${cid}'`);
+  const clientT = await forge({ sub: uid, clientId: cid, client: slug, role: 'client', email }), H = (path, o = {}) => call('/v1/lab' + path, { token: clientT, ...o });
+  const made = [];
+  try {
+    const menu = (await K('/recipe')).json;
+    ok(['dress', 'skirt', 'cami', 'bodysuit', 'coat', 'bucket', 'beanie', 'tote'].every(id => menu.bases.some(b => b.id === id)) && menu.groups.includes('Collars'), '1. women\'s pieces, hats, a coat and a tote are on the menu, with collars', menu.bases.length);
+    const r = await K('/concepts/from-recipe', { body: { base: 'tee', addons: ['neck-polo', 'chest-pocket', 'contrast'], system: 'coastal', fit: { m: { width: 2 }, adjust: { 'chest-pocket': { size: 1.4, dy: -1 } } } } }); made.push(r.json.concept.id); const C = r.json.concept.id;
+    const fl = (await K(`/concepts/${C}/flats`)).json.flat;
+    const pk = fl.edits.find(e => e.kind === 'pocket-patch');
+    ok(fl.style === 'polo' && fl.template === 'polo-classic-polo' && !fl.edits.some(e => e.type === 'part') && pk?.color === '#e9ece6' && pk.w > 4 && r.json.concept.name.includes('polo'), '2. the polo collar is the polo sketch\'s own (so it sits on the neckline), the pocket is in the contrast colour and made bigger by hand', { style: fl.style, template: fl.template, pocket: pk, name: r.json.concept.name });
+    const pic0 = (await K(`/concepts/${C}/ready`)).json.items.find(i => i.id === 'picture');
+    ok(pic0.state === 'todo' && /Draw the picture from the flats/.test(pic0.note), '3. with flats and no picture, the checklist offers to draw it from the flats', pic0.note);
+    ok([403, 404].includes((await H(`/concepts/${C}/flats/picture`, { body: {} })).status), '   another room cannot');
+    const drawn = await K(`/concepts/${C}/flats/picture`, { body: {} });
+    ok(drawn.status === 200 && (await K(`/concepts/${C}/ready`)).json.items.find(i => i.id === 'picture').state === 'done', '   one press draws it, and it is the concept picture', drawn.json);
+    ok((await K(`/concepts/${C}/flats/picture`, { body: {} })).status === 409 && (await K(`/concepts/${C}/flats/picture`, { body: { replace: true } })).status === 200, '   asked again it refuses, unless told to replace the picture');
+    // a graphic placed on the flats, then the recipe changed
+    await K(`/concepts/${C}/flats`, { method: 'PUT', body: { ...fl, placements: [{ id: 'g1', name: 'Logo', view: 'front', x: 2, y: 6, w: 3, h: 2, mark: 'mark' }] } });
+    const got = (await K(`/concepts/${C}/recipe`)).json;
+    ok(got.recipe?.base === 'tee' && got.recipe.addons.includes('neck-polo') && got.recipe.system === 'coastal' && got.recipe.fit?.m?.width === 2 && got.recipe.fit.adjust['chest-pocket']?.size === 1.4, '4. Edit recipe reads the piece\'s own picks, and how it was fitted together', got.recipe);
+    const ed = await K(`/concepts/${C}/recipe`, { method: 'PUT', body: { base: 'tee', addons: ['chest-pocket', 'placket'], system: 'coastal', colour: 1 } });
+    const fl2 = (await K(`/concepts/${C}/flats`)).json.flat;
+    ok(ed.status === 200 && fl2.color === '#e9ece6' && fl2.style === 'tee' && fl2.edits.some(e => e.kind === 'placket') && !fl2.edits.some(e => e.type === 'part') && fl2.placements.some(q => q.id === 'g1'), '   saving new picks cooks the flats again in the new colour, and the graphic stays', { colour: fl2.color, edits: fl2.edits.map(e => e.kind || e.part), placements: fl2.placements.map(q => q.id) });
+    ok((await K(`/concepts/${C}/materials`)).json.colourways[0]?.name === 'Sea salt', '   the colourways follow the new garment colour');
+    sql(`update lab_concepts set status='tech_pack' where id='${C}'`);
+    ok((await K(`/concepts/${C}/recipe`, { method: 'PUT', body: { base: 'tee', addons: [], system: 'coastal' } })).status === 409, '   a tech pack cannot be changed this way');
+    sql(`update lab_concepts set status='draft' where id='${C}'`);
+    if (playwright) {
+      const b = await playwright.chromium.launch();
+      try {
+        const c = await b.newContext({ viewport: { width: 1366, height: 900 } }); await c.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); localStorage.setItem('fb.helper.on', '0'); } catch {} }, kyleT);
+        const p = await c.newPage(), errs = []; p.on('pageerror', e => errs.push(String(e)));
+        const n = await K('/concepts/from-recipe', { body: { base: 'hoodie', addons: ['kangaroo'], system: 'forest' } }); made.push(n.json.concept.id);
+        await p.goto(`${BASE}/lab/studio?concept=${n.json.concept.id}&view=front`, { waitUntil: 'networkidle' }); await p.waitForSelector('#flatPicBar:not(.hidden)', { timeout: 30000 });
+        ok(await p.isVisible('#recipeBtn'), '5. in the Studio a recipe piece shows Edit recipe and the bar to draw its picture');
+        await p.click('#flatPicGo'); await p.waitForURL(/view=picture/, { timeout: 30000 });
+        ok(sql(`select (image is not null)::text from lab_concepts where id='${n.json.concept.id}'`) === 'true', '   and pressing it draws the picture and shows it');
+        await p.waitForSelector('#recipeBtn:not(.hidden)', { timeout: 20000 }); await p.click('#recipeBtn'); await p.waitForURL(/\/lab\/recipe\?concept=/); await p.waitForFunction(() => document.querySelector('#open').textContent === 'Save the changes', null, { timeout: 15000 });
+        ok(await p.evaluate(() => document.querySelector('[data-base=hoodie]').getAttribute('aria-checked') === 'true' && document.querySelector('[data-addon=kangaroo]').getAttribute('aria-pressed') === 'true'), '   Edit recipe opens on the piece\'s own picks, ready to save');
+        // fit it together: a tee with a chest pocket; widen the body and size the pocket with the sliders, and the drawing follows
+        await p.goto(`${BASE}/lab/recipe?base=tee`, { waitUntil: 'networkidle' }); await p.waitForSelector('#fitBox [data-fit="m.width"]'); await p.click('[data-addon="chest-pocket"]'); await p.waitForSelector('[data-fit="chest-pocket.size"]');
+        const vb0 = await p.getAttribute('#art > svg', 'viewBox'), slide = (k, v) => p.$eval(`[data-fit="${k}"]`, (el, v) => { el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); }, v);
+        await slide('m.width', 4); await slide('chest-pocket.size', 150); await slide('chest-pocket.dy', 1);
+        ok((await p.getAttribute('#art > svg', 'viewBox')) !== vb0 && /150%/.test(await p.innerText('#fitBox')) && /\+4 in/.test(await p.innerText('#fitBox')), '6. Fit it together: the body made wider and the pocket bigger with sliders, and the drawing follows', await p.innerText('#fitBox'));
+        await p.click('[data-addon="neck-polo"]'); await p.waitForTimeout(200);
+        ok(/polo sketch itself/i.test(await p.innerText('#fitBox')) && /Classic polo/i.test(await p.innerText('#pvKind')), '   a collar is drawn on the sketch that has it, and the panel says so', await p.innerText('#pvKind'));
+        await p.click('#open'); await p.waitForURL(/\/lab\/studio/, { timeout: 30000 }); const tid = new URL(p.url()).searchParams.get('concept'); made.push(tid);
+        const tf = (await K(`/concepts/${tid}/flats`)).json.flat;
+        ok(tf.style === 'polo' && tf.edits.find(e => e.kind === 'pocket-patch')?.w > 4, '   opened in the Studio, the flats keep the bigger pocket on the polo', tf.edits.map(e => [e.kind, e.w]));
+        ok(errs.length === 0, '   no page errors', errs);
+      } finally { await b.close(); }
+    } else ok(true, 'needs a browser');
+  } finally { for (const id of made) if (id) await K(`/concepts/${id}`, { method: 'DELETE' }); }
+});
+
 shops.close(); brave.close();
 process.exit(summary() ? 1 : 0);

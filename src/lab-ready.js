@@ -10,7 +10,7 @@ export function readiness({ concept, studioDoc = null, flat = null, pattern = nu
   const c = concept || {}, spec = c.spec || {}, card = { href: `/lab?concept=${c.id}#board` }, items = [];
   const add = (id, label, state, note, go) => items.push({ id, label, state, note, go });
   const isPack = c.status === 'tech_pack';
-  add('picture', 'The concept picture', c.has_image ? 'done' : 'todo', c.has_image ? 'The concept has its picture.' : 'Finish the picture, then press Use as the concept picture.', { view: 'picture' });
+  add('picture', 'The concept picture', c.has_image ? 'done' : 'todo', c.has_image ? 'The concept has its picture.' : flat && !pattern ? 'No picture yet: press Draw the picture from the flats (one AI generation), or finish one and press Use as the concept picture.' : 'Finish the picture, then press Use as the concept picture.', { view: 'picture' });
   const layers = Array.isArray(studioDoc?.layers) ? studioDoc.layers.filter(l => l && l.kind !== 'base' && l.visible !== false) : [], loose = layers.filter(l => !l.placement);
   add('placed', pattern ? 'Graphics placed on the product' : 'Graphics placed on the garment', loose.length ? 'warn' : 'done',
     loose.length ? `${loose.length} layer${loose.length > 1 ? 's' : ''} on the picture ${loose.length > 1 ? 'have' : 'has'} no place on the garment (${loose.slice(0, 3).map(l => l.name || 'a layer').join(', ')}). Choose Goes on, or leave ${loose.length > 1 ? 'them' : 'it'} on the picture only.` : layers.length ? 'Every graphic on the picture has its place and size on the garment.' : 'Nothing extra on the picture to place.', { view: 'picture' });

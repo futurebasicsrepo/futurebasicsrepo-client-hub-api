@@ -109,6 +109,7 @@
         { target: '#addons', title: 'Add what you want on it', do: 'Tap pockets, closures and finishes to add or take them away.', why: 'Only the ones that suit the base are shown, and each lands where that detail usually goes.' },
         { target: '#systems', title: 'Pick a colour system', do: 'Choose a set of colours, or your own four, then which one the garment is.', why: 'The next colour is the stitching, and every colour becomes a colourway on the tech pack.' },
         { target: '#mats', title: 'The cloth, if you know it', optional: true, do: 'Pick a fabric, or leave it for later.', why: 'You are told straight away if it does not suit the piece: too light, too heavy, or no stretch where it needs it.' },
+        { target: '#stFit', title: 'Fit it together', optional: true, do: 'Slide the body wider, narrower, longer or shorter, and make each pocket bigger, smaller or move it.', why: 'The drawing follows as you slide, so the add-ons and the body sit right together. A collar comes with its own sketch, so it always sits on the neckline.' },
         { target: '#open', title: 'Open it in the Studio', do: 'Press Open in the Studio.', why: 'The piece, its flats and its colourways are made in one go, ready to add graphics and finish.' }
       ],
       next: { tour: 'lab-flats', label: 'Draw and change the flats' }
