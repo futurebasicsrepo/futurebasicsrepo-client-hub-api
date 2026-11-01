@@ -441,6 +441,7 @@ dialog .fbh-tog.on{display:none}
 @media(max-width:600px),(hover:none){.fbh-tog:not(.on){left:0!important;padding:4px 6px 4px 4px;border-left:0;border-radius:0 999px 999px 0;opacity:.92}.fbh-tog:not(.on) .sw,.fbh-tog:not(.on)>span:nth-child(2){display:none}
   body:has(:is(input:not([type=checkbox]):not([type=radio]):not([type=range]),textarea,select):focus) .fbh-tog:not(.on){display:none}}
 @media(max-width:900px),(hover:none){dialog .fbh-tog:not(.on){display:none}}
+.fbh-tog.away{transform:translateX(-82%);opacity:.35;transition:transform .2s,opacity .2s}
 /* off, with a mouse, it is the mouse alone until pointed at, so it covers as little of the page as it can */
 @media(hover:hover){.fbh-tog:not(.on):not(:hover):not(:focus-visible){padding:6px 8px;gap:0}.fbh-tog:not(.on):not(:hover):not(:focus-visible)>:not(.face){display:none}}
 .fbh-tog:hover{transform:translateY(-1px)}.fbh-tog:focus-visible,.fbh button:focus-visible{outline:3px solid #4bff9a;outline-offset:2px}
@@ -478,6 +479,9 @@ dialog .fbh-tog.on{display:none}
     document.body.appendChild(root);
     ring = $('.fbh-ring', root); group = $('.fbh-g', root); bubble = $('.fbh-b', root); mouse = $('.fbh-mouse', root); tog = $('.fbh-tog', root);
     tog.addEventListener('click', () => set(!on));
+    // on a phone the tab slides out of the way while the page scrolls, so it never sits on a row being read, and comes back when the page rests
+    { let t = 0; const narrow = () => matchMedia('(max-width:600px),(hover:none)').matches;
+      addEventListener('scroll', () => { if (!narrow() || on) return; tog.classList.add('away'); clearTimeout(t); t = setTimeout(() => tog.classList.remove('away'), 900); }, { passive: true }); }
     bubble.addEventListener('click', onBubbleClick);
     bubble.addEventListener('pointerenter', () => { frozen = true; });
     bubble.addEventListener('pointerleave', () => { frozen = bubble.contains(document.activeElement); });

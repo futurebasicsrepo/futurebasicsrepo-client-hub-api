@@ -4284,5 +4284,103 @@ await journey('J272', 'Materials that say too little are asked about, and shoes 
   } finally { for (const id of made) if (id) await K(`/concepts/${id}`, { method: 'DELETE' }); for (const id of mats) if (id) sql(`delete from lab_materials where id='${id}'`); }
 });
 
+await journey('J273', 'What clients and prospects see first: the pricing plans stack on a phone, a client\'s Lab home counts their own plans and concepts (not our research numbers), the board asks only for pictures that exist, and a piece with flats but no picture opens on its flats with no blank-page hint', async () => {
+  const email = `lab-home-${stamp}@selfserve.test`, started = await call('/v1/public/start', { body: { email, name: 'Home Check', title: 'First tee', photos: [jpeg()] } });
+  const cid = started.json.client?.id || sql(`select client_id from users where lower(email)='${email}'`), uid = sql(`select id from users where lower(email)='${email}'`).split('\n')[0], slug = sql(`select slug from clients where id='${cid}'`).split('\n')[0];
+  sql(`update users set email_verified_at=now() where id='${uid}'`);
+  const clientT = await forge({ sub: uid, clientId: cid, client: slug, role: 'client', email }), C = (path, o = {}) => call('/v1/lab' + path, { token: clientT, ...o });
+  const made = [];
+  try {
+    ok((await call(`/v1/admin/clients/${cid}/lab`, { token: kyleT, method: 'PATCH', body: { action: 'comp' } })).status === 200, 'the Lab is opened on their room');
+    const r = await C('/concepts/from-recipe', { body: { base: 'tee', system: 'mono' } }); ok(r.status === 201 || r.status === 200, 'they make a piece from the recipe menu: flats, no picture', [r.status, r.json.error]); const T = r.json.concept?.id; made.push(T);
+    if (playwright) {
+      const b = await playwright.chromium.launch();
+      try {
+        const phone = { viewport: { width: 390, height: 844 } };
+        // pricing on a phone: one plan per row, nothing cut off
+        const pc = await b.newContext(phone), pp = await pc.newPage(); await pp.goto(`${BASE}/pricing`, { waitUntil: 'networkidle' });
+        const cards = await pp.$$eval('#plans .plan:not([hidden])', els => els.map(e => { const r = e.getBoundingClientRect(); return { l: Math.round(r.left), r: Math.round(r.right) }; }));
+        ok(cards.length >= 3 && cards.every(c => c.l === cards[0].l && c.r <= 390), '1. on a phone the pricing plans stack one per row, inside the screen', cards);
+        await pc.close();
+        // the client's Lab home
+        const cc = await b.newContext(phone); await cc.addInitScript(t => { try { localStorage.setItem('fb.client.token', t); localStorage.setItem('fb.lab.welcome', '1'); localStorage.setItem('fb.helper.on', '0'); } catch {} }, clientT);
+        const p = await cc.newPage(), bad = [], errs = []; p.on('pageerror', e => errs.push(String(e))); p.on('response', x => { if (x.status() === 404 && /\/views\//.test(x.url())) bad.push(x.url()); });
+        await p.goto(`${BASE}/lab`, { waitUntil: 'networkidle' }); await p.waitForFunction(() => /Concept/.test(document.querySelector('#stats')?.textContent || ''), null, { timeout: 20000 });
+        const st = await p.textContent('#stats');
+        ok(/(^|\D)1\s*Concept(?!s)/.test(st) && /Line plan/.test(st) && !/Brands watched|AI read|New this week/i.test(st), '2. their Lab home counts their own plans and concepts, not our research numbers', st);
+        await p.goto(`${BASE}/lab#board`, { waitUntil: 'networkidle' }); await p.waitForTimeout(1500);
+        ok(bad.length === 0, '3. the board asks only for pictures that exist (no 404s for missing views)', bad);
+        // the piece opens on its flats, without the blank-page hint
+        await p.goto(`${BASE}/lab/studio?concept=${T}`, { waitUntil: 'networkidle' }); await p.waitForFunction(() => document.querySelector('#viewSeg [data-v=front]')?.getAttribute('aria-pressed') === 'true' || document.querySelector('#viewSeg [data-v=front]')?.classList.contains('on'), null, { timeout: 30000 });
+        const toast = await p.evaluate(() => document.querySelector('#stToast:not([hidden])')?.textContent || '');
+        ok(!/blank page/i.test(toast), '4. with flats and no picture, the Studio opens on the flats, with no blank-page hint', toast);
+        ok(errs.length === 0, '   no page errors', errs);
+      } finally { await b.close(); }
+    } else ok(true, 'needs a browser');
+  } finally { for (const id of made) if (id) await C(`/concepts/${id}`, { method: 'DELETE' }); }
+});
+
+await journey('J274', 'Easy on a phone: every step of a piece fits the step bar, the Materials kinds sit in one sliding row, the Studio\'s concept list stays inside the screen, the things you tap are a thumb\'s size, the help tab slides aside while the page scrolls, and the Clients page opens on its clients', async () => {
+  const made = [];
+  try {
+    const t = await K('/concepts/from-recipe', { body: { base: 'tee', system: 'mono' } }); const T = t.json.concept?.id; made.push(T);
+    if (playwright) {
+      const b = await playwright.chromium.launch();
+      try {
+        const c = await b.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }); await c.addInitScript(x => { try { localStorage.setItem('fb.admin.token', x); } catch {} }, kyleT);
+        const p = await c.newPage(), errs = []; p.on('pageerror', e => errs.push(String(e)));
+        const outside = () => p.evaluate(() => [...document.querySelectorAll('body *')].filter(e => { const r = e.getBoundingClientRect(), s = getComputedStyle(e); if (!(r.width && r.height) || s.visibility === 'hidden' || r.right <= innerWidth + 2) return false; let a = e.parentElement; while (a && a !== document.body) { if (/auto|scroll|hidden|clip/.test(getComputedStyle(a).overflowX)) return false; a = a.parentElement; } return true; }).length);
+        // the Studio: all five steps in view, and its buttons a thumb's size
+        await p.goto(`${BASE}/lab/studio?concept=${T}`, { waitUntil: 'networkidle' }); await p.waitForSelector('#pieceSteps a[data-step]', { timeout: 30000 }); await p.waitForTimeout(600);
+        const steps = await p.$$eval('#pieceSteps a[data-step]', as => as.map(a => { const r = a.getBoundingClientRect(); return { l: r.left, r: r.right, h: r.height }; }));
+        ok(steps.length >= 5 && steps.every(s => s.l >= 0 && s.r <= 390 && s.h >= 32), '1. on a phone every step of the piece fits the step bar, none cut at the edge', steps);
+        const tiny = await p.$$eval('#readyBtn,#save,#moreBtn,#panelBtn', bs => bs.filter(x => x.getBoundingClientRect().height && x.getBoundingClientRect().height < 34).map(x => x.id));
+        ok(tiny.length === 0, '2. the Studio\'s buttons are a thumb\'s size', tiny);
+        // the concept list
+        await p.goto(`${BASE}/lab/studio`, { waitUntil: 'networkidle' }); await p.waitForSelector('#pickList a', { timeout: 20000 });
+        ok(await outside() === 0, '3. the Studio\'s concept list stays inside the screen');
+        // materials
+        await p.goto(`${BASE}/lab/materials`, { waitUntil: 'networkidle' }); await p.waitForSelector('#kinds button');
+        const tops = await p.$$eval('#kinds button', bs => [...new Set(bs.map(x => Math.round(x.getBoundingClientRect().top)))]);
+        ok(tops.length === 1 && await outside() === 0, '4. the Materials kinds sit in one row that slides, nothing past the edge', tops);
+        // the help tab
+        await p.goto(`${BASE}/lab/sketches`, { waitUntil: 'networkidle' }); await p.waitForSelector('.fbh-tog');
+        await p.evaluate(() => scrollBy(0, 600)); await p.waitForTimeout(150);
+        const away = await p.$eval('.fbh-tog', x => x.classList.contains('away')); await p.waitForTimeout(1300);
+        ok(away && !(await p.$eval('.fbh-tog', x => x.classList.contains('away'))), '5. the help tab slides aside while the page scrolls, and comes back when it rests');
+        // clients
+        await p.goto(`${BASE}/admin`, { waitUntil: 'networkidle' }); await p.waitForSelector('#app:not(.hidden)', { timeout: 20000 });
+        const hero = await p.evaluate(() => ({ g: getComputedStyle(document.querySelector('#app .hero-graphic')).display, h: Math.round(document.querySelector('#app .hero').getBoundingClientRect().height) }));
+        ok(hero.g === 'none' && hero.h < 120, '6. the Clients page opens with a one-line heading, not a screen-high banner', hero);
+        ok(errs.length === 0, '   no page errors', errs);
+      } finally { await b.close(); }
+    } else ok(true, 'needs a browser');
+  } finally { for (const id of made) if (id) await K(`/concepts/${id}`, { method: 'DELETE' }); }
+});
+
+await journey('J275', 'Polish: a sync problem shared by several builds is said once above them (each card points up to it), and the Brand page\'s menu reads like every other page\'s', async () => {
+  const ids = [], A = (path, o = {}) => call(path, { token: kyleT, ...o }), err = `Polish check token refused ${stamp}`;
+  try {
+    for (const n of [1, 2]) { const r = await A('/v1/admin/builds', { body: { name: `Polish build ${n} ${stamp}`, slug: `polish-${n}-${stamp}`, repoUrl: `https://github.com/example/polish-${n}` } }); ok(r.status === 201, `build ${n} added`, [r.status, r.json.error]); ids.push(r.json.id); }
+    sql(`update builds set sync_error='${err}' where id in ('${ids.join("','")}')`);
+    if (playwright) {
+      const b = await playwright.chromium.launch();
+      try {
+        const c = await b.newContext({ viewport: { width: 1440, height: 900 } }); await c.addInitScript(x => { try { localStorage.setItem('fb.admin.token', x); } catch {} }, kyleT);
+        const p = await c.newPage(), errs = []; p.on('pageerror', e => errs.push(String(e)));
+        await p.goto(`${BASE}/builds/admin`, { waitUntil: 'networkidle' }); await p.waitForSelector('#list .bcard', { timeout: 20000 });
+        const txt = await p.innerText('#list'), times = txt.split(err).length - 1;
+        ok(times === 1 && /GitHub sync is failing for \d+ builds/.test(txt), '1. the shared sync problem is said once, above the builds', times);
+        const pointers = await p.$$eval('#list .bcard', (cs, ids) => cs.filter(x => ids.includes(x.dataset.id)).map(x => /Not synced: see above/.test(x.innerText)), ids);
+        ok(pointers.length === 2 && pointers.every(Boolean), '   and each of those cards points up to it', pointers);
+        await p.goto(`${BASE}/brand`, { waitUntil: 'networkidle' }); await p.waitForSelector('.fbside .lbl', { timeout: 20000 });
+        const st = await p.$eval('.fbside .lbl', x => ({ t: getComputedStyle(x).textTransform, f: getComputedStyle(x).fontFamily }));
+        ok(st.t === 'none' && !/Mono/i.test(st.f), '2. the Brand page\'s menu reads like the rest (its own label style stays on the page)', st);
+        ok(errs.length === 0, '   no page errors', errs);
+      } finally { await b.close(); }
+    } else ok(true, 'needs a browser');
+  } finally { for (const id of ids) if (id) await A(`/v1/admin/builds/${id}`, { method: 'DELETE' }); }
+});
+
 shops.close(); brave.close();
 process.exit(summary() ? 1 : 0);

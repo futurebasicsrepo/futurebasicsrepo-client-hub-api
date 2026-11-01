@@ -1487,3 +1487,31 @@ screen, the drawing and the files agree. Routes: `src/lab-assembly-routes.js`; s
   diagram, all without our costs. The README says what each is; when the engineering changed after the version was published, it says so.
 
 The client's room uses the same page on its own concepts; another room's concept answers 404. Journey **J267**.
+
+## What clients see first (audit, phase 1)
+
+- **Pricing on a phone** stacks one plan per row. The page sets the column count as `--cols` (four, or three when membership is off), so the phone and tablet rules still apply. An inline `grid-template-columns` used to override them.
+- **A client's Lab home** counts their own work: line plans, concepts, still in draft, approved, tech packs. Each tile links to its tab. The market-research tiles (pieces, brands watched, search · AI read) are for staff only.
+- **The board asks only for pictures that exist.** A tile with no picture shows "No picture" without fetching. Colourway swatches tint the flat when it is ready, or the picture when there is one, and otherwise stay a plain swatch. There are no more 404s for missing views.
+- **The Studio opens where the work is.** A piece with flats but no picture (for example from the recipe menu) opens on its flat front, with the "Draw the picture from the flats" bar. A scratch page, a drawn picture or `?view=` still decide as before. The blank-page hint shows only when the Studio opens on the Picture view.
+
+Journey J273 covers all four.
+
+## Easy on a phone (audit, phase 2)
+
+- **The step bar** fits all five steps on a 390px screen: no separators, tighter padding, and taller pills under 440px.
+- **Tap sizes:** `cue.css` makes buttons, pills, chips, segments and steps at least 36px tall on touch screens and narrow windows. Check boxes are 20px there. The map's region buttons on Factories and the language switch on Start were enlarged too.
+- **Materials kinds** sit in one sliding row with a fade at the edge. The picked kind scrolls into view, and search takes the full width.
+- **The Studio's concept list** (also `/lab/engineer` with no concept) wraps long names inside the screen.
+- **The help tab** slides aside while the page scrolls on a phone and comes back when the page rests.
+- **The Clients page** on a phone opens with a one-line heading; the orbit and the moving rail are hidden. A client cover photo that fails to load is removed rather than shown broken.
+
+Journey J274 covers these.
+
+## Polish (audit, phase 3)
+
+- **Builds:** when several builds share one sync problem (a refused GitHub token, say), it is said once above the builds, and each of those cards reads "Not synced: see above". A problem only one build has stays on its card.
+- **The work console menu** resets `.lbl` inside the sidebar, so a page's own label style (the Brand page's small uppercase mono) no longer restyles the menu.
+- **Controls with no name:** the sweep's flags on /help, /join, /prototypes and the tech pack were false positives. Each control has visible text, or is the hidden spam trap on /join, so nothing changed.
+
+Journey J275 covers the first two.

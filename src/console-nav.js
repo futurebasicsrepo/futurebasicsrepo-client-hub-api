@@ -114,6 +114,7 @@ body.fbcollapsed .fbside .quick input,body.fbcollapsed .fbjump{display:none}body
 .fbside .foot{padding:8px 10px 14px;border-top:1px solid rgba(20,20,22,.14)}
 .fbside .foot button{display:flex;align-items:center;gap:10px;width:100%;border:0;background:none;cursor:pointer;color:#727278;font:inherit;font-size:13px;padding:8px 10px;border-radius:10px}.fbside .foot button:hover{background:#f5f5f2;color:#141416}
 .fbside .foot svg{transition:transform .2s}
+.fbside .lbl{font:inherit;letter-spacing:normal;text-transform:none;color:inherit;margin:0} /* a page's own .lbl never restyles the menu */
 body.fbcollapsed .fbside .lbl,body.fbcollapsed .fbside .bdg,body.fbcollapsed .fbside .foot b{display:none}
 body.fbcollapsed .fbside a{justify-content:center;padding:10px}body.fbcollapsed .fbside .foot svg{transform:rotate(180deg)}body.fbcollapsed .fbside .foot button{justify-content:center}
 body.fbcollapsed .fbside a .dot{position:absolute;top:6px;right:8px;width:8px;height:8px;border-radius:50%;background:#d8451f}.fbside a .dot{display:none}body.fbcollapsed .fbside a .dot:not([hidden]){display:block}
