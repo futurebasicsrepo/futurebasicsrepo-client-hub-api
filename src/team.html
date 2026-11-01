@@ -103,7 +103,8 @@ function draw(){
     <div class="edit">${p.owner?'<p class="note" style="margin:0">Danielle and Kyle always have access to everything here, so there is nothing to choose.</p>':`${presets()}${boxes(p.modules)}
       <label class="row"><span class="sub">Note (only you see it)</span><input class="t" data-note value="${esc(p.note)}" maxlength="200" placeholder="Role, start date, anything to remember"></label>
       <label class="mod" style="max-width:520px"><input type="checkbox" data-paused ${p.blocked?'checked':''}><span><b>Pause access</b><small>Shuts them out of the whole work console until you turn it back on. Nothing is deleted.</small></span></label>
-      <div class="row"><button class="btn go" type="button" data-save>Save</button><span class="msg" role="status"></span>${p.updatedAt?`<span class="sub">Last changed ${esc(when(p.updatedAt))}${p.updatedBy?' by '+esc(p.updatedBy):''}</span>`:''}</div>`}</div></details>`).join('')||'<p class="note">No one else has signed in yet.</p>';
+      <div class="row"><button class="btn go" type="button" data-save>Save</button><span class="msg" role="status"></span>${p.updatedAt?`<span class="sub">Last changed ${esc(when(p.updatedAt))}${p.updatedBy?' by '+esc(p.updatedBy):''}</span>`:''}</div>`}
+      <div class="row"><button class="btn" type="button" data-signout>Sign out everywhere</button><span class="msg" data-signout-msg role="status"></span><span class="sub">Ends every session ${p.owner?'this account':'they'} ${p.owner?'has':'have'}, on every device, for a lost laptop or phone. Signing in again takes a new code.</span></div></div></details>`).join('')||'<p class="note">No one else has signed in yet.</p>';
 }
 async function load(){D=await api('/v1/staff-access');draw();const l=await api('/v1/staff-access/log');
   $('#log').innerHTML=l.log.length?l.log.map(x=>`<li><span>${x.paused?`<b>${esc(x.person)}</b> was paused`:x.resumed?`<b>${esc(x.person)}</b> was turned back on`:`<b>${esc(x.person)}</b>`}${x.added.length?` · added ${esc(x.added.join(', '))}`:''}${x.removed.length?` · removed ${esc(x.removed.join(', '))}`:''}${!x.added.length&&!x.removed.length&&!x.paused&&!x.resumed?' · saved':''} <span class="sub">by ${esc(x.by)}</span></span><time>${esc(when(x.at))}</time></li>`).join(''):'<li><span class="sub">Nothing has been changed yet.</span></li>'}
@@ -111,6 +112,10 @@ document.addEventListener('click',async e=>{
   const pre=e.target.closest('[data-preset]');
   if(pre){const box=pre.closest('.edit,#defaultsBox'),p=D.presets.find(x=>x.id===pre.dataset.preset);box.querySelectorAll('input[data-m]').forEach(i=>{i.checked=p.modules.includes(i.dataset.m)});return}
   if(e.target.id==='saveDef'){const m=$('#defMsg');m.className='msg';m.textContent='Saving…';try{await api('/v1/staff-access/defaults',{method:'PUT',body:{modules:picked($('#defaultsBox'))}});await load();const n=$('#defMsg');if(n){n.className='msg';n.textContent='Saved'}}catch(x){m.className='msg bad';m.textContent=x.message}return}
+  const out=e.target.closest('[data-signout]');
+  if(out){const card=out.closest('.who'),m=card.querySelector('[data-signout-msg]'),who=card.querySelector('.nm b').textContent;if(!confirm(`Sign ${who} out on every device? Each one will need a new sign-in code.`))return;
+    out.disabled=true;m.className='msg';m.textContent='Signing out…';
+    try{await api('/v1/admin/users/'+card.dataset.id+'/sign-out',{method:'POST',body:{}});m.textContent='Signed out everywhere'}catch(x){m.className='msg bad';m.textContent=x.message}finally{out.disabled=false}return}
   const save=e.target.closest('[data-save]');
   if(save){const card=save.closest('.who'),m=card.querySelector('.msg');m.className='msg';m.textContent='Saving…';save.disabled=true;
     try{await api('/v1/staff-access/users/'+card.dataset.id,{method:'PUT',body:{modules:picked(card),blocked:card.querySelector('[data-paused]').checked,note:card.querySelector('[data-note]').value}});const id=card.dataset.id;await load();const c=document.querySelector(`.who[data-id="${id}"]`);if(c){c.open=true;const n=c.querySelector('.msg');n.className='msg';n.textContent='Saved'}try{window.fbNav&&window.fbNav.badge()}catch{}}

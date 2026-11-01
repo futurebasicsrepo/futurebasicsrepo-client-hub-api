@@ -1388,7 +1388,8 @@ await journey('J225', 'Finding your way round the Lab: the Design Lab is one sec
   try {
     const line = plan.lines.find(l => l.category === 'tops') || plan.lines[0], c = (await K(`/plans/${plan.plan.id}/lines/${line.id}/concepts`, { body: { count: 1 } })).json.concepts[0];
     const nav = await fetch(`${BASE}/lab/nav.js`); ok(nav.status === 200 && /Sketch pack/.test(await nav.text()), '1. the Lab navigation is one script every Lab page loads');
-    for (const path of ['/lab', '/lab/library', '/lab/materials', '/lab/sketches', '/lab/flats', '/lab/studio']) { const r = await fetch(`${BASE}${path}`); const t = await r.text(); ok(r.status === 200 && /\/lab\/nav\.js/.test(t), `   ${path} carries it`); }
+    const labCookie = ((await fetch(`${BASE}/v1/lab/door`, { headers: { Authorization: 'Bearer ' + kyleT } })).headers.get('set-cookie') || '').split(';')[0]; // the Lab's pages need the Lab session (src/guard.js)
+    for (const path of ['/lab', '/lab/library', '/lab/materials', '/lab/sketches', '/lab/flats', '/lab/studio']) { const r = await fetch(`${BASE}${path}`, { headers: { Cookie: labCookie } }); const t = await r.text(); ok(r.status === 200 && /\/lab\/nav\.js/.test(t), `   ${path} carries it`); }
     if (playwright) {
       const b = await playwright.chromium.launch();
       try {
@@ -1537,7 +1538,7 @@ await journey('J215', 'Design Lab flats in a browser: open them from a concept, 
     ok(await page.getAttribute('#viewSeg [data-v=front]', 'aria-pressed') === 'true' && await page.isVisible('#flatHost') && !(await page.isVisible('#stage')), 'Flats opens the concept in Design on its flat front: one workspace, the picture one press away');
     await F.waitForSelector('#canvas svg [data-pl]', { timeout: 15000 });
     const sketch = await F.locator('#canvas svg image[href^="/lab/flat-templates/"]').getAttribute('href').catch(() => null);
-    ok(sketch && (await fetch(BASE + sketch)).status === 200 && /not saved yet/i.test(await page.innerText('#fsaved')), 'the flats open on a professional flat sketch, worked out from the concept, waiting to be saved', sketch);
+    ok(sketch && (await page.evaluate(async u => (await fetch(u)).status, sketch)) === 200 && /not saved yet/i.test(await page.innerText('#fsaved')), 'the flats open on a professional flat sketch, worked out from the concept, waiting to be saved', sketch);
     const logoCard = F.locator('#pPl .pl').first(); ok(/below the HPS/.test(await logoCard.innerText()), 'the logo says where it sits, in inches from the HPS', await logoCard.innerText());
     // drag the logo up against the collar: the measurement follows and the check catches it
     const g = F.locator('#canvas [data-pl]').first(), bb = await g.boundingBox();
@@ -2379,6 +2380,7 @@ await journey('J235', 'Design, one placement model and two levels: a graphic\'s 
       ok(errs.length === 0, 'no page errors', errs); await oc.close();
       // a client's room starts on Simple
       const cc = await b.newContext({ viewport: { width: 1280, height: 900 } }); await cc.addInitScript(() => { try { localStorage.setItem('fb.client.token', 'x'); } catch {} });
+      { const lc = ((await fetch(`${BASE}/v1/lab/door`, { headers: { Authorization: 'Bearer ' + kyleT } })).headers.get('set-cookie') || '').split(';')[0].split('='); await cc.addCookies([{ name: lc[0], value: lc.slice(1).join('='), domain: new URL(BASE).hostname, path: '/lab' }]); } // the page itself needs the Lab session (src/guard.js); the client-mode default is what is checked
       const cp = await cc.newPage(); await cp.goto(`${BASE}/lab/studio?concept=${c.id}`, { waitUntil: 'domcontentloaded' }); await cp.waitForSelector('#app', { state: 'attached' });
       ok(await cp.getAttribute('#app', 'data-level') === 'simple', '9. signed in from a client\'s hub, Design starts on Simple'); await cc.close();
     } finally { await b.close(); }
@@ -3935,7 +3937,7 @@ await journey('J267', 'Hard goods and electronics are engineered as 3D parts: an
     const bitem = br?.runs?.[0]?.items?.[0];
     ok(bk.status === 202 && bk.json.products === 1 && br.runs[0].status === 'done' && bitem?.id === 'bikelight' && bitem.before && bitem.after && bitem.review && br.runs[0].summary?.done === 1 && br.reference.length === 12, '6i. the benchmark designs a known product from its words, reviews it and scores it against what is known about it', bitem || br?.runs?.[0]);
     ok(Array.isArray(bitem?.after?.missing) && bitem.after.size.length === 3 && typeof bitem.after.unit === 'number' && (await K('/engineering/benchmark', { body: { only: ['nothing-like-this'] } })).status === 422, '   with what it missed, its size and cost beside the known ranges; an unknown product is refused', bitem?.after);
-    ok((await fetch(`${BASE}/lab/engineering/benchmark`)).status === 200, '   and its page is served');
+    { const lc = ((await fetch(`${BASE}/v1/lab/door`, { headers: { Authorization: 'Bearer ' + kyleT } })).headers.get('set-cookie') || '').split(';')[0], bp = await fetch(`${BASE}/lab/engineering/benchmark`, { headers: { Cookie: lc } }); ok(bp.status === 200 && !/Opening the Design Lab/.test(await bp.text()), '   and its page is served to someone the Lab is open to'); }
     const esup = (await call('/v1/admin/suppliers', { token: kyleT, method: 'POST', body: { name: `Hi-fi Works ${stamp}` } })).json, etok = (await call(`/v1/admin/products/${epid}/tech-pack/factory`, { token: kyleT, method: 'POST', body: { supplierId: esup.id, mode: 'review' } })).json.assignment.packUrl.split('/tp/')[1];
     const zr = await fetch(`${BASE}/v1/tp/${etok}/package.zip`), zb = Buffer.from(await zr.arrayBuffer()), zf = {};
     { const e = zb.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06])); let q = zb.readUInt32LE(e + 16); for (let i = 0, n = zb.readUInt16LE(e + 10); i < n; i++) { const nl = zb.readUInt16LE(q + 28), size = zb.readUInt32LE(q + 20), off = zb.readUInt32LE(q + 42), nm = zb.toString('utf8', q + 46, q + 46 + nl).split('/').slice(1).join('/'); zf[nm] = zb.subarray(off + 30 + zb.readUInt16LE(off + 26) + zb.readUInt16LE(off + 28)).subarray(0, size); q += 46 + nl + zb.readUInt16LE(q + 30) + zb.readUInt16LE(q + 32); } }
@@ -4386,6 +4388,106 @@ await journey('J275', 'Polish: a sync problem shared by several builds is said o
       } finally { await b.close(); }
     } else ok(true, 'needs a browser');
   } finally { for (const id of ids) if (id) await A(`/v1/admin/builds/${id}`, { method: 'DELETE' }); }
+});
+
+await journey('J276', 'The Lab\'s own work stays with the people it is open to: its pages, engines and drawings need a Lab session from the door (a valid sign-in with the Lab open), forged or borrowed cookies do not work, share and poll links stay open, a browser already signed in goes straight through, and robots.txt and noindex keep the app out of search engines and AI crawlers', async () => {
+  const raw = (path, headers = {}) => fetch(BASE + path, { headers, redirect: 'manual' });
+  // signed out: the engines and drawings answer 401, a page answers with the door (not the Lab's code)
+  for (const p of ['/lab/lab-pattern.js', '/lab/lab-assembly.js', '/lab/lab-footwear.js', '/lab/lab-recipe.js', '/lab/flat-templates/x.png']) ok((await raw(p)).status === 401, `1. signed out, ${p} is refused`);
+  const door = await (await raw('/lab/studio')).text();
+  ok(/Opening the Design Lab/.test(door) && !/pieceSteps|viewSeg/.test(door) && door.length < 8000, '   and /lab/studio is only the door, not the Studio', door.length);
+  for (const p of ['/lab/nav.js', '/lab/vendor/polygon-clipping.js']) ok((await raw(p)).status === 200, `2. ${p} stays open (the tech pack nav, open-source code)`);
+  ok((await raw('/lab/share/nope')).status === 200 && (await raw('/lab/poll/nope')).status === 200, '   share and poll pages stay open: their own token is the key');
+  // the door: the same checks as the Lab's API
+  ok((await raw('/v1/lab/door')).status === 401, '3. the door needs a sign-in');
+  const email = `door-${stamp}@selfserve.test`, started = await call('/v1/public/start', { body: { email, name: 'Door Check', title: 'First tee', photos: [jpeg()] } });
+  const cid = started.json.client?.id || sql(`select client_id from users where lower(email)='${email}'`), uid = sql(`select id from users where lower(email)='${email}'`).split('\n')[0], slug = sql(`select slug from clients where id='${cid}'`).split('\n')[0];
+  sql(`update users set email_verified_at=now() where id='${uid}'`);
+  const clientT = await forge({ sub: uid, clientId: cid, client: slug, role: 'client', email });
+  const locked = await raw('/v1/lab/door', { Authorization: 'Bearer ' + clientT }); ok(locked.status === 403 && (await locked.json()).code === 'LAB_LOCKED' && !locked.headers.get('set-cookie'), '   a client whose room has no Lab gets no session');
+  const open = await raw('/v1/lab/door', { Authorization: 'Bearer ' + kyleT }), sc = open.headers.get('set-cookie') || '';
+  ok(open.status === 200 && /^fb_lab=/.test(sc) && /HttpOnly/i.test(sc) && /Path=\/lab/.test(sc) && /SameSite=Lax/i.test(sc), '4. staff with the Lab get an HttpOnly session cookie scoped to /lab', sc.slice(0, 120));
+  const cookie = sc.split(';')[0];
+  const eng = await raw('/lab/lab-pattern.js', { Cookie: cookie });
+  ok(eng.status === 200 && /private/.test(eng.headers.get('cache-control') || ''), '   it opens the engines, marked private so no cache hands them on', eng.headers.get('cache-control'));
+  ok((await raw('/lab/studio', { Cookie: cookie }).then(r => r.text())).includes('viewSeg'), '   and the Studio itself');
+  // forged and borrowed cookies
+  ok((await raw('/lab/lab-pattern.js', { Cookie: 'fb_lab=' + kyleT })).status === 401, '5. a sign-in token passed off as the Lab cookie is refused (wrong audience)');
+  ok((await raw('/lab/lab-pattern.js', { Cookie: cookie.slice(0, -4) + 'abcd' })).status === 401, '   a tampered cookie is refused');
+  // robots
+  const robots = await (await raw('/robots.txt')).text();
+  ok(/User-agent: GPTBot\nDisallow: \//.test(robots) && /User-agent: ClaudeBot\nDisallow: \//.test(robots) && /Allow: \/pricing\$/.test(robots) && /User-agent: \*[\s\S]*Disallow: \/\n?$/.test(robots.trim() + '\n'), '6. robots.txt turns AI crawlers away and lets search see only the public pages');
+  ok(/noindex/.test((await raw('/admin')).headers.get('x-robots-tag') || '') && !(await raw('/pricing')).headers.get('x-robots-tag'), '   the app says noindex; the pricing page does not');
+  if (playwright) {
+    const b = await playwright.chromium.launch();
+    try {
+      const view = async (key, t, url) => { const c = await b.newContext(); if (t) await c.addInitScript(([k, v]) => { try { localStorage.setItem(k, v); } catch {} }, [key, t]); const p = await c.newPage(); await p.goto(BASE + url, { waitUntil: 'networkidle' }); return { c, p }; };
+      let { c, p } = await view('fb.admin.token', kyleT, '/lab/studio');
+      await p.waitForFunction(() => /Design Lab/.test(document.title) && document.querySelector('#viewSeg') && !document.querySelector('main.box#needSignin'), null, { timeout: 20000 }); ok(true, '7. a browser already signed in goes through the door to the Studio on its own');
+      await c.close(); ({ c, p } = await view('fb.admin.token', kyleT, '/lab#board'));
+      await p.waitForFunction(() => location.hash === '#board' && !document.querySelector('main.box#needSignin'), null, { timeout: 20000 }); ok(true, '   a link to a part of the Lab (#board) lands there too');
+      await c.close(); ({ c, p } = await view('', '', '/lab/studio'));
+      await p.waitForFunction(() => /Sign in to the Design Lab/.test(document.querySelector('h1')?.textContent || '') && document.querySelector('#needSignin a[href="/join?for=lab"]'), null, { timeout: 10000 }); ok(true, '8. signed out, the door gives the Lab\'s own invitation: open the Lab, sign in at the hub, or the work console');
+      await c.close(); ({ c, p } = await view('fb.client.token', clientT, '/lab'));
+      await p.waitForFunction(() => /not open on your room yet/.test(document.querySelector('h1')?.textContent || ''), null, { timeout: 10000 }); ok(true, '   and a client without the Lab is told how to open it');
+      await c.close();
+    } finally { await b.close(); }
+  } else ok(true, 'needs a browser');
+});
+
+await journey('J277', 'Copy watch: a file the Lab exports carries a reference that traces it to the account and room; a client pulling library files far past normal work is noted on Platform health, then paused on them for the hour; staff are recorded, never paused', async () => {
+  const email = `watch-${stamp}@selfserve.test`, started = await call('/v1/public/start', { body: { email, name: 'Watch Room', title: 'First tee', photos: [jpeg()] } });
+  const cid = started.json.client?.id || sql(`select client_id from users where lower(email)='${email}'`), uid = sql(`select id from users where lower(email)='${email}'`).split('\n')[0], slug = sql(`select slug from clients where id='${cid}'`).split('\n')[0];
+  sql(`update users set email_verified_at=now() where id='${uid}'`); sql(`update clients set lab_free=true where id='${cid}'`);
+  const clientT = await forge({ sub: uid, clientId: cid, client: slug, role: 'client', email });
+  const img = await sharp({ create: { width: 200, height: 120, channels: 4, background: { r: 20, g: 60, b: 30, alpha: 1 } } }).png().toBuffer();
+  const up = await call('/v1/lab/library/graphics/upload', { token: clientT, body: { image: `data:image/png;base64,${img.toString('base64')}`, name: 'Watch crest' } });
+  ok(up.status === 201, '1. the client adds a graphic to their library', up.status); const gid = up.json.id;
+  const pull = t => fetch(`${BASE}/v1/lab/library/graphics/${gid}/vector.svg`, { headers: { Authorization: 'Bearer ' + t } });
+  // the fingerprint
+  const f = await pull(clientT), svg = await f.text(), ref = f.headers.get('x-export-ref') || '';
+  ok(f.status === 200 && /^[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}$/.test(ref), '2. the vector file goes out with a reference', ref);
+  ok(svg.includes(`<!-- Future Basics export ${ref}`) && /for Watch Room/.test(svg) && /not for redistribution or AI training/.test(svg) && /<svg[\s>]/.test(svg), '   written inside it as a comment (the room, the date, no AI training), and it is still an SVG');
+  const lk = await call(`/v1/admin/exports/${ref.toLowerCase()}`, { token: kyleT });
+  ok(lk.status === 200 && lk.json.export.email === email && lk.json.export.room === 'Watch Room' && /vector\.svg$/.test(lk.json.export.path) && lk.json.export.marked === true, '3. staff trace a found file back to who took it, from which room, and what', lk.json.export);
+  ok((await call(`/v1/admin/exports/${ref}`, { token: clientT })).status === 403 && (await call('/v1/admin/exports/0000-0000-0000', { token: kyleT })).status === 404, '   a client cannot look references up; an unknown one is not found');
+  // pulling far past normal work: a notice at 150 in the hour, a pause at 750
+  const statuses = []; for (let i = 1; i < 750; i += 25) statuses.push(...await Promise.all(Array.from({ length: Math.min(25, 750 - i) }, () => pull(clientT).then(r => r.status))));
+  ok(statuses.length === 749 && statuses.every(s => s === 200), '4. ordinary pulls are never stopped (750 in an hour all answered)', [...new Set(statuses)]);
+  const ev = () => sql(`select kind||':'||category||':'||count from security_events where user_id='${uid}' order by id`).split('\n').filter(Boolean);
+  ok(ev()[0] === 'unusual-pull:graphic:151', '   but the 151st was recorded as an unusual pull', ev());
+  const stop = await pull(clientT), sj = await stop.json().catch(() => ({}));
+  ok(stop.status === 429 && sj.code === 'PULL_LIMIT' && /rest of the hour/.test(sj.error || '') && !stop.headers.get('content-disposition'), '5. past five times the notice level the room is paused on graphic files for the rest of the hour', [stop.status, sj.code]);
+  ok(ev().includes('paused:graphic:751'), '   and the pause is recorded', ev());
+  ok((await call('/v1/lab/concepts', { token: clientT })).status === 200, '   the rest of the Lab keeps working for them');
+  ok((await pull(kyleT)).status === 200, '6. staff are not paused by a client\'s count, and never by their own');
+  const h = (await call('/v1/admin/platform/health?fresh=1', { token: kyleT })).json, cw = (h.checks || []).find(c => c.id === 'copywatch');
+  ok(cw && cw.group === 'security' && cw.status === 'down' && /paused/.test(cw.summary) && cw.facts.some(([, v]) => /Paused: .*Watch Room.*graphic files/.test(v)), '7. Platform health shows the copy watch: who was paused, from which room, on what', cw && [cw.status, cw.summary, cw.facts]);
+  sql(`delete from security_events where user_id='${uid}'`);
+});
+
+await journey('J278', 'Sign out everywhere: a person ends every session they hold (the hub sign-in and the Lab page cookie) in one tap, staff can do it for a client\'s person, and signing in again works at once', async () => {
+  const email = `signout-${stamp}@selfserve.test`, started = await call('/v1/public/start', { body: { email, name: 'Lost Phone Co', title: 'First tee', photos: [jpeg()] } });
+  const cid = started.json.client?.id || sql(`select client_id from users where lower(email)='${email}'`), uid = sql(`select id from users where lower(email)='${email}'`).split('\n')[0], slug = sql(`select slug from clients where id='${cid}'`).split('\n')[0];
+  sql(`update users set email_verified_at=now() where id='${uid}'`); sql(`update clients set lab_free=true where id='${cid}'`);
+  const sign = () => forge({ sub: uid, clientId: cid, client: slug, role: 'client', email });
+  const laptop = await sign(), phone = await sign();
+  const cookieOf = async t => ((await fetch(`${BASE}/v1/lab/door`, { headers: { Authorization: 'Bearer ' + t } })).headers.get('set-cookie') || '').split(';')[0];
+  const labCookie = await cookieOf(phone);
+  ok((await call('/v1/session', { token: laptop })).status === 200 && (await call('/v1/session', { token: phone })).status === 200 && (await fetch(`${BASE}/lab/lab-pattern.js`, { headers: { Cookie: labCookie } })).status === 200, '1. signed in on a laptop and a phone, with the Lab open on the phone');
+  const out = await call('/v1/session/sign-out-everywhere', { token: laptop, body: {} });
+  ok(out.status === 200, '2. from the laptop: sign out everywhere', out.status);
+  const after = await call('/v1/session', { token: phone });
+  ok(after.status === 401 && after.json.code === 'SIGNED_OUT' && (await call('/v1/session', { token: laptop })).status === 401, '3. the phone\'s session (and the laptop\'s own) stops working at once', [after.status, after.json.code]);
+  ok((await fetch(`${BASE}/lab/lab-pattern.js`, { headers: { Cookie: labCookie } })).status === 401 && /Opening the Design Lab/.test(await (await fetch(`${BASE}/lab/studio`, { headers: { Cookie: labCookie } })).text()), '   and so does the Lab cookie the phone had: the engines refuse it, the Studio shows the door');
+  await sleep(1100); const fresh = await sign();
+  ok((await call('/v1/session', { token: fresh })).status === 200 && (await fetch(`${BASE}/lab/lab-pattern.js`, { headers: { Cookie: await cookieOf(fresh) } })).status === 200, '4. signing in again works straight away, the Lab too');
+  // staff for a client's person (a lost phone reported to us)
+  const r = await call(`/v1/admin/users/${uid}/sign-out`, { token: kyleT, body: {} });
+  ok(r.status === 200 && r.json.email === email && (await call('/v1/session', { token: fresh })).status === 401, '5. Future Basics signs a client\'s person out everywhere from the work console', r.status);
+  ok((await call(`/v1/admin/users/${uid}/sign-out`, { token: (await sleep(1100), await sign()), body: {} })).status === 403, '   a client cannot use the staff route');
+  ok((await call('/v1/admin/users/00000000-0000-0000-0000-000000000000/sign-out', { token: kyleT, body: {} })).status === 404, '   an unknown person is not found');
+  ok((await call('/v1/session', { token: kyleT })).status === 200, '   and the staff member who did it is still signed in');
 });
 
 shops.close(); brave.close();

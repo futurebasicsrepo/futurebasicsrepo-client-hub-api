@@ -380,5 +380,8 @@ const autoCollapse = () => { if (!chosen()) { let touch = false; try { touch = m
   window.fbNav = { badge: badges, startTechPack };
   const labClient = () => { try { return document.documentElement.dataset.labClient === '1' || (location.pathname.startsWith('/lab') && !localStorage.getItem('fb.admin.token') && Boolean(localStorage.getItem('fb.client.token'))); } catch { return false; } };
   if (labClient()) return; // a client in the Design Lab: their hub is their home, not the console
+  // the Design Lab session cookie (src/guard.js), fetched quietly once per tab, so opening the Lab goes straight in rather than through its door
+  function warmLab(key){try{const t=localStorage.getItem(key);if(!t||sessionStorage.getItem('fb.lab.warm'))return;sessionStorage.setItem('fb.lab.warm','1');fetch('/v1/lab/door',{headers:{Authorization:'Bearer '+t}}).then(r=>r.text()).catch(()=>{})}catch{}}
+  if (!location.pathname.startsWith('/lab')) setTimeout(() => warmLab('fb.admin.token'), 1500);
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount); else mount();
 })();
