@@ -4284,5 +4284,41 @@ await journey('J272', 'Materials that say too little are asked about, and shoes 
   } finally { for (const id of made) if (id) await K(`/concepts/${id}`, { method: 'DELETE' }); for (const id of mats) if (id) sql(`delete from lab_materials where id='${id}'`); }
 });
 
+await journey('J273', 'What clients and prospects see first: the pricing plans stack on a phone, a client\'s Lab home counts their own plans and concepts (not our research numbers), the board asks only for pictures that exist, and a piece with flats but no picture opens on its flats with no blank-page hint', async () => {
+  const email = `lab-home-${stamp}@selfserve.test`, started = await call('/v1/public/start', { body: { email, name: 'Home Check', title: 'First tee', photos: [jpeg()] } });
+  const cid = started.json.client?.id || sql(`select client_id from users where lower(email)='${email}'`), uid = sql(`select id from users where lower(email)='${email}'`).split('\n')[0], slug = sql(`select slug from clients where id='${cid}'`).split('\n')[0];
+  sql(`update users set email_verified_at=now() where id='${uid}'`);
+  const clientT = await forge({ sub: uid, clientId: cid, client: slug, role: 'client', email }), C = (path, o = {}) => call('/v1/lab' + path, { token: clientT, ...o });
+  const made = [];
+  try {
+    ok((await call(`/v1/admin/clients/${cid}/lab`, { token: kyleT, method: 'PATCH', body: { action: 'comp' } })).status === 200, 'the Lab is opened on their room');
+    const r = await C('/concepts/from-recipe', { body: { base: 'tee', system: 'mono' } }); ok(r.status === 201 || r.status === 200, 'they make a piece from the recipe menu: flats, no picture', [r.status, r.json.error]); const T = r.json.concept?.id; made.push(T);
+    if (playwright) {
+      const b = await playwright.chromium.launch();
+      try {
+        const phone = { viewport: { width: 390, height: 844 } };
+        // pricing on a phone: one plan per row, nothing cut off
+        const pc = await b.newContext(phone), pp = await pc.newPage(); await pp.goto(`${BASE}/pricing`, { waitUntil: 'networkidle' });
+        const cards = await pp.$$eval('#plans .plan:not([hidden])', els => els.map(e => { const r = e.getBoundingClientRect(); return { l: Math.round(r.left), r: Math.round(r.right) }; }));
+        ok(cards.length >= 3 && cards.every(c => c.l === cards[0].l && c.r <= 390), '1. on a phone the pricing plans stack one per row, inside the screen', cards);
+        await pc.close();
+        // the client's Lab home
+        const cc = await b.newContext(phone); await cc.addInitScript(t => { try { localStorage.setItem('fb.client.token', t); localStorage.setItem('fb.lab.welcome', '1'); localStorage.setItem('fb.helper.on', '0'); } catch {} }, clientT);
+        const p = await cc.newPage(), bad = [], errs = []; p.on('pageerror', e => errs.push(String(e))); p.on('response', x => { if (x.status() === 404 && /\/views\//.test(x.url())) bad.push(x.url()); });
+        await p.goto(`${BASE}/lab`, { waitUntil: 'networkidle' }); await p.waitForFunction(() => /Concept/.test(document.querySelector('#stats')?.textContent || ''), null, { timeout: 20000 });
+        const st = await p.textContent('#stats');
+        ok(/(^|\D)1\s*Concept(?!s)/.test(st) && /Line plan/.test(st) && !/Brands watched|AI read|New this week/i.test(st), '2. their Lab home counts their own plans and concepts, not our research numbers', st);
+        await p.goto(`${BASE}/lab#board`, { waitUntil: 'networkidle' }); await p.waitForTimeout(1500);
+        ok(bad.length === 0, '3. the board asks only for pictures that exist (no 404s for missing views)', bad);
+        // the piece opens on its flats, without the blank-page hint
+        await p.goto(`${BASE}/lab/studio?concept=${T}`, { waitUntil: 'networkidle' }); await p.waitForFunction(() => document.querySelector('#viewSeg [data-v=front]')?.getAttribute('aria-pressed') === 'true' || document.querySelector('#viewSeg [data-v=front]')?.classList.contains('on'), null, { timeout: 30000 });
+        const toast = await p.evaluate(() => document.querySelector('#stToast:not([hidden])')?.textContent || '');
+        ok(!/blank page/i.test(toast), '4. with flats and no picture, the Studio opens on the flats, with no blank-page hint', toast);
+        ok(errs.length === 0, '   no page errors', errs);
+      } finally { await b.close(); }
+    } else ok(true, 'needs a browser');
+  } finally { for (const id of made) if (id) await C(`/concepts/${id}`, { method: 'DELETE' }); }
+});
+
 shops.close(); brave.close();
 process.exit(summary() ? 1 : 0);

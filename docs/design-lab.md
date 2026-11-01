@@ -1487,3 +1487,12 @@ screen, the drawing and the files agree. Routes: `src/lab-assembly-routes.js`; s
   diagram, all without our costs. The README says what each is; when the engineering changed after the version was published, it says so.
 
 The client's room uses the same page on its own concepts; another room's concept answers 404. Journey **J267**.
+
+## What clients see first (audit, phase 1)
+
+- **Pricing on a phone** stacks one plan per row. The page sets the column count as `--cols` (four, or three when membership is off), so the phone and tablet rules still apply. An inline `grid-template-columns` used to override them.
+- **A client's Lab home** counts their own work: line plans, concepts, still in draft, approved, tech packs. Each tile links to its tab. The market-research tiles (pieces, brands watched, search · AI read) are for staff only.
+- **The board asks only for pictures that exist.** A tile with no picture shows "No picture" without fetching. Colourway swatches tint the flat when it is ready, or the picture when there is one, and otherwise stay a plain swatch. There are no more 404s for missing views.
+- **The Studio opens where the work is.** A piece with flats but no picture (for example from the recipe menu) opens on its flat front, with the "Draw the picture from the flats" bar. A scratch page, a drawn picture or `?view=` still decide as before. The blank-page hint shows only when the Studio opens on the Picture view.
+
+Journey J273 covers all four.

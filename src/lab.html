@@ -242,7 +242,7 @@ const lines=t=>String(t||'').split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
 
 function drawTop(){
   const t=O.totals,c=O.connected;
-  $('#stats').innerHTML=`<div class="stat"><b>${t.items}</b><span>Pieces</span></div><div class="stat"><b>${t.fresh}</b><span>New this week</span></div><div class="stat"><b>${t.saved}</b><span>Saved</span></div><div class="stat"><b>${O.brands.filter(b=>b.enabled).length}</b><span>Brands watched</span></div>
+  if(O.client)$('#stats').innerHTML='';else $('#stats').innerHTML=`<div class="stat"><b>${t.items}</b><span>Pieces</span></div><div class="stat"><b>${t.fresh}</b><span>New this week</span></div><div class="stat"><b>${t.saved}</b><span>Saved</span></div><div class="stat"><b>${O.brands.filter(b=>b.enabled).length}</b><span>Brands watched</span></div>
   <div class="stat"><b style="font-size:15px;padding-top:5px">${c.search?'On':'Off'} · ${c.ai?'On':'Off'}</b><span>Search · AI read</span></div>`;
   $('#catPills').innerHTML=`<button type="button" class="pill" data-cat="" aria-pressed="${F.category===''}">All</button>`+O.categories.filter(x=>x.count||x.id===F.category).map(x=>`<button type="button" class="pill" data-cat="${x.id}" aria-pressed="${F.category===x.id}">${esc(x.label)} · ${x.count}</button>`).join('');
   const cur=$('#fBrand').value;$('#fBrand').innerHTML='<option value="">All brands</option>'+O.brands.map(b=>`<option value="${b.id}">${esc(b.name)}</option>`).join('');$('#fBrand').value=cur;
@@ -477,12 +477,15 @@ document.addEventListener('submit',async e=>{
 let BOARD={status:'',plan:'',line:''},CONC=[],BCOUNTS={},OPENID=null,IMGURL='',BOPT={marks:[],logoTechniques:[],graphicPlaces:[],graphicTechniques:[]},CGFX=[];
 const VERDICT={clear:['Clear','ok'],check:['Look closely','warn'],too_close:['Too close','bad']};
 const STAT={draft:['Draft',''],approved:['Approved','ok'],rejected:['Rejected','bad'],tech_pack:['Tech pack','hot']};
+// a client's own numbers on their Lab home: their plans and where their concepts stand (the market-research tiles are ours, not theirs)
+function clientStats(plans){const n=k=>BCOUNTS[k]||0,all=Object.values(BCOUNTS).reduce((a,b)=>a+b,0);
+  $('#stats').innerHTML=[[plans,plans===1?'Line plan':'Line plans','#plans'],[all,all===1?'Concept':'Concepts','#board'],[n('draft'),'Still in draft','#board'],[n('approved'),'Approved','#board'],[n('tech_pack'),n('tech_pack')===1?'Tech pack':'Tech packs','#board']].map(([v,l,h])=>`<a class="stat" href="${h}" style="text-decoration:none;color:inherit"><b>${v}</b><span>${l}</span></a>`).join('')}
 async function loadBoard(){
   const p=new URLSearchParams();if(BOARD.status)p.set('status',BOARD.status);if(BOARD.plan)p.set('plan',BOARD.plan);if(BOARD.line)p.set('line',BOARD.line);
   const j=await api('/v1/lab/concepts?'+p);CONC=j.concepts;BCOUNTS=j.counts;if(j.options)BOPT=j.options;
   const all=Object.values(BCOUNTS).reduce((a,b)=>a+b,0);
   $('#bFilters').innerHTML=[['','All',all],['draft','Draft',BCOUNTS.draft||0],['approved','Approved',BCOUNTS.approved||0],['rejected','Rejected',BCOUNTS.rejected||0],['tech_pack','Tech pack',BCOUNTS.tech_pack||0]].map(([k,l,n])=>`<button type="button" class="pill" data-bs="${k}" aria-pressed="${BOARD.status===k}">${l} · ${n}</button>`).join('')+(BOARD.line?'<button type="button" class="pill" data-bclear>Showing one piece · show all</button>':'');
-  const pl=await api('/v1/lab/plans');$('#bPlan').innerHTML='<option value="">All plans</option>'+pl.plans.map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join('');$('#bPlan').value=BOARD.plan;
+  const pl=await api('/v1/lab/plans');if(O.client)clientStats(pl.plans.length);$('#bPlan').innerHTML='<option value="">All plans</option>'+pl.plans.map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join('');$('#bPlan').value=BOARD.plan;
   $('#bNote').textContent=j.imageConnected?'':'No image model is connected: concepts are made without pictures.';
   $('#cEmpty').classList.toggle('hidden',CONC.length>0);
   $('#cgrid').innerHTML=CONC.map(c=>{const v=c.closeness?VERDICT[c.closeness.verdict]:null,st=STAT[c.status];return `<article class="cc ${c.status}" data-cid="${c.id}" tabindex="0" role="button" aria-label="Open ${esc(c.name)}"><div class="ph">${c.thumb?`<img src="${esc(c.thumb)}" alt="${esc(c.name)}">`:esc(c.imageNote||'No picture')}</div><div class="bd"><h3>${esc(c.name)}</h3><div class="tags"><span class="chip ${st[1]}">${st[0]}</span>${v?`<span class="chip ${v[1]}">${v[0]}</span>`:''}<span class="chip">${esc(c.categoryLabel)}</span>${c.price!=null?`<span class="pr">${esc(usd(c.price))}</span>`:''}</div><div class="sub">${esc(c.planName)}</div><div class="sm">${esc(c.twist.slice(0,110))}${c.twist.length>110?'…':''}</div></div></article>`}).join('');
@@ -703,14 +706,15 @@ const vstate=(c,kind)=>(c.views[kind]||{}).status||'';
 const slotOf=(c,which)=>{const kind=which==='flat'?'flat_front':'model_front',st=vstate(c,kind);return st==='ready'?{kind,label:which==='flat'?'Flat':'On model'}:{kind:'picture',label:st==='pending'?'Drawing…':st==='failed'?'Could not be drawn':'Not made yet',st,note:(c.views[kind]||{}).note||''}};
 function tileHtml(c){
   const slots=AS.show==='both'?['flat','model']:[AS.show],ok=c.kinds.includes('model_front'),use=slots.filter(w=>w==='flat'||ok);
-  const ims=use.map(w=>{const sl=slotOf(c,w),wait=vstate(c,w==='flat'?'flat_front':'model_front')==='pending';return `<div class="im ${w==='model'&&sl.kind!=='picture'?'m':''} ${wait?'wait':''}" data-img="${c.id}" data-kind="${sl.kind}" ${sl.note?`title="${esc(sl.note)}"`:''}>${sl.kind==='picture'&&!c.hasPicture?'No picture':''}<i>${esc(sl.label)}</i></div>`}).join('');
+  const ims=use.map(w=>{const sl=slotOf(c,w),wait=vstate(c,w==='flat'?'flat_front':'model_front')==='pending';const none=sl.kind==='picture'&&!c.hasPicture;return `<div class="im ${w==='model'&&sl.kind!=='picture'?'m':''} ${wait?'wait':''}" ${none?'':`data-img="${c.id}" data-kind="${sl.kind}"`} ${sl.note?`title="${esc(sl.note)}"`:''}>${sl.kind==='picture'&&!c.hasPicture?'No picture':''}<i>${esc(sl.label)}</i></div>`}).join('');
   const st=STAT[c.status]||['',''],v=c.closeness?VERDICT[c.closeness]:null;
-  const cws=(c.colourways||[]).map(w=>`<div class="cwt" data-cw="${c.id}" data-hex="${esc(w.hex)}" title="${esc(w.name||'')}${w.pantone?' · '+esc(w.pantone):''}"><i style="background:${esc(w.hex)}"></i></div>`).join('');
+  const cwk=vstate(c,'flat_front')==='ready'?'flat_front':c.hasPicture?'picture':''; // only ask for a view that exists
+  const cws=(c.colourways||[]).map(w=>`<div class="cwt" ${cwk?`data-cw="${c.id}" data-cwk="${cwk}"`:''} data-hex="${esc(w.hex)}" title="${esc(w.name||'')}${w.pantone?' · '+esc(w.pantone):''}"><i style="background:${esc(w.hex)}"></i></div>`).join('');
   return `<article class="at" data-aid="${c.id}" tabindex="0" role="button" aria-label="Open ${esc(c.name)}"><div class="ap ${use.length>1?'two':''}">${ims}</div>${cws?`<div class="cw">${cws}</div>`:''}<div class="bd"><h4>${esc(c.name)}</h4><div class="tags"><span class="chip ${st[1]}">${st[0]}</span>${v?`<span class="chip ${v[1]}">${v[0]}</span>`:''}${c.price!=null?`<span class="pr">${esc(usd(c.price))}</span>`:''}${c.materials?`<span class="chip" title="materials chosen">${c.materials} mat.</span>`:''}</div></div></article>`;
 }
 // a colourway tile: the flat (or the picture) washed in the colour, so the colourways sit side by side
 async function fillColourways(root){
-  for(const el of root.querySelectorAll('[data-cw]:not([data-done])'))(async()=>{el.dataset.done='1';const u=await fetchImg(el.dataset.cw,'flat_front',true)||await fetchImg(el.dataset.cw,'picture',true);if(!u||!el.isConnected)return;const im=new Image();im.src=u;await im.decode().catch(()=>{});if(!im.naturalWidth)return;
+  for(const el of root.querySelectorAll('[data-cw]:not([data-done])'))(async()=>{el.dataset.done='1';const u=await fetchImg(el.dataset.cw,el.dataset.cwk||'picture',true);if(!u||!el.isConnected)return;const im=new Image();im.src=u;await im.decode().catch(()=>{});if(!im.naturalWidth)return;
     const c=document.createElement('canvas'),s=Math.min(1,160/im.naturalWidth);c.width=Math.round(im.naturalWidth*s);c.height=Math.round(im.naturalHeight*s);const x=c.getContext('2d');x.drawImage(im,0,0,c.width,c.height);x.globalCompositeOperation='multiply';x.fillStyle=el.dataset.hex;x.fillRect(0,0,c.width,c.height);x.globalCompositeOperation='destination-in';x.drawImage(im,0,0,c.width,c.height);el.prepend(c)})().catch(()=>{});
 }
 function fillImgs(root){

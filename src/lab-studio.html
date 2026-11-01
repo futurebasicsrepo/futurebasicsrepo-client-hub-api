@@ -964,7 +964,7 @@ async function scratchPage(){
       GUIDE_PPI=k;named=`Guide: ${pat.label.toLowerCase()} outline (hide it when you are done)`}}catch{}
   if(!GUIDE_PPI){gx.fillStyle='#c9c9c4';for(let y=50;y<H;y+=50)for(let x=50;x<W;x+=50){gx.beginPath();gx.arc(x,y,2,0,7);gx.fill()}}
   LAYERS.push({...fresh('paint',{name:named,raster:stamp(g),x:W/2,y:H/2,dirty:true}),locked:true,opacity:.9});
-  toast('A blank page: draw with the Pencil or the brush. The guide is locked; hide it in Layers when you are done.')}
+  SCRATCH_HINT=true}let SCRATCH_HINT=false;const LAYERS_DRAWN=()=>Boolean(D.doc&&Array.isArray(D.doc.layers)&&D.doc.layers.length); // the hint is shown once the Studio knows it opened on the Picture view (not over the flats or the pattern)
 // the picker's "Start from scratch": what it is, and for clothes which style; a plush picks its shape on the Pattern view
 const SC_STYLES={tops:[['tee','T-shirt'],['longsleeve','Long-sleeve tee'],['crewneck','Crewneck sweatshirt'],['hoodie','Pullover hoodie'],['ziphoodie','Zip hoodie'],['polo','Polo'],['shirt','Button-up shirt'],['shirtss','Short-sleeve shirt'],['tank','Tank']],outerwear:[['jacket','Zip jacket'],['coat','Coat'],['vest','Vest']],bottoms:[['pants','Pants'],['shorts','Shorts'],['skirt','Skirt'],['leggings','Leggings']],dresses:[['dress','Dress']],headwear:[['cap','Six-panel cap'],['bucket','Bucket hat'],['beanie','Beanie']],bags:[['tote','Tote bag']],plush:[['bear','Bear'],['bean','Bean character'],['bunny','Bunny'],['pillow','Pillow character']],footwear:[['sneaker','Court sneaker'],['runner','Runner'],['derby','Derby'],['loafer','Penny loafer'],['chelsea','Chelsea boot'],['boot','Lace-up boot']]};
 function scStyles(){const c=$('#scCat').value,l=SC_STYLES[c]||[];$('#scStyle').innerHTML=l.map(([k,v])=>`<option value="${k}">${v}</option>`).join('');$('#scStyle').classList.toggle('hidden',!l.length)}
@@ -1000,7 +1000,7 @@ async function boot(){
   await loadFonts();setColor(CUR);paintSub();paintAdd();tab('layers');setTool('select');HIST=[snap()];HI=0;syncUndo();DIRTY=false;showSaved();paintLayers();requestAnimationFrame(fit);
   if(QS.get('tryon')==='1')tryOpen().catch(()=>{});
   setInterval(()=>{if(DIRTY&&!DRAG)save()},90000); // a quiet save every minute and a half while there are changes
-  (D.doc?.linked||[]).forEach(id=>LINKING.add(id));setVMode(QS.get('view')||'picture');loadFlatsRecord();loadReady();
+  (D.doc?.linked||[]).forEach(id=>LINKING.add(id));setVMode(QS.get('view')||(!D.concept.hasImage&&!LAYERS_DRAWN()&&!D.concept.scratch&&QS.get('scratch')!=='1'&&D.concept.hasFlats&&!ENGD()?'front':'picture')).then(()=>{if(SCRATCH_HINT&&VMODE==='picture')toast('A blank page: draw with the Pencil or the brush. The guide is locked; hide it in Layers when you are done.')}).catch(()=>{});loadFlatsRecord();loadReady();
   if(D.concept.recipe&&!D.concept.locked){$('#recipeBtn').href=`/lab/recipe?concept=${CID}`;$('#recipeBtn').classList.remove('hidden')}paintFlatPic(); // a piece from the recipe menu: change its recipe; no picture yet: draw it from the flats
 }
 // a graphic for the library: a clear canvas, or the graphic's picture as a layer over one, with the layers it was built from when it has them

@@ -19,7 +19,7 @@
     .wrap{max-width:1040px;margin:0 auto}.hero .meta{color:#9d9da4}
     h1{font-weight:500;letter-spacing:-.045em;line-height:.96;font-size:clamp(36px,7vw,62px);margin:10px 0 12px;text-wrap:balance;max-width:16ch}h1 em{font-style:normal;color:var(--cue)}
     .lede{color:#c9c9cf;max-width:52ch;margin:0}
-    .plans{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin:-52px auto 0;padding:0 18px;max-width:1076px;position:relative}
+    .plans{display:grid;grid-template-columns:repeat(var(--cols,4),minmax(0,1fr));gap:14px;margin:-52px auto 0;padding:0 18px;max-width:1076px;position:relative}
     .plan{background:var(--paper);border:1px solid var(--line);border-radius:22px;padding:22px 20px;display:flex;flex-direction:column;gap:10px;min-width:0}
     .plan.pick{background:var(--ink);color:#fff;border-color:var(--ink)}.plan.pick .meta,.plan.pick li{color:#c9c9cf}.plan.pick li:before{background:var(--cue)}
     .plan h2{margin:0;font-size:18px;font-weight:600;letter-spacing:-.01em}
@@ -69,7 +69,7 @@
     <h2 style="margin:6px 0 8px">Not sure what to make yet? We design it with you.</h2>
     <p class="lede">Our design team reads the market, plans your line, and draws every piece as concepts and measured flats in your brand. You approve each one in your hub, and the ones you approve become tech packs, go to factories, and come back as samples we review against the spec.</p>
   </div></section>
-  <div class="plans" id="designPlans" aria-label="Design packages" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+  <div class="plans" id="designPlans" aria-label="Design packages" style="--cols:3">
     <article class="plan" id="labPlan"><span class="meta">Do it yourself</span><h2>The Design Lab</h2><div class="price" id="labPrice" style="font-size:28px;padding-top:10px">$499</div><p class="meta" id="labTerms" style="text-transform:none;letter-spacing:0">for 90 days · 40 AI generations included, then $2.50 each</p>
       <ul><li>The studio, the flats and the libraries we design with, open on your own room</li><li>Plan a line, draw concepts, finish them by hand and with AI, measure them as flats</li><li>Tech packs included while the Lab is open, with the decoration sheet and the cost estimate</li><li>Send a pack to your own factory for a quotation, or ask Future Basics to make it</li><li>Costs are estimates: the factory's quote confirms them</li></ul>
       <a class="go" id="labGo" href="https://hub.thefuturebasics.com/join?for=lab">Open the Design Lab</a></article>
@@ -108,8 +108,8 @@
     const r=await fetch('/v1/pricing'),p=await r.json();
     if(p.single)$('#single').innerHTML=usd(p.single.amountCents)+'<small> / pack</small>';
     if(p.membership){$('#member').innerHTML=usd(p.membership.amountCents)+'<small> / month</small>';$('#memberGo').href=p.membership.url}
-    else{$('#memberPlan').hidden=true;document.getElementById('plans').style.gridTemplateColumns='repeat(3,minmax(0,1fr))'}
-    if(p.lab&&p.lab.enabled!==false){$('#labPrice').textContent=usd(p.lab.feeCents);$('#labTerms').textContent=`for ${p.lab.days} days · ${p.lab.includedAi} AI generations included, then ${usd(p.lab.aiPriceCents)} each`}else if(p.lab){$('#labPlan').style.display='none';$('#designPlans').style.gridTemplateColumns='repeat(2,minmax(0,1fr))'}
+    else{$('#memberPlan').hidden=true;document.getElementById('plans').style.setProperty('--cols','3')}
+    if(p.lab&&p.lab.enabled!==false){$('#labPrice').textContent=usd(p.lab.feeCents);$('#labTerms').textContent=`for ${p.lab.days} days · ${p.lab.includedAi} AI generations included, then ${usd(p.lab.aiPriceCents)} each`}else if(p.lab){$('#labPlan').style.display='none';$('#designPlans').style.setProperty('--cols','2')}
     if(p.design){if(p.design.pieceCents)$('#dPiece').innerHTML=usd(p.design.pieceCents)+'<small> / piece</small>';if(p.design.lineCents)$('#dLine').innerHTML='From '+usd(p.design.lineCents);for(const id of ['#dPieceGo','#dLineGo'])$(id).href=p.design.contactUrl}
     if(p.billing===false){const n=$('#billingNote');n.hidden=false;n.textContent='Packs are free while we are launching. These are the prices that will apply after.'}
   }catch{}
