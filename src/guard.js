@@ -34,10 +34,12 @@ export function robotsTxt() {
 const cookieOf = (req, name) => { for (const part of String(req.headers.cookie || '').split(';')) { const i = part.indexOf('='); if (i > 0 && part.slice(0, i).trim() === name) return decodeURIComponent(part.slice(i + 1).trim()); } return ''; };
 const secureReq = req => req.protocol === 'https' || /^https/i.test(String(req.headers['x-forwarded-proto'] || ''));
 
-export function registerGuard(app, { secret, authenticate, labGate }) {
+export function registerGuard(app, { secret, authenticate, labGate, stillValid = async () => true }) {
+  // a valid cookie, from a person still in good standing (not signed out everywhere, not taken off their room's team since)
   async function session(req) {
     const t = cookieOf(req, LAB_COOKIE); if (!t) return null;
-    try { return (await jwtVerify(t, secret, { issuer: ISS, audience: AUD })).payload; } catch { return null; }
+    let p; try { p = (await jwtVerify(t, secret, { issuer: ISS, audience: AUD })).payload; } catch { return null; }
+    return (await stillValid(p).catch(() => false)) ? p : null;
   }
   // the Lab session: the same checks as any Lab API call, then a cookie the pages and their scripts can travel on
   app.get('/v1/lab/door', { preHandler: [authenticate, labGate] }, async (req, reply) => {
@@ -52,7 +54,7 @@ export function registerGuard(app, { secret, authenticate, labGate }) {
     if (req.method !== 'GET' && req.method !== 'HEAD') return;
     const p = String(req.url || '').split('?')[0];
     if (!labGuarded(p)) return;
-    if (await session(req)) { req.labPage = true; return; }
+    { const s = await session(req); if (s) { req.labPage = s; return; } } // the Lab session's account: the copy watch counts pulls against it
     reply.header('cache-control', 'no-store').header('x-robots-tag', 'noindex, nofollow');
     if (!isPage(p)) return reply.code(401).type('text/plain; charset=utf-8').send('Sign in to the Design Lab first');
     return reply.code(200).type('text/html; charset=utf-8').send(DOOR);

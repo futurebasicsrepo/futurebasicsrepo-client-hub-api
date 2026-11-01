@@ -4,6 +4,7 @@ import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
 import { SignJWT, createRemoteJWKSet, jwtVerify } from 'jose';
 import { registerGuard } from './guard.js';
+import { createWatch } from './watch.js';
 import { createHash, createHmac, timingSafeEqual, randomBytes, randomInt, randomUUID } from 'node:crypto';
 import { createReadStream, createWriteStream, mkdirSync, readFileSync } from 'node:fs';
 import { unlink, writeFile, mkdir, readFile } from 'node:fs/promises';
@@ -149,6 +150,9 @@ await app.register(multipart, {
   limits: { fileSize: Number(process.env.MAX_UPLOAD_BYTES || 25_000_000), files: 5, fields: 40 },
   attachFieldsToBody: false
 });
+// copy watch and export fingerprints (src/watch.js): before the compression below, so it reads and marks the file itself
+const watch = createWatch({ pool, log: app.log }); await watch.ensure().catch(e => app.log.warn({ err: e.message }, 'copy watch tables not ready'));
+app.addHook('onSend', watch.onSend);
 app.addHook('onSend', async (_req, reply, payload) => {
   reply
     .header('strict-transport-security', 'max-age=31536000')
@@ -216,9 +220,15 @@ async function validateClientDomains(values, clientId = null) {
 
 // whether a client user was taken off their room's team (held for 20 seconds; the team routes forget a user the moment they change them)
 const removedCache=new Map();
-// a person's standing on their room: taken off the team, or moved to another room by Future Basics (both end the session they hold)
-async function userState(id){if(!/^[0-9a-f-]{36}$/i.test(String(id||'')))return{removed:false,clientId:null};const c=removedCache.get(id);if(c&&Date.now()-c.at<20000)return c;
-  const u=(await pool.query('select removed_at,client_id from users where id=$1',[id])).rows[0];const st={removed:Boolean(u?.removed_at),clientId:u?.client_id||null,at:Date.now()};removedCache.set(id,st);if(removedCache.size>5000)removedCache.clear();return st}
+// a person's standing: taken off their room's team, moved to another room by Future Basics, or signed out everywhere (each ends the sessions they hold)
+async function userState(id){if(!/^[0-9a-f-]{36}$/i.test(String(id||'')))return{removed:false,clientId:null,validAfter:0};const c=removedCache.get(id);if(c&&Date.now()-c.at<20000)return c;
+  const u=(await pool.query('select removed_at,client_id,sessions_valid_after from users where id=$1',[id])).rows[0];const st={removed:Boolean(u?.removed_at),clientId:u?.client_id||null,validAfter:u?.sessions_valid_after?new Date(u.sessions_valid_after).getTime():0,at:Date.now()};removedCache.set(id,st);if(removedCache.size>5000)removedCache.clear();return st}
+// a session issued before the person's "signed out everywhere" time, or in the same second (the token carries whole seconds, and the sign-out wins the tie)
+const signedOut=(st,iat)=>Boolean(st.validAfter)&&Number(iat||0)<=Math.floor(st.validAfter/1000);
+// the same standing for the Lab's page cookie (src/guard.js): it is a session too
+async function sessionStillValid(p){const st=await userState(p?.sub);if(signedOut(st,p?.iat))return false;if(p?.role==='client'&&(st.removed||(st.clientId&&p.clientId&&st.clientId!==p.clientId)))return false;return true}
+// sign every session of one person out, now
+async function signOutEverywhere(id){await pool.query('update users set sessions_valid_after=now() where id=$1',[id]);forgetUser(id)}
 const forgetUser=id=>removedCache.delete(id);
 async function authenticate(req, reply) {
   const token = req.headers.authorization?.replace(/^Bearer\s+/i, '');
@@ -229,6 +239,8 @@ async function authenticate(req, reply) {
   // address is verified with a code (by whoever really owns it), after which it must sign in like everyone else.
   if(req.auth.unverified){const u=(await pool.query('select email_verified_at from users where id=$1',[req.auth.sub])).rows[0];if(!u||u.email_verified_at)return reply.code(401).send({error:'Invalid or expired session'})}
   if(req.auth.preview&&!['GET','HEAD','OPTIONS'].includes(req.method))return reply.code(403).send({error:'Client preview is read-only'});
+  // signed out everywhere (by the person, or by Danielle or Kyle): a session from before then stops working at once
+  if(!req.auth.preview&&signedOut(await userState(req.auth.sub),req.auth.iat))return reply.code(401).send({error:'This session was signed out. Sign in again.',code:'SIGNED_OUT'});
   // a teammate the room took off its team: the session they still hold stops working at once
   if(req.auth.role==='client'&&!req.auth.preview){const st=await userState(req.auth.sub);if(st.removed)return reply.code(401).send({error:'You are no longer on this room\'s team',code:'REMOVED'});
     // moved to another room (the work console's "Move them here"): the old room's session ends, and signing in again opens the new one
@@ -715,7 +727,7 @@ const labAccess=createLabAccess({ pool, log: app.log, clientHubUrl,
 app.addHook('onResponse',async(req,reply)=>{if(req.labCharges?.length&&reply.statusCode>=500)await labAccess.refund(req).catch(err=>app.log.warn({err:err.message},'design lab charge not given back'))});
 const labGate=labAccess.gate, labDeps={ authenticate, adminOnly: labGate, staffOnly: adminOnly, lab: labAccess };
 // the Lab's pages, engines and drawings only for the people the Lab is open to; robots.txt and noindex for everything but the public pages (src/guard.js)
-registerGuard(app, { secret, authenticate, labGate });
+registerGuard(app, { secret, authenticate, labGate, stillValid: sessionStillValid });
 registerLabArtRoutes(app, { pool, ...labDeps, art: labArt });
 const lab=registerLabRoutes(app, { pool, ...labDeps, getSetting, setSetting, log: app.log, art: labArt,
   ...(process.env.PROTOTYPE_TEST_ORIGIN ? { delayMs: 0, crawlOpts: { lookup: async () => [{ address: '93.184.216.34' }], fetchImpl: (u, o) => { const x = new URL(u); return fetch(process.env.PROTOTYPE_TEST_ORIGIN + x.pathname + x.search, { ...o, headers: { ...(o && o.headers), 'x-original-host': x.hostname } }); } } } : {}) });
@@ -957,6 +969,14 @@ app.get('/v1/session', { preHandler: authenticate }, async (req, reply) => {
   if (!client || (req.auth.role !== 'admin' && (client.archived_at || ['archive','archived'].includes(client.status)))) return reply.code(404).send({ error: 'Client workspace not found' });
   return { user: { id: req.auth.sub, email: req.auth.email, role: req.auth.role, preview: req.auth.preview === true }, client, workHubUrl, clientHubUrl };
 });
+// Sign out everywhere: every session issued before now stops working (the API sign-in and the Lab page cookie), on every device.
+// A person does it for themselves; Future Basics staff do it for a client's person, and only Danielle and Kyle for someone on the team.
+app.post('/v1/session/sign-out-everywhere',{preHandler:authenticate},async req=>{await signOutEverywhere(req.auth.sub);app.log.info({user:req.auth.sub},'signed out everywhere');return{ok:true}});
+app.post('/v1/admin/users/:id/sign-out',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  if(!/^[0-9a-f-]{36}$/i.test(String(req.params.id)))return reply.code(404).send({error:'No one by that id'});
+  const u=(await pool.query('select id,email,role from users where id=$1',[req.params.id])).rows[0];if(!u)return reply.code(404).send({error:'No one by that id'});
+  if(u.role==='admin'&&u.id!==req.auth.sub&&!(req.staff||await staffAccess.reachOf(req.auth)).owner)return reply.code(403).send({error:'Only Danielle and Kyle can sign someone on the team out'});
+  await signOutEverywhere(u.id);app.log.info({user:u.id,by:req.auth.sub},'signed out everywhere by staff');return{ok:true,email:u.email}});
 app.post('/v1/admin/clients/:id/preview-session',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const client=(await pool.query('select id,slug,name from clients where id=$1 and slug<>\'future-basics\'',[req.params.id])).rows[0];if(!client)return reply.code(404).send({error:'Client not found'});
   const code=randomBytes(32).toString('base64url');await pool.query(`insert into preview_sessions(code_hash,admin_user_id,client_id,expires_at)
@@ -1024,6 +1044,7 @@ app.get('/v1/admin/platform/health',{preHandler:[authenticate,adminOnly]},async 
     facts:shopifyConfigured()?[['Last successful run',ago(payState.lastOkAt)],['Last run read',`${payState.scanned??0} paid ${payState.scanned===1?'order':'orders'} · ${payState.imported??0} new · ${payState.unlocked??0} ${payState.unlocked===1?'pack':'packs'} unlocked`],['Not matched to a room',String((payState.unmatched||[]).length)],['In the ledger',`${payStats.count} ${payStats.count===1?'payment':'payments'} · $${(payStats.totalCents/100).toLocaleString()}`],['Last 24 hours',`${payStats.lastDay} ${payStats.lastDay===1?'payment':'payments'}`],['Paid but still locked',String(payStats.paidButLocked)],['Payers without a store customer link',String(payStats.unlinkedPayers)],['Store spend last refreshed',ago(payStats.lastSpendRefresh)]]:[]};
   checks.splice(Math.max(1,checks.findIndex(c=>c.id==='shopify')+1),0,payCheck);
   // The parts of the platform that came after the first checks: AI readers, listening sources, sales email, chat, automations, GitHub sync, client stores.
+  checks.push(await watch.check().catch(e=>({id:'copywatch',name:'Copy watch (library pulls, exports)',group:'security',status:'warn',summary:`The copy watch could not be read: ${String(e.message).slice(0,120)}`,facts:[]})));
   checks.push(...await coverageChecks({pool,env:process.env,telemetry,getSetting}).catch(e=>[{id:'coverage',name:'More checks',group:'integration',status:'warn',summary:`The extra checks could not run: ${String(e.message).slice(0,160)}`,facts:[]}]));
   const recentPayments=(await pool.query(`select py.id,py.kind,py.title,py.amount_cents,py.shopify_order_name,py.paid_at,py.source,c.name client_name from payments py join clients c on c.id=py.client_id order by py.paid_at desc limit 8`).catch(()=>({rows:[]}))).rows;
   const events=(await pool.query('select id,at,source,level,message from platform_events order by id desc limit 25').catch(()=>({rows:[]}))).rows;
@@ -1032,6 +1053,8 @@ app.get('/v1/admin/platform/health',{preHandler:[authenticate,adminOnly]},async 
     jobs:telemetry.jobs.map(j=>({...j,health:jobHealth(j)})),telemetry:{since:telemetry.since,uptimeSec:telemetry.uptimeSec,integrations:telemetry.integrations,requests:telemetry.requests,eventLoop:telemetry.eventLoop},events,payments:{recent:recentPayments,unmatched:payState.unmatched||[],lastRunAt:payState.lastRunAt||null,lastOkAt:payState.lastOkAt||null,lastError:payState.lastError||null,runs:payState.runs||0,stats:payStats}};
   const safe=redactSecrets(body);healthCache={at:Date.now(),body:safe};return safe;
 });
+// trace a file found elsewhere back to the export it came from (the reference is inside the file, or in its x-export-ref header)
+app.get('/v1/admin/exports/:ref',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{const r=await watch.lookup(req.params.ref);return r?{export:r}:reply.code(404).send({error:'No export has that reference'})});
 app.get('/v1/admin/platform/insights',{preHandler:[authenticate,adminOnly]},async req=>platformInsights(pool,{days:req.query?.days,priceCents:TECH_PACK_PRICE_CENTS}));
 app.get('/v1/admin/shopify/status',{preHandler:[authenticate,adminOnly]},async()=>{
   const result={configured:shopifyConfigured(),connected:false,techPackProduct:await techPackProductId().catch(()=>''),storeDomain:process.env.SHOPIFY_STORE_DOMAIN||'thefuturebasics.com',

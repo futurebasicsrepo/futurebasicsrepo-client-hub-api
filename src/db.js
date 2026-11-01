@@ -1095,6 +1095,8 @@ export async function migrate() {
     -- (or the starting techniques being put in) would wait on each other
     do $$ begin
       if not exists(select 1 from information_schema.columns where table_name='users' and column_name='removed_at') then alter table users add column removed_at timestamptz; end if;
+      -- sign out everywhere (src/server.js authenticate): every session issued before this time stops working
+      if not exists(select 1 from information_schema.columns where table_name='users' and column_name='sessions_valid_after') then alter table users add column sessions_valid_after timestamptz; end if;
       if not exists(select 1 from information_schema.columns where table_name='users' and column_name='invited_by') then alter table users add column invited_by uuid references users(id) on delete set null; end if;
       if not exists(select 1 from information_schema.columns where table_name='users' and column_name='invited_at') then alter table users add column invited_at timestamptz; end if;
       if not exists(select 1 from information_schema.columns where table_name='lab_materials' and column_name='client_id') then alter table lab_materials add column client_id uuid references clients(id) on delete cascade; end if;

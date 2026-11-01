@@ -9,7 +9,8 @@
     "eval:export": "node scripts/eval-export.mjs",
     "eval": "node scripts/eval-run.mjs",
     "journeys": "bash scripts/journeys/run.sh",
-    "flat-masks": "node scripts/make-flat-masks.mjs"
+    "flat-masks": "node scripts/make-flat-masks.mjs",
+    "audit:deps": "npm audit --omit=dev --audit-level=high"
   },
   "engines": {
     "node": ">=22"

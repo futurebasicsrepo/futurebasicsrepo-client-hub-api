@@ -4435,5 +4435,60 @@ await journey('J276', 'The Lab\'s own work stays with the people it is open to: 
   } else ok(true, 'needs a browser');
 });
 
+await journey('J277', 'Copy watch: a file the Lab exports carries a reference that traces it to the account and room; a client pulling library files far past normal work is noted on Platform health, then paused on them for the hour; staff are recorded, never paused', async () => {
+  const email = `watch-${stamp}@selfserve.test`, started = await call('/v1/public/start', { body: { email, name: 'Watch Room', title: 'First tee', photos: [jpeg()] } });
+  const cid = started.json.client?.id || sql(`select client_id from users where lower(email)='${email}'`), uid = sql(`select id from users where lower(email)='${email}'`).split('\n')[0], slug = sql(`select slug from clients where id='${cid}'`).split('\n')[0];
+  sql(`update users set email_verified_at=now() where id='${uid}'`); sql(`update clients set lab_free=true where id='${cid}'`);
+  const clientT = await forge({ sub: uid, clientId: cid, client: slug, role: 'client', email });
+  const img = await sharp({ create: { width: 200, height: 120, channels: 4, background: { r: 20, g: 60, b: 30, alpha: 1 } } }).png().toBuffer();
+  const up = await call('/v1/lab/library/graphics/upload', { token: clientT, body: { image: `data:image/png;base64,${img.toString('base64')}`, name: 'Watch crest' } });
+  ok(up.status === 201, '1. the client adds a graphic to their library', up.status); const gid = up.json.id;
+  const pull = t => fetch(`${BASE}/v1/lab/library/graphics/${gid}/vector.svg`, { headers: { Authorization: 'Bearer ' + t } });
+  // the fingerprint
+  const f = await pull(clientT), svg = await f.text(), ref = f.headers.get('x-export-ref') || '';
+  ok(f.status === 200 && /^[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}$/.test(ref), '2. the vector file goes out with a reference', ref);
+  ok(svg.includes(`<!-- Future Basics export ${ref}`) && /for Watch Room/.test(svg) && /not for redistribution or AI training/.test(svg) && /<svg[\s>]/.test(svg), '   written inside it as a comment (the room, the date, no AI training), and it is still an SVG');
+  const lk = await call(`/v1/admin/exports/${ref.toLowerCase()}`, { token: kyleT });
+  ok(lk.status === 200 && lk.json.export.email === email && lk.json.export.room === 'Watch Room' && /vector\.svg$/.test(lk.json.export.path) && lk.json.export.marked === true, '3. staff trace a found file back to who took it, from which room, and what', lk.json.export);
+  ok((await call(`/v1/admin/exports/${ref}`, { token: clientT })).status === 403 && (await call('/v1/admin/exports/0000-0000-0000', { token: kyleT })).status === 404, '   a client cannot look references up; an unknown one is not found');
+  // pulling far past normal work: a notice at 150 in the hour, a pause at 750
+  const statuses = []; for (let i = 1; i < 750; i += 25) statuses.push(...await Promise.all(Array.from({ length: Math.min(25, 750 - i) }, () => pull(clientT).then(r => r.status))));
+  ok(statuses.length === 749 && statuses.every(s => s === 200), '4. ordinary pulls are never stopped (750 in an hour all answered)', [...new Set(statuses)]);
+  const ev = () => sql(`select kind||':'||category||':'||count from security_events where user_id='${uid}' order by id`).split('\n').filter(Boolean);
+  ok(ev()[0] === 'unusual-pull:graphic:151', '   but the 151st was recorded as an unusual pull', ev());
+  const stop = await pull(clientT), sj = await stop.json().catch(() => ({}));
+  ok(stop.status === 429 && sj.code === 'PULL_LIMIT' && /rest of the hour/.test(sj.error || '') && !stop.headers.get('content-disposition'), '5. past five times the notice level the room is paused on graphic files for the rest of the hour', [stop.status, sj.code]);
+  ok(ev().includes('paused:graphic:751'), '   and the pause is recorded', ev());
+  ok((await call('/v1/lab/concepts', { token: clientT })).status === 200, '   the rest of the Lab keeps working for them');
+  ok((await pull(kyleT)).status === 200, '6. staff are not paused by a client\'s count, and never by their own');
+  const h = (await call('/v1/admin/platform/health?fresh=1', { token: kyleT })).json, cw = (h.checks || []).find(c => c.id === 'copywatch');
+  ok(cw && cw.group === 'security' && cw.status === 'down' && /paused/.test(cw.summary) && cw.facts.some(([, v]) => /Paused: .*Watch Room.*graphic files/.test(v)), '7. Platform health shows the copy watch: who was paused, from which room, on what', cw && [cw.status, cw.summary, cw.facts]);
+  sql(`delete from security_events where user_id='${uid}'`);
+});
+
+await journey('J278', 'Sign out everywhere: a person ends every session they hold (the hub sign-in and the Lab page cookie) in one tap, staff can do it for a client\'s person, and signing in again works at once', async () => {
+  const email = `signout-${stamp}@selfserve.test`, started = await call('/v1/public/start', { body: { email, name: 'Lost Phone Co', title: 'First tee', photos: [jpeg()] } });
+  const cid = started.json.client?.id || sql(`select client_id from users where lower(email)='${email}'`), uid = sql(`select id from users where lower(email)='${email}'`).split('\n')[0], slug = sql(`select slug from clients where id='${cid}'`).split('\n')[0];
+  sql(`update users set email_verified_at=now() where id='${uid}'`); sql(`update clients set lab_free=true where id='${cid}'`);
+  const sign = () => forge({ sub: uid, clientId: cid, client: slug, role: 'client', email });
+  const laptop = await sign(), phone = await sign();
+  const cookieOf = async t => ((await fetch(`${BASE}/v1/lab/door`, { headers: { Authorization: 'Bearer ' + t } })).headers.get('set-cookie') || '').split(';')[0];
+  const labCookie = await cookieOf(phone);
+  ok((await call('/v1/session', { token: laptop })).status === 200 && (await call('/v1/session', { token: phone })).status === 200 && (await fetch(`${BASE}/lab/lab-pattern.js`, { headers: { Cookie: labCookie } })).status === 200, '1. signed in on a laptop and a phone, with the Lab open on the phone');
+  const out = await call('/v1/session/sign-out-everywhere', { token: laptop, body: {} });
+  ok(out.status === 200, '2. from the laptop: sign out everywhere', out.status);
+  const after = await call('/v1/session', { token: phone });
+  ok(after.status === 401 && after.json.code === 'SIGNED_OUT' && (await call('/v1/session', { token: laptop })).status === 401, '3. the phone\'s session (and the laptop\'s own) stops working at once', [after.status, after.json.code]);
+  ok((await fetch(`${BASE}/lab/lab-pattern.js`, { headers: { Cookie: labCookie } })).status === 401 && /Opening the Design Lab/.test(await (await fetch(`${BASE}/lab/studio`, { headers: { Cookie: labCookie } })).text()), '   and so does the Lab cookie the phone had: the engines refuse it, the Studio shows the door');
+  await sleep(1100); const fresh = await sign();
+  ok((await call('/v1/session', { token: fresh })).status === 200 && (await fetch(`${BASE}/lab/lab-pattern.js`, { headers: { Cookie: await cookieOf(fresh) } })).status === 200, '4. signing in again works straight away, the Lab too');
+  // staff for a client's person (a lost phone reported to us)
+  const r = await call(`/v1/admin/users/${uid}/sign-out`, { token: kyleT, body: {} });
+  ok(r.status === 200 && r.json.email === email && (await call('/v1/session', { token: fresh })).status === 401, '5. Future Basics signs a client\'s person out everywhere from the work console', r.status);
+  ok((await call(`/v1/admin/users/${uid}/sign-out`, { token: (await sleep(1100), await sign()), body: {} })).status === 403, '   a client cannot use the staff route');
+  ok((await call('/v1/admin/users/00000000-0000-0000-0000-000000000000/sign-out', { token: kyleT, body: {} })).status === 404, '   an unknown person is not found');
+  ok((await call('/v1/session', { token: kyleT })).status === 200, '   and the staff member who did it is still signed in');
+});
+
 shops.close(); brave.close();
 process.exit(summary() ? 1 : 0);
