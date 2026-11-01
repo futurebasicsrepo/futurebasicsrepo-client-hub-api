@@ -920,6 +920,11 @@ await journey('J115', 'one CRM for every customer: hub clients and the people wh
   let c = await mine(room.email); ok(c && c.source === 'hub' && c.clientId === cid && c.tags.includes('lead') && !c.tags.includes('client') && (hasTP ? c.tags.includes('tech-pack') : true), 'a website lead is tagged lead (and tech-pack when they have a tech pack)', c);
   ok(hasTP, 'setup: the room has a tech pack, so the tech-pack tag is expected');
   const r2 = await S('/import/hub', { body: {} }); ok(r2.json.created === 0 && r2.json.updated === 0, 'running it again changes nothing', r2.json);
+  // one person in two rooms (a lead in theirs, the contact of a client room too): tagged once, as a client, and the sync settles
+  const other = sql(`insert into clients(slug,name,status,contact_email) values('both-${stamp}','Both Rooms ${stamp}','active','${room.email}') returning id`).split('\n')[0];
+  const r3 = await S('/import/hub', { body: {} }), r4 = await S('/import/hub', { body: {} }); c = await mine(room.email);
+  ok(c.tags.includes('client') && !c.tags.includes('lead') && r4.json.updated === 0 && r4.json.created === 0, '   a person in a lead room and a client room is a client, and the next sync changes nothing', [c.tags, r3.json, r4.json]);
+  sql(`update clients set archived_at=now() where id='${other}'`); await S('/import/hub', { body: {} }); c = await mine(room.email);
 
   // staff tags survive; hub tags follow the hub
   await S(`/contacts/${c.id}`, { method: 'PUT', body: { tags: [...c.tags, 'Builds', 'VIP Client'] } });

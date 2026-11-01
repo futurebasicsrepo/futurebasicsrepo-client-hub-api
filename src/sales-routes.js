@@ -57,33 +57,44 @@ export async function syncHubContacts(pool, { actor = null } = {}) {
   const users = (await pool.query(`select client_id, lower(email) email, name from users where client_id is not null and email is not null and role <> 'admin' and email not like '%@thefuturebasics.com'`)).rows;
   const byClient = new Map(); for (const u of users) (byClient.get(u.client_id) || byClient.set(u.client_id, []).get(u.client_id)).push(u);
   const out = { clients: clients.length, people: 0, created: 0, alreadyThere: 0, updated: 0, skipped: 0 };
+  // One person can be in more than one room (they started on /start, then were added to a client's team). Gather each person's rooms
+  // first and decide their tags once: client when any room is a client (else lead), tech-pack when any room has one. Deciding room by
+  // room would write their tags twice a run, one room undoing the other, and the sync would never settle.
+  const everyone = new Map(); // email -> { name, phone, rooms }
   for (const c of clients) {
-    const people = new Map();
-    const lead = cleanEmail(c.contact_email); if (lead) people.set(lead, c.contact_name || '');
-    for (const u of byClient.get(c.id) || []) { const e = cleanEmail(u.email); if (e && !people.has(e)) people.set(e, u.name || ''); }
-    if (!people.size) { out.skipped++; continue; }
-    const want = [c.status === 'lead' ? 'lead' : 'client', ...(c.has_tech_pack ? ['tech-pack'] : [])];
-    for (const [email, name] of people) {
-      out.people++;
-      let co = null; const existing = (await pool.query('select id,name,phone,client_id,tags,email_ok,company_id from sales_contacts where lower(email)=$1', [email])).rows[0];
-      if (!existing) {
-        if (c.name) co = (await pool.query(`insert into sales_companies(name) values($1) on conflict (lower(name)) do update set name=sales_companies.name returning id`, [c.name])).rows[0].id;
-        const row = (await pool.query(`insert into sales_contacts(name,email,phone,company_id,source,tags,client_id,email_ok) values($1,$2,$3,$4,'hub',$5,$6,$7) returning id`, [name, email, email === lead ? c.contact_phone || '' : '', co, want, c.id, !c.marketing_opt_out_at])).rows[0];
-        await pool.query(`insert into sales_activities(contact_id,kind,text,actor_id) values($1,'system',$2,$3)`, [row.id, `Added from the hub (${c.status === 'lead' ? 'website lead' : 'client'}: ${c.name})`, actor]);
-        if (c.marketing_opt_out_at) await pool.query(`insert into sales_activities(contact_id,kind,text) values($1,'system','Opted out of marketing email in the hub. Marked as not to be emailed.')`, [row.id]);
-        await fireTagsAdded(pool, row.id, [], want);
-        out.created++; continue;
-      }
-      out.alreadyThere++;
-      const keep = (existing.tags || []).filter(t => !AUTO_TAGS.includes(t)), next = [...new Set([...keep, ...want])].sort(), cur = [...(existing.tags || [])].sort();
-      const optOut = c.marketing_opt_out_at && existing.email_ok;
-      if (!existing.client_id || next.join() !== cur.join() || (!existing.name && name) || (!existing.company_id && c.name) || optOut) {
-        if (!existing.company_id && c.name) co = (await pool.query(`insert into sales_companies(name) values($1) on conflict (lower(name)) do update set name=sales_companies.name returning id`, [c.name])).rows[0].id;
-        await pool.query(`update sales_contacts set client_id=coalesce(client_id,$2), tags=$3, name=case when name='' then $4 else name end, company_id=coalesce(company_id,$5), email_ok=case when $6 then false else email_ok end, updated_at=now() where id=$1`, [existing.id, c.id, next, name, co, Boolean(optOut)]);
-        if (optOut) await pool.query(`insert into sales_activities(contact_id,kind,text) values($1,'system','Opted out of marketing email in the hub. Marked as not to be emailed.')`, [existing.id]);
-        await fireTagsAdded(pool, existing.id, existing.tags || [], next);
-        out.updated++;
-      }
+    const emails = new Map();
+    const lead = cleanEmail(c.contact_email); if (lead) emails.set(lead, c.contact_name || '');
+    for (const u of byClient.get(c.id) || []) { const e = cleanEmail(u.email); if (e && !emails.has(e)) emails.set(e, u.name || ''); }
+    if (!emails.size) { out.skipped++; continue; }
+    for (const [email, name] of emails) {
+      const p = everyone.get(email) || everyone.set(email, { name: '', phone: '', rooms: [] }).get(email);
+      if (!p.name && name) p.name = name;
+      if (!p.phone && email === lead && c.contact_phone) p.phone = c.contact_phone;
+      p.rooms.push(c);
+    }
+  }
+  for (const [email, { name, phone, rooms }] of everyone) {
+    out.people++;
+    const c = rooms[0], isLead = rooms.every(r => r.status === 'lead'), optedOut = rooms.some(r => r.marketing_opt_out_at);
+    const want = [isLead ? 'lead' : 'client', ...(rooms.some(r => r.has_tech_pack) ? ['tech-pack'] : [])];
+    let co = null; const existing = (await pool.query('select id,name,phone,client_id,tags,email_ok,company_id from sales_contacts where lower(email)=$1', [email])).rows[0];
+    if (!existing) {
+      if (c.name) co = (await pool.query(`insert into sales_companies(name) values($1) on conflict (lower(name)) do update set name=sales_companies.name returning id`, [c.name])).rows[0].id;
+      const row = (await pool.query(`insert into sales_contacts(name,email,phone,company_id,source,tags,client_id,email_ok) values($1,$2,$3,$4,'hub',$5,$6,$7) returning id`, [name, email, phone, co, want, c.id, !optedOut])).rows[0];
+      await pool.query(`insert into sales_activities(contact_id,kind,text,actor_id) values($1,'system',$2,$3)`, [row.id, `Added from the hub (${isLead ? 'website lead' : 'client'}: ${rooms.map(r => r.name).filter(Boolean).join(', ')})`, actor]);
+      if (optedOut) await pool.query(`insert into sales_activities(contact_id,kind,text) values($1,'system','Opted out of marketing email in the hub. Marked as not to be emailed.')`, [row.id]);
+      await fireTagsAdded(pool, row.id, [], want);
+      out.created++; continue;
+    }
+    out.alreadyThere++;
+    const keep = (existing.tags || []).filter(t => !AUTO_TAGS.includes(t)), next = [...new Set([...keep, ...want])].sort(), cur = [...(existing.tags || [])].sort();
+    const optOut = optedOut && existing.email_ok;
+    if (!existing.client_id || next.join() !== cur.join() || (!existing.name && name) || (!existing.company_id && c.name) || optOut) {
+      if (!existing.company_id && c.name) co = (await pool.query(`insert into sales_companies(name) values($1) on conflict (lower(name)) do update set name=sales_companies.name returning id`, [c.name])).rows[0].id;
+      await pool.query(`update sales_contacts set client_id=coalesce(client_id,$2), tags=$3, name=case when name='' then $4 else name end, company_id=coalesce(company_id,$5), email_ok=case when $6 then false else email_ok end, updated_at=now() where id=$1`, [existing.id, c.id, next, name, co, Boolean(optOut)]);
+      if (optOut) await pool.query(`insert into sales_activities(contact_id,kind,text) values($1,'system','Opted out of marketing email in the hub. Marked as not to be emailed.')`, [existing.id]);
+      await fireTagsAdded(pool, existing.id, existing.tags || [], next);
+      out.updated++;
     }
   }
   return out;
