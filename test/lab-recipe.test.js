@@ -104,6 +104,7 @@ test('every add-on a base offers changes the drawing, or is shown as already on 
     }
   }
   assert.ok(pocketless('pants') && !pocketless('tee', ['chest-pocket'])); // contrast waits for a pocket it can colour
+  assert.ok(drawnOn('tee-boxy').includes('cropped') && !drawnOn('tee').includes('cropped')); // the boxy tee's sketch is already cropped
   assert.ok(drawnOn('hoodie').includes('kangaroo')); // the pullover hoodie draws its kangaroo pocket
   assert.ok(!drawnOn('hoodie', ['cropped']).includes('kangaroo')); // the cropped hoodie does not, so it can be added
 });
