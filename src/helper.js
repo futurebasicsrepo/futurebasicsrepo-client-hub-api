@@ -442,6 +442,8 @@ dialog .fbh-tog.on{display:none}
   body:has(:is(input:not([type=checkbox]):not([type=radio]):not([type=range]),textarea,select):focus) .fbh-tog:not(.on){display:none}}
 @media(max-width:900px),(hover:none){dialog .fbh-tog:not(.on){display:none}}
 .fbh-tog.away{opacity:.18;pointer-events:none;transition:opacity .2s}
+/* at rest on a phone the tab is a slim handle that stays in the page's side gutter, so it never covers the start of a row */
+@media(max-width:600px),(hover:none){.fbh-tog:not(.on){width:24px;min-height:36px;padding:0 3px 0 2px;justify-content:center}.fbh-tog:not(.on) .face{width:18px;height:15px}}
 /* off, with a mouse, it is the mouse alone until pointed at, so it covers as little of the page as it can */
 @media(hover:hover){.fbh-tog:not(.on):not(:hover):not(:focus-visible){padding:6px 8px;gap:0}.fbh-tog:not(.on):not(:hover):not(:focus-visible)>:not(.face){display:none}}
 .fbh-tog:hover{transform:translateY(-1px)}.fbh-tog:focus-visible,.fbh button:focus-visible{outline:3px solid #4bff9a;outline-offset:2px}

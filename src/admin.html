@@ -251,8 +251,8 @@ body{overflow-x:clip}
 .sw-where{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:14px}.sw-where select,.sw-stagepick select{margin-left:6px}.sw-stagepick{display:flex;align-items:center;font-size:14px}
 .pane-off{display:none!important}
 
-/* on a phone the clients list comes first: the hero is a single line, without the orbit and the moving rail */
-@media(max-width:640px){#app .hero{min-height:0!important;display:block;padding:0 0 14px;border-bottom:0}#app .hero-graphic,#app .motion-rail{display:none!important}#app .hero-copy .meta{display:none}#app .hero-copy h1{font-size:34px!important;margin:0}}
+/* on a phone the clients list comes first: the section tab already says Clients, so the banner, the orbit and the moving rail are left out */
+@media(max-width:640px){#app>.hero,#app>.motion-rail{display:none!important}#app .hero-graphic{display:none!important}#app #clientsHead{margin-top:0}}
 </style><link rel="stylesheet" href="/chat.css"><script src="/feedback.js"></script>
 <link rel="stylesheet" href="/cue.css">
 </head>

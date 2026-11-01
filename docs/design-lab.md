@@ -1504,7 +1504,7 @@ Journey J273 covers all four.
 - **Materials kinds** sit in one sliding row with a fade at the edge. The picked kind scrolls into view, and search takes the full width.
 - **The Studio's concept list** (also `/lab/engineer` with no concept) wraps long names inside the screen.
 - **The help tab** fades out (and ignores taps) while the page scrolls on a phone, and comes back when the page rests. It fades rather than slides so it never sits past the edge of the screen.
-- **The Clients page** on a phone opens with a one-line heading; the orbit and the moving rail are hidden. A client cover photo that fails to load is removed rather than shown broken.
+- **The Clients page** on a phone opens straight on its clients. The section tab already says Clients, so the banner, the orbit and the moving rail are left out. A client cover photo that fails to load is removed rather than shown broken.
 
 Journey J274 covers these.
 
@@ -1515,3 +1515,11 @@ Journey J274 covers these.
 - **Controls with no name:** the sweep's flags on /help, /join, /prototypes and the tech pack were false positives. Each control has visible text, or is the hidden spam trap on /join, so nothing changed.
 
 Journey J275 covers the first two.
+
+## After the re-audit
+
+- **Help tab:** at rest on a phone it is a slim 24px handle that stays in the side gutter, so it no longer covers the start of a row. It still fades while the page scrolls.
+- **Studio header on a phone:** Edit recipe sits under More, so the Checklist, Save, More and Panel buttons fit on one row. The flats and pattern views have two rows of buttons instead of three.
+- **Clients on a phone:** the list starts right under the section tabs.
+
+J274 checks all three.
