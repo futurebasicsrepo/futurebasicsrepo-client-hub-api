@@ -166,6 +166,7 @@ await journey('J195', 'Design Lab in a browser: the library, filters, save and h
   const b = await playwright.chromium.launch(), errs = [];
   try {
     const feed = await mkBrand('Browser Feed', 'https://feedshop.test'); await SCAN(feed.id); // J194 removed the first one
+    const plain = await mkBrand('Browser Plain', 'https://plainshop.test'); await SCAN(plain.id); // the Chore Coat searched for below: its own, not one an earlier journey may have removed
     const oc = await b.newContext({ viewport: { width: 1280, height: 900 } }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
     const page = await oc.newPage(); page.on('pageerror', e => errs.push(String(e))); page.on('dialog', d => d.accept());
     await page.goto(`${BASE}/lab#research`, { waitUntil: 'networkidle' }); await page.waitForSelector('#items .card');
