@@ -4224,5 +4224,65 @@ await journey('J271', 'Prints you can judge before they are kept: a new print co
   } finally { sql(`delete from lab_art where id in (${arts.map(a => `'${a}'`).join(',') || "''"}) or name in ('Jasmine nights','Wave check blend') or (source='repeat' and name like 'Wave check blend%') or client_id='${cid}'`); }
 });
 
+await journey('J272', 'Materials that say too little are asked about, and shoes and plush are checked on their parts: a fabric with no weight shows a form on the check, and filling it in fixes the check and the library; a shoe with a patent vamp and a soft sole, and a plush with hard eyes, get specific findings on the checklist; filling in the eyes\' safety standard clears them; the Studio and the Pattern page show the same', async () => {
+  const made = [], mats = [];
+  const plushOk = m => !/3\s*\+|3 years|36 ?m|over 3/i.test(String(m?.spec?.safety || ''));
+  try {
+    const lib = async kind => (await K(`/materials?kind=${kind}`)).json.materials, key = (l, k) => l.find(m => m.key === k);
+    // a fabric with no weight: the check asks for it
+    const tee = await K('/concepts/from-recipe', { body: { base: 'tee', system: 'mono' } }); made.push(tee.json.concept.id); const T = tee.json.concept.id;
+    const myst = await K('/materials', { body: { kind: 'fabric', name: `Mystery jersey ${stamp}`, unit: 'm', priceCents: 500, spec: { construction: 'single jersey' } } }); mats.push(myst.json.material?.id || myst.json.id);
+    const mid = myst.json.material?.id || myst.json.id;
+    const on = (await K(`/concepts/${T}/materials`, { body: { material: mid, role: 'main' } })).json;
+    ok(on.fit?.asks?.some(a => a.id === mid && a.fields.includes('weightGsm')) && /missing/.test(on.fit.summary), '1. a fabric with no weight on it: the check asks for its weight', on.fit);
+    ok((await K(`/concepts/${T}/materials/${mid}/spec`, { method: 'PUT', body: {} })).status === 422, '   saving nothing is refused');
+    const filled = (await K(`/concepts/${T}/materials/${mid}/spec`, { method: 'PUT', body: { weightGsm: 90 } })).json;
+    ok(filled.filled?.includes('weightGsm') && filled.library === true && filled.fit.verdict === 'check' && /90 gsm, light for a tee/.test(filled.fit.findings[0]?.msg), '   filled in, the check reads it at once (90 gsm is light for a tee) and the library learns it', filled.fit);
+    ok(Number((await lib('fabric')).find(m => m.id === mid)?.spec?.weightGsm) === 90, '   the library material now has its weight');
+    // a shoe: a patent vamp on a soft, thin outsole
+    const shoe = await K('/concepts/from-scratch', { body: { category: 'footwear', style: 'sneaker', name: `Fit shoe ${stamp}` } }); made.push(shoe.json.concept?.id); const S = shoe.json.concept.id;
+    const fw = await lib('footwear');
+    await K(`/concepts/${S}/materials`, { body: { material: key(fw, 'fw-patent').id, part: 'upper' } });
+    const sole = await K('/materials', { body: { kind: 'footwear', name: `Soft sole ${stamp}`, unit: 'pair', priceCents: 300, spec: { category: 'outsole', composition: 'rubber', thicknessMm: 2 } } }); const sid = sole.json.material?.id || sole.json.id; mats.push(sid);
+    const sf = (await K(`/concepts/${S}/materials`, { body: { material: sid, part: 'outsole' } })).json.fit;
+    ok(sf?.verdict === 'check' && sf.findings.some(f => /patent/.test(f.msg)) && sf.findings.some(f => /thin for an outsole/.test(f.msg)) && sf.asks.some(a => a.fields.includes('hardness')), '2. a shoe is checked on its parts: the patent vamp cracks, the sole is thin, and its hardness is asked for', sf);
+    const sf2 = (await K(`/concepts/${S}/materials/${sid}/spec?part=outsole`, { method: 'PUT', body: { hardness: 50 } })).json.fit;
+    ok(sf2.findings.some(f => /50 Shore A, soft for an outsole/.test(f.msg)) && !sf2.asks.some(a => a.part === 'outsole'), '   given its hardness, the sole is read as too soft', sf2.findings.map(f => f.msg));
+    const rs = (await K(`/concepts/${S}/ready`)).json.items.find(i => i.id === 'fabric');
+    ok(rs?.state === 'warn' && /shoe/.test(rs.label), '   and the checklist says so for the shoe', rs);
+    // a plush: hard eyes on a minky body
+    const pl = await K('/concepts/from-scratch', { body: { category: 'plush', shape: 'bear', name: `Fit bear ${stamp}` } }); made.push(pl.json.concept?.id); const P = pl.json.concept.id;
+    const pm = await lib('plush');
+    await K(`/concepts/${P}/materials`, { body: { material: key(pm, 'pl-minky').id, part: 'body' } }); await K(`/concepts/${P}/materials`, { body: { material: key(pm, 'pl-fill').id, part: 'fill' } });
+    const ey = await K('/materials', { body: { kind: 'plush', name: `Hard eyes ${stamp}`, unit: 'pc', priceCents: 5, spec: { category: 'safety eye', composition: 'ABS' } } }), eyes = ey.json.material; mats.push(eyes.id);
+    ok(key(pm, 'pl-eyes') && !plushOk(key(pm, 'pl-eyes')), '3. the built-in safety eyes say 3+, so they pass; eyes that say nothing are checked');
+    const pf = (await K(`/concepts/${P}/materials`, { body: { material: eyes.id, part: 'eyes' } })).json.fit;
+    ok(pf?.findings.some(f => f.part === 'eyes' && /under-3s/.test(f.msg)) && pf.asks.some(a => a.fields.includes('safety')), '   hard safety eyes with no standard: not for under-3s, and the standard is asked for', pf);
+    const pf2 = (await K(`/concepts/${P}/materials/${eyes.id}/spec?part=eyes`, { method: 'PUT', body: { safety: 'EN71-1, ASTM F963, 3+' } })).json;
+    ok(!pf2.fit.findings.some(f => f.part === 'eyes') && pf2.library === true, '   marked 3+ with its standard, the eyes pass, and the library learns it', pf2.fit);
+    if (playwright) {
+      const b = await playwright.chromium.launch();
+      try {
+        const c = await b.newContext({ viewport: { width: 1366, height: 900 } }); await c.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); localStorage.setItem('fb.helper.on', '0'); } catch {} }, kyleT);
+        const p = await c.newPage(), errs = []; p.on('pageerror', e => errs.push(String(e)));
+        // the Pattern page of the shoe: the check under its materials, with the details it needs to tell
+        await K(`/concepts/${S}/materials/${sid}/spec?part=outsole`, { method: 'PUT', body: { thicknessMm: 4 } });
+        const thin = await K('/materials', { body: { kind: 'footwear', name: `Unknown lining ${stamp}`, unit: 'pair', priceCents: 100, spec: { category: 'lining' } } }); mats.push(thin.json.material?.id || thin.json.id);
+        await p.goto(`${BASE}/lab/pattern?concept=${S}&embed=1`, { waitUntil: 'networkidle' }); await p.waitForFunction(() => window.FBPattern?.ready?.(), null, { timeout: 30000 }); await p.waitForSelector('#mFit', { timeout: 30000 });
+        ok(/patent/.test(await p.textContent('#mFit')), '4. the Pattern page shows the shoe\'s check under its materials', await p.textContent('#mFit'));
+        // the Studio's materials window for the tee: a fresh fabric with no weight, asked for and filled in
+        const m2 = await K('/materials', { body: { kind: 'fabric', name: `Another mystery ${stamp}`, unit: 'm', priceCents: 500, spec: { construction: 'single jersey' } } }); const m2id = m2.json.material?.id || m2.json.id; mats.push(m2id);
+        await K(`/concepts/${T}/materials`, { body: { material: m2id, role: 'main' } });
+        await p.goto(`${BASE}/lab/studio?concept=${T}&fabric=1`, { waitUntil: 'networkidle' }); await p.waitForSelector('#matDlg[open] form.fitask input[name=weightGsm]', { timeout: 30000 });
+        ok(true, '5. the Studio\'s fabric window asks for the weight right under the check');
+        await p.fill('#matDlg form.fitask input[name=weightGsm]', '180'); await p.click('#matDlg form.fitask button[type=submit]');
+        await p.waitForFunction(() => /suits a tee/.test(document.querySelector('#matFit').textContent) && !document.querySelector('#matDlg form.fitask'), null, { timeout: 15000 });
+        ok(true, '   filled in and saved: the check clears and the form goes');
+        ok(errs.length === 0, '   no page errors', errs);
+      } finally { await b.close(); }
+    } else ok(true, 'needs a browser');
+  } finally { for (const id of made) if (id) await K(`/concepts/${id}`, { method: 'DELETE' }); for (const id of mats) if (id) sql(`delete from lab_materials where id='${id}'`); }
+});
+
 shops.close(); brave.close();
 process.exit(summary() ? 1 : 0);

@@ -740,6 +740,24 @@ Where it shows:
 - On the **checklist** as **The fabric suits the style**, once a fabric and the flats are both there. A real problem holds the tech pack up, for example a twill on leggings. Anything else is worth a look and does not hold it up.
 - On the **sketch pack** sheet and the **recipe menu**, the moment a cloth is picked.
 
+**When the fabric does not say enough.** The check never guesses what a material leaves out. A fabric with no weight, a cloth that does not say what it is, or a stretch fabric that does not say how much it stretches (or what it is made of) is **asked about** right under the check. A short form asks for just the missing details: what it is, the weight in gsm, the stretch, what it is made of. **Save** fills them in on this piece, and the check reads them at once. If the person may change the library's own material (staff, or the room that added it, but never the built-in starter set), the library learns the details too. Nothing missing makes the verdict worse: the check says "Nothing wrong so far, but 1 detail is missing to check it fully", and the checklist shows it as worth a look. Route: `PUT /v1/lab/concepts/:id/materials/:mid/spec?part= {construction, weightGsm, stretch, composition, thicknessMm, hardness, pileMm, safety}` (`part` is a shoe's or plush's part, or a role for clothing). The form is `src/lab-fit-ask.js`.
+
+## Do a shoe's and a plush's materials suit them?
+
+A shoe and a plush are made from their pattern, so they are checked on their **parts** (`footwearFit` and `plushFit` in `src/lab-fabric-fit.js`, `materialFit` choosing by category). The check shows under **Materials** on the Pattern page, with the same "what is missing" form, and on the checklist as **The materials suit a shoe** or **a plush**. Keep it on purpose works the same way, keyed to the upper or the body.
+
+A shoe:
+- **The upper**: leather under 0.9 mm tears when it is lasted and creases early; over 2.2 mm it is stiff where the foot bends. Patent on the vamp cracks across the flex. A cloth upper under 250 gsm needs a backer.
+- **The lining** should not be thicker than the upper.
+- **The outsole**: under 55 Shore A it wears through fast; over 80 it slips; under 3 mm it is thin. A leather sole is not asked for its hardness.
+- **The midsole**: over 70 is a harsh ride; under 30 it packs down.
+- What is not known is asked for: the upper's thickness, the sole's hardness. With no sole chosen yet, it says so.
+
+A plush:
+- **The body**: a woven has no give (the stuffed shape comes out lumpy); felt is stiff and pills; a pile over 20 mm hides the face; under 180 gsm the fill shows through.
+- **Hard safety eyes and noses** are small parts, not allowed on a toy for under-3s. They pass once the material's safety field says 3+ (the built-in safety eyes do). Without a standard, the standard is asked for.
+- **Pellets** need a sewn inner bag and are not for under-3s.
+
 ## New prints from old
 
 In the graphics library press **Make a new print** (under Build one yourself), pick the graphic by its picture and, to blend, a second one. The Studio's AI tab links to it too (`/lab/library?print=1`, with `&art=` to start from one graphic). Or open a graphic and use **A new print from this one**:
