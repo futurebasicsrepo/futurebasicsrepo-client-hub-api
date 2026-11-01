@@ -4,7 +4,7 @@
 //   3. a colour system: a few colours that work together; the first is the garment, the next becomes the stitching, and every one is a colourway
 // cookRecipe() turns the picks into real flats (src/lab-flats.js params, with each add-on as a detail placed where it usually goes), so the
 // piece opens in the studio already measured, drawn and coloured. Shared by the page (/lab/recipe) and the service (POST /v1/lab/concepts/from-recipe).
-import { STYLES, FITS, defaultParams, defaultDetail, defaultTemplate, cleanFlat } from './lab-flats.js';
+import { STYLES, FITS, defaultParams, defaultDetail, defaultPart, defaultTemplate, cleanFlat } from './lab-flats.js';
 import { FLAT_TEMPLATES } from './lab-flat-templates.js';
 
 const B = (id, label, style, fit, note, options = {}) => ({ id, label, style, fit, note, options });
@@ -26,7 +26,15 @@ export const RECIPE_BASES = [
   B('pants-wide', 'Wide trousers', 'pants', 'wide', 'A wide, easy leg.'),
   B('shorts', 'Shorts', 'shorts', 'regular', 'An everyday short.'),
   B('leggings', 'Leggings', 'leggings', 'slim', 'Close-fitting, for training.'),
+  B('coat', 'Coat', 'coat', 'regular', 'A long outer layer.'),
+  B('dress', 'Dress', 'dress', 'regular', 'A one-piece dress.'),
+  B('skirt', 'Skirt', 'skirt', 'regular', 'A skirt from the waistband.'),
+  B('cami', 'Cami top', 'cami', 'regular', 'A strappy top.'),
+  B('bodysuit', 'Bodysuit', 'bodysuit', 'slim', 'Close-fitting, snaps at the base.'),
   B('cap', 'Six-panel cap', 'cap', 'regular', 'A classic cap.'),
+  B('bucket', 'Bucket hat', 'bucket', 'regular', 'A soft, all-round brim.'),
+  B('beanie', 'Cuffed beanie', 'beanie', 'regular', 'A knit beanie with a cuff.'),
+  B('tote', 'Tote bag', 'tote', 'regular', 'A carry-all with two handles.'),
 ].filter(b => STYLES[b.style] && FITS[b.fit]);
 
 // an add-on: a detail placed on the piece, or an option on its make. `on` says which bases it suits (style keys).
@@ -37,23 +45,33 @@ export const RECIPE_BASES = [
 const D = (id, label, group, on, detail, extra = {}) => ({ id, label, group, on, detail, ...extra });
 const BOTTOMS_WITH_POCKETS = /chino|jean|trouser|pleat|carpenter|work|cargo|denim|five-pocket|jort|walk|wide|straight|barrel|flare|skinny|slim|baggy|tailor/i;
 export const RECIPE_ADDONS = [
-  D('chest-pocket', 'Chest pocket', 'Pockets', ['tee', 'longsleeve', 'crewneck', 'shirt', 'shirtss', 'jacket', 'vest'], { kind: 'pocket-patch' }, { one: 'chest' }),
-  D('flap-pocket', 'Flap chest pocket', 'Pockets', ['shirt', 'shirtss', 'jacket', 'vest'], { kind: 'pocket-flap' }, { one: 'chest' }),
+  D('chest-pocket', 'Chest pocket', 'Pockets', ['tee', 'longsleeve', 'crewneck', 'shirt', 'shirtss', 'jacket', 'vest', 'coat'], { kind: 'pocket-patch' }, { one: 'chest' }),
+  D('front-pocket', 'Front pocket', 'Pockets', ['tote'], { kind: 'pocket-patch' }),
+  D('flap-pocket', 'Flap chest pocket', 'Pockets', ['shirt', 'shirtss', 'jacket', 'vest', 'coat'], { kind: 'pocket-flap' }, { one: 'chest' }),
   D('kangaroo', 'Kangaroo pocket', 'Pockets', ['crewneck', 'hoodie', 'longsleeve'], { kind: 'pocket-kangaroo' }, { shown: /hood/i }),
-  D('zip-pocket', 'Zip pocket', 'Pockets', ['jacket', 'vest', 'ziphoodie', 'hoodie'], { kind: 'pocket-zip' }),
+  D('zip-pocket', 'Zip pocket', 'Pockets', ['jacket', 'vest', 'ziphoodie', 'hoodie', 'coat', 'tote'], { kind: 'pocket-zip' }),
+  D('slant-side', 'Side pockets', 'Pockets', ['dress', 'skirt'], { kind: 'pocket-slant', pair: true }),
   D('slant-pockets', 'Slant front pockets', 'Pockets', ['pants', 'shorts'], { kind: 'pocket-slant', pair: true }, { one: 'front', words: 'chino', shown: BOTTOMS_WITH_POCKETS }),
   D('jean-pockets', 'Jean front pockets', 'Pockets', ['pants', 'shorts'], { kind: 'pocket-jean', pair: true }, { one: 'front', words: 'five-pocket jean denim', shown: /jean|denim|five-pocket|jort/i }),
   D('cargo', 'Cargo pockets', 'Pockets', ['pants', 'shorts'], { kind: 'pocket-cargo', pair: true }, { words: 'cargo', shown: /cargo/i }),
   D('back-welts', 'Back welt pockets', 'Pockets', ['pants', 'shorts'], { kind: 'pocket-welt', pair: true, view: 'back' }, { shown: BOTTOMS_WITH_POCKETS }),
   D('quarter-zip', 'Quarter zip', 'Closures', ['crewneck', 'longsleeve', 'polo'], { kind: 'zip', h: 7 }, { words: 'quarter-zip', shown: /zip/i }),
   D('placket', 'Button placket', 'Closures', ['tee', 'longsleeve', 'crewneck'], { kind: 'placket' }),
-  D('waist-drawcord', 'Drawcord waist', 'Closures', ['pants', 'shorts', 'leggings'], { kind: 'drawcord' }, { words: 'drawcord', shown: /drawcord|sweat|jogger|track/i }),
-  D('pleats', 'Front pleats', 'Finishes', ['pants', 'shorts'], null, { option: { pleats: 1 }, words: 'pleat trouser' }),
-  D('cropped', 'Cropped', 'Finishes', ['tee', 'longsleeve', 'crewneck', 'hoodie', 'tank'], null, { option: { cropped: true }, words: 'cropped' }),
+  D('waist-drawcord', 'Drawcord waist', 'Closures', ['pants', 'shorts', 'leggings', 'skirt'], { kind: 'drawcord' }, { words: 'drawcord', shown: /drawcord|sweat|jogger|track/i }),
+  D('zip-front', 'Zip front', 'Closures', ['dress', 'skirt', 'tote'], { kind: 'zip' }),
+  D('button-front', 'Button front', 'Closures', ['dress', 'cami', 'bodysuit'], { kind: 'placket' }),
+  // collars: parts cut from the sketch pack, on pieces whose sketch has none (src/lab-flat-parts.js)
+  D('collar-polo', 'Polo collar and placket', 'Collars', ['tee', 'longsleeve'], null, { part: 'collars-7-3', one: 'collar' }),
+  D('collar-zip', 'Zip collar', 'Collars', ['crewneck', 'longsleeve'], null, { part: 'collars-7-14', one: 'collar' }),
+  D('collar-tipped', 'Tipped knit collar', 'Collars', ['tee', 'crewneck'], null, { part: 'collars-7-11', one: 'collar' }),
+  D('collar-shearling', 'Shearling collar', 'Collars', ['jacket', 'coat'], null, { part: 'collars-7-6', one: 'collar' }),
+  D('pleats', 'Front pleats', 'Finishes', ['pants', 'shorts', 'skirt'], null, { option: { pleats: 1 }, words: 'pleat trouser' }),
+  D('cropped', 'Cropped', 'Finishes', ['tee', 'longsleeve', 'crewneck', 'hoodie', 'tank', 'cami', 'jacket'], null, { option: { cropped: true }, words: 'cropped' }),
   D('drop', 'Dropped shoulder', 'Finishes', ['tee', 'longsleeve', 'crewneck', 'hoodie', 'ziphoodie', 'shirt', 'shirtss'], null, { option: { drop: true } }),
+  D('contrast', 'Contrast pockets and trims', 'Finishes', null, null, { contrast: true }),
   D('raw-hem', 'Raw hem, no rib', 'Finishes', ['crewneck', 'hoodie', 'ziphoodie', 'longsleeve'], null, { option: { rib: false } }),
 ];
-export const RECIPE_GROUPS = ['Pockets', 'Closures', 'Finishes'];
+export const RECIPE_GROUPS = ['Pockets', 'Closures', 'Collars', 'Finishes'];
 
 // colour systems: a few colours that sit together; the first is the garment, the second the stitching and trims, and each one a colourway
 const C = (id, name, mood, colours) => ({ id, name, mood, colours: colours.map(([n, h]) => ({ name: n, hex: h })) });
@@ -71,7 +89,7 @@ const HEX = /^#[0-9a-f]{6}$/i;
 
 export const baseOf = id => RECIPE_BASES.find(b => b.id === id) || null;
 // the add-ons a base can take
-export const addonsFor = base => { const b = typeof base === 'string' ? baseOf(base) : base; return b ? RECIPE_ADDONS.filter(a => a.on.includes(b.style)) : []; };
+export const addonsFor = base => { const b = typeof base === 'string' ? baseOf(base) : base; if (!b) return []; const own = RECIPE_ADDONS.filter(a => a.on?.includes(b.style)); return own.some(a => a.detail || a.part) ? [...own, ...RECIPE_ADDONS.filter(a => !a.on)] : own; };
 // a colour system by id, or one of our own ({ name, colours: [{name, hex}] }, from a plan's graphic programme or typed in)
 export function systemOf(s) {
   if (typeof s === 'string') return COLOUR_SYSTEMS.find(x => x.id === s) || null;
@@ -93,20 +111,23 @@ export function cookRecipe({ base, addons = [], system = null, colour = 0, name 
   const i = Math.min(Math.max(Math.round(Number(colour) || 0), 0), (sys?.colours.length || 1) - 1), main = sys?.colours[i] || null, accent = sys ? sys.colours[(i + 1) % sys.colours.length] : null;
   const options = Object.assign({}, b.options, ...picked.filter(a => a.option).map(a => a.option));
   const p = defaultParams(b.style, b.fit, options), edits = [];
+  const contrast = picked.some(a => a.contrast);
   const words = picked.map(a => a.words).filter(Boolean).join(' '), template = defaultTemplate(b.style, b.fit, words) || undefined, sketch = FLAT_TEMPLATES.find(t => t.id === template)?.label || '';
   for (const a of picked.filter(x => x.detail && !(x.shown && x.shown.test(sketch)))) {
     const view = a.detail.view || 'front', d = defaultDetail(a.detail.kind, p, view), extra = { ...(a.detail.h ? { h: a.detail.h, y: d.y - d.h / 2 + a.detail.h / 2 } : {}) };
-    const one = { ...d, ...extra, id: `r-${a.id}`, type: 'detail', ...(accent && main && accent.hex !== main.hex ? { thread: accent.hex } : {}) };
+    const one = { ...d, ...extra, id: `r-${a.id}`, type: 'detail', ...(accent && main && accent.hex !== main.hex ? { thread: accent.hex } : {}), ...(contrast && accent && /^pocket/.test(a.detail.kind) ? { color: accent.hex } : {}) };
     edits.push(one);
     // a pair: its twin mirrored across the centre (left and right front pockets, both back welts)
     if (a.detail.pair && Math.abs(one.x) > .01) edits.push({ ...one, id: `r-${a.id}-2`, x: -one.x, flip: !one.flip });
   }
+  // a collar from the sketch pack goes on where collars go
+  for (const a of picked.filter(x => x.part)) { const q = defaultPart(a.part, p, 'front'); if (q) edits.push({ ...q, id: `r-${a.id}`, view: 'front' }); }
   const f = cleanFlat({ ...p, template, color: main?.hex || '', edits }); if (f.error) return { error: f.error };
-  const labels = picked.map(a => a.label), pockets = picked.filter(a => a.detail).map(a => a.label);
+  const labels = picked.map(a => a.label), pockets = picked.filter(a => a.detail || a.part).map(a => a.label);
   return {
     params: f.params, placements: f.placements, style: b.style, template: f.params.template || null, category: STYLES[b.style].category, addons: picked.map(a => a.id),
     name: String(name || '').replace(/\s+/g, ' ').trim().slice(0, 120) || (main ? `${main.name} ${b.label.toLowerCase()}` : b.label) + (pockets.length ? ` with ${pockets.slice(0, 2).join(' and ').toLowerCase()}` : ''), sketch,
     words: `${b.label}${labels.length ? ': ' + labels.join(', ').toLowerCase() : ''}.${sys ? ` In the ${sys.name} colours.` : ''}`,
-    details: labels, colourways: sys ? [...sys.colours.slice(i), ...sys.colours.slice(0, i)].map(c => ({ name: c.name, hex: c.hex })) : [], colour: main,
+    colourIndex: i, details: labels, colourways: sys ? [...sys.colours.slice(i), ...sys.colours.slice(0, i)].map(c => ({ name: c.name, hex: c.hex })) : [], colour: main,
   };
 }

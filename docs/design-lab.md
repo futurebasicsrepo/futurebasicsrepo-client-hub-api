@@ -696,8 +696,8 @@ Routes: `src/lab-materials-routes.js` (`/v1/lab/materials…`, `/v1/lab/concepts
 
 Design Lab → **Recipe menu** (`/lab/recipe`): in the staff tab row, the hub's Design Lab, the client room's Design Lab view in Work, and on **+ New design**. On a phone the bases scroll sideways and a bar at the foot shows the piece as it is picked, with **Open** to hand. Pip has a guide for it. It is for someone who is not a designer: they choose a piece the way they would order it.
 
-1. **The base.** A staple at its usual fit: classic, boxy or oversized tee, long-sleeve, tank, polo, crewneck, hoodie, zip hoodie, button-up and camp shirts, zip jacket, vest, straight or wide trousers, shorts, leggings and a six-panel cap.
-2. **Add-ons.** Pockets (chest, flap, kangaroo, zip, slant, jean, cargo, back welts), closures (quarter zip, button placket, drawcord waist) and finishes (front pleats, cropped, dropped shoulder, raw hem). Only the add-ons that suit the base are shown, and only one front pocket can be picked.
+1. **The base.** A staple at its usual fit: classic, boxy or oversized tee, long-sleeve, tank, polo, crewneck, hoodie, zip hoodie, button-up and camp shirts, zip jacket, vest, coat, straight or wide trousers, shorts, leggings, a dress, skirt, cami and bodysuit, a six-panel cap, bucket hat, cuffed beanie and a tote bag.
+2. **Add-ons.** Pockets (chest, flap, kangaroo, zip, slant, jean, cargo, back welts, side pockets, a tote's front pocket), closures (quarter zip, button placket, drawcord waist, zip front, button front), collars from the sketch pack (polo collar and placket, zip collar, tipped knit collar, shearling collar; one at a time) and finishes (front pleats, cropped, dropped shoulder, raw hem, and **contrast pockets and trims**, which puts the pockets in the system's next colour). Only the add-ons that suit the base are shown, and only one front pocket or collar can be picked.
 3. **A colour system.** Washed earth, Workwear, Monochrome, Coastal, Forest, Sport, Pastel, Future Basics, or four colours of your own. The chosen colour is the garment. The next colour in the system is the stitching. Every colour becomes a colourway on the tech pack.
 4. **The cloth** (optional), with the fabric check below shown as you pick.
 
@@ -708,7 +708,11 @@ How the drawing is made (`src/lab-recipe.js`, `cookRecipe`):
 - A detail the sketch already draws is not drawn again: a hoodie's kangaroo pocket, or a chino's front and back pockets.
 - Anything else is added as a flats detail, placed where that kind of detail usually goes. Pairs are mirrored left and right.
 
-The concept keeps `spec.recipe` (base, add-ons, colour system), so it can be read later. No AI is used, so nothing is charged.
+The concept keeps `spec.recipe` (base, add-ons, colour system, which colour is the garment, and your own colours if you picked them).
+
+**Edit recipe.** In the Studio a piece made from the menu has **Edit recipe** in its header. It opens the menu on the piece's own picks; change any of them and press **Save the changes**. The flats are cooked again from the new picks, and its colourways follow. Graphics placed on the flats and details added by hand stay. A tech pack cannot be changed this way. Routes: `GET|PUT /v1/lab/concepts/:id/recipe`.
+
+**The picture from the flats.** A piece made from the menu (or a sketch) has flats but no picture. The Studio shows a bar, **Draw the picture from the flats**, and the checklist's picture item says the same. One press sends the front flat, in its colour and with its details, to the image model as the reference for a product photograph. The answer becomes the concept picture. It is one AI generation, counted with the flats' AI redraws (`LAB_DAILY_FLAT_AI`). It is refused when the piece already has a picture unless you ask to replace it, and the picture before is kept so the Studio can put it back. Route: `POST /v1/lab/concepts/:id/flats/picture {replace?}`. No AI is used, so nothing is charged.
 
 Routes:
 - `GET /v1/lab/recipe` returns the menu.

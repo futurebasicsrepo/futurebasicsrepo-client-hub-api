@@ -42,5 +42,22 @@ test('a colour system of our own, and the errors', () => {
   assert.deepEqual(own.colours, [{ name: 'Teal', hex: '#00aaaa' }]);
   assert.equal(cookRecipe({ base: 'tee', system: { colours: [] } }).error, 'That colour system is not known');
   assert.equal(cookRecipe({ base: 'nope' }).error, 'Choose a base to start from');
-  assert.ok(RECIPE_ADDONS.every(a => a.on.every(s => STYLES[s])));
+  assert.ok(RECIPE_ADDONS.every(a => a.on === null || a.on.every(s => STYLES[s]))); // an add-on for any base (contrast) has no list
+});
+
+test('women\'s pieces, hats and a tote are on the menu, each with add-ons that suit it', () => {
+  for (const id of ['dress', 'skirt', 'cami', 'bodysuit', 'coat', 'bucket', 'beanie', 'tote']) assert.ok(RECIPE_BASES.some(b => b.id === id), id);
+  assert.deepEqual(addonsFor('tote').map(a => a.id).sort(), ['contrast', 'front-pocket', 'zip-front', 'zip-pocket']);
+  assert.deepEqual(addonsFor('beanie'), []); // nothing to add to a beanie, and so no contrast either
+  assert.ok(addonsFor('skirt').some(a => a.id === 'slant-side') && addonsFor('dress').some(a => a.id === 'zip-front'));
+});
+
+test('a collar comes from the sketch pack, one at a time, and contrast colours the pockets', () => {
+  const r = cookRecipe({ base: 'tee', addons: ['collar-polo', 'collar-tipped', 'chest-pocket', 'contrast'], system: 'coastal' });
+  assert.deepEqual(r.addons, ['collar-polo', 'chest-pocket', 'contrast']); // the second collar is dropped
+  const part = r.params.edits.find(e => e.type === 'part'), pocket = r.params.edits.find(e => e.kind === 'pocket-patch');
+  assert.equal(part.part, 'collars-7-3'); assert.ok(part.y < 6, 'the collar sits at the neck');
+  assert.equal(pocket.color, '#e9ece6'); assert.equal(r.colourIndex, 0);
+  assert.equal(cookRecipe({ base: 'tee', addons: ['chest-pocket'], system: 'coastal' }).params.edits[0].color, ''); // no contrast: the pocket is the garment's colour
+  assert.match(r.name, /polo collar and placket/);
 });

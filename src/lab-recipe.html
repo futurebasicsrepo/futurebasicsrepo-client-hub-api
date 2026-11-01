@@ -65,7 +65,7 @@ h2 b{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;bo
   <div id="needSignin" class="step hidden"><h1>Sign in to the Design Lab</h1><p class="note" style="font-size:14px">The recipe menu is part of the Design Lab. Staff sign in at the work console; a client with the Design Lab on their room signs in at their hub.</p><div style="display:flex;margin-top:12px;gap:8px;flex-wrap:wrap"><a class="btn go" href="/join?for=lab">Open the Design Lab</a> <a class="btn" href="/hub#lab">Sign in at your hub</a> <a class="btn" href="/admin">Work console</a></div></div>
   <div id="app" class="hidden">
     <nav class="labnav" data-lab="recipe"></nav>
-    <span class="mono" style="display:block;margin-top:14px">Design by picking</span><h1>The recipe menu.</h1>
+    <span class="mono" style="display:block;margin-top:14px" id="eyebrow">Design by picking</span><h1 id="title">The recipe menu.</h1>
     <p class="note" style="max-width:62ch">Choose a base, add the pockets, closures and finishes you want, and pick a colour system. The piece is drawn as you go, on a real flat with real measurements, and opens in the Studio ready to finish.</p>
     <div class="lay">
       <div class="rsteps">
@@ -97,7 +97,7 @@ import { renderSvg, MASK_URL, defaultTemplate, STYLES } from '/lab/lab-flats.js'
 import { fabricFit } from '/lab/lab-fabric-fit.js';
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)],esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const TOKEN=()=>{try{return localStorage.getItem('fb.admin.token')||localStorage.getItem('fb.client.token')||''}catch{return ''}};
-async function api(path,body){const r=await fetch(path,{method:body?'POST':'GET',headers:{Authorization:'Bearer '+TOKEN(),...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});const j=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(new Error(j.error||`Request failed (${r.status})`),{status:r.status});return j}
+async function api(path,body,method){const r=await fetch(path,{method:method||(body?'POST':'GET'),headers:{Authorization:'Bearer '+TOKEN(),...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});const j=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(new Error(j.error||`Request failed (${r.status})`),{status:r.status});return j}
 // the picks; OWN is the colour system of your own (four colours)
 const S={base:null,addons:[],system:'earth',colour:0,view:'front',mat:null};let OWN=['#2b2b2e','#e9e4d8','#8c6a4a','#5e6b7a'],MATS=null,COOKED=null,NAMED=false;
 const sys=()=>S.system==='own'?{id:'own',name:'Your own colours',colours:OWN.map((h,i)=>({name:`Colour ${i+1}`,hex:h}))}:COLOUR_SYSTEMS.find(x=>x.id===S.system);
@@ -114,7 +114,7 @@ function paintMats(){if(!MATS){return}$('#mats').innerHTML=`<button type="button
   if(!m||!b){el.classList.add('hidden');return}const f=fabricFit({style:b.style,fit:b.fit,materials:[{kind:'fabric',role:'main',name:m.name,spec:m.spec||{}}]});if(f.verdict==='unknown'){el.classList.add('hidden');return}
   el.classList.remove('hidden');el.dataset.verdict=f.verdict;el.textContent=f.verdict==='good'?`✓ ${f.summary}`:`${f.verdict==='wrong'?'✕':'!'} ${f.findings[0].msg} ${f.findings[0].fix}`}
 // the drawing: the picks cooked into flats, drawn the way the flats page draws them
-function paintPreview(){COOKED=S.base?cookRecipe({base:S.base,addons:S.addons,system:sysArg(),colour:S.colour}):null;$('#open').disabled=!COOKED||Boolean(COOKED.error);$('#miniOpen').disabled=$('#open').disabled;queueMicrotask(paintMini);
+function paintPreview(){COOKED=S.base?cookRecipe({base:S.base,addons:S.addons,system:sysArg(),colour:S.colour}):null;$('#open').disabled=!COOKED||Boolean(COOKED.error)||LOCKED;$('#miniOpen').disabled=$('#open').disabled;queueMicrotask(paintMini);
   if(!COOKED||COOKED.error){$('#art').innerHTML=`<p class="note" style="padding:20px;text-align:center">${esc(COOKED?.error||'Pick a base to see it drawn.')}</p>`;$('#sum').innerHTML='';$('#pvKind').textContent='Pick a base';return}
   try{$('#art').innerHTML=renderSvg(COOKED.params,S.view,{maskHref:MASK_URL,showDims:false,scale:0,plain:true})}catch(x){$('#art').innerHTML=`<p class="note" style="padding:20px">${esc(x.message)}</p>`}
   if(!NAMED)$('#name').placeholder=COOKED.name;$('#pvKind').textContent=`${STYLES[COOKED.style]?.label||COOKED.style}${COOKED.sketch?' · '+COOKED.sketch:''}`;
@@ -134,14 +134,20 @@ $('#own').addEventListener('input',e=>{const i=e.target.dataset.own;if(i==null)r
 $('#mats').addEventListener('click',e=>{const b=e.target.closest('[data-mat]');if(!b)return;S.mat=b.dataset.mat||null;paintMats()});
 document.querySelector('.seg').addEventListener('click',e=>{const b=e.target.closest('[data-view]');if(!b)return;S.view=b.dataset.view;$$('.seg [data-view]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));paintPreview()});
 $('#name').addEventListener('input',()=>{NAMED=Boolean($('#name').value.trim())});
-// the concept, its flats and colourways made in one go; the cloth put on it as its main fabric; then the Studio
+// the concept, its flats and colourways made in one go; the cloth put on it as its main fabric; then the Studio. Editing a concept's recipe
+// (?concept=…) cooks its flats again from the new picks instead, keeping the graphics placed on them
+const EDIT=new URLSearchParams(location.search).get('concept')||'';let LOCKED=false;
 $('#open').addEventListener('click',async()=>{const b=$('#open');FBN?.begin?.(b);$('#msg').textContent='';
-  try{const j=await api('/v1/lab/concepts/from-recipe',{base:S.base,addons:S.addons,system:sysArg(),colour:S.colour,name:$('#name').value.trim()});
+  try{const body={base:S.base,addons:S.addons,system:sysArg(),colour:S.colour,name:$('#name').value.trim()},j=EDIT?await api(`/v1/lab/concepts/${EDIT}/recipe`,body,'PUT'):await api('/v1/lab/concepts/from-recipe',body);
     const main=sys().colours[S.colour];if(S.mat)await api(`/v1/lab/concepts/${j.concept.id}/materials`,{material:S.mat,role:'main',colour:main?.hex}).catch(()=>FBN?.toast?.('The piece is made; add the cloth in the Studio'));
     FBN?.end?.(b,true);location.href=j.studio}
   catch(x){FBN?.end?.(b,false);$('#msg').textContent=x.message;$('#msg').classList.add('bad')}});
 (async()=>{if(!TOKEN()){$('#needSignin').classList.remove('hidden');return}try{await api('/v1/lab/concepts?limit=1')}catch(x){if(x.status===401||x.status===403){$('#needSignin').classList.remove('hidden');return}}
-  $('#app').classList.remove('hidden');const q=new URLSearchParams(location.search);if(RECIPE_BASES.some(b=>b.id===q.get('base')))S.base=q.get('base');paintAll();
+  $('#app').classList.remove('hidden');const q=new URLSearchParams(location.search);if(RECIPE_BASES.some(b=>b.id===q.get('base')))S.base=q.get('base');
+  if(EDIT){try{const r=await api(`/v1/lab/concepts/${EDIT}/recipe`),rc=r.recipe;S.base=rc.base;S.addons=rc.addons||[];if(rc.system==='own'&&rc.colours?.length){OWN=rc.colours.map(c=>c.hex).concat(OWN).slice(0,Math.max(4,rc.colours.length));S.system='own'}else if(rc.system)S.system=rc.system;S.colour=Number(rc.colour)||0;
+      $('#name').value=r.name;NAMED=true;$('#eyebrow').textContent='Edit the recipe';$('#title').textContent=r.name;$('#open').textContent='Save the changes';$('#miniOpen').textContent='Save';
+      if(r.locked){LOCKED=true;$('#msg').textContent='This piece is already a tech pack: change it there.'}}catch(x){$('#msg').textContent=x.message;$('#msg').classList.add('bad')}}
+  paintAll();
   try{MATS=(await api('/v1/lab/materials?kind=fabric')).materials}catch{MATS=[]}paintMats()})();
 </script>
 <script src="/helper.js" defer></script>

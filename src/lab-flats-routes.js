@@ -380,6 +380,37 @@ export function registerLabFlatsRoutes(app, d) {
     const art = (await pool.query(`insert into lab_art(concept_id,name,png,thumb,prompt,model,source,in_library,created_by) values($1,$2,$3,$4,$5,$6,'flat',false,$7) returning id`, [t.c.id, clip(`Flat: ${prompt}`, 80), png, thumb, prompt, cfg.model || cfg.provider, actorOf(req)])).rows[0].id;
     return { edit: { id: 'ai' + art.slice(0, 8), type: 'ai', view, x: box.x, y: box.y, w: box.w, h: box.h, art, prompt }, left: Math.max(0, redrawCap() - (redraws.get(dayOf()) || 0)) };
   });
+  // ---- the concept picture drawn from the flats ----
+  // A piece started from the recipe menu or a sketch has measured, coloured flats but no picture. The front flat, in its colour and with its
+  // details, goes to the image model as the reference for a product photograph of that garment; the answer becomes the concept's picture
+  // (the one before is kept as a version in the studio). One AI generation, counted with the flats' redraws.
+  app.post('/v1/lab/concepts/:id/flats/picture', { preHandler: pre }, async (req, reply) => {
+    const c = await concept(req.params.id); if (!c) return bad(reply, 'Not found', 404);
+    if (c.status === 'tech_pack') return bad(reply, 'This concept is already a tech pack', 409);
+    const row = (await pool.query('select params, (select image is not null from lab_concepts where id=$1) has_image from lab_flats where concept_id=$1', [c.id])).rows[0];
+    if (!row) return bad(reply, 'Save the flats first: the picture is drawn from them', 409);
+    if (row.has_image && !req.body?.replace) return bad(reply, 'This concept already has a picture. Send replace to draw a new one from the flats.', 409);
+    const cfg = imageCfg(); if (!cfg.configured) return bad(reply, 'No image model is connected', 503);
+    if ((redraws.get(dayOf()) || 0) >= redrawCap()) return bad(reply, `The daily limit of ${redrawCap()} AI drawings from flats is reached. Raise LAB_DAILY_FLAT_AI.`, 429);
+    try { await charge(req, { kind: 'flat', conceptId: c.id }); } catch (e) { return bad(reply, e.message, e.status || 500, e.meter ? { code: e.code, meter: e.meter } : {}); }
+    const p = row.params; await prepMasks(p);
+    const flat = await sharp(Buffer.from(renderSvg(p, 'front', { plain: true, scale: 40, templateSvg, partHref, maskHref, editHrefs: await editHrefsOf(p), alloverHref: await alloverHrefOf(p) })), { density: 150 })
+      .resize({ width: 1024, height: 1024, fit: 'contain', background: '#ffffff' }).flatten({ background: '#ffffff' }).png().toBuffer();
+    const fab = (Array.isArray(c.spec?.materials) ? c.spec.materials : []).find(m => m.kind === 'fabric' && m.role === 'main'), cw = (c.spec?.colourways || [])[0];
+    const words = [fab ? `in ${[fab.spec?.weightGsm ? fab.spec.weightGsm + ' gsm' : '', fab.spec?.construction || fab.name].filter(Boolean).join(' ')}` : '', cw?.name ? `colour ${cw.name}` : ''].filter(Boolean).join(', ');
+    const prompt = `Turn this technical flat drawing into a photorealistic product photograph of the same garment${words ? `, ${words}` : ''}: front view, on an invisible mannequin, on a plain light grey studio background, soft even light. Keep the cut, proportions and every detail exactly where the flat draws it: pockets, collar, closures, seams, stitching and trims, and the colours of each part. No person, no logos and no words unless they are drawn.`;
+    let out; try { out = cfg.provider === 'fixture' ? await sharp(flat).flatten({ background: '#e9e9e6' }).png().toBuffer() : await editImpl({ images: [flat], prompt, cfg: { ...cfg, size: '1024x1024' } }); }
+    catch (e) { return bad(reply, `The image model could not draw it: ${clip(e.message, 200)}`, 502); }
+    redraws.set(dayOf(), (redraws.get(dayOf()) || 0) + 1);
+    const image = await sharp(out).flatten({ background: '#ffffff' }).resize({ width: 2048, height: 2048, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 90 }).toBuffer();
+    const thumb = await sharp(image).resize({ width: 420, height: 420, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 72 }).toBuffer();
+    // the picture before, if any, is kept once so it can be put back from the studio
+    await pool.query(`insert into lab_studio_docs(concept_id, doc, original, applied_at, updated_by) select id, '{}'::jsonb, image, now(), $2 from lab_concepts where id=$1 and image is not null
+      on conflict(concept_id) do update set original=coalesce(lab_studio_docs.original, (select image from lab_concepts where id=$1))`, [c.id, actorOf(req)]);
+    await pool.query(`update lab_concepts set image=$2, thumb=$3, raw=null, image_note='Drawn from the flats', updated_at=now() where id=$1`, [c.id, image, thumb]);
+    await pool.query('delete from lab_concept_views where concept_id=$1', [c.id]); // views drawn from an older picture
+    return { ok: true, left: Math.max(0, redrawCap() - (redraws.get(dayOf()) || 0)) };
+  });
   // ---- the flat drawn from the picture ----
   // Each view: the sketch as it stands (framed square on its own box) and the concept's picture go to the image model, which draws the flat
   // of the garment in the picture on the sketch's frame and in its colours. The result replaces the sketch inside the same box, so every

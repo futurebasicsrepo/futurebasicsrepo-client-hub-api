@@ -51,3 +51,9 @@ test('the fabric is checked against the style once both are known', () => {
   assert.equal(by(readiness({ concept: { ...base, spec: { materials: [twill] } }, flat: { ...flat, style: 'pants', fit: 'regular' } }), 'fabric').state, 'done');
   assert.equal(by(readiness({ concept: base, flat }), 'fabric'), undefined); // no fabric yet: nothing to check
 });
+
+test('a piece with flats and no picture is told it can draw the picture from them', () => {
+  const r = readiness({ concept: base, flat: { check: { summary: { fail: 0, warn: 0 } }, style: 'tee' } });
+  assert.match(by(r, 'picture').note, /Draw the picture from the flats/);
+  assert.doesNotMatch(by(readiness({ concept: base }), 'picture').note, /from the flats/);
+});
