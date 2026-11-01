@@ -172,7 +172,7 @@ await journey('J195', 'Design Lab in a browser: the library, filters, save and h
     ok((await page.locator('#items .card').count()) >= 3 && !(await page.isVisible('#plans')), 'Research opens on its own, with the pieces found in it');
     ok((await page.locator('#catPills .pill').allInnerTexts()).some(t => /Footwear/.test(t)) && (await page.locator('#catPills .pill').allInnerTexts()).some(t => /Headwear/.test(t)), 'the category filter covers hats and footwear, not only clothes');
     await page.waitForFunction(() => { const a = document.querySelector('.fbside a[data-section="lab"]'); return a && !a.hidden; }, null, { timeout: 8000 }).catch(() => {});
-    ok(await page.locator('.fbside a[data-section="lab"]:not([hidden])').count() === 1 && await page.locator('.fbtabs [data-tabs="lab"] a:not(.act):visible').count() === 8 && /Research/.test(await page.innerText('.fbtabs a.on')), 'the owner sees the Design Lab in the menu as one section, with its eight parts as the tabs across the top, Research marked');
+    ok(await page.locator('.fbside a[data-section="lab"]:not([hidden])').count() === 1 && await page.locator('.fbtabs [data-tabs="lab"] a:not(.act):visible').count() === 9 && /Research/.test(await page.innerText('.fbtabs a.on')), 'the owner sees the Design Lab in the menu as one section, with its nine parts as the tabs across the top, Research marked');
     await page.click('.fbtabs a[data-href="/lab#plans"]'); await page.waitForFunction(() => document.getElementById('plans').offsetParent && !document.getElementById('library').offsetParent, null, { timeout: 8000 }).catch(() => {});
     ok(await page.isVisible('#plans') && !(await page.isVisible('#items')) && /Line plans/.test(await page.innerText('.fbtabs a.on')), 'the Line plans tab shows the plans on their own');
     await page.click('.fbtabs a[data-href="/lab#research"]'); await page.waitForSelector('#items .card');
@@ -4320,7 +4320,7 @@ await journey('J273', 'What clients and prospects see first: the pricing plans s
   } finally { for (const id of made) if (id) await C(`/concepts/${id}`, { method: 'DELETE' }); }
 });
 
-await journey('J274', 'Easy on a phone: every step of a piece fits the step bar, the Materials kinds sit in one sliding row, the Studio\'s concept list stays inside the screen, the things you tap are a thumb\'s size, the help tab slides aside while the page scrolls, and the Clients page opens on its clients', async () => {
+await journey('J274', 'Easy on a phone: every step of a piece fits the step bar, the Materials kinds sit in one sliding row, the Studio\'s concept list stays inside the screen, the things you tap are a thumb\'s size, the help tab fades aside while the page scrolls, and the Clients page opens on its clients', async () => {
   const made = [];
   try {
     const t = await K('/concepts/from-recipe', { body: { base: 'tee', system: 'mono' } }); const T = t.json.concept?.id; made.push(T);
@@ -4347,7 +4347,7 @@ await journey('J274', 'Easy on a phone: every step of a piece fits the step bar,
         await p.goto(`${BASE}/lab/sketches`, { waitUntil: 'networkidle' }); await p.waitForSelector('.fbh-tog');
         await p.evaluate(() => scrollBy(0, 600)); await p.waitForTimeout(150);
         const away = await p.$eval('.fbh-tog', x => x.classList.contains('away')); await p.waitForTimeout(1300);
-        ok(away && !(await p.$eval('.fbh-tog', x => x.classList.contains('away'))), '5. the help tab slides aside while the page scrolls, and comes back when it rests');
+        ok(away && !(await p.$eval('.fbh-tog', x => x.classList.contains('away'))), '5. the help tab fades aside while the page scrolls, and comes back when it rests');
         // clients
         await p.goto(`${BASE}/admin`, { waitUntil: 'networkidle' }); await p.waitForSelector('#app:not(.hidden)', { timeout: 20000 });
         const hero = await p.evaluate(() => ({ g: getComputedStyle(document.querySelector('#app .hero-graphic')).display, h: Math.round(document.querySelector('#app .hero').getBoundingClientRect().height) }));
