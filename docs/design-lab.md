@@ -1503,7 +1503,7 @@ Journey J273 covers all four.
 - **Tap sizes:** `cue.css` makes buttons, pills, chips, segments and steps at least 36px tall on touch screens and narrow windows. Check boxes are 20px there. The map's region buttons on Factories and the language switch on Start were enlarged too.
 - **Materials kinds** sit in one sliding row with a fade at the edge. The picked kind scrolls into view, and search takes the full width.
 - **The Studio's concept list** (also `/lab/engineer` with no concept) wraps long names inside the screen.
-- **The help tab** slides aside while the page scrolls on a phone and comes back when the page rests.
+- **The help tab** fades out (and ignores taps) while the page scrolls on a phone, and comes back when the page rests. It fades rather than slides so it never sits past the edge of the screen.
 - **The Clients page** on a phone opens with a one-line heading; the orbit and the moving rail are hidden. A client cover photo that fails to load is removed rather than shown broken.
 
 Journey J274 covers these.
