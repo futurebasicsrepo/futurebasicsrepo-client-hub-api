@@ -3509,6 +3509,8 @@ await journey('J259', 'A sketch picked opens straight away: on a phone, tapping 
     const box = await page.evaluate(() => { const r = document.querySelector('#openDesign').getBoundingClientRect(); return { top: r.top, bottom: r.bottom, vh: innerHeight, sw: document.documentElement.scrollWidth, sheetW: document.querySelector('#sheet').getBoundingClientRect().width }; });
     ok(box.bottom <= box.vh && box.top > 0 && box.sw <= 390 && box.sheetW <= 390, '4. the sheet opens over the gallery with Open in the Studio on screen, nothing wider than the phone', box);
     await page.waitForSelector(`#mats [data-mat="${fab.id}"]`); await page.tap(`#mats [data-mat="${fab.id}"]`);
+    const spill = await page.evaluate(() => [...document.querySelectorAll('#mats button')].filter(b => { const r = b.getBoundingClientRect(); return [...b.children].some(k => { const q = k.getBoundingClientRect(); return q.left < r.left - .5 || q.right > r.right + .5; }); }).map(b => b.innerText.split('\n')[0]));
+    ok(spill.length === 0, '   each cloth card holds its swatch and its words (nothing runs past its border)', spill);
     const own = (fab.colours || []).find(c => /^#[0-9a-f]{6}$/i.test(c.hex || ''));
     ok(!own || await page.getAttribute(`#cols [data-col="${own.hex.toLowerCase()}"]`, 'aria-checked') === 'true', '5. the cloth starts in its own first colour');
     await page.tap('#cols [data-col="#5b5f3a"]'); await sleep(200);
