@@ -5,6 +5,7 @@ The Make page lives in the live Shopify theme. The files here are what goes into
 | File here | Goes to |
 | --- | --- |
 | `sections-make-v4.liquid` | `sections/make-v4.liquid` (new) |
+| `assets-make-v4.css` | `assets/make-v4.css` (new): the section's styles |
 | `templates-page.make.json` | `templates/page.make.json` |
 | `sections-make-v3.liquid` | `sections/make-v3.liquid`: the previous version, kept for rolling back |
 
@@ -28,11 +29,17 @@ The screenshots are real screens from the live Lab, taken signed in to the Futur
 
 Numbers on the page (26 bases, 31 add-ons, 382 sketches, prices) are the same as `docs/marketing/video-brief.md`. Update both when they change.
 
-## To publish (safer way)
+## To publish
 
-1. Shopify admin → Online Store → Themes → the live theme → ⋯ → Duplicate.
-2. On the copy: ⋯ → Edit code. Add `sections/make-v4.liquid` and replace `templates/page.make.json` with the files here.
-3. Preview `/pages/make` on the copy (desktop and phone), then publish the copy.
+The new page is already loaded on a copy of the live theme: **Future Basics — Storefront (make v4: design lab)**, theme 168651063493, unpublished. Preview it at `https://thefuturebasics.com/pages/make?preview_theme_id=168651063493`.
+
+1. Merge and deploy the hub PR first, so the screenshots at `hub.thefuturebasics.com/help/assets/make-*.webp` load.
+2. Preview `/pages/make` on the copy (desktop and phone).
+3. Publish the copy: Shopify admin → Online Store → Themes → the copy → Publish.
+
+The copy was taken from the live theme, so the rest of the site is the same. Anything changed on the live theme after 2 November 2026 is not on the copy.
+
+To do it by hand instead: duplicate the live theme, then in Edit code add `assets/make-v4.css` and `sections/make-v4.liquid` and replace `templates/page.make.json` with the files here.
 
 A later save from the theme editor can overwrite `page.make.json`; edit the page's text in the theme editor afterwards rather than in the file.
 
