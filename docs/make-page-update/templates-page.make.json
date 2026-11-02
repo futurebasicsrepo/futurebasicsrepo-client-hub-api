@@ -11,12 +11,13 @@
   "layout": "exhibition",
   "sections": {
     "make": {
-      "type": "make-v3",
+      "type": "make-v4",
       "settings": {
         "cta_url": "/pages/contact",
         "start_url": "https://hub.thefuturebasics.com/start",
         "faq_schema": true,
-        "part": "top"
+        "part": "top",
+        "lab_url": "https://hub.thefuturebasics.com/join?for=lab"
       },
       "blocks": {
         "m1": {
@@ -467,12 +468,13 @@
       ]
     },
     "make_end": {
-      "type": "make-v3",
+      "type": "make-v4",
       "settings": {
         "cta_url": "/pages/contact",
         "start_url": "https://hub.thefuturebasics.com/start",
         "faq_schema": true,
-        "part": "end"
+        "part": "end",
+        "lab_url": "https://hub.thefuturebasics.com/join?for=lab"
       },
       "blocks": {
         "q9": {
@@ -578,9 +580,45 @@
             "title": "is the cost estimate a quote?",
             "body": "no. it is your own arithmetic: a unit cost on each material, plus labour, decoration, packaging, freight and duty, added up to a landed cost and a margin, with price breaks at the order sizes you choose. a factory's quote replaces it, and factories never see it."
           }
+        },
+        "q14": {
+          "type": "question",
+          "settings": {
+            "key": "design lab",
+            "title": "what is the design lab?",
+            "body": "the studio we design with, open in your own room: a recipe menu to build a piece by picking, 382 real flat sketches, a studio with a pen tool and apple pencil, graphics, prints and embroidery, and the tech pack and factory link at the end. it works on a phone, an ipad and a desktop."
+          }
+        },
+        "q15": {
+          "type": "question",
+          "settings": {
+            "key": "designer",
+            "title": "do i need to be a designer?",
+            "body": "no. the recipe menu is made for people who are not: pick a base, add the details, choose a colour system, and the flats are drawn for you. designers get the pro tools in the same place."
+          }
+        },
+        "q16": {
+          "type": "question",
+          "settings": {
+            "key": "lab price",
+            "title": "what does $499 get me?",
+            "body": "the design lab in your own room for 90 days, with 40 ai generations included and $2.50 each after that. tech packs are included while it is open."
+          }
+        },
+        "q17": {
+          "type": "question",
+          "settings": {
+            "key": "edit",
+            "title": "can i change what the recipe draws?",
+            "body": "yes. every pocket, zip and collar it places is a detail you can move, resize, recolour or delete in the studio, and edit recipe reopens the menu with your picks."
+          }
         }
       },
       "block_order": [
+        "q14",
+        "q15",
+        "q16",
+        "q17",
         "q9",
         "q10",
         "q1",
