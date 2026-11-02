@@ -10,24 +10,23 @@ The Make page lives in the live Shopify theme. The files here are what goes into
 
 The `systems` section (`sections/make-systems.liquid`) is unchanged and stays between the two halves.
 
-## v4: the Design Lab leads (November 2026)
+## v4: the Design Lab leads, production follows (November 2026)
 
-The page now leads with the tools, and the made-with-us service follows.
+The page leads with the tools and what they lead to, and ends with Future Basics making what you design. The full-service packages are gone.
 
-- **Hero:** "design it yourself. we make it properly." The main button opens the Design Lab (`hub.thefuturebasics.com/join?for=lab`). The free tech pack is the second button. The phone shows the recipe menu.
-- **01 · design lab:**
-  - the recipe menu
-  - real flats and the sketch pack
-  - the Studio
-  - the tech pack and factory sign-off
-  - a "beyond clothing" band: footwear, plush, patterns, hard goods and electronics, line plans, review, the production package
-- **Pricing:** four cards (first pack free, $48, $100 a month, the Design Lab at $499 for 90 days) and a comparison table.
-- **02 · made with us:** the earlier "what we've made" half, unchanged blocks (figures, what we make, how a full build runs, packages).
-- **Questions:** four new ones on the Design Lab come first. The close is "open the design lab." and "build the whole thing."
+- **Hero:** "design it yourself. we make it properly." The main button opens the Design Lab (`hub.thefuturebasics.com/join?for=lab`); the free tech pack is second. The phone shows the recipe menu.
+- **01 · the design lab: six ways in, one tech pack out.** A card with a real screen for each way: describe it (AI), the recipe menu, a sketch, from scratch, a whole line, a photo. A strip shows where every way leads: studio → flats, pattern or 3D parts → tech pack → factory sign-off → made by Future Basics.
+- **Every product type:** apparel, headwear, bags, footwear, plush, and toys, objects and electronics, each with a real screen from its own tools, plus a tile for home and accessories.
+- **02 · the tech pack:**
+  - the spec sheet, the checklist and factory sign-off
+  - the tools by subscription: Design Lab $499 for 90 days, membership $100 a month, $48 a pack, first pack free
+  - a comparison table
+- **03 · made by future basics:** the figures, minimums and lead times per category, and "how it gets made" (design in the lab → tech pack → sample → produce → deliver).
+- **Questions:** Design Lab questions first. Package and store questions are gone or rewritten; "what does production cost?" replaces "what does it actually cost?".
 
-The Design Lab screenshots are taken from the live Lab and served by the hub: `src/help-assets/make-recipe.webp`, `make-sketch-sheet.webp`, `make-studio.webp`, `make-sketches.webp` and `make-phone-recipe.webp`, at `https://hub.thefuturebasics.com/help/assets/<file>`. They show only made-up demo pieces. The three phone pictures and the callouts picture are the theme's existing files.
+The screenshots are real screens from the live Lab, taken signed in to the Future Basics room with made-up demo pieces (deleted afterwards). They are served by the hub: `src/help-assets/make-*.webp`, at `https://hub.thefuturebasics.com/help/assets/<file>`. The line plan uses `lab-plan.jpg` and the factory callouts use `05-callouts.jpg`, both real screens already in the help guide.
 
-Numbers on the page (26 bases, 31 add-ons, 8 colour systems, 382 sketches, 203 parts, prices) are the same as `docs/marketing/video-brief.md`. Update both when they change.
+Numbers on the page (26 bases, 31 add-ons, 382 sketches, prices) are the same as `docs/marketing/video-brief.md`. Update both when they change.
 
 ## To publish (safer way)
 
