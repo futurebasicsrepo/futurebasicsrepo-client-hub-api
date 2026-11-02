@@ -32,7 +32,7 @@ The screenshots are real screens from the live Lab, taken signed in to the Futur
 
 Numbers on the page (26 bases, 31 add-ons, 382 sketches, prices) are the same as `docs/marketing/video-brief.md`. Update both when they change.
 
-The sew-out video (`make-sewout.mp4`) is in the store's Files (Content → Files) and the section loads it with `file_url`. The demo pieces in the screenshots (the Lane Six hoodie and the Future Tour tee) carry real Future Basics graphics from the Lab's library; they were made, separated and digitized on a local copy of the app.
+The sew-out video (`make-sewout-v2.mp4`) is in the store's Files (Content → Files) and the section loads it with `file_url`. The demo pieces in the screenshots (the Lane Six hoodie and the Future Tour tee) carry real Future Basics graphics from the Lab's library; they were made, separated and digitized on a local copy of the app.
 
 ## To publish
 

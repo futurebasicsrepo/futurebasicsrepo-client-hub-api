@@ -118,19 +118,20 @@ test('turning satin: a ring and an S curve are sewn square to the stroke all the
 
 test('turning satin: a straight bar keeps its one angle, and branches and corners become columns of their own', async () => {
   const bar = await digitize(await svg('<svg xmlns="http://www.w3.org/2000/svg" width="800" height="400"><rect x="60" y="180" width="680" height="30" fill="#c8202a"/></svg>'), { widthIn: 4 });
-  assert.equal(bar.objects[0].angle, 90); assert.ok(!bar.objects[0].turning); assert.ok(bar.stats.stitches > 400 && bar.stats.stitches < 480, String(bar.stats.stitches));
+  assert.equal(bar.objects[0].angle, 90); assert.ok(!bar.objects[0].turning); assert.ok(bar.stats.stitches > 440 && bar.stats.stitches < 530, String(bar.stats.stitches)); // satin rows 0.2 mm apart
   // an arch with a post through it and a crossbar: every column follows its own stroke, none of them runs along another
   const arcs = await digitize(await svg('<svg xmlns="http://www.w3.org/2000/svg" width="800" height="800"><path d="M100 600 Q 400 0 700 600" fill="none" stroke="#a00" stroke-width="26"/><path d="M100 700 L 700 700" stroke="#a00" stroke-width="26"/><path d="M400 300 L 400 760" stroke="#a00" stroke-width="20"/></svg>'), { widthIn: 4 });
   assert.equal(arcs.objects.length, 1); assert.ok(arcs.objects[0].turning); assert.ok(longestSatin(arcs) <= 16 * arcs.objects[0].widthMm, String(longestSatin(arcs)));
   // a square-cornered letter: the corner is butted, not fanned (no stitch wider than the stroke allows)
-  const f = await digitize(await svg('<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600"><path d="M150 520 V 80 H 450 M 150 300 H 380" fill="none" stroke="#111" stroke-width="40"/></svg>'), { widthIn: 3 });
+  const f = await digitize(await svg('<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600"><path d="M150 520 V 80 H 450 M 150 300 H 380" fill="none" stroke="#111" stroke-width="40"/></svg>'), { widthIn: 3, satinMaxMm: 7 }); // 6 mm across where the bars meet: over the 6 mm satin default
   assert.equal(f.objects.length, 1); assert.equal(f.objects[0].kind, 'satin'); assert.ok(f.objects[0].turning); assert.ok(longestSatin(f) <= 16 * f.objects[0].widthMm, String(longestSatin(f)));
 });
 
 test('turning satin: the counters of letters (B, O, A, e) stay open, at badge size and at an inch', async () => {
   const art = await svg('<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="400"><text x="500" y="300" font-family="DejaVu Sans" font-weight="bold" font-size="300" text-anchor="middle" fill="#e8b923">BOAe</text></svg>');
   for (const widthIn of [4, 1.2]) {
-    const d = await digitize(art, { widthIn }); assert.ok(d.objects.filter(o => o.turning).length >= 2, `${widthIn} in: ${d.objects.map(o => o.kind + (o.turning ? ' turning' : '')).join()}`);
+    // at 4 in the strokes are over the 6 mm satin default, so satin is asked for up to 7 mm
+    const d = await digitize(art, { widthIn, satinMaxMm: 7 }); assert.ok(d.objects.filter(o => o.turning).length >= 2, `${widthIn} in: ${d.objects.map(o => o.kind + (o.turning ? ' turning' : '')).join()}`);
     // the art on a 0.05 mm grid: its counters (the pieces of ground the letters close round) and how far each point of ground is from a letter
     const pr = .05, W = Math.round(d.widthMm / pr), H = Math.round(d.heightMm / pr), { data } = await sharp(art).flatten({ background: '#ffffff' }).resize(W, H).raw().toBuffer({ resolveWithObject: true });
     const ink = new Uint8Array(W * H), seen = new Uint8Array(W * H), dist = new Float32Array(W * H), counters = [];
@@ -150,3 +151,18 @@ test('turning satin: the counters of letters (B, O, A, e) stay open, at badge si
     for (const c of counters) { const over = c.filter(p => lay[p] && dist[p] > beyond).length / c.length; assert.ok(over < .05, `${widthIn} in: ${(over * 100).toFixed(1)}% of a ${(c.length * pr * pr).toFixed(1)} mm² counter sewn over`); }
   }
 });
+
+test('a distressed graphic sews with clean, straight edges: cracks, nicks and specks are not stitched', async () => {
+  // a block whose edges are nicked every few pixels, with hairline cracks and specks of ground inside it: the way a vintage, cracked print looks
+  let nicks = '', cracks = ''; for (let x = 100; x < 700; x += 9) nicks += `<rect x="${x}" y="${x % 2 ? 98 : 100}" width="5" height="${3 + (x % 4)}" fill="#ffffff"/><rect x="${x + 2}" y="${497 - (x % 3)}" width="4" height="${3 + (x % 3)}" fill="#ffffff"/>`;
+  for (let k = 0; k < 14; k++) cracks += `<path d="M${140 + k * 38} ${160 + (k % 5) * 50} l 26 ${k % 2 ? 18 : -14} l 20 9" stroke="#ffffff" stroke-width="1.5" fill="none"/><circle cx="${170 + k * 36}" cy="${300 + (k % 4) * 40}" r="2" fill="#ffffff"/>`;
+  const art = await svg(`<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600"><rect x="100" y="100" width="600" height="400" fill="#b0181f"/>${nicks}${cracks}</svg>`);
+  const ends = d => { const top = []; for (const b of d.plan) for (const q of b.pts) if (!q.u && !q.jump && !q.trim && !q.run && !q.tie) top.push(q.p); const ys = top.map(p => p[1]), lo = Math.min(...ys); return top.filter(p => p[1] < lo + 12).map(p => p[1]); };
+  const spread = v => { const s = v.slice().sort((a, b) => a - b); return s[Math.floor(s.length * .9)] - s[Math.floor(s.length * .1)]; };
+  const clean = await digitize(art, { widthIn: 4 }), raw = await digitize(art, { widthIn: 4, smoothMm: 0 });
+  assert.equal(clean.objects.length, 1, JSON.stringify(clean.objects.map(o => [o.kind, o.areaMm2]))); // one fill: no cracks or specks sewn as shapes of their own
+  assert.ok(clean.settings.rowMm === .35 && clean.settings.satinSpacingMm === .2, 'denser by default'); // fill rows 0.35 mm apart, satin 0.2 mm
+  assert.ok(spread(ends(clean)) <= 4, `the top edge wanders ${spread(ends(clean)) / 10} mm`); // the needle points along the top edge lie within 0.4 mm of a line
+  assert.ok(spread(ends(clean)) < spread(ends(raw)), `cleaned ${spread(ends(clean))} vs raw ${spread(ends(raw))}`);
+});
+
