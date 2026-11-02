@@ -45,11 +45,12 @@ h1{font-size:clamp(28px,4.4vw,42px);letter-spacing:-.035em;font-weight:500;margi
 #sheet .shArt img{width:100%;height:100%;max-width:none;object-fit:contain;padding:5%;box-sizing:border-box}
 .shSteps{display:grid;grid-template-columns:minmax(0,1fr);gap:18px}.step h3{display:flex;align-items:center;gap:10px;margin-bottom:10px;font-size:16px}.step h3 b{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;border:1px solid var(--ink);font:500 11px 'IBM Plex Mono',monospace}
 .step.done h3 b{background:var(--cue);border-color:var(--cue);box-shadow:0 0 0 1.5px var(--ink)}
-.mats{display:grid;grid-auto-flow:column;grid-auto-columns:112px;gap:10px;overflow-x:auto;padding:2px 2px 8px;scroll-snap-type:x mandatory}
-.mats button{scroll-snap-align:start;border:1px solid var(--line);background:#fff;border-radius:14px;padding:6px 6px 8px;display:grid;gap:6px;text-align:left;font-size:12px;line-height:1.25;cursor:pointer}
-.mats button .sw{aspect-ratio:1;border-radius:10px;background:var(--fog) center/cover;display:block}.mats button small{color:var(--dim)}
+.mats{display:grid;grid-auto-flow:column;grid-auto-columns:112px;gap:10px;overflow-x:auto;padding:8px 8px 12px;margin:-8px -8px -4px;scroll-snap-type:x mandatory;scroll-padding:8px}
+/* a card keeps to its column: its swatch and words never run past its border (the inner column would otherwise size to its longest line) */
+.mats button{scroll-snap-align:start;border:1px solid var(--line);background:#fff;border-radius:14px;padding:6px 6px 8px;display:grid;grid-template-columns:minmax(0,1fr);min-width:0;gap:6px;text-align:left;font-size:12px;line-height:1.25;cursor:pointer}
+.mats button .sw{width:100%;aspect-ratio:1;border-radius:10px;background:var(--fog) center/cover;display:block}.mats button small{color:var(--dim)}.mats button b,.mats button small{overflow-wrap:anywhere;white-space:normal}
 .fitnote{margin:6px 0 0;padding:8px 10px;border-radius:10px;border:1px solid var(--line);font-size:12.5px;line-height:1.4}.fitnote[data-verdict=good]{color:#17603a;background:rgba(23,96,58,.06)}.fitnote[data-verdict=check]{color:#8a5a00;background:rgba(138,90,0,.06)}.fitnote[data-verdict=wrong]{color:#a02a20;background:rgba(160,42,32,.06)}
-.mats button[aria-checked=true],.cols button[aria-checked=true]{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink),0 0 0 5px rgba(75,255,154,.45)}
+.mats button[aria-checked=true],.cols button[aria-checked=true]{border-color:#12b864;box-shadow:0 0 0 1.5px #4bff9a,0 0 18px 3px rgba(75,255,154,.45)}
 .cols{display:flex;flex-wrap:wrap;gap:8px}.cols button,.cols label{width:44px;height:44px;border-radius:50%;border:1px solid var(--line);cursor:pointer;padding:0;position:relative}
 .cols label{display:grid;place-items:center;background:conic-gradient(#e64,#ec4,#4c6,#4ae,#a6e,#e64);overflow:hidden}.cols label input{position:absolute;inset:0;opacity:0;cursor:pointer}
 .onto{border-top:1px solid var(--line);padding-top:12px}.onto summary{cursor:pointer;font-weight:500}.onto[open]{display:grid;gap:8px}
