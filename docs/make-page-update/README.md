@@ -17,6 +17,8 @@ The page leads with the tools and what they lead to, and ends with Future Basics
 
 - **Hero:** "design it yourself. we make it properly." The main button opens the Design Lab (`hub.thefuturebasics.com/join?for=lab`); the free tech pack is second. The phone shows the recipe menu.
 - **01 · the design lab: six ways in, one tech pack out.** A card with a real screen for each way: describe it (AI), the recipe menu, a sketch, from scratch, a whole line, a photo. A strip shows where every way leads: studio → flats, pattern or 3D parts → tech pack → factory sign-off → made by Future Basics.
+- **Motion:** the hero turns a decorated hoodie from its back print to its stitched chest crest, with the sew-out playing in a chip. A strip of Future Basics graphics runs under the brand list. The separation plates pull apart in 3D and come back together. The flow strip pulses, and cards rise in on scroll where the browser supports scroll-driven animation. Everything stops for people who ask their device for reduced motion, and the videos play only while on screen.
+- **Graphics to the factory:** colour separations (one plate per ink with its Pantone C, the white underbase, the job sheet), embroidery digitized (the sew-out played back, the digitiser's review, .dst and .exp), and the decoration sheet.
 - **The tools inside:** the graphics library, the graphic generator (and a new print from one you have), techniques, materials and the pattern, each with a real screen, plus colour systems, iPad and the concept picture.
 - **Every product type:** apparel, headwear, bags, footwear, plush, and toys, objects and electronics, each with a real screen from its own tools, plus a tile for home and accessories.
 - **02 · the tech pack:**
@@ -29,6 +31,8 @@ The page leads with the tools and what they lead to, and ends with Future Basics
 The screenshots are real screens from the live Lab, taken signed in to the Future Basics room with made-up demo pieces (deleted afterwards). They are served by the hub: `src/help-assets/make-*.webp`, at `https://hub.thefuturebasics.com/help/assets/<file>`. The line plan uses `lab-plan.jpg`, a real screen already in the help guide. The factory sign-off screenshot (`make-pack-callouts.webp`) is the current factory view of a made-up demo pack, shot on a local copy of the app because a tech pack cannot be deleted from production. The pattern screenshot comes from the same local demo piece.
 
 Numbers on the page (26 bases, 31 add-ons, 382 sketches, prices) are the same as `docs/marketing/video-brief.md`. Update both when they change.
+
+The sew-out video (`make-sewout.mp4`) is in the store's Files (Content → Files) and the section loads it with `file_url`. The demo pieces in the screenshots (the Lane Six hoodie and the Future Tour tee) carry real Future Basics graphics from the Lab's library; they were made, separated and digitized on a local copy of the app.
 
 ## To publish
 
