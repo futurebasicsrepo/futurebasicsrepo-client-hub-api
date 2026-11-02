@@ -12,3 +12,7 @@ When a change adds, moves, renames or removes a part of the platform, update `sr
 - **The page:** `src/platform-map.html` only renders. Its static sections ("One request, start to finish", "Build, test, deploy") need an edit only when those facts change.
 
 `test/platform-map.test.js` fails when a page or routes file is on no box, when a box names a file that no longer exists, or when a link or flow step names a missing box. Journey J279 checks the page and its access rules. The counts at the top of the page (routes, pages, tables, jobs) are live and need no edits.
+
+## Keep the video brief up to date
+
+`docs/marketing/video-brief.md` is the brief for promotional videos about the Design Lab and its tools. When a change adds, renames or removes a tool a client can see, or changes a price or a number quoted in it (sketches, bases, add-ons, colour systems, factory languages), update the brief in the same PR.
