@@ -6,30 +6,37 @@
 //   Each plan point is { p: [x, y] } plus what it is: jump, trim, tie (a lock stitch), u (underlay), run (a travel run inside a shape), and o
 //   (the index of its shape in `objects`); the sew-out render and the review (src/lab-sewout.js) read these.
 // How a design is built:
+//   0. The artwork is cleaned the way a digitiser redraws it (`smoothMm`, 0 turns it off): each pixel goes to the thread most of its neighbourhood
+//      belongs to, so a distressed or scanned graphic's nicked, grainy edges sew as clean straight lines; cracks and slivers under 0.45 mm in a
+//      colour that covers a real area elsewhere are folded into their neighbour, and specks under 1.5 mm² go. A colour the clean-up would mostly
+//      erase is a fine detail of its own and is kept.
 //   1. The graphic is separated into thread colours (src/lab-separate.js): every colour that fills an area of its own, however small, keeps its
 //      thread; soft edges go to the nearer thread; a thread the colour of the garment is left unsewn (the garment shows through). Specks under
 //      0.6 mm² are folded into what surrounds them.
-//   2. Each colour is cut into shapes. A shape no wider than `satinMaxMm` (lettering, outlines, thin marks) is sewn as satin: stitches that cross the
+//   2. Each colour is cut into shapes. A shape too wide for satin keeps its body as fill and gives its thin strokes (1 to 3 mm, three times as long
+//      as wide: a border joined to a block) satin parts of their own, so no fill row ends in a staircase along a thin border (splitStrokes). A shape no wider than `satinMaxMm` (lettering, outlines, thin marks) is sewn as satin: stitches that cross the
 //      shape from edge to edge, with a centre-walk underlay and pull compensation on both edges. A straight stroke takes one angle, the one that
 //      crosses it shortest. Where rows at one angle would run along the stroke (a ring, an O, script, an arc) the satin turns with it: the shape is
 //      thinned to its centre line, traced into columns (split at junctions, where strokes that run straight through stay one column and the others
 //      stop at its edge, and at sharp corners, where one column runs through the corner and the next starts at its edge), and each column is walked with every stitch square to the line, its ends found by
 //      casting out to the shape's edge. The rows are spaced on the outside of a curve; on the inside, a needle point that would land on the last
 //      one is pulled in to a short stitch. When the centre line cannot be traced cleanly, the one angle is kept.
+//      The ends of neighbouring rows (fill and one-angle satin) are eased into a line, never more than 0.3 mm, so straight edges sew straight.
 //      Wider shapes are sewn as tatami fill: rows `rowMm` apart at `fillAngle`, needle points staggered over three rows so the fill shows no
 //      lines, over a tatami underlay at right angles, and the edges pushed out by the pull compensation.
-//   3. Shapes are cut into sections that can be sewn without crossing open ground, sewn nearest-first, each started and ended with a lock
+//   3. Thin satin outlines between their own colour and one sewn later are sewn last, over it, so its row ends tuck under them.
+//   4. Shapes are cut into sections that can be sewn without crossing open ground, sewn nearest-first, each started and ended with a lock
 //      stitch; a move over 1 mm is a jump, over `trimMm` a trim. Colours are sewn largest first, so the details sit on top.
 // It is a production-grade starting file: a digitiser still looks it over (lettering under 5 mm, very dense overlaps) before a big run.
 import sharp from 'sharp';
 import { separate } from './lab-separate.js';
 
-export const DIGITIZE_DEFAULTS = { widthIn: 4, rowMm: .4, satinSpacingMm: .22, stitchMm: 3.5, satinMaxMm: 7, splitMm: 7, pullMm: .2, underlay: true, fillAngle: 45, trimMm: 6, maxThreads: 12, garment: '' };
+export const DIGITIZE_DEFAULTS = { widthIn: 4, rowMm: .35, satinSpacingMm: .2, smoothMm: .3, stitchMm: 3.5, satinMaxMm: 6, splitMm: 7, pullMm: .2, underlay: true, fillAngle: 45, trimMm: 6, maxThreads: 12, garment: '' };
 
 // the settings from a request, each held to what a machine can sew
 export function digitizeOptions(b = {}) {
   const n = (v, a, z) => { const x = Number(v); return Number.isFinite(x) && v !== '' && v !== null ? Math.min(z, Math.max(a, x)) : undefined; };
-  return Object.fromEntries(Object.entries({ fillAngle: n(b.fillAngle, 0, 179), rowMm: n(b.rowMm, .25, 1), satinMaxMm: n(b.satinMaxMm, 2, 10), pullMm: n(b.pullMm, 0, .6), stitchMm: n(b.stitchMm, 2, 6), maxThreads: n(b.maxThreads, 1, 15), trimMm: n(b.trimMm, 1, 12), underlay: b.underlay === undefined ? undefined : Boolean(b.underlay) }).filter(([, v]) => v !== undefined));
+  return Object.fromEntries(Object.entries({ fillAngle: n(b.fillAngle, 0, 179), rowMm: n(b.rowMm, .25, 1), smoothMm: n(b.smoothMm, 0, 1), satinMaxMm: n(b.satinMaxMm, 2, 10), pullMm: n(b.pullMm, 0, .6), stitchMm: n(b.stitchMm, 2, 6), maxThreads: n(b.maxThreads, 1, 15), trimMm: n(b.trimMm, 1, 12), underlay: b.underlay === undefined ? undefined : Boolean(b.underlay) }).filter(([, v]) => v !== undefined));
 }
 
 // ---- shapes ----
@@ -57,6 +64,48 @@ function despeck(hard, W, H, minPx) {
     for (const p of r.px) hard[p] = best;
   }
 }
+// each pixel goes to the thread most of its neighbourhood belongs to (a majority over a soft round window, `r` px): a distressed or
+// scanned graphic has cracks, grain and nicks along its edges that a machine would sew as a ragged line; this leaves the edges clean and
+// straight where the artwork means them to be, and keeps any mark wider than about 2r
+function smoothLabels(hard, W, H, r) {
+  if (r < 1) return; const N = W * H, labels = [...new Set(hard)], best = new Float32Array(N).fill(-1), bestL = new Int16Array(N), a = new Float32Array(N), b = new Float32Array(N);
+  const blur = (src, dst, horiz) => { const len = horiz ? W : H, lines = horiz ? H : W, st = horiz ? 1 : W, ls = horiz ? W : 1, k = 2 * r + 1;
+    for (let l = 0; l < lines; l++) { const base = l * ls; let sum = 0; for (let i = -r; i <= r; i++) sum += src[base + Math.min(len - 1, Math.max(0, i)) * st];
+      for (let i = 0; i < len; i++) { dst[base + i * st] = sum / k; sum += src[base + Math.min(len - 1, i + r + 1) * st] - src[base + Math.max(0, i - r) * st]; } } };
+  for (const L of labels) {
+    for (let p = 0; p < N; p++) a[p] = hard[p] === L ? 1 : 0;
+    blur(a, b, true); blur(b, a, false); blur(a, b, true); blur(b, a, false); // two box passes: close to a gaussian, so corners round only a little
+    for (let p = 0; p < N; p++) { const v = a[p] + (hard[p] === L ? 1e-4 : 0); if (v > best[p]) { best[p] = v; bestL[p] = L; } }
+  }
+  // a colour the clean-up would mostly erase is a fine detail of its own (small lettering, a pinstripe), not grain: it keeps its pixels, and the
+  // review says if it is too small to sew
+  const before = new Map(), after = new Map(); for (let p = 0; p < N; p++) { before.set(hard[p], (before.get(hard[p]) || 0) + 1); after.set(bestL[p], (after.get(bestL[p]) || 0) + 1); }
+  const keep = new Set(labels.filter(L => (after.get(L) || 0) < .75 * before.get(L)));
+  for (let p = 0; p < N; p++) if (!keep.has(hard[p])) hard[p] = bestL[p];
+}
+// a sliver narrower than `minPx` (a crack, or grain left where two colours meet) cannot be sewn: it goes to the colour that borders it most,
+// as a digitiser would fold it into its neighbour. A colour with less than `bigPx` in all is a detail of its own and is left for the review
+function desliver(hard, W, H, minPx, bigPx) {
+  const regs = regionsOf(hard, W, H), total = new Map(); for (const r of regs) total.set(r.c, (total.get(r.c) || 0) + r.n);
+  for (const r of regs) {
+    // only the cracks and grain of a colour that covers a real area elsewhere
+    if (r.c < 0 || total.get(r.c) < bigPx || widthOf(r, W).width >= minPx) continue; const votes = new Map();
+    for (const p of r.px) { const x = p % W; for (const q of [p - 1, p + 1, p - W, p + W]) { if (q < 0 || q >= W * H || (q === p - 1 && x === 0) || (q === p + 1 && x === W - 1)) continue; const c = hard[q]; if (c !== r.c) votes.set(c, (votes.get(c) || 0) + 1); } }
+    let best = r.c, bv = 0; for (const [c, v] of votes) if (v > bv) { bv = v; best = c; }
+    for (const p of r.px) hard[p] = best;
+  }
+}
+// the ends of neighbouring rows eased into a line: a row's end moves to the median of the five around it, then the mean of three, but never
+// further than `maxPx`, so a straight edge sews straight and a real corner stays a corner
+function easeRows(rows, maxPx) {
+  if (rows.length < 3) return;
+  for (const k of [0, 1]) {
+    const v = rows.map(q => q.r[k]), md = v.map((_, i) => { const w = v.slice(Math.max(0, i - 2), i + 3).sort((x, y) => x - y); return w[w.length >> 1]; });
+    const mn = md.map((_, i) => { const w = md.slice(Math.max(0, i - 1), i + 2); return w.reduce((x, y) => x + y, 0) / w.length; });
+    rows.forEach((q, i) => { const t = Math.abs(mn[i] - v[i]) <= maxPx ? mn[i] : v[i] + Math.sign(mn[i] - v[i]) * maxPx; q.r = k ? [q.r[0], t] : [t, q.r[1]]; });
+  }
+  for (const q of rows) if (q.r[1] < q.r[0]) q.r = [(q.r[0] + q.r[1]) / 2, (q.r[0] + q.r[1]) / 2];
+}
 // the widest point of a shape (twice its deepest inside distance), in pixels: a two-pass chamfer distance inside the shape's box
 function widthOf(r, W) {
   let x0 = Infinity, y0 = Infinity, x1 = -1, y1 = -1; for (const p of r.px) { const x = p % W, y = (p - x) / W; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
@@ -67,6 +116,32 @@ function widthOf(r, W) {
   let max = 0;
   for (let y = h - 2; y > 0; y--) for (let x = w - 2; x > 0; x--) { const i = y * w + x; if (!d[i]) continue; d[i] = Math.min(d[i], d[i + 1] + a, d[i + w] + a, d[i + w + 1] + b, d[i + w - 1] + b); if (d[i] > max) max = d[i]; }
   return { width: 2 * max, box: [x0, y0, x1, y1], dt: { d, w, h, x0: x0 - 1, y0: y0 - 1 } };
+}
+
+// a wide shape with thin strokes running off it (a border joined to a solid block, a frame round a panel, a bar out of a letter) is split the
+// way a digitiser splits it: the body, what a disc `rPx` across fits inside, is sewn as fill; each thin stroke that runs on from it (at least
+// three times as long as it is wide, from `minPx`, 1 mm, to `maxPx`, 3 mm, wide: thinner is the fringe of an edge, wider sews cleanly as fill) is a part of its own, sewn as satin along the stroke. Sewn as one fill, rows at the fill angle would
+// cross a thin stroke and end in a staircase along both its edges. Bits the disc cannot reach that are not strokes (a rounded-off corner)
+// stay with the body. → [region], the shape unchanged when it has no such strokes
+function splitStrokes(r, W, rPx, minPx, maxPx = rPx) {
+  const { dt } = widthOf(r, W), { d, w, h, x0, y0 } = dt, n = w * h, near = new Float32Array(n);
+  let core = 0; for (let i = 0; i < n; i++) { near[i] = d[i] > rPx ? 0 : 1e6; if (!near[i]) core++; }
+  if (!core) return [r];
+  const a = 1, b = Math.SQRT2;
+  for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) { const i = y * w + x; near[i] = Math.min(near[i], near[i - 1] + a, near[i - w] + a, near[i - w - 1] + b, near[i - w + 1] + b); }
+  for (let y = h - 2; y > 0; y--) for (let x = w - 2; x > 0; x--) { const i = y * w + x; near[i] = Math.min(near[i], near[i + 1] + a, near[i + w] + a, near[i + w + 1] + b, near[i + w - 1] + b); }
+  // body: within the disc's reach of where it fits; the rest is stroke, in 4-connected pieces
+  const at = p => { const x = p % W, y = (p - x) / W; return (y - y0) * w + (x - x0); }, body = [], rest = new Map();
+  for (const p of r.px) (near[at(p)] <= rPx + 1.5 ? body : (rest.set(p, 1), null)) && body.push(p);
+  if (!rest.size) return [r];
+  const pieces = [], seen = new Set();
+  for (const s of rest.keys()) { if (seen.has(s)) continue; const px = [], st = [s]; seen.add(s);
+    while (st.length) { const p = st.pop(); px.push(p); const x = p % W; for (const q of [x > 0 ? p - 1 : -1, x < W - 1 ? p + 1 : -1, p - W, p + W]) if (q >= 0 && rest.has(q) && !seen.has(q)) { seen.add(q); st.push(q); } }
+    pieces.push({ c: r.c, px: Int32Array.from(px), n: px.length }); }
+  const strokes = [];
+  for (const q of pieces) { const wd = Math.max(1, widthOf(q, W).width); if (q.n >= 3 * wd * wd && wd >= minPx && wd <= maxPx) strokes.push(q); else for (const p of q.px) body.push(p); }
+  if (!strokes.length) return [r];
+  return [{ c: r.c, px: Int32Array.from(body), n: body.length }, ...strokes];
 }
 
 // ---- runs: where lines at an angle cross a shape ----
@@ -199,7 +274,7 @@ function corners(cl, depth) {
 // one column of turning satin as needle points (px): its centre line smoothed and walked, at each step a ray out to either edge along the
 // normal, a row each time an edge has moved on by `step`; the needle alternates edges. With the underlay, a walk along the centre line first
 // and the satin back over it. → { pts, nu (the underlay's points, first) } or null
-function turningColumn(cl, inside, depth, { step, pullPx, splitPx, underlay, walkPx, gapPx }) {
+function turningColumn(cl, inside, depth, { step, pullPx, splitPx, underlay, walkPx, gapPx, easePx = step * 4 }) {
   let P = cl.pts; if (P.length < 3) return null;
   const n0 = P.length, cyc = cl.closed, r = Math.max(2, Math.round(Math.min(12, depth(P[n0 >> 1]) * .7))), fs = step / 3;
   for (let pass = 0; pass < 2; pass++) P = P.map((_, i) => { let sx = 0, sy = 0, c = 0; const k = cyc ? r : Math.min(r, i, n0 - 1 - i); for (let j = -k; j <= k; j++) { const q = P[cyc ? (i + j + n0) % n0 : i + j]; sx += q[0]; sy += q[1]; c++; } return [sx / c, sy / c]; });
@@ -227,7 +302,10 @@ function turningColumn(cl, inside, depth, { step, pullPx, splitPx, underlay, wal
     if (k) { C.push(...ext); T.push(...ext.map(() => t)); AB.push(...ab); } else { C.unshift(...ext.reverse()); T.unshift(...ext.map(() => t)); AB.unshift(...ab.reverse()); } }
   // the edges eased along the column (the shape's edge is a staircase of pixels), then the rows: the next one where either edge has moved on
   // by the satin spacing, so the outside of a curve is as dense as a straight column
-  const N = C.length, sm = AB.map((_, i) => { let a = 0, b = 0, c = 0; for (let j = -4; j <= 4; j++) { const q = AB[cyc ? (i + j + N) % N : i + j]; if (q) { a += q[0]; b += q[1]; c++; } } return [a / c, b / c]; });
+  // over about 0.8 mm each way: a median first, so a nick in the artwork's edge does not pull the column in, then a mean, so the edge runs smooth
+  const N = C.length, kw = Math.max(4, Math.round(easePx / fs)), win = (arr, i, f) => { const v = []; for (let j = -kw; j <= kw; j++) { const q = arr[cyc ? (i + j + N) % N : i + j]; if (q) v.push(f(q)); } return v; };
+  const mdAB = AB.map((_, i) => [0, 1].map(k => { const v = win(AB, i, q => q[k]).sort((x, y) => x - y); return v[v.length >> 1]; }));
+  const sm = mdAB.map((_, i) => [0, 1].map(k => { const v = win(mdAB, i, q => q[k]); return v.reduce((x, y) => x + y, 0) / v.length; }));
   const edges = [], mix = (p, q, f) => [p[0] + (q[0] - p[0]) * f, p[1] + (q[1] - p[1]) * f], adv = (e, k) => Math.max(Math.hypot(e.L[0] - k.L[0], e.L[1] - k.L[1]), Math.hypot(e.R[0] - k.R[0], e.R[1] - k.R[1]));
   let kept = null, pv = null;
   for (let i = 0; i < N; i++) { const c = C[i], nv = [-T[i][1], T[i][0]], [a, b] = sm[i]; if (a + b < 1) continue;
@@ -308,8 +386,11 @@ export async function digitize(png, opts = {}) {
   const { data } = await sharp(png).ensureAlpha().resize(W, H, { fit: 'fill' }).raw().toBuffer({ resolveWithObject: true });
   const sep = separate(data, W, H, { max: o.maxThreads, garment: o.garment, softPx: 2 });
   const hard = sep.hard; for (let p = 0; p < W * H; p++) if (hard[p] >= 0 && sep.inks[hard[p]].knockout) hard[p] = -1;
-  despeck(hard, W, H, Math.round(.6 * mmPx * mmPx));
-  const regs = regionsOf(hard, W, H), area = new Array(sep.inks.length).fill(0), label = new Int32Array(W * H).fill(-1);
+  smoothLabels(hard, W, H, Math.round((o.smoothMm || 0) * mmPx));
+  despeck(hard, W, H, Math.round((o.smoothMm ? 1.5 : .6) * mmPx * mmPx)); // with the clean-up on, specks of distress and grain under 1.5 mm² go too
+  if (o.smoothMm) desliver(hard, W, H, .45 * mmPx, 50 * mmPx * mmPx);
+  // shapes too wide for satin lose their thin strokes to satin parts of their own (splitStrokes); `strokes: false` turns that off
+  const regs = regionsOf(hard, W, H).flatMap(r => o.strokes !== false && widthOf(r, W).width * pxMm > o.satinMaxMm ? splitStrokes(r, W, o.satinMaxMm / 2 * mmPx, mmPx, Math.min(3, o.satinMaxMm / 2) * mmPx) : [r]), area = new Array(sep.inks.length).fill(0), label = new Int32Array(W * H).fill(-1);
   regs.forEach((r, i) => { area[r.c] += r.n; for (const p of r.px) label[p] = i; });
   const order = sep.inks.map((_, j) => j).filter(j => area[j] > 0).sort((a, b) => area[b] - area[a]);
   const mask = new Uint8Array(W * H), objects = [];
@@ -322,14 +403,14 @@ export async function digitize(png, opts = {}) {
       const ang = crossAngle(mask, W, H, box, o.satinSpacingMm * mmPx), sc = scan(mask, W, H, box, ang, o.satinSpacingMm * mmPx, .5);
       // one angle serves a straight stroke; where its rows run along the stroke (a curve, a ring) the satin turns with the stroke instead
       let longest = 0; for (const l of sc.lines) for (const q of l.runs) longest = Math.max(longest, q[1] - q[0]);
-      const turn = longest > 1.5 * width + 2 && turning(dt, { step: o.satinSpacingMm * mmPx, pullPx: o.pullMm * mmPx, splitPx: o.splitMm * mmPx, underlay: o.underlay && widthMm > 1.2, walkPx: 2 * mmPx, gapPx: .15 * mmPx }, longest);
+      const turn = longest > 1.5 * width + 2 && turning(dt, { step: o.satinSpacingMm * mmPx, pullPx: o.pullMm * mmPx, splitPx: o.splitMm * mmPx, underlay: o.underlay && widthMm > 1.2, walkPx: 2 * mmPx, gapPx: .15 * mmPx, easePx: (o.smoothMm ? .8 : .27) * mmPx }, longest);
       if (turn) { shape.parts.push(...turn); shape.turning = true; }
-      else for (const s of sections(sc)) { const ul = o.underlay && widthMm > 1.2 && s.rows.length > 2, pts = satinSection(s, sc, { pullPx: o.pullMm * mmPx, splitPx: o.splitMm * mmPx, underlay: ul, walkPx: 2 * mmPx }); if (pts.length > 1) shape.parts.push({ pts, under: false, rev: !ul, nu: pts.nu || 0 }); }
+      else for (const s of sections(sc)) { easeRows(s.rows, .3 * mmPx); const ul = o.underlay && widthMm > 1.2 && s.rows.length > 2, pts = satinSection(s, sc, { pullPx: o.pullMm * mmPx, splitPx: o.splitMm * mmPx, underlay: ul, walkPx: 2 * mmPx }); if (pts.length > 1) shape.parts.push({ pts, under: false, rev: !ul, nu: pts.nu || 0 }); }
       shape.angle = ang;
     } else {
-      if (o.underlay) { const sc = scan(mask, W, H, box, o.fillAngle + 90, 2 * mmPx, .5); for (const s of sections(sc)) { const pts = fillSection(s, sc, { lenPx: 3 * mmPx, pullPx: 0, inset: .5 * mmPx }); if (pts.length > 1) shape.parts.push({ pts, under: true, rev: true }); } }
+      if (o.underlay) { const sc = scan(mask, W, H, box, o.fillAngle + 90, 2 * mmPx, .5); for (const s of sections(sc)) { easeRows(s.rows, .3 * mmPx); const pts = fillSection(s, sc, { lenPx: 3 * mmPx, pullPx: 0, inset: .5 * mmPx }); if (pts.length > 1) shape.parts.push({ pts, under: true, rev: true }); } }
       const sc = scan(mask, W, H, box, o.fillAngle, o.rowMm * mmPx, .5);
-      for (const s of sections(sc)) { const pts = fillSection(s, sc, { lenPx: o.stitchMm * mmPx, pullPx: o.pullMm * .75 * mmPx }); if (pts.length > 1) shape.parts.push({ pts, under: false, rev: true }); }
+      for (const s of sections(sc)) { easeRows(s.rows, .3 * mmPx); const pts = fillSection(s, sc, { lenPx: o.stitchMm * mmPx, pullPx: o.pullMm * .75 * mmPx }); if (pts.length > 1) shape.parts.push({ pts, under: false, rev: true }); }
       shape.angle = o.fillAngle;
     }
     for (const p of r.px) mask[p] = 0;
@@ -361,9 +442,20 @@ export async function digitize(png, opts = {}) {
   };
   const plan = []; let cur = [W / 2, H / 2], trims = 0, jumps = 0;
   const one = mmPx, trimPx = o.trimMm * mmPx, travelPx = 2.5 * mmPx;
-  for (const c of order) {
+  // outlines last: a thin satin (up to 3 mm) that borders a colour sewn after its own is held back and sewn at the end, over that colour, as
+  // a digitiser sews outlines last: the other colour's row ends tuck under it instead of showing on top of it as a ragged edge. An outline
+  // lies between two areas, so between 15% and 85% of its edge meets the later colour. It costs a colour change, so it is done only where
+  // it covers something
+  const rank = new Map(order.map((c, i) => [c, i])), late = new Set();
+  if (o.outlinesLast !== false) for (const sh of objects) { if (sh.kind !== 'satin' || sh.widthMm > 3) continue; const r = regs[sh.rid];
+    let edge = 0, over = 0; for (const p of r.px) { const x = p % W; for (const q of [x > 0 ? p - 1 : -1, x < W - 1 ? p + 1 : -1, p - W, p + W]) { if (q < 0 || q >= W * H) continue; const l = label[q]; if (l === sh.rid) continue; edge++; if (l >= 0 && rank.get(regs[l].c) > rank.get(sh.colour)) over++; } }
+    if (edge && over >= edge * .15 && over <= edge * .85) late.add(sh); } // all round one later colour is a counter (the hole in an O), not an outline
+  const passes = [...order.map(c => ({ c, list: objects.filter(s => s.colour === c && !late.has(s)) })), ...order.map(c => ({ c, list: objects.filter(s => s.colour === c && late.has(s)) }))].filter(q => q.list.length);
+  // two passes of one colour next to each other are one
+  for (let i = passes.length - 1; i > 0; i--) if (passes[i].c === passes[i - 1].c) { passes[i - 1].list.push(...passes[i].list); passes.splice(i, 1); }
+  for (const { c, list } of passes) {
     const block = { hex: sep.inks[c].hex, rgb: sep.inks[c].rgb, colour: c, pts: [] }, add = (q, extra = {}) => block.pts.push({ p: to01(q), ...extra });
-    const left = objects.filter(s => s.colour === c); let first = true, prev = null;
+    const left = list.slice(); let first = true, prev = null;
     while (left.length) {
       let bi = 0, bd = Infinity; left.forEach((sh, i) => { for (const q of sh.parts) { const d = Math.min(dist(cur, q.pts[0]), q.rev ? dist(cur, q.pts.at(-1)) : Infinity); if (d < bd) { bd = d; bi = i; } } });
       const sh = left.splice(bi, 1)[0], under = sh.parts.filter(q => q.under), top = sh.parts.filter(q => !q.under), seq = [];
@@ -389,9 +481,9 @@ export async function digitize(png, opts = {}) {
   const stitches = plan.reduce((n, b) => n + b.pts.filter(p => !p.jump && !p.trim).length, 0);
   const threadM = plan.reduce((s, b) => { let L = 0, pr = null; for (const q of b.pts) { if (pr && !q.jump && !q.trim) L += dist(pr, q.p); pr = q.p; } return s + L / 10000; }, 0);
   const minutes = stitches / 750 + plan.length * .3 + trims * .1;
-  const threads = plan.map((b, i) => ({ n: i + 1, hex: b.hex, stitches: b.pts.filter(p => !p.jump && !p.trim).length, shapes: objects.filter(s => s.colour === b.colour).length, satin: objects.filter(s => s.colour === b.colour && s.kind === 'satin').length, fill: objects.filter(s => s.colour === b.colour && s.kind === 'fill').length }));
+  const inPass = passes.map(q => q.list), threads = plan.map((b, i) => ({ n: i + 1, hex: b.hex, stitches: b.pts.filter(p => !p.jump && !p.trim).length, shapes: inPass[i].length, satin: inPass[i].filter(s => s.kind === 'satin').length, fill: inPass[i].filter(s => s.kind === 'fill').length, ...(i && passes.slice(0, i).some(q => q.c === b.colour) ? { outlines: true } : {}) }));
   const narrow = objects.filter(s => s.kind === 'satin' && s.widthMm < 1);
-  return { plan, threads, objects: objects.map(({ parts, pbox, ...s }) => ({ ...s, thread: order.indexOf(s.colour) + 1 })), widthMm: Math.round(wMm * 10) / 10, heightMm: Math.round(hMm * 10) / 10, knockouts: sep.inks.filter(i => i.knockout).map(i => i.hex), settings: o,
+  return { plan, threads, objects: objects.map(({ parts, pbox, ...s }) => ({ ...s, thread: inPass.findIndex(l => l.some(x => x.rid === s.rid)) + 1 })), widthMm: Math.round(wMm * 10) / 10, heightMm: Math.round(hMm * 10) / 10, knockouts: sep.inks.filter(i => i.knockout).map(i => i.hex), settings: o,
     stats: { stitches, colours: plan.length, colourChanges: Math.max(0, plan.length - 1), trims, jumps, threadM: Math.round(threadM * 1.6 * 10) / 10, minutes: Math.round(minutes * 10) / 10, satin: objects.filter(s => s.kind === 'satin').length, fill: objects.filter(s => s.kind === 'fill').length },
     warnings: [...(narrow.length ? [`${narrow.length} shape${narrow.length > 1 ? 's are' : ' is'} under 1 mm wide: thin lines may not sew cleanly; thicken them or make the graphic bigger.`] : []), ...(stitches > 20000 ? [`${stitches.toLocaleString('en-US')} stitches is heavy for a garment: it will be stiff. A smaller design, an open fill or a patch is lighter.`] : [])] };
 }

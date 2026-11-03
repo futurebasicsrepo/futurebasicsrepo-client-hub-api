@@ -11,12 +11,13 @@
   "layout": "exhibition",
   "sections": {
     "make": {
-      "type": "make-v3",
+      "type": "make-v4",
       "settings": {
         "cta_url": "/pages/contact",
         "start_url": "https://hub.thefuturebasics.com/start",
         "faq_schema": true,
-        "part": "top"
+        "part": "top",
+        "lab_url": "https://hub.thefuturebasics.com/join?for=lab"
       },
       "blocks": {
         "m1": {
@@ -108,15 +109,15 @@
         "g3": {
           "type": "figure",
           "settings": {
-            "figure": "100%",
-            "label": "of revenue, yours"
+            "figure": "5",
+            "label": "factory languages, chinese in both scripts"
           }
         },
         "g4": {
           "type": "figure",
           "settings": {
-            "figure": "5",
-            "label": "categories, one partner"
+            "figure": "1",
+            "label": "room, from design to delivery"
           }
         },
         "o1": {
@@ -164,48 +165,39 @@
             "moq": "6–12 months"
           }
         },
-        "o7": {
-          "type": "object",
-          "settings": {
-            "cap": "obj_06 / 06 — systems",
-            "title": "software",
-            "body": "the tools behind the product. client portals, approval workflows, ai that turns images into documents, payments and partner networks, built and handed over.",
-            "moq": "scoped per build · from 4 wks"
-          }
-        },
         "o6": {
           "type": "object",
           "settings": {
             "cap": "note",
             "title": "minimums vary.",
-            "body": "apparel starts at fifty, plush at three hundred. footwear and electronics are a different scale entirely, and software is scoped to the job. every product carries its own minimum on its page.",
+            "body": "apparel starts at fifty, plush at three hundred. toys depend on tooling, and footwear and electronics are a different scale entirely. every product carries its own minimum on its page.",
             "is_note": true
           }
         },
         "s1": {
           "type": "step",
           "settings": {
-            "key": "01 — free",
-            "title": "apply",
-            "body": "tell us who you reach and what you want to make. we read every one.",
-            "note": "3 day reply"
+            "key": "01 — design",
+            "title": "design it in the lab",
+            "body": "any of the six ways in, for any product type. it ends in a tech pack.",
+            "note": "your room"
           }
         },
         "s2": {
           "type": "step",
           "settings": {
             "key": "02",
-            "title": "strategy call",
-            "body": "we work out what should actually exist. sometimes that means talking you out of your first idea.",
-            "note": "45 min"
+            "title": "tech pack",
+            "body": "submit it. we review it and publish v1, and you approve it.",
+            "note": "a few days"
           }
         },
         "s3": {
           "type": "step",
           "settings": {
             "key": "03",
-            "title": "design & sample",
-            "body": "tech packs, materials, colourways, and the thing itself in your hands.",
+            "title": "sample",
+            "body": "the factory signs every callout and makes a sample. corrections go on the pack as v2.",
             "note": "2 rounds"
           }
         },
@@ -214,7 +206,7 @@
           "settings": {
             "key": "04",
             "title": "produce",
-            "body": "our factories, our quality control, transparent landed cost. you see the invoice.",
+            "body": "our factories and our quality control, at a landed cost you can see.",
             "note": "from 50 pcs"
           }
         },
@@ -222,36 +214,9 @@
           "type": "step",
           "settings": {
             "key": "05",
-            "title": "launch",
-            "body": "your shopify store, built and live. you own it.",
-            "note": "handed over"
-          }
-        },
-        "k1": {
-          "type": "package",
-          "settings": {
-            "price": "from $15k",
-            "title": "signature",
-            "body": "one real product, one real store. strategy session, one custom product in one category, full design and development, two sampling rounds, production management, a shopify store built and handed over, studio photography, and the launch assets to sell it.",
-            "note": "10–14 weeks"
-          }
-        },
-        "k2": {
-          "type": "package",
-          "settings": {
-            "price": "from $45k",
-            "title": "capsule",
-            "body": "a drop, not a product. everything in signature, plus three to six pieces across at least two categories, line identity and packaging, campaign photography and a video asset, drop mechanics built into the store, email flows connected, and launch-week support.",
-            "note": "16–20 weeks"
-          }
-        },
-        "k3": {
-          "type": "package",
-          "settings": {
-            "price": "from $150k",
-            "title": "imprint",
-            "body": "your own line, with footwear and electronics unlocked. everything in capsule, plus a multi-season roadmap, development at tooling scale, inventory financing and ownership structuring, warehousing and fulfilment, wholesale and retail placement, and ongoing operations.",
-            "note": "6–12 months"
+            "title": "deliver",
+            "body": "to you or your warehouse, with every step tracked in your room.",
+            "note": "tracked"
           }
         }
       },
@@ -277,16 +242,12 @@
         "o3",
         "o4",
         "o5",
-        "o7",
         "o6",
         "s1",
         "s2",
         "s3",
         "s4",
-        "s5",
-        "k1",
-        "k2",
-        "k3"
+        "s5"
       ]
     },
     "systems": {
@@ -467,12 +428,13 @@
       ]
     },
     "make_end": {
-      "type": "make-v3",
+      "type": "make-v4",
       "settings": {
         "cta_url": "/pages/contact",
         "start_url": "https://hub.thefuturebasics.com/start",
         "faq_schema": true,
-        "part": "end"
+        "part": "end",
+        "lab_url": "https://hub.thefuturebasics.com/join?for=lab"
       },
       "blocks": {
         "q9": {
@@ -502,9 +464,9 @@
         "q2": {
           "type": "question",
           "settings": {
-            "key": "cost",
-            "title": "what does it actually cost?",
-            "body": "packages start at $15,000 for development, design and the store build. production is separate and billed at transparent landed cost."
+            "key": "production",
+            "title": "what does production cost?",
+            "body": "the tools are priced above: $499 for 90 days of the design lab, $100 a month for the membership, or $48 a pack. production is quoted per style from your tech pack and billed at transparent landed cost. you see the invoice."
           }
         },
         "q3": {
@@ -536,7 +498,7 @@
           "settings": {
             "key": "timing",
             "title": "how long does it take?",
-            "body": "ten to fourteen weeks for apparel, idea to live. ten to sixteen for plush. footwear and electronics run six to twelve months."
+            "body": "ten to fourteen weeks for apparel, design to delivery. ten to sixteen for plush. footwear and electronics run six to twelve months."
           }
         },
         "q7": {
@@ -544,15 +506,7 @@
           "settings": {
             "key": "risk",
             "title": "what if it does not sell?",
-            "body": "we will tell you before we build it if we think the product is wrong. and at fifty pieces, being wrong is survivable — that is rather the point of the minimum."
-          }
-        },
-        "q8": {
-          "type": "question",
-          "settings": {
-            "key": "ownership",
-            "title": "who owns the store?",
-            "body": "you do, outright. your shopify account, your domain, your customer data. we build it and hand over the keys."
+            "body": "we will tell you before we make it if we think the product is wrong. and at fifty pieces, being wrong is survivable — that is rather the point of the minimum."
           }
         },
         "q11": {
@@ -578,9 +532,45 @@
             "title": "is the cost estimate a quote?",
             "body": "no. it is your own arithmetic: a unit cost on each material, plus labour, decoration, packaging, freight and duty, added up to a landed cost and a margin, with price breaks at the order sizes you choose. a factory's quote replaces it, and factories never see it."
           }
+        },
+        "q14": {
+          "type": "question",
+          "settings": {
+            "key": "design lab",
+            "title": "what is the design lab?",
+            "body": "the studio we design with, open in your own room. six ways in: describe it, pick it from the recipe menu, start from one of 382 flat sketches, draw it from scratch, plan a whole line, or bring a photo. it covers clothes, headwear, bags, footwear, plush, toys and electronics, and every way ends in a tech pack."
+          }
+        },
+        "q15": {
+          "type": "question",
+          "settings": {
+            "key": "designer",
+            "title": "do i need to be a designer?",
+            "body": "no. the recipe menu is made for people who are not: pick a base, add the details, choose a colour system, and the flats are drawn for you. designers get the pro tools in the same place."
+          }
+        },
+        "q16": {
+          "type": "question",
+          "settings": {
+            "key": "lab price",
+            "title": "what does $499 get me?",
+            "body": "the design lab in your own room for 90 days, with 40 ai generations included and $2.50 each after that. tech packs are included while it is open."
+          }
+        },
+        "q17": {
+          "type": "question",
+          "settings": {
+            "key": "edit",
+            "title": "can i change what the recipe draws?",
+            "body": "yes. every pocket, zip and collar it places is a detail you can move, resize, recolour or delete in the studio, and edit recipe reopens the menu with your picks."
+          }
         }
       },
       "block_order": [
+        "q14",
+        "q15",
+        "q16",
+        "q17",
         "q9",
         "q10",
         "q1",
@@ -590,7 +580,6 @@
         "q5",
         "q6",
         "q7",
-        "q8",
         "q11",
         "q12",
         "q13"

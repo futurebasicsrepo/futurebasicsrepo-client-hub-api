@@ -1,0 +1,355 @@
+{%- comment -%}
+  Future Basics Make — v4. The Design Lab leads, production by Future Basics follows:
+    01 · design lab        — the six ways to design and every product type (real screens from the Lab)
+    02 · the tech pack     — spec sheet, checklist, factory sign-off, and the tools by subscription (pricing)
+    03 · made by us        — minimums and lead times per category, how it gets made
+    systems                — lives in sections/make-systems.liquid, between the two halves
+  The 'part' setting splits this section around it: one instance shows hero → made by us, another questions → close.
+  Its styles are in assets/make-v4.css (assets-make-v4.css here).
+  Screenshots of the Design Lab are served by the hub (hub.thefuturebasics.com/help/assets/make-*.webp), taken from the live Lab.
+  Primary CTA opens the Design Lab (hub.thefuturebasics.com/join?for=lab); the free tech pack is /start; production goes to /pages/contact.
+{%- endcomment -%}
+
+{%- liquid
+  assign start_url = section.settings.start_url | default: 'https://hub.thefuturebasics.com/start'
+  assign contact_url = section.settings.cta_url | default: '/pages/contact'
+  assign shots = 'https://hub.thefuturebasics.com/help/assets/'
+  assign lab_url = section.settings.lab_url | default: 'https://hub.thefuturebasics.com/join?for=lab'
+  assign marks = section.blocks | where: 'type', 'mark'
+  assign figures = section.blocks | where: 'type', 'figure'
+  assign objects = section.blocks | where: 'type', 'object'
+  assign projects = section.blocks | where: 'type', 'project'
+  assign steps = section.blocks | where: 'type', 'step'
+  assign questions = section.blocks | where: 'type', 'question'
+  assign part = section.settings.part | default: 'all'
+-%}
+
+{{ 'make-v4.css' | asset_url | stylesheet_tag }}
+
+<div class="mk3">
+
+  {%- unless part == 'end' -%}
+  <section class="mk3__hero mk3__pad">
+    <div>
+      <span class="mk3__mono">future basics · make</span>
+      <h1>{{ section.settings.hero_title | default: 'design it yourself.' }} <span>{{ section.settings.hero_accent | default: 'we make it properly.' }}</span></h1>
+      <div class="mk3__lede">{{ section.settings.hero_lede | default: '<p>The Design Lab is the studio we use on every project, now open to you. <b>Describe it, pick it from a menu, start from a sketch, draw it from scratch, plan a whole line or bring a photo.</b> Put your graphics on it: separated for print, digitized for embroidery. Every way ends in a tech pack a factory can make from. Then Future Basics makes it.</p>' }}</div>
+      <div class="mk3__actions">
+        <a class="mk3__btn" href="{{ lab_url }}&utm_source=thefuturebasics&utm_medium=site&utm_campaign=make_hero">open the design lab</a>
+        <a class="mk3__btn mk3__btn--ghost" href="{{ start_url }}?utm_source=thefuturebasics&utm_medium=site&utm_campaign=make_hero">start a tech pack <i>free</i></a>
+      </div>
+      <p class="mk3__fine">design lab $499 for 90 days · membership $100/month · first tech pack free</p>
+    </div>
+    <div class="mk3__stage">
+      <div class="mk3__flip" aria-hidden="true"><div class="mk3__flip-in">
+        <img class="mk3__flip-face" src="{{ shots }}make-flat-hoodie-back.webp" alt="" width="900" height="757" loading="eager" fetchpriority="high">
+        <img class="mk3__flip-face mk3__flip-face--b" src="{{ shots }}make-flat-hoodie-front.webp" alt="" width="900" height="757" loading="eager">
+      </div></div>
+      <p class="mk3__vh">A hoodie drawn in the Design Lab, turning from back to front: the Lane Six crest printed on the back, the 26 crest stitched on the chest.</p>
+      <div class="mk3__chip mk3__chip--sew"><video class="mk3__vid" src="{{ 'make-sewout-v3.mp4' | file_url }}" poster="{{ shots }}make-sewout-poster.webp" muted loop playsinline autoplay preload="metadata" aria-label="The 26 crest sewn stitch by stitch"></video><span><b>13,769 stitches</b>satin · .dst + .exp</span></div>
+      <div class="mk3__chip mk3__chip--ink"><span class="mk3__inks"><i style="--c:#f5f2ea"></i><i style="--c:#e9dfc7"></i><i style="--c:#a51c30"></i><i style="--c:#141416"></i></span><span><b>3 inks + underbase</b>plastisol · 11 in</span></div>
+      <span class="mk3__tag mk3__tag--a">6 ways to design</span>
+      <span class="mk3__tag mk3__tag--c">factory-ready tech pack</span>
+    </div>
+  </section>
+
+  {%- if marks.size > 0 -%}
+  <section class="mk3__marks mk3__pad" aria-label="Brands we have made product with">
+    <span class="mk3__mono">{{ section.settings.marks_label | default: 'made with' }}</span>
+    <ul>{%- for b in marks -%}<li {{ b.shopify_attributes }}>{{ b.settings.name }}</li>{%- endfor -%}</ul>
+  </section>
+  {%- endif -%}
+
+  <section class="mk3__reel" aria-label="Graphics made in the Design Lab">
+    <div class="mk3__reel-track"><div class="mk3__reel-set"><img src="{{ shots }}make-art-lane-six.webp" alt="Lane Six crest" width="322" height="320" loading="lazy"><img src="{{ shots }}make-art-future-band.webp" alt="Future Tour lettering" width="434" height="320" loading="lazy"><img src="{{ shots }}make-art-band-crest.webp" alt="26 band crest" width="273" height="320" loading="lazy"><img src="{{ shots }}make-art-north-hall.webp" alt="North Hall Relays" width="619" height="320" loading="lazy"><img src="{{ shots }}make-art-crest-plaque.webp" alt="FB crest plaque" width="255" height="320" loading="lazy"><img src="{{ shots }}make-art-side-a.webp" alt="Side A emblem" width="324" height="320" loading="lazy"><img src="{{ shots }}make-art-lane-marker.webp" alt="Lane 06 Swim Club" width="527" height="320" loading="lazy"><img src="{{ shots }}make-art-route-crest.webp" alt="Tour 01 route crest" width="290" height="320" loading="lazy"><img src="{{ shots }}make-art-chest-band-crest.webp" alt="Future 04 Basics chest band" width="983" height="247" loading="lazy"><img src="{{ shots }}make-art-left-chest.webp" alt="Number 3 oval" width="462" height="320" loading="lazy"></div><div class="mk3__reel-set" aria-hidden="true"><img src="{{ shots }}make-art-lane-six.webp" alt="" data-alt="Lane Six crest" width="322" height="320" loading="lazy"><img src="{{ shots }}make-art-future-band.webp" alt="" data-alt="Future Tour lettering" width="434" height="320" loading="lazy"><img src="{{ shots }}make-art-band-crest.webp" alt="" data-alt="26 band crest" width="273" height="320" loading="lazy"><img src="{{ shots }}make-art-north-hall.webp" alt="" data-alt="North Hall Relays" width="619" height="320" loading="lazy"><img src="{{ shots }}make-art-crest-plaque.webp" alt="" data-alt="FB crest plaque" width="255" height="320" loading="lazy"><img src="{{ shots }}make-art-side-a.webp" alt="" data-alt="Side A emblem" width="324" height="320" loading="lazy"><img src="{{ shots }}make-art-lane-marker.webp" alt="" data-alt="Lane 06 Swim Club" width="527" height="320" loading="lazy"><img src="{{ shots }}make-art-route-crest.webp" alt="" data-alt="Tour 01 route crest" width="290" height="320" loading="lazy"><img src="{{ shots }}make-art-chest-band-crest.webp" alt="" data-alt="Future 04 Basics chest band" width="983" height="247" loading="lazy"><img src="{{ shots }}make-art-left-chest.webp" alt="" data-alt="Number 3 oval" width="462" height="320" loading="lazy"></div></div>
+    <p class="mk3__reel-cap mk3__pad"><span class="mk3__mono">made in the lab</span><span>Future Basics graphics, drawn in the Design Lab and kept in its library.</span></p>
+  </section>
+
+  {%- comment -%} ───────── 01 · ways to design ───────── {%- endcomment -%}
+  <section class="mk3__pad" id="design-lab">
+    <div class="mk3__half">
+      <div><span class="mk3__mono">01 · the design lab</span><h2>six ways in. <span>one tech pack out.</span></h2></div>
+      <p><b>Design it whichever way suits you.</b> Every way in opens in the same Studio, becomes measured flats, a pattern or 3D parts, and ends in a tech pack a factory can quote and make from. These are real screens from the Lab.</p>
+    </div>
+    <div class="mk3__ways">
+      <article class="mk3__way"><div class="mk3__way-img"><img src="{{ shots }}make-way-ai.webp" alt="The New design window: a boxy heavyweight hoodie described in a few words, three concepts to draw" width="1200" height="900" loading="lazy"></div><div class="mk3__way-body"><span class="mk3__mono">with ai</span><h3>describe it.</h3><p>A few words are enough. Three concepts come back, each checked against what inspired it, ready to open in the Studio.</p></div></article>
+      <article class="mk3__way"><div class="mk3__way-img"><img src="{{ shots }}make-way-recipe.webp" alt="The recipe menu: a button-up shirt with a flap pocket and button-down collar, drawn in the Workwear colours" width="1200" height="900" loading="lazy"></div><div class="mk3__way-body"><span class="mk3__mono">by recipe</span><h3>order it like a meal.</h3><p>Pick one of 26 bases, add pockets, zips and collars from 31 add-ons, and choose a colour system. The flat redraws with every tap.</p></div></article>
+      <article class="mk3__way"><div class="mk3__way-img"><img src="{{ shots }}make-way-sketch.webp" alt="The sketch pack with a boxy cropped tee open in tobacco canvas" width="1200" height="900" loading="lazy"></div><div class="mk3__way-body"><span class="mk3__mono">from a sketch</span><h3>start from a real flat.</h3><p>Pick one of 382 professional flat sketches, choose its cloth and colour, and it opens in the Studio with both in place.</p></div></article>
+      <article class="mk3__way"><div class="mk3__way-img"><img src="{{ shots }}make-way-scratch.webp" alt="A blank page in the Studio with a t-shirt outline as a guide" width="1200" height="900" loading="lazy"></div><div class="mk3__way-body"><span class="mk3__mono">from scratch</span><h3>draw it yourself.</h3><p>A blank page with the product’s outline as a guide, at real size. Draw with a pen tool or an Apple Pencil; the flats and pattern follow.</p></div></article>
+      <article class="mk3__way"><div class="mk3__way-img"><img src="{{ shots }}lab-plan.jpg" alt="A line plan: six pieces, a median price, a blended margin and the units" width="1200" height="900" loading="lazy"></div><div class="mk3__way-body"><span class="mk3__mono">a whole line</span><h3>plan a season.</h3><p>Describe a season or a drop. The assistant drafts the pieces with target prices, landed cost and margin, then concepts for each.</p></div></article>
+      <article class="mk3__way"><div class="mk3__way-img"><img src="{{ shots }}make-way-photo.webp" alt="The free tech pack page: add a design, sketch or photo and get a draft tech pack" width="1200" height="900" loading="lazy"></div><div class="mk3__way-body"><span class="mk3__mono">from a photo</span><h3>bring any image.</h3><p>A render, a sketch, a photo of a sample or a screenshot becomes a draft tech pack in minutes, with callouts pinned to it. The first one is free.</p></div></article>
+    </div>
+    <ol class="mk3__flow" aria-label="Where every way in leads">
+      <li><span>any way in</span></li><li><span>the studio</span></li><li><span>flats, pattern or 3d parts</span></li><li><span>tech pack</span></li><li><span>factory sign-off</span></li><li><span>made by future basics</span></li>
+    </ol>
+
+    <div class="mk3__sub"><h3>every product type</h3><span class="mk3__mono">its own tools for each</span></div>
+    <div class="mk3__types">
+      <article class="mk3__type mk3__type--wide"><div class="mk3__type-img"><img src="{{ shots }}make-type-apparel.webp" alt="Flats from the Design Lab: tees and hoodies with Future Basics graphics, front and back" width="1200" height="450" loading="lazy"></div><div class="mk3__type-body"><h3>apparel</h3><p>Tops and jersey, knitwear, outerwear, tailoring, bottoms, dresses and sets: measured flats, front and back, graded across the size run.</p><b>from 50 pcs · 8–14 wks</b></div></article>
+      <article class="mk3__type"><div class="mk3__type-img"><img src="{{ shots }}make-type-headwear.webp" alt="A cap, bucket hat and beanie drawn in the Design Lab" width="1200" height="900" loading="lazy"></div><div class="mk3__type-body"><h3>headwear</h3><p>Six-panel caps, bucket hats and beanies, drawn and measured like the rest.</p></div></article>
+      <article class="mk3__type"><div class="mk3__type-img"><img src="{{ shots }}make-type-bags.webp" alt="A tote bag drawn in the Design Lab" width="1200" height="900" loading="lazy"></div><div class="mk3__type-body"><h3>bags</h3><p>Totes, backpacks and small bags, with the pockets and handles where they go.</p></div></article>
+      <article class="mk3__type"><div class="mk3__type-img"><img src="{{ shots }}make-type-footwear.webp" alt="A sneaker in the Design Lab drawn from the outside, inside, top and bottom" width="1200" height="843" loading="lazy"></div><div class="mk3__type-body"><h3>footwear</h3><p>A parametric last, the upper flattened off it into pattern pieces, a full size run, and tech flats from four sides.</p><b>6–12 month programme</b></div></article>
+      <article class="mk3__type"><div class="mk3__type-img"><img src="{{ shots }}make-type-plush.webp" alt="A plush bear in the Design Lab drawn from the front, back and side" width="1200" height="900" loading="lazy"></div><div class="mk3__type-body"><h3>plush</h3><p>Your character, patterned piece by piece like clothing, with a photo-real picture drawn from the pattern.</p><b>from 300 pcs · 10–16 wks</b></div></article>
+      <article class="mk3__type"><div class="mk3__type-img"><img src="{{ shots }}make-type-electronics.webp" alt="A round speaker in the Design Lab as numbered 3D parts with a unit cost and tooling" width="1200" height="900" loading="lazy"></div><div class="mk3__type-body"><h3>toys, objects + electronics</h3><p>Real 3D parts in an exploded view, with materials, tooling, unit cost, a bill of materials, and STL and STEP files.</p><b>tooling-dependent</b></div></article>
+      <article class="mk3__type mk3__type--text"><div class="mk3__type-body"><span class="mk3__mono">and more</span><h3>home + accessories</h3><p>Blankets, objects for a room, belts, socks and small goods: start from scratch or describe it, and it ends in a tech pack like everything else.</p></div></article>
+    </div>
+
+    <div class="mk3__sub"><h3>the tools inside</h3><span class="mk3__mono">in every room</span></div>
+    <div class="mk3__ways">
+      <article class="mk3__way"><div class="mk3__way-img"><img src="{{ shots }}make-tool-graphics.webp" alt="The graphics library: a crest plaque, a swim club back print, sleeve bands and a denim yoke graphic" width="1200" height="900" loading="lazy"></div><div class="mk3__way-body"><span class="mk3__mono">graphics library</span><h3>every graphic, kept.</h3><p>Your logos and artwork, and every graphic the Lab draws for you, in one library. Place any of them on any piece, in inches, on the picture and the flats.</p></div></article>
+      <article class="mk3__way"><div class="mk3__way-img"><img src="{{ shots }}make-tool-generator.webp" alt="Draw a new graphic: what it is, the exact words, ink colours, a style and the technique it is made for, and a new print from one you have" width="1200" height="900" loading="lazy"></div><div class="mk3__way-body"><span class="mk3__mono">graphic generator</span><h3>draw a new graphic.</h3><p>Say what it is, the exact words and the ink colours, and pick a style and the technique it is for. Or make a new print from one you have: in its style, or blended with another, then repeated all over.</p></div></article>
+      <article class="mk3__way"><div class="mk3__way-img"><img src="{{ shots }}make-tool-techniques.webp" alt="Embroidery techniques, each shown on fabric: 3D puff, chain stitch, fill stitch, metallic thread, satin stitch and tonal" width="1200" height="900" loading="lazy"></div><div class="mk3__way-body"><span class="mk3__mono">techniques</span><h3>how the mark is made.</h3><p>Embroidery, print, transfers, patches, knit-in, laser and washes, each shown on fabric. Embroidery gets a sew-out preview, and the decoration sheet gives the factory every graphic at real size.</p></div></article>
+      <article class="mk3__way"><div class="mk3__way-img"><img src="{{ shots }}make-tool-materials.webp" alt="The materials library: canvas, denim and merino swatches with weight, composition and price per metre" width="1200" height="900" loading="lazy"></div><div class="mk3__way-body"><span class="mk3__mono">materials</span><h3>real cloth, real prices.</h3><p>Fabrics with their weight, composition and price, plus trims, labels and tags, footwear materials, plush and plastics. Choose one and the bill of materials and the cost follow.</p></div></article>
+      <article class="mk3__way"><div class="mk3__way-img"><img src="{{ shots }}make-tool-pattern.webp" alt="A hoodie's pattern exploded into the pieces it is cut from: front, back, sleeves, hood, pocket, cuffs and hem" width="1200" height="900" loading="lazy"></div><div class="mk3__way-body"><span class="mk3__mono">pattern</span><h3>the pattern, drafted.</h3><p>Drafted from the flats’ measurements and exploded into the pieces it is cut from, with a cutting layout, seam allowance, and DXF and 1:1 SVG files.</p></div></article>
+      <article class="mk3__way mk3__way--text"><div class="mk3__way-body"><span class="mk3__mono">and in the studio</span><h3>colour, pencil, picture.</h3><p>Colour systems and colourways matched to Pantone C. Pro drawing tools, with iPad and Apple Pencil. The concept picture drawn from the flats in one tap.</p></div></article>
+    </div>
+  </section>
+
+  {%- comment -%} ───────── decoration: separations and embroidery ───────── {%- endcomment -%}
+  <section class="mk3__deco mk3__pad" id="decoration">
+    <div class="mk3__half">
+      <div><span class="mk3__mono">graphics to the factory</span><h2>ready for the press. <span>ready for the needle.</span></h2></div>
+      <p><b>A graphic in the Lab is not a picture of a print.</b> It is separated into the screens a printer burns, or digitized into the stitch file an embroidery machine sews, and it goes to the factory on the decoration sheet with every ink and thread as a Pantone.</p>
+    </div>
+
+    <div class="mk3__deco-row">
+      <div class="mk3__seps" role="img" aria-label="The Lane Six back print separated into four plates: a white underbase, cream, red and black, each with its Pantone, then put back together">
+        <figure class="mk3__plate" style="--i:0"><img src="{{ shots }}make-plate-0-underbase.webp" alt="" width="720" height="715" loading="lazy"></figure><figure class="mk3__plate" style="--i:1"><img src="{{ shots }}make-plate-1-cream.webp" alt="" width="720" height="715" loading="lazy"></figure><figure class="mk3__plate" style="--i:2"><img src="{{ shots }}make-plate-2-red.webp" alt="" width="720" height="715" loading="lazy"></figure><figure class="mk3__plate" style="--i:3"><img src="{{ shots }}make-plate-3-black.webp" alt="" width="720" height="715" loading="lazy"></figure>
+        <ol class="mk3__seps-key"><li style="--i:3;--c:#141416"><b>PANTONE Neutral Black C</b>24% · dots at 52.5°</li><li style="--i:2;--c:#a51c30"><b>PANTONE 7622 C</b>60% · dots at 22.5°</li><li style="--i:1;--c:#e9dfc7"><b>PANTONE 9140 C</b>16% · dots at 82.5°</li><li style="--i:0;--c:#f5f2ea"><b>white underbase</b>under every light ink</li></ol>
+        <span class="mk3__seps-tag">lane six crest · 11 in · plastisol</span>
+      </div>
+      <div class="mk3__deco-copy">
+        <span class="mk3__mono">colour separations</span>
+        <h3>every ink, its own screen.</h3>
+        <p>One plate per ink, black where the ink goes, at the real size, with its Pantone C. A dark garment gets a white underbase under the light colours. Soft tones are screened as halftone dots, each ink at its own angle.</p>
+        <ul><li>The press order, the mesh, the halftone and the cure on one job sheet</li><li>Inks and films, every plate as a print-ready file</li><li>A check on resolution, finest line and ink count before it goes to the printer</li></ul>
+        <img class="mk3__deco-doc" src="{{ shots }}make-deco-jobsheet.webp" alt="The job sheet for the Lane Six print: plastisol, 4 screens with the white underbase, 156 threads per inch mesh, the halftone angles, the press order and the cure" width="1000" height="1113" loading="lazy">
+      </div>
+    </div>
+
+    <div class="mk3__deco-row mk3__deco-row--flip">
+      <div class="mk3__sew">
+        <video class="mk3__vid" src="{{ 'make-sewout-v3.mp4' | file_url }}" poster="{{ shots }}make-sewout-poster.webp" muted loop playsinline autoplay preload="metadata" aria-label="The 26 crest sewn out stitch by stitch: cream, then black, then red, then the black outlines last"></video>
+        <img class="mk3__sew-review" src="{{ shots }}make-deco-review.webp" alt="The digitiser's review of the 26 crest: 89, worth a check, matching the artwork 99% and covering all of it" width="900" height="416" loading="lazy">
+      </div>
+      <div class="mk3__deco-copy">
+        <span class="mk3__mono">embroidery, digitized</span>
+        <h3>the stitch file, not a guess.</h3>
+        <p>The graphic is digitized for an embroidery machine: satin columns across lettering and thin shapes, tatami fill over an underlay on the wide areas, pull compensation for knits and fleece. Watch it sew, stitch by stitch, before a sample is made.</p>
+        <ul><li>Tajima .dst and Melco .exp files, with the thread sequence in Pantone</li><li>The stitch count, the colour changes, the trims and the minutes a piece</li><li>A digitiser's review: a score, and each thing worth fixing, fixed in one click</li></ul>
+      </div>
+    </div>
+
+    <div class="mk3__deco-row">
+      <div class="mk3__sheets">
+        <img src="{{ shots }}make-deco-sheet-print.webp" alt="The decoration sheet for the Lane Six back print: the graphic at real size, where it goes, inks as Pantone C and the inks on each colourway" width="1100" height="1224" loading="lazy">
+        <img src="{{ shots }}make-deco-sheet-emb.webp" alt="The decoration sheet for the 26 crest: satin stitch embroidery, its threads as Pantone C and the threads on each colourway" width="1100" height="1281" loading="lazy">
+      </div>
+      <div class="mk3__deco-copy">
+        <span class="mk3__mono">the decoration sheet</span>
+        <h3>one page a graphic, for the factory.</h3>
+        <p>Every graphic on the piece, at its real size and where it goes, measured from the high point of the shoulder. How it is made, the inks or threads as Pantone C, and the colours on each colourway, with the cost per piece.</p>
+        <ul><li>Placements in inches with centimetres alongside</li><li>Warp to the body, tone on tone and one graphic sized across the range</li><li>Part of the tech pack the factory signs</li></ul>
+      </div>
+    </div>
+  </section>
+
+  {%- comment -%} ───────── 02 · the tech pack + pricing ───────── {%- endcomment -%}
+  <section class="mk3__platform mk3__pad" id="tech-pack">
+    <div class="mk3__half">
+      <div><span class="mk3__mono">02 · the tech pack</span><h2>everything a factory needs. <span>nothing it doesn’t.</span></h2></div>
+      <p><b>The tech pack is where every way in arrives.</b> A checklist shows what is left before it is ready, and the spec sheet is the document a sample room works from, in inches with centimetres alongside.</p>
+    </div>
+
+    <div class="mk3__feat">
+      <div class="mk3__shot"><img src="{{ shots }}make-pack-spec.webp" alt="A spec sheet from the Design Lab: front and back flats of a navy hoodie with its chest crest and back print placed in inches, and its points of measure graded from XS" width="1800" height="1209" loading="lazy"></div>
+      <div class="mk3__feat-copy"><span class="mk3__mono">spec sheet</span><h3>a real document, not a moodboard.</h3><p>Front and back flats, placements in inches, colour and stitching, and points of measure graded across the size run.</p>
+        <ul><li>Points of measure from XS to XXL, with tolerances</li><li>Colourways with Pantone C codes, matched from the colour itself</li><li>A bill of materials from the fabrics, trims and labels you choose</li><li>A cost estimate, private to you: landed cost, margin and price breaks</li><li>PDF and Excel export</li></ul></div>
+    </div>
+
+    <div class="mk3__feat">
+      <div class="mk3__shot"><img src="{{ shots }}make-pack-checklist.webp" alt="The Studio's checklist before the tech pack, beside a tee with the Future Tour print placed 11 in wide on the back" width="1800" height="1207" loading="lazy"></div>
+      <div class="mk3__feat-copy"><span class="mk3__mono">checklist</span><h3>you always know what is left.</h3><p>Seven checks stand between a design and its tech pack, each with a button to finish it. “Can be made as drawn” is checked for you as you design.</p>
+        <ul><li>The concept picture, drawn from the flats in one tap</li><li>Graphics placed, the flats saved, the main fabric chosen</li><li>A make check that flags what a factory cannot sew</li><li>Approved, then sent to the tech pack</li></ul></div>
+    </div>
+
+    <div class="mk3__feat">
+      <div class="mk3__shot"><img src="{{ shots }}make-pack-callouts.webp" alt="The factory's copy of a tech pack: callouts pinned on a navy hoodie, the stitched chest crest first, three acknowledged by the factory and the next waiting" width="1800" height="1210" loading="lazy"></div>
+      <div class="mk3__feat-copy"><span class="mk3__mono">factory sign-off</span><h3>the factory signs every detail.</h3><p>The factory works from a private link in its own language and acknowledges every callout before anything is cut. Then we make it.</p>
+        <ul><li>The factory’s copy in Chinese, Spanish, Portuguese or Italian</li><li>You approve, Future Basics signs, the factory countersigns</li><li>v1 stays live while v2 is edited; signed versions lock</li><li>A pack sent to a factory carries the spec only: no retail price and no unit costs</li></ul></div>
+    </div>
+
+    <div class="mk3__sub" id="pricing" style="border-color:rgba(255,255,255,.3)"><h3>the tools, by subscription</h3><span class="mk3__mono">no retainer · cancel anytime</span></div>
+    <div class="mk3__prices" style="margin-top:0">
+      <div class="mk3__price mk3__price--lab"><span class="mk3__mono">design lab</span><b>$499<small>/90 days</small></b><p>All six ways in, every product type, the Studio and the libraries in your own room. 40 AI generations included, then $2.50 each. Tech packs included while it is open.</p><a href="{{ lab_url }}&utm_source=thefuturebasics&utm_medium=site&utm_campaign=make_pricing">open the design lab →</a></div>
+      <div class="mk3__price"><span class="mk3__mono">studio membership</span><b>$100<small>/month</small></b><p>Unlimited tech packs, versions and factory links for your studio. Cancel anytime.</p></div>
+      <div class="mk3__price"><span class="mk3__mono">per pack</span><b>$48</b><p>One tech pack from an image, with a cost estimate, PDF and Excel, Future Basics review and the factory’s copy in its language.</p></div>
+      <div class="mk3__price mk3__price--hot"><span class="mk3__mono">first pack</span><b>free</b><p>Your first tech pack from an image, start to finish. No card needed.</p></div>
+    </div>
+    <div class="mk3__compare">
+      <table>
+        <thead><tr><th scope="col">getting a product designed</th><th scope="col">cost</th><th scope="col">time</th><th scope="col">factory-ready</th></tr></thead>
+        <tbody>
+          <tr><td>freelance designer + technical designer</td><td>$300–800 a pack, plus design</td><td>1–3 weeks</td><td>email and PDFs</td></tr>
+          <tr><td>design software + PLM</td><td>$10,000+ a year</td><td>weeks to set up</td><td>yes, if the factory logs in</td></tr>
+          <tr class="us"><td>future basics design lab</td><td>$499 for 90 days, or $100 a month</td><td>an afternoon</td><td>private link, every callout signed</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="mk3__actions">
+      <a class="mk3__btn" href="{{ lab_url }}&utm_source=thefuturebasics&utm_medium=site&utm_campaign=make_lab">open the design lab</a>
+      <a class="mk3__btn mk3__btn--ghost" href="{{ start_url }}?utm_source=thefuturebasics&utm_medium=site&utm_campaign=make_lab">start your free tech pack</a>
+      <a class="mk3__btn mk3__btn--ghost" href="https://hub.thefuturebasics.com/pricing">see pricing</a>
+    </div>
+  </section>
+
+  {%- comment -%} ───────── 03 · made by future basics ───────── {%- endcomment -%}
+  <section class="mk3__pad" id="experience">
+    <div class="mk3__half">
+      <div><span class="mk3__mono">03 · made by future basics</span><h2>you design it. <span>we make it.</span></h2></div>
+      <p><b>Whatever you design in the Lab, Future Basics can make.</b> Send us the tech pack and we take it from there: sampling, production, quality control and delivery, at a landed cost you can see. Cut-and-sew, not printed blanks. Every category below has a real minimum and a real lead time.</p>
+    </div>
+
+    {%- if figures.size > 0 -%}
+    <div class="mk3__figures">
+      {%- for b in figures -%}<div class="mk3__figure" {{ b.shopify_attributes }}><b>{{ b.settings.figure }}</b><span>{{ b.settings.label }}</span></div>{%- endfor -%}
+    </div>
+    {%- endif -%}
+
+    {%- if projects.size > 0 or request.design_mode -%}
+    <div class="mk3__sub"><h3>selected work</h3><span class="mk3__mono">{{ projects.size }} project{% if projects.size != 1 %}s{% endif %}</span></div>
+    {%- if projects.size > 0 -%}
+    <div class="mk3__projects">
+      {%- for b in projects -%}
+      <article class="mk3__project" {{ b.shopify_attributes }}>
+        <div class="mk3__project-img">{%- if b.settings.image != blank -%}{{ b.settings.image | image_url: width: 900 | image_tag: widths: '360, 540, 720, 900', sizes: '(max-width: 620px) 100vw, (max-width: 1000px) 50vw, 33vw', loading: 'lazy', alt: b.settings.image.alt | default: b.settings.title }}{%- endif -%}</div>
+        <div class="mk3__project-body">
+          {%- if b.settings.client != blank -%}<span class="mk3__mono">{{ b.settings.client }}</span>{%- endif -%}
+          <h3>{{ b.settings.title }}</h3>
+          {%- if b.settings.body != blank -%}<p>{{ b.settings.body }}</p>{%- endif -%}
+          <div class="mk3__chips">{%- if b.settings.category != blank -%}<span>{{ b.settings.category }}</span>{%- endif -%}{%- if b.settings.quantity != blank -%}<span>{{ b.settings.quantity }}</span>{%- endif -%}{%- if b.settings.lead_time != blank -%}<span>{{ b.settings.lead_time }}</span>{%- endif -%}</div>
+        </div>
+      </article>
+      {%- endfor -%}
+    </div>
+    {%- else -%}
+    <p class="mk3__empty">Add “Project” blocks in the theme editor: an image, the client, what it was, quantity and lead time. This note only shows in the editor.</p>
+    {%- endif -%}
+    {%- endif -%}
+
+    {%- if objects.size > 0 -%}
+    <div class="mk3__sub"><h3>minimums and lead times</h3><span class="mk3__mono">per style</span></div>
+    <div class="mk3__cats">
+      {%- for b in objects -%}
+      <div class="mk3__cat{% if b.settings.is_note %} mk3__cat--note{% endif %}" {{ b.shopify_attributes }}>
+        <span class="mk3__mono">{{ b.settings.cap }}</span>
+        <h3>{{ b.settings.title }}</h3>
+        <p>{{ b.settings.body }}</p>
+        {%- if b.settings.moq != blank -%}<b>{{ b.settings.moq }}</b>{%- endif -%}
+      </div>
+      {%- endfor -%}
+    </div>
+    {%- endif -%}
+
+    {%- if steps.size > 0 -%}
+    <div class="mk3__sub"><h3>how it gets made</h3><span class="mk3__mono">lab to delivery</span></div>
+    <ol class="mk3__steps">
+      {%- for b in steps -%}<li class="mk3__step" {{ b.shopify_attributes }}><span class="mk3__mono">{{ b.settings.key }}</span><h3>{{ b.settings.title }}</h3><p>{{ b.settings.body }}</p>{%- if b.settings.note != blank -%}<em>{{ b.settings.note }}</em>{%- endif -%}</li>{%- endfor -%}
+    </ol>
+    {%- endif -%}
+
+
+  </section>
+
+
+
+  {%- endunless -%}
+
+  {%- unless part == 'top' -%}
+  {%- if questions.size > 0 -%}
+  <section class="mk3__faq mk3__pad" id="faq">
+    <div><span class="mk3__mono">questions</span><h2>the honest answers.</h2></div>
+    <div>
+      {%- for b in questions -%}<details {{ b.shopify_attributes }}><summary>{{ b.settings.title }}</summary><p>{{ b.settings.body }}</p></details>{%- endfor -%}
+    </div>
+  </section>
+  {%- endif -%}
+
+  <section class="mk3__close mk3__pad">
+    <div class="mk3__door mk3__door--self">
+      <div><span class="mk3__mono">do it yourself</span><h2>open the design lab.</h2></div>
+      <p>Six ways to design and every product type, ending in a tech pack a factory can make from. $499 for 90 days, or start from any image: your first tech pack is free.</p>
+      <div class="mk3__actions" style="margin-top:0"><a class="mk3__btn" href="{{ lab_url }}&utm_source=thefuturebasics&utm_medium=site&utm_campaign=make_close">open the design lab</a><a class="mk3__btn mk3__btn--ghost" href="{{ start_url }}?utm_source=thefuturebasics&utm_medium=site&utm_campaign=make_close">free tech pack</a></div>
+    </div>
+    <div class="mk3__door">
+      <div><span class="mk3__mono">then we make it</span><h2>send us the tech pack.</h2></div>
+      <p>Sampling, production, quality control and delivery, from fifty pieces, at a landed cost you can see.</p>
+      <a class="mk3__btn mk3__btn--ghost" href="{{ contact_url }}">talk to us about production</a>
+    </div>
+  </section>
+
+  <footer class="mk3__foot mk3__pad"><span class="mk3__mono">future basics · a non-linear progress corp®</span><span class="mk3__mono">product development + software + commerce systems</span></footer>
+  {%- endunless -%}
+</div>
+
+{%- unless part == 'end' -%}
+<script>
+(function(){var v=[].slice.call(document.querySelectorAll('.mk3 video.mk3__vid'));if(!v.length)return;
+var still=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+v.forEach(function(x){x.muted=true;if(still){x.removeAttribute('autoplay');x.pause();}});
+if(still||!('IntersectionObserver' in window))return;
+var io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){var p=e.target.play();if(p&&p.catch)p.catch(function(){});}else e.target.pause();});},{threshold:.15});
+v.forEach(function(x){io.observe(x);});})();
+</script>
+{%- endunless -%}
+
+{%- if section.settings.faq_schema and questions.size > 0 and part != 'top' -%}
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{%- for b in questions -%}{"@type":"Question","name":{{ b.settings.title | json }},"acceptedAnswer":{"@type":"Answer","text":{{ b.settings.body | json }}}}{%- unless forloop.last -%},{%- endunless -%}{%- endfor -%}]}
+</script>
+{%- endif -%}
+
+{% schema %}
+{
+  "name": "Make — design lab",
+  "settings": [
+    { "type": "url", "id": "cta_url", "label": "Start a project link" },
+    { "type": "text", "id": "start_url", "label": "Tech pack start link", "default": "https://hub.thefuturebasics.com/start" },
+    { "type": "text", "id": "lab_url", "label": "Design Lab link", "default": "https://hub.thefuturebasics.com/join?for=lab" },
+    { "type": "text", "id": "hero_title", "label": "Hero title" },
+    { "type": "text", "id": "hero_accent", "label": "Hero title, second line" },
+    { "type": "richtext", "id": "hero_lede", "label": "Hero text" },
+    { "type": "text", "id": "marks_label", "label": "Brand list label", "default": "made with" },
+    { "type": "text", "id": "min_figure", "label": "Legacy: minimum figure" },
+    { "type": "checkbox", "id": "faq_schema", "label": "Add FAQ structured data", "default": true },
+    { "type": "select", "id": "part", "label": "Show", "default": "all", "options": [ { "value": "all", "label": "Whole page" }, { "value": "top", "label": "Hero to made by future basics" }, { "value": "end", "label": "Questions and close" } ] }
+  ],
+  "blocks": [
+    { "type": "mark", "name": "Brand", "settings": [ { "type": "text", "id": "name", "label": "Name" } ] },
+    { "type": "figure", "name": "Figure", "settings": [ { "type": "text", "id": "figure", "label": "Figure" }, { "type": "text", "id": "label", "label": "Label" } ] },
+    { "type": "project", "name": "Project", "settings": [
+      { "type": "image_picker", "id": "image", "label": "Image" },
+      { "type": "text", "id": "client", "label": "Client or brand" },
+      { "type": "text", "id": "title", "label": "What it was" },
+      { "type": "textarea", "id": "body", "label": "Short description" },
+      { "type": "text", "id": "category", "label": "Category" },
+      { "type": "text", "id": "quantity", "label": "Quantity", "info": "e.g. 250 units" },
+      { "type": "text", "id": "lead_time", "label": "Lead time", "info": "e.g. 11 weeks" }
+    ] },
+    { "type": "object", "name": "Category", "settings": [
+      { "type": "text", "id": "cap", "label": "Caption" }, { "type": "text", "id": "title", "label": "Title" },
+      { "type": "textarea", "id": "body", "label": "Text" }, { "type": "text", "id": "moq", "label": "Minimum and lead time" },
+      { "type": "checkbox", "id": "is_note", "label": "Show as a note", "default": false }
+    ] },
+    { "type": "step", "name": "Step", "settings": [
+      { "type": "text", "id": "key", "label": "Number" }, { "type": "text", "id": "title", "label": "Title" },
+      { "type": "textarea", "id": "body", "label": "Text" }, { "type": "text", "id": "note", "label": "Note" }
+    ] },
+    { "type": "question", "name": "Question", "settings": [
+      { "type": "text", "id": "key", "label": "Key" }, { "type": "text", "id": "title", "label": "Question" },
+      { "type": "textarea", "id": "body", "label": "Answer" }
+    ] }
+  ],
+  "presets": [{ "name": "Make — design lab" }]
+}
+{% endschema %}
