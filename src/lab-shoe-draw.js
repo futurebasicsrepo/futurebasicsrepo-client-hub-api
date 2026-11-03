@@ -164,3 +164,29 @@ export function cleanDrawing(b, base) {
   const details = b.details === false ? [] : base.details || [];
   return { ...base, panels, details, ...(b.hideDetails !== undefined ? { hideDetails: Boolean(b.hideDetails) } : {}) };
 }
+
+// ---- the drawing's colours, for the pattern ---------------------------------------------------------------------------------------------------
+// → { upper, overlay, sole, outsole, lace, lining } from the outside drawing (only what it shows). A panel the designer named says its part; the
+// rest are read from where their colour sits on the shoe: the colour along the bottom edge is the outsole, the broad colour just above it the
+// sole (midsole), and above the sole line the largest colour is the upper and the next the overlay.
+const PART_WORDS = [[/\b(out\s?sole|tread|lug|rubber)\b/i, 'outsole'], [/\b(mid\s?sole|sole|foxing|sidewall|welt|heel block|wedge)\b/i, 'sole'], [/\b(lining|collar lining|sock\s?liner|inside)\b/i, 'lining'],
+  [/\b(lace|laces|lacing|cord)\b/i, 'lace'], [/\b(toe ?cap|mud\s?guard|eye\s?stay|heel (?:counter|overlay|tab)|overlay|cage|saddle|counter|tab|pull)\b/i, 'overlay'], [/\b(vamp|quarter|upper|tongue|body|mesh|shaft)\b/i, 'upper']];
+export function partOfName(name) { for (const [re, part] of PART_WORDS) if (re.test(String(name || ''))) return part; return null; }
+export function drawingColours(dw) {
+  const ps = (dw?.panels || []).filter(p => !p.hidden && /^#[0-9a-f]{6}$/i.test(p.fill || '') && p.box), out = {};
+  if (!ps.length) return out;
+  // named panels first: the part's colour is its largest named panel's
+  const named = {}; for (const p of ps) { const part = partOfName(p.name); if (part && (!named[part] || p.area > named[part].area)) named[part] = p; }
+  for (const [part, p] of Object.entries(named)) out[part] = p.fill.toLowerCase();
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; for (const p of ps) { x0 = Math.min(x0, p.box.x0); y0 = Math.min(y0, p.box.y0); x1 = Math.max(x1, p.box.x1); y1 = Math.max(y1, p.box.y1); }
+  const H = Math.max(1, y1 - y0), byCol = new Map();
+  for (const p of ps) { if (partOfName(p.name)) continue; const c = p.fill.toLowerCase(), g = byCol.get(c) || { c, area: 0, cy: 0, bottom: 0 }; g.area += p.area; g.cy += p.area * ((p.box.y0 + p.box.y1) / 2 - y0) / H; if (p.box.y1 >= y1 - H * .03) g.bottom += p.area; byCol.set(c, g); }
+  const groups = [...byCol.values()].map(g => ({ ...g, cy: g.cy / g.area })), taken = new Set(Object.values(out));
+  const pick = (part, list) => { if (out[part] || !list.length) return; out[part] = list[0].c; taken.add(list[0].c); };
+  pick('outsole', groups.filter(g => g.bottom > 0 && !taken.has(g.c)).sort((a, b) => b.bottom - a.bottom));
+  pick('sole', groups.filter(g => g.cy > .62 && !taken.has(g.c)).sort((a, b) => b.area - a.area));
+  if (!out.sole && out.outsole) out.sole = out.outsole; // one colour from the ground up
+  const above = groups.filter(g => g.cy <= .62 && !taken.has(g.c)).sort((a, b) => b.area - a.area);
+  pick('upper', above); pick('overlay', above.filter(g => !taken.has(g.c)));
+  return out;
+}

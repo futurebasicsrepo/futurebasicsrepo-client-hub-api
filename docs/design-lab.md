@@ -934,6 +934,13 @@ A footwear concept's **Flats** in the Studio (`/lab/shoe-flats`, in the Studio's
   edge to add a point, Alt-click a point to remove it. **Colours in this view** recolours a whole colour at once (a colourway), and **Same
   colours on every view** carries it to the other four. Stitching and tread lines switch on and off. Undo and redo; **Back to the drawing as
   traced**; **Draw again**; Download SVG; the Studio's spec sheet button opens all five views on one sheet.
+- **Colours follow the drawing.** The pattern takes its colours from the outside drawing (`drawingColours`) whenever the drawing was changed
+  after the pattern was last saved: the last edit wins, so a colour then changed on the Pattern page stays until the drawing changes again. A
+  panel the designer named says its part (vamp, quarter, tongue → upper; toe cap, mudguard, eyestay, heel counter, cage → overlay; midsole,
+  foxing, welt → sole; outsole, tread → outsole; laces; lining). The rest are read from where their colour sits: the colour along the ground is
+  the outsole, the broad colour just above it the sole (the outsole's colour when there is none), and above the sole line the largest colour is
+  the upper and the next the overlay. The Pattern page says which colours came from the drawing; re-reading the shoe keeps them. A material
+  chosen for a part, with its own colour, still wins on that part.
 - **One shoe.** The Pattern page reads the shoe from the designer's outside drawing as saved (before the side profile or the picture), so the
   last's outline, collar and toe spring follow the drawing's edits, and lays that drawing under the shoe. A shoe sent to its tech pack takes these
   drawings as its technical flats (each view and one sheet of all of them) in place of the views drawn from the pattern.

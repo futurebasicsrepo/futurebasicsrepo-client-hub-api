@@ -45,3 +45,18 @@ test('the outside is drawn from the side profile; every other view from the outs
   const failed = []; await makeShoeDrawings({ side, cfg: { provider: 'openai', configured: true }, edit: async () => { throw new Error('model down'); }, onView: (v, r, note) => failed.push([v, r, note]) });
   assert.equal(failed.length, 5); assert.match(failed[0][2], /model down/); assert.match(failed[1][2], /outside view could not be drawn/);
 });
+
+test('the drawing\'s colours go to the pattern\'s parts: by name when the designer named a panel, else by where the colour sits', async () => {
+  const { drawingColours, partOfName } = await import('../src/lab-shoe-draw.js');
+  const P = (id, fill, y0, y1, area, name) => ({ id, fill, area, d: 'M0 0Z', box: { x0: 0, y0, x1: 900, y1 }, ...(name ? { name } : {}) });
+  // a runner: charcoal mesh and an olive cage above, a bone midsole, an orange outsole along the ground
+  const dw = { panels: [P('a', '#343537', 100, 420, 60000), P('b', '#888d61', 160, 460, 40000), P('c', '#edeae4', 430, 560, 45000), P('d', '#e85322', 520, 600, 25000)] };
+  assert.deepEqual(drawingColours(dw), { outsole: '#e85322', sole: '#edeae4', upper: '#343537', overlay: '#888d61' });
+  // one colour from the ground up: the sole is the outsole's colour
+  assert.deepEqual(drawingColours({ panels: [P('a', '#2f3b57', 100, 420, 60000), P('c', '#f1efe9', 430, 600, 45000)] }), { outsole: '#f1efe9', sole: '#f1efe9', upper: '#2f3b57' });
+  // a named panel says its part, whatever its place; a hidden panel says nothing
+  const named = drawingColours({ panels: [P('a', '#343537', 100, 420, 60000, 'Vamp'), P('t', '#aa2211', 300, 420, 3000, 'Toe cap'), P('l', '#ffffff', 120, 200, 2000, 'Laces'), P('x', '#00ff00', 0, 600, 90000)].map(p => p.id === 'x' ? { ...p, hidden: true } : p).concat(P('c', '#edeae4', 430, 600, 45000)) });
+  assert.equal(named.upper, '#343537'); assert.equal(named.overlay, '#aa2211'); assert.equal(named.lace, '#ffffff'); assert.equal(named.outsole, '#edeae4'); assert.ok(!Object.values(named).includes('#00ff00'));
+  assert.equal(partOfName('Midsole'), 'sole'); assert.equal(partOfName('outsole lugs'), 'outsole'); assert.equal(partOfName('heel counter'), 'overlay'); assert.equal(partOfName('Quarter'), 'upper'); assert.equal(partOfName('stripe'), null);
+  assert.deepEqual(drawingColours({ panels: [] }), {});
+});

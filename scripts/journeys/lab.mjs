@@ -4550,6 +4550,10 @@ await journey('J280', 'A shoe drawn in panels in the Studio: the concept becomes
     const moved = upper.d.replace(/^M([\d.]+) ([\d.]+)/, (m, x, y) => `M${+x - 30} ${+y}`);
     const put = await K(`/concepts/${cid}/shoe-drawing/lateral`, { method: 'PUT', body: { panels: lat.panels.map(p => p.id === upper.id ? { ...p, fill: '#1F3A5F', name: 'Upper', d: moved } : p) } });
     ok(put.status === 200 && put.json.drawing.panels.find(p => p.id === upper.id).fill === '#1f3a5f', '2. a panel is recoloured, named and reshaped, and saved');
+    sql(`delete from lab_patterns where concept_id='${cid}'`);
+    const pat1 = (await K(`/concepts/${cid}/pattern`)).json;
+    ok(pat1.spec.colours?.upper === '#1f3a5f' && pat1.coloursFrom?.source === 'drawing' && pat1.coloursFrom.parts.includes('upper'), '   the pattern takes the drawing\'s colours by itself: the recoloured panel is its upper', { colours: pat1.spec.colours, from: pat1.coloursFrom });
+    ok((await K(`/concepts/${cid}/pattern`, { method: 'PUT', body: { spec: { ...pat1.spec, colours: { ...pat1.spec.colours, upper: '#aa0000' } } } })).status === 200 && (await K(`/concepts/${cid}/pattern`)).json.spec.colours.upper === '#aa0000', '   a colour changed on the pattern after that stays (the last edit wins)');
     const svg = await fetch(`${BASE}/v1/lab/concepts/${cid}/shoe-drawing/lateral.svg`, { headers: { authorization: `Bearer ${kyleT}` } }).then(r => r.text());
     ok(/<svg/.test(svg) && svg.includes('#1f3a5f') && svg.includes('data-name="Upper"'), '   the drawing as SVG carries the change');
     ok((await K(`/concepts/${cid}/shoe-drawing/lateral`, { method: 'PUT', body: { panels: [{ id: upper.id, d: '<script>alert(1)</script>', fill: 'javascript:' }] } })).json.drawing?.panels?.[0]?.d === moved, '   anything that is not path data or a colour is not taken');
