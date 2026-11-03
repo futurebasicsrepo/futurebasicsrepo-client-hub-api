@@ -22,15 +22,21 @@ test('a plush concept says what its pattern is drafted from, and is drawn as a s
   const fx = conceptFixture({ user: 'Make 2 different concepts\nPlanned piece: Bear\n(category plush, role core)' });
   assert.equal(fx.concepts[1].plush.shape, 'bunny');
 });
-test('a shoe concept keeps its style, toe, pieces and colours, and is drawn from the side', () => {
+test('a shoe concept keeps its style, toe, pieces and colours, and is drawn as a designer\'s three-quarter render on a set that suits it', () => {
   const s = cleanSpec({ footwear: { style: 'derby', toe: 'almond', toeCap: true, upper: 'leather', sole: 'stitched', colours: { upper: '#4A2E1E', sole: 'x' } } });
   assert.deepEqual(s.footwear, { style: 'derby', toe: 'almond', toeCap: true, upper: 'leather', sole: 'stitched', colours: { upper: '#4a2e1e' } });
-  assert.match(imagePrompt({ name: 'Derby', category: 'footwear', spec: s }), /side profile/);
+  const derby = imagePrompt({ name: 'Derby', category: 'footwear', spec: s });
+  assert.match(derby, /three-quarter view of the outside of the shoe, toe pointing right/); assert.match(derby, /men's derby: full-grain leather upper, almond toe, a separate toe cap, a stitched sole/);
+  assert.match(derby, /clean, warm studio/); assert.doesNotMatch(derby, /plain light-grey background/); assert.doesNotMatch(derby, /Keep these places completely plain/, 'no logo is pasted on a shoe picture, so nothing is held plain for it');
+  assert.match(imagePrompt({ name: 'Runner', category: 'footwear', spec: cleanSpec({ footwear: { style: 'runner' } }) }), /dark, moody studio/);
+  assert.match(imagePrompt({ name: 'Boot', category: 'footwear', spec: cleanSpec({ footwear: { style: 'boot' } }) }), /editorial still life/);
+  assert.equal(LOGO_PLACE.footwear[1], null, 'the logo is not laid flat on a shoe\'s picture');
   assert.match(imagePrompt({ name: 'Tee', category: 'tops', spec: cleanSpec({}) }), /Three-quarter front view/);
 });
 test('nobody wears a plush, a toy or a gadget: their board views are the product alone, with no walk', () => {
   for (const c of ['plush', 'toys', 'electronics', 'home']) { assert.deepEqual(kindsFor(c), ['flat_front', 'flat_back']); assert.equal(canWalk(c), false); }
   assert.equal(kindsFor('tops').length, 6); assert.equal(canWalk('footwear'), true);
+  assert.deepEqual(kindsFor('footwear').slice(-1), ['sheet'], 'only a shoe gets the design sheet'); assert.ok(!kindsFor('tops').includes('sheet'));
   assert.match(viewPrompt({ category: 'plush', name: 'Bear' }, 'flat_front'), /plush toy sitting upright/);
 });
 test('the checklist reads a shoe\'s or a plush\'s pattern: saved, its checks, and the material on its main part', () => {

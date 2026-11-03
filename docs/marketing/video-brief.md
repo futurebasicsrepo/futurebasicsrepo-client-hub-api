@@ -82,7 +82,7 @@ A library of photo-real fabric and trim swatches, recoloured to your colour. It 
 acrylics.
 
 ### Beyond clothing (good for a "it does more than tees" cut)
-- **Footwear:** a parametric shoe last, the upper flattened off the last into pattern pieces, a size run, and a tech flat from four sides.
+- **Footwear:** concepts drawn as designer-grade three-quarter renders on a set that suits the shoe, a design sheet (side, top, outsole, heel and four colourways on one board), the shoe drawn as a technical flat in five views and traced into panels a designer recolours and reshapes in the Studio, a parametric shoe last, the upper flattened off the last into pattern pieces, a size run, and a tech flat from four sides.
 - **Plush:** photo-real concepts, patterned like clothing.
 - **Patterns:** the product shown exploded into the pieces it is cut from, with an AAMA/ASTM DXF export.
 - **Engineering:** hard goods, toys, home objects and electronics as 3D parts in an exploded view, with tooling and cost, a bill of materials,

@@ -88,7 +88,7 @@ export function proposal(spec, sil, vision) {
     if (S.laced && v.eyelets >= 3) set('eyelets', Math.min(14, Math.round(v.eyelets)), 'picture (AI)');
     if (v.vamp >= .4 && v.vamp <= .75) set('vamp', Math.round(v.vamp * 100) / 100, 'picture (AI)'); if (v.throat >= .1 && v.throat <= .6) set('throat', Math.round(v.throat * 100) / 100, 'picture (AI)');
     if (v.collarIn > 1.5 && v.collarIn < 10) set('collar', r8(v.collarIn), 'picture (AI)'); if (v.heelIn >= 0 && v.heelIn <= 4) set('heel', r8(v.heelIn), 'picture (AI)'); if (v.soleIn > .25 && v.soleIn < 2.5) set('soleHeight', r8(v.soleIn), 'picture (AI)');
-    const c = Object.fromEntries(['upper', 'overlay', 'sole', 'lining'].filter(k => HEX.test(String(v.colours?.[k] || ''))).map(k => [k, String(v.colours[k]).toLowerCase()])); if (Object.keys(c).length) set('colours', c, 'picture (AI)');
+    const c = Object.fromEntries(['upper', 'overlay', 'sole', 'lining'].filter(k => HEX.test(String(v.colours?.[k] || ''))).map(k => [k, String(v.colours[k]).toLowerCase()])); if (Object.keys(c).length) set('colours', { ...(base.colours || {}), ...c }, 'picture (AI)');
   }
   // the outline measures what the eye guesses: the collar, the toe spring, and a style when only the shape can say it
   // the outline is from the ground: the sole's thickness at the heel (as the eye read it, or the style's usual sole) comes off the collar

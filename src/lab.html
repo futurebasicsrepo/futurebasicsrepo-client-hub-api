@@ -50,7 +50,7 @@ h1{font-size:clamp(30px,5vw,48px);letter-spacing:-.035em;font-weight:500;margin:
 .at .bd{padding:10px 12px 12px;display:grid;gap:4px}.at .bd h4{margin:0;font-size:14px;font-weight:600;line-height:1.25}.at .tags{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 dialog.av{border:0;border-radius:24px;padding:0;width:min(1040px,96vw);max-height:94vh;overflow:auto;background:#fff;color:var(--ink)}dialog.av::backdrop{background:rgba(20,20,22,.6)}
 .av .in{padding:20px;display:grid;grid-template-columns:minmax(260px,460px) 1fr;gap:22px;align-items:start}
-.av .stage{position:relative;aspect-ratio:3/4;width:min(100%,calc(60vh * .75));margin:0 auto;background:var(--fog);border-radius:18px;overflow:hidden;touch-action:pan-y;user-select:none;cursor:grab;display:grid;place-items:center}.av .stage:active{cursor:grabbing}.av .stage img,.av .stage video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#fff;pointer-events:none}.av .stage.m img,.av .stage.m video{object-fit:cover;object-position:top;background:#c9ccd2}.av .stage video{pointer-events:auto}
+.av .stage{position:relative;aspect-ratio:3/4;width:min(100%,calc(60vh * .75));margin:0 auto;background:var(--fog);border-radius:18px;overflow:hidden;touch-action:pan-y;user-select:none;cursor:grab;display:grid;place-items:center}.av .stage:active{cursor:grabbing}.av .stage img,.av .stage video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#fff;pointer-events:none}.av .stage.m img,.av .stage.m video{object-fit:cover;object-position:top;background:#c9ccd2}.av .stage video{pointer-events:auto}.av .stage.w{aspect-ratio:3/2;width:100%}
 .av .stage .cap{position:absolute;left:10px;bottom:10px;background:rgba(20,20,22,.8);color:#fff;border-radius:999px;padding:3px 11px;font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.06em;text-transform:uppercase;z-index:2}
 .av .strip{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;margin-top:10px}.av .strip button{border:1px solid var(--line);background:#fff;border-radius:12px;padding:0;width:52px;cursor:pointer;overflow:hidden;font-size:10px;line-height:1.2;color:var(--dim)}.av .strip button[aria-pressed="true"]{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink)}.av .strip button[disabled]{opacity:.45;cursor:default}.av .strip button .th{display:grid;place-items:center;aspect-ratio:3/4;background:var(--fog)}.av .strip button img{width:100%;height:100%;object-fit:cover;object-position:top}.av .strip button b{display:block;font-weight:500;padding:3px 2px 4px}
 .av .ctl{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}.av .ctl input[type=range]{flex:1 1 140px;accent-color:var(--ink)}
@@ -746,19 +746,21 @@ async function loadAssort(quiet){
   drawAssort();if(AV&&$('#av').open)await avRefresh(true);
 }
 /* the viewer: turn the model with a drag, the arrow keys, the slider or Rotate; play the walk */
-const AVNAMES={picture:'Concept',flat_front:'Flat front',flat_back:'Flat back',model_front:'Front',model_34:'Three-quarter',model_side:'Side',model_back:'Back',walk:'Walk'};
+const AVNAMES={picture:'Concept',flat_front:'Flat front',flat_back:'Flat back',model_front:'Front',model_34:'Three-quarter',model_side:'Side',model_back:'Back',sheet:'Design sheet',walk:'Walk'};
+// a shoe's flat views are its side profile and its heel
+const avName=(c,k)=>(c&&c.category==='footwear'&&{flat_front:'Side profile',flat_back:'Heel'}[k])||AVNAMES[k];
 const SPINORDER=['model_front','model_34','model_side','model_back','model_side','model_34'];
 const reduce=()=>matchMedia('(prefers-reduced-motion: reduce)').matches;
 function avStrip(){
   const c=AV.c,items=['picture',...c.kinds,...(c.canWalk?['walk']:[])];
-  return items.map(k=>{const st=k==='picture'?'ready':vstate({views:AV.views},k),ready=st==='ready';return `<button type="button" data-avk="${k}" aria-pressed="${AV.kind===k}" ${ready?'':'disabled'} title="${esc(AVNAMES[k])}${ready?'':st==='pending'?' (drawing)':st==='failed'?' (failed)':' (not made yet)'}"><span class="th" data-th="${c.id}:${k}">${k==='walk'?(ready?'▶':'…'):''}</span><b>${esc(AVNAMES[k])}</b></button>`}).join('');
+  return items.map(k=>{const st=k==='picture'?'ready':vstate({views:AV.views},k),ready=st==='ready';return `<button type="button" data-avk="${k}" aria-pressed="${AV.kind===k}" ${ready?'':'disabled'} title="${esc(avName(c,k))}${ready?'':st==='pending'?' (drawing)':st==='failed'?' (failed)':' (not made yet)'}"><span class="th" data-th="${c.id}:${k}">${k==='walk'?(ready?'▶':'…'):''}</span><b>${esc(avName(c,k))}</b></button>`}).join('');
 }
 const spinReady=()=>SPINORDER.filter(k=>vstate({views:AV.views},k)==='ready');
 async function avShow(kind){
-  if(!AV)return;AV.kind=kind;const st=$('#avStage'),c=AV.c;st.className='stage'+(kind.startsWith('model')||kind==='walk'?' m':'');
-  const cap=`<span class="cap">${esc(AVNAMES[kind])}</span>`;
+  if(!AV)return;AV.kind=kind;const st=$('#avStage'),c=AV.c;st.className='stage'+(kind.startsWith('model')||kind==='walk'?' m':kind==='sheet'?' w':'');
+  const cap=`<span class="cap">${esc(avName(c,kind))}</span>`;
   if(kind==='walk'){const u=await fetchImg(c.id,'walk',false);if(AV&&AV.kind==='walk'&&u)st.innerHTML=`<video src="${esc(u)}" autoplay loop muted playsinline controls aria-label="${esc(c.name)} walking"></video>${cap}`;}
-  else{const u=await fetchImg(c.id,kind,false);if(AV&&AV.kind===kind)st.innerHTML=(u?`<img src="${esc(u)}" alt="${esc(c.name)}, ${esc(AVNAMES[kind])}">`:'<span class="sub">Not made yet</span>')+cap}
+  else{const u=await fetchImg(c.id,kind,false);if(AV&&AV.kind===kind)st.innerHTML=(u?`<img src="${esc(u)}" alt="${esc(c.name)}, ${esc(avName(c,kind))}">`:'<span class="sub">Not made yet</span>')+cap}
   $$('#avStrip button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.avk===kind)));
   const sl=$('#avSpin');if(sl){const n=spinReady().length;sl.max=Math.max(0,n-1);sl.value=Math.max(0,spinReady().indexOf(kind))}
 }

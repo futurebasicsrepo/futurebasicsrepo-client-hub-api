@@ -111,6 +111,19 @@ test('the logo, the graphics and the woven label are laid on the picture from ou
   assert.ok(LOGO_PLACE.tops[1] && GRAPHIC_PLACE['front chest'] && GRAPHIC_PLACE.back === null);
 });
 
+test('a shoe picture gets no card and no flat logo: only a small, quiet lockup in the corner, in a colour that suits its set', async () => {
+  const px = async (buf, x, y) => [...(await sharp(buf).extract({ left: x, top: y, width: 1, height: 1 }).raw().toBuffer())];
+  const dark = await sharp({ create: { width: 1024, height: 1024, channels: 3, background: '#1c1d22' } }).jpeg().toBuffer(), light = await sharp({ create: { width: 1024, height: 1024, channels: 3, background: '#e7e2d8' } }).jpeg().toBuffer();
+  const spec = ensureBranding({ branding: { logo: { mark: 'cue', placement: 'lateral quarter' } } }, 'footwear');
+  let asked = 0; const locate = async () => { asked++; return null; };
+  const onDark = await composeBranding(dark, { category: 'footwear', spec }, { locate }), onLight = await composeBranding(light, { category: 'footwear', spec }, { locate });
+  assert.equal(asked, 0, 'no mark is looked for, so nothing is pasted flat on the shoe');
+  assert.ok((await px(onDark, 1024 - 40, 1024 - 40))[0] < 60, 'no dark card in the bottom-right corner on a dark set'); assert.ok((await px(onLight, 1024 - 40, 1024 - 40))[0] > 200, 'no card on a light set either');
+  assert.ok((await px(onDark, 512, 512))[0] < 60 && (await px(onLight, 512, 512))[0] > 200, 'the shoe itself is untouched');
+  const box = async (buf, ground) => { const { data, info } = await sharp(buf).extract({ left: 30, top: 1024 - 140, width: 180, height: 110 }).raw().toBuffer({ resolveWithObject: true }); let n = 0; for (let i = 0; i < data.length; i += info.channels) if (Math.abs(data[i] - ground) > 60) n++; return n; };
+  assert.ok(await box(onDark, 0x1c) > 200, 'a white lockup sits bottom-left on a dark set'); assert.ok(await box(onLight, 0xe7) > 200, 'an ink lockup sits bottom-left on a light set');
+});
+
 test('the picture is asked to leave the logo and graphic places plain, and still carries no text', () => {
   const p = imagePrompt({ name: 'Boxy tee', category: 'tops', twist: 't', spec: ensureBranding({ description: 'd', graphics: [{ name: 'G', idea: 'i', placement: 'front chest', technique: 'screen print', svg: '<svg viewBox="0 0 200 200"><rect width="9" height="9"/></svg>' }] }, 'tops') });
   assert.match(p, /completely plain and unmarked/); assert.match(p, /left chest/); assert.match(p, /front chest/); assert.match(p, /menswear and unisex/); assert.match(p, /No text, no lettering, no logos/);

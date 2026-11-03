@@ -2941,6 +2941,13 @@ await journey('J246', 'A shoe read from its picture: a concept\'s side view (her
   ok(r.status === 200 && r.json.side && r.json.source === 'shape' && r.json.spec.style === 'hightop' && Math.abs(r.json.spec.collar - 5.2) <= .5 && r.json.spec.picture?.toeLeft === true, '1. the outline reads a high-top: its style, its collar at about 5¼ in, and which way it faces', { spec: r.json.spec, changes: r.json.changes });
   ok(r.json.changes.some(c => c.key === 'style' && c.to === 'hightop' && c.source === 'picture (shape)'), '   and says what would change, and from what');
   ok((await K(`/concepts/${cid}/pattern`)).json.spec.style === 'sneaker', '   nothing is saved until it is used');
+  ok(r.json.from === 'picture' && !r.json.spec.picture?.src, '   with no side profile view yet, the concept\'s own picture is read');
+  // a shoe's concept picture is a three-quarter render, so once its side profile (the flat front view) exists the outline is read from that
+  const sideView = await sharp(png).flop().jpeg({ quality: 90 }).toBuffer();
+  sql(`insert into lab_concept_views(concept_id,kind,status,image) values('${cid}','flat_front','ready',decode('${sideView.toString('base64')}','base64')) on conflict (concept_id,kind) do update set status='ready', image=excluded.image`);
+  const rs = await K(`/concepts/${cid}/pattern/from-picture`, { method: 'POST', body: {} });
+  ok(rs.status === 200 && rs.json.from === 'side' && rs.json.spec.style === 'hightop' && rs.json.spec.picture?.toeLeft === false && rs.json.spec.picture?.src === 'side', '1b. a shoe with a side profile view is read from it (toe to the right there), and the page is told to lay that picture under the shoe', { from: rs.json.from, picture: rs.json.spec?.picture });
+  sql(`delete from lab_concept_views where concept_id='${cid}'`);
   if (!playwright) { ok(true, 'needs a browser'); return; }
   const br = await playwright.chromium.launch();
   try {
@@ -4526,6 +4533,43 @@ await journey('J279', 'The platform map in Sites & health: staff open it from th
     ok(errs.length === 0 && await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth), '   no errors and no sideways scroll', errs);
     await c.close();
   } finally { await b.close(); }
+});
+
+await journey('J280', 'A shoe drawn in panels in the Studio: the concept becomes a technical flat in five views traced into panels; the designer recolours and reshapes them and saves; the pattern reads the shoe from that drawing; the drawing goes back to as traced; a garment and a stranger are turned away', async () => {
+  const made = (await K('/concepts/from-scratch', { body: { category: 'footwear', style: 'runner', name: `Panel runner ${stamp}` } })).json, cid = made.concept.id;
+  try {
+    ok((await K(`/concepts/${cid}/shoe-drawing`, { body: {} })).status === 409, '0. with no picture there is nothing to draw from');
+    const pic = await sharp({ create: { width: 800, height: 500, channels: 3, background: '#f2f1ee' } }).composite([{ input: await sharp({ create: { width: 600, height: 200, channels: 3, background: '#2f3b57' } }).png().toBuffer(), left: 100, top: 180 }]).png().toBuffer();
+    ok((await call(`/v1/lab/concepts/${cid}/studio/apply`, { token: kyleT, body: { image: 'data:image/png;base64,' + pic.toString('base64') } })).status === 200, '   the concept gets a picture');
+    const st = await K(`/concepts/${cid}/shoe-drawing`, { body: {} });
+    ok(st.status === 202 && st.json.started === 5 && st.json.kinds.map(k => k.id).join() === 'lateral,medial,top,bottom,back', '1. the five views are drawn: outside, inside, top, bottom, heel', st.json);
+    let g; for (let i = 0; i < 60; i++) { g = (await K(`/concepts/${cid}/shoe-drawing`)).json; if (!g.busy && !Object.values(g.views).some(v => v.status === 'pending')) break; await sleep(250); }
+    ok(Object.values(g.views).length === 5 && Object.values(g.views).every(v => v.status === 'ready' && v.drawing?.panels?.length >= 2), '   each is traced into panels', Object.fromEntries(Object.entries(g.views).map(([k, v]) => [k, v.status + ' ' + (v.drawing?.panels?.length || 0)])));
+    ok((await K(`/concepts/${cid}/shoe-drawing`, { body: {} })).json.started === 0, '   asked again, nothing is drawn twice');
+    const lat = g.views.lateral.drawing, upper = lat.panels.find(p => p.fill === '#5d6440') || lat.panels[0];
+    const moved = upper.d.replace(/^M([\d.]+) ([\d.]+)/, (m, x, y) => `M${+x - 30} ${+y}`);
+    const put = await K(`/concepts/${cid}/shoe-drawing/lateral`, { method: 'PUT', body: { panels: lat.panels.map(p => p.id === upper.id ? { ...p, fill: '#1F3A5F', name: 'Upper', d: moved } : p) } });
+    ok(put.status === 200 && put.json.drawing.panels.find(p => p.id === upper.id).fill === '#1f3a5f', '2. a panel is recoloured, named and reshaped, and saved');
+    sql(`delete from lab_patterns where concept_id='${cid}'`);
+    const pat1 = (await K(`/concepts/${cid}/pattern`)).json;
+    ok(pat1.spec.colours?.upper === '#1f3a5f' && pat1.coloursFrom?.source === 'drawing' && pat1.coloursFrom.parts.includes('upper'), '   the pattern takes the drawing\'s colours by itself: the recoloured panel is its upper', { colours: pat1.spec.colours, from: pat1.coloursFrom });
+    ok((await K(`/concepts/${cid}/pattern`, { method: 'PUT', body: { spec: { ...pat1.spec, colours: { ...pat1.spec.colours, upper: '#aa0000' } } } })).status === 200 && (await K(`/concepts/${cid}/pattern`)).json.spec.colours.upper === '#aa0000', '   a colour changed on the pattern after that stays (the last edit wins)');
+    const svg = await fetch(`${BASE}/v1/lab/concepts/${cid}/shoe-drawing/lateral.svg`, { headers: { authorization: `Bearer ${kyleT}` } }).then(r => r.text());
+    ok(/<svg/.test(svg) && svg.includes('#1f3a5f') && svg.includes('data-name="Upper"'), '   the drawing as SVG carries the change');
+    ok((await K(`/concepts/${cid}/shoe-drawing/lateral`, { method: 'PUT', body: { panels: [{ id: upper.id, d: '<script>alert(1)</script>', fill: 'javascript:' }] } })).json.drawing?.panels?.[0]?.d === moved, '   anything that is not path data or a colour is not taken');
+    sql(`delete from lab_patterns where concept_id='${cid}'`);
+    const rd = await K(`/concepts/${cid}/pattern/from-picture`, { method: 'POST', body: {} });
+    ok(rd.status === 200 && rd.json.from === 'drawing' && rd.json.spec.picture?.src === 'drawing', '3. the pattern reads the shoe from the designer\'s outside drawing, and lays it under the shoe', { status: rd.status, from: rd.json.from, err: rd.json.error });
+    const back = await K(`/concepts/${cid}/shoe-drawing/lateral/reset`, { body: {} });
+    ok(back.status === 200 && back.json.drawing.panels.every(p => p.fill !== '#1f3a5f'), '4. back to the drawing as traced');
+    ok((await K(`/concepts/${cid}/shoe-drawing/sideways`)).status === 404, '   a view that does not exist is not found');
+    const tee = (await K('/concepts/from-scratch', { body: { category: 'tops', style: 'tee', name: `Panel tee ${stamp}` } })).json.concept;
+    ok((await K(`/concepts/${tee.id}/shoe-drawing`)).status === 422, '5. a garment is not drawn as a shoe'); await K(`/concepts/${tee.id}`, { method: 'DELETE' });
+    ok((await call(`/v1/lab/concepts/${cid}/shoe-drawing`)).status === 401, '   and nobody signed out sees the drawing');
+    const labCookie = ((await fetch(`${BASE}/v1/lab/door`, { headers: { Authorization: 'Bearer ' + kyleT } })).headers.get('set-cookie') || '').split(';')[0];
+    const page = await fetch(`${BASE}/lab/shoe-flats?concept=${cid}&embed=full`, { headers: { Cookie: labCookie } }).then(r => r.text());
+    ok(/FBFlats/.test(page) && /Shoe drawing/.test(page), '   the Studio\'s shoe drawing page is served');
+  } finally { await K(`/concepts/${cid}`, { method: 'DELETE' }); }
 });
 
 shops.close(); brave.close();

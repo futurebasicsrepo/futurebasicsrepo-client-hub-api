@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>Shoe drawing</title>
+<script>// a shoe's drawing lives inside the Studio (/lab/studio) in a frame; opened on its own it goes to the Studio
+(function(){var q=new URLSearchParams(location.search),e=q.get('embed');if(!e&&window.top!==window)e='full';if(e){document.documentElement.dataset.embed=e==='compact'?'compact':'full';return}
+var c=q.get('concept')||'';location.replace('/lab/studio'+(/^[0-9a-f-]{36}$/i.test(c)?'?concept='+c+'&view=front':''))})()</script>
+<link rel="icon" href="/icons/icon-192.png">
+<style>
+@import url('/fonts/fonts.css');
+:root{--ink:#141416;--paper:#fff;--fog:#f5f5f2;--dim:#727278;--line:rgba(20,20,22,.14);--cue:#4bff9a;--sel:#1f7aff;--ok:#17603a;--bad:#a02a20;--warn:#8a5a00}
+*{box-sizing:border-box}html,body{background:var(--fog)}
+body{margin:0;color:var(--ink);font:400 14px/1.45 'Space Grotesk',system-ui,sans-serif;min-height:100vh}
+button,input,select{font:inherit;color:inherit}.hidden{display:none!important}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--ink);background:#fff;color:var(--ink);border-radius:999px;padding:6px 13px;cursor:pointer;font-weight:600;min-height:34px;font-size:13px;white-space:nowrap}.btn:hover{background:var(--ink);color:#fff}
+.btn.go{background:var(--cue);border-color:var(--cue)}.btn.go:hover{background:#7affb6;color:var(--ink)}.btn.q{border-color:var(--line)}.btn.sm{min-height:28px;padding:3px 10px;font-size:12px}.btn[disabled]{opacity:.45;pointer-events:none}
+.btn[aria-pressed=true]{background:var(--ink);color:#fff;border-color:var(--ink)}
+.mono{font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+.bar{display:flex;align-items:center;gap:8px;padding:10px clamp(14px,2vw,24px);background:#fff;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.bar .ttl{margin-right:auto;display:grid;line-height:1.2}.bar .ttl b{font-size:16px}.bar .ttl span{color:var(--dim);font-size:12px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;padding:2px;background:#fff;gap:2px;flex-wrap:wrap}.seg button{border:0;background:none;border-radius:999px;padding:4px 11px;cursor:pointer;font-size:12.5px;font-weight:600;color:var(--dim)}.seg button[aria-pressed=true]{background:var(--ink);color:#fff}.seg button .st{font-weight:400;opacity:.7;margin-left:4px}
+.saved{color:var(--dim);font-size:12px}.saved.dirty{color:var(--warn)}
+.wrap{display:grid;grid-template-columns:minmax(0,1fr) 320px;min-height:calc(100vh - 58px)}
+html[data-embed=compact] .wrap{grid-template-columns:1fr}html[data-embed=compact] aside{display:none}
+.stage{position:relative;padding:14px;display:grid;place-items:center;min-height:420px}
+#art{width:100%;max-height:calc(100vh - 110px);background:#fff;border-radius:16px;border:1px solid var(--line);touch-action:none;user-select:none}
+#art .panels path{cursor:pointer;transition:filter .12s}#art .panels path:hover{filter:brightness(1.08)}
+#art .panels path.on{stroke:var(--sel)}
+#art .h{fill:#fff;stroke:var(--sel);cursor:grab}#art .h:hover{fill:var(--sel)}#art .h.drag{cursor:grabbing;fill:var(--sel)}
+.empty{max-width:520px;text-align:center;display:grid;gap:12px;justify-items:center;padding:30px;background:#fff;border:1px solid var(--line);border-radius:16px}
+.empty p{margin:0;color:var(--dim)}
+aside{background:#fff;border-left:1px solid var(--line);padding:16px;display:grid;gap:16px;align-content:start;overflow:auto;max-height:calc(100vh - 58px)}
+aside h4{margin:0 0 6px;font-size:13px}aside .note{margin:0;color:var(--dim);font-size:12.5px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+label.f{display:grid;gap:4px;font-size:12px;color:var(--dim)}label.f input[type=text]{border:1px solid var(--line);border-radius:10px;padding:6px 9px;color:var(--ink)}
+input[type=color]{width:42px;height:32px;border:1px solid var(--line);border-radius:8px;padding:2px;background:#fff;cursor:pointer}
+.sw{display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:8px}
+.sw label{display:grid;gap:3px;justify-items:center;font:500 10px 'IBM Plex Mono',monospace;color:var(--dim);cursor:pointer}
+.sw input[type=color]{width:100%;height:36px}
+.toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:9px 16px;border-radius:999px;font-size:13px;z-index:50;max-width:90vw}
+@media(max-width:860px){.wrap{grid-template-columns:1fr}aside{border-left:0;border-top:1px solid var(--line);max-height:none}}
+</style>
+</head>
+<body>
+<div class="bar"><div class="ttl"><b id="ttl">Shoe drawing</b><span id="sub">Loading…</span></div>
+  <div class="seg" id="views" role="group" aria-label="View"></div>
+  <span class="saved" id="saved"></span>
+  <button class="btn sm q" type="button" id="undo" title="Undo (Ctrl+Z)" disabled>Undo</button><button class="btn sm q" type="button" id="redo" title="Redo" disabled>Redo</button>
+  <button class="btn sm go" type="button" id="save" disabled>Save</button>
+</div>
+<div class="wrap"><div class="stage" id="stage"></div>
+<aside id="side"></aside></div>
+<script type="module">
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const TOKEN=()=>{try{return localStorage.getItem('fb.admin.token')||localStorage.getItem('fb.client.token')||''}catch{return ''}};
+async function api(path,o={}){const r=await fetch(path,{method:o.method||(o.body?'POST':'GET'),headers:{Authorization:'Bearer '+TOKEN(),...(o.body?{'Content-Type':'application/json'}:{})},body:o.body?JSON.stringify(o.body):undefined});const j=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(new Error(j.error||('Request failed ('+r.status+')')),{status:r.status});return j}
+const toast=m=>{const t=document.createElement('div');t.className='toast';t.setAttribute('role','status');t.textContent=m;document.body.append(t);setTimeout(()=>t.remove(),3200)};
+const QS=new URLSearchParams(location.search),CID=QS.get('concept')||'',EMBED=document.documentElement.dataset.embed||'',HOST=()=>{try{return EMBED&&parent!==window?parent.FBDesign:null}catch{return null}};
+let D=null,VIEW='lateral',DW={},DIRTY=new Set(),SEL=null,HIST=[],FUT=[],POLL=0,SHOWDET=true;
+
+// ---- a panel's shape: the points its curve passes near (the quadratic curve's control points), one list per loop; the curve is drawn back from them
+const n2=v=>+(+v).toFixed(2);
+function parse(d){const loops=[];for(const part of String(d).split('M').slice(1)){const nums=part.match(/-?\d*\.?\d+(?:e-?\d+)?/gi)?.map(Number)||[],pts=[];for(let i=2;i+3<nums.length+1;i+=4)pts.push([nums[i],nums[i+1]]);if(pts.length>=3)loops.push(pts)}return loops}
+function smooth(pts){const m=(p,q)=>[(p[0]+q[0])/2,(p[1]+q[1])/2],s=m(pts[pts.length-1],pts[0]);let d=`M${n2(s[0])} ${n2(s[1])}`;for(let i=0;i<pts.length;i++){const p=pts[i],q=m(p,pts[(i+1)%pts.length]);d+=`Q${n2(p[0])} ${n2(p[1])} ${n2(q[0])} ${n2(q[1])}`}return d+'Z'}
+const pathOf=loops=>loops.map(smooth).join('');
+const cur=()=>DW[VIEW];
+const snap=()=>JSON.stringify({panels:cur().panels,hideDetails:cur().hideDetails||false});
+function remember(){HIST.push({view:VIEW,s:snap()});if(HIST.length>80)HIST.shift();FUT=[];}
+function restore(h,into){const s=JSON.parse(h.s);VIEW=h.view;DW[VIEW]={...DW[VIEW],...s};DIRTY.add(VIEW);into.push(h)}
+function touch(){DIRTY.add(VIEW);paintState();HOST()?.flatsChanged?.()}
+function paintState(){const n=DIRTY.size;$('#saved').textContent=n?`Not saved (${n} view${n===1?'':'s'})`:(D&&Object.values(D.views).some(v=>v.status==='ready')?'Saved':'');$('#saved').className='saved'+(n?' dirty':'');$('#save').disabled=!n;$('#undo').disabled=!HIST.length;$('#redo').disabled=!FUT.length}
+
+// ---- drawing the view: the panels (each clickable), the details over them, and the chosen panel's points as handles
+function draw(){
+  const st=$('#stage'),v=D?.views?.[VIEW],dw=cur();
+  if(!dw){
+    const busy=v?.status==='pending'||D?.busy,failed=v?.status==='failed',none=!D?.concept?.hasImage;
+    st.innerHTML=`<div class="empty"><b>${busy?'Drawing the shoe…':failed?'This view could not be drawn':'Not drawn yet'}</b><p>${busy?'The outside is drawn from the shoe\'s side profile, then the inside, top, bottom and heel from it. About a minute a view.':failed?esc(v.note||''):none?'Draw the concept\'s picture first: the shoe is drawn from it.':'The concept is drawn as a footwear technical flat in five views, and traced into panels you can recolour and reshape here.'}</p>${busy?'':`<button class="btn go" type="button" data-draw ${none||!D?.imageConnected?'disabled':''}>${failed?'Draw it again':'Draw the shoe'}</button>`}${D&&!D.imageConnected?'<p>No image model is connected.</p>':''}</div>`;
+    return}
+  const b=dw.box,pad=24,vb=[b.x0-pad,b.y0-pad,b.x1-b.x0+2*pad,b.y1-b.y0+2*pad],sw=dw.stroke||2.4,hr=Math.max(3.5,vb[2]/170);
+  const sel=dw.panels.find(p=>p.id===SEL);
+  st.innerHTML=`<svg id="art" viewBox="${vb.join(' ')}" role="img" aria-label="${esc(D.concept.name)}, ${esc(label(VIEW))}"><g class="panels" stroke="#161616" stroke-width="${sw}" stroke-linejoin="round">${dw.panels.filter(p=>!p.hidden).map(p=>`<path data-p="${esc(p.id)}" class="${p.id===SEL?'on':''}" fill="${esc(p.fill)}" fill-rule="evenodd" d="${p.d}"><title>${esc(p.name||'Panel')}</title></path>`).join('')}</g>${SHOWDET&&!dw.hideDetails?`<g fill="#161616" pointer-events="none">${(dw.details||[]).map(x=>`<path d="${x.d}" fill-rule="evenodd"/>`).join('')}</g>`:''}${sel?`<path d="${sel.d}" fill="none" stroke="var(--sel)" stroke-width="${sw*1.2}" pointer-events="none"/>`+parse(sel.d).map((l,li)=>l.map((p,i)=>`<circle class="h" data-l="${li}" data-i="${i}" cx="${p[0]}" cy="${p[1]}" r="${hr}" stroke-width="${hr/3}"/>`).join('')).join(''):''}</svg>`;
+}
+const label=v=>(D?.kinds||[]).find(k=>k.id===v)?.label||v;
+function paintViews(){$('#views').innerHTML=(D?.kinds||[]).map(k=>{const v=D.views[k.id],s=v?.status==='pending'?'…':v?.status==='failed'?'!':v?.edited?'✎':'';return `<button type="button" data-v="${k.id}" aria-pressed="${k.id===VIEW}">${esc(k.label)}${s?`<span class="st">${s}</span>`:''}</button>`}).join('')}
+function paintSide(){
+  const s=$('#side'),dw=cur();if(!dw){s.innerHTML=`<div><h4>The shoe as a drawing</h4><p class="note">Each view is a footwear technical flat traced into panels. Pick a panel to recolour, rename or reshape it; change a colour everywhere at once; switch the stitching and tread lines on or off.</p></div>`;return}
+  const p=dw.panels.find(x=>x.id===SEL),cols=[...new Set(dw.panels.map(x=>x.fill))];
+  s.innerHTML=`${p?`<div><h4>Panel</h4><div style="display:grid;gap:10px"><label class="f">Name<input type="text" id="pName" maxlength="60" value="${esc(p.name||'')}" placeholder="vamp, quarter, toe cap, midsole…"></label>
+    <div class="row"><input type="color" id="pFill" value="${esc(p.fill)}" aria-label="Panel colour"><span class="mono">${esc(p.fill)}</span><button class="btn sm q" type="button" id="pAll">Every ${esc(p.fill)} panel</button></div>
+    <p class="note">Drag a point to reshape it (edges shared with the next panel move with it). Double-click the panel's edge to add a point; Alt-click a point to remove it.</p>
+    <div class="row"><button class="btn sm q" type="button" id="pHide">Hide this panel</button><button class="btn sm q" type="button" id="pNone">Done</button></div></div></div>`:`<div><h4>Panels</h4><p class="note">${dw.panels.length} panels. Click one on the drawing to recolour, rename or reshape it.</p></div>`}
+    <div><h4>Colours in this view</h4><p class="note" style="margin-bottom:8px">Change one to recolour every panel in it (a colourway).</p><div class="sw">${cols.slice(0,24).map(c=>`<label><input type="color" data-col="${esc(c)}" value="${esc(c)}">${esc(c)}</label>`).join('')}</div>
+      <div class="row" style="margin-top:8px"><button class="btn sm q" type="button" id="allViews">Same colours on every view</button></div></div>
+    <div><h4>Lines</h4><label class="row" style="font-size:13px"><input type="checkbox" id="det" ${dw.hideDetails?'':'checked'}> Stitching, tread and laces</label></div>
+    ${dw.panels.some(x=>x.hidden)?`<div><button class="btn sm q" type="button" id="unhide">Show hidden panels (${dw.panels.filter(x=>x.hidden).length})</button></div>`:''}
+    <div><h4>This view</h4><div class="row"><button class="btn sm q" type="button" id="dl">Download SVG</button><button class="btn sm q" type="button" id="reset" ${D.views[VIEW]?.edited||DIRTY.has(VIEW)?'':'disabled'}>Back to the drawing as traced</button><button class="btn sm q" type="button" data-draw data-redo>Draw again</button></div></div>`;
+}
+function paint(){paintViews();draw();paintSide();paintState()}
+
+async function load(){
+  D=await api(`/v1/lab/concepts/${CID}/shoe-drawing`);
+  for(const k of D.kinds){const v=D.views[k.id];if(v?.drawing&&!DIRTY.has(k.id))DW[k.id]=v.drawing}
+  $('#ttl').textContent=D.concept.name;$('#sub').textContent='Shoe drawing · technical flat in panels';
+  if(!DW[VIEW]){const first=D.kinds.find(k=>DW[k.id]);if(first)VIEW=first.id}
+  paint();clearTimeout(POLL);if(D.busy||Object.values(D.views).some(v=>v.status==='pending'))POLL=setTimeout(()=>load().catch(()=>{}),4000);
+}
+async function drawShoe(redo){try{const r=await api(`/v1/lab/concepts/${CID}/shoe-drawing`,{body:redo?{views:[VIEW],redo:true}:{}});D=r;toast(r.started?'Drawing the shoe: about a minute a view':'Every view is drawn already');await load()}catch(e){toast(e.message)}}
+async function save(){
+  try{for(const v of [...DIRTY]){const dw=DW[v];const r=await api(`/v1/lab/concepts/${CID}/shoe-drawing/${v}`,{method:'PUT',body:{panels:dw.panels.map(({id,fill,d,name,hidden})=>({id,fill,d,name,hidden})),hideDetails:Boolean(dw.hideDetails)}});DW[v]=r.drawing;if(D.views[v])D.views[v].edited=true;DIRTY.delete(v)}
+    paint();HOST()?.flatsSaved?.();toast('Saved');return true}catch(e){toast('Not saved: '+e.message);return false}}
+
+// ---- events
+$('#views').onclick=e=>{const b=e.target.closest('[data-v]');if(!b)return;VIEW=b.dataset.v;SEL=null;paint()};
+$('#save').onclick=save;
+$('#undo').onclick=()=>{const h=HIST.pop();if(!h)return;FUT.push({view:h.view,s:(VIEW=h.view,snap())});const s=JSON.parse(h.s);DW[h.view]={...DW[h.view],...s};DIRTY.add(h.view);paint()};
+$('#redo').onclick=()=>{const h=FUT.pop();if(!h)return;HIST.push({view:h.view,s:(VIEW=h.view,snap())});const s=JSON.parse(h.s);DW[h.view]={...DW[h.view],...s};DIRTY.add(h.view);paint()};
+document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='z'&&!e.target.closest('input')){e.preventDefault();(e.shiftKey?$('#redo'):$('#undo')).click()}if(e.key==='Escape'&&SEL){SEL=null;paint()}});
+document.addEventListener('click',e=>{if(e.target.closest('[data-draw]'))drawShoe(e.target.closest('[data-draw]').hasAttribute('data-redo'))});
+$('#side').addEventListener('input',e=>{const dw=cur();if(!dw)return;const p=dw.panels.find(x=>x.id===SEL);
+  if(e.target.id==='pName'&&p){p.name=e.target.value;touch()}
+  if(e.target.id==='pFill'&&p){p.fill=e.target.value;$$(`#art [data-p="${p.id}"]`).forEach(x=>x.setAttribute('fill',p.fill));touch()}
+  if(e.target.dataset.col){const from=e.target.dataset.col,to=e.target.value;for(const x of dw.panels)if(x.fill===from)x.fill=to;e.target.dataset.col=to;draw();touch()}});
+$('#side').addEventListener('focusin',e=>{if(e.target.id==='pFill'||e.target.id==='pName'||e.target.dataset.col)remember()});
+$('#side').addEventListener('change',e=>{if(e.target.id==='pFill'||e.target.dataset.col)paint();if(e.target.id==='det'){remember();cur().hideDetails=!e.target.checked;touch();draw()}});
+$('#side').addEventListener('click',async e=>{const dw=cur();if(!dw)return;const id=e.target.id,p=dw.panels.find(x=>x.id===SEL);
+  if(id==='pAll'&&p){const v=$('#pFill').value;remember();for(const x of dw.panels)if(x.fill===p.fill)x.fill=v;touch();paint()}
+  if(id==='pHide'&&p){remember();p.hidden=true;SEL=null;touch();paint()}
+  if(id==='pNone'){SEL=null;paint()}
+  if(id==='unhide'){remember();dw.panels.forEach(x=>delete x.hidden);touch();paint()}
+  if(id==='allViews'){const map=new Map();
+    // the colours of this view, carried to the others by what each colour was when traced (the same colour drawn on every view)
+    const was=D.views[VIEW]?.drawing;const orig=new Map((was?.panels||[]).map(x=>[x.id,x.fill]));for(const x of dw.panels){const o=orig.get(x.id);if(o&&o!==x.fill)map.set(o,x.fill)}
+    let n=0;for(const k of D.kinds){const o=DW[k.id];if(!o||k.id===VIEW)continue;for(const x of o.panels){const near=[...map.keys()].find(c=>dist(c,x.fill)<28);if(near){x.fill=map.get(near);n++}}DIRTY.add(k.id)}toast(n?`${n} panels recoloured on the other views`:'No colour changed on this view yet');paint()}
+  if(id==='dl'){const s=document.querySelector('#art').cloneNode(true);s.querySelectorAll('.h,[pointer-events="none"][fill="none"]').forEach(x=>x.remove());s.setAttribute('xmlns','http://www.w3.org/2000/svg');const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([s.outerHTML],{type:'image/svg+xml'}));a.download=`${String(D.concept.name).toLowerCase().replace(/[^a-z0-9]+/g,'-')}-${VIEW}.svg`;a.click()}
+  if(id==='reset'){try{const r=await api(`/v1/lab/concepts/${CID}/shoe-drawing/${VIEW}/reset`,{body:{}});DW[VIEW]=r.drawing;D.views[VIEW].edited=false;DIRTY.delete(VIEW);SEL=null;paint();toast('Back to the drawing as traced')}catch(x){toast(x.message)}}});
+const rgb=h=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16)),dist=(a,b)=>{const x=rgb(a),y=rgb(b);return Math.hypot(x[0]-y[0],x[1]-y[1],x[2]-y[2])};
+
+// ---- on the drawing: pick a panel, drag its points (and the points of its neighbours that sit on them), add or remove points
+const svgPt=(svg,e)=>{const p=svg.createSVGPoint();p.x=e.clientX;p.y=e.clientY;const q=p.matrixTransform(svg.getScreenCTM().inverse());return [q.x,q.y]};
+let DRAG=null;
+$('#stage').addEventListener('pointerdown',e=>{const svg=e.target.closest('svg');if(!svg)return;const dw=cur();
+  const h=e.target.closest('.h');
+  if(h){const p=dw.panels.find(x=>x.id===SEL),loops=parse(p.d),li=+h.dataset.l,i=+h.dataset.i;
+    if(e.altKey){if(loops[li].length>3){remember();loops[li].splice(i,1);p.d=pathOf(loops);touch();draw()}return}
+    remember();const at=loops[li][i],tol=(dw.stroke||2.4)*1.6,links=[];
+    for(const o of dw.panels){if(o===p||o.hidden)continue;const ol=parse(o.d);let hit=false;ol.forEach((l,a)=>l.forEach((q,b)=>{if(Math.hypot(q[0]-at[0],q[1]-at[1])<tol){links.push({o,ol,a,b});hit=true}}))}
+    DRAG={p,loops,li,i,start:svgPt(svg,e),orig:[...at],links:links.map(k=>({...k,orig:[...k.ol[k.a][k.b]]})),svg};h.classList.add('drag');h.setPointerCapture(e.pointerId);e.preventDefault();return}
+  const t=e.target.closest('[data-p]');if(t){SEL=t.dataset.p;draw();paintSide()}else if(e.target===svg){SEL=null;draw();paintSide()}});
+$('#stage').addEventListener('pointermove',e=>{if(!DRAG)return;const [x,y]=svgPt(DRAG.svg,e),dx=x-DRAG.start[0],dy=y-DRAG.start[1];
+  DRAG.loops[DRAG.li][DRAG.i]=[DRAG.orig[0]+dx,DRAG.orig[1]+dy];DRAG.p.d=pathOf(DRAG.loops);
+  for(const k of DRAG.links){k.ol[k.a][k.b]=[k.orig[0]+dx,k.orig[1]+dy];k.o.d=pathOf(k.ol)}
+  const svg=DRAG.svg;svg.querySelector(`[data-p="${DRAG.p.id}"]`)?.setAttribute('d',DRAG.p.d);for(const k of DRAG.links)svg.querySelector(`[data-p="${k.o.id}"]`)?.setAttribute('d',k.o.d);
+  const h=svg.querySelector(`.h[data-l="${DRAG.li}"][data-i="${DRAG.i}"]`);if(h){h.setAttribute('cx',DRAG.loops[DRAG.li][DRAG.i][0]);h.setAttribute('cy',DRAG.loops[DRAG.li][DRAG.i][1])}});
+const endDrag=()=>{if(!DRAG)return;DRAG=null;touch();draw()};
+$('#stage').addEventListener('pointerup',endDrag);$('#stage').addEventListener('pointercancel',endDrag);
+$('#stage').addEventListener('dblclick',e=>{const svg=e.target.closest('svg'),dw=cur();if(!svg||!SEL)return;const p=dw.panels.find(x=>x.id===SEL),loops=parse(p.d),[x,y]=svgPt(svg,e);
+  let best=null;loops.forEach((l,li)=>l.forEach((a,i)=>{const b=l[(i+1)%l.length],vx=b[0]-a[0],vy=b[1]-a[1],t=Math.max(0,Math.min(1,((x-a[0])*vx+(y-a[1])*vy)/((vx*vx+vy*vy)||1))),d=Math.hypot(a[0]+t*vx-x,a[1]+t*vy-y);if(!best||d<best.d)best={d,li,i}}));
+  if(!best||best.d>(svg.viewBox.baseVal.width/40))return;remember();loops[best.li].splice(best.i+1,0,[x,y]);p.d=pathOf(loops);touch();draw()});
+
+// ---- what the Studio calls (the same as the garment flats: src/lab-flats.html)
+if(EMBED)window.FBFlats={dirty:()=>DIRTY.size>0,ready:()=>Boolean(D),save:()=>(DIRTY.size?save():Promise.resolve(true)),view:()=>VIEW,
+  setView:v=>{const to=v==='back'?'back':v==='front'?(VIEW==='back'?'lateral':VIEW):v;if(D&&(D.kinds||[]).some(k=>k.id===to)){VIEW=to;SEL=null;paint()}},
+  mode:m=>{document.documentElement.dataset.embed=m==='compact'?'compact':'full'},tool:()=>{},level:()=>{},layout:()=>{},zoom:()=>1,
+  sheet:()=>openSheet(),deco:()=>toast('A shoe\'s decoration (logos, prints) is placed on its Pattern page.'),pack:()=>toPack(),canPack:()=>false,unsupported:()=>'',
+  placements:()=>[],saved:()=>DIRTY.size===0,select:()=>{},check:()=>({saved:DIRTY.size===0}),
+  undo:()=>$('#undo').click(),redo:()=>$('#redo').click(),canUndo:()=>HIST.length>0,canRedo:()=>FUT.length>0};
+// every drawn view on one sheet, in a new tab
+async function openSheet(){const views=(D?.kinds||[]).filter(k=>DW[k.id]);if(!views.length){toast('Draw the shoe first');return}
+  const svgs=await Promise.all(views.map(k=>fetch(`/v1/lab/concepts/${CID}/shoe-drawing/${k.id}.svg`,{headers:{Authorization:'Bearer '+TOKEN()}}).then(r=>r.text())));
+  const html=`<!doctype html><meta charset="utf-8"><title>${esc(D.concept.name)} · technical flats</title><style>body{font:14px system-ui;margin:24px;color:#141416}h1{font-size:20px}.g{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:18px}.g div{border:1px solid #ddd;border-radius:12px;padding:12px}.g svg{width:100%;height:auto}.g b{display:block;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#727278;margin-bottom:6px}</style><h1>${esc(D.concept.name)} · technical flats</h1><div class="g">${views.map((k,i)=>`<div><b>${esc(k.label)}</b>${svgs[i]}</div>`).join('')}</div>`;
+  const w=window.open(URL.createObjectURL(new Blob([html],{type:'text/html'})),'_blank');if(!w)toast('Allow pop-ups to open the sheet')}
+async function toPack(){toast('Send the shoe to its tech pack from the Pattern page: it takes these drawings as its technical flats.')}
+
+if(!/^[0-9a-f-]{36}$/i.test(CID)){$('#stage').innerHTML='<div class="empty"><b>No concept</b></div>'}else load().catch(e=>{$('#stage').innerHTML=`<div class="empty"><b>Could not load the shoe</b><p>${esc(e.message)}</p></div>`});
+</script>
+</body>
+</html>

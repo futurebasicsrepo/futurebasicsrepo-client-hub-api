@@ -25,6 +25,9 @@ import { flatsSheet, viewsMarkup } from './lab-footwear-views.js';
 import { plushSheet, plushViews } from './lab-plush-views.js';
 import { footwearViews } from './lab-footwear-views.js';
 import { imageConfig, openaiEdit } from './check.js';
+import { makeViews } from './lab-views.js';
+import { shoeDrawingOf } from './lab-shoe-draw-routes.js';
+import { shoeSvg, drawingColours } from './lab-shoe-draw.js';
 import { PLUSH_FABRICS as PF, PLUSH_EYES as PE } from './lab-pattern.js';
 import { VIEWS_OF } from './lab-sketch.js';
 import { partLooks } from './lab-looks.js';
@@ -67,8 +70,16 @@ export function registerLabPatternRoutes(app, d) {
     const kind = kindOf(c, flat?.style);
     const spec0 = kind === 'plush' ? cleanPlush(row?.kind === 'plush' ? row.spec : plushProposal(plushDefaults(c.spec?.plush?.shape || 'bear'), null, c.spec?.plush).spec) : kind === 'footwear' ? cleanFootwear(row?.kind === 'footwear' ? row.spec : { ...fwDefaults(c.spec?.footwear?.style || guessShoe(c)), ...(c.spec?.footwear || {}) }) : cleanGarment(row?.spec);
     const ed = cleanPatternEdits(row?.spec?.edits), spec = ed ? { ...spec0, edits: ed } : spec0;
-    return { c, kind, flat, spec, saved: Boolean(row), savedFlat: Boolean(f), updatedAt: row?.updated_at || null };
+    // a shoe drawn in the Studio: its colours come from the outside drawing when that was changed after the pattern was last saved (the last
+    // edit wins), so recolouring a panel there recolours the pattern here
+    let coloursFrom = null; // (and drawingColoursOf below gives them back for the reading)
+    if (kind === 'footwear') {
+      const dr = (await pool.query(`select drawing, updated_at from lab_shoe_drawings where concept_id=$1 and view='lateral' and status='ready' and drawing is not null`, [c.id])).rows[0];
+      if (dr && (!row || new Date(dr.updated_at) > new Date(row.updated_at))) { const dc = drawingColours(dr.drawing); if (Object.keys(dc).length) { spec.colours = { ...(spec.colours || {}), ...dc }; coloursFrom = { source: 'drawing', at: dr.updated_at, parts: Object.keys(dc) }; } }
+    }
+    return { c, kind, flat, spec, saved: Boolean(row), savedFlat: Boolean(f), updatedAt: row?.updated_at || null, coloursFrom };
   }
+  const drawingColoursOf = L => Object.fromEntries((L.coloursFrom?.parts || []).map(k => [k, L.spec.colours?.[k]]).filter(([, v]) => v));
   const save = async (L, spec0, actor) => { const spec = cleanPatternSpec(L.kind, spec0); await pool.query(`insert into lab_patterns(concept_id, kind, spec, updated_by) values($1,$2,$3,$4) on conflict(concept_id) do update set kind=excluded.kind, spec=excluded.spec, updated_by=excluded.updated_by, updated_at=now()`, [L.c.id, L.kind, spec, actor]); return spec; };
   // a footwear concept's 3D lasts (imported or made by the 3D service), measured, and the shoe drafted on one (src/lab-last-routes.js)
   registerLabLastRoutes(app, { ...d, load, save });
@@ -87,7 +98,7 @@ export function registerLabPatternRoutes(app, d) {
     const pat = patternOf(L, L.flat?.size), extra = pat ? { yardage: yardage(pat, Number(L.spec.width) || 58), ...(pat.kind === 'plush' ? { fillGrams: fillGrams(pat) } : {}), ...(pat.kind === 'footwear' ? footExtra(L.spec, pat) : {}) } : {};
     const hasImage = L.kind === 'footwear' || L.kind === 'plush' ? Boolean((await pool.query('select image is not null h from lab_concepts where id=$1', [L.c.id])).rows[0]?.h) : false;
     const materials = (Array.isArray(L.c.spec?.materials) ? L.c.spec.materials : []).filter(p => p.part); // what goes on the product's parts, drawn on its flats
-    return { concept: { id: L.c.id, name: L.c.name, category: L.c.category, status: L.c.status, hasImage, productId: L.c.product_id || null }, marks: L.kind === 'plush' || L.kind === 'footwear' ? Object.fromEntries(Object.keys(MARKS).flatMap(k => [[k, logoSvg(k === 'cue' ? 'mark' : k)], [`${k}:light`, logoSvg(k === 'cue' ? 'mark' : k, { fill: '#ffffff' })]])) : undefined, colourways: (Array.isArray(L.c.spec?.colourways) ? L.c.spec.colourways : []).filter(c => /^#[0-9a-f]{6}$/i.test(String(c?.hex || ''))).slice(0, 8).map(c => ({ name: clip(c.name, 60), hex: String(c.hex).toLowerCase() })), materials, allMaterials: (Array.isArray(L.c.spec?.materials) ? L.c.spec.materials : []).filter(p => p.kind === 'fabric' && !p.part), parts: partsFor(L.c.category), kind: L.kind, flat: L.flat, flatSaved: L.savedFlat, spec: L.spec, saved: L.saved, updatedAt: L.updatedAt, options, ...(L.kind === 'soon' ? { soon: SOON[L.c.category] } : {}), ...extra };
+    return { concept: { id: L.c.id, name: L.c.name, category: L.c.category, status: L.c.status, hasImage, productId: L.c.product_id || null }, marks: L.kind === 'plush' || L.kind === 'footwear' ? Object.fromEntries(Object.keys(MARKS).flatMap(k => [[k, logoSvg(k === 'cue' ? 'mark' : k)], [`${k}:light`, logoSvg(k === 'cue' ? 'mark' : k, { fill: '#ffffff' })]])) : undefined, colourways: (Array.isArray(L.c.spec?.colourways) ? L.c.spec.colourways : []).filter(c => /^#[0-9a-f]{6}$/i.test(String(c?.hex || ''))).slice(0, 8).map(c => ({ name: clip(c.name, 60), hex: String(c.hex).toLowerCase() })), materials, allMaterials: (Array.isArray(L.c.spec?.materials) ? L.c.spec.materials : []).filter(p => p.kind === 'fabric' && !p.part), parts: partsFor(L.c.category), kind: L.kind, flat: L.flat, flatSaved: L.savedFlat, spec: L.spec, saved: L.saved, updatedAt: L.updatedAt, coloursFrom: L.coloursFrom || null, options, ...(L.kind === 'soon' ? { soon: SOON[L.c.category] } : {}), ...extra };
   });
   app.put('/v1/lab/concepts/:id/pattern', { preHandler: pre, bodyLimit: 4_000_000 }, async (req, reply) => {
     const L = await load(req.params.id); if (!L) return bad(reply, 'Not found', 404);
@@ -154,7 +165,23 @@ export function registerLabPatternRoutes(app, d) {
   const shoeReads = new Map();
   app.post('/v1/lab/concepts/:id/pattern/from-picture', { preHandler: pre }, async (req, reply) => {
     const L = await load(req.params.id); if (!L) return bad(reply, 'Not found', 404); if (L.kind !== 'footwear' && L.kind !== 'plush') return bad(reply, 'Only a shoe or a plush is read from its picture here');
-    const img = (await pool.query('select image from lab_concepts where id=$1', [L.c.id])).rows[0]?.image; if (!img) return bad(reply, 'This concept has no picture to read');
+    let img = (await pool.query('select image from lab_concepts where id=$1', [L.c.id])).rows[0]?.image, from = 'picture'; if (!img) return bad(reply, 'This concept has no picture to read');
+    // a shoe's concept picture is a three-quarter render, so its outline is read from its side profile (the flat front view), drawn from the picture first when it is not there yet
+    // the designer's drawing of the outside (src/lab-shoe-draw.js), as edited in the Studio, comes first: the pattern follows the drawing
+    const drawn = L.kind === 'footwear' ? await shoeDrawingOf(pool, L.c.id, 'lateral') : null;
+    if (drawn) { img = await sharp(Buffer.from(shoeSvg(drawn, { width: 1024 }))).flatten({ background: '#ffffff' }).png().toBuffer(); from = 'drawing'; }
+    else if (L.kind === 'footwear') {
+      const side = (await pool.query(`select image from lab_concept_views where concept_id=$1 and kind='flat_front' and status='ready' and image is not null`, [L.c.id])).rows[0]?.image;
+      if (side) { img = side; from = 'side'; }
+      else {
+        const cfg = (d.imageCfg || imageConfig)();
+        if (cfg.configured && cfg.provider !== 'fixture') {
+          const concept = { name: L.c.name, category: 'footwear', twist: L.c.twist, spec: L.c.spec || {} };
+          const got = await makeViews({ concept, picture: img, kinds: ['flat_front'], cfg, edit: d.imageEdit || openaiEdit, onView: async (kind, r) => { if (r) await pool.query(`insert into lab_concept_views(concept_id,kind,status,image,thumb,model) values($1,$2,'ready',$3,$4,$5) on conflict (concept_id,kind) do update set status='ready', image=$3, thumb=$4, model=$5, note='', updated_at=now()`, [L.c.id, kind, r.image, r.thumb, r.model || '']); } });
+          if (got.flat_front) { img = got.flat_front; from = 'side'; }
+        }
+      }
+    }
     const key = createHash('sha1').update(img).digest('hex') + L.kind;
     if (L.kind === 'plush') {
       // a plush: the eye reads the shape, size, parts, pile, eyes and colours; the concept's own words go under what the picture shows
@@ -181,8 +208,11 @@ export function registerLabPatternRoutes(app, d) {
     }
     if (got.vision && got.vision.footwear === false) return bad(reply, 'The picture does not show a shoe');
     const p = proposal(L.spec, got.sil, got.vision);
+    // colours the designer set on the Studio drawing stay: the eye's guess at the colours does not replace them
+    if (L.coloursFrom) { p.spec.colours = { ...(p.spec.colours || {}), ...drawingColoursOf(L) }; p.changes = (p.changes || []).filter(ch => ch.key !== 'colours'); }
+    if (p.spec.picture && from !== 'picture' && got.sil) p.spec.picture.src = from; // the page lays this picture under the shoe
     if (!p.side && !got.vision) return bad(reply, 'The picture is not a side view of the shoe, so its outline cannot be read: make or upload a side view, or set the shoe by hand');
-    return { spec: p.spec, changes: p.changes, shape: p.shape, side: p.side, source: got.source, why: p.why, view: got.vision?.view || (p.side ? 'side' : 'other') };
+    return { spec: p.spec, changes: p.changes, shape: p.shape, side: p.side, source: got.source, why: p.why, view: got.vision?.view || (p.side ? 'side' : 'other'), from };
   });
 
   // the developer's review: the shoe on the page (saved or not) checked against the concept's picture, round by round (src/lab-shoe-review.js).
@@ -278,7 +308,7 @@ export function registerLabPatternRoutes(app, d) {
           'Draw it as a photorealistic studio photograph of the real sample, sewn from these pattern pieces and stuffed: the same shape, proportions, parts, face and colours as the flat, sitting upright, seen from the front and a little to one side, on a plain light-grey background with soft light. Real pile with its texture, the seams just visible, embroidery stitched.',
           'Leave out the flat\'s lines, dimension arrows, labels and lettering: they are drawing notes, not on the toy. No text, no logos, no people, no hands.'].filter(Boolean).join('\n')
       : [`The attached picture is the technical flat of a shoe, the outside in side profile: ${clip(L.c.name, 80)}, ${pat.label}, ${pat.size}.`, mats ? `Materials: ${mats}.` : '',
-          'Draw it as a photorealistic studio photograph of the real shoe made from these pieces: the same pieces, seams, stitching, sole and colours as the flat, in side profile at eye level, on a plain light-grey background with soft light, the whole shoe in frame.',
+          'Draw it as a premium photoreal product render of the real shoe made from these pieces, the way a footwear designer presents a design: the same pieces, seams, stitching, sole and colours as the flat, in true side profile at eye level with the toe where the flat has it, the whole shoe in frame, on a seamless studio backdrop in one soft, even tone taken from the shoe\'s own colours, soft key light, a crisp rim light along the top line and a soft contact shadow. Real material texture, real stitching and edge finishing.',
           'Leave out the flat\'s construction lines, dimension marks, labels and lettering. No text, no logos, no feet, no people.'].filter(Boolean).join('\n');
     let out;
     try { out = cfg.provider === 'fixture' ? await sharp(flat).flatten({ background: '#e6e7ea' }).jpeg({ quality: 88 }).toBuffer() : await openaiEdit({ images: [flat], prompt, cfg: { ...cfg, size: env.HERO_SIZE || cfg.size || '1024x1024' } }); }
