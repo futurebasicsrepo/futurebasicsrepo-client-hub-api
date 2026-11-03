@@ -166,3 +166,26 @@ test('a distressed graphic sews with clean, straight edges: cracks, nicks and sp
   assert.ok(spread(ends(clean)) < spread(ends(raw)), `cleaned ${spread(ends(clean))} vs raw ${spread(ends(raw))}`);
 });
 
+
+test('a thin border joined to a solid block is sewn as satin along the border, not as fill rows that step along its edges', async () => {
+  // a shield-like frame 2 mm wide (at 4 in) running into a solid band at the bottom, round a panel of another colour
+  const art = await svg('<svg xmlns="http://www.w3.org/2000/svg" width="800" height="800"><rect x="100" y="100" width="600" height="600" fill="#111111"/><rect x="116" y="116" width="568" height="300" fill="#c8202a"/></svg>');
+  const d = await digitize(art, { widthIn: 4 }), black = d.objects.filter(o => o.colour === d.objects.find(x => x.kind === 'fill' && x.areaMm2 > 600 && x.widthMm > 20)?.colour);
+  assert.ok(black.some(o => o.kind === 'satin' && o.widthMm >= 1.5 && o.widthMm <= 3), JSON.stringify(d.objects.map(o => [o.thread, o.kind, o.widthMm])));
+  assert.ok(black.some(o => o.kind === 'fill'), 'the solid band stays fill');
+  // the frame borders the red panel, sewn after the black: so the frame is held back and sewn last, over the red's row ends
+  assert.equal(d.plan.length, 3, d.plan.map(b => b.hex).join()); assert.equal(d.plan[0].hex, d.plan[2].hex); assert.ok(d.threads[2].outlines);
+  const off = await digitize(art, { widthIn: 4, strokes: false, outlinesLast: false });
+  assert.ok(off.objects.every(o => !(o.kind === 'satin' && o.widthMm >= 1.5 && o.widthMm <= 3)) && off.plan.length === 2, 'both can be turned off');
+  // a wide strip (here 6 mm) is left as fill: only strokes up to 3 mm are split off
+  const wide = await digitize(await svg('<svg xmlns="http://www.w3.org/2000/svg" width="800" height="800"><rect x="100" y="100" width="600" height="600" fill="#111111"/><rect x="160" y="160" width="480" height="400" fill="#c8202a"/></svg>'), { widthIn: 4 });
+  assert.ok(wide.objects.filter(o => o.kind === 'satin').length === 0, JSON.stringify(wide.objects.map(o => [o.kind, o.widthMm])));
+});
+
+test('a crack in a colour that covers a real area elsewhere is folded into its neighbour without failing', async () => {
+  // red with hairline cracks through it, beside a big red area: the cracks are slivers of the cream behind
+  let cracks = ''; for (let k = 0; k < 10; k++) cracks += `<rect x="${150 + k * 50}" y="200" width="3" height="200" fill="#f2ead8"/>`;
+  const art = await svg(`<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600"><rect width="800" height="600" fill="#f2ead8"/><rect x="100" y="150" width="600" height="300" fill="#b0181f"/>${cracks}</svg>`);
+  const d = await digitize(art, { widthIn: 4, garment: '#ffffff' });
+  assert.ok(d.stats.stitches > 0); assert.ok(d.objects.every(o => o.widthMm >= .45), JSON.stringify(d.objects.map(o => o.widthMm)));
+});
