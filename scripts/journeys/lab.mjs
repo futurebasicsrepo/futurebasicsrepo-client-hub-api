@@ -4535,5 +4535,38 @@ await journey('J279', 'The platform map in Sites & health: staff open it from th
   } finally { await b.close(); }
 });
 
+await journey('J280', 'A shoe drawn in panels in the Studio: the concept becomes a technical flat in five views traced into panels; the designer recolours and reshapes them and saves; the pattern reads the shoe from that drawing; the drawing goes back to as traced; a garment and a stranger are turned away', async () => {
+  const made = (await K('/concepts/from-scratch', { body: { category: 'footwear', style: 'runner', name: `Panel runner ${stamp}` } })).json, cid = made.concept.id;
+  try {
+    ok((await K(`/concepts/${cid}/shoe-drawing`, { body: {} })).status === 409, '0. with no picture there is nothing to draw from');
+    const pic = await sharp({ create: { width: 800, height: 500, channels: 3, background: '#f2f1ee' } }).composite([{ input: await sharp({ create: { width: 600, height: 200, channels: 3, background: '#2f3b57' } }).png().toBuffer(), left: 100, top: 180 }]).png().toBuffer();
+    ok((await call(`/v1/lab/concepts/${cid}/studio/apply`, { token: kyleT, body: { image: 'data:image/png;base64,' + pic.toString('base64') } })).status === 200, '   the concept gets a picture');
+    const st = await K(`/concepts/${cid}/shoe-drawing`, { body: {} });
+    ok(st.status === 202 && st.json.started === 5 && st.json.kinds.map(k => k.id).join() === 'lateral,medial,top,bottom,back', '1. the five views are drawn: outside, inside, top, bottom, heel', st.json);
+    let g; for (let i = 0; i < 60; i++) { g = (await K(`/concepts/${cid}/shoe-drawing`)).json; if (!g.busy && !Object.values(g.views).some(v => v.status === 'pending')) break; await sleep(250); }
+    ok(Object.values(g.views).length === 5 && Object.values(g.views).every(v => v.status === 'ready' && v.drawing?.panels?.length >= 2), '   each is traced into panels', Object.fromEntries(Object.entries(g.views).map(([k, v]) => [k, v.status + ' ' + (v.drawing?.panels?.length || 0)])));
+    ok((await K(`/concepts/${cid}/shoe-drawing`, { body: {} })).json.started === 0, '   asked again, nothing is drawn twice');
+    const lat = g.views.lateral.drawing, upper = lat.panels.find(p => p.fill === '#5d6440') || lat.panels[0];
+    const moved = upper.d.replace(/^M([\d.]+) ([\d.]+)/, (m, x, y) => `M${+x - 30} ${+y}`);
+    const put = await K(`/concepts/${cid}/shoe-drawing/lateral`, { method: 'PUT', body: { panels: lat.panels.map(p => p.id === upper.id ? { ...p, fill: '#1F3A5F', name: 'Upper', d: moved } : p) } });
+    ok(put.status === 200 && put.json.drawing.panels.find(p => p.id === upper.id).fill === '#1f3a5f', '2. a panel is recoloured, named and reshaped, and saved');
+    const svg = await fetch(`${BASE}/v1/lab/concepts/${cid}/shoe-drawing/lateral.svg`, { headers: { authorization: `Bearer ${kyleT}` } }).then(r => r.text());
+    ok(/<svg/.test(svg) && svg.includes('#1f3a5f') && svg.includes('data-name="Upper"'), '   the drawing as SVG carries the change');
+    ok((await K(`/concepts/${cid}/shoe-drawing/lateral`, { method: 'PUT', body: { panels: [{ id: upper.id, d: '<script>alert(1)</script>', fill: 'javascript:' }] } })).json.drawing?.panels?.[0]?.d === moved, '   anything that is not path data or a colour is not taken');
+    sql(`delete from lab_patterns where concept_id='${cid}'`);
+    const rd = await K(`/concepts/${cid}/pattern/from-picture`, { method: 'POST', body: {} });
+    ok(rd.status === 200 && rd.json.from === 'drawing' && rd.json.spec.picture?.src === 'drawing', '3. the pattern reads the shoe from the designer\'s outside drawing, and lays it under the shoe', { status: rd.status, from: rd.json.from, err: rd.json.error });
+    const back = await K(`/concepts/${cid}/shoe-drawing/lateral/reset`, { body: {} });
+    ok(back.status === 200 && back.json.drawing.panels.every(p => p.fill !== '#1f3a5f'), '4. back to the drawing as traced');
+    ok((await K(`/concepts/${cid}/shoe-drawing/sideways`)).status === 404, '   a view that does not exist is not found');
+    const tee = (await K('/concepts/from-scratch', { body: { category: 'tops', style: 'tee', name: `Panel tee ${stamp}` } })).json.concept;
+    ok((await K(`/concepts/${tee.id}/shoe-drawing`)).status === 422, '5. a garment is not drawn as a shoe'); await K(`/concepts/${tee.id}`, { method: 'DELETE' });
+    ok((await call(`/v1/lab/concepts/${cid}/shoe-drawing`)).status === 401, '   and nobody signed out sees the drawing');
+    const labCookie = ((await fetch(`${BASE}/v1/lab/door`, { headers: { Authorization: 'Bearer ' + kyleT } })).headers.get('set-cookie') || '').split(';')[0];
+    const page = await fetch(`${BASE}/lab/shoe-flats?concept=${cid}&embed=full`, { headers: { Cookie: labCookie } }).then(r => r.text());
+    ok(/FBFlats/.test(page) && /Shoe drawing/.test(page), '   the Studio\'s shoe drawing page is served');
+  } finally { await K(`/concepts/${cid}`, { method: 'DELETE' }); }
+});
+
 shops.close(); brave.close();
 process.exit(summary() ? 1 : 0);

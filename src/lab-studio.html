@@ -1175,7 +1175,8 @@ pL.addEventListener('input',e=>{if(e.target.dataset.p!=='warpk')return;const l=s
 // side by side was dropped: a picture and a flat each want the whole screen
 const VIEWS=['picture','front','back','pattern'],stepOfView=v=>v==='pattern'?'pattern':v==='front'||v==='back'||v==='split'?'flats':'picture';let PLOADED=false;let VMODE='picture',FLOADED=false,TPLUSED=false,FOBS=null;
 function FF(){try{return FLOADED?$('#flatFrame').contentWindow.FBFlats||null:null}catch{return null}}
-function flatSrc(){const t=QS.get('template');return `/lab/flats?concept=${CID}&embed=${VMODE==='split'?'compact':'full'}&view=${VMODE==='back'?'back':'front'}${t&&!TPLUSED?'&template='+encodeURIComponent(t):''}`}
+function flatSrc(){const t=QS.get('template');if(D?.concept?.category==='footwear')return `/lab/shoe-flats?concept=${CID}&embed=${VMODE==='split'?'compact':'full'}&view=${VMODE==='back'?'back':'front'}`; // a shoe is drawn in panels (src/lab-shoe-flats.html)
+  return `/lab/flats?concept=${CID}&embed=${VMODE==='split'?'compact':'full'}&view=${VMODE==='back'?'back':'front'}${t&&!TPLUSED?'&template='+encodeURIComponent(t):''}`}
 function loadFlats(){$('#flatFrame').src=flatSrc();FLOADED=true;TPLUSED=true}
 function reloadFlats(){if(!FLOADED||FF()?.dirty())return;$('#flatFrame').src=flatSrc()}
 async function flatsFirst(){const f=FF();if(f&&f.dirty()&&!(await f.save()))throw new Error('the flats could not be saved first')}

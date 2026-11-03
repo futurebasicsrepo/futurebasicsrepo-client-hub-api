@@ -600,6 +600,21 @@ export async function migrate() {
         alter table lab_materials add constraint lab_materials_kind_check check (kind in ('fabric','trim','tag','footwear','plush','plastic'));
       end if;
     end $$;
+    -- a shoe's drawing in the Studio (src/lab-shoe-draw.js): per view (lateral, medial, top, bottom, back) the line art the image model drew and
+    -- its vector panels, as traced and then as the designer edits them
+    create table if not exists lab_shoe_drawings (
+      concept_id uuid not null references lab_concepts(id) on delete cascade,
+      view text not null,
+      status text not null default 'pending',
+      art bytea,
+      drawing jsonb,
+      model text not null default '',
+      note text not null default '',
+      edited boolean not null default false,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now(),
+      primary key (concept_id, view)
+    );
     create table if not exists lab_concept_views (
       concept_id uuid not null references lab_concepts(id) on delete cascade,
       kind text not null,

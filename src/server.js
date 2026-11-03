@@ -60,6 +60,7 @@ import { registerIntelRoomRoutes, runRooms as intelRooms } from './intel-room.js
 import { registerLabRoutes, seedLab } from './lab-routes.js';
 import { registerLabConceptRoutes } from './lab-concept-routes.js';
 import { registerLabViewRoutes } from './lab-view-routes.js';
+import { registerLabShoeDrawRoutes } from './lab-shoe-draw-routes.js';
 import { registerLabStudioRoutes } from './lab-studio-routes.js';
 import { registerLabLibraryRoutes } from './lab-library-routes.js';
 import { registerLabMaterialsRoutes } from './lab-materials-routes.js';
@@ -745,6 +746,7 @@ async function claimClientPack(productId,clientId,userId){
 }
 const labConcepts = registerLabConceptRoutes(app, { pool, ...labDeps, claimClientPack, getSetting, learn: learnLabTaste, log: app.log, art: labArt, createProduct: args => createClientProduct(args), attachArtwork: (productId, items) => attachLabArtwork(productId, items), sendFlats: (id, productId) => labFlats.sendToPack(id, productId), flatsCheck: id => labFlats.startCheck(id) });
 registerLabViewRoutes(app, { pool, ...labDeps, log: app.log });
+registerLabShoeDrawRoutes(app, { pool, ...labDeps, log: app.log });
 registerLabStudioRoutes(app, { pool, ...labDeps });
 // their starting techniques and materials are put in once the tables are migrated (seeding while the migration alters them deadlocked)
 let migratedNow; const migrated = new Promise(r => { migratedNow = r; });
@@ -814,6 +816,8 @@ app.get('/lab/lab-recipe.js', (_req, reply) => reply.header('cache-control', 'no
 app.get('/lab/lab-swatches.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-swatches.js', import.meta.url), 'utf8')));
 // the flats page runs inside the Design workspace (/lab/studio) in a frame: it may be framed by this site's own pages and nobody else's
 app.get('/lab/flats', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').header('content-security-policy', "upgrade-insecure-requests; default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob: https:; connect-src 'self' https://thefuturebasics.com; frame-ancestors 'self'; base-uri 'self'; form-action 'self'").type('text/html').send(readFileSync(new URL('./lab-flats.html', import.meta.url), 'utf8')));
+// a shoe's drawing (src/lab-shoe-draw.js) in the same Studio frame
+app.get('/lab/shoe-flats', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').header('content-security-policy', "upgrade-insecure-requests; default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob: https:; connect-src 'self' https://thefuturebasics.com; frame-ancestors 'self'; base-uri 'self'; form-action 'self'").type('text/html').send(readFileSync(new URL('./lab-shoe-flats.html', import.meta.url), 'utf8')));
 // the pattern page runs inside Design (/lab/studio) in a frame, like the flats; its drafting is shared with the service (src/lab-pattern.js)
 app.get('/lab/pattern', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').header('content-security-policy', "upgrade-insecure-requests; default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'self'; base-uri 'self'; form-action 'self'").type('text/html').send(readFileSync(new URL('./lab-pattern.html', import.meta.url), 'utf8')));
 app.get('/lab/lab-footwear.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-footwear.js', import.meta.url), 'utf8')));

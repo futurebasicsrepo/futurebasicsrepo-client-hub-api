@@ -641,7 +641,7 @@ Routes: `src/lab-materials-routes.js` (`/v1/lab/materials…`, `/v1/lab/concepts
 
 **Which sketch a piece is drawn from.** The concept's words are read for the piece's family (jeans, chinos, sweatpants, track pants…: from its name, silhouette and fabric only, so a ripstop pocket lining does not make a twill pant a track pant), its silhouette (flared, straight, wide, slim…) and its features (cargo pockets, double knee, pleats, carpenter loops…). Every sketch of the style is scored (`rankTemplates` in `src/lab-flats.js`): a feature the sketch has that the concept never asked for counts against it, so a plain boot-cut twill pant is not drawn from a skinny double-knee cargo because it shares a word. With an Anthropic key the vision model then confirms the pick from the concept's picture among the best-scored sketches (cached per picture; off under `AI_FIXTURE`). The Garment tab still lets you pick any sketch by hand.
 
-**Footwear is not drawn as a pant.** A concept whose words read as footwear (boot, sneaker, trainer, shoe, loafer, sandal, mule, clog, slide), with no pant words (boot-cut, pants, jeans, cargo…), gets no flats, wherever its line sits; the flats say it reads as footwear and that flats are not drawn for footwear yet. Before this a boot in a Bottoms line was drawn as a pant.
+**Footwear is not drawn as a pant.** A concept whose words read as footwear (boot, sneaker, trainer, shoe, loafer, sandal, mule, clog, slide), with no pant words (boot-cut, pants, jeans, cargo…), is not drawn as a garment, wherever its line sits; outside a footwear line the flats say so and ask for it to be moved. In a footwear line it is drawn in panels (below). Before this a boot in a Bottoms line was drawn as a pant.
 
 **Flats and placement** (the flat views of Design: **Flats** on a concept opens `/lab/studio?concept=<id>&view=front`) draws the piece as measured technical flats, front and back, the way a factory reads them. Nothing on it is drawn by an image model.
 
@@ -915,6 +915,31 @@ feet for a pair, with a quarter allowed for cutting round the hide's flaws.
 - a collar that sits on the ankle bone.
 
 It then lists the fitting and size-run samples and the tests (sole bond, flex, abrasion, colour fastness, restricted substances).
+
+### A shoe drawn in panels (the Studio)
+
+A footwear concept's **Flats** in the Studio (`/lab/shoe-flats`, in the Studio's frame; `src/lab-shoe-draw.js`, `src/lab-shoe-draw-routes.js`, table
+`lab_shoe_drawings`) is the shoe as a footwear technical flat, the way a designer draws one, in five views: **Outside, Inside, Top, Bottom, Heel**.
+
+- **How it is drawn.** The image model redraws the shoe's side profile (the board's flat front view, drawn from the concept picture first when
+  missing) as line art: even black outlines, dashed stitching, one flat colour per panel. Inside, top, bottom and heel are then drawn from that
+  outside drawing, so all five are the same shoe. About a minute a view; `LAB_DAILY_SHOE_DRAWINGS` (60) caps the views a day; a room is charged
+  one unit a view.
+- **How it is traced** (`traceShoe`, no AI): the very dark thin strokes are the line work; every run of one colour inside them is a panel; slivers
+  (soft edges) are line work too; panels grow under the lines so neighbours meet with no gap; each panel is followed along its edge, simplified
+  and drawn as smooth curves. Panels drawn in one colour share it exactly. The lines that are not a panel's edge (stitching, sipes, tread, laces)
+  are kept as a details layer.
+- **What the designer does.** Pick a panel: recolour it (or every panel in that colour), name it (vamp, quarter, toe cap…), hide it, or reshape
+  it by dragging its points: points of neighbouring panels that sit on the same spot move with it, so a shared seam stays shared. Double-click an
+  edge to add a point, Alt-click a point to remove it. **Colours in this view** recolours a whole colour at once (a colourway), and **Same
+  colours on every view** carries it to the other four. Stitching and tread lines switch on and off. Undo and redo; **Back to the drawing as
+  traced**; **Draw again**; Download SVG; the Studio's spec sheet button opens all five views on one sheet.
+- **One shoe.** The Pattern page reads the shoe from the designer's outside drawing as saved (before the side profile or the picture), so the
+  last's outline, collar and toe spring follow the drawing's edits, and lays that drawing under the shoe. A shoe sent to its tech pack takes these
+  drawings as its technical flats (each view and one sheet of all of them) in place of the views drawn from the pattern.
+
+Routes: `GET|POST /v1/lab/concepts/:id/shoe-drawing`, `PUT /v1/lab/concepts/:id/shoe-drawing/:view`, `POST …/:view/reset`,
+`GET …/:view.svg` (or `?art=1` for the line art). Journey J280.
 
 ### How a shoe concept is designed and drawn
 

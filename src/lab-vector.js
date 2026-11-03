@@ -23,7 +23,7 @@ async function inkMap(png, { maxSide = 700, width = null, height = null, colours
 }
 
 // ---- vector: the outline of every region of one ink, followed along the pixel edges, then simplified and smoothed ----
-function loopsOf(idx, W, H, j) {
+export function loopsOf(idx, W, H, j) {
   const at = (x, y) => x >= 0 && y >= 0 && x < W && y < H && idx[y * W + x] === j, next = new Map(), key = (x, y) => y * (W + 1) + x;
   const add = (ax, ay, bx, by) => { const k = key(ax, ay); if (!next.has(k)) next.set(k, []); next.get(k).push([bx, by]); };
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
@@ -44,10 +44,10 @@ function simplify(pts, tol) { // Douglas–Peucker on an open run
   for (let i = 1; i < pts.length - 1; i++) { const p = pts[i], dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy) || 1, d = Math.abs(dy * p[0] - dx * p[1] + b[0] * a[1] - b[1] * a[0]) / L; if (d > md) { md = d; idx = i; } }
   return md > tol ? [...simplify(pts.slice(0, idx + 1), tol).slice(0, -1), ...simplify(pts.slice(idx), tol)] : [a, b];
 }
-const closedSimplify = (loop, tol) => { const h = Math.floor(loop.length / 2); return [...simplify(loop.slice(0, h + 1), tol).slice(0, -1), ...simplify([...loop.slice(h), loop[0]], tol).slice(0, -1)]; };
+export const closedSimplify = (loop, tol) => { const h = Math.floor(loop.length / 2); return [...simplify(loop.slice(0, h + 1), tol).slice(0, -1), ...simplify([...loop.slice(h), loop[0]], tol).slice(0, -1)]; };
 const n2 = v => +v.toFixed(2);
 // a closed shape as quadratic curves through the midpoints of its sides: corners of the pixel stair become smooth
-function smoothPath(pts) {
+export function smoothPath(pts) {
   if (pts.length < 3) return ''; const m = (p, q) => [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2], s = m(pts[pts.length - 1], pts[0]);
   let d = `M${n2(s[0])} ${n2(s[1])}`; for (let i = 0; i < pts.length; i++) { const p = pts[i], q = m(p, pts[(i + 1) % pts.length]); d += `Q${n2(p[0])} ${n2(p[1])} ${n2(q[0])} ${n2(q[1])}`; }
   return d + 'Z';

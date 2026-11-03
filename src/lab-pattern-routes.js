@@ -26,6 +26,8 @@ import { plushSheet, plushViews } from './lab-plush-views.js';
 import { footwearViews } from './lab-footwear-views.js';
 import { imageConfig, openaiEdit } from './check.js';
 import { makeViews } from './lab-views.js';
+import { shoeDrawingOf } from './lab-shoe-draw-routes.js';
+import { shoeSvg } from './lab-shoe-draw.js';
 import { PLUSH_FABRICS as PF, PLUSH_EYES as PE } from './lab-pattern.js';
 import { VIEWS_OF } from './lab-sketch.js';
 import { partLooks } from './lab-looks.js';
@@ -157,7 +159,10 @@ export function registerLabPatternRoutes(app, d) {
     const L = await load(req.params.id); if (!L) return bad(reply, 'Not found', 404); if (L.kind !== 'footwear' && L.kind !== 'plush') return bad(reply, 'Only a shoe or a plush is read from its picture here');
     let img = (await pool.query('select image from lab_concepts where id=$1', [L.c.id])).rows[0]?.image, from = 'picture'; if (!img) return bad(reply, 'This concept has no picture to read');
     // a shoe's concept picture is a three-quarter render, so its outline is read from its side profile (the flat front view), drawn from the picture first when it is not there yet
-    if (L.kind === 'footwear') {
+    // the designer's drawing of the outside (src/lab-shoe-draw.js), as edited in the Studio, comes first: the pattern follows the drawing
+    const drawn = L.kind === 'footwear' ? await shoeDrawingOf(pool, L.c.id, 'lateral') : null;
+    if (drawn) { img = await sharp(Buffer.from(shoeSvg(drawn, { width: 1024 }))).flatten({ background: '#ffffff' }).png().toBuffer(); from = 'drawing'; }
+    else if (L.kind === 'footwear') {
       const side = (await pool.query(`select image from lab_concept_views where concept_id=$1 and kind='flat_front' and status='ready' and image is not null`, [L.c.id])).rows[0]?.image;
       if (side) { img = side; from = 'side'; }
       else {
@@ -194,7 +199,7 @@ export function registerLabPatternRoutes(app, d) {
       got = { sil, vision, source }; if (shoeReads.size > 300) shoeReads.clear(); shoeReads.set(key, got);
     }
     if (got.vision && got.vision.footwear === false) return bad(reply, 'The picture does not show a shoe');
-    const p = proposal(L.spec, got.sil, got.vision); if (p.spec.picture && from === 'side' && got.sil) p.spec.picture.src = 'side'; // the page lays this picture under the shoe
+    const p = proposal(L.spec, got.sil, got.vision); if (p.spec.picture && from !== 'picture' && got.sil) p.spec.picture.src = from; // the page lays this picture under the shoe
     if (!p.side && !got.vision) return bad(reply, 'The picture is not a side view of the shoe, so its outline cannot be read: make or upload a side view, or set the shoe by hand');
     return { spec: p.spec, changes: p.changes, shape: p.shape, side: p.side, source: got.source, why: p.why, view: got.vision?.view || (p.side ? 'side' : 'other'), from };
   });
