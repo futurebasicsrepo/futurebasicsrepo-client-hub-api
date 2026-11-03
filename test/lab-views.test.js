@@ -7,7 +7,7 @@ const concept = { name: 'Washed boxy tee', category: 'tops', twist: 'a dropped b
 const tinyJpeg = () => sharp({ create: { width: 64, height: 64, channels: 3, background: '#888' } }).jpeg().toBuffer();
 
 test('every kind of piece gets the flats; only pieces that are worn get the model views and a walk', () => {
-  assert.equal(kindsFor('tops').length, VIEW_KINDS.length);
+  assert.equal(kindsFor('tops').length, VIEW_KINDS.length - 1); assert.equal(kindsFor('footwear').length, VIEW_KINDS.length);
   assert.deepEqual(kindsFor('home'), ['flat_front', 'flat_back']);
   assert.equal(canWalk('home'), false); assert.equal(canWalk('footwear'), true);
   assert.deepEqual(SPIN_KINDS, ['model_front', 'model_34', 'model_side', 'model_back']);
@@ -21,7 +21,10 @@ test('prompts keep the approved design, ask for a man, never invite new logos, a
   assert.match(side, /same man in the very same outfit/); assert.match(side, /turned 90 degrees/);
   assert.match(viewPrompt({ ...concept, category: 'footwear' }, 'model_front'), /lower legs and feet/);
   assert.match(viewPrompt({ ...concept, category: 'headwear' }, 'model_front'), /head-and-shoulders/);
-  assert.match(viewPrompt({ ...concept, category: 'footwear' }, 'flat_front'), /single shoe in side profile/);
+  assert.match(viewPrompt({ ...concept, category: 'footwear' }, 'flat_front'), /single shoe in true side profile, the outside of the shoe, toe pointing right/);
+  assert.match(viewPrompt({ ...concept, category: 'footwear' }, 'flat_back'), /from directly behind/); assert.doesNotMatch(viewPrompt({ ...concept, category: 'footwear' }, 'flat_back'), /plain except for details/);
+  const sheet = viewPrompt({ ...concept, category: 'footwear' }, 'sheet');
+  assert.match(sheet, /design presentation board/); assert.match(sheet, /same length-to-height proportions/); assert.match(sheet, /four other colourways/); assert.match(sheet, /No text, no labels/);
 });
 
 test('views are drawn flats first, then the front on the model, then the other angles, each from the right references', async () => {
@@ -32,6 +35,15 @@ test('views are drawn flats first, then the front on the model, then the other a
   assert.deepEqual(kinds.slice(0, 2).sort(), ['flat_back', 'flat_front']); assert.equal(kinds[2], 'model_front'); assert.deepEqual(kinds.slice(3).sort(), ['model_34', 'model_back']);
   assert.equal(Object.keys(done).length, 5);
   assert.equal(calls[2].n, 2, 'the front view on the model gets the picture and the flat'); assert.equal(calls[3].n, 2, 'the other angles get the model front and the flat');
+});
+
+test('a shoe\'s design sheet is drawn wide from the concept picture alone, with no model view needed', async () => {
+  const calls = [], pic = await tinyJpeg(), shoe = { ...concept, category: 'footwear' };
+  const edit = async ({ images, prompt, cfg }) => { calls.push({ n: images.length, size: cfg.size, prompt }); return tinyJpeg(); };
+  const done = await makeViews({ concept: shoe, picture: pic, kinds: ['sheet', 'flat_front'], cfg: { provider: 'openai', configured: true, model: 'm' }, edit });
+  assert.ok(done.sheet && done.flat_front); assert.equal(calls.length, 2);
+  const sh = calls.find(c => /presentation board/.test(c.prompt)); assert.equal(sh.size, '1536x1024'); assert.equal(sh.n, 1);
+  const none = await makeViews({ concept, picture: pic, kinds: ['sheet'], cfg: { provider: 'openai', configured: true, model: 'm' }, edit }); assert.equal(none.sheet, undefined, 'a tee gets no design sheet');
 });
 
 test('a failed front view skips the angles that depend on it, and says why', async () => {

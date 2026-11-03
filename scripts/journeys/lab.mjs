@@ -2941,6 +2941,13 @@ await journey('J246', 'A shoe read from its picture: a concept\'s side view (her
   ok(r.status === 200 && r.json.side && r.json.source === 'shape' && r.json.spec.style === 'hightop' && Math.abs(r.json.spec.collar - 5.2) <= .5 && r.json.spec.picture?.toeLeft === true, '1. the outline reads a high-top: its style, its collar at about 5¼ in, and which way it faces', { spec: r.json.spec, changes: r.json.changes });
   ok(r.json.changes.some(c => c.key === 'style' && c.to === 'hightop' && c.source === 'picture (shape)'), '   and says what would change, and from what');
   ok((await K(`/concepts/${cid}/pattern`)).json.spec.style === 'sneaker', '   nothing is saved until it is used');
+  ok(r.json.from === 'picture' && !r.json.spec.picture?.src, '   with no side profile view yet, the concept\'s own picture is read');
+  // a shoe's concept picture is a three-quarter render, so once its side profile (the flat front view) exists the outline is read from that
+  const sideView = await sharp(png).flop().jpeg({ quality: 90 }).toBuffer();
+  sql(`insert into lab_concept_views(concept_id,kind,status,image) values('${cid}','flat_front','ready',decode('${sideView.toString('base64')}','base64')) on conflict (concept_id,kind) do update set status='ready', image=excluded.image`);
+  const rs = await K(`/concepts/${cid}/pattern/from-picture`, { method: 'POST', body: {} });
+  ok(rs.status === 200 && rs.json.from === 'side' && rs.json.spec.style === 'hightop' && rs.json.spec.picture?.toeLeft === false && rs.json.spec.picture?.src === 'side', '1b. a shoe with a side profile view is read from it (toe to the right there), and the page is told to lay that picture under the shoe', { from: rs.json.from, picture: rs.json.spec?.picture });
+  sql(`delete from lab_concept_views where concept_id='${cid}'`);
   if (!playwright) { ok(true, 'needs a browser'); return; }
   const br = await playwright.chromium.launch();
   try {

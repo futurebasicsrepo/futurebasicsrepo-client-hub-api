@@ -9,14 +9,16 @@ import { norm } from './lab-concepts.js';
 export const VIEW_KINDS = [
   { id: 'flat_front', label: 'Flat, front', group: 'flat' }, { id: 'flat_back', label: 'Flat, back', group: 'flat' },
   { id: 'model_front', label: 'On model, front', group: 'model' }, { id: 'model_34', label: 'On model, three-quarter', group: 'model' },
-  { id: 'model_side', label: 'On model, side', group: 'model' }, { id: 'model_back', label: 'On model, back', group: 'model' }
+  { id: 'model_side', label: 'On model, side', group: 'model' }, { id: 'model_back', label: 'On model, back', group: 'model' },
+  { id: 'sheet', label: 'Design sheet', group: 'sheet' }
 ];
 export const SPIN_KINDS = ['model_front', 'model_34', 'model_side', 'model_back']; // the order the board turns through
 export const KIND_IDS = VIEW_KINDS.map(k => k.id);
 export const isKind = k => KIND_IDS.includes(k);
 // nobody wears a home object, a plush, a toy or a gadget, so they get the product views only (front and back), and no walk
 const UNWORN = ['home', 'plush', 'toys', 'electronics'];
-export const kindsFor = category => (UNWORN.includes(category) ? VIEW_KINDS.filter(k => k.group === 'flat').map(k => k.id) : KIND_IDS);
+// the design sheet (one board of views and colourways) is made for shoes, the way footwear designers present a design
+export const kindsFor = category => (UNWORN.includes(category) ? VIEW_KINDS.filter(k => k.group === 'flat').map(k => k.id) : KIND_IDS.filter(k => k !== 'sheet' || category === 'footwear'));
 export const canWalk = category => !UNWORN.includes(category);
 
 const clip = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
@@ -36,7 +38,12 @@ const ANGLE = {
   model_side: 'seen from the side, turned 90 degrees',
   model_back: 'seen from directly behind'
 };
-const FLAT_SHOE = 'a single shoe in side profile, toe pointing left';
+// a shoe's flat front is its clean side profile (the outside, toe to the right, like the tech flats); the pattern reads its outline from it
+const FLAT_SHOE = { flat_front: 'a single shoe in true side profile, the outside of the shoe, toe pointing right, at eye level, the camera square to the shoe so there is no perspective, the whole shoe in frame', flat_back: 'the same single shoe seen from directly behind at eye level: the heel counter, the heel tab, the collar and the back of the sole' };
+const SHEET = [
+  'Make a footwear design presentation board, wide, on one clean light-grey studio ground, for the exact shoe in the reference picture. Across the top, large: the shoe in true side profile, the outside, toe pointing right, with exactly the same length-to-height proportions, toe spring and sole height as the reference (do not stretch or flatten it). Below it, in a row: the shoe from directly above, the outsole from below showing its tread, and the heel from behind. Along the bottom edge: four small side profiles of the same shoe in four other colourways that suit it (tonal, contrast, dark, and one with a bold accent), every one the identical shape.',
+  'Every view is a photoreal studio product render with a soft shadow, evenly spaced and aligned on a clean grid, like a designer\'s board. No text, no labels, no numbers, no arrows and no logos anywhere on the board.'
+].join('\n');
 
 const KEEP = 'Keep the exact shape, proportions, fabric, colours, trims, logo and graphics of the reference: same artwork, in the same place, in the same colours. Ignore the small dark inset label card in a corner of the reference picture: do not draw it. Add no text, no lettering, no logos, no brand marks and no watermarks beyond what the reference piece itself shows.';
 
@@ -45,12 +52,13 @@ export function viewPrompt(concept, kind) {
   const cat = concept.category || 'other', name = clip(concept.name, 90), label = categoryLabel(cat).toLowerCase();
   if (kind === 'flat_front' || kind === 'flat_back') {
     const side = kind === 'flat_front' ? 'FRONT' : 'BACK';
-    const shape = cat === 'footwear' ? FLAT_SHOE : cat === 'plush' ? `the plush toy sitting upright on its own, ${kind === 'flat_front' ? 'seen from the front' : 'seen from directly behind'}, its pile texture and seams visible` : cat === 'bags' || cat === 'headwear' || cat === 'accessories' ? `the item standing alone, ${kind === 'flat_front' ? 'seen from the front' : 'seen from the back'}` : `the piece laid flat and shot straight on, symmetrical, ${kind === 'flat_front' ? 'front' : 'back'} side up`;
+    const shape = cat === 'footwear' ? FLAT_SHOE[kind] : cat === 'plush' ? `the plush toy sitting upright on its own, ${kind === 'flat_front' ? 'seen from the front' : 'seen from directly behind'}, its pile texture and seams visible` : cat === 'bags' || cat === 'headwear' || cat === 'accessories' ? `the item standing alone, ${kind === 'flat_front' ? 'seen from the front' : 'seen from the back'}` : `the piece laid flat and shot straight on, symmetrical, ${kind === 'flat_front' ? 'front' : 'back'} side up`;
     return [`The reference picture is a concept for a ${label} piece for a menswear and unisex brand: ${name}.`,
       `Draw the same piece as a clean flat product photograph on a seamless white background with soft, even light: ${shape}. This is the ${side} view.`,
-      kind === 'flat_back' ? 'The back is plain except for details that continue logically from the front (seams, a yoke, a hood, a back pocket, a closure). Add no logo, graphic or text that the reference does not show on its back.' : '',
+      kind === 'flat_back' && cat !== 'footwear' ? 'The back is plain except for details that continue logically from the front (seams, a yoke, a hood, a back pocket, a closure). Add no logo, graphic or text that the reference does not show on its back.' : '',
       'No hanger, no mannequin, no model, no hands.', KEEP].filter(Boolean).join('\n');
   }
+  if (kind === 'sheet') return [`The reference picture is a new shoe design for a menswear and unisex brand: ${name}.`, SHEET, KEEP].join('\n');
   const framing = FRAMING[cat] || FRAMING.default, angle = ANGLE[kind];
   const first = kind === 'model_front';
   return [first
@@ -86,15 +94,15 @@ export async function makeViews({ concept, picture, kinds, have = {}, cfg = imag
       let buf;
       if (cfg.provider === 'fixture') buf = await fixtureView(concept, kind);
       else {
-        const refs = kind.startsWith('flat') ? [picture] : kind === 'model_front' ? [picture, done.flat_front || picture].filter(Boolean) : [done.model_front, done.flat_front || picture].filter(Boolean);
-        if (!kind.startsWith('flat') && kind !== 'model_front' && !done.model_front) throw new Error('The front view on the model has to be drawn first');
-        buf = await edit({ images: refs, prompt: viewPrompt(concept, kind), cfg: { ...cfg, size: kind.startsWith('model') && cfg.provider === 'openai' ? (process.env.LAB_MODEL_SIZE || '1024x1536') : '1024x1024' } });
+        const refs = kind.startsWith('flat') || kind === 'sheet' ? [picture] : kind === 'model_front' ? [picture, done.flat_front || picture].filter(Boolean) : [done.model_front, done.flat_front || picture].filter(Boolean);
+        if (kind.startsWith('model') && kind !== 'model_front' && !done.model_front) throw new Error('The front view on the model has to be drawn first');
+        buf = await edit({ images: refs, prompt: viewPrompt(concept, kind), cfg: { ...cfg, size: kind === 'sheet' ? '1536x1024' : kind.startsWith('model') && cfg.provider === 'openai' ? (process.env.LAB_MODEL_SIZE || '1024x1536') : '1024x1024' } });
       }
       const r = await tidy(buf); done[kind] = r.image; await onView(kind, { ...r, model: cfg.model || cfg.provider }, ''); return r;
     } catch (e) { await onView(kind, null, `Could not be drawn: ${clip(e.message, 160)}`); return null; }
   };
   const batch = async list => { for (let i = 0; i < list.length; i += pool) await Promise.all(list.slice(i, i + pool).map(draw)); };
-  await batch(want.filter(k => k.startsWith('flat') && !done[k]));
+  await batch(want.filter(k => (k.startsWith('flat') || k === 'sheet') && !done[k]));
   if (want.includes('model_front') && !done.model_front) await draw('model_front');
   await batch(want.filter(k => k.startsWith('model') && k !== 'model_front' && !done[k]));
   return done;
