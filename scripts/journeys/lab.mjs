@@ -4568,7 +4568,7 @@ await journey('J280', 'A shoe drawn in panels in the Studio: the concept becomes
     ok((await call(`/v1/lab/concepts/${cid}/shoe-drawing`)).status === 401, '   and nobody signed out sees the drawing');
     const labCookie = ((await fetch(`${BASE}/v1/lab/door`, { headers: { Authorization: 'Bearer ' + kyleT } })).headers.get('set-cookie') || '').split(';')[0];
     const page = await fetch(`${BASE}/lab/shoe-flats?concept=${cid}&embed=full`, { headers: { Cookie: labCookie } }).then(r => r.text());
-    ok(/FBFlats/.test(page) && /Shoe drawing/.test(page), '   the Studio\'s shoe drawing page is served');
+    ok(/FBFlats/.test(page) && /Drawing in panels/.test(page), '   the Studio\'s shoe drawing page is served');
   } finally { await K(`/concepts/${cid}`, { method: 'DELETE' }); }
 });
 
