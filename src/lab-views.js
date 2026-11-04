@@ -17,8 +17,8 @@ export const KIND_IDS = VIEW_KINDS.map(k => k.id);
 export const isKind = k => KIND_IDS.includes(k);
 // nobody wears a home object, a plush, a toy or a gadget, so they get the product views only (front and back), and no walk
 const UNWORN = ['home', 'plush', 'toys', 'electronics'];
-// the design sheet (one board of views and colourways) is made for shoes, the way footwear designers present a design
-export const kindsFor = category => (UNWORN.includes(category) ? VIEW_KINDS.filter(k => k.group === 'flat').map(k => k.id) : KIND_IDS.filter(k => k !== 'sheet' || category === 'footwear'));
+// the design sheet (one board of views and colourways) is made for shoes and bags, the way footwear designers present a design
+export const kindsFor = category => (UNWORN.includes(category) ? VIEW_KINDS.filter(k => k.group === 'flat').map(k => k.id) : KIND_IDS.filter(k => k !== 'sheet' || category === 'footwear' || category === 'bags'));
 export const canWalk = category => !UNWORN.includes(category);
 
 const clip = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
@@ -40,6 +40,10 @@ const ANGLE = {
 };
 // a shoe's flat front is its clean side profile (the outside, toe to the right, like the tech flats); the pattern reads its outline from it
 const FLAT_SHOE = { flat_front: 'a single shoe in true side profile, the outside of the shoe, toe pointing right, at eye level, the camera square to the shoe so there is no perspective, the whole shoe in frame', flat_back: 'the same single shoe seen from directly behind at eye level: the heel counter, the heel tab, the collar and the back of the sole' };
+const BAG_SHEET = [
+  'Make a bag design presentation board, wide, on one clean light-grey studio ground, for the exact bag in the reference picture. On the left, large: the bag seen straight from the front, upright, with exactly the same proportions as the reference (do not stretch or squash it). To its right, in a column: the back with its straps, the side showing its depth, and the open top or the inside. Along the bottom edge: four small front views of the same bag in four other colourways that suit it (tonal, contrast, dark, and one with a bold accent), every one the identical shape.',
+  'Every view is a photoreal studio product render with a soft shadow, evenly spaced and aligned on a clean grid, like a designer\'s board. No text, no labels, no numbers, no arrows and no logos anywhere on the board.'
+].join('\n');
 const SHEET = [
   'Make a footwear design presentation board, wide, on one clean light-grey studio ground, for the exact shoe in the reference picture. Across the top, large: the shoe in true side profile, the outside, toe pointing right, with exactly the same length-to-height proportions, toe spring and sole height as the reference (do not stretch or flatten it). Below it, in a row: the shoe from directly above, the outsole from below showing its tread, and the heel from behind. Along the bottom edge: four small side profiles of the same shoe in four other colourways that suit it (tonal, contrast, dark, and one with a bold accent), every one the identical shape.',
   'Every view is a photoreal studio product render with a soft shadow, evenly spaced and aligned on a clean grid, like a designer\'s board. No text, no labels, no numbers, no arrows and no logos anywhere on the board.'
@@ -58,7 +62,7 @@ export function viewPrompt(concept, kind) {
       kind === 'flat_back' && cat !== 'footwear' ? 'The back is plain except for details that continue logically from the front (seams, a yoke, a hood, a back pocket, a closure). Add no logo, graphic or text that the reference does not show on its back.' : '',
       'No hanger, no mannequin, no model, no hands.', KEEP].filter(Boolean).join('\n');
   }
-  if (kind === 'sheet') return [`The reference picture is a new shoe design for a menswear and unisex brand: ${name}.`, SHEET, KEEP].join('\n');
+  if (kind === 'sheet') return cat === 'bags' ? [`The reference picture is a new bag design for a menswear and unisex brand: ${name}.`, BAG_SHEET, KEEP].join('\n') : [`The reference picture is a new shoe design for a menswear and unisex brand: ${name}.`, SHEET, KEEP].join('\n');
   const framing = FRAMING[cat] || FRAMING.default, angle = ANGLE[kind];
   const first = kind === 'model_front';
   return [first

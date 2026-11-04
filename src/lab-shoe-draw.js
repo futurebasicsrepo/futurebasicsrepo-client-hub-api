@@ -9,9 +9,41 @@
 // edge (stitching, sipes, lugs, laces) become the details.
 import sharp from 'sharp';
 import { separate, rgbLab, deltaE } from './lab-separate.js';
-import { loopsOf, closedSimplify, smoothPath } from './lab-vector.js';
+import { closedSimplify, smoothPath } from './lab-vector.js';
 
 const lumOf = ([r, g, b]) => 0.299 * r + 0.587 * g + 0.114 * b;
+// the curves run through the middle of each side (src/lab-vector.js smoothPath), so a corner between two long sides would round off across half
+// their length: a point near each end of a long side keeps the rounding to a few pixels at the corner
+function tight(pts, r = 5) {
+  if (pts.length < 3) return pts; const out = [];
+  for (let i = 0; i < pts.length; i++) { const a = pts[i], b = pts[(i + 1) % pts.length], L = Math.hypot(b[0] - a[0], b[1] - a[1]); out.push(a); if (L > 6 * r) { const ux = (b[0] - a[0]) / L, uy = (b[1] - a[1]) / L; out.push([a[0] + ux * r, a[1] + uy * r], [b[0] - ux * r, b[1] - uy * r]); } }
+  return out;
+}
+// the outline of every region of `sub` (1 = inside), followed along the pixel edges with the inside on the right; where the outline touches
+// itself (two pixels meeting at a corner) it always turns right, and a loop ends only on its own first edge, so every loop is simple and whole
+function loops(sub, w, h) {
+  const at = (x, y) => x >= 0 && y >= 0 && x < w && y < h && sub[y * w + x] === 1, outs = new Map(), K = (x, y) => y * (w + 1) + x, edges = [];
+  const add = (ax, ay, bx, by) => { const id = edges.length; edges.push([ax, ay, bx, by]); const k = K(ax, ay); let o = outs.get(k); if (!o) outs.set(k, o = []); o.push(id); };
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    if (!at(x, y)) continue;
+    if (!at(x, y - 1)) add(x, y, x + 1, y); if (!at(x + 1, y)) add(x + 1, y, x + 1, y + 1);
+    if (!at(x, y + 1)) add(x + 1, y + 1, x, y + 1); if (!at(x - 1, y)) add(x, y + 1, x, y);
+  }
+  const used = new Uint8Array(edges.length), out = [];
+  for (let e0 = 0; e0 < edges.length; e0++) {
+    if (used[e0]) continue; const pts = []; let e = e0;
+    for (let guard = 0; guard < edges.length + 1; guard++) {
+      used[e] = 1; const [ax, ay, bx, by] = edges[e]; pts.push([ax, ay]);
+      const cand = (outs.get(K(bx, by)) || []).filter(i => !used[i] || i === e0); if (!cand.length) break;
+      const dx = bx - ax, dy = by - ay; let best = cand[0], bs = -9;
+      // right turn first, then straight, then left (screen coordinates, y down): the cross product of the way in and the way out
+      for (const i of cand) { const [cx, cy, ex, ey] = edges[i], ox = ex - cx, oy = ey - cy, cr = dx * oy - dy * ox, dot = dx * ox + dy * oy, sc = cr > 0 ? 2 : dot > 0 ? 1 : 0; if (sc > bs) { bs = sc; best = i; } }
+      if (best === e0) break; e = best;
+    }
+    if (pts.length >= 4) out.push(pts);
+  }
+  return out;
+}
 // how many pixels of `mask` are inside a (2r+1)² square that is all mask: thin strokes vanish, broad areas stay
 function survives(mask, W, H, r) {
   const I = new Uint32Array((W + 1) * (H + 1));
@@ -30,13 +62,24 @@ export async function traceShoe(png, { size = 1024, minShare = .00025, grow = 6,
   const { data } = await sharp(png).flatten({ background: '#ffffff' }).ensureAlpha().resize(W, H, { fit: 'fill' }).raw().toBuffer({ resolveWithObject: true });
   const sep = separate(data, W, H, { max: 12, dropBackground: false }), ink = sep.hard, inks = sep.inks;
   if (!inks.length) throw new Error('Nothing to trace in the drawing');
+  // a pixel the separation left as a blend or a soft tone goes to its nearest colour, so a shaded area stays part of its panel
+  for (let p = 0; p < N; p++) if (ink[p] < 0) { let best = 0, bd = Infinity; for (let j = 0; j < inks.length; j++) { const c = inks[j].rgb, d = (data[p * 4] - c[0]) ** 2 + (data[p * 4 + 1] - c[1]) ** 2 + (data[p * 4 + 2] - c[2]) ** 2; if (d < bd) { bd = d; best = j; } } ink[p] = best; }
   // the line ink: the darkest ink, when it is drawn as strokes (a near-black panel is broad and stays when the strokes are worn away)
   const order = inks.map((c, j) => j).sort((a, b) => lumOf(inks[a].rgb) - lumOf(inks[b].rgb));
   // the line work: the very dark pixels, when they are strokes (a near-black panel is broad and stays when the strokes are worn away); read from
   // the pixels themselves, because a black outline and a charcoal panel can fall in one ink
   const pl = p => 0.299 * data[p * 4] + 0.587 * data[p * 4 + 1] + 0.114 * data[p * 4 + 2];
-  let isLine = new Uint8Array(N);
-  for (const cut of [30, 22, 15]) { const m = new Uint8Array(N); let n = 0; for (let p = 0; p < N; p++) if (pl(p) < cut) { m[p] = 1; n++; } if (n && survives(m, W, H, 2) < .35) { isLine = m; break; } }
+  // a line is a dark stroke: clearly darker than the pixels around it (a black outline on white and on a charcoal panel alike), while the inside
+  // of a broad dark part (a black strap) is as dark as its surroundings and stays a panel
+  const L = new Float32Array(N); for (let p = 0; p < N; p++) L[p] = pl(p);
+  const I = new Float64Array((W + 1) * (H + 1)); for (let y = 0; y < H; y++) { let row = 0; for (let x = 0; x < W; x++) { row += L[y * W + x]; I[(y + 1) * (W + 1) + x + 1] = I[y * (W + 1) + x + 1] + row; } }
+  const RL = 4, isLine = new Uint8Array(N);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const p = y * W + x; if (L[p] > 120) continue;
+    const x0 = Math.max(0, x - RL), x1 = Math.min(W, x + RL + 1), y0 = Math.max(0, y - RL), y1 = Math.min(H, y + RL + 1);
+    const mean = (I[y1 * (W + 1) + x1] - I[y0 * (W + 1) + x1] - I[y1 * (W + 1) + x0] + I[y0 * (W + 1) + x0]) / ((x1 - x0) * (y1 - y0));
+    if (L[p] < mean - 14 || L[p] < 12) isLine[p] = 1;
+  }
   const line = isLine.some(Boolean) ? 1 : -1;
   // the background: the light paper reached from the picture's edge (a white midsole inside the outline stays a panel)
   const light = order[order.length - 1], BG = -2, LINE = -3, lab = new Int32Array(N).fill(-1), q = new Int32Array(N); let qh = 0, qt = 0;
@@ -71,7 +114,12 @@ export async function traceShoe(png, { size = 1024, minShare = .00025, grow = 6,
   const traceIn = (box, test) => {
     const w = box.x1 - box.x0 + 3, h = box.y1 - box.y0 + 3, sub = new Int8Array(w * h);
     for (let y = 0; y < h - 2; y++) for (let x = 0; x < w - 2; x++) if (test((box.y0 + y) * W + box.x0 + x)) sub[(y + 1) * w + x + 1] = 1;
-    return loopsOf(sub, w, h, 1).map(l => closedSimplify(l, tolerance).map(([x, y]) => [x + box.x0 - 1, y + box.y0 - 1])).filter(l => l.length >= 3);
+    // two pixels touching only at a corner would let the edge-follower jump from one loop to another (a false hole): join them first
+    for (let pass = 0; pass < 2; pass++) for (let y = 0; y < h - 1; y++) for (let x = 0; x < w - 1; x++) {
+      const a = sub[y * w + x], b = sub[y * w + x + 1], c = sub[(y + 1) * w + x], d = sub[(y + 1) * w + x + 1];
+      if (a && d && !b && !c) sub[y * w + x + 1] = 1; else if (b && c && !a && !d) sub[y * w + x] = 1;
+    }
+    return loops(sub, w, h).map(l => tight(closedSimplify(l, tolerance)).map(([x, y]) => [x + box.x0 - 1, y + box.y0 - 1])).filter(l => l.length >= 3);
   };
   const boxOf = ps => { let x0 = W, y0 = H, x1 = 0, y1 = 0; for (const p of ps) { const x = p % W, y = (p / W) | 0; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; } return { x0, y0, x1, y1 }; };
   const members = new Map(); for (let p = 0; p < N; p++) if (lab[p] >= 0) { let m = members.get(lab[p]); if (!m) members.set(lab[p], m = []); m.push(p); }
@@ -112,37 +160,56 @@ export const SHOE_VIEWS = [
   { id: 'lateral', label: 'Outside' }, { id: 'medial', label: 'Inside' }, { id: 'top', label: 'Top' }, { id: 'bottom', label: 'Bottom' }, { id: 'back', label: 'Heel' }
 ];
 export const SHOE_VIEW_IDS = SHOE_VIEWS.map(v => v.id);
-const STYLE = 'crisp solid black outlines of even weight around every panel, the sole and the tread; thin dashed lines for stitching; each panel filled with ONE flat solid colour taken from the shoe; no shading, no gradients, no highlights, no texture, no mesh pattern, no shadow; pure white background; no text, no logos';
+// a bag's views: the front first (traced from the board's front view on white), then the back, the side (the gusset) and the top from it
+export const BAG_VIEWS = [{ id: 'front', label: 'Front' }, { id: 'back', label: 'Back' }, { id: 'side', label: 'Side' }, { id: 'top', label: 'Top' }];
+export const DRAWN = { footwear: { views: SHOE_VIEWS, first: 'lateral', noun: 'shoe' }, bags: { views: BAG_VIEWS, first: 'front', noun: 'bag' } };
+export const viewsOf = category => DRAWN[category]?.views || [];
+export const firstOf = category => DRAWN[category]?.first || null;
+const STYLE = 'crisp solid black outlines of even weight around every panel; thin dashed lines for stitching; each panel filled with ONE flat solid colour taken from the piece; no shading, no gradients, no highlights, no texture, no mesh pattern, no shadow; pure white background; no text, no logos';
 const AS = {
-  medial: 'seen from the inside (medial side) at eye level, toe pointing LEFT, square to the camera',
-  top: 'seen from directly above (top view), toe pointing right, the opening, tongue and lacing visible',
-  bottom: 'its outsole seen from directly below (bottom view), toe pointing right, the tread laid out as the side view shows it',
-  back: 'seen from directly behind at eye level: the heel counter, heel tab, collar and the back of the sole'
+  footwear: {
+    medial: 'seen from the inside (medial side) at eye level, toe pointing LEFT, square to the camera',
+    top: 'seen from directly above (top view), toe pointing right, the opening, tongue and lacing visible',
+    bottom: 'its outsole seen from directly below (bottom view), toe pointing right, the tread laid out as the side view shows it',
+    back: 'seen from directly behind at eye level: the heel counter, heel tab, collar and the back of the sole'
+  },
+  bags: {
+    back: 'seen straight from the BACK, square to the camera: the back panel, the shoulder straps or the strap anchors, any sleeve or pass-through; the same outline as the front, mirrored',
+    side: 'seen straight from the SIDE, square to the camera: the gusset and its depth, the side pockets, buckles and strap attachments, the bag\'s true depth',
+    top: 'seen from directly ABOVE: the opening, the top zip or roll or flap, the handles, and the depth of the bag'
+  }
 };
-// → the prompt for one view. The outside is drawn from the side profile photograph; every other view from the outside drawing.
-export function shoeViewPrompt(view, name = '') {
-  if (view === 'lateral') return `Redraw this exact shoe${name ? ` (${String(name).slice(0, 80)})` : ''} as a professional footwear technical flat (vector illustration): the same side profile, the outside of the shoe, toe pointing right, the same outline, proportions and every panel and seam in the same place. ${STYLE}.`;
-  return `This is a footwear technical flat of a shoe, outside view. Draw the SAME shoe as a technical flat ${AS[view]}, in exactly the same drawing style: ${STYLE}. The same panels, colours, lacing and sole as the reference. The shoe centred.`;
+// → the prompt for one view. The first view is drawn from the board's photograph (a shoe's side profile, a bag's front); every other view from that drawing.
+export function shoeViewPrompt(view, name = '', category = 'footwear') {
+  const nm = name ? ` (${String(name).slice(0, 80)})` : '';
+  if (category === 'bags') {
+    if (view === 'front') return `Redraw this exact bag${nm} as a professional bag technical flat (vector illustration): seen straight from the FRONT, square to the camera with no perspective, upright, its straps hanging naturally at the sides, the same shape, proportions, panels, pockets, zips, webbing and buckles in the same places. ${STYLE}.`;
+    return `This is a bag technical flat, front view. Draw the SAME bag as a technical flat ${AS.bags[view]}, in exactly the same drawing style: ${STYLE}. The same panels, colours, webbing and hardware as the reference. Centred.`;
+  }
+  if (view === 'lateral') return `Redraw this exact shoe${nm} as a professional footwear technical flat (vector illustration): the same side profile, the outside of the shoe, toe pointing right, the same outline, proportions and every panel and seam in the same place. ${STYLE.replace('around every panel;', 'around every panel, the sole and the tread;')}.`;
+  return `This is a footwear technical flat of a shoe, outside view. Draw the SAME shoe as a technical flat ${AS.footwear[view]}, in exactly the same drawing style: ${STYLE.replace('around every panel;', 'around every panel, the sole and the tread;')}. The same panels, colours, lacing and sole as the reference. The shoe centred.`;
 }
-// Draws and traces the wanted views. `side` is the side profile photograph; `have` holds line art already drawn ({view: Buffer}); `onView(view,
-// {art, drawing} | null, note)` is called as each one lands. The outside comes first: the others are drawn from it.
-export async function makeShoeDrawings({ side, name = '', views = SHOE_VIEW_IDS, have = {}, cfg, edit, onView = () => {}, pool = 2 }) {
-  const art = { ...have }, want = views.filter(v => SHOE_VIEW_IDS.includes(v));
+// Draws and traces the wanted views. `side` is the first view's photograph (a shoe's side profile, a bag's front); `have` holds line art already
+// drawn ({view: Buffer}); `onView(view, {art, drawing} | null, note)` is called as each one lands. The first view comes first: the others are drawn from it.
+export async function makeShoeDrawings({ side, name = '', category = 'footwear', views = null, have = {}, cfg, edit, onView = () => {}, pool = 2 }) {
+  const ids = viewsOf(category).map(v => v.id), first = firstOf(category), art = { ...have }, want = (views || ids).filter(v => ids.includes(v));
+  const firstLabel = viewsOf(category).find(v => v.id === first)?.label.toLowerCase() || first;
   const one = async v => {
     try {
-      const ref = v === 'lateral' ? side : art.lateral; if (!ref) throw new Error('The outside view has to be drawn first');
-      const buf = cfg.provider === 'fixture' ? await fixtureArt(v) : await edit({ images: [ref], prompt: shoeViewPrompt(v, name), cfg: { ...cfg, size: '1024x1024' } });
+      const ref = v === first ? side : art[first]; if (!ref) throw new Error(`The ${firstLabel} view has to be drawn first`);
+      const buf = cfg.provider === 'fixture' ? await fixtureArt(v, category) : await edit({ images: [ref], prompt: shoeViewPrompt(v, name, category), cfg: { ...cfg, size: '1024x1024' } });
       const png = await sharp(buf).rotate().png().toBuffer(), drawing = await traceShoe(png); if (!drawing.panels.length) throw new Error('No panels were found in the drawing');
       art[v] = png; const { svg, ...dw } = drawing; await onView(v, { art: png, drawing: dw, model: cfg.model || cfg.provider }, ''); return true;
     } catch (e) { await onView(v, null, `Could not be drawn: ${String(e.message).slice(0, 160)}`); return false; }
   };
-  if (want.includes('lateral') || !art.lateral) { if (!(await one('lateral'))) { for (const v of want.filter(x => x !== 'lateral')) await onView(v, null, 'The outside view could not be drawn, so this one was skipped.'); return art; } }
-  const rest = want.filter(v => v !== 'lateral');
+  if (want.includes(first) || !art[first]) { if (!(await one(first))) { for (const v of want.filter(x => x !== first)) await onView(v, null, `The ${firstLabel} view could not be drawn, so this one was skipped.`); return art; } }
+  const rest = want.filter(v => v !== first);
   for (let i = 0; i < rest.length; i += pool) await Promise.all(rest.slice(i, i + pool).map(one));
   return art;
 }
 // the test stand-in: a simple two-panel shoe in flat colours with black outlines, so the whole path runs without an image model
-export async function fixtureArt(view = 'lateral') {
+export async function fixtureArt(view = 'lateral', category = 'footwear') {
+  if (category === 'bags') return sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024"><rect width="1024" height="1024" fill="#fff"/><rect x="300" y="260" width="${view === 'side' ? 160 : 420}" height="560" rx="40" fill="#2b2f2c" stroke="#111" stroke-width="6"/><rect x="340" y="300" width="${view === 'side' ? 80 : 340}" height="160" rx="20" fill="#6b6f3a" stroke="#111" stroke-width="6"/></svg>`)).png().toBuffer();
   const flip = view === 'medial' ? ' transform="translate(1024 0) scale(-1 1)"' : '';
   const svg = view === 'top' || view === 'bottom'
     ? `<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024"><rect width="1024" height="1024" fill="#fff"/><ellipse cx="512" cy="512" rx="400" ry="150" fill="${view === 'bottom' ? '#d9541e' : '#e9e5dc'}" stroke="#111" stroke-width="6"/><ellipse cx="540" cy="512" rx="300" ry="100" fill="${view === 'bottom' ? '#2f2f31' : '#5d6440'}" stroke="#111" stroke-width="6"/></svg>`

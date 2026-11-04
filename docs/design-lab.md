@@ -301,7 +301,7 @@ In the menu the Lab is one entry (`/lab`); its seven sections (Library, What's m
 ## Assortment board
 A visual wall of the concepts (`/lab#assort`, files `src/lab-views.js`, `src/lab-view-routes.js`, table `lab_concept_views`). Each concept can have, beyond its one drawn picture:
 - **Flats:** front and back, laid flat on white (a cap or bag standing alone). A shoe's two flats are its **side profile** (the outside, toe to the right, square to the camera, so the pattern can read its outline) and its **heel** from behind.
-- **Design sheet** (shoes only): one wide board (1536 × 1024) drawn from the concept picture, the way footwear designers present a design: a large side profile at the shoe's true proportions, the top, the outsole and the heel, and four small colourways of the same shape. No text on it.
+- **Design sheet** (shoes and bags): one wide board (1536 × 1024) drawn from the concept picture, the way designers present a design. A shoe: a large side profile at its true proportions, the top, the outsole and the heel. A bag: a large front, then the back, the side and the open top. Four small colourways of the same shape along the bottom. No text on it.
 - **On model:** an adult man, front, three-quarter, side and back, framed for the product (full length for clothes, head and shoulders for headwear, lower legs for footwear, knees up for bags). Pieces with nobody wearing them (home and objects) get flats only.
 - **A walk** (optional): a short clip of the front on-model view walking toward the camera and turning.
 
@@ -916,9 +916,38 @@ feet for a pair, with a quarter allowed for cutting round the hide's flaws.
 
 It then lists the fitting and size-run samples and the tests (sole bond, flex, abrasion, colour fastness, restricted substances).
 
+## Bags
+
+Bags are designed the way the best bag lines are (`src/lab-bags.js`): the kinds we make are a rolltop, a clamshell zip and a top-loader
+backpack, a sling, a tote, a helmet bag, a two-way work bag, a messenger, a duffel, a waist bag and a crossbody pouch, each with its usual
+size in inches, its litres, how it is carried and how it closes.
+
+- **The concept writer** (`CATEGORY_WORDS.bags`) designs a bag in order: the shape and proportion (a backpack about 1 : 1.4–1.5 width to
+  height and 0.4 of its width deep), how it opens and is carried, the panels in at most two fabrics and one accent, and one hero idea of our
+  own visible from the front. It names real bag materials (denier, ripstop, ballistic, laminated sailcloth, waxed canvas, leather), real
+  hardware in one family and one finish with one zip gauge, and real construction, and leaves out gimmicks. No brand is named to it. The
+  concept carries `spec.bag` (kind, inches, litres, body, closure, colours of the body, trim, webbing, hardware and lining).
+- **The picture** (`bagShot`) is a premium three-quarter render with a light realistic load and a slight natural sag (not over-inflated),
+  on a set chosen by kind: a clean warm studio (zip backpacks, totes, work bags, pouches), a dark technical studio with the bag standing on
+  a dark floor (rolltops, slings, waist bags), or an editorial still life (helmet bags, messengers, duffels). As for shoes, no logo is pasted
+  on it and no dark card: a small quiet lockup in the corner.
+- **The board** gives a bag its front and back flats, the on-model views and a design sheet.
+- **Drawn in panels in the Studio**: a bag's Flats in the Studio is its drawing in panels (below), in four views: **Front, Back, Side,
+  Top**. The front is drawn from the board's front view (drawn from the picture first when missing); back, side and top from the front.
+- **The library of bag flats** (`src/bag-templates`, `src/lab-bag-templates.js`, built by `scripts/bag-templates/build.mjs`): eleven
+  original bag technical flats, one per kind, each with its front, back and side, drawn once in a neutral prototype colourway (light-grey
+  body, darker-grey webbing and trim, black hardware) and traced into panels. They sit in the Sketch library under **Bags**. A bag opens
+  there with its three views; the colour picked goes on its body. **Open in the Studio** makes a new bag concept with the drawings in place
+  (`POST /v1/lab/concepts/from-library-bag`), and **Or put this on a concept you already have** puts them on a bag concept
+  (`POST /v1/lab/concepts/:id/shoe-drawing/from-library`). No image model is used, so nothing is charged. A view not in the library (the
+  top) is drawn from the front drawing as it stands, the designer's edits included. **Back to the drawing as traced** on a library view
+  goes back to the library's drawing.
+- **The tech pack** takes a bag's drawings as its technical flats (each view and one sheet of them all), with its kind, size, carry and
+  closure under construction, even when an older tote-style flat was saved for it.
+
 ### A shoe drawn in panels (the Studio)
 
-A footwear concept's **Flats** in the Studio (`/lab/shoe-flats`, in the Studio's frame; `src/lab-shoe-draw.js`, `src/lab-shoe-draw-routes.js`, table
+A footwear (or bag, above) concept's **Flats** in the Studio (`/lab/shoe-flats`, in the Studio's frame; `src/lab-shoe-draw.js`, `src/lab-shoe-draw-routes.js`, table
 `lab_shoe_drawings`) is the shoe as a footwear technical flat, the way a designer draws one, in five views: **Outside, Inside, Top, Bottom, Heel**.
 
 - **How it is drawn.** The image model redraws the shoe's side profile (the board's flat front view, drawn from the concept picture first when
