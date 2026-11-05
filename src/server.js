@@ -869,6 +869,13 @@ app.get('/lab/flat-masks/:file', async (req, reply) => {
   try { const png = await flatMaskFor(svg, file => readFileSync(new URL(`./flat-templates/${file}`, import.meta.url)), file => readFileSync(new URL(`./flat-templates/masks/${file}`, import.meta.url))); return reply.header('cache-control', 'public, max-age=604800').type('image/png').send(png); }
   catch { return reply.code(404).send('Not found'); }
 });
+// the library of bag flats (original drawings in panels, src/bag-templates, built by scripts/bag-templates/build.mjs): the list and the thumbnails;
+// each bag's drawings come through the API (/v1/lab/library/bags/:id)
+app.get('/lab/lab-bag-templates.js', (req, reply) => sendPack(req, reply, './lab-bag-templates.js', 'application/javascript; charset=utf-8', 300));
+app.get('/lab/bag-templates/thumbs/:file', (req, reply) => {
+  const f = String(req.params.file || ''); if (!/^[a-z0-9-]+\.webp$/.test(f)) return reply.code(404).send('Not found');
+  try { return reply.header('cache-control', 'public, max-age=86400').type('image/webp').send(readFileSync(new URL(`./bag-templates/thumbs/${f}`, import.meta.url))); } catch { return reply.code(404).send('Not found'); }
+});
 app.get('/lab/flat-templates/thumbs/:file', (req, reply) => {
   const f = String(req.params.file || ''); if (!/^[a-z0-9-]+\.webp$/.test(f)) return reply.code(404).send('Not found');
   try { return reply.header('cache-control', 'public, max-age=86400').type('image/webp').send(readFileSync(new URL(`./flat-templates/thumbs/${f}`, import.meta.url))); } catch { return reply.code(404).send('Not found'); }

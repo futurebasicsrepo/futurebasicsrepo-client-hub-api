@@ -4568,8 +4568,35 @@ await journey('J280', 'A shoe drawn in panels in the Studio: the concept becomes
     ok((await call(`/v1/lab/concepts/${cid}/shoe-drawing`)).status === 401, '   and nobody signed out sees the drawing');
     const labCookie = ((await fetch(`${BASE}/v1/lab/door`, { headers: { Authorization: 'Bearer ' + kyleT } })).headers.get('set-cookie') || '').split(';')[0];
     const page = await fetch(`${BASE}/lab/shoe-flats?concept=${cid}&embed=full`, { headers: { Cookie: labCookie } }).then(r => r.text());
-    ok(/FBFlats/.test(page) && /Shoe drawing/.test(page), '   the Studio\'s shoe drawing page is served');
+    ok(/FBFlats/.test(page) && /Drawing in panels/.test(page), '   the Studio\'s shoe drawing page is served');
   } finally { await K(`/concepts/${cid}`, { method: 'DELETE' }); }
+});
+
+await journey('J281', 'Bags: a bag from the library opens in the Studio as its drawing in panels, in the colour picked; its missing top is drawn from its front; a picture-drawn bag is drawn front first; a garment cannot take a library bag; the library lists every kind', async () => {
+  const lib = (await K('/library/bags')).json.bags || [];
+  ok(lib.length >= 8 && ['rolltop', 'sling', 'tote', 'helmet', 'briefcase'].every(k => lib.some(b => b.type === k)), '1. the library lists the bag kinds', lib.map(b => b.type));
+  const roll = lib.find(b => b.type === 'rolltop'), full = (await K(`/library/bags/${roll.id}`)).json;
+  ok(full.views?.front?.panels?.length > 5 && full.views.back && full.views.side, '   each with its front, back and side in panels');
+  const made = await K('/concepts/from-library-bag', { body: { template: roll.id, colour: { name: 'Navy', hex: '#1F3A5F' } } }), cid = made.json.concept?.id;
+  try {
+    ok(made.status === 201 && /\/lab\/studio\?concept=/.test(made.json.studio), '2. Open in the Studio makes a bag concept', made.json);
+    const g = (await K(`/concepts/${cid}/shoe-drawing`)).json;
+    ok(g.noun === 'bag' && g.first === 'front' && g.kinds.map(k => k.id).join() === 'front,back,side,top' && ['front', 'back', 'side'].every(v => g.views[v]?.status === 'ready') && !g.views.top, '   with its front, back and side drawn, and no top yet', Object.keys(g.views));
+    ok(g.views.front.drawing.panels.some(p => p.fill === '#1f3a5f'), '   its body in the colour picked');
+    const top = await K(`/concepts/${cid}/shoe-drawing`, { body: { views: ['top'] } });
+    ok(top.status === 202 && top.json.started === 1, '3. its top is drawn (no concept picture needed: it is drawn from the front drawing)', top.json);
+    let h; for (let i = 0; i < 40; i++) { h = (await K(`/concepts/${cid}/shoe-drawing`)).json; if (!h.busy && h.views.top?.status !== 'pending') break; await sleep(250); }
+    ok(h.views.top?.status === 'ready', '   and lands', h.views.top);
+    const fr = h.views.front.drawing, p0 = fr.panels[0];
+    ok((await K(`/concepts/${cid}/shoe-drawing/front`, { method: 'PUT', body: { panels: fr.panels.map(p => p.id === p0.id ? { ...p, fill: '#aa3311' } : p) } })).status === 200, '4. a panel recoloured and saved');
+    const back = await K(`/concepts/${cid}/shoe-drawing/front/reset`, { body: {} });
+    ok(back.status === 200 && back.json.drawing.panels.every(p => p.fill !== '#aa3311') && back.json.drawing.source === `library:${roll.id}`, '   back to the drawing as traced goes back to the library drawing');
+    ok((await K(`/concepts/${cid}/shoe-drawing/lateral`)).status === 404, '   a shoe\'s view is not a bag\'s');
+    const tee = (await K('/concepts/from-scratch', { body: { category: 'tops', style: 'tee', name: `Bag tee ${stamp}` } })).json.concept;
+    ok((await K(`/concepts/${tee.id}/shoe-drawing/from-library`, { body: { template: roll.id } })).status === 422, '5. a garment cannot take a library bag'); await K(`/concepts/${tee.id}`, { method: 'DELETE' });
+    ok((await K('/concepts/from-library-bag', { body: { template: 'bag-suitcase' } })).status === 422, '   nor is a bag that is not in the library made');
+    ok((await call('/v1/lab/library/bags')).status === 401, '   and nobody signed out sees the library');
+  } finally { if (cid) await K(`/concepts/${cid}`, { method: 'DELETE' }); }
 });
 
 shops.close(); brave.close();

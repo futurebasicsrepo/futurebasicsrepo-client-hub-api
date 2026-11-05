@@ -73,7 +73,7 @@ h1{font-size:clamp(28px,4.4vw,42px);letter-spacing:-.035em;font-weight:500;margi
   <div id="app" class="hidden">
     <nav class="labnav" data-lab="sketches"></nav>
     <span class="mono" style="display:block;margin-top:14px">Our library</span><h1>The sketch pack.</h1>
-    <p class="note">Every flat sketch we draw from: <span id="count">382</span> drawings, men's, women's and accessories, each with its front and back, plus the pockets, zips, collars, trims and buttons cut from them. Pick one: choose its cloth and its colour, and it opens in the Studio with both in place. Or <a href="/lab/studio">start from scratch</a> on a blank page.</p>
+    <p class="note">Every flat sketch we draw from: <span id="count">382</span> drawings, men's, women's, accessories and bags, each with its front and back (a bag also its side), plus the pockets, zips, collars, trims and buttons cut from them. Pick one: choose its cloth and its colour, and it opens in the Studio with both in place. Or <a href="/lab/studio">start from scratch</a> on a blank page.</p>
     <div class="tools"><div class="seg" role="tablist"><button type="button" data-sec="sketches" aria-pressed="true">Sketches</button><button type="button" data-sec="parts" aria-pressed="false">Parts</button></div>
       <input class="t" id="q" type="search" placeholder="Search: cargo, pleated, halter, bomber…" aria-label="Search the sketches" style="flex:1;min-width:200px;max-width:380px"><select class="t" id="range" aria-label="Range"><option value="">All ranges</option></select><select class="t" id="style" aria-label="Style"><option value="">All styles</option></select><span class="msg" id="msg" role="status"></span></div>
     <section id="secSketches"><div class="gal" id="gal"></div></section>
@@ -97,7 +97,10 @@ h1{font-size:clamp(28px,4.4vw,42px);letter-spacing:-.035em;font-weight:500;margi
 <script>try{if(!localStorage.getItem('fb.admin.token')&&localStorage.getItem('fb.client.token'))document.documentElement.dataset.labClient='1'}catch{}</script>
 <script src="/console-nav.js" defer></script>
 <script type="module">
-import { FLAT_TEMPLATES } from '/lab/lab-flat-templates.js';
+import { FLAT_TEMPLATES as GARMENTS } from '/lab/lab-flat-templates.js';
+import { BAG_TEMPLATES } from '/lab/lab-bag-templates.js';
+// the sketch pack, and the library's bags (original flats in panels, src/bag-templates): a bag opens in the Studio as its drawing
+const FLAT_TEMPLATES=[...GARMENTS,...BAG_TEMPLATES.map(b=>({...b,bag:true}))];
 import { FLAT_PARTS, PART_KINDS } from '/lab/lab-flat-parts.js';
 import { STYLES, TEMPLATE_URL } from '/lab/flats.js';
 import { fabricFit } from '/lab/lab-fabric-fit.js';
@@ -105,12 +108,13 @@ const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)],esc
 const TOKEN=()=>{try{return localStorage.getItem('fb.admin.token')||localStorage.getItem('fb.client.token')||''}catch{return ''}}; // staff sign in at the work console; a client with the Design Lab on their room signs in at their hub
 const CLIENT_MODE=()=>{try{return !localStorage.getItem('fb.admin.token')&&Boolean(localStorage.getItem('fb.client.token'))}catch{return false}};
 async function api(path){const r=await fetch(path,{headers:{Authorization:'Bearer '+TOKEN()}});const j=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(new Error(j.error||`Request failed (${r.status})`),{status:r.status});return j}
-const RANGES={mens:"Men's",womens:"Women's",acc:'Accessories'};
+const RANGES={mens:"Men's",womens:"Women's",acc:'Accessories',bags:'Bags'};
+const styleLabel=t=>t.bag?'Bag':STYLES[t.style]?.label||t.style;
 let Q={q:new URLSearchParams(location.search).get('q')||'',range:'',style:''},CUR=null,CONCEPTS=null,PK=Object.keys(PART_KINDS)[0];
 function paintFilters(){const rs=[...new Set(FLAT_TEMPLATES.map(t=>t.range).filter(Boolean))];$('#range').innerHTML='<option value="">All ranges</option>'+rs.map(r=>`<option value="${r}">${esc(RANGES[r]||r)}</option>`).join('');
-  const ss=[...new Set(FLAT_TEMPLATES.map(t=>t.style))].sort((a,b)=>(STYLES[a]?.label||a).localeCompare(STYLES[b]?.label||b));$('#style').innerHTML='<option value="">All styles</option>'+ss.map(s=>`<option value="${s}">${esc(STYLES[s]?.label||s)}</option>`).join('');$('#q').value=Q.q;$('#count').textContent=FLAT_TEMPLATES.length}
-function list(){const words=Q.q.toLowerCase().split(/\s+/).filter(Boolean);return FLAT_TEMPLATES.filter(t=>(!Q.range||t.range===Q.range)&&(!Q.style||t.style===Q.style)&&words.every(w=>`${t.label} ${STYLES[t.style]?.label||''} ${RANGES[t.range]||''}`.toLowerCase().includes(w)))}
-function paint(){const l=list();$('#gal').innerHTML=l.slice(0,240).map(t=>`<button type="button" data-tpl="${t.id}" aria-pressed="${CUR?.id===t.id}"><img loading="lazy" alt="" src="/lab/flat-templates/thumbs/${t.id}.webp">${esc(t.label)}<span class="mono">${esc(STYLES[t.style]?.label||t.style)}</span></button>`).join('')||'<p class="note">No sketch matches. Try fewer words.</p>';
+  const ss=[...new Set(FLAT_TEMPLATES.map(t=>t.style))].sort((a,b)=>(STYLES[a]?.label||a).localeCompare(STYLES[b]?.label||b));$('#style').innerHTML='<option value="">All styles</option>'+ss.map(s=>`<option value="${s}">${esc(s==='bag'?'Bag':STYLES[s]?.label||s)}</option>`).join('');$('#q').value=Q.q;$('#count').textContent=FLAT_TEMPLATES.length}
+function list(){const words=Q.q.toLowerCase().split(/\s+/).filter(Boolean);return FLAT_TEMPLATES.filter(t=>(!Q.range||t.range===Q.range)&&(!Q.style||t.style===Q.style)&&words.every(w=>`${t.label} ${styleLabel(t)} ${t.type||''} ${RANGES[t.range]||''}`.toLowerCase().includes(w)))}
+function paint(){const l=list();$('#gal').innerHTML=l.slice(0,240).map(t=>`<button type="button" data-tpl="${t.id}" aria-pressed="${CUR?.id===t.id}"><img loading="lazy" alt="" src="/lab/${t.bag?'bag':'flat'}-templates/thumbs/${t.id}.webp">${esc(t.label)}<span class="mono">${esc(styleLabel(t))}</span></button>`).join('')||'<p class="note">No sketch matches. Try fewer words.</p>';
   $('#msg').textContent=`${l.length} sketch${l.length===1?'':'es'}${l.length>240?' · showing 240, search to narrow it':''}`}
 // a sketch picked opens the sheet: its cloth, then its colour, drawn on the sketch as they are chosen, then the Studio with both in place
 const HOUSE=[['Black','#141416'],['Off white','#f2efe6'],['Heather grey','#9b9ca0'],['Navy','#1f2a44'],['Olive','#5b5f3a'],['Sand','#d8c9a8'],['Rust','#a5502c'],['Cue green','#4bff9a']];
@@ -130,8 +134,8 @@ function paintCols(){const own=(MAT?.colours||[]).filter(c=>/^#[0-9a-f]{6}$/i.te
   $('#cols').innerHTML=`<button type="button" role="radio" data-col="" aria-checked="${!COL}" title="As drawn (white)" aria-label="As drawn" style="background:#fff"></button>`+all.map(([n,h])=>`<button type="button" role="radio" data-col="${h}" data-name="${esc(n)}" aria-checked="${COL?.hex===h.toLowerCase()}" title="${esc(n)}" aria-label="${esc(n)}" style="background:${h}"></button>`).join('')+`<label title="Any colour" aria-label="Any colour"><input type="color" id="colAny" value="${COL?.hex||'#4bff9a'}"></label>`;
   $('#colNote').textContent=COL?`${COL.name||COL.hex}${MAT&&own.some(c=>c.hex.toLowerCase()===COL.hex)?` · a colour ${MAT.name} comes in`:''}`:own.length?`${MAT.name} comes in ${own.length} colour${own.length===1?'':'s'}, first in the row. Or any colour.`:'Pick one, or any colour with the wheel.';
   $('#cols').closest('.step').classList.toggle('done',Boolean(COL))}
-function paintSum(){$('#shSum').textContent=[MAT?.name||'Cloth later',COL?(COL.name||COL.hex):'as drawn'].join(' · ');$('#openDesign').textContent=`Open the ${CUR.label.toLowerCase()} in the Studio`}
-async function show(t){CUR=t;MAT=null;COL=null;$$('#gal [data-tpl]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.tpl===t.id)));
+function paintSum(){if(CUR?.bag){$('#shSum').textContent=COL?(COL.name||COL.hex):'as drawn (prototype grey)';return}$('#shSum').textContent=[MAT?.name||'Cloth later',COL?(COL.name||COL.hex):'as drawn'].join(' · ');$('#openDesign').textContent=`Open the ${CUR.label.toLowerCase()} in the Studio`}
+async function show(t){if(t.bag)return showBag(t);document.querySelector('#mats').closest('.step').classList.remove('hidden');CUR=t;MAT=null;COL=null;$$('#gal [data-tpl]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.tpl===t.id)));
   $('#shName').textContent=t.label;$('#shKind').textContent=[STYLES[t.style]?.label||t.style,RANGES[t.range]||''].filter(Boolean).join(' · ');
   SVG=SVGS[t.id]||'';paintArt();paintMats();paintCols();paintSum();paintPick();const d=$('#sheet');if(!d.open)d.showModal();$('#sheet .shBody').scrollTop=0;
   if(!SVG){try{const r=await fetch(TEMPLATE_URL(t.file));if(!r.ok)throw 0;SVG=SVGS[t.id]=await r.text()}catch{$('#shArt').innerHTML=`<img src="${TEMPLATE_URL(t.file)}" alt="">`;return}if(CUR===t)paintArt()}
@@ -139,18 +143,34 @@ async function show(t){CUR=t;MAT=null;COL=null;$$('#gal [data-tpl]').forEach(b=>
 $('#mats').addEventListener('click',e=>{const b=e.target.closest('[data-mat]');if(!b)return;MAT=MATS.find(m=>m.id===b.dataset.mat)||null;
   const own=(MAT?.colours||[]).filter(c=>/^#[0-9a-f]{6}$/i.test(c.hex||''));if(MAT&&own.length&&!(COL&&own.some(c=>c.hex.toLowerCase()===COL.hex)))COL={name:own[0].name||'',hex:own[0].hex.toLowerCase()}; // a cloth starts in its own first colour
   paintMats();paintCols();paintArt();paintSum()});
-$('#cols').addEventListener('click',e=>{const b=e.target.closest('[data-col]');if(!b)return;COL=b.dataset.col?{name:b.dataset.name||'',hex:b.dataset.col.toLowerCase()}:null;paintCols();paintMats();paintArt();paintSum()});
-$('#cols').addEventListener('input',e=>{if(e.target.id!=='colAny')return;COL={name:'',hex:e.target.value.toLowerCase()};paintArt();paintSum();$('#cols [aria-checked=true]')?.setAttribute('aria-checked','false');$('#cols').closest('.step').classList.add('done');$('#colNote').textContent=COL.hex});
-$('#cols').addEventListener('change',e=>{if(e.target.id==='colAny'){paintCols();paintMats()}});
+$('#cols').addEventListener('click',e=>{const b=e.target.closest('[data-col]');if(!b)return;COL=b.dataset.col?{name:b.dataset.name||'',hex:b.dataset.col.toLowerCase()}:null;paintCols();if(CUR?.bag){paintBag();paintSum();return}paintMats();paintArt();paintSum()});
+$('#cols').addEventListener('input',e=>{if(e.target.id!=='colAny')return;COL={name:'',hex:e.target.value.toLowerCase()};if(CUR?.bag)paintBag();else paintArt();paintSum();$('#cols [aria-checked=true]')?.setAttribute('aria-checked','false');$('#cols').closest('.step').classList.add('done');$('#colNote').textContent=COL.hex});
+$('#cols').addEventListener('change',e=>{if(e.target.id==='colAny'){paintCols();if(!CUR?.bag)paintMats()}});
+// ---- a bag from the library: its front, back and side drawn from its panels (src/lab-shoe-draw.js shoeSvg), its body in the chosen colour
+const BAGS={};
+const bagSvg=(dw,h=320)=>{const b=dw.box,p=24;return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${b.x0-p} ${b.y0-p} ${b.x1-b.x0+2*p} ${b.y1-b.y0+2*p}" style="display:block;width:100%;height:${h}px"><g stroke="#161616" stroke-width="${dw.stroke||2.4}" stroke-linejoin="round">${dw.panels.map(q=>`<path fill="${esc(q.fill)}" fill-rule="evenodd" d="${q.d}"/>`).join('')}</g><g fill="#161616">${(dw.details||[]).map(x=>`<path fill-rule="evenodd" d="${x.d}"/>`).join('')}</g></svg>`};
+const rgbOf=h=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16));
+function bodyIn(views,hex){if(!hex)return views;const area=new Map();for(const q of views.front.panels)area.set(q.fill,(area.get(q.fill)||0)+q.area);const body=[...area.entries()].sort((a,b)=>b[1]-a[1])[0][0],B=rgbOf(body);
+  const near=f=>{const c=rgbOf(f);return Math.hypot(c[0]-B[0],c[1]-B[1],c[2]-B[2])<30};return Object.fromEntries(Object.entries(views).map(([v,dw])=>[v,{...dw,panels:dw.panels.map(q=>near(q.fill)?{...q,fill:hex}:q)}]))}
+function paintBag(){const t=BAGS[CUR?.id];if(!t){$('#shArt').innerHTML='<span class="note">Loading the bag…</span>';return}const v=bodyIn(t.views,COL?.hex);
+  $('#shArt').innerHTML=`<div style="display:grid;grid-template-columns:2fr 1fr;gap:10px;align-items:center;width:100%"><div>${bagSvg(v.front,320)}</div><div style="display:grid;gap:10px">${['back','side'].filter(k=>v[k]).map(k=>`<div>${bagSvg(v[k],135)}<span class="mono" style="display:block;text-align:center">${k}</span></div>`).join('')}</div></div>`;$('#shArt').dataset.hex=COL?.hex||''}
+async function showBag(t){CUR=t;MAT=null;COL=null;$$('#gal [data-tpl]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.tpl===t.id)));
+  $('#shName').textContent=t.label;$('#shKind').textContent=['Bag',t.size].filter(Boolean).join(' · ');$('#mats').closest('.step').classList.add('hidden');
+  paintBag();paintCols();$('#colNote').textContent='The colour goes on the bag\'s body; the trim, webbing and hardware stay as drawn. Recolour any panel in the Studio.';$('#shSum').textContent=COL?(COL.name||COL.hex):'as drawn (prototype grey)';$('#openDesign').textContent=`Open the ${t.label.toLowerCase()} in the Studio`;paintPick();
+  const d=$('#sheet');if(!d.open)d.showModal();$('#sheet .shBody').scrollTop=0;
+  if(!BAGS[t.id]){try{BAGS[t.id]=await api(`/v1/lab/library/bags/${t.id}`)}catch(x){$('#shArt').innerHTML=`<span class="note">${esc(x.message)}</span>`;return}if(CUR===t)paintBag()}}
 async function loadConcepts(){try{CONCEPTS=(await api('/v1/lab/concepts?limit=120')).concepts.filter(c=>c.status!=='tech_pack')}catch{CONCEPTS=[]}paintPick()}
-function paintPick(){const p=$('#pick');if(!CONCEPTS)return;const q=($('#cq').value||'').toLowerCase(),l=CONCEPTS.filter(c=>!q||`${c.name} ${c.categoryLabel||''} ${c.planName||''}`.toLowerCase().includes(q)).slice(0,40);
+function paintPick(){const p=$('#pick');if(!CONCEPTS)return;const q=($('#cq').value||'').toLowerCase(),l=CONCEPTS.filter(c=>(!CUR?.bag||c.category==='bags')&&(!q||`${c.name} ${c.categoryLabel||''} ${c.planName||''}`.toLowerCase().includes(q))).slice(0,40);
   p.innerHTML=l.length?l.map(c=>`<button type="button" data-cid="${c.id}" ${CUR?'':'disabled'}><span style="flex:1"><b>${esc(c.name)}</b><br><span class="note">${esc(c.categoryLabel||c.category||'')}${c.planName?' · '+esc(c.planName):''}</span></span><span class="note">→</span></button>`).join(''):'<span class="note">No concepts yet: make some from a line plan.</span>'}
 $('#gal').addEventListener('click',e=>{const b=e.target.closest('[data-tpl]');if(b)show(FLAT_TEMPLATES.find(t=>t.id===b.dataset.tpl))});
-$('#pick').addEventListener('click',e=>{const b=e.target.closest('[data-cid]');if(b&&CUR)location.href=`/lab/studio?concept=${b.dataset.cid}&view=front&template=${encodeURIComponent(CUR.id)}`});
+$('#pick').addEventListener('click',async e=>{const b=e.target.closest('[data-cid]');if(!b||!CUR)return;
+  if(CUR.bag){try{const r=await fetch(`/v1/lab/concepts/${b.dataset.cid}/shoe-drawing/from-library`,{method:'POST',headers:{Authorization:'Bearer '+TOKEN(),'Content-Type':'application/json'},body:JSON.stringify({template:CUR.id})}),j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'Could not be put on that concept');location.href=`/lab/studio?concept=${b.dataset.cid}&view=front`}catch(x){$('#shSum').textContent=x.message}return}
+  location.href=`/lab/studio?concept=${b.dataset.cid}&view=front&template=${encodeURIComponent(CUR.id)}`});
 $('#cq').addEventListener('input',paintPick);
 // a new concept from the sketch in the chosen colour, the cloth put on it as its main fabric, then straight into the Studio
 $('#openDesign').addEventListener('click',async()=>{if(!CUR)return;const b=$('#openDesign');b.disabled=true;const was=b.textContent;b.textContent='Opening…';
   try{const post=async(path,body)=>{const r=await fetch(path,{method:'POST',headers:{Authorization:'Bearer '+TOKEN(),'Content-Type':'application/json'},body:JSON.stringify(body)}),j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'The concept could not be started');return j};
+    if(CUR.bag){const j=await post('/v1/lab/concepts/from-library-bag',{template:CUR.id,...(COL?{colour:COL}:{})});location.href=j.studio;return}
     const j=await post('/v1/lab/concepts/from-sketch',{template:CUR.id,...(COL?{colour:COL}:{})});
     if(MAT)await post(`/v1/lab/concepts/${j.concept.id}/materials`,{material:MAT.id,role:'main',...(COL?{colour:COL.hex}:{})}).catch(()=>FBN?.toast?.('The concept is made; add the cloth in the Studio'));
     location.href=j.studio}

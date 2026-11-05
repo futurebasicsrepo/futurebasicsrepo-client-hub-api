@@ -28,7 +28,8 @@ import { logoSvg } from './brand-kit.js';
 import { cleanRules } from './lab-library.js';
 import { jobFile } from './lab-jobfile.js';
 import { traceVector } from './lab-vector.js';
-import { shoeSvg, SHOE_VIEWS } from './lab-shoe-draw.js';
+import { shoeSvg, SHOE_VIEWS, BAG_VIEWS } from './lab-shoe-draw.js';
+import { BAG_TYPES } from './lab-bags.js';
 import { ensureBranding } from './lab-concepts.js';
 import { STYLES, FITS, SIZES, DETAILS, ALLOVER_BASES, templateOf, fitToTemplate, detectStyle, defaultTemplate, looksLikeFootwear, defaultParams, defaultPlacement, fitTall, cleanFlat, cleanEdits, describeEdit, placementChecks, overlapChecks, boxesMeet, describe, renderSvg, pomTable, measurementsFor, fmt, fmtCm, drawingOf } from './lab-flats.js';
 import { packRows, cleanColourways, costOf, FREIGHT_DUTY_PCT } from './lab-materials.js';
@@ -572,7 +573,9 @@ export function registerLabFlatsRoutes(app, d) {
       const art = UUID.test(String(face || '')) ? (await pool.query('select png from lab_art where id=$1', [face])).rows[0]?.png : null; if (!art) continue;
       labelSketches.push({ id: `lab-label-${pk.id}`.slice(0, 60), view: 'detail', label: `Label · ${pk.name}`.slice(0, 120), image: `data:image/png;base64,${(await sharp(art).flatten({ background: '#ffffff' }).png().toBuffer()).toString('base64')}` });
     }
-    if (!items.length) {
+    // a bag drawn in panels goes as its drawings, even when an older garment-style flat was saved for it
+    const bagDrawn = c.category === 'bags' && (await pool.query(`select 1 from lab_shoe_drawings where concept_id=$1 and status='ready' limit 1`, [c.id])).rowCount > 0;
+    if (!items.length || bagDrawn) {
       // a shoe or a plush has no flats: its tech flats are drawn from its pattern (src/lab-footwear-views.js, src/lab-plush-views.js), each view a
       // sketch on the pack (a shoe's outside and inside are the pack's lateral and medial), the sheet as a file, the pattern's notes as construction
       const fromPattern = await patternHandoff(c, picks).catch(e => { log.warn?.({ err: e.message }, 'pattern tech flats for the pack failed'); return null; });
@@ -605,6 +608,15 @@ export function registerLabFlatsRoutes(app, d) {
     const nest = (svg, x, y) => svg.replace('<svg ', `<svg x="${x}" y="${y}" width="${cw}" height="${ch}" preserveAspectRatio="xMidYMid meet" `);
     return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}"><rect width="${W}" height="${H}" fill="#fff"/><text x="40" y="80" font-family="Helvetica, Arial, sans-serif" font-size="44" font-weight="700" fill="#141416">${String(title).replace(/[<&>]/g, '')} · technical flats</text>${cells.map((c, i) => { const x = 40 + (i % cols) * (cw + 60), y = 120 + Math.floor(i / cols) * (ch + 70); return `${nest(c.svg, x, y)}<text x="${x}" y="${y + ch + 40}" font-family="Helvetica, Arial, sans-serif" font-size="26" letter-spacing="3" fill="#727278">${c.label.toUpperCase()}</text>`; }).join('')}</svg>`; };
   async function patternHandoff(c, picks) {
+    // a bag drawn in panels in the Studio (src/lab-shoe-draw.js): its views are its technical flats, all of them on one sheet
+    if (c.category === 'bags') {
+      const rows = (await pool.query(`select view, drawing from lab_shoe_drawings where concept_id=$1 and status='ready' and drawing is not null`, [c.id])).rows, by = new Map(rows.map(r => [r.view, r.drawing]));
+      const views = BAG_VIEWS.filter(v => by.has(v.id)); if (!views.length) return null;
+      const sketches = []; for (const v of views) sketches.push({ id: `lab-bag-${v.id}`, view: v.id === 'back' ? 'back' : v.id === 'front' ? 'front' : 'detail', label: `Technical flat · ${v.label}`, image: await png(shoeSvg(by.get(v.id)), 1600) });
+      const b = c.spec?.bag || {}, t = BAG_TYPES[b.type];
+      return { sketches, files: [{ name: 'Tech flats · every view', image: await png(drawnSheet(c.name, views.map(v => ({ label: v.label, svg: shoeSvg(by.get(v.id)) }))), 2400) }],
+        construction: t ? [{ area: 'Bag', detail: `${t.label}, about ${b.w || t.w} × ${b.h || t.h} × ${b.d || t.d} in (${b.litres || t.l} L); ${t.carry}; ${t.closure}.` }] : [], sizes: ['One size'] };
+    }
     if (c.category !== 'footwear' && c.category !== 'plush') return null;
     const row = (await pool.query('select spec from lab_patterns where concept_id=$1', [c.id])).rows[0]; if (!row) return null;
     const foot = c.category === 'footwear', pat = foot ? footwearPattern(row.spec) : plushPattern(row.spec), m = partLooks(picks), looks = { colours: { ...(pat.spec.colours || {}), ...m.colours }, tex: m.tex };
