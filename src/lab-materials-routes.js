@@ -152,7 +152,8 @@ export function registerLabMaterialsRoutes(app, d) {
     const m = await one(req.body?.material, req); if (!m) return bad(reply, 'That material is not in the library', 404);
     const picks = picksOf(c); if (picks.length >= 40) return bad(reply, 'This concept already lists 40 materials', 409);
     const pick = cleanPick(req.body || {}, shape(m), c.category);
-    if (pick.role === 'main' && m.kind === 'fabric') picks.forEach(p => { if (p.role === 'main' && p.kind === 'fabric') p.role = 'contrast'; }); // one main fabric; the one before becomes the contrast
+    // one main fabric: the one before becomes the contrast, or, when the cloth is changed (replace: the flats' Cloth), comes off
+    if (pick.role === 'main' && m.kind === 'fabric') { if (req.body?.replace === true) { for (let k = picks.length - 1; k >= 0; k--) if (picks[k].role === 'main' && picks[k].kind === 'fabric' && !picks[k].part) picks.splice(k, 1); } else picks.forEach(p => { if (p.role === 'main' && p.kind === 'fabric') p.role = 'contrast'; }); }
     // a part takes one material: choosing another for it replaces the one before
     // a garment's cloth part takes the place of the concept's fabric of that role (the body is the main fabric), so it is counted once
     const cp = pick.part ? clothPart(pick.part) : null, was = cp?.role ? picks.find(p => !p.part && p.role === cp.role && p.kind === 'fabric') : null;

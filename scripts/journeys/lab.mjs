@@ -4708,5 +4708,51 @@ await journey('J285', 'Who is here in the Studio: a concept open by two of the t
   } finally { await cleanup(brands, plan.plan?.id); }
 });
 
+await journey('J287', 'The cloth and the panels on the flats, in the Studio: a recipe piece\'s main fabric is changed from the flats\' Cloth (it replaces the one before, and the flat shows its surface); the Studio\'s fabrics window changing it shows on the flat too; a tap colours a sleeve to its seams, both sides at once, kept whole when saved; a coloured panel is removed', async () => {
+  const n = await K('/concepts/from-recipe', { body: { base: 'hoodie', addons: [], system: 'earth', colour: 0 } }); const C = n.json.concept?.id;
+  try {
+    ok(n.status === 201 || n.status === 200, 'a hoodie from the recipe menu', n.status);
+    if (!playwright) { ok(true, 'needs a browser'); return; }
+    const b = await playwright.chromium.launch();
+    try {
+      const ctx = await b.newContext({ viewport: { width: 1440, height: 1000 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); localStorage.setItem('fb.helper.on', '0'); localStorage.setItem('fb.design.level', 'pro'); } catch {} }, kyleT);
+      { const lc = ((await fetch(`${BASE}/v1/lab/door`, { headers: { Authorization: 'Bearer ' + kyleT } })).headers.get('set-cookie') || '').split(';')[0].split('='); if (lc[0]) await ctx.addCookies([{ name: lc[0], value: lc.slice(1).join('='), domain: new URL(BASE).hostname, path: '/lab' }]); }
+      const p = await ctx.newPage(), errs = []; p.on('pageerror', e => errs.push(String(e)));
+      await p.goto(`${BASE}/lab/studio?concept=${C}&view=front`, { waitUntil: 'networkidle' });
+      await p.waitForFunction(() => { try { return document.querySelector('#flatFrame')?.contentWindow?.FBFlats?.ready(); } catch { return false; } }, null, { timeout: 30000 });
+      const f = p.frames().find(x => /\/lab\/flats/.test(x.url()));
+      await f.click('.tabs [data-tab="design"]'); await f.waitForSelector('.cloths [data-cloth]', { timeout: 15000 });
+      // the cloth, from the flats
+      const tiles = await f.$$eval('.cloths [data-cloth]', els => els.map(e => [e.dataset.cloth, e.title]));
+      const fl = tiles.find(t => /fleece/i.test(t[1])) || tiles[0], tw = tiles.find(t => /twill|denim/i.test(t[1]) && t[0] !== fl[0]) || tiles[1];
+      await f.click(`.cloths [data-cloth="${fl[0]}"]`); await f.waitForFunction(id => document.querySelector(`.cloths [data-cloth="${id}"]`)?.getAttribute('aria-checked') === 'true', fl[0], { timeout: 15000 });
+      await f.click(`.cloths [data-cloth="${tw[0]}"]`); await f.waitForFunction(id => document.querySelector(`.cloths [data-cloth="${id}"]`)?.getAttribute('aria-checked') === 'true', tw[0], { timeout: 15000 });
+      const mats = (await K(`/concepts/${C}/materials`)).json.picks.filter(x => x.kind === 'fabric' && !x.part);
+      ok(mats.length === 1 && mats[0].id === tw[0] && mats[0].role === 'main', '1. the Cloth on the flats changes the main fabric, and the one before comes off (not left as a contrast)', mats.map(x => [x.name, x.role]));
+      const tex = () => f.evaluate(() => document.querySelector('#canvas pattern[id$="-tx"] image')?.getAttribute('href') || '');
+      ok(/material-photos\/[a-z0-9-]+\.jpg\?shade=1/.test(await tex()), '   and the flat shows its surface over the colour', await tex());
+      // the Studio's fabrics window changes it: the flat follows
+      const before = await tex();
+      await K(`/concepts/${C}/materials`, { body: { material: fl[0], role: 'main' } }); await p.evaluate(() => matChanged());
+      await f.waitForFunction(h => (document.querySelector('#canvas pattern[id$="-tx"] image')?.getAttribute('href') || '') !== h, before, { timeout: 15000 }).catch(() => {});
+      ok((await tex()) !== before && /aria-checked="true"/.test(await f.$eval(`.cloths [data-cloth="${fl[0]}"]`, e => e.outerHTML)), '2. a fabric chosen in the Studio\'s fabrics window shows on the flat', await tex());
+      // a panel by a tap: the sleeves, both sides
+      await f.click('[data-mode="fill"]');
+      const tap = async (x, y) => { const pt = await f.evaluate(([x, y]) => { const s = document.querySelector('#canvas svg'), q = s.createSVGPoint(); q.x = x; q.y = y; const r = q.matrixTransform(s.getScreenCTM()); return [r.x, r.y]; }, [x, y]); const fr = await (await p.$('#flatFrame')).boundingBox(); await p.mouse.click(fr.x + pt[0], fr.y + pt[1]); };
+      await tap(-14, 12); await f.waitForFunction(() => document.querySelectorAll('.prow').length >= 2, null, { timeout: 10000 }).catch(() => {});
+      const rows = await f.$$eval('.prow [data-pname]', els => els.map(e => e.value));
+      ok(rows.length === 2 && rows.every(r => r === 'Sleeve'), '3. one tap on a sleeve colours both sleeves, named', rows);
+      await tap(-2, 30); await p.waitForTimeout(400);
+      ok((await f.$$eval('.prow', els => els.length)) === 2, '   a tap outside the garment colours nothing');
+      await f.click('[data-mode="fill"]'); await f.evaluate(() => window.FBFlats.save()); await p.waitForTimeout(500);
+      const saved = (await K(`/concepts/${C}/flats`)).json.flat.edits.filter(e => e.type === 'block');
+      ok(saved.length === 2 && saved.every(e => e.traced && e.pts.length > 12) && saved[0].pts.some(q => q[0] < -12) && saved[1].pts.some(q => q[0] > 12), '   saved whole: traced outlines to the seams, one on each side', saved.map(e => [e.name, e.pts.length]));
+      await f.click('.prow [data-pdel]'); await f.evaluate(() => window.FBFlats.save()); await p.waitForTimeout(400);
+      ok((await K(`/concepts/${C}/flats`)).json.flat.edits.filter(e => e.type === 'block').length === 1, '4. Remove takes a coloured panel off');
+      ok(errs.length === 0, 'no page errors', errs); await ctx.close();
+    } finally { await b.close(); }
+  } finally { if (C) await K(`/concepts/${C}`, { method: 'DELETE' }); }
+});
+
 shops.close(); brave.close();
 process.exit(summary() ? 1 : 0);

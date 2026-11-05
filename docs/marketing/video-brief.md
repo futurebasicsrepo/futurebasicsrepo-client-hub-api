@@ -58,6 +58,9 @@ already has show as "on the sketch".
 ### The Studio (the design workspace)
 `/lab/studio`. One workspace with four views of a piece: the picture, the flat front, the flat back, and the pattern or engineering.
 
+- On the flats: **Colour a panel** (tap a sleeve and both sleeves take the colour, right to their seams; a tap on a rib takes the whole band)
+  and **Cloth** (pick a fabric and the flat shows its surface; it becomes the garment's main fabric).
+
 - Pro drawing tools: a pen tool with editable curves, shape booleans, snapping and guides, align and distribute, ⌘K to find any command,
   and SVG in and out.
 - The tools a physical product and its packaging need, on the same keys as Illustrator:

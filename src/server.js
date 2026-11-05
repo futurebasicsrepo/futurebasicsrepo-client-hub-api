@@ -856,6 +856,7 @@ app.get('/lab/vendor/three/*', (req, reply) => {
   let body; try { body = readFileSync(new URL(rel, THREE_DIR), 'utf8'); } catch { return reply.code(404).send({ error: 'Not found' }); }
   return reply.header('cache-control', 'public, max-age=2592000, immutable').type('application/javascript; charset=utf-8').send(body);
 });
+app.get('/lab/lab-flat-panels.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-flat-panels.js', import.meta.url), 'utf8')));
 app.get('/lab/lab-flats.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-flats.js', import.meta.url), 'utf8')));
 app.get('/lab/flats.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-flats.js', import.meta.url), 'utf8')));
 // the flat-sketch pack is large (nearly 400 sketches, their measurements and the add-on parts), so the text files go gzipped to any browser that takes it
