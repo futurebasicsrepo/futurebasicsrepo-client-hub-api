@@ -316,11 +316,20 @@ function restore(s){LAYERS=s.layers.map(copyL);SEL=s.sel&&layerOf(s.sel)?s.sel:n
 const onFlat=()=>(VMODE==='front'||VMODE==='back')&&FF()?.undo;
 function undo(){if(onFlat()){FF().undo();syncUndo();return}if(HI>0){HI--;restore(HIST[HI]);syncUndo()}}function redo(){if(onFlat()){FF().redo();syncUndo();return}if(HI<HIST.length-1){HI++;restore(HIST[HI]);syncUndo()}}
 function syncUndo(){if(onFlat()){const f=FF();$('#undo').disabled=!f.canUndo();$('#redo').disabled=!f.canRedo();return}$('#undo').disabled=HI<=0;$('#redo').disabled=HI>=HIST.length-1}
-let EDITS=0;function touch(){DIRTY=true;EDITS++;showSaved();PRES?.editing(true)}
+let EDITS=0;function touch(){DIRTY=true;EDITS++;showSaved();PRES?.editing(true);autoSoon()}
 // Who else has this concept open (/presence.js): their initials by Save; if someone else is changing it while you have changes, say so once
 let PRES=null,PRES_WARNED=false;
 function watchPresence(){if(PRES||GMODE||!/^[0-9a-f-]{36}$/i.test(CID)||!window.FBPresence)return;PRES=FBPresence.watch({type:'concept',id:CID,el:$('#people'),token:TOKEN,onOthers:(list,words)=>{if(DIRTY&&!PRES_WARNED&&list.some(p=>p.mode==='editing')){PRES_WARNED=true;toast(`${words}. The last one to save wins: talk it through before you both save.`)}}})}
-function showSaved(){const s=$('#saved');s.className='saved'+(DIRTY?' dirty':'');s.textContent=DIRTY?'Not saved':SAVED_AT?'Saved '+new Date(SAVED_AT).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}):''}
+// the last save, said the way people say it ("Saved just now", "Saved 4 min ago"), with the clock time on hover; it ticks while the page is open
+const agoOf=t=>{const s=Math.max(0,(Date.now()-new Date(t))/1000);return s<45?'just now':s<90?'a minute ago':s<3600?`${Math.round(s/60)} min ago`:'at '+new Date(t).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})};
+function showSaved(){const s=$('#saved');if(SAVING)return;s.className='saved'+(DIRTY||SAVE_ERR?' dirty':'');s.textContent=SAVE_ERR?`Not saved: ${SAVE_ERR}${AUTO_FAILS?' · trying again':''}`:DIRTY?'Changes not saved yet':SAVED_AT?'Saved '+agoOf(SAVED_AT):'';s.title=SAVED_AT?'Last saved '+new Date(SAVED_AT).toLocaleString():''}
+setInterval(()=>{if(!DIRTY&&SAVED_AT)showSaved()},20000);
+// Autosave: a few seconds after the last change, when nothing is being dragged or drawn. A failed save is tried again, a little later each time;
+// the 90-second save stays as a safety net. HOLD stops it while the image model draws the picture from the flats.
+const AUTO_MS=3000;let AUTO=0,AUTO_FAILS=0,SAVING=false,HOLD=false,SAVE_ERR='';
+function autoSoon(ms=AUTO_MS){clearTimeout(AUTO);if(GMODE&&!GID)return;AUTO=setTimeout(autoSave,ms)}
+async function autoSave(){if(!DIRTY||HOLD)return;if(DRAG||SAVING||!$('#busy').classList.contains('hidden')){autoSoon(1500);return}
+  const ok=await saveAll();if(ok){AUTO_FAILS=0}else{AUTO_FAILS++;showSaved();autoSoon(Math.min(60000,AUTO_MS*2**AUTO_FAILS))}}
 
 // ---------- distressing: a worn texture made from a seed, so it is the same every time it is drawn ----------
 const texture=(...a)=>window.FBFinish.texture(...a); // the same worn textures as the technique library (src/lab-finish.js)
@@ -526,6 +535,8 @@ $('#opts').addEventListener('change',e=>{if(e.target.matches('[data-press]'))OPT
 function paintOpts(){
   const o=$('#opts'),rg=(k,lab,min,max,step=1,unit='px')=>`<label>${lab}<input type="range" data-o="${k}" min="${min}" max="${max}" step="${step}" value="${OPT[k]}"><output>${OPT[k]}${unit}</output></label>`;
   const help={pen:'Click for a sharp point, drag for a curve. Click the first point to close the shape; Enter or Esc leaves it open. Shift keeps to 45°. Backspace takes the last point back.',node:'Drag a point or a handle. Alt-click a point to make it sharp or smooth, click the line to add a point, Delete takes the chosen point away. Alt while dragging a handle breaks it from its pair.',select:'Click a layer to choose it. Drag to move, a corner to resize, the green knob to turn (Shift: 15° steps). Arrows nudge.',hand:'Drag to move around. Ctrl and the wheel, or a pinch, zooms.',text:'Click where the type should go.',rect:'Drag to draw. Shift makes a square.',ellipse:'Drag to draw. Shift makes a circle.',line:'Drag to draw a line.',pick:'Click the picture to take its colour.',ruler:'Drag across something whose size you know, then say how long it is. Shift keeps the line straight.',warp:'Choose a layer, then drag its points to bend it to the piece. Presets are in the layer settings.'};
+  // the production tools (src/lab-studio-ill.js) say what they do too
+  Object.assign(help,{artboard:'Drag to make an artboard: a face of the box, a label, a hang tag. Drag one to move it; sizes, bleed and Lay out a box are in Document.',shapebuilder:'Drag across shapes to join the pieces you cross into one. Alt-click a piece to take it away. Choose two or more shapes first.',width:'Drag a point on a stroke to make it thicker or thinner there, for a line that tapers. Alt-click a point to put it back.',measure:'Drag from one point to another: the distance and angle show in mm or inches (Document sets which).',typepath:'Click a path to set type along it. Its words, size and where it starts are in the panel on the right.'});
   if(TOOL==='brush')o.innerHTML=rg('size','Size',1,400)+rg('flow','Opacity',.05,1,.05,'')+rg('soft','Softness',0,1,.05,'')+pressHtml()+'<span class="hint">Paints on the selected painting layer, or starts a new one. With the Pencil, fingers move and pinch the view.</span>';
   else if(TOOL==='eraser')o.innerHTML=rg('size','Size',1,400)+rg('flow','Strength',.05,1,.05,'')+pressHtml()+'<span class="hint">Rubs out the selected layer.</span>';
   else if(TOOL==='distress')o.innerHTML=rg('dsize','Size',4,600)+rg('flow','Strength',.05,1,.05,'')+'<span class="hint">Wears the selected layer away, like an old print. For an even wear across the layer, use Distress in its settings.</span>';
@@ -809,7 +820,9 @@ $('#pAi').addEventListener('click',async e=>{
 // ---------- saving, using, exporting ----------
 function serialize(){return{...(window.ILL?ILL.docData():{}),w:W,h:H,ppi:PPI,ppiSet:PPISET,selected:SEL,linked:[...LINKING],layers:LAYERS.map(l=>{const o={};for(const[k,v]of Object.entries(l))if(!k.startsWith('_')&&k!=='raster'&&k!=='dirty')o[k]=v;
   if(isRaster(l)&&(l.dirty||!l.src||l.kind==='paint'||l.raster._rid!==l._srcRid))o.src=l.raster.toDataURL('image/png');return o})}}
-async function save(){const b=$('#save');b.disabled=true;$('#saved').textContent='Saving…';
+async function save(){if(SAVING)return SAVING_P||true;SAVING_P=(async()=>{SAVING=true;try{return await saveNow()}finally{SAVING=false;showSaved();if(DIRTY&&!HOLD)autoSoon()}})();return SAVING_P}
+let SAVING_P=null;
+async function saveNow(){const b=$('#save');b.disabled=true;$('#saved').className='saved';$('#saved').textContent='Saving…';
   try{if(!GMODE){const sent=await syncFlats({before:flatsFirst}).catch(x=>{toast('The flats did not take the graphics: '+x.message);return false});if(sent)reloadFlats()}const doc=serialize(),at=EDITS;let r;
     if(GMODE){compose();const image=docC.toDataURL('image/png');
       // a graphic not yet in the library goes in with its first save; after that its layers are saved on it
@@ -821,8 +834,8 @@ async function save(){const b=$('#save');b.disabled=true;$('#saved').textContent
     else r=await api(`/v1/lab/concepts/${CID}/studio`,{method:'PUT',body:{doc}});
     // what was sent is now what the layers come from
     for(const l of LAYERS){const s=doc.layers.find(x=>x.id===l.id);if(s&&isRaster(l)){l.src=s.src;l.dirty=false;l._srcRid=l.raster._rid}}
-    DIRTY=EDITS!==at;SAVED_AT=r.savedAt;showSaved();if(!DIRTY)PRES?.editing(false);if(!GMODE)loadReady(); /* a change made while it saved (a graphic arriving from the flats) stays to save */return true}
-  catch(x){$('#saved').className='saved dirty';$('#saved').textContent=x.message;return false}finally{b.disabled=false}}
+    DIRTY=EDITS!==at;SAVED_AT=r.savedAt;SAVE_ERR='';showSaved();if(!DIRTY)PRES?.editing(false);if(!GMODE)loadReady(); /* a change made while it saved (a graphic arriving from the flats) stays to save */return true}
+  catch(x){SAVE_ERR=x.message;return false}finally{b.disabled=false}}
 $('#save').onclick=saveAll;
 // installed on the home screen (an iPad), a download would leave the app: the file opens in the app's sheet, with Share and Save
 const INAPP=()=>{try{return navigator.standalone===true||matchMedia('(display-mode: standalone)').matches}catch{return false}};
@@ -997,7 +1010,9 @@ async function boot(){
   if(D.concept.locked){$('#apply').disabled=true;$('#apply').title='This concept is already a tech pack'}
   busy('Opening the design…');
   try{
-    if(D.doc&&Array.isArray(D.doc.layers)&&D.doc.layers.length){W=D.doc.w;H=D.doc.h;LAYERS=[];window.ILL?.load(D.doc);for(const o of D.doc.layers){try{LAYERS.push(await loadLayer(o))}catch{toast('A layer could not be loaded and was left out.')}}SEL=D.doc.selected&&LAYERS.some(l=>l.id===D.doc.selected)?D.doc.selected:null;SAVED_AT=D.savedAt}
+    if(D.doc&&Array.isArray(D.doc.layers)&&D.doc.layers.length){W=D.doc.w;H=D.doc.h;LAYERS=[];window.ILL?.load(D.doc);for(const o of D.doc.layers){try{LAYERS.push(await loadLayer(o))}catch{toast('A layer could not be loaded and was left out.')}}SEL=D.doc.selected&&LAYERS.some(l=>l.id===D.doc.selected)?D.doc.selected:null;SAVED_AT=D.savedAt;
+      // a picture drawn since (from the flats): the service took the old base off the layers, so the new picture goes underneath what was laid on it
+      if(D.concept.hasImage&&!LAYERS.some(l=>l.kind==='base')){const src=await urlOfBlob(await blobOf(`/v1/lab/concepts/${CID}/image`)),img=await imgOf(src),c=canvas(W,H);c.getContext('2d').drawImage(img,0,0,W,H);const b={...fresh('base',{name:'Picture',raster:stamp(c),src,x:W/2,y:H/2})};b._srcRid=b.raster._rid;if(img.naturalWidth!==W||img.naturalHeight!==H)b.dirty=true;LAYERS.unshift(b)}}
     else if(D.concept.hasImage){const src=await urlOfBlob(await blobOf(`/v1/lab/concepts/${CID}/image`)),img=await imgOf(src);W=img.naturalWidth;H=img.naturalHeight;const c=canvas(W,H);c.getContext('2d').drawImage(img,0,0);
       LAYERS=[{...fresh('base',{name:'Picture',raster:stamp(c),src,x:W/2,y:H/2})}];LAYERS[0]._srcRid=LAYERS[0].raster._rid}
     else if(QS.get('scratch')==='1'||D.concept.scratch){await scratchPage()}
@@ -1006,7 +1021,7 @@ async function boot(){
   docC.width=W;docC.height=H;mask=canvas(W,H);maskX=mask.getContext('2d');initPpi();if(GUIDE_PPI){PPI=GUIDE_PPI;PPISET=true;PPINOTE='the guide\'s own size'}
   await loadFonts();setColor(CUR);paintSub();paintAdd();tab('layers');setTool('select');HIST=[snap()];HI=0;syncUndo();DIRTY=false;showSaved();paintLayers();requestAnimationFrame(fit);
   if(QS.get('tryon')==='1')tryOpen().catch(()=>{});
-  setInterval(()=>{if(DIRTY&&!DRAG)save()},90000); // a quiet save every minute and a half while there are changes
+  setInterval(()=>{if(DIRTY&&!DRAG&&!HOLD)save()},90000); // the safety net under autosave: a quiet save every minute and a half while there are changes
   (D.doc?.linked||[]).forEach(id=>LINKING.add(id));setVMode(QS.get('view')||(!D.concept.hasImage&&!LAYERS_DRAWN()&&!D.concept.scratch&&QS.get('scratch')!=='1'&&D.concept.hasFlats&&!ENGD()?'front':'picture')).then(()=>{if(SCRATCH_HINT&&VMODE==='picture')toast('A blank page: draw with the Pencil or the brush. The guide is locked; hide it in Layers when you are done.')}).catch(()=>{});loadFlatsRecord();loadReady();
   if(D.concept.recipe&&!D.concept.locked){$('#recipeBtn').href=`/lab/recipe?concept=${CID}`;$('#recipeBtn').classList.remove('hidden')}paintFlatPic(); // a piece from the recipe menu: change its recipe; no picture yet: draw it from the flats
 }
@@ -1252,8 +1267,10 @@ async function loadReady(){if(GMODE||!CID)return;try{READY=await api(`/v1/lab/co
 // a piece with flats but no picture (from the recipe menu or a sketch): draw the picture from the flats in one go
 function paintFlatPic(){const show=Boolean(CID&&!GMODE&&D?.concept&&!D.concept.hasImage&&D.concept.hasFlats&&!D.concept.locked&&D.ai?.connected);$('#flatPicBar').classList.toggle('hidden',!show)}
 $('#flatPicX').onclick=()=>$('#flatPicBar').classList.add('hidden');
-$('#flatPicGo').onclick=async()=>{const b=$('#flatPicGo');busy('Drawing the picture from the flats. About a minute…');
-  try{await FBN.run(b,()=>api(`/v1/lab/concepts/${CID}/flats/picture`,{body:{}}),{done:'The picture is drawn: it is the concept picture now.'});location.href=`/lab/studio?concept=${CID}&view=picture`}catch{}finally{busy()}};
+$('#flatPicGo').onclick=async()=>{const b=$('#flatPicGo');if(HOLD)return;
+  // what is open is saved first, and nothing saves while the model draws: a save landing after the picture would put the old base back
+  if(!(await saveAll()))return;HOLD=true;busy('Drawing the picture from the flats. About a minute…');
+  try{await FBN.run(b,()=>api(`/v1/lab/concepts/${CID}/flats/picture`,{body:{}}),{done:'The picture is drawn: it is the concept picture now.'});DIRTY=false;clearTimeout(AUTO);location.href=`/lab/studio?concept=${CID}&view=picture`}catch{HOLD=false}finally{busy()}};
 function paintReady(){const b=$('#readyBtn');if(!READY){b.textContent='Checklist';return}
   b.textContent=READY.isPack?'Tech pack ✓':`Checklist ${READY.done}/${READY.total}`;b.classList.toggle('ok',READY.ready);
   $('#readyList').innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b style="font-size:14px">${READY.isPack?'It is a tech pack':READY.ready?'Ready for the tech pack':'Before the tech pack'}</b>${READY.next?`<a class="btn sm go" href="${esc(READY.next.href)}" data-readynext>${esc(READY.next.label)}</a>`:''}</div>`

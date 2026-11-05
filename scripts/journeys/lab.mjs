@@ -1698,8 +1698,11 @@ await journey('J227', 'Every tool in the studio works: each rail tool and zoom b
 
     // 1. the rail and the zoom
     const tools = await page.$$eval('.rail [data-tool]', els => els.map(e => e.dataset.tool)); let railOk = 0;
-    for (const t of tools) { await page.click(`.rail [data-tool="${t}"]`); if (await page.evaluate(x => TOOL === x && document.querySelector(`.rail [data-tool="${x}"]`).getAttribute('aria-pressed') === 'true', t) && (await page.innerText('#opts')).trim().length > 0) railOk++; }
-    ok(railOk === tools.length && tools.length === 15, `1. every rail tool selects and shows its options (${tools.join(', ')})`, railOk);
+    for (const t of tools) { await page.click(`.rail [data-tool="${t}"]`);
+      // the shape builder needs two shapes chosen: with fewer it says so and goes back to Select
+      if (t === 'shapebuilder') { if (await page.evaluate(() => TOOL === 'select' && /Choose two shapes/.test(document.getElementById('stToast')?.textContent || ''))) railOk++; continue; }
+      if (await page.evaluate(x => TOOL === x && document.querySelector(`.rail [data-tool="${x}"]`).getAttribute('aria-pressed') === 'true', t) && (await page.innerText('#opts')).trim().length > 0) railOk++; }
+    ok(railOk === tools.length && tools.length === 20, `1. every rail tool selects and shows its options (${tools.join(', ')})`, railOk);
     const z0 = await page.innerText('#zLabel'); await page.click('#zIn'); await page.waitForFunction(z => document.getElementById('zLabel').textContent !== z, z0); const z1 = await page.innerText('#zLabel'); await page.click('#zOut'); await page.waitForFunction(z => document.getElementById('zLabel').textContent !== z, z1); await page.click('#zFit'); await page.waitForFunction(z => document.getElementById('zLabel').textContent === z, z0);
     ok(parseInt(z1) > parseInt(z0), '   zoom in, out and fit', [z0, z1]);
 
@@ -4163,8 +4166,16 @@ await journey('J270', 'The recipe flow finished: a tee with a polo collar (drawn
         const n = await K('/concepts/from-recipe', { body: { base: 'hoodie', addons: ['kangaroo'], system: 'forest' } }); made.push(n.json.concept.id);
         await p.goto(`${BASE}/lab/studio?concept=${n.json.concept.id}&view=front`, { waitUntil: 'networkidle' }); await p.waitForSelector('#flatPicBar:not(.hidden)', { timeout: 30000 });
         ok(await p.isVisible('#recipeBtn'), '5. in the Studio a recipe piece shows Edit recipe and the bar to draw its picture');
+        // the Studio already has saved layers (its blank page, and a word laid on it), saved by itself a few seconds after the change
+        await p.waitForFunction(() => typeof LAYERS !== 'undefined' && LAYERS.some(l => l.kind === 'base'), null, { timeout: 20000 });
+        await p.evaluate(() => { addLayer(fresh('shape', { name: 'Word', shape: 'rect', w: 200, h: 80, radius: 0, fill: true, fillColor: '#141416', stroke: false, strokeW: 4, strokeColor: '#141416', x: W / 2, y: H / 2 })); touch(); });
+        await p.waitForFunction(() => /^Saved just now/.test(document.querySelector('#saved').textContent), null, { timeout: 15000 }).catch(() => {});
+        ok(/^Saved just now/.test(await p.innerText('#saved')) && sql(`select jsonb_array_length(doc->'layers') from lab_studio_docs where concept_id='${n.json.concept.id}'`) === '2', '   a change saves by itself a few seconds later, and says "Saved just now"', await p.innerText('#saved'));
         await p.click('#flatPicGo'); await p.waitForURL(/view=picture/, { timeout: 30000 });
         ok(sql(`select (image is not null)::text from lab_concepts where id='${n.json.concept.id}'`) === 'true', '   and pressing it draws the picture and shows it');
+        await p.waitForFunction(() => typeof LAYERS !== 'undefined' && LAYERS.length > 0 && document.querySelector('#busy').classList.contains('hidden'), null, { timeout: 20000 });
+        const ly = await p.evaluate(() => LAYERS.map(l => [l.kind, l.name]));
+        ok(ly[0]?.[0] === 'base' && ly[0][1] === 'Picture' && !ly.some(l => l[1] === 'Blank') && ly.some(l => l[1] === 'Word'), '   the new picture is the base, not the blank page it had, and the word laid on it stays on top', ly);
         await p.waitForSelector('#recipeBtn:not(.hidden)', { timeout: 20000 }); await p.click('#recipeBtn'); await p.waitForURL(/\/lab\/recipe\?concept=/); await p.waitForFunction(() => document.querySelector('#open').textContent === 'Save the changes', null, { timeout: 15000 });
         ok(await p.evaluate(() => document.querySelector('[data-base=hoodie]').getAttribute('aria-checked') === 'true' && document.querySelector('[data-addon=kangaroo]').getAttribute('aria-pressed') === 'true'), '   Edit recipe opens on the piece\'s own picks, ready to save');
         // fit it together: a tee with a chest pocket; widen the body and size the pocket with the sliders, and the drawing follows
