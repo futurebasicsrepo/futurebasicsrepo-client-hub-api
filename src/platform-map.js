@@ -58,8 +58,11 @@ export const NODES = [
    what:'Parametric pattern drafting and grading for garments and plush, shoe lasts with flattened uppers (read from the shoe\'s side profile view), and 3D assemblies for hard goods and electronics (parts, DFM, tooling, BOM). The same modules run in the browser for live editing and on the server for exports (DXF, STL, STEP, SVG).',
    code:['src/lab-pattern.js','src/lab-footwear.js','src/lab-last-shell.js','src/lab-assembly.js','src/lab-step.js','src/lab-dxf.js','src/lab-pattern-routes.js','src/lab-last-routes.js','src/lab-assembly-routes.js','src/lab-benchmark.html'],data:['lab_patterns','lab_assemblies','lab_lasts'],talks:['meshy','production']},
   {id:'production',lane:'svc',name:'Factories and production',sub:'packages · quotes · samples',
-   what:'The factory directory and map, assignments, the one-zip production package (pack PDF, Excel, flats, DXF, stitch files, 3D), quotes compared side by side, acknowledgements, signatures, samples and messages.',
-   code:['src/factories-routes.js','src/factory-package.js','src/rfq.js','src/sample-review.js','src/zip.js','src/factories.html','src/booth.html','src/fair.html'],data:['suppliers','factory_quotes','production_runs','qc_inspections'],talks:['links','files']},
+   what:'The factory directory and map, assignments, the one-zip production package (pack PDF, Excel, flats, DXF, stitch files, 3D), quotes compared side by side, acknowledgements, signatures, samples and messages. Samples are reviewed on a form made from the pack (/samples/:product): the room\'s team and staff check every measurement, callout, placement, material and colourway, pin what the pack does not name on the flats, and hand it over; staff write it into the pack as the next version.',
+   code:['src/factories-routes.js','src/factory-package.js','src/rfq.js','src/sample-review.js','src/sample-form.js','src/sample-form-routes.js','src/sample-form.html','src/zip.js','src/factories.html','src/booth.html','src/fair.html'],data:['suppliers','factory_quotes','production_runs','qc_inspections','sample_reviews'],talks:['links','files','techpack','workspace']},
+  {id:'workspace',lane:'svc',name:'Shared workspace',sub:'team chat · board · who is here',
+   what:'Where a room\'s team works together (/workspace, in the hub and the work console). Channels for the team, one per topic or product; Future Basics reads and replies only in channels the team brings it into (or by @futurebasics). A board of tasks given to teammates or Future Basics, with status and due dates. Presence: pages with a tech pack, a sample review or a concept open send a heartbeat, so people see who else is on it, and a save from an older copy of a pack is refused when someone else saved in between.',
+   code:['src/team-chat-routes.js','src/workspace-routes.js','src/workspace.html','src/presence.js'],data:['team_channels','team_messages','team_channel_reads','workspace_presence','work_assignments'],talks:['pg','resend','techpack']},
   {id:'sales',lane:'svc',name:'Sales OS',sub:'CRM · email · automations · chat',
    what:'One CRM for every customer (hub clients, leads, showcase viewers), deals and tasks, sales email with unsubscribe and bounce handling, automations (trigger, wait, email, task), the opportunity list and press.',
    code:['src/sales-routes.js','src/sales-email.js','src/sales-automations-engine.js','src/sales-opportunities.js','src/press.js','src/sales-email-routes.js','src/sales-automations-routes.js','src/sales-opportunities-routes.js','src/press-routes.js'],data:['sales_contacts','sales_deals','sales_tasks','sales_automations','sales_emails'],talks:['resend','claude']},
@@ -76,7 +79,7 @@ export const NODES = [
    what:'Live checks of every connection, job and risky setting, grouped by area, without spending paid quota; the copy watch card; request and job telemetry. Runs the background jobs; the main ones are in "What runs on its own".',
    code:['src/platform.js','src/platform-coverage.js','src/telemetry.js','src/payments.js','src/platform-map.js','src/platform-map.html'],data:['app_settings','platform_events'],talks:['pg','shopify','qbo','claude']},
   // data
-  {id:'pg',lane:'data',t:'data',name:'Postgres',sub:'137 tables',
+  {id:'pg',lane:'data',t:'data',name:'Postgres',sub:'142 tables',
    what:'One database for everything: rooms, users, products, tech packs and versions, the Lab, CRM, money, contracts, factories, logs. Tables are created and migrated at start-up by src/db.js.',
    code:['src/db.js'],data:['all tables'],talks:[]},
   {id:'files',lane:'data',t:'data',name:'File store',sub:'/data/uploads volume',
@@ -117,7 +120,8 @@ export const EDGES = [
   ['auth','access'],['access','guard'],['guard','labsvc'],['access','techpack'],['access','sales'],['access','money'],
   ['labsvc','engines'],['labsvc','techpack'],['techpack','production'],['sales','money'],['intel','sales'],['money','builds'],
   ['techpack','claude'],['labsvc','claude'],['labsvc','openai'],['engines','meshy'],['sales','resend'],['intel','listen'],['intel','xai'],['money','qbo'],['health','shopify'],['builds','shopify'],['builds','github'],
-  ['techpack','pg'],['labsvc','pg'],['production','files'],['techpack','files'],['health','pg']
+  ['techpack','pg'],['labsvc','pg'],['production','files'],['techpack','files'],['health','pg'],
+  ['hub','workspace'],['work','workspace'],['access','workspace'],['workspace','pg'],['workspace','resend'],['workspace','techpack'],['production','techpack']
 ];
 export const FLOWS = {
   lab:{name:'Design Lab to factory',lede:'A client with the Lab open designs a piece and sends it to a factory.',steps:[
@@ -133,7 +137,9 @@ export const FLOWS = {
     ['techpack','The approved concept becomes a tech pack with measurements, BOM, colours and cost.'],
     ['production','A factory is assigned; the production package zip is built, with an export reference inside.'],
     ['links','The factory gets a private /tp link in its language.'],
-    ['factory','The factory quotes, acknowledges, signs and sends samples back through the same link.']]},
+    ['factory','The factory quotes, acknowledges, signs and sends samples back through the same link.'],
+    ['production','At the sample review the room\'s team fills in the form made from the pack: measurements, every callout and placement, pins on the flats, a verdict, then hands it over.'],
+    ['techpack','Staff write the review into the pack: accepted measurements become the spec, fixes become corrections, pins become callouts, the next sample is asked for, and v2 is published to the factory.']]},
   photo:{name:'Photo to tech pack',lede:'Someone starts with a product photo and ends with a paid, factory-ready pack.',steps:[
     ['visitor','A visitor uploads a photo on /start; a room is made for them.'],
     ['hub','/start gives a session that only works until the email is verified with a code.'],

@@ -68,6 +68,9 @@ const RULES = [
   [/^\/v1\/lab/, 'lab'],
   [/^\/v1\/admin/, 'clients'],
   // shared routes that clients use for their own room and that staff use to work in any room
+  [/^\/v1\/sample-reviews(\/|$)/, 'clients'],
+  [/^\/v1\/team-chat(\/|$)/, 'messages'],
+  [/^\/v1\/workspace(\/|$)/, 'clients'],
   [/^\/v1\/(products|projects|room-files|project-files|pick-images|invoices|quotes|approvals|comments|asset-versions|requests|vendor|tech-packs|dashboard)(\/|$)/, 'clients']
 ];
 export function moduleFor(pattern, method = 'GET') {

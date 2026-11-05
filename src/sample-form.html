@@ -1,0 +1,203 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Sample review — Future Basics</title><link rel="icon" href="/icons/techpack-v3-192.png" type="image/png"><meta name="theme-color" content="#141416"><meta name="robots" content="noindex">
+<style>
+@import url('/fonts/fonts.css');
+:root{--ink:#141416;--paper:#fff;--fog:#f5f5f2;--dim:#6d6d73;--line:rgba(20,20,22,.14);--cue:#4bff9a;--warn:#ffed90;--bad:#9a2419;--badbg:#fbe9e6;--ok:#23784b;--okbg:#e6f6ec;--ease:cubic-bezier(.22,1,.36,1)}
+*{box-sizing:border-box}html{background:var(--fog)}body{margin:0;color:var(--ink);font:400 15px/1.5 'Space Grotesk',system-ui,sans-serif;background:var(--fog);min-height:100vh}
+button,input,select,textarea{font:inherit;color:inherit}a{color:inherit}.hidden{display:none!important}
+.meta{font:500 10px/1.35 'IBM Plex Mono',monospace;text-transform:uppercase;letter-spacing:.14em;color:var(--dim)}
+.top{position:sticky;top:0;z-index:20;display:flex;align-items:center;justify-content:space-between;gap:14px;padding:10px clamp(14px,3vw,36px);background:rgba(20,20,22,.97);color:#fff;min-height:64px;flex-wrap:wrap}
+.top .id{display:flex;flex-direction:column;gap:2px;min-width:0}.top .id b{font-weight:500;font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:52vw}.top .meta{color:#a9a9ae}
+.top .acts{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.btn{padding:9px 14px;border:1px solid rgba(255,255,255,.35);border-radius:999px;background:transparent;color:#fff;cursor:pointer;white-space:nowrap;font-size:13px;text-decoration:none;display:inline-flex;align-items:center;gap:6px;min-height:40px}.btn:hover{background:#fff;color:var(--ink)}.btn.primary{background:var(--cue);border-color:var(--cue);color:var(--ink);font-weight:500}
+.saved{font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#cfcfd3;white-space:nowrap}.saved.bad{color:#ffb3a8}
+.people{display:flex;gap:4px;align-items:center}.people span{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font:600 12px 'Space Grotesk';background:#2c2c31;border:2px solid var(--cue);color:#fff;text-transform:uppercase}
+.steps{position:sticky;top:64px;z-index:15;display:flex;gap:6px;overflow-x:auto;padding:10px clamp(14px,3vw,36px);background:var(--fog);border-bottom:1px solid var(--line);scrollbar-width:none}
+.steps a{flex:none;display:flex;gap:8px;align-items:center;padding:9px 14px;border-radius:999px;background:#fff;border:1px solid var(--line);text-decoration:none;font-size:13.5px;min-height:42px}.steps a b{font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.06em;color:var(--dim)}.steps a.done{border-color:var(--ok)}.steps a.done b{color:var(--ok)}
+.wrap{max-width:1080px;margin:0 auto;padding:18px clamp(12px,3vw,32px) 120px;display:flex;flex-direction:column;gap:18px}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:22px;padding:clamp(16px,3vw,28px);scroll-margin-top:130px}
+.card>h2{margin:0 0 4px;font-size:clamp(22px,2.6vw,30px);font-weight:500;letter-spacing:-.02em}.card>.sub{margin:0 0 18px;color:var(--dim)}
+.fields{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px}.fields label{display:grid;gap:6px}.fields label>span{font:500 9px 'IBM Plex Mono',monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}
+input.t,select.t,textarea.t{width:100%;padding:11px 13px;border:1px solid var(--line);border-radius:12px;background:#fff;outline:none;min-height:46px}input.t:focus,select.t:focus,textarea.t:focus{border-color:var(--ink);box-shadow:0 0 0 3px rgba(75,255,154,.4)}textarea.t{min-height:70px;resize:vertical}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;background:#fff;flex:none}.seg button{border:0;background:transparent;padding:10px 16px;min-height:44px;min-width:64px;cursor:pointer;font-size:14px}.seg button+button{border-left:1px solid var(--line)}
+.seg button.on[data-v="ok"]{background:var(--okbg);color:var(--ok);font-weight:600}.seg button.on[data-v="fix"],.seg button.on[data-v="must"]{background:var(--badbg);color:var(--bad);font-weight:600}.seg button.on[data-v="na"],.seg button.on[data-v="should"]{background:#ececea;font-weight:600}
+.sbtn{padding:9px 14px;border:1px solid var(--line);border-radius:999px;background:#fff;cursor:pointer;font-size:13px;min-height:42px;white-space:nowrap}.sbtn:hover{border-color:var(--ink)}.sbtn.dark{background:var(--ink);color:#fff;border-color:var(--ink)}.sbtn.go{background:var(--cue);border-color:var(--cue);font-weight:600}.sbtn.danger{color:var(--bad)}.sbtn:disabled{opacity:.45;cursor:not-allowed}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+/* measurements */
+.poms{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px}
+.pom{border:1px solid var(--line);border-radius:16px;padding:12px 14px;display:grid;gap:8px}.pom.out{border-color:var(--bad);background:var(--badbg)}.pom.in{border-color:var(--ok)}
+.pom .h{display:flex;justify-content:space-between;gap:8px}.pom .h b{font-weight:500}.pom .spec{font:500 13px 'IBM Plex Mono',monospace}
+.pom .m{display:flex;gap:8px;align-items:center}.pom .m input{font-size:20px;text-align:right;width:120px}.pom .diff{font:600 14px 'IBM Plex Mono',monospace}.pom.out .diff{color:var(--bad)}.pom.in .diff{color:var(--ok)}
+.chk{display:flex;gap:8px;align-items:center;font-size:13px;cursor:pointer}.chk input{width:20px;height:20px}
+/* checklist */
+.group{border-top:1px solid var(--line);padding-top:14px;margin-top:14px}.group:first-of-type{border-top:0;margin-top:0;padding-top:0}
+.group .gh{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px}.group .gh h3{margin:0;font-size:18px;font-weight:500}
+.item{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:12px;align-items:center;padding:10px 0;border-bottom:1px dashed var(--line)}.item:last-child{border-bottom:0}
+.item .what b{font-weight:500;display:block}.item .what small{color:var(--dim);display:block;overflow-wrap:anywhere}
+.item .fixbox{grid-column:1/-1;display:grid;gap:8px;padding:12px;border-radius:14px;background:var(--badbg)}
+.thumb{width:64px;height:64px;border-radius:10px;background:#f0f0ed center/contain no-repeat;position:relative;flex:none;border:1px solid var(--line)}.thumb i{position:absolute;width:12px;height:12px;margin:-6px 0 0 -6px;border-radius:50%;background:var(--bad);border:2px solid #fff;box-shadow:0 0 0 1px var(--bad)}.thumb.none{visibility:hidden}
+.ph{display:flex;gap:8px;align-items:center}.ph img{width:72px;height:72px;object-fit:cover;border-radius:10px;border:1px solid var(--line)}
+/* flats */
+.flats{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
+.flat{border:1px solid var(--line);border-radius:16px;padding:10px;display:grid;gap:6px}.flat .stage{position:relative;cursor:crosshair;user-select:none;touch-action:manipulation}.flat img{display:block;width:100%;height:auto;border-radius:10px;background:#f7f7f5}
+.dot{position:absolute;transform:translate(-50%,-50%);width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font:600 12px 'IBM Plex Mono';pointer-events:none}
+.dot.pin{background:var(--bad);color:#fff;border:2px solid #fff;box-shadow:0 1px 6px rgba(0,0,0,.3)}.dot.ref{width:20px;height:20px;background:rgba(20,20,22,.55);color:#fff;font-size:10px}
+.pins{display:grid;gap:10px;margin-top:12px}.pinrow{display:grid;grid-template-columns:36px minmax(0,1fr) auto;gap:10px;align-items:start}.pinrow .seg{justify-self:start}.pinrow .n{width:30px;height:30px;border-radius:50%;background:var(--bad);color:#fff;display:grid;place-items:center;font:600 12px 'IBM Plex Mono'}
+.photos{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}.photos figure{margin:0;position:relative}.photos img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:12px;border:1px solid var(--line)}.photos button{position:absolute;top:6px;right:6px}
+/* verdict */
+.verdicts{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}.verdicts button{padding:16px;border:2px solid var(--line);border-radius:16px;background:#fff;cursor:pointer;text-align:left;min-height:76px}.verdicts button b{display:block;font-size:16px;font-weight:600}.verdicts button small{color:var(--dim)}
+.verdicts button.on{border-color:var(--ink);background:var(--ink);color:#fff}.verdicts button.on small{color:#c9c9cd}
+.sum{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;margin:16px 0}.sum div{border:1px solid var(--line);border-radius:14px;padding:10px 12px}.sum b{display:block;font-size:26px;font-weight:500;line-height:1.1}
+.fixlist{margin:0;padding-left:20px;display:grid;gap:6px}.fixlist .must{color:var(--bad);font-weight:600}
+.banner{padding:14px 16px;border-radius:16px;background:#fff;border:1px solid var(--line)}.banner.ok{background:var(--okbg);border-color:var(--ok)}.banner.warn{background:#fffbe0;border-color:#e6d36b}
+/* the list of samples */
+.samples{display:grid;gap:10px}.sample{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center;padding:14px 16px;border:1px solid var(--line);border-radius:16px;background:#fff}.sample b{font-weight:500;font-size:17px}
+.toast{position:fixed;left:50%;bottom:24px;transform:translate(-50%,120px);background:var(--ink);color:#fff;padding:12px 18px;border-radius:999px;transition:transform .3s var(--ease);z-index:50;max-width:92vw}.toast.show{transform:translate(-50%,0)}
+@media (max-width:640px){.item{grid-template-columns:minmax(0,1fr);}.item .thumb{display:none}.seg button{min-width:58px;padding:10px 12px}}
+@media print{.top .acts,.steps,.noprint,.seg,.sbtn,.toast{display:none!important}.top{position:static;background:#fff;color:var(--ink)}.top .meta{color:var(--dim)}body,html{background:#fff}.card{break-inside:avoid;border-color:#bbb}.wrap{padding:0}.item .fixbox{background:#fff;border:1px solid #bbb}textarea.t,input.t{border:0;padding:0;min-height:0}}
+</style></head><body>
+<header class="top"><div class="id"><span class="meta" id="crumb">Future Basics · Sample review</span><b id="title">Loading…</b></div>
+<div class="acts"><span class="people" id="people" aria-label="Who else is on this review"></span><span class="saved" id="saved" role="status"></span><a class="btn" id="packLink" href="#">Tech pack</a><button class="btn" type="button" data-act="print">Print</button></div></header>
+<nav class="steps hidden" id="steps" aria-label="Sections of the review"></nav>
+<main class="wrap" id="main"></main>
+<div class="toast" id="toast" role="status"></div>
+<script src="/sample-review.js"></script><script src="/sample-form.js"></script><script src="/presence.js"></script>
+<script>
+(()=>{
+"use strict";
+const $=s=>document.querySelector(s),esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const FF=window.FBSampleForm,host=location.hostname.toLowerCase(),params=new URLSearchParams(location.search);
+const productId=(location.pathname.match(/^\/samples\/([^/]+)/)||[])[1]||'';
+const isWork=host.startsWith('work.')||params.get('as')==='work'||((host==='localhost'||host==='127.0.0.1')&&localStorage.getItem('fb.admin.token')&&params.get('as')!=='client');
+const KEY=isWork?'fb.admin.token':'fb.client.token';
+let TOKEN='';try{TOKEN=localStorage.getItem(KEY)||''}catch{}
+let S={product:null,pack:null,review:null,form:null,rev:0,role:'client',list:null,dirty:new Set(),saving:false,timer:null,err:''};
+let toastT=null;const toast=(m,ms)=>{const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),ms||2800)};
+
+async function api(p,o={}){const h={...(o.headers||{})};if(TOKEN)h.Authorization='Bearer '+TOKEN;if(o.body&&typeof o.body!=='string'){o.body=JSON.stringify(o.body);h['Content-Type']='application/json'}let r;try{r=await fetch(p,{...o,headers:h})}catch{const e=new Error('No connection. What you entered is still on this page; it saves when you are back online.');e.status=0;throw e}let d={};try{d=await r.json()}catch{}if(!r.ok){const e=new Error(d.error||'Something went wrong — try again');e.status=r.status;e.data=d;throw e}return d}
+const RO=()=>!S.review||S.review.status==='applied';
+const editable=()=>!RO();
+
+// ---- loading ----
+async function boot(){
+  if(!TOKEN){$('#title').textContent='Sign in first';$('#main').innerHTML=`<div class="card"><h2>Sign in to review samples</h2><p class="sub">Open your ${isWork?'work console':'hub'} and sign in, then come back to this page.</p><a class="sbtn dark" href="/">Sign in</a></div>`;return}
+  $('#packLink').href=`/tech-packs/${productId}${isWork?'?as=work':''}`;
+  const rid=params.get('review');
+  try{if(rid){await openReview(rid)}else{await openList()}}catch(e){$('#title').textContent='Sample review';$('#main').innerHTML=`<div class="card"><h2>${e.data?.code==='NO_PACK'?'No tech pack yet':'This review did not open'}</h2><p class="sub">${esc(e.message)}</p></div>`}
+}
+async function openList(){
+  const d=await api(`/v1/products/${productId}/sample-reviews`);S.list=d;S.role=d.role;S.review=null;$('#steps').classList.add('hidden');
+  $('#title').textContent=d.product.title;$('#crumb').textContent=`${d.product.room} · Sample reviews`;document.title=`Sample reviews — ${d.product.title}`;
+  const byStage=new Map(d.reviews.map(r=>[r.stage,r]));
+  const stages=[...new Set([...d.sampling.map(s=>s.stage),...d.reviews.map(r=>r.stage)])];
+  const word={open:'Being filled in','handed-over':'Handed over',applied:'In the tech pack'};
+  $('#main').innerHTML=`<div class="card"><h2>Which sample is on the table?</h2><p class="sub">The form is made from tech pack ${d.version?`v${d.version}`:'(draft)'}: every measurement, callout, placement, material and colourway to check, ready to tick off.</p>
+    ${d.draftOnly?'<div class="banner warn">This pack has not been published. Staff can review against the draft; the client sees reviews once v1 is out.</div>':''}
+    <div class="samples">${stages.map(st=>{const s=d.sampling.find(x=>x.stage===st),r=byStage.get(st);return `<div class="sample"><div><b>${esc(st)}</b><div class="meta">${s?.due?`Due ${esc(s.due)} · `:''}${r?`${word[r.status]} · ${esc(r.summary.verdictWords)} · ${r.summary.checked}/${r.summary.total} checked${r.summary.must?` · ${r.summary.must} must-fix`:''}`:s?esc(s.status):''}</div></div>${r?`<button class="sbtn dark" type="button" data-act="open" data-id="${esc(r.id)}">${r.status==='applied'?'Read it':'Open the review'}</button>`:`<button class="sbtn go" type="button" data-act="start" data-stage="${esc(st)}">Start the review</button>`}</div>`}).join('')||'<p class="sub">The pack lists no samples yet.</p>'}</div>
+    <form class="row noprint" id="newStage" style="margin-top:16px"><input class="t" name="stage" placeholder="Another sample (e.g. Proto 2, Salesman sample)" maxlength="60" style="max-width:360px"><button class="sbtn">Start a review for it</button></form></div>`;
+}
+async function openReview(id){
+  const d=await api(`/v1/sample-reviews/${id}`);S.role=d.role;S.product=d.product;S.pack=d.pack;setReview(d.review);
+  history.replaceState(null,'',`/samples/${productId}?review=${encodeURIComponent(id)}${isWork&&params.get('as')?'&as=work':''}`);
+  $('#title').textContent=`${d.review.stage} · ${d.product.title}`;$('#crumb').textContent=`${d.product.room} · Sample review against tech pack ${d.review.packVersion?`v${d.review.packVersion}`:'(draft)'}`;document.title=`${d.review.stage} review — ${d.product.title}`;
+  render();S.presence?.stop();S.presence=window.FBPresence?.watch({type:'sample-review',id,el:$('#people'),token:()=>TOKEN});
+}
+function setReview(r){S.review=r;S.rev=r.rev;S.form=JSON.parse(JSON.stringify(r.form||{}));S.form.measured=S.form.measured||{};S.form.items=S.form.items||{};S.form.pins=S.form.pins||[];S.form.photos=S.form.photos||[];S.form.adopt=S.form.adopt||[]}
+
+// ---- saving: a change marks its path dirty; on a clash the latest saved form is taken and our dirty paths put back on top ----
+const getP=(o,p)=>p.split('\u0001').reduce((a,k)=>a==null?undefined:a[k],o);
+function setP(o,p,v){const k=p.split('\u0001');let a=o;for(let i=0;i<k.length-1;i++){if(a[k[i]]==null||typeof a[k[i]]!=='object')a[k[i]]={};a=a[k[i]]}if(v===undefined)delete a[k[k.length-1]];else a[k[k.length-1]]=v}
+const path=(...k)=>k.join('\u0001');
+function change(p,v,{now=false,redraw=true}={}){if(!editable())return;S.presence?.editing(true);setP(S.form,p,v);S.dirty.add(p);if(redraw)render();saved('Saving…');clearTimeout(S.timer);S.timer=setTimeout(save,now?0:700)}
+async function save(){
+  if(S.saving){clearTimeout(S.timer);S.timer=setTimeout(save,400);return}
+  if(!S.dirty.size)return;S.saving=true;const sent=new Set(S.dirty);S.dirty.clear();
+  try{const d=await api(`/v1/sample-reviews/${S.review.id}`,{method:'PUT',body:{form:S.form,rev:S.rev}});S.review=d.review;S.rev=d.review.rev;saved('Saved');}
+  catch(e){
+    if(e.status===409&&e.data?.code==='STALE'){const theirs=e.data.review,mine=S.form;setReview(theirs);for(const p of sent)setP(S.form,p,getP(mine,p));for(const p of S.dirty)setP(S.form,p,getP(mine,p));for(const p of sent)S.dirty.add(p);toast(`${theirs.updatedBy||'A teammate'} saved too — your changes were put on top of theirs`);render();S.saving=false;return save()}
+    for(const p of sent)S.dirty.add(p);saved(e.message,true);if(e.status===0){clearTimeout(S.timer);S.timer=setTimeout(save,5000)}
+  }finally{S.saving=false}
+}
+function saved(t,bad){const el=$('#saved');el.textContent=t;el.classList.toggle('bad',Boolean(bad))}
+// what a teammate saved shows up here too, unless you are typing
+setInterval(async()=>{if(!S.review||S.saving||S.dirty.size||document.hidden)return;const a=document.activeElement;if(a&&/INPUT|TEXTAREA|SELECT/.test(a.tagName))return;
+  try{const d=await api(`/v1/sample-reviews/${S.review.id}`);if(d.review.rev!==S.rev){setReview(d.review);render();saved(`Updated by ${d.review.updatedBy||'a teammate'}`)}}catch{}},8000);
+
+// ---- images: shrunk on the device before they are sent ----
+function shrink(file,max=1400){return new Promise((res,rej)=>{const u=URL.createObjectURL(file),im=new Image();im.onload=()=>{const k=Math.min(1,max/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=Math.round(im.width*k);c.height=Math.round(im.height*k);c.getContext('2d').drawImage(im,0,0,c.width,c.height);URL.revokeObjectURL(u);res(c.toDataURL('image/jpeg',.82))};im.onerror=()=>{URL.revokeObjectURL(u);rej(new Error('That file is not a picture'))};im.src=u})}
+
+// ---- the page ----
+const fmt=n=>n==null?'—':String(n);
+const pomClass=m=>m.measured==null?'':m.out&&!m.adopted?'out':'in';
+const diffText=m=>m.diff==null?'':`${m.diff>0?'+':''}${m.diff}${m.out&&!m.adopted?' out':m.adopted?' new spec':''}`;
+// one card brought up to date while someone types, so moving to the next box never redraws the page under their finger
+function pomCard(card,code){const m=FF.measurements(S.pack,S.form).find(x=>x.code===code);if(!card||!m)return;card.className=`pom ${pomClass(m)}`;card.querySelector('.diff').textContent=diffText(m);card.querySelector('.chk').classList.toggle('hidden',!(m.measured!=null&&(m.out||m.adopted)))}
+function renderSteps(){const f=S.form,sum=FF.summary(S.pack,f);$('#steps').classList.remove('hidden');
+  $('#steps').innerHTML=[['about','About',f.at&&f.reviewers],['measure',`Measure <b>${sum.measured}/${sum.poms}</b>`,sum.measured===sum.poms],['check',`Check <b>${sum.checked}/${sum.total}</b>`,sum.checked===sum.total],['mark',`Mark <b>${sum.pins}</b>`,false],['photos',`Photos <b>${f.photos.length}</b>`,f.photos.length>0],['verdict','Verdict',Boolean(f.verdict)]].map(([id,t,done])=>`<a href="#${id}" class="${done?'done':''}">${t}</a>`).join('')}
+function render(){
+  const p=S.pack,f=S.form,r=S.review,sum=FF.summary(p,f),list=FF.checklist(p),ms=FF.measurements(p,f),ro=RO(),size=f.sampleSize||window.FBSample.sampleSizeOf(p);
+  renderSteps();
+  const state=r.status==='applied'?`<div class="banner ok"><b>In the tech pack.</b> This review was written into the draft${r.appliedVersion?` that becomes v${r.appliedVersion}`:''} on ${new Date(r.appliedAt).toLocaleDateString()}. It is read-only now.</div>`:r.status==='handed-over'?`<div class="banner ok"><b>Handed over</b> ${new Date(r.handedOverAt).toLocaleString()}. It is on the draft tech pack as this sample's review. ${S.role==='admin'?'Check it, then write it into the pack.':'Future Basics turns it into the next version; you can still change it until then.'}</div>`:'';
+  const groups=FF.GROUPS.map(g=>[g,list.filter(x=>x.group===g)]).filter(([,xs])=>xs.length);
+  const sk=new Map((p.sketches||[]).map(s=>[s.id,s]));
+  const thumb=x=>{const s=x.sketchId&&sk.get(x.sketchId);return s&&s.image&&x.x!=null?`<div class="thumb" style="background-image:url('${s.image}')"><i style="left:${x.x*100}%;top:${x.y*100}%"></i></div>`:'<div class="thumb none"></div>'};
+  const segs=(name,vals,cur,attrs)=>`<div class="seg" role="group" aria-label="${esc(name)}">${vals.map(([v,t])=>`<button type="button" data-v="${v}" class="${cur===v?'on':''}" aria-pressed="${cur===v}" ${attrs(v)} ${ro?'disabled':''}>${t}</button>`).join('')}</div>`;
+  $('#main').innerHTML=`${state}
+  <section class="card" id="about"><h2>The review</h2><p class="sub">${esc(r.stage)} sample, checked against tech pack ${r.packVersion?`v${r.packVersion}`:'(draft)'}${r.updatedBy?` · last saved by ${esc(r.updatedBy)}`:''}</p>
+    <div class="fields"><label><span>Reviewed on</span><input class="t" type="date" data-f="at" value="${esc(f.at||'')}" ${ro?'disabled':''}></label><label><span>Who is in the room</span><input class="t" data-f="reviewers" value="${esc(f.reviewers||'')}" placeholder="Names" ${ro?'disabled':''}></label><label><span>Sample size</span><select class="t" data-f="sampleSize" ${ro?'disabled':''}>${(p.sizes||[]).map(s=>`<option ${s===size?'selected':''}>${esc(s)}</option>`).join('')}</select></label></div></section>
+  <section class="card" id="measure"><h2>Measure</h2><p class="sub">Size ${esc(size)} against the spec. Out of tolerance turns red. Tick “Make it the spec” to accept the sample’s number; the size run moves with it.</p>
+    ${ms.length?`<div class="poms">${ms.map(m=>`<div class="pom ${pomClass(m)}" data-code="${esc(m.code)}"><div class="h"><b>${esc(m.code)} ${esc(m.name)}</b><span class="spec">${fmt(m.spec)} ±${m.tolerance}</span></div><div class="m"><input class="t" inputmode="decimal" data-pom="${esc(m.code)}" value="${esc(f.measured[m.code]||'')}" aria-label="${esc(m.name)} measured" placeholder="in" ${ro?'disabled':''}><span class="diff">${diffText(m)}</span></div><label class="chk ${m.measured!=null&&(m.out||m.adopted)?'':'hidden'}"><input type="checkbox" data-adopt="${esc(m.code)}" ${m.adopted?'checked':''} ${ro?'disabled':''}> Make it the spec</label></div>`).join('')}</div>`:'<p class="sub">The pack has no points of measure.</p>'}</section>
+  <section class="card" id="check"><h2>Check against the pack</h2><p class="sub">Every line comes from the pack. OK, Fix, or N/A when it does not apply to this sample. A Fix asks what to change.</p>
+    ${groups.map(([g,xs])=>`<div class="group"><div class="gh"><h3>${esc(g)}</h3>${ro?'':`<button type="button" class="sbtn noprint" data-act="allok" data-g="${esc(g)}">Mark the rest OK</button>`}</div>${xs.map(x=>{const it=f.items[x.key]||{};return `<div class="item">${thumb(x)}<div class="what"><b>${esc(x.title)}</b>${x.detail?`<small>${esc(x.detail)}</small>`:''}</div>${segs(x.title,[['ok','OK'],['fix','Fix'],['na','N/A']],it.s,v=>`data-item="${esc(x.key)}"`)}${it.s==='fix'?`<div class="fixbox"><textarea class="t" data-note="${esc(x.key)}" placeholder="What to change, as the factory should read it" ${ro?'disabled':''}>${esc(it.note||'')}</textarea><div class="row">${segs('How much it matters',[['must','Must fix'],['should','Should fix']],it.priority||'must',v=>`data-prio="${esc(x.key)}"`)}<div class="ph">${it.photo?`<img src="${it.photo}" alt="Photo of the fix">${ro?'':`<button type="button" class="sbtn danger" data-act="rmitemphoto" data-k="${esc(x.key)}">Remove photo</button>`}`:ro?'':`<label class="sbtn" style="cursor:pointer">Add a photo<input type="file" accept="image/*" capture="environment" class="hidden" data-itemphoto="${esc(x.key)}"></label>`}</div></div></div>`:''}</div>`}).join('')}</div>`).join('')||'<p class="sub">The pack has nothing to check yet.</p>'}</section>
+  <section class="card" id="mark"><h2>Mark on the flats</h2><p class="sub">Something the pack does not name? Tap the flat where it is. Grey numbers are the pack's callouts.</p>
+    <div class="flats">${(p.sketches||[]).filter(s=>s.image).map(s=>`<div class="flat"><span class="meta">${esc(s.label||s.view)}</span><div class="stage" data-flat="${esc(s.id)}">${''}<img src="${s.image}" alt="${esc(s.label||s.view)} flat" draggable="false">${(s.callouts||[]).filter(c=>c.x!=null).map(c=>`<span class="dot ref" style="left:${c.x*100}%;top:${c.y*100}%">${c.n}</span>`).join('')}${f.pins.map((q,k)=>q.sketchId===s.id?`<span class="dot pin" style="left:${q.x*100}%;top:${q.y*100}%">${k+1}</span>`:'').join('')}</div></div>`).join('')||'<p class="sub">The pack has no flats to mark.</p>'}</div>
+    ${f.pins.length?`<div class="pins">${f.pins.map((q,k)=>`<div class="pinrow"><span class="n">${k+1}</span><div style="display:grid;gap:8px"><textarea class="t" data-pin="${k}" placeholder="What is wrong here, and what to change" ${ro?'disabled':''}>${esc(q.note||'')}</textarea>${segs('How much it matters',[['must','Must fix'],['should','Should fix']],q.priority||'must',v=>`data-pinprio="${k}"`)}</div>${ro?'':`<button type="button" class="sbtn danger" data-act="rmpin" data-k="${k}">Remove</button>`}</div>`).join('')}</div>`:''}</section>
+  <section class="card" id="photos"><h2>Photos of the sample</h2><p class="sub">Up to ${FF.LIMITS.photos}. The first four go into the pack with the review.</p>
+    <div class="photos">${f.photos.map((ph,k)=>`<figure><img src="${ph.image}" alt="${esc(ph.label||'Sample photo')}">${ro?'':`<button type="button" class="sbtn danger" data-act="rmphoto" data-k="${k}" aria-label="Remove photo">✕</button>`}</figure>`).join('')}</div>
+    ${ro||f.photos.length>=FF.LIMITS.photos?'':`<label class="sbtn noprint" style="cursor:pointer;display:inline-block;margin-top:10px">Add photos<input type="file" accept="image/*" multiple class="hidden" data-photos></label>`}</section>
+  <section class="card" id="verdict"><h2>Verdict</h2><p class="sub">What the room decided.</p>
+    <div class="verdicts">${[['approved','Approved','Ready for production as it is'],['approved-with-changes','Approved with changes','Go to production with the fixes below'],['revise','Another sample','Make the fixes and send the next sample'],['rejected','Rejected','Start this sample again']].map(([v,t,s])=>`<button type="button" data-verdict="${v}" class="${f.verdict===v?'on':''}" aria-pressed="${f.verdict===v}" ${ro?'disabled':''}><b>${t}</b><small>${s}</small></button>`).join('')}</div>
+    <div class="sum"><div><b>${sum.must}</b><span class="meta">Must fix</span></div><div><b>${sum.should}</b><span class="meta">Should fix</span></div><div><b>${sum.out}</b><span class="meta">Out of tolerance</span></div><div><b>${sum.adopted}</b><span class="meta">New spec</span></div><div><b>${sum.checked}/${sum.total}</b><span class="meta">Checked</span></div></div>
+    <label style="display:grid;gap:6px"><span class="meta">Anything else the room agreed</span><textarea class="t" data-f="notes" ${ro?'disabled':''}>${esc(f.notes||'')}</textarea></label>
+    <h3 style="font-weight:500;margin:18px 0 8px">What goes into the tech pack</h3>${(()=>{const fx=FF.corrections(p,f),outs=ms.filter(m=>m.out&&!m.adopted),ad=ms.filter(m=>m.adopted);return fx.length||outs.length||ad.length?`<ol class="fixlist">${fx.map(c=>`<li><span class="${c.priority==='must'?'must':''}">${c.priority==='must'?'Must fix':'Should fix'}</span> · <b>${esc(c.area)}</b>: ${esc(c.change)}</li>`).join('')}${outs.map(m=>`<li><span class="must">Measurement</span> · <b>${esc(m.code)} ${esc(m.name)}</b>: ${m.measured} against ${m.spec} (±${m.tolerance})</li>`).join('')}${ad.map(m=>`<li>New spec · <b>${esc(m.code)} ${esc(m.name)}</b>: ${m.measured} at size ${esc(size)}; the size run moves with it</li>`).join('')}</ol>${f.pins.length?`<p class="meta" style="margin-top:8px">Pins become callouts on the flats the factory sees.</p>`:''}`:'<p class="sub">Nothing to change yet.</p>'})()}
+    <div class="row noprint" style="margin-top:18px">${r.status==='open'?`<button type="button" class="sbtn go" data-act="handover" ${f.verdict?'':'disabled'}>Hand over to the tech pack</button>`:''}${r.status==='handed-over'?'<button type="button" class="sbtn" data-act="reopen">Reopen to change it</button>':''}${S.role==='admin'&&r.status!=='applied'?`<button type="button" class="sbtn dark" data-act="apply" ${f.verdict?'':'disabled'}>Write into the pack</button>`:''}<a class="sbtn" href="/samples/${esc(productId)}${isWork&&params.get('as')?'?as=work':''}">All samples</a>${sum.complete||ro?'':`<span class="meta">${sum.total-sum.checked} line${sum.total-sum.checked===1?'':'s'} and ${sum.poms-sum.measured} measurement${sum.poms-sum.measured===1?'':'s'} still open</span>`}</div></section>`;
+}
+
+// ---- input ----
+document.addEventListener('input',e=>{const t=e.target;if(!S.review)return;
+  if(t.dataset.f!==undefined)return change(path(t.dataset.f),t.value,{redraw:false});
+  if(t.dataset.pom!==undefined){change(path('measured',t.dataset.pom),t.value.trim()||undefined,{redraw:false});pomCard(t.closest('.pom'),t.dataset.pom);renderSteps();return}
+  if(t.dataset.note!==undefined)return change(path('items',t.dataset.note,'note'),t.value,{redraw:false});
+  if(t.dataset.pin!==undefined){S.form.pins[Number(t.dataset.pin)].note=t.value;return change(path('pins'),S.form.pins,{redraw:false})}
+});
+document.addEventListener('change',async e=>{const t=e.target;if(!S.review)return;
+  if(t.dataset.f==='sampleSize')return change(path('sampleSize'),t.value);
+  if(t.dataset.adopt!==undefined){const a=new Set(S.form.adopt);t.checked?a.add(t.dataset.adopt):a.delete(t.dataset.adopt);change(path('adopt'),[...a],{redraw:false});pomCard(t.closest('.pom'),t.dataset.adopt);return renderSteps()}
+  if(t.dataset.itemphoto!==undefined&&t.files[0]){try{const img=await shrink(t.files[0],1000);change(path('items',t.dataset.itemphoto,'photo'),img)}catch(err){toast(err.message)}}
+  if(t.dataset.photos!==undefined&&t.files.length){const room=FF.LIMITS.photos-S.form.photos.length;for(const file of [...t.files].slice(0,room)){try{S.form.photos.push({image:await shrink(file),label:file.name.slice(0,80)})}catch(err){toast(err.message)}}change(path('photos'),S.form.photos)}
+});
+document.addEventListener('click',async e=>{
+  const flat=e.target.closest('[data-flat]');if(flat&&S.review&&editable()){const b=flat.getBoundingClientRect(),x=(e.clientX-b.left)/b.width,y=(e.clientY-b.top)/b.height;if(S.form.pins.length>=FF.LIMITS.pins)return toast('That is as many pins as one review holds');S.form.pins.push({id:Math.random().toString(36).slice(2,10),sketchId:flat.dataset.flat,x:Math.round(x*1e4)/1e4,y:Math.round(y*1e4)/1e4,note:'',priority:'must'});change(path('pins'),S.form.pins);setTimeout(()=>document.querySelector(`[data-pin="${S.form.pins.length-1}"]`)?.focus(),30);return}
+  const b=e.target.closest('button,[data-act]');if(!b)return;
+  if(b.dataset.item){const k=b.dataset.item,cur=S.form.items[k]||{};return change(path('items',k),cur.s===b.dataset.v?undefined:{...cur,s:b.dataset.v,...(b.dataset.v==='fix'&&!cur.priority?{priority:'must'}:{})},{now:b.dataset.v!=='fix'})}
+  if(b.dataset.prio)return change(path('items',b.dataset.prio,'priority'),b.dataset.v);
+  if(b.dataset.pinprio!==undefined){S.form.pins[Number(b.dataset.pinprio)].priority=b.dataset.v;return change(path('pins'),S.form.pins)}
+  if(b.dataset.verdict)return change(path('verdict'),S.form.verdict===b.dataset.verdict?'':b.dataset.verdict,{now:true});
+  const act=b.dataset.act;if(!act)return;
+  if(act==='print')return window.print();
+  if(act==='open')return openReview(b.dataset.id).catch(err=>toast(err.message));
+  if(act==='start'){try{const d=await api(`/v1/products/${productId}/sample-reviews`,{method:'POST',body:{stage:b.dataset.stage}});await openReview(d.review.id)}catch(err){toast(err.message)}return}
+  if(act==='allok'){for(const x of FF.checklist(S.pack).filter(x=>x.group===b.dataset.g&&!S.form.items[x.key])){S.form.items[x.key]={s:'ok'};S.dirty.add(path('items',x.key))}return change(path('items'),S.form.items,{now:true})}
+  if(act==='rmpin'){S.form.pins.splice(Number(b.dataset.k),1);return change(path('pins'),S.form.pins)}
+  if(act==='rmphoto'){S.form.photos.splice(Number(b.dataset.k),1);return change(path('photos'),S.form.photos)}
+  if(act==='rmitemphoto')return change(path('items',b.dataset.k,'photo'),undefined);
+  if(['handover','reopen','apply'].includes(act)){
+    if(act==='apply'&&!confirm('Write this review into the draft tech pack? Accepted measurements become the spec, the fixes become corrections, the pins become callouts, and the next sample is asked for. Publish the pack afterwards as usual.'))return;
+    b.disabled=true;clearTimeout(S.timer);await save();
+    try{const d=await api(`/v1/sample-reviews/${S.review.id}/${act}`,{method:'POST',body:{}});setReview(d.review);render();toast(act==='handover'?'Handed over. It is on the tech pack as this sample’s review.':act==='apply'?'Written into the draft tech pack. Publish it when it is ready.':'Reopened')}catch(err){toast(err.message,4200);b.disabled=false}
+  }
+});
+document.addEventListener('submit',async e=>{if(e.target.id!=='newStage')return;e.preventDefault();const st=new FormData(e.target).get('stage');if(!String(st).trim())return;try{const d=await api(`/v1/products/${productId}/sample-reviews`,{method:'POST',body:{stage:st}});await openReview(d.review.id)}catch(err){toast(err.message)}});
+window.addEventListener('beforeunload',e=>{if(S.dirty.size||S.saving){save();e.preventDefault();e.returnValue=''}});
+boot();
+})();
+</script></body></html>

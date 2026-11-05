@@ -89,6 +89,24 @@ acrylics.
 - **Engineering:** hard goods, toys, home objects and electronics as 3D parts in an exploded view, with tooling and cost, a bill of materials,
   and STL and STEP files. Starting points include a CD player, turntable, headphones, a smart speaker, a power bank and a lamp.
 
+### Sample review form (good for a "from the table" cut)
+`/samples/:product`. The form a team fills in when a sample arrives, made from the tech pack the sample was made to, on a tablet at the table.
+
+- Every measurement at the sample size, with its tolerance: out of tolerance turns red as you type; **Make it the spec** accepts the sample's number and the size run moves with it.
+- Every callout, artwork placement, material, colourway, construction line and label from the pack, each one OK, Fix or N/A. A Fix says what to change, must fix or should fix, with a photo.
+- Tap the flat to pin anything the pack does not name.
+- A verdict (approved, approved with changes, another sample, rejected), then **Hand over to the tech pack**: the fixes become corrections in the next version, and the pins become callouts the factory sees in its language.
+- The next sample's form opens with the last one's fixes at the top.
+
+**What makes it good on camera:** the "What goes into the tech pack" list writing itself as the room ticks through the lines.
+
+### Shared workspace
+`/workspace`, in the hub. Where a brand's team works together.
+
+- **Team chat:** a #general channel and one per drop or product. The team's channels are theirs; typing **@futurebasics** brings Future Basics into a channel. **@name** reaches a teammate by email.
+- **Board:** tasks given to a teammate or to Future Basics, with To do, Doing, In review and Done, due dates, and late ones marked.
+- **Who's here:** who has a tech pack, a sample review or a piece in the Studio open right now. The same initials show on the pack itself, and a save from an older copy never overwrites someone else's.
+
 ### The tech pack and the factory
 - Measurements in inches with cm alongside, a bill of materials, colourways with Pantone C codes, callouts pinned on the picture, sample
   stages and inspection criteria.
@@ -124,6 +142,8 @@ Each one is a single idea, made for a phone screen first (9:16), with captions o
 | 7 | **"Make a print from two prints"** | 20 s | Blend two prints, preview, keep, then make it an all-over repeat on a shirt. |
 | 8 | **"Not just clothes"** | 30 s | A shoe last and its upper pieces, a plush, then an exploded CD player in 3D. |
 | 9 | **"What does it cost to make?"** | 20 s | The cost estimate block: landed cost, margin, price breaks, then export to Excel. |
+| 10 | **"The sample review"** | 30 s | A hoodie sample on the table, an iPad beside it. Type two measurements (one turns red), mark a callout Fix, tap the flat to pin the hem, choose Another sample, Hand over. Cut to the tech pack: the corrections and the pin on the flat. |
+| 11 | **"Your team, one room"** | 20 s | #tour-hoodie channel, @futurebasics brings us in, a task moves to Done on the board, two sets of initials on the same tech pack. |
 
 **A shape that works for each one:** a hook in the first 2 seconds (show the result first), then the steps, then the payoff, then an end card
 with the URL.

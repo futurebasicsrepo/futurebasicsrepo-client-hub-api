@@ -2438,6 +2438,97 @@ export async function migrate() {
       created_at timestamptz not null default now()
     );
     create index if not exists product_offer_moves_idx on product_offer_moves(offer_id,created_at);
+    -- A sample review filled in by the room's team (or staff) around the table (src/sample-form.js): made from the tech pack version the sample
+    -- was made to, saved as people type (rev counts saves, so two people on one review merge instead of overwriting), handed over into the pack's
+    -- draft, then applied as the next version.
+    create table if not exists sample_reviews (
+      id uuid primary key default gen_random_uuid(),
+      client_id uuid not null references clients(id) on delete cascade,
+      product_id uuid not null references products(id) on delete cascade,
+      tech_pack_id uuid not null references tech_packs(id) on delete cascade,
+      stage text not null,
+      pack_version integer not null default 0,
+      form jsonb not null default '{}'::jsonb,
+      status text not null default 'open' check (status in ('open','handed-over','applied')),
+      rev integer not null default 1,
+      created_by uuid references users(id) on delete set null,
+      updated_by uuid references users(id) on delete set null,
+      updated_by_name text not null default '',
+      handed_over_at timestamptz, handed_over_by uuid references users(id) on delete set null,
+      applied_at timestamptz, applied_by uuid references users(id) on delete set null, applied_version integer,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
+    -- who last saved the pack by hand (staff, the client's team, a sample review handed over): a save from an older copy is refused only when it was someone else
+    alter table tech_packs add column if not exists updated_by uuid references users(id) on delete set null;
+    create unique index if not exists sample_reviews_live_idx on sample_reviews(tech_pack_id,stage) where status<>'applied';
+    create index if not exists sample_reviews_product_idx on sample_reviews(product_id,updated_at desc);
+    -- Team chat inside a room (src/team-chat-routes.js): channels for the room's team; Future Basics reads and writes only in channels the team
+    -- brought it into (staff_in), by adding it or by mentioning @futurebasics.
+    create table if not exists team_channels (
+      id uuid primary key default gen_random_uuid(),
+      client_id uuid not null references clients(id) on delete cascade,
+      name text not null,
+      product_id uuid references products(id) on delete set null,
+      staff_in boolean not null default false,
+      created_by uuid references users(id) on delete set null,
+      created_at timestamptz not null default now(),
+      archived_at timestamptz
+    );
+    create unique index if not exists team_channels_name_idx on team_channels(client_id,lower(name)) where archived_at is null;
+    create unique index if not exists team_channels_product_idx on team_channels(client_id,product_id) where product_id is not null and archived_at is null;
+    create table if not exists team_messages (
+      id uuid primary key default gen_random_uuid(),
+      channel_id uuid not null references team_channels(id) on delete cascade,
+      client_id uuid not null references clients(id) on delete cascade,
+      author_id uuid references users(id) on delete set null,
+      author_role text not null check (author_role in ('admin','client','system')),
+      author_name text not null default '',
+      body text not null,
+      reply_to_id uuid references team_messages(id) on delete set null,
+      mentions uuid[] not null default '{}',
+      created_at timestamptz not null default now(),
+      edited_at timestamptz,
+      deleted_at timestamptz
+    );
+    create index if not exists team_messages_thread_idx on team_messages(channel_id,created_at);
+    create table if not exists team_channel_reads (
+      channel_id uuid not null references team_channels(id) on delete cascade,
+      user_id uuid not null references users(id) on delete cascade,
+      last_read_at timestamptz not null default now(),
+      primary key (channel_id,user_id)
+    );
+    -- Who is on what right now (src/workspace-routes.js): a heartbeat every few seconds from a page that has a pack, a piece or a review open
+    create table if not exists workspace_presence (
+      user_id uuid not null references users(id) on delete cascade,
+      client_id uuid not null references clients(id) on delete cascade,
+      entity_type text not null,
+      entity_id text not null,
+      name text not null default '',
+      role text not null default 'client',
+      mode text not null default 'viewing' check (mode in ('viewing','editing')),
+      seen_at timestamptz not null default now(),
+      primary key (user_id,entity_type,entity_id)
+    );
+    create index if not exists workspace_presence_entity_idx on workspace_presence(entity_type,entity_id,seen_at desc);
+    -- Assign and track: a piece of work given to someone on the room's team (or Future Basics), with where it stands and when it is due
+    create table if not exists work_assignments (
+      id uuid primary key default gen_random_uuid(),
+      client_id uuid not null references clients(id) on delete cascade,
+      product_id uuid references products(id) on delete cascade,
+      title text not null,
+      notes text not null default '',
+      assignee_id uuid references users(id) on delete set null,
+      assignee_fb boolean not null default false,
+      status text not null default 'todo' check (status in ('todo','doing','review','done')),
+      due date,
+      created_by uuid references users(id) on delete set null,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now(),
+      done_at timestamptz
+    );
+    alter table work_assignments add column if not exists assignee_fb boolean not null default false;
+    create index if not exists work_assignments_room_idx on work_assignments(client_id,status,due);
     insert into clients(slug,name,email_domains)
       values ('ouster','Ouster',array['ouster.io','ouster.com'])
       on conflict (slug) do nothing;

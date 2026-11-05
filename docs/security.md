@@ -150,6 +150,14 @@ J278 checks sign-out everywhere end to end.
 
 It is not in force or shown anywhere yet.
 
+### The shared workspace and sample reviews stay in the room
+
+- Team chat (`src/team-chat-routes.js`): a room's channels are its own. Staff read and write only in channels the team brought Future Basics into (by switching it on, or by `@futurebasics`); every other channel is refused to them as not found. Another room is refused everything.
+- The board and presence (`src/workspace-routes.js`): tasks go only to someone on the room's team or to Future Basics; a heartbeat is accepted only for a pack, review or concept in the person's own room. A client preview never shows as a person and cannot write.
+- Sample reviews (`src/sample-form-routes.js`): only the room and staff reach a review; the form a client gets carries no costs, suppliers or prices; only staff write a review into the pack.
+- A staff save of a tech pack made from an older copy is refused when someone else saved in between (`tech_packs.updated_by`), so a hand-over or a colleague's edit is never wiped.
+- Journeys J282 and J283 try each of these from a second room, a preview and a staff session.
+
 ## Next phase
 
 - **Phase 4 (optional):** move the most valuable engine work (pattern drafting, 3D assembly) to the server, so the browser gets results, never the method.
