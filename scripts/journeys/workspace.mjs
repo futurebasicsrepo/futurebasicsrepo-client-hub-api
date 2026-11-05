@@ -2,6 +2,8 @@
 // hands it over and staff write it into the pack; team chat stays the team's until it brings Future Basics in; tasks and presence stay inside the
 // room. A second room tries every door into the first and is refused.
 import { journey, ok, summary, api, jpeg, sql, stamp, forge } from './lib.mjs';
+import { createRequire } from 'node:module';
+let playwright = null; try { playwright = createRequire(import.meta.url)(process.env.PLAYWRIGHT_PATH || 'playwright'); } catch {}
 const BASE = 'http://127.0.0.1:3130', call = api(BASE);
 const start = async tag => (await call('/v1/public/start', { body: { email: `ws-${tag}-${stamp}-${Math.random().toString(36).slice(2, 6)}@chaos.test`, name: `${tag} Lead`, title: `Workspace ${tag}`, photos: [jpeg()] } })).json;
 const A = await start('a'), B = await start('b'), P = A.product.id, ROOM = A.client.id;
@@ -78,6 +80,49 @@ await journey('J283', 'Team chat, the board and who is here stay inside the room
   const others = (await s('/v1/workspace/presence', { body: { type: 'tech-pack', id: P } })).json.others; ok(others.length === 1 && others[0].mode === 'editing', 'staff on the same pack see them changing it', others);
   const here = (await a('/v1/workspace/presence')).json.people; ok(here.some(p => p.on.some(o => o.type === 'tech-pack' && o.id === P)) && !(await b('/v1/workspace/presence')).json.people.length, 'Who\'s here shows it to the room, and nothing to another room', here);
   ok((await call('/workspace')).status === 200 && (await call('/presence.js')).ct.includes('javascript'), 'the page and the presence script are served');
+});
+
+// what a live stream hears in `ms` while `act` runs
+async function hear(token, query, act, ms = 900) {
+  const ctl = new AbortController(), got = []; let status = 0;
+  const run = (async () => { try { const r = await fetch(`${BASE}/v1/team-chat/live${query}`, { headers: { Authorization: 'Bearer ' + token }, signal: ctl.signal }); status = r.status; if (!r.ok) return;
+    const rd = r.body.getReader(), dec = new TextDecoder(); let buf = '';
+    for (;;) { const { value, done } = await rd.read(); if (done) break; buf += dec.decode(value, { stream: true }); let i; while ((i = buf.indexOf('\n\n')) >= 0) { const blk = buf.slice(0, i); buf = buf.slice(i + 2); const d = blk.split('\n').filter(l => l.startsWith('data:')).map(l => l.slice(5)).join(''); if (d) { const j = JSON.parse(d); if (j.t) got.push(j); } } } } catch {} })();
+  await new Promise(r => setTimeout(r, 250)); await act(); await new Promise(r => setTimeout(r, ms)); ctl.abort(); await run; return { status, got };
+}
+
+await journey('J286', 'Team chat is live: a message shows on a teammate\'s open workspace at once (not on the next check), with the live light on; the stream names only the channel, never the words; another room hears nothing, staff hear only channels the team brought them into, and the stream needs a sign-in', async () => {
+  const gen = (await a('/v1/team-chat/channels')).json.channels.find(c => c.name === 'general').id, prod = (await a('/v1/team-chat/channels')).json.channels.find(c => c.staffIn)?.id;
+  ok(Boolean(gen && prod), 'the room has #general and a channel Future Basics is in (from J283)');
+  ok((await call('/v1/team-chat/live')).status === 401, 'no sign-in, no stream');
+  ok((await s('/v1/team-chat/live')).status === 422, 'staff name the room');
+  const mine = await hear(A.token, '', () => a(`/v1/team-chat/channels/${gen}/messages`, { body: { body: 'Secret colour is teal' } }));
+  ok(mine.status === 200 && mine.got.some(e => e.channel === gen && e.kind === 'message'), 'the room hears its own channel at once', mine);
+  ok(!JSON.stringify(mine.got).includes('teal'), 'the nudge carries no words: the page fetches the thread the usual way');
+  const other = await hear(B.token, '', () => a(`/v1/team-chat/channels/${gen}/messages`, { body: { body: 'again' } }));
+  ok(other.status === 200 && other.got.length === 0, 'another room hears nothing', other.got);
+  const staffGen = await hear(ADMIN, `?room=${ROOM}`, () => a(`/v1/team-chat/channels/${gen}/messages`, { body: { body: 'team only' } }));
+  ok(staffGen.got.length === 0, 'staff do not hear a channel the team has kept to itself', staffGen.got);
+  const staffProd = await hear(ADMIN, `?room=${ROOM}`, () => a(`/v1/team-chat/channels/${prod}/messages`, { body: { body: 'for FB' } }));
+  ok(staffProd.got.some(e => e.channel === prod), 'and do hear the one Future Basics is in', staffProd.got);
+
+  if (!playwright) { ok(true, 'the page part needs a browser'); return; }
+  const mate = sql(`insert into users(client_id,email,name,role) values('${ROOM}','ws-mate-${stamp}@chaos.test','Jo Mate','client') returning id`).split('\n')[0];
+  const mateT = await forge({ sub: mate, clientId: ROOM, role: 'client', email: `ws-mate-${stamp}@chaos.test` });
+  const br = await playwright.chromium.launch();
+  try {
+    const ctx = await br.newContext({ viewport: { width: 1280, height: 860 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.client.token', t); } catch {} }, A.token);
+    const page = await ctx.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
+    await page.goto(`${BASE}/workspace?channel=${gen}`, { waitUntil: 'load' }); await page.waitForSelector('#thread .mc-msgs');
+    await page.waitForSelector('#liveDot.on', { timeout: 8000 }).catch(() => {}); ok(await page.$('#liveDot.on'), '1. the live light comes on');
+    const t0 = Date.now(); ok((await call(`/v1/team-chat/channels/${gen}/messages`, { token: mateT, body: { body: 'Jo here: the fit sample just landed' } })).status === 201, 'a teammate says something');
+    const shown = await page.waitForFunction(() => /fit sample just landed/.test(document.querySelector('#thread')?.textContent || ''), null, { timeout: 4000 }).then(() => true).catch(() => false);
+    ok(shown && Date.now() - t0 < 4000, `2. it is on the open page at once (${Date.now() - t0} ms; the safety-net check is every 30 s)`);
+    await call(`/v1/team-chat/channels/${prod}/messages`, { token: mateT, body: { body: 'over here' } });
+    await page.waitForFunction(id => /\d/.test(document.querySelector(`[data-ch="${id}"] .u`)?.textContent || ''), prod, { timeout: 4000 }).catch(() => {});
+    ok(await page.$(`[data-ch="${prod}"] .u`), '3. a message in another channel lights its unread count at once');
+    ok(errs.length === 0, 'no page errors', errs); await ctx.close();
+  } finally { await br.close(); }
 });
 
 process.exit(summary() ? 1 : 0);

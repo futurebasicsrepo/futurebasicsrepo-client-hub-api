@@ -4655,5 +4655,40 @@ await journey('J284', 'The Studio\'s production tools for a physical product and
   } finally { await b.close(); }
 });
 
+await journey('J285', 'Who is here in the Studio: a concept open by two of the team shows the other one by Save, turns amber when they change it, says so once if both have changes, goes back to looking after a save, and a room never sees a concept Future Basics is drawing for no room', async () => {
+  const { brands, plan } = await conceptSetup();
+  try {
+    const line = plan.lines.find(l => l.category === 'tops') || plan.lines[0], c = (await K(`/plans/${plan.plan.id}/lines/${line.id}/concepts`, { body: { count: 1 } })).json.concepts[0];
+    const beat = (t, mode) => call('/v1/workspace/presence', { token: t, body: { type: 'concept', id: c.id, mode } });
+    ok((await beat(patT, 'viewing')).status === 200, 'staff can be on a concept that belongs to no room yet');
+    ok((await beat(room.token, 'viewing')).status === 404, 'a room cannot see or appear on it');
+    if (!playwright) { ok(true, 'needs a browser'); return; }
+    const b = await playwright.chromium.launch();
+    try {
+      const oc = await b.newContext({ viewport: { width: 1440, height: 940 } }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); localStorage.setItem('fb.helper.on', '0'); } catch {} }, kyleT);
+      { const lc = ((await fetch(`${BASE}/v1/lab/door`, { headers: { Authorization: 'Bearer ' + kyleT } })).headers.get('set-cookie') || '').split(';')[0].split('='); if (lc[0]) await oc.addCookies([{ name: lc[0], value: lc.slice(1).join('='), domain: new URL(BASE).hostname, path: '/lab' }]); }
+      const page = await oc.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
+      await page.goto(`${BASE}/lab/studio?concept=${c.id}`, { waitUntil: 'networkidle' }); await page.waitForSelector('#pLayers .ly', { timeout: 20000 });
+      await page.waitForSelector('#people span', { timeout: 8000 }).catch(() => {});
+      const first = await page.$$eval('#people span', s => s.map(x => [x.textContent, x.title, x.getAttribute('style') || '']));
+      ok(first.length === 1 && /lab-pat/i.test(first[0][1]) && /looking/.test(first[0][1]), '1. the other person on the concept shows by Save, looking', first);
+      const kyleId = sql(`select id from users where lower(email)='kyle@thefuturebasics.com'`).split('\n')[0];
+      ok(sql(`select mode from workspace_presence where user_id='${kyleId}' and entity_type='concept' and entity_id='${c.id}'`) === 'viewing', '   and this page tells the service it is looking');
+      await page.evaluate(() => touch()); await page.waitForTimeout(600);
+      ok(sql(`select mode from workspace_presence where user_id='${kyleId}' and entity_type='concept' and entity_id='${c.id}'`) === 'editing', '2. a change here says "changing it"');
+      ok((await beat(patT, 'editing')).json.others?.some(o => o.mode === 'editing'), '   and the other person sees it');
+      await page.evaluate(() => { const p = PRES; p.editing(false); p.editing(true); }); await page.waitForTimeout(600);
+      ok(await page.$eval('#people span', x => /changing/.test(x.title) && /ffc94d/i.test(x.getAttribute('style') || '')), '3. the other one turns amber once they change it too', await page.$eval('#people span', x => [x.title, x.getAttribute('style')]));
+      ok(await page.evaluate(() => /last one to save wins/.test(document.getElementById('stToast')?.textContent || '')), '   and the page says so once, while both have changes');
+      await page.evaluate(() => save()); await page.waitForFunction(() => !DIRTY, null, { timeout: 15000 }); await page.waitForTimeout(600);
+      ok(sql(`select mode from workspace_presence where user_id='${kyleId}' and entity_type='concept' and entity_id='${c.id}'`) === 'viewing', '4. after a save it is back to looking');
+      ok(!(await call('/v1/workspace/presence', { token: room.token })).json.people.some(p => p.on.some(o => o.id === c.id)), '5. the room\'s Who\'s here never shows it');
+      await page.close({ runBeforeUnload: true }); await new Promise(r => setTimeout(r, 500));
+      ok(!sql(`select 1 from workspace_presence where user_id='${kyleId}' and entity_type='concept' and entity_id='${c.id}'`), '6. closing the Studio takes this person off it');
+      ok(errs.length === 0, 'no page errors', errs); await oc.close();
+    } finally { await b.close(); }
+  } finally { await cleanup(brands, plan.plan?.id); }
+});
+
 shops.close(); brave.close();
 process.exit(summary() ? 1 : 0);

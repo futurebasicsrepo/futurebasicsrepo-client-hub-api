@@ -35,11 +35,14 @@ export function registerWorkspaceRoutes(app, d) {
   const me = async req => (await pool.query('select id, name, email from users where id=$1', [uid(req)])).rows[0] || { id: uid(req), name: '', email: req.auth?.email || '' };
   const nameOf = u => clip(u?.name || String(u?.email || '').split('@')[0], 80);
 
+  const STAFF_ONLY = 'staff';
   // the room a thing belongs to, if this person may see it: a client only in their own room
   async function roomOfEntity(req, type, id) {
     if (!PRESENCE_TYPES.includes(type) || !UUID.test(String(id || ''))) return null;
     const q = type === 'sample-review' ? 'select client_id from sample_reviews where id=$1' : type === 'concept' ? 'select client_id from lab_concepts where id=$1' : 'select client_id from products where id=$1';
-    const cid = (await pool.query(q, [id]).catch(() => ({ rows: [] }))).rows[0]?.client_id;
+    const row = (await pool.query(q, [id]).catch(() => ({ rows: [] }))).rows[0], cid = row?.client_id;
+    // a concept Future Basics is drawing for no room yet: staff see each other on it, and no room ever does
+    if (row && !cid && type === 'concept' && admin(req)) return STAFF_ONLY;
     if (!cid || (!admin(req) && cid !== req.auth.clientId)) return null;
     return cid;
   }
@@ -52,7 +55,7 @@ export function registerWorkspaceRoutes(app, d) {
     const u = await me(req), mode = req.body?.mode === 'editing' && !req.auth.preview ? 'editing' : 'viewing';
     // a preview of the client's room is staff looking: it is not shown to the room as a person
     if (!req.auth.preview) await pool.query(`insert into workspace_presence(user_id,client_id,entity_type,entity_id,name,role,mode,seen_at) values($1,$2,$3,$4,$5,$6,$7,now())
-      on conflict(user_id,entity_type,entity_id) do update set name=excluded.name, mode=excluded.mode, seen_at=now()`, [u.id, cid, type, id, admin(req) ? `${nameOf(u)} (Future Basics)` : nameOf(u), admin(req) ? 'admin' : 'client', mode]);
+      on conflict(user_id,entity_type,entity_id) do update set name=excluded.name, mode=excluded.mode, seen_at=now()`, [u.id, cid === STAFF_ONLY ? null : cid, type, id, admin(req) ? `${nameOf(u)} (Future Basics)` : nameOf(u), admin(req) ? 'admin' : 'client', mode]);
     // old heartbeats are cleared now and then, so the table stays small
     if (Math.random() < 0.02) pool.query(`delete from workspace_presence where seen_at < now() - interval '1 day'`).catch(() => {});
     return { others: await others(type, id, u.id), liveSeconds: LIVE_SECONDS };

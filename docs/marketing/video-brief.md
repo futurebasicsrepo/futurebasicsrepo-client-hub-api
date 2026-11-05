@@ -119,9 +119,9 @@ acrylics.
 ### Shared workspace
 `/workspace`, in the hub. Where a brand's team works together.
 
-- **Team chat:** a #general channel and one per drop or product. The team's channels are theirs; typing **@futurebasics** brings Future Basics into a channel. **@name** reaches a teammate by email.
+- **Team chat:** a #general channel and one per drop or product. Live: a teammate's message appears on everyone's open page the moment it is sent. The team's channels are theirs; typing **@futurebasics** brings Future Basics into a channel. **@name** reaches a teammate by email.
 - **Board:** tasks given to a teammate or to Future Basics, with To do, Doing, In review and Done, due dates, and late ones marked.
-- **Who's here:** who has a tech pack, a sample review or a piece in the Studio open right now. The same initials show on the pack itself, and a save from an older copy never overwrites someone else's.
+- **Who's here:** who has a tech pack, a sample review or a piece in the Studio open right now. The same initials show on the pack and next to Save in the Studio, and a save from an older copy never overwrites someone else's.
 
 ### The tech pack and the factory
 - Measurements in inches with cm alongside, a bill of materials, colourways with Pantone C codes, callouts pinned on the picture, sample

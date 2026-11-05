@@ -9,6 +9,8 @@
 //   DELETE /v1/team-chat/messages/:id              take back your own message (it reads "Message removed")
 //   GET    /v1/team-chat/rooms                      staff: the rooms with a channel Future Basics is in, and what is unread there
 //   GET    /v1/team-chat/people                     who can be mentioned: the room's team, and Future Basics
+//   GET    /v1/team-chat/live                       a live stream (server-sent events): a nudge the moment a channel of the room changes, so
+//                                                  the page fetches the thread at once. Staff pass ?room= and hear only channels Future Basics is in.
 //
 // What the team says among themselves stays theirs: staff never read a channel the team has not brought them into. A client preview is read-only.
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -30,7 +32,7 @@ export function mentionsIn(text, people) {
 export const channelName = v => clip(v, 40).toLowerCase().replace(/^#/, '').replace(/[^a-z0-9 _-]+/g, '').replace(/\s+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
 
 export function registerTeamChatRoutes(app, d) {
-  const { pool, authenticate, notifyStaff = async () => {}, sendHubEmail = async () => false, hubEmailShell = (t, b) => b, emailEscape = s => String(s), clientHubUrl = '', workHubUrl = '', log = console } = d;
+  const { pool, authenticate, notifyStaff = async () => {}, sendHubEmail = async () => false, hubEmailShell = (t, b) => b, emailEscape = s => String(s), clientHubUrl = '', workHubUrl = '', live = null, log = console } = d;
   const bad = (reply, error, code = 422) => reply.code(code).send({ error });
   const admin = req => req.auth?.role === 'admin';
   const uid = req => (UUID.test(String(req.auth?.sub || '')) ? req.auth.sub : null);
@@ -55,6 +57,8 @@ export function registerTeamChatRoutes(app, d) {
   const msgView = (m, viewer) => ({ id: m.id, author_role: m.author_id && m.author_id === viewer ? 'me' : m.author_role === 'admin' ? 'fb' : `u:${m.author_id || 'gone'}`,
     author_name: m.author_role === 'admin' ? `${m.author_name || 'Future Basics'} · Future Basics` : m.author_name, body: m.deleted_at ? 'Message removed' : m.body, created_at: m.created_at,
     reply_to_id: m.reply_to_id, files: [], noReply: Boolean(m.deleted_at), mine: Boolean(m.author_id && m.author_id === viewer), deleted: Boolean(m.deleted_at) });
+  // tell the room's open pages (src/live.js); staffIn says whether Future Basics staff watching the room should hear it too
+  const nudge = (c, kind, staffIn = c.staff_in) => { live?.publish({ t: 'chat', kind, room: c.client_id, channel: c.id, staffIn: Boolean(staffIn) }).catch?.(() => {}); };
   const system = (c, text) => pool.query(`insert into team_messages(channel_id,client_id,author_role,author_name,body) values($1,$2,'system','',$3)`, [c.id, c.client_id, clip(text, 400)]);
 
   app.get('/v1/team-chat/channels', { preHandler: authenticate }, async (req, reply) => {
@@ -84,7 +88,7 @@ export function registerTeamChatRoutes(app, d) {
     if ((await pool.query('select count(*)::int n from team_channels where client_id=$1 and archived_at is null', [cid])).rows[0].n >= 60) return bad(reply, 'A room holds 60 channels. Archive one first.', 409);
     try {
       const c = (await pool.query(`insert into team_channels(client_id,name,product_id,staff_in,created_by) values($1,$2,$3,$4,$5) returning *`, [cid, name, productId, req.body?.staffIn === true, uid(req)])).rows[0];
-      const u = await me(req); await system(c, `${nameOf(u)} made #${c.name}${c.staff_in ? ' with Future Basics in it' : ''}`);
+      const u = await me(req); await system(c, `${nameOf(u)} made #${c.name}${c.staff_in ? ' with Future Basics in it' : ''}`); nudge(c, 'channel');
       return reply.code(201).send({ channel: channelView({ ...c, product_title: productId ? (await pool.query('select title from products where id=$1', [productId])).rows[0]?.title : '' }) });
     } catch (e) { if (e.code === '23505') return bad(reply, `There is already a #${name}`, 409); throw e; }
   });
@@ -106,6 +110,7 @@ export function registerTeamChatRoutes(app, d) {
     if (req.body?.archived === true) { if (c.name === GENERAL) return bad(reply, '#general stays', 409); await pool.query('update team_channels set archived_at=now() where id=$1', [c.id]); }
     for (const n of notes) await system(c, n);
     const next = (await pool.query('select tc.*, p.title product_title from team_channels tc left join products p on p.id=tc.product_id where tc.id=$1', [c.id])).rows[0];
+    nudge(next, 'channel', c.staff_in || next.staff_in); // taking Future Basics out is news to staff too: the channel leaves their list
     return { channel: channelView(next) };
   });
 
@@ -141,6 +146,7 @@ export function registerTeamChatRoutes(app, d) {
       await pool.query(`insert into notifications(client_id,user_id,type,title,entity_type,entity_id) values($1,$2,'team-chat',$3,'team-channel',$4)`, [c.client_id, id, clip(`${nameOf(u)} mentioned you in #${c.name}: ${text}`, 300), c.id]).catch(() => {});
       sendHubEmail({ to: p.email, subject: `${nameOf(u)} mentioned you in #${c.name}`, html: hubEmailShell(`${nameOf(u)} mentioned you`, `<p><b>${emailEscape(nameOf(u))}</b> in <b>#${emailEscape(c.name)}</b>:</p><p style="padding:14px 16px;border-left:3px solid #4bff9a;background:#f5f5f2;white-space:pre-wrap">${emailEscape(text.slice(0, 1200))}</p><p><a href="${emailEscape(`${clientHubUrl}/workspace?channel=${c.id}`)}">Reply in the hub</a></p>`) }).catch(() => {});
     }
+    nudge(c, 'message', c.staff_in || (!admin(req) && FB_HANDLE.test(text)));
     return reply.code(201).send({ message: msgView(m, u.id) });
   });
 
@@ -149,6 +155,7 @@ export function registerTeamChatRoutes(app, d) {
     const m = (await pool.query('select * from team_messages where id=$1', [req.params.id])).rows[0];
     if (!m || m.author_id !== uid(req)) return bad(reply, 'Only the person who wrote a message can take it back', 404);
     await pool.query('update team_messages set deleted_at=now() where id=$1', [m.id]);
+    const c = (await pool.query('select * from team_channels where id=$1', [m.channel_id])).rows[0]; if (c) nudge(c, 'message');
     return { ok: true };
   });
 
@@ -160,6 +167,14 @@ export function registerTeamChatRoutes(app, d) {
       from team_channels tc join clients c on c.id=tc.client_id left join team_messages m on m.channel_id=tc.id
       where tc.staff_in and tc.archived_at is null group by c.id, c.name order by max(m.created_at) desc nulls last limit 200`, [uid(req)])).rows;
     return { rooms: rows.map(r => ({ id: r.id, name: r.name, channels: r.channels, unread: r.unread, lastAt: r.last_at })) };
+  });
+
+  app.get('/v1/team-chat/live', { preHandler: authenticate }, async (req, reply) => {
+    const cid = roomOf(req); if (!cid) return bad(reply, admin(req) ? 'Say which room (?room=)' : 'Sign in to your room', admin(req) ? 422 : 401);
+    if (!live) return bad(reply, 'Live updates are off; the page checks on its own', 503);
+    const staff = admin(req);
+    live.stream(req, reply, ev => ev?.t === 'chat' && ev.room === cid && (!staff || ev.staffIn), ev => ({ t: 'chat', kind: ev.kind, channel: ev.channel }));
+    return reply;
   });
 
   app.get('/v1/team-chat/people', { preHandler: authenticate }, async (req, reply) => {

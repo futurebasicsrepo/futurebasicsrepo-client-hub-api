@@ -43,7 +43,7 @@ html[data-focus] .bar{padding:4px 10px;min-height:44px;gap:6px}
 @media(max-width:700px){#moreBtn{display:inline-flex}.bar:not(.open) .fold,.bar:not(.open) #recipeBtn{display:none!important}.bar .ttl{min-width:0;flex:1 1 120px}.bar .ttl b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}#pieceSteps{flex:1 1 100%;order:-1}}
 .bar{grid-column:1/-1;display:flex;align-items:center;gap:8px;padding:8px 12px;background:#fff;border-bottom:1px solid var(--line);flex-wrap:wrap;min-height:52px}
 .bar .ttl{display:grid;line-height:1.15;min-width:0;margin-right:auto}.bar .ttl b{font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:38vw}.bar .ttl span{color:var(--dim);font-size:12px}
-.saved{color:var(--dim);font-size:12px;min-width:90px;text-align:right}.saved.dirty{color:#8a5a00}
+.saved{color:var(--dim);font-size:12px;min-width:90px;text-align:right}.people{display:flex;gap:3px;align-items:center}.people:empty{display:none}.people span{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font:600 11px 'Space Grotesk',sans-serif;background:#2c2c31;color:#fff;border:2px solid #4bff9a}.saved.dirty{color:#8a5a00}
 /* one workspace: the picture, the flats front or back, or both side by side (data-v on .studio) */
 .seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;background:#fff;flex:none}.seg button{border:0;background:none;padding:5px 12px;font-weight:600;cursor:pointer;font-size:12.5px;white-space:nowrap}.seg button[aria-pressed=true]{background:var(--ink);color:#fff}.seg button:focus-visible{outline:2px solid var(--ink);outline-offset:-2px}
 .gpl{display:grid;gap:6px}.gprow{display:grid;gap:4px}.gp{display:grid;gap:1px;text-align:left;border:1px solid var(--line);border-radius:10px;background:#fff;padding:7px 10px;cursor:pointer;font-size:12.5px}.gp:hover{border-color:var(--ink)}.gp span{color:var(--dim);font-size:11.5px}.gp small{color:var(--dim);font-size:11px}
@@ -147,7 +147,7 @@ html,body{touch-action:manipulation}
       <div class="pop hidden" id="readyPop" role="dialog" aria-label="Before the tech pack"><div id="readyList"></div></div></div>
     <button class="fold btn q sm" id="undo" type="button" title="Undo (Ctrl Z)">Undo</button>
     <button class="fold btn q sm" id="redo" type="button" title="Redo (Ctrl Shift Z)">Redo</button>
-    <span class="saved pic-only" id="saved" role="status"></span><span class="saved flat-only" id="fsaved" role="status" title="The flats"></span>
+    <span class="people" id="people" aria-live="polite"></span><span class="saved pic-only" id="saved" role="status"></span><span class="saved flat-only" id="fsaved" role="status" title="The flats"></span>
     <a class="btn q sm hidden" id="recipeBtn" href="#" title="Change the base, add-ons or colours this piece was picked with">Edit recipe</a>
     <button class="btn sm" id="save" type="button" title="Save (Ctrl S)">Save</button><button class="btn q sm" id="moreBtn" type="button" aria-expanded="false" title="Every other tool">More</button>
     <button class="btn q sm" id="panelBtn" type="button" aria-pressed="true" title="Show or hide the panel on the right (⌘\)">Panel</button>
@@ -261,6 +261,7 @@ html,body{touch-action:manipulation}
 <dialog id="askDlg" style="border:0;border-radius:20px;padding:0;width:min(480px,94vw)"><form method="dialog" style="padding:20px;display:grid;gap:12px"><h3 id="askTitle" style="margin:0;font-size:16px;line-height:1.35"></h3><p class="note" id="askText" style="font-size:13px"></p><div class="row" style="justify-content:flex-end"><button class="btn" value="no" type="submit">Cancel</button><button class="btn go" value="yes" type="submit" id="askYes">Yes</button></div></form></dialog>
 <input type="file" id="fileIn" accept="image/*" multiple class="hidden">
 <script src="/lab/finish.js"></script>
+<script src="/presence.js"></script>
 <script src="/lab/nav.js"></script>
 <script>try{if(!localStorage.getItem('fb.admin.token')&&localStorage.getItem('fb.client.token'))document.documentElement.dataset.labClient='1'}catch{}</script>
 <script src="/console-nav.js" defer></script>
@@ -315,7 +316,10 @@ function restore(s){LAYERS=s.layers.map(copyL);SEL=s.sel&&layerOf(s.sel)?s.sel:n
 const onFlat=()=>(VMODE==='front'||VMODE==='back')&&FF()?.undo;
 function undo(){if(onFlat()){FF().undo();syncUndo();return}if(HI>0){HI--;restore(HIST[HI]);syncUndo()}}function redo(){if(onFlat()){FF().redo();syncUndo();return}if(HI<HIST.length-1){HI++;restore(HIST[HI]);syncUndo()}}
 function syncUndo(){if(onFlat()){const f=FF();$('#undo').disabled=!f.canUndo();$('#redo').disabled=!f.canRedo();return}$('#undo').disabled=HI<=0;$('#redo').disabled=HI>=HIST.length-1}
-let EDITS=0;function touch(){DIRTY=true;EDITS++;showSaved()}
+let EDITS=0;function touch(){DIRTY=true;EDITS++;showSaved();PRES?.editing(true)}
+// Who else has this concept open (/presence.js): their initials by Save; if someone else is changing it while you have changes, say so once
+let PRES=null,PRES_WARNED=false;
+function watchPresence(){if(PRES||GMODE||!/^[0-9a-f-]{36}$/i.test(CID)||!window.FBPresence)return;PRES=FBPresence.watch({type:'concept',id:CID,el:$('#people'),token:TOKEN,onOthers:(list,words)=>{if(DIRTY&&!PRES_WARNED&&list.some(p=>p.mode==='editing')){PRES_WARNED=true;toast(`${words}. The last one to save wins: talk it through before you both save.`)}}})}
 function showSaved(){const s=$('#saved');s.className='saved'+(DIRTY?' dirty':'');s.textContent=DIRTY?'Not saved':SAVED_AT?'Saved '+new Date(SAVED_AT).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}):''}
 
 // ---------- distressing: a worn texture made from a seed, so it is the same every time it is drawn ----------
@@ -817,7 +821,7 @@ async function save(){const b=$('#save');b.disabled=true;$('#saved').textContent
     else r=await api(`/v1/lab/concepts/${CID}/studio`,{method:'PUT',body:{doc}});
     // what was sent is now what the layers come from
     for(const l of LAYERS){const s=doc.layers.find(x=>x.id===l.id);if(s&&isRaster(l)){l.src=s.src;l.dirty=false;l._srcRid=l.raster._rid}}
-    DIRTY=EDITS!==at;SAVED_AT=r.savedAt;showSaved();if(!GMODE)loadReady(); /* a change made while it saved (a graphic arriving from the flats) stays to save */return true}
+    DIRTY=EDITS!==at;SAVED_AT=r.savedAt;showSaved();if(!DIRTY)PRES?.editing(false);if(!GMODE)loadReady(); /* a change made while it saved (a graphic arriving from the flats) stays to save */return true}
   catch(x){$('#saved').className='saved dirty';$('#saved').textContent=x.message;return false}finally{b.disabled=false}}
 $('#save').onclick=saveAll;
 // installed on the home screen (an iPad), a download would leave the app: the file opens in the app's sheet, with Share and Save
@@ -984,7 +988,7 @@ async function boot(){
     paint();$('#pickQ').addEventListener('input',paint);return}
   if(false){$('#needSignin').classList.remove('hidden');$('#needSignin h1').textContent='Open a concept first';$('#needSignin p').textContent='The studio opens from a concept in the Design Lab: open one and press Open in the studio.';$('#needSignin a').href='/lab#board';$('#needSignin a').textContent='Open the concepts';return}
   try{D=await api(`/v1/lab/concepts/${CID}/studio`)}catch(x){const n=$('#needSignin');n.classList.remove('hidden');const no=/access to Design Lab|not turned on|Only Danielle/i.test(x.message);n.querySelector('h1').textContent=x.status===404?'That concept is not there any more':no?'The Design Lab is not turned on for you':'Sign in first';n.querySelector('p').textContent=x.status===404?'It may have been deleted.':x.message;return}
-  $('#app').classList.remove('hidden');$('#back').href='/lab#board';
+  $('#app').classList.remove('hidden');$('#back').href='/lab#board';watchPresence();
   // the piece's step bar takes the place of "← Concepts": back to its line plan, and every step of the piece one press away
   if(window.FBLabNav){$('#back').classList.add('hidden');$('#app').classList.add('steps');$('#pieceSteps').classList.remove('hidden');
     window.FBLabNav.steps($('#pieceSteps'),D.concept,{at:stepOfView(VMODE),onStep:(st)=>{if(st==='picture'){setVMode('picture');return true}if(st==='flats'){setVMode(VMODE==='back'?'back':'front');return true}if(st==='pattern'){setVMode('pattern');return true}if(st==='techpack'&&!D.concept.productUrl){setTimeout(()=>{if($('#readyPop').classList.contains('hidden'))$('#readyBtn').click()});return true}return false}})}

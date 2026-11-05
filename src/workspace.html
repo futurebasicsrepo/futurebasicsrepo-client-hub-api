@@ -38,8 +38,9 @@ input.t,select.t,textarea.t{width:100%;padding:10px 12px;border:1px solid var(--
 .edit{font:500 10px 'IBM Plex Mono';text-transform:uppercase;letter-spacing:.06em;color:var(--amber);margin-left:6px}
 .empty{background:#fff;border:1px dashed var(--line);border-radius:20px;padding:28px;text-align:center;color:var(--dim)}
 .toast{position:fixed;left:50%;bottom:24px;transform:translate(-50%,120px);background:var(--ink);color:#fff;padding:12px 18px;border-radius:999px;transition:transform .3s var(--ease);z-index:50;max-width:92vw}.toast.show{transform:translate(-50%,0)}
+.live{flex:none;width:8px;height:8px;border-radius:50%;background:#6b6b70;margin-left:10px}.live.on{background:#4bff9a;box-shadow:0 0 0 3px rgba(75,255,154,.18)}
 </style></head><body>
-<header class="top"><div class="id"><span class="meta" id="crumb">Workspace</span><b id="roomName">Loading…</b></div><div class="row" style="display:flex;gap:8px;align-items:center"><select id="roomPick" class="hidden" aria-label="Which room"></select><a class="sbtn" id="back" href="/" style="background:transparent;color:#fff;border-color:rgba(255,255,255,.35);text-decoration:none">Back</a></div></header>
+<header class="top"><div class="id"><span class="meta" id="crumb">Workspace</span><span style="display:flex;align-items:center;min-width:0"><b id="roomName">Loading…</b><span class="live" id="liveDot" title="Connecting…" aria-hidden="true"></span></span></div><div class="row" style="display:flex;gap:8px;align-items:center"><select id="roomPick" class="hidden" aria-label="Which room"></select><a class="sbtn" id="back" href="/" style="background:transparent;color:#fff;border-color:rgba(255,255,255,.35);text-decoration:none">Back</a></div></header>
 <nav class="tabs" role="tablist"><button type="button" data-tab="chat" class="on" role="tab">Chat <span class="n hidden" id="chatN"></span></button><button type="button" data-tab="board" role="tab">Board <span class="n hidden" id="boardN"></span></button><button type="button" data-tab="here" role="tab">Who’s here <span class="n hidden" id="hereN"></span></button></nav>
 <main class="wrap">
   <section id="tab-chat"><div class="chat"><aside class="chans" id="chans" aria-label="Channels"></aside><div class="thread"><div class="head" id="chHead"></div><div id="thread" class="fbchat" style="flex:1;min-height:0"></div><div class="hint" id="hint">Type <b>@name</b> to reach a teammate, or <b>@futurebasics</b> to bring Future Basics into this channel.</div></div></div></section>
@@ -47,7 +48,7 @@ input.t,select.t,textarea.t{width:100%;padding:10px 12px;border:1px solid var(--
   <section id="tab-here" class="hidden"></section>
 </main>
 <div class="toast" id="toast" role="status"></div>
-<script>window.FBCHAT_POLL_MS=5000</script><script src="/chat.js"></script>
+<script>window.FBCHAT_POLL_MS=30000</script><script src="/chat.js"></script>
 <script>
 (()=>{
 "use strict";
@@ -71,13 +72,36 @@ async function boot(){
     const seen=new Set(rooms.rooms.map(r=>r.id)),list=[...rooms.rooms.map(r=>({id:r.id,name:`${r.name}${r.unread?` · ${r.unread} new`:''}`})),...all.clients.filter(c=>!seen.has(c.id)).map(c=>({id:c.id,name:c.name}))];
     if(!S.room)S.room=list[0]?.id||'';
     const pick=$('#roomPick');pick.classList.remove('hidden');pick.innerHTML=list.map(r=>`<option value="${esc(r.id)}" ${r.id===S.room?'selected':''}>${esc(r.name)}</option>`).join('');
-    pick.onchange=()=>{S.room=pick.value;S.channel='';history.replaceState(null,'',`/workspace?room=${S.room}`);load()};
+    pick.onchange=()=>{S.room=pick.value;S.channel='';history.replaceState(null,'',`/workspace?room=${S.room}`);load();LIVE.restart()};
     $('#crumb').textContent='Workspace · rooms that brought Future Basics in come first';
     if(!S.room){$('main').innerHTML='<div class="empty">No rooms yet.</div>';return}
   }
-  tab(S.tab);await load();
+  tab(S.tab);await load();LIVE.restart();
   setInterval(()=>{if(!document.hidden){loadChannels(false);if(S.tab==='here')loadHere();else loadHereCount()}},15000);
 }
+// ---- live: a nudge the moment someone in the room says something (/v1/team-chat/live), so the thread updates at once ----
+// The stream only names the channel that changed; the page then fetches it the usual way. If the stream is down, the thread is checked every
+// 5 seconds until it is back, and the chat's own 30-second check stays on as a safety net.
+const LIVE={up:false,ctl:null,wait:1000,timer:null,fallback:null,pend:new Set(),flush:null,
+  restart(){this.ctl?.abort();clearTimeout(this.timer);this.wait=1000;this.connect()},
+  async connect(){
+    const ctl=new AbortController();this.ctl=ctl;let r;
+    try{r=await fetch(q('/v1/team-chat/live'),{headers:{Authorization:'Bearer '+TOKEN,Accept:'text/event-stream'},signal:ctl.signal,cache:'no-store'})}catch{return this.down(ctl)}
+    if(!r.ok||!r.body){if([401,403,404].includes(r.status)){this.set(false);return}return this.down(ctl)}
+    const rd=r.body.getReader(),dec=new TextDecoder();let buf='';
+    try{for(;;){const {value,done}=await rd.read();if(done)break;buf+=dec.decode(value,{stream:true});let i;
+      while((i=buf.indexOf('\n\n'))>=0){const block=buf.slice(0,i);buf=buf.slice(i+2);
+        if(/^event: ready/m.test(block)){this.set(true);this.wait=1000;continue}
+        const data=block.split('\n').filter(l=>l.startsWith('data:')).map(l=>l.slice(5).trim()).join('');if(data){try{this.on(JSON.parse(data))}catch{}}}}}catch{}
+    this.down(ctl);
+  },
+  down(ctl){if(ctl!==this.ctl||ctl.signal.aborted)return;this.set(false);clearTimeout(this.timer);this.timer=setTimeout(()=>this.connect(),this.wait);this.wait=Math.min(this.wait*2,30000)},
+  set(up){this.up=up;$('#liveDot')?.classList.toggle('on',up);$('#liveDot')?.setAttribute('title',up?'Live: new messages show at once':'Reconnecting: checking every few seconds');
+    clearInterval(this.fallback);if(!up)this.fallback=setInterval(()=>{if(!document.hidden&&S.tab==='chat')S.chat?.reload(false)},5000)},
+  // a burst (several lines at once) is one fetch
+  on(ev){if(ev.t!=='chat')return;this.pend.add(ev.channel);clearTimeout(this.flush);this.flush=setTimeout(()=>{const ch=[...this.pend];this.pend.clear();if(ch.includes(S.channel))S.chat?.reload(false);loadChannels(false)},120)}
+};
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&!LIVE.up&&TOKEN)LIVE.restart()});
 async function load(){await Promise.all([loadChannels(true),loadBoard(),loadHere()])}
 function tab(t){S.tab=t;document.querySelectorAll('[data-tab]').forEach(b=>{b.classList.toggle('on',b.dataset.tab===t);b.setAttribute('aria-selected',b.dataset.tab===t)});for(const x of ['chat','board','here'])$(`#tab-${x}`).classList.toggle('hidden',x!==t);if(t==='here')loadHere()}
 

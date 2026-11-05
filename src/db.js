@@ -2511,6 +2511,7 @@ export async function migrate() {
       primary key (user_id,entity_type,entity_id)
     );
     create index if not exists workspace_presence_entity_idx on workspace_presence(entity_type,entity_id,seen_at desc);
+    alter table workspace_presence alter column client_id drop not null; -- null: a Studio concept staff draw for no room yet (only staff see it)
     -- Assign and track: a piece of work given to someone on the room's team (or Future Basics), with where it stands and when it is due
     create table if not exists work_assignments (
       id uuid primary key default gen_random_uuid(),
