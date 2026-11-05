@@ -79,6 +79,10 @@ import { createArtService, registerLabArtRoutes } from './lab-art-routes.js';
 import { createLabAccess } from './lab-access.js';
 import { registerLabSelfServeRoutes } from './lab-selfserve-routes.js';
 import { registerRoomTeamRoutes } from './room-team-routes.js';
+import { registerSampleFormRoutes } from './sample-form-routes.js';
+import { registerTeamChatRoutes } from './team-chat-routes.js';
+import { registerWorkspaceRoutes } from './workspace-routes.js';
+import { createLive } from './live.js';
 import { maskFor as flatMaskFor } from './lab-flat-mask.js';
 import { purgeOld as labPurge } from './lab-scan.js';
 import { runDue as intelRunDue, scorePending as intelScore, loadSettings as intelSettings, purgeOld as intelPurge } from './intel-engine.js';
@@ -760,6 +764,12 @@ const labAssembly = registerLabAssemblyRoutes(app, { pool, ...labDeps, log: app.
 const labFlats = registerLabFlatsRoutes(app, { pool, ...labDeps, log: app.log, attachArtwork: (productId, items) => attachLabArtwork(productId, items), applyHandoff: (productId, h) => applyLabHandoff(productId, h), packChanges: async productId => { const t=(await pool.query('select data,published_data from tech_packs where product_id=$1 order by created_at desc limit 1',[productId])).rows[0]; return t?.published_data?packDiff(normalizeTechPack(t.published_data),normalizeTechPack(t.data)).filter(c=>!/ picture$/.test(c.label)&&!(c.section==='Artwork'&&/^(Spec sheet|Technical flat)/.test(c.label))):null; } /* the flats are drawn again each time they are sent: a new picture alone is no change, and a changed drawing always changes its measurements, construction lines or colours too */ });
 registerLabClientRoutes(app, { pool, authenticate, adminOnly, log: app.log, sheetSvg: id => labFlats.sheetSvg(id), notifyStaff, notifyClientContact, hubUrl: () => clientHubUrl, learn: learnLabTaste });
 registerRoomTeamRoutes(app, { pool, authenticate, clientHubUrl, sendHubEmail, hubEmailShell, emailEscape, replyTo: intakeNotificationEmail, forgetUser, log: app.log });
+registerSampleFormRoutes(app, { pool, authenticate, normalizeTechPack, notifyStaff, emailEscape, hubButton, workHubUrl, log: app.log });
+// live nudges for open pages (src/live.js): team chat hears a new message at once
+const live = createLive({ pool, log: app.log });
+app.addHook('onClose', async () => { await live.close(); });
+registerTeamChatRoutes(app, { pool, authenticate, notifyStaff, sendHubEmail, hubEmailShell, emailEscape, clientHubUrl, workHubUrl, live, log: app.log });
+registerWorkspaceRoutes(app, { pool, authenticate, sendHubEmail, hubEmailShell, emailEscape, clientHubUrl, log: app.log });
 registerLabSelfServeRoutes(app, { pool, authenticate, adminOnly, lab: labAccess, clientHubUrl, workHubUrl, notifyStaff, notifyClientContact, sendHubEmail, hubEmailShell, replyTo: intakeNotificationEmail, forgetUser, clientForEmail, log: app.log });
 const money=registerMoneyRoutes(app, { pool, authenticate, adminOnly, getSetting, setSetting, tokenSeal: sealer(process.env), stateSecret: process.env.JWT_SECRET || 'dev', workUrl: workHubUrl, log: app.log,
   // product development is paid through a Shopify checkout (a draft order for the amount due), see money-routes.js
@@ -801,6 +811,7 @@ app.get('/lab/sketches', (_req, reply) => reply.header('cache-control', 'no-stor
 app.get('/lab/recipe', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').type('text/html').send(readFileSync(new URL('./lab-recipe.html', import.meta.url), 'utf8')));
 app.get('/lab/nav.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-nav.js', import.meta.url), 'utf8')));
 app.get('/lab/studio-pro.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-studio-pro.js', import.meta.url), 'utf8')));
+app.get('/lab/studio-ill.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-studio-ill.js', import.meta.url), 'utf8')));
 app.get('/lab/studio-vec.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-studio-vec.js', import.meta.url), 'utf8')));
 app.get('/lab/studio-emb.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-studio-emb.js', import.meta.url), 'utf8')));
 app.get('/lab/studio-board.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-studio-board.js', import.meta.url), 'utf8')));
@@ -953,6 +964,12 @@ app.get('/helper.js',(_req,reply)=>reply.header('cache-control','no-cache').type
 app.get('/ball.js',(_req,reply)=>reply.header('cache-control','public, max-age=3600').type('application/javascript').send(readFileSync(new URL('./ball.js',import.meta.url),'utf8')));
 app.get('/categories.js',(_req,reply)=>reply.header('cache-control','public, max-age=3600').type('application/javascript').send(readFileSync(new URL('./categories.js',import.meta.url),'utf8')));
 app.get('/sample-review.js',(_req,reply)=>reply.header('cache-control','no-cache').type('application/javascript').send(readFileSync(new URL('./sample-review.js',import.meta.url),'utf8')));
+app.get('/sample-form.js',(_req,reply)=>reply.header('cache-control','no-cache').type('application/javascript').send(readFileSync(new URL('./sample-form.js',import.meta.url),'utf8')));
+// the sample corrections form: one page for the room's team and for staff (the page reads which from the host, as the tech pack does)
+// the shared workspace (team chat, the board, who is on what) and the presence script every page with something open uses
+app.get('/workspace',(_req,reply)=>reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./workspace.html',import.meta.url),'utf8')));
+app.get('/presence.js',(_req,reply)=>reply.header('cache-control','no-cache').type('application/javascript').send(readFileSync(new URL('./presence.js',import.meta.url),'utf8')));
+app.get('/samples/:productId',(_req,reply)=>reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./sample-form.html',import.meta.url),'utf8')));
 app.get('/commercial.js',(_req,reply)=>reply.header('cache-control','no-cache').type('application/javascript').send(readFileSync(new URL('./commercial.js',import.meta.url),'utf8')));
 app.get('/elec.js',(_req,reply)=>reply.header('cache-control','public, max-age=3600').type('application/javascript').send(readFileSync(new URL('./elec.js',import.meta.url),'utf8')));
 app.get('/pantone-c.js',(_req,reply)=>reply.header('cache-control','public, max-age=3600').type('application/javascript').send(readFileSync(new URL('./pantone-c.js',import.meta.url),'utf8')));
@@ -2747,9 +2764,13 @@ const syncCardQuietly=(productId,data)=>syncCardFromTechPack(productId,data).cat
 app.put('/v1/admin/products/:id/tech-pack',{preHandler:[authenticate,adminOnly],bodyLimit:40_000_000},async(req,reply)=>{
   const ctx=await loadAdminTechPack(req.params.id);if(!ctx)return reply.code(404).send({error:'Product not found'});
   {const sent=req.body?.data;if(!sent||typeof sent!=='object'||Array.isArray(sent))return reply.code(400).send({error:'Nothing to save — reload the page and try again'})}
+  // A page opened before someone else saved (a colleague, the client's team handing over a sample review, the assistant) holds an older pack:
+  // saving it would wipe what landed since. The page sends the version it started from; a different one is refused and the page reloads.
+  if(req.body.baseEtag&&ctx.techPack&&ctx.techPack.updated_by&&ctx.techPack.updated_by!==req.auth.sub&&packEtag(ctx.techPack)&&Math.abs(new Date(req.body.baseEtag).getTime()-new Date(packEtag(ctx.techPack)).getTime())>5)
+    return reply.code(409).send({error:'Someone else saved this pack while you had it open (a colleague, a sample review handed over, or the assistant). It has been reloaded with their changes — make your last change again.',code:'STALE'});
   const data=await keepFreshViews(ctx.techPack?.id,normalizeTechPack(req.body?.data));
-  const row=(await pool.query(`insert into tech_packs(product_id,client_id,data,created_by) values($1,$2,$3,$4)
-    on conflict(product_id) do update set data=excluded.data,updated_at=now() returning *`,[ctx.product.id,ctx.product.client_id,data,req.auth.sub])).rows[0];
+  const row=(await pool.query(`insert into tech_packs(product_id,client_id,data,created_by,updated_by) values($1,$2,$3,$4,$4)
+    on conflict(product_id) do update set data=excluded.data,updated_by=excluded.updated_by,updated_at=now() returning *`,[ctx.product.id,ctx.product.client_id,data,req.auth.sub])).rows[0];
   // staff finishing a client's own unpublished draft: the card follows. Anything else reaches the card when it is published.
   if(row.initiated_by==='client'&&!row.published_at)await syncCardQuietly(ctx.product.id,data);
   return {techPack:techPackPayload(row),completeness:techPackCompleteness(data)};
@@ -5235,7 +5256,7 @@ app.put('/v1/products/:id/tech-pack/draft',{preHandler:authenticate,bodyLimit:40
   if(req.body.baseEtag&&packEtag(row)&&Math.abs(new Date(req.body.baseEtag).getTime()-new Date(packEtag(row)).getTime())>5)
     return reply.code(409).send({error:'This draft changed in another tab, or the assistant just finished it. Reload to see the latest — what you typed on this page was not saved.',code:'STALE'});
   const data=await keepFreshViews(row.id,normalizeTechPack(sent));
-  const updated=(await pool.query(`update tech_packs set data=$2,updated_at=now() where id=$1 returning *`,[row.id,data])).rows[0];
+  const updated=(await pool.query(`update tech_packs set data=$2,updated_by=$3,updated_at=now() where id=$1 returning *`,[row.id,data,UUID_RE.test(String(req.auth.sub||''))?req.auth.sub:null])).rows[0];
   if(data.style.styleName&&data.style.styleName!==row.title)await pool.query('update products set title=$2,updated_at=now() where id=$1',[row.product_id,data.style.styleName.slice(0,200)]);
   await syncCardQuietly(row.product_id,data);
   return draftView({...row,...updated,title:data.style.styleName||row.title});
@@ -6299,6 +6320,7 @@ for (const signal of ['SIGTERM', 'SIGINT']) {
 }
 
 await migrate();
+live.start().catch(() => {});
 migratedNow();
 billingMode=['on','off'].includes((await getSetting('techPackBilling'))?.mode)?(await getSetting('techPackBilling')).mode:null;
 {const fa=await getSetting('factoryActions');if(fa&&typeof fa.on==='boolean')setFactoryActions(fa.on)}

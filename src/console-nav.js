@@ -24,7 +24,8 @@
     { id: 'home', label: 'My day', icon: 'home', items: [{ label: 'My day', href: '/home', words: 'today home' }] },
     { id: 'inbox', label: 'Inbox', icon: 'chat', items: [
       { label: 'Messages', href: '/admin#inbox', badge: '#mcCount', module: 'messages', words: 'mail chat client messages' },
-      { label: 'Chats', href: '/sales#chats', badge: '#chatCount', module: 'messages', words: 'website visitors live chat' }] },
+      { label: 'Chats', href: '/sales#chats', badge: '#chatCount', module: 'messages', words: 'website visitors live chat' },
+      { label: 'Team spaces', href: '/workspace', module: 'messages', words: 'team chat channels board tasks assignments who is here presence room' }] },
     { id: 'clients', label: 'Clients', icon: 'box', also: ['/tech-packs/', '/clients/'], items: [
       { label: 'Clients', href: '/admin#clientsHead', module: 'clients', words: 'rooms accounts customers cards' },
       { label: 'Projects', href: '/home#projPanel', module: 'clients', words: 'in flight work' },

@@ -303,5 +303,5 @@
   // leaving the pen finishes the path being drawn
   const setTool0 = window.setTool; window.setTool = t => { if (t !== 'pen' && DRAW) penFinish(); if (t !== 'node') NSEL = null; setTool0(t); };
 
-  window.VEC = { content, svg, fromSvg, normalize, parseD, dOf, down, move, end, hover, overlay, key, fieldsHtml, convertHtml, toPath, combine, pathsOf, isPath };
+  window.VEC = { content, svg, fromSvg, normalize, parseD, dOf, down, move, end, hover, overlay, key, fieldsHtml, convertHtml, toPath, combine, pathsOf, isPath, flat, simplify, toDoc, toLoc, geom };
 })();

@@ -59,11 +59,32 @@ export function cleanDoc(input) {
       if (n > 40000) return { error: 'A path has too many points (40,000 at most)' };
     }
   }
-  const ppi = Number(d.ppi), doc = { v: 1, w, h, layers: d.layers, selected: typeof d.selected === 'string' ? d.selected.slice(0, 40) : null, ...(ppi > 1 && ppi < 2000 ? { ppi: Math.round(ppi * 100) / 100, ppiSet: Boolean(d.ppiSet) } : {}),
+  // the production layer's own data (src/lab-studio-ill.js): artboards, symbols, global swatches, and on a layer its fill, width, path type and links
+  for (const l of d.layers) if (l.ill != null) {
+    if (typeof l.ill !== 'object' || Array.isArray(l.ill)) return { error: 'A layer is not readable' };
+    const src = l.ill.fill?.src; if (src != null && src !== '' && !/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/i.test(String(src))) return { error: 'A pattern points at a picture outside the design' };
+    if (l.ill.text != null && String(l.ill.text.text || '').length > 400) return { error: 'Type on a path is too long (400 characters at most)' };
+  }
+  const extra = cleanExtras(d); if (extra.error) return extra;
+  const ppi = Number(d.ppi), doc = { v: 1, w, h, ...extra.data, layers: d.layers, selected: typeof d.selected === 'string' ? d.selected.slice(0, 40) : null, ...(ppi > 1 && ppi < 2000 ? { ppi: Math.round(ppi * 100) / 100, ppiSet: Boolean(d.ppiSet) } : {}),
     // the flats placements already brought onto the picture: a layer taken off the picture is not brought back
     ...(Array.isArray(d.linked) ? { linked: d.linked.filter(x => /^[a-z0-9-]{1,40}$/i.test(String(x))).slice(0, 60) } : {}) };
   if (JSON.stringify(doc).length > MAX_DOC) return { error: 'The design is too big to save (30 MB). Merge or delete some picture layers.' };
   return { doc };
+}
+
+const fin = v => Number.isFinite(Number(v)), txt = (v, n) => String(v ?? '').slice(0, n);
+// artboards (each face of a pack: where it is, its size and bleed, in the design's pixels), symbols and global swatches, kept within bounds
+export function cleanExtras(d) {
+  const data = {};
+  if (d.artboards != null) {
+    if (!Array.isArray(d.artboards) || d.artboards.length > 60) return { error: 'A design can have up to 60 artboards' };
+    if (!d.artboards.every(b => b && fin(b.x) && fin(b.y) && fin(b.w) && fin(b.h) && Number(b.w) > 0 && Number(b.h) > 0)) return { error: 'An artboard is not readable' };
+    data.artboards = d.artboards.map(b => ({ id: txt(b.id, 20), name: txt(b.name, 60) || 'Artboard', x: +b.x, y: +b.y, w: +b.w, h: +b.h, bleed: Math.max(0, +b.bleed || 0) }));
+  }
+  if (d.symbols != null) { if (!Array.isArray(d.symbols) || d.symbols.length > 200) return { error: 'A design can have up to 200 symbols' }; data.symbols = d.symbols.map(s => ({ id: txt(s?.id, 20), name: txt(s?.name, 60) })).filter(s => s.id); }
+  if (d.swatches != null) { if (!Array.isArray(d.swatches) || d.swatches.length > 200) return { error: 'A design can have up to 200 swatches' }; data.swatches = d.swatches.filter(s => /^#[0-9a-f]{6}$/i.test(String(s?.hex || ''))).map(s => ({ id: txt(s.id, 20), name: txt(s.name, 40), hex: String(s.hex).toLowerCase(), pantone: txt(s.pantone, 40) })); }
+  return { data };
 }
 
 const pictureOf = dataUrl => { const m = /^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/=]+)$/i.exec(String(dataUrl || '')); return m ? Buffer.from(m[2], 'base64') : null; };

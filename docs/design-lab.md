@@ -233,6 +233,29 @@ Routes: `GET /v1/client/lab`, `POST /v1/client/lab/checkout`, `POST /v1/client/l
 
 **How to start.** The first time a client's designer opens the Lab, a short welcome shows the same steps (New design, the Studio and its Board, drawing with the pen and ⌘K, the Embroidery check, Simple or Pro, the Checklist to the tech pack and its Production files) (the iPad step is left out once the Lab runs from the home screen). **Got it** puts it away; **How to start** in the Lab's header brings it back.
 
+## The Studio's production tools (a product and its packaging)
+
+The tools a designer reaches for in Illustrator when artwork has to become a physical product or its pack, on the same keys (`src/lab-studio-ill.js`). They are in **Pro**, on the rail, in ⌘K, and under **Document** in the top bar.
+
+| Tool | Keys | What it does |
+| --- | --- | --- |
+| Select · Edit points · Pen | V · A · P | Move whole layers; drag single points and handles; draw paths (these were already there) |
+| Artboards | ⇧O | One board per face of a pack, drawn on the picture, sized in mm or inches with its bleed (red, outside the trim). **Document → Artboards → Lay out the box** turns length, width, depth and glue flap into seven faces at their real size, with the dieline as a magenta cut path |
+| Divide · Shape builder | ⇧M | Divide cuts overlapping shapes into every piece; the shape builder merges the pieces you drag across and takes away the one you Alt-click. Union, subtract, intersect and exclude were already there |
+| Reflect · Scale | O · S | Mirror across a vertical, horizontal or angled axis; scale by a percentage, width and height apart, or to an exact size in mm or inches. Both can make a copy |
+| Width | ⇧W | Drag at a point of a path to make the line thicker or thinner there, or choose a profile (taper, thin at one end, bulge) |
+| Outline mode | ⌘Y | Only the bare paths and their points; a stray point shows red. **Document → Preflight** lists stray points, open filled paths, parts under 0.5 mm, lines under 0.1 mm, pictures under 150 pixels to the inch at their size, fonts to send, and masks that lost their shape; stray points go in one press |
+| Measure · Info | ⇧U · ⌘U | Distance, angle and Δx/Δy between two points; Info shows where the pointer is and the size of what is chosen. mm or inches is set in Document |
+| Symbols | | One master, many instances: change any instance and every other follows. Place more from Document → Symbols; unlink one to change it alone |
+| Fills | | Linear and radial gradients (they stay gradients in the SVG), a four-corner mesh with a centre colour, and pattern fills tiled from another layer or from a tile the image model draws (it counts as one AI graphic) |
+| Type on a path | ⇧T | Words that run along a path, an ellipse or a rectangle: font, size, start and spacing |
+| Global swatches | | Named colours with their nearest Pantone C; a layer coloured from one changes when it does. Picking a colour by hand unlinks it |
+| Clipping mask · Groups | ⌘7 · ⌥⌘7 · ⌘G · ⇧⌘G | The top shape clips the layers chosen under it (a clip path in the SVG); groups are chosen and moved together |
+| 3D mockup | | The picture, or one artboard, on a can, a box (its faces from artboards named Front, Back, Left side, Right side, Top, Bottom), a bottle or a pouch; drag to turn it; save a picture |
+| Package | | One zip for the vendor: the picture as PNG and SVG, each artboard with its bleed as PNG and SVG, every picture used at its own size, the fonts the Lab holds (Google fonts named), `colours.csv` with every colour's Pantone C, and `report.txt` with the sizes, the symbols and the preflight |
+
+The ellipse moved to **L** and the line to **\\** to match Illustrator; showing and hiding the panel moved to **⌘\\**. Artboards, symbols and swatches are saved with the design (the server keeps them within bounds: 60 artboards, 200 symbols, 200 swatches); everything else new lives on the layer under `ill`. Journey J284 walks through all of it in a browser.
+
 ## On an iPad, with the Pencil
 
 The Lab installs as its own home-screen app (`/lab.webmanifest`: standalone, opening on `/lab`; the Lab pages carry the Apple home-screen tags and icon). In Safari: Share, then Add to Home Screen. The installed app keeps its own sign-in: sign in once inside it with the emailed code.

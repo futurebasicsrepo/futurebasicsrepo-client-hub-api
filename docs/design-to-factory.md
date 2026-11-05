@@ -236,6 +236,21 @@ The factory sees what is due. When it ships, it says so in Messages; the team pr
 
 It asks first, then publishes the next version for the factory. The version the factory sampled from stays exactly as it was. Cancel keeps the corrections in the draft to publish later.
 
+### The review form at the table (the client's team and staff)
+
+The quick panel above is for one person with a tape measure. When a room reviews a sample together, open **Review form** on the sample (or `/samples/:product` in the hub and the work console). It is made for a tablet at the table, and the client's team can fill it in as well as staff.
+
+- **Made from the pack the sample was made to.** The form is built from the published version: every point of measure at the sample size with its tolerance, then every callout (with a thumbnail of where it sits on the flat), every placed artwork with its size and inks, every material and trim, every colourway, every construction line and every label. The client's form never carries costs, suppliers or prices.
+- **OK, Fix or N/A** on each line, and **Mark the rest OK** per group. A Fix asks what to change, whether it is a **must fix** or a **should fix**, and can carry a photo.
+- **Mark on the flats.** Tap the flat where something is wrong that the pack does not name: a numbered pin, with a note and how much it matters.
+- **Photos of the sample** (up to eight) and a **verdict**: Approved, Approved with changes, Another sample, Rejected.
+- **What goes into the tech pack** is listed as it is filled in, so the room agrees on it before anyone leaves.
+- **Two people on one review.** It saves as people type. If two save from the same copy, the second page takes the first one's save and puts its own changes on top, and says so: nobody's typing is lost. The initials of whoever else has it open sit in the header.
+- **Hand over to the tech pack.** The review goes onto the draft as that sample's review (the same one the panel above shows) and staff are told. It can be reopened until it is written in.
+- **Write into the pack** (staff). Accepted measurements become the spec (the size run moves with them), every Fix and every pin becomes a correction line, every pin becomes a callout on its flat (`Fix · Proto`) that the factory sees in its own language once translated, and the next sample is asked for. Publish the next version as usual.
+- **The next sample starts with the last one's fixes.** The form for the corrected sample opens with *Last sample's corrections* at the top, so the first thing checked is whether they were done.
+- **Print** gives a clean sheet of the review for anyone not on the platform.
+
 ### The sample held up against the design, and the time-and-action calendar
 
 - **Photographs of the sample** go on its review (up to four). **Compare with the approved design** sends them to the vision model next to the pack's own pictures and spec (artwork placements in inches, colourways with Pantones, materials, construction lines, labels). Back comes a score, a verdict and the differences, each with where, what kind (placement, colour, wash, construction, measurement, material, artwork, label), how serious, what the design says and what the sample shows. **Add the differences as corrections** writes them onto the review; the next version carries them to the factory. The comparison is kept on the pack.

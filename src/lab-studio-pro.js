@@ -211,7 +211,7 @@
       ...ALIGN.map(([k, t, key]) => ({ label: t, keys: key, kind: 'Arrange', run: () => align(k) })), ...DIST.map(([k, t]) => ({ label: t, kind: 'Arrange', run: () => distribute(k) })),
       { label: 'Zoom to fit', keys: '0', kind: 'View', run: fit }, { label: 'Zoom in', keys: '+', kind: 'View', run: () => { const r = view.getBoundingClientRect(); zoomAt(1.25, r.width / 2, r.height / 2); } }, { label: 'Zoom out', keys: '−', kind: 'View', run: () => { const r = view.getBoundingClientRect(); zoomAt(.8, r.width / 2, r.height / 2); } },
       { label: 'Actual size (100%)', kind: 'View', run: () => { const r = view.getBoundingClientRect(); zoomAt(1 / Z, r.width / 2, r.height / 2); } },
-      { label: 'Show or hide the panel', keys: '\\', kind: 'View', run: click('#panelBtn') }, { label: 'Focus: the drawing as big as it goes', keys: 'F', kind: 'View', run: click('#focusBtn') },
+      { label: 'Show or hide the panel', keys: '⌘\\', kind: 'View', run: click('#panelBtn') }, { label: 'Focus: the drawing as big as it goes', keys: 'F', kind: 'View', run: click('#focusBtn') },
       ...views, ...exp,
       { label: 'Embroidery: digitize the chosen layer and see it sewn', kind: 'Make', run: () => l ? embOpen(l) : toast('Choose a graphic, mark or type layer first.') },
       { label: 'Made as… (every technique, previewed)', kind: 'Make', run: () => madeOpen() },
@@ -241,7 +241,7 @@
   function keysSheet() {
     css(); let d = document.getElementById('proKeys');
     if (!d) { d = document.createElement('dialog'); d.id = 'proKeys'; d.setAttribute('aria-labelledby', 'proKeysH');
-      const K = [['Commands by name', '⌘K'], ['This list', '?'], ['Select and move', 'V'], ['Move the view', 'H · Space'], ['Brush', 'B'], ['Eraser', 'E'], ['Type', 'T'], ['Rectangle', 'R'], ['Ellipse', 'O'], ['Line', 'L'], ...(window.PRO.keys || []),
+      const K = [['Commands by name', '⌘K'], ['This list', '?'], ['Select and move', 'V'], ['Move the view', 'H · Space'], ['Brush', 'B'], ['Eraser', 'E'], ['Type', 'T'], ['Rectangle', 'R'], ['Ellipse', 'L'], ['Line', '\\'], ['Show or hide the panel', '⌘\\'], ...(window.PRO.keys || []),
         ['Pick a colour', 'I'], ['Ruler', 'U'], ['Warp', 'W'], ['Area for the AI', 'M'], ['Add to the choice', 'Shift-click'], ['Choose every layer', '⌘A'], ['Choose none', 'Esc'], ['Duplicate', '⌘D'], ['Delete', '⌫'], ['Nudge', 'Arrows · Shift ×10'],
         ['Bring forward / send back', '⌘] · ⌘['], ['Align left / centre / right', 'Alt A · H · D'], ['Align top / middle / bottom', 'Alt W · V · S'], ['Move without the guides', 'hold Alt'], ['Undo / redo', '⌘Z · ⌘⇧Z'], ['Save', '⌘S'],
         ['Zoom to fit', '0'], ['Zoom in / out', '+ · −'], ['Brush size', '[ · ]'], ['Panel', '\\'], ['Focus', 'F']];

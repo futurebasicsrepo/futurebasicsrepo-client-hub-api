@@ -1,0 +1,175 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Workspace — Future Basics</title><link rel="icon" href="/icons/techpack-v3-192.png" type="image/png"><meta name="theme-color" content="#141416"><meta name="robots" content="noindex">
+<link rel="stylesheet" href="/chat.css">
+<style>
+@import url('/fonts/fonts.css');
+:root{--ink:#141416;--paper:#fff;--fog:#f5f5f2;--dim:#6d6d73;--line:rgba(20,20,22,.14);--cue:#4bff9a;--bad:#9a2419;--badbg:#fbe9e6;--amber:#8a5a00;--amberbg:#fff3d6;--ok:#23784b;--okbg:#e6f6ec;--ease:cubic-bezier(.22,1,.36,1)}
+*{box-sizing:border-box}html{background:var(--fog)}body{margin:0;color:var(--ink);font:400 15px/1.5 'Space Grotesk',system-ui,sans-serif;background:var(--fog);min-height:100vh}
+button,input,select,textarea{font:inherit;color:inherit}a{color:inherit}.hidden{display:none!important}
+.meta{font:500 10px/1.35 'IBM Plex Mono',monospace;text-transform:uppercase;letter-spacing:.14em;color:var(--dim)}
+.top{position:sticky;top:0;z-index:20;display:flex;align-items:center;justify-content:space-between;gap:14px;padding:10px clamp(14px,3vw,36px);background:rgba(20,20,22,.97);color:#fff;min-height:64px;flex-wrap:wrap}
+.top .id{display:flex;flex-direction:column;gap:2px;min-width:0}.top .id b{font-weight:500;font-size:18px}.top .meta{color:#a9a9ae}.top a.home{color:#fff;text-decoration:none}
+.top select{background:#2a2a2f;color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:999px;padding:8px 12px;max-width:60vw}
+.tabs{display:flex;gap:6px;padding:12px clamp(14px,3vw,36px) 0}.tabs button{padding:10px 18px;border:1px solid var(--line);border-radius:999px;background:#fff;cursor:pointer;min-height:44px;display:flex;gap:8px;align-items:center}.tabs button.on{background:var(--ink);color:#fff;border-color:var(--ink)}.tabs .n{font:600 11px 'IBM Plex Mono';background:var(--cue);color:var(--ink);border-radius:999px;padding:1px 7px}
+.wrap{max-width:1280px;margin:0 auto;padding:14px clamp(12px,3vw,36px) 40px}
+.sbtn{padding:9px 14px;border:1px solid var(--line);border-radius:999px;background:#fff;cursor:pointer;font-size:13px;min-height:40px;white-space:nowrap}.sbtn:hover{border-color:var(--ink)}.sbtn.dark{background:var(--ink);color:#fff;border-color:var(--ink)}.sbtn.go{background:var(--cue);border-color:var(--cue);font-weight:600}.sbtn.danger{color:var(--bad)}
+input.t,select.t,textarea.t{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:#fff;outline:none;min-height:42px}input.t:focus,select.t:focus,textarea.t:focus{border-color:var(--ink);box-shadow:0 0 0 3px rgba(75,255,154,.4)}
+/* chat */
+.chat{display:grid;grid-template-columns:270px minmax(0,1fr);gap:14px;height:calc(100vh - 150px);min-height:520px}
+.chans{background:#fff;border:1px solid var(--line);border-radius:22px;padding:12px;display:flex;flex-direction:column;gap:6px;overflow:auto}
+.chans button.ch{display:flex;justify-content:space-between;gap:8px;align-items:center;text-align:left;border:0;background:transparent;padding:9px 11px;border-radius:12px;cursor:pointer;min-height:42px}.chans button.ch:hover{background:var(--fog)}.chans button.ch.on{background:var(--ink);color:#fff}
+.chans .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.chans .nm small{display:block;font-size:11px;opacity:.7}.chans .u{font:600 11px 'IBM Plex Mono';background:var(--cue);color:var(--ink);border-radius:999px;padding:1px 7px}.chans .fb{font:500 9px 'IBM Plex Mono';letter-spacing:.08em;border:1px solid currentColor;border-radius:999px;padding:1px 6px;opacity:.75}
+.chans form{display:grid;gap:6px;margin-top:auto;padding-top:10px;border-top:1px solid var(--line)}
+.thread{display:flex;flex-direction:column;background:#fff;border:1px solid var(--line);border-radius:22px;overflow:hidden;min-width:0}
+.thread .head{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap}.thread .head b{font-size:17px;font-weight:500}
+.thread .hint{padding:6px 16px 10px;color:var(--dim);font-size:12.5px;border-top:1px solid var(--line)}
+@media(max-width:760px){.chat{grid-template-columns:1fr;height:auto}.chans{max-height:220px}.thread{height:70vh}}
+/* board */
+.addtask{display:grid;grid-template-columns:minmax(200px,2fr) repeat(3,minmax(140px,1fr)) auto;gap:8px;background:#fff;border:1px solid var(--line);border-radius:20px;padding:12px;margin-bottom:14px}
+@media(max-width:900px){.addtask{grid-template-columns:1fr 1fr}.addtask input[name=title]{grid-column:1/-1}}
+.board{display:grid;grid-template-columns:repeat(4,minmax(220px,1fr));gap:12px;overflow-x:auto}
+.col{background:#ecece8;border-radius:20px;padding:10px;display:flex;flex-direction:column;gap:8px;min-height:200px}.col h3{margin:4px 6px;font-size:15px;font-weight:600;display:flex;justify-content:space-between}
+.task{background:#fff;border:1px solid var(--line);border-radius:14px;padding:11px 12px;display:grid;gap:7px}.task b{font-weight:500}.task .row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.chip{font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.06em;text-transform:uppercase;border-radius:999px;padding:3px 8px;background:var(--fog)}.chip.late{background:var(--badbg);color:var(--bad)}.chip.soon{background:var(--amberbg);color:var(--amber)}.chip.done{background:var(--okbg);color:var(--ok)}
+.task select,.task input{font-size:12.5px;min-height:34px;padding:5px 8px;border-radius:10px;border:1px solid var(--line);background:#fff}
+.task .moves{display:flex;gap:4px}.task .moves button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:4px 10px;cursor:pointer;font-size:12px}
+/* who's here */
+.people{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}.person{background:#fff;border:1px solid var(--line);border-radius:20px;padding:14px;display:grid;grid-template-columns:44px minmax(0,1fr);gap:12px}
+.av{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;font-weight:600;background:#2c2c31;color:#fff;border:3px solid var(--line)}.av.live{border-color:var(--cue)}.person ul{margin:6px 0 0;padding:0;list-style:none;display:grid;gap:4px}.person li a{text-decoration:none}.person li a:hover{text-decoration:underline}
+.edit{font:500 10px 'IBM Plex Mono';text-transform:uppercase;letter-spacing:.06em;color:var(--amber);margin-left:6px}
+.empty{background:#fff;border:1px dashed var(--line);border-radius:20px;padding:28px;text-align:center;color:var(--dim)}
+.toast{position:fixed;left:50%;bottom:24px;transform:translate(-50%,120px);background:var(--ink);color:#fff;padding:12px 18px;border-radius:999px;transition:transform .3s var(--ease);z-index:50;max-width:92vw}.toast.show{transform:translate(-50%,0)}
+.live{flex:none;width:8px;height:8px;border-radius:50%;background:#6b6b70;margin-left:10px}.live.on{background:#4bff9a;box-shadow:0 0 0 3px rgba(75,255,154,.18)}
+</style></head><body>
+<header class="top"><div class="id"><span class="meta" id="crumb">Workspace</span><span style="display:flex;align-items:center;min-width:0"><b id="roomName">Loading…</b><span class="live" id="liveDot" title="Connecting…" aria-hidden="true"></span></span></div><div class="row" style="display:flex;gap:8px;align-items:center"><select id="roomPick" class="hidden" aria-label="Which room"></select><a class="sbtn" id="back" href="/" style="background:transparent;color:#fff;border-color:rgba(255,255,255,.35);text-decoration:none">Back</a></div></header>
+<nav class="tabs" role="tablist"><button type="button" data-tab="chat" class="on" role="tab">Chat <span class="n hidden" id="chatN"></span></button><button type="button" data-tab="board" role="tab">Board <span class="n hidden" id="boardN"></span></button><button type="button" data-tab="here" role="tab">Who’s here <span class="n hidden" id="hereN"></span></button></nav>
+<main class="wrap">
+  <section id="tab-chat"><div class="chat"><aside class="chans" id="chans" aria-label="Channels"></aside><div class="thread"><div class="head" id="chHead"></div><div id="thread" class="fbchat" style="flex:1;min-height:0"></div><div class="hint" id="hint">Type <b>@name</b> to reach a teammate, or <b>@futurebasics</b> to bring Future Basics into this channel.</div></div></div></section>
+  <section id="tab-board" class="hidden"></section>
+  <section id="tab-here" class="hidden"></section>
+</main>
+<div class="toast" id="toast" role="status"></div>
+<script>window.FBCHAT_POLL_MS=30000</script><script src="/chat.js"></script>
+<script>
+(()=>{
+"use strict";
+const $=s=>document.querySelector(s),esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const host=location.hostname.toLowerCase(),params=new URLSearchParams(location.search);
+const isWork=host.startsWith('work.')||params.get('as')==='work'||((host==='localhost'||host==='127.0.0.1')&&localStorage.getItem('fb.admin.token')&&params.get('as')!=='client');
+let TOKEN='';try{TOKEN=localStorage.getItem(isWork?'fb.admin.token':'fb.client.token')||''}catch{}
+if(isWork){const s=document.createElement('script');s.src='/console-nav.js';s.defer=true;document.head.append(s)}
+const S={room:params.get('room')||'',channel:params.get('channel')||'',tab:['board','here'].includes(params.get('tab'))?params.get('tab'):'chat',channels:[],chat:null,board:null,people:[],mineOnly:false};
+let toastT;const toast=(m,ms)=>{const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),ms||2800)};
+async function api(p,o={}){const h={...(o.headers||{})};if(TOKEN)h.Authorization='Bearer '+TOKEN;if(o.body&&typeof o.body!=='string'){o.body=JSON.stringify(o.body);h['Content-Type']='application/json'}let r;try{r=await fetch(p,{...o,headers:h})}catch{throw new Error('No connection — try again')}let d={};try{d=await r.json()}catch{}if(!r.ok){const e=new Error(d.error||'Something went wrong');e.status=r.status;throw e}return d}
+const q=p=>isWork&&S.room?`${p}${p.includes('?')?'&':'?'}room=${encodeURIComponent(S.room)}`:p;
+const when=d=>{if(!d)return '';const t=new Date(d+'T12:00:00');return t.toLocaleDateString(undefined,{month:'short',day:'numeric'})};
+
+// ---- the room: a client's own; staff pick one ----
+async function boot(){
+  if(!TOKEN){$('#roomName').textContent='Sign in first';$('main').innerHTML=`<div class="empty">Sign in to your ${isWork?'work console':'hub'}, then open this page again.<p><a class="sbtn dark" href="/">Sign in</a></p></div>`;return}
+  $('#back').href=isWork?'/home':'/';
+  if(isWork){
+    const [rooms,all]=await Promise.all([api('/v1/team-chat/rooms').catch(()=>({rooms:[]})),api('/v1/admin/client-picker').catch(()=>({clients:[]}))]);
+    const seen=new Set(rooms.rooms.map(r=>r.id)),list=[...rooms.rooms.map(r=>({id:r.id,name:`${r.name}${r.unread?` · ${r.unread} new`:''}`})),...all.clients.filter(c=>!seen.has(c.id)).map(c=>({id:c.id,name:c.name}))];
+    if(!S.room)S.room=list[0]?.id||'';
+    const pick=$('#roomPick');pick.classList.remove('hidden');pick.innerHTML=list.map(r=>`<option value="${esc(r.id)}" ${r.id===S.room?'selected':''}>${esc(r.name)}</option>`).join('');
+    pick.onchange=()=>{S.room=pick.value;S.channel='';history.replaceState(null,'',`/workspace?room=${S.room}`);load();LIVE.restart()};
+    $('#crumb').textContent='Workspace · rooms that brought Future Basics in come first';
+    if(!S.room){$('main').innerHTML='<div class="empty">No rooms yet.</div>';return}
+  }
+  tab(S.tab);await load();LIVE.restart();
+  setInterval(()=>{if(!document.hidden){loadChannels(false);if(S.tab==='here')loadHere();else loadHereCount()}},15000);
+}
+// ---- live: a nudge the moment someone in the room says something (/v1/team-chat/live), so the thread updates at once ----
+// The stream only names the channel that changed; the page then fetches it the usual way. If the stream is down, the thread is checked every
+// 5 seconds until it is back, and the chat's own 30-second check stays on as a safety net.
+const LIVE={up:false,ctl:null,wait:1000,timer:null,fallback:null,pend:new Set(),flush:null,
+  restart(){this.ctl?.abort();clearTimeout(this.timer);this.wait=1000;this.connect()},
+  async connect(){
+    const ctl=new AbortController();this.ctl=ctl;let r;
+    try{r=await fetch(q('/v1/team-chat/live'),{headers:{Authorization:'Bearer '+TOKEN,Accept:'text/event-stream'},signal:ctl.signal,cache:'no-store'})}catch{return this.down(ctl)}
+    if(!r.ok||!r.body){if([401,403,404].includes(r.status)){this.set(false);return}return this.down(ctl)}
+    const rd=r.body.getReader(),dec=new TextDecoder();let buf='';
+    try{for(;;){const {value,done}=await rd.read();if(done)break;buf+=dec.decode(value,{stream:true});let i;
+      while((i=buf.indexOf('\n\n'))>=0){const block=buf.slice(0,i);buf=buf.slice(i+2);
+        if(/^event: ready/m.test(block)){this.set(true);this.wait=1000;continue}
+        const data=block.split('\n').filter(l=>l.startsWith('data:')).map(l=>l.slice(5).trim()).join('');if(data){try{this.on(JSON.parse(data))}catch{}}}}}catch{}
+    this.down(ctl);
+  },
+  down(ctl){if(ctl!==this.ctl||ctl.signal.aborted)return;this.set(false);clearTimeout(this.timer);this.timer=setTimeout(()=>this.connect(),this.wait);this.wait=Math.min(this.wait*2,30000)},
+  set(up){this.up=up;$('#liveDot')?.classList.toggle('on',up);$('#liveDot')?.setAttribute('title',up?'Live: new messages show at once':'Reconnecting: checking every few seconds');
+    clearInterval(this.fallback);if(!up)this.fallback=setInterval(()=>{if(!document.hidden&&S.tab==='chat')S.chat?.reload(false)},5000)},
+  // a burst (several lines at once) is one fetch
+  on(ev){if(ev.t!=='chat')return;this.pend.add(ev.channel);clearTimeout(this.flush);this.flush=setTimeout(()=>{const ch=[...this.pend];this.pend.clear();if(ch.includes(S.channel))S.chat?.reload(false);loadChannels(false)},120)}
+};
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&!LIVE.up&&TOKEN)LIVE.restart()});
+async function load(){await Promise.all([loadChannels(true),loadBoard(),loadHere()])}
+function tab(t){S.tab=t;document.querySelectorAll('[data-tab]').forEach(b=>{b.classList.toggle('on',b.dataset.tab===t);b.setAttribute('aria-selected',b.dataset.tab===t)});for(const x of ['chat','board','here'])$(`#tab-${x}`).classList.toggle('hidden',x!==t);if(t==='here')loadHere()}
+
+// ---- chat ----
+async function loadChannels(open){
+  try{const d=await api(q('/v1/team-chat/channels'));S.channels=d.channels;S.role=d.role;$('#roomName').textContent=d.room||'Your room';document.title=`Workspace — ${d.room}`;
+    const unread=S.channels.reduce((a,c)=>a+(c.id===S.channel?0:c.unread),0);$('#chatN').textContent=unread;$('#chatN').classList.toggle('hidden',!unread);
+    drawChannels();if(open||!S.channels.some(c=>c.id===S.channel)){const pick=S.channels.find(c=>c.id===S.channel)||S.channels[0];if(pick)openChannel(pick.id);else emptyThread()}}
+  catch(e){$('#chans').innerHTML=`<p class="meta">${esc(e.message)}</p>`}
+}
+function drawChannels(){
+  const staff=S.role==='admin';
+  $('#chans').innerHTML=`<span class="meta" style="padding:4px 8px">Channels</span>${S.channels.map(c=>`<button type="button" class="ch ${c.id===S.channel?'on':''}" data-ch="${esc(c.id)}"><span class="nm">#${esc(c.name)}${c.productTitle?`<small>${esc(c.productTitle)}</small>`:''}</span><span style="display:flex;gap:6px;align-items:center">${c.staffIn&&!staff?'<span class="fb" title="Future Basics is in this channel">FB</span>':''}${c.unread&&c.id!==S.channel?`<span class="u">${c.unread}</span>`:''}</span></button>`).join('')||`<p class="meta" style="padding:8px">${staff?'This room has not brought Future Basics into a channel yet.':'No channels yet.'}</p>`}
+  ${staff?'':`<form id="newCh"><span class="meta">New channel</span><input class="t" name="name" placeholder="drop-name, or pick a product" maxlength="40"><select class="t" name="productId"><option value="">Not about one product</option>${(S.board?.products||[]).map(p=>`<option value="${esc(p.id)}">${esc(p.title)}</option>`).join('')}</select><label class="meta" style="display:flex;gap:6px;align-items:center;text-transform:none;letter-spacing:0"><input type="checkbox" name="staffIn"> Future Basics in it too</label><button class="sbtn dark">Make the channel</button></form>`}`;
+}
+function emptyThread(){$('#chHead').innerHTML='';$('#thread').innerHTML='<div class="mc-empty"><b>No channel open</b><span>Pick one on the left.</span></div>'}
+async function openChannel(id){
+  S.channel=id;const c=S.channels.find(x=>x.id===id);if(!c)return;drawChannels();
+  history.replaceState(null,'',`/workspace?${isWork?`room=${S.room}&`:''}channel=${id}`);
+  const staff=S.role==='admin';
+  $('#chHead').innerHTML=`<div><b>#${esc(c.name)}</b>${c.productTitle?` <a class="meta" href="/tech-packs/${esc(c.productId)}">${esc(c.productTitle)} · tech pack</a>`:''}<div class="meta">${c.staffIn?'Future Basics can read and reply here':'Only your team can see this channel'}</div></div>${staff?'':`<div style="display:flex;gap:6px;flex-wrap:wrap"><button type="button" class="sbtn" data-fb="${c.staffIn?'out':'in'}">${c.staffIn?'Take Future Basics out':'Bring Future Basics in'}</button>${c.name==='general'?'':'<button type="button" class="sbtn danger" data-archive>Archive</button>'}</div>`}`;
+  S.chat?.destroy();const el=$('#thread');el.innerHTML='';el.className='';
+  S.chat=FBChat.mount(el,{id:'tc',viewer:'me',attach:false,canCompose:true,placeholder:`Message #${c.name}`,emptyTitle:`This is the start of #${c.name}`,emptyText:staff?'The team brought Future Basics in. Say hello.':'Talk it through with the team. @name reaches someone; @futurebasics brings us in.',
+    send:async({body,replyToId})=>{await api(`/v1/team-chat/channels/${id}/messages`,{method:'POST',body:{body,replyToId}});if(/@(future ?basics|fb)\b/i.test(body)&&!c.staffIn){c.staffIn=true;toast('Future Basics is in this channel now');openChannel(id)}},
+    refresh:async()=>{const d=await api(`/v1/team-chat/channels/${id}/messages`);return {messages:d.messages,events:d.events}}});
+  try{const d=await api(`/v1/team-chat/channels/${id}/messages`);S.chat.update(d,{toBottom:true});c.unread=0;drawChannels()}catch(e){toast(e.message)}
+}
+
+// ---- the board ----
+async function loadBoard(){
+  try{S.board=await api(q('/v1/workspace/assignments'));drawBoard();drawChannels()}catch(e){$('#tab-board').innerHTML=`<div class="empty">${esc(e.message)}</div>`}
+}
+function drawBoard(){
+  const B=S.board,mine=B.assignments.filter(a=>a.assigneeId===B.you),list=S.mineOnly?mine:B.assignments;
+  const open=mine.filter(a=>a.status!=='done').length;$('#boardN').textContent=open;$('#boardN').classList.toggle('hidden',!open);
+  const opt=(arr,cur,none)=>`${none?`<option value="">${none}</option>`:''}${arr.map(x=>`<option value="${esc(x.id)}" ${String(x.id)===String(cur||'')?'selected':''}>${esc(x.name||x.title||x.label)}</option>`).join('')}`;
+  const card=a=>{const i=B.statuses.findIndex(s=>s.id===a.status);return `<div class="task" data-task="${esc(a.id)}"><b>${esc(a.title)}</b>${a.notes?`<span style="color:var(--dim);font-size:13px">${esc(a.notes)}</span>`:''}
+    <div class="row">${a.productTitle?`<a class="chip" href="/tech-packs/${esc(a.productId)}">${esc(a.productTitle)}</a>`:''}${a.due?`<span class="chip ${a.state}">${a.state==='late'?'Late · ':a.state==='soon'?'Soon · ':''}${when(a.due)}</span>`:''}</div>
+    <div class="row"><select data-f="assigneeId" aria-label="Who has it">${opt(B.people,a.assigneeId,'Nobody yet')}</select><input type="date" data-f="due" value="${esc(a.due)}" aria-label="Due"></div>
+    <div class="row" style="justify-content:space-between"><span class="moves">${i>0?`<button type="button" data-move="${B.statuses[i-1].id}" aria-label="Back to ${esc(B.statuses[i-1].label)}">← ${esc(B.statuses[i-1].label)}</button>`:''}${i<B.statuses.length-1?`<button type="button" data-move="${B.statuses[i+1].id}">${esc(B.statuses[i+1].label)} →</button>`:''}</span><button type="button" class="sbtn danger" style="min-height:30px;padding:4px 10px" data-del>Delete</button></div></div>`};
+  $('#tab-board').innerHTML=`<form class="addtask" id="addTask"><input class="t" name="title" placeholder="What needs doing — e.g. Fit sample review for the tour hoodie" maxlength="200" required><select class="t" name="assigneeId" aria-label="Give it to">${opt(B.people,'','Give it to…')}</select><select class="t" name="productId" aria-label="Product">${opt(B.products.map(p=>({id:p.id,name:p.title})),'','No product')}</select><input class="t" type="date" name="due" aria-label="Due"><button class="sbtn go">Add</button></form>
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><label class="meta" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="mineOnly" ${S.mineOnly?'checked':''}> Only mine (${mine.filter(a=>a.status!=='done').length} open)</label><span class="meta">${B.assignments.filter(a=>a.state==='late').length} late</span></div>
+  <div class="board">${B.statuses.map(s=>{const xs=list.filter(a=>a.status===s.id);return `<div class="col"><h3>${esc(s.label)} <span class="meta">${xs.length}</span></h3>${xs.map(card).join('')||'<span class="meta" style="padding:6px">Nothing here</span>'}</div>`}).join('')}</div>`;
+}
+async function patchTask(id,body){try{const d=await api(`/v1/workspace/assignments/${id}`,{method:'PATCH',body});const i=S.board.assignments.findIndex(a=>a.id===id);S.board.assignments[i]=d.assignment;drawBoard()}catch(e){toast(e.message);loadBoard()}}
+
+// ---- who's here ----
+const HERE_WORDS={'tech-pack':'Tech pack','sample-review':'Sample review',concept:'Studio'};
+async function loadHere(){try{const d=await api(q('/v1/workspace/presence'));S.people=d.people;drawHere()}catch(e){$('#tab-here').innerHTML=`<div class="empty">${esc(e.message)}</div>`}}
+async function loadHereCount(){try{const d=await api(q('/v1/workspace/presence'));S.people=d.people;const n=d.people.filter(p=>!p.you&&p.on.some(o=>o.live)).length;$('#hereN').textContent=n;$('#hereN').classList.toggle('hidden',!n)}catch{}}
+function drawHere(){const others=S.people.filter(p=>!p.you),n=others.filter(p=>p.on.some(o=>o.live)).length;$('#hereN').textContent=n;$('#hereN').classList.toggle('hidden',!n);
+  $('#tab-here').innerHTML=others.length?`<div class="people">${others.map(p=>{const live=p.on.some(o=>o.live);return `<div class="person"><span class="av ${live?'live':''}" title="${live?'Here now':'Seen in the last two minutes'}">${esc(p.initials)}</span><div><b>${esc(p.name)}</b> <span class="meta">${live?'here now':'just left'}</span><ul>${p.on.map(o=>`<li><span class="meta">${esc(HERE_WORDS[o.type]||o.type)}</span> <a href="${esc(o.href)}">${esc(o.title||'Untitled')}</a>${o.mode==='editing'?'<span class="edit">changing it</span>':''}</li>`).join('')}</ul></div></div>`}).join('')}</div>`:'<div class="empty"><b>Nobody else is in right now.</b><br>When a teammate opens a tech pack, a sample review or a piece in the Studio, they show up here, and on that page beside you.</div>'}
+
+// ---- input ----
+document.addEventListener('click',async e=>{
+  const t=e.target.closest('[data-tab]');if(t)return tab(t.dataset.tab);
+  const ch=e.target.closest('[data-ch]');if(ch)return openChannel(ch.dataset.ch);
+  const fb=e.target.closest('[data-fb]');if(fb){try{await api(`/v1/team-chat/channels/${S.channel}`,{method:'PATCH',body:{staffIn:fb.dataset.fb==='in'}});toast(fb.dataset.fb==='in'?'Future Basics can read and reply here now':'Future Basics is out of this channel');await loadChannels(false);openChannel(S.channel)}catch(err){toast(err.message)}return}
+  if(e.target.closest('[data-archive]')){if(!confirm('Archive this channel? Its messages are kept, and it leaves the list.'))return;try{await api(`/v1/team-chat/channels/${S.channel}`,{method:'PATCH',body:{archived:true}});S.channel='';loadChannels(true)}catch(err){toast(err.message)}return}
+  const task=e.target.closest('[data-task]');if(!task)return;
+  const mv=e.target.closest('[data-move]');if(mv)return patchTask(task.dataset.task,{status:mv.dataset.move});
+  if(e.target.closest('[data-del]')){if(!confirm('Delete this task?'))return;try{await api(`/v1/workspace/assignments/${task.dataset.task}`,{method:'DELETE'});S.board.assignments=S.board.assignments.filter(a=>a.id!==task.dataset.task);drawBoard()}catch(err){toast(err.message)}}
+});
+document.addEventListener('change',e=>{const t=e.target;if(t.id==='mineOnly'){S.mineOnly=t.checked;return drawBoard()}const task=t.closest('[data-task]');if(task&&t.dataset.f)patchTask(task.dataset.task,{[t.dataset.f]:t.value||null})});
+document.addEventListener('submit',async e=>{
+  if(e.target.id==='newCh'){e.preventDefault();const f=new FormData(e.target);try{const d=await api('/v1/team-chat/channels',{method:'POST',body:{name:f.get('name'),productId:f.get('productId')||undefined,staffIn:f.get('staffIn')==='on'}});await loadChannels(false);openChannel(d.channel.id)}catch(err){toast(err.message)}}
+  if(e.target.id==='addTask'){e.preventDefault();const f=new FormData(e.target);try{const d=await api(q('/v1/workspace/assignments'),{method:'POST',body:{title:f.get('title'),assigneeId:f.get('assigneeId')||null,productId:f.get('productId')||null,due:f.get('due')||null,room:isWork?S.room:undefined}});S.board.assignments.push(d.assignment);drawBoard();toast(d.assignment.assigneeName?`Given to ${d.assignment.assigneeName}`:'Added')}catch(err){toast(err.message)}}
+});
+boot().catch(e=>{$('#roomName').textContent='Workspace';$('main').innerHTML=`<div class="empty">${esc(e.message)}</div>`});
+})();
+</script></body></html>
