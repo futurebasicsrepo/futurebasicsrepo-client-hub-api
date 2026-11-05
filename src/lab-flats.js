@@ -524,13 +524,15 @@ export function describeEdit(e, p) {
   if (e.kind === 'erase') return `${v}: covered over (${fmt(e.w)} × ${fmt(e.h)})`;
   return `${v}: ${name}, ${fmt(e.w)} × ${fmt(e.h)}, ${describe({ ...e, name }, p)}; topstitch ${(STITCHES[e.stitch] || 'single needle').toLowerCase()}${thread}${hexOf(e.color) ? `; ${hexOf(e.color)}` : ''}`;
 }
-const cleanPts = (a, min) => { const pts = (Array.isArray(a) ? a : []).slice(0, 60).map(q => [r8(Math.min(Math.max(Number(q?.[0]) || 0, -60), 60)), r8(Math.min(Math.max(Number(q?.[1]) || 0, -30), 80))]); return pts.length >= min ? pts : null; };
+// a colour block can follow a whole panel's outline (traced from the sketch: src/lab-flat-panels.js), so it keeps more points, more finely
+const r32 = v => Math.round(v * 32) / 32;
+const cleanPts = (a, min, max = 60, round = r8) => { const pts = (Array.isArray(a) ? a : []).slice(0, max).map(q => [round(Math.min(Math.max(Number(q?.[0]) || 0, -60), 60)), round(Math.min(Math.max(Number(q?.[1]) || 0, -30), 80))]); return pts.length >= min ? pts : null; };
 export function cleanEdits(list) {
   const num = (v, lo, hi, d) => { const n = Number(v); return Number.isFinite(n) ? r8(Math.min(Math.max(n, lo), hi)) : d; };
   return (Array.isArray(list) ? list : []).slice(0, 60).map((e, i) => {
     const base = { id: /^[a-z0-9-]{1,40}$/i.test(String(e?.id || '')) ? String(e.id) : 'e' + i, view: e?.view === 'back' ? 'back' : 'front' };
     if (e?.type === 'stitch') { const pts = cleanPts(e.pts, 2); return pts && { ...base, type: 'stitch', pts, stitch: STITCHES[e.stitch] ? e.stitch : 'single', thread: hexOf(e.thread), spi: Math.round(num(e.spi, 0, 20, 0)) }; }
-    if (e?.type === 'block') { const pts = cleanPts(e.pts, 3); return pts && hexOf(e.color) && { ...base, type: 'block', pts, color: hexOf(e.color), name: String(e.name || '').replace(/\s+/g, ' ').trim().slice(0, 40) }; }
+    if (e?.type === 'block') { const pts = cleanPts(e.pts, 3, 240, r32); return pts && hexOf(e.color) && { ...base, type: 'block', pts, color: hexOf(e.color), name: String(e.name || '').replace(/\s+/g, ' ').trim().slice(0, 40), ...(e.traced ? { traced: true } : {}) }; }
     const box = { x: num(e?.x, -60, 60, 0), y: num(e?.y, -30, 80, 0), w: num(e?.w, .1, 40, 1), h: num(e?.h, .1, 40, 1) };
     if (e?.type === 'ai') return /^[0-9a-f-]{36}$/i.test(String(e.art || '')) && { ...base, type: 'ai', ...box, art: e.art, prompt: String(e.prompt || '').replace(/\s+/g, ' ').trim().slice(0, 200) };
     if (e?.type === 'part' && partOf(e.part)) return { ...base, type: 'part', part: e.part, ...box, flip: Boolean(e.flip), name: String(e.name || '').replace(/\s+/g, ' ').trim().slice(0, 60) };

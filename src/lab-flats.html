@@ -77,6 +77,13 @@ textarea.t{min-height:64px;resize:vertical}
 [data-level=simple] .lv-pro{display:none!important}
 [data-embed=compact] .wrap{grid-template-columns:1fr}[data-embed=compact] .side,[data-embed=compact] .stage>.msg{display:none}[data-embed=compact] .stage{padding:10px}
 @media print{header,.bar,.side,.tools,#fbSide,.fbside{display:none!important}.wrap{grid-template-columns:1fr}body{background:#fff}}
+/* the cloth: the library's fabrics as photo tiles in the garment's colour; coloured panels: a row each with its colour, name and Remove */
+.cloths{display:grid;grid-template-columns:repeat(auto-fill,minmax(74px,1fr));gap:6px;max-height:248px;overflow-y:auto;padding:2px}
+.cloths button{border:1px solid var(--line,#e2e2dc);background:#fff;border-radius:10px;padding:4px;display:grid;gap:3px;cursor:pointer;text-align:left;font-size:11px;line-height:1.2}
+.cloths button[aria-checked=true]{border-color:#12b864;box-shadow:0 0 0 1.5px #4bff9a}.cloths button:disabled{opacity:.55;cursor:default}
+.cloths .cs{aspect-ratio:1;border-radius:7px;background:#eee center/cover;display:block}.cloths .cn{overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.plist{display:grid;gap:6px;margin-top:8px}.prow{display:grid;grid-template-columns:38px minmax(0,1fr) auto;gap:6px;align-items:center;padding:4px;border:1px solid transparent;border-radius:10px;cursor:pointer}
+.prow.on{border-color:#2a6df4;background:rgba(42,109,244,.05)}.prow input[type=color]{width:38px;height:34px;border:1px solid var(--line,#e2e2dc);border-radius:8px;padding:2px;background:#fff}
 </style>
 <script src="/feedback.js"></script>
 <link rel="stylesheet" href="/cue.css">
@@ -107,7 +114,8 @@ textarea.t{min-height:64px;resize:vertical}
 <script>try{if(!localStorage.getItem('fb.admin.token')&&localStorage.getItem('fb.client.token'))document.documentElement.dataset.labClient='1'}catch{}</script>
 <script src="/lab/nav.js"></script>
 <script type="module">
-import { STYLES, FITS, SIZES, DETAILS, STITCHES, defaultDetail, describeEdit, geometry, renderSvg, viewBoxOf, templatesFor, templateOf, defaultTemplate, describe, placementChecks, overlapChecks, pomTable, defaultParams, defaultPlacement, measurementsFor, POM_NAMES, pomName, fitToTemplate, FLAT_PARTS, PART_KINDS, partOf, defaultPart, fmt, fmtCm, MASK_URL } from '/lab/flats.js';
+import { STYLES, FITS, SIZES, DETAILS, STITCHES, defaultDetail, describeEdit, geometry, renderSvg, viewBoxOf, templatesFor, templateOf, defaultTemplate, describe, placementChecks, overlapChecks, pomTable, defaultParams, defaultPlacement, measurementsFor, POM_NAMES, pomName, fitToTemplate, FLAT_PARTS, PART_KINDS, partOf, defaultPart, fmt, fmtCm, MASK_URL, drawingOf, TEMPLATE_URL } from '/lab/flats.js';
+import { panelAt, panelName } from '/lab/lab-flat-panels.js';
 import { FLAT_TEMPLATES } from '/lab/lab-flat-templates.js';
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)],esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const TOKEN=()=>{try{return localStorage.getItem('fb.admin.token')||localStorage.getItem('fb.client.token')||''}catch{return ''}}; // staff sign in at the work console; a client with the Design Lab on their room signs in at their hub
@@ -118,7 +126,7 @@ const BLOB=new Map();const blobUrl=p=>{if(!BLOB.has(p))BLOB.set(p,fetch(p,{heade
 const INAPP=()=>{try{return navigator.standalone===true||top.navigator.standalone===true||matchMedia('(display-mode: standalone)').matches}catch{return false}};
 const slugOf=()=>String(D?.concept?.name||'concept').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,40)||'concept';
 const CID=new URLSearchParams(location.search).get('concept')||'',EMBED=document.documentElement.dataset.embed||'',HOST=()=>{try{return EMBED&&parent!==window?parent.FBDesign:null}catch{return null}};
-let PKIND='pockets',SELE=null,MODE=null,DRAFT=[],AIBOX=null,BOXDRAG=null,EHREF={},NEWST={stitch:'double',thread:'#141416'},NEWBL={color:'#a02a20'};
+let PKIND='pockets',SELE=null,MODE=null,DRAFT=[],AIBOX=null,BOXDRAG=null,EHREF={},NEWST={stitch:'double',thread:'#141416'},NEWBL={color:'#a02a20',both:true},CLOTH={lib:null,main:null,busy:false};
 let D=null,P=null,PL=[],VIEW='front',SEL=null,CHECK={findings:{},summary:{fail:0,warn:0}},WHERE={},DIRTY=false,TAB='pl',HREF={},MARKS={};
 const r8=v=>Math.round(v*8)/8;
 const techName=q=>(D.techniques.find(t=>t.id===q.techniqueId)||{}).name||q.technique;
@@ -137,7 +145,7 @@ setInterval(()=>{const el=$('#saved');if(!DIRTY&&SAVED_F&&!SAVING_F&&/^Saved /.t
 // the quick checks (the drawing) run here at once; the artwork checks come back from the service a moment later
 function localFindings(){const out={},over=overlapChecks(PL);for(const q of PL){const t=D.techniques.find(x=>x.id===q.techniqueId);const loc=placementChecks(q,P,t?{...t.rules,techniqueName:t.name}:{});const art=(CHECK.findings[q.id]||[]).filter(f=>['FINE_DETAIL','INKS','GRADIENT','STITCHES','TINY'].includes(f.code));out[q.id]=[...loc,...(over[q.id]||[]),...art]}return out}
 function draw(){
-  const F=localFindings(),sz=$('#size').value||P.size,pls=PL.map(q=>{if(!q.grade)return q;const g=q.grade.find(x=>x.sizes.includes(sz));return g?{...q,w:g.w,h:g.h,y:q.y-q.h/2+g.h/2}:q}),svg=renderSvg(P,VIEW,{maskHref:MASK_URL,placements:pls,hrefs:HREF,size:sz,showPom:$('#showPom').checked,showDims:$('#showDims').checked,selected:SEL,findings:F,scale:0,editable:true,selectedEdit:SELE,editHrefs:EHREF,overlay:overlay(),alloverHref:AOHREF});
+  const F=localFindings(),sz=$('#size').value||P.size,pls=PL.map(q=>{if(!q.grade)return q;const g=q.grade.find(x=>x.sizes.includes(sz));return g?{...q,w:g.w,h:g.h,y:q.y-q.h/2+g.h/2}:q}),svg=renderSvg(P,VIEW,{maskHref:MASK_URL,placements:pls,hrefs:HREF,size:sz,showPom:$('#showPom').checked,showDims:$('#showDims').checked,selected:SEL,findings:F,scale:0,editable:true,selectedEdit:SELE,editHrefs:EHREF,overlay:overlay(),alloverHref:AOHREF,texture:clothTex()});
   $('#canvas').innerHTML=svg;zoomSvg();const fail=Object.values(F).flat().filter(f=>f.level==='fail').length,warn=Object.values(F).flat().filter(f=>f.level==='warn').length,s=$('#status');
   s.className='status '+(fail?'bad':warn?'warn':'ok');s.innerHTML=fail?`<span class="dot fail"></span>${fail} problem${fail===1?'':'s'} to fix before it can be made`:warn?`<span class="dot warn"></span>Can be made: ${warn} thing${warn===1?'':'s'} to check`:'<span class="dot ok"></span>Can be made as drawn';
   return F}
@@ -146,7 +154,7 @@ function paint(){const F=draw();paintPl(F);if(TAB==='design')paintDesign();if(TA
 function overlay(){const c='#2a6df4',pts=DRAFT.map(q=>q.join(' ')).join(' L');let o='';
   if(DRAFT.length)o+=`<path d="M${pts}${MODE==='block'&&DRAFT.length>2?' Z':''}" fill="${MODE==='block'?'rgba(42,109,244,.12)':'none'}" stroke="${c}" stroke-width=".05" stroke-dasharray=".2 .1"/>`+DRAFT.map(q=>`<circle cx="${q[0]}" cy="${q[1]}" r=".12" fill="${c}"/>`).join('');
   // the chosen stitch line or colour block: a dot on each point to drag; double-click the line to add a point, a dot to take it away
-  const se=!MODE&&SELE&&P.edits.find(x=>x.id===SELE&&x.view===VIEW&&(x.type==='stitch'||x.type==='block')&&x.pts);
+  const se=!MODE&&SELE&&P.edits.find(x=>x.id===SELE&&x.view===VIEW&&(x.type==='stitch'||x.type==='block')&&x.pts&&!x.traced); // a panel traced from the sketch follows its seams: no points to drag
   if(se)o+=se.pts.map((q,i)=>`<circle data-vx="${i}" cx="${q[0]}" cy="${q[1]}" r=".16" fill="#fff" stroke="${c}" stroke-width=".05" style="cursor:move;pointer-events:all"><title>Drag to move this point; double-click to take it away</title></circle>`).join('');
   if(MODE==='ai'&&AIBOX)o+=`<rect x="${AIBOX.x-AIBOX.w/2}" y="${AIBOX.y-AIBOX.h/2}" width="${AIBOX.w}" height="${AIBOX.h}" fill="rgba(42,109,244,.08)" stroke="${c}" stroke-width=".06" stroke-dasharray=".25 .12"/>`;
   return o?`<g pointer-events="none">${o}</g>`:''}
@@ -161,6 +169,7 @@ const stitchOpts=v=>Object.entries(STITCHES).map(([k,l])=>`<option value="${k}" 
 const pick=(k,v,label,clear)=>`<label class="pick"><input type="color" data-ek="${k}" value="${v||'#141416'}" aria-label="${label}">${label}${v&&clear?` <button class="btn sm q" type="button" data-clear="${k}">${clear}</button>`:''}</label>`;
 function modeHint(){
   if(MODE==='stitch')return `<div class="hint"><span>Click along the seam or edge, point by point. Double-click or press Enter to finish; Esc to stop.</span><div class="kinds"><select class="t" data-new="stitch" style="width:auto">${stitchOpts(NEWST.stitch)}</select><label class="pick"><input type="color" data-new="thread" value="${NEWST.thread}" aria-label="Thread colour">Thread</label></div></div>`;
+  if(MODE==='fill')return `<div class="hint"><span>Tap a panel on the flat (a sleeve, the hood, a cuff, the body, a rib) and it takes this colour, right up to its seams. Tap a coloured panel again to give it the new colour. Esc to stop.</span><div class="kinds"><label class="pick"><input type="color" data-new="blockColor" value="${NEWBL.color}" aria-label="Panel colour">Colour</label><label class="chk"><input type="checkbox" data-new="both" ${NEWBL.both?'checked':''}> Both sides</label></div></div>`;
   if(MODE==='block')return `<div class="hint"><span>Click round the panel to colour (a sleeve, a yoke, a hood lining). Double-click or press Enter to close it.</span><label class="pick"><input type="color" data-new="blockColor" value="${NEWBL.color}" aria-label="Block colour">Colour</label></div>`;
   if(MODE==='ai')return AIBOX?`<div class="hint"><span>Say what to change inside the box. The image model redraws only that area, in the same flat-sketch lines.</span><textarea class="t" id="aiPrompt" placeholder="For example: make this a cargo pocket with a flap"></textarea><div class="kinds">${SUGG.map(t=>`<button class="btn sm q" type="button" data-sugg="${esc(t)}">${esc(t)}</button>`).join('')}</div><div class="kinds"><button class="btn sm go" type="button" id="aiGo">Redraw this area</button><button class="btn sm q" type="button" data-mode="ai">Cancel</button></div><span id="aiMsg" role="status"></span></div>`:'<div class="hint">Drag a box round the part of the drawing to change.</div>';
   return '';
@@ -179,14 +188,54 @@ function edCard(e){
   return `<div class="ed ${e.id===SELE?'on':''}" data-e="${esc(e.id)}"><div class="hd"><b>${esc(title)}</b>${e.type==='detail'||e.type==='block'||e.type==='part'?'<button class="btn sm q" type="button" data-mirror>Mirror</button>':''}<button class="btn sm q" type="button" data-edel aria-label="Remove ${esc(title)}">Remove</button></div>${body}<div class="where">${esc(describeEdit(e,P))}</div></div>`;
 }
 function paintDesign(){
-  const eds=(P.edits||[]).filter(e=>e.view===VIEW);
+  const eds=(P.edits||[]).filter(e=>e.view===VIEW&&e.type!=='block'); // coloured panels have their own list
   $('#pDesign').innerHTML=`<div class="sec"><button class="btn sm" type="button" id="redrawPic" title="Draw the flat from the concept's picture: the right sketch, then the front and back drawn by the image model in the picture's details and colours">Draw from the picture</button></div><div class="sec"><h4>Colour</h4><div class="swatches">${['',...SWATCH].map(c=>`<button type="button" class="sw" data-color="${c}" aria-pressed="${(P.color||'')===c}" title="${c||'White, no colour'}" aria-label="${c||'White, no colour'}" style="background:${c||'#fff'}">${c?'':'–'}</button>`).join('')}<label class="sw" title="Any colour" style="background:conic-gradient(#e11,#ee1,#1e1,#1ee,#11e,#e1e,#e11);position:relative"><input type="color" id="dColor" value="${P.color||'#ffffff'}" style="opacity:0;position:absolute;inset:0;width:100%;height:100%;cursor:pointer" aria-label="Any colour"></label></div><p class="msg">Colours the whole piece. The sketch's lines and shading stay, and a dark colour gets light lines so the drawing still reads.</p></div>
+${clothSec()}${panelsSec()}
   <div class="sec"><h4>Add a detail</h4>${GROUPS.map(([g,ks])=>`<div class="mono">${g}</div><div class="kinds">${ks.map(k=>`<button class="btn sm q" type="button" data-adddet="${k}">${esc(k==='pleat'?'Pleats':DETAILS[k])}</button>`).join('')}</div>`).join('')}<p class="msg">It lands on the ${VIEW} where that detail usually goes: drag it, or set its size and place below. Cover up hides something on the sketch, like a pocket you are replacing.</p></div>
   <div class="sec"><h4>From the sketch pack</h4><div class="gbar">${Object.entries(PART_KINDS).map(([k,l])=>`<button class="btn sm q" type="button" data-pkind="${k}" aria-pressed="${PKIND===k}">${esc(l)}s</button>`).join('')}</div><div class="gal parts">${FLAT_PARTS.filter(q=>q.kind===PKIND).map(q=>`<button type="button" data-addpart="${q.id}" title="Add ${esc(q.label)}"><img loading="lazy" alt="" src="/lab/flat-parts/${q.file}">${esc(q.label)}</button>`).join('')}</div><p class="msg">The pack's own pockets, zips, collars, trims and buttons, drawn in the same lines. Add one, then drag it into place and size it; cover up what it replaces.</p></div>
-  <div class="sec"><h4>Draw</h4><div class="kinds"><button class="btn sm lv-pro" type="button" data-mode="stitch" aria-pressed="${MODE==='stitch'}">Stitch line</button><button class="btn sm" type="button" data-mode="block" aria-pressed="${MODE==='block'}">Colour block</button><button class="btn sm" type="button" data-mode="ai" aria-pressed="${MODE==='ai'}">Redraw an area with AI</button></div>${modeHint()}</div>
+  <div class="sec"><h4>Draw</h4><div class="kinds"><button class="btn sm lv-pro" type="button" data-mode="stitch" aria-pressed="${MODE==='stitch'}">Stitch line</button><button class="btn sm q lv-pro" type="button" data-mode="block" aria-pressed="${MODE==='block'}" title="Click round an area point by point, for a block that is not one of the sketch's panels">Block by hand</button><button class="btn sm" type="button" data-mode="ai" aria-pressed="${MODE==='ai'}">Redraw an area with AI</button></div>${MODE==='fill'?'':modeHint()}</div>
   <div class="sec"><h4>Changed on the ${VIEW}</h4>${eds.length?eds.map(edCard).join(''):'<p class="msg">Nothing changed on this side yet.</p>'}</div>`;
 }
 const newId=k=>k+Math.random().toString(36).slice(2,8);
+// ---------- the cloth: the garment's main fabric, chosen here, shown on the flat as its surface over the colour ----------
+const TEX_IN=9; // inches of drawing a tile of the cloth covers: larger than life, so the weave reads at the size of the flat
+function clothTex(){const m=CLOTH.main&&CLOTH.lib?.find(x=>x.id===CLOTH.main.id);return m?.photo?{href:`/lab/material-photos/${encodeURIComponent(m.photo)}.jpg?shade=1&s=320`,w:TEX_IN,h:TEX_IN}:null}
+async function loadCloth(){if(!CID)return;try{const[lib,on]=await Promise.all([CLOTH.lib?Promise.resolve({materials:CLOTH.lib}):api('/v1/lab/materials?kind=fabric'),api(`/v1/lab/concepts/${CID}/materials`)]);CLOTH.lib=lib.materials||[];CLOTH.main=(on.picks||[]).find(p=>p.kind==='fabric'&&p.role==='main'&&!p.part)||null;CLOTH.fit=on.fit||null}catch{CLOTH.lib=CLOTH.lib||[]}}
+function clothSec(){const lib=CLOTH.lib,locked=Boolean(D?.concept?.locked),hex=(P.color||'').replace('#',''),m=CLOTH.main;
+  if(!lib)return `<div class="sec"><h4>Cloth</h4><p class="msg">Loading the fabrics…</p></div>`;
+  const ph=x=>x.photo?`background-image:url('/lab/material-photos/${encodeURIComponent(x.photo)}.jpg?c=${encodeURIComponent(hex||'e9e9e6')}&s=160')`:`background:${P.color||'#eee'}`;
+  const f=CLOTH.fit&&CLOTH.fit.verdict!=='unknown'&&!CLOTH.fit.accepted&&CLOTH.fit.verdict!=='good'?CLOTH.fit.findings?.[0]:null;
+  return `<div class="sec"><h4>Cloth</h4><p class="msg" style="margin:0 0 6px">${m?`<b>${esc(m.name)}</b> is the main fabric: its surface is on the flat, and the cost and tech pack take it.`:'No fabric chosen yet. Pick one and the flat shows it.'}</p>${f?`<p class="msg" style="color:#8a5a00;margin:0 0 6px">! ${esc(f.msg)}</p>`:''}
+    <div class="cloths" role="radiogroup" aria-label="Main fabric">${[...lib].sort((a,b)=>(b.id===m?.id)-(a.id===m?.id)).map(x=>`<button type="button" role="radio" data-cloth="${esc(x.id)}" aria-checked="${m?.id===x.id}" ${locked||CLOTH.busy?'disabled':''} title="${esc(x.name)}"><span class="cs" style="${ph(x)}"></span><span class="cn">${esc(x.name)}</span></button>`).join('')}</div></div>`}
+async function pickCloth(id){if(CLOTH.busy||CLOTH.main?.id===id)return;CLOTH.busy=true;paintDesign();
+  try{const r=await api(`/v1/lab/concepts/${CID}/materials`,{body:{material:id,role:'main',colour:P.color||undefined,replace:true}});CLOTH.main=(r.picks||[]).find(p=>p.kind==='fabric'&&p.role==='main'&&!p.part)||null;CLOTH.fit=r.fit||null;FBN.toast(`${CLOTH.main?.name||'The fabric'} is the main fabric now`,'ok');HOST()?.clothChanged?.()}
+  catch(x){FBN.toast(x.message,'err')}finally{CLOTH.busy=false;draw();paintDesign()}}
+// ---------- coloured panels: tap a panel of the sketch and it is coloured to its seams (src/lab-flat-panels.js) ----------
+function panelsSec(){const bl=(P.edits||[]).filter(e=>e.type==='block'&&e.view===VIEW);
+  return `<div class="sec"><h4>Coloured panels</h4><div class="kinds"><button class="btn sm ${MODE==='fill'?'go':''}" type="button" data-mode="fill" aria-pressed="${MODE==='fill'}">${MODE==='fill'?'Done colouring':'Colour a panel'}</button></div>${MODE==='fill'?modeHint():''}
+    ${bl.length?`<div class="plist">${bl.map(e=>`<div class="prow ${e.id===SELE?'on':''}" data-pid="${esc(e.id)}"><input type="color" data-pcol value="${e.color}" aria-label="Colour of ${esc(e.name||'the panel')}"><input class="t" data-pname value="${esc(e.name)}" placeholder="Panel" aria-label="Name"><button class="btn sm q" type="button" data-pdel aria-label="Remove ${esc(e.name||'the panel')}">Remove</button></div>`).join('')}</div>`:`<p class="msg">${MODE==='fill'?'':'None yet: the whole piece is the garment colour.'}</p>`}</div>`}
+let PANELRAS=null;
+// the sketch of this view as pixels, the way the flat draws it (its own sketch, or the view drawn from the picture), and how pixels map to inches
+async function panelRaster(){const d=drawingOf(P,VIEW,$('#size').value||P.size);if(!d)return null;
+  const drawn=P.drawn?.template===d.t.id&&P.drawn[VIEW]?EHREF[P.drawn[VIEW]]:null,key=[d.t.id,VIEW,drawn||'',d.sx,d.sy].join('|');if(PANELRAS?.key===key)return PANELRAS;
+  const[bx,by,bw,bh]=d.v.box,S=900/bw,W=Math.round(bw*S),H=Math.round(bh*S),c=document.createElement('canvas');c.width=W;c.height=H;const x=c.getContext('2d',{willReadFrequently:true});
+  const img=new Image();img.src=drawn||TEMPLATE_URL(d.t.file);await img.decode();
+  if(drawn)x.drawImage(img,0,0,W,H);else{const pg=d.t.page;x.drawImage(img,(pg[0]-bx)*S,(pg[1]-by)*S,pg[2]*S,pg[3]*S)}
+  PANELRAS={key,d,S,bx,by,img:{data:x.getImageData(0,0,W,H).data,width:W,height:H}};return PANELRAS}
+const inPoly=([x,y],pts)=>{let c=false;for(let i=0,j=pts.length-1;i<pts.length;j=i++){const[a,b]=pts[i],[e,f]=pts[j];if((b>y)!==(f>y)&&x<(e-a)*(y-b)/(f-b)+a)c=!c}return c};
+async function fillAt(X,Y){
+  // a panel already coloured: it takes the new colour
+  const hit=[...P.edits].reverse().find(e=>e.type==='block'&&e.view===VIEW&&inPoly([X,Y],e.pts));
+  if(hit){hit.color=NEWBL.color;SELE=hit.id;touch();paint();return}
+  let r;try{r=await panelRaster()}catch{r=null}if(!r){FBN.toast('This flat has no sketch to find panels on: use Block by hand','info');return}
+  const toPx=(X,Y)=>[(X*r.d.sx+r.d.ox-r.bx)*r.S,(Y*r.d.sy+r.d.oy-r.by)*r.S],toIn=([px,py])=>[Math.round((r.bx+px/r.S-r.d.ox)/r.d.sx*32)/32,Math.round((r.by+py/r.S-r.d.oy)/r.d.sy*32)/32];
+  const m=measurementsFor(P,$('#size').value||P.size),kind=STYLES[P.style].kind,half=((m.chest||m.waist||22))/2,length=m.length||((m.rise||0)+(m.inseam||0))||27;
+  const one=(X,Y)=>{const[px,py]=toPx(X,Y),f=panelAt(r.img,px,py);if(!f)return null;const pts=f.pts.map(toIn),xs=pts.map(q=>q[0]),ys=pts.map(q=>q[1]),box={x0:Math.min(...xs),x1:Math.max(...xs),y0:Math.min(...ys),y1:Math.max(...ys)};return{pts,box}};
+  const a=one(X,Y);if(!a){FBN.toast('No panel there: tap inside the garment, between its seams','info');return}
+  const name=panelName(a.box,{kind,half,length}),made=[{id:newId('b'),type:'block',view:VIEW,pts:a.pts,color:NEWBL.color,name,traced:true}];
+  // the same panel on the other side (the other sleeve, cuff or hood half), when the tap was off the centre line
+  if(NEWBL.both&&Math.abs((a.box.x0+a.box.x1)/2)>.75&&!(a.box.x0<0&&a.box.x1>0)){const b=one(-X,Y);if(b&&!(Math.abs(b.box.x0-a.box.x0)<.3&&Math.abs(b.box.x1-a.box.x1)<.3)&&!P.edits.some(e=>e.type==='block'&&e.view===VIEW&&inPoly([-X,Y],e.pts)))made.push({id:newId('b'),type:'block',view:VIEW,pts:b.pts,color:NEWBL.color,name,traced:true})}
+  P.edits.push(...made);SELE=made[0].id;touch();paint();FBN.toast(made.length>1?`${name}s coloured, both sides`:`${name} coloured`,'ok')}
 function finishDraft(){const pts=DRAFT.filter((q,i)=>!i||Math.hypot(q[0]-DRAFT[i-1][0],q[1]-DRAFT[i-1][1])>.1);let e=null;
   if(MODE==='stitch'&&pts.length>=2)e={id:newId('s'),type:'stitch',view:VIEW,pts,stitch:NEWST.stitch,thread:NEWST.thread==='#141416'?'':NEWST.thread,spi:0};
   if(MODE==='block'&&pts.length>=3)e={id:newId('b'),type:'block',view:VIEW,pts,color:NEWBL.color,name:''};
@@ -210,13 +259,18 @@ $('#pDesign').addEventListener('click',async e=>{
   if(!e.target.closest('input,select,button,textarea')&&SELE!==ed.id){SELE=ed.id;paint()}});
 function editField(e){
   if(e.target.id==='dColor'){P.color=e.target.value;touch();e.type==='change'?paint():draw();return}
-  const nw=e.target.dataset.new;if(nw){if(nw==='blockColor')NEWBL.color=e.target.value;else NEWST[nw]=e.target.value;return}
+  const nw=e.target.dataset.new;if(nw){if(nw==='blockColor')NEWBL.color=e.target.value;else if(nw==='both')NEWBL.both=e.target.checked;else NEWST[nw]=e.target.value;return}
   const card=e.target.closest('[data-e]'),k=e.target.dataset.ek;if(!card||!k)return;const ed=P.edits.find(x=>x.id===card.dataset.e);if(!ed)return;
   const v=e.target.type==='checkbox'?e.target.checked:e.target.type==='number'?Number(e.target.value):e.target.value;
   if(e.target.type==='number'&&!Number.isFinite(v))return;
   if(k==='pw'){const a=ed.w/ed.h,top=ed.y-ed.h/2;ed.w=Math.max(.1,v);ed.h=r8(ed.w/a);ed.y=r8(top+ed.h/2)}else if(k==='top')ed.y=r8(v+ed.h/2);else if(k==='h'){const top=ed.y-ed.h/2;ed.h=Math.max(.1,v);ed.y=r8(top+ed.h/2)}else if(k==='count')ed.count=Number(v);else ed[k]=k==='w'?Math.max(.1,v):v;
   touch();if(e.type==='change')paint();else draw()}
 $('#pDesign').addEventListener('input',editField);$('#pDesign').addEventListener('change',editField);
+// the coloured panels' own list: colour, name, remove; the cloth
+$('#pDesign').addEventListener('input',e=>{const row=e.target.closest('[data-pid]');if(!row)return;const b=P.edits.find(x=>x.id===row.dataset.pid);if(!b)return;if(e.target.matches('[data-pcol]')){b.color=e.target.value;touch();draw()}else if(e.target.matches('[data-pname]')){b.name=e.target.value.slice(0,40);touch()}});
+$('#pDesign').addEventListener('click',e=>{const c=e.target.closest('[data-cloth]');if(c){pickCloth(c.dataset.cloth);return}
+  const d=e.target.closest('[data-pdel]');if(d){const id=d.closest('[data-pid]').dataset.pid;P.edits=P.edits.filter(x=>x.id!==id);if(SELE===id)SELE=null;touch();paint();return}
+  const row=e.target.closest('[data-pid]');if(row&&!e.target.closest('input,button')){SELE=row.dataset.pid;paint()}});
 
 // ---------- placements panel ----------
 function techOpts(v){const kinds=[['embroidery','Embroidery'],['print','Print'],['heat_transfer','Heat transfer'],['patch','Patches and appliqué'],['distress','Distressing and wash']];return kinds.map(([k,l])=>{const t=D.techniques.filter(x=>x.kind===k);return t.length?`<optgroup label="${l}">${t.map(x=>`<option value="${x.id}" ${x.id===v?'selected':''}>${esc(x.name)}</option>`).join('')}</optgroup>`:''}).join('')}
@@ -376,6 +430,7 @@ let TPG=null;['gesturestart','gesturechange','gestureend'].forEach(t=>document.a
   if(t==='gesturestart')TPG={z:FZ};else if(t==='gesturechange'&&TPG)fzAt(TPG.z*e.scale,e.clientX,e.clientY);else TPG=null},{passive:false}));
 const inch=e=>{const svg=$('#canvas svg'),pt=svg.createSVGPoint();pt.x=e.clientX;pt.y=e.clientY;const m=svg.getScreenCTM().inverse(),r=pt.matrixTransform(m);return[r.x,r.y]};
 $('#canvas').addEventListener('pointerdown',e=>{
+  if(MODE==='fill'){const[x,y]=inch(e);fillAt(x,y);return}
   if(MODE==='stitch'||MODE==='block'){const[x,y]=inch(e);DRAFT.push([r8(x),r8(y)]);draw();return}
   if(MODE==='ai'){const[x,y]=inch(e);BOXDRAG=[x,y];AIBOX={x,y,w:0,h:0};capt(e);return}
   if(reshapeTap(e)){DRAG=null;return}
@@ -499,6 +554,7 @@ async function boot(){
   if(D.unsupported){$('#cSub').textContent=D.unsupported;$('#canvas').innerHTML=`<p class="msg" style="padding:30px">${esc(D.unsupported)}</p>`;['#save','#sheet'].forEach(s=>$(s).disabled=true);return}
   const st=await api('/v1/lab/concepts/'+CID+'/studio').catch(()=>null);D.marks=Object.fromEntries((st?.marks||[]).map(m=>[m.id,m.svg]));
   await useFlat(D.flat);
+  loadCloth().then(()=>{draw();if(TAB==='design')paintDesign()});
   if(D.picture)picNote(D.picture);
   tab('pl');
   if(EMBED){const v=new URLSearchParams(location.search).get('view');if(v==='back')setView('back');HOST()?.flatsReady?.()}
@@ -523,7 +579,7 @@ async function redrawFromPicture(b){const n=$('#picNote'),label=b.textContent;b.
     // then the image model draws each view from the picture, on the sketch's frame and in the picture's colours (about a minute)
     b.textContent='Drawing front and back…';const dr=await api(`/v1/lab/concepts/${CID}/flats/draw`,{body:{...flatBody(),views:['front','back']}});for(const v of ['front','back'])if(dr.drawn[v])EHREF[dr.drawn[v]]=await blobUrl('/v1/lab/art/'+dr.drawn[v]);P.drawn=dr.drawn;n?.classList.add('hidden');b.disabled=false;b.textContent=label;touch();paint();$('#cSub').textContent=`${D.styles[P.style].label} · ${FITS[P.fit]} fit · drawn from the picture: check it, then save`}catch(x){b.disabled=false;b.textContent=label;if(P){touch();paint()}alert(x.message)}}
 // what the Design workspace calls: is anything unsaved, save, which side shows, the full panel or the drawing alone, the sheets and the tech pack
-if(EMBED)window.FBFlats={dirty:()=>Boolean(D&&P&&DIRTY),ready:()=>Boolean(D&&P),save:()=>(D&&P?save():Promise.resolve(true)),view:()=>VIEW,setView:v=>{if(P&&(v==='front'||v==='back'))setView(v)},
+if(EMBED)window.FBFlats={clothChanged:()=>loadCloth().then(()=>{draw();if(TAB==='design')paintDesign()}),dirty:()=>Boolean(D&&P&&DIRTY),ready:()=>Boolean(D&&P),save:()=>(D&&P?save():Promise.resolve(true)),view:()=>VIEW,setView:v=>{if(P&&(v==='front'||v==='back'))setView(v)},
   mode:m=>{document.documentElement.dataset.embed=m==='compact'?'compact':'full';if(P)draw()},sheet:()=>$('#sheet').click(),deco:()=>$('#decoSheet').click(),pack:()=>$('#toPack').click(),
   canPack:()=>!$('#toPack').classList.contains('hidden'),unsupported:()=>D?.unsupported||'',
   // the placements, in inches on the garment: the one record of where each graphic goes and how big it is
@@ -536,7 +592,7 @@ if(EMBED)window.FBFlats={dirty:()=>Boolean(D&&P&&DIRTY),ready:()=>Boolean(D&&P),
   tool:t=>{MTOOL=t||'select';if(t==='area'){if(P&&MODE!=='ai'){MODE='ai';AIBOX=null;if(TAB!=='design')tab('design');paint()}}else if(MODE==='ai'&&!AIBOX){MODE=null;if(P)paint()}mkPlace()},
   undo:()=>mkStep(MUNDO,MREDO),redo:()=>mkStep(MREDO,MUNDO),canUndo:()=>Boolean(MUNDO[VIEW]?.length),canRedo:()=>Boolean(MREDO[VIEW]?.length),
   // a flat drawn for the Studio's board: the drawing alone, in a colourway's colour or at a size (the artwork as graded for it)
-  frame:(view,{color,size}={})=>{if(!P)return '';const sz=size||P.size,pls=PL.map(q=>{if(!q.grade)return q;const g=q.grade.find(x=>x.sizes.includes(sz));return g?{...q,w:g.w,h:g.h,y:q.y-q.h/2+g.h/2}:q});return renderSvg(color?{...P,color}:P,view,{maskHref:MASK_URL,placements:pls,hrefs:HREF,size:sz,showPom:false,showDims:false,scale:0,editHrefs:EHREF,alloverHref:AOHREF,plain:true,withArt:true})},
+  frame:(view,{color,size}={})=>{if(!P)return '';const sz=size||P.size,pls=PL.map(q=>{if(!q.grade)return q;const g=q.grade.find(x=>x.sizes.includes(sz));return g?{...q,w:g.w,h:g.h,y:q.y-q.h/2+g.h/2}:q});return renderSvg(color?{...P,color}:P,view,{maskHref:MASK_URL,placements:pls,hrefs:HREF,size:sz,showPom:false,showDims:false,scale:0,editHrefs:EHREF,alloverHref:AOHREF,plain:true,withArt:true,texture:clothTex()})},
   sizes:()=>[...document.querySelectorAll('#size option')].map(o=>o.value).filter(Boolean),graded:()=>Boolean(P&&PL.some(q=>q.grade)),size:()=>P?.size||'',colourways:()=>D?.colourways||[],
   level:m=>{document.documentElement.dataset.level=m==='simple'?'simple':'pro';if(m==='simple'&&TAB==='pom')tab('pl');if(m==='simple'&&MODE==='stitch'){MODE=null;DRAFT=[];if(P)paint()}}};
 boot();
