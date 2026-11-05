@@ -64,7 +64,7 @@ import { registerLabShoeDrawRoutes } from './lab-shoe-draw-routes.js';
 import { registerLabStudioRoutes } from './lab-studio-routes.js';
 import { registerLabLibraryRoutes } from './lab-library-routes.js';
 import { registerLabMaterialsRoutes } from './lab-materials-routes.js';
-import { photoJpeg } from './lab-photo-tint.js';
+import { photoJpeg, photoShade } from './lab-photo-tint.js';
 import { registerLabShareRoutes } from './lab-share-routes.js';
 import { registerLabRangeRoutes } from './lab-range-routes.js';
 import { registerLabTryonRoutes } from './lab-tryon-routes.js';
@@ -819,8 +819,9 @@ app.get('/lab/vendor/polygon-clipping.js', (_req, reply) => reply.header('cache-
 app.get('/lab/materials', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').type('text/html').send(readFileSync(new URL('./lab-materials.html', import.meta.url), 'utf8')));
 app.get('/lab/lab-tags.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-tags.js', import.meta.url), 'utf8')));
 app.get('/lab/lab-photos.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-photos.js', import.meta.url), 'utf8')));
-// the materials library's photos, recoloured: /lab/material-photos/denim.jpg?c=2b3a5c&s=320 (free-licence close-ups, nothing private, so open)
-app.get('/lab/material-photos/:file', async (req, reply) => { const m = /^([a-z0-9-]+)\.jpg$/.exec(String(req.params.file || '')); const buf = m ? await photoJpeg(m[1], req.query?.c ? '#' + String(req.query.c).replace('#', '') : '', req.query?.s).catch(() => null) : null; if (!buf) return reply.code(404).send({ error: 'Not found' }); return reply.header('cache-control', 'public, max-age=604800').type('image/jpeg').send(buf); });
+// the materials library's photos, recoloured: /lab/material-photos/denim.jpg?c=2b3a5c&s=320 (free-licence close-ups, nothing private, so open);
+// ?shade=1 is the same close-up as a seamless grey shading tile, for laying the cloth's surface over a coloured flat drawing
+app.get('/lab/material-photos/:file', async (req, reply) => { const m = /^([a-z0-9-]+)\.jpg$/.exec(String(req.params.file || '')); const buf = m ? await (req.query?.shade === '1' ? photoShade(m[1], req.query?.s) : photoJpeg(m[1], req.query?.c ? '#' + String(req.query.c).replace('#', '') : '', req.query?.s)).catch(() => null) : null; if (!buf) return reply.code(404).send({ error: 'Not found' }); return reply.header('cache-control', 'public, max-age=604800').type('image/jpeg').send(buf); });
 app.get('/lab/lab-fit-ask.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-fit-ask.js', import.meta.url), 'utf8')));
 app.get('/lab/lab-fabric-fit.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-fabric-fit.js', import.meta.url), 'utf8')));
 app.get('/lab/lab-recipe.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-recipe.js', import.meta.url), 'utf8')));

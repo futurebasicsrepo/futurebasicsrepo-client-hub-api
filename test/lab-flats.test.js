@@ -235,3 +235,14 @@ test('a graphic on a flat can be turned to match the picture: kept to the half d
   const straight = F.placementChecks({ ...q, rot: 0 }, p).some(f => f.code === 'KEEPOUT_NECK' || f.level === 'fail'), turned = F.placementChecks({ ...q, rot: 90 }, p).some(f => f.level === 'fail');
   assert.ok(!straight && turned, 'turned on end, the same graphic reaches the neck and the check says so');
 });
+
+test('a cloth texture is multiplied over the garment only, and nothing is added without one', () => {
+  const p = defaultParams('tee');
+  const plain = renderSvg(p, 'front', { plain: true, scale: 0 }), tex = renderSvg(p, 'front', { plain: true, scale: 0, texture: { href: '/lab/material-photos/denim.jpg?shade=1&s=320', w: 9, h: 9 } });
+  assert.ok(!/-tx"/.test(plain) && !/multiply/.test(plain));
+  assert.match(tex, /<pattern id="[^"]+-tx" patternUnits="userSpaceOnUse"[^>]*width="9"/);
+  assert.match(tex, /<mask id="[^"]+-tm"/, 'masked to the garment');
+  assert.match(tex, /mix-blend-mode:multiply/, 'multiplied, so the colour shows through');
+  assert.ok(tex.indexOf('-tx)') > tex.indexOf('<use href'), 'drawn over the coloured cloth');
+  assert.equal(renderSvg(p, 'front', { plain: true, scale: 0, texture: { href: '', w: 9, h: 9 } }), plain, 'no picture, no texture');
+});

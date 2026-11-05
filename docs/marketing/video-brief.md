@@ -47,7 +47,7 @@ The ones to lead with are first.
    shearling…), pleats, cropped, contrast pockets.
 3. **Pick a colour system** (8 ready-made, or four colours of your own). The first colour is the garment, the next is the stitching, and
    every colour becomes a colourway.
-4. **Optional:** pick the cloth, which comes with a fabric check that flags cloth that does not suit the style. You can also fit it together
+4. **Optional:** pick the cloth. The drawing takes on its surface (denim reads as denim, sherpa as sherpa) in the colour you picked. It comes with a fabric check that flags cloth that does not suit the style. You can also fit it together
    with sliders for body width, length, and the size and place of each pocket.
 5. **Open in the Studio:** the concept, its flats and its colourways are made in one go.
 
@@ -149,7 +149,7 @@ Each one is a single idea, made for a phone screen first (9:16), with captions o
 
 | # | Title | Length | The beat |
 | --- | --- | --- | --- |
-| 1 | **"Order a hoodie like you order food"** | 20–30 s | Recipe menu: pick a hoodie, cropped, zip pocket, Washed earth colours. The drawing changes with each tap, then Open in the Studio. End card. |
+| 1 | **"Order a hoodie like you order food"** | 20–30 s | Recipe menu: pick a hoodie, cropped, zip pocket, Washed earth colours, then a fleece. The drawing changes with each tap, then Open in the Studio. End card. |
 | 2 | **"It's a real flat"** | 20 s | A piece's flats, front and back, zoomed in to the stitch lines and measurements, then the tech pack page with the same flat. "What you see is what the factory gets." |
 | 3 | **"One idea, eight colourways"** | 15 s | Flip through the colour systems on one piece. Quick cuts, one per colour. |
 | 4 | **"From sketch to factory"** | 45–60 s | The whole route: recipe, Studio (place a graphic), tech pack (measurements, BOM, cost), factory link in Chinese. A timer in the corner. |

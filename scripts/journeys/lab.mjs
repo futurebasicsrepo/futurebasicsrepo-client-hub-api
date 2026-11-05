@@ -4041,6 +4041,11 @@ await journey('J268', 'Design by picking, the fabric checked, and new prints fro
         await page.click('[data-base=shorts]'); await page.click('[data-addon=cargo]'); await page.click('[data-sys=coastal]');
         const v = await page.evaluate(() => ({ svg: Boolean(document.querySelector('#art svg')), words: document.querySelector('#sum').textContent, over: document.documentElement.scrollWidth > innerWidth }));
         ok(v.svg && /cargo pockets/i.test(v.words) && !v.over, '6. on a phone the piece is drawn as it is picked, with nothing off the side', v);
+        await page.waitForSelector('#mats [data-mat]:not([data-mat=""])', { timeout: 15000 }); const cloth = await page.$('#mats [data-mat]:not([data-mat=""])'); await cloth.scrollIntoViewIfNeeded(); await cloth.click(); await page.waitForTimeout(300);
+        const t = await page.evaluate(() => { const st = document.querySelector('#stMat').getBoundingClientRect(), m = document.querySelector('#mats').getBoundingClientRect(), img = document.querySelector('#art svg pattern[id$="-tx"] image');
+          return { inside: m.left >= st.left && m.right <= st.right, scrolls: document.querySelector('#mats').scrollWidth > document.querySelector('#mats').clientWidth, tex: img?.getAttribute('href') || '', over: document.documentElement.scrollWidth > innerWidth }; });
+        ok(t.inside && t.scrolls && !t.over, '7. the cloth cards scroll sideways inside their card, not past its edge', t);
+        ok(/material-photos\/[a-z0-9-]+\.jpg\?shade=1/.test(t.tex), '   and the drawing takes the cloth\'s surface, as it takes the colour', t.tex);
         await page.click('#open'); await page.waitForURL(/\/lab\/studio\?concept=/, { timeout: 20000 });
         made.push(new URL(page.url()).searchParams.get('concept'));
         ok(errs.length === 0, '   and Open in the Studio makes it and goes there', errs);

@@ -38,3 +38,24 @@ export async function photoJpeg(id, colour = '', size = 640) {
   done.set(key, buf); if (done.size > 300) done.delete(done.keys().next().value);
   return buf;
 }
+
+// A close-up as a shading tile for a flat drawing (renderSvg's texture): grey, its weave spread evenly around a light mean so it can be multiplied
+// over any colour without darkening it much, and mirrored four ways into one tile that repeats without seams. → JPEG Buffer, or null.
+const shades = new Map();
+export async function photoShade(id, size = 320) {
+  const p = photoById(id); if (!p) return null;
+  const px = [160, 320, 640].includes(Number(size)) ? Number(size) : 320, key = `${p.id}|${px}`; if (shades.has(key)) return shades.get(key);
+  let file; try { file = readFileSync(new URL(`${p.id}.jpg`, DIR)); } catch { return null; }
+  const half = px / 2, { data } = await sharp(file).greyscale().resize(half, half, { fit: 'cover' }).raw().toBuffer({ resolveWithObject: true });
+  const g = data.length === half * half ? data : data.filter((_, i) => i % (data.length / (half * half)) === 0);
+  let m = 0; for (const v of g) m += v; m /= g.length; let sd = 0; for (const v of g) sd += (v - m) ** 2; sd = Math.sqrt(sd / g.length) || 1;
+  const t = Buffer.alloc(g.length); for (let i = 0; i < g.length; i++) t[i] = Math.max(SHADE_MIN, Math.min(255, Math.round(SHADE_MEAN + SHADE_SPREAD * (g[i] - m) / sd)));
+  const q = { raw: { width: half, height: half, channels: 1 } }, tl = await sharp(t, q).png().toBuffer();
+  const [tr, bl, br] = await Promise.all([sharp(t, q).flop().png().toBuffer(), sharp(t, q).flip().png().toBuffer(), sharp(t, q).flip().flop().png().toBuffer()]);
+  const buf = await sharp({ create: { width: px, height: px, channels: 3, background: '#ffffff' } })
+    .composite([{ input: tl, left: 0, top: 0 }, { input: tr, left: half, top: 0 }, { input: bl, left: 0, top: half }, { input: br, left: half, top: half }]).greyscale().jpeg({ quality: 86 }).toBuffer();
+  shades.set(key, buf); if (shades.size > 200) shades.delete(shades.keys().next().value);
+  return buf;
+}
+// the tile's light mean and how far the weave spreads from it (one standard deviation), in 0–255: a colour under it keeps its own value
+const SHADE_MEAN = 228, SHADE_SPREAD = 22, SHADE_MIN = 150;
