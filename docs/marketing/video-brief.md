@@ -60,6 +60,22 @@ already has show as "on the sketch".
 
 - Pro drawing tools: a pen tool with editable curves, shape booleans, snapping and guides, align and distribute, ⌘K to find any command,
   and SVG in and out.
+- The tools a physical product and its packaging need, on the same keys as Illustrator:
+  - **Artboards (⇧O):** one board per face of a pack, sized in mm or inches with its bleed; **Lay out a box** turns a length, width
+    and depth into seven faces and the dieline to cut it.
+  - **Divide** and the **Shape builder (⇧M):** cut overlapping shapes into pieces, drag across pieces to merge them.
+  - **Reflect (O)** and **Scale (S):** mirror or resize to an exact size, as a copy if wanted.
+  - **Width (⇧W):** a line that tapers or swells along its length.
+  - **Outline mode (⌘Y)** and **Preflight:** bare paths, stray points shown in red and removed in one press.
+  - **Measure (⇧U)** and **Info (⌘U):** distances and angles in mm or inches.
+  - **Symbols:** change one screw or button and every copy follows.
+  - **Fills:** linear and radial gradients, a four-corner mesh, and pattern fills from a layer or a tile the image model draws.
+  - **Type on a path (⇧T):** words round a can's rim or a bottle's shoulder.
+  - **Global swatches:** named colours with their Pantone C; change the swatch and everything using it changes.
+  - **Clipping masks (⌘7)** and **groups (⌘G)**.
+  - **3D mockup:** the artwork on a can, a box, a bottle or a pouch, turned in 3D.
+  - **Package:** one zip for the vendor with the picture, the SVG, every artboard, every linked picture, the fonts, the colours with
+    their Pantone C and a report.
 - A board shows the picture, flats, colourways and sizes side by side.
 - **iPad and Apple Pencil:** pressure, palm rejection, pinch and pan. It can be kept on the home screen like an app.
 - **Draw the picture from the flats:** one tap turns the coloured flat into a concept picture.
@@ -144,6 +160,7 @@ Each one is a single idea, made for a phone screen first (9:16), with captions o
 | 9 | **"What does it cost to make?"** | 20 s | The cost estimate block: landed cost, margin, price breaks, then export to Excel. |
 | 10 | **"The sample review"** | 30 s | A hoodie sample on the table, an iPad beside it. Type two measurements (one turns red), mark a callout Fix, tap the flat to pin the hem, choose Another sample, Hand over. Cut to the tech pack: the corrections and the pin on the flat. |
 | 11 | **"Your team, one room"** | 20 s | #tour-hoodie channel, @futurebasics brings us in, a task moves to Done on the board, two sets of initials on the same tech pack. |
+| 12 | **"Box to mockup"** | 30 s | Lay out a 120 × 160 × 40 mm box: seven faces and the dieline appear. Drop the artwork on the front, type round the lid, then the 3D mockup turns the box in your hand. End on Package. |
 
 **A shape that works for each one:** a hook in the first 2 seconds (show the result first), then the steps, then the payoff, then an end card
 with the URL.

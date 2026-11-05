@@ -807,6 +807,7 @@ app.get('/lab/sketches', (_req, reply) => reply.header('cache-control', 'no-stor
 app.get('/lab/recipe', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').type('text/html').send(readFileSync(new URL('./lab-recipe.html', import.meta.url), 'utf8')));
 app.get('/lab/nav.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-nav.js', import.meta.url), 'utf8')));
 app.get('/lab/studio-pro.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-studio-pro.js', import.meta.url), 'utf8')));
+app.get('/lab/studio-ill.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-studio-ill.js', import.meta.url), 'utf8')));
 app.get('/lab/studio-vec.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-studio-vec.js', import.meta.url), 'utf8')));
 app.get('/lab/studio-emb.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-studio-emb.js', import.meta.url), 'utf8')));
 app.get('/lab/studio-board.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-studio-board.js', import.meta.url), 'utf8')));

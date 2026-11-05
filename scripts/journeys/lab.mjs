@@ -4599,5 +4599,61 @@ await journey('J281', 'Bags: a bag from the library opens in the Studio as its d
   } finally { if (cid) await K(`/concepts/${cid}`, { method: 'DELETE' }); }
 });
 
+await journey('J284', 'The Studio\'s production tools for a physical product and its pack: divide and the shape builder, reflect (O) and scale (S) as copies, a stroke that tapers (width), outline mode with a stray point found and removed, measure and info in mm, a symbol whose instances follow, linear and mesh fills (the gradient stays vector in the SVG), type on a path, a pattern fill, a global swatch with its Pantone C, a clipping mask (a clip path in the SVG), a group, a box laid out as artboards with its dieline; all of it saved and back after a reload; the package and the 3D mockup open with no page errors', async () => {
+  if (!playwright) { ok(true, 'skipped: no browser here'); return; }
+  const b = await playwright.chromium.launch(), errs = [];
+  try {
+    const ctx = await b.newContext({ viewport: { width: 1440, height: 960 }, acceptDownloads: true });
+    await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); localStorage.setItem('fb.helper.on', '0'); localStorage.setItem('fb.design.level', 'pro'); } catch {} }, kyleT);
+    { const lc = ((await fetch(`${BASE}/v1/lab/door`, { headers: { Authorization: 'Bearer ' + kyleT } })).headers.get('set-cookie') || '').split(';')[0].split('='); await ctx.addCookies([{ name: lc[0], value: lc.slice(1).join('='), domain: new URL(BASE).hostname, path: '/lab' }]); }
+    const page = await ctx.newPage(); page.on('pageerror', e => errs.push(String(e))); page.on('dialog', d => d.accept('Screw'));
+    await page.goto(`${BASE}/lab/studio?new=graphic`, { waitUntil: 'load' }); await page.waitForFunction(() => window.ILL && typeof D !== 'undefined' && D && LAYERS.length > 0, null, { timeout: 30000 });
+    const ev = (f, a) => page.evaluate(f, a);
+    const shape = `(o => addLayer(fresh('shape', { name: o.name, shape: o.shape, w: o.w, h: o.h, radius: 0, fill: true, fillColor: o.c, stroke: Boolean(o.sw), strokeW: o.sw || 4, strokeColor: '#141416', x: o.x, y: o.y, ...(o.paths ? { paths: o.paths } : {}) }), { silent: true }))`;
+    const pick = `(ls => { PRO.SELS.clear(); for (const l of ls) PRO.SELS.add(l.id); SEL = ls[ls.length - 1].id; })`;
+    // divide, then the shape builder merges two regions dragged across
+    ok(await ev(`(() => { const mk = ${shape}, pk = ${pick}; LAYERS = LAYERS.filter(l => l.kind === 'base'); const a = mk({ name: 'Square', shape: 'rect', w: 300, h: 300, c: '#e8a33d', x: 420, y: 480 }), c = mk({ name: 'Circle', shape: 'ellipse', w: 300, h: 300, c: '#3d7be8', x: 600, y: 480 }); pk([a, c]); ILL.divide(); return LAYERS.filter(l => /^Piece/.test(l.name)).length; })()`) === 3, '1. Divide cuts a square and a circle into their three pieces');
+    await ev(`(() => { const mk = ${shape}, pk = ${pick}; pk([mk({ name: 'R1', shape: 'rect', w: 200, h: 200, c: '#7a3de8', x: 300, y: 250 }), mk({ name: 'R2', shape: 'rect', w: 200, h: 200, c: '#3de87a', x: 400, y: 250 })]); setTool('shapebuilder'); })()`);
+    const scr = (x, y) => ev(([x, y]) => { const r = view.getBoundingClientRect(); return [r.left + x * Z + PX, r.top + y * Z + PY]; }, [x, y]);
+    const [s0, s1] = await scr(250, 250), [e0, e1] = await scr(350, 250);
+    await page.mouse.move(s0, s1); await page.mouse.down(); await page.mouse.move(e0, e1, { steps: 6 }); await page.mouse.up();
+    ok(await ev(() => LAYERS.filter(l => l.name === 'Built shape').length === 1 && LAYERS.filter(l => l.name === 'Piece').length === 1), '2. the shape builder merges the two regions dragged across into one shape, and leaves the third as its own');
+    await ev(() => setTool('select'));
+    // reflect and scale, from their keys
+    const n0 = await ev(() => { const l = LAYERS.find(x => x.name === 'Built shape'); PRO.SELS.clear(); PRO.SELS.add(l.id); SEL = l.id; document.activeElement?.blur?.(); return LAYERS.length; });
+    await page.keyboard.press('o'); await page.waitForSelector('#illReflect[open]'); await page.click('#illReflect button[value="copy"]'); await page.waitForFunction(() => !document.getElementById('illReflect').open); await page.waitForTimeout(100);
+    ok(await ev(n => LAYERS.length === n + 1 && LAYERS[LAYERS.length - 1].flip === true && /reflected/.test(LAYERS[LAYERS.length - 1].name), n0), '3. O reflects across the vertical axis, as a copy');
+    await ev(() => document.activeElement?.blur?.()); await page.keyboard.press('s'); await page.waitForSelector('#illScale[open]'); await page.fill('#illScale input[name=u]', '150'); await page.click('#illScale button[value="ok"]'); await page.waitForFunction(() => !document.getElementById('illScale').open); await page.waitForTimeout(100);
+    ok(await ev(() => Math.round(LAYERS[LAYERS.length - 1].w) === 300), '4. S scales by a percentage (200 → 300 px wide)');
+    await page.keyboard.press('l'); ok(await ev(() => TOOL) === 'ellipse', '5. L is the ellipse, as in Illustrator'); await page.keyboard.press('\\'); ok(await ev(() => TOOL) === 'line', 'and \\ the line'); await page.keyboard.press('v');
+    // width, outline mode and the preflight, measure and info
+    ok(await ev(`(() => { const l = ${shape}({ name: 'Stroke', shape: 'path', w: 1, h: 1, c: '#141416', sw: 14, x: 520, y: 760, paths: [{ closed: false, nodes: [[-200, 0, -200, 0, -100, -120], [0, 40, -60, 80, 60, 0], [200, -40, 120, -40, 200, -40]] }] }); l.fill = false; VEC.normalize(l); SEL = l.id; ILL.widthProfile(l, 'taper'); const w = l.ill.widths[0]; return w[1] > w[0] * 5 && processed(l).width > 0; })()`), '6. a taper makes the stroke thick in the middle and fine at both ends');
+    ok(await ev(`(() => { const l = ${shape}({ name: 'Stray', shape: 'path', w: 1, h: 1, c: '#000', sw: 2, x: 900, y: 120, paths: [{ closed: false, nodes: [[0, 0, 0, 0, 0, 0]] }] }); ILL.outline(true); const found = ILL.preflight().some(p => p.fix === 'stray'); const gone = ILL.fixStray(); ILL.outline(false); return found && gone === 1 && !ILL.preflight().some(p => p.fix === 'stray'); })()`), '7. outline mode and the preflight find a stray point, and one press removes it');
+    await ev(() => setTool('measure')); const [m0, m1] = await scr(100, 100), [m2, m3] = await scr(354, 100); await page.mouse.move(m0, m1); await page.mouse.down(); await page.mouse.move(m2, m3, { steps: 3 }); await page.mouse.up();
+    await page.keyboard.press('Control+u'); ok(/Measured [\d.]+ mm · 0\.0°/.test(await page.innerText('#illInfo')), '8. measure gives the distance in mm and the angle; ⌘U shows it with the pointer and the size of what is chosen', await page.innerText('#illInfo')); await ev(() => setTool('select'));
+    // a symbol, fills, type on a path, a pattern, a swatch, a mask and a group
+    ok(await ev(`(() => { const l = ${shape}({ name: 'Screw', shape: 'ellipse', w: 40, h: 40, c: '#888888', x: 120, y: 900 }); SEL = l.id; PRO.SELS.clear(); PRO.SELS.add(l.id); ILL.symbolMake(); const sid = l.ill.sym; ILL.symbolPlace(sid); const inst = LAYERS.filter(x => x.ill?.sym === sid); SEL = inst[0].id; inst[0].fillColor = '#d92c1a'; inst[0].w = 60; commit(); return inst.length === 2 && inst.every(x => x.fillColor === '#d92c1a' && x.w === 60); })()`), '9. a symbol: change one instance and the other follows');
+    ok(await ev(() => { const a = LAYERS.find(x => x.name === 'Piece 1'), m = LAYERS.find(x => x.name === 'Piece 2'); a.ill = { fill: { mode: 'linear', angle: 45, stops: [{ at: 0, color: '#ff0066' }, { at: 100, color: '#ffcc00' }] } }; m.ill = { fill: { mode: 'mesh', mesh: ['#ff0000', '#00ff00', '#0000ff', '#ffff00'], center: '#ffffff' } }; a._pk = m._pk = null; processed(a); processed(m); commit(); return /linearGradient/.test(svgDoc()); }), '10. a linear gradient and a mesh fill; the gradient goes to Illustrator as an SVG gradient');
+    ok(await ev(`(() => { const l = ${shape}({ name: 'Rim', shape: 'ellipse', w: 360, h: 360, c: '#000', sw: 2, x: 860, y: 520 }); ILL.typeOnPath(l); return Boolean(l.ill.text?.text) && processed(l).width > 360; })()`), '11. type runs round an ellipse');
+    ok(await ev(() => { const src = LAYERS.find(x => x.name === 'Rim'), l = LAYERS.find(x => x.name === 'Piece 3'), cv = canvas(64, 64); cv.getContext('2d').drawImage(processed(src), 0, 0, 64, 64); l.ill = { fill: { mode: 'pattern', src: cv.toDataURL('image/png'), scale: 40 } }; l._pk = null; processed(l); commit(); return l.ill.fill.mode === 'pattern'; }), '12. a pattern fill tiled from another layer');
+    const sw = await ev(async () => { const l = LAYERS.find(x => x.name === 'Screw'), s = await ILL.swatchAdd('#1c7a4a'); PRO.SELS.clear(); PRO.SELS.add(l.id); SEL = l.id; ILL.swatchApply(s.id, 'fill'); const n = ILL.swatchSet(s.id, '#4b2a8a'); return { pantone: s.pantone, n, all: LAYERS.filter(x => x.ill?.sym === l.ill.sym).every(x => x.fillColor === '#4b2a8a') }; });
+    ok(/^PANTONE .+ C$/.test(sw.pantone) && sw.n >= 1 && sw.all, '13. a global swatch carries its Pantone C, and changing it recolours what uses it (every symbol instance too)', sw);
+    ok(await ev(`(() => { const p = LAYERS.find(x => x.name === 'Piece 1'), m = ${shape}({ name: 'Window', shape: 'ellipse', w: 160, h: 160, c: '#000', x: p.x, y: p.y }); ${pick}([p, m]); ILL.clipMake(); compose(); return m.ill.clip && p.ill.clipBy === m.id && /clipPath/.test(svgDoc()); })()`), '14. ⌘7 makes the top shape a clipping mask (a clip path in the SVG)');
+    ok(await ev(`(() => { const ls = LAYERS.filter(x => /^Piece [23]/.test(x.name)); ${pick}(ls); ILL.group(); return ls.every(l => l.ill.group && l.ill.group === ls[0].ill.group); })()`), '15. ⌘G groups');
+    await ev(() => { ILL.docOpen('artboards'); const f = document.querySelector('#illDoc fieldset'); f.querySelector('[name=bl]').value = 120; f.querySelector('[name=bw]').value = 160; f.querySelector('[name=bd]').value = 40; f.querySelector('[data-boxmake]').click(); document.querySelector('#illDoc').close(); });
+    ok(await ev(() => { const bs = ILL.DOCX.artboards; return bs.map(b => b.name).join() === 'Left side,Front,Right side,Back,Top,Bottom,Glue flap' && Math.abs(bs[1].w / PPI * 25.4 - 120) < .5 && Math.abs(bs[1].h / PPI * 25.4 - 160) < .5 && LAYERS.some(l => l.name === 'Dieline (cut)' && l.stroke && !l.fill); }), '16. Lay out the box: a 120 × 160 × 40 mm box as seven artboards at their real size, with its dieline as a cut path');
+    // saved and back
+    const gid = await ev(async () => { await saveAll(); return GID; });
+    await page.goto(`${BASE}/lab/studio?art=${gid}`, { waitUntil: 'load' }); await page.waitForFunction(() => window.ILL && LAYERS.length > 5, null, { timeout: 30000 });
+    const back = await ev(() => ({ boards: ILL.DOCX.artboards.length, symbols: ILL.DOCX.symbols.length, swatches: ILL.DOCX.swatches.length, clip: LAYERS.some(l => l.ill?.clip), widths: LAYERS.some(l => l.ill?.widths), text: LAYERS.some(l => l.ill?.text), grad: LAYERS.some(l => l.ill?.fill?.mode === 'linear'), group: LAYERS.filter(l => l.ill?.group).length }));
+    ok(back.boards === 7 && back.symbols === 1 && back.swatches === 1 && back.clip && back.widths && back.text && back.grad && back.group === 2, '17. saved and opened again: artboards, symbols, swatches, the mask, the widths, the path type, the gradient and the group are all back', back);
+    const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 30000 }).catch(() => null), ev(() => { ILL.docOpen('export'); document.querySelector('#illDoc [data-package]').click(); })]);
+    ok(dl && /-package\.zip$/.test(dl.suggestedFilename()), '18. Package downloads one zip for the vendor', dl?.suggestedFilename());
+    await ev(() => { document.querySelector('#illDoc')?.close(); ILL.docOpen('export'); document.querySelector('#illDoc [data-mockup]').click(); }); await page.waitForSelector('#illMockHost canvas', { timeout: 20000 }).catch(() => {});
+    ok(await page.locator('#illMockHost canvas').count() === 1, '19. the 3D mockup opens');
+    ok(errs.length === 0, 'no page errors', errs);
+  } finally { await b.close(); }
+});
+
 shops.close(); brave.close();
 process.exit(summary() ? 1 : 0);

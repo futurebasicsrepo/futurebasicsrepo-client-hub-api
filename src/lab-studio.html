@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<script type="importmap">{"imports":{"three":"/lab/vendor/three/build/three.module.js","three/addons/":"/lab/vendor/three/examples/jsm/"}}</script>
 <meta name="robots" content="noindex,nofollow">
 <title>Design · Design Lab</title>
 <link rel="icon" href="/icons/icon-192.png">
@@ -149,7 +150,7 @@ html,body{touch-action:manipulation}
     <span class="saved pic-only" id="saved" role="status"></span><span class="saved flat-only" id="fsaved" role="status" title="The flats"></span>
     <a class="btn q sm hidden" id="recipeBtn" href="#" title="Change the base, add-ons or colours this piece was picked with">Edit recipe</a>
     <button class="btn sm" id="save" type="button" title="Save (Ctrl S)">Save</button><button class="btn q sm" id="moreBtn" type="button" aria-expanded="false" title="Every other tool">More</button>
-    <button class="btn q sm" id="panelBtn" type="button" aria-pressed="true" title="Show or hide the panel on the right (\)">Panel</button>
+    <button class="btn q sm" id="panelBtn" type="button" aria-pressed="true" title="Show or hide the panel on the right (⌘\)">Panel</button>
     <button class="fold btn q sm" id="focusBtn" type="button" aria-pressed="false" title="Make the drawing as big as it goes: hide the header, the menu and the guide, full screen where the browser allows (F)">Focus</button>
     <button class="fold btn sm pic-only pro-only" id="impBtn" type="button" title="Bring an SVG back from Illustrator: the studio's own export comes back as layers">Import</button><input type="file" id="svgIn" accept=".svg,image/svg+xml" class="hidden">
     <button class="fold btn sm pic-only" id="tryBtn" type="button" title="The design painted on a 3D model, turned round">3D</button>
@@ -307,7 +308,7 @@ const fixed=l=>l.kind==='base'||l.kind==='paint'; // full-size layers that do no
 
 // ---------- history (rasters are copied before they change, so a step keeps its own) ----------
 let HIST=[],HI=-1;
-const copyL=l=>({...l,adjust:{...l.adjust},tint:{...l.tint},distress:{...l.distress},finish:l.finish?{...l.finish,distress:{...l.finish.distress}}:null,...(l.warp?{warp:{...l.warp,pts:l.warp.pts.map(p=>[...p])}}:{}),...(l.paths?{paths:l.paths.map(p=>({closed:p.closed,nodes:p.nodes.map(n=>[...n])}))}:{})});
+const copyL=l=>({...l,adjust:{...l.adjust},tint:{...l.tint},distress:{...l.distress},finish:l.finish?{...l.finish,distress:{...l.finish.distress}}:null,...(l.warp?{warp:{...l.warp,pts:l.warp.pts.map(p=>[...p])}}:{}),...(l.paths?{paths:l.paths.map(p=>({closed:p.closed,nodes:p.nodes.map(n=>[...n])}))}:{}),...(l.ill?{ill:JSON.parse(JSON.stringify(l.ill))}:{})});
 const snap=()=>({sel:SEL,layers:LAYERS.map(copyL)});
 function commit(){HIST=HIST.slice(0,HI+1);HIST.push(snap());if(HIST.length>60)HIST.shift();HI=HIST.length-1;touch();syncUndo()}
 function restore(s){LAYERS=s.layers.map(copyL);SEL=s.sel&&layerOf(s.sel)?s.sel:null;touch();paintPanels();draw()}
@@ -348,6 +349,7 @@ function contentOf(l){
     x.font=font;x.textBaseline='middle';x.lineJoin='round';x.fillStyle=l.color;x.strokeStyle=l.outlineColor;x.lineWidth=(l.outline||0)*2;
     lines.forEach((t,i)=>{let px=l.align==='left'?pad:l.align==='right'?w-pad-lw[i]:(w-lw[i])/2;const py=pad+lh*i+lh/2;for(const g of[...t]){if(l.outline)x.strokeText(g,px,py);x.fillText(g,px,py);px+=x.measureText(g).width+l.track}});
     return c}
+  if(l.kind==='shape'&&window.ILL){const c=ILL.content(l);if(c)return c}
   if(l.kind==='shape'&&l.shape==='path'&&window.VEC)return VEC.content(l);
   if(l.kind==='shape'){
     const sw=l.stroke?l.strokeW:0,pad=Math.ceil(sw/2+2),c=canvas(l.w+pad*2,(l.shape==='line'?Math.max(sw,2):l.h)+pad*2),x=c.getContext('2d');
@@ -359,7 +361,7 @@ function contentOf(l){
   return canvas(1,1);
 }
 const unitOf=l=>{const u=(W/1000)/(fixed(l)?1:l.scale);return Math.pow(1.15,Math.round(Math.log(u)/Math.log(1.15)))}; // stitches and dots keep a real size: one step per 15% of scale
-const sig=l=>JSON.stringify([l.finish,l.finish?unitOf(l):0,l.kind,l.raster?l.raster._rid:0,l.text,l.font,l.size,l.bold,l.italic,l.track,l.lead,l.align,l.arc,l.color,l.outline,l.outlineColor,l.shape,l.w,l.h,l.radius,l.fill,l.fillColor,l.stroke,l.strokeW,l.strokeColor,l.pv,l.adjust,l.tint,l.distress,l.warp]);
+const sig=l=>JSON.stringify([l.finish,l.finish?unitOf(l):0,l.kind,l.raster?l.raster._rid:0,l.text,l.font,l.size,l.bold,l.italic,l.track,l.lead,l.align,l.arc,l.color,l.outline,l.outlineColor,l.shape,l.w,l.h,l.radius,l.fill,l.fillColor,l.stroke,l.strokeW,l.strokeColor,l.pv,l.adjust,l.tint,l.distress,l.warp,l.ill&&{f:l.ill.fill,w:l.ill.widths,t:l.ill.text}]);
 const plainLook=l=>l.adjust.hue===0&&l.adjust.sat===100&&l.adjust.bright===100&&l.adjust.contrast===100;
 // the layer with its colour adjustments, its recolouring and its distressing: cached until any of them change
 function processed(l){
@@ -376,7 +378,7 @@ function processed(l){
 const dims=l=>{const c=processed(l);return[c.width,c.height]};
 function place(x,l){x.translate(l.x,l.y);x.rotate(l.rot);x.scale(l.scale*(l.flip?-1:1),l.scale)}
 function drawLayer(x,l){if(!l.visible)return;const c=processed(l),sh=l.finish&&window.FBFinish.shadow(l.finish,W/1000);x.save();x.globalAlpha=l.opacity;x.globalCompositeOperation=l.blend;if(sh){x.shadowColor=sh.color;x.shadowBlur=sh.blur;x.shadowOffsetX=sh.dx;x.shadowOffsetY=sh.dy}place(x,l);x.drawImage(c,-c.width/2,-c.height/2);x.restore()}
-function compose(){docX.setTransform(1,0,0,1,0,0);docX.globalCompositeOperation='source-over';docX.globalAlpha=1;docX.clearRect(0,0,W,H);if(!GMODE){docX.fillStyle='#fff';docX.fillRect(0,0,W,H)}for(const l of LAYERS)drawLayer(docX,l)} // a graphic keeps its clear background
+function compose(){docX.setTransform(1,0,0,1,0,0);docX.globalCompositeOperation='source-over';docX.globalAlpha=1;docX.clearRect(0,0,W,H);if(!GMODE){docX.fillStyle='#fff';docX.fillRect(0,0,W,H)}if(window.ILL)ILL.drawAll(docX);else for(const l of LAYERS)drawLayer(docX,l)} // a graphic keeps its clear background
 // doc point → the layer's own pixels, and back
 function toLocal(l,px,py){const[w,h]=dims(l);let dx=px-l.x,dy=py-l.y;const c=Math.cos(-l.rot),s=Math.sin(-l.rot);let lx=(dx*c-dy*s)/l.scale,ly=(dx*s+dy*c)/l.scale;if(l.flip)lx=-lx;return[lx+w/2,ly+h/2]}
 function corners(l){const[w,h]=dims(l),c=Math.cos(l.rot),s=Math.sin(l.rot),f=l.flip?-1:1;return[[-w/2,-h/2],[w/2,-h/2],[w/2,h/2],[-w/2,h/2]].map(([a,b])=>{a*=l.scale*f;b*=l.scale;return[l.x+a*c-b*s,l.y+a*s+b*c]})}
@@ -396,7 +398,7 @@ function render(){
     if(!l.locked){const tm=[(p[0][0]+p[1][0])/2,(p[0][1]+p[1][1])/2],rk=rotKnob(l);vx.beginPath();vx.moveTo(tm[0],tm[1]);vx.lineTo(rk[0],rk[1]);vx.stroke();
       for(const[a,b]of p){vx.fillStyle='#fff';vx.fillRect(a-5,b-5,10,10);vx.strokeRect(a-5,b-5,10,10)}vx.beginPath();vx.arc(rk[0],rk[1],6,0,Math.PI*2);vx.fillStyle='#4bff9a';vx.fill();vx.stroke()}}
   if(HOVER&&['brush','eraser','distress','area'].includes(TOOL)){const rad=(TOOL==='distress'?OPT.dsize:TOOL==='area'?OPT.area:OPT.size)/2*Z;vx.strokeStyle='rgba(20,20,22,.8)';vx.lineWidth=1;vx.beginPath();vx.arc(HOVER[0],HOVER[1],Math.max(rad,2),0,Math.PI*2);vx.stroke();vx.strokeStyle='rgba(255,255,255,.8)';vx.beginPath();vx.arc(HOVER[0],HOVER[1],Math.max(rad,2)+1,0,Math.PI*2);vx.stroke()}
-  window.PRO?.overlay(vx);window.VEC?.overlay(vx);overlay();$('#zLabel').textContent=Math.round(Z*100)+'%';
+  window.PRO?.overlay(vx);window.VEC?.overlay(vx);window.ILL?.overlay(vx);overlay();$('#zLabel').textContent=Math.round(Z*100)+'%';
 }
 function rotKnob(l){const p=corners(l).map(([a,b])=>[sx(a),sy(b)]),tm=[(p[0][0]+p[1][0])/2,(p[0][1]+p[1][1])/2],c=[sx(l.x),sy(l.y)],d=Math.hypot(tm[0]-c[0],tm[1]-c[1])||1;return[tm[0]+(tm[0]-c[0])/d*28,tm[1]+(tm[1]-c[1])/d*28]}
 // FITTED: the view is still the fit, so a stage that settles or resizes keeps it fitted
@@ -465,6 +467,7 @@ view.addEventListener('pointerdown',e=>{
   if(['rect','ellipse','line'].includes(TOOL)){DRAG={mode:'shape',x0:x,y0:y,l:null,pid:e.pointerId,type:e.pointerType};return}
   if(TOOL==='ruler'){RULER=null;DRAG={mode:'ruler',x0:x,y0:y,x1:x,y1:y,pid:e.pointerId,type:e.pointerType};draw();return}
   if(TOOL==='warp'){DRAG=warpDown(x,y,px,py);if(DRAG){DRAG.pid=e.pointerId;DRAG.type=e.pointerType}draw();return}
+  if(window.ILL?.down(e,x,y))return; // artboards, shape builder, width, measure, type on a path
   if(window.VEC?.down(e,x,y))return; // the pen and Edit points
   // select: a handle of the chosen layer first, then whatever is under the pointer
   const l=selected();
@@ -478,9 +481,9 @@ view.addEventListener('pointermove',e=>{
   const[px,py]=pt(e),q=PTRS.get(e.pointerId);if(q){q.x=px;q.y=py}
   if(GEST){gestMove();return}
   if(DRAG&&DRAG.pid!==undefined&&DRAG.pid!==e.pointerId)return;
-  if(e.pointerType!=='touch')HOVER=[px,py];if(!DRAG){if(['brush','eraser','distress','area'].includes(TOOL))draw();window.VEC?.hover();return}
+  if(e.pointerType!=='touch')HOVER=[px,py];if(!DRAG){window.ILL?.move(null,dx(px),dy(py),e);if(['brush','eraser','distress','area'].includes(TOOL))draw();window.VEC?.hover();return}
   const x=dx(px),y=dy(py),g=DRAG;
-  if(window.PRO?.move(g,x,y,e)||window.VEC?.move(g,x,y,e))return;
+  if(window.ILL?.move(g,x,y,e)||window.PRO?.move(g,x,y,e)||window.VEC?.move(g,x,y,e))return;
   // the Pencil reports more samples than the screen draws: take all of them, so a quick curve stays a curve
   if(g.mode==='stroke'){const ev=e.getCoalescedEvents?.()||[];for(const c of ev.length?ev:[e]){const[cx,cy]=pt(c),ux=dx(cx),uy=dy(cy);dab(g.l,g.x,g.y,ux,uy,TOOL,pressOf(c));g.x=ux;g.y=uy}draw();paintFields();return}
   if(g.mode==='pan'){FITTED=false;PX=g.PX+px-g.px;PY=g.PY+py-g.py}
@@ -497,7 +500,7 @@ view.addEventListener('pointermove',e=>{
     else{let w=Math.abs(x-g.x0),h=Math.abs(y-g.y0);if(e.shiftKey)w=h=Math.max(w,h);l.w=Math.max(4,Math.round(w));l.h=Math.max(4,Math.round(h));l.x=g.x0+(x<g.x0?-w:w)/2;l.y=g.y0+(y<g.y0?-h:h)/2}}
   draw();if(g.mode!=='pan'&&g.mode!=='area')paintFields();
 });
-const endDrag=e=>{if(e&&e.pointerId!==undefined){PTRS.delete(e.pointerId);if(GEST){if(PTRS.size<2){const g=GEST.layer;GEST=null;if(g?.moved){commit();paintPanels()}}return}if(DRAG&&DRAG.pid!==undefined&&DRAG.pid!==e.pointerId)return}const g=DRAG;DRAG=null;if(!g)return;if(window.PRO?.end(g)||window.VEC?.end(g))return;if(g.mode==='ruler'){rulerDone(g);draw();return}if(g.mode==='stroke'||g.mode==='area'||(g.mode==='shape'&&g.l)||g.moved){if(g.mode!=='area')commit();if(g.mode==='shape')setTool('select');paintPanels()}draw()};
+const endDrag=e=>{if(e&&e.pointerId!==undefined){PTRS.delete(e.pointerId);if(GEST){if(PTRS.size<2){const g=GEST.layer;GEST=null;if(g?.moved){commit();paintPanels()}}return}if(DRAG&&DRAG.pid!==undefined&&DRAG.pid!==e.pointerId)return}const g=DRAG;DRAG=null;if(!g)return;if(window.ILL?.end(g)||window.PRO?.end(g)||window.VEC?.end(g))return;if(g.mode==='ruler'){rulerDone(g);draw();return}if(g.mode==='stroke'||g.mode==='area'||(g.mode==='shape'&&g.l)||g.moved){if(g.mode!=='area')commit();if(g.mode==='shape')setTool('select');paintPanels()}draw()};
 view.addEventListener('pointerup',endDrag);view.addEventListener('pointercancel',endDrag);view.addEventListener('lostpointercapture',e=>{if(DRAG&&DRAG.pid===e.pointerId)endDrag(e)});view.addEventListener('pointerleave',e=>{if(e.pointerType==='mouse'||e.pointerType==='pen'&&!DRAG){HOVER=null;draw()}});
 // iPad: a Pencil on the page can be taken as handwriting (Scribble) or the start of a text selection, and then never reaches the canvas as a
 // stroke; holding the Pencil's touches on the stage keeps them ours (fingers are left alone: they move and pinch through the pointer events)
@@ -578,7 +581,7 @@ function fieldsHtml(l){
   return `<div class="sec"><h4>${esc(KIND[l.kind])}</h4><input class="t" data-p="name" value="${esc(l.name)}" maxlength="60" aria-label="Layer name">
     ${rng2('opacity','Opacity',0,1,.01,l.opacity)}<label class="f w"><span>Blend</span><select class="t" data-p="blend">${BLENDS.map(([k,v])=>`<option value="${k}" ${k===l.blend?'selected':''}>${esc(v)}</option>`).join('')}</select></label></div>
   ${l.kind==='base'?'':techHtml(l)}
-  ${kind}${pos}
+  ${kind}${window.ILL?ILL.fieldsHtml(l):''}${pos}
   <div class="sec"><h4>Colour</h4>${rng2('a.hue','Hue',-180,180,1,a.hue,'°')}${rng2('a.sat','Saturation',0,300,1,a.sat,'%')}${rng2('a.bright','Brightness',0,200,1,a.bright,'%')}${rng2('a.contrast','Contrast',0,200,1,a.contrast,'%')}
     <label class="f w"><span>Recolour</span>${col('t.color',t.color)}</label>${rng2('t.amount','Recolour amount',0,1,.01,t.amount)}
     <div class="row"><button class="btn sm q" type="button" data-act="lookreset">Reset the colour</button>${l.kind==='base'?'':'<button class="btn sm q" type="button" data-act="tonal" title="The colour of the fabric under it, a step lighter or darker, with Pantone codes">Tone on tone…</button>'}</div>${l.kind==='base'?'<p class="note">Hue turns the colour of the whole picture: on a grey studio background mostly the piece changes. For one part only, paint it in the AI tab and ask.</p>':''}</div>
@@ -743,7 +746,7 @@ $('#verBtn').onclick=verOpen;
 $('#verDlg').addEventListener('click',async e=>{if(e.target.closest('[data-verclose]')||e.target===$('#verDlg')){$('#verDlg').close();return}
   const vs=e.target.closest('[data-vsel]');if(vs){const n=Number(vs.dataset.vsel);if(vs.checked){VSEL.push(n);if(VSEL.length>2){const drop=VSEL.shift();const o=$(`[data-vsel="${drop}"]`);if(o)o.checked=false}}else VSEL=VSEL.filter(x=>x!==n);verCompare();return}
   const vo=e.target.closest('[data-vopen]');if(vo){const n=Number(vo.dataset.vopen);if(DIRTY&&!(await ask('Open version '+n+'?','What is on the canvas now is not saved. Keep a version of it first if you want it back.')))return;busy('Opening version '+n+'…');
-    try{const r=await api(`/v1/lab/concepts/${CID}/studio/versions/${n}`);if(!r.doc)throw new Error('That version has no layers');W=r.doc.w;H=r.doc.h;LAYERS=[];for(const o of r.doc.layers){try{LAYERS.push(await loadLayer(o))}catch{toast('A layer could not be loaded and was left out.')}}SEL=null;docC.width=W;docC.height=H;mask=canvas(W,H);maskX=mask.getContext('2d');HIST=[snap()];HI=0;syncUndo();touch();paintLayers();requestAnimationFrame(fit);$('#verDlg').close();toast(`Version ${n} is on the canvas. Save to keep working from it.`)}
+    try{const r=await api(`/v1/lab/concepts/${CID}/studio/versions/${n}`);if(!r.doc)throw new Error('That version has no layers');W=r.doc.w;H=r.doc.h;LAYERS=[];window.ILL?.load(r.doc);for(const o of r.doc.layers){try{LAYERS.push(await loadLayer(o))}catch{toast('A layer could not be loaded and was left out.')}}SEL=null;docC.width=W;docC.height=H;mask=canvas(W,H);maskX=mask.getContext('2d');HIST=[snap()];HI=0;syncUndo();touch();paintLayers();requestAnimationFrame(fit);$('#verDlg').close();toast(`Version ${n} is on the canvas. Save to keep working from it.`)}
     catch(x){$('#verMsg').className='msg bad';$('#verMsg').textContent=x.message}finally{busy()}return}
   if(e.target.id==='verKeep'){const b=e.target;FBN.begin(b);try{compose();const r=await api(`/v1/lab/concepts/${CID}/studio/versions`,{body:{image:docC.toDataURL('image/png'),doc:serialize(),note:'Kept from the studio'}});FBN.end(b,true);FBN.toast(`Kept as version ${r.n}.`,'ok');await verOpen()}catch(x){FBN.end(b,false);$('#verMsg').className='msg bad';$('#verMsg').textContent=x.message}}
 });
@@ -800,7 +803,7 @@ $('#pAi').addEventListener('click',async e=>{
 });
 
 // ---------- saving, using, exporting ----------
-function serialize(){return{w:W,h:H,ppi:PPI,ppiSet:PPISET,selected:SEL,linked:[...LINKING],layers:LAYERS.map(l=>{const o={};for(const[k,v]of Object.entries(l))if(!k.startsWith('_')&&k!=='raster'&&k!=='dirty')o[k]=v;
+function serialize(){return{...(window.ILL?ILL.docData():{}),w:W,h:H,ppi:PPI,ppiSet:PPISET,selected:SEL,linked:[...LINKING],layers:LAYERS.map(l=>{const o={};for(const[k,v]of Object.entries(l))if(!k.startsWith('_')&&k!=='raster'&&k!=='dirty')o[k]=v;
   if(isRaster(l)&&(l.dirty||!l.src||l.kind==='paint'||l.raster._rid!==l._srcRid))o.src=l.raster.toDataURL('image/png');return o})}}
 async function save(){const b=$('#save');b.disabled=true;$('#saved').textContent='Saving…';
   try{if(!GMODE){const sent=await syncFlats({before:flatsFirst}).catch(x=>{toast('The flats did not take the graphics: '+x.message);return false});if(sent)reloadFlats()}const doc=serialize(),at=EDITS;let r;
@@ -829,19 +832,19 @@ const fileBase=()=>String(D.concept.name||'concept').toLowerCase().replace(/[^a-
 const xa=v=>esc(String(v));
 // one group per layer; plain type and shapes stay live vectors, the rest is placed as its picture
 function svgDoc(){
-  const parts=LAYERS.filter(l=>l.visible).map(l=>{
+  const parts=LAYERS.filter(l=>l.visible&&!window.ILL?.isMask(l)).map(l=>{
     const c=processed(l),tr=`translate(${+l.x.toFixed(2)} ${+l.y.toFixed(2)}) rotate(${+(l.rot*180/Math.PI).toFixed(3)}) scale(${+(l.scale*(l.flip?-1:1)).toFixed(4)} ${+l.scale.toFixed(4)})`;
-    const style=`opacity:${l.opacity}${l.blend!=='source-over'?';mix-blend-mode:'+l.blend:''}`,live=plainLook(l)&&!l.distress.amount&&!l.finish&&(l.tint.amount===0||l.tint.amount===1);
+    const style=`opacity:${l.opacity}${l.blend!=='source-over'?';mix-blend-mode:'+l.blend:''}`,live=plainLook(l)&&!l.distress.amount&&!l.finish&&(l.tint.amount===0||l.tint.amount===1)&&!window.ILL?.rasterOnly(l),gd=window.ILL?.svgGrad(l);
     let inner='';
     if(l.kind==='text'&&live&&!l.arc){const{font,lines,lw}=textMetrics(l),fill=l.tint.amount===1?l.tint.color:l.color,lh=l.size*l.lead,pad=Math.ceil(l.size*.35+(l.outline||0)*2+4),w=c.width,h=c.height;
       inner=lines.map((t,i)=>{const x0=l.align==='left'?pad:l.align==='right'?w-pad-lw[i]:(w-lw[i])/2;return `<text x="${(x0-w/2).toFixed(1)}" y="${(pad+lh*i+lh/2-h/2).toFixed(1)}" dominant-baseline="middle" font-family="${xa(FONTS[l.font][0])}" font-size="${l.size}" font-weight="${l.bold?700:400}"${l.italic?' font-style="italic"':''} letter-spacing="${l.track}" fill="${xa(fill)}"${l.outline?` stroke="${xa(l.outlineColor)}" stroke-width="${l.outline*2}" paint-order="stroke" stroke-linejoin="round"`:''} xml:space="preserve">${esc(t)}</text>`}).join('')}
-    else if(l.kind==='shape'&&live){const fill=l.tint.amount===1?l.tint.color:l.fillColor,sk=l.tint.amount===1?l.tint.color:l.strokeColor;
+    else if(l.kind==='shape'&&live){const fill=gd&&l.tint.amount!==1?gd.ref:l.tint.amount===1?l.tint.color:l.fillColor,sk=l.tint.amount===1?l.tint.color:l.strokeColor;
       inner=l.shape==='path'&&window.VEC?VEC.svg(l,fill,sk):l.shape==='line'?`<line x1="${-l.w/2}" y1="0" x2="${l.w/2}" y2="0" stroke="${xa(l.stroke?sk:fill)}" stroke-width="${Math.max(l.strokeW,1)}" stroke-linecap="round"/>`:
         l.shape==='ellipse'?`<ellipse cx="0" cy="0" rx="${l.w/2}" ry="${l.h/2}" fill="${l.fill?xa(fill):'none'}"${l.stroke?` stroke="${xa(sk)}" stroke-width="${l.strokeW}"`:''}/>`:
-        `<rect x="${-l.w/2}" y="${-l.h/2}" width="${l.w}" height="${l.h}" rx="${Math.min(l.radius||0,l.w/2,l.h/2)}" fill="${l.fill?xa(fill):'none'}"${l.stroke?` stroke="${xa(sk)}" stroke-width="${l.strokeW}"`:''}/>`}
+        `<rect x="${-l.w/2}" y="${-l.h/2}" width="${l.w}" height="${l.h}" rx="${Math.min(l.radius||0,l.w/2,l.h/2)}" fill="${l.fill?xa(fill):'none'}"${l.stroke?` stroke="${xa(sk)}" stroke-width="${l.strokeW}"`:''}/>`;if(gd)inner=gd.defs+inner}
     else inner=`<image x="${-c.width/2}" y="${-c.height/2}" width="${c.width}" height="${c.height}" href="${c.toDataURL('image/png')}"/>`;
-    return `<g id="${xa(l.name.replace(/[^A-Za-z0-9_-]+/g,'_')+'_'+l.id)}" data-name="${xa(l.name)}" transform="${tr}" style="${style}">${inner}</g>`});
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">\n<title>${esc(D.concept.name)} · Future Basics Design Lab</title>\n${parts.join('\n')}\n</svg>`;
+    const g=`<g id="${xa(l.name.replace(/[^A-Za-z0-9_-]+/g,'_')+'_'+l.id)}" data-name="${xa(l.name)}" transform="${tr}" style="${style}">${inner}</g>`;return window.ILL?ILL.svgWrap(l,g):g});
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">\n<title>${esc(D.concept.name)} · Future Basics Design Lab</title>\n${window.ILL?`<defs>${ILL.svgDefs()}</defs>`:''}\n${parts.join('\n')}\n</svg>`;
 }
 $('#expBtn').onclick=e=>{e.stopPropagation();const p=$('#expPop'),open=p.classList.toggle('hidden');$('#expBtn').setAttribute('aria-expanded',String(!open))};
 document.addEventListener('click',e=>{if(!e.target.closest('.menu')){$('#expPop').classList.add('hidden');$('#expBtn').setAttribute('aria-expanded','false')}});
@@ -925,7 +928,7 @@ let TT=0;function toast(text,href){if(!text)return;let el=$('#stToast');if(!el){
 function paintSub(){const c=D.concept;$('#tryBtn').classList.toggle('hidden',GMODE);if(GMODE&&TAGM){const t=TAGM.spec;$('#cName').textContent=c.name;$('#cSub').textContent=`Tag · ${t.widthMm} × ${t.heightMm} mm · ${t.shape}${t.fold&&t.fold!=='none'?' · '+t.fold:''} · ${t.material}${TAGM.spec.face?'':' · not designed yet'}`;$('#apply').textContent='Use on the tag';$('#expKeepNew').classList.add('hidden');return}
   if(GMODE){$('#cName').textContent=c.name;$('#cSub').textContent=`${GID?'Graphic in the library':'New graphic, not kept yet'} · ${W}×${H}px · clear background`;$('#apply').textContent=GID?'Update the graphic':'Keep in the library';$('#expKeepNew').classList.toggle('hidden',!GID);return}const st={draft:'Draft',approved:'Approved',rejected:'Rejected',tech_pack:'Tech pack'}[c.status]||c.status;$('#cName').textContent=c.name;$('#cSub').innerHTML=`${esc(st)} · ${W}×${H}px${D.canRestore?' · <button class="btn sm q" type="button" id="restore" style="min-height:22px;padding:0 8px">Put the old picture back</button>':''}`;const r=$('#restore');if(r)r.onclick=async()=>{if(!await ask('Put the old picture back?','The concept gets the picture it had before the studio. Your design here stays as it is.','Put it back'))return;try{await api(`/v1/lab/concepts/${CID}/studio/restore`,{body:{}});D.canRestore=false;paintSub();toast('The old picture is back on the concept.')}catch(x){toast(x.message)}}}
 document.addEventListener('keydown',e=>{
-  if(!D)return;if(window.VEC?.key(e)||window.PRO?.key(e))return;const typing=e.target.closest&&e.target.closest('input,textarea,select,[contenteditable]')&&!e.target.closest('dialog:not([open])'),mod=e.ctrlKey||e.metaKey;
+  if(!D)return;if(window.ILL?.key(e)||window.VEC?.key(e)||window.PRO?.key(e))return;const typing=e.target.closest&&e.target.closest('input,textarea,select,[contenteditable]')&&!e.target.closest('dialog:not([open])'),mod=e.ctrlKey||e.metaKey;
   if(mod&&e.key.toLowerCase()==='s'){e.preventDefault();saveAll();return}
   if(typing||VMODE==='front'||VMODE==='back')return; // the flats take their own keys, in their frame
   if(mod&&e.key.toLowerCase()==='z'){e.preventDefault();e.shiftKey?redo():undo();return}if(mod&&e.key.toLowerCase()==='y'){e.preventDefault();redo();return}
@@ -990,7 +993,7 @@ async function boot(){
   if(D.concept.locked){$('#apply').disabled=true;$('#apply').title='This concept is already a tech pack'}
   busy('Opening the design…');
   try{
-    if(D.doc&&Array.isArray(D.doc.layers)&&D.doc.layers.length){W=D.doc.w;H=D.doc.h;LAYERS=[];for(const o of D.doc.layers){try{LAYERS.push(await loadLayer(o))}catch{toast('A layer could not be loaded and was left out.')}}SEL=D.doc.selected&&LAYERS.some(l=>l.id===D.doc.selected)?D.doc.selected:null;SAVED_AT=D.savedAt}
+    if(D.doc&&Array.isArray(D.doc.layers)&&D.doc.layers.length){W=D.doc.w;H=D.doc.h;LAYERS=[];window.ILL?.load(D.doc);for(const o of D.doc.layers){try{LAYERS.push(await loadLayer(o))}catch{toast('A layer could not be loaded and was left out.')}}SEL=D.doc.selected&&LAYERS.some(l=>l.id===D.doc.selected)?D.doc.selected:null;SAVED_AT=D.savedAt}
     else if(D.concept.hasImage){const src=await urlOfBlob(await blobOf(`/v1/lab/concepts/${CID}/image`)),img=await imgOf(src);W=img.naturalWidth;H=img.naturalHeight;const c=canvas(W,H);c.getContext('2d').drawImage(img,0,0);
       LAYERS=[{...fresh('base',{name:'Picture',raster:stamp(c),src,x:W/2,y:H/2})}];LAYERS[0]._srcRid=LAYERS[0].raster._rid}
     else if(QS.get('scratch')==='1'||D.concept.scratch){await scratchPage()}
@@ -1013,7 +1016,7 @@ async function bootGraphic(){
   if(TAGM){D.concept.name=TAGM.name;$('#back').href=FORC?`/lab/studio?concept=${encodeURIComponent(FORC)}`:'/lab/materials#tags';$('#back').textContent=FORC?'← Back to the garment':'← Materials, trims & tags';document.querySelector('.brand-suffix').textContent='/ Tag and label studio';$('#tagAddBtn').classList.remove('hidden')}
   busy('Opening the graphic…');
   try{
-    if(D.doc&&Array.isArray(D.doc.layers)&&D.doc.layers.length){W=D.doc.w;H=D.doc.h;LAYERS=[];for(const o of D.doc.layers){try{LAYERS.push(await loadLayer(o))}catch{toast('A layer could not be loaded and was left out.')}}SEL=D.doc.selected&&LAYERS.some(l=>l.id===D.doc.selected)?D.doc.selected:null}
+    if(D.doc&&Array.isArray(D.doc.layers)&&D.doc.layers.length){W=D.doc.w;H=D.doc.h;LAYERS=[];window.ILL?.load(D.doc);for(const o of D.doc.layers){try{LAYERS.push(await loadLayer(o))}catch{toast('A layer could not be loaded and was left out.')}}SEL=D.doc.selected&&LAYERS.some(l=>l.id===D.doc.selected)?D.doc.selected:null}
     else if(TAGM)await tagStart();
     else{W=1024;H=1024;const clear=canvas(W,H);LAYERS=[{...fresh('base',{name:'Clear background',raster:stamp(clear),x:W/2,y:H/2,dirty:true})}];
       if(GID&&D.concept.hasImage){const src=await urlOfBlob(await blobOf('/v1/lab/art/'+GID)),img=await imgOf(src);W=Math.max(1024,img.naturalWidth);H=Math.max(1024,img.naturalHeight);const c2=canvas(W,H);LAYERS[0].raster=stamp(c2);LAYERS[0].x=W/2;LAYERS[0].y=H/2;
@@ -1366,7 +1369,7 @@ function applyLayout({full=false}={}){$('#app').dataset.panel=LAYOUT.panel?'on':
   if(full){const d=document,el=d.documentElement,on=d.fullscreenElement||d.webkitFullscreenElement;try{if(LAYOUT.focus&&!on)(el.requestFullscreen||el.webkitRequestFullscreen)?.call(el)?.catch?.(()=>{});else if(!LAYOUT.focus&&on)(d.exitFullscreen||d.webkitExitFullscreen)?.call(d)?.catch?.(()=>{})}catch{}}
   requestAnimationFrame(()=>{if(VMODE==='picture')fit()})}
 $('#panelBtn').onclick=()=>{LAYOUT.panel=!LAYOUT.panel;applyLayout()};$('#focusBtn').onclick=()=>{LAYOUT.focus=!LAYOUT.focus;applyLayout({full:true})};
-document.addEventListener('keydown',e=>{if(e.target.closest?.('input,textarea,select,[contenteditable]')||e.metaKey||e.ctrlKey||e.altKey)return;if(e.key==='\\'){e.preventDefault();$('#panelBtn').click()}else if(e.key==='f'||e.key==='F'){e.preventDefault();$('#focusBtn').click()}});
+document.addEventListener('keydown',e=>{if(e.target.closest?.('input,textarea,select,[contenteditable]'))return;if(e.key==='\\'&&(e.metaKey||e.ctrlKey)&&!e.altKey){e.preventDefault();$('#panelBtn').click();return}if(e.metaKey||e.ctrlKey||e.altKey)return;if(false){}else if(e.key==='f'||e.key==='F'){e.preventDefault();$('#focusBtn').click()}});
 applyLayout();
 
 // ---------- tags and labels in the studio ----------
@@ -1399,6 +1402,7 @@ boot();
 <script src="/lab/studio-pro.js"></script>
 <script src="/lab/vendor/polygon-clipping.js"></script>
 <script src="/lab/studio-vec.js"></script>
+<script src="/lab/studio-ill.js"></script>
 <script src="/lab/studio-emb.js"></script>
 <script src="/lab/studio-board.js"></script>
 <script src="/helper.js" defer></script>
