@@ -1698,8 +1698,11 @@ await journey('J227', 'Every tool in the studio works: each rail tool and zoom b
 
     // 1. the rail and the zoom
     const tools = await page.$$eval('.rail [data-tool]', els => els.map(e => e.dataset.tool)); let railOk = 0;
-    for (const t of tools) { await page.click(`.rail [data-tool="${t}"]`); if (await page.evaluate(x => TOOL === x && document.querySelector(`.rail [data-tool="${x}"]`).getAttribute('aria-pressed') === 'true', t) && (await page.innerText('#opts')).trim().length > 0) railOk++; }
-    ok(railOk === tools.length && tools.length === 15, `1. every rail tool selects and shows its options (${tools.join(', ')})`, railOk);
+    for (const t of tools) { await page.click(`.rail [data-tool="${t}"]`);
+      // the shape builder needs two shapes chosen: with fewer it says so and goes back to Select
+      if (t === 'shapebuilder') { if (await page.evaluate(() => TOOL === 'select' && /Choose two shapes/.test(document.getElementById('stToast')?.textContent || ''))) railOk++; continue; }
+      if (await page.evaluate(x => TOOL === x && document.querySelector(`.rail [data-tool="${x}"]`).getAttribute('aria-pressed') === 'true', t) && (await page.innerText('#opts')).trim().length > 0) railOk++; }
+    ok(railOk === tools.length && tools.length === 20, `1. every rail tool selects and shows its options (${tools.join(', ')})`, railOk);
     const z0 = await page.innerText('#zLabel'); await page.click('#zIn'); await page.waitForFunction(z => document.getElementById('zLabel').textContent !== z, z0); const z1 = await page.innerText('#zLabel'); await page.click('#zOut'); await page.waitForFunction(z => document.getElementById('zLabel').textContent !== z, z1); await page.click('#zFit'); await page.waitForFunction(z => document.getElementById('zLabel').textContent === z, z0);
     ok(parseInt(z1) > parseInt(z0), '   zoom in, out and fit', [z0, z1]);
 
@@ -4041,6 +4044,11 @@ await journey('J268', 'Design by picking, the fabric checked, and new prints fro
         await page.click('[data-base=shorts]'); await page.click('[data-addon=cargo]'); await page.click('[data-sys=coastal]');
         const v = await page.evaluate(() => ({ svg: Boolean(document.querySelector('#art svg')), words: document.querySelector('#sum').textContent, over: document.documentElement.scrollWidth > innerWidth }));
         ok(v.svg && /cargo pockets/i.test(v.words) && !v.over, '6. on a phone the piece is drawn as it is picked, with nothing off the side', v);
+        await page.waitForSelector('#mats [data-mat]:not([data-mat=""])', { timeout: 15000 }); const cloth = await page.$('#mats [data-mat]:not([data-mat=""])'); await cloth.scrollIntoViewIfNeeded(); await cloth.click(); await page.waitForTimeout(300);
+        const t = await page.evaluate(() => { const st = document.querySelector('#stMat').getBoundingClientRect(), m = document.querySelector('#mats').getBoundingClientRect(), img = document.querySelector('#art svg pattern[id$="-tx"] image');
+          return { inside: m.left >= st.left && m.right <= st.right, scrolls: document.querySelector('#mats').scrollWidth > document.querySelector('#mats').clientWidth, tex: img?.getAttribute('href') || '', over: document.documentElement.scrollWidth > innerWidth }; });
+        ok(t.inside && t.scrolls && !t.over, '7. the cloth cards scroll sideways inside their card, not past its edge', t);
+        ok(/material-photos\/[a-z0-9-]+\.jpg\?shade=1/.test(t.tex), '   and the drawing takes the cloth\'s surface, as it takes the colour', t.tex);
         await page.click('#open'); await page.waitForURL(/\/lab\/studio\?concept=/, { timeout: 20000 });
         made.push(new URL(page.url()).searchParams.get('concept'));
         ok(errs.length === 0, '   and Open in the Studio makes it and goes there', errs);
@@ -4158,8 +4166,16 @@ await journey('J270', 'The recipe flow finished: a tee with a polo collar (drawn
         const n = await K('/concepts/from-recipe', { body: { base: 'hoodie', addons: ['kangaroo'], system: 'forest' } }); made.push(n.json.concept.id);
         await p.goto(`${BASE}/lab/studio?concept=${n.json.concept.id}&view=front`, { waitUntil: 'networkidle' }); await p.waitForSelector('#flatPicBar:not(.hidden)', { timeout: 30000 });
         ok(await p.isVisible('#recipeBtn'), '5. in the Studio a recipe piece shows Edit recipe and the bar to draw its picture');
+        // the Studio already has saved layers (its blank page, and a word laid on it), saved by itself a few seconds after the change
+        await p.waitForFunction(() => typeof LAYERS !== 'undefined' && LAYERS.some(l => l.kind === 'base'), null, { timeout: 20000 });
+        await p.evaluate(() => { addLayer(fresh('shape', { name: 'Word', shape: 'rect', w: 200, h: 80, radius: 0, fill: true, fillColor: '#141416', stroke: false, strokeW: 4, strokeColor: '#141416', x: W / 2, y: H / 2 })); touch(); });
+        await p.waitForFunction(() => /^Saved just now/.test(document.querySelector('#saved').textContent), null, { timeout: 15000 }).catch(() => {});
+        ok(/^Saved just now/.test(await p.innerText('#saved')) && sql(`select jsonb_array_length(doc->'layers') from lab_studio_docs where concept_id='${n.json.concept.id}'`) === '2', '   a change saves by itself a few seconds later, and says "Saved just now"', await p.innerText('#saved'));
         await p.click('#flatPicGo'); await p.waitForURL(/view=picture/, { timeout: 30000 });
         ok(sql(`select (image is not null)::text from lab_concepts where id='${n.json.concept.id}'`) === 'true', '   and pressing it draws the picture and shows it');
+        await p.waitForFunction(() => typeof LAYERS !== 'undefined' && LAYERS.length > 0 && document.querySelector('#busy').classList.contains('hidden'), null, { timeout: 20000 });
+        const ly = await p.evaluate(() => LAYERS.map(l => [l.kind, l.name]));
+        ok(ly[0]?.[0] === 'base' && ly[0][1] === 'Picture' && !ly.some(l => l[1] === 'Blank') && ly.some(l => l[1] === 'Word'), '   the new picture is the base, not the blank page it had, and the word laid on it stays on top', ly);
         await p.waitForSelector('#recipeBtn:not(.hidden)', { timeout: 20000 }); await p.click('#recipeBtn'); await p.waitForURL(/\/lab\/recipe\?concept=/); await p.waitForFunction(() => document.querySelector('#open').textContent === 'Save the changes', null, { timeout: 15000 });
         ok(await p.evaluate(() => document.querySelector('[data-base=hoodie]').getAttribute('aria-checked') === 'true' && document.querySelector('[data-addon=kangaroo]').getAttribute('aria-pressed') === 'true'), '   Edit recipe opens on the piece\'s own picks, ready to save');
         // fit it together: a tee with a chest pocket; widen the body and size the pocket with the sliders, and the drawing follows
@@ -4656,11 +4672,13 @@ await journey('J284', 'The Studio\'s production tools for a physical product and
 });
 
 await journey('J285', 'Who is here in the Studio: a concept open by two of the team shows the other one by Save, turns amber when they change it, says so once if both have changes, goes back to looking after a save, and a room never sees a concept Future Basics is drawing for no room', async () => {
+  // a teammate of its own: earlier journeys narrow what Pat may open
+  const MATE = `lab-mate-${stamp}@thefuturebasics.com`, mateT = await token(MATE);
   const { brands, plan } = await conceptSetup();
   try {
     const line = plan.lines.find(l => l.category === 'tops') || plan.lines[0], c = (await K(`/plans/${plan.plan.id}/lines/${line.id}/concepts`, { body: { count: 1 } })).json.concepts[0];
     const beat = (t, mode) => call('/v1/workspace/presence', { token: t, body: { type: 'concept', id: c.id, mode } });
-    ok((await beat(patT, 'viewing')).status === 200, 'staff can be on a concept that belongs to no room yet');
+    ok((await beat(mateT, 'viewing')).status === 200, 'staff can be on a concept that belongs to no room yet');
     ok((await beat(room.token, 'viewing')).status === 404, 'a room cannot see or appear on it');
     if (!playwright) { ok(true, 'needs a browser'); return; }
     const b = await playwright.chromium.launch();
@@ -4671,12 +4689,12 @@ await journey('J285', 'Who is here in the Studio: a concept open by two of the t
       await page.goto(`${BASE}/lab/studio?concept=${c.id}`, { waitUntil: 'networkidle' }); await page.waitForSelector('#pLayers .ly', { timeout: 20000 });
       await page.waitForSelector('#people span', { timeout: 8000 }).catch(() => {});
       const first = await page.$$eval('#people span', s => s.map(x => [x.textContent, x.title, x.getAttribute('style') || '']));
-      ok(first.length === 1 && /lab-pat/i.test(first[0][1]) && /looking/.test(first[0][1]), '1. the other person on the concept shows by Save, looking', first);
+      ok(first.length === 1 && /lab-mate/i.test(first[0][1]) && /looking/.test(first[0][1]), '1. the other person on the concept shows by Save, looking', first);
       const kyleId = sql(`select id from users where lower(email)='kyle@thefuturebasics.com'`).split('\n')[0];
       ok(sql(`select mode from workspace_presence where user_id='${kyleId}' and entity_type='concept' and entity_id='${c.id}'`) === 'viewing', '   and this page tells the service it is looking');
       await page.evaluate(() => touch()); await page.waitForTimeout(600);
       ok(sql(`select mode from workspace_presence where user_id='${kyleId}' and entity_type='concept' and entity_id='${c.id}'`) === 'editing', '2. a change here says "changing it"');
-      ok((await beat(patT, 'editing')).json.others?.some(o => o.mode === 'editing'), '   and the other person sees it');
+      ok((await beat(mateT, 'editing')).json.others?.some(o => o.mode === 'editing'), '   and the other person sees it');
       await page.evaluate(() => { const p = PRES; p.editing(false); p.editing(true); }); await page.waitForTimeout(600);
       ok(await page.$eval('#people span', x => /changing/.test(x.title) && /ffc94d/i.test(x.getAttribute('style') || '')), '3. the other one turns amber once they change it too', await page.$eval('#people span', x => [x.title, x.getAttribute('style')]));
       ok(await page.evaluate(() => /last one to save wins/.test(document.getElementById('stToast')?.textContent || '')), '   and the page says so once, while both have changes');

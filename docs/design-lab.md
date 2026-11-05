@@ -455,7 +455,8 @@ When nothing holds it up, the list offers **Send to the tech pack**; once it is 
   - **Make a graphic:** draws a new graphic on a clear background.
   - Either way the result comes back as a new layer on top, so nothing you made is lost. Prompts that name another brand are refused, the same as the rest of the Lab.
 - **Saving.**
-  - **Save** (Ctrl S) keeps the layers with the concept, and the studio also saves on its own while there are changes. Reopening the studio brings the design back exactly as it was saved.
+  - **Save** (Ctrl S) keeps the layers with the concept. The studio and the flats also save on their own a few seconds after each change (never mid-stroke), and say when: "Saving…", then "Saved just now" or "Saved 4 min ago" (the clock time on hover). A save that fails says why and is tried again.
+  - **Draw the picture from the flats** saves what is open first, and nothing saves while the image model draws. The new picture becomes the base layer; what was laid on the old base (a logo, type, graphics from the flats) stays on top. Reopening the studio brings the design back exactly as it was saved.
   - **Use as the concept picture** makes everything visible the concept's picture. Its views are drawn again from it, and an approved concept goes back to draft.
   - The picture from before the studio is kept: **Put the old picture back** restores it.
   - After that, the logo and graphics are part of the picture, so **Place the logo and graphics again** says to move them in the studio instead.

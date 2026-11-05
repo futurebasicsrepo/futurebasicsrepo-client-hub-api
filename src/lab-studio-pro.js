@@ -19,7 +19,10 @@
   // ---- where a layer's ink is on the picture: the box round what it draws, not round its canvas (type has room round it) ----
   const INK = new Map();
   function inkLocal(l) {
-    const src = contentOf(l), key = sig(l) + '|' + src.width + 'x' + src.height; if (INK.has(key)) return INK.get(key);
+    const src = contentOf(l);
+    // a layer with nothing drawn yet (empty type, a canvas not made yet) has no ink: a box of nothing, not an error that stops a save
+    if (!src || !src.width || !src.height) return { x0: 0, y0: 0, x1: 0, y1: 0, w: 0, h: 0 };
+    const key = sig(l) + '|' + src.width + 'x' + src.height; if (INK.has(key)) return INK.get(key);
     const k = Math.min(1, 300 / Math.max(src.width, src.height)), w = Math.max(1, Math.round(src.width * k)), h = Math.max(1, Math.round(src.height * k)), c = canvas(w, h), x = c.getContext('2d', { willReadFrequently: true });
     x.drawImage(src, 0, 0, w, h); const d = x.getImageData(0, 0, w, h).data; let x0 = w, y0 = h, x1 = -1, y1 = -1;
     for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) if (d[(j * w + i) * 4 + 3] > 16) { if (i < x0) x0 = i; if (i > x1) x1 = i; if (j < y0) y0 = j; if (j > y1) y1 = j; }

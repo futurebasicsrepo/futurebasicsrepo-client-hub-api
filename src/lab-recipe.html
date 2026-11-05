@@ -37,7 +37,7 @@ h2 b{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;bo
 .bases button[aria-checked=true],.systems button[aria-checked=true],.mats button[aria-checked=true]{animation:pickIn .5s ease-out}
 @keyframes pickIn{from{box-shadow:0 0 0 1.5px #4bff9a,0 0 0 0 rgba(75,255,154,0)}50%{box-shadow:0 0 0 2px #4bff9a,0 0 26px 6px rgba(75,255,154,.6)}to{box-shadow:var(--pick-glow)}}
 @media(prefers-reduced-motion:reduce){.bases button[aria-checked=true],.systems button[aria-checked=true],.mats button[aria-checked=true]{animation:none}}
-.step{background:#fff;border:1px solid var(--line);border-radius:20px;padding:16px 18px;display:grid;gap:12px;min-width:0}
+.step{background:#fff;border:1px solid var(--line);border-radius:20px;padding:16px 18px;display:grid;grid-template-columns:minmax(0,1fr);gap:12px;min-width:0}
 .bases{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:8px}
 .bases button{border:1px solid var(--line);background:#fff;border-radius:14px;padding:6px 6px 9px;cursor:pointer;display:grid;gap:4px;text-align:left;font-size:12.5px;line-height:1.25}
 .bases button img{width:100%;aspect-ratio:1;object-fit:contain;background:var(--fog);border-radius:9px}.bases button small{color:var(--dim);font-size:11px}
@@ -52,7 +52,8 @@ h2 b{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;bo
 .strip{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;height:28px;border-radius:8px;overflow:hidden;border:1px solid var(--line)}
 .mains{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.mains button{width:38px;height:38px;border-radius:50%;border:1px solid var(--line);cursor:pointer}.mains button[aria-checked=true]{box-shadow:0 0 0 2px #fff,0 0 0 4px var(--pick),0 0 16px 5px rgba(75,255,154,.5)}.mains{padding:6px}
 .own{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.own input[type=color]{width:38px;height:38px;border:1px solid var(--line);border-radius:10px;padding:2px;background:#fff}
-.mats{display:grid;grid-auto-flow:column;grid-auto-columns:110px;gap:10px;overflow-x:auto;padding:10px 10px 14px;margin:-8px -8px -8px}
+/* the cloth row scrolls sideways inside its card: it may shrink to the card (min-width:0), and its glow room stays inside the card's padding */
+.mats{display:grid;grid-auto-flow:column;grid-auto-columns:110px;gap:10px;overflow-x:auto;overscroll-behavior-x:contain;min-width:0;max-width:100%;padding:10px 8px 14px;margin:-8px -6px -8px;scroll-snap-type:x proximity;scroll-padding:8px}.mats button{scroll-snap-align:start}
 .mats button{border:1px solid var(--line);background:#fff;border-radius:14px;padding:6px;display:grid;gap:4px;text-align:left;font-size:12px;line-height:1.25;cursor:pointer}.mats button .sw{aspect-ratio:1;border-radius:9px;background:var(--fog) center/cover;display:block}.mats button small{color:var(--dim)}
 .mats button[aria-checked=true]{border-color:var(--pick);box-shadow:var(--pick-glow)}
 .fitnote{padding:8px 10px;border-radius:10px;border:1px solid var(--line);font-size:12.5px;line-height:1.4;margin:0}.fitnote[data-verdict=good]{color:var(--ok);background:rgba(23,96,58,.06)}.fitnote[data-verdict=check]{color:var(--warn);background:rgba(138,90,0,.06)}.fitnote[data-verdict=wrong]{color:var(--bad);background:rgba(160,42,32,.06)}
@@ -124,10 +125,14 @@ function paintMats(){if(!MATS){return}$('#mats').innerHTML=`<button type="button
   const el=$('#matFit'),m=MATS.find(x=>x.id===S.mat),b=RECIPE_BASES.find(x=>x.id===S.base);$('#stMat').classList.toggle('done',Boolean(m));
   if(!m||!b){el.classList.add('hidden');return}const f=fabricFit({style:b.style,fit:b.fit,materials:[{kind:'fabric',role:'main',name:m.name,spec:m.spec||{}}]});if(f.verdict==='unknown'){el.classList.add('hidden');return}
   el.classList.remove('hidden');el.dataset.verdict=f.verdict;el.textContent=f.verdict==='good'?`✓ ${f.summary}`:`${f.verdict==='wrong'?'✕':'!'} ${f.findings[0].msg} ${f.findings[0].fix}`}
-// the drawing: the picks cooked into flats, drawn the way the flats page draws them
+// the drawing: the picks cooked into flats, drawn the way the flats page draws them, in the picked colour and, once one is picked, the cloth's surface
+// (its close-up laid over the colour as shading: a twill reads as a twill, a fleece as a fleece). The close-up is shown larger than life, a tile
+// (the close-up mirrored four ways) to about half the chest, so the surface reads at the size of the drawing (at true scale a weave is finer than a pixel here).
+const TEX_INCHES=9;
+const clothTexture=()=>{const m=MATS&&S.mat?MATS.find(x=>x.id===S.mat):null;return m?.photo?{href:`/lab/material-photos/${encodeURIComponent(m.photo)}.jpg?shade=1&s=320`,w:TEX_INCHES,h:TEX_INCHES}:null};
 function paintPreview(){COOKED=S.base?cookRecipe({base:S.base,addons:S.addons,system:sysArg(),colour:S.colour,fit:S.fit}):null;$('#open').disabled=!COOKED||Boolean(COOKED.error)||LOCKED;$('#miniOpen').disabled=$('#open').disabled;queueMicrotask(paintMini);
   if(!COOKED||COOKED.error){$('#art').innerHTML=`<p class="note" style="padding:20px;text-align:center">${esc(COOKED?.error||'Pick a base to see it drawn.')}</p>`;$('#sum').innerHTML='';$('#pvKind').textContent='Pick a base';return}
-  try{$('#art').innerHTML=renderSvg(COOKED.params,S.view,{maskHref:MASK_URL,showDims:false,scale:0,plain:true})}catch(x){$('#art').innerHTML=`<p class="note" style="padding:20px">${esc(x.message)}</p>`}
+  try{$('#art').innerHTML=renderSvg(COOKED.params,S.view,{maskHref:MASK_URL,showDims:false,scale:0,plain:true,texture:clothTexture()})}catch(x){$('#art').innerHTML=`<p class="note" style="padding:20px">${esc(x.message)}</p>`}
   if(!NAMED)$('#name').placeholder=COOKED.name;$('#pvKind').textContent=`${STYLES[COOKED.style]?.label||COOKED.style}${COOKED.sketch?' · '+COOKED.sketch:''}`;
   $('#sum').innerHTML=`<p style="margin:0 0 6px">${esc(COOKED.words)}</p>${COOKED.colourways.length?`<div class="cw" aria-label="Colourways">${COOKED.colourways.map(c=>`<span><i style="background:${c.hex}"></i>${esc(c.name)}</span>`).join('')}</div>`:''}`}
 // the bar at the foot (phones): the same drawing, small, its name, and Open
@@ -161,7 +166,7 @@ $('#addons').addEventListener('click',e=>{const b=e.target.closest('[data-addon]
 $('#systems').addEventListener('click',e=>{const b=e.target.closest('[data-sys]');if(!b)return;S.system=b.dataset.sys;S.colour=0;paintSystems();paintMats();paintPreview()});
 $('#mains').addEventListener('click',e=>{const b=e.target.closest('[data-main]');if(!b)return;S.colour=Number(b.dataset.main);paintSystems();paintMats();paintPreview()});
 $('#own').addEventListener('input',e=>{const i=e.target.dataset.own;if(i==null)return;OWN[Number(i)]=e.target.value.toLowerCase();$$('#systems [data-sys=own] .strip i')[i].style.background=e.target.value;$$('#mains [data-main]')[i]&&($$('#mains [data-main]')[i].style.background=e.target.value);paintPreview()});
-$('#mats').addEventListener('click',e=>{const b=e.target.closest('[data-mat]');if(!b)return;S.mat=b.dataset.mat||null;paintMats()});
+$('#mats').addEventListener('click',e=>{const b=e.target.closest('[data-mat]');if(!b)return;S.mat=b.dataset.mat||null;paintMats();paintPreview()});
 document.querySelector('.seg').addEventListener('click',e=>{const b=e.target.closest('[data-view]');if(!b)return;S.view=b.dataset.view;$$('.seg [data-view]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));paintPreview()});
 $('#name').addEventListener('input',()=>{NAMED=Boolean($('#name').value.trim())});
 // the concept, its flats and colourways made in one go; the cloth put on it as its main fabric; then the Studio. Editing a concept's recipe
@@ -178,7 +183,7 @@ $('#open').addEventListener('click',async()=>{const b=$('#open');FBN?.begin?.(b)
       $('#name').value=r.name;NAMED=true;$('#eyebrow').textContent='Edit the recipe';$('#title').textContent=r.name;$('#open').textContent='Save the changes';$('#miniOpen').textContent='Save';
       if(r.locked){LOCKED=true;$('#msg').textContent='This piece is already a tech pack: change it there.'}}catch(x){$('#msg').textContent=x.message;$('#msg').classList.add('bad')}}
   paintAll();
-  try{MATS=(await api('/v1/lab/materials?kind=fabric')).materials}catch{MATS=[]}paintMats()})();
+  try{MATS=(await api('/v1/lab/materials?kind=fabric')).materials}catch{MATS=[]}paintMats();if(S.mat)paintPreview()})();
 </script>
 <script src="/helper.js" defer></script>
 </body>

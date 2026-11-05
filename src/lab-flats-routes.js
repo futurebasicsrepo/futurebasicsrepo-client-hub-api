@@ -411,6 +411,10 @@ export function registerLabFlatsRoutes(app, d) {
       on conflict(concept_id) do update set original=coalesce(lab_studio_docs.original, (select image from lab_concepts where id=$1))`, [c.id, actorOf(req)]);
     await pool.query(`update lab_concepts set image=$2, thumb=$3, raw=null, image_note='Drawn from the flats', updated_at=now() where id=$1`, [c.id, image, thumb]);
     await pool.query('delete from lab_concept_views where concept_id=$1', [c.id]); // views drawn from an older picture
+    // the Studio opens its saved layers before the concept's picture: the old base (often a blank page) comes off them, so the new picture is the
+    // base and what was laid over it (a logo, type, graphics from the flats) stays on top
+    await pool.query(`update lab_studio_docs set doc = jsonb_set(doc, '{layers}', coalesce((select jsonb_agg(l) from jsonb_array_elements(doc->'layers') l where l->>'kind' is distinct from 'base'), '[]'::jsonb))
+      where concept_id=$1 and jsonb_typeof(doc->'layers')='array'`, [c.id]);
     return { ok: true, left: Math.max(0, redrawCap() - (redraws.get(dayOf()) || 0)) };
   });
   // ---- the flat drawn from the picture ----

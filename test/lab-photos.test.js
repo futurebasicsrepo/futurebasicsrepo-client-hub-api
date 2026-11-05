@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import sharp from 'sharp';
 import { MATERIAL_PHOTOS, photoFor, photoById, creditOf } from '../src/lab-photos.js';
-import { photoJpeg } from '../src/lab-photo-tint.js';
+import { photoJpeg, photoShade } from '../src/lab-photo-tint.js';
 import { BUILTIN_MATERIALS, cleanMaterial, FABRIC_CONSTRUCTIONS } from '../src/lab-materials.js';
 
 test('every photo in the list has its file, a free licence and a credit', () => {
@@ -66,4 +66,17 @@ test('a photo is recoloured to the material colour and keeps its texture', async
   const m = await sharp(await photoJpeg('denim', '2b3a5c', 320)).metadata(); assert.equal(m.width, 320); assert.equal(m.format, 'jpeg');
   assert.equal(await photoJpeg('nope', '#000000'), null);
   assert.ok(await photoJpeg('zip-metal', '#ff0000', 160)); // trims come as they are
+});
+
+test('a shading tile is grey, light on average, and mirrored so it repeats without a seam', async () => {
+  const buf = await photoShade('denim-raw', 320); assert.ok(buf);
+  const { data, info } = await sharp(buf).greyscale().raw().toBuffer({ resolveWithObject: true });
+  assert.equal(info.width, 320); assert.equal(info.height, 320);
+  let m = 0; for (const v of data) m += v; m /= data.length;
+  assert.ok(m > 205 && m < 245, `the mean sits just under white, so a colour multiplied by it keeps its value (got ${m.toFixed(1)})`);
+  let lo = 255; for (const v of data) lo = Math.min(lo, v); assert.ok(lo < m - 20, 'and the weave still has light and dark');
+  // the left edge matches the right edge and the top the bottom: the tile meets its neighbours without a line
+  let dx = 0, dy = 0; for (let i = 0; i < 320; i++) { dx += Math.abs(data[i * 320] - data[i * 320 + 319]); dy += Math.abs(data[i] - data[319 * 320 + i]); }
+  assert.ok(dx / 320 < 6 && dy / 320 < 6, `edges match (${(dx / 320).toFixed(1)}, ${(dy / 320).toFixed(1)})`);
+  assert.equal(await photoShade('no-such-photo'), null);
 });
