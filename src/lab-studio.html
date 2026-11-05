@@ -379,7 +379,8 @@ const plainLook=l=>l.adjust.hue===0&&l.adjust.sat===100&&l.adjust.bright===100&&
 // the layer with its colour adjustments, its recolouring and its distressing: cached until any of them change
 function processed(l){
   const k=sig(l);if(l._pk===k&&l._pc)return l._pc;
-  const src=contentOf(l),c=canvas(src.width,src.height),x=c.getContext('2d');
+  const src=contentOf(l);if(!src||!src.width||!src.height)return canvas(1,1); // nothing drawn yet (type whose font is still loading): drawn as nothing this frame, and not kept
+  const c=canvas(src.width,src.height),x=c.getContext('2d');
   if(!plainLook(l))x.filter=`hue-rotate(${l.adjust.hue}deg) saturate(${l.adjust.sat}%) brightness(${l.adjust.bright}%) contrast(${l.adjust.contrast}%)`;
   x.drawImage(src,0,0);x.filter='none';
   if(l.tint.amount>0){x.globalCompositeOperation='source-atop';x.globalAlpha=l.tint.amount;x.fillStyle=l.tint.color;x.fillRect(0,0,c.width,c.height);x.globalAlpha=1}
