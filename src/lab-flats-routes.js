@@ -785,11 +785,22 @@ export function registerLabFlatsRoutes(app, d) {
 
   // the check of a concept's flats as they would start (for approving a concept whose flats were never saved)
   const startCheck = async id => { const c = await concept(id); const init = c && await initial(c); return init ? check(init, init.placements) : null; };
-  // the saved flats as pictures (front and back, with their colours, blocks and graphics, no measurements): what the turns are drawn from
+  // the saved flats as pictures (front and back, with their colours, blocks and graphics, no measurements): what the turns are drawn from;
+  // with them, `graphics`: every placed graphic's art and its place in words, which every turn has to show
   async function flatPictures(c) {
     const s = await sheet(c); if (!s) return null; const out = {};
     for (const v of ['front', 'back']) { if (!s.views.includes(v)) continue; out[v] = await sharp(Buffer.from(renderSvg(s.p, v, { maskHref, placements: s.pl, hrefs: s.hrefs, scale: 60, templateSvg, partHref, editHrefs: s.editHrefs, alloverHref: s.alloverHref, tags: s.tags, showDims: false, plain: true })), { density: 150 }).resize({ width: 1024, height: 1024, fit: 'contain', background: '#ffffff' }).flatten({ background: '#ffffff' }).png().toBuffer(); }
-    return out.front ? out : null;
+    if (!out.front) return null;
+    // each placed graphic, its art on the garment colour (so white art still shows) and where it goes, so no turn leaves one out
+    const list = await techniques(c.client_id), ground = /^#[0-9a-f]{6}$/i.test(String(s.p.color || '')) ? s.p.color : '#c8c8c8';
+    out.graphics = [];
+    for (const q of s.pl.slice(0, 8)) {
+      const b = await pngOf(q).catch(() => null); if (!b) continue;
+      const art = await sharp(b).ensureAlpha().resize({ width: 640, height: 640, fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } }).extend({ top: 64, bottom: 64, left: 64, right: 64, background: { r: 0, g: 0, b: 0, alpha: 0 } }).png().toBuffer().then(x => sharp(x).flatten({ background: ground }).png().toBuffer()).catch(() => null); if (!art) continue; // sharp flattens before it resizes, so the ground goes on after
+      const view = q.view === 'back' ? 'back' : 'front';
+      out.graphics.push({ view, name: String(q.name || 'Graphic').slice(0, 80), art, words: `${q.name || 'Graphic'}: ${techFor(list, q).name}, ${fmt(q.w)} wide × ${fmt(q.h)} tall, on the ${view}, ${describe(q, s.p)}` });
+    }
+    return out;
   }
   return { flatPictures: async id => { const c = await concept(id); return c ? flatPictures(c) : null; }, startCheck, productionFiles: async id => { const c = await concept(id); return c ? productionFiles(c) : { files: [], notes: [] }; }, sheetSvg: async id => { const c = await concept(id); const sh = c && await sheet(c); return sh?.svg || null; }, files: async id => { const c = await concept(id); return c ? files(c) : []; }, sendToPack: async (id, productId) => { const c = await concept(id); return c ? sendToPack(c, productId) : null; } };
 }
