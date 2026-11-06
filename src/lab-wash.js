@@ -69,9 +69,16 @@ export function distressList(d = {}, kind = 'top') {
 }
 
 // for people: the factory's words, one line each
+// the pattern allowance a wash takes up (per cent, length and width): the spec's measurements are finished, after the wash
+const SHRINK = { None: 0, 'Low impact': 1.5, Soft: 2, Stone: 3, Bleach: 3, Dye: 4 }, SHRINK_BY = { light: .75, medium: 1, heavy: 1.25 };
+export function washShrink(p = {}) {
+  const w = cleanWash(p.wash); if (!w) return 0;
+  const g = SHRINK[washOf(w.type).group] ?? 2; return Math.round(g * (SHRINK_BY[w.strength] || 1) * 2) / 2;
+}
 export function washWords(p = {}) {
   const out = [], w = cleanWash(p.wash), d = cleanDistress(p.distress);
   if (w) out.push(`${washOf(w.type).label}, ${w.strength}. ${washOf(w.type).how}`);
+  const sh = washShrink(p); if (sh) out.push(`Measurements in this pack are finished, taken after the wash. Allow about ${sh}% shrinkage in length and width in the pattern, and check a washed sample against the points of measure before bulk.`);
   if (d?.on && d.amount > 0) { const k = distressParts(d.amount, d.focus || 'all'), f = DISTRESS_FOCUS.find(x => x.id === (d.focus || 'all')); out.push(`Distressed, ${k.level} (${d.amount}/100${d.focus ? `, ${f.label.toLowerCase()}` : ''}): ${distressList(d, kindOf(p)).join(', ')}. Hand sanded, cut and picked before the wash so the edges fray in it; bartack any hole that could run.`); }
   return out;
 }

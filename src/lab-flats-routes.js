@@ -42,7 +42,7 @@ import { imageConfig, openaiEdit } from './check.js';
 import { callJsonSchema } from './studio.js';
 import { rankTemplates, candidateTemplates, tagMarks } from './lab-flats.js';
 import { tagFaceSvg } from './lab-tags.js';
-import { washWords, washPrompt, cleanWash } from './lab-wash.js';
+import { washWords, washPrompt, cleanWash, washShrink } from './lab-wash.js';
 import { necklineWords, necklineOf } from './lab-neck.js';
 import { brandHits } from './lab-concepts.js';
 import { readiness } from './lab-ready.js';
@@ -501,7 +501,7 @@ export function registerLabFlatsRoutes(app, d) {
       const wrap = t => { const out = ['']; for (const w of t.split(' ')) { if ((out[out.length - 1] + ' ' + w).length > 120) out.push(''); out[out.length - 1] += (out[out.length - 1] ? ' ' : '') + w; } return out; };
       for (const line of [...(p.color ? [`Main colour ${p.color}`] : []), ...(necklineWords(p) ? [`Neckline: ${necklineWords(p)}`] : []), ...washWords(p), ...eds.map(e => describeEdit(e, p))]) wrap(line).forEach((part, i) => { y += i ? 17 : 22; body += T(i ? 90 : 76, y, 13, part, { c: '#45454c' }); }); }
     const pom = pomTable(p), cols = pom[0].values.map(v => v.size), cx = 1040; let py = 680;
-    body += T(cx, py, 20, `Points of measure (inches) · sample size ${STYLES[p.style].oneSize ? 'one size' : 'M'}`, { w: 600 }); py += 30;
+    body += T(cx, py, 20, `Points of measure (inches) · sample size ${STYLES[p.style].oneSize ? 'one size' : 'M'}${washShrink(p) ? ' · finished, after wash' : ''}`, { w: 600 }); py += 30;
     body += T(cx, py, 12, 'Point', { w: 600, c: '#727278' }) + cols.map((s, i) => T(cx + 330 + i * 52, py, 12, s, { w: 600, c: s === 'M' ? '#141416' : '#727278', a: 'end' })).join('') + T(cx + 330 + cols.length * 52 + 20, py, 12, 'Tol ±', { w: 600, c: '#727278', a: 'end' });
     for (const row of pom) { py += 22; body += T(cx, py, 12, `${row.code} ${row.name}`.slice(0, 48)) + row.values.map((v, i) => T(cx + 330 + i * 52, py, 12, String(v.value), { a: 'end', w: v.size === 'M' ? 600 : 400 })).join('') + T(cx + 330 + cols.length * 52 + 20, py, 12, String(row.tolerance), { a: 'end', c: '#727278' }); }
     const head = `${T(60, 62, 30, c.name, { w: 600 })}${T(60, 92, 15, `${STYLES[p.style].label} · ${FITS[p.fit] || p.fit} fit · Future Basics Design Lab · ${new Date().toISOString().slice(0, 10)}`, { c: '#727278' })}${T(1640, 62, 15, ck.summary.fail ? `${ck.summary.fail} problem${ck.summary.fail === 1 ? '' : 's'} to fix before it can be made` : ck.summary.warn ? `${ck.summary.warn} thing${ck.summary.warn === 1 ? '' : 's'} to check` : 'Ready to make', { a: 'end', w: 600, c: ck.summary.fail ? '#a02a20' : ck.summary.warn ? '#8a5a00' : '#17603a' })}`;
@@ -603,12 +603,12 @@ export function registerLabFlatsRoutes(app, d) {
     }
     const r = (await pool.query('select params, placements from lab_flats where concept_id=$1', [c.id])).rows[0], p = r.params, pl = r.placements || [], list = await techniques(c.client_id);
     const S = STYLES[p.style], tpl = templateOf(p), edits = p.edits || [];
-    const pom = pomTable(p).map(row => ({ code: row.code, name: row.name, how: 'From the flats', tolerance: String(row.tolerance), values: Object.fromEntries(row.values.map(v => [v.size, String(v.value)])) }));
+    const pom = pomTable(p).map(row => ({ code: row.code, name: row.name, how: washShrink(p) ? `From the flats; finished, after the wash (allow ${washShrink(p)}% shrinkage)` : 'From the flats', tolerance: String(row.tolerance), values: Object.fromEntries(row.values.map(v => [v.size, String(v.value)])) }));
     const construction = [{ area: 'Drawing', detail: `${FITS[p.fit] || p.fit} fit ${S.label.toLowerCase()}, drawn from the ${tpl ? `"${tpl.label}" flat sketch` : 'measurements'}; sample size M.` },
       ...pl.map(q => ({ area: `${q.view === 'back' ? 'Back' : 'Front'} · ${q.name}`, detail: `${techFor(list, q).name}, ${fmtCm(q.w)} × ${fmtCm(q.h)}: ${describe(q, p)}.${q.grade ? ` Artwork by size: ${gradeWords(q)}.` : ''}` })),
       ...pl.filter(q => q.inks).map(q => ({ area: `Inks by colourway · ${q.name}`, detail: Object.entries(q.inks).map(([cw, m]) => `on ${(cleanColourways(c.spec?.colourways).find(x => x.hex === cw)?.name) || cw}: ${Object.entries(m).filter(([a, b2]) => a !== b2).map(([a, b2]) => `${pantoneOf(a)} changed to ${pantoneOf(b2)}`).join(', ') || 'as drawn'}`).join('; ') })),
       ...(necklineWords(p) ? [{ area: 'Neckline', detail: necklineWords(p) }] : []),
-      ...washWords(p).map((t, i) => ({ area: i === 0 && cleanWash(p.wash) ? 'Wash' : 'Distressing', detail: t })),
+      ...washWords(p).map(t => ({ area: /^Distressed/.test(t) ? 'Distressing' : /^Measurements in this pack/.test(t) ? 'Wash shrinkage' : 'Wash', detail: t })),
       ...(p.allover ? [{ area: `All over · ${p.allover.name}`, detail: `${p.allover.base}, a ${p.allover.type} repeat of ${fmtCm(p.allover.w)} × ${fmtCm(p.allover.h)}, printed on the panels before cutting.` }] : []),
       ...edits.map(e => ({ area: e.type === 'stitch' ? 'Stitching' : e.type === 'block' ? 'Colour block' : e.type === 'ai' ? 'Redrawn area' : e.type === 'part' ? (e.name || 'Add-on part') : (DETAILS[e.kind] || 'Detail'), detail: describeEdit(e, p) }))];
     const threads = new Map(); for (const e of edits) if (e.thread) threads.set(e.thread, [...(threads.get(e.thread) || []), e.type === 'stitch' ? 'stitch line' : (DETAILS[e.kind] || 'detail').toLowerCase()]);

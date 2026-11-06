@@ -675,6 +675,12 @@ patent's gloss, a fur's strands, and so is the tech flats SVG. The concept windo
 - **Which pieces:** tees, long sleeves, crewnecks, tanks, dresses, bodysuits, camis and swimsuits. Hooded, collared and open-front pieces keep their own.
 - **Drawing:** the new neckline is drawn front and back from the piece's neck width and drops, in the garment's colour, with rib wales, the opening and a coverstitch. A neckline-shaped cover hides the sketch's own neckline and leaves the shoulder line and raglan seams alone.
 - **Saved and written:** the flat's params keep it (`neckline`). The tech pack's construction notes and the flats sheet give the rib spec, and **Draw the picture from the flats** names it in the prompt.
+- **Measurements:** choosing a neckline sets the piece's neck points of measure from the style's standard (`necklineMeasures`). Every surface reads those same numbers: the drawing, the Garment tab, the Measurements tab, the graded table, the spec sheet, the tech pack's points of measure and the factory handoff.
+  - **V neck:** the front drop goes 2 1/4" deeper to the V point, with a 3/4" rib.
+  - **Mock and turtle:** the neck is narrower (by 3/4" and 1"). The front drop rises to the collar seam. The rib row becomes the finished stand height: 1 3/4" for a mock, 2 3/4" folded for a turtle.
+  - **Thin crew:** a 1/2" rib.
+  - **Names:** the points of measure take the neckline's names, such as "Front neck drop to the V point" and "Collar stand height, finished (folded)" (`necklinePomName`).
+  - **Editing:** the numbers can still be typed over in the Garment tab, and the drawing follows. A style or fit change sets them again.
 
 **Wash and distress.** The Studio's **Wash & distress** button, beside Fabrics, trims & labels, opens that section of the flats' Garment tab. It is defined in `src/lab-wash.js`, tuned against vintage streetwear references.
 
@@ -685,7 +691,7 @@ patent's gloss, a fur's strands, and so is the tech flats SVG. The concept windo
 - PP spray, spray fade (the ombré look), bleach, mineral;
 - ozone, laser fade, sun-faded.
 
-Each comes in Light, Medium or Heavy, with the factory's own words shown under it. A wash is drawn the way it wears:
+Each comes in Light, Medium or Heavy, with the factory's own words shown under it. A wash also tells the factory that the pack's measurements are finished, after the wash. It gives a shrink allowance for the pattern (`washShrink`): about 1.5% for low-impact finishes, 2% soft, 3% stone or bleach and 4% dye, scaled for Light and Heavy. The spec sheet's points of measure are headed "finished, after wash", and the tech pack's points of measure note the allowance. A wash is drawn the way it wears:
 - **Fades:** the high points fade, meaning the chest, hood and shoulders on a top, or the thighs and knees on a bottom.
 - **Seams:** dye settles in the seams and edges.
 - **Ribs:** the hem band, cuffs and (except under a hood) the collar stay darker.

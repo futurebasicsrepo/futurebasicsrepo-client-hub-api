@@ -8,7 +8,7 @@
 import { FLAT_TEMPLATES } from './lab-flat-templates.js';
 import { FLAT_PARTS, PART_KINDS } from './lab-flat-parts.js';
 import { washSvg, cleanWash, cleanDistress } from './lab-wash.js';
-import { necklineSvg, cleanNeckline } from './lab-neck.js';
+import { necklineSvg, cleanNeckline, necklinePomName } from './lab-neck.js';
 export { FLAT_PARTS, PART_KINDS };
 
 export const SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
@@ -209,7 +209,7 @@ export function measurementsFor(p, size = 'M') {
 export function pomTable(p) {
   const S = STYLES[p.style], sizes = S.oneSize ? ['One size'] : SIZES;
   return Object.keys(p.m).filter(k => !(['hemRib', 'cuffRib', 'neckRib', 'sleeve', 'sleeveOpening'].includes(k) && !p.m[k])).map((k, i) => ({
-    code: String.fromCharCode(65 + i), key: k, name: pomName(p.style, k), tolerance: p.m[k] >= 10 ? .5 : p.m[k] >= 3 ? .25 : .125,
+    code: String.fromCharCode(65 + i), key: k, name: necklinePomName(p.neckline, k) || pomName(p.style, k), tolerance: p.m[k] >= 10 ? .5 : p.m[k] >= 3 ? .25 : .125,
     values: sizes.map(s => ({ size: s, value: S.oneSize ? p.m[k] : measurementsFor(p, s)[k] }))
   }));
 }

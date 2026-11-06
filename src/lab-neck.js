@@ -11,12 +11,45 @@ export const NECKLINES = [
   { id: 'turtle', label: 'Turtleneck', rib: .75, stand: 2.75, fold: true, how: 'Turtleneck: a 5 1/2" (14 cm) 2×2 rib tube folded in half to a 2 3/4" (7 cm) stand, worn turned down.' }
 ];
 export const NECKLINE_IDS = NECKLINES.map(n => n.id);
+
+// ---- the measurements a neckline sets ----
+// One source: choosing a neckline sets the piece's neck measurements (sample size M), and the drawing, the graded points of measure, the
+// spec sheet, the tech pack and the factory all read them. From the style's own crew values (`base`, its default measurements):
+//   neckRib       the rib's width (crew, V) or the collar's finished stand height (mock, turtle: the turtle folded)
+//   neckDropFront the front drop to the neck seam (a V: to the point; a mock or turtle sits higher)
+export function necklineMeasures(neckline, base = {}) {
+  const w = base.neckWidth || 7.25, df = base.neckDropFront || 3.5, db = base.neckDropBack ?? 1, r8 = v => Math.round(v * 8) / 8;
+  const n = NECKLINES.find(x => x.id === neckline);
+  if (!n) return { neckWidth: w, neckDropFront: df, neckDropBack: db, neckRib: base.neckRib ?? .875 };
+  if (n.vDrop) return { neckWidth: w, neckDropFront: r8(df + n.vDrop), neckDropBack: db, neckRib: n.rib };
+  if (n.stand) return { neckWidth: r8(w - (n.fold ? 1 : .75)), neckDropFront: r8(Math.max(1.25, df * (n.fold ? .4 : .45))), neckDropBack: r8(Math.max(.5, db * .75)), neckRib: n.stand };
+  return { neckWidth: w, neckDropFront: df, neckDropBack: db, neckRib: n.rib };
+}
+// what a point of measure is called with this neckline (null: the usual name)
+export function necklinePomName(neckline, key) {
+  const n = NECKLINES.find(x => x.id === neckline); if (!n) return null;
+  if (key === 'neckRib') return n.stand ? `Collar stand height, finished${n.fold ? ' (folded)' : ''}` : n.vDrop ? 'V neck rib width' : 'Neck rib width';
+  if (key === 'neckDropFront' && n.vDrop) return 'Front neck drop to the V point';
+  if (key === 'neckDropFront' && n.stand) return 'Front neck drop to the collar seam';
+  return null;
+}
+// a stand's height: the recorded one, unless it is still a plain rib's (a save from before necklines set the measurements)
+const standOf = (n, m) => (m.neckRib >= 1.25 ? m.neckRib : n.stand);
+const frac = v => { const e = Math.round(v * 8), w = Math.floor(e / 8), f = ['', '1/8', '1/4', '3/8', '1/2', '5/8', '3/4', '7/8'][e % 8]; return `${w ? w : ''}${w && f ? ' ' : ''}${f || (w ? '' : '0')}"`; };
+const cm = v => `${(v * 2.54).toFixed(1)} cm`;
 export const necklineOf = id => NECKLINES.find(n => n.id === id) || null;
 export const cleanNeckline = v => (NECKLINE_IDS.includes(v) ? v : null);
 // the knit tops it fits (not hooded, collared or open-front pieces)
 const FITS = ['tee', 'longsleeve', 'crewneck', 'tank', 'dress', 'bodysuit', 'cami', 'swimsuit'];
 export const takesNeckline = style => FITS.includes(style);
-export const necklineWords = p => { const n = necklineOf(p?.neckline); return n && takesNeckline(p.style) ? n.how : ''; };
+// the factory's words, with the piece's own neck measurements (sample size)
+export const necklineWords = p => {
+  const n = necklineOf(p?.neckline); if (!n || !takesNeckline(p.style)) return '';
+  const m = p.m || {}, r = n.stand ? standOf(n, m) : (m.neckRib || n.rib), w = m.neckWidth, df = m.neckDropFront;
+  const at = [w ? `neck width ${frac(w)} (${cm(w)}) seam to seam` : '', df ? `front drop ${frac(df)} (${cm(df)})${n.vDrop ? ' to the V point' : ''}` : ''].filter(Boolean).join(', ');
+  if (n.stand) return `${n.label}: ${n.fold ? `a 2×2 rib tube folded in half to a ${frac(r)} (${cm(r)}) stand, cut ${frac(r * 2)} (${cm(r * 2)}) deep` : `a ${frac(r)} (${cm(r)}) single-layer 2×2 rib stand, not folded`}${at ? `; ${at}` : ''}.`;
+  return `${n.label}, ${frac(r)} (${cm(r)}) 1×1 rib${n.vDrop ? ', mitred at the centre front point' : ''}, coverstitched; back neck tape${at ? `; ${at}` : ''}.`;
+};
 
 const n3 = v => Math.round(v * 1000) / 1000;
 // a U through (−a, y0), (0, yb), (a, y0)
@@ -44,25 +77,26 @@ function ribLines(kind, a, y0, yb, w, line, n = 34) {
 export function necklineSvg(p = {}, view = 'front', m = {}, { cloth = '#ffffff', line = '#141416' } = {}) {
   const n = necklineOf(p.neckline); if (!n || !takesNeckline(p.style)) return { under: '', over: '' };
   // the sketches draw the neck a little wider than the seam-to-seam spec: drawn to match them, so it sits where the sketch's sat
-  const nh = (m.neckWidth || 7.5) / 2 * 1.2, df = m.neckDropFront ?? 3.5, db = m.neckDropBack ?? 1, w = n.rib, fill = cloth || '#ffffff', inside = shade(fill, .28), deep = shade(fill, .45);
+  // drawn from the measurements (so what the flat shows is what the spec says): the rib or stand from neckRib, a V's point from the front drop
+  const nh = (m.neckWidth || 7.5) / 2 * 1.2, df = m.neckDropFront ?? 3.5, db = m.neckDropBack ?? 1, w = n.stand ? n.rib : (m.neckRib > 0 ? m.neckRib : n.rib), standH = n.stand ? standOf(n, m) : 0, fill = cloth || '#ffffff', inside = shade(fill, .28), deep = shade(fill, .45);
   const stroke = `stroke="${line}" stroke-width=".04" stroke-linejoin="round"`, stitch = `stroke="${line}" stroke-width=".02" stroke-dasharray=".14 .09" fill="none"`;
-  const lowest = view === 'back' ? db + w + .8 : Math.max(df, 3.5) + 1.6 + (n.vDrop || 0);
+  const lowest = view === 'back' ? db + w + .8 : Math.max(df, 3.5) + 1.6;
   // the cover: the neck area of the sketch, kept inside the shoulders so it never spills past the garment
   const under = `<path d="M ${n3(-nh - .15)} .18 L ${n3(nh + .15)} .18 L ${n3(nh + .65)} 1.25 C ${n3(nh + .6)} ${n3(Math.max(lowest * .8, 1.7))} ${n3(nh * .6)} ${n3(lowest)} 0 ${n3(lowest)} C ${n3(-nh * .6)} ${n3(lowest)} ${n3(-nh - .6)} ${n3(Math.max(lowest * .8, 1.7))} ${n3(-nh - .65)} 1.25 Z" fill="#ffffff"/>`; // narrow at the top and wider lower down, so the shoulder line and raglan seams are left alone
   let over = '';
   if (view === 'back') {
     if (n.stand) { // the back of the stand
-      const top = -n.stand, a = nh - .2;
+      const top = -standH, a = nh - .2;
       over = `<path d="M ${n3(-nh)} ${n3(db * .5)} L ${n3(-a)} ${n3(top)} C ${n3(-a * .4)} ${n3(top + .12)} ${n3(a * .4)} ${n3(top + .12)} ${n3(a)} ${n3(top)} L ${n3(nh)} ${n3(db * .5)} C ${n3(nh * .5)} ${n3(db)} ${n3(-nh * .5)} ${n3(db)} ${n3(-nh)} ${n3(db * .5)} Z" fill="${fill}" ${stroke}/>`
         + (n.fold ? `<path d="M ${n3(-a - .05)} ${n3(top * .42)} C ${n3(-a * .4)} ${n3(top * .42 + .14)} ${n3(a * .4)} ${n3(top * .42 + .14)} ${n3(a + .05)} ${n3(top * .42)}" ${stroke} fill="none"/>` : '')
-        + ribLines('u', a, top + .1, top + .1, -(n.stand - .2), line, 30);
+        + ribLines('u', a, top + .1, top + .1, -(standH - .2), line, 30);
     } else {
       over = `<path d="${U(nh, 0, db)} ${Ur(nh - w * .35, -w * .25, db - w * .95)}" fill="${fill}" ${stroke}/>` + ribLines('u', nh - w * .2, -w * .1, db - w * .05, w * .9, line) + `<path d="${U(nh * .98, .1, db + .14)}" ${stitch}/>`;
     }
     return { under, over: `<g data-neckline="${n.id}" pointer-events="none">${over}</g>` };
   }
   if (n.stand) {
-    const top = -n.stand, a = nh - .25 + (n.fold ? .2 : 0), seam = df * .35;
+    const top = -standH, a = nh - .25 + (n.fold ? .2 : 0), seam = Math.min(df, 2.5) * .75;
     // the inside of the back of the stand, seen over the front's top edge
     over += `<ellipse cx="0" cy="${n3(top + .05)}" rx="${n3(a - .05)}" ry=".42" fill="${inside}" ${stroke}/><ellipse cx="0" cy="${n3(top + .14)}" rx="${n3(a - .45)}" ry=".24" fill="${deep}"/>`;
     over += `<path d="M ${n3(-nh)} .05 L ${n3(-a)} ${n3(top)} C ${n3(-a * .45)} ${n3(top + .5)} ${n3(a * .45)} ${n3(top + .5)} ${n3(a)} ${n3(top)} L ${n3(nh)} .05 C ${n3(nh * .55)} ${n3(seam)} ${n3(-nh * .55)} ${n3(seam)} ${n3(-nh)} .05 Z" fill="${fill}" ${stroke}/>`;
@@ -73,7 +107,7 @@ export function necklineSvg(p = {}, view = 'front', m = {}, { cloth = '#ffffff',
     over += `<path d="M ${n3(-nh + .05)} .14 C ${n3(nh * -.55)} ${n3(seam + .1)} ${n3(nh * .55)} ${n3(seam + .1)} ${n3(nh - .05)} .14" ${stitch}/>`;
     return { under, over: `<g data-neckline="${n.id}" pointer-events="none">${over}</g>` };
   }
-  const isV = Boolean(n.vDrop), front = isV ? df + n.vDrop : df, inA = nh - w * .9, inY = -w * .08;
+  const isV = Boolean(n.vDrop), front = df, inA = nh - w * .9, inY = -w * .08;
   // the opening: the back neck's rib and the inside of the back, seen through it
   over += `<path d="${isV ? V(nh, 0, front) : U(nh, 0, front)} ${Ur(nh, 0, db)}" fill="${inside}"/>`;
   over += `<path d="${U(nh - w * .2, .02, db)} ${Ur(nh - w * .55, .02, db + w * .75)}" fill="${shade(fill, .12)}" ${stroke}/>`;

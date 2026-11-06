@@ -24,7 +24,7 @@ test('more distressing means more wear: patches, then holes, then heavier frayin
 
 test('the words: the wash for the factory, distressing only when it is on', () => {
   const w = washWords({ wash: { type: 'acid', strength: 'heavy' }, distress: { on: false, amount: 80 } });
-  assert.equal(w.length, 1); assert.match(w[0], /^Acid wash, heavy\./);
+  assert.equal(w.length, 2, 'the wash and its shrink allowance; no distressing while it is off'); assert.match(w[0], /^Acid wash, heavy\./); assert.match(w[1], /^Measurements in this pack are finished/);
   assert.match(washWords({ distress: { on: true, amount: 60 } })[0], /^Distressed, medium \(60\/100\)/);
   assert.equal(washPrompt({}), '');
   assert.match(washPrompt({ wash: { type: 'snow', strength: 'light' }, distress: { on: true, amount: 80 } }), /light snow wash finish, heavy distressing/);
@@ -59,4 +59,12 @@ test('the reference looks: a spray fade lights the top and keeps the ribs dark; 
   const torn = washSvg({ distress: { on: true, amount: 80, focus: 'edges' } }, { box, mask: 'm', geo });
   assert.ok(torn.includes('data-fringe="1"') && torn.indexOf('data-fringe') > torn.indexOf('mask="url(#m)"'), 'the fringe is drawn after (outside) the masked wear');
   assert.ok(WASHES.some(w => w.id === 'dirty') && WASHES.some(w => w.id === 'spray'));
+});
+
+test('a wash tells the factory the measurements are finished, with a shrink allowance', async () => {
+  const { washShrink, washWords } = await import('../src/lab-wash.js');
+  assert.equal(washShrink({}), 0);
+  const stone = washShrink({ wash: { type: 'stone', strength: 'medium' } }), heavy = washShrink({ wash: { type: 'stone', strength: 'heavy' } });
+  assert.ok(stone > 0 && heavy > stone);
+  assert.ok(washWords({ wash: { type: 'stone', strength: 'medium' } }).some(t => /finished, taken after the wash.*%/.test(t)));
 });
