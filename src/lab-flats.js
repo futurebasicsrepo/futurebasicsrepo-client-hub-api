@@ -171,17 +171,25 @@ export function templateOf(p) {
 // how a sketch's view lines up with the piece: its origin (the HPS on the centre line, the top of the waistband, the brim seam) and its
 // scale across (chest or waist) and down (length: at the start within 12% of the scale across, as the sketch was drawn; then following the length), in
 // sketch units an inch; box is the view in inches
+// where a horizontal line at y crosses a closed outline: the stretch of it that holds x, or null
+function spanAt(poly, y, x) {
+  if (!Array.isArray(poly) || poly.length < 3) return null; const xs = [];
+  for (let i = 0; i < poly.length; i++) { const [x1, y1] = poly[i], [x2, y2] = poly[(i + 1) % poly.length]; if ((y1 <= y) !== (y2 <= y)) xs.push(x1 + (y - y1) / (y2 - y1) * (x2 - x1)); }
+  xs.sort((a, b) => a - b); for (let i = 0; i + 1 < xs.length; i += 2) if (xs[i] <= x && x <= xs[i + 1]) return [xs[i], xs[i + 1]];
+  return null;
+}
 export function drawingOf(p, view = 'front', size = p.size || 'M') {
   const t = templateOf(p), v = t?.views[view]; if (!v) return null;
   const m = measurementsFor(p, size), kind = STYLES[p.style].kind, clamp = (a, x) => Math.min(Math.max(a, x * .88), x * 1.12);
   // how tall the sketch is drawn. A piece starts either at its style's usual measurements or fitted to the sketch's own proportions
   // (fitToTemplate); at either start the height follows the width within 12%, as the sketch was drawn. A length moved from that start
   // (the recipe's Fit it together, a measurement typed in) then stretches the drawing that way only, so a shorter body looks shorter.
-  const lenOf = q => (kind === 'top' ? q.length : STYLES[p.style].skirt ? q.length : q.rise + q.inseam), d0 = { ...defaultParams(p.style, p.fit, p.options || {}), template: p.template, size };
+  const crop = kind === 'top' ? Math.max(0, Number(p.crop) || 0) : 0; // a body cut shorter: drawn at its full length, then the cut taken out (renderSvg)
+  const lenOf = q => (kind === 'top' ? q.length : STYLES[p.style].skirt ? q.length : q.rise + q.inseam), d0 = { ...defaultParams(p.style, p.fit, { ...(p.options || {}), ...(crop ? { cropped: false } : {}) }), template: p.template, size };
   const H = kind === 'top' ? v.hemY - v.hpsY : v.hemY - v.topY, W = kind === 'top' ? v.chest : v.waist, wOf = q => (kind === 'top' ? q.chest : q.waist);
   let sx, sy, oy;
   if (kind === 'top' || kind === 'bottom') {
-    const L = lenOf(m), starts = [measurementsFor(d0, size), measurementsFor(fitToTemplate(d0), size)].filter(q => lenOf(q) > 0);
+    const L = lenOf(m) + crop, starts = [measurementsFor(d0, size), measurementsFor(fitToTemplate(d0), size)].filter(q => lenOf(q) > 0);
     const ref = starts.sort((a, b) => Math.abs(Math.log(lenOf(a) / L)) - Math.abs(Math.log(lenOf(b) / L)))[0];
     sx = W / wOf(m); oy = kind === 'top' ? v.hpsY : v.topY;
     sy = ref && L > 0 ? clamp(H / lenOf(ref), W / wOf(ref)) * lenOf(ref) / L : clamp(H / L, sx);
@@ -190,7 +198,18 @@ export function drawingOf(p, view = 'front', size = p.size || 'M') {
   else { sx = v.width / m.crownWidth; oy = v.seamY; sy = sx; }
   if (!(sx > 0 && sy > 0)) return null;
   const [bx, by, bw, bh] = v.box;
-  return { t, v, sx, sy, ox: v.cf, oy, box: { x0: (bx - v.cf) / sx, y0: (by - oy) / sy, x1: (bx + bw - v.cf) / sx, y1: (by + bh - oy) / sy } };
+  // the cut: a band of the body above the hem band (its rib, or about an inch and a quarter of hem) is taken out and the hem moved up.
+  // Long sleeves hang beside the body and keep their length, so only the body's width is cut; short sleeves end above it, so all of it is
+  let cut = null, vb = v.box;
+  if (crop && v.hemY) {
+    const h = crop * sy, band = Math.max(m.hemRib || 0, 1.25) * sy, longSleeve = (m.sleeve || 0) > 14;
+    // the body's own width, read off the sketch's outline across the hem band (the sleeves hang apart from it there), within reason of the chest
+    const sp = spanAt(v.clip, v.hemY - band / 2, v.cf), lo = v.chest / 2 * .85, hi = v.chest / 2 * 1.15;
+    const w = sp ? Math.max(v.cf - sp[0], sp[1] - v.cf) + 1.5 : 0, half = w && w <= hi ? Math.max(w, lo) : v.chest / 2; // wider: the sleeves touch the body there
+    cut = { y: v.hemY - band - h, h, half: longSleeve ? half : Infinity };
+    if (!longSleeve) vb = [bx, by, bw, bh - h];
+  }
+  return { t, v, sx, sy, ox: v.cf, oy, cut, vb, box: { x0: (bx - v.cf) / sx, y0: (by - oy) / sy, x1: (bx + bw - v.cf) / sx, y1: (by + vb[3] - oy) / sy } };
 }
 export function defaultParams(style, fit = 'regular', options = {}) {
   const S = STYLES[style]; if (!S) return null;
@@ -588,13 +607,22 @@ export const MASK_URL = file => `/lab/flat-masks/${file.replace(/\.svg$/, '.png'
 export const TEMPLATE_URL = file => `/lab/flat-templates/${file}`;
 export const PART_URL = file => `/lab/flat-parts/${file}`;
 export const partOf = id => FLAT_PARTS.find(q => q.id === id) || null;
+// a cropped body (drawingOf's cut): the sketch drawn twice, everything above the cut (and the long sleeves beside it) as it is, and the body
+// below it (the hem band) moved up by the cut, so the hem, its stitching and the band are the sketch's own
+function cutOut(d, pid, inner) {
+  const c = d.cut; if (!c) return inner;
+  const [bx, by, bw, bh] = d.v.box, big = bh * 3, x0 = bx - 1, x1 = bx + bw + 1, L = Number.isFinite(c.half) ? d.ox - c.half : x0, R = Number.isFinite(c.half) ? d.ox + c.half : x1;
+  const r = (x, y, w, h) => (w > 0 && h > 0 ? `<rect x="${n3(x)}" y="${n3(y)}" width="${n3(w)}" height="${n3(h)}"/>` : '');
+  return `<defs><g id="${pid}-k">${inner}</g><clipPath id="${pid}-kt">${r(x0, by - big, x1 - x0, c.y - (by - big))}${r(x0, c.y, L - x0, big)}${r(R, c.y, x1 - R, big)}</clipPath><clipPath id="${pid}-kb">${r(L, c.y + c.h, R - L, by + bh - (c.y + c.h))}</clipPath></defs>`
+    + `<use href="#${pid}-k" clip-path="url(#${pid}-kt)"/><g transform="translate(0 ${n3(-c.h)})"><use href="#${pid}-k" clip-path="url(#${pid}-kb)"/></g>`;
+}
 export function renderSvg(p, view = 'front', { placements = [], hrefs = {}, size = p.size || 'M', showPom = false, showDims = true, selected = null, findings = {}, scale = 22, title = '', templateHref = TEMPLATE_URL, partHref = PART_URL, editHrefs = {}, editable = false, selectedEdit = null, overlay = '', plain = false, background = true, templateSvg = null, alloverHref = '', maskHref = null, withArt = false, texture = null, tags = [] } = {} /* texture: { href, w, h } the cloth's shading tile (w × h inches of drawing per tile), multiplied over the garment so its colour shows through;  withArt: with plain, the placed graphics drawn too (the Studio's board);  alloverHref: the all-over print's repeat tile, laid over the cloth; templateSvg: the sketch's own markup, to draw it inline (the service: much faster to rasterise than a picture of the whole page); scale 0: no width and height, for nesting; editHrefs: the pictures of areas redrawn by the image model; plain: the drawing alone, no guides or labels */) {
   const g = geometry(p, view, size), d = drawingOf(p, view, size), b = d ? d.box : g.bounds, pad = 3.2, x0 = b.x0 - pad, y0 = b.y0 - pad - (title ? 1.2 : 0), W = b.x1 - b.x0 + pad * 2, H = b.y1 - b.y0 + pad * 2 + (title ? 1.2 : 0);
   const k = Math.max(1, Math.max(W, H) / 30), fs = .34 * k; // labels grow with the drawing, so they read at the size it is shown
   const sw = { outline: .07, seam: .035, stitch: .03, rib: .018, under: .05, cord: .05, label: .03 }, dash = { stitch: '.18 .12', label: '.15 .1' };
   const drawnArt = d && p.drawn?.template === d.t.id ? p.drawn[view] : null, drawnHref = drawnArt ? editHrefs[drawnArt] : null; // a view drawn from the picture, in its own colours
   const pid = `fb-${view}-${d ? d.t.id : p.style}`, clipDef = d?.v.clip ? `<clipPath id="${pid}-v"><polygon points="${d.v.clip.map(q => q.join(',')).join(' ')}"/></clipPath>` : '';
-  const parts = d && drawnHref ? `<image href="${esc(drawnHref)}" x="${b.x0.toFixed(3)}" y="${b.y0.toFixed(3)}" width="${(b.x1 - b.x0).toFixed(3)}" height="${(b.y1 - b.y0).toFixed(3)}" preserveAspectRatio="none"/>` : d ? `<svg x="${b.x0.toFixed(3)}" y="${b.y0.toFixed(3)}" width="${(b.x1 - b.x0).toFixed(3)}" height="${(b.y1 - b.y0).toFixed(3)}" viewBox="${d.v.box.join(' ')}" preserveAspectRatio="none" overflow="hidden">${clipDef}${(() => { const tpl = templateSvg ? `<g${clipDef ? ` clip-path="url(#${pid}-v)"` : ''}><svg x="${d.t.page[0]}" y="${d.t.page[1]}" width="${d.t.page[2]}" height="${d.t.page[3]}" viewBox="${d.t.page.join(' ')}">${templateSvg(d.t.file)}</svg></g>` : `<image href="${esc(templateHref(d.t.file))}" x="${d.t.page[0]}" y="${d.t.page[1]}" width="${d.t.page[2]}" height="${d.t.page[3]}"${clipDef ? ` clip-path="url(#${pid}-v)"` : ''}/>`; const mh = maskHref ? maskHref(d.t.file) : null; if (!mh) return tpl; const r = `x="${d.t.page[0]}" y="${d.t.page[1]}" width="${d.t.page[2]}" height="${d.t.page[3]}" preserveAspectRatio="none"`; return `<mask id="${pid}-m" maskUnits="userSpaceOnUse" ${r.replace(' preserveAspectRatio="none"', '')}><image href="${esc(mh)}" ${r}/></mask><g mask="url(#${pid}-m)"><image href="${esc(mh)}" ${r}/>${tpl}</g>`; })()}</svg>` : g.parts.map(pt => `<path d="${pt.d}" fill="${pt.kind === 'outline' || pt.kind === 'under' ? '#ffffff' : 'none'}" stroke="#141416" stroke-width="${sw[pt.kind] || .035}"${dash[pt.kind] ? ` stroke-dasharray="${dash[pt.kind]}"` : ''} stroke-linejoin="round" stroke-linecap="round"/>`).join('');
+  const parts = d && drawnHref ? `<image href="${esc(drawnHref)}" x="${b.x0.toFixed(3)}" y="${b.y0.toFixed(3)}" width="${(b.x1 - b.x0).toFixed(3)}" height="${(b.y1 - b.y0).toFixed(3)}" preserveAspectRatio="none"/>` : d ? `<svg x="${b.x0.toFixed(3)}" y="${b.y0.toFixed(3)}" width="${(b.x1 - b.x0).toFixed(3)}" height="${(b.y1 - b.y0).toFixed(3)}" viewBox="${d.vb.join(' ')}" preserveAspectRatio="none" overflow="hidden">${clipDef}${cutOut(d, pid, (() => { const tpl = templateSvg ? `<g${clipDef ? ` clip-path="url(#${pid}-v)"` : ''}><svg x="${d.t.page[0]}" y="${d.t.page[1]}" width="${d.t.page[2]}" height="${d.t.page[3]}" viewBox="${d.t.page.join(' ')}">${templateSvg(d.t.file)}</svg></g>` : `<image href="${esc(templateHref(d.t.file))}" x="${d.t.page[0]}" y="${d.t.page[1]}" width="${d.t.page[2]}" height="${d.t.page[3]}"${clipDef ? ` clip-path="url(#${pid}-v)"` : ''}/>`; const mh = maskHref ? maskHref(d.t.file) : null; if (!mh) return tpl; const r = `x="${d.t.page[0]}" y="${d.t.page[1]}" width="${d.t.page[2]}" height="${d.t.page[3]}" preserveAspectRatio="none"`; return `<mask id="${pid}-m" maskUnits="userSpaceOnUse" ${r.replace(' preserveAspectRatio="none"', '')}><image href="${esc(mh)}" ${r}/></mask><g mask="url(#${pid}-m)"><image href="${esc(mh)}" ${r}/>${tpl}</g>`; })())}</svg>` : g.parts.map(pt => `<path d="${pt.d}" fill="${pt.kind === 'outline' || pt.kind === 'under' ? '#ffffff' : 'none'}" stroke="#141416" stroke-width="${sw[pt.kind] || .035}"${dash[pt.kind] ? ` stroke-dasharray="${dash[pt.kind]}"` : ''} stroke-linejoin="round" stroke-linecap="round"/>`).join('');
   // the edits: the sketch, its cover-ups and redrawn areas are one drawing, recoloured as a whole (the garment's colour) and again inside
   // each colour block; details and stitch lines are drawn on top in their own colours
   const edits = (p.edits || []).filter(e => e.view === view), cloth = drawnHref ? '' : hexOf(p.color), blocks = edits.filter(e => e.type === 'block');
@@ -702,7 +730,9 @@ export function cleanFlat(input = {}) {
   // where each label was dragged to on each view, in inches (tagMarks puts the rest where they are usually sewn)
   const tp = input.tagPos && typeof input.tagPos === 'object' ? input.tagPos : {}, tagPos = Object.fromEntries(Object.entries(tp).filter(([k, v]) => /^[0-9a-f-]{36}$/i.test(k) && v && typeof v === 'object').slice(0, 40)
     .map(([k, v]) => [k, Object.fromEntries(['front', 'back'].filter(w => Array.isArray(v[w]) && v[w].length === 2 && v[w].every(n => Number.isFinite(Number(n)))).map(w => [w, [r8(Math.min(Math.max(Number(v[w][0]), -60), 60)), r8(Math.min(Math.max(Number(v[w][1]), -30), 80))]]))]).filter(([, v]) => Object.keys(v).length));
-  const params = { style, fit, size: SIZES.includes(input.size) ? input.size : 'M', m, options, ...(Object.keys(tagPos).length ? { tagPos } : {}), ...(cleanWash(input.wash) ? { wash: cleanWash(input.wash) } : {}), ...(cleanNeckline(input.neckline) ? { neckline: cleanNeckline(input.neckline) } : {}), ...(cleanDistress(input.distress) ? { distress: cleanDistress(input.distress) } : {}), ...(template ? { template } : {}), color: hexOf(input.color), edits: cleanEdits(input.edits), ...(allover ? { allover } : {}), ...(Object.keys(drawn).length ? { drawn: { template, ...drawn } } : {}), ...(Object.keys(markup).length ? { markup: { template: template || 'none', ...markup } } : {}) };
+  // crop: inches taken out of the body above the hem band, on a sketch that is not cropped itself (the sleeves keep their length)
+  const crop = STYLES[style].kind === 'top' ? r8(Math.min(Math.max(Number(input.crop) || 0, 0), 12)) : 0;
+  const params = { style, fit, size: SIZES.includes(input.size) ? input.size : 'M', m, options, ...(crop ? { crop } : {}), ...(Object.keys(tagPos).length ? { tagPos } : {}), ...(cleanWash(input.wash) ? { wash: cleanWash(input.wash) } : {}), ...(cleanNeckline(input.neckline) ? { neckline: cleanNeckline(input.neckline) } : {}), ...(cleanDistress(input.distress) ? { distress: cleanDistress(input.distress) } : {}), ...(template ? { template } : {}), color: hexOf(input.color), edits: cleanEdits(input.edits), ...(allover ? { allover } : {}), ...(Object.keys(drawn).length ? { drawn: { template, ...drawn } } : {}), ...(Object.keys(markup).length ? { markup: { template: template || 'none', ...markup } } : {}) };
   const placements = (Array.isArray(input.placements) ? input.placements : []).slice(0, 12).map((q, i) => ({
     id: /^[a-z0-9-]{1,40}$/i.test(String(q.id || '')) ? String(q.id) : 'p' + i, name: String(q.name || 'Graphic').replace(/\s+/g, ' ').trim().slice(0, 60) || 'Graphic', view: q.view === 'back' ? 'back' : 'front',
     x: r8(Math.min(Math.max(Number(q.x) || 0, -60), 60)), y: r8(Math.min(Math.max(Number(q.y) || 0, -30), 80)), w: r8(Math.min(Math.max(Number(q.w) || 1, .25), 40)), h: r8(Math.min(Math.max(Number(q.h) || 1, .25), 40)), ...(rotOf(q) ? { rot: rotOf(q) } : {}),

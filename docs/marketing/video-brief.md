@@ -43,8 +43,9 @@ The ones to lead with are first.
 1. **Pick a base:** 26 staples at their usual fit. These are the tee (classic, boxy, oversized), long-sleeve, tank, polo, crewneck, hoodie,
    zip hoodie, button-up and camp shirts, zip jacket, vest, coat, straight and wide trousers, shorts, leggings, dress, skirt, cami, bodysuit,
    six-panel cap, bucket hat, beanie and tote.
-2. **Add details** (31 add-ons): pockets, zips, plackets, drawcords, collars (polo, johnny, rugby, henley, V-neck, button-down, camp, stand,
-   shearling…), pleats, cropped, contrast pockets.
+2. **Add details** (42 add-ons): pockets, zips, plackets, drawcords, collars (polo, johnny, rugby, henley, V-neck, button-down, camp, stand,
+   shearling, thin crew, mock neck, turtleneck…), pleats, cropped (with any collar: a cropped shearling aviator), contrast pockets, and wash &
+   wear (garment dyed, vintage stone wash, acid wash, sun faded, dirty vintage tint, worn edges, distressed, heavily destroyed).
 3. **Pick a colour system** (8 ready-made, or four colours of your own). The first colour is the garment, the next is the stitching, and
    every colour becomes a colourway.
 4. **Optional:** pick the cloth. The drawing takes on its surface (denim reads as denim, sherpa as sherpa) in the colour you picked. It comes with a fabric check that flags cloth that does not suit the style. You can also fit it together

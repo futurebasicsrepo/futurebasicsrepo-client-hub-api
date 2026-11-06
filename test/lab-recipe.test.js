@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { RECIPE_BASES, RECIPE_ADDONS, COLOUR_SYSTEMS, addonsFor, cookRecipe, systemOf, cleanFit, toggleAddon, drawnOn, baseSketch, pocketless } from '../src/lab-recipe.js';
-import { STYLES, drawingOf } from '../src/lab-flats.js';
+import { RECIPE_BASES, RECIPE_ADDONS, COLOUR_SYSTEMS, addonsFor, cookRecipe, systemOf, cleanFit, toggleAddon, drawnOn, baseSketch, pocketless, RECIPE_GROUPS } from '../src/lab-recipe.js';
+import { STYLES, drawingOf, renderSvg } from '../src/lab-flats.js';
 import { FLAT_TEMPLATES } from '../src/lab-flat-templates.js';
 
 test('every base cooks with all of its add-ons into clean flats', () => {
@@ -92,7 +92,7 @@ test('fitting it together: the base\'s width and length stretch the sketch, and 
 
 // what a client sees: every chip on the menu changes the drawing, or says the sketch already has it
 test('every add-on a base offers changes the drawing, or is shown as already on the sketch', () => {
-  const look = r => JSON.stringify([r.template, r.style, r.params.edits.map(e => [e.kind, e.x, e.y, e.w, e.h, e.color]), r.params.options || null]);
+  const look = r => JSON.stringify([r.template, r.style, r.params.edits.map(e => [e.kind, e.x, e.y, e.w, e.h, e.color]), r.params.options || null, r.params.neckline || null, r.params.wash || null, r.params.distress || null, r.params.crop || 0]);
   for (const b of RECIPE_BASES) {
     const plain = look(cookRecipe({ base: b.id })), drawn = drawnOn(b);
     for (const a of addonsFor(b)) {
@@ -129,4 +129,24 @@ test('a tote\'s handle is one strap: only the band takes the colour, the loop st
   const g = geometry(defaultParams('tote', 'regular'), 'front'), handles = g.parts.filter(q => q.kind === 'outline' && q.d !== g.parts[0].d);
   assert.equal(handles.length, 1); assert.match(handles[0].d, /Z$/); // outer edge over and inner edge back, closed
   const b = defaultDetail('button', defaultParams('shirt', 'regular')); assert.ok(b.w <= .6 && b.x === 0, 'a button added by hand is button-sized');
+});
+
+test('a collar and cropped go together: the collar\'s sketch is cut shorter above its hem, sleeves kept', () => {
+  assert.deepEqual(toggleAddon(['neck-shearling'], 'cropped', 'jacket'), ['neck-shearling', 'cropped']);
+  assert.deepEqual(toggleAddon(['cropped'], 'neck-shearling', 'jacket'), ['cropped', 'neck-shearling']);
+  const full = cookRecipe({ base: 'jacket', addons: ['neck-shearling'] }), crop = cookRecipe({ base: 'jacket', addons: ['neck-shearling', 'cropped'] });
+  assert.equal(crop.template, 'jk-shearling-aviator-jacket'); assert.equal(crop.params.crop, 4);
+  assert.equal(crop.params.m.length, full.params.m.length - 4); assert.equal(crop.params.m.sleeve, full.params.m.sleeve);
+  assert.match(crop.name, /cropped shearling aviator jacket/i);
+  assert.match(renderSvg(crop.params, 'front'), /-kt\)/, 'drawn cut');
+  // on its own, cropped still uses the pack's own cropped sketch and is not cut again
+  const alone = cookRecipe({ base: 'jacket', addons: ['cropped'] }); assert.equal(alone.template, 'jk-zip-blouson'); assert.ok(!alone.params.crop);
+});
+
+test('more add-ons: necklines, washes and wear, measured and written for the factory', () => {
+  const r = cookRecipe({ base: 'crewneck', addons: ['neck-mock', 'cropped', 'wash-vintage', 'wear-edges'] });
+  assert.equal(r.params.neckline, 'mock'); assert.equal(r.params.m.neckRib, 1.75);
+  assert.deepEqual(r.params.wash, { type: 'stone', strength: 'medium' }); assert.equal(r.params.distress.focus, 'edges');
+  assert.deepEqual(toggleAddon(['wash-acid'], 'wash-sun', 'tee'), ['wash-sun'], 'one wash at a time');
+  assert.ok(RECIPE_GROUPS.includes('Wash & wear'));
 });
