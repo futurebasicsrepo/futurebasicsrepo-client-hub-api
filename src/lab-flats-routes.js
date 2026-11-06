@@ -43,6 +43,7 @@ import { callJsonSchema } from './studio.js';
 import { rankTemplates, candidateTemplates, tagMarks } from './lab-flats.js';
 import { tagFaceSvg } from './lab-tags.js';
 import { washWords, washPrompt, cleanWash } from './lab-wash.js';
+import { necklineWords, necklineOf } from './lab-neck.js';
 import { brandHits } from './lab-concepts.js';
 import { readiness } from './lab-ready.js';
 
@@ -401,7 +402,7 @@ export function registerLabFlatsRoutes(app, d) {
     const flat = await sharp(Buffer.from(renderSvg(p, 'front', { plain: true, scale: 40, templateSvg, partHref, maskHref, editHrefs: await editHrefsOf(p), alloverHref: await alloverHrefOf(p) })), { density: 150 })
       .resize({ width: 1024, height: 1024, fit: 'contain', background: '#ffffff' }).flatten({ background: '#ffffff' }).png().toBuffer();
     const fab = (Array.isArray(c.spec?.materials) ? c.spec.materials : []).find(m => m.kind === 'fabric' && m.role === 'main'), cw = (c.spec?.colourways || [])[0];
-    const words = [fab ? `in ${[fab.spec?.weightGsm ? fab.spec.weightGsm + ' gsm' : '', fab.spec?.construction || fab.name].filter(Boolean).join(' ')}` : '', cw?.name ? `colour ${cw.name}` : '', washPrompt(p)].filter(Boolean).join(', ');
+    const words = [fab ? `in ${[fab.spec?.weightGsm ? fab.spec.weightGsm + ' gsm' : '', fab.spec?.construction || fab.name].filter(Boolean).join(' ')}` : '', cw?.name ? `colour ${cw.name}` : '', necklineWords(p) ? `with a ${necklineOf(p.neckline).label.toLowerCase()}` : '', washPrompt(p)].filter(Boolean).join(', ');
     const prompt = `Turn this technical flat drawing into a photorealistic product photograph of the same garment${words ? `, ${words}` : ''}: front view, on an invisible mannequin, on a plain light grey studio background, soft even light. Keep the cut, proportions and every detail exactly where the flat draws it: pockets, collar, closures, seams, stitching and trims, and the colours of each part. No person, no logos and no words unless they are drawn.`;
     let out; try { out = cfg.provider === 'fixture' ? await sharp(flat).flatten({ background: '#e9e9e6' }).png().toBuffer() : await editImpl({ images: [flat], prompt, cfg: { ...cfg, size: '1024x1024' } }); }
     catch (e) { return bad(reply, `The image model could not draw it: ${clip(e.message, 200)}`, 502); }
@@ -496,9 +497,9 @@ export function registerLabFlatsRoutes(app, d) {
     if (!pl.length) { y += 30; body += T(60, y, 14, 'Nothing placed on this piece.', { c: '#727278' }); }
     // the colour, the details and the stitching changed on the sketch, in words the factory reads
     const eds = (p.edits || []).filter(e => views.includes(e.view));
-    if (p.color || eds.length || washWords(p).length) { y += 44; body += T(60, y, 20, 'Colour, wash, details and stitching', { w: 600 }); y += 6;
+    if (p.color || eds.length || washWords(p).length || necklineWords(p)) { y += 44; body += T(60, y, 20, 'Colour, wash, details and stitching', { w: 600 }); y += 6;
       const wrap = t => { const out = ['']; for (const w of t.split(' ')) { if ((out[out.length - 1] + ' ' + w).length > 120) out.push(''); out[out.length - 1] += (out[out.length - 1] ? ' ' : '') + w; } return out; };
-      for (const line of [...(p.color ? [`Main colour ${p.color}`] : []), ...washWords(p), ...eds.map(e => describeEdit(e, p))]) wrap(line).forEach((part, i) => { y += i ? 17 : 22; body += T(i ? 90 : 76, y, 13, part, { c: '#45454c' }); }); }
+      for (const line of [...(p.color ? [`Main colour ${p.color}`] : []), ...(necklineWords(p) ? [`Neckline: ${necklineWords(p)}`] : []), ...washWords(p), ...eds.map(e => describeEdit(e, p))]) wrap(line).forEach((part, i) => { y += i ? 17 : 22; body += T(i ? 90 : 76, y, 13, part, { c: '#45454c' }); }); }
     const pom = pomTable(p), cols = pom[0].values.map(v => v.size), cx = 1040; let py = 680;
     body += T(cx, py, 20, `Points of measure (inches) · sample size ${STYLES[p.style].oneSize ? 'one size' : 'M'}`, { w: 600 }); py += 30;
     body += T(cx, py, 12, 'Point', { w: 600, c: '#727278' }) + cols.map((s, i) => T(cx + 330 + i * 52, py, 12, s, { w: 600, c: s === 'M' ? '#141416' : '#727278', a: 'end' })).join('') + T(cx + 330 + cols.length * 52 + 20, py, 12, 'Tol ±', { w: 600, c: '#727278', a: 'end' });
@@ -606,6 +607,7 @@ export function registerLabFlatsRoutes(app, d) {
     const construction = [{ area: 'Drawing', detail: `${FITS[p.fit] || p.fit} fit ${S.label.toLowerCase()}, drawn from the ${tpl ? `"${tpl.label}" flat sketch` : 'measurements'}; sample size M.` },
       ...pl.map(q => ({ area: `${q.view === 'back' ? 'Back' : 'Front'} · ${q.name}`, detail: `${techFor(list, q).name}, ${fmtCm(q.w)} × ${fmtCm(q.h)}: ${describe(q, p)}.${q.grade ? ` Artwork by size: ${gradeWords(q)}.` : ''}` })),
       ...pl.filter(q => q.inks).map(q => ({ area: `Inks by colourway · ${q.name}`, detail: Object.entries(q.inks).map(([cw, m]) => `on ${(cleanColourways(c.spec?.colourways).find(x => x.hex === cw)?.name) || cw}: ${Object.entries(m).filter(([a, b2]) => a !== b2).map(([a, b2]) => `${pantoneOf(a)} changed to ${pantoneOf(b2)}`).join(', ') || 'as drawn'}`).join('; ') })),
+      ...(necklineWords(p) ? [{ area: 'Neckline', detail: necklineWords(p) }] : []),
       ...washWords(p).map((t, i) => ({ area: i === 0 && cleanWash(p.wash) ? 'Wash' : 'Distressing', detail: t })),
       ...(p.allover ? [{ area: `All over · ${p.allover.name}`, detail: `${p.allover.base}, a ${p.allover.type} repeat of ${fmtCm(p.allover.w)} × ${fmtCm(p.allover.h)}, printed on the panels before cutting.` }] : []),
       ...edits.map(e => ({ area: e.type === 'stitch' ? 'Stitching' : e.type === 'block' ? 'Colour block' : e.type === 'ai' ? 'Redrawn area' : e.type === 'part' ? (e.name || 'Add-on part') : (DETAILS[e.kind] || 'Detail'), detail: describeEdit(e, p) }))];

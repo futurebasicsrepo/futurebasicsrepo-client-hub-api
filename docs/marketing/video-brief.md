@@ -61,6 +61,7 @@ already has show as "on the sketch".
 - On the flats: **Colour a panel** (tap a sleeve and both sleeves take the colour, right to their seams; a tap on a rib takes the whole band)
   and **Cloth** (pick a fabric and the flat shows its surface; it becomes the garment's main fabric).
 
+- **Necklines:** swap a tee's neck like a pocket: thin crew, regular crew, V neck, mock neck or turtleneck, drawn on the flats and specced for the factory.
 - **Wash & distress:**
   - Pick a wash at light, medium or heavy: spray fade, pigment, dirty vintage, stone, acid, snow, enzyme, potassium permanganate, bleach or mineral.
   - Switch on distressing, slide it up, and choose edges only or the body.

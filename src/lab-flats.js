@@ -8,6 +8,7 @@
 import { FLAT_TEMPLATES } from './lab-flat-templates.js';
 import { FLAT_PARTS, PART_KINDS } from './lab-flat-parts.js';
 import { washSvg, cleanWash, cleanDistress } from './lab-wash.js';
+import { necklineSvg, cleanNeckline } from './lab-neck.js';
 export { FLAT_PARTS, PART_KINDS };
 
 export const SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
@@ -600,9 +601,11 @@ export function renderSvg(p, view = 'front', { placements = [], hrefs = {}, size
   const clothAt = e => { const bl = [...blocks].reverse().find(q => inside([e.x, e.y], q.pts)); return bl ? bl.color : cloth || '#ffffff'; };
   const hit = (e, inner) => editable ? `<g data-ed="${esc(e.id)}">${inner}</g>` : inner;
   const box = e => `<rect x="${n3(e.x - e.w / 2 - .15)}" y="${n3(e.y - e.h / 2 - .15)}" width="${n3(e.w + .3)}" height="${n3(e.h + .3)}" fill="#ffffff" fill-opacity="0"${e.id === selectedEdit ? ' stroke="#2a6df4" stroke-width=".05" stroke-dasharray=".18 .1"' : ''}/>`;
+  // a neckline chosen to replace the sketch's (src/lab-neck.js): its cover goes under with the sketch, the new one is drawn over
+  const nk = p.neckline ? necklineSvg(p, view, measurementsFor(p, size), { cloth: cloth || '#ffffff', line: lineFor(cloth) }) : { under: '', over: '' };
   const under = edits.filter(e => (e.type === 'detail' && e.kind === 'erase') || (e.type === 'ai' && editHrefs[e.art]) || (e.type === 'part' && partOf(e.part))).map(e => e.type === 'ai' || e.type === 'part'
     ? `<image href="${esc(e.type === 'ai' ? editHrefs[e.art] : partHref(partOf(e.part).file))}" x="${n3(e.x - e.w / 2)}" y="${n3(e.y - e.h / 2)}" width="${n3(e.w)}" height="${n3(e.h)}" preserveAspectRatio="none"${e.flip ? ` transform="translate(${n3(2 * e.x)} 0) scale(-1 1)"` : ''}/>`
-    : `<rect x="${n3(e.x - e.w / 2)}" y="${n3(e.y - e.h / 2)}" width="${n3(e.w)}" height="${n3(e.h)}" rx=".15" fill="#ffffff"/>`).join('');
+    : `<rect x="${n3(e.x - e.w / 2)}" y="${n3(e.y - e.h / 2)}" width="${n3(e.w)}" height="${n3(e.h)}" rx=".15" fill="#ffffff"/>`).join('') + nk.under;
   const defs = `<defs><g id="${pid}-b">${parts}${under}</g>${cloth ? tintFilter(`${pid}-t`, cloth) : ''}${blocks.map((e, i) => tintFilter(`${pid}-t${i}`, e.color) + `<clipPath id="${pid}-c${i}"><path d="${pathD(e.pts)} Z"/></clipPath>`).join('')}</defs>`;
   // the cloth's own surface: a grey shading tile (the close-up spread around a light mean and mirrored to repeat without seams: photoShade in
   // src/lab-photo-tint.js), multiplied over the drawn colour
@@ -621,6 +624,7 @@ export function renderSvg(p, view = 'front', { placements = [], hrefs = {}, size
       + `<rect x="${x0}" y="${y0}" width="${W}" height="${H}" fill="url(#${pid}-ao)" mask="url(#${pid}-am)"/><use href="#${pid}-b" filter="url(#${pid}-al)"/>` : '')
     + (editable ? blocks.map(e => hit(e, `<path d="${pathD(e.pts)} Z" fill="#ffffff" fill-opacity="0"${e.id === selectedEdit ? ' stroke="#2a6df4" stroke-width=".05" stroke-dasharray=".18 .1"' : ''}/>`)).join('') + edits.filter(e => e.type === 'ai' || e.type === 'part' || (e.type === 'detail' && e.kind === 'erase')).map(e => hit(e, box(e))).join('') : '')
     + edits.filter(e => e.type === 'detail' && e.kind !== 'erase').map(e => { const o = detailSvg(e, clothAt(e)); return hit(e, (editable ? box(e) : '') + o.body + o.stitch); }).join('')
+    + nk.over
     + textureSvg()
     // the wash and the distressing (src/lab-wash.js), inside the garment only
     + (() => { const kd = STYLES[p.style]?.kind, mm = measurementsFor(p, size), geo = kd === 'top' && mm.chest ? { kind: 'top', half: mm.chest / 2, neckY: view === 'back' ? (mm.neckDropBack ?? 1) : (mm.neckDropFront ?? 3), neckHalf: (mm.neckWidth || 7) / 2, hemY: mm.length || b.y1, hemRib: mm.hemRib || 0, cuff: mm.cuffRib || 0, longSleeve: (mm.sleeve || 0) > 14, hood: Boolean(STYLES[p.style]?.hood) } : kd === 'bottom' && mm.rise ? { kind: 'bottom', waistband: mm.waistband || 1.5, rise: mm.rise, hemY: b.y1 } : null, ws = washSvg(p, { box: b, mask: `${pid}-gm`, pid, kind: kd, view, cloth: cloth || '#ffffff', geo }); return ws ? `<defs><filter id="${pid}-gw" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 1 0"/></filter><mask id="${pid}-gm" maskUnits="userSpaceOnUse" x="${x0}" y="${y0}" width="${W}" height="${H}"><use href="#${pid}-b" filter="url(#${pid}-gw)"/></mask></defs>${ws}` : ''; })()
@@ -696,7 +700,7 @@ export function cleanFlat(input = {}) {
   // where each label was dragged to on each view, in inches (tagMarks puts the rest where they are usually sewn)
   const tp = input.tagPos && typeof input.tagPos === 'object' ? input.tagPos : {}, tagPos = Object.fromEntries(Object.entries(tp).filter(([k, v]) => /^[0-9a-f-]{36}$/i.test(k) && v && typeof v === 'object').slice(0, 40)
     .map(([k, v]) => [k, Object.fromEntries(['front', 'back'].filter(w => Array.isArray(v[w]) && v[w].length === 2 && v[w].every(n => Number.isFinite(Number(n)))).map(w => [w, [r8(Math.min(Math.max(Number(v[w][0]), -60), 60)), r8(Math.min(Math.max(Number(v[w][1]), -30), 80))]]))]).filter(([, v]) => Object.keys(v).length));
-  const params = { style, fit, size: SIZES.includes(input.size) ? input.size : 'M', m, options, ...(Object.keys(tagPos).length ? { tagPos } : {}), ...(cleanWash(input.wash) ? { wash: cleanWash(input.wash) } : {}), ...(cleanDistress(input.distress) ? { distress: cleanDistress(input.distress) } : {}), ...(template ? { template } : {}), color: hexOf(input.color), edits: cleanEdits(input.edits), ...(allover ? { allover } : {}), ...(Object.keys(drawn).length ? { drawn: { template, ...drawn } } : {}), ...(Object.keys(markup).length ? { markup: { template: template || 'none', ...markup } } : {}) };
+  const params = { style, fit, size: SIZES.includes(input.size) ? input.size : 'M', m, options, ...(Object.keys(tagPos).length ? { tagPos } : {}), ...(cleanWash(input.wash) ? { wash: cleanWash(input.wash) } : {}), ...(cleanNeckline(input.neckline) ? { neckline: cleanNeckline(input.neckline) } : {}), ...(cleanDistress(input.distress) ? { distress: cleanDistress(input.distress) } : {}), ...(template ? { template } : {}), color: hexOf(input.color), edits: cleanEdits(input.edits), ...(allover ? { allover } : {}), ...(Object.keys(drawn).length ? { drawn: { template, ...drawn } } : {}), ...(Object.keys(markup).length ? { markup: { template: template || 'none', ...markup } } : {}) };
   const placements = (Array.isArray(input.placements) ? input.placements : []).slice(0, 12).map((q, i) => ({
     id: /^[a-z0-9-]{1,40}$/i.test(String(q.id || '')) ? String(q.id) : 'p' + i, name: String(q.name || 'Graphic').replace(/\s+/g, ' ').trim().slice(0, 60) || 'Graphic', view: q.view === 'back' ? 'back' : 'front',
     x: r8(Math.min(Math.max(Number(q.x) || 0, -60), 60)), y: r8(Math.min(Math.max(Number(q.y) || 0, -30), 80)), w: r8(Math.min(Math.max(Number(q.w) || 1, .25), 40)), h: r8(Math.min(Math.max(Number(q.h) || 1, .25), 40)), ...(rotOf(q) ? { rot: rotOf(q) } : {}),

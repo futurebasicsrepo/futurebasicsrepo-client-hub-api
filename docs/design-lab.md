@@ -671,6 +671,11 @@ patent's gloss, a fur's strands, and so is the tech flats SVG. The concept windo
 
 **In Design** (the picture and both flats), **Fabrics, trims & labels** opens the same bill of materials beside the library: each fabric, trim and tag drawn (or its swatch photo), searchable, with **Add to the garment** (the first fabric is the main one, the next the contrast). Each line on the garment can change what it is used as, its colour, how much a piece takes and where it goes (a label's default: how it is attached), or come off; the materials, making, landed cost and margin follow, and the tech pack takes the lines.
 
+**Necklines.** Under **Neckline** in the flats' Design tab, a knit top can switch its neckline the way it swaps a pocket or a zip. The choices are **As drawn**, **Thin crew** (1/2" rib), **Regular crew** (7/8"), **V neck** (mitred, 3/4"), **Mock neck** (a 1 3/4" stand) and **Turtleneck** (a folded 2 3/4" stand). The shapes are in `src/lab-neck.js`.
+- **Which pieces:** tees, long sleeves, crewnecks, tanks, dresses, bodysuits, camis and swimsuits. Hooded, collared and open-front pieces keep their own.
+- **Drawing:** the new neckline is drawn front and back from the piece's neck width and drops, in the garment's colour, with rib wales, the opening and a coverstitch. A neckline-shaped cover hides the sketch's own neckline and leaves the shoulder line and raglan seams alone.
+- **Saved and written:** the flat's params keep it (`neckline`). The tech pack's construction notes and the flats sheet give the rib spec, and **Draw the picture from the flats** names it in the prompt.
+
 **Wash and distress.** The Studio's **Wash & distress** button, beside Fabrics, trims & labels, opens that section of the flats' Garment tab. It is defined in `src/lab-wash.js`, tuned against vintage streetwear references.
 
 **Wash.** Choose from:
