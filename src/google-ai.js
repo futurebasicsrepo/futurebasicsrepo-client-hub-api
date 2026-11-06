@@ -83,19 +83,42 @@ export function googleVideoConfig(env = process.env) {
   const k = googleKey(env); if (!k) return { configured: false };
   return { provider: 'google', configured: true, model: env.GEMINI_VIDEO_MODEL || 'veo-3.1-generate-preview', seconds: String([4, 6, 8].includes(Number(env.LAB_VIDEO_SECONDS)) ? env.LAB_VIDEO_SECONDS : 8), aspect: env.LAB_VIDEO_ASPECT || '9:16', origin: GEMINI_ORIGIN(env) };
 }
+// The Veo models a key can run (predictLongRunning), best first: the newest version, the full model before the fast one, a released model before
+// a preview. Asked once a day and kept, so a renamed preview does not stop the walk.
+export function rankVeo(names) {
+  const ver = n => Number((/veo-(\d+(?:\.\d+)?)/.exec(n) || [])[1] || 0);
+  return [...names].sort((a, b) => ver(b) - ver(a) || Number(/fast/.test(a)) - Number(/fast/.test(b)) || Number(/preview|exp/.test(a)) - Number(/preview|exp/.test(b)) || a.localeCompare(b));
+}
+let VEO = null;
+export async function bestVeo({ origin, key, fetchImpl = fetch, not = '' }) {
+  if (!VEO || Date.now() - VEO.at > 864e5) {
+    const names = []; let page = '';
+    for (let i = 0; i < 5; i++) {
+      const r = await fetchImpl(`${origin}/v1beta/models?pageSize=1000${page ? `&pageToken=${encodeURIComponent(page)}` : ''}`, { headers: { 'x-goog-api-key': key }, signal: AbortSignal.timeout(20000) }).catch(() => null);
+      if (!r?.ok) break; const j = await r.json().catch(() => ({}));
+      for (const m of j.models || []) if (/veo/i.test(m.name || '') && (m.supportedGenerationMethods || []).includes('predictLongRunning')) names.push(String(m.name).replace(/^models\//, ''));
+      if (!j.nextPageToken) break; page = j.nextPageToken;
+    }
+    if (!names.length) return null; VEO = { at: Date.now(), list: rankVeo(names) };
+  }
+  return VEO.list.find(n => n !== not) || null;
+}
+export const _resetVeo = () => { VEO = null; };
 // A short clip from a prompt and (optionally) a first frame. Veo works as a long job: start it, ask how it is getting on, fetch the file.
 // → { video: Buffer, mime, model }. `fetchImpl` and `sleep` are replaceable so this runs in tests without a network.
-export async function veoVideo({ prompt, image = null, cfg = googleVideoConfig(), env = process.env, fetchImpl = fetch, sleep = ms => new Promise(r => setTimeout(r, ms)) }) {
+export async function veoVideo({ prompt, image = null, cfg: cfg0 = googleVideoConfig(), env = process.env, fetchImpl = fetch, sleep = ms => new Promise(r => setTimeout(r, ms)) }) {
   const k = googleKey(env); if (!k) throw new Error('No Google AI key is set');
-  const H = { 'x-goog-api-key': k.key, 'Content-Type': 'application/json' };
+  let cfg = cfg0; const H = { 'x-goog-api-key': k.key, 'Content-Type': 'application/json' };
   const start = async withImage => fetchImpl(`${cfg.origin}/v1beta/models/${encodeURIComponent(cfg.model)}:predictLongRunning`, {
     method: 'POST', headers: H, signal: AbortSignal.timeout(60000),
     body: JSON.stringify({ instances: [{ prompt, ...(withImage && image ? { image: { bytesBase64Encoded: Buffer.from(image).toString('base64'), mimeType: mimeOf(image) } } : {}) }], parameters: { aspectRatio: cfg.aspect, durationSeconds: Number(cfg.seconds), ...(withImage && image ? { personGeneration: 'allow_adult' } : {}) } })
   });
   let r = await start(Boolean(image));
+  // the model name retired or not offered to this key (Google renames the Veo previews): ask which Veo models the key has, take the best, try again
+  if (r.status === 404) { const best = await bestVeo({ origin: cfg.origin, key: k.key, fetchImpl, not: cfg.model }); if (best) { cfg = { ...cfg, model: best }; r = await start(Boolean(image)); } }
   // a first frame refused (a face, a policy): the clip is made from the words alone
   if (!r.ok && image && r.status >= 400 && r.status < 500 && r.status !== 401 && r.status !== 403 && r.status !== 429) r = await start(false);
-  if (!r.ok) throw new Error(`Google's video model refused the request (${r.status}): ${clip(await r.text().catch(() => ''), 200)}`);
+  if (!r.ok) { const t = await r.text().catch(() => ''); let why = t; try { why = JSON.parse(t)?.error?.message || t; } catch { /* not JSON */ } throw new Error(`Google's video model (${cfg.model}) refused the request (${r.status}): ${clip(why, 160)}`); }
   let op = await r.json();
   for (let i = 0; i < 90 && !op.done; i++) {
     await sleep(Number(env.LAB_VIDEO_POLL_MS) || 10000);
