@@ -6,6 +6,16 @@
 // The same file runs in the page (served as /lab/flats.js) and on the service (the check and the spec sheet), so it uses neither the DOM nor Node.
 // All lengths are inches. On the front flat the viewer's right is the wearer's left.
 import { FLAT_TEMPLATES } from './lab-flat-templates.js';
+// sketches the pack's measuring script reads wrong, measured again by hand (in the sketch's own units). The shearling aviator: its big collar
+// hides the shoulder point, its zip splits the hem band on the centre line (so the hem read as the zip's end) and the chest was taken across
+// the zip gap, so it came out a third too narrow and a quarter too long, and every piece drawn from it 37 in long instead of about 29
+const SKETCH_FIXES = {
+  'jk-shearling-aviator-jacket': { front: { chest: 176, hpsY: 130, hemY: 420 }, back: { chest: 176, hpsY: 126, hemY: 420 } },
+};
+for (const [id, f] of Object.entries(SKETCH_FIXES)) {
+  const t = FLAT_TEMPLATES.find(x => x.id === id); if (!t || t.fixed) continue; t.fixed = true;
+  for (const [view, fix] of Object.entries(f)) { const v = t.views[view]; if (!v) continue; Object.assign(v, fix); if (v.chest && v.hemY > v.hpsY) v.ratio = +((v.hemY - v.hpsY) / v.chest).toFixed(3); }
+}
 import { FLAT_PARTS, PART_KINDS } from './lab-flat-parts.js';
 import { washSvg, cleanWash, cleanDistress } from './lab-wash.js';
 import { necklineSvg, cleanNeckline, necklinePomName } from './lab-neck.js';

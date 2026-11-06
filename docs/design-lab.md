@@ -899,12 +899,21 @@ done. A garment started from scratch draws its flats as a plain outline to draw 
 
 ## Patterns: the product exploded into the pieces it is cut from
 
+A sketch the pack's measuring script reads wrong is measured again by hand in `SKETCH_FIXES` (`src/lab-flats.js`). The shearling aviator had a
+third too narrow a chest and its zip end taken for the hem, so pieces drawn from it came out 37 in long; it is now about 29.
+
 **Pattern** is a step of the piece in the Studio, after Picture and Flats (`/lab/pattern`, in a frame; the drafting is `src/lab-pattern.js`, shared by
 the page and the service).
 
 - **Garments** are drafted from the flats' own measurements, so the pattern grades with the size picked:
   - tops: front and back on the fold (a pair of fronts when it opens), sleeves whose cap is sized to the armhole, neck, cuff and hem ribs,
     hood sides, the kangaroo pocket, and for shirts a yoke, collar, stand and cuffs;
+  - jackets take what their sketch draws. A shearling aviator gets a one-piece shearling collar on the fold (with a self under collar), a
+    shearling hem band split at the zip, and shearling cuffs, with no knit rib. A stand-collar or funnel bomber gets a folded stand collar, and a
+    collared jacket (Harrington, trucker, chore, blouson…) a top and under collar. Jackets and coats with welt pockets get the welts (slanted
+    on aviators, bombers and bikers) and their pocketing bags;
+  - on the product the pieces sit as a flat draws them. A sleeve is shown folded (half its cut width), hung from the shoulder and the underarm.
+    The cuffs sit on the sleeve ends, the hem band shows the front's share of its strip, and the neck rib follows the neckline;
   - bottoms: front and back legs (the back crotch longer), the waistband, pocket bags in pocketing, the fly facing, back pockets;
   - caps: six crown panels, the brim with its board, the sweatband; bucket hats, beanies (knit to shape) and totes too.
 
