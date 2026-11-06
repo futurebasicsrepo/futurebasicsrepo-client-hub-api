@@ -15,7 +15,7 @@ const clip = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
 const STALE_MIN = 20; // a view still "pending" after this long was lost to a restart: it shows as failed and can be made again
 
 export function registerLabViewRoutes(app, d) {
-  const { pool, authenticate, adminOnly, env = process.env, imageCfg = () => imageConfig(env), videoCfg = () => videoConfig(env), fetchImpl = fetch, edit, lab = null, log = console } = d;
+  const { flatPictures = null, pool, authenticate, adminOnly, env = process.env, imageCfg = () => imageConfig(env), videoCfg = () => videoConfig(env), fetchImpl = fetch, edit, lab = null, log = console } = d;
   const own = req => lab?.scope?.(req) || null, charge = async (req, o) => (lab ? lab.charge(req, o) : null); // a client's room: its own concepts, its AI meter
   const pre = [authenticate, adminOnly], bad = (reply, error, code = 422, extra = {}) => reply.code(code).send({ error, ...extra });
   const needId = (req, reply) => UUID.test(req.params.id) || (bad(reply, 'Not found', 404), false);
@@ -39,14 +39,14 @@ export function registerLabViewRoutes(app, d) {
   }
 
   // start views for one concept: mark them pending, draw in the background, land each as it is done
-  async function startViews(c, kinds, { redo = false } = {}) {
+  async function startViews(c, kinds, { redo = false, flats = null } = {}) {
     const have = Object.fromEntries((await pool.query(`select kind, image from lab_concept_views where concept_id=$1 and status='ready' and image is not null`, [c.id])).rows.map(r => [r.kind, r.image]));
     const todo = kinds.filter(k => redo || !have[k]); if (!todo.length) return 0;
     for (const k of todo) await pool.query(`insert into lab_concept_views(concept_id,kind,status,note) values($1,$2,'pending','') on conflict (concept_id,kind) do update set status='pending', note='', updated_at=now()`, [c.id, k]);
     const picture = (await pool.query('select image from lab_concepts where id=$1', [c.id])).rows[0]?.image;
     const concept = { name: c.name, category: c.category, twist: c.twist, spec: ensureBranding(c.spec || {}, c.category) }, cfg = imageCfg();
     const ok = enqueue(`${c.id}`, async () => {
-      await makeViews({ concept, picture, kinds: todo, have: redo ? Object.fromEntries(Object.entries(have).filter(([k]) => !todo.includes(k))) : have, cfg, edit,
+      await makeViews({ concept, picture, flats, kinds: todo, have: redo ? Object.fromEntries(Object.entries(have).filter(([k]) => !todo.includes(k))) : have, cfg, edit,
         onView: async (kind, r, note) => {
           if (r) await pool.query(`update lab_concept_views set status='ready', image=$3, thumb=$4, model=$5, note='', updated_at=now() where concept_id=$1 and kind=$2`, [c.id, kind, r.image, r.thumb, r.model || '']);
           else await pool.query(`update lab_concept_views set status='failed', note=$3, updated_at=now() where concept_id=$1 and kind=$2`, [c.id, kind, note]);
@@ -93,13 +93,20 @@ export function registerLabViewRoutes(app, d) {
   app.post('/v1/lab/concepts/:id/views', { preHandler: pre }, async (req, reply) => {
     if (!needId(req, reply)) return;
     const c = await concept(req.params.id); if (!c) return bad(reply, 'Not found', 404);
-    if (!c.has_picture) return bad(reply, 'This concept has no picture to draw the views from. Draw its picture first.', 409);
+    if (!c.has_picture && req.body?.from !== 'flats') return bad(reply, 'This concept has no picture to draw the views from. Draw its picture first.', 409); // the turns from the flats need only the flats
     if (!imageCfg().configured) return bad(reply, 'No image model is connected, so the views cannot be drawn.', 503);
     const asked = Array.isArray(req.body?.kinds) ? req.body.kinds.filter(isKind) : KIND_IDS, kinds = asked.filter(k => kindsFor(c.category).includes(k));
     if (!kinds.length) return bad(reply, 'Nothing to make for this kind of piece.');
+    // from: 'flats' draws the turns from the saved technical flats (front and back) instead of from the picture alone
+    let flats = null;
+    if (req.body?.from === 'flats') {
+      if (!kinds.some(k => k.startsWith('model'))) return bad(reply, 'Only the turns on a model are drawn from the flats.');
+      flats = flatPictures ? await flatPictures(c.id).catch(e => { log.warn?.({ err: e.message }, 'flats as pictures failed'); return null; }) : null;
+      if (!flats?.front) return bad(reply, 'Save the flats first: the turns are drawn from them.', 409);
+    }
     const left = await imageCapLeft(kinds.length); if (left !== true) return bad(reply, `The daily limit of ${left} views is reached. Raise LAB_DAILY_VIEWS.`, 429);
     try { await charge(req, { kind: 'view', units: kinds.length, conceptId: c.id }); } catch (e) { return bad(reply, e.message, e.status || 500, e.meter ? { code: e.code, meter: e.meter } : {}); }
-    const n = await startViews(c, kinds, { redo: Boolean(req.body?.redo) });
+    const n = await startViews(c, kinds, { redo: Boolean(req.body?.redo) || Boolean(flats), flats });
     return reply.code(202).send({ started: n, views: await summary(c.id) });
   });
 

@@ -6,15 +6,16 @@
 // The same file runs in the page (served as /lab/flats.js) and on the service (the check and the spec sheet), so it uses neither the DOM nor Node.
 // All lengths are inches. On the front flat the viewer's right is the wearer's left.
 import { FLAT_TEMPLATES } from './lab-flat-templates.js';
-// sketches the pack's measuring script reads wrong, measured again by hand (in the sketch's own units). The shearling aviator: its big collar
-// hides the shoulder point, its zip splits the hem band on the centre line (so the hem read as the zip's end) and the chest was taken across
-// the zip gap, so it came out a third too narrow and a quarter too long, and every piece drawn from it 37 in long instead of about 29
+// sketches the pack's measuring script reads wrong, corrected by hand. Only the length a sketch suggests (its ratio) is corrected: how the
+// sketch is laid over inches stays as it was measured, because colour blocks, stitch lines and graphics already placed on it are kept in
+// inches, and moving the sketch under them would leave them off the drawing. The shearling aviator: its zip splits the hem band on the
+// centre line and its collar hides the shoulder, so it read a third too long and pieces drawn from it came out 37 in long, not about 29
 const SKETCH_FIXES = {
-  'jk-shearling-aviator-jacket': { front: { chest: 176, hpsY: 130, hemY: 420 }, back: { chest: 176, hpsY: 126, hemY: 420 } },
+  'jk-shearling-aviator-jacket': { front: { ratio: 1.65 }, back: { ratio: 1.65 } },
 };
 for (const [id, f] of Object.entries(SKETCH_FIXES)) {
   const t = FLAT_TEMPLATES.find(x => x.id === id); if (!t || t.fixed) continue; t.fixed = true;
-  for (const [view, fix] of Object.entries(f)) { const v = t.views[view]; if (!v) continue; Object.assign(v, fix); if (v.chest && v.hemY > v.hpsY) v.ratio = +((v.hemY - v.hpsY) / v.chest).toFixed(3); }
+  for (const [view, fix] of Object.entries(f)) { const v = t.views[view]; if (v) { v.measuredRatio = v.ratio; Object.assign(v, fix); } }
 }
 import { FLAT_PARTS, PART_KINDS } from './lab-flat-parts.js';
 import { washSvg, cleanWash, cleanDistress } from './lab-wash.js';
@@ -163,10 +164,12 @@ const COMMON = new Set(['with', 'from', 'shirt', 'tee', 'pants', 'shorts', 'jack
 // piece drawn from it starts that much shorter or longer than the style's standard (the sketches are stylised, so the comparison is with the
 // style's middle sketch, not with real inches), and the drawing is not stretched back to the standard
 const REF = {};
-const refRatio = style => { if (!(style in REF)) { const r = FLAT_TEMPLATES.filter(t => t.style === style && t.views.front.ratio).map(t => t.views.front.ratio).sort((a, b) => a - b); REF[style] = r.length ? r[Math.floor(r.length / 2)] : null; } return REF[style]; };
-export function fitToTemplate(p) {
+const refRatio = style => { if (!(style in REF)) { const r = FLAT_TEMPLATES.filter(t => t.style === style && t.views.front.ratio).map(t => t.views.front.measuredRatio ?? t.views.front.ratio).sort((a, b) => a - b); REF[style] = r.length ? r[Math.floor(r.length / 2)] : null; } return REF[style]; };
+// asDrawn: the sketch's ratio as the pack measured it, which is what the drawing is laid over inches by (drawingOf), so a correction to the
+// length a sketch suggests never moves what is already placed on it
+export function fitToTemplate(p, asDrawn = false) {
   const t = templateOf(p), v = t?.views?.front, S = STYLES[p.style], ref = refRatio(p.style), base = defaultParams(p.style, p.fit, p.options)?.m; if (!v?.ratio || !S || !ref || !base) return p;
-  let k = Math.min(Math.max(v.ratio / ref, .45), 2.4); if (Math.abs(k - 1) < .08) k = 1;
+  let k = Math.min(Math.max((asDrawn ? v.measuredRatio ?? v.ratio : v.ratio) / ref, .45), 2.4); if (Math.abs(k - 1) < .08) k = 1;
   const m = { ...p.m };
   if (S.kind === 'top' && base.length) m.length = r8(base.length * k);
   else if (S.kind === 'bottom' && S.skirt) m.length = r8(base.length * k);
@@ -199,7 +202,7 @@ export function drawingOf(p, view = 'front', size = p.size || 'M') {
   const H = kind === 'top' ? v.hemY - v.hpsY : v.hemY - v.topY, W = kind === 'top' ? v.chest : v.waist, wOf = q => (kind === 'top' ? q.chest : q.waist);
   let sx, sy, oy;
   if (kind === 'top' || kind === 'bottom') {
-    const L = lenOf(m) + crop, starts = [measurementsFor(d0, size), measurementsFor(fitToTemplate(d0), size)].filter(q => lenOf(q) > 0);
+    const L = lenOf(m) + crop, starts = [measurementsFor(d0, size), measurementsFor(fitToTemplate(d0, true), size)].filter(q => lenOf(q) > 0);
     const ref = starts.sort((a, b) => Math.abs(Math.log(lenOf(a) / L)) - Math.abs(Math.log(lenOf(b) / L)))[0];
     sx = W / wOf(m); oy = kind === 'top' ? v.hpsY : v.topY;
     sy = ref && L > 0 ? clamp(H / lenOf(ref), W / wOf(ref)) * lenOf(ref) / L : clamp(H / L, sx);
@@ -220,6 +223,23 @@ export function drawingOf(p, view = 'front', size = p.size || 'M') {
     if (!longSleeve) vb = [bx, by, bw, bh - h];
   }
   return { t, v, sx, sy, ox: v.cf, oy, cut, vb, box: { x0: (bx - v.cf) / sx, y0: (by - oy) / sy, x1: (bx + bw - v.cf) / sx, y1: (by + vb[3] - oy) / sy } };
+}
+// What is drawn on the sketch (colour blocks, stitch lines, cover-ups, redrawn areas, parts, details) is kept in inches, but it belongs to the
+// drawing: when the piece's measurements change how the sketch is laid over inches (a length typed in, the sketch picked again, the fit),
+// each one is moved and sized so it stays on the same part of the drawing. Graphics (placements) keep their inches: those are the spec.
+export function remapEdits(edits, from, to, size = 'M') {
+  if (!Array.isArray(edits) || !edits.length) return edits || [];
+  const maps = {};
+  for (const view of ['front', 'back']) {
+    const a = drawingOf(from, view, size), b = drawingOf(to, view, size);
+    if (!a || !b || a.t.id !== b.t.id || (Math.abs(a.sx - b.sx) < 1e-9 && Math.abs(a.sy - b.sy) < 1e-9 && Math.abs(a.oy - b.oy) < 1e-9)) continue;
+    maps[view] = { f: ([x, y]) => [Math.round((x * a.sx / b.sx) * 1000) / 1000, Math.round(((y * a.sy + a.oy - b.oy) / b.sy) * 1000) / 1000], kx: a.sx / b.sx, ky: a.sy / b.sy };
+  }
+  if (!Object.keys(maps).length) return edits;
+  return edits.map(e => { const m = maps[e.view]; if (!m) return e; const o = { ...e };
+    if (Array.isArray(e.pts)) o.pts = e.pts.map(m.f);
+    if (Number.isFinite(e.x) && Number.isFinite(e.y)) { [o.x, o.y] = m.f([e.x, e.y]); if (Number.isFinite(e.w)) o.w = Math.round(e.w * m.kx * 1000) / 1000; if (Number.isFinite(e.h)) o.h = Math.round(e.h * m.ky * 1000) / 1000; }
+    return o; });
 }
 export function defaultParams(style, fit = 'regular', options = {}) {
   const S = STYLES[style]; if (!S) return null;

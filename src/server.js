@@ -751,7 +751,7 @@ async function claimClientPack(productId,clientId,userId){
   await pool.query(`insert into tech_packs(product_id,client_id,status,data,created_by,initiated_by,source,billing) values($1,$2,'draft',$3,$4,'client','lab','admin') on conflict(product_id) do nothing`,[productId,clientId,normalizeTechPack(seedTechPack({product:p})),userId||null]);
 }
 const labConcepts = registerLabConceptRoutes(app, { pool, ...labDeps, claimClientPack, getSetting, learn: learnLabTaste, log: app.log, art: labArt, createProduct: args => createClientProduct(args), attachArtwork: (productId, items) => attachLabArtwork(productId, items), sendFlats: (id, productId) => labFlats.sendToPack(id, productId), flatsCheck: id => labFlats.startCheck(id) });
-registerLabViewRoutes(app, { pool, ...labDeps, log: app.log });
+registerLabViewRoutes(app, { pool, ...labDeps, log: app.log, flatPictures: id => labFlats.flatPictures(id) }); // labFlats is set up below; asked only on a request
 registerLabShoeDrawRoutes(app, { pool, ...labDeps, log: app.log });
 registerLabStudioRoutes(app, { pool, ...labDeps });
 // their starting techniques and materials are put in once the tables are migrated (seeding while the migration alters them deadlocked)

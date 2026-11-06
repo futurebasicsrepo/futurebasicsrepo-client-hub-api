@@ -785,5 +785,11 @@ export function registerLabFlatsRoutes(app, d) {
 
   // the check of a concept's flats as they would start (for approving a concept whose flats were never saved)
   const startCheck = async id => { const c = await concept(id); const init = c && await initial(c); return init ? check(init, init.placements) : null; };
-  return { startCheck, productionFiles: async id => { const c = await concept(id); return c ? productionFiles(c) : { files: [], notes: [] }; }, sheetSvg: async id => { const c = await concept(id); const sh = c && await sheet(c); return sh?.svg || null; }, files: async id => { const c = await concept(id); return c ? files(c) : []; }, sendToPack: async (id, productId) => { const c = await concept(id); return c ? sendToPack(c, productId) : null; } };
+  // the saved flats as pictures (front and back, with their colours, blocks and graphics, no measurements): what the turns are drawn from
+  async function flatPictures(c) {
+    const s = await sheet(c); if (!s) return null; const out = {};
+    for (const v of ['front', 'back']) { if (!s.views.includes(v)) continue; out[v] = await sharp(Buffer.from(renderSvg(s.p, v, { maskHref, placements: s.pl, hrefs: s.hrefs, scale: 60, templateSvg, partHref, editHrefs: s.editHrefs, alloverHref: s.alloverHref, tags: s.tags, showDims: false, plain: true })), { density: 150 }).resize({ width: 1024, height: 1024, fit: 'contain', background: '#ffffff' }).flatten({ background: '#ffffff' }).png().toBuffer(); }
+    return out.front ? out : null;
+  }
+  return { flatPictures: async id => { const c = await concept(id); return c ? flatPictures(c) : null; }, startCheck, productionFiles: async id => { const c = await concept(id); return c ? productionFiles(c) : { files: [], notes: [] }; }, sheetSvg: async id => { const c = await concept(id); const sh = c && await sheet(c); return sh?.svg || null; }, files: async id => { const c = await concept(id); return c ? files(c) : []; }, sendToPack: async (id, productId) => { const c = await concept(id); return c ? sendToPack(c, productId) : null; } };
 }
