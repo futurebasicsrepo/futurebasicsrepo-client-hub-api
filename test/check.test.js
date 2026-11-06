@@ -54,6 +54,9 @@ test('which image model is used follows the environment', () => {
   assert.equal(imageConfig({ OPENAI_API_KEY: 'k', IMAGE_MODEL: 'gpt-image-2', IMAGE_QUALITY: 'high' }).model, 'gpt-image-2');
   assert.equal(imageConfig({ OPENAI_API_KEY: 'k', CHECK_RENDER_DISABLED: 'true' }).provider, 'off');
   assert.equal(imageConfig({ OPENAI_API_KEY: 'k', IMAGE_PROVIDER: 'other' }).configured, false);
+  const K = 'AIza' + 'k'.repeat(35);
+  assert.equal(imageConfig({ OPENAI_API_KEY: 'k', google_ai_studio: K, IMAGE_PROVIDER: 'other' }).configured, false, 'an unknown provider name switches both off');
+  assert.equal(imageConfig({ OPENAI_API_KEY: 'k', google_ai_studio: K, IMAGE_PROVIDER: 'google' }).provider, 'google', 'google: Google only');
 });
 
 test('a verdict is cleaned: score clamped, unknown fields dropped, label derived', () => {

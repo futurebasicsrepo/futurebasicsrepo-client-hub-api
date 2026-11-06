@@ -1,6 +1,7 @@
 // The assortment board's pictures. A concept has one drawn picture; this makes the rest from it: the piece laid flat (front and back), the piece on a model
 // (front, three-quarter, side, back, which the board can spin through) and, with a video model connected, a short walk. Every view is drawn from the concept's own
 // picture as the reference, so the shape, colours, logo and graphics stay the ones the team approved. Nothing here names or copies another brand.
+import { googleVideoConfig, veoVideo } from './google-ai.js';
 import sharp from 'sharp';
 import { imageConfig, openaiEdit } from './check.js';
 import { categoryLabel } from './lab.js';
@@ -100,7 +101,7 @@ export async function makeViews({ concept, picture, kinds, have = {}, cfg = imag
       else {
         const refs = kind.startsWith('flat') || kind === 'sheet' ? [picture] : kind === 'model_front' ? [picture, done.flat_front || picture].filter(Boolean) : [done.model_front, done.flat_front || picture].filter(Boolean);
         if (kind.startsWith('model') && kind !== 'model_front' && !done.model_front) throw new Error('The front view on the model has to be drawn first');
-        buf = await edit({ images: refs, prompt: viewPrompt(concept, kind), cfg: { ...cfg, size: kind === 'sheet' ? '1536x1024' : kind.startsWith('model') && cfg.provider === 'openai' ? (process.env.LAB_MODEL_SIZE || '1024x1536') : '1024x1024' } });
+        buf = await edit({ images: refs, prompt: viewPrompt(concept, kind), cfg: { ...cfg, size: kind === 'sheet' ? '1536x1024' : kind.startsWith('model') && (cfg.provider === 'openai' || cfg.provider === 'google') ? (process.env.LAB_MODEL_SIZE || '1024x1536') : '1024x1024' } });
       }
       const r = await tidy(buf); done[kind] = r.image; await onView(kind, { ...r, model: cfg.model || cfg.provider }, ''); return r;
     } catch (e) { await onView(kind, null, `Could not be drawn: ${clip(e.message, 160)}`); return null; }
@@ -117,9 +118,11 @@ export async function makeViews({ concept, picture, kinds, have = {}, cfg = imag
 // and OPENAI_API_KEY; LAB_VIDEO_MODEL, LAB_VIDEO_SECONDS and LAB_VIDEO_SIZE tune it). Without one the board says so, and the spin of still views is what you get.
 export function videoConfig(env = process.env) {
   if (env.LAB_VIDEO_PROVIDER === 'off') return { provider: 'off', configured: false, note: 'switched off (LAB_VIDEO_PROVIDER)' };
+  // Google's Veo, with a Google AI key: chosen by LAB_VIDEO_PROVIDER=google, and used in place of OpenAI's, which was shut down (Sora, 24 September 2026)
+  if (!env.LAB_VIDEO_FIXTURE && ['google', 'openai', undefined, ''].includes(env.LAB_VIDEO_PROVIDER)) { const g = googleVideoConfig(env); if (g.configured && (env.LAB_VIDEO_PROVIDER !== 'openai' || !env.OPENAI_VIDEO_ORIGIN)) return g; }
   if (env.LAB_VIDEO_PROVIDER === 'openai' && env.OPENAI_API_KEY) return { provider: 'openai', configured: true, model: env.LAB_VIDEO_MODEL || 'sora-2', seconds: String(env.LAB_VIDEO_SECONDS || '8'), size: env.LAB_VIDEO_SIZE || '720x1280', origin: env.OPENAI_VIDEO_ORIGIN || 'https://api.openai.com' };
   if (env.LAB_VIDEO_FIXTURE || env.AI_FIXTURE) return { provider: 'fixture', configured: true, model: 'fixture', note: 'test placeholder, not a real video model' };
-  return { provider: 'none', configured: false, note: 'no video model is connected (set LAB_VIDEO_PROVIDER=openai with an OpenAI key)' };
+  return { provider: 'none', configured: false, note: 'no video model is connected (add a Google AI key: GEMINI_API_KEY)' };
 }
 export const walkPrompt = (concept, { reference = true } = {}) => [`A short fashion film, framed from the shoulders down so the face is never in the picture. ${reference ? 'The man in the reference photograph' : 'A man'}, wearing the ${categoryLabel(concept.category).toLowerCase()} piece "${clip(concept.name, 90)}", walks steadily toward the camera across a plain mid-grey seamless studio floor, then turns on the spot to show the back and the side, and turns to the front again.`,
   `Steady locked-off camera, soft studio light, natural cloth movement so the fabric and fit read clearly.${reference ? ' Keep his outfit, colours and every logo and graphic exactly as in the reference.' : ''} No text, no subtitles, no added logos, no music.`].join(' ');
@@ -130,6 +133,13 @@ const describe = c => { const sp = c.spec || {}; return clip([`He wears ${clip(c
 export async function makeWalk({ concept, frame, cfg = videoConfig(), fetchImpl = fetch, sleep = ms => new Promise(r => setTimeout(r, ms)), env = process.env }) {
   if (!cfg.configured) throw new Error(cfg.note || 'No video model is connected');
   if (cfg.provider === 'fixture') return { video: Buffer.from('FIXTURE-WALK-VIDEO'), mime: 'video/mp4', model: 'fixture' };
+  if (cfg.provider === 'google') {
+    // Veo takes the first frame as it is: the piece from the shoulders down (no face), at the clip's shape; refused, it makes the walk from words
+    const meta = await sharp(frame).metadata(), cut = Math.round((meta.height || 0) * 0.2), portrait = cfg.aspect === '9:16';
+    const body = await sharp(frame).extract({ left: 0, top: cut, width: meta.width, height: Math.max(1, meta.height - cut) }).toBuffer();
+    const ref = await sharp(body).resize(portrait ? 720 : 1280, portrait ? 1280 : 720, { fit: 'contain', background: '#c9ccd2' }).jpeg({ quality: 90 }).toBuffer();
+    return veoVideo({ prompt: `${walkPrompt(concept)} ${describe(concept)}`, image: ref, cfg, env, fetchImpl, sleep });
+  }
   // the video model refuses pictures with a person's face in them, so the reference is cropped from the shoulders down; if it is still refused, the walk is made from words alone
   const [w, h] = String(cfg.size).split('x').map(Number), meta = await sharp(frame).metadata(), cut = Math.round((meta.height || 0) * 0.2);
   const body = await sharp(frame).extract({ left: 0, top: cut, width: meta.width, height: Math.max(1, meta.height - cut) }).toBuffer();
