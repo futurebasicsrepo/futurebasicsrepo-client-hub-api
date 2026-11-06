@@ -183,3 +183,16 @@ test('a draft saved before its payment plan was worked out is never sent as paym
   assert.ok(!chosen.plan.unset); assert.equal(chosen.plan.installments.length, 8); assert.ok(chosen.plan.installments.every(p => p.amountCents === 100_000));
   assert.ok(!sendProblems(chosen).some(p => /payment plan/.test(p)));
 });
+
+test('a product priced per unit: the total is the lines, the price clause says so, and the lines show on the contract and its PDF', async () => {
+  const c = withPlan({ ...base(), kind: 'product', product: { categories: ['headwear'] }, sections: defaultSections('product'), fee: { charge: 'unit', totalCents: 750000, currency: 'USD', units: [{ item: 'Retro World hat, embroidered', qty: 400, unitCents: 1850 }, { item: 'Hang tags', qty: 400, unitCents: 25 }, { item: '', qty: 3, unitCents: 100 }] } }, { type: 'full' });
+  const { value, error } = cleanContent(c); assert.ok(value, error);
+  assert.equal(value.fee.totalCents, 400 * 1850 + 400 * 25, 'the total is the lines, not what was sent');
+  assert.equal(value.fee.units.length, 2, 'a line with no item is dropped');
+  const doc = renderContract({ ...value, number: 'FB-C-2026-009' }), fee = doc.sections.find(s => s.kind === 'fee');
+  assert.equal(fee.title, 'Price'); assert.match(fee.body, /set per unit/); assert.equal(fee.units[0].amountText, '$7,400.00'); assert.equal(fee.totalText, '$7,500.00');
+  const pdf = await contractPdf(doc, { status: 'draft' }); assert.equal(pdf.subarray(0, 5).toString(), '%PDF-');
+  // per unit with no lines is refused; a website cannot be priced per unit
+  assert.match(cleanContent({ ...c, fee: { charge: 'unit', units: [] } }).error, /at least one item/);
+  const web = cleanContent(withPlan({ ...base(), fee: { charge: 'unit', totalCents: 500000, currency: 'USD', units: [{ item: 'Page', qty: 5, unitCents: 1 }] } }, { type: 'full' })).value; assert.equal(web.fee.totalCents, 500000); assert.equal(web.fee.units, undefined);
+});

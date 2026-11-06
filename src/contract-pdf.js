@@ -37,7 +37,8 @@ export function contractPdf(rendered, state = {}) {
     } else if (s.kind === 'timeline') {
       doc.moveDown(.2); table(b, [{ h: 'Milestone', w: 2 }, { h: 'Date', w: 2 }], s.rows, { y: doc.y, pad: 6 }); doc.moveDown(.5); doc.x = L;
     } else if (s.kind === 'fee') {
-      need(60); const yy = doc.y + 2; doc.roundedRect(L, yy, CW, 46, 10).fill(INK); doc.fillColor('#fff').font('MONO').fontSize(8).text('FIXED FEE', L + 16, yy + 10, { characterSpacing: 1, lineBreak: false }); doc.fillColor('#fff').font('SG-B').fontSize(20).text(safe(s.totalText), L + 16, yy + 21, { lineBreak: false }); doc.y = yy + 56; doc.x = L;
+      if (s.units?.length) { doc.moveDown(.2); table(b, [{ h: 'Item', w: 3.4 }, { h: 'Qty', w: .9, align: 'right', mono: true }, { h: 'Unit price', w: 1.3, align: 'right', mono: true }, { h: 'Amount', w: 1.4, align: 'right', mono: true }], s.units.map(u => [u.item, String(u.qty), u.unitText, u.amountText]), { y: doc.y, pad: 6 }); doc.moveDown(.5); doc.x = L; }
+      need(60); const yy = doc.y + 2; doc.roundedRect(L, yy, CW, 46, 10).fill(INK); doc.fillColor('#fff').font('MONO').fontSize(8).text(s.units?.length ? 'TOTAL' : 'FIXED FEE', L + 16, yy + 10, { characterSpacing: 1, lineBreak: false }); doc.fillColor('#fff').font('SG-B').fontSize(20).text(safe(s.totalText), L + 16, yy + 21, { lineBreak: false }); doc.y = yy + 56; doc.x = L;
     } else if (s.kind === 'schedule') {
       doc.fillColor(INK).font('SG-M').fontSize(10); const sum = safe(s.summary); need(30); doc.text(sum, L, doc.y, { width: CW, lineGap: 2 }); doc.moveDown(.5);
       table(b, [{ h: 'Payment', w: 3 }, { h: 'Due', w: 2.4 }, { h: 'Amount', w: 1.6, align: 'right', mono: true }], s.rows.map(r => [r.label, r.when, r.amountText]), { y: doc.y, pad: 6 }); doc.moveDown(.7); doc.x = L; para(s.body);
