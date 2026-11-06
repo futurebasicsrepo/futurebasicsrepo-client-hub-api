@@ -195,7 +195,7 @@ function drawEditor(){
    ${isProd(c.kind)?'':`<fieldset><legend>Hosting and maintenance (optional)</legend><label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="hostOn" ${c.hosting?.included?'checked':''}> Include monthly hosting and maintenance after launch</label><div class="g2" id="hostBox" ${c.hosting?.included?'':'hidden'}><label class="f"><span>Monthly price (USD)</span><input class="t" id="hostPrice" value="${c.hosting?.monthlyCents?(c.hosting.monthlyCents/100).toFixed(2):''}"></label>${fld('Note (optional)','hosting.note')}</div></fieldset>`}
    <fieldset><legend>Terms</legend><div class="g3">${fld('Governing law (state)','terms.governingLaw',{ph:'Pennsylvania'})}${fld('Warranty days','terms.warrantyDays',{type:'number'})}${fld('Link works for (days)','terms.expiresDays',{type:'number'})}</div></fieldset>
    <details class="cl"><summary>Edit the wording of each clause</summary><p class="sub">Words in {{double braces}} are filled from the contract. The scope, timeline, fee and schedule clauses draw themselves from the fields above.</p>${c.sections.map((s,i)=>`<details class="cl"><summary>${esc(s.title)}${s.kind!=='text'&&s.kind!=='circumvention'?' <span class="chip dim">drawn from the fields</span>':''}</summary><label class="f"><span>Title</span><input class="t" data-sec="${i}" data-f="title" value="${esc(s.title)}"></label><textarea class="t" data-sec="${i}" data-f="body" ${s.kind!=='text'&&s.kind!=='hosting'&&s.kind!=='circumvention'?'placeholder="Optional introduction above the details"':''}>${esc(s.body)}</textarea></details>`).join('')}</details>
-   <div class="acts"><button class="btn" id="eSave">Save draft</button><button class="btn" id="ePrev">Preview</button><button class="btn go" id="eSend">Send for signature…</button><span class="msg" id="eMsg" role="status"></span></div><div id="ePrevBox"></div>`;
+   <div class="acts"><button class="btn" id="eSave">Save draft</button><button class="btn" id="ePrev">Preview</button><button class="btn" id="ePdf" title="Make the PDF the client downloads, from what is on this form now (nothing is saved)">Preview PDF</button><button class="btn go" id="eSend">Send for signature…</button><span class="msg" id="eMsg" role="status"></span></div><div id="ePrevBox"></div>`;
   c.scopeText=(c.scope||[]).join('\n');c.notText=(c.notIncluded||[]).join('\n');B.querySelector('[data-k=scopeText]').value=c.scopeText;B.querySelector('[data-k=notText]').value=c.notText;B.querySelector('[data-k=kind]').value=c.kind;
   drawParams();wire();replan();
 }
@@ -250,7 +250,7 @@ function wire(){const B=$('#eBody');
   };
   B.onclick=e=>{const rm=e.target.closest('[data-rm]');if(rm){E.pu.milestones.splice(+rm.dataset.rm,1);drawParams();return replan()}if(e.target.id==='addMs'){E.pu.milestones.push({label:'',pct:0,dueOn:'',event:'delivery'});drawParams();replan()}};
   if(needsSetup())fillSetup();
-  $('#eSave').onclick=()=>save().catch(x=>emsg(x.message,'bad'));$('#ePrev').onclick=()=>preview().catch(x=>emsg(x.message,'bad'));$('#eSend').onclick=()=>sendFlow().catch(x=>emsg(x.message,'bad'));
+  $('#eSave').onclick=()=>save().catch(x=>emsg(x.message,'bad'));$('#ePrev').onclick=()=>preview().catch(x=>emsg(x.message,'bad'));$('#ePdf').onclick=()=>previewPdf().catch(x=>emsg(x.message,'bad'));$('#eSend').onclick=()=>sendFlow().catch(x=>emsg(x.message,'bad'));
 }
 const emsg=(t,k='ok')=>{const m=$('#eMsg');if(m){m.className='msg '+k;m.textContent=t}};
 function payload(){const c=JSON.parse(JSON.stringify(E.c));c.scope=String(E.c.scopeText||'').split('\n');c.notIncluded=String(E.c.notText||'').split('\n');delete c.scopeText;delete c.notText;if(!c.plan)delete c.plan;return {content:c,dealId:E.dealId||undefined,projectId:E.projectId||undefined}}
@@ -273,6 +273,12 @@ async function fillSetup(){
 function showProblems(list){E.problems=list||[];const p=$('#probs');if(!p)return;p.classList.toggle('hidden',!E.problems.length);p.innerHTML=probsHtml();if(needsSetup())fillSetup()}
 async function save(){await flush();const r=E.id?await api('/v1/contracts/'+E.id,{method:'PUT',body:payload()}):await api('/v1/contracts',{body:payload()});E.id=r.contract.id;E.number=r.contract.number;showProblems(r.problems);if(E.c.plan)emsg('Saved.');else emsg(`Saved, but the payment plan is not set: ${planErr||'choose how the fee is paid'}.`,'bad');loadList();return r}
 const flush=()=>planJob;
+// the real PDF of the form as it stands: opened in a new tab (the tab is opened on the click, so a popup blocker lets it through, then filled)
+async function previewPdf(){const tab=window.open('','_blank');emsg('Making the PDF…');
+  try{await flush();const r=await fetch('/v1/contracts/render.pdf',{method:'POST',headers:{Authorization:'Bearer '+TOKEN(),'Content-Type':'application/json'},body:JSON.stringify({content:payload().content,number:E.number})});
+    if(!r.ok){const j=await r.json().catch(()=>({}));throw new Error(j.error||'The PDF could not be made ('+r.status+')')}
+    const url=URL.createObjectURL(await r.blob());if(tab&&!tab.closed)tab.location.href=url;else{const a=document.createElement('a');a.href=url;a.download=(E.number||'contract')+'-preview.pdf';a.click()}emsg('PDF made: it opened in a new tab. Nothing was saved.');setTimeout(()=>URL.revokeObjectURL(url),120000)}
+  catch(x){if(tab&&!tab.closed)tab.close();throw x}}
 async function preview(){await flush();const r=await api('/v1/contracts/render',{body:{content:payload().content,number:E.number}});showProblems(r.problems);const d=r.rendered;
   $('#ePrevBox').innerHTML=`<div class="preview"><h3>${esc(d.title)}</h3><p class="sub">${esc(d.parties.provider.name)} and ${esc(d.parties.client.company)}</p>${d.sections.map((s,i)=>`<h4>${i+1}. ${esc(s.title)}</h4>${String(s.body||'').split(/\n{2,}/).filter(Boolean).map(p=>`<p>${esc(p)}</p>`).join('')}${s.items?`<ul>${s.items.map(x=>`<li>${esc(x)}</li>`).join('')}</ul>`:''}${s.rows&&s.kind==='schedule'?`<p><b>${esc(s.summary)}</b></p>`:''}`).join('')}${d.missing.length?`<p class="msg bad">Still empty: ${d.missing.map(m=>'{{'+m+'}}').join(', ')}</p>`:''}</div>`;
   $('#ePrevBox').scrollIntoView({behavior:'smooth',block:'nearest'})}

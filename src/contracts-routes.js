@@ -7,6 +7,7 @@
 //   GET  /v1/contracts/draft?deal=|project= a contract filled in from one (nothing is saved)
 //   GET  /v1/contracts/template?kind=        the standard wording for a kind (digital work or a physical product) and the product options
 //   POST /v1/contracts/render               { content } → the finished text and what is still missing (nothing is saved)
+//   POST /v1/contracts/render.pdf           { content, number? } → the PDF of it, marked as a draft (nothing is saved)
 //   GET|PUT /v1/contracts/settings          who signs for Future Basics, the address and the governing law the wording uses
 //   POST /v1/contracts                      { content, dealId?, projectId? } → a draft
 //   GET  /v1/contracts/:id   PUT /v1/contracts/:id (drafts only)   GET /v1/contracts/:id/pdf
@@ -140,6 +141,13 @@ export function registerContractRoutes(app, d) {
   app.post('/v1/contracts/render', { preHandler: pre }, async (req) => {
     const st = await settings(), c = cleanContent(req.body?.content, { settings: st, lenient: true });
     return { content: c.value, rendered: renderContract({ ...c.value, number: clip(req.body?.number, 40) || 'Draft' }, st), problems: [...c.errors, ...sendProblems(c.value, st)] };
+  });
+
+  // the PDF of what is in the editor right now, saved or not: the same document the client downloads, marked as a draft
+  app.post('/v1/contracts/render.pdf', { preHandler: pre }, async (req, reply) => {
+    const st = await settings(), c = cleanContent(req.body?.content, { settings: st, lenient: true }), number = clip(req.body?.number, 40) || 'Draft';
+    const buf = await contractPdf(renderContract({ ...c.value, number }, st), { status: 'draft', hash: '', sentAt: null, clientSignature: null, providerSignature: null, declined: null, events: [] });
+    return reply.type('application/pdf').header('content-disposition', `inline; filename="${number}-preview.pdf"`).header('cache-control', 'no-store').send(buf);
   });
 
   app.get('/v1/contracts', { preHandler: pre }, async (req) => {

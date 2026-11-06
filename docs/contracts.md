@@ -39,6 +39,10 @@ Payments work as for digital work, but a payment that waits for the work is "**o
 
 Production orders are not part of this plan: each run is confirmed by a written order outside the contract's fixed fee (we order from the factory, and the order shows the client's price only), or, when the client orders directly, the client pays the factory.
 
+## Previewing the PDF
+
+**Preview PDF** in the contract editor makes the PDF the client will download, from what is on the form at that moment, saved or not (`POST /v1/contracts/render.pdf`). It opens in a new tab, marked **Draft**, with the payment schedule as it will be sent. Any field still empty shows as its `{{placeholder}}`, so a gap is seen before the contract goes out. Nothing is saved. **Preview** still shows the wording on the page.
+
 ## Handwritten signatures in ink
 
 Whoever signs for Future Basics signs with their own handwritten signature, in blue ink, when they have one. They give it once on **Settings → My signature** (`/signature`), by uploading a photo or scan of it in dark ink on light paper, or by signing on the page with a mouse, a pen or a finger.
