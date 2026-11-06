@@ -1156,6 +1156,18 @@ await journey('J94', 'All files: a client sends files outside a product and sees
   const staffView = (await adm(`/v1/admin/clients/${m.cid}`)).json.projectRoomFiles || [];
   ok(['brief.pdf', 'spec.pdf'].every(n => staffView.some(f => f.original_name === n && f.project_id === projectId)), 'and staff see both in the project\'s files', staffView.map(f => f.original_name));
   ok(!((await call('/v1/dashboard', { token: other.token })).json.projectRoomFiles || []).length, 'another client sees none of it');
+  // Share to: another room (and its project) gets its own copy, hidden from that client until staff switch it on; the same place twice is not copied again
+  const targets = (await adm('/v1/admin/share-targets')).json.rooms || [];
+  ok(targets.some(r => r.id === other.cid && r.projects.some(pr => pr.id === otherProject)), 'Share to lists every room with its projects', targets.length);
+  ok((await call('/v1/admin/share-targets', { token: m.token })).status === 403 && (await call(`/v1/admin/room-files/${encodeURIComponent(b.json.file.id)}/share`, { method: 'POST', token: m.token, body: { targets: [{ clientId: other.cid }] } })).status === 403, 'a client can do neither');
+  const sh = await adm(`/v1/admin/room-files/${encodeURIComponent(b.json.file.id)}/share`, { method: 'POST', body: { targets: [{ clientId: other.cid, projectId: otherProject }] } });
+  ok(sh.status === 200 && sh.json.shared === 1, 'staff share the dieline into another room\'s project', sh.json);
+  const theirs = (await adm(`/v1/admin/clients/${other.cid}/room-files`)).json.files.find(f => f.name === 'spec.pdf');
+  ok(theirs && theirs.projectId === otherProject && theirs.clientVisible === false && !(await mine(other.token)).files.length, '   it is in their project, hidden from that client until switched on', theirs);
+  ok((await adm(`/v1/admin/room-files/${encodeURIComponent(b.json.file.id)}/share`, { method: 'POST', body: { targets: [{ clientId: other.cid, projectId: otherProject }] } })).json.shared === 0, '   sharing it there again makes no second copy');
+  ok((await adm(`/v1/admin/room-files/${encodeURIComponent(b.json.file.id)}/share`, { method: 'POST', body: { targets: [{ clientId: other.cid, projectId: projectId }] } })).json.skipped[0]?.why === 'project not in that room', '   a project that is not that room\'s is refused');
+  ok((await call(theirs.url, { token: admin })).text === 'the dieline', '   the copy is the same file');
+  ok((await adm(`/v1/admin/room-files/${encodeURIComponent(theirs.id)}`, { method: 'DELETE' })).status === 200 && (await call(b.json.file.url, { token: admin })).text === 'the dieline', '   deleting the copy leaves the original');
 
   // a factory assigned a pack in this project
   for (let i = 0; i < 160; i++) { const st = await studio(m); if (st.loop && st.loop.status === 'done') break; await sleep(300); }

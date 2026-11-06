@@ -760,7 +760,22 @@ window.loadRoomDesign=async id=>{const had=roomDesign.has(id);if(had)drawRoomDes
 let roomFilesState=null;
 const rfSize=b=>b>=1048576?(b/1048576).toFixed(1)+' MB':Math.max(1,Math.round((b||0)/1024))+' KB';
 window.loadRoomFilesPanel=async id=>{const box=document.getElementById('roomFilesBox');if(!box)return;
-  try{roomFilesState=await api('/v1/admin/clients/'+id+'/room-files');drawRoomFiles(id)}catch(e){box.innerHTML=`<p class="contact-line">${esc(e.message)}</p>`}};
+  try{[roomFilesState,shareTargets]=await Promise.all([api('/v1/admin/clients/'+id+'/room-files'),shareTargets?Promise.resolve(shareTargets):api('/v1/admin/share-targets').catch(()=>({rooms:[]}))]);drawRoomFiles(id)}catch(e){box.innerHTML=`<p class="contact-line">${esc(e.message)}</p>`}};
+// Share to: every room and its projects (fetched once), so a file can be put in another project here or in another room
+let shareTargets=null;
+function shareOpts(f,id){const rooms=shareTargets?.rooms||[],here=rooms.find(r=>r.id===id),others=rooms.filter(r=>r.id!==id);
+  const opt=(cid,pid,label)=>`<option value="${esc(cid)}|${esc(pid||'')}">${esc(label)}</option>`;
+  return `<option value="">Share to…</option>`+(here&&here.projects.length>1?`<option value="every">Every project in this room</option>`:'')
+    +(here?`<optgroup label="This room">${here.projects.filter(p=>p.id!==f.projectId).map(p=>opt(id,p.id,p.name)).join('')}</optgroup>`:'')
+    +others.map(r=>`<optgroup label="${esc(r.name)}">${opt(r.id,'',r.name+' · All files (no project)')}${r.projects.map(p=>opt(r.id,p.id,p.name)).join('')}</optgroup>`).join('')}
+window.rfShare=async(sel,fid,id)=>{const v=sel.value;sel.value='';if(!v)return;const f=roomFilesState.files.find(x=>x.id===fid);let body;
+  if(v==='every')body={everyProject:true};
+  else{const[cid,pid]=v.split('|'),room=(shareTargets?.rooms||[]).find(r=>r.id===cid),proj=room?.projects.find(p=>p.id===pid);
+    if(cid!==id&&!confirm(`Share ${f?.name||'this file'} with ${room?.name||'that room'}${proj?` (${proj.name})`:''}?\n\nA copy goes into their files, hidden from them until you switch “Client sees it” on there.`))return;
+    body={targets:[{clientId:cid,projectId:pid||null}]}}
+  try{const r=await api('/v1/admin/room-files/'+encodeURIComponent(fid)+'/share',{method:'POST',body:JSON.stringify(body)});
+    toast(r.shared?`Shared to ${r.shared===1?r.done[0].room:r.shared+' projects'}${r.skipped.length?` · ${r.skipped.length} already had it`:''}`:'Already there: nothing new to share');await loadRoomFilesPanel(id)}
+  catch(e){alert(e.message)}};
 function drawRoomFiles(id){const box=document.getElementById('roomFilesBox');if(!box||!roomFilesState)return;const st=roomFilesState;
   const projOpts=(sel)=>`<option value="">No project</option>`+st.projects.map(pr=>`<option value="${esc(pr.id)}" ${pr.id===sel?'selected':''}>${esc(pr.name)}</option>`).join('');
   const rows=st.files.map(f=>{const room=f.source==='room',mine=f.by==='client';
@@ -768,6 +783,7 @@ function drawRoomFiles(id){const box=document.getElementById('roomFilesBox');if(
       <div class="tools">${room?`<select onchange="rfFile('${esc(f.id)}',{projectId:this.value||null,productId:null},'${id}')" aria-label="Project">${projOpts(f.projectId)}</select>`:`<span class="via">${esc(f.projectName)}</span>`}
       ${room?`<button class="${f.clientVisible?'':'quiet'}" ${mine?'disabled title="The client always sees what they sent"':''} onclick="rfFile('${esc(f.id)}',{clientVisible:${!f.clientVisible}},'${id}')">${mine||f.clientVisible?'Client sees it':'Hidden from client'}</button>`:'<span class="via">Client sees it (in the thread)</span>'}
       <button class="${f.factoryVisible?'':'quiet'}" ${f.projectId?'':'disabled title="Choose a project first: a factory only sees files in the project it is assigned to"'} onclick="rfFile('${esc(f.id)}',{factoryVisible:${!f.factoryVisible}},'${id}')">${f.factoryVisible?'Factory sees it':'Not shared with factory'}</button>
+      <select class="rfshare" onchange="rfShare(this,'${esc(f.id)}','${id}')" aria-label="Share ${esc(f.name)} to another project or room">${shareOpts(f,id)}</select>
       <button class="quiet" onclick="downloadRoomFile('${esc(f.url)}','${esc(f.name).replace(/'/g,'')}')">Download</button>${room?`<button class="quiet" onclick="rfDelete('${esc(f.id)}','${id}')">Delete</button>`:''}</div></div>`}).join('');
   box.innerHTML=`<h2>All files</h2><p class="contact-line">Everything ${esc(st.client.name)} sends outside a product, and what you add for them. They see what they sent plus anything you switch on. A factory sees a file only if you switch it on and it sits in a project the factory is assigned a pack in. Product files (tech pack PDFs, artwork, design files, 3D) stay in each product's folder.</p>
     <div class="action" id="rfDrop"><span class="meta">add a file</span><div class="tools"><input type="file" id="rfFileIn" multiple><select id="rfProj" onchange="rfFactoryOk()">${projOpts('')}</select>
