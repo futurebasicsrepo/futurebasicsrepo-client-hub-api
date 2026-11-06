@@ -38,6 +38,10 @@ export const MATERIAL_PHOTOS = [
   ACG('duck', 'Heavy duck canvas', 'Fabric063', 70),
   ACG('twill', 'Cotton twill', 'Fabric077', 55),
   ACG('nylon', 'Nylon shell', 'Fabric059', 90),
+  ACG('leather-grain', 'Pebble-grain leather', 'Leather023', 45),
+  ACG('leather-worn', 'Pull-up leather', 'Leather014', 90),
+  ACG('suede', 'Suede', 'Leather039', 60),
+  ACG('cork', 'Cork', 'Cork002', 60),
   WC('ripstop', 'Ripstop', 'fabric', 'RipStop.jpg', [.2, .2, .6, .6], { by: 'Flyout', licence: 'CC BY-SA 3.0' }),
   WC('zip-metal', 'Metal zip', 'trim', 'Coil plastic and metal zippers.jpg', [.0, .06, .62, .36], { by: 'Woodbine9', licence: 'CC BY-SA 4.0' }),
   WC('aglet', 'Aglets', 'trim', 'Three Different Aglets.jpg', [.0, .05, 1, .9], { by: 'Ian W. Fieggen', licence: 'CC BY-SA 3.0' })
@@ -77,13 +81,20 @@ export function photoFor(m = {}) {
   if (/melton|flannel|boiled wool/.test(c)) return 'melton';
   if (/linen/.test(c)) return 'linen';
   if (/velour|velvet/.test(c)) return 'velour';
+  // leather and vegan leather: smooth, grained, worn, napped, or cork
+  if (/^cork/.test(c)) return 'cork';
+  if (/suede|nubuck|moleskin/.test(c)) return 'suede';
+  if (/shearling/.test(c)) return 'sherpa';
+  if (/pebble|tumbled/.test(`${c} ${f}`)) return 'leather-grain';
+  if (/pull-up|waxed|distress/.test(`${c} ${f}`) && /leather/.test(c)) return 'leather-worn';
+  if (/leather/.test(c)) return /grain embossed|textured/.test(f) ? 'leather-grain' : ''; // smooth leather and patent: the drawn hide shows the sheen better than a photo
   if (/scuba|neoprene/.test(c)) return 'neoprene';
   if (/cordura|ballistic|oxford/.test(c) && /nylon|poly/.test(`${c} ${s.composition || ''}`.toLowerCase())) return 'duck';
   if (/taslan|taffeta|nylon|shell|softshell|pongee|2-layer|3-layer/.test(c)) return 'nylon';
   if (/stretch woven|4-way|bi-stretch/.test(c)) return 'stretch-woven';
   if (/duck|canvas/.test(c)) return gsm >= 440 ? 'duck' : gsm && gsm < 280 ? 'canvas-light' : 'canvas';
   if (/twill|gabardine|drill|chino/.test(c)) return 'twill';
-  if (/poplin|oxford|broadcloth/.test(c)) return /oxford/.test(c) ? 'canvas-light' : 'poplin';
+  if (/poplin|oxford|broadcloth|end-on-end|seersucker|voile|lawn|gauze|dobby|batiste/.test(c)) return /oxford/.test(c) && !/pinpoint/.test(c) ? 'canvas-light' : 'poplin';
   if (/polyester/.test(c)) return 'poly-woven';
   return '';
 }

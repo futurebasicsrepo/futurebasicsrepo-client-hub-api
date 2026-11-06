@@ -114,8 +114,9 @@ textarea.t{min-height:64px;resize:vertical}
 <script>try{if(!localStorage.getItem('fb.admin.token')&&localStorage.getItem('fb.client.token'))document.documentElement.dataset.labClient='1'}catch{}</script>
 <script src="/lab/nav.js"></script>
 <script type="module">
-import { STYLES, FITS, SIZES, DETAILS, STITCHES, defaultDetail, describeEdit, geometry, renderSvg, viewBoxOf, templatesFor, templateOf, defaultTemplate, describe, placementChecks, overlapChecks, pomTable, defaultParams, defaultPlacement, measurementsFor, POM_NAMES, pomName, fitToTemplate, FLAT_PARTS, PART_KINDS, partOf, defaultPart, fmt, fmtCm, MASK_URL, drawingOf, TEMPLATE_URL } from '/lab/flats.js';
+import { tagMarks, STYLES, FITS, SIZES, DETAILS, STITCHES, defaultDetail, describeEdit, geometry, renderSvg, viewBoxOf, templatesFor, templateOf, defaultTemplate, describe, placementChecks, overlapChecks, pomTable, defaultParams, defaultPlacement, measurementsFor, POM_NAMES, pomName, fitToTemplate, FLAT_PARTS, PART_KINDS, partOf, defaultPart, fmt, fmtCm, MASK_URL, drawingOf, TEMPLATE_URL } from '/lab/flats.js';
 import { panelAt, panelName } from '/lab/lab-flat-panels.js';
+import { tagFaceSvg } from '/lab/lab-tags.js';
 import { FLAT_TEMPLATES } from '/lab/lab-flat-templates.js';
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)],esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const TOKEN=()=>{try{return localStorage.getItem('fb.admin.token')||localStorage.getItem('fb.client.token')||''}catch{return ''}}; // staff sign in at the work console; a client with the Design Lab on their room signs in at their hub
@@ -145,7 +146,7 @@ setInterval(()=>{const el=$('#saved');if(!DIRTY&&SAVED_F&&!SAVING_F&&/^Saved /.t
 // the quick checks (the drawing) run here at once; the artwork checks come back from the service a moment later
 function localFindings(){const out={},over=overlapChecks(PL);for(const q of PL){const t=D.techniques.find(x=>x.id===q.techniqueId);const loc=placementChecks(q,P,t?{...t.rules,techniqueName:t.name}:{});const art=(CHECK.findings[q.id]||[]).filter(f=>['FINE_DETAIL','INKS','GRADIENT','STITCHES','TINY'].includes(f.code));out[q.id]=[...loc,...(over[q.id]||[]),...art]}return out}
 function draw(){
-  const F=localFindings(),sz=$('#size').value||P.size,pls=PL.map(q=>{if(!q.grade)return q;const g=q.grade.find(x=>x.sizes.includes(sz));return g?{...q,w:g.w,h:g.h,y:q.y-q.h/2+g.h/2}:q}),svg=renderSvg(P,VIEW,{maskHref:MASK_URL,placements:pls,hrefs:HREF,size:sz,showPom:$('#showPom').checked,showDims:$('#showDims').checked,selected:SEL,findings:F,scale:0,editable:true,selectedEdit:SELE,editHrefs:EHREF,overlay:overlay(),alloverHref:AOHREF,texture:clothTex()});
+  const F=localFindings(),sz=$('#size').value||P.size,pls=PL.map(q=>{if(!q.grade)return q;const g=q.grade.find(x=>x.sizes.includes(sz));return g?{...q,w:g.w,h:g.h,y:q.y-q.h/2+g.h/2}:q}),svg=renderSvg(P,VIEW,{maskHref:MASK_URL,placements:pls,hrefs:HREF,size:sz,showPom:$('#showPom').checked,showDims:$('#showDims').checked,selected:SEL,findings:F,scale:0,editable:true,selectedEdit:SELE,editHrefs:EHREF,overlay:overlay(),alloverHref:AOHREF,texture:clothTex(),tags:tagsOn()});
   $('#canvas').innerHTML=svg;zoomSvg();const fail=Object.values(F).flat().filter(f=>f.level==='fail').length,warn=Object.values(F).flat().filter(f=>f.level==='warn').length,s=$('#status');
   s.className='status '+(fail?'bad':warn?'warn':'ok');s.innerHTML=fail?`<span class="dot fail"></span>${fail} problem${fail===1?'':'s'} to fix before it can be made`:warn?`<span class="dot warn"></span>Can be made: ${warn} thing${warn===1?'':'s'} to check`:'<span class="dot ok"></span>Can be made as drawn';
   return F}
@@ -200,7 +201,15 @@ const newId=k=>k+Math.random().toString(36).slice(2,8);
 // ---------- the cloth: the garment's main fabric, chosen here, shown on the flat as its surface over the colour ----------
 const TEX_IN=9; // inches of drawing a tile of the cloth covers: larger than life, so the weave reads at the size of the flat
 function clothTex(){const m=CLOTH.main&&CLOTH.lib?.find(x=>x.id===CLOTH.main.id);return m?.photo?{href:`/lab/material-photos/${encodeURIComponent(m.photo)}.jpg?shade=1&s=320`,w:TEX_IN,h:TEX_IN}:null}
-async function loadCloth(){if(!CID)return;try{const[lib,on]=await Promise.all([CLOTH.lib?Promise.resolve({materials:CLOTH.lib}):api('/v1/lab/materials?kind=fabric'),api(`/v1/lab/concepts/${CID}/materials`)]);CLOTH.lib=lib.materials||[];CLOTH.main=(on.picks||[]).find(p=>p.kind==='fabric'&&p.role==='main'&&!p.part)||null;CLOTH.fit=on.fit||null}catch{CLOTH.lib=CLOTH.lib||[]}}
+async function loadCloth(){if(!CID)return;try{const[lib,on]=await Promise.all([CLOTH.lib?Promise.resolve({materials:CLOTH.lib}):api('/v1/lab/materials?kind=fabric'),api(`/v1/lab/concepts/${CID}/materials`)]);CLOTH.lib=lib.materials||[];CLOTH.main=(on.picks||[]).find(p=>p.kind==='fabric'&&p.role==='main'&&!p.part)||null;CLOTH.fit=on.fit||null;await loadTags(on.picks||[])}catch{CLOTH.lib=CLOTH.lib||[]}}
+// the labels chosen on the concept, drawn on the flats where they are sewn (tagMarks): the label's face at its size, or the face designed for it in the studio
+const TAGFACE={};
+async function loadTags(picks){const list=picks.filter(p=>p.kind==='tag'&&p.spec);
+  CLOTH.tags=await Promise.all(list.map(async p=>{const fill=p.colour?.hex||'',sp=p.spec||{};let href='';
+    if(sp.face){href=TAGFACE[sp.face]||'';if(!href)try{const r=await fetch('/v1/lab/art/'+sp.face,{headers:{Authorization:'Bearer '+TOKEN()}});if(r.ok)href=TAGFACE[sp.face]=URL.createObjectURL(await r.blob())}catch{}}
+    if(!href)href='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(tagFaceSvg(sp,{pxPerMm:6,fill}));
+    return {id:p.id,name:p.name,spec:sp,fill,href}}))}
+const tagsOn=()=>P&&CLOTH.tags?.length?tagMarks(P,CLOTH.tags):[];
 function clothSec(){const lib=CLOTH.lib,locked=Boolean(D?.concept?.locked),hex=(P.color||'').replace('#',''),m=CLOTH.main;
   if(!lib)return `<div class="sec"><h4>Cloth</h4><p class="msg">Loading the fabrics…</p></div>`;
   const ph=x=>x.photo?`background-image:url('/lab/material-photos/${encodeURIComponent(x.photo)}.jpg?c=${encodeURIComponent(hex||'e9e9e6')}&s=160')`:`background:${P.color||'#eee'}`;
@@ -592,7 +601,7 @@ if(EMBED)window.FBFlats={clothChanged:()=>loadCloth().then(()=>{draw();if(TAB===
   tool:t=>{MTOOL=t||'select';if(t==='area'){if(P&&MODE!=='ai'){MODE='ai';AIBOX=null;if(TAB!=='design')tab('design');paint()}}else if(MODE==='ai'&&!AIBOX){MODE=null;if(P)paint()}mkPlace()},
   undo:()=>mkStep(MUNDO,MREDO),redo:()=>mkStep(MREDO,MUNDO),canUndo:()=>Boolean(MUNDO[VIEW]?.length),canRedo:()=>Boolean(MREDO[VIEW]?.length),
   // a flat drawn for the Studio's board: the drawing alone, in a colourway's colour or at a size (the artwork as graded for it)
-  frame:(view,{color,size}={})=>{if(!P)return '';const sz=size||P.size,pls=PL.map(q=>{if(!q.grade)return q;const g=q.grade.find(x=>x.sizes.includes(sz));return g?{...q,w:g.w,h:g.h,y:q.y-q.h/2+g.h/2}:q});return renderSvg(color?{...P,color}:P,view,{maskHref:MASK_URL,placements:pls,hrefs:HREF,size:sz,showPom:false,showDims:false,scale:0,editHrefs:EHREF,alloverHref:AOHREF,plain:true,withArt:true,texture:clothTex()})},
+  frame:(view,{color,size}={})=>{if(!P)return '';const sz=size||P.size,pls=PL.map(q=>{if(!q.grade)return q;const g=q.grade.find(x=>x.sizes.includes(sz));return g?{...q,w:g.w,h:g.h,y:q.y-q.h/2+g.h/2}:q});return renderSvg(color?{...P,color}:P,view,{maskHref:MASK_URL,placements:pls,hrefs:HREF,size:sz,showPom:false,showDims:false,scale:0,editHrefs:EHREF,alloverHref:AOHREF,plain:true,withArt:true,texture:clothTex(),tags:tagsOn()})},
   sizes:()=>[...document.querySelectorAll('#size option')].map(o=>o.value).filter(Boolean),graded:()=>Boolean(P&&PL.some(q=>q.grade)),size:()=>P?.size||'',colourways:()=>D?.colourways||[],
   level:m=>{document.documentElement.dataset.level=m==='simple'?'simple':'pro';if(m==='simple'&&TAB==='pom')tab('pl');if(m==='simple'&&MODE==='stitch'){MODE=null;DRAFT=[];if(P)paint()}}};
 boot();

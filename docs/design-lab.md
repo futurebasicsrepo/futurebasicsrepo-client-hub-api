@@ -626,7 +626,23 @@ These turn a graphic into something a decorator can quote and make. The rules an
 - **Pictures on every card.** A fabric or trim without a swatch photo is drawn (`src/lab-swatches.js`): a cut swatch in its weave or knit (plain weave, twill, denim with its selvedge, jersey, rib, ripstop, corduroy), its corner turned to show the back (terry loops, brushed fleece), in its first colour; a trim as it looks (zip with metal teeth or coil, buttons, shank buttons, rivets, snaps, eyelets, cords with aglets, elastic, thread cone, buckle…) in its metal finish. A photo, when added, replaces the drawing. Tags are drawn whole inside the tile, string and eyelet included, and their words are sized to fit the tag.
 - **Photos of real cloth.** Over the drawing, a fabric shows a close-up photo of a similar cloth (`src/lab-photos.js`), recoloured to its first colour (or, in Design, the colour chosen on the garment), so one photo serves every colourway: denim (raw, rinsed and washed), sweatshirt fleece, terry loops, polar fleece, sherpa, jersey and melange, waffle, jumper knits, poplin, twill, canvas from light to heavy duck, ripstop, nylon shells, polyester wovens, corduroy, satin, linen, melton, velour and scuba. The photo is picked from the construction, finish and weight; the form's **Photo** lets you choose another, or **No photo** to keep the drawing. Rib and mesh have no photo yet and stay drawn. Trims are drawings except a brass metal zip and brass aglets. Your own swatch photo always comes first.
   - Where the photos come from: close-ups cut from free photo scans, all free for commercial use. Poly Haven and ambientCG are CC0; the ripstop, zip and aglet photos are from Wikimedia Commons under CC BY-SA, and every photo's credit and licence shows under it in the form. `node scripts/build-material-photos.mjs` downloads and cuts them again into `src/material-photos/` (grey, levelled, 640 px); the server recolours them at `/lab/material-photos/<id>.jpg?c=<hex>&s=160|320|640`.
-- **The starting library** has 57 fabrics: denim from 5 oz chambray to 16 oz selvedge (raw, rinsed, stone washed, bleached, overdyed black, ecru, stretch), fleece from 280 gsm polar to 520 gsm heavyweight brushed (cotton, CVC, organic, sherpa), French terry and loopback from 240 to 450 gsm, knits (slub, heather, interlock, piqué, waffle, 1×1 and 2×2 rib, 12-gauge merino and 5-gauge cotton jumper knits), polyesters (wicking interlock, tricot, pongee, softshell, 4-way stretch, mesh), ripstop (30D and 40D nylon, cotton, NYCO, 210D polyester), nylon (taffeta cire, 2-layer taslan, 420D oxford, 1000D Cordura) and canvas from 7 oz to 18 oz duck (washed, garment dyed, brushed, waxed, hemp). Mills and prices are starting points to confirm.
+- **The starting library** has 113 fabrics, among them denim from 5 oz chambray to 16 oz selvedge (raw, rinsed, stone washed, bleached, overdyed black, ecru, stretch), fleece from 280 gsm polar to 520 gsm heavyweight brushed (cotton, CVC, organic, sherpa), French terry and loopback from 240 to 450 gsm, knits (slub, heather, interlock, piqué, waffle, 1×1 and 2×2 rib, 12-gauge merino and 5-gauge cotton jumper knits), polyesters (wicking interlock, tricot, pongee, softshell, 4-way stretch, mesh), ripstop (30D and 40D nylon, cotton, NYCO, 210D polyester), nylon (taffeta cire, 2-layer taslan, 420D oxford, 1000D Cordura) and canvas from 7 oz to 18 oz duck (washed, garment dyed, brushed, waxed, hemp). Mills and prices are starting points to confirm.
+- **More cottons, leathers and vegan leathers.** The library also has:
+  - **Shirting cottons by weave and weight:** 95 gsm 2-ply poplin, 120 poplin, stretch poplin, broadcloth, pinpoint, oxford and royal oxford, end-on-end, seersucker, voile, lawn, double gauze, dobby, twill shirting, brushed cotton flannel and two linens.
+  - **Bottomweights:** drill, gabardine, stretch chino, brushed twill, moleskin, 8-wale corduroy, needlecord, cavalry twill, herringbone and sateen.
+  - **Tee jerseys** at 140, 220 and 300 gsm.
+  - **12 leathers**, sold by the square foot and described by thickness: lambskin nappa, full-grain and top-grain cowhide, goat and split suede, nubuck, pebble grain, waxed pull-up, vegetable-tanned, horsehide, patent and shearling.
+  - **14 vegan leathers:** PU, recycled PU, bio-based PU, microfibre leather and suede, cactus, apple, grape, pineapple-leaf fibre, mycelium, cork, faux patent, faux suede and faux shearling.
+
+  A fabric can carry a thickness (mm) as well as a weight.
+- **Browsing fabrics:**
+  - **By family:** jersey, fleece and terry, knitwear and rib, shirting cottons and linen, twills and chinos, denim, canvas, outerwear and technical, wool, leather and vegan leather. The families are worked out from the construction and composition (`fabricFamily` in `src/lab-materials.js`).
+  - **By weight band:** light, mid or heavy for what the cloth is (`weightBand`). Leather's band comes from its thickness.
+  - **Ounces:** wovens also show oz/yd².
+
+  On the page, family chips and a weight menu sit above the grid, and **All** groups the fabrics by family, light to heavy.
+- **Leather pictures:** leathers show a pebble-grain, pull-up, suede or cork photo (ambientCG, CC0). A smooth or patent leather is drawn as a hide with its sheen instead of a photo.
+- **The fabric check:** it reads a leather as leather. It no longer asks for a gsm, it asks for the thickness, and it warns when a knit garment is cut from a leather.
 - A starting set of 10 fabrics, 11 trims and 16 tags is put in once; all of it is ours to change. Taking one out of the library leaves it on the concepts that use it.
 
 **Footwear, plush and toys, plastics and acrylics** (`src/lab-materials-goods.js`) sit beside fabrics, trims and tags, each with its own
@@ -654,6 +670,22 @@ patent's gloss, a fur's strands, and so is the tech flats SVG. The concept windo
 **Fabrics, trims & labels** has the kinds the product takes, each line saying the part it goes on. The tech pack's BOM names the part.
 
 **In Design** (the picture and both flats), **Fabrics, trims & labels** opens the same bill of materials beside the library: each fabric, trim and tag drawn (or its swatch photo), searchable, with **Add to the garment** (the first fabric is the main one, the next the contrast). Each line on the garment can change what it is used as, its colour, how much a piece takes and where it goes (a label's default: how it is attached), or come off; the materials, making, landed cost and margin follow, and the tech pack takes the lines.
+
+**Labels on the flats.** Every tag chosen on a concept is drawn on its flats in Design and on the tech pack's flats sheet, at its real size, where it is sewn (`tagMarks` in `src/lab-flats.js`):
+- **Seen from that side (drawn with their face):**
+  - a neck label and its size tab, through the neck opening on the front;
+  - a hem tag at the left side of the hem;
+  - a sleeve tag on the left sleeve;
+  - a locker loop on the back;
+  - a back pocket patch on trousers.
+- **Inside (a dashed outline with what it is):**
+  - the neck label from the back;
+  - a care label in the left side seam;
+  - a waistband label;
+  - a cap's sweatband label.
+- **Not drawn:** hang tags and stickers, which are not sewn in.
+
+A label designed in the studio shows its designed face.
 
 **Tags and labels in the studio.** **Design** on a tag's card (or **Design it in the studio** in its form, or **Design it** beside a tag on a garment in Design's Fabrics, trims & labels) opens the tag in the studio (`/lab/studio?tag=<id>`, with `&for=<concept>` from a garment) at its real size: its blank face (shape, fold, weave, colour) is a picture layer and each line of its words is a type layer, and every studio tool works on it (fonts, words, colours, graphics from the library, drawing, the AI). **Use on the tag** (and every save) puts the design on the tag as its face (`spec.face`, a graphic in the library): the library cards, the tag's picture and the sheets draw the face instead of typing the words, and the tech pack names it in the label row and carries a picture of each designed label. Starter tags are shared by every room, so designing one makes a copy, "… (ours)", in your own library. **Add to a garment** puts the label on a garment's bill of materials (straight onto the garment it came from, or one you pick), and a copy takes the starter's place on it. The design is in the graphics library too, so it can be placed on the flat like any graphic.
 

@@ -5,6 +5,7 @@
 //           POST   /v1/admin/clients/:id/sites            { buildId } or { name, url }, opensAt?, accessNote?, projectId? ('new' | id | 'none'), note?, email?, goLive?
 //           PATCH  /v1/admin/clients/:id/sites/:sid       { opensAt?, accessNote?, note?, projectId? }
 //           DELETE /v1/admin/clients/:id/sites/:sid       take it out of the room (the showcase invites made for it are revoked)
+//           GET    /v1/admin/clients/:id/projects/:pid/go-live   the project's checklist, both sides (ticked with PATCH /v1/workspace/assignments/:id)
 //           POST   /v1/admin/clients/:id/projects/:pid/go-live   { template?, assigneeId?, email? }   push the go-live checklist onto the project (src/go-live.js)
 //   client  GET    /v1/sites                              the room's sites
 //           GET    /v1/sites/:sid/cover                   its picture
@@ -171,6 +172,16 @@ export function registerRoomSitesRoutes(app, d) {
     await pool.query('update room_sites set removed_at=now() where id=$1', [s.id]);
     await pool.query(`update build_invites set revoked_at=now() where note=$1 and revoked_at is null`, [`room-site:${s.id}`]);
     return { ok: true };
+  });
+
+  // the project's checklist as staff see it in the work console: both sides, ticked off from there or from the client's hub (the same tasks)
+  app.get('/v1/admin/clients/:id/projects/:pid/go-live', { preHandler: [authenticate, adminOnly] }, async (req, reply) => {
+    if (!UUID.test(String(req.params.id))) return bad(reply, 'Client not found', 404);
+    const p = await projectIn(req.params.id, req.params.pid); if (!p) return bad(reply, 'That project is not in this room', 404);
+    const tasks = (await pool.query(`select a.id, a.title, a.notes, a.status, a.due, a.assignee_fb, a.done_at, coalesce(nullif(u.name,''), split_part(u.email,'@',1)) assignee_name
+      from work_assignments a left join users u on u.id=a.assignee_id where a.project_id=$1 and a.client_id=$2 order by a.assignee_fb desc, a.created_at`, [p.id, req.params.id])).rows
+      .map(t => ({ id: t.id, title: t.title, notes: t.notes, status: t.status, done: t.status === 'done', doneAt: t.done_at, due: t.due ? new Date(t.due).toISOString().slice(0, 10) : '', who: t.assignee_fb ? 'fb' : 'client', assigneeName: t.assignee_fb ? 'Future Basics' : t.assignee_name || 'Their team' }));
+    return { project: { id: p.id, name: p.name }, tasks, team: (await team(req.params.id)).map(x => ({ id: x.id, name: x.name })), templates: TEMPLATE_KEYS.map(k => ({ key: k, label: GO_LIVE[k].label })) };
   });
 
   app.post('/v1/admin/clients/:id/projects/:pid/go-live', { preHandler: [authenticate, adminOnly] }, async (req, reply) => {
