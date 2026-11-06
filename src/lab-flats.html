@@ -70,6 +70,7 @@ textarea.t{min-height:64px;resize:vertical}
 [data-embed] header,[data-embed] .bar,[data-embed] #pickC{display:none!important}
 [data-embed] .wrap{min-height:100vh}[data-embed] .pane{max-height:calc(100vh - 46px)}[data-embed] .canvas>svg{max-height:calc(100vh - 150px)}
 [data-embed=full] .tools .seg{display:none}
+.newgfx{display:grid;gap:6px;border:1px dashed rgba(20,20,22,.22);border-radius:12px;padding:10px 12px;margin:8px 0}
 /* the Design workspace's layout: the panel folds away, Focus trims the words around the drawing so it gets the room */
 [data-embed][data-panel=off] .wrap{grid-template-columns:minmax(0,1fr)}[data-embed][data-panel=off] .side{display:none}
 [data-embed][data-focus] .stage>p.msg,[data-embed][data-focus] .status.ok{display:none}[data-embed][data-focus] .stage{padding-top:8px;padding-bottom:8px;gap:8px}[data-embed][data-focus] .canvas>svg{max-height:calc(100vh - 70px)}
@@ -109,8 +110,8 @@ textarea.t{min-height:64px;resize:vertical}
       <p class="msg">Drag a logo, graphic or detail to move it; its measurements follow. Measured from the high point of the shoulder (HPS) and the centre front (CF), as a sample room measures. On the front, the viewer's right is the wearer's left.</p>
     </div>
     <aside class="side">
-      <div class="tabs" role="tablist"><button type="button" role="tab" data-tab="pl" aria-selected="true">Placements</button><button type="button" role="tab" data-tab="design" aria-selected="false">Design</button><button type="button" role="tab" data-tab="garment" aria-selected="false">Garment</button><button type="button" role="tab" data-tab="pom" aria-selected="false" class="lv-pro">Measurements</button></div>
-      <div class="pane" id="pPl"></div><div class="pane hidden" id="pDesign"></div><div class="pane hidden" id="pGarment"></div><div class="pane hidden" id="pPom"></div>
+      <div class="tabs" role="tablist"><button type="button" role="tab" data-tab="pl" aria-selected="true">Graphics</button><button type="button" role="tab" data-tab="design" aria-selected="false">Design</button><button type="button" role="tab" data-tab="garment" aria-selected="false">Garment</button><button type="button" role="tab" data-tab="sheets" aria-selected="false">Sheets</button><button type="button" role="tab" data-tab="pom" aria-selected="false" class="lv-pro">Measurements</button></div>
+      <div class="pane" id="pPl"></div><div class="pane hidden" id="pDesign"></div><div class="pane hidden" id="pGarment"></div><div class="pane hidden" id="pSheets"></div><div class="pane hidden" id="pPom"></div>
     </aside>
   </div>
 </div>
@@ -320,6 +321,8 @@ function paintPl(F=localFindings()){
     <div class="where">${esc(describe(q,P))} · ${esc(fmt(q.w))} × ${esc(fmt(q.h))}${q.source==='studio'?' · from the studio':''}</div>${q.id===SEL?factoryHtml(q):''}
     ${f.length?`<div class="find">${f.map(x=>`<div class="${x.level}">${esc(x.text)}</div>`).join('')}</div>`:''}</div>`}).join(''):'<p class="msg">Nothing placed yet.</p>'}</div>
   <div class="sec"><h4>Add</h4><div class="row" style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm" type="button" data-addmark="mark">Cue mark</button><button class="btn sm" type="button" data-addmark="word">Wordmark</button><button class="btn sm" type="button" data-addmark="lockup">Lockup</button></div>
+    <div class="newgfx"><b>A new graphic</b><span class="msg" style="margin:0">Draw it, set type, or make it with AI in the graphic studio, or bring your own artwork. It goes into the library and onto this ${VIEW==='back'?'back':'front'}.</span>
+      <div class="row" style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn go sm" type="button" data-newgfx ${D.concept?.locked?'disabled':''}>Open the graphic studio</button><button class="btn sm" type="button" data-upgfx ${D.concept?.locked?'disabled':''}>Upload artwork</button><input type="file" id="upGfx" class="hidden" accept="image/png,image/jpeg,image/webp,image/svg+xml"></div></div>
     <input class="t" type="search" id="libQ" placeholder="A graphic from the library" aria-label="Search the graphics library"><div class="tiles" id="libTiles"></div></div>
   ${alloverHtml()}${decosHtml()}`;
   libTiles();if(!P.allover)repTiles();
@@ -364,6 +367,15 @@ $('#pPl').addEventListener('change',e=>{const card=e.target.closest('[data-q]'),
   if(e.target.dataset.ink&&q){const [cw,a]=e.target.dataset.ink.split('|');q.inks=q.inks||{};q.inks[cw]=q.inks[cw]||{};q.inks[cw][a]=e.target.value;touch();return}
   if(e.target.dataset.ao==='base'&&P.allover){P.allover.base=e.target.value;touch();return}});
 let LIB=null,lt=0;
+async function uploadGraphic(file){
+  if(!file)return;if(file.size>25e6){FBN.toast('That file is over 25 MB: export it smaller.','info');return}
+  const url=URL.createObjectURL(file);try{const img=new Image();img.src=url;await img.decode();
+    const k=Math.min(1,3000/Math.max(img.naturalWidth||1,img.naturalHeight||1)),w=Math.max(1,Math.round((img.naturalWidth||1000)*k)),h=Math.max(1,Math.round((img.naturalHeight||1000)*k)),c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);
+    const name=file.name.replace(/\.[a-z0-9]+$/i,'').replace(/[_-]+/g,' ').trim().slice(0,120)||'Artwork';FBN.toast('Putting it in the library…','info');
+    const r=await api('/v1/lab/library/studio/keep',{body:{image:c.toDataURL('image/png'),name}});LIB=null;await addGraphic(r.id,name);FBN.toast(`${name} is in the library and on the ${VIEW}.`)}
+  catch(x){FBN.toast(x.message||'That file could not be read as a picture.','err')}finally{URL.revokeObjectURL(url)}}
+// a graphic made in the graphic studio or uploaded: placed on the view in hand
+async function addGraphic(id,name){if(!P||!id)return;await addPlacement({name:name||'Graphic',art:id,source:'graphic',techniqueId:null});LIB=null;if(TAB==='pl')libTiles()}
 async function libTiles(){const box=$('#libTiles');if(!box)return;try{if(!LIB){const q=($('#libQ')?.value||'').trim();LIB=(await api('/v1/lab/library/graphics?limit=16'+(q?'&q='+encodeURIComponent(q):''))).graphics}box.innerHTML=LIB.map(g=>`<button type="button" data-lib="${g.id}" title="${esc(g.name)}"><img alt="" data-src="/v1/lab/art/${g.id}?thumb=1">${esc((g.name||'').slice(0,18))}</button>`).join('')||'<span class="msg">Nothing found.</span>';for(const i of box.querySelectorAll('img[data-src]'))blobUrl(i.dataset.src).then(u=>{i.src=u})}catch(x){box.innerHTML=`<span class="msg">${esc(x.message)}</span>`}}
 // a graphic turned to match the picture: degrees clockwise, -180 to 180, to the half degree
 const turnTo=v=>{const n=((Number(v)||0)%360+540)%360-180;return Math.round(n*2)/2||0};
@@ -378,6 +390,8 @@ $('#pPl').addEventListener('click',async e=>{
     if(gone&&HOST()?.flatRemoved)HOST().flatRemoved({id:gone.id,layer:gone.source==='studio'?gone.layer:null});touch();paint();return}
   if(card&&!e.target.closest('input,select,button')){SEL=card.dataset.q;const q=PL.find(x=>x.id===SEL);if(q.view!==VIEW)setView(q.view);paint();return}
   const mk=e.target.closest('[data-addmark]');if(mk){await addPlacement({name:{mark:'Cue mark',word:'Wordmark',lockup:'Wordmark and cue mark'}[mk.dataset.addmark],mark:mk.dataset.addmark,source:'logo'});return}
+  if(e.target.closest('[data-newgfx]')){const h=HOST();if(h?.graphicStudio)h.graphicStudio(VIEW);else window.open('/lab/studio?new=graphic','_blank','noopener');return}
+  if(e.target.closest('[data-upgfx]')){$('#upGfx')?.click();return}
   const lb=e.target.closest('[data-lib]');if(lb){const g=LIB.find(x=>x.id===lb.dataset.lib);await addPlacement({name:g.name||'Graphic',art:g.id,source:'graphic',techniqueId:g.techniqueId||null});return}
 });
 async function addPlacement(base){
@@ -405,6 +419,10 @@ function useTemplate(id){
   touch();paintGarment();paint();FBN.toast(`Drawn from “${t.label}”`)}
 $('#pGarment').addEventListener('click',e=>{const b=e.target.closest('[data-tpl]');if(b)useTemplate(b.dataset.tpl)});
 let gqT=0;$('#pGarment').addEventListener('input',e=>{if(e.target.id==='gQ'){GQ.q=e.target.value;clearTimeout(gqT);gqT=setTimeout(()=>{$('#gGal').innerHTML=galTiles()},150)}});
+// the fabrics, trims and labels (the Design workspace's materials window) and the recipe this piece was picked with
+function matSec(){const h=HOST();if(!h?.materials)return'';const rec=h.recipeUrl?.()||'';
+  return `<div class="sec"><h4>Fabrics, trims &amp; labels</h4><p class="msg" style="margin:0">What the garment is made of, from the materials library: the cloth, the trims and the labels, with what they cost.</p><div class="row" style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm" type="button" data-mats>Open fabrics, trims &amp; labels</button>${rec?`<a class="btn q sm" href="${esc(rec)}" target="_top">Edit recipe</a>`:''}</div></div>`}
+$('#pGarment').addEventListener('click',e=>{if(e.target.closest('[data-mats]'))HOST()?.materials?.()});
 // wash and distressing (src/lab-wash.js): drawn on the flats, written on the tech pack and into the picture from the flats
 function washSec(){const w=P.wash||{type:'none',strength:'medium'},d=P.distress||{on:false,amount:40},groups=[...new Set(WASHES.map(x=>x.group))],k=distressParts(d.amount,d.focus||'all'),kd=STYLES[P.style]?.kind==='bottom'?'bottom':'top',locked=Boolean(D?.concept?.locked);
   return `<div class="sec wash" id="washSec"><h4>Wash &amp; distress</h4>
@@ -422,7 +440,7 @@ $('#pGarment').addEventListener('change',e=>{
 $('#pGarment').addEventListener('input',e=>{if(e.target.id==='dAmt'){P.distress={...(P.distress||{}),on:true,amount:Number(e.target.value)};draw()}});
 function paintGarment(){
   const S=STYLES[P.style],o=P.options,box=(k,l)=>`<label class="chk"><input type="checkbox" data-o="${k}" ${o[k]?'checked':''}> ${l}</label>`;
-  $('#pGarment').innerHTML=`${washSec()}<div class="sec"><h4>The piece</h4><label class="f"><span>Style</span><select class="t" id="gStyle">${Object.entries(D.styles).map(([k,v])=>`<option value="${k}" ${k===P.style?'selected':''}>${esc(v.label)}</option>`).join('')}</select></label>
+  $('#pGarment').innerHTML=`${matSec()}${washSec()}<div class="sec"><h4>The piece</h4><label class="f"><span>Style</span><select class="t" id="gStyle">${Object.entries(D.styles).map(([k,v])=>`<option value="${k}" ${k===P.style?'selected':''}>${esc(v.label)}</option>`).join('')}</select></label>
     <label class="f"><span>Fit</span><select class="t" id="gFit">${Object.entries(FITS).map(([k,v])=>`<option value="${k}" ${k===P.fit?'selected':''}>${v}</option>`).join('')}</select></label><p class="msg">Changing the style or fit sets the measurements to its standard; your placements stay. The drawing is a flat sketch scaled to the chest or waist and the length.</p></div>
   <div class="sec"><h4>Drawing · ${esc(templateOf(P)?.label||'Simple outline')}</h4><div class="gbar"><input class="t" type="search" id="gQ" placeholder="Search ${FLAT_TEMPLATES.length} sketches: cargo, pleated, halter…" aria-label="Search the sketches" value="${esc(GQ.q)}" style="flex:1;min-width:150px"><select class="t" id="gRange" style="width:auto" aria-label="Range"><option value="">Men's and women's</option><option value="mens" ${GQ.range==='mens'?'selected':''}>Men's</option><option value="womens" ${GQ.range==='womens'?'selected':''}>Women's</option></select><label class="chk"><input type="checkbox" id="gAll" ${GQ.all?'checked':''}> Every style</label></div><div class="gal" id="gGal">${galTiles()}</div><p class="msg">Pick any sketch from the pack. A sketch of another style changes the piece to that style; its length starts at the sketch's own proportions (a cropped tee shorter, a maxi dress longer).</p></div>
   <div class="sec"><h4>Details</h4>${S.kind==='top'?box('drop','Dropped shoulder')+box('cropped','Cropped')+(S.hood?box('drawcord','Hood drawcords'):'')+(S.pocket?box('noPocket','No front pocket'):box('chestPocket','Chest pocket')):''}${S.kind==='bottom'?`<label class="f"><span>Pleats</span><select class="t" data-o="pleats"><option value="0" ${!o.pleats?'selected':''}>None</option><option value="1" ${o.pleats==1?'selected':''}>Single</option><option value="2" ${o.pleats==2?'selected':''}>Double</option></select></label>`:''}${['cap','beanie','tote'].includes(S.kind)?'<p class="msg">Nothing to change for this one.</p>':''}</div>
@@ -436,8 +454,15 @@ $('#pGarment').addEventListener('input',e=>{const k=e.target.dataset.m;if(!k)ret
 function paintPom(){const rows=pomTable(P),sz=rows[0].values.map(v=>v.size);$('#pPom').innerHTML=`<div class="sec"><h4>Points of measure, graded</h4><div class="wrapx"><table class="pom"><thead><tr><th>Point</th>${sz.map(s=>`<th class="${s==='M'?'m':''}">${s}</th>`).join('')}<th>±</th></tr></thead><tbody>${rows.map(r=>`<tr><td><b style="color:#7a3fd1">${r.code}</b> ${esc(r.name)}</td>${r.values.map(v=>`<td class="${v.size==='M'?'m':''}">${v.value}</td>`).join('')}<td>${r.tolerance}</td></tr>`).join('')}</tbody></table></div><p class="msg">Inches. Turn on "Points of measure" to see where each is taken. Change the sample size on the Garment tab.</p></div>`}
 
 // ---------- tabs, view, dragging ----------
-function tab(t){TAB=t;if(t!=='design'){MODE=null;DRAFT=[];AIBOX=null}$$('.tabs [data-tab]').forEach(b=>b.setAttribute('aria-selected',String(b.dataset.tab===t)));$('#pPl').classList.toggle('hidden',t!=='pl');$('#pDesign').classList.toggle('hidden',t!=='design');$('#pGarment').classList.toggle('hidden',t!=='garment');$('#pPom').classList.toggle('hidden',t!=='pom');paint()}
+function tab(t){TAB=t;if(t!=='design'){MODE=null;DRAFT=[];AIBOX=null}$$('.tabs [data-tab]').forEach(b=>b.setAttribute('aria-selected',String(b.dataset.tab===t)));$('#pPl').classList.toggle('hidden',t!=='pl');$('#pDesign').classList.toggle('hidden',t!=='design');$('#pGarment').classList.toggle('hidden',t!=='garment');$('#pPom').classList.toggle('hidden',t!=='pom');$('#pSheets').classList.toggle('hidden',t!=='sheets');if(t==='sheets')paintSheets();paint()}
 $$('.tabs [data-tab]').forEach(b=>b.onclick=()=>tab(b.dataset.tab));
+$('#pPl').addEventListener('change',e=>{if(e.target.id==='upGfx'){const f=e.target.files?.[0];e.target.value='';uploadGraphic(f)}});
+// the sheets: the spec sheet, the decorator's sheet and the tech pack, from the panel
+function paintSheets(){const toPack=!$('#toPack').classList.contains('hidden');
+  $('#pSheets').innerHTML=`<div class="sec"><h4>Spec sheet</h4><p class="msg" style="margin:0">The flats, measured, with the placements and the points of measure at size ${esc(P?.size||'M')}: printable, for the sample room.</p><div class="row"><button class="btn sm" type="button" data-sheet="spec">Open the spec sheet</button></div></div>
+  <div class="sec"><h4>Decoration sheet</h4><p class="msg" style="margin:0">One page per graphic for the decorator: size, Pantones, technique, cost and where it goes.</p><div class="row"><button class="btn sm" type="button" data-sheet="deco" ${PL.length?'':'disabled'}>Open the decoration sheet</button></div>${PL.length?'':'<p class="msg" style="margin:0">Place a graphic first.</p>'}</div>
+  ${toPack?`<div class="sec"><h4>Tech pack</h4><p class="msg" style="margin:0">Everything here goes into the tech pack: the flats, the measurements, the graphics and the sheets.</p><div class="row"><button class="btn go sm" type="button" data-sheet="pack">Send to the tech pack</button></div></div>`:''}`}
+$('#pSheets').addEventListener('click',e=>{const b=e.target.closest('[data-sheet]');if(!b)return;({spec:()=>$('#sheet').click(),deco:()=>$('#decoSheet').click(),pack:()=>$('#toPack').click()})[b.dataset.sheet]?.()});
 function setView(v){VIEW=v;DRAFT=[];AIBOX=null;$$('[data-view]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.view===v)));if(TAB==='design')paint();else draw()}
 $$('[data-view]').forEach(b=>b.onclick=()=>setView(b.dataset.view));$('#fzFit').onclick=fzFit;$('#fzIn').onclick=()=>{const r=$('#canvas svg')?.getBoundingClientRect();if(r)fzAt(FZ*1.25,r.left+r.width/2,r.top+r.height/2)};$('#fzOut').onclick=()=>{const r=$('#canvas svg')?.getBoundingClientRect();if(r)fzAt(FZ/1.25,r.left+r.width/2,r.top+r.height/2)};
 ['#showDims','#showPom','#size'].forEach(s=>$(s).addEventListener('change',draw));
@@ -642,7 +667,7 @@ async function redrawFromPicture(b){const n=$('#picNote'),label=b.textContent;b.
     // then the image model draws each view from the picture, on the sketch's frame and in the picture's colours (about a minute)
     b.textContent='Drawing front and back…';const dr=await api(`/v1/lab/concepts/${CID}/flats/draw`,{body:{...flatBody(),views:['front','back']}});for(const v of ['front','back'])if(dr.drawn[v])EHREF[dr.drawn[v]]=await blobUrl('/v1/lab/art/'+dr.drawn[v]);P.drawn=dr.drawn;n?.classList.add('hidden');b.disabled=false;b.textContent=label;touch();paint();$('#cSub').textContent=`${D.styles[P.style].label} · ${FITS[P.fit]} fit · drawn from the picture: check it, then save`}catch(x){b.disabled=false;b.textContent=label;if(P){touch();paint()}alert(x.message)}}
 // what the Design workspace calls: is anything unsaved, save, which side shows, the full panel or the drawing alone, the sheets and the tech pack
-if(EMBED)window.FBFlats={wash:()=>{if(!P)return;tab('garment');setTimeout(()=>{const el=$('#washSec');el?.scrollIntoView({block:'start',behavior:'smooth'});el?.classList.add('flash');setTimeout(()=>el?.classList.remove('flash'),1400);$('#wType')?.focus()},50)},clothChanged:()=>loadCloth().then(()=>{draw();if(TAB==='design')paintDesign()}),dirty:()=>Boolean(D&&P&&DIRTY),ready:()=>Boolean(D&&P),save:()=>(D&&P?save():Promise.resolve(true)),view:()=>VIEW,setView:v=>{if(P&&(v==='front'||v==='back'))setView(v)},
+if(EMBED)window.FBFlats={addGraphic:(id,name)=>addGraphic(id,name),wash:()=>{if(!P)return;tab('garment');setTimeout(()=>{const el=$('#washSec');el?.scrollIntoView({block:'start',behavior:'smooth'});el?.classList.add('flash');setTimeout(()=>el?.classList.remove('flash'),1400);$('#wType')?.focus()},50)},clothChanged:()=>loadCloth().then(()=>{draw();if(TAB==='design')paintDesign()}),dirty:()=>Boolean(D&&P&&DIRTY),ready:()=>Boolean(D&&P),save:()=>(D&&P?save():Promise.resolve(true)),view:()=>VIEW,setView:v=>{if(P&&(v==='front'||v==='back'))setView(v)},
   mode:m=>{document.documentElement.dataset.embed=m==='compact'?'compact':'full';if(P)draw()},sheet:()=>$('#sheet').click(),deco:()=>$('#decoSheet').click(),pack:()=>$('#toPack').click(),
   canPack:()=>!$('#toPack').classList.contains('hidden'),unsupported:()=>D?.unsupported||'',
   // the placements, in inches on the garment: the one record of where each graphic goes and how big it is

@@ -89,3 +89,21 @@ test('the walk video goes to Veo: started, asked after, fetched; a refused first
   assert.equal(calls[0].body.parameters.aspectRatio, '9:16'); assert.equal(calls[0].body.parameters.durationSeconds, 8);
   assert.ok(calls.every(c => c.key === KEY));
 });
+
+test('a Veo model Google no longer offers is replaced by the best one the key has, and the walk is made with it', async () => {
+  const { veoVideo, rankVeo, _resetVeo } = await import('../src/google-ai.js'); _resetVeo();
+  assert.deepEqual(rankVeo(['veo-2.0-generate-001', 'veo-3.1-fast-generate-001', 'veo-3.1-generate-preview', 'veo-3.1-generate-001', 'veo-3.0-generate-001']),
+    ['veo-3.1-generate-001', 'veo-3.1-generate-preview', 'veo-3.1-fast-generate-001', 'veo-3.0-generate-001', 'veo-2.0-generate-001']);
+  const asked = [];
+  const json = (o, status = 200) => ({ ok: status < 400, status, json: async () => o, text: async () => JSON.stringify(o), arrayBuffer: async () => new ArrayBuffer(4) });
+  const fetchImpl = async (url, o = {}) => {
+    asked.push(`${o.method || 'GET'} ${url.replace('https://g.test', '')}`);
+    if (url.includes(':predictLongRunning')) return url.includes('veo-3.1-generate-preview') ? json({ error: { code: 404, message: 'models/veo-3.1-generate-preview is not found for API version v1beta' } }, 404) : json({ name: 'operations/1', done: true, response: { generateVideoResponse: { generatedSamples: [{ video: { uri: 'https://g.test/file.mp4' } }] } } });
+    if (url.includes('/v1beta/models?')) return json({ models: [{ name: 'models/gemini-3-pro', supportedGenerationMethods: ['generateContent'] }, { name: 'models/veo-3.0-generate-001', supportedGenerationMethods: ['predictLongRunning'] }, { name: 'models/veo-3.1-generate-001', supportedGenerationMethods: ['predictLongRunning'] }] });
+    return json({});
+  };
+  const out = await veoVideo({ prompt: 'walk', cfg: { model: 'veo-3.1-generate-preview', origin: 'https://g.test', aspect: '9:16', seconds: '8' }, env: { GEMINI_API_KEY: KEY }, fetchImpl, sleep: async () => {} });
+  assert.equal(out.model, 'veo-3.1-generate-001');
+  assert.ok(asked.some(a => a.includes('/v1beta/models/veo-3.1-generate-001:predictLongRunning')));
+  _resetVeo();
+});
