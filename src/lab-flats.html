@@ -448,7 +448,7 @@ $('#canvas').addEventListener('pointerdown',e=>{if(e.pointerType==='touch'&&MDRA
 // keeps every touch (pointer capture on the canvas, which is never replaced), and the first finger down clears any finger whose lift went missing
 $('#canvas').addEventListener('pointerdown',e=>{if(e.pointerType!=='touch')return;if(e.isPrimary){for(const k of [...FPTR.keys()])if(k!==e.pointerId)FPTR.delete(k);FG=null}capt(e);FPTR.set(e.pointerId,[e.clientX,e.clientY]);if(FPTR.size<2)return;
   e.stopImmediatePropagation();e.preventDefault();
-  if(DRAG){if(DRAG.q&&DRAG.ox!==undefined){DRAG.q.x=DRAG.ox;DRAG.q.y=DRAG.oy}if(DRAG.ed&&DRAG.orig)Object.assign(DRAG.ed,JSON.parse(JSON.stringify(DRAG.orig)));DRAG=null;draw()} // two fingers: a pinch, not a move
+  if(DRAG){if(DRAG.q&&DRAG.ox!==undefined){DRAG.q.x=DRAG.ox;DRAG.q.y=DRAG.oy}if(DRAG.size)Object.assign(DRAG.size,DRAG.orig);if(DRAG.ed&&DRAG.orig)Object.assign(DRAG.ed,JSON.parse(JSON.stringify(DRAG.orig)));DRAG=null;draw()} // two fingers: a pinch, not a move
   BOXDRAG=null;FPAN=null;const[a,b]=[...FPTR.values()],r=$('#canvas svg').getBoundingClientRect();FG={d:Math.hypot(a[0]-b[0],a[1]-b[1])||1,m:[(a[0]+b[0])/2,(a[1]+b[1])/2],z:FZ,c:centreNow(),u:unitsPerPx(),rc:[r.left+r.width/2,r.top+r.height/2]};
   // two fingers on a graphic resize and turn it (about its centre, keeping its shape), as in other drawing apps; anywhere else they zoom the view
   const on=[a,b,FG.m].map(([x,y])=>document.elementFromPoint(x,y)?.closest?.('[data-pl]')).find(Boolean),q=on&&PL.find(x=>x.id===on.dataset.pl);if(q){SEL=q.id;FG.q=q;FG.w0=q.w;FG.h0=q.h;FG.r0=q.rot||0;FG.a0=Math.atan2(b[1]-a[1],b[0]-a[0])}},true);
@@ -476,6 +476,10 @@ $('#canvas').addEventListener('pointerdown',e=>{
   if(reshapeTap(e)){DRAG=null;return}
   const vx=e.target.closest('[data-vx]'),ve=vx&&P.edits.find(x=>x.id===SELE);
   if(ve){DRAG={ed:ve,vx:Number(vx.dataset.vx),orig:JSON.parse(JSON.stringify(ve))};capt(e);return}
+  // a corner of the chosen graphic: resize it about the opposite corner, keeping its shape (it may be turned, so worked in its own frame)
+  const rs=e.target.closest('[data-rs]');
+  if(rs){const q=PL.find(x=>x.id===rs.dataset.rs);if(q){SEL=q.id;const cx=Number(rs.dataset.cx),cy=Number(rs.dataset.cy),t=(q.rot||0)*Math.PI/180,c=Math.cos(t),s=Math.sin(t);
+    const ax=-cx*q.w/2,ay=-cy*q.h/2;DRAG={size:q,cx,cy,w0:q.w,h0:q.h,cos:c,sin:s,anchor:[q.x+ax*c-ay*s,q.y+ax*s+ay*c],orig:{x:q.x,y:q.y,w:q.w,h:q.h}};capt(e);return}}
   const rk=e.target.closest('[data-rot]');
   if(rk){const q=PL.find(x=>x.id===rk.dataset.rot);if(q){SEL=q.id;DRAG={turn:q,o:q.rot||0};capt(e);return}}
   // a label sewn into the piece: drag it where it goes (mouse, pen or finger); it keeps its place on this view
@@ -490,6 +494,9 @@ $('#canvas').addEventListener('pointermove',e=>{
   if(!DRAG)return;const[x,y]=inch(e);
   // the knob above a graphic turns it about its centre; it settles on every 15° when it comes near one
   if(DRAG.turn){const q=DRAG.turn;let a=Math.atan2(x-q.x,-(y-q.y))*180/Math.PI;const s15=Math.round(a/15)*15;if(Math.abs(a-s15)<4||e.shiftKey)a=s15;q.rot=turnTo(a);DRAG.moved=true;draw();return}
+  if(DRAG.size){const d=DRAG,q=d.size,vx=x-d.anchor[0],vy=y-d.anchor[1],lx=(vx*d.cos+vy*d.sin)*d.cx,ly=(-vx*d.sin+vy*d.cos)*d.cy;
+    const k=Math.min(40/d.w0,40/d.h0,Math.max(.25/d.w0,.25/d.h0,Math.max(lx/d.w0,ly/d.h0)));q.w=r8(d.w0*k);q.h=r8(d.h0*k);
+    const hx=d.cx*q.w/2,hy=d.cy*q.h/2;q.x=r8(d.anchor[0]+hx*d.cos-hy*d.sin);q.y=r8(d.anchor[1]+hx*d.sin+hy*d.cos);d.moved=true;draw();return}
   if(DRAG.ed&&DRAG.vx!=null){DRAG.ed.pts=DRAG.orig.pts.map((q,i)=>i===DRAG.vx?[r8(x),r8(y)]:q);DRAG.moved=true;draw();return}
   if(DRAG.ed){const dx=x-DRAG.start[0],dy=y-DRAG.start[1],o=DRAG.orig;if(o.pts)DRAG.ed.pts=o.pts.map(q=>[r8(q[0]+dx),r8(q[1]+dy)]);else{DRAG.ed.x=r8(o.x+dx);DRAG.ed.y=r8(o.y+dy);if(Math.abs(DRAG.ed.x)<.25&&!(DRAG.ed.type==='part'&&partOf(DRAG.ed.part)?.kind==='pockets')&&!['pocket-patch','pocket-flap','pocket-welt','pocket-cargo','pocket-slant','pocket-jean','pocket-zip','pleat'].includes(DRAG.ed.kind))DRAG.ed.x=0}DRAG.moved=true;draw();return}
   if(DRAG.tag){let nx=r8(x-DRAG.dx);const ny=r8(y-DRAG.dy);if(Math.abs(nx)<.25)nx=0;P.tagPos={...(P.tagPos||{})};P.tagPos[DRAG.tag.id]={...(P.tagPos[DRAG.tag.id]||{}),[VIEW]:[nx,ny]};DRAG.moved=true;draw();return}
