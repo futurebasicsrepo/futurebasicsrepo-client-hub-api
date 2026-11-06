@@ -62,7 +62,7 @@ A build whose address is the client's *current* site (Common Ground's is `common
 - **Shopify store launch** (follows `themes/common-ground/README.md`) or **Website launch**, chosen from the build (Shopify hosting or a `.myshopify.com` address) or picked by hand.
 - The client's side goes to one person on their team (the first, or the one picked; "the whole team" leaves it unassigned). It shows in their hub under **Needs attention** with a **Done** button, and on the project page as a checklist they tick.
 - Our side goes to Future Basics and shows on the work home under **Our to-dos for clients**, with **Done**. Both sides show on the project so each can see where the other is.
-- **In the work console**, open the room, then the project: the **Go-live checklist** lists both sides with checkboxes. A tick there is the same task the client sees, so it comes off their **Needs attention** and shows done on their project page. A tick in their hub shows up here too.
+- **In the work console**, the room's **Overview** shows each project's go-live checklist under Needs attention, and so does the project itself: the **Go-live checklist** lists both sides with checkboxes. A tick there is the same task the client sees, so it comes off their **Needs attention** and shows done on their project page. A tick in their hub shows up here too.
 - Pushing again only adds what is missing. The panel shows progress for each side.
 
 The rest:
@@ -71,6 +71,8 @@ The rest:
 - Opening it from the hub counts as an `open` on the showcase's activity.
 - Notes they send are kept on the site, shown to staff in the room panel, and emailed to staff.
 - **Take out of the room** hides it from the hub and revokes the invites made for it. Invites given by hand are left alone.
+- **Picture:** a site's picture follows where Open goes. It is the screenshot kept for that address (`src/builds-previews/<first part of the host>.jpg`, so `cg12concept.jpg` is used for `cg12concept.myshopify.com`), else the build's own cover.
+- **Client card:** a room with a site shows that picture on its card in the work console (`GET /v1/admin/clients/:id/site-cover`).
 - A room holds up to 40. Tables: `room_sites` (with `url` for where Open goes, `access_note`, `project_id`), `room_site_feedback`; tasks in `work_assignments` (`project_id`, `source`). Routes: `src/room-sites-routes.js`. Journeys J288 and J289.
 
 ## Housing a client's build

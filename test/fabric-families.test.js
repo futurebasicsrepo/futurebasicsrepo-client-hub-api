@@ -59,3 +59,14 @@ test('the fabric check reads a leather as a leather, not as cloth with nothing o
   const words = JSON.stringify(fabricFit({ style: 'jacket', category: 'outerwear', materials: [lamb] }) || {});
   assert.ok(!/no construction or weight/.test(words), words);
 });
+
+test('a label dragged on the flats keeps its place on that view, and the flat keeps it when saved', async () => {
+  const { cleanFlat } = await import('../src/lab-flats.js');
+  const id = 'a1dde028-59b9-4827-a4f4-d7513568fb61', p0 = defaultParams('hoodie');
+  const { params } = cleanFlat({ ...p0, tagPos: { [id]: { front: [3.7, 6.4], back: 'nope' }, 'not-an-id': { front: [1, 1] } } });
+  assert.deepEqual(params.tagPos, { [id]: { front: [3.75, 6.375] } });
+  const marks = tagMarks(params, [{ id, spec: { tagKind: 'neck', widthMm: 50, heightMm: 20 } }]);
+  assert.deepEqual([marks[0].view, marks[0].x, marks[0].y, marks[0].moved], ['front', 3.75, 6.375, true]);
+  assert.equal(marks[1].moved, false, 'the back stays where it is sewn');
+  assert.ok(renderSvg(params, 'front', { tags: marks, editable: true }).includes('cursor:grab'));
+});

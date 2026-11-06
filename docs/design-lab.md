@@ -685,7 +685,9 @@ patent's gloss, a fur's strands, and so is the tech flats SVG. The concept windo
   - a cap's sweatband label.
 - **Not drawn:** hang tags and stickers, which are not sewn in.
 
-A label designed in the studio shows its designed face.
+What a label shows and where it sits:
+- **Designed face:** a label designed in the studio shows its designed face. The face is read from the library's copy of the tag, so a design made after the tag was put on the garment still shows.
+- **Moving a label:** drag it on the flats with a mouse, pen or finger. It keeps its place on that view (`tagPos` in the flat's params), and the tech pack sheet draws it there too.
 
 **Tags and labels in the studio.** **Design** on a tag's card (or **Design it in the studio** in its form, or **Design it** beside a tag on a garment in Design's Fabrics, trims & labels) opens the tag in the studio (`/lab/studio?tag=<id>`, with `&for=<concept>` from a garment) at its real size: its blank face (shape, fold, weave, colour) is a picture layer and each line of its words is a type layer, and every studio tool works on it (fonts, words, colours, graphics from the library, drawing, the AI). **Use on the tag** (and every save) puts the design on the tag as its face (`spec.face`, a graphic in the library): the library cards, the tag's picture and the sheets draw the face instead of typing the words, and the tech pack names it in the label row and carries a picture of each designed label. Starter tags are shared by every room, so designing one makes a copy, "… (ours)", in your own library. **Add to a garment** puts the label on a garment's bill of materials (straight onto the garment it came from, or one you pick), and a copy takes the starter's place on it. The design is in the graphics library too, so it can be placed on the flat like any graphic.
 
