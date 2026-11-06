@@ -938,8 +938,12 @@ $('#apply').onclick=async()=>{
       else{const k=await api('/v1/lab/library/studio/keep',{body:{image,name:D.concept.name,doc}});GID=k.id;D.concept.hasImage=true;history.replaceState(null,'',`/lab/studio?art=${GID}`);paintSub();toast('It is in the graphics library now. Put it on any concept or product from there.','/lab/library')}
       DIRTY=false;SAVED_AT=new Date().toISOString();showSaved()}catch(x){toast(x.message)}finally{busy()}return}
   if(D.concept.locked)return;
-  const ok=await ask('Use this as the concept picture?',`Everything visible becomes the picture of "${D.concept.name}". Its flats, on-model views and walk will be drawn again from it.${D.concept.status==='approved'?' It is approved, so it goes back to draft to be approved again.':''} The picture it has now is kept and can be put back.`,'Use it');if(!ok)return;
-  busy('Saving and using it…');try{await save();compose();const r=await api(`/v1/lab/concepts/${CID}/studio/apply`,{body:{image:docC.toDataURL('image/png'),doc:serialize()}});D.concept.status=r.status;D.canRestore=true;paintSub();toast('It is the concept picture now.',`/lab#board`)}catch(x){toast(x.message)}finally{busy()}};
+  const ok=await ask('Use this as the concept picture?',`Everything visible becomes the picture of "${D.concept.name}". Its turns (on a model: front, three-quarter, side and back) are drawn again from it straight away; its walk can be made again on the board.${D.concept.status==='approved'?' It is approved, so it goes back to draft to be approved again.':''} The picture it has now is kept and can be put back.`,'Use it');if(!ok)return;
+  busy('Saving and using it…');try{await save();compose();const r=await api(`/v1/lab/concepts/${CID}/studio/apply`,{body:{image:docC.toDataURL('image/png'),doc:serialize()}});D.concept.status=r.status;D.canRestore=true;paintSub();
+    // the turns (the piece on a model from the front, three-quarter, side and back) are drawn again from the new picture straight away; a
+    // piece nobody wears gets its front and back product views instead
+    let made='';try{const v=await api(`/v1/lab/concepts/${CID}/views`,{body:{kinds:['model_front','model_34','model_side','model_back']}}).catch(async x=>{if(x.status===422)return api(`/v1/lab/concepts/${CID}/views`,{body:{kinds:['flat_front','flat_back']}});throw x});made=v?.started?` Its turns are being drawn from it (${v.started} view${v.started===1?'':'s'}); they show on the concept board in a few minutes.`:''}catch(x){made=` The turns were not started: ${x.message}`}
+    toast('It is the concept picture now.'+made,`/lab#board`)}catch(x){toast(x.message)}finally{busy()}};
 
 // ---------- small things ----------
 function busy(text){const b=$('#busy');if(!text){b.classList.add('hidden');return}$('#busyText').textContent=text;b.classList.remove('hidden')}

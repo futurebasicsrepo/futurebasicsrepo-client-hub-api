@@ -463,7 +463,7 @@ When nothing holds it up, the list offers **Send to the tech pack**; once it is 
 - **Saving.**
   - **Save** (Ctrl S) keeps the layers with the concept. The studio and the flats also save on their own a few seconds after each change (never mid-stroke), and say when: "Saving…", then "Saved just now" or "Saved 4 min ago" (the clock time on hover). A save that fails says why and is tried again.
   - **Draw the picture from the flats** saves what is open first, and nothing saves while the image model draws. The new picture becomes the base layer; what was laid on the old base (a logo, type, graphics from the flats) stays on top. Reopening the studio brings the design back exactly as it was saved.
-  - **Use as the concept picture** makes everything visible the concept's picture. Its views are drawn again from it, and an approved concept goes back to draft.
+  - **Use as the concept picture** makes everything visible the concept's picture, and an approved concept goes back to draft. Its turns (the piece on a model from the front, three-quarter, side and back) start drawing from it straight away, metered like any views. A piece nobody wears gets its front and back product views instead. The walk can be made again on the board.
   - The picture from before the studio is kept: **Put the old picture back** restores it.
   - After that, the logo and graphics are part of the picture, so **Place the logo and graphics again** says to move them in the studio instead.
 - **Export.**
