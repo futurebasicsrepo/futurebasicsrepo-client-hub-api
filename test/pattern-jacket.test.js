@@ -42,3 +42,24 @@ test('a colour block stays on its part of the drawing when the length changes ho
   const a = svg(from, 'back', [dot.x, dot.y]), b = svg(to, 'back', [d2.x, d2.y]); assert.ok(Math.hypot(a[0] - b[0], a[1] - b[1]) < .01);
   assert.deepEqual(remapEdits([block], from, from), [block], 'nothing moves when nothing changed');
 });
+
+test('a lined jacket is cut with its facings, lining, fusing, zip guard and pocket facings, and lists its trims', () => {
+  const r = cookRecipe({ base: 'jacket', addons: ['neck-shearling'] }), pat = garmentPattern(r.params), by = id => pat.pieces.find(q => q.id === id), m = r.params.m;
+  for (const id of ['front-facing', 'back-facing', 'front-lining', 'back-lining', 'sleeve-lining', 'zip-guard', 'pocket-facing', 'inside-welt', 'inside-bag', 'under-collar']) assert.ok(by(id)?.cut > 0, id);
+  for (const id of ['front-facing-fuse', 'back-facing-fuse', 'under-collar-fuse', 'welt-fuse', 'zip-guard-fuse', 'strap-fuse']) assert.equal(by(id)?.fabric, 'fusing', id);
+  assert.equal(by('front-lining').fabric, 'lining'); assert.equal(by('sleeve-lining').fabric, 'lining');
+  // the lining is the shell less the facing: narrower than the front by the facing's band, and its back has the 1 in centre-back pleat
+  const fb = boundsOf(by('front').sew), lb = boundsOf(by('front-lining').sew), ff = boundsOf(by('front-facing').sew);
+  const facingAtHem = Math.max(...by('front-facing').sew.filter(([, y]) => y > fb.y1 - 1).map(([x]) => x)); assert.ok(Math.abs(lb.x0 - facingAtHem) < .01, 'the lining starts where the facing ends');
+  assert.ok(Math.abs(lb.x1 - fb.x1) < .01, 'and reaches the side seam');
+  assert.equal(boundsOf(by('back-lining').sew).x0, -1, 'centre-back pleat');
+  // the sleeve lining: the underarm raised, a jump pleat at the cuff
+  const sb = boundsOf(by('sleeve').sew), slb = boundsOf(by('sleeve-lining').sew); assert.ok(slb.y1 - sb.y1 > .4, 'longer for the jump pleat');
+  // hidden on the product, under the shell
+  assert.ok(['front-lining', 'sleeve-lining', 'under-collar'].every(id => by(id).hidden));
+  // the trims: a separating zip sized to the front, eyelets for the strap, the labels and where they go
+  const zip = pat.trims.find(t => t.item === 'Separating zip'); assert.ok(zip && /open-end/.test(zip.spec)); assert.match(zip.spec, new RegExp(`${Math.round(m.length + 0 - m.neckDropFront - .5)}|\\d+ in`));
+  for (const t of ['Eyelets', 'Main label', 'Care and content label', 'Hanger loop', 'Seam tape']) assert.ok(pat.trims.some(x => x.item === t), t);
+  // an unlined knit has none of it
+  const tee = garmentPattern(cookRecipe({ base: 'tee' }).params); assert.ok(!tee.pieces.some(q => q.fabric === 'lining')); assert.deepEqual(tee.trims, []);
+});
