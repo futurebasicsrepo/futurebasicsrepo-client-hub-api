@@ -89,21 +89,30 @@ export function rankVeo(names) {
   const ver = n => Number((/veo-(\d+(?:\.\d+)?)/.exec(n) || [])[1] || 0);
   return [...names].sort((a, b) => ver(b) - ver(a) || Number(/fast/.test(a)) - Number(/fast/.test(b)) || Number(/preview|exp/.test(a)) - Number(/preview|exp/.test(b)) || a.localeCompare(b));
 }
-let VEO = null;
+let VEO = null, VEO_SEEN = null;
+// what the last look at the key's models found, so a walk that cannot be made says why: { status, listed, veo: [names] }
+export const veoSeen = () => VEO_SEEN;
 export async function bestVeo({ origin, key, fetchImpl = fetch, not = '' }) {
   if (!VEO || Date.now() - VEO.at > 864e5) {
-    const names = []; let page = '';
+    const names = [], seen = { status: 0, listed: 0, veo: [] }; let page = '';
     for (let i = 0; i < 5; i++) {
       const r = await fetchImpl(`${origin}/v1beta/models?pageSize=1000${page ? `&pageToken=${encodeURIComponent(page)}` : ''}`, { headers: { 'x-goog-api-key': key }, signal: AbortSignal.timeout(20000) }).catch(() => null);
-      if (!r?.ok) break; const j = await r.json().catch(() => ({}));
-      for (const m of j.models || []) if (/veo/i.test(m.name || '') && (m.supportedGenerationMethods || []).includes('predictLongRunning')) names.push(String(m.name).replace(/^models\//, ''));
+      seen.status = r?.status || 0; if (!r?.ok) break; const j = await r.json().catch(() => ({}));
+      for (const m of j.models || []) { seen.listed++; const n = String(m.name || '').replace(/^models\//, ''); if (/veo/i.test(n)) { seen.veo.push(n); if ((m.supportedGenerationMethods || []).includes('predictLongRunning')) names.push(n); } }
       if (!j.nextPageToken) break; page = j.nextPageToken;
     }
-    if (!names.length) return null; VEO = { at: Date.now(), list: rankVeo(names) };
+    VEO_SEEN = seen; if (!names.length) return null; VEO = { at: Date.now(), list: rankVeo(names) };
   }
   return VEO.list.find(n => n !== not) || null;
 }
-export const _resetVeo = () => { VEO = null; };
+// why no Veo model could be used, in words for the board
+export function veoWhy(seen) {
+  if (!seen) return '';
+  if (!seen.status || seen.status >= 400) return ` The list of models this Google AI key can use could not be read (${seen.status || 'no answer'}).`;
+  if (!seen.veo.length) return ` This Google AI key can use ${seen.listed} Google models but no Veo video model: Veo is offered only to keys on a paid Gemini API plan. Turn on billing for the key's Google Cloud project (Google AI Studio → API keys → the key's project → Billing), or make the key in a project that has it, then make the walk again.`;
+  return ` The key lists ${seen.veo.join(', ')}, but none of them makes videos through the API (predictLongRunning).`;
+}
+export const _resetVeo = () => { VEO = null; VEO_SEEN = null; };
 // A short clip from a prompt and (optionally) a first frame. Veo works as a long job: start it, ask how it is getting on, fetch the file.
 // → { video: Buffer, mime, model }. `fetchImpl` and `sleep` are replaceable so this runs in tests without a network.
 export async function veoVideo({ prompt, image = null, cfg: cfg0 = googleVideoConfig(), env = process.env, fetchImpl = fetch, sleep = ms => new Promise(r => setTimeout(r, ms)) }) {
@@ -115,10 +124,11 @@ export async function veoVideo({ prompt, image = null, cfg: cfg0 = googleVideoCo
   });
   let r = await start(Boolean(image));
   // the model name retired or not offered to this key (Google renames the Veo previews): ask which Veo models the key has, take the best, try again
-  if (r.status === 404) { const best = await bestVeo({ origin: cfg.origin, key: k.key, fetchImpl, not: cfg.model }); if (best) { cfg = { ...cfg, model: best }; r = await start(Boolean(image)); } }
+  let why = '';
+  if (r.status === 404) { const best = await bestVeo({ origin: cfg.origin, key: k.key, fetchImpl, not: cfg.model }); if (best) { cfg = { ...cfg, model: best }; r = await start(Boolean(image)); } else why = veoWhy(veoSeen()); }
   // a first frame refused (a face, a policy): the clip is made from the words alone
   if (!r.ok && image && r.status >= 400 && r.status < 500 && r.status !== 401 && r.status !== 403 && r.status !== 429) r = await start(false);
-  if (!r.ok) { const t = await r.text().catch(() => ''); let why = t; try { why = JSON.parse(t)?.error?.message || t; } catch { /* not JSON */ } throw new Error(`Google's video model (${cfg.model}) refused the request (${r.status}): ${clip(why, 160)}`); }
+  if (!r.ok) { const t = await r.text().catch(() => ''); let said = t; try { said = JSON.parse(t)?.error?.message || t; } catch { /* not JSON */ } throw new Error(why ? `Google has no video model for this key (${cfg.model} is not found).${why}` : `Google's video model (${cfg.model}) refused the request (${r.status}): ${clip(said, 160)}`); }
   let op = await r.json();
   for (let i = 0; i < 90 && !op.done; i++) {
     await sleep(Number(env.LAB_VIDEO_POLL_MS) || 10000);
