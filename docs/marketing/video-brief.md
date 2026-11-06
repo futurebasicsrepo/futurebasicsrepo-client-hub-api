@@ -126,6 +126,9 @@ acrylics.
 - **Board:** tasks given to a teammate or to Future Basics, with To do, Doing, In review and Done, due dates, and late ones marked.
 - **Who's here:** who has a tech pack, a sample review or a piece in the Studio open right now. The same initials show on the pack and next to Save in the Studio, and a save from an older copy never overwrites someone else's.
 
+### Your sites (in the hub)
+The sites and prototypes Future Basics builds for a brand land in the brand's own room. Each shows its picture, where it stands (concept, in progress, live) and a note from Future Basics, with **Open** and **Send notes**. Notes go straight back to the Future Basics team.
+
 ### The tech pack and the factory
 - Measurements in inches with cm alongside, a bill of materials, colourways with Pantone C codes, callouts pinned on the picture, sample
   stages and inspection criteria.

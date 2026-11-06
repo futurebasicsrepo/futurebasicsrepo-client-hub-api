@@ -71,6 +71,7 @@ const RULES = [
   [/^\/v1\/sample-reviews(\/|$)/, 'clients'],
   [/^\/v1\/team-chat(\/|$)/, 'messages'],
   [/^\/v1\/workspace(\/|$)/, 'clients'],
+  [/^\/v1\/sites(\/|$)/, 'clients'],
   [/^\/v1\/(products|projects|room-files|project-files|pick-images|invoices|quotes|approvals|comments|asset-versions|requests|vendor|tech-packs|dashboard)(\/|$)/, 'clients']
 ];
 export function moduleFor(pattern, method = 'GET') {
