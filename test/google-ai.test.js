@@ -107,3 +107,13 @@ test('a Veo model Google no longer offers is replaced by the best one the key ha
   assert.ok(asked.some(a => a.includes('/v1beta/models/veo-3.1-generate-001:predictLongRunning')));
   _resetVeo();
 });
+
+test('a key with no Veo model says so, and how to get one, instead of only the 404', async () => {
+  const { veoVideo, _resetVeo } = await import('../src/google-ai.js'); _resetVeo();
+  const json = (o, status = 200) => ({ ok: status < 400, status, json: async () => o, text: async () => JSON.stringify(o) });
+  const fetchImpl = async url => url.includes(':predictLongRunning') ? json({ error: { code: 404, message: 'not found' } }, 404)
+    : json({ models: [{ name: 'models/gemini-3-pro-image-preview', supportedGenerationMethods: ['generateContent'] }, { name: 'models/gemini-2.5-flash', supportedGenerationMethods: ['generateContent'] }] });
+  await assert.rejects(veoVideo({ prompt: 'walk', cfg: { model: 'veo-3.1-generate-preview', origin: 'https://g.test', aspect: '9:16', seconds: '8' }, env: { GEMINI_API_KEY: KEY }, fetchImpl, sleep: async () => {} }),
+    e => /no Veo video model/.test(e.message) && /paid Gemini API plan/.test(e.message) && /2 Google models/.test(e.message));
+  _resetVeo();
+});
