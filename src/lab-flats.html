@@ -119,7 +119,7 @@ textarea.t{min-height:64px;resize:vertical}
 import { tagMarks, STYLES, FITS, SIZES, DETAILS, STITCHES, defaultDetail, describeEdit, geometry, renderSvg, viewBoxOf, templatesFor, templateOf, defaultTemplate, describe, placementChecks, overlapChecks, pomTable, defaultParams, defaultPlacement, measurementsFor, POM_NAMES, pomName, fitToTemplate, FLAT_PARTS, PART_KINDS, partOf, defaultPart, fmt, fmtCm, MASK_URL, drawingOf, TEMPLATE_URL } from '/lab/flats.js';
 import { panelAt, panelName } from '/lab/lab-flat-panels.js';
 import { tagFaceSvg } from '/lab/lab-tags.js';
-import { WASHES, STRENGTHS, washOf, distressParts, washWords } from '/lab/lab-wash.js';
+import { WASHES, STRENGTHS, washOf, distressParts, distressList, DISTRESS_FOCUS, washWords } from '/lab/lab-wash.js';
 import { FLAT_TEMPLATES } from '/lab/lab-flat-templates.js';
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)],esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const TOKEN=()=>{try{return localStorage.getItem('fb.admin.token')||localStorage.getItem('fb.client.token')||''}catch{return ''}}; // staff sign in at the work console; a client with the Design Lab on their room signs in at their hub
@@ -384,20 +384,20 @@ function useTemplate(id){
 $('#pGarment').addEventListener('click',e=>{const b=e.target.closest('[data-tpl]');if(b)useTemplate(b.dataset.tpl)});
 let gqT=0;$('#pGarment').addEventListener('input',e=>{if(e.target.id==='gQ'){GQ.q=e.target.value;clearTimeout(gqT);gqT=setTimeout(()=>{$('#gGal').innerHTML=galTiles()},150)}});
 // wash and distressing (src/lab-wash.js): drawn on the flats, written on the tech pack and into the picture from the flats
-function washSec(){const w=P.wash||{type:'none',strength:'medium'},d=P.distress||{on:false,amount:40},groups=[...new Set(WASHES.map(x=>x.group))],k=distressParts(d.amount),locked=Boolean(D?.concept?.locked);
+function washSec(){const w=P.wash||{type:'none',strength:'medium'},d=P.distress||{on:false,amount:40},groups=[...new Set(WASHES.map(x=>x.group))],k=distressParts(d.amount,d.focus||'all'),kd=STYLES[P.style]?.kind==='bottom'?'bottom':'top',locked=Boolean(D?.concept?.locked);
   return `<div class="sec wash" id="washSec"><h4>Wash &amp; distress</h4>
     <label class="f"><span>Wash</span><select class="t" id="wType" ${locked?'disabled':''}>${groups.map(g=>`<optgroup label="${esc(g)}">${WASHES.filter(x=>x.group===g).map(x=>`<option value="${x.id}" ${x.id===w.type?'selected':''}>${esc(x.label)}</option>`).join('')}</optgroup>`).join('')}</select></label>
     ${w.type!=='none'?`<div class="seg" role="radiogroup" aria-label="How strong">${STRENGTHS.map(x=>`<button type="button" role="radio" data-wstr="${x.id}" aria-checked="${x.id===w.strength}" ${locked?'disabled':''}>${x.label}</button>`).join('')}</div><p class="msg">${esc(washOf(w.type).how)}</p>`:''}
     <label class="chk wtoggle"><input type="checkbox" id="dOn" role="switch" ${d.on?'checked':''} ${locked?'disabled':''}> Distressing <b>${d.on?'on':'off'}</b></label>
-    ${d.on?`<label class="f"><span>Amount · ${esc(k.level)} (${d.amount})</span><input type="range" id="dAmt" min="0" max="100" step="5" value="${d.amount}" aria-label="How much distressing" ${locked?'disabled':''}></label><div class="wrange"><span>Less</span><span>More</span></div><p class="msg">${[k.abrasion?`${k.abrasion} worn patch${k.abrasion===1?'':'es'}`:'',k.holes?`${k.holes} hole${k.holes===1?'':'s'}`:'',k.frayHem?'frayed hems':''].filter(Boolean).join(' · ')||'Barely there'}. Drawn on the flats; the factory gets the words on the tech pack.</p>`:''}
+    ${d.on?`<label class="f"><span>Amount · ${esc(k.level)} (${d.amount})</span><input type="range" id="dAmt" min="0" max="100" step="5" value="${d.amount}" aria-label="How much distressing" ${locked?'disabled':''}></label><div class="wrange"><span>Less</span><span>More</span></div><div class="seg" role="radiogroup" aria-label="Where">${DISTRESS_FOCUS.map(x=>`<button type="button" role="radio" data-dfocus="${x.id}" aria-checked="${x.id===(d.focus||'all')}" ${locked?'disabled':''}>${x.label}</button>`).join('')}</div><p class="msg">${esc(distressList(d,kd).join(' · ')||'Barely there')}. Drawn on the flats; the factory gets the words on the tech pack.</p>`:''}
   </div>`}
 const washChanged=()=>{touch();paint();$('#washSec')?.scrollIntoView({block:'nearest'})};
-$('#pGarment').addEventListener('click',e=>{const b=e.target.closest('[data-wstr]');if(!b)return;P.wash={...(P.wash||{type:'none'}),strength:b.dataset.wstr};washChanged()});
+$('#pGarment').addEventListener('click',e=>{const f=e.target.closest('[data-dfocus]');if(f){P.distress={...(P.distress||{amount:40}),on:true,focus:f.dataset.dfocus};washChanged();return}const b=e.target.closest('[data-wstr]');if(!b)return;P.wash={...(P.wash||{type:'none'}),strength:b.dataset.wstr};washChanged()});
 $('#pGarment').addEventListener('change',e=>{
   if(e.target.id==='wType'){const t=e.target.value;P.wash=t==='none'?null:{type:t,strength:P.wash?.strength||'medium'};washChanged()}
-  if(e.target.id==='dOn'){P.distress={amount:P.distress?.amount??40,on:e.target.checked};washChanged()}
-  if(e.target.id==='dAmt'){P.distress={on:true,amount:Number(e.target.value)};washChanged()}});
-$('#pGarment').addEventListener('input',e=>{if(e.target.id==='dAmt'){P.distress={on:true,amount:Number(e.target.value)};draw()}});
+  if(e.target.id==='dOn'){P.distress={...(P.distress||{amount:40}),on:e.target.checked};washChanged()}
+  if(e.target.id==='dAmt'){P.distress={...(P.distress||{}),on:true,amount:Number(e.target.value)};washChanged()}});
+$('#pGarment').addEventListener('input',e=>{if(e.target.id==='dAmt'){P.distress={...(P.distress||{}),on:true,amount:Number(e.target.value)};draw()}});
 function paintGarment(){
   const S=STYLES[P.style],o=P.options,box=(k,l)=>`<label class="chk"><input type="checkbox" data-o="${k}" ${o[k]?'checked':''}> ${l}</label>`;
   $('#pGarment').innerHTML=`${washSec()}<div class="sec"><h4>The piece</h4><label class="f"><span>Style</span><select class="t" id="gStyle">${Object.entries(D.styles).map(([k,v])=>`<option value="${k}" ${k===P.style?'selected':''}>${esc(v.label)}</option>`).join('')}</select></label>

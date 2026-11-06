@@ -61,7 +61,10 @@ already has show as "on the sketch".
 - On the flats: **Colour a panel** (tap a sleeve and both sleeves take the colour, right to their seams; a tap on a rib takes the whole band)
   and **Cloth** (pick a fabric and the flat shows its surface; it becomes the garment's main fabric).
 
-- **Wash & distress:** pick a stone, acid, snow, enzyme, potassium permanganate, bleach or mineral wash at light, medium or heavy, and switch on distressing with a slider. The flats show the wash and the wear, and the factory gets the words.
+- **Wash & distress:**
+  - Pick a wash at light, medium or heavy: spray fade, pigment, dirty vintage, stone, acid, snow, enzyme, potassium permanganate, bleach or mineral.
+  - Switch on distressing, slide it up, and choose edges only or the body.
+  - The flat shows a vintage fade with dark ribs, chewed collars, ragged hems and knee rips, and the factory gets the words.
 - Pro drawing tools: a pen tool with editable curves, shape booleans, snapping and guides, align and distribute, ⌘K to find any command,
   and SVG in and out.
 - The tools a physical product and its packaging need, on the same keys as Illustrator:

@@ -671,18 +671,32 @@ patent's gloss, a fur's strands, and so is the tech flats SVG. The concept windo
 
 **In Design** (the picture and both flats), **Fabrics, trims & labels** opens the same bill of materials beside the library: each fabric, trim and tag drawn (or its swatch photo), searchable, with **Add to the garment** (the first fabric is the main one, the next the contrast). Each line on the garment can change what it is used as, its colour, how much a piece takes and where it goes (a label's default: how it is attached), or come off; the materials, making, landed cost and margin follow, and the tech pack takes the lines.
 
-**Wash and distress.** The Studio's **Wash & distress** button, beside Fabrics, trims & labels, opens that section of the flats' Garment tab. It is defined in `src/lab-wash.js`.
-- **Wash:** choose from
-  - rinse, silicone softener, enzyme;
-  - garment dye, pigment dye, overdye/tint;
-  - stone, acid, snow;
-  - potassium permanganate (PP) spray, bleach, mineral;
-  - ozone, laser fade, sun-faded.
+**Wash and distress.** The Studio's **Wash & distress** button, beside Fabrics, trims & labels, opens that section of the flats' Garment tab. It is defined in `src/lab-wash.js`, tuned against vintage streetwear references.
 
-  Each comes in Light, Medium or Heavy, with the factory's own words shown under it.
-- **Distressing:** an on/off switch and an amount slider (0–100). Turning the amount up adds worn abrasion patches, then holes with loose threads, then heavier fraying at the hems and cuffs.
-- **On the flats:** both are drawn inside the garment only, on top of its colour and cloth, and kept in the flat's params (`wash`, `distress`).
-- **For the factory:** the tech pack's construction notes and the flats sheet list them in factory words. **Draw the picture from the flats** adds them to the prompt.
+**Wash.** Choose from:
+- rinse, silicone softener, enzyme;
+- garment dye, pigment dye, overdye/tint, dirty wash (a yellow-brown vintage tint);
+- stone, acid, snow;
+- PP spray, spray fade (the ombré look), bleach, mineral;
+- ozone, laser fade, sun-faded.
+
+Each comes in Light, Medium or Heavy, with the factory's own words shown under it. A wash is drawn the way it wears:
+- **Fades:** the high points fade, meaning the chest, hood and shoulders on a top, or the thighs and knees on a bottom.
+- **Seams:** dye settles in the seams and edges.
+- **Ribs:** the hem band, cuffs and (except under a hood) the collar stay darker.
+- **Particular washes:** spray and sun fades lighten from the top down, acid marbles, snow speckles, and laser fade adds whiskers on jeans.
+
+The positions come from the garment's own measurements: neckline, hem, ribs, cuffs, rise and knee.
+
+**Distressing.** An on/off switch, an amount slider (0–100), and **Where**: all over, edges only, or body only.
+- **Edges:** chewed nicks around the collar, cuffs and hem (or the pocket openings, waistband and hems of a bottom), plus a ragged hem with a fringe hanging past the edge.
+- **Body:** pinhole clusters, holes, worn patches, open knee rips with the weft across them on trousers, and dirt marks on heavy wear.
+- **The summary:** the section lists what you get, and the tech pack's construction notes use the same words.
+
+**Where it goes.**
+- **On the flats:** both are drawn inside the garment, apart from the fringe, and kept in the flat's params (`wash`, `distress` with `focus`).
+- **For the factory:** the tech pack's construction notes and the flats sheet list them in factory words.
+- **The picture:** **Draw the picture from the flats** adds them to the prompt.
 
 **Labels on the flats.** Every tag chosen on a concept is drawn on its flats in Design and on the tech pack's flats sheet, at its real size, where it is sewn (`tagMarks` in `src/lab-flats.js`):
 - **Seen from that side (drawn with their face):**

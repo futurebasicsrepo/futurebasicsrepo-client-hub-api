@@ -38,3 +38,25 @@ test('the flat keeps the wash and distressing and draws them inside the garment'
   assert.ok(!renderSvg(defaultParams('pants'), 'front').includes('data-wash'));
   assert.equal(washSvg({ distress: { on: false, amount: 90 } }, { box: { x0: 0, y0: 0, x1: 10, y1: 10 }, mask: 'm' }), '', 'distressing off draws nothing');
 });
+
+test('distressing can stay on the edges or the body, and names the right places for a top or a bottom', async () => {
+  const { DISTRESS_FOCUS, distressList } = await import('../src/lab-wash.js');
+  assert.deepEqual(DISTRESS_FOCUS.map(f => f.id), ['all', 'edges', 'body']);
+  assert.deepEqual(cleanDistress({ on: true, amount: 50, focus: 'edges' }), { on: true, amount: 50, focus: 'edges' });
+  assert.deepEqual(cleanDistress({ on: true, amount: 50, focus: 'nowhere' }), { on: true, amount: 50 });
+  const edges = distressParts(90, 'edges'), body = distressParts(90, 'body');
+  assert.ok(edges.nicks > 0 && edges.fringe && !edges.holes && !edges.rips && !edges.abrasion, 'edges only: nicks and a ragged hem, no holes');
+  assert.ok(!body.nicks && !body.fringe && body.holes > 0 && body.rips > 0, 'body only: holes and rips, edges left clean');
+  assert.match(distressList({ amount: 90 }, 'bottom').join(', '), /open rips at the knees/);
+  assert.match(distressList({ amount: 40 }, 'top').join(', '), /collar, cuffs and hem/);
+  assert.match(washWords({ style: 'pants', distress: { on: true, amount: 90 } })[0], /knees/);
+});
+
+test('the reference looks: a spray fade lights the top and keeps the ribs dark; a ragged hem hangs past the edge', () => {
+  const box = { x0: -12, y0: -11, x1: 12, y1: 27.5 }, geo = { kind: 'top', half: 11.5, neckY: 3.5, neckHalf: 4, hemY: 27.5, hemRib: 2.75, cuff: 2.75, longSleeve: true };
+  const spray = washSvg({ wash: { type: 'spray', strength: 'heavy' } }, { box, mask: 'm', geo });
+  assert.ok(spray.includes('-wt') && spray.includes('-wr') && spray.includes('fill="#000000"'), 'a top-down fade and darker ribs');
+  const torn = washSvg({ distress: { on: true, amount: 80, focus: 'edges' } }, { box, mask: 'm', geo });
+  assert.ok(torn.includes('data-fringe="1"') && torn.indexOf('data-fringe') > torn.indexOf('mask="url(#m)"'), 'the fringe is drawn after (outside) the masked wear');
+  assert.ok(WASHES.some(w => w.id === 'dirty') && WASHES.some(w => w.id === 'spray'));
+});
