@@ -66,6 +66,7 @@
     { id: 'settings', label: 'Settings', icon: 'gear', items: [
       { label: 'Team access', href: '/team', owner: true, waiting: true, words: 'staff permissions' },
       { label: 'Brand and assets', href: '/brand', module: 'brand', words: 'logo fonts colours' },
+      { label: 'My signature', href: '/signature', words: 'sign signature ink contracts tech packs' },
       { label: 'Payment gate', href: '/admin#accessPanel', owner: true, words: 'tech pack billing free access' }] }
   ];
   const ITEMS = NAV.flatMap(n => n.items.map(it => ({ ...it, section: n.id })));

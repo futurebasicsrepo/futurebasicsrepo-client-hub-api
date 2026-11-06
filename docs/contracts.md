@@ -39,6 +39,15 @@ Payments work as for digital work, but a payment that waits for the work is "**o
 
 Production orders are not part of this plan: each run is confirmed by a written order outside the contract's fixed fee (we order from the factory, and the order shows the client's price only), or, when the client orders directly, the client pays the factory.
 
+## Handwritten signatures in ink
+
+Whoever signs for Future Basics signs with their own handwritten signature, in blue ink, when they have one. They give it once on **Settings → My signature** (`/signature`), by uploading a photo or scan of it in dark ink on light paper, or by signing on the page with a mouse, a pen or a finger.
+
+- **The ink (`src/signatures.js`, `inkify`):** the paper is taken away and the strokes are coloured a ballpoint blue. The blue is deeper where the line is heavy, with a fine grain and a little bleed at the edges. The page shows the ink before it is kept.
+- **Snapshots:** every signature given is kept as a mark (`signature_marks`), and `staff_signatures` says which mark is the person's now. Signing a contract (**Sign for Future Basics**, or signing when sending) or a tech pack (**Sign as Future Basics**) records the id of the signer's mark in the signature (`ink`). A document keeps the signature it was signed with: changing or removing yours later never changes one already signed.
+- **Where it shows:** the ink sits on the signing line of the contract PDF, in the Signatures box on the client's signing page, in the work console, and on the tech pack's Future Basics signature, including its printed copy. Without a signature, the typed name signs as before.
+- **How it is served:** a mark is served by its unguessable id only, at `/v1/public/signature-marks/:id`, the same way a signing link's token is its key. It is never listed, and is sent private and noindex.
+
 ## Payment plans
 
 The fee is fixed. A plan splits it into payments that must add up to the fee to the cent.

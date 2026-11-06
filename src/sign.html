@@ -47,6 +47,7 @@
     @media print{header,.bar,.sign,.noprint{display:none!important}body{background:#fff}main{padding:0}}
     @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
   /* a touch screen zooms in on a field under 16px and stays zoomed: fields are 16px there */@media (hover:none),(pointer:coarse){html{-webkit-text-size-adjust:100%;text-size-adjust:100%}input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]),select,textarea{font-size:16px!important}}
+img.ink{display:block;height:56px;width:auto;max-width:100%;margin:2px 0 8px}
 </style>
 <script src="/feedback.js"></script>
 </head>
@@ -77,7 +78,7 @@
   function render(c){
     const r=c.rendered,P=r.parties,fee=r.sections.find(s=>s.kind==='fee'),sch=r.sections.find(s=>s.kind==='schedule');
     document.title=`${c.title} — sign`;
-    const sigs=`${c.providerSignature?`<p>Signed for ${esc(P.provider.name)} by <b>${esc(c.providerSignature.name)}</b> on ${esc(when(c.providerSignature.at))}.</p>`:''}${c.clientSignature?`<p>Signed for ${esc(P.client.company)} by <b>${esc(c.clientSignature.name)}</b> on ${esc(when(c.clientSignature.at))}.</p>`:''}`;
+    const sigs=`${c.providerSignature?`<p>Signed for ${esc(P.provider.name)} by <b>${esc(c.providerSignature.name)}</b> on ${esc(when(c.providerSignature.at))}.</p>${c.providerSignature.ink?`<img class="ink" src="${esc(c.providerSignature.ink)}" alt="Signature of ${esc(c.providerSignature.name)}">`:''}`:''}${c.clientSignature?`<p>Signed for ${esc(P.client.company)} by <b>${esc(c.clientSignature.name)}</b> on ${esc(when(c.clientSignature.at))}.</p>`:''}`;
     let top='';
     if(c.status==='executed')top=`<div class="banner ok"><b>Signed by both parties</b>This is your copy. Download the PDF and keep it with your records.${sigs}</div>`;
     else if(c.status==='signed_by_client')top=`<div class="banner ok"><b>You have signed. Thank you.</b>It becomes final when ${esc(P.provider.name)} signs too. We will email you a copy.${sigs}</div>`;

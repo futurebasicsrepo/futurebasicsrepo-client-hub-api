@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>My signature</title>
+<link rel="icon" href="/icons/icon-192.png">
+<style>
+@import url('/fonts/fonts.css');
+:root{--ink:#141416;--fog:#f5f5f2;--dim:#727278;--line:rgba(20,20,22,.14);--cue:#4bff9a;--ok:#17603a;--bad:#a02a20;--paper:#fbfaf6}
+*{box-sizing:border-box}html{background:var(--fog)}
+body{margin:0;color:var(--ink);font:400 14px/1.5 'Space Grotesk',system-ui,sans-serif;background:var(--fog);min-height:100vh}
+button,input{font:inherit}a{color:inherit}.hidden{display:none!important}
+.mono{font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase}
+header{height:72px;background:rgba(20,20,22,.96);color:#fff;padding:0 clamp(16px,4vw,48px);display:flex;align-items:center;position:sticky;top:0;z-index:20}
+.wordmark{display:flex;align-items:center;gap:12px;position:relative;text-decoration:none;color:inherit;text-transform:uppercase;letter-spacing:.08em}
+.wordmark:after{content:"";position:absolute;left:0;bottom:-7px;width:64px;height:2px;background:var(--cue)}
+.brand-logo{display:block;width:200px;max-width:34vw;height:auto;max-height:30px}.brand-suffix{font:500 10px 'IBM Plex Mono',monospace;white-space:nowrap}
+main{max-width:860px;margin:0 auto;padding:26px clamp(14px,3vw,36px) 90px}
+h1{font-size:clamp(30px,5vw,46px);letter-spacing:-.035em;font-weight:500;margin:6px 0;line-height:1.04}h2{font-size:19px;font-weight:500;margin:0 0 4px}
+.note{color:var(--dim);margin:4px 0 0;max-width:66ch}
+.panel{background:#fff;border:1px solid var(--line);border-radius:22px;padding:20px 22px;margin:0 0 16px}
+.btn{display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--ink);background:#fff;color:var(--ink);border-radius:999px;padding:8px 15px;cursor:pointer;font-weight:600;min-height:38px}.btn:hover{background:var(--ink);color:#fff}
+.btn.go{background:var(--cue);border-color:var(--cue)}.btn.go:hover{background:#7affb6;color:var(--ink)}.btn[disabled]{opacity:.5;cursor:default}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:12px}
+/* a sheet of paper with a signing line: where the ink is shown, and where it can be drawn */
+.paper{position:relative;background:var(--paper);border:1px solid var(--line);border-radius:14px;height:220px;display:grid;place-items:center;overflow:hidden}
+.paper:after{content:"";position:absolute;left:8%;right:8%;bottom:52px;border-bottom:1px solid rgba(20,20,22,.35);pointer-events:none}
+.paper img{max-height:150px;max-width:86%;position:relative;z-index:1;margin-bottom:24px}
+.paper canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:crosshair}
+.paper .ph{color:var(--dim);font-size:13px;position:absolute;bottom:20px}
+.tabs{display:flex;gap:6px;margin:10px 0}.tabs button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:6px 14px;cursor:pointer}.tabs button[aria-pressed=true]{background:var(--ink);color:#fff;border-color:var(--ink)}
+.msg{font-size:13px;min-height:18px;color:var(--ok);margin-top:8px}.msg.bad{color:var(--bad)}
+</style>
+<script src="/feedback.js"></script>
+<link rel="stylesheet" href="/cue.css">
+</head>
+<body>
+<header><a class="wordmark" href="/home" aria-label="Work home"><img class="brand-logo" src="https://thefuturebasics.com/cdn/shop/files/future_basics_true_vector_fixed.svg?v=1775278873&amp;width=360" alt="Future Basics"><span class="brand-suffix">/ My signature</span></a></header>
+<main>
+  <div id="needSignin" class="panel hidden"><h1>Sign in to the work console first</h1><p class="note">This page uses your work console sign-in.</p><a class="btn go" href="/admin" style="margin-top:12px">Open the work console</a></div>
+  <div id="app" class="hidden">
+    <span class="mono">Settings</span><h1>My signature</h1>
+    <p class="note">When you sign for Future Basics (a contract, a tech pack), your handwritten signature goes on it in blue ink: on the page, the PDF and the client's and the factory's copies. Each document keeps the signature it was signed with, so changing yours later never changes one already signed.</p>
+    <section class="panel" style="margin-top:18px"><h2>Signing with</h2><div class="paper" id="now"><span class="ph">No signature yet: your typed name signs for now.</span></div>
+      <div class="row"><button class="btn hidden" type="button" id="remove">Stop using it</button></div></section>
+    <section class="panel"><h2>Give a new one</h2><p class="note">Upload a photo or scan of your signature in dark ink on light paper, or sign below with a mouse, a pen or your finger. It is turned into blue ink.</p>
+      <div class="tabs" role="group" aria-label="How"><button type="button" data-how="upload" aria-pressed="true">Upload a picture</button><button type="button" data-how="draw" aria-pressed="false">Sign here</button></div>
+      <div id="up"><input type="file" id="file" accept="image/png,image/jpeg,image/webp"></div>
+      <div id="dr" class="hidden"><div class="paper"><canvas id="pad" aria-label="Sign here"></canvas><span class="ph">Sign above the line</span></div><div class="row"><button class="btn" type="button" id="clear">Clear</button></div></div>
+      <h2 style="margin-top:16px">How it looks in ink</h2><div class="paper" id="prev"><span class="ph">Choose a picture or sign above to see it.</span></div>
+      <div class="row"><button class="btn go" type="button" id="save" disabled>Sign with this</button></div><div class="msg" id="msg" role="status"></div></section>
+  </div>
+</main>
+<script src="/console-nav.js" defer></script>
+<script>
+const $=s=>document.querySelector(s),TOKEN=()=>{try{return localStorage.getItem('fb.admin.token')||''}catch{return ''}};
+const esc=v=>String(v??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+async function api(path,o={}){const r=await fetch(path,{method:o.method||(o.body?'POST':'GET'),headers:{Authorization:'Bearer '+TOKEN(),...(o.body?{'Content-Type':'application/json'}:{})},body:o.body?JSON.stringify(o.body):undefined});if(o.blob&&r.ok)return r.blob();const j=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(new Error(j.error||'Request failed ('+r.status+')'),{status:r.status});return j}
+const say=(t,bad)=>{$('#msg').textContent=t;$('#msg').className='msg'+(bad?' bad':'')};
+let IMG=null,MARK=null;
+function showNow(){$('#now').innerHTML=MARK?`<img src="${esc(MARK.url)}" alt="Your signature in ink">`:'<span class="ph">No signature yet: your typed name signs for now.</span>';$('#remove').classList.toggle('hidden',!MARK)}
+async function preview(){if(!IMG){$('#save').disabled=true;return}try{const b=await api('/v1/me/signature/preview',{body:{image:IMG},blob:true});$('#prev').innerHTML=`<img src="${URL.createObjectURL(b)}" alt="Your signature in ink">`;$('#save').disabled=false;say('')}catch(x){$('#prev').innerHTML='<span class="ph">—</span>';$('#save').disabled=true;say(x.message,true)}}
+document.querySelectorAll('[data-how]').forEach(b=>b.onclick=()=>{document.querySelectorAll('[data-how]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));$('#up').classList.toggle('hidden',b.dataset.how!=='upload');$('#dr').classList.toggle('hidden',b.dataset.how!=='draw');if(b.dataset.how==='draw')sizePad()});
+$('#file').onchange=()=>{const f=$('#file').files[0];if(!f)return;const r=new FileReader();r.onload=()=>{IMG=r.result;preview()};r.readAsDataURL(f)};
+// signing on the page: a dark line that follows the pointer (mouse, pen or finger), a little heavier with a pen's pressure
+const pad=$('#pad'),ctx=pad.getContext('2d');let drawing=false,last=null,inked=false,pt=0;
+function sizePad(){const r=pad.getBoundingClientRect(),k=2;pad.width=Math.round(r.width*k);pad.height=Math.round(r.height*k);ctx.setTransform(k,0,0,k,0,0);ctx.lineCap='round';ctx.lineJoin='round';ctx.strokeStyle='#141416';inked=false}
+const at=e=>{const r=pad.getBoundingClientRect();return[e.clientX-r.left,e.clientY-r.top]};
+pad.addEventListener('pointerdown',e=>{pad.setPointerCapture(e.pointerId);drawing=true;last=at(e)});
+pad.addEventListener('pointermove',e=>{if(!drawing)return;const p=at(e);ctx.lineWidth=2.4+(e.pointerType==='pen'?(e.pressure||.5)*2:0);ctx.beginPath();ctx.moveTo(last[0],last[1]);ctx.lineTo(p[0],p[1]);ctx.stroke();last=p;inked=true});
+const up=()=>{if(!drawing)return;drawing=false;if(inked){clearTimeout(pt);pt=setTimeout(()=>{IMG=pad.toDataURL('image/png');preview()},250)}};
+pad.addEventListener('pointerup',up);pad.addEventListener('pointercancel',up);
+$('#clear').onclick=()=>{sizePad();ctx.clearRect(0,0,pad.width,pad.height);IMG=null;$('#prev').innerHTML='<span class="ph">Choose a picture or sign above to see it.</span>';$('#save').disabled=true};
+$('#save').onclick=async()=>{if(!IMG)return;$('#save').disabled=true;try{MARK=(await api('/v1/me/signature',{method:'PUT',body:{image:IMG}})).mark;showNow();say('Saved. Contracts and tech packs you sign from now on carry this signature.')}catch(x){say(x.message,true)}finally{$('#save').disabled=false}};
+$('#remove').onclick=async()=>{if(!confirm('Stop signing with this signature? Your typed name signs from now on; documents already signed keep theirs.'))return;try{await api('/v1/me/signature',{method:'DELETE'});MARK=null;showNow();say('Your typed name signs from now on.')}catch(x){say(x.message,true)}};
+(async()=>{if(!TOKEN()){$('#needSignin').classList.remove('hidden');return}try{MARK=(await api('/v1/me/signature')).mark}catch(x){$('#needSignin').classList.remove('hidden');return}$('#app').classList.remove('hidden');showNow()})();
+</script>
+</body>
+</html>

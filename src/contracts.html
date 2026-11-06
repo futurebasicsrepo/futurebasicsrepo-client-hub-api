@@ -41,6 +41,7 @@ fieldset{border:1px solid var(--line);border-radius:16px;margin:0;padding:14px 1
 .copy{display:flex;gap:8px;align-items:center}.copy input{font:12px 'IBM Plex Mono',monospace}
 .empty{color:var(--dim);padding:14px 0}
 details.cl{border:1px solid var(--line);border-radius:14px;padding:8px 12px;background:#fff}details.cl summary{cursor:pointer;font-weight:600}details.cl textarea{margin-top:8px;min-height:120px}
+img.ink{display:block;height:52px;width:auto;max-width:100%;margin:4px 0 6px}
 </style>
 <script src="/feedback.js"></script>
 <link rel="stylesheet" href="/cue.css">
@@ -98,7 +99,7 @@ async function openContract(id){
    <div>${chip(c.status)} <span class="sub">${esc(c.clientCompany)} · ${esc(c.signerName)} &lt;${esc(c.signerEmail)}&gt;</span></div>
    <div class="g3"><div class="tile"><span class="sub">Fixed fee</span><b>${usd(c.totalCents)}</b></div><div class="tile"><span class="sub">Payments</span><b>${rows.rows.length}</b><span class="sub">${esc(rows.summary)}</span></div><div class="tile"><span class="sub">${c.status==='sent'?'Link works until':'Sent'}</span><b>${esc(c.status==='sent'?day(c.expiresAt):day(c.sentAt)||'—')}</b></div></div>
    ${c.voidReason?`<p class="sub">Void: ${esc(c.voidReason)}</p>`:''}${c.declined?`<p class="msg bad">Declined ${esc(when(c.declined.at))}${c.declined.reason?': '+esc(c.declined.reason):''}</p>`:''}
-   <fieldset><legend>Signatures</legend><div>Future Basics: ${c.providerSignature?`<b>${esc(c.providerSignature.name)}</b> · ${esc(when(c.providerSignature.at))}`:'<span class="sub">not signed yet</span>'}</div><div>${esc(c.clientCompany)}: ${c.clientSignature?`<b>${esc(c.clientSignature.name)}</b> · ${esc(when(c.clientSignature.at))}${c.clientSignature.method?' · pays by '+(c.clientSignature.method==='ach'?'ACH':'card'):''}${c.clientSignature.autopay?' · autopay on':''}`:'<span class="sub">not signed yet</span>'}</div></fieldset>
+   <fieldset><legend>Signatures</legend><div>Future Basics: ${c.providerSignature?`<b>${esc(c.providerSignature.name)}</b> · ${esc(when(c.providerSignature.at))}${c.providerSignature.ink?`<img class="ink" src="${esc(c.providerSignature.ink)}" alt="Signature of ${esc(c.providerSignature.name)}">`:''}`:'<span class="sub">not signed yet</span>'}</div><div>${esc(c.clientCompany)}: ${c.clientSignature?`<b>${esc(c.clientSignature.name)}</b> · ${esc(when(c.clientSignature.at))}${c.clientSignature.method?' · pays by '+(c.clientSignature.method==='ach'?'ACH':'card'):''}${c.clientSignature.autopay?' · autopay on':''}`:'<span class="sub">not signed yet</span>'}</div></fieldset>
    ${r.link?`<div class="copy"><input class="t" readonly id="lnk" value="${esc(r.link)}"><button class="btn sm" id="cp">Copy link</button></div>`:''}
    <div class="acts" id="acts"></div><p class="msg" id="dMsg" role="status"></p>
    ${r.autopay?autopayBox(r.autopay,c):''}
@@ -108,7 +109,7 @@ async function openContract(id){
   mk('Download PDF','',()=>pdf(id));
   if(c.status==='sent'){mk('Send a reminder','',async()=>{const x=await api(`/v1/contracts/${id}/remind`,{body:{}});msg(x.emailed?'Reminder sent.':'Reminder saved, but the email could not be sent.')});}
   if(c.status==='sent'||c.status==='signed_by_client'||c.status==='executed'){mk('Replace link','',async()=>{if(!confirm('The old link stops working. Replace it?'))return;await api(`/v1/contracts/${id}/link`,{body:{replace:true}});openContract(id)})}
-  if((c.status==='sent'||c.status==='signed_by_client')&&!c.providerSignature){mk('Sign for Future Basics','go',async()=>{if(!confirm('Sign this agreement for Future Basics?'))return;await api(`/v1/contracts/${id}/countersign`,{body:{}});done('Signed.',id)},!ME.signer)}
+  if((c.status==='sent'||c.status==='signed_by_client')&&!c.providerSignature){mk('Sign for Future Basics','go',async()=>{const mine=await api('/v1/me/signature').then(r=>r.mark).catch(()=>null);if(!confirm(mine?'Sign this agreement for Future Basics with your signature?':'Sign this agreement for Future Basics? You have no handwritten signature yet, so your typed name signs. Add yours under Settings → My signature.'))return;await api(`/v1/contracts/${id}/countersign`,{body:{}});done('Signed.',id)},!ME.signer)}
   if(c.status==='executed'&&!c.invoicesAt){mk('Draft the invoices','go',async()=>{if(!confirm(`Draft ${rows.rows.length} invoices from the payment schedule?`))return;const x=await api(`/v1/contracts/${id}/invoices`,{body:{}});done(`${x.made.length} invoices drafted.`,id)},!ME.signer)}
   if(c.dealId&&c.status==='executed')acts.push({href:'/sales#pipeline',label:'Open the deal'});
   if(!['executed','void'].includes(c.status)){mk('Revise','',async()=>{const x=await api(`/v1/contracts/${id}/revise`,{body:{}});openContract(x.contract.id)});mk('Void','bad',async()=>{const reason=prompt('Why is it being voided?','');if(reason===null)return;await api(`/v1/contracts/${id}/void`,{body:{reason}});done('Voided.',id)})}

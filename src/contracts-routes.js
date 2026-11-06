@@ -20,6 +20,7 @@
 //   POST /v1/public/contracts/:token/sign { name, title, agree, esign, autopay?, method? }      POST .../decline { reason }
 import { cleanContent, renderContract, sendProblems, docHash, signToken, readToken, nextNumber, checkSignature, buildPlan, planWords, schedule, defaultSections, dollars, longDate, todayISO, addDays, KINDS, TERMS, isProduct, defaultProduct, PRODUCT_CATEGORIES, INCOTERMS, PRODUCTION_MODES } from './contracts.js';
 import { contractPdf } from './contract-pdf.js';
+import { markUrl } from './signatures.js';
 import { moneyAllowed, cleanInvoice, nextInvoiceNumber } from './money.js';
 import { fireTrigger } from './sales-automations-engine.js';
 import { createAutopay, authorizationText } from './autopay.js';
@@ -35,7 +36,7 @@ const STATUS_FILTER = ['draft', 'sent', 'signed_by_client', 'executed', 'decline
 
 export function registerContractRoutes(app, d) {
   const { pool, authenticate, adminOnly, getSetting, setSetting, sendHubEmail = async () => false, hubEmailShell = (t, b) => b, hubButton = () => '', emailEscape = s => String(s), notifyStaff = async () => false,
-    money = null, proc = paymentProcessor, secret = 'dev', publicUrl = 'https://hub.thefuturebasics.com', workUrl = 'https://work.thefuturebasics.com', env = process.env, throttle = () => true, log = console } = d;
+    signatures = null, money = null, proc = paymentProcessor, secret = 'dev', publicUrl = 'https://hub.thefuturebasics.com', workUrl = 'https://work.thefuturebasics.com', env = process.env, throttle = () => true, log = console } = d;
   const stripe = d.stripe || createStripe({ env, log });
   const bad = (reply, error, code = 422) => reply.code(code).send({ error });
   const pre = [authenticate, adminOnly], actorId = req => (UUID.test(String(req.auth?.sub || '')) ? req.auth.sub : null);
@@ -65,7 +66,7 @@ export function registerContractRoutes(app, d) {
     return r;
   }
   const linkOf = r => `${publicUrl}/sign/${signToken(secret, r.id, r.token_version)}`;
-  const sigView = (s, staff = false) => s ? { name: s.name, title: s.title || '', at: s.at, method: s.method || null, autopay: !!s.autopay, ...(staff ? { ip: s.ip || '', by: s.by || null } : {}) } : null;
+  const sigView = (s, staff = false) => s ? { name: s.name, title: s.title || '', at: s.at, ink: markUrl(s.ink), method: s.method || null, autopay: !!s.autopay, ...(staff ? { ip: s.ip || '', by: s.by || null } : {}) } : null;
   const view = (r, { staff = true } = {}) => ({
     id: r.id, number: r.number, version: r.version, supersedesId: r.supersedes_id, kind: r.kind, kindLabel: KINDS[r.kind] || '', title: r.title, status: r.status, clientCompany: r.content?.client?.company || '', signerName: r.content?.client?.signerName || '', signerEmail: r.content?.client?.signerEmail || '',
     totalCents: Number(r.total_cents), currency: r.currency, dealId: r.deal_id || null, dealTitle: r.deal_title || '', projectId: r.project_id || null, projectName: r.project_name || '', clientId: r.client_id || null, contactId: r.contact_id || null,
@@ -73,6 +74,8 @@ export function registerContractRoutes(app, d) {
     declined: r.declined || null, voidReason: r.void_reason || '', executedAt: r.executed_at, invoicesAt: r.invoices_at, createdAt: r.created_at, updatedAt: r.updated_at, docHash: r.doc_hash || ''
   });
   const stateFor = async r => ({ status: r.status, sentAt: r.sent_at, hash: r.doc_hash || '', clientSignature: r.client_signature, providerSignature: r.provider_signature, declined: r.declined, events: (await pool.query(`select kind, at, ip, meta from contract_events where contract_id=$1 and kind='viewed' order by at limit 1`, [r.id])).rows });
+  // the PDF draws the ink itself, so it is read in with the state
+  const pdfState = async r => { const st = await stateFor(r), ps = st.providerSignature; return ps?.ink && signatures ? { ...st, providerSignature: { ...ps, inkPng: await signatures.pngOf(ps.ink).catch(() => null) } } : st; };
   const renderOf = async (r, st) => renderContract({ ...r.content, number: r.number }, st || await settings());
 
   // ---- drafting from the platform -----------------------------------------------------------------------------------------------------------
@@ -201,7 +204,7 @@ export function registerContractRoutes(app, d) {
   });
   app.get('/v1/contracts/:id/pdf', { preHandler: pre }, async (req, reply) => {
     if (!needId(req, reply)) return; const r = await fresh(await one(req.params.id)); if (!r) return bad(reply, 'Not found', 404);
-    const buf = await contractPdf(await renderOf(r), await stateFor(r));
+    const buf = await contractPdf(await renderOf(r), await pdfState(r));
     return reply.type('application/pdf').header('content-disposition', `inline; filename="${r.number}.pdf"`).header('cache-control', 'no-store').send(buf);
   });
 
@@ -227,7 +230,7 @@ export function registerContractRoutes(app, d) {
     if (r.status === 'draft') {
       await pool.query(`update contracts set content=$2::jsonb, status='sent', doc_hash=$3, sent_at=now(), sent_to=$4, expires_at=now() + ($5 || ' days')::interval, updated_at=now() where id=$1`, [r.id, JSON.stringify(c.value), hash, c.value.client.signerEmail, String(days)]);
       await ev(r.id, 'sent', { actor: u?.email || '', detail: c.value.client.signerEmail, meta: { hash } });
-      if (signNow) { const sig = { name: c.value.provider.signerName, title: c.value.provider.signerTitle, at: new Date().toISOString(), ip: ipOf(req), ua: uaOf(req), by: u.email, hash }; await pool.query('update contracts set provider_signature=$2::jsonb where id=$1', [r.id, JSON.stringify(sig)]); await ev(r.id, 'signed_provider', { actor: u.email, detail: sig.name, ip: sig.ip }); }
+      if (signNow) { const ink = await signatures?.markFor(req.auth?.sub).catch(() => null), sig = { name: c.value.provider.signerName, title: c.value.provider.signerTitle, at: new Date().toISOString(), ip: ipOf(req), ua: uaOf(req), by: u.email, hash, ...(ink ? { ink } : {}) }; await pool.query('update contracts set provider_signature=$2::jsonb where id=$1', [r.id, JSON.stringify(sig)]); await ev(r.id, 'signed_provider', { actor: u.email, detail: sig.name, ip: sig.ip }); }
     } else { await pool.query(`update contracts set expires_at=now() + ($2 || ' days')::interval, updated_at=now() where id=$1`, [r.id, String(days)]); await ev(r.id, 'resent', { actor: u?.email || '', detail: c.value.client.signerEmail }); }
     r = await one(r.id); const ok = await mailSigner(r, { message, senderName: u?.name || '', replyTo: u?.email || '' });
     if (r.contact_id) await pool.query(`insert into sales_activities(contact_id,deal_id,kind,text,meta,actor_id) values($1,$2,'system',$3,$4::jsonb,$5)`, [r.contact_id, r.deal_id, `Sent agreement ${r.number} for signature (${dollars(r.total_cents, r.currency)})`, JSON.stringify({ contractId: r.id }), actorId(req)]).catch(() => {});
@@ -294,7 +297,8 @@ export function registerContractRoutes(app, d) {
     if (r.provider_signature) return bad(reply, 'Future Basics has already signed this contract', 409);
     const name = clip(req.body?.name, 120) || r.content.provider.signerName || req.signer.name, title = clip(req.body?.title, 120) || r.content.provider.signerTitle;
     if (!name || name.length < 2) return bad(reply, 'Type the name of the person signing for Future Basics');
-    const sig = { name, title, at: new Date().toISOString(), ip: ipOf(req), ua: uaOf(req), by: req.signer.email, hash: r.doc_hash };
+    // the signer's own handwritten signature in ink, when they have one (src/signatures.js): the contract keeps the mark it was signed with
+    const ink = await signatures?.markFor(req.auth?.sub).catch(() => null), sig = { name, title, at: new Date().toISOString(), ip: ipOf(req), ua: uaOf(req), by: req.signer.email, hash: r.doc_hash, ...(ink ? { ink } : {}) };
     const u = await pool.query(`update contracts set provider_signature=$2::jsonb, updated_at=now() where id=$1 and provider_signature is null`, [r.id, JSON.stringify(sig)]); if (!u.rowCount) return bad(reply, 'Future Basics has already signed this contract', 409);
     await ev(r.id, 'signed_provider', { actor: req.signer.email, detail: name, ip: sig.ip });
     if (r.status === 'signed_by_client') await execute(r, req);
@@ -422,7 +426,7 @@ export function registerContractRoutes(app, d) {
   });
   app.get('/v1/public/contracts/:token/pdf', async (req, reply) => {
     const r = await byToken(req, reply); if (!r) return; if (['void', 'draft'].includes(r.status)) return bad(reply, 'This agreement is no longer open', 404);
-    const buf = await contractPdf(await renderOf(r), await stateFor(r));
+    const buf = await contractPdf(await renderOf(r), await pdfState(r));
     return reply.type('application/pdf').header('content-disposition', `inline; filename="${r.number}.pdf"`).header('cache-control', 'no-store').send(buf);
   });
   app.post('/v1/public/contracts/:token/sign', async (req, reply) => {

@@ -47,12 +47,14 @@ export function contractPdf(rendered, state = {}) {
   // signatures
   need(170); doc.moveDown(1.1);
   doc.fillColor(INK).font('SG-B').fontSize(13).text('Signatures', L, doc.y); doc.moveDown(.3);
-  doc.fillColor(DIM).font('SG').fontSize(8.5).text('By signing, each party agrees to this agreement. Typing a name in the signing form is a signature with the same effect as signing on paper.', L, doc.y, { width: CW, lineGap: 1.5 });
+  doc.fillColor(DIM).font('SG').fontSize(8.5).text('By signing, each party agrees to this agreement. Typing a name in the signing form, or a handwritten signature given in the hub, is a signature with the same effect as signing on paper.', L, doc.y, { width: CW, lineGap: 1.5 });
   const top = doc.y + 12, colW = (CW - 24) / 2;
   const block = (x, who, signer, sig) => {
     doc.roundedRect(x, top, colW, 112, 10).lineWidth(.8).strokeColor(LINE).stroke();
     doc.fillColor(DIM).font('MONO').fontSize(7.5).text(safe(who).toUpperCase(), x + 12, top + 10, { width: colW - 24, characterSpacing: .8, lineBreak: false });
-    if (sig) { doc.fillColor(INK).font('Helvetica-Oblique').fontSize(18).text(safe(sig.name), x + 12, top + 28, { width: colW - 24, lineBreak: false, height: 24, ellipsis: true }); }
+    // a handwritten signature in ink sits on the line (src/signatures.js); otherwise the typed name stands in for it
+    if (sig?.inkPng) { try { doc.image(sig.inkPng, x + 12, top + 18, { fit: [colW - 24, 40], align: 'left', valign: 'bottom' }); } catch { doc.fillColor(INK).font('Helvetica-Oblique').fontSize(18).text(safe(sig.name), x + 12, top + 28, { width: colW - 24, lineBreak: false, height: 24, ellipsis: true }); } }
+    else if (sig) { doc.fillColor(INK).font('Helvetica-Oblique').fontSize(18).text(safe(sig.name), x + 12, top + 28, { width: colW - 24, lineBreak: false, height: 24, ellipsis: true }); }
     doc.moveTo(x + 12, top + 56).lineTo(x + colW - 12, top + 56).lineWidth(.7).strokeColor(INK).stroke();
     doc.fillColor(INK); b.font('SG-M', sig ? sig.name : signer.name).fontSize(10).text(safe(sig ? sig.name : signer.name || ' '), x + 12, top + 62, { width: colW - 24, lineBreak: false, height: 14, ellipsis: true });
     const title = sig?.title || signer.title; if (title) doc.fillColor(DIM).font('SG').fontSize(9).text(safe(title), x + 12, top + 76, { width: colW - 24, lineBreak: false, height: 12, ellipsis: true });

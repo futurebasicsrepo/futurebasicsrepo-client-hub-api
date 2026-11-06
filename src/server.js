@@ -26,6 +26,7 @@ import { meshConfig, startMesh, pollMesh, fetchAsset, photoForMesh, stlInfo } fr
 import { paymentFromOrder, clientForPayment, recordPayment, backfillTechPackPayments, paymentSyncStatus } from './payments.js';
 import { registerMoneyRoutes } from './money-routes.js'
 import { registerContractRoutes } from './contracts-routes.js'
+import { registerSignatureRoutes } from './signatures.js'
 import { makeViews, viewsToDraw, viewSketch, placeViews, isDrawnView } from './views.js'
 import { registerFactoryRoutes } from './factories-routes.js'
 import { registerProtoRoutes } from './proto-routes.js'
@@ -796,7 +797,8 @@ const money=registerMoneyRoutes(app, { pool, authenticate, adminOnly, getSetting
     return { paid, amountCents: Math.round(Number((o || d).totalPriceSet?.shopMoney?.amount || 0) * 100), paidAt: d.updatedAt, orderName: o?.name || d.name };
   } });
 // Contracts for digital work: built from a deal, signed from a private link (see contracts-routes.js, docs/contracts.md)
-const contracts=registerContractRoutes(app, { pool, authenticate, adminOnly, getSetting, setSetting, money, env: process.env, sendHubEmail, hubEmailShell, hubButton, emailEscape, notifyStaff, secret: process.env.JWT_SECRET || 'dev', publicUrl: clientHubUrl, workUrl: workHubUrl, throttle, log: app.log });
+const signatures=registerSignatureRoutes(app,{pool,authenticate,adminOnly,log:app.log});
+const contracts=registerContractRoutes(app, { signatures, pool, authenticate, adminOnly, getSetting, setSetting, money, env: process.env, sendHubEmail, hubEmailShell, hubButton, emailEscape, notifyStaff, secret: process.env.JWT_SECRET || 'dev', publicUrl: clientHubUrl, workUrl: workHubUrl, throttle, log: app.log });
 app.get('/contracts', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').type('text/html').send(readFileSync(new URL('./contracts.html', import.meta.url), 'utf8')));
 app.get('/sign/:token', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').header('referrer-policy', 'no-referrer').header('content-security-policy', `upgrade-insecure-requests; default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob: https:; connect-src 'self'${qbConfigOf(process.env).payments ? ' ' + qbConfigOf(process.env).paymentsOrigin : ''}; frame-ancestors 'none'; base-uri 'self'; form-action 'self'`).type('text/html').send(readFileSync(new URL('./sign.html', import.meta.url), 'utf8')));
 app.get('/money', (_req, reply) => reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./money.html', import.meta.url), 'utf8')));
@@ -903,6 +905,7 @@ app.get('/lab/flat-parts/:file', (req, reply) => {
   try { return reply.header('cache-control', 'public, max-age=86400').type('image/webp').send(readFileSync(new URL(`./flat-parts/${f}`, import.meta.url))); } catch { return reply.code(404).send('Not found'); }
 });
 app.get('/lab/finish.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-finish.js', import.meta.url), 'utf8')));
+app.get('/signature', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').type('text/html').send(readFileSync(new URL('./signature.html', import.meta.url), 'utf8')));
 app.get('/team', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').type('text/html').send(readFileSync(new URL('./team.html', import.meta.url), 'utf8')));
 app.get('/brand', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').type('text/html').send(readFileSync(new URL('./brand.html', import.meta.url), 'utf8')));
 registerBrandRoutes(app, { authenticate, adminOnly });
@@ -3223,7 +3226,8 @@ app.post('/v1/admin/products/:id/tech-pack/sign',{preHandler:[authenticate,admin
   if(!current.clientSign&&ctx.product.client_slug!=='future-basics')return reply.code(409).send({error:`${ctx.product.client_name} approves version ${ctx.techPack.version} before Future Basics signs`});
   const unpaid=(await pool.query(`select number from invoices where product_id=$1 and kind='deposit' and status='due' order by created_at desc limit 1`,[ctx.product.id])).rows[0];
   if(unpaid&&req.body?.skipDeposit!==true)return reply.code(409).send({error:`The sample deposit ${unpaid.number} is not paid yet — sign once it lands, or sign anyway if you have agreed otherwise`,depositDue:unpaid.number});
-  const row=await updateVerification(ctx.techPack.id,ctx.techPack.version,v=>{v.brandSign={name,at:new Date().toISOString(),by:req.auth.email||'Future Basics'}});
+  const ink=await signatures.markFor(req.auth.sub).catch(()=>null); // the signer's handwritten signature, when they have one (src/signatures.js)
+  const row=await updateVerification(ctx.techPack.id,ctx.techPack.version,v=>{v.brandSign={name,at:new Date().toISOString(),by:req.auth.email||'Future Basics',...(ink?{ink}:{})}});
   if(!row)return reply.code(409).send({error:'The tech pack changed while you were signing — reload and try again'});
   await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,
     [ctx.product.client_id,ctx.product.id,req.auth.sub,`Tech pack v${row.version} signed by Future Basics (${name})`,{techPackId:row.id,version:row.version,locked:Boolean(row.locked_at)}]);
