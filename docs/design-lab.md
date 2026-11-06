@@ -1167,7 +1167,21 @@ What the picture sets can also be set by hand, and every value is bounded:
 
 A drafted pattern is a start: a pattern maker can change every piece on the Pattern view and keep what they changed.
 
+**Built with** (in the pattern panel, garments) says how the piece is built, the description the pattern is drafted from (`src/lab-construction.js`):
+- **What it covers:** the sleeve (set-in, raglan, dropped, none), hood, collar, opening (zip, half or quarter zip, buttons, snaps, placket), front and back yokes, the pockets (kangaroo, split kangaroo, welt, flap, chest, flap chest, patch hip, cargo, five-pocket, slash), the waist (fixed, elastic, drawcord), double knee, the leg (straight, flare, wide, taper, balloon), pleats, panels and stripes, quilting, a belt and the lining.
+- **Where it comes from, in order:** what is set on the piece, then what the library sketch's name says ("double-knee carpenter pants", "raglan boxy tee"), then the style's own (a zip hoodie has a split kangaroo).
+- **Change it** sets any of it by hand; the pattern redrafts as you go and it saves with the pattern (`spec.construction`), so the production files use it too.
+- **Read it from the drawing** has the vision model read the concept's picture and the drawn flats (`POST /v1/lab/concepts/:id/pattern/construction/read`), so a freehand drawing, which has no name to go by, drafts as what it shows. Nothing is kept until it is saved.
+- **The sketch's length** is trusted only as far as its name says it is meant to go (`fitToTemplate`): a cropped sketch may shorten the piece, a long one lengthen it, and any other moves it at most about a tenth. This stops a misread hem from making a T-shirt dress 20 in long.
+- `node scripts/pattern-audit.mjs` drafts every library sketch. It reports any piece floating off the product, and any feature a sketch's name promises that the pattern does not have.
+
 **Edit pieces** turns the drawing into the chosen piece on a 1 in grid. In edit mode:
+
+- **Freehand (a mouse, a finger or a Pencil):**
+  - **✎ Redraw edge:** draw along part of the outline, from the outline to the outline, and that stretch takes your line. The hand's wobble is taken out and each point set on the 1/16 in (`replaceEdge`, `cleanStroke`).
+  - **✂ Cut in two:** draw a line right across the piece and it is cut along it into two pieces, each with its own seam allowance: a new seam, a yoke, a panel (`splitPiece`).
+  - **◯ Draw a piece:** draw a closed shape and it becomes a new piece (`drawnPiece`).
+  - Each is one step in Undo.
 
 - **Points:** drag a point, or move it with the arrow keys (1/16 in; ¼ in with Shift). You can also type its position in fractions (`24 1/4`).
   **Add point** puts one between the chosen point and the next; **Delete point** (or Delete) removes it. A piece keeps at least three.

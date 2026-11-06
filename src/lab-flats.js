@@ -170,6 +170,11 @@ const refRatio = style => { if (!(style in REF)) { const r = FLAT_TEMPLATES.filt
 export function fitToTemplate(p, asDrawn = false) {
   const t = templateOf(p), v = t?.views?.front, S = STYLES[p.style], ref = refRatio(p.style), base = defaultParams(p.style, p.fit, p.options)?.m; if (!v?.ratio || !S || !ref || !base) return p;
   let k = Math.min(Math.max((asDrawn ? v.measuredRatio ?? v.ratio : v.ratio) / ref, .45), 2.4); if (Math.abs(k - 1) < .08) k = 1;
+  // the length the sketch suggests is trusted as far as the sketch says it is meant to go: a sketch's proportions are drawn by hand, and a
+  // hem read in the wrong place made a T-shirt dress 20 in and a blazer 49 in long. A cropped sketch may shorten the piece, a long one
+  // lengthen it; any other moves it at most about a tenth (the measurements can always be typed). The drawing itself is not moved (asDrawn)
+  if (!asDrawn) { const n = `${t.id} ${t.label}`.toLowerCase(), crop = /crop|super|mini|micro|bralette|tube|bandeau/.test(n), long = /long|maxi|midi|gown|parka|overcoat|trench|duster|tunic/.test(n);
+    k = Math.min(Math.max(k, crop ? .68 : long ? 1.02 : .92), crop ? .97 : long ? 1.7 : 1.1); }
   const m = { ...p.m };
   if (S.kind === 'top' && base.length) m.length = r8(base.length * k);
   else if (S.kind === 'bottom' && S.skirt) m.length = r8(base.length * k);
@@ -202,7 +207,7 @@ export function drawingOf(p, view = 'front', size = p.size || 'M') {
   const H = kind === 'top' ? v.hemY - v.hpsY : v.hemY - v.topY, W = kind === 'top' ? v.chest : v.waist, wOf = q => (kind === 'top' ? q.chest : q.waist);
   let sx, sy, oy;
   if (kind === 'top' || kind === 'bottom') {
-    const L = lenOf(m) + crop, starts = [measurementsFor(d0, size), measurementsFor(fitToTemplate(d0, true), size)].filter(q => lenOf(q) > 0);
+    const L = lenOf(m) + crop, starts = [measurementsFor(d0, size), measurementsFor(fitToTemplate(d0, true), size), measurementsFor(fitToTemplate(d0), size)].filter(q => lenOf(q) > 0);
     const ref = starts.sort((a, b) => Math.abs(Math.log(lenOf(a) / L)) - Math.abs(Math.log(lenOf(b) / L)))[0];
     sx = W / wOf(m); oy = kind === 'top' ? v.hpsY : v.topY;
     sy = ref && L > 0 ? clamp(H / lenOf(ref), W / wOf(ref)) * lenOf(ref) / L : clamp(H / L, sx);
