@@ -1475,7 +1475,11 @@ app.get('/v1/admin/clients/:id',{preHandler:[authenticate,adminOnly]},async(req,
     pool.query(`select pc.*,s.name supplier_name from product_configurations pc left join suppliers s on s.id=pc.supplier_id
       join products p on p.id=pc.product_id where p.client_id=$1 order by pc.updated_at desc`,[client.id]),
     pool.query(`select pt.* from price_tiers pt join products p on p.id=pt.product_id where p.client_id=$1 order by pt.product_id,pt.min_quantity`,[client.id])
-  ]);products.rows=products.rows.map(withRendering);return {client,projects:projects.rows.map(withSoftware),projectFinancials:projectFinancialRollups(projects.rows,products.rows,quotes.rows,invoices.rows,{internal:true}),projectMessages:projectMessages.rows,projectFiles:projectFiles.rows,clientAssetUploads:clientAssetUploads.rows,products:products.rows,requests:requests.rows,invoices:invoices.rows,users:users.rows,quotes:quotes.rows,
+  ]);products.rows=products.rows.map(withRendering);
+  // files sent to the room (All files) and put in a project by staff: they belong in that project's file library too
+  const projectRoomFiles=(await pool.query(`select rf.id,rf.project_id,rf.product_id,rf.original_name,rf.size_bytes,rf.mime_type,rf.created_at,rf.uploader_role,rf.client_visible,rf.factory_visible,rf.note,coalesce(nullif(u.name,''),u.email,case when rf.uploader_role='admin' then 'Future Basics' else c.name end) uploader_name
+    from room_files rf left join users u on u.id=rf.uploader_id join clients c on c.id=rf.client_id where rf.client_id=$1 and rf.project_id is not null and coalesce(rf.purpose,'')<>'tax-form' order by rf.created_at desc`,[client.id])).rows;
+  return {projectRoomFiles,client,projects:projects.rows.map(withSoftware),projectFinancials:projectFinancialRollups(projects.rows,products.rows,quotes.rows,invoices.rows,{internal:true}),projectMessages:projectMessages.rows,projectFiles:projectFiles.rows,clientAssetUploads:clientAssetUploads.rows,products:products.rows,requests:requests.rows,invoices:invoices.rows,users:users.rows,quotes:quotes.rows,
     suppliers:suppliers.rows,productionRuns:productionRuns.rows,qcInspections:qcInspections.rows,shipments:shipments.rows,
     assets:assets.rows,assetVersions:assetVersions.rows,comments:comments.rows,configurations:configurations.rows,priceTiers:priceTiers.rows,payments};
 });
@@ -2296,7 +2300,10 @@ app.get('/v1/dashboard', { preHandler: authenticate }, async (req,reply) => {
   // a new client's details are asked for first (the hub also opens the form on their first visit)
   if(!req.auth.preview&&(await pool.query(`select 1 from clients where id=$1 and onboarding_status='pending'`,[id])).rowCount)waiting.push({kind:'onboarding',id:'onboarding',title:'Finish setting up your account',product:'Your account',at:new Date().toISOString()});
   waiting.sort((a,b)=>new Date(b.at)-new Date(a.at));
-  return { requests: requests.rows, invoices: invoices.rows, projects: projects.rows.map(withSoftware),projectFinancials:projectFinancialRollups(projects.rows,products.rows,quotes.rows,invoices.rows),projectMessages: projectMessages.rows,projectFiles:projectFiles.rows,
+  // files sent to the room and put in one of its projects: shown in that project's files, as far as the client may see them (what they sent, or what staff shared)
+  const projectRoomFiles = (await pool.query(`select rf.id,rf.project_id,rf.product_id,rf.original_name,rf.size_bytes,rf.mime_type,rf.created_at,rf.uploader_role,rf.note,coalesce(nullif(u.name,''),u.email,case when rf.uploader_role='admin' then 'Future Basics' else c.name end) uploader_name
+    from room_files rf left join users u on u.id=rf.uploader_id join clients c on c.id=rf.client_id where rf.client_id=$1 and rf.project_id is not null and (rf.uploader_role='client' or rf.client_visible) and coalesce(rf.purpose,'')<>'tax-form' order by rf.created_at desc`, [id])).rows;
+  return { projectRoomFiles, requests: requests.rows, invoices: invoices.rows, projects: projects.rows.map(withSoftware),projectFinancials:projectFinancialRollups(projects.rows,products.rows,quotes.rows,invoices.rows),projectMessages: projectMessages.rows,projectFiles:projectFiles.rows,
     productComments:productComments.rows, products: products.rows.map(withRendering),
     approvals: approvals.rows, activities: activities.rows, waiting, agreements,
     actions: [
@@ -6396,4 +6403,6 @@ jobEvery('Product cards from tech packs', 24 * 60 * 60 * 1000, backfillCardsFrom
 if (process.env.PAYMENT_SWEEP !== 'off') jobEvery('Payment check for locked packs', 5 * 60 * 1000, runPaymentSweep); else declareJob('Payment check for locked packs', 5 * 60 * 1000, 'switched off (PAYMENT_SWEEP=off)');
 if (shopifyConfigured()) jobEvery('Sample deposits', 5 * 60 * 1000, runDepositSweep, { delay: 35 * 1000 }); else declareJob('Sample deposits', 5 * 60 * 1000, 'Shopify is not connected: staff mark deposits paid in the console');
 offerJob();
+// which image and video models are connected, said once at start (names of the variables only, never their values)
+{ const ic = imageConfig(process.env); app.log.info({ images: ic.provider, route: ic.route || null, googleKeyFrom: ic.google?.keyFrom || null, googleImageModel: ic.google?.model || null }, 'image models'); }
 await app.listen({ port: Number(process.env.PORT || 3000), host: '0.0.0.0' });

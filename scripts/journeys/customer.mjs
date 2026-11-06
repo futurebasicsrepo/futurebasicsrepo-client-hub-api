@@ -1150,6 +1150,12 @@ await journey('J94', 'All files: a client sends files outside a product and sees
   ok((await sw({ factoryVisible: true })).status === 400 && (await send(`/v1/admin/clients/${m.cid}/room-files?factoryVisible=1`, admin, 'f.pdf')).status === 400, 'a factory switch needs a project first: a factory only sees files in its project');
   ok((await sw({ projectId: otherProject })).status === 400, 'a file cannot be filed under another client\'s project');
   const filed = await sw({ projectId }); ok(filed.status === 200 && filed.json.file.projectId === projectId && filed.json.file.projectName, 'staff file it under the project', filed.json);
+  // filed under a project, it shows in that project's files too: on the client's project page (what they may see) and on staff's
+  ok((await call('/v1/dashboard', { token: m.token })).json.projectRoomFiles?.some(f => f.original_name === 'spec.pdf' && f.project_id === projectId), 'the project\'s files list it for the client, now it is shared', (await call('/v1/dashboard', { token: m.token })).json.projectRoomFiles);
+  const sentTo = await adm(`/v1/admin/room-files/${encodeURIComponent(a.json.file.id)}`, { method: 'PATCH', body: { projectId } }); ok(sentTo.status === 200, 'the client\'s own file is filed under the project too');
+  const staffView = (await adm(`/v1/admin/clients/${m.cid}`)).json.projectRoomFiles || [];
+  ok(['brief.pdf', 'spec.pdf'].every(n => staffView.some(f => f.original_name === n && f.project_id === projectId)), 'and staff see both in the project\'s files', staffView.map(f => f.original_name));
+  ok(!((await call('/v1/dashboard', { token: other.token })).json.projectRoomFiles || []).length, 'another client sees none of it');
 
   // a factory assigned a pack in this project
   for (let i = 0; i < 160; i++) { const st = await studio(m); if (st.loop && st.loop.status === 'done') break; await sleep(300); }

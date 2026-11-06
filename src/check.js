@@ -13,6 +13,7 @@ import sharp from 'sharp';
 import { normalizeTechPack } from './techpack.js';
 import { dataUrlToImageBlock } from './ai.js';
 import { timed, trackedFetch } from './telemetry.js';
+import { googleImageConfig, geminiImage } from './google-ai.js';
 
 const { parseIn } = globalThis.FBTP_UNITS;
 export const CHECK_MODEL = () => process.env.CHECK_MODEL || process.env.AI_MODEL || 'claude-opus-5-5';
@@ -90,11 +91,19 @@ export function renderPrompt(brief, view = viewsFor(brief.kind)[0]) {
 // Which image model draws it. OpenAI is the first adapter; with only the test fixture on, a plain placeholder is drawn so the flow can be exercised.
 export function imageConfig(env = process.env) {
   if (env.CHECK_RENDER_DISABLED === 'true') return { provider: 'off', configured: false, model: null, note: 'switched off (CHECK_RENDER_DISABLED)' };
+  // IMAGE_PROVIDER: unset or openai, both providers as their keys allow; google, Google only; anything else, none
+  const want = env.IMAGE_PROVIDER || 'openai', google = env.IMAGE_FIXTURE || (env.AI_FIXTURE && !env.GEMINI_API_KEY) || !['openai', 'google'].includes(want) ? { configured: false } : googleImageConfig(env), openai = Boolean(env.OPENAI_API_KEY && want === 'openai');
+  // which provider goes first for each kind of job (src/google-ai.js says why): edits with reference pictures to Google, pictures from words to OpenAI
+  const pick = (want, dflt) => (want === 'google' && google.configured) || (!openai && google.configured) ? 'google' : want === 'openai' && openai ? 'openai' : dflt;
+  const route = { edit: pick(env.IMAGE_EDIT_PROVIDER, google.configured ? 'google' : 'openai'), gen: pick(env.IMAGE_GEN_PROVIDER, openai ? 'openai' : 'google') };
   // the newest image model, at high quality, unless the service says otherwise (IMAGE_MODEL, IMAGE_QUALITY); IMAGE_FALLBACK_MODEL is tried once if the first is refused as unknown
-  if (env.OPENAI_API_KEY && (env.IMAGE_PROVIDER || 'openai') === 'openai') return { provider: 'openai', configured: true, model: env.IMAGE_MODEL || 'gpt-image-2.5-sunburst', quality: env.IMAGE_QUALITY || 'high', size: env.IMAGE_SIZE || '1024x1024', fallbackModel: env.IMAGE_FALLBACK_MODEL || 'gpt-image-1.5' };
+  if (openai) return { provider: 'openai', configured: true, model: env.IMAGE_MODEL || 'gpt-image-2.5-sunburst', quality: env.IMAGE_QUALITY || 'high', size: env.IMAGE_SIZE || '1024x1024', fallbackModel: env.IMAGE_FALLBACK_MODEL || 'gpt-image-1.5', google, route, openai: true };
+  if (google.configured) return { provider: 'google', configured: true, model: google.model, quality: env.IMAGE_QUALITY || 'high', size: env.IMAGE_SIZE || '1024x1024', google, route: { edit: 'google', gen: 'google' }, openai: false };
   if (env.IMAGE_FIXTURE || env.AI_FIXTURE) return { provider: 'fixture', configured: true, model: 'fixture', note: 'test placeholder, not a real image model' };
   return { provider: 'none', configured: false, model: null, note: 'no image model connected: checks compare the written spec with the photo' };
 }
+// a real image model (not the test placeholder)
+export const realImage = cfg => cfg?.provider === 'openai' || cfg?.provider === 'google';
 
 const hexOf = v => { const m = /#?([0-9a-f]{6})\b/i.exec(String(v || '')); return m ? '#' + m[1].toLowerCase() : ''; };
 export async function fixtureRender(brief, view) {
@@ -118,8 +127,22 @@ async function withFallback(cfg, run) {
     throw e;
   }
 }
+// The two ways every feature draws: a picture from words (openaiImage) and an edit of reference pictures (openaiEdit). Each goes to the provider
+// cfg.route names first, and to the other one if that fails for any reason but a missing key (a refusal on content is not retried elsewhere).
+const canGoogle = cfg => Boolean(cfg?.google?.configured), canOpenai = cfg => cfg?.openai !== false && Boolean(process.env.OPENAI_API_KEY);
+async function across(first, runGoogle, runOpenai, cfg, what) {
+  const order = first === 'google' ? [['google', runGoogle], ['openai', runOpenai]] : [['openai', runOpenai], ['google', runGoogle]];
+  const can = { google: canGoogle(cfg), openai: canOpenai(cfg) }, todo = order.filter(([k]) => can[k]);
+  if (!todo.length) throw new Error('No image model is connected');
+  let last;
+  for (const [k, run] of todo) {
+    try { const out = await run(); if (k !== todo[0][0]) console.warn(JSON.stringify({ level: 'warn', msg: `image ${what}: ${todo[0][0]} failed, ${k} drew it` })); return out; }
+    catch (e) { last = e; if (e.blocked) throw e; console.warn(JSON.stringify({ level: 'warn', msg: `image ${what}: ${k} failed`, status: e.status, err: String(e.message).slice(0, 200) })); }
+  }
+  throw last;
+}
 export async function openaiImage(prompt, cfg) {
-  return withFallback(cfg, c => openaiImageOnce(prompt, c));
+  return across(cfg?.route?.gen || 'openai', () => geminiImage({ prompt, size: cfg.size, cfg: cfg.google }), () => withFallback(cfg, c => openaiImageOnce(prompt, c)), cfg, 'from words');
 }
 async function openaiImageOnce(prompt, cfg) {
   const res = await trackedFetch('imagegen', 'https://api.openai.com/v1/images/generations', {
@@ -135,7 +158,10 @@ async function openaiImageOnce(prompt, cfg) {
 
 // An edit with reference images: the images go in, the model redraws them as the prompt says. Used for the hero image and for renders guided by it.
 export async function openaiEdit({ images, prompt, cfg, mask = null }) {
-  return withFallback(cfg, c => openaiEditOnce({ images, prompt, cfg: c, mask }));
+  // an edit inside a painted mask stays with OpenAI, the provider that takes a mask; transparent artwork too (Google draws on a ground)
+  const first = mask || cfg?.background === 'transparent' ? 'openai' : cfg?.route?.edit || 'openai';
+  const google = mask ? () => { throw Object.assign(new Error('Google takes no mask'), { status: 0 }); } : () => geminiImage({ prompt, images, size: cfg.size, cfg: cfg.google });
+  return across(first, google, () => withFallback(cfg, c => openaiEditOnce({ images, prompt, cfg: c, mask })), cfg, 'edit');
 }
 // `mask` (optional) is a PNG the size of the first image: where it is transparent the model redraws, the rest it keeps
 async function openaiEditOnce({ images, prompt, cfg, mask }) {
@@ -163,8 +189,8 @@ export async function renderViews(brief, views, cfg = imageConfig(), hero = null
   if (!cfg.configured) return [];
   const out = [];
   for (const view of views) {
-    const prompt = hero && cfg.provider === 'openai' ? guidedPrompt(brief, view) : renderPrompt(brief, view);
-    const buffer = cfg.provider === 'openai' ? await timed('imagegen-render', () => hero ? openaiEdit({ images: [hero], prompt, cfg }) : openaiImage(prompt, cfg)) : await fixtureRender(brief, view);
+    const prompt = hero && realImage(cfg) ? guidedPrompt(brief, view) : renderPrompt(brief, view);
+    const buffer = realImage(cfg) ? await timed('imagegen-render', () => hero ? openaiEdit({ images: [hero], prompt, cfg }) : openaiImage(prompt, cfg)) : await fixtureRender(brief, view);
     out.push({ view: view.id, label: view.label, buffer, prompt });
   }
   return out;
