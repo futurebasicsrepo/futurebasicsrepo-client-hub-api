@@ -14,6 +14,7 @@
 //   POST /v1/contracts/:id/send             { message?, signNow? } email the signing link (signNow signs for Future Basics, signers only)
 //   POST /v1/contracts/:id/remind | link | revise | void { reason }
 //   POST /v1/contracts/:id/countersign      signers only (the people named for Money): sign for Future Basics
+//   POST /v1/contracts/:id/ink              the person who signed with a typed name puts their handwritten signature on it (while it waits on the client)
 //   POST /v1/contracts/:id/invoices         signers only: draft an invoice for every payment in the schedule of a signed contract
 //
 //   The client (no sign-in: the link is the key)
@@ -298,6 +299,21 @@ export function registerContractRoutes(app, d) {
     await sendHubEmail({ to: c.client.signerEmail, subject: `Signed by both parties: ${c.title} (${r.number})`, html: hubEmailShell(`Signed: ${c.title}`, `<p>Hi ${emailEscape(firstName(c.client.signerName))},</p><p>The agreement <b>${emailEscape(c.title)}</b> (${emailEscape(r.number)}) is now signed by both parties. You can open it and download the signed copy any time:</p>${hubButton(link, 'Open the signed agreement')}<p style="font-size:12px;color:#717177">Keep this email: the link is your copy.</p>`) }).catch(() => {});
     await notifyStaff(`Signed by both parties: ${r.number} (${c.client.company})`, `<p><b>${emailEscape(c.title)}</b> is fully signed (${emailEscape(dollars(r.total_cents, r.currency))}).</p>${hubButton(`${workUrl}/contracts?open=${r.id}`, 'Open the contract')}<p>Next: draft the invoices from the payment schedule, and start the project.</p>`);
   }
+
+  // Future Basics signed with a typed name (the signer had no handwritten signature yet): the same person can put their ink on that signature,
+  // while the contract still waits on the client. The text, its fingerprint and the time of signing do not change; the audit trail records it.
+  app.post('/v1/contracts/:id/ink', { preHandler: [...pre, signerOnly] }, async (req, reply) => {
+    if (!needId(req, reply)) return; const r = await fresh(await one(req.params.id)); if (!r) return bad(reply, 'Not found', 404);
+    const ps = r.provider_signature; if (!ps) return bad(reply, 'Future Basics has not signed this contract yet', 409);
+    if (ps.ink) return bad(reply, 'This signature already carries a handwritten signature', 409);
+    if (!OPEN.includes(r.status)) return bad(reply, 'The handwritten signature can be added only while the contract waits on the client', 409);
+    if (String(ps.by || '').toLowerCase() !== String(req.signer.email || '').toLowerCase()) return bad(reply, `Only ${ps.name || 'the person who signed'} can add their handwritten signature`, 403);
+    const ink = await signatures?.markFor(req.auth?.sub).catch(() => null); if (!ink) return bad(reply, 'Add your signature first (Settings, My signature)', 409);
+    const u = await pool.query(`update contracts set provider_signature = provider_signature || jsonb_build_object('ink', $2::text, 'inkAt', now()), updated_at=now() where id=$1 and provider_signature is not null and not (provider_signature ? 'ink')`, [r.id, ink]);
+    if (!u.rowCount) return bad(reply, 'This signature already carries a handwritten signature', 409);
+    await ev(r.id, 'signed_provider_ink', { actor: req.signer.email, detail: ps.name, ip: ipOf(req) });
+    return detail(await one(r.id));
+  });
 
   app.post('/v1/contracts/:id/countersign', { preHandler: [...pre, signerOnly] }, async (req, reply) => {
     if (!needId(req, reply)) return; const r = await fresh(await one(req.params.id)); if (!r) return bad(reply, 'Not found', 404);
