@@ -41,6 +41,7 @@ fieldset{border:1px solid var(--line);border-radius:16px;margin:0;padding:14px 1
 .copy{display:flex;gap:8px;align-items:center}.copy input{font:12px 'IBM Plex Mono',monospace}
 .empty{color:var(--dim);padding:14px 0}
 details.cl{border:1px solid var(--line);border-radius:14px;padding:8px 12px;background:#fff}details.cl summary{cursor:pointer;font-weight:600}details.cl textarea{margin-top:8px;min-height:120px}
+img.ink{display:block;height:52px;width:auto;max-width:100%;margin:4px 0 6px}
 </style>
 <script src="/feedback.js"></script>
 <link rel="stylesheet" href="/cue.css">
@@ -98,7 +99,7 @@ async function openContract(id){
    <div>${chip(c.status)} <span class="sub">${esc(c.clientCompany)} · ${esc(c.signerName)} &lt;${esc(c.signerEmail)}&gt;</span></div>
    <div class="g3"><div class="tile"><span class="sub">Fixed fee</span><b>${usd(c.totalCents)}</b></div><div class="tile"><span class="sub">Payments</span><b>${rows.rows.length}</b><span class="sub">${esc(rows.summary)}</span></div><div class="tile"><span class="sub">${c.status==='sent'?'Link works until':'Sent'}</span><b>${esc(c.status==='sent'?day(c.expiresAt):day(c.sentAt)||'—')}</b></div></div>
    ${c.voidReason?`<p class="sub">Void: ${esc(c.voidReason)}</p>`:''}${c.declined?`<p class="msg bad">Declined ${esc(when(c.declined.at))}${c.declined.reason?': '+esc(c.declined.reason):''}</p>`:''}
-   <fieldset><legend>Signatures</legend><div>Future Basics: ${c.providerSignature?`<b>${esc(c.providerSignature.name)}</b> · ${esc(when(c.providerSignature.at))}`:'<span class="sub">not signed yet</span>'}</div><div>${esc(c.clientCompany)}: ${c.clientSignature?`<b>${esc(c.clientSignature.name)}</b> · ${esc(when(c.clientSignature.at))}${c.clientSignature.method?' · pays by '+(c.clientSignature.method==='ach'?'ACH':'card'):''}${c.clientSignature.autopay?' · autopay on':''}`:'<span class="sub">not signed yet</span>'}</div></fieldset>
+   <fieldset><legend>Signatures</legend><div>Future Basics: ${c.providerSignature?`<b>${esc(c.providerSignature.name)}</b> · ${esc(when(c.providerSignature.at))}${c.providerSignature.ink?`<img class="ink" src="${esc(c.providerSignature.ink)}" alt="Signature of ${esc(c.providerSignature.name)}">`:''}`:'<span class="sub">not signed yet</span>'}</div><div>${esc(c.clientCompany)}: ${c.clientSignature?`<b>${esc(c.clientSignature.name)}</b> · ${esc(when(c.clientSignature.at))}${c.clientSignature.method?' · pays by '+(c.clientSignature.method==='ach'?'ACH':'card'):''}${c.clientSignature.autopay?' · autopay on':''}`:'<span class="sub">not signed yet</span>'}</div></fieldset>
    ${r.link?`<div class="copy"><input class="t" readonly id="lnk" value="${esc(r.link)}"><button class="btn sm" id="cp">Copy link</button></div>`:''}
    <div class="acts" id="acts"></div><p class="msg" id="dMsg" role="status"></p>
    ${r.autopay?autopayBox(r.autopay,c):''}
@@ -108,7 +109,7 @@ async function openContract(id){
   mk('Download PDF','',()=>pdf(id));
   if(c.status==='sent'){mk('Send a reminder','',async()=>{const x=await api(`/v1/contracts/${id}/remind`,{body:{}});msg(x.emailed?'Reminder sent.':'Reminder saved, but the email could not be sent.')});}
   if(c.status==='sent'||c.status==='signed_by_client'||c.status==='executed'){mk('Replace link','',async()=>{if(!confirm('The old link stops working. Replace it?'))return;await api(`/v1/contracts/${id}/link`,{body:{replace:true}});openContract(id)})}
-  if((c.status==='sent'||c.status==='signed_by_client')&&!c.providerSignature){mk('Sign for Future Basics','go',async()=>{if(!confirm('Sign this agreement for Future Basics?'))return;await api(`/v1/contracts/${id}/countersign`,{body:{}});done('Signed.',id)},!ME.signer)}
+  if((c.status==='sent'||c.status==='signed_by_client')&&!c.providerSignature){mk('Sign for Future Basics','go',async()=>{const mine=await api('/v1/me/signature').then(r=>r.mark).catch(()=>null);if(!confirm(mine?'Sign this agreement for Future Basics with your signature?':'Sign this agreement for Future Basics? You have no handwritten signature yet, so your typed name signs. Add yours under Settings → My signature.'))return;await api(`/v1/contracts/${id}/countersign`,{body:{}});done('Signed.',id)},!ME.signer)}
   if(c.status==='executed'&&!c.invoicesAt){mk('Draft the invoices','go',async()=>{if(!confirm(`Draft ${rows.rows.length} invoices from the payment schedule?`))return;const x=await api(`/v1/contracts/${id}/invoices`,{body:{}});done(`${x.made.length} invoices drafted.`,id)},!ME.signer)}
   if(c.dealId&&c.status==='executed')acts.push({href:'/sales#pipeline',label:'Open the deal'});
   if(!['executed','void'].includes(c.status)){mk('Revise','',async()=>{const x=await api(`/v1/contracts/${id}/revise`,{body:{}});openContract(x.contract.id)});mk('Void','bad',async()=>{const reason=prompt('Why is it being voided?','');if(reason===null)return;await api(`/v1/contracts/${id}/void`,{body:{reason}});done('Voided.',id)})}
@@ -194,7 +195,7 @@ function drawEditor(){
    ${isProd(c.kind)?'':`<fieldset><legend>Hosting and maintenance (optional)</legend><label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="hostOn" ${c.hosting?.included?'checked':''}> Include monthly hosting and maintenance after launch</label><div class="g2" id="hostBox" ${c.hosting?.included?'':'hidden'}><label class="f"><span>Monthly price (USD)</span><input class="t" id="hostPrice" value="${c.hosting?.monthlyCents?(c.hosting.monthlyCents/100).toFixed(2):''}"></label>${fld('Note (optional)','hosting.note')}</div></fieldset>`}
    <fieldset><legend>Terms</legend><div class="g3">${fld('Governing law (state)','terms.governingLaw',{ph:'Pennsylvania'})}${fld('Warranty days','terms.warrantyDays',{type:'number'})}${fld('Link works for (days)','terms.expiresDays',{type:'number'})}</div></fieldset>
    <details class="cl"><summary>Edit the wording of each clause</summary><p class="sub">Words in {{double braces}} are filled from the contract. The scope, timeline, fee and schedule clauses draw themselves from the fields above.</p>${c.sections.map((s,i)=>`<details class="cl"><summary>${esc(s.title)}${s.kind!=='text'&&s.kind!=='circumvention'?' <span class="chip dim">drawn from the fields</span>':''}</summary><label class="f"><span>Title</span><input class="t" data-sec="${i}" data-f="title" value="${esc(s.title)}"></label><textarea class="t" data-sec="${i}" data-f="body" ${s.kind!=='text'&&s.kind!=='hosting'&&s.kind!=='circumvention'?'placeholder="Optional introduction above the details"':''}>${esc(s.body)}</textarea></details>`).join('')}</details>
-   <div class="acts"><button class="btn" id="eSave">Save draft</button><button class="btn" id="ePrev">Preview</button><button class="btn go" id="eSend">Send for signature…</button><span class="msg" id="eMsg" role="status"></span></div><div id="ePrevBox"></div>`;
+   <div class="acts"><button class="btn" id="eSave">Save draft</button><button class="btn" id="ePrev">Preview</button><button class="btn" id="ePdf" title="Make the PDF the client downloads, from what is on this form now (nothing is saved)">Preview PDF</button><button class="btn go" id="eSend">Send for signature…</button><span class="msg" id="eMsg" role="status"></span></div><div id="ePrevBox"></div>`;
   c.scopeText=(c.scope||[]).join('\n');c.notText=(c.notIncluded||[]).join('\n');B.querySelector('[data-k=scopeText]').value=c.scopeText;B.querySelector('[data-k=notText]').value=c.notText;B.querySelector('[data-k=kind]').value=c.kind;
   drawParams();wire();replan();
 }
@@ -212,13 +213,16 @@ function drawParams(){const pu=E.pu,t=pu.type,h=[];
   if(t==='monthly')h.push(`<div class="g3"><label class="f"><span>Deposit on signing (% of fee, blank for none)</span><input class="t" data-p="depositPct" value="${esc(pu.depositPct??'')}"></label><label class="f"><span>Number of monthly payments</span><input class="t" type="number" min="2" max="48" data-p="months" value="${esc(pu.months)}"></label><label class="f"><span>First payment date</span><input class="t" type="date" data-p="firstDueOn" value="${esc(pu.firstDueOn)}"></label></div>`);
   if(t==='milestones')h.push(`<div id="msList">${pu.milestones.map((m,i)=>`<div class="ms"><input class="t" data-m="${i}" data-f="label" value="${esc(m.label)}" placeholder="Milestone"><input class="t" data-m="${i}" data-f="pct" value="${esc(m.pct)}" placeholder="%"><input class="t" type="date" data-m="${i}" data-f="dueOn" value="${esc(m.dueOn)}" title="Leave the date empty to bill on delivery (or on signing for the first)"><button class="x" type="button" data-rm="${i}" aria-label="Remove">×</button></div>`).join('')}</div><button class="btn sm" type="button" id="addMs">+ Milestone</button><p class="sub">Percentages add up to 100. The last milestone takes whatever is left. No date means on signing (the first) or on delivery.</p>`);
   $('#pParams').innerHTML=h.join('');}
-let planTimer=null;
-function replan(){clearTimeout(planTimer);planTimer=setTimeout(async()=>{const pu=E.pu,total=toCents($('#feeIn').value);E.c.fee.totalCents=Number.isFinite(total)?total:0;
-  const out=$('#pOut');if(!Number.isFinite(total)||total<=0){out.innerHTML='<p class="sub">Enter the fixed fee to see the schedule.</p>';E.c.plan=null;return}
+// the schedule is worked out by the service as the fields change; saving, previewing and sending wait for it (planJob), so what is saved is
+// always the plan on screen, and a plan that cannot be worked out (planErr) is never sent as something else
+let planTimer=null,planJob=Promise.resolve(),planErr='';
+function replan(){clearTimeout(planTimer);let finish;planJob=new Promise(r=>finish=r);planTimer=setTimeout(async()=>{try{await replanNow()}finally{finish()}},250)}
+async function replanNow(){const pu=E.pu,total=toCents($('#feeIn').value);E.c.fee.totalCents=Number.isFinite(total)?total:0;
+  const out=$('#pOut');if(!Number.isFinite(total)||total<=0){out.innerHTML='<p class="sub">Enter the fixed fee to see the schedule.</p>';E.c.plan=null;planErr='Enter the fixed fee';return}
   try{const ms=pu.type==='milestones'?pu.milestones.map((m,i)=>({label:m.label,pct:Number(m.pct)||0,dueOn:m.dueOn||undefined,event:m.dueOn?undefined:(i===0?'signing':'delivery')})):[];
     const r=await api('/v1/contracts/plan',{body:{type:pu.type,totalCents:total,depositPct:pu.depositPct===''||pu.depositPct==null?'':Number(pu.depositPct),months:Number(pu.months),firstDueOn:pu.firstDueOn||null,deliveryOn:pu.deliveryOn||null,milestones:ms,method:pu.method,autopay:pu.autopay,note:pu.note,kind:E.c.kind}});
-    E.c.plan=r.plan;out.innerHTML=`<p><b>${esc(r.summary)}</b></p><div class="scroll"><table><thead><tr><th>Payment</th><th>Due</th><th class="n">Amount</th></tr></thead><tbody>${r.plan.installments.map(i=>`<tr><td>${esc(i.label)}</td><td>${esc(i.dueOn?day(i.dueOn+'T12:00:00'):i.event==='signing'?'On signing':(isProd(E.c.kind)?'On final sample approval':'On delivery'))}</td><td class="n">${usd(i.amountCents)}</td></tr>`).join('')}</tbody></table></div>`}
-  catch(x){E.c.plan=null;out.innerHTML=`<p class="msg bad">${esc(x.message)}</p>`}},250)}
+    E.c.plan=r.plan;planErr='';out.innerHTML=`<p><b>${esc(r.summary)}</b></p><div class="scroll"><table><thead><tr><th>Payment</th><th>Due</th><th class="n">Amount</th></tr></thead><tbody>${r.plan.installments.map(i=>`<tr><td>${esc(i.label)}</td><td>${esc(i.dueOn?day(i.dueOn+'T12:00:00'):i.event==='signing'?'On signing':(isProd(E.c.kind)?'On final sample approval':'On delivery'))}</td><td class="n">${usd(i.amountCents)}</td></tr>`).join('')}</tbody></table></div>`}
+  catch(x){E.c.plan=null;planErr=x.message;out.innerHTML=`<p class="msg bad">${esc(x.message)}</p>`}}
 // Digital work and a physical product have their own standard clauses. Switching between them swaps the wording; edited wording is only replaced when staff agree.
 async function switchKind(kind){const was=E.c.kind;if(kind===was)return;
   if(isProd(was)===isProd(kind)){E.c.kind=kind;return}
@@ -238,7 +242,7 @@ function wire(){const B=$('#eBody');
     if(t.dataset.k==='kind'){switchKind(t.value).catch(x=>{emsg(x.message,'bad');t.value=E.c.kind});return}
     if(t.dataset.k){let v=t.value;if(t.type==='number')v=Number(v);setv(t.dataset.k,v);if(t.dataset.k==='product.production.mode'&&e.type==='change'){c_scope_sync();drawEditor()}return}
     if(t.dataset.sec!==undefined){E.c.sections[+t.dataset.sec][t.dataset.f]=t.value;return}
-    if(t.id==='feeIn'||t.id==='pType'||t.id==='pMethod'||t.id==='pAuto'){if(t.id==='pType'){E.pu.type=t.value;if(t.value==='monthly'&&E.pu.depositPct===50)E.pu.depositPct='';if(t.value==='split'&&(E.pu.depositPct===''||E.pu.depositPct==null))E.pu.depositPct=50;drawParams()}if(t.id==='pMethod'){E.pu.method=t.value;if(t.value==='invoice'){E.pu.autopay=false;$('#pAuto').checked=false}}if(t.id==='pAuto'){E.pu.autopay=t.checked;if(t.checked&&E.pu.method==='invoice'){E.pu.method='either';$('#pMethod').value='either'}}return replan()}
+    if(t.id==='feeIn'||t.id==='pType'||t.id==='pMethod'||t.id==='pAuto'){if(t.id==='pType'){E.pu.type=t.value;if(t.value==='monthly'){if(E.pu.depositPct===50)E.pu.depositPct='';if(!E.pu.firstDueOn){const d=new Date();d.setUTCDate(1);d.setUTCMonth(d.getUTCMonth()+1);E.pu.firstDueOn=d.toISOString().slice(0,10)}if(E.pu.method==='invoice'){E.pu.method='either';E.pu.autopay=true;$('#pMethod').value='either';$('#pAuto').checked=true}}if(t.value==='split'&&(E.pu.depositPct===''||E.pu.depositPct==null))E.pu.depositPct=50;drawParams()}if(t.id==='pMethod'){E.pu.method=t.value;if(t.value==='invoice'){E.pu.autopay=false;$('#pAuto').checked=false}}if(t.id==='pAuto'){E.pu.autopay=t.checked;if(t.checked&&E.pu.method==='invoice'){E.pu.method='either';$('#pMethod').value='either'}}return replan()}
     if(t.dataset.p){E.pu[t.dataset.p]=t.value;return replan()}
     if(t.dataset.m!==undefined){E.pu.milestones[+t.dataset.m][t.dataset.f]=t.value;return replan()}
     if(t.id==='hostOn'){E.c.hosting={...(E.c.hosting||{}),included:t.checked};$('#hostBox').hidden=!t.checked;return}
@@ -246,7 +250,7 @@ function wire(){const B=$('#eBody');
   };
   B.onclick=e=>{const rm=e.target.closest('[data-rm]');if(rm){E.pu.milestones.splice(+rm.dataset.rm,1);drawParams();return replan()}if(e.target.id==='addMs'){E.pu.milestones.push({label:'',pct:0,dueOn:'',event:'delivery'});drawParams();replan()}};
   if(needsSetup())fillSetup();
-  $('#eSave').onclick=()=>save().catch(x=>emsg(x.message,'bad'));$('#ePrev').onclick=()=>preview().catch(x=>emsg(x.message,'bad'));$('#eSend').onclick=()=>sendFlow().catch(x=>emsg(x.message,'bad'));
+  $('#eSave').onclick=()=>save().catch(x=>emsg(x.message,'bad'));$('#ePrev').onclick=()=>preview().catch(x=>emsg(x.message,'bad'));$('#ePdf').onclick=()=>previewPdf().catch(x=>emsg(x.message,'bad'));$('#eSend').onclick=()=>sendFlow().catch(x=>emsg(x.message,'bad'));
 }
 const emsg=(t,k='ok')=>{const m=$('#eMsg');if(m){m.className='msg '+k;m.textContent=t}};
 function payload(){const c=JSON.parse(JSON.stringify(E.c));c.scope=String(E.c.scopeText||'').split('\n');c.notIncluded=String(E.c.notText||'').split('\n');delete c.scopeText;delete c.notText;if(!c.plan)delete c.plan;return {content:c,dealId:E.dealId||undefined,projectId:E.projectId||undefined}}
@@ -267,12 +271,18 @@ async function fillSetup(){
     catch(x){m.className='msg bad';m.textContent=x.message}}
 }
 function showProblems(list){E.problems=list||[];const p=$('#probs');if(!p)return;p.classList.toggle('hidden',!E.problems.length);p.innerHTML=probsHtml();if(needsSetup())fillSetup()}
-async function save(){await flush();const r=E.id?await api('/v1/contracts/'+E.id,{method:'PUT',body:payload()}):await api('/v1/contracts',{body:payload()});E.id=r.contract.id;E.number=r.contract.number;showProblems(r.problems);emsg('Saved.');loadList();return r}
-const flush=()=>new Promise(r=>setTimeout(r,320));
+async function save(){await flush();const r=E.id?await api('/v1/contracts/'+E.id,{method:'PUT',body:payload()}):await api('/v1/contracts',{body:payload()});E.id=r.contract.id;E.number=r.contract.number;showProblems(r.problems);if(E.c.plan)emsg('Saved.');else emsg(`Saved, but the payment plan is not set: ${planErr||'choose how the fee is paid'}.`,'bad');loadList();return r}
+const flush=()=>planJob;
+// the real PDF of the form as it stands: opened in a new tab (the tab is opened on the click, so a popup blocker lets it through, then filled)
+async function previewPdf(){const tab=window.open('','_blank');emsg('Making the PDF…');
+  try{await flush();const r=await fetch('/v1/contracts/render.pdf',{method:'POST',headers:{Authorization:'Bearer '+TOKEN(),'Content-Type':'application/json'},body:JSON.stringify({content:payload().content,number:E.number})});
+    if(!r.ok){const j=await r.json().catch(()=>({}));throw new Error(j.error||'The PDF could not be made ('+r.status+')')}
+    const url=URL.createObjectURL(await r.blob());if(tab&&!tab.closed)tab.location.href=url;else{const a=document.createElement('a');a.href=url;a.download=(E.number||'contract')+'-preview.pdf';a.click()}emsg('PDF made: it opened in a new tab. Nothing was saved.');setTimeout(()=>URL.revokeObjectURL(url),120000)}
+  catch(x){if(tab&&!tab.closed)tab.close();throw x}}
 async function preview(){await flush();const r=await api('/v1/contracts/render',{body:{content:payload().content,number:E.number}});showProblems(r.problems);const d=r.rendered;
   $('#ePrevBox').innerHTML=`<div class="preview"><h3>${esc(d.title)}</h3><p class="sub">${esc(d.parties.provider.name)} and ${esc(d.parties.client.company)}</p>${d.sections.map((s,i)=>`<h4>${i+1}. ${esc(s.title)}</h4>${String(s.body||'').split(/\n{2,}/).filter(Boolean).map(p=>`<p>${esc(p)}</p>`).join('')}${s.items?`<ul>${s.items.map(x=>`<li>${esc(x)}</li>`).join('')}</ul>`:''}${s.rows&&s.kind==='schedule'?`<p><b>${esc(s.summary)}</b></p>`:''}`).join('')}${d.missing.length?`<p class="msg bad">Still empty: ${d.missing.map(m=>'{{'+m+'}}').join(', ')}</p>`:''}</div>`;
   $('#ePrevBox').scrollIntoView({behavior:'smooth',block:'nearest'})}
-async function sendFlow(){const r=await save();if(r.problems&&r.problems.length){emsg('Fix what is listed above first.','bad');return}
+async function sendFlow(){await flush();if(!E.c.plan){emsg(`Fix the payment plan before sending: ${planErr||'choose how the fee is paid'}.`,'bad');$('#pOut')?.scrollIntoView({block:'center',behavior:'smooth'});return}const r=await save();if(r.problems&&r.problems.length){emsg('Fix what is listed above first.','bad');return}
   const c=r.content,B=$('#dBody');
   B.innerHTML=`<div class="dh"><h2>Send for signature</h2><button class="btn sm" id="dX">Cancel</button></div><p>This emails <b>${esc(c.client.signerName)}</b> at <b>${esc(c.client.signerEmail)}</b> a private link to read and sign <b>${esc(c.title)}</b>, a fixed fee of <b>${usd(c.fee.totalCents)}</b>.</p><p class="sub">Once it is sent the text is fixed: to change anything you make a new version.</p>
    <label class="f"><span>A personal note in the email (optional)</span><textarea class="t" id="sNote" rows="3" placeholder="Great talking with you. Here is the agreement for the site."></textarea></label>

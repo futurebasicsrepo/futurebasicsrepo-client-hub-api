@@ -171,3 +171,15 @@ test('the factory introductions clause is optional per contract: zero months lea
   assert.ok(!off.sections.some(x => x.id === 'circumvention') && !/Factory introductions/.test(JSON.stringify(off.sections)), 'no clause, and nothing else refers to it');
   assert.deepEqual(off.missing, []); assert.ok(renderContract(cleanContent(prod()).value).sections.some(x => x.id === 'circumvention'), 'on by default');
 });
+
+test('a draft saved before its payment plan was worked out is never sent as payment in full', () => {
+  const draft = cleanContent({ ...base(), fee: { totalCents: 800_000 } }, { lenient: true }).value; // the form had no plan yet (a monthly plan with no first date)
+  assert.equal(draft.plan.type, 'full'); assert.equal(draft.plan.unset, true);
+  const again = cleanContent(draft, {}); // what the send does with the saved content
+  assert.ok(sendProblems(again.value || draft).some(p => /payment plan was never set/.test(p)));
+  // a plan chosen in the form goes out as chosen
+  const monthly = buildPlan({ type: 'monthly', totalCents: 800_000, months: 8, firstDueOn: '2026-12-01', method: 'card', autopay: true }).plan;
+  const chosen = cleanContent({ ...base(), fee: { totalCents: 800_000 }, plan: monthly }, {}).value;
+  assert.ok(!chosen.plan.unset); assert.equal(chosen.plan.installments.length, 8); assert.ok(chosen.plan.installments.every(p => p.amountCents === 100_000));
+  assert.ok(!sendProblems(chosen).some(p => /payment plan/.test(p)));
+});

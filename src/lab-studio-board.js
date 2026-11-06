@@ -29,7 +29,7 @@
   const seg = document.getElementById('viewSeg');
   seg?.insertAdjacentHTML('beforeend', '<button type="button" data-v="board" aria-pressed="false" title="Every frame of the piece side by side: the picture, the flats, each colourway and size">Board</button>');
   seg?.querySelector('[data-v=board]').addEventListener('click', () => setVMode('board'));
-  document.querySelector('#app .mid')?.insertAdjacentHTML('beforeend', `<div class="boardhost" id="boardHost" aria-live="polite"><div class="bh"><h3 id="boardTitle">The piece</h3><label class="f" style="margin:0;display:flex;gap:8px;align-items:center"><span class="note" style="margin:0">Frame size</span><input type="range" id="boardSize" min="160" max="460" step="20" value="260" aria-label="Frame size"></label></div><div id="boardBody"><p class="note">Drawing the frames…</p></div></div>`);
+  document.querySelector('#app .mid')?.insertAdjacentHTML('beforeend', `<div class="boardhost" id="boardHost" aria-live="polite"><div class="bh"><div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><button class="btn go sm" type="button" id="turnsBtn" title="Draw the piece on a model from the front, three-quarter, side and back, following the flats as they are now">Make the turns from the flats</button><h3 id="boardTitle">The piece</h3></div><label class="f" style="margin:0;display:flex;gap:8px;align-items:center"><span class="note" style="margin:0">Frame size</span><input type="range" id="boardSize" min="160" max="460" step="20" value="260" aria-label="Frame size"></label></div><div id="boardBody"><p class="note">Drawing the frames…</p></div></div>`);
   const host = document.getElementById('boardHost'), body = document.getElementById('boardBody');
   document.getElementById('boardSize').addEventListener('input', e => host.style.setProperty('--fw', e.target.value + 'px'));
   // each drawing on the board gets its own ids, so one frame's masks and clips are never another's
@@ -48,9 +48,35 @@
     piece.insertAdjacentHTML('beforeend', fig('front', own(f.frame('front')), 'Flat front', size) + fig('back', own(f.frame('back')), 'Flat back', size));
     const cws = f.colourways().filter(c => c.hex);
     body.insertAdjacentHTML('beforeend', `<h4>Colourways</h4><div class="row">${cws.length ? cws.map(c => fig('front', own(f.frame('front', { color: c.hex })), `<i class="sw" style="background:${esc(c.hex)}"></i>${esc(c.name || c.hex)}`, esc(c.pantone || ''), 'data-cw="1"')).join('') : '<p class="note">No colourways on the concept yet: add them under Materials, and each one is drawn here.</p>'}</div>`);
+    body.insertAdjacentHTML('beforeend', `<h4>Turns</h4><div class="row" id="bTurns"><p class="note">Looking for the turns…</p></div>`); paintTurns();
     if (f.graded()) { const sizes = f.sizes(); body.insertAdjacentHTML('beforeend', `<h4>Sizes · the artwork as graded</h4><div class="row">${sizes.map(sz => fig('front', own(f.frame('front', { size: sz })), sz, sz === size ? 'base size' : '', 'data-size="1"')).join('')}</div>`); }
     host.dataset.ready = '1';
   }
+  // ---- the turns: the piece on a model from four sides, drawn from the flats as they are now (the views service, src/lab-view-routes.js) ----
+  const TURNS = [['model_front', 'Front'], ['model_34', 'Three-quarter'], ['model_side', 'Side'], ['model_back', 'Back']], TURN_SRC = {};
+  let turnT = 0;
+  async function paintTurns() {
+    clearTimeout(turnT); const row = document.getElementById('bTurns'); if (!row || !CID) return;
+    let v; try { v = (await api(`/v1/lab/concepts/${CID}/views`)).views || {}; } catch { row.innerHTML = '<p class="note">The turns could not be looked up.</p>'; return; }
+    const have = TURNS.filter(([k]) => v[k]);
+    if (!have.length) { row.innerHTML = '<p class="note">No turns yet. <b>Make the turns from the flats</b> draws the piece on a model from four sides, following the flats.</p>'; return; }
+    const cells = [];
+    for (const [k, label] of TURNS) { const s = v[k]; if (!s) continue;
+      let inner = `<p class="note" style="padding:12px;text-align:center">${s.status === 'pending' ? 'Drawing…' : esc(s.note || 'Not drawn')}</p>`;
+      if (s.status === 'ready' && s.has) { const key = `${k}|${s.at}`; if (!TURN_SRC[key]) { try { TURN_SRC[key] = await urlOfBlob(await blobOf(`/v1/lab/concepts/${CID}/views/${k}?thumb=1`)); } catch { TURN_SRC[key] = ''; } } if (TURN_SRC[key]) inner = `<img alt="${esc(label)} on a model" src="${TURN_SRC[key]}">`; }
+      cells.push(`<figure tabindex="0" data-turn="${k}"><div class="fr">${inner}</div><figcaption><span>${esc(label)}</span><small>${s.status === 'pending' ? 'drawing' : s.status === 'failed' ? 'failed' : ''}</small></figcaption></figure>`); }
+    if (document.getElementById('bTurns') !== row) return; row.innerHTML = cells.join('');
+    if (TURNS.some(([k]) => v[k]?.status === 'pending') && VMODE === 'board') turnT = setTimeout(paintTurns, 5000);
+  }
+  document.getElementById('turnsBtn').addEventListener('click', async () => {
+    if (D?.concept?.locked) { toast('This concept is already a tech pack.'); return; }
+    const ok = await ask('Make the turns from the flats?', 'The piece is drawn on a model from the front, three-quarter, side and back, following the flats as they are now: their shape, colour blocks, collar, cuffs, pockets and graphics. Turns made before are replaced. It uses four views of the image model.', 'Make the turns'); if (!ok) return;
+    const b = document.getElementById('turnsBtn'); b.disabled = true; busy('Saving the flats and starting the turns…');
+    try { if (typeof saveAll === 'function' && (await saveAll()) === false) throw new Error('The flats could not be saved, so the turns were not started');
+      const r = await api(`/v1/lab/concepts/${CID}/views`, { body: { kinds: TURNS.map(t => t[0]), from: 'flats' } });
+      toast(`Drawing ${r.started || 4} turns from the flats. They fill in below in a few minutes.`); paintTurns(); }
+    catch (x) { toast(x.message); } finally { busy(); b.disabled = false; }
+  });
   host.addEventListener('click', e => { const fg = e.target.closest('[data-bopen]'); if (fg) setVMode(fg.dataset.bopen); });
   host.addEventListener('keydown', e => { const fg = e.target.closest('[data-bopen]'); if (fg && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); setVMode(fg.dataset.bopen); } });
   const setVMode0 = window.setVMode;

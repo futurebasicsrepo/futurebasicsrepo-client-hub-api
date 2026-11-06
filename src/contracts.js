@@ -266,7 +266,7 @@ export function cleanContent(input, { settings = {}, lenient = false } = {}) {
   const tl = i.timeline || {};
   const timeline = { effectiveOn: isDate(tl.effectiveOn) ? tl.effectiveOn : todayISO(), startOn: isDate(tl.startOn) ? tl.startOn : '', completionOn: isDate(tl.completionOn) ? tl.completionOn : '' };
   if (timeline.startOn && timeline.completionOn && timeline.completionOn < timeline.startOn) errors.push('The estimated completion is before the start');
-  const plan = i.plan ? { type: i.plan.type, method: i.plan.method, autopay: !!i.plan.autopay, note: clip(i.plan.note, 600), installments: (Array.isArray(i.plan.installments) ? i.plan.installments : []).map(p => ({ label: line(p.label, 80), amountCents: Math.round(Number(p.amountCents)), dueOn: isDate(p.dueOn) ? p.dueOn : null, event: p.event && EVENTS[p.event] ? p.event : null })) } : null;
+  const plan = i.plan ? { type: i.plan.type, ...(i.plan.unset === true ? { unset: true } : {}), method: i.plan.method, autopay: !!i.plan.autopay, note: clip(i.plan.note, 600), installments: (Array.isArray(i.plan.installments) ? i.plan.installments : []).map(p => ({ label: line(p.label, 80), amountCents: Math.round(Number(p.amountCents)), dueOn: isDate(p.dueOn) ? p.dueOn : null, event: p.event && EVENTS[p.event] ? p.event : null })) } : null;
   if (plan && Number.isFinite(total) && total > 0) { const bad = checkPlan(plan, total); if (bad) errors.push(bad); } else if (!plan) errors.push('Choose how the fee is paid');
   const hosting = { included: !isProduct(kind) && !!i.hosting?.included, monthlyCents: Math.max(0, Math.round(Number(i.hosting?.monthlyCents) || 0)), note: clip(i.hosting?.note, 600) };
   if (hosting.included && hosting.monthlyCents <= 0) errors.push('Hosting is included: set its monthly price, or turn it off');
@@ -283,12 +283,14 @@ export function cleanContent(input, { settings = {}, lenient = false } = {}) {
   if (sections.some(s => !s.title)) errors.push('Every clause needs a title');
   for (const need of ['scope', 'fee', 'schedule']) if (!sections.some(s => s.kind === need)) errors.push(`The contract needs its ${need === 'schedule' ? 'payment schedule' : need === 'fee' ? 'fixed fee' : 'scope of work'} clause`);
   if (errors.length && !lenient) return { error: errors[0], errors };
-  return { errors, value: { title, kind, provider, client, project: { name: line(i.project?.name || title, 160) }, scope, notIncluded, timeline, fee: { totalCents: Number.isFinite(total) && total > 0 ? total : 0, currency }, plan: plan || { type: 'full', method: 'invoice', autopay: false, note: '', installments: [{ label: 'Payment in full', amountCents: Math.max(100, Number.isFinite(total) ? total : 0), dueOn: null, event: 'signing' }] }, hosting, terms, sections, ...(product ? { product } : {}) } };
+  return { errors, value: { title, kind, provider, client, project: { name: line(i.project?.name || title, 160) }, scope, notIncluded, timeline, fee: { totalCents: Number.isFinite(total) && total > 0 ? total : 0, currency }, plan: plan || { type: 'full', unset: true, method: 'invoice', autopay: false, note: '', installments: [{ label: 'Payment in full', amountCents: Math.max(100, Number.isFinite(total) ? total : 0), dueOn: null, event: 'signing' }] }, hosting, terms, sections, ...(product ? { product } : {}) } };
 }
 
 // What still has to be filled in before a contract can go out (empty merge fields, unset legal terms).
 export function sendProblems(c, settings = {}) {
   const r = renderContract(c, settings), p = [];
+  // a draft saved before its payment plan could be worked out holds a stand-in (payment in full): it is never sent as if it were chosen
+  if (c.plan?.unset) p.push('Choose how the fee is paid: the payment plan was never set');
   if (!(c.provider?.signerName)) p.push('Add who signs for Future Basics (Contracts, Settings)');
   if (r.missing.includes('governing_law')) p.push('Say which state\'s law governs the contract (Contracts, Settings)');
   if (r.missing.includes('provider_address')) p.push('Add Future Basics\' address (Contracts, Settings)');

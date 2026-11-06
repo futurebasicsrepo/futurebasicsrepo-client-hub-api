@@ -2230,6 +2230,21 @@ export async function migrate() {
       connected_at timestamptz not null default now(),
       updated_at timestamptz not null default now()
     );
+    -- A teammate's handwritten signature in blue ink (src/signatures.js): every one they give is kept as a mark, so a document keeps the mark it
+    -- was signed with; staff_signatures says which mark is theirs now
+    create table if not exists signature_marks (
+      id uuid primary key default gen_random_uuid(),
+      user_id uuid references users(id) on delete set null,
+      png bytea not null,
+      width integer not null,
+      height integer not null,
+      created_at timestamptz not null default now()
+    );
+    create table if not exists staff_signatures (
+      user_id uuid primary key references users(id) on delete cascade,
+      mark_id uuid not null references signature_marks(id),
+      updated_at timestamptz not null default now()
+    );
     -- Contracts for digital work: a fixed-fee agreement built from a deal and its project, signed from a private link (see contracts.js). The signing link is
     -- never stored (it is made from the contract's id, a version and the server's secret); what was signed is the content as it stood when it was sent, and doc_hash proves it has not changed since.
     create table if not exists contracts (

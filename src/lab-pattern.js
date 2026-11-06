@@ -86,7 +86,10 @@ function topPieces(S, m, o, style) {
   // the sleeve: its cap eases into the armhole; a dropped shoulder has a flatter cap
   if (m.sleeve > 0) {
     const A = lenOf(armhole), ch = o.drop ? Math.max(1.5, depth * .28) : Math.max(2.5, depth * .55), b = Math.sqrt(Math.max(((A + .25) / 1.04) ** 2 - ch * ch, 4)), Ls = Math.max(m.sleeve - (m.cuffRib || 0), 2), so = Math.min(Math.max(m.sleeveOpening, 2), b);
-    const capR = cubic([0, 0], [b * .45, 0], [b * .72, ch * .55], [b, ch]), sew = [...mirrorX(capR).reverse(), ...tail(capR), [so, Ls], [-so, Ls]];
+    // an aviator's sleeve is full: it keeps most of its width to the wrist and is gathered into a narrower cuff, its sides bowing out
+    const full = shearling && m.cuffRib > 0, soB = full ? Math.max(so, b * .74) : so;
+    const capR = cubic([0, 0], [b * .45, 0], [b * .72, ch * .55], [b, ch]), side = full ? tail(cubic([b, ch], [b * 1.04, ch + (Ls - ch) * .45], [soB * 1.12, Ls * .86], [soB, Ls])) : [[so, Ls]];
+    const sew = [...mirrorX(capR).reverse(), ...tail(capR), ...side, ...mirrorX(side).reverse()];
     const ang = (o.drop ? 62 : m.sleeve > 12 ? 62 : 24) * Math.PI / 180;
     // where the sleeve sits on the front flat: the top of the cap at the shoulder point, the underarm corner at the underarm, so it hangs from
     // the armhole the way the flats draw it (of the two ways round, the one whose cuff points out and down)
@@ -97,8 +100,8 @@ function topPieces(S, m, o, style) {
     const fold = sew.map(([x, y]) => [x * .5, y]), turnF = sx => tgt - Math.atan2(ch, sx * b * .5);
     const aF = [turnF(1), turnF(-1)].sort((x, y) => Math.abs(x - best.a) - Math.abs(y - best.a))[0], dA = aF - best.a, cD = Math.cos(dA), sD = Math.sin(dA);
     const shownS = fold.map(([x, y]) => [x * cD - y * sD, x * sD + y * cD]);
-    SLV = { rot: aF * 180 / Math.PI, a: aF, Ls, so: so * .5, x: SP[0], y: SP[1] };
-    pieces.push(piece('sleeve', 'Sleeve', sew, { cut: 2, pair: true, shown: shownS, notches: [[b * .55, ch * .3], [-b * .5, ch * .35], [-b * .58, ch * .4], [0, 0]], notes: ['One notch to the front, two to the back; the top notch meets the shoulder seam'], place: { view: 'front', x: SP[0], y: SP[1], rot, z: -1 } }),
+    SLV = { rot: aF * 180 / Math.PI, a: aF, Ls, so: full ? Math.min(soB * .5, Math.max(m.sleeveOpening / 2, 1.5)) : so * .5, x: SP[0], y: SP[1], full };
+    pieces.push(piece('sleeve', 'Sleeve', sew, { cut: 2, pair: true, shown: shownS, notches: [[b * .55, ch * .3], [-b * .5, ch * .35], [-b * .58, ch * .4], [0, 0]], notes: ['One notch to the front, two to the back; the top notch meets the shoulder seam', ...(full ? [`Full sleeve: gathered (or two pleats) from ${r8(soB * 2)} in into the cuff`] : [])], place: { view: 'front', x: SP[0], y: SP[1], rot, z: -1 } }),
       { ...piece('sleeve-2', 'Sleeve', sew, { cut: 0, shown: shownS, place: { view: 'front', x: -SP[0], y: SP[1], rot: -rot, flip: true, z: -1 } }), twin: true });
   }
   const neckLen = lenOf(neck(m.neckDropFront)) * 2 + lenOf(neck(m.neckDropBack)) * 2;
@@ -129,11 +132,17 @@ function topPieces(S, m, o, style) {
   if (jacketCollar) {
     const nl = neckLen / 2, ndf = m.neckDropFront;
     if (jacketCollar === 'shearling') {
-      // a big one-piece collar on the fold at the centre back: the neck edge sewn to the neckline, wide points that lie on the chest
-      const halfC = [[0, 0], ...tail(cubic([0, 0], [nl * .5, .05], [nl * .85, .3], [nl, .7])), ...tail(cubic([nl, .7], [nl + .9, 2.2], [nl + 2.1, 4.8], [nl + 2.4, 6.4])), ...tail(cubic([nl + 2.4, 6.4], [nl * .7, 6.1], [nl * .3, 5.4], [0, 5.25]))];
-      const nw = m.neckWidth / 2, R = [[1.1, ndf + 3.4], [nw + 3.6, ndf + 1.9], [nw + 4.7, .5], [nw + 3.4, -1.7], [0, -2.3]], I = [[.35, ndf + .3], [nw * .75, ndf * .45], [nw * .9, -.2], [0, -.8]];
-      const shown = [...R, ...mirrorX(R).reverse().slice(1), ...mirrorX(I).slice(0, -1), ...I.slice().reverse()];
-      pieces.push(piece('collar', 'Shearling collar', [...halfC, ...mirrorX(halfC).reverse().slice(1, -1)], { fabric: 'shearling', cut: 1, fold: true, shown, notes: [`Top collar in shearling, pile out; neck edge ${r8(neckLen)} in, sewn to the neckline`, 'Under collar cut once more in self, fused'], place: { view: 'front', x: 0, y: 0, z: 4 } }));
+      // a big flat collar, one piece on the fold at the centre back: drafted as a crescent (its outer edge far longer than its neck edge, so it
+      // lies over the shoulders), with rounded points. On the product it spreads to the shoulder points and its points rest high on the chest
+      const halfC = [[0, 0], ...tail(cubic([0, 0], [nl * .55, 0], [nl * .9, .55], [nl, 1.5])), ...tail(cubic([nl, 1.5], [nl + .5, 3], [nl + 1.4, 4.9], [nl + 2.1, 5.9])),
+        ...tail(cubic([nl + 2.1, 5.9], [nl + 2.5, 6.5], [nl + 1.9, 7.1], [nl + .9, 7.1])), ...tail(cubic([nl + .9, 7.1], [nl * .55, 7.2], [nl * .2, 5.6], [0, 5.25]))];
+      const nw = m.neckWidth / 2, reach = Math.max(sh - .2, nw + 4.5);
+      const ring = [[0, -2.6], [nw + 2.2, -2.2], [reach - .4, -.3], [reach, 1.6], [reach - 1, ndf + 1.6], [nw + 1.6, ndf + 3.1], [1.3, ndf + 3.3], [.3, ndf + .6], [nw * .55, ndf * .4], [nw * .85, -.3], [0, -.9]];
+      const R = blob(ring, .55), shownRaw = [...R.filter(([x]) => x >= 0)], shown = [...shownRaw, ...mirrorX(shownRaw).reverse()];
+      pieces.push(piece('collar', 'Shearling collar', [...halfC, ...mirrorX(halfC).reverse().slice(1, -1)], { fabric: 'shearling', cut: 1, fold: true, shown, notes: [`Top collar in shearling, pile out; neck edge ${r8(neckLen)} in, sewn to the neckline`, 'Under collar cut once more in self, fused; rounded points'], place: { view: 'front', x: 0, y: 0, z: 4 } }));
+      // the chest strap under the collar on the wearer's left, as the sketch draws it: pointed, four eyelets, its top tucked under the collar
+      const st = [[0, 0], [1.75, 0], [1.75, 5.4], [.875, 6.2], [0, 5.4]];
+      pieces.push(piece('strap', 'Chest strap', st, { cut: 2, shown: st.map(([x, y]) => [x - .875, y]), notes: ['Outer and facing, fused; edge-stitched', 'Four eyelets in two pairs; the top 1 in tucked under the collar'], place: { view: 'front', x: half * .3, y: ndf + 2.8, z: 3 } }));
     } else if (jacketCollar === 'stand') pieces.push(piece('collar', 'Stand collar', rect(r8(neckLen + 1), 5).map(([x, y]) => [x - (neckLen + 1) / 2, y]), { cut: 2, shown: [[-m.neckWidth / 2 - .2, -1.6], [m.neckWidth / 2 + .2, -1.6], [m.neckWidth / 2 + .2, .9], [-m.neckWidth / 2 - .2, .9]], notes: ['Folded at the top edge to a 2 1/2 in stand; fused'], place: { view: 'front', x: 0, y: 0, z: 4 } }));
     else pieces.push(piece('collar', 'Collar', [[-nl, 0], [nl, 0], [nl + .9, 3.25], [-nl - .9, 3.25]], { cut: 2, shown: [[-m.neckWidth / 2 - 1.6, -1], [m.neckWidth / 2 + 1.6, -1], [m.neckWidth / 2 + 2, 1.6], [.6, ndf + .4], [-.6, ndf + .4], [-m.neckWidth / 2 - 2, 1.6]], notes: ['Top collar and under collar; fused under collar'], place: { view: 'front', x: 0, y: 0, z: 4 } }));
   }

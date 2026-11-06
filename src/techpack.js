@@ -337,7 +337,8 @@ export function emptyVerification(version = 0) { return { version, acks: {}, cli
 export function normalizeVerification(input, version) {
   const v = input && typeof input === 'object' ? input : {};
   if (Number(v.version) !== Number(version)) return emptyVerification(version);
-  const sig = s => (s && typeof s === 'object' && s.name ? { name: str(s.name, 120), at: str(s.at, 40), by: str(s.by, 200) } : null);
+  // ink: the id of the handwritten signature it was signed with (src/signatures.js), shown as /v1/public/signature-marks/:id
+  const sig = s => (s && typeof s === 'object' && s.name ? { name: str(s.name, 120), at: str(s.at, 40), by: str(s.by, 200), ...(/^[0-9a-f-]{36}$/i.test(String(s.ink || '')) ? { ink: String(s.ink) } : {}) } : null);
   const acks = {};
   for (const [key, ack] of Object.entries(v.acks && typeof v.acks === 'object' ? v.acks : {}).slice(0, LIMITS.sketches * LIMITS.callouts)) {
     if (ack && typeof ack === 'object') acks[str(key, 60)] = { by: str(ack.by, 200), at: str(ack.at, 40) };
