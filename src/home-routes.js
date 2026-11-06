@@ -59,6 +59,11 @@ export function registerHomeRoutes(app, { pool, authenticate, adminOnly }) {
     const unowned = await q(`select c.id, c.name, (select count(*) from projects p where p.client_id=c.id and ${LIVE})::int projects from clients c
       where c.owner_id is null and c.archived_at is null and c.status='active' and c.slug <> 'future-basics' and exists (select 1 from projects p where p.client_id=c.id and ${LIVE} and p.name <> 'General development')
       order by c.name limit 12`);
+    // what the rooms have given Future Basics to do (a go-live checklist, or a task a client put on their board for us): open ones, due first
+    const fbTasks = await q(`select a.id, a.title, a.status, a.due, a.source, a.created_at, c.id client_id, c.name client_name, pr.id project_id, pr.name project_name
+      from work_assignments a join clients c on c.id=a.client_id left join projects pr on pr.id=a.project_id
+      where a.assignee_fb and a.status<>'done' and c.archived_at is null and c.status not in ('archive','archived')
+      order by a.due nulls last, a.created_at limit 40`).catch(() => []);
     const out = {
       me: { firstName: firstName(meRow?.name, meRow?.email || req.auth?.email) },
       myAccounts: orderAccounts(mine.map(r => accountRow(r))),
@@ -69,11 +74,12 @@ export function registerHomeRoutes(app, { pool, authenticate, adminOnly }) {
       awaitingReply: awaiting.map(r => ({ id: r.id, name: r.name || r.email, email: r.email, company: r.company || '', source: r.source, createdAt: r.created_at })),
       prototypes: protos.map(r => prototypeRow({ ...r, has_cover: r.has_cover || hasBuildPreview(r.slug) })), showNow: showNow.map(r => ({ ...prototypeRow({ ...r, has_cover: r.has_cover || hasBuildPreview(r.slug) }), views30: Number(r.views7) || 0 })),
       projects: orderProjects(projects.map(r => projectRow(r))),
-      waiting: { approvals: appr.n, production: prod.n }
+      waiting: { approvals: appr.n, production: prod.n },
+      fbTasks: fbTasks.map(t => ({ id: t.id, title: t.title, status: t.status, due: t.due ? new Date(t.due).toISOString().slice(0, 10) : '', source: t.source, clientId: t.client_id, clientName: t.client_name, projectId: t.project_id, projectName: t.project_name || '', at: t.created_at }))
     };
     // My day is for everyone on the team, but each part of it shows only what the person has been given (Team access)
     const can = id => !req.staff || req.staff.can(id);
-    if (!can('clients')) Object.assign(out, { myAccounts: [], unownedAccounts: [], projects: [], waiting: { approvals: 0, production: 0 } });
+    if (!can('clients')) Object.assign(out, { myAccounts: [], unownedAccounts: [], projects: [], waiting: { approvals: 0, production: 0 }, fbTasks: [] });
     if (!can('prototypes')) Object.assign(out, { prototypes: [], showNow: [], leadSearches: [] });
     if (!can('intel')) out.signals = { total: 0, overdue: 0, top: [] };
     if (!can('crm')) Object.assign(out, { awaitingReply: [], funnel: { newLeads7: 0, newLeadsPrev7: 0, trend: out.funnel.trend, lookers7: 0, demos7: 0, won30: { count: 0, valueCents: 0 } } });

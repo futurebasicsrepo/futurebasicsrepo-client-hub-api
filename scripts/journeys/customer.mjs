@@ -1893,4 +1893,37 @@ await journey('J288', 'Sites in a room: staff push a showcase build or a link in
   ok((await call('/v1/sites', { token: m.token })).json.sites.length === 1 && (await call(`/v1/sites/${site.id}/open`, { method: 'POST', token: m.token })).status === 404, 'and the team no longer sees it');
 });
 
+await journey('J289', 'Sites in a room, part two: Open goes to the build\'s prototype (with how to get in), not the client\'s current store; the build is filed under a software project; the go-live checklist puts the client\'s side under Needs attention and ours on the work home', async () => {
+  const m = await room('289'), other = await room('289b');
+  const admin = await forge({ sub: sql(`select id from users where client_id='${m.cid}' limit 1`), clientId: m.cid, role: 'admin' }), adm = (path, o = {}) => call(path, { token: admin, ...o });
+  const bid = sql(`insert into builds(slug, name, status, visibility, hosting, live_url) values('j289-store', 'J289 Store', 'live', 'hidden', 'shopify', 'https://current-store.example.com') on conflict (slug) do update set name=excluded.name returning id`);
+  const app2 = sql(`insert into builds(slug, name, status, visibility, live_url) values('j289-app', 'J289 Offers', 'live', 'hidden', 'https://offers.example.com/health') on conflict (slug) do update set name=excluded.name returning id`);
+  sql(`insert into prototypes(slug, url, host, company, status, kind, external_url, access_note, build_id) values('j289-proto', 'https://j289.myshopify.com/password', 'j289.myshopify.com', 'J289', 'ready', 'external', 'https://j289.myshopify.com/password', 'Store password: rewind', '${bid}') on conflict (slug) do nothing`);
+  const list = (await adm(`/v1/admin/clients/${m.cid}/sites`)).json, b = list.builds.find(x => x.id === bid);
+  ok(b.protoUrl === 'https://j289.myshopify.com/password' && b.template === 'shopify', 'staff see the build\'s prototype before pushing it, and that it takes the Shopify checklist', b);
+  const push = await adm(`/v1/admin/clients/${m.cid}/sites`, { method: 'POST', body: { buildId: bid, goLive: true } });
+  ok(push.status === 201 && push.json.site.opensAt === 'https://j289.myshopify.com/password' && push.json.site.opensFrom === 'prototype', 'Open goes to the prototype, not the current store', push.json.site);
+  const pid = push.json.project?.id; ok(pid && sql(`select kind||':'||build_id||':'||stage from projects where id='${pid}'`) === `software:${bid}:prototype`, 'a software project is made for it in the room, tied to the build, at Prototype', push.json.project);
+  ok(push.json.goLive?.added === 14 && push.json.goLive.assignee, 'the go-live checklist is pushed, the client\'s side to someone on their team', push.json.goLive);
+  const a2 = await adm(`/v1/admin/clients/${m.cid}/sites`, { method: 'POST', body: { buildId: app2, projectId: pid, opensAt: 'offers.example.com' } });
+  ok(a2.status === 201 && a2.json.project.id === pid && a2.json.site.opensAt === 'https://offers.example.com' && a2.json.site.opensFrom === 'set', 'the app goes under the same project, opening where staff say', a2.json);
+  ok((await adm(`/v1/admin/clients/${m.cid}/sites`, { method: 'POST', body: { buildId: app2, projectId: pid } })).status === 409 && (await adm(`/v1/admin/clients/${m.cid}/sites`, { method: 'POST', body: { name: 'x', url: 'https://x.example.com', projectId: sql(`select id from projects where client_id='${other.cid}' limit 1`) } })).status === 404, 'not twice, and never under another room\'s project');
+  const sites = (await call('/v1/sites', { token: m.token })).json.sites, mine = sites.find(x => x.buildId === bid);
+  ok(mine.accessNote === 'Store password: rewind' && mine.projectId === pid, 'the client sees how to get in, and the project it belongs to', mine);
+  const open = await call(`/v1/sites/${mine.id}/open`, { method: 'POST', token: m.token }); ok(open.json.url === 'https://j289.myshopify.com/password' && open.json.accessNote === 'Store password: rewind', 'Open takes the client to the prototype', open.json);
+  const dash = (await call('/v1/dashboard', { token: m.token })).json, todo = dash.actions.filter(x => x.task);
+  ok(todo.length === 7 && todo.every(x => x.projectId === pid) && dash.projectTasks.filter(t => t.projectId === pid).length === 14, 'their 7 go-live tasks are under Needs attention, and the project shows all 14', { todo: todo.length, all: dash.projectTasks.length });
+  ok((await call('/v1/dashboard', { token: other.token })).json.projectTasks.length === 0, 'another room sees none of it');
+  const home = (await adm('/v1/admin/home')).json, ours = (home.fbTasks || []).filter(t => t.clientId === m.cid);
+  ok(ours.length === 7 && ours.every(t => t.source === 'go-live' && t.projectId === pid), 'our 7 are on the work home', ours.length);
+  ok((await call(`/v1/workspace/assignments/${todo[0].id}`, { method: 'PATCH', token: m.token, body: { status: 'done' } })).status === 200 && (await call('/v1/dashboard', { token: m.token })).json.actions.filter(x => x.task).length === 6, 'ticking one off takes it out of Needs attention');
+  ok((await call(`/v1/workspace/assignments/${todo[1].id}`, { method: 'PATCH', token: other.token, body: { status: 'done' } })).status === 404, 'another room cannot tick it');
+  const again = await adm(`/v1/admin/clients/${m.cid}/projects/${pid}/go-live`, { method: 'POST', body: {} }); ok(again.status === 201 && again.json.added === 0 && again.json.progress.client.done === 1, 'pushing it again adds nothing and shows progress', again.json);
+  ok((await adm(`/v1/admin/clients/${other.cid}/projects/${pid}/go-live`, { method: 'POST', body: {} })).status === 404, 'nor through another room');
+  const fix = await adm(`/v1/admin/clients/${m.cid}/sites/${mine.id}`, { method: 'PATCH', body: { opensAt: 'https://staging.example.com', accessNote: 'Ask Kyle for the code' } });
+  ok(fix.status === 200 && fix.json.site.opensAt === 'https://staging.example.com' && (await call(`/v1/sites/${mine.id}/open`, { method: 'POST', token: m.token })).json.accessNote === 'Ask Kyle for the code', 'staff can point Open somewhere else and change how to get in');
+  ok((await adm(`/v1/admin/clients/${m.cid}/sites/${mine.id}`, { method: 'PATCH', body: { opensAt: 'javascript:alert(1)' } })).status === 422, 'never to something that is not a web address');
+  ok((await call(`/v1/admin/clients/${m.cid}/projects/${pid}/go-live`, { method: 'POST', token: m.token, body: {} })).status === 403, 'a client cannot push a checklist');
+});
+
 summary(); process.exit(bad ? 1 : 0);

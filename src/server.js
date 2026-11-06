@@ -2303,6 +2303,12 @@ app.get('/v1/dashboard', { preHandler: authenticate }, async (req,reply) => {
   // a new client's details are asked for first (the hub also opens the form on their first visit)
   if(!req.auth.preview&&(await pool.query(`select 1 from clients where id=$1 and onboarding_status='pending'`,[id])).rowCount)waiting.push({kind:'onboarding',id:'onboarding',title:'Finish setting up your account',product:'Your account',at:new Date().toISOString()});
   waiting.sort((a,b)=>new Date(b.at)-new Date(a.at));
+  // tasks on a project (a go-live checklist): both sides, so the project shows where things stand; the client's own open ones also go under Needs attention
+  const me=UUID_RE.test(String(req.auth.sub||''))?req.auth.sub:null;
+  const projectTasks=(await pool.query(`select a.id,a.project_id,a.title,a.notes,a.status,a.due,a.assignee_fb,a.assignee_id,a.source,a.done_at,coalesce(nullif(u.name,''),split_part(u.email,'@',1)) assignee_name
+    from work_assignments a left join users u on u.id=a.assignee_id join projects pr on pr.id=a.project_id and pr.archived_at is null
+    where a.client_id=$1 and a.project_id is not null order by a.assignee_fb, a.created_at`,[id]).catch(()=>({rows:[]}))).rows
+    .map(t=>({id:t.id,projectId:t.project_id,title:t.title,notes:t.notes,status:t.status,done:t.status==='done',due:t.due?new Date(t.due).toISOString().slice(0,10):'',who:t.assignee_fb?'fb':'client',assigneeName:t.assignee_fb?'Future Basics':t.assignee_name||'',mine:!t.assignee_fb&&(!t.assignee_id||t.assignee_id===me)}));
   // files sent to the room and put in one of its projects: shown in that project's files, as far as the client may see them (what they sent, or what staff shared)
   const projectRoomFiles = (await pool.query(`select rf.id,rf.project_id,rf.product_id,rf.original_name,rf.size_bytes,rf.mime_type,rf.created_at,rf.uploader_role,rf.note,coalesce(nullif(u.name,''),u.email,case when rf.uploader_role='admin' then 'Future Basics' else c.name end) uploader_name
     from room_files rf left join users u on u.id=rf.uploader_id join clients c on c.id=rf.client_id where rf.client_id=$1 and rf.project_id is not null and (rf.uploader_role='client' or rf.client_visible) and coalesce(rf.purpose,'')<>'tax-form' order by rf.created_at desc`, [id])).rows;
@@ -2311,8 +2317,9 @@ app.get('/v1/dashboard', { preHandler: authenticate }, async (req,reply) => {
     approvals: approvals.rows, activities: activities.rows, waiting, agreements,
     actions: [
       ...approvals.rows.map(a=>({type:'approval',id:a.id,title:'Approve '+a.product_title+' — '+(a.asset_name?`${a.asset_name} v${a.asset_version}`:a.title),due:null})),
-      ...invoices.rows.filter(x=>x.status==='due').map(x=>({type:'invoice',id:x.id,title:'Invoice '+x.number+' due',due:x.due_date}))
-    ] };
+      ...invoices.rows.filter(x=>x.status==='due').map(x=>({type:'invoice',id:x.id,title:'Invoice '+x.number+' due',due:x.due_date})),
+      ...projectTasks.filter(t=>t.mine&&!t.done).map(t=>({type:'to do',id:t.id,title:t.title,due:t.due||null,projectId:t.projectId,task:true}))
+    ], projectTasks };
 });
 
 // A project's thread as the client sees it: names written for a reader (our staff are "Future Basics", a client's own people go by name), files attached

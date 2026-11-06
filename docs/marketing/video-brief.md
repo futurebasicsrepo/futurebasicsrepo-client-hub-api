@@ -128,6 +128,8 @@ acrylics.
 
 ### Your sites (in the hub)
 The sites and prototypes Future Basics builds for a brand land in the brand's own room. Each shows its picture, where it stands (concept, in progress, live) and a note from Future Basics, with **Open** and **Send notes**. Notes go straight back to the Future Basics team.
+- Each site sits in a project with its stages, the agreement and invoices.
+- A **go-live checklist** splits launch into the brand's side and ours. Theirs shows under Needs attention with a Done button, and both sides tick off on the project so everyone sees how close it is.
 
 ### The tech pack and the factory
 - Measurements in inches with cm alongside, a bill of materials, colourways with Pantone C codes, callouts pinned on the picture, sample
