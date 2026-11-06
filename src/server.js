@@ -19,6 +19,7 @@ import { storedForm } from './pack-blobs.js';
 import { setSink, recordRequest, trackJob, declareJob, trackedFetch, timed, reportError, snapshot as telemetrySnapshot, overallStatus } from './telemetry.js';
 import { buildQueues, AUTO_RETRY_LIMIT } from './queues.js';
 import { runSpecCheck, imageConfig, referencePhotos as packPhotos } from './check.js';
+import { googleKeyProblem, checkGoogleKey } from './google-ai.js';
 import { heroConfig, heroCandidates, pickHero, measureColours, snapColours, heroThumb, callJsonSchema, refineHero, HERO_APPROVE_MIN, HERO_REFINE_ROUNDS } from './studio.js';
 import { reconcile, applyChanges, revertChanges, reviseFlag, flagRow, FLAG_SECTIONS } from './loop.js';
 import { meshConfig, startMesh, pollMesh, fetchAsset, photoForMesh, stlInfo } from './mesh.js';
@@ -6404,5 +6405,7 @@ if (process.env.PAYMENT_SWEEP !== 'off') jobEvery('Payment check for locked pack
 if (shopifyConfigured()) jobEvery('Sample deposits', 5 * 60 * 1000, runDepositSweep, { delay: 35 * 1000 }); else declareJob('Sample deposits', 5 * 60 * 1000, 'Shopify is not connected: staff mark deposits paid in the console');
 offerJob();
 // which image and video models are connected, said once at start (names of the variables only, never their values)
-{ const ic = imageConfig(process.env); app.log.info({ images: ic.provider, route: ic.route || null, googleKeyFrom: ic.google?.keyFrom || null, googleImageModel: ic.google?.model || null }, 'image models'); }
+{ const ic = imageConfig(process.env), problem = googleKeyProblem(process.env); app.log.info({ images: ic.provider, route: ic.route || null, googleKeyFrom: ic.google?.keyFrom || null, googleImageModel: ic.google?.model || null, ...(problem ? { googleKeyProblem: problem } : {}) }, 'image models');
+  // and whether Google takes the key, once, without holding up the start
+  if (ic.google?.configured && !process.env.AI_FIXTURE) checkGoogleKey(process.env).then(r => app.log[r.ok ? 'info' : 'warn']({ googleKeyAccepted: r.ok, status: r.status, ...(r.error ? { error: r.error } : {}) }, 'google key check')).catch(() => {}); }
 await app.listen({ port: Number(process.env.PORT || 3000), host: '0.0.0.0' });

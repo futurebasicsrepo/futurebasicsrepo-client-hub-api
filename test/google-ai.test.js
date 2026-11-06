@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import sharp from 'sharp';
-import { googleKey, aspectOf, geminiImage, googleImageConfig, veoVideo, googleVideoConfig } from '../src/google-ai.js';
+import { googleKey, googleKeyProblem, checkGoogleKey, aspectOf, geminiImage, googleImageConfig, veoVideo, googleVideoConfig } from '../src/google-ai.js';
 import { imageConfig, openaiEdit, openaiImage } from '../src/check.js';
 import { videoConfig } from '../src/lab-views.js';
 
@@ -15,6 +15,19 @@ test('the Google key is read from the variable it was given under, and only when
   assert.equal(googleKey({ GEMINI_API_KEY: KEY, google_ai_studio: 'AIza' + 'y'.repeat(35) }).from, 'GEMINI_API_KEY', 'GEMINI_API_KEY first');
   assert.equal(googleKey({ google_ai_studio: 'sk-not-google' }), null, 'something else is never sent to Google');
   assert.equal(googleKey({}), null);
+  // a variable named for Gemini is taken as set, whatever the key's format; quotes pasted round it come off
+  assert.deepEqual(googleKey({ GEMINI_API_KEY: 'AQ.Ab8RN6' + 'z'.repeat(30) }), { key: 'AQ.Ab8RN6' + 'z'.repeat(30), from: 'GEMINI_API_KEY' });
+  assert.equal(googleKey({ GEMINI_API_KEY: `"${KEY}"` }).key, KEY);
+  assert.equal(googleKey({ GEMINI_API_KEY: 'has a space in it but long enough' }), null);
+  assert.match(googleKeyProblem({ GEMINI_API_KEY: 'short' }), /GEMINI_API_KEY is set but is not used: it is too short/);
+  assert.ok(!googleKeyProblem({ GEMINI_API_KEY: 'short' }).includes('short ('), 'the value is never repeated');
+  assert.equal(googleKeyProblem({ GEMINI_API_KEY: KEY }), null);
+});
+
+test('the key check asks Google once, with the key in a header', async () => {
+  let seen; const r = await checkGoogleKey({ GEMINI_API_KEY: KEY }, async (url, o) => { seen = { url, key: o.headers['x-goog-api-key'] }; return new Response('{}', { status: 200 }); });
+  assert.deepEqual(r, { ok: true, status: 200 }); assert.match(seen.url, /\/v1beta\/models\?pageSize=1$/); assert.equal(seen.key, KEY);
+  assert.deepEqual(await checkGoogleKey({ GEMINI_API_KEY: KEY }, async () => new Response('{}', { status: 400 })), { ok: false, status: 400 });
 });
 
 test('a size becomes the nearest aspect ratio Google takes', () => {

@@ -7,15 +7,35 @@
 //   Either way, if the first provider fails the other is tried once, so one provider's outage or refusal does not stop the work.
 //   video (the walk): Veo, since OpenAI shut its video model (Sora) down.
 //
-// The key: GEMINI_API_KEY, or GOOGLE_AI_API_KEY, or the variable the service was given it under (google_ai_studio). Only a value that looks like
-// a Google API key ("AIza…") is used, so a variable holding something else is never sent to Google.
+// The key: GEMINI_API_KEY (or GOOGLE_AI_API_KEY), taken as set; or a looser name (google_ai_studio), used only when its value looks like a Google
+// API key ("AIza…"), so a variable holding something else is never sent to Google.
 import { trackedFetch } from './telemetry.js';
 
 const clip = (s, n) => String(s ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
 export const GOOGLE_KEY_VARS = ['GEMINI_API_KEY', 'GOOGLE_AI_API_KEY', 'GOOGLE_GENAI_API_KEY', 'google_ai_studio', 'GOOGLE_AI_STUDIO'];
+// a variable named for Gemini is taken as it is (Google's keys are not all "AIza…"), less any quotes pasted round it; a variable with a looser
+// name is used only when its value looks like a Google API key
+const EXPLICIT = new Set(['GEMINI_API_KEY', 'GOOGLE_AI_API_KEY', 'GOOGLE_GENAI_API_KEY']);
 export function googleKey(env = process.env) {
-  for (const k of GOOGLE_KEY_VARS) { const v = String(env[k] || '').trim(); if (/^AIza[0-9A-Za-z_-]{20,}$/.test(v)) return { key: v, from: k }; }
+  for (const k of GOOGLE_KEY_VARS) {
+    const v = String(env[k] || '').trim().replace(/^(['"])(.*)\1$/, '$2').trim();
+    if (EXPLICIT.has(k) ? /^[\x21-\x7e]{20,}$/.test(v) : /^AIza[0-9A-Za-z_-]{20,}$/.test(v)) return { key: v, from: k };
+  }
   return null;
+}
+// what is wrong with a key that is set but not used: said at start, without the key
+export function googleKeyProblem(env = process.env) {
+  if (googleKey(env)) return null;
+  const set = GOOGLE_KEY_VARS.filter(k => String(env[k] || '').trim());
+  if (!set.length) return null;
+  const v = String(env[set[0]]).trim();
+  return `${set[0]} is set but is not used: ${v.length < 20 ? 'it is too short to be a key' : /\s/.test(v) ? 'it has spaces in it' : 'it does not look like a Google API key'} (${v.length} characters)`;
+}
+// one cheap call that says whether Google accepts the key (the list of models, one entry): { ok, status }
+export async function checkGoogleKey(env = process.env, fetchImpl = fetch) {
+  const k = googleKey(env); if (!k) return { ok: false, status: 0 };
+  try { const r = await fetchImpl(`${GEMINI_ORIGIN(env)}/v1beta/models?pageSize=1`, { headers: { 'x-goog-api-key': k.key }, signal: AbortSignal.timeout(10000) }); return { ok: r.ok, status: r.status }; }
+  catch (e) { return { ok: false, status: 0, error: String(e.message).slice(0, 120) }; }
 }
 export const GEMINI_ORIGIN = (env = process.env) => env.GEMINI_API_ORIGIN || 'https://generativelanguage.googleapis.com';
 export function googleImageConfig(env = process.env) {
