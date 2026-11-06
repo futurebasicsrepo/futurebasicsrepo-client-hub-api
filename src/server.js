@@ -3486,14 +3486,15 @@ app.get('/v1/tp/:token/export',async(req,reply)=>{
 });
 // the production package (src/factory-package.js): the pack as the factory sees it (PDF, workbook, its pictures) and, when it was designed in the Lab,
 // every production file the Lab makes for it: separations and films, stitch files, job sheets, vectors, the decoration sheet, the pattern and the last
-async function factoryPackage({productId,packData,title,version,publishedAt,revisions=[],verification=null,lockedAt=null}){
+async function factoryPackage({productId,packData,title,version,publishedAt,revisions=[],verification=null,lockedAt=null,clientPack=null}){
+  const ck=cleanClientPack(clientPack),clientFile=ck?{name:ck.name,only:ck.only,data:await readFile(join(uploadDir,ck.storage)).catch(()=>null)}:null;
   const data=normalizeTechPack(packData),c=(await pool.query(`select c.id,(select updated_at from lab_flats f where f.concept_id=c.id) flats_at,(select updated_at from lab_patterns p where p.concept_id=c.id) pattern_at,(select updated_at from lab_assemblies a where a.concept_id=c.id) assembly_at from lab_concepts c where c.product_id=$1 order by c.updated_at desc limit 1`,[productId])).rows[0];
   let lab=null;
   if(c){const a=await labFlats.productionFiles(c.id).catch(e=>({files:[],notes:[`Decoration files could not be made (${String(e.message).slice(0,120)})`]})),b=await labPattern.productionFiles(c.id).catch(e=>({files:[],notes:[`Pattern files could not be made (${String(e.message).slice(0,120)})`]})),g=await labAssembly.productionFiles(c.id).catch(e=>({files:[],notes:[`Engineering files could not be made (${String(e.message).slice(0,120)})`]}));
     const changed=[c.flats_at,c.pattern_at,c.assembly_at].some(t=>t&&publishedAt&&new Date(t)>new Date(publishedAt));
     lab={files:[...a.files,...b.files,...g.files],notes:[...a.notes,...b.notes,...g.notes],stale:changed}}
   const pdf=await techPackPdf({pack:data,product:{title},version,publishedAt,verification:verification?normalizeVerification(verification,version):null,revisions:(Array.isArray(revisions)?revisions:[]).filter(r=>r.version<=version),lockedAt}).catch(e=>{app.log.warn({err:e.message},'production package: the PDF could not be made');return null});
-  return buildFactoryPackage({data,title,version,publishedAt,pdf,sheets:toXlsx(packSheets(data,{audience:'factory',title})),lab});
+  return buildFactoryPackage({data,title,version,publishedAt,pdf,sheets:toXlsx(packSheets(data,{audience:'factory',title})),lab,clientFile:clientFile?.data?clientFile:null});
 }
 const sendPackage=(reply,p)=>reply.header('content-type','application/zip').header('content-disposition',`attachment; filename="${p.name}"`).header('cache-control','no-store').send(p.zip);
 app.get('/v1/tp/:token/package.zip',async(req,reply)=>{
@@ -3501,7 +3502,7 @@ app.get('/v1/tp/:token/package.zip',async(req,reply)=>{
   const {row,error}=await loadShareByToken(req.params.token);if(error)return reply.code(error.code).send({error:error.message});
   const v=publishedTechPackView(row,{audience:'factory',shareLabel:row.share_label}).techPack,data=v.data;
   if(row.quote)data.style={...data.style,designer:''}; // a quotation link never carries the client's name
-  return sendPackage(reply,await factoryPackage({productId:row.product_id,packData:data,title:row.title,version:row.version,publishedAt:row.published_at,revisions:row.quote?[]:row.revisions,verification:row.quote?null:row.verification,lockedAt:row.locked_at}));
+  return sendPackage(reply,await factoryPackage({productId:row.product_id,packData:data,title:row.title,version:row.version,publishedAt:row.published_at,revisions:row.quote?[]:row.revisions,verification:row.quote?null:row.verification,lockedAt:row.locked_at,clientPack:row.published_data?.clientPack}));
 });
 // the client's own copy: the same package their factory gets from its link, to keep or to send on by hand (the published version only)
 app.get('/v1/products/:id/tech-pack/package.zip',{preHandler:authenticate},async(req,reply)=>{
@@ -3513,13 +3514,13 @@ app.get('/v1/products/:id/tech-pack/package.zip',{preHandler:authenticate},async
     and not exists(select 1 from projects ap where ap.id=p.project_id and (ap.archived_at is not null or ap.status in ('archive','archived')))`,[req.params.id,req.auth.clientId])).rows[0];
   if(!row)return reply.code(404).send({error:'The production package is made from the published pack: once v1 is published it is here'});
   const data=publishedTechPackView(row,{audience:'factory'}).techPack.data;
-  return sendPackage(reply,await factoryPackage({productId:req.params.id,packData:data,title:row.title,version:row.version,publishedAt:row.published_at,revisions:row.revisions,verification:row.verification,lockedAt:row.locked_at}));
+  return sendPackage(reply,await factoryPackage({productId:req.params.id,packData:data,title:row.title,version:row.version,publishedAt:row.published_at,revisions:row.revisions,verification:row.verification,lockedAt:row.locked_at,clientPack:row.published_data?.clientPack}));
 });
 // the same package from the work console, made from the published version: what the factory gets, to check it or send it on
 app.get('/v1/admin/products/:id/tech-pack/package.zip',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const ctx=await loadAdminTechPack(req.params.id);if(!ctx?.techPack?.published_at)return reply.code(409).send({error:'Publish the tech pack first: the package is made from the published version'});
   const tp=ctx.techPack,data=publishedTechPackView(tp,{audience:'factory'}).techPack.data;
-  return sendPackage(reply,await factoryPackage({productId:ctx.product.id,packData:data,title:ctx.product.title,version:tp.version,publishedAt:tp.published_at,revisions:tp.revisions,verification:tp.verification,lockedAt:tp.locked_at}));
+  return sendPackage(reply,await factoryPackage({productId:ctx.product.id,packData:data,title:ctx.product.title,version:tp.version,publishedAt:tp.published_at,revisions:tp.revisions,verification:tp.verification,lockedAt:tp.locked_at,clientPack:tp.published_data?.clientPack}));
 });
 app.get('/r/:id/:sig',async(req,reply)=>{
   const id=String(req.params.id),sig=String(req.params.sig).replace(/\.jpe?g$/i,'');

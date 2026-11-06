@@ -172,6 +172,7 @@ The assistant drafts what the concept did not give, such as materials, care and 
 - **Their file is the whole pack** is on by default. The client and the factory then see only their file (shown in the page, with **Download**), the Sign or Quote tab and Messages. Untick it to show our drafted sections beside it.
 - **Publish** puts it on the version. Our checks and the spec check are not needed, because there is nothing of ours to check. A version carries the file it was published with, so replacing it means publishing again.
 - **Assign the factory** under Sign → **Assigned factory**, as for any pack: for quotation now, and to produce once the client approves the version in their room.
+- **The factory's link** (Sign → Assigned factory → copy it, to send in Alibaba chat, WhatsApp or WeChat) opens the pack without an account. **Production files** there downloads one ZIP that starts with the client's file; with **whole pack** on, our near-empty PDF and workbook are left out of it, and the PDF and Excel buttons are hidden.
 - The file is stored apart from the pack's data (`tech_packs.client_pack`), and only its own routes set it: `POST`, `PATCH` (whole pack or not) and `DELETE /v1/admin/products/:id/tech-pack/client-pack`. It is read from `GET` on the same path (staff), `/v1/products/:id/tech-pack/client-pack` (the client, published only) and `/v1/tp/:token/client-pack` (the factory's link).
 
 ## 6. Factory
