@@ -9,13 +9,15 @@ import { categoryLabel } from './lab.js';
 import { ensureBranding } from './lab-concepts.js';
 import { cleanColourways } from './lab-materials.js';
 import { VIEW_KINDS, KIND_IDS, SPIN_KINDS, isKind, kindsFor, canWalk, makeViews, makeWalk, videoConfig } from './lab-views.js';
+import { callJsonSchema } from './studio.js';
+import sharp from 'sharp';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const clip = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
 const STALE_MIN = 20; // a view still "pending" after this long was lost to a restart: it shows as failed and can be made again
 
 export function registerLabViewRoutes(app, d) {
-  const { flatPictures = null, pool, authenticate, adminOnly, env = process.env, imageCfg = () => imageConfig(env), videoCfg = () => videoConfig(env), fetchImpl = fetch, edit, lab = null, log = console } = d;
+  const { flatPictures = null, pool, authenticate, adminOnly, env = process.env, imageCfg = () => imageConfig(env), videoCfg = () => videoConfig(env), fetchImpl = fetch, edit, lab = null, log = console, lookImpl = callJsonSchema } = d;
   const own = req => lab?.scope?.(req) || null, charge = async (req, o) => (lab ? lab.charge(req, o) : null); // a client's room: its own concepts, its AI meter
   const pre = [authenticate, adminOnly], bad = (reply, error, code = 422, extra = {}) => reply.code(code).send({ error, ...extra });
   const needId = (req, reply) => UUID.test(req.params.id) || (bad(reply, 'Not found', 404), false);
@@ -38,6 +40,17 @@ export function registerLabViewRoutes(app, d) {
     return Object.fromEntries(rows.map(r => [r.kind, { status: r.status === 'pending' && r.stale && !running.has(`${id}`) && !running.has(`${id}:walk`) ? 'failed' : r.status, note: r.status === 'pending' && r.stale ? 'Lost to a restart: make it again.' : r.note, has: r.has, model: r.model, at: r.updated_at }]));
   }
 
+  // a finished turn read by the vision model: which of the graphics it should show are not on it (none known without a model to read it)
+  const jpg = async b => (await sharp(b).resize({ width: 1000, height: 1000, fit: 'inside' }).flatten({ background: '#ffffff' }).jpeg({ quality: 82 }).toBuffer()).toString('base64');
+  const look = env.ANTHROPIC_API_KEY && !env.AI_FIXTURE ? async ({ image, kind, graphics }) => {
+    const img = data => ({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data } });
+    const content = [img(await jpg(image)), { type: 'text', text: `The first image is a photograph of a garment on a model (${kind.replace('model_', '').replace('34', 'three-quarter')} view). The images after it are the graphics that must be on it:` }];
+    for (const [i, g] of graphics.entries()) content.push({ type: 'text', text: `${i + 1}. ${g.words}` }, img(await jpg(g.art)));
+    content.push({ type: 'text', text: 'For each graphic, is it on the garment in the photograph, recognisably the same artwork in about the right place? A blank area, a different or garbled graphic, or a plain patch counts as missing.' });
+    const out = await lookImpl('You are a garment QC inspector checking a photograph against its artwork. Be strict: a graphic is present only if it is clearly the same artwork.', content,
+      { type: 'object', additionalProperties: false, required: ['graphics'], properties: { graphics: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['n', 'present'], properties: { n: { type: 'integer' }, present: { type: 'boolean' } } } } } }, { maxTokens: 400 });
+    return { missing: graphics.filter((g, i) => (out?.graphics || []).some(x => x.n === i + 1 && x.present === false)).map(g => g.name) };
+  } : null;
   // start views for one concept: mark them pending, draw in the background, land each as it is done
   async function startViews(c, kinds, { redo = false, flats = null } = {}) {
     const have = Object.fromEntries((await pool.query(`select kind, image from lab_concept_views where concept_id=$1 and status='ready' and image is not null`, [c.id])).rows.map(r => [r.kind, r.image]));
@@ -46,9 +59,11 @@ export function registerLabViewRoutes(app, d) {
     const picture = (await pool.query('select image from lab_concepts where id=$1', [c.id])).rows[0]?.image;
     const concept = { name: c.name, category: c.category, twist: c.twist, spec: ensureBranding(c.spec || {}, c.category) }, cfg = imageCfg();
     const ok = enqueue(`${c.id}`, async () => {
-      await makeViews({ concept, picture, flats, kinds: todo, have: redo ? Object.fromEntries(Object.entries(have).filter(([k]) => !todo.includes(k))) : have, cfg, edit,
+      // the placed graphics come from the saved flats whichever way the turns are drawn, so a turn drawn from the picture keeps the back graphic too
+      const graphics = flats?.graphics || (todo.some(k => k.startsWith('model')) && flatPictures ? (await flatPictures(c.id).catch(() => null))?.graphics || [] : []);
+      await makeViews({ concept, picture, flats, graphics, look, kinds: todo, have: redo ? Object.fromEntries(Object.entries(have).filter(([k]) => !todo.includes(k))) : have, cfg, edit,
         onView: async (kind, r, note) => {
-          if (r) await pool.query(`update lab_concept_views set status='ready', image=$3, thumb=$4, model=$5, note='', updated_at=now() where concept_id=$1 and kind=$2`, [c.id, kind, r.image, r.thumb, r.model || '']);
+          if (r) await pool.query(`update lab_concept_views set status='ready', image=$3, thumb=$4, model=$5, note=$6, updated_at=now() where concept_id=$1 and kind=$2`, [c.id, kind, r.image, r.thumb, r.model || '', note || '']);
           else await pool.query(`update lab_concept_views set status='failed', note=$3, updated_at=now() where concept_id=$1 and kind=$2`, [c.id, kind, note]);
         } });
       // anything the run never reached (a model view whose front failed) is not left pending
@@ -76,7 +91,7 @@ export function registerLabViewRoutes(app, d) {
     };
   });
 
-  app.get('/v1/lab/concepts/:id/views', { preHandler: pre }, async (req, reply) => { if (!needId(req, reply)) return; return { views: await summary(req.params.id), busy: running.has(req.params.id) || running.has(`${req.params.id}:walk`) }; });
+  app.get('/v1/lab/concepts/:id/views', { preHandler: pre }, async (req, reply) => { if (!needId(req, reply)) return; return { views: await summary(req.params.id), video: videoCfg().configured, busy: running.has(req.params.id) || running.has(`${req.params.id}:walk`) }; });
 
   app.get('/v1/lab/concepts/:id/views/:kind', { preHandler: pre }, async (req, reply) => {
     if (!needId(req, reply)) return;

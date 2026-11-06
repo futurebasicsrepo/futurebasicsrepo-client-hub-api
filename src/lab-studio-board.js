@@ -48,25 +48,41 @@
     piece.insertAdjacentHTML('beforeend', fig('front', own(f.frame('front')), 'Flat front', size) + fig('back', own(f.frame('back')), 'Flat back', size));
     const cws = f.colourways().filter(c => c.hex);
     body.insertAdjacentHTML('beforeend', `<h4>Colourways</h4><div class="row">${cws.length ? cws.map(c => fig('front', own(f.frame('front', { color: c.hex })), `<i class="sw" style="background:${esc(c.hex)}"></i>${esc(c.name || c.hex)}`, esc(c.pantone || ''), 'data-cw="1"')).join('') : '<p class="note">No colourways on the concept yet: add them under Materials, and each one is drawn here.</p>'}</div>`);
-    body.insertAdjacentHTML('beforeend', `<h4>Turns</h4><div class="row" id="bTurns"><p class="note">Looking for the turns…</p></div>`); paintTurns();
+    body.insertAdjacentHTML('beforeend', `<h4>Turns</h4><div class="row" id="bTurns"><p class="note">Looking for the turns…</p></div><h4>Walk</h4><div class="row" id="bWalk"></div>`); paintTurns();
     if (f.graded()) { const sizes = f.sizes(); body.insertAdjacentHTML('beforeend', `<h4>Sizes · the artwork as graded</h4><div class="row">${sizes.map(sz => fig('front', own(f.frame('front', { size: sz })), sz, sz === size ? 'base size' : '', 'data-size="1"')).join('')}</div>`); }
     host.dataset.ready = '1';
   }
   // ---- the turns: the piece on a model from four sides, drawn from the flats as they are now (the views service, src/lab-view-routes.js) ----
   const TURNS = [['model_front', 'Front'], ['model_34', 'Three-quarter'], ['model_side', 'Side'], ['model_back', 'Back']], TURN_SRC = {};
   let turnT = 0;
+  // the walk: a short film of the model walking in the piece, started from the front turn (a video model: Google's Veo with the Google AI key)
+  let WALK_SRC = {};
+  async function paintWalk(v, video) {
+    const box = document.getElementById('bWalk'); if (!box) return; const w = v.walk, front = v.model_front?.status === 'ready';
+    if (w?.status === 'ready' && w.has) { const key = String(w.at); if (!WALK_SRC[key]) { try { WALK_SRC = { [key]: await urlOfBlob(await blobOf(`/v1/lab/concepts/${CID}/views/walk`)) }; } catch { WALK_SRC = {}; } }
+      if (document.getElementById('bWalk') !== box) return;
+      box.innerHTML = `${WALK_SRC[key] ? `<video src="${WALK_SRC[key]}" controls loop playsinline muted style="width:var(--fw,260px);border-radius:12px;background:#000"></video>` : ''}<div style="display:grid;gap:8px;align-content:start;justify-items:start;max-width:260px"><button class="btn sm" type="button" data-walk>Make it again</button><p class="note" style="margin:0">From the front turn. Make the turns again first if the piece changed.</p></div>`; return; }
+    box.innerHTML = w?.status === 'pending' ? '<p class="note">Making the walk… it takes a few minutes.</p>'
+      : !video ? '<p class="note">No video model is connected. Add the Google AI key (GEMINI_API_KEY) to the server to make the walk.</p>'
+      : `<div style="display:grid;gap:8px;align-content:start;justify-items:start;max-width:320px"><button class="btn go sm" type="button" data-walk ${front ? '' : 'disabled'}>Make the walk</button><p class="note" style="margin:0">${w?.status === 'failed' ? esc(w.note || 'The last walk could not be made.') + ' ' : ''}${front ? 'An 8-second film of the model walking in the piece, from the front turn.' : 'Make the turns first: the walk starts from the front turn.'}</p></div>`;
+  }
+  document.getElementById('boardHost').addEventListener('click', async e => {
+    const b = e.target.closest('[data-walk]'); if (!b) return; b.disabled = true;
+    try { await api(`/v1/lab/concepts/${CID}/walk`, { body: {} }); toast('Making the walk. It plays here in a few minutes.'); paintTurns(); } catch (x) { toast(x.message); b.disabled = false; }
+  });
   async function paintTurns() {
     clearTimeout(turnT); const row = document.getElementById('bTurns'); if (!row || !CID) return;
-    let v; try { v = (await api(`/v1/lab/concepts/${CID}/views`)).views || {}; } catch { row.innerHTML = '<p class="note">The turns could not be looked up.</p>'; return; }
+    let v, ws = {}; try { ws = await api(`/v1/lab/concepts/${CID}/views`); v = ws.views || {}; } catch { row.innerHTML = '<p class="note">The turns could not be looked up.</p>'; return; }
     const have = TURNS.filter(([k]) => v[k]);
-    if (!have.length) { row.innerHTML = '<p class="note">No turns yet. <b>Make the turns from the flats</b> draws the piece on a model from four sides, following the flats.</p>'; return; }
+    if (!have.length) { row.innerHTML = '<p class="note">No turns yet. <b>Make the turns from the flats</b> draws the piece on a model from four sides, following the flats.</p>'; paintWalk(v, ws.video); return; }
     const cells = [];
     for (const [k, label] of TURNS) { const s = v[k]; if (!s) continue;
       let inner = `<p class="note" style="padding:12px;text-align:center">${s.status === 'pending' ? 'Drawing…' : esc(s.note || 'Not drawn')}</p>`;
       if (s.status === 'ready' && s.has) { const key = `${k}|${s.at}`; if (!TURN_SRC[key]) { try { TURN_SRC[key] = await urlOfBlob(await blobOf(`/v1/lab/concepts/${CID}/views/${k}?thumb=1`)); } catch { TURN_SRC[key] = ''; } } if (TURN_SRC[key]) inner = `<img alt="${esc(label)} on a model" src="${TURN_SRC[key]}">`; }
-      cells.push(`<figure tabindex="0" data-turn="${k}"><div class="fr">${inner}</div><figcaption><span>${esc(label)}</span><small>${s.status === 'pending' ? 'drawing' : s.status === 'failed' ? 'failed' : ''}</small></figcaption></figure>`); }
+      cells.push(`<figure tabindex="0" data-turn="${k}"><div class="fr">${inner}</div><figcaption><span>${esc(label)}</span><small>${s.status === 'pending' ? 'drawing' : s.status === 'failed' ? 'failed' : ''}</small></figcaption>${s.status === 'ready' && s.note ? `<p class="note" style="margin:0;color:#8a5a00">${esc(s.note)}</p>` : ''}</figure>`); }
     if (document.getElementById('bTurns') !== row) return; row.innerHTML = cells.join('');
-    if (TURNS.some(([k]) => v[k]?.status === 'pending') && VMODE === 'board') turnT = setTimeout(paintTurns, 5000);
+    paintWalk(v, ws.video);
+    if ([...TURNS.map(([k]) => k), 'walk'].some(k => v[k]?.status === 'pending') && VMODE === 'board') turnT = setTimeout(paintTurns, 5000);
   }
   document.getElementById('turnsBtn').addEventListener('click', async () => {
     if (D?.concept?.locked) { toast('This concept is already a tech pack.'); return; }

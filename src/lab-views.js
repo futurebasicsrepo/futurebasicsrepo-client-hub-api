@@ -94,10 +94,20 @@ const tidy = async buf => {
 // The flats come first (they only need the concept's picture), then the front on-model view, then the other angles, which keep that man and outfit by taking it as a reference.
 // the turns drawn from the technical flats: the design to follow is the flats, the picture only says how the cloth looks
 export const FROM_FLATS = 'The first reference images are the piece\'s technical flats (front, then back): follow them exactly for the silhouette, the length and proportions, the construction, the colour blocks and where each colour goes, the collar, cuffs, hem, pockets, straps, zips and trims, and every graphic and its place. Where the photograph differs from the flats, the flats win; take only the look of the cloth from the photograph. Render it as a real garment, not a drawing.';
+// The graphics a turn must show: what faces the camera in that turn (the side view shows the ones that wrap round to it, so it is not checked)
+export const turnGraphics = (graphics, kind) => (graphics || []).filter(g => kind === 'model_back' ? g.view === 'back' : kind === 'model_side' ? false : kind.startsWith('model') ? g.view === 'front' : false).slice(0, 4);
+export function graphicsPrompt(gs, kind, missing = []) {
+  if (!gs.length) return '';
+  return `${missing.length ? `The last attempt left out ${missing.join(' and ')}: this time every graphic must be there. ` : ''}GRAPHICS: the last ${gs.length === 1 ? 'reference image is the' : `${gs.length} reference images are the`} artwork${gs.length === 1 ? '' : 's, in this order'}. Every one must be on the garment, the same artwork, legible, its words spelled exactly as in the art, at its size and place:\n${gs.map((g, i) => `${i + 1}. ${g.words}`).join('\n')}\n${kind === 'model_34' ? 'At this angle they are turned with the body but still there. ' : ''}Never leave out, blur, simplify, move or invent a graphic, logo or wordmark.`;
+}
 // flats: { front, back } pictures of the technical flats, when the turns are drawn from them
-export async function makeViews({ concept, picture, kinds, have = {}, cfg = imageConfig(), onView = () => {}, edit = openaiEdit, pool = 2, flats = null }) {
+// graphics: [{ view, name, art, words }] every placed graphic (from the flats), shown on each turn that faces it
+// look({ image, kind, graphics }) → { missing: [names] }: reads a finished turn for the graphics; a turn missing one is drawn once more, and if one
+// is still missing the turn keeps a note saying so
+export async function makeViews({ concept, picture, kinds, have = {}, cfg = imageConfig(), onView = () => {}, edit = openaiEdit, pool = 2, flats = null, graphics = flats?.graphics || [], look = null }) {
   const want = kinds.filter(k => isKind(k) && kindsFor(concept.category).includes(k)), done = { ...have };
   const draw = async kind => {
+    let note = '';
     try {
       let buf;
       if (cfg.provider === 'fixture') buf = await fixtureView(concept, kind);
@@ -105,9 +115,17 @@ export async function makeViews({ concept, picture, kinds, have = {}, cfg = imag
         const refs = flats && kind.startsWith('model') ? (kind === 'model_front' ? [flats.front, flats.back, picture] : [done.model_front, kind === 'model_back' ? flats.back : flats.front, kind === 'model_back' ? flats.front : flats.back]).filter(Boolean)
           : kind.startsWith('flat') || kind === 'sheet' ? [picture] : kind === 'model_front' ? [picture, done.flat_front || picture].filter(Boolean) : [done.model_front, done.flat_front || picture].filter(Boolean);
         if (kind.startsWith('model') && kind !== 'model_front' && !done.model_front) throw new Error('The front view on the model has to be drawn first');
-        buf = await edit({ images: refs, prompt: flats && kind.startsWith('model') ? `${FROM_FLATS} ${viewPrompt(concept, kind)}` : viewPrompt(concept, kind), cfg: { ...cfg, size: kind === 'sheet' ? '1536x1024' : kind.startsWith('model') && (cfg.provider === 'openai' || cfg.provider === 'google') ? (process.env.LAB_MODEL_SIZE || '1024x1536') : '1024x1024' } });
+        const gs = turnGraphics(graphics, kind), base = flats && kind.startsWith('model') ? `${FROM_FLATS} ${viewPrompt(concept, kind)}` : viewPrompt(concept, kind);
+        const once = missing => edit({ images: [...refs, ...gs.map(g => g.art)], prompt: [base, graphicsPrompt(gs, kind, missing)].filter(Boolean).join('\n\n'), cfg: { ...cfg, size: kind === 'sheet' ? '1536x1024' : kind.startsWith('model') && (cfg.provider === 'openai' || cfg.provider === 'google') ? (process.env.LAB_MODEL_SIZE || '1024x1536') : '1024x1024' } });
+        buf = await once([]);
+        if (gs.length && look) {
+          const seen = async b => { try { return (await look({ image: b, kind, graphics: gs }))?.missing || []; } catch { return []; } };
+          let miss = await seen(buf);
+          if (miss.length) { const again = await once(miss).catch(() => null); if (again) { const m2 = await seen(again); if (m2.length <= miss.length) { buf = again; miss = m2; } } }
+          if (miss.length) note = `Check this turn: ${miss.join(', ')} may be missing. Draw the turns again.`;
+        }
       }
-      const r = await tidy(buf); done[kind] = r.image; await onView(kind, { ...r, model: cfg.model || cfg.provider }, ''); return r;
+      const r = await tidy(buf); done[kind] = r.image; await onView(kind, { ...r, model: cfg.model || cfg.provider }, note); return r;
     } catch (e) { await onView(kind, null, `Could not be drawn: ${clip(e.message, 160)}`); return null; }
   };
   const batch = async list => { for (let i = 0; i < list.length; i += pool) await Promise.all(list.slice(i, i + pool).map(draw)); };
