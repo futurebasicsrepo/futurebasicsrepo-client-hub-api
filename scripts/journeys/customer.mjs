@@ -1156,6 +1156,18 @@ await journey('J94', 'All files: a client sends files outside a product and sees
   const staffView = (await adm(`/v1/admin/clients/${m.cid}`)).json.projectRoomFiles || [];
   ok(['brief.pdf', 'spec.pdf'].every(n => staffView.some(f => f.original_name === n && f.project_id === projectId)), 'and staff see both in the project\'s files', staffView.map(f => f.original_name));
   ok(!((await call('/v1/dashboard', { token: other.token })).json.projectRoomFiles || []).length, 'another client sees none of it');
+  // Share to: another room (and its project) gets its own copy, hidden from that client until staff switch it on; the same place twice is not copied again
+  const targets = (await adm('/v1/admin/share-targets')).json.rooms || [];
+  ok(targets.some(r => r.id === other.cid && r.projects.some(pr => pr.id === otherProject)), 'Share to lists every room with its projects', targets.length);
+  ok((await call('/v1/admin/share-targets', { token: m.token })).status === 403 && (await call(`/v1/admin/room-files/${encodeURIComponent(b.json.file.id)}/share`, { method: 'POST', token: m.token, body: { targets: [{ clientId: other.cid }] } })).status === 403, 'a client can do neither');
+  const sh = await adm(`/v1/admin/room-files/${encodeURIComponent(b.json.file.id)}/share`, { method: 'POST', body: { targets: [{ clientId: other.cid, projectId: otherProject }] } });
+  ok(sh.status === 200 && sh.json.shared === 1, 'staff share the dieline into another room\'s project', sh.json);
+  const theirs = (await adm(`/v1/admin/clients/${other.cid}/room-files`)).json.files.find(f => f.name === 'spec.pdf');
+  ok(theirs && theirs.projectId === otherProject && theirs.clientVisible === false && !(await mine(other.token)).files.length, '   it is in their project, hidden from that client until switched on', theirs);
+  ok((await adm(`/v1/admin/room-files/${encodeURIComponent(b.json.file.id)}/share`, { method: 'POST', body: { targets: [{ clientId: other.cid, projectId: otherProject }] } })).json.shared === 0, '   sharing it there again makes no second copy');
+  ok((await adm(`/v1/admin/room-files/${encodeURIComponent(b.json.file.id)}/share`, { method: 'POST', body: { targets: [{ clientId: other.cid, projectId: projectId }] } })).json.skipped[0]?.why === 'project not in that room', '   a project that is not that room\'s is refused');
+  ok((await call(theirs.url, { token: admin })).text === 'the dieline', '   the copy is the same file');
+  ok((await adm(`/v1/admin/room-files/${encodeURIComponent(theirs.id)}`, { method: 'DELETE' })).status === 200 && (await call(b.json.file.url, { token: admin })).text === 'the dieline', '   deleting the copy leaves the original');
 
   // a factory assigned a pack in this project
   for (let i = 0; i < 160; i++) { const st = await studio(m); if (st.loop && st.loop.status === 'done') break; await sleep(300); }
@@ -1851,6 +1863,34 @@ await journey('J192', 'Publishing a tech pack: the team chooses whether the clie
       ok(errs.length === 0, 'no page errors', errs);
     } finally { await b.close(); }
   }
+});
+
+await journey('J288', 'Sites in a room: staff push a showcase build or a link into a client room, the room team sees it under Your sites with its picture, opens it and sends notes back; another room sees nothing; taking it out revokes the showcase invites', async () => {
+  const m = await room('288'), other = await room('288b');
+  const admin = await forge({ sub: sql(`select id from users where client_id='${m.cid}' limit 1`), clientId: m.cid, role: 'admin' }), adm = (path, o = {}) => call(path, { token: admin, ...o });
+  const bid = sql(`insert into builds(slug, name, tagline, status, visibility, live_url) values('j288-common', 'J288 Common', 'A cafe prototype', 'concept', 'hidden', 'https://j288.example.com') on conflict (slug) do update set name=excluded.name returning id`);
+  const listed = (await adm(`/v1/admin/clients/${m.cid}/sites`)).json; ok(listed.sites.length === 0 && listed.builds.some(b => b.id === bid && !b.inRoom), 'staff see the showcase builds they can push, hidden ones included', listed);
+  ok((await call(`/v1/admin/clients/${m.cid}/sites`, { token: m.token })).status === 403, 'a client cannot use the staff routes');
+  const push = await adm(`/v1/admin/clients/${m.cid}/sites`, { method: 'POST', body: { buildId: bid, note: 'Have a look at the menu page', email: false } });
+  ok(push.status === 201 && push.json.site.name === 'J288 Common' && push.json.invited >= 1, 'staff push the build into the room and the team gets showcase invites', push.json);
+  ok((await adm(`/v1/admin/clients/${m.cid}/sites`, { method: 'POST', body: { buildId: bid } })).status === 409, 'the same build cannot go in twice');
+  ok((await adm(`/v1/admin/clients/${m.cid}/sites`, { method: 'POST', body: { name: 'Bad', url: 'javascript:alert(1)' } })).status >= 400, 'a link that is not a web address is refused');
+  const link = await adm(`/v1/admin/clients/${m.cid}/sites`, { method: 'POST', body: { name: 'Staging store', url: 'https://staging.example.com', email: false } }); ok(link.status === 201, 'any link can go in too', link.json);
+  const mine = (await call('/v1/sites', { token: m.token })).json; const site = mine.sites.find(x => x.buildId === bid);
+  ok(mine.sites.length === 2 && site.note === 'Have a look at the menu page' && site.statusWords === 'Concept' && site.hasUrl, 'the room team sees both under Your sites', mine);
+  ok((await call('/v1/sites', { token: other.token })).json.sites.length === 0, 'another room sees nothing');
+  ok((await call(`/v1/sites/${site.id}/open`, { method: 'POST', token: other.token })).status === 404 && (await call(`/v1/sites/${site.id}/feedback`, { method: 'POST', token: other.token, body: { text: 'x' } })).status === 404, 'and cannot open it or write on it');
+  const open = await call(`/v1/sites/${site.id}/open`, { method: 'POST', token: m.token }); ok(open.status === 200 && open.json.url === 'https://j288.example.com', 'opening it gives the address', open.json);
+  ok(Number(sql(`select count(*) from build_views where build_id='${bid}' and kind='open'`)) >= 1, 'and the visit counts on the showcase');
+  ok((await call(`/v1/sites/${site.id}/feedback`, { method: 'POST', token: m.token, body: { text: '  ' } })).status === 422, 'empty notes are refused');
+  ok((await call(`/v1/sites/${site.id}/feedback`, { method: 'POST', token: m.token, body: { text: 'Bigger logo please' } })).status === 201, 'the team sends notes back');
+  const back = (await adm(`/v1/admin/clients/${m.cid}/sites`)).json; ok(back.feedback.some(f => f.siteId === site.id && f.text === 'Bigger logo please'), 'staff see the notes in the room', back.feedback);
+  ok(Number(sql(`select count(*) from build_invites where build_id='${bid}' and note like 'room-site:%' and revoked_at is null`)) >= 1, 'the showcase invites are live');
+  const sid = back.sites.find(x => x.buildId === bid).id;
+  ok((await adm(`/v1/admin/clients/${other.cid}/sites/${sid}`, { method: 'DELETE' })).status === 404, 'it cannot be taken out through another room');
+  ok((await adm(`/v1/admin/clients/${m.cid}/sites/${sid}`, { method: 'DELETE' })).status === 200, 'staff take it out of the room');
+  ok(Number(sql(`select count(*) from build_invites where build_id='${bid}' and note like 'room-site:%' and revoked_at is null`)) === 0, 'which revokes its showcase invites');
+  ok((await call('/v1/sites', { token: m.token })).json.sites.length === 1 && (await call(`/v1/sites/${site.id}/open`, { method: 'POST', token: m.token })).status === 404, 'and the team no longer sees it');
 });
 
 summary(); process.exit(bad ? 1 : 0);

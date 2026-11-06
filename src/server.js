@@ -8,7 +8,7 @@ import { createWatch } from './watch.js';
 import { NODES as MAP_NODES, EDGES as MAP_EDGES, FLOWS as MAP_FLOWS } from './platform-map.js';
 import { createHash, createHmac, timingSafeEqual, randomBytes, randomInt, randomUUID } from 'node:crypto';
 import { createReadStream, createWriteStream, mkdirSync, readFileSync, readdirSync } from 'node:fs';
-import { unlink, writeFile, mkdir, readFile } from 'node:fs/promises';
+import { unlink, writeFile, mkdir, readFile, copyFile } from 'node:fs/promises';
 import { pipeline } from 'node:stream/promises';
 import { gzip as gzipCb, gzipSync } from 'node:zlib';
 import { promisify } from 'node:util';
@@ -83,6 +83,7 @@ import { registerRoomTeamRoutes } from './room-team-routes.js';
 import { registerSampleFormRoutes } from './sample-form-routes.js';
 import { registerTeamChatRoutes } from './team-chat-routes.js';
 import { registerWorkspaceRoutes } from './workspace-routes.js';
+import { registerRoomSitesRoutes } from './room-sites-routes.js';
 import { createLive } from './live.js';
 import { maskFor as flatMaskFor } from './lab-flat-mask.js';
 import { purgeOld as labPurge } from './lab-scan.js';
@@ -771,6 +772,7 @@ const live = createLive({ pool, log: app.log });
 app.addHook('onClose', async () => { await live.close(); });
 registerTeamChatRoutes(app, { pool, authenticate, notifyStaff, sendHubEmail, hubEmailShell, emailEscape, clientHubUrl, workHubUrl, live, log: app.log });
 registerWorkspaceRoutes(app, { pool, authenticate, sendHubEmail, hubEmailShell, emailEscape, clientHubUrl, log: app.log });
+registerRoomSitesRoutes(app, { pool, authenticate, adminOnly, notifyStaff, sendHubEmail, hubEmailShell, emailEscape, clientHubUrl, workHubUrl, log: app.log });
 registerLabSelfServeRoutes(app, { pool, authenticate, adminOnly, lab: labAccess, clientHubUrl, workHubUrl, notifyStaff, notifyClientContact, sendHubEmail, hubEmailShell, replyTo: intakeNotificationEmail, forgetUser, clientForEmail, log: app.log });
 const money=registerMoneyRoutes(app, { pool, authenticate, adminOnly, getSetting, setSetting, tokenSeal: sealer(process.env), stateSecret: process.env.JWT_SECRET || 'dev', workUrl: workHubUrl, log: app.log,
   // product development is paid through a Shopify checkout (a draft order for the amount due), see money-routes.js
@@ -2547,6 +2549,39 @@ app.patch('/v1/admin/room-files/:fid',{preHandler:[authenticate,adminOnly]},asyn
   }else await pool.query('update project_files set factory_visible=$2 where id=$1',[f.id,factoryVisible]);
   const list=await listRoomFiles(pool,row.client_id,{admin:true});
   return {file:roomFileView(list.find(x=>x.id===`${f.source}:${f.id}`))};
+});
+// Where a file can be shared: every room that is not archived, with its open projects (staff only)
+app.get('/v1/admin/share-targets',{preHandler:[authenticate,adminOnly]},async()=>{
+  const rows=(await pool.query(`select c.id client_id,c.name client_name,pr.id project_id,pr.name project_name from clients c left join projects pr on pr.client_id=c.id and pr.archived_at is null and coalesce(pr.status,'') not in ('archive','archived')
+    where c.archived_at is null and coalesce(c.status,'') not in ('archive','archived') order by lower(c.name),lower(pr.name)`)).rows;
+  const rooms=new Map();for(const r of rows){if(!rooms.has(r.client_id))rooms.set(r.client_id,{id:r.client_id,name:r.client_name,projects:[]});if(r.project_id)rooms.get(r.client_id).projects.push({id:r.project_id,name:r.project_name})}
+  return {rooms:[...rooms.values()]};
+});
+// Share a file into other projects and rooms: each target gets its own copy (so deleting one never takes another), filed under the project
+// chosen. In another room it starts hidden from that client unless clientVisible is sent: one room's files never show in another by surprise.
+//   body: { targets: [{ clientId, projectId|null }], clientVisible?: boolean }   or   { everyProject: true } for every open project in the file's own room
+app.post('/v1/admin/room-files/:fid/share',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const f=await fileFor(pool,decodeURIComponent(req.params.fid),{admin:true});if(!f)return reply.code(404).send({error:'File not found'});
+  const row=f.row,b=req.body||{};let targets=Array.isArray(b.targets)?b.targets.slice(0,200):[];
+  if(b.everyProject===true)targets=(await pool.query(`select id project_id from projects where client_id=$1 and archived_at is null and coalesce(status,'') not in ('archive','archived')`,[row.client_id])).rows.map(r=>({clientId:row.client_id,projectId:r.project_id}));
+  if(!targets.length)return reply.code(400).send({error:'Choose where to share it'});
+  const done=[],skipped=[];
+  for(const t of targets){
+    const cid=String(t?.clientId||''),pid=t?.projectId?String(t.projectId):null;
+    if(!UUID_RE.test(cid)||(pid&&!UUID_RE.test(pid))){skipped.push({...t,why:'not found'});continue}
+    const room=(await pool.query(`select id,name from clients where id=$1 and archived_at is null`,[cid])).rows[0];if(!room){skipped.push({...t,why:'room not found'});continue}
+    if(pid&&!(await pool.query('select 1 from projects where id=$1 and client_id=$2 and archived_at is null',[pid,cid])).rowCount){skipped.push({...t,why:'project not in that room'});continue}
+    if(cid===row.client_id&&(pid||null)===(row.project_id||null)){skipped.push({...t,why:'already there'});continue}
+    // the same file already shared to that place: not copied twice
+    if((await pool.query(`select 1 from room_files where client_id=$1 and project_id is not distinct from $2 and original_name=$3 and size_bytes=$4`,[cid,pid,row.original_name,row.size_bytes])).rowCount){skipped.push({...t,why:'already there'});continue}
+    const storageName=`${randomBytes(18).toString('hex')}-${row.original_name}`;
+    try{await copyFile(join(uploadDir,row.storage_name),join(uploadDir,storageName))}catch{return reply.code(410).send({error:'The file is missing from storage, so it cannot be shared'})}
+    const sameRoom=cid===row.client_id,visible=sameRoom?(f.source==='rf'?Boolean(row.client_visible)||row.uploader_role==='client':true):b.clientVisible===true;
+    await pool.query(`insert into room_files(client_id,project_id,uploader_id,uploader_role,original_name,storage_name,mime_type,size_bytes,note,client_visible,factory_visible)
+      values($1,$2,$3,'admin',$4,$5,$6,$7,$8,$9,false)`,[cid,pid,UUID_RE.test(String(req.auth.sub||''))?req.auth.sub:null,row.original_name,storageName,row.mime_type,row.size_bytes,(row.note||'').slice(0,400)||null,visible]);
+    done.push({clientId:cid,projectId:pid,room:room.name});
+  }
+  return {shared:done.length,done,skipped};
 });
 app.delete('/v1/admin/room-files/:fid',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const f=await fileFor(pool,decodeURIComponent(req.params.fid),{admin:true});if(!f||f.source!=='rf')return reply.code(404).send({error:'File not found'});

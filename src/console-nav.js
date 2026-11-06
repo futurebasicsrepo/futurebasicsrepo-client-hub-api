@@ -379,6 +379,47 @@ const autoCollapse = () => { if (!chosen()) { let touch = false; try { touch = m
     for (const ev of ['hashchange', 'popstate', 'fb:nav']) window.addEventListener(ev, () => { autoCollapse(); paintActive(); });
     gates(); access(); setInterval(() => { badges(); paintActive(); if (!accessDone) access(); }, 1500); // the pages draw their own counts and open sub-pages themselves
   }
+  // ---- Saved: one control at the top of every staff page that says whether the last change took ----
+  // The console saves as you go (a dropdown, a switch, a form), so this watches the page's own requests: any change sent to the service
+  // (POST, PUT, PATCH, DELETE under /v1/) shows "Saving…", then "Saved 2:31 PM", or what went wrong. A change that failed can be sent again
+  // from it (edits and deletes; a new item is not re-sent, so nothing is made twice). Background traffic (presence, live checks, sign-in) is left
+  // out, and a page with its own save label (the Studio, the flats) keeps its own.
+  const QUIET = /\/v1\/(workspace\/presence|team-chat\/live|lab\/door|auth\/|telemetry|feedback|lab\/concepts\/[^/]+\/flats\/check|.*\/read$|.*\/seen$|notifications\/read)/;
+  function saveBar() {
+    if (window.fbSaveBar || document.getElementById('saved') || document.documentElement.dataset.fbsave === 'own') return;
+    window.fbSaveBar = true;
+    const st = { busy: 0, at: null, err: null, retry: null };
+    const b = document.createElement('button'); b.type = 'button'; b.id = 'fbSaved'; b.className = 'fbsaved'; b.hidden = true; b.setAttribute('aria-live', 'polite');
+    document.body.appendChild(b);
+    const css = document.createElement('style');
+    css.textContent = `.fbsaved{position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:70;display:inline-flex;align-items:center;gap:7px;border:1px solid #d9d8d2;background:#fff;color:#141416;border-radius:999px;padding:6px 14px;font:600 12.5px/1.2 'Space Grotesk',system-ui,sans-serif;box-shadow:0 6px 18px rgba(20,20,22,.10);cursor:default}
+      .fbsaved i{width:8px;height:8px;border-radius:50%;background:#1f9d55;flex:none}.fbsaved.busy i{background:#d49a00;animation:fbsp 1s infinite alternate}.fbsaved.bad{border-color:#e9b8b1;color:#8f2418;cursor:pointer}.fbsaved.bad i{background:#c0392b}
+      @keyframes fbsp{to{opacity:.3}}@media(prefers-reduced-motion:reduce){.fbsaved.busy i{animation:none}}@media print{.fbsaved{display:none}}`;
+    document.head.appendChild(css);
+    const time = t => new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    const paint = () => {
+      b.hidden = !(st.busy || st.at || st.err); b.className = 'fbsaved' + (st.busy ? ' busy' : st.err ? ' bad' : '');
+      b.innerHTML = '<i></i>' + (st.busy ? 'Saving…' : st.err ? `Not saved: ${String(st.err).replace(/[<&>]/g, '').slice(0, 90)}${st.retry ? ' · Save again' : ''}` : `Saved ${time(st.at)}`);
+      b.title = st.err ? (st.retry ? 'Press to send the change again' : 'Make the change again on the page') : st.at ? `Your last change was saved at ${new Date(st.at).toLocaleString()}` : '';
+    };
+    const orig = window.fetch.bind(window);
+    window.fetch = async function (input, init) {
+      const url = typeof input === 'string' ? input : input?.url || '', method = String(init?.method || input?.method || 'GET').toUpperCase();
+      const tracked = !['GET', 'HEAD', 'OPTIONS'].includes(method) && /\/v1\//.test(url) && !QUIET.test(url);
+      if (!tracked) return orig(input, init);
+      st.busy++; paint();
+      try {
+        const r = await orig(input, init);
+        if (r.ok) { st.at = Date.now(); st.err = null; st.retry = null; }
+        else { let msg = `the service answered ${r.status}`; try { const j = await r.clone().json(); if (j?.error) msg = j.error; } catch {} st.err = msg; st.retry = ['PUT', 'PATCH', 'DELETE'].includes(method) && !(init?.body instanceof FormData) ? [input, init] : null; }
+        return r;
+      } catch (e) { st.err = 'no connection'; st.retry = ['PUT', 'PATCH', 'DELETE'].includes(method) && !(init?.body instanceof FormData) ? [input, init] : null; throw e; }
+      finally { st.busy = Math.max(0, st.busy - 1); paint(); }
+    };
+    b.addEventListener('click', () => { if (st.err && st.retry) window.fetch(...st.retry).catch(() => {}); });
+    setInterval(() => { if (st.at && !st.busy && !st.err) paint(); }, 30000);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', saveBar); else saveBar();
   window.fbNav = { badge: badges, startTechPack };
   const labClient = () => { try { return document.documentElement.dataset.labClient === '1' || (location.pathname.startsWith('/lab') && !localStorage.getItem('fb.admin.token') && Boolean(localStorage.getItem('fb.client.token'))); } catch { return false; } };
   if (labClient()) return; // a client in the Design Lab: their hub is their home, not the console

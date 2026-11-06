@@ -1920,6 +1920,30 @@ export async function migrate() {
     );
     create index if not exists build_views_build_idx on build_views(build_id, created_at desc);
     create index if not exists build_views_email_idx on build_views(lower(email), created_at desc);
+    -- sites and prototypes pushed into a client's room from the showcase (or any link), and the notes the room sends back (src/room-sites-routes.js)
+    create table if not exists room_sites (
+      id uuid primary key default gen_random_uuid(),
+      client_id uuid not null references clients(id) on delete cascade,
+      build_id uuid references builds(id) on delete cascade,
+      name text not null default '',
+      url text not null default '',
+      note text not null default '',
+      added_by uuid references users(id) on delete set null,
+      created_at timestamptz not null default now(),
+      removed_at timestamptz
+    );
+    create unique index if not exists room_sites_build_idx on room_sites(client_id, build_id) where removed_at is null and build_id is not null;
+    create index if not exists room_sites_client_idx on room_sites(client_id) where removed_at is null;
+    create table if not exists room_site_feedback (
+      id uuid primary key default gen_random_uuid(),
+      site_id uuid not null references room_sites(id) on delete cascade,
+      client_id uuid not null references clients(id) on delete cascade,
+      user_id uuid references users(id) on delete set null,
+      author_name text not null default '',
+      body text not null,
+      created_at timestamptz not null default now()
+    );
+    create index if not exists room_site_feedback_site_idx on room_site_feedback(site_id, created_at desc);
     -- pictures kept out of the pack JSON, once each, keyed by the hash of their bytes (see src/pack-blobs.js)
     create table if not exists pack_blobs (
       hash text primary key,

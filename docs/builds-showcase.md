@@ -45,6 +45,17 @@ Created once, hidden: Spot, Benny's Beans, Modish Nail Spa, NursePartners, Commo
 
 A service we run for a client (today: the Common Ground **make-an-offer service** on our Railway account) has a **hidden entry** on Builds, made once at start if it is missing (`HOSTED_SERVICES` in `src/builds.js`). Its address is the service's health page, so the site checks watch it like any client site (up, slow, down, with an alert) and it shows on Platform health and the work home. Staff can edit it afterwards or archive it; it is not put back. To keep another service we host under watch, add it to that list.
 
+## Pushing a build into a client room
+
+In the work console, open the client's room and choose **Sites & prototypes** on the room bar. Pick a build from the showcase (hidden ones too) or give a name and any link, add an optional note, and **Add to the room**. "Email the team" sends the room's team a short email with a link to **Your sites** in their hub.
+
+- The room's team sees it in the hub under **Your sites** (and a **Sites** link in the top bar): the build's cover picture, its status, the note, **Open** and **Send notes**.
+- Each person on the room's team also gets a showcase invite for that build (a year), so it opens for them on the showcase too. The invite's note is `room-site:<id>`.
+- Opening it from the hub counts as an `open` on the showcase's activity.
+- Notes they send are kept on the site, shown to staff in the room panel, and emailed to staff.
+- **Take out of the room** hides it from the hub and revokes the invites made for it. Invites given by hand are left alone.
+- A room holds up to 40. Tables: `room_sites`, `room_site_feedback`. Routes: `src/room-sites-routes.js`.
+
 ## Housing a client's build
 
 A build we host (a static site or a small app on Railway) can be kept private with the showcase's sign-in. Put Caddy in front of it and use `forward_auth`:
