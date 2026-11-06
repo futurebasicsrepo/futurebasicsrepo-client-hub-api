@@ -21,6 +21,8 @@ Then, as ever, **Start project** on the won deal.
 
 For customers whose project is a product (hats, shirts, shoes, electronics, bags), choose **Physical product development**. The fixed fee pays for our development work: design, tech packs, sampling management, sourcing. Everything else (samples, materials, tooling, production, inspection, testing, freight, duties) is outside the fee unless the scope says it is in. The wording is in [contracts-product-agreement.md](contracts-product-agreement.md), made from the code with the defaults, for a lawyer to read.
 
+**Priced per unit.** A product contract can charge per unit instead of a fixed fee, for an order of goods such as 400 hats. Under **Price and how it is paid**, set **Charge** to *Per unit* and list each item with its quantity and unit price. The total is their sum and the payment schedule follows it. The server recomputes the total from the lines (`fee.charge: 'unit'`, `fee.units` in `src/contracts.js`), whatever total is sent. On the contract the clause is titled **Price**, says the unit prices hold for those quantities, and shows the lines above the total, on the signing page and in the PDF. Websites and software stay fixed-fee.
+
 What is different from the digital agreement:
 
 | Clause | What it says |

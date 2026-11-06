@@ -71,7 +71,7 @@ img.ink{display:block;height:56px;width:auto;max-width:100%;margin:2px 0 8px}
     if(s.kind!=='schedule'&&s.body)h+=paras(s.body);
     if(s.kind==='scope'){h+=`<ul>${s.items.map(x=>`<li>${esc(x)}</li>`).join('')}</ul>`;if(s.notIncluded&&s.notIncluded.length)h+=`<p class="nope"><b>Not included:</b> ${s.notIncluded.map(esc).join('; ')}</p>`}
     if(s.kind==='timeline')h+=`<table><tbody>${s.rows.map(r=>`<tr><td>${esc(r[0])}</td><td class="n">${esc(r[1])}</td></tr>`).join('')}</tbody></table>`;
-    if(s.kind==='fee')h+=`<p><b>${esc(s.totalText)}</b></p>`;
+    if(s.kind==='fee')h+=(s.units&&s.units.length?`<table><thead><tr><th>Item</th><th class="n">Qty</th><th class="n">Unit price</th><th class="n">Amount</th></tr></thead><tbody>${s.units.map(u=>`<tr><td>${esc(u.item)}</td><td class="n">${esc(String(u.qty))}</td><td class="n">${esc(u.unitText)}</td><td class="n">${esc(u.amountText)}</td></tr>`).join('')}</tbody></table>`:'')+`<p><b>${s.units&&s.units.length?'Total: ':''}${esc(s.totalText)}</b></p>`;
     if(s.kind==='schedule'){h+=`<p><b>${esc(s.summary)}</b></p><table><thead><tr><th>Payment</th><th>Due</th><th class="n">Amount</th></tr></thead><tbody>${s.rows.map(r=>`<tr><td>${esc(r.label)}</td><td>${esc(r.when)}</td><td class="n">${esc(r.amountText)}</td></tr>`).join('')}</tbody></table>`+paras(s.body)}
     return h+'</section>';
   }

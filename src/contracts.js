@@ -36,6 +36,13 @@ export const addDays = (date, n) => new Date(Date.parse(date + 'T00:00:00Z') + n
 
 // ---- payment plans ----------------------------------------------------------------------------------------------------------------------------
 // An installment: { label, amountCents, dueOn: 'YYYY-MM-DD' | null, event: 'signing' | 'delivery' | null }. Exactly one of dueOn / event says when.
+// a product priced per unit (apparel, headwear, bags, accessories…): each line an item, how many and the price of one; the total is their sum
+export function cleanUnits(list) {
+  return (Array.isArray(list) ? list : []).slice(0, 40).map(u => ({ item: String(u?.item ?? '').replace(/\s+/g, ' ').trim().slice(0, 160), qty: Math.round(Number(u?.qty)), unitCents: Math.round(Number(u?.unitCents)) }))
+    .filter(u => u.item && Number.isFinite(u.qty) && u.qty > 0 && u.qty <= 1_000_000 && Number.isFinite(u.unitCents) && u.unitCents >= 0 && u.unitCents <= 10_000_000);
+}
+export const unitsTotal = units => units.reduce((a, u) => a + u.qty * u.unitCents, 0);
+const PER_UNIT_FEE = 'The price is set per unit for the quantities below: the total is each quantity times its unit price. The unit prices hold for these quantities; ordering more or fewer units changes the total at the same unit prices, agreed in writing. Unless the scope says otherwise, the price does not include freight, duties or taxes.';
 export function buildPlan({ type = 'full', totalCents, depositCents = null, depositPct = null, months = 0, firstDueOn = null, deliveryOn = null, milestones = [], method = 'invoice', autopay = false, note = '' } = {}) {
   const total = Math.round(Number(totalCents));
   if (!Number.isFinite(total) || total <= 0) return { error: 'Set the fixed fee first' };
@@ -236,7 +243,12 @@ export function renderContract(c, settings = {}) {
     if (s.kind === 'text') out.push({ id: s.id, title: s.title, kind: 'text', body });
     else if (s.kind === 'scope') out.push({ id: s.id, title: s.title, kind: 'scope', body, items: (c.scope || []).slice(), notIncluded: (c.notIncluded || []).slice() });
     else if (s.kind === 'timeline') out.push({ id: s.id, title: s.title, kind: 'timeline', body, rows: [['Agreement date', longDate(c.timeline?.effectiveOn)], ['Work begins', longDate(c.timeline?.startOn)], [isProduct(c.kind) ? 'Estimated final sample approval' : 'Estimated completion', longDate(c.timeline?.completionOn)]].filter(r => r[1]) });
-    else if (s.kind === 'fee') out.push({ id: s.id, title: s.title, kind: 'fee', body, totalCents: c.fee.totalCents, currency: c.fee.currency, totalText: dollars(c.fee.totalCents, c.fee.currency) });
+    else if (s.kind === 'fee') {
+      // priced per unit: the lines, and the clause in per-unit words unless it was rewritten by hand
+      const units = c.fee.charge === 'unit' && Array.isArray(c.fee.units) ? c.fee.units : [], std = defaultSections(c.kind).find(x => x.kind === 'fee');
+      out.push({ id: s.id, title: units.length && s.title === std?.title ? 'Price' : s.title, kind: 'fee', body: units.length && s.body === std?.body ? say(PER_UNIT_FEE) : body, totalCents: c.fee.totalCents, currency: c.fee.currency, totalText: dollars(c.fee.totalCents, c.fee.currency),
+        ...(units.length ? { units: units.map(u => ({ item: u.item, qty: u.qty, unitText: dollars(u.unitCents, c.fee.currency), amountText: dollars(u.qty * u.unitCents, c.fee.currency) })) } : {}) });
+    }
     else if (s.kind === 'schedule') out.push({ id: s.id, title: s.title, kind: 'schedule', body: [say(s.body), methodParagraph(c.plan, map.provider_name), c.plan.note].filter(Boolean).join('\n\n'), summary: planWords(c.plan, c.fee.currency, c.kind),
       rows: c.plan.installments.map(p => ({ label: p.label, amountCents: p.amountCents, amountText: dollars(p.amountCents, c.fee.currency), when: p.dueOn ? longDate(p.dueOn) : eventLabel(p.event, c.kind) })), method: c.plan.method, autopay: !!c.plan.autopay });
     else if (s.kind === 'circumvention') { if (c.product?.circumventionMonths > 0) out.push({ id: s.id, title: s.title, kind: 'text', body }); }
@@ -257,8 +269,11 @@ export function cleanContent(input, { settings = {}, lenient = false } = {}) {
   if (!client.company) errors.push('Who is the contract with? Add the client\'s company');
   if (!client.signerName) errors.push('Add the name of the person who will sign for the client');
   if (!EMAIL.test(client.signerEmail)) errors.push('Add the signer\'s email address: that is where the signing link goes');
-  const total = Math.round(Number(i.fee?.totalCents));
-  if (!Number.isFinite(total) || total <= 0) errors.push('Set the fixed fee'); else if (total > 5_000_000_00) errors.push('That fee looks too large to be right');
+  // priced per unit (a product): the total is the lines' sum, whatever was sent as the total
+  const units = isProduct(kind) && i.fee?.charge === 'unit' ? cleanUnits(i.fee?.units) : [];
+  if (isProduct(kind) && i.fee?.charge === 'unit' && !units.length) errors.push('Add at least one item with its quantity and unit price');
+  const total = units.length ? unitsTotal(units) : Math.round(Number(i.fee?.totalCents));
+  if (!Number.isFinite(total) || total <= 0) errors.push(units.length ? 'The unit prices add up to nothing: set a price for each item' : 'Set the fixed fee'); else if (total > 5_000_000_00) errors.push('That fee looks too large to be right');
   const currency = String(i.fee?.currency || 'USD').toUpperCase().slice(0, 3);
   const scope = (Array.isArray(i.scope) ? i.scope : String(i.scope || '').split('\n')).map(s => line(s, 400)).filter(Boolean).slice(0, 60);
   if (!scope.length) errors.push('List what is being delivered under Scope of work');
@@ -283,7 +298,7 @@ export function cleanContent(input, { settings = {}, lenient = false } = {}) {
   if (sections.some(s => !s.title)) errors.push('Every clause needs a title');
   for (const need of ['scope', 'fee', 'schedule']) if (!sections.some(s => s.kind === need)) errors.push(`The contract needs its ${need === 'schedule' ? 'payment schedule' : need === 'fee' ? 'fixed fee' : 'scope of work'} clause`);
   if (errors.length && !lenient) return { error: errors[0], errors };
-  return { errors, value: { title, kind, provider, client, project: { name: line(i.project?.name || title, 160) }, scope, notIncluded, timeline, fee: { totalCents: Number.isFinite(total) && total > 0 ? total : 0, currency }, plan: plan || { type: 'full', unset: true, method: 'invoice', autopay: false, note: '', installments: [{ label: 'Payment in full', amountCents: Math.max(100, Number.isFinite(total) ? total : 0), dueOn: null, event: 'signing' }] }, hosting, terms, sections, ...(product ? { product } : {}) } };
+  return { errors, value: { title, kind, provider, client, project: { name: line(i.project?.name || title, 160) }, scope, notIncluded, timeline, fee: { totalCents: Number.isFinite(total) && total > 0 ? total : 0, currency, ...(units.length ? { charge: 'unit', units } : {}) }, plan: plan || { type: 'full', unset: true, method: 'invoice', autopay: false, note: '', installments: [{ label: 'Payment in full', amountCents: Math.max(100, Number.isFinite(total) ? total : 0), dueOn: null, event: 'signing' }] }, hosting, terms, sections, ...(product ? { product } : {}) } };
 }
 
 // What still has to be filled in before a contract can go out (empty merge fields, unset legal terms).
