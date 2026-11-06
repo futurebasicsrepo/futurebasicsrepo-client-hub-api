@@ -166,6 +166,7 @@ html,body{touch-action:manipulation}
     <button class="btn go sm pic-only" id="apply" type="button">Use as the concept picture</button>
     <button class="btn sm hidden" id="tagAddBtn" type="button" title="Put this label on a garment: it goes on its bill of materials and into its tech pack">Add to a garment</button>
     <button class="fold btn sm flat-only" id="specBtn" type="button" title="The flats, measured, as a printable spec sheet">Spec sheet</button>
+    <button class="fold btn sm flat-only" id="washBtn" type="button" title="The wash (stone, acid, snow, enzyme, PP spray, bleach…) and the distressing, drawn on the flats and written on the tech pack">Wash &amp; distress</button>
     <button class="fold btn sm flat-only" id="decoBtn" type="button" title="One page per graphic for the decorator: size, Pantones, technique, cost, where it goes">Decoration sheet</button>
     <button class="btn go sm flat-only hidden" id="packBtn" type="button">Send to the tech pack</button>
   </div>
@@ -544,7 +545,7 @@ function paintOpts(){
   else if(TOOL==='area')o.innerHTML=rg('area','Size',4,600)+'<span class="hint">Paint over what the AI should change. Hold Alt to rub out.</span><button class="btn sm" type="button" data-clearmask>Clear the area</button>';
   else o.innerHTML=`<span class="hint">${help[TOOL]||''}</span>`;
   // on the flats the same tools draw on the flat itself, saved with it and carried into the tech pack
-  if(VMODE==='front'||VMODE==='back'){const fh={select:'Drag a graphic to move it; its size and place, in inches, are in the panel on the right.',hand:'Drag to move around once zoomed in; pinch or Ctrl and the wheel zooms.',brush:'Draws on the flat. It is saved with the flat and goes into the tech pack. With the Pencil, fingers move and pinch the view.',eraser:'Rubs out what was drawn on the flat (the sketch stays).',distress:'Wears away what was drawn on the flat.',text:'Tap where the type should go, then type it.',rect:'Drag to draw a box on the flat.',ellipse:'Drag to draw a ring on the flat.',line:'Drag to draw a line on the flat.',area:'Drag a box on the flat over what the AI should redraw, then say what to change.'}[TOOL];
+  if(VMODE==='front'||VMODE==='back'){const fh={select:'Drag a graphic to move it, a corner to resize it, the green knob to turn it; its size and place, in inches, are in the panel on the right.',hand:'Drag to move around once zoomed in; pinch or Ctrl and the wheel zooms.',brush:'Draws on the flat. It is saved with the flat and goes into the tech pack. With the Pencil, fingers move and pinch the view.',eraser:'Rubs out what was drawn on the flat (the sketch stays).',distress:'Wears away what was drawn on the flat.',text:'Tap where the type should go, then type it.',rect:'Drag to draw a box on the flat.',ellipse:'Drag to draw a ring on the flat.',line:'Drag to draw a line on the flat.',area:'Drag a box on the flat over what the AI should redraw, then say what to change.'}[TOOL];
     o.querySelector('[data-clearmask]')?.remove();const h=o.querySelector('.hint');if(h&&fh)h.textContent=fh;else if(fh)o.insertAdjacentHTML('beforeend',`<span class="hint">${fh}</span>`)}
   window.PRO?.opts(o);
 }
@@ -937,8 +938,12 @@ $('#apply').onclick=async()=>{
       else{const k=await api('/v1/lab/library/studio/keep',{body:{image,name:D.concept.name,doc}});GID=k.id;D.concept.hasImage=true;history.replaceState(null,'',`/lab/studio?art=${GID}`);paintSub();toast('It is in the graphics library now. Put it on any concept or product from there.','/lab/library')}
       DIRTY=false;SAVED_AT=new Date().toISOString();showSaved()}catch(x){toast(x.message)}finally{busy()}return}
   if(D.concept.locked)return;
-  const ok=await ask('Use this as the concept picture?',`Everything visible becomes the picture of "${D.concept.name}". Its flats, on-model views and walk will be drawn again from it.${D.concept.status==='approved'?' It is approved, so it goes back to draft to be approved again.':''} The picture it has now is kept and can be put back.`,'Use it');if(!ok)return;
-  busy('Saving and using it…');try{await save();compose();const r=await api(`/v1/lab/concepts/${CID}/studio/apply`,{body:{image:docC.toDataURL('image/png'),doc:serialize()}});D.concept.status=r.status;D.canRestore=true;paintSub();toast('It is the concept picture now.',`/lab#board`)}catch(x){toast(x.message)}finally{busy()}};
+  const ok=await ask('Use this as the concept picture?',`Everything visible becomes the picture of "${D.concept.name}". Its turns (on a model: front, three-quarter, side and back) are drawn again from it straight away; its walk can be made again on the board.${D.concept.status==='approved'?' It is approved, so it goes back to draft to be approved again.':''} The picture it has now is kept and can be put back.`,'Use it');if(!ok)return;
+  busy('Saving and using it…');try{await save();compose();const r=await api(`/v1/lab/concepts/${CID}/studio/apply`,{body:{image:docC.toDataURL('image/png'),doc:serialize()}});D.concept.status=r.status;D.canRestore=true;paintSub();
+    // the turns (the piece on a model from the front, three-quarter, side and back) are drawn again from the new picture straight away; a
+    // piece nobody wears gets its front and back product views instead
+    let made='';try{const v=await api(`/v1/lab/concepts/${CID}/views`,{body:{kinds:['model_front','model_34','model_side','model_back']}}).catch(async x=>{if(x.status===422)return api(`/v1/lab/concepts/${CID}/views`,{body:{kinds:['flat_front','flat_back']}});throw x});made=v?.started?` Its turns are being drawn from it (${v.started} view${v.started===1?'':'s'}); they show on the concept board in a few minutes.`:''}catch(x){made=` The turns were not started: ${x.message}`}
+    toast('It is the concept picture now.'+made,`/lab#board`)}catch(x){toast(x.message)}finally{busy()}};
 
 // ---------- small things ----------
 function busy(text){const b=$('#busy');if(!text){b.classList.add('hidden');return}$('#busyText').textContent=text;b.classList.remove('hidden')}
@@ -948,6 +953,8 @@ function paintSub(){const c=D.concept;$('#tryBtn').classList.toggle('hidden',GMO
 document.addEventListener('keydown',e=>{
   if(!D)return;if(window.ILL?.key(e)||window.VEC?.key(e)||window.PRO?.key(e))return;const typing=e.target.closest&&e.target.closest('input,textarea,select,[contenteditable]')&&!e.target.closest('dialog:not([open])'),mod=e.ctrlKey||e.metaKey;
   if(mod&&e.key.toLowerCase()==='s'){e.preventDefault();saveAll();return}
+  // on the flats, undo and redo reach the flats' own history even when the keys land out here (a button or the page had the focus)
+  if(!typing&&mod&&(VMODE==='front'||VMODE==='back')&&['z','y'].includes(e.key.toLowerCase())){e.preventDefault();(e.key.toLowerCase()==='y'||e.shiftKey)?redo():undo();return}
   if(typing||VMODE==='front'||VMODE==='back')return; // the flats take their own keys, in their frame
   if(mod&&e.key.toLowerCase()==='z'){e.preventDefault();e.shiftKey?redo():undo();return}if(mod&&e.key.toLowerCase()==='y'){e.preventDefault();redo();return}
   if(mod&&e.key.toLowerCase()==='d'){e.preventDefault();const l=selected();if(l)duplicate(l);return}
@@ -1307,7 +1314,7 @@ async function setVMode(v,{push=true}={}){
 $$('#viewSeg [data-v]').forEach(b=>b.onclick=()=>setVMode(b.dataset.v));
 $('#moreBtn').onclick=()=>{const o=$('.bar').classList.toggle('open');$('#moreBtn').setAttribute('aria-expanded',String(o))};
 const flatsOr=fn=>()=>{const f=FF();if(!f||!f.ready()){toast('The flats are still loading.');return}fn(f)};
-$('#specBtn').onclick=flatsOr(f=>f.sheet());$('#decoBtn').onclick=flatsOr(f=>f.deco());$('#packBtn').onclick=flatsOr(f=>f.pack());
+$('#specBtn').onclick=flatsOr(f=>f.sheet());$('#decoBtn').onclick=flatsOr(f=>f.deco());$('#washBtn').onclick=flatsOr(f=>f.wash?.());$('#packBtn').onclick=flatsOr(f=>f.pack());
 // ---------- fabrics, trims and labels on the garment (the concept's bill of materials), from the materials library; on the picture and the flats ----------
 const MAT={kind:'fabric',q:'',on:null,lib:[]};let MSW=null,MTG=null,MPH=null;
 const matMods=async()=>{if(!MSW)[MSW,MTG,MPH]=await Promise.all([import('/lab/lab-swatches.js'),import('/lab/lab-tags.js'),import('/lab/lab-photos.js').catch(()=>null)]);return[MSW,MTG]};

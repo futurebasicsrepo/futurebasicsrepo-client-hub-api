@@ -43,8 +43,9 @@ The ones to lead with are first.
 1. **Pick a base:** 26 staples at their usual fit. These are the tee (classic, boxy, oversized), long-sleeve, tank, polo, crewneck, hoodie,
    zip hoodie, button-up and camp shirts, zip jacket, vest, coat, straight and wide trousers, shorts, leggings, dress, skirt, cami, bodysuit,
    six-panel cap, bucket hat, beanie and tote.
-2. **Add details** (31 add-ons): pockets, zips, plackets, drawcords, collars (polo, johnny, rugby, henley, V-neck, button-down, camp, stand,
-   shearling…), pleats, cropped, contrast pockets.
+2. **Add details** (42 add-ons): pockets, zips, plackets, drawcords, collars (polo, johnny, rugby, henley, V-neck, button-down, camp, stand,
+   shearling, thin crew, mock neck, turtleneck…), pleats, cropped (with any collar: a cropped shearling aviator), contrast pockets, and wash &
+   wear (garment dyed, vintage stone wash, acid wash, sun faded, dirty vintage tint, worn edges, distressed, heavily destroyed).
 3. **Pick a colour system** (8 ready-made, or four colours of your own). The first colour is the garment, the next is the stitching, and
    every colour becomes a colourway.
 4. **Optional:** pick the cloth. The drawing takes on its surface (denim reads as denim, sherpa as sherpa) in the colour you picked. It comes with a fabric check that flags cloth that does not suit the style. You can also fit it together
@@ -61,6 +62,11 @@ already has show as "on the sketch".
 - On the flats: **Colour a panel** (tap a sleeve and both sleeves take the colour, right to their seams; a tap on a rib takes the whole band)
   and **Cloth** (pick a fabric and the flat shows its surface; it becomes the garment's main fabric).
 
+- **Necklines:** swap a tee's neck like a pocket: thin crew, regular crew, V neck, mock neck or turtleneck, drawn on the flats and specced for the factory.
+- **Wash & distress:**
+  - Pick a wash at light, medium or heavy: spray fade, pigment, dirty vintage, stone, acid, snow, enzyme, potassium permanganate, bleach or mineral.
+  - Switch on distressing, slide it up, and choose edges only or the body.
+  - The flat shows a vintage fade with dark ribs, chewed collars, ragged hems and knee rips, and the factory gets the words.
 - Pro drawing tools: a pen tool with editable curves, shape booleans, snapping and guides, align and distribute, ⌘K to find any command,
   and SVG in and out.
 - The tools a physical product and its packaging need, on the same keys as Illustrator:

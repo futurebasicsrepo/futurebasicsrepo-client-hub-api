@@ -6,7 +6,19 @@
 // The same file runs in the page (served as /lab/flats.js) and on the service (the check and the spec sheet), so it uses neither the DOM nor Node.
 // All lengths are inches. On the front flat the viewer's right is the wearer's left.
 import { FLAT_TEMPLATES } from './lab-flat-templates.js';
+// sketches the pack's measuring script reads wrong, measured again by hand (in the sketch's own units). The shearling aviator: its big collar
+// hides the shoulder point, its zip splits the hem band on the centre line (so the hem read as the zip's end) and the chest was taken across
+// the zip gap, so it came out a third too narrow and a quarter too long, and every piece drawn from it 37 in long instead of about 29
+const SKETCH_FIXES = {
+  'jk-shearling-aviator-jacket': { front: { chest: 176, hpsY: 130, hemY: 420 }, back: { chest: 176, hpsY: 126, hemY: 420 } },
+};
+for (const [id, f] of Object.entries(SKETCH_FIXES)) {
+  const t = FLAT_TEMPLATES.find(x => x.id === id); if (!t || t.fixed) continue; t.fixed = true;
+  for (const [view, fix] of Object.entries(f)) { const v = t.views[view]; if (!v) continue; Object.assign(v, fix); if (v.chest && v.hemY > v.hpsY) v.ratio = +((v.hemY - v.hpsY) / v.chest).toFixed(3); }
+}
 import { FLAT_PARTS, PART_KINDS } from './lab-flat-parts.js';
+import { washSvg, cleanWash, cleanDistress } from './lab-wash.js';
+import { necklineSvg, cleanNeckline, necklinePomName } from './lab-neck.js';
 export { FLAT_PARTS, PART_KINDS };
 
 export const SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
@@ -169,17 +181,25 @@ export function templateOf(p) {
 // how a sketch's view lines up with the piece: its origin (the HPS on the centre line, the top of the waistband, the brim seam) and its
 // scale across (chest or waist) and down (length: at the start within 12% of the scale across, as the sketch was drawn; then following the length), in
 // sketch units an inch; box is the view in inches
+// where a horizontal line at y crosses a closed outline: the stretch of it that holds x, or null
+function spanAt(poly, y, x) {
+  if (!Array.isArray(poly) || poly.length < 3) return null; const xs = [];
+  for (let i = 0; i < poly.length; i++) { const [x1, y1] = poly[i], [x2, y2] = poly[(i + 1) % poly.length]; if ((y1 <= y) !== (y2 <= y)) xs.push(x1 + (y - y1) / (y2 - y1) * (x2 - x1)); }
+  xs.sort((a, b) => a - b); for (let i = 0; i + 1 < xs.length; i += 2) if (xs[i] <= x && x <= xs[i + 1]) return [xs[i], xs[i + 1]];
+  return null;
+}
 export function drawingOf(p, view = 'front', size = p.size || 'M') {
   const t = templateOf(p), v = t?.views[view]; if (!v) return null;
   const m = measurementsFor(p, size), kind = STYLES[p.style].kind, clamp = (a, x) => Math.min(Math.max(a, x * .88), x * 1.12);
   // how tall the sketch is drawn. A piece starts either at its style's usual measurements or fitted to the sketch's own proportions
   // (fitToTemplate); at either start the height follows the width within 12%, as the sketch was drawn. A length moved from that start
   // (the recipe's Fit it together, a measurement typed in) then stretches the drawing that way only, so a shorter body looks shorter.
-  const lenOf = q => (kind === 'top' ? q.length : STYLES[p.style].skirt ? q.length : q.rise + q.inseam), d0 = { ...defaultParams(p.style, p.fit, p.options || {}), template: p.template, size };
+  const crop = kind === 'top' ? Math.max(0, Number(p.crop) || 0) : 0; // a body cut shorter: drawn at its full length, then the cut taken out (renderSvg)
+  const lenOf = q => (kind === 'top' ? q.length : STYLES[p.style].skirt ? q.length : q.rise + q.inseam), d0 = { ...defaultParams(p.style, p.fit, { ...(p.options || {}), ...(crop ? { cropped: false } : {}) }), template: p.template, size };
   const H = kind === 'top' ? v.hemY - v.hpsY : v.hemY - v.topY, W = kind === 'top' ? v.chest : v.waist, wOf = q => (kind === 'top' ? q.chest : q.waist);
   let sx, sy, oy;
   if (kind === 'top' || kind === 'bottom') {
-    const L = lenOf(m), starts = [measurementsFor(d0, size), measurementsFor(fitToTemplate(d0), size)].filter(q => lenOf(q) > 0);
+    const L = lenOf(m) + crop, starts = [measurementsFor(d0, size), measurementsFor(fitToTemplate(d0), size)].filter(q => lenOf(q) > 0);
     const ref = starts.sort((a, b) => Math.abs(Math.log(lenOf(a) / L)) - Math.abs(Math.log(lenOf(b) / L)))[0];
     sx = W / wOf(m); oy = kind === 'top' ? v.hpsY : v.topY;
     sy = ref && L > 0 ? clamp(H / lenOf(ref), W / wOf(ref)) * lenOf(ref) / L : clamp(H / L, sx);
@@ -188,7 +208,18 @@ export function drawingOf(p, view = 'front', size = p.size || 'M') {
   else { sx = v.width / m.crownWidth; oy = v.seamY; sy = sx; }
   if (!(sx > 0 && sy > 0)) return null;
   const [bx, by, bw, bh] = v.box;
-  return { t, v, sx, sy, ox: v.cf, oy, box: { x0: (bx - v.cf) / sx, y0: (by - oy) / sy, x1: (bx + bw - v.cf) / sx, y1: (by + bh - oy) / sy } };
+  // the cut: a band of the body above the hem band (its rib, or about an inch and a quarter of hem) is taken out and the hem moved up.
+  // Long sleeves hang beside the body and keep their length, so only the body's width is cut; short sleeves end above it, so all of it is
+  let cut = null, vb = v.box;
+  if (crop && v.hemY) {
+    const h = crop * sy, band = Math.max(m.hemRib || 0, 1.25) * sy, longSleeve = (m.sleeve || 0) > 14;
+    // the body's own width, read off the sketch's outline across the hem band (the sleeves hang apart from it there), within reason of the chest
+    const sp = spanAt(v.clip, v.hemY - band / 2, v.cf), lo = v.chest / 2 * .85, hi = v.chest / 2 * 1.15;
+    const w = sp ? Math.max(v.cf - sp[0], sp[1] - v.cf) + 1.5 : 0, half = w && w <= hi ? Math.max(w, lo) : v.chest / 2; // wider: the sleeves touch the body there
+    cut = { y: v.hemY - band - h, h, half: longSleeve ? half : Infinity };
+    if (!longSleeve) vb = [bx, by, bw, bh - h];
+  }
+  return { t, v, sx, sy, ox: v.cf, oy, cut, vb, box: { x0: (bx - v.cf) / sx, y0: (by - oy) / sy, x1: (bx + bw - v.cf) / sx, y1: (by + vb[3] - oy) / sy } };
 }
 export function defaultParams(style, fit = 'regular', options = {}) {
   const S = STYLES[style]; if (!S) return null;
@@ -207,7 +238,7 @@ export function measurementsFor(p, size = 'M') {
 export function pomTable(p) {
   const S = STYLES[p.style], sizes = S.oneSize ? ['One size'] : SIZES;
   return Object.keys(p.m).filter(k => !(['hemRib', 'cuffRib', 'neckRib', 'sleeve', 'sleeveOpening'].includes(k) && !p.m[k])).map((k, i) => ({
-    code: String.fromCharCode(65 + i), key: k, name: pomName(p.style, k), tolerance: p.m[k] >= 10 ? .5 : p.m[k] >= 3 ? .25 : .125,
+    code: String.fromCharCode(65 + i), key: k, name: necklinePomName(p.neckline, k) || pomName(p.style, k), tolerance: p.m[k] >= 10 ? .5 : p.m[k] >= 3 ? .25 : .125,
     values: sizes.map(s => ({ size: s, value: S.oneSize ? p.m[k] : measurementsFor(p, s)[k] }))
   }));
 }
@@ -586,22 +617,33 @@ export const MASK_URL = file => `/lab/flat-masks/${file.replace(/\.svg$/, '.png'
 export const TEMPLATE_URL = file => `/lab/flat-templates/${file}`;
 export const PART_URL = file => `/lab/flat-parts/${file}`;
 export const partOf = id => FLAT_PARTS.find(q => q.id === id) || null;
+// a cropped body (drawingOf's cut): the sketch drawn twice, everything above the cut (and the long sleeves beside it) as it is, and the body
+// below it (the hem band) moved up by the cut, so the hem, its stitching and the band are the sketch's own
+function cutOut(d, pid, inner) {
+  const c = d.cut; if (!c) return inner;
+  const [bx, by, bw, bh] = d.v.box, big = bh * 3, x0 = bx - 1, x1 = bx + bw + 1, L = Number.isFinite(c.half) ? d.ox - c.half : x0, R = Number.isFinite(c.half) ? d.ox + c.half : x1;
+  const r = (x, y, w, h) => (w > 0 && h > 0 ? `<rect x="${n3(x)}" y="${n3(y)}" width="${n3(w)}" height="${n3(h)}"/>` : '');
+  return `<defs><g id="${pid}-k">${inner}</g><clipPath id="${pid}-kt">${r(x0, by - big, x1 - x0, c.y - (by - big))}${r(x0, c.y, L - x0, big)}${r(R, c.y, x1 - R, big)}</clipPath><clipPath id="${pid}-kb">${r(L, c.y + c.h, R - L, by + bh - (c.y + c.h))}</clipPath></defs>`
+    + `<use href="#${pid}-k" clip-path="url(#${pid}-kt)"/><g transform="translate(0 ${n3(-c.h)})"><use href="#${pid}-k" clip-path="url(#${pid}-kb)"/></g>`;
+}
 export function renderSvg(p, view = 'front', { placements = [], hrefs = {}, size = p.size || 'M', showPom = false, showDims = true, selected = null, findings = {}, scale = 22, title = '', templateHref = TEMPLATE_URL, partHref = PART_URL, editHrefs = {}, editable = false, selectedEdit = null, overlay = '', plain = false, background = true, templateSvg = null, alloverHref = '', maskHref = null, withArt = false, texture = null, tags = [] } = {} /* texture: { href, w, h } the cloth's shading tile (w × h inches of drawing per tile), multiplied over the garment so its colour shows through;  withArt: with plain, the placed graphics drawn too (the Studio's board);  alloverHref: the all-over print's repeat tile, laid over the cloth; templateSvg: the sketch's own markup, to draw it inline (the service: much faster to rasterise than a picture of the whole page); scale 0: no width and height, for nesting; editHrefs: the pictures of areas redrawn by the image model; plain: the drawing alone, no guides or labels */) {
   const g = geometry(p, view, size), d = drawingOf(p, view, size), b = d ? d.box : g.bounds, pad = 3.2, x0 = b.x0 - pad, y0 = b.y0 - pad - (title ? 1.2 : 0), W = b.x1 - b.x0 + pad * 2, H = b.y1 - b.y0 + pad * 2 + (title ? 1.2 : 0);
   const k = Math.max(1, Math.max(W, H) / 30), fs = .34 * k; // labels grow with the drawing, so they read at the size it is shown
   const sw = { outline: .07, seam: .035, stitch: .03, rib: .018, under: .05, cord: .05, label: .03 }, dash = { stitch: '.18 .12', label: '.15 .1' };
   const drawnArt = d && p.drawn?.template === d.t.id ? p.drawn[view] : null, drawnHref = drawnArt ? editHrefs[drawnArt] : null; // a view drawn from the picture, in its own colours
   const pid = `fb-${view}-${d ? d.t.id : p.style}`, clipDef = d?.v.clip ? `<clipPath id="${pid}-v"><polygon points="${d.v.clip.map(q => q.join(',')).join(' ')}"/></clipPath>` : '';
-  const parts = d && drawnHref ? `<image href="${esc(drawnHref)}" x="${b.x0.toFixed(3)}" y="${b.y0.toFixed(3)}" width="${(b.x1 - b.x0).toFixed(3)}" height="${(b.y1 - b.y0).toFixed(3)}" preserveAspectRatio="none"/>` : d ? `<svg x="${b.x0.toFixed(3)}" y="${b.y0.toFixed(3)}" width="${(b.x1 - b.x0).toFixed(3)}" height="${(b.y1 - b.y0).toFixed(3)}" viewBox="${d.v.box.join(' ')}" preserveAspectRatio="none" overflow="hidden">${clipDef}${(() => { const tpl = templateSvg ? `<g${clipDef ? ` clip-path="url(#${pid}-v)"` : ''}><svg x="${d.t.page[0]}" y="${d.t.page[1]}" width="${d.t.page[2]}" height="${d.t.page[3]}" viewBox="${d.t.page.join(' ')}">${templateSvg(d.t.file)}</svg></g>` : `<image href="${esc(templateHref(d.t.file))}" x="${d.t.page[0]}" y="${d.t.page[1]}" width="${d.t.page[2]}" height="${d.t.page[3]}"${clipDef ? ` clip-path="url(#${pid}-v)"` : ''}/>`; const mh = maskHref ? maskHref(d.t.file) : null; if (!mh) return tpl; const r = `x="${d.t.page[0]}" y="${d.t.page[1]}" width="${d.t.page[2]}" height="${d.t.page[3]}" preserveAspectRatio="none"`; return `<mask id="${pid}-m" maskUnits="userSpaceOnUse" ${r.replace(' preserveAspectRatio="none"', '')}><image href="${esc(mh)}" ${r}/></mask><g mask="url(#${pid}-m)"><image href="${esc(mh)}" ${r}/>${tpl}</g>`; })()}</svg>` : g.parts.map(pt => `<path d="${pt.d}" fill="${pt.kind === 'outline' || pt.kind === 'under' ? '#ffffff' : 'none'}" stroke="#141416" stroke-width="${sw[pt.kind] || .035}"${dash[pt.kind] ? ` stroke-dasharray="${dash[pt.kind]}"` : ''} stroke-linejoin="round" stroke-linecap="round"/>`).join('');
+  const parts = d && drawnHref ? `<image href="${esc(drawnHref)}" x="${b.x0.toFixed(3)}" y="${b.y0.toFixed(3)}" width="${(b.x1 - b.x0).toFixed(3)}" height="${(b.y1 - b.y0).toFixed(3)}" preserveAspectRatio="none"/>` : d ? `<svg x="${b.x0.toFixed(3)}" y="${b.y0.toFixed(3)}" width="${(b.x1 - b.x0).toFixed(3)}" height="${(b.y1 - b.y0).toFixed(3)}" viewBox="${d.vb.join(' ')}" preserveAspectRatio="none" overflow="hidden">${clipDef}${cutOut(d, pid, (() => { const tpl = templateSvg ? `<g${clipDef ? ` clip-path="url(#${pid}-v)"` : ''}><svg x="${d.t.page[0]}" y="${d.t.page[1]}" width="${d.t.page[2]}" height="${d.t.page[3]}" viewBox="${d.t.page.join(' ')}">${templateSvg(d.t.file)}</svg></g>` : `<image href="${esc(templateHref(d.t.file))}" x="${d.t.page[0]}" y="${d.t.page[1]}" width="${d.t.page[2]}" height="${d.t.page[3]}"${clipDef ? ` clip-path="url(#${pid}-v)"` : ''}/>`; const mh = maskHref ? maskHref(d.t.file) : null; if (!mh) return tpl; const r = `x="${d.t.page[0]}" y="${d.t.page[1]}" width="${d.t.page[2]}" height="${d.t.page[3]}" preserveAspectRatio="none"`; return `<mask id="${pid}-m" maskUnits="userSpaceOnUse" ${r.replace(' preserveAspectRatio="none"', '')}><image href="${esc(mh)}" ${r}/></mask><g mask="url(#${pid}-m)"><image href="${esc(mh)}" ${r}/>${tpl}</g>`; })())}</svg>` : g.parts.map(pt => `<path d="${pt.d}" fill="${pt.kind === 'outline' || pt.kind === 'under' ? '#ffffff' : 'none'}" stroke="#141416" stroke-width="${sw[pt.kind] || .035}"${dash[pt.kind] ? ` stroke-dasharray="${dash[pt.kind]}"` : ''} stroke-linejoin="round" stroke-linecap="round"/>`).join('');
   // the edits: the sketch, its cover-ups and redrawn areas are one drawing, recoloured as a whole (the garment's colour) and again inside
   // each colour block; details and stitch lines are drawn on top in their own colours
   const edits = (p.edits || []).filter(e => e.view === view), cloth = drawnHref ? '' : hexOf(p.color), blocks = edits.filter(e => e.type === 'block');
   const clothAt = e => { const bl = [...blocks].reverse().find(q => inside([e.x, e.y], q.pts)); return bl ? bl.color : cloth || '#ffffff'; };
   const hit = (e, inner) => editable ? `<g data-ed="${esc(e.id)}">${inner}</g>` : inner;
   const box = e => `<rect x="${n3(e.x - e.w / 2 - .15)}" y="${n3(e.y - e.h / 2 - .15)}" width="${n3(e.w + .3)}" height="${n3(e.h + .3)}" fill="#ffffff" fill-opacity="0"${e.id === selectedEdit ? ' stroke="#2a6df4" stroke-width=".05" stroke-dasharray=".18 .1"' : ''}/>`;
+  // a neckline chosen to replace the sketch's (src/lab-neck.js): its cover goes under with the sketch, the new one is drawn over
+  const nk = p.neckline ? necklineSvg(p, view, measurementsFor(p, size), { cloth: cloth || '#ffffff', line: lineFor(cloth) }) : { under: '', over: '' };
   const under = edits.filter(e => (e.type === 'detail' && e.kind === 'erase') || (e.type === 'ai' && editHrefs[e.art]) || (e.type === 'part' && partOf(e.part))).map(e => e.type === 'ai' || e.type === 'part'
     ? `<image href="${esc(e.type === 'ai' ? editHrefs[e.art] : partHref(partOf(e.part).file))}" x="${n3(e.x - e.w / 2)}" y="${n3(e.y - e.h / 2)}" width="${n3(e.w)}" height="${n3(e.h)}" preserveAspectRatio="none"${e.flip ? ` transform="translate(${n3(2 * e.x)} 0) scale(-1 1)"` : ''}/>`
-    : `<rect x="${n3(e.x - e.w / 2)}" y="${n3(e.y - e.h / 2)}" width="${n3(e.w)}" height="${n3(e.h)}" rx=".15" fill="#ffffff"/>`).join('');
+    : `<rect x="${n3(e.x - e.w / 2)}" y="${n3(e.y - e.h / 2)}" width="${n3(e.w)}" height="${n3(e.h)}" rx=".15" fill="#ffffff"/>`).join('') + nk.under;
   const defs = `<defs><g id="${pid}-b">${parts}${under}</g>${cloth ? tintFilter(`${pid}-t`, cloth) : ''}${blocks.map((e, i) => tintFilter(`${pid}-t${i}`, e.color) + `<clipPath id="${pid}-c${i}"><path d="${pathD(e.pts)} Z"/></clipPath>`).join('')}</defs>`;
   // the cloth's own surface: a grey shading tile (the close-up spread around a light mean and mirrored to repeat without seams: photoShade in
   // src/lab-photo-tint.js), multiplied over the drawn colour
@@ -620,14 +662,19 @@ export function renderSvg(p, view = 'front', { placements = [], hrefs = {}, size
       + `<rect x="${x0}" y="${y0}" width="${W}" height="${H}" fill="url(#${pid}-ao)" mask="url(#${pid}-am)"/><use href="#${pid}-b" filter="url(#${pid}-al)"/>` : '')
     + (editable ? blocks.map(e => hit(e, `<path d="${pathD(e.pts)} Z" fill="#ffffff" fill-opacity="0"${e.id === selectedEdit ? ' stroke="#2a6df4" stroke-width=".05" stroke-dasharray=".18 .1"' : ''}/>`)).join('') + edits.filter(e => e.type === 'ai' || e.type === 'part' || (e.type === 'detail' && e.kind === 'erase')).map(e => hit(e, box(e))).join('') : '')
     + edits.filter(e => e.type === 'detail' && e.kind !== 'erase').map(e => { const o = detailSvg(e, clothAt(e)); return hit(e, (editable ? box(e) : '') + o.body + o.stitch); }).join('')
+    + nk.over
     + textureSvg()
+    // the wash and the distressing (src/lab-wash.js), inside the garment only
+    + (() => { const kd = STYLES[p.style]?.kind, mm = measurementsFor(p, size), geo = kd === 'top' && mm.chest ? { kind: 'top', half: mm.chest / 2, neckY: view === 'back' ? (mm.neckDropBack ?? 1) : (mm.neckDropFront ?? 3), neckHalf: (mm.neckWidth || 7) / 2, hemY: mm.length || b.y1, hemRib: mm.hemRib || 0, cuff: mm.cuffRib || 0, longSleeve: (mm.sleeve || 0) > 14, hood: Boolean(STYLES[p.style]?.hood) } : kd === 'bottom' && mm.rise ? { kind: 'bottom', waistband: mm.waistband || 1.5, rise: mm.rise, hemY: b.y1 } : null, ws = washSvg(p, { box: b, mask: `${pid}-gm`, pid, kind: kd, view, cloth: cloth || '#ffffff', geo }); return ws ? `<defs><filter id="${pid}-gw" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 1 0"/></filter><mask id="${pid}-gm" maskUnits="userSpaceOnUse" x="${x0}" y="${y0}" width="${W}" height="${H}"><use href="#${pid}-b" filter="url(#${pid}-gw)"/></mask></defs>${ws}` : ''; })()
     + edits.filter(e => e.type === 'stitch').map(e => hit(e, (editable ? `<path d="${pathD(e.pts)}" fill="none" stroke="#ffffff" stroke-opacity="0" stroke-width=".45"/>` : '') + stitchSvg(e.pts, e.stitch, hexOf(e.thread) || lineFor(cloth)) + (e.id === selectedEdit ? `<path d="${pathD(e.pts)}" fill="none" stroke="#2a6df4" stroke-width=".02"/>` : ''))).join('');
   const T = (x, y, s, t, a = 'middle', c = '#141416', wgt = 500) => `<text x="${x.toFixed(2)}" y="${y.toFixed(2)}" font-size="${s}" text-anchor="${a}" fill="${c}" font-family="Space Grotesk, Helvetica, Arial, sans-serif" font-weight="${wgt}">${esc(eighths(t))}</text>`;
   const arrow = (a, bb, label, col = '#2a6df4') => { const mx = (a[0] + bb[0]) / 2, my = (a[1] + bb[1]) / 2, vert = Math.abs(bb[1] - a[1]) > Math.abs(bb[0] - a[0]); return `<g pointer-events="none"><line x1="${a[0]}" y1="${a[1]}" x2="${bb[0]}" y2="${bb[1]}" stroke="${col}" stroke-width=".03" stroke-dasharray=".14 .08"/><circle cx="${a[0]}" cy="${a[1]}" r=".07" fill="${col}"/><circle cx="${bb[0]}" cy="${bb[1]}" r=".07" fill="${col}"/>${label ? `<rect x="${(vert ? mx + .15 : mx - label.length * fs * .3)}" y="${(vert ? my - fs * .9 : my - fs * 1.75)}" width="${label.length * fs * .6 + .1}" height="${fs * 1.35}" rx=".1" fill="#ffffff" opacity=".92"/>${T(vert ? mx + .2 + label.length * fs * .3 : mx, vert ? my + fs * .3 : my - fs * .75, fs, label, 'middle', col, 600)}` : ''}</g>`; };
   let pl = '';
   for (const q of placements.filter(z => z.view === view)) {
     const lv = (findings[q.id] || []).some(f => f.level === 'fail') ? '#a02a20' : (findings[q.id] || []).some(f => f.level === 'warn') ? '#b07a00' : '#17603a';
-    const rt = rotOf(q), turn = rt ? ` transform="rotate(${rt} ${q.x} ${q.y})"` : '', knob = q.id === selected ? `<line x1="${q.x}" y1="${q.y - q.h / 2}" x2="${q.x}" y2="${q.y - q.h / 2 - 1.1}" stroke="#17603a" stroke-width=".04" pointer-events="none"/><circle data-rot="${esc(q.id)}" cx="${q.x}" cy="${q.y - q.h / 2 - 1.1}" r=".38" fill="#4bff9a" stroke="#141416" stroke-width=".05" style="cursor:grab"><title>Drag to turn it</title></circle>` : '';
+    const rt = rotOf(q), turn = rt ? ` transform="rotate(${rt} ${q.x} ${q.y})"` : '', knob = q.id === selected ? `<line x1="${q.x}" y1="${q.y - q.h / 2}" x2="${q.x}" y2="${q.y - q.h / 2 - 1.1}" stroke="#17603a" stroke-width=".04" pointer-events="none"/><circle data-rot="${esc(q.id)}" cx="${q.x}" cy="${q.y - q.h / 2 - 1.1}" r=".38" fill="#4bff9a" stroke="#141416" stroke-width=".05" style="cursor:grab"><title>Drag to turn it</title></circle>`
+      // the four corners: drag one to make it bigger or smaller (mouse, pen or finger), its shape kept and the opposite corner held still
+      + [[-1, -1, 'nwse'], [1, -1, 'nesw'], [-1, 1, 'nesw'], [1, 1, 'nwse']].map(([sx, sy, c]) => { const hs = .2 * k; return `<rect data-rs="${esc(q.id)}" data-cx="${sx}" data-cy="${sy}" x="${n3(q.x + sx * q.w / 2 - hs)}" y="${n3(q.y + sy * q.h / 2 - hs)}" width="${n3(hs * 2)}" height="${n3(hs * 2)}" fill="#ffffff" stroke="#17603a" stroke-width="${n3(.04 * k)}" style="cursor:${c}-resize;touch-action:none"><title>Drag to resize</title></rect>`; }).join('') : '';
     pl += `<g data-pl="${esc(q.id)}"${turn}><rect x="${q.x - q.w / 2 - .3}" y="${q.y - q.h / 2 - .3}" width="${q.w + .6}" height="${q.h + .6}" fill="#ffffff" fill-opacity="0"/>${hrefs[q.id] ? `<image href="${esc(hrefs[q.id])}" x="${q.x - q.w / 2}" y="${q.y - q.h / 2}" width="${q.w}" height="${q.h}" preserveAspectRatio="none"/>` : `<rect x="${q.x - q.w / 2}" y="${q.y - q.h / 2}" width="${q.w}" height="${q.h}" fill="#4bff9a" opacity=".35"/>`}<rect x="${q.x - q.w / 2}" y="${q.y - q.h / 2}" width="${q.w}" height="${q.h}" fill="none" stroke="${lv}" stroke-width="${q.id === selected ? .07 : .04}"${q.id === selected ? '' : ' stroke-dasharray=".2 .12"'}/>${knob}</g>`;
     if (showDims) {
       const top = q.y - q.h / 2, S = STYLES[p.style];
@@ -693,7 +740,9 @@ export function cleanFlat(input = {}) {
   // where each label was dragged to on each view, in inches (tagMarks puts the rest where they are usually sewn)
   const tp = input.tagPos && typeof input.tagPos === 'object' ? input.tagPos : {}, tagPos = Object.fromEntries(Object.entries(tp).filter(([k, v]) => /^[0-9a-f-]{36}$/i.test(k) && v && typeof v === 'object').slice(0, 40)
     .map(([k, v]) => [k, Object.fromEntries(['front', 'back'].filter(w => Array.isArray(v[w]) && v[w].length === 2 && v[w].every(n => Number.isFinite(Number(n)))).map(w => [w, [r8(Math.min(Math.max(Number(v[w][0]), -60), 60)), r8(Math.min(Math.max(Number(v[w][1]), -30), 80))]]))]).filter(([, v]) => Object.keys(v).length));
-  const params = { style, fit, size: SIZES.includes(input.size) ? input.size : 'M', m, options, ...(Object.keys(tagPos).length ? { tagPos } : {}), ...(template ? { template } : {}), color: hexOf(input.color), edits: cleanEdits(input.edits), ...(allover ? { allover } : {}), ...(Object.keys(drawn).length ? { drawn: { template, ...drawn } } : {}), ...(Object.keys(markup).length ? { markup: { template: template || 'none', ...markup } } : {}) };
+  // crop: inches taken out of the body above the hem band, on a sketch that is not cropped itself (the sleeves keep their length)
+  const crop = STYLES[style].kind === 'top' ? r8(Math.min(Math.max(Number(input.crop) || 0, 0), 12)) : 0;
+  const params = { style, fit, size: SIZES.includes(input.size) ? input.size : 'M', m, options, ...(crop ? { crop } : {}), ...(Object.keys(tagPos).length ? { tagPos } : {}), ...(cleanWash(input.wash) ? { wash: cleanWash(input.wash) } : {}), ...(cleanNeckline(input.neckline) ? { neckline: cleanNeckline(input.neckline) } : {}), ...(cleanDistress(input.distress) ? { distress: cleanDistress(input.distress) } : {}), ...(template ? { template } : {}), color: hexOf(input.color), edits: cleanEdits(input.edits), ...(allover ? { allover } : {}), ...(Object.keys(drawn).length ? { drawn: { template, ...drawn } } : {}), ...(Object.keys(markup).length ? { markup: { template: template || 'none', ...markup } } : {}) };
   const placements = (Array.isArray(input.placements) ? input.placements : []).slice(0, 12).map((q, i) => ({
     id: /^[a-z0-9-]{1,40}$/i.test(String(q.id || '')) ? String(q.id) : 'p' + i, name: String(q.name || 'Graphic').replace(/\s+/g, ' ').trim().slice(0, 60) || 'Graphic', view: q.view === 'back' ? 'back' : 'front',
     x: r8(Math.min(Math.max(Number(q.x) || 0, -60), 60)), y: r8(Math.min(Math.max(Number(q.y) || 0, -30), 80)), w: r8(Math.min(Math.max(Number(q.w) || 1, .25), 40)), h: r8(Math.min(Math.max(Number(q.h) || 1, .25), 40)), ...(rotOf(q) ? { rot: rotOf(q) } : {}),

@@ -130,6 +130,17 @@
     // arrived from the hub's New design (or any ?new=1): open it once, and take the flag off the address
     const q = new URLSearchParams(location.search); if (q.get('new') === '1' && TOKEN()) { q.delete('new'); history.replaceState(null, '', location.pathname + (q.toString() ? '?' + q : '') + location.hash); setTimeout(openNew, 300); }
     document.querySelectorAll('nav.labnav').forEach(render); document.querySelectorAll('[data-lab-menu]').forEach(b => b.remove()); if (location.pathname === '/lab') window.addEventListener('hashchange', () => document.querySelectorAll('nav.labnav').forEach(render)); }
-  window.FBLabNav = { TABS, STEPS, render, steps, isClient, openNew };
+  // The Lab's pictures (sketches, masks, material photos) and scripts travel on a 12-hour cookie (src/guard.js). A page left open longer
+  // still works through its sign-in, but every new picture it asks for (a cloth recoloured, a sketch swapped) would come back refused and
+  // blank. So an open page renews the cookie: when it loads, every 30 minutes, and when it comes back into view after a while.
+  let doorAt = 0;
+  const door = force => { const t = (() => { try { return localStorage.getItem('fb.admin.token') || localStorage.getItem('fb.client.token') || ''; } catch { return ''; } })();
+    if (!t || (!force && Date.now() - doorAt < 10 * 60e3)) return; doorAt = Date.now();
+    fetch('/v1/lab/door', { headers: { Authorization: 'Bearer ' + t }, credentials: 'same-origin', cache: 'no-store' }).catch(() => { doorAt = 0; }); };
+  if (location.pathname === '/lab' || location.pathname.startsWith('/lab/')) { // not on the tech pack page, which borrows the step bar
+    door(true); setInterval(() => door(true), 30 * 60e3);
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') door(false); });
+  }
+  window.FBLabNav = { TABS, STEPS, render, steps, isClient, openNew, door };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
 })();

@@ -84,6 +84,9 @@ textarea.t{min-height:64px;resize:vertical}
 .cloths .cs{aspect-ratio:1;border-radius:7px;background:#eee center/cover;display:block}.cloths .cn{overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
 .plist{display:grid;gap:6px;margin-top:8px}.prow{display:grid;grid-template-columns:38px minmax(0,1fr) auto;gap:6px;align-items:center;padding:4px;border:1px solid transparent;border-radius:10px;cursor:pointer}
 .prow.on{border-color:#2a6df4;background:rgba(42,109,244,.05)}.prow input[type=color]{width:38px;height:34px;border:1px solid var(--line,#e2e2dc);border-radius:8px;padding:2px;background:#fff}
+.wash .seg{display:flex;gap:4px;margin:6px 0}.wash .seg button{flex:1;font:inherit;font-size:13px;padding:6px 8px;border:1px solid var(--line,#d8d6cf);border-radius:999px;background:transparent;cursor:pointer}.wash .seg button[aria-checked=true]{background:var(--ink,#141416);color:#fff;border-color:var(--ink,#141416)}.wash .wtoggle{margin-top:10px}.wash input[type=range]{width:100%}.wrange{display:flex;justify-content:space-between;font-size:11px;opacity:.6;margin-top:-4px}
+.wash.flash{outline:2px solid #4bff9a;outline-offset:4px;border-radius:10px;transition:outline-color 1s}
+.ntiles{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}.ntile{display:grid;gap:2px;justify-items:center;padding:6px 4px;border:1px solid var(--line,#d8d6cf);border-radius:10px;background:#fff;cursor:pointer;font:inherit;font-size:12px}.ntile svg{width:100%;height:58px}.ntile[aria-pressed=true]{border-color:var(--ink,#141416);box-shadow:0 0 0 1.5px var(--ink,#141416)}.ntiles.locked .ntile{opacity:.6;cursor:not-allowed}
 </style>
 <script src="/feedback.js"></script>
 <link rel="stylesheet" href="/cue.css">
@@ -117,6 +120,8 @@ textarea.t{min-height:64px;resize:vertical}
 import { tagMarks, STYLES, FITS, SIZES, DETAILS, STITCHES, defaultDetail, describeEdit, geometry, renderSvg, viewBoxOf, templatesFor, templateOf, defaultTemplate, describe, placementChecks, overlapChecks, pomTable, defaultParams, defaultPlacement, measurementsFor, POM_NAMES, pomName, fitToTemplate, FLAT_PARTS, PART_KINDS, partOf, defaultPart, fmt, fmtCm, MASK_URL, drawingOf, TEMPLATE_URL } from '/lab/flats.js';
 import { panelAt, panelName } from '/lab/lab-flat-panels.js';
 import { tagFaceSvg } from '/lab/lab-tags.js';
+import { NECKLINES, necklineSvg, takesNeckline, necklineOf, necklineMeasures, necklinePomName } from '/lab/lab-neck.js';
+import { WASHES, STRENGTHS, washOf, distressParts, distressList, DISTRESS_FOCUS, washWords } from '/lab/lab-wash.js';
 import { FLAT_TEMPLATES } from '/lab/lab-flat-templates.js';
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)],esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const TOKEN=()=>{try{return localStorage.getItem('fb.admin.token')||localStorage.getItem('fb.client.token')||''}catch{return ''}}; // staff sign in at the work console; a client with the Design Lab on their room signs in at their hub
@@ -131,9 +136,20 @@ let PKIND='pockets',SELE=null,MODE=null,DRAFT=[],AIBOX=null,BOXDRAG=null,EHREF={
 let D=null,P=null,PL=[],VIEW='front',SEL=null,CHECK={findings:{},summary:{fail:0,warn:0}},WHERE={},DIRTY=false,TAB='pl',HREF={},MARKS={};
 const r8=v=>Math.round(v*8)/8;
 const techName=q=>(D.techniques.find(t=>t.id===q.techniqueId)||{}).name||q.technique;
-const flatBody=()=>({style:P.style,fit:P.fit,size:P.size,m:P.m,options:P.options,template:P.template||templateOf(P)?.id||'none',color:P.color||'',edits:P.edits||[],placements:PL,allover:P.allover||null,drawn:P.drawn||null,markup:P.markup||null,tagPos:P.tagPos||null});
+const flatBody=()=>({style:P.style,fit:P.fit,size:P.size,m:P.m,options:P.options,template:P.template||templateOf(P)?.id||'none',color:P.color||'',edits:P.edits||[],placements:PL,allover:P.allover||null,drawn:P.drawn||null,markup:P.markup||null,tagPos:P.tagPos||null,crop:P.crop||0,wash:P.wash||null,distress:P.distress||null,neckline:P.neckline||null});
 let AOHREF='',DECOS=null,CAL=null,REPS=null;
-function touch(){DIRTY=true;if(!SAVING_F){$('#saved').className='saved dirty';$('#saved').textContent='Changes not saved yet'}recheckSoon();HOST()?.flatsChanged?.();autoSoonF()}
+// undo for everything done on the flats (moves, sizes, details, colours, necklines, washes…): the flat after each change, gathered over a
+// moment so a drag or a typed number is one step. Hand drawing keeps its own steps (MUNDO); undo takes whichever came last
+let FH=[],FI=-1,FHQ=null,FHMUTE=false;const MKT={front:[],back:[]};
+const fSnap=()=>JSON.stringify({P,PL});
+function fhReset(){clearTimeout(FHQ);FHQ=null;FH=[{s:fSnap(),t:0}];FI=0}
+function fhPush(){FHQ=null;if(!P||FI<0)return;const s=fSnap();if(FH[FI]?.s===s)return;FH=FH.slice(0,FI+1);FH.push({s,t:Date.now()});if(FH.length>80)FH.shift();FI=FH.length-1;HOST()?.flatsChanged?.()}
+function fhFlush(){if(FHQ){clearTimeout(FHQ);fhPush()}}
+async function fhGo(i){const o=JSON.parse(FH[i].s);FI=i;P=o.P;PL=o.PL;for(const q of PL)if(!HREF[q.id])HREF[q.id]=await hrefOf(q);if(SEL&&!PL.some(q=>q.id===SEL))SEL=null;FHMUTE=true;touch();FHMUTE=false;paint();HOST()?.flatsChanged?.()}
+function fUndo(){fhFlush();const mt=MKT[VIEW]?.at(-1)||0;if(MUNDO[VIEW]?.length&&mt>(FH[FI]?.t||0)){MKT[VIEW].pop();return mkStep(MUNDO,MREDO)}if(FI>0)fhGo(FI-1)}
+function fRedo(){fhFlush();if(FI<FH.length-1)return fhGo(FI+1);if(MREDO[VIEW]?.length){MKT[VIEW].push(Date.now());mkStep(MREDO,MUNDO)}}
+const fCanUndo=()=>FI>0||Boolean(FHQ)||Boolean(MUNDO[VIEW]?.length),fCanRedo=()=>FI<FH.length-1||Boolean(MREDO[VIEW]?.length);
+function touch(){if(!FHMUTE&&FI>=0){clearTimeout(FHQ);FHQ=setTimeout(fhPush,350)}DIRTY=true;if(!SAVING_F){$('#saved').className='saved dirty';$('#saved').textContent='Changes not saved yet'}recheckSoon();HOST()?.flatsChanged?.();autoSoonF()}
 // Autosave: a few seconds after the last change, never mid-drag; a failed save is tried again a little later each time. The last save reads
 // "Saved just now" / "Saved 4 min ago", with the clock time on hover.
 let AUTOF=0,AUTOF_FAILS=0,SAVING_F=false,SAVED_F=null,DOWN_F=false;
@@ -188,10 +204,18 @@ function edCard(e){
   if(e.type==='part')body=`<label class="f"><span>Name</span><input class="t" data-ek="name" value="${esc(e.name)}" placeholder="Chest pocket, collar…"></label><div class="nums">${num('pw','Width (in)',e.w)}${num('x','From centre (in)',e.x)}${num('top','Top edge down (in)',r8(e.y-e.h/2))}</div><label class="chk"><input type="checkbox" data-ek="flip" ${e.flip?'checked':''}> Mirror it</label>`;
   return `<div class="ed ${e.id===SELE?'on':''}" data-e="${esc(e.id)}"><div class="hd"><b>${esc(title)}</b>${e.type==='detail'||e.type==='block'||e.type==='part'?'<button class="btn sm q" type="button" data-mirror>Mirror</button>':''}<button class="btn sm q" type="button" data-edel aria-label="Remove ${esc(title)}">Remove</button></div>${body}<div class="where">${esc(describeEdit(e,P))}</div></div>`;
 }
+// a neckline sets the neck points of measure from the style's standard, so the table, the sheet, the tech pack and the factory all read the same numbers
+function setNeckMeasures(){if(!P.m||!('neckWidth' in P.m))return;const base=defaultParams(P.style,P.fit,P.options||{}).m;P.m={...P.m,...necklineMeasures(P.neckline,base)}}
+const mName=k=>necklinePomName(P.neckline,k)||pomName(P.style,k);
+// necklines (src/lab-neck.js): switched like a pocket or a zip; the flats draw the one chosen over the sketch's own
+function neckTile(id,label){const m={neckWidth:7.5,neckDropFront:3.5,neckDropBack:1},nk=id?necklineSvg({style:'tee',neckline:id},VIEW,m,{cloth:'#ffffff'}):{under:'',over:'<path d="M -3.75 0 C -3.6 2.8 -1.9 3.5 0 3.5 C 1.9 3.5 3.6 2.8 3.75 0" fill="none" stroke="#141416" stroke-width=".05"/>'};
+  const on=(P.neckline||'')===(id||'');return `<button type="button" class="ntile" data-neck="${id||''}" aria-pressed="${on}" title="${esc(id?necklineOf(id).how:'The neckline the sketch already has')}"><svg viewBox="-6.6 -3.6 13.2 9.4" aria-hidden="true"><path d="M -6.6 2.4 L -4.1 .12 L 4.1 .12 L 6.6 2.4 L 6.6 5.8 L -6.6 5.8 Z" fill="#fff" stroke="#141416" stroke-width=".07"/>${nk.under}${nk.over}</svg><span>${esc(label)}</span></button>`}
+function neckSec(){if(!takesNeckline(P.style))return '';const locked=Boolean(D?.concept?.locked);
+  return `<div class="sec" id="neckSec"><h4>Neckline</h4><div class="ntiles ${locked?'locked':''}">${neckTile('','As drawn')}${NECKLINES.map(n=>neckTile(n.id,n.label)).join('')}</div><p class="msg">${esc(P.neckline?necklineOf(P.neckline).how:'Swap the neckline like a pocket or a zip: it is drawn on the front and the back, and the tech pack takes its spec.')}</p>${P.m&&'neckWidth' in P.m?`<p class="msg" id="neckMeas">Size M: ${['neckWidth','neckDropFront','neckRib'].filter(k=>P.m[k]).map(k=>`${esc(mName(k).replace(/^./,c=>c.toLowerCase()))} ${fmt(P.m[k])}`).join(' · ')}. These go to the measurements, the spec sheet and the factory; every size is graded from them.</p>`:''}</div>`}
 function paintDesign(){
   const eds=(P.edits||[]).filter(e=>e.view===VIEW&&e.type!=='block'); // coloured panels have their own list
   $('#pDesign').innerHTML=`<div class="sec"><button class="btn sm" type="button" id="redrawPic" title="Draw the flat from the concept's picture: the right sketch, then the front and back drawn by the image model in the picture's details and colours">Draw from the picture</button></div><div class="sec"><h4>Colour</h4><div class="swatches">${['',...SWATCH].map(c=>`<button type="button" class="sw" data-color="${c}" aria-pressed="${(P.color||'')===c}" title="${c||'White, no colour'}" aria-label="${c||'White, no colour'}" style="background:${c||'#fff'}">${c?'':'–'}</button>`).join('')}<label class="sw" title="Any colour" style="background:conic-gradient(#e11,#ee1,#1e1,#1ee,#11e,#e1e,#e11);position:relative"><input type="color" id="dColor" value="${P.color||'#ffffff'}" style="opacity:0;position:absolute;inset:0;width:100%;height:100%;cursor:pointer" aria-label="Any colour"></label></div><p class="msg">Colours the whole piece. The sketch's lines and shading stay, and a dark colour gets light lines so the drawing still reads.</p></div>
-${clothSec()}${panelsSec()}
+${clothSec()}${neckSec()}${panelsSec()}
   <div class="sec"><h4>Add a detail</h4>${GROUPS.map(([g,ks])=>`<div class="mono">${g}</div><div class="kinds">${ks.map(k=>`<button class="btn sm q" type="button" data-adddet="${k}">${esc(k==='pleat'?'Pleats':DETAILS[k])}</button>`).join('')}</div>`).join('')}<p class="msg">It lands on the ${VIEW} where that detail usually goes: drag it, or set its size and place below. Cover up hides something on the sketch, like a pocket you are replacing.</p></div>
   <div class="sec"><h4>From the sketch pack</h4><div class="gbar">${Object.entries(PART_KINDS).map(([k,l])=>`<button class="btn sm q" type="button" data-pkind="${k}" aria-pressed="${PKIND===k}">${esc(l)}s</button>`).join('')}</div><div class="gal parts">${FLAT_PARTS.filter(q=>q.kind===PKIND).map(q=>`<button type="button" data-addpart="${q.id}" title="Add ${esc(q.label)}"><img loading="lazy" alt="" src="/lab/flat-parts/${q.file}">${esc(q.label)}</button>`).join('')}</div><p class="msg">The pack's own pockets, zips, collars, trims and buttons, drawn in the same lines. Add one, then drag it into place and size it; cover up what it replaces.</p></div>
   <div class="sec"><h4>Draw</h4><div class="kinds"><button class="btn sm lv-pro" type="button" data-mode="stitch" aria-pressed="${MODE==='stitch'}">Stitch line</button><button class="btn sm q lv-pro" type="button" data-mode="block" aria-pressed="${MODE==='block'}" title="Click round an area point by point, for a block that is not one of the sketch's panels">Block by hand</button><button class="btn sm" type="button" data-mode="ai" aria-pressed="${MODE==='ai'}">Redraw an area with AI</button></div>${MODE==='fill'?'':modeHint()}</div>
@@ -254,6 +278,7 @@ function finishDraft(){const pts=DRAFT.filter((q,i)=>!i||Math.hypot(q[0]-DRAFT[i
 $('#pDesign').addEventListener('click',async e=>{
   const rp=e.target.closest('#redrawPic');if(rp){redrawFromPicture(rp);return}
   const sw=e.target.closest('[data-color]');if(sw){P.color=sw.dataset.color;touch();paint();return}
+  const nkb=e.target.closest('[data-neck]');if(nkb){if(D?.concept?.locked)return;P.neckline=nkb.dataset.neck||undefined;if(!P.neckline)delete P.neckline;setNeckMeasures();touch();paint();if($('#pGarment')?.innerHTML)paintGarment();return}
   const pk=e.target.closest('[data-pkind]');if(pk){PKIND=pk.dataset.pkind;paintDesign();return}
   const ap=e.target.closest('[data-addpart]');if(ap){const d=defaultPart(ap.dataset.addpart,P,VIEW);if(!d)return;d.id=newId('p');P.edits.push(d);SELE=d.id;touch();paint();FBN.toast(`${d.name} added to the ${VIEW}: drag it into place`);return}
   const ad=e.target.closest('[data-adddet]');if(ad){const k=ad.dataset.adddet,d={id:newId('d'),type:'detail',stitch:'single',thread:'',color:'',count:1,flip:false,...defaultDetail(k,P,VIEW)};P.edits.push(d);SELE=d.id;touch();paint();return}
@@ -380,18 +405,33 @@ function useTemplate(id){
   touch();paintGarment();paint();FBN.toast(`Drawn from “${t.label}”`)}
 $('#pGarment').addEventListener('click',e=>{const b=e.target.closest('[data-tpl]');if(b)useTemplate(b.dataset.tpl)});
 let gqT=0;$('#pGarment').addEventListener('input',e=>{if(e.target.id==='gQ'){GQ.q=e.target.value;clearTimeout(gqT);gqT=setTimeout(()=>{$('#gGal').innerHTML=galTiles()},150)}});
+// wash and distressing (src/lab-wash.js): drawn on the flats, written on the tech pack and into the picture from the flats
+function washSec(){const w=P.wash||{type:'none',strength:'medium'},d=P.distress||{on:false,amount:40},groups=[...new Set(WASHES.map(x=>x.group))],k=distressParts(d.amount,d.focus||'all'),kd=STYLES[P.style]?.kind==='bottom'?'bottom':'top',locked=Boolean(D?.concept?.locked);
+  return `<div class="sec wash" id="washSec"><h4>Wash &amp; distress</h4>
+    <label class="f"><span>Wash</span><select class="t" id="wType" ${locked?'disabled':''}>${groups.map(g=>`<optgroup label="${esc(g)}">${WASHES.filter(x=>x.group===g).map(x=>`<option value="${x.id}" ${x.id===w.type?'selected':''}>${esc(x.label)}</option>`).join('')}</optgroup>`).join('')}</select></label>
+    ${w.type!=='none'?`<div class="seg" role="radiogroup" aria-label="How strong">${STRENGTHS.map(x=>`<button type="button" role="radio" data-wstr="${x.id}" aria-checked="${x.id===w.strength}" ${locked?'disabled':''}>${x.label}</button>`).join('')}</div><p class="msg">${esc(washOf(w.type).how)}</p>`:''}
+    <label class="chk wtoggle"><input type="checkbox" id="dOn" role="switch" ${d.on?'checked':''} ${locked?'disabled':''}> Distressing <b>${d.on?'on':'off'}</b></label>
+    ${d.on?`<label class="f"><span>Amount · ${esc(k.level)} (${d.amount})</span><input type="range" id="dAmt" min="0" max="100" step="5" value="${d.amount}" aria-label="How much distressing" ${locked?'disabled':''}></label><div class="wrange"><span>Less</span><span>More</span></div><div class="seg" role="radiogroup" aria-label="Where">${DISTRESS_FOCUS.map(x=>`<button type="button" role="radio" data-dfocus="${x.id}" aria-checked="${x.id===(d.focus||'all')}" ${locked?'disabled':''}>${x.label}</button>`).join('')}</div><p class="msg">${esc(distressList(d,kd).join(' · ')||'Barely there')}. Drawn on the flats; the factory gets the words on the tech pack.</p>`:''}
+  </div>`}
+const washChanged=()=>{touch();paint();$('#washSec')?.scrollIntoView({block:'nearest'})};
+$('#pGarment').addEventListener('click',e=>{const f=e.target.closest('[data-dfocus]');if(f){P.distress={...(P.distress||{amount:40}),on:true,focus:f.dataset.dfocus};washChanged();return}const b=e.target.closest('[data-wstr]');if(!b)return;P.wash={...(P.wash||{type:'none'}),strength:b.dataset.wstr};washChanged()});
+$('#pGarment').addEventListener('change',e=>{
+  if(e.target.id==='wType'){const t=e.target.value;P.wash=t==='none'?null:{type:t,strength:P.wash?.strength||'medium'};washChanged()}
+  if(e.target.id==='dOn'){P.distress={...(P.distress||{amount:40}),on:e.target.checked};washChanged()}
+  if(e.target.id==='dAmt'){P.distress={...(P.distress||{}),on:true,amount:Number(e.target.value)};washChanged()}});
+$('#pGarment').addEventListener('input',e=>{if(e.target.id==='dAmt'){P.distress={...(P.distress||{}),on:true,amount:Number(e.target.value)};draw()}});
 function paintGarment(){
   const S=STYLES[P.style],o=P.options,box=(k,l)=>`<label class="chk"><input type="checkbox" data-o="${k}" ${o[k]?'checked':''}> ${l}</label>`;
-  $('#pGarment').innerHTML=`<div class="sec"><h4>The piece</h4><label class="f"><span>Style</span><select class="t" id="gStyle">${Object.entries(D.styles).map(([k,v])=>`<option value="${k}" ${k===P.style?'selected':''}>${esc(v.label)}</option>`).join('')}</select></label>
+  $('#pGarment').innerHTML=`${washSec()}<div class="sec"><h4>The piece</h4><label class="f"><span>Style</span><select class="t" id="gStyle">${Object.entries(D.styles).map(([k,v])=>`<option value="${k}" ${k===P.style?'selected':''}>${esc(v.label)}</option>`).join('')}</select></label>
     <label class="f"><span>Fit</span><select class="t" id="gFit">${Object.entries(FITS).map(([k,v])=>`<option value="${k}" ${k===P.fit?'selected':''}>${v}</option>`).join('')}</select></label><p class="msg">Changing the style or fit sets the measurements to its standard; your placements stay. The drawing is a flat sketch scaled to the chest or waist and the length.</p></div>
   <div class="sec"><h4>Drawing · ${esc(templateOf(P)?.label||'Simple outline')}</h4><div class="gbar"><input class="t" type="search" id="gQ" placeholder="Search ${FLAT_TEMPLATES.length} sketches: cargo, pleated, halter…" aria-label="Search the sketches" value="${esc(GQ.q)}" style="flex:1;min-width:150px"><select class="t" id="gRange" style="width:auto" aria-label="Range"><option value="">Men's and women's</option><option value="mens" ${GQ.range==='mens'?'selected':''}>Men's</option><option value="womens" ${GQ.range==='womens'?'selected':''}>Women's</option></select><label class="chk"><input type="checkbox" id="gAll" ${GQ.all?'checked':''}> Every style</label></div><div class="gal" id="gGal">${galTiles()}</div><p class="msg">Pick any sketch from the pack. A sketch of another style changes the piece to that style; its length starts at the sketch's own proportions (a cropped tee shorter, a maxi dress longer).</p></div>
   <div class="sec"><h4>Details</h4>${S.kind==='top'?box('drop','Dropped shoulder')+box('cropped','Cropped')+(S.hood?box('drawcord','Hood drawcords'):'')+(S.pocket?box('noPocket','No front pocket'):box('chestPocket','Chest pocket')):''}${S.kind==='bottom'?`<label class="f"><span>Pleats</span><select class="t" data-o="pleats"><option value="0" ${!o.pleats?'selected':''}>None</option><option value="1" ${o.pleats==1?'selected':''}>Single</option><option value="2" ${o.pleats==2?'selected':''}>Double</option></select></label>`:''}${['cap','beanie','tote'].includes(S.kind)?'<p class="msg">Nothing to change for this one.</p>':''}</div>
-  <div class="sec"><h4>Sample size (M) measurements, inches</h4><div class="meas">${Object.keys(P.m).map((k,i)=>`<b>${String.fromCharCode(65+i)}</b><span>${esc(pomName(P.style,k))}</span><input class="t" type="number" step="0.125" min="0" data-m="${k}" value="${P.m[k]}" aria-label="${esc(pomName(P.style,k))}">`).join('')}</div><p class="msg">Every other size is graded from these. The flats redraw as you type.</p></div>`;
+  <div class="sec"><h4>Sample size (M) measurements, inches</h4><div class="meas">${Object.keys(P.m).map((k,i)=>`<b>${String.fromCharCode(65+i)}</b><span>${esc(mName(k))}</span><input class="t" type="number" step="0.125" min="0" data-m="${k}" value="${P.m[k]}" aria-label="${esc(mName(k))}">`).join('')}</div><p class="msg">Every other size is graded from these. The flats redraw as you type.</p></div>`;
 }
 $('#pGarment').addEventListener('change',e=>{
-  if(e.target.id==='gStyle'||e.target.id==='gFit'){const st=$('#gStyle').value,fit=$('#gFit').value;const n=defaultParams(st,fit,st===P.style?P.options:{});n.size=P.size;n.template=defaultTemplate(st,fit,(D.concept?.name||'').toLowerCase())||undefined;n.color=P.color;n.edits=st===P.style?P.edits:[];if(st!==P.style){PL=PL.map(q=>({...q,...defaultPlacement(q.mark?'logo':'graphic',n,{aspect:q.w/q.h,label:q.view==='back'?'back':q.mark?'left chest':'front chest'})}))}P=fitToTemplate(n);touch();paintGarment();paint();return}
+  if(e.target.id==='gStyle'||e.target.id==='gFit'){const st=$('#gStyle').value,fit=$('#gFit').value;const n=defaultParams(st,fit,st===P.style?P.options:{});n.size=P.size;n.template=defaultTemplate(st,fit,(D.concept?.name||'').toLowerCase())||undefined;n.color=P.color;n.wash=P.wash;n.distress=P.distress;if(P.crop&&n.options?.cropped)n.crop=P.crop;n.neckline=takesNeckline(st)?P.neckline:undefined;if(!n.neckline)delete n.neckline;n.edits=st===P.style?P.edits:[];if(st!==P.style){PL=PL.map(q=>({...q,...defaultPlacement(q.mark?'logo':'graphic',n,{aspect:q.w/q.h,label:q.view==='back'?'back':q.mark?'left chest':'front chest'})}))}P=fitToTemplate(n);if(P.neckline)setNeckMeasures();touch();paintGarment();paint();return}
   if(e.target.id==='gRange'||e.target.id==='gAll'){GQ.range=$('#gRange').value;GQ.all=$('#gAll').checked;$('#gGal').innerHTML=galTiles();return}
-  const o=e.target.dataset.o;if(o){P.options[o]=e.target.type==='checkbox'?e.target.checked:Number(e.target.value);if(o==='cropped'){const base=defaultParams(P.style,P.fit,P.options);P.m.length=base.m.length}touch();paint()}});
+  const o=e.target.dataset.o;if(o){P.options[o]=e.target.type==='checkbox'?e.target.checked:Number(e.target.value);if(o==='cropped'){const base=defaultParams(P.style,P.fit,P.options);P.m.length=base.m.length;if(P.options.cropped&&!/crop/i.test(templateOf(P)?.label||''))P.crop=4;else delete P.crop}touch();paint()}});
 $('#pGarment').addEventListener('input',e=>{const k=e.target.dataset.m;if(!k)return;const v=Number(e.target.value);if(Number.isFinite(v)&&v>=0){P.m[k]=v;touch();draw()}});
 function paintPom(){const rows=pomTable(P),sz=rows[0].values.map(v=>v.size);$('#pPom').innerHTML=`<div class="sec"><h4>Points of measure, graded</h4><div class="wrapx"><table class="pom"><thead><tr><th>Point</th>${sz.map(s=>`<th class="${s==='M'?'m':''}">${s}</th>`).join('')}<th>±</th></tr></thead><tbody>${rows.map(r=>`<tr><td><b style="color:#7a3fd1">${r.code}</b> ${esc(r.name)}</td>${r.values.map(v=>`<td class="${v.size==='M'?'m':''}">${v.value}</td>`).join('')}<td>${r.tolerance}</td></tr>`).join('')}</tbody></table></div><p class="msg">Inches. Turn on "Points of measure" to see where each is taken. Change the sample size on the Garment tab.</p></div>`}
 
@@ -419,7 +459,7 @@ $('#canvas').addEventListener('pointerdown',e=>{if(e.pointerType==='touch'&&MDRA
 // keeps every touch (pointer capture on the canvas, which is never replaced), and the first finger down clears any finger whose lift went missing
 $('#canvas').addEventListener('pointerdown',e=>{if(e.pointerType!=='touch')return;if(e.isPrimary){for(const k of [...FPTR.keys()])if(k!==e.pointerId)FPTR.delete(k);FG=null}capt(e);FPTR.set(e.pointerId,[e.clientX,e.clientY]);if(FPTR.size<2)return;
   e.stopImmediatePropagation();e.preventDefault();
-  if(DRAG){if(DRAG.q&&DRAG.ox!==undefined){DRAG.q.x=DRAG.ox;DRAG.q.y=DRAG.oy}if(DRAG.ed&&DRAG.orig)Object.assign(DRAG.ed,JSON.parse(JSON.stringify(DRAG.orig)));DRAG=null;draw()} // two fingers: a pinch, not a move
+  if(DRAG){if(DRAG.q&&DRAG.ox!==undefined){DRAG.q.x=DRAG.ox;DRAG.q.y=DRAG.oy}if(DRAG.size)Object.assign(DRAG.size,DRAG.orig);if(DRAG.ed&&DRAG.orig)Object.assign(DRAG.ed,JSON.parse(JSON.stringify(DRAG.orig)));DRAG=null;draw()} // two fingers: a pinch, not a move
   BOXDRAG=null;FPAN=null;const[a,b]=[...FPTR.values()],r=$('#canvas svg').getBoundingClientRect();FG={d:Math.hypot(a[0]-b[0],a[1]-b[1])||1,m:[(a[0]+b[0])/2,(a[1]+b[1])/2],z:FZ,c:centreNow(),u:unitsPerPx(),rc:[r.left+r.width/2,r.top+r.height/2]};
   // two fingers on a graphic resize and turn it (about its centre, keeping its shape), as in other drawing apps; anywhere else they zoom the view
   const on=[a,b,FG.m].map(([x,y])=>document.elementFromPoint(x,y)?.closest?.('[data-pl]')).find(Boolean),q=on&&PL.find(x=>x.id===on.dataset.pl);if(q){SEL=q.id;FG.q=q;FG.w0=q.w;FG.h0=q.h;FG.r0=q.rot||0;FG.a0=Math.atan2(b[1]-a[1],b[0]-a[0])}},true);
@@ -447,6 +487,10 @@ $('#canvas').addEventListener('pointerdown',e=>{
   if(reshapeTap(e)){DRAG=null;return}
   const vx=e.target.closest('[data-vx]'),ve=vx&&P.edits.find(x=>x.id===SELE);
   if(ve){DRAG={ed:ve,vx:Number(vx.dataset.vx),orig:JSON.parse(JSON.stringify(ve))};capt(e);return}
+  // a corner of the chosen graphic: resize it about the opposite corner, keeping its shape (it may be turned, so worked in its own frame)
+  const rs=e.target.closest('[data-rs]');
+  if(rs){const q=PL.find(x=>x.id===rs.dataset.rs);if(q){SEL=q.id;const cx=Number(rs.dataset.cx),cy=Number(rs.dataset.cy),t=(q.rot||0)*Math.PI/180,c=Math.cos(t),s=Math.sin(t);
+    const ax=-cx*q.w/2,ay=-cy*q.h/2;DRAG={size:q,cx,cy,w0:q.w,h0:q.h,cos:c,sin:s,anchor:[q.x+ax*c-ay*s,q.y+ax*s+ay*c],orig:{x:q.x,y:q.y,w:q.w,h:q.h}};capt(e);return}}
   const rk=e.target.closest('[data-rot]');
   if(rk){const q=PL.find(x=>x.id===rk.dataset.rot);if(q){SEL=q.id;DRAG={turn:q,o:q.rot||0};capt(e);return}}
   // a label sewn into the piece: drag it where it goes (mouse, pen or finger); it keeps its place on this view
@@ -461,6 +505,9 @@ $('#canvas').addEventListener('pointermove',e=>{
   if(!DRAG)return;const[x,y]=inch(e);
   // the knob above a graphic turns it about its centre; it settles on every 15° when it comes near one
   if(DRAG.turn){const q=DRAG.turn;let a=Math.atan2(x-q.x,-(y-q.y))*180/Math.PI;const s15=Math.round(a/15)*15;if(Math.abs(a-s15)<4||e.shiftKey)a=s15;q.rot=turnTo(a);DRAG.moved=true;draw();return}
+  if(DRAG.size){const d=DRAG,q=d.size,vx=x-d.anchor[0],vy=y-d.anchor[1],lx=(vx*d.cos+vy*d.sin)*d.cx,ly=(-vx*d.sin+vy*d.cos)*d.cy;
+    const k=Math.min(40/d.w0,40/d.h0,Math.max(.25/d.w0,.25/d.h0,Math.max(lx/d.w0,ly/d.h0)));q.w=r8(d.w0*k);q.h=r8(d.h0*k);
+    const hx=d.cx*q.w/2,hy=d.cy*q.h/2;q.x=r8(d.anchor[0]+hx*d.cos-hy*d.sin);q.y=r8(d.anchor[1]+hx*d.sin+hy*d.cos);d.moved=true;draw();return}
   if(DRAG.ed&&DRAG.vx!=null){DRAG.ed.pts=DRAG.orig.pts.map((q,i)=>i===DRAG.vx?[r8(x),r8(y)]:q);DRAG.moved=true;draw();return}
   if(DRAG.ed){const dx=x-DRAG.start[0],dy=y-DRAG.start[1],o=DRAG.orig;if(o.pts)DRAG.ed.pts=o.pts.map(q=>[r8(q[0]+dx),r8(q[1]+dy)]);else{DRAG.ed.x=r8(o.x+dx);DRAG.ed.y=r8(o.y+dy);if(Math.abs(DRAG.ed.x)<.25&&!(DRAG.ed.type==='part'&&partOf(DRAG.ed.part)?.kind==='pockets')&&!['pocket-patch','pocket-flap','pocket-welt','pocket-cargo','pocket-slant','pocket-jean','pocket-zip','pleat'].includes(DRAG.ed.kind))DRAG.ed.x=0}DRAG.moved=true;draw();return}
   if(DRAG.tag){let nx=r8(x-DRAG.dx);const ny=r8(y-DRAG.dy);if(Math.abs(nx)<.25)nx=0;P.tagPos={...(P.tagPos||{})};P.tagPos[DRAG.tag.id]={...(P.tagPos[DRAG.tag.id]||{}),[VIEW]:[nx,ny]};DRAG.moved=true;draw();return}
@@ -475,7 +522,7 @@ function reshapeTap(e){const now=performance.now(),dbl=LASTDOWN&&now-LASTDOWN.t<
   const vx=e.target.closest('[data-vx]');if(vx){const min=se.type==='block'?3:2;if(se.pts.length<=min){FBN.toast(`A ${se.type==="block"?"block":"stitch line"} keeps at least ${min} points`);return true}se.pts=se.pts.filter((_,i)=>i!==Number(vx.dataset.vx));touch();paint();return true}
   const[x,y]=inch(e),n=nearSeg(se.pts,[x,y],se.type==='block');if(n.k<0||n.d>.6)return false;const a=se.pts[n.k],b=se.pts[(n.k+1)%se.pts.length];se.pts=[...se.pts.slice(0,n.k+1),[r8(a[0]+(b[0]-a[0])*n.t),r8(a[1]+(b[1]-a[1])*n.t)],...se.pts.slice(n.k+1)];touch();paint();return true}$('#canvas').addEventListener('pointerup',end);$('#canvas').addEventListener('pointercancel',end);
 document.addEventListener('keydown',e=>{if(e.target.closest('input,select,textarea'))return;
-  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'&&HOST()&&MUNDO[VIEW]){e.preventDefault();e.shiftKey?mkStep(MREDO,MUNDO):mkStep(MUNDO,MREDO);return}
+  if((e.ctrlKey||e.metaKey)&&['z','y'].includes(e.key.toLowerCase())){e.preventDefault();(e.key.toLowerCase()==='y'||e.shiftKey)?fRedo():fUndo();return}
   if(MODE&&e.key==='Escape'){MODE=null;DRAFT=[];AIBOX=null;paint();return}if((MODE==='stitch'||MODE==='block')&&e.key==='Enter'){e.preventDefault();finishDraft();return}
   const ed=TAB==='design'&&P.edits.find(x=>x.id===SELE);
   if(ed){if(e.key==='Delete'||e.key==='Backspace'){e.preventDefault();P.edits=P.edits.filter(x=>x!==ed);SELE=null;touch();paint();return}const s=e.shiftKey?1:.125,mv={ArrowLeft:[-s,0],ArrowRight:[s,0],ArrowUp:[0,-s],ArrowDown:[0,s]}[e.key];if(mv){e.preventDefault();if(ed.pts)ed.pts=ed.pts.map(q=>[r8(q[0]+mv[0]),r8(q[1]+mv[1])]);else{ed.x=r8(ed.x+mv[0]);ed.y=r8(ed.y+mv[1])}touch();paint();return}}
@@ -517,7 +564,7 @@ function mkStroke(m,a,b,o,pr){const x=m.cv.getContext('2d'),k=mkK(m),t=MTOOL,w=M
   x.beginPath();x.moveTo(a[0],a[1]);x.lineTo(b[0]+.01,b[1]);x.stroke();x.restore()}
 function mkShape(m,g,p){const x=m.cv.getContext('2d'),o=g.o,k=mkK(m);x.putImageData(g.before,0,0);x.save();x.strokeStyle=o.color;x.globalAlpha=o.flow;x.lineWidth=Math.min(Math.max(o.size*.15,1.5),12)*k;x.lineCap='round';x.beginPath();
   const[a,b]=g.from;if(MTOOL==='line'){x.moveTo(a,b);x.lineTo(p[0],p[1])}else if(MTOOL==='rect')x.rect(Math.min(a,p[0]),Math.min(b,p[1]),Math.abs(p[0]-a),Math.abs(p[1]-b));else x.ellipse((a+p[0])/2,(b+p[1])/2,Math.abs(p[0]-a)/2,Math.abs(p[1]-b)/2,0,0,Math.PI*2);x.stroke();x.restore()}
-function mkDone(m,before){MUNDO[VIEW].push(before);if(MUNDO[VIEW].length>30)MUNDO[VIEW].shift();MREDO[VIEW]=[];m.dirty=true;touch();HOST()?.flatsChanged?.()}
+function mkDone(m,before){MUNDO[VIEW].push(before);MKT[VIEW].push(Date.now());if(MKT[VIEW].length>30)MKT[VIEW].shift();if(MUNDO[VIEW].length>30)MUNDO[VIEW].shift();MREDO[VIEW]=[];m.dirty=true;touch();HOST()?.flatsChanged?.()}
 function mkCancel(){const g=MDRAG;MDRAG=null;if(g?.m&&g.before)g.m.cv.getContext('2d').putImageData(g.before,0,0)}
 function mkStep(from,to){const st=from[VIEW],m=MK[VIEW];if(!st?.length||!m)return false;to[VIEW].push(mkSnap(m));m.cv.getContext('2d').putImageData(st.pop(),0,0);m.dirty=true;touch();HOST()?.flatsChanged?.();return true}
 MKW.addEventListener('pointerdown',e=>{
@@ -576,7 +623,7 @@ async function boot(){
 }
 // the flat in hand: its garment, fit, sizes, colour, edits and placements
 async function useFlat(f){
-  P={style:f.style,fit:f.fit,size:f.size||'M',m:f.m,options:f.options||{},template:f.template,color:f.color||'',edits:f.edits||[],...(f.allover?{allover:f.allover}:{}),...(f.drawn?{drawn:f.drawn}:{}),...(f.tagPos?{tagPos:f.tagPos}:{})};if(P.allover)AOHREF=await blobUrl('/v1/lab/art/'+P.allover.art);
+  P={style:f.style,fit:f.fit,size:f.size||'M',m:f.m,options:f.options||{},template:f.template,color:f.color||'',edits:f.edits||[],...(f.allover?{allover:f.allover}:{}),...(f.drawn?{drawn:f.drawn}:{}),...(f.tagPos?{tagPos:f.tagPos}:{}),...(f.crop?{crop:f.crop}:{}),...(f.wash?{wash:f.wash}:{}),...(f.neckline?{neckline:f.neckline}:{}),...(f.distress?{distress:f.distress}:{})};if(P.allover)AOHREF=await blobUrl('/v1/lab/art/'+P.allover.art);
   for(const ed of P.edits)if(ed.type==='ai')EHREF[ed.art]=await blobUrl('/v1/lab/art/'+ed.art);for(const v of ['front','back'])if(P.drawn?.[v]&&!EHREF[P.drawn[v]])EHREF[P.drawn[v]]=await blobUrl('/v1/lab/art/'+P.drawn[v]);PL=f.placements||[];CHECK=f.check||CHECK;DECOS=f.saved?D.decorations:null;
   $('#size').innerHTML=(STYLES[P.style].oneSize?['M']:SIZES).map(s=>`<option value="${s}" ${s==='M'?'selected':''}>${STYLES[P.style].oneSize?'One size':s}</option>`).join('');
   const wantTpl=new URLSearchParams(location.search).get('template');if(wantTpl&&FLAT_TEMPLATES.some(t=>t.id===wantTpl)&&templateOf(P)?.id!==wantTpl)setTimeout(()=>{useTemplate(wantTpl);history.replaceState(null,'',`/lab/flats?concept=${CID}${EMBED?'&embed='+EMBED:''}`)},0);
@@ -585,6 +632,7 @@ async function useFlat(f){
   for(const q of PL)HREF[q.id]=await hrefOf(q);
   await mkLoad(f.markup);
   DIRTY=!f.saved;$('#saved').className='saved'+(DIRTY?' dirty':'');$('#saved').textContent=f.saved?'Saved':'Not saved yet';
+  fhReset();
 }
 // the picture shows another garment than the saved flat: say so, and redraw it from the picture on request (not saved until Save)
 function picNote(pic){const n=$('#picNote');if(!n)return;n.innerHTML=`<span>This flat does not match the picture: ${(pic.reasons||[]).map(esc).join('; ')}.</span><button class="btn sm go" type="button" id="picRedraw">Draw from the picture</button>`;n.classList.remove('hidden');
@@ -594,7 +642,7 @@ async function redrawFromPicture(b){const n=$('#picNote'),label=b.textContent;b.
     // then the image model draws each view from the picture, on the sketch's frame and in the picture's colours (about a minute)
     b.textContent='Drawing front and back…';const dr=await api(`/v1/lab/concepts/${CID}/flats/draw`,{body:{...flatBody(),views:['front','back']}});for(const v of ['front','back'])if(dr.drawn[v])EHREF[dr.drawn[v]]=await blobUrl('/v1/lab/art/'+dr.drawn[v]);P.drawn=dr.drawn;n?.classList.add('hidden');b.disabled=false;b.textContent=label;touch();paint();$('#cSub').textContent=`${D.styles[P.style].label} · ${FITS[P.fit]} fit · drawn from the picture: check it, then save`}catch(x){b.disabled=false;b.textContent=label;if(P){touch();paint()}alert(x.message)}}
 // what the Design workspace calls: is anything unsaved, save, which side shows, the full panel or the drawing alone, the sheets and the tech pack
-if(EMBED)window.FBFlats={clothChanged:()=>loadCloth().then(()=>{draw();if(TAB==='design')paintDesign()}),dirty:()=>Boolean(D&&P&&DIRTY),ready:()=>Boolean(D&&P),save:()=>(D&&P?save():Promise.resolve(true)),view:()=>VIEW,setView:v=>{if(P&&(v==='front'||v==='back'))setView(v)},
+if(EMBED)window.FBFlats={wash:()=>{if(!P)return;tab('garment');setTimeout(()=>{const el=$('#washSec');el?.scrollIntoView({block:'start',behavior:'smooth'});el?.classList.add('flash');setTimeout(()=>el?.classList.remove('flash'),1400);$('#wType')?.focus()},50)},clothChanged:()=>loadCloth().then(()=>{draw();if(TAB==='design')paintDesign()}),dirty:()=>Boolean(D&&P&&DIRTY),ready:()=>Boolean(D&&P),save:()=>(D&&P?save():Promise.resolve(true)),view:()=>VIEW,setView:v=>{if(P&&(v==='front'||v==='back'))setView(v)},
   mode:m=>{document.documentElement.dataset.embed=m==='compact'?'compact':'full';if(P)draw()},sheet:()=>$('#sheet').click(),deco:()=>$('#decoSheet').click(),pack:()=>$('#toPack').click(),
   canPack:()=>!$('#toPack').classList.contains('hidden'),unsupported:()=>D?.unsupported||'',
   // the placements, in inches on the garment: the one record of where each graphic goes and how big it is
@@ -605,7 +653,7 @@ if(EMBED)window.FBFlats={clothChanged:()=>loadCloth().then(()=>{draw();if(TAB===
   zoom:()=>FZ,
   // the Design workspace's tools, on the flat: the Pencil, brush, eraser, shapes and type draw on the view; undo and redo step through them
   tool:t=>{MTOOL=t||'select';if(t==='area'){if(P&&MODE!=='ai'){MODE='ai';AIBOX=null;if(TAB!=='design')tab('design');paint()}}else if(MODE==='ai'&&!AIBOX){MODE=null;if(P)paint()}mkPlace()},
-  undo:()=>mkStep(MUNDO,MREDO),redo:()=>mkStep(MREDO,MUNDO),canUndo:()=>Boolean(MUNDO[VIEW]?.length),canRedo:()=>Boolean(MREDO[VIEW]?.length),
+  undo:()=>fUndo(),redo:()=>fRedo(),canUndo:fCanUndo,canRedo:fCanRedo,
   // a flat drawn for the Studio's board: the drawing alone, in a colourway's colour or at a size (the artwork as graded for it)
   frame:(view,{color,size}={})=>{if(!P)return '';const sz=size||P.size,pls=PL.map(q=>{if(!q.grade)return q;const g=q.grade.find(x=>x.sizes.includes(sz));return g?{...q,w:g.w,h:g.h,y:q.y-q.h/2+g.h/2}:q});return renderSvg(color?{...P,color}:P,view,{maskHref:MASK_URL,placements:pls,hrefs:HREF,size:sz,showPom:false,showDims:false,scale:0,editHrefs:EHREF,alloverHref:AOHREF,plain:true,withArt:true,texture:clothTex(),tags:tagsOn()})},
   sizes:()=>[...document.querySelectorAll('#size option')].map(o=>o.value).filter(Boolean),graded:()=>Boolean(P&&PL.some(q=>q.grade)),size:()=>P?.size||'',colourways:()=>D?.colourways||[],

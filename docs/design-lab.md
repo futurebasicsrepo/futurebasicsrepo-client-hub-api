@@ -463,7 +463,7 @@ When nothing holds it up, the list offers **Send to the tech pack**; once it is 
 - **Saving.**
   - **Save** (Ctrl S) keeps the layers with the concept. The studio and the flats also save on their own a few seconds after each change (never mid-stroke), and say when: "Saving…", then "Saved just now" or "Saved 4 min ago" (the clock time on hover). A save that fails says why and is tried again.
   - **Draw the picture from the flats** saves what is open first, and nothing saves while the image model draws. The new picture becomes the base layer; what was laid on the old base (a logo, type, graphics from the flats) stays on top. Reopening the studio brings the design back exactly as it was saved.
-  - **Use as the concept picture** makes everything visible the concept's picture. Its views are drawn again from it, and an approved concept goes back to draft.
+  - **Use as the concept picture** makes everything visible the concept's picture, and an approved concept goes back to draft. Its turns (the piece on a model from the front, three-quarter, side and back) start drawing from it straight away, metered like any views. A piece nobody wears gets its front and back product views instead. The walk can be made again on the board.
   - The picture from before the studio is kept: **Put the old picture back** restores it.
   - After that, the logo and graphics are part of the picture, so **Place the logo and graphics again** says to move them in the studio instead.
 - **Export.**
@@ -671,6 +671,44 @@ patent's gloss, a fur's strands, and so is the tech flats SVG. The concept windo
 
 **In Design** (the picture and both flats), **Fabrics, trims & labels** opens the same bill of materials beside the library: each fabric, trim and tag drawn (or its swatch photo), searchable, with **Add to the garment** (the first fabric is the main one, the next the contrast). Each line on the garment can change what it is used as, its colour, how much a piece takes and where it goes (a label's default: how it is attached), or come off; the materials, making, landed cost and margin follow, and the tech pack takes the lines.
 
+**Necklines.** Under **Neckline** in the flats' Design tab, a knit top can switch its neckline the way it swaps a pocket or a zip. The choices are **As drawn**, **Thin crew** (1/2" rib), **Regular crew** (7/8"), **V neck** (mitred, 3/4"), **Mock neck** (a 1 3/4" stand) and **Turtleneck** (a folded 2 3/4" stand). The shapes are in `src/lab-neck.js`.
+- **Which pieces:** tees, long sleeves, crewnecks, tanks, dresses, bodysuits, camis and swimsuits. Hooded, collared and open-front pieces keep their own.
+- **Drawing:** the new neckline is drawn front and back from the piece's neck width and drops, in the garment's colour, with rib wales, the opening and a coverstitch. A neckline-shaped cover hides the sketch's own neckline and leaves the shoulder line and raglan seams alone.
+- **Saved and written:** the flat's params keep it (`neckline`). The tech pack's construction notes and the flats sheet give the rib spec, and **Draw the picture from the flats** names it in the prompt.
+- **Measurements:** choosing a neckline sets the piece's neck points of measure from the style's standard (`necklineMeasures`). Every surface reads those same numbers: the drawing, the Garment tab, the Measurements tab, the graded table, the spec sheet, the tech pack's points of measure and the factory handoff.
+  - **V neck:** the front drop goes 2 1/4" deeper to the V point, with a 3/4" rib.
+  - **Mock and turtle:** the neck is narrower (by 3/4" and 1"). The front drop rises to the collar seam. The rib row becomes the finished stand height: 1 3/4" for a mock, 2 3/4" folded for a turtle.
+  - **Thin crew:** a 1/2" rib.
+  - **Names:** the points of measure take the neckline's names, such as "Front neck drop to the V point" and "Collar stand height, finished (folded)" (`necklinePomName`).
+  - **Editing:** the numbers can still be typed over in the Garment tab, and the drawing follows. A style or fit change sets them again.
+
+**Wash and distress.** The Studio's **Wash & distress** button, beside Fabrics, trims & labels, opens that section of the flats' Garment tab. It is defined in `src/lab-wash.js`, tuned against vintage streetwear references.
+
+**Wash.** Choose from:
+- rinse, silicone softener, enzyme;
+- garment dye, pigment dye, overdye/tint, dirty wash (a yellow-brown vintage tint);
+- stone, acid, snow;
+- PP spray, spray fade (the ombré look), bleach, mineral;
+- ozone, laser fade, sun-faded.
+
+Each comes in Light, Medium or Heavy, with the factory's own words shown under it. A wash also tells the factory that the pack's measurements are finished, after the wash. It gives a shrink allowance for the pattern (`washShrink`): about 1.5% for low-impact finishes, 2% soft, 3% stone or bleach and 4% dye, scaled for Light and Heavy. The spec sheet's points of measure are headed "finished, after wash", and the tech pack's points of measure note the allowance. A wash is drawn the way it wears:
+- **Fades:** the high points fade, meaning the chest, hood and shoulders on a top, or the thighs and knees on a bottom.
+- **Seams:** dye settles in the seams and edges.
+- **Ribs:** the hem band, cuffs and (except under a hood) the collar stay darker.
+- **Particular washes:** spray and sun fades lighten from the top down, acid marbles, snow speckles, and laser fade adds whiskers on jeans.
+
+The positions come from the garment's own measurements: neckline, hem, ribs, cuffs, rise and knee.
+
+**Distressing.** An on/off switch, an amount slider (0–100), and **Where**: all over, edges only, or body only.
+- **Edges:** chewed nicks around the collar, cuffs and hem (or the pocket openings, waistband and hems of a bottom), plus a ragged hem with a fringe hanging past the edge.
+- **Body:** pinhole clusters, holes, worn patches, open knee rips with the weft across them on trousers, and dirt marks on heavy wear.
+- **The summary:** the section lists what you get, and the tech pack's construction notes use the same words.
+
+**Where it goes.**
+- **On the flats:** both are drawn inside the garment, apart from the fringe, and kept in the flat's params (`wash`, `distress` with `focus`).
+- **For the factory:** the tech pack's construction notes and the flats sheet list them in factory words.
+- **The picture:** **Draw the picture from the flats** adds them to the prompt.
+
 **Labels on the flats.** Every tag chosen on a concept is drawn on its flats in Design and on the tech pack's flats sheet, at its real size, where it is sewn (`tagMarks` in `src/lab-flats.js`):
 - **Seen from that side (drawn with their face):**
   - a neck label and its size tab, through the neck opening on the front;
@@ -765,7 +803,7 @@ Routes: `src/lab-materials-routes.js` (`/v1/lab/materials…`, `/v1/lab/concepts
 Design Lab → **Recipe menu** (`/lab/recipe`): in the staff tab row, the hub's Design Lab, the client room's Design Lab view in Work, and on **+ New design**. On a phone the bases scroll sideways and a bar at the foot shows the piece as it is picked, with **Open** to hand. Pip has a guide for it. It is for someone who is not a designer: they choose a piece the way they would order it.
 
 1. **The base.** A staple at its usual fit: classic, boxy or oversized tee, long-sleeve, tank, polo, crewneck, hoodie, zip hoodie, button-up and camp shirts, zip jacket, vest, coat, straight or wide trousers, shorts, leggings, a dress, skirt, cami and bodysuit, a six-panel cap, bucket hat, cuffed beanie and a tote bag.
-2. **Add-ons.** Pockets (chest, flap, kangaroo, zip, slant, jean, cargo, back welts, side pockets, a tote's front pocket), closures (quarter zip, button placket, drawcord waist, zip front, button front), collars (polo, johnny, retro, half-zip, rugby, henley and V-neck on knits; shearling, shirt and stand collars on a jacket; band, camp and button-down on a shirt; one at a time) and finishes (front pleats, cropped, and **contrast pockets and trims**, which puts the pockets in the system's next colour; it waits, marked "add a pocket first", until a pocket it can colour is on). Only the add-ons that suit the base are shown. Tapping a second add-on that goes in the same place (a flap pocket after a chest pocket, a second collar) **replaces** the first rather than stacking on it, and so does a second add-on that changes the sketch (a collar after cropped). An add-on the sketch already draws (a pullover hoodie's kangaroo pocket, a chino's slant and back pockets, cropped on the boxy tee) shows as **on the sketch** and cannot be added on top. Add-ons drawn on the back (back welt pockets) say **on the back**, since the preview shows the front. The picked base, add-ons, colour system and cloth glow green (the line plans' selected style).
+2. **Add-ons.** Pockets (chest, flap, kangaroo, zip, slant, jean, cargo, back welts, side pockets, a tote's front pocket), closures (quarter zip, button placket, drawcord waist, zip front, button front), collars (polo, johnny, retro, half-zip, rugby, henley and V-neck on knits; thin crew, mock neck and turtleneck drawn on the knit's own sketch with their measurements; shearling, shirt and stand collars on a jacket; band, camp and button-down on a shirt; one at a time), **wash & wear** (garment dyed, vintage stone wash, acid wash, sun faded, dirty vintage tint; worn edges, distressed, heavily destroyed; one wash and one wear at a time, drawn and written for the wash house as in the Studio) and finishes (front pleats, cropped, and **contrast pockets and trims**, which puts the pockets in the system's next colour; it waits, marked "add a pocket first", until a pocket it can colour is on). Only the add-ons that suit the base are shown. Tapping a second add-on that goes in the same place (a flap pocket after a chest pocket, a second collar) **replaces** the first rather than stacking on it, and so does a second add-on that changes the sketch (a shirt collar after a shearling collar). **Cropped goes with anything:** alone it uses the pack's cropped sketch where there is one; with a collar (or on a piece with no cropped sketch) it cuts that sketch 4 in shorter. The cut is a band of the body taken out above the hem band (`crop` on the flat, drawn by `renderSvg`). The hem band, its stitching and the long sleeves stay as drawn, and the body is found from the sketch's outline across the hem. The flats' **Cropped** box does the same on any sketch, and the tech pack says how much was taken out. An add-on the sketch already draws (a pullover hoodie's kangaroo pocket, a chino's slant and back pockets, cropped on the boxy tee) shows as **on the sketch** and cannot be added on top. Add-ons drawn on the back (back welt pockets) say **on the back**, since the preview shows the front. The picked base, add-ons, colour system and cloth glow green (the line plans' selected style).
 3. **A colour system.** Washed earth, Workwear, Monochrome, Coastal, Forest, Sport, Pastel, Future Basics, or four colours of your own. The chosen colour is the garment. The next colour in the system is the stitching. Every colour becomes a colourway on the tech pack.
 4. **The cloth** (optional), with the fabric check below shown as you pick.
 5. **Fit it together** (optional). Sliders for the base's lines, **Body width** and **Length** (±6 in, in ⅛ in), and for each placed add-on its **Size** (50–180%), **Up / down** (±8 in) and **Across** (±6 in; for a pair, **Apart**: both move out or in together, mirrored). The drawing follows as you slide, and **Put it back as it was** clears them all. Add-ons the sketch draws itself (a collar, a hoodie's kangaroo pocket, a chino's pockets) have no sliders: they move with the body.
@@ -861,12 +899,21 @@ done. A garment started from scratch draws its flats as a plain outline to draw 
 
 ## Patterns: the product exploded into the pieces it is cut from
 
+A sketch the pack's measuring script reads wrong is measured again by hand in `SKETCH_FIXES` (`src/lab-flats.js`). The shearling aviator had a
+third too narrow a chest and its zip end taken for the hem, so pieces drawn from it came out 37 in long; it is now about 29.
+
 **Pattern** is a step of the piece in the Studio, after Picture and Flats (`/lab/pattern`, in a frame; the drafting is `src/lab-pattern.js`, shared by
 the page and the service).
 
 - **Garments** are drafted from the flats' own measurements, so the pattern grades with the size picked:
   - tops: front and back on the fold (a pair of fronts when it opens), sleeves whose cap is sized to the armhole, neck, cuff and hem ribs,
     hood sides, the kangaroo pocket, and for shirts a yoke, collar, stand and cuffs;
+  - jackets take what their sketch draws. A shearling aviator gets a one-piece shearling collar on the fold (with a self under collar), a
+    shearling hem band split at the zip, and shearling cuffs, with no knit rib. A stand-collar or funnel bomber gets a folded stand collar, and a
+    collared jacket (Harrington, trucker, chore, blouson…) a top and under collar. Jackets and coats with welt pockets get the welts (slanted
+    on aviators, bombers and bikers) and their pocketing bags;
+  - on the product the pieces sit as a flat draws them. A sleeve is shown folded (half its cut width), hung from the shoulder and the underarm.
+    The cuffs sit on the sleeve ends, the hem band shows the front's share of its strip, and the neck rib follows the neckline;
   - bottoms: front and back legs (the back crotch longer), the waistband, pocket bags in pocketing, the fly facing, back pockets;
   - caps: six crown panels, the brim with its board, the sweatband; bucket hats, beanies (knit to shape) and totes too.
 

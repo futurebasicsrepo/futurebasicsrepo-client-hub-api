@@ -6,6 +6,7 @@
 // piece opens in the studio already measured, drawn and coloured. Shared by the page (/lab/recipe) and the service (POST /v1/lab/concepts/from-recipe).
 import { STYLES, FITS, defaultParams, defaultDetail, defaultTemplate, fitToTemplate, cleanFlat } from './lab-flats.js';
 import { FLAT_TEMPLATES } from './lab-flat-templates.js';
+import { necklineMeasures } from './lab-neck.js';
 
 // sketch: the sketch the base is drawn on (the style's usual one when not named): a plain body, so the add-ons are what make it different
 const B = (id, label, style, fit, note, options = {}, sketch = null) => ({ id, label, style, fit, note, options, ...(sketch ? { sketch } : {}) });
@@ -52,10 +53,11 @@ const D = (id, label, group, on, detail, extra = {}) => ({ id, label, group, on,
 // where the button-down collar's buttons sit on the plain shirt sketch (shirt-classic-shirt), in inches from the centre front and the neck point
 const BUTTON_DOWN = { x: 2.2, y: 5.45 };
 const BOTTOMS_WITH_POCKETS = /chino|jean|trouser|pleat|carpenter|work|cargo|denim|five-pocket|jort|walk|wide|straight|barrel|flare|skinny|slim|baggy|tailor/i;
+const TOPS_AND_BOTTOMS = ['tee', 'longsleeve', 'tank', 'polo', 'crewneck', 'hoodie', 'ziphoodie', 'shirt', 'shirtss', 'jacket', 'vest', 'pants', 'shorts', 'skirt', 'dress'];
 export const RECIPE_ADDONS = [
-  D('chest-pocket', 'Chest pocket', 'Pockets', ['tee', 'longsleeve', 'crewneck', 'shirt', 'shirtss', 'jacket', 'vest', 'coat'], { kind: 'pocket-patch' }, { one: 'chest' }),
+  D('chest-pocket', 'Chest pocket', 'Pockets', ['tee', 'longsleeve', 'crewneck', 'hoodie', 'ziphoodie', 'polo', 'tank', 'shirt', 'shirtss', 'jacket', 'vest', 'coat'], { kind: 'pocket-patch' }, { one: 'chest' }),
   D('front-pocket', 'Front pocket', 'Pockets', ['tote'], { kind: 'pocket-patch', place: p => ({ x: 0, y: (p.m.height || 15) * .55, w: 6, h: 6.5 }) }),
-  D('flap-pocket', 'Flap chest pocket', 'Pockets', ['shirt', 'shirtss', 'jacket', 'vest', 'coat'], { kind: 'pocket-flap' }, { one: 'chest' }),
+  D('flap-pocket', 'Flap chest pocket', 'Pockets', ['shirt', 'shirtss', 'jacket', 'vest', 'coat', 'crewneck', 'longsleeve'], { kind: 'pocket-flap' }, { one: 'chest' }),
   D('kangaroo', 'Kangaroo pocket', 'Pockets', ['crewneck', 'hoodie', 'longsleeve'], { kind: 'pocket-kangaroo' }, { shown: /^(Boxy hoodie|Pullover hoodie|Drawcord pullover hoodie)$/i }),
   D('zip-pocket', 'Zip pocket', 'Pockets', ['jacket', 'vest', 'ziphoodie', 'hoodie', 'coat', 'tote'], { kind: 'pocket-zip' }),
   D('slant-side', 'Side pockets', 'Pockets', ['dress', 'skirt'], { kind: 'pocket-slant', pair: true }),
@@ -84,13 +86,28 @@ export const RECIPE_ADDONS = [
   D('neck-camp', 'Camp collar', 'Collars', ['shirt'], null, { one: 'collar', sketch: { shirt: ['shirt', 'shirt-camp-collar-long-sleeve-shirt'] } }),
   // the button-down sketch in the pack has a chest pocket and no buttons on its collar, so the collar's two buttons are drawn on the plain shirt
   D('neck-buttondown', 'Button-down collar', 'Collars', ['shirt'], { kind: 'button', pair: true, place: () => ({ x: BUTTON_DOWN.x, y: BUTTON_DOWN.y, w: .46, h: .46 }) }, { one: 'collar' }),
+  // necklines drawn on the piece's own sketch (src/lab-neck.js), measurements and all, so they go with any sketch the piece is on
+  D('neck-thin', 'Thin crew', 'Collars', ['tee', 'longsleeve', 'crewneck', 'tank'], null, { one: 'collar', neckline: 'thin' }),
+  D('neck-mock', 'Mock neck', 'Collars', ['tee', 'longsleeve', 'crewneck', 'tank'], null, { one: 'collar', neckline: 'mock' }),
+  D('neck-turtle', 'Turtleneck', 'Collars', ['longsleeve', 'crewneck'], null, { one: 'collar', neckline: 'turtle' }),
   D('pleats', 'Front pleats', 'Finishes', ['pants', 'shorts', 'skirt'], null, { option: { pleats: 1 }, words: 'pleat trouser', sketch: { 'pants-wide': ['pants', 'pt-pleated-wide-trousers'], skirt: ['skirt', 'sk-pleated-tennis-skirt'] } }),
-  // cropped: drawn on a cropped sketch of the piece (only where the pack has one). A dropped shoulder and a raw hem are not offered here: the
+  // cropped: drawn on a cropped sketch of the piece where the pack has one; with a collar (or on a piece with no cropped sketch) the piece's
+  // own sketch is cut shorter above its hem band instead (`flex`: it never stops another add-on that changes the sketch). A dropped shoulder and a raw hem are not offered here: the
   // sketches set the shoulder and the hem, so picking them changed nothing that could be seen (the flats page still has both)
-  D('cropped', 'Cropped', 'Finishes', ['tee', 'crewneck', 'hoodie', 'ziphoodie', 'tank', 'jacket'], null, { option: { cropped: true }, words: 'cropped', shown: /crop/i, sketch: { hoodie: ['hoodie', 'hood-cropped-hoodie'], ziphoodie: ['ziphoodie', 'zip-cropped-zip-hoodie'], jacket: ['jacket', 'jk-zip-blouson'] } }),
+  D('cropped', 'Cropped', 'Finishes', ['tee', 'longsleeve', 'crewneck', 'hoodie', 'ziphoodie', 'tank', 'polo', 'jacket', 'vest'], null, { option: { cropped: true }, words: 'cropped', shown: /crop/i, flex: true, sketch: { hoodie: ['hoodie', 'hood-cropped-hoodie'], ziphoodie: ['ziphoodie', 'zip-cropped-zip-hoodie'], jacket: ['jacket', 'jk-zip-blouson'] } }),
   D('contrast', 'Contrast pockets and trims', 'Finishes', null, null, { contrast: true }),
+  // the wash and the wear (src/lab-wash.js): drawn on the flat, written into the tech pack for the wash house
+  D('wash-garment', 'Garment dyed', 'Wash & wear', TOPS_AND_BOTTOMS, null, { one: 'wash', wash: { type: 'garment-dye', strength: 'medium' } }),
+  D('wash-vintage', 'Vintage stone wash', 'Wash & wear', TOPS_AND_BOTTOMS, null, { one: 'wash', wash: { type: 'stone', strength: 'medium' } }),
+  D('wash-acid', 'Acid wash', 'Wash & wear', TOPS_AND_BOTTOMS, null, { one: 'wash', wash: { type: 'acid', strength: 'medium' } }),
+  D('wash-sun', 'Sun faded', 'Wash & wear', TOPS_AND_BOTTOMS, null, { one: 'wash', wash: { type: 'sun', strength: 'heavy' } }),
+  D('wash-dirty', 'Dirty vintage tint', 'Wash & wear', TOPS_AND_BOTTOMS, null, { one: 'wash', wash: { type: 'dirty', strength: 'medium' } }),
+  D('wear-edges', 'Worn edges', 'Wash & wear', TOPS_AND_BOTTOMS, null, { one: 'wear', distress: { on: true, amount: 35, focus: 'edges' } }),
+  D('wear-distressed', 'Distressed', 'Wash & wear', TOPS_AND_BOTTOMS, null, { one: 'wear', distress: { on: true, amount: 60, focus: 'all' } }),
+  D('wear-destroyed', 'Heavily destroyed', 'Wash & wear', TOPS_AND_BOTTOMS, null, { one: 'wear', distress: { on: true, amount: 90, focus: 'all' } }),
+
 ];
-export const RECIPE_GROUPS = ['Pockets', 'Closures', 'Collars', 'Finishes'];
+export const RECIPE_GROUPS = ['Pockets', 'Closures', 'Collars', 'Finishes', 'Wash & wear'];
 
 // colour systems: a few colours that sit together; the first is the garment, the second the stitching and trims, and each one a colourway
 const C = (id, name, mood, colours) => ({ id, name, mood, colours: colours.map(([n, h]) => ({ name: n, hex: h })) });
@@ -123,11 +140,11 @@ export function toggleAddon(picks, id, base) {
   const b = typeof base === 'string' ? baseOf(base) : base, a = RECIPE_ADDONS.find(x => x.id === id); if (!a || !b) return picks;
   if (picks.includes(id)) return picks.filter(x => x !== id);
   const other = x => RECIPE_ADDONS.find(y => y.id === x);
-  return [...picks.filter(x => { const o = other(x); return !(o && ((a.one && o.one === a.one) || (reshapes(a, b) && reshapes(o, b)))); }), id];
+  return [...picks.filter(x => { const o = other(x); return !(o && ((a.one && o.one === a.one) || (!a.flex && !o.flex && reshapes(a, b) && reshapes(o, b)))); }), id];
 }
 // the sketch a base is drawn on with these add-ons: a collar or cropped body names its own, otherwise the base's, or one the add-ons' words pick
 function sketchFor(b, picked) {
-  const neck = picked.find(a => sketchOf(a, b)), [style, neckSketch] = neck ? sketchOf(neck, b) : [b.style, null];
+  const neck = picked.find(a => sketchOf(a, b) && !a.flex) || picked.find(a => sketchOf(a, b)), [style, neckSketch] = neck ? sketchOf(neck, b) : [b.style, null];
   const words = picked.map(a => a.words).filter(Boolean).join(' '), template = neckSketch || (b.sketch ? b.sketch : defaultTemplate(style, b.fit, words)) || undefined;
   return { neck, style, template, sketch: FLAT_TEMPLATES.find(t => t.id === template)?.label || '' };
 }
@@ -170,17 +187,24 @@ export function cookRecipe({ base, addons = [], system = null, colour = 0, name 
   for (const id of Array.isArray(addons) ? addons : []) {
     const a = fits.find(x => x.id === id); if (!a || picked.includes(a)) continue;
     if (a.one) { if (seenOne.has(a.one)) continue; seenOne.add(a.one); }
-    if (reshapes(a, b) && picked.some(x => reshapes(x, b))) continue; // one change of sketch at a time (toggleAddon keeps the page to that)
+    if (!a.flex && reshapes(a, b) && picked.some(x => !x.flex && reshapes(x, b))) continue; // one change of sketch at a time (toggleAddon keeps the page to that)
     picked.push(a);
   }
   const sys = system ? systemOf(system) : null; if (system && !sys) return { error: 'That colour system is not known' };
   const i = Math.min(Math.max(Math.round(Number(colour) || 0), 0), (sys?.colours.length || 1) - 1), main = sys?.colours[i] || null, accent = sys ? sys.colours[(i + 1) % sys.colours.length] : null;
   const options = Object.assign({}, b.options, ...picked.filter(a => a.option).map(a => a.option));
+  const wash = picked.find(a => a.wash)?.wash, distress = picked.find(a => a.distress)?.distress, neckline = picked.find(a => a.neckline)?.neckline;
   // a collar chosen: the piece is drawn on the sketch that has that collar (and becomes that kind of piece: a tee with a polo collar is a polo)
   // a base with a sketch of its own keeps it unless an add-on names another (the sketch-picking words would wander off to a pocketed one)
   const { neck, style, template, sketch } = sketchFor(b, picked);
   // measured as the sketch is drawn (its length in proportion, as the flats page does when a sketch is picked), then fitted by hand
+  // cropped on a sketch that is not cropped itself (a collar's, or a piece with no cropped sketch): that sketch cut 4 in shorter above its hem
+  const cropA = picked.find(a => a.flex && a.option?.cropped), cut = cropA && STYLES[style]?.kind === 'top' && (neck && neck !== cropA ? true : !sketchOf(cropA, b) && !/crop/i.test(sketch)) ? 4 : 0;
+  if (cut) options.cropped = false;
   const p = fitToTemplate({ ...defaultParams(style, FITS[b.fit] ? b.fit : 'regular', options), template }), edits = [], F = cleanFit(fit || {});
+  if (cut) { p.m.length = Math.round((p.m.length - cut) * 8) / 8; p.crop = cut; }
+  // a neckline of our own: its measurements set from the style's standard, so the table and the factory read it
+  if (neckline && 'neckWidth' in p.m) p.m = { ...p.m, ...necklineMeasures(neckline, defaultParams(style, FITS[b.fit] ? b.fit : 'regular', options).m) };
   // the base's lines moved by hand: the sketch stretches to its width and length (src/lab-flats.js drawingOf)
   const wKey = 'chest' in p.m ? 'chest' : 'waist' in p.m ? 'waist' : 'width' in p.m ? 'width' : null, lKey = 'length' in p.m ? 'length' : 'inseam' in p.m ? 'inseam' : 'height' in p.m ? 'height' : null;
   const bump = (k, d, lo = 1) => { if (k && d) p.m[k] = Math.max(lo, Math.round((p.m[k] + d) * 8) / 8); };
@@ -195,8 +219,8 @@ export function cookRecipe({ base, addons = [], system = null, colour = 0, name 
     // a pair: its twin mirrored across the centre (left and right front pockets, both back welts)
     if (a.detail.pair && Math.abs(one.x) > .01) edits.push({ ...one, id: `r-${a.id}-2`, x: -one.x, flip: !one.flip });
   }
-  const f = cleanFlat({ ...p, template, color: main?.hex || '', edits }); if (f.error) return { error: f.error };
-  const labels = picked.map(a => a.label), pockets = picked.filter(a => a.detail).map(a => a.label), kind = neck ? (sketch || b.label) : b.label; // a collar names the piece by its sketch: a tee with a polo collar is a classic polo
+  const f = cleanFlat({ ...p, template, color: main?.hex || '', edits, ...(wash ? { wash } : {}), ...(distress ? { distress } : {}), ...(neckline ? { neckline } : {}) }); if (f.error) return { error: f.error };
+  const labels = picked.map(a => a.label), pockets = picked.filter(a => a.detail).map(a => a.label), kind = (cut ? 'Cropped ' : '') + (neck ? (cut ? (sketch || b.label).toLowerCase() : (sketch || b.label)) : (cut ? b.label.toLowerCase() : b.label)); // a collar names the piece by its sketch: a tee with a polo collar is a classic polo
   return {
     params: f.params, placements: f.placements, style, template: f.params.template || null, category: STYLES[style].category, addons: picked.map(a => a.id),
     name: String(name || '').replace(/\s+/g, ' ').trim().slice(0, 120) || (main ? `${main.name} ${kind.toLowerCase()}` : kind) + (pockets.length ? ` with ${pockets.slice(0, 2).join(' and ').toLowerCase()}` : ''), sketch,
