@@ -167,6 +167,13 @@ The assistant drafts what the concept did not give, such as materials, care and 
 
 **The chain of versions:** a published version is never changed. Corrections, flats sent again, anything specified, go out as the next version, and every version is kept. On the pack's Style tab, under Revisions, **View v1** (or any version) shows it exactly as it was published; press it again to go back to the draft.
 
+**The client's own tech pack.** When the client brings a tech pack they made (a PDF, a spreadsheet, a picture, an AI file or a ZIP), it can be the pack:
+- **Add it:** on the Style tab, open **The client made their own tech pack? Use their file**, then either upload it or pick it from the room's files (a copy is taken, so deleting the room file leaves the pack whole).
+- **Their file is the whole pack** is on by default. The client and the factory then see only their file (shown in the page, with **Download**), the Sign or Quote tab and Messages. Untick it to show our drafted sections beside it.
+- **Publish** puts it on the version. Our checks and the spec check are not needed, because there is nothing of ours to check. A version carries the file it was published with, so replacing it means publishing again.
+- **Assign the factory** under Sign → **Assigned factory**, as for any pack: for quotation now, and to produce once the client approves the version in their room.
+- The file is stored apart from the pack's data (`tech_packs.client_pack`), and only its own routes set it: `POST`, `PATCH` (whole pack or not) and `DELETE /v1/admin/products/:id/tech-pack/client-pack`. It is read from `GET` on the same path (staff), `/v1/products/:id/tech-pack/client-pack` (the client, published only) and `/v1/tp/:token/client-pack` (the factory's link).
+
 ## 6. Factory
 
 **Who:**

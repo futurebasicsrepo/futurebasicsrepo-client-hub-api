@@ -51,11 +51,19 @@ export function emptyTechPack() {
     packaging: { fold: '', polybag: '', carton: '', unitsPerCarton: '', notes: '' },
     care: { fiber: '', instructions: '', countryOfOrigin: '', compliance: '' },
     electronics: { enabled: false, specs: {}, components: [], certifications: [], tests: [], stages: [] },
-    notes: ''
+    notes: '',
+    clientPack: null
   };
 }
 
 // Accepts anything the editor (or an old row) sends and returns a complete, bounded object.
+// The client's own tech pack, a file they made: what a published version carries so the factory and the client read it. The storage name stays
+// on the server (publishedTechPackView drops it). only: their file is the whole pack, so our drafted sections are not shown beside it.
+export function cleanClientPack(c) {
+  if (!c || typeof c !== 'object' || !/^[0-9a-f]{36}-[^/\\]+$/.test(String(c.storage || ''))) return null;
+  return { storage: String(c.storage), name: str(c.name, 200) || 'Tech pack', size: Math.max(0, Math.round(Number(c.size) || 0)), mime: str(c.mime, 120) || 'application/octet-stream', at: str(c.at, 40), only: c.only !== false };
+}
+export const clientPackView = c => { const k = cleanClientPack(c); if (!k) return null; const { storage, ...rest } = k; return rest; };
 export function normalizeTechPack(input) {
   const src = input && typeof input === 'object' ? input : {};
   const base = emptyTechPack();
@@ -121,7 +129,8 @@ export function normalizeTechPack(input) {
     packaging: Object.fromEntries(Object.keys(base.packaging).map(k => [k, str(packaging[k], k === 'notes' ? 1500 : 200)])),
     care: Object.fromEntries(Object.keys(base.care).map(k => [k, str(care[k], k === 'instructions' || k === 'compliance' ? 1500 : 300)])),
     electronics: normalizeElectronics(src.electronics),
-    notes: str(src.notes, 6000)
+    notes: str(src.notes, 6000),
+    clientPack: cleanClientPack(src.clientPack)
   };
 }
 
@@ -390,7 +399,7 @@ export const setFactoryActions = on => { factoryActionsSetting = on == null ? nu
 export const factoryActionsOn = () => factoryActionsSetting ?? (typeof process !== 'undefined' && process.env?.FACTORY_ACTIONS === 'on');
 export const FACTORY_VIEW_ONLY = 'Factories read the tech pack on this link and write to Future Basics in Messages. Future Basics records quotes, acknowledgements, countersignatures and samples.';
 export function publishedTechPackView(row, extra = {}) {
-  const data = normalizeTechPack(row.published_data);
+  const data = normalizeTechPack(row.published_data); data.clientPack = clientPackView(data.clientPack);
   if (extra.audience === 'factory') { data.commercial = globalThis.FBCommercial.forFactory(data.commercial); data.bom = data.bom.map(r => ({ ...r, cost: '' })); } // what the client charges, and what it costs them, is not the factory's business
   const verification = normalizeVerification(row.verification, row.version);
   return {

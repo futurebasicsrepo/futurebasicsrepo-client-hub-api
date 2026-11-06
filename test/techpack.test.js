@@ -201,3 +201,20 @@ test('a factory reads its link and writes in Messages unless the team gives it b
     assert.equal(publishedTechPackView(row, { audience: 'client' }).factoryActions, false, 'a client never gets factory buttons');
   } finally { setFactoryActions(null); if (was === undefined) delete process.env.FACTORY_ACTIONS; else process.env.FACTORY_ACTIONS = was; }
 });
+
+test("the client's own tech pack: kept only with a real storage name, and never shown with it", async () => {
+  const { cleanClientPack, clientPackView } = await import('../src/techpack.js');
+  const storage = `${'a'.repeat(36)}-their pack.pdf`;
+  assert.equal(cleanClientPack({ storage: '../../etc/passwd', name: 'x' }), null);
+  assert.equal(cleanClientPack({ storage: `${'a'.repeat(36)}-x/../y.pdf` }), null);
+  const k = cleanClientPack({ storage, name: 'Their pack.pdf', size: 1234.6, mime: 'application/pdf', at: '2026-11-06T10:00:00Z' });
+  assert.deepEqual(k, { storage, name: 'Their pack.pdf', size: 1235, mime: 'application/pdf', at: '2026-11-06T10:00:00Z', only: true });
+  assert.equal(cleanClientPack({ storage, only: false }).only, false);
+  assert.equal(clientPackView(k).storage, undefined);
+  assert.equal(normalizeTechPack({ clientPack: k }).clientPack.storage, storage);
+  // what the client and the factory are sent carries the file's name, not where it is stored
+  const view = publishedTechPackView({ published_data: { clientPack: k }, version: 1, verification: {} }, { audience: 'factory' });
+  assert.equal(view.techPack.data.clientPack.name, 'Their pack.pdf');
+  assert.equal(view.techPack.data.clientPack.storage, undefined);
+  assert.equal(normalizeTechPack({}).clientPack, null);
+});
