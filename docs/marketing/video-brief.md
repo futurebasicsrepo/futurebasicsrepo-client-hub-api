@@ -86,6 +86,7 @@ already has show as "on the sketch".
   - **Package:** one zip for the vendor with the picture, the SVG, every artboard, every linked picture, the fonts, the colours with
     their Pantone C and a report.
 - A board shows the picture, flats, colourways and sizes side by side.
+- **Freehand pattern edits:** in the pattern, draw over a piece to redraw an edge, cut it in two along a new seam, or draw a new piece; **Built with** shows what the pattern is drafted from (raglan, yoke, cargo, double knee…) and can read it from a freehand drawing.
 - **A new graphic, right on the flats:** open the graphic studio from the panel, draw or make it with AI, and **Put it on the garment**; or upload your own artwork.
 - **Make the turns from the flats** draws the piece on a model from four sides, every logo and graphic in place, and **Make the walk** films the model walking in it, right on the board.
 - **iPad and Apple Pencil:** pressure, palm rejection, pinch and pan. It can be kept on the home screen like an app.

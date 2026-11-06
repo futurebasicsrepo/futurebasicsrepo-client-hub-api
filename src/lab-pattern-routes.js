@@ -8,6 +8,7 @@
 //   POST /v1/lab/concepts/from-scratch           {name?, category, style?, shape?} a concept with nothing drawn yet: a blank page in Design to draw on,
 //                                                with a guide (the flat's outline for a garment, the plush's shape) → { concept, studio }
 import { STYLES, SIZES, FITS, defaultParams, detectStyle } from './lab-flats.js';
+import { cleanConstruction, constructionWords, SLEEVES, COLLARS, OPENINGS, POCKETS, WAISTS, LEGS, PANELS } from './lab-construction.js';
 import { PLUSH_TYPE, PLUSH_SNOUTS, PLUSH_HORNS, PLUSH_MANES, PLUSH_TAILS, PLUSH_PARTS, garmentPattern, applyEdits, cutWords, cleanPatternEdits, patternDxfAama, plushPattern, cleanPlush, plushDefaults, patternSvg, patternDxf, yardage, fillGrams, PLUSH_SHAPES, PLUSH_EARS, PLUSH_FABRICS, PLUSH_EYES, PLUSH_AGES } from './lab-pattern.js';
 import { CATEGORIES } from './lab.js';
 import { silhouette, readShoe, proposal } from './lab-shoe-read.js';
@@ -50,7 +51,7 @@ export function kindOf(c, flatStyle = null) {
 }
 const cleanGarment = (s = {}) => ({ sa: [.25, .375, .5, .625].includes(Number(s.sa)) ? Number(s.sa) : null, width: WIDTHS.includes(Number(s.width)) ? Number(s.width) : 58 });
 // the choices, and the pattern engineer's edits on top (src/lab-pattern.js applyEdits)
-export const cleanPatternSpec = (kind, s) => { const base = kind === 'plush' ? cleanPlush(s || {}) : kind === 'footwear' ? cleanFootwear(s || {}) : cleanGarment(s || {}), edits = cleanPatternEdits(s?.edits); return edits ? { ...base, edits } : base; };
+export const cleanPatternSpec = (kind, s) => { const base = kind === 'plush' ? cleanPlush(s || {}) : kind === 'footwear' ? cleanFootwear(s || {}) : (g => { const k = cleanConstruction(s?.construction); return Object.keys(k).length ? { ...g, construction: k } : g; })(cleanGarment(s || {})), edits = cleanPatternEdits(s?.edits); return edits ? { ...base, edits } : base; };
 
 // a footwear concept's style from its words, until it is chosen
 export const guessShoe = c => { const t = [c.name, c.spec?.silhouette, c.spec?.description].join(' ').toLowerCase(); return /chelsea/.test(t) ? 'chelsea' : /hik(e|er|ing)/.test(t) ? 'hiker' : /high[- ]?top|basketball/.test(t) ? 'hightop' : /\bboots?\b/.test(t) ? 'boot' : /loafer|penny|moc/.test(t) ? 'loafer' : /derby|oxford|blucher|dress shoe/.test(t) ? 'derby' : /run|trainer|jog/.test(t) ? 'runner' : 'sneaker'; };
@@ -89,7 +90,28 @@ export function registerLabPatternRoutes(app, d) {
     if (l.art && !out[`art:${l.art}`]) { const png = (await pool.query('select png from lab_art where id=$1', [l.art]).catch(() => ({ rows: [] }))).rows[0]?.png; if (png) out[`art:${l.art}`] = `data:image/png;base64,${Buffer.from(png).toString('base64')}`; } } return out; };
   const looksOf = L => { const m = partLooks(L.c.spec?.materials); return { colours: { ...(L.spec?.colours || {}), ...m.colours }, tex: m.tex }; };
   const patternOf = (L, size) => applyEdits(draft(L, size), L.spec.edits);
-  const draft = (L, size) => L.kind === 'plush' ? plushPattern(L.spec) : L.kind === 'footwear' ? footwearPattern(L.spec, size !== '' && size != null && Number.isFinite(Number(size)) ? Number(size) : null) : L.kind === 'garment' && L.flat ? (p => p && L.spec.sa ? { ...p, sa: L.spec.sa } : p)(garmentPattern(L.flat, SIZES.includes(size) ? size : L.flat.size || 'M')) : null;
+  // what a drawing is built with, read by the vision model: the concept's picture and its drawn flats, front and back. Not saved: the pattern page
+  // shows it to the designer, who keeps it (it then saves with the pattern). Without a vision model, the sketch's name and the style stand
+  app.post('/v1/lab/concepts/:id/pattern/construction/read', { preHandler: pre }, async (req, reply) => {
+    const L = await load(req.params.id); if (!L) return reply.code(404).send({ error: 'Not found' });
+    if (L.kind !== 'garment' || !L.flat) return reply.code(409).send({ error: 'Only a garment with flats is read for how it is built' });
+    if (!env.ANTHROPIC_API_KEY || env.AI_FIXTURE) return reply.code(503).send({ error: 'No vision model is connected, so the drawing cannot be read: set what it is built with by hand' });
+    const imgs = [], pic = (await pool.query('select image from lab_concepts where id=$1', [L.c.id])).rows[0]?.image;
+    if (pic) imgs.push(['The picture of the piece', pic]);
+    for (const v of ['front', 'back']) { const art = L.flat?.drawn?.[v]; if (art) { const r = (await pool.query('select png from lab_art where id=$1', [art])).rows[0]; if (r?.png) imgs.push([`The flat, ${v}`, r.png]); } }
+    if (!imgs.length) return reply.code(409).send({ error: 'There is no drawing to read yet: draw the flats or the picture first' });
+    const content = []; for (const [label, b] of imgs.slice(0, 3)) { content.push({ type: 'text', text: label }, { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: (await sharp(b).resize({ width: 1100, height: 1100, fit: 'inside' }).flatten({ background: '#ffffff' }).jpeg({ quality: 82 }).toBuffer()).toString('base64') } }); }
+    content.push({ type: 'text', text: `The piece is a ${STYLES[L.flat.style]?.label || L.flat.style}. Say how it is built, from what the drawing shows (not what such a garment usually has). Pockets: list each one you see (two chest pockets are two entries).` });
+    const schema = { type: 'object', additionalProperties: false, required: ['sleeve', 'hood', 'collar', 'opening', 'pockets', 'panels'], properties: {
+      sleeve: { type: 'string', enum: SLEEVES }, hood: { type: 'boolean' }, collar: { type: 'string', enum: COLLARS }, opening: { type: 'string', enum: OPENINGS },
+      yoke: { type: 'object', additionalProperties: false, required: ['front', 'back'], properties: { front: { type: 'boolean' }, back: { type: 'boolean' } } },
+      pockets: { type: 'array', items: { type: 'string', enum: POCKETS } }, waist: { type: 'string', enum: WAISTS }, knee: { type: 'string', enum: ['single', 'double'] }, leg: { type: 'string', enum: LEGS },
+      pleats: { type: 'integer' }, panels: { type: 'string', enum: PANELS }, quilted: { type: 'boolean' }, belt: { type: 'boolean' }, lined: { type: 'boolean' } } };
+    try { const out = await askImpl('You are a pattern maker reading a designer\'s flat sketch to draft its pattern. Report only construction you can see in the drawing.', content, schema, { maxTokens: 600 });
+      const k = cleanConstruction(out); return { construction: k, words: constructionWords(k) }; }
+    catch (e) { log.warn?.({ err: e.message }, 'construction read failed'); return reply.code(502).send({ error: `The drawing could not be read: ${String(e.message).slice(0, 160)}` }); }
+  });
+  const draft = (L, size) => L.kind === 'plush' ? plushPattern(L.spec) : L.kind === 'footwear' ? footwearPattern(L.spec, size !== '' && size != null && Number.isFinite(Number(size)) ? Number(size) : null) : L.kind === 'garment' && L.flat ? (p => p && L.spec.sa ? { ...p, sa: L.spec.sa } : p)(garmentPattern(L.spec?.construction ? { ...L.flat, options: { ...(L.flat.options || {}), construction: L.spec.construction } } : L.flat, SIZES.includes(size) ? size : L.flat.size || 'M')) : null;
   const options = { footwear: { styles: Object.fromEntries(Object.entries(FW_STYLES).map(([k, v]) => [k, v.label])), toes: Object.fromEntries(Object.entries(TOES).map(([k, v]) => [k, v.label])), systems: SYSTEMS, widths: SHOE_WIDTHS, uppers: UPPERS, linings: LININGS, limits: SIZE_LIMITS }, plush: { shapes: PLUSH_SHAPES, types: PLUSH_TYPE, ears: PLUSH_EARS, fabrics: PLUSH_FABRICS, eyes: PLUSH_EYES, ages: PLUSH_AGES, snouts: PLUSH_SNOUTS, horns: PLUSH_HORNS, manes: PLUSH_MANES, tails: PLUSH_TAILS, parts: PLUSH_PARTS }, widths: WIDTHS, seamAllowances: [.25, .375, .5, .625], sizes: SIZES, fits: FITS,
     styles: Object.fromEntries(Object.entries(STYLES).map(([k, v]) => [k, { label: v.label, kind: v.kind, category: v.category }])), soon: SOON };
 
