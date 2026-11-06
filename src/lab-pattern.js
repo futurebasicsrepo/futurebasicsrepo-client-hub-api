@@ -101,8 +101,24 @@ function topPieces(S, m, o, style) {
     const aF = [turnF(1), turnF(-1)].sort((x, y) => Math.abs(x - best.a) - Math.abs(y - best.a))[0], dA = aF - best.a, cD = Math.cos(dA), sD = Math.sin(dA);
     const shownS = fold.map(([x, y]) => [x * cD - y * sD, x * sD + y * cD]);
     SLV = { rot: aF * 180 / Math.PI, a: aF, Ls, so: full ? Math.min(soB * .5, Math.max(m.sleeveOpening / 2, 1.5)) : so * .5, x: SP[0], y: SP[1], full };
-    pieces.push(piece('sleeve', 'Sleeve', sew, { cut: 2, pair: true, shown: shownS, notches: [[b * .55, ch * .3], [-b * .5, ch * .35], [-b * .58, ch * .4], [0, 0]], notes: ['One notch to the front, two to the back; the top notch meets the shoulder seam', ...(full ? [`Full sleeve: gathered (or two pleats) from ${r8(soB * 2)} in into the cuff`] : [])], place: { view: 'front', x: SP[0], y: SP[1], rot, z: -1 } }),
-      { ...piece('sleeve-2', 'Sleeve', sew, { cut: 0, shown: shownS, place: { view: 'front', x: -SP[0], y: SP[1], rot: -rot, flip: true, z: -1 } }), twin: true });
+    let shownP = shownS, placeR = { view: 'front', x: SP[0], y: SP[1], rot, z: -1 }, placeL = { view: 'front', x: -SP[0], y: SP[1], rot: -rot, flip: true, z: -1 };
+    if (m.sleeve > 12) {
+      // a long sleeve, seen as the flats draw it: hanging close to the body, not held out. Laid flat, a set-in sleeve pinned at both the shoulder
+      // point and the underarm can only sit splayed out; on a flat the cap rounds over the shoulder and the sleeve falls nearly straight, its
+      // inner edge from the underarm down beside the body, its end square to it. Drawn in the front's own inches (the right sleeve; the left
+      // is its mirror); the cut piece is unchanged
+      const al = (full ? 7 : 10) * Math.PI / 180, d = [Math.sin(al), Math.cos(al)], n = [Math.cos(al), -Math.sin(al)];
+      const wTop = b * (full ? .42 : .38), wEnd = full ? Math.max(m.sleeveOpening * 1.12, 4) : Math.max(m.sleeveOpening, 3.25), Li = Math.max(Ls - ch, 4);
+      const I = [UA[0] + d[0] * Li, UA[1] + d[1] * Li], O = [I[0] + n[0] * wEnd, I[1] + n[1] * wEnd], T = [UA[0] + wTop, UA[1] - depth * .08];
+      const bow = full ? 1.6 : .35, len = Math.hypot(O[0] - T[0], O[1] - T[1]), at = (P, k, off) => [P[0] + d[0] * k + n[0] * off, P[1] + d[1] * k + n[1] * off];
+      const cap = cubic(SP, [SP[0] + wTop * .55, SP[1] - .25], [T[0] + .15, T[1] - depth * .5], T), outer = cubic(T, at(T, len * .38, bow), at(O, -len * .3, bow * (full ? .9 : .4)), O);
+      const inner = cubic(I, at(I, -Li * .3, full ? -.35 : 0), at(UA, Li * .3, full ? -.25 : 0), UA), seam = armhole.slice().reverse();
+      shownP = [...cap, ...tail(outer), ...tail(inner), ...tail(seam)].map(([x, y]) => [x - SP[0], y - SP[1]]);
+      placeR = { view: 'front', x: SP[0], y: SP[1], rot: 0, z: -1 }; placeL = { view: 'front', x: -SP[0], y: SP[1], rot: 0, flip: true, z: -1 };
+      SLV = { hang: true, rot: -al * 180 / Math.PI, end: [(O[0] + I[0]) / 2, (O[1] + I[1]) / 2], so: wEnd / 2, Ls, full };
+    }
+    pieces.push(piece('sleeve', 'Sleeve', sew, { cut: 2, pair: true, shown: shownP, notches: [[b * .55, ch * .3], [-b * .5, ch * .35], [-b * .58, ch * .4], [0, 0]], notes: ['One notch to the front, two to the back; the top notch meets the shoulder seam', ...(full ? [`Full sleeve: gathered (or two pleats) from ${r8(soB * 2)} in into the cuff`] : [])], place: placeR }),
+      { ...piece('sleeve-2', 'Sleeve', sew, { cut: 0, shown: shownP, place: placeL }), twin: true });
   }
   const neckLen = lenOf(neck(m.neckDropFront)) * 2 + lenOf(neck(m.neckDropBack)) * 2;
   if (m.neckRib && !S.hood && !jacketCollar && !['shirt', 'shirtss', 'polo', 'coat'].includes(style)) { const o1 = [...mirrorX(neck(m.neckDropFront)).reverse(), ...tail(neck(m.neckDropFront))], rb = m.neckRib, nd = m.neckDropFront, shown = [...o1, ...o1.slice().reverse().map(([x, y]) => [x * (nw - rb * .5) / nw, y * Math.max(nd - rb, .3) / nd])]; // inside the neckline, tapering out at the shoulders
@@ -112,7 +128,7 @@ function topPieces(S, m, o, style) {
     // on the product the cuff sits on the end of the sleeve, turned with it, at its finished height and the sleeve's width there
     const fab = shirt ? 'self' : shearling ? 'shearling' : 'rib', name = shirt ? 'Cuff' : shearling ? 'Shearling cuff' : 'Cuff rib';
     const sew = [[-cw / 2, 0], [cw / 2, 0], [cw / 2, chh], [-cw / 2, chh]], half2 = SLV ? SLV.so : cw / 2, shown = [[-half2 - .15, 0], [half2 + .15, 0], [half2 + .15, m.cuffRib], [-half2 - .15, m.cuffRib]];
-    const end = sg => SLV ? { view: 'front', x: sg * (SLV.x - SLV.Ls * Math.sin(SLV.a)), y: SLV.y + SLV.Ls * Math.cos(SLV.a), rot: sg * SLV.rot, ...(sg < 0 ? { flip: true } : {}), z: 2 } : { view: 'front', x: sg * (SP[0] + Math.cos(a) * m.sleeve), y: SP[1] + Math.sin(a) * m.sleeve - m.cuffRib, z: 2 };
+    const end = sg => SLV?.hang ? { view: 'front', x: sg * SLV.end[0], y: SLV.end[1], rot: sg * SLV.rot, ...(sg < 0 ? { flip: true } : {}), z: 2 } : SLV ? { view: 'front', x: sg * (SLV.x - SLV.Ls * Math.sin(SLV.a)), y: SLV.y + SLV.Ls * Math.cos(SLV.a), rot: sg * SLV.rot, ...(sg < 0 ? { flip: true } : {}), z: 2 } : { view: 'front', x: sg * (SP[0] + Math.cos(a) * m.sleeve), y: SP[1] + Math.sin(a) * m.sleeve - m.cuffRib, z: 2 };
     pieces.push(piece('cuff', name, sew, { fabric: fab, cut: shirt ? 4 : 2, shown, notes: [shirt ? 'Fused on the outer cuff' : shearling ? 'Shearling, pile out; the cut edge turned in at the sleeve seam' : 'Folded in half, stretched onto the sleeve'], place: end(1) }),
       { ...piece('cuff-2', name, sew, { cut: 0, shown, place: end(-1), fabric: fab }), twin: true });
   }
@@ -163,6 +179,13 @@ function topPieces(S, m, o, style) {
     pieces.push(piece('collar', 'Knit collar', rect(r8(neckLen), 3), { fabric: 'rib', notes: ['Flat-knit collar, knitted to size'], place: { view: 'front', x: -neckLen / 2, y: -1, z: 4 } }));
   }
   if (style === 'coat') pieces.push(piece('collar', 'Collar', [[-neckLen / 2, 0], [neckLen / 2, 0], [neckLen / 2 + 1.2, 3.5], [-neckLen / 2 - 1.2, 3.5]], { cut: 2, notes: ['Fused under collar'], place: { view: 'front', x: 0, y: -1.5, z: 4 } }), piece('facing', 'Front facing', [[0, 0], [3, 0], [3, L], [0, L]], { cut: 2, pair: true, notes: ['Fused'], place: { view: 'front', x: 0, y: 0, z: -3 }, fabric: 'self' }));
+  // the back view shows what wraps round to it, as the back flat draws it: the sleeves and cuffs, the hem band, and a shearling collar's back.
+  // They are the same pieces seen from behind (not cut again): each names the piece it shows (`of`), so the cutting layout takes them from it
+  if (pieces.some(q => q.place.view === 'back')) {
+    for (const q of pieces.filter(x => ['sleeve', 'sleeve-2', 'cuff', 'cuff-2', 'hem-rib'].includes(x.id))) pieces.push({ ...q, id: `${q.id}-back`, of: q.id.replace(/-2$/, ''), cut: 0, twin: true, copy: true, place: { ...q.place, view: 'back' } });
+    if (jacketCollar === 'shearling') { const W = m.neckWidth / 2 + 2.4, ring = [[0, -2.7], [W, -2.3], [W + .9, -.6], [W + .5, 1.6], [W - 1.2, 2.9], [0, 3.3]], R = blob(ring, .5), h = R.filter(([x]) => x >= 0);
+      pieces.push({ ...piece('collar-back', 'Shearling collar', pieces.find(x => x.id === 'collar').sew, { fabric: 'shearling', cut: 0, shown: [...h, ...mirrorX(h).reverse()], place: { view: 'back', x: 0, y: 0, z: 4 } }), of: 'collar', twin: true, copy: true }); }
+  }
   if (m.sleeve === 0) pieces.push(piece('binding', 'Armhole and neck binding', rect(r8(lenOf(armhole) * 4 * .92 + neckLen * .9), 1.25), { fabric: 'self', cut: 1, notes: ['Bias or cross-grain strip, cut into lengths'], place: { view: 'front', x: -half, y: L + 1, z: 2 } }));
   return pieces;
 }
@@ -452,9 +475,9 @@ export function explodeAt(pat, t, layout = layoutOf(pat)) {
   const A = assembled(pat), B = A.bounds, spread = Math.min(Math.max(t, 0) / .45, 1), fly = Math.min(Math.max((t - .45) / .55, 0), 1), e = fly * fly * (3 - 2 * fly);
   const centre = view => { const ps = A.pieces.filter(x => (x.piece.place.view === 'back') === (view === 'back')).flatMap(x => x.pts), b = boundsOf(ps); return [(b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2]; };
   const C = { front: centre('front'), back: centre('back') }, goff = new Map(); let yo = B.y0; for (const g of layout) { goff.set(g, yo); yo += g.length + 3; }
-  const lx = B.x1 + 6, base = q => q.twin ? q.id.replace(/-2$/, '') : q.id, onProduct = new Map();
+  const lx = B.x1 + 6, base = q => q.twin ? q.of || q.id.replace(/-2$/, '') : q.id, onProduct = new Map();
   // the outlines on the product a piece is cut for: itself, then its twin (the other side)
-  for (const x of A.pieces) { const l = onProduct.get(base(x.piece)) || []; if (x.piece.twin) l.push(x); else l.unshift(x); onProduct.set(base(x.piece), l); }
+  for (const x of A.pieces) { if (x.piece.copy) continue; const l = onProduct.get(base(x.piece)) || []; if (x.piece.twin) l.push(x); else l.unshift(x); onProduct.set(base(x.piece), l); }
   const lift = (q, pts, layer, spread) => { const pb = boundsOf(pts), c = C[q.place.view === 'back' ? 'back' : 'front'], dx = (pb.x0 + pb.x1) / 2 - c[0], dy = (pb.y0 + pb.y1) / 2 - c[1], d = Math.hypot(dx, dy) || 1;
     // spread from the middle in proportion (the further out, the further it goes), so pieces that overlap on the product come apart; a layer
     // under the outer one (the inner pair) comes off beside it, outward, so each cut reads as its own piece
@@ -469,10 +492,12 @@ export function explodeAt(pat, t, layout = layoutOf(pat)) {
     list.push({ q, src, layer, n: it.n, tgt: q.sew.map(([x, y]) => [(it.flip ? -x + (it.b.x0 + it.b.x1) : x) + it.x + lx, y + it.y + goff.get(g)]) });
   }
   // what is on the product but not cut (moulded parts) lifts off and stays
-  for (const x of A.pieces) if (!used.has(x) && !(x.piece.twin && (onProduct.get(base(x.piece)) || []).some(y => used.has(y)))) list.push({ q: x.piece, src: x, layer: 0, n: 0, tgt: null, uncut: true });
+  for (const x of A.pieces) if (!x.piece.copy && !used.has(x) && !(x.piece.twin && (onProduct.get(base(x.piece)) || []).some(y => used.has(y)))) list.push({ q: x.piece, src: x, layer: 0, n: 0, tgt: null, uncut: true });
+  // a piece seen again on the back view (a sleeve, the hem band) is on the product until the pieces lift apart; it is not cut again
+  if (t < .3) for (const x of A.pieces) if (x.piece.copy) list.push({ q: x.piece, src: x, layer: 0, n: 0, tgt: null, uncut: true, copy: true });
   // spread all the way, no two pieces may cover each other (on one view, or one view's against the other's beside it): they are nudged apart (their boxes, a little margin between) and the nudge grows
   // with the spread, so the product comes apart smoothly into pieces that can each be seen
-  const full = list.map(x => x.src ? boundsOf(lift(x.src.piece, x.src.pts, x.layer, 1)) : null), off = list.map(() => [0, 0]);
+  const full = list.map(x => x.src && !x.copy ? boundsOf(lift(x.src.piece, x.src.pts, x.layer, 1)) : null), off = list.map(() => [0, 0]);
   for (let pass = 0; pass < 60; pass++) {
     let moved = false;
     for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
@@ -573,7 +598,7 @@ export function applyEdits(pat, edits) {
   const E = edits && typeof edits === 'object' ? edits : null; if (!pat || !E) return pat;
   const gone = new Set(E.removed || []), pieces = [];
   for (const q of pat.pieces) {
-    const baseId = q.twin ? q.id.replace(/-2$/, '') : q.id; if (gone.has(baseId)) continue;
+    const baseId = q.twin ? q.of || q.id.replace(/-2$/, '') : q.id; if (gone.has(baseId)) continue;
     const e = E.pieces?.[baseId]; if (!e) { pieces.push(q); continue; }
     const now = boundsOf(q.sew), mv = carry(e.box, now), sew = e.sew.map(mv);
     const next = { ...q, sew, notches: e.notches.map(mv), edited: true, ...(e.sa != null ? { sa: e.sa } : {}), ...(e.name ? { name: e.name } : {}), ...(e.fabric ? { fabric: e.fabric } : {}), ...(e.pair != null && !q.twin ? { pair: e.pair } : {}), ...(e.cut != null && !q.twin ? { cut: e.cut } : {}) };

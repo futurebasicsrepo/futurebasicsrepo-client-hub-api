@@ -20,8 +20,13 @@ test('a shearling aviator is measured like one and its pattern has what it is ma
     const sl = placed(by(s)), cf = placed(by(c)), near = q => Math.min(...sl.map(p => Math.hypot(p[0] - q[0], p[1] - q[1])));
     assert.ok(Math.min(...cf.map(near)) < 1.2, `${c} on the sleeve end`); assert.ok(Math.min(...cf.map(q => q[1])) > 12, `${c} at the wrist, not the shoulder`);
   }
-  // on the product a sleeve is drawn folded, as a flat shows it: about half its cut width
-  const sl = by('sleeve'); assert.ok(Math.abs(areaOf(sl.shown) / areaOf(sl.sew) - .5) < .02, 'half the area: folded');
+  // on the product a long sleeve hangs as the flats draw it: close to the body, down past the hem band's top, not held out at an angle
+  const sb = boundsOf(placed(by('sleeve'))), m = r.params.m;
+  assert.ok(sb.x1 - m.chest / 2 < 9, `the sleeve stays near the body (${(sb.x1 - m.chest / 2).toFixed(1)} in out)`);
+  assert.ok(sb.y1 > m.length - m.hemRib - 3, 'it falls to the hip, as on the flats');
+  assert.ok(areaOf(by('sleeve').shown) < areaOf(by('sleeve').sew), 'seen flat, less than the cut piece');
+  // the back view has what wraps round to it, shown and not cut again
+  for (const id of ['sleeve-back', 'sleeve-2-back', 'cuff-back', 'cuff-2-back', 'hem-rib-back', 'collar-back']) { const q = by(id); assert.ok(q && q.place.view === 'back' && q.cut === 0 && q.copy, id); }
   // the fix corrects only the length: the sketch stays laid over inches as measured, so colour blocks and graphics already placed stay on it
   const d = drawingOf(r.params, 'front'); assert.equal(d.v.chest, 134.91); assert.equal(d.v.hpsY, 98.42);
 });
