@@ -8,7 +8,7 @@
 //   POST /v1/lab/concepts/from-scratch           {name?, category, style?, shape?} a concept with nothing drawn yet: a blank page in Design to draw on,
 //                                                with a guide (the flat's outline for a garment, the plush's shape) → { concept, studio }
 import { STYLES, SIZES, FITS, defaultParams, detectStyle } from './lab-flats.js';
-import { PLUSH_TYPE, PLUSH_SNOUTS, PLUSH_HORNS, PLUSH_MANES, PLUSH_TAILS, PLUSH_PARTS, garmentPattern, applyEdits, cleanPatternEdits, patternDxfAama, plushPattern, cleanPlush, plushDefaults, patternSvg, patternDxf, yardage, fillGrams, PLUSH_SHAPES, PLUSH_EARS, PLUSH_FABRICS, PLUSH_EYES, PLUSH_AGES } from './lab-pattern.js';
+import { PLUSH_TYPE, PLUSH_SNOUTS, PLUSH_HORNS, PLUSH_MANES, PLUSH_TAILS, PLUSH_PARTS, garmentPattern, applyEdits, cutWords, cleanPatternEdits, patternDxfAama, plushPattern, cleanPlush, plushDefaults, patternSvg, patternDxf, yardage, fillGrams, PLUSH_SHAPES, PLUSH_EARS, PLUSH_FABRICS, PLUSH_EYES, PLUSH_AGES } from './lab-pattern.js';
 import { CATEGORIES } from './lab.js';
 import { silhouette, readShoe, proposal } from './lab-shoe-read.js';
 import { readPlush, plushProposal } from './lab-plush-read.js';
@@ -131,6 +131,11 @@ export function registerLabPatternRoutes(app, d) {
     out.push({ name: 'pattern/pattern-all-sizes-aama.dxf', data: Buffer.from(patternDxfAama(pats, { width, units: 'in', style: L.c.name })) });
     out.push({ name: `pattern/pattern-${String(pat.size).replace(/[^a-z0-9]+/gi, '').toLowerCase() || 'base'}.dxf`, data: Buffer.from(patternDxf(pat, { width })) });
     out.push({ name: 'pattern/pattern.svg', data: Buffer.from(patternSvg(pat, { width, title: L.c.name })) });
+    // the cut list and the trims, for the cutting room and purchasing: every piece cut (fabric, quantity, how), then what goes on besides cloth
+    if (pat.kind === 'garment') { const c = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+      const rows = [['Piece', 'Fabric', 'Cut', 'Notes'].map(c).join(','), ...pat.pieces.filter(q => q.cut > 0).map(q => [q.name, q.fabric, cutWords(q).replace(/^Cut /, ''), q.notes.join(' · ')].map(c).join(',')),
+        '', ['Trim', 'Specification', 'Quantity', 'Where'].map(c).join(','), ...(pat.trims || []).map(t => [t.item, t.spec, t.qty, t.where].map(c).join(','))];
+      out.push({ name: 'pattern/cut-list-and-trims.csv', data: Buffer.from(rows.join('\r\n') + '\r\n') }); }
     if (L.kind === 'footwear' || L.kind === 'plush') {
       const hrefs = await hrefsFor(L.spec), looks = looksOf(L);
       out.push({ name: 'flats/tech-flats.svg', data: Buffer.from(L.kind === 'plush' ? plushSheet(pat, { title: L.c.name, viewsMarkup, ...looks, hrefs }) : flatsSheet(pat, { title: L.c.name, ...looks, hrefs })) });

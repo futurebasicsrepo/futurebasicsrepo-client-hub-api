@@ -920,8 +920,16 @@ the page and the service).
     shearling hem band split at the zip, and shearling cuffs, with no knit rib. A stand-collar or funnel bomber gets a folded stand collar, and a
     collared jacket (Harrington, trucker, chore, blouson…) a top and under collar. The aviator's collar is drafted as a crescent with rounded points, so it lies over the shoulders as it does in the picture. Its chest strap (pointed, four eyelets, tucked under the collar) is cut as a piece. Its sleeves are full: they keep most of their width to the wrist and are gathered into narrower shearling cuffs. Jackets and coats with welt pockets get the welts (slanted
     on aviators, bombers and bikers) and their pocketing bags;
-  - on the product the pieces sit as a flat draws them. A sleeve is shown folded (half its cut width), hung from the shoulder and the underarm.
-    The cuffs sit on the sleeve ends, the hem band shows the front's share of its strip, and the neck rib follows the neckline;
+  - a lined jacket, coat or vest (`o.unlined` leaves it out) gets its inside, drafted from the shell's own lines as a pattern room does:
+    - **facings:** the front facing (front edge, neck and 1¼ in of shoulder, a 3 in band) and the back neck facing (2½ in deep), both fused;
+    - **lining:** the front lining is the front less the facing. The back lining is cut on the fold with 1 in more at the centre back for the pleat. The sleeve lining has its underarm raised ½ in and is ½ in longer for a jump pleat. All are sewn to the hem band seam with a ½ in jump (or hemmed ½ in up);
+    - **fusing pieces:** facings, under collar, welts, zip guard and chest strap;
+    - **zip guard:** behind the zip;
+    - **pockets:** a self pocket facing behind each welt's mouth, and an inside pocket in the lining (a lining welt and a pocketing bag);
+    - **under collar:** in self.
+  - its **trims** (`pattern.trims`): the separating zip sized to the front, zip puller, stay tape for the pocket mouths, eyelets for the strap, hanger loop, main, size and care labels with where they go, thread, and seam tape for shearling. They show as a Trims table on the pattern page. The production files carry `pattern/cut-list-and-trims.csv`: every piece cut, with fabric, quantity and notes, then the trims;
+  - on the product the pieces sit as a flat draws them. A long sleeve hangs nearly straight beside the body, its cap rounding over the shoulder (a full aviator sleeve bowing out); a short sleeve is shown folded, hung from the shoulder and the underarm.
+    The cuffs sit on the sleeve ends, the hem band shows the front's share of its strip, and the neck rib follows the neckline. The back view shows what wraps round to it: both sleeves and cuffs, the hem band and a shearling collar's back (copies, not cut again). The inside pieces are hidden under the shell;
   - bottoms: front and back legs (the back crotch longer), the waistband, pocket bags in pocketing, the fly facing, back pockets;
   - caps: six crown panels, the brim with its board, the sweatband; bucket hats, beanies (knit to shape) and totes too.
 

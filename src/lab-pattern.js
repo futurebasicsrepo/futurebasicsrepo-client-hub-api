@@ -64,6 +64,7 @@ function topPieces(S, m, o, style) {
   const tpl = String(o.template || ''), shearling = /shearling|aviator/.test(tpl) && ['jacket', 'coat', 'vest'].includes(style);
   const jacketCollar = shearling ? 'shearling' : style === 'jacket' && /stand-collar|funnel/.test(tpl) ? 'stand' : style === 'jacket' && /collared|harrington|trucker|chore|western|work|denim|blouson/.test(tpl) ? 'shirt' : null;
   let SLV = null; // where the sleeve sits on the front, so its cuff is drawn on its end
+  let SLEEVE = null, WELT = null; // the sleeve as cut ({ sew, b, ch, Ls }): its lining is drafted from it
   const half = m.chest / 2, nw = m.neckWidth / 2, drop = o.drop ? 2.25 : 0, sh = Math.max(m.shoulder / 2, nw + 2), slope = o.drop ? .75 : 1.25;
   const L = m.length - (m.hemRib || 0), SP = [sh, slope], UA = [half, slope + m.armhole + drop * .3], depth = UA[1] - SP[1];
   const neck = nd => cubic([0, nd], [nw * .55, nd], [nw, nd * .65], [nw, 0]);
@@ -89,7 +90,7 @@ function topPieces(S, m, o, style) {
     // an aviator's sleeve is full: it keeps most of its width to the wrist and is gathered into a narrower cuff, its sides bowing out
     const full = shearling && m.cuffRib > 0, soB = full ? Math.max(so, b * .74) : so;
     const capR = cubic([0, 0], [b * .45, 0], [b * .72, ch * .55], [b, ch]), side = full ? tail(cubic([b, ch], [b * 1.04, ch + (Ls - ch) * .45], [soB * 1.12, Ls * .86], [soB, Ls])) : [[so, Ls]];
-    const sew = [...mirrorX(capR).reverse(), ...tail(capR), ...side, ...mirrorX(side).reverse()];
+    const sew = [...mirrorX(capR).reverse(), ...tail(capR), ...side, ...mirrorX(side).reverse()]; SLEEVE = { sew, b, ch, Ls };
     const ang = (o.drop ? 62 : m.sleeve > 12 ? 62 : 24) * Math.PI / 180;
     // where the sleeve sits on the front flat: the top of the cap at the shoulder point, the underarm corner at the underarm, so it hangs from
     // the armhole the way the flats draw it (of the two ways round, the one whose cuff points out and down)
@@ -101,8 +102,24 @@ function topPieces(S, m, o, style) {
     const aF = [turnF(1), turnF(-1)].sort((x, y) => Math.abs(x - best.a) - Math.abs(y - best.a))[0], dA = aF - best.a, cD = Math.cos(dA), sD = Math.sin(dA);
     const shownS = fold.map(([x, y]) => [x * cD - y * sD, x * sD + y * cD]);
     SLV = { rot: aF * 180 / Math.PI, a: aF, Ls, so: full ? Math.min(soB * .5, Math.max(m.sleeveOpening / 2, 1.5)) : so * .5, x: SP[0], y: SP[1], full };
-    pieces.push(piece('sleeve', 'Sleeve', sew, { cut: 2, pair: true, shown: shownS, notches: [[b * .55, ch * .3], [-b * .5, ch * .35], [-b * .58, ch * .4], [0, 0]], notes: ['One notch to the front, two to the back; the top notch meets the shoulder seam', ...(full ? [`Full sleeve: gathered (or two pleats) from ${r8(soB * 2)} in into the cuff`] : [])], place: { view: 'front', x: SP[0], y: SP[1], rot, z: -1 } }),
-      { ...piece('sleeve-2', 'Sleeve', sew, { cut: 0, shown: shownS, place: { view: 'front', x: -SP[0], y: SP[1], rot: -rot, flip: true, z: -1 } }), twin: true });
+    let shownP = shownS, placeR = { view: 'front', x: SP[0], y: SP[1], rot, z: -1 }, placeL = { view: 'front', x: -SP[0], y: SP[1], rot: -rot, flip: true, z: -1 };
+    if (m.sleeve > 12) {
+      // a long sleeve, seen as the flats draw it: hanging close to the body, not held out. Laid flat, a set-in sleeve pinned at both the shoulder
+      // point and the underarm can only sit splayed out; on a flat the cap rounds over the shoulder and the sleeve falls nearly straight, its
+      // inner edge from the underarm down beside the body, its end square to it. Drawn in the front's own inches (the right sleeve; the left
+      // is its mirror); the cut piece is unchanged
+      const al = (full ? 7 : 10) * Math.PI / 180, d = [Math.sin(al), Math.cos(al)], n = [Math.cos(al), -Math.sin(al)];
+      const wTop = b * (full ? .42 : .38), wEnd = full ? Math.max(m.sleeveOpening * 1.12, 4) : Math.max(m.sleeveOpening, 3.25), Li = Math.max(Ls - ch, 4);
+      const I = [UA[0] + d[0] * Li, UA[1] + d[1] * Li], O = [I[0] + n[0] * wEnd, I[1] + n[1] * wEnd], T = [UA[0] + wTop, UA[1] - depth * .08];
+      const bow = full ? 1.6 : .35, len = Math.hypot(O[0] - T[0], O[1] - T[1]), at = (P, k, off) => [P[0] + d[0] * k + n[0] * off, P[1] + d[1] * k + n[1] * off];
+      const cap = cubic(SP, [SP[0] + wTop * .55, SP[1] - .25], [T[0] + .15, T[1] - depth * .5], T), outer = cubic(T, at(T, len * .38, bow), at(O, -len * .3, bow * (full ? .9 : .4)), O);
+      const inner = cubic(I, at(I, -Li * .3, full ? -.35 : 0), at(UA, Li * .3, full ? -.25 : 0), UA), seam = armhole.slice().reverse();
+      shownP = [...cap, ...tail(outer), ...tail(inner), ...tail(seam)].map(([x, y]) => [x - SP[0], y - SP[1]]);
+      placeR = { view: 'front', x: SP[0], y: SP[1], rot: 0, z: -1 }; placeL = { view: 'front', x: -SP[0], y: SP[1], rot: 0, flip: true, z: -1 };
+      SLV = { hang: true, rot: -al * 180 / Math.PI, end: [(O[0] + I[0]) / 2, (O[1] + I[1]) / 2], so: wEnd / 2, Ls, full };
+    }
+    pieces.push(piece('sleeve', 'Sleeve', sew, { cut: 2, pair: true, shown: shownP, notches: [[b * .55, ch * .3], [-b * .5, ch * .35], [-b * .58, ch * .4], [0, 0]], notes: ['One notch to the front, two to the back; the top notch meets the shoulder seam', ...(full ? [`Full sleeve: gathered (or two pleats) from ${r8(soB * 2)} in into the cuff`] : [])], place: placeR }),
+      { ...piece('sleeve-2', 'Sleeve', sew, { cut: 0, shown: shownP, place: placeL }), twin: true });
   }
   const neckLen = lenOf(neck(m.neckDropFront)) * 2 + lenOf(neck(m.neckDropBack)) * 2;
   if (m.neckRib && !S.hood && !jacketCollar && !['shirt', 'shirtss', 'polo', 'coat'].includes(style)) { const o1 = [...mirrorX(neck(m.neckDropFront)).reverse(), ...tail(neck(m.neckDropFront))], rb = m.neckRib, nd = m.neckDropFront, shown = [...o1, ...o1.slice().reverse().map(([x, y]) => [x * (nw - rb * .5) / nw, y * Math.max(nd - rb, .3) / nd])]; // inside the neckline, tapering out at the shoulders
@@ -112,7 +129,7 @@ function topPieces(S, m, o, style) {
     // on the product the cuff sits on the end of the sleeve, turned with it, at its finished height and the sleeve's width there
     const fab = shirt ? 'self' : shearling ? 'shearling' : 'rib', name = shirt ? 'Cuff' : shearling ? 'Shearling cuff' : 'Cuff rib';
     const sew = [[-cw / 2, 0], [cw / 2, 0], [cw / 2, chh], [-cw / 2, chh]], half2 = SLV ? SLV.so : cw / 2, shown = [[-half2 - .15, 0], [half2 + .15, 0], [half2 + .15, m.cuffRib], [-half2 - .15, m.cuffRib]];
-    const end = sg => SLV ? { view: 'front', x: sg * (SLV.x - SLV.Ls * Math.sin(SLV.a)), y: SLV.y + SLV.Ls * Math.cos(SLV.a), rot: sg * SLV.rot, ...(sg < 0 ? { flip: true } : {}), z: 2 } : { view: 'front', x: sg * (SP[0] + Math.cos(a) * m.sleeve), y: SP[1] + Math.sin(a) * m.sleeve - m.cuffRib, z: 2 };
+    const end = sg => SLV?.hang ? { view: 'front', x: sg * SLV.end[0], y: SLV.end[1], rot: sg * SLV.rot, ...(sg < 0 ? { flip: true } : {}), z: 2 } : SLV ? { view: 'front', x: sg * (SLV.x - SLV.Ls * Math.sin(SLV.a)), y: SLV.y + SLV.Ls * Math.cos(SLV.a), rot: sg * SLV.rot, ...(sg < 0 ? { flip: true } : {}), z: 2 } : { view: 'front', x: sg * (SP[0] + Math.cos(a) * m.sleeve), y: SP[1] + Math.sin(a) * m.sleeve - m.cuffRib, z: 2 };
     pieces.push(piece('cuff', name, sew, { fabric: fab, cut: shirt ? 4 : 2, shown, notes: [shirt ? 'Fused on the outer cuff' : shearling ? 'Shearling, pile out; the cut edge turned in at the sleeve seam' : 'Folded in half, stretched onto the sleeve'], place: end(1) }),
       { ...piece('cuff-2', name, sew, { cut: 0, shown, place: end(-1), fabric: fab }), twin: true });
   }
@@ -148,7 +165,7 @@ function topPieces(S, m, o, style) {
   }
   // a jacket's welt pockets: slanted at the hip, the welt and its bag (pocketing) behind it
   if ((style === 'jacket' || style === 'coat') && S.pocket === 'welt' && !o.noPocket) {
-    const slant = /aviator|shearling|bomber|blouson|biker|moto/.test(tpl) ? 55 : 80, len = 6.5, cx = half * .58, cy = L * .62;
+    const slant = /aviator|shearling|bomber|blouson|biker|moto/.test(tpl) ? 55 : 80, len = 6.5, cx = half * .58, cy = L * .62; WELT = { len, cx, cy, slant };
     const welt = [[-len / 2, -.5], [len / 2, -.5], [len / 2, .5], [-len / 2, .5]];
     pieces.push(piece('welt', 'Pocket welt', rect(len + 1, 2.5), { cut: 2, pair: true, shown: welt, notes: ['Folded to a 1 in welt, fused; bartack both ends'], place: { view: 'front', x: cx, y: cy, rot: slant, z: 3 } }),
       { ...piece('welt-2', 'Pocket welt', rect(len + 1, 2.5), { cut: 0, shown: welt, place: { view: 'front', x: -cx, y: cy, rot: -slant, flip: true, z: 3 } }), twin: true },
@@ -163,6 +180,75 @@ function topPieces(S, m, o, style) {
     pieces.push(piece('collar', 'Knit collar', rect(r8(neckLen), 3), { fabric: 'rib', notes: ['Flat-knit collar, knitted to size'], place: { view: 'front', x: -neckLen / 2, y: -1, z: 4 } }));
   }
   if (style === 'coat') pieces.push(piece('collar', 'Collar', [[-neckLen / 2, 0], [neckLen / 2, 0], [neckLen / 2 + 1.2, 3.5], [-neckLen / 2 - 1.2, 3.5]], { cut: 2, notes: ['Fused under collar'], place: { view: 'front', x: 0, y: -1.5, z: 4 } }), piece('facing', 'Front facing', [[0, 0], [3, 0], [3, L], [0, L]], { cut: 2, pair: true, notes: ['Fused'], place: { view: 'front', x: 0, y: 0, z: -3 }, fabric: 'self' }));
+  // ---- the inside of a lined jacket or coat: facings, lining, fusing, the zip guard and the trims ----
+  // Drafted from the shell's own lines, the way a pattern room does it: the facings follow the front edge and the back neck and are fused; the
+  // lining is the shell less the facings (its front edge is the facing's inner edge), with a 1 in pleat at the centre back for reach, a ½ in
+  // jump at the hem and the sleeve's underarm raised ½ in so the arm moves; pockets get a self facing over a pocketing bag, so the lining
+  // never shows at the mouth. Every piece is net (the seam allowance is added when cut); hidden under the shell on the product
+  const lined = ['jacket', 'coat', 'vest'].includes(style) && !o.unlined, trims = [];
+  if (lined) {
+    const ndf = m.neckDropFront, ndb = m.neckDropBack, fw = Math.max(nw - .25, 2.75) + ext, shY = x => slope * (x - nw) / (sh - nw);
+    // front facing: the front edge to the hem, the neck and 1¼ in of the shoulder, its inner edge curving down to a straight 3 in band
+    const fIn = cubic([nw + 1.25, shY(nw + 1.25)], [nw + 1.4, ndf * .9], [fw + .2, ndf + 2], [fw, ndf + 5]);
+    const facing = [[-ext, ndf], ...tail(neck(ndf)), ...tail(fIn), [fw, L], [-ext, L]];
+    pieces.push(piece('front-facing', 'Front facing', facing, { cut: 2, pair: true, hidden: true, notes: ['Self, fused; sewn to the front edge and the neck, the lining sewn to its inner edge', ...(S.zip || style === 'jacket' ? ['The zip tape caught between the front and the facing'] : [])], place: { view: 'front', x: 0, y: 0, z: -2 } }));
+    pieces.push(piece('front-facing-fuse', 'Front facing fusing', facing, { fabric: 'fusing', cut: 2, pair: true, hidden: true, notes: ['Fused to the front facing'], place: { view: 'front', x: 0, y: 0, z: -3 } }));
+    // back neck facing: the back neck, 1¼ in of each shoulder, 2½ in deep at the centre back
+    const bD = ndb + 2.5, bIn = cubic([nw + 1.25, shY(nw + 1.25)], [nw + 1.1, bD * .7], [nw * .55, bD], [0, bD]);
+    const bHalf = [[0, ndb], ...tail(neck(ndb)), ...tail(bIn)], bFacing = [...bHalf, ...mirrorX(bHalf).reverse().slice(1, -1)];
+    pieces.push(piece('back-facing', 'Back neck facing', bFacing, { cut: 1, fold: true, hidden: true, notes: ['Self, fused; the main label sewn at its centre, 1 in below the neck seam', 'Hanger loop caught in the neck seam at the centre back'], place: { view: 'back', x: 0, y: 0, z: -2 } }));
+    pieces.push(piece('back-facing-fuse', 'Back neck facing fusing', bFacing, { fabric: 'fusing', cut: 1, fold: true, hidden: true, notes: ['Fused to the back neck facing'], place: { view: 'back', x: 0, y: 0, z: -3 } }));
+    // front lining: the front less the facing; to the hem band seam with a ½ in jump, or ½ in above a turned-up hem
+    const jump = m.hemRib ? .5 : -.5, ll = L + jump;
+    const fLining = [fIn[0], [SP[0], SP[1]], ...tail(armhole), [half, ll], [fw, ll], ...fIn.slice().reverse().slice(0, -1)];
+    pieces.push(piece('front-lining', 'Front lining', fLining, { fabric: 'lining', cut: 2, pair: true, hidden: true, notes: [m.hemRib ? `Sewn to the hem band seam with a ½ in jump pleat` : 'Hemmed ½ in above the shell hem: a 1 in jump pleat', 'Inside pocket on the wearer’s left'], place: { view: 'front', x: 0, y: 0, z: -4 } }));
+    // back lining: the back less the neck facing, cut on the fold with 1 in more at the centre back for the pleat
+    const bLining = [[-1, bD], ...bIn.slice().reverse(), [SP[0], SP[1]], ...tail(armhole), [half, ll], [-1, ll]];
+    pieces.push(piece('back-lining', 'Back lining', bLining, { fabric: 'lining', cut: 1, fold: true, hidden: true, notes: ['1 in pleat at the centre back (2 in opened), stitched 2 in down from the neck and at the waist', m.hemRib ? 'Sewn to the hem band seam with a ½ in jump pleat' : 'A 1 in jump pleat at the hem', 'Care label in the left side seam, 4 in above the hem'], place: { view: 'back', x: 0, y: 0, z: -4 } }));
+    if (SLEEVE) {
+      // sleeve lining: the sleeve, its underarm raised ½ in, ½ in longer for a jump pleat at the cuff
+      const { sew, b, ch, Ls } = SLEEVE, k = (x, y) => .5 * Math.min(1, Math.abs(x) / b) ** 3 * (y <= ch ? 1 : Math.max(0, 1 - (y - ch) / 3));
+      const sl = sew.map(([x, y]) => [x, y >= Ls - .01 ? y + .5 : y - k(x, y)]);
+      pieces.push(piece('sleeve-lining', 'Sleeve lining', sl, { fabric: 'lining', cut: 2, pair: true, hidden: true, notes: ['Underarm raised ½ in for movement; ½ in jump pleat at the cuff', 'Bagged: one sleeve-lining seam left open 6 in to turn the jacket through'], ...(pieces.find(q => q.id === 'sleeve') ? { shown: pieces.find(q => q.id === 'sleeve').shown, place: { ...pieces.find(q => q.id === 'sleeve').place, z: -6 } } : { place: { view: 'front', x: 0, y: 0, z: -6 } }) }));
+    }
+    // zip guard (wind flap) behind the zip, the full front edge
+    if (S.zip || style === 'jacket') {
+      const zl = r8(L + (m.hemRib || 0) - ndf);
+      pieces.push(piece('zip-guard', 'Zip guard', rect(2.5, zl), { cut: 2, hidden: true, notes: ['Self, fused, folded to 1¼ in; on the wearer’s right, behind the zip'], place: { view: 'front', x: -2.5, y: ndf, z: -2 } }),
+        piece('zip-guard-fuse', 'Zip guard fusing', rect(1.25, zl), { fabric: 'fusing', cut: 1, hidden: true, notes: ['Half the guard'], place: { view: 'front', x: -1.25, y: ndf, z: -3 } }));
+      const zip = Math.max(14, Math.round(zl - .5));
+      trims.push({ item: 'Separating zip', spec: `#5 metal (or #8 on heavy cloth), open-end, ${zip} in (${Math.round(zip * 2.54)} cm), measured from the neck to the bottom of the ${m.hemRib ? 'hem band' : 'hem'}`, qty: 1, where: 'Centre front' }, { item: 'Zip puller', spec: 'Matching the zip', qty: 1, where: 'Centre front' });
+    }
+    // the welt pockets: the welt is fused; a self facing on the back bag so the lining never shows at the mouth; a stay tape along the mouth
+    if (WELT) {
+      pieces.push(piece('welt-fuse', 'Welt fusing', rect(WELT.len + 1, 1.25), { fabric: 'fusing', cut: 2, hidden: true, notes: ['Fused to the half of the welt that shows'], place: { view: 'front', x: WELT.cx, y: WELT.cy, rot: WELT.slant, z: -3 } }),
+        piece('pocket-facing', 'Pocket facing', rect(WELT.len + 1, 2.5), { cut: 2, pair: true, hidden: true, notes: ['Self, on the back pocket bag behind the mouth'], place: { view: 'front', x: WELT.cx, y: WELT.cy, rot: WELT.slant, z: -3 } }));
+      trims.push({ item: 'Stay tape', spec: '⅜ in (10 mm) fusible, straight grain', qty: `${r8((WELT.len + 1) * 2 + 2)} in`, where: 'Along both pocket mouths' });
+    }
+    // an inside pocket on the wearer's left, in the lining: a lining welt and a pocketing bag
+    pieces.push(piece('inside-welt', 'Inside pocket welt', rect(6.5, 2), { fabric: 'lining', cut: 1, hidden: true, notes: ['Inside pocket on the wearer’s left, 1 in in from the facing, level with the underarm; a 5½ in opening'], place: { view: 'front', x: fw + 1, y: UA[1] - 1, z: -3 } }),
+      piece('inside-bag', 'Inside pocket bag', [[0, 0], [6.5, 0], [6.5, 7], [0, 7]], { fabric: 'pocketing', cut: 2, hidden: true, notes: ['Pocketing; the back bag faced with lining'], place: { view: 'front', x: fw + 1, y: UA[1] - 1, z: -4 } }));
+    // the collar: an under collar in self, fused, under the top collar
+    const col = pieces.find(q => q.id === 'collar');
+    if (col) pieces.push(piece('under-collar', 'Under collar', col.sew, { cut: 1, fold: col.fold, hidden: true, notes: ['Self, fused; rolled ⅛ in under the top collar so the seam does not show'], ...(col.shown ? { shown: col.shown } : {}), place: { ...col.place, z: (col.place.z || 0) - 1 } }),
+      piece('under-collar-fuse', 'Under collar fusing', col.sew, { fabric: 'fusing', cut: 1, fold: col.fold, hidden: true, notes: ['Fused to the under collar'], ...(col.shown ? { shown: col.shown } : {}), place: { ...col.place, z: (col.place.z || 0) - 2 } }));
+    if (pieces.some(q => q.id === 'strap')) { pieces.push(piece('strap-fuse', 'Chest strap fusing', [[0, 0], [1.75, 0], [1.75, 5.4], [.875, 6.2], [0, 5.4]], { fabric: 'fusing', cut: 1, hidden: true, notes: ['Fused to the outer strap'], shown: pieces.find(q => q.id === 'strap').shown, place: { ...pieces.find(q => q.id === 'strap').place, z: 1 } }));
+      trims.push({ item: 'Eyelets', spec: '¼ in (6 mm) brass, with washers', qty: 4, where: 'Chest strap, two pairs' }); }
+    trims.push({ item: 'Hanger loop', spec: '⅜ in twill tape, 7 in', qty: 1, where: 'Centre back neck seam' },
+      { item: 'Main label', spec: 'Woven, folded end', qty: 1, where: 'Back neck facing, centre, 1 in below the neck seam' },
+      { item: 'Size label', spec: 'Woven', qty: 1, where: 'Under the main label' },
+      { item: 'Care and content label', spec: 'Printed satin', qty: 1, where: 'Left side seam of the lining, 4 in above the hem' },
+      { item: 'Thread', spec: 'Tex 40 core-spun polyester for seams; Tex 60 for topstitching', qty: 'about 250 m', where: 'Throughout' });
+    if (shearling) trims.push({ item: 'Seam tape', spec: '½ in leather or twill tape for shearling seams (butted and taped, no bulk)', qty: `${r8((m.chest * 2) + 4 * (m.sleeveOpening || 4) + neckLen + 6)} in`, where: 'Collar, cuff and hem band seams' });
+  }
+  pieces.trims = trims;
+  // the back view shows what wraps round to it, as the back flat draws it: the sleeves and cuffs, the hem band, and a shearling collar's back.
+  // They are the same pieces seen from behind (not cut again): each names the piece it shows (`of`), so the cutting layout takes them from it
+  if (pieces.some(q => q.place.view === 'back')) {
+    for (const q of pieces.filter(x => ['sleeve', 'sleeve-2', 'cuff', 'cuff-2', 'hem-rib'].includes(x.id))) pieces.push({ ...q, id: `${q.id}-back`, of: q.id.replace(/-2$/, ''), cut: 0, twin: true, copy: true, place: { ...q.place, view: 'back' } });
+    if (jacketCollar === 'shearling') { const W = m.neckWidth / 2 + 2.4, ring = [[0, -2.7], [W, -2.3], [W + .9, -.6], [W + .5, 1.6], [W - 1.2, 2.9], [0, 3.3]], R = blob(ring, .5), h = R.filter(([x]) => x >= 0);
+      pieces.push({ ...piece('collar-back', 'Shearling collar', pieces.find(x => x.id === 'collar').sew, { fabric: 'shearling', cut: 0, shown: [...h, ...mirrorX(h).reverse()], place: { view: 'back', x: 0, y: 0, z: 4 } }), of: 'collar', twin: true, copy: true }); }
+  }
   if (m.sleeve === 0) pieces.push(piece('binding', 'Armhole and neck binding', rect(r8(lenOf(armhole) * 4 * .92 + neckLen * .9), 1.25), { fabric: 'self', cut: 1, notes: ['Bias or cross-grain strip, cut into lengths'], place: { view: 'front', x: -half, y: L + 1, z: 2 } }));
   return pieces;
 }
@@ -235,9 +321,9 @@ function totePieces(m) {
 export function garmentPattern(p, size = p.size || 'M') {
   const S = STYLES[p.style]; if (!S) return null;
   const m = measurementsFor(p, size), o = { ...(p.options || {}), template: p.template };
-  const pieces = S.kind === 'top' ? topPieces(S, m, o, p.style) : S.kind === 'bottom' ? bottomPieces(S, m, o, p.style) : S.kind === 'cap' ? capPieces(S, m, o) : S.kind === 'beanie' ? beaniePieces(m) : totePieces(m);
+  const pieces = S.kind === 'top' ? topPieces(S, m, o, p.style) : S.kind === 'bottom' ? bottomPieces(S, m, o, p.style) : S.kind === 'cap' ? capPieces(S, m, o) : S.kind === 'beanie' ? beaniePieces(m) : totePieces(m), trims = pieces.trims || [];
   const knit = ['tee', 'longsleeve', 'crewneck', 'hoodie', 'ziphoodie', 'tank', 'bodysuit', 'swimsuit', 'bikini', 'bra', 'leggings', 'beanie'].includes(p.style);
-  return { kind: 'garment', style: p.style, label: S.label, size: S.oneSize ? 'One size' : size, sa: knit ? .375 : .5, pieces, notes: [knit ? 'Knit: ⅜ in seam allowance, overlocked' : 'Woven: ½ in seam allowance', 'A first block from the measurements: true it up on the first sample'] };
+  return { kind: 'garment', style: p.style, label: S.label, size: S.oneSize ? 'One size' : size, sa: knit ? .375 : .5, pieces: [...pieces], trims, notes: [knit ? 'Knit: ⅜ in seam allowance, overlocked' : 'Woven: ½ in seam allowance', 'A first block from the measurements: true it up on the first sample'] };
 }
 
 // ---- plush ----
@@ -452,9 +538,9 @@ export function explodeAt(pat, t, layout = layoutOf(pat)) {
   const A = assembled(pat), B = A.bounds, spread = Math.min(Math.max(t, 0) / .45, 1), fly = Math.min(Math.max((t - .45) / .55, 0), 1), e = fly * fly * (3 - 2 * fly);
   const centre = view => { const ps = A.pieces.filter(x => (x.piece.place.view === 'back') === (view === 'back')).flatMap(x => x.pts), b = boundsOf(ps); return [(b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2]; };
   const C = { front: centre('front'), back: centre('back') }, goff = new Map(); let yo = B.y0; for (const g of layout) { goff.set(g, yo); yo += g.length + 3; }
-  const lx = B.x1 + 6, base = q => q.twin ? q.id.replace(/-2$/, '') : q.id, onProduct = new Map();
+  const lx = B.x1 + 6, base = q => q.twin ? q.of || q.id.replace(/-2$/, '') : q.id, onProduct = new Map();
   // the outlines on the product a piece is cut for: itself, then its twin (the other side)
-  for (const x of A.pieces) { const l = onProduct.get(base(x.piece)) || []; if (x.piece.twin) l.push(x); else l.unshift(x); onProduct.set(base(x.piece), l); }
+  for (const x of A.pieces) { if (x.piece.copy) continue; const l = onProduct.get(base(x.piece)) || []; if (x.piece.twin) l.push(x); else l.unshift(x); onProduct.set(base(x.piece), l); }
   const lift = (q, pts, layer, spread) => { const pb = boundsOf(pts), c = C[q.place.view === 'back' ? 'back' : 'front'], dx = (pb.x0 + pb.x1) / 2 - c[0], dy = (pb.y0 + pb.y1) / 2 - c[1], d = Math.hypot(dx, dy) || 1;
     // spread from the middle in proportion (the further out, the further it goes), so pieces that overlap on the product come apart; a layer
     // under the outer one (the inner pair) comes off beside it, outward, so each cut reads as its own piece
@@ -469,10 +555,12 @@ export function explodeAt(pat, t, layout = layoutOf(pat)) {
     list.push({ q, src, layer, n: it.n, tgt: q.sew.map(([x, y]) => [(it.flip ? -x + (it.b.x0 + it.b.x1) : x) + it.x + lx, y + it.y + goff.get(g)]) });
   }
   // what is on the product but not cut (moulded parts) lifts off and stays
-  for (const x of A.pieces) if (!used.has(x) && !(x.piece.twin && (onProduct.get(base(x.piece)) || []).some(y => used.has(y)))) list.push({ q: x.piece, src: x, layer: 0, n: 0, tgt: null, uncut: true });
+  for (const x of A.pieces) if (!x.piece.copy && !used.has(x) && !(x.piece.twin && (onProduct.get(base(x.piece)) || []).some(y => used.has(y)))) list.push({ q: x.piece, src: x, layer: 0, n: 0, tgt: null, uncut: true });
+  // a piece seen again on the back view (a sleeve, the hem band) is on the product until the pieces lift apart; it is not cut again
+  if (t < .3) for (const x of A.pieces) if (x.piece.copy) list.push({ q: x.piece, src: x, layer: 0, n: 0, tgt: null, uncut: true, copy: true });
   // spread all the way, no two pieces may cover each other (on one view, or one view's against the other's beside it): they are nudged apart (their boxes, a little margin between) and the nudge grows
   // with the spread, so the product comes apart smoothly into pieces that can each be seen
-  const full = list.map(x => x.src ? boundsOf(lift(x.src.piece, x.src.pts, x.layer, 1)) : null), off = list.map(() => [0, 0]);
+  const full = list.map(x => x.src && !x.copy ? boundsOf(lift(x.src.piece, x.src.pts, x.layer, 1)) : null), off = list.map(() => [0, 0]);
   for (let pass = 0; pass < 60; pass++) {
     let moved = false;
     for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
@@ -573,7 +661,7 @@ export function applyEdits(pat, edits) {
   const E = edits && typeof edits === 'object' ? edits : null; if (!pat || !E) return pat;
   const gone = new Set(E.removed || []), pieces = [];
   for (const q of pat.pieces) {
-    const baseId = q.twin ? q.id.replace(/-2$/, '') : q.id; if (gone.has(baseId)) continue;
+    const baseId = q.twin ? q.of || q.id.replace(/-2$/, '') : q.id; if (gone.has(baseId)) continue;
     const e = E.pieces?.[baseId]; if (!e) { pieces.push(q); continue; }
     const now = boundsOf(q.sew), mv = carry(e.box, now), sew = e.sew.map(mv);
     const next = { ...q, sew, notches: e.notches.map(mv), edited: true, ...(e.sa != null ? { sa: e.sa } : {}), ...(e.name ? { name: e.name } : {}), ...(e.fabric ? { fabric: e.fabric } : {}), ...(e.pair != null && !q.twin ? { pair: e.pair } : {}), ...(e.cut != null && !q.twin ? { cut: e.cut } : {}) };
