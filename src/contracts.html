@@ -42,6 +42,7 @@ fieldset{border:1px solid var(--line);border-radius:16px;margin:0;padding:14px 1
 .empty{color:var(--dim);padding:14px 0}
 details.cl{border:1px solid var(--line);border-radius:14px;padding:8px 12px;background:#fff}details.cl summary{cursor:pointer;font-weight:600}details.cl textarea{margin-top:8px;min-height:120px}
 img.ink{display:block;height:52px;width:auto;max-width:100%;margin:4px 0 6px}
+.inkbox{border:1px solid var(--line,rgba(20,20,22,.14));border-radius:12px;padding:10px 12px;margin:10px 0;background:#fbfaf6}.inkbox img{display:block;height:60px;width:auto;max-width:100%;margin:0 0 4px}.inkbox .pad{position:relative;height:150px;background:#fff;border:1px dashed rgba(20,20,22,.25);border-radius:10px}.inkbox .pad canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:crosshair}.inkbox .pad .line{position:absolute;left:8%;right:8%;bottom:34px;border-bottom:1px solid rgba(20,20,22,.3);pointer-events:none}
 </style>
 <script src="/feedback.js"></script>
 <link rel="stylesheet" href="/cue.css">
@@ -109,7 +110,8 @@ async function openContract(id){
   mk('Download PDF','',()=>pdf(id));
   if(c.status==='sent'){mk('Send a reminder','',async()=>{const x=await api(`/v1/contracts/${id}/remind`,{body:{}});msg(x.emailed?'Reminder sent.':'Reminder saved, but the email could not be sent.')});}
   if(c.status==='sent'||c.status==='signed_by_client'||c.status==='executed'){mk('Replace link','',async()=>{if(!confirm('The old link stops working. Replace it?'))return;await api(`/v1/contracts/${id}/link`,{body:{replace:true}});openContract(id)})}
-  if((c.status==='sent'||c.status==='signed_by_client')&&!c.providerSignature){mk('Sign for Future Basics','go',async()=>{const mine=await api('/v1/me/signature').then(r=>r.mark).catch(()=>null);if(!confirm(mine?'Sign this agreement for Future Basics with your signature?':'Sign this agreement for Future Basics? You have no handwritten signature yet, so your typed name signs. Add yours under Settings → My signature.'))return;await api(`/v1/contracts/${id}/countersign`,{body:{}});done('Signed.',id)},!ME.signer)}
+  if((c.status==='sent'||c.status==='signed_by_client')&&c.providerSignature&&!c.providerSignature.ink&&ME.signer&&String(c.providerSignature.by||'').toLowerCase()===String(ME.email||'').toLowerCase()){mk('Add my handwritten signature','',async()=>{if(!(await signDialog('Add your handwritten signature',`You signed ${c.number} with your typed name. Your handwritten signature goes on that signature in ink; the agreement and when it was signed stay as they are.`,'Add it',true)))return;await api(`/v1/contracts/${id}/ink`,{body:{}});done('Your handwritten signature is on it.',id)})}
+  if((c.status==='sent'||c.status==='signed_by_client')&&!c.providerSignature){mk('Sign for Future Basics','go',async()=>{if(!(await signDialog('Sign for Future Basics',`Sign ${c.title} (${c.number}) for Future Basics.`,'Sign it')))return;await api(`/v1/contracts/${id}/countersign`,{body:{}});done('Signed.',id)},!ME.signer)}
   if(c.status==='executed'&&!c.invoicesAt){mk('Draft the invoices','go',async()=>{if(!confirm(`Draft ${rows.rows.length} invoices from the payment schedule?`))return;const x=await api(`/v1/contracts/${id}/invoices`,{body:{}});done(`${x.made.length} invoices drafted.`,id)},!ME.signer)}
   if(c.dealId&&c.status==='executed')acts.push({href:'/sales#pipeline',label:'Open the deal'});
   if(!['executed','void'].includes(c.status)){mk('Revise','',async()=>{const x=await api(`/v1/contracts/${id}/revise`,{body:{}});openContract(x.contract.id)});mk('Void','bad',async()=>{const reason=prompt('Why is it being voided?','');if(reason===null)return;await api(`/v1/contracts/${id}/void`,{body:{reason}});done('Voided.',id)})}
@@ -287,14 +289,42 @@ async function previewPdf(){const tab=window.open('','_blank');emsg('Making the 
 async function preview(){await flush();if(!E.c.plan){emsg(`Fix the payment plan first: ${planErr||'choose how the fee is paid'}.`,'bad');return}const r=await api('/v1/contracts/render',{body:{content:payload().content,number:E.number}});showProblems(r.problems);const d=r.rendered;
   $('#ePrevBox').innerHTML=`<div class="preview"><h3>${esc(d.title)}</h3><p class="sub">${esc(d.parties.provider.name)} and ${esc(d.parties.client.company)}</p>${d.sections.map((s,i)=>`<h4>${i+1}. ${esc(s.title)}</h4>${String(s.body||'').split(/\n{2,}/).filter(Boolean).map(p=>`<p>${esc(p)}</p>`).join('')}${s.items?`<ul>${s.items.map(x=>`<li>${esc(x)}</li>`).join('')}</ul>`:''}${s.rows&&s.kind==='schedule'?`<p><b>${esc(s.summary)}</b></p>`:''}`).join('')}${d.missing.length?`<p class="msg bad">Still empty: ${d.missing.map(m=>'{{'+m+'}}').join(', ')}</p>`:''}</div>`;
   $('#ePrevBox').scrollIntoView({behavior:'smooth',block:'nearest'})}
+// ---------- your signature, where you sign ----------
+// The handwritten signature that signs for Future Basics (src/signatures.js). Where you sign, this shows the one on file; with none, you can
+// draw one (mouse, pen or finger) or upload a picture right there, and it becomes yours (Settings, My signature) before the contract is signed.
+async function inkBox(el){
+  let mark=await api('/v1/me/signature').then(r=>r.mark).catch(()=>null),img=null;
+  const paint=()=>{if(mark){el.innerHTML=`<div class="inkbox"><img src="${esc(mark.url)}" alt="Your signature"><span class="sub">Your handwritten signature goes on it in ink. <a href="/signature" target="_blank" rel="noopener">Change it</a></span></div>`;return}
+    el.innerHTML=`<div class="inkbox"><p class="sub" style="margin:0 0 6px"><b>Add your handwritten signature</b>: sign in the box (mouse, pen or finger) or upload a picture of it. It goes on in blue ink and is kept for next time. Skip it and your typed name signs.</p>
+      <div class="pad"><canvas aria-label="Sign here"></canvas><span class="line"></span></div>
+      <div class="acts" style="margin-top:6px"><button class="btn sm" type="button" data-ink="clear">Clear</button><label class="btn sm">Upload a picture<input type="file" accept="image/png,image/jpeg,image/webp" hidden data-ink="file"></label><button class="btn sm go" type="button" data-ink="save" disabled>Use this signature</button></div><p class="msg" data-ink="msg"></p></div>`;
+    const cv=el.querySelector('canvas'),ctx=cv.getContext('2d'),k=2;
+    // sized to the box as it is on screen when the pen first touches it (a dialog may not be on screen yet when this is drawn)
+    const fit=()=>{const r=cv.getBoundingClientRect(),w=Math.round(r.width*k),h=Math.round(r.height*k);if(w&&h&&(cv.width!==w||cv.height!==h)){cv.width=w;cv.height=h}ctx.setTransform(k,0,0,k,0,0);ctx.lineCap='round';ctx.lineJoin='round';ctx.strokeStyle='#141416'};
+    let down=false,last=null,inked=false;const at=e=>{const b=cv.getBoundingClientRect();return[e.clientX-b.left,e.clientY-b.top]},save=el.querySelector('[data-ink=save]'),msg=el.querySelector('[data-ink=msg]');
+    cv.onpointerdown=e=>{if(!inked)fit();cv.setPointerCapture(e.pointerId);down=true;last=at(e)};
+    cv.onpointermove=e=>{if(!down)return;const q=at(e);ctx.lineWidth=2.4+(e.pointerType==='pen'?(e.pressure||.5)*2:0);ctx.beginPath();ctx.moveTo(last[0],last[1]);ctx.lineTo(q[0],q[1]);ctx.stroke();last=q;inked=true;img=null;save.disabled=false};
+    cv.onpointerup=cv.onpointercancel=()=>{down=false};
+    el.querySelector('[data-ink=clear]').onclick=()=>{ctx.clearRect(0,0,cv.width,cv.height);inked=false;img=null;save.disabled=true;msg.textContent=''};
+    el.querySelector('[data-ink=file]').onchange=e=>{const f=e.target.files[0];if(!f)return;const fr=new FileReader();fr.onload=()=>{img=fr.result;save.disabled=false;msg.className='msg';msg.textContent='Picture chosen: Use this signature to turn it into ink.'};fr.readAsDataURL(f)};
+    save.onclick=async()=>{save.disabled=true;msg.className='msg';msg.textContent='Turning it into ink…';try{mark=(await api('/v1/me/signature',{method:'PUT',body:{image:img||cv.toDataURL('image/png')}})).mark;paint()}catch(x){msg.className='msg bad';msg.textContent=x.message;save.disabled=false}};
+    el.inkPending=()=>Boolean(!mark&&(inked||img))};
+  paint();el.inkPending=el.inkPending||(()=>false);return {has:()=>Boolean(mark),pending:()=>el.inkPending()}}
+// signing in a dialog: the signature it goes on with (or a box to give one), then the button. needInk: the action needs a handwritten signature
+function signDialog(title,text,yes,needInk=false){return new Promise(async ok=>{const B=$('#dBody');
+  B.innerHTML=`<div class="dh"><h2>${esc(title)}</h2><button class="btn sm" id="dX">Cancel</button></div><p>${esc(text)}</p><div id="sdInk"></div><div class="acts"><button class="btn go" id="sdGo">${esc(yes)}</button></div><p class="msg" id="sdMsg" role="status"></p>`;
+  let settled=false;const end=v=>{if(settled)return;settled=true;$('#dlg').close();ok(v)};$('#dX').onclick=()=>end(false);$('#dlg').onclose=()=>end(false);$('#dlg').showModal();
+  const ink=await inkBox($('#sdInk'));
+  $('#sdGo').onclick=()=>{if(ink.pending()){$('#sdMsg').className='msg bad';$('#sdMsg').textContent='Press Use this signature first'+(needInk?'.':' (or Clear to sign with your typed name).');return}if(needInk&&!ink.has()){$('#sdMsg').className='msg bad';$('#sdMsg').textContent='Sign in the box (or upload a picture), then press Use this signature.';return}end(true)}})}
 async function sendFlow(){await flush();if(!E.c.plan){emsg(`Fix the payment plan before sending: ${planErr||'choose how the fee is paid'}.`,'bad');$('#pOut')?.scrollIntoView({block:'center',behavior:'smooth'});return}const r=await save();if(r.problems&&r.problems.length){emsg('Fix what is listed above first.','bad');return}
   const c=r.content,B=$('#dBody');
   B.innerHTML=`<div class="dh"><h2>Send for signature</h2><button class="btn sm" id="dX">Cancel</button></div><p>This emails <b>${esc(c.client.signerName)}</b> at <b>${esc(c.client.signerEmail)}</b> a private link to read and sign <b>${esc(c.title)}</b>, a fixed fee of <b>${usd(c.fee.totalCents)}</b>.</p><p class="sub">Once it is sent the text is fixed: to change anything you make a new version.</p>
    <label class="f"><span>A personal note in the email (optional)</span><textarea class="t" id="sNote" rows="3" placeholder="Great talking with you. Here is the agreement for the site."></textarea></label>
-   ${ME.signer?`<label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="sNow" checked> Sign for Future Basics now as ${esc(c.provider.signerName)}</label>`:'<p class="sub">A signer for Future Basics countersigns once the client has signed.</p>'}
+   ${ME.signer?`<label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="sNow" checked> Sign for Future Basics now as ${esc(c.provider.signerName)}</label><div id="sInk"></div>`:'<p class="sub">A signer for Future Basics countersigns once the client has signed.</p>'}
    <div class="acts"><button class="btn go" id="sGo">Send it</button></div><p class="msg" id="dMsg" role="status"></p>`;
   $('#dX').onclick=()=>$('#dlg').close();
-  $('#sGo').onclick=async()=>{$('#sGo').disabled=true;try{const x=await api(`/v1/contracts/${E.id}/send`,{body:{message:$('#sNote').value,signNow:!!($('#sNow')&&$('#sNow').checked)}});$('#dlg').close();$('#edlg').close();say(x.emailed?`Sent to ${c.client.signerEmail}.`:'Saved as sent, but the email could not be delivered. Copy the link from the contract and send it yourself.',x.emailed?'ok':'bad');await loadList();openContract(E.id)}catch(x){$('#dMsg').className='msg bad';$('#dMsg').textContent=x.message;$('#sGo').disabled=false}};
+  const ink=$('#sInk')?await inkBox($('#sInk')):null;if($('#sNow'))$('#sNow').onchange=()=>{$('#sInk').hidden=!$('#sNow').checked};
+  $('#sGo').onclick=async()=>{if(ink&&$('#sNow')?.checked&&ink.pending()){$('#dMsg').className='msg bad';$('#dMsg').textContent='Press Use this signature first (or Clear to sign with your typed name).';return}$('#sGo').disabled=true;try{const x=await api(`/v1/contracts/${E.id}/send`,{body:{message:$('#sNote').value,signNow:!!($('#sNow')&&$('#sNow').checked)}});$('#dlg').close();$('#edlg').close();say(x.emailed?`Sent to ${c.client.signerEmail}.`:'Saved as sent, but the email could not be delivered. Copy the link from the contract and send it yourself.',x.emailed?'ok':'bad');await loadList();openContract(E.id)}catch(x){$('#dMsg').className='msg bad';$('#dMsg').textContent=x.message;$('#sGo').disabled=false}};
   $('#dlg').showModal()}
 
 // ---------- settings ----------
@@ -320,7 +350,7 @@ $('#newBtn').onclick=()=>chooser().catch(x=>say(x.message,'bad'));
 (async()=>{
   if(!TOKEN()){$('#needSignin').classList.remove('hidden');return}
   try{await api('/v1/contracts/settings')}catch(x){$('#needSignin').classList.remove('hidden');return}
-  try{const u=await api('/v1/money/me');ME.signer=!!u}catch{ME.signer=false}
+  try{const u=await api('/v1/money/me');ME.signer=!!u;ME.email=u?.email||''}catch{ME.signer=false}
   $('#app').classList.remove('hidden');await show('list');
   const qs=new URLSearchParams(location.search),open=qs.get('open'),deal=qs.get('deal'),project=qs.get('project');
   if(open&&/^[0-9a-f-]{36}$/i.test(open))openContract(open).catch(x=>say(x.message,'bad'));
