@@ -464,7 +464,16 @@ export function registerLabFlatsRoutes(app, d) {
   });
   const gradeWords = q => (q.grade || []).map(g => `${g.sizes[0]}${g.sizes.length > 1 ? '–' + g.sizes[g.sizes.length - 1] : ''} ${fmt(g.w)} × ${fmt(g.h)}`).join(' · ');
   // the labels chosen on the concept (its materials), each with its face drawn at size, for tagMarks
-  const labelsOf = c => (Array.isArray(c.spec?.materials) ? c.spec.materials : []).filter(m => m.kind === 'tag' && m.spec).map(m => ({ id: m.id, name: m.name, spec: m.spec, fill: m.colour?.hex || '', href: `data:image/svg+xml;base64,${Buffer.from(tagFaceSvg(m.spec, { pxPerMm: 6, fill: m.colour?.hex || '' })).toString('base64')}` }));
+  // the labels chosen on the concept, as they are in the library now (with a face designed in the studio), each with its face for tagMarks
+  const labelsOf = async c => {
+    const picks = (Array.isArray(c.spec?.materials) ? c.spec.materials : []).filter(m => m.kind === 'tag'); if (!picks.length) return [];
+    const now = new Map((await pool.query(`select id, spec from lab_materials where id = any($1::uuid[])`, [picks.map(m => m.id).filter(id => UUID.test(String(id)))])).rows.map(r => [r.id, r.spec || {}]));
+    return Promise.all(picks.map(async m => {
+      const spec = { ...(m.spec || {}), ...(now.get(m.id) || {}) }, fill = m.colour?.hex || '';
+      const face = UUID.test(String(spec.face || '')) ? (await pool.query('select png from lab_art where id=$1', [spec.face])).rows[0]?.png : null;
+      return { id: m.id, name: m.name, spec, fill, href: face ? `data:image/png;base64,${face.toString('base64')}` : `data:image/svg+xml;base64,${Buffer.from(tagFaceSvg(spec, { pxPerMm: 6, fill })).toString('base64')}` };
+    }));
+  };
   async function sheet(c, { size } = {}) {
     const r = (await pool.query('select params, placements, check_result from lab_flats where concept_id=$1', [c.id])).rows[0]; if (!r) return null;
     const p = { ...r.params, size: SIZES.includes(size) ? size : r.params.size || 'M' }, pl = r.placements, list = await techniques(c.client_id), hrefs = {};
@@ -472,7 +481,7 @@ export function registerLabFlatsRoutes(app, d) {
     const ck = r.check_result || { findings: {}, summary: { fail: 0, warn: 0 } };
     const views = STYLES[p.style].kind === 'cap' || STYLES[p.style].kind === 'top' || STYLES[p.style].kind === 'bottom' ? ['front', 'back'] : ['front'];
     await prepMasks(p);
-    const tags = tagMarks(p, labelsOf(c));
+    const tags = tagMarks(p, await labelsOf(c));
     const editHrefs = await editHrefsOf(p), alloverHref = await alloverHrefOf(p), svgs = views.map(v => renderSvg(p, v, { maskHref, placements: pl, hrefs, findings: ck.findings, showPom: true, scale: 0, templateHref, partHref, editHrefs, alloverHref, tags }));
     // one page, 17 × 11 in at 100 units an inch: the flats across the top, the placements and the measurements under them
     const W = 1700, T = (x, y, s, t, o = {}) => `<text x="${x}" y="${y}" font-size="${s}" font-family="Space Grotesk, Helvetica, Arial, sans-serif" font-weight="${o.w || 400}" fill="${o.c || '#141416'}"${o.a ? ` text-anchor="${o.a}"` : ''}>${esc(t)}</text>`;

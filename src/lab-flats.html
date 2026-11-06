@@ -131,7 +131,7 @@ let PKIND='pockets',SELE=null,MODE=null,DRAFT=[],AIBOX=null,BOXDRAG=null,EHREF={
 let D=null,P=null,PL=[],VIEW='front',SEL=null,CHECK={findings:{},summary:{fail:0,warn:0}},WHERE={},DIRTY=false,TAB='pl',HREF={},MARKS={};
 const r8=v=>Math.round(v*8)/8;
 const techName=q=>(D.techniques.find(t=>t.id===q.techniqueId)||{}).name||q.technique;
-const flatBody=()=>({style:P.style,fit:P.fit,size:P.size,m:P.m,options:P.options,template:P.template||templateOf(P)?.id||'none',color:P.color||'',edits:P.edits||[],placements:PL,allover:P.allover||null,drawn:P.drawn||null,markup:P.markup||null});
+const flatBody=()=>({style:P.style,fit:P.fit,size:P.size,m:P.m,options:P.options,template:P.template||templateOf(P)?.id||'none',color:P.color||'',edits:P.edits||[],placements:PL,allover:P.allover||null,drawn:P.drawn||null,markup:P.markup||null,tagPos:P.tagPos||null});
 let AOHREF='',DECOS=null,CAL=null,REPS=null;
 function touch(){DIRTY=true;if(!SAVING_F){$('#saved').className='saved dirty';$('#saved').textContent='Changes not saved yet'}recheckSoon();HOST()?.flatsChanged?.();autoSoonF()}
 // Autosave: a few seconds after the last change, never mid-drag; a failed save is tried again a little later each time. The last save reads
@@ -204,7 +204,9 @@ function clothTex(){const m=CLOTH.main&&CLOTH.lib?.find(x=>x.id===CLOTH.main.id)
 async function loadCloth(){if(!CID)return;try{const[lib,on]=await Promise.all([CLOTH.lib?Promise.resolve({materials:CLOTH.lib}):api('/v1/lab/materials?kind=fabric'),api(`/v1/lab/concepts/${CID}/materials`)]);CLOTH.lib=lib.materials||[];CLOTH.main=(on.picks||[]).find(p=>p.kind==='fabric'&&p.role==='main'&&!p.part)||null;CLOTH.fit=on.fit||null;await loadTags(on.picks||[])}catch{CLOTH.lib=CLOTH.lib||[]}}
 // the labels chosen on the concept, drawn on the flats where they are sewn (tagMarks): the label's face at its size, or the face designed for it in the studio
 const TAGFACE={};
-async function loadTags(picks){const list=picks.filter(p=>p.kind==='tag'&&p.spec);
+async function loadTags(picks){const lib=picks.some(p=>p.kind==='tag')?((await api('/v1/lab/materials?kind=tag').catch(()=>null))?.materials||[]):[];
+  // the tag as it is in the library now (a face designed after it was put on the garment is on the library's copy)
+  const list=picks.filter(p=>p.kind==='tag').map(p=>({...p,spec:{...(p.spec||{}),...(lib.find(m=>m.id===p.id)?.spec||{})}}));
   CLOTH.tags=await Promise.all(list.map(async p=>{const fill=p.colour?.hex||'',sp=p.spec||{};let href='';
     if(sp.face){href=TAGFACE[sp.face]||'';if(!href)try{const r=await fetch('/v1/lab/art/'+sp.face,{headers:{Authorization:'Bearer '+TOKEN()}});if(r.ok)href=TAGFACE[sp.face]=URL.createObjectURL(await r.blob())}catch{}}
     if(!href)href='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(tagFaceSvg(sp,{pxPerMm:6,fill}));
@@ -447,6 +449,9 @@ $('#canvas').addEventListener('pointerdown',e=>{
   if(ve){DRAG={ed:ve,vx:Number(vx.dataset.vx),orig:JSON.parse(JSON.stringify(ve))};capt(e);return}
   const rk=e.target.closest('[data-rot]');
   if(rk){const q=PL.find(x=>x.id===rk.dataset.rot);if(q){SEL=q.id;DRAG={turn:q,o:q.rot||0};capt(e);return}}
+  // a label sewn into the piece: drag it where it goes (mouse, pen or finger); it keeps its place on this view
+  const tg=e.target.closest('[data-tag]');
+  if(tg){const m=tagsOn().find(x=>x.id===tg.dataset.tag&&x.view===VIEW);if(m){const[x,y]=inch(e);DRAG={tag:m,dx:x-m.x,dy:y-m.y};capt(e);return}}
   const g=e.target.closest('[data-pl]');
   if(g){const q=PL.find(x=>x.id===g.dataset.pl);SEL=q.id;const[x,y]=inch(e);DRAG={q,dx:x-q.x,dy:y-q.y,ox:q.x,oy:q.y};capt(e);paint();return}
   const ge=e.target.closest('[data-ed]');const ed=ge&&P.edits.find(x=>x.id===ge.dataset.ed);if(!ed){if(FZ>1){FPAN={x:e.clientX,y:e.clientY,c:centreNow()};capt(e)}return}
@@ -458,6 +463,7 @@ $('#canvas').addEventListener('pointermove',e=>{
   if(DRAG.turn){const q=DRAG.turn;let a=Math.atan2(x-q.x,-(y-q.y))*180/Math.PI;const s15=Math.round(a/15)*15;if(Math.abs(a-s15)<4||e.shiftKey)a=s15;q.rot=turnTo(a);DRAG.moved=true;draw();return}
   if(DRAG.ed&&DRAG.vx!=null){DRAG.ed.pts=DRAG.orig.pts.map((q,i)=>i===DRAG.vx?[r8(x),r8(y)]:q);DRAG.moved=true;draw();return}
   if(DRAG.ed){const dx=x-DRAG.start[0],dy=y-DRAG.start[1],o=DRAG.orig;if(o.pts)DRAG.ed.pts=o.pts.map(q=>[r8(q[0]+dx),r8(q[1]+dy)]);else{DRAG.ed.x=r8(o.x+dx);DRAG.ed.y=r8(o.y+dy);if(Math.abs(DRAG.ed.x)<.25&&!(DRAG.ed.type==='part'&&partOf(DRAG.ed.part)?.kind==='pockets')&&!['pocket-patch','pocket-flap','pocket-welt','pocket-cargo','pocket-slant','pocket-jean','pocket-zip','pleat'].includes(DRAG.ed.kind))DRAG.ed.x=0}DRAG.moved=true;draw();return}
+  if(DRAG.tag){let nx=r8(x-DRAG.dx);const ny=r8(y-DRAG.dy);if(Math.abs(nx)<.25)nx=0;P.tagPos={...(P.tagPos||{})};P.tagPos[DRAG.tag.id]={...(P.tagPos[DRAG.tag.id]||{}),[VIEW]:[nx,ny]};DRAG.moved=true;draw();return}
   DRAG.q.x=r8(x-DRAG.dx);DRAG.q.y=r8(y-DRAG.dy);if(Math.abs(DRAG.q.x)<.25)DRAG.q.x=0;DRAG.moved=true;draw()});
 const end=()=>{if(BOXDRAG){BOXDRAG=null;if(!AIBOX||AIBOX.w<.5||AIBOX.h<.5)AIBOX=null;paint();setTimeout(()=>$('#aiPrompt')?.focus(),0);return}if(DRAG&&DRAG.moved){touch();paint()}DRAG=null};
 $('#canvas').addEventListener('dblclick',e=>{if(MODE==='stitch'||MODE==='block'){e.preventDefault();finishDraft()}});
@@ -570,7 +576,7 @@ async function boot(){
 }
 // the flat in hand: its garment, fit, sizes, colour, edits and placements
 async function useFlat(f){
-  P={style:f.style,fit:f.fit,size:f.size||'M',m:f.m,options:f.options||{},template:f.template,color:f.color||'',edits:f.edits||[],...(f.allover?{allover:f.allover}:{}),...(f.drawn?{drawn:f.drawn}:{})};if(P.allover)AOHREF=await blobUrl('/v1/lab/art/'+P.allover.art);
+  P={style:f.style,fit:f.fit,size:f.size||'M',m:f.m,options:f.options||{},template:f.template,color:f.color||'',edits:f.edits||[],...(f.allover?{allover:f.allover}:{}),...(f.drawn?{drawn:f.drawn}:{}),...(f.tagPos?{tagPos:f.tagPos}:{})};if(P.allover)AOHREF=await blobUrl('/v1/lab/art/'+P.allover.art);
   for(const ed of P.edits)if(ed.type==='ai')EHREF[ed.art]=await blobUrl('/v1/lab/art/'+ed.art);for(const v of ['front','back'])if(P.drawn?.[v]&&!EHREF[P.drawn[v]])EHREF[P.drawn[v]]=await blobUrl('/v1/lab/art/'+P.drawn[v]);PL=f.placements||[];CHECK=f.check||CHECK;DECOS=f.saved?D.decorations:null;
   $('#size').innerHTML=(STYLES[P.style].oneSize?['M']:SIZES).map(s=>`<option value="${s}" ${s==='M'?'selected':''}>${STYLES[P.style].oneSize?'One size':s}</option>`).join('');
   const wantTpl=new URLSearchParams(location.search).get('template');if(wantTpl&&FLAT_TEMPLATES.some(t=>t.id===wantTpl)&&templateOf(P)?.id!==wantTpl)setTimeout(()=>{useTemplate(wantTpl);history.replaceState(null,'',`/lab/flats?concept=${CID}${EMBED?'&embed='+EMBED:''}`)},0);

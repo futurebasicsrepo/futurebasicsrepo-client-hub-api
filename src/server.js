@@ -1030,6 +1030,7 @@ app.get('/v1/admin/dashboard', {preHandler:[authenticate,adminOnly]}, async ()=>
     count(distinct pr.id) filter(where pr.archived_at is null and pr.status not in ('archive','archived'))::int project_count,
     count(distinct pr.id)::int all_project_count,
     (select sp.shopify_image_url from products sp where sp.client_id=c.id and sp.shopify_image_url is not null order by sp.shopify_updated_at desc nulls last limit 1) cover_image_url,
+    exists(select 1 from room_sites rs where rs.client_id=c.id and rs.removed_at is null) has_site,
     (select tp.product_id from tech_packs tp join products sp on sp.id=tp.product_id where sp.client_id=c.id and ${PACK_HAS_IMAGE_SQL('tp')} order by tp.updated_at desc limit 1) cover_rendering_product_id,
     (select coalesce(sum(sp.shopify_inventory_total),0)::int from products sp where sp.client_id=c.id) shopify_inventory_total,
     (select coalesce(sum(py.amount_cents),0)::bigint from payments py where py.client_id=c.id) paid_cents,

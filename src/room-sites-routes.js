@@ -47,10 +47,23 @@ export function registerRoomSitesRoutes(app, d) {
   const view = r => ({
     id: r.id, buildId: r.build_id, slug: r.slug || '', name: r.build_id ? r.build_name : r.name, tagline: r.build_id ? r.tagline || '' : '', sector: r.sector || '',
     status: r.build_id ? r.build_status : 'live', statusWords: r.build_id ? STATUS_WORDS[r.build_status] || r.build_status : 'Link',
-    hasUrl: Boolean(opens(r).url), hasCover: Boolean(r.build_id && (r.has_cover || (r.slug && existsSync(new URL(`${r.slug}.jpg`, PREVIEW_DIR))))),
+    hasUrl: Boolean(opens(r).url), hasCover: Boolean(previewFor(opens(r).url) || (r.build_id && (r.has_cover || (r.slug && existsSync(new URL(`${r.slug}.jpg`, PREVIEW_DIR)))))),
     accessNote: r.access_note || r.proto_access || '', projectId: r.project_name ? r.project_id : null, projectName: r.project_name || '',
     note: r.note, addedAt: r.created_at, feedbackCount: r.feedback_count || 0
   });
+  // the site's picture follows where Open goes: a screenshot kept for that address (src/builds-previews/<first part of its host>.jpg, as
+  // cg12concept.jpg is for cg12concept.myshopify.com), else the build's own cover, else its screenshot by slug
+  const previewFor = url => { let h = ''; try { h = new URL(url).hostname.split('.')[0].toLowerCase(); } catch { return null; } const f = /^[a-z0-9-]{2,60}$/.test(h) ? new URL(`${h}.jpg`, PREVIEW_DIR) : null; return f && existsSync(f) ? f : null; };
+  async function pictureOf(r) {
+    const own = previewFor(opens(r).url); if (own) return { type: 'image/jpeg', body: readFileSync(own) };
+    if (!r.build_id) return null;
+    const cover = (await pool.query(`select media->>'cover' c from builds where id=$1`, [r.build_id])).rows[0]?.c, m = /^data:(image\/[a-z]+);base64,(.+)$/i.exec(cover || '');
+    if (m && opens(r).from !== 'prototype' && opens(r).from !== 'set') return { type: m[1], body: Buffer.from(m[2], 'base64') };
+    const file = r.slug && /^[a-z0-9-]+$/.test(r.slug) ? new URL(`${r.slug}.jpg`, PREVIEW_DIR) : null;
+    if (opens(r).from === 'site' && file && existsSync(file)) return { type: 'image/jpeg', body: readFileSync(file) };
+    if (m) return { type: m[1], body: Buffer.from(m[2], 'base64') };
+    return file && existsSync(file) ? { type: 'image/jpeg', body: readFileSync(file) } : null;
+  }
   const staffView = r => ({ ...view(r), opensAt: opens(r).url, opensFrom: opens(r).from, buildUrl: r.live_url || '', protoUrl: r.proto_url || '', setUrl: r.url || '' });
   const team = async cid => (await pool.query(`select id, email, coalesce(nullif(name,''), split_part(email,'@',1)) name from users where client_id=$1 and role='client' and removed_at is null order by created_at`, [cid])).rows;
   const siteOf = async (cid, sid) => UUID.test(String(sid || '')) ? (await pool.query(`${SELECT} where s.id=$1 and s.client_id=$2 and s.removed_at is null`, [sid, cid])).rows[0] || null : null;
@@ -104,6 +117,15 @@ export function registerRoomSitesRoutes(app, d) {
       .map(f => ({ id: f.id, siteId: f.site_id, by: f.author_name, text: f.body, at: f.created_at }));
     const people = (await team(cid)).map(p => ({ id: p.id, name: p.name }));
     return { sites: rows.map(staffView), builds, prototypes, projects, team: people, goLive: await progress(cid), templates: TEMPLATE_KEYS.map(k => ({ key: k, label: GO_LIVE[k].label, client: GO_LIVE[k].items.filter(i => i.who === 'client').length, fb: GO_LIVE[k].items.filter(i => i.who === 'fb').length })), feedback };
+  });
+
+  // the picture on the room's card in the work console: its first site with one (a prototype before a link)
+  app.get('/v1/admin/clients/:id/site-cover', { preHandler: [authenticate, adminOnly] }, async (req, reply) => {
+    if (!UUID.test(String(req.params.id))) return bad(reply, 'Client not found', 404);
+    for (const r of (await pool.query(`${SELECT} where s.client_id=$1 and s.removed_at is null order by s.build_id is null, s.created_at limit 10`, [req.params.id])).rows) {
+      const pic = await pictureOf(r); if (pic) return reply.header('cache-control', 'private, max-age=300').type(pic.type).send(pic.body);
+    }
+    return bad(reply, 'No picture', 404);
   });
 
   app.post('/v1/admin/clients/:id/sites', { preHandler: [authenticate, adminOnly] }, async (req, reply) => {
@@ -203,12 +225,9 @@ export function registerRoomSitesRoutes(app, d) {
   });
   app.get('/v1/sites/:sid/cover', { preHandler: authenticate }, async (req, reply) => {
     const cid = room(req, reply); if (!cid) return reply;
-    const s = await siteOf(cid, req.params.sid); if (!s?.build_id) return bad(reply, 'No picture', 404);
-    const cover = (await pool.query(`select media->>'cover' c from builds where id=$1`, [s.build_id])).rows[0]?.c, m = /^data:(image\/[a-z]+);base64,(.+)$/i.exec(cover || '');
-    if (m) return reply.header('cache-control', 'private, max-age=300').type(m[1]).send(Buffer.from(m[2], 'base64'));
-    const file = s.slug && /^[a-z0-9-]+$/.test(s.slug) ? new URL(`${s.slug}.jpg`, PREVIEW_DIR) : null;
-    if (file && existsSync(file)) return reply.header('cache-control', 'private, max-age=3600').type('image/jpeg').send(readFileSync(file));
-    return bad(reply, 'No picture', 404);
+    const s = await siteOf(cid, req.params.sid); if (!s) return bad(reply, 'No picture', 404);
+    const pic = await pictureOf(s); if (!pic) return bad(reply, 'No picture', 404);
+    return reply.header('cache-control', 'private, max-age=300').type(pic.type).send(pic.body);
   });
   app.post('/v1/sites/:sid/open', { preHandler: authenticate }, async (req, reply) => {
     const cid = room(req, reply); if (!cid) return reply;

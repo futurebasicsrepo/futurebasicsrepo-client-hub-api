@@ -403,10 +403,11 @@ export function defaultPlacement(kind, p, { aspect = 1, label = '' } = {}) {
 // Where each label chosen on a concept is sewn, in inches on a view, at its real size: tags = [{ id, name, spec (src/lab-tags.js), fill, href }].
 // A label seen from that side (a neck label through the neck opening, a hem tag, a sleeve tag, a back pocket patch) is drawn; one on the inside
 // (the neck label from the back, a care label in the side seam, a waistband label) is a dashed outline. Hang tags and stickers are not sewn in.
+// A label dragged on the flats keeps where it was put (p.tagPos[id][view] = [x, y]).
 export function tagMarks(p, tags = []) {
   const S = STYLES[p.style]; if (!S) return [];
   const m = measurementsFor(p, p.size || 'M'), out = [], seen = {};
-  const at = (t, view, x, y, inside, label) => out.push({ id: t.id, name: t.name || '', href: t.href || '', fill: t.fill || '', view, x: r8(x), y: r8(y), w: t.w, h: t.h, inside, label });
+  const at = (t, view, x, y, inside, label) => { const moved = p.tagPos?.[t.id]?.[view]; out.push({ id: t.id, name: t.name || '', href: t.href || '', fill: t.fill || '', view, x: r8(moved ? moved[0] : x), y: r8(moved ? moved[1] : y), w: t.w, h: t.h, inside, label, moved: Boolean(moved) }); };
   for (const t0 of tags) {
     const sp = t0.spec || {}, kind = sp.tagKind || 'neck', w = Math.max(.2, (Number(sp.widthMm) || 40) / 25.4), h = Math.max(.2, (Number(sp.heightMm) || 20) / 25.4), t = { ...t0, w: r8(w), h: r8(h) };
     const n = seen[kind] = (seen[kind] || 0) + 1, side = (n - 1) * (w + .15); // a second label of the same kind sits beside the first
@@ -640,7 +641,7 @@ export function renderSvg(p, view = 'front', { placements = [], hrefs = {}, size
   let tg = '';
   for (const t of tags.filter(z => z.view === view)) {
     const x = n3(t.x - t.w / 2), y = n3(t.y - t.h / 2);
-    tg += `<g data-tag="${esc(t.id)}" pointer-events="none"><title>${esc(t.name || 'Label')}${t.inside ? ' (inside)' : ''}</title>`
+    tg += `<g data-tag="${esc(t.id)}"${editable ? ' style="cursor:grab"' : ' pointer-events="none"'}>${editable ? `<rect x="${n3(t.x - t.w / 2 - .25)}" y="${n3(t.y - t.h / 2 - .25)}" width="${n3(t.w + .5)}" height="${n3(t.h + .5)}" fill="#ffffff" fill-opacity="0"/>` : ''}<title>${esc(t.name || 'Label')}${t.inside ? ' (inside)' : ''}</title>`
       + (t.inside ? `<rect x="${x}" y="${y}" width="${n3(t.w)}" height="${n3(t.h)}" fill="#ffffff" fill-opacity=".35" stroke="#141416" stroke-width=".03" stroke-dasharray="${dash.label}"/>`
         : (t.href ? `<image href="${esc(t.href)}" x="${x}" y="${y}" width="${n3(t.w)}" height="${n3(t.h)}" preserveAspectRatio="none"/>` : `<rect x="${x}" y="${y}" width="${n3(t.w)}" height="${n3(t.h)}" fill="${esc(t.fill || '#f7f6f2')}"/>`)
           + `<rect x="${x}" y="${y}" width="${n3(t.w)}" height="${n3(t.h)}" fill="none" stroke="#141416" stroke-width=".025"/>`)
@@ -689,7 +690,10 @@ export function cleanFlat(input = {}) {
   // only with the sketch it was drawn on
   const mk = input.markup && typeof input.markup === 'object' && String(input.markup.template || 'none') === String(template || 'none') ? input.markup : null, nIn = (x, lo, hi) => r8(Math.min(Math.max(Number(x) || 0, lo), hi));
   const markup = mk ? Object.fromEntries(['front', 'back'].filter(v => mk[v] && /^[0-9a-f-]{36}$/i.test(String(mk[v].art || '')) && Number(mk[v].w) > 0 && Number(mk[v].h) > 0).map(v => [v, { art: mk[v].art, x: nIn(mk[v].x, -120, 120), y: nIn(mk[v].y, -120, 120), w: nIn(mk[v].w, .5, 240), h: nIn(mk[v].h, .5, 240) }])) : {};
-  const params = { style, fit, size: SIZES.includes(input.size) ? input.size : 'M', m, options, ...(template ? { template } : {}), color: hexOf(input.color), edits: cleanEdits(input.edits), ...(allover ? { allover } : {}), ...(Object.keys(drawn).length ? { drawn: { template, ...drawn } } : {}), ...(Object.keys(markup).length ? { markup: { template: template || 'none', ...markup } } : {}) };
+  // where each label was dragged to on each view, in inches (tagMarks puts the rest where they are usually sewn)
+  const tp = input.tagPos && typeof input.tagPos === 'object' ? input.tagPos : {}, tagPos = Object.fromEntries(Object.entries(tp).filter(([k, v]) => /^[0-9a-f-]{36}$/i.test(k) && v && typeof v === 'object').slice(0, 40)
+    .map(([k, v]) => [k, Object.fromEntries(['front', 'back'].filter(w => Array.isArray(v[w]) && v[w].length === 2 && v[w].every(n => Number.isFinite(Number(n)))).map(w => [w, [r8(Math.min(Math.max(Number(v[w][0]), -60), 60)), r8(Math.min(Math.max(Number(v[w][1]), -30), 80))]]))]).filter(([, v]) => Object.keys(v).length));
+  const params = { style, fit, size: SIZES.includes(input.size) ? input.size : 'M', m, options, ...(Object.keys(tagPos).length ? { tagPos } : {}), ...(template ? { template } : {}), color: hexOf(input.color), edits: cleanEdits(input.edits), ...(allover ? { allover } : {}), ...(Object.keys(drawn).length ? { drawn: { template, ...drawn } } : {}), ...(Object.keys(markup).length ? { markup: { template: template || 'none', ...markup } } : {}) };
   const placements = (Array.isArray(input.placements) ? input.placements : []).slice(0, 12).map((q, i) => ({
     id: /^[a-z0-9-]{1,40}$/i.test(String(q.id || '')) ? String(q.id) : 'p' + i, name: String(q.name || 'Graphic').replace(/\s+/g, ' ').trim().slice(0, 60) || 'Graphic', view: q.view === 'back' ? 'back' : 'front',
     x: r8(Math.min(Math.max(Number(q.x) || 0, -60), 60)), y: r8(Math.min(Math.max(Number(q.y) || 0, -30), 80)), w: r8(Math.min(Math.max(Number(q.w) || 1, .25), 40)), h: r8(Math.min(Math.max(Number(q.h) || 1, .25), 40)), ...(rotOf(q) ? { rot: rotOf(q) } : {}),
