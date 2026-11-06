@@ -399,6 +399,40 @@ export function defaultPlacement(kind, p, { aspect = 1, label = '' } = {}) {
   return box('front', 0, 4, Math.min(10, m.width * .6));
 }
 
+// ---- labels on the garment ----
+// Where each label chosen on a concept is sewn, in inches on a view, at its real size: tags = [{ id, name, spec (src/lab-tags.js), fill, href }].
+// A label seen from that side (a neck label through the neck opening, a hem tag, a sleeve tag, a back pocket patch) is drawn; one on the inside
+// (the neck label from the back, a care label in the side seam, a waistband label) is a dashed outline. Hang tags and stickers are not sewn in.
+export function tagMarks(p, tags = []) {
+  const S = STYLES[p.style]; if (!S) return [];
+  const m = measurementsFor(p, p.size || 'M'), out = [], seen = {};
+  const at = (t, view, x, y, inside, label) => out.push({ id: t.id, name: t.name || '', href: t.href || '', fill: t.fill || '', view, x: r8(x), y: r8(y), w: t.w, h: t.h, inside, label });
+  for (const t0 of tags) {
+    const sp = t0.spec || {}, kind = sp.tagKind || 'neck', w = Math.max(.2, (Number(sp.widthMm) || 40) / 25.4), h = Math.max(.2, (Number(sp.heightMm) || 20) / 25.4), t = { ...t0, w: r8(w), h: r8(h) };
+    const n = seen[kind] = (seen[kind] || 0) + 1, side = (n - 1) * (w + .15); // a second label of the same kind sits beside the first
+    if (S.kind === 'top') {
+      const nb = m.neckDropBack ?? 1, half = (m.chest || 20) / 2, hem = (m.length || 27) - (m.hemRib || 0);
+      if (kind === 'neck') { at(t, 'front', side, nb + .3 + h / 2, false, 'Neck label'); at(t, 'back', side, nb + .3 + h / 2, true, 'Neck label, inside'); }
+      else if (kind === 'size') { const nx = (seen.neck ? (Number(tags.find(z => z.spec?.tagKind === 'neck')?.spec?.widthMm) || 40) / 25.4 / 2 + .15 : 0) + w / 2 + side; at(t, 'front', nx, nb + .3 + h / 2, false, 'Size tab'); at(t, 'back', nx, nb + .3 + h / 2, true, 'Size tab, inside'); }
+      else if (kind === 'care') at(t, 'front', -half + .35 + w / 2, hem - 3.5 - h / 2 - side, true, 'Care label, inside left side seam');
+      else if (kind === 'hem') at(t, 'front', -half + 1.25 + w / 2 + side, hem - h / 2 + .05, false, 'Hem tag');
+      else if (kind === 'sleeve') { const q = defaultPlacement('logo', p, { label: 'left sleeve' }); at(t, q.view, q.x, q.y + 2 + side, false, 'Sleeve tag'); }
+      else if (kind === 'loop') at(t, 'back', side, nb + 2.5 + h / 2, false, 'Locker loop');
+      else if (kind === 'pocket') at(t, 'front', half * .45 + side, hem - 6, false, 'Patch');
+    } else if (S.kind === 'bottom') {
+      const wb = m.waistband || 1.5, hip = (m.hip || 20) / 2;
+      if (kind === 'waistband' || kind === 'neck') at(t, 'back', side, wb / 2, kind === 'neck', kind === 'waistband' ? 'Waistband label' : 'Label, inside back waistband');
+      else if (kind === 'size') at(t, 'back', (seen.waistband || seen.neck ? 1.4 : 0) + side, wb / 2, true, 'Size tab, inside');
+      else if (kind === 'care') at(t, 'front', -hip + .35 + w / 2, wb + 4 + h / 2 + side, true, 'Care label, inside left side seam');
+      else if (kind === 'pocket') at(t, 'back', hip * .5 + side, wb + 2.5 + h / 2, false, 'Back pocket patch');
+      else if (kind === 'hem') at(t, 'front', -hip + 1 + w / 2, wb + (m.rise || 11) + 2 + side, false, 'Hem tag');
+    } else if (S.kind === 'cap') {
+      if (kind === 'sweatband' || kind === 'neck' || kind === 'care' || kind === 'size') at(t, 'back', side, -.6 - h / 2, true, 'Sweatband label, inside');
+    } else if (kind !== 'hang' && kind !== 'sticker') at(t, 'front', side, 1 + h / 2, true, 'Label, inside');
+  }
+  return out;
+}
+
 // ---- the picture: one view as SVG, with the placements, their measurements and the points of measure ----
 // ---- changing the drawing: the garment's colour, colour blocks, details, stitching, and areas an image model redraws ----
 // Edits are kept in inches on one view, like placements: { id, type: 'detail' | 'stitch' | 'block' | 'ai', view, ... }.
@@ -551,7 +585,7 @@ export const MASK_URL = file => `/lab/flat-masks/${file.replace(/\.svg$/, '.png'
 export const TEMPLATE_URL = file => `/lab/flat-templates/${file}`;
 export const PART_URL = file => `/lab/flat-parts/${file}`;
 export const partOf = id => FLAT_PARTS.find(q => q.id === id) || null;
-export function renderSvg(p, view = 'front', { placements = [], hrefs = {}, size = p.size || 'M', showPom = false, showDims = true, selected = null, findings = {}, scale = 22, title = '', templateHref = TEMPLATE_URL, partHref = PART_URL, editHrefs = {}, editable = false, selectedEdit = null, overlay = '', plain = false, background = true, templateSvg = null, alloverHref = '', maskHref = null, withArt = false, texture = null } = {} /* texture: { href, w, h } the cloth's shading tile (w × h inches of drawing per tile), multiplied over the garment so its colour shows through;  withArt: with plain, the placed graphics drawn too (the Studio's board);  alloverHref: the all-over print's repeat tile, laid over the cloth; templateSvg: the sketch's own markup, to draw it inline (the service: much faster to rasterise than a picture of the whole page); scale 0: no width and height, for nesting; editHrefs: the pictures of areas redrawn by the image model; plain: the drawing alone, no guides or labels */) {
+export function renderSvg(p, view = 'front', { placements = [], hrefs = {}, size = p.size || 'M', showPom = false, showDims = true, selected = null, findings = {}, scale = 22, title = '', templateHref = TEMPLATE_URL, partHref = PART_URL, editHrefs = {}, editable = false, selectedEdit = null, overlay = '', plain = false, background = true, templateSvg = null, alloverHref = '', maskHref = null, withArt = false, texture = null, tags = [] } = {} /* texture: { href, w, h } the cloth's shading tile (w × h inches of drawing per tile), multiplied over the garment so its colour shows through;  withArt: with plain, the placed graphics drawn too (the Studio's board);  alloverHref: the all-over print's repeat tile, laid over the cloth; templateSvg: the sketch's own markup, to draw it inline (the service: much faster to rasterise than a picture of the whole page); scale 0: no width and height, for nesting; editHrefs: the pictures of areas redrawn by the image model; plain: the drawing alone, no guides or labels */) {
   const g = geometry(p, view, size), d = drawingOf(p, view, size), b = d ? d.box : g.bounds, pad = 3.2, x0 = b.x0 - pad, y0 = b.y0 - pad - (title ? 1.2 : 0), W = b.x1 - b.x0 + pad * 2, H = b.y1 - b.y0 + pad * 2 + (title ? 1.2 : 0);
   const k = Math.max(1, Math.max(W, H) / 30), fs = .34 * k; // labels grow with the drawing, so they read at the size it is shown
   const sw = { outline: .07, seam: .035, stitch: .03, rib: .018, under: .05, cord: .05, label: .03 }, dash = { stitch: '.18 .12', label: '.15 .1' };
@@ -602,13 +636,24 @@ export function renderSvg(p, view = 'front', { placements = [], hrefs = {}, size
       pl += `<g pointer-events="none">${T(q.x, q.y + q.h / 2 + fs * 1.3, fs * .9, `${fmt(q.w)} × ${fmt(q.h)}`, 'middle', '#141416', 600)}</g>`;
     }
   }
+  // the labels sewn into it (tagMarks): a label seen from this side drawn at its size; one on the inside, as a dashed outline with what it is
+  let tg = '';
+  for (const t of tags.filter(z => z.view === view)) {
+    const x = n3(t.x - t.w / 2), y = n3(t.y - t.h / 2);
+    tg += `<g data-tag="${esc(t.id)}" pointer-events="none"><title>${esc(t.name || 'Label')}${t.inside ? ' (inside)' : ''}</title>`
+      + (t.inside ? `<rect x="${x}" y="${y}" width="${n3(t.w)}" height="${n3(t.h)}" fill="#ffffff" fill-opacity=".35" stroke="#141416" stroke-width=".03" stroke-dasharray="${dash.label}"/>`
+        : (t.href ? `<image href="${esc(t.href)}" x="${x}" y="${y}" width="${n3(t.w)}" height="${n3(t.h)}" preserveAspectRatio="none"/>` : `<rect x="${x}" y="${y}" width="${n3(t.w)}" height="${n3(t.h)}" fill="${esc(t.fill || '#f7f6f2')}"/>`)
+          + `<rect x="${x}" y="${y}" width="${n3(t.w)}" height="${n3(t.h)}" fill="none" stroke="#141416" stroke-width=".025"/>`)
+      + (plain ? '' : T(t.x + t.w / 2 + .25, t.y + .1, fs * .75, t.label || '', 'start', '#5a5a60'))
+      + '</g>';
+  }
   // on a sketch only the points it was lined up to sit on it exactly; the table has the rest
   const pom = showPom ? g.pom.filter(q => !d || ['chest', 'length', 'waist', 'crownWidth'].includes(q.key)).map((d, i) => arrow(d.from, d.to, `${String.fromCharCode(65 + Object.keys(p.m).indexOf(d.key))} ${fmt(measurementsFor(p, size)[d.key])}`, '#7a3fd1')).join('') : '';
   // what was drawn on the view by hand, over the drawing and its graphics
   const mk = p.markup?.[view], mkHref = mk ? editHrefs[mk.art] : null, markupImg = mkHref ? `<image href="${esc(mkHref)}" x="${mk.x}" y="${mk.y}" width="${mk.w}" height="${mk.h}" preserveAspectRatio="none" pointer-events="none"/>` : '';
   const cf = STYLES[p.style].kind === 'top' || STYLES[p.style].kind === 'bottom' ? `<line x1="0" y1="${b.y0 - .6}" x2="0" y2="${b.y1 + .6}" stroke="#9a9aa0" stroke-width=".02" stroke-dasharray=".4 .15 .08 .15"/>${T(0, b.y1 + 1.1, .3, view === 'back' ? 'CB' : 'CF', 'middle', '#727278')}` : '';
   const hps = STYLES[p.style].kind === 'top' ? `<line x1="${b.x0 - 1}" y1="0" x2="${b.x1 + 1}" y2="0" stroke="#9a9aa0" stroke-width=".02" stroke-dasharray=".25 .15"/>${T(b.x1 + 1.1, .1, .28, 'HPS', 'start', '#727278')}` : '';
-  return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="${x0.toFixed(2)} ${y0.toFixed(2)} ${W.toFixed(2)} ${H.toFixed(2)}"${scale ? ` width="${(W * scale).toFixed(0)}" height="${(H * scale).toFixed(0)}"` : ''} data-view="${view}">${background ? `<rect x="${x0}" y="${y0}" width="${W}" height="${H}" fill="#ffffff"/>` : ''}${plain ? drawing + (withArt ? pl + markupImg : '') : `${title ? T(x0 + .4, y0 + .8, .5, title, 'start', '#141416', 600) : ''}${cf}${hps}${drawing}${pl}${markupImg}${pom}${overlay}${T(x0 + W - .4, y0 + H - .4, .28, `${STYLES[p.style].label} · ${view} · size ${STYLES[p.style].oneSize ? 'one size' : size}${cloth ? ` · ${cloth}` : ''}`, 'end', '#727278')}`}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="${x0.toFixed(2)} ${y0.toFixed(2)} ${W.toFixed(2)} ${H.toFixed(2)}"${scale ? ` width="${(W * scale).toFixed(0)}" height="${(H * scale).toFixed(0)}"` : ''} data-view="${view}">${background ? `<rect x="${x0}" y="${y0}" width="${W}" height="${H}" fill="#ffffff"/>` : ''}${plain ? drawing + (withArt ? tg + pl + markupImg : '') : `${title ? T(x0 + .4, y0 + .8, .5, title, 'start', '#141416', 600) : ''}${cf}${hps}${drawing}${tg}${pl}${markupImg}${pom}${overlay}${T(x0 + W - .4, y0 + H - .4, .28, `${STYLES[p.style].label} · ${view} · size ${STYLES[p.style].oneSize ? 'one size' : size}${cloth ? ` · ${cloth}` : ''}`, 'end', '#727278')}`}</svg>`;
 }
 // the picture's coordinates → inches, for dragging placements in the page
 export function viewBoxOf(p, view, { title = '', size = p.size || 'M' } = {}) { const b = drawingOf(p, view, size)?.box || geometry(p, view, size).bounds, pad = 3.2; return { x0: b.x0 - pad, y0: b.y0 - pad - (title ? 1.2 : 0), w: b.x1 - b.x0 + pad * 2, h: b.y1 - b.y0 + pad * 2 + (title ? 1.2 : 0) }; }

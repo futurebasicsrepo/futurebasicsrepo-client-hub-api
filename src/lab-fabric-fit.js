@@ -28,10 +28,11 @@ const PLURAL = new Set(['leggings', 'pants', 'shorts']);
 const STRETCH_WORDS = ['no stretch', 'a knit\'s own give', 'some stretch', 'four-way stretch'];
 
 const KNIT = /jersey|interlock|fleece|sherpa|terry|\brib\b|rib\s*\d|waffle|piqu|tricot|knit|mesh|ponte|scuba|pointelle|velour|jacquard knit/i;
-const WOVEN = /twill|canvas|duck|denim|chambray|corduroy|poplin|oxford|flannel|ripstop|taslan|taffeta|cordura|shell|softshell|woven|melton|satin|linen|seersucker|gabardine|voile|crepe|sateen|herringbone|tweed|nylon|drill/i;
-// knit, woven, or '' when the words do not say
+const WOVEN = /broadcloth|lawn|gauze|dobby|end-on-end|moleskin|needlecord|cavalry|shirting|twill|canvas|duck|denim|chambray|corduroy|poplin|oxford|flannel|ripstop|taslan|taffeta|cordura|shell|softshell|woven|melton|satin|linen|seersucker|gabardine|voile|crepe|sateen|herringbone|tweed|nylon|drill/i;
+// knit, woven, leather (a hide, or a PU or plant-based sheet), or '' when the words do not say
 export function clothOf(m = {}) {
   const s = m.spec || {}, words = [s.construction, m.name].filter(Boolean).join(' ');
+  if (/leather|suede|nubuck|shearling|^cork/i.test(String(s.construction || ''))) return 'leather'; // a hide or a coated sheet: cut like a woven, no give
   if (/stretch woven/i.test(words)) return 'woven';
   if (KNIT.test(String(s.construction || ''))) return 'knit'; if (WOVEN.test(String(s.construction || ''))) return 'woven';
   return KNIT.test(words) ? 'knit' : WOVEN.test(words) ? 'woven' : '';
@@ -61,6 +62,7 @@ export function fabricFit({ style = '', fit = '', materials = [] } = {}) {
   for (const m of picks) {
     const part = partOf(m), cloth = clothOf(m), gsm = gsmOf(m), st = stretchOf(m), name = m.name || 'This fabric'; checked++;
     if (part === 'main' || part === 'contrast') {
+      if (need.base === 'knit' && cloth === 'leather') say('warn', part, `${name} is a leather; ${a} is usually cut from a knit.`, 'Leather has no give: cut it with more ease and an opening, or use it on panels and trims instead.');
       if (need.base === 'knit' && cloth === 'woven' && !need.stretch) say('warn', part, `${name} is a woven; ${a} is usually cut from a knit.`, `A woven ${a.replace(/^an? /, '')} needs more ease and an opening (placket or zip) to go on. Choose a knit, or loosen the fit.`);
       if (need.base === 'woven' && cloth === 'knit') say('warn', part, `${name} is a knit; ${a} is usually cut from a woven.`, 'It will drape and stretch out of shape: interface the front, collar and buttonholes, or choose a woven.');
       const stretchKnown = Boolean(String(m.spec?.stretch || '').trim() || String(m.spec?.composition || '').trim()); // a knit's own give is known, its elastane is not
@@ -75,7 +77,8 @@ export function fabricFit({ style = '', fit = '', materials = [] } = {}) {
     }
     if (part === 'rib' && (cloth === 'woven' || st < 2)) say('warn', 'rib', `${name} is on the rib, and a rib needs to be a stretch knit to grip and recover.`, 'Use a 1×1 or 2×2 rib with elastane.');
     if (part === 'lining' && gsm && gsmOf(main) && gsm > gsmOf(main)) say('warn', 'lining', `The lining (${gsm} gsm) is heavier than the shell (${gsmOf(main)} gsm).`, 'Choose a lighter lining so it sits inside without pulling.');
-    if ((part === 'main' || part === 'contrast') && !cloth && !gsm) { say('warn', part, `${name} has no construction or weight on it, so it cannot be checked.`, 'Fill them in here (what it is and its gsm), or in the materials library.'); ask(m, part, ['construction', 'weightGsm'], `What is ${name}, and how heavy?`); }
+    if (cloth === 'leather' && !gsm) { if ((part === 'main' || part === 'contrast') && !(Number(m.spec?.thicknessMm) > 0)) ask(m, part, ['thicknessMm'], `How thick is ${name} (mm)? It decides what it suits.`); }
+    else if ((part === 'main' || part === 'contrast') && !cloth && !gsm) { say('warn', part, `${name} has no construction or weight on it, so it cannot be checked.`, 'Fill them in here (what it is and its gsm), or in the materials library.'); ask(m, part, ['construction', 'weightGsm'], `What is ${name}, and how heavy?`); }
     else if ((part === 'main' || part === 'contrast') && !cloth) ask(m, part, ['construction'], `What is ${name} (jersey, fleece, twill…)? Knit or woven decides what it suits.`);
     else if (part === 'main' && !gsm) ask(m, part, ['weightGsm'], `How heavy is ${name}? Its weight decides whether it reads thin or stiff on ${a}.`);
   }

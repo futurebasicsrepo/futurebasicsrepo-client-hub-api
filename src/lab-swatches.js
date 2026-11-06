@@ -226,6 +226,9 @@ function goodsSvg(m, uid) {
 // → an SVG string of a fabric swatch or a trim; '' for a tag (tags are drawn to size by lab-tags.js)
 export function materialSvg(m = {}, uid = '') {
   const id = String(uid || m.id || Math.random().toString(36).slice(2)).replace(/[^a-z0-9]/gi, '').slice(-12) || 'x';
+  // a leather, suede or vegan leather sold as a fabric is drawn as a hide, like the footwear leathers
+  const con = String(m.spec?.construction || '').toLowerCase();
+  if (m.kind === 'fabric' && /leather|suede|nubuck|^cork/.test(con)) return goodsSvg({ ...m, kind: 'footwear', spec: { ...(m.spec || {}), category: /suede|nubuck/.test(con) ? con : /patent/.test(con) ? 'patent leather' : 'upper leather', composition: '', finish: /pebble|grain embossed|textured/.test(String(m.spec?.finish || '')) ? 'pebble' : m.spec?.finish || '' } }, id);
   if (m.kind === 'fabric') return fabricSvg(m, id);
   if (m.kind === 'trim') return trimSvg(m, id);
   if (['footwear', 'plush', 'plastic'].includes(m.kind)) return goodsSvg(m, id);

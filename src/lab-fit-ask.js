@@ -5,6 +5,7 @@ const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': 
 export const ASK_FIELDS = {
   construction: { label: 'What it is', ph: 'jersey, fleece, twill, denim…' },
   weightGsm: { label: 'Weight (gsm)', type: 'number', min: 10, max: 2000, step: 1, ph: '240' },
+  thicknessMm: { label: 'Thickness (mm)', type: 'number', min: .1, max: 30, step: .1, ph: '1.2' },
   stretch: { label: 'Stretch', options: [['', 'Choose…'], ['none', 'None'], ['mechanical', 'A little (mechanical)'], ['2-way', 'Two-way'], ['4-way', 'Four-way']] },
   composition: { label: 'Made of', ph: '92% cotton, 8% elastane' },
   thicknessMm: { label: 'Thickness (mm)', type: 'number', min: .1, max: 200, step: .1, ph: '1.4' },

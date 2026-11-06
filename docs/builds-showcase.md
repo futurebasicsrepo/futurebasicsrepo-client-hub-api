@@ -62,6 +62,7 @@ A build whose address is the client's *current* site (Common Ground's is `common
 - **Shopify store launch** (follows `themes/common-ground/README.md`) or **Website launch**, chosen from the build (Shopify hosting or a `.myshopify.com` address) or picked by hand.
 - The client's side goes to one person on their team (the first, or the one picked; "the whole team" leaves it unassigned). It shows in their hub under **Needs attention** with a **Done** button, and on the project page as a checklist they tick.
 - Our side goes to Future Basics and shows on the work home under **Our to-dos for clients**, with **Done**. Both sides show on the project so each can see where the other is.
+- **In the work console**, open the room, then the project: the **Go-live checklist** lists both sides with checkboxes. A tick there is the same task the client sees, so it comes off their **Needs attention** and shows done on their project page. A tick in their hub shows up here too.
 - Pushing again only adds what is missing. The panel shows progress for each side.
 
 The rest:

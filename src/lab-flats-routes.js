@@ -40,7 +40,8 @@ const DECOR_BASES = () => DECOR_COST;
 import { brandDoc, fact, table, safe, INK, DIM, LINE } from './brand-pdf.js';
 import { imageConfig, openaiEdit } from './check.js';
 import { callJsonSchema } from './studio.js';
-import { rankTemplates, candidateTemplates } from './lab-flats.js';
+import { rankTemplates, candidateTemplates, tagMarks } from './lab-flats.js';
+import { tagFaceSvg } from './lab-tags.js';
 import { brandHits } from './lab-concepts.js';
 import { readiness } from './lab-ready.js';
 
@@ -462,6 +463,8 @@ export function registerLabFlatsRoutes(app, d) {
     return { drawn, left: Math.max(0, redrawCap() - (redraws.get(dayOf()) || 0)) };
   });
   const gradeWords = q => (q.grade || []).map(g => `${g.sizes[0]}${g.sizes.length > 1 ? '–' + g.sizes[g.sizes.length - 1] : ''} ${fmt(g.w)} × ${fmt(g.h)}`).join(' · ');
+  // the labels chosen on the concept (its materials), each with its face drawn at size, for tagMarks
+  const labelsOf = c => (Array.isArray(c.spec?.materials) ? c.spec.materials : []).filter(m => m.kind === 'tag' && m.spec).map(m => ({ id: m.id, name: m.name, spec: m.spec, fill: m.colour?.hex || '', href: `data:image/svg+xml;base64,${Buffer.from(tagFaceSvg(m.spec, { pxPerMm: 6, fill: m.colour?.hex || '' })).toString('base64')}` }));
   async function sheet(c, { size } = {}) {
     const r = (await pool.query('select params, placements, check_result from lab_flats where concept_id=$1', [c.id])).rows[0]; if (!r) return null;
     const p = { ...r.params, size: SIZES.includes(size) ? size : r.params.size || 'M' }, pl = r.placements, list = await techniques(c.client_id), hrefs = {};
@@ -469,7 +472,8 @@ export function registerLabFlatsRoutes(app, d) {
     const ck = r.check_result || { findings: {}, summary: { fail: 0, warn: 0 } };
     const views = STYLES[p.style].kind === 'cap' || STYLES[p.style].kind === 'top' || STYLES[p.style].kind === 'bottom' ? ['front', 'back'] : ['front'];
     await prepMasks(p);
-    const editHrefs = await editHrefsOf(p), alloverHref = await alloverHrefOf(p), svgs = views.map(v => renderSvg(p, v, { maskHref, placements: pl, hrefs, findings: ck.findings, showPom: true, scale: 0, templateHref, partHref, editHrefs, alloverHref }));
+    const tags = tagMarks(p, labelsOf(c));
+    const editHrefs = await editHrefsOf(p), alloverHref = await alloverHrefOf(p), svgs = views.map(v => renderSvg(p, v, { maskHref, placements: pl, hrefs, findings: ck.findings, showPom: true, scale: 0, templateHref, partHref, editHrefs, alloverHref, tags }));
     // one page, 17 × 11 in at 100 units an inch: the flats across the top, the placements and the measurements under them
     const W = 1700, T = (x, y, s, t, o = {}) => `<text x="${x}" y="${y}" font-size="${s}" font-family="Space Grotesk, Helvetica, Arial, sans-serif" font-weight="${o.w || 400}" fill="${o.c || '#141416'}"${o.a ? ` text-anchor="${o.a}"` : ''}>${esc(t)}</text>`;
     const colW = (W - 120) / svgs.length; let y = 150;
@@ -491,7 +495,7 @@ export function registerLabFlatsRoutes(app, d) {
     for (const row of pom) { py += 22; body += T(cx, py, 12, `${row.code} ${row.name}`.slice(0, 48)) + row.values.map((v, i) => T(cx + 330 + i * 52, py, 12, String(v.value), { a: 'end', w: v.size === 'M' ? 600 : 400 })).join('') + T(cx + 330 + cols.length * 52 + 20, py, 12, String(row.tolerance), { a: 'end', c: '#727278' }); }
     const head = `${T(60, 62, 30, c.name, { w: 600 })}${T(60, 92, 15, `${STYLES[p.style].label} · ${FITS[p.fit] || p.fit} fit · Future Basics Design Lab · ${new Date().toISOString().slice(0, 10)}`, { c: '#727278' })}${T(1640, 62, 15, ck.summary.fail ? `${ck.summary.fail} problem${ck.summary.fail === 1 ? '' : 's'} to fix before it can be made` : ck.summary.warn ? `${ck.summary.warn} thing${ck.summary.warn === 1 ? '' : 's'} to check` : 'Ready to make', { a: 'end', w: 600, c: ck.summary.fail ? '#a02a20' : ck.summary.warn ? '#8a5a00' : '#17603a' })}`;
     const H = Math.max(y, py) + 60;
-    return { editHrefs, alloverHref, svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="#ffffff"/><rect x="0" y="0" width="${W}" height="6" fill="#4bff9a"/>${head}${body}</svg>`, p, pl, hrefs, svgs, views };
+    return { editHrefs, alloverHref, svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="#ffffff"/><rect x="0" y="0" width="${W}" height="6" fill="#4bff9a"/>${head}${body}</svg>`, p, pl, hrefs, svgs, views, tags };
   }
   app.get('/v1/lab/concepts/:id/flats/sheet.svg', { preHandler: pre }, async (req, reply) => {
     const c = await concept(req.params.id); if (!c) return bad(reply, 'Not found', 404);
@@ -561,7 +565,7 @@ export function registerLabFlatsRoutes(app, d) {
   async function files(c) {
     const s = await sheet(c); if (!s) return [];
     const out = [{ name: 'Spec sheet · flats, placements and measurements', image: await png(s.svg, 2400) }];
-    for (const v of s.views) out.push({ name: `Technical flat · ${v}`, image: await png(renderSvg(s.p, v, { maskHref, placements: s.pl, hrefs: s.hrefs, scale: 60, templateSvg, partHref, editHrefs: s.editHrefs, alloverHref: s.alloverHref }), 1800) });
+    for (const v of s.views) out.push({ name: `Technical flat · ${v}`, image: await png(renderSvg(s.p, v, { maskHref, placements: s.pl, hrefs: s.hrefs, scale: 60, templateSvg, partHref, editHrefs: s.editHrefs, alloverHref: s.alloverHref, tags: s.tags }), 1800) });
     return out;
   }
   const png = async (svg, width) => `data:image/png;base64,${(await sharp(Buffer.from(svg), { density: 150 }).resize({ width }).flatten({ background: '#ffffff' }).png().toBuffer()).toString('base64')}`;

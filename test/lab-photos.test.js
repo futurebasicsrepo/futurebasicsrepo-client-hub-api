@@ -4,7 +4,7 @@ import { existsSync } from 'node:fs';
 import sharp from 'sharp';
 import { MATERIAL_PHOTOS, photoFor, photoById, creditOf } from '../src/lab-photos.js';
 import { photoJpeg, photoShade } from '../src/lab-photo-tint.js';
-import { BUILTIN_MATERIALS, cleanMaterial, FABRIC_CONSTRUCTIONS } from '../src/lab-materials.js';
+import { BUILTIN_MATERIALS, cleanMaterial, FABRIC_CONSTRUCTIONS , fabricFamily } from '../src/lab-materials.js';
 
 test('every photo in the list has its file, a free licence and a credit', () => {
   assert.equal(new Set(MATERIAL_PHOTOS.map(p => p.id)).size, MATERIAL_PHOTOS.length);
@@ -51,8 +51,9 @@ test('the starting library has denim, fleece, terry, knits, polyesters, ripstop,
     const got = family(re); assert.ok(got.length >= n, `${name}: ${got.length}`);
     assert.ok(new Set(got.map(m => m.spec.weightGsm)).size >= Math.min(3, got.length), `${name} comes in several weights`);
   }
-  const withPhoto = fabrics.filter(m => photoFor(m)).length;
-  assert.ok(withPhoto / fabrics.length > .9, `${withPhoto} of ${fabrics.length} fabrics have a photo`);
+  // cloth: nearly all with a photo (a smooth leather or patent is drawn as a hide instead, so leathers are left out of the count)
+  const cloth = fabrics.filter(m => !['leather', 'vegan'].includes(fabricFamily(m))), withPhoto = cloth.filter(m => photoFor(m)).length;
+  assert.ok(withPhoto / cloth.length > .9, `${withPhoto} of ${cloth.length} fabrics have a photo`);
   assert.equal(cleanMaterial({ kind: 'fabric', name: 'Test', spec: { photo: 'nonsense' } }).material.spec.photo, '');
   assert.equal(cleanMaterial({ kind: 'fabric', name: 'Test', spec: { photo: 'denim' } }).material.spec.photo, 'denim');
 });

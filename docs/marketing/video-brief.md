@@ -100,6 +100,14 @@ open it in the Studio with your material and colour already applied.
 A library of photo-real fabric and trim swatches, recoloured to your colour. It covers fabrics, footwear materials, plush, plastics and
 acrylics.
 
+The fabrics are browsed by family and weight:
+- shirting cottons from voile and lawn to oxford and flannel;
+- chinos, cords and moleskin;
+- 12 leathers;
+- 14 vegan leathers, from PU to cactus, apple, mycelium and cork.
+
+Labels chosen on a garment are drawn on its flats where they are sewn.
+
 ### Beyond clothing (good for a "it does more than tees" cut)
 - **Bags:** backpacks, slings, totes, helmet bags, work bags, messengers, duffels and waist bags, designed as a bag designer would and rendered on a set that suits each; a design sheet; drawn in panels a designer recolours and reshapes; and a library of eleven original bag flats to start from.
 - **Footwear:** concepts drawn as designer-grade three-quarter renders on a set that suits the shoe, a design sheet (side, top, outsole, heel and four colourways on one board), the shoe drawn as a technical flat in five views and traced into panels a designer recolours and reshapes in the Studio, a parametric shoe last, the upper flattened off the last into pattern pieces, a size run, and a tech flat from four sides.

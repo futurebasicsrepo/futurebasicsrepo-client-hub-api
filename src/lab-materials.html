@@ -36,6 +36,7 @@ h1{font-size:clamp(28px,4.4vw,42px);letter-spacing:-.035em;font-weight:500;margi
 .card .sw{aspect-ratio:4/3;background:var(--fog);display:grid;place-items:center;position:relative;overflow:hidden}.card .sw img{width:100%;height:100%;object-fit:cover}.card .sw>svg{position:absolute;inset:0;width:100%;height:100%}.card .sw .tagdes{position:absolute;right:8px;top:8px;z-index:3;min-height:28px;padding:3px 10px;font-size:12px}.card .sw[data-tagsvg]>svg{inset:5%;width:90%;height:90%}.card .sw img{position:relative;z-index:1}.prev img.ph{position:absolute;inset:0;width:100%;height:100%;max-height:none;object-fit:cover;z-index:1}.credit{font-size:11px;color:var(--muted,#6b6b6b);line-height:1.35}.card .sw .dots{z-index:2}
 .card .sw .dots{position:absolute;left:10px;bottom:10px;display:flex;gap:4px}.card .sw .dots i{width:14px;height:14px;border-radius:50%;border:1px solid rgba(0,0,0,.25);display:block}
 .card .bd{padding:12px 14px;display:grid;gap:4px}.card .bd b{font-weight:500}.card .bd .mono{letter-spacing:.06em}.card .pr{font:500 12px 'IBM Plex Mono',monospace}
+.fams{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:4px 0 14px}.fams:empty{display:none}.fams button{font:inherit;font-size:13px;border:1px solid var(--line,#d8d6cf);background:transparent;border-radius:999px;padding:5px 12px;cursor:pointer;color:inherit}.fams button[aria-pressed=true]{background:var(--ink,#141416);color:var(--paper,#fff);border-color:var(--ink,#141416)}.fams button small{opacity:.6;margin-left:4px}.fams select{margin-left:auto}.famhead{grid-column:1/-1;margin:18px 0 0;display:flex;gap:10px;align-items:baseline}.famhead h2{margin:0;font-size:18px}.famhead span{color:var(--dim,#777);font-size:13px}
 .chip{font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.06em;text-transform:uppercase;border-radius:999px;padding:3px 10px;background:var(--fog);color:var(--dim);white-space:nowrap}
 .msg{font-size:13px;color:var(--dim)}.msg.ok{color:var(--ok)}.msg.bad{color:var(--bad)}
 dialog{border:0;border-radius:24px;padding:0;width:min(900px,96vw);max-height:92vh;overflow:auto;background:#fff;color:var(--ink)}dialog::backdrop{background:rgba(20,20,22,.55)}
@@ -55,6 +56,7 @@ dialog{border:0;border-radius:24px;padding:0;width:min(900px,96vw);max-height:92
     <span class="mono" style="display:block;margin-top:14px">Our library</span><h1>Materials, trims and tags.</h1>
     <p class="note">Every fabric, trim and label we buy, with its weight, composition, mill, price and swatch, and every tag in its shape and size: neck labels, size tabs, care labels, hem tags, waistband labels, hang tags. Footwear materials (leathers, suedes, meshes, linings, foams, soles, stiffeners, laces), plush and toy materials (pile fabrics, fur, felt, fill, safety eyes and noses) and plastics and acrylics for electronics and hard goods (resin, grade, process, finish, flame rating). Choose one on a concept, or on a part of a shoe, a plush or an enclosure, and its bill of materials, landed cost and margin follow; the tech pack takes the lines.</p>
     <div class="tools"><div class="seg" role="tablist" id="kinds"></div><input class="t" id="q" type="search" placeholder="Search by name, code, mill, composition…" aria-label="Search" style="max-width:360px"><select class="t" id="forSel" style="max-width:180px;display:none" aria-label="For"></select><button class="btn go" type="button" id="add">Add one</button><span class="msg" id="msg" role="status"></span></div>
+    <div class="fams" id="fams" role="group" aria-label="Fabric families"></div>
     <div class="grid" id="grid"></div>
   </div>
 </main>
@@ -87,7 +89,7 @@ const BLOBS=new Map();async function blobUrl(path){if(BLOBS.has(path))return BLO
 const fileUrl=f=>new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(r.result);r.onerror=no;r.readAsDataURL(f)});
 function msg(sel,text,cls=''){const m=$(sel);m.className='msg '+cls;m.innerHTML=text}
 const money=c=>'$'+(c/100).toFixed(2);
-let M={materials:[],options:null},KIND='fabric',FOR='',CUR=null,TAGS=null,SWATCH='';
+let M={materials:[],options:null},KIND='fabric',FOR='',CUR=null,TAGS=null,SWATCH='',FAM='',BAND='';
 const opt=(list,v,labelOf=x=>x)=>list.map(x=>{const id=x.id||x;return `<option value="${esc(id)}" ${id===v?'selected':''}>${esc(labelOf(x))}</option>`}).join('');
 
 async function load(){const k=KIND,r=await api(`/v1/lab/materials?kind=${k}&q=${encodeURIComponent($('#q').value.trim())}${FOR?'&for='+encodeURIComponent(FOR):''}`);if(k!==KIND)return;M=r;M.kind=k;paint()} // a tab left before its list came back does not paint over the one chosen since
@@ -95,7 +97,15 @@ function paint(){
   const o=M.options;$('#kinds').innerHTML=o.kinds.map(k=>`<button type="button" data-kind="${k.id}" aria-pressed="${k.id===KIND}">${esc(k.label)}</button>`).join('');$('#kinds [aria-pressed=true]')?.scrollIntoView({block:'nearest',inline:'nearest'});
   const fs=$('#forSel');fs.style.display=KIND==='tag'?'':'none';if(KIND==='tag')fs.innerHTML=`<option value="">For anything</option>${o.tag.for.map(f=>`<option value="${f}" ${f===FOR?'selected':''}>For ${f}</option>`).join('')}`;
   $('#add').textContent={fabric:'Add a fabric',trim:'Add a trim',tag:'Add a tag',footwear:'Add a footwear material',plush:'Add a plush or toy material',plastic:'Add a plastic'}[KIND]||'Add a material';
-  const g=$('#grid');g.dataset.kind=M.kind||KIND;g.innerHTML=M.materials.length?M.materials.map(card).join(''):'<p class="note">Nothing here yet.</p>';
+  // fabrics: by family (jersey, shirting, denim, leather, vegan leather…) and by weight, lightest first
+  const fb=$('#fams'),isFab=(M.kind||KIND)==='fabric',fams=o.fabric.families||[],W={light:0,mid:1,heavy:2};
+  let list=M.materials;
+  if(isFab){const n=id=>list.filter(m=>m.family===id).length;
+    fb.innerHTML=`<button type="button" data-fam="" aria-pressed="${!FAM}">All<small>${list.length}</small></button>${fams.filter(f=>n(f.id)).map(f=>`<button type="button" data-fam="${f.id}" aria-pressed="${FAM===f.id}">${esc(f.label)}<small>${n(f.id)}</small></button>`).join('')}<select class="t" id="bandSel" aria-label="Weight" style="max-width:170px"><option value="">Any weight</option>${(o.fabric.bands||[]).map(b=>`<option value="${b.id}" ${BAND===b.id?'selected':''}>${esc(b.label)}</option>`).join('')}</select>`;
+    list=list.filter(m=>(!FAM||m.family===FAM)&&(!BAND||m.band===BAND)).sort((a,b)=>fams.findIndex(f=>f.id===a.family)-fams.findIndex(f=>f.id===b.family)||(W[a.band]??3)-(W[b.band]??3)||(a.spec?.thicknessMm||a.spec?.weightGsm||0)-(b.spec?.thicknessMm||b.spec?.weightGsm||0)||a.name.localeCompare(b.name))}
+  else fb.innerHTML='';
+  const head=f=>{const x=fams.find(y=>y.id===f);const k=list.filter(m=>m.family===f).length;return `<div class="famhead"><h2>${esc(x?.label||'Other')}</h2><span>${k} · light to heavy</span></div>`};
+  const g=$('#grid');g.dataset.kind=M.kind||KIND;g.innerHTML=list.length?list.map((m,i)=>(isFab&&!FAM&&(i===0||list[i-1].family!==m.family)?head(m.family):'')+card(m)).join(''):'<p class="note">Nothing here yet.</p>';
   for(const el of g.querySelectorAll('[data-swatch]'))blobUrl(`/v1/lab/materials/${el.dataset.swatch}/swatch?thumb=1`).then(u=>{const i=new Image();i.alt='';i.src=u;el.prepend(i)}).catch(()=>{});
   drawAll(g);
   for(const el of g.querySelectorAll('[data-tagsvg]'))drawTag(el,M.materials.find(m=>m.id===el.dataset.tagsvg));
@@ -104,7 +114,7 @@ function paint(){
 const goodsLine=(kind,s)=>kind==='footwear'?[s.category,s.thicknessMm?s.thicknessMm+' mm':'',s.finish&&s.finish!=='none'?s.finish:'',s.hardness?s.hardness+' Shore A':''].filter(Boolean).join(' · '):kind==='plush'?[s.category,s.pileMm?s.pileMm+' mm pile':'',s.weightGsm?s.weightGsm+' gsm':'',s.sizeMm?s.sizeMm+' mm':'',s.safety].filter(Boolean).join(' · '):[s.category,s.grade,s.process,s.finish&&s.finish!=='as moulded'?s.finish:'',s.transparency&&s.transparency!=='opaque'?s.transparency:'',s.ul94?'UL94 '+s.ul94:''].filter(Boolean).join(' · ');
 const GOODS=['footwear','plush','plastic'];
 function card(m){
-  const s=m.spec||{},line=GOODS.includes(m.kind)?goodsLine(m.kind,s):m.kind==='fabric'?[s.weightGsm?s.weightGsm+' gsm':'',s.construction,s.composition].filter(Boolean).join(' · '):m.kind==='trim'?[s.category,s.size,s.material,s.finish].filter(Boolean).join(' · '):`${s.widthMm} × ${s.heightMm} mm · ${s.shape}${s.fold&&s.fold!=='none'?' · '+s.fold:''} · ${s.material}`;
+  const s=m.spec||{},line=GOODS.includes(m.kind)?goodsLine(m.kind,s):m.kind==='fabric'?[s.thicknessMm?s.thicknessMm+' mm':'',s.weightGsm&&!s.thicknessMm?s.weightGsm+' gsm'+(m.oz&&!['jersey','fleece','knitwear'].includes(m.family)?` (${m.oz} oz)`:''):'',m.band?m.band[0].toUpperCase()+m.band.slice(1)+' weight':'',s.construction,s.composition].filter(Boolean).join(' · '):m.kind==='trim'?[s.category,s.size,s.material,s.finish].filter(Boolean).join(' · '):`${s.widthMm} × ${s.heightMm} mm · ${s.shape}${s.fold&&s.fold!=='none'?' · '+s.fold:''} · ${s.material}`;
   const dots=(m.colours||[]).slice(0,6).map(c=>`<i style="background:${esc(c.hex||'#ccc')}" title="${esc(c.name||'')}${c.pantone?' · '+esc(c.pantone):''}"></i>`).join('');
   const sw=m.kind==='tag'?`<div class="sw" data-tagsvg="${m.id}"><a class="btn sm tagdes" href="/lab/studio?tag=${encodeURIComponent(m.id)}" title="Design the label in the studio">Design</a></div>`:`<div class="sw" data-draw="${m.id}" ${m.hasSwatch?`data-swatch="${m.id}"`:''}><div class="dots">${dots}</div></div>`;
   return `<article class="card" data-m="${m.id}" tabindex="0" role="button"><${'div'} style="display:contents">${sw}</div><div class="bd"><b>${esc(m.name)}</b>${M?.client?`<span class="note" style="font-size:11px">${m.starter?'Starter library':'Your team'+(m.by?' · '+esc(m.by):'')}</span>`:m.room?`<span class="note" style="font-size:11px">${esc(m.room)}'s room</span>`:''}<span class="note">${esc(line)}</span><div class="row" style="justify-content:space-between"><span class="pr">${money(m.priceCents)} / ${esc(m.unit)}</span>${m.kind==='tag'&&s.for?.length?`<span class="chip">${esc(s.for.join(' · '))}</span>`:m.supplier?`<span class="chip" title="${esc(m.supplier)}">${esc(m.supplier.split(':')[0].slice(0,18))}</span>`:''}</div></div></article>`;
@@ -167,7 +177,9 @@ $('#dSave').onclick=async()=>{const b=$('#dSave');FBN.begin(b);try{const body={k
   FBN.end(b,true);FBN.toast(CUR?'Saved.':'Added to the library.','ok');$('#dlg').close();await load()}catch(x){FBN.end(b,false);msg('#dMsg',esc(x.message),'bad')}};
 $('#dDel').onclick=async()=>{if(!CUR||!confirm('Take this out of the library? Concepts that use it keep it.'))return;try{await api('/v1/lab/materials/'+CUR.id,{method:'DELETE'});$('#dlg').close();FBN.toast('Taken out of the library.','ok');await load()}catch(x){msg('#dMsg',esc(x.message),'bad')}};
 $('#dlg').addEventListener('click',e=>{if(e.target.closest('[data-close]')||e.target===$('#dlg'))$('#dlg').close()});
-$('#kinds').addEventListener('click',e=>{const b=e.target.closest('[data-kind]');if(b){KIND=b.dataset.kind;FOR='';load().catch(x=>msg('#msg',esc(x.message),'bad'))}});
+$('#kinds').addEventListener('click',e=>{const b=e.target.closest('[data-kind]');if(b){KIND=b.dataset.kind;FOR='';FAM='';BAND='';load().catch(x=>msg('#msg',esc(x.message),'bad'))}});
+$('#fams').addEventListener('click',e=>{const b=e.target.closest('[data-fam]');if(b){FAM=b.dataset.fam;paint()}});
+$('#fams').addEventListener('change',e=>{if(e.target.id==='bandSel'){BAND=e.target.value;paint()}});
 $('#forSel').addEventListener('change',()=>{FOR=$('#forSel').value;load().catch(x=>msg('#msg',esc(x.message),'bad'))});
 let qT=0;$('#q').addEventListener('input',()=>{clearTimeout(qT);qT=setTimeout(()=>load().catch(x=>msg('#msg',esc(x.message),'bad')),250)});
 $('#add').onclick=()=>openForm(null);
