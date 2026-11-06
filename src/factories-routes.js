@@ -2,6 +2,7 @@
 // with status indicators. A factory is a supplier; a factory met at a fair that is not a supplier yet is listed too, ready to add.
 import { PRODUCT_TYPES, SKILLS, typeLabel, skillLabel, cleanProfile, geocode, packState, PACK_STATE, projectIndicator, runIndicator, factoryLight, LIGHT, pinsFor } from './factories.js';
 import { listFactoryFiles } from './room-files.js';
+import { parseCsv, fromAlibaba, noteFor, IMPORT_MARK } from './factory-import.js';
 import { readFileSync } from 'node:fs';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -86,6 +87,42 @@ export function registerFactoryRoutes(app, d) {
       vocab: { productTypes: PRODUCT_TYPES.map(g => ({ group: g.group, types: g.types.map(([key, label]) => ({ key, label })) })), skills: SKILLS.map(([key, label]) => ({ key, label })), lights: LIGHT },
       totals: { factories: factories.length, withWork: factories.filter(f => f.counts.packs || f.counts.runs).length, needAttention: factories.filter(f => f.light === 'late' || f.light === 'waiting').length, countries: countries.size }
     };
+  });
+  // ---- bringing in the factories from our Alibaba orders (src/factory-import.js) ----
+  // preview: the export read into one row per supplier, each with a suggested choice, and whether it is in the hub already (by name)
+  const readExport = csv => { const recs = parseCsv(String(csv || '').slice(0, 5_000_000)); if (!recs.length || !('Supplier (company)' in recs[0])) return null; return fromAlibaba(recs); };
+  const existing = async names => new Map((await pool.query('select id, name from suppliers where lower(name) = any($1::text[])', [names.map(n => n.toLowerCase())])).rows.map(r => [r.name.toLowerCase(), r.id]));
+  app.post('/v1/admin/factories/import/preview', { preHandler: guard.preHandler, bodyLimit: 6_000_000 }, async (req, reply) => {
+    const rows = readExport(req.body?.csv); if (!rows) return reply.code(400).send({ error: 'That is not the Alibaba suppliers export: its first column should be "Supplier (company)"' });
+    const have = await existing(rows.filter(r => r.valid).map(r => r.name));
+    return { rows: rows.map(r => ({ ...r, existingId: r.valid ? have.get(r.name.toLowerCase()) || null : null })) };
+  });
+  // import: the chosen suppliers (by name, with the product types and skills as staff left them) added, or filled in where they exist
+  app.post('/v1/admin/factories/import', { preHandler: guard.preHandler, bodyLimit: 6_000_000 }, async (req, reply) => {
+    const rows = readExport(req.body?.csv); if (!rows) return reply.code(400).send({ error: 'That is not the Alibaba suppliers export' });
+    const picks = (Array.isArray(req.body?.pick) ? req.body.pick : []).slice(0, 500), byName = new Map(rows.filter(r => r.valid).map(r => [r.name.toLowerCase(), r]));
+    const out = { added: [], updated: [], skipped: [] }, on = new Date().toISOString().slice(0, 10);
+    for (const pk of picks) {
+      const r = byName.get(String(pk?.name || '').toLowerCase()); if (!r) { out.skipped.push(String(pk?.name || '').slice(0, 160)); continue; }
+      const c = cleanProfile({ productTypes: Array.isArray(pk.productTypes) ? pk.productTypes : r.productTypes, skills: Array.isArray(pk.skills) ? pk.skills : r.skills, city: r.city, country: r.country, website: r.website, notes: noteFor(r, on) });
+      if (c.error) { out.skipped.push(r.name); continue; } const q = c.p;
+      const cur = (await pool.query('select * from suppliers where lower(name)=lower($1) limit 1', [r.name])).rows[0];
+      if (!cur) {
+        const id = (await pool.query(`insert into suppliers(name, country, city, website, product_types, skills, notes, lat, lng, geo_manual) values($1,$2,$3,$4,$5,$6,$7,$8,$9,false) returning id`,
+          [r.name, q.country || null, q.city || null, q.website || null, q.productTypes || [], q.skills || [], q.notes || null, q.lat ?? null, q.lng ?? null])).rows[0].id;
+        out.added.push({ id, name: r.name });
+      } else {
+        // what was set by hand stays: empty fields are filled, types and skills are added to, the note is added once
+        const pin = cur.lat == null && !cur.geo_manual;
+        await pool.query(`update suppliers set country=coalesce(nullif(country,''),$2), city=coalesce(nullif(city,''),$3), website=coalesce(nullif(website,''),$4),
+            product_types=array(select distinct unnest(product_types || $5::text[])), skills=array(select distinct unnest(skills || $6::text[])),
+            notes=case when coalesce(notes,'') like '%' || $8 || '%' then notes else concat_ws(E'\n\n', nullif(notes,''), $7::text) end,
+            lat=case when $9 then $10 else lat end, lng=case when $9 then $11 else lng end, updated_at=now() where id=$1`,
+          [cur.id, q.country || null, q.city || null, q.website || null, q.productTypes || [], q.skills || [], q.notes || null, IMPORT_MARK, pin, q.lat ?? null, q.lng ?? null]);
+        out.updated.push({ id: cur.id, name: cur.name });
+      }
+    }
+    return out;
   });
   app.get('/v1/admin/factories/map', guard, async (_req, reply) => world ? { world } : reply.code(503).send({ error: 'The map is not available' }));
 

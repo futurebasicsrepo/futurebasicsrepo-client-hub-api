@@ -58,7 +58,7 @@ table{border-collapse:collapse;width:100%}th,td{text-align:left;padding:8px 10px
   <div id="needSignin" class="panel hidden"><h1>Sign in to the work console first</h1><p class="note">This page uses your work console sign-in. Open the console, sign in, then come back here.</p><a class="btn go" href="/admin" style="margin-top:12px">Open the console</a></div>
   <div id="app" class="hidden">
     <div class="top"><div><span class="mono" style="color:var(--dim)">Production</span><h1>Factories</h1><p class="note">Who makes what, where they are, and what is in their hands right now.</p></div>
-      <div class="acts"><a class="btn" href="/admin#partnersSection">Fair contacts</a><a class="btn" href="/booth">Fair notes</a></div></div>
+      <div class="acts"><button class="btn go" id="impOpen" type="button">Import from Alibaba</button><a class="btn" href="/admin#partnersSection">Fair contacts</a><a class="btn" href="/booth">Fair notes</a></div></div>
     <p class="msg" id="msg" role="status"></p>
     <label class="note" style="display:flex;gap:8px;align-items:center;margin:0 0 14px" title="Off: a factory reads its link and writes to you in Messages, and you record its quote, acknowledgements, countersignature and samples (the tech pack's Sign and Samples sections). On: the factory gets those buttons on its own link."><input type="checkbox" id="factoryActions"> Let factories quote, acknowledge, countersign and mark samples sent on their own links (otherwise they read and write in Messages)</label>
     <div class="tiles" id="tiles"></div>
@@ -80,6 +80,10 @@ table{border-collapse:collapse;width:100%}th,td{text-align:left;padding:8px 10px
     </section>
   </div>
 </main>
+<dialog id="imp" aria-labelledby="impTitle"><div class="dwrap"><div class="dh"><div><h2 id="impTitle">Import from Alibaba</h2><div class="sub">The suppliers export of our Alibaba orders (a CSV, one row per supplier). Nothing is added until you press Import.</div></div><button class="btn sm" id="impClose" type="button">Close</button></div>
+  <label class="f"><span>The export (.csv)</span><input class="t" id="impFile" type="file" accept=".csv,text/csv"></label>
+  <div id="impBody"></div><p class="msg" id="impMsg" role="status"></p>
+  <div class="acts hidden" id="impActs" style="position:sticky;bottom:0;background:#fff;padding:10px 0 2px"><button class="btn go" id="impGo" type="button">Import</button><button class="btn sm" id="impAll" type="button">Tick all</button><button class="btn sm" id="impNone" type="button">Untick all</button><button class="btn sm" id="impSuggest" type="button">Back to suggested</button></div></div></dialog>
 <dialog id="dlg"><div class="dwrap"><div class="dh"><div><h2 id="dTitle"></h2><div id="dSub" class="sub"></div></div><button class="btn sm" id="dClose">Close</button></div><div class="tabs" id="dTabs"></div><div id="dBody"></div><p class="msg" id="dMsg" role="status"></p></div></dialog>
 <script>
 const $=s=>document.querySelector(s),esc=v=>String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
@@ -234,6 +238,37 @@ async function load(){factoryActions();
   renderTiles();chips();renderList();
   $('#legend').innerHTML=Object.entries(LIGHTS).map(([k,[l]])=>`<span style="--c:${{late:'var(--bad)',waiting:'#e8b100',active:'var(--ok)',idle:'#9a9aa0'}[k]}">${l}</span>`).join('');
 }
+// ---------- bringing in the factories from our Alibaba orders ----------
+let IMP=null;
+const isay=(t,k='ok')=>{const m=$('#impMsg');m.className='msg '+k;m.textContent=t};
+const money=c=>'$'+(c/100).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:0});
+function impRender(){
+  const rows=IMP.rows,on=rows.filter(r=>r.pick).length,types=D.vocab.productTypes.flatMap(g=>g.types).map(t=>[t.key,t.label]),skills=D.vocab.skills.map(s=>[s.key,s.label]);
+  $('#impBody').innerHTML=`<p class="sub">${rows.length} suppliers, ${money(rows.reduce((a,r)=>a+r.spentCents,0))} spent. ${rows.filter(r=>r.suggest).length} are ticked as factories we make with (bought from more than once, or for more than $300); the rest are one-off small buys or orders never paid. Ones already in the hub keep what was set by hand.</p>
+  <div class="scroll"><table><thead><tr><th></th><th>Supplier</th><th>Where</th><th>Orders</th><th>Spent</th><th>Makes · skills</th></tr></thead><tbody>${rows.map((r,i)=>`<tr>
+    <td><input type="checkbox" data-ipick="${i}" ${r.pick?'checked':''} ${r.valid?'':'disabled'} aria-label="Import ${esc(r.name||'this row')}"></td>
+    <td><b>${esc(r.name||'(no name)')}</b> ${r.existingId?'<span class="chip dim">In the hub</span>':''}<div class="sub">${esc(r.why)}${r.website?` · <a href="${esc(r.website)}" target="_blank" rel="noopener">store</a>`:''}</div></td>
+    <td>${esc([r.city,r.country].filter(Boolean).join(', '))}</td><td style="font-variant-numeric:tabular-nums">${r.orders}</td><td style="font-variant-numeric:tabular-nums">${money(r.spentCents)}</td>
+    <td><div class="tags">${r.productTypes.map(k=>`<span class="chip tag">${esc(TL[k]||k)}</span>`).join('')}${r.skills.map(k=>`<span class="chip tag" style="border-style:dashed">${esc(SL[k]||k)}</span>`).join('')}${r.productTypes.length+r.skills.length?'':'<span class="sub">no guess</span>'}</div>
+      ${r.valid?`<details data-iedit="${i}" style="margin-top:6px"><summary class="sub" style="cursor:pointer">Change</summary><div class="sec" style="margin-top:6px"><div class="sub">Makes</div>${PICK('t'+i,types,r.productTypes)}<div class="sub">Skills</div>${PICK('s'+i,skills,r.skills)}<div class="sub">What we ordered</div><ul style="margin:0;padding-left:18px">${r.products.slice(0,12).map(x=>`<li class="sub">${esc(x)}</li>`).join('')}</ul></div></details>`:''}</td></tr>`).join('')}</tbody></table></div>`;
+  $('#impGo').textContent=on?`Import ${on} factor${on===1?'y':'ies'}`:'Import';$('#impGo').disabled=!on;$('#impActs').classList.remove('hidden');
+}
+$('#impOpen').onclick=()=>{IMP=null;$('#impFile').value='';$('#impBody').innerHTML='';$('#impActs').classList.add('hidden');isay('');$('#imp').showModal()};
+$('#impClose').onclick=()=>$('#imp').close();
+$('#impFile').onchange=async e=>{const file=e.target.files[0];if(!file)return;isay('Reading the export…');
+  try{const csv=await file.text(),r=await api('/v1/admin/factories/import/preview',{body:{csv}});IMP={csv,rows:r.rows.map(x=>({...x,pick:x.suggest}))};impRender();isay('')}catch(err){IMP=null;$('#impBody').innerHTML='';$('#impActs').classList.add('hidden');isay(err.message,'bad')}};
+$('#impBody').addEventListener('change',e=>{const t=e.target;
+  if(t.dataset.ipick!=null){IMP.rows[+t.dataset.ipick].pick=t.checked;const on=IMP.rows.filter(r=>r.pick).length;$('#impGo').textContent=on?`Import ${on} factor${on===1?'y':'ies'}`:'Import';$('#impGo').disabled=!on;return}
+  const m=/^([ts])(\d+)$/.exec(t.name||'');if(m){const r=IMP.rows[+m[2]],key=m[1]==='t'?'productTypes':'skills';r[key]=[...$('#impBody').querySelectorAll(`input[name="${t.name}"]:checked`)].map(x=>x.value);r.edited=true}});
+// a changed pick redraws the chips once the editor is closed, so the open editor is not lost mid-change
+$('#impBody').addEventListener('toggle',e=>{if(e.target.matches('details[data-iedit]')&&!e.target.open&&IMP.rows[+e.target.dataset.iedit].edited)impRender()},true);
+const impSet=f=>{IMP.rows.forEach(r=>{if(r.valid)r.pick=f(r)});impRender()};
+$('#impAll').onclick=()=>impSet(()=>true);$('#impNone').onclick=()=>impSet(()=>false);$('#impSuggest').onclick=()=>impSet(r=>r.suggest);
+$('#impGo').onclick=async()=>{const pick=IMP.rows.filter(r=>r.pick).map(r=>({name:r.name,productTypes:r.productTypes,skills:r.skills}));if(!pick.length)return;
+  const b=$('#impGo');b.disabled=true;isay('Importing…');
+  try{const r=await api('/v1/admin/factories/import',{body:{csv:IMP.csv,pick}});await load();renderMap(visible());
+    const t=[r.added.length?`${r.added.length} added`:'',r.updated.length?`${r.updated.length} filled in`:'',r.skipped.length?`${r.skipped.length} skipped`:''].filter(Boolean).join(', ')||'Nothing changed';
+    $('#imp').close();say(t+'. Each one has a note of its orders; check what they make on the Profile tab.')}catch(err){isay(err.message,'bad');b.disabled=false}};
 (async()=>{
   if(!TOKEN()){$('#needSignin').classList.remove('hidden');return}
   try{
