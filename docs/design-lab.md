@@ -671,6 +671,19 @@ patent's gloss, a fur's strands, and so is the tech flats SVG. The concept windo
 
 **In Design** (the picture and both flats), **Fabrics, trims & labels** opens the same bill of materials beside the library: each fabric, trim and tag drawn (or its swatch photo), searchable, with **Add to the garment** (the first fabric is the main one, the next the contrast). Each line on the garment can change what it is used as, its colour, how much a piece takes and where it goes (a label's default: how it is attached), or come off; the materials, making, landed cost and margin follow, and the tech pack takes the lines.
 
+**Wash and distress.** The Studio's **Wash & distress** button, beside Fabrics, trims & labels, opens that section of the flats' Garment tab. It is defined in `src/lab-wash.js`.
+- **Wash:** choose from
+  - rinse, silicone softener, enzyme;
+  - garment dye, pigment dye, overdye/tint;
+  - stone, acid, snow;
+  - potassium permanganate (PP) spray, bleach, mineral;
+  - ozone, laser fade, sun-faded.
+
+  Each comes in Light, Medium or Heavy, with the factory's own words shown under it.
+- **Distressing:** an on/off switch and an amount slider (0–100). Turning the amount up adds worn abrasion patches, then holes with loose threads, then heavier fraying at the hems and cuffs.
+- **On the flats:** both are drawn inside the garment only, on top of its colour and cloth, and kept in the flat's params (`wash`, `distress`).
+- **For the factory:** the tech pack's construction notes and the flats sheet list them in factory words. **Draw the picture from the flats** adds them to the prompt.
+
 **Labels on the flats.** Every tag chosen on a concept is drawn on its flats in Design and on the tech pack's flats sheet, at its real size, where it is sewn (`tagMarks` in `src/lab-flats.js`):
 - **Seen from that side (drawn with their face):**
   - a neck label and its size tab, through the neck opening on the front;

@@ -166,6 +166,7 @@ html,body{touch-action:manipulation}
     <button class="btn go sm pic-only" id="apply" type="button">Use as the concept picture</button>
     <button class="btn sm hidden" id="tagAddBtn" type="button" title="Put this label on a garment: it goes on its bill of materials and into its tech pack">Add to a garment</button>
     <button class="fold btn sm flat-only" id="specBtn" type="button" title="The flats, measured, as a printable spec sheet">Spec sheet</button>
+    <button class="fold btn sm flat-only" id="washBtn" type="button" title="The wash (stone, acid, snow, enzyme, PP spray, bleach…) and the distressing, drawn on the flats and written on the tech pack">Wash &amp; distress</button>
     <button class="fold btn sm flat-only" id="decoBtn" type="button" title="One page per graphic for the decorator: size, Pantones, technique, cost, where it goes">Decoration sheet</button>
     <button class="btn go sm flat-only hidden" id="packBtn" type="button">Send to the tech pack</button>
   </div>
@@ -1307,7 +1308,7 @@ async function setVMode(v,{push=true}={}){
 $$('#viewSeg [data-v]').forEach(b=>b.onclick=()=>setVMode(b.dataset.v));
 $('#moreBtn').onclick=()=>{const o=$('.bar').classList.toggle('open');$('#moreBtn').setAttribute('aria-expanded',String(o))};
 const flatsOr=fn=>()=>{const f=FF();if(!f||!f.ready()){toast('The flats are still loading.');return}fn(f)};
-$('#specBtn').onclick=flatsOr(f=>f.sheet());$('#decoBtn').onclick=flatsOr(f=>f.deco());$('#packBtn').onclick=flatsOr(f=>f.pack());
+$('#specBtn').onclick=flatsOr(f=>f.sheet());$('#decoBtn').onclick=flatsOr(f=>f.deco());$('#washBtn').onclick=flatsOr(f=>f.wash?.());$('#packBtn').onclick=flatsOr(f=>f.pack());
 // ---------- fabrics, trims and labels on the garment (the concept's bill of materials), from the materials library; on the picture and the flats ----------
 const MAT={kind:'fabric',q:'',on:null,lib:[]};let MSW=null,MTG=null,MPH=null;
 const matMods=async()=>{if(!MSW)[MSW,MTG,MPH]=await Promise.all([import('/lab/lab-swatches.js'),import('/lab/lab-tags.js'),import('/lab/lab-photos.js').catch(()=>null)]);return[MSW,MTG]};
