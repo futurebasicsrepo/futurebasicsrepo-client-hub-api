@@ -1120,6 +1120,7 @@ export async function migrate() {
     create index if not exists lab_materials_client on lab_materials(client_id);
     create index if not exists lab_techniques_client on lab_techniques(client_id);
     alter table tech_packs add column if not exists verification jsonb not null default '{}';
+    alter table tech_packs add column if not exists client_pack jsonb; -- the client's own tech pack (a file they made), used in place of ours: { storage, name, size, mime, at, only }
     alter table tech_packs add column if not exists locked_at timestamptz;
     alter table tech_packs add column if not exists initiated_by text not null default 'brand';
     alter table tech_packs add column if not exists submitted_at timestamptz;

@@ -96,6 +96,7 @@ import { shopifyConfigured, shopifyGraphql, SHOP_CONNECTION_QUERY, APP_SCOPES_QU
 import { latestProductQuote, productCommercials, projectFinancialRollups, clientProductTerms, draftOrderLinesForProducts } from './commercials.js';
 import { normalizeSubmission, normalizeAmount, nextOfferState, consignmentView, formatCents } from './consign.js';
 import { normalizeOfferSubmission, normalizeOfferAmount, nextOfferMove, offerView } from './offers.js';
+import { cleanClientPack, clientPackView } from './techpack.js';
 import { missingViews, normalizeTechPack, seedTechPack, techPackCompleteness, publishedTechPackView, factoryActionsOn, setFactoryActions, FACTORY_VIEW_ONLY, normalizeVerification, techPackReadiness, emptyVerification, publishGate, isInlineImage, packStrings, mergeClientEdits, cardFieldsFromPack } from './techpack.js';
 import { aiEnabled, vetMeasurements, draftFromPhotos, draftFromBrief, applyDraftToPack, productTypeLabel, AI_MODEL, translateStrings, TRANSLATION_LANGS, LANG_LABELS, locateProduct, cropToBox, draftLooksEmpty, NoProductError, completeMeasurements, locateCallouts, calloutCrop } from './ai.js';
 import { planClientAccess, normalizeEmails, emailDomain } from './access.js';
@@ -2764,7 +2765,7 @@ function techPackPayload(row){
   if(!row)return null;
   const publishedData=row.published_data?normalizeTechPack(row.published_data):null,verification=normalizeVerification(row.verification,row.version);
   return {id:row.id,productId:row.product_id,version:row.version,status:row.status,initiatedBy:row.initiated_by||'brand',submittedAt:row.submitted_at||null,source:row.source||'hub',followupSentAt:row.followup_sent_at||null,aiStatus:row.ai_status||null,aiReviewedAt:row.ai_reviewed_at||null,aiError:row.ai_error||null,aiAttempts:row.ai_attempts||0,billing:row.billing||null,paidAt:row.paid_at||null,checkoutUrl:row.pay_invoice_url||null,data:normalizeTechPack(row.data),publishedAt:row.published_at,publishedData,
-    verification,readiness:publishedData?techPackReadiness(publishedData,verification):null,lockedAt:row.locked_at||null,
+    verification,readiness:publishedData?techPackReadiness(publishedData,verification):null,lockedAt:row.locked_at||null,clientPack:clientPackView(row.client_pack),
     revisions:Array.isArray(row.revisions)?row.revisions:[],updatedAt:row.updated_at,createdAt:row.created_at,etag:packEtag(row),
     viewRequest:(()=>{const r=row.view_request;if(!r||!Array.isArray(r.views))return null;const still=missingViews(row.data).filter(v=>r.views.includes(v));return still.length?{views:still,at:r.at}:null})()};
 }
@@ -2828,7 +2829,7 @@ app.put('/v1/admin/products/:id/tech-pack',{preHandler:[authenticate,adminOnly],
   // saving it would wipe what landed since. The page sends the version it started from; a different one is refused and the page reloads.
   if(req.body.baseEtag&&ctx.techPack&&ctx.techPack.updated_by&&ctx.techPack.updated_by!==req.auth.sub&&packEtag(ctx.techPack)&&Math.abs(new Date(req.body.baseEtag).getTime()-new Date(packEtag(ctx.techPack)).getTime())>5)
     return reply.code(409).send({error:'Someone else saved this pack while you had it open (a colleague, a sample review handed over, or the assistant). It has been reloaded with their changes — make your last change again.',code:'STALE'});
-  const data=await keepFreshViews(ctx.techPack?.id,normalizeTechPack(req.body?.data));
+  const data=await keepFreshViews(ctx.techPack?.id,normalizeTechPack(req.body?.data));data.clientPack=null;
   const row=(await pool.query(`insert into tech_packs(product_id,client_id,data,created_by,updated_by) values($1,$2,$3,$4,$4)
     on conflict(product_id) do update set data=excluded.data,updated_by=excluded.updated_by,updated_at=now() returning *`,[ctx.product.id,ctx.product.client_id,data,req.auth.sub])).rows[0];
   // staff finishing a client's own unpublished draft: the card follows. Anything else reaches the card when it is published.
@@ -3144,6 +3145,7 @@ app.post('/v1/admin/products/:id/tech-pack/publish',{preHandler:[authenticate,ad
   const gate=publishGate(ctx.techPack.data,{threshold:LOOP_THRESHOLD(),checkRequired:aiEnabled(),
     check:lastCheck?{status:lastCheck.status,score:lastCheck.score,verdict:lastCheck.verdict_label,stale:Boolean(lastCheck.pack_updated_at&&new Date(ctx.techPack.updated_at)>new Date(lastCheck.pack_updated_at))}:null});
   const override=String(req.body?.override||'').trim().slice(0,500);
+  if(cleanClientPack(ctx.techPack.client_pack)){gate.ok=true;gate.problems=[]}
   if(!gate.ok&&override.length<5){
     let started=false;
     if(aiEnabled()&&(!lastCheck||(lastCheck.status!=='pending'&&gate.problems.some(p=>/spec check has not run|changed after the last spec check/.test(p))))){const r=await startSpecCheck({...ctx.techPack},{trigger:'publish',actor:req.auth.sub}).catch(()=>null);started=Boolean(r?.id)}
@@ -3157,7 +3159,7 @@ app.post('/v1/admin/products/:id/tech-pack/publish',{preHandler:[authenticate,ad
   // every published pack carries a style number a factory can quote on a purchase order; one the team typed is kept
   { const d0=normalizeTechPack(draftNow);
     if(!d0.style.styleNumber){const n=(await pool.query(`select nextval('style_number_seq') n`)).rows[0].n;d0.style.styleNumber=`FB-${String(new Date().getFullYear()).slice(2)}-${String(n).padStart(4,'0')}`;await pool.query('update tech_packs set data=$2 where id=$1',[ctx.techPack.id,d0]);draftNow=d0} }
-  const pubData=await withApprovedHero(ctx.techPack.id,normalizeTechPack(draftNow));
+  const pubData=await withApprovedHero(ctx.techPack.id,normalizeTechPack(draftNow));pubData.clientPack=cleanClientPack(ctx.techPack.client_pack);
   // what changed since the version the factory already read, and which acknowledgements still stand (callouts whose words did not change)
   const prevData=ctx.techPack.published_data||null,changes=prevData?packDiff(prevData,pubData):[],diffSummaryText=prevData?diffSummary(changes):'',acks=prevData?carriedAcks(prevData,pubData,normalizeVerification(ctx.techPack.verification,ctx.techPack.version).acks):{};
   const client=await pool.connect();
@@ -3284,6 +3286,61 @@ async function assignmentView(ctx){
   const sh=ctx.techPack?(await pool.query(`select * from tech_pack_shares where tech_pack_id=$1 and supplier_id=$2 and assigned and revoked_at is null order by created_at desc limit 1`,[ctx.techPack.id,sid])).rows[0]:null;
   return {supplierId:sid,name:sup.name,email:sup.contact_email||'',mode:sh?.kind||null,active:Boolean(sh),shareId:sh?.id||null,pageUrl:sup.url,packUrl:sh?`${clientHubUrl}/tp/${factoryShareToken(sh.id)}`:null};
 }
+// ---- The client's own tech pack: a file the client made (a PDF, a spreadsheet, a picture), used in place of ours. Uploaded here or taken from the room's
+// files (a copy, so deleting the room file leaves the pack whole). Publishing it puts it on the version, where the client and the assigned factory read it.
+const PACK_EXT=new Set(['.pdf','.png','.jpg','.jpeg','.xlsx','.xls','.docx','.doc','.zip','.ai','.pptx','.csv']);
+const sendPackFile=(reply,k,{download=false}={})=>reply.type(k.mime||'application/octet-stream').header('cache-control','no-store').header('content-disposition',`${download?'attachment':'inline'}; filename*=UTF-8''${encodeURIComponent(k.name)}`).send(createReadStream(join(uploadDir,k.storage)));
+app.post('/v1/admin/products/:id/tech-pack/client-pack',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const ctx=await loadAdminTechPack(req.params.id);if(!ctx)return reply.code(404).send({error:'Product not found'});
+  let pack=null;
+  if(req.isMultipart()){
+    const part=await req.file();if(!part)return reply.code(400).send({error:'Choose their tech pack file'});
+    const name=cleanName(part.filename);if(!PACK_EXT.has(extname(name).toLowerCase())){part.file.resume();return reply.code(415).send({error:'Their tech pack can be a PDF, a spreadsheet, a Word or PowerPoint file, a picture, an AI file or a ZIP'})}
+    const storage=`${randomBytes(18).toString('hex')}-${name}`,path=join(uploadDir,storage);
+    try{await pipeline(part.file,createWriteStream(path,{flags:'wx'}))}catch(e){await unlink(path).catch(()=>{});throw e}
+    if(part.file.truncated){await unlink(path).catch(()=>{});return reply.code(413).send({error:'That file is too large'})}
+    pack={storage,name,size:part.file.bytesRead,mime:part.mimetype};
+  }else{
+    const f=await fileFor(pool,String(req.body?.fileId||''),{admin:true});
+    if(!f||f.row.client_id!==ctx.product.client_id)return reply.code(404).send({error:'That file is not in this client\'s room'});
+    const name=cleanName(f.row.original_name);if(!PACK_EXT.has(extname(name).toLowerCase()))return reply.code(415).send({error:'Their tech pack can be a PDF, a spreadsheet, a Word or PowerPoint file, a picture, an AI file or a ZIP'});
+    const storage=`${randomBytes(18).toString('hex')}-${name}`;
+    try{await copyFile(join(uploadDir,f.row.storage_name),join(uploadDir,storage))}catch{return reply.code(410).send({error:'That file is missing from storage: upload it again'})}
+    pack={storage,name,size:Number(f.row.size_bytes)||0,mime:f.row.mime_type};
+  }
+  const k=cleanClientPack({...pack,at:new Date().toISOString(),only:req.body?.only!==false&&req.query?.only!=='0'});
+  const row=(await pool.query(`insert into tech_packs(product_id,client_id,data,created_by,updated_by,client_pack) values($1,$2,'{}'::jsonb,$3,$3,$4::jsonb)
+    on conflict(product_id) do update set client_pack=excluded.client_pack,updated_by=excluded.updated_by,updated_at=now() returning *`,[ctx.product.id,ctx.product.client_id,req.auth.sub,JSON.stringify(k)])).rows[0];
+  await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary) values($1,$2,$3,'tech-pack',$4)`,[ctx.product.client_id,ctx.product.id,req.auth.sub,`The client's own tech pack added: ${k.name}`]).catch(()=>{});
+  return reply.code(201).send({techPack:techPackPayload(row)});
+});
+app.patch('/v1/admin/products/:id/tech-pack/client-pack',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const ctx=await loadAdminTechPack(req.params.id);const k=cleanClientPack(ctx?.techPack?.client_pack);if(!k)return reply.code(404).send({error:'There is no client tech pack on this product'});
+  const row=(await pool.query('update tech_packs set client_pack=$2::jsonb,updated_at=now() where id=$1 returning *',[ctx.techPack.id,JSON.stringify({...k,only:req.body?.only!==false})])).rows[0];
+  return {techPack:techPackPayload(row)};
+});
+app.delete('/v1/admin/products/:id/tech-pack/client-pack',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const ctx=await loadAdminTechPack(req.params.id);if(!ctx?.techPack)return reply.code(404).send({error:'Product not found'});
+  // the file stays on disk: a published version may still carry it
+  const row=(await pool.query('update tech_packs set client_pack=null,updated_at=now() where id=$1 returning *',[ctx.techPack.id])).rows[0];
+  await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary) values($1,$2,$3,'tech-pack',$4)`,[ctx.product.client_id,ctx.product.id,req.auth.sub,'The client\'s own tech pack taken off the working copy']).catch(()=>{});
+  return {techPack:techPackPayload(row)};
+});
+app.get('/v1/admin/products/:id/tech-pack/client-pack',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const ctx=await loadAdminTechPack(req.params.id);const k=cleanClientPack(ctx?.techPack?.client_pack);if(!k)return reply.code(404).send({error:'Not found'});
+  return sendPackFile(reply,k,{download:req.query?.download==='1'});
+});
+app.get('/v1/products/:id/tech-pack/client-pack',{preHandler:authenticate},async(req,reply)=>{
+  if(!UUID_RE.test(String(req.params.id)))return reply.code(404).send({error:'Not found'});
+  const row=(await pool.query(`select published_data from tech_packs where product_id=$1 and client_id=$2 and published_at is not null`,[req.params.id,req.auth.clientId])).rows[0];
+  const k=cleanClientPack(row?.published_data?.clientPack);if(!k)return reply.code(404).send({error:'Not found'});
+  return sendPackFile(reply,k,{download:req.query?.download==='1'});
+});
+app.get('/v1/tp/:token/client-pack',async(req,reply)=>{
+  const {row,error}=await loadShareByToken(req.params.token);if(error)return reply.code(error.code).send({error:error.message});
+  const k=cleanClientPack(row.published_data?.clientPack);if(!k)return reply.code(404).send({error:'Not found'});
+  return sendPackFile(reply,k,{download:req.query?.download==='1'});
+});
 app.post('/v1/admin/products/:id/tech-pack/factory',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const ctx=await loadAdminTechPack(req.params.id);if(!ctx)return reply.code(404).send({error:'Product not found'});
   const sid=req.body?.supplierId||null,mode=req.body?.mode==='review'?'review':'quote';
@@ -3429,14 +3486,15 @@ app.get('/v1/tp/:token/export',async(req,reply)=>{
 });
 // the production package (src/factory-package.js): the pack as the factory sees it (PDF, workbook, its pictures) and, when it was designed in the Lab,
 // every production file the Lab makes for it: separations and films, stitch files, job sheets, vectors, the decoration sheet, the pattern and the last
-async function factoryPackage({productId,packData,title,version,publishedAt,revisions=[],verification=null,lockedAt=null}){
+async function factoryPackage({productId,packData,title,version,publishedAt,revisions=[],verification=null,lockedAt=null,clientPack=null}){
+  const ck=cleanClientPack(clientPack),clientFile=ck?{name:ck.name,only:ck.only,data:await readFile(join(uploadDir,ck.storage)).catch(()=>null)}:null;
   const data=normalizeTechPack(packData),c=(await pool.query(`select c.id,(select updated_at from lab_flats f where f.concept_id=c.id) flats_at,(select updated_at from lab_patterns p where p.concept_id=c.id) pattern_at,(select updated_at from lab_assemblies a where a.concept_id=c.id) assembly_at from lab_concepts c where c.product_id=$1 order by c.updated_at desc limit 1`,[productId])).rows[0];
   let lab=null;
   if(c){const a=await labFlats.productionFiles(c.id).catch(e=>({files:[],notes:[`Decoration files could not be made (${String(e.message).slice(0,120)})`]})),b=await labPattern.productionFiles(c.id).catch(e=>({files:[],notes:[`Pattern files could not be made (${String(e.message).slice(0,120)})`]})),g=await labAssembly.productionFiles(c.id).catch(e=>({files:[],notes:[`Engineering files could not be made (${String(e.message).slice(0,120)})`]}));
     const changed=[c.flats_at,c.pattern_at,c.assembly_at].some(t=>t&&publishedAt&&new Date(t)>new Date(publishedAt));
     lab={files:[...a.files,...b.files,...g.files],notes:[...a.notes,...b.notes,...g.notes],stale:changed}}
   const pdf=await techPackPdf({pack:data,product:{title},version,publishedAt,verification:verification?normalizeVerification(verification,version):null,revisions:(Array.isArray(revisions)?revisions:[]).filter(r=>r.version<=version),lockedAt}).catch(e=>{app.log.warn({err:e.message},'production package: the PDF could not be made');return null});
-  return buildFactoryPackage({data,title,version,publishedAt,pdf,sheets:toXlsx(packSheets(data,{audience:'factory',title})),lab});
+  return buildFactoryPackage({data,title,version,publishedAt,pdf,sheets:toXlsx(packSheets(data,{audience:'factory',title})),lab,clientFile:clientFile?.data?clientFile:null});
 }
 const sendPackage=(reply,p)=>reply.header('content-type','application/zip').header('content-disposition',`attachment; filename="${p.name}"`).header('cache-control','no-store').send(p.zip);
 app.get('/v1/tp/:token/package.zip',async(req,reply)=>{
@@ -3444,7 +3502,7 @@ app.get('/v1/tp/:token/package.zip',async(req,reply)=>{
   const {row,error}=await loadShareByToken(req.params.token);if(error)return reply.code(error.code).send({error:error.message});
   const v=publishedTechPackView(row,{audience:'factory',shareLabel:row.share_label}).techPack,data=v.data;
   if(row.quote)data.style={...data.style,designer:''}; // a quotation link never carries the client's name
-  return sendPackage(reply,await factoryPackage({productId:row.product_id,packData:data,title:row.title,version:row.version,publishedAt:row.published_at,revisions:row.quote?[]:row.revisions,verification:row.quote?null:row.verification,lockedAt:row.locked_at}));
+  return sendPackage(reply,await factoryPackage({productId:row.product_id,packData:data,title:row.title,version:row.version,publishedAt:row.published_at,revisions:row.quote?[]:row.revisions,verification:row.quote?null:row.verification,lockedAt:row.locked_at,clientPack:row.published_data?.clientPack}));
 });
 // the client's own copy: the same package their factory gets from its link, to keep or to send on by hand (the published version only)
 app.get('/v1/products/:id/tech-pack/package.zip',{preHandler:authenticate},async(req,reply)=>{
@@ -3456,13 +3514,13 @@ app.get('/v1/products/:id/tech-pack/package.zip',{preHandler:authenticate},async
     and not exists(select 1 from projects ap where ap.id=p.project_id and (ap.archived_at is not null or ap.status in ('archive','archived')))`,[req.params.id,req.auth.clientId])).rows[0];
   if(!row)return reply.code(404).send({error:'The production package is made from the published pack: once v1 is published it is here'});
   const data=publishedTechPackView(row,{audience:'factory'}).techPack.data;
-  return sendPackage(reply,await factoryPackage({productId:req.params.id,packData:data,title:row.title,version:row.version,publishedAt:row.published_at,revisions:row.revisions,verification:row.verification,lockedAt:row.locked_at}));
+  return sendPackage(reply,await factoryPackage({productId:req.params.id,packData:data,title:row.title,version:row.version,publishedAt:row.published_at,revisions:row.revisions,verification:row.verification,lockedAt:row.locked_at,clientPack:row.published_data?.clientPack}));
 });
 // the same package from the work console, made from the published version: what the factory gets, to check it or send it on
 app.get('/v1/admin/products/:id/tech-pack/package.zip',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const ctx=await loadAdminTechPack(req.params.id);if(!ctx?.techPack?.published_at)return reply.code(409).send({error:'Publish the tech pack first: the package is made from the published version'});
   const tp=ctx.techPack,data=publishedTechPackView(tp,{audience:'factory'}).techPack.data;
-  return sendPackage(reply,await factoryPackage({productId:ctx.product.id,packData:data,title:ctx.product.title,version:tp.version,publishedAt:tp.published_at,revisions:tp.revisions,verification:tp.verification,lockedAt:tp.locked_at}));
+  return sendPackage(reply,await factoryPackage({productId:ctx.product.id,packData:data,title:ctx.product.title,version:tp.version,publishedAt:tp.published_at,revisions:tp.revisions,verification:tp.verification,lockedAt:tp.locked_at,clientPack:tp.published_data?.clientPack}));
 });
 app.get('/r/:id/:sig',async(req,reply)=>{
   const id=String(req.params.id),sig=String(req.params.sig).replace(/\.jpe?g$/i,'');

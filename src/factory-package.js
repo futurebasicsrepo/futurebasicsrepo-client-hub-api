@@ -72,14 +72,17 @@ export function readme({ title, version, publishedAt, files, notes = [], stale =
   return lines.join('\n') + '\n';
 }
 
-export function buildFactoryPackage({ data = {}, title = 'Tech pack', version = null, publishedAt = null, pdf = null, sheets = null, lab = null }) {
+// clientFile: the client's own tech pack, when it is the pack (it goes first; with only, our near-empty PDF and workbook are left out)
+export function buildFactoryPackage({ data = {}, title = 'Tech pack', version = null, publishedAt = null, pdf = null, sheets = null, lab = null, clientFile = null }) {
   const files = [];
+  if (clientFile) files.push({ name: `client-tech-pack-${String(clientFile.name || 'file').replace(/[^\w.\- ]+/g, '_')}`, data: clientFile.data });
+  if (clientFile?.only) { pdf = null; sheets = null; }
   if (pdf) files.push({ name: 'tech-pack.pdf', data: pdf });
   if (sheets) files.push({ name: 'tech-pack.xlsx', data: sheets });
   files.push(...packPictures(data));
   const notes = [...(lab?.notes || [])];
   for (const f of lab?.files || []) if (!files.some(x => x.name === f.name)) files.push(f);
-  if (!lab) notes.push('Decoration, pattern and last files: this pack was not designed in the Future Basics Design Lab, so there are none to make. The artwork files above are the source.');
+  if (!lab && !clientFile) notes.push('Decoration, pattern and last files: this pack was not designed in the Future Basics Design Lab, so there are none to make. The artwork files above are the source.');
   const text = readme({ title, version, publishedAt, files, notes, stale: Boolean(lab?.stale) });
   const name = `${slug(title) || 'tech-pack'}-v${version || 0}-production`;
   const entries = [{ name: `${name}/README.txt`, data: Buffer.from(text) }, ...files.map(f => ({ name: `${name}/${f.name}`, data: Buffer.isBuffer(f.data) ? f.data : Buffer.from(f.data) }))];

@@ -378,15 +378,34 @@ export function registerMoneyRoutes(app, d) {
     const open = invs.filter(i => ['open', 'part-paid', 'overdue'].includes(i.state)), late = open.filter(i => i.overdue);
     // won deals in the last year that no invoice bills yet
     const toInvoice = (await pool.query(`select d.id, d.title, d.value_cents, coalesce(d.closed_at, d.updated_at) won_at, coalesce(co.name, ct.name, '') company from sales_deals d left join sales_companies co on co.id=d.company_id left join sales_contacts ct on ct.id=d.contact_id
-      where d.stage='won' and coalesce(d.closed_at, d.updated_at) > now() - interval '365 days' and not exists (select 1 from money_invoices i where i.deal_id=d.id and i.status<>'void') order by won_at desc limit 50`)).rows
+      where d.stage='won' and coalesce(d.closed_at, d.updated_at) > now() - interval '365 days' and not exists (select 1 from money_invoices i where i.deal_id=d.id and i.status<>'void') and not exists (select 1 from contracts k where k.deal_id=d.id and k.status in ('sent','signed_by_client','executed')) order by won_at desc limit 50`).catch(() => pool.query(`select d.id, d.title, d.value_cents, coalesce(d.closed_at, d.updated_at) won_at, coalesce(co.name, ct.name, '') company from sales_deals d left join sales_companies co on co.id=d.company_id left join sales_contacts ct on ct.id=d.contact_id where d.stage='won' and coalesce(d.closed_at, d.updated_at) > now() - interval '365 days' and not exists (select 1 from money_invoices i where i.deal_id=d.id and i.status<>'void') order by won_at desc limit 50`))).rows
       .map(r => ({ id: r.id, title: r.title, company: r.company, valueCents: Number(r.value_cents), wonAt: r.won_at }));
+    const contracts = await underContract(), stripeOn = ((await getSetting('autopayProcessor').catch(() => null))?.processor || env.AUTOPAY_PROCESSOR) === 'stripe';
+    for (const k of contracts) k.processor = k.method === 'invoice' ? 'invoice' : stripeOn ? 'stripe' : 'quickbooks';
     const bySource = {}; for (const r of within(30)) bySource[r.source] = (bySource[r.source] || 0) + r.amountCents;
     const byCompany = {}; for (const r of within(90)) if (r.company) byCompany[r.company] = (byCompany[r.company] || 0) + r.amountCents;
     return { today: t, cashIn30: sum(within(30)), cashIn90: sum(within(90)), outstandingCents: open.reduce((a, i) => a + i.owedCents, 0), openCount: open.length, overdueCents: late.reduce((a, i) => a + i.owedCents, 0), overdueCount: late.length,
       aging: aging(open.map(i => ({ owedCents: i.owedCents, daysOverdue: i.daysOverdue })), t), bySource: Object.entries(bySource).map(([source, cents]) => ({ source, cents })).sort((a, b) => b.cents - a.cents),
       topClients90: Object.entries(byCompany).map(([company, cents]) => ({ company, cents })).sort((a, b) => b.cents - a.cents).slice(0, 6), lateInvoices: late.sort((a, b) => b.daysOverdue - a.daysOverdue).slice(0, 8),
-      recent: invs.filter(i => i.status !== 'void').slice().sort((a, b) => String(b.issuedOn).localeCompare(String(a.issuedOn)) || String(b.number).localeCompare(String(a.number))).slice(0, 8), toInvoice, toInvoiceCount: toInvoice.length, toInvoiceCents: toInvoice.reduce((n, x) => n + x.valueCents, 0), unrecorded: invs.filter(i => i.state === 'unrecorded').length, drafts: invs.filter(i => i.state === 'draft').length };
+      recent: invs.filter(i => i.status !== 'void').slice().sort((a, b) => String(b.issuedOn).localeCompare(String(a.issuedOn)) || String(b.number).localeCompare(String(a.number))).slice(0, 8), toInvoice, toInvoiceCount: toInvoice.length, toInvoiceCents: toInvoice.reduce((n, x) => n + x.valueCents, 0), unrecorded: invs.filter(i => i.state === 'unrecorded').length, drafts: invs.filter(i => i.state === 'draft').length,
+      contracts, contractsCount: contracts.length, contractsCents: contracts.reduce((n, k) => n + k.toComeCents, 0), contractsSignedCents: contracts.filter(k => k.status === 'executed').reduce((n, k) => n + k.toComeCents, 0) };
   });
+  // Contracts out for signature or signed, and what of each no sent invoice carries yet: the money that is coming. Each links to its contract, and to the invoices
+  // drafted from it (money_invoices.contract_id). An invoice once sent counts in what is owed instead, so nothing is counted twice.
+  async function underContract() {
+    const rows = (await pool.query(`select c.id, c.number, c.title, c.status, c.total_cents, c.currency, c.sent_at, c.executed_at, c.invoices_at, c.content->'client'->>'company' company, c.content->'plan' plan, c.client_signature->>'method' signed_method,
+        coalesce((select sum(i.total_cents) from money_invoices i where i.contract_id=c.id and i.status not in ('void','draft')), 0)::bigint invoiced_cents,
+        coalesce((select sum(p.amount_cents) from money_payments p join money_invoices i on i.id=p.invoice_id where i.contract_id=c.id and i.status<>'void'), 0)::bigint paid_cents,
+        (select count(*) from money_invoices i where i.contract_id=c.id and i.status='draft')::int drafts
+      from contracts c where c.status in ('sent','signed_by_client','executed') and (c.expires_at is null or c.expires_at > now() or c.status='executed') order by coalesce(c.executed_at, c.sent_at, c.created_at) desc limit 100`).catch(() => ({ rows: [] }))).rows;
+    return rows.map(r => {
+      const plan = r.plan || {}, method = plan.method === 'either' ? (['ach', 'card'].includes(r.signed_method) ? r.signed_method : 'either') : (plan.method || 'invoice'), total = Number(r.total_cents), invoiced = Number(r.invoiced_cents);
+      const next = (Array.isArray(plan.installments) ? plan.installments : [])[0] || null;
+      return { id: r.id, number: r.number, title: r.title, company: r.company || '', status: r.status, currency: r.currency || 'USD', totalCents: total, invoicedCents: invoiced, paidCents: Number(r.paid_cents), toComeCents: Math.max(0, total - invoiced),
+        method, autopay: Boolean(plan.autopay), payments: Array.isArray(plan.installments) ? plan.installments.length : 0, first: next ? { label: next.label || '', amountCents: Number(next.amountCents) || 0, dueOn: next.dueOn || null, event: next.event || null } : null,
+        invoicesDrafted: Boolean(r.invoices_at), draftInvoices: r.drafts, sentAt: r.sent_at, executedAt: r.executed_at };
+    }).filter(k => k.toComeCents > 0);
+  }
 
   // ---------- Shopify Payments payouts: what reached the bank, and what Shopify kept ----------
   const PAYOUT_STATE = 'moneyPayouts';
