@@ -949,6 +949,8 @@ function paintSub(){const c=D.concept;$('#tryBtn').classList.toggle('hidden',GMO
 document.addEventListener('keydown',e=>{
   if(!D)return;if(window.ILL?.key(e)||window.VEC?.key(e)||window.PRO?.key(e))return;const typing=e.target.closest&&e.target.closest('input,textarea,select,[contenteditable]')&&!e.target.closest('dialog:not([open])'),mod=e.ctrlKey||e.metaKey;
   if(mod&&e.key.toLowerCase()==='s'){e.preventDefault();saveAll();return}
+  // on the flats, undo and redo reach the flats' own history even when the keys land out here (a button or the page had the focus)
+  if(!typing&&mod&&(VMODE==='front'||VMODE==='back')&&['z','y'].includes(e.key.toLowerCase())){e.preventDefault();(e.key.toLowerCase()==='y'||e.shiftKey)?redo():undo();return}
   if(typing||VMODE==='front'||VMODE==='back')return; // the flats take their own keys, in their frame
   if(mod&&e.key.toLowerCase()==='z'){e.preventDefault();e.shiftKey?redo():undo();return}if(mod&&e.key.toLowerCase()==='y'){e.preventDefault();redo();return}
   if(mod&&e.key.toLowerCase()==='d'){e.preventDefault();const l=selected();if(l)duplicate(l);return}
