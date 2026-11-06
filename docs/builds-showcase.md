@@ -49,12 +49,28 @@ A service we run for a client (today: the Common Ground **make-an-offer service*
 
 In the work console, open the client's room and choose **Sites & prototypes** on the room bar. Pick a build from the showcase (hidden ones too) or give a name and any link, add an optional note, and **Add to the room**. "Email the team" sends the room's team a short email with a link to **Your sites** in their hub.
 
-- The room's team sees it in the hub under **Your sites** (and a **Sites** link in the top bar): the build's cover picture, its status, the note, **Open** and **Send notes**.
+**Where Open goes.** In order:
+1. the address set on the site in the room panel (**Open goes to**, or **Change where it opens** later);
+2. the build's **prototype**: an external prototype pushed to Builds (a Shopify dev store such as `cg12concept.myshopify.com/password`), or one built here once published (`/p/<slug>`);
+3. the build's own address.
+
+A build whose address is the client's *current* site (Common Ground's is `commonground12.com`) would otherwise open the store they already have. The panel says, when you pick a build, where Open will go, and lists the prototypes to choose from. **How to get in** (a store password, say) is shown to the client on the card and when they open it; an external prototype's access note is used when none is set.
+
+**Filed under a project.** A pushed build goes under a software project in the room: the one already tied to that build, a new one named for it (at the Prototype stage, tied to the build), or one you pick. The app behind a site (Common Ground's make-an-offer service) can go under the same project. The project is where its stages, the agreement and the invoices live, and its page in the hub shows the sites and the go-live checklist.
+
+**Go-live checklist.** Ticking **Push the go-live checklist** (or **Push the go-live checklist** on the project in the panel) adds the checklist from `src/go-live.js` to the project as tasks on the room's board (`work_assignments`, source `go-live`):
+- **Shopify store launch** (follows `themes/common-ground/README.md`) or **Website launch**, chosen from the build (Shopify hosting or a `.myshopify.com` address) or picked by hand.
+- The client's side goes to one person on their team (the first, or the one picked; "the whole team" leaves it unassigned). It shows in their hub under **Needs attention** with a **Done** button, and on the project page as a checklist they tick.
+- Our side goes to Future Basics and shows on the work home under **Our to-dos for clients**, with **Done**. Both sides show on the project so each can see where the other is.
+- Pushing again only adds what is missing. The panel shows progress for each side.
+
+The rest:
+- The room's team sees it in the hub under **Your sites** (and a **Sites** link in the top bar): the build's cover picture, its status, the note, how to get in, the project, **Open** and **Send notes**.
 - Each person on the room's team also gets a showcase invite for that build (a year), so it opens for them on the showcase too. The invite's note is `room-site:<id>`.
 - Opening it from the hub counts as an `open` on the showcase's activity.
 - Notes they send are kept on the site, shown to staff in the room panel, and emailed to staff.
 - **Take out of the room** hides it from the hub and revokes the invites made for it. Invites given by hand are left alone.
-- A room holds up to 40. Tables: `room_sites`, `room_site_feedback`. Routes: `src/room-sites-routes.js`.
+- A room holds up to 40. Tables: `room_sites` (with `url` for where Open goes, `access_note`, `project_id`), `room_site_feedback`; tasks in `work_assignments` (`project_id`, `source`). Routes: `src/room-sites-routes.js`. Journeys J288 and J289.
 
 ## Housing a client's build
 

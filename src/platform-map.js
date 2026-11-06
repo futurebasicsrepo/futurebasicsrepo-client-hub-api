@@ -29,8 +29,8 @@ export const NODES = [
    what:'Pages opened by an unguessable token instead of a sign-in: the factory pack (/tp/:token), a shared concept or poll, a contract to sign and pay, a room invitation, an offer or consignment.',
    code:['src/server.js (/v1/tp)','src/lab-share-routes.js','src/contracts-routes.js','src/invite.html','src/factory.html','src/sign.html','src/lab-share.html','src/lab-poll.html','src/consign.html'],data:['tech_pack_shares','lab_shares','contracts'],talks:['techpack','production','money']},
   {id:'showcase',lane:'doors',name:'Builds showcase',sub:'builds.thefuturebasics.com',
-   what:'A signed-in gallery of the sites and software Future Basics has built, kept in step with GitHub. Viewers sign in with an email code; interest becomes a CRM lead. Staff can also push a build (or any link) into a client room: the room team sees it under Your sites in the hub, opens it, and sends notes back, and each of them gets a showcase invite for it.',
-   code:['src/builds-routes.js','src/builds-sync.js','src/builds.html','src/room-sites-routes.js'],data:['builds','build_views','build_invites','room_sites','room_site_feedback'],talks:['sales','hub']},
+   what:'A signed-in gallery of the sites and software Future Basics has built, kept in step with GitHub. Viewers sign in with an email code; interest becomes a CRM lead. Staff can also push a build (or any link) into a client room: Open goes to the build\'s prototype (a Shopify dev store, say) rather than the client\'s current site, the build is filed under a software project in the room, and a go-live checklist can go with it: the client\'s side lands under Needs attention in the hub, ours on the work home. The room team opens it and sends notes back, and each of them gets a showcase invite for it.',
+   code:['src/builds-routes.js','src/builds-sync.js','src/builds.html','src/room-sites-routes.js','src/go-live.js'],data:['builds','build_views','build_invites','room_sites','room_site_feedback','work_assignments'],talks:['sales','hub','workspace']},
   {id:'chat',lane:'doors',name:'Chat widget',sub:'embedded on sites',
    what:'A visitor chat that answers from what Future Basics actually offers, hands off to a person, and turns a conversation into a contact.',
    code:['src/chat-widget.js','src/chat-routes.js','src/chat-assistant.js','src/chat-frame.html'],data:['chat_conversations','chat_messages'],talks:['sales']},
@@ -119,7 +119,7 @@ export const NODES = [
 ];
 export const EDGES = [
   ['client','hub'],['client','lab'],['staff','work'],['staff','lab'],['factory','links'],['visitor','hub'],['visitor','showcase'],['visitor','chat'],
-  ['hub','auth'],['work','cf'],['cf','auth'],['lab','guard'],['links','techpack'],['links','production'],['links','money'],['showcase','sales'],['showcase','hub'],['chat','sales'],
+  ['hub','auth'],['work','cf'],['cf','auth'],['lab','guard'],['links','techpack'],['links','production'],['links','money'],['showcase','sales'],['showcase','hub'],['showcase','workspace'],['chat','sales'],
   ['auth','access'],['access','guard'],['guard','labsvc'],['access','techpack'],['access','sales'],['access','money'],
   ['labsvc','engines'],['labsvc','techpack'],['techpack','production'],['sales','money'],['intel','sales'],['money','builds'],
   ['techpack','claude'],['labsvc','claude'],['labsvc','openai'],['labsvc','google'],['engines','meshy'],['sales','resend'],['intel','listen'],['intel','xai'],['money','qbo'],['health','shopify'],['builds','shopify'],['builds','github'],

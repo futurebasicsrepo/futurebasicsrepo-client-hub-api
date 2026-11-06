@@ -1944,6 +1944,9 @@ export async function migrate() {
       created_at timestamptz not null default now()
     );
     create index if not exists room_site_feedback_site_idx on room_site_feedback(site_id, created_at desc);
+    -- what Open goes to when it is not the build's own address (the prototype, a staging store) and how to get in; and the project the site is filed under
+    alter table room_sites add column if not exists access_note text not null default '';
+    alter table room_sites add column if not exists project_id uuid references projects(id) on delete set null;
     -- pictures kept out of the pack JSON, once each, keyed by the hash of their bytes (see src/pack-blobs.js)
     create table if not exists pack_blobs (
       hash text primary key,
@@ -2554,6 +2557,10 @@ export async function migrate() {
     );
     alter table work_assignments add column if not exists assignee_fb boolean not null default false;
     create index if not exists work_assignments_room_idx on work_assignments(client_id,status,due);
+    -- a task can belong to a project (a go-live checklist is pushed onto one); source says where it came from ('go-live', or '' for one made by hand)
+    alter table work_assignments add column if not exists project_id uuid references projects(id) on delete set null;
+    alter table work_assignments add column if not exists source text not null default '';
+    create index if not exists work_assignments_fb_idx on work_assignments(status) where assignee_fb;
     insert into clients(slug,name,email_domains)
       values ('ouster','Ouster',array['ouster.io','ouster.com'])
       on conflict (slug) do nothing;
