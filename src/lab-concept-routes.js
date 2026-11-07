@@ -9,7 +9,7 @@
 import { randomUUID } from 'node:crypto';
 import { imageConfig } from './check.js';
 import { ask as realAsk, providerReady } from './intel-llm.js';
-import { categoryLabel } from './lab.js';
+import { categoryLabel, planLineOf, putOnLine } from './lab.js';
 import { createLabData } from './lab-data.js';
 import { generateConcepts, artworkFiles, renderConcept, finishConcept, aiOpinion, closeness, cleanConceptEdit, productBrief, ensureBranding, LOGO_MARKS, LOGO_TECHNIQUES, GRAPHIC_PLACE, GRAPHIC_TECHNIQUES, PRODUCT_TYPES } from './lab-concepts.js';
 import { cleanPin } from './lab-share-routes.js';
@@ -135,11 +135,13 @@ export function registerLabConceptRoutes(app, d) {
   // opens on its flats at that sketch's proportions (/lab/studio?concept=…&view=front&template=…)
   app.post('/v1/lab/concepts/from-sketch', { preHandler: pre }, async (req, reply) => {
     const t = FLAT_TEMPLATES.find(x => x.id === String(req.body?.template || '')); if (!t) return bad(reply, 'Choose a sketch from the sketch pack', 422);
-    const st = FLAT_STYLES[t.style] || {}, name = clip(req.body?.name, 120) || t.label;
+    const line = req.body?.lineId ? await planLineOf(pool, req.body.lineId, own(req)) : null; if (req.body?.lineId && !line) return bad(reply, 'That piece is not on a line plan here', 404);
+    const st = FLAT_STYLES[t.style] || {}, name = clip(req.body?.name, 120) || line?.name || t.label;
     // a colour chosen with the sketch: its name goes in the words, its hex is the flat's main colour (the flats start in it, src/lab-flats-routes.js)
     const hex = /^#[0-9a-f]{6}$/i.test(String(req.body?.colour?.hex || '')) ? String(req.body.colour.hex).toLowerCase() : '', cname = clip(req.body?.colour?.name, 40);
     const spec = { description: `Started from the sketch pack: ${t.label}.`, silhouette: t.label, fabric: '', fit: '', details: [], trims: '', colors: hex ? [cname || hex] : [], template: t.id, ...(hex ? { color: hex } : {}) };
     const r = (await pool.query(`insert into lab_concepts(name, category, role, spec, twist, created_by, client_id) values($1,$2,'core',$3,'',$4,$5) returning id`, [name, st.category || 'other', spec, actorOf(req), own(req)])).rows[0];
+    if (line) await putOnLine(pool, r.id, line); // a piece on a line plan: the concept is that piece's
     return reply.code(201).send({ concept: await one(r.id), studio: `/lab/studio?concept=${r.id}&view=front&template=${encodeURIComponent(t.id)}` });
   });
 

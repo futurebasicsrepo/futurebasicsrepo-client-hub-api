@@ -4754,5 +4754,22 @@ await journey('J287', 'The cloth and the panels on the flats, in the Studio: a r
   } finally { if (C) await K(`/concepts/${C}`, { method: 'DELETE' }); }
 });
 
+await journey('J290', 'Start from scratch on a line plan: a piece is drawn on a blank page or started from a library flat, and the concept lands on that piece of the plan', async () => {
+  const plan = await K('/plans', { body: { name: `Scratch plan ${stamp}`, season: 'Spring' } }); const pid = plan.json.plan?.id || plan.json.id;
+  const added = await K(`/plans/${pid}/lines`, { body: { name: 'Field Tee', category: 'tops', role: 'hero', price: 60, qty: 500 } }), line = added.json.lines?.find(l => l.name === 'Field Tee');
+  ok(plan.status === 201 && line, '0. a plan with one piece, Field Tee', [plan.status, added.status]);
+  try {
+    const drawn = await K('/concepts/from-scratch', { body: { lineId: line.id } }), cid = drawn.json.concept?.id;
+    ok(drawn.status === 201 && /scratch=1/.test(drawn.json.studio) && drawn.json.concept.name === 'Field Tee' && drawn.json.concept.category === 'tops', '1. Draw it: a blank page in the Studio named for the piece, in its category', drawn.json);
+    const row = sql(`select plan_id||'|'||line_id||'|'||role||'|'||coalesce(price_cents,0)||'|'||qty||'|'||(spec->>'style') from lab_concepts where id='${cid}'`);
+    ok(row === `${pid}|${line.id}|hero|6000|500|tee`, '   it is the piece\'s concept: on its plan and line, with its role, price and quantity, and the tee outline as the guide', row);
+    const fromFlat = await K('/concepts/from-sketch', { body: { template: 'tee-classic', lineId: line.id } }), fid = fromFlat.json.concept?.id;
+    ok(fromFlat.status === 201 && sql(`select line_id from lab_concepts where id='${fid}'`) === line.id && fromFlat.json.concept.name === 'Field Tee', '2. Pick a flat: a library sketch starts a concept on the same piece', fromFlat.json.concept);
+    const p2 = (await K(`/plans/${pid}`)).json, l2 = p2.lines?.find(l => l.id === line.id);
+    ok(l2?.conceptCount === 2, '3. the plan counts both concepts on the piece', l2);
+    ok((await K('/concepts/from-scratch', { body: { lineId: '00000000-0000-0000-0000-000000000000' } })).status === 404 && (await K('/concepts/from-sketch', { body: { template: 'tee-classic', lineId: '00000000-0000-0000-0000-000000000000' } })).status === 404, '   a piece that is not on a plan is refused');
+  } finally { await K(`/plans/${pid}`, { method: 'DELETE' }); }
+});
+
 shops.close(); brave.close();
 process.exit(summary() ? 1 : 0);
