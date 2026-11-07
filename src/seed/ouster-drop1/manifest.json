@@ -1,0 +1,436 @@
+{
+ "infrared": [
+  {
+   "file": "infrared-product.jpg",
+   "role": "front",
+   "label": "Front",
+   "doc": "image40"
+  },
+  {
+   "file": "infrared-option-1.jpg",
+   "role": "art",
+   "label": "Option 1 \u2014 stacked hardware",
+   "doc": "image43"
+  },
+  {
+   "file": "infrared-option-2.jpg",
+   "role": "art",
+   "label": "Option 2 \u2014 annotated",
+   "doc": "image42"
+  },
+  {
+   "file": "infrared-option-3.jpg",
+   "role": "art",
+   "label": "Option 3 \u2014 exploded isometric",
+   "doc": "image47"
+  },
+  {
+   "file": "infrared-option-4.jpg",
+   "role": "art",
+   "label": "Option 4 \u2014 small chest graphic",
+   "doc": "image46"
+  },
+  {
+   "file": "infrared-neck-label.jpg",
+   "role": "detail",
+   "label": "Neck label",
+   "doc": "image52"
+  },
+  {
+   "file": "infrared-hero.jpg",
+   "role": "render",
+   "label": "Store hero",
+   "doc": "image50"
+  },
+  {
+   "file": "infrared-lifestyle.jpg",
+   "role": "render",
+   "label": "Lifestyle",
+   "doc": "image57"
+  }
+ ],
+ "taxi": [
+  {
+   "file": "taxi-product.jpg",
+   "role": "front",
+   "label": "Front",
+   "doc": "image53"
+  },
+  {
+   "file": "taxi-back.jpg",
+   "role": "back",
+   "label": "Back print",
+   "doc": "image55"
+  },
+  {
+   "file": "taxi-neck-label.jpg",
+   "role": "detail",
+   "label": "Neck label",
+   "doc": "image58"
+  },
+  {
+   "file": "taxi-hero.jpg",
+   "role": "render",
+   "label": "Store hero",
+   "doc": "image60"
+  },
+  {
+   "file": "taxi-lifestyle.jpg",
+   "role": "render",
+   "label": "Lifestyle",
+   "doc": "image62"
+  }
+ ],
+ "yosemite": [
+  {
+   "file": "yosemite-product.jpg",
+   "role": "front",
+   "label": "Front",
+   "doc": "image64"
+  },
+  {
+   "file": "yosemite-back.jpg",
+   "role": "back",
+   "label": "Back + sleeve",
+   "doc": "image66"
+  },
+  {
+   "file": "yosemite-neck-label.jpg",
+   "role": "detail",
+   "label": "Neck label",
+   "doc": "image67"
+  },
+  {
+   "file": "yosemite-hero.jpg",
+   "role": "render",
+   "label": "Store hero",
+   "doc": "image68"
+  },
+  {
+   "file": "yosemite-lifestyle.jpg",
+   "role": "render",
+   "label": "Lifestyle",
+   "doc": "image69"
+  }
+ ],
+ "cap-tan": [
+  {
+   "file": "cap-tan-product.jpg",
+   "role": "front",
+   "label": "Front",
+   "doc": "image24"
+  },
+  {
+   "file": "cap-tan-back.jpg",
+   "role": "back",
+   "label": "Back",
+   "doc": "image26"
+  },
+  {
+   "file": "cap-tan-inner.jpg",
+   "role": "detail",
+   "label": "Inner label + buckle",
+   "doc": "image28"
+  },
+  {
+   "file": "cap-tan-hero.jpg",
+   "role": "render",
+   "label": "Store hero",
+   "doc": "image30"
+  },
+  {
+   "file": "cap-tan-lifestyle.jpg",
+   "role": "render",
+   "label": "Lifestyle",
+   "doc": "image32"
+  }
+ ],
+ "cap-green": [
+  {
+   "file": "cap-green-product.jpg",
+   "role": "front",
+   "label": "Front",
+   "doc": "image34"
+  },
+  {
+   "file": "cap-green-back.jpg",
+   "role": "back",
+   "label": "Back",
+   "doc": "image35"
+  },
+  {
+   "file": "cap-green-inner.jpg",
+   "role": "detail",
+   "label": "Inner label",
+   "doc": "image36"
+  },
+  {
+   "file": "cap-green-hero.jpg",
+   "role": "render",
+   "label": "Store hero",
+   "doc": "image37"
+  }
+ ],
+ "beanie": [
+  {
+   "file": "beanie-product.jpg",
+   "role": "front",
+   "label": "Front",
+   "doc": "image38"
+  },
+  {
+   "file": "beanie-patch.jpg",
+   "role": "detail",
+   "label": "Patch detail",
+   "doc": "image11"
+  },
+  {
+   "file": "beanie-lifestyle.jpg",
+   "role": "render",
+   "label": "Lifestyle",
+   "doc": "image12"
+  },
+  {
+   "file": "beanie-packaging.jpg",
+   "role": "pack",
+   "label": "Packaging",
+   "doc": "image13"
+  },
+  {
+   "file": "beanie-box.jpg",
+   "role": "pack",
+   "label": "Small shipping box",
+   "doc": "image14"
+  }
+ ],
+ "bottle": [
+  {
+   "file": "bottle-product.jpg",
+   "role": "front",
+   "label": "Front",
+   "doc": "image15"
+  },
+  {
+   "file": "bottle-side.jpg",
+   "role": "side",
+   "label": "Side view",
+   "doc": "image16"
+  },
+  {
+   "file": "bottle-lifestyle.jpg",
+   "role": "render",
+   "label": "Lifestyle",
+   "doc": "image17"
+  },
+  {
+   "file": "bottle-hero.jpg",
+   "role": "render",
+   "label": "Store hero",
+   "doc": "image18"
+  },
+  {
+   "file": "bottle-box.jpg",
+   "role": "pack",
+   "label": "Soft-touch box + insert",
+   "doc": "image19"
+  }
+ ],
+ "multitool": [
+  {
+   "file": "multitool-product.jpg",
+   "role": "front",
+   "label": "Product",
+   "doc": "image20"
+  },
+  {
+   "file": "multitool-hero.jpg",
+   "role": "render",
+   "label": "Store hero",
+   "doc": "image1"
+  },
+  {
+   "file": "multitool-box.jpg",
+   "role": "pack",
+   "label": "Box + insert",
+   "doc": "image2"
+  }
+ ],
+ "point-cloud": [
+  {
+   "file": "point-cloud-product.jpg",
+   "role": "front",
+   "label": "Framed",
+   "doc": "image3"
+  },
+  {
+   "file": "point-cloud-room.jpg",
+   "role": "render",
+   "label": "Room view",
+   "doc": "image4"
+  },
+  {
+   "file": "point-cloud-tube.jpg",
+   "role": "pack",
+   "label": "Tube option",
+   "doc": "image5"
+  },
+  {
+   "file": "point-cloud-framed-box.jpg",
+   "role": "pack",
+   "label": "Framed box",
+   "doc": "image6"
+  },
+  {
+   "file": "point-cloud-framed-box-taped.jpg",
+   "role": "pack",
+   "label": "Framed box, taped",
+   "doc": "image7"
+  }
+ ],
+ "notebook": [
+  {
+   "file": "notebook-product.jpg",
+   "role": "front",
+   "label": "Cover",
+   "doc": "image8"
+  },
+  {
+   "file": "notebook-hero.jpg",
+   "role": "render",
+   "label": "Store hero",
+   "doc": "image9"
+  },
+  {
+   "file": "notebook-mailer.jpg",
+   "role": "pack",
+   "label": "Mailer",
+   "doc": "image10"
+  }
+ ],
+ "pen": [
+  {
+   "file": "pen-product.jpg",
+   "role": "front",
+   "label": "Product",
+   "doc": "image45"
+  },
+  {
+   "file": "pen-in-use.jpg",
+   "role": "render",
+   "label": "In use",
+   "doc": "image48"
+  },
+  {
+   "file": "pen-hero.jpg",
+   "role": "render",
+   "label": "Store hero",
+   "doc": "image49"
+  }
+ ],
+ "pencils": [
+  {
+   "file": "pencils-product.jpg",
+   "role": "front",
+   "label": "Pencils",
+   "doc": "image51"
+  },
+  {
+   "file": "pencils-box.jpg",
+   "role": "pack",
+   "label": "Box",
+   "doc": "image54"
+  },
+  {
+   "file": "pencils-hero.jpg",
+   "role": "render",
+   "label": "Store hero",
+   "doc": "image56"
+  }
+ ],
+ "stickers": [
+  {
+   "file": "stickers-product.jpg",
+   "role": "front",
+   "label": "Sticker sheet",
+   "doc": "image59"
+  },
+  {
+   "file": "stickers-laptop.jpg",
+   "role": "render",
+   "label": "On laptop",
+   "doc": "image61"
+  },
+  {
+   "file": "stickers-hero.jpg",
+   "role": "render",
+   "label": "Store hero",
+   "doc": "image63"
+  }
+ ],
+ "puzzle": [
+  {
+   "file": "puzzle-product.jpg",
+   "role": "front",
+   "label": "Scene 1",
+   "doc": "image65"
+  },
+  {
+   "file": "puzzle-scene-2.jpg",
+   "role": "art",
+   "label": "Scene 2",
+   "doc": "image44"
+  },
+  {
+   "file": "puzzle-scene-3.jpg",
+   "role": "art",
+   "label": "Scene 3",
+   "doc": "image21"
+  },
+  {
+   "file": "puzzle-hero.jpg",
+   "role": "render",
+   "label": "Store hero",
+   "doc": "image22"
+  }
+ ],
+ "jersey": [
+  {
+   "file": "jersey-product.jpg",
+   "role": "front",
+   "label": "Front",
+   "doc": "image23"
+  },
+  {
+   "file": "jersey-back.jpg",
+   "role": "back",
+   "label": "Back",
+   "doc": "image25"
+  },
+  {
+   "file": "jersey-hero.jpg",
+   "role": "render",
+   "label": "Store hero",
+   "doc": "image27"
+  }
+ ],
+ "shared": [
+  {
+   "file": "shared-hang-tag.jpg",
+   "role": "pack",
+   "label": "Hang tag options",
+   "doc": "image29"
+  },
+  {
+   "file": "shared-poly-bag.jpg",
+   "role": "pack",
+   "label": "Poly bag + tech sticker",
+   "doc": "image31"
+  },
+  {
+   "file": "shared-apparel-box.jpg",
+   "role": "pack",
+   "label": "Apparel shipping box",
+   "doc": "image33"
+  }
+ ]
+}
