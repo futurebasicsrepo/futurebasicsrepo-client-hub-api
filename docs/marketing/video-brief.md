@@ -89,7 +89,7 @@ already has show as "on the sketch".
 - **Freehand pattern edits:** in the pattern, draw over a piece to redraw an edge, cut it in two along a new seam, or draw a new piece; **Built with** shows what the pattern is drafted from (raglan, yoke, cargo, double knee…) and can read it from a freehand drawing.
 - **A new graphic, right on the flats:** open the graphic studio from the panel, draw or make it with AI, and **Put it on the garment**; or upload your own artwork.
 - **Make the turns from the flats** draws the piece on a model from four sides, every logo and graphic in place, and **Make the walk** films the model walking in it, right on the board.
-- **iPad and Apple Pencil:** pressure, palm rejection, pinch and pan. It can be kept on the home screen like an app.
+- **iPad and Apple Pencil:** pressure, palm rejection, pinch, pan and a two-finger turn of the picture and the flat (it snaps square; Fit straightens it). Undo and redo sit at the top of the tool rail, and the rail can show each tool's name and what it does. It can be kept on the home screen like an app.
 - **Draw the picture from the flats:** one tap turns the coloured flat into a concept picture.
 - Every detail from the recipe can be moved, resized, recoloured or removed on the flats. **Edit recipe** reopens the menu with the piece's
   own picks.
@@ -117,7 +117,7 @@ The fabrics are browsed by family and weight:
 - 12 leathers;
 - 14 vegan leathers, from PU to cactus, apple, mycelium and cork.
 
-Labels chosen on a garment are drawn on its flats where they are sewn.
+Labels chosen on a garment are drawn on its flats where they are sewn; they can be added and removed in one tap from the flat's Garment panel.
 
 ### Beyond clothing (good for a "it does more than tees" cut)
 - **Bags:** backpacks, slings, totes, helmet bags, work bags, messengers, duffels and waist bags, designed as a bag designer would and rendered on a set that suits each; a design sheet; drawn in panels a designer recolours and reshapes; and a library of eleven original bag flats to start from.

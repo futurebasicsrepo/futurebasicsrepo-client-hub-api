@@ -186,7 +186,7 @@
   // clicking a layer in a group chooses the whole group (Shift-click and Edit points still reach one)
   view.addEventListener('pointerdown', e => {
     if (TOOL !== 'select' || e.shiftKey || e.button !== 0 || !window.PRO) return;
-    const r = view.getBoundingClientRect(), x = dx(e.clientX - r.left), y = dy(e.clientY - r.top), h = hit(x, y), gs = groupOf(h);
+    const q = window.studioPt ? window.studioPt(e) : (() => { const r = view.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; })(), x = dx(q[0]), y = dy(q[1]), h = hit(x, y), gs = groupOf(h); // through the view's turn
     if (!gs) return; SEL = h.id; PRO.SELS.clear(); for (const l of gs) PRO.SELS.add(l.id);
   }, true);
 

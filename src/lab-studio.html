@@ -131,6 +131,10 @@ kbd{font:500 10px 'IBM Plex Mono',monospace;border:1px solid var(--line);border-
 html,body{touch-action:manipulation}
 .embgrid{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:16px}@media (max-width:760px){.embgrid{grid-template-columns:1fr}}.embprev{background:#ecebe6;border-radius:14px;min-height:280px;display:grid;place-items:center;overflow:hidden}.embprev img{width:100%;display:block}.embseq{width:100%;border-collapse:collapse;font-size:12.5px}.embseq td{padding:4px 6px;border-bottom:1px solid var(--line)}.embseq td.n{font-variant-numeric:tabular-nums;text-align:right}.embseq i{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:middle;border:1px solid rgba(0,0,0,.2)}
 html[data-pick] body>header{display:none}html[data-pick] .studio{height:100dvh}
+.studio{position:relative}.rail .rail-x[disabled]{opacity:.3;cursor:default}.rail #railNames[aria-pressed=true]{background:var(--fog);color:var(--ink);border-color:var(--line)}
+.rail-names{position:absolute;z-index:30;width:310px;pointer-events:none}.rail-names.hidden{display:none}
+.rail-names button{pointer-events:auto;position:absolute;left:6px;transform:translateY(-50%);display:grid;gap:1px;text-align:left;max-width:228px;background:rgba(255,255,255,.96);border:1px solid var(--line);border-radius:10px;padding:5px 9px;font:inherit;font-size:11.5px;line-height:1.25;color:var(--dim);box-shadow:0 4px 14px rgba(20,20,22,.08);cursor:pointer}
+.rail-names button{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:300px;line-height:1.2;padding:4px 10px;border-radius:999px}.rail-names button b{color:var(--ink);font-size:12.5px;margin-right:6px}.rail-names button small{font-size:11px}.rail-names button[aria-pressed=true]{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink)}
 </style>
 <script src="/feedback.js"></script>
 <link rel="stylesheet" href="/cue.css">
@@ -176,6 +180,10 @@ html[data-pick] body>header{display:none}html[data-pick] .studio{height:100dvh}
     <button class="btn go sm flat-only hidden" id="packBtn" type="button">Send to the tech pack</button>
   </div>
   <nav class="rail" aria-label="Tools">
+    <button type="button" class="rail-x" id="railNames" title="Show what each tool does" aria-label="Show what each tool does" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M4 6h3M4 12h3M4 18h3M10 6h10M10 12h10M10 18h7"/></svg></button>
+    <button type="button" class="rail-x" id="railUndo" title="Undo" aria-label="Undo"><svg viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"/><path d="M4 9h11a5 5 0 010 10h-3"/></svg></button>
+    <button type="button" class="rail-x" id="railRedo" title="Redo" aria-label="Redo"><svg viewBox="0 0 24 24"><path d="M15 14l5-5-5-5"/><path d="M20 9H9a5 5 0 000 10h3"/></svg></button>
+    <hr>
     <button type="button" data-tool="select" title="Select and move (V)" aria-label="Select and move"><svg viewBox="0 0 24 24"><path d="M5 3l14 8-6 2-3 6z"/></svg></button>
     <button type="button" data-tool="hand" title="Move the view (H, or hold Space)" aria-label="Move the view"><svg viewBox="0 0 24 24"><path d="M8 13V5a1.5 1.5 0 013 0v6M11 11V4a1.5 1.5 0 013 0v7M14 11V6a1.5 1.5 0 013 0v8c0 4-3 7-7 7-3 0-5-2-6-4l-2-4a1.5 1.5 0 012.6-1.5L8 14"/></svg></button>
     <hr>
@@ -197,6 +205,7 @@ html[data-pick] body>header{display:none}html[data-pick] .studio{height:100dvh}
     <button class="cur" id="curColor" type="button" title="Colour" aria-label="Choose the colour"></button>
     <input type="color" id="curPicker" class="hidden" aria-hidden="true" tabindex="-1">
   </nav>
+  <div class="rail-names hidden" id="railLabels" role="list" aria-label="What each tool does"></div>
   <div class="mid">
     <div class="opts" id="opts"></div>
     <div class="stage" id="stage"><canvas id="view"></canvas>
@@ -323,7 +332,7 @@ function commit(){HIST=HIST.slice(0,HI+1);HIST.push(snap());if(HIST.length>60)HI
 function restore(s){LAYERS=s.layers.map(copyL);SEL=s.sel&&layerOf(s.sel)?s.sel:null;touch();paintPanels();draw()}
 const onFlat=()=>(VMODE==='front'||VMODE==='back')&&FF()?.undo;
 function undo(){if(onFlat()){FF().undo();syncUndo();return}if(HI>0){HI--;restore(HIST[HI]);syncUndo()}}function redo(){if(onFlat()){FF().redo();syncUndo();return}if(HI<HIST.length-1){HI++;restore(HIST[HI]);syncUndo()}}
-function syncUndo(){if(onFlat()){const f=FF();$('#undo').disabled=!f.canUndo();$('#redo').disabled=!f.canRedo();return}$('#undo').disabled=HI<=0;$('#redo').disabled=HI>=HIST.length-1}
+function syncUndo(){if(onFlat()){const f=FF();$('#undo').disabled=!f.canUndo();$('#redo').disabled=!f.canRedo()}else{$('#undo').disabled=HI<=0;$('#redo').disabled=HI>=HIST.length-1}const ru=$('#railUndo'),rr=$('#railRedo');if(ru){ru.disabled=$('#undo').disabled;rr.disabled=$('#redo').disabled}}
 let EDITS=0;function touch(){DIRTY=true;EDITS++;showSaved();PRES?.editing(true);autoSoon()}
 // Who else has this concept open (/presence.js): their initials by Save; if someone else is changing it while you have changes, say so once
 let PRES=null,PRES_WARNED=false;
@@ -412,26 +421,32 @@ const sx=x=>x*Z+PX,sy=y=>y*Z+PY,dx=x=>(x-PX)/Z,dy=y=>(y-PY)/Z;
 let VIEWONLY=0;const viewOnly=()=>Boolean((GEST&&!GEST.layer)||(DRAG&&DRAG.mode==='pan')||VIEWONLY>performance.now());
 function render(){
   if(!viewOnly()||!render.done){compose();render.done=true}const r=view.getBoundingClientRect();DPR=window.devicePixelRatio||1;const cw=Math.round(r.width*DPR),ch=Math.round(r.height*DPR);if(view.width!==cw||view.height!==ch){view.width=cw;view.height=ch}
-  vx.setTransform(DPR,0,0,DPR,0,0);vx.clearRect(0,0,r.width,r.height);vx.save();vx.shadowColor='rgba(20,20,22,.18)';vx.shadowBlur=24;vx.fillStyle='#fff';vx.fillRect(PX,PY,W*Z,H*Z);vx.restore();
-  vx.imageSmoothingQuality='high';vx.drawImage(docC,PX,PY,W*Z,H*Z);
+  const vo=viewOnly(); // while the view is being moved or pinched: no soft shadow and quick smoothing (both are slow on an iPad, every frame)
+  vx.setTransform(DPR,0,0,DPR,0,0);vx.clearRect(0,0,r.width,r.height);if(VR){vx.translate(r.width/2,r.height/2);vx.rotate(VR*Math.PI/180);vx.translate(-r.width/2,-r.height/2)}vx.save();if(!vo){vx.shadowColor='rgba(20,20,22,.18)';vx.shadowBlur=24}else{vx.fillStyle='rgba(20,20,22,.08)';vx.fillRect(PX+2,PY+3,W*Z,H*Z)}vx.fillStyle='#fff';vx.fillRect(PX,PY,W*Z,H*Z);vx.restore();
+  vx.imageSmoothingQuality=vo?'low':'high';vx.drawImage(docC,PX,PY,W*Z,H*Z);if(vo){clearTimeout(render.sharp);render.sharp=setTimeout(()=>{if(!viewOnly())draw()},120)}
   if(MASKED&&(TOOL==='area'||TAB==='ai')){vx.save();vx.globalAlpha=.42;vx.drawImage(mask,PX,PY,W*Z,H*Z);vx.restore()}
   const l=selected();
   if(l&&l.visible&&!fixed(l)&&TOOL==='select'&&!window.PRO?.multi()){const p=corners(l).map(([a,b])=>[sx(a),sy(b)]);vx.strokeStyle='#141416';vx.lineWidth=1;vx.setLineDash([5,4]);vx.beginPath();p.forEach(([a,b],i)=>i?vx.lineTo(a,b):vx.moveTo(a,b));vx.closePath();vx.stroke();vx.setLineDash([]);
     if(!l.locked){const tm=[(p[0][0]+p[1][0])/2,(p[0][1]+p[1][1])/2],rk=rotKnob(l);vx.beginPath();vx.moveTo(tm[0],tm[1]);vx.lineTo(rk[0],rk[1]);vx.stroke();
       for(const[a,b]of p){vx.fillStyle='#fff';vx.fillRect(a-5,b-5,10,10);vx.strokeRect(a-5,b-5,10,10)}vx.beginPath();vx.arc(rk[0],rk[1],6,0,Math.PI*2);vx.fillStyle='#4bff9a';vx.fill();vx.stroke()}}
   if(HOVER&&['brush','eraser','distress','area'].includes(TOOL)){const rad=(TOOL==='distress'?OPT.dsize:TOOL==='area'?OPT.area:OPT.size)/2*Z;vx.strokeStyle='rgba(20,20,22,.8)';vx.lineWidth=1;vx.beginPath();vx.arc(HOVER[0],HOVER[1],Math.max(rad,2),0,Math.PI*2);vx.stroke();vx.strokeStyle='rgba(255,255,255,.8)';vx.beginPath();vx.arc(HOVER[0],HOVER[1],Math.max(rad,2)+1,0,Math.PI*2);vx.stroke()}
-  window.PRO?.overlay(vx);window.VEC?.overlay(vx);window.ILL?.overlay(vx);overlay();$('#zLabel').textContent=Math.round(Z*100)+'%';
+  window.PRO?.overlay(vx);window.VEC?.overlay(vx);window.ILL?.overlay(vx);overlay();$('#zLabel').textContent=Math.round(Z*100)+'%'+(VR?` · ${Math.round(VR)}°`:'');
 }
 function rotKnob(l){const p=corners(l).map(([a,b])=>[sx(a),sy(b)]),tm=[(p[0][0]+p[1][0])/2,(p[0][1]+p[1][1])/2],c=[sx(l.x),sy(l.y)],d=Math.hypot(tm[0]-c[0],tm[1]-c[1])||1;return[tm[0]+(tm[0]-c[0])/d*28,tm[1]+(tm[1]-c[1])/d*28]}
 // FITTED: the view is still the fit, so a stage that settles or resizes keeps it fitted
 let FITTED=false;
-function fit(){FITTED=true;const r=$('#stage').getBoundingClientRect();Z=Math.min((r.width-48)/W,(r.height-48)/H,2);PX=(r.width-W*Z)/2;PY=(r.height-H*Z)/2;draw()}
+function fit(){FITTED=true;VR=0;const r=$('#stage').getBoundingClientRect();Z=Math.min((r.width-48)/W,(r.height-48)/H,2);PX=(r.width-W*Z)/2;PY=(r.height-H*Z)/2;draw()}
 function zoomAt(f,cx,cy){FITTED=false;VIEWONLY=performance.now()+120;const nz=clamp(Z*f,.05,8);PX=cx-(cx-PX)*nz/Z;PY=cy-(cy-PY)*nz/Z;Z=nz;draw()}
 new ResizeObserver(()=>FITTED?fit():draw()).observe($('#stage'));
 
 // ---------- pointer work on the stage ----------
 let DRAG=null,HOVER=null,SPACE=false;
-const pt=e=>{const r=view.getBoundingClientRect();return[e.clientX-r.left,e.clientY-r.top]};
+// the view's turn (VR, degrees, two fingers on an iPad): the whole view is drawn turned about its centre, and a point on the screen is turned
+// back before it is used, so every tool works on a turned picture as on a straight one
+let VR=0;const vturn=(x,y,deg)=>{const a=deg*Math.PI/180,c=Math.cos(a),s=Math.sin(a);return[x*c-y*s,x*s+y*c]};
+const vcentre=()=>{const r=view.getBoundingClientRect();return[r.width/2,r.height/2]};
+const rawPt=e=>{const r=view.getBoundingClientRect();return[e.clientX-r.left,e.clientY-r.top]};
+const pt=e=>{const q=rawPt(e);if(!VR)return q;const[cx,cy]=vcentre(),[x,y]=vturn(q[0]-cx,q[1]-cy,-VR);return[cx+x,cy+y]};window.studioPt=pt;
 function hit(px,py){for(let i=LAYERS.length-1;i>=0;i--){const l=LAYERS[i];if(!l.visible||l.kind==='base')continue;const[w,h]=dims(l),[a,b]=toLocal(l,px,py);if(a<0||b<0||a>=w||b>=h)continue;
   if(l.kind==='paint'||l.kind==='image'){const d=processed(l).getContext('2d',{willReadFrequently:true}).getImageData(Math.floor(a),Math.floor(b),1,1).data;if(d[3]<12)continue}return l}return null}
 function strokeTarget(tool){
@@ -460,11 +475,16 @@ const capture=e=>{try{view.setPointerCapture(e.pointerId)}catch{}};
 const pressOf=e=>e.pointerType==='pen'&&OPT.pressure?clamp(.15+.85*(e.pressure||.5),.15,1):1;
 const tolOf=e=>e.pointerType==='mouse'?10:22; // a fingertip or a Pencil tip needs a bigger target than a cursor
 // Two fingers: on the selected graphic (Select tool) they resize, turn and move it, as in other drawing apps; anywhere else they zoom and move the view
-function gestStart(){const[a,b]=[...PTRS.values()];GEST={d:Math.hypot(a.x-b.x,a.y-b.y)||1,mx:(a.x+b.x)/2,my:(a.y+b.y)/2,Z,PX,PY,ang:Math.atan2(b.y-a.y,b.x-a.x)};
+function gestStart(){const[a,b]=[...PTRS.values()];GEST={d:Math.hypot(a.x-b.x,a.y-b.y)||1,mx:(a.x+b.x)/2,my:(a.y+b.y)/2,Z,PX,PY,ang:Math.atan2(b.y-a.y,b.x-a.x),VR0:VR,rm:[((a.rx??a.x)+(b.rx??b.x))/2,((a.ry??a.y)+(b.ry??b.y))/2],rang:Math.atan2((b.ry??b.y)-(a.ry??a.y),(b.rx??b.x)-(a.rx??a.x))};
   const l=selected();if(TOOL==='select'&&l&&!fixed(l)&&!l.locked&&l.visible&&[[a.x,a.y],[b.x,b.y],[GEST.mx,GEST.my]].some(([x,y])=>hit(dx(x),dy(y))===l))GEST.layer={l,s0:l.scale,r0:l.rot||0,x0:l.x,y0:l.y}}
 function gestMove(){const[a,b]=[...PTRS.values()];if(!a||!b||!GEST)return;const d=Math.hypot(a.x-b.x,a.y-b.y)||1,mx=(a.x+b.x)/2,my=(a.y+b.y)/2,nz=clamp(GEST.Z*d/GEST.d,.05,8);
   if(GEST.layer){const g=GEST.layer;g.l.scale=clamp(g.s0*d/GEST.d,.02,40);g.l.rot=g.r0+Math.atan2(b.y-a.y,b.x-a.x)-GEST.ang;g.l.x=Math.round(g.x0+(mx-GEST.mx)/Z);g.l.y=Math.round(g.y0+(my-GEST.my)/Z);g.moved=true;draw();paintFields();return}
-  FITTED=false;PX=mx-(GEST.mx-GEST.PX)*nz/GEST.Z;PY=my-(GEST.my-GEST.PY)*nz/GEST.Z;Z=nz;draw()}
+  // the view: zoomed and turned together, the point of the picture under the fingers staying under them (worked on the screen's own
+  // positions, since the turn changes as they move); a turn near square snaps to it
+  const ar=[a.rx??a.x,a.ry??a.y],br=[b.rx??b.x,b.ry??b.y],m=[(ar[0]+br[0])/2,(ar[1]+br[1])/2],[cx,cy]=vcentre();
+  let dr=(Math.atan2(br[1]-ar[1],br[0]-ar[0])-GEST.rang)*180/Math.PI;dr=((dr+540)%360)-180;let nr=GEST.VR0+dr;const sq=Math.round(nr/90)*90;if(Math.abs(nr-sq)<5)nr=sq;nr=((nr+540)%360)-180;
+  if(!GEST.doc){const[ux,uy]=vturn(GEST.rm[0]-cx,GEST.rm[1]-cy,-GEST.VR0);GEST.doc=[(cx+ux-GEST.PX)/GEST.Z,(cy+uy-GEST.PY)/GEST.Z]}
+  const[vx2,vy2]=vturn(m[0]-cx,m[1]-cy,-nr);FITTED=false;VR=nr;Z=nz;PX=cx+vx2-Z*GEST.doc[0];PY=cy+vy2-Z*GEST.doc[1];draw()}
 function cancelTouchStroke(){const g=DRAG;if(!g)return;if(g.mode==='stroke'&&g.orig){g.l.raster=g.orig;g.l.raster._rid=RID++}DRAG=null;draw()}
 view.addEventListener('pointerdown',e=>{
   if(!D)return;VIEWONLY=0;if(document.activeElement?.matches?.('input,textarea,select'))document.activeElement.blur(); // the picture takes the keys back from a field in the panel
@@ -473,7 +493,7 @@ view.addEventListener('pointerdown',e=>{
   // open from an earlier one, and the first finger down means no other finger is still down
   if(e.pointerType==='pen'){for(const[k,q]of PTRS)if(q.type==='pen'&&k!==e.pointerId)PTRS.delete(k);if(DRAG&&DRAG.type==='pen'&&DRAG.pid!==e.pointerId)endDrag({pointerId:DRAG.pid})}
   if(e.pointerType==='touch'&&e.isPrimary){for(const[k,q]of PTRS)if(q.type==='touch'&&k!==e.pointerId)PTRS.delete(k);GEST=null;if(DRAG&&DRAG.type==='touch'&&DRAG.pid!==e.pointerId){if(DRAG.mode==='stroke')endDrag({pointerId:DRAG.pid});else DRAG=null}}
-  PTRS.set(e.pointerId,{x:qx,y:qy,type:e.pointerType});if(e.pointerType==='pen')PEN=true;
+  {const[rx,ry]=rawPt(e);PTRS.set(e.pointerId,{x:qx,y:qy,rx,ry,type:e.pointerType})}if(e.pointerType==='pen')PEN=true;
   if(e.pointerType==='touch'&&DRAG&&DRAG.type==='pen')return; // a palm while the Pencil draws
   if(e.pointerType==='pen'&&DRAG&&DRAG.type==='touch'){if(DRAG.mode==='stroke')cancelTouchStroke();else DRAG=null}if(e.pointerType==='pen')GEST=null; // the Pencil wins over a resting palm
   if(e.pointerType==='touch'){const touches=[...PTRS.values()].filter(q=>q.type==='touch').length;
@@ -500,7 +520,7 @@ view.addEventListener('pointerdown',e=>{
   if(h&&!h.locked&&!fixed(h))DRAG={mode:'move',l:h,ox:x-h.x,oy:y-h.y,moved:false,pid:e.pointerId,type:e.pointerType};draw();
 });
 view.addEventListener('pointermove',e=>{
-  const[px,py]=pt(e),q=PTRS.get(e.pointerId);if(q){q.x=px;q.y=py}
+  const[px,py]=pt(e),q=PTRS.get(e.pointerId);if(q){q.x=px;q.y=py;const[rx,ry]=rawPt(e);q.rx=rx;q.ry=ry}
   if(GEST){gestMove();return}
   if(DRAG&&DRAG.pid!==undefined&&DRAG.pid!==e.pointerId)return;
   if(e.pointerType!=='touch')HOVER=[px,py];if(!DRAG){window.ILL?.move(null,dx(px),dy(py),e);if(['brush','eraser','distress','area'].includes(TOOL))draw();window.VEC?.hover();return}
@@ -532,13 +552,13 @@ view.addEventListener('pointerup',endDrag);view.addEventListener('pointercancel'
 // Keyboard) arrives only as these gesture events, so it zooms the picture under the pointer; a pinch with fingers is handled by the pointers above
 let TPG=null;
 ['gesturestart','gesturechange','gestureend'].forEach(t=>document.addEventListener(t,e=>{e.preventDefault();if(VMODE!=='picture'||!e.target.closest?.('#stage'))return;
-  if([...PTRS.values()].filter(q=>q.type==='touch').length>=2){TPG=null;return}const r=view.getBoundingClientRect(),cx=e.clientX-r.left,cy=e.clientY-r.top;
+  if([...PTRS.values()].filter(q=>q.type==='touch').length>=2){TPG=null;return}const[cx,cy]=pt(e);
   if(t==='gesturestart')TPG={z:Z};else if(t==='gesturechange'&&TPG){zoomAt(clamp(TPG.z*e.scale,.05,8)/Z,cx,cy)}else TPG=null},{passive:false}));
-view.addEventListener('wheel',e=>{e.preventDefault();const[px,py]=pt(e);if(e.ctrlKey||e.metaKey)zoomAt(Math.exp(-e.deltaY*.01),px,py);else{VIEWONLY=performance.now()+120;FITTED=false;PX-=e.deltaX;PY-=e.deltaY;draw()}},{passive:false});
+view.addEventListener('wheel',e=>{e.preventDefault();const[px,py]=pt(e);if(e.ctrlKey||e.metaKey)zoomAt(Math.exp(-e.deltaY*.01),px,py);else{VIEWONLY=performance.now()+120;FITTED=false;const[ddx,ddy]=vturn(e.deltaX,e.deltaY,-VR);PX-=ddx;PY-=ddy;draw()}},{passive:false});
 $('#zIn').onclick=()=>{const r=view.getBoundingClientRect();zoomAt(1.25,r.width/2,r.height/2)};$('#zOut').onclick=()=>{const r=view.getBoundingClientRect();zoomAt(.8,r.width/2,r.height/2)};$('#zFit').onclick=fit;
 
 // ---------- tools and their options ----------
-function setTool(t){TOOL=t;if(VMODE==='front'||VMODE==='back')FF()?.tool?.(t);$$('.rail [data-tool]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.tool===t)));view.style.cursor=t==='hand'?'grab':t==='select'?'default':t==='text'?'text':'crosshair';paintOpts();draw()}
+function setTool(t){TOOL=t;setTimeout(()=>window.paintRailNames?.(),0);if(VMODE==='front'||VMODE==='back')FF()?.tool?.(t);$$('.rail [data-tool]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.tool===t)));view.style.cursor=t==='hand'?'grab':t==='select'?'default':t==='text'?'text':'crosshair';paintOpts();draw()}
 const pressHtml=()=>`<label class="chk" title="With an Apple Pencil, pressing harder makes the line wider"><input type="checkbox" data-press ${OPT.pressure?'checked':''}> Pencil pressure</label>`;
 $('#opts').addEventListener('change',e=>{if(e.target.matches('[data-press]'))OPT.pressure=e.target.checked});
 function paintOpts(){
@@ -981,6 +1001,17 @@ document.addEventListener('keydown',e=>{
 document.addEventListener('keyup',e=>{if(e.key===' '){SPACE=false;setTool(TOOL)}});
 window.addEventListener('beforeunload',e=>{if(DIRTY||FF()?.dirty()){e.preventDefault();e.returnValue=''}});
 $('#undo').onclick=undo;$('#redo').onclick=redo;
+// the rail's own Undo and Redo: always in reach of a thumb on an iPad (the ones in the top bar are small and fold away)
+$('#railUndo').onclick=undo;$('#railRedo').onclick=redo;
+// what each tool is and does, beside the rail: for learning by trying. Tap a name to pick the tool; the choice to show them is remembered
+const TOOL_HELP={select:'Tap a layer to choose it; drag to move, corners to resize, the green knob to turn',hand:'Drag to move around the page (two fingers do it too)',brush:'Paint on the chosen layer',eraser:'Rub out paint, or lines of the sketch on a flat',distress:'Wear the layer away, like a washed print',text:'Tap the page and type',rect:'Drag to draw a box',ellipse:'Drag to draw an oval or circle',line:'Drag to draw a straight line',pen:'Tap for corners, drag for curves; tap the first point to close',node:'Move the points of a shape you drew',ruler:'Drag across something you know the size of, to set real inches',warp:'Bend a graphic to follow the garment',pick:'Tap the picture to borrow a colour',area:'Paint where the AI should change the picture'};
+function paintRailNames(){const box=$('#railLabels'),open=$('#railNames').getAttribute('aria-pressed')==='true';box.classList.toggle('hidden',!open);if(!open)return;const rail=$('.rail'),rb=rail.getBoundingClientRect(),sb=box.parentElement.getBoundingClientRect();
+  box.style.top=(rb.top-sb.top)+'px';box.style.left=(rb.right-sb.left)+'px';box.style.height=rb.height+'px';
+  box.innerHTML=[...rail.querySelectorAll('button[data-tool]')].filter(b=>b.offsetParent).map(b=>{const t=b.dataset.tool,r=b.getBoundingClientRect(),name=b.getAttribute('aria-label');return `<button type="button" role="listitem" data-pick-tool="${t}" aria-pressed="${b.getAttribute('aria-pressed')==='true'}" style="top:${r.top-rb.top+r.height/2}px"><b>${esc(name)}</b><small>${esc(TOOL_HELP[t]||b.title)}</small></button>`}).join('')}
+$('#railNames').onclick=()=>{const on=$('#railNames').getAttribute('aria-pressed')!=='true';$('#railNames').setAttribute('aria-pressed',String(on));try{localStorage.setItem('fb.studio.names',on?'1':'0')}catch{}paintRailNames()};
+$('#railLabels').addEventListener('click',e=>{const b=e.target.closest('[data-pick-tool]');if(b){setTool(b.dataset.pickTool);paintRailNames()}});
+$('.rail').addEventListener('scroll',()=>paintRailNames(),{passive:true});window.addEventListener('resize',()=>paintRailNames());
+try{if(localStorage.getItem('fb.studio.names')!=='0'&&matchMedia('(pointer:coarse)').matches&&!localStorage.getItem('fb.studio.names'))$('#railNames').setAttribute('aria-pressed','true')}catch{}setTimeout(paintRailNames,300);
 
 // ---------- opening the design: the saved layers, or the concept's picture as the base ----------
 async function loadLayer(o){
