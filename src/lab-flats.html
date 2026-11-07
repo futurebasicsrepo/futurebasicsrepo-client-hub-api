@@ -620,9 +620,12 @@ document.addEventListener('keydown',e=>{if(e.target.closest('input,select,textar
 // Each view has one drawing, a picture laid over the view's own box in inches, so it zooms with the flat and goes into the sheets and the tech
 // pack. It sits over the graphics; while a drawing tool is chosen it takes the pointer, otherwise the flat works as before. Once a Pencil has been
 // used, fingers never draw: one finger moves the view when zoomed in, two pinch, so a resting palm does nothing.
-const MK={},MUNDO={front:[],back:[]},MREDO={front:[],back:[]},MKTOOLS=['brush','eraser','distress','text','rect','ellipse','line'];let MTOOL='select',MDRAG=null,MPEN=false;
+const MK={},MUNDO={front:[],back:[]},MREDO={front:[],back:[]},MKTOOLS=['brush','eraser','distress','text','rect','ellipse','line','fill','liquify'];let MTOOL='select',MDRAG=null,MPEN=false;
 const MKW=document.createElement('div');MKW.className='mkw';
-const mkOpts=()=>{const o=HOST()?.drawOpts?.()||{};return {color:o.color||'#141416',size:Number(o.size)||12,dsize:Number(o.dsize)||40,flow:o.flow??1,soft:o.soft||0,pressure:o.pressure!==false,tip:o.tip||'round',etip:o.etip||'hard'}};
+const mkOpts=()=>{const o=HOST()?.drawOpts?.()||{};return {color:o.color||'#141416',size:Number(o.size)||12,dsize:Number(o.dsize)||40,flow:o.flow??1,soft:o.soft||0,pressure:o.pressure!==false,tip:o.tip||'round',etip:o.etip||'hard',stream:Number(o.stream)||0,qshape:o.qshape!==false,lock:Boolean(o.lock),sym:o.sym||'off',ftol:Number(o.ftol)||40}};
+// symmetry on the flat: mirrored about the centre front (or back) line, top-bottom about the middle of the drawing, turned round where they meet
+const mkSym=(m,o)=>window.FBBrush?.symmetryMaps?FBBrush.symmetryMaps(['brush','eraser'].includes(MTOOL)?o.sym:'off',(0-m.x)/m.w*m.cv.width,m.cv.height/2):[p=>p];
+function mkStrokeS(m,a,b,o,pr){for(const f of mkSym(m,o))mkStroke(m,f(a),f(b),o,pr)}
 const mkTpl=()=>P?String(P.template||templateOf(P)?.id||'none'):'none';
 function mkReset(){for(const k of Object.keys(MK))delete MK[k];MUNDO.front=[];MUNDO.back=[];MREDO.front=[];MREDO.back=[];if(P)delete P.markup;mkPlace()}
 // the drawing covers everything the window shows of the flat at full view (not only the garment's own frame), in inches
@@ -651,9 +654,9 @@ const mkSnap=m=>m.cv.getContext('2d').getImageData(0,0,m.cv.width,m.cv.height);
 // a see-through tip (marker, airbrush) is drawn solid on a layer over the drawing while the stroke is made, shown at its opacity, and laid
 // into the drawing once at the end (piece by piece, its pieces would overlap and bead)
 let MBUF=null;
-function mkBufStart(m,o){const ba=MTOOL==='brush'&&window.FBBrush?FBBrush.strokeAlpha(o.tip,o.flow):0;if(!ba){MBUF=null;return}const c=document.createElement('canvas');c.width=m.cv.width;c.height=m.cv.height;c.style.cssText=m.cv.style.cssText;c.style.opacity=ba;c.style.position='absolute';c.style.pointerEvents='none';MKW.append(c);MBUF={c,ba,m}}
+function mkBufStart(m,o){const ba=MTOOL==='brush'&&!o.lock&&window.FBBrush?FBBrush.strokeAlpha(o.tip,o.flow):0;if(!ba){MBUF=null;return}const c=document.createElement('canvas');c.width=m.cv.width;c.height=m.cv.height;c.style.cssText=m.cv.style.cssText;c.style.opacity=ba;c.style.position='absolute';c.style.pointerEvents='none';MKW.append(c);MBUF={c,ba,m}}
 function mkBufEnd(keep=true){if(!MBUF)return;if(keep){const x=MBUF.m.cv.getContext('2d');x.save();x.globalAlpha=MBUF.ba;x.drawImage(MBUF.c,0,0);x.restore()}MBUF.c.remove();MBUF=null}
-function mkStroke(m,a,b,o,pr){if(window.FBBrush&&(MTOOL==='brush'||MTOOL==='eraser')){const buf=MBUF&&MBUF.m===m&&MTOOL==='brush';FBBrush.segment((buf?MBUF.c:m.cv).getContext('2d'),{tool:MTOOL,solid:buf,tip:MTOOL==='brush'?o.tip:o.etip,color:o.color,size:Math.max(.6,o.size*.5*mkK(m)),flow:o.flow,soft:o.soft,pr},a,b);return} // the Studio's brush tips (src/lab-brush.js)
+function mkStroke(m,a,b,o,pr){if(window.FBBrush&&(MTOOL==='brush'||MTOOL==='eraser')){const lk=o.lock&&MTOOL==='brush',buf=!lk&&MBUF&&MBUF.m===m&&MTOOL==='brush',cx=(buf?MBUF.c:m.cv).getContext('2d');if(lk){cx.save();cx.globalCompositeOperation='source-atop'}FBBrush.segment(cx,{tool:MTOOL,solid:buf,tip:MTOOL==='brush'?o.tip:o.etip,color:o.color,size:Math.max(.6,o.size*.5*mkK(m)),flow:o.flow,soft:o.soft,pr},a,b);if(lk)cx.restore();return} // the Studio's brush tips (src/lab-brush.js)
   const x=m.cv.getContext('2d'),k=mkK(m),t=MTOOL,w=Math.max(.6,(t==='distress'?o.dsize*.35:o.size*.5)*pr)*k;x.save();x.lineCap='round';x.lineJoin='round';x.lineWidth=w;x.globalAlpha=o.flow;
   if(t==='brush'){x.strokeStyle=o.color;if(o.soft){x.shadowColor=o.color;x.shadowBlur=w*o.soft}}else{x.globalCompositeOperation='destination-out';x.strokeStyle='#000';if(t==='distress'){x.setLineDash([w*.12,w*.3]);x.globalAlpha=Math.min(1,o.flow*.8)}}
   x.beginPath();x.moveTo(a[0],a[1]);x.lineTo(b[0]+.01,b[1]);x.stroke();x.restore()}
@@ -707,6 +710,21 @@ function typeOpen(m,p,before,o,e){typeClose(false);TY={m,p,before,o};TS.text='';
 function typeClose(keep){const t=TY,pop=$('#typePop');TY=null;pop?.remove();if(!t)return;
   if(keep&&TS.text.trim()){try{localStorage.setItem('fb.flats.type',JSON.stringify({...TS,text:''}))}catch{}TY=t;typeDraw();TY=null;mkDone(t.m,t.before)}
   else t.m.cv.getContext('2d').putImageData(t.before,0,0)}
+// QuickShape on the flat: the stroke drawn again as the shape it was meant to be, with the same brush (and its mirror images)
+function mkQuick(g){const q=window.FBBrush?.quickShapeOf?.(g.pts,{minSize:24*mkK(g.m)});if(!q)return;g.m.cv.getContext('2d').putImageData(g.before,0,0);if(MBUF&&MBUF.m===g.m)MBUF.c.getContext('2d').clearRect(0,0,MBUF.c.width,MBUF.c.height);
+  for(let i=1;i<q.pts.length;i++)mkStrokeS(g.m,q.pts[i-1],q.pts[i],g.o,g.pr||1);g.shaped=true;FBN.toast(`QuickShape: ${q.name}. Undo takes it back to your line.`,'info')}
+// Fill on the flat: inside a shape you drew, your drawing is filled there; anywhere else the garment's panel under the tap takes the colour
+// (as Colour a panel does, right up to its seams)
+function mkFill(m,p,o,before,e){const W=m.cv.width,H=m.cv.height,X=Math.floor(p[0]),Y=Math.floor(p[1]);
+  if(X>=0&&Y>=0&&X<W&&Y<H){const d=before.data,k0=(Y*W+X)*4,a0=d[k0+3],tol=(o.ftol||40)*2,seen=new Uint8Array(W*H),st=[Y*W+X];let edge=false,n=0;
+    const same=k=>{const j=k*4;return Math.abs(d[j]-d[k0])+Math.abs(d[j+1]-d[k0+1])+Math.abs(d[j+2]-d[k0+2])+Math.abs(d[j+3]-a0)*1.5<=tol};
+    while(st.length){const k=st.pop();if(seen[k]||!same(k))continue;seen[k]=1;n++;const px=k%W;if(px===0||px===W-1||k<W||k>=W*H-W)edge=true;if(px>0)st.push(k-1);if(px<W-1)st.push(k+1);if(k>=W)st.push(k-W);if(k<W*H-W)st.push(k+W)}
+    // closed in by your drawing (it never reached the drawing's edge): fill it, grown two pixels to tuck under the line, behind the line
+    if(!edge&&n>3){let mm=seen;for(let pass=0;pass<2;pass++){const q=new Uint8Array(mm);for(let k=0;k<W*H;k++)if(mm[k]){const px=k%W;if(px>0)q[k-1]=1;if(px<W-1)q[k+1]=1;if(k>=W)q[k-W]=1;if(k<W*H-W)q[k+W]=1}mm=q}
+      const c=parseInt(String(o.color).replace('#',''),16),img=new ImageData(W,H);for(let k=0;k<W*H;k++)if(mm[k]){img.data[k*4]=c>>16&255;img.data[k*4+1]=c>>8&255;img.data[k*4+2]=c&255;img.data[k*4+3]=255}
+      const t=document.createElement('canvas');t.width=W;t.height=H;t.getContext('2d').putImageData(img,0,0);const x=m.cv.getContext('2d');x.save();x.globalCompositeOperation='destination-over';x.drawImage(t,0,0);x.restore();mkDone(m,before);return}}
+  // the garment's panel: Colour a panel, in the Pencil's colour
+  NEWBL.color=o.color;const[ix,iy]=inch(e);fillAt(ix,iy)}
 function mkCancel(){mkBufEnd(false);const g=MDRAG;MDRAG=null;if(g?.m&&g.before)g.m.cv.getContext('2d').putImageData(g.before,0,0)}
 function mkStep(from,to){const st=from[VIEW],m=MK[VIEW];if(!st?.length||!m)return false;m.ver=(m.ver||0)+1;to[VIEW].push(mkSnap(m));m.cv.getContext('2d').putImageData(st.pop(),0,0);m.dirty=true;touch();HOST()?.flatsChanged?.();return true}
 // is there drawing under the pointer (within the eraser's reach)? then the eraser works on the drawing, not the sketch
@@ -726,12 +744,19 @@ MKW.addEventListener('pointerdown',e=>{
     MDRAG={rub:r,pid:e.pointerId,type:e.pointerType};rubDraw();return}
   const m=MK[VIEW]||mkNew(VIEW);if(!m)return;mkFit(m);mkPlace();try{MKW.setPointerCapture(e.pointerId)}catch{}const o=mkOpts(),p=mkAt(m,e),before=mkSnap(m);
   if(MTOOL==='text'){typeOpen(m,p,before,o,e);return}
-  MDRAG={m,before,last:p,from:p,o,pid:e.pointerId,type:e.pointerType};if(MTOOL==='brush')mkBufStart(m,o);if(['brush','eraser','distress'].includes(MTOOL))mkStroke(m,p,p,o,e.pointerType==='pen'&&o.pressure?Math.min(Math.max(.15+.85*(e.pressure||.5),.15),1):1)});
+  if(MTOOL==='fill'){mkFill(m,p,o,before,e);return}
+  if(MTOOL==='liquify'){MDRAG={m,before,last:p,o,pid:e.pointerId,type:e.pointerType,liq:true};return}
+  MDRAG={m,before,last:p,from:p,o,pid:e.pointerId,type:e.pointerType,pts:[p]};if(MTOOL==='brush')mkBufStart(m,o);if(['brush','eraser','distress'].includes(MTOOL))mkStrokeS(m,p,p,o,e.pointerType==='pen'&&o.pressure?Math.min(Math.max(.15+.85*(e.pressure||.5),.15),1):1)});
 MKW.addEventListener('pointermove',e=>{const g=MDRAG;if(!g||g.pid!==e.pointerId)return;e.stopPropagation();
   if(g.rub){const q=inch(e).map(v=>Math.round(v*32)/32),l=g.rub.pts.at(-1);if(Math.hypot(q[0]-l[0],q[1]-l[1])>=Math.max(.06,g.rub.w*.25)&&g.rub.pts.length<240){g.rub.pts.push(q);rubDraw()}return}
-  if(['brush','eraser','distress'].includes(MTOOL)){const ev=e.getCoalescedEvents?.()||[];for(const c of ev.length?ev:[e]){const p=mkAt(g.m,c);mkStroke(g.m,g.last,p,g.o,c.pointerType==='pen'&&g.o.pressure?Math.min(Math.max(.15+.85*(c.pressure||.5),.15),1):1);g.last=p}}
+  if(g.liq){const p=mkAt(g.m,e);if(Math.hypot(p[0]-g.last[0],p[1]-g.last[1])>=1.5){FBBrush.liquifyPush(g.m.cv.getContext('2d',{willReadFrequently:true}),g.last,p,g.o.size*.75*mkK(g.m));g.last=p;g.m.dirty=true}return}
+  if(['brush','eraser','distress'].includes(MTOOL)){if(g.shaped)return;const ev=e.getCoalescedEvents?.()||[];for(const c of ev.length?ev:[e]){let p=mkAt(g.m,c);
+      if(g.o.stream&&MTOOL==='brush'){const k=1-g.o.stream/100*.93;g.sx=(g.sx??g.last[0])+(p[0]-(g.sx??g.last[0]))*k;g.sy=(g.sy??g.last[1])+(p[1]-(g.sy??g.last[1]))*k;p=[g.sx,g.sy]} // Steady: the line trails the Pencil
+      g.pr=c.pointerType==='pen'&&g.o.pressure?Math.min(Math.max(.15+.85*(c.pressure||.5),.15),1):1;mkStrokeS(g.m,g.last,p,g.o,g.pr);g.last=p;g.pts.push(p)}
+    // QuickShape: the Pencil held still at the end of a stroke
+    if(MTOOL==='brush'&&g.o.qshape&&(!g.qa||Math.hypot(g.last[0]-g.qa[0],g.last[1]-g.qa[1])>4*mkK(g.m))){g.qa=g.last;clearTimeout(g.qt);g.qt=setTimeout(()=>{if(MDRAG===g&&!g.shaped)mkQuick(g)},550)}}
   else mkShape(g.m,g,mkAt(g.m,e))});
-const mkUp=e=>{const g=MDRAG;if(!g||(e.pointerId!==undefined&&g.pid!==e.pointerId))return;e.stopPropagation();MDRAG=null;if(g.rub){touch();paint();HOST()?.flatsChanged?.();return}mkBufEnd();mkDone(g.m,g.before)};
+const mkUp=e=>{const g=MDRAG;if(!g||(e.pointerId!==undefined&&g.pid!==e.pointerId))return;e.stopPropagation();MDRAG=null;clearTimeout(g.qt);if(g.rub){touch();paint();HOST()?.flatsChanged?.();return}mkBufEnd();mkDone(g.m,g.before)};
 ['pointerup','pointercancel'].forEach(t=>MKW.addEventListener(t,mkUp));MKW.addEventListener('lostpointercapture',e=>{if(MDRAG&&MDRAG.pid===e.pointerId)mkUp(e)});
 // iPad: a Pencil on the page can be taken as handwriting (Scribble) or a text selection before it reaches the drawing; holding its touches here stops that
 ['touchstart','touchmove'].forEach(t=>$('#canvas').addEventListener(t,e=>{if(MKW.classList.contains('on')&&[...e.changedTouches].some(x=>x.touchType==='stylus'))e.preventDefault()},{passive:false}));

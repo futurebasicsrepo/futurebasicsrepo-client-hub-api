@@ -100,4 +100,40 @@ export function segment(ctx, o, a, b, q) {
   }
   ctx.restore();
 }
-if (typeof window !== 'undefined') window.FBBrush = { TIPS, ERASER_TIPS, SIZE_PRESETS, strokeAlpha, segment };
+// QuickShape: a stroke read as a clean shape: a straight line, a triangle, a four- or five-sided shape, an oval or a circle; null when it is none
+// of those (or too small, minSize in the stroke's own units). pts: the stroke's points
+function rdp(pts, tol) { if (pts.length < 4) return pts; const keep = new Uint8Array(pts.length); keep[0] = keep[pts.length - 1] = 1; const st = [[0, pts.length - 1]];
+  while (st.length) { const [a, b] = st.pop(); let m = -1, md = tol; const [ax, ay] = pts[a], [bx, by] = pts[b], L = Math.hypot(bx - ax, by - ay) || 1;
+    for (let i = a + 1; i < b; i++) { const d = Math.abs((bx - ax) * (ay - pts[i][1]) - (ax - pts[i][0]) * (by - ay)) / L; if (d > md) { md = d; m = i; } } if (m > 0) { keep[m] = 1; st.push([a, m], [m, b]); } }
+  return pts.filter((_, i) => keep[i]); }
+export function quickShapeOf(pts, { minSize = 0 } = {}) {
+  if (!pts || pts.length < 6) return null; const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]), S = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)); if (S < minSize) return null;
+  const a = pts[0], b = pts[pts.length - 1], L = Math.hypot(b[0] - a[0], b[1] - a[1]), dev = p => Math.abs((b[0] - a[0]) * (a[1] - p[1]) - (a[0] - p[0]) * (b[1] - a[1])) / (L || 1);
+  if (L > S * .6 && Math.max(...pts.map(dev)) < Math.max(4, L * .07)) return { name: 'a straight line', pts: [a, b] };
+  if (Math.hypot(b[0] - a[0], b[1] - a[1]) >= S * .3) return null;
+  const v = rdp([...pts, pts[0]], S * .1).slice(0, -1), n = v.length;
+  if (n >= 3 && n <= 5) return { name: n === 3 ? 'a triangle' : n === 4 ? 'a four-sided shape' : 'a five-sided shape', pts: [...v, v[0]] };
+  // an oval along the stroke's own axis (its principal direction), a circle when its two radii are near enough
+  const mx = xs.reduce((t, q) => t + q, 0) / xs.length, my = ys.reduce((t, q) => t + q, 0) / ys.length; let sxx = 0, syy = 0, sxy = 0; for (const [x, y] of pts) { sxx += (x - mx) ** 2; syy += (y - my) ** 2; sxy += (x - mx) * (y - my); }
+  const th = .5 * Math.atan2(2 * sxy, sxx - syy), c = Math.cos(th), sn = Math.sin(th); let ra = 0, rb = 0; for (const [x, y] of pts) { const u = (x - mx) * c + (y - my) * sn, w = -(x - mx) * sn + (y - my) * c; ra = Math.max(ra, Math.abs(u)); rb = Math.max(rb, Math.abs(w)); }
+  ra *= .96; rb *= .96; let name = 'an oval'; if (Math.abs(ra - rb) < Math.max(ra, rb) * .12) { ra = rb = (ra + rb) / 2; name = 'a circle'; }
+  return { name, pts: Array.from({ length: 97 }, (_, i) => { const t = i / 96 * Math.PI * 2, u = ra * Math.cos(t), w = rb * Math.sin(t); return [mx + u * c - w * sn, my + u * sn + w * c]; }) };
+}
+// symmetry: the maps that copy a point into its mirror images (mirror, top-bottom, four ways, or turned 6 or 8 ways), about (cx, cy)
+export function symmetryMaps(mode, cx, cy) {
+  if (!mode || mode === 'off') return [p => p];
+  const fx = p => [2 * cx - p[0], p[1]], fy = p => [p[0], 2 * cy - p[1]];
+  if (mode === 'v') return [p => p, fx]; if (mode === 'h') return [p => p, fy]; if (mode === 'quad') return [p => p, fx, fy, p => fy(fx(p))];
+  const n = mode === 'r6' ? 6 : 8; return Array.from({ length: n }, (_, i) => { const a = i * 2 * Math.PI / n, c = Math.cos(a), s = Math.sin(a); return p => [cx + (p[0] - cx) * c - (p[1] - cy) * s, cy + (p[0] - cx) * s + (p[1] - cy) * c]; });
+}
+// liquify: the pixels within reach of a push move with it, most at the middle and none at the edge. ctx: a 2D context; a, b: from and to,
+// in its pixels; r: the reach
+export function liquifyPush(ctx, a, b, r) {
+  const c = ctx.canvas, R = Math.max(4, r), dx = b[0] - a[0], dy = b[1] - a[1];
+  const X0 = Math.max(0, Math.floor(Math.min(a[0], b[0]) - R)), Y0 = Math.max(0, Math.floor(Math.min(a[1], b[1]) - R)), X1 = Math.min(c.width, Math.ceil(Math.max(a[0], b[0]) + R)), Y1 = Math.min(c.height, Math.ceil(Math.max(a[1], b[1]) + R)), w = X1 - X0, h = Y1 - Y0;
+  if (w <= 0 || h <= 0) return; const src = ctx.getImageData(X0, Y0, w, h), out = ctx.createImageData(w, h), S = src.data, O = out.data;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const r2 = ((x + X0 - b[0]) ** 2 + (y + Y0 - b[1]) ** 2) / (R * R), k = (y * w + x) * 4; let fx = x, fy = y; if (r2 < 1) { const t = (1 - r2) ** 2; fx = x - dx * t; fy = y - dy * t; }
+    const ix = Math.floor(fx), iy = Math.floor(fy), u = fx - ix, v = fy - iy; for (let ch = 0; ch < 4; ch++) { const at = (xx, yy) => { xx = Math.min(w - 1, Math.max(0, xx)); yy = Math.min(h - 1, Math.max(0, yy)); return S[(yy * w + xx) * 4 + ch]; }; O[k + ch] = (at(ix, iy) * (1 - u) + at(ix + 1, iy) * u) * (1 - v) + (at(ix, iy + 1) * (1 - u) + at(ix + 1, iy + 1) * u) * v; } }
+  ctx.putImageData(out, X0, Y0);
+}
+if (typeof window !== 'undefined') window.FBBrush = { TIPS, ERASER_TIPS, SIZE_PRESETS, strokeAlpha, segment, quickShapeOf, symmetryMaps, liquifyPush };
