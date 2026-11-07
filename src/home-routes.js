@@ -1,6 +1,7 @@
 // GET /v1/admin/home: what the work console's home page shows beyond the Sales overview (which it also reads): leads waiting for a first reply, prototypes and
 // how warm they are, projects in flight (software and product), and what is waiting elsewhere. Staff only.
 import { hasBuildPreview } from './builds-routes.js';
+import { moneyAllowed } from './money.js';
 import { projectRow, orderProjects, prototypeRow, firstName, trend, accountRow, orderAccounts, LEAD_SOURCES_EXCLUDED } from './home.js';
 
 export function registerHomeRoutes(app, { pool, authenticate, adminOnly }) {
@@ -15,6 +16,20 @@ export function registerHomeRoutes(app, { pool, authenticate, adminOnly }) {
     const [prev] = await q(`select count(*)::int n from sales_contacts where created_at <= now() - interval '7 days' and created_at > now() - interval '14 days' and not (source = any($1))`, [ex]);
     const [look] = await q(`select count(distinct email)::int lookers, count(distinct email) filter (where kind='demo')::int demos from build_views where created_at > now() - interval '7 days'`);
     const [won] = await q(`select count(*)::int n, coalesce(sum(value_cents),0)::bigint v from sales_deals where stage='won' and coalesce(closed_at, updated_at) > now() - interval '30 days'`);
+    // who is on the hook: open deals, people who came in over the last 30 days, and rooms that signed up through a join link
+    const [hook] = await q(`select (select count(*) from sales_deals where stage not in ('won','lost'))::int deals,
+        (select count(*) from sales_contacts c where c.created_at > now() - interval '30 days' and not (c.source = any($1)) and not exists (select 1 from sales_deals d where d.contact_id=c.id))::int fresh,
+        (select count(*) from clients c where c.created_at > now() - interval '30 days' and c.archived_at is null and c.slug <> 'future-basics')::int rooms`, [ex]).catch(() => [{ deals: 0, fresh: 0, rooms: 0 }]);
+    // the money: contracts out for signature, agreements signed, cash in, and what is invoiced but not paid (Money is only for the people named for it)
+    const moneyOk = moneyAllowed(meRow?.email || req.auth?.email || '');
+    const [cash] = moneyOk ? await q(`select
+        (select count(*) from contracts where status='sent' and (expires_at is null or expires_at > now()))::int out_n,
+        (select coalesce(sum(total_cents),0) from contracts where status='sent' and (expires_at is null or expires_at > now()))::bigint out_v,
+        (select count(*) from contracts where status in ('signed_by_client','executed') and coalesce(executed_at, (client_signature->>'at')::timestamptz, updated_at) > now() - interval '30 days')::int signed_n,
+        (select coalesce(sum(total_cents),0) from contracts where status in ('signed_by_client','executed') and coalesce(executed_at, (client_signature->>'at')::timestamptz, updated_at) > now() - interval '30 days')::bigint signed_v,
+        (select coalesce(sum(c.total_cents - coalesce((select sum(p.amount_cents) from money_payments p join money_invoices i on i.id=p.invoice_id where i.contract_id=c.id and i.status<>'void'),0)),0) from contracts c where c.status in ('signed_by_client','executed'))::bigint under_v,
+        (select coalesce(sum(amount_cents),0) from money_payments where paid_on > current_date - 30)::bigint + (select coalesce(sum(amount_cents),0) from payments where paid_at > now() - interval '30 days')::bigint in_v,
+        (select coalesce(sum(i.total_cents - coalesce((select sum(p.amount_cents) from money_payments p where p.invoice_id=i.id),0)),0) from money_invoices i where i.status='sent')::bigint due_v`).catch(() => [null]) : [null];
     const awaiting = await q(`select c.id, c.name, c.email, co.name company, c.source, c.created_at from sales_contacts c left join sales_companies co on co.id=c.company_id
       where c.created_at > now() - interval '21 days' and c.email is not null and not (c.source = any($1))
         and not exists (select 1 from sales_activities a where a.contact_id=c.id and a.kind in ('email_out','call','meeting','chat_out'))
@@ -70,7 +85,8 @@ export function registerHomeRoutes(app, { pool, authenticate, adminOnly }) {
       unownedAccounts: unowned.map(r => ({ id: r.id, name: r.name, projects: r.projects })),
       leadSearches: leadSearches.map(r => ({ id: r.id, trade: r.trade, place: r.place, quick: r.quick, at: r.created_at })),
       signals: { total: sc.total, overdue: sc.overdue, top: sigs.map(r => ({ id: r.id, source: r.source, title: r.title, summary: r.summary, score: r.score, status: r.status, ownerName: r.owner_name || '', foundAt: r.found_at, postedAt: r.posted_at })) },
-      funnel: { newLeads7: cur.n, newLeadsPrev7: prev.n, trend: trend(cur.n, prev.n), lookers7: look.lookers, demos7: look.demos, won30: { count: won.n, valueCents: Number(won.v) } },
+      funnel: { newLeads7: cur.n, newLeadsPrev7: prev.n, trend: trend(cur.n, prev.n), lookers7: look.lookers, demos7: look.demos, won30: { count: won.n, valueCents: Number(won.v) }, onHook: { deals: hook.deals, fresh: hook.fresh, rooms: hook.rooms, total: hook.deals + hook.fresh + hook.rooms } },
+      money: cash ? { out: { count: cash.out_n, cents: Number(cash.out_v) }, signed30: { count: cash.signed_n, cents: Number(cash.signed_v) }, underContractCents: Math.max(0, Number(cash.under_v)), in30Cents: Number(cash.in_v), dueCents: Math.max(0, Number(cash.due_v)) } : null,
       awaitingReply: awaiting.map(r => ({ id: r.id, name: r.name || r.email, email: r.email, company: r.company || '', source: r.source, createdAt: r.created_at })),
       prototypes: protos.map(r => prototypeRow({ ...r, has_cover: r.has_cover || hasBuildPreview(r.slug) })), showNow: showNow.map(r => ({ ...prototypeRow({ ...r, has_cover: r.has_cover || hasBuildPreview(r.slug) }), views30: Number(r.views7) || 0 })),
       projects: orderProjects(projects.map(r => projectRow(r))),
@@ -82,7 +98,7 @@ export function registerHomeRoutes(app, { pool, authenticate, adminOnly }) {
     if (!can('clients')) Object.assign(out, { myAccounts: [], unownedAccounts: [], projects: [], waiting: { approvals: 0, production: 0 }, fbTasks: [] });
     if (!can('prototypes')) Object.assign(out, { prototypes: [], showNow: [], leadSearches: [] });
     if (!can('intel')) out.signals = { total: 0, overdue: 0, top: [] };
-    if (!can('crm')) Object.assign(out, { awaitingReply: [], funnel: { newLeads7: 0, newLeadsPrev7: 0, trend: out.funnel.trend, lookers7: 0, demos7: 0, won30: { count: 0, valueCents: 0 } } });
+    if (!can('crm')) Object.assign(out, { awaitingReply: [], funnel: { newLeads7: 0, newLeadsPrev7: 0, trend: out.funnel.trend, lookers7: 0, demos7: 0, won30: { count: 0, valueCents: 0 }, onHook: { deals: 0, fresh: 0, rooms: 0, total: 0 } } });
     return out;
   });
   // The short list the quick "Start a tech pack" box picks a client from (My day and the left menu): live client rooms, newest first. Anyone on the team may ask; people without Clients and projects get an empty list.

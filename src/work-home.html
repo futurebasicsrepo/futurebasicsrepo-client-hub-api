@@ -55,6 +55,7 @@ h1{font-size:clamp(40px,6.2vw,92px);line-height:.95;letter-spacing:-.045em;font-
 @media(max-width:700px){.proj{grid-template-columns:minmax(0,1fr) auto}.proj .mid{grid-column:1/-1;order:3}.row{grid-template-columns:minmax(0,1fr) auto}.row .chip.k{grid-column:1/-1}}
 .waitbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:16px}.waitbar a{text-decoration:none}
 .empty{color:var(--dim);padding:12px 0}
+.tile.hot{border-color:var(--ink)}.tile.win{border-color:var(--ok);box-shadow:inset 0 0 0 1px var(--ok)}.top .note b{color:var(--ink);font-weight:600}
 </style>
 <script src="/feedback.js"></script>
 <link rel="stylesheet" href="/cue.css">
@@ -118,9 +119,19 @@ async function loadShare(){
 }
 function greet(){const h=new Date().getHours();return (h<12?'Good morning':h<18?'Good afternoon':'Good evening')}
 function renderFunnel(o,h){
-  const f=h.funnel,p=o.pipeline;
-  $('#funnel').innerHTML=[
-    `<a class="tile" href="/sales#contacts"><span class="mono t">New leads · 7 days</span><b>${f.newLeads7}</b><span class="tr ${f.trend.dir}">${esc(f.trend.text)}</span></a>`,
+  const f=h.funnel,p=o.pipeline,m=h.money,hook=f.onHook||{deals:0,fresh:0,rooms:0,total:0};
+  // the leads tile counts everyone in play (open deals and people who came in this month), not only this week's new contacts
+  const leads=`<a class="tile" href="/sales#pipeline"><span class="mono t">On the hook</span><b>${hook.total}</b><span class="tr ${f.newLeads7?'up':''}">${hook.deals} open deal${hook.deals===1?'':'s'} · ${f.newLeads7} new this week${hook.rooms?` · ${hook.rooms} new room${hook.rooms===1?'':'s'}`:''}</span></a>`;
+  if(m){
+    $('#funnel').innerHTML=[leads,
+      `<a class="tile ${m.out.count?'hot':''}" href="/contracts"><span class="mono t">Out for signature</span><b>${money(m.out.cents)}</b><span class="tr">${m.out.count} contract${m.out.count===1?'':'s'} waiting on a signature</span></a>`,
+      `<a class="tile" href="/contracts"><span class="mono t">Signed · 30 days</span><b>${money(m.signed30.cents)}</b><span class="tr">${m.signed30.count} agreement${m.signed30.count===1?'':'s'} · ${money(m.underContractCents)} still to collect</span></a>`,
+      `<a class="tile ${m.in30Cents?'win':''}" href="/money"><span class="mono t">Money in · 30 days</span><b>${money(m.in30Cents)}</b><span class="tr">${money(m.dueCents)} invoiced, not paid yet</span></a>`].join('');
+    // one line under the greeting: what is on the table, in money
+    const bits=[];if(m.out.cents)bits.push(`<b>${money(m.out.cents)}</b> waiting on ${m.out.count===1?'a signature':m.out.count+' signatures'}`);if(m.dueCents)bits.push(`<b>${money(m.dueCents)}</b> invoiced and due`);if(m.underContractCents)bits.push(`<b>${money(m.underContractCents)}</b> signed and still to collect`);if(hook.total)bits.push(`<b>${hook.total}</b> lead${hook.total===1?'':'s'} on the hook`);
+    if(bits.length)$('.top .note').innerHTML=`On the table: ${bits.join(' · ')}. Close one today.`;
+    return}
+  $('#funnel').innerHTML=[leads,
     `<a class="tile" href="/builds/admin#activity"><span class="mono t">Looked at a prototype · 7 days</span><b>${f.lookers7}</b><span class="tr">${f.demos7} opened a live build</span></a>`,
     `<a class="tile" href="/sales#pipeline"><span class="mono t">Deals in play</span><b>${p.openCount}</b><span class="tr">${money(p.openValueCents)} open${p.forecastCents?` · ${money(p.forecastCents)} likely`:''}</span></a>`,
     `<a class="tile" href="/sales#pipeline"><span class="mono t">Won · 30 days</span><b>${money(f.won30.valueCents)}</b><span class="tr">${f.won30.count} deal${f.won30.count===1?'':'s'}</span></a>`].join('');

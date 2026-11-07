@@ -423,7 +423,18 @@ export function registerContractRoutes(app, d) {
       r = await fresh(r); if (!r || !['sent', 'signed_by_client', 'executed'].includes(r.status)) continue;
       const c = r.content, mine = Boolean(me) && me === String(c.client.signerEmail || '').toLowerCase(), token = signToken(secret, r.id, r.token_version), link = mine && !preview ? `${publicUrl}/sign/${token}` : null;
       const method = c.plan.autopay && autopay ? await autopay.activeMethod(r.id) : null, wantsDetails = Boolean(autopay && c.plan.autopay && r.client_signature?.autopay && ['signed_by_client', 'executed'].includes(r.status) && !method);
+      // each payment in the plan, and where it stands: paid, invoiced (with its pay link), or still to come (a draft invoice is not shown to the client)
+      const inv = (await pool.query(`select i.id, i.number, i.status, i.total_cents, i.due_on, i.contract_seq, i.pay_url, coalesce((select sum(p.amount_cents) from money_payments p where p.invoice_id=i.id),0)::bigint paid_cents
+          from money_invoices i where i.contract_id=$1 and i.status<>'void' order by i.contract_seq, i.created_at`, [r.id]).catch(() => ({ rows: [] }))).rows;
+      const signedOn = iso(r.client_signature?.at || r.executed_at), deliveryOn = iso(r.delivered_on) || c.timeline?.completionOn || null;
+      const payments = schedule(c.plan, { signedOn, deliveryOn }).map((p, n) => {
+        const i = inv.find(x => Number(x.contract_seq) === n + 1 && x.status !== 'draft'), paid = i && (i.status === 'paid' || Number(i.paid_cents) >= Number(i.total_cents));
+        return { seq: n + 1, label: p.label || '', amountCents: Number(p.amountCents) || 0, when: p.dueOn ? 'on ' + longDate(p.dueOn) : p.event === 'signing' ? 'on signing' : isProduct(c.kind) ? 'on final sample approval' : 'on delivery', falls: p.falls || null,
+          state: paid ? 'paid' : i ? 'invoiced' : 'upcoming', invoice: i ? { number: i.number, dueOn: iso(i.due_on), payUrl: paid ? '' : i.pay_url || '' } : null };
+      });
+      const shown = inv.filter(x => x.status !== 'draft'), invoicedCents = shown.reduce((a, x) => a + Number(x.total_cents), 0), paidCents = shown.reduce((a, x) => a + (x.status === 'paid' ? Number(x.total_cents) : Math.min(Number(x.paid_cents), Number(x.total_cents))), 0);
       out.push({ id: r.id, number: r.number, title: r.title, status: r.status, totalCents: Number(r.total_cents), currency: r.currency, sentAt: r.sent_at, executedAt: r.executed_at, expiresAt: r.expires_at, signerName: c.client.signerName || '',
+        payments, invoicedCents, paidCents, method: c.plan.method || 'invoice', projectId: r.project_id || null,
         youAreSigner: mine, link, pdfUrl: link ? `/v1/public/contracts/${token}/pdf` : null, summary: planWords(c.plan, r.currency, c.kind), autopay: Boolean(c.plan.autopay), cardOnFile: method ? method.label : null,
         needs: r.status === 'sent' ? 'sign' : wantsDetails ? 'details' : null });
     }

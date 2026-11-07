@@ -1496,7 +1496,14 @@ app.get('/v1/admin/clients/:id',{preHandler:[authenticate,adminOnly]},async(req,
   const projectRoomFiles=(await pool.query(`select rf.id,rf.project_id,rf.product_id,rf.original_name,rf.size_bytes,rf.mime_type,rf.created_at,rf.uploader_role,rf.client_visible,rf.factory_visible,rf.note,coalesce(nullif(u.name,''),u.email,case when rf.uploader_role='admin' then 'Future Basics' else c.name end) uploader_name
     from room_files rf left join users u on u.id=rf.uploader_id join clients c on c.id=rf.client_id where rf.client_id=$1 and rf.project_id is not null and coalesce(rf.purpose,'')<>'tax-form' order by rf.created_at desc`,[client.id])).rows;
   const shopifyStores=(await liveStores(client.id).catch(()=>[])).map(r=>({...storeView(r),scope:r.scope||''}));
-  return {projectRoomFiles,shopifyStores,client,projects:projects.rows.map(withSoftware),projectFinancials:projectFinancialRollups(projects.rows,products.rows,quotes.rows,invoices.rows,{internal:true}),projectMessages:projectMessages.rows,projectFiles:projectFiles.rows,clientAssetUploads:clientAssetUploads.rows,products:products.rows,requests:requests.rows,invoices:invoices.rows,users:users.rows,quotes:quotes.rows,
+  // the agreements on this room's projects: a digital project's money comes from its contract (value, invoiced, paid), not from product quotes
+  const projectContracts=(await pool.query(`select c.id,c.number,c.title,c.status,c.project_id,c.total_cents,c.sent_at,c.executed_at,c.expires_at,
+      coalesce((select sum(i.total_cents) from money_invoices i where i.contract_id=c.id and i.status not in ('void','draft')),0)::bigint invoiced_cents,
+      coalesce((select sum(p.amount_cents) from money_payments p join money_invoices i on i.id=p.invoice_id where i.contract_id=c.id and i.status<>'void'),0)::bigint paid_cents,
+      (select count(*) from money_invoices i where i.contract_id=c.id and i.status not in ('void','draft'))::int invoices
+    from contracts c where c.project_id is not null and c.status in ('sent','signed_by_client','executed') and (c.client_id=$1 or c.project_id in (select id from projects where client_id=$1)) order by coalesce(c.executed_at,c.sent_at) desc`,[client.id]).catch(()=>({rows:[]}))).rows
+    .map(r=>({id:r.id,number:r.number,title:r.title,status:r.status,projectId:r.project_id,totalCents:Number(r.total_cents),invoicedCents:Number(r.invoiced_cents),paidCents:Number(r.paid_cents),invoices:r.invoices,sentAt:r.sent_at,executedAt:r.executed_at,expiresAt:r.expires_at}));
+  return {projectRoomFiles,shopifyStores,projectContracts,client,projects:projects.rows.map(withSoftware),projectFinancials:projectFinancialRollups(projects.rows,products.rows,quotes.rows,invoices.rows,{internal:true}),projectMessages:projectMessages.rows,projectFiles:projectFiles.rows,clientAssetUploads:clientAssetUploads.rows,products:products.rows,requests:requests.rows,invoices:invoices.rows,users:users.rows,quotes:quotes.rows,
     suppliers:suppliers.rows,productionRuns:productionRuns.rows,qcInspections:qcInspections.rows,shipments:shipments.rows,
     assets:assets.rows,assetVersions:assetVersions.rows,comments:comments.rows,configurations:configurations.rows,priceTiers:priceTiers.rows,payments};
 });
@@ -2317,6 +2324,10 @@ app.get('/v1/dashboard', { preHandler: authenticate }, async (req,reply) => {
   const waiting=await clientWaiting(id,{products:products.rows,quotes:quotes.rows,approvals:approvals.rows,invoices:invoices.rows});
   // their agreements (contracts for digital work): shown in the hub, and the ones that need the signer's attention join "Waiting on you"
   const agreements=await contracts.hubContracts({clientId:id,userId:req.auth.sub,preview:Boolean(req.auth.preview)}).catch(e=>{app.log.warn({err:e.message},'hub agreements failed');return []});
+  // invoices from Money addressed to this client that are not part of an agreement (those show under their agreement): sent or paid, never drafts
+  const moneyInvoices=(await pool.query(`select i.id,i.number,i.status,i.total_cents,i.currency,i.issued_on,i.due_on,i.pay_url,i.notes,coalesce((select sum(p.amount_cents) from money_payments p where p.invoice_id=i.id),0)::bigint paid_cents
+      from money_invoices i where i.client_id=$1 and i.contract_id is null and i.status in ('sent','paid') order by i.issued_on desc limit 30`,[id]).catch(()=>({rows:[]}))).rows
+    .map(i=>{const paid=i.status==='paid'||Number(i.paid_cents)>=Number(i.total_cents);return {id:i.id,number:i.number,status:paid?'paid':'due',totalCents:Number(i.total_cents),currency:i.currency,issuedOn:i.issued_on,dueOn:i.due_on,payUrl:paid?'':i.pay_url||''}});
   for(const a of agreements)if(a.needs&&a.link)waiting.push({kind:'contract',id:`ct-${a.id}`,needs:a.needs,title:a.needs==='sign'?`Sign ${a.title}`:'Add your payment details',product:a.title,at:a.needs==='sign'?a.sentAt:a.executedAt||a.sentAt,href:a.link,totalCents:a.totalCents,summary:a.summary,number:a.number});
   // a new client's details are asked for first (the hub also opens the form on their first visit)
   if(!req.auth.preview&&(await pool.query(`select 1 from clients where id=$1 and onboarding_status='pending'`,[id])).rowCount)waiting.push({kind:'onboarding',id:'onboarding',title:'Finish setting up your account',product:'Your account',at:new Date().toISOString()});
@@ -2332,7 +2343,7 @@ app.get('/v1/dashboard', { preHandler: authenticate }, async (req,reply) => {
     from room_files rf left join users u on u.id=rf.uploader_id join clients c on c.id=rf.client_id where rf.client_id=$1 and rf.project_id is not null and (rf.uploader_role='client' or rf.client_visible) and coalesce(rf.purpose,'')<>'tax-form' order by rf.created_at desc`, [id])).rows;
   return { projectRoomFiles, requests: requests.rows, invoices: invoices.rows, projects: projects.rows.map(withSoftware),projectFinancials:projectFinancialRollups(projects.rows,products.rows,quotes.rows,invoices.rows),projectMessages: projectMessages.rows,projectFiles:projectFiles.rows,
     productComments:productComments.rows, products: products.rows.map(withRendering),
-    approvals: approvals.rows, activities: activities.rows, waiting, agreements,
+    approvals: approvals.rows, activities: activities.rows, waiting, agreements, moneyInvoices,
     actions: [
       ...approvals.rows.map(a=>({type:'approval',id:a.id,title:'Approve '+a.product_title+' — '+(a.asset_name?`${a.asset_name} v${a.asset_version}`:a.title),due:null})),
       ...invoices.rows.filter(x=>x.status==='due').map(x=>({type:'invoice',id:x.id,title:'Invoice '+x.number+' due',due:x.due_date})),
