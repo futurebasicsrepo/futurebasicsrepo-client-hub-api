@@ -1,0 +1,299 @@
+[
+ {
+  "file": "infrared-option-1.png",
+  "kind": "line",
+  "label": "Infrared front artwork, option 1: stacked hardware",
+  "place": "Centre chest",
+  "note": "",
+  "size": [
+   736,
+   936
+  ]
+ },
+ {
+  "file": "infrared-option-2.png",
+  "kind": "line",
+  "label": "Infrared front artwork, option 2: annotated",
+  "place": "Centre chest",
+  "note": "",
+  "size": [
+   1080,
+   1200
+  ]
+ },
+ {
+  "file": "infrared-option-3.png",
+  "kind": "line",
+  "label": "Infrared front artwork, option 3: exploded isometric",
+  "place": "Centre chest",
+  "note": "",
+  "size": [
+   1068,
+   1110
+  ]
+ },
+ {
+  "file": "infrared-option-4.png",
+  "kind": "line",
+  "label": "Infrared front artwork, option 4: small chest graphic",
+  "place": "Left chest",
+  "note": "",
+  "size": [
+   540,
+   900
+  ]
+ },
+ {
+  "file": "taxi-back-photo.png",
+  "kind": "photo",
+  "label": "Taxi back print: NYC street photo",
+  "place": "Full back",
+  "note": "",
+  "size": [
+   552,
+   984
+  ]
+ },
+ {
+  "file": "yosemite-back-photo.png",
+  "kind": "photo",
+  "label": "Yosemite back print: landscape band",
+  "place": "Upper back",
+  "note": "",
+  "size": [
+   920,
+   392
+  ]
+ },
+ {
+  "file": "yosemite-sleeve-type.png",
+  "kind": "line",
+  "label": "Yosemite sleeve type: \"Sense in Color\"",
+  "place": "Sleeve",
+  "note": "Typeset to match the mockup (the mockup shows it mirrored and wrapped round the sleeve): confirm the typeface against Ouster's file.",
+  "size": [
+   2160,
+   294
+  ]
+ },
+ {
+  "file": "jersey-back-08.png",
+  "kind": "line",
+  "label": "Jersey back number \"08\"",
+  "place": "Back",
+  "note": "",
+  "size": [
+   780,
+   606
+  ]
+ },
+ {
+  "file": "jersey-back-ouster-fc.png",
+  "kind": "line",
+  "label": "Jersey back: \"Ouster FC\"",
+  "place": "Back neck",
+  "note": "",
+  "size": [
+   440,
+   260
+  ]
+ },
+ {
+  "file": "jersey-back-hem-text.png",
+  "kind": "line",
+  "label": "Jersey back hem: \"Sense. Think. Act. Learn.\"",
+  "place": "Back hem",
+  "note": "",
+  "size": [
+   1152,
+   152
+  ]
+ },
+ {
+  "file": "jersey-front-mark.png",
+  "kind": "line",
+  "label": "Jersey front: mark + asterisk",
+  "place": "Mid chest",
+  "note": "",
+  "size": [
+   872,
+   376
+  ]
+ },
+ {
+  "file": "jersey-crest.png",
+  "kind": "line",
+  "label": "Ouster FC crest",
+  "place": "Left chest",
+  "note": "",
+  "size": [
+   336,
+   360
+  ]
+ },
+ {
+  "file": "jersey-sleeve-chevron.png",
+  "kind": "line",
+  "label": "Jersey sleeve chevron",
+  "place": "Both sleeves",
+  "note": "",
+  "size": [
+   408,
+   372
+  ]
+ },
+ {
+  "file": "woven-label-kelvin.png",
+  "kind": "label",
+  "label": "Woven label: Ouster lockup, sensor, \"100% Authentic\", \"EST. 2015\", Kelvin quote",
+  "place": "Neck label (tees, long sleeve), cap inner label, beanie cuff patch",
+  "note": "Straightened from the beanie patch photo.",
+  "size": [
+   816,
+   525
+  ]
+ },
+ {
+  "file": "woven-label-kelvin-art.png",
+  "kind": "line",
+  "label": "Woven label artwork, one colour (from the patch)",
+  "place": "Label",
+  "note": "Line art lifted from the patch for the label maker.",
+  "size": [
+   816,
+   525
+  ]
+ },
+ {
+  "file": "hang-tag-1.png",
+  "kind": "label",
+  "label": "Hang tag, option 1: olive card with the mark",
+  "place": "Hang tag",
+  "note": "",
+  "size": [
+   365,
+   760
+  ]
+ },
+ {
+  "file": "hang-tag-2.png",
+  "kind": "label",
+  "label": "Hang tag, option 1: white spec card",
+  "place": "Hang tag",
+  "note": "",
+  "size": [
+   360,
+   760
+  ]
+ },
+ {
+  "file": "hang-tag-3.png",
+  "kind": "label",
+  "label": "Hang tag, option 1: photo card",
+  "place": "Hang tag",
+  "note": "",
+  "size": [
+   365,
+   920
+  ]
+ },
+ {
+  "file": "hang-tag-4.png",
+  "kind": "label",
+  "label": "Hang tag, option 2: black card",
+  "place": "Hang tag",
+  "note": "",
+  "size": [
+   365,
+   760
+  ]
+ },
+ {
+  "file": "hang-tag-5.png",
+  "kind": "label",
+  "label": "Hang tag, option 2: white card",
+  "place": "Hang tag",
+  "note": "",
+  "size": [
+   350,
+   760
+  ]
+ },
+ {
+  "file": "hang-tag-6.png",
+  "kind": "label",
+  "label": "Hang tag, option 2: olive grid card",
+  "place": "Hang tag",
+  "note": "",
+  "size": [
+   360,
+   920
+  ]
+ },
+ {
+  "file": "tech-sticker-detailed.png",
+  "kind": "label",
+  "label": "Tech sticker: detailed version",
+  "place": "Poly bag",
+  "note": "",
+  "size": [
+   462,
+   696
+  ]
+ },
+ {
+  "file": "tech-sticker-general.png",
+  "kind": "label",
+  "label": "Tech sticker: general version",
+  "place": "Poly bag",
+  "note": "",
+  "size": [
+   444,
+   696
+  ]
+ },
+ {
+  "file": "bottle-wrap.png",
+  "kind": "photo",
+  "label": "Water bottle wrap: point-cloud scene",
+  "place": "Lower third wrap",
+  "note": "",
+  "size": [
+   732,
+   522
+  ]
+ },
+ {
+  "file": "point-cloud-print.png",
+  "kind": "photo",
+  "label": "Point cloud artwork: Potrero Avenue",
+  "place": "Print",
+  "note": "",
+  "size": [
+   835,
+   1145
+  ]
+ },
+ {
+  "file": "sticker-sheet.png",
+  "kind": "photo",
+  "label": "Sticker pack: sleeve and the stickers",
+  "place": "Sticker sheet",
+  "note": "",
+  "size": [
+   872,
+   1240
+  ]
+ },
+ {
+  "file": "pencil-box-print.png",
+  "kind": "line",
+  "label": "Pencil box print: \"From thought to physical\", REV8",
+  "place": "Box lid",
+  "note": "",
+  "size": [
+   540,
+   1212
+  ]
+ }
+]
