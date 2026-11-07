@@ -1071,7 +1071,16 @@ app.get('/v1/admin/dashboard', {preHandler:[authenticate,adminOnly]}, async (req
   const activeClients=clients.rows.filter(client=>!client.archived_at&&!['archive','archived'].includes(client.status));
   const archivedClients=clients.rows.filter(client=>client.archived_at||['archive','archived'].includes(client.status));
   const queues=await buildQueues(pool,{learning}).catch(err=>{app.log.warn({err:err.message},'work queues failed');reportError('web',`work queues: ${err.message}`);return null});
-  for(const c of activeClients)c.last_opened_at=opened.get(c.id)||null;
+  // the last thing that happened in each room (a project or product changed, a message, a file, anything logged), so every room has a recency, opened or not
+  const active=new Map((await pool.query(`select client_id,max(at) at from (
+      select client_id,max(updated_at) at from projects group by client_id
+      union all select client_id,max(updated_at) from products group by client_id
+      union all select client_id,max(created_at) from activities group by client_id
+      union all select client_id,max(created_at) from room_files group by client_id
+      union all select p.client_id,max(pm.created_at) from project_messages pm join projects p on p.id=pm.project_id group by p.client_id
+    ) x where client_id is not null group by client_id`).catch(()=>({rows:[]}))).rows.map(r=>[r.client_id,r.at]));
+  // recency: this person's last visit to the room, or the room's latest activity, whichever is later (the client list sorts on it)
+  for(const c of activeClients){const o=opened.get(c.id)||null,a=active.get(c.id)||null;c.last_opened_at=o;c.last_active_at=a;c.recent_at=[o,a,c.created_at].filter(Boolean).map(v=>new Date(v)).sort((x,y)=>y-x)[0]||null}
   return {clients:activeClients,archivedClients,actions:actions.rows,productionAlerts:productionAlerts.rows,collaboration:collaboration.rows,learning,queues};
 });
 app.post('/v1/admin/shopify/tech-pack-product',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
