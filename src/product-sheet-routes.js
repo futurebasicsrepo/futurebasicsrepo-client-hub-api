@@ -6,14 +6,16 @@
 //   POST   /v1/admin/products/:id/copy-from                   { sourceId, config?, tiers?, replace? } a past product's configuration and/or tiers
 //   POST   /v1/admin/products/:id/apply-ladder                { ladderId, replace? } a saved ladder's tiers onto this product
 //   DELETE /v1/admin/products/:id/price-tiers/:tid
+//   POST   /v1/admin/products/:id/studio                      the product's Design Lab concept (made the first time, from the tech pack) → { conceptId, studio }
 //   GET    /v1/admin/price-ladders   POST { name, kind?, tiers } or { name, kind?, productId }   DELETE /v1/admin/price-ladders/:lid
 //
 // Tables: product_configurations and price_tiers (src/db.js), price_ladders (src/db.js).
-import { specFromTechPack, configFromSpec, makeLines, tierView, tiersToCopy, rankPast, cleanLadder, kindOf } from './product-sheet.js';
+import { specFromTechPack, configFromSpec, makeLines, tierView, tiersToCopy, rankPast, cleanLadder, kindOf, labCategoryOf, conceptSpecOf, productPictureOf } from './product-sheet.js';
+import sharp from 'sharp';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export function registerProductSheetRoutes(app, { pool, authenticate, adminOnly, hasRenderingSql = 'false has_rendering', renderingUrl = () => '' }) {
+export function registerProductSheetRoutes(app, { pool, authenticate, adminOnly, hasRenderingSql = 'false has_rendering', renderingUrl = () => '', fetchImpl = globalThis.fetch }) {
   const pre = [authenticate, adminOnly];
   const bad = (reply, error, code = 422) => reply.code(code).send({ error });
   const productOf = async id => (UUID.test(String(id || '')) ? (await pool.query('select id, client_id, title, product_type, updated_at from products where id=$1', [id])).rows[0] : null) || null;
@@ -101,6 +103,31 @@ export function registerProductSheetRoutes(app, { pool, authenticate, adminOnly,
     const row = (await pool.query('insert into price_ladders(name, kind, tiers, created_by) values($1,$2,$3,$4) on conflict (lower(name)) do update set kind=excluded.kind, tiers=excluded.tiers, updated_at=now() returning id, name',
       [c.value.name, c.value.kind, JSON.stringify(c.value.tiers), UUID.test(String(req.auth?.sub || '')) ? req.auth.sub : null])).rows[0];
     return reply.code(201).send({ ladder: { id: row.id, name: row.name, tiers: c.value.tiers.map(tierView) } });
+  });
+  // ---- Open in the Design Studio: every product can be edited there. A product made in the Lab opens its own concept; any other gets one, made
+  // once from what the product already has (its tech pack words and first picture, else its store photo), linked to the product so what is
+  // drawn in the Studio goes back to this product's tech pack ----
+  const pictureFrom = async (pack, url) => {
+    const d = productPictureOf(pack); if (d) return Buffer.from(d.split(',')[1], 'base64');
+    if (!/^https:\/\//i.test(String(url || '')) || !fetchImpl) return null;
+    try { const r = await fetchImpl(url, { signal: AbortSignal.timeout(8000) }); return r.ok ? Buffer.from(await r.arrayBuffer()) : null; } catch { return null; }
+  };
+  app.post('/v1/admin/products/:id/studio', { preHandler: pre }, async (req, reply) => {
+    const p = UUID.test(String(req.params.id || '')) ? (await pool.query('select id, client_id, title, product_type, shopify_image_url from products where id=$1', [req.params.id])).rows[0] : null;
+    if (!p) return bad(reply, 'Product not found', 404);
+    const had = (await pool.query('select id from lab_concepts where product_id=$1 order by updated_at desc limit 1', [p.id])).rows[0];
+    if (had) return { conceptId: had.id, studio: `/lab/studio?concept=${had.id}`, created: false };
+    const pack = await packOf(p.id), spec = specFromTechPack(pack);
+    let image = null, thumb = null; const buf = await pictureFrom(pack, p.shopify_image_url);
+    if (buf) try {
+      image = await sharp(buf).flatten({ background: '#ffffff' }).resize({ width: 2048, height: 2048, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 90 }).toBuffer();
+      thumb = await sharp(image).resize({ width: 420, height: 420, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 72 }).toBuffer();
+    } catch { image = thumb = null; }
+    const actor = UUID.test(String(req.auth?.sub || '')) ? req.auth.sub : null;
+    const r = (await pool.query(`insert into lab_concepts(name, category, role, spec, twist, created_by, client_id, status, product_id, image, thumb) values($1,$2,'core',$3,'',$4,$5,'tech_pack',$6,$7,$8) returning id`,
+      [String(p.title || 'Product').slice(0, 120), labCategoryOf(p, spec), conceptSpecOf(p, spec), actor, p.client_id, p.id, image, thumb])).rows[0];
+    log(p, req, 'Opened in the Design Studio');
+    return reply.code(201).send({ conceptId: r.id, studio: `/lab/studio?concept=${r.id}`, created: true });
   });
   app.delete('/v1/admin/price-ladders/:lid', { preHandler: pre }, async (req, reply) => {
     if (!UUID.test(String(req.params.lid || ''))) return bad(reply, 'Price ladder not found', 404);

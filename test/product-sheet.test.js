@@ -57,3 +57,14 @@ test('a price ladder needs a name and tiers that start at different quantities',
   assert.match(cleanLadder({ name: 'Tee', tiers: [{ minQuantity: 50, unitCostCents: 1, wholesaleCents: 2 }, { minQuantity: 50, unitCostCents: 1, wholesaleCents: 3 }] }).error, /same quantity/);
   assert.equal(cleanLadder({ name: ' Tee · 50/100 ', tiers: [{ minQuantity: 100, unitCostCents: 1, wholesaleCents: 2 }, { minQuantity: 50, unitCostCents: 1, wholesaleCents: 3 }] }).value.tiers[0].minQuantity, 50);
 });
+
+test('any product opens in the Design Studio: a Lab category from the kind of item, words and a picture from the tech pack', async () => {
+  const { labCategoryOf, conceptSpecOf, productPictureOf } = await import('../src/product-sheet.js');
+  assert.equal(labCategoryOf({ title: 'Long Sleeve "Yosemite"' }), 'tops'); assert.equal(labCategoryOf({ title: 'Cap — Green' }), 'headwear');
+  assert.equal(labCategoryOf({ title: 'Water Bottle' }), 'home'); assert.equal(labCategoryOf({ title: 'Multitool' }), 'other');
+  const s = conceptSpecOf({ id: 'p1', title: 'Cap — Green' }, { description: 'Six-panel cap', material: 'Cotton twill', colorways: ['Green'], labels: ['Woven label'] });
+  assert.match(s.description, /Six-panel cap\. Fabric: Cotton twill\./); assert.deepEqual(s.colors, ['Green']); assert.equal(s.fromProduct, 'p1');
+  assert.match(conceptSpecOf({ title: 'Multitool' }, {}).description, /Opened from the product "Multitool"/);
+  assert.equal(productPictureOf({ renderings: [{ image: '' }, { image: 'data:image/png;base64,AAA' }] }), 'data:image/png;base64,AAA');
+  assert.equal(productPictureOf({ sketches: [{ image: 'data:image/jpeg;base64,BBB' }] }), 'data:image/jpeg;base64,BBB'); assert.equal(productPictureOf({ renderings: [{ image: 'fbblob:x' }] }), '');
+});

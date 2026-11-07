@@ -774,7 +774,7 @@ async function claimClientPack(productId,clientId,userId){
 const labConcepts = registerLabConceptRoutes(app, { pool, ...labDeps, claimClientPack, getSetting, learn: learnLabTaste, log: app.log, art: labArt, createProduct: args => createClientProduct(args), attachArtwork: (productId, items) => attachLabArtwork(productId, items), sendFlats: (id, productId) => labFlats.sendToPack(id, productId), flatsCheck: id => labFlats.startCheck(id) });
 registerLabViewRoutes(app, { pool, ...labDeps, log: app.log, flatPictures: id => labFlats.flatPictures(id) }); // labFlats is set up below; asked only on a request
 registerLabShoeDrawRoutes(app, { pool, ...labDeps, log: app.log });
-registerLabStudioRoutes(app, { pool, ...labDeps });
+registerLabStudioRoutes(app, { pool, ...labDeps, pictureToPack: (productId, jpeg, name) => studioPictureToPack(productId, jpeg, name) }); // a picture used in the Studio on a product's concept becomes that product's first rendering
 // their starting techniques and materials are put in once the tables are migrated (seeding while the migration alters them deadlocked)
 let migratedNow; const migrated = new Promise(r => { migratedNow = r; });
 registerLabLibraryRoutes(app, { pool, ...labDeps, art: labArt, log: app.log, ready: migrated });
@@ -1310,6 +1310,13 @@ async function attachLabArtwork(productId,items){
   await pool.query('update tech_packs set data=$2,updated_at=now() where id=$1',[pack.id,data]);return n;
 }
 // the flats handed to the pack (src/lab-handoff.js): files, sketches, measurements, construction, materials, colour and the plan's numbers
+// The Design Studio's picture of a product (a concept linked to it, src/lab-studio-routes.js) put first in its tech pack's renderings, in the draft
+async function studioPictureToPack(productId,jpeg,name){
+  const pack=await labPack(productId);if(!pack)return null;const data=normalizeTechPack(pack.data||{});
+  const image=`data:image/jpeg;base64,${(await sharp(jpeg).resize({width:1600,height:1600,fit:'inside',withoutEnlargement:true}).jpeg({quality:84}).toBuffer()).toString('base64')}`;
+  data.renderings=[{id:'lab-studio',name:'Design Studio picture',note:`Drawn in the Design Studio${name?` (${String(name).slice(0,80)})`:''}`,image},...(data.renderings||[]).filter(r=>r?.id!=='lab-studio')].slice(0,6);
+  await pool.query('update tech_packs set data=$2,updated_at=now() where id=$1',[pack.id,data]);return {packId:pack.id};
+}
 async function applyLabHandoff(productId,{files,lab}){
   const pack=await labPack(productId);if(!pack)return null;
   const data=normalizeTechPack(labHandoff(normalizeTechPack(pack.data),lab)),n=labArtworkInto(data,await withPantones((files||[]).filter(f=>!/^(Spec sheet|Technical flat)/.test(f.name))).then(a=>[...a,...(files||[]).filter(f=>/^(Spec sheet|Technical flat)/.test(f.name))]));

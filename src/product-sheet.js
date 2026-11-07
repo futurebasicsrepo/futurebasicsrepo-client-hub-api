@@ -97,3 +97,18 @@ export function cleanLadder(input = {}) {
   if (new Set(tiers.map(t => t.minQuantity)).size !== tiers.length) return { error: 'Two tiers start at the same quantity' };
   return { value: { name, kind: clean(input.kind).slice(0, 40) || null, tiers } };
 }
+
+// ---- Open any product in the Design Studio ----
+// The Studio edits a Lab concept. A product not made in the Lab gets one the first time it is opened there: its Lab category from the kind of item
+// (src/lab.js CATEGORIES), and its words from the tech pack, so the Studio and the pack start from the same facts.
+const LAB_CATEGORY = { tee: 'tops', 'long-sleeve': 'tops', hoodie: 'tops', crewneck: 'tops', jersey: 'tops', jacket: 'outerwear', cap: 'headwear', beanie: 'headwear', bag: 'bags',
+  bottle: 'home', sticker: 'accessories', pants: 'bottoms', sock: 'accessories', notebook: 'home', print: 'home', shoe: 'footwear' };
+export const labCategoryOf = (product = {}, spec = {}) => LAB_CATEGORY[kindOf(`${product.title || ''} ${spec.category || ''} ${product.product_type || ''}`)] || 'other';
+export function conceptSpecOf(product = {}, spec = {}) {
+  const sentence = t => { const c = clean(t); return c && !/[.!?]$/.test(c) ? c + '.' : c; }, words = [sentence(spec.description), spec.material && `Fabric: ${spec.material}.`].filter(Boolean).join(' ');
+  return { description: clean(words) || `Opened from the product "${clean(product.title)}".`, silhouette: clean(spec.styleName || product.title), fabric: clean(spec.material), fit: '', details: spec.construction ? [clean(spec.construction)] : [],
+    trims: (spec.labels || []).join(', '), colors: (spec.colorways || []).slice(0, 8), fromProduct: product.id || null };
+}
+// the first picture a product has: its tech pack rendering or sketch (a data URL), else its store photo
+export const productPictureOf = pack => { const d = pack || {}, pic = (Array.isArray(d.renderings) && d.renderings.find(r => r?.image)?.image) || (Array.isArray(d.sketches) && d.sketches.find(s => s?.image)?.image) || '';
+  return /^data:image\/(png|jpe?g|webp);base64,/i.test(pic) ? pic : ''; };
