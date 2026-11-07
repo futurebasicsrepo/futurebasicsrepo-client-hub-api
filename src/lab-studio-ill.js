@@ -88,6 +88,17 @@
 
   // ---- fills: gradient, mesh and pattern; a stroke whose width changes along it; type along the path ----
   const IMGS = new Map();
+  // a repeat laid out as a textile designer would: straight, brick (each row half a tile along), half-drop (each column half a tile down) or
+  // mirrored (the tile, flipped across and down); made once per tile and layout
+  const TILES = new Map();
+  function layoutTile(im, src, layout) {
+    if (!layout || layout === 'grid' || !(im.naturalWidth || im.width)) return im; const key = src.length + ':' + src.slice(-40) + ':' + layout; if (TILES.has(key)) return TILES.get(key);
+    const w = im.naturalWidth || im.width, h = im.naturalHeight || im.height, c = document.createElement('canvas'), x = c.getContext('2d');
+    if (layout === 'brick') { c.width = w; c.height = h * 2; x.drawImage(im, 0, 0); x.drawImage(im, w / 2, h); x.drawImage(im, -w / 2, h); }
+    else if (layout === 'halfdrop') { c.width = w * 2; c.height = h; x.drawImage(im, 0, 0); x.drawImage(im, w, h / 2); x.drawImage(im, w, -h / 2); }
+    else { c.width = w * 2; c.height = h * 2; x.drawImage(im, 0, 0); x.save(); x.translate(w * 2, 0); x.scale(-1, 1); x.drawImage(im, 0, 0); x.restore(); x.save(); x.translate(0, h * 2); x.scale(1, -1); x.drawImage(im, 0, 0); x.drawImage(im, w, 0); x.restore(); x.save(); x.translate(w * 2, h * 2); x.scale(-1, -1); x.drawImage(im, 0, 0); x.restore(); }
+    TILES.set(key, c); if (TILES.size > 30) TILES.delete(TILES.keys().next().value); return c;
+  }
   const imgOf = src => { if (!src) return null; let i = IMGS.get(src); if (!i) { i = new Image(); i.onload = () => { for (const l of LAYERS) if (l.ill?.fill?.src === src) { l._pk = null; } draw(); }; i.src = src; IMGS.set(src, i); if (IMGS.size > 40) IMGS.delete(IMGS.keys().next().value); } return i.complete && i.naturalWidth ? i : null; };
   function fillStyle(x, l, b) {
     const f = l.ill?.fill; if (!f || f.mode === 'solid') return l.fillColor;
@@ -99,7 +110,7 @@
       for (const s of st.length ? st : [{ at: 0, color: l.fillColor }, { at: 100, color: '#ffffff' }]) g.addColorStop(Math.max(0, Math.min(1, s.at / 100)), s.color);
       return g;
     }
-    if (f.mode === 'pattern') { const im = imgOf(f.src); if (!im) return l.fillColor; const p = x.createPattern(im, 'repeat'); const k = Math.max(.02, (f.scale || 100) / 100); p.setTransform(new DOMMatrix().translate(b.x0, b.y0).scale(k)); return p; }
+    if (f.mode === 'pattern') { const im0 = imgOf(f.src); if (!im0) return l.fillColor; const im = layoutTile(im0, f.src, f.layout); const p = x.createPattern(im, 'repeat'); const k = Math.max(.02, (f.scale || 100) / 100); p.setTransform(new DOMMatrix().translate(b.x0, b.y0).scale(k)); return p; }
     return l.fillColor;
   }
   // a four-corner mesh, with a centre colour: a 3 × 3 grid stretched over the box, so the browser blends between the points
@@ -654,6 +665,7 @@
       else if (f.mode === 'mesh') more = `<div class="row">${['Top left', 'Top right', 'Bottom left', 'Bottom right'].map((t, k) => `<label class="f"><span>${t}</span>${col(`fill.mesh.${k}`, mesh[k])}</label>`).join('')}<label class="f"><span>Centre</span><input type="checkbox" data-ill="fill.centerOn" ${f.center ? 'checked' : ''}>${col('fill.center', f.center || '#ffffff')}</label></div>`;
       else if (f.mode === 'pattern') more = `<div class="row">${f.src ? `<img src="${f.src}" alt="The tile" style="width:44px;height:44px;border-radius:8px;object-fit:cover;border:1px solid var(--line)">` : ''}<select class="t" data-illact-sel="tilefrom" style="width:auto"><option value="">Tile from a layer…</option>${LAYERS.filter(x => x !== l && x.visible && x.kind !== 'base').map(x => `<option value="${x.id}">${hx(x.name)}</option>`).join('')}</select></div>
         <label class="f"><span>Tile size</span><input type="range" min="5" max="400" step="1" data-ill="fill.scale" value="${f.scale || 100}"><output>${f.scale || 100}%</output></label>
+        <label class="f"><span>Repeat</span><select class="t" data-ill="fill.layout">${[['grid', 'Straight'], ['brick', 'Brick'], ['halfdrop', 'Half-drop'], ['mirror', 'Mirror']].map(([k, t]) => `<option value="${k}" ${(f.layout || 'grid') === k ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
         <div class="row"><input class="t" data-illgen placeholder="Or describe a pattern: e.g. tiny stars and lightning bolts, two colours" maxlength="300"><button type="button" class="btn sm" data-illact="gen">Draw a tile</button></div>`;
       parts.push(`<div class="sec"><h4>Fill kind</h4><div class="row">${[['solid', 'Solid'], ['linear', 'Linear gradient'], ['radial', 'Radial gradient'], ['mesh', 'Mesh'], ['pattern', 'Pattern']].map(([k, t]) => `<button type="button" class="btn sm ${f.mode === k ? '' : 'q'}" data-illmode="${k}">${t}</button>`).join('')}</div>${more}</div>`);
     }

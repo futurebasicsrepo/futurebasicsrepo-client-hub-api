@@ -118,6 +118,10 @@ then what works with changes, with the cloth that does not suit it folded away. 
 - **Lockups in one tap:** the brief's words as a badge, a varsity arch with a number, a stacked block or script over block, every part
   editable.
 - **Colour harmonies:** recolour a graphic as complementary, analogous, triad, split or one-hue colours, keeping black and white.
+- **Vintage print looks:** distress as ink spatter, screen-drag streaks or scratches (as well as worn, cracked and faded), and Off
+  register, which nudges each ink a little off its key like an old press.
+- **Stitch brushes and repeats:** a running-stitch and a chain-stitch brush, and pattern fills that repeat straight, brick, half-drop
+  or mirrored.
 - **Stickers and patches:** a white border round the art and a magenta cut line, at the width you choose.
 - **On garments:** the graphic on eight shirt colours (or any colour); it says which ink is knocked out by the shirt and when a dark
   shirt needs a white underbase.

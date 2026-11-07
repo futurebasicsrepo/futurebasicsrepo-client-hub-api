@@ -144,7 +144,7 @@
     lines.innerHTML = `<h4>Lines</h4>
       <div class="grow"><span class="glab">Detail</span><div class="seg">${[['fine', 'Fine', .55], ['clean', 'Clean', 1.1], ['bold', 'Bold', 2.4]].map(([id, t, v]) => `<button type="button" data-gtrace="${v}" aria-pressed="${(ls[0]?.gen.tol || 1.1) === v}">${t}</button>`).join('')}</div></div>
       <label class="grow"><span class="glab">Weight</span><input type="range" min="0" max="24" step="1" value="${w}" id="gWeight" aria-label="Thicken every line"></label>
-      <div class="grow"><button class="btn sm ${key ? '' : 'q'}" type="button" data-gkey aria-pressed="${key}">Key line</button><button class="btn sm q" type="button" data-gpoints>Edit points</button></div>`;
+      <div class="grow"><button class="btn sm ${key ? '' : 'q'}" type="button" data-gkey aria-pressed="${key}">Key line</button><button class="btn sm q" type="button" data-gpoints>Edit points</button><button class="btn sm q" type="button" data-gmisreg title="Nudge each ink a little off, like a press out of register: the vintage look">Off register</button></div>`;
     paintOut();
   }
   function recolour(from, to, { live = false } = {}) { for (const l of genLayers()) if (hex6(l.fillColor) === from) { l.fillColor = to; if (l.stroke && !l.gen.key) l.strokeColor = to; touched(l); } keyLine(); draw(); if (!live) { commit(); paintPanels(); paintInks(); } }
@@ -336,6 +336,7 @@
     else if (d.gkey !== undefined) { const ls = genLayers(), on = !ls[0]?.gen.key; ls.forEach(l => { l.gen.key = on; }); weight(ls[0]?.gen.weight || 0); commit(); paintPanels(); paintInks(); }
     else if (d.gpoints !== undefined) { const l = genLayers().find(x => x.id === SEL) || genLayers()[0]; if (l) { SEL = l.id; setTool('node'); paintPanels(); draw(); toast('Drag a point or its handles; tap the line to add one.'); } }
     else if (d.gharm) harmony(d.gharm);
+    else if (d.gmisreg !== undefined) { const list = inks(); if (list.length < 2) { toast('Off register needs two inks or more.'); return; } const step = Math.max(3, W / 180); list.slice(1).forEach((k, i) => { const a = (i * 2.4 + 1) % (Math.PI * 2); for (const l of k.layers) { l.x += Math.cos(a) * step; l.y += Math.sin(a) * step; touched(l); } }); commit(); paintPanels(); draw(); toast('Each ink nudged a little off its key. Undo puts them back.'); }
     else if (d.glock) { keepText(); lockup(d.glock); }
     else if (d.gsticker !== undefined) contour('sticker'); else if (d.gcut !== undefined) contour('cut');
     else if (d.gtee) { TEE = TEE === d.gtee ? null : d.gtee; window.PAGEBG = TEE || ''; draw(); paintTees(); }
