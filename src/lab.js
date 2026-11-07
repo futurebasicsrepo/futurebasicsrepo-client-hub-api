@@ -238,3 +238,14 @@ export function cleanBrand(input = {}) {
   return { name, site, role, note: clip(b.note, 240), enabled: b.enabled === undefined ? true : Boolean(b.enabled) };
 }
 export const ITEM_STATUSES = ['new', 'saved', 'hidden'];
+
+// A concept started by hand (from scratch, a library sketch or a library bag) for a piece on a line plan: the piece in the room's scope, and the
+// concept put on it, with the piece's role, price, cost and quantity, so it shows on the plan and the board like the AI's concepts.
+const LINE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export async function planLineOf(pool, id, scope = null) {
+  if (!LINE_ID.test(String(id || ''))) return null;
+  return (await pool.query(`select l.id, l.plan_id, l.name, l.category, l.role, l.price_cents, l.cost_cents, l.qty, p.client_id from lab_plan_lines l join lab_plans p on p.id=l.plan_id
+    where l.id=$1 and ($2::uuid is null or p.client_id=$2)`, [id, scope])).rows[0] || null;
+}
+export const putOnLine = (pool, conceptId, line) => pool.query(`update lab_concepts set plan_id=$2, line_id=$3, role=$4, price_cents=$5, cost_cents=$6, qty=$7, client_id=coalesce($8, client_id), updated_at=now() where id=$1`,
+  [conceptId, line.plan_id, line.id, line.role || 'core', line.price_cents ?? null, line.cost_cents ?? null, line.qty || 0, line.client_id || null]);

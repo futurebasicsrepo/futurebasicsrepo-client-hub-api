@@ -10,7 +10,7 @@
 import { STYLES, SIZES, FITS, defaultParams, detectStyle } from './lab-flats.js';
 import { cleanConstruction, constructionWords, SLEEVES, COLLARS, OPENINGS, POCKETS, WAISTS, LEGS, PANELS } from './lab-construction.js';
 import { PLUSH_TYPE, PLUSH_SNOUTS, PLUSH_HORNS, PLUSH_MANES, PLUSH_TAILS, PLUSH_PARTS, garmentPattern, applyEdits, cutWords, cleanPatternEdits, patternDxfAama, plushPattern, cleanPlush, plushDefaults, patternSvg, patternDxf, yardage, fillGrams, PLUSH_SHAPES, PLUSH_EARS, PLUSH_FABRICS, PLUSH_EYES, PLUSH_AGES } from './lab-pattern.js';
-import { CATEGORIES } from './lab.js';
+import { CATEGORIES, planLineOf, putOnLine } from './lab.js';
 import { silhouette, readShoe, proposal } from './lab-shoe-read.js';
 import { readPlush, plushProposal } from './lab-plush-read.js';
 import { reviewShoe, openaiAsk, BAR as REVIEW_BAR } from './lab-shoe-review.js';
@@ -351,15 +351,20 @@ export function registerLabPatternRoutes(app, d) {
   // a concept started from nothing: no plan, no AI, no sketch. A garment opens on a blank page with its flat's outline as a guide; a plush opens
   // on its shape; anything else on a plain page.
   app.post('/v1/lab/concepts/from-scratch', { preHandler: pre }, async (req, reply) => {
-    const b = req.body || {}, category = CATEGORIES.some(x => x.id === b.category) ? b.category : null; if (!category) return bad(reply, 'Choose what you are designing');
-    const shoe = category === 'footwear' ? (FW_STYLES[b.style] ? b.style : 'sneaker') : null, style = !shoe && STYLES[b.style] ? b.style : null, shape = PLUSH_SHAPES[b.shape] ? b.shape : 'bear';
+    const b = req.body || {}, line = b.lineId ? await planLineOf(pool, b.lineId, own(req)) : null; if (b.lineId && !line) return bad(reply, 'That piece is not on a line plan here', 404);
+    const category = CATEGORIES.some(x => x.id === b.category) ? b.category : line && CATEGORIES.some(x => x.id === line.category) ? line.category : null; if (!category) return bad(reply, 'Choose what you are designing');
+    // a piece on a line plan with no style chosen: its flat style read from its name ("Field Tee" → T-shirt), so the guide outline is that garment's
+    const fits = k => STYLES[k] && (STYLES[k].category === category || (category === 'knitwear' && STYLES[k].category === 'tops'));
+    const guessed = line && !b.style && category !== 'footwear' && category !== 'plush' ? detectStyle({ name: line.name, category, spec: { silhouette: line.name, description: '' } })?.style : null;
+    const shoe = category === 'footwear' ? (FW_STYLES[b.style] ? b.style : 'sneaker') : null, style = !shoe && STYLES[b.style] ? b.style : !shoe && fits(guessed) ? guessed : null, shape = PLUSH_SHAPES[b.shape] ? b.shape : 'bear';
     if (style && STYLES[style].category !== category && !(category === 'knitwear' && STYLES[style].category === 'tops')) return bad(reply, 'That style is not in that category');
     const label = shoe ? FW_STYLES[shoe].label : category === 'plush' ? PLUSH_TYPE[shape] : style ? STYLES[style].label : CATEGORIES.find(x => x.id === category).label;
-    const name = clip(b.name, 120) || `Untitled ${label.toLowerCase()}`;
+    const name = clip(b.name, 120) || line?.name || `Untitled ${label.toLowerCase()}`;
     const spec = { description: 'Started from scratch in Design.', silhouette: style ? STYLES[style].label : category === 'plush' || shoe ? label : '', fabric: '', fit: '', details: [], trims: '', colors: [], scratch: true, ...(style ? { style, template: 'none' } : {}), ...(category === 'plush' ? { plush: { shape } } : {}), ...(shoe ? { footwear: { style: shoe } } : {}) };
     const r = (await pool.query(`insert into lab_concepts(name, category, role, spec, twist, created_by, client_id) values($1,$2,'core',$3,'',$4,$5) returning id`, [name, category, spec, actorOf(req), own(req)])).rows[0];
     if (shoe) await pool.query(`insert into lab_patterns(concept_id, kind, spec, updated_by) values($1,'footwear',$2,$3) on conflict do nothing`, [r.id, fwDefaults(shoe), actorOf(req)]);
     if (category === 'plush') await pool.query(`insert into lab_patterns(concept_id, kind, spec, updated_by) values($1,'plush',$2,$3) on conflict do nothing`, [r.id, plushDefaults(shape), actorOf(req)]);
+    if (line) await putOnLine(pool, r.id, line); // a piece on a line plan: the concept is that piece's, on its plan and the board
     return reply.code(201).send({ concept: { id: r.id, name, category }, studio: `/lab/studio?concept=${r.id}&scratch=1` });
   });
   return { load, patternOf, productionFiles };

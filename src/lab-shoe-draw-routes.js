@@ -6,6 +6,7 @@
 //   POST /v1/lab/concepts/:id/shoe-drawing/:view/reset      back to the drawing as traced
 //   GET  /v1/lab/concepts/:id/shoe-drawing/:view.svg | ?art=1   the drawing as SVG, or the line art the image model drew (PNG)
 // LAB_DAILY_SHOE_DRAWINGS (default 60) caps the views drawn a day across the platform.
+import { planLineOf, putOnLine } from './lab.js';
 import { readFileSync } from 'node:fs';
 import sharp from 'sharp';
 import { imageConfig, openaiEdit } from './check.js';
@@ -118,11 +119,13 @@ export function registerLabShoeDrawRoutes(app, d) {
   // a new bag concept from a library bag (the Sketch library's Open in the Studio): its drawings in place, the body in the chosen colour; no AI
   app.post('/v1/lab/concepts/from-library-bag', { preHandler: pre }, async (req, reply) => {
     const t = libraryBag(String(req.body?.template || '')); if (!t) return bad(reply, 'Choose a bag from the library', 422);
+    const line = req.body?.lineId ? await planLineOf(pool, req.body.lineId, lab?.scope?.(req) || null) : null; if (req.body?.lineId && !line) return bad(reply, 'That piece is not on a line plan here', 404);
     const hex = /^#[0-9a-f]{6}$/i.test(String(req.body?.colour?.hex || '')) ? String(req.body.colour.hex).toLowerCase() : '', cname = String(req.body?.colour?.name || '').replace(/[<>]/g, '').slice(0, 40);
-    const name = String(req.body?.name || '').replace(/[<>]/g, '').trim().slice(0, 120) || t.label;
+    const name = String(req.body?.name || '').replace(/[<>]/g, '').trim().slice(0, 120) || line?.name || t.label;
     const spec = { description: `Started from the library: ${t.label}.`, silhouette: t.label, fabric: '', fit: '', details: [], trims: '', colors: hex ? [cname || hex] : [], bag: { type: t.type }, libraryBag: t.id };
     const actor = /^[0-9a-f-]{36}$/i.test(String(req.auth?.sub || '')) ? req.auth.sub : null, room = lab?.scope?.(req) || null;
     const id = (await pool.query(`insert into lab_concepts(name, category, role, spec, twist, created_by, client_id) values($1,'bags','core',$2,'',$3,$4) returning id`, [name, spec, actor, room])).rows[0].id;
+    if (line) await putOnLine(pool, id, line);
     const views = hex ? recolourBody(t.views, hex) : t.views;
     for (const [v, dw] of Object.entries(views)) await pool.query(`insert into lab_shoe_drawings(concept_id,view,status,art,drawing,model,edited) values($1,$2,'ready',null,$3,'library',$4)`, [id, v, dw, Boolean(hex)]);
     return reply.code(201).send({ concept: { id, name, category: 'bags' }, studio: `/lab/studio?concept=${id}&view=front` });
