@@ -10,6 +10,7 @@
 <link rel="manifest" href="/lab.webmanifest"><link rel="apple-touch-icon" href="/icons/apple-touch-icon.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Design Lab"><meta name="apple-mobile-web-app-status-bar-style" content="black"><meta name="theme-color" content="#141416">
 <style>
 @import url('/fonts/fonts.css');
+@import url('/fonts/lab/fonts.css');
 :root{--ink:#141416;--paper:#fff;--fog:#f5f5f2;--dim:#727278;--line:rgba(20,20,22,.14);--cue:#4bff9a;--ok:#17603a;--bad:#a02a20;--stage:#e4e4e0}
 *{box-sizing:border-box}html{background:var(--fog)}
 body{margin:0;color:var(--ink);font:400 14px/1.45 'Space Grotesk',system-ui,sans-serif;background:var(--fog);height:100vh;height:100dvh;overflow:hidden}
@@ -85,7 +86,9 @@ html[data-focus] .bar{padding:4px 10px;min-height:44px;gap:6px}
 .rail button:hover{background:var(--fog)}.rail button[aria-pressed=true]{background:var(--ink);color:#fff}
 .rail button:focus-visible{outline:2px solid var(--ink);outline-offset:1px}
 .rail hr{width:26px;border:0;border-top:1px solid var(--line);margin:4px 0}
-.cur{width:30px;height:30px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px var(--line);margin-top:6px;cursor:pointer;padding:0}
+.cur{width:30px;height:30px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px var(--line);margin-top:6px;cursor:pointer;padding:0;position:relative;overflow:hidden;display:block}.cur input{position:absolute;inset:-6px;width:calc(100% + 12px);height:calc(100% + 12px);opacity:0;cursor:pointer;border:0;padding:0}
+.swr{display:inline-flex;gap:5px;align-items:center;flex:none}.swr button,.swr label{width:26px;height:26px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px var(--line);padding:0;cursor:pointer;flex:none;position:relative;overflow:hidden}.swr [aria-pressed=true]{box-shadow:0 0 0 2px var(--ink)}.swr label input{position:absolute;inset:-6px;width:40px;height:40px;opacity:0;border:0;padding:0;cursor:pointer}.swr label{background:conic-gradient(#e43,#fd3,#4c6,#3ae,#a4e,#e43)}
+@media (pointer:coarse){.swr button,.swr label{width:32px;height:32px}}
 .mid{display:grid;grid-template-rows:auto minmax(0,1fr);min-width:0;min-height:0}
 .opts{display:flex;align-items:center;gap:12px;padding:6px 12px;background:#fafaf8;border-bottom:1px solid var(--line);font-size:12px;min-height:40px;flex-wrap:wrap}
 .opts label{display:inline-flex;align-items:center;gap:6px}.opts input[type=range]{width:110px}.opts .hint{color:var(--dim)}
@@ -208,8 +211,7 @@ html[data-pick] body>header{display:none}html[data-pick] .studio{height:100dvh}
     <button type="button" class="pro-only" data-tool="pick" title="Pick a colour from the picture (I)" aria-label="Pick a colour"><svg viewBox="0 0 24 24"><path d="M14 4l6 6-2 2-6-6zM12 6l-8 8v4h4l8-8"/></svg></button>
     <hr>
     <button type="button" data-tool="area" title="Paint the area for the AI (M)" aria-label="Paint the area for the AI" class="mask-on"><svg viewBox="0 0 24 24"><path d="M4 4h4M12 4h4M20 4v4M20 12v4M20 20h-4M12 20H8M4 20v-4M4 12V8"/><path d="M9 15l2-6 4 4z"/></svg></button>
-    <button class="cur" id="curColor" type="button" title="Colour" aria-label="Choose the colour"></button>
-    <input type="color" id="curPicker" class="hidden" aria-hidden="true" tabindex="-1">
+    <label class="cur" id="curColor" title="Colour"><input type="color" id="curPicker" aria-label="Choose the colour"></label>
   </nav>
   <div class="rail-names hidden" id="railLabels" role="list" aria-label="What each tool does"></div>
   <div class="size-dock hidden" id="sizeDock" aria-label="Brush size and opacity"><span class="dk-dot" aria-hidden="true"></span><b class="dk-v">28px</b><div class="dk-pre"><button type="button" data-dpre="4" aria-label="Size 4"><i style="width:4px;height:4px"></i></button><button type="button" data-dpre="12" aria-label="Size 12"><i style="width:5px;height:5px"></i></button><button type="button" data-dpre="28" aria-label="Size 28"><i style="width:7px;height:7px"></i></button><button type="button" data-dpre="60" aria-label="Size 60"><i style="width:11px;height:11px"></i></button><button type="button" data-dpre="120" aria-label="Size 120"><i style="width:18px;height:18px"></i></button></div><label class="dk-s"><span>Size</span><input type="range" data-dk="size" min="1" max="400" step="1" aria-label="Size"></label><label class="dk-s"><span>Opacity</span><input type="range" data-dk="flow" min=".05" max="1" step=".05" aria-label="Opacity"></label><b class="dk-o">100%</b></div>
@@ -287,6 +289,7 @@ html[data-pick] body>header{display:none}html[data-pick] .studio{height:100dvh}
 <script src="/lab/finish.js"></script>
 <script src="/presence.js"></script>
 <script src="/lab/nav.js"></script>
+<script src="/lab/lab-fonts.js"></script>
 <script>try{if(!localStorage.getItem('fb.admin.token')&&localStorage.getItem('fb.client.token'))document.documentElement.dataset.labClient='1'}catch{}</script>
 <script src="/console-nav.js" defer></script>
 <script>
@@ -315,7 +318,9 @@ let PARTS=null,PKIND='pockets';
 
 // ---------- what a layer is ----------
 // the built-in faces, and the fonts uploaded to the Lab (loaded from the server, so type sets the same on every machine)
-const FONTS={grotesk:['Space Grotesk',"'Space Grotesk',system-ui,sans-serif"],mono:['IBM Plex Mono',"'IBM Plex Mono',monospace"],serif:['Serif',"Georgia,'Times New Roman',serif"],slab:['Slab',"Rockwell,'Roboto Slab','Courier New',serif"],condensed:['Condensed',"Impact,Haettenschweiler,'Arial Narrow Bold',sans-serif"],script:['Script',"'Brush Script MT','Segoe Script',cursive"],typewriter:['Typewriter',"'Courier New',Courier,monospace"]};
+const FONTS={grotesk:['Space Grotesk',"'Space Grotesk',system-ui,sans-serif"],mono:['IBM Plex Mono',"'IBM Plex Mono',monospace"],serif:['Serif',"Georgia,'Times New Roman',serif"],slab:['Slab',"Rockwell,'Roboto Slab','Courier New',serif"],condensed:['Condensed',"Impact,Haettenschweiler,'Anton','Arial Narrow Bold',sans-serif"],script:['Script',"'Brush Script MT','Segoe Script','Dancing Script',cursive"],typewriter:['Typewriter',"'Courier New',Courier,'Special Elite',monospace"],
+  // the open-source library (src/lab-fonts.js): every one free to use on anything we make, hosted here so it sets the same everywhere
+  ...Object.fromEntries((window.FBFONTS||[]).map(f=>['g_'+f.id,[f.family,f.stack,f.category]]))};
 const BLENDS=[['source-over','Normal'],['multiply','Multiply (sits in the fabric)'],['screen','Screen'],['overlay','Overlay'],['soft-light','Soft light'],['hard-light','Hard light'],['darken','Darken'],['lighten','Lighten'],['color-burn','Colour burn'],['color-dodge','Colour dodge'],['difference','Difference'],['hue','Hue'],['saturation','Saturation'],['color','Colour'],['luminosity','Luminosity']];
 const KIND={base:'Picture',image:'Picture layer',paint:'Painting',text:'Type',shape:'Shape'};
 const fresh=(kind,o={})=>({id:uid(),kind,name:o.name||KIND[kind],visible:true,locked:kind==='base',opacity:1,blend:'source-over',x:0,y:0,scale:1,rot:0,flip:false,
@@ -363,30 +368,48 @@ const texture=(...a)=>window.FBFinish.texture(...a); // the same worn textures a
 async function loadFonts(){let changed=false;for(const f of (D.fonts||[])){const key='f_'+f.id;if(FONTS[key])continue;
     try{const buf=await (await blobOf(`/v1/lab/fonts/${f.id}/file`)).arrayBuffer();const face=new FontFace(f.family,buf);await face.load();document.fonts.add(face);FONTS[key]=[f.name,`'${f.family}',sans-serif`,f.id];changed=true}catch(x){toast(`The font "${f.name}" could not be loaded.`)}}
   if(changed){for(const l of LAYERS)if(l.kind==='text'){l._pk=null;l._pc=null}draw()}}
-const fontOpts=v=>`<optgroup label="Built in">${Object.entries(FONTS).filter(([k])=>!k.startsWith('f_')).map(([k,f])=>`<option value="${k}" ${k===v?'selected':''}>${esc(f[0])}</option>`).join('')}</optgroup>${Object.keys(FONTS).some(k=>k.startsWith('f_'))?`<optgroup label="Our fonts">${Object.entries(FONTS).filter(([k])=>k.startsWith('f_')).map(([k,f])=>`<option value="${k}" ${k===v?'selected':''}>${esc(f[0])}</option>`).join('')}</optgroup>`:''}`;
+const fontOpts=v=>`<optgroup label="Built in">${Object.entries(FONTS).filter(([k])=>!k.startsWith('f_')&&!k.startsWith('g_')).map(([k,f])=>`<option value="${k}" ${k===v?'selected':''}>${esc(f[0])}</option>`).join('')}</optgroup>${[...new Set(Object.entries(FONTS).filter(([k])=>k.startsWith('g_')).map(([,f])=>f[2]))].map(cat=>`<optgroup label="${esc(cat)}">${Object.entries(FONTS).filter(([k,f])=>k.startsWith('g_')&&f[2]===cat).map(([k,f])=>`<option value="${k}" ${k===v?'selected':''}>${esc(f[0])}</option>`).join('')}</optgroup>`).join('')}${Object.keys(FONTS).some(k=>k.startsWith('f_'))?`<optgroup label="Our fonts">${Object.entries(FONTS).filter(([k])=>k.startsWith('f_')).map(([k,f])=>`<option value="${k}" ${k===v?'selected':''}>${esc(f[0])}</option>`).join('')}</optgroup>`:''}`;
 async function addFont(file){if(!file)return;if(file.size>8e6){toast(file.name+' is over 8 MB.');return}busy('Adding the font…');
   try{const r=await api('/v1/lab/fonts',{body:{name:file.name.replace(/\.[a-z0-9]+$/i,''),file:await urlOfBlob(file)}});D.fonts=[...(D.fonts||[]),r.font];await loadFonts();const l=selected();if(l&&l.kind==='text'&&!l.locked){l.font='f_'+r.font.id;l._pk=null;commit()}paintLayers();draw();toast(`"${r.font.name}" is in the Lab's fonts now, for every machine.`)}
   catch(x){toast(x.message)}finally{busy()}}
 $('#fontIn').addEventListener('change',e=>{addFont(e.target.files[0]);e.target.value=''});
+// the words as the case setting shows them: as typed, ALL CAPS, lower case or Title Case (the words themselves are kept as typed)
+const caseOf=(t,c)=>c==='upper'?t.toUpperCase():c==='lower'?t.toLowerCase():c==='title'?t.toLowerCase().replace(/(^|[\s\-\/])(\p{L})/gu,(m,a,b)=>a+b.toUpperCase()):t;
+// a type layer with an effect beyond one outline: drawn as a picture in an SVG export, not as editable type
+const textFx=l=>Boolean((l.stretch&&l.stretch!==100)||l.outline2||(l.shadow&&l.shadowKind&&l.shadowKind!=='none'));
 function textMetrics(l){
   const x=docX,font=`${l.italic?'italic ':''}${l.bold?'700':'400'} ${l.size}px ${FONTS[l.font]?.[1]||FONTS.grotesk[1]}`;x.save();x.font=font;
-  const lines=String(l.text||' ').split('\n'),lw=lines.map(t=>[...t].reduce((s,ch)=>s+x.measureText(ch).width,0)+Math.max(0,[...t].length-1)*l.track);x.restore();return{font,lines,lw}}
+  if(document.fonts&&!document.fonts.check(font))document.fonts.load(font).then(()=>{if(document.fonts.check(font)){l._pk=null;l._pc=null;draw()}}).catch(()=>{});
+  const lines=caseOf(String(l.text||' '),l.case).split('\n'),lw=lines.map(t=>[...t].reduce((s,ch)=>s+x.measureText(ch).width,0)+Math.max(0,[...t].length-1)*l.track);x.restore();return{font,lines,lw}}
 function contentOf(l){
   if(isRaster(l))return l.raster;
-  if(l.kind==='text'){
-    const{font,lines,lw}=textMetrics(l),pad=Math.ceil(l.size*.35+(l.outline||0)*2+4),lh=l.size*l.lead;
+  if(l.kind==='text')return textEffects(l,textCore(l));
+  return contentOther(l)}
+function textCore(l){{
+    const{font,lines,lw}=textMetrics(l),o1=l.outline||0,o2=l.outline2||0,pad=Math.ceil(l.size*.35+(o1+o2)*2+4),lh=l.size*l.lead;
+    const ink=(x,g,px,py)=>{x.lineJoin='round';if(o2){x.strokeStyle=l.outline2Color||'#141416';x.lineWidth=(o1+o2)*2;x.strokeText(g,px,py)}if(o1){x.strokeStyle=l.outlineColor;x.lineWidth=o1*2;x.strokeText(g,px,py)}x.fillText(g,px,py)};
     if(l.arc&&lines.length===1){
       // one line bent on a circle: up for an arch (college, rock tee), down for a smile; each letter stands square to the curve
       const L=Math.max(1,lw[0]),th=Math.abs(l.arc)/100*Math.PI,R=L/th,up=l.arc>0;docX.save();docX.font=font;
       let s=0;const gl=[...lines[0]].map(g=>{const gw=docX.measureText(g).width,phi=-th/2+(s+gw/2)/R;s+=gw+l.track;return{g,x:R*Math.sin(phi),y:up?R*(1-Math.cos(phi)):-R*(1-Math.cos(phi)),r:up?phi:-phi}});docX.restore();
       const xs=gl.map(q=>q.x),ys=gl.map(q=>q.y),ext=l.size*.75+pad,x0=Math.min(...xs)-ext,x1=Math.max(...xs)+ext,y0=Math.min(...ys)-ext,y1=Math.max(...ys)+ext;
-      const c=canvas(x1-x0,y1-y0),x=c.getContext('2d');x.font=font;x.textBaseline='middle';x.textAlign='center';x.lineJoin='round';x.fillStyle=l.color;x.strokeStyle=l.outlineColor;x.lineWidth=(l.outline||0)*2;
-      for(const q of gl){x.save();x.translate(q.x-x0,q.y-y0);x.rotate(q.r);if(l.outline)x.strokeText(q.g,0,0);x.fillText(q.g,0,0);x.restore()}
+      const c=canvas(x1-x0,y1-y0),x=c.getContext('2d');x.font=font;x.textBaseline='middle';x.textAlign='center';x.fillStyle=l.color;
+      for(const q of gl){x.save();x.translate(q.x-x0,q.y-y0);x.rotate(q.r);ink(x,q.g,0,0);x.restore()}
       return c}
     const w=Math.max(...lw,1)+pad*2,h=lines.length*lh+pad*2,c=canvas(w,h),x=c.getContext('2d');
-    x.font=font;x.textBaseline='middle';x.lineJoin='round';x.fillStyle=l.color;x.strokeStyle=l.outlineColor;x.lineWidth=(l.outline||0)*2;
-    lines.forEach((t,i)=>{let px=l.align==='left'?pad:l.align==='right'?w-pad-lw[i]:(w-lw[i])/2;const py=pad+lh*i+lh/2;for(const g of[...t]){if(l.outline)x.strokeText(g,px,py);x.fillText(g,px,py);px+=x.measureText(g).width+l.track}});
-    return c}
+    x.font=font;x.textBaseline='middle';x.fillStyle=l.color;
+    lines.forEach((t,i)=>{let px=l.align==='left'?pad:l.align==='right'?w-pad-lw[i]:(w-lw[i])/2;const py=pad+lh*i+lh/2;for(const g of[...t]){ink(x,g,px,py);px+=x.measureText(g).width+l.track}});
+    return c}}
+// stretch (narrower or wider letters), then a shadow that prints: a solid copy offset (drop) or a solid block behind (extrude), in one ink
+function textEffects(l,c){
+  if(!c||!c.width)return c;const st=(l.stretch||100)/100;
+  if(Math.abs(st-1)>.001){const s=canvas(Math.max(1,c.width*st),c.height);s.getContext('2d').drawImage(c,0,0,s.width,s.height);c=s}
+  const d=l.shadowKind&&l.shadowKind!=='none'?Math.max(0,l.shadow||0):0;if(!d)return c;
+  const a=((l.shadowAngle??135)-90)*Math.PI/180,dx=Math.cos(a)*d,dy=Math.sin(a)*d,sh=canvas(c.width,c.height),sx=sh.getContext('2d');sx.drawImage(c,0,0);sx.globalCompositeOperation='source-in';sx.fillStyle=l.shadowColor||'#141416';sx.fillRect(0,0,sh.width,sh.height);
+  const o=canvas(c.width+Math.abs(dx)+2,c.height+Math.abs(dy)+2),ox=o.getContext('2d'),bx=dx<0?-dx:0,by=dy<0?-dy:0;
+  if(l.shadowKind==='extrude'){const n=Math.ceil(d);for(let i=n;i>=1;i--)ox.drawImage(sh,bx+dx*i/n,by+dy*i/n)}else ox.drawImage(sh,bx+dx,by+dy);
+  ox.drawImage(c,bx,by);return o}
+function contentOther(l){
   if(l.kind==='shape'&&window.ILL){const c=ILL.content(l);if(c)return c}
   if(l.kind==='shape'&&l.shape==='path'&&window.VEC)return VEC.content(l);
   if(l.kind==='shape'){
@@ -399,7 +422,7 @@ function contentOf(l){
   return canvas(1,1);
 }
 const unitOf=l=>{const u=(W/1000)/(fixed(l)?1:l.scale);return Math.pow(1.15,Math.round(Math.log(u)/Math.log(1.15)))}; // stitches and dots keep a real size: one step per 15% of scale
-const sig=l=>JSON.stringify([l.finish,l.finish?unitOf(l):0,l.kind,l.raster?l.raster._rid:0,l.text,l.font,l.size,l.bold,l.italic,l.track,l.lead,l.align,l.arc,l.color,l.outline,l.outlineColor,l.shape,l.w,l.h,l.radius,l.fill,l.fillColor,l.stroke,l.strokeW,l.strokeColor,l.pv,l.adjust,l.tint,l.distress,l.warp,l.ill&&{f:l.ill.fill,w:l.ill.widths,t:l.ill.text}]);
+const sig=l=>JSON.stringify([l.finish,l.finish?unitOf(l):0,l.kind,l.raster?l.raster._rid:0,l.text,l.font,l.size,l.bold,l.italic,l.track,l.lead,l.align,l.arc,l.color,l.outline,l.outlineColor,l.case,l.stretch,l.outline2,l.outline2Color,l.shadow,l.shadowKind,l.shadowAngle,l.shadowColor,l.shape,l.w,l.h,l.radius,l.fill,l.fillColor,l.stroke,l.strokeW,l.strokeColor,l.pv,l.adjust,l.tint,l.distress,l.warp,l.ill&&{f:l.ill.fill,w:l.ill.widths,t:l.ill.text}]);
 const plainLook=l=>l.adjust.hue===0&&l.adjust.sat===100&&l.adjust.bright===100&&l.adjust.contrast===100;
 // the layer with its colour adjustments, its recolouring and its distressing: cached until any of them change
 function processed(l){
@@ -529,7 +552,7 @@ view.addEventListener('pointerdown',e=>{
   if(TOOL==='pick'){compose();const d=docX.getImageData(clamp(Math.floor(x),0,W-1),clamp(Math.floor(y),0,H-1),1,1).data;setColor('#'+[d[0],d[1],d[2]].map(v=>v.toString(16).padStart(2,'0')).join(''));return}
   if(TOOL==='area'){maskDab(x,y,x,y,e.altKey);DRAG={mode:'area',x,y,erase:e.altKey,pid:e.pointerId,type:e.pointerType};draw();return}
   if(['brush','eraser','distress'].includes(TOOL)){const l=strokeTarget(TOOL);if(!l)return;const orig=l.raster;l.raster=cloneCanvas(l.raster);SEL=l.id;DRAG={mode:'stroke',l,x,y,mx:x,my:y,orig,pid:e.pointerId,type:e.pointerType};strokeStart(l);dab(l,x,y,x,y,TOOL,pressOf(e));draw();return}
-  if(TOOL==='text'){const l=addLayer(fresh('text',{name:'Type',x,y,text:'FUTURE BASICS',font:'grotesk',size:Math.round(W/14),bold:true,italic:false,track:Math.round(W/200),lead:1.1,align:'center',arc:0,color:CUR,outline:0,outlineColor:'#ffffff'}));setTool('select');tab('layers');setTimeout(()=>{const t=$('#pLayers textarea[data-p=text]');if(t){t.focus();t.select()}},30);return}
+  if(TOOL==='text'){const l=addLayer(fresh('text',{name:'Type',x,y,text:'FUTURE BASICS',font:'grotesk',size:Math.round(W/14),bold:true,italic:false,track:Math.round(W/200),lead:1.1,align:'center',arc:0,color:CUR,outline:0,outlineColor:'#ffffff',case:'',stretch:100,outline2:0,outline2Color:'#141416',shadowKind:'none',shadow:0,shadowAngle:135,shadowColor:'#141416'}));setTool('select');tab('layers');setTimeout(()=>{const t=$('#pLayers textarea[data-p=text]');if(t){t.focus();t.select()}},30);return}
   if(['rect','ellipse','line'].includes(TOOL)){DRAG={mode:'shape',x0:x,y0:y,l:null,pid:e.pointerId,type:e.pointerType};return}
   if(TOOL==='ruler'){RULER=null;DRAG={mode:'ruler',x0:x,y0:y,x1:x,y1:y,pid:e.pointerId,type:e.pointerType};draw();return}
   if(TOOL==='warp'){DRAG=warpDown(x,y,px,py);if(DRAG){DRAG.pid=e.pointerId;DRAG.type=e.pointerType}draw();return}
@@ -594,7 +617,7 @@ function paintOpts(){
   // the production tools (src/lab-studio-ill.js) say what they do too
   Object.assign(help,{artboard:'Drag to make an artboard: a face of the box, a label, a hang tag. Drag one to move it; sizes, bleed and Lay out a box are in Document.',shapebuilder:'Drag across shapes to join the pieces you cross into one. Alt-click a piece to take it away. Choose two or more shapes first.',width:'Drag a point on a stroke to make it thicker or thinner there, for a line that tapers. Alt-click a point to put it back.',measure:'Drag from one point to another: the distance and angle show in mm or inches (Document sets which).',typepath:'Click a path to set type along it. Its words, size and where it starts are in the panel on the right.'});
   const tipsHtml=(list,key)=>`<span class="tips" role="radiogroup" aria-label="Tip">${list.map(t=>`<button type="button" role="radio" data-tip="${key}:${t.id}" aria-checked="${OPT[key]===t.id}" title="${esc(t.hint)}">${esc(t.label)}</button>`).join('')}</span>`,B=window.FBBrush;
-  if(TOOL==='brush')o.innerHTML=(B?tipsHtml(B.TIPS,'tip'):'')+rg('size','Size',1,400)+rg('flow','Opacity',.05,1,.05,'')+rg('soft','Softness',0,1,.05,'')+pressHtml()+(window.OUTL?OUTL.bar():'');
+  if(TOOL==='brush')o.innerHTML=swatchesHtml()+(B?tipsHtml(B.TIPS,'tip'):'')+rg('size','Size',1,400)+rg('flow','Opacity',.05,1,.05,'')+rg('soft','Softness',0,1,.05,'')+pressHtml()+(window.OUTL?OUTL.bar():'');
   else if(TOOL==='eraser')o.innerHTML=(B?tipsHtml(B.ERASER_TIPS,'etip'):'')+rg('esize','Size',1,600)+rg('flow','Strength',.05,1,.05,'')+pressHtml()+'<span class="hint">Rubs out the selected layer.</span>';
   else if(TOOL==='distress')o.innerHTML=rg('dsize','Size',4,600)+rg('flow','Strength',.05,1,.05,'')+'<span class="hint">Wears the selected layer away, like an old print. For an even wear across the layer, use Distress in its settings.</span>';
   else if(TOOL==='area')o.innerHTML=rg('area','Size',4,600)+'<span class="hint">Paint over what the AI should change. Hold Alt to rub out.</span><button class="btn sm" type="button" data-clearmask>Clear the area</button>';
@@ -617,8 +640,14 @@ document.addEventListener('input',e=>{const k=e.target.dataset?.dk;if(!k)return;
 document.addEventListener('click',e=>{const b=e.target.closest('[data-dpre]');if(!b)return;OPT[sizeKey()]=Number(b.dataset.dpre);paintDock();paintOpts();draw()});
 $('#opts').addEventListener('click',e=>{if(e.target.closest('[data-clearmask]'))clearMask()});
 $$('.rail [data-tool]').forEach(b=>b.onclick=()=>setTool(b.dataset.tool));
-function setColor(c){CUR=c;$('#curColor').style.background=c;$('#curPicker').value=c}
-$('#curColor').onclick=()=>$('#curPicker').click();$('#curPicker').addEventListener('input',e=>setColor(e.target.value));
+function setColor(c){CUR=c;$('#curColor').style.background=c;$('#curPicker').value=c;$$('.swr [data-sw]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.sw===c)))}
+$('#curPicker').addEventListener('input',e=>setColor(e.target.value));$('#curPicker').addEventListener('change',e=>{recentColor(e.target.value);paintOpts()});
+// the colours on the brush's bar: the last ones used, then black, white and the brand's; the rainbow one opens the full picker
+const RECENT_KEY='fb.studio.colors';function recentColor(c){try{const r=[c,...JSON.parse(localStorage.getItem(RECENT_KEY)||'[]').filter(x=>x!==c)].slice(0,6);localStorage.setItem(RECENT_KEY,JSON.stringify(r))}catch{}}
+function swatchesHtml(){let r=[];try{r=JSON.parse(localStorage.getItem(RECENT_KEY)||'[]')}catch{}const base=['#141416','#ffffff',...((D&&D.palette)||[]).map(x=>x.hex)],list=[...new Set([...r,...base].map(x=>String(x).toLowerCase()).filter(x=>/^#[0-9a-f]{6}$/.test(x)))].slice(0,10);
+  return `<span class="swr" role="group" aria-label="Colour">${list.map(c=>`<button type="button" data-sw="${c}" style="background:${c}" aria-label="Colour ${c}" aria-pressed="${c===String(CUR).toLowerCase()}"></button>`).join('')}<label title="Any colour"><input type="color" data-swpick value="${esc(CUR)}" aria-label="Any colour"></label></span>`}
+document.addEventListener('click',e=>{const b=e.target.closest('.swr [data-sw]');if(!b)return;setColor(b.dataset.sw);recentColor(b.dataset.sw)});
+document.addEventListener('input',e=>{if(e.target.matches?.('[data-swpick]'))setColor(e.target.value)});document.addEventListener('change',e=>{if(e.target.matches?.('[data-swpick]')){recentColor(e.target.value);paintOpts()}});
 function clearMask(){maskX.clearRect(0,0,W,H);MASKED=false;paintAiState();draw()}
 
 // ---------- layers ----------
@@ -650,11 +679,15 @@ function fieldsHtml(l){
   const a=l.adjust,t=l.tint,d=l.distress,col=(p,v)=>`<input type="color" data-p="${p}" value="${v}">`;
   let kind='';
   if(l.kind==='text')kind=`<div class="sec"><h4>Type</h4><textarea class="t" data-p="text" aria-label="The words" maxlength="400">${esc(l.text)}</textarea>
-    <label class="f w"><span>Font</span><span class="row" style="flex-wrap:nowrap"><select class="t" data-p="font" style="min-width:0">${fontOpts(l.font)}</select><button class="btn sm q" type="button" data-act="addfont" title="Upload a TTF, OTF, WOFF or WOFF2: it is kept in the Lab and sets the same on every machine">Add a font…</button></span></label>
+    <label class="f w"><span>Font</span><span class="row" style="flex-wrap:nowrap">${window.TYPE?TYPE.button(l):`<select class="t" data-p="font" style="min-width:0">${fontOpts(l.font)}</select>`}<button class="btn sm q" type="button" data-act="addfont" title="Upload a TTF, OTF, WOFF or WOFF2: it is kept in the Lab and sets the same on every machine">Add a font…</button></span></label>
     <div class="row"><button class="btn sm ${l.bold?'':'q'}" type="button" data-toggle="bold">Bold</button><button class="btn sm ${l.italic?'':'q'}" type="button" data-toggle="italic">Italic</button>${['left','center','right'].map(x=>`<button class="btn sm ${l.align===x?'':'q'}" type="button" data-align="${x}">${x==='center'?'Centre':x[0].toUpperCase()+x.slice(1)}</button>`).join('')}</div>
-    ${rng2('size','Size',8,600,1,l.size,'px')}${rng2('track','Spacing',-20,120,1,l.track)}${rng2('lead','Line height',.7,2.5,.05,l.lead)}${rng2('arc','Arch',-100,100,1,l.arc)}
+    <label class="f w"><span>Case</span><select class="t" data-p="case">${[['','As typed'],['upper','ALL CAPS'],['title','Title Case'],['lower','lower case']].map(([v,t])=>`<option value="${v}" ${(l.case||'')===v?'selected':''}>${t}</option>`).join('')}</select></label>
+    ${rng2('size','Size',8,600,1,l.size,'px')}${rng2('track','Spacing',-20,120,1,l.track)}${rng2('lead','Line height',.7,2.5,.05,l.lead)}${rng2('stretch','Stretch',50,200,1,l.stretch||100,'%')}${rng2('arc','Arch',-100,100,1,l.arc)}
     <label class="f w"><span>Colour</span>${col('color',l.color)}</label>${rng2('outline','Outline',0,40,1,l.outline,'px')}<label class="f w"><span>Outline colour</span>${col('outlineColor',l.outlineColor)}</label>
-    <p class="note">Arch bends one line of type, for a college or rock-tee arc. Our fonts are kept in the Lab, so type sets the same on every machine; add one with its file.</p></div>`;
+    ${rng2('outline2','Second outline',0,40,1,l.outline2||0,'px')}<label class="f w"><span>Second colour</span>${col('outline2Color',l.outline2Color||'#141416')}</label>
+    <label class="f w"><span>Shadow</span><select class="t" data-p="shadowKind">${[['none','None'],['drop','Drop shadow'],['extrude','3D block']].map(([v,t])=>`<option value="${v}" ${(l.shadowKind||'none')===v?'selected':''}>${t}</option>`).join('')}</select></label>
+    ${l.shadowKind&&l.shadowKind!=='none'?`${rng2('shadow','Distance',0,120,1,l.shadow||0,'px')}${rng2('shadowAngle','Angle',0,359,1,l.shadowAngle??135,'°')}<label class="f w"><span>Shadow colour</span>${col('shadowColor',l.shadowColor||'#141416')}</label>`:''}
+    <p class="note">Every effect prints as solid ink: no blur or soft shadow.</p></div>`;
   if(l.kind==='shape'&&l.shape==='path'&&window.VEC)kind=VEC.fieldsHtml(l);
   else if(l.kind==='shape')kind=`<div class="sec"><h4>Shape</h4>${rng2('w','Width',4,Math.max(W,H)*2,1,l.w,'px')}${l.shape==='line'?'':rng2('h','Height',4,Math.max(W,H)*2,1,l.h,'px')}${l.shape==='rect'?rng2('radius','Corners',0,600,1,l.radius,'px'):''}
     ${l.shape==='line'?'':`<label class="f w"><span>Fill</span><span class="row"><input type="checkbox" data-p="fill" ${l.fill?'checked':''} aria-label="Fill">${col('fillColor',l.fillColor)}</span></label>`}
@@ -722,7 +755,7 @@ function setProp(l,p,v){
   if(p==='warpk')return;
   if(p.startsWith('fin.')){if(l.finish)l.finish[p.slice(4)]=Number(v);return}
   if(p.startsWith('a.'))l.adjust[p.slice(2)]=Number(v);else if(p.startsWith('t.'))l.tint[p.slice(2)]=p==='t.color'?v:Number(v);else if(p.startsWith('d.'))l.distress[p.slice(2)]=p==='d.style'?v:Number(v);
-  else if(p==='rotd')l.rot=Number(v)*Math.PI/180;else if(['name','text','font','blend','color','outlineColor','fillColor','strokeColor'].includes(p))l[p]=v;else if(['fill','stroke'].includes(p))l[p]=Boolean(v);else l[p]=Number(v);
+  else if(p==='rotd')l.rot=Number(v)*Math.PI/180;else if(['name','text','font','blend','color','outlineColor','fillColor','strokeColor','case','shadowKind','outline2Color','shadowColor'].includes(p))l[p]=v;else if(['fill','stroke'].includes(p))l[p]=Boolean(v);else l[p]=Number(v);
 }
 const pL=$('#pLayers');
 pL.addEventListener('input',e=>{const p=e.target.dataset.p,l=selected();if(!p||!l)return;setProp(l,p,e.target.type==='checkbox'?e.target.checked:e.target.value);if(e.target.type==='range'&&e.target.nextElementSibling)e.target.nextElementSibling.textContent=e.target.value+({opacity:'',scale:'×',rotd:'°','a.hue':'°','a.sat':'%','a.bright':'%','a.contrast':'%',size:'px',w:'px',h:'px',radius:'px',strokeW:'px',outline:'px'}[p]??'');touch();draw()});
@@ -925,7 +958,7 @@ function svgDoc(){
     const c=processed(l),tr=`translate(${+l.x.toFixed(2)} ${+l.y.toFixed(2)}) rotate(${+(l.rot*180/Math.PI).toFixed(3)}) scale(${+(l.scale*(l.flip?-1:1)).toFixed(4)} ${+l.scale.toFixed(4)})`;
     const style=`opacity:${l.opacity}${l.blend!=='source-over'?';mix-blend-mode:'+l.blend:''}`,live=plainLook(l)&&!l.distress.amount&&!l.finish&&(l.tint.amount===0||l.tint.amount===1)&&!window.ILL?.rasterOnly(l),gd=window.ILL?.svgGrad(l);
     let inner='';
-    if(l.kind==='text'&&live&&!l.arc){const{font,lines,lw}=textMetrics(l),fill=l.tint.amount===1?l.tint.color:l.color,lh=l.size*l.lead,pad=Math.ceil(l.size*.35+(l.outline||0)*2+4),w=c.width,h=c.height;
+    if(l.kind==='text'&&live&&!l.arc&&!textFx(l)&&!l.case){const{font,lines,lw}=textMetrics(l),fill=l.tint.amount===1?l.tint.color:l.color,lh=l.size*l.lead,pad=Math.ceil(l.size*.35+(l.outline||0)*2+4),w=c.width,h=c.height;
       inner=lines.map((t,i)=>{const x0=l.align==='left'?pad:l.align==='right'?w-pad-lw[i]:(w-lw[i])/2;return `<text x="${(x0-w/2).toFixed(1)}" y="${(pad+lh*i+lh/2-h/2).toFixed(1)}" dominant-baseline="middle" font-family="${xa(FONTS[l.font][0])}" font-size="${l.size}" font-weight="${l.bold?700:400}"${l.italic?' font-style="italic"':''} letter-spacing="${l.track}" fill="${xa(fill)}"${l.outline?` stroke="${xa(l.outlineColor)}" stroke-width="${l.outline*2}" paint-order="stroke" stroke-linejoin="round"`:''} xml:space="preserve">${esc(t)}</text>`}).join('')}
     else if(l.kind==='shape'&&live){const fill=gd&&l.tint.amount!==1?gd.ref:l.tint.amount===1?l.tint.color:l.fillColor,sk=l.tint.amount===1?l.tint.color:l.strokeColor;
       inner=l.shape==='path'&&window.VEC?VEC.svg(l,fill,sk):l.shape==='line'?`<line x1="${-l.w/2}" y1="0" x2="${l.w/2}" y2="0" stroke="${xa(l.stroke?sk:fill)}" stroke-width="${Math.max(l.strokeW,1)}" stroke-linecap="round"/>`:
@@ -1535,6 +1568,7 @@ boot();
 <script src="/lab/studio-board.js"></script>
 <script src="/lab/studio-gen.js"></script>
 <script src="/lab/studio-outline.js"></script>
+<script src="/lab/studio-type.js"></script>
 <script src="/helper.js" defer></script>
 <script type="module">import * as B from '/lab/lab-brush.js';window.FBBrush=B;try{paintOpts();paintDock()}catch{}</script>
 </body>
