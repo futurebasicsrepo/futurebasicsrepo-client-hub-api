@@ -532,22 +532,10 @@ function dab(l,x0,y0,x1,y1,tool,pr=1,qx,qy){ // pr: how hard the Pencil presses 
   x.beginPath();x.moveTo(a0,b0);if(qq)x.quadraticCurveTo(qq[0],qq[1],a1+.01,b1);else x.lineTo(a1+.01,b1);x.stroke();x.restore();c._rid=RID++;
 }
 // QuickShape: the stroke so far read as a shape, and drawn again as that shape with the same brush
-function quickShape(g){const pts=g.pts;if(!pts||pts.length<6)return;const xs=pts.map(p=>p[0]),ys=pts.map(p=>p[1]),S=Math.max(Math.max(...xs)-Math.min(...xs),Math.max(...ys)-Math.min(...ys));if(S*Z<24)return;
-  const a=pts[0],b=pts[pts.length-1],L=Math.hypot(b[0]-a[0],b[1]-a[1]),dev=p=>Math.abs((b[0]-a[0])*(a[1]-p[1])-(a[0]-p[0])*(b[1]-a[1]))/(L||1);
-  let shape=null,name='';
-  if(L>S*.6&&Math.max(...pts.map(dev))<Math.max(4,L*.07)){shape=[a,b];name='a straight line'}
-  else if(Math.hypot(b[0]-a[0],b[1]-a[1])<S*.3&&window.VEC){
-    const v=VEC.simplify([...pts,pts[0]],S*.1).slice(0,-1),corner=v.length;
-    if(corner>=3&&corner<=5){shape=[...v,v[0]];name=corner===3?'a triangle':corner===4?'a four-sided shape':'a five-sided shape'}
-    else{ // an oval, along the stroke's own axis (its principal direction)
-      const mx=xs.reduce((s,v)=>s+v,0)/xs.length,my=ys.reduce((s,v)=>s+v,0)/ys.length;let sxx=0,syy=0,sxy=0;for(const[x,y]of pts){sxx+=(x-mx)**2;syy+=(y-my)**2;sxy+=(x-mx)*(y-my)}
-      const th=.5*Math.atan2(2*sxy,sxx-syy),c=Math.cos(th),s=Math.sin(th);let ra=0,rb=0;for(const[x,y]of pts){const u=(x-mx)*c+(y-my)*s,w=-(x-mx)*s+(y-my)*c;ra=Math.max(ra,Math.abs(u));rb=Math.max(rb,Math.abs(w))}
-      ra*=.96;rb*=.96;if(Math.abs(ra-rb)<Math.max(ra,rb)*.12){ra=rb=(ra+rb)/2;name='a circle'}else name='an oval';
-      shape=Array.from({length:97},(_,i)=>{const t=i/96*Math.PI*2,u=ra*Math.cos(t),w=rb*Math.sin(t);return[mx+u*c-w*s,my+u*s+w*c]})}}
-  if(!shape)return;
+function quickShape(g){const q=window.FBBrush?.quickShapeOf?.(g.pts,{minSize:24/Z});if(!q)return;const shape=q.pts;
   g.l.raster=cloneCanvas(g.orig);if(STK?.buf&&STK.l===g.l)STK.buf.getContext('2d').clearRect(0,0,STK.buf.width,STK.buf.height);
   for(let i=1;i<shape.length;i++)dabS(g.l,shape[i-1][0],shape[i-1][1],shape[i][0],shape[i][1],TOOL,g.pr||1);
-  g.shaped=true;draw();toast(`QuickShape: ${name}. Undo takes it back to your line.`)}
+  g.shaped=true;draw();toast(`QuickShape: ${q.name}. Undo takes it back to your line.`)}
 // Fill: tap inside lines to fill there, on a painting under the chosen layer (the lines stay on top); the outline comes from everything visible
 function fillAt(x,y){compose();const w=docC.width,h=docC.height,X=Math.floor(x),Y=Math.floor(y);if(X<0||Y<0||X>=w||Y>=h)return;
   const src=docX.getImageData(0,0,w,h).data,k0=(Y*w+X)*4,r0=src[k0],g0=src[k0+1],b0=src[k0+2],a0=src[k0+3],tol=(OPT.ftol||40)*2,seen=new Uint8Array(w*h),st=[Y*w+X];
@@ -1108,7 +1096,8 @@ $('#apply').onclick=async()=>{
   if(GMODE&&TAGM){busy('Putting the design on the tag…');try{await tagSaveAll();toast('The tag shows this design now: in the materials library, on the garments that use it and in their tech packs.')}catch(x){toast(x.message)}finally{busy()}return}
   if(GMODE){busy(GID?'Updating the graphic…':'Keeping it in the library…');
     try{compose();const image=docC.toDataURL('image/png'),doc=serialize();
-      if(GID){await api(`/v1/lab/library/graphics/${GID}/studio/apply`,{body:{image,doc}});toast('The graphic is updated in the library. Pieces that already use it keep what they had.','/lab/library')}
+      if(GID&&PICK&&QS.get('fork')==='1'){const k=await api('/v1/lab/library/studio/keep',{body:{image,name:D.concept.name,doc}});GID=k.id;history.replaceState(null,'',`/lab/studio?art=${GID}&pick=1&fork=1`)}
+      else if(GID){await api(`/v1/lab/library/graphics/${GID}/studio/apply`,{body:{image,doc}});toast('The graphic is updated in the library. Pieces that already use it keep what they had.','/lab/library')}
       else{const k=await api('/v1/lab/library/studio/keep',{body:{image,name:D.concept.name,doc}});GID=k.id;D.concept.hasImage=true;history.replaceState(null,'',`/lab/studio?art=${GID}${PICK?'&pick=1':''}`);paintSub();if(!PICK)toast('It is in the graphics library now. Put it on any concept or product from there.','/lab/library')}
       DIRTY=false;SAVED_AT=new Date().toISOString();showSaved();if(PICK){try{parent.FBDesign?.graphicKept?.(GID,D.concept.name)}catch{}}}catch(x){toast(x.message)}finally{busy()}return}
   if(D.concept.locked)return;
@@ -1212,7 +1201,7 @@ async function boot(){
     else{W=1024;H=1024;const c=canvas(W,H),x=c.getContext('2d');x.fillStyle='#e9e9e6';x.fillRect(0,0,W,H);LAYERS=[{...fresh('base',{name:'Blank',raster:stamp(c),x:W/2,y:H/2,dirty:true})}]}
   }catch(x){toast(x.message)}finally{busy()}
   docC.width=W;docC.height=H;mask=canvas(W,H);maskX=mask.getContext('2d');initPpi();if(GUIDE_PPI){PPI=GUIDE_PPI;PPISET=true;PPINOTE='the guide\'s own size'}
-  await loadFonts();setColor(CUR);paintSub();paintAdd();tab('layers');setTool('select');HIST=[snap()];HI=0;syncUndo();DIRTY=false;showSaved();paintLayers();requestAnimationFrame(fit);
+  await loadFonts();setColor(CUR);paintSub();paintAdd();if(window.GEN&&!D.concept.locked)$('#tabMake').classList.remove('hidden');tab('layers');setTool('select');HIST=[snap()];HI=0;syncUndo();DIRTY=false;showSaved();paintLayers();requestAnimationFrame(fit); // the Make tab is on the picture too, as in the graphics studio
   if(QS.get('tryon')==='1')tryOpen().catch(()=>{});
   setInterval(()=>{if(DIRTY&&!DRAG&&!HOLD)save()},90000); // the safety net under autosave: a quiet save every minute and a half while there are changes
   (D.doc?.linked||[]).forEach(id=>LINKING.add(id));setVMode(QS.get('view')||(!D.concept.hasImage&&!LAYERS_DRAWN()&&!D.concept.scratch&&QS.get('scratch')!=='1'&&D.concept.hasFlats&&!ENGD()?'front':'picture')).then(()=>{if(SCRATCH_HINT&&VMODE==='picture')toast('A blank page: draw with the Pencil or the brush. The guide is locked; hide it in Layers when you are done.')}).catch(()=>{});loadFlatsRecord();loadReady();
@@ -1487,7 +1476,7 @@ function showSheet(blob,name,title){let d=$('#sheetDlg');if(!d){d=document.creat
 // a graphic removed on the flats leaves the garment here too (it stays on the picture as a layer); without this the next save puts it back
 function flatRemoved({id,layer}={}){const l=LAYERS.find(x=>(layer&&x.id===layer)||(id&&x.fromFlat===id));if(!l||!l.placement)return;l.placement=undefined;l.fromFlat=undefined;commit();paintLayers();draw();toast(`${l.name} is off the garment. It is still a layer on the picture: delete it in Layers if you do not want it there either.`)}
 const ENGD=()=>['electronics','toys','home'].includes(D?.concept?.category);
-window.FBDesign={saveAll,showSheet,flatRemoved,graphicStudio,graphicKept,materials:()=>matOpen().catch(x=>toast(x.message)),recipeUrl:()=>D?.concept?.recipe&&!D.concept.locked?`/lab/recipe?concept=${CID}`:'',clothChanged:()=>{if(typeof paintFabrics==='function'&&$('#fabSec'))paintFabrics().catch(()=>{});if($('#matDlg')?.open)matLoadOn().catch(()=>{});setTimeout(loadReady,200)}, /* the cloth changed on the flats: the fabric panels and the checklist read it again */drawOpts:()=>({tool:TOOL,color:CUR,size:TOOL==='eraser'?OPT.esize:OPT.size,dsize:OPT.dsize,flow:OPT.flow,soft:OPT.soft,pressure:OPT.pressure,tip:OPT.tip,etip:OPT.etip}),flatsChanged(){syncUndo()},flatsSaved(){const f=FF();if(f)adoptFlats(f.placements(),{saved:true});setTimeout(loadReady,300)},flatsReady(){const f=FF();if(!f)return;f.mode(VMODE==='split'?'compact':'full');if(VMODE==='front'||VMODE==='back'){f.setView(VMODE);f.tool?.(TOOL)}f.layout?.(LAYOUT);mirrorFlats();f.level?.(LEVEL);$('#packBtn').classList.toggle('hidden',!f.canPack());FLATS={saved:f.saved(),placements:f.placements()};paintLayers();['#specBtn','#decoBtn'].forEach(s=>$(s).disabled=Boolean(f.unsupported()))}};
+window.FBDesign={saveAll,showSheet,flatRemoved,graphicStudio,graphicKept,materials:()=>matOpen().catch(x=>toast(x.message)),recipeUrl:()=>D?.concept?.recipe&&!D.concept.locked?`/lab/recipe?concept=${CID}`:'',clothChanged:()=>{if(typeof paintFabrics==='function'&&$('#fabSec'))paintFabrics().catch(()=>{});if($('#matDlg')?.open)matLoadOn().catch(()=>{});setTimeout(loadReady,200)}, /* the cloth changed on the flats: the fabric panels and the checklist read it again */drawOpts:()=>({tool:TOOL,color:CUR,size:TOOL==='eraser'?OPT.esize:OPT.size,dsize:OPT.dsize,flow:OPT.flow,soft:OPT.soft,pressure:OPT.pressure,tip:OPT.tip,etip:OPT.etip,stream:OPT.stream,qshape:OPT.qshape,lock:OPT.lock,sym:OPT.sym,ftol:OPT.ftol}),flatsChanged(){syncUndo()},flatsSaved(){const f=FF();if(f)adoptFlats(f.placements(),{saved:true});setTimeout(loadReady,300)},flatsReady(){const f=FF();if(!f)return;f.mode(VMODE==='split'?'compact':'full');if(VMODE==='front'||VMODE==='back'){f.setView(VMODE);f.tool?.(TOOL)}f.layout?.(LAYOUT);mirrorFlats();f.level?.(LEVEL);$('#packBtn').classList.toggle('hidden',!f.canPack());FLATS={saved:f.saved(),placements:f.placements()};paintLayers();['#specBtn','#decoBtn'].forEach(s=>$(s).disabled=Boolean(f.unsupported()))}};
 async function setVMode(v,{push=true}={}){
   if(!VIEWS.includes(v)||GMODE||!CID)v='picture';const was=VMODE;
   if(v==='pattern'){const f=FF();if(f?.dirty?.())toast('The flats have changes that are not saved: save them to see them in the pattern.');$('#patFrame').src=`/lab/${ENGD()?'engineer':'pattern'}?concept=${CID}&embed=1`;PLOADED=true}
@@ -1575,10 +1564,11 @@ $('#matBtn').onclick=()=>matOpen().catch(x=>toast(x.message));
 document.addEventListener('click',e=>{if(e.target.closest('#fabMore'))matOpen().catch(x=>toast(x.message))});
 // the graphic studio, opened from the flats panel: this same studio on a clear canvas, in a window over the piece; what is kept lands on the flat
 let GS_VIEW='front';
-function graphicStudio(view){GS_VIEW=view==='back'?'back':'front';$('#gsFrame').src='/lab/studio?new=graphic&pick=1';$('#gsDlg').showModal()}
+let GS_EDIT=null; // a graphic on the flats being edited: its placement, to take the edited art back into
+function graphicStudio(view,edit=null){GS_VIEW=view==='back'?'back':'front';GS_EDIT=edit?.art?edit:null;$('#gsFrame').src=GS_EDIT?`/lab/studio?art=${encodeURIComponent(GS_EDIT.art)}&pick=1&fork=1`:'/lab/studio?new=graphic&pick=1';$('#gsDlg').showModal()}
 $('#gsClose').onclick=()=>{$('#gsDlg').close();$('#gsFrame').src='about:blank'};
 async function graphicKept(id,name){$('#gsDlg').close();$('#gsFrame').src='about:blank';const f=FF();if(!f?.addGraphic){toast('It is in the graphics library. Add it to the flat from the panel.');return}
-  if(f.view?.()!==GS_VIEW)f.setView?.(GS_VIEW);await f.addGraphic(id,name);toast(`${name||'The graphic'} is in the library and on the ${GS_VIEW}.`)}
+  if(f.view?.()!==GS_VIEW)f.setView?.(GS_VIEW);const ed=GS_EDIT;GS_EDIT=null;if(ed&&f.replaceGraphic&&await f.replaceGraphic(ed.pl,id,name)){toast(`${name||'The graphic'} is updated on the ${GS_VIEW}, in the same place.`);return}await f.addGraphic(id,name);toast(`${name||'The graphic'} is in the library and on the ${GS_VIEW}.`)}
 $('#matDlg').addEventListener('click',async e=>{if(e.target.closest('[data-matclose]')||e.target===$('#matDlg')){$('#matDlg').close();return}
   const k=e.target.closest('[data-mk]');if(k){MAT.kind=k.dataset.mk;$$('#matKinds [data-mk]').forEach(b=>b.setAttribute('aria-pressed',String(b===k)));matLoadLib();return}
   const a=e.target.closest('[data-madd]');if(a){const m=MAT.lib.find(x=>x.id===a.dataset.madd),hasMain=(MAT.on?.picks||[]).some(p=>p.kind==='fabric'&&p.role==='main');

@@ -11,6 +11,13 @@ var c=q.get('concept')||'',t=q.get('template')||'',v=q.get('view')==='back'?'bac
 <link rel="icon" href="/icons/icon-192.png">
 <style>
 @import url('/fonts/fonts.css');
+@import url('/fonts/lab/fonts.css');
+#typePop{position:fixed;z-index:80;width:300px;background:#fff;border:1px solid var(--line,#e2e2dc);border-radius:14px;box-shadow:0 12px 40px rgba(20,20,22,.18);padding:12px;display:grid;gap:8px;font-size:12.5px}
+#typePop .tp-text{font-size:16px;padding:8px 10px;border:1px solid var(--line,#e2e2dc);border-radius:10px;width:100%;box-sizing:border-box}
+#typePop .tp-row{display:flex;align-items:center;gap:8px}#typePop .tp-row>span{width:52px;color:#6b6b70;flex:none}#typePop .tp-row select{flex:1;min-width:0;min-height:32px}#typePop .tp-row input[type=range]{flex:1;min-width:0}
+#typePop .tp-row output{width:30px;text-align:right;font-variant-numeric:tabular-nums}#typePop .tp-end{justify-content:flex-end}
+#typePop .tp-more{border-top:1px solid var(--line,#e2e2dc);padding-top:6px}#typePop .tp-more summary{cursor:pointer;color:#6b6b70;padding:4px 0}#typePop .tp-more[open]{display:grid;gap:8px}#typePop{max-height:calc(100vh - 16px);overflow-y:auto}
+#typePop .tp-prev{font-size:24px;line-height:1.25;padding:6px 8px;background:#f6f6f3;border-radius:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:34px}
 :root{--ink:#141416;--paper:#fff;--fog:#f5f5f2;--dim:#727278;--line:rgba(20,20,22,.14);--cue:#4bff9a;--ok:#17603a;--bad:#a02a20;--warn:#8a5a00}
 *{box-sizing:border-box}html{background:var(--fog)}
 body{margin:0;color:var(--ink);font:400 14px/1.45 'Space Grotesk',system-ui,sans-serif;background:var(--fog);min-height:100vh}
@@ -120,12 +127,14 @@ textarea.t{min-height:64px;resize:vertical}
 </div>
 <script>try{if(!localStorage.getItem('fb.admin.token')&&localStorage.getItem('fb.client.token'))document.documentElement.dataset.labClient='1'}catch{}</script>
 <script src="/lab/nav.js"></script>
+<script src="/lab/lab-fonts.js"></script>
 <script type="module">
 import { rotOf, tagMarks, STYLES, FITS, SIZES, DETAILS, STITCHES, defaultDetail, describeEdit, geometry, renderSvg, viewBoxOf, templatesFor, templateOf, defaultTemplate, describe, placementChecks, overlapChecks, pomTable, defaultParams, defaultPlacement, remapEdits, measurementsFor, POM_NAMES, pomName, fitToTemplate, FLAT_PARTS, PART_KINDS, partOf, defaultPart, fmt, fmtCm, MASK_URL, drawingOf, TEMPLATE_URL } from '/lab/flats.js';
 import { panelAt, panelName } from '/lab/lab-flat-panels.js';
 import { tagFaceSvg } from '/lab/lab-tags.js';
 import { NECKLINES, necklineSvg, takesNeckline, necklineOf, necklineMeasures, necklinePomName } from '/lab/lab-neck.js';
 import { outlines as traceOutlines } from '/lab/lab-trace.js';
+import { renderType, caseOf as tcaseOf, ENVS as TENVS } from '/lab/lab-type-draw.js';
 import { rankFabrics } from '/lab/lab-fabric-fit.js';window.FBRank=rankFabrics;
 import * as FBBrushMod from '/lab/lab-brush.js';window.FBBrush=FBBrushMod;
 import { WASHES, STRENGTHS, washOf, distressParts, distressList, DISTRESS_FOCUS, washWords } from '/lab/lab-wash.js';
@@ -334,7 +343,7 @@ function techOpts(v){const kinds=[['embroidery','Embroidery'],['print','Print'],
 function paintPl(F=localFindings()){
   const p=$('#pPl');if(TAB!=='pl')return;
   p.innerHTML=`<div class="sec"><h4>On this piece</h4>${PL.length?PL.map(q=>{const f=F[q.id]||[],lv=f.some(x=>x.level==='fail')?'fail':f.some(x=>x.level==='warn')?'warn':'ok';return `<div class="pl ${q.id===SEL?'on':''}" data-q="${esc(q.id)}">
-    <div class="hd"><span class="dot ${lv}"></span><b>${esc(q.name)}</b><select class="t" data-k="view" style="width:auto"><option value="front" ${q.view==='front'?'selected':''}>Front</option><option value="back" ${q.view==='back'?'selected':''}>Back</option></select><button class="btn sm q" type="button" data-del aria-label="Remove ${esc(q.name)}">Remove</button></div>
+    <div class="hd"><span class="dot ${lv}"></span><b>${esc(q.name)}</b><select class="t" data-k="view" style="width:auto"><option value="front" ${q.view==='front'?'selected':''}>Front</option><option value="back" ${q.view==='back'?'selected':''}>Back</option></select>${q.art?`<button class="btn sm" type="button" data-pledit title="Open it in the graphic studio: recolour its inks, filters, type, lockups, separations… and it comes back here">Edit</button>`:''}<button class="btn sm q" type="button" data-del aria-label="Remove ${esc(q.name)}">Remove</button></div>
     <label class="f"><span>Made as</span><select class="t" data-k="techniqueId">${techOpts(q.techniqueId)}</select></label>
     <div class="nums"><label>Width (in)<input class="t" type="number" step="0.125" min="0.25" data-k="w" value="${q.w}"></label><label>From ${STYLES[P.style].kind==='top'?'CF':'centre'} (in)<input class="t" type="number" step="0.125" data-k="x" value="${q.x}"></label><label>${STYLES[P.style].kind==='cap'?'Above brim (in)':'Top edge down (in)'}<input class="t" type="number" step="0.125" data-k="top" value="${STYLES[P.style].kind==='cap'?r8(-(q.y+q.h/2)):r8(q.y-q.h/2)}"></label></div>
     <div class="nums turn"><label>Turn (°)<input class="t" type="number" step="1" min="-180" max="180" data-k="rot" value="${q.rot||0}"></label><span class="row"><button class="btn sm" type="button" data-turn="-15" title="Turn 15° anticlockwise">↺ 15°</button><button class="btn sm" type="button" data-turn="15" title="Turn 15° clockwise">↻ 15°</button><button class="btn sm" type="button" data-turn="0" title="Straight again">Straight</button></span></div>
@@ -395,6 +404,10 @@ async function uploadGraphic(file){
     const r=await api('/v1/lab/library/studio/keep',{body:{image:c.toDataURL('image/png'),name}});LIB=null;await addGraphic(r.id,name);FBN.toast(`${name} is in the library and on the ${VIEW}.`)}
   catch(x){FBN.toast(x.message||'That file could not be read as a picture.','err')}finally{URL.revokeObjectURL(url)}}
 // a graphic made in the graphic studio or uploaded: placed on the view in hand
+// a placed graphic edited in the graphic studio comes back as its new artwork, in the same place and width (its height follows the new art)
+async function replaceGraphic(pl,id,name){const q=PL.find(x=>x.id===pl);if(!q||!id)return false;q.art=id;if(name)q.name=String(name).slice(0,80);const href=await hrefOf(q);
+  const img=await new Promise(r=>{const i=new Image();i.onload=()=>r(i);i.onerror=()=>r(null);i.src=href});if(img&&img.naturalWidth){const top=q.y-q.h/2;q.h=Math.round(q.w*img.naturalHeight/img.naturalWidth*32)/32;q.y=top+q.h/2;delete q.grade}
+  HREF[q.id]=href;SEL=q.id;touch();paint();return true}
 async function addGraphic(id,name){if(!P||!id)return;await addPlacement({name:name||'Graphic',art:id,source:'graphic',techniqueId:null});LIB=null;if(TAB==='pl')libTiles()}
 async function libTiles(){const box=$('#libTiles');if(!box)return;try{if(!LIB){const q=($('#libQ')?.value||'').trim();LIB=(await api('/v1/lab/library/graphics?limit=16'+(q?'&q='+encodeURIComponent(q):''))).graphics}box.innerHTML=LIB.map(g=>`<button type="button" data-lib="${g.id}" title="${esc(g.name)}"><img alt="" data-src="/v1/lab/art/${g.id}?thumb=1">${esc((g.name||'').slice(0,18))}</button>`).join('')||'<span class="msg">Nothing found.</span>';for(const i of box.querySelectorAll('img[data-src]'))blobUrl(i.dataset.src).then(u=>{i.src=u})}catch(x){box.innerHTML=`<span class="msg">${esc(x.message)}</span>`}}
 // a graphic turned to match the picture: degrees clockwise, -180 to 180, to the half degree
@@ -405,6 +418,7 @@ $('#pPl').addEventListener('input',e=>{if(e.target.id==='libQ'){clearTimeout(lt)
 $('#pPl').addEventListener('change',e=>{const card=e.target.closest('[data-q]');if(!card)return;const q=PL.find(x=>x.id===card.dataset.q),k=e.target.dataset.k;if(!k)return;if(k==='view'){q.view=e.target.value;setView(q.view)}if(k==='techniqueId'){q.techniqueId=e.target.value;q.technique=(D.techniques.find(t=>t.id===q.techniqueId)||{}).base||q.technique}touch();paint()});
 $('#pPl').addEventListener('click',async e=>{
   const card=e.target.closest('[data-q]');
+  if(e.target.closest('[data-pledit]')){const q=PL.find(x=>x.id===card.dataset.q);const h=HOST();if(q?.art&&h?.graphicStudio)h.graphicStudio(q.view,{art:q.art,pl:q.id});else if(q?.art)window.open('/lab/studio?art='+encodeURIComponent(q.art),'_blank','noopener');return}
   if(e.target.closest('[data-del]')){const gone=PL.find(x=>x.id===card.dataset.q);PL=PL.filter(x=>x!==gone);if(SEL===gone?.id)SEL=null;
     // one record on both views: a graphic that is also a layer on the picture comes off the garment there too, or the next save would put it back
     if(gone&&HOST()?.flatRemoved)HOST().flatRemoved({id:gone.id,layer:gone.source==='studio'?gone.layer:null});touch();paint();return}
@@ -613,9 +627,12 @@ document.addEventListener('keydown',e=>{if(e.target.closest('input,select,textar
 // Each view has one drawing, a picture laid over the view's own box in inches, so it zooms with the flat and goes into the sheets and the tech
 // pack. It sits over the graphics; while a drawing tool is chosen it takes the pointer, otherwise the flat works as before. Once a Pencil has been
 // used, fingers never draw: one finger moves the view when zoomed in, two pinch, so a resting palm does nothing.
-const MK={},MUNDO={front:[],back:[]},MREDO={front:[],back:[]},MKTOOLS=['brush','eraser','distress','text','rect','ellipse','line'];let MTOOL='select',MDRAG=null,MPEN=false;
+const MK={},MUNDO={front:[],back:[]},MREDO={front:[],back:[]},MKTOOLS=['brush','eraser','distress','text','rect','ellipse','line','fill','liquify'];let MTOOL='select',MDRAG=null,MPEN=false;
 const MKW=document.createElement('div');MKW.className='mkw';
-const mkOpts=()=>{const o=HOST()?.drawOpts?.()||{};return {color:o.color||'#141416',size:Number(o.size)||12,dsize:Number(o.dsize)||40,flow:o.flow??1,soft:o.soft||0,pressure:o.pressure!==false,tip:o.tip||'round',etip:o.etip||'hard'}};
+const mkOpts=()=>{const o=HOST()?.drawOpts?.()||{};return {color:o.color||'#141416',size:Number(o.size)||12,dsize:Number(o.dsize)||40,flow:o.flow??1,soft:o.soft||0,pressure:o.pressure!==false,tip:o.tip||'round',etip:o.etip||'hard',stream:Number(o.stream)||0,qshape:o.qshape!==false,lock:Boolean(o.lock),sym:o.sym||'off',ftol:Number(o.ftol)||40}};
+// symmetry on the flat: mirrored about the centre front (or back) line, top-bottom about the middle of the drawing, turned round where they meet
+const mkSym=(m,o)=>window.FBBrush?.symmetryMaps?FBBrush.symmetryMaps(['brush','eraser'].includes(MTOOL)?o.sym:'off',(0-m.x)/m.w*m.cv.width,m.cv.height/2):[p=>p];
+function mkStrokeS(m,a,b,o,pr){for(const f of mkSym(m,o))mkStroke(m,f(a),f(b),o,pr)}
 const mkTpl=()=>P?String(P.template||templateOf(P)?.id||'none'):'none';
 function mkReset(){for(const k of Object.keys(MK))delete MK[k];MUNDO.front=[];MUNDO.back=[];MREDO.front=[];MREDO.back=[];if(P)delete P.markup;mkPlace()}
 // the drawing covers everything the window shows of the flat at full view (not only the garment's own frame), in inches
@@ -644,9 +661,9 @@ const mkSnap=m=>m.cv.getContext('2d').getImageData(0,0,m.cv.width,m.cv.height);
 // a see-through tip (marker, airbrush) is drawn solid on a layer over the drawing while the stroke is made, shown at its opacity, and laid
 // into the drawing once at the end (piece by piece, its pieces would overlap and bead)
 let MBUF=null;
-function mkBufStart(m,o){const ba=MTOOL==='brush'&&window.FBBrush?FBBrush.strokeAlpha(o.tip,o.flow):0;if(!ba){MBUF=null;return}const c=document.createElement('canvas');c.width=m.cv.width;c.height=m.cv.height;c.style.cssText=m.cv.style.cssText;c.style.opacity=ba;c.style.position='absolute';c.style.pointerEvents='none';MKW.append(c);MBUF={c,ba,m}}
+function mkBufStart(m,o){const ba=MTOOL==='brush'&&!o.lock&&window.FBBrush?FBBrush.strokeAlpha(o.tip,o.flow):0;if(!ba){MBUF=null;return}const c=document.createElement('canvas');c.width=m.cv.width;c.height=m.cv.height;c.style.cssText=m.cv.style.cssText;c.style.opacity=ba;c.style.position='absolute';c.style.pointerEvents='none';MKW.append(c);MBUF={c,ba,m}}
 function mkBufEnd(keep=true){if(!MBUF)return;if(keep){const x=MBUF.m.cv.getContext('2d');x.save();x.globalAlpha=MBUF.ba;x.drawImage(MBUF.c,0,0);x.restore()}MBUF.c.remove();MBUF=null}
-function mkStroke(m,a,b,o,pr){if(window.FBBrush&&(MTOOL==='brush'||MTOOL==='eraser')){const buf=MBUF&&MBUF.m===m&&MTOOL==='brush';FBBrush.segment((buf?MBUF.c:m.cv).getContext('2d'),{tool:MTOOL,solid:buf,tip:MTOOL==='brush'?o.tip:o.etip,color:o.color,size:Math.max(.6,o.size*.5*mkK(m)),flow:o.flow,soft:o.soft,pr},a,b);return} // the Studio's brush tips (src/lab-brush.js)
+function mkStroke(m,a,b,o,pr){if(window.FBBrush&&(MTOOL==='brush'||MTOOL==='eraser')){const lk=o.lock&&MTOOL==='brush',buf=!lk&&MBUF&&MBUF.m===m&&MTOOL==='brush',cx=(buf?MBUF.c:m.cv).getContext('2d');if(lk){cx.save();cx.globalCompositeOperation='source-atop'}FBBrush.segment(cx,{tool:MTOOL,solid:buf,tip:MTOOL==='brush'?o.tip:o.etip,color:o.color,size:Math.max(.6,o.size*.5*mkK(m)),flow:o.flow,soft:o.soft,pr},a,b);if(lk)cx.restore();return} // the Studio's brush tips (src/lab-brush.js)
   const x=m.cv.getContext('2d'),k=mkK(m),t=MTOOL,w=Math.max(.6,(t==='distress'?o.dsize*.35:o.size*.5)*pr)*k;x.save();x.lineCap='round';x.lineJoin='round';x.lineWidth=w;x.globalAlpha=o.flow;
   if(t==='brush'){x.strokeStyle=o.color;if(o.soft){x.shadowColor=o.color;x.shadowBlur=w*o.soft}}else{x.globalCompositeOperation='destination-out';x.strokeStyle='#000';if(t==='distress'){x.setLineDash([w*.12,w*.3]);x.globalAlpha=Math.min(1,o.flow*.8)}}
   x.beginPath();x.moveTo(a[0],a[1]);x.lineTo(b[0]+.01,b[1]);x.stroke();x.restore()}
@@ -662,6 +679,66 @@ function mkOutline(want){const m=MK[VIEW];if(!m)return{message:'Draw on the flat
   const inks=traceOutlines(px,w,h,{level});if(!inks.length)return{message:'There is nothing drawn on this side yet.'};
   const before=mkSnap(m),x=m.cv.getContext('2d');x.save();x.clearRect(0,0,m.cv.width,m.cv.height);x.scale(src.width/w,src.height/h);for(const ink of inks){x.fillStyle=ink.hex;x.fill(new Path2D(ink.d),'evenodd')}x.restore();
   mkDone(m,before);m.ol={level,orig:src,ver:m.ver};return{message:level===1?'Outlined: the drawing is clean lines now. Refine makes it cleaner; Undo goes back.':`Refined (${level} of 6).`}}
+// ---- type on the flat: a panel where the flat was tapped, with the Studio's fonts (src/lab-fonts.js, the 47 open-source ones), size, colour,
+// bold, case, an outline and an arch, shown live on the flat; Place lays it in (undo takes it back), Cancel leaves the flat as it was ----
+const TFACES=[['grotesk','Space Grotesk',"'Space Grotesk',system-ui,sans-serif",'Studio'],['mono','IBM Plex Mono',"'IBM Plex Mono',monospace",'Studio'],...(window.FBFONTS||[]).map(f=>['g_'+f.id,f.family,f.stack,f.category])];
+const TS={text:'',font:'g_oswald',size:48,color:'',bold:true,case:'',outline:0,outlineColor:'#ffffff',arc:0,track:0,stretch:100,outline2:0,outline2Color:'#141416',shadowKind:'none',shadow:6,shadowAngle:135,shadowColor:'#141416',env:'none',envK:40};try{Object.assign(TS,JSON.parse(localStorage.getItem('fb.flats.type')||'{}'),{text:''})}catch{}
+let TY=null;
+const tcase=tcaseOf;
+function typeDraw(){const t=TY;if(!t)return;const x=t.m.cv.getContext('2d');x.putImageData(t.before,0,0);if(!TS.text.trim())return;
+  const f=TFACES.find(q=>q[0]===TS.font)||TFACES[0],k=mkK(t.m),font=`${TS.bold?'700':'400'} ${Math.max(4,TS.size*k)}px ${f[2]}`;
+  if(document.fonts&&!document.fonts.check(font))document.fonts.load(font).then(()=>{if(TY===t)typeDraw()}).catch(()=>{});
+  const c=renderType({text:TS.text.trim(),stack:f[2],size:TS.size*k,bold:TS.bold,case:TS.case,track:TS.track*k,color:TS.color||t.o.color,outline:TS.outline*k,outlineColor:TS.outlineColor,outline2:TS.outline2*k,outline2Color:TS.outline2Color,
+    arc:TS.arc,env:TS.arc?'none':TS.env,envK:TS.envK,stretch:TS.stretch,shadowKind:TS.shadowKind,shadow:TS.shadow*k,shadowAngle:TS.shadowAngle,shadowColor:TS.shadowColor}),an=c.anchor||[c.width/2,c.height/2];
+  x.drawImage(c,t.p[0]-an[0],t.p[1]-an[1]);t.m.dirty=true}
+function typeOpen(m,p,before,o,e){typeClose(false);TY={m,p,before,o};TS.text='';const pop=document.createElement('div');pop.id='typePop';pop.setAttribute('role','dialog');pop.setAttribute('aria-label','Type on the flat');
+  const cats=[...new Set(TFACES.map(f=>f[3]))];
+  pop.innerHTML=`<input class="tp-text" id="tpText" placeholder="Type the words" maxlength="80" autocomplete="off">
+    <label class="tp-row"><span>Font</span><select id="tpFont">${cats.map(c=>`<optgroup label="${esc(c)}">${TFACES.filter(f=>f[3]===c).map(f=>`<option value="${f[0]}" ${f[0]===TS.font?'selected':''}>${esc(f[1])}</option>`).join('')}</optgroup>`).join('')}</select></label>
+    <div class="tp-prev" id="tpPrev"></div>
+    <label class="tp-row"><span>Size</span><input type="range" id="tpSize" min="10" max="300" value="${TS.size}"><output>${TS.size}</output></label>
+    <div class="tp-row"><span>Colour</span><input type="color" id="tpColor" value="${TS.color||o.color}"><button type="button" class="btn sm ${TS.bold?'':'q'}" id="tpBold" aria-pressed="${TS.bold}">Bold</button>
+      <select id="tpCase" aria-label="Case">${[['','As typed'],['upper','ALL CAPS'],['title','Title Case'],['lower','lower case']].map(([v,l])=>`<option value="${v}" ${TS.case===v?'selected':''}>${l}</option>`).join('')}</select></div>
+    <label class="tp-row"><span>Outline</span><input type="range" id="tpOut" min="0" max="20" value="${TS.outline}"><input type="color" id="tpOutC" value="${TS.outlineColor}"></label>
+    <label class="tp-row"><span>Arch</span><input type="range" id="tpArc" min="-100" max="100" value="${TS.arc}"><output>${TS.arc}</output></label>
+    <details class="tp-more"${['stretch','outline2','track'].some(k=>TS[k]&&TS[k]!==100)||TS.shadowKind!=='none'||TS.env!=='none'?' open':''}><summary>More: shape, shadow, second outline</summary>
+      <label class="tp-row"><span>Shape</span><select id="tpEnv">${TENVS.map(([v,l])=>`<option value="${v}" ${TS.env===v?'selected':''}>${l}</option>`).join('')}</select><input type="range" id="tpEnvK" min="-100" max="100" value="${TS.envK}" aria-label="Shape amount"></label>
+      <label class="tp-row"><span>Stretch</span><input type="range" id="tpStretch" min="50" max="200" value="${TS.stretch}"><output>${TS.stretch}%</output></label>
+      <label class="tp-row"><span>Spacing</span><input type="range" id="tpTrack" min="-10" max="60" value="${TS.track}"><output>${TS.track}</output></label>
+      <label class="tp-row"><span>2nd line</span><input type="range" id="tpOut2" min="0" max="20" value="${TS.outline2}"><input type="color" id="tpOut2C" value="${TS.outline2Color}"></label>
+      <label class="tp-row"><span>Shadow</span><select id="tpShK">${[['none','None'],['drop','Drop'],['extrude','3D block']].map(([v,l])=>`<option value="${v}" ${TS.shadowKind===v?'selected':''}>${l}</option>`).join('')}</select><input type="color" id="tpShC" value="${TS.shadowColor}"></label>
+      <label class="tp-row"><span>Distance</span><input type="range" id="tpSh" min="0" max="60" value="${TS.shadow}"><input type="range" id="tpShA" min="0" max="359" value="${TS.shadowAngle}" aria-label="Shadow angle"></label>
+    </details>
+    <div class="tp-row tp-end"><button type="button" class="btn sm q" id="tpCancel">Cancel</button><button type="button" class="btn sm go" id="tpPlace">Place</button></div>`;
+  document.body.appendChild(pop);const W0=pop.offsetWidth||300,H0=pop.offsetHeight||360,cr=$('#canvas').getBoundingClientRect(),left=e.clientX<cr.left+cr.width/2; // on the other side of the flat from the words, so they show as they are typed
+  pop.style.left=Math.max(8,Math.min(innerWidth-W0-8,left?cr.right-W0-12:cr.left+12))+'px';pop.style.top=Math.max(8,Math.min(innerHeight-H0-8,cr.top+12))+'px';
+  const prev=()=>{const f=TFACES.find(q=>q[0]===TS.font)||TFACES[0];const pv=$('#tpPrev');pv.style.fontFamily=f[2];pv.style.fontWeight=TS.bold?'700':'400';pv.textContent=tcase(TS.text||'Future Basics',TS.case)};
+  const set=(k,v)=>{TS[k]=v;prev();typeDraw()};
+  pop.addEventListener('input',ev=>{const t=ev.target,id=t.id;if(id==='tpText')set('text',t.value);else if(id==='tpFont')set('font',t.value);else if(id==='tpSize'){set('size',Number(t.value));t.nextElementSibling.textContent=t.value}else if(id==='tpColor')set('color',t.value);else if(id==='tpCase')set('case',t.value);else if(id==='tpOut')set('outline',Number(t.value));else if(id==='tpOutC')set('outlineColor',t.value);else if(id==='tpArc'){set('arc',Number(t.value));t.nextElementSibling.textContent=t.value}
+    else if(id==='tpEnv')set('env',t.value);else if(id==='tpEnvK')set('envK',Number(t.value));else if(id==='tpStretch'){set('stretch',Number(t.value));t.nextElementSibling.textContent=t.value+'%'}else if(id==='tpTrack'){set('track',Number(t.value));t.nextElementSibling.textContent=t.value}
+    else if(id==='tpOut2')set('outline2',Number(t.value));else if(id==='tpOut2C')set('outline2Color',t.value);else if(id==='tpShK')set('shadowKind',t.value);else if(id==='tpShC')set('shadowColor',t.value);else if(id==='tpSh')set('shadow',Number(t.value));else if(id==='tpShA')set('shadowAngle',Number(t.value))});
+  pop.addEventListener('change',ev=>{const k={tpFont:'font',tpCase:'case',tpEnv:'env',tpShK:'shadowKind'}[ev.target.id];if(k)set(k,ev.target.value)});
+  pop.addEventListener('click',ev=>{if(ev.target.id==='tpBold'){set('bold',!TS.bold);ev.target.classList.toggle('q',!TS.bold);ev.target.setAttribute('aria-pressed',String(TS.bold))}else if(ev.target.id==='tpCancel')typeClose(false);else if(ev.target.id==='tpPlace')typeClose(true)});
+  pop.addEventListener('keydown',ev=>{if(ev.key==='Enter'&&ev.target.id==='tpText'){ev.preventDefault();typeClose(true)}else if(ev.key==='Escape'){ev.preventDefault();typeClose(false)}});
+  pop.addEventListener('pointerdown',ev=>ev.stopPropagation());prev();setTimeout(()=>$('#tpText')?.focus(),30)}
+function typeClose(keep){const t=TY,pop=$('#typePop');TY=null;pop?.remove();if(!t)return;
+  if(keep&&TS.text.trim()){try{localStorage.setItem('fb.flats.type',JSON.stringify({...TS,text:''}))}catch{}TY=t;typeDraw();TY=null;mkDone(t.m,t.before)}
+  else t.m.cv.getContext('2d').putImageData(t.before,0,0)}
+// QuickShape on the flat: the stroke drawn again as the shape it was meant to be, with the same brush (and its mirror images)
+function mkQuick(g){const q=window.FBBrush?.quickShapeOf?.(g.pts,{minSize:24*mkK(g.m)});if(!q)return;g.m.cv.getContext('2d').putImageData(g.before,0,0);if(MBUF&&MBUF.m===g.m)MBUF.c.getContext('2d').clearRect(0,0,MBUF.c.width,MBUF.c.height);
+  for(let i=1;i<q.pts.length;i++)mkStrokeS(g.m,q.pts[i-1],q.pts[i],g.o,g.pr||1);g.shaped=true;FBN.toast(`QuickShape: ${q.name}. Undo takes it back to your line.`,'info')}
+// Fill on the flat: inside a shape you drew, your drawing is filled there; anywhere else the garment's panel under the tap takes the colour
+// (as Colour a panel does, right up to its seams)
+function mkFill(m,p,o,before,e){const W=m.cv.width,H=m.cv.height,X=Math.floor(p[0]),Y=Math.floor(p[1]);
+  if(X>=0&&Y>=0&&X<W&&Y<H){const d=before.data,k0=(Y*W+X)*4,a0=d[k0+3],tol=(o.ftol||40)*2,seen=new Uint8Array(W*H),st=[Y*W+X];let edge=false,n=0;
+    const same=k=>{const j=k*4;return Math.abs(d[j]-d[k0])+Math.abs(d[j+1]-d[k0+1])+Math.abs(d[j+2]-d[k0+2])+Math.abs(d[j+3]-a0)*1.5<=tol};
+    while(st.length){const k=st.pop();if(seen[k]||!same(k))continue;seen[k]=1;n++;const px=k%W;if(px===0||px===W-1||k<W||k>=W*H-W)edge=true;if(px>0)st.push(k-1);if(px<W-1)st.push(k+1);if(k>=W)st.push(k-W);if(k<W*H-W)st.push(k+W)}
+    // closed in by your drawing (it never reached the drawing's edge): fill it, grown two pixels to tuck under the line, behind the line
+    if(!edge&&n>3){let mm=seen;for(let pass=0;pass<2;pass++){const q=new Uint8Array(mm);for(let k=0;k<W*H;k++)if(mm[k]){const px=k%W;if(px>0)q[k-1]=1;if(px<W-1)q[k+1]=1;if(k>=W)q[k-W]=1;if(k<W*H-W)q[k+W]=1}mm=q}
+      const c=parseInt(String(o.color).replace('#',''),16),img=new ImageData(W,H);for(let k=0;k<W*H;k++)if(mm[k]){img.data[k*4]=c>>16&255;img.data[k*4+1]=c>>8&255;img.data[k*4+2]=c&255;img.data[k*4+3]=255}
+      const t=document.createElement('canvas');t.width=W;t.height=H;t.getContext('2d').putImageData(img,0,0);const x=m.cv.getContext('2d');x.save();x.globalCompositeOperation='destination-over';x.drawImage(t,0,0);x.restore();mkDone(m,before);return}}
+  // the garment's panel: Colour a panel, in the Pencil's colour
+  NEWBL.color=o.color;const[ix,iy]=inch(e);fillAt(ix,iy)}
 function mkCancel(){mkBufEnd(false);const g=MDRAG;MDRAG=null;if(g?.m&&g.before)g.m.cv.getContext('2d').putImageData(g.before,0,0)}
 function mkStep(from,to){const st=from[VIEW],m=MK[VIEW];if(!st?.length||!m)return false;m.ver=(m.ver||0)+1;to[VIEW].push(mkSnap(m));m.cv.getContext('2d').putImageData(st.pop(),0,0);m.dirty=true;touch();HOST()?.flatsChanged?.();return true}
 // is there drawing under the pointer (within the eraser's reach)? then the eraser works on the drawing, not the sketch
@@ -680,13 +757,20 @@ MKW.addEventListener('pointerdown',e=>{
     const r={id:newId('r'),type:'rub',view:VIEW,pts:[inch(e).map(v=>Math.round(v*32)/32)],w:Math.round(Math.max(.05,Math.min(6,mkOpts().size*.5/M.a))*32)/32};P.edits=P.edits||[];P.edits.push(r);
     MDRAG={rub:r,pid:e.pointerId,type:e.pointerType};rubDraw();return}
   const m=MK[VIEW]||mkNew(VIEW);if(!m)return;mkFit(m);mkPlace();try{MKW.setPointerCapture(e.pointerId)}catch{}const o=mkOpts(),p=mkAt(m,e),before=mkSnap(m);
-  if(MTOOL==='text'){const words=prompt('Type for the flat');if(!words||!words.trim())return;const x=m.cv.getContext('2d');x.save();x.fillStyle=o.color;x.globalAlpha=o.flow;x.font=`600 ${Math.max(12,o.size*.9)*mkK(m)}px 'Space Grotesk','Helvetica Neue',Arial,sans-serif`;x.textBaseline='middle';x.fillText(words.trim(),p[0],p[1]);x.restore();mkDone(m,before);return}
-  MDRAG={m,before,last:p,from:p,o,pid:e.pointerId,type:e.pointerType};if(MTOOL==='brush')mkBufStart(m,o);if(['brush','eraser','distress'].includes(MTOOL))mkStroke(m,p,p,o,e.pointerType==='pen'&&o.pressure?Math.min(Math.max(.15+.85*(e.pressure||.5),.15),1):1)});
+  if(MTOOL==='text'){typeOpen(m,p,before,o,e);return}
+  if(MTOOL==='fill'){mkFill(m,p,o,before,e);return}
+  if(MTOOL==='liquify'){MDRAG={m,before,last:p,o,pid:e.pointerId,type:e.pointerType,liq:true};return}
+  MDRAG={m,before,last:p,from:p,o,pid:e.pointerId,type:e.pointerType,pts:[p]};if(MTOOL==='brush')mkBufStart(m,o);if(['brush','eraser','distress'].includes(MTOOL))mkStrokeS(m,p,p,o,e.pointerType==='pen'&&o.pressure?Math.min(Math.max(.15+.85*(e.pressure||.5),.15),1):1)});
 MKW.addEventListener('pointermove',e=>{const g=MDRAG;if(!g||g.pid!==e.pointerId)return;e.stopPropagation();
   if(g.rub){const q=inch(e).map(v=>Math.round(v*32)/32),l=g.rub.pts.at(-1);if(Math.hypot(q[0]-l[0],q[1]-l[1])>=Math.max(.06,g.rub.w*.25)&&g.rub.pts.length<240){g.rub.pts.push(q);rubDraw()}return}
-  if(['brush','eraser','distress'].includes(MTOOL)){const ev=e.getCoalescedEvents?.()||[];for(const c of ev.length?ev:[e]){const p=mkAt(g.m,c);mkStroke(g.m,g.last,p,g.o,c.pointerType==='pen'&&g.o.pressure?Math.min(Math.max(.15+.85*(c.pressure||.5),.15),1):1);g.last=p}}
+  if(g.liq){const p=mkAt(g.m,e);if(Math.hypot(p[0]-g.last[0],p[1]-g.last[1])>=1.5){FBBrush.liquifyPush(g.m.cv.getContext('2d',{willReadFrequently:true}),g.last,p,g.o.size*.75*mkK(g.m));g.last=p;g.m.dirty=true}return}
+  if(['brush','eraser','distress'].includes(MTOOL)){if(g.shaped)return;const ev=e.getCoalescedEvents?.()||[];for(const c of ev.length?ev:[e]){let p=mkAt(g.m,c);
+      if(g.o.stream&&MTOOL==='brush'){const k=1-g.o.stream/100*.93;g.sx=(g.sx??g.last[0])+(p[0]-(g.sx??g.last[0]))*k;g.sy=(g.sy??g.last[1])+(p[1]-(g.sy??g.last[1]))*k;p=[g.sx,g.sy]} // Steady: the line trails the Pencil
+      g.pr=c.pointerType==='pen'&&g.o.pressure?Math.min(Math.max(.15+.85*(c.pressure||.5),.15),1):1;mkStrokeS(g.m,g.last,p,g.o,g.pr);g.last=p;g.pts.push(p)}
+    // QuickShape: the Pencil held still at the end of a stroke
+    if(MTOOL==='brush'&&g.o.qshape&&(!g.qa||Math.hypot(g.last[0]-g.qa[0],g.last[1]-g.qa[1])>4*mkK(g.m))){g.qa=g.last;clearTimeout(g.qt);g.qt=setTimeout(()=>{if(MDRAG===g&&!g.shaped)mkQuick(g)},550)}}
   else mkShape(g.m,g,mkAt(g.m,e))});
-const mkUp=e=>{const g=MDRAG;if(!g||(e.pointerId!==undefined&&g.pid!==e.pointerId))return;e.stopPropagation();MDRAG=null;if(g.rub){touch();paint();HOST()?.flatsChanged?.();return}mkBufEnd();mkDone(g.m,g.before)};
+const mkUp=e=>{const g=MDRAG;if(!g||(e.pointerId!==undefined&&g.pid!==e.pointerId))return;e.stopPropagation();MDRAG=null;clearTimeout(g.qt);if(g.rub){touch();paint();HOST()?.flatsChanged?.();return}mkBufEnd();mkDone(g.m,g.before)};
 ['pointerup','pointercancel'].forEach(t=>MKW.addEventListener(t,mkUp));MKW.addEventListener('lostpointercapture',e=>{if(MDRAG&&MDRAG.pid===e.pointerId)mkUp(e)});
 // iPad: a Pencil on the page can be taken as handwriting (Scribble) or a text selection before it reaches the drawing; holding its touches here stops that
 ['touchstart','touchmove'].forEach(t=>$('#canvas').addEventListener(t,e=>{if(MKW.classList.contains('on')&&[...e.changedTouches].some(x=>x.touchType==='stylus'))e.preventDefault()},{passive:false}));
@@ -754,7 +838,7 @@ async function redrawFromPicture(b){const n=$('#picNote'),label=b.textContent;b.
     // then the image model draws each view from the picture, on the sketch's frame and in the picture's colours (about a minute)
     b.textContent='Drawing front and back…';const dr=await api(`/v1/lab/concepts/${CID}/flats/draw`,{body:{...flatBody(),views:['front','back']}});for(const v of ['front','back'])if(dr.drawn[v])EHREF[dr.drawn[v]]=await blobUrl('/v1/lab/art/'+dr.drawn[v]);P.drawn=dr.drawn;n?.classList.add('hidden');b.disabled=false;b.textContent=label;touch();paint();$('#cSub').textContent=`${D.styles[P.style].label} · ${FITS[P.fit]} fit · drawn from the picture: check it, then save`}catch(x){b.disabled=false;b.textContent=label;if(P){touch();paint()}alert(x.message)}}
 // what the Design workspace calls: is anything unsaved, save, which side shows, the full panel or the drawing alone, the sheets and the tech pack
-if(EMBED)window.FBFlats={refresh:()=>refreshFlat(),outline:w=>mkOutline(w),outlineLevel:()=>{const m=MK[VIEW];return m?.ol&&m.ol.ver===m.ver?m.ol.level:0},addGraphic:(id,name)=>addGraphic(id,name),wash:()=>{if(!P)return;tab('garment');setTimeout(()=>{const el=$('#washSec');el?.scrollIntoView({block:'start',behavior:'smooth'});el?.classList.add('flash');setTimeout(()=>el?.classList.remove('flash'),1400);$('#wType')?.focus()},50)},clothChanged:()=>loadCloth().then(()=>{draw();if(TAB==='design')paintDesign()}),dirty:()=>Boolean(D&&P&&DIRTY),ready:()=>Boolean(D&&P),save:()=>(D&&P?save():Promise.resolve(true)),view:()=>VIEW,setView:v=>{if(P&&(v==='front'||v==='back'))setView(v)},
+if(EMBED)window.FBFlats={refresh:()=>refreshFlat(),replaceGraphic:(pl,id,name)=>replaceGraphic(pl,id,name),outline:w=>mkOutline(w),outlineLevel:()=>{const m=MK[VIEW];return m?.ol&&m.ol.ver===m.ver?m.ol.level:0},addGraphic:(id,name)=>addGraphic(id,name),wash:()=>{if(!P)return;tab('garment');setTimeout(()=>{const el=$('#washSec');el?.scrollIntoView({block:'start',behavior:'smooth'});el?.classList.add('flash');setTimeout(()=>el?.classList.remove('flash'),1400);$('#wType')?.focus()},50)},clothChanged:()=>loadCloth().then(()=>{draw();if(TAB==='design')paintDesign()}),dirty:()=>Boolean(D&&P&&DIRTY),ready:()=>Boolean(D&&P),save:()=>(D&&P?save():Promise.resolve(true)),view:()=>VIEW,setView:v=>{if(P&&(v==='front'||v==='back'))setView(v)},
   mode:m=>{document.documentElement.dataset.embed=m==='compact'?'compact':'full';if(P)draw()},sheet:()=>$('#sheet').click(),deco:()=>$('#decoSheet').click(),pack:()=>$('#toPack').click(),
   canPack:()=>!$('#toPack').classList.contains('hidden'),unsupported:()=>D?.unsupported||'',
   // the placements, in inches on the garment: the one record of where each graphic goes and how big it is
