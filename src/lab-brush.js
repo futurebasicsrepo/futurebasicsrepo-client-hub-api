@@ -12,7 +12,12 @@ export const TIPS = [
   { id: 'airbrush', label: 'Airbrush', hint: 'Soft, misty edges; build the colour up in passes' },
   { id: 'calligraphy', label: 'Calligraphy', hint: 'A flat nib at 45°: thick one way, thin the other' },
   { id: 'chalk', label: 'Chalk', hint: 'A rough, dry texture with gaps, like chalk or a dry brush' },
-  { id: 'spray', label: 'Spray', hint: 'A scatter of fine dots, like spray paint' }
+  { id: 'spray', label: 'Spray', hint: 'A scatter of fine dots, like spray paint' },
+  { id: 'stars', label: 'Stars', hint: 'Scatters stars along the line, turned and sized at random' },
+  { id: 'hearts', label: 'Hearts', hint: 'Scatters hearts along the line' },
+  { id: 'confetti', label: 'Confetti', hint: 'Scatters little strips and dots, like thrown confetti' },
+  { id: 'stitch', label: 'Running stitch', hint: 'Even dashes, like a running stitch or topstitching' },
+  { id: 'chain', label: 'Chain stitch', hint: 'Linked loops, like chain-stitch embroidery' }
 ];
 export const ERASER_TIPS = [
   { id: 'hard', label: 'Hard', hint: 'Rubs out cleanly to a sharp edge' },
@@ -34,6 +39,8 @@ function grain(ctx, color, coarse) {
   GRAIN.set(key, c); return ctx.createPattern(c, 'repeat');
 }
 
+// where an evenly spaced tip (a stitch) is along its stroke: kept per canvas, picked up when the next piece starts where the last one ended
+const RUN = new WeakMap();
 export function segment(ctx, o, a, b, q) {
   const tip = o.tool === 'eraser' ? (o.tip === 'soft' ? 'soft' : 'hard') : (TIPS.some(t => t.id === o.tip) ? o.tip : 'round');
   const pr = Math.min(Math.max(o.pr ?? 1, .05), 1), size = Math.max(.5, o.size || 1), flow = Math.min(Math.max(o.flow ?? 1, .02), 1);
@@ -63,6 +70,33 @@ export function segment(ctx, o, a, b, q) {
     ctx.fillStyle = color; ctx.globalAlpha = flow * .7;
     for (let i = 0; i < n; i++) { const t = Math.random(), px = a[0] + (b[0] - a[0]) * t, py = a[1] + (b[1] - a[1]) * t, ra = Math.sqrt(Math.random()) * r, th = Math.random() * Math.PI * 2, s = Math.max(.6, size * .03 + Math.random() * size * .03);
       ctx.fillRect(px + Math.cos(th) * ra, py + Math.sin(th) * ra, s, s); }
+  }
+  else if (tip === 'stitch' || tip === 'chain') {
+    // several strokes can run at once on one canvas (symmetry draws mirrored copies), so each is found by where its last piece ended
+    const key = ctx.canvas || ctx, runs = RUN.get(key) || [], d = Math.hypot(b[0] - a[0], b[1] - a[1]), gap = tip === 'stitch' ? size * 1.6 : size * 1.1, i0 = runs.findIndex(r => Math.hypot(r.x - a[0], r.y - a[1]) < .5);
+    let at = i0 >= 0 ? runs[i0].at : 0; const ang = Math.atan2(b[1] - a[1], b[0] - a[0]);
+    ctx.fillStyle = color; ctx.strokeStyle = color; ctx.globalAlpha = flow; ctx.lineCap = 'round';
+    for (let t = gap - at; t <= d; t += gap) { const x = a[0] + (b[0] - a[0]) * t / (d || 1), y = a[1] + (b[1] - a[1]) * t / (d || 1); ctx.save(); ctx.translate(x, y); ctx.rotate(ang); ctx.beginPath();
+      if (tip === 'stitch') { ctx.lineWidth = Math.max(.6, size * .28 * (.6 + .4 * pr)); ctx.moveTo(-size * .5, 0); ctx.lineTo(size * .5, 0); ctx.stroke(); }
+      else { ctx.lineWidth = Math.max(.6, size * .18 * (.6 + .4 * pr)); ctx.ellipse(0, 0, size * .62, size * .32, 0, 0, Math.PI * 2); ctx.stroke(); }
+      ctx.restore(); }
+    if (i0 >= 0) runs.splice(i0, 1); runs.push({ x: b[0], y: b[1], at: (at + d) % gap }); if (runs.length > 16) runs.shift(); RUN.set(key, runs);
+  }
+  else if (tip === 'stars' || tip === 'hearts' || tip === 'confetti') {
+    // stamps along the piece, about one per tip's width, each turned, sized and set off the line at random (seeded by where it falls, so a
+    // stroke drawn again over the same place does not shimmer)
+    const d = Math.hypot(b[0] - a[0], b[1] - a[1]), gap = size * (tip === 'confetti' ? .45 : .9), q = d / gap, z = (Math.abs(Math.sin(a[0] * 12.9898 + a[1] * 78.233)) * 43758.5453) % 1, n = Math.floor(q) + (z < q % 1 ? 1 : 0); // a short piece stamps by chance, in proportion to its length
+    ctx.fillStyle = color; ctx.globalAlpha = flow;
+    for (let i = 1; i <= n; i++) {
+      const t = n === 1 ? .5 : (i - .5) / n, x = a[0] + (b[0] - a[0]) * t, y = a[1] + (b[1] - a[1]) * t;
+      let seed = Math.floor(x * 73.1 + y * 37.7) >>> 0 || 1; const r = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+      const s = size * (.35 + r() * .45) * (.5 + .5 * pr), px = x + (r() - .5) * size * .9, py = y + (r() - .5) * size * .9;
+      ctx.save(); ctx.translate(px, py); ctx.rotate(r() * Math.PI * 2); ctx.beginPath();
+      if (tip === 'stars') for (let k = 0; k < 10; k++) { const rr = k % 2 ? s * .2 : s * .5, an = k * Math.PI / 5 - Math.PI / 2; k ? ctx.lineTo(Math.cos(an) * rr, Math.sin(an) * rr) : ctx.moveTo(Math.cos(an) * rr, Math.sin(an) * rr); }
+      else if (tip === 'hearts') { const h = s * .5; ctx.moveTo(0, h * .7); ctx.bezierCurveTo(-h * 1.3, -h * .1, -h * .5, -h * 1.1, 0, -h * .35); ctx.bezierCurveTo(h * .5, -h * 1.1, h * 1.3, -h * .1, 0, h * .7); }
+      else if (r() < .5) ctx.rect(-s * .4, -s * .1, s * .8, s * .2); else ctx.arc(0, 0, s * .16, 0, Math.PI * 2);
+      ctx.closePath(); ctx.fill(); ctx.restore();
+    }
   }
   ctx.restore();
 }

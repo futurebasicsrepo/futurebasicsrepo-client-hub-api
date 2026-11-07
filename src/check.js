@@ -144,6 +144,13 @@ async function across(first, runGoogle, runOpenai, cfg, what) {
 export async function openaiImage(prompt, cfg) {
   return across(cfg?.route?.gen || 'openai', () => geminiImage({ prompt, size: cfg.size, cfg: cfg.google }), () => withFallback(cfg, c => openaiImageOnce(prompt, c)), cfg, 'from words');
 }
+// one picture from words, from the one provider named and no other (the graphic generator runs both side by side and falls back itself)
+export async function imageFrom(provider, prompt, cfg) {
+  if (provider === 'google') { if (!canGoogle(cfg)) throw Object.assign(new Error('No Google AI key is set'), { status: 0 }); return geminiImage({ prompt, size: cfg.size, cfg: cfg.google }); }
+  if (!canOpenai(cfg)) throw Object.assign(new Error('No OpenAI key is set'), { status: 0 });
+  return withFallback(cfg, c => openaiImageOnce(prompt, c));
+}
+export const imageEngines = cfg => ({ openai: canOpenai(cfg) && cfg?.provider !== 'fixture', google: canGoogle(cfg) && cfg?.provider !== 'fixture' });
 async function openaiImageOnce(prompt, cfg) {
   const res = await trackedFetch('imagegen', 'https://api.openai.com/v1/images/generations', {
     method: 'POST', headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' },

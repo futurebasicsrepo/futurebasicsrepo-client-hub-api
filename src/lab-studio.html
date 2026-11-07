@@ -10,6 +10,7 @@
 <link rel="manifest" href="/lab.webmanifest"><link rel="apple-touch-icon" href="/icons/apple-touch-icon.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Design Lab"><meta name="apple-mobile-web-app-status-bar-style" content="black"><meta name="theme-color" content="#141416">
 <style>
 @import url('/fonts/fonts.css');
+@import url('/fonts/lab/fonts.css');
 :root{--ink:#141416;--paper:#fff;--fog:#f5f5f2;--dim:#727278;--line:rgba(20,20,22,.14);--cue:#4bff9a;--ok:#17603a;--bad:#a02a20;--stage:#e4e4e0}
 *{box-sizing:border-box}html{background:var(--fog)}
 body{margin:0;color:var(--ink);font:400 14px/1.45 'Space Grotesk',system-ui,sans-serif;background:var(--fog);height:100vh;height:100dvh;overflow:hidden}
@@ -85,9 +86,11 @@ html[data-focus] .bar{padding:4px 10px;min-height:44px;gap:6px}
 .rail button:hover{background:var(--fog)}.rail button[aria-pressed=true]{background:var(--ink);color:#fff}
 .rail button:focus-visible{outline:2px solid var(--ink);outline-offset:1px}
 .rail hr{width:26px;border:0;border-top:1px solid var(--line);margin:4px 0}
-.cur{width:30px;height:30px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px var(--line);margin-top:6px;cursor:pointer;padding:0}
+.cur{width:30px;height:30px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px var(--line);margin-top:6px;cursor:pointer;padding:0;position:relative;overflow:hidden;display:block}.cur input{position:absolute;inset:-6px;width:calc(100% + 12px);height:calc(100% + 12px);opacity:0;cursor:pointer;border:0;padding:0}
+.swr{display:inline-flex;gap:5px;align-items:center;flex:none}.swr button,.swr label{width:26px;height:26px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px var(--line);padding:0;cursor:pointer;flex:none;position:relative;overflow:hidden}.swr [aria-pressed=true]{box-shadow:0 0 0 2px var(--ink)}.swr label input{position:absolute;inset:-6px;width:40px;height:40px;opacity:0;border:0;padding:0;cursor:pointer}.swr label{background:conic-gradient(#e43,#fd3,#4c6,#3ae,#a4e,#e43)}
+@media (pointer:coarse){.swr button,.swr label{width:32px;height:32px}}
 .mid{display:grid;grid-template-rows:auto minmax(0,1fr);min-width:0;min-height:0}
-.opts{display:flex;align-items:center;gap:12px;padding:6px 12px;background:#fafaf8;border-bottom:1px solid var(--line);font-size:12px;min-height:40px;flex-wrap:wrap}
+.opts{display:flex;align-items:center;gap:12px;padding:6px 12px;background:#fafaf8;border-bottom:1px solid var(--line);font-size:12px;min-height:40px;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;overscroll-behavior-x:contain}.opts::-webkit-scrollbar{display:none}.opts>*{flex:none}.opts .hint{white-space:nowrap} /* one row that scrolls sideways: the canvas never moves when the tool changes */
 .opts label{display:inline-flex;align-items:center;gap:6px}.opts input[type=range]{width:110px}.opts .hint{color:var(--dim)}
 .stage{position:relative;overflow:hidden;background:var(--stage);background-image:linear-gradient(rgba(20,20,22,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(20,20,22,.05) 1px,transparent 1px);background-size:24px 24px;touch-action:none}
 .stage canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
@@ -194,6 +197,8 @@ html[data-pick] body>header{display:none}html[data-pick] .studio{height:100dvh}
     <button type="button" data-tool="hand" title="Move the view (H, or hold Space)" aria-label="Move the view"><svg viewBox="0 0 24 24"><path d="M8 13V5a1.5 1.5 0 013 0v6M11 11V4a1.5 1.5 0 013 0v7M14 11V6a1.5 1.5 0 013 0v8c0 4-3 7-7 7-3 0-5-2-6-4l-2-4a1.5 1.5 0 012.6-1.5L8 14"/></svg></button>
     <hr>
     <button type="button" data-tool="brush" title="Brush (B)" aria-label="Brush"><svg viewBox="0 0 24 24"><path d="M18 3l3 3-9 9-3-3zM9 12c-3 0-5 2-5 5 0 2-1 3-2 4 4 0 9-1 9-5"/></svg></button>
+    <button type="button" data-tool="fill" title="Fill (G): tap inside lines to fill there" aria-label="Fill"><svg viewBox="0 0 24 24"><path d="M5 11l7-7 7 7-7 7z"/><path d="M19 15c0 2 1.5 3 1.5 4.5a1.5 1.5 0 01-3 0C17.5 18 19 17 19 15z"/><path d="M3 21h10"/></svg></button>
+    <button type="button" class="pro-only" data-tool="liquify" title="Liquify: push the pixels, like a finger in wet paint" aria-label="Liquify"><svg viewBox="0 0 24 24"><path d="M4 14c3-6 6 2 9-3s4-5 7-3"/><path d="M4 19c3-4 6 1 9-2s4-3 7-2"/><path d="M14 5l3 3"/></svg></button>
     <button type="button" data-tool="eraser" title="Eraser (E)" aria-label="Eraser"><svg viewBox="0 0 24 24"><path d="M16 3l5 5-11 11H5l-3-3zM9 9l6 6M10 21h11"/></svg></button>
     <button type="button" class="pro-only" data-tool="distress" title="Distress brush (D): wears the selected layer away" aria-label="Distress brush"><svg viewBox="0 0 24 24"><circle cx="6" cy="7" r="1.2"/><circle cx="12" cy="5" r=".8"/><circle cx="17" cy="9" r="1.5"/><circle cx="9" cy="13" r=".9"/><circle cx="15" cy="15" r="1"/><circle cx="6" cy="18" r="1.4"/><circle cx="19" cy="19" r=".8"/><path d="M3 11l4 2 3-2 4 3 3-1 4 2"/></svg></button>
     <hr>
@@ -208,8 +213,7 @@ html[data-pick] body>header{display:none}html[data-pick] .studio{height:100dvh}
     <button type="button" class="pro-only" data-tool="pick" title="Pick a colour from the picture (I)" aria-label="Pick a colour"><svg viewBox="0 0 24 24"><path d="M14 4l6 6-2 2-6-6zM12 6l-8 8v4h4l8-8"/></svg></button>
     <hr>
     <button type="button" data-tool="area" title="Paint the area for the AI (M)" aria-label="Paint the area for the AI" class="mask-on"><svg viewBox="0 0 24 24"><path d="M4 4h4M12 4h4M20 4v4M20 12v4M20 20h-4M12 20H8M4 20v-4M4 12V8"/><path d="M9 15l2-6 4 4z"/></svg></button>
-    <button class="cur" id="curColor" type="button" title="Colour" aria-label="Choose the colour"></button>
-    <input type="color" id="curPicker" class="hidden" aria-hidden="true" tabindex="-1">
+    <label class="cur" id="curColor" title="Colour"><input type="color" id="curPicker" aria-label="Choose the colour"></label>
   </nav>
   <div class="rail-names hidden" id="railLabels" role="list" aria-label="What each tool does"></div>
   <div class="size-dock hidden" id="sizeDock" aria-label="Brush size and opacity"><span class="dk-dot" aria-hidden="true"></span><b class="dk-v">28px</b><div class="dk-pre"><button type="button" data-dpre="4" aria-label="Size 4"><i style="width:4px;height:4px"></i></button><button type="button" data-dpre="12" aria-label="Size 12"><i style="width:5px;height:5px"></i></button><button type="button" data-dpre="28" aria-label="Size 28"><i style="width:7px;height:7px"></i></button><button type="button" data-dpre="60" aria-label="Size 60"><i style="width:11px;height:11px"></i></button><button type="button" data-dpre="120" aria-label="Size 120"><i style="width:18px;height:18px"></i></button></div><label class="dk-s"><span>Size</span><input type="range" data-dk="size" min="1" max="400" step="1" aria-label="Size"></label><label class="dk-s"><span>Opacity</span><input type="range" data-dk="flow" min=".05" max="1" step=".05" aria-label="Opacity"></label><b class="dk-o">100%</b></div>
@@ -225,7 +229,8 @@ html[data-pick] body>header{display:none}html[data-pick] .studio{height:100dvh}
     <div class="pathost" id="patHost"><iframe id="patFrame" title="The pattern pieces"></iframe></div>
   </div>
   <aside class="side">
-    <div class="tabs" role="tablist"><button type="button" role="tab" data-tab="layers" aria-selected="true">Layers</button><button type="button" role="tab" data-tab="add" aria-selected="false">Add</button><button type="button" role="tab" data-tab="ai" aria-selected="false">AI</button></div>
+    <div class="tabs" role="tablist"><button type="button" role="tab" data-tab="make" aria-selected="false" id="tabMake" class="hidden">Make</button><button type="button" role="tab" data-tab="layers" aria-selected="true">Layers</button><button type="button" role="tab" data-tab="add" aria-selected="false">Add</button><button type="button" role="tab" data-tab="ai" aria-selected="false">AI</button></div>
+    <div class="pane hidden" id="pMake" role="tabpanel"></div>
     <div class="pane" id="pLayers" role="tabpanel"></div>
     <div class="pane hidden" id="pAdd" role="tabpanel"></div>
     <div class="pane hidden" id="pAi" role="tabpanel"></div>
@@ -286,6 +291,7 @@ html[data-pick] body>header{display:none}html[data-pick] .studio{height:100dvh}
 <script src="/lab/finish.js"></script>
 <script src="/presence.js"></script>
 <script src="/lab/nav.js"></script>
+<script src="/lab/lab-fonts.js"></script>
 <script>try{if(!localStorage.getItem('fb.admin.token')&&localStorage.getItem('fb.client.token'))document.documentElement.dataset.labClient='1'}catch{}</script>
 <script src="/console-nav.js" defer></script>
 <script>
@@ -314,7 +320,9 @@ let PARTS=null,PKIND='pockets';
 
 // ---------- what a layer is ----------
 // the built-in faces, and the fonts uploaded to the Lab (loaded from the server, so type sets the same on every machine)
-const FONTS={grotesk:['Space Grotesk',"'Space Grotesk',system-ui,sans-serif"],mono:['IBM Plex Mono',"'IBM Plex Mono',monospace"],serif:['Serif',"Georgia,'Times New Roman',serif"],slab:['Slab',"Rockwell,'Roboto Slab','Courier New',serif"],condensed:['Condensed',"Impact,Haettenschweiler,'Arial Narrow Bold',sans-serif"],script:['Script',"'Brush Script MT','Segoe Script',cursive"],typewriter:['Typewriter',"'Courier New',Courier,monospace"]};
+const FONTS={grotesk:['Space Grotesk',"'Space Grotesk',system-ui,sans-serif"],mono:['IBM Plex Mono',"'IBM Plex Mono',monospace"],serif:['Serif',"Georgia,'Times New Roman',serif"],slab:['Slab',"Rockwell,'Roboto Slab','Courier New',serif"],condensed:['Condensed',"Impact,Haettenschweiler,'Anton','Arial Narrow Bold',sans-serif"],script:['Script',"'Brush Script MT','Segoe Script','Dancing Script',cursive"],typewriter:['Typewriter',"'Courier New',Courier,'Special Elite',monospace"],
+  // the open-source library (src/lab-fonts.js): every one free to use on anything we make, hosted here so it sets the same everywhere
+  ...Object.fromEntries((window.FBFONTS||[]).map(f=>['g_'+f.id,[f.family,f.stack,f.category]]))};
 const BLENDS=[['source-over','Normal'],['multiply','Multiply (sits in the fabric)'],['screen','Screen'],['overlay','Overlay'],['soft-light','Soft light'],['hard-light','Hard light'],['darken','Darken'],['lighten','Lighten'],['color-burn','Colour burn'],['color-dodge','Colour dodge'],['difference','Difference'],['hue','Hue'],['saturation','Saturation'],['color','Colour'],['luminosity','Luminosity']];
 const KIND={base:'Picture',image:'Picture layer',paint:'Painting',text:'Type',shape:'Shape'};
 const fresh=(kind,o={})=>({id:uid(),kind,name:o.name||KIND[kind],visible:true,locked:kind==='base',opacity:1,blend:'source-over',x:0,y:0,scale:1,rot:0,flip:false,
@@ -322,7 +330,9 @@ const fresh=(kind,o={})=>({id:uid(),kind,name:o.name||KIND[kind],visible:true,lo
 
 // ---------- state ----------
 let D=null,W=1024,H=1024,LAYERS=[],SEL=null,TOOL='select',CUR='#141416',DIRTY=false,SAVED_AT=null;
-const OPT={size:28,esize:40,flow:1,soft:0,dsize:60,area:60,pressure:true,tip:'round',etip:'hard'};
+const OPT={size:28,esize:40,flow:1,soft:0,dsize:60,area:60,pressure:true,tip:'round',etip:'hard',stream:0,qshape:true,lock:false,ftol:40,sym:'off'};
+try{Object.assign(OPT,JSON.parse(localStorage.getItem('fb.studio.aids')||'{}'))}catch{}
+const keepAids=()=>{try{localStorage.setItem('fb.studio.aids',JSON.stringify({stream:OPT.stream,qshape:OPT.qshape,lock:OPT.lock,ftol:OPT.ftol,sym:OPT.sym}))}catch{}};
 const docC=canvas(1,1),docX=docC.getContext('2d');
 let mask=canvas(1,1),maskX=mask.getContext('2d'),MASKED=false;
 const view=$('#view'),vx=view.getContext('2d',{desynchronized:true})||view.getContext('2d');let Z=1,PX=0,PY=0,DPR=1; // desynchronized: the browser may show each frame without waiting for the page (lower Pencil latency where it is supported)
@@ -362,30 +372,55 @@ const texture=(...a)=>window.FBFinish.texture(...a); // the same worn textures a
 async function loadFonts(){let changed=false;for(const f of (D.fonts||[])){const key='f_'+f.id;if(FONTS[key])continue;
     try{const buf=await (await blobOf(`/v1/lab/fonts/${f.id}/file`)).arrayBuffer();const face=new FontFace(f.family,buf);await face.load();document.fonts.add(face);FONTS[key]=[f.name,`'${f.family}',sans-serif`,f.id];changed=true}catch(x){toast(`The font "${f.name}" could not be loaded.`)}}
   if(changed){for(const l of LAYERS)if(l.kind==='text'){l._pk=null;l._pc=null}draw()}}
-const fontOpts=v=>`<optgroup label="Built in">${Object.entries(FONTS).filter(([k])=>!k.startsWith('f_')).map(([k,f])=>`<option value="${k}" ${k===v?'selected':''}>${esc(f[0])}</option>`).join('')}</optgroup>${Object.keys(FONTS).some(k=>k.startsWith('f_'))?`<optgroup label="Our fonts">${Object.entries(FONTS).filter(([k])=>k.startsWith('f_')).map(([k,f])=>`<option value="${k}" ${k===v?'selected':''}>${esc(f[0])}</option>`).join('')}</optgroup>`:''}`;
+const fontOpts=v=>`<optgroup label="Built in">${Object.entries(FONTS).filter(([k])=>!k.startsWith('f_')&&!k.startsWith('g_')).map(([k,f])=>`<option value="${k}" ${k===v?'selected':''}>${esc(f[0])}</option>`).join('')}</optgroup>${[...new Set(Object.entries(FONTS).filter(([k])=>k.startsWith('g_')).map(([,f])=>f[2]))].map(cat=>`<optgroup label="${esc(cat)}">${Object.entries(FONTS).filter(([k,f])=>k.startsWith('g_')&&f[2]===cat).map(([k,f])=>`<option value="${k}" ${k===v?'selected':''}>${esc(f[0])}</option>`).join('')}</optgroup>`).join('')}${Object.keys(FONTS).some(k=>k.startsWith('f_'))?`<optgroup label="Our fonts">${Object.entries(FONTS).filter(([k])=>k.startsWith('f_')).map(([k,f])=>`<option value="${k}" ${k===v?'selected':''}>${esc(f[0])}</option>`).join('')}</optgroup>`:''}`;
 async function addFont(file){if(!file)return;if(file.size>8e6){toast(file.name+' is over 8 MB.');return}busy('Adding the font…');
   try{const r=await api('/v1/lab/fonts',{body:{name:file.name.replace(/\.[a-z0-9]+$/i,''),file:await urlOfBlob(file)}});D.fonts=[...(D.fonts||[]),r.font];await loadFonts();const l=selected();if(l&&l.kind==='text'&&!l.locked){l.font='f_'+r.font.id;l._pk=null;commit()}paintLayers();draw();toast(`"${r.font.name}" is in the Lab's fonts now, for every machine.`)}
   catch(x){toast(x.message)}finally{busy()}}
 $('#fontIn').addEventListener('change',e=>{addFont(e.target.files[0]);e.target.value=''});
+// the words as the case setting shows them: as typed, ALL CAPS, lower case or Title Case (the words themselves are kept as typed)
+const caseOf=(t,c)=>c==='upper'?t.toUpperCase():c==='lower'?t.toLowerCase():c==='title'?t.toLowerCase().replace(/(^|[\s\-\/])(\p{L})/gu,(m,a,b)=>a+b.toUpperCase()):t;
+// a type layer with an effect beyond one outline: drawn as a picture in an SVG export, not as editable type
+const textFx=l=>Boolean((l.stretch&&l.stretch!==100)||l.outline2||(l.shadow&&l.shadowKind&&l.shadowKind!=='none')||(l.env&&l.env!=='none'&&l.envK));
+// a shape the words are set in, letter by letter (as Illustrator's envelope warps): t is where the letter is along its line (0 to 1), a the amount (−1 to 1)
+const ENVS=[['none','Straight'],['bridge','Bridge'],['bulge','Bulge'],['pinch','Pinch'],['flag','Flag'],['wave','Wave'],['rise','Rise'],['grow','Grow']];
+function envAt(kind,t,a,size,lw){const S=Math.sin(Math.PI*t);switch(kind){case'bridge':return{dy:0,sy:1+a*S,rot:0,base:true};case'bulge':return{dy:0,sy:1+a*S,rot:0};case'pinch':return{dy:0,sy:Math.max(.2,1-a*S*.7),rot:0};
+  case'flag':{const A=a*size*.28;return{dy:A*Math.sin(2*Math.PI*t),sy:1,rot:Math.atan(A*2*Math.PI*Math.cos(2*Math.PI*t)/Math.max(1,lw))}}case'wave':{const A=a*size*.22;return{dy:A*Math.sin(4*Math.PI*t),sy:1,rot:Math.atan(A*4*Math.PI*Math.cos(4*Math.PI*t)/Math.max(1,lw))}}
+  case'rise':{const A=a*size*.9;return{dy:-A*(t-.5),sy:1,rot:Math.atan(-A/Math.max(1,lw))}}case'grow':return{dy:0,sy:Math.max(.2,1+a*(t-.5)*1.4),rot:0,base:true};default:return{dy:0,sy:1,rot:0}}}
 function textMetrics(l){
   const x=docX,font=`${l.italic?'italic ':''}${l.bold?'700':'400'} ${l.size}px ${FONTS[l.font]?.[1]||FONTS.grotesk[1]}`;x.save();x.font=font;
-  const lines=String(l.text||' ').split('\n'),lw=lines.map(t=>[...t].reduce((s,ch)=>s+x.measureText(ch).width,0)+Math.max(0,[...t].length-1)*l.track);x.restore();return{font,lines,lw}}
+  if(document.fonts&&!document.fonts.check(font))document.fonts.load(font).then(()=>{if(document.fonts.check(font)){l._pk=null;l._pc=null;draw()}}).catch(()=>{});
+  const lines=caseOf(String(l.text||' '),l.case).split('\n'),lw=lines.map(t=>[...t].reduce((s,ch)=>s+x.measureText(ch).width,0)+Math.max(0,[...t].length-1)*l.track);x.restore();return{font,lines,lw}}
 function contentOf(l){
   if(isRaster(l))return l.raster;
-  if(l.kind==='text'){
-    const{font,lines,lw}=textMetrics(l),pad=Math.ceil(l.size*.35+(l.outline||0)*2+4),lh=l.size*l.lead;
+  if(l.kind==='text')return textEffects(l,textCore(l));
+  return contentOther(l)}
+function textCore(l){{
+    const{font,lines,lw}=textMetrics(l),o1=l.outline||0,o2=l.outline2||0,pad=Math.ceil(l.size*.35+(o1+o2)*2+4),lh=l.size*l.lead;
+    const ink=(x,g,px,py)=>{x.lineJoin='round';if(o2){x.strokeStyle=l.outline2Color||'#141416';x.lineWidth=(o1+o2)*2;x.strokeText(g,px,py)}if(o1){x.strokeStyle=l.outlineColor;x.lineWidth=o1*2;x.strokeText(g,px,py)}x.fillText(g,px,py)};
     if(l.arc&&lines.length===1){
       // one line bent on a circle: up for an arch (college, rock tee), down for a smile; each letter stands square to the curve
       const L=Math.max(1,lw[0]),th=Math.abs(l.arc)/100*Math.PI,R=L/th,up=l.arc>0;docX.save();docX.font=font;
       let s=0;const gl=[...lines[0]].map(g=>{const gw=docX.measureText(g).width,phi=-th/2+(s+gw/2)/R;s+=gw+l.track;return{g,x:R*Math.sin(phi),y:up?R*(1-Math.cos(phi)):-R*(1-Math.cos(phi)),r:up?phi:-phi}});docX.restore();
       const xs=gl.map(q=>q.x),ys=gl.map(q=>q.y),ext=l.size*.75+pad,x0=Math.min(...xs)-ext,x1=Math.max(...xs)+ext,y0=Math.min(...ys)-ext,y1=Math.max(...ys)+ext;
-      const c=canvas(x1-x0,y1-y0),x=c.getContext('2d');x.font=font;x.textBaseline='middle';x.textAlign='center';x.lineJoin='round';x.fillStyle=l.color;x.strokeStyle=l.outlineColor;x.lineWidth=(l.outline||0)*2;
-      for(const q of gl){x.save();x.translate(q.x-x0,q.y-y0);x.rotate(q.r);if(l.outline)x.strokeText(q.g,0,0);x.fillText(q.g,0,0);x.restore()}
+      const c=canvas(x1-x0,y1-y0),x=c.getContext('2d');x.font=font;x.textBaseline='middle';x.textAlign='center';x.fillStyle=l.color;
+      for(const q of gl){x.save();x.translate(q.x-x0,q.y-y0);x.rotate(q.r);ink(x,q.g,0,0);x.restore()}
       return c}
-    const w=Math.max(...lw,1)+pad*2,h=lines.length*lh+pad*2,c=canvas(w,h),x=c.getContext('2d');
-    x.font=font;x.textBaseline='middle';x.lineJoin='round';x.fillStyle=l.color;x.strokeStyle=l.outlineColor;x.lineWidth=(l.outline||0)*2;
-    lines.forEach((t,i)=>{let px=l.align==='left'?pad:l.align==='right'?w-pad-lw[i]:(w-lw[i])/2;const py=pad+lh*i+lh/2;for(const g of[...t]){if(l.outline)x.strokeText(g,px,py);x.fillText(g,px,py);px+=x.measureText(g).width+l.track}});
-    return c}
+    const ek=l.env&&l.env!=='none'?clamp((l.envK||0)/100,-1,1):0,ex=ek?Math.ceil(l.size*Math.abs(ek)*(l.env==='rise'?.6:1.1)):0;
+    const w=Math.max(...lw,1)+pad*2,h=lines.length*lh+pad*2+ex*2,c=canvas(w,h),x=c.getContext('2d');
+    x.font=font;x.textBaseline='middle';x.fillStyle=l.color;
+    lines.forEach((t,i)=>{const x0=l.align==='left'?pad:l.align==='right'?w-pad-lw[i]:(w-lw[i])/2;let px=x0;const py=ex+pad+lh*i+lh/2;
+      for(const g of[...t]){const gw=x.measureText(g).width;if(!ek){ink(x,g,px,py)}else{const e=envAt(l.env,(px+gw/2-x0)/Math.max(1,lw[i]),ek,l.size,lw[i]),bl=l.size*.36;x.save();x.translate(px+gw/2,py+e.dy);x.rotate(e.rot);if(e.base){x.translate(0,bl);x.scale(1,e.sy);x.translate(0,-bl)}else x.scale(1,e.sy);ink(x,g,-gw/2,0);x.restore()}px+=gw+l.track}});
+    return c}}
+// stretch (narrower or wider letters), then a shadow that prints: a solid copy offset (drop) or a solid block behind (extrude), in one ink
+function textEffects(l,c){
+  if(!c||!c.width)return c;const st=(l.stretch||100)/100;
+  if(Math.abs(st-1)>.001){const s=canvas(Math.max(1,c.width*st),c.height);s.getContext('2d').drawImage(c,0,0,s.width,s.height);c=s}
+  const d=l.shadowKind&&l.shadowKind!=='none'?Math.max(0,l.shadow||0):0;if(!d)return c;
+  const a=((l.shadowAngle??135)-90)*Math.PI/180,dx=Math.cos(a)*d,dy=Math.sin(a)*d,sh=canvas(c.width,c.height),sx=sh.getContext('2d');sx.drawImage(c,0,0);sx.globalCompositeOperation='source-in';sx.fillStyle=l.shadowColor||'#141416';sx.fillRect(0,0,sh.width,sh.height);
+  const o=canvas(c.width+Math.abs(dx)+2,c.height+Math.abs(dy)+2),ox=o.getContext('2d'),bx=dx<0?-dx:0,by=dy<0?-dy:0;
+  if(l.shadowKind==='extrude'){const n=Math.ceil(d);for(let i=n;i>=1;i--)ox.drawImage(sh,bx+dx*i/n,by+dy*i/n)}else ox.drawImage(sh,bx+dx,by+dy);
+  ox.drawImage(c,bx,by);return o}
+function contentOther(l){
   if(l.kind==='shape'&&window.ILL){const c=ILL.content(l);if(c)return c}
   if(l.kind==='shape'&&l.shape==='path'&&window.VEC)return VEC.content(l);
   if(l.kind==='shape'){
@@ -398,7 +433,7 @@ function contentOf(l){
   return canvas(1,1);
 }
 const unitOf=l=>{const u=(W/1000)/(fixed(l)?1:l.scale);return Math.pow(1.15,Math.round(Math.log(u)/Math.log(1.15)))}; // stitches and dots keep a real size: one step per 15% of scale
-const sig=l=>JSON.stringify([l.finish,l.finish?unitOf(l):0,l.kind,l.raster?l.raster._rid:0,l.text,l.font,l.size,l.bold,l.italic,l.track,l.lead,l.align,l.arc,l.color,l.outline,l.outlineColor,l.shape,l.w,l.h,l.radius,l.fill,l.fillColor,l.stroke,l.strokeW,l.strokeColor,l.pv,l.adjust,l.tint,l.distress,l.warp,l.ill&&{f:l.ill.fill,w:l.ill.widths,t:l.ill.text}]);
+const sig=l=>JSON.stringify([l.finish,l.finish?unitOf(l):0,l.kind,l.raster?l.raster._rid:0,l.text,l.font,l.size,l.bold,l.italic,l.track,l.lead,l.align,l.arc,l.color,l.outline,l.outlineColor,l.case,l.stretch,l.outline2,l.outline2Color,l.shadow,l.shadowKind,l.shadowAngle,l.shadowColor,l.env,l.envK,l.shape,l.w,l.h,l.radius,l.fill,l.fillColor,l.stroke,l.strokeW,l.strokeColor,l.pv,l.adjust,l.tint,l.distress,l.warp,l.ill&&{f:l.ill.fill,w:l.ill.widths,t:l.ill.text}]);
 const plainLook=l=>l.adjust.hue===0&&l.adjust.sat===100&&l.adjust.bright===100&&l.adjust.contrast===100;
 // the layer with its colour adjustments, its recolouring and its distressing: cached until any of them change
 function processed(l){
@@ -442,7 +477,7 @@ let VIEWONLY=0;const viewOnly=()=>Boolean((GEST&&!GEST.layer)||(DRAG&&DRAG.mode=
 function render(){
   if(!viewOnly()||!render.done){compose();render.done=true}const r=view.getBoundingClientRect();DPR=window.devicePixelRatio||1;const cw=Math.round(r.width*DPR),ch=Math.round(r.height*DPR);if(view.width!==cw||view.height!==ch){view.width=cw;view.height=ch}
   const vo=viewOnly()||DRAG?.mode==='stroke'; // while the view is being moved or pinched: no soft shadow and quick smoothing (both are slow on an iPad, every frame)
-  vx.setTransform(DPR,0,0,DPR,0,0);vx.clearRect(0,0,r.width,r.height);if(VR){vx.translate(r.width/2,r.height/2);vx.rotate(VR*Math.PI/180);vx.translate(-r.width/2,-r.height/2)}vx.save();if(!vo){vx.shadowColor='rgba(20,20,22,.18)';vx.shadowBlur=24}else{vx.fillStyle='rgba(20,20,22,.08)';vx.fillRect(PX+2,PY+3,W*Z,H*Z)}vx.fillStyle='#fff';vx.fillRect(PX,PY,W*Z,H*Z);vx.restore();
+  vx.setTransform(DPR,0,0,DPR,0,0);vx.clearRect(0,0,r.width,r.height);if(VR){vx.translate(r.width/2,r.height/2);vx.rotate(VR*Math.PI/180);vx.translate(-r.width/2,-r.height/2)}vx.save();if(!vo){vx.shadowColor='rgba(20,20,22,.18)';vx.shadowBlur=24}else{vx.fillStyle='rgba(20,20,22,.08)';vx.fillRect(PX+2,PY+3,W*Z,H*Z)}vx.fillStyle=window.PAGEBG||'#fff';vx.fillRect(PX,PY,W*Z,H*Z);vx.restore();
   vx.imageSmoothingQuality=vo?'low':'high';vx.drawImage(docC,PX,PY,W*Z,H*Z);if(vo){clearTimeout(render.sharp);render.sharp=setTimeout(()=>{if(!viewOnly()&&DRAG?.mode!=='stroke')draw()},120)}
   // where the browser can say where the Pencil is going next (predicted points), the ink is drawn ahead to there for this frame only
   if(DRAG?.mode==='stroke'&&DRAG.pred?.length&&TOOL==='brush'){vx.save();vx.strokeStyle=CUR;vx.globalAlpha=OPT.flow;vx.lineCap='round';vx.lineJoin='round';vx.lineWidth=Math.max(.5,OPT.size*(DRAG.pr||1))*Z;vx.beginPath();vx.moveTo(sx(DRAG.x),sy(DRAG.y));for(const[a,b]of DRAG.pred)vx.lineTo(sx(a),sy(b));vx.stroke();vx.restore()}
@@ -451,6 +486,9 @@ function render(){
   if(l&&l.visible&&!fixed(l)&&TOOL==='select'&&!window.PRO?.multi()){const p=corners(l).map(([a,b])=>[sx(a),sy(b)]);vx.strokeStyle='#141416';vx.lineWidth=1;vx.setLineDash([5,4]);vx.beginPath();p.forEach(([a,b],i)=>i?vx.lineTo(a,b):vx.moveTo(a,b));vx.closePath();vx.stroke();vx.setLineDash([]);
     if(!l.locked){const tm=[(p[0][0]+p[1][0])/2,(p[0][1]+p[1][1])/2],rk=rotKnob(l);vx.beginPath();vx.moveTo(tm[0],tm[1]);vx.lineTo(rk[0],rk[1]);vx.stroke();
       for(const[a,b]of p){vx.fillStyle='#fff';vx.fillRect(a-5,b-5,10,10);vx.strokeRect(a-5,b-5,10,10)}vx.beginPath();vx.arc(rk[0],rk[1],6,0,Math.PI*2);vx.fillStyle='#4bff9a';vx.fill();vx.stroke()}}
+  if(OPT.sym&&OPT.sym!=='off'&&['brush','eraser'].includes(TOOL)){const maps=symMaps(),cx=W/2,cy=H/2,R=Math.hypot(W,H);vx.save();vx.strokeStyle='rgba(42,109,244,.55)';vx.setLineDash([6,5]);vx.lineWidth=1;vx.beginPath();
+    if(OPT.sym==='v'||OPT.sym==='quad'){vx.moveTo(sx(cx),sy(0));vx.lineTo(sx(cx),sy(H))}if(OPT.sym==='h'||OPT.sym==='quad'){vx.moveTo(sx(0),sy(cy));vx.lineTo(sx(W),sy(cy))}
+    if(/^r/.test(OPT.sym))for(const f of maps){const q=f([cx,cy-R]);vx.moveTo(sx(cx),sy(cy));vx.lineTo(sx(q[0]),sy(q[1]))}vx.stroke();vx.restore()}
   if(HOVER&&['brush','eraser','distress','area'].includes(TOOL)){const rad=(TOOL==='distress'?OPT.dsize:TOOL==='area'?OPT.area:TOOL==='eraser'?OPT.esize:OPT.size)/2*Z;vx.strokeStyle='rgba(20,20,22,.8)';vx.lineWidth=1;vx.beginPath();vx.arc(HOVER[0],HOVER[1],Math.max(rad,2),0,Math.PI*2);vx.stroke();vx.strokeStyle='rgba(255,255,255,.8)';vx.beginPath();vx.arc(HOVER[0],HOVER[1],Math.max(rad,2)+1,0,Math.PI*2);vx.stroke()}
   window.PRO?.overlay(vx);window.VEC?.overlay(vx);window.ILL?.overlay(vx);overlay();$('#zLabel').textContent=Math.round(Z*100)+'%'+(VR?` · ${Math.round(VR)}°`:'');
 }
@@ -478,15 +516,58 @@ function strokeTarget(tool){
   if(l.locked){toast('That layer is locked. Unlock it in the layer list.');return null}
   return l;
 }
+// symmetry: each piece of a stroke drawn again in the mirror (left-right, top-bottom, four ways) or turned round the middle (6 or 8 ways)
+const SYMS=[['off','Off'],['v','Mirror'],['h','Top–bottom'],['quad','Four ways'],['r6','Radial 6'],['r8','Radial 8']];
+function symMaps(){const cx=W/2,cy=H/2,m=OPT.sym;if(!m||m==='off'||!['brush','eraser'].includes(TOOL))return[p=>p];
+  const fx=p=>[2*cx-p[0],p[1]],fy=p=>[p[0],2*cy-p[1]];if(m==='v')return[p=>p,fx];if(m==='h')return[p=>p,fy];if(m==='quad')return[p=>p,fx,fy,p=>fy(fx(p))];
+  const n=m==='r6'?6:8;return Array.from({length:n},(_,i)=>{const a=i*2*Math.PI/n,c=Math.cos(a),s=Math.sin(a);return p=>[cx+(p[0]-cx)*c-(p[1]-cy)*s,cy+(p[0]-cx)*s+(p[1]-cy)*c]})}
+function dabS(l,x0,y0,x1,y1,tool,pr=1,qx,qy){for(const f of symMaps()){const a=f([x0,y0]),b=f([x1,y1]),q=qx!==undefined?f([qx,qy]):null;dab(l,a[0],a[1],b[0],b[1],tool,pr,q?q[0]:undefined,q?q[1]:undefined)}}
 function dab(l,x0,y0,x1,y1,tool,pr=1,qx,qy){ // pr: how hard the Pencil presses (1 for a mouse or a finger); qx,qy: a control point, for a curve
   const c=l.raster,x=c.getContext('2d'),[a0,b0]=toLocal(l,x0,y0),[a1,b1]=toLocal(l,x1,y1),qq=qx!==undefined?toLocal(l,qx,qy):null,sz=Math.max(.5,(tool==='distress'?OPT.dsize:OPT.size)*pr)/l.scale;
-  if(window.FBBrush&&(tool==='brush'||tool==='eraser')){FBBrush.segment(STK?.buf&&STK.l===l&&tool==='brush'?STK.buf.getContext('2d'):x,{tool,solid:Boolean(STK?.buf&&STK.l===l&&tool==='brush'),tip:tool==='brush'?OPT.tip:OPT.etip,color:CUR,size:Math.max(.5,tool==='eraser'?OPT.esize:OPT.size)/l.scale,flow:OPT.flow,soft:OPT.soft,pr},[a0,b0],[a1,b1],qq);c._rid=RID++;return}
+  if(window.FBBrush&&(tool==='brush'||tool==='eraser')){const lk=OPT.lock&&tool==='brush',buf=!lk&&STK?.buf&&STK.l===l&&tool==='brush';if(lk){x.save();x.globalCompositeOperation='source-atop'}FBBrush.segment(buf?STK.buf.getContext('2d'):x,{tool,solid:Boolean(buf),tip:tool==='brush'?OPT.tip:OPT.etip,color:CUR,size:Math.max(.5,tool==='eraser'?OPT.esize:OPT.size)/l.scale,flow:OPT.flow,soft:OPT.soft,pr},[a0,b0],[a1,b1],qq);if(lk)x.restore();c._rid=RID++;return}
   x.save();x.lineCap='round';x.lineJoin='round';x.lineWidth=sz;
   if(tool==='brush'){x.globalAlpha=OPT.flow;x.strokeStyle=CUR;if(OPT.soft){x.shadowColor=CUR;x.shadowBlur=sz*OPT.soft}}
   else{x.globalCompositeOperation='destination-out';x.globalAlpha=OPT.flow;x.strokeStyle='#000'}
   if(tool==='distress'){const t=texture('worn',256,256,40,l.id.length*7919);x.strokeStyle=x.createPattern(t,'repeat');x.globalAlpha=Math.min(1,OPT.flow*1.4)}
   x.beginPath();x.moveTo(a0,b0);if(qq)x.quadraticCurveTo(qq[0],qq[1],a1+.01,b1);else x.lineTo(a1+.01,b1);x.stroke();x.restore();c._rid=RID++;
 }
+// QuickShape: the stroke so far read as a shape, and drawn again as that shape with the same brush
+function quickShape(g){const pts=g.pts;if(!pts||pts.length<6)return;const xs=pts.map(p=>p[0]),ys=pts.map(p=>p[1]),S=Math.max(Math.max(...xs)-Math.min(...xs),Math.max(...ys)-Math.min(...ys));if(S*Z<24)return;
+  const a=pts[0],b=pts[pts.length-1],L=Math.hypot(b[0]-a[0],b[1]-a[1]),dev=p=>Math.abs((b[0]-a[0])*(a[1]-p[1])-(a[0]-p[0])*(b[1]-a[1]))/(L||1);
+  let shape=null,name='';
+  if(L>S*.6&&Math.max(...pts.map(dev))<Math.max(4,L*.07)){shape=[a,b];name='a straight line'}
+  else if(Math.hypot(b[0]-a[0],b[1]-a[1])<S*.3&&window.VEC){
+    const v=VEC.simplify([...pts,pts[0]],S*.1).slice(0,-1),corner=v.length;
+    if(corner>=3&&corner<=5){shape=[...v,v[0]];name=corner===3?'a triangle':corner===4?'a four-sided shape':'a five-sided shape'}
+    else{ // an oval, along the stroke's own axis (its principal direction)
+      const mx=xs.reduce((s,v)=>s+v,0)/xs.length,my=ys.reduce((s,v)=>s+v,0)/ys.length;let sxx=0,syy=0,sxy=0;for(const[x,y]of pts){sxx+=(x-mx)**2;syy+=(y-my)**2;sxy+=(x-mx)*(y-my)}
+      const th=.5*Math.atan2(2*sxy,sxx-syy),c=Math.cos(th),s=Math.sin(th);let ra=0,rb=0;for(const[x,y]of pts){const u=(x-mx)*c+(y-my)*s,w=-(x-mx)*s+(y-my)*c;ra=Math.max(ra,Math.abs(u));rb=Math.max(rb,Math.abs(w))}
+      ra*=.96;rb*=.96;if(Math.abs(ra-rb)<Math.max(ra,rb)*.12){ra=rb=(ra+rb)/2;name='a circle'}else name='an oval';
+      shape=Array.from({length:97},(_,i)=>{const t=i/96*Math.PI*2,u=ra*Math.cos(t),w=rb*Math.sin(t);return[mx+u*c-w*s,my+u*s+w*c]})}}
+  if(!shape)return;
+  g.l.raster=cloneCanvas(g.orig);if(STK?.buf&&STK.l===g.l)STK.buf.getContext('2d').clearRect(0,0,STK.buf.width,STK.buf.height);
+  for(let i=1;i<shape.length;i++)dabS(g.l,shape[i-1][0],shape[i-1][1],shape[i][0],shape[i][1],TOOL,g.pr||1);
+  g.shaped=true;draw();toast(`QuickShape: ${name}. Undo takes it back to your line.`)}
+// Fill: tap inside lines to fill there, on a painting under the chosen layer (the lines stay on top); the outline comes from everything visible
+function fillAt(x,y){compose();const w=docC.width,h=docC.height,X=Math.floor(x),Y=Math.floor(y);if(X<0||Y<0||X>=w||Y>=h)return;
+  const src=docX.getImageData(0,0,w,h).data,k0=(Y*w+X)*4,r0=src[k0],g0=src[k0+1],b0=src[k0+2],a0=src[k0+3],tol=(OPT.ftol||40)*2,seen=new Uint8Array(w*h),st=[Y*w+X];
+  const same=k=>{const j=k*4;return Math.abs(src[j]-r0)+Math.abs(src[j+1]-g0)+Math.abs(src[j+2]-b0)+Math.abs(src[j+3]-a0)*1.5<=tol};let n=0;
+  while(st.length){const k=st.pop();if(seen[k])continue;if(!same(k))continue;seen[k]=1;n++;const px=k%w;if(px>0&&!seen[k-1])st.push(k-1);if(px<w-1&&!seen[k+1])st.push(k+1);if(k>=w&&!seen[k-w])st.push(k-w);if(k<w*h-w&&!seen[k+w])st.push(k+w)}
+  if(n<4){toast('Nothing to fill there.');return}if(n>w*h*.97&&!GMODE){toast('That would fill the whole picture: tap inside a closed shape.');return}
+  // grown by two pixels, so the fill tucks under the soft edge of the lines round it
+  let m=seen;for(let pass=0;pass<2;pass++){const o=new Uint8Array(m);for(let k=0;k<w*h;k++)if(m[k]){const px=k%w;if(px>0)o[k-1]=1;if(px<w-1)o[k+1]=1;if(k>=w)o[k-w]=1;if(k<w*h-w)o[k+w]=1}m=o}
+  const [cr,cg,cb]=[1,3,5].map(i=>parseInt((/^#[0-9a-f]{6}$/i.test(CUR)?CUR:'#141416').slice(i,i+2),16)),img=new ImageData(w,h);for(let k=0;k<w*h;k++)if(m[k]){img.data[k*4]=cr;img.data[k*4+1]=cg;img.data[k*4+2]=cb;img.data[k*4+3]=255}
+  const f=canvas(w,h);f.getContext('2d').putImageData(img,0,0);
+  let l=selected();const onPaint=l&&l.kind==='paint'&&l.raster.width===W&&l.raster.height===H;
+  if(!onPaint){const at=l?LAYERS.indexOf(l):LAYERS.length;l=fresh('paint',{name:'Fill',x:W/2,y:H/2,raster:stamp(canvas(W,H))});LAYERS.splice(Math.max(1,at),0,l)}
+  const x2=l.raster.getContext('2d');x2.save();x2.globalCompositeOperation=onPaint?'destination-over':'source-over';x2.drawImage(f,0,0);x2.restore();l.raster._rid=RID++;SEL=l.id;commit();paintPanels();draw()}
+// one push: the pixels within the brush's reach move with the Pencil, most at the middle, none at the edge
+function liquifyPush(l,x0,y0,x1,y1){const c=l.raster,ctx=c.getContext('2d',{willReadFrequently:true}),[a0,b0]=toLocal(l,x0,y0),[a1,b1]=toLocal(l,x1,y1),R=Math.max(4,OPT.size*1.5/l.scale),dx=a1-a0,dy=b1-b0;
+  const X0=Math.max(0,Math.floor(Math.min(a0,a1)-R)),Y0=Math.max(0,Math.floor(Math.min(b0,b1)-R)),X1=Math.min(c.width,Math.ceil(Math.max(a0,a1)+R)),Y1=Math.min(c.height,Math.ceil(Math.max(b0,b1)+R)),w=X1-X0,h=Y1-Y0;if(w<=0||h<=0)return;
+  const src=ctx.getImageData(X0,Y0,w,h),out=ctx.createImageData(w,h),S=src.data,O=out.data;
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++){const px=x+X0,py=y+Y0,r2=((px-a1)**2+(py-b1)**2)/(R*R),k=(y*w+x)*4;let fx=x,fy=y;if(r2<1){const t=(1-r2)**2;fx=x-dx*t;fy=y-dy*t}
+    const ix=Math.floor(fx),iy=Math.floor(fy),u=fx-ix,v=fy-iy;for(let ch=0;ch<4;ch++){const at=(xx,yy)=>{xx=Math.min(w-1,Math.max(0,xx));yy=Math.min(h-1,Math.max(0,yy));return S[(yy*w+xx)*4+ch]};O[k+ch]=(at(ix,iy)*(1-u)+at(ix+1,iy)*u)*(1-v)+(at(ix,iy+1)*(1-u)+at(ix+1,iy+1)*u)*v}}
+  ctx.putImageData(out,X0,Y0);c._rid=RID++}
 function maskDab(x0,y0,x1,y1,erase){maskX.save();maskX.lineCap='round';maskX.lineWidth=OPT.area;maskX.strokeStyle='#e03b2e';if(erase)maskX.globalCompositeOperation='destination-out';maskX.beginPath();maskX.moveTo(x0,y0);maskX.lineTo(x1+.01,y1);maskX.stroke();maskX.restore();MASKED=true;mask._rid=RID++;paintAiState()}
 // ---------- iPad and the Pencil ----------
 // The Pencil draws (with its pressure, every sample it reports); once a Pencil has been used, fingers never draw: one finger moves the view,
@@ -527,8 +608,10 @@ view.addEventListener('pointerdown',e=>{
   if(TOOL==='hand'||SPACE||e.button===1){DRAG={mode:'pan',px,py,PX,PY,pid:e.pointerId,type:e.pointerType};return}
   if(TOOL==='pick'){compose();const d=docX.getImageData(clamp(Math.floor(x),0,W-1),clamp(Math.floor(y),0,H-1),1,1).data;setColor('#'+[d[0],d[1],d[2]].map(v=>v.toString(16).padStart(2,'0')).join(''));return}
   if(TOOL==='area'){maskDab(x,y,x,y,e.altKey);DRAG={mode:'area',x,y,erase:e.altKey,pid:e.pointerId,type:e.pointerType};draw();return}
-  if(['brush','eraser','distress'].includes(TOOL)){const l=strokeTarget(TOOL);if(!l)return;const orig=l.raster;l.raster=cloneCanvas(l.raster);SEL=l.id;DRAG={mode:'stroke',l,x,y,mx:x,my:y,orig,pid:e.pointerId,type:e.pointerType};strokeStart(l);dab(l,x,y,x,y,TOOL,pressOf(e));draw();return}
-  if(TOOL==='text'){const l=addLayer(fresh('text',{name:'Type',x,y,text:'FUTURE BASICS',font:'grotesk',size:Math.round(W/14),bold:true,italic:false,track:Math.round(W/200),lead:1.1,align:'center',arc:0,color:CUR,outline:0,outlineColor:'#ffffff'}));setTool('select');tab('layers');setTimeout(()=>{const t=$('#pLayers textarea[data-p=text]');if(t){t.focus();t.select()}},30);return}
+  if(TOOL==='fill'){fillAt(x,y);return}
+  if(TOOL==='liquify'){const l=strokeTarget('eraser');if(!l)return;const orig=l.raster;l.raster=cloneCanvas(l.raster);SEL=l.id;DRAG={mode:'liquify',l,x,y,orig,pid:e.pointerId,type:e.pointerType};draw();return}
+  if(['brush','eraser','distress'].includes(TOOL)){const l=strokeTarget(TOOL);if(!l)return;const orig=l.raster;l.raster=cloneCanvas(l.raster);SEL=l.id;DRAG={mode:'stroke',l,x,y,mx:x,my:y,orig,pid:e.pointerId,type:e.pointerType,pts:[[x,y]]};strokeStart(l);dabS(l,x,y,x,y,TOOL,pressOf(e));draw();return}
+  if(TOOL==='text'){const l=addLayer(fresh('text',{name:'Type',x,y,text:'FUTURE BASICS',font:'grotesk',size:Math.round(W/14),bold:true,italic:false,track:Math.round(W/200),lead:1.1,align:'center',arc:0,color:CUR,outline:0,outlineColor:'#ffffff',case:'',stretch:100,outline2:0,outline2Color:'#141416',shadowKind:'none',shadow:0,shadowAngle:135,shadowColor:'#141416'}));setTool('select');tab('layers');setTimeout(()=>{const t=$('#pLayers textarea[data-p=text]');if(t){t.focus();t.select()}},30);return}
   if(['rect','ellipse','line'].includes(TOOL)){DRAG={mode:'shape',x0:x,y0:y,l:null,pid:e.pointerId,type:e.pointerType};return}
   if(TOOL==='ruler'){RULER=null;DRAG={mode:'ruler',x0:x,y0:y,x1:x,y1:y,pid:e.pointerId,type:e.pointerType};draw();return}
   if(TOOL==='warp'){DRAG=warpDown(x,y,px,py);if(DRAG){DRAG.pid=e.pointerId;DRAG.type=e.pointerType}draw();return}
@@ -552,10 +635,13 @@ view.addEventListener('pointermove',e=>{
   // the Pencil reports more samples than the screen draws: take all of them, so a quick curve stays a curve
   // each sample joins the last by a curve through their midpoints (a smooth line, not a chain of straight bits, when the samples are far
   // apart at speed); the panel's numbers wait for the end of the stroke
-  if(g.mode==='stroke'){const ev=e.getCoalescedEvents?.()||[];for(const c of ev.length?ev:[e]){const[cx,cy]=pt(c),ux=dx(cx),uy=dy(cy);if(Math.hypot(ux-g.x,uy-g.y)*Z<.6)continue;const mx=(g.x+ux)/2,my=(g.y+uy)/2;g.pr=pressOf(c);dab(g.l,g.mx,g.my,mx,my,TOOL,g.pr,g.x,g.y);g.mx=mx;g.my=my;g.x=ux;g.y=uy}
-    g.pred=(e.getPredictedEvents?.()||[]).slice(-3).map(q=>{const[a,b]=pt(q);return[dx(a),dy(b)]});draw();return}
+  if(g.mode==='stroke'){if(g.shaped)return;const ev=e.getCoalescedEvents?.()||[];for(const c of ev.length?ev:[e]){const[cx,cy]=pt(c);let ux=dx(cx),uy=dy(cy);if(OPT.stream&&TOOL==='brush'){const k=1-OPT.stream/100*.93;g.sx=(g.sx??g.x)+(ux-(g.sx??g.x))*k;g.sy=(g.sy??g.y)+(uy-(g.sy??g.y))*k;ux=g.sx;uy=g.sy}if(Math.hypot(ux-g.x,uy-g.y)*Z<.6)continue;if(g.pts)g.pts.push([ux,uy]);const mx=(g.x+ux)/2,my=(g.y+uy)/2;g.pr=pressOf(c);dabS(g.l,g.mx,g.my,mx,my,TOOL,g.pr,g.x,g.y);g.mx=mx;g.my=my;g.x=ux;g.y=uy}
+    g.pred=OPT.stream?[]:(e.getPredictedEvents?.()||[]).slice(-3).map(q=>{const[a,b]=pt(q);return[dx(a),dy(b)]});
+    if(g.pts&&OPT.qshape&&TOOL==='brush'&&(!g.qa||Math.hypot(g.x-g.qa[0],g.y-g.qa[1])*Z>4)){g.qa=[g.x,g.y];clearTimeout(g.qt);g.qt=setTimeout(()=>{if(DRAG===g&&!g.shaped)quickShape(g)},550)}
+    draw();return}
   if(g.mode==='pan'){FITTED=false;PX=g.PX+px-g.px;PY=g.PY+py-g.py}
   else if(g.mode==='area'){maskDab(g.x,g.y,x,y,g.erase);g.x=x;g.y=y}
+  else if(g.mode==='liquify'){if(Math.hypot(x-g.x,y-g.y)*Z>=1.5){liquifyPush(g.l,g.x,g.y,x,y);g.x=x;g.y=y;g.moved=true}}
   else if(g.mode==='stroke'){dab(g.l,g.x,g.y,x,y,TOOL);g.x=x;g.y=y}
   else if(g.mode==='move'){if(window.PRO)PRO.snap1(g,x,y,e);else{g.l.x=Math.round(x-g.ox);g.l.y=Math.round(y-g.oy);g.moved=true}}
   else if(g.mode==='scale'){g.l.scale=clamp(g.s0*Math.hypot(x-g.l.x,y-g.l.y)/g.d0,.02,40);g.moved=true}
@@ -568,7 +654,7 @@ view.addEventListener('pointermove',e=>{
     else{let w=Math.abs(x-g.x0),h=Math.abs(y-g.y0);if(e.shiftKey)w=h=Math.max(w,h);l.w=Math.max(4,Math.round(w));l.h=Math.max(4,Math.round(h));l.x=g.x0+(x<g.x0?-w:w)/2;l.y=g.y0+(y<g.y0?-h:h)/2}}
   draw();if(g.mode!=='pan'&&g.mode!=='area')paintFields();
 });
-const endDrag=e=>{if(e&&e.pointerId!==undefined){PTRS.delete(e.pointerId);if(GEST){if(PTRS.size<2){const g=GEST.layer;GEST=null;if(g?.moved){commit();paintPanels()}}return}if(DRAG&&DRAG.pid!==undefined&&DRAG.pid!==e.pointerId)return}const g=DRAG;DRAG=null;if(!g)return;if(g.mode==='stroke'){if(g.mx!==undefined&&(g.mx!==g.x||g.my!==g.y))dab(g.l,g.mx,g.my,g.x,g.y,TOOL,g.pr||1);strokeEnd();paintFields()}if(window.ILL?.end(g)||window.PRO?.end(g)||window.VEC?.end(g))return;if(g.mode==='ruler'){rulerDone(g);draw();return}if(g.mode==='stroke'||g.mode==='area'||(g.mode==='shape'&&g.l)||g.moved){if(g.mode!=='area')commit();if(g.mode==='shape')setTool('select');paintPanels()}draw()};
+const endDrag=e=>{if(e&&e.pointerId!==undefined){PTRS.delete(e.pointerId);if(GEST){if(PTRS.size<2){const g=GEST.layer;GEST=null;if(g?.moved){commit();paintPanels()}}return}if(DRAG&&DRAG.pid!==undefined&&DRAG.pid!==e.pointerId)return}const g=DRAG;DRAG=null;if(!g)return;if(g.mode==='stroke'){clearTimeout(g.qt);if(!g.shaped&&g.mx!==undefined&&(g.mx!==g.x||g.my!==g.y))dabS(g.l,g.mx,g.my,g.x,g.y,TOOL,g.pr||1);strokeEnd();paintFields()}if(window.ILL?.end(g)||window.PRO?.end(g)||window.VEC?.end(g))return;if(g.mode==='ruler'){rulerDone(g);draw();return}if(g.mode==='stroke'||g.mode==='area'||g.mode==='liquify'||(g.mode==='shape'&&g.l)||g.moved){if(g.mode!=='area')commit();if(g.mode==='shape')setTool('select');paintPanels()}draw()};
 view.addEventListener('pointerup',endDrag);view.addEventListener('pointercancel',endDrag);view.addEventListener('lostpointercapture',e=>{if(DRAG&&DRAG.pid===e.pointerId)endDrag(e)});view.addEventListener('pointerleave',e=>{if(e.pointerType==='mouse'||e.pointerType==='pen'&&!DRAG){HOVER=null;draw()}});
 // iPad: a Pencil on the page can be taken as handwriting (Scribble) or the start of a text selection, and then never reaches the canvas as a
 // stroke; holding the Pencil's touches on the stage keeps them ours (fingers are left alone: they move and pinch through the pointer events)
@@ -587,14 +673,22 @@ $('#zIn').onclick=()=>{const r=view.getBoundingClientRect();zoomAt(1.25,r.width/
 function setTool(t){TOOL=t;setTimeout(()=>window.paintDock?.(),0);setTimeout(()=>window.paintRailNames?.(),0);if(VMODE==='front'||VMODE==='back')FF()?.tool?.(t);$$('.rail [data-tool]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.tool===t)));view.style.cursor=t==='hand'?'grab':t==='select'?'default':t==='text'?'text':'crosshair';paintOpts();draw()}
 const pressHtml=()=>`<label class="chk" title="With an Apple Pencil, pressing harder makes the line wider"><input type="checkbox" data-press ${OPT.pressure?'checked':''}> Pencil pressure</label>`;
 $('#opts').addEventListener('change',e=>{if(e.target.matches('[data-press]'))OPT.pressure=e.target.checked});
+// Steady: the line trails the Pencil a little, so a shaky hand draws smooth (Procreate's StreamLine). QuickShape: hold the Pencil still at the
+// end of a stroke and a rough line, circle, oval, triangle or box becomes a clean one. Lock: paint only where the layer is already painted.
+function aidsHtml(){const tg=(k,t,tip)=>`<button class="btn sm ${OPT[k]?'':'q'}" type="button" data-otog="${k}" aria-pressed="${Boolean(OPT[k])}" title="${tip}">${t}</button>`;
+  return `<label title="Draw mirrored or round the middle">Symmetry<select data-osym>${SYMS.map(([v,t])=>`<option value="${v}" ${OPT.sym===v?'selected':''}>${t}</option>`).join('')}</select></label><label title="Smooths the line as you draw">Steady<input type="range" data-o="stream" min="0" max="90" step="5" value="${OPT.stream}"><output>${OPT.stream}%</output></label>${tg('qshape','QuickShape','Hold the Pencil still at the end of a stroke to snap it to a clean shape')}${tg('lock','Lock','Paint only where this layer is already painted (lock transparency)')}`}
+document.addEventListener('click',e=>{const b=e.target.closest('[data-otog]');if(!b)return;const k=b.dataset.otog;OPT[k]=!OPT[k];keepAids();paintOpts();if(k==='lock')toast(OPT.lock?'Lock is on: the brush paints only over what is already on the layer.':'Lock is off.')});
+document.addEventListener('change',e=>{if(e.target.dataset?.o==='stream'||e.target.dataset?.o==='ftol')keepAids();if(e.target.matches?.('[data-osym]')){OPT.sym=e.target.value;keepAids();draw()}});
 function paintOpts(){
   const o=$('#opts'),rg=(k,lab,min,max,step=1,unit='px')=>`<label>${lab}<input type="range" data-o="${k}" min="${min}" max="${max}" step="${step}" value="${OPT[k]}"><output>${OPT[k]}${unit}</output></label>`;
   const help={pen:'Click for a sharp point, drag for a curve. Click the first point to close the shape; Enter or Esc leaves it open. Shift keeps to 45°. Backspace takes the last point back.',node:'Drag a point or a handle. Alt-click a point to make it sharp or smooth, click the line to add a point, Delete takes the chosen point away. Alt while dragging a handle breaks it from its pair.',select:'Click a layer to choose it. Drag to move, a corner to resize, the green knob to turn (Shift: 15° steps). Arrows nudge.',hand:'Drag to move around. Ctrl and the wheel, or a pinch, zooms.',text:'Click where the type should go.',rect:'Drag to draw. Shift makes a square.',ellipse:'Drag to draw. Shift makes a circle.',line:'Drag to draw a line.',pick:'Click the picture to take its colour.',ruler:'Drag across something whose size you know, then say how long it is. Shift keeps the line straight.',warp:'Choose a layer, then drag its points to bend it to the piece. Presets are in the layer settings.'};
   // the production tools (src/lab-studio-ill.js) say what they do too
   Object.assign(help,{artboard:'Drag to make an artboard: a face of the box, a label, a hang tag. Drag one to move it; sizes, bleed and Lay out a box are in Document.',shapebuilder:'Drag across shapes to join the pieces you cross into one. Alt-click a piece to take it away. Choose two or more shapes first.',width:'Drag a point on a stroke to make it thicker or thinner there, for a line that tapers. Alt-click a point to put it back.',measure:'Drag from one point to another: the distance and angle show in mm or inches (Document sets which).',typepath:'Click a path to set type along it. Its words, size and where it starts are in the panel on the right.'});
   const tipsHtml=(list,key)=>`<span class="tips" role="radiogroup" aria-label="Tip">${list.map(t=>`<button type="button" role="radio" data-tip="${key}:${t.id}" aria-checked="${OPT[key]===t.id}" title="${esc(t.hint)}">${esc(t.label)}</button>`).join('')}</span>`,B=window.FBBrush;
-  if(TOOL==='brush')o.innerHTML=(B?tipsHtml(B.TIPS,'tip'):'')+rg('size','Size',1,400)+rg('flow','Opacity',.05,1,.05,'')+rg('soft','Softness',0,1,.05,'')+pressHtml()+'<span class="hint">Paints on the selected painting layer, or starts a new one. With the Pencil, fingers move and pinch the view.</span>';
-  else if(TOOL==='eraser')o.innerHTML=(B?tipsHtml(B.ERASER_TIPS,'etip'):'')+rg('esize','Size',1,600)+rg('flow','Strength',.05,1,.05,'')+pressHtml()+'<span class="hint">Rubs out the selected layer.</span>';
+  if(TOOL==='brush')o.innerHTML=swatchesHtml()+(B?tipsHtml(B.TIPS,'tip'):'')+rg('size','Size',1,400)+rg('flow','Opacity',.05,1,.05,'')+rg('soft','Softness',0,1,.05,'')+pressHtml()+aidsHtml()+(window.OUTL?OUTL.bar():'');
+  else if(TOOL==='liquify')o.innerHTML=rg('size','Size',4,400)+'<span class="hint">Drag on a picture or painting layer to push it.</span>';
+  else if(TOOL==='fill')o.innerHTML=swatchesHtml()+rg('ftol','Gap',5,120,1,'')+'<span class="hint">Tap inside lines. A bigger gap fills across softer edges.</span>';
+  else if(TOOL==='eraser')o.innerHTML=(B?tipsHtml(B.ERASER_TIPS,'etip'):'')+rg('esize','Size',1,600)+rg('flow','Strength',.05,1,.05,'')+pressHtml()+`<label>Symmetry<select data-osym>${SYMS.map(([v,t])=>`<option value="${v}" ${OPT.sym===v?'selected':''}>${t}</option>`).join('')}</select></label>`+'<span class="hint">Rubs out the selected layer.</span>';
   else if(TOOL==='distress')o.innerHTML=rg('dsize','Size',4,600)+rg('flow','Strength',.05,1,.05,'')+'<span class="hint">Wears the selected layer away, like an old print. For an even wear across the layer, use Distress in its settings.</span>';
   else if(TOOL==='area')o.innerHTML=rg('area','Size',4,600)+'<span class="hint">Paint over what the AI should change. Hold Alt to rub out.</span><button class="btn sm" type="button" data-clearmask>Clear the area</button>';
   else o.innerHTML=`<span class="hint">${help[TOOL]||''}</span>`;
@@ -603,7 +697,7 @@ function paintOpts(){
     o.querySelector('[data-clearmask]')?.remove();const h=o.querySelector('.hint');if(h&&fh)h.textContent=fh;else if(fh)o.insertAdjacentHTML('beforeend',`<span class="hint">${fh}</span>`)}
   window.PRO?.opts(o);
 }
-$('#opts').addEventListener('input',e=>{const k=e.target.dataset.o;if(!k)return;OPT[k]=Number(e.target.value);e.target.nextElementSibling.textContent=OPT[k]+(['flow','soft'].includes(k)?'':'px');paintDock();draw()});
+$('#opts').addEventListener('input',e=>{const k=e.target.dataset.o;if(!k)return;OPT[k]=Number(e.target.value);e.target.nextElementSibling.textContent=OPT[k]+(['flow','soft','ftol'].includes(k)?'':k==='stream'?'%':'px');paintDock();draw()});
 $('#opts').addEventListener('click',e=>{const b=e.target.closest('[data-tip]');if(!b)return;const[k,v]=b.dataset.tip.split(':');OPT[k]=v;paintOpts();toast(b.title)});
 // ---- the size dock: a big size slider beside the canvas while a brush, the eraser or distress is chosen (a Pencil reaches it without
 // leaving the drawing), with quick sizes and the opacity; it follows the tool's own size (the eraser keeps its own)
@@ -616,8 +710,14 @@ document.addEventListener('input',e=>{const k=e.target.dataset?.dk;if(!k)return;
 document.addEventListener('click',e=>{const b=e.target.closest('[data-dpre]');if(!b)return;OPT[sizeKey()]=Number(b.dataset.dpre);paintDock();paintOpts();draw()});
 $('#opts').addEventListener('click',e=>{if(e.target.closest('[data-clearmask]'))clearMask()});
 $$('.rail [data-tool]').forEach(b=>b.onclick=()=>setTool(b.dataset.tool));
-function setColor(c){CUR=c;$('#curColor').style.background=c;$('#curPicker').value=c}
-$('#curColor').onclick=()=>$('#curPicker').click();$('#curPicker').addEventListener('input',e=>setColor(e.target.value));
+function setColor(c){CUR=c;$('#curColor').style.background=c;$('#curPicker').value=c;$$('.swr [data-sw]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.sw===c)))}
+$('#curPicker').addEventListener('input',e=>setColor(e.target.value));$('#curPicker').addEventListener('change',e=>{recentColor(e.target.value);paintOpts()});
+// the colours on the brush's bar: the last ones used, then black, white and the brand's; the rainbow one opens the full picker
+const RECENT_KEY='fb.studio.colors';function recentColor(c){try{const r=[c,...JSON.parse(localStorage.getItem(RECENT_KEY)||'[]').filter(x=>x!==c)].slice(0,6);localStorage.setItem(RECENT_KEY,JSON.stringify(r))}catch{}}
+function swatchesHtml(){let r=[];try{r=JSON.parse(localStorage.getItem(RECENT_KEY)||'[]')}catch{}const base=['#141416','#ffffff',...((D&&D.palette)||[]).map(x=>x.hex)],list=[...new Set([...r,...base].map(x=>String(x).toLowerCase()).filter(x=>/^#[0-9a-f]{6}$/.test(x)))].slice(0,10);
+  return `<span class="swr" role="group" aria-label="Colour">${list.map(c=>`<button type="button" data-sw="${c}" style="background:${c}" aria-label="Colour ${c}" aria-pressed="${c===String(CUR).toLowerCase()}"></button>`).join('')}<label title="Any colour"><input type="color" data-swpick value="${esc(CUR)}" aria-label="Any colour"></label></span>`}
+document.addEventListener('click',e=>{const b=e.target.closest('.swr [data-sw]');if(!b)return;setColor(b.dataset.sw);recentColor(b.dataset.sw)});
+document.addEventListener('input',e=>{if(e.target.matches?.('[data-swpick]'))setColor(e.target.value)});document.addEventListener('change',e=>{if(e.target.matches?.('[data-swpick]')){recentColor(e.target.value);paintOpts()}});
 function clearMask(){maskX.clearRect(0,0,W,H);MASKED=false;paintAiState();draw()}
 
 // ---------- layers ----------
@@ -634,11 +734,11 @@ const thumbOf=l=>{try{const c=processed(l),t=canvas(80,80),x=t.getContext('2d'),
 const EYE='<svg viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>',SHUT='<svg viewBox="0 0 24 24"><path d="M3 3l18 18M10.6 5.1A10 10 0 0112 5c6 0 10 7 10 7a17 17 0 01-3 3.7M6.6 6.6C3.8 8.4 2 12 2 12s4 7 10 7a9.5 9.5 0 004.4-1"/></svg>',LOCK='<svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/></svg>',OPEN='<svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 017.5-2"/></svg>';
 
 let TAB='layers';
-function tab(t){TAB=t;$$('.tabs [data-tab]').forEach(b=>b.setAttribute('aria-selected',String(b.dataset.tab===t)));$('#pLayers').classList.toggle('hidden',t!=='layers');$('#pAdd').classList.toggle('hidden',t!=='add');$('#pAi').classList.toggle('hidden',t!=='ai');if(t==='ai'){paintAi()}draw()}
+function tab(t){TAB=t;$$('.tabs [data-tab]').forEach(b=>b.setAttribute('aria-selected',String(b.dataset.tab===t)));$('#pLayers').classList.toggle('hidden',t!=='layers');$('#pAdd').classList.toggle('hidden',t!=='add');$('#pAi').classList.toggle('hidden',t!=='ai');$('#pMake').classList.toggle('hidden',t!=='make');if(t==='ai'){paintAi()}if(t==='make')window.GEN?.paint();draw()}
 $$('.tabs [data-tab]').forEach(b=>b.onclick=()=>tab(b.dataset.tab));
 
 const rng2=(p,lab,min,max,step,v,unit='')=>`<label class="f"><span>${lab}</span><input type="range" data-p="${p}" min="${min}" max="${max}" step="${step}" value="${v}"><output>${v}${unit}</output></label>`;
-function paintPanels(){paintLayers();window.PRO?.optsRefresh();if(TAB==='ai')paintAiState()}
+function paintPanels(){paintLayers();window.PRO?.optsRefresh();if(TAB==='ai')paintAiState();if(TAB==='make')window.GEN?.inks()}
 function paintLayers(){
   const p=$('#pLayers'),l=selected();
   const list=[...LAYERS].reverse().map(x=>`<div class="ly ${x.id===SEL?'on':''} ${x.visible?'':'off'}" data-ly="${x.id}" tabindex="0" role="button" aria-pressed="${x.id===SEL}"><button type="button" data-vis title="${x.visible?'Hide':'Show'}" aria-label="${x.visible?'Hide':'Show'} ${esc(x.name)}">${x.visible?EYE:SHUT}</button>${x.kind==='text'?`<span class="th">T</span>`:`<img alt="" src="${thumbOf(x)}">`}<span class="nm">${esc(x.name)}<small>${KIND[x.kind]}${x.blend!=='source-over'?' · '+esc(BLENDS.find(b=>b[0]===x.blend)?.[1].split(' (')[0]):''}${x.finish?' · '+esc(x.finish.name):x.distress.amount?' · distressed':''}</small></span><button type="button" data-lock title="${x.locked?'Unlock':'Lock'}" aria-label="${x.locked?'Unlock':'Lock'} ${esc(x.name)}">${x.locked?LOCK:OPEN}</button></div>`).join('');
@@ -649,11 +749,16 @@ function fieldsHtml(l){
   const a=l.adjust,t=l.tint,d=l.distress,col=(p,v)=>`<input type="color" data-p="${p}" value="${v}">`;
   let kind='';
   if(l.kind==='text')kind=`<div class="sec"><h4>Type</h4><textarea class="t" data-p="text" aria-label="The words" maxlength="400">${esc(l.text)}</textarea>
-    <label class="f w"><span>Font</span><span class="row" style="flex-wrap:nowrap"><select class="t" data-p="font" style="min-width:0">${fontOpts(l.font)}</select><button class="btn sm q" type="button" data-act="addfont" title="Upload a TTF, OTF, WOFF or WOFF2: it is kept in the Lab and sets the same on every machine">Add a font…</button></span></label>
+    <label class="f w"><span>Font</span><span class="row" style="flex-wrap:nowrap">${window.TYPE?TYPE.button(l):`<select class="t" data-p="font" style="min-width:0">${fontOpts(l.font)}</select>`}<button class="btn sm q" type="button" data-act="addfont" title="Upload a TTF, OTF, WOFF or WOFF2: it is kept in the Lab and sets the same on every machine">Add a font…</button></span></label>
     <div class="row"><button class="btn sm ${l.bold?'':'q'}" type="button" data-toggle="bold">Bold</button><button class="btn sm ${l.italic?'':'q'}" type="button" data-toggle="italic">Italic</button>${['left','center','right'].map(x=>`<button class="btn sm ${l.align===x?'':'q'}" type="button" data-align="${x}">${x==='center'?'Centre':x[0].toUpperCase()+x.slice(1)}</button>`).join('')}</div>
-    ${rng2('size','Size',8,600,1,l.size,'px')}${rng2('track','Spacing',-20,120,1,l.track)}${rng2('lead','Line height',.7,2.5,.05,l.lead)}${rng2('arc','Arch',-100,100,1,l.arc)}
+    <label class="f w"><span>Case</span><select class="t" data-p="case">${[['','As typed'],['upper','ALL CAPS'],['title','Title Case'],['lower','lower case']].map(([v,t])=>`<option value="${v}" ${(l.case||'')===v?'selected':''}>${t}</option>`).join('')}</select></label>
+    ${rng2('size','Size',8,600,1,l.size,'px')}${rng2('track','Spacing',-20,120,1,l.track)}${rng2('lead','Line height',.7,2.5,.05,l.lead)}${rng2('stretch','Stretch',50,200,1,l.stretch||100,'%')}${rng2('arc','Arch',-100,100,1,l.arc)}
+    <label class="f w"><span>Shape</span><select class="t" data-p="env">${ENVS.map(([v,t])=>`<option value="${v}" ${(l.env||'none')===v?'selected':''}>${t}</option>`).join('')}</select></label>${l.env&&l.env!=='none'?rng2('envK','Amount',-100,100,1,l.envK??40):''}
     <label class="f w"><span>Colour</span>${col('color',l.color)}</label>${rng2('outline','Outline',0,40,1,l.outline,'px')}<label class="f w"><span>Outline colour</span>${col('outlineColor',l.outlineColor)}</label>
-    <p class="note">Arch bends one line of type, for a college or rock-tee arc. Our fonts are kept in the Lab, so type sets the same on every machine; add one with its file.</p></div>`;
+    ${rng2('outline2','Second outline',0,40,1,l.outline2||0,'px')}<label class="f w"><span>Second colour</span>${col('outline2Color',l.outline2Color||'#141416')}</label>
+    <label class="f w"><span>Shadow</span><select class="t" data-p="shadowKind">${[['none','None'],['drop','Drop shadow'],['extrude','3D block']].map(([v,t])=>`<option value="${v}" ${(l.shadowKind||'none')===v?'selected':''}>${t}</option>`).join('')}</select></label>
+    ${l.shadowKind&&l.shadowKind!=='none'?`${rng2('shadow','Distance',0,120,1,l.shadow||0,'px')}${rng2('shadowAngle','Angle',0,359,1,l.shadowAngle??135,'°')}<label class="f w"><span>Shadow colour</span>${col('shadowColor',l.shadowColor||'#141416')}</label>`:''}
+    <p class="note">Every effect prints as solid ink: no blur or soft shadow.</p></div>`;
   if(l.kind==='shape'&&l.shape==='path'&&window.VEC)kind=VEC.fieldsHtml(l);
   else if(l.kind==='shape')kind=`<div class="sec"><h4>Shape</h4>${rng2('w','Width',4,Math.max(W,H)*2,1,l.w,'px')}${l.shape==='line'?'':rng2('h','Height',4,Math.max(W,H)*2,1,l.h,'px')}${l.shape==='rect'?rng2('radius','Corners',0,600,1,l.radius,'px'):''}
     ${l.shape==='line'?'':`<label class="f w"><span>Fill</span><span class="row"><input type="checkbox" data-p="fill" ${l.fill?'checked':''} aria-label="Fill">${col('fillColor',l.fillColor)}</span></label>`}
@@ -666,8 +771,9 @@ function fieldsHtml(l){
   <div class="sec"><h4>Colour</h4>${rng2('a.hue','Hue',-180,180,1,a.hue,'°')}${rng2('a.sat','Saturation',0,300,1,a.sat,'%')}${rng2('a.bright','Brightness',0,200,1,a.bright,'%')}${rng2('a.contrast','Contrast',0,200,1,a.contrast,'%')}
     <label class="f w"><span>Recolour</span>${col('t.color',t.color)}</label>${rng2('t.amount','Recolour amount',0,1,.01,t.amount)}
     <div class="row"><button class="btn sm q" type="button" data-act="lookreset">Reset the colour</button>${l.kind==='base'?'':'<button class="btn sm q" type="button" data-act="tonal" title="The colour of the fabric under it, a step lighter or darker, with Pantone codes">Tone on tone…</button>'}</div>${l.kind==='base'?'<p class="note">Hue turns the colour of the whole picture: on a grey studio background mostly the piece changes. For one part only, paint it in the AI tab and ask.</p>':''}</div>
-  <div class="sec"><h4>Distress</h4><label class="f w"><span>Kind</span><select class="t" data-p="d.style">${[['worn','Worn print: specks and grain'],['cracked','Cracked ink'],['faded','Faded, washed out']].map(([k,v])=>`<option value="${k}" ${k===d.style?'selected':''}>${v}</option>`).join('')}</select></label>
+  <div class="sec"><h4>Distress</h4><label class="f w"><span>Kind</span><select class="t" data-p="d.style">${[['worn','Worn print: specks and grain'],['cracked','Cracked ink'],['faded','Faded, washed out'],['spatter','Ink spatter'],['drag','Screen drag streaks'],['scratched','Scratched']].map(([k,v])=>`<option value="${k}" ${k===d.style?'selected':''}>${v}</option>`).join('')}</select></label>
     ${rng2('d.amount','Amount',0,1,.01,d.amount)}${rng2('d.size','Grain size',5,200,1,d.size)}<div class="row"><button class="btn sm q" type="button" data-act="seed">Another pattern</button></div></div>
+  ${window.OUTL?OUTL.fields(l):''}${window.FX?FX.fields(l):''}
   <div class="sec"><h4>Layer</h4><div class="row"><button class="btn sm q" type="button" data-act="up">Move up</button><button class="btn sm q" type="button" data-act="down">Move down</button><button class="btn sm q" type="button" data-act="dup">Duplicate</button>${l.kind==='base'?'':'<button class="btn sm q" type="button" data-act="keep" title="Keep this artwork in the graphics library, for other pieces">Save to the library</button>'}${l.kind==='text'||l.kind==='shape'?'<button class="btn sm q" type="button" data-act="raster" title="So it can be painted on and rubbed out">Turn into pixels</button>':''}${l.kind==='base'&&D.concept.hasPlain?'<button class="btn sm q" type="button" data-act="plain">Use the plain picture</button>':''}<button class="btn sm q" type="button" data-act="del">Delete</button></div></div>`;
 }
 const TECH_KINDS=[['embroidery','Embroidery'],['print','Print'],['heat_transfer','Heat transfer'],['patch','Patches and appliqué'],['other','Other ways'],['distress','Distressing and wash']];
@@ -717,10 +823,10 @@ async function makeReal(l){
 // the moving parts of the panel follow a drag without the whole panel being drawn again
 function paintFields(){const l=selected();if(!l)return;for(const[k,v]of[['scale',+l.scale.toFixed(2)],['rotd',Math.round(l.rot*180/Math.PI)],['w',l.w],['h',l.h]]){const i=$(`#pLayers [data-p="${k}"]`);if(i&&document.activeElement!==i){i.value=v;if(i.nextElementSibling)i.nextElementSibling.textContent=v+(k==='scale'?'×':k==='rotd'?'°':'px')}}paintSize()}
 function setProp(l,p,v){
-  if(p==='warpk')return;
+  if(p==='warpk')return;if(p==='env'&&v!=='none'&&!l.envK)l.envK=40;
   if(p.startsWith('fin.')){if(l.finish)l.finish[p.slice(4)]=Number(v);return}
   if(p.startsWith('a.'))l.adjust[p.slice(2)]=Number(v);else if(p.startsWith('t.'))l.tint[p.slice(2)]=p==='t.color'?v:Number(v);else if(p.startsWith('d.'))l.distress[p.slice(2)]=p==='d.style'?v:Number(v);
-  else if(p==='rotd')l.rot=Number(v)*Math.PI/180;else if(['name','text','font','blend','color','outlineColor','fillColor','strokeColor'].includes(p))l[p]=v;else if(['fill','stroke'].includes(p))l[p]=Boolean(v);else l[p]=Number(v);
+  else if(p==='rotd')l.rot=Number(v)*Math.PI/180;else if(['name','text','font','blend','color','outlineColor','fillColor','strokeColor','case','shadowKind','outline2Color','shadowColor','env'].includes(p))l[p]=v;else if(['fill','stroke'].includes(p))l[p]=Boolean(v);else l[p]=Number(v);
 }
 const pL=$('#pLayers');
 pL.addEventListener('input',e=>{const p=e.target.dataset.p,l=selected();if(!p||!l)return;setProp(l,p,e.target.type==='checkbox'?e.target.checked:e.target.value);if(e.target.type==='range'&&e.target.nextElementSibling)e.target.nextElementSibling.textContent=e.target.value+({opacity:'',scale:'×',rotd:'°','a.hue':'°','a.sat':'%','a.bright':'%','a.contrast':'%',size:'px',w:'px',h:'px',radius:'px',strokeW:'px',outline:'px'}[p]??'');touch();draw()});
@@ -806,12 +912,12 @@ function paintAi(){
   p.innerHTML=`<div class="sec"><h4>Change the piece</h4><textarea class="t" id="aiEdit" maxlength="800" placeholder="Make the body a washed olive. Add a raw hem. Give the sleeves a faded sun-bleached look."></textarea>
     <div class="row"><button class="btn sm ${MASKED?'':'q'}" type="button" data-aiscope="area" aria-pressed="${MASKED}">Only the painted area</button><button class="btn sm q" type="button" data-paintarea>Paint the area</button><button class="btn sm q" type="button" data-clearmask ${MASKED?'':'disabled'}>Clear it</button></div>
     <p class="note" id="aiScope"></p><div class="row"><button class="btn go sm" type="button" id="aiGo" ${ai.connected?'':'disabled'}>Change it</button>${CID&&!GMODE?`<button class="btn sm" type="button" id="rmGfx" title="Takes the printed graphic off the piece: a selected graphic layer is removed; otherwise the AI finds it (or uses the painted area) and fills it with plain fabric" ${ai.connected?'':'disabled'}>Remove the graphic</button>`:''}</div>
-    <p class="note">The AI looks at everything visible and comes back as a new layer on top, so nothing you made is lost: hide it, lower its opacity, or rub parts of it out. With an area painted, only that area changes.${CID&&!GMODE?' Remove the graphic takes a printed graphic off the piece in one go: paint over it first for an exact area, or let the AI find it.':''}</p></div>
-  <div class="sec"><h4>Make a graphic</h4><textarea class="t" id="aiArt" maxlength="800" placeholder="A cracked two-colour arch of the words FUTURE BASICS over a lightning bolt, 1970s rock tour style, ink and cream"></textarea>
+    <p class="note">Comes back as a new layer on top.</p></div>
+  ${GMODE?'':`<div class="sec"><h4>Make a graphic</h4><textarea class="t" id="aiArt" maxlength="800" placeholder="A cracked two-colour arch of the words FUTURE BASICS over a lightning bolt, 1970s rock tour style, ink and cream"></textarea>
     <label class="f w"><span>Made as</span><select class="t" id="aiTech">${techOpts('')}</select></label>
-    <div class="row"><button class="btn go sm" type="button" id="artGo" ${ai.connected?'':'disabled'}>Make it</button></div><p class="note">Drawn on a clear background, as a layer to place, recolour and distress, and kept in the graphics library for other pieces. With a technique chosen, it is designed for it and shown made that way. Describe the look in your own words: other brands' names are refused.</p><p class="note"><a href="/lab/library?print=1">Or make a new print from a library graphic: in its style, or two blended →</a></p></div>
+    <div class="row"><button class="btn go sm" type="button" id="artGo" ${ai.connected?'':'disabled'}>Make it</button><a class="btn sm q" href="/lab/library?print=1">From a library graphic</a></div><p class="note">On a clear background, kept in the graphics library.</p></div>`}
   ${CID&&!GMODE?`<div class="sec" id="fabSec"><h4>The fabric</h4><span class="note">Loading the materials library…</span></div>`:''}
-  <p class="msg" id="aiMsg" role="status">${ai.connected?(ai.left==null?'':`${ai.left} AI ${ai.left===1?'change':'changes'} left today.`):'No image model is connected, so the AI tools are off. Everything else works.'}</p>`;
+  <p class="msg" id="aiMsg" role="status">${ai.connected?(ai.left==null?'':`${ai.left} left today`):'No image model connected.'}</p>`;
   paintAiState();if(CID&&!GMODE)paintFabrics().catch(x=>{const f=$('#fabSec');if(f)f.innerHTML=`<h4>The fabric</h4><span class="note">${esc(x.message)}</span>`});
 }
 // versions: kept on apply and on request; two side by side with a wipe; open one to carry on from its layers
@@ -923,7 +1029,7 @@ function svgDoc(){
     const c=processed(l),tr=`translate(${+l.x.toFixed(2)} ${+l.y.toFixed(2)}) rotate(${+(l.rot*180/Math.PI).toFixed(3)}) scale(${+(l.scale*(l.flip?-1:1)).toFixed(4)} ${+l.scale.toFixed(4)})`;
     const style=`opacity:${l.opacity}${l.blend!=='source-over'?';mix-blend-mode:'+l.blend:''}`,live=plainLook(l)&&!l.distress.amount&&!l.finish&&(l.tint.amount===0||l.tint.amount===1)&&!window.ILL?.rasterOnly(l),gd=window.ILL?.svgGrad(l);
     let inner='';
-    if(l.kind==='text'&&live&&!l.arc){const{font,lines,lw}=textMetrics(l),fill=l.tint.amount===1?l.tint.color:l.color,lh=l.size*l.lead,pad=Math.ceil(l.size*.35+(l.outline||0)*2+4),w=c.width,h=c.height;
+    if(l.kind==='text'&&live&&!l.arc&&!textFx(l)&&!l.case){const{font,lines,lw}=textMetrics(l),fill=l.tint.amount===1?l.tint.color:l.color,lh=l.size*l.lead,pad=Math.ceil(l.size*.35+(l.outline||0)*2+4),w=c.width,h=c.height;
       inner=lines.map((t,i)=>{const x0=l.align==='left'?pad:l.align==='right'?w-pad-lw[i]:(w-lw[i])/2;return `<text x="${(x0-w/2).toFixed(1)}" y="${(pad+lh*i+lh/2-h/2).toFixed(1)}" dominant-baseline="middle" font-family="${xa(FONTS[l.font][0])}" font-size="${l.size}" font-weight="${l.bold?700:400}"${l.italic?' font-style="italic"':''} letter-spacing="${l.track}" fill="${xa(fill)}"${l.outline?` stroke="${xa(l.outlineColor)}" stroke-width="${l.outline*2}" paint-order="stroke" stroke-linejoin="round"`:''} xml:space="preserve">${esc(t)}</text>`}).join('')}
     else if(l.kind==='shape'&&live){const fill=gd&&l.tint.amount!==1?gd.ref:l.tint.amount===1?l.tint.color:l.fillColor,sk=l.tint.amount===1?l.tint.color:l.strokeColor;
       inner=l.shape==='path'&&window.VEC?VEC.svg(l,fill,sk):l.shape==='line'?`<line x1="${-l.w/2}" y1="0" x2="${l.w/2}" y2="0" stroke="${xa(l.stroke?sk:fill)}" stroke-width="${Math.max(l.strokeW,1)}" stroke-linecap="round"/>`:
@@ -1041,7 +1147,7 @@ $('#undo').onclick=undo;$('#redo').onclick=redo;
 // the rail's own Undo and Redo: always in reach of a thumb on an iPad (the ones in the top bar are small and fold away)
 $('#railUndo').onclick=undo;$('#railRedo').onclick=redo;
 // what each tool is and does, beside the rail: for learning by trying. Tap a name to pick the tool; the choice to show them is remembered
-const TOOL_HELP={select:'Tap a layer to choose it; drag to move, corners to resize, the green knob to turn',hand:'Drag to move around the page (two fingers do it too)',brush:'Paint on the chosen layer',eraser:'Rub out paint, or lines of the sketch on a flat',distress:'Wear the layer away, like a washed print',text:'Tap the page and type',rect:'Drag to draw a box',ellipse:'Drag to draw an oval or circle',line:'Drag to draw a straight line',pen:'Tap for corners, drag for curves; tap the first point to close',node:'Move the points of a shape you drew',ruler:'Drag across something you know the size of, to set real inches',warp:'Bend a graphic to follow the garment',pick:'Tap the picture to borrow a colour',area:'Paint where the AI should change the picture'};
+const TOOL_HELP={liquify:'Push the pixels of a picture or painting, like a finger in wet paint',fill:'Tap inside lines to fill there, in the chosen colour',select:'Tap a layer to choose it; drag to move, corners to resize, the green knob to turn',hand:'Drag to move around the page (two fingers do it too)',brush:'Paint on the chosen layer',eraser:'Rub out paint, or lines of the sketch on a flat',distress:'Wear the layer away, like a washed print',text:'Tap the page and type',rect:'Drag to draw a box',ellipse:'Drag to draw an oval or circle',line:'Drag to draw a straight line',pen:'Tap for corners, drag for curves; tap the first point to close',node:'Move the points of a shape you drew',ruler:'Drag across something you know the size of, to set real inches',warp:'Bend a graphic to follow the garment',pick:'Tap the picture to borrow a colour',area:'Paint where the AI should change the picture'};
 function paintRailNames(){const box=$('#railLabels'),open=$('#railNames').getAttribute('aria-pressed')==='true';$('.studio')?.classList.toggle('names-on',open);box.classList.toggle('hidden',!open);if(!open)return;const rail=$('.rail'),rb=rail.getBoundingClientRect(),sb=box.parentElement.getBoundingClientRect();
   box.style.top=(rb.top-sb.top)+'px';box.style.left=(rb.right-sb.left)+'px';box.style.height=rb.height+'px';
   box.innerHTML=[...rail.querySelectorAll('button[data-tool]')].filter(b=>b.offsetParent).map(b=>{const t=b.dataset.tool,r=b.getBoundingClientRect(),name=b.getAttribute('aria-label');return `<button type="button" role="listitem" data-pick-tool="${t}" aria-pressed="${b.getAttribute('aria-pressed')==='true'}" style="top:${r.top-rb.top+r.height/2}px"><b>${esc(name)}</b><small>${esc(TOOL_HELP[t]||b.title)}</small></button>`}).join('')}
@@ -1130,7 +1236,7 @@ async function bootGraphic(){
     LAYERS[0]._srcRid=LAYERS[0].raster._rid;
   }catch(x){toast(x.message)}finally{busy()}
   docC.width=W;docC.height=H;mask=canvas(W,H);maskX=mask.getContext('2d');initPpi();
-  await loadFonts();setColor(CUR);paintSub();paintAdd();tab('layers');setTool('select');HIST=[snap()];HI=0;syncUndo();DIRTY=false;showSaved();paintLayers();requestAnimationFrame(fit);
+  await loadFonts();setColor(CUR);paintSub();paintAdd();if(window.GEN&&!TAGM){$('#tabMake').classList.remove('hidden');tab('make')}else tab('layers');setTool('select');HIST=[snap()];HI=0;syncUndo();DIRTY=false;showSaved();paintLayers();requestAnimationFrame(fit);
   setInterval(()=>{if(DIRTY&&!DRAG&&GID)save()},90000);
 }
 // ---------- real size: the ruler sets how many pixels make an inch; every layer then has a size on the piece ----------
@@ -1232,19 +1338,21 @@ async function tonalOpen(l){if(l.kind==='base'){toast('Choose a graphic, mark or
 $('#tonalDlg').addEventListener('click',e=>{const d=$('#tonalDlg');if(e.target.closest('[data-tonalclose]')||e.target===d){d.close();return}const b=e.target.closest('[data-tone]');if(!b)return;const l=layerOf(d.dataset.layer);if(!l)return;
   l.tint={color:b.dataset.tone,amount:1};l.tone={hex:b.dataset.tone,pantone:b.dataset.pantone||''};commit();paintLayers();draw();d.close();toast(`Recoloured tone on tone: ${b.dataset.pantone||b.dataset.tone}.`)});
 // ---------- colour separations: the plates the printer burns, from the job file ----------
-async function sepOpen(l){const d=$('#sepDlg'),s=inchesOf(l);d.showModal();$('#sepEmb').innerHTML='';$('#sepWho').textContent=`${l.name} · ${fin(s.w)} in wide${l.finish?' · '+l.finish.name:''}`;$('#sepGrid').innerHTML='<p class="note">Separating the colours…</p>';$('#sepNote').textContent='';d.dataset.layer=l.id;
-  try{const r=await api('/v1/lab/studio/separations',{body:{image:artPng(l),techniqueId:l.finish?.id||null,widthIn:s.w,garment:GMODE?'':fabricUnder(l),name:l.name}});
+let SEPW=null; // the whole graphic, when the separations are of everything on the canvas (no one layer)
+const sepSrc=l=>l?{image:artPng(l),widthIn:inchesOf(l).w,name:l.name,techniqueId:l.finish?.id||null,garment:GMODE?'':fabricUnder(l)}:{techniqueId:null,garment:'',...SEPW};
+async function sepOpen(l,whole=null){SEPW=whole;if(!l&&!whole)return;const d=$('#sepDlg'),src=sepSrc(l),s={w:src.widthIn};d.showModal();$('#sepEmb').innerHTML='';$('#sepWho').textContent=`${src.name} · ${fin(s.w)} in wide${l?.finish?' · '+l.finish.name:''}`;$('#sepGrid').innerHTML='<p class="note">Separating the colours…</p>';$('#sepNote').textContent='';d.dataset.layer=l?l.id:'';
+  try{const r=await api('/v1/lab/studio/separations',{body:src});
     SEP=r;$('#sepGrid').innerHTML=r.plates.map(p=>`<figure style="margin:0;display:grid;gap:4px" data-plate="${p.n}"><img alt="Plate ${p.n}" src="${p.image}" data-ink="${p.image}" data-film="${p.film||p.image}" style="width:100%;aspect-ratio:1/1;object-fit:contain;background:#fff;border:1px solid rgba(20,20,22,.12);border-radius:10px"><figcaption class="note"><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:${p.hex};vertical-align:middle"></span> <b>${p.n}. ${esc(p.pantone)}</b> · ${Math.round(p.coverage*100)}% cover${p.angle!=null?` · dots at ${p.angle}°`:''}</figcaption></figure>`).join('')+(r.underbase?`<figure style="margin:0;display:grid;gap:4px"><img alt="Underbase" src="${r.underbase}" style="width:100%;aspect-ratio:1/1;object-fit:contain;background:#555;border-radius:10px"><figcaption class="note"><b>Underbase</b> · white under the colours on a dark garment</figcaption></figure>`:'');
     $('#sepNote').innerHTML=`${r.plates.length} plate${r.plates.length===1?'':'s'} for ${esc(r.job.technique?.name||r.job.technique||'the print')} at ${esc(r.job.size?.label||fin(s.w)+' in')}${r.job.tones?', the soft tones screened as halftone dots':''}.${r.job.print?.order?.length?`<br>On the press: ${esc(r.job.print.order.join(' → '))}`:''}${(r.job.warnings||[]).map(w=>`<br>! ${esc(typeof w==='string'?w:w.text||'')}`).join('')}`;sepView('ink')}
   catch(x){$('#sepGrid').innerHTML=`<p class="note" style="color:#b3261e">${esc(x.message)}</p>`;toast(x.message)}}
 let SEP=null;function sepView(v){$$('#sepDlg [data-sepview]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.sepview===v)));$$('#sepGrid img[data-ink]').forEach(i=>{i.src=v==='film'?i.dataset.film:i.dataset.ink})}
 $('#sepDlg').addEventListener('click',async e=>{const d=$('#sepDlg');if(e.target.closest('[data-sepclose]')||e.target===d){d.close();return}const sv=e.target.closest('[data-sepview]');if(sv){sepView(sv.dataset.sepview);return}
-  if(e.target.closest('[data-sepdst]')){const l=layerOf(d.dataset.layer);d.close();if(l)embOpen(l);return}
+  if(e.target.closest('[data-sepdst]')){const l=layerOf(d.dataset.layer);if(!l){toast('Embroidery is made from one layer: choose it, then Separations in its menu.');return}d.close();embOpen(l);return}
   const vb=e.target.closest('[data-sepvec]');
-  if(vb){const l=layerOf(d.dataset.layer);if(!l)return;const b=vb;b.disabled=true;const s=inchesOf(l);
-    try{{const r=await api('/v1/lab/studio/vector',{body:{image:artPng(l),widthIn:s.w,name:l.name}});const url=URL.createObjectURL(new Blob([r.svg],{type:'image/svg+xml'}));download(url,fileBase()+'-'+(l.name||'graphic').toLowerCase().replace(/[^a-z0-9]+/g,'-')+'.svg');setTimeout(()=>URL.revokeObjectURL(url),4000);toast(`Traced: ${r.paths} shape${r.paths===1?'':'s'} in ${r.colours.length} ink${r.colours.length===1?'':'s'}.`)}}
-    catch(x){toast(x.message)}finally{b.disabled=false}return}if(!e.target.closest('[data-sepzip]'))return;const l=layerOf(d.dataset.layer);if(!l)return;const b=e.target.closest('[data-sepzip]');b.disabled=true;
-  try{const s=inchesOf(l),r=await fetch('/v1/lab/studio/separations',{method:'POST',headers:{Authorization:'Bearer '+TOKEN(),'Content-Type':'application/json'},body:JSON.stringify({image:artPng(l),techniqueId:l.finish?.id||null,widthIn:s.w,garment:GMODE?'':fabricUnder(l),name:l.name,zip:true})});
+  if(vb){const l=layerOf(d.dataset.layer);if(!l&&!SEPW)return;const b=vb;b.disabled=true;const src=sepSrc(l);
+    try{{const r=await api('/v1/lab/studio/vector',{body:{image:src.image,widthIn:src.widthIn,name:src.name}});const url=URL.createObjectURL(new Blob([r.svg],{type:'image/svg+xml'}));download(url,fileBase()+'-'+(src.name||'graphic').toLowerCase().replace(/[^a-z0-9]+/g,'-')+'.svg');setTimeout(()=>URL.revokeObjectURL(url),4000);toast(`Traced: ${r.paths} shape${r.paths===1?'':'s'} in ${r.colours.length} ink${r.colours.length===1?'':'s'}.`)}}
+    catch(x){toast(x.message)}finally{b.disabled=false}return}if(!e.target.closest('[data-sepzip]'))return;const l=layerOf(d.dataset.layer);if(!l&&!SEPW)return;const b=e.target.closest('[data-sepzip]');b.disabled=true;
+  try{const r=await fetch('/v1/lab/studio/separations',{method:'POST',headers:{Authorization:'Bearer '+TOKEN(),'Content-Type':'application/json'},body:JSON.stringify({...sepSrc(l),zip:true})});
     if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||'The files could not be made');const url=URL.createObjectURL(await r.blob());download(url,fileBase()+'-separations.zip');setTimeout(()=>URL.revokeObjectURL(url),4000);toast('The separation files are downloading.')}
   catch(x){toast(x.message)}finally{b.disabled=false}});
 // ---------- embroidery: the layer digitized for a machine (src/lab-digitize.js), with the settings a digitiser changes ----------
@@ -1264,10 +1372,12 @@ $('#embDlg').addEventListener('click',async e=>{const d=$('#embDlg');if(e.target
   catch(x){toast(x.message)}finally{b.disabled=false}});
 // the layers with a place on the piece go to the concept and its flats, at their size, when the design is saved
 let SYNCED=null;
+// what the flats have from the picture: the graphics placed on them and their size; the same key says nothing has changed since the last sync
+const placedNow=()=>LAYERS.filter(l=>l.kind!=='base'&&l.placement&&l.visible).slice(0,8).map(l=>({l,s:inchesOf(l),key:sig(l)}));
+const syncKey=(placed=placedNow())=>JSON.stringify(placed.map(x=>[x.l.id,x.l.fromFlat||'',x.l.name,x.l.placement,fin(x.s.w),fin(x.s.h),x.l.finish?.id||'',x.key]));
 async function syncFlats({before}={}){
   if(before)await before(); // unsaved changes on the flats go first and their sizes come back to the layers, so nothing set on the flats is undone
-  const placed=LAYERS.filter(l=>l.kind!=='base'&&l.placement&&l.visible).slice(0,8).map(l=>({l,s:inchesOf(l),key:sig(l)}));
-  const key=JSON.stringify(placed.map(x=>[x.l.id,x.l.fromFlat||'',x.l.name,x.l.placement,fin(x.s.w),fin(x.s.h),x.l.finish?.id||'',x.key]));if(key===SYNCED)return false;
+  const placed=placedNow(),key=syncKey(placed);if(key===SYNCED)return false;
   const layers=placed.map(x=>({layer:x.l.id,...(x.l.fromFlat?{fromFlat:x.l.fromFlat}:{}),name:x.l.name,widthIn:x.s.w,heightIn:x.s.h,placement:x.l.placement,techniqueId:x.l.finish?.id||null,...(x.l.art&&x.l.artSig===x.key?{art:x.l.art}:{image:artPng(x.l)})}));
   const r=await api(`/v1/lab/concepts/${CID}/studio/graphics`,{body:{layers}});
   for(const x of placed)if(r.arts[x.l.id]){x.l.art=r.arts[x.l.id];x.l.artSig=x.key}
@@ -1287,7 +1397,7 @@ function FF(){try{return FLOADED?$('#flatFrame').contentWindow.FBFlats||null:nul
 function flatSrc(){const t=QS.get('template');if(D?.concept?.category==='footwear'||D?.concept?.category==='bags')return `/lab/shoe-flats?concept=${CID}&embed=${VMODE==='split'?'compact':'full'}&view=${VMODE==='back'?'back':'front'}`; // a shoe is drawn in panels (src/lab-shoe-flats.html)
   return `/lab/flats?concept=${CID}&embed=${VMODE==='split'?'compact':'full'}&view=${VMODE==='back'?'back':'front'}${t&&!TPLUSED?'&template='+encodeURIComponent(t):''}`}
 function loadFlats(){$('#flatFrame').src=flatSrc();FLOADED=true;TPLUSED=true}
-function reloadFlats(){if(!FLOADED||FF()?.dirty())return;$('#flatFrame').src=flatSrc()}
+function reloadFlats(){if(!FLOADED||FF()?.dirty())return;const f=FF();if(f?.refresh){f.refresh();return}$('#flatFrame').src=flatSrc()} // read again in place: no blink, and the view keeps its zoom and turn
 async function flatsFirst(){const f=FF();if(f&&f.dirty()&&!(await f.save()))throw new Error('the flats could not be saved first')}
 async function saveAll(){if(GMODE||!CID)return save();const f=FF();if(f&&f.dirty()&&!(await f.save()))return false;await LINKP;return save()} // graphics on their way from the flats are part of this save
 // the flats' own saved line shows in the header beside the picture's
@@ -1299,11 +1409,11 @@ function mirrorFlats(){const d=$('#flatFrame').contentDocument,src=d&&d.getEleme
 // or take it off them, and the picture follows. FLATS is the latest record the page has (from the service, then from the flats as they save).
 let FLATS=null;
 function adoptFlats(list,{saved=true}={}){FLATS={saved,placements:list||[]};if(GMODE||!LAYERS.length){paintLayers();return}
-  const changed=[];
+  const changed=[],inStep=SYNCED!==null&&syncKey()===SYNCED; // the picture had nothing waiting for the flats: what comes from them now is theirs already
   for(const l of LAYERS){if(l.kind==='base'||!l.placement)continue;const q=FLATS.placements.find(x=>x.source==='studio'&&x.layer===l.id);
     if(q){const s=inchesOf(l);if(s.w>0&&Math.abs(q.w-s.w)>.07){l.scale=clamp(l.scale*q.w/s.w,.02,40);changed.push(`${l.name} is ${fin(q.w)} in wide, as on the flats`)}}
     else if(saved&&l.art){l.placement=undefined;changed.push(`${l.name} came off the flats, so it is on the picture only`)}} // only a layer that was on them (it has its artwork) can have come off
-  if(changed.length){commit();draw();toast(changed.slice(0,2).join('. ')+(changed.length>2?` and ${changed.length-2} more`:'')+'.')}
+  if(changed.length){commit();draw();toast(changed.slice(0,2).join('. ')+(changed.length>2?` and ${changed.length-2} more`:'')+'.');if(inStep&&saved)SYNCED=syncKey()}
   paintLayers();
   // a logo or graphic added on the flats comes onto the picture by itself (the front only: the picture shows the front). What came with the
   // concept is already drawn in its picture, so that waits for Put on the picture.
@@ -1527,6 +1637,10 @@ boot();
 <script src="/lab/studio-ill.js"></script>
 <script src="/lab/studio-emb.js"></script>
 <script src="/lab/studio-board.js"></script>
+<script src="/lab/studio-gen.js"></script>
+<script src="/lab/studio-outline.js"></script>
+<script src="/lab/studio-type.js"></script>
+<script src="/lab/studio-fx.js"></script>
 <script src="/helper.js" defer></script>
 <script type="module">import * as B from '/lab/lab-brush.js';window.FBBrush=B;try{paintOpts();paintDock()}catch{}</script>
 </body>

@@ -101,6 +101,39 @@ then what works with changes, with the cloth that does not suit it folded away. 
 
 ### Graphics, prints and decoration
 - Graphics as real artwork, placed in inches on the garment and drawn on both the picture and the flats.
+- **Graphics studio, three engines at once:** type what it is, tap a season (12, each with its own palette) and a style (10), choose
+  1 to 8 inks, and Claude, OpenAI and Google each draw their take side by side. If one engine is down, the others still answer.
+- **Every generated graphic arrives as vector inks:** one layer per ink with its Pantone. Recolour an ink, merge two, drop one, try a
+  season's palette or shuffle the colours; trace it again finer or bolder, thicken the lines, add a key line, edit the points.
+- **Type like a merch designer:** 47 free, open-source fonts (varsity, retro, script, hand-drawn, stencil, western, blackletter,
+  seasonal), picked by eye with your own words set in each. All caps or title case, stretch, a second outline for the varsity look, and a
+  drop shadow or 3D block that prints as solid ink.
+- **Print filters:** turn any layer into halftone dots (round, square, diamond, line or cross, any size and angle), hand-drawn stipple,
+  a few flat colours (posterize), one solid ink, or a two-ink duotone, with a live preview. Every result is printable in a few screens.
+- **Type in a shape:** bridge, bulge, pinch, flag, wave, rise and grow, on top of arch; the words stay editable.
+- **Drawing like Procreate:** a Steady slider smooths a shaky line, QuickShape snaps a rough circle, oval, triangle or line to a clean one
+  when you hold the Pencil still, Lock paints only inside what is already painted, and Fill colours inside your lines with one tap.
+- **Symmetry and scatter:** draw mirrored, four ways or round the middle (6 or 8), and paint with stars, hearts or confetti; Liquify
+  pushes a picture around like wet paint.
+- **Lockups in one tap:** the brief's words as a badge, a varsity arch with a number, a stacked block or script over block, every part
+  editable.
+- **Colour harmonies:** recolour a graphic as complementary, analogous, triad, split or one-hue colours, keeping black and white.
+- **Vintage print looks:** distress as ink spatter, screen-drag streaks or scratches (as well as worn, cracked and faded), and Off
+  register, which nudges each ink a little off its key like an old press.
+- **Stitch brushes and repeats:** a running-stitch and a chain-stitch brush, and pattern fills that repeat straight, brick, half-drop
+  or mirrored.
+- **Photo-real art on a dark shirt:** Simulated process separates full-colour art (a painting, a glow, a photo) into a handful of spot
+  inks as index dots, with a white underbase and a highlight white, the press order and a zip of films for the printer.
+- **Ready to stitch:** Thicken for embroidery measures the thinnest line at the print width and thickens every ink just enough that
+  nothing is under 1.2 mm, the finest a satin stitch holds.
+- **Stickers and patches:** a white border round the art and a magenta cut line, at the width you choose.
+- **On garments:** the graphic on eight shirt colours (or any colour); it says which ink is knocked out by the shirt and when a dark
+  shirt needs a white underbase.
+- **Colour at the tip of the Pencil:** recent colours and the brand's palette sit right on the brush bar; the rainbow swatch opens any colour.
+- **Pencil to outlines:** sketch with the Apple Pencil on the picture or right on the flat, tap **Outlines**, and the drawing becomes
+  clean vector lines. Tap **Refine** for cleaner and smoother lines, up to six times; the original drawing is kept underneath.
+- **Straight to print:** put it on the garment, see the separations, or download the vector as SVG, or as a PDF with the art and a film
+  page for every ink.
 - **New prints from old:** blend two prints, or make a print in the style of another, with a preview before you keep it. Any kept print can
   become an all-over repeat.
 - **Embroidery:** a realistic sew-out preview with playback, and a quality report.

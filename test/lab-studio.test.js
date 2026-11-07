@@ -26,10 +26,11 @@ test('the AI is told to keep everything outside the painted area, and never to b
   assert.match(artPrompt('a bolt'), /transparent background/);
 });
 
-test('a drawn path is kept, within bounds: six numbers a point, 40,000 points at most', () => {
+test('a drawn path is kept, within bounds: six numbers a point, 150,000 points at most', () => {
   const path = paths => doc({ layers: [{ id: 'a', kind: 'base' }, { id: 'p', kind: 'shape', shape: 'path', paths }] });
   assert.ok(cleanDoc(path([{ closed: true, nodes: [[0, 0, 0, 0, 0, 0], [10, 0, 10, 0, 10, 0], [5, 8, 4, 8, 6, 8]] }])).doc);
   assert.match(cleanDoc(path([{ closed: true, nodes: [[0, 0, 0, 0, 0]] }])).error, /not readable/);
   assert.match(cleanDoc(path([{ closed: true, nodes: [[0, 0, 0, 0, 0, 'x']] }])).error, /not readable/);
-  assert.match(cleanDoc(path([{ closed: true, nodes: Array.from({ length: 40001 }, () => [0, 0, 0, 0, 0, 0]) }])).error, /too many points/);
+  assert.match(cleanDoc(path([{ closed: true, nodes: Array.from({ length: 150001 }, () => [0, 0, 0, 0, 0, 0]) }])).error, /too many points/);
+  assert.ok(cleanDoc(path(Array.from({ length: 3000 }, () => ({ closed: true, nodes: [[0, 0, 0, 0, 0, 0], [4, 0, 4, 0, 4, 0], [2, 3, 2, 3, 2, 3]] })))).doc, 'a traced drawing with thousands of parts is kept');
 });

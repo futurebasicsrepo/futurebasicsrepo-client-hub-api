@@ -19,14 +19,17 @@
 //   POST /v1/lab/library/studio/keep              {image, name?, doc?, techniqueId?} the finished picture becomes a new library graphic
 //   POST /v1/lab/library/graphics/:id/studio/apply {image, doc?} the finished picture replaces this graphic's (pieces using it keep what they had)
 import sharp from 'sharp';
-import { imageConfig, openaiEdit, openaiImage } from './check.js';
+import { imageConfig, openaiEdit, openaiImage, imageFrom, imageEngines } from './check.js';
+import { generate as generateGraphics, cleanAsk, ENGINES, SEASONS, STYLES, claudeText, fixtureClaude, fixtureImage } from './lab-graphic-gen.js';
 import { locateMarks } from './lab-place.js';
 import { artInfo, artFindings } from './lab-flats-routes.js';
 import { sizeFindings, decorationCost, PLACEMENTS, calibrationOf } from './lab-decor.js';
-import { traceVector, stitchPlan, dstOf, expOf } from './lab-vector.js';
+import { traceVector, stitchPlan, dstOf, expOf, vectorPdf } from './lab-vector.js';
 import { digitizeOptions } from './lab-digitize.js';
 import { sewoutBox, sewoutPng, sewoutFrames, digitizeReview } from './lab-sewout.js';
 import { jobFile, jobZip } from './lab-jobfile.js';
+import { indexSeparate } from './lab-index-sep.js';
+import { zip as zipFiles } from './zip.js';
 import { cleanRules } from './lab-library.js';
 import { GRAPHIC_PLACE } from './lab-concepts.js';
 import { brandHits } from './lab-concepts.js';
@@ -54,9 +57,9 @@ export function cleanDoc(input) {
     for (const k of ['src', 'mask', 'distressMap']) if (l[k] != null && l[k] !== '' && !SRC_OK.test(String(l[k]))) return { error: 'A layer points at a picture outside the design' };
     if (l.text != null && String(l.text).length > 400) return { error: 'A line of type is too long (400 characters at most)' };
     if (l.paths != null) { // a drawn path: parts of points, each point six numbers
-      if (!Array.isArray(l.paths) || l.paths.length > 400) return { error: 'A path has too many parts' };
+      if (!Array.isArray(l.paths) || l.paths.length > 4000) return { error: 'A path has too many parts' }; // a traced drawing or generated graphic can have thousands
       let n = 0; for (const p of l.paths) { if (!p || !Array.isArray(p.nodes)) return { error: 'A path is not readable' }; n += p.nodes.length; if (!p.nodes.every(q => Array.isArray(q) && q.length === 6 && q.every(Number.isFinite))) return { error: 'A path is not readable' }; }
-      if (n > 40000) return { error: 'A path has too many points (40,000 at most)' };
+      if (n > 150000) return { error: 'A path has too many points (150,000 at most)' };
     }
   }
   // the production layer's own data (src/lab-studio-ill.js): artboards, symbols, global swatches, and on a layer its fill, width, path type and links
@@ -120,7 +123,7 @@ export const FONT_MIME = { ttf: 'font/ttf', otf: 'font/otf', woff: 'font/woff', 
 export const fontShape = r => ({ id: r.id, name: r.name, family: r.family, format: r.format, createdAt: r.created_at });
 
 export function registerLabStudioRoutes(app, d) {
-  const { pool, authenticate, adminOnly, env = process.env, imageCfg = () => imageConfig(env), editImpl = openaiEdit, imageImpl = openaiImage, placeImpl = locateMarks, lab = null, pictureToPack = null } = d;
+  const { pool, authenticate, adminOnly, env = process.env, imageCfg = () => imageConfig(env), editImpl = openaiEdit, imageImpl = openaiImage, placeImpl = locateMarks, lab = null, pictureToPack = null, genDeps = null } = d;
   // a concept sent to a tech pack is closed, unless it is linked to its product: then the Studio edits it and what is used goes to that product's pack
   const lockedOf = c => c.status === 'tech_pack' && !c.product_id;
   const own = req => lab?.scope?.(req) || null, charge = async (req, o) => (lab ? lab.charge(req, o) : null);
@@ -172,6 +175,14 @@ export function registerLabStudioRoutes(app, d) {
   app.post('/v1/lab/studio/separations', { preHandler: pre, bodyLimit: 32_000_000 }, async (req, reply) => {
     const b = req.body || {}, img = pictureOf(b.image); if (!img) return bad(reply, 'Send the layer as a picture');
     const t = await techOf(b.techniqueId), w = Math.max(.5, Math.min(40, Number(b.widthIn) || 4)), garment = /^#[0-9a-f]{6}$/i.test(String(b.garment || '')) ? b.garment : '', name = clip(b.name, 60) || 'Graphic';
+    // simulated process (src/lab-index-sep.js): full-colour art as index dots in a few spot inks, a white underbase on a dark shirt
+    if (b.method === 'index') {
+      const g = /^#[0-9a-f]{6}$/i.test(String(b.garment || '')) ? b.garment : '#141416', r = await indexSeparate(img, { widthIn: w, garment: g, inks: Math.round(Number(b.inks)) || 6, name });
+      if (b.zip) return reply.header('content-type', 'application/zip').header('content-disposition', `attachment; filename="${name.replace(/[^a-z0-9]+/gi, '-').toLowerCase() || 'graphic'}-simulated-process.zip"`).send(zipFiles(r.files));
+      const small = async (buf, px = 360) => `data:image/png;base64,${(await sharp(buf).resize({ width: px, height: px, fit: 'inside', kernel: 'nearest' }).png().toBuffer()).toString('base64')}`;
+      return { job: { name, technique: { name: 'simulated process (index dots)' }, size: { label: `${Math.round(w * 100) / 100} in at ${r.dpi} dpi` }, tones: false, coverage: null, knockouts: [], colours: r.plates.map(p => ({ n: p.n, pantone: p.pantone, hex: p.hex, coverage: p.coverage, angle: null })), warnings: r.warnings, print: { order: r.order } },
+        plates: await Promise.all(r.plates.map(async p => ({ n: p.n, pantone: p.pantone + (p.role === 'highlight white' ? ' (highlight)' : ''), hex: p.hex, coverage: p.coverage, angle: null, image: await small(p.png), film: await small(p.film) }))), underbase: r.underbase ? await small(r.underbase) : null, method: 'index' };
+    }
     const technique = { ...t, rules: cleanRules(t.rules || {}, t.base) };
     if (b.zip) { const z = await jobZip(img, { name, technique, widthIn: w, garmentColour: garment }); return reply.header('content-type', 'application/zip').header('content-disposition', `attachment; filename="${z.zipName}"`).send(z.zip); }
     const { job, files } = await jobFile(img, { name, technique, widthIn: w, garmentColour: garment });
@@ -187,9 +198,29 @@ export function registerLabStudioRoutes(app, d) {
 
   // ---- a layer as vector paths (for a screen printer) and as a stitch file (for an embroidery machine) ----
   app.post('/v1/lab/studio/vector', { preHandler: pre, bodyLimit: 32_000_000 }, async (req, reply) => {
-    const b = req.body || {}, img = pictureOf(b.image); if (!img) return bad(reply, 'Send the layer as a picture');
-    const w = Number(b.widthIn), v = await traceVector(img, { widthIn: w > 0 && w < 80 ? w : null, name: clip(b.name, 60) || 'Graphic' });
+    const b = req.body || {}, img = UUID.test(String(b.art || '')) ? (await pool.query('select png from lab_art where id=$1 and ($2::uuid is null or client_id=$2 or client_id is null)', [b.art, own(req)])).rows[0]?.png : pictureOf(b.image); if (!img) return bad(reply, 'Send the layer as a picture');
+    const w = Number(b.widthIn), tol = Number(b.tolerance), mx = Math.round(Number(b.max));
+    const v = await traceVector(img, { widthIn: w > 0 && w < 80 ? w : null, name: clip(b.name, 60) || 'Graphic', tolerance: tol >= .3 && tol <= 6 ? tol : .9, max: mx >= 1 && mx <= 12 ? mx : 8, maxSide: Number(b.maxSide) > 0 ? Math.min(1400, Number(b.maxSide)) : 700 });
     return { svg: v.svg, paths: v.paths, colours: v.colours, width: v.width, height: v.height };
+  });
+  // the artwork as a vector PDF (src/lab-vector.js vectorPdf): the inks as the Studio drew them (its paths, in the picture's own units), or a
+  // picture traced here into `max` inks; the art in colour, then a film page for each ink
+  app.post('/v1/lab/studio/vector.pdf', { preHandler: pre, bodyLimit: 32_000_000 }, async (req, reply) => {
+    const b = req.body || {}, num = v => (Number.isFinite(Number(v)) ? Number(v) : 0), hexOk = h => /^#[0-9a-f]{6}$/i.test(String(h || ''));
+    let inks = [], box = null;
+    if (Array.isArray(b.inks) && b.inks.length) {
+      inks = b.inks.slice(0, 40).filter(k => hexOk(k?.hex)).map(k => ({ hex: k.hex.toLowerCase(), pantone: clip(k.pantone, 40), fill: /^[MmLlHhVvCcSsQqTtZz0-9eE.,+\- ]*$/.test(String(k.fill || '')) ? String(k.fill || '').slice(0, 6e6) : '',
+        stroke: k.stroke && /^[MmLlHhVvCcSsQqTtZz0-9eE.,+\- ]*$/.test(String(k.stroke.d || '')) ? { d: String(k.stroke.d).slice(0, 6e6), w: Math.min(200, Math.max(0, num(k.stroke.w))) } : null })).filter(k => k.fill || k.stroke?.d);
+      const x = b.box || {}; box = { x: num(x.x), y: num(x.y), w: Math.max(1, num(x.w)), h: Math.max(1, num(x.h)) };
+    } else {
+      const img = UUID.test(String(b.art || '')) ? (await pool.query('select png from lab_art where id=$1 and ($2::uuid is null or client_id=$2 or client_id is null)', [b.art, own(req)])).rows[0]?.png : pictureOf(b.image);
+      if (!img) return bad(reply, 'Send the artwork');
+      const mx = Math.round(num(b.max)), v = await traceVector(img, { max: mx >= 1 && mx <= 12 ? mx : 8, maxSide: 1024 });
+      inks = v.inks.map(c => ({ hex: c.hex, pantone: c.pantone, fill: c.d, stroke: null })); box = { x: 0, y: 0, w: v.width, h: v.height };
+    }
+    if (!inks.length) return bad(reply, 'There is nothing to print in that artwork');
+    const w = num(b.widthIn), name = clip(b.name, 60) || 'Graphic', pdf = await vectorPdf({ inks, box, widthIn: w > 0 && w < 80 ? w : 10, name });
+    return reply.header('content-type', 'application/pdf').header('content-disposition', `attachment; filename="${name.replace(/[^a-z0-9]+/gi, '-').toLowerCase() || 'graphic'}-vector.pdf"`).send(pdf);
   });
   // digitizing: the layer as a stitch file (src/lab-digitize.js), with the settings a digitiser changes; format dst | exp | zip (the whole job:
   // both files, the sew-out preview, the thread sequence and the sheet), else the numbers, the sew-out `preview` (a data URL), the `review`
@@ -398,6 +429,37 @@ export function registerLabStudioRoutes(app, d) {
     return { ok: true, savedAt: r.at };
   });
   app.post('/v1/lab/library/studio/ai', { preHandler: pre, bodyLimit: 32_000_000 }, async (req, reply) => runAi(req, reply));
+  // ---- the generator (src/lab-graphic-gen.js): Claude, OpenAI and Google at once; whichever answer come back as ink layers ----
+  const genSetup = () => {
+    if (genDeps) return genDeps;
+    const cfg = imageCfg(), fx = cfg.provider === 'fixture', down = new Set(String(env.GRAPHIC_ENGINES_DOWN || '').split(',').map(s => s.trim()).filter(Boolean)), eng = imageEngines(cfg);
+    const ready = { claude: (fx || Boolean(env.ANTHROPIC_API_KEY)) && !down.has('claude'), openai: (fx || eng.openai) && !down.has('openai'), google: (fx || eng.google) && !down.has('google') };
+    return { ready, claude: fx && !env.ANTHROPIC_API_KEY ? fixtureClaude : claudeText, image: fx ? fixtureImage : (provider, prompt) => imageFrom(provider, prompt, { ...cfg, size: '1024x1024', format: 'png', ...(provider === 'openai' ? { background: 'transparent' } : {}) }), trace: traceVector };
+  };
+  app.get('/v1/lab/library/studio/generate', { preHandler: pre }, async () => {
+    const { ready } = genSetup();
+    return { engines: ENGINES.map(e => ({ ...e, ready: Boolean(ready[e.id]) })), seasons: SEASONS, styles: STYLES, left: left() };
+  });
+  app.post('/v1/lab/library/studio/generate', { preHandler: pre, bodyLimit: 200_000 }, async (req, reply) => {
+    const ask = cleanAsk(req.body || {});
+    if (ask.brief.length < 3 && !ask.season && !ask.style) return bad(reply, 'Say what the graphic is, or pick a season or a style');
+    const hits = brandHits(`${ask.brief} ${ask.words}`, (await pool.query('select name from lab_brands')).rows.map(r => r.name));
+    if (hits.length) return bad(reply, `Leave other brands out (${hits.slice(0, 3).join(', ')}). Describe the look in your own words.`);
+    const deps = genSetup();
+    if (left() === 0) return bad(reply, `The daily limit of ${cap()} studio AI edits is reached. Raise LAB_DAILY_STUDIO_AI.`, 429);
+    try { await charge(req, { kind: 'studio' }); } catch (e) { return bad(reply, e.message, e.status || 500, e.meter ? { code: e.code, meter: e.meter } : {}); }
+    let out; try { out = await generateGraphics(ask, deps); } catch (e) { return bad(reply, e.message, e.status || 502, { engines: e.engines || [] }); }
+    uses.set(dayOf(), (uses.get(dayOf()) || 0) + out.results.length);
+    // each answer is kept as a draft graphic (out of the library until it is kept), so it can be traced again at another detail and opened later
+    const results = [];
+    for (const r of out.results) {
+      const a = await finishArt(r.png);
+      const id = (await pool.query(`insert into lab_art(name,png,thumb,prompt,model,source,in_library,tags,created_by,client_id) values($1,$2,$3,$4,$5,'generate',false,$6,$7,$8) returning id`,
+        [clip(r.title, 80), a.png, a.thumb, r.prompt, r.engine, [ask.season, ask.style].filter(Boolean), actorOf(req), own(req)])).rows[0].id;
+      results.push({ art: id, engine: r.engine, title: r.title, prompt: r.prompt, svg: r.svg, colours: r.colours, width: r.width, height: r.height, paths: r.paths });
+    }
+    return { results, engines: out.engines, directedBy: out.directedBy, left: left() };
+  });
   // the finished graphic: as a new one in the library, or in place of the one it started from
   const finished = async body => { const buf = pictureOf(body?.image); if (!buf) throw new Error('Send the finished picture'); try { return await finishArt(await sharp(buf).ensureAlpha().png().toBuffer()); } catch { throw new Error('The picture could not be read'); } };
   app.post('/v1/lab/library/studio/keep', { preHandler: pre, bodyLimit: 32_000_000 }, async (req, reply) => {
