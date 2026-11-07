@@ -231,11 +231,11 @@ export function registerRoomSitesRoutes(app, d) {
     const pic = await pictureOf(s); if (!pic) return bad(reply, 'No picture', 404);
     return reply.header('cache-control', 'private, max-age=60').type(pic.type).send(pic.body);
   });
-  app.post('/v1/admin/clients/:id/sites/:sid/cover', { preHandler: [authenticate, adminOnly], bodyLimit: 4_000_000 }, async (req, reply) => {
+  app.post('/v1/admin/clients/:id/sites/:sid/cover', { preHandler: [authenticate, adminOnly], bodyLimit: 7_500_000 }, async (req, reply) => {
     if (!UUID.test(String(req.params.id))) return bad(reply, 'Client not found', 404);
     const s = await siteOf(req.params.id, req.params.sid); if (!s) return bad(reply, 'Not in this room', 404);
     const m = /^data:(image\/(?:png|jpe?g|webp|gif));base64,([A-Za-z0-9+/=]+)$/i.exec(String(req.body?.image || '')); if (!m) return bad(reply, 'Choose a PNG, JPEG, WebP or GIF picture');
-    const body = Buffer.from(m[2], 'base64'); if (body.length > 2_500_000) return bad(reply, 'Pictures can be up to 2.5 MB'); if (body.length < 200) return bad(reply, 'That picture is empty');
+    const body = Buffer.from(m[2], 'base64'); if (body.length > 5_000_000) return bad(reply, 'Pictures can be up to 5 MB'); if (body.length < 200) return bad(reply, 'That picture is empty');
     await pool.query(`insert into room_site_covers(site_id, source, mime, body) values($1,'upload',$2,$3) on conflict (site_id) do update set source='upload', mime=excluded.mime, body=excluded.body, updated_at=now()`, [s.id, m[1].toLowerCase(), body]);
     return { site: staffView(await siteOf(s.client_id, s.id), await storesOf(s.client_id)) };
   });
