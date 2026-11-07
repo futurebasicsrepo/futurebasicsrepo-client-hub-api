@@ -1951,6 +1951,13 @@ export async function migrate() {
     -- a site's card: what it runs on and how it answered at the last look (src/site-peek.js), and its picture (staff's upload, else the site's share image)
     alter table room_sites add column if not exists facts jsonb not null default '{}'::jsonb;
     alter table room_sites add column if not exists facts_at timestamptz;
+    -- when each staff member last opened a client's room (or a project in it): their client list leads with the rooms they are working in
+    create table if not exists staff_room_opens (
+      user_id uuid not null references users(id) on delete cascade,
+      client_id uuid not null references clients(id) on delete cascade,
+      opened_at timestamptz not null default now(),
+      primary key (user_id, client_id)
+    );
     create table if not exists room_site_covers (
       site_id uuid primary key references room_sites(id) on delete cascade,
       source text not null default 'og' check (source in ('og','upload')),

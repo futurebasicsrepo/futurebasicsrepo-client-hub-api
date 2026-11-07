@@ -1033,8 +1033,10 @@ app.post('/v1/admin/clients/:id/preview-session',{preHandler:[authenticate,admin
   const hubUrl=clientHubUrl;
   return {url:`${hubUrl}#client-preview=${encodeURIComponent(code)}`,expiresInSeconds:300,sessionMinutes:15,client};
 });
-app.get('/v1/admin/dashboard', {preHandler:[authenticate,adminOnly]}, async ()=>{
+app.get('/v1/admin/dashboard', {preHandler:[authenticate,adminOnly]}, async (req)=>{
   const learning=aggregateDiffs(await learningRows(300).catch(()=>[]));
+  // when this person last opened each room (or a project in it): the list puts the rooms they are working in first
+  const opened=new Map(UUID_RE.test(String(req.auth?.sub||''))?(await pool.query('select client_id,opened_at from staff_room_opens where user_id=$1',[req.auth.sub]).catch(()=>({rows:[]}))).rows.map(r=>[r.client_id,r.opened_at]):[]);
   const clients=await pool.query(`select c.*,
     count(distinct p.id) filter(where not exists(select 1 from projects archived_product_project where archived_product_project.id=p.project_id
       and (archived_product_project.archived_at is not null or archived_product_project.status in ('archive','archived'))))::int product_count,
@@ -1069,6 +1071,7 @@ app.get('/v1/admin/dashboard', {preHandler:[authenticate,adminOnly]}, async ()=>
   const activeClients=clients.rows.filter(client=>!client.archived_at&&!['archive','archived'].includes(client.status));
   const archivedClients=clients.rows.filter(client=>client.archived_at||['archive','archived'].includes(client.status));
   const queues=await buildQueues(pool,{learning}).catch(err=>{app.log.warn({err:err.message},'work queues failed');reportError('web',`work queues: ${err.message}`);return null});
+  for(const c of activeClients)c.last_opened_at=opened.get(c.id)||null;
   return {clients:activeClients,archivedClients,actions:actions.rows,productionAlerts:productionAlerts.rows,collaboration:collaboration.rows,learning,queues};
 });
 app.post('/v1/admin/shopify/tech-pack-product',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
@@ -1447,6 +1450,7 @@ app.put('/v1/admin/products/:id/brief',{preHandler:[authenticate,adminOnly]},asy
 app.get('/v1/admin/clients/:id',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const client=(await pool.query('select * from clients where id=$1',[req.params.id])).rows[0];
   if(!client)return reply.code(404).send({error:'Client not found'});
+  if(UUID_RE.test(String(req.auth?.sub||'')))pool.query('insert into staff_room_opens(user_id,client_id,opened_at) values($1,$2,now()) on conflict (user_id,client_id) do update set opened_at=now()',[req.auth.sub,client.id]).catch(()=>{});
   const payments=(await pool.query(`select py.id,py.kind,py.title,py.amount_cents,py.currency,py.shopify_order_id,py.shopify_order_name,py.paid_at,py.source,py.product_id from payments py where py.client_id=$1 order by py.paid_at desc limit 25`,[client.id])).rows;
   const [projects,projectMessages,projectFiles,clientAssetUploads,products,requests,invoices,users,quotes,suppliers,productionRuns,qcInspections,shipments,assets,assetVersions,comments,configurations,priceTiers]=await Promise.all([
     pool.query(`select pr.*,(select count(*)::int from products p where p.project_id=pr.id) product_count,
