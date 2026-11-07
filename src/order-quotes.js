@@ -6,17 +6,21 @@ const clean = v => String(v ?? '').replace(/\s+/g, ' ').trim();
 const cents = v => { if (v === null || v === undefined || v === '') return null; const n = Math.round(Number(v)); return Number.isFinite(n) && n >= 0 ? n : null; };
 
 // "10 S, 30 M, 30 L, 20 XL" or "S:10 M:30" → { S: 10, M: 30, ... } (the order sizes appear in is kept)
-export function parseSizes(text) {
-  const out = {}, s = String(text || ''), norm = k => k.toUpperCase().replace(/^XXXL$/, '3XL').replace(/^XXL$/, '2XL');
-  // "S:10 M=30" first (a colon or equals sign says which way round it is), else "10 S, 30 M"
-  if (/[:=]/.test(s)) for (const m of s.matchAll(/\b(XXS|XS|S|M|L|XL|XXL|2XL|XXXL|3XL|4XL|5XL|OS)\s*[:=]\s*(\d+)/gi)) out[norm(m[1])] = (out[norm(m[1])] || 0) + Number(m[2]);
-  if (!Object.keys(out).length) for (const m of s.matchAll(/(\d+)\s*(XXS|XS|S|M|L|XL|XXL|2XL|XXXL|3XL|4XL|5XL|OS)\b/gi)) out[norm(m[2])] = (out[norm(m[2])] || 0) + Number(m[1]);
+// a size label: the letter sizes, or one size (OS, OSFA, "one size fits all")
+const SIZE_RE = 'ONE[\\s-]?SIZE(?:\\s+FITS\\s+(?:ALL|MOST))?|OSFA|XXS|XS|XXXL|XXL|2XL|3XL|4XL|5XL|XL|OS|S|M|L';
+const normSize = k => { const u = String(k).toUpperCase().replace(/\s+/g, ' ').trim(); return /^(ONE[ -]?SIZE.*|OSFA|OS)$/.test(u) ? 'One size' : u === 'XXXL' ? '3XL' : u === 'XXL' ? '2XL' : u; };
+// "10 S, 30 M", "S:10 M=30", "50 one size", or just "one size" (then it is the whole quantity, when one is given)
+export function parseSizes(text, quantity = null) {
+  const out = {}, s = String(text || ''), add = (k, n) => { const key = normSize(k); out[key] = (out[key] || 0) + Number(n); };
+  if (/[:=]/.test(s)) for (const m of s.matchAll(new RegExp(`\\b(${SIZE_RE})\\s*[:=]\\s*(\\d+)`, 'gi'))) add(m[1], m[2]);
+  if (!Object.keys(out).length) for (const m of s.matchAll(new RegExp(`(\\d+)\\s*(${SIZE_RE})\\b`, 'gi'))) add(m[2], m[1]);
+  if (!Object.keys(out).length && new RegExp(`^\\s*(${SIZE_RE})\\s*$`, 'i').test(s) && Number(quantity) > 0) add(s.trim(), quantity);
   return out;
 }
 export const sizesTotal = sizes => Object.values(sizes || {}).reduce((a, n) => a + (Number(n) || 0), 0);
 // sizes in the order people read them (the database keeps them in its own order)
-const SIZE_ORDER = ['XXS', 'XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL', 'OS'];
-export const sizeRank = k => { const i = SIZE_ORDER.indexOf(String(k).toUpperCase()); return i < 0 ? 99 : i; };
+const SIZE_ORDER = ['XXS', 'XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL', 'One size'];
+export const sizeRank = k => { const i = SIZE_ORDER.indexOf(normSize(k)); return i < 0 ? 99 : i; };
 export const sizesWords = sizes => Object.entries(sizes || {}).filter(([, n]) => Number(n) > 0).sort((a, b) => sizeRank(a[0]) - sizeRank(b[0])).map(([k, n]) => `${n} ${k}`).join(', ');
 
 // The tier a quantity falls in (the highest minimum at or under it; below every minimum, the smallest tier with a warning)
@@ -53,7 +57,7 @@ export function cleanQuote(input = {}, products = []) {
   const byId = new Map(products.map(p => [p.id, p])), lines = [], errors = [];
   for (const l of Array.isArray(input.lines) ? input.lines : []) {
     const p = byId.get(l.productId); if (!p) { errors.push('A line names a product that is not in this room'); continue; }
-    const sizes = l.sizes && typeof l.sizes === 'object' ? Object.fromEntries(Object.entries(l.sizes).map(([k, n]) => [clean(k).toUpperCase().slice(0, 8), Math.max(0, Math.round(Number(n) || 0))]).filter(([k, n]) => k && n > 0)) : {};
+    const sizes = l.sizes && typeof l.sizes === 'object' ? Object.fromEntries(Object.entries(l.sizes).map(([k, n]) => [normSize(clean(k)).slice(0, 12), Math.max(0, Math.round(Number(n) || 0))]).filter(([k, n]) => k && n > 0)) : {};
     const quantity = Math.round(Number(l.quantity) || sizesTotal(sizes)); const unit = cents(l.unitCents);
     if (!(quantity > 0)) { errors.push(`${p.title}: a quantity is needed`); continue; }
     if (unit == null) { errors.push(`${p.title}: a unit price is needed`); continue; }
