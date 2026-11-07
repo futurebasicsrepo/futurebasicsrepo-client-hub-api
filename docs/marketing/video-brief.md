@@ -101,6 +101,12 @@ then what works with changes, with the cloth that does not suit it folded away. 
 
 ### Graphics, prints and decoration
 - Graphics as real artwork, placed in inches on the garment and drawn on both the picture and the flats.
+- **Graphics studio, three engines at once:** type what it is, tap a season (12, each with its own palette) and a style (10), choose
+  1 to 8 inks, and Claude, OpenAI and Google each draw their take side by side. If one engine is down, the others still answer.
+- **Every generated graphic arrives as vector inks:** one layer per ink with its Pantone. Recolour an ink, merge two, drop one, try a
+  season's palette or shuffle the colours; trace it again finer or bolder, thicken the lines, add a key line, edit the points.
+- **Straight to print:** put it on the garment, see the separations, or download the vector as SVG, or as a PDF with the art and a film
+  page for every ink.
 - **New prints from old:** blend two prints, or make a print in the style of another, with a preview before you keep it. Any kept print can
   become an all-over repeat.
 - **Embroidery:** a realistic sew-out preview with playback, and a quality report.

@@ -1108,6 +1108,13 @@ await journey('J220', 'Graphics anywhere: a graphic is built in the library\'s o
   const up = await K(`/library/graphics/${gid}/studio/apply`, { body: { image: drawn.json.image, doc } }); ok(up.status === 200 && (await K(`/library/studio?art=${gid}`)).json.doc.layers.length === 4, '5. reworked, the graphic is updated in place', up.json);
   const lib = await K(`/library/graphics?q=${encodeURIComponent('J220 crest')}`); ok(lib.json.graphics.some(g => g.id === gid && g.source === 'studio' && g.tags.includes('j220')), '   the library lists it as built in the studio', lib.json.graphics?.length);
   const png = await fetch(`${BASE}/v1/lab/art/${gid}`, { headers: { Authorization: 'Bearer ' + kyleT } }); ok(png.status === 200 && /image\/png/.test(png.headers.get('content-type')), '   and its picture is a PNG with a clear background');
+  // the generator: Claude, OpenAI and Google at once, every answer traced into ink layers; then the vector and its films
+  const gm = await K('/library/studio/generate'); ok(gm.status === 200 && gm.json.engines.map(e => e.id).join() === 'claude,openai,google' && gm.json.seasons.length >= 10 && gm.json.styles.length >= 8, '   the generator lists its three engines, the seasons and the styles', gm.json);
+  const gen = await K('/library/studio/generate', { body: { brief: 'a pumpkin patch crew badge', season: 'halloween', style: 'badge', inks: 3 } });
+  ok(gen.status === 200 && gen.json.results.length === 3 && gen.json.results.every(r => r.art && /<path fill="#/.test(r.svg) && r.colours.length >= 1 && r.colours.length <= 3), '   all three engines draw it, each answer as one vector path per ink', gen.json.error || gen.json.engines);
+  const again = await K('/studio/vector', { body: { art: gen.json.results[0].art, tolerance: 2.4, max: 3, maxSide: 1024 } }); ok(again.status === 200 && again.json.colours.length >= 1, '   a generated graphic is traced again, bolder', again.json);
+  const vpdf = await fetch(`${BASE}/v1/lab/studio/vector.pdf`, { method: 'POST', headers: { Authorization: 'Bearer ' + kyleT, 'Content-Type': 'application/json' }, body: JSON.stringify({ art: gen.json.results[0].art, max: 3, widthIn: 10, name: 'J220' }) });
+  ok(vpdf.status === 200 && /application\/pdf/.test(vpdf.headers.get('content-type')) && (Buffer.from(await vpdf.arrayBuffer()).toString('latin1').match(/\/Type \/Page\b/g) || []).length >= 2, '   and comes out as a vector PDF: the art, then a film page per ink');
   // a part from the sketch pack on a concept, and the graphic on any product's tech pack
   const { brands, plan } = await conceptSetup();
   try {
@@ -1127,16 +1134,16 @@ await journey('J220', 'Graphics anywhere: a graphic is built in the library\'s o
       try {
         const oc = await b.newContext({ viewport: { width: 1440, height: 950 } }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
         const page = await oc.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
-        await page.goto(`${BASE}/lab/studio?new=graphic`, { waitUntil: 'networkidle' }); await page.waitForSelector('#app:not(.hidden)');
+        await page.goto(`${BASE}/lab/studio?new=graphic`, { waitUntil: 'load' }); await page.waitForSelector('#app:not(.hidden)');
         ok(/Keep in the library/.test(await page.innerText('#apply')) && /clear background/.test(await page.innerText('#cSub')), '9. in a browser the graphics studio starts on a clear canvas, ready to keep in the library');
         await page.click('[data-tab="add"]'); await page.waitForSelector('#partTiles [data-part]', { timeout: 15000 });
         const before = await page.evaluate(() => LAYERS.length); await page.click('#partTiles [data-part]'); await page.waitForFunction(n => LAYERS.length === n + 1, before, { timeout: 15000 });
         ok(await page.evaluate(() => LAYERS[LAYERS.length - 1].src.startsWith('/lab/flat-parts/')), '   a part from the sketch pack becomes a layer', await page.evaluate(() => LAYERS[LAYERS.length - 1].src));
         await page.click('#partKinds [data-pkind="zips"]'); await page.waitForFunction(() => document.querySelectorAll('#partTiles [data-part^="zips-"]').length > 0);
         ok(true, '   and the parts come in kinds: pockets, zips, collars, trims, buttons');
-        await page.goto(`${BASE}/lab/library`, { waitUntil: 'networkidle' }); await page.waitForSelector('#app:not(.hidden)');
+        await page.goto(`${BASE}/lab/library`, { waitUntil: 'load' }); await page.waitForSelector('#app:not(.hidden)');
         ok(await page.locator('#buildGo[href="/lab/studio?new=graphic"]').count() === 1, '10. the library offers to build a graphic in the studio');
-        await page.goto(`${BASE}/tech-packs/${pid}`, { waitUntil: 'networkidle' }); await page.waitForSelector('#tabs [data-tab="art"]'); await page.click('#tabs [data-tab="art"]');
+        await page.goto(`${BASE}/tech-packs/${pid}`, { waitUntil: 'load' }); await page.waitForSelector('#tabs [data-tab="art"]'); await page.click('#tabs [data-tab="art"]');
         ok(await page.locator('[data-act="artlib"]').count() === 1, '11. the tech pack offers artwork from the graphics library');
         await page.click('[data-act="artlib"]'); await page.waitForSelector('#artLibTiles [data-lib]', { timeout: 15000 });
         const nArt = await page.locator('[data-panel="art"] article.art').count(); await page.click(`#artLibTiles [data-lib="${gid}"]`); await page.waitForFunction(n => document.querySelectorAll('[data-panel="art"] article.art').length === n + 1, nArt, { timeout: 20000 });

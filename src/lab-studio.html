@@ -225,7 +225,8 @@ html[data-pick] body>header{display:none}html[data-pick] .studio{height:100dvh}
     <div class="pathost" id="patHost"><iframe id="patFrame" title="The pattern pieces"></iframe></div>
   </div>
   <aside class="side">
-    <div class="tabs" role="tablist"><button type="button" role="tab" data-tab="layers" aria-selected="true">Layers</button><button type="button" role="tab" data-tab="add" aria-selected="false">Add</button><button type="button" role="tab" data-tab="ai" aria-selected="false">AI</button></div>
+    <div class="tabs" role="tablist"><button type="button" role="tab" data-tab="make" aria-selected="false" id="tabMake" class="hidden">Make</button><button type="button" role="tab" data-tab="layers" aria-selected="true">Layers</button><button type="button" role="tab" data-tab="add" aria-selected="false">Add</button><button type="button" role="tab" data-tab="ai" aria-selected="false">AI</button></div>
+    <div class="pane hidden" id="pMake" role="tabpanel"></div>
     <div class="pane" id="pLayers" role="tabpanel"></div>
     <div class="pane hidden" id="pAdd" role="tabpanel"></div>
     <div class="pane hidden" id="pAi" role="tabpanel"></div>
@@ -634,11 +635,11 @@ const thumbOf=l=>{try{const c=processed(l),t=canvas(80,80),x=t.getContext('2d'),
 const EYE='<svg viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>',SHUT='<svg viewBox="0 0 24 24"><path d="M3 3l18 18M10.6 5.1A10 10 0 0112 5c6 0 10 7 10 7a17 17 0 01-3 3.7M6.6 6.6C3.8 8.4 2 12 2 12s4 7 10 7a9.5 9.5 0 004.4-1"/></svg>',LOCK='<svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/></svg>',OPEN='<svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 017.5-2"/></svg>';
 
 let TAB='layers';
-function tab(t){TAB=t;$$('.tabs [data-tab]').forEach(b=>b.setAttribute('aria-selected',String(b.dataset.tab===t)));$('#pLayers').classList.toggle('hidden',t!=='layers');$('#pAdd').classList.toggle('hidden',t!=='add');$('#pAi').classList.toggle('hidden',t!=='ai');if(t==='ai'){paintAi()}draw()}
+function tab(t){TAB=t;$$('.tabs [data-tab]').forEach(b=>b.setAttribute('aria-selected',String(b.dataset.tab===t)));$('#pLayers').classList.toggle('hidden',t!=='layers');$('#pAdd').classList.toggle('hidden',t!=='add');$('#pAi').classList.toggle('hidden',t!=='ai');$('#pMake').classList.toggle('hidden',t!=='make');if(t==='ai'){paintAi()}if(t==='make')window.GEN?.paint();draw()}
 $$('.tabs [data-tab]').forEach(b=>b.onclick=()=>tab(b.dataset.tab));
 
 const rng2=(p,lab,min,max,step,v,unit='')=>`<label class="f"><span>${lab}</span><input type="range" data-p="${p}" min="${min}" max="${max}" step="${step}" value="${v}"><output>${v}${unit}</output></label>`;
-function paintPanels(){paintLayers();window.PRO?.optsRefresh();if(TAB==='ai')paintAiState()}
+function paintPanels(){paintLayers();window.PRO?.optsRefresh();if(TAB==='ai')paintAiState();if(TAB==='make')window.GEN?.inks()}
 function paintLayers(){
   const p=$('#pLayers'),l=selected();
   const list=[...LAYERS].reverse().map(x=>`<div class="ly ${x.id===SEL?'on':''} ${x.visible?'':'off'}" data-ly="${x.id}" tabindex="0" role="button" aria-pressed="${x.id===SEL}"><button type="button" data-vis title="${x.visible?'Hide':'Show'}" aria-label="${x.visible?'Hide':'Show'} ${esc(x.name)}">${x.visible?EYE:SHUT}</button>${x.kind==='text'?`<span class="th">T</span>`:`<img alt="" src="${thumbOf(x)}">`}<span class="nm">${esc(x.name)}<small>${KIND[x.kind]}${x.blend!=='source-over'?' · '+esc(BLENDS.find(b=>b[0]===x.blend)?.[1].split(' (')[0]):''}${x.finish?' · '+esc(x.finish.name):x.distress.amount?' · distressed':''}</small></span><button type="button" data-lock title="${x.locked?'Unlock':'Lock'}" aria-label="${x.locked?'Unlock':'Lock'} ${esc(x.name)}">${x.locked?LOCK:OPEN}</button></div>`).join('');
@@ -806,12 +807,12 @@ function paintAi(){
   p.innerHTML=`<div class="sec"><h4>Change the piece</h4><textarea class="t" id="aiEdit" maxlength="800" placeholder="Make the body a washed olive. Add a raw hem. Give the sleeves a faded sun-bleached look."></textarea>
     <div class="row"><button class="btn sm ${MASKED?'':'q'}" type="button" data-aiscope="area" aria-pressed="${MASKED}">Only the painted area</button><button class="btn sm q" type="button" data-paintarea>Paint the area</button><button class="btn sm q" type="button" data-clearmask ${MASKED?'':'disabled'}>Clear it</button></div>
     <p class="note" id="aiScope"></p><div class="row"><button class="btn go sm" type="button" id="aiGo" ${ai.connected?'':'disabled'}>Change it</button>${CID&&!GMODE?`<button class="btn sm" type="button" id="rmGfx" title="Takes the printed graphic off the piece: a selected graphic layer is removed; otherwise the AI finds it (or uses the painted area) and fills it with plain fabric" ${ai.connected?'':'disabled'}>Remove the graphic</button>`:''}</div>
-    <p class="note">The AI looks at everything visible and comes back as a new layer on top, so nothing you made is lost: hide it, lower its opacity, or rub parts of it out. With an area painted, only that area changes.${CID&&!GMODE?' Remove the graphic takes a printed graphic off the piece in one go: paint over it first for an exact area, or let the AI find it.':''}</p></div>
-  <div class="sec"><h4>Make a graphic</h4><textarea class="t" id="aiArt" maxlength="800" placeholder="A cracked two-colour arch of the words FUTURE BASICS over a lightning bolt, 1970s rock tour style, ink and cream"></textarea>
+    <p class="note">Comes back as a new layer on top.</p></div>
+  ${GMODE?'':`<div class="sec"><h4>Make a graphic</h4><textarea class="t" id="aiArt" maxlength="800" placeholder="A cracked two-colour arch of the words FUTURE BASICS over a lightning bolt, 1970s rock tour style, ink and cream"></textarea>
     <label class="f w"><span>Made as</span><select class="t" id="aiTech">${techOpts('')}</select></label>
-    <div class="row"><button class="btn go sm" type="button" id="artGo" ${ai.connected?'':'disabled'}>Make it</button></div><p class="note">Drawn on a clear background, as a layer to place, recolour and distress, and kept in the graphics library for other pieces. With a technique chosen, it is designed for it and shown made that way. Describe the look in your own words: other brands' names are refused.</p><p class="note"><a href="/lab/library?print=1">Or make a new print from a library graphic: in its style, or two blended →</a></p></div>
+    <div class="row"><button class="btn go sm" type="button" id="artGo" ${ai.connected?'':'disabled'}>Make it</button><a class="btn sm q" href="/lab/library?print=1">From a library graphic</a></div><p class="note">On a clear background, kept in the graphics library.</p></div>`}
   ${CID&&!GMODE?`<div class="sec" id="fabSec"><h4>The fabric</h4><span class="note">Loading the materials library…</span></div>`:''}
-  <p class="msg" id="aiMsg" role="status">${ai.connected?(ai.left==null?'':`${ai.left} AI ${ai.left===1?'change':'changes'} left today.`):'No image model is connected, so the AI tools are off. Everything else works.'}</p>`;
+  <p class="msg" id="aiMsg" role="status">${ai.connected?(ai.left==null?'':`${ai.left} left today`):'No image model connected.'}</p>`;
   paintAiState();if(CID&&!GMODE)paintFabrics().catch(x=>{const f=$('#fabSec');if(f)f.innerHTML=`<h4>The fabric</h4><span class="note">${esc(x.message)}</span>`});
 }
 // versions: kept on apply and on request; two side by side with a wipe; open one to carry on from its layers
@@ -1130,7 +1131,7 @@ async function bootGraphic(){
     LAYERS[0]._srcRid=LAYERS[0].raster._rid;
   }catch(x){toast(x.message)}finally{busy()}
   docC.width=W;docC.height=H;mask=canvas(W,H);maskX=mask.getContext('2d');initPpi();
-  await loadFonts();setColor(CUR);paintSub();paintAdd();tab('layers');setTool('select');HIST=[snap()];HI=0;syncUndo();DIRTY=false;showSaved();paintLayers();requestAnimationFrame(fit);
+  await loadFonts();setColor(CUR);paintSub();paintAdd();if(window.GEN&&!TAGM){$('#tabMake').classList.remove('hidden');tab('make')}else tab('layers');setTool('select');HIST=[snap()];HI=0;syncUndo();DIRTY=false;showSaved();paintLayers();requestAnimationFrame(fit);
   setInterval(()=>{if(DIRTY&&!DRAG&&GID)save()},90000);
 }
 // ---------- real size: the ruler sets how many pixels make an inch; every layer then has a size on the piece ----------
@@ -1232,19 +1233,21 @@ async function tonalOpen(l){if(l.kind==='base'){toast('Choose a graphic, mark or
 $('#tonalDlg').addEventListener('click',e=>{const d=$('#tonalDlg');if(e.target.closest('[data-tonalclose]')||e.target===d){d.close();return}const b=e.target.closest('[data-tone]');if(!b)return;const l=layerOf(d.dataset.layer);if(!l)return;
   l.tint={color:b.dataset.tone,amount:1};l.tone={hex:b.dataset.tone,pantone:b.dataset.pantone||''};commit();paintLayers();draw();d.close();toast(`Recoloured tone on tone: ${b.dataset.pantone||b.dataset.tone}.`)});
 // ---------- colour separations: the plates the printer burns, from the job file ----------
-async function sepOpen(l){const d=$('#sepDlg'),s=inchesOf(l);d.showModal();$('#sepEmb').innerHTML='';$('#sepWho').textContent=`${l.name} · ${fin(s.w)} in wide${l.finish?' · '+l.finish.name:''}`;$('#sepGrid').innerHTML='<p class="note">Separating the colours…</p>';$('#sepNote').textContent='';d.dataset.layer=l.id;
-  try{const r=await api('/v1/lab/studio/separations',{body:{image:artPng(l),techniqueId:l.finish?.id||null,widthIn:s.w,garment:GMODE?'':fabricUnder(l),name:l.name}});
+let SEPW=null; // the whole graphic, when the separations are of everything on the canvas (no one layer)
+const sepSrc=l=>l?{image:artPng(l),widthIn:inchesOf(l).w,name:l.name,techniqueId:l.finish?.id||null,garment:GMODE?'':fabricUnder(l)}:{techniqueId:null,garment:'',...SEPW};
+async function sepOpen(l,whole=null){SEPW=whole;if(!l&&!whole)return;const d=$('#sepDlg'),src=sepSrc(l),s={w:src.widthIn};d.showModal();$('#sepEmb').innerHTML='';$('#sepWho').textContent=`${src.name} · ${fin(s.w)} in wide${l?.finish?' · '+l.finish.name:''}`;$('#sepGrid').innerHTML='<p class="note">Separating the colours…</p>';$('#sepNote').textContent='';d.dataset.layer=l?l.id:'';
+  try{const r=await api('/v1/lab/studio/separations',{body:src});
     SEP=r;$('#sepGrid').innerHTML=r.plates.map(p=>`<figure style="margin:0;display:grid;gap:4px" data-plate="${p.n}"><img alt="Plate ${p.n}" src="${p.image}" data-ink="${p.image}" data-film="${p.film||p.image}" style="width:100%;aspect-ratio:1/1;object-fit:contain;background:#fff;border:1px solid rgba(20,20,22,.12);border-radius:10px"><figcaption class="note"><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:${p.hex};vertical-align:middle"></span> <b>${p.n}. ${esc(p.pantone)}</b> · ${Math.round(p.coverage*100)}% cover${p.angle!=null?` · dots at ${p.angle}°`:''}</figcaption></figure>`).join('')+(r.underbase?`<figure style="margin:0;display:grid;gap:4px"><img alt="Underbase" src="${r.underbase}" style="width:100%;aspect-ratio:1/1;object-fit:contain;background:#555;border-radius:10px"><figcaption class="note"><b>Underbase</b> · white under the colours on a dark garment</figcaption></figure>`:'');
     $('#sepNote').innerHTML=`${r.plates.length} plate${r.plates.length===1?'':'s'} for ${esc(r.job.technique?.name||r.job.technique||'the print')} at ${esc(r.job.size?.label||fin(s.w)+' in')}${r.job.tones?', the soft tones screened as halftone dots':''}.${r.job.print?.order?.length?`<br>On the press: ${esc(r.job.print.order.join(' → '))}`:''}${(r.job.warnings||[]).map(w=>`<br>! ${esc(typeof w==='string'?w:w.text||'')}`).join('')}`;sepView('ink')}
   catch(x){$('#sepGrid').innerHTML=`<p class="note" style="color:#b3261e">${esc(x.message)}</p>`;toast(x.message)}}
 let SEP=null;function sepView(v){$$('#sepDlg [data-sepview]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.sepview===v)));$$('#sepGrid img[data-ink]').forEach(i=>{i.src=v==='film'?i.dataset.film:i.dataset.ink})}
 $('#sepDlg').addEventListener('click',async e=>{const d=$('#sepDlg');if(e.target.closest('[data-sepclose]')||e.target===d){d.close();return}const sv=e.target.closest('[data-sepview]');if(sv){sepView(sv.dataset.sepview);return}
-  if(e.target.closest('[data-sepdst]')){const l=layerOf(d.dataset.layer);d.close();if(l)embOpen(l);return}
+  if(e.target.closest('[data-sepdst]')){const l=layerOf(d.dataset.layer);if(!l){toast('Embroidery is made from one layer: choose it, then Separations in its menu.');return}d.close();embOpen(l);return}
   const vb=e.target.closest('[data-sepvec]');
-  if(vb){const l=layerOf(d.dataset.layer);if(!l)return;const b=vb;b.disabled=true;const s=inchesOf(l);
-    try{{const r=await api('/v1/lab/studio/vector',{body:{image:artPng(l),widthIn:s.w,name:l.name}});const url=URL.createObjectURL(new Blob([r.svg],{type:'image/svg+xml'}));download(url,fileBase()+'-'+(l.name||'graphic').toLowerCase().replace(/[^a-z0-9]+/g,'-')+'.svg');setTimeout(()=>URL.revokeObjectURL(url),4000);toast(`Traced: ${r.paths} shape${r.paths===1?'':'s'} in ${r.colours.length} ink${r.colours.length===1?'':'s'}.`)}}
-    catch(x){toast(x.message)}finally{b.disabled=false}return}if(!e.target.closest('[data-sepzip]'))return;const l=layerOf(d.dataset.layer);if(!l)return;const b=e.target.closest('[data-sepzip]');b.disabled=true;
-  try{const s=inchesOf(l),r=await fetch('/v1/lab/studio/separations',{method:'POST',headers:{Authorization:'Bearer '+TOKEN(),'Content-Type':'application/json'},body:JSON.stringify({image:artPng(l),techniqueId:l.finish?.id||null,widthIn:s.w,garment:GMODE?'':fabricUnder(l),name:l.name,zip:true})});
+  if(vb){const l=layerOf(d.dataset.layer);if(!l&&!SEPW)return;const b=vb;b.disabled=true;const src=sepSrc(l);
+    try{{const r=await api('/v1/lab/studio/vector',{body:{image:src.image,widthIn:src.widthIn,name:src.name}});const url=URL.createObjectURL(new Blob([r.svg],{type:'image/svg+xml'}));download(url,fileBase()+'-'+(src.name||'graphic').toLowerCase().replace(/[^a-z0-9]+/g,'-')+'.svg');setTimeout(()=>URL.revokeObjectURL(url),4000);toast(`Traced: ${r.paths} shape${r.paths===1?'':'s'} in ${r.colours.length} ink${r.colours.length===1?'':'s'}.`)}}
+    catch(x){toast(x.message)}finally{b.disabled=false}return}if(!e.target.closest('[data-sepzip]'))return;const l=layerOf(d.dataset.layer);if(!l&&!SEPW)return;const b=e.target.closest('[data-sepzip]');b.disabled=true;
+  try{const r=await fetch('/v1/lab/studio/separations',{method:'POST',headers:{Authorization:'Bearer '+TOKEN(),'Content-Type':'application/json'},body:JSON.stringify({...sepSrc(l),zip:true})});
     if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||'The files could not be made');const url=URL.createObjectURL(await r.blob());download(url,fileBase()+'-separations.zip');setTimeout(()=>URL.revokeObjectURL(url),4000);toast('The separation files are downloading.')}
   catch(x){toast(x.message)}finally{b.disabled=false}});
 // ---------- embroidery: the layer digitized for a machine (src/lab-digitize.js), with the settings a digitiser changes ----------
@@ -1527,6 +1530,7 @@ boot();
 <script src="/lab/studio-ill.js"></script>
 <script src="/lab/studio-emb.js"></script>
 <script src="/lab/studio-board.js"></script>
+<script src="/lab/studio-gen.js"></script>
 <script src="/helper.js" defer></script>
 <script type="module">import * as B from '/lab/lab-brush.js';window.FBBrush=B;try{paintOpts();paintDock()}catch{}</script>
 </body>
