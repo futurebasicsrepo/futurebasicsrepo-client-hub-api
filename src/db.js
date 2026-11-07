@@ -1951,6 +1951,44 @@ export async function migrate() {
     -- a site's card: what it runs on and how it answered at the last look (src/site-peek.js), and its picture (staff's upload, else the site's share image)
     alter table room_sites add column if not exists facts jsonb not null default '{}'::jsonb;
     alter table room_sites add column if not exists facts_at timestamptz;
+    -- order quotes: several of a room's products in one quote, sent to the client, tracked as a deal, paid through a Shopify draft order (src/order-quote-routes.js)
+    create table if not exists order_quotes (
+      id uuid primary key default gen_random_uuid(),
+      client_id uuid not null references clients(id) on delete cascade,
+      project_id uuid references projects(id) on delete set null,
+      request_id uuid references requests(id) on delete set null,
+      number text not null unique,
+      title text,
+      status text not null default 'draft' check (status in ('draft','sent','accepted','changes')),
+      version integer not null default 1,
+      lines jsonb not null default '[]'::jsonb,
+      extras jsonb not null default '[]'::jsonb,
+      subtotal_cents bigint not null default 0,
+      total_cents bigint not null default 0,
+      cost_cents bigint,
+      margin_pct numeric(6,1),
+      currency text not null default 'USD',
+      notes text not null default '',
+      valid_until date,
+      deal_id uuid references sales_deals(id) on delete set null,
+      sent_at timestamptz, accepted_at timestamptz, accepted_by uuid references users(id) on delete set null, declined_at timestamptz, reply text,
+      shopify_draft_order_id text, shopify_draft_order_name text, pay_url text, pay_error text,
+      created_by uuid references users(id) on delete set null,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
+    create index if not exists order_quotes_client_idx on order_quotes (client_id, created_at desc);
+    -- price ladders: a set of quantity price tiers saved once (a tee at 50/100/250/500, say) and put on any product (src/product-sheet-routes.js)
+    create table if not exists price_ladders (
+      id uuid primary key default gen_random_uuid(),
+      name text not null,
+      kind text,
+      tiers jsonb not null default '[]'::jsonb,
+      created_by uuid references users(id) on delete set null,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
+    create unique index if not exists price_ladders_name_idx on price_ladders (lower(name));
     -- when each staff member last opened a client's room (or a project in it): their client list leads with the rooms they are working in
     create table if not exists staff_room_opens (
       user_id uuid not null references users(id) on delete cascade,

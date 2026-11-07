@@ -24,6 +24,7 @@ export function registerHomeRoutes(app, { pool, authenticate, adminOnly }) {
     const moneyOk = moneyAllowed(meRow?.email || req.auth?.email || '');
     const [cash] = moneyOk ? await q(`select
         (select count(*) from contracts where status='sent' and (expires_at is null or expires_at > now()))::int out_n,
+        (select count(*) from order_quotes where status in ('sent','changes'))::int q_n, (select coalesce(sum(total_cents),0) from order_quotes where status in ('sent','changes'))::bigint q_v,
         (select coalesce(sum(total_cents),0) from contracts where status='sent' and (expires_at is null or expires_at > now()))::bigint out_v,
         (select count(*) from contracts where status in ('signed_by_client','executed') and coalesce(executed_at, (client_signature->>'at')::timestamptz, updated_at) > now() - interval '30 days')::int signed_n,
         (select coalesce(sum(total_cents),0) from contracts where status in ('signed_by_client','executed') and coalesce(executed_at, (client_signature->>'at')::timestamptz, updated_at) > now() - interval '30 days')::bigint signed_v,
@@ -79,6 +80,10 @@ export function registerHomeRoutes(app, { pool, authenticate, adminOnly }) {
       from work_assignments a join clients c on c.id=a.client_id left join projects pr on pr.id=a.project_id
       where a.assignee_fb and a.status<>'done' and c.archived_at is null and c.status not in ('archive','archived')
       order by a.due nulls last, a.created_at limit 40`).catch(() => []);
+    // what clients asked us for and nobody has finished: oldest first, so nothing waits unseen
+    const clientRequests = await q(`select r.id, r.title, r.type, r.status, r.created_at, r.client_id, c.name client_name, coalesce(nullif(u.name,''), u.email) author
+      from requests r join clients c on c.id=r.client_id left join users u on u.id=r.user_id
+      where r.status in ('submitted','in-progress') and r.type <> 'project-intake' and c.archived_at is null order by r.created_at limit 12`).catch(() => []);
     const out = {
       me: { firstName: firstName(meRow?.name, meRow?.email || req.auth?.email) },
       myAccounts: orderAccounts(mine.map(r => accountRow(r))),
@@ -86,16 +91,17 @@ export function registerHomeRoutes(app, { pool, authenticate, adminOnly }) {
       leadSearches: leadSearches.map(r => ({ id: r.id, trade: r.trade, place: r.place, quick: r.quick, at: r.created_at })),
       signals: { total: sc.total, overdue: sc.overdue, top: sigs.map(r => ({ id: r.id, source: r.source, title: r.title, summary: r.summary, score: r.score, status: r.status, ownerName: r.owner_name || '', foundAt: r.found_at, postedAt: r.posted_at })) },
       funnel: { newLeads7: cur.n, newLeadsPrev7: prev.n, trend: trend(cur.n, prev.n), lookers7: look.lookers, demos7: look.demos, won30: { count: won.n, valueCents: Number(won.v) }, onHook: { deals: hook.deals, fresh: hook.fresh, rooms: hook.rooms, total: hook.deals + hook.fresh + hook.rooms } },
-      money: cash ? { out: { count: cash.out_n, cents: Number(cash.out_v) }, signed30: { count: cash.signed_n, cents: Number(cash.signed_v) }, underContractCents: Math.max(0, Number(cash.under_v)), in30Cents: Number(cash.in_v), dueCents: Math.max(0, Number(cash.due_v)) } : null,
+      money: cash ? { out: { count: cash.out_n, cents: Number(cash.out_v) }, quotes: { count: cash.q_n, cents: Number(cash.q_v) }, signed30: { count: cash.signed_n, cents: Number(cash.signed_v) }, underContractCents: Math.max(0, Number(cash.under_v)), in30Cents: Number(cash.in_v), dueCents: Math.max(0, Number(cash.due_v)) } : null,
       awaitingReply: awaiting.map(r => ({ id: r.id, name: r.name || r.email, email: r.email, company: r.company || '', source: r.source, createdAt: r.created_at })),
       prototypes: protos.map(r => prototypeRow({ ...r, has_cover: r.has_cover || hasBuildPreview(r.slug) })), showNow: showNow.map(r => ({ ...prototypeRow({ ...r, has_cover: r.has_cover || hasBuildPreview(r.slug) }), views30: Number(r.views7) || 0 })),
       projects: orderProjects(projects.map(r => projectRow(r))),
       waiting: { approvals: appr.n, production: prod.n },
+      clientRequests: clientRequests.map(r => ({ id: r.id, title: r.title, type: r.type, status: r.status, at: r.created_at, clientId: r.client_id, clientName: r.client_name, author: r.author || '' })),
       fbTasks: fbTasks.map(t => ({ id: t.id, title: t.title, status: t.status, due: t.due ? new Date(t.due).toISOString().slice(0, 10) : '', source: t.source, clientId: t.client_id, clientName: t.client_name, projectId: t.project_id, projectName: t.project_name || '', at: t.created_at }))
     };
     // My day is for everyone on the team, but each part of it shows only what the person has been given (Team access)
     const can = id => !req.staff || req.staff.can(id);
-    if (!can('clients')) Object.assign(out, { myAccounts: [], unownedAccounts: [], projects: [], waiting: { approvals: 0, production: 0 }, fbTasks: [] });
+    if (!can('clients')) Object.assign(out, { clientRequests: [], myAccounts: [], unownedAccounts: [], projects: [], waiting: { approvals: 0, production: 0 }, fbTasks: [] });
     if (!can('prototypes')) Object.assign(out, { prototypes: [], showNow: [], leadSearches: [] });
     if (!can('intel')) out.signals = { total: 0, overdue: 0, top: [] };
     if (!can('crm')) Object.assign(out, { awaitingReply: [], funnel: { newLeads7: 0, newLeadsPrev7: 0, trend: out.funnel.trend, lookers7: 0, demos7: 0, won30: { count: 0, valueCents: 0 }, onHook: { deals: 0, fresh: 0, rooms: 0, total: 0 } } });
