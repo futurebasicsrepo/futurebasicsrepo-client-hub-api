@@ -422,7 +422,7 @@ let VIEWONLY=0;const viewOnly=()=>Boolean((GEST&&!GEST.layer)||(DRAG&&DRAG.mode=
 function render(){
   if(!viewOnly()||!render.done){compose();render.done=true}const r=view.getBoundingClientRect();DPR=window.devicePixelRatio||1;const cw=Math.round(r.width*DPR),ch=Math.round(r.height*DPR);if(view.width!==cw||view.height!==ch){view.width=cw;view.height=ch}
   const vo=viewOnly(); // while the view is being moved or pinched: no soft shadow and quick smoothing (both are slow on an iPad, every frame)
-  vx.setTransform(DPR,0,0,DPR,0,0);vx.clearRect(0,0,r.width,r.height);vx.save();if(!vo){vx.shadowColor='rgba(20,20,22,.18)';vx.shadowBlur=24}else{vx.fillStyle='rgba(20,20,22,.08)';vx.fillRect(PX+2,PY+3,W*Z,H*Z)}vx.fillStyle='#fff';vx.fillRect(PX,PY,W*Z,H*Z);vx.restore();
+  vx.setTransform(DPR,0,0,DPR,0,0);vx.clearRect(0,0,r.width,r.height);if(VR){vx.translate(r.width/2,r.height/2);vx.rotate(VR*Math.PI/180);vx.translate(-r.width/2,-r.height/2)}vx.save();if(!vo){vx.shadowColor='rgba(20,20,22,.18)';vx.shadowBlur=24}else{vx.fillStyle='rgba(20,20,22,.08)';vx.fillRect(PX+2,PY+3,W*Z,H*Z)}vx.fillStyle='#fff';vx.fillRect(PX,PY,W*Z,H*Z);vx.restore();
   vx.imageSmoothingQuality=vo?'low':'high';vx.drawImage(docC,PX,PY,W*Z,H*Z);if(vo){clearTimeout(render.sharp);render.sharp=setTimeout(()=>{if(!viewOnly())draw()},120)}
   if(MASKED&&(TOOL==='area'||TAB==='ai')){vx.save();vx.globalAlpha=.42;vx.drawImage(mask,PX,PY,W*Z,H*Z);vx.restore()}
   const l=selected();
@@ -430,18 +430,23 @@ function render(){
     if(!l.locked){const tm=[(p[0][0]+p[1][0])/2,(p[0][1]+p[1][1])/2],rk=rotKnob(l);vx.beginPath();vx.moveTo(tm[0],tm[1]);vx.lineTo(rk[0],rk[1]);vx.stroke();
       for(const[a,b]of p){vx.fillStyle='#fff';vx.fillRect(a-5,b-5,10,10);vx.strokeRect(a-5,b-5,10,10)}vx.beginPath();vx.arc(rk[0],rk[1],6,0,Math.PI*2);vx.fillStyle='#4bff9a';vx.fill();vx.stroke()}}
   if(HOVER&&['brush','eraser','distress','area'].includes(TOOL)){const rad=(TOOL==='distress'?OPT.dsize:TOOL==='area'?OPT.area:OPT.size)/2*Z;vx.strokeStyle='rgba(20,20,22,.8)';vx.lineWidth=1;vx.beginPath();vx.arc(HOVER[0],HOVER[1],Math.max(rad,2),0,Math.PI*2);vx.stroke();vx.strokeStyle='rgba(255,255,255,.8)';vx.beginPath();vx.arc(HOVER[0],HOVER[1],Math.max(rad,2)+1,0,Math.PI*2);vx.stroke()}
-  window.PRO?.overlay(vx);window.VEC?.overlay(vx);window.ILL?.overlay(vx);overlay();$('#zLabel').textContent=Math.round(Z*100)+'%';
+  window.PRO?.overlay(vx);window.VEC?.overlay(vx);window.ILL?.overlay(vx);overlay();$('#zLabel').textContent=Math.round(Z*100)+'%'+(VR?` · ${Math.round(VR)}°`:'');
 }
 function rotKnob(l){const p=corners(l).map(([a,b])=>[sx(a),sy(b)]),tm=[(p[0][0]+p[1][0])/2,(p[0][1]+p[1][1])/2],c=[sx(l.x),sy(l.y)],d=Math.hypot(tm[0]-c[0],tm[1]-c[1])||1;return[tm[0]+(tm[0]-c[0])/d*28,tm[1]+(tm[1]-c[1])/d*28]}
 // FITTED: the view is still the fit, so a stage that settles or resizes keeps it fitted
 let FITTED=false;
-function fit(){FITTED=true;const r=$('#stage').getBoundingClientRect();Z=Math.min((r.width-48)/W,(r.height-48)/H,2);PX=(r.width-W*Z)/2;PY=(r.height-H*Z)/2;draw()}
+function fit(){FITTED=true;VR=0;const r=$('#stage').getBoundingClientRect();Z=Math.min((r.width-48)/W,(r.height-48)/H,2);PX=(r.width-W*Z)/2;PY=(r.height-H*Z)/2;draw()}
 function zoomAt(f,cx,cy){FITTED=false;VIEWONLY=performance.now()+120;const nz=clamp(Z*f,.05,8);PX=cx-(cx-PX)*nz/Z;PY=cy-(cy-PY)*nz/Z;Z=nz;draw()}
 new ResizeObserver(()=>FITTED?fit():draw()).observe($('#stage'));
 
 // ---------- pointer work on the stage ----------
 let DRAG=null,HOVER=null,SPACE=false;
-const pt=e=>{const r=view.getBoundingClientRect();return[e.clientX-r.left,e.clientY-r.top]};
+// the view's turn (VR, degrees, two fingers on an iPad): the whole view is drawn turned about its centre, and a point on the screen is turned
+// back before it is used, so every tool works on a turned picture as on a straight one
+let VR=0;const vturn=(x,y,deg)=>{const a=deg*Math.PI/180,c=Math.cos(a),s=Math.sin(a);return[x*c-y*s,x*s+y*c]};
+const vcentre=()=>{const r=view.getBoundingClientRect();return[r.width/2,r.height/2]};
+const rawPt=e=>{const r=view.getBoundingClientRect();return[e.clientX-r.left,e.clientY-r.top]};
+const pt=e=>{const q=rawPt(e);if(!VR)return q;const[cx,cy]=vcentre(),[x,y]=vturn(q[0]-cx,q[1]-cy,-VR);return[cx+x,cy+y]};window.studioPt=pt;
 function hit(px,py){for(let i=LAYERS.length-1;i>=0;i--){const l=LAYERS[i];if(!l.visible||l.kind==='base')continue;const[w,h]=dims(l),[a,b]=toLocal(l,px,py);if(a<0||b<0||a>=w||b>=h)continue;
   if(l.kind==='paint'||l.kind==='image'){const d=processed(l).getContext('2d',{willReadFrequently:true}).getImageData(Math.floor(a),Math.floor(b),1,1).data;if(d[3]<12)continue}return l}return null}
 function strokeTarget(tool){
@@ -470,11 +475,16 @@ const capture=e=>{try{view.setPointerCapture(e.pointerId)}catch{}};
 const pressOf=e=>e.pointerType==='pen'&&OPT.pressure?clamp(.15+.85*(e.pressure||.5),.15,1):1;
 const tolOf=e=>e.pointerType==='mouse'?10:22; // a fingertip or a Pencil tip needs a bigger target than a cursor
 // Two fingers: on the selected graphic (Select tool) they resize, turn and move it, as in other drawing apps; anywhere else they zoom and move the view
-function gestStart(){const[a,b]=[...PTRS.values()];GEST={d:Math.hypot(a.x-b.x,a.y-b.y)||1,mx:(a.x+b.x)/2,my:(a.y+b.y)/2,Z,PX,PY,ang:Math.atan2(b.y-a.y,b.x-a.x)};
+function gestStart(){const[a,b]=[...PTRS.values()];GEST={d:Math.hypot(a.x-b.x,a.y-b.y)||1,mx:(a.x+b.x)/2,my:(a.y+b.y)/2,Z,PX,PY,ang:Math.atan2(b.y-a.y,b.x-a.x),VR0:VR,rm:[((a.rx??a.x)+(b.rx??b.x))/2,((a.ry??a.y)+(b.ry??b.y))/2],rang:Math.atan2((b.ry??b.y)-(a.ry??a.y),(b.rx??b.x)-(a.rx??a.x))};
   const l=selected();if(TOOL==='select'&&l&&!fixed(l)&&!l.locked&&l.visible&&[[a.x,a.y],[b.x,b.y],[GEST.mx,GEST.my]].some(([x,y])=>hit(dx(x),dy(y))===l))GEST.layer={l,s0:l.scale,r0:l.rot||0,x0:l.x,y0:l.y}}
 function gestMove(){const[a,b]=[...PTRS.values()];if(!a||!b||!GEST)return;const d=Math.hypot(a.x-b.x,a.y-b.y)||1,mx=(a.x+b.x)/2,my=(a.y+b.y)/2,nz=clamp(GEST.Z*d/GEST.d,.05,8);
   if(GEST.layer){const g=GEST.layer;g.l.scale=clamp(g.s0*d/GEST.d,.02,40);g.l.rot=g.r0+Math.atan2(b.y-a.y,b.x-a.x)-GEST.ang;g.l.x=Math.round(g.x0+(mx-GEST.mx)/Z);g.l.y=Math.round(g.y0+(my-GEST.my)/Z);g.moved=true;draw();paintFields();return}
-  FITTED=false;PX=mx-(GEST.mx-GEST.PX)*nz/GEST.Z;PY=my-(GEST.my-GEST.PY)*nz/GEST.Z;Z=nz;draw()}
+  // the view: zoomed and turned together, the point of the picture under the fingers staying under them (worked on the screen's own
+  // positions, since the turn changes as they move); a turn near square snaps to it
+  const ar=[a.rx??a.x,a.ry??a.y],br=[b.rx??b.x,b.ry??b.y],m=[(ar[0]+br[0])/2,(ar[1]+br[1])/2],[cx,cy]=vcentre();
+  let dr=(Math.atan2(br[1]-ar[1],br[0]-ar[0])-GEST.rang)*180/Math.PI;dr=((dr+540)%360)-180;let nr=GEST.VR0+dr;const sq=Math.round(nr/90)*90;if(Math.abs(nr-sq)<5)nr=sq;nr=((nr+540)%360)-180;
+  if(!GEST.doc){const[ux,uy]=vturn(GEST.rm[0]-cx,GEST.rm[1]-cy,-GEST.VR0);GEST.doc=[(cx+ux-GEST.PX)/GEST.Z,(cy+uy-GEST.PY)/GEST.Z]}
+  const[vx2,vy2]=vturn(m[0]-cx,m[1]-cy,-nr);FITTED=false;VR=nr;Z=nz;PX=cx+vx2-Z*GEST.doc[0];PY=cy+vy2-Z*GEST.doc[1];draw()}
 function cancelTouchStroke(){const g=DRAG;if(!g)return;if(g.mode==='stroke'&&g.orig){g.l.raster=g.orig;g.l.raster._rid=RID++}DRAG=null;draw()}
 view.addEventListener('pointerdown',e=>{
   if(!D)return;VIEWONLY=0;if(document.activeElement?.matches?.('input,textarea,select'))document.activeElement.blur(); // the picture takes the keys back from a field in the panel
@@ -483,7 +493,7 @@ view.addEventListener('pointerdown',e=>{
   // open from an earlier one, and the first finger down means no other finger is still down
   if(e.pointerType==='pen'){for(const[k,q]of PTRS)if(q.type==='pen'&&k!==e.pointerId)PTRS.delete(k);if(DRAG&&DRAG.type==='pen'&&DRAG.pid!==e.pointerId)endDrag({pointerId:DRAG.pid})}
   if(e.pointerType==='touch'&&e.isPrimary){for(const[k,q]of PTRS)if(q.type==='touch'&&k!==e.pointerId)PTRS.delete(k);GEST=null;if(DRAG&&DRAG.type==='touch'&&DRAG.pid!==e.pointerId){if(DRAG.mode==='stroke')endDrag({pointerId:DRAG.pid});else DRAG=null}}
-  PTRS.set(e.pointerId,{x:qx,y:qy,type:e.pointerType});if(e.pointerType==='pen')PEN=true;
+  {const[rx,ry]=rawPt(e);PTRS.set(e.pointerId,{x:qx,y:qy,rx,ry,type:e.pointerType})}if(e.pointerType==='pen')PEN=true;
   if(e.pointerType==='touch'&&DRAG&&DRAG.type==='pen')return; // a palm while the Pencil draws
   if(e.pointerType==='pen'&&DRAG&&DRAG.type==='touch'){if(DRAG.mode==='stroke')cancelTouchStroke();else DRAG=null}if(e.pointerType==='pen')GEST=null; // the Pencil wins over a resting palm
   if(e.pointerType==='touch'){const touches=[...PTRS.values()].filter(q=>q.type==='touch').length;
@@ -510,7 +520,7 @@ view.addEventListener('pointerdown',e=>{
   if(h&&!h.locked&&!fixed(h))DRAG={mode:'move',l:h,ox:x-h.x,oy:y-h.y,moved:false,pid:e.pointerId,type:e.pointerType};draw();
 });
 view.addEventListener('pointermove',e=>{
-  const[px,py]=pt(e),q=PTRS.get(e.pointerId);if(q){q.x=px;q.y=py}
+  const[px,py]=pt(e),q=PTRS.get(e.pointerId);if(q){q.x=px;q.y=py;const[rx,ry]=rawPt(e);q.rx=rx;q.ry=ry}
   if(GEST){gestMove();return}
   if(DRAG&&DRAG.pid!==undefined&&DRAG.pid!==e.pointerId)return;
   if(e.pointerType!=='touch')HOVER=[px,py];if(!DRAG){window.ILL?.move(null,dx(px),dy(py),e);if(['brush','eraser','distress','area'].includes(TOOL))draw();window.VEC?.hover();return}
@@ -542,9 +552,9 @@ view.addEventListener('pointerup',endDrag);view.addEventListener('pointercancel'
 // Keyboard) arrives only as these gesture events, so it zooms the picture under the pointer; a pinch with fingers is handled by the pointers above
 let TPG=null;
 ['gesturestart','gesturechange','gestureend'].forEach(t=>document.addEventListener(t,e=>{e.preventDefault();if(VMODE!=='picture'||!e.target.closest?.('#stage'))return;
-  if([...PTRS.values()].filter(q=>q.type==='touch').length>=2){TPG=null;return}const r=view.getBoundingClientRect(),cx=e.clientX-r.left,cy=e.clientY-r.top;
+  if([...PTRS.values()].filter(q=>q.type==='touch').length>=2){TPG=null;return}const[cx,cy]=pt(e);
   if(t==='gesturestart')TPG={z:Z};else if(t==='gesturechange'&&TPG){zoomAt(clamp(TPG.z*e.scale,.05,8)/Z,cx,cy)}else TPG=null},{passive:false}));
-view.addEventListener('wheel',e=>{e.preventDefault();const[px,py]=pt(e);if(e.ctrlKey||e.metaKey)zoomAt(Math.exp(-e.deltaY*.01),px,py);else{VIEWONLY=performance.now()+120;FITTED=false;PX-=e.deltaX;PY-=e.deltaY;draw()}},{passive:false});
+view.addEventListener('wheel',e=>{e.preventDefault();const[px,py]=pt(e);if(e.ctrlKey||e.metaKey)zoomAt(Math.exp(-e.deltaY*.01),px,py);else{VIEWONLY=performance.now()+120;FITTED=false;const[ddx,ddy]=vturn(e.deltaX,e.deltaY,-VR);PX-=ddx;PY-=ddy;draw()}},{passive:false});
 $('#zIn').onclick=()=>{const r=view.getBoundingClientRect();zoomAt(1.25,r.width/2,r.height/2)};$('#zOut').onclick=()=>{const r=view.getBoundingClientRect();zoomAt(.8,r.width/2,r.height/2)};$('#zFit').onclick=fit;
 
 // ---------- tools and their options ----------
