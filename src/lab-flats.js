@@ -609,6 +609,7 @@ export function describeEdit(e, p) {
   const v = e.view === 'back' ? 'Back' : 'Front', thread = hexOf(e.thread) ? ` in ${hexOf(e.thread)} thread` : '';
   if (e.type === 'stitch') { const L = e.pts.slice(1).reduce((a, q, i) => a + Math.hypot(q[0] - e.pts[i][0], q[1] - e.pts[i][1]), 0); return `${v}: ${STITCHES[e.stitch] || 'Stitch'}${thread}${e.spi ? `, ${e.spi} stitches an inch` : ''}, ${fmt(L)} long`; }
   if (e.type === 'block') return `${v}: ${e.name || 'Colour block'} in ${hexOf(e.color) || 'the main colour'}`;
+  if (e.type === 'rub') return `${v}: a line of the sketch rubbed out`;
   if (e.type === 'ai') return `${v}: redrawn: ${e.prompt || 'a change'} (${fmt(e.w)} × ${fmt(e.h)})`;
   if (e.type === 'part') { const q = partOf(e.part); return `${v}: ${e.name || q?.label || 'Part'} (from the add-on sheet ${q?.id || ''}), ${fmt(e.w)} × ${fmt(e.h)}, ${describe({ ...e, name: e.name || q?.label || 'the part' }, p)}${e.flip ? ', mirrored' : ''}`; }
   const name = e.kind === 'pleat' ? `${{ 1: 'Single', 2: 'Double', 3: 'Triple' }[Math.min(Math.max(Math.round(e.count || 1), 1), 3)]} pleat` : DETAILS[e.kind] || 'Detail';
@@ -623,6 +624,8 @@ export function cleanEdits(list) {
   return (Array.isArray(list) ? list : []).slice(0, 60).map((e, i) => {
     const base = { id: /^[a-z0-9-]{1,40}$/i.test(String(e?.id || '')) ? String(e.id) : 'e' + i, view: e?.view === 'back' ? 'back' : 'front' };
     if (e?.type === 'stitch') { const pts = cleanPts(e.pts, 2); return pts && { ...base, type: 'stitch', pts, stitch: STITCHES[e.stitch] ? e.stitch : 'single', thread: hexOf(e.thread), spi: Math.round(num(e.spi, 0, 20, 0)) }; }
+    // a stroke of the eraser over the sketch itself (its own lines rubbed out, in the garment's colour): points in inches and the stroke's width
+    if (e?.type === 'rub') { const pts = cleanPts(e.pts, 1, 240, r32); return pts && { ...base, type: 'rub', pts, w: num(e.w, .05, 6, .4) }; }
     if (e?.type === 'block') { const pts = cleanPts(e.pts, 3, 240, r32); return pts && hexOf(e.color) && { ...base, type: 'block', pts, color: hexOf(e.color), name: String(e.name || '').replace(/\s+/g, ' ').trim().slice(0, 40), ...(e.traced ? { traced: true } : {}) }; }
     const box = { x: num(e?.x, -60, 60, 0), y: num(e?.y, -30, 80, 0), w: num(e?.w, .1, 40, 1), h: num(e?.h, .1, 40, 1) };
     if (e?.type === 'ai') return /^[0-9a-f-]{36}$/i.test(String(e.art || '')) && { ...base, type: 'ai', ...box, art: e.art, prompt: String(e.prompt || '').replace(/\s+/g, ' ').trim().slice(0, 200) };
@@ -668,7 +671,9 @@ export function renderSvg(p, view = 'front', { placements = [], hrefs = {}, size
   const nk = p.neckline ? necklineSvg(p, view, measurementsFor(p, size), { cloth: cloth || '#ffffff', line: lineFor(cloth) }) : { under: '', over: '' };
   const under = edits.filter(e => (e.type === 'detail' && e.kind === 'erase') || (e.type === 'ai' && editHrefs[e.art]) || (e.type === 'part' && partOf(e.part))).map(e => e.type === 'ai' || e.type === 'part'
     ? `<image href="${esc(e.type === 'ai' ? editHrefs[e.art] : partHref(partOf(e.part).file))}" x="${n3(e.x - e.w / 2)}" y="${n3(e.y - e.h / 2)}" width="${n3(e.w)}" height="${n3(e.h)}" preserveAspectRatio="none"${e.flip ? ` transform="translate(${n3(2 * e.x)} 0) scale(-1 1)"` : ''}/>`
-    : `<rect x="${n3(e.x - e.w / 2)}" y="${n3(e.y - e.h / 2)}" width="${n3(e.w)}" height="${n3(e.h)}" rx=".15" fill="#ffffff"/>`).join('') + nk.under;
+    : `<rect x="${n3(e.x - e.w / 2)}" y="${n3(e.y - e.h / 2)}" width="${n3(e.w)}" height="${n3(e.h)}" rx=".15" fill="#ffffff"/>`).join('') + nk.under
+    // the eraser on the sketch: its strokes go under with the sketch, so they take the garment's colour and its cloth like the rest of it
+    + edits.filter(e => e.type === 'rub').map(e => `<path d="${e.pts.length > 1 ? pathD(e.pts) : `M ${n3(e.pts[0][0])} ${n3(e.pts[0][1])} l .001 0`}" fill="none" stroke="#ffffff" stroke-width="${n3(e.w)}" stroke-linecap="round" stroke-linejoin="round"/>`).join('');
   const defs = `<defs><g id="${pid}-b">${parts}${under}</g>${cloth ? tintFilter(`${pid}-t`, cloth) : ''}${blocks.map((e, i) => tintFilter(`${pid}-t${i}`, e.color) + `<clipPath id="${pid}-c${i}"><path d="${pathD(e.pts)} Z"/></clipPath>`).join('')}</defs>`;
   // the cloth's own surface: a grey shading tile (the close-up spread around a light mean and mirrored to repeat without seams: photoShade in
   // src/lab-photo-tint.js), multiplied over the drawn colour

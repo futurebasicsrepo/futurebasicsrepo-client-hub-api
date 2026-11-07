@@ -214,13 +214,13 @@ function neckTile(id,label){const m={neckWidth:7.5,neckDropFront:3.5,neckDropBac
 function neckSec(){if(!takesNeckline(P.style))return '';const locked=Boolean(D?.concept?.locked);
   return `<div class="sec" id="neckSec"><h4>Neckline</h4><div class="ntiles ${locked?'locked':''}">${neckTile('','As drawn')}${NECKLINES.map(n=>neckTile(n.id,n.label)).join('')}</div><p class="msg">${esc(P.neckline?necklineOf(P.neckline).how:'Swap the neckline like a pocket or a zip: it is drawn on the front and the back, and the tech pack takes its spec.')}</p>${P.m&&'neckWidth' in P.m?`<p class="msg" id="neckMeas">Size M: ${['neckWidth','neckDropFront','neckRib'].filter(k=>P.m[k]).map(k=>`${esc(mName(k).replace(/^./,c=>c.toLowerCase()))} ${fmt(P.m[k])}`).join(' · ')}. These go to the measurements, the spec sheet and the factory; every size is graded from them.</p>`:''}</div>`}
 function paintDesign(){
-  const eds=(P.edits||[]).filter(e=>e.view===VIEW&&e.type!=='block'); // coloured panels have their own list
+  const eds=(P.edits||[]).filter(e=>e.view===VIEW&&e.type!=='block'&&e.type!=='rub'),rubs=(P.edits||[]).filter(e=>e.view===VIEW&&e.type==='rub'); // coloured panels have their own list; the eraser's strokes are one line
   $('#pDesign').innerHTML=`<div class="sec"><button class="btn sm" type="button" id="redrawPic" title="Draw the flat from the concept's picture: the right sketch, then the front and back drawn by the image model in the picture's details and colours">Draw from the picture</button></div><div class="sec"><h4>Colour</h4><div class="swatches">${['',...SWATCH].map(c=>`<button type="button" class="sw" data-color="${c}" aria-pressed="${(P.color||'')===c}" title="${c||'White, no colour'}" aria-label="${c||'White, no colour'}" style="background:${c||'#fff'}">${c?'':'–'}</button>`).join('')}<label class="sw" title="Any colour" style="background:conic-gradient(#e11,#ee1,#1e1,#1ee,#11e,#e1e,#e11);position:relative"><input type="color" id="dColor" value="${P.color||'#ffffff'}" style="opacity:0;position:absolute;inset:0;width:100%;height:100%;cursor:pointer" aria-label="Any colour"></label></div><p class="msg">Colours the whole piece. The sketch's lines and shading stay, and a dark colour gets light lines so the drawing still reads.</p></div>
 ${clothSec()}${neckSec()}${panelsSec()}
   <div class="sec"><h4>Add a detail</h4>${GROUPS.map(([g,ks])=>`<div class="mono">${g}</div><div class="kinds">${ks.map(k=>`<button class="btn sm q" type="button" data-adddet="${k}">${esc(k==='pleat'?'Pleats':DETAILS[k])}</button>`).join('')}</div>`).join('')}<p class="msg">It lands on the ${VIEW} where that detail usually goes: drag it, or set its size and place below. Cover up hides something on the sketch, like a pocket you are replacing.</p></div>
   <div class="sec"><h4>From the sketch pack</h4><div class="gbar">${Object.entries(PART_KINDS).map(([k,l])=>`<button class="btn sm q" type="button" data-pkind="${k}" aria-pressed="${PKIND===k}">${esc(l)}s</button>`).join('')}</div><div class="gal parts">${FLAT_PARTS.filter(q=>q.kind===PKIND).map(q=>`<button type="button" data-addpart="${q.id}" title="Add ${esc(q.label)}"><img loading="lazy" alt="" src="/lab/flat-parts/${q.file}">${esc(q.label)}</button>`).join('')}</div><p class="msg">The pack's own pockets, zips, collars, trims and buttons, drawn in the same lines. Add one, then drag it into place and size it; cover up what it replaces.</p></div>
   <div class="sec"><h4>Draw</h4><div class="kinds"><button class="btn sm lv-pro" type="button" data-mode="stitch" aria-pressed="${MODE==='stitch'}">Stitch line</button><button class="btn sm q lv-pro" type="button" data-mode="block" aria-pressed="${MODE==='block'}" title="Click round an area point by point, for a block that is not one of the sketch's panels">Block by hand</button><button class="btn sm" type="button" data-mode="ai" aria-pressed="${MODE==='ai'}">Redraw an area with AI</button></div>${MODE==='fill'?'':modeHint()}</div>
-  <div class="sec"><h4>Changed on the ${VIEW}</h4>${eds.length?eds.map(edCard).join(''):'<p class="msg">Nothing changed on this side yet.</p>'}</div>`;
+  <div class="sec"><h4>Changed on the ${VIEW}</h4>${eds.length?eds.map(edCard).join(''):rubs.length?'':'<p class="msg">Nothing changed on this side yet.</p>'}${rubs.length?`<div class="row" style="align-items:center;gap:8px"><span class="msg" style="flex:1">Rubbed out of the sketch with the eraser: ${rubs.length} stroke${rubs.length===1?'':'s'}</span><button class="btn sm" type="button" data-unrub>Put them back</button></div>`:''}</div>`;
 }
 const newId=k=>k+Math.random().toString(36).slice(2,8);
 // ---------- the cloth: the garment's main fabric, chosen here, shown on the flat as its surface over the colour ----------
@@ -277,6 +277,7 @@ function finishDraft(){const pts=DRAFT.filter((q,i)=>!i||Math.hypot(q[0]-DRAFT[i
   if(MODE==='block'&&pts.length>=3)e={id:newId('b'),type:'block',view:VIEW,pts,color:NEWBL.color,name:''};
   DRAFT=[];MODE=null;if(e){P.edits.push(e);SELE=e.id;touch()}paint()}
 $('#pDesign').addEventListener('click',async e=>{
+  if(e.target.closest('[data-unrub]')){P.edits=(P.edits||[]).filter(x=>!(x.view===VIEW&&x.type==='rub'));touch();paint();return}
   const rp=e.target.closest('#redrawPic');if(rp){redrawFromPicture(rp);return}
   const sw=e.target.closest('[data-color]');if(sw){P.color=sw.dataset.color;touch();paint();return}
   const nkb=e.target.closest('[data-neck]');if(nkb){if(D?.concept?.locked)return;P.neckline=nkb.dataset.neck||undefined;if(!P.neckline)delete P.neckline;setNeckMeasures();touch();paint();if($('#pGarment')?.innerHTML)paintGarment();return}
@@ -592,17 +593,29 @@ function mkShape(m,g,p){const x=m.cv.getContext('2d'),o=g.o,k=mkK(m);x.putImageD
 function mkDone(m,before){MUNDO[VIEW].push(before);MKT[VIEW].push(Date.now());if(MKT[VIEW].length>30)MKT[VIEW].shift();if(MUNDO[VIEW].length>30)MUNDO[VIEW].shift();MREDO[VIEW]=[];m.dirty=true;touch();HOST()?.flatsChanged?.()}
 function mkCancel(){const g=MDRAG;MDRAG=null;if(g?.m&&g.before)g.m.cv.getContext('2d').putImageData(g.before,0,0)}
 function mkStep(from,to){const st=from[VIEW],m=MK[VIEW];if(!st?.length||!m)return false;to[VIEW].push(mkSnap(m));m.cv.getContext('2d').putImageData(st.pop(),0,0);m.dirty=true;touch();HOST()?.flatsChanged?.();return true}
+// is there drawing under the pointer (within the eraser's reach)? then the eraser works on the drawing, not the sketch
+function mkInkAt(m,e){if(!m)return false;const[x,y]=mkAt(m,e),r=Math.max(2,Math.round(mkOpts().size*.5*mkK(m))),x0=Math.max(0,Math.round(x-r)),y0=Math.max(0,Math.round(y-r)),w=Math.min(m.cv.width-x0,2*r),h=Math.min(m.cv.height-y0,2*r);if(w<=0||h<=0)return false;
+  const d=m.cv.getContext('2d').getImageData(x0,y0,w,h).data;for(let i=3;i<d.length;i+=16)if(d[i]>8)return true;return false}
+// the flat drawn again while a rub-out stroke is made, at most once a frame
+let RUBF=0;function rubDraw(){if(RUBF)return;RUBF=requestAnimationFrame(()=>{RUBF=0;draw();mkPlace()})}
 MKW.addEventListener('pointerdown',e=>{
   if(e.pointerType==='pen')MPEN=true;
   if(MTOOL==='hand'||!MKTOOLS.includes(MTOOL)||(e.pointerType==='touch'&&MPEN))return; // the flat's own handlers move the view
   if(MDRAG&&MDRAG.pid!==e.pointerId){if(MDRAG.type==='touch'&&e.pointerType==='pen')mkCancel();else if(MDRAG.type==='pen'&&e.pointerType==='pen'){MDRAG=null}else return}
-  e.stopPropagation();e.preventDefault();const m=MK[VIEW]||mkNew(VIEW);if(!m)return;mkFit(m);mkPlace();try{MKW.setPointerCapture(e.pointerId)}catch{}const o=mkOpts(),p=mkAt(m,e),before=mkSnap(m);
+  e.stopPropagation();e.preventDefault();
+  // the eraser: over your own drawing it rubs that out; anywhere else it rubs out the sketch's own lines (a stroke kept with the flat, in the
+  // garment's colour: src/lab-flats.js 'rub'), so a line left by a change, a stray seam or a mark can go
+  if(MTOOL==='eraser'&&!mkInkAt(MK[VIEW],e)){if(D?.concept?.locked)return;const M=$('#canvas svg')?.getScreenCTM();if(!M)return;try{MKW.setPointerCapture(e.pointerId)}catch{}
+    const r={id:newId('r'),type:'rub',view:VIEW,pts:[inch(e).map(v=>Math.round(v*32)/32)],w:Math.round(Math.max(.05,Math.min(6,mkOpts().size*.5/M.a))*32)/32};P.edits=P.edits||[];P.edits.push(r);
+    MDRAG={rub:r,pid:e.pointerId,type:e.pointerType};rubDraw();return}
+  const m=MK[VIEW]||mkNew(VIEW);if(!m)return;mkFit(m);mkPlace();try{MKW.setPointerCapture(e.pointerId)}catch{}const o=mkOpts(),p=mkAt(m,e),before=mkSnap(m);
   if(MTOOL==='text'){const words=prompt('Type for the flat');if(!words||!words.trim())return;const x=m.cv.getContext('2d');x.save();x.fillStyle=o.color;x.globalAlpha=o.flow;x.font=`600 ${Math.max(12,o.size*.9)*mkK(m)}px 'Space Grotesk','Helvetica Neue',Arial,sans-serif`;x.textBaseline='middle';x.fillText(words.trim(),p[0],p[1]);x.restore();mkDone(m,before);return}
   MDRAG={m,before,last:p,from:p,o,pid:e.pointerId,type:e.pointerType};if(['brush','eraser','distress'].includes(MTOOL))mkStroke(m,p,p,o,e.pointerType==='pen'&&o.pressure?Math.min(Math.max(.15+.85*(e.pressure||.5),.15),1):1)});
 MKW.addEventListener('pointermove',e=>{const g=MDRAG;if(!g||g.pid!==e.pointerId)return;e.stopPropagation();
+  if(g.rub){const q=inch(e).map(v=>Math.round(v*32)/32),l=g.rub.pts.at(-1);if(Math.hypot(q[0]-l[0],q[1]-l[1])>=Math.max(.06,g.rub.w*.25)&&g.rub.pts.length<240){g.rub.pts.push(q);rubDraw()}return}
   if(['brush','eraser','distress'].includes(MTOOL)){const ev=e.getCoalescedEvents?.()||[];for(const c of ev.length?ev:[e]){const p=mkAt(g.m,c);mkStroke(g.m,g.last,p,g.o,c.pointerType==='pen'&&g.o.pressure?Math.min(Math.max(.15+.85*(c.pressure||.5),.15),1):1);g.last=p}}
   else mkShape(g.m,g,mkAt(g.m,e))});
-const mkUp=e=>{const g=MDRAG;if(!g||(e.pointerId!==undefined&&g.pid!==e.pointerId))return;e.stopPropagation();MDRAG=null;mkDone(g.m,g.before)};
+const mkUp=e=>{const g=MDRAG;if(!g||(e.pointerId!==undefined&&g.pid!==e.pointerId))return;e.stopPropagation();MDRAG=null;if(g.rub){touch();paint();HOST()?.flatsChanged?.();return}mkDone(g.m,g.before)};
 ['pointerup','pointercancel'].forEach(t=>MKW.addEventListener(t,mkUp));MKW.addEventListener('lostpointercapture',e=>{if(MDRAG&&MDRAG.pid===e.pointerId)mkUp(e)});
 // iPad: a Pencil on the page can be taken as handwriting (Scribble) or a text selection before it reaches the drawing; holding its touches here stops that
 ['touchstart','touchmove'].forEach(t=>$('#canvas').addEventListener(t,e=>{if(MKW.classList.contains('on')&&[...e.changedTouches].some(x=>x.touchType==='stylus'))e.preventDefault()},{passive:false}));
