@@ -121,10 +121,11 @@ textarea.t{min-height:64px;resize:vertical}
 <script>try{if(!localStorage.getItem('fb.admin.token')&&localStorage.getItem('fb.client.token'))document.documentElement.dataset.labClient='1'}catch{}</script>
 <script src="/lab/nav.js"></script>
 <script type="module">
-import { tagMarks, STYLES, FITS, SIZES, DETAILS, STITCHES, defaultDetail, describeEdit, geometry, renderSvg, viewBoxOf, templatesFor, templateOf, defaultTemplate, describe, placementChecks, overlapChecks, pomTable, defaultParams, defaultPlacement, remapEdits, measurementsFor, POM_NAMES, pomName, fitToTemplate, FLAT_PARTS, PART_KINDS, partOf, defaultPart, fmt, fmtCm, MASK_URL, drawingOf, TEMPLATE_URL } from '/lab/flats.js';
+import { rotOf, tagMarks, STYLES, FITS, SIZES, DETAILS, STITCHES, defaultDetail, describeEdit, geometry, renderSvg, viewBoxOf, templatesFor, templateOf, defaultTemplate, describe, placementChecks, overlapChecks, pomTable, defaultParams, defaultPlacement, remapEdits, measurementsFor, POM_NAMES, pomName, fitToTemplate, FLAT_PARTS, PART_KINDS, partOf, defaultPart, fmt, fmtCm, MASK_URL, drawingOf, TEMPLATE_URL } from '/lab/flats.js';
 import { panelAt, panelName } from '/lab/lab-flat-panels.js';
 import { tagFaceSvg } from '/lab/lab-tags.js';
 import { NECKLINES, necklineSvg, takesNeckline, necklineOf, necklineMeasures, necklinePomName } from '/lab/lab-neck.js';
+import { outlines as traceOutlines } from '/lab/lab-trace.js';
 import { rankFabrics } from '/lab/lab-fabric-fit.js';window.FBRank=rankFabrics;
 import * as FBBrushMod from '/lab/lab-brush.js';window.FBBrush=FBBrushMod;
 import { WASHES, STRENGTHS, washOf, distressParts, distressList, DISTRESS_FOCUS, washWords } from '/lab/lab-wash.js';
@@ -528,10 +529,10 @@ $('#canvas').addEventListener('pointerdown',e=>{if(e.pointerType!=='touch')retur
   if(DRAG){if(DRAG.q&&DRAG.ox!==undefined){DRAG.q.x=DRAG.ox;DRAG.q.y=DRAG.oy}if(DRAG.size)Object.assign(DRAG.size,DRAG.orig);if(DRAG.ed&&DRAG.orig)Object.assign(DRAG.ed,JSON.parse(JSON.stringify(DRAG.orig)));DRAG=null;draw()} // two fingers: a pinch, not a move
   BOXDRAG=null;FPAN=null;const[a,b]=[...FPTR.values()],g0=vgeo();if(!g0)return;FG={d:Math.hypot(a[0]-b[0],a[1]-b[1])||1,m:[(a[0]+b[0])/2,(a[1]+b[1])/2],z:FZ,c:centreNow(),u:1/g0.k,C:[g0.cx,g0.cy],r0:FR,ang:Math.atan2(b[1]-a[1],b[0]-a[0])};
   // two fingers on a graphic resize and turn it (about its centre, keeping its shape), as in other drawing apps; anywhere else they zoom the view
-  const on=[a,b,FG.m].map(([x,y])=>document.elementFromPoint(x,y)?.closest?.('[data-pl]')).find(Boolean),q=on&&PL.find(x=>x.id===on.dataset.pl);if(q){SEL=q.id;FG.q=q;FG.w0=q.w;FG.h0=q.h;FG.r0=q.rot||0;FG.a0=Math.atan2(b[1]-a[1],b[0]-a[0])}},true);
+  const on=[a,b,FG.m].map(([x,y])=>document.elementFromPoint(x,y)?.closest?.('[data-pl]')).find(Boolean),q=on&&PL.find(x=>x.id===on.dataset.pl);if(q){SEL=q.id;FG.q=q;FG.w0=q.w;FG.h0=q.h;FG.r0=q.rot||0;FG.a0=Math.atan2(b[1]-a[1],b[0]-a[0]);FG.base=shownQ(q)}},true);
 $('#canvas').addEventListener('pointermove',e=>{const p=FPTR.get(e.pointerId);if(p){p[0]=e.clientX;p[1]=e.clientY}
   if(FG&&FPTR.size>=2){e.stopImmediatePropagation();const[a,b]=[...FPTR.values()],d=Math.hypot(a[0]-b[0],a[1]-b[1])||1,m=[(a[0]+b[0])/2,(a[1]+b[1])/2];
-    if(FG.q){const k=Math.min(40/FG.w0,40/FG.h0,Math.max(.25/FG.w0,.25/FG.h0,d/FG.d));FG.q.w=r8(FG.w0*k);FG.q.h=r8(FG.h0*k);FG.q.rot=turnTo(FG.r0+(Math.atan2(b[1]-a[1],b[0]-a[0])-FG.a0)*180/Math.PI);FG.moved=true;draw();return}
+    if(FG.q){const k=Math.min(40/FG.w0,40/FG.h0,Math.max(.25/FG.w0,.25/FG.h0,d/FG.d));FG.q.w=r8(FG.w0*k);FG.q.h=r8(FG.h0*k);FG.q.rot=turnTo(FG.r0+(Math.atan2(b[1]-a[1],b[0]-a[0])-FG.a0)*180/Math.PI);FG.moved=true;liveQ(FG.q,FG.base);return}
     // the view: moved, zoomed and turned by one transform on the page while the fingers are down (nothing is drawn again, so it follows the
     // fingers); the zoom and turn are set for real when they lift
     const zN=Math.min(Math.max(FG.z*d/FG.d,1),6),sc=zN/FG.z;let dr=(Math.atan2(b[1]-a[1],b[0]-a[0])-FG.ang)*180/Math.PI;dr=((dr+540)%360)-180;
@@ -539,7 +540,7 @@ $('#canvas').addEventListener('pointermove',e=>{const p=FPTR.get(e.pointerId);if
     const[qx,qy]=turn((FG.C[0]-FG.m[0])*sc,(FG.C[1]-FG.m[1])*sc,dr),tx=m[0]+qx-FG.C[0],ty=m[1]+qy-FG.C[1],t=`translate(${tx}px,${ty}px) rotate(${rT}deg) scale(${sc})`;
     FG.live={sc,dr,rT,tx,ty,zN};const svg=$('#canvas svg');if(svg){svg.style.transformOrigin='50% 50%';svg.style.transform=t}MKW.style.transformOrigin='50% 50%';MKW.style.transform=t;return}
   if(FPAN){e.stopImmediatePropagation();const u=unitsPerPx(),[ddx,ddy]=turn(e.clientX-FPAN.x,e.clientY-FPAN.y,-FR);FC=[FPAN.c[0]-ddx*u,FPAN.c[1]-ddy*u];zoomSvg()}},true);
-const fzUp=e=>{FPTR.delete(e.pointerId);if(FG&&FPTR.size<2){const g=FG;FG=null;e.stopImmediatePropagation();if(g.q&&g.moved){touch();paint()}if(g.live)fzCommit(g)}if(FPAN){FPAN=null;e.stopImmediatePropagation()}};
+const fzUp=e=>{FPTR.delete(e.pointerId);if(FG&&FPTR.size<2){const g=FG;FG=null;e.stopImmediatePropagation();if(g.q&&g.moved){if(LIVE.raf){cancelAnimationFrame(LIVE.raf);LIVE.raf=0}touch();paint()}if(g.live)fzCommit(g)}if(FPAN){FPAN=null;e.stopImmediatePropagation()}};
 ['pointerup','pointercancel','lostpointercapture'].forEach(t=>$('#canvas').addEventListener(t,e=>{if(e.type==='lostpointercapture'&&(!FPTR.has(e.pointerId)||MDRAG?.pid===e.pointerId))return;fzUp(e)},true));
 $('#canvas').addEventListener('wheel',e=>{if(!(e.ctrlKey||e.metaKey)){if(FZ>1){e.preventDefault();const u=unitsPerPx(),c=centreNow(),[ddx,ddy]=turn(e.deltaX,e.deltaY,-FR);FC=[c[0]+ddx*u,c[1]+ddy*u];zoomSvg()}return} // two fingers on a trackpad move a zoomed flat
   e.preventDefault();fzAt(FZ*Math.exp(-e.deltaY*.01),e.clientX,e.clientY)},{passive:false});
@@ -553,6 +554,13 @@ function fzAt(nz,cx,cy){const g=vgeo();if(!g)return;const u=1/g.k,c=centreNow(),
 let TPG=null;['gesturestart','gesturechange','gestureend'].forEach(t=>document.addEventListener(t,e=>{e.preventDefault();if(!e.target.closest?.('#canvas')||FPTR.size>=2){TPG=null;return}
   if(t==='gesturestart')TPG={z:FZ};else if(t==='gesturechange'&&TPG)fzAt(TPG.z*e.scale,e.clientX,e.clientY);else TPG=null},{passive:false}));
 const inch=e=>toInch(e.clientX,e.clientY);
+// a graphic on the move (dragged, resized, turned, pinched): only its own group moves, by one transform, once a frame; the whole flat is drawn
+// again once, when the finger lifts. Drawing the whole flat on every move is what made dragging lag on an iPad.
+const shownQ=q=>{if(!q.grade)return{x:q.x,y:q.y,w:q.w,h:q.h,rot:q.rot||0};const sz=$('#size').value||P.size,g=q.grade.find(x=>x.sizes.includes(sz));return g?{x:q.x,y:q.y-q.h/2+g.h/2,w:g.w,h:g.h,rot:q.rot||0}:{x:q.x,y:q.y,w:q.w,h:q.h,rot:q.rot||0}};
+const LIVE={raf:0,q:null,base:null};
+function liveQ(q,base){if(!base)return draw();LIVE.q=q;LIVE.base=base;if(LIVE.raf)return;LIVE.raf=requestAnimationFrame(()=>{LIVE.raf=0;const{q,base:b}=LIVE;
+  const el=[...document.querySelectorAll('#canvas svg [data-pl]')].find(e=>e.dataset.pl===q.id);if(!el){draw();return}const s=shownQ(q),f=v=>Math.round(v*1e4)/1e4;
+  el.setAttribute('transform',`translate(${f(s.x)} ${f(s.y)}) rotate(${f(rotOf(s))}) scale(${f(s.w/(b.w||1))} ${f(s.h/(b.h||1))}) translate(${f(-b.x)} ${f(-b.y)})`)})}
 $('#canvas').addEventListener('pointerdown',e=>{
   if(MODE==='fill'){const[x,y]=inch(e);fillAt(x,y);return}
   if(MODE==='stitch'||MODE==='block'){const[x,y]=inch(e);DRAFT.push([r8(x),r8(y)]);draw();return}
@@ -563,29 +571,29 @@ $('#canvas').addEventListener('pointerdown',e=>{
   // a corner of the chosen graphic: resize it about the opposite corner, keeping its shape (it may be turned, so worked in its own frame)
   const rs=e.target.closest('[data-rs]');
   if(rs){const q=PL.find(x=>x.id===rs.dataset.rs);if(q){SEL=q.id;const cx=Number(rs.dataset.cx),cy=Number(rs.dataset.cy),t=(q.rot||0)*Math.PI/180,c=Math.cos(t),s=Math.sin(t);
-    const ax=-cx*q.w/2,ay=-cy*q.h/2;DRAG={size:q,cx,cy,w0:q.w,h0:q.h,cos:c,sin:s,anchor:[q.x+ax*c-ay*s,q.y+ax*s+ay*c],orig:{x:q.x,y:q.y,w:q.w,h:q.h}};capt(e);return}}
+    const ax=-cx*q.w/2,ay=-cy*q.h/2;DRAG={size:q,cx,cy,w0:q.w,h0:q.h,cos:c,sin:s,anchor:[q.x+ax*c-ay*s,q.y+ax*s+ay*c],orig:{x:q.x,y:q.y,w:q.w,h:q.h},base:shownQ(q)};capt(e);return}}
   const rk=e.target.closest('[data-rot]');
-  if(rk){const q=PL.find(x=>x.id===rk.dataset.rot);if(q){SEL=q.id;DRAG={turn:q,o:q.rot||0};capt(e);return}}
+  if(rk){const q=PL.find(x=>x.id===rk.dataset.rot);if(q){SEL=q.id;DRAG={turn:q,o:q.rot||0,base:shownQ(q)};capt(e);return}}
   // a label sewn into the piece: drag it where it goes (mouse, pen or finger); it keeps its place on this view
   const tg=e.target.closest('[data-tag]');
   if(tg){const m=tagsOn().find(x=>x.id===tg.dataset.tag&&x.view===VIEW);if(m){const[x,y]=inch(e);DRAG={tag:m,dx:x-m.x,dy:y-m.y};capt(e);return}}
   const g=e.target.closest('[data-pl]');
-  if(g){const q=PL.find(x=>x.id===g.dataset.pl);SEL=q.id;const[x,y]=inch(e);DRAG={q,dx:x-q.x,dy:y-q.y,ox:q.x,oy:q.y};capt(e);paint();return}
+  if(g){const q=PL.find(x=>x.id===g.dataset.pl);SEL=q.id;const[x,y]=inch(e);DRAG={q,dx:x-q.x,dy:y-q.y,ox:q.x,oy:q.y};capt(e);paint();DRAG.base=shownQ(q);return}
   const ge=e.target.closest('[data-ed]');const ed=ge&&P.edits.find(x=>x.id===ge.dataset.ed);if(!ed){if(FZ>1){FPAN={x:e.clientX,y:e.clientY,c:centreNow()};capt(e)}return}
   SELE=ed.id;if(TAB!=='design')tab('design');const[x,y]=inch(e);DRAG={ed,start:[x,y],orig:JSON.parse(JSON.stringify(ed))};capt(e);paint()});
 $('#canvas').addEventListener('pointermove',e=>{
   if(BOXDRAG){const[x,y]=inch(e),[a,b]=BOXDRAG;AIBOX={x:r8((a+x)/2),y:r8((b+y)/2),w:r8(Math.abs(x-a)),h:r8(Math.abs(y-b))};draw();return}
   if(!DRAG)return;const[x,y]=inch(e);
   // the knob above a graphic turns it about its centre; it settles on every 15° when it comes near one
-  if(DRAG.turn){const q=DRAG.turn;let a=Math.atan2(x-q.x,-(y-q.y))*180/Math.PI;const s15=Math.round(a/15)*15;if(Math.abs(a-s15)<4||e.shiftKey)a=s15;q.rot=turnTo(a);DRAG.moved=true;draw();return}
+  if(DRAG.turn){const q=DRAG.turn;let a=Math.atan2(x-q.x,-(y-q.y))*180/Math.PI;const s15=Math.round(a/15)*15;if(Math.abs(a-s15)<4||e.shiftKey)a=s15;q.rot=turnTo(a);DRAG.moved=true;liveQ(q,DRAG.base);return}
   if(DRAG.size){const d=DRAG,q=d.size,vx=x-d.anchor[0],vy=y-d.anchor[1],lx=(vx*d.cos+vy*d.sin)*d.cx,ly=(-vx*d.sin+vy*d.cos)*d.cy;
     const k=Math.min(40/d.w0,40/d.h0,Math.max(.25/d.w0,.25/d.h0,Math.max(lx/d.w0,ly/d.h0)));q.w=r8(d.w0*k);q.h=r8(d.h0*k);
-    const hx=d.cx*q.w/2,hy=d.cy*q.h/2;q.x=r8(d.anchor[0]+hx*d.cos-hy*d.sin);q.y=r8(d.anchor[1]+hx*d.sin+hy*d.cos);d.moved=true;draw();return}
+    const hx=d.cx*q.w/2,hy=d.cy*q.h/2;q.x=r8(d.anchor[0]+hx*d.cos-hy*d.sin);q.y=r8(d.anchor[1]+hx*d.sin+hy*d.cos);d.moved=true;liveQ(q,d.base);return}
   if(DRAG.ed&&DRAG.vx!=null){DRAG.ed.pts=DRAG.orig.pts.map((q,i)=>i===DRAG.vx?[r8(x),r8(y)]:q);DRAG.moved=true;draw();return}
   if(DRAG.ed){const dx=x-DRAG.start[0],dy=y-DRAG.start[1],o=DRAG.orig;if(o.pts)DRAG.ed.pts=o.pts.map(q=>[r8(q[0]+dx),r8(q[1]+dy)]);else{DRAG.ed.x=r8(o.x+dx);DRAG.ed.y=r8(o.y+dy);if(Math.abs(DRAG.ed.x)<.25&&!(DRAG.ed.type==='part'&&partOf(DRAG.ed.part)?.kind==='pockets')&&!['pocket-patch','pocket-flap','pocket-welt','pocket-cargo','pocket-slant','pocket-jean','pocket-zip','pleat'].includes(DRAG.ed.kind))DRAG.ed.x=0}DRAG.moved=true;draw();return}
   if(DRAG.tag){let nx=r8(x-DRAG.dx);const ny=r8(y-DRAG.dy);if(Math.abs(nx)<.25)nx=0;P.tagPos={...(P.tagPos||{})};P.tagPos[DRAG.tag.id]={...(P.tagPos[DRAG.tag.id]||{}),[VIEW]:[nx,ny]};DRAG.moved=true;draw();return}
-  DRAG.q.x=r8(x-DRAG.dx);DRAG.q.y=r8(y-DRAG.dy);if(Math.abs(DRAG.q.x)<.25)DRAG.q.x=0;DRAG.moved=true;draw()});
-const end=()=>{if(BOXDRAG){BOXDRAG=null;if(!AIBOX||AIBOX.w<.5||AIBOX.h<.5)AIBOX=null;paint();setTimeout(()=>$('#aiPrompt')?.focus(),0);return}if(DRAG&&DRAG.moved){touch();paint()}DRAG=null};
+  DRAG.q.x=r8(x-DRAG.dx);DRAG.q.y=r8(y-DRAG.dy);if(Math.abs(DRAG.q.x)<.25)DRAG.q.x=0;DRAG.moved=true;liveQ(DRAG.q,DRAG.base)});
+const end=()=>{if(LIVE.raf){cancelAnimationFrame(LIVE.raf);LIVE.raf=0}if(BOXDRAG){BOXDRAG=null;if(!AIBOX||AIBOX.w<.5||AIBOX.h<.5)AIBOX=null;paint();setTimeout(()=>$('#aiPrompt')?.focus(),0);return}if(DRAG&&DRAG.moved){touch();paint()}DRAG=null};
 $('#canvas').addEventListener('dblclick',e=>{if(MODE==='stitch'||MODE==='block'){e.preventDefault();finishDraft()}});
 // a double tap (or double click) on the chosen stitch line or block: on a dot it takes the point away, on the line it puts one in. Taken from the
 // pointer, not from dblclick: the drawing is redrawn under the first tap, so the browser's own double click can go missing (and a Pencil has none)
@@ -644,9 +652,18 @@ function mkStroke(m,a,b,o,pr){if(window.FBBrush&&(MTOOL==='brush'||MTOOL==='eras
   x.beginPath();x.moveTo(a[0],a[1]);x.lineTo(b[0]+.01,b[1]);x.stroke();x.restore()}
 function mkShape(m,g,p){const x=m.cv.getContext('2d'),o=g.o,k=mkK(m);x.putImageData(g.before,0,0);x.save();x.strokeStyle=o.color;x.globalAlpha=o.flow;x.lineWidth=Math.min(Math.max(o.size*.15,1.5),12)*k;x.lineCap='round';x.beginPath();
   const[a,b]=g.from;if(MTOOL==='line'){x.moveTo(a,b);x.lineTo(p[0],p[1])}else if(MTOOL==='rect')x.rect(Math.min(a,p[0]),Math.min(b,p[1]),Math.abs(p[0]-a),Math.abs(p[1]-b));else x.ellipse((a+p[0])/2,(b+p[1])/2,Math.abs(p[0]-a)/2,Math.abs(p[1]-b)/2,0,0,Math.PI*2);x.stroke();x.restore()}
-function mkDone(m,before){MUNDO[VIEW].push(before);MKT[VIEW].push(Date.now());if(MKT[VIEW].length>30)MKT[VIEW].shift();if(MUNDO[VIEW].length>30)MUNDO[VIEW].shift();MREDO[VIEW]=[];m.dirty=true;touch();HOST()?.flatsChanged?.()}
+function mkDone(m,before){m.ver=(m.ver||0)+1;MUNDO[VIEW].push(before);MKT[VIEW].push(Date.now());if(MKT[VIEW].length>30)MKT[VIEW].shift();if(MUNDO[VIEW].length>30)MUNDO[VIEW].shift();MREDO[VIEW]=[];m.dirty=true;touch();HOST()?.flatsChanged?.()}
+// the drawing on this side as clean outlines (src/lab-trace.js), drawn back into it in place; 'more' traces the same drawing again a level
+// cleaner, until something new is drawn on it. Undo goes back a step, as after a stroke.
+function mkOutline(want){const m=MK[VIEW];if(!m)return{message:'Draw on the flat first, then Outlines.'};
+  const again=want==='more'&&m.ol&&m.ol.ver===m.ver,level=again?m.ol.level+1:1;if(level>6)return{message:'That is as clean as it gets.'};
+  const src=again?m.ol.orig:mkSnap(m),k=Math.min(1,1600/Math.max(src.width,src.height));let px=src.data,w=src.width,h=src.height;
+  if(k<1){const c=document.createElement('canvas');c.width=Math.round(w*k);c.height=Math.round(h*k);const t=document.createElement('canvas');t.width=w;t.height=h;t.getContext('2d').putImageData(src,0,0);const cx=c.getContext('2d',{willReadFrequently:true});cx.drawImage(t,0,0,c.width,c.height);px=cx.getImageData(0,0,c.width,c.height).data;w=c.width;h=c.height}
+  const inks=traceOutlines(px,w,h,{level});if(!inks.length)return{message:'There is nothing drawn on this side yet.'};
+  const before=mkSnap(m),x=m.cv.getContext('2d');x.save();x.clearRect(0,0,m.cv.width,m.cv.height);x.scale(src.width/w,src.height/h);for(const ink of inks){x.fillStyle=ink.hex;x.fill(new Path2D(ink.d),'evenodd')}x.restore();
+  mkDone(m,before);m.ol={level,orig:src,ver:m.ver};return{message:level===1?'Outlined: the drawing is clean lines now. Refine makes it cleaner; Undo goes back.':`Refined (${level} of 6).`}}
 function mkCancel(){mkBufEnd(false);const g=MDRAG;MDRAG=null;if(g?.m&&g.before)g.m.cv.getContext('2d').putImageData(g.before,0,0)}
-function mkStep(from,to){const st=from[VIEW],m=MK[VIEW];if(!st?.length||!m)return false;to[VIEW].push(mkSnap(m));m.cv.getContext('2d').putImageData(st.pop(),0,0);m.dirty=true;touch();HOST()?.flatsChanged?.();return true}
+function mkStep(from,to){const st=from[VIEW],m=MK[VIEW];if(!st?.length||!m)return false;m.ver=(m.ver||0)+1;to[VIEW].push(mkSnap(m));m.cv.getContext('2d').putImageData(st.pop(),0,0);m.dirty=true;touch();HOST()?.flatsChanged?.();return true}
 // is there drawing under the pointer (within the eraser's reach)? then the eraser works on the drawing, not the sketch
 function mkInkAt(m,e){if(!m)return false;const[x,y]=mkAt(m,e),r=Math.max(2,Math.round(mkOpts().size*.5*mkK(m))),x0=Math.max(0,Math.round(x-r)),y0=Math.max(0,Math.round(y-r)),w=Math.min(m.cv.width-x0,2*r),h=Math.min(m.cv.height-y0,2*r);if(w<=0||h<=0)return false;
   const d=m.cv.getContext('2d').getImageData(x0,y0,w,h).data;for(let i=3;i<d.length;i+=16)if(d[i]>8)return true;return false}
@@ -713,6 +730,9 @@ async function boot(){
   tab('pl');
   if(EMBED){const v=new URLSearchParams(location.search).get('view');if(v==='back')setView('back');HOST()?.flatsReady?.()}
 }
+// the saved flat read again in place (the Studio changed its graphics): the view, its zoom and turn, the side and the chosen graphic all stay
+async function refreshFlat(){if(!D||!P||DIRTY||DRAG||FG)return false;const v=VIEW,sel=SEL,tb=TAB;try{const r=await api(`/v1/lab/concepts/${CID}/flats`);if(DIRTY||DRAG||FG)return false;D={...D,...r};await useFlat(r.flat)}catch{return false}
+  if(VIEW!==v)setView(v);SEL=PL.some(q=>q.id===sel)?sel:null;if(TAB!==tb)tab(tb);else paint();return true}
 // the flat in hand: its garment, fit, sizes, colour, edits and placements
 async function useFlat(f){
   P={style:f.style,fit:f.fit,size:f.size||'M',m:f.m,options:f.options||{},template:f.template,color:f.color||'',edits:f.edits||[],...(f.allover?{allover:f.allover}:{}),...(f.drawn?{drawn:f.drawn}:{}),...(f.tagPos?{tagPos:f.tagPos}:{}),...(f.crop?{crop:f.crop}:{}),...(f.wash?{wash:f.wash}:{}),...(f.neckline?{neckline:f.neckline}:{}),...(f.distress?{distress:f.distress}:{})};if(P.allover)AOHREF=await blobUrl('/v1/lab/art/'+P.allover.art);
@@ -734,7 +754,7 @@ async function redrawFromPicture(b){const n=$('#picNote'),label=b.textContent;b.
     // then the image model draws each view from the picture, on the sketch's frame and in the picture's colours (about a minute)
     b.textContent='Drawing front and back…';const dr=await api(`/v1/lab/concepts/${CID}/flats/draw`,{body:{...flatBody(),views:['front','back']}});for(const v of ['front','back'])if(dr.drawn[v])EHREF[dr.drawn[v]]=await blobUrl('/v1/lab/art/'+dr.drawn[v]);P.drawn=dr.drawn;n?.classList.add('hidden');b.disabled=false;b.textContent=label;touch();paint();$('#cSub').textContent=`${D.styles[P.style].label} · ${FITS[P.fit]} fit · drawn from the picture: check it, then save`}catch(x){b.disabled=false;b.textContent=label;if(P){touch();paint()}alert(x.message)}}
 // what the Design workspace calls: is anything unsaved, save, which side shows, the full panel or the drawing alone, the sheets and the tech pack
-if(EMBED)window.FBFlats={addGraphic:(id,name)=>addGraphic(id,name),wash:()=>{if(!P)return;tab('garment');setTimeout(()=>{const el=$('#washSec');el?.scrollIntoView({block:'start',behavior:'smooth'});el?.classList.add('flash');setTimeout(()=>el?.classList.remove('flash'),1400);$('#wType')?.focus()},50)},clothChanged:()=>loadCloth().then(()=>{draw();if(TAB==='design')paintDesign()}),dirty:()=>Boolean(D&&P&&DIRTY),ready:()=>Boolean(D&&P),save:()=>(D&&P?save():Promise.resolve(true)),view:()=>VIEW,setView:v=>{if(P&&(v==='front'||v==='back'))setView(v)},
+if(EMBED)window.FBFlats={refresh:()=>refreshFlat(),outline:w=>mkOutline(w),outlineLevel:()=>{const m=MK[VIEW];return m?.ol&&m.ol.ver===m.ver?m.ol.level:0},addGraphic:(id,name)=>addGraphic(id,name),wash:()=>{if(!P)return;tab('garment');setTimeout(()=>{const el=$('#washSec');el?.scrollIntoView({block:'start',behavior:'smooth'});el?.classList.add('flash');setTimeout(()=>el?.classList.remove('flash'),1400);$('#wType')?.focus()},50)},clothChanged:()=>loadCloth().then(()=>{draw();if(TAB==='design')paintDesign()}),dirty:()=>Boolean(D&&P&&DIRTY),ready:()=>Boolean(D&&P),save:()=>(D&&P?save():Promise.resolve(true)),view:()=>VIEW,setView:v=>{if(P&&(v==='front'||v==='back'))setView(v)},
   mode:m=>{document.documentElement.dataset.embed=m==='compact'?'compact':'full';if(P)draw()},sheet:()=>$('#sheet').click(),deco:()=>$('#decoSheet').click(),pack:()=>$('#toPack').click(),
   canPack:()=>!$('#toPack').classList.contains('hidden'),unsupported:()=>D?.unsupported||'',
   // the placements, in inches on the garment: the one record of where each graphic goes and how big it is

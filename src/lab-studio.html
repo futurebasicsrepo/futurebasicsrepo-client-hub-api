@@ -594,7 +594,7 @@ function paintOpts(){
   // the production tools (src/lab-studio-ill.js) say what they do too
   Object.assign(help,{artboard:'Drag to make an artboard: a face of the box, a label, a hang tag. Drag one to move it; sizes, bleed and Lay out a box are in Document.',shapebuilder:'Drag across shapes to join the pieces you cross into one. Alt-click a piece to take it away. Choose two or more shapes first.',width:'Drag a point on a stroke to make it thicker or thinner there, for a line that tapers. Alt-click a point to put it back.',measure:'Drag from one point to another: the distance and angle show in mm or inches (Document sets which).',typepath:'Click a path to set type along it. Its words, size and where it starts are in the panel on the right.'});
   const tipsHtml=(list,key)=>`<span class="tips" role="radiogroup" aria-label="Tip">${list.map(t=>`<button type="button" role="radio" data-tip="${key}:${t.id}" aria-checked="${OPT[key]===t.id}" title="${esc(t.hint)}">${esc(t.label)}</button>`).join('')}</span>`,B=window.FBBrush;
-  if(TOOL==='brush')o.innerHTML=(B?tipsHtml(B.TIPS,'tip'):'')+rg('size','Size',1,400)+rg('flow','Opacity',.05,1,.05,'')+rg('soft','Softness',0,1,.05,'')+pressHtml()+'<span class="hint">Paints on the selected painting layer, or starts a new one. With the Pencil, fingers move and pinch the view.</span>';
+  if(TOOL==='brush')o.innerHTML=(B?tipsHtml(B.TIPS,'tip'):'')+rg('size','Size',1,400)+rg('flow','Opacity',.05,1,.05,'')+rg('soft','Softness',0,1,.05,'')+pressHtml()+(window.OUTL?OUTL.bar():'');
   else if(TOOL==='eraser')o.innerHTML=(B?tipsHtml(B.ERASER_TIPS,'etip'):'')+rg('esize','Size',1,600)+rg('flow','Strength',.05,1,.05,'')+pressHtml()+'<span class="hint">Rubs out the selected layer.</span>';
   else if(TOOL==='distress')o.innerHTML=rg('dsize','Size',4,600)+rg('flow','Strength',.05,1,.05,'')+'<span class="hint">Wears the selected layer away, like an old print. For an even wear across the layer, use Distress in its settings.</span>';
   else if(TOOL==='area')o.innerHTML=rg('area','Size',4,600)+'<span class="hint">Paint over what the AI should change. Hold Alt to rub out.</span><button class="btn sm" type="button" data-clearmask>Clear the area</button>';
@@ -669,6 +669,7 @@ function fieldsHtml(l){
     <div class="row"><button class="btn sm q" type="button" data-act="lookreset">Reset the colour</button>${l.kind==='base'?'':'<button class="btn sm q" type="button" data-act="tonal" title="The colour of the fabric under it, a step lighter or darker, with Pantone codes">Tone on tone…</button>'}</div>${l.kind==='base'?'<p class="note">Hue turns the colour of the whole picture: on a grey studio background mostly the piece changes. For one part only, paint it in the AI tab and ask.</p>':''}</div>
   <div class="sec"><h4>Distress</h4><label class="f w"><span>Kind</span><select class="t" data-p="d.style">${[['worn','Worn print: specks and grain'],['cracked','Cracked ink'],['faded','Faded, washed out']].map(([k,v])=>`<option value="${k}" ${k===d.style?'selected':''}>${v}</option>`).join('')}</select></label>
     ${rng2('d.amount','Amount',0,1,.01,d.amount)}${rng2('d.size','Grain size',5,200,1,d.size)}<div class="row"><button class="btn sm q" type="button" data-act="seed">Another pattern</button></div></div>
+  ${window.OUTL?OUTL.fields(l):''}
   <div class="sec"><h4>Layer</h4><div class="row"><button class="btn sm q" type="button" data-act="up">Move up</button><button class="btn sm q" type="button" data-act="down">Move down</button><button class="btn sm q" type="button" data-act="dup">Duplicate</button>${l.kind==='base'?'':'<button class="btn sm q" type="button" data-act="keep" title="Keep this artwork in the graphics library, for other pieces">Save to the library</button>'}${l.kind==='text'||l.kind==='shape'?'<button class="btn sm q" type="button" data-act="raster" title="So it can be painted on and rubbed out">Turn into pixels</button>':''}${l.kind==='base'&&D.concept.hasPlain?'<button class="btn sm q" type="button" data-act="plain">Use the plain picture</button>':''}<button class="btn sm q" type="button" data-act="del">Delete</button></div></div>`;
 }
 const TECH_KINDS=[['embroidery','Embroidery'],['print','Print'],['heat_transfer','Heat transfer'],['patch','Patches and appliqué'],['other','Other ways'],['distress','Distressing and wash']];
@@ -1267,10 +1268,12 @@ $('#embDlg').addEventListener('click',async e=>{const d=$('#embDlg');if(e.target
   catch(x){toast(x.message)}finally{b.disabled=false}});
 // the layers with a place on the piece go to the concept and its flats, at their size, when the design is saved
 let SYNCED=null;
+// what the flats have from the picture: the graphics placed on them and their size; the same key says nothing has changed since the last sync
+const placedNow=()=>LAYERS.filter(l=>l.kind!=='base'&&l.placement&&l.visible).slice(0,8).map(l=>({l,s:inchesOf(l),key:sig(l)}));
+const syncKey=(placed=placedNow())=>JSON.stringify(placed.map(x=>[x.l.id,x.l.fromFlat||'',x.l.name,x.l.placement,fin(x.s.w),fin(x.s.h),x.l.finish?.id||'',x.key]));
 async function syncFlats({before}={}){
   if(before)await before(); // unsaved changes on the flats go first and their sizes come back to the layers, so nothing set on the flats is undone
-  const placed=LAYERS.filter(l=>l.kind!=='base'&&l.placement&&l.visible).slice(0,8).map(l=>({l,s:inchesOf(l),key:sig(l)}));
-  const key=JSON.stringify(placed.map(x=>[x.l.id,x.l.fromFlat||'',x.l.name,x.l.placement,fin(x.s.w),fin(x.s.h),x.l.finish?.id||'',x.key]));if(key===SYNCED)return false;
+  const placed=placedNow(),key=syncKey(placed);if(key===SYNCED)return false;
   const layers=placed.map(x=>({layer:x.l.id,...(x.l.fromFlat?{fromFlat:x.l.fromFlat}:{}),name:x.l.name,widthIn:x.s.w,heightIn:x.s.h,placement:x.l.placement,techniqueId:x.l.finish?.id||null,...(x.l.art&&x.l.artSig===x.key?{art:x.l.art}:{image:artPng(x.l)})}));
   const r=await api(`/v1/lab/concepts/${CID}/studio/graphics`,{body:{layers}});
   for(const x of placed)if(r.arts[x.l.id]){x.l.art=r.arts[x.l.id];x.l.artSig=x.key}
@@ -1290,7 +1293,7 @@ function FF(){try{return FLOADED?$('#flatFrame').contentWindow.FBFlats||null:nul
 function flatSrc(){const t=QS.get('template');if(D?.concept?.category==='footwear'||D?.concept?.category==='bags')return `/lab/shoe-flats?concept=${CID}&embed=${VMODE==='split'?'compact':'full'}&view=${VMODE==='back'?'back':'front'}`; // a shoe is drawn in panels (src/lab-shoe-flats.html)
   return `/lab/flats?concept=${CID}&embed=${VMODE==='split'?'compact':'full'}&view=${VMODE==='back'?'back':'front'}${t&&!TPLUSED?'&template='+encodeURIComponent(t):''}`}
 function loadFlats(){$('#flatFrame').src=flatSrc();FLOADED=true;TPLUSED=true}
-function reloadFlats(){if(!FLOADED||FF()?.dirty())return;$('#flatFrame').src=flatSrc()}
+function reloadFlats(){if(!FLOADED||FF()?.dirty())return;const f=FF();if(f?.refresh){f.refresh();return}$('#flatFrame').src=flatSrc()} // read again in place: no blink, and the view keeps its zoom and turn
 async function flatsFirst(){const f=FF();if(f&&f.dirty()&&!(await f.save()))throw new Error('the flats could not be saved first')}
 async function saveAll(){if(GMODE||!CID)return save();const f=FF();if(f&&f.dirty()&&!(await f.save()))return false;await LINKP;return save()} // graphics on their way from the flats are part of this save
 // the flats' own saved line shows in the header beside the picture's
@@ -1302,11 +1305,11 @@ function mirrorFlats(){const d=$('#flatFrame').contentDocument,src=d&&d.getEleme
 // or take it off them, and the picture follows. FLATS is the latest record the page has (from the service, then from the flats as they save).
 let FLATS=null;
 function adoptFlats(list,{saved=true}={}){FLATS={saved,placements:list||[]};if(GMODE||!LAYERS.length){paintLayers();return}
-  const changed=[];
+  const changed=[],inStep=SYNCED!==null&&syncKey()===SYNCED; // the picture had nothing waiting for the flats: what comes from them now is theirs already
   for(const l of LAYERS){if(l.kind==='base'||!l.placement)continue;const q=FLATS.placements.find(x=>x.source==='studio'&&x.layer===l.id);
     if(q){const s=inchesOf(l);if(s.w>0&&Math.abs(q.w-s.w)>.07){l.scale=clamp(l.scale*q.w/s.w,.02,40);changed.push(`${l.name} is ${fin(q.w)} in wide, as on the flats`)}}
     else if(saved&&l.art){l.placement=undefined;changed.push(`${l.name} came off the flats, so it is on the picture only`)}} // only a layer that was on them (it has its artwork) can have come off
-  if(changed.length){commit();draw();toast(changed.slice(0,2).join('. ')+(changed.length>2?` and ${changed.length-2} more`:'')+'.')}
+  if(changed.length){commit();draw();toast(changed.slice(0,2).join('. ')+(changed.length>2?` and ${changed.length-2} more`:'')+'.');if(inStep&&saved)SYNCED=syncKey()}
   paintLayers();
   // a logo or graphic added on the flats comes onto the picture by itself (the front only: the picture shows the front). What came with the
   // concept is already drawn in its picture, so that waits for Put on the picture.
@@ -1531,6 +1534,7 @@ boot();
 <script src="/lab/studio-emb.js"></script>
 <script src="/lab/studio-board.js"></script>
 <script src="/lab/studio-gen.js"></script>
+<script src="/lab/studio-outline.js"></script>
 <script src="/helper.js" defer></script>
 <script type="module">import * as B from '/lab/lab-brush.js';window.FBBrush=B;try{paintOpts();paintDock()}catch{}</script>
 </body>

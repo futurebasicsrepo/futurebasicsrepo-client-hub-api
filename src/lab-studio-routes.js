@@ -55,9 +55,9 @@ export function cleanDoc(input) {
     for (const k of ['src', 'mask', 'distressMap']) if (l[k] != null && l[k] !== '' && !SRC_OK.test(String(l[k]))) return { error: 'A layer points at a picture outside the design' };
     if (l.text != null && String(l.text).length > 400) return { error: 'A line of type is too long (400 characters at most)' };
     if (l.paths != null) { // a drawn path: parts of points, each point six numbers
-      if (!Array.isArray(l.paths) || l.paths.length > 400) return { error: 'A path has too many parts' };
+      if (!Array.isArray(l.paths) || l.paths.length > 4000) return { error: 'A path has too many parts' }; // a traced drawing or generated graphic can have thousands
       let n = 0; for (const p of l.paths) { if (!p || !Array.isArray(p.nodes)) return { error: 'A path is not readable' }; n += p.nodes.length; if (!p.nodes.every(q => Array.isArray(q) && q.length === 6 && q.every(Number.isFinite))) return { error: 'A path is not readable' }; }
-      if (n > 40000) return { error: 'A path has too many points (40,000 at most)' };
+      if (n > 150000) return { error: 'A path has too many points (150,000 at most)' };
     }
   }
   // the production layer's own data (src/lab-studio-ill.js): artboards, symbols, global swatches, and on a layer its fill, width, path type and links
