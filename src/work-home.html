@@ -124,11 +124,11 @@ function renderFunnel(o,h){
   const leads=`<a class="tile" href="/sales#pipeline"><span class="mono t">On the hook</span><b>${hook.total}</b><span class="tr ${f.newLeads7?'up':''}">${hook.deals} open deal${hook.deals===1?'':'s'} · ${f.newLeads7} new this week${hook.rooms?` · ${hook.rooms} new room${hook.rooms===1?'':'s'}`:''}</span></a>`;
   if(m){
     $('#funnel').innerHTML=[leads,
-      `<a class="tile ${m.out.count?'hot':''}" href="/contracts"><span class="mono t">Out for signature</span><b>${money(m.out.cents)}</b><span class="tr">${m.out.count} contract${m.out.count===1?'':'s'} waiting on a signature</span></a>`,
+      `<a class="tile ${m.out.count||m.quotes?.count?'hot':''}" href="/sales#pipeline"><span class="mono t">Out with clients</span><b>${money(m.out.cents+(m.quotes?.cents||0))}</b><span class="tr">${m.out.count} contract${m.out.count===1?'':'s'} to sign · ${m.quotes?.count||0} quote${m.quotes?.count===1?'':'s'} to accept</span></a>`,
       `<a class="tile" href="/contracts"><span class="mono t">Signed · 30 days</span><b>${money(m.signed30.cents)}</b><span class="tr">${m.signed30.count} agreement${m.signed30.count===1?'':'s'} · ${money(m.underContractCents)} still to collect</span></a>`,
       `<a class="tile ${m.in30Cents?'win':''}" href="/money"><span class="mono t">Money in · 30 days</span><b>${money(m.in30Cents)}</b><span class="tr">${money(m.dueCents)} invoiced, not paid yet</span></a>`].join('');
     // one line under the greeting: what is on the table, in money
-    const bits=[];if(m.out.cents)bits.push(`<b>${money(m.out.cents)}</b> waiting on ${m.out.count===1?'a signature':m.out.count+' signatures'}`);if(m.dueCents)bits.push(`<b>${money(m.dueCents)}</b> invoiced and due`);if(m.underContractCents)bits.push(`<b>${money(m.underContractCents)}</b> signed and still to collect`);if(hook.total)bits.push(`<b>${hook.total}</b> lead${hook.total===1?'':'s'} on the hook`);
+    const bits=[];if(m.out.cents)bits.push(`<b>${money(m.out.cents)}</b> waiting on ${m.out.count===1?'a signature':m.out.count+' signatures'}`);if(m.quotes?.cents)bits.push(`<b>${money(m.quotes.cents)}</b> in ${m.quotes.count===1?'a quote':m.quotes.count+' quotes'} to accept`);if(m.dueCents)bits.push(`<b>${money(m.dueCents)}</b> invoiced and due`);if(m.underContractCents)bits.push(`<b>${money(m.underContractCents)}</b> signed and still to collect`);if(hook.total)bits.push(`<b>${hook.total}</b> lead${hook.total===1?'':'s'} on the hook`);
     if(bits.length)$('.top .note').innerHTML=`On the table: ${bits.join(' · ')}. Close one today.`;
     return}
   $('#funnel').innerHTML=[leads,
@@ -146,6 +146,8 @@ document.addEventListener('click',async e=>{const b=e.target.closest('[data-done
   try{await api('/v1/workspace/assignments/'+b.dataset.done,{method:'PATCH',body:{status:'done'}});HOME.fbTasks=(HOME.fbTasks||[]).filter(x=>x.id!==b.dataset.done);renderFbTasks(HOME)}catch(x){b.disabled=false;b.textContent='Could not: '+x.message}});
 function renderReach(o,h){
   const rows=[];
+  // what clients asked for and nobody has finished: before anything else on the list
+  for(const r of (h.clientRequests||[]).slice(0,5))rows.push({k:'money',kl:r.status==='in-progress'?'Request · in progress':'Client request',name:`${r.clientName}: ${r.title}`,sub:[r.type==='rfq'?'Request for quote':'',r.author?'from '+r.author:''].filter(Boolean).join(' · '),when:`sent ${ago(r.at)}`,href:`/clients/${r.clientId}#requests`});
   // money owed that is late comes first (only for the people Money is open to: everyone else gets a 403 and never sees this)
   if(MONEY&&MONEY.overdueCount){
     for(const i of (MONEY.lateInvoices||[]).slice(0,3))rows.push({k:'money',kl:'Overdue',name:`${i.company} · ${i.number}`,sub:`${money(i.owedCents)} owed · ${i.daysOverdue} day${i.daysOverdue===1?'':'s'} late`,when:`due ${i.dueOn}`,href:`/money?invoice=${i.id}#invoices`});

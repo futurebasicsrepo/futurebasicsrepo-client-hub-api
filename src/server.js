@@ -84,6 +84,8 @@ import { registerRoomTeamRoutes } from './room-team-routes.js';
 import { registerSampleFormRoutes } from './sample-form-routes.js';
 import { registerTeamChatRoutes } from './team-chat-routes.js';
 import { registerWorkspaceRoutes } from './workspace-routes.js';
+import { registerOrderQuoteRoutes } from './order-quote-routes.js';
+import { registerProductSheetRoutes } from './product-sheet-routes.js';
 import { registerRoomSitesRoutes } from './room-sites-routes.js';
 import { createLive } from './live.js';
 import { maskFor as flatMaskFor } from './lab-flat-mask.js';
@@ -362,6 +364,19 @@ const hubEmailShell=(title,body)=>`<div style="font-family:Arial,Helvetica,sans-
 const staffEmail=process.env.STAFF_NOTIFICATION_EMAIL||intakeNotificationEmail;
 async function notifyStaff(subject,body){
   try{return await sendHubEmail({to:staffEmail,subject,html:hubEmailShell(subject,body)})}catch(e){app.log.warn({err:e.message,subject},'staff email not sent');return false}
+}
+// Something a client did that Future Basics must not miss (a request, a message): an email to the staff address and to the room's owner, and a
+// notification in the work console. It never fails the client's action.
+async function notifyRoomStaff(clientId,{subject,body,link,type,title,entityType,entityId}){
+  try{
+    const c=(await pool.query(`select c.name,u.email owner_email from clients c left join users u on u.id=c.owner_id where c.id=$1`,[clientId])).rows[0];
+    if(type)await pool.query('insert into notifications(client_id,type,title,entity_type,entity_id) values($1,$2,$3,$4,$5)',[clientId,type,String(title||subject).slice(0,300),entityType||null,entityId||null]).catch(()=>{});
+    const to=[...new Set([staffEmail,c?.owner_email].filter(Boolean).map(e=>String(e).toLowerCase()))];
+    const html=hubEmailShell(subject,`${body}${link?`<p><a href="${link}" style="display:inline-block;padding:10px 18px;border-radius:999px;background:#111;color:#fff;text-decoration:none">Open it in the work console</a></p>`:''}`);
+    let sent=0;for(const addr of to){try{if(await sendHubEmail({to:addr,subject,html}))sent++}catch(e){app.log.warn({err:e.message,subject},'staff email not sent')}}
+    if(!sent)app.log.warn({clientId,subject},'no staff email went out for a client action');
+    return sent;
+  }catch(e){app.log.warn({err:e.message,clientId,subject},'staff notice failed');return 0}
 }
 async function notifyClientContact(clientId,{subject,title,body,replyTo}){
   try{
@@ -779,6 +794,8 @@ app.addHook('onClose', async () => { await live.close(); });
 registerTeamChatRoutes(app, { pool, authenticate, notifyStaff, sendHubEmail, hubEmailShell, emailEscape, clientHubUrl, workHubUrl, live, log: app.log });
 registerWorkspaceRoutes(app, { pool, authenticate, sendHubEmail, hubEmailShell, emailEscape, clientHubUrl, log: app.log });
 registerRoomSitesRoutes(app, { pool, authenticate, adminOnly, notifyStaff, sendHubEmail, hubEmailShell, emailEscape, clientHubUrl, workHubUrl, log: app.log });
+registerProductSheetRoutes(app, { pool, authenticate, adminOnly, hasRenderingSql: HAS_RENDERING_SQL, renderingUrl });
+registerOrderQuoteRoutes(app, { pool, authenticate, adminOnly, sendHubEmail, hubEmailShell, emailEscape, notifyRoomStaff, clientHubUrl, workHubUrl, shopifyReady: shopifyConfigured, log: app.log });
 registerLabSelfServeRoutes(app, { pool, authenticate, adminOnly, lab: labAccess, clientHubUrl, workHubUrl, notifyStaff, notifyClientContact, sendHubEmail, hubEmailShell, replyTo: intakeNotificationEmail, forgetUser, clientForEmail, log: app.log });
 const money=registerMoneyRoutes(app, { pool, authenticate, adminOnly, getSetting, setSetting, tokenSeal: sealer(process.env), stateSecret: process.env.JWT_SECRET || 'dev', workUrl: workHubUrl, log: app.log,
   // product development is paid through a Shopify checkout (a draft order for the amount due), see money-routes.js
@@ -1071,7 +1088,16 @@ app.get('/v1/admin/dashboard', {preHandler:[authenticate,adminOnly]}, async (req
   const activeClients=clients.rows.filter(client=>!client.archived_at&&!['archive','archived'].includes(client.status));
   const archivedClients=clients.rows.filter(client=>client.archived_at||['archive','archived'].includes(client.status));
   const queues=await buildQueues(pool,{learning}).catch(err=>{app.log.warn({err:err.message},'work queues failed');reportError('web',`work queues: ${err.message}`);return null});
-  for(const c of activeClients)c.last_opened_at=opened.get(c.id)||null;
+  // the last thing that happened in each room (a project or product changed, a message, a file, anything logged), so every room has a recency, opened or not
+  const active=new Map((await pool.query(`select client_id,max(at) at from (
+      select client_id,max(updated_at) at from projects group by client_id
+      union all select client_id,max(updated_at) from products group by client_id
+      union all select client_id,max(created_at) from activities group by client_id
+      union all select client_id,max(created_at) from room_files group by client_id
+      union all select p.client_id,max(pm.created_at) from project_messages pm join projects p on p.id=pm.project_id group by p.client_id
+    ) x where client_id is not null group by client_id`).catch(()=>({rows:[]}))).rows.map(r=>[r.client_id,r.at]));
+  // recency: this person's last visit to the room, or the room's latest activity, whichever is later (the client list sorts on it)
+  for(const c of activeClients){const o=opened.get(c.id)||null,a=active.get(c.id)||null;c.last_opened_at=o;c.last_active_at=a;c.recent_at=[o,a,c.created_at].filter(Boolean).map(v=>new Date(v)).sort((x,y)=>y-x)[0]||null}
   return {clients:activeClients,archivedClients,actions:actions.rows,productionAlerts:productionAlerts.rows,collaboration:collaboration.rows,learning,queues};
 });
 app.post('/v1/admin/shopify/tech-pack-product',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
@@ -1477,7 +1503,7 @@ app.get('/v1/admin/clients/:id',{preHandler:[authenticate,adminOnly]},async(req,
       coalesce(json_agg(m order by m.sort_order)filter(where m.id is not null),'[]') milestones
       from products p left join product_briefs b on b.product_id=p.id left join milestones m on m.product_id=p.id
       where p.client_id=$1 group by p.id,b.product_id order by p.updated_at desc`,[client.id]),
-    pool.query('select * from requests where client_id=$1 order by created_at desc',[client.id]),
+    pool.query(`select r.*,coalesce(nullif(u.name,''),u.email) author_name,u.email author_email,pr.title product_title from requests r left join users u on u.id=r.user_id left join products pr on pr.id=r.product_id where r.client_id=$1 order by r.created_at desc`,[client.id]),
     pool.query('select * from invoices where client_id=$1 order by created_at desc',[client.id]),
     pool.query('select id,email,name,role,created_at from users where client_id=$1 order by created_at',[client.id]),
     pool.query(`select q.* from quotes q join products p on p.id=q.product_id where p.client_id=$1 order by q.created_at desc`,[client.id]),
@@ -2327,6 +2353,9 @@ app.get('/v1/dashboard', { preHandler: authenticate }, async (req,reply) => {
   ]);
   const waiting=await clientWaiting(id,{products:products.rows,quotes:quotes.rows,approvals:approvals.rows,invoices:invoices.rows});
   // their agreements (contracts for digital work): shown in the hub, and the ones that need the signer's attention join "Waiting on you"
+  // order quotes sent to the room and not answered yet: they wait on the client, with their lines
+  for(const q of (await pool.query(`select * from order_quotes where client_id=$1 and status='sent' order by sent_at`,[id]).catch(()=>({rows:[]}))).rows)
+    waiting.push({kind:'order-quote',id:q.id,number:q.number,title:`Accept quote ${q.number}`,product:q.title||'Your order',at:q.sent_at,totalCents:Number(q.total_cents),lines:(q.lines||[]).map(l=>({title:l.title,quantity:l.quantity,sizes:l.sizes||{},unitCents:l.unitCents,totalCents:l.totalCents})),extras:q.extras||[],notes:q.notes||'',validUntil:q.valid_until?new Date(q.valid_until).toISOString().slice(0,10):null});
   const agreements=await contracts.hubContracts({clientId:id,userId:req.auth.sub,preview:Boolean(req.auth.preview)}).catch(e=>{app.log.warn({err:e.message},'hub agreements failed');return []});
   // invoices from Money addressed to this client that are not part of an agreement (those show under their agreement): sent or paid, never drafts
   const moneyInvoices=(await pool.query(`select i.id,i.number,i.status,i.total_cents,i.currency,i.issued_on,i.due_on,i.pay_url,i.notes,coalesce((select sum(p.amount_cents) from money_payments p where p.invoice_id=i.id),0)::bigint paid_cents
@@ -2385,8 +2414,14 @@ app.post('/v1/projects/:id/messages',{preHandler:authenticate},async(req,reply)=
   const message=(await pool.query(`insert into project_messages(project_id,client_id,author_id,author_role,body,reply_to_id)
     values($1,$2,$3,$4,$5,$6) returning *`,[project.id,project.client_id,req.auth.sub,role,body.slice(0,5000),replyToId])).rows[0];
   await pool.query('update projects set updated_at=now() where id=$1',[project.id]);
-  if(role==='client')await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id)
-    values($1,'client-project-message',$2,'project',$3)`,[project.client_id,`Client replied in ${project.name}`,project.id]);
+  if(role==='client'&&!req.auth.preview){
+    const recent=(await pool.query(`select 1 from notifications where entity_type='project' and entity_id=$1 and type='client-project-message' and created_at > now() - interval '30 minutes'`,[project.id]).catch(()=>({rowCount:0}))).rowCount;
+    const who=(await pool.query(`select c.name client_name, coalesce(nullif(u.name,''), u.email) author from clients c left join users u on u.id=$2 where c.id=$1`,[project.client_id,req.auth.sub])).rows[0]||{};
+    if(recent)await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'client-project-message',$2,'project',$3)`,[project.client_id,`Client replied in ${project.name}`,project.id]);
+    else notifyRoomStaff(project.client_id,{subject:`${who.client_name||'A client'} wrote in ${project.name}`,type:'client-project-message',title:`Client replied in ${project.name}`,entityType:'project',entityId:project.id,
+      body:`<p><strong>${emailEscape(who.author||'Someone')}</strong> at <strong>${emailEscape(who.client_name||'')}</strong> wrote in <strong>${emailEscape(project.name)}</strong>:</p><p style="white-space:pre-wrap">${emailEscape(body.slice(0,3000))}</p><p style="font-size:12px;color:#717177">More messages in this project in the next 30 minutes are in the console, not emailed again.</p>`,
+      link:`${workHubUrl}/clients/${project.client_id}#project=${project.id}`});
+  }
   return reply.code(201).send(message);
 });
 app.post('/v1/projects/:id/uploads',{preHandler:authenticate},async(req,reply)=>{
@@ -2737,6 +2772,12 @@ app.post('/v1/requests', { preHandler: authenticate }, async (req, reply) => {
     `insert into requests(client_id,user_id,type,title,details,due_date,product_id) values($1,$2,$3,$4,$5,$6,$7) returning *`,
     [req.auth.clientId, req.auth.sub, type, title, details, dueDate || null, pid]
   )).rows[0];
+  if (!req.auth.preview) {
+    const who = (await pool.query(`select c.name client_name, coalesce(nullif(u.name,''), u.email) author from clients c left join users u on u.id=$2 where c.id=$1`, [req.auth.clientId, req.auth.sub])).rows[0] || {};
+    notifyRoomStaff(req.auth.clientId, { subject: `New request from ${who.client_name || 'a client'}: ${String(title).slice(0, 120)}`, type: 'client-request', title: `New request: ${String(title).slice(0, 200)}`, entityType: 'request', entityId: row.id,
+      body: `<p><strong>${emailEscape(who.author || 'Someone')}</strong> at <strong>${emailEscape(who.client_name || '')}</strong> sent a request${dueDate ? ` (wanted by ${emailEscape(dueDate)})` : ''}:</p><p><strong>${emailEscape(title)}</strong></p><p style="white-space:pre-wrap">${emailEscape(String(details).slice(0, 4000))}</p>`,
+      link: `${workHubUrl}/clients/${req.auth.clientId}#requests` });
+  }
   return reply.code(201).send(row);
 });
 
