@@ -22,6 +22,6 @@ test('Ouster Merch Drop 1: every Capsule 01 product is either carried over or ar
 test('Ouster Merch Drop 1: no price is invented, and the words are safe in a page', () => {
   for (const p of DROP1) assert.doesNotMatch(JSON.stringify(p), /\$\d/);
   assert.match(ACROSS[0], /free to employees, or sold/);
-  assert.equal(describe({ summary: 'a <b> & c', code: 'X' }), '<p>a &lt;b&gt; &amp; c</p><p>Style code X · Ouster Merch Drop 1</p>');
+  assert.equal(describe({ summary: 'a <b> & c', code: 'X' }), '<p>a &lt;b&gt; &amp; c</p> <p>Style code X · Ouster Merch Drop 1</p>');
   assert.match(briefNotes(DROP1[0]), /Open: Pick the front artwork/);
 });

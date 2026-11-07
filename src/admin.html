@@ -724,7 +724,7 @@ function renderRoomNow(d,id,header){
   if(header!==undefined)window.__roomHeader=header;header=window.__roomHeader||'';
   const clientArchived=Boolean(d.client.archived_at||['archive','archived'].includes(d.client.status));
   const activeProjects=d.projects.filter(pr=>!pr.archived_at&&!['archive','archived'].includes(pr.status)),archivedProjects=d.projects.filter(pr=>pr.archived_at||['archive','archived'].includes(pr.status));
-  const activeIds=new Set(activeProjects.map(pr=>pr.id)),loose=d.products.filter(p=>!p.project_id||!activeIds.has(p.project_id));
+  const activeIds=new Set(activeProjects.map(pr=>pr.id)),loose=d.products.filter(p=>!p.project_id||!d.projects.some(pr=>pr.id===p.project_id));
   if(roomSel.type==='project'&&!d.projects.some(x=>x.id===roomSel.id))roomSel={type:'summary'};if(roomSel.type==='product'&&!d.products.some(x=>x.id===roomSel.id))roomSel={type:'summary'};
   const attention=roomAttention(d,activeProjects),openReq=d.requests.filter(r=>roomOpen(r.status)&&r.type!=='project-intake').length,openInv=d.invoices.filter(i=>i.status==='due').length;
   const on=(ty,i)=>roomSel.type===ty&&(i===undefined||roomSel.id===i)?'on':'';

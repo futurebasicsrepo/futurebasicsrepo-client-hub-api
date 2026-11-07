@@ -118,8 +118,9 @@ export const ACROSS = [
 ];
 
 const html = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+// the paragraphs keep a space between them: a card that shows the words without the tags reads them as one line
 export function describe(p) {
-  return `<p>${html(p.summary)}</p>${p.code ? `<p>Style code ${html(p.code)} · Ouster Merch Drop 1</p>` : '<p>Ouster Merch Drop 1</p>'}`;
+  return `<p>${html(p.summary)}</p> ${p.code ? `<p>Style code ${html(p.code)} · Ouster Merch Drop 1</p>` : '<p>Ouster Merch Drop 1</p>'}`;
 }
 export function briefNotes(p) {
   return [`From the ${SOURCE}.`, p.code ? `Style code: ${p.code}.` : '', p.open.length ? `Open: ${p.open.join('; ')}.` : ''].filter(Boolean).join('\n');
