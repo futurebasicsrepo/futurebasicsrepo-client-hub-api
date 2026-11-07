@@ -52,7 +52,20 @@ export function softwareView(project, build = null) {
   return {
     kind: 'software', stage, stageLabel: stageLabel(stage), stageHint: SW_STAGES[at].hint, owner: stageOwner(stage),
     rail: SW_STAGES.map((s, n) => ({ key: s.key, label: s.label, state: n < at ? 'done' : n === at ? 'now' : 'next' })),
-    build: build ? { id: build.id, slug: build.slug, name: build.name, status: build.status, liveUrl: build.live_url || '', stack: build.stack || [], features: (build.highlights || []).map(h => h.title).filter(Boolean).slice(0, 6), tagline: build.tagline || '' } : null
+    build: build ? { id: build.id, slug: build.slug, name: build.name, status: build.status, liveUrl: build.live_url || '', stack: build.stack || [], features: (build.highlights || []).map(h => h.title).filter(Boolean).slice(0, 6), tagline: build.tagline || '', ...staffBuild(build) } : null
+  };
+}
+
+// What staff also see of a build (only when the row carries it: the client's dashboard asks for the short version): where it runs, its code, what it does, and how the site is doing.
+export const HOSTING_LABEL = { railway: 'Railway', vercel: 'Vercel', shopify: 'Shopify', 'github-pages': 'GitHub Pages', other: 'Somewhere else' };
+function staffBuild(b) {
+  if (b.hosting === undefined) return {};
+  const m = b.monitor || null;
+  return {
+    hosting: b.hosting || 'other', hostingLabel: HOSTING_LABEL[b.hosting] || HOSTING_LABEL.other, repoUrl: b.repo_url || '', summary: b.summary && b.summary !== 'To fill in.' ? b.summary : '',
+    highlights: (b.highlights || []).filter(h => h && h.title).map(h => ({ title: h.title, text: h.text || '' })).slice(0, 8),
+    links: (b.links || []).filter(l => l && l.url).slice(0, 8), catalogCount: Number(b.products) || 0, visibility: b.visibility || 'hidden', updatedAt: b.updated_at || null,
+    monitor: m ? { state: m.state, httpStatus: m.http_status ?? null, responseMs: m.response_ms ?? null, checkedAt: m.checked_at || null, downSince: m.down_since || null, certExpiresAt: m.cert_expires_at || null, domainExpiresAt: m.domain_expires_at || null, lastError: m.last_error || '', up30: m.up30 ?? null } : null
   };
 }
 

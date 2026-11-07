@@ -1450,7 +1450,7 @@ app.get('/v1/admin/clients/:id',{preHandler:[authenticate,adminOnly]},async(req,
   const payments=(await pool.query(`select py.id,py.kind,py.title,py.amount_cents,py.currency,py.shopify_order_id,py.shopify_order_name,py.paid_at,py.source,py.product_id from payments py where py.client_id=$1 order by py.paid_at desc limit 25`,[client.id])).rows;
   const [projects,projectMessages,projectFiles,clientAssetUploads,products,requests,invoices,users,quotes,suppliers,productionRuns,qcInspections,shipments,assets,assetVersions,comments,configurations,priceTiers]=await Promise.all([
     pool.query(`select pr.*,(select count(*)::int from products p where p.project_id=pr.id) product_count,
-      (select max(created_at) from project_messages pm where pm.project_id=pr.id) last_message_at,${SW_BUILD_JSON} build
+      (select max(created_at) from project_messages pm where pm.project_id=pr.id) last_message_at,${SW_BUILD_STAFF_JSON} build
       from projects pr where pr.client_id=$1 order by pr.updated_at desc,pr.name`,[client.id]),
     pool.query(`select pm.*,coalesce(u.name,u.email,case when pm.author_role='admin' then 'Future Basics' else c.name end) author_name
       from project_messages pm left join users u on u.id=pm.author_id join clients c on c.id=pm.client_id
@@ -1495,7 +1495,8 @@ app.get('/v1/admin/clients/:id',{preHandler:[authenticate,adminOnly]},async(req,
   // files sent to the room (All files) and put in a project by staff: they belong in that project's file library too
   const projectRoomFiles=(await pool.query(`select rf.id,rf.project_id,rf.product_id,rf.original_name,rf.size_bytes,rf.mime_type,rf.created_at,rf.uploader_role,rf.client_visible,rf.factory_visible,rf.note,coalesce(nullif(u.name,''),u.email,case when rf.uploader_role='admin' then 'Future Basics' else c.name end) uploader_name
     from room_files rf left join users u on u.id=rf.uploader_id join clients c on c.id=rf.client_id where rf.client_id=$1 and rf.project_id is not null and coalesce(rf.purpose,'')<>'tax-form' order by rf.created_at desc`,[client.id])).rows;
-  return {projectRoomFiles,client,projects:projects.rows.map(withSoftware),projectFinancials:projectFinancialRollups(projects.rows,products.rows,quotes.rows,invoices.rows,{internal:true}),projectMessages:projectMessages.rows,projectFiles:projectFiles.rows,clientAssetUploads:clientAssetUploads.rows,products:products.rows,requests:requests.rows,invoices:invoices.rows,users:users.rows,quotes:quotes.rows,
+  const shopifyStores=(await liveStores(client.id).catch(()=>[])).map(r=>({...storeView(r),scope:r.scope||''}));
+  return {projectRoomFiles,shopifyStores,client,projects:projects.rows.map(withSoftware),projectFinancials:projectFinancialRollups(projects.rows,products.rows,quotes.rows,invoices.rows,{internal:true}),projectMessages:projectMessages.rows,projectFiles:projectFiles.rows,clientAssetUploads:clientAssetUploads.rows,products:products.rows,requests:requests.rows,invoices:invoices.rows,users:users.rows,quotes:quotes.rows,
     suppliers:suppliers.rows,productionRuns:productionRuns.rows,qcInspections:qcInspections.rows,shipments:shipments.rows,
     assets:assets.rows,assetVersions:assetVersions.rows,comments:comments.rows,configurations:configurations.rows,priceTiers:priceTiers.rows,payments};
 });
@@ -1566,6 +1567,10 @@ app.post('/v1/admin/clients/:id/restore',{preHandler:[authenticate,adminOnly]},a
   return row;
 });
 // Software projects carry a build (the record the showcase shows) and a stage; a product project is as it always was.
+const SW_BUILD_STAFF_JSON=`(select json_build_object('id',b.id,'slug',b.slug,'name',b.name,'tagline',b.tagline,'status',b.status,'visibility',b.visibility,'live_url',b.live_url,'stack',b.stack,'highlights',b.highlights,'products',jsonb_array_length(b.catalog),
+  'hosting',b.hosting,'repo_url',b.repo_url,'summary',b.summary,'links',b.links,'updated_at',b.updated_at,
+  'monitor',(select json_build_object('state',m.state,'http_status',m.http_status,'response_ms',m.response_ms,'checked_at',m.checked_at,'down_since',m.down_since,'cert_expires_at',m.cert_expires_at,'domain_expires_at',m.domain_expires_at,'last_error',m.last_error,
+    'up30',(select round(100.0*count(*) filter (where c.ok)/nullif(count(*),0),2)::float from site_checks c where c.build_id=b.id and c.at > now() - interval '30 days')) from site_monitors m where m.build_id=b.id)) from builds b where b.id=pr.build_id)`;
 const SW_BUILD_JSON=`(select json_build_object('id',b.id,'slug',b.slug,'name',b.name,'tagline',b.tagline,'status',b.status,'visibility',b.visibility,'live_url',b.live_url,'stack',b.stack,'highlights',b.highlights,'products',jsonb_array_length(b.catalog)) from builds b where b.id=pr.build_id)`;
 const withSoftware=p=>p&&p.kind==='software'?{...p,software:softwareView(p,p.build)}:p;
 app.post('/v1/admin/clients/:id/projects',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
