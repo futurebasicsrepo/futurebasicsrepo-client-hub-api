@@ -73,9 +73,9 @@ export function pickFactory(suppliers, need) {
   const ranked = suppliers.filter(s => s.status !== 'archived').map(s => ({ s, ...scoreFactory(s, need) })).filter(x => x.score > 0)
     .sort((a, b) => b.score - a.score || spentOf(b.s.notes) - spentOf(a.s.notes) || String(a.s.name).localeCompare(String(b.s.name)));
   const best = ranked[0]; if (!best) return null;
-  const buys = best.like.flatMap(l => l.buys).filter(b => b.currency === 'USD');
+  const buys = best.like.flatMap(l => l.buys).filter(b => b.currency === 'USD'), runs = buys.filter(b => b.qty >= 10); // a sample order of a piece or two is not a minimum
   const units = buys.map(b => b.unit).sort((a, b) => a - b), median = units.length ? units[Math.floor(units.length / 2)] : null;
-  return { supplier: best.s, score: best.score, why: best.why, moq: buys.length ? Math.min(...buys.map(b => b.qty)) : null, pastUnitUsd: median, pastBuys: buys.length,
+  return { supplier: best.s, score: best.score, why: best.why, moq: runs.length ? Math.min(...runs.map(b => b.qty)) : null, pastUnitUsd: median, pastBuys: buys.length,
     runnersUp: ranked.slice(1, 3).map(x => ({ name: x.s.name, score: x.score })) };
 }
 
