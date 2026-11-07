@@ -795,7 +795,7 @@ registerTeamChatRoutes(app, { pool, authenticate, notifyStaff, sendHubEmail, hub
 registerWorkspaceRoutes(app, { pool, authenticate, sendHubEmail, hubEmailShell, emailEscape, clientHubUrl, log: app.log });
 registerRoomSitesRoutes(app, { pool, authenticate, adminOnly, notifyStaff, sendHubEmail, hubEmailShell, emailEscape, clientHubUrl, workHubUrl, log: app.log });
 registerProductSheetRoutes(app, { pool, authenticate, adminOnly, hasRenderingSql: HAS_RENDERING_SQL, renderingUrl });
-registerOrderQuoteRoutes(app, { pool, authenticate, adminOnly, sendHubEmail, hubEmailShell, emailEscape, notifyRoomStaff, clientHubUrl, workHubUrl, shopifyReady: shopifyConfigured, log: app.log });
+registerOrderQuoteRoutes(app, { pool, authenticate, adminOnly, sendHubEmail, hubEmailShell, emailEscape, notifyRoomStaff, clientHubUrl, workHubUrl, shopifyReady: shopifyConfigured, log: app.log, hasRenderingSql: HAS_RENDERING_SQL, renderingUrl });
 registerLabSelfServeRoutes(app, { pool, authenticate, adminOnly, lab: labAccess, clientHubUrl, workHubUrl, notifyStaff, notifyClientContact, sendHubEmail, hubEmailShell, replyTo: intakeNotificationEmail, forgetUser, clientForEmail, log: app.log });
 const money=registerMoneyRoutes(app, { pool, authenticate, adminOnly, getSetting, setSetting, tokenSeal: sealer(process.env), stateSecret: process.env.JWT_SECRET || 'dev', workUrl: workHubUrl, log: app.log,
   // product development is paid through a Shopify checkout (a draft order for the amount due), see money-routes.js

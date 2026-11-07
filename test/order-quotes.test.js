@@ -47,3 +47,10 @@ test('a line with no cost on record leaves the margin blank, not 100%', () => {
 test('sizes read smallest to largest, whatever order they were stored in', () => {
   assert.equal(sizesWords({ L: 30, M: 30, S: 10, XL: 20, '2XL': 5, '3XL': 5 }), '10 S, 30 M, 30 L, 20 XL, 5 2XL, 5 3XL');
 });
+
+test('one size: "One size", "OSFA" or "one size fits all" alone covers the whole quantity; "50 one size" counts', () => {
+  assert.deepEqual(parseSizes('One size', 50), { 'One size': 50 }); assert.deepEqual(parseSizes('osfa', 20), { 'One size': 20 });
+  assert.deepEqual(parseSizes('one size fits all', 12), { 'One size': 12 }); assert.deepEqual(parseSizes('50 One size'), { 'One size': 50 });
+  assert.deepEqual(parseSizes('One size'), {}, 'with no quantity there is nothing to count'); assert.deepEqual(parseSizes('blue', 5), {});
+  assert.equal(cleanQuote({ lines: [{ productId: 'p0', quantity: 50, sizes: { 'one size': 50 }, unitCents: 1600 }] }, PRODUCTS).value.lines[0].sizes['One size'], 50);
+});

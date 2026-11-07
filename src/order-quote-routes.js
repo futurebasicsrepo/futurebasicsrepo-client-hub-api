@@ -19,12 +19,12 @@ const day = v => (v instanceof Date ? v.toISOString().slice(0, 10) : v ? String(
 const usd = c => '$' + (Number(c) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export function registerOrderQuoteRoutes(app, d) {
-  const { pool, authenticate, adminOnly, sendHubEmail = async () => false, hubEmailShell = (t, b) => b, emailEscape = s => String(s), notifyRoomStaff = async () => 0, clientHubUrl = '', workHubUrl = '', shopifyReady = () => true, log = console, makeDraftOrder = null } = d;
+  const { pool, authenticate, adminOnly, sendHubEmail = async () => false, hubEmailShell = (t, b) => b, emailEscape = s => String(s), notifyRoomStaff = async () => 0, clientHubUrl = '', workHubUrl = '', shopifyReady = () => true, log = console, makeDraftOrder = null, hasRenderingSql = 'false has_rendering', renderingUrl = () => '' } = d;
   const pre = [authenticate, adminOnly];
   const bad = (reply, error, code = 422) => reply.code(code).send({ error });
   const uid = req => (UUID.test(String(req.auth?.sub || '')) ? req.auth.sub : null);
   const one = async id => (UUID.test(String(id || '')) ? (await pool.query('select q.*, c.name client_name from order_quotes q join clients c on c.id=q.client_id where q.id=$1', [id])).rows[0] : null) || null;
-  const roomProducts = async cid => (await pool.query(`select p.id, p.title, p.project_id, pr.name project_name, p.shopify_variant_id, p.shopify_image_url,
+  const roomProducts = async cid => (await pool.query(`select p.id, p.title, p.project_id, pr.name project_name, p.shopify_variant_id, p.shopify_image_url, ${hasRenderingSql},
       (select coalesce(jsonb_agg(to_jsonb(t) order by t.min_quantity), '[]'::jsonb) from price_tiers t where t.product_id=p.id) tiers, (select pc.sizes from product_configurations pc where pc.product_id=p.id) sizes
     from products p left join projects pr on pr.id=p.project_id where p.client_id=$1 and (pr.id is null or (pr.archived_at is null and pr.status not in ('archive','archived'))) order by pr.updated_at desc nulls last, p.title`, [cid])).rows;
   const staffView = q => ({ ...clientQuote(q), lines: q.lines || [], costCents: q.cost_cents == null ? null : Number(q.cost_cents), marginPct: q.margin_pct == null ? null : Number(q.margin_pct), requestId: q.request_id, projectId: q.project_id, dealId: q.deal_id,
@@ -81,7 +81,7 @@ export function registerOrderQuoteRoutes(app, d) {
   // ---- staff ----
   app.get('/v1/admin/clients/:id/quote-builder', { preHandler: pre }, async (req, reply) => {
     if (!UUID.test(String(req.params.id))) return bad(reply, 'Client not found', 404);
-    const products = (await roomProducts(req.params.id)).map(p => ({ id: p.id, title: p.title, projectId: p.project_id, projectName: p.project_name || 'No project', image: p.shopify_image_url || '', tiers: p.tiers || [], sizes: p.sizes || [] }));
+    const products = (await roomProducts(req.params.id)).map(p => ({ id: p.id, title: p.title, projectId: p.project_id, projectName: p.project_name || 'No project', image: p.shopify_image_url || (p.has_rendering ? renderingUrl(p.id) : ''), tiers: p.tiers || [], sizes: p.sizes || [] }));
     const request = UUID.test(String(req.query?.requestId || '')) ? (await pool.query('select id, title, details, project_id, product_id from requests where id=$1 and client_id=$2', [req.query.requestId, req.params.id])).rows[0] : null;
     const quotes = (await pool.query('select q.*, c.name client_name from order_quotes q join clients c on c.id=q.client_id where q.client_id=$1 order by q.created_at desc', [req.params.id])).rows.map(staffView);
     return { products, request: request ? { id: request.id, title: request.title, details: request.details, projectId: request.project_id } : null, suggestions: request ? matchRequest(`${request.title}\n${request.details}`, products) : [], quotes };
