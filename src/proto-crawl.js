@@ -29,7 +29,7 @@ export function cleanSiteUrl(input) {
 }
 
 // Fetch one page: redirects followed by hand (each hop checked), size and time capped. → { url, status, ok, type, text, ms, bytes, truncated }
-export async function safeFetch(url, { fetchImpl = fetch, lookup = (h => dns.lookup(h, { all: true })), timeoutMs = TIMEOUT_MS, maxBytes = MAX_BYTES, maxRedirects = 4, userAgent = UA, accept = 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.5' } = {}) {
+export async function safeFetch(url, { fetchImpl = fetch, lookup = (h => dns.lookup(h, { all: true })), timeoutMs = TIMEOUT_MS, maxBytes = MAX_BYTES, maxRedirects = 4, userAgent = UA, accept = 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.5', binary = false } = {}) {
   let cur = url; const t0 = Date.now();
   for (let hop = 0; hop <= maxRedirects; hop++) {
     const c = cleanSiteUrl(cur); if (c.error) throw new Error(c.error);
@@ -39,15 +39,17 @@ export async function safeFetch(url, { fetchImpl = fetch, lookup = (h => dns.loo
     let res; try { res = await fetchImpl(c.url, { redirect: 'manual', signal: ctl.signal, headers: { 'User-Agent': userAgent, Accept: accept, 'Accept-Language': 'en-US,en;q=0.8' } }); }
     catch (e) { clearTimeout(timer); throw new Error(e.name === 'AbortError' ? `The site took longer than ${Math.round(timeoutMs / 1000)} seconds to answer` : `The site could not be reached (${String(e.cause?.code || e.message).slice(0, 60)})`); }
     if ([301, 302, 303, 307, 308].includes(res.status) && res.headers.get('location')) { clearTimeout(timer); cur = new URL(res.headers.get('location'), c.url).toString(); continue; }
-    const type = String(res.headers.get('content-type') || ''); let text = '', bytes = 0, truncated = false;
+    const type = String(res.headers.get('content-type') || ''); let text = '', body = null, bytes = 0, truncated = false;
     try {
       if (res.body?.getReader) {
         const rd = res.body.getReader(), parts = [];
         for (;;) { const { done, value } = await rd.read(); if (done) break; bytes += value.length; if (bytes > maxBytes) { truncated = true; try { await rd.cancel(); } catch { /* done reading */ } break; } parts.push(value); }
-        text = Buffer.concat(parts.map(p => Buffer.from(p))).toString('utf8');
-      } else { const b = Buffer.from(await res.arrayBuffer()); bytes = b.length; truncated = bytes > maxBytes; text = b.subarray(0, maxBytes).toString('utf8'); }
+        body = Buffer.concat(parts.map(p => Buffer.from(p)));
+      } else { const b = Buffer.from(await res.arrayBuffer()); bytes = b.length; truncated = bytes > maxBytes; body = b.subarray(0, maxBytes); }
+      if (!binary) { text = body.toString('utf8'); body = null; }
     } finally { clearTimeout(timer); }
-    return { url: c.url, status: res.status, ok: res.status >= 200 && res.status < 400, type, text, ms: Date.now() - t0, bytes, truncated };
+    const headers = {}; try { res.headers?.forEach?.((v, k) => { headers[k.toLowerCase()] = v; }); } catch { /* no headers */ }
+    return { url: c.url, status: res.status, ok: res.status >= 200 && res.status < 400, type, text, ...(binary ? { body } : {}), headers, ms: Date.now() - t0, bytes, truncated };
   }
   throw new Error('The site redirects too many times');
 }

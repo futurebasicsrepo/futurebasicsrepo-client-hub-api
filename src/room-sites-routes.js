@@ -5,6 +5,10 @@
 //           POST   /v1/admin/clients/:id/sites            { buildId } or { name, url }, opensAt?, accessNote?, projectId? ('new' | id | 'none'), note?, email?, goLive?
 //           PATCH  /v1/admin/clients/:id/sites/:sid       { opensAt?, accessNote?, note?, projectId? }
 //           DELETE /v1/admin/clients/:id/sites/:sid       take it out of the room (the showcase invites made for it are revoked)
+//           GET    /v1/admin/clients/:id/sites/:sid/cover   its picture, as the client sees it
+//           POST   /v1/admin/clients/:id/sites/:sid/cover   { image } a data: URL: the site's picture (replaces the one read from the site)
+//           DELETE /v1/admin/clients/:id/sites/:sid/cover   back to the picture read from the site
+//           POST   /v1/admin/clients/:id/sites/:sid/look    look at the site again now: its share picture, platform, Shopify theme, password page, status
 //           GET    /v1/admin/clients/:id/projects/:pid/go-live   the project's checklist, both sides (ticked with PATCH /v1/workspace/assignments/:id)
 //           POST   /v1/admin/clients/:id/projects/:pid/go-live   { template?, assigneeId?, email? }   push the go-live checklist onto the project (src/go-live.js)
 //   client  GET    /v1/sites                              the room's sites
@@ -21,6 +25,7 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { cleanUrl } from './builds.js';
 import { GO_LIVE, TEMPLATE_KEYS, templateFor } from './go-live.js';
+import { peekSite as realPeek, siteStack } from './site-peek.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const clip = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
@@ -30,13 +35,15 @@ const PROTO_BASE = String(process.env.BUILDS_PUBLIC_URL || 'https://builds.thefu
 // a prototype's address: one made elsewhere keeps its own; one built here is at /p/<slug> once published
 const PROTO_URL = `case when pt.kind='external' then nullif(pt.external_url,'') when pt.published_at is not null then '${PROTO_BASE}/p/' || pt.slug end`;
 
-// the tables are made in src/db.js (room_sites, room_site_feedback)
+// the tables are made in src/db.js (room_sites, room_site_feedback, room_site_covers)
 
 export function registerRoomSitesRoutes(app, d) {
   const { pool, authenticate, adminOnly, notifyStaff = async () => {}, sendHubEmail = async () => false, hubEmailShell = (t, b) => b, emailEscape = s => String(s), clientHubUrl = '', workHubUrl = '', log = console } = d;
   const bad = (reply, error, code = 422) => reply.code(code).send({ error });
   const uid = req => (UUID.test(String(req.auth?.sub || '')) ? req.auth.sub : null);
   const SELECT = `select s.*, b.slug, b.name build_name, b.tagline, b.status build_status, b.live_url, b.sector, b.hosting, (b.media->>'cover') is not null has_cover,
+      b.stack build_stack, coalesce(jsonb_array_length(b.catalog),0) build_catalog, (select sc.source from room_site_covers sc where sc.site_id=s.id) cover_source,
+      (select json_build_object('state',m.state,'response_ms',m.response_ms,'checked_at',m.checked_at,'up30',(select round(100.0*count(*) filter (where c.ok)/nullif(count(*),0),1)::float from site_checks c where c.build_id=m.build_id and c.at > now() - interval '30 days')) from site_monitors m where m.build_id=s.build_id) monitor,
       pr.name project_name, pr.stage project_stage,
       (select ${PROTO_URL} from prototypes pt where pt.build_id=s.build_id and s.build_id is not null and (${PROTO_URL}) is not null order by pt.updated_at desc limit 1) proto_url,
       (select pt.access_note from prototypes pt where pt.build_id=s.build_id and s.build_id is not null and (${PROTO_URL}) is not null order by pt.updated_at desc limit 1) proto_access,
@@ -44,27 +51,47 @@ export function registerRoomSitesRoutes(app, d) {
     from room_sites s left join builds b on b.id=s.build_id left join projects pr on pr.id=s.project_id and pr.archived_at is null`;
   // where Open goes, and why: 'set' (staff gave it), 'prototype' (the build's prototype) or 'site' (the build's own address)
   const opens = r => r.url ? { url: r.url, from: r.build_id ? 'set' : 'link' } : r.proto_url ? { url: r.proto_url, from: 'prototype' } : { url: r.live_url || '', from: 'site' };
-  const view = r => ({
+  const view = (r, stores = []) => ({
     id: r.id, buildId: r.build_id, slug: r.slug || '', name: r.build_id ? r.build_name : r.name, tagline: r.build_id ? r.tagline || '' : '', sector: r.sector || '',
     status: r.build_id ? r.build_status : 'live', statusWords: r.build_id ? STATUS_WORDS[r.build_status] || r.build_status : 'Link',
-    hasUrl: Boolean(opens(r).url), hasCover: Boolean(previewFor(opens(r).url) || (r.build_id && (r.has_cover || (r.slug && existsSync(new URL(`${r.slug}.jpg`, PREVIEW_DIR)))))),
+    hasUrl: Boolean(opens(r).url), hasCover: Boolean(r.cover_source || previewFor(opens(r).url) || (r.build_id && (r.has_cover || (r.slug && existsSync(new URL(`${r.slug}.jpg`, PREVIEW_DIR)))))),
+    host: (() => { try { return new URL(opens(r).url).hostname.replace(/^www\./, ''); } catch { return ''; } })(),
+    stack: siteStack({ url: opens(r).url, hosting: r.build_id ? r.hosting : '', stack: r.build_stack || [], catalog: r.build_catalog, monitor: r.monitor, facts: r.facts || {} }, stores),
     accessNote: r.access_note || r.proto_access || '', projectId: r.project_name ? r.project_id : null, projectName: r.project_name || '',
     note: r.note, addedAt: r.created_at, feedbackCount: r.feedback_count || 0
   });
   // the site's picture follows where Open goes: a screenshot kept for that address (src/builds-previews/<first part of its host>.jpg, as
   // cg12concept.jpg is for cg12concept.myshopify.com), else the build's own cover, else its screenshot by slug
   const previewFor = url => { let h = ''; try { h = new URL(url).hostname.split('.')[0].toLowerCase(); } catch { return null; } const f = /^[a-z0-9-]{2,60}$/.test(h) ? new URL(`${h}.jpg`, PREVIEW_DIR) : null; return f && existsSync(f) ? f : null; };
+  const coverRow = async id => (await pool.query('select source, mime, body from room_site_covers where site_id=$1', [id])).rows[0] || null;
   async function pictureOf(r) {
+    const mine = r.cover_source ? await coverRow(r.id) : null; if (mine?.source === 'upload') return { type: mine.mime, body: mine.body };
     const own = previewFor(opens(r).url); if (own) return { type: 'image/jpeg', body: readFileSync(own) };
-    if (!r.build_id) return null;
+    if (!r.build_id) return mine ? { type: mine.mime, body: mine.body } : null;
     const cover = (await pool.query(`select media->>'cover' c from builds where id=$1`, [r.build_id])).rows[0]?.c, m = /^data:(image\/[a-z]+);base64,(.+)$/i.exec(cover || '');
     if (m && opens(r).from !== 'prototype' && opens(r).from !== 'set') return { type: m[1], body: Buffer.from(m[2], 'base64') };
     const file = r.slug && /^[a-z0-9-]+$/.test(r.slug) ? new URL(`${r.slug}.jpg`, PREVIEW_DIR) : null;
     if (opens(r).from === 'site' && file && existsSync(file)) return { type: 'image/jpeg', body: readFileSync(file) };
     if (m) return { type: m[1], body: Buffer.from(m[2], 'base64') };
-    return file && existsSync(file) ? { type: 'image/jpeg', body: readFileSync(file) } : null;
+    if (file && existsSync(file)) return { type: 'image/jpeg', body: readFileSync(file) };
+    return mine ? { type: mine.mime, body: mine.body } : null;
   }
-  const staffView = r => ({ ...view(r), opensAt: opens(r).url, opensFrom: opens(r).from, buildUrl: r.live_url || '', protoUrl: r.proto_url || '', setUrl: r.url || '' });
+  // the room's Shopify stores connected to our app, for the store line on the tile
+  const storesOf = async cid => (await pool.query(`select status, shop, coalesce(nullif(shop_name,''), shop) name from client_shopify_stores where client_id=$1 and status<>'removed' order by created_at`, [cid]).catch(() => ({ rows: [] }))).rows;
+  // look at a site (its share picture, what it runs on, how it answers) and keep what was found; a picture staff uploaded is never replaced
+  const peek = d.peekSite || (process.env.SITE_PEEK === 'off' ? null : realPeek), looking = new Set();
+  async function lookAt(r) {
+    const url = opens(r).url; if (!peek || !url || looking.has(r.id)) return null; looking.add(r.id);
+    try {
+      const { facts, image } = await peek(url);
+      await pool.query('update room_sites set facts=$2, facts_at=now() where id=$1', [r.id, JSON.stringify(facts || {})]);
+      if (image) await pool.query(`insert into room_site_covers(site_id, source, mime, body) values($1,'og',$2,$3) on conflict (site_id) do update set mime=excluded.mime, body=excluded.body, updated_at=now() where room_site_covers.source='og'`, [r.id, image.type, image.body]);
+      return facts;
+    } catch (e) { log.warn?.({ err: e.message, site: r.id }, 'site look failed'); return null; } finally { looking.delete(r.id); }
+  }
+  // sites not looked at in the last 12 hours get a look in the background when the room's list is read (a few at a time)
+  const freshen = rows => { for (const r of rows.filter(x => opens(x).url && (!x.facts_at || Date.now() - new Date(x.facts_at) > 12 * 3600e3)).slice(0, 4)) lookAt(r); };
+  const staffView = (r, stores = []) => ({ ...view(r, stores), lookedAt: r.facts_at || null, coverSource: r.cover_source || '', opensAt: opens(r).url, opensFrom: opens(r).from, buildUrl: r.live_url || '', protoUrl: r.proto_url || '', setUrl: r.url || '' });
   const team = async cid => (await pool.query(`select id, email, coalesce(nullif(name,''), split_part(email,'@',1)) name from users where client_id=$1 and role='client' and removed_at is null order by created_at`, [cid])).rows;
   const siteOf = async (cid, sid) => UUID.test(String(sid || '')) ? (await pool.query(`${SELECT} where s.id=$1 and s.client_id=$2 and s.removed_at is null`, [sid, cid])).rows[0] || null : null;
   const projectIn = async (cid, pid) => UUID.test(String(pid || '')) ? (await pool.query(`select id, name, kind, build_id from projects where id=$1 and client_id=$2 and archived_at is null`, [pid, cid])).rows[0] || null : null;
@@ -116,7 +143,8 @@ export function registerRoomSitesRoutes(app, d) {
     const feedback = (await pool.query(`select f.id, f.site_id, f.author_name, f.body, f.created_at from room_site_feedback f join room_sites s on s.id=f.site_id where f.client_id=$1 and s.removed_at is null order by f.created_at desc limit 50`, [cid])).rows
       .map(f => ({ id: f.id, siteId: f.site_id, by: f.author_name, text: f.body, at: f.created_at }));
     const people = (await team(cid)).map(p => ({ id: p.id, name: p.name }));
-    return { sites: rows.map(staffView), builds, prototypes, projects, team: people, goLive: await progress(cid), templates: TEMPLATE_KEYS.map(k => ({ key: k, label: GO_LIVE[k].label, client: GO_LIVE[k].items.filter(i => i.who === 'client').length, fb: GO_LIVE[k].items.filter(i => i.who === 'fb').length })), feedback };
+    const stores = await storesOf(cid); freshen(rows);
+    return { sites: rows.map(r => staffView(r, stores)), builds, prototypes, projects, team: people, goLive: await progress(cid), templates: TEMPLATE_KEYS.map(k => ({ key: k, label: GO_LIVE[k].label, client: GO_LIVE[k].items.filter(i => i.who === 'client').length, fb: GO_LIVE[k].items.filter(i => i.who === 'fb').length })), feedback };
   });
 
   // the picture on the room's card in the work console: its first site with one (a prototype before a link)
@@ -154,7 +182,7 @@ export function registerRoomSitesRoutes(app, d) {
         await pool.query(`insert into build_invites(email, build_id, invited_by, note, expires_at) values($1,$2,$3,$4, now() + interval '365 days')`, [p.email, build.id, uid(req), `room-site:${s.id}`]).catch(() => {});
     }
     await pool.query(`insert into notifications(client_id, type, title, entity_type, entity_id) values($1,'room-site',$2,'room-site',$3)`, [c.id, clip(`New in your room: ${title}`, 300), s.id]).catch(() => {});
-    const row = await siteOf(c.id, s.id);
+    const row = await siteOf(c.id, s.id); lookAt(row);
     let goLive = null;
     if (b.goLive && project) {
       try { goLive = await pushGoLive(req, c.id, project, TEMPLATE_KEYS.includes(b.template) ? b.template : templateFor({ hosting: build?.hosting, url: opens(row).url }), b.assigneeId); } catch (e) { goLive = { error: e.message }; }
@@ -185,7 +213,8 @@ export function registerRoomSitesRoutes(app, d) {
     }
     if (!sets.length) return bad(reply, 'Nothing to change');
     await pool.query(`update room_sites set ${sets.join(', ')} where id=$1`, vals);
-    return { site: staffView(await siteOf(s.client_id, s.id)) };
+    const row = await siteOf(s.client_id, s.id); if (b.opensAt !== undefined) lookAt(row);
+    return { site: staffView(row, await storesOf(s.client_id)) };
   });
 
   app.delete('/v1/admin/clients/:id/sites/:sid', { preHandler: [authenticate, adminOnly] }, async (req, reply) => {
@@ -194,6 +223,34 @@ export function registerRoomSitesRoutes(app, d) {
     await pool.query('update room_sites set removed_at=now() where id=$1', [s.id]);
     await pool.query(`update build_invites set revoked_at=now() where note=$1 and revoked_at is null`, [`room-site:${s.id}`]);
     return { ok: true };
+  });
+
+  app.get('/v1/admin/clients/:id/sites/:sid/cover', { preHandler: [authenticate, adminOnly] }, async (req, reply) => {
+    if (!UUID.test(String(req.params.id))) return bad(reply, 'Client not found', 404);
+    const s = await siteOf(req.params.id, req.params.sid); if (!s) return bad(reply, 'No picture', 404);
+    const pic = await pictureOf(s); if (!pic) return bad(reply, 'No picture', 404);
+    return reply.header('cache-control', 'private, max-age=60').type(pic.type).send(pic.body);
+  });
+  app.post('/v1/admin/clients/:id/sites/:sid/cover', { preHandler: [authenticate, adminOnly], bodyLimit: 4_000_000 }, async (req, reply) => {
+    if (!UUID.test(String(req.params.id))) return bad(reply, 'Client not found', 404);
+    const s = await siteOf(req.params.id, req.params.sid); if (!s) return bad(reply, 'Not in this room', 404);
+    const m = /^data:(image\/(?:png|jpe?g|webp|gif));base64,([A-Za-z0-9+/=]+)$/i.exec(String(req.body?.image || '')); if (!m) return bad(reply, 'Choose a PNG, JPEG, WebP or GIF picture');
+    const body = Buffer.from(m[2], 'base64'); if (body.length > 2_500_000) return bad(reply, 'Pictures can be up to 2.5 MB'); if (body.length < 200) return bad(reply, 'That picture is empty');
+    await pool.query(`insert into room_site_covers(site_id, source, mime, body) values($1,'upload',$2,$3) on conflict (site_id) do update set source='upload', mime=excluded.mime, body=excluded.body, updated_at=now()`, [s.id, m[1].toLowerCase(), body]);
+    return { site: staffView(await siteOf(s.client_id, s.id), await storesOf(s.client_id)) };
+  });
+  app.delete('/v1/admin/clients/:id/sites/:sid/cover', { preHandler: [authenticate, adminOnly] }, async (req, reply) => {
+    if (!UUID.test(String(req.params.id))) return bad(reply, 'Client not found', 404);
+    const s = await siteOf(req.params.id, req.params.sid); if (!s) return bad(reply, 'Not in this room', 404);
+    await pool.query('delete from room_site_covers where site_id=$1', [s.id]); await lookAt(s);
+    return { site: staffView(await siteOf(s.client_id, s.id), await storesOf(s.client_id)) };
+  });
+  app.post('/v1/admin/clients/:id/sites/:sid/look', { preHandler: [authenticate, adminOnly] }, async (req, reply) => {
+    if (!UUID.test(String(req.params.id))) return bad(reply, 'Client not found', 404);
+    const s = await siteOf(req.params.id, req.params.sid); if (!s) return bad(reply, 'Not in this room', 404);
+    if (!opens(s).url) return bad(reply, 'It has no address to look at yet', 409);
+    const facts = await lookAt(s); if (!facts) return bad(reply, 'A look is already running, or looking at sites is switched off', 409);
+    return { site: staffView(await siteOf(s.client_id, s.id), await storesOf(s.client_id)) };
   });
 
   // the project's checklist as staff see it in the work console: both sides, ticked off from there or from the client's hub (the same tasks)
@@ -221,7 +278,8 @@ export function registerRoomSitesRoutes(app, d) {
   const room = (req, reply) => { const cid = req.auth?.role === 'client' && UUID.test(String(req.auth?.clientId || '')) ? req.auth.clientId : null; if (!cid) bad(reply, 'Sign in to your room', 401); return cid; };
   app.get('/v1/sites', { preHandler: authenticate }, async (req, reply) => {
     const cid = room(req, reply); if (!cid) return reply;
-    return { sites: (await pool.query(`${SELECT} where s.client_id=$1 and s.removed_at is null order by s.created_at desc`, [cid])).rows.map(view) };
+    const rows = (await pool.query(`${SELECT} where s.client_id=$1 and s.removed_at is null order by s.created_at desc`, [cid])).rows, stores = await storesOf(cid); freshen(rows);
+    return { sites: rows.map(r => view(r, stores)) };
   });
   app.get('/v1/sites/:sid/cover', { preHandler: authenticate }, async (req, reply) => {
     const cid = room(req, reply); if (!cid) return reply;
