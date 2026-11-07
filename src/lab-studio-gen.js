@@ -6,7 +6,8 @@
 //   Lines    trace again finer or bolder, thicken every line, a key line in the darkest ink, edit the points
 //   Print    put it on the garment (or keep it), the separations, the vector as SVG, or as a PDF with a film page for every ink
 (function () {
-  if (typeof GMODE === 'undefined' || !GMODE) return;
+  if (typeof GMODE === 'undefined' || (!GMODE && !CID) || (typeof TAG !== 'undefined' && TAG)) return;
+  const PIC = !GMODE; // on a concept's picture: the garment is the base layer, so the art is everything but it, and it goes onto the flats
   const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
   let META = null, RES = [], RUN = null, WIDTH = 0;
   const ASK = { brief: '', words: '', season: '', style: '', inks: 3, count: 1, engines: null };
@@ -67,7 +68,7 @@
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     for (const p of parsed) for (const s of p.paths) for (const [x, y] of VEC.flat(s, 2)) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
     if (!Number.isFinite(x0)) return [];
-    const cw = x1 - x0 || 1, ch = y1 - y0 || 1, t = box || { x: W * .12, y: H * .12, w: W * .76, h: H * .76 }, k = Math.min(t.w / cw, t.h / ch), ox = t.x + (t.w - cw * k) / 2, oy = t.y + (t.h - ch * k) / 2;
+    const cw = x1 - x0 || 1, ch = y1 - y0 || 1, t = box || (PIC ? { x: W * .34, y: H * .26, w: W * .32, h: W * .32 } : { x: W * .12, y: H * .12, w: W * .76, h: H * .76 }), k = Math.min(t.w / cw, t.h / ch), ox = t.x + (t.w - cw * k) / 2, oy = t.y + (t.h - ch * k) / 2;
     const out = [];
     parsed.forEach(({ el }, i) => {
       const l = VEC.fromSvg(el, null, svgAttr); if (!l) return;
@@ -203,15 +204,18 @@
     toast(`The thinnest line was about ${mm(t)} mm at ${wIn} in wide; every line is at least 1.2 mm now, so it holds stitches. Small gaps may have closed up: check the details, or Undo.`);
   }
   // ---- Print: on the garment, separations, SVG, PDF ----
+  function artCanvas(skip = () => false) { // the art at full size: on a picture, every visible layer but the garment (and any skipped)
+    if (!PIC && !LAYERS.some(skip)) { compose(); return docC; }
+    const c = canvas(W, H), x = c.getContext('2d'); for (const l of LAYERS) if (l.visible && !(PIC && l.kind === 'base') && !skip(l)) drawLayer(x, l); return c; }
   function whole() { // everything visible, trimmed to the art
-    compose(); const x = docC.getContext('2d'), d = x.getImageData(0, 0, docC.width, docC.height).data; let x0 = docC.width, y0 = docC.height, x1 = -1, y1 = -1;
+    const docC = artCanvas(); const x = docC.getContext('2d', { willReadFrequently: true }), d = x.getImageData(0, 0, docC.width, docC.height).data; let x0 = docC.width, y0 = docC.height, x1 = -1, y1 = -1;
     for (let y = 0; y < docC.height; y += 2) for (let i = 0; i < docC.width; i += 2) if (d[(y * docC.width + i) * 4 + 3] > 8) { if (i < x0) x0 = i; if (i > x1) x1 = i; if (y < y0) y0 = y; if (y > y1) y1 = y; }
     if (x1 < 0) return null; x0 = Math.max(0, x0 - 2); y0 = Math.max(0, y0 - 2); x1 = Math.min(docC.width - 1, x1 + 2); y1 = Math.min(docC.height - 1, y1 + 2);
     const c = canvas(x1 - x0 + 1, y1 - y0 + 1); c.getContext('2d').drawImage(docC, x0, y0, c.width, c.height, 0, 0, c.width, c.height); return { image: c.toDataURL('image/png'), w: c.width, h: c.height };
   }
   const widthIn = () => { if (WIDTH > 0) return WIDTH; const ls = genLayers(), b = ls.length ? bboxOf(ls) : null, w = b ? b.w : (whole()?.w || W); return Math.round(w / (PPI || W / 14) * 4) / 4 || 10; };
   function paintOut() {
-    const o = $('#gOut'); if (!o) return; const put = $('#apply')?.textContent || 'Keep in the library';
+    const o = $('#gOut'); if (!o) return; const put = PIC ? 'Put it on the garment' : $('#apply')?.textContent || 'Keep in the library';
     setTimeout(paintTees, 0);
     o.innerHTML = `<h4>Print</h4><label class="grow"><span class="glab">Width</span><input class="t" type="number" min="1" max="30" step=".25" id="gWidth" value="${widthIn()}" style="width:80px"> <span class="note">in</span></label>
       <h4 style="margin-top:6px">On garments</h4><div class="gtee" id="gTee"><span class="note">Drawing…</span></div><div class="gteenote" id="gTeeNote"></div>
@@ -223,7 +227,7 @@
   let BORDER = .15;
   async function contour(kind) {
     const T = await import('/lab/lab-trace.js'); compose(); const k = Math.min(1, 640 / Math.max(W, H)), w = Math.round(W * k), h = Math.round(H * k), c = canvas(w, h), x = c.getContext('2d', { willReadFrequently: true });
-    const skip = LAYERS.filter(l => l.contour && l.visible); skip.forEach(l => { l.visible = false; }); compose(); x.drawImage(docC, 0, 0, w, h); skip.forEach(l => { l.visible = true; }); compose();
+    x.drawImage(artCanvas(l => Boolean(l.contour)), 0, 0, w, h);
     const a = x.getImageData(0, 0, w, h).data, N = w * h; let m = new Uint8Array(N); for (let i = 0; i < N; i++) m[i] = a[i * 4 + 3] > 24 ? 1 : 0;
     if (!m.some(v => v)) { toast('There is nothing on the canvas yet.'); return; }
     const r = Math.max(1, Math.round(BORDER * (PPI || W / 14) * k)); // grown by the border, a round step at a time (a disc, near enough)
@@ -263,6 +267,14 @@
     }
     LAYERS.push(...add); SEL = add[add.length - 1].id; commit(); tab('layers'); paintPanels(); draw();
     toast(`${{ badge: 'Badge', varsity: 'Varsity arch', stacked: 'Stacked block', script: 'Script over block' }[kind]} from "${words}": every part is its own layer to change.`);
+  }
+  async function putOnPiece() {
+    const ls = genLayers().filter(l => l.visible); if (!ls.length) { toast('Make or open a graphic first.'); return; }
+    const b = bboxOf(ls), pad = 4, c = canvas(b.w + pad * 2, b.h + pad * 2), x = c.getContext('2d'); x.translate(-b.x + pad, -b.y + pad); for (const l of ls) drawLayer(x, l);
+    const name = (ls[0].gen.title || 'Graphic').slice(0, 40), keyOf = () => { const ids = (D.placements || []).map(p => p.id); return ids.includes('centre chest') ? 'centre chest' : ids[0] || undefined; };
+    const n = fresh('image', { name, raster: stamp(c), src: null, dirty: true, x: b.x + b.w / 2, y: b.y + b.h / 2, scale: 1 }); n._srcRid = n.raster._rid; n.placement = keyOf();
+    for (const l of ls) l.visible = false; LAYERS.push(n); SEL = n.id; commit(); tab('layers'); paintPanels(); draw();
+    toast(`"${name}" is one graphic on the piece now${n.placement ? `, on the ${n.placement}` : ''}: choose where under Goes on, and saving puts it on the flats. Its inks are kept, hidden, to edit.`);
   }
   // ---- on garments: the graphic on each body colour, with what the printer does about it (an ink the colour of the shirt is knocked out;
   // a dark shirt takes a white underbase under the colours) ----
@@ -312,7 +324,7 @@
   const slug = () => fileBase();
   async function out(kind) {
     await loadPantone(); const w = Number($('#gWidth')?.value) || widthIn(), name = D.concept.name || 'Graphic', v = vectorInks();
-    if (kind === 'put') { $('#apply')?.click(); return; }
+    if (kind === 'put') { if (!PIC) { $('#apply')?.click(); return; } return putOnPiece(); }
     if (kind === 'sep') { const a = whole(); if (!a) { toast('There is nothing on the canvas yet.'); return; } return sepOpen(null, { image: a.image, widthIn: w, name }); }
     if (kind === 'sim') { const a = whole(); if (!a) { toast('There is nothing on the canvas yet.'); return; } if (!TEE) toast('Separated for a black shirt: tap a colour under On garments for another.'); return sepOpen(null, { image: a.image, widthIn: w, name, method: 'index', garment: TEE || '#141416', inks: 6 }); }
     busy(kind === 'pdf' ? 'Making the PDF…' : 'Making the vector…');
@@ -353,7 +365,7 @@
     else if (d.gmisreg !== undefined) { const list = inks(); if (list.length < 2) { toast('Off register needs two inks or more.'); return; } const step = Math.max(3, W / 180); list.slice(1).forEach((k, i) => { const a = (i * 2.4 + 1) % (Math.PI * 2); for (const l of k.layers) { l.x += Math.cos(a) * step; l.y += Math.sin(a) * step; touched(l); } }); commit(); paintPanels(); draw(); toast('Each ink nudged a little off its key. Undo puts them back.'); }
     else if (d.glock) { keepText(); lockup(d.glock); }
     else if (d.gsticker !== undefined) contour('sticker'); else if (d.gcut !== undefined) contour('cut');
-    else if (d.gtee) { TEE = TEE === d.gtee ? null : d.gtee; window.PAGEBG = TEE || ''; draw(); paintTees(); }
+    else if (d.gtee) { TEE = TEE === d.gtee ? null : d.gtee; if (!PIC) { window.PAGEBG = TEE || ''; draw(); } paintTees(); }
     else if (d.gput !== undefined) out('put'); else if (d.gsep !== undefined) out('sep'); else if (d.gsim !== undefined) out('sim'); else if (d.gsvg !== undefined) out('svg'); else if (d.gpdf !== undefined) out('pdf');
   });
   document.addEventListener('input', e => {
@@ -361,7 +373,7 @@
     else if (e.target.id === 'gWeight') weight(Number(e.target.value));
     else if (e.target.id === 'gWidth') WIDTH = Number(e.target.value) || 0;
     else if (e.target.id === 'gBorder') { BORDER = Number(e.target.value); const v = $('#gBorderV'); if (v) v.textContent = BORDER + ' in'; }
-    else if (e.target.dataset?.gteec !== undefined) { TEE = hex6(e.target.value); window.PAGEBG = TEE; draw(); }
+    else if (e.target.dataset?.gteec !== undefined) { TEE = hex6(e.target.value); if (!PIC) { window.PAGEBG = TEE; draw(); } }
   });
   document.addEventListener('change', e => {
     if (e.target.dataset?.gcol) { commit(); paintPanels(); paintInks(); }

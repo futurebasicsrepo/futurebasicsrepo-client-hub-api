@@ -129,8 +129,10 @@ then what works with changes, with the cloth that does not suit it folded away. 
 - **Stickers and patches:** a white border round the art and a magenta cut line, at the width you choose.
 - **On garments:** the graphic on eight shirt colours (or any colour); it says which ink is knocked out by the shirt and when a dark
   shirt needs a white underbase.
-- **Type right on the flat:** tap the flat with Type and set words in any of the 47 fonts, with size, colour, bold, case, an outline and an
-  arch, shown live where they go.
+- **The same tools everywhere:** on the flats, in the graphics studio and on the picture. On the flat: every brush aid (Steady,
+  QuickShape, Symmetry, Lock), Fill (inside your lines, or a whole garment panel) and Liquify; Type in any of the 47 fonts with arch, shape,
+  two outlines and a 3D shadow; and Edit on a placed graphic opens it in the graphics studio and puts it back in the same place. On the
+  picture: the Make tab, with the three AI engines, lockups, inks, garments and print.
 - **Colour at the tip of the Pencil:** recent colours and the brand's palette sit right on the brush bar; the rainbow swatch opens any colour.
 - **Pencil to outlines:** sketch with the Apple Pencil on the picture or right on the flat, tap **Outlines**, and the drawing becomes
   clean vector lines. Tap **Refine** for cleaner and smoother lines, up to six times; the original drawing is kept underneath.
