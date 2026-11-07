@@ -1948,6 +1948,16 @@ export async function migrate() {
     -- what Open goes to when it is not the build's own address (the prototype, a staging store) and how to get in; and the project the site is filed under
     alter table room_sites add column if not exists access_note text not null default '';
     alter table room_sites add column if not exists project_id uuid references projects(id) on delete set null;
+    -- a site's card: what it runs on and how it answered at the last look (src/site-peek.js), and its picture (staff's upload, else the site's share image)
+    alter table room_sites add column if not exists facts jsonb not null default '{}'::jsonb;
+    alter table room_sites add column if not exists facts_at timestamptz;
+    create table if not exists room_site_covers (
+      site_id uuid primary key references room_sites(id) on delete cascade,
+      source text not null default 'og' check (source in ('og','upload')),
+      mime text not null,
+      body bytea not null,
+      updated_at timestamptz not null default now()
+    );
     -- pictures kept out of the pack JSON, once each, keyed by the hash of their bytes (see src/pack-blobs.js)
     create table if not exists pack_blobs (
       hash text primary key,
