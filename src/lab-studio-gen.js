@@ -144,7 +144,7 @@
     lines.innerHTML = `<h4>Lines</h4>
       <div class="grow"><span class="glab">Detail</span><div class="seg">${[['fine', 'Fine', .55], ['clean', 'Clean', 1.1], ['bold', 'Bold', 2.4]].map(([id, t, v]) => `<button type="button" data-gtrace="${v}" aria-pressed="${(ls[0]?.gen.tol || 1.1) === v}">${t}</button>`).join('')}</div></div>
       <label class="grow"><span class="glab">Weight</span><input type="range" min="0" max="24" step="1" value="${w}" id="gWeight" aria-label="Thicken every line"></label>
-      <div class="grow"><button class="btn sm ${key ? '' : 'q'}" type="button" data-gkey aria-pressed="${key}">Key line</button><button class="btn sm q" type="button" data-gpoints>Edit points</button><button class="btn sm q" type="button" data-gmisreg title="Nudge each ink a little off, like a press out of register: the vintage look">Off register</button></div>`;
+      <div class="grow"><button class="btn sm ${key ? '' : 'q'}" type="button" data-gkey aria-pressed="${key}">Key line</button><button class="btn sm q" type="button" data-gpoints>Edit points</button><button class="btn sm q" type="button" data-gmisreg title="Nudge each ink a little off, like a press out of register: the vintage look">Off register</button><button class="btn sm q" type="button" data-gemb title="Make every line at least 1.2 mm at the print width, so an embroidery machine can stitch it">Thicken for embroidery</button></div>`;
     paintOut();
   }
   function recolour(from, to, { live = false } = {}) { for (const l of genLayers()) if (hex6(l.fillColor) === from) { l.fillColor = to; if (l.stroke && !l.gen.key) l.strokeColor = to; touched(l); } keyLine(); draw(); if (!live) { commit(); paintPanels(); paintInks(); } }
@@ -190,6 +190,18 @@
     } catch (x) { toast(x.message); } finally { busy(); }
   }
 
+  // ---- thick enough to stitch: the thinnest line measured at the print width (src/lab-filters.js thinnest), every ink thickened just enough
+  // that nothing is under 1.2 mm (finer than that, a satin stitch will not hold) ----
+  async function thickenForEmb() {
+    const ls = genLayers(); if (!ls.length) { toast('Make or open a graphic first: this thickens its inks.'); return; }
+    const F = await import('/lab/lab-filters.js'), a = whole(); if (!a) return; const img = new Image(); await new Promise(r => { img.onload = r; img.src = a.image; });
+    const k = Math.min(1, 700 / Math.max(a.w, a.h)), w = Math.max(1, Math.round(a.w * k)), h = Math.max(1, Math.round(a.h * k)), c = canvas(w, h), x = c.getContext('2d', { willReadFrequently: true }); x.drawImage(img, 0, 0, w, h);
+    const d = x.getImageData(0, 0, w, h).data, m = new Uint8Array(w * h); for (let i = 0; i < w * h; i++) m[i] = d[i * 4 + 3] > 128 ? 1 : 0;
+    const t = F.thinnest(m, w, h) / k, wIn = Number($('#gWidth')?.value) || widthIn(), ppi = a.w / wIn, mm = v => Math.round(v / ppi * 25.4 * 10) / 10, need = 1.2 / 25.4 * ppi;
+    if (t >= need) { toast(`Already thick enough to stitch: the thinnest line is about ${mm(t)} mm at ${wIn} in wide.`); return; }
+    const add = Math.ceil(need - t + 1), was = ls[0].gen.weight || 0; weight(was + add); commit(); paintPanels(); paintInks();
+    toast(`The thinnest line was about ${mm(t)} mm at ${wIn} in wide; every line is at least 1.2 mm now, so it holds stitches. Small gaps may have closed up: check the details, or Undo.`);
+  }
   // ---- Print: on the garment, separations, SVG, PDF ----
   function whole() { // everything visible, trimmed to the art
     compose(); const x = docC.getContext('2d'), d = x.getImageData(0, 0, docC.width, docC.height).data; let x0 = docC.width, y0 = docC.height, x1 = -1, y1 = -1;
@@ -203,7 +215,7 @@
     setTimeout(paintTees, 0);
     o.innerHTML = `<h4>Print</h4><label class="grow"><span class="glab">Width</span><input class="t" type="number" min="1" max="30" step=".25" id="gWidth" value="${widthIn()}" style="width:80px"> <span class="note">in</span></label>
       <h4 style="margin-top:6px">On garments</h4><div class="gtee" id="gTee"><span class="note">Drawing…</span></div><div class="gteenote" id="gTeeNote"></div>
-      <div class="gout"><button class="btn go wide" type="button" data-gput>${esc(put)}</button><button class="btn sm" type="button" data-gsep>Separations</button><button class="btn sm" type="button" data-gsvg>Vector SVG</button><button class="btn sm wide" type="button" data-gpdf>Vector PDF + films</button></div>
+      <div class="gout"><button class="btn go wide" type="button" data-gput>${esc(put)}</button><button class="btn sm" type="button" data-gsep>Separations</button><button class="btn sm" type="button" data-gsim title="Full-colour art in a few spot inks, as index dots, with a white underbase on a dark shirt">Simulated process</button><button class="btn sm" type="button" data-gsvg>Vector SVG</button><button class="btn sm wide" type="button" data-gpdf>Vector PDF + films</button></div>
       <h4 style="margin-top:6px">Stickers and patches</h4><label class="grow"><span class="glab">Border</span><input type="range" min=".05" max=".6" step=".05" value="${BORDER}" id="gBorder" aria-label="Border width"><span class="note" id="gBorderV">${BORDER} in</span></label>
       <div class="gout"><button class="btn sm" type="button" data-gsticker>Sticker border</button><button class="btn sm" type="button" data-gcut>Cut line</button></div>`;
   }
@@ -302,6 +314,7 @@
     await loadPantone(); const w = Number($('#gWidth')?.value) || widthIn(), name = D.concept.name || 'Graphic', v = vectorInks();
     if (kind === 'put') { $('#apply')?.click(); return; }
     if (kind === 'sep') { const a = whole(); if (!a) { toast('There is nothing on the canvas yet.'); return; } return sepOpen(null, { image: a.image, widthIn: w, name }); }
+    if (kind === 'sim') { const a = whole(); if (!a) { toast('There is nothing on the canvas yet.'); return; } if (!TEE) toast('Separated for a black shirt: tap a colour under On garments for another.'); return sepOpen(null, { image: a.image, widthIn: w, name, method: 'index', garment: TEE || '#141416', inks: 6 }); }
     busy(kind === 'pdf' ? 'Making the PDF…' : 'Making the vector…');
     try {
       if (kind === 'svg') {
@@ -336,11 +349,12 @@
     else if (d.gkey !== undefined) { const ls = genLayers(), on = !ls[0]?.gen.key; ls.forEach(l => { l.gen.key = on; }); weight(ls[0]?.gen.weight || 0); commit(); paintPanels(); paintInks(); }
     else if (d.gpoints !== undefined) { const l = genLayers().find(x => x.id === SEL) || genLayers()[0]; if (l) { SEL = l.id; setTool('node'); paintPanels(); draw(); toast('Drag a point or its handles; tap the line to add one.'); } }
     else if (d.gharm) harmony(d.gharm);
+    else if (d.gemb !== undefined) thickenForEmb().catch(x => toast(x.message));
     else if (d.gmisreg !== undefined) { const list = inks(); if (list.length < 2) { toast('Off register needs two inks or more.'); return; } const step = Math.max(3, W / 180); list.slice(1).forEach((k, i) => { const a = (i * 2.4 + 1) % (Math.PI * 2); for (const l of k.layers) { l.x += Math.cos(a) * step; l.y += Math.sin(a) * step; touched(l); } }); commit(); paintPanels(); draw(); toast('Each ink nudged a little off its key. Undo puts them back.'); }
     else if (d.glock) { keepText(); lockup(d.glock); }
     else if (d.gsticker !== undefined) contour('sticker'); else if (d.gcut !== undefined) contour('cut');
     else if (d.gtee) { TEE = TEE === d.gtee ? null : d.gtee; window.PAGEBG = TEE || ''; draw(); paintTees(); }
-    else if (d.gput !== undefined) out('put'); else if (d.gsep !== undefined) out('sep'); else if (d.gsvg !== undefined) out('svg'); else if (d.gpdf !== undefined) out('pdf');
+    else if (d.gput !== undefined) out('put'); else if (d.gsep !== undefined) out('sep'); else if (d.gsim !== undefined) out('sim'); else if (d.gsvg !== undefined) out('svg'); else if (d.gpdf !== undefined) out('pdf');
   });
   document.addEventListener('input', e => {
     if (e.target.dataset?.gcol) { recolour(hex6(e.target.dataset.gcol), hex6(e.target.value), { live: true }); e.target.dataset.gcol = hex6(e.target.value); e.target.parentNode.style.background = e.target.value; }

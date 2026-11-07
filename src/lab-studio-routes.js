@@ -28,6 +28,8 @@ import { traceVector, stitchPlan, dstOf, expOf, vectorPdf } from './lab-vector.j
 import { digitizeOptions } from './lab-digitize.js';
 import { sewoutBox, sewoutPng, sewoutFrames, digitizeReview } from './lab-sewout.js';
 import { jobFile, jobZip } from './lab-jobfile.js';
+import { indexSeparate } from './lab-index-sep.js';
+import { zip as zipFiles } from './zip.js';
 import { cleanRules } from './lab-library.js';
 import { GRAPHIC_PLACE } from './lab-concepts.js';
 import { brandHits } from './lab-concepts.js';
@@ -173,6 +175,14 @@ export function registerLabStudioRoutes(app, d) {
   app.post('/v1/lab/studio/separations', { preHandler: pre, bodyLimit: 32_000_000 }, async (req, reply) => {
     const b = req.body || {}, img = pictureOf(b.image); if (!img) return bad(reply, 'Send the layer as a picture');
     const t = await techOf(b.techniqueId), w = Math.max(.5, Math.min(40, Number(b.widthIn) || 4)), garment = /^#[0-9a-f]{6}$/i.test(String(b.garment || '')) ? b.garment : '', name = clip(b.name, 60) || 'Graphic';
+    // simulated process (src/lab-index-sep.js): full-colour art as index dots in a few spot inks, a white underbase on a dark shirt
+    if (b.method === 'index') {
+      const g = /^#[0-9a-f]{6}$/i.test(String(b.garment || '')) ? b.garment : '#141416', r = await indexSeparate(img, { widthIn: w, garment: g, inks: Math.round(Number(b.inks)) || 6, name });
+      if (b.zip) return reply.header('content-type', 'application/zip').header('content-disposition', `attachment; filename="${name.replace(/[^a-z0-9]+/gi, '-').toLowerCase() || 'graphic'}-simulated-process.zip"`).send(zipFiles(r.files));
+      const small = async (buf, px = 360) => `data:image/png;base64,${(await sharp(buf).resize({ width: px, height: px, fit: 'inside', kernel: 'nearest' }).png().toBuffer()).toString('base64')}`;
+      return { job: { name, technique: { name: 'simulated process (index dots)' }, size: { label: `${Math.round(w * 100) / 100} in at ${r.dpi} dpi` }, tones: false, coverage: null, knockouts: [], colours: r.plates.map(p => ({ n: p.n, pantone: p.pantone, hex: p.hex, coverage: p.coverage, angle: null })), warnings: r.warnings, print: { order: r.order } },
+        plates: await Promise.all(r.plates.map(async p => ({ n: p.n, pantone: p.pantone + (p.role === 'highlight white' ? ' (highlight)' : ''), hex: p.hex, coverage: p.coverage, angle: null, image: await small(p.png), film: await small(p.film) }))), underbase: r.underbase ? await small(r.underbase) : null, method: 'index' };
+    }
     const technique = { ...t, rules: cleanRules(t.rules || {}, t.base) };
     if (b.zip) { const z = await jobZip(img, { name, technique, widthIn: w, garmentColour: garment }); return reply.header('content-type', 'application/zip').header('content-disposition', `attachment; filename="${z.zipName}"`).send(z.zip); }
     const { job, files } = await jobFile(img, { name, technique, widthIn: w, garmentColour: garment });

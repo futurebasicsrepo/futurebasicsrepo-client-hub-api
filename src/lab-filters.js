@@ -87,3 +87,22 @@ export function drawDots(ctx, dots, { shape = 'dot', angle = 45, color = '#14141
     ctx.restore();
   }
 }
+
+// how thin the art's thinnest lines are, in pixels: a distance transform of the solid parts (3-4 chamfer), the ridge of it (each line's
+// middle), and the width there; the 10th percentile, so a stray pixel does not set it
+export function thinnest(mask, W, H) {
+  const INF = 1e9, d = new Float32Array(W * H);
+  for (let i = 0; i < W * H; i++) d[i] = mask[i] ? INF : 0;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const i = y * W + x; if (!d[i]) continue; let v = d[i];
+    if (x > 0) v = Math.min(v, d[i - 1] + 3); else v = Math.min(v, 3); if (y > 0) v = Math.min(v, d[i - W] + 3); else v = Math.min(v, 3);
+    if (x > 0 && y > 0) v = Math.min(v, d[i - W - 1] + 4); if (x < W - 1 && y > 0) v = Math.min(v, d[i - W + 1] + 4); d[i] = v; }
+  for (let y = H - 1; y >= 0; y--) for (let x = W - 1; x >= 0; x--) { const i = y * W + x; if (!d[i]) continue; let v = d[i];
+    if (x < W - 1) v = Math.min(v, d[i + 1] + 3); else v = Math.min(v, 3); if (y < H - 1) v = Math.min(v, d[i + W] + 3); else v = Math.min(v, 3);
+    if (x < W - 1 && y < H - 1) v = Math.min(v, d[i + W + 1] + 4); if (x > 0 && y < H - 1) v = Math.min(v, d[i + W - 1] + 4); d[i] = v; }
+  const widths = [];
+  for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) { const i = y * W + x, v = d[i]; if (!v) continue;
+    // the middle of a line: no neighbour across it is deeper
+    const ridge = (a, b) => v >= a && v >= b && v > Math.min(a, b); // deeper than one side, no shallower than the other: across the line, not along its edge
+    if (ridge(d[i - 1], d[i + 1]) || ridge(d[i - W], d[i + W])) widths.push(v / 3 * 2 - .5); }
+  if (!widths.length) return 0; widths.sort((a, b) => a - b); return Math.max(1, widths[Math.floor(widths.length * .1)]);
+}

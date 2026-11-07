@@ -122,6 +122,10 @@ then what works with changes, with the cloth that does not suit it folded away. 
   register, which nudges each ink a little off its key like an old press.
 - **Stitch brushes and repeats:** a running-stitch and a chain-stitch brush, and pattern fills that repeat straight, brick, half-drop
   or mirrored.
+- **Photo-real art on a dark shirt:** Simulated process separates full-colour art (a painting, a glow, a photo) into a handful of spot
+  inks as index dots, with a white underbase and a highlight white, the press order and a zip of films for the printer.
+- **Ready to stitch:** Thicken for embroidery measures the thinnest line at the print width and thickens every ink just enough that
+  nothing is under 1.2 mm, the finest a satin stitch holds.
 - **Stickers and patches:** a white border round the art and a magenta cut line, at the width you choose.
 - **On garments:** the graphic on eight shirt colours (or any colour); it says which ink is knocked out by the shirt and when a dark
   shirt needs a white underbase.
