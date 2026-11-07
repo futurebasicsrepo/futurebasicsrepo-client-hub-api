@@ -12,3 +12,11 @@ test('the chosen graphic has four corner handles to resize it, and the turn knob
   assert.match(svg, /data-rot="a"/);
   assert.ok(!renderSvg(p, 'front', { placements }).includes('data-rs='), 'nothing chosen, no handles');
 });
+
+test('the eraser on the sketch stays inside the garment: its strokes are masked by the garment outline, not drawn on the page', () => {
+  const p = { ...defaultParams('tee'), color: '#1d2a44', edits: [{ id: 'r', type: 'rub', view: 'front', pts: [[-20, 4], [-18, 6]], w: 3 }] };
+  const svg = renderSvg(p, 'front');
+  const id = /<mask id="([^"]+-rm)"/.exec(svg)?.[1]; assert.ok(id, 'a mask from the garment outline');
+  assert.match(svg, new RegExp(`<g mask="url\\(#${id}\\)"><path d="M-20 4`), 'the rub strokes are drawn through it');
+  assert.ok(!renderSvg({ ...p, edits: [] }, 'front').includes('-rm"'), 'no mask when nothing is rubbed out');
+});
