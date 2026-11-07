@@ -131,6 +131,10 @@ kbd{font:500 10px 'IBM Plex Mono',monospace;border:1px solid var(--line);border-
 html,body{touch-action:manipulation}
 .embgrid{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:16px}@media (max-width:760px){.embgrid{grid-template-columns:1fr}}.embprev{background:#ecebe6;border-radius:14px;min-height:280px;display:grid;place-items:center;overflow:hidden}.embprev img{width:100%;display:block}.embseq{width:100%;border-collapse:collapse;font-size:12.5px}.embseq td{padding:4px 6px;border-bottom:1px solid var(--line)}.embseq td.n{font-variant-numeric:tabular-nums;text-align:right}.embseq i{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:middle;border:1px solid rgba(0,0,0,.2)}
 html[data-pick] body>header{display:none}html[data-pick] .studio{height:100dvh}
+.studio{position:relative}.rail .rail-x[disabled]{opacity:.3;cursor:default}.rail #railNames[aria-pressed=true]{background:var(--fog);color:var(--ink);border-color:var(--line)}
+.rail-names{position:absolute;z-index:30;width:310px;pointer-events:none}.rail-names.hidden{display:none}
+.rail-names button{pointer-events:auto;position:absolute;left:6px;transform:translateY(-50%);display:grid;gap:1px;text-align:left;max-width:228px;background:rgba(255,255,255,.96);border:1px solid var(--line);border-radius:10px;padding:5px 9px;font:inherit;font-size:11.5px;line-height:1.25;color:var(--dim);box-shadow:0 4px 14px rgba(20,20,22,.08);cursor:pointer}
+.rail-names button{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:300px;line-height:1.2;padding:4px 10px;border-radius:999px}.rail-names button b{color:var(--ink);font-size:12.5px;margin-right:6px}.rail-names button small{font-size:11px}.rail-names button[aria-pressed=true]{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink)}
 </style>
 <script src="/feedback.js"></script>
 <link rel="stylesheet" href="/cue.css">
@@ -176,6 +180,10 @@ html[data-pick] body>header{display:none}html[data-pick] .studio{height:100dvh}
     <button class="btn go sm flat-only hidden" id="packBtn" type="button">Send to the tech pack</button>
   </div>
   <nav class="rail" aria-label="Tools">
+    <button type="button" class="rail-x" id="railNames" title="Show what each tool does" aria-label="Show what each tool does" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M4 6h3M4 12h3M4 18h3M10 6h10M10 12h10M10 18h7"/></svg></button>
+    <button type="button" class="rail-x" id="railUndo" title="Undo" aria-label="Undo"><svg viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"/><path d="M4 9h11a5 5 0 010 10h-3"/></svg></button>
+    <button type="button" class="rail-x" id="railRedo" title="Redo" aria-label="Redo"><svg viewBox="0 0 24 24"><path d="M15 14l5-5-5-5"/><path d="M20 9H9a5 5 0 000 10h3"/></svg></button>
+    <hr>
     <button type="button" data-tool="select" title="Select and move (V)" aria-label="Select and move"><svg viewBox="0 0 24 24"><path d="M5 3l14 8-6 2-3 6z"/></svg></button>
     <button type="button" data-tool="hand" title="Move the view (H, or hold Space)" aria-label="Move the view"><svg viewBox="0 0 24 24"><path d="M8 13V5a1.5 1.5 0 013 0v6M11 11V4a1.5 1.5 0 013 0v7M14 11V6a1.5 1.5 0 013 0v8c0 4-3 7-7 7-3 0-5-2-6-4l-2-4a1.5 1.5 0 012.6-1.5L8 14"/></svg></button>
     <hr>
@@ -197,6 +205,7 @@ html[data-pick] body>header{display:none}html[data-pick] .studio{height:100dvh}
     <button class="cur" id="curColor" type="button" title="Colour" aria-label="Choose the colour"></button>
     <input type="color" id="curPicker" class="hidden" aria-hidden="true" tabindex="-1">
   </nav>
+  <div class="rail-names hidden" id="railLabels" role="list" aria-label="What each tool does"></div>
   <div class="mid">
     <div class="opts" id="opts"></div>
     <div class="stage" id="stage"><canvas id="view"></canvas>
@@ -323,7 +332,7 @@ function commit(){HIST=HIST.slice(0,HI+1);HIST.push(snap());if(HIST.length>60)HI
 function restore(s){LAYERS=s.layers.map(copyL);SEL=s.sel&&layerOf(s.sel)?s.sel:null;touch();paintPanels();draw()}
 const onFlat=()=>(VMODE==='front'||VMODE==='back')&&FF()?.undo;
 function undo(){if(onFlat()){FF().undo();syncUndo();return}if(HI>0){HI--;restore(HIST[HI]);syncUndo()}}function redo(){if(onFlat()){FF().redo();syncUndo();return}if(HI<HIST.length-1){HI++;restore(HIST[HI]);syncUndo()}}
-function syncUndo(){if(onFlat()){const f=FF();$('#undo').disabled=!f.canUndo();$('#redo').disabled=!f.canRedo();return}$('#undo').disabled=HI<=0;$('#redo').disabled=HI>=HIST.length-1}
+function syncUndo(){if(onFlat()){const f=FF();$('#undo').disabled=!f.canUndo();$('#redo').disabled=!f.canRedo()}else{$('#undo').disabled=HI<=0;$('#redo').disabled=HI>=HIST.length-1}const ru=$('#railUndo'),rr=$('#railRedo');if(ru){ru.disabled=$('#undo').disabled;rr.disabled=$('#redo').disabled}}
 let EDITS=0;function touch(){DIRTY=true;EDITS++;showSaved();PRES?.editing(true);autoSoon()}
 // Who else has this concept open (/presence.js): their initials by Save; if someone else is changing it while you have changes, say so once
 let PRES=null,PRES_WARNED=false;
@@ -412,8 +421,9 @@ const sx=x=>x*Z+PX,sy=y=>y*Z+PY,dx=x=>(x-PX)/Z,dy=y=>(y-PY)/Z;
 let VIEWONLY=0;const viewOnly=()=>Boolean((GEST&&!GEST.layer)||(DRAG&&DRAG.mode==='pan')||VIEWONLY>performance.now());
 function render(){
   if(!viewOnly()||!render.done){compose();render.done=true}const r=view.getBoundingClientRect();DPR=window.devicePixelRatio||1;const cw=Math.round(r.width*DPR),ch=Math.round(r.height*DPR);if(view.width!==cw||view.height!==ch){view.width=cw;view.height=ch}
-  vx.setTransform(DPR,0,0,DPR,0,0);vx.clearRect(0,0,r.width,r.height);vx.save();vx.shadowColor='rgba(20,20,22,.18)';vx.shadowBlur=24;vx.fillStyle='#fff';vx.fillRect(PX,PY,W*Z,H*Z);vx.restore();
-  vx.imageSmoothingQuality='high';vx.drawImage(docC,PX,PY,W*Z,H*Z);
+  const vo=viewOnly(); // while the view is being moved or pinched: no soft shadow and quick smoothing (both are slow on an iPad, every frame)
+  vx.setTransform(DPR,0,0,DPR,0,0);vx.clearRect(0,0,r.width,r.height);vx.save();if(!vo){vx.shadowColor='rgba(20,20,22,.18)';vx.shadowBlur=24}else{vx.fillStyle='rgba(20,20,22,.08)';vx.fillRect(PX+2,PY+3,W*Z,H*Z)}vx.fillStyle='#fff';vx.fillRect(PX,PY,W*Z,H*Z);vx.restore();
+  vx.imageSmoothingQuality=vo?'low':'high';vx.drawImage(docC,PX,PY,W*Z,H*Z);if(vo){clearTimeout(render.sharp);render.sharp=setTimeout(()=>{if(!viewOnly())draw()},120)}
   if(MASKED&&(TOOL==='area'||TAB==='ai')){vx.save();vx.globalAlpha=.42;vx.drawImage(mask,PX,PY,W*Z,H*Z);vx.restore()}
   const l=selected();
   if(l&&l.visible&&!fixed(l)&&TOOL==='select'&&!window.PRO?.multi()){const p=corners(l).map(([a,b])=>[sx(a),sy(b)]);vx.strokeStyle='#141416';vx.lineWidth=1;vx.setLineDash([5,4]);vx.beginPath();p.forEach(([a,b],i)=>i?vx.lineTo(a,b):vx.moveTo(a,b));vx.closePath();vx.stroke();vx.setLineDash([]);
@@ -538,7 +548,7 @@ view.addEventListener('wheel',e=>{e.preventDefault();const[px,py]=pt(e);if(e.ctr
 $('#zIn').onclick=()=>{const r=view.getBoundingClientRect();zoomAt(1.25,r.width/2,r.height/2)};$('#zOut').onclick=()=>{const r=view.getBoundingClientRect();zoomAt(.8,r.width/2,r.height/2)};$('#zFit').onclick=fit;
 
 // ---------- tools and their options ----------
-function setTool(t){TOOL=t;if(VMODE==='front'||VMODE==='back')FF()?.tool?.(t);$$('.rail [data-tool]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.tool===t)));view.style.cursor=t==='hand'?'grab':t==='select'?'default':t==='text'?'text':'crosshair';paintOpts();draw()}
+function setTool(t){TOOL=t;setTimeout(()=>window.paintRailNames?.(),0);if(VMODE==='front'||VMODE==='back')FF()?.tool?.(t);$$('.rail [data-tool]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.tool===t)));view.style.cursor=t==='hand'?'grab':t==='select'?'default':t==='text'?'text':'crosshair';paintOpts();draw()}
 const pressHtml=()=>`<label class="chk" title="With an Apple Pencil, pressing harder makes the line wider"><input type="checkbox" data-press ${OPT.pressure?'checked':''}> Pencil pressure</label>`;
 $('#opts').addEventListener('change',e=>{if(e.target.matches('[data-press]'))OPT.pressure=e.target.checked});
 function paintOpts(){
@@ -981,6 +991,17 @@ document.addEventListener('keydown',e=>{
 document.addEventListener('keyup',e=>{if(e.key===' '){SPACE=false;setTool(TOOL)}});
 window.addEventListener('beforeunload',e=>{if(DIRTY||FF()?.dirty()){e.preventDefault();e.returnValue=''}});
 $('#undo').onclick=undo;$('#redo').onclick=redo;
+// the rail's own Undo and Redo: always in reach of a thumb on an iPad (the ones in the top bar are small and fold away)
+$('#railUndo').onclick=undo;$('#railRedo').onclick=redo;
+// what each tool is and does, beside the rail: for learning by trying. Tap a name to pick the tool; the choice to show them is remembered
+const TOOL_HELP={select:'Tap a layer to choose it; drag to move, corners to resize, the green knob to turn',hand:'Drag to move around the page (two fingers do it too)',brush:'Paint on the chosen layer',eraser:'Rub out paint, or lines of the sketch on a flat',distress:'Wear the layer away, like a washed print',text:'Tap the page and type',rect:'Drag to draw a box',ellipse:'Drag to draw an oval or circle',line:'Drag to draw a straight line',pen:'Tap for corners, drag for curves; tap the first point to close',node:'Move the points of a shape you drew',ruler:'Drag across something you know the size of, to set real inches',warp:'Bend a graphic to follow the garment',pick:'Tap the picture to borrow a colour',area:'Paint where the AI should change the picture'};
+function paintRailNames(){const box=$('#railLabels'),open=$('#railNames').getAttribute('aria-pressed')==='true';box.classList.toggle('hidden',!open);if(!open)return;const rail=$('.rail'),rb=rail.getBoundingClientRect(),sb=box.parentElement.getBoundingClientRect();
+  box.style.top=(rb.top-sb.top)+'px';box.style.left=(rb.right-sb.left)+'px';box.style.height=rb.height+'px';
+  box.innerHTML=[...rail.querySelectorAll('button[data-tool]')].filter(b=>b.offsetParent).map(b=>{const t=b.dataset.tool,r=b.getBoundingClientRect(),name=b.getAttribute('aria-label');return `<button type="button" role="listitem" data-pick-tool="${t}" aria-pressed="${b.getAttribute('aria-pressed')==='true'}" style="top:${r.top-rb.top+r.height/2}px"><b>${esc(name)}</b><small>${esc(TOOL_HELP[t]||b.title)}</small></button>`}).join('')}
+$('#railNames').onclick=()=>{const on=$('#railNames').getAttribute('aria-pressed')!=='true';$('#railNames').setAttribute('aria-pressed',String(on));try{localStorage.setItem('fb.studio.names',on?'1':'0')}catch{}paintRailNames()};
+$('#railLabels').addEventListener('click',e=>{const b=e.target.closest('[data-pick-tool]');if(b){setTool(b.dataset.pickTool);paintRailNames()}});
+$('.rail').addEventListener('scroll',()=>paintRailNames(),{passive:true});window.addEventListener('resize',()=>paintRailNames());
+try{if(localStorage.getItem('fb.studio.names')!=='0'&&matchMedia('(pointer:coarse)').matches&&!localStorage.getItem('fb.studio.names'))$('#railNames').setAttribute('aria-pressed','true')}catch{}setTimeout(paintRailNames,300);
 
 // ---------- opening the design: the saved layers, or the concept's picture as the base ----------
 async function loadLayer(o){

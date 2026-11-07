@@ -79,7 +79,9 @@ textarea.t{min-height:64px;resize:vertical}
 [data-embed=compact] .wrap{grid-template-columns:1fr}[data-embed=compact] .side,[data-embed=compact] .stage>.msg{display:none}[data-embed=compact] .stage{padding:10px}
 @media print{header,.bar,.side,.tools,#fbSide,.fbside{display:none!important}.wrap{grid-template-columns:1fr}body{background:#fff}}
 /* the cloth: the library's fabrics as photo tiles in the garment's colour; coloured panels: a row each with its colour, name and Remove */
-.cloths{display:grid;grid-template-columns:repeat(auto-fill,minmax(74px,1fr));gap:6px;max-height:248px;overflow-y:auto;padding:2px}
+.cloths{display:grid;grid-template-columns:repeat(auto-fill,minmax(74px,1fr));gap:6px;max-height:340px;overflow-y:auto;padding:2px}
+.clothq{width:100%;margin:0 0 6px}.cloths .cgh{grid-column:1/-1;margin:6px 0 0;font:600 10px 'IBM Plex Mono',monospace;letter-spacing:.06em;text-transform:uppercase;color:var(--dim,#727278)}.cloths .cgh span{color:var(--ink,#141416);margin-left:3px}
+.cloths .cgno{grid-column:1/-1;border:1px dashed var(--line,#e2e2dc);background:none;border-radius:10px;padding:8px 10px;text-align:left;font:inherit;font-size:12px;color:var(--dim,#727278);cursor:pointer}
 .cloths button{border:1px solid var(--line,#e2e2dc);background:#fff;border-radius:10px;padding:4px;display:grid;gap:3px;cursor:pointer;text-align:left;font-size:11px;line-height:1.2}
 .cloths button[aria-checked=true]{border-color:#12b864;box-shadow:0 0 0 1.5px #4bff9a}.cloths button:disabled{opacity:.55;cursor:default}
 .cloths .cs{aspect-ratio:1;border-radius:7px;background:#eee center/cover;display:block}.cloths .cn{overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
@@ -88,6 +90,7 @@ textarea.t{min-height:64px;resize:vertical}
 .wash .seg{display:flex;gap:4px;margin:6px 0}.wash .seg button{flex:1;font:inherit;font-size:13px;padding:6px 8px;border:1px solid var(--line,#d8d6cf);border-radius:999px;background:transparent;cursor:pointer}.wash .seg button[aria-checked=true]{background:var(--ink,#141416);color:#fff;border-color:var(--ink,#141416)}.wash .wtoggle{margin-top:10px}.wash input[type=range]{width:100%}.wrange{display:flex;justify-content:space-between;font-size:11px;opacity:.6;margin-top:-4px}
 .wash.flash{outline:2px solid #4bff9a;outline-offset:4px;border-radius:10px;transition:outline-color 1s}
 .ntiles{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}.ntile{display:grid;gap:2px;justify-items:center;padding:6px 4px;border:1px solid var(--line,#d8d6cf);border-radius:10px;background:#fff;cursor:pointer;font:inherit;font-size:12px}.ntile svg{width:100%;height:58px}.ntile[aria-pressed=true]{border-color:var(--ink,#141416);box-shadow:0 0 0 1.5px var(--ink,#141416)}.ntiles.locked .ntile{opacity:.6;cursor:not-allowed}
+.lbrow{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line,#e2e2dc)}.lbrow .lbn{flex:1;min-width:0;font-size:13px;display:grid}.lbrow small{color:var(--dim,#727278);font-size:11px}.lbon{font:600 10px 'IBM Plex Mono',monospace;text-transform:uppercase;color:#17603a}
 </style>
 <script src="/feedback.js"></script>
 <link rel="stylesheet" href="/cue.css">
@@ -122,6 +125,7 @@ import { tagMarks, STYLES, FITS, SIZES, DETAILS, STITCHES, defaultDetail, descri
 import { panelAt, panelName } from '/lab/lab-flat-panels.js';
 import { tagFaceSvg } from '/lab/lab-tags.js';
 import { NECKLINES, necklineSvg, takesNeckline, necklineOf, necklineMeasures, necklinePomName } from '/lab/lab-neck.js';
+import { rankFabrics } from '/lab/lab-fabric-fit.js';window.FBRank=rankFabrics;
 import { WASHES, STRENGTHS, washOf, distressParts, distressList, DISTRESS_FOCUS, washWords } from '/lab/lab-wash.js';
 import { FLAT_TEMPLATES } from '/lab/lab-flat-templates.js';
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)],esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -226,7 +230,7 @@ const newId=k=>k+Math.random().toString(36).slice(2,8);
 // ---------- the cloth: the garment's main fabric, chosen here, shown on the flat as its surface over the colour ----------
 const TEX_IN=9; // inches of drawing a tile of the cloth covers: larger than life, so the weave reads at the size of the flat
 function clothTex(){const m=CLOTH.main&&CLOTH.lib?.find(x=>x.id===CLOTH.main.id);return m?.photo?{href:`/lab/material-photos/${encodeURIComponent(m.photo)}.jpg?shade=1&s=320`,w:TEX_IN,h:TEX_IN}:null}
-async function loadCloth(){if(!CID)return;try{const[lib,on]=await Promise.all([CLOTH.lib?Promise.resolve({materials:CLOTH.lib}):api('/v1/lab/materials?kind=fabric'),api(`/v1/lab/concepts/${CID}/materials`)]);CLOTH.lib=lib.materials||[];CLOTH.main=(on.picks||[]).find(p=>p.kind==='fabric'&&p.role==='main'&&!p.part)||null;CLOTH.fit=on.fit||null;await loadTags(on.picks||[])}catch{CLOTH.lib=CLOTH.lib||[]}}
+async function loadCloth(){if(!CID)return;try{const[lib,on]=await Promise.all([CLOTH.lib?Promise.resolve({materials:CLOTH.lib}):api('/v1/lab/materials?kind=fabric'),api(`/v1/lab/concepts/${CID}/materials`)]);CLOTH.lib=lib.materials||[];CLOTH.main=(on.picks||[]).find(p=>p.kind==='fabric'&&p.role==='main'&&!p.part)||null;CLOTH.fit=on.fit||null;CLOTH.style=on.style||P?.style||'';CLOTH.label=on.styleLabel||'this piece';await loadTags(on.picks||[])}catch{CLOTH.lib=CLOTH.lib||[]}}
 // the labels chosen on the concept, drawn on the flats where they are sewn (tagMarks): the label's face at its size, or the face designed for it in the studio
 const TAGFACE={};
 async function loadTags(picks){const lib=picks.some(p=>p.kind==='tag')?((await api('/v1/lab/materials?kind=tag').catch(()=>null))?.materials||[]):[];
@@ -242,7 +246,18 @@ function clothSec(){const lib=CLOTH.lib,locked=Boolean(D?.concept?.locked),hex=(
   const ph=x=>x.photo?`background-image:url('/lab/material-photos/${encodeURIComponent(x.photo)}.jpg?c=${encodeURIComponent(hex||'e9e9e6')}&s=160')`:`background:${P.color||'#eee'}`;
   const f=CLOTH.fit&&CLOTH.fit.verdict!=='unknown'&&!CLOTH.fit.accepted&&CLOTH.fit.verdict!=='good'?CLOTH.fit.findings?.[0]:null;
   return `<div class="sec"><h4>Cloth</h4><p class="msg" style="margin:0 0 6px">${m?`<b>${esc(m.name)}</b> is the main fabric: its surface is on the flat, and the cost and tech pack take it.`:'No fabric chosen yet. Pick one and the flat shows it.'}</p>${f?`<p class="msg" style="color:#8a5a00;margin:0 0 6px">! ${esc(f.msg)}</p>`:''}
-    <div class="cloths" role="radiogroup" aria-label="Main fabric">${[...lib].sort((a,b)=>(b.id===m?.id)-(a.id===m?.id)).map(x=>`<button type="button" role="radio" data-cloth="${esc(x.id)}" aria-checked="${m?.id===x.id}" ${locked||CLOTH.busy?'disabled':''} title="${esc(x.name)}"><span class="cs" style="${ph(x)}"></span><span class="cn">${esc(x.name)}</span></button>`).join('')}</div></div>`}
+    <input class="t clothq" id="clothQ" type="search" autocomplete="off" value="${esc(CLOTH.q||'')}" placeholder="Type to filter: jersey, 180, organic…" aria-label="Filter the fabrics">
+    <div class="cloths" id="clothList" role="radiogroup" aria-label="Main fabric">${clothList()}</div></div>`}
+// the fabrics ranked for this piece's style (src/lab-fabric-fit.js rankFabrics): best first, in groups, what does not suit it folded away;
+// the box filters by any word or weight, and only the list is drawn again as you type
+function clothList(){const lib=CLOTH.lib||[],locked=Boolean(D?.concept?.locked),hex=(P.color||'').replace('#',''),m=CLOTH.main,words=String(CLOTH.q||'').toLowerCase().split(/\s+/).filter(Boolean);
+  const ph=x=>x.photo?`background-image:url('/lab/material-photos/${encodeURIComponent(x.photo)}.jpg?c=${encodeURIComponent(hex||'e9e9e6')}&s=160')`:`background:${P.color||'#eee'}`;
+  const txt=x=>`${x.name} ${x.spec?.composition||''} ${x.spec?.construction||''} ${x.spec?.finish||''} ${x.spec?.weightGsm?x.spec.weightGsm+' gsm':''} ${x.notes||''}`.toLowerCase();
+  const R=(window.FBRank&&CLOTH.style?window.FBRank(CLOTH.style,lib):lib.map(x=>({...x,fit:{tier:''}}))).filter(x=>words.every(w=>txt(x).includes(w))),btn=x=>`<button type="button" role="radio" data-cloth="${esc(x.id)}" aria-checked="${m?.id===x.id}" ${locked||CLOTH.busy?'disabled':''} title="${esc(x.name+(x.fit?.why?' · '+x.fit.why:''))}"><span class="cs" style="${ph(x)}"></span><span class="cn">${esc(x.name)}</span></button>`;
+  if(!R.length)return `<p class="msg" style="grid-column:1/-1">No fabric matches “${esc(CLOTH.q)}”.</p>`;
+  if(!R[0].fit?.tier)return R.map(btn).join('');
+  const piece=CLOTH.label||'this piece',grp=(t,h)=>{const l=R.filter(x=>x.fit.tier===t);return l.length?`<div class="cgh">${esc(h)} <span>${l.length}</span></div>`+l.map(btn).join(''):''},no=R.filter(x=>x.fit.tier==='no'),open=CLOTH.showNo||words.length>0;
+  return grp('best','Best for '+piece)+grp('good','Also suits '+piece)+grp('check','Works with changes')+(no.length?`<button type="button" class="cgno" data-clothno>${open?'Hide':'Show'} ${no.length} that ${no.length===1?'does':'do'} not suit ${esc(piece)}</button>`+(open?no.map(btn).join(''):''):'')}
 async function pickCloth(id){if(CLOTH.busy||CLOTH.main?.id===id)return;CLOTH.busy=true;paintDesign();
   try{const r=await api(`/v1/lab/concepts/${CID}/materials`,{body:{material:id,role:'main',colour:P.color||undefined,replace:true}});CLOTH.main=(r.picks||[]).find(p=>p.kind==='fabric'&&p.role==='main'&&!p.part)||null;CLOTH.fit=r.fit||null;FBN.toast(`${CLOTH.main?.name||'The fabric'} is the main fabric now`,'ok');HOST()?.clothChanged?.()}
   catch(x){FBN.toast(x.message,'err')}finally{CLOTH.busy=false;draw();paintDesign()}}
@@ -276,7 +291,9 @@ function finishDraft(){const pts=DRAFT.filter((q,i)=>!i||Math.hypot(q[0]-DRAFT[i
   if(MODE==='stitch'&&pts.length>=2)e={id:newId('s'),type:'stitch',view:VIEW,pts,stitch:NEWST.stitch,thread:NEWST.thread==='#141416'?'':NEWST.thread,spi:0};
   if(MODE==='block'&&pts.length>=3)e={id:newId('b'),type:'block',view:VIEW,pts,color:NEWBL.color,name:''};
   DRAFT=[];MODE=null;if(e){P.edits.push(e);SELE=e.id;touch()}paint()}
+$('#pDesign').addEventListener('input',e=>{if(e.target.id==='clothQ'){CLOTH.q=e.target.value;$('#clothList').innerHTML=clothList()}});
 $('#pDesign').addEventListener('click',async e=>{
+  if(e.target.closest('[data-clothno]')){CLOTH.showNo=!CLOTH.showNo;$('#clothList').innerHTML=clothList();return}
   if(e.target.closest('[data-unrub]')){P.edits=(P.edits||[]).filter(x=>!(x.view===VIEW&&x.type==='rub'));touch();paint();return}
   const rp=e.target.closest('#redrawPic');if(rp){redrawFromPicture(rp);return}
   const sw=e.target.closest('[data-color]');if(sw){P.color=sw.dataset.color;touch();paint();return}
@@ -424,6 +441,19 @@ let gqT=0;$('#pGarment').addEventListener('input',e=>{if(e.target.id==='gQ'){GQ.
 function matSec(){const h=HOST();if(!h?.materials)return'';const rec=h.recipeUrl?.()||'';
   return `<div class="sec"><h4>Fabrics, trims &amp; labels</h4><p class="msg" style="margin:0">What the garment is made of, from the materials library: the cloth, the trims and the labels, with what they cost.</p><div class="row" style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm" type="button" data-mats>Open fabrics, trims &amp; labels</button>${rec?`<a class="btn q sm" href="${esc(rec)}" target="_top">Edit recipe</a>`:''}</div></div>`}
 $('#pGarment').addEventListener('click',e=>{if(e.target.closest('[data-mats]'))HOST()?.materials?.()});
+// labels from the library, one tap on or off the garment (the same as Fabrics, trims & labels): each is drawn on the flat where it is sewn
+const KIND_LABEL={neck:'Neck labels',size:'Size tabs',care:'Care and content labels',hem:'Hem tags',sleeve:'Sleeve tags',waistband:'Waistband labels',hang:'Hang tags',patch:'Patches'};
+const LABEL_WHERE={neck:'inside the back neck: it shows in the neck opening on the front, and on the Back view',size:'beside the neck label',care:'inside the left side seam',hem:'on the hem',sleeve:'on the sleeve',waistband:'inside the waistband'};
+let LABELS=null,LABELBUSY=false;
+async function loadLabels(){if(LABELS)return;try{LABELS=(await api('/v1/lab/materials?kind=tag')).materials||[]}catch{LABELS=[]}if(TAB==='garment')paintGarment()}
+function labelSec(){if(!CID)return '';if(!LABELS){loadLabels();return `<div class="sec"><h4>Labels</h4><p class="msg">Loading the labels…</p></div>`}
+  const on=new Set((CLOTH.tags||[]).map(t=>t.id)),locked=Boolean(D?.concept?.locked),groups={};for(const t of LABELS){const k=t.spec?.tagKind||'other';(groups[k]=groups[k]||[]).push(t)}
+  const order=['neck','size','care','hem','sleeve','waistband','patch','hang',...Object.keys(groups)].filter((k,i,a)=>groups[k]&&a.indexOf(k)===i);
+  return `<div class="sec"><h4>Labels</h4><p class="msg" style="margin:0 0 6px">Tap Add to sew a label into the garment: it is drawn where it goes, and the tech pack and the cost take it. Drag it on the flat to move it.</p>${order.map(k=>`<div class="mono" style="margin-top:6px">${esc(KIND_LABEL[k]||k)}</div>${groups[k].map(t=>`<div class="lbrow"><span class="lbn">${esc(t.name)}${t.spec?.widthMm?`<small>${t.spec.widthMm} × ${t.spec.heightMm} mm</small>`:''}</span>${on.has(t.id)?`<span class="lbon">On it</span><button type="button" class="btn sm q" data-lboff="${esc(t.id)}" ${locked||LABELBUSY?'disabled':''}>Remove</button>`:`<button type="button" class="btn sm" data-lbon="${esc(t.id)}" data-kind="${esc(k)}" ${locked||LABELBUSY?'disabled':''}>Add</button>`}</div>`).join('')}`).join('')}</div>`}
+$('#pGarment').addEventListener('click',async e=>{const a=e.target.closest('[data-lbon]'),r=e.target.closest('[data-lboff]');if(!(a||r)||LABELBUSY)return;LABELBUSY=true;paintGarment();
+  try{if(a)await api(`/v1/lab/concepts/${CID}/materials`,{body:{material:a.dataset.lbon}});else await api(`/v1/lab/concepts/${CID}/materials/${r.dataset.lboff}`,{method:'DELETE'});
+    await loadCloth();paint();HOST()?.flatsChanged?.();const k=a?.dataset.kind;FBN.toast(a?`Added: it is ${LABEL_WHERE[k]||'on the garment'}.`:'Taken off the garment.','ok')}
+  catch(x){FBN.toast(x.message,'err')}finally{LABELBUSY=false;paintGarment()}});
 // wash and distressing (src/lab-wash.js): drawn on the flats, written on the tech pack and into the picture from the flats
 function washSec(){const w=P.wash||{type:'none',strength:'medium'},d=P.distress||{on:false,amount:40},groups=[...new Set(WASHES.map(x=>x.group))],k=distressParts(d.amount,d.focus||'all'),kd=STYLES[P.style]?.kind==='bottom'?'bottom':'top',locked=Boolean(D?.concept?.locked);
   return `<div class="sec wash" id="washSec"><h4>Wash &amp; distress</h4>
@@ -441,7 +471,7 @@ $('#pGarment').addEventListener('change',e=>{
 $('#pGarment').addEventListener('input',e=>{if(e.target.id==='dAmt'){P.distress={...(P.distress||{}),on:true,amount:Number(e.target.value)};draw()}});
 function paintGarment(){
   const S=STYLES[P.style],o=P.options,box=(k,l)=>`<label class="chk"><input type="checkbox" data-o="${k}" ${o[k]?'checked':''}> ${l}</label>`;
-  $('#pGarment').innerHTML=`${matSec()}${washSec()}<div class="sec"><h4>The piece</h4><label class="f"><span>Style</span><select class="t" id="gStyle">${Object.entries(D.styles).map(([k,v])=>`<option value="${k}" ${k===P.style?'selected':''}>${esc(v.label)}</option>`).join('')}</select></label>
+  $('#pGarment').innerHTML=`${matSec()}${labelSec()}${washSec()}<div class="sec"><h4>The piece</h4><label class="f"><span>Style</span><select class="t" id="gStyle">${Object.entries(D.styles).map(([k,v])=>`<option value="${k}" ${k===P.style?'selected':''}>${esc(v.label)}</option>`).join('')}</select></label>
     <label class="f"><span>Fit</span><select class="t" id="gFit">${Object.entries(FITS).map(([k,v])=>`<option value="${k}" ${k===P.fit?'selected':''}>${v}</option>`).join('')}</select></label><p class="msg">Changing the style or fit sets the measurements to its standard; your placements stay. The drawing is a flat sketch scaled to the chest or waist and the length.</p></div>
   <div class="sec"><h4>Drawing · ${esc(templateOf(P)?.label||'Simple outline')}</h4><div class="gbar"><input class="t" type="search" id="gQ" placeholder="Search ${FLAT_TEMPLATES.length} sketches: cargo, pleated, halter…" aria-label="Search the sketches" value="${esc(GQ.q)}" style="flex:1;min-width:150px"><select class="t" id="gRange" style="width:auto" aria-label="Range"><option value="">Men's and women's</option><option value="mens" ${GQ.range==='mens'?'selected':''}>Men's</option><option value="womens" ${GQ.range==='womens'?'selected':''}>Women's</option></select><label class="chk"><input type="checkbox" id="gAll" ${GQ.all?'checked':''}> Every style</label></div><div class="gal" id="gGal">${galTiles()}</div><p class="msg">Pick any sketch from the pack. A sketch of another style changes the piece to that style; its length starts at the sketch's own proportions (a cropped tee shorter, a maxi dress longer).</p></div>
   <div class="sec"><h4>Details</h4>${S.kind==='top'?box('drop','Dropped shoulder')+box('cropped','Cropped')+(S.hood?box('drawcord','Hood drawcords'):'')+(S.pocket?box('noPocket','No front pocket'):box('chestPocket','Chest pocket')):''}${S.kind==='bottom'?`<label class="f"><span>Pleats</span><select class="t" data-o="pleats"><option value="0" ${!o.pleats?'selected':''}>None</option><option value="1" ${o.pleats==1?'selected':''}>Single</option><option value="2" ${o.pleats==2?'selected':''}>Double</option></select></label>`:''}${['cap','beanie','tote'].includes(S.kind)?'<p class="msg">Nothing to change for this one.</p>':''}</div>
@@ -469,15 +499,24 @@ $$('[data-view]').forEach(b=>b.onclick=()=>setView(b.dataset.view));$('#fzFit').
 ['#showDims','#showPom','#size'].forEach(s=>$(s).addEventListener('change',draw));
 let DRAG=null;
 // ---------- zoom on the flats: two fingers pinch and move it (an iPad), Ctrl and the wheel on a computer, one finger moves it once zoomed ----------
-let FZ=1,FC=null,FG=null,FPAN=null;const FPTR=new Map();
+let FZ=1,FC=null,FG=null,FPAN=null,FR=0;const FPTR=new Map();
 function baseBox(){const svg=$('#canvas svg');if(!svg)return null;const v=(svg.dataset.base||svg.getAttribute('viewBox')||'').split(/[ ,]+/).map(Number);return v.length===4&&v.every(Number.isFinite)?{x:v[0],y:v[1],w:v[2],h:v[3]}:null}
+// The view's own geometry, worked out here rather than asked of the browser: the drawing's box on the page (unturned), the viewBox in it
+// (scaled to fit, centred), and the view's turn (FR, degrees, about the box's centre). Every point on the screen goes to inches through it,
+// so a turned view, and one being pinched (moved by a transform on the page), still draw where the finger is.
+function vgeo(){const svg=$('#canvas svg');if(!svg)return null;const w=svg.clientWidth||svg.getBoundingClientRect().width,h=svg.clientHeight||svg.getBoundingClientRect().height,v=(svg.getAttribute('viewBox')||'').split(/[ ,]+/).map(Number);if(!(w>0&&h>0)||v.length!==4)return null;
+  const k=Math.min(w/v[2],h/v[3]),r=svg.getBoundingClientRect();return{svg,w,h,v,k,ox:(w-v[2]*k)/2,oy:(h-v[3]*k)/2,cx:r.left+r.width/2,cy:r.top+r.height/2}}
+const turn=(x,y,deg)=>{const a=deg*Math.PI/180,c=Math.cos(a),s=Math.sin(a);return[x*c-y*s,x*s+y*c]};
+function toInch(X,Y){const g=vgeo();if(!g)return[0,0];const[lx,ly]=turn(X-g.cx,Y-g.cy,-FR);return[g.v[0]+(lx+g.w/2-g.ox)/g.k,g.v[1]+(ly+g.h/2-g.oy)/g.k]}
+// the view's turn on the drawing and on the hand drawing over it (both turn about their own centre, which is the same box)
+function applyTurn(){const svg=$('#canvas svg'),t=FR?`rotate(${FR}deg)`:'';if(svg){svg.style.transform=t;svg.style.transformOrigin='50% 50%'}MKW.style.transform=t;MKW.style.transformOrigin='50% 50%'}
 function zoomSvg(){const svg=$('#canvas svg');if(!svg)return;if(!svg.dataset.base)svg.dataset.base=svg.getAttribute('viewBox')||'';const b=baseBox();if(!b)return;
   if(FZ<=1.001){FZ=1;FC=null;svg.setAttribute('viewBox',svg.dataset.base)}
   else{const w=b.w/FZ,h=b.h/FZ,c=FC||[b.x+b.w/2,b.y+b.h/2],cx=Math.min(Math.max(c[0],b.x+w/2),b.x+b.w-w/2),cy=Math.min(Math.max(c[1],b.y+h/2),b.y+b.h-h/2);FC=[cx,cy];svg.setAttribute('viewBox',`${cx-w/2} ${cy-h/2} ${w} ${h}`)}
-  $('#fzFit')?.classList.toggle('hidden',FZ<=1);const zl=$('#fzLabel');if(zl)zl.textContent=Math.round(FZ*100)+'%';mkPlace()}
-const unitsPerPx=()=>{const svg=$('#canvas svg'),b=baseBox();if(!svg||!b)return 1;const r=svg.getBoundingClientRect();return Math.max(b.w/FZ/r.width,b.h/FZ/r.height)};
+  $('#fzFit')?.classList.toggle('hidden',FZ<=1&&!FR);const zl=$('#fzLabel');if(zl)zl.textContent=Math.round(FZ*100)+'%'+(FR?` · ${Math.round(FR)}°`:'');applyTurn();mkPlace()}
+const unitsPerPx=()=>{const g=vgeo();return g?1/g.k:1};
 const centreNow=()=>{const b=baseBox();return FC||(b?[b.x+b.w/2,b.y+b.h/2]:[0,0])};
-function fzFit(){FZ=1;FC=null;zoomSvg()}
+function fzFit(){FZ=1;FC=null;FR=0;zoomSvg()} // Fit also straightens a turned view
 // keeping the pointer is a nicety: where the browser refuses it (Safari can, for a Pencil), the drag still works
 const capt=e=>{try{$('#canvas').setPointerCapture(e.pointerId)}catch{}};
 $('#canvas').addEventListener('pointerdown',e=>{if(e.pointerType==='touch'&&MDRAG&&MDRAG.type==='touch'&&MDRAG.pid!==e.pointerId)mkCancel()},true);
@@ -486,26 +525,33 @@ $('#canvas').addEventListener('pointerdown',e=>{if(e.pointerType==='touch'&&MDRA
 $('#canvas').addEventListener('pointerdown',e=>{if(e.pointerType!=='touch')return;if(e.isPrimary){for(const k of [...FPTR.keys()])if(k!==e.pointerId)FPTR.delete(k);FG=null}capt(e);FPTR.set(e.pointerId,[e.clientX,e.clientY]);if(FPTR.size<2)return;
   e.stopImmediatePropagation();e.preventDefault();
   if(DRAG){if(DRAG.q&&DRAG.ox!==undefined){DRAG.q.x=DRAG.ox;DRAG.q.y=DRAG.oy}if(DRAG.size)Object.assign(DRAG.size,DRAG.orig);if(DRAG.ed&&DRAG.orig)Object.assign(DRAG.ed,JSON.parse(JSON.stringify(DRAG.orig)));DRAG=null;draw()} // two fingers: a pinch, not a move
-  BOXDRAG=null;FPAN=null;const[a,b]=[...FPTR.values()],r=$('#canvas svg').getBoundingClientRect();FG={d:Math.hypot(a[0]-b[0],a[1]-b[1])||1,m:[(a[0]+b[0])/2,(a[1]+b[1])/2],z:FZ,c:centreNow(),u:unitsPerPx(),rc:[r.left+r.width/2,r.top+r.height/2]};
+  BOXDRAG=null;FPAN=null;const[a,b]=[...FPTR.values()],g0=vgeo();if(!g0)return;FG={d:Math.hypot(a[0]-b[0],a[1]-b[1])||1,m:[(a[0]+b[0])/2,(a[1]+b[1])/2],z:FZ,c:centreNow(),u:1/g0.k,C:[g0.cx,g0.cy],r0:FR,ang:Math.atan2(b[1]-a[1],b[0]-a[0])};
   // two fingers on a graphic resize and turn it (about its centre, keeping its shape), as in other drawing apps; anywhere else they zoom the view
   const on=[a,b,FG.m].map(([x,y])=>document.elementFromPoint(x,y)?.closest?.('[data-pl]')).find(Boolean),q=on&&PL.find(x=>x.id===on.dataset.pl);if(q){SEL=q.id;FG.q=q;FG.w0=q.w;FG.h0=q.h;FG.r0=q.rot||0;FG.a0=Math.atan2(b[1]-a[1],b[0]-a[0])}},true);
 $('#canvas').addEventListener('pointermove',e=>{const p=FPTR.get(e.pointerId);if(p){p[0]=e.clientX;p[1]=e.clientY}
   if(FG&&FPTR.size>=2){e.stopImmediatePropagation();const[a,b]=[...FPTR.values()],d=Math.hypot(a[0]-b[0],a[1]-b[1])||1,m=[(a[0]+b[0])/2,(a[1]+b[1])/2];
     if(FG.q){const k=Math.min(40/FG.w0,40/FG.h0,Math.max(.25/FG.w0,.25/FG.h0,d/FG.d));FG.q.w=r8(FG.w0*k);FG.q.h=r8(FG.h0*k);FG.q.rot=turnTo(FG.r0+(Math.atan2(b[1]-a[1],b[0]-a[0])-FG.a0)*180/Math.PI);FG.moved=true;draw();return}
-    const P=[FG.c[0]+(FG.m[0]-FG.rc[0])*FG.u,FG.c[1]+(FG.m[1]-FG.rc[1])*FG.u];FZ=Math.min(Math.max(FG.z*d/FG.d,1),6);const u1=FG.u*FG.z/FZ;FC=[P[0]-(m[0]-FG.rc[0])*u1,P[1]-(m[1]-FG.rc[1])*u1];zoomSvg();return}
-  if(FPAN){e.stopImmediatePropagation();const u=unitsPerPx();FC=[FPAN.c[0]-(e.clientX-FPAN.x)*u,FPAN.c[1]-(e.clientY-FPAN.y)*u];zoomSvg()}},true);
-const fzUp=e=>{FPTR.delete(e.pointerId);if(FG&&FPTR.size<2){const g=FG;FG=null;e.stopImmediatePropagation();if(g.q&&g.moved){touch();paint()}}if(FPAN){FPAN=null;e.stopImmediatePropagation()}};
+    // the view: moved, zoomed and turned by one transform on the page while the fingers are down (nothing is drawn again, so it follows the
+    // fingers); the zoom and turn are set for real when they lift
+    const zN=Math.min(Math.max(FG.z*d/FG.d,1),6),sc=zN/FG.z;let dr=(Math.atan2(b[1]-a[1],b[0]-a[0])-FG.ang)*180/Math.PI;dr=((dr+540)%360)-180;
+    const rN=FG.r0+dr,snap=Math.round(rN/90)*90,rT=Math.abs(rN-snap)<5?snap:rN;dr=rT-FG.r0; // a turn near square snaps to it
+    const[qx,qy]=turn((FG.C[0]-FG.m[0])*sc,(FG.C[1]-FG.m[1])*sc,dr),tx=m[0]+qx-FG.C[0],ty=m[1]+qy-FG.C[1],t=`translate(${tx}px,${ty}px) rotate(${rT}deg) scale(${sc})`;
+    FG.live={sc,dr,rT,tx,ty,zN};const svg=$('#canvas svg');if(svg){svg.style.transformOrigin='50% 50%';svg.style.transform=t}MKW.style.transformOrigin='50% 50%';MKW.style.transform=t;return}
+  if(FPAN){e.stopImmediatePropagation();const u=unitsPerPx(),[ddx,ddy]=turn(e.clientX-FPAN.x,e.clientY-FPAN.y,-FR);FC=[FPAN.c[0]-ddx*u,FPAN.c[1]-ddy*u];zoomSvg()}},true);
+const fzUp=e=>{FPTR.delete(e.pointerId);if(FG&&FPTR.size<2){const g=FG;FG=null;e.stopImmediatePropagation();if(g.q&&g.moved){touch();paint()}if(g.live)fzCommit(g)}if(FPAN){FPAN=null;e.stopImmediatePropagation()}};
 ['pointerup','pointercancel','lostpointercapture'].forEach(t=>$('#canvas').addEventListener(t,e=>{if(e.type==='lostpointercapture'&&(!FPTR.has(e.pointerId)||MDRAG?.pid===e.pointerId))return;fzUp(e)},true));
-$('#canvas').addEventListener('wheel',e=>{if(!(e.ctrlKey||e.metaKey)){if(FZ>1){e.preventDefault();const u=unitsPerPx(),c=centreNow();FC=[c[0]+e.deltaX*u,c[1]+e.deltaY*u];zoomSvg()}return} // two fingers on a trackpad move a zoomed flat
-  e.preventDefault();const r=$('#canvas svg').getBoundingClientRect(),u=unitsPerPx(),c=centreNow(),P=[c[0]+(e.clientX-r.left-r.width/2)*u,c[1]+(e.clientY-r.top-r.height/2)*u];
-  FZ=Math.min(Math.max(FZ*Math.exp(-e.deltaY*.01),1),6);FC=[P[0]-(e.clientX-r.left-r.width/2)*unitsPerPx(),P[1]-(e.clientY-r.top-r.height/2)*unitsPerPx()];zoomSvg()},{passive:false});
+$('#canvas').addEventListener('wheel',e=>{if(!(e.ctrlKey||e.metaKey)){if(FZ>1){e.preventDefault();const u=unitsPerPx(),c=centreNow(),[ddx,ddy]=turn(e.deltaX,e.deltaY,-FR);FC=[c[0]+ddx*u,c[1]+ddy*u];zoomSvg()}return} // two fingers on a trackpad move a zoomed flat
+  e.preventDefault();fzAt(FZ*Math.exp(-e.deltaY*.01),e.clientX,e.clientY)},{passive:false});
 // zoom about a point on the screen: the inch under it stays under it
-function fzAt(nz,cx,cy){const svg=$('#canvas svg');if(!svg)return;const r=svg.getBoundingClientRect(),u=unitsPerPx(),c=centreNow(),P=[c[0]+(cx-r.left-r.width/2)*u,c[1]+(cy-r.top-r.height/2)*u];
-  FZ=Math.min(Math.max(nz,1),6);FC=[P[0]-(cx-r.left-r.width/2)*unitsPerPx(),P[1]-(cy-r.top-r.height/2)*unitsPerPx()];zoomSvg()}
+// the pinch set for real: the point that was under the old centre of the view is found through the transform, and becomes the centre
+function fzCommit(g){const L=g.live,[qx,qy]=turn(-L.tx/L.sc,-L.ty/L.sc,-L.rT);FZ=L.zN;FR=((L.rT%360)+360)%360;if(FR>180)FR-=360;
+  FC=FZ<=1.001?null:[g.c[0]+qx*g.u,g.c[1]+qy*g.u];const svg=$('#canvas svg');if(svg)svg.style.transform='';MKW.style.transform='';zoomSvg()}
+function fzAt(nz,cx,cy){const g=vgeo();if(!g)return;const u=1/g.k,c=centreNow(),[ox,oy]=turn(cx-g.cx,cy-g.cy,-FR),P=[c[0]+ox*u,c[1]+oy*u];
+  const z0=FZ;FZ=Math.min(Math.max(nz,1),6);const u1=u*z0/FZ;FC=[P[0]-ox*u1,P[1]-oy*u1];zoomSvg()}
 // Safari's page zoom is never wanted here; a trackpad pinch (Magic Keyboard) arrives only as gesture events, so it zooms the flat under the pointer
 let TPG=null;['gesturestart','gesturechange','gestureend'].forEach(t=>document.addEventListener(t,e=>{e.preventDefault();if(!e.target.closest?.('#canvas')||FPTR.size>=2){TPG=null;return}
   if(t==='gesturestart')TPG={z:FZ};else if(t==='gesturechange'&&TPG)fzAt(TPG.z*e.scale,e.clientX,e.clientY);else TPG=null},{passive:false}));
-const inch=e=>{const svg=$('#canvas svg'),pt=svg.createSVGPoint();pt.x=e.clientX;pt.y=e.clientY;const m=svg.getScreenCTM().inverse(),r=pt.matrixTransform(m);return[r.x,r.y]};
+const inch=e=>toInch(e.clientX,e.clientY);
 $('#canvas').addEventListener('pointerdown',e=>{
   if(MODE==='fill'){const[x,y]=inch(e);fillAt(x,y);return}
   if(MODE==='stitch'||MODE==='block'){const[x,y]=inch(e);DRAFT.push([r8(x),r8(y)]);draw();return}
@@ -564,7 +610,7 @@ const mkOpts=()=>{const o=HOST()?.drawOpts?.()||{};return {color:o.color||'#1414
 const mkTpl=()=>P?String(P.template||templateOf(P)?.id||'none'):'none';
 function mkReset(){for(const k of Object.keys(MK))delete MK[k];MUNDO.front=[];MUNDO.back=[];MREDO.front=[];MREDO.back=[];if(P)delete P.markup;mkPlace()}
 // the drawing covers everything the window shows of the flat at full view (not only the garment's own frame), in inches
-function mkSpan(){const b=baseBox(),svg=$('#canvas svg');if(!b||!svg)return null;const r=svg.getBoundingClientRect();if(!r.width||!r.height)return b;const ea=r.width/r.height,va=b.w/b.h;
+function mkSpan(){const b=baseBox(),g=vgeo();if(!b||!g)return b;const ea=g.w/g.h,va=b.w/b.h;
   return ea>va?{x:b.x-(b.h*ea-b.w)/2,y:b.y,w:b.h*ea,h:b.h}:{x:b.x,y:b.y-(b.w/ea-b.h)/2,w:b.w,h:b.w/ea}}
 function mkNew(view){const b=mkSpan();if(!b)return null;const res=Math.min(48,3000/Math.max(b.w,b.h)),cv=document.createElement('canvas');cv.width=Math.round(b.w*res);cv.height=Math.round(b.h*res);
   return MK[view]={cv,x:b.x,y:b.y,w:b.w,h:b.h,tpl:mkTpl(),dirty:false}}
@@ -575,15 +621,16 @@ function mkFit(m){const s=mkSpan();if(!s)return;const x0=Math.min(m.x,s.x),y0=Ma
 async function mkLoad(m){mkReset();if(!m)return;P.markup=m;for(const v of ['front','back']){const q=m[v];if(!q?.art)continue;try{const img=new Image();img.src=await blobUrl('/v1/lab/art/'+q.art);await img.decode();
   const cv=document.createElement('canvas');cv.width=img.naturalWidth;cv.height=img.naturalHeight;cv.getContext('2d').drawImage(img,0,0);MK[v]={cv,x:q.x,y:q.y,w:q.w,h:q.h,tpl:m.template||'none',art:q.art,dirty:false}}catch{}}mkPlace()}
 // the view's drawing laid exactly over its box: the box's corners in inches, through the flat's own transform, to the screen
-function mkPlace(){const c=$('#canvas'),svg=c&&c.querySelector('svg');if(!svg){MKW.remove();return}if(MKW.parentNode!==c)c.append(MKW);
-  const r=svg.getBoundingClientRect(),cr=c.getBoundingClientRect(),M=svg.getScreenCTM();Object.assign(MKW.style,{left:(r.left-cr.left-c.clientLeft)+'px',top:(r.top-cr.top-c.clientTop)+'px',width:r.width+'px',height:r.height+'px'});
+function mkPlace(){const c=$('#canvas'),g=vgeo();if(!g){MKW.remove();return}if(MKW.parentNode!==c)c.append(MKW);
+  // laid over the drawing's own (unturned) box, and turned with it
+  const cr=c.getBoundingClientRect();Object.assign(MKW.style,{left:(g.cx-cr.left-c.clientLeft-g.w/2)+'px',top:(g.cy-cr.top-c.clientTop-g.h/2)+'px',width:g.w+'px',height:g.h+'px'});if(!FG?.live){MKW.style.transformOrigin='50% 50%';MKW.style.transform=FR?`rotate(${FR}deg)`:''}
   const on=Boolean(HOST())&&(MKTOOLS.includes(MTOOL)||MTOOL==='hand');MKW.classList.toggle('on',on);MKW.classList.toggle('hand',MTOOL==='hand');
-  const m=MK[VIEW];if(!m||!M){MKW.replaceChildren();return}if(m.cv.parentNode!==MKW)MKW.replaceChildren(m.cv);
-  Object.assign(m.cv.style,{left:(M.a*m.x+M.e-r.left)+'px',top:(M.d*m.y+M.f-r.top)+'px',width:(M.a*m.w)+'px',height:(M.d*m.h)+'px'})}
+  const m=MK[VIEW];if(!m){MKW.replaceChildren();return}if(m.cv.parentNode!==MKW)MKW.replaceChildren(m.cv);
+  Object.assign(m.cv.style,{left:(g.ox+(m.x-g.v[0])*g.k)+'px',top:(g.oy+(m.y-g.v[1])*g.k)+'px',width:(m.w*g.k)+'px',height:(m.h*g.k)+'px'})}
 window.addEventListener('resize',()=>mkPlace());
 // a point on the screen → the drawing's own pixels; k: drawing pixels per screen pixel
 function mkAt(m,e){const[x,y]=inch(e);return[(x-m.x)/m.w*m.cv.width,(y-m.y)/m.h*m.cv.height]}
-const mkK=m=>{const M=$('#canvas svg')?.getScreenCTM();return M?m.cv.width/(M.a*m.w):1};
+const mkK=m=>{const g=vgeo();return g?m.cv.width/(g.k*m.w):1};
 const mkSnap=m=>m.cv.getContext('2d').getImageData(0,0,m.cv.width,m.cv.height);
 function mkStroke(m,a,b,o,pr){const x=m.cv.getContext('2d'),k=mkK(m),t=MTOOL,w=Math.max(.6,(t==='distress'?o.dsize*.35:o.size*.5)*pr)*k;x.save();x.lineCap='round';x.lineJoin='round';x.lineWidth=w;x.globalAlpha=o.flow;
   if(t==='brush'){x.strokeStyle=o.color;if(o.soft){x.shadowColor=o.color;x.shadowBlur=w*o.soft}}else{x.globalCompositeOperation='destination-out';x.strokeStyle='#000';if(t==='distress'){x.setLineDash([w*.12,w*.3]);x.globalAlpha=Math.min(1,o.flow*.8)}}
@@ -605,7 +652,7 @@ MKW.addEventListener('pointerdown',e=>{
   e.stopPropagation();e.preventDefault();
   // the eraser: over your own drawing it rubs that out; anywhere else it rubs out the sketch's own lines (a stroke kept with the flat, in the
   // garment's colour: src/lab-flats.js 'rub'), so a line left by a change, a stray seam or a mark can go
-  if(MTOOL==='eraser'&&!mkInkAt(MK[VIEW],e)){if(D?.concept?.locked)return;const M=$('#canvas svg')?.getScreenCTM();if(!M)return;try{MKW.setPointerCapture(e.pointerId)}catch{}
+  if(MTOOL==='eraser'&&!mkInkAt(MK[VIEW],e)){if(D?.concept?.locked)return;const M={a:vgeo()?.k};if(!M.a)return;try{MKW.setPointerCapture(e.pointerId)}catch{}
     const r={id:newId('r'),type:'rub',view:VIEW,pts:[inch(e).map(v=>Math.round(v*32)/32)],w:Math.round(Math.max(.05,Math.min(6,mkOpts().size*.5/M.a))*32)/32};P.edits=P.edits||[];P.edits.push(r);
     MDRAG={rub:r,pid:e.pointerId,type:e.pointerType};rubDraw();return}
   const m=MK[VIEW]||mkNew(VIEW);if(!m)return;mkFit(m);mkPlace();try{MKW.setPointerCapture(e.pointerId)}catch{}const o=mkOpts(),p=mkAt(m,e),before=mkSnap(m);
