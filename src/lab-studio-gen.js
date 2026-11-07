@@ -96,6 +96,7 @@
       <div class="geng" role="group" aria-label="Engines">${META.engines.map(e => `<button type="button" data-geng="${e.id}" aria-pressed="${e.ready && ASK.engines.includes(e.id)}" ${e.ready ? '' : 'disabled'} title="${esc(e.does)}${e.ready ? '' : ': not connected'}"><i class="gdot ${e.ready ? 'on' : ''}"></i>${esc(e.label)}</button>`).join('')}</div>
       <button class="btn go" type="button" id="gGo" ${n && !RUN ? '' : 'disabled'}>${RUN ? 'Generating…' : none ? 'No engine connected' : `Generate ${n}`}</button>
       <div class="gstat" id="gStat" role="status">${statHtml()}</div>
+      <div class="gchips" role="group" aria-label="Type lockups"><span class="glab" style="align-self:center">Lockups</span>${[['badge', 'Badge'], ['varsity', 'Varsity'], ['stacked', 'Stacked'], ['script', 'Script + block']].map(([k, t]) => `<button type="button" data-glock="${k}" title="Set the words as a ${esc(t.toLowerCase())}">${esc(t)}</button>`).join('')}</div>
       <div class="ggrid" id="gRes">${RUN ? Array.from({ length: RUN.n }, () => '<div class="gwait">Drawing…</div>').join('') : ''}${RES.map(cardHtml).join('')}</div></div>
       <div class="sec" id="gInks"></div><div class="sec" id="gLines"></div><div class="sec" id="gOut"></div>`;
     paintInks();
@@ -137,6 +138,7 @@
         ${list.length > 1 ? `<select class="t" data-gmerge="${k.hex}" aria-label="Merge into another ink"><option value="">Merge</option>${list.filter(o => o.hex !== k.hex).map(o => `<option value="${o.hex}">→ ${esc(pms(o.hex) || o.hex)}</option>`).join('')}</select>` : '<span></span>'}
         <button type="button" class="gico" data-gdrop="${k.hex}" aria-label="Drop this ink">×</button></div>`; }).join('')}
       <div class="grow"><button class="btn sm q" type="button" data-gfewer ${list.length > 1 ? '' : 'disabled'}>One ink fewer</button><button class="btn sm q" type="button" data-gshuffle ${list.length > 1 ? '' : 'disabled'}>Shuffle</button></div>
+      <div class="gchips" role="group" aria-label="Colour harmony">${HARMONY.map(([id, t]) => `<button type="button" data-gharm="${id}" title="Recolour the inks as ${esc(t.toLowerCase())} colours">${esc(t)}</button>`).join('')}</div>
       <div class="gpals" role="group" aria-label="Season palettes">${META.seasons.map(s => `<button type="button" data-gpal="${s.id}" title="${esc(s.label)}">${s.palette.map(h => `<i style="background:${h}"></i>`).join('')}</button>`).join('')}</div>`;
     const ls = genLayers(), w = ls[0]?.gen.weight || 0, key = Boolean(ls[0]?.gen.key);
     lines.innerHTML = `<h4>Lines</h4>
@@ -153,6 +155,19 @@
     const to = list.map((k, i) => pal[list.length === 1 ? 0 : Math.round(i * (pal.length - 1) / (list.length - 1))]);
     const ls = genLayers(), was = new Map(ls.map(l => [l, hex6(l.fillColor)]));
     list.forEach((k, i) => { for (const l of ls) if (was.get(l) === k.hex) { l.fillColor = to[i]; if (l.stroke && !l.gen.key) l.strokeColor = to[i]; touched(l); } });
+    keyLine(); commit(); paintPanels(); draw(); paintInks();
+  }
+  // colour harmonies, from the strongest coloured ink: each ink keeps its own lightness and strength and takes a hue the rule sets; near-greys
+  // (black, white, grey) stay as they are, as a designer keeps the key line and the shirt-white
+  const HARMONY = [['comp', 'Complement'], ['analog', 'Analogous'], ['triad', 'Triad'], ['split', 'Split'], ['mono', 'One hue']];
+  const hsl = h => { let [r, g, b] = rgb(h).map(v => v / 255); const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2; if (mx === mn) return [0, 0, l]; const d = mx - mn, s2 = l > .5 ? d / (2 - mx - mn) : d / (mx + mn); let hh = mx === r ? (g - b) / d + (g < b ? 6 : 0) : mx === g ? (b - r) / d + 2 : (r - g) / d + 4; return [hh * 60, s2, l]; };
+  const fromHsl = (h, s2, l) => { h = ((h % 360) + 360) % 360 / 360; const q = l < .5 ? l * (1 + s2) : l + s2 - l * s2, p2 = 2 * l - q, f = t => { t = (t + 1) % 1; return t < 1 / 6 ? p2 + (q - p2) * 6 * t : t < .5 ? q : t < 2 / 3 ? p2 + (q - p2) * (2 / 3 - t) * 6 : p2; }; return '#' + [f(h + 1 / 3), f(h), f(h - 1 / 3)].map(v => Math.round(v * 255).toString(16).padStart(2, '0')).join(''); };
+  function harmony(id) {
+    const list = inks(), coloured = list.filter(k => hsl(k.hex)[1] > .15 && hsl(k.hex)[2] > .08 && hsl(k.hex)[2] < .92); if (!coloured.length) { toast('Every ink is black, white or grey: there is no colour to build from.'); return; }
+    const base = coloured.slice().sort((a, b) => hsl(b.hex)[1] * b.share - hsl(a.hex)[1] * a.share)[0], h0 = hsl(base.hex)[0];
+    const offs = { comp: [0, 180], analog: [0, 30, -30, 60], triad: [0, 120, 240], split: [0, 150, 210], mono: [0] }[id];
+    const ls = genLayers(), was = new Map(ls.map(l => [l, hex6(l.fillColor)]));
+    coloured.forEach((k, i) => { const [, s2, l] = hsl(k.hex), to = id === 'mono' ? fromHsl(h0, s2, l) : fromHsl(h0 + offs[i % offs.length], s2, l); for (const q of ls) if (was.get(q) === k.hex) { q.fillColor = to; if (q.stroke && !q.gen.key) q.strokeColor = to; touched(q); } });
     keyLine(); commit(); paintPanels(); draw(); paintInks();
   }
   function shuffle() {
@@ -188,7 +203,54 @@
     setTimeout(paintTees, 0);
     o.innerHTML = `<h4>Print</h4><label class="grow"><span class="glab">Width</span><input class="t" type="number" min="1" max="30" step=".25" id="gWidth" value="${widthIn()}" style="width:80px"> <span class="note">in</span></label>
       <h4 style="margin-top:6px">On garments</h4><div class="gtee" id="gTee"><span class="note">Drawing…</span></div><div class="gteenote" id="gTeeNote"></div>
-      <div class="gout"><button class="btn go wide" type="button" data-gput>${esc(put)}</button><button class="btn sm" type="button" data-gsep>Separations</button><button class="btn sm" type="button" data-gsvg>Vector SVG</button><button class="btn sm wide" type="button" data-gpdf>Vector PDF + films</button></div>`;
+      <div class="gout"><button class="btn go wide" type="button" data-gput>${esc(put)}</button><button class="btn sm" type="button" data-gsep>Separations</button><button class="btn sm" type="button" data-gsvg>Vector SVG</button><button class="btn sm wide" type="button" data-gpdf>Vector PDF + films</button></div>
+      <h4 style="margin-top:6px">Stickers and patches</h4><label class="grow"><span class="glab">Border</span><input type="range" min=".05" max=".6" step=".05" value="${BORDER}" id="gBorder" aria-label="Border width"><span class="note" id="gBorderV">${BORDER} in</span></label>
+      <div class="gout"><button class="btn sm" type="button" data-gsticker>Sticker border</button><button class="btn sm" type="button" data-gcut>Cut line</button></div>`;
+  }
+  // ---- a sticker's white border and a die cut line: everything visible grown by the border width and traced (src/lab-trace.js) ----
+  let BORDER = .15;
+  async function contour(kind) {
+    const T = await import('/lab/lab-trace.js'); compose(); const k = Math.min(1, 640 / Math.max(W, H)), w = Math.round(W * k), h = Math.round(H * k), c = canvas(w, h), x = c.getContext('2d', { willReadFrequently: true });
+    const skip = LAYERS.filter(l => l.contour && l.visible); skip.forEach(l => { l.visible = false; }); compose(); x.drawImage(docC, 0, 0, w, h); skip.forEach(l => { l.visible = true; }); compose();
+    const a = x.getImageData(0, 0, w, h).data, N = w * h; let m = new Uint8Array(N); for (let i = 0; i < N; i++) m[i] = a[i * 4 + 3] > 24 ? 1 : 0;
+    if (!m.some(v => v)) { toast('There is nothing on the canvas yet.'); return; }
+    const r = Math.max(1, Math.round(BORDER * (PPI || W / 14) * k)); // grown by the border, a round step at a time (a disc, near enough)
+    for (let pass = 0; pass < r; pass++) { const o = new Uint8Array(m), diag = pass % 2 === 1; for (let i = 0; i < N; i++) if (m[i]) { const px = i % w; if (px > 0) o[i - 1] = 1; if (px < w - 1) o[i + 1] = 1; if (i >= w) o[i - w] = 1; if (i < N - w) o[i + w] = 1; if (diag) { if (px > 0 && i >= w) o[i - w - 1] = 1; if (px < w - 1 && i >= w) o[i - w + 1] = 1; if (px > 0 && i < N - w) o[i + w - 1] = 1; if (px < w - 1 && i < N - w) o[i + w + 1] = 1; } } m = o; }
+    // holes inside are filled: a sticker is one piece
+    const out = new Uint8Array(N), st = []; for (let px = 0; px < w; px++) st.push(px, N - w + px); for (let py = 0; py < h; py++) st.push(py * w, py * w + w - 1);
+    while (st.length) { const i = st.pop(); if (out[i] || m[i]) continue; out[i] = 1; const px = i % w; if (px > 0) st.push(i - 1); if (px < w - 1) st.push(i + 1); if (i >= w) st.push(i - w); if (i < N - w) st.push(i + w); }
+    const rgba = new Uint8ClampedArray(N * 4); for (let i = 0; i < N; i++) if (!out[i]) { rgba[i * 4 + 3] = 255; }
+    const ink = T.outlines(rgba, w, h, { level: 4 })[0]; if (!ink) return; const paths = VEC.parseD(ink.d); if (!paths) return;
+    const np = paths.map(p => ({ closed: p.closed, nodes: p.nodes.map(n => n.map(v => v / k)) }));
+    LAYERS = LAYERS.filter(l => l.contour !== kind);
+    const l = fresh('shape', { name: kind === 'cut' ? 'Cut line' : 'Sticker border', shape: 'path', paths: np, fill: kind !== 'cut', fillColor: '#ffffff', stroke: kind === 'cut', strokeColor: '#ff00ff', strokeW: 2, radius: 0, w: 1, h: 1, x: 0, y: 0, scale: 1, rot: 0, flip: false });
+    l.tint = { ...l.tint, amount: 0 }; l.contour = kind; VEC.normalize(l);
+    if (kind === 'cut') LAYERS.push(l); else LAYERS.splice(Math.max(1, LAYERS.findIndex(q => q.kind !== 'base')), 0, l);
+    SEL = l.id; commit(); paintPanels(); draw();
+    toast(kind === 'cut' ? `Cut line ${BORDER} in out from the art, in magenta (the cutter's colour). It is its own layer: hide it for the print.` : `A ${BORDER} in white border behind the art: one piece to print and cut.`);
+  }
+  // ---- type lockups: the brief's words set as a badge, a varsity arch, a stacked block or script over block, as editable type and shapes ----
+  const tx = o => fresh('text', { name: 'Type', font: 'grotesk', size: 80, bold: false, italic: false, track: 2, lead: 1, align: 'center', arc: 0, color: '#141416', outline: 0, outlineColor: '#ffffff', case: '', stretch: 100, outline2: 0, outline2Color: '#141416', shadowKind: 'none', shadow: 0, shadowAngle: 135, shadowColor: '#141416', env: 'none', envK: 0, x: W / 2, y: H / 2, ...o });
+  function lockup(kind) {
+    const words = (ASK.words || ASK.brief || 'Future Basics').trim().slice(0, 40), parts = words.split(/\s+/), pal = (META.seasons.find(x => x.id === ASK.season)?.palette || ['#141416', '#b5302b', '#f1e3c6']), ink = pal[0], acc = pal[1] || '#b5302b', light = pal[pal.length - 1];
+    const year = String(new Date().getFullYear()), add = [];
+    if (kind === 'badge') {
+      add.push(fresh('shape', { name: 'Ring', shape: 'ellipse', w: 640, h: 640, radius: 0, fill: true, fillColor: light, stroke: true, strokeW: 16, strokeColor: ink, x: W / 2, y: H / 2 }),
+        fresh('shape', { name: 'Inner ring', shape: 'ellipse', w: 560, h: 560, radius: 0, fill: false, fillColor: ink, stroke: true, strokeW: 4, strokeColor: ink, x: W / 2, y: H / 2 }),
+        tx({ name: 'Top arc', text: words.toUpperCase(), font: 'g_oswald', bold: true, size: Math.max(30, Math.min(64, Math.round(820 / Math.max(8, words.length)))), track: 6, arc: Math.min(100, 40 + words.length * 3), color: ink, y: H / 2 - 168 }),
+        tx({ name: 'Bottom arc', text: `EST. ${year}`, font: 'g_oswald', size: 40, track: 10, arc: -40, color: ink, y: H / 2 + 205 }),
+        tx({ name: 'Centre', text: parts[0].slice(0, 10).toUpperCase(), font: 'g_alfa-slab-one', size: 120, color: acc, outline: 4, outlineColor: light, y: H / 2 }));
+    } else if (kind === 'varsity') {
+      add.push(tx({ name: 'Arch', text: words.toUpperCase(), font: 'g_graduate', size: 110, track: 4, arc: 38, color: acc, outline: 6, outlineColor: light, outline2: 6, outline2Color: ink, y: H / 2 - 120 }),
+        tx({ name: 'Number', text: year.slice(-2), font: 'g_graduate', size: 300, color: acc, outline: 8, outlineColor: light, outline2: 8, outline2Color: ink, y: H / 2 + 130 }));
+    } else if (kind === 'stacked') {
+      add.push(tx({ name: 'Stacked', text: parts.join('\n').toUpperCase(), font: 'g_anton', size: 170, lead: .92, track: 0, color: ink, shadowKind: 'drop', shadow: 10, shadowColor: acc }));
+    } else {
+      add.push(tx({ name: 'Block', text: (parts.slice(1).join(' ') || parts[0]).toUpperCase(), font: 'g_bebas-neue', size: 230, track: 8, color: ink, y: H / 2 + 60 }),
+        tx({ name: 'Script', text: parts[0], font: 'g_pacifico', size: 150, color: acc, outline: 8, outlineColor: light, case: 'title', y: H / 2 - 60 }));
+    }
+    LAYERS.push(...add); SEL = add[add.length - 1].id; commit(); tab('layers'); paintPanels(); draw();
+    toast(`${{ badge: 'Badge', varsity: 'Varsity arch', stacked: 'Stacked block', script: 'Script over block' }[kind]} from "${words}": every part is its own layer to change.`);
   }
   // ---- on garments: the graphic on each body colour, with what the printer does about it (an ink the colour of the shirt is knocked out;
   // a dark shirt takes a white underbase under the colours) ----
@@ -273,6 +335,9 @@
     else if (d.gtrace) retrace(Number(d.gtrace));
     else if (d.gkey !== undefined) { const ls = genLayers(), on = !ls[0]?.gen.key; ls.forEach(l => { l.gen.key = on; }); weight(ls[0]?.gen.weight || 0); commit(); paintPanels(); paintInks(); }
     else if (d.gpoints !== undefined) { const l = genLayers().find(x => x.id === SEL) || genLayers()[0]; if (l) { SEL = l.id; setTool('node'); paintPanels(); draw(); toast('Drag a point or its handles; tap the line to add one.'); } }
+    else if (d.gharm) harmony(d.gharm);
+    else if (d.glock) { keepText(); lockup(d.glock); }
+    else if (d.gsticker !== undefined) contour('sticker'); else if (d.gcut !== undefined) contour('cut');
     else if (d.gtee) { TEE = TEE === d.gtee ? null : d.gtee; window.PAGEBG = TEE || ''; draw(); paintTees(); }
     else if (d.gput !== undefined) out('put'); else if (d.gsep !== undefined) out('sep'); else if (d.gsvg !== undefined) out('svg'); else if (d.gpdf !== undefined) out('pdf');
   });
@@ -280,6 +345,7 @@
     if (e.target.dataset?.gcol) { recolour(hex6(e.target.dataset.gcol), hex6(e.target.value), { live: true }); e.target.dataset.gcol = hex6(e.target.value); e.target.parentNode.style.background = e.target.value; }
     else if (e.target.id === 'gWeight') weight(Number(e.target.value));
     else if (e.target.id === 'gWidth') WIDTH = Number(e.target.value) || 0;
+    else if (e.target.id === 'gBorder') { BORDER = Number(e.target.value); const v = $('#gBorderV'); if (v) v.textContent = BORDER + ' in'; }
     else if (e.target.dataset?.gteec !== undefined) { TEE = hex6(e.target.value); window.PAGEBG = TEE; draw(); }
   });
   document.addEventListener('change', e => {

@@ -198,6 +198,7 @@ html[data-pick] body>header{display:none}html[data-pick] .studio{height:100dvh}
     <hr>
     <button type="button" data-tool="brush" title="Brush (B)" aria-label="Brush"><svg viewBox="0 0 24 24"><path d="M18 3l3 3-9 9-3-3zM9 12c-3 0-5 2-5 5 0 2-1 3-2 4 4 0 9-1 9-5"/></svg></button>
     <button type="button" data-tool="fill" title="Fill (G): tap inside lines to fill there" aria-label="Fill"><svg viewBox="0 0 24 24"><path d="M5 11l7-7 7 7-7 7z"/><path d="M19 15c0 2 1.5 3 1.5 4.5a1.5 1.5 0 01-3 0C17.5 18 19 17 19 15z"/><path d="M3 21h10"/></svg></button>
+    <button type="button" class="pro-only" data-tool="liquify" title="Liquify: push the pixels, like a finger in wet paint" aria-label="Liquify"><svg viewBox="0 0 24 24"><path d="M4 14c3-6 6 2 9-3s4-5 7-3"/><path d="M4 19c3-4 6 1 9-2s4-3 7-2"/><path d="M14 5l3 3"/></svg></button>
     <button type="button" data-tool="eraser" title="Eraser (E)" aria-label="Eraser"><svg viewBox="0 0 24 24"><path d="M16 3l5 5-11 11H5l-3-3zM9 9l6 6M10 21h11"/></svg></button>
     <button type="button" class="pro-only" data-tool="distress" title="Distress brush (D): wears the selected layer away" aria-label="Distress brush"><svg viewBox="0 0 24 24"><circle cx="6" cy="7" r="1.2"/><circle cx="12" cy="5" r=".8"/><circle cx="17" cy="9" r="1.5"/><circle cx="9" cy="13" r=".9"/><circle cx="15" cy="15" r="1"/><circle cx="6" cy="18" r="1.4"/><circle cx="19" cy="19" r=".8"/><path d="M3 11l4 2 3-2 4 3 3-1 4 2"/></svg></button>
     <hr>
@@ -329,9 +330,9 @@ const fresh=(kind,o={})=>({id:uid(),kind,name:o.name||KIND[kind],visible:true,lo
 
 // ---------- state ----------
 let D=null,W=1024,H=1024,LAYERS=[],SEL=null,TOOL='select',CUR='#141416',DIRTY=false,SAVED_AT=null;
-const OPT={size:28,esize:40,flow:1,soft:0,dsize:60,area:60,pressure:true,tip:'round',etip:'hard',stream:0,qshape:true,lock:false,ftol:40};
+const OPT={size:28,esize:40,flow:1,soft:0,dsize:60,area:60,pressure:true,tip:'round',etip:'hard',stream:0,qshape:true,lock:false,ftol:40,sym:'off'};
 try{Object.assign(OPT,JSON.parse(localStorage.getItem('fb.studio.aids')||'{}'))}catch{}
-const keepAids=()=>{try{localStorage.setItem('fb.studio.aids',JSON.stringify({stream:OPT.stream,qshape:OPT.qshape,lock:OPT.lock,ftol:OPT.ftol}))}catch{}};
+const keepAids=()=>{try{localStorage.setItem('fb.studio.aids',JSON.stringify({stream:OPT.stream,qshape:OPT.qshape,lock:OPT.lock,ftol:OPT.ftol,sym:OPT.sym}))}catch{}};
 const docC=canvas(1,1),docX=docC.getContext('2d');
 let mask=canvas(1,1),maskX=mask.getContext('2d'),MASKED=false;
 const view=$('#view'),vx=view.getContext('2d',{desynchronized:true})||view.getContext('2d');let Z=1,PX=0,PY=0,DPR=1; // desynchronized: the browser may show each frame without waiting for the page (lower Pencil latency where it is supported)
@@ -485,6 +486,9 @@ function render(){
   if(l&&l.visible&&!fixed(l)&&TOOL==='select'&&!window.PRO?.multi()){const p=corners(l).map(([a,b])=>[sx(a),sy(b)]);vx.strokeStyle='#141416';vx.lineWidth=1;vx.setLineDash([5,4]);vx.beginPath();p.forEach(([a,b],i)=>i?vx.lineTo(a,b):vx.moveTo(a,b));vx.closePath();vx.stroke();vx.setLineDash([]);
     if(!l.locked){const tm=[(p[0][0]+p[1][0])/2,(p[0][1]+p[1][1])/2],rk=rotKnob(l);vx.beginPath();vx.moveTo(tm[0],tm[1]);vx.lineTo(rk[0],rk[1]);vx.stroke();
       for(const[a,b]of p){vx.fillStyle='#fff';vx.fillRect(a-5,b-5,10,10);vx.strokeRect(a-5,b-5,10,10)}vx.beginPath();vx.arc(rk[0],rk[1],6,0,Math.PI*2);vx.fillStyle='#4bff9a';vx.fill();vx.stroke()}}
+  if(OPT.sym&&OPT.sym!=='off'&&['brush','eraser'].includes(TOOL)){const maps=symMaps(),cx=W/2,cy=H/2,R=Math.hypot(W,H);vx.save();vx.strokeStyle='rgba(42,109,244,.55)';vx.setLineDash([6,5]);vx.lineWidth=1;vx.beginPath();
+    if(OPT.sym==='v'||OPT.sym==='quad'){vx.moveTo(sx(cx),sy(0));vx.lineTo(sx(cx),sy(H))}if(OPT.sym==='h'||OPT.sym==='quad'){vx.moveTo(sx(0),sy(cy));vx.lineTo(sx(W),sy(cy))}
+    if(/^r/.test(OPT.sym))for(const f of maps){const q=f([cx,cy-R]);vx.moveTo(sx(cx),sy(cy));vx.lineTo(sx(q[0]),sy(q[1]))}vx.stroke();vx.restore()}
   if(HOVER&&['brush','eraser','distress','area'].includes(TOOL)){const rad=(TOOL==='distress'?OPT.dsize:TOOL==='area'?OPT.area:TOOL==='eraser'?OPT.esize:OPT.size)/2*Z;vx.strokeStyle='rgba(20,20,22,.8)';vx.lineWidth=1;vx.beginPath();vx.arc(HOVER[0],HOVER[1],Math.max(rad,2),0,Math.PI*2);vx.stroke();vx.strokeStyle='rgba(255,255,255,.8)';vx.beginPath();vx.arc(HOVER[0],HOVER[1],Math.max(rad,2)+1,0,Math.PI*2);vx.stroke()}
   window.PRO?.overlay(vx);window.VEC?.overlay(vx);window.ILL?.overlay(vx);overlay();$('#zLabel').textContent=Math.round(Z*100)+'%'+(VR?` · ${Math.round(VR)}°`:'');
 }
@@ -512,6 +516,12 @@ function strokeTarget(tool){
   if(l.locked){toast('That layer is locked. Unlock it in the layer list.');return null}
   return l;
 }
+// symmetry: each piece of a stroke drawn again in the mirror (left-right, top-bottom, four ways) or turned round the middle (6 or 8 ways)
+const SYMS=[['off','Off'],['v','Mirror'],['h','Top–bottom'],['quad','Four ways'],['r6','Radial 6'],['r8','Radial 8']];
+function symMaps(){const cx=W/2,cy=H/2,m=OPT.sym;if(!m||m==='off'||!['brush','eraser'].includes(TOOL))return[p=>p];
+  const fx=p=>[2*cx-p[0],p[1]],fy=p=>[p[0],2*cy-p[1]];if(m==='v')return[p=>p,fx];if(m==='h')return[p=>p,fy];if(m==='quad')return[p=>p,fx,fy,p=>fy(fx(p))];
+  const n=m==='r6'?6:8;return Array.from({length:n},(_,i)=>{const a=i*2*Math.PI/n,c=Math.cos(a),s=Math.sin(a);return p=>[cx+(p[0]-cx)*c-(p[1]-cy)*s,cy+(p[0]-cx)*s+(p[1]-cy)*c]})}
+function dabS(l,x0,y0,x1,y1,tool,pr=1,qx,qy){for(const f of symMaps()){const a=f([x0,y0]),b=f([x1,y1]),q=qx!==undefined?f([qx,qy]):null;dab(l,a[0],a[1],b[0],b[1],tool,pr,q?q[0]:undefined,q?q[1]:undefined)}}
 function dab(l,x0,y0,x1,y1,tool,pr=1,qx,qy){ // pr: how hard the Pencil presses (1 for a mouse or a finger); qx,qy: a control point, for a curve
   const c=l.raster,x=c.getContext('2d'),[a0,b0]=toLocal(l,x0,y0),[a1,b1]=toLocal(l,x1,y1),qq=qx!==undefined?toLocal(l,qx,qy):null,sz=Math.max(.5,(tool==='distress'?OPT.dsize:OPT.size)*pr)/l.scale;
   if(window.FBBrush&&(tool==='brush'||tool==='eraser')){const lk=OPT.lock&&tool==='brush',buf=!lk&&STK?.buf&&STK.l===l&&tool==='brush';if(lk){x.save();x.globalCompositeOperation='source-atop'}FBBrush.segment(buf?STK.buf.getContext('2d'):x,{tool,solid:Boolean(buf),tip:tool==='brush'?OPT.tip:OPT.etip,color:CUR,size:Math.max(.5,tool==='eraser'?OPT.esize:OPT.size)/l.scale,flow:OPT.flow,soft:OPT.soft,pr},[a0,b0],[a1,b1],qq);if(lk)x.restore();c._rid=RID++;return}
@@ -536,7 +546,7 @@ function quickShape(g){const pts=g.pts;if(!pts||pts.length<6)return;const xs=pts
       shape=Array.from({length:97},(_,i)=>{const t=i/96*Math.PI*2,u=ra*Math.cos(t),w=rb*Math.sin(t);return[mx+u*c-w*s,my+u*s+w*c]})}}
   if(!shape)return;
   g.l.raster=cloneCanvas(g.orig);if(STK?.buf&&STK.l===g.l)STK.buf.getContext('2d').clearRect(0,0,STK.buf.width,STK.buf.height);
-  for(let i=1;i<shape.length;i++)dab(g.l,shape[i-1][0],shape[i-1][1],shape[i][0],shape[i][1],TOOL,g.pr||1);
+  for(let i=1;i<shape.length;i++)dabS(g.l,shape[i-1][0],shape[i-1][1],shape[i][0],shape[i][1],TOOL,g.pr||1);
   g.shaped=true;draw();toast(`QuickShape: ${name}. Undo takes it back to your line.`)}
 // Fill: tap inside lines to fill there, on a painting under the chosen layer (the lines stay on top); the outline comes from everything visible
 function fillAt(x,y){compose();const w=docC.width,h=docC.height,X=Math.floor(x),Y=Math.floor(y);if(X<0||Y<0||X>=w||Y>=h)return;
@@ -551,6 +561,13 @@ function fillAt(x,y){compose();const w=docC.width,h=docC.height,X=Math.floor(x),
   let l=selected();const onPaint=l&&l.kind==='paint'&&l.raster.width===W&&l.raster.height===H;
   if(!onPaint){const at=l?LAYERS.indexOf(l):LAYERS.length;l=fresh('paint',{name:'Fill',x:W/2,y:H/2,raster:stamp(canvas(W,H))});LAYERS.splice(Math.max(1,at),0,l)}
   const x2=l.raster.getContext('2d');x2.save();x2.globalCompositeOperation=onPaint?'destination-over':'source-over';x2.drawImage(f,0,0);x2.restore();l.raster._rid=RID++;SEL=l.id;commit();paintPanels();draw()}
+// one push: the pixels within the brush's reach move with the Pencil, most at the middle, none at the edge
+function liquifyPush(l,x0,y0,x1,y1){const c=l.raster,ctx=c.getContext('2d',{willReadFrequently:true}),[a0,b0]=toLocal(l,x0,y0),[a1,b1]=toLocal(l,x1,y1),R=Math.max(4,OPT.size*1.5/l.scale),dx=a1-a0,dy=b1-b0;
+  const X0=Math.max(0,Math.floor(Math.min(a0,a1)-R)),Y0=Math.max(0,Math.floor(Math.min(b0,b1)-R)),X1=Math.min(c.width,Math.ceil(Math.max(a0,a1)+R)),Y1=Math.min(c.height,Math.ceil(Math.max(b0,b1)+R)),w=X1-X0,h=Y1-Y0;if(w<=0||h<=0)return;
+  const src=ctx.getImageData(X0,Y0,w,h),out=ctx.createImageData(w,h),S=src.data,O=out.data;
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++){const px=x+X0,py=y+Y0,r2=((px-a1)**2+(py-b1)**2)/(R*R),k=(y*w+x)*4;let fx=x,fy=y;if(r2<1){const t=(1-r2)**2;fx=x-dx*t;fy=y-dy*t}
+    const ix=Math.floor(fx),iy=Math.floor(fy),u=fx-ix,v=fy-iy;for(let ch=0;ch<4;ch++){const at=(xx,yy)=>{xx=Math.min(w-1,Math.max(0,xx));yy=Math.min(h-1,Math.max(0,yy));return S[(yy*w+xx)*4+ch]};O[k+ch]=(at(ix,iy)*(1-u)+at(ix+1,iy)*u)*(1-v)+(at(ix,iy+1)*(1-u)+at(ix+1,iy+1)*u)*v}}
+  ctx.putImageData(out,X0,Y0);c._rid=RID++}
 function maskDab(x0,y0,x1,y1,erase){maskX.save();maskX.lineCap='round';maskX.lineWidth=OPT.area;maskX.strokeStyle='#e03b2e';if(erase)maskX.globalCompositeOperation='destination-out';maskX.beginPath();maskX.moveTo(x0,y0);maskX.lineTo(x1+.01,y1);maskX.stroke();maskX.restore();MASKED=true;mask._rid=RID++;paintAiState()}
 // ---------- iPad and the Pencil ----------
 // The Pencil draws (with its pressure, every sample it reports); once a Pencil has been used, fingers never draw: one finger moves the view,
@@ -592,7 +609,8 @@ view.addEventListener('pointerdown',e=>{
   if(TOOL==='pick'){compose();const d=docX.getImageData(clamp(Math.floor(x),0,W-1),clamp(Math.floor(y),0,H-1),1,1).data;setColor('#'+[d[0],d[1],d[2]].map(v=>v.toString(16).padStart(2,'0')).join(''));return}
   if(TOOL==='area'){maskDab(x,y,x,y,e.altKey);DRAG={mode:'area',x,y,erase:e.altKey,pid:e.pointerId,type:e.pointerType};draw();return}
   if(TOOL==='fill'){fillAt(x,y);return}
-  if(['brush','eraser','distress'].includes(TOOL)){const l=strokeTarget(TOOL);if(!l)return;const orig=l.raster;l.raster=cloneCanvas(l.raster);SEL=l.id;DRAG={mode:'stroke',l,x,y,mx:x,my:y,orig,pid:e.pointerId,type:e.pointerType,pts:[[x,y]]};strokeStart(l);dab(l,x,y,x,y,TOOL,pressOf(e));draw();return}
+  if(TOOL==='liquify'){const l=strokeTarget('eraser');if(!l)return;const orig=l.raster;l.raster=cloneCanvas(l.raster);SEL=l.id;DRAG={mode:'liquify',l,x,y,orig,pid:e.pointerId,type:e.pointerType};draw();return}
+  if(['brush','eraser','distress'].includes(TOOL)){const l=strokeTarget(TOOL);if(!l)return;const orig=l.raster;l.raster=cloneCanvas(l.raster);SEL=l.id;DRAG={mode:'stroke',l,x,y,mx:x,my:y,orig,pid:e.pointerId,type:e.pointerType,pts:[[x,y]]};strokeStart(l);dabS(l,x,y,x,y,TOOL,pressOf(e));draw();return}
   if(TOOL==='text'){const l=addLayer(fresh('text',{name:'Type',x,y,text:'FUTURE BASICS',font:'grotesk',size:Math.round(W/14),bold:true,italic:false,track:Math.round(W/200),lead:1.1,align:'center',arc:0,color:CUR,outline:0,outlineColor:'#ffffff',case:'',stretch:100,outline2:0,outline2Color:'#141416',shadowKind:'none',shadow:0,shadowAngle:135,shadowColor:'#141416'}));setTool('select');tab('layers');setTimeout(()=>{const t=$('#pLayers textarea[data-p=text]');if(t){t.focus();t.select()}},30);return}
   if(['rect','ellipse','line'].includes(TOOL)){DRAG={mode:'shape',x0:x,y0:y,l:null,pid:e.pointerId,type:e.pointerType};return}
   if(TOOL==='ruler'){RULER=null;DRAG={mode:'ruler',x0:x,y0:y,x1:x,y1:y,pid:e.pointerId,type:e.pointerType};draw();return}
@@ -617,12 +635,13 @@ view.addEventListener('pointermove',e=>{
   // the Pencil reports more samples than the screen draws: take all of them, so a quick curve stays a curve
   // each sample joins the last by a curve through their midpoints (a smooth line, not a chain of straight bits, when the samples are far
   // apart at speed); the panel's numbers wait for the end of the stroke
-  if(g.mode==='stroke'){if(g.shaped)return;const ev=e.getCoalescedEvents?.()||[];for(const c of ev.length?ev:[e]){const[cx,cy]=pt(c);let ux=dx(cx),uy=dy(cy);if(OPT.stream&&TOOL==='brush'){const k=1-OPT.stream/100*.93;g.sx=(g.sx??g.x)+(ux-(g.sx??g.x))*k;g.sy=(g.sy??g.y)+(uy-(g.sy??g.y))*k;ux=g.sx;uy=g.sy}if(Math.hypot(ux-g.x,uy-g.y)*Z<.6)continue;if(g.pts)g.pts.push([ux,uy]);const mx=(g.x+ux)/2,my=(g.y+uy)/2;g.pr=pressOf(c);dab(g.l,g.mx,g.my,mx,my,TOOL,g.pr,g.x,g.y);g.mx=mx;g.my=my;g.x=ux;g.y=uy}
+  if(g.mode==='stroke'){if(g.shaped)return;const ev=e.getCoalescedEvents?.()||[];for(const c of ev.length?ev:[e]){const[cx,cy]=pt(c);let ux=dx(cx),uy=dy(cy);if(OPT.stream&&TOOL==='brush'){const k=1-OPT.stream/100*.93;g.sx=(g.sx??g.x)+(ux-(g.sx??g.x))*k;g.sy=(g.sy??g.y)+(uy-(g.sy??g.y))*k;ux=g.sx;uy=g.sy}if(Math.hypot(ux-g.x,uy-g.y)*Z<.6)continue;if(g.pts)g.pts.push([ux,uy]);const mx=(g.x+ux)/2,my=(g.y+uy)/2;g.pr=pressOf(c);dabS(g.l,g.mx,g.my,mx,my,TOOL,g.pr,g.x,g.y);g.mx=mx;g.my=my;g.x=ux;g.y=uy}
     g.pred=OPT.stream?[]:(e.getPredictedEvents?.()||[]).slice(-3).map(q=>{const[a,b]=pt(q);return[dx(a),dy(b)]});
     if(g.pts&&OPT.qshape&&TOOL==='brush'&&(!g.qa||Math.hypot(g.x-g.qa[0],g.y-g.qa[1])*Z>4)){g.qa=[g.x,g.y];clearTimeout(g.qt);g.qt=setTimeout(()=>{if(DRAG===g&&!g.shaped)quickShape(g)},550)}
     draw();return}
   if(g.mode==='pan'){FITTED=false;PX=g.PX+px-g.px;PY=g.PY+py-g.py}
   else if(g.mode==='area'){maskDab(g.x,g.y,x,y,g.erase);g.x=x;g.y=y}
+  else if(g.mode==='liquify'){if(Math.hypot(x-g.x,y-g.y)*Z>=1.5){liquifyPush(g.l,g.x,g.y,x,y);g.x=x;g.y=y;g.moved=true}}
   else if(g.mode==='stroke'){dab(g.l,g.x,g.y,x,y,TOOL);g.x=x;g.y=y}
   else if(g.mode==='move'){if(window.PRO)PRO.snap1(g,x,y,e);else{g.l.x=Math.round(x-g.ox);g.l.y=Math.round(y-g.oy);g.moved=true}}
   else if(g.mode==='scale'){g.l.scale=clamp(g.s0*Math.hypot(x-g.l.x,y-g.l.y)/g.d0,.02,40);g.moved=true}
@@ -635,7 +654,7 @@ view.addEventListener('pointermove',e=>{
     else{let w=Math.abs(x-g.x0),h=Math.abs(y-g.y0);if(e.shiftKey)w=h=Math.max(w,h);l.w=Math.max(4,Math.round(w));l.h=Math.max(4,Math.round(h));l.x=g.x0+(x<g.x0?-w:w)/2;l.y=g.y0+(y<g.y0?-h:h)/2}}
   draw();if(g.mode!=='pan'&&g.mode!=='area')paintFields();
 });
-const endDrag=e=>{if(e&&e.pointerId!==undefined){PTRS.delete(e.pointerId);if(GEST){if(PTRS.size<2){const g=GEST.layer;GEST=null;if(g?.moved){commit();paintPanels()}}return}if(DRAG&&DRAG.pid!==undefined&&DRAG.pid!==e.pointerId)return}const g=DRAG;DRAG=null;if(!g)return;if(g.mode==='stroke'){clearTimeout(g.qt);if(!g.shaped&&g.mx!==undefined&&(g.mx!==g.x||g.my!==g.y))dab(g.l,g.mx,g.my,g.x,g.y,TOOL,g.pr||1);strokeEnd();paintFields()}if(window.ILL?.end(g)||window.PRO?.end(g)||window.VEC?.end(g))return;if(g.mode==='ruler'){rulerDone(g);draw();return}if(g.mode==='stroke'||g.mode==='area'||(g.mode==='shape'&&g.l)||g.moved){if(g.mode!=='area')commit();if(g.mode==='shape')setTool('select');paintPanels()}draw()};
+const endDrag=e=>{if(e&&e.pointerId!==undefined){PTRS.delete(e.pointerId);if(GEST){if(PTRS.size<2){const g=GEST.layer;GEST=null;if(g?.moved){commit();paintPanels()}}return}if(DRAG&&DRAG.pid!==undefined&&DRAG.pid!==e.pointerId)return}const g=DRAG;DRAG=null;if(!g)return;if(g.mode==='stroke'){clearTimeout(g.qt);if(!g.shaped&&g.mx!==undefined&&(g.mx!==g.x||g.my!==g.y))dabS(g.l,g.mx,g.my,g.x,g.y,TOOL,g.pr||1);strokeEnd();paintFields()}if(window.ILL?.end(g)||window.PRO?.end(g)||window.VEC?.end(g))return;if(g.mode==='ruler'){rulerDone(g);draw();return}if(g.mode==='stroke'||g.mode==='area'||g.mode==='liquify'||(g.mode==='shape'&&g.l)||g.moved){if(g.mode!=='area')commit();if(g.mode==='shape')setTool('select');paintPanels()}draw()};
 view.addEventListener('pointerup',endDrag);view.addEventListener('pointercancel',endDrag);view.addEventListener('lostpointercapture',e=>{if(DRAG&&DRAG.pid===e.pointerId)endDrag(e)});view.addEventListener('pointerleave',e=>{if(e.pointerType==='mouse'||e.pointerType==='pen'&&!DRAG){HOVER=null;draw()}});
 // iPad: a Pencil on the page can be taken as handwriting (Scribble) or the start of a text selection, and then never reaches the canvas as a
 // stroke; holding the Pencil's touches on the stage keeps them ours (fingers are left alone: they move and pinch through the pointer events)
@@ -657,9 +676,9 @@ $('#opts').addEventListener('change',e=>{if(e.target.matches('[data-press]'))OPT
 // Steady: the line trails the Pencil a little, so a shaky hand draws smooth (Procreate's StreamLine). QuickShape: hold the Pencil still at the
 // end of a stroke and a rough line, circle, oval, triangle or box becomes a clean one. Lock: paint only where the layer is already painted.
 function aidsHtml(){const tg=(k,t,tip)=>`<button class="btn sm ${OPT[k]?'':'q'}" type="button" data-otog="${k}" aria-pressed="${Boolean(OPT[k])}" title="${tip}">${t}</button>`;
-  return `<label title="Smooths the line as you draw">Steady<input type="range" data-o="stream" min="0" max="90" step="5" value="${OPT.stream}"><output>${OPT.stream}%</output></label>${tg('qshape','QuickShape','Hold the Pencil still at the end of a stroke to snap it to a clean shape')}${tg('lock','Lock','Paint only where this layer is already painted (lock transparency)')}`}
+  return `<label title="Draw mirrored or round the middle">Symmetry<select data-osym>${SYMS.map(([v,t])=>`<option value="${v}" ${OPT.sym===v?'selected':''}>${t}</option>`).join('')}</select></label><label title="Smooths the line as you draw">Steady<input type="range" data-o="stream" min="0" max="90" step="5" value="${OPT.stream}"><output>${OPT.stream}%</output></label>${tg('qshape','QuickShape','Hold the Pencil still at the end of a stroke to snap it to a clean shape')}${tg('lock','Lock','Paint only where this layer is already painted (lock transparency)')}`}
 document.addEventListener('click',e=>{const b=e.target.closest('[data-otog]');if(!b)return;const k=b.dataset.otog;OPT[k]=!OPT[k];keepAids();paintOpts();if(k==='lock')toast(OPT.lock?'Lock is on: the brush paints only over what is already on the layer.':'Lock is off.')});
-document.addEventListener('change',e=>{if(e.target.dataset?.o==='stream'||e.target.dataset?.o==='ftol')keepAids()});
+document.addEventListener('change',e=>{if(e.target.dataset?.o==='stream'||e.target.dataset?.o==='ftol')keepAids();if(e.target.matches?.('[data-osym]')){OPT.sym=e.target.value;keepAids();draw()}});
 function paintOpts(){
   const o=$('#opts'),rg=(k,lab,min,max,step=1,unit='px')=>`<label>${lab}<input type="range" data-o="${k}" min="${min}" max="${max}" step="${step}" value="${OPT[k]}"><output>${OPT[k]}${unit}</output></label>`;
   const help={pen:'Click for a sharp point, drag for a curve. Click the first point to close the shape; Enter or Esc leaves it open. Shift keeps to 45°. Backspace takes the last point back.',node:'Drag a point or a handle. Alt-click a point to make it sharp or smooth, click the line to add a point, Delete takes the chosen point away. Alt while dragging a handle breaks it from its pair.',select:'Click a layer to choose it. Drag to move, a corner to resize, the green knob to turn (Shift: 15° steps). Arrows nudge.',hand:'Drag to move around. Ctrl and the wheel, or a pinch, zooms.',text:'Click where the type should go.',rect:'Drag to draw. Shift makes a square.',ellipse:'Drag to draw. Shift makes a circle.',line:'Drag to draw a line.',pick:'Click the picture to take its colour.',ruler:'Drag across something whose size you know, then say how long it is. Shift keeps the line straight.',warp:'Choose a layer, then drag its points to bend it to the piece. Presets are in the layer settings.'};
@@ -667,8 +686,9 @@ function paintOpts(){
   Object.assign(help,{artboard:'Drag to make an artboard: a face of the box, a label, a hang tag. Drag one to move it; sizes, bleed and Lay out a box are in Document.',shapebuilder:'Drag across shapes to join the pieces you cross into one. Alt-click a piece to take it away. Choose two or more shapes first.',width:'Drag a point on a stroke to make it thicker or thinner there, for a line that tapers. Alt-click a point to put it back.',measure:'Drag from one point to another: the distance and angle show in mm or inches (Document sets which).',typepath:'Click a path to set type along it. Its words, size and where it starts are in the panel on the right.'});
   const tipsHtml=(list,key)=>`<span class="tips" role="radiogroup" aria-label="Tip">${list.map(t=>`<button type="button" role="radio" data-tip="${key}:${t.id}" aria-checked="${OPT[key]===t.id}" title="${esc(t.hint)}">${esc(t.label)}</button>`).join('')}</span>`,B=window.FBBrush;
   if(TOOL==='brush')o.innerHTML=swatchesHtml()+(B?tipsHtml(B.TIPS,'tip'):'')+rg('size','Size',1,400)+rg('flow','Opacity',.05,1,.05,'')+rg('soft','Softness',0,1,.05,'')+pressHtml()+aidsHtml()+(window.OUTL?OUTL.bar():'');
+  else if(TOOL==='liquify')o.innerHTML=rg('size','Size',4,400)+'<span class="hint">Drag on a picture or painting layer to push it.</span>';
   else if(TOOL==='fill')o.innerHTML=swatchesHtml()+rg('ftol','Gap',5,120,1,'')+'<span class="hint">Tap inside lines. A bigger gap fills across softer edges.</span>';
-  else if(TOOL==='eraser')o.innerHTML=(B?tipsHtml(B.ERASER_TIPS,'etip'):'')+rg('esize','Size',1,600)+rg('flow','Strength',.05,1,.05,'')+pressHtml()+'<span class="hint">Rubs out the selected layer.</span>';
+  else if(TOOL==='eraser')o.innerHTML=(B?tipsHtml(B.ERASER_TIPS,'etip'):'')+rg('esize','Size',1,600)+rg('flow','Strength',.05,1,.05,'')+pressHtml()+`<label>Symmetry<select data-osym>${SYMS.map(([v,t])=>`<option value="${v}" ${OPT.sym===v?'selected':''}>${t}</option>`).join('')}</select></label>`+'<span class="hint">Rubs out the selected layer.</span>';
   else if(TOOL==='distress')o.innerHTML=rg('dsize','Size',4,600)+rg('flow','Strength',.05,1,.05,'')+'<span class="hint">Wears the selected layer away, like an old print. For an even wear across the layer, use Distress in its settings.</span>';
   else if(TOOL==='area')o.innerHTML=rg('area','Size',4,600)+'<span class="hint">Paint over what the AI should change. Hold Alt to rub out.</span><button class="btn sm" type="button" data-clearmask>Clear the area</button>';
   else o.innerHTML=`<span class="hint">${help[TOOL]||''}</span>`;
@@ -1127,7 +1147,7 @@ $('#undo').onclick=undo;$('#redo').onclick=redo;
 // the rail's own Undo and Redo: always in reach of a thumb on an iPad (the ones in the top bar are small and fold away)
 $('#railUndo').onclick=undo;$('#railRedo').onclick=redo;
 // what each tool is and does, beside the rail: for learning by trying. Tap a name to pick the tool; the choice to show them is remembered
-const TOOL_HELP={fill:'Tap inside lines to fill there, in the chosen colour',select:'Tap a layer to choose it; drag to move, corners to resize, the green knob to turn',hand:'Drag to move around the page (two fingers do it too)',brush:'Paint on the chosen layer',eraser:'Rub out paint, or lines of the sketch on a flat',distress:'Wear the layer away, like a washed print',text:'Tap the page and type',rect:'Drag to draw a box',ellipse:'Drag to draw an oval or circle',line:'Drag to draw a straight line',pen:'Tap for corners, drag for curves; tap the first point to close',node:'Move the points of a shape you drew',ruler:'Drag across something you know the size of, to set real inches',warp:'Bend a graphic to follow the garment',pick:'Tap the picture to borrow a colour',area:'Paint where the AI should change the picture'};
+const TOOL_HELP={liquify:'Push the pixels of a picture or painting, like a finger in wet paint',fill:'Tap inside lines to fill there, in the chosen colour',select:'Tap a layer to choose it; drag to move, corners to resize, the green knob to turn',hand:'Drag to move around the page (two fingers do it too)',brush:'Paint on the chosen layer',eraser:'Rub out paint, or lines of the sketch on a flat',distress:'Wear the layer away, like a washed print',text:'Tap the page and type',rect:'Drag to draw a box',ellipse:'Drag to draw an oval or circle',line:'Drag to draw a straight line',pen:'Tap for corners, drag for curves; tap the first point to close',node:'Move the points of a shape you drew',ruler:'Drag across something you know the size of, to set real inches',warp:'Bend a graphic to follow the garment',pick:'Tap the picture to borrow a colour',area:'Paint where the AI should change the picture'};
 function paintRailNames(){const box=$('#railLabels'),open=$('#railNames').getAttribute('aria-pressed')==='true';$('.studio')?.classList.toggle('names-on',open);box.classList.toggle('hidden',!open);if(!open)return;const rail=$('.rail'),rb=rail.getBoundingClientRect(),sb=box.parentElement.getBoundingClientRect();
   box.style.top=(rb.top-sb.top)+'px';box.style.left=(rb.right-sb.left)+'px';box.style.height=rb.height+'px';
   box.innerHTML=[...rail.querySelectorAll('button[data-tool]')].filter(b=>b.offsetParent).map(b=>{const t=b.dataset.tool,r=b.getBoundingClientRect(),name=b.getAttribute('aria-label');return `<button type="button" role="listitem" data-pick-tool="${t}" aria-pressed="${b.getAttribute('aria-pressed')==='true'}" style="top:${r.top-rb.top+r.height/2}px"><b>${esc(name)}</b><small>${esc(TOOL_HELP[t]||b.title)}</small></button>`}).join('')}

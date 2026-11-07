@@ -113,6 +113,12 @@ then what works with changes, with the cloth that does not suit it folded away. 
 - **Type in a shape:** bridge, bulge, pinch, flag, wave, rise and grow, on top of arch; the words stay editable.
 - **Drawing like Procreate:** a Steady slider smooths a shaky line, QuickShape snaps a rough circle, oval, triangle or line to a clean one
   when you hold the Pencil still, Lock paints only inside what is already painted, and Fill colours inside your lines with one tap.
+- **Symmetry and scatter:** draw mirrored, four ways or round the middle (6 or 8), and paint with stars, hearts or confetti; Liquify
+  pushes a picture around like wet paint.
+- **Lockups in one tap:** the brief's words as a badge, a varsity arch with a number, a stacked block or script over block, every part
+  editable.
+- **Colour harmonies:** recolour a graphic as complementary, analogous, triad, split or one-hue colours, keeping black and white.
+- **Stickers and patches:** a white border round the art and a magenta cut line, at the width you choose.
 - **On garments:** the graphic on eight shirt colours (or any colour); it says which ink is knocked out by the shirt and when a dark
   shirt needs a white underbase.
 - **Colour at the tip of the Pencil:** recent colours and the brand's palette sit right on the brush bar; the rainbow swatch opens any colour.
