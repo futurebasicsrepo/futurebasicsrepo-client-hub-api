@@ -14,6 +14,7 @@ import { BUILTIN_MATERIALS, MATERIAL_KINDS, FABRIC_CONSTRUCTIONS, FABRIC_FINISHE
 import { tagSvg } from './lab-tags.js';
 import { materialFit, withAccept, mainOf } from './lab-fabric-fit.js';
 import { FLAT_TEMPLATES } from './lab-flat-templates.js';
+import { STYLES } from './lab-flats.js';
 import { MATERIAL_PHOTOS, photoFor, photoById, creditOf } from './lab-photos.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -111,7 +112,7 @@ export function registerLabMaterialsRoutes(app, d) {
   // does the fabric suit the style? (src/lab-fabric-fit.js) The style is the flats' own, or the sketch the concept started from
   const styleOf = async c => { const f = (await pool.query(`select style, params->>'fit' fit from lab_flats where concept_id=$1`, [c.id])).rows[0]; return { style: f?.style || FLAT_TEMPLATES.find(t => t.id === c.spec?.template)?.style || '', fit: f?.fit || '' }; };
   // a shoe and a plush are checked on their parts whatever their style; clothing on its fabric against the flats' style
-  const withFit = async (c, s) => { const st = await styleOf(c), f = materialFit({ category: c.category, style: st.style, fit: st.fit, materials: s.picks }); return { ...s, style: st.style, fit: f ? withAccept(f, c.spec?.fabricAccept, s.picks) : null }; };
+  const withFit = async (c, s) => { const st = await styleOf(c), f = materialFit({ category: c.category, style: st.style, fit: st.fit, materials: s.picks }); return { ...s, style: st.style, styleLabel: STYLES[st.style] ? `${/^[aeiou]/i.test(STYLES[st.style].label) ? 'an' : 'a'} ${STYLES[st.style].label.toLowerCase()}` : '', fit: f ? withAccept(f, c.spec?.fabricAccept, s.picks) : null }; };
   // what the check could not see, filled in where it asks: on this piece's pick, and on the library's own material when the caller may change
   // it (staff, or the room that added it; never the built-in starter set), so it is known the next time too
   const FILL = { construction: v => clip(v, 60), weightGsm: v => { const n = Math.round(Number(v)); return n >= 10 && n <= 2000 ? n : undefined; },
