@@ -77,3 +77,15 @@ test('the stage rail marks what is done, now and next, and who has the ball', ()
   assert.deepEqual(v.rail.map(r => r.state), ['done', 'done', 'now', 'next', 'next', 'next', 'next']); assert.equal(v.stageLabel, 'Build'); assert.deepEqual(v.build.features, ['One', 'Two']); assert.equal(v.owner, 'us');
   assert.equal(stageOwner('review'), 'client'); assert.equal(stageOwner('live'), 'none'); assert.equal(softwareView({ stage: 'junk' }).stage, 'discovery'); assert.equal(softwareView({}, null).build, null); assert.equal(STAGE_KEYS.length, 7);
 });
+
+test('staff see the whole build: hosting, code, features with words, the site monitor; the client view stays short', () => {
+  const row = { id: 'b', slug: 's', name: 'Site', status: 'live', live_url: 'https://x', stack: ['Liquid'], highlights: [{ title: 'Filters', text: 'Over AJAX' }, { title: '' }], hosting: 'shopify', repo_url: 'https://github.com/o/r', summary: 'To fill in.', links: [{ label: 'Demo', url: 'https://d' }, { label: 'no url' }], products: 3, visibility: 'hidden',
+    monitor: { state: 'up', http_status: 200, response_ms: 268, up30: 99.5, cert_expires_at: '2027-01-01T00:00:00Z' } };
+  const b = softwareView({ stage: 'live' }, row).build;
+  assert.equal(b.hostingLabel, 'Shopify'); assert.equal(b.repoUrl, 'https://github.com/o/r'); assert.equal(b.summary, '', 'the placeholder summary is not shown');
+  assert.deepEqual(b.highlights, [{ title: 'Filters', text: 'Over AJAX' }]); assert.equal(b.links.length, 1); assert.equal(b.catalogCount, 3);
+  assert.equal(b.monitor.state, 'up'); assert.equal(b.monitor.responseMs, 268); assert.equal(b.monitor.up30, 99.5);
+  assert.equal(softwareView({ stage: 'live' }, { ...row, hosting: 'netlify', monitor: null }).build.hostingLabel, 'Somewhere else');
+  const short = softwareView({ stage: 'live' }, { id: 'b', slug: 's', name: 'Site', status: 'live', live_url: '', stack: [], highlights: [] }).build;
+  assert.equal(short.repoUrl, undefined); assert.equal(short.monitor, undefined);
+});
