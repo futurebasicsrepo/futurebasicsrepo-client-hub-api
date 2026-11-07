@@ -108,6 +108,13 @@ then what works with changes, with the cloth that does not suit it folded away. 
 - **Type like a merch designer:** 47 free, open-source fonts (varsity, retro, script, hand-drawn, stencil, western, blackletter,
   seasonal), picked by eye with your own words set in each. All caps or title case, stretch, a second outline for the varsity look, and a
   drop shadow or 3D block that prints as solid ink.
+- **Print filters:** turn any layer into halftone dots (round, square, diamond, line or cross, any size and angle), hand-drawn stipple,
+  a few flat colours (posterize), one solid ink, or a two-ink duotone, with a live preview. Every result is printable in a few screens.
+- **Type in a shape:** bridge, bulge, pinch, flag, wave, rise and grow, on top of arch; the words stay editable.
+- **Drawing like Procreate:** a Steady slider smooths a shaky line, QuickShape snaps a rough circle, oval, triangle or line to a clean one
+  when you hold the Pencil still, Lock paints only inside what is already painted, and Fill colours inside your lines with one tap.
+- **On garments:** the graphic on eight shirt colours (or any colour); it says which ink is knocked out by the shirt and when a dark
+  shirt needs a white underbase.
 - **Colour at the tip of the Pencil:** recent colours and the brand's palette sit right on the brush bar; the rainbow swatch opens any colour.
 - **Pencil to outlines:** sketch with the Apple Pencil on the picture or right on the flat, tap **Outlines**, and the drawing becomes
   clean vector lines. Tap **Refine** for cleaner and smoother lines, up to six times; the original drawing is kept underneath.

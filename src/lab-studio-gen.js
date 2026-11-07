@@ -38,7 +38,11 @@
   .gink select{max-width:84px;font-size:12px;min-height:32px}.gico{border:1px solid var(--line);background:#fff;border-radius:8px;width:32px;height:32px;cursor:pointer;display:grid;place-items:center}.gico[aria-pressed=false]{opacity:.45}
   .gpals{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none}.gpals button{flex:none;display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;padding:0;height:26px;cursor:pointer;background:#fff}.gpals button i{width:12px;height:100%;display:block}
   .gout{display:grid;grid-template-columns:1fr 1fr;gap:6px}.gout .btn{justify-content:center}.gout .wide{grid-column:1/-1}
-  .gx input[type=range]{flex:1;min-width:110px}`;
+  .gx input[type=range]{flex:1;min-width:110px}
+  .gtee{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}.gtee button,.gteec{border:1px solid var(--line);border-radius:10px;padding:0;background:#fff;cursor:pointer;overflow:hidden;display:grid;font-size:11px;position:relative}
+  .gtee button img{width:100%;aspect-ratio:1/1;display:block}.gtee button span,.gteec span{padding:3px 0;text-align:center}.gtee button[aria-pressed=true]{box-shadow:0 0 0 2px var(--ink)}
+  .gteec{place-items:center;background:conic-gradient(#e43,#fd3,#4c6,#3ae,#a4e,#e43);min-height:60px}.gteec span{background:#fff;border-radius:999px;padding:2px 8px}.gteec input{position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer}
+  .gteenote{font-size:12px;color:var(--dim);line-height:1.4}`;
   document.head.appendChild(css);
 
   const meta = async () => { if (!META) { META = await api('/v1/lab/library/studio/generate'); if (!Array.isArray(ASK.engines) || !ASK.engines.length) ASK.engines = META.engines.filter(e => e.ready).map(e => e.id); } return META; };
@@ -181,8 +185,32 @@
   const widthIn = () => { if (WIDTH > 0) return WIDTH; const ls = genLayers(), b = ls.length ? bboxOf(ls) : null, w = b ? b.w : (whole()?.w || W); return Math.round(w / (PPI || W / 14) * 4) / 4 || 10; };
   function paintOut() {
     const o = $('#gOut'); if (!o) return; const put = $('#apply')?.textContent || 'Keep in the library';
+    setTimeout(paintTees, 0);
     o.innerHTML = `<h4>Print</h4><label class="grow"><span class="glab">Width</span><input class="t" type="number" min="1" max="30" step=".25" id="gWidth" value="${widthIn()}" style="width:80px"> <span class="note">in</span></label>
+      <h4 style="margin-top:6px">On garments</h4><div class="gtee" id="gTee"><span class="note">Drawing…</span></div><div class="gteenote" id="gTeeNote"></div>
       <div class="gout"><button class="btn go wide" type="button" data-gput>${esc(put)}</button><button class="btn sm" type="button" data-gsep>Separations</button><button class="btn sm" type="button" data-gsvg>Vector SVG</button><button class="btn sm wide" type="button" data-gpdf>Vector PDF + films</button></div>`;
+  }
+  // ---- on garments: the graphic on each body colour, with what the printer does about it (an ink the colour of the shirt is knocked out;
+  // a dark shirt takes a white underbase under the colours) ----
+  const TEES = [['White', '#ffffff'], ['Natural', '#efe8d8'], ['Heather', '#b9b9b6'], ['Sand', '#d8c7a4'], ['Forest', '#2f4a3a'], ['Navy', '#1d2a44'], ['Red', '#a02a20'], ['Black', '#141416']];
+  let TEE = null;
+  function inkList() { const g = inks(); if (g.length) return g.map(k => k.hex);
+    const a = whole(); if (!a) return []; const c = canvas(64, 64), x = c.getContext('2d', { willReadFrequently: true }), img = new Image(); return new Promise(res => { img.onload = () => { x.drawImage(img, 0, 0, 64, 64); const d = x.getImageData(0, 0, 64, 64).data, h = new Map(); let n = 0;
+      for (let i = 0; i < d.length; i += 4) if (d[i + 3] > 200) { n++; const k = hex6(`rgb(${d[i] & 0xe0},${d[i + 1] & 0xe0},${d[i + 2] & 0xe0})`); h.set(k, (h.get(k) || 0) + 1); }
+      res([...h.entries()].filter(([, v]) => v > n * .03).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k]) => k)); }; img.src = a.image; }); }
+  async function paintTees() {
+    const box = $('#gTee'); if (!box) return; const a = whole(); if (!a) { box.innerHTML = '<span class="note">Nothing on the canvas yet.</span>'; $('#gTeeNote').textContent = ''; return; }
+    const img = new Image(); await new Promise(r => { img.onload = r; img.src = a.image; }); const inkHex = await inkList();
+    box.innerHTML = TEES.map(([n, hex]) => { const c = canvas(120, 120), x = c.getContext('2d'); x.fillStyle = hex; x.fillRect(0, 0, 120, 120); const k = Math.min(84 / img.width, 84 / img.height); x.drawImage(img, 60 - img.width * k / 2, 60 - img.height * k / 2, img.width * k, img.height * k);
+      return `<button type="button" data-gtee="${hex}" aria-pressed="${TEE === hex}" title="${esc(n)}"><img alt="On ${esc(n)}" src="${c.toDataURL('image/png')}"><span>${esc(n)}</span></button>`; }).join('') + `<label class="gteec" title="Another colour"><input type="color" data-gteec value="${TEE || '#3a5a8c'}"><span>Other</span></label>`;
+    teeNote(TEE, inkHex);
+  }
+  function teeNote(hex, inkHex) {
+    const n = $('#gTeeNote'); if (!n) return; if (!hex) { n.textContent = 'Tap a colour to see the art on it, with what the printer does.'; return; }
+    const dark = lum(hex) < 120, ko = inkHex.filter(h => dist(h, hex) < 48), light = inkHex.filter(h => lum(h) > 150 && !ko.includes(h));
+    const t = []; if (ko.length) t.push(`${ko.map(h => pms(h) || h).join(', ')} ${ko.length === 1 ? 'is' : 'are'} the shirt's own colour: knocked out, the shirt shows through (one screen fewer).`);
+    if (dark) t.push(`A dark shirt: the colours print on a white underbase, so they stay bright (one more screen, flashed).`); else if (light.length && lum(hex) < 200) t.push('Light inks on a mid-tone shirt may need an underbase to stay bright.');
+    if (!t.length) t.push('Prints as it is: no knockouts, no underbase.'); n.textContent = t.join(' ');
   }
   // the vector of what is on the canvas: exact from the paths when everything visible is a shape, else the whole picture traced on the server
   function vectorInks() {
@@ -245,17 +273,20 @@
     else if (d.gtrace) retrace(Number(d.gtrace));
     else if (d.gkey !== undefined) { const ls = genLayers(), on = !ls[0]?.gen.key; ls.forEach(l => { l.gen.key = on; }); weight(ls[0]?.gen.weight || 0); commit(); paintPanels(); paintInks(); }
     else if (d.gpoints !== undefined) { const l = genLayers().find(x => x.id === SEL) || genLayers()[0]; if (l) { SEL = l.id; setTool('node'); paintPanels(); draw(); toast('Drag a point or its handles; tap the line to add one.'); } }
+    else if (d.gtee) { TEE = TEE === d.gtee ? null : d.gtee; window.PAGEBG = TEE || ''; draw(); paintTees(); }
     else if (d.gput !== undefined) out('put'); else if (d.gsep !== undefined) out('sep'); else if (d.gsvg !== undefined) out('svg'); else if (d.gpdf !== undefined) out('pdf');
   });
   document.addEventListener('input', e => {
     if (e.target.dataset?.gcol) { recolour(hex6(e.target.dataset.gcol), hex6(e.target.value), { live: true }); e.target.dataset.gcol = hex6(e.target.value); e.target.parentNode.style.background = e.target.value; }
     else if (e.target.id === 'gWeight') weight(Number(e.target.value));
     else if (e.target.id === 'gWidth') WIDTH = Number(e.target.value) || 0;
+    else if (e.target.dataset?.gteec !== undefined) { TEE = hex6(e.target.value); window.PAGEBG = TEE; draw(); }
   });
   document.addEventListener('change', e => {
     if (e.target.dataset?.gcol) { commit(); paintPanels(); paintInks(); }
     else if (e.target.id === 'gWeight') { commit(); paintPanels(); }
     else if (e.target.dataset?.gmerge && e.target.value) recolour(e.target.dataset.gmerge, e.target.value);
+    else if (e.target.dataset?.gteec !== undefined) paintTees();
   });
   document.addEventListener('keydown', e => { if (e.target.id === 'gBrief' && e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); go(); } });
   window.GEN = { paint, inks: () => { if ($('#gInks')) paintInks(); }, layersOf, bboxOf, vectorInks, svgOf, results: () => RES };
