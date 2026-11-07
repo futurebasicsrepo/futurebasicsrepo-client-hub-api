@@ -97,6 +97,7 @@ export async function applyOusterGraphics(pool, { uploadDir, jobZip = makeJobZip
         const rf = (await db.query(`delete from room_files where product_id=$1 and purpose='artwork' and original_name=any($2) returning storage_name`, [prod.id, names])).rows;
         gone.push(...rf.map(r => r.storage_name)); out.replaced += old.length;
       }
+      await db.query('update product_configurations set moq=null,updated_at=now() where product_id=$1 and moq<10', [prod.id]);
       const art = [];
       for (const x of list) {
         const e = byFile[x.file], bytes = readFileSync(new URL(e.file, G)), name = nameOf(e), ref = SMALL.has(x.file);
