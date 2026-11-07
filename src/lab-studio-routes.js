@@ -120,7 +120,9 @@ export const FONT_MIME = { ttf: 'font/ttf', otf: 'font/otf', woff: 'font/woff', 
 export const fontShape = r => ({ id: r.id, name: r.name, family: r.family, format: r.format, createdAt: r.created_at });
 
 export function registerLabStudioRoutes(app, d) {
-  const { pool, authenticate, adminOnly, env = process.env, imageCfg = () => imageConfig(env), editImpl = openaiEdit, imageImpl = openaiImage, placeImpl = locateMarks, lab = null } = d;
+  const { pool, authenticate, adminOnly, env = process.env, imageCfg = () => imageConfig(env), editImpl = openaiEdit, imageImpl = openaiImage, placeImpl = locateMarks, lab = null, pictureToPack = null } = d;
+  // a concept sent to a tech pack is closed, unless it is linked to its product: then the Studio edits it and what is used goes to that product's pack
+  const lockedOf = c => c.status === 'tech_pack' && !c.product_id;
   const own = req => lab?.scope?.(req) || null, charge = async (req, o) => (lab ? lab.charge(req, o) : null);
   const pre = [authenticate, adminOnly], bad = (reply, error, code = 422, extra = {}) => reply.code(code).send({ error, ...extra });
   const actorOf = req => (UUID.test(String(req.auth?.sub || '')) ? req.auth.sub : null);
@@ -143,7 +145,7 @@ export function registerLabStudioRoutes(app, d) {
     const palette = [...COLORS.map(x => ({ name: x.name, hex: x.hex, from: 'brand' })), ...((program?.palette || []).map(x => ({ name: clip(x.name, 40), hex: x.hex, from: 'program' })))].filter(x => /^#[0-9a-f]{6}$/i.test(x.hex || ''));
     const cfg = imageCfg();
     return {
-      concept: { id: c.id, name: c.name, category: c.category, status: c.status, hasImage: c.has_image, hasPlain: c.has_plain, hasFlats: c.has_flats, recipe: Boolean(c.spec?.recipe), locked: c.status === 'tech_pack', colors: c.spec?.colors || [], scratch: Boolean(c.spec?.scratch),
+      concept: { id: c.id, name: c.name, category: c.category, status: c.status, hasImage: c.has_image, hasPlain: c.has_plain, hasFlats: c.has_flats, recipe: Boolean(c.spec?.recipe), locked: lockedOf(c), colors: c.spec?.colors || [], scratch: Boolean(c.spec?.scratch),
         planId: c.plan_id || null, planName: plan?.name || '', productId: c.product_id || null, productUrl: c.product_id ? `/tech-packs/${c.product_id}` : '' }, // for the piece's step bar
       doc: s?.doc || null, savedAt: s?.updated_at || null, savedBy: s?.by_name || '', appliedAt: s?.applied_at || null, canRestore: Boolean(s?.has_original),
       marks: [{ id: 'mark', label: 'Cue mark', svg: logoSvg('mark') }, { id: 'word', label: 'Wordmark', svg: logoSvg('word') }, { id: 'lockup', label: 'Wordmark and cue mark', svg: logoSvg('lockup') }],
@@ -255,7 +257,7 @@ export function registerLabStudioRoutes(app, d) {
 
   app.put('/v1/lab/concepts/:id/studio', { preHandler: pre, bodyLimit: 32_000_000 }, async (req, reply) => {
     const c = await concept(req, reply); if (!c) return;
-    if (c.status === 'tech_pack') return bad(reply, 'This concept is already a tech pack', 409);
+    if (lockedOf(c)) return bad(reply, 'This concept is already a tech pack', 409);
     const { doc, error } = cleanDoc(req.body?.doc); if (error) return bad(reply, error);
     const r = (await pool.query(`insert into lab_studio_docs(concept_id, doc, updated_by) values($1,$2,$3) on conflict(concept_id) do update set doc=excluded.doc, updated_by=excluded.updated_by, updated_at=now() returning updated_at`, [c.id, doc, actorOf(req)])).rows[0];
     return { ok: true, savedAt: r.updated_at };
@@ -301,13 +303,13 @@ export function registerLabStudioRoutes(app, d) {
   }
   app.post('/v1/lab/concepts/:id/studio/ai', { preHandler: pre, bodyLimit: 32_000_000 }, async (req, reply) => {
     const c = await concept(req, reply); if (!c) return;
-    if (c.status === 'tech_pack') return bad(reply, 'This concept is already a tech pack', 409);
+    if (lockedOf(c)) return bad(reply, 'This concept is already a tech pack', 409);
     return runAi(req, reply, { conceptId: c.id });
   });
 
   app.post('/v1/lab/concepts/:id/studio/apply', { preHandler: pre, bodyLimit: 32_000_000 }, async (req, reply) => {
     const c = await concept(req, reply); if (!c) return;
-    if (c.status === 'tech_pack') return bad(reply, 'This concept is already a tech pack', 409);
+    if (lockedOf(c)) return bad(reply, 'This concept is already a tech pack', 409);
     const buf = pictureOf(req.body?.image); if (!buf) return bad(reply, 'Send the finished picture');
     let image, thumb; try {
       image = await sharp(buf).flatten({ background: '#ffffff' }).resize({ width: 2048, height: 2048, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 90 }).toBuffer();
@@ -325,7 +327,9 @@ export function registerLabStudioRoutes(app, d) {
       await keepVersion(client, c.id, { image, thumb, doc: req.body?.doc, note: clip(req.body?.note, 160) || 'Used as the concept picture', applied: true, by: actorOf(req) });
       await client.query('commit');
       await note(c.id, req, back ? 'Picture finished in the studio. It was approved, so it is back to draft to be approved again.' : 'Picture finished in the studio.');
-      return { ok: true, status: back ? 'draft' : c.status };
+      // a concept linked to its product: the picture is the tech pack's first rendering too (the product's thumbnail), in the draft, for the next version
+      let pack = null; if (c.product_id && pictureToPack) try { pack = await pictureToPack(c.product_id, image, c.name); } catch { pack = null; }
+      return { ok: true, status: back ? 'draft' : c.status, productId: c.product_id || null, toPack: Boolean(pack) };
     } catch (e) { await client.query('rollback').catch(() => {}); throw e; } finally { client.release(); }
   });
 
@@ -361,7 +365,7 @@ export function registerLabStudioRoutes(app, d) {
 
   app.post('/v1/lab/concepts/:id/studio/restore', { preHandler: pre }, async (req, reply) => {
     const c = await concept(req, reply); if (!c) return;
-    if (c.status === 'tech_pack') return bad(reply, 'This concept is already a tech pack', 409);
+    if (lockedOf(c)) return bad(reply, 'This concept is already a tech pack', 409);
     const s = (await pool.query('select original from lab_studio_docs where concept_id=$1', [c.id])).rows[0]; if (!s?.original) return bad(reply, 'The picture has not been changed in the studio', 409);
     const thumb = await sharp(s.original).resize({ width: 420, height: 420, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 72 }).toBuffer();
     await pool.query(`update lab_concepts set image=$2, thumb=$3, updated_at=now() where id=$1`, [c.id, s.original, thumb]);
