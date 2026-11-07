@@ -99,6 +99,7 @@ import { normalizeOfferSubmission, normalizeOfferAmount, nextOfferMove, offerVie
 import { cleanClientPack, clientPackView } from './techpack.js';
 import { applyOusterDrop1 } from './ouster-drop1.js';
 import { applyOusterPacks } from './ouster-drop1-packs.js';
+import { applyOusterMake } from './ouster-drop1-make.js';
 import { missingViews, normalizeTechPack, seedTechPack, techPackCompleteness, publishedTechPackView, factoryActionsOn, setFactoryActions, FACTORY_VIEW_ONLY, normalizeVerification, techPackReadiness, emptyVerification, publishGate, isInlineImage, packStrings, mergeClientEdits, cardFieldsFromPack } from './techpack.js';
 import { aiEnabled, vetMeasurements, draftFromPhotos, draftFromBrief, applyDraftToPack, productTypeLabel, AI_MODEL, translateStrings, TRANSLATION_LANGS, LANG_LABELS, locateProduct, cropToBox, draftLooksEmpty, NoProductError, completeMeasurements, locateCallouts, calloutCrop } from './ai.js';
 import { planClientAccess, normalizeEmails, emailDomain } from './access.js';
@@ -6443,6 +6444,7 @@ for (const signal of ['SIGTERM', 'SIGINT']) {
 await migrate();
 await applyOusterDrop1(pool,{log:app.log}).catch(err=>app.log.error({err:err.message},'Ouster Merch Drop 1 not applied')); // once: the room brought up to Merch Drop 1 (src/ouster-drop1.js)
 await applyOusterPacks(pool,{log:app.log}).catch(err=>app.log.error({err:err.message},'Ouster Merch Drop 1 tech packs not applied')); // once: their tech packs, from the Figma mockups
+await applyOusterMake(pool,{uploadDir,log:app.log}).catch(err=>app.log.error({err:err.message},'Ouster Merch Drop 1 factories and artwork not applied')); // once: the best factory for each style, and its artwork and job files
 live.start().catch(() => {});
 migratedNow();
 billingMode=['on','off'].includes((await getSetting('techPackBilling'))?.mode)?(await getSetting('techPackBilling')).mode:null;
