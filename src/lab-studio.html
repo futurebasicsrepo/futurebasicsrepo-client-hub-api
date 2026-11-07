@@ -135,6 +135,12 @@ html[data-pick] body>header{display:none}html[data-pick] .studio{height:100dvh}
 .rail-names{position:absolute;z-index:30;width:310px;pointer-events:none}.rail-names.hidden{display:none}
 .rail-names button{pointer-events:auto;position:absolute;left:6px;transform:translateY(-50%);display:grid;gap:1px;text-align:left;max-width:228px;background:rgba(255,255,255,.96);border:1px solid var(--line);border-radius:10px;padding:5px 9px;font:inherit;font-size:11.5px;line-height:1.25;color:var(--dim);box-shadow:0 4px 14px rgba(20,20,22,.08);cursor:pointer}
 .rail-names button{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:300px;line-height:1.2;padding:4px 10px;border-radius:999px}.rail-names button b{color:var(--ink);font-size:12.5px;margin-right:6px}.rail-names button small{font-size:11px}.rail-names button[aria-pressed=true]{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink)}
+.tips{display:inline-flex;flex-wrap:wrap;gap:4px;margin-right:6px}.tips button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:5px 10px;font:inherit;font-size:12px;cursor:pointer}.tips button[aria-checked=true]{background:var(--ink);color:#fff;border-color:var(--ink)}
+.size-dock{position:absolute;z-index:25;left:62px;bottom:14px;display:flex;flex-direction:column;align-items:center;gap:8px;padding:10px 8px;background:rgba(255,255,255,.96);border:1px solid var(--line);border-radius:18px;box-shadow:0 8px 24px rgba(20,20,22,.1);width:56px}
+.size-dock.hidden{display:none}.size-dock .dk-dot{display:block;border-radius:50%;background:var(--ink);min-width:3px;min-height:3px}.size-dock b{font:600 10px 'IBM Plex Mono',monospace;color:var(--dim)}
+.size-dock .dk-pre{display:grid;gap:4px}.size-dock .dk-pre button{width:34px;height:26px;border:1px solid transparent;border-radius:9px;background:none;display:grid;place-items:center;cursor:pointer}.size-dock .dk-pre button[aria-pressed=true]{border-color:var(--ink)}.size-dock .dk-pre i{display:block;border-radius:50%;background:var(--ink)}
+.size-dock .dk-s{display:block;width:40px;height:132px;position:relative}.size-dock .dk-s span{position:absolute;left:0;right:0;bottom:-2px;text-align:center;font-size:9px;color:var(--dim)}.size-dock .dk-s input{position:absolute;left:50%;top:calc(50% - 6px);width:108px;margin:0;transform:translate(-50%,-50%) rotate(-90deg);accent-color:var(--ink);touch-action:none}
+.studio.names-on .size-dock{left:384px}
 </style>
 <script src="/feedback.js"></script>
 <link rel="stylesheet" href="/cue.css">
@@ -206,6 +212,7 @@ html[data-pick] body>header{display:none}html[data-pick] .studio{height:100dvh}
     <input type="color" id="curPicker" class="hidden" aria-hidden="true" tabindex="-1">
   </nav>
   <div class="rail-names hidden" id="railLabels" role="list" aria-label="What each tool does"></div>
+  <div class="size-dock hidden" id="sizeDock" aria-label="Brush size and opacity"><span class="dk-dot" aria-hidden="true"></span><b class="dk-v">28px</b><div class="dk-pre"><button type="button" data-dpre="4" aria-label="Size 4"><i style="width:4px;height:4px"></i></button><button type="button" data-dpre="12" aria-label="Size 12"><i style="width:5px;height:5px"></i></button><button type="button" data-dpre="28" aria-label="Size 28"><i style="width:7px;height:7px"></i></button><button type="button" data-dpre="60" aria-label="Size 60"><i style="width:11px;height:11px"></i></button><button type="button" data-dpre="120" aria-label="Size 120"><i style="width:18px;height:18px"></i></button></div><label class="dk-s"><span>Size</span><input type="range" data-dk="size" min="1" max="400" step="1" aria-label="Size"></label><label class="dk-s"><span>Opacity</span><input type="range" data-dk="flow" min=".05" max="1" step=".05" aria-label="Opacity"></label><b class="dk-o">100%</b></div>
   <div class="mid">
     <div class="opts" id="opts"></div>
     <div class="stage" id="stage"><canvas id="view"></canvas>
@@ -315,10 +322,10 @@ const fresh=(kind,o={})=>({id:uid(),kind,name:o.name||KIND[kind],visible:true,lo
 
 // ---------- state ----------
 let D=null,W=1024,H=1024,LAYERS=[],SEL=null,TOOL='select',CUR='#141416',DIRTY=false,SAVED_AT=null;
-const OPT={size:28,flow:1,soft:0,dsize:60,area:60,pressure:true};
+const OPT={size:28,esize:40,flow:1,soft:0,dsize:60,area:60,pressure:true,tip:'round',etip:'hard'};
 const docC=canvas(1,1),docX=docC.getContext('2d');
 let mask=canvas(1,1),maskX=mask.getContext('2d'),MASKED=false;
-const view=$('#view'),vx=view.getContext('2d');let Z=1,PX=0,PY=0,DPR=1;
+const view=$('#view'),vx=view.getContext('2d',{desynchronized:true})||view.getContext('2d');let Z=1,PX=0,PY=0,DPR=1; // desynchronized: the browser may show each frame without waiting for the page (lower Pencil latency where it is supported)
 const layerOf=id=>LAYERS.find(l=>l.id===id);
 const selected=()=>layerOf(SEL);
 const isRaster=l=>l&&(l.kind==='base'||l.kind==='image'||l.kind==='paint');
@@ -409,7 +416,20 @@ function processed(l){
 const dims=l=>{const c=processed(l);return[c.width,c.height]};
 function place(x,l){x.translate(l.x,l.y);x.rotate(l.rot);x.scale(l.scale*(l.flip?-1:1),l.scale)}
 function drawLayer(x,l){if(!l.visible)return;const c=processed(l),sh=l.finish&&window.FBFinish.shadow(l.finish,W/1000);x.save();x.globalAlpha=l.opacity;x.globalCompositeOperation=l.blend;if(sh){x.shadowColor=sh.color;x.shadowBlur=sh.blur;x.shadowOffsetX=sh.dx;x.shadowOffsetY=sh.dy}place(x,l);x.drawImage(c,-c.width/2,-c.height/2);x.restore()}
-function compose(){docX.setTransform(1,0,0,1,0,0);docX.globalCompositeOperation='source-over';docX.globalAlpha=1;docX.clearRect(0,0,W,H);if(!GMODE){docX.fillStyle='#fff';docX.fillRect(0,0,W,H)}if(window.ILL)ILL.drawAll(docX);else for(const l of LAYERS)drawLayer(docX,l)} // a graphic keeps its clear background
+// ---- drawing fast: while a stroke is made only its layer changes, so the layers under it and over it are put together once, at the start
+// of the stroke, and each frame is those two pictures with the stroke's layer between them (it was every layer, with its finish, every
+// frame: a slow, laggy Pencil). The whole picture is put together again when the stroke ends.
+let STK=null;
+function composeInto(x,keep,white){x.setTransform(1,0,0,1,0,0);x.globalCompositeOperation='source-over';x.globalAlpha=1;x.clearRect(0,0,W,H);if(white){x.fillStyle='#fff';x.fillRect(0,0,W,H)}
+  const vis=LAYERS.map(q=>q.visible);LAYERS.forEach(q=>{if(!keep(q))q.visible=false});try{if(window.ILL)ILL.drawAll(x);else for(const q of LAYERS)drawLayer(x,q)}finally{LAYERS.forEach((q,i)=>{q.visible=vis[i]})}}
+function strokeStart(l){const i=LAYERS.indexOf(l);if(i<0){STK=null;return}const below=canvas(W,H),above=canvas(W,H);
+  composeInto(below.getContext('2d'),q=>LAYERS.indexOf(q)<i,!GMODE);composeInto(above.getContext('2d'),q=>LAYERS.indexOf(q)>i,false);const ba=TOOL==='brush'&&window.FBBrush?FBBrush.strokeAlpha(OPT.tip,OPT.flow):0;
+  STK={l,below,above,anyAbove:LAYERS.slice(i+1).some(q=>q.visible),buf:ba?canvas(l.raster.width,l.raster.height):null,ba}}
+function strokeEnd(keep=true){if(STK?.buf&&keep){const x=STK.l.raster.getContext('2d');x.save();x.globalAlpha=STK.ba;x.drawImage(STK.buf,0,0);x.restore();STK.l.raster._rid=RID++}STK=null}
+function compose(){if(STK&&DRAG?.mode==='stroke'&&DRAG.l===STK.l){const l=STK.l;docX.setTransform(1,0,0,1,0,0);docX.globalCompositeOperation='source-over';docX.globalAlpha=1;docX.drawImage(STK.below,0,0);
+    if(l.visible){docX.save();docX.globalAlpha=l.opacity;docX.globalCompositeOperation=l.blend;place(docX,l);docX.drawImage(l.raster,-l.raster.width/2,-l.raster.height/2);if(STK.buf){docX.globalAlpha=l.opacity*STK.ba;docX.drawImage(STK.buf,-l.raster.width/2,-l.raster.height/2)}docX.restore()}
+    if(STK.anyAbove)docX.drawImage(STK.above,0,0);return}
+  docX.setTransform(1,0,0,1,0,0);docX.globalCompositeOperation='source-over';docX.globalAlpha=1;docX.clearRect(0,0,W,H);if(!GMODE){docX.fillStyle='#fff';docX.fillRect(0,0,W,H)}if(window.ILL)ILL.drawAll(docX);else for(const l of LAYERS)drawLayer(docX,l)} // a graphic keeps its clear background
 // doc point → the layer's own pixels, and back
 function toLocal(l,px,py){const[w,h]=dims(l);let dx=px-l.x,dy=py-l.y;const c=Math.cos(-l.rot),s=Math.sin(-l.rot);let lx=(dx*c-dy*s)/l.scale,ly=(dx*s+dy*c)/l.scale;if(l.flip)lx=-lx;return[lx+w/2,ly+h/2]}
 function corners(l){const[w,h]=dims(l),c=Math.cos(l.rot),s=Math.sin(l.rot),f=l.flip?-1:1;return[[-w/2,-h/2],[w/2,-h/2],[w/2,h/2],[-w/2,h/2]].map(([a,b])=>{a*=l.scale*f;b*=l.scale;return[l.x+a*c-b*s,l.y+a*s+b*c]})}
@@ -421,15 +441,17 @@ const sx=x=>x*Z+PX,sy=y=>y*Z+PY,dx=x=>(x-PX)/Z,dy=y=>(y-PY)/Z;
 let VIEWONLY=0;const viewOnly=()=>Boolean((GEST&&!GEST.layer)||(DRAG&&DRAG.mode==='pan')||VIEWONLY>performance.now());
 function render(){
   if(!viewOnly()||!render.done){compose();render.done=true}const r=view.getBoundingClientRect();DPR=window.devicePixelRatio||1;const cw=Math.round(r.width*DPR),ch=Math.round(r.height*DPR);if(view.width!==cw||view.height!==ch){view.width=cw;view.height=ch}
-  const vo=viewOnly(); // while the view is being moved or pinched: no soft shadow and quick smoothing (both are slow on an iPad, every frame)
+  const vo=viewOnly()||DRAG?.mode==='stroke'; // while the view is being moved or pinched: no soft shadow and quick smoothing (both are slow on an iPad, every frame)
   vx.setTransform(DPR,0,0,DPR,0,0);vx.clearRect(0,0,r.width,r.height);if(VR){vx.translate(r.width/2,r.height/2);vx.rotate(VR*Math.PI/180);vx.translate(-r.width/2,-r.height/2)}vx.save();if(!vo){vx.shadowColor='rgba(20,20,22,.18)';vx.shadowBlur=24}else{vx.fillStyle='rgba(20,20,22,.08)';vx.fillRect(PX+2,PY+3,W*Z,H*Z)}vx.fillStyle='#fff';vx.fillRect(PX,PY,W*Z,H*Z);vx.restore();
-  vx.imageSmoothingQuality=vo?'low':'high';vx.drawImage(docC,PX,PY,W*Z,H*Z);if(vo){clearTimeout(render.sharp);render.sharp=setTimeout(()=>{if(!viewOnly())draw()},120)}
+  vx.imageSmoothingQuality=vo?'low':'high';vx.drawImage(docC,PX,PY,W*Z,H*Z);if(vo){clearTimeout(render.sharp);render.sharp=setTimeout(()=>{if(!viewOnly()&&DRAG?.mode!=='stroke')draw()},120)}
+  // where the browser can say where the Pencil is going next (predicted points), the ink is drawn ahead to there for this frame only
+  if(DRAG?.mode==='stroke'&&DRAG.pred?.length&&TOOL==='brush'){vx.save();vx.strokeStyle=CUR;vx.globalAlpha=OPT.flow;vx.lineCap='round';vx.lineJoin='round';vx.lineWidth=Math.max(.5,OPT.size*(DRAG.pr||1))*Z;vx.beginPath();vx.moveTo(sx(DRAG.x),sy(DRAG.y));for(const[a,b]of DRAG.pred)vx.lineTo(sx(a),sy(b));vx.stroke();vx.restore()}
   if(MASKED&&(TOOL==='area'||TAB==='ai')){vx.save();vx.globalAlpha=.42;vx.drawImage(mask,PX,PY,W*Z,H*Z);vx.restore()}
   const l=selected();
   if(l&&l.visible&&!fixed(l)&&TOOL==='select'&&!window.PRO?.multi()){const p=corners(l).map(([a,b])=>[sx(a),sy(b)]);vx.strokeStyle='#141416';vx.lineWidth=1;vx.setLineDash([5,4]);vx.beginPath();p.forEach(([a,b],i)=>i?vx.lineTo(a,b):vx.moveTo(a,b));vx.closePath();vx.stroke();vx.setLineDash([]);
     if(!l.locked){const tm=[(p[0][0]+p[1][0])/2,(p[0][1]+p[1][1])/2],rk=rotKnob(l);vx.beginPath();vx.moveTo(tm[0],tm[1]);vx.lineTo(rk[0],rk[1]);vx.stroke();
       for(const[a,b]of p){vx.fillStyle='#fff';vx.fillRect(a-5,b-5,10,10);vx.strokeRect(a-5,b-5,10,10)}vx.beginPath();vx.arc(rk[0],rk[1],6,0,Math.PI*2);vx.fillStyle='#4bff9a';vx.fill();vx.stroke()}}
-  if(HOVER&&['brush','eraser','distress','area'].includes(TOOL)){const rad=(TOOL==='distress'?OPT.dsize:TOOL==='area'?OPT.area:OPT.size)/2*Z;vx.strokeStyle='rgba(20,20,22,.8)';vx.lineWidth=1;vx.beginPath();vx.arc(HOVER[0],HOVER[1],Math.max(rad,2),0,Math.PI*2);vx.stroke();vx.strokeStyle='rgba(255,255,255,.8)';vx.beginPath();vx.arc(HOVER[0],HOVER[1],Math.max(rad,2)+1,0,Math.PI*2);vx.stroke()}
+  if(HOVER&&['brush','eraser','distress','area'].includes(TOOL)){const rad=(TOOL==='distress'?OPT.dsize:TOOL==='area'?OPT.area:TOOL==='eraser'?OPT.esize:OPT.size)/2*Z;vx.strokeStyle='rgba(20,20,22,.8)';vx.lineWidth=1;vx.beginPath();vx.arc(HOVER[0],HOVER[1],Math.max(rad,2),0,Math.PI*2);vx.stroke();vx.strokeStyle='rgba(255,255,255,.8)';vx.beginPath();vx.arc(HOVER[0],HOVER[1],Math.max(rad,2)+1,0,Math.PI*2);vx.stroke()}
   window.PRO?.overlay(vx);window.VEC?.overlay(vx);window.ILL?.overlay(vx);overlay();$('#zLabel').textContent=Math.round(Z*100)+'%'+(VR?` · ${Math.round(VR)}°`:'');
 }
 function rotKnob(l){const p=corners(l).map(([a,b])=>[sx(a),sy(b)]),tm=[(p[0][0]+p[1][0])/2,(p[0][1]+p[1][1])/2],c=[sx(l.x),sy(l.y)],d=Math.hypot(tm[0]-c[0],tm[1]-c[1])||1;return[tm[0]+(tm[0]-c[0])/d*28,tm[1]+(tm[1]-c[1])/d*28]}
@@ -456,13 +478,14 @@ function strokeTarget(tool){
   if(l.locked){toast('That layer is locked. Unlock it in the layer list.');return null}
   return l;
 }
-function dab(l,x0,y0,x1,y1,tool,pr=1){ // pr: how hard the Pencil presses (1 for a mouse or a finger)
-  const c=l.raster,x=c.getContext('2d'),[a0,b0]=toLocal(l,x0,y0),[a1,b1]=toLocal(l,x1,y1),sz=Math.max(.5,(tool==='distress'?OPT.dsize:OPT.size)*pr)/l.scale;
+function dab(l,x0,y0,x1,y1,tool,pr=1,qx,qy){ // pr: how hard the Pencil presses (1 for a mouse or a finger); qx,qy: a control point, for a curve
+  const c=l.raster,x=c.getContext('2d'),[a0,b0]=toLocal(l,x0,y0),[a1,b1]=toLocal(l,x1,y1),qq=qx!==undefined?toLocal(l,qx,qy):null,sz=Math.max(.5,(tool==='distress'?OPT.dsize:OPT.size)*pr)/l.scale;
+  if(window.FBBrush&&(tool==='brush'||tool==='eraser')){FBBrush.segment(STK?.buf&&STK.l===l&&tool==='brush'?STK.buf.getContext('2d'):x,{tool,solid:Boolean(STK?.buf&&STK.l===l&&tool==='brush'),tip:tool==='brush'?OPT.tip:OPT.etip,color:CUR,size:Math.max(.5,tool==='eraser'?OPT.esize:OPT.size)/l.scale,flow:OPT.flow,soft:OPT.soft,pr},[a0,b0],[a1,b1],qq);c._rid=RID++;return}
   x.save();x.lineCap='round';x.lineJoin='round';x.lineWidth=sz;
   if(tool==='brush'){x.globalAlpha=OPT.flow;x.strokeStyle=CUR;if(OPT.soft){x.shadowColor=CUR;x.shadowBlur=sz*OPT.soft}}
   else{x.globalCompositeOperation='destination-out';x.globalAlpha=OPT.flow;x.strokeStyle='#000'}
   if(tool==='distress'){const t=texture('worn',256,256,40,l.id.length*7919);x.strokeStyle=x.createPattern(t,'repeat');x.globalAlpha=Math.min(1,OPT.flow*1.4)}
-  x.beginPath();x.moveTo(a0,b0);x.lineTo(a1+.01,b1);x.stroke();x.restore();c._rid=RID++;
+  x.beginPath();x.moveTo(a0,b0);if(qq)x.quadraticCurveTo(qq[0],qq[1],a1+.01,b1);else x.lineTo(a1+.01,b1);x.stroke();x.restore();c._rid=RID++;
 }
 function maskDab(x0,y0,x1,y1,erase){maskX.save();maskX.lineCap='round';maskX.lineWidth=OPT.area;maskX.strokeStyle='#e03b2e';if(erase)maskX.globalCompositeOperation='destination-out';maskX.beginPath();maskX.moveTo(x0,y0);maskX.lineTo(x1+.01,y1);maskX.stroke();maskX.restore();MASKED=true;mask._rid=RID++;paintAiState()}
 // ---------- iPad and the Pencil ----------
@@ -485,7 +508,7 @@ function gestMove(){const[a,b]=[...PTRS.values()];if(!a||!b||!GEST)return;const 
   let dr=(Math.atan2(br[1]-ar[1],br[0]-ar[0])-GEST.rang)*180/Math.PI;dr=((dr+540)%360)-180;let nr=GEST.VR0+dr;const sq=Math.round(nr/90)*90;if(Math.abs(nr-sq)<5)nr=sq;nr=((nr+540)%360)-180;
   if(!GEST.doc){const[ux,uy]=vturn(GEST.rm[0]-cx,GEST.rm[1]-cy,-GEST.VR0);GEST.doc=[(cx+ux-GEST.PX)/GEST.Z,(cy+uy-GEST.PY)/GEST.Z]}
   const[vx2,vy2]=vturn(m[0]-cx,m[1]-cy,-nr);FITTED=false;VR=nr;Z=nz;PX=cx+vx2-Z*GEST.doc[0];PY=cy+vy2-Z*GEST.doc[1];draw()}
-function cancelTouchStroke(){const g=DRAG;if(!g)return;if(g.mode==='stroke'&&g.orig){g.l.raster=g.orig;g.l.raster._rid=RID++}DRAG=null;draw()}
+function cancelTouchStroke(){const g=DRAG;if(!g)return;strokeEnd(false);if(g.mode==='stroke'&&g.orig){g.l.raster=g.orig;g.l.raster._rid=RID++}DRAG=null;draw()}
 view.addEventListener('pointerdown',e=>{
   if(!D)return;VIEWONLY=0;if(document.activeElement?.matches?.('input,textarea,select'))document.activeElement.blur(); // the picture takes the keys back from a field in the panel
   const[qx,qy]=pt(e);
@@ -504,7 +527,7 @@ view.addEventListener('pointerdown',e=>{
   if(TOOL==='hand'||SPACE||e.button===1){DRAG={mode:'pan',px,py,PX,PY,pid:e.pointerId,type:e.pointerType};return}
   if(TOOL==='pick'){compose();const d=docX.getImageData(clamp(Math.floor(x),0,W-1),clamp(Math.floor(y),0,H-1),1,1).data;setColor('#'+[d[0],d[1],d[2]].map(v=>v.toString(16).padStart(2,'0')).join(''));return}
   if(TOOL==='area'){maskDab(x,y,x,y,e.altKey);DRAG={mode:'area',x,y,erase:e.altKey,pid:e.pointerId,type:e.pointerType};draw();return}
-  if(['brush','eraser','distress'].includes(TOOL)){const l=strokeTarget(TOOL);if(!l)return;const orig=l.raster;l.raster=cloneCanvas(l.raster);SEL=l.id;dab(l,x,y,x,y,TOOL,pressOf(e));DRAG={mode:'stroke',l,x,y,orig,pid:e.pointerId,type:e.pointerType};draw();return}
+  if(['brush','eraser','distress'].includes(TOOL)){const l=strokeTarget(TOOL);if(!l)return;const orig=l.raster;l.raster=cloneCanvas(l.raster);SEL=l.id;DRAG={mode:'stroke',l,x,y,mx:x,my:y,orig,pid:e.pointerId,type:e.pointerType};strokeStart(l);dab(l,x,y,x,y,TOOL,pressOf(e));draw();return}
   if(TOOL==='text'){const l=addLayer(fresh('text',{name:'Type',x,y,text:'FUTURE BASICS',font:'grotesk',size:Math.round(W/14),bold:true,italic:false,track:Math.round(W/200),lead:1.1,align:'center',arc:0,color:CUR,outline:0,outlineColor:'#ffffff'}));setTool('select');tab('layers');setTimeout(()=>{const t=$('#pLayers textarea[data-p=text]');if(t){t.focus();t.select()}},30);return}
   if(['rect','ellipse','line'].includes(TOOL)){DRAG={mode:'shape',x0:x,y0:y,l:null,pid:e.pointerId,type:e.pointerType};return}
   if(TOOL==='ruler'){RULER=null;DRAG={mode:'ruler',x0:x,y0:y,x1:x,y1:y,pid:e.pointerId,type:e.pointerType};draw();return}
@@ -527,7 +550,10 @@ view.addEventListener('pointermove',e=>{
   const x=dx(px),y=dy(py),g=DRAG;
   if(window.ILL?.move(g,x,y,e)||window.PRO?.move(g,x,y,e)||window.VEC?.move(g,x,y,e))return;
   // the Pencil reports more samples than the screen draws: take all of them, so a quick curve stays a curve
-  if(g.mode==='stroke'){const ev=e.getCoalescedEvents?.()||[];for(const c of ev.length?ev:[e]){const[cx,cy]=pt(c),ux=dx(cx),uy=dy(cy);dab(g.l,g.x,g.y,ux,uy,TOOL,pressOf(c));g.x=ux;g.y=uy}draw();paintFields();return}
+  // each sample joins the last by a curve through their midpoints (a smooth line, not a chain of straight bits, when the samples are far
+  // apart at speed); the panel's numbers wait for the end of the stroke
+  if(g.mode==='stroke'){const ev=e.getCoalescedEvents?.()||[];for(const c of ev.length?ev:[e]){const[cx,cy]=pt(c),ux=dx(cx),uy=dy(cy);if(Math.hypot(ux-g.x,uy-g.y)*Z<.6)continue;const mx=(g.x+ux)/2,my=(g.y+uy)/2;g.pr=pressOf(c);dab(g.l,g.mx,g.my,mx,my,TOOL,g.pr,g.x,g.y);g.mx=mx;g.my=my;g.x=ux;g.y=uy}
+    g.pred=(e.getPredictedEvents?.()||[]).slice(-3).map(q=>{const[a,b]=pt(q);return[dx(a),dy(b)]});draw();return}
   if(g.mode==='pan'){FITTED=false;PX=g.PX+px-g.px;PY=g.PY+py-g.py}
   else if(g.mode==='area'){maskDab(g.x,g.y,x,y,g.erase);g.x=x;g.y=y}
   else if(g.mode==='stroke'){dab(g.l,g.x,g.y,x,y,TOOL);g.x=x;g.y=y}
@@ -542,7 +568,7 @@ view.addEventListener('pointermove',e=>{
     else{let w=Math.abs(x-g.x0),h=Math.abs(y-g.y0);if(e.shiftKey)w=h=Math.max(w,h);l.w=Math.max(4,Math.round(w));l.h=Math.max(4,Math.round(h));l.x=g.x0+(x<g.x0?-w:w)/2;l.y=g.y0+(y<g.y0?-h:h)/2}}
   draw();if(g.mode!=='pan'&&g.mode!=='area')paintFields();
 });
-const endDrag=e=>{if(e&&e.pointerId!==undefined){PTRS.delete(e.pointerId);if(GEST){if(PTRS.size<2){const g=GEST.layer;GEST=null;if(g?.moved){commit();paintPanels()}}return}if(DRAG&&DRAG.pid!==undefined&&DRAG.pid!==e.pointerId)return}const g=DRAG;DRAG=null;if(!g)return;if(window.ILL?.end(g)||window.PRO?.end(g)||window.VEC?.end(g))return;if(g.mode==='ruler'){rulerDone(g);draw();return}if(g.mode==='stroke'||g.mode==='area'||(g.mode==='shape'&&g.l)||g.moved){if(g.mode!=='area')commit();if(g.mode==='shape')setTool('select');paintPanels()}draw()};
+const endDrag=e=>{if(e&&e.pointerId!==undefined){PTRS.delete(e.pointerId);if(GEST){if(PTRS.size<2){const g=GEST.layer;GEST=null;if(g?.moved){commit();paintPanels()}}return}if(DRAG&&DRAG.pid!==undefined&&DRAG.pid!==e.pointerId)return}const g=DRAG;DRAG=null;if(!g)return;if(g.mode==='stroke'){if(g.mx!==undefined&&(g.mx!==g.x||g.my!==g.y))dab(g.l,g.mx,g.my,g.x,g.y,TOOL,g.pr||1);strokeEnd();paintFields()}if(window.ILL?.end(g)||window.PRO?.end(g)||window.VEC?.end(g))return;if(g.mode==='ruler'){rulerDone(g);draw();return}if(g.mode==='stroke'||g.mode==='area'||(g.mode==='shape'&&g.l)||g.moved){if(g.mode!=='area')commit();if(g.mode==='shape')setTool('select');paintPanels()}draw()};
 view.addEventListener('pointerup',endDrag);view.addEventListener('pointercancel',endDrag);view.addEventListener('lostpointercapture',e=>{if(DRAG&&DRAG.pid===e.pointerId)endDrag(e)});view.addEventListener('pointerleave',e=>{if(e.pointerType==='mouse'||e.pointerType==='pen'&&!DRAG){HOVER=null;draw()}});
 // iPad: a Pencil on the page can be taken as handwriting (Scribble) or the start of a text selection, and then never reaches the canvas as a
 // stroke; holding the Pencil's touches on the stage keeps them ours (fingers are left alone: they move and pinch through the pointer events)
@@ -558,7 +584,7 @@ view.addEventListener('wheel',e=>{e.preventDefault();const[px,py]=pt(e);if(e.ctr
 $('#zIn').onclick=()=>{const r=view.getBoundingClientRect();zoomAt(1.25,r.width/2,r.height/2)};$('#zOut').onclick=()=>{const r=view.getBoundingClientRect();zoomAt(.8,r.width/2,r.height/2)};$('#zFit').onclick=fit;
 
 // ---------- tools and their options ----------
-function setTool(t){TOOL=t;setTimeout(()=>window.paintRailNames?.(),0);if(VMODE==='front'||VMODE==='back')FF()?.tool?.(t);$$('.rail [data-tool]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.tool===t)));view.style.cursor=t==='hand'?'grab':t==='select'?'default':t==='text'?'text':'crosshair';paintOpts();draw()}
+function setTool(t){TOOL=t;setTimeout(()=>window.paintDock?.(),0);setTimeout(()=>window.paintRailNames?.(),0);if(VMODE==='front'||VMODE==='back')FF()?.tool?.(t);$$('.rail [data-tool]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.tool===t)));view.style.cursor=t==='hand'?'grab':t==='select'?'default':t==='text'?'text':'crosshair';paintOpts();draw()}
 const pressHtml=()=>`<label class="chk" title="With an Apple Pencil, pressing harder makes the line wider"><input type="checkbox" data-press ${OPT.pressure?'checked':''}> Pencil pressure</label>`;
 $('#opts').addEventListener('change',e=>{if(e.target.matches('[data-press]'))OPT.pressure=e.target.checked});
 function paintOpts(){
@@ -566,8 +592,9 @@ function paintOpts(){
   const help={pen:'Click for a sharp point, drag for a curve. Click the first point to close the shape; Enter or Esc leaves it open. Shift keeps to 45°. Backspace takes the last point back.',node:'Drag a point or a handle. Alt-click a point to make it sharp or smooth, click the line to add a point, Delete takes the chosen point away. Alt while dragging a handle breaks it from its pair.',select:'Click a layer to choose it. Drag to move, a corner to resize, the green knob to turn (Shift: 15° steps). Arrows nudge.',hand:'Drag to move around. Ctrl and the wheel, or a pinch, zooms.',text:'Click where the type should go.',rect:'Drag to draw. Shift makes a square.',ellipse:'Drag to draw. Shift makes a circle.',line:'Drag to draw a line.',pick:'Click the picture to take its colour.',ruler:'Drag across something whose size you know, then say how long it is. Shift keeps the line straight.',warp:'Choose a layer, then drag its points to bend it to the piece. Presets are in the layer settings.'};
   // the production tools (src/lab-studio-ill.js) say what they do too
   Object.assign(help,{artboard:'Drag to make an artboard: a face of the box, a label, a hang tag. Drag one to move it; sizes, bleed and Lay out a box are in Document.',shapebuilder:'Drag across shapes to join the pieces you cross into one. Alt-click a piece to take it away. Choose two or more shapes first.',width:'Drag a point on a stroke to make it thicker or thinner there, for a line that tapers. Alt-click a point to put it back.',measure:'Drag from one point to another: the distance and angle show in mm or inches (Document sets which).',typepath:'Click a path to set type along it. Its words, size and where it starts are in the panel on the right.'});
-  if(TOOL==='brush')o.innerHTML=rg('size','Size',1,400)+rg('flow','Opacity',.05,1,.05,'')+rg('soft','Softness',0,1,.05,'')+pressHtml()+'<span class="hint">Paints on the selected painting layer, or starts a new one. With the Pencil, fingers move and pinch the view.</span>';
-  else if(TOOL==='eraser')o.innerHTML=rg('size','Size',1,400)+rg('flow','Strength',.05,1,.05,'')+pressHtml()+'<span class="hint">Rubs out the selected layer.</span>';
+  const tipsHtml=(list,key)=>`<span class="tips" role="radiogroup" aria-label="Tip">${list.map(t=>`<button type="button" role="radio" data-tip="${key}:${t.id}" aria-checked="${OPT[key]===t.id}" title="${esc(t.hint)}">${esc(t.label)}</button>`).join('')}</span>`,B=window.FBBrush;
+  if(TOOL==='brush')o.innerHTML=(B?tipsHtml(B.TIPS,'tip'):'')+rg('size','Size',1,400)+rg('flow','Opacity',.05,1,.05,'')+rg('soft','Softness',0,1,.05,'')+pressHtml()+'<span class="hint">Paints on the selected painting layer, or starts a new one. With the Pencil, fingers move and pinch the view.</span>';
+  else if(TOOL==='eraser')o.innerHTML=(B?tipsHtml(B.ERASER_TIPS,'etip'):'')+rg('esize','Size',1,600)+rg('flow','Strength',.05,1,.05,'')+pressHtml()+'<span class="hint">Rubs out the selected layer.</span>';
   else if(TOOL==='distress')o.innerHTML=rg('dsize','Size',4,600)+rg('flow','Strength',.05,1,.05,'')+'<span class="hint">Wears the selected layer away, like an old print. For an even wear across the layer, use Distress in its settings.</span>';
   else if(TOOL==='area')o.innerHTML=rg('area','Size',4,600)+'<span class="hint">Paint over what the AI should change. Hold Alt to rub out.</span><button class="btn sm" type="button" data-clearmask>Clear the area</button>';
   else o.innerHTML=`<span class="hint">${help[TOOL]||''}</span>`;
@@ -576,7 +603,17 @@ function paintOpts(){
     o.querySelector('[data-clearmask]')?.remove();const h=o.querySelector('.hint');if(h&&fh)h.textContent=fh;else if(fh)o.insertAdjacentHTML('beforeend',`<span class="hint">${fh}</span>`)}
   window.PRO?.opts(o);
 }
-$('#opts').addEventListener('input',e=>{const k=e.target.dataset.o;if(!k)return;OPT[k]=Number(e.target.value);e.target.nextElementSibling.textContent=OPT[k]+(['flow','soft'].includes(k)?'':'px');draw()});
+$('#opts').addEventListener('input',e=>{const k=e.target.dataset.o;if(!k)return;OPT[k]=Number(e.target.value);e.target.nextElementSibling.textContent=OPT[k]+(['flow','soft'].includes(k)?'':'px');paintDock();draw()});
+$('#opts').addEventListener('click',e=>{const b=e.target.closest('[data-tip]');if(!b)return;const[k,v]=b.dataset.tip.split(':');OPT[k]=v;paintOpts();toast(b.title)});
+// ---- the size dock: a big size slider beside the canvas while a brush, the eraser or distress is chosen (a Pencil reaches it without
+// leaving the drawing), with quick sizes and the opacity; it follows the tool's own size (the eraser keeps its own)
+const sizeKey=()=>TOOL==='eraser'?'esize':TOOL==='distress'?'dsize':'size';
+function paintDock(){const d=$('#sizeDock');if(!d)return;const on=['brush','eraser','distress'].includes(TOOL);d.classList.toggle('hidden',!on);if(!on)return;const k=sizeKey(),mx=k==='size'?400:600,v=OPT[k];
+  d.querySelector('[data-dk=size]').max=mx;d.querySelector('[data-dk=size]').value=v;d.querySelector('[data-dk=flow]').value=OPT.flow;
+  const dot=d.querySelector('.dk-dot'),px=Math.max(3,Math.min(56,v*Z));dot.style.width=dot.style.height=px+'px';d.querySelector('.dk-v').textContent=v+'px';d.querySelector('.dk-o').textContent=Math.round(OPT.flow*100)+'%';
+  d.querySelectorAll('[data-dpre]').forEach(b=>b.setAttribute('aria-pressed',String(Number(b.dataset.dpre)===v)))}
+document.addEventListener('input',e=>{const k=e.target.dataset?.dk;if(!k)return;if(k==='size')OPT[sizeKey()]=Number(e.target.value);else OPT.flow=Number(e.target.value);paintDock();paintOpts();draw()});
+document.addEventListener('click',e=>{const b=e.target.closest('[data-dpre]');if(!b)return;OPT[sizeKey()]=Number(b.dataset.dpre);paintDock();paintOpts();draw()});
 $('#opts').addEventListener('click',e=>{if(e.target.closest('[data-clearmask]'))clearMask()});
 $$('.rail [data-tool]').forEach(b=>b.onclick=()=>setTool(b.dataset.tool));
 function setColor(c){CUR=c;$('#curColor').style.background=c;$('#curPicker').value=c}
@@ -1005,7 +1042,7 @@ $('#undo').onclick=undo;$('#redo').onclick=redo;
 $('#railUndo').onclick=undo;$('#railRedo').onclick=redo;
 // what each tool is and does, beside the rail: for learning by trying. Tap a name to pick the tool; the choice to show them is remembered
 const TOOL_HELP={select:'Tap a layer to choose it; drag to move, corners to resize, the green knob to turn',hand:'Drag to move around the page (two fingers do it too)',brush:'Paint on the chosen layer',eraser:'Rub out paint, or lines of the sketch on a flat',distress:'Wear the layer away, like a washed print',text:'Tap the page and type',rect:'Drag to draw a box',ellipse:'Drag to draw an oval or circle',line:'Drag to draw a straight line',pen:'Tap for corners, drag for curves; tap the first point to close',node:'Move the points of a shape you drew',ruler:'Drag across something you know the size of, to set real inches',warp:'Bend a graphic to follow the garment',pick:'Tap the picture to borrow a colour',area:'Paint where the AI should change the picture'};
-function paintRailNames(){const box=$('#railLabels'),open=$('#railNames').getAttribute('aria-pressed')==='true';box.classList.toggle('hidden',!open);if(!open)return;const rail=$('.rail'),rb=rail.getBoundingClientRect(),sb=box.parentElement.getBoundingClientRect();
+function paintRailNames(){const box=$('#railLabels'),open=$('#railNames').getAttribute('aria-pressed')==='true';$('.studio')?.classList.toggle('names-on',open);box.classList.toggle('hidden',!open);if(!open)return;const rail=$('.rail'),rb=rail.getBoundingClientRect(),sb=box.parentElement.getBoundingClientRect();
   box.style.top=(rb.top-sb.top)+'px';box.style.left=(rb.right-sb.left)+'px';box.style.height=rb.height+'px';
   box.innerHTML=[...rail.querySelectorAll('button[data-tool]')].filter(b=>b.offsetParent).map(b=>{const t=b.dataset.tool,r=b.getBoundingClientRect(),name=b.getAttribute('aria-label');return `<button type="button" role="listitem" data-pick-tool="${t}" aria-pressed="${b.getAttribute('aria-pressed')==='true'}" style="top:${r.top-rb.top+r.height/2}px"><b>${esc(name)}</b><small>${esc(TOOL_HELP[t]||b.title)}</small></button>`}).join('')}
 $('#railNames').onclick=()=>{const on=$('#railNames').getAttribute('aria-pressed')!=='true';$('#railNames').setAttribute('aria-pressed',String(on));try{localStorage.setItem('fb.studio.names',on?'1':'0')}catch{}paintRailNames()};
@@ -1340,7 +1377,7 @@ function showSheet(blob,name,title){let d=$('#sheetDlg');if(!d){d=document.creat
 // a graphic removed on the flats leaves the garment here too (it stays on the picture as a layer); without this the next save puts it back
 function flatRemoved({id,layer}={}){const l=LAYERS.find(x=>(layer&&x.id===layer)||(id&&x.fromFlat===id));if(!l||!l.placement)return;l.placement=undefined;l.fromFlat=undefined;commit();paintLayers();draw();toast(`${l.name} is off the garment. It is still a layer on the picture: delete it in Layers if you do not want it there either.`)}
 const ENGD=()=>['electronics','toys','home'].includes(D?.concept?.category);
-window.FBDesign={saveAll,showSheet,flatRemoved,graphicStudio,graphicKept,materials:()=>matOpen().catch(x=>toast(x.message)),recipeUrl:()=>D?.concept?.recipe&&!D.concept.locked?`/lab/recipe?concept=${CID}`:'',clothChanged:()=>{if(typeof paintFabrics==='function'&&$('#fabSec'))paintFabrics().catch(()=>{});if($('#matDlg')?.open)matLoadOn().catch(()=>{});setTimeout(loadReady,200)}, /* the cloth changed on the flats: the fabric panels and the checklist read it again */drawOpts:()=>({tool:TOOL,color:CUR,size:OPT.size,dsize:OPT.dsize,flow:OPT.flow,soft:OPT.soft,pressure:OPT.pressure}),flatsChanged(){syncUndo()},flatsSaved(){const f=FF();if(f)adoptFlats(f.placements(),{saved:true});setTimeout(loadReady,300)},flatsReady(){const f=FF();if(!f)return;f.mode(VMODE==='split'?'compact':'full');if(VMODE==='front'||VMODE==='back'){f.setView(VMODE);f.tool?.(TOOL)}f.layout?.(LAYOUT);mirrorFlats();f.level?.(LEVEL);$('#packBtn').classList.toggle('hidden',!f.canPack());FLATS={saved:f.saved(),placements:f.placements()};paintLayers();['#specBtn','#decoBtn'].forEach(s=>$(s).disabled=Boolean(f.unsupported()))}};
+window.FBDesign={saveAll,showSheet,flatRemoved,graphicStudio,graphicKept,materials:()=>matOpen().catch(x=>toast(x.message)),recipeUrl:()=>D?.concept?.recipe&&!D.concept.locked?`/lab/recipe?concept=${CID}`:'',clothChanged:()=>{if(typeof paintFabrics==='function'&&$('#fabSec'))paintFabrics().catch(()=>{});if($('#matDlg')?.open)matLoadOn().catch(()=>{});setTimeout(loadReady,200)}, /* the cloth changed on the flats: the fabric panels and the checklist read it again */drawOpts:()=>({tool:TOOL,color:CUR,size:TOOL==='eraser'?OPT.esize:OPT.size,dsize:OPT.dsize,flow:OPT.flow,soft:OPT.soft,pressure:OPT.pressure,tip:OPT.tip,etip:OPT.etip}),flatsChanged(){syncUndo()},flatsSaved(){const f=FF();if(f)adoptFlats(f.placements(),{saved:true});setTimeout(loadReady,300)},flatsReady(){const f=FF();if(!f)return;f.mode(VMODE==='split'?'compact':'full');if(VMODE==='front'||VMODE==='back'){f.setView(VMODE);f.tool?.(TOOL)}f.layout?.(LAYOUT);mirrorFlats();f.level?.(LEVEL);$('#packBtn').classList.toggle('hidden',!f.canPack());FLATS={saved:f.saved(),placements:f.placements()};paintLayers();['#specBtn','#decoBtn'].forEach(s=>$(s).disabled=Boolean(f.unsupported()))}};
 async function setVMode(v,{push=true}={}){
   if(!VIEWS.includes(v)||GMODE||!CID)v='picture';const was=VMODE;
   if(v==='pattern'){const f=FF();if(f?.dirty?.())toast('The flats have changes that are not saved: save them to see them in the pattern.');$('#patFrame').src=`/lab/${ENGD()?'engineer':'pattern'}?concept=${CID}&embed=1`;PLOADED=true}
@@ -1491,5 +1528,6 @@ boot();
 <script src="/lab/studio-emb.js"></script>
 <script src="/lab/studio-board.js"></script>
 <script src="/helper.js" defer></script>
+<script type="module">import * as B from '/lab/lab-brush.js';window.FBBrush=B;try{paintOpts();paintDock()}catch{}</script>
 </body>
 </html>
