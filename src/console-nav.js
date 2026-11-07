@@ -390,16 +390,17 @@ const autoCollapse = () => { if (!chosen()) { let touch = false; try { touch = m
     if (window.fbSaveBar || document.getElementById('saved') || document.documentElement.dataset.fbsave === 'own') return;
     window.fbSaveBar = true;
     const st = { busy: 0, at: null, err: null, retry: null };
-    const b = document.createElement('button'); b.type = 'button'; b.id = 'fbSaved'; b.className = 'fbsaved'; b.hidden = true; b.setAttribute('aria-live', 'polite');
+    const b = document.createElement('button'); b.type = 'button'; b.id = 'fbSaved'; b.className = 'fbsaved'; b.hidden = true; b.tabIndex = -1; b.setAttribute('aria-live', 'polite');
     document.body.appendChild(b);
     const css = document.createElement('style');
     css.textContent = `.fbsaved{position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:70;display:inline-flex;align-items:center;gap:7px;border:1px solid #d9d8d2;background:#fff;color:#141416;border-radius:999px;padding:6px 14px;font:600 12.5px/1.2 'Space Grotesk',system-ui,sans-serif;box-shadow:0 6px 18px rgba(20,20,22,.10);cursor:default}
+      .fbsaved[hidden]{display:none}.fbsaved:focus{outline:none}.fbsaved.bad:focus-visible{outline:2px solid #8f2418;outline-offset:2px}
       .fbsaved i{width:8px;height:8px;border-radius:50%;background:#1f9d55;flex:none}.fbsaved.busy i{background:#d49a00;animation:fbsp 1s infinite alternate}.fbsaved.bad{border-color:#e9b8b1;color:#8f2418;cursor:pointer}.fbsaved.bad i{background:#c0392b}
       @keyframes fbsp{to{opacity:.3}}@media(prefers-reduced-motion:reduce){.fbsaved.busy i{animation:none}}@media print{.fbsaved{display:none}}`;
     document.head.appendChild(css);
     const time = t => new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
     const paint = () => {
-      b.hidden = !(st.busy || st.at || st.err); b.className = 'fbsaved' + (st.busy ? ' busy' : st.err ? ' bad' : '');
+      b.hidden = !(st.busy || st.at || st.err); b.tabIndex = st.err && st.retry ? 0 : -1; b.className = 'fbsaved' + (st.busy ? ' busy' : st.err ? ' bad' : '');
       b.innerHTML = '<i></i>' + (st.busy ? 'Saving…' : st.err ? `Not saved: ${String(st.err).replace(/[<&>]/g, '').slice(0, 90)}${st.retry ? ' · Save again' : ''}` : `Saved ${time(st.at)}`);
       b.title = st.err ? (st.retry ? 'Press to send the change again' : 'Make the change again on the page') : st.at ? `Your last change was saved at ${new Date(st.at).toLocaleString()}` : '';
     };
