@@ -113,3 +113,26 @@ test('materialFit picks the check by category; the ask form names its fields', (
   assert.doesNotMatch(askHtml({ id: null, fields: [], msg: 'Choose the sole too.' }), /<form/);
   assert.ok(Object.keys(ASK_FIELDS).length >= 8);
 });
+
+test('the cloth is ranked for the style: the usual cloth at a usual weight first, wovens and leather last for a tee', async () => {
+  const { rankFabrics } = await import('../src/lab-fabric-fit.js'); const { BUILTIN_MATERIALS } = await import('../src/lab-materials.js');
+  const fabrics = BUILTIN_MATERIALS.filter(m => m.kind === 'fabric'), tee = rankFabrics('tee', fabrics);
+  assert.equal(tee.length, fabrics.length, 'every fabric is ranked');
+  assert.match(tee[0].spec.construction, /jersey/); assert.equal(tee[0].fit.tier, 'best');
+  const at = re => tee.findIndex(m => re.test(m.name)), tiers = tee.map(m => m.fit.tier);
+  assert.ok(at(/180 gsm single jersey/) < at(/400 gsm French terry/) && at(/400 gsm French terry/) < at(/duck canvas/), 'jersey, then a heavy terry, then canvas');
+  assert.equal(tee[at(/duck canvas/)].fit.tier, 'no'); assert.match(tee[at(/duck canvas/)].fit.why, /cut from a knit; this is a woven/);
+  assert.match(tee[at(/400 gsm French terry/)].fit.why, /Heavy for a tee \(usually 120–300 gsm\)/);
+  assert.deepEqual([...tiers].sort((a, b) => ['best', 'good', 'check', 'no'].indexOf(a) - ['best', 'good', 'check', 'no'].indexOf(b)).slice(0, 3), tiers.slice(0, 3), 'best first');
+  const hoodie = rankFabrics('hoodie', fabrics); assert.match(hoodie[0].spec.construction, /fleece|terry/);
+  const pants = rankFabrics('pants', fabrics); assert.match(`${pants[0].name} ${pants[0].spec.construction}`, /twill|denim|canvas/);
+  assert.equal(rankFabrics('bag', fabrics)[0].fit.tier, 'best', 'a library bag ranks as a tote');
+  assert.equal(rankFabrics('spaceship', fabrics)[0].fit.tier, '', 'no rules, no ranking');
+});
+
+test('the tee jerseys cover the fibres, spinning and weights a tee is made in', async () => {
+  const { BUILTIN_MATERIALS } = await import('../src/lab-materials.js');
+  const jersey = BUILTIN_MATERIALS.filter(m => m.kind === 'fabric' && /jersey/.test(m.spec?.construction || '') && /cotton/i.test(m.spec?.composition || ''));
+  const g = jersey.map(m => m.spec.weightGsm); assert.ok(jersey.length >= 18 && Math.min(...g) <= 120 && Math.max(...g) >= 330, `${jersey.length} cotton jerseys, ${Math.min(...g)}–${Math.max(...g)} gsm`);
+  for (const w of [/supima/i, /pima/i, /egyptian/i, /organic/i, /ring-spun/i, /slub/i, /pigment/i, /tubular/i]) assert.ok(jersey.some(m => w.test(`${m.name} ${m.spec.composition}`)), String(w));
+});

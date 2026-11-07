@@ -166,3 +166,37 @@ export function withAccept(fit, accept, materials) {
   const main = mainOf(materials), ok = fit && fit.verdict !== 'good' && fit.verdict !== 'unknown' && accept && accept.reason && main && accept.main === main.id;
   return ok ? { ...fit, accepted: { reason: accept.reason, by: accept.by || '', at: accept.at || null }, summary: `Kept on purpose: ${accept.reason}${accept.by ? ` (${accept.by})` : ''}. The check said: ${fit.findings[0]?.msg || fit.summary}` } : fit;
 }
+
+// ---- Which cloth first: every fabric in the library ranked for one style, best first ----
+// The order a designer reaches for them in: what the style is usually cut from (its constructions, best first), at a weight near the usual one,
+// then what works with changes, then what does not suit it. rankFabrics(style, fabrics) → [{ ...fabric, fit: { verdict, rank, tier, why } }]
+//   tier  'best' (the usual cloth at a usual weight) · 'good' (suits it) · 'check' (works with changes) · 'no' (does not suit it) · '' (no rules)
+const PREFER = {
+  tee: ['single jersey', 'heavy jersey', 'slub jersey', 'interlock', 'piqu'], longsleeve: ['single jersey', 'heavy jersey', 'slub jersey', 'interlock', 'waffle', 'rib'],
+  tank: ['single jersey', 'rib', 'slub jersey', 'interlock'], polo: ['piqu', 'interlock', 'single jersey'], crewneck: ['loopback', 'french terry', 'brushed fleece', 'fleece', 'heavy jersey'],
+  hoodie: ['loopback', 'brushed fleece', 'french terry', 'fleece', 'sherpa'], ziphoodie: ['loopback', 'brushed fleece', 'french terry', 'fleece'], beanie: ['rib', 'knit'],
+  bodysuit: ['rib', 'interlock', 'single jersey'], leggings: ['interlock', 'tricot', 'ponte', 'jersey'], swimsuit: ['tricot'], bikini: ['tricot'], bra: ['tricot', 'interlock'],
+  shirt: ['poplin', 'oxford', 'broadcloth', 'chambray', 'twill', 'flannel', 'linen', 'end-on-end', 'seersucker'], shirtss: ['poplin', 'oxford', 'linen', 'chambray', 'seersucker', 'voile'],
+  coat: ['melton', 'wool', 'twill', 'gabardine', 'canvas'], tote: ['canvas', 'duck', 'twill', 'cordura', 'denim'], bucket: ['twill', 'canvas', 'corduroy', 'ripstop', 'nylon'],
+  cap: ['twill', 'canvas', 'corduroy', 'ripstop', 'nylon'], jacket: ['ripstop', 'taslan', 'nylon', 'twill', 'canvas', 'denim', 'softshell', 'shell'], vest: ['ripstop', 'nylon', 'canvas', 'fleece'],
+  pants: ['twill', 'denim', 'canvas', 'corduroy', 'ripstop', 'gabardine'], shorts: ['twill', 'french terry', 'ripstop', 'nylon', 'denim', 'canvas'], skirt: ['twill', 'denim', 'satin', 'crepe'],
+  dress: ['crepe', 'satin', 'voile', 'poplin', 'single jersey', 'linen'], cami: ['satin', 'crepe', 'voile', 'silk'],
+};
+const ALIAS = { bag: 'tote' };
+const VERDICT_SCORE = { good: 0, check: 45, unknown: 60, wrong: 100 };
+export function rankFabrics(style = '', fabrics = []) {
+  const st = ALIAS[style] || style, need = STYLE_CLOTH[st], pref = PREFER[st] || [], a = LABEL[st] || 'this style';
+  const out = (Array.isArray(fabrics) ? fabrics : []).map((m, i) => {
+    if (!need) return { ...m, fit: { verdict: 'unknown', rank: i, tier: '', why: '' } };
+    const f = fabricFit({ style: st, materials: [{ kind: 'fabric', role: 'main', name: m.name, spec: m.spec || {} }] });
+    const words = `${m.spec?.construction || ''} ${m.name || ''}`.toLowerCase(), p = pref.findIndex(w => words.includes(w)), g = gsmOf(m);
+    const [lo, hi] = need.gsm, ideal = lo + (hi - lo) * .4, gap = g ? Math.abs(g - ideal) / (hi - lo) : .5;
+    const cloth = clothOf(m), offBase = need.base !== 'either' && cloth && cloth !== need.base, offWeight = g && (g < lo * .6 || g > hi * 1.6);
+    const tier = f.verdict === 'wrong' || offBase || offWeight || (cloth === 'leather' && need.base === 'knit') ? 'no' : f.verdict === 'check' ? 'check' : f.verdict === 'good' && p >= 0 && p < 3 && gap < .35 ? 'best' : f.verdict === 'good' ? 'good' : 'check';
+    const score = (VERDICT_SCORE[f.verdict] ?? 60) + (offBase || offWeight ? 60 : 0) + (p < 0 ? 18 : p * 3) + gap * 20 + (/cotton/i.test(m.spec?.composition || '') && need.base === 'knit' && !need.stretch ? -2 : 0);
+    const cap = t => t[0].toUpperCase() + t.slice(1), weightWhy = g && (g > hi || g < lo) ? `${g > hi ? 'Heavy' : 'Light'} for ${a} (usually ${lo}–${hi} gsm)` : '';
+    const why = offBase ? `${cap(a)} is cut from a ${need.base}; this is ${cloth === 'leather' ? 'a leather' : `a ${cloth}`}` : weightWhy && tier !== 'best' && tier !== 'good' ? weightWhy : tier === 'no' && !f.findings[0] ? (offBase ? `${a[0].toUpperCase()}${a.slice(1)} is cut from a ${need.base}; this is a ${cloth}` : `Far from the usual weight for ${a} (${lo}–${hi} gsm)`) : tier === 'best' ? `The usual cloth for ${a}${g ? `, at a usual weight (${g} gsm)` : ''}` : tier === 'good' ? `Suits ${a}` : f.findings[0] ? `${f.findings[0].msg}` : f.summary;
+    return { ...m, fit: { verdict: f.verdict, rank: score, tier, why } };
+  });
+  return out.sort((x, y) => x.fit.rank - y.fit.rank);
+}

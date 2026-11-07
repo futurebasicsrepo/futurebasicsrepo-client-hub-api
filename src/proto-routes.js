@@ -128,6 +128,8 @@ export function registerProtoRoutes(app, d) {
   // ---------- staff API ----------
   app.get('/v1/admin/prototypes/meta', { preHandler: pre }, async () => ({ industries: INDUSTRIES.map(i => ({ key: i.key, label: i.label })), ai: protoAiReady(env), model: protoAiReady(env) ? PROTO_MODEL(env) : 'template', today: await usedToday(), perDay: perDay(), publicUrl, canEdit: canEdit(), editsPerDay: editsPerDay(),
     projects: (await pool.query(`select p.id, p.name, c.name client from projects p join clients c on c.id=p.client_id where p.kind='software' and p.status='active' and c.archived_at is null and c.slug<>'future-basics' order by p.updated_at desc limit 80`)).rows,
+    // every client room, so a prototype can go to any of them (a room with no software project gets one when it is pushed)
+    clients: (await pool.query(`select id, name from clients where archived_at is null and slug<>'future-basics' order by lower(name) limit 500`)).rows,
     builds: (await pool.query(`select id, name, live_url "liveUrl" from builds where status<>'archived' and live_url<>'' order by name limit 300`)).rows }));
   app.post('/v1/admin/prototypes/audit', { preHandler: pre }, async (req, reply) => {
     if (!throttle(`protoaudit:${req.auth.sub}`, { limit: 60, windowMs: 3600_000 })) return reply.code(429).send({ error: 'That is a lot of audits this hour: try again in a while' });
@@ -175,6 +177,9 @@ export function registerProtoRoutes(app, d) {
     const b = req.body || {}; let project = null;
     const wanted = UUID.test(String(b.projectId || '')) ? b.projectId : r.deal_id ? (await pool.query('select project_id from sales_deals where id=$1', [r.deal_id])).rows[0]?.project_id : null;
     if (wanted) { project = (await pool.query(`select p.id, p.name, p.client_id, p.build_id, c.name client from projects p join clients c on c.id=p.client_id where p.id=$1 and p.kind='software' and c.slug<>'future-basics'`, [wanted])).rows[0] || null; if (!project && UUID.test(String(b.projectId || ''))) return reply.code(422).send({ error: 'That is not one of the client software projects' }); }
+    // any client's room: a room picked without a project gets a software project for this site (made below, once the build exists)
+    const room = !project && UUID.test(String(b.clientId || '')) ? (await pool.query(`select id, name from clients where id=$1 and archived_at is null and slug<>'future-basics'`, [b.clientId])).rows[0] || null : null;
+    if (!project && UUID.test(String(b.clientId || '')) && !room) return reply.code(422).send({ error: 'That client room is not here' });
     const emails = b.emails && String(Array.isArray(b.emails) ? b.emails.join('') : b.emails).trim() ? b.emails : null;
     const name = clip(`${r.company}: new site prototype`, 80), onShopify = /\.myshopify\.com$/.test(new URL(r.external_url).hostname);
     const summary = clip(b.summary, 900) || `A first look at the new site for ${r.company}${onShopify ? ', built on Shopify' : ''}. It is a prototype: the look and feel and how it works, before anything goes live.`;
@@ -188,6 +193,10 @@ export function registerProtoRoutes(app, d) {
         [slug, name, clip(`A new site for ${r.company}`, 140), clip(b.sector, 40) || 'Retail', onShopify ? 'shopify' : 'other', r.external_url, onShopify ? ['Shopify', 'Liquid', 'JavaScript'] : [], summary, repoUrl, repoPath])).rows[0].id;
     }
     await pool.query('update prototypes set build_id=$2, published_at=coalesce(published_at, now()), updated_at=now() where id=$1', [r.id, buildId]);
+    if (room) { // the room's software project for this site: the one already on this build (pushed before), else a new one
+      project = (await pool.query(`select p.id, p.name, p.client_id, p.build_id, $2::text client from projects p where p.client_id=$1 and p.kind='software' and p.status='active' and p.build_id=$3 order by p.updated_at desc limit 1`, [room.id, room.name, buildId])).rows[0]
+        || { ...(await pool.query(`insert into projects(client_id, name, status, kind, build_id, stage) values($1,$2,'active','software',$3,'prototype') returning id, name, client_id, build_id`, [room.id, clip(`${r.company || room.name}: new site`, 120), buildId])).rows[0], client: room.name };
+    }
     if (project) await pool.query('update projects set build_id=$2, updated_at=now() where id=$1', [project.id, buildId]);
     let invites = null;
     if (emails) {

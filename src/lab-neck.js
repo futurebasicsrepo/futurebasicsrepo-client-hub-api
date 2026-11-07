@@ -81,8 +81,9 @@ export function necklineSvg(p = {}, view = 'front', m = {}, { cloth = '#ffffff',
   const nh = (m.neckWidth || 7.5) / 2 * 1.2, df = m.neckDropFront ?? 3.5, db = m.neckDropBack ?? 1, w = n.stand ? n.rib : (m.neckRib > 0 ? m.neckRib : n.rib), standH = n.stand ? standOf(n, m) : 0, fill = cloth || '#ffffff', inside = shade(fill, .28), deep = shade(fill, .45);
   const stroke = `stroke="${line}" stroke-width=".04" stroke-linejoin="round"`, stitch = `stroke="${line}" stroke-width=".02" stroke-dasharray=".14 .09" fill="none"`;
   const lowest = view === 'back' ? db + w + .8 : Math.max(df, 3.5) + 1.6;
-  // the cover: the neck area of the sketch, kept inside the shoulders so it never spills past the garment
-  const under = `<path d="M ${n3(-nh - .15)} .18 L ${n3(nh + .15)} .18 L ${n3(nh + .65)} 1.25 C ${n3(nh + .6)} ${n3(Math.max(lowest * .8, 1.7))} ${n3(nh * .6)} ${n3(lowest)} 0 ${n3(lowest)} C ${n3(-nh * .6)} ${n3(lowest)} ${n3(-nh - .6)} ${n3(Math.max(lowest * .8, 1.7))} ${n3(-nh - .65)} 1.25 Z" fill="#ffffff"/>`; // narrow at the top and wider lower down, so the shoulder line and raglan seams are left alone
+  // the cover: the neck area of the sketch, out to where the sketch's own collar meets the shoulders (so none of its edge is left beside the
+  // new one), and kept under the shoulder line so it never spills past the garment
+  const under = `<path d="M ${n3(-nh - 1.05)} .5 L ${n3(-nh - .55)} .27 L ${n3(-nh - .15)} .18 L ${n3(nh + .15)} .18 L ${n3(nh + .55)} .27 L ${n3(nh + 1.05)} .5 L ${n3(nh + 1.05)} 1.25 C ${n3(nh + .9)} ${n3(Math.max(lowest * .8, 1.7))} ${n3(nh * .6)} ${n3(lowest)} 0 ${n3(lowest)} C ${n3(-nh * .6)} ${n3(lowest)} ${n3(-nh - .9)} ${n3(Math.max(lowest * .8, 1.7))} ${n3(-nh - 1.05)} 1.25 Z" fill="#ffffff"/>`; // narrow at the top and wider lower down, so the shoulder line and raglan seams are left alone
   let over = '';
   if (view === 'back') {
     if (n.stand) { // the back of the stand

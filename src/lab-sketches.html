@@ -45,10 +45,15 @@ h1{font-size:clamp(28px,4.4vw,42px);letter-spacing:-.035em;font-weight:500;margi
 #sheet .shArt img{width:100%;height:100%;max-width:none;object-fit:contain;padding:5%;box-sizing:border-box}
 .shSteps{display:grid;grid-template-columns:minmax(0,1fr);gap:18px}.step h3{display:flex;align-items:center;gap:10px;margin-bottom:10px;font-size:16px}.step h3 b{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;border:1px solid var(--ink);font:500 11px 'IBM Plex Mono',monospace}
 .step.done h3 b{background:var(--cue);border-color:var(--cue);box-shadow:0 0 0 1.5px var(--ink)}
-.mats{display:grid;grid-auto-flow:column;grid-auto-columns:112px;gap:10px;overflow-x:auto;padding:8px 8px 12px;margin:-8px -8px -4px;scroll-snap-type:x mandatory;scroll-padding:8px}
+.matbar{display:flex;gap:8px;align-items:center;margin:2px 0 6px;position:sticky;top:-1px;z-index:2;background:#fff;padding:6px 0}.matbar .t{flex:1;min-width:0}.matbar .later{flex:none;border:1px solid var(--line);background:#fff;border-radius:999px;padding:8px 14px;font:inherit;font-size:13px;cursor:pointer}.matbar .later[aria-checked=true]{border-color:#12b864;box-shadow:0 0 0 1.5px #4bff9a}
+#matHead{margin:0 0 8px;font-size:12.5px}
+.mats{display:grid;gap:14px}.mgrp h4{margin:0 0 6px;font:600 11px 'IBM Plex Mono',monospace;letter-spacing:.06em;text-transform:uppercase;color:var(--dim)}.mgrp h4 span{color:var(--ink);margin-left:4px}
+.mgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px}
+.moreno{border:1px dashed var(--line);background:none;border-radius:12px;padding:9px 12px;width:100%;text-align:left;font:inherit;font-size:13px;color:var(--dim);cursor:pointer;margin-bottom:8px}.mgrp.no .mats button,.mgrp.no .mgrid button{opacity:.8}
 /* a card keeps to its column: its swatch and words never run past its border (the inner column would otherwise size to its longest line) */
-.mats button{scroll-snap-align:start;border:1px solid var(--line);background:#fff;border-radius:14px;padding:6px 6px 8px;display:grid;grid-template-columns:minmax(0,1fr);min-width:0;gap:6px;text-align:left;font-size:12px;line-height:1.25;cursor:pointer}
-.mats button .sw{width:100%;aspect-ratio:1;border-radius:10px;background:var(--fog) center/cover;display:block}.mats button small{color:var(--dim)}.mats button b,.mats button small{overflow-wrap:anywhere;white-space:normal}
+.mats button[data-mat]{border:1px solid var(--line);background:#fff;border-radius:14px;padding:6px;display:grid;grid-template-columns:52px minmax(0,1fr);align-items:center;min-width:0;gap:10px;text-align:left;font-size:12.5px;line-height:1.3;cursor:pointer}
+.mats button .tx{display:grid;gap:2px;min-width:0}.mats .tag{justify-self:start;font:600 10px 'IBM Plex Mono',monospace;letter-spacing:.04em;text-transform:uppercase;font-style:normal;color:#17603a;background:rgba(23,96,58,.08);border-radius:999px;padding:2px 7px;margin-top:2px}.mats .tag.warn{color:#8a5a00;background:rgba(138,90,0,.07);font-family:inherit;font-weight:400;font-size:11.5px;line-height:1.35;text-transform:none;letter-spacing:0;border-radius:8px;padding:3px 7px}
+.mats button .sw{width:52px;height:52px;border-radius:10px;background:var(--fog) center/cover;display:block}.mats button small{color:var(--dim)}.mats button b,.mats button small{overflow-wrap:anywhere;white-space:normal}
 .fitnote{margin:6px 0 0;padding:8px 10px;border-radius:10px;border:1px solid var(--line);font-size:12.5px;line-height:1.4}.fitnote[data-verdict=good]{color:#17603a;background:rgba(23,96,58,.06)}.fitnote[data-verdict=check]{color:#8a5a00;background:rgba(138,90,0,.06)}.fitnote[data-verdict=wrong]{color:#a02a20;background:rgba(160,42,32,.06)}
 .mats button[aria-checked=true],.cols button[aria-checked=true]{border-color:#12b864;box-shadow:0 0 0 1.5px #4bff9a,0 0 18px 3px rgba(75,255,154,.45)}
 .cols{display:flex;flex-wrap:wrap;gap:8px}.cols button,.cols label{width:44px;height:44px;border-radius:50%;border:1px solid var(--line);cursor:pointer;padding:0;position:relative}
@@ -85,7 +90,7 @@ h1{font-size:clamp(28px,4.4vw,42px);letter-spacing:-.035em;font-weight:500;margi
       <div class="shBody">
         <div class="shArt" id="shArt" role="img" aria-label="The sketch in the chosen colour"></div>
         <div class="shSteps">
-          <section class="step"><h3><b>1</b>Cloth</h3><div class="mats" id="mats" role="radiogroup" aria-label="Cloth"><span class="note">Loading the library…</span></div><p class="note fitnote hidden" id="matFit" role="status"></p></section>
+          <section class="step"><h3><b>1</b>Cloth</h3><div class="matbar"><input class="t" id="matQ" type="search" autocomplete="off" placeholder="Type to filter: jersey, 180, organic, Supima…" aria-label="Filter the cloth"><button type="button" class="later" data-mat="" id="matLater">Decide later</button></div><p class="note" id="matHead" role="status"></p><div class="mats" id="mats" role="radiogroup" aria-label="Cloth"><span class="note">Loading the library…</span></div><p class="note fitnote hidden" id="matFit" role="status"></p></section>
           <section class="step"><h3><b>2</b>Colour</h3><div class="cols" id="cols" role="radiogroup" aria-label="Colour"></div><p class="note" id="colNote"></p></section>
           <details class="onto"><summary>Or put this sketch on a concept you already have</summary><input class="t" id="cq" type="search" placeholder="Search concepts" aria-label="Search concepts"><div class="pick" id="pick"><span class="note">Loading concepts…</span></div><p class="note">The flats open on that concept with this sketch, at the sketch's own proportions.</p></details>
         </div>
@@ -105,7 +110,7 @@ import { BAG_TEMPLATES } from '/lab/lab-bag-templates.js';
 const FLAT_TEMPLATES=[...GARMENTS,...BAG_TEMPLATES.map(b=>({...b,bag:true}))];
 import { FLAT_PARTS, PART_KINDS } from '/lab/lab-flat-parts.js';
 import { STYLES, TEMPLATE_URL } from '/lab/flats.js';
-import { fabricFit } from '/lab/lab-fabric-fit.js';
+import { fabricFit, rankFabrics } from '/lab/lab-fabric-fit.js';
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)],esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const TOKEN=()=>{try{return localStorage.getItem('fb.admin.token')||localStorage.getItem('fb.client.token')||''}catch{return ''}}; // staff sign in at the work console; a client with the Design Lab on their room signs in at their hub
 const CLIENT_MODE=()=>{try{return !localStorage.getItem('fb.admin.token')&&Boolean(localStorage.getItem('fb.client.token'))}catch{return false}};
@@ -129,9 +134,23 @@ async function loadMats(){if(MATS)return;try{MATS=(await api('/v1/lab/materials?
 // the sketch drawn as a picture of its own (its styles stay inside it), its white cloth swapped for the chosen colour
 let ARTURL='';function paintArt(){const hex=COL?.hex;if(!SVG){$('#shArt').innerHTML='';return}const svg=hex?SVG.replace(/fill:\s*#fff(fff)?\b/gi,'fill: '+hex).replace(/fill="#fff(fff)?"/gi,`fill="${hex}"`):SVG;
   if(ARTURL)URL.revokeObjectURL(ARTURL);ARTURL=URL.createObjectURL(new Blob([svg],{type:'image/svg+xml'}));$('#shArt').innerHTML=`<img src="${ARTURL}" alt="">`;$('#shArt').dataset.hex=svg===SVG?'':hex}
+// the cloth, ranked for this sketch's style (src/lab-fabric-fit.js rankFabrics): the usual cloth at a usual weight first, then what suits it,
+// what works with changes, and (folded away) what does not suit it; the box above filters by any word or weight
+let MATQ='',SHOW_NO=false;
+const matWords=m=>`${m.name} ${m.code||''} ${m.spec?.composition||''} ${m.spec?.construction||''} ${m.spec?.finish||''} ${m.spec?.weightGsm?m.spec.weightGsm+' gsm '+m.spec.weightGsm+'gsm':''} ${m.notes||''}`.toLowerCase();
+function matCard(m){const g=m.spec?.weightGsm,sub=[g&&!new RegExp('^'+g+'\\s*gsm','i').test(m.name)?g+' gsm':'',m.spec?.composition||m.spec?.construction||''].filter(Boolean).join(' · ');
+  return `<button type="button" role="radio" data-mat="${m.id}" aria-checked="${MAT?.id===m.id}" title="${esc(m.fit?.why||'')}"><span class="sw" style="${m.photo?`background-image:url('${esc(photoSrc(m,MAT?.id===m.id?COL?.hex:''))}')`:`background:${esc(m.colours?.[0]?.hex||'#f1f1ec')}`}"></span><span class="tx"><b>${esc(m.name)}</b><small>${esc(sub)}</small>${m.fit?.tier==='check'?`<i class="tag warn">${esc(m.fit.why)}</i>`:''}</span></button>`}
 function paintMats(){const el=$('#mats');if(!MATS){el.innerHTML='<span class="note">Loading the library…</span>';return}
-  el.innerHTML=`<button type="button" role="radio" data-mat="" aria-checked="${!MAT}"><span class="sw" style="background:repeating-linear-gradient(45deg,#fff 0 6px,#f1f1ec 6px 12px)"></span><b>Decide later</b><small>Choose it in the Studio</small></button>`+MATS.map(m=>`<button type="button" role="radio" data-mat="${m.id}" aria-checked="${MAT?.id===m.id}"><span class="sw" style="${m.photo?`background-image:url('${esc(photoSrc(m,MAT?.id===m.id?COL?.hex:''))}')`:`background:${esc(m.colours?.[0]?.hex||'#f1f1ec')}`}"></span><b>${esc(m.name)}</b><small>${esc(m.spec?.composition||m.spec?.construction||m.code||'')}</small></button>`).join('');
+  const kind=(CUR?.bag?'bag':STYLES[CUR?.style]?.label||'piece').toLowerCase(),a=/^[aeiou]/.test(kind)?'an '+kind:'a '+kind,words=MATQ.toLowerCase().split(/\s+/).filter(Boolean);
+  const ranked=rankFabrics(CUR?.bag?'bag':CUR?.style||'',MATS),shown=ranked.filter(m=>words.every(w=>matWords(m).includes(w)));
+  const by=t=>shown.filter(m=>m.fit.tier===t),groups=[['best',`Best for ${a}`],['good',`Also suits ${a}`],['check','Works with changes'],['',`The cloth`]].map(([t,h])=>[h,by(t)]).filter(([,l])=>l.length),no=by('no');
+  $('#matLater').setAttribute('aria-checked',String(!MAT));
+  $('#matHead').textContent=!shown.length?`No cloth matches “${MATQ}”. Try fewer words.`:words.length?`${shown.length} of ${MATS.length} match, best for ${a} first`:`${MATS.length} in the library, best for ${a} first`;
+  el.innerHTML=groups.map(([h,l])=>`<div class="mgrp"><h4>${esc(h)} <span>${l.length}</span></h4><div class="mgrid">${l.map(matCard).join('')}</div></div>`).join('')
+    +(no.length?`<div class="mgrp no"><button type="button" class="moreno" data-shno aria-expanded="${SHOW_NO||words.length>0}">${SHOW_NO||words.length?'Hide':'Show'} ${no.length} that ${no.length===1?'does':'do'} not suit ${a}</button>${SHOW_NO||words.length?`<div class="mgrid">${no.map(matCard).join('')}</div>`:''}</div>`:'');
   $('#mats').closest('.step').classList.toggle('done',Boolean(MAT));paintFit()}
+$('#matQ').addEventListener('input',()=>{MATQ=$('#matQ').value.trim();paintMats()});
+$('#matLater').addEventListener('click',()=>{MAT=null;paintMats();paintCols();paintArt();paintSum()});
 // does the cloth suit this sketch's style? (src/lab-fabric-fit.js)
 function paintFit(){const el=$('#matFit');if(!MAT||!CUR){el.classList.add('hidden');return}const f=fabricFit({style:CUR.style,materials:[{kind:'fabric',role:'main',name:MAT.name,spec:MAT.spec||{}}]});
   if(f.verdict==='unknown'){el.classList.add('hidden');return}el.classList.remove('hidden');el.dataset.verdict=f.verdict;el.textContent=f.verdict==='good'?`✓ ${f.summary}`:`${f.verdict==='wrong'?'✕':'!'} ${f.findings[0].msg} ${f.findings[0].fix}`}
@@ -145,7 +164,7 @@ async function show(t){if(t.bag)return showBag(t);document.querySelector('#mats'
   SVG=SVGS[t.id]||'';paintArt();paintMats();paintCols();paintSum();paintPick();const d=$('#sheet');if(!d.open)d.showModal();$('#sheet .shBody').scrollTop=0;
   if(!SVG){try{const r=await fetch(TEMPLATE_URL(t.file));if(!r.ok)throw 0;SVG=SVGS[t.id]=await r.text()}catch{$('#shArt').innerHTML=`<img src="${TEMPLATE_URL(t.file)}" alt="">`;return}if(CUR===t)paintArt()}
   await loadMats();if(CUR===t)paintMats()}
-$('#mats').addEventListener('click',e=>{const b=e.target.closest('[data-mat]');if(!b)return;MAT=MATS.find(m=>m.id===b.dataset.mat)||null;
+$('#mats').addEventListener('click',e=>{if(e.target.closest('[data-shno]')){SHOW_NO=!SHOW_NO;paintMats();return}const b=e.target.closest('[data-mat]');if(!b)return;MAT=MATS.find(m=>m.id===b.dataset.mat)||null;
   const own=(MAT?.colours||[]).filter(c=>/^#[0-9a-f]{6}$/i.test(c.hex||''));if(MAT&&own.length&&!(COL&&own.some(c=>c.hex.toLowerCase()===COL.hex)))COL={name:own[0].name||'',hex:own[0].hex.toLowerCase()}; // a cloth starts in its own first colour
   paintMats();paintCols();paintArt();paintSum()});
 $('#cols').addEventListener('click',e=>{const b=e.target.closest('[data-col]');if(!b)return;COL=b.dataset.col?{name:b.dataset.name||'',hex:b.dataset.col.toLowerCase()}:null;paintCols();if(CUR?.bag){paintBag();paintSum();return}paintMats();paintArt();paintSum()});

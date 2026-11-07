@@ -246,3 +246,14 @@ test('a cloth texture is multiplied over the garment only, and nothing is added 
   assert.ok(tex.indexOf('-tx)') > tex.indexOf('<use href'), 'drawn over the coloured cloth');
   assert.equal(renderSvg(p, 'front', { plain: true, scale: 0, texture: { href: '', w: 9, h: 9 } }), plain, 'no picture, no texture');
 });
+
+test('the eraser on the sketch: a rub-out stroke is kept, cleaned and drawn under the sketch in the garment colour', async () => {
+  const F = await import('../src/lab-flats.js');
+  const [r] = F.cleanEdits([{ id: 'r1', type: 'rub', view: 'front', pts: [[-5.1, .15], [-5.1, 1.1]], w: .4 }]);
+  assert.deepEqual(r, { id: 'r1', view: 'front', type: 'rub', pts: [[-5.09375, .15625], [-5.09375, 1.09375]], w: .375 });
+  assert.equal(F.cleanEdits([{ type: 'rub', pts: [] }]).length, 0, 'a stroke needs a point');
+  assert.equal(F.cleanEdits([{ type: 'rub', pts: [[0, 0]], w: 99 }])[0].w, 6, 'its width is bounded');
+  const p = { ...F.defaultParams('tee'), template: 'none', color: '#6b6b6b', edits: [r] };
+  const svg = F.renderSvg(p, 'front', { showDims: false }); assert.match(svg, /stroke="#ffffff" stroke-width="0?\.375" stroke-linecap="round"/);
+  assert.match(F.describeEdit(r, p), /Front: a line of the sketch rubbed out/);
+});

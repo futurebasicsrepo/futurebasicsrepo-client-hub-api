@@ -96,7 +96,8 @@ already has show as "on the sketch".
 
 ### Sketch pack
 `/lab/sketches`. 382 flat sketches (men's, women's and accessories) and 203 parts: pockets, zips, collars, trims and buttons. Pick one and
-open it in the Studio with your material and colour already applied.
+open it in the Studio with your material and colour already applied. The cloth is ranked for the sketch you picked: for a tee, the best tee jerseys come first, then what also suits it,
+then what works with changes, with the cloth that does not suit it folded away. Type to filter by any word or weight ("organic", "180").
 
 ### Graphics, prints and decoration
 - Graphics as real artwork, placed in inches on the garment and drawn on both the picture and the flats.
@@ -110,6 +111,7 @@ A library of photo-real fabric and trim swatches, recoloured to your colour. It 
 acrylics.
 
 The fabrics are browsed by family and weight:
+- tee jersey by fibre, spinning and weight, from 120 gsm featherweight Supima to 330 gsm loop-wheeled heavyweight (Pima, Egyptian, organic, ring-spun, slub, pigment-dyed, tubular);
 - shirting cottons from voile and lawn to oxford and flannel;
 - chinos, cords and moleskin;
 - 12 leathers;

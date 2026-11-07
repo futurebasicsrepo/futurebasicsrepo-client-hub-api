@@ -2516,6 +2516,14 @@ await journey('J175', 'A prototype made elsewhere stays in Prototypes (not on Bu
   ok(back.status === 200 && back.json.prototype.buildId === null && sql(`select status from builds where id='${bid}'`) === 'archived' && sql(`select coalesce(build_id::text,'none') from projects where id='${proj.id}'`) === 'none' && !JSON.stringify((await dash()).software || {}).includes(host), 'taken back out: the entry is archived, the project is untied, the client no longer sees it, and the prototype is still here');
   ok((await P('')).json.prototypes.some(x => x.id === px.id), 'it stays in Prototypes');
   const re = await P(`/${px.id}/to-builds`, { body: { projectId: proj.id } }); ok(re.status === 200 && re.json.buildId && re.json.buildId !== bid, 'it can be pushed again later, to a fresh entry');
+  // any client's room: one with no software project gets a site project for it, and pushing again reuses that project
+  const other = await newRoom('proto-any', { wait: false }), ocid = sql(`select client_id from users where lower(email)='${other.email}'`);
+  ok((await P('/meta')).json.clients.some(c => c.id === ocid), 'every client room is offered, not only rooms with a software project');
+  ok((await P(`/${px.id}/to-builds`, { body: { clientId: '00000000-0000-0000-0000-000000000000' } })).status === 422, 'a room that is not here is refused');
+  const anyRoom = await P(`/${px.id}/to-builds`, { body: { clientId: ocid } }), op = anyRoom.json.project;
+  ok(anyRoom.status === 200 && op && sql(`select client_id||'|'||kind||'|'||build_id from projects where id='${op.id}'`) === `${ocid}|software|${anyRoom.json.buildId}`, 'pushed to a room with no software project: a site project is made there, on the build', anyRoom.json.project);
+  ok((await P(`/${px.id}/to-builds`, { body: { clientId: ocid } })).json.project?.id === op.id && sql(`select count(*) from projects where client_id='${ocid}' and kind='software'`) === '1', 'pushing to that room again reuses the project');
+  ok(JSON.stringify((await call('/v1/dashboard', { token: other.token })).json.projects || []).includes(host), 'and that client sees it in their room');
   ok((await P(`/${px.id}`, { method: 'DELETE' })).json.ok === true && sql(`select status from builds where id='${re.json.buildId}'`) === 'archived', 'deleting it archives its entry');
 });
 

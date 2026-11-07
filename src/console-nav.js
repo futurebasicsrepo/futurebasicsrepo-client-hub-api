@@ -3,6 +3,7 @@
 //   - the section you are in shows its parts as one row of tabs across the top of the page (Sales: Today · Pipeline · Contacts…).
 // A page adds <script src="/console-nav.js" defer></script> and nothing else: this file draws both, shifts the page over, and on a phone turns the
 // sidebar into a drawer opened from a button in the page's header. It only shows once the page itself is signed in (the page's sign-in panel hides it).
+// A page shown as a window inside another (the Studio's graphic studio) sets <html data-fbnav="off"> and gets no menu or tabs at all.
 // A workspace that has its own way through (the Studio with a piece open, which has the piece's step bar) sets <html data-fbtabs="off"> to leave the tab row out.
 (() => {
   if (window.fbNav) return;
@@ -356,6 +357,8 @@ const autoCollapse = () => { if (!chosen()) { let touch = false; try { touch = m
   }
 
   function mount() {
+    // a page shown inside another as a window (the graphic studio opened from a piece) sets <html data-fbnav="off">: no side menu, no tab row
+    if (document.documentElement.dataset.fbnav === 'off') return;
     const style = document.createElement('style'); style.textContent = css; document.head.appendChild(style);
     document.body.classList.add('fbnav');
     const side = document.createElement('aside'); side.className = 'fbside'; side.id = 'fbSide'; side.innerHTML = render(); document.body.appendChild(side);
