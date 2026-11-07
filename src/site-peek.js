@@ -3,7 +3,7 @@
 // network passed in, so the tests need no live site.
 import { safeFetch } from './proto-crawl.js';
 
-const MAX_IMAGE = 2_500_000;
+const MAX_IMAGE = 5_000_000;
 const meta = (h, key) => {
   const re = new RegExp(`<meta[^>]+(?:property|name)\\s*=\\s*["']${key}["'][^>]*>`, 'i'), tag = re.exec(h)?.[0] || '';
   const m = /\bcontent\s*=\s*("([^"]*)"|'([^']*)')/i.exec(tag); return m ? (m[2] ?? m[3] ?? '').replace(/&amp;/g, '&').trim() : '';
