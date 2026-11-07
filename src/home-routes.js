@@ -24,6 +24,7 @@ export function registerHomeRoutes(app, { pool, authenticate, adminOnly }) {
     const moneyOk = moneyAllowed(meRow?.email || req.auth?.email || '');
     const [cash] = moneyOk ? await q(`select
         (select count(*) from contracts where status='sent' and (expires_at is null or expires_at > now()))::int out_n,
+        (select count(*) from order_quotes where status in ('sent','changes'))::int q_n, (select coalesce(sum(total_cents),0) from order_quotes where status in ('sent','changes'))::bigint q_v,
         (select coalesce(sum(total_cents),0) from contracts where status='sent' and (expires_at is null or expires_at > now()))::bigint out_v,
         (select count(*) from contracts where status in ('signed_by_client','executed') and coalesce(executed_at, (client_signature->>'at')::timestamptz, updated_at) > now() - interval '30 days')::int signed_n,
         (select coalesce(sum(total_cents),0) from contracts where status in ('signed_by_client','executed') and coalesce(executed_at, (client_signature->>'at')::timestamptz, updated_at) > now() - interval '30 days')::bigint signed_v,
@@ -90,7 +91,7 @@ export function registerHomeRoutes(app, { pool, authenticate, adminOnly }) {
       leadSearches: leadSearches.map(r => ({ id: r.id, trade: r.trade, place: r.place, quick: r.quick, at: r.created_at })),
       signals: { total: sc.total, overdue: sc.overdue, top: sigs.map(r => ({ id: r.id, source: r.source, title: r.title, summary: r.summary, score: r.score, status: r.status, ownerName: r.owner_name || '', foundAt: r.found_at, postedAt: r.posted_at })) },
       funnel: { newLeads7: cur.n, newLeadsPrev7: prev.n, trend: trend(cur.n, prev.n), lookers7: look.lookers, demos7: look.demos, won30: { count: won.n, valueCents: Number(won.v) }, onHook: { deals: hook.deals, fresh: hook.fresh, rooms: hook.rooms, total: hook.deals + hook.fresh + hook.rooms } },
-      money: cash ? { out: { count: cash.out_n, cents: Number(cash.out_v) }, signed30: { count: cash.signed_n, cents: Number(cash.signed_v) }, underContractCents: Math.max(0, Number(cash.under_v)), in30Cents: Number(cash.in_v), dueCents: Math.max(0, Number(cash.due_v)) } : null,
+      money: cash ? { out: { count: cash.out_n, cents: Number(cash.out_v) }, quotes: { count: cash.q_n, cents: Number(cash.q_v) }, signed30: { count: cash.signed_n, cents: Number(cash.signed_v) }, underContractCents: Math.max(0, Number(cash.under_v)), in30Cents: Number(cash.in_v), dueCents: Math.max(0, Number(cash.due_v)) } : null,
       awaitingReply: awaiting.map(r => ({ id: r.id, name: r.name || r.email, email: r.email, company: r.company || '', source: r.source, createdAt: r.created_at })),
       prototypes: protos.map(r => prototypeRow({ ...r, has_cover: r.has_cover || hasBuildPreview(r.slug) })), showNow: showNow.map(r => ({ ...prototypeRow({ ...r, has_cover: r.has_cover || hasBuildPreview(r.slug) }), views30: Number(r.views7) || 0 })),
       projects: orderProjects(projects.map(r => projectRow(r))),
