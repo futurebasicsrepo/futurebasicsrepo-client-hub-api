@@ -146,6 +146,8 @@ document.addEventListener('click',async e=>{const b=e.target.closest('[data-done
   try{await api('/v1/workspace/assignments/'+b.dataset.done,{method:'PATCH',body:{status:'done'}});HOME.fbTasks=(HOME.fbTasks||[]).filter(x=>x.id!==b.dataset.done);renderFbTasks(HOME)}catch(x){b.disabled=false;b.textContent='Could not: '+x.message}});
 function renderReach(o,h){
   const rows=[];
+  // what clients asked for and nobody has finished: before anything else on the list
+  for(const r of (h.clientRequests||[]).slice(0,5))rows.push({k:'money',kl:r.status==='in-progress'?'Request · in progress':'Client request',name:`${r.clientName}: ${r.title}`,sub:[r.type==='rfq'?'Request for quote':'',r.author?'from '+r.author:''].filter(Boolean).join(' · '),when:`sent ${ago(r.at)}`,href:`/clients/${r.clientId}#requests`});
   // money owed that is late comes first (only for the people Money is open to: everyone else gets a 403 and never sees this)
   if(MONEY&&MONEY.overdueCount){
     for(const i of (MONEY.lateInvoices||[]).slice(0,3))rows.push({k:'money',kl:'Overdue',name:`${i.company} · ${i.number}`,sub:`${money(i.owedCents)} owed · ${i.daysOverdue} day${i.daysOverdue===1?'':'s'} late`,when:`due ${i.dueOn}`,href:`/money?invoice=${i.id}#invoices`});

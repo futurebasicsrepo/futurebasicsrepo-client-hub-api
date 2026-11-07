@@ -364,6 +364,19 @@ const staffEmail=process.env.STAFF_NOTIFICATION_EMAIL||intakeNotificationEmail;
 async function notifyStaff(subject,body){
   try{return await sendHubEmail({to:staffEmail,subject,html:hubEmailShell(subject,body)})}catch(e){app.log.warn({err:e.message,subject},'staff email not sent');return false}
 }
+// Something a client did that Future Basics must not miss (a request, a message): an email to the staff address and to the room's owner, and a
+// notification in the work console. It never fails the client's action.
+async function notifyRoomStaff(clientId,{subject,body,link,type,title,entityType,entityId}){
+  try{
+    const c=(await pool.query(`select c.name,u.email owner_email from clients c left join users u on u.id=c.owner_id where c.id=$1`,[clientId])).rows[0];
+    if(type)await pool.query('insert into notifications(client_id,type,title,entity_type,entity_id) values($1,$2,$3,$4,$5)',[clientId,type,String(title||subject).slice(0,300),entityType||null,entityId||null]).catch(()=>{});
+    const to=[...new Set([staffEmail,c?.owner_email].filter(Boolean).map(e=>String(e).toLowerCase()))];
+    const html=hubEmailShell(subject,`${body}${link?`<p><a href="${link}" style="display:inline-block;padding:10px 18px;border-radius:999px;background:#111;color:#fff;text-decoration:none">Open it in the work console</a></p>`:''}`);
+    let sent=0;for(const addr of to){try{if(await sendHubEmail({to:addr,subject,html}))sent++}catch(e){app.log.warn({err:e.message,subject},'staff email not sent')}}
+    if(!sent)app.log.warn({clientId,subject},'no staff email went out for a client action');
+    return sent;
+  }catch(e){app.log.warn({err:e.message,clientId,subject},'staff notice failed');return 0}
+}
 async function notifyClientContact(clientId,{subject,title,body,replyTo}){
   try{
     const c=(await pool.query('select slug,contact_email,contact_name from clients where id=$1',[clientId])).rows[0];
@@ -1488,7 +1501,7 @@ app.get('/v1/admin/clients/:id',{preHandler:[authenticate,adminOnly]},async(req,
       coalesce(json_agg(m order by m.sort_order)filter(where m.id is not null),'[]') milestones
       from products p left join product_briefs b on b.product_id=p.id left join milestones m on m.product_id=p.id
       where p.client_id=$1 group by p.id,b.product_id order by p.updated_at desc`,[client.id]),
-    pool.query('select * from requests where client_id=$1 order by created_at desc',[client.id]),
+    pool.query(`select r.*,coalesce(nullif(u.name,''),u.email) author_name,u.email author_email,pr.title product_title from requests r left join users u on u.id=r.user_id left join products pr on pr.id=r.product_id where r.client_id=$1 order by r.created_at desc`,[client.id]),
     pool.query('select * from invoices where client_id=$1 order by created_at desc',[client.id]),
     pool.query('select id,email,name,role,created_at from users where client_id=$1 order by created_at',[client.id]),
     pool.query(`select q.* from quotes q join products p on p.id=q.product_id where p.client_id=$1 order by q.created_at desc`,[client.id]),
@@ -2396,8 +2409,14 @@ app.post('/v1/projects/:id/messages',{preHandler:authenticate},async(req,reply)=
   const message=(await pool.query(`insert into project_messages(project_id,client_id,author_id,author_role,body,reply_to_id)
     values($1,$2,$3,$4,$5,$6) returning *`,[project.id,project.client_id,req.auth.sub,role,body.slice(0,5000),replyToId])).rows[0];
   await pool.query('update projects set updated_at=now() where id=$1',[project.id]);
-  if(role==='client')await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id)
-    values($1,'client-project-message',$2,'project',$3)`,[project.client_id,`Client replied in ${project.name}`,project.id]);
+  if(role==='client'&&!req.auth.preview){
+    const recent=(await pool.query(`select 1 from notifications where entity_type='project' and entity_id=$1 and type='client-project-message' and created_at > now() - interval '30 minutes'`,[project.id]).catch(()=>({rowCount:0}))).rowCount;
+    const who=(await pool.query(`select c.name client_name, coalesce(nullif(u.name,''), u.email) author from clients c left join users u on u.id=$2 where c.id=$1`,[project.client_id,req.auth.sub])).rows[0]||{};
+    if(recent)await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'client-project-message',$2,'project',$3)`,[project.client_id,`Client replied in ${project.name}`,project.id]);
+    else notifyRoomStaff(project.client_id,{subject:`${who.client_name||'A client'} wrote in ${project.name}`,type:'client-project-message',title:`Client replied in ${project.name}`,entityType:'project',entityId:project.id,
+      body:`<p><strong>${emailEscape(who.author||'Someone')}</strong> at <strong>${emailEscape(who.client_name||'')}</strong> wrote in <strong>${emailEscape(project.name)}</strong>:</p><p style="white-space:pre-wrap">${emailEscape(body.slice(0,3000))}</p><p style="font-size:12px;color:#717177">More messages in this project in the next 30 minutes are in the console, not emailed again.</p>`,
+      link:`${workHubUrl}/clients/${project.client_id}#project=${project.id}`});
+  }
   return reply.code(201).send(message);
 });
 app.post('/v1/projects/:id/uploads',{preHandler:authenticate},async(req,reply)=>{
@@ -2748,6 +2767,12 @@ app.post('/v1/requests', { preHandler: authenticate }, async (req, reply) => {
     `insert into requests(client_id,user_id,type,title,details,due_date,product_id) values($1,$2,$3,$4,$5,$6,$7) returning *`,
     [req.auth.clientId, req.auth.sub, type, title, details, dueDate || null, pid]
   )).rows[0];
+  if (!req.auth.preview) {
+    const who = (await pool.query(`select c.name client_name, coalesce(nullif(u.name,''), u.email) author from clients c left join users u on u.id=$2 where c.id=$1`, [req.auth.clientId, req.auth.sub])).rows[0] || {};
+    notifyRoomStaff(req.auth.clientId, { subject: `New request from ${who.client_name || 'a client'}: ${String(title).slice(0, 120)}`, type: 'client-request', title: `New request: ${String(title).slice(0, 200)}`, entityType: 'request', entityId: row.id,
+      body: `<p><strong>${emailEscape(who.author || 'Someone')}</strong> at <strong>${emailEscape(who.client_name || '')}</strong> sent a request${dueDate ? ` (wanted by ${emailEscape(dueDate)})` : ''}:</p><p><strong>${emailEscape(title)}</strong></p><p style="white-space:pre-wrap">${emailEscape(String(details).slice(0, 4000))}</p>`,
+      link: `${workHubUrl}/clients/${req.auth.clientId}#requests` });
+  }
   return reply.code(201).send(row);
 });
 

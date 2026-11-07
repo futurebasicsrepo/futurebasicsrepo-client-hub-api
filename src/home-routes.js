@@ -79,6 +79,10 @@ export function registerHomeRoutes(app, { pool, authenticate, adminOnly }) {
       from work_assignments a join clients c on c.id=a.client_id left join projects pr on pr.id=a.project_id
       where a.assignee_fb and a.status<>'done' and c.archived_at is null and c.status not in ('archive','archived')
       order by a.due nulls last, a.created_at limit 40`).catch(() => []);
+    // what clients asked us for and nobody has finished: oldest first, so nothing waits unseen
+    const clientRequests = await q(`select r.id, r.title, r.type, r.status, r.created_at, r.client_id, c.name client_name, coalesce(nullif(u.name,''), u.email) author
+      from requests r join clients c on c.id=r.client_id left join users u on u.id=r.user_id
+      where r.status in ('submitted','in-progress') and r.type <> 'project-intake' and c.archived_at is null order by r.created_at limit 12`).catch(() => []);
     const out = {
       me: { firstName: firstName(meRow?.name, meRow?.email || req.auth?.email) },
       myAccounts: orderAccounts(mine.map(r => accountRow(r))),
@@ -91,11 +95,12 @@ export function registerHomeRoutes(app, { pool, authenticate, adminOnly }) {
       prototypes: protos.map(r => prototypeRow({ ...r, has_cover: r.has_cover || hasBuildPreview(r.slug) })), showNow: showNow.map(r => ({ ...prototypeRow({ ...r, has_cover: r.has_cover || hasBuildPreview(r.slug) }), views30: Number(r.views7) || 0 })),
       projects: orderProjects(projects.map(r => projectRow(r))),
       waiting: { approvals: appr.n, production: prod.n },
+      clientRequests: clientRequests.map(r => ({ id: r.id, title: r.title, type: r.type, status: r.status, at: r.created_at, clientId: r.client_id, clientName: r.client_name, author: r.author || '' })),
       fbTasks: fbTasks.map(t => ({ id: t.id, title: t.title, status: t.status, due: t.due ? new Date(t.due).toISOString().slice(0, 10) : '', source: t.source, clientId: t.client_id, clientName: t.client_name, projectId: t.project_id, projectName: t.project_name || '', at: t.created_at }))
     };
     // My day is for everyone on the team, but each part of it shows only what the person has been given (Team access)
     const can = id => !req.staff || req.staff.can(id);
-    if (!can('clients')) Object.assign(out, { myAccounts: [], unownedAccounts: [], projects: [], waiting: { approvals: 0, production: 0 }, fbTasks: [] });
+    if (!can('clients')) Object.assign(out, { clientRequests: [], myAccounts: [], unownedAccounts: [], projects: [], waiting: { approvals: 0, production: 0 }, fbTasks: [] });
     if (!can('prototypes')) Object.assign(out, { prototypes: [], showNow: [], leadSearches: [] });
     if (!can('intel')) out.signals = { total: 0, overdue: 0, top: [] };
     if (!can('crm')) Object.assign(out, { awaitingReply: [], funnel: { newLeads7: 0, newLeadsPrev7: 0, trend: out.funnel.trend, lookers7: 0, demos7: 0, won30: { count: 0, valueCents: 0 }, onHook: { deals: 0, fresh: 0, rooms: 0, total: 0 } } });
