@@ -4,7 +4,7 @@ A brief for making short promotional videos (15 to 60 seconds) about the Future 
 someone with no other context can plan, script and cut a video that is accurate. Every claim here is true of the product today (November
 2026). If a feature is not in this brief, check `docs/design-lab.md` and `docs/design-to-factory.md` before showing or promising it.
 
-**Keep it current.** When a tool, a price or a number below changes, update this file in the same PR.
+**Keep it current.** When a tool, a price or a number below changes, update this file in the same PR. The Design Lab card in the client hub (the reel, `LAB_REEL` in `src/client.html`) quotes the same numbers (26 bases, 42 details, 8 colour systems, 382 flat sketches across 24 styles, 12 leathers, 14 vegan leathers): change them there too.
 
 ---
 

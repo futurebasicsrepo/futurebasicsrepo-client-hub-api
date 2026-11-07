@@ -20,7 +20,7 @@ export const NODES = [
    what:'The client side: the room home, projects, tech packs, files, team and the Design Lab card. Its Invoices & agreements panel lists each agreement, open or signed, with every payment in its plan (paid, due with a pay link, or still to come) and the room\'s other invoices from Money. Also the public pages: sign-in, /start (a tech pack from a photo), /join, /pricing, /help.',
    code:['src/client.html','src/start.html','src/techpack.html','src/pricing.html','src/help.html'],data:[],talks:['auth']},
   {id:'work',lane:'doors',name:'Work console',sub:'work.thefuturebasics.com',
-   what:'The staff side, behind Cloudflare Access: My day, clients and rooms, sales, money, contracts, factories, prototypes, builds, brand, Team access and Platform health.',
+   what:'The staff side, behind Cloudflare Access: My day, clients and rooms, sales, money, contracts, factories, prototypes, builds, brand, Team access and Platform health. My day leads with what is on the table: leads on the hook, contracts out for signature, agreements signed and money in (the money tiles only for the people Money is open to); a digital project\'s money tile reads from its agreement.',
    code:['src/admin.html','src/work-home.html','src/sales.html','src/money.html','src/console-nav.js','src/home-routes.js','src/brand.html'],data:[],talks:['cf']},
   {id:'lab',lane:'doors',name:'Design Lab',sub:'/lab/* pages',
    what:'Line plans, concepts, the Studio (picture, flats, colourways, board), recipe menu, materials and sketch libraries, Pattern (garments, footwear, plush) and Engineering (3D assembly). Open to staff with the module and to rooms with the Lab open.',
@@ -124,7 +124,7 @@ export const EDGES = [
   ['labsvc','engines'],['labsvc','techpack'],['techpack','production'],['sales','money'],['intel','sales'],['money','builds'],
   ['techpack','claude'],['labsvc','claude'],['labsvc','openai'],['labsvc','google'],['engines','meshy'],['sales','resend'],['intel','listen'],['intel','xai'],['money','qbo'],['health','shopify'],['builds','shopify'],['builds','github'],
   ['techpack','pg'],['labsvc','pg'],['production','files'],['techpack','files'],['health','pg'],
-  ['hub','workspace'],['work','workspace'],['access','workspace'],['workspace','pg'],['workspace','resend'],['workspace','techpack'],['labsvc','workspace'],['production','techpack'],['hub','money']
+  ['hub','workspace'],['work','workspace'],['access','workspace'],['workspace','pg'],['workspace','resend'],['workspace','techpack'],['labsvc','workspace'],['production','techpack'],['hub','money'],['work','money']
 ];
 export const FLOWS = {
   lab:{name:'Design Lab to factory',lede:'A client with the Lab open designs a piece and sends it to a factory.',steps:[

@@ -434,7 +434,7 @@ export function registerContractRoutes(app, d) {
       });
       const shown = inv.filter(x => x.status !== 'draft'), invoicedCents = shown.reduce((a, x) => a + Number(x.total_cents), 0), paidCents = shown.reduce((a, x) => a + (x.status === 'paid' ? Number(x.total_cents) : Math.min(Number(x.paid_cents), Number(x.total_cents))), 0);
       out.push({ id: r.id, number: r.number, title: r.title, status: r.status, totalCents: Number(r.total_cents), currency: r.currency, sentAt: r.sent_at, executedAt: r.executed_at, expiresAt: r.expires_at, signerName: c.client.signerName || '',
-        payments, invoicedCents, paidCents, method: c.plan.method || 'invoice',
+        payments, invoicedCents, paidCents, method: c.plan.method || 'invoice', projectId: r.project_id || null,
         youAreSigner: mine, link, pdfUrl: link ? `/v1/public/contracts/${token}/pdf` : null, summary: planWords(c.plan, r.currency, c.kind), autopay: Boolean(c.plan.autopay), cardOnFile: method ? method.label : null,
         needs: r.status === 'sent' ? 'sign' : wantsDetails ? 'details' : null });
     }
