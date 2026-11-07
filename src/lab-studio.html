@@ -130,6 +130,7 @@ kbd{font:500 10px 'IBM Plex Mono',monospace;border:1px solid var(--line);border-
 @media(max-width:980px){.seg .wideonly{display:none}.studio[data-v=front] .flathost,.studio[data-v=back] .flathost{height:calc(100dvh - 140px)}.studio[data-v=split]{grid-template-columns:48px minmax(0,1fr);grid-template-rows:auto 62vh 70vh auto}.studio[data-v=split] .flathost{grid-column:1/-1;grid-row:3;border-left:0}.studio[data-v=split] .side{grid-column:1/-1;grid-row:4}body{overflow:auto;height:auto}.studio{grid-template-columns:48px minmax(0,1fr);grid-template-rows:auto 62vh auto;height:auto}.side{grid-column:1/-1;border-left:0;border-top:1px solid var(--line);min-height:420px}.bar .ttl b{max-width:60vw}}
 html,body{touch-action:manipulation}
 .embgrid{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:16px}@media (max-width:760px){.embgrid{grid-template-columns:1fr}}.embprev{background:#ecebe6;border-radius:14px;min-height:280px;display:grid;place-items:center;overflow:hidden}.embprev img{width:100%;display:block}.embseq{width:100%;border-collapse:collapse;font-size:12.5px}.embseq td{padding:4px 6px;border-bottom:1px solid var(--line)}.embseq td.n{font-variant-numeric:tabular-nums;text-align:right}.embseq i{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:middle;border:1px solid rgba(0,0,0,.2)}
+html[data-pick] body>header{display:none}html[data-pick] .studio{height:100dvh}
 </style>
 <script src="/feedback.js"></script>
 <link rel="stylesheet" href="/cue.css">
@@ -290,7 +291,7 @@ const QS=new URLSearchParams(location.search),CID=QS.get('concept')||'';
 // a tag or label (?tag=<material id>) opens as a graphic the size of the tag: its blank face and its words as layers, every tool on them; saved,
 // the design becomes the tag's face (cards, sheets and the tech pack draw it) and can go on a garment (?for=<concept id> adds it straight there)
 let TAG=QS.get('tag')||'',TAGM=null;const FORC=QS.get('for')||'';
-const PICK=QS.get('pick')==='1'&&window.parent!==window;if(PICK)document.documentElement.dataset.pick='1';
+const PICK=QS.get('pick')==='1'&&window.parent!==window;if(PICK){document.documentElement.dataset.pick='1';document.documentElement.dataset.fbnav='off'} // a window inside the piece's studio: the studio alone, no console menu or tabs
 let GID=QS.get('art')||'';const GMODE=!CID&&(Boolean(GID)||QS.get('new')==='graphic'||Boolean(TAG));
 const AI_URL=()=>GMODE?'/v1/lab/library/studio/ai':`/v1/lab/concepts/${CID}/studio/ai`;
 let PARTS=null,PKIND='pockets';
