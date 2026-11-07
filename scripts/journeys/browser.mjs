@@ -183,7 +183,7 @@ await journey('J37', 'staff switches: free access for one client, and the paymen
     await page.goto(`${W}/admin#accessPanel`, { waitUntil: 'networkidle' }); await page.waitForFunction(() => !/Checking/.test(document.getElementById('accessTitle')?.textContent || 'Checking'), null, { timeout: 10000 });
     ok(/paid after the first free/i.test(await page.textContent('#accessTitle')) && await page.$eval('#accessSwitch', i => i.checked), 'the console home says tech packs are paid after the first, with the switch on', await page.textContent('#accessTitle'));
     ok(/\d+ clients? (has|have) free access · \d+ packs? waiting/.test(await page.textContent('#accessText')), 'and counts who has free access and what is waiting', await page.textContent('#accessText'));
-    await page.goto(`${W}/clients/${r.clientId}`, { waitUntil: 'networkidle' }); await page.waitForSelector('.gate-row', { timeout: 10000 });
+    await page.goto(`${W}/clients/${r.clientId}`, { waitUntil: 'networkidle' }); await page.click('.room-settings > summary'); await page.waitForSelector('.gate-row', { timeout: 10000 }); // the switches are in the room's settings drawer
     ok(!(await page.$eval('.gate-row input', i => i.checked)) && /Standard/.test(await page.textContent('.gate-row')), 'a client room shows "Standard" with the switch off');
     await page.click('.gate-row .switch input'); await page.waitForSelector('.gate-row.on', { timeout: 10000 });
     ok(/Free access/.test(await page.textContent('.gate-row')) && dialogs.some(m => /started/.test(m)), 'turning it on reads "Free access" and says the waiting pack started', [await page.textContent('.gate-row'), dialogs]);
