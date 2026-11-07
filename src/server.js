@@ -84,6 +84,7 @@ import { registerRoomTeamRoutes } from './room-team-routes.js';
 import { registerSampleFormRoutes } from './sample-form-routes.js';
 import { registerTeamChatRoutes } from './team-chat-routes.js';
 import { registerWorkspaceRoutes } from './workspace-routes.js';
+import { registerProductSheetRoutes } from './product-sheet-routes.js';
 import { registerRoomSitesRoutes } from './room-sites-routes.js';
 import { createLive } from './live.js';
 import { maskFor as flatMaskFor } from './lab-flat-mask.js';
@@ -779,6 +780,7 @@ app.addHook('onClose', async () => { await live.close(); });
 registerTeamChatRoutes(app, { pool, authenticate, notifyStaff, sendHubEmail, hubEmailShell, emailEscape, clientHubUrl, workHubUrl, live, log: app.log });
 registerWorkspaceRoutes(app, { pool, authenticate, sendHubEmail, hubEmailShell, emailEscape, clientHubUrl, log: app.log });
 registerRoomSitesRoutes(app, { pool, authenticate, adminOnly, notifyStaff, sendHubEmail, hubEmailShell, emailEscape, clientHubUrl, workHubUrl, log: app.log });
+registerProductSheetRoutes(app, { pool, authenticate, adminOnly, hasRenderingSql: HAS_RENDERING_SQL, renderingUrl });
 registerLabSelfServeRoutes(app, { pool, authenticate, adminOnly, lab: labAccess, clientHubUrl, workHubUrl, notifyStaff, notifyClientContact, sendHubEmail, hubEmailShell, replyTo: intakeNotificationEmail, forgetUser, clientForEmail, log: app.log });
 const money=registerMoneyRoutes(app, { pool, authenticate, adminOnly, getSetting, setSetting, tokenSeal: sealer(process.env), stateSecret: process.env.JWT_SECRET || 'dev', workUrl: workHubUrl, log: app.log,
   // product development is paid through a Shopify checkout (a draft order for the amount due), see money-routes.js

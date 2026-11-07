@@ -1951,6 +1951,17 @@ export async function migrate() {
     -- a site's card: what it runs on and how it answered at the last look (src/site-peek.js), and its picture (staff's upload, else the site's share image)
     alter table room_sites add column if not exists facts jsonb not null default '{}'::jsonb;
     alter table room_sites add column if not exists facts_at timestamptz;
+    -- price ladders: a set of quantity price tiers saved once (a tee at 50/100/250/500, say) and put on any product (src/product-sheet-routes.js)
+    create table if not exists price_ladders (
+      id uuid primary key default gen_random_uuid(),
+      name text not null,
+      kind text,
+      tiers jsonb not null default '[]'::jsonb,
+      created_by uuid references users(id) on delete set null,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
+    create unique index if not exists price_ladders_name_idx on price_ladders (lower(name));
     -- when each staff member last opened a client's room (or a project in it): their client list leads with the rooms they are working in
     create table if not exists staff_room_opens (
       user_id uuid not null references users(id) on delete cascade,
