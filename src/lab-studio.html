@@ -135,7 +135,7 @@ html,body{touch-action:manipulation}
 .embgrid{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:16px}@media (max-width:760px){.embgrid{grid-template-columns:1fr}}.embprev{background:#ecebe6;border-radius:14px;min-height:280px;display:grid;place-items:center;overflow:hidden}.embprev img{width:100%;display:block}.embseq{width:100%;border-collapse:collapse;font-size:12.5px}.embseq td{padding:4px 6px;border-bottom:1px solid var(--line)}.embseq td.n{font-variant-numeric:tabular-nums;text-align:right}.embseq i{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:middle;border:1px solid rgba(0,0,0,.2)}
 html[data-pick] body>header{display:none}html[data-pick] .studio{height:100dvh}
 .studio{position:relative}.rail .rail-x[disabled]{opacity:.3;cursor:default}.rail #railNames[aria-pressed=true]{background:var(--fog);color:var(--ink);border-color:var(--line)}
-.rail-names{position:absolute;z-index:30;width:310px;pointer-events:none}.rail-names.hidden{display:none}
+body.typing .rail-names,body.typing #flatPicBar{display:none!important}.rail-names{position:absolute;z-index:30;width:310px;pointer-events:none}.rail-names.hidden{display:none}
 .rail-names button{pointer-events:auto;position:absolute;left:6px;transform:translateY(-50%);display:grid;gap:1px;text-align:left;max-width:228px;background:rgba(255,255,255,.96);border:1px solid var(--line);border-radius:10px;padding:5px 9px;font:inherit;font-size:11.5px;line-height:1.25;color:var(--dim);box-shadow:0 4px 14px rgba(20,20,22,.08);cursor:pointer}
 .rail-names button{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:300px;line-height:1.2;padding:4px 10px;border-radius:999px}.rail-names button b{color:var(--ink);font-size:12.5px;margin-right:6px}.rail-names button small{font-size:11px}.rail-names button[aria-pressed=true]{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink)}
 .tips{display:inline-flex;flex-wrap:wrap;gap:4px;margin-right:6px}.tips button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:5px 10px;font:inherit;font-size:12px;cursor:pointer}.tips button[aria-checked=true]{background:var(--ink);color:#fff;border-color:var(--ink)}
@@ -658,7 +658,7 @@ view.addEventListener('wheel',e=>{e.preventDefault();const[px,py]=pt(e);if(e.ctr
 $('#zIn').onclick=()=>{const r=view.getBoundingClientRect();zoomAt(1.25,r.width/2,r.height/2)};$('#zOut').onclick=()=>{const r=view.getBoundingClientRect();zoomAt(.8,r.width/2,r.height/2)};$('#zFit').onclick=fit;
 
 // ---------- tools and their options ----------
-function setTool(t){TOOL=t;setTimeout(()=>window.paintDock?.(),0);setTimeout(()=>window.paintRailNames?.(),0);if(VMODE==='front'||VMODE==='back')FF()?.tool?.(t);$$('.rail [data-tool]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.tool===t)));view.style.cursor=t==='hand'?'grab':t==='select'?'default':t==='text'?'text':'crosshair';paintOpts();draw()}
+function setTool(t){TOOL=t;document.body.classList.toggle('typing',t==='text'&&(VMODE==='front'||VMODE==='back'));setTimeout(()=>window.paintDock?.(),0);setTimeout(()=>window.paintRailNames?.(),0);if(VMODE==='front'||VMODE==='back')FF()?.tool?.(t);$$('.rail [data-tool]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.tool===t)));view.style.cursor=t==='hand'?'grab':t==='select'?'default':t==='text'?'text':'crosshair';paintOpts();draw()}
 const pressHtml=()=>`<label class="chk" title="With an Apple Pencil, pressing harder makes the line wider"><input type="checkbox" data-press ${OPT.pressure?'checked':''}> Pencil pressure</label>`;
 $('#opts').addEventListener('change',e=>{if(e.target.matches('[data-press]'))OPT.pressure=e.target.checked});
 // Steady: the line trails the Pencil a little, so a shaky hand draws smooth (Procreate's StreamLine). QuickShape: hold the Pencil still at the
@@ -1484,7 +1484,7 @@ async function setVMode(v,{push=true}={}){
     // the graphics placed on the picture go onto the flats before they are shown
     if(!GMODE&&DIRTY&&(was==='picture'||!FLOADED)){busy('Putting the graphics on the flats…');try{const sent=await syncFlats({before:flatsFirst});if(sent&&FLOADED)reloadFlats()}catch(x){toast('The flats did not take the graphics: '+x.message)}finally{busy()}}
     if(!FLOADED)loadFlats()}
-  VMODE=v;$('#app').dataset.v=v;$$('#viewSeg [data-v]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.v===v)));$('#pieceSteps').setStep?.(stepOfView(v));
+  VMODE=v;$('#app').dataset.v=v;document.body.classList.toggle('typing',TOOL==='text'&&(v==='front'||v==='back'));$$('#viewSeg [data-v]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.v===v)));$('#pieceSteps').setStep?.(stepOfView(v));
   const f=FF();if(f&&f.ready()){f.mode(v==='split'?'compact':'full');if(v==='front'||v==='back'){f.setView(v);f.tool?.(TOOL)}}
   if(['warp','pick','ruler'].includes(TOOL)&&v!=='picture')setTool('select');paintOpts();syncUndo();
   if(push){const u=new URL(location.href);if(v==='picture')u.searchParams.delete('view');else u.searchParams.set('view',v);u.searchParams.delete('template');history.replaceState(null,'',u)}

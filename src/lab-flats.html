@@ -17,7 +17,7 @@ var c=q.get('concept')||'',t=q.get('template')||'',v=q.get('view')==='back'?'bac
 #typePop .tp-row{display:flex;align-items:center;gap:8px}#typePop .tp-row>span{width:52px;color:#6b6b70;flex:none}#typePop .tp-row select{flex:1;min-width:0;min-height:32px}#typePop .tp-row input[type=range]{flex:1;min-width:0}
 #typePop .tp-row output{width:30px;text-align:right;font-variant-numeric:tabular-nums}#typePop .tp-end{justify-content:flex-end}
 #typePop .tp-more{border-top:1px solid var(--line,#e2e2dc);padding-top:6px}#typePop .tp-more summary{cursor:pointer;color:#6b6b70;padding:4px 0}#typePop .tp-more[open]{display:grid;gap:8px}#typePop{max-height:calc(100vh - 16px);overflow-y:auto}
-#typePop .tp-hint{margin:0;color:#6b6b70;font-size:11.5px}#typePop .tp-row{flex-wrap:wrap}#typePop .tp-row input[type=color]{width:34px;height:30px;padding:0;flex:none}#typePop .tp-row select{flex:1 1 90px}#typePop{width:min(300px,calc(100vw - 16px));box-sizing:border-box;overflow-x:hidden;max-width:calc(100vw - 16px)}
+#typePop .tp-end .btn{min-height:40px;min-width:76px;touch-action:manipulation}#typePop .tp-hint{margin:0;color:#6b6b70;font-size:11.5px}#typePop .tp-row{flex-wrap:wrap}#typePop .tp-row input[type=color]{width:34px;height:30px;padding:0;flex:none}#typePop .tp-row select{flex:1 1 90px}#typePop{width:min(300px,calc(100vw - 16px));box-sizing:border-box;overflow-x:hidden;max-width:calc(100vw - 16px)}
 #typePop .tp-prev{font-size:24px;line-height:1.25;padding:6px 8px;background:#f6f6f3;border-radius:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:34px}
 :root{--ink:#141416;--paper:#fff;--fog:#f5f5f2;--dim:#727278;--line:rgba(20,20,22,.14);--cue:#4bff9a;--ok:#17603a;--bad:#a02a20;--warn:#8a5a00}
 *{box-sizing:border-box}html{background:var(--fog)}
@@ -691,7 +691,8 @@ function typeDraw(){const t=TY;if(!t)return;const x=t.m.cv.getContext('2d');x.pu
   if(document.fonts&&!document.fonts.check(font))document.fonts.load(font).then(()=>{if(TY===t)typeDraw()}).catch(()=>{});
   const c=renderType({text:TS.text.trim(),stack:f[2],size:TS.size*k,bold:TS.bold,case:TS.case,track:TS.track*k,color:TS.color||t.o.color,outline:TS.outline*k,outlineColor:TS.outlineColor,outline2:TS.outline2*k,outline2Color:TS.outline2Color,
     arc:TS.arc,env:TS.arc?'none':TS.env,envK:TS.envK,stretch:TS.stretch,shadowKind:TS.shadowKind,shadow:TS.shadow*k,shadowAngle:TS.shadowAngle,shadowColor:TS.shadowColor}),an=c.anchor||[c.width/2,c.height/2];
-  x.drawImage(c,t.p[0]-an[0],t.p[1]-an[1]);t.m.dirty=true}
+  x.drawImage(c,t.p[0]-an[0],t.p[1]-an[1]);c.width=c.height=0;t.m.dirty=true}
+function typeDrawSafe(){try{typeDraw();return true}catch(err){console.error('flats type',err);FBN.toast('The words could not be drawn: '+(err?.message||err),'err');return false}}
 function typeOpen(m,p,before,o,e){typeClose(false);TY={m,p,before,o};TS.text='';const pop=document.createElement('div');pop.id='typePop';pop.setAttribute('role','dialog');pop.setAttribute('aria-label','Type on the flat');
   const cats=[...new Set(TFACES.map(f=>f[3]))];
   pop.innerHTML=`<input class="tp-text" id="tpText" placeholder="Type the words" maxlength="80" autocomplete="off">
@@ -713,14 +714,14 @@ function typeOpen(m,p,before,o,e){typeClose(false);TY={m,p,before,o};TS.text='';
     <div class="tp-row tp-end"><button type="button" class="btn sm q" id="tpCancel">Cancel</button><button type="button" class="btn sm go" id="tpPlace">Place</button></div>`;
   document.body.appendChild(pop);typePlace(e);
   const prev=()=>{const f=TFACES.find(q=>q[0]===TS.font)||TFACES[0],t=$('#tpText');if(t){t.style.fontFamily=f[2];t.style.fontWeight=TS.bold?'700':'400'}};
-  const set=(k,v)=>{TS[k]=v;prev();typeDraw()};
+  const set=(k,v)=>{TS[k]=v;prev();typeDrawSafe()};
   pop.addEventListener('input',ev=>{const t=ev.target,id=t.id;if(id==='tpText')set('text',t.value);else if(id==='tpFont')set('font',t.value);else if(id==='tpSize'){set('size',Number(t.value));t.nextElementSibling.textContent=t.value}else if(id==='tpColor')set('color',t.value);else if(id==='tpCase')set('case',t.value);else if(id==='tpOut')set('outline',Number(t.value));else if(id==='tpOutC')set('outlineColor',t.value);else if(id==='tpArc'){set('arc',Number(t.value));t.nextElementSibling.textContent=t.value}
     else if(id==='tpEnv')set('env',t.value);else if(id==='tpEnvK')set('envK',Number(t.value));else if(id==='tpStretch'){set('stretch',Number(t.value));t.nextElementSibling.textContent=t.value+'%'}else if(id==='tpTrack'){set('track',Number(t.value));t.nextElementSibling.textContent=t.value}
     else if(id==='tpOut2')set('outline2',Number(t.value));else if(id==='tpOut2C')set('outline2Color',t.value);else if(id==='tpShK')set('shadowKind',t.value);else if(id==='tpShC')set('shadowColor',t.value);else if(id==='tpSh')set('shadow',Number(t.value));else if(id==='tpShA')set('shadowAngle',Number(t.value))});
   pop.addEventListener('change',ev=>{const k={tpFont:'font',tpCase:'case',tpEnv:'env',tpShK:'shadowKind'}[ev.target.id];if(k)set(k,ev.target.value)});
   pop.addEventListener('click',ev=>{if(ev.target.id==='tpBold'){set('bold',!TS.bold);ev.target.classList.toggle('q',!TS.bold);ev.target.setAttribute('aria-pressed',String(TS.bold))}else if(ev.target.id==='tpCancel')typeClose(false);else if(ev.target.id==='tpPlace')typeClose(true)});
   pop.addEventListener('keydown',ev=>{if(ev.key==='Enter'&&ev.target.id==='tpText'){ev.preventDefault();typeClose(true)}else if(ev.key==='Escape'){ev.preventDefault();typeClose(false)}});
-  pop.addEventListener('pointerdown',ev=>ev.stopPropagation());prev();setTimeout(()=>$('#tpText')?.focus(),30)}
+  pop.addEventListener('pointerdown',ev=>{ev.stopPropagation();const id=ev.target.closest?.('button')?.id;if(id==='tpPlace'||id==='tpCancel'){ev.preventDefault();typeClose(id==='tpPlace')}});prev();setTimeout(()=>$('#tpText')?.focus(),30)}
 // the panel in the corner of the frame away from the words, inside the frame's edges (it scrolls when the frame is short)
 function typePlace(e){const pop=$('#typePop');if(!pop)return;const W0=pop.offsetWidth||300,cr=$('#canvas').getBoundingClientRect(),vl=Math.max(0,cr.left),vr=Math.min(innerWidth,cr.right),left=(e?.clientX??0)>=(vl+vr)/2;
   pop.style.left=Math.max(8,Math.min(innerWidth-W0-8,left?vl+12:vr-W0-12))+'px';pop.style.top=Math.max(8,Math.min(innerHeight-120,Math.max(0,cr.top)+12))+'px';pop.style.maxHeight=`calc(100vh - ${parseFloat(pop.style.top)+8}px)`}
@@ -728,8 +729,8 @@ function typePlace(e){const pop=$('#typePop');if(!pop)return;const W0=pop.offset
 function typeStart(){if(MTOOL!=='text'||TY||!P||!HOST()||D?.concept?.locked)return;const m=MK[VIEW]||mkNew(VIEW);if(!m)return;mkFit(m);mkPlace();
   const r=$('#canvas').getBoundingClientRect(),x0=Math.max(0,r.left),x1=Math.min(innerWidth,r.right),y0=Math.max(0,r.top),y1=Math.min(innerHeight,r.bottom),e={clientX:(x0+x1)/2,clientY:y0+(y1-y0)*.4};
   typeOpen(m,mkAt(m,e),mkSnap(m),mkOpts(),e)}
-function typeClose(keep){const t=TY,pop=$('#typePop');TY=null;pop?.remove();if(!t)return;
-  if(keep&&TS.text.trim()){try{localStorage.setItem('fb.flats.type',JSON.stringify({...TS,text:''}))}catch{}TY=t;typeDraw();TY=null;mkDone(t.m,t.before)}
+function typeClose(keep){const t=TY,pop=$('#typePop');if(t&&keep&&!TS.text.trim()&&pop){FBN.toast('Type the words first, or Cancel.','info');$('#tpText')?.focus();return}TY=null;pop?.remove();if(!t)return;
+  if(keep&&TS.text.trim()){try{localStorage.setItem('fb.flats.type',JSON.stringify({...TS,text:''}))}catch{}TY=t;const ok=typeDrawSafe();TY=null;if(!ok){t.m.cv.getContext('2d').putImageData(t.before,0,0);return}mkDone(t.m,t.before);mkPlace();FBN.toast(`“${TS.text.trim().slice(0,30)}” is on the ${VIEW}. Undo takes it off.`,'ok',2500)}
   else t.m.cv.getContext('2d').putImageData(t.before,0,0)}
 // QuickShape on the flat: the stroke drawn again as the shape it was meant to be, with the same brush (and its mirror images)
 function mkQuick(g){const q=window.FBBrush?.quickShapeOf?.(g.pts,{minSize:24*mkK(g.m)});if(!q)return;g.m.cv.getContext('2d').putImageData(g.before,0,0);if(MBUF&&MBUF.m===g.m)MBUF.c.getContext('2d').clearRect(0,0,MBUF.c.width,MBUF.c.height);

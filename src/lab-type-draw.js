@@ -23,11 +23,11 @@ const mk = (w, h) => { const c = document.createElement('canvas'); c.width = Mat
 
 export function renderType(o) {
   const size = Math.max(4, o.size || 40), font = `${o.italic ? 'italic ' : ''}${o.bold ? '700' : '400'} ${size}px ${o.stack || 'sans-serif'}`, track = o.track || 0, lead = o.lead || 1.1;
-  const lines = caseOf(String(o.text || ' '), o.case).split('\n'), mx = mk(1, 1).getContext('2d'); mx.font = font;
+  const lines = caseOf(String(o.text || ' '), o.case).split('\n'), mc = mk(1, 1), mx = mc.getContext('2d'); mx.font = font;
   const lw = lines.map(t => [...t].reduce((s, ch) => s + mx.measureText(ch).width, 0) + Math.max(0, [...t].length - 1) * track);
   const o1 = o.outline || 0, o2 = o.outline2 || 0, pad = Math.ceil(size * .35 + (o1 + o2) * 2 + 4), lh = size * lead;
   const ink = (x, g, px, py) => { x.lineJoin = 'round'; if (o2) { x.strokeStyle = o.outline2Color || '#141416'; x.lineWidth = (o1 + o2) * 2; x.strokeText(g, px, py); } if (o1) { x.strokeStyle = o.outlineColor || '#ffffff'; x.lineWidth = o1 * 2; x.strokeText(g, px, py); } x.fillText(g, px, py); };
-  let c;
+  let c; const free = k => { k.width = k.height = 0; }; // scratch canvases are let go at once (an iPad caps the memory canvases may hold)
   if (o.arc && lines.length === 1) {
     // one line bent on a circle: up for an arch, down for a smile; each letter square to the curve
     const L = Math.max(1, lw[0]), th = Math.abs(o.arc) / 100 * Math.PI, R = L / th, up = o.arc > 0; let s = 0;
@@ -45,12 +45,12 @@ export function renderType(o) {
         px += gw + track; } });
   }
   // stretch, then a shadow in one solid ink
-  const st = (o.stretch || 100) / 100; if (Math.abs(st - 1) > .001) { const s2 = mk(c.width * st, c.height); s2.getContext('2d').drawImage(c, 0, 0, s2.width, s2.height); c = s2; }
-  const d = o.shadowKind && o.shadowKind !== 'none' ? Math.max(0, o.shadow || 0) : 0; if (!d) return c;
+  const st = (o.stretch || 100) / 100; if (Math.abs(st - 1) > .001) { const s2 = mk(c.width * st, c.height); s2.getContext('2d').drawImage(c, 0, 0, s2.width, s2.height); free(c); c = s2; }
+  free(mc); const d = o.shadowKind && o.shadowKind !== 'none' ? Math.max(0, o.shadow || 0) : 0; if (!d) return c;
   const a = ((o.shadowAngle ?? 135) - 90) * Math.PI / 180, dx = Math.cos(a) * d, dy = Math.sin(a) * d, sh = mk(c.width, c.height), sx = sh.getContext('2d');
   sx.drawImage(c, 0, 0); sx.globalCompositeOperation = 'source-in'; sx.fillStyle = o.shadowColor || '#141416'; sx.fillRect(0, 0, sh.width, sh.height);
   const out = mk(c.width + Math.abs(dx) + 2, c.height + Math.abs(dy) + 2), ox = out.getContext('2d'), bx = dx < 0 ? -dx : 0, by = dy < 0 ? -dy : 0;
   if (o.shadowKind === 'extrude') { const n = Math.ceil(d); for (let i = n; i >= 1; i--) ox.drawImage(sh, bx + dx * i / n, by + dy * i / n); } else ox.drawImage(sh, bx + dx, by + dy);
-  ox.drawImage(c, bx, by); out.anchor = [bx + c.width / 2, by + c.height / 2]; return out;
+  ox.drawImage(c, bx, by); out.anchor = [bx + c.width / 2, by + c.height / 2]; free(sh); free(c); return out;
 }
 if (typeof window !== 'undefined') window.FBType = { ENVS, caseOf, envAt, renderType };
