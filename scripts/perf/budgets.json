@@ -1,0 +1,32 @@
+{
+  "_about": "Budgets for scripts/perf/studio-perf.mjs, in milliseconds at 4x CPU slowdown in headless Chromium (the picture on the canvas, not the graphics chip). main = main-thread time per frame (what the code controls); frame = frame to frame; release = lifting the Pencil to the settled frame; once = a click to the next painted frame. Each is about 1.4x what the Studio measured when it was set (2026-11-08), so a change that slows an interaction fails the check. The target for every drag is one frame at full speed (16.7). Lower a budget when an interaction gets faster; never raise one to make a change pass without saying why in the PR.",
+  "picture": {
+    "brush stroke": { "main": 29, "frame": 40, "release": 160 },
+    "eraser stroke": { "main": 18, "frame": 29, "release": 130 },
+    "move a layer": { "main": 41, "frame": 66, "release": 170 },
+    "resize a layer": { "main": 12, "frame": 34, "release": 140 },
+    "turn a layer": { "main": 17, "frame": 44, "release": 160 },
+    "liquify": { "main": 32, "frame": 57, "release": 200 },
+    "pan the view": { "main": 9, "frame": 24, "release": 110 },
+    "pinch zoom": { "main": 10, "frame": 25, "release": 80 },
+    "Pencil hover": { "main": 15, "frame": 29 }
+  },
+  "panel": {
+    "slider a.hue": { "main": 53, "frame": 71, "release": 40 },
+    "slider a.sat": { "main": 47, "frame": 66, "release": 40 },
+    "slider scale": { "main": 22, "frame": 41, "release": 40 },
+    "slider rotd": { "main": 23, "frame": 47, "release": 40 },
+    "slider opacity": { "main": 23, "frame": 46, "release": 40 },
+    "tab add": { "once": 480 },
+    "tab make": { "once": 340 },
+    "tab layers": { "once": 230 }
+  },
+  "flats": {
+    "Pencil brush": { "main": 30, "frame": 32, "release": 60 },
+    "eraser on the sketch lines": { "main": 26, "frame": 28, "release": 120 },
+    "pinch zoom": { "main": 45, "frame": 45, "release": 70 },
+    "pan when zoomed": { "main": 33, "frame": 34, "release": 500 },
+    "view front→back": { "once": 90 },
+    "view back→board": { "once": 175 }
+  }
+}

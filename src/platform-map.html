@@ -175,7 +175,7 @@ svg.edges path.cur{stroke-width:3.2}
         <li><b>Code</b>: plain ES modules, no build step. Pages are static HTML with their own scripts; the server renders nothing.</li>
         <li><b>Schema</b>: <code>src/db.js</code> creates and migrates tables at start-up, idempotently.</li>
         <li><b>Dependencies</b>: pinned by <code>package-lock.json</code>, installed with <code>npm ci</code>; <code>npm run audit:deps</code> checks advisories.</li>
-        <li><b>Tests</b>: <code>npm test</code> (unit, incl. a check that every API route needs a sign-in or has a stated reason) and <code>npm run journeys</code> (end-to-end journeys against a real server, Postgres and headless Chromium/WebKit, with stand-ins for paid services).</li>
+        <li><b>Tests</b>: <code>npm test</code> (unit, incl. a check that every API route needs a sign-in or has a stated reason) and <code>npm run journeys</code> (end-to-end journeys against a real server, Postgres and headless Chromium/WebKit, with stand-ins for paid services), and <code>npm run perf</code> (the Studio's latency budget: every main interaction on the picture, the panel and the flats, on a CPU slowed 4×, held to <code>scripts/perf/budgets.json</code>; journey J291 runs it too).</li>
         <li><b>Deploy</b>: Railway builds the Dockerfile on merge to main; <code>/health</code> gates the rollout.</li>
         <li><b>Watching it</b>: Platform health in the work console checks every connection, job and setting without spending paid quota.</li>
       </ul>

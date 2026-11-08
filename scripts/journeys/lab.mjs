@@ -4779,4 +4779,16 @@ await journey('J290', 'Start from scratch on a line plan: a piece is drawn on a 
 });
 
 shops.close(); brave.close();
+// The Studio's latency budget (scripts/perf/budgets.json): every main interaction on the picture, the panel and the flats, driven as an iPad
+// drives it on a CPU slowed 4×, stays inside its budget. JOURNEY_PERF=off skips it on a machine too busy to time anything.
+await journey('J291', 'the Studio stays inside its latency budget: drawing, moving, sizing, turning, liquify, panning, pinching, hovering, the sliders, the tabs, and the flats', async () => {
+  if (!playwright) { ok(true, 'skipped: no browser here'); return; }
+  if (process.env.JOURNEY_PERF === 'off') { ok(true, 'skipped: JOURNEY_PERF=off'); return; }
+  const { runPerf } = await import('../perf/studio-perf.mjs');
+  const r = await runPerf({ base: BASE, token: kyleT, playwright, log: () => {} });
+  ok(r.results.filter(x => !x.skipped).length >= 20, 'every interaction was measured', r.results.filter(x => x.skipped).map(x => x.name));
+  ok(!r.errors.length, 'no page errors while it ran', r.errors.slice(0, 5));
+  ok(!r.over.length, 'every interaction is inside its budget', r.over.map(x => `${x.group}: ${x.name}: ${x.over.join(', ')}`));
+});
+
 process.exit(summary() ? 1 : 0);

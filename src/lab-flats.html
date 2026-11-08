@@ -657,9 +657,9 @@ document.addEventListener('keydown',e=>{if(e.target.closest('input,select,textar
 // Each view has one drawing, a picture laid over the view's own box in inches, so it zooms with the flat and goes into the sheets and the tech
 // pack. It sits over the graphics; while a drawing tool is chosen it takes the pointer, otherwise the flat works as before. Once a Pencil has been
 // used, fingers never draw: one finger moves the view when zoomed in, two pinch, so a resting palm does nothing.
-const MK={},MUNDO={front:[],back:[]},MREDO={front:[],back:[]},MKTOOLS=['brush','eraser','distress','text','rect','ellipse','line','fill','liquify'];let MTOOL='select',MDRAG=null,MPEN=false;
+const MK={},MUNDO={front:[],back:[]},MREDO={front:[],back:[]},MKTOOLS=['brush','eraser','distress','text','rect','ellipse','polygon','star','line','fill','liquify'];let MTOOL='select',MDRAG=null,MPEN=false;
 const MKW=document.createElement('div');MKW.className='mkw';
-const mkOpts=()=>{const o=HOST()?.drawOpts?.()||{};return {color:o.color||'#141416',size:Number(o.size)||12,dsize:Number(o.dsize)||40,flow:o.flow??1,soft:o.soft||0,pressure:o.pressure!==false,tip:o.tip||'round',etip:o.etip||'hard',stream:Number(o.stream)||0,qshape:o.qshape!==false,lock:Boolean(o.lock),sym:o.sym||'off',ftol:Number(o.ftol)||40}};
+const mkOpts=()=>{const o=HOST()?.drawOpts?.()||{};return {color:o.color||'#141416',size:Number(o.size)||12,dsize:Number(o.dsize)||40,flow:o.flow??1,soft:o.soft||0,pressure:o.pressure!==false,tip:o.tip||'round',etip:o.etip||'hard',stream:Number(o.stream)||0,qshape:o.qshape!==false,lock:Boolean(o.lock),sym:o.sym||'off',ftol:Number(o.ftol)||40,shFill:o.shFill!==false,shFillC:o.shFillC||'',shStroke:Boolean(o.shStroke),shStrokeC:o.shStrokeC||'',shW:Number(o.shW)||0,sides:Number(o.sides)||6,inner:Number(o.inner)||50,dash:o.dash||'solid'}};
 // symmetry on the flat: mirrored about the centre front (or back) line, top-bottom about the middle of the drawing, turned round where they meet
 const mkSym=(m,o)=>window.FBBrush?.symmetryMaps?FBBrush.symmetryMaps(['brush','eraser'].includes(MTOOL)?o.sym:'off',(0-m.x)/m.w*m.cv.width,m.cv.height/2):[p=>p];
 function mkStrokeS(m,a,b,o,pr){for(const f of mkSym(m,o))mkStroke(m,f(a),f(b),o,pr)}
@@ -697,8 +697,14 @@ function mkStroke(m,a,b,o,pr){if(window.FBBrush&&(MTOOL==='brush'||MTOOL==='eras
   const x=m.cv.getContext('2d'),k=mkK(m),t=MTOOL,w=Math.max(.6,(t==='distress'?o.dsize*.35:o.size*.5)*pr)*k;x.save();x.lineCap='round';x.lineJoin='round';x.lineWidth=w;x.globalAlpha=o.flow;
   if(t==='brush'){x.strokeStyle=o.color;if(o.soft){x.shadowColor=o.color;x.shadowBlur=w*o.soft}}else{x.globalCompositeOperation='destination-out';x.strokeStyle='#000';if(t==='distress'){x.setLineDash([w*.12,w*.3]);x.globalAlpha=Math.min(1,o.flow*.8)}}
   x.beginPath();x.moveTo(a[0],a[1]);x.lineTo(b[0]+.01,b[1]);x.stroke();x.restore()}
-function mkShape(m,g,p){const x=m.cv.getContext('2d'),o=g.o,k=mkK(m);x.putImageData(g.before,0,0);x.save();x.strokeStyle=o.color;x.globalAlpha=o.flow;x.lineWidth=Math.min(Math.max(o.size*.15,1.5),12)*k;x.lineCap='round';x.beginPath();
-  const[a,b]=g.from;if(MTOOL==='line'){x.moveTo(a,b);x.lineTo(p[0],p[1])}else if(MTOOL==='rect')x.rect(Math.min(a,p[0]),Math.min(b,p[1]),Math.abs(p[0]-a),Math.abs(p[1]-b));else x.ellipse((a+p[0])/2,(b+p[1])/2,Math.abs(p[0]-a)/2,Math.abs(p[1]-b)/2,0,0,Math.PI*2);x.stroke();x.restore()}
+// shapes on the flat, with the Studio bar's settings: a fill (a filled shape with no stroke is a patch of colour), its stroke and width, dashes,
+// a polygon's sides and a star's points (drawn from the middle out)
+function mkShape(m,g,p){const x=m.cv.getContext('2d'),o=g.o,k=mkK(m),lw=(o.shW?Math.min(Math.max(o.shW*.3,1),30):Math.min(Math.max(o.size*.15,1.5),12))*k;x.putImageData(g.before,0,0);x.save();x.strokeStyle=o.shStrokeC||o.color;x.fillStyle=o.shFillC||o.color;x.globalAlpha=o.flow;x.lineWidth=lw;x.lineCap='round';x.lineJoin='round';
+  if(o.dash==='dash')x.setLineDash([lw*3,lw*2]);else if(o.dash==='dot')x.setLineDash([.01,lw*2]);x.beginPath();
+  const[a,b]=g.from;if(MTOOL==='line'){x.moveTo(a,b);x.lineTo(p[0],p[1])}else if(MTOOL==='rect')x.rect(Math.min(a,p[0]),Math.min(b,p[1]),Math.abs(p[0]-a),Math.abs(p[1]-b));
+  else if(MTOOL==='polygon'||MTOOL==='star'){const r=Math.hypot(p[0]-a,p[1]-b),t0=Math.atan2(p[1]-b,p[0]-a),n=Math.max(3,Math.min(24,Math.round(o.sides)||6)),star=MTOOL==='star',cnt=star?n*2:n,ri=r*Math.max(.1,Math.min(.95,(o.inner||50)/100));for(let i=0;i<cnt;i++){const t=t0+i*2*Math.PI/cnt,rr=star&&i%2?ri:r;i?x.lineTo(a+rr*Math.cos(t),b+rr*Math.sin(t)):x.moveTo(a+rr*Math.cos(t),b+rr*Math.sin(t))}x.closePath()}
+  else x.ellipse((a+p[0])/2,(b+p[1])/2,Math.abs(p[0]-a)/2,Math.abs(p[1]-b)/2,0,0,Math.PI*2);
+  const fill=MTOOL!=='line'&&o.shFill&&o.shFillC;if(fill)x.fill();if(!fill||o.shStroke)x.stroke();x.restore()}
 function mkDone(m,before){m.ver=(m.ver||0)+1;MUNDO[VIEW].push(before);MKT[VIEW].push(Date.now());if(MKT[VIEW].length>30)MKT[VIEW].shift();if(MUNDO[VIEW].length>30)MUNDO[VIEW].shift();MREDO[VIEW]=[];m.dirty=true;touch();HOST()?.flatsChanged?.()}
 // the drawing on this side as clean outlines (src/lab-trace.js), drawn back into it in place; 'more' traces the same drawing again a level
 // cleaner, until something new is drawn on it. Undo goes back a step, as after a stroke.
