@@ -112,7 +112,15 @@ export async function runPerf({ base, token, playwright = null, rate = 4, only =
           await p.evaluate(() => setTool('hand')); await p.waitForTimeout(300);
           await measure('flats', 'pinch zoom', { src: ([C]) => window.__perfDrive(document.querySelector('#canvas'), Array.from({ length: 40 }, (_, i) => [C[0] - 40 - i * 3, C[1] - 40 - i * 2]), { type: 'touch', multi: Array.from({ length: 40 }, (_, i) => [C[0] + 40 + i * 3, C[1] + 40 + i * 2]) }), arg: [sv] }, f);
           await measure('flats', 'pan when zoomed', fdrive('#canvas', line(sv[0], sv[1], sv[0] - 120, sv[1] - 60), { type: 'touch' }), f);
-          await full(); await p.evaluate(() => setTool('select'));
+          // a detail on the flat (a pocket, a seam) dragged: the flat is drawn again every frame, changed in place
+          await p.evaluate(() => setTool('select')); await p.waitForTimeout(300);
+          const tab0 = await f.evaluate(() => document.querySelector('.tabs [data-tab][aria-selected=true]')?.dataset.tab || '');
+          await f.evaluate(async () => { if (!document.querySelector('#canvas svg [data-ed]')) { document.querySelector('[data-tab=design]')?.click(); await new Promise(r => setTimeout(r, 300)); document.querySelector('[data-adddet]')?.click(); await new Promise(r => setTimeout(r, 300)); } });
+          const ed = await f.evaluate(() => { const e = document.querySelector('#canvas svg [data-ed]'); if (!e) return null; const r = e.getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; });
+          if (ed) await measure('flats', 'move a detail', fdrive('#canvas svg [data-ed]', line(ed[0], ed[1], ed[0] + 60, ed[1] + 30)), f); else results.push({ group: 'flats', name: 'move a detail', skipped: true });
+          await p.waitForTimeout(3000); // the save and the checks that follow a drag, done before the next is timed
+          await f.evaluate(t => { if (t) document.querySelector(`.tabs [data-tab=${t}]`)?.click(); }, tab0); await p.waitForTimeout(500); // touching a detail opens the Design tab: back to the tab the view switches are timed with
+          await full();
           await throttle();
           await measure('flats', 'view front→back', { src: s => window.__perfClick(s), arg: '#viewSeg [data-v=back]' }); await p.waitForTimeout(2500);
           await measure('flats', 'view back→board', { src: s => window.__perfClick(s), arg: '#viewSeg [data-v=board]' }); await p.waitForTimeout(2500);

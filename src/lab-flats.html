@@ -182,9 +182,27 @@ setInterval(()=>{const el=$('#saved');if(!DIRTY&&SAVED_F&&!SAVING_F&&/^Saved /.t
 function localFindings(){const out={},over=overlapChecks(PL);for(const q of PL){const t=D.techniques.find(x=>x.id===q.techniqueId);const loc=placementChecks(q,P,t?{...t.rules,techniqueName:t.name}:{});const art=(CHECK.findings[q.id]||[]).filter(f=>['FINE_DETAIL','INKS','GRADIENT','STITCHES','TINY'].includes(f.code));out[q.id]=[...loc,...(over[q.id]||[]),...art]}return out}
 function draw(){
   const F=localFindings(),sz=$('#size').value||P.size,pls=PL.map(q=>{if(!q.grade)return q;const g=q.grade.find(x=>x.sizes.includes(sz));return g?{...q,w:g.w,h:g.h,y:q.y-q.h/2+g.h/2}:q}),svg=renderSvg(P,VIEW,{maskHref:MASK_URL,placements:pls,hrefs:HREF,size:sz,showPom:$('#showPom').checked,showDims:$('#showDims').checked,selected:SEL,findings:F,scale:0,editable:true,selectedEdit:SELE,editHrefs:EHREF,overlay:overlay(),alloverHref:AOHREF,texture:clothTex(),tags:tagsOn()});
-  $('#canvas').innerHTML=svg;zoomSvg();const fail=Object.values(F).flat().filter(f=>f.level==='fail').length,warn=Object.values(F).flat().filter(f=>f.level==='warn').length,s=$('#status');
+  showSvg(svg);zoomSvg();const fail=Object.values(F).flat().filter(f=>f.level==='fail').length,warn=Object.values(F).flat().filter(f=>f.level==='warn').length,s=$('#status');
   s.className='status '+(fail?'bad':warn?'warn':'ok');s.innerHTML=fail?`<span class="dot fail"></span>${fail} problem${fail===1?'':'s'} to fix before it can be made`:warn?`<span class="dot warn"></span>Can be made: ${warn} thing${warn===1?'':'s'} to check`:'<span class="dot ok"></span>Can be made as drawn';
   return F}
+// the flat on screen is changed in place, not drawn again: the new drawing is read into a spare element and only the elements and attributes that differ
+// are changed on the one showing, so the browser lays out and paints only what moved, and the pictures on it (graphics, the cloth, tags) are not
+// decoded again on every move. Anything that is not one drawing (a message, the first draw) is put in whole.
+const SVGTPL=document.createElement('template');
+function syncAttrs(a,b){for(const t of [...a.attributes])if(!b.hasAttributeNS(t.namespaceURI,t.localName))a.removeAttributeNS(t.namespaceURI,t.localName);
+  for(const t of b.attributes)if(a.getAttributeNS(t.namespaceURI,t.localName)!==t.value)a.setAttributeNS(t.namespaceURI,t.name,t.value)}
+function syncKids(a,b){const A=a.childNodes,B=[...b.childNodes];
+  for(let i=0;i<B.length;i++){const n=B[i],o=A[i];if(!o){a.appendChild(n);continue}if(o.isEqualNode(n))continue;
+    if(o.nodeType===3&&n.nodeType===3){o.nodeValue=n.nodeValue;continue}
+    if(o.nodeType!==1||n.nodeType!==1||o.namespaceURI!==n.namespaceURI||o.localName!==n.localName){a.replaceChild(n,o);continue}
+    syncAttrs(o,n);syncKids(o,n)}
+  while(A.length>B.length)a.removeChild(a.lastChild)}
+let LASTSVG='';function showSvg(svg){const c=$('#canvas'),cur=c.querySelector(':scope>svg');if(cur&&svg===LASTSVG)return;LASTSVG=svg;SVGTPL.innerHTML=svg;const k=SVGTPL.content,nu=k.firstElementChild;
+  if(!cur||!nu||k.childElementCount!==1||nu.localName!=='svg'||[...c.children].some(e=>e!==cur&&!e.classList.contains('mkw'))){c.innerHTML=svg;SVGTPL.innerHTML='';return}
+  // the frame of the drawing (viewBox), its turn (style) and its full-view frame (data-base) belong to the zoom: changed only when they differ, as a
+  // change to any of them lays out and paints the whole flat again
+  const nb=nu.getAttribute('viewBox')||'';for(const k of ['viewBox','style','data-base']){const v=cur.getAttribute(k);if(v==null)nu.removeAttribute(k);else nu.setAttribute(k,v)}
+  syncAttrs(cur,nu);if(cur.dataset.base!==nb){cur.dataset.base=nb;cur.setAttribute('viewBox',nb)}syncKids(cur,nu);SVGTPL.innerHTML=''}
 // the flat drawn again at most once a frame while something is dragged (a Pencil sends 240 moves a second)
 let DRAWQ=0;function drawSoon(){if(DRAWQ)return;DRAWQ=requestAnimationFrame(()=>{DRAWQ=0;draw()})}
 function paint(){const F=draw();paintPl(F);if(TAB==='design')paintDesign();if(TAB==='garment')paintGarment();if(TAB==='pom')paintPom();$('#canvas').classList.toggle('drawing',!!MODE)}
@@ -556,8 +574,8 @@ function toInch(X,Y){const g=vgeo();if(!g)return[0,0];const[lx,ly]=turn(X-g.cx,Y
 // the view's turn on the drawing and on the hand drawing over it (both turn about their own centre, which is the same box)
 function applyTurn(){VG=null;const svg=$('#canvas svg'),t=FR?`rotate(${FR}deg)`:'';if(svg){svg.style.transform=t;svg.style.transformOrigin='50% 50%'}MKW.style.transform=t;MKW.style.transformOrigin='50% 50%'}
 function zoomSvg(){VG=null;const svg=$('#canvas svg');if(!svg)return;if(!svg.dataset.base)svg.dataset.base=svg.getAttribute('viewBox')||'';const b=baseBox();if(!b)return;
-  if(FZ<=1.001){FZ=1;FC=null;svg.setAttribute('viewBox',svg.dataset.base)}
-  else{const w=b.w/FZ,h=b.h/FZ,c=FC||[b.x+b.w/2,b.y+b.h/2],cx=Math.min(Math.max(c[0],b.x+w/2),b.x+b.w-w/2),cy=Math.min(Math.max(c[1],b.y+h/2),b.y+b.h-h/2);FC=[cx,cy];svg.setAttribute('viewBox',`${cx-w/2} ${cy-h/2} ${w} ${h}`)}
+  const setVB=v=>{if(svg.getAttribute('viewBox')!==v)svg.setAttribute('viewBox',v)};if(FZ<=1.001){FZ=1;FC=null;setVB(svg.dataset.base)}
+  else{const w=b.w/FZ,h=b.h/FZ,c=FC||[b.x+b.w/2,b.y+b.h/2],cx=Math.min(Math.max(c[0],b.x+w/2),b.x+b.w-w/2),cy=Math.min(Math.max(c[1],b.y+h/2),b.y+b.h-h/2);FC=[cx,cy];setVB(`${cx-w/2} ${cy-h/2} ${w} ${h}`)}
   $('#fzFit')?.classList.toggle('hidden',FZ<=1&&!FR);const zl=$('#fzLabel');if(zl)zl.textContent=Math.round(FZ*100)+'%'+(FR?` · ${Math.round(FR)}°`:'');applyTurn();mkPlace()}
 const unitsPerPx=()=>{const g=vgeo();return g?1/g.k:1};
 const centreNow=()=>{const b=baseBox();return FC||(b?[b.x+b.w/2,b.y+b.h/2]:[0,0])};
