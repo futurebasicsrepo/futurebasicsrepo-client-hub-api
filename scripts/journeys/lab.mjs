@@ -2348,7 +2348,11 @@ await journey('J234', 'One Design workspace: a concept opens on its picture, and
       await page.click('#save'); await F.waitForFunction(() => /^Saved/.test(document.getElementById('saved').textContent), null, { timeout: 20000 }); await page.waitForFunction(() => !DIRTY, null, { timeout: 30000 });
       const col = sql(`select params->>'color' from lab_flats where concept_id='${c.id}'`), fp = (await K(`/concepts/${c.id}/flats`)).json.flat.placements.find(q => q.source === 'studio'), doc = (await K(`/concepts/${c.id}/studio`)).json.doc;
       ok(col === '#1f2a44' && fp && Math.abs(fp.w - 3.5) < .2 && doc?.layers?.length >= 2, '   one Save keeps the flats (their colour, the wordmark at 3.5 in) and the picture\'s layers', [col, fp?.w, doc?.layers?.length]);
+      // while the flats fill the workspace the hidden picture and its layer list are not drawn; they catch up when the picture is shown
+      const hid = await page.evaluate(async () => { draw(); paintLayers(); await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))); return { pic: Boolean(render.later), list: Boolean(paintLayers.later) }; });
+      ok(hid.pic && hid.list, '   on the flats, the hidden picture and its layer list wait (nothing drawn out of sight)', hid);
       await page.click('#pieceSteps [data-step=picture]'); ok(await page.isVisible('#stage') && !(await page.isVisible('#flatHost')) && !/view=/.test(page.url()), '6. Picture brings the layers back');
+      await page.waitForTimeout(300); ok(await page.evaluate(() => !render.later && !paintLayers.later && document.querySelectorAll('#pLayers .ly').length === LAYERS.length), '   and both are drawn as it comes back');
       await page.goto(`${BASE}/lab/flats?concept=${c.id}`); await page.waitForURL(/\/lab\/studio\?concept=.*view=front/, { timeout: 15000 }); await page.waitForSelector('#app[data-v=front]', { timeout: 20000 });
       ok(true, '7. the old flats address opens the same workspace on the flat front');
       ok(errs.length === 0, 'no page errors', errs); await oc.close();

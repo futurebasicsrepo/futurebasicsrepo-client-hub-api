@@ -112,7 +112,8 @@ async function setVMode(v,{push=true}={}){
     // the graphics placed on the picture go onto the flats before they are shown
     if(!GMODE&&DIRTY&&(was==='picture'||!FLOADED)){busy('Putting the graphics on the flats…');try{const sent=await syncFlats({before:flatsFirst});if(sent&&FLOADED)reloadFlats()}catch(x){toast('The flats did not take the graphics: '+x.message)}finally{busy()}}
     if(!FLOADED)loadFlats()}
-  VMODE=v;$('#app').dataset.v=v;document.body.classList.toggle('typing',TOOL==='text'&&(v==='front'||v==='back'));$$('#viewSeg [data-v]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.v===v)));$('#pieceSteps').setStep?.(stepOfView(v));
+  VMODE=v;$('#app').dataset.v=v;if(v==='picture'||v==='split'){if(paintLayers.later)paintLayers();if(render.later){render.later=false;draw()}} // the panel and the picture catch up with what changed while they were hidden
+  document.body.classList.toggle('typing',TOOL==='text'&&(v==='front'||v==='back'));$$('#viewSeg [data-v]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.v===v)));$('#pieceSteps').setStep?.(stepOfView(v));
   const f=FF();if(f&&f.ready()){f.mode(v==='split'?'compact':'full');if(v==='front'||v==='back'){f.setView(v);f.tool?.(TOOL)}}
   if(['warp','pick','ruler'].includes(TOOL)&&v!=='picture')setTool('select');paintOpts();syncUndo();
   if(push){const u=new URL(location.href);if(v==='picture')u.searchParams.delete('view');else u.searchParams.set('view',v);u.searchParams.delete('template');history.replaceState(null,'',u)}
