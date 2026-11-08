@@ -841,6 +841,7 @@ app.get('/lab/nav.js', (_req, reply) => reply.header('cache-control', 'no-cache'
 app.get('/lab/studio-pro.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-studio-pro.js', import.meta.url), 'utf8')));
 app.get('/lab/studio-ill.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-studio-ill.js', import.meta.url), 'utf8')));
 app.get('/lab/studio-tools.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-studio-tools.js', import.meta.url), 'utf8')));
+app.get('/lab/lab-gl.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-gl.js', import.meta.url), 'utf8')));
 app.get('/lab/studio-vec.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-studio-vec.js', import.meta.url), 'utf8')));
 app.get('/lab/studio-gen.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-studio-gen.js', import.meta.url), 'utf8')));
 app.get('/lab/studio-outline.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-studio-outline.js', import.meta.url), 'utf8')));

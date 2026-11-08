@@ -488,7 +488,7 @@ const ONE=['move','scale','rot','liquify'];
 function oneLayer(){const g=DRAG&&ONE.includes(DRAG.mode)&&!window.PRO?.multi()?DRAG.l:GEST?.layer?.l||(SLIDE&&SLIDE.until>performance.now()?SLIDE.l:null);return g&&LAYERS.includes(g)?g:null}
 function oneReady(ol){if(!STK||STK.l!==ol||!STK.one){const i=LAYERS.indexOf(ol),below=canvas(W,H),above=canvas(W,H);composeInto(below.getContext('2d'),q=>LAYERS.indexOf(q)<i,!GMODE);composeInto(above.getContext('2d'),q=>LAYERS.indexOf(q)>i,false);STK={l:ol,below,above,anyAbove:LAYERS.slice(i+1).some(q=>q.visible),one:true}}return STK}
 function oneDraw(x,ol){if(DRAG?.mode==='liquify'){if(ol.visible){x.save();x.globalAlpha=ol.opacity;x.globalCompositeOperation=ol.blend;place(x,ol);x.drawImage(ol.raster,-ol.raster.width/2,-ol.raster.height/2);x.restore()}}else drawLayer(x,ol)}
-function compose(){const ol=oneLayer();
+function compose(){docC._v=(docC._v||0)+1;const ol=oneLayer();
   if(ol){oneReady(ol);
     docX.setTransform(1,0,0,1,0,0);docX.globalCompositeOperation='source-over';docX.globalAlpha=1;docX.clearRect(0,0,W,H);docX.drawImage(STK.below,0,0);
     oneDraw(docX,ol);
@@ -508,11 +508,30 @@ function drawOver(){if(!RAF)RAF=requestAnimationFrame(()=>{RAF=0;render()})} // 
 const sx=x=>x*Z+PX,sy=y=>y*Z+PY,dx=x=>(x-PX)/Z,dy=y=>(y-PY)/Z;
 // moving or zooming the view changes no layer, so the picture is not put together again for those frames (it was, every frame: a slow, jumpy zoom)
 let VIEWONLY=0;const viewOnly=()=>Boolean((GEST&&!GEST.layer)||(DRAG&&DRAG.mode==='pan')||VIEWONLY>performance.now());
+// the picture on the graphics chip (src/lab-gl.js): the page and the picture as textures, moved by one matrix each frame; this canvas keeps what
+// is drawn over the picture. A layer the chip cannot blend as the canvas does (a blend other than normal, multiply or screen, a finish's soft
+// shadow) is drawn the canvas way for that frame
+const hexRgba=h=>{const m=/^#?([0-9a-f]{6})$/i.exec(h||'');if(!m)return[1,1,1,1];const n=parseInt(m[1],16);return[(n>>16)/255,((n>>8)&255)/255,(n&255)/255,1]};
+// The chip is for pictures that stay the same while they move: the view panned, zoomed, turned or hovered over, a layer moved, sized or turned.
+// A picture that changes every frame (a stroke, liquify, the AI area) stays on this canvas: on an iPad the canvas is already on the chip, and
+// sending a changed picture to WebGL each frame would cost more than it saves
+function glPicture(r,vo,ol){if(!window.FBGL)return false;if(!render.gl){render.gl=1;FBGL.attach(view);addEventListener('fbgl-off',()=>draw())}if(!FBGL.ok)return false;const items=[],I=[1,0,0,1,0,0];
+  const live=DRAG&&['stroke','liquify','area'].includes(DRAG.mode);if(live||(!ol&&docC._v!==glPicture.v&&(DRAG||GEST))){if(glPicture.on){FBGL.clear();glPicture.on=false}return false}
+  if(ol){if(!STK?.one||STK.l!==ol)return false;const liq=false;if(!liq&&(!FBGL.canBlend(ol.blend)||(ol.finish&&window.FBFinish?.shadow(ol.finish,W/1000))))return false;
+    items.push({src:STK.below,ver:0,m:I});
+    if(ol.visible){let src,w,h;if(liq){src=ol.raster;w=src.width;h=src.height}else if(sliding(ol)){src=draftOf(ol);w=src._w;h=src._h}else{src=processed(ol);w=src.width;h=src.height}
+      const c=Math.cos(ol.rot||0),s=Math.sin(ol.rot||0),fx=ol.scale*(ol.flip?-1:1),fy=ol.scale;
+      items.push({src,ver:src._rid??0,w,h,opacity:ol.opacity,blend:ol.blend,m:[c*fx,s*fx,-s*fy,c*fy,ol.x-c*fx*w/2+s*fy*h/2,ol.y-s*fx*w/2-c*fy*h/2]})}
+    if(STK.anyAbove)items.push({src:STK.above,ver:0,m:I})}
+  else{items.push({src:docC,ver:docC._v||0,m:I});glPicture.v=docC._v}
+  glPicture.on=true;return FBGL.frame({w:r.width,h:r.height,dpr:DPR,view:{PX,PY,Z,VR},page:{w:W,h:H,color:hexRgba(window.PAGEBG||'#ffffff')},items,sharp:!vo})}
 function render(){
   const ol=render.done?oneLayer():null;if(ol){oneReady(ol);DOCDIRTY=true}else if((DOCDIRTY&&!viewOnly())||!render.done){compose();render.done=true;DOCDIRTY=false}const r=vrect();DPR=window.devicePixelRatio||1;const cw=Math.round(r.width*DPR),ch=Math.round(r.height*DPR);if(view.width!==cw||view.height!==ch){view.width=cw;view.height=ch}
   const vo=viewOnly()||Boolean(DRAG)||Boolean(GEST)||FASTTILL>performance.now()||Boolean(ol); // while the view is being moved or pinched: no soft shadow and quick smoothing (both are slow on an iPad, every frame)
+  const gpu=glPicture(r,vo,ol);
   vx.setTransform(DPR,0,0,DPR,0,0);vx.clearRect(0,0,r.width,r.height);if(VR){vx.translate(r.width/2,r.height/2);vx.rotate(VR*Math.PI/180);vx.translate(-r.width/2,-r.height/2)}vx.save();if(!vo){vx.shadowColor='rgba(20,20,22,.18)';vx.shadowBlur=24}else{vx.fillStyle='rgba(20,20,22,.08)';vx.fillRect(PX+2,PY+3,W*Z,H*Z)}vx.fillStyle=window.PAGEBG||'#fff';vx.fillRect(PX,PY,W*Z,H*Z);vx.restore();
-  vx.imageSmoothingQuality=vo?'low':'high';if(ol){vx.drawImage(STK.below,PX,PY,W*Z,H*Z);vx.save();vx.translate(PX,PY);vx.scale(Z,Z);oneDraw(vx,ol);vx.restore();if(STK.anyAbove)vx.drawImage(STK.above,PX,PY,W*Z,H*Z)}else vx.drawImage(docC,PX,PY,W*Z,H*Z);if(vo){clearTimeout(render.sharp);render.sharp=setTimeout(()=>{if(!viewOnly()&&!DRAG&&!GEST&&!oneLayer())draw();else if(!DRAG&&!GEST)render.sharp=setTimeout(()=>draw(),180)},180)}
+  if(gpu){vx.clearRect(PX,PY,W*Z,H*Z)} // the chip drew the page and the picture under this canvas: only the page's shadow stays here
+  else{vx.imageSmoothingQuality=vo?'low':'high';if(ol){vx.drawImage(STK.below,PX,PY,W*Z,H*Z);vx.save();vx.translate(PX,PY);vx.scale(Z,Z);oneDraw(vx,ol);vx.restore();if(STK.anyAbove)vx.drawImage(STK.above,PX,PY,W*Z,H*Z)}else vx.drawImage(docC,PX,PY,W*Z,H*Z)}if(vo){clearTimeout(render.sharp);render.sharp=setTimeout(()=>{if(!viewOnly()&&!DRAG&&!GEST&&!oneLayer())draw();else if(!DRAG&&!GEST)render.sharp=setTimeout(()=>draw(),180)},180)}
   // where the browser can say where the Pencil is going next (predicted points), the ink is drawn ahead to there for this frame only
   if(DRAG?.mode==='stroke'&&DRAG.pred?.length&&TOOL==='brush'){vx.save();vx.strokeStyle=CUR;vx.globalAlpha=OPT.flow;vx.lineCap='round';vx.lineJoin='round';vx.lineWidth=Math.max(.5,OPT.size*(DRAG.pr||1))*Z;vx.beginPath();vx.moveTo(sx(DRAG.x),sy(DRAG.y));for(const[a,b]of DRAG.pred)vx.lineTo(sx(a),sy(b));vx.stroke();vx.restore()}
   if(MASKED&&(TOOL==='area'||TAB==='ai')){vx.save();vx.globalAlpha=.42;vx.drawImage(mask,PX,PY,W*Z,H*Z);vx.restore()}
@@ -774,7 +793,7 @@ function tab(t){TAB=t;$$('.tabs [data-tab]').forEach(b=>b.setAttribute('aria-sel
 $$('.tabs [data-tab]').forEach(b=>b.onclick=()=>tab(b.dataset.tab));
 
 const rng2=(p,lab,min,max,step,v,unit='')=>`<label class="f"><span>${lab}</span><input type="range" data-p="${p}" min="${min}" max="${max}" step="${step}" value="${v}"><output>${v}${unit}</output></label>`;
-function paintPanels(){paintLayers();window.PRO?.optsRefresh();if(TAB==='ai')paintAiState();if(TAB==='make')window.GEN?.inks()}
+function paintPanels(){paintLayers();window.PRO?.optsRefresh();if(TAB==='ai')paintAiState();if(TAB==='make'){clearTimeout(paintPanels.mk);paintPanels.mk=setTimeout(function go(){if(DRAG||GEST){paintPanels.mk=setTimeout(go,200);return}window.GEN?.inks()},200)}} // the Make tab's inks and print follow once the drawing settles
 function paintLayers(){
   const p=$('#pLayers'),l=selected();
   const list=[...LAYERS].reverse().map(x=>`<div class="ly ${x.id===SEL?'on':''} ${x.visible?'':'off'}" data-ly="${x.id}" tabindex="0" role="button" aria-pressed="${x.id===SEL}"><button type="button" data-vis title="${x.visible?'Hide':'Show'}" aria-label="${x.visible?'Hide':'Show'} ${esc(x.name)}">${x.visible?EYE:SHUT}</button>${x.kind==='text'?`<span class="th">T</span>`:`<img alt="" src="${thumbOf(x)}">`}<span class="nm">${esc(x.name)}<small>${KIND[x.kind]}${x.blend!=='source-over'?' · '+esc(BLENDS.find(b=>b[0]===x.blend)?.[1].split(' (')[0]):''}${x.finish?' · '+esc(x.finish.name):x.distress.amount?' · distressed':''}</small></span><button type="button" data-lock title="${x.locked?'Unlock':'Lock'}" aria-label="${x.locked?'Unlock':'Lock'} ${esc(x.name)}">${x.locked?LOCK:OPEN}</button></div>`).join('');
@@ -1677,6 +1696,7 @@ $('#tagAddGo').onclick=async()=>{const cid=$('#tagAddSel').value,b=$('#tagAddGo'
 
 boot();
 </script>
+<script src="/lab/lab-gl.js"></script>
 <script src="/lab/studio-pro.js"></script>
 <script src="/lab/vendor/polygon-clipping.js"></script>
 <script src="/lab/studio-vec.js"></script>

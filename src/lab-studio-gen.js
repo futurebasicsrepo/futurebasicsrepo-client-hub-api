@@ -41,7 +41,7 @@
   .gout{display:grid;grid-template-columns:1fr 1fr;gap:6px}.gout .btn{justify-content:center}.gout .wide{grid-column:1/-1}
   .gx input[type=range]{flex:1;min-width:110px}
   .gtee{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}.gtee button,.gteec{border:1px solid var(--line);border-radius:10px;padding:0;background:#fff;cursor:pointer;overflow:hidden;display:grid;font-size:11px;position:relative}
-  .gtee button img{width:100%;aspect-ratio:1/1;display:block}.gtee button span,.gteec span{padding:3px 0;text-align:center}.gtee button[aria-pressed=true]{box-shadow:0 0 0 2px var(--ink)}
+  .gtee button img,.gtee button canvas{width:100%;aspect-ratio:1/1;display:block}.gtee button span,.gteec span{padding:3px 0;text-align:center}.gtee button[aria-pressed=true]{box-shadow:0 0 0 2px var(--ink)}
   .gteec{place-items:center;background:conic-gradient(#e43,#fd3,#4c6,#3ae,#a4e,#e43);min-height:60px}.gteec span{background:#fff;border-radius:999px;padding:2px 8px}.gteec input{position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer}
   .gteenote{font-size:12px;color:var(--dim);line-height:1.4}`;
   document.head.appendChild(css);
@@ -207,14 +207,24 @@
   function artCanvas(skip = () => false) { // the art at full size: on a picture, every visible layer but the garment (and any skipped)
     if (!PIC && !LAYERS.some(skip)) { compose(); return docC; }
     const c = canvas(W, H), x = c.getContext('2d'); for (const l of LAYERS) if (l.visible && !(PIC && l.kind === 'base') && !skip(l)) drawLayer(x, l); return c; }
-  function whole() { // everything visible, trimmed to the art
-    const docC = artCanvas(); const x = docC.getContext('2d', { willReadFrequently: true }), d = x.getImageData(0, 0, docC.width, docC.height).data; let x0 = docC.width, y0 = docC.height, x1 = -1, y1 = -1;
-    for (let y = 0; y < docC.height; y += 2) for (let i = 0; i < docC.width; i += 2) if (d[(y * docC.width + i) * 4 + 3] > 8) { if (i < x0) x0 = i; if (i > x1) x1 = i; if (y < y0) y0 = y; if (y > y1) y1 = y; }
-    if (x1 < 0) return null; x0 = Math.max(0, x0 - 2); y0 = Math.max(0, y0 - 2); x1 = Math.min(docC.width - 1, x1 + 2); y1 = Math.min(docC.height - 1, y1 + 2);
-    const c = canvas(x1 - x0 + 1, y1 - y0 + 1); c.getContext('2d').drawImage(docC, x0, y0, c.width, c.height, 0, 0, c.width, c.height); return { image: c.toDataURL('image/png'), w: c.width, h: c.height };
+  function whole() { // everything visible, trimmed to the art; kept until the picture changes (the PNG only made when asked for)
+    const key = (typeof EDITS === 'number' ? EDITS : 0) + '|' + LAYERS.map(l => l.id + (l.visible ? 1 : 0)).join(',');
+    if (whole.k === key && whole.v !== undefined) return whole.v; whole.k = key; whole.v = whole0(); return whole.v;
+  }
+  function whole0() {
+    // the art's edges found on a small copy (a quarter of a megapixel at most), then the edge rows read at full size: as tight as before, a
+    // fraction of the reading
+    const docC = artCanvas(), k = Math.min(1, 512 / Math.max(docC.width, docC.height)), sw = Math.max(1, Math.round(docC.width * k)), sh = Math.max(1, Math.round(docC.height * k)), sm = canvas(sw, sh), sx2 = sm.getContext('2d', { willReadFrequently: true });
+    sx2.drawImage(docC, 0, 0, sw, sh); const d = sx2.getImageData(0, 0, sw, sh).data; let a0 = sw, b0 = sh, a1 = -1, b1 = -1;
+    for (let y = 0; y < sh; y++) for (let i = 0; i < sw; i++) if (d[(y * sw + i) * 4 + 3] > 2) { if (i < a0) a0 = i; if (i > a1) a1 = i; if (y < b0) b0 = y; if (y > b1) b1 = y; }
+    if (a1 < 0) return null; const m = Math.ceil(1 / k) + 2;
+    let x0 = Math.max(0, Math.floor(a0 / k) - m), y0 = Math.max(0, Math.floor(b0 / k) - m), x1 = Math.min(docC.width - 1, Math.ceil((a1 + 1) / k) + m), y1 = Math.min(docC.height - 1, Math.ceil((b1 + 1) / k) + m);
+    const c = canvas(x1 - x0 + 1, y1 - y0 + 1); c.getContext('2d').drawImage(docC, x0, y0, c.width, c.height, 0, 0, c.width, c.height); let u = null; return { canvas: c, get image() { return u || (u = c.toDataURL('image/png')); }, w: c.width, h: c.height };
   }
   const widthIn = () => { if (WIDTH > 0) return WIDTH; const ls = genLayers(), b = ls.length ? bboxOf(ls) : null, w = b ? b.w : (whole()?.w || W); return Math.round(w / (PPI || W / 14) * 4) / 4 || 10; };
-  function paintOut() {
+  function paintOut() { const busy = (typeof DRAG !== 'undefined' && DRAG) || (typeof GEST !== 'undefined' && GEST); if (!paintOut.t && !busy && performance.now() - (paintOut.at || 0) > 600) { paintOut.at = performance.now(); paintOut0(); return; } // the first at once; quick repeats wait for the drawing to settle
+    clearTimeout(paintOut.t); paintOut.t = setTimeout(function go() { paintOut.t = 0; if ((typeof DRAG !== 'undefined' && DRAG) || (typeof GEST !== 'undefined' && GEST)) { paintOut.t = setTimeout(go, 250); return; } paintOut.at = performance.now(); paintOut0(); }, 250); }
+  function paintOut0() {
     const o = $('#gOut'); if (!o) return; const put = PIC ? 'Put it on the garment' : $('#apply')?.textContent || 'Keep in the library';
     setTimeout(paintTees, 0);
     o.innerHTML = `<h4>Print</h4><label class="grow"><span class="glab">Width</span><input class="t" type="number" min="1" max="30" step=".25" id="gWidth" value="${widthIn()}" style="width:80px"> <span class="note">in</span></label>
@@ -281,14 +291,15 @@
   const TEES = [['White', '#ffffff'], ['Natural', '#efe8d8'], ['Heather', '#b9b9b6'], ['Sand', '#d8c7a4'], ['Forest', '#2f4a3a'], ['Navy', '#1d2a44'], ['Red', '#a02a20'], ['Black', '#141416']];
   let TEE = null;
   function inkList() { const g = inks(); if (g.length) return g.map(k => k.hex);
-    const a = whole(); if (!a) return []; const c = canvas(64, 64), x = c.getContext('2d', { willReadFrequently: true }), img = new Image(); return new Promise(res => { img.onload = () => { x.drawImage(img, 0, 0, 64, 64); const d = x.getImageData(0, 0, 64, 64).data, h = new Map(); let n = 0;
+    const a = whole(); if (!a) return []; const c = canvas(64, 64), x = c.getContext('2d', { willReadFrequently: true }), img = a.canvas; return new Promise(res => { { x.drawImage(img, 0, 0, 64, 64); const d = x.getImageData(0, 0, 64, 64).data, h = new Map(); let n = 0;
       for (let i = 0; i < d.length; i += 4) if (d[i + 3] > 200) { n++; const k = hex6(`rgb(${d[i] & 0xe0},${d[i + 1] & 0xe0},${d[i + 2] & 0xe0})`); h.set(k, (h.get(k) || 0) + 1); }
-      res([...h.entries()].filter(([, v]) => v > n * .03).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k]) => k)); }; img.src = a.image; }); }
+      res([...h.entries()].filter(([, v]) => v > n * .03).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k]) => k)); } }); }
   async function paintTees() {
     const box = $('#gTee'); if (!box) return; const a = whole(); if (!a) { box.innerHTML = '<span class="note">Nothing on the canvas yet.</span>'; $('#gTeeNote').textContent = ''; return; }
-    const img = new Image(); await new Promise(r => { img.onload = r; img.src = a.image; }); const inkHex = await inkList();
+    const img = a.canvas, inkHex = await inkList(), pics = [];
     box.innerHTML = TEES.map(([n, hex]) => { const c = canvas(120, 120), x = c.getContext('2d'); x.fillStyle = hex; x.fillRect(0, 0, 120, 120); const k = Math.min(84 / img.width, 84 / img.height); x.drawImage(img, 60 - img.width * k / 2, 60 - img.height * k / 2, img.width * k, img.height * k);
-      return `<button type="button" data-gtee="${hex}" aria-pressed="${TEE === hex}" title="${esc(n)}"><img alt="On ${esc(n)}" src="${c.toDataURL('image/png')}"><span>${esc(n)}</span></button>`; }).join('') + `<label class="gteec" title="Another colour"><input type="color" data-gteec value="${TEE || '#3a5a8c'}"><span>Other</span></label>`;
+      pics.push(c); c.setAttribute('role', 'img'); c.setAttribute('aria-label', 'On ' + n); return `<button type="button" data-gtee="${hex}" aria-pressed="${TEE === hex}" title="${esc(n)}"><i data-teepic="${pics.length - 1}"></i><span>${esc(n)}</span></button>`; }).join('') + `<label class="gteec" title="Another colour"><input type="color" data-gteec value="${TEE || '#3a5a8c'}"><span>Other</span></label>`;
+    box.querySelectorAll('[data-teepic]').forEach(i => i.replaceWith(pics[Number(i.dataset.teepic)]));
     teeNote(TEE, inkHex);
   }
   function teeNote(hex, inkHex) {
