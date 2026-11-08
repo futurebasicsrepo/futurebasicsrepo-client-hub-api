@@ -35,7 +35,7 @@ $('#opts').addEventListener('click',e=>{const b=e.target.closest('[data-tip]');i
 // ---- the size dock: a big size slider beside the canvas while a brush, the eraser or distress is chosen (a Pencil reaches it without
 // leaving the drawing), with quick sizes and the opacity; it follows the tool's own size (the eraser keeps its own)
 const sizeKey=()=>TOOL==='eraser'?'esize':TOOL==='distress'?'dsize':'size';
-function paintDock(){const d=$('#sizeDock');if(!d)return;const on=['brush','eraser','distress'].includes(TOOL);d.classList.toggle('hidden',!on);if(!on)return;const k=sizeKey(),mx=k==='size'?400:600,v=OPT[k];
+function paintDock(){const d=$('#sizeDock');if(!d)return;const on=['brush','eraser','distress'].includes(TOOL);d.classList.toggle('hidden',!on);if(!on)return;if(typeof dockEdge==='function')dockEdge($('.studio')?.classList.contains('names-on'));const k=sizeKey(),mx=k==='size'?400:600,v=OPT[k];
   d.querySelector('[data-dk=size]').max=mx;d.querySelector('[data-dk=size]').value=v;d.querySelector('[data-dk=flow]').value=OPT.flow;
   const dot=d.querySelector('.dk-dot'),px=Math.max(3,Math.min(56,v*Z));dot.style.width=dot.style.height=px+'px';d.querySelector('.dk-v').textContent=v+'px';d.querySelector('.dk-o').textContent=Math.round(OPT.flow*100)+'%';
   d.querySelectorAll('[data-dpre]').forEach(b=>b.setAttribute('aria-pressed',String(Number(b.dataset.dpre)===v)))}
