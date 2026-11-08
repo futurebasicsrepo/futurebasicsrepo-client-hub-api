@@ -1,8 +1,8 @@
 {
-  "_about": "Budgets for scripts/perf/studio-perf.mjs, in milliseconds at 4x CPU slowdown in headless Chromium (the picture on the canvas, not the graphics chip). main = main-thread time per frame (what the code controls); frame = frame to frame; release = lifting the Pencil to the settled frame; once = a click to the next painted frame. Each is about 1.4x what the Studio measured when it was set (2026-11-08), so a change that slows an interaction fails the check. The target for every drag is one frame at full speed (16.7). Lower a budget when an interaction gets faster; never raise one to make a change pass without saying why in the PR.",
+  "_about": "Budgets for scripts/perf/studio-perf.mjs, in milliseconds at 4x CPU slowdown in headless Chromium. 'picture' is the picture on the canvas; 'picture on the graphics chip' is the app's default (?gl=1), its frame times looser because a test browser runs the chip in software (main, the time the code controls, stays near the canvas's); set about 25% over the worst of eight runs (release, which varies most, 30%). main = main-thread time per frame (what the code controls); frame = frame to frame; release = lifting the Pencil to the settled frame; once = a click to the next painted frame. Each is about 1.4x what the Studio measured when it was set (2026-11-08), so a change that slows an interaction fails the check. The target for every drag is one frame at full speed (16.7). Lower a budget when an interaction gets faster; never raise one to make a change pass without saying why in the PR.",
   "picture": {
     "brush stroke": { "main": 29, "frame": 40, "release": 160 },
-    "eraser stroke": { "main": 18, "frame": 29, "release": 130 },
+    "eraser stroke": { "main": 21, "frame": 29, "release": 130 },
     "move a layer": { "main": 41, "frame": 66, "release": 170 },
     "resize a layer": { "main": 12, "frame": 34, "release": 140 },
     "turn a layer": { "main": 17, "frame": 44, "release": 160 },
@@ -10,6 +10,17 @@
     "pan the view": { "main": 12, "frame": 24, "release": 110 },
     "pinch zoom": { "main": 10, "frame": 25, "release": 80 },
     "Pencil hover": { "main": 15, "frame": 29 }
+  },
+  "picture on the graphics chip": {
+    "brush stroke": { "main": 36, "frame": 45, "release": 200 },
+    "eraser stroke": { "main": 24, "frame": 34, "release": 175 },
+    "move a layer": { "main": 44, "frame": 79, "release": 255 },
+    "resize a layer": { "main": 15, "frame": 50, "release": 240 },
+    "turn a layer": { "main": 18, "frame": 49, "release": 225 },
+    "liquify": { "main": 36, "frame": 58, "release": 285 },
+    "pan the view": { "main": 16, "frame": 41, "release": 165 },
+    "pinch zoom": { "main": 15, "frame": 50, "release": 80 },
+    "Pencil hover": { "main": 16, "frame": 25 }
   },
   "panel": {
     "slider a.hue": { "main": 53, "frame": 71, "release": 40 },

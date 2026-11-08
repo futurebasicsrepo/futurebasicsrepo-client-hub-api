@@ -7,6 +7,7 @@
 //                             iPad on its graphics chip, so its budget is looser)
 //                     release = from lifting the Pencil to the frame after the settled picture
 //   run:   node scripts/perf/studio-perf.mjs --base http://127.0.0.1:3200 --token <staff JWT>   (or npm run perf -- …)
+//          runs everything on the canvas, then the picture on the graphics chip (the app's default) against its own budgets; --gl 0|1 for one
 //          PERF_JSON=out.json writes the numbers; --rate 1 runs at full speed; --only picture|flats|panel
 //   exit:  1 when anything is over its budget, with the table saying which
 import { createRequire } from 'node:module';
@@ -28,7 +29,7 @@ window.__perfClick=async(sel)=>{const fr=()=>new Promise(r=>requestAnimationFram
 const line = (x0, y0, x1, y1, n = 40) => Array.from({ length: n }, (_, i) => [x0 + (x1 - x0) * i / (n - 1), y0 + (y1 - y0) * i / (n - 1)]);
 
 export async function runPerf({ base, token, playwright = null, rate = 4, only = '', gl = false, log = console.log } = {}) {
-  const q = gl ? '&gl=1' : '&gl=0'; // the budgets are for the canvas; --gl 1: the picture on the graphics chip (the default in the app), for comparison
+  const q = gl ? '&gl=1' : '&gl=0'; // gl: the picture on the graphics chip (the app's default), held to its own budgets; otherwise the canvas
   playwright ||= createRequire(import.meta.url)(process.env.PLAYWRIGHT_PATH || 'playwright');
   const b = await playwright.chromium.launch(), results = [], errors = [];
   try {
@@ -134,13 +135,14 @@ export async function runPerf({ base, token, playwright = null, rate = 4, only =
   // ---- held to the budgets ----
   const over = [];
   for (const r of results) {
+    if (gl && r.group === 'picture') r.group = 'picture on the graphics chip'; // the chip's own budgets
     if (r.skipped) continue; const bud = BUDGETS[r.group]?.[r.name] || BUDGETS[r.group]?.['*'] || {};
     r.over = Object.entries(bud).filter(([k, v]) => r[k] != null && r[k] > v).map(([k, v]) => `${k} ${r[k]} > ${v}`); if (r.over.length) over.push(r);
   }
   const pad = (s, n) => String(s ?? '').padEnd(n);
   log(`Studio latency at ${rate}× CPU slowdown${gl ? ', the picture on the graphics chip' : ''} (ms; main = main thread per frame, frame = frame to frame)`);
-  log(pad('', 36) + pad('main', 8) + pad('frame', 8) + pad('release', 9) + pad('once', 8) + 'budget');
-  for (const r of results) log(pad(`${r.group}: ${r.name}`, 36) + (r.skipped ? 'skipped' : pad(r.main, 8) + pad(r.frame, 8) + pad(r.release, 9) + pad(r.once, 8) + (r.over.length ? 'OVER ' + r.over.join(', ') : 'ok')));
+  log(pad('', 44) + pad('main', 8) + pad('frame', 8) + pad('release', 9) + pad('once', 8) + 'budget');
+  for (const r of results) log(pad(`${r.group}: ${r.name}`, 44) + (r.skipped ? 'skipped' : pad(r.main, 8) + pad(r.frame, 8) + pad(r.release, 9) + pad(r.once, 8) + (r.over.length ? 'OVER ' + r.over.join(', ') : 'ok')));
   if (errors.length) log('page errors: ' + errors.slice(0, 5).join(' | '));
   return { results, over, errors };
 }
@@ -150,7 +152,11 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const arg = k => { const i = process.argv.indexOf('--' + k); return i > 0 ? process.argv[i + 1] : ''; };
   const base = arg('base') || process.env.PERF_BASE || 'http://127.0.0.1:3000', token = arg('token') || process.env.PERF_TOKEN || '';
   if (!token) { console.error('studio-perf: a staff token is needed (--token or PERF_TOKEN)'); process.exit(2); }
-  const r = await runPerf({ base, token, rate: Number(arg('rate')) || 4, only: arg('only'), gl: arg('gl') === '1' });
+  // --gl both (the default): everything on the canvas, then the picture on the graphics chip; --gl 0 or --gl 1: one of them
+  const mode = arg('gl') || 'both', rate = Number(arg('rate')) || 4, only = arg('only'), runs = [];
+  if (mode !== '1') runs.push(await runPerf({ base, token, rate, only, gl: false }));
+  if (mode !== '0' && (!only || only === 'picture')) runs.push(await runPerf({ base, token, rate, only: 'picture', gl: true }));
+  const r = { results: runs.flatMap(x => x.results), over: runs.flatMap(x => x.over), errors: runs.flatMap(x => x.errors) };
   if (process.env.PERF_JSON) writeFileSync(process.env.PERF_JSON, JSON.stringify(r, null, 1));
   if (r.over.length || r.errors.length) { console.error(`studio-perf: ${r.over.length} over budget${r.errors.length ? `, ${r.errors.length} page errors` : ''}`); process.exit(1); }
 }
