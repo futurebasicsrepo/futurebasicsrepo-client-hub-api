@@ -2686,8 +2686,9 @@ await journey('J240', 'Design on an iPad, as Kyle found it: the ruler takes any 
         await page.click('#panelBtn'); await page.waitForTimeout(300);
         const fl = await page.evaluate(() => { const d = document.getElementById('flatFrame').contentDocument; return { side: getComputedStyle(d.querySelector('.side')).display, w: d.querySelector('#canvas svg').getBoundingClientRect().width }; });
         await page.click('#focusBtn'); await page.waitForTimeout(300);
-        const fo = await page.evaluate(() => ({ header: getComputedStyle(document.querySelector('body>header')).display, h: document.getElementById('app').getBoundingClientRect().height, vh: innerHeight }));
+        const fo = await page.evaluate(() => ({ header: getComputedStyle(document.querySelector('body>header')).display, h: document.getElementById('app').getBoundingClientRect().height, vh: innerHeight, vw: innerWidth, flat: document.getElementById('flatHost').getBoundingClientRect().width, rail: getComputedStyle(document.querySelector('.rail')).position, glass: /blur/.test(getComputedStyle(document.querySelector('.bar')).backdropFilter || getComputedStyle(document.querySelector('.bar')).webkitBackdropFilter || '') }));
         ok(fl.side === 'none' && fl.w > w0 && fo.header === 'none' && fo.h >= fo.vh - 2, '7f. Panel folds the right side away (the flat grows) and Focus hides the header and menu so Design fills the screen', { w0, fl, fo });
+        ok(fo.flat >= fo.vw - 2 && fo.rail === 'absolute' && fo.glass, '   in Focus the flat spans the whole screen and the bar and the tool rail float over it in glass', fo);
         await page.reload({ waitUntil: 'networkidle' }); await page.waitForSelector('#app:not(.hidden)');
         ok(await page.evaluate(() => document.documentElement.dataset.focus === '1' && document.getElementById('app').dataset.panel === 'off'), '   and the layout is kept when Design opens again');
         await page.click('#focusBtn'); await page.click('#panelBtn');
