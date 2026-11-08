@@ -6588,6 +6588,8 @@ if (process.env.NURTURE_DISABLED !== 'true') jobEvery('Follow-up email sequence'
 jobEvery('Assistant recovery', 5 * 60 * 1000, runAiRecovery, { delay: 15 * 1000 });
 jobEvery('Spec checks', 5 * 60 * 1000, runSpecCheckRecovery, { delay: 50 * 1000 });
 jobEvery('3D models', 5 * 60 * 1000, runModelRecovery, { delay: 55 * 1000 });
+// Design Lab: a concept card shows its saved flat when that was saved after the picture; flats saved before the card could show them get their thumbnail here (a few at a time)
+jobEvery('Flat thumbnails', 30 * 60 * 1000, async()=>{const ids=(await pool.query('select concept_id from lab_flats where thumb is null order by updated_at desc limit 40')).rows;let n=0;for(const r of ids){try{if(await labFlats.flatThumb(r.concept_id))n++;else await pool.query('update lab_flats set thumb=$2, thumb_at=updated_at where concept_id=$1',[r.concept_id,Buffer.alloc(0)])}catch(e){app.log.warn({err:e.message,concept:r.concept_id},'flat thumbnail not made');await pool.query('update lab_flats set thumb=$2, thumb_at=updated_at where concept_id=$1',[r.concept_id,Buffer.alloc(0)]).catch(()=>{})}}return n}, { delay: 30 * 1000 });
 jobEvery('Assistant re-runs after an outage', 5 * 60 * 1000, () => runAiAutoRetry().then(r => r.started), { delay: 40 * 1000 });
 if (shopifyConfigured()) jobEvery('Shopify payment sync', PAYMENT_SYNC_EVERY_MS, runPaymentSync, { delay: 25 * 1000 }); else declareJob('Shopify payment sync', PAYMENT_SYNC_EVERY_MS, 'Shopify is not connected');
 // One time: cards of tech packs that already exist take their material, decoration, colourways and size run from the pack. Does nothing after the first full pass.

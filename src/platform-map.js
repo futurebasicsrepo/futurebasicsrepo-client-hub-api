@@ -177,6 +177,6 @@ export const FLOWS = {
     ['qbo','QuickBooks payments every 30 minutes; automatic payments every hour.'],
     ['intel','Sales intelligence every 15 minutes; lead search schedules every 3 hours.'],
     ['sales','Follow-up and photo follow-up emails every 15 minutes.'],
-    ['labsvc','The Design Lab brand and market scan every 6 hours.'],
+    ['labsvc','The Design Lab brand and market scan every 6 hours; every 30 minutes, a thumbnail for saved flats that lack one, so a concept card shows its saved flat when that is newer than its picture.'],
     ['builds','Client site checks every 5 minutes: up, slow, down, certificate and domain expiry.']]}
 };

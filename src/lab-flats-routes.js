@@ -328,6 +328,7 @@ export function registerLabFlatsRoutes(app, d) {
       on conflict(concept_id) do update set style=excluded.style, params=excluded.params, placements=excluded.placements, check_result=excluded.check_result, checked_at=now(), updated_by=excluded.updated_by, updated_at=now()`,
     [t.c.id, t.params.style, t.params, JSON.stringify(t.placements), ck, actorOf(req)]);
     let decorations = [], cost = null; try { decorations = await decorationsOf(t.c, t.params, t.placements); cost = await keepDecorations(t.c, decorations); } catch (e) { log.warn?.({ err: e.message }, 'flats decoration costing failed'); }
+    thumbSoon(t.c);
     return { ok: true, check: ck, where: Object.fromEntries(t.placements.map(q => [q.id, describe(q, t.params)])), decorations, cost: cost ? { decorationCents: cost.decorationCents, landedCents: cost.landedCents, marginPct: cost.marginPct } : null };
   });
 
@@ -783,6 +784,15 @@ export function registerLabFlatsRoutes(app, d) {
     return { files: out, notes };
   }
 
+  // the saved flat's front as the concept's card picture: drawn a moment after a save (saves come quickly while drawing), off the request
+  const thumbTimers = new Map();
+  async function flatThumb(c) {
+    const s = await sheet(c); if (!s) return null;
+    const svg = renderSvg(s.p, 'front', { maskHref, placements: s.pl, hrefs: s.hrefs, scale: 30, templateSvg, partHref, editHrefs: s.editHrefs, alloverHref: s.alloverHref, tags: s.tags, showDims: false, plain: true });
+    const thumb = await sharp(Buffer.from(svg), { density: 96 }).resize({ width: 420, height: 420, fit: 'contain', background: '#ffffff' }).flatten({ background: '#ffffff' }).jpeg({ quality: 78 }).toBuffer();
+    await pool.query('update lab_flats set thumb=$2, thumb_at=now() where concept_id=$1', [c.id, thumb]); return thumb;
+  }
+  function thumbSoon(c, ms = 1500) { clearTimeout(thumbTimers.get(c.id)); thumbTimers.set(c.id, setTimeout(() => { thumbTimers.delete(c.id); flatThumb(c).catch(e => log.warn?.({ err: e.message }, 'flat thumbnail not made')); }, ms).unref?.() ?? null); }
   // the check of a concept's flats as they would start (for approving a concept whose flats were never saved)
   const startCheck = async id => { const c = await concept(id); const init = c && await initial(c); return init ? check(init, init.placements) : null; };
   // the saved flats as pictures (front and back, with their colours, blocks and graphics, no measurements): what the turns are drawn from;
@@ -802,5 +812,5 @@ export function registerLabFlatsRoutes(app, d) {
     }
     return out;
   }
-  return { flatPictures: async id => { const c = await concept(id); return c ? flatPictures(c) : null; }, startCheck, productionFiles: async id => { const c = await concept(id); return c ? productionFiles(c) : { files: [], notes: [] }; }, sheetSvg: async id => { const c = await concept(id); const sh = c && await sheet(c); return sh?.svg || null; }, files: async id => { const c = await concept(id); return c ? files(c) : []; }, sendToPack: async (id, productId) => { const c = await concept(id); return c ? sendToPack(c, productId) : null; } };
+  return { flatThumb: async id => { const c = await concept(id); return c ? flatThumb(c) : null; }, flatPictures: async id => { const c = await concept(id); return c ? flatPictures(c) : null; }, startCheck, productionFiles: async id => { const c = await concept(id); return c ? productionFiles(c) : { files: [], notes: [] }; }, sheetSvg: async id => { const c = await concept(id); const sh = c && await sheet(c); return sh?.svg || null; }, files: async id => { const c = await concept(id); return c ? files(c) : []; }, sendToPack: async (id, productId) => { const c = await concept(id); return c ? sendToPack(c, productId) : null; } };
 }

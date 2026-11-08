@@ -40,15 +40,17 @@ export function registerLabConceptRoutes(app, d) {
   const refShape = r => ({ id: r.id, title: r.title, url: r.url, imageUrl: r.image_url, price: r.price_cents == null ? null : r.price_cents / 100, brand: r.brand || '', attrs: r.attrs || {}, summary: r.summary || '' });
   const productUrl = id => (id ? `/tech-packs/${id}` : '');
 
+  // the card's picture: the saved flat when it was saved after the picture (or there is no picture), else the picture
+  const cardThumb = r => (r.flat_thumb?.length && (!r.thumb || !r.image_at || (r.flat_at && new Date(r.flat_at) > new Date(r.image_at))) ? r.flat_thumb : r.thumb);
   const shape = (r, { refs = null } = {}) => ({
     id: r.id, planId: r.plan_id, planName: r.plan_name || '', lineId: r.line_id, parentId: r.parent_id, name: r.name, category: r.category, categoryLabel: categoryLabel(r.category), role: r.role, spec: ensureBranding(r.spec || {}, r.category), twist: r.twist,
-    price: r.price_cents == null ? null : r.price_cents / 100, cost: r.cost_cents == null ? null : r.cost_cents / 100, qty: r.qty, status: r.status, closeness: r.closeness || null, hasImage: Boolean(r.has_image ?? r.image), thumb: dataUrl(r.thumb), imageNote: r.image_note,
+    price: r.price_cents == null ? null : r.price_cents / 100, cost: r.cost_cents == null ? null : r.cost_cents / 100, qty: r.qty, status: r.status, closeness: r.closeness || null, hasImage: Boolean(r.has_image ?? r.image), thumb: dataUrl(cardThumb(r)), imageNote: r.image_note,
     clientId: r.plan_client_id || null, clientName: r.client_name || '', clientVerdict: r.client_verdict || '', clientNote: r.client_note || '', clientAt: r.client_at || null,
     overrideReason: r.override_reason, rejectedReason: r.rejected_reason, approvedBy: r.approver || '', approvedAt: r.approved_at, productId: r.product_id, productUrl: productUrl(r.product_id), createdAt: r.created_at, updatedAt: r.updated_at,
     ...(refs ? { refs: refs.map(refShape) } : { refIds: r.refs || [] })
   });
-  const SELECT = `select c.id, c.plan_id, c.line_id, c.parent_id, c.name, c.category, c.role, c.spec, c.twist, c.price_cents, c.cost_cents, c.qty, c.refs, c.thumb, c.image_note, c.status, c.closeness, c.override_reason, c.rejected_reason, c.approved_at, c.product_id, c.created_at, c.updated_at,
-    (c.image is not null) has_image, p.name plan_name, c.client_verdict, c.client_note, c.client_at, p.client_id plan_client_id, (select name from clients where id=p.client_id) client_name, coalesce(nullif(u.name,''), split_part(u.email,'@',1)) approver from lab_concepts c left join lab_plans p on p.id=c.plan_id left join users u on u.id=c.approved_by`;
+  const SELECT = `select c.id, c.plan_id, c.line_id, c.parent_id, c.name, c.category, c.role, c.spec, c.twist, c.price_cents, c.cost_cents, c.qty, c.refs, c.thumb, c.image_at, f.thumb flat_thumb, f.updated_at flat_at, c.image_note, c.status, c.closeness, c.override_reason, c.rejected_reason, c.approved_at, c.product_id, c.created_at, c.updated_at,
+    (c.image is not null) has_image, p.name plan_name, c.client_verdict, c.client_note, c.client_at, p.client_id plan_client_id, (select name from clients where id=p.client_id) client_name, coalesce(nullif(u.name,''), split_part(u.email,'@',1)) approver from lab_concepts c left join lab_plans p on p.id=c.plan_id left join users u on u.id=c.approved_by left join lab_flats f on f.concept_id=c.id`;
   async function one(id) { const r = (await pool.query(`${SELECT} where c.id=$1`, [id])).rows[0]; return r ? shape(r, { refs: await refRows(r.refs) }) : null; }
   const note = async (conceptId, req, body) => pool.query(`insert into lab_concept_comments(concept_id,user_id,name,body) values($1,$2,$3,$4)`, [conceptId, actorOf(req), await nameOf(req), clip(body, 1000)]);
 
