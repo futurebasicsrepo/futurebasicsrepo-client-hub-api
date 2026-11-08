@@ -544,13 +544,14 @@ function baseBox(){const svg=$('#canvas svg');if(!svg)return null;const v=(svg.d
 // The view's own geometry, worked out here rather than asked of the browser: the drawing's box on the page (unturned), the viewBox in it
 // (scaled to fit, centred), and the view's turn (FR, degrees, about the box's centre). Every point on the screen goes to inches through it,
 // so a turned view, and one being pinched (moved by a transform on the page), still draw where the finger is.
-function vgeo(){const svg=$('#canvas svg');if(!svg)return null;const w=svg.clientWidth||svg.getBoundingClientRect().width,h=svg.clientHeight||svg.getBoundingClientRect().height,v=(svg.getAttribute('viewBox')||'').split(/[ ,]+/).map(Number);if(!(w>0&&h>0)||v.length!==4)return null;
+let VG=null,VGF=0;function vgeo(){if(VG&&VG.svg.isConnected&&VGF)return VG;VG=vgeo0();if(VG&&!VGF)VGF=requestAnimationFrame(()=>{VGF=0;VG=null});return VG}
+function vgeo0(){const svg=$('#canvas svg');if(!svg)return null;const w=svg.clientWidth||svg.getBoundingClientRect().width,h=svg.clientHeight||svg.getBoundingClientRect().height,v=(svg.getAttribute('viewBox')||'').split(/[ ,]+/).map(Number);if(!(w>0&&h>0)||v.length!==4)return null;
   const k=Math.min(w/v[2],h/v[3]),r=svg.getBoundingClientRect();return{svg,w,h,v,k,ox:(w-v[2]*k)/2,oy:(h-v[3]*k)/2,cx:r.left+r.width/2,cy:r.top+r.height/2}}
 const turn=(x,y,deg)=>{const a=deg*Math.PI/180,c=Math.cos(a),s=Math.sin(a);return[x*c-y*s,x*s+y*c]};
 function toInch(X,Y){const g=vgeo();if(!g)return[0,0];const[lx,ly]=turn(X-g.cx,Y-g.cy,-FR);return[g.v[0]+(lx+g.w/2-g.ox)/g.k,g.v[1]+(ly+g.h/2-g.oy)/g.k]}
 // the view's turn on the drawing and on the hand drawing over it (both turn about their own centre, which is the same box)
-function applyTurn(){const svg=$('#canvas svg'),t=FR?`rotate(${FR}deg)`:'';if(svg){svg.style.transform=t;svg.style.transformOrigin='50% 50%'}MKW.style.transform=t;MKW.style.transformOrigin='50% 50%'}
-function zoomSvg(){const svg=$('#canvas svg');if(!svg)return;if(!svg.dataset.base)svg.dataset.base=svg.getAttribute('viewBox')||'';const b=baseBox();if(!b)return;
+function applyTurn(){VG=null;const svg=$('#canvas svg'),t=FR?`rotate(${FR}deg)`:'';if(svg){svg.style.transform=t;svg.style.transformOrigin='50% 50%'}MKW.style.transform=t;MKW.style.transformOrigin='50% 50%'}
+function zoomSvg(){VG=null;const svg=$('#canvas svg');if(!svg)return;if(!svg.dataset.base)svg.dataset.base=svg.getAttribute('viewBox')||'';const b=baseBox();if(!b)return;
   if(FZ<=1.001){FZ=1;FC=null;svg.setAttribute('viewBox',svg.dataset.base)}
   else{const w=b.w/FZ,h=b.h/FZ,c=FC||[b.x+b.w/2,b.y+b.h/2],cx=Math.min(Math.max(c[0],b.x+w/2),b.x+b.w-w/2),cy=Math.min(Math.max(c[1],b.y+h/2),b.y+b.h-h/2);FC=[cx,cy];svg.setAttribute('viewBox',`${cx-w/2} ${cy-h/2} ${w} ${h}`)}
   $('#fzFit')?.classList.toggle('hidden',FZ<=1&&!FR);const zl=$('#fzLabel');if(zl)zl.textContent=Math.round(FZ*100)+'%'+(FR?` · ${Math.round(FR)}°`:'');applyTurn();mkPlace()}
@@ -576,16 +577,17 @@ $('#canvas').addEventListener('pointermove',e=>{const p=FPTR.get(e.pointerId);if
     const zN=Math.min(Math.max(FG.z*d/FG.d,1),6),sc=zN/FG.z;let dr=(Math.atan2(b[1]-a[1],b[0]-a[0])-FG.ang)*180/Math.PI;dr=((dr+540)%360)-180;
     const rN=FG.r0+dr,snap=Math.round(rN/90)*90,rT=Math.abs(rN-snap)<5?snap:rN;dr=rT-FG.r0; // a turn near square snaps to it
     const[qx,qy]=turn((FG.C[0]-FG.m[0])*sc,(FG.C[1]-FG.m[1])*sc,dr),tx=m[0]+qx-FG.C[0],ty=m[1]+qy-FG.C[1],t=`translate(${tx}px,${ty}px) rotate(${rT}deg) scale(${sc})`;
-    FG.live={sc,dr,rT,tx,ty,zN};const svg=$('#canvas svg');if(svg){svg.style.transformOrigin='50% 50%';svg.style.transform=t}MKW.style.transformOrigin='50% 50%';MKW.style.transform=t;return}
-  if(FPAN){e.stopImmediatePropagation();const u=unitsPerPx(),[ddx,ddy]=turn(e.clientX-FPAN.x,e.clientY-FPAN.y,-FR);FC=[FPAN.c[0]-ddx*u,FPAN.c[1]-ddy*u];zoomSvg()}},true);
-const fzUp=e=>{FPTR.delete(e.pointerId);if(FG&&FPTR.size<2){const g=FG;FG=null;e.stopImmediatePropagation();if(g.q&&g.moved){if(LIVE.raf){cancelAnimationFrame(LIVE.raf);LIVE.raf=0}touch();paint()}if(g.live)fzCommit(g)}if(FPAN){FPAN=null;e.stopImmediatePropagation()}};
+    FG.live={sc,dr,rT,tx,ty,zN};const svg=$('#canvas svg');if(svg){svg.style.willChange='transform';svg.style.transformOrigin='50% 50%';svg.style.transform=t}MKW.style.willChange='transform';MKW.style.transformOrigin='50% 50%';MKW.style.transform=t;return}
+  if(FPAN){e.stopImmediatePropagation();FPAN.dx=e.clientX-FPAN.x;FPAN.dy=e.clientY-FPAN.y;if(!FPAN.raf)FPAN.raf=requestAnimationFrame(()=>{if(!FPAN)return;FPAN.raf=0;const t=`translate(${FPAN.dx}px,${FPAN.dy}px)${FR?` rotate(${FR}deg)`:''}`,svg=$('#canvas svg');if(svg){svg.style.willChange='transform';svg.style.transform=t}MKW.style.transform=t})}},true);
+function fpanCommit(){const P0=FPAN;FPAN=null;if(!P0||P0.dx===undefined)return;if(P0.raf)cancelAnimationFrame(P0.raf);const svg=$('#canvas svg');if(svg){svg.style.transform='';svg.style.willChange=''}MKW.style.transform='';VG=null;const u=unitsPerPx(),[ddx,ddy]=turn(P0.dx,P0.dy,-FR);FC=[P0.c[0]-ddx*u,P0.c[1]-ddy*u];zoomSvg()}
+const fzUp=e=>{FPTR.delete(e.pointerId);if(FG&&FPTR.size<2){const g=FG;FG=null;e.stopImmediatePropagation();if(g.q&&g.moved){if(LIVE.raf){cancelAnimationFrame(LIVE.raf);LIVE.raf=0}touch();paint()}if(g.live)fzCommit(g)}if(FPAN){fpanCommit();e.stopImmediatePropagation()}};
 ['pointerup','pointercancel','lostpointercapture'].forEach(t=>$('#canvas').addEventListener(t,e=>{if(e.type==='lostpointercapture'&&(!FPTR.has(e.pointerId)||MDRAG?.pid===e.pointerId))return;fzUp(e)},true));
 $('#canvas').addEventListener('wheel',e=>{if(!(e.ctrlKey||e.metaKey)){if(FZ>1){e.preventDefault();const u=unitsPerPx(),c=centreNow(),[ddx,ddy]=turn(e.deltaX,e.deltaY,-FR);FC=[c[0]+ddx*u,c[1]+ddy*u];zoomSvg()}return} // two fingers on a trackpad move a zoomed flat
   e.preventDefault();fzAt(FZ*Math.exp(-e.deltaY*.01),e.clientX,e.clientY)},{passive:false});
 // zoom about a point on the screen: the inch under it stays under it
 // the pinch set for real: the point that was under the old centre of the view is found through the transform, and becomes the centre
 function fzCommit(g){const L=g.live,[qx,qy]=turn(-L.tx/L.sc,-L.ty/L.sc,-L.rT);FZ=L.zN;FR=((L.rT%360)+360)%360;if(FR>180)FR-=360;
-  FC=FZ<=1.001?null:[g.c[0]+qx*g.u,g.c[1]+qy*g.u];const svg=$('#canvas svg');if(svg)svg.style.transform='';MKW.style.transform='';zoomSvg()}
+  FC=FZ<=1.001?null:[g.c[0]+qx*g.u,g.c[1]+qy*g.u];const svg=$('#canvas svg');if(svg){svg.style.transform='';svg.style.willChange=''}MKW.style.transform='';MKW.style.willChange='';VG=null;zoomSvg()}
 function fzAt(nz,cx,cy){const g=vgeo();if(!g)return;const u=1/g.k,c=centreNow(),[ox,oy]=turn(cx-g.cx,cy-g.cy,-FR),P=[c[0]+ox*u,c[1]+oy*u];
   const z0=FZ;FZ=Math.min(Math.max(nz,1),6);const u1=u*z0/FZ;FC=[P[0]-ox*u1,P[1]-oy*u1];zoomSvg()}
 // Safari's page zoom is never wanted here; a trackpad pinch (Magic Keyboard) arrives only as gesture events, so it zooms the flat under the pointer
@@ -616,7 +618,7 @@ $('#canvas').addEventListener('pointerdown',e=>{
   const tg=e.target.closest('[data-tag]');
   if(tg){const m=tagsOn().find(x=>x.id===tg.dataset.tag&&x.view===VIEW);if(m){const[x,y]=inch(e);DRAG={tag:m,dx:x-m.x,dy:y-m.y,el:tg,x0:m.x,y0:m.y};capt(e);return}}
   const g=e.target.closest('[data-pl]');
-  if(g){const q=PL.find(x=>x.id===g.dataset.pl);SEL=q.id;const[x,y]=inch(e);DRAG={q,dx:x-q.x,dy:y-q.y,ox:q.x,oy:q.y};capt(e);paint();DRAG.base=shownQ(q);return}
+  if(g){const q=PL.find(x=>x.id===g.dataset.pl);SEL=q.id;const[x,y]=inch(e);DRAG={q,dx:x-q.x,dy:y-q.y,ox:q.x,oy:q.y,panels:true};capt(e);draw();DRAG.base=shownQ(q);return} // the panels follow when the finger lifts
   const ge=e.target.closest('[data-ed]');const ed=ge&&P.edits.find(x=>x.id===ge.dataset.ed);if(!ed){if(FZ>1){FPAN={x:e.clientX,y:e.clientY,c:centreNow()};capt(e)}return}
   SELE=ed.id;if(TAB!=='design')tab('design');const[x,y]=inch(e);DRAG={ed,start:[x,y],orig:JSON.parse(JSON.stringify(ed))};capt(e);paint()});
 $('#canvas').addEventListener('pointermove',e=>{
@@ -631,7 +633,7 @@ $('#canvas').addEventListener('pointermove',e=>{
   if(DRAG.ed){const dx=x-DRAG.start[0],dy=y-DRAG.start[1],o=DRAG.orig;if(o.pts)DRAG.ed.pts=o.pts.map(q=>[r8(q[0]+dx),r8(q[1]+dy)]);else{DRAG.ed.x=r8(o.x+dx);DRAG.ed.y=r8(o.y+dy);if(Math.abs(DRAG.ed.x)<.25&&!(DRAG.ed.type==='part'&&partOf(DRAG.ed.part)?.kind==='pockets')&&!['pocket-patch','pocket-flap','pocket-welt','pocket-cargo','pocket-slant','pocket-jean','pocket-zip','pleat'].includes(DRAG.ed.kind))DRAG.ed.x=0}DRAG.moved=true;drawSoon();return}
   if(DRAG.tag){let nx=r8(x-DRAG.dx);const ny=r8(y-DRAG.dy);if(Math.abs(nx)<.25)nx=0;P.tagPos={...(P.tagPos||{})};P.tagPos[DRAG.tag.id]={...(P.tagPos[DRAG.tag.id]||{}),[VIEW]:[nx,ny]};DRAG.moved=true;const d=DRAG;if(!d.raf)d.raf=requestAnimationFrame(()=>{d.raf=0;d.el.setAttribute('transform',`translate(${Math.round((nx-d.x0)*1e4)/1e4} ${Math.round((ny-d.y0)*1e4)/1e4})`)});return}
   DRAG.q.x=r8(x-DRAG.dx);DRAG.q.y=r8(y-DRAG.dy);if(Math.abs(DRAG.q.x)<.25)DRAG.q.x=0;DRAG.moved=true;liveQ(DRAG.q,DRAG.base)});
-const end=()=>{if(LIVE.raf){cancelAnimationFrame(LIVE.raf);LIVE.raf=0}if(DRAWQ){cancelAnimationFrame(DRAWQ);DRAWQ=0}if(DRAG?.raf)cancelAnimationFrame(DRAG.raf);if(BOXDRAG){BOXDRAG=null;if(!AIBOX||AIBOX.w<.5||AIBOX.h<.5)AIBOX=null;paint();setTimeout(()=>$('#aiPrompt')?.focus(),0);return}if(DRAG&&DRAG.moved){touch();paint()}DRAG=null};
+const end=()=>{if(LIVE.raf){cancelAnimationFrame(LIVE.raf);LIVE.raf=0}if(DRAWQ){cancelAnimationFrame(DRAWQ);DRAWQ=0}if(DRAG?.raf)cancelAnimationFrame(DRAG.raf);if(BOXDRAG){BOXDRAG=null;if(!AIBOX||AIBOX.w<.5||AIBOX.h<.5)AIBOX=null;paint();setTimeout(()=>$('#aiPrompt')?.focus(),0);return}if(DRAG&&DRAG.moved){touch();paint()}else if(DRAG?.panels)paint();DRAG=null};
 $('#canvas').addEventListener('dblclick',e=>{if(MODE==='stitch'||MODE==='block'){e.preventDefault();finishDraft()}});
 // a double tap (or double click) on the chosen stitch line or block: on a dot it takes the point away, on the line it puts one in. Taken from the
 // pointer, not from dblclick: the drawing is redrawn under the first tap, so the browser's own double click can go missing (and a Pencil has none)

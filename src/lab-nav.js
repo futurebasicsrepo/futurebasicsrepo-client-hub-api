@@ -63,7 +63,7 @@
     };
     // the step you are on stays in sight when the row is narrower than the steps (a phone)
     const inView = () => { const ol = el.querySelector('ol'), cur = ol && ol.querySelector('[aria-current]'); if (cur && ol.scrollWidth > ol.clientWidth) ol.scrollLeft = Math.max(0, cur.parentElement.offsetLeft - 24); };
-    el.setStep = at => { el.querySelectorAll('a[data-step]').forEach(a => { if (a.dataset.step === at) a.setAttribute('aria-current', 'step'); else a.removeAttribute('aria-current'); }); inView(); };
+    el.setStep = at => { el.querySelectorAll('a[data-step]').forEach(a => { if (a.dataset.step === at) a.setAttribute('aria-current', 'step'); else a.removeAttribute('aria-current'); }); requestAnimationFrame(inView); }; // measured in the next frame, not straight after the change (that forced a layout of the whole page)
     requestAnimationFrame(inView);
     return el;
   }

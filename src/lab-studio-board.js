@@ -39,8 +39,9 @@
   async function paintBoard() {
     document.getElementById('boardTitle').textContent = D?.concept?.name || 'The piece';
     compose(); const pic = canvas(Math.round(W * Math.min(1, 900 / W)), Math.round(H * Math.min(1, 900 / W))); pic.getContext('2d').drawImage(docC, 0, 0, pic.width, pic.height);
-    const picUrl = pic.toDataURL('image/jpeg', .86);
-    body.innerHTML = `<h4>The piece</h4><div class="row" id="bPiece">${fig('picture', `<img alt="The picture" src="${picUrl}">`, 'Picture', `${LAYERS.length} layers`)}<p class="note" id="bWait">Drawing the flats…</p></div>`;
+    // the picture goes on the board as the canvas itself (making it a JPEG first took a quarter of a second on an iPad)
+    body.innerHTML = `<h4>The piece</h4><div class="row" id="bPiece">${fig('picture', '<span data-bpic></span>', 'Picture', `${LAYERS.length} layers`)}<p class="note" id="bWait">Drawing the flats…</p></div>`;
+    pic.setAttribute('role', 'img'); pic.setAttribute('aria-label', 'The picture'); body.querySelector('[data-bpic]')?.replaceWith(pic);
     const f = await flats(); if (VMODE !== 'board') return;
     const wait = document.getElementById('bWait'); if (!f) { if (wait) wait.textContent = FF()?.unsupported?.() || 'The flats are not drawn for this piece.'; return; }
     wait?.remove();
