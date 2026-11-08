@@ -406,6 +406,10 @@ export async function migrate() {
     alter table lab_fonts add column if not exists client_id uuid references clients(id) on delete cascade;
     alter table lab_decor_quotes add column if not exists client_id uuid references clients(id) on delete set null;
     create index if not exists lab_concepts_client on lab_concepts(client_id);
+    -- work that takes minutes (concepts being designed, drawn and checked): kept here as well as in the server's memory, so a page asking after it
+    -- gets the truth after a restart (src/lab-concept-routes.js marks what was running when it starts again)
+    create table if not exists lab_jobs (id uuid primary key, owner uuid, actor uuid, status text not null default 'running', result jsonb, error text,
+      created_at timestamptz not null default now(), updated_at timestamptz not null default now());
     create index if not exists lab_art_client on lab_art(client_id);
     create or replace function lab_concept_client() returns trigger language plpgsql as $$
       begin if new.plan_id is not null then select client_id into new.client_id from lab_plans where id=new.plan_id; end if; return new; end $$;

@@ -71,7 +71,7 @@
   //   AI concepts from a few words (a piece is added to the room's "Quick concepts" plan and concepts are drawn for it), a sketch from the sketch pack,
   //   a blank page from scratch, or a whole line plan. Opened by anything marked [data-new-design], and by ?new=1 on any Lab page (the hub links there).
   const TOKEN = () => { try { return localStorage.getItem('fb.admin.token') || localStorage.getItem('fb.client.token') || ''; } catch { return ''; } };
-  const call = async (path, body) => { const r = await fetch(path, { method: body ? 'POST' : 'GET', headers: { Authorization: 'Bearer ' + TOKEN(), ...(body ? { 'Content-Type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined }); const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || `Request failed (${r.status})`); return j; };
+  const call = async (path, body) => { const r = await fetch(path, { method: body ? 'POST' : 'GET', headers: { Authorization: 'Bearer ' + TOKEN(), ...(body ? { 'Content-Type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined }); const j = await r.json().catch(() => ({})); if (!r.ok) throw Object.assign(new Error(j.error || `Request failed (${r.status})`), { status: r.status }); return j; };
   const NCSS = `#fbNew{border:0;padding:0;width:min(760px,100vw);max-width:100vw;max-height:min(92dvh,900px);border-radius:22px;background:#fff;color:#141416;box-shadow:0 30px 80px rgba(20,20,22,.25);font:400 14px/1.5 'Space Grotesk',system-ui,sans-serif}
 #fbNew::backdrop{background:rgba(20,20,22,.4)}#fbNew[open]{animation:fbNewIn .35s cubic-bezier(.2,.8,.2,1)}@keyframes fbNewIn{from{transform:translateY(16px);opacity:0}}
 #fbNew .hd{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:20px 22px 6px}#fbNew h2{margin:0;font:300 34px/1 'Space Grotesk',system-ui,sans-serif;letter-spacing:-.03em}#fbNew .x{width:40px;height:40px;border-radius:50%;border:1px solid rgba(20,20,22,.14);background:#fff;font-size:22px;cursor:pointer;flex:none}
@@ -115,7 +115,13 @@
           const planId = plan ? plan.id : (await call('/v1/lab/plans', { name: 'Quick concepts', brief: 'Pieces started from New design, one at a time.' })).plan.id;
           const after = await call(`/v1/lab/plans/${planId}/lines`, { category: f.category.value, name, brief: f.brief.value.trim() });
           const line = [...(after.lines || [])].reverse().find(l => l.name === name) || (after.lines || []).slice(-1)[0];
-          await call(`/v1/lab/plans/${planId}/lines/${line.id}/concepts`, { count: Number(f.count.value) || 3 });
+          // the concepts take minutes: the call answers with a job after a short while, and the board is opened only once they are made (and kept)
+          let j = await call(`/v1/lab/plans/${planId}/lines/${line.id}/concepts`, { count: Number(f.count.value) || 3 }); const t0 = Date.now();
+          while (j && j.job && j.status === 'running') {
+            await new Promise(r => setTimeout(r, 3000)); m.textContent = `Still drawing (${Math.round((Date.now() - t0) / 1000) + 20}s). You can leave this page: finished concepts land on the board.`;
+            try { j = { ...(await call('/v1/lab/jobs/' + j.job)), job: j.job }; } catch (x) { if (x.status === 404 || Date.now() - t0 > 900e3) throw x; }
+          }
+          if (j && j.status === 'failed') throw new Error(j.error || 'The concepts could not be made');
           location.href = `/lab?plan=${planId}#board`;
         } catch (x) { b.disabled = false; b.textContent = 'Draw concepts'; m.className = 'msg bad'; m.textContent = x.message; }
       });
