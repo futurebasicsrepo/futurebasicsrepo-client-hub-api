@@ -43,7 +43,7 @@ export const LAYER_KINDS = new Set(['base', 'image', 'paint', 'text', 'shape']);
 const MAX_DOC = 30_000_000, MAX_LAYERS = 80;
 // where a layer's picture may come from: a picture inside the design itself, a graphic of the Lab, a part from the sketch pack's add-on sheets, or one
 // of our marks; never an outside address
-const SRC_OK = /^(data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+|\/v1\/lab\/art\/[0-9a-f-]{36}|\/lab\/flat-parts\/[a-z0-9-]+\.webp|brand:(mark|word|lockup))$/i;
+const SRC_OK = /^(data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+|\/v1\/lab\/art\/[0-9a-f-]{36}|\/lab\/flat-parts\/[a-z0-9-]+\.webp|brand:(mark|word|lockup)(:(#[0-9a-f]{6})?){0,2})$/i; // brand:word, or brand:word:#a02a20:#ffffff (its colour and its cue dot's)
 
 // → { doc } or { error }. The page draws the layers itself; this only keeps what it is sent within bounds.
 export function cleanDoc(input) {

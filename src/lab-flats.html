@@ -19,6 +19,7 @@ var c=q.get('concept')||'',t=q.get('template')||'',v=q.get('view')==='back'?'bac
 #typePop .tp-more{border-top:1px solid var(--line,#e2e2dc);padding-top:6px}#typePop .tp-more summary{cursor:pointer;color:#6b6b70;padding:4px 0}#typePop .tp-more[open]{display:grid;gap:8px}#typePop{max-height:calc(100vh - 16px);overflow-y:auto}
 .lbrow.on{align-items:center}.lbact{display:flex;gap:6px;flex:none}.lbown{margin:8px 0}.lbface{width:44px;height:24px;object-fit:contain;flex:none;background:#f6f6f3;border-radius:4px}.lbadd summary{cursor:pointer;font-weight:600;padding:6px 0}.lbmine{display:grid;gap:6px;margin-bottom:8px}
 .parts .psw{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:8px}.parts .psw button{width:28px;height:28px;border-radius:50%;border:1px solid rgba(20,20,22,.18);cursor:pointer}.parts .psw button[aria-pressed=true]{box-shadow:0 0 0 2px #fff,0 0 0 4px var(--ink,#141416)}.parts .psw .pick input{width:32px;height:30px;padding:0}
+.mcol{margin:6px 0 8px}.mcol .lbl{display:block;font-size:12px;color:var(--dim,#6b6b66);margin-bottom:4px}.mcol .psw{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:6px}.mcol .psw button{width:26px;height:26px;border-radius:50%;border:1px solid rgba(20,20,22,.18);cursor:pointer}.mcol .psw button[aria-pressed=true]{box-shadow:0 0 0 2px #fff,0 0 0 4px var(--ink,#141416)}.mcol .psw .pick input{width:32px;height:28px;padding:0}.mcol .rowx{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.mcol .chk{display:flex;gap:6px;align-items:center;font-size:13px}
 #typePop .tp-end .btn{min-height:40px;min-width:76px;touch-action:manipulation}#typePop .tp-hint{margin:0;color:#6b6b70;font-size:11.5px}#typePop .tp-row{flex-wrap:wrap}#typePop .tp-row input[type=color]{width:34px;height:30px;padding:0;flex:none}#typePop .tp-row select{flex:1 1 90px}#typePop{width:min(300px,calc(100vw - 16px));box-sizing:border-box;overflow-x:hidden;max-width:calc(100vw - 16px)}
 #typePop .tp-prev{font-size:24px;line-height:1.25;padding:6px 8px;background:#f6f6f3;border-radius:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:34px}
 :root{--ink:#141416;--paper:#fff;--fog:#f5f5f2;--dim:#727278;--line:rgba(20,20,22,.14);--cue:#4bff9a;--ok:#17603a;--bad:#a02a20;--warn:#8a5a00}
@@ -382,6 +383,7 @@ function paintPl(F=localFindings()){
   p.innerHTML=`<div class="sec"><h4>On this piece</h4>${PL.length?PL.map(q=>{const f=F[q.id]||[],lv=f.some(x=>x.level==='fail')?'fail':f.some(x=>x.level==='warn')?'warn':'ok';return `<div class="pl ${q.id===SEL?'on':''}" data-q="${esc(q.id)}">
     <div class="hd"><span class="dot ${lv}"></span><b>${esc(q.name)}</b><select class="t" data-k="view" style="width:auto"><option value="front" ${q.view==='front'?'selected':''}>Front</option><option value="back" ${q.view==='back'?'selected':''}>Back</option></select>${q.art?`<button class="btn sm" type="button" data-pledit title="Open it in the graphic studio: recolour its inks, filters, type, lockups, separations… and it comes back here">Edit</button>`:''}<button class="btn sm q" type="button" data-del aria-label="Remove ${esc(q.name)}">Remove</button></div>
     <label class="f"><span>Made as</span><select class="t" data-k="techniqueId">${techOpts(q.techniqueId)}</select></label>
+    ${q.mark?markColourHtml(q):''}
     <div class="nums"><label>Width (in)<input class="t" type="number" step="0.125" min="0.25" data-k="w" value="${q.w}"></label><label>From ${STYLES[P.style].kind==='top'?'CF':'centre'} (in)<input class="t" type="number" step="0.125" data-k="x" value="${q.x}"></label><label>${STYLES[P.style].kind==='cap'?'Above brim (in)':'Top edge down (in)'}<input class="t" type="number" step="0.125" data-k="top" value="${STYLES[P.style].kind==='cap'?r8(-(q.y+q.h/2)):r8(q.y-q.h/2)}"></label></div>
     <div class="nums turn"><label>Turn (°)<input class="t" type="number" step="1" min="-180" max="180" data-k="rot" value="${q.rot||0}"></label><span class="row"><button class="btn sm" type="button" data-turn="-15" title="Turn 15° anticlockwise">↺ 15°</button><button class="btn sm" type="button" data-turn="15" title="Turn 15° clockwise">↻ 15°</button><button class="btn sm" type="button" data-turn="0" title="Straight again">Straight</button></span></div>
     <div class="where">${esc(describe(q,P))} · ${esc(fmt(q.w))} × ${esc(fmt(q.h))}${q.source==='studio'?' · from the studio':''}</div>${q.id===SEL?factoryHtml(q):''}
@@ -431,7 +433,9 @@ $('#pPl').addEventListener('click',async e=>{
 $('#pPl').addEventListener('change',e=>{const card=e.target.closest('[data-q]'),q=card&&PL.find(x=>x.id===card.dataset.q);
   if(e.target.dataset.gw!=null&&q&&q.grade){const g=q.grade[Number(e.target.dataset.gw)],v=Number(e.target.value);if(g&&v>0){g.w=r8(v);g.h=r8(v*q.h/q.w);touch();paint()}return}
   if(e.target.dataset.ink&&q){const [cw,a]=e.target.dataset.ink.split('|');q.inks=q.inks||{};q.inks[cw]=q.inks[cw]||{};q.inks[cw][a]=e.target.value;touch();return}
-  if(e.target.dataset.ao==='base'&&P.allover){P.allover.base=e.target.value;touch();return}});
+  if(e.target.dataset.ao==='base'&&P.allover){P.allover.base=e.target.value;touch();return}
+  if(q?.mark&&e.target.matches('[data-mpick]')){setMarkColour(q,e.target.value,Boolean(q.dot));return}
+  if(q?.mark&&e.target.matches('[data-mone]')){setMarkColour(q,q.colour||MK_INK,e.target.checked);return}});
 let LIB=null,lt=0;
 async function uploadGraphic(file){
   if(!file)return;if(file.size>25e6){FBN.toast('That file is over 25 MB: export it smaller.','info');return}
@@ -455,6 +459,7 @@ $('#pPl').addEventListener('input',e=>{if(e.target.id==='libQ'){clearTimeout(lt)
 $('#pPl').addEventListener('change',e=>{const card=e.target.closest('[data-q]');if(!card)return;const q=PL.find(x=>x.id===card.dataset.q),k=e.target.dataset.k;if(!k)return;if(k==='view'){q.view=e.target.value;setView(q.view)}if(k==='techniqueId'){q.techniqueId=e.target.value;q.technique=(D.techniques.find(t=>t.id===q.techniqueId)||{}).base||q.technique}touch();paint()});
 $('#pPl').addEventListener('click',async e=>{
   const card=e.target.closest('[data-q]');
+  {const mq=card&&PL.find(x=>x.id===card.dataset.q);if(mq?.mark){const b=e.target.closest('[data-mcol]');if(b){await setMarkColour(mq,b.dataset.mcol,Boolean(mq.dot));return}if(e.target.closest('[data-mreset]')){await setMarkColour(mq,'',false);return}}}
   if(e.target.closest('[data-pledit]')){const q=PL.find(x=>x.id===card.dataset.q);const h=HOST();if(q?.art&&h?.graphicStudio)h.graphicStudio(q.view,{art:q.art,pl:q.id});else if(q?.art)window.open('/lab/studio?art='+encodeURIComponent(q.art),'_blank','noopener');return}
   if(e.target.closest('[data-del]')){const gone=PL.find(x=>x.id===card.dataset.q);PL=PL.filter(x=>x!==gone);if(SEL===gone?.id)SEL=null;
     // one record on both views: a graphic that is also a layer on the picture comes off the garment there too, or the next save would put it back
@@ -470,7 +475,16 @@ async function addPlacement(base){
   const t=D.techniques.find(x=>x.id===base.techniqueId)||D.techniques.find(x=>x.base===(base.mark?'embroidery':'screen print'));
   const q={id:'p'+Math.random().toString(36).slice(2,8),...base,added:true,techniqueId:t&&t.id,technique:t?t.base:'screen print',...defaultPlacement(base.mark?'logo':'graphic',P,{aspect,label:VIEW==='back'?'back':base.mark?'left chest':'front chest'})};
   if(VIEW==='back'&&q.view!=='back'){q.view='back'}HREF[q.id]=href;PL.push(q);SEL=q.id;touch();paint()}
-async function hrefOf(q){if(q.art)return blobUrl('/v1/lab/art/'+q.art);if(q.mark){if(!MARKS[q.mark])MARKS[q.mark]='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(D.marks[q.mark]||'');return MARKS[q.mark]}return ''}
+// a brand mark in its placement's colours: the brand's ink (the lines and lettering) and its cue green (the dot) swapped for the chosen ones
+const MK_INK='#141416',MK_CUE='#4BFF9A';
+async function hrefOf(q){if(q.art&&!q.mark)return blobUrl('/v1/lab/art/'+q.art);if(q.mark){const k=[q.mark,q.colour||'',q.dot||''].join('|');if(!MARKS[k]){let svg=D.marks[q.mark]||'';if(q.colour)svg=svg.replace(new RegExp(MK_INK,'gi'),q.colour);if(q.dot)svg=svg.replace(new RegExp(MK_CUE,'gi'),q.dot);MARKS[k]='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg)}return MARKS[k]}return ''}
+// the colour of a cue mark, wordmark or lockup on the piece: the brand's own, a swatch, the garment's own colour a shade off (tone on tone), or any colour;
+// the cue dot keeps its green unless the mark is made in one colour (one thread, one screen)
+function markColourHtml(q){const tone=shadeOf(P.color||'#888888',.22),on=(q.colour||MK_INK).toLowerCase(),sw=[...new Set([MK_INK.toLowerCase(),'#ffffff',MK_CUE.toLowerCase(),tone,...SWATCH])];
+  return `<div class="mcol"><span class="lbl">Colour</span><div class="psw" role="group" aria-label="Colour of ${esc(q.name)}">${sw.map(c=>`<button type="button" data-mcol="${c}" style="background:${c}" aria-label="${c===tone?'Tone on tone':c}" title="${c===tone?'Tone on tone: the garment colour, a shade darker':c}" aria-pressed="${c===on}"></button>`).join('')}<label class="pick" title="Any colour"><input type="color" data-mpick value="${on}" aria-label="Any colour"></label></div>
+    <div class="rowx">${q.mark!=='word'?`<label class="chk"><input type="checkbox" data-mone ${q.dot?'checked':''}> One colour (the dot too)</label>`:''}${q.colour||q.dot?'<button class="btn sm q" type="button" data-mreset>Brand colours</button>':''}</div></div>`}
+function shadeOf(hex,k){const n=parseInt(String(hex).slice(1),16);if(!Number.isFinite(n))return '#666666';const ch=[n>>16&255,n>>8&255,n&255],lum=(ch[0]*.3+ch[1]*.59+ch[2]*.11)/255,f=lum>.5?1-k:1+k;return '#'+ch.map(v=>Math.max(0,Math.min(255,Math.round(lum>.5?v*f:v+(255-v)*k)))).map(v=>v.toString(16).padStart(2,'0')).join('')}
+async function setMarkColour(q,colour,one){q.colour=colour&&colour.toLowerCase()!==MK_INK.toLowerCase()?colour.toLowerCase():undefined;q.dot=one&&q.mark!=='word'?(colour||MK_INK).toLowerCase():undefined;if(!q.colour)delete q.colour;if(!q.dot)delete q.dot;HREF[q.id]=await hrefOf(q);touch();paint()}
 
 // ---------- garment and measurements ----------
 // the sketch picker: every drawing in the pack, this style's first, searchable by name
@@ -928,7 +942,7 @@ if(EMBED)window.FBFlats={refresh:()=>refreshFlat(),replaceGraphic:(pl,id,name)=>
   mode:m=>{document.documentElement.dataset.embed=m==='compact'?'compact':'full';if(P)draw()},sheet:()=>$('#sheet').click(),deco:()=>$('#decoSheet').click(),pack:()=>$('#toPack').click(),
   canPack:()=>!$('#toPack').classList.contains('hidden'),unsupported:()=>D?.unsupported||'',
   // the placements, in inches on the garment: the one record of where each graphic goes and how big it is
-  placements:()=>(P?PL.map(q=>({id:q.id,name:q.name,view:q.view,x:q.x,y:q.y,w:q.w,h:q.h,source:q.source,layer:q.layer||null,art:q.art||null,mark:q.mark||null,techniqueId:q.techniqueId||null,added:Boolean(q.added),where:describe(q,P)})):[]),saved:()=>Boolean(D&&P&&!DIRTY),
+  placements:()=>(P?PL.map(q=>({id:q.id,name:q.name,view:q.view,x:q.x,y:q.y,w:q.w,h:q.h,source:q.source,layer:q.layer||null,art:q.art||null,mark:q.mark||null,...(q.colour?{colour:q.colour}:{}),...(q.dot?{dot:q.dot}:{}),techniqueId:q.techniqueId||null,added:Boolean(q.added),where:describe(q,P)})):[]),saved:()=>Boolean(D&&P&&!DIRTY),
   select:id=>{const q=PL.find(x=>x.id===id);if(!q)return;if(q.view!==VIEW)setView(q.view);SEL=id;tab('pl');paint();document.querySelector(`#pPl [data-q="${id}"]`)?.scrollIntoView({block:'nearest'})},
   check:()=>({...(CHECK.summary||{}),saved:Boolean(D&&P&&!DIRTY)}),
   layout:({panel=true,focus=false}={})=>{const r=document.documentElement;r.dataset.panel=panel?'on':'off';if(focus)r.dataset.focus='1';else delete r.dataset.focus;if(P)draw()},

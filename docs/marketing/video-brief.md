@@ -60,6 +60,7 @@ already has show as "on the sketch".
 `/lab/studio`. One workspace with four views of a piece: the picture, the flat front, the flat back, and the pattern or engineering.
 
 - On the flats: **Colour a part**, in the Garment panel (pick a swatch, tap a sleeve and both sleeves take the colour, right to their seams; a tap on a rib takes the whole band; zoom in and a belt loop or a pocket takes it on its own)
+- On the flats: **The logo in any colour**, in the Graphics panel (a cue mark, wordmark or lockup on the piece takes a swatch, tone on tone, or any colour; "One colour" turns the green dot the same for a one-thread embroidery; the spec sheet and the tech pack carry it)
   and **Cloth** (pick a fabric and the flat shows its surface; it becomes the garment's main fabric).
 
 - **Necklines:** swap a tee's neck like a pocket: thin crew, regular crew, V neck, mock neck or turtleneck, drawn on the flats and specced for the factory.

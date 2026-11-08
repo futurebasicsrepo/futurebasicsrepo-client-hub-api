@@ -780,6 +780,8 @@ export function cleanFlat(input = {}) {
     id: /^[a-z0-9-]{1,40}$/i.test(String(q.id || '')) ? String(q.id) : 'p' + i, name: String(q.name || 'Graphic').replace(/\s+/g, ' ').trim().slice(0, 60) || 'Graphic', view: q.view === 'back' ? 'back' : 'front',
     x: r8(Math.min(Math.max(Number(q.x) || 0, -60), 60)), y: r8(Math.min(Math.max(Number(q.y) || 0, -30), 80)), w: r8(Math.min(Math.max(Number(q.w) || 1, .25), 40)), h: r8(Math.min(Math.max(Number(q.h) || 1, .25), 40)), ...(rotOf(q) ? { rot: rotOf(q) } : {}),
     ...(/^[0-9a-f-]{36}$/i.test(String(q.art || '')) ? { art: q.art } : {}), ...(['cue', 'mark', 'word', 'lockup'].includes(q.mark) ? { mark: q.mark === 'cue' ? 'mark' : q.mark } : {}),
+    // a mark in its own colour (the lines and the lettering), and the cue dot too when it is one colour: a hex each, or the brand's own colours
+    ...(q.mark && /^#[0-9a-f]{6}$/i.test(String(q.colour || '')) ? { colour: String(q.colour).toLowerCase() } : {}), ...(q.mark && /^#[0-9a-f]{6}$/i.test(String(q.dot || '')) ? { dot: String(q.dot).toLowerCase() } : {}),
     ...(/^[0-9a-f-]{36}$/i.test(String(q.techniqueId || '')) ? { techniqueId: q.techniqueId } : {}), technique: String(q.technique || 'screen print').slice(0, 40), source: ['logo', 'graphic', 'extra', 'studio'].includes(q.source) ? q.source : 'extra',
     ...(/^l[a-z0-9]{1,12}$/.test(String(q.layer || '')) ? { layer: String(q.layer) } : {}), ...(q.added === true && q.source !== 'studio' ? { added: true } : {}), ...cleanGrade(q), ...cleanInks(q.inks)
   }));
