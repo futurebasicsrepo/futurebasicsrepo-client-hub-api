@@ -69,6 +69,7 @@ already has show as "on the sketch".
   - The flat shows a vintage fade with dark ribs, chewed collars, ragged hems and knee rips, and the factory gets the words.
 - Pro drawing tools: a pen tool with editable curves, shape booleans, snapping and guides, align and distribute, ⌘K to find any command,
   and SVG in and out.
+- **The tool rail works like a design program's:** tools of one kind share a place (shapes; select and edit points; pen, width and shape builder; type and type on a path; ruler, measure and artboard; warp and liquify). Hold one, or tap it again, and its group opens. **Every tool has its own options bar** above the picture: a shape's fill, stroke, width, dashes, corners, sides and star points (changed live on the chosen shape); a line's arrowheads; the pen's line and fill; type's font, size, weight and alignment; select's flip, order, duplicate, lock and delete; the view's zoom, Fit and Straighten; the eyedropper's All layers or This layer; liquify's Push, Twirl, Pinch and Bloat. **Polygon** and **Star** are new, drawn from the middle out as editable paths, on the picture and on the flats.
 - The tools a physical product and its packaging need, on the same keys as Illustrator:
   - **Artboards (⇧O):** one board per face of a pack, sized in mm or inches with its bleed; **Lay out a box** turns a length, width
     and depth into seven faces and the dieline to cut it.
