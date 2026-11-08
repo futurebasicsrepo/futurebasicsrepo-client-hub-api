@@ -26,6 +26,7 @@
     "eraser on the sketch lines": { "main": 26, "frame": 28, "release": 120 },
     "pinch zoom": { "main": 45, "frame": 45, "release": 70 },
     "pan when zoomed": { "main": 33, "frame": 34, "release": 500 },
+    "move a detail": { "main": 80, "frame": 80, "release": 400 },
     "view front→back": { "once": 90 },
     "view back→board": { "once": 175 }
   }
