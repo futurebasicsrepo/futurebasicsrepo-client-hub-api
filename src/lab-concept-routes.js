@@ -88,27 +88,34 @@ export function registerLabConceptRoutes(app, d) {
       }
       let ai = null, cents = gen.costCents / gen.concepts.length;
       try { const o = await aiOpinion({ concept, refs: refLite, code, askImpl, env, fetchImpl }); ai = o.ai; cents += o.costCents; } catch (e) { log.warn?.({ err: e.message }, 'design lab second opinion failed'); }
-      return { c, img, imageNote, close: closeness(concept, refLite, { brandNames: names, ai }), cents };
+      // kept the moment it is drawn and checked, not when all of them are: a restart part way through loses only the ones still being drawn
+      return keep({ c, img, imageNote, close: closeness(concept, refLite, { brandNames: names, ai }), cents });
     }));
-    const out = [];
-    for (const m of made) {
+    if (line.id) await pool.query(`update lab_plan_lines set status='in_concept' where id=$1 and status='planned'`, [line.id]);
+    return made;
+    async function keep(m) {
       const r = (await pool.query(`insert into lab_concepts(plan_id,line_id,parent_id,name,category,role,spec,twist,price_cents,cost_cents,qty,refs,image,thumb,image_note,closeness,created_by,cost_ai,raw)
         values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) returning id`,
       [plan?.id || null, line.id || null, parent?.id || null, m.c.name, line.category, line.role, m.c.spec, m.c.twist, line.priceCents ?? null, line.costCents ?? null, line.qty ?? 0, refs.map(r => r.id), m.img?.image || null, m.img?.thumb || null, m.imageNote, m.close, actorOf(req), m.cents, m.img?.raw || null])).rows[0];
-      out.push(await one(r.id));
+      return one(r.id);
     }
-    if (line.id) await pool.query(`update lab_plan_lines set status='in_concept' where id=$1 and status='planned'`, [line.id]);
-    return out;
   }
   const capLeft = async n => { const cap = Number(env.LAB_DAILY_CONCEPTS ?? 30); if (cap < 0) return true; return Number((await pool.query(`select count(*) c from lab_concepts where created_at > now() - interval '24 hours'`)).rows[0].c) + n <= cap ? true : cap; };
 
   // Making concepts takes minutes (designing, drawing each picture and its artwork, checking each), longer than a phone keeps a request open (a locked
   // screen, a switched app). So a request waits a short while; if the work is not done, it answers 202 with a job to ask after, and the work carries on.
   const jobs = new Map(), JOB_WAIT = Number(env.LAB_JOB_WAIT_MS ?? 20000);
+  // Each job is written to lab_jobs as well: the server's memory goes with a restart (a deploy, a crash), and a page still asking after the work
+  // must then hear that it was cut short, not that it is gone. When the service starts, what was running is marked so.
+  const RESTARTED = 'The service restarted while this was being made, so it was not finished. Any concepts already drawn are on the board; make the rest again.';
+  pool.query(`update lab_jobs set status='failed', error=$1, updated_at=now() where status='running'`, [RESTARTED]).catch(() => {});
+  pool.query(`delete from lab_jobs where created_at < now() - interval '7 days'`).catch(() => {});
+  const saveJob = (id, j) => pool.query(`insert into lab_jobs(id, owner, actor, status, result, error) values($1,$2,$3,$4,$5,$6)
+    on conflict(id) do update set status=excluded.status, result=excluded.result, error=excluded.error, updated_at=now()`, [id, j.owner, j.actor, j.status, j.result ? JSON.stringify(j.result) : null, j.error || null]).catch(e => log.warn?.({ err: e.message }, 'design lab job not kept'));
   async function asJob(req, reply, work) {
     for (const [k, j] of jobs) if (Date.now() - j.at > 3600e3) jobs.delete(k);
-    const id = randomUUID(), job = { status: 'running', owner: own(req), actor: actorOf(req), at: Date.now() }; jobs.set(id, job);
-    const p = work().then(r => { job.status = 'done'; job.result = r; }, e => { job.status = 'failed'; job.error = e.message; job.code = e.status || 502; });
+    const id = randomUUID(), job = { status: 'running', owner: own(req), actor: actorOf(req), at: Date.now() }; jobs.set(id, job); saveJob(id, job);
+    const p = work().then(r => { job.status = 'done'; job.result = r; saveJob(id, job); }, e => { job.status = 'failed'; job.error = e.message; job.code = e.status || 502; saveJob(id, job); });
     const wait = req.query?.wait != null ? Math.min(JOB_WAIT, Math.max(0, Number(req.query.wait) * 1000 || 0)) : JOB_WAIT; // ?wait=0 asks for the job at once
     let timer; const done = await Promise.race([p.then(() => true), new Promise(r => { timer = setTimeout(() => r(false), wait); })]); clearTimeout(timer);
     if (!done) return reply.code(202).send({ job: id, status: 'running' });
@@ -116,7 +123,9 @@ export function registerLabConceptRoutes(app, d) {
     return job.status === 'done' ? reply.code(201).send(job.result) : bad(reply, job.error, job.code);
   }
   app.get('/v1/lab/jobs/:job', { preHandler: pre }, async (req, reply) => {
-    const j = jobs.get(String(req.params.job)); if (!j || j.owner !== own(req) || j.actor !== actorOf(req)) return bad(reply, 'That work is no longer tracked. Finished concepts are kept on the board.', 404);
+    let j = jobs.get(String(req.params.job));
+    if (!j && UUID.test(String(req.params.job))) { const r = (await pool.query('select owner, actor, status, result, error from lab_jobs where id=$1', [req.params.job])).rows[0]; if (r) j = { owner: r.owner, actor: r.actor, status: r.status, result: r.result, error: r.error }; }
+    if (!j || j.owner !== own(req) || j.actor !== actorOf(req)) return bad(reply, 'That work is no longer tracked. Look on the board: if the concepts are not there, make them again.', 404);
     if (j.status === 'running') return { status: 'running' };
     jobs.delete(String(req.params.job));
     return j.status === 'done' ? { status: 'done', ...j.result } : { status: 'failed', error: j.error };
