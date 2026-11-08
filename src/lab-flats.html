@@ -668,11 +668,13 @@ function mkReset(){for(const k of Object.keys(MK))delete MK[k];MUNDO.front=[];MU
 // the drawing covers everything the window shows of the flat at full view (not only the garment's own frame), in inches
 function mkSpan(){const b=baseBox(),g=vgeo();if(!b||!g)return b;const ea=g.w/g.h,va=b.w/b.h;
   return ea>va?{x:b.x-(b.h*ea-b.w)/2,y:b.y,w:b.h*ea,h:b.h}:{x:b.x,y:b.y-(b.w/ea-b.h)/2,w:b.w,h:b.w/ea}}
-function mkNew(view){const b=mkSpan();if(!b)return null;const res=Math.min(48,3000/Math.max(b.w,b.h)),cv=document.createElement('canvas');cv.width=Math.round(b.w*res);cv.height=Math.round(b.h*res);
+// how big the hand-drawing layer may grow: on an iPad, 2048 across (16 MB a picture instead of 36), so its undo steps fit in what Safari lets a page hold
+const IOSF=/iP(ad|hone|od)/.test(navigator.platform)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1),MKMAX=IOSF?2048:3000,MKBYTES=(IOSF?96:384)*1048576;
+function mkNew(view){const b=mkSpan();if(!b)return null;const res=Math.min(48,MKMAX/Math.max(b.w,b.h)),cv=document.createElement('canvas');cv.width=Math.round(b.w*res);cv.height=Math.round(b.h*res);
   return MK[view]={cv,x:b.x,y:b.y,w:b.w,h:b.h,tpl:mkTpl(),dirty:false}}
 // a drawing made on a smaller window, or loaded from an older save, grows to the whole window before the next stroke; what is on it stays put
 function mkFit(m){const s=mkSpan();if(!s)return;const x0=Math.min(m.x,s.x),y0=Math.min(m.y,s.y),x1=Math.max(m.x+m.w,s.x+s.w),y1=Math.max(m.y+m.h,s.y+s.h);if(x0>=m.x-.01&&y0>=m.y-.01&&x1<=m.x+m.w+.01&&y1<=m.y+m.h+.01)return;
-  const w=x1-x0,h=y1-y0,res=Math.min(m.cv.width/m.w,3000/Math.max(w,h)),cv=document.createElement('canvas');cv.width=Math.round(w*res);cv.height=Math.round(h*res);
+  const w=x1-x0,h=y1-y0,res=Math.min(m.cv.width/m.w,MKMAX/Math.max(w,h)),cv=document.createElement('canvas');cv.width=Math.round(w*res);cv.height=Math.round(h*res);
   cv.getContext('2d').drawImage(m.cv,(m.x-x0)*res,(m.y-y0)*res,m.w*res,m.h*res);Object.assign(m,{cv,x:x0,y:y0,w,h});for(const k of [MUNDO,MREDO])k[VIEW]=[]}
 async function mkLoad(m){mkReset();if(!m)return;P.markup=m;for(const v of ['front','back']){const q=m[v];if(!q?.art)continue;try{const img=new Image();img.src=await blobUrl('/v1/lab/art/'+q.art);await img.decode();
   const cv=document.createElement('canvas');cv.width=img.naturalWidth;cv.height=img.naturalHeight;cv.getContext('2d').drawImage(img,0,0);MK[v]={cv,x:q.x,y:q.y,w:q.w,h:q.h,tpl:m.template||'none',art:q.art,dirty:false}}catch{}}mkPlace()}
@@ -687,6 +689,8 @@ window.addEventListener('resize',()=>mkPlace());
 // a point on the screen → the drawing's own pixels; k: drawing pixels per screen pixel
 function mkAt(m,e){const[x,y]=inch(e);return[(x-m.x)/m.w*m.cv.width,(y-m.y)/m.h*m.cv.height]}
 const mkK=m=>{const g=vgeo();return g?m.cv.width/(g.k*m.w):1};
+// the hand-drawing undo steps kept within a memory budget across both views (each is a whole copy of the drawing); the oldest go first
+function mkTrim(){const by=()=>[...MUNDO.front,...MUNDO.back,...MREDO.front,...MREDO.back].reduce((n,d)=>n+(d?.data?.length||0),0);while(by()>MKBYTES){const o=VIEW==='front'?'back':'front',v=MUNDO[o].length?o:VIEW,q=MUNDO[v];if(q.length<=1&&v===VIEW)break;q.shift();if(MKT[v].length>q.length)MKT[v].shift()}}
 const mkSnap=m=>m.cv.getContext('2d').getImageData(0,0,m.cv.width,m.cv.height);
 // a see-through tip (marker, airbrush) is drawn solid on a layer over the drawing while the stroke is made, shown at its opacity, and laid
 // into the drawing once at the end (piece by piece, its pieces would overlap and bead)
@@ -705,7 +709,7 @@ function mkShape(m,g,p){const x=m.cv.getContext('2d'),o=g.o,k=mkK(m),lw=(o.shW?M
   else if(MTOOL==='polygon'||MTOOL==='star'){const r=Math.hypot(p[0]-a,p[1]-b),t0=Math.atan2(p[1]-b,p[0]-a),n=Math.max(3,Math.min(24,Math.round(o.sides)||6)),star=MTOOL==='star',cnt=star?n*2:n,ri=r*Math.max(.1,Math.min(.95,(o.inner||50)/100));for(let i=0;i<cnt;i++){const t=t0+i*2*Math.PI/cnt,rr=star&&i%2?ri:r;i?x.lineTo(a+rr*Math.cos(t),b+rr*Math.sin(t)):x.moveTo(a+rr*Math.cos(t),b+rr*Math.sin(t))}x.closePath()}
   else x.ellipse((a+p[0])/2,(b+p[1])/2,Math.abs(p[0]-a)/2,Math.abs(p[1]-b)/2,0,0,Math.PI*2);
   const fill=MTOOL!=='line'&&o.shFill&&o.shFillC;if(fill)x.fill();if(!fill||o.shStroke)x.stroke();x.restore()}
-function mkDone(m,before){m.ver=(m.ver||0)+1;MUNDO[VIEW].push(before);MKT[VIEW].push(Date.now());if(MKT[VIEW].length>30)MKT[VIEW].shift();if(MUNDO[VIEW].length>30)MUNDO[VIEW].shift();MREDO[VIEW]=[];m.dirty=true;touch();HOST()?.flatsChanged?.()}
+function mkDone(m,before){m.ver=(m.ver||0)+1;MUNDO[VIEW].push(before);MKT[VIEW].push(Date.now());if(MKT[VIEW].length>30)MKT[VIEW].shift();if(MUNDO[VIEW].length>30)MUNDO[VIEW].shift();mkTrim();MREDO[VIEW]=[];m.dirty=true;touch();HOST()?.flatsChanged?.()}
 // the drawing on this side as clean outlines (src/lab-trace.js), drawn back into it in place; 'more' traces the same drawing again a level
 // cleaner, until something new is drawn on it. Undo goes back a step, as after a stroke.
 function mkOutline(want){const m=MK[VIEW];if(!m)return{message:'Draw on the flat first, then Outlines.'};

@@ -350,8 +350,14 @@ const fixed=l=>l.kind==='base'||l.kind==='paint'; // full-size layers that do no
 // ---------- history (rasters are copied before they change, so a step keeps its own) ----------
 let HIST=[],HI=-1;
 const copyL=l=>({...l,adjust:{...l.adjust},tint:{...l.tint},distress:{...l.distress},finish:l.finish?{...l.finish,distress:{...l.finish.distress}}:null,...(l.warp?{warp:{...l.warp,pts:l.warp.pts.map(p=>[...p])}}:{}),...(l.paths?{paths:l.paths.map(p=>({closed:p.closed,nodes:p.nodes.map(n=>[...n])}))}:{}),...(l.ill?{ill:JSON.parse(JSON.stringify(l.ill))}:{})});
-const snap=()=>({sel:SEL,layers:LAYERS.map(copyL)});
-function commit(){HIST=HIST.slice(0,HI+1);HIST.push(snap());if(HIST.length>60)HIST.shift();HI=HIST.length-1;touch();syncUndo()}
+const snapL=l=>{const c=copyL(l);c._pc=null;c._pk=null;c._dc=null;c._dk=null;c._db=null;c._tk=null;c._tu=null;return c};
+const snap=()=>({sel:SEL,layers:LAYERS.map(snapL)});
+// a memory budget for the undo steps: each step keeps its own copy of any picture it changed, so a long session on a big picture can pass what an iPad lets a page hold (past that, Safari blanks canvases without a word); the oldest steps go first
+const IOS=/iP(ad|hone|od)/.test(navigator.platform)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+const MEM={hist:(IOS?160:640)*1048576};
+function histBytes(){const seen=new Set();let b=0;for(const s of HIST)for(const l of s.layers){const r=l.raster;if(r&&!seen.has(r)){seen.add(r);b+=r.width*r.height*4}}return b}
+function histTrim(){while(HIST.length>2&&histBytes()>MEM.hist){HIST.shift();HI--}}
+function commit(){HIST=HIST.slice(0,HI+1);HIST.push(snap());if(HIST.length>60)HIST.shift();HI=HIST.length-1;histTrim();touch();syncUndo()}
 function restore(s){LAYERS=s.layers.map(copyL);SEL=s.sel&&layerOf(s.sel)?s.sel:null;touch();paintPanels();draw()}
 const onFlat=()=>(VMODE==='front'||VMODE==='back')&&FF()?.undo;
 function undo(){if(onFlat()){FF().undo();syncUndo();return}if(HI>0){HI--;restore(HIST[HI]);syncUndo()}}function redo(){if(onFlat()){FF().redo();syncUndo();return}if(HI<HIST.length-1){HI++;restore(HIST[HI]);syncUndo()}}
@@ -478,22 +484,25 @@ function drawLayer(x,l){if(!l.visible)return;if(sliding(l)){const c=draftOf(l);x
 // of the stroke, and each frame is those two pictures with the stroke's layer between them (it was every layer, with its finish, every
 // frame: a slow, laggy Pencil). The whole picture is put together again when the stroke ends.
 let STK=null;
+// the full-size canvases a stroke or a drag works with belong to it alone: when it is done they are let go at once (on an iPad, canvas memory comes back only when a canvas is emptied)
+const freeC=c=>{if(c){c.width=0;c.height=0}};
+function setSTK(n){const o=STK;STK=n;if(o&&o!==n){for(const k of ['below','above','buf'])if(o[k]&&o[k]!==n?.[k])freeC(o[k])}}
 function composeInto(x,keep,white){x.setTransform(1,0,0,1,0,0);x.globalCompositeOperation='source-over';x.globalAlpha=1;x.clearRect(0,0,W,H);if(white){x.fillStyle='#fff';x.fillRect(0,0,W,H)}
   const vis=LAYERS.map(q=>q.visible);LAYERS.forEach(q=>{if(!keep(q))q.visible=false});try{if(window.ILL)ILL.drawAll(x);else for(const q of LAYERS)drawLayer(x,q)}finally{LAYERS.forEach((q,i)=>{q.visible=vis[i]})}}
-function strokeStart(l){const i=LAYERS.indexOf(l);if(i<0){STK=null;return}const below=canvas(W,H),above=canvas(W,H);
+function strokeStart(l){const i=LAYERS.indexOf(l);if(i<0){setSTK(null);return}const below=canvas(W,H),above=canvas(W,H);
   composeInto(below.getContext('2d'),q=>LAYERS.indexOf(q)<i,!GMODE);composeInto(above.getContext('2d'),q=>LAYERS.indexOf(q)>i,false);const ba=TOOL==='brush'&&window.FBBrush?FBBrush.strokeAlpha(OPT.tip,OPT.flow):0;
-  STK={l,below,above,anyAbove:LAYERS.slice(i+1).some(q=>q.visible),buf:ba?canvas(l.raster.width,l.raster.height):null,ba}}
-function strokeEnd(keep=true){if(STK?.buf&&keep){const x=STK.l.raster.getContext('2d');x.save();x.globalAlpha=STK.ba;x.drawImage(STK.buf,0,0);x.restore();STK.l.raster._rid=RID++}STK=null}
+  setSTK({l,below,above,anyAbove:LAYERS.slice(i+1).some(q=>q.visible),buf:ba?canvas(l.raster.width,l.raster.height):null,ba})}
+function strokeEnd(keep=true){if(STK?.buf&&keep){const x=STK.l.raster.getContext('2d');x.save();x.globalAlpha=STK.ba;x.drawImage(STK.buf,0,0);x.restore();STK.l.raster._rid=RID++}setSTK(null)}
 const ONE=['move','scale','rot','liquify'];
 function oneLayer(){const g=DRAG&&ONE.includes(DRAG.mode)&&!window.PRO?.multi()?DRAG.l:GEST?.layer?.l||(SLIDE&&SLIDE.until>performance.now()?SLIDE.l:null);return g&&LAYERS.includes(g)?g:null}
-function oneReady(ol){if(!STK||STK.l!==ol||!STK.one){const i=LAYERS.indexOf(ol),below=canvas(W,H),above=canvas(W,H);composeInto(below.getContext('2d'),q=>LAYERS.indexOf(q)<i,!GMODE);composeInto(above.getContext('2d'),q=>LAYERS.indexOf(q)>i,false);STK={l:ol,below,above,anyAbove:LAYERS.slice(i+1).some(q=>q.visible),one:true}}return STK}
+function oneReady(ol){if(!STK||STK.l!==ol||!STK.one){const i=LAYERS.indexOf(ol),below=canvas(W,H),above=canvas(W,H);composeInto(below.getContext('2d'),q=>LAYERS.indexOf(q)<i,!GMODE);composeInto(above.getContext('2d'),q=>LAYERS.indexOf(q)>i,false);setSTK({l:ol,below,above,anyAbove:LAYERS.slice(i+1).some(q=>q.visible),one:true})}return STK}
 function oneDraw(x,ol){if(DRAG?.mode==='liquify'){if(ol.visible){x.save();x.globalAlpha=ol.opacity;x.globalCompositeOperation=ol.blend;place(x,ol);x.drawImage(ol.raster,-ol.raster.width/2,-ol.raster.height/2);x.restore()}}else drawLayer(x,ol)}
 function compose(){docC._v=(docC._v||0)+1;const ol=oneLayer();
   if(ol){oneReady(ol);
     docX.setTransform(1,0,0,1,0,0);docX.globalCompositeOperation='source-over';docX.globalAlpha=1;docX.clearRect(0,0,W,H);docX.drawImage(STK.below,0,0);
     oneDraw(docX,ol);
     if(STK.anyAbove)docX.drawImage(STK.above,0,0);return}
-  if(STK?.one)STK=null;
+  if(STK?.one)setSTK(null);
   if(STK&&DRAG?.mode==='stroke'&&DRAG.l===STK.l){const l=STK.l;docX.setTransform(1,0,0,1,0,0);docX.globalCompositeOperation='source-over';docX.globalAlpha=1;docX.drawImage(STK.below,0,0);
     if(l.visible){docX.save();docX.globalAlpha=l.opacity;docX.globalCompositeOperation=l.blend;place(docX,l);docX.drawImage(l.raster,-l.raster.width/2,-l.raster.height/2);if(STK.buf){docX.globalAlpha=l.opacity*STK.ba;docX.drawImage(STK.buf,-l.raster.width/2,-l.raster.height/2)}docX.restore()}
     if(STK.anyAbove)docX.drawImage(STK.above,0,0);return}

@@ -7,7 +7,7 @@
     "resize a layer": { "main": 12, "frame": 34, "release": 140 },
     "turn a layer": { "main": 17, "frame": 44, "release": 160 },
     "liquify": { "main": 32, "frame": 57, "release": 200 },
-    "pan the view": { "main": 9, "frame": 24, "release": 110 },
+    "pan the view": { "main": 12, "frame": 24, "release": 110 },
     "pinch zoom": { "main": 10, "frame": 25, "release": 80 },
     "Pencil hover": { "main": 15, "frame": 29 }
   },
