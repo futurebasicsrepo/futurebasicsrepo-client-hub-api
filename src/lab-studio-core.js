@@ -237,6 +237,9 @@ function glPicture(r,vo,ol){if(!window.FBGL)return false;if(!render.gl){render.g
   else{items.push({src:docC,ver:docC._v||0,m:I});glPicture.v=docC._v}
   glPicture.on=true;return FBGL.frame({w:r.width,h:r.height,dpr:DPR,view:{PX,PY,Z,VR},page:{w:W,h:H,color:hexRgba(window.PAGEBG||'#ffffff')},items,sharp:!vo})}
 function render(){
+  // the picture is out of sight (the flats or the pattern fill the workspace): it is not drawn, so a change the flats carry back while they are
+  // worked (an autosave bringing a logo or a size across) costs nothing there; setView draws it when it is shown again
+  if(render.done&&typeof VMODE!=='undefined'&&(VMODE==='front'||VMODE==='back'||VMODE==='pattern')){DOCDIRTY=true;render.later=true;return}
   const ol=render.done?oneLayer():null;if(ol){oneReady(ol);DOCDIRTY=true}else if((DOCDIRTY&&!viewOnly())||!render.done){compose();render.done=true;DOCDIRTY=false}const r=vrect();DPR=window.devicePixelRatio||1;const cw=Math.round(r.width*DPR),ch=Math.round(r.height*DPR);if(view.width!==cw||view.height!==ch){view.width=cw;view.height=ch}
   const vo=viewOnly()||Boolean(DRAG)||Boolean(GEST)||FASTTILL>performance.now()||Boolean(ol); // while the view is being moved or pinched: no soft shadow and quick smoothing (both are slow on an iPad, every frame)
   const gpu=glPicture(r,vo,ol);

@@ -2348,7 +2348,11 @@ await journey('J234', 'One Design workspace: a concept opens on its picture, and
       await page.click('#save'); await F.waitForFunction(() => /^Saved/.test(document.getElementById('saved').textContent), null, { timeout: 20000 }); await page.waitForFunction(() => !DIRTY, null, { timeout: 30000 });
       const col = sql(`select params->>'color' from lab_flats where concept_id='${c.id}'`), fp = (await K(`/concepts/${c.id}/flats`)).json.flat.placements.find(q => q.source === 'studio'), doc = (await K(`/concepts/${c.id}/studio`)).json.doc;
       ok(col === '#1f2a44' && fp && Math.abs(fp.w - 3.5) < .2 && doc?.layers?.length >= 2, '   one Save keeps the flats (their colour, the wordmark at 3.5 in) and the picture\'s layers', [col, fp?.w, doc?.layers?.length]);
+      // while the flats fill the workspace the hidden picture and its layer list are not drawn; they catch up when the picture is shown
+      const hid = await page.evaluate(async () => { draw(); paintLayers(); await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))); return { pic: Boolean(render.later), list: Boolean(paintLayers.later) }; });
+      ok(hid.pic && hid.list, '   on the flats, the hidden picture and its layer list wait (nothing drawn out of sight)', hid);
       await page.click('#pieceSteps [data-step=picture]'); ok(await page.isVisible('#stage') && !(await page.isVisible('#flatHost')) && !/view=/.test(page.url()), '6. Picture brings the layers back');
+      await page.waitForTimeout(300); ok(await page.evaluate(() => !render.later && !paintLayers.later && document.querySelectorAll('#pLayers .ly').length === LAYERS.length), '   and both are drawn as it comes back');
       await page.goto(`${BASE}/lab/flats?concept=${c.id}`); await page.waitForURL(/\/lab\/studio\?concept=.*view=front/, { timeout: 15000 }); await page.waitForSelector('#app[data-v=front]', { timeout: 20000 });
       ok(true, '7. the old flats address opens the same workspace on the flat front');
       ok(errs.length === 0, 'no page errors', errs); await oc.close();
@@ -4809,7 +4813,7 @@ await journey('J290', 'Start from scratch on a line plan: a piece is drawn on a 
 shops.close(); brave.close();
 // The Studio's latency budget (scripts/perf/budgets.json): every main interaction on the picture, the panel and the flats, driven as an iPad
 // drives it on a CPU slowed 4×, stays inside its budget. JOURNEY_PERF=off skips it on a machine too busy to time anything.
-await journey('J291', 'the Studio stays inside its latency budget: drawing, moving, sizing, turning, liquify, panning, pinching, hovering, the sliders, the tabs, and the flats', async () => {
+await journey('J291', 'the Studio stays inside its latency budget: drawing, moving, sizing, turning, liquify, panning, pinching, hovering, the sliders, the tabs, and the flats; and the picture on the graphics chip, the default, inside its own', async () => {
   if (!playwright) { ok(true, 'skipped: no browser here'); return; }
   if (process.env.JOURNEY_PERF === 'off') { ok(true, 'skipped: JOURNEY_PERF=off'); return; }
   const { runPerf } = await import('../perf/studio-perf.mjs');
@@ -4817,6 +4821,10 @@ await journey('J291', 'the Studio stays inside its latency budget: drawing, movi
   ok(r.results.filter(x => !x.skipped).length >= 20, 'every interaction was measured', r.results.filter(x => x.skipped).map(x => x.name));
   ok(!r.errors.length, 'no page errors while it ran', r.errors.slice(0, 5));
   ok(!r.over.length, 'every interaction is inside its budget', r.over.map(x => `${x.group}: ${x.name}: ${x.over.join(', ')}`));
+  // the picture on the graphics chip, the app's default, against its own budgets
+  const g = await runPerf({ base: BASE, token: kyleT, playwright, only: 'picture', gl: true, log: () => {} });
+  ok(g.results.filter(x => !x.skipped && x.group === 'picture on the graphics chip').length >= 9 && !g.errors.length, '   and on the graphics chip: every picture interaction measured, no page errors', [g.results.filter(x => x.skipped).map(x => x.name), g.errors.slice(0, 3)]);
+  ok(!g.over.length, "   every one inside the chip's budget", g.over.map(x => `${x.group}: ${x.name}: ${x.over.join(', ')}`));
 });
 
 process.exit(summary() ? 1 : 0);
