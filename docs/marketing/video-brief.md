@@ -154,7 +154,7 @@ The fabrics are browsed by family and weight:
 - 12 leathers;
 - 14 vegan leathers, from PU to cactus, apple, mycelium and cork.
 
-Labels chosen on a garment are drawn on its flats where they are sewn, with their words on them (the brand, and the piece's size on a size tab). The flat's Garment panel shows the labels on the piece; **Add the usual** puts on the neck or waistband label, the size tab and the care label in one tap, and Add a label lists only the labels that suit the garment.
+Labels chosen on a garment are drawn on its flats where they are sewn, with their words on them (the brand, and the piece's size on a size tab). The flat's Garment panel shows the labels on the piece; **Add the usual** puts on the neck or waistband label, the size tab and the care label in one tap, and Add a label lists only the labels that suit the garment. On a client's piece the labels carry the client's own brand, and **Design** on any label (or Design your own label) opens it in the tag and label studio at its real size, so a brand can make labels its own way.
 
 ### Beyond clothing (good for a "it does more than tees" cut)
 - **Bags:** backpacks, slings, totes, helmet bags, work bags, messengers, duffels and waist bags, designed as a bag designer would and rendered on a set that suits each; a design sheet; drawn in panels a designer recolours and reshapes; and a library of eleven original bag flats to start from.
