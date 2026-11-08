@@ -17,6 +17,7 @@ var c=q.get('concept')||'',t=q.get('template')||'',v=q.get('view')==='back'?'bac
 #typePop .tp-row{display:flex;align-items:center;gap:8px}#typePop .tp-row>span{width:52px;color:#6b6b70;flex:none}#typePop .tp-row select{flex:1;min-width:0;min-height:32px}#typePop .tp-row input[type=range]{flex:1;min-width:0}
 #typePop .tp-row output{width:30px;text-align:right;font-variant-numeric:tabular-nums}#typePop .tp-end{justify-content:flex-end}
 #typePop .tp-more{border-top:1px solid var(--line,#e2e2dc);padding-top:6px}#typePop .tp-more summary{cursor:pointer;color:#6b6b70;padding:4px 0}#typePop .tp-more[open]{display:grid;gap:8px}#typePop{max-height:calc(100vh - 16px);overflow-y:auto}
+#typePop .tp-hint{margin:0;color:#6b6b70;font-size:11.5px}#typePop .tp-row{flex-wrap:wrap}#typePop .tp-row input[type=color]{width:34px;height:30px;padding:0;flex:none}#typePop .tp-row select{flex:1 1 90px}#typePop{width:min(300px,calc(100vw - 16px));box-sizing:border-box;overflow-x:hidden;max-width:calc(100vw - 16px)}
 #typePop .tp-prev{font-size:24px;line-height:1.25;padding:6px 8px;background:#f6f6f3;border-radius:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:34px}
 :root{--ink:#141416;--paper:#fff;--fog:#f5f5f2;--dim:#727278;--line:rgba(20,20,22,.14);--cue:#4bff9a;--ok:#17603a;--bad:#a02a20;--warn:#8a5a00}
 *{box-sizing:border-box}html{background:var(--fog)}
@@ -695,13 +696,12 @@ function typeOpen(m,p,before,o,e){typeClose(false);TY={m,p,before,o};TS.text='';
   const cats=[...new Set(TFACES.map(f=>f[3]))];
   pop.innerHTML=`<input class="tp-text" id="tpText" placeholder="Type the words" maxlength="80" autocomplete="off">
     <label class="tp-row"><span>Font</span><select id="tpFont">${cats.map(c=>`<optgroup label="${esc(c)}">${TFACES.filter(f=>f[3]===c).map(f=>`<option value="${f[0]}" ${f[0]===TS.font?'selected':''}>${esc(f[1])}</option>`).join('')}</optgroup>`).join('')}</select></label>
-    <div class="tp-prev" id="tpPrev"></div>
     <label class="tp-row"><span>Size</span><input type="range" id="tpSize" min="10" max="300" value="${TS.size}"><output>${TS.size}</output></label>
     <div class="tp-row"><span>Colour</span><input type="color" id="tpColor" value="${TS.color||o.color}"><button type="button" class="btn sm ${TS.bold?'':'q'}" id="tpBold" aria-pressed="${TS.bold}">Bold</button>
       <select id="tpCase" aria-label="Case">${[['','As typed'],['upper','ALL CAPS'],['title','Title Case'],['lower','lower case']].map(([v,l])=>`<option value="${v}" ${TS.case===v?'selected':''}>${l}</option>`).join('')}</select></div>
-    <label class="tp-row"><span>Outline</span><input type="range" id="tpOut" min="0" max="20" value="${TS.outline}"><input type="color" id="tpOutC" value="${TS.outlineColor}"></label>
-    <label class="tp-row"><span>Arch</span><input type="range" id="tpArc" min="-100" max="100" value="${TS.arc}"><output>${TS.arc}</output></label>
-    <details class="tp-more"${['stretch','outline2','track'].some(k=>TS[k]&&TS[k]!==100)||TS.shadowKind!=='none'||TS.env!=='none'?' open':''}><summary>More: shape, shadow, second outline</summary>
+    <details class="tp-more"${['stretch','outline','outline2','track','arc'].some(k=>TS[k]&&TS[k]!==100)||TS.shadowKind!=='none'||TS.env!=='none'?' open':''}><summary>More: outline, arch, shape, shadow</summary>
+      <label class="tp-row"><span>Outline</span><input type="range" id="tpOut" min="0" max="20" value="${TS.outline}"><input type="color" id="tpOutC" value="${TS.outlineColor}"></label>
+      <label class="tp-row"><span>Arch</span><input type="range" id="tpArc" min="-100" max="100" value="${TS.arc}"><output>${TS.arc}</output></label>
       <label class="tp-row"><span>Shape</span><select id="tpEnv">${TENVS.map(([v,l])=>`<option value="${v}" ${TS.env===v?'selected':''}>${l}</option>`).join('')}</select><input type="range" id="tpEnvK" min="-100" max="100" value="${TS.envK}" aria-label="Shape amount"></label>
       <label class="tp-row"><span>Stretch</span><input type="range" id="tpStretch" min="50" max="200" value="${TS.stretch}"><output>${TS.stretch}%</output></label>
       <label class="tp-row"><span>Spacing</span><input type="range" id="tpTrack" min="-10" max="60" value="${TS.track}"><output>${TS.track}</output></label>
@@ -709,10 +709,10 @@ function typeOpen(m,p,before,o,e){typeClose(false);TY={m,p,before,o};TS.text='';
       <label class="tp-row"><span>Shadow</span><select id="tpShK">${[['none','None'],['drop','Drop'],['extrude','3D block']].map(([v,l])=>`<option value="${v}" ${TS.shadowKind===v?'selected':''}>${l}</option>`).join('')}</select><input type="color" id="tpShC" value="${TS.shadowColor}"></label>
       <label class="tp-row"><span>Distance</span><input type="range" id="tpSh" min="0" max="60" value="${TS.shadow}"><input type="range" id="tpShA" min="0" max="359" value="${TS.shadowAngle}" aria-label="Shadow angle"></label>
     </details>
+    <p class="tp-hint">Tap or drag on the flat to move the words.</p>
     <div class="tp-row tp-end"><button type="button" class="btn sm q" id="tpCancel">Cancel</button><button type="button" class="btn sm go" id="tpPlace">Place</button></div>`;
-  document.body.appendChild(pop);const W0=pop.offsetWidth||300,H0=pop.offsetHeight||360,cr=$('#canvas').getBoundingClientRect(),left=e.clientX<cr.left+cr.width/2; // on the other side of the flat from the words, so they show as they are typed
-  pop.style.left=Math.max(8,Math.min(innerWidth-W0-8,left?cr.right-W0-12:cr.left+12))+'px';pop.style.top=Math.max(8,Math.min(innerHeight-H0-8,cr.top+12))+'px';
-  const prev=()=>{const f=TFACES.find(q=>q[0]===TS.font)||TFACES[0];const pv=$('#tpPrev');pv.style.fontFamily=f[2];pv.style.fontWeight=TS.bold?'700':'400';pv.textContent=tcase(TS.text||'Future Basics',TS.case)};
+  document.body.appendChild(pop);typePlace(e);
+  const prev=()=>{const f=TFACES.find(q=>q[0]===TS.font)||TFACES[0],t=$('#tpText');if(t){t.style.fontFamily=f[2];t.style.fontWeight=TS.bold?'700':'400'}};
   const set=(k,v)=>{TS[k]=v;prev();typeDraw()};
   pop.addEventListener('input',ev=>{const t=ev.target,id=t.id;if(id==='tpText')set('text',t.value);else if(id==='tpFont')set('font',t.value);else if(id==='tpSize'){set('size',Number(t.value));t.nextElementSibling.textContent=t.value}else if(id==='tpColor')set('color',t.value);else if(id==='tpCase')set('case',t.value);else if(id==='tpOut')set('outline',Number(t.value));else if(id==='tpOutC')set('outlineColor',t.value);else if(id==='tpArc'){set('arc',Number(t.value));t.nextElementSibling.textContent=t.value}
     else if(id==='tpEnv')set('env',t.value);else if(id==='tpEnvK')set('envK',Number(t.value));else if(id==='tpStretch'){set('stretch',Number(t.value));t.nextElementSibling.textContent=t.value+'%'}else if(id==='tpTrack'){set('track',Number(t.value));t.nextElementSibling.textContent=t.value}
@@ -721,6 +721,13 @@ function typeOpen(m,p,before,o,e){typeClose(false);TY={m,p,before,o};TS.text='';
   pop.addEventListener('click',ev=>{if(ev.target.id==='tpBold'){set('bold',!TS.bold);ev.target.classList.toggle('q',!TS.bold);ev.target.setAttribute('aria-pressed',String(TS.bold))}else if(ev.target.id==='tpCancel')typeClose(false);else if(ev.target.id==='tpPlace')typeClose(true)});
   pop.addEventListener('keydown',ev=>{if(ev.key==='Enter'&&ev.target.id==='tpText'){ev.preventDefault();typeClose(true)}else if(ev.key==='Escape'){ev.preventDefault();typeClose(false)}});
   pop.addEventListener('pointerdown',ev=>ev.stopPropagation());prev();setTimeout(()=>$('#tpText')?.focus(),30)}
+// the panel in the corner of the frame away from the words, inside the frame's edges (it scrolls when the frame is short)
+function typePlace(e){const pop=$('#typePop');if(!pop)return;const W0=pop.offsetWidth||300,cr=$('#canvas').getBoundingClientRect(),vl=Math.max(0,cr.left),vr=Math.min(innerWidth,cr.right),left=(e?.clientX??0)>=(vl+vr)/2;
+  pop.style.left=Math.max(8,Math.min(innerWidth-W0-8,left?vl+12:vr-W0-12))+'px';pop.style.top=Math.max(8,Math.min(innerHeight-120,Math.max(0,cr.top)+12))+'px';pop.style.maxHeight=`calc(100vh - ${parseFloat(pop.style.top)+8}px)`}
+// choosing Type opens the panel straight away, with the words in the middle of the flat in view (a little above centre, where a chest print sits)
+function typeStart(){if(MTOOL!=='text'||TY||!P||!HOST()||D?.concept?.locked)return;const m=MK[VIEW]||mkNew(VIEW);if(!m)return;mkFit(m);mkPlace();
+  const r=$('#canvas').getBoundingClientRect(),x0=Math.max(0,r.left),x1=Math.min(innerWidth,r.right),y0=Math.max(0,r.top),y1=Math.min(innerHeight,r.bottom),e={clientX:(x0+x1)/2,clientY:y0+(y1-y0)*.4};
+  typeOpen(m,mkAt(m,e),mkSnap(m),mkOpts(),e)}
 function typeClose(keep){const t=TY,pop=$('#typePop');TY=null;pop?.remove();if(!t)return;
   if(keep&&TS.text.trim()){try{localStorage.setItem('fb.flats.type',JSON.stringify({...TS,text:''}))}catch{}TY=t;typeDraw();TY=null;mkDone(t.m,t.before)}
   else t.m.cv.getContext('2d').putImageData(t.before,0,0)}
@@ -757,11 +764,12 @@ MKW.addEventListener('pointerdown',e=>{
     const r={id:newId('r'),type:'rub',view:VIEW,pts:[inch(e).map(v=>Math.round(v*32)/32)],w:Math.round(Math.max(.05,Math.min(6,mkOpts().size*.5/M.a))*32)/32};P.edits=P.edits||[];P.edits.push(r);
     MDRAG={rub:r,pid:e.pointerId,type:e.pointerType};rubDraw();return}
   const m=MK[VIEW]||mkNew(VIEW);if(!m)return;mkFit(m);mkPlace();try{MKW.setPointerCapture(e.pointerId)}catch{}const o=mkOpts(),p=mkAt(m,e),before=mkSnap(m);
-  if(MTOOL==='text'){typeOpen(m,p,before,o,e);return}
+  if(MTOOL==='text'){if(TY&&TY.m===m){TY.p=p;typeDraw();MDRAG={typeMove:true,m,pid:e.pointerId,type:e.pointerType};return}typeOpen(m,p,before,o,e);return}
   if(MTOOL==='fill'){mkFill(m,p,o,before,e);return}
   if(MTOOL==='liquify'){MDRAG={m,before,last:p,o,pid:e.pointerId,type:e.pointerType,liq:true};return}
   MDRAG={m,before,last:p,from:p,o,pid:e.pointerId,type:e.pointerType,pts:[p]};if(MTOOL==='brush')mkBufStart(m,o);if(['brush','eraser','distress'].includes(MTOOL))mkStrokeS(m,p,p,o,e.pointerType==='pen'&&o.pressure?Math.min(Math.max(.15+.85*(e.pressure||.5),.15),1):1)});
 MKW.addEventListener('pointermove',e=>{const g=MDRAG;if(!g||g.pid!==e.pointerId)return;e.stopPropagation();
+  if(g.typeMove){if(TY){TY.p=mkAt(TY.m,e);typeDraw()}return}
   if(g.rub){const q=inch(e).map(v=>Math.round(v*32)/32),l=g.rub.pts.at(-1);if(Math.hypot(q[0]-l[0],q[1]-l[1])>=Math.max(.06,g.rub.w*.25)&&g.rub.pts.length<240){g.rub.pts.push(q);rubDraw()}return}
   if(g.liq){const p=mkAt(g.m,e);if(Math.hypot(p[0]-g.last[0],p[1]-g.last[1])>=1.5){FBBrush.liquifyPush(g.m.cv.getContext('2d',{willReadFrequently:true}),g.last,p,g.o.size*.75*mkK(g.m));g.last=p;g.m.dirty=true}return}
   if(['brush','eraser','distress'].includes(MTOOL)){if(g.shaped)return;const ev=e.getCoalescedEvents?.()||[];for(const c of ev.length?ev:[e]){let p=mkAt(g.m,c);
@@ -770,7 +778,7 @@ MKW.addEventListener('pointermove',e=>{const g=MDRAG;if(!g||g.pid!==e.pointerId)
     // QuickShape: the Pencil held still at the end of a stroke
     if(MTOOL==='brush'&&g.o.qshape&&(!g.qa||Math.hypot(g.last[0]-g.qa[0],g.last[1]-g.qa[1])>4*mkK(g.m))){g.qa=g.last;clearTimeout(g.qt);g.qt=setTimeout(()=>{if(MDRAG===g&&!g.shaped)mkQuick(g)},550)}}
   else mkShape(g.m,g,mkAt(g.m,e))});
-const mkUp=e=>{const g=MDRAG;if(!g||(e.pointerId!==undefined&&g.pid!==e.pointerId))return;e.stopPropagation();MDRAG=null;clearTimeout(g.qt);if(g.rub){touch();paint();HOST()?.flatsChanged?.();return}mkBufEnd();mkDone(g.m,g.before)};
+const mkUp=e=>{const g=MDRAG;if(!g||(e.pointerId!==undefined&&g.pid!==e.pointerId))return;e.stopPropagation();MDRAG=null;clearTimeout(g.qt);if(g.typeMove)return;if(g.rub){touch();paint();HOST()?.flatsChanged?.();return}mkBufEnd();mkDone(g.m,g.before)};
 ['pointerup','pointercancel'].forEach(t=>MKW.addEventListener(t,mkUp));MKW.addEventListener('lostpointercapture',e=>{if(MDRAG&&MDRAG.pid===e.pointerId)mkUp(e)});
 // iPad: a Pencil on the page can be taken as handwriting (Scribble) or a text selection before it reaches the drawing; holding its touches here stops that
 ['touchstart','touchmove'].forEach(t=>$('#canvas').addEventListener(t,e=>{if(MKW.classList.contains('on')&&[...e.changedTouches].some(x=>x.touchType==='stylus'))e.preventDefault()},{passive:false}));
@@ -848,7 +856,7 @@ if(EMBED)window.FBFlats={refresh:()=>refreshFlat(),replaceGraphic:(pl,id,name)=>
   layout:({panel=true,focus=false}={})=>{const r=document.documentElement;r.dataset.panel=panel?'on':'off';if(focus)r.dataset.focus='1';else delete r.dataset.focus;if(P)draw()},
   zoom:()=>FZ,
   // the Design workspace's tools, on the flat: the Pencil, brush, eraser, shapes and type draw on the view; undo and redo step through them
-  tool:t=>{MTOOL=t||'select';if(t==='area'){if(P&&MODE!=='ai'){MODE='ai';AIBOX=null;if(TAB!=='design')tab('design');paint()}}else if(MODE==='ai'&&!AIBOX){MODE=null;if(P)paint()}mkPlace()},
+  tool:t=>{MTOOL=t||'select';if(MTOOL!=='text'&&TY)typeClose(true);else if(MTOOL==='text'&&!TY)setTimeout(typeStart,0);if(t==='area'){if(P&&MODE!=='ai'){MODE='ai';AIBOX=null;if(TAB!=='design')tab('design');paint()}}else if(MODE==='ai'&&!AIBOX){MODE=null;if(P)paint()}mkPlace()},
   undo:()=>fUndo(),redo:()=>fRedo(),canUndo:fCanUndo,canRedo:fCanRedo,
   // a flat drawn for the Studio's board: the drawing alone, in a colourway's colour or at a size (the artwork as graded for it)
   frame:(view,{color,size}={})=>{if(!P)return '';const sz=size||P.size,pls=PL.map(q=>{if(!q.grade)return q;const g=q.grade.find(x=>x.sizes.includes(sz));return g?{...q,w:g.w,h:g.h,y:q.y-q.h/2+g.h/2}:q});return renderSvg(color?{...P,color}:P,view,{maskHref:MASK_URL,placements:pls,hrefs:HREF,size:sz,showPom:false,showDims:false,scale:0,editHrefs:EHREF,alloverHref:AOHREF,plain:true,withArt:true,texture:clothTex(),tags:tagsOn()})},
