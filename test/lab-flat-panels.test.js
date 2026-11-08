@@ -45,6 +45,10 @@ test('a panel gets a first name from where it sits', () => {
   assert.equal(panelName({ x0: -6, x1: 0, y0: -9, y1: 2 }, { kind: 'top', half: 11, length: 27 }), 'Hood');
   assert.equal(panelName({ x0: -10, x1: 10, y0: 24, y1: 27 }, { kind: 'top', half: 11, length: 27 }), 'Hem rib');
   assert.equal(panelName({ x0: -10, x1: 10, y0: 1, y1: 23 }, { kind: 'top', half: 11, length: 27 }), 'Body');
+  // small parts are named by their size: a belt loop on a pair of trousers, a leg, the waistband
+  assert.equal(panelName({ x0: 4.1, x1: 4.6, y0: .1, y1: 2 }, { kind: 'bottom', half: 17, length: 40 }), 'Belt loop');
+  assert.equal(panelName({ x0: 1, x1: 17, y0: 2, y1: 40 }, { kind: 'bottom', half: 17, length: 40 }), 'Leg');
+  assert.equal(panelName({ x0: -17, x1: 17, y0: 0, y1: 1.6 }, { kind: 'bottom', half: 17, length: 40 }), 'Waistband');
 });
 
 test('a traced panel keeps its whole outline, finely, and says it was traced', () => {

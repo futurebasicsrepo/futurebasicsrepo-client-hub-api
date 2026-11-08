@@ -139,7 +139,12 @@ export function panelAt(img, x, y, { dark = DARK, close = CLOSE, grow: by = CLOS
 // top). half: half the chest or waist; length: the body length
 export function panelName({ x0, x1, y0, y1 }, { kind = 'top', half = 11, length = 27 } = {}) {
   const cx = (x0 + x1) / 2, w = x1 - x0, h = y1 - y0;
+  // small parts first, by their size: a belt loop is a narrow upright strip at the waist, a pocket flap or patch a small box
+  if (kind !== 'top' && w < 1 && h < 3 && y0 < length * .12) return 'Belt loop';
+  if (kind !== 'top' && w < half * .55 && h < length * .3 && y0 > length * .05) return w < h * .6 ? 'Strap' : 'Pocket';
   if (kind !== 'top') return Math.abs(cx) > half * .25 && w < half * 1.1 ? 'Leg' : y0 < length * .12 && h < length * .2 ? 'Waistband' : 'Panel';
+  if (w < 1.2 && h < 3) return 'Tab';
+  if (w < half * .5 && h < length * .3 && y0 > length * .15 && Math.abs(cx) < half * .9) return 'Pocket';
   if (y1 < length * .12 && w < half * 1.6) return 'Hood';
   if (Math.abs(cx) > half * .95) return h < length * .2 && y0 > length * .55 ? 'Cuff' : 'Sleeve';
   if (y0 > length * .82 && h < length * .2) return 'Hem rib';

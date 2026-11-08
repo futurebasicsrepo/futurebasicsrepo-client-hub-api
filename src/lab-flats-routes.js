@@ -129,7 +129,7 @@ export function registerLabFlatsRoutes(app, d) {
   const own = req => lab?.scope?.(req) || null, charge = async (req, o) => (lab ? lab.charge(req, o) : null); // a client's room: its own quotes, its AI meter
   const pre = [authenticate, adminOnly], bad = (reply, error, code = 422, extra = {}) => reply.code(code).send({ error, ...extra });
   const actorOf = req => (UUID.test(String(req.auth?.sub || '')) ? req.auth.sub : null);
-  const concept = async id => (UUID.test(String(id)) ? (await pool.query('select c.id, c.name, c.category, c.status, c.spec, c.twist, c.product_id, c.price_cents, c.cost_cents, c.qty, c.updated_at, c.client_id, p.name plan_name from lab_concepts c left join lab_plans p on p.id=c.plan_id where c.id=$1', [id])).rows[0] : null);
+  const concept = async id => (UUID.test(String(id)) ? (await pool.query('select c.id, c.name, c.category, c.status, c.spec, c.twist, c.product_id, c.price_cents, c.cost_cents, c.qty, c.updated_at, c.client_id, p.name plan_name, (select name from clients where id=c.client_id) brand from lab_concepts c left join lab_plans p on p.id=c.plan_id where c.id=$1', [id])).rows[0] : null);
   // the techniques a piece may be made with: a Future Basics piece, all of ours; a client's piece, its room's own plus the built-in starter set
   const techniques = async (cid = null) => (await pool.query('select id, key, kind, name, base, finish, rules from lab_techniques where not archived and ((client_id is null and ($1::uuid is null or builtin)) or client_id=$1) order by builtin desc, name', [UUID.test(String(cid || '')) ? cid : null])).rows.map(t => ({ ...t, rules: cleanRules(t.rules || {}, t.base) }));
   const techFor = (list, q) => list.find(t => t.id === q.techniqueId) || list.find(t => t.key === PREFERRED[q.technique]) || list.find(t => t.base === q.technique) || list.find(t => t.key === 'plastisol') || { name: q.technique || 'screen print', base: q.technique || 'screen print', rules: cleanRules({}, q.technique) };
@@ -273,7 +273,7 @@ export function registerLabFlatsRoutes(app, d) {
     await pool.query('update lab_concepts set spec=$2, cost_cents=$3 where id=$1', [c.id, spec, picks.length || decorations.length ? cost.landedCents : c.cost_cents]);
     return cost;
   }
-  const shape = (c, row, extra = {}) => ({ concept: { id: c.id, name: c.name, category: c.category, status: c.status, productId: c.product_id, locked: c.status === 'tech_pack' && !c.product_id }, colourways: cleanColourways(c.spec?.colourways), alloverBases: ALLOVER_BASES, decorations: Array.isArray(c.spec?.decorations) && c.spec.decorations.length ? c.spec.decorations : null, ...extra,
+  const shape = (c, row, extra = {}) => ({ concept: { id: c.id, name: c.name, brand: c.brand || '', category: c.category, status: c.status, productId: c.product_id, locked: c.status === 'tech_pack' && !c.product_id }, colourways: cleanColourways(c.spec?.colourways), alloverBases: ALLOVER_BASES, decorations: Array.isArray(c.spec?.decorations) && c.spec.decorations.length ? c.spec.decorations : null, ...extra,
     styles: Object.fromEntries(Object.entries(STYLES).map(([k, v]) => [k, { label: v.label, kind: v.kind, oneSize: Boolean(v.oneSize) }])), fits: FITS, sizes: SIZES, flat: row });
 
   app.get('/v1/lab/concepts/:id/flats', { preHandler: pre }, async (req, reply) => {
@@ -328,6 +328,7 @@ export function registerLabFlatsRoutes(app, d) {
       on conflict(concept_id) do update set style=excluded.style, params=excluded.params, placements=excluded.placements, check_result=excluded.check_result, checked_at=now(), updated_by=excluded.updated_by, updated_at=now()`,
     [t.c.id, t.params.style, t.params, JSON.stringify(t.placements), ck, actorOf(req)]);
     let decorations = [], cost = null; try { decorations = await decorationsOf(t.c, t.params, t.placements); cost = await keepDecorations(t.c, decorations); } catch (e) { log.warn?.({ err: e.message }, 'flats decoration costing failed'); }
+    thumbSoon(t.c);
     return { ok: true, check: ck, where: Object.fromEntries(t.placements.map(q => [q.id, describe(q, t.params)])), decorations, cost: cost ? { decorationCents: cost.decorationCents, landedCents: cost.landedCents, marginPct: cost.marginPct } : null };
   });
 
@@ -473,7 +474,7 @@ export function registerLabFlatsRoutes(app, d) {
     return Promise.all(picks.map(async m => {
       const spec = { ...(m.spec || {}), ...(now.get(m.id) || {}) }, fill = m.colour?.hex || '';
       const face = UUID.test(String(spec.face || '')) ? (await pool.query('select png from lab_art where id=$1', [spec.face])).rows[0]?.png : null;
-      return { id: m.id, name: m.name, spec, fill, href: face ? `data:image/png;base64,${face.toString('base64')}` : `data:image/svg+xml;base64,${Buffer.from(tagFaceSvg(spec, { pxPerMm: 6, fill })).toString('base64')}` };
+      return { id: m.id, name: m.name, spec, fill, href: face ? `data:image/png;base64,${face.toString('base64')}` : `data:image/svg+xml;base64,${Buffer.from(tagFaceSvg(spec, { pxPerMm: 6, fill, brand: c.brand || '' })).toString('base64')}` };
     }));
   };
   async function sheet(c, { size } = {}) {
@@ -783,6 +784,20 @@ export function registerLabFlatsRoutes(app, d) {
     return { files: out, notes };
   }
 
+  // the saved flat's front as the concept's card picture: drawn a moment after a save (saves come quickly while drawing), off the request
+  const thumbTimers = new Map();
+  // the saved flat, or the flat the piece starts as when none is saved; a piece with no flat keeps an empty thumbnail, so it is not tried again
+  async function flatThumb(c) {
+    const r = (await pool.query('select params, placements from lab_flats where concept_id=$1', [c.id])).rows[0], init = r ? null : await initial(c, null).catch(() => null); // no picture read (that is an AI call): the flat as it starts shows only when there is no picture
+    const p = r ? { ...r.params } : init ? { ...init } : null, pl = r ? r.placements || [] : init?.placements || [];
+    if (!p || !STYLES[p.style]) { await pool.query('update lab_concepts set flat_thumb=$2 where id=$1', [c.id, Buffer.alloc(0)]); return null; }
+    p.size = p.size || 'M'; const hrefs = {}; for (const q of pl) { const b = await pngOf(q).catch(() => null); if (b) hrefs[q.id] = `data:image/png;base64,${(await sharp(b).resize({ width: 600, height: 600, fit: 'inside', withoutEnlargement: true }).png().toBuffer()).toString('base64')}`; }
+    await prepMasks(p);
+    const svg = renderSvg(p, 'front', { maskHref, placements: pl, hrefs, scale: 45, templateSvg, partHref, editHrefs: await editHrefsOf(p), alloverHref: await alloverHrefOf(p), tags: tagMarks(p, await labelsOf(c)), showDims: false, plain: true });
+    const thumb = await sharp(Buffer.from(svg), { density: 96 }).resize({ width: 720, height: 720, fit: 'contain', background: '#ffffff' }).flatten({ background: '#ffffff' }).jpeg({ quality: 76 }).toBuffer();
+    await pool.query('update lab_concepts set flat_thumb=$2 where id=$1', [c.id, thumb]); return thumb;
+  }
+  function thumbSoon(c, ms = 1500) { clearTimeout(thumbTimers.get(c.id)); thumbTimers.set(c.id, setTimeout(() => { thumbTimers.delete(c.id); flatThumb(c).catch(e => log.warn?.({ err: e.message }, 'flat thumbnail not made')); }, ms).unref?.() ?? null); }
   // the check of a concept's flats as they would start (for approving a concept whose flats were never saved)
   const startCheck = async id => { const c = await concept(id); const init = c && await initial(c); return init ? check(init, init.placements) : null; };
   // the saved flats as pictures (front and back, with their colours, blocks and graphics, no measurements): what the turns are drawn from;
@@ -802,5 +817,5 @@ export function registerLabFlatsRoutes(app, d) {
     }
     return out;
   }
-  return { flatPictures: async id => { const c = await concept(id); return c ? flatPictures(c) : null; }, startCheck, productionFiles: async id => { const c = await concept(id); return c ? productionFiles(c) : { files: [], notes: [] }; }, sheetSvg: async id => { const c = await concept(id); const sh = c && await sheet(c); return sh?.svg || null; }, files: async id => { const c = await concept(id); return c ? files(c) : []; }, sendToPack: async (id, productId) => { const c = await concept(id); return c ? sendToPack(c, productId) : null; } };
+  return { flatThumb: async id => { const c = await concept(id); return c ? flatThumb(c) : null; }, thumbSoonById: async id => { const c = await concept(id).catch(() => null); if (c) thumbSoon(c, 200); }, flatPictures: async id => { const c = await concept(id); return c ? flatPictures(c) : null; }, startCheck, productionFiles: async id => { const c = await concept(id); return c ? productionFiles(c) : { files: [], notes: [] }; }, sheetSvg: async id => { const c = await concept(id); const sh = c && await sheet(c); return sh?.svg || null; }, files: async id => { const c = await concept(id); return c ? files(c) : []; }, sendToPack: async (id, productId) => { const c = await concept(id); return c ? sendToPack(c, productId) : null; } };
 }

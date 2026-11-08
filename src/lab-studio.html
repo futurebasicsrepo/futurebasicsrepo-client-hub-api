@@ -135,7 +135,7 @@ html,body{touch-action:manipulation}
 .embgrid{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:16px}@media (max-width:760px){.embgrid{grid-template-columns:1fr}}.embprev{background:#ecebe6;border-radius:14px;min-height:280px;display:grid;place-items:center;overflow:hidden}.embprev img{width:100%;display:block}.embseq{width:100%;border-collapse:collapse;font-size:12.5px}.embseq td{padding:4px 6px;border-bottom:1px solid var(--line)}.embseq td.n{font-variant-numeric:tabular-nums;text-align:right}.embseq i{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:middle;border:1px solid rgba(0,0,0,.2)}
 html[data-pick] body>header{display:none}html[data-pick] .studio{height:100dvh}
 .studio{position:relative}.rail .rail-x[disabled]{opacity:.3;cursor:default}.rail #railNames[aria-pressed=true]{background:var(--fog);color:var(--ink);border-color:var(--line)}
-.rail-names{position:absolute;z-index:30;width:310px;pointer-events:none}.rail-names.hidden{display:none}
+body.typing .rail-names,body.typing #flatPicBar{display:none!important}.rail-names{position:absolute;z-index:30;width:310px;pointer-events:none}.rail-names.hidden{display:none}
 .rail-names button{pointer-events:auto;position:absolute;left:6px;transform:translateY(-50%);display:grid;gap:1px;text-align:left;max-width:228px;background:rgba(255,255,255,.96);border:1px solid var(--line);border-radius:10px;padding:5px 9px;font:inherit;font-size:11.5px;line-height:1.25;color:var(--dim);box-shadow:0 4px 14px rgba(20,20,22,.08);cursor:pointer}
 .rail-names button{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:300px;line-height:1.2;padding:4px 10px;border-radius:999px}.rail-names button b{color:var(--ink);font-size:12.5px;margin-right:6px}.rail-names button small{font-size:11px}.rail-names button[aria-pressed=true]{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink)}
 .tips{display:inline-flex;flex-wrap:wrap;gap:4px;margin-right:6px}.tips button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:5px 10px;font:inherit;font-size:12px;cursor:pointer}.tips button[aria-checked=true]{background:var(--ink);color:#fff;border-color:var(--ink)}
@@ -371,7 +371,7 @@ const texture=(...a)=>window.FBFinish.texture(...a); // the same worn textures a
 // ---------- what each layer looks like on its own (before it is placed) ----------
 async function loadFonts(){let changed=false;for(const f of (D.fonts||[])){const key='f_'+f.id;if(FONTS[key])continue;
     try{const buf=await (await blobOf(`/v1/lab/fonts/${f.id}/file`)).arrayBuffer();const face=new FontFace(f.family,buf);await face.load();document.fonts.add(face);FONTS[key]=[f.name,`'${f.family}',sans-serif`,f.id];changed=true}catch(x){toast(`The font "${f.name}" could not be loaded.`)}}
-  if(changed){for(const l of LAYERS)if(l.kind==='text'){l._pk=null;l._pc=null}draw()}}
+  if(changed){for(const l of LAYERS)if(l.kind==='text'){l._pk=null;l._pc=null;l._tk=null}draw()}}
 const fontOpts=v=>`<optgroup label="Built in">${Object.entries(FONTS).filter(([k])=>!k.startsWith('f_')&&!k.startsWith('g_')).map(([k,f])=>`<option value="${k}" ${k===v?'selected':''}>${esc(f[0])}</option>`).join('')}</optgroup>${[...new Set(Object.entries(FONTS).filter(([k])=>k.startsWith('g_')).map(([,f])=>f[2]))].map(cat=>`<optgroup label="${esc(cat)}">${Object.entries(FONTS).filter(([k,f])=>k.startsWith('g_')&&f[2]===cat).map(([k,f])=>`<option value="${k}" ${k===v?'selected':''}>${esc(f[0])}</option>`).join('')}</optgroup>`).join('')}${Object.keys(FONTS).some(k=>k.startsWith('f_'))?`<optgroup label="Our fonts">${Object.entries(FONTS).filter(([k])=>k.startsWith('f_')).map(([k,f])=>`<option value="${k}" ${k===v?'selected':''}>${esc(f[0])}</option>`).join('')}</optgroup>`:''}`;
 async function addFont(file){if(!file)return;if(file.size>8e6){toast(file.name+' is over 8 MB.');return}busy('Adding the font…');
   try{const r=await api('/v1/lab/fonts',{body:{name:file.name.replace(/\.[a-z0-9]+$/i,''),file:await urlOfBlob(file)}});D.fonts=[...(D.fonts||[]),r.font];await loadFonts();const l=selected();if(l&&l.kind==='text'&&!l.locked){l.font='f_'+r.font.id;l._pk=null;commit()}paintLayers();draw();toast(`"${r.font.name}" is in the Lab's fonts now, for every machine.`)}
@@ -388,7 +388,7 @@ function envAt(kind,t,a,size,lw){const S=Math.sin(Math.PI*t);switch(kind){case'b
   case'rise':{const A=a*size*.9;return{dy:-A*(t-.5),sy:1,rot:Math.atan(-A/Math.max(1,lw))}}case'grow':return{dy:0,sy:Math.max(.2,1+a*(t-.5)*1.4),rot:0,base:true};default:return{dy:0,sy:1,rot:0}}}
 function textMetrics(l){
   const x=docX,font=`${l.italic?'italic ':''}${l.bold?'700':'400'} ${l.size}px ${FONTS[l.font]?.[1]||FONTS.grotesk[1]}`;x.save();x.font=font;
-  if(document.fonts&&!document.fonts.check(font))document.fonts.load(font).then(()=>{if(document.fonts.check(font)){l._pk=null;l._pc=null;draw()}}).catch(()=>{});
+  if(document.fonts&&!document.fonts.check(font))document.fonts.load(font).then(()=>{if(document.fonts.check(font)){l._pk=null;l._pc=null;l._tk=null;draw()}}).catch(()=>{});
   const lines=caseOf(String(l.text||' '),l.case).split('\n'),lw=lines.map(t=>[...t].reduce((s,ch)=>s+x.measureText(ch).width,0)+Math.max(0,[...t].length-1)*l.track);x.restore();return{font,lines,lw}}
 function contentOf(l){
   if(isRaster(l))return l.raster;
@@ -448,9 +448,25 @@ function processed(l){
   const out=l.finish&&l.finish.effect&&l.finish.effect!=='none'?window.FBFinish.effect(c,l.finish,unitOf(l),l.distress.seed||1):c;
   const bent=l.warp&&!fixed(l)?warpOf(out,l):out;l._pk=k;l._pc=bent;return bent;
 }
-const dims=l=>{const c=processed(l);return[c.width,c.height]};
+const dims=l=>{if(isRaster(l)&&l.raster&&!(l.warp&&!fixed(l)))return[l.raster.width,l.raster.height];const c=processed(l);return[c.width,c.height]}; // a finish keeps the size; only a warp changes it
 function place(x,l){x.translate(l.x,l.y);x.rotate(l.rot);x.scale(l.scale*(l.flip?-1:1),l.scale)}
-function drawLayer(x,l){if(!l.visible)return;const c=processed(l),sh=l.finish&&window.FBFinish.shadow(l.finish,W/1000);x.save();x.globalAlpha=l.opacity;x.globalCompositeOperation=l.blend;if(sh){x.shadowColor=sh.color;x.shadowBlur=sh.blur;x.shadowOffsetX=sh.dx;x.shadowOffsetY=sh.dy}place(x,l);x.drawImage(c,-c.width/2,-c.height/2);x.restore()}
+// the colour adjustments as one matrix (the same maths as the CSS filters, in their order: hue, saturation, brightness, contrast), applied in one pass
+function lookMatrix(a){const mul=(A,B)=>{const o=[];for(let r=0;r<3;r++){const row=[];for(let c=0;c<4;c++){let v=c===3?A[r][3]:0;for(let k=0;k<3;k++)v+=A[r][k]*B[k][c];row.push(v)}o.push(row)}return o};
+  const t=a.hue*Math.PI/180,C=Math.cos(t),S=Math.sin(t),s=a.sat/100,b=a.bright/100,k=a.contrast/100;
+  const hue=[[.213+C*.787-S*.213,.715-C*.715-S*.715,.072-C*.072+S*.928,0],[.213-C*.213+S*.143,.715+C*.285+S*.140,.072-C*.072-S*.283,0],[.213-C*.213-S*.787,.715-C*.715+S*.715,.072+C*.928+S*.072,0]];
+  const sat=[[.213+.787*s,.715-.715*s,.072-.072*s,0],[.213-.213*s,.715+.285*s,.072-.072*s,0],[.213-.213*s,.715-.715*s,.072+.928*s,0]],br=[[b,0,0,0],[0,b,0,0],[0,0,b,0]],ct=[[k,0,0,(.5-.5*k)*255],[0,k,0,(.5-.5*k)*255],[0,0,k,(.5-.5*k)*255]];
+  return mul(ct,mul(br,mul(sat,hue)))}
+function draftOf(l){const k0=sig({...l,finish:null})+'|d';if(l._dk===k0&&l._dc)return l._dc;
+  const bk=sig({...l,finish:null,adjust:{hue:0,sat:100,bright:100,contrast:100},tint:{amount:0},distress:{amount:0}});let base=l._db;
+  if(!base||base._k!==bk){const src=contentOf(l);if(!src||!src.width)return canvas(1,1);const k=Math.min(1,480/Math.max(src.width,src.height));base=canvas(Math.max(1,Math.round(src.width*k)),Math.max(1,Math.round(src.height*k)));base.getContext('2d').drawImage(src,0,0,base.width,base.height);base._k=bk;base._w=src.width;base._h=src.height;base._px=base.getContext('2d',{willReadFrequently:true}).getImageData(0,0,base.width,base.height);l._db=base}
+  const w=base.width,h=base.height,c=canvas(w,h),x=c.getContext('2d');
+  if(plainLook(l))x.drawImage(base,0,0);else{const M=lookMatrix(l.adjust),S=base._px.data,img=x.createImageData(w,h),O=img.data;for(let i=0;i<S.length;i+=4){if(!S[i+3])continue;const r=S[i],g=S[i+1],bl=S[i+2];O[i]=M[0][0]*r+M[0][1]*g+M[0][2]*bl+M[0][3];O[i+1]=M[1][0]*r+M[1][1]*g+M[1][2]*bl+M[1][3];O[i+2]=M[2][0]*r+M[2][1]*g+M[2][2]*bl+M[2][3];O[i+3]=S[i+3]}x.putImageData(img,0,0)}
+  const src={width:base._w,height:base._h};
+  if(l.tint.amount>0){x.globalCompositeOperation='source-atop';x.globalAlpha=l.tint.amount;x.fillStyle=l.tint.color;x.fillRect(0,0,w,h);x.globalAlpha=1}
+  if(l.distress.amount>0){x.globalCompositeOperation='destination-out';x.globalAlpha=clamp(l.distress.amount,0,1);x.drawImage(texture(l.distress.style,src.width,src.height,l.distress.size,l.distress.seed),0,0,w,h);x.globalAlpha=1}
+  c._w=src.width;c._h=src.height;l._dk=k0;l._dc=c;return c}
+let SLIDE=null;const sliding=l=>SLIDE&&SLIDE.l===l&&SLIDE.until>performance.now()&&!(l.warp&&!fixed(l));
+function drawLayer(x,l){if(!l.visible)return;if(sliding(l)){const c=draftOf(l);x.save();x.globalAlpha=l.opacity;x.globalCompositeOperation=l.blend;place(x,l);x.drawImage(c,-c._w/2,-c._h/2,c._w,c._h);x.restore();return}const c=processed(l),sh=l.finish&&window.FBFinish.shadow(l.finish,W/1000);x.save();x.globalAlpha=l.opacity;x.globalCompositeOperation=l.blend;if(sh){x.shadowColor=sh.color;x.shadowBlur=sh.blur;x.shadowOffsetX=sh.dx;x.shadowOffsetY=sh.dy}place(x,l);x.drawImage(c,-c.width/2,-c.height/2);x.restore()}
 // ---- drawing fast: while a stroke is made only its layer changes, so the layers under it and over it are put together once, at the start
 // of the stroke, and each frame is those two pictures with the stroke's layer between them (it was every layer, with its finish, every
 // frame: a slow, laggy Pencil). The whole picture is put together again when the stroke ends.
@@ -461,7 +477,17 @@ function strokeStart(l){const i=LAYERS.indexOf(l);if(i<0){STK=null;return}const 
   composeInto(below.getContext('2d'),q=>LAYERS.indexOf(q)<i,!GMODE);composeInto(above.getContext('2d'),q=>LAYERS.indexOf(q)>i,false);const ba=TOOL==='brush'&&window.FBBrush?FBBrush.strokeAlpha(OPT.tip,OPT.flow):0;
   STK={l,below,above,anyAbove:LAYERS.slice(i+1).some(q=>q.visible),buf:ba?canvas(l.raster.width,l.raster.height):null,ba}}
 function strokeEnd(keep=true){if(STK?.buf&&keep){const x=STK.l.raster.getContext('2d');x.save();x.globalAlpha=STK.ba;x.drawImage(STK.buf,0,0);x.restore();STK.l.raster._rid=RID++}STK=null}
-function compose(){if(STK&&DRAG?.mode==='stroke'&&DRAG.l===STK.l){const l=STK.l;docX.setTransform(1,0,0,1,0,0);docX.globalCompositeOperation='source-over';docX.globalAlpha=1;docX.drawImage(STK.below,0,0);
+const ONE=['move','scale','rot','liquify'];
+function oneLayer(){const g=DRAG&&ONE.includes(DRAG.mode)&&!window.PRO?.multi()?DRAG.l:GEST?.layer?.l||(SLIDE&&SLIDE.until>performance.now()?SLIDE.l:null);return g&&LAYERS.includes(g)?g:null}
+function oneReady(ol){if(!STK||STK.l!==ol||!STK.one){const i=LAYERS.indexOf(ol),below=canvas(W,H),above=canvas(W,H);composeInto(below.getContext('2d'),q=>LAYERS.indexOf(q)<i,!GMODE);composeInto(above.getContext('2d'),q=>LAYERS.indexOf(q)>i,false);STK={l:ol,below,above,anyAbove:LAYERS.slice(i+1).some(q=>q.visible),one:true}}return STK}
+function oneDraw(x,ol){if(DRAG?.mode==='liquify'){if(ol.visible){x.save();x.globalAlpha=ol.opacity;x.globalCompositeOperation=ol.blend;place(x,ol);x.drawImage(ol.raster,-ol.raster.width/2,-ol.raster.height/2);x.restore()}}else drawLayer(x,ol)}
+function compose(){const ol=oneLayer();
+  if(ol){oneReady(ol);
+    docX.setTransform(1,0,0,1,0,0);docX.globalCompositeOperation='source-over';docX.globalAlpha=1;docX.clearRect(0,0,W,H);docX.drawImage(STK.below,0,0);
+    oneDraw(docX,ol);
+    if(STK.anyAbove)docX.drawImage(STK.above,0,0);return}
+  if(STK?.one)STK=null;
+  if(STK&&DRAG?.mode==='stroke'&&DRAG.l===STK.l){const l=STK.l;docX.setTransform(1,0,0,1,0,0);docX.globalCompositeOperation='source-over';docX.globalAlpha=1;docX.drawImage(STK.below,0,0);
     if(l.visible){docX.save();docX.globalAlpha=l.opacity;docX.globalCompositeOperation=l.blend;place(docX,l);docX.drawImage(l.raster,-l.raster.width/2,-l.raster.height/2);if(STK.buf){docX.globalAlpha=l.opacity*STK.ba;docX.drawImage(STK.buf,-l.raster.width/2,-l.raster.height/2)}docX.restore()}
     if(STK.anyAbove)docX.drawImage(STK.above,0,0);return}
   docX.setTransform(1,0,0,1,0,0);docX.globalCompositeOperation='source-over';docX.globalAlpha=1;docX.clearRect(0,0,W,H);if(!GMODE){docX.fillStyle='#fff';docX.fillRect(0,0,W,H)}if(window.ILL)ILL.drawAll(docX);else for(const l of LAYERS)drawLayer(docX,l)} // a graphic keeps its clear background
@@ -470,15 +496,16 @@ function toLocal(l,px,py){const[w,h]=dims(l);let dx=px-l.x,dy=py-l.y;const c=Mat
 function corners(l){const[w,h]=dims(l),c=Math.cos(l.rot),s=Math.sin(l.rot),f=l.flip?-1:1;return[[-w/2,-h/2],[w/2,-h/2],[w/2,h/2],[-w/2,h/2]].map(([a,b])=>{a*=l.scale*f;b*=l.scale;return[l.x+a*c-b*s,l.y+a*s+b*c]})}
 
 // ---------- the view ----------
-let RAF=0;function draw(){if(!RAF)RAF=requestAnimationFrame(()=>{RAF=0;render()})}
+let RAF=0,DOCDIRTY=true,LASTDRAW=0,FASTTILL=0;function draw(){DOCDIRTY=true;const n=performance.now();if(n-LASTDRAW<120)FASTTILL=n+160;LASTDRAW=n;if(!RAF)RAF=requestAnimationFrame(()=>{RAF=0;render()})}
+function drawOver(){if(!RAF)RAF=requestAnimationFrame(()=>{RAF=0;render()})} // only what is drawn over the picture changed (the brush's circle)
 const sx=x=>x*Z+PX,sy=y=>y*Z+PY,dx=x=>(x-PX)/Z,dy=y=>(y-PY)/Z;
 // moving or zooming the view changes no layer, so the picture is not put together again for those frames (it was, every frame: a slow, jumpy zoom)
 let VIEWONLY=0;const viewOnly=()=>Boolean((GEST&&!GEST.layer)||(DRAG&&DRAG.mode==='pan')||VIEWONLY>performance.now());
 function render(){
-  if(!viewOnly()||!render.done){compose();render.done=true}const r=view.getBoundingClientRect();DPR=window.devicePixelRatio||1;const cw=Math.round(r.width*DPR),ch=Math.round(r.height*DPR);if(view.width!==cw||view.height!==ch){view.width=cw;view.height=ch}
-  const vo=viewOnly()||DRAG?.mode==='stroke'; // while the view is being moved or pinched: no soft shadow and quick smoothing (both are slow on an iPad, every frame)
+  const ol=render.done?oneLayer():null;if(ol){oneReady(ol);DOCDIRTY=true}else if((DOCDIRTY&&!viewOnly())||!render.done){compose();render.done=true;DOCDIRTY=false}const r=vrect();DPR=window.devicePixelRatio||1;const cw=Math.round(r.width*DPR),ch=Math.round(r.height*DPR);if(view.width!==cw||view.height!==ch){view.width=cw;view.height=ch}
+  const vo=viewOnly()||Boolean(DRAG)||Boolean(GEST)||FASTTILL>performance.now()||Boolean(ol); // while the view is being moved or pinched: no soft shadow and quick smoothing (both are slow on an iPad, every frame)
   vx.setTransform(DPR,0,0,DPR,0,0);vx.clearRect(0,0,r.width,r.height);if(VR){vx.translate(r.width/2,r.height/2);vx.rotate(VR*Math.PI/180);vx.translate(-r.width/2,-r.height/2)}vx.save();if(!vo){vx.shadowColor='rgba(20,20,22,.18)';vx.shadowBlur=24}else{vx.fillStyle='rgba(20,20,22,.08)';vx.fillRect(PX+2,PY+3,W*Z,H*Z)}vx.fillStyle=window.PAGEBG||'#fff';vx.fillRect(PX,PY,W*Z,H*Z);vx.restore();
-  vx.imageSmoothingQuality=vo?'low':'high';vx.drawImage(docC,PX,PY,W*Z,H*Z);if(vo){clearTimeout(render.sharp);render.sharp=setTimeout(()=>{if(!viewOnly()&&DRAG?.mode!=='stroke')draw()},120)}
+  vx.imageSmoothingQuality=vo?'low':'high';if(ol){vx.drawImage(STK.below,PX,PY,W*Z,H*Z);vx.save();vx.translate(PX,PY);vx.scale(Z,Z);oneDraw(vx,ol);vx.restore();if(STK.anyAbove)vx.drawImage(STK.above,PX,PY,W*Z,H*Z)}else vx.drawImage(docC,PX,PY,W*Z,H*Z);if(vo){clearTimeout(render.sharp);render.sharp=setTimeout(()=>{if(!viewOnly()&&!DRAG&&!GEST&&!oneLayer())draw();else if(!DRAG&&!GEST)render.sharp=setTimeout(()=>draw(),180)},180)}
   // where the browser can say where the Pencil is going next (predicted points), the ink is drawn ahead to there for this frame only
   if(DRAG?.mode==='stroke'&&DRAG.pred?.length&&TOOL==='brush'){vx.save();vx.strokeStyle=CUR;vx.globalAlpha=OPT.flow;vx.lineCap='round';vx.lineJoin='round';vx.lineWidth=Math.max(.5,OPT.size*(DRAG.pr||1))*Z;vx.beginPath();vx.moveTo(sx(DRAG.x),sy(DRAG.y));for(const[a,b]of DRAG.pred)vx.lineTo(sx(a),sy(b));vx.stroke();vx.restore()}
   if(MASKED&&(TOOL==='area'||TAB==='ai')){vx.save();vx.globalAlpha=.42;vx.drawImage(mask,PX,PY,W*Z,H*Z);vx.restore()}
@@ -489,7 +516,7 @@ function render(){
   if(OPT.sym&&OPT.sym!=='off'&&['brush','eraser'].includes(TOOL)){const maps=symMaps(),cx=W/2,cy=H/2,R=Math.hypot(W,H);vx.save();vx.strokeStyle='rgba(42,109,244,.55)';vx.setLineDash([6,5]);vx.lineWidth=1;vx.beginPath();
     if(OPT.sym==='v'||OPT.sym==='quad'){vx.moveTo(sx(cx),sy(0));vx.lineTo(sx(cx),sy(H))}if(OPT.sym==='h'||OPT.sym==='quad'){vx.moveTo(sx(0),sy(cy));vx.lineTo(sx(W),sy(cy))}
     if(/^r/.test(OPT.sym))for(const f of maps){const q=f([cx,cy-R]);vx.moveTo(sx(cx),sy(cy));vx.lineTo(sx(q[0]),sy(q[1]))}vx.stroke();vx.restore()}
-  if(HOVER&&['brush','eraser','distress','area'].includes(TOOL)){const rad=(TOOL==='distress'?OPT.dsize:TOOL==='area'?OPT.area:TOOL==='eraser'?OPT.esize:OPT.size)/2*Z;vx.strokeStyle='rgba(20,20,22,.8)';vx.lineWidth=1;vx.beginPath();vx.arc(HOVER[0],HOVER[1],Math.max(rad,2),0,Math.PI*2);vx.stroke();vx.strokeStyle='rgba(255,255,255,.8)';vx.beginPath();vx.arc(HOVER[0],HOVER[1],Math.max(rad,2)+1,0,Math.PI*2);vx.stroke()}
+  if(HOVER&&DRAG&&['brush','eraser','distress','area'].includes(TOOL)){const rad=(TOOL==='distress'?OPT.dsize:TOOL==='area'?OPT.area:TOOL==='eraser'?OPT.esize:OPT.size)/2*Z;vx.strokeStyle='rgba(20,20,22,.8)';vx.lineWidth=1;vx.beginPath();vx.arc(HOVER[0],HOVER[1],Math.max(rad,2),0,Math.PI*2);vx.stroke();vx.strokeStyle='rgba(255,255,255,.8)';vx.beginPath();vx.arc(HOVER[0],HOVER[1],Math.max(rad,2)+1,0,Math.PI*2);vx.stroke()}
   window.PRO?.overlay(vx);window.VEC?.overlay(vx);window.ILL?.overlay(vx);overlay();$('#zLabel').textContent=Math.round(Z*100)+'%'+(VR?` · ${Math.round(VR)}°`:'');
 }
 function rotKnob(l){const p=corners(l).map(([a,b])=>[sx(a),sy(b)]),tm=[(p[0][0]+p[1][0])/2,(p[0][1]+p[1][1])/2],c=[sx(l.x),sy(l.y)],d=Math.hypot(tm[0]-c[0],tm[1]-c[1])||1;return[tm[0]+(tm[0]-c[0])/d*28,tm[1]+(tm[1]-c[1])/d*28]}
@@ -497,15 +524,22 @@ function rotKnob(l){const p=corners(l).map(([a,b])=>[sx(a),sy(b)]),tm=[(p[0][0]+
 let FITTED=false;
 function fit(){FITTED=true;VR=0;const r=$('#stage').getBoundingClientRect();Z=Math.min((r.width-48)/W,(r.height-48)/H,2);PX=(r.width-W*Z)/2;PY=(r.height-H*Z)/2;draw()}
 function zoomAt(f,cx,cy){FITTED=false;VIEWONLY=performance.now()+120;const nz=clamp(Z*f,.05,8);PX=cx-(cx-PX)*nz/Z;PY=cy-(cy-PY)*nz/Z;Z=nz;draw()}
-new ResizeObserver(()=>FITTED?fit():draw()).observe($('#stage'));
+{const ro=new ResizeObserver(()=>{VRECT=null;FITTED?fit():draw()});ro.observe($('#stage'));ro.observe(view)}
 
 // ---------- pointer work on the stage ----------
 let DRAG=null,HOVER=null,SPACE=false;
+// the brush's circle while the Pencil or the mouse hovers: on its own canvas over the picture, so hovering never draws the picture again
+const CURC=document.createElement('canvas');CURC.setAttribute('aria-hidden','true');CURC.style.cssText='position:absolute;pointer-events:none;z-index:3';view.after(CURC);
+function cursorPaint(raw){const x=CURC.getContext('2d');if(!raw){if(CURC.width>1){x.clearRect(0,0,CURC.width,CURC.height)}return}
+  const r=vrect(),dpr=Math.min(2,devicePixelRatio||1),w=Math.round(r.width*dpr),h=Math.round(r.height*dpr);if(CURC.width!==w||CURC.height!==h){CURC.width=w;CURC.height=h;CURC.style.width=r.width+'px';CURC.style.height=r.height+'px'}
+  CURC.style.left=view.offsetLeft+'px';CURC.style.top=view.offsetTop+'px';x.setTransform(dpr,0,0,dpr,0,0);x.clearRect(0,0,r.width,r.height);
+  const rad=Math.max(2,(TOOL==='distress'?OPT.dsize:TOOL==='area'?OPT.area:TOOL==='eraser'?OPT.esize:OPT.size)/2*Z);x.lineWidth=1;x.strokeStyle='rgba(20,20,22,.8)';x.beginPath();x.arc(raw[0],raw[1],rad,0,Math.PI*2);x.stroke();x.strokeStyle='rgba(255,255,255,.8)';x.beginPath();x.arc(raw[0],raw[1],rad+1,0,Math.PI*2);x.stroke()}
 // the view's turn (VR, degrees, two fingers on an iPad): the whole view is drawn turned about its centre, and a point on the screen is turned
 // back before it is used, so every tool works on a turned picture as on a straight one
 let VR=0;const vturn=(x,y,deg)=>{const a=deg*Math.PI/180,c=Math.cos(a),s=Math.sin(a);return[x*c-y*s,x*s+y*c]};
-const vcentre=()=>{const r=view.getBoundingClientRect();return[r.width/2,r.height/2]};
-const rawPt=e=>{const r=view.getBoundingClientRect();return[e.clientX-r.left,e.clientY-r.top]};
+let VRECT=null;const vrect=()=>VRECT||(VRECT=view.getBoundingClientRect());const vrectReset=()=>{VRECT=null};addEventListener('resize',vrectReset);addEventListener('scroll',vrectReset,true);
+const vcentre=()=>{const r=vrect();return[r.width/2,r.height/2]};
+const rawPt=e=>{const r=vrect();return[e.clientX-r.left,e.clientY-r.top]};
 const pt=e=>{const q=rawPt(e);if(!VR)return q;const[cx,cy]=vcentre(),[x,y]=vturn(q[0]-cx,q[1]-cy,-VR);return[cx+x,cy+y]};window.studioPt=pt;
 function hit(px,py){for(let i=LAYERS.length-1;i>=0;i--){const l=LAYERS[i];if(!l.visible||l.kind==='base')continue;const[w,h]=dims(l),[a,b]=toLocal(l,px,py);if(a<0||b<0||a>=w||b>=h)continue;
   if(l.kind==='paint'||l.kind==='image'){const d=processed(l).getContext('2d',{willReadFrequently:true}).getImageData(Math.floor(a),Math.floor(b),1,1).data;if(d[3]<12)continue}return l}return null}
@@ -554,7 +588,9 @@ function liquifyPush(l,x0,y0,x1,y1){const c=l.raster,ctx=c.getContext('2d',{will
   const X0=Math.max(0,Math.floor(Math.min(a0,a1)-R)),Y0=Math.max(0,Math.floor(Math.min(b0,b1)-R)),X1=Math.min(c.width,Math.ceil(Math.max(a0,a1)+R)),Y1=Math.min(c.height,Math.ceil(Math.max(b0,b1)+R)),w=X1-X0,h=Y1-Y0;if(w<=0||h<=0)return;
   const src=ctx.getImageData(X0,Y0,w,h),out=ctx.createImageData(w,h),S=src.data,O=out.data;
   for(let y=0;y<h;y++)for(let x=0;x<w;x++){const px=x+X0,py=y+Y0,r2=((px-a1)**2+(py-b1)**2)/(R*R),k=(y*w+x)*4;let fx=x,fy=y;if(r2<1){const t=(1-r2)**2;fx=x-dx*t;fy=y-dy*t}
-    const ix=Math.floor(fx),iy=Math.floor(fy),u=fx-ix,v=fy-iy;for(let ch=0;ch<4;ch++){const at=(xx,yy)=>{xx=Math.min(w-1,Math.max(0,xx));yy=Math.min(h-1,Math.max(0,yy));return S[(yy*w+xx)*4+ch]};O[k+ch]=(at(ix,iy)*(1-u)+at(ix+1,iy)*u)*(1-v)+(at(ix,iy+1)*(1-u)+at(ix+1,iy+1)*u)*v}}
+    if(fx===x&&fy===y){O[k]=S[k];O[k+1]=S[k+1];O[k+2]=S[k+2];O[k+3]=S[k+3];continue}
+    const ix=Math.floor(fx),iy=Math.floor(fy),u=fx-ix,v=fy-iy,x0=ix<0?0:ix>w-1?w-1:ix,x1=ix+1<0?0:ix+1>w-1?w-1:ix+1,y0=iy<0?0:iy>h-1?h-1:iy,y1=iy+1<0?0:iy+1>h-1?h-1:iy+1,a=(y0*w+x0)*4,b=(y0*w+x1)*4,c2=(y1*w+x0)*4,d=(y1*w+x1)*4,wa=(1-u)*(1-v),wb=u*(1-v),wc=(1-u)*v,wd=u*v;
+    O[k]=S[a]*wa+S[b]*wb+S[c2]*wc+S[d]*wd;O[k+1]=S[a+1]*wa+S[b+1]*wb+S[c2+1]*wc+S[d+1]*wd;O[k+2]=S[a+2]*wa+S[b+2]*wb+S[c2+2]*wc+S[d+2]*wd;O[k+3]=S[a+3]*wa+S[b+3]*wb+S[c2+3]*wc+S[d+3]*wd}
   ctx.putImageData(out,X0,Y0);c._rid=RID++}
 function maskDab(x0,y0,x1,y1,erase){maskX.save();maskX.lineCap='round';maskX.lineWidth=OPT.area;maskX.strokeStyle='#e03b2e';if(erase)maskX.globalCompositeOperation='destination-out';maskX.beginPath();maskX.moveTo(x0,y0);maskX.lineTo(x1+.01,y1);maskX.stroke();maskX.restore();MASKED=true;mask._rid=RID++;paintAiState()}
 // ---------- iPad and the Pencil ----------
@@ -570,7 +606,7 @@ const tolOf=e=>e.pointerType==='mouse'?10:22; // a fingertip or a Pencil tip nee
 function gestStart(){const[a,b]=[...PTRS.values()];GEST={d:Math.hypot(a.x-b.x,a.y-b.y)||1,mx:(a.x+b.x)/2,my:(a.y+b.y)/2,Z,PX,PY,ang:Math.atan2(b.y-a.y,b.x-a.x),VR0:VR,rm:[((a.rx??a.x)+(b.rx??b.x))/2,((a.ry??a.y)+(b.ry??b.y))/2],rang:Math.atan2((b.ry??b.y)-(a.ry??a.y),(b.rx??b.x)-(a.rx??a.x))};
   const l=selected();if(TOOL==='select'&&l&&!fixed(l)&&!l.locked&&l.visible&&[[a.x,a.y],[b.x,b.y],[GEST.mx,GEST.my]].some(([x,y])=>hit(dx(x),dy(y))===l))GEST.layer={l,s0:l.scale,r0:l.rot||0,x0:l.x,y0:l.y}}
 function gestMove(){const[a,b]=[...PTRS.values()];if(!a||!b||!GEST)return;const d=Math.hypot(a.x-b.x,a.y-b.y)||1,mx=(a.x+b.x)/2,my=(a.y+b.y)/2,nz=clamp(GEST.Z*d/GEST.d,.05,8);
-  if(GEST.layer){const g=GEST.layer;g.l.scale=clamp(g.s0*d/GEST.d,.02,40);g.l.rot=g.r0+Math.atan2(b.y-a.y,b.x-a.x)-GEST.ang;g.l.x=Math.round(g.x0+(mx-GEST.mx)/Z);g.l.y=Math.round(g.y0+(my-GEST.my)/Z);g.moved=true;draw();paintFields();return}
+  if(GEST.layer){const g=GEST.layer;g.l.scale=clamp(g.s0*d/GEST.d,.02,40);g.l.rot=g.r0+Math.atan2(b.y-a.y,b.x-a.x)-GEST.ang;g.l.x=Math.round(g.x0+(mx-GEST.mx)/Z);g.l.y=Math.round(g.y0+(my-GEST.my)/Z);g.moved=true;draw();if(!fieldsRaf)fieldsRaf=requestAnimationFrame(()=>{fieldsRaf=0;paintFields()});return}
   // the view: zoomed and turned together, the point of the picture under the fingers staying under them (worked on the screen's own
   // positions, since the turn changes as they move); a turn near square snaps to it
   const ar=[a.rx??a.x,a.ry??a.y],br=[b.rx??b.x,b.ry??b.y],m=[(ar[0]+br[0])/2,(ar[1]+br[1])/2],[cx,cy]=vcentre();
@@ -579,7 +615,7 @@ function gestMove(){const[a,b]=[...PTRS.values()];if(!a||!b||!GEST)return;const 
   const[vx2,vy2]=vturn(m[0]-cx,m[1]-cy,-nr);FITTED=false;VR=nr;Z=nz;PX=cx+vx2-Z*GEST.doc[0];PY=cy+vy2-Z*GEST.doc[1];draw()}
 function cancelTouchStroke(){const g=DRAG;if(!g)return;strokeEnd(false);if(g.mode==='stroke'&&g.orig){g.l.raster=g.orig;g.l.raster._rid=RID++}DRAG=null;draw()}
 view.addEventListener('pointerdown',e=>{
-  if(!D)return;VIEWONLY=0;if(document.activeElement?.matches?.('input,textarea,select'))document.activeElement.blur(); // the picture takes the keys back from a field in the panel
+  if(!D)return;VIEWONLY=0;VRECT=null;cursorPaint(null);if(document.activeElement?.matches?.('input,textarea,select'))document.activeElement.blur(); // the picture takes the keys back from a field in the panel
   const[qx,qy]=pt(e);
   // a pointer whose lift the iPad never reported must not hold the canvas: there is one Pencil, so a new Pencil touch ends any stroke still
   // open from an earlier one, and the first finger down means no other finger is still down
@@ -617,7 +653,7 @@ view.addEventListener('pointermove',e=>{
   const[px,py]=pt(e),q=PTRS.get(e.pointerId);if(q){q.x=px;q.y=py;const[rx,ry]=rawPt(e);q.rx=rx;q.ry=ry}
   if(GEST){gestMove();return}
   if(DRAG&&DRAG.pid!==undefined&&DRAG.pid!==e.pointerId)return;
-  if(e.pointerType!=='touch')HOVER=[px,py];if(!DRAG){window.ILL?.move(null,dx(px),dy(py),e);if(['brush','eraser','distress','area'].includes(TOOL))draw();window.VEC?.hover();return}
+  if(e.pointerType!=='touch')HOVER=[px,py];if(!DRAG){window.ILL?.move(null,dx(px),dy(py),e);if(['brush','eraser','distress','area'].includes(TOOL)&&e.pointerType!=='touch')cursorPaint(rawPt(e));window.VEC?.hover();return}
   const x=dx(px),y=dy(py),g=DRAG;
   if(window.ILL?.move(g,x,y,e)||window.PRO?.move(g,x,y,e)||window.VEC?.move(g,x,y,e))return;
   // the Pencil reports more samples than the screen draws: take all of them, so a quick curve stays a curve
@@ -629,7 +665,7 @@ view.addEventListener('pointermove',e=>{
     draw();return}
   if(g.mode==='pan'){FITTED=false;PX=g.PX+px-g.px;PY=g.PY+py-g.py}
   else if(g.mode==='area'){maskDab(g.x,g.y,x,y,g.erase);g.x=x;g.y=y}
-  else if(g.mode==='liquify'){if(Math.hypot(x-g.x,y-g.y)*Z>=1.5){liquifyPush(g.l,g.x,g.y,x,y);g.x=x;g.y=y;g.moved=true}}
+  else if(g.mode==='liquify'){g.tx=x;g.ty=y;if(!g.lq)g.lq=requestAnimationFrame(()=>{g.lq=0;liqStep(g)})} // one push a frame, however many samples the Pencil sends
   else if(g.mode==='stroke'){dab(g.l,g.x,g.y,x,y,TOOL);g.x=x;g.y=y}
   else if(g.mode==='move'){if(window.PRO)PRO.snap1(g,x,y,e);else{g.l.x=Math.round(x-g.ox);g.l.y=Math.round(y-g.oy);g.moved=true}}
   else if(g.mode==='scale'){g.l.scale=clamp(g.s0*Math.hypot(x-g.l.x,y-g.l.y)/g.d0,.02,40);g.moved=true}
@@ -640,10 +676,12 @@ view.addEventListener('pointermove',e=>{
     if(!g.l){if(Math.hypot(x-g.x0,y-g.y0)<4)return;g.l=addLayer(fresh('shape',{name:{rect:'Rectangle',ellipse:'Ellipse',line:'Line'}[TOOL],shape:TOOL,w:4,h:4,radius:0,fill:TOOL!=='line',fillColor:CUR,stroke:TOOL==='line',strokeW:Math.max(2,Math.round(W/160)),strokeColor:CUR,x:g.x0,y:g.y0}),{silent:true})}
     const l=g.l;if(l.shape==='line'){const len=Math.hypot(x-g.x0,y-g.y0);l.w=Math.max(4,Math.round(len));l.x=(x+g.x0)/2;l.y=(y+g.y0)/2;l.rot=Math.atan2(y-g.y0,x-g.x0)}
     else{let w=Math.abs(x-g.x0),h=Math.abs(y-g.y0);if(e.shiftKey)w=h=Math.max(w,h);l.w=Math.max(4,Math.round(w));l.h=Math.max(4,Math.round(h));l.x=g.x0+(x<g.x0?-w:w)/2;l.y=g.y0+(y<g.y0?-h:h)/2}}
-  draw();if(g.mode!=='pan'&&g.mode!=='area')paintFields();
+  draw();if(g.mode!=='pan'&&g.mode!=='area'){if(!fieldsRaf)fieldsRaf=requestAnimationFrame(()=>{fieldsRaf=0;paintFields()})}
 });
-const endDrag=e=>{if(e&&e.pointerId!==undefined){PTRS.delete(e.pointerId);if(GEST){if(PTRS.size<2){const g=GEST.layer;GEST=null;if(g?.moved){commit();paintPanels()}}return}if(DRAG&&DRAG.pid!==undefined&&DRAG.pid!==e.pointerId)return}const g=DRAG;DRAG=null;if(!g)return;if(g.mode==='stroke'){clearTimeout(g.qt);if(!g.shaped&&g.mx!==undefined&&(g.mx!==g.x||g.my!==g.y))dabS(g.l,g.mx,g.my,g.x,g.y,TOOL,g.pr||1);strokeEnd();paintFields()}if(window.ILL?.end(g)||window.PRO?.end(g)||window.VEC?.end(g))return;if(g.mode==='ruler'){rulerDone(g);draw();return}if(g.mode==='stroke'||g.mode==='area'||g.mode==='liquify'||(g.mode==='shape'&&g.l)||g.moved){if(g.mode!=='area')commit();if(g.mode==='shape')setTool('select');paintPanels()}draw()};
-view.addEventListener('pointerup',endDrag);view.addEventListener('pointercancel',endDrag);view.addEventListener('lostpointercapture',e=>{if(DRAG&&DRAG.pid===e.pointerId)endDrag(e)});view.addEventListener('pointerleave',e=>{if(e.pointerType==='mouse'||e.pointerType==='pen'&&!DRAG){HOVER=null;draw()}});
+let fieldsRaf=0;
+function liqStep(g){if(g.tx===undefined||Math.hypot(g.tx-g.x,g.ty-g.y)*Z<1.5)return;liquifyPush(g.l,g.x,g.y,g.tx,g.ty);g.x=g.tx;g.y=g.ty;g.moved=true;draw()}
+const endDrag=e=>{if(e&&e.pointerId!==undefined){PTRS.delete(e.pointerId);if(GEST){if(PTRS.size<2){const g=GEST.layer;GEST=null;if(g?.moved){commit();paintPanels()}}return}if(DRAG&&DRAG.pid!==undefined&&DRAG.pid!==e.pointerId)return}const g=DRAG;if(g?.mode==='liquify'&&g.lq){cancelAnimationFrame(g.lq);g.lq=0;liqStep(g)}DRAG=null;if(!g)return;if(g.mode==='stroke'){clearTimeout(g.qt);if(!g.shaped&&g.mx!==undefined&&(g.mx!==g.x||g.my!==g.y))dabS(g.l,g.mx,g.my,g.x,g.y,TOOL,g.pr||1);strokeEnd();paintFields()}if(window.ILL?.end(g)||window.PRO?.end(g)||window.VEC?.end(g))return;if(g.mode==='ruler'){rulerDone(g);draw();return}if(g.mode==='stroke'||g.mode==='area'||g.mode==='liquify'||(g.mode==='shape'&&g.l)||g.moved){if(g.mode!=='area')commit();if(g.mode==='shape')setTool('select');paintPanels()}draw()};
+view.addEventListener('pointerup',endDrag);view.addEventListener('pointercancel',endDrag);view.addEventListener('lostpointercapture',e=>{if(DRAG&&DRAG.pid===e.pointerId)endDrag(e)});view.addEventListener('pointerleave',e=>{if(e.pointerType==='mouse'||e.pointerType==='pen'&&!DRAG){HOVER=null;cursorPaint(null)}});
 // iPad: a Pencil on the page can be taken as handwriting (Scribble) or the start of a text selection, and then never reaches the canvas as a
 // stroke; holding the Pencil's touches on the stage keeps them ours (fingers are left alone: they move and pinch through the pointer events)
 ['touchstart','touchmove'].forEach(t=>$('#stage').addEventListener(t,e=>{if([...e.changedTouches].some(x=>x.touchType==='stylus'))e.preventDefault()},{passive:false}));
@@ -658,7 +696,7 @@ view.addEventListener('wheel',e=>{e.preventDefault();const[px,py]=pt(e);if(e.ctr
 $('#zIn').onclick=()=>{const r=view.getBoundingClientRect();zoomAt(1.25,r.width/2,r.height/2)};$('#zOut').onclick=()=>{const r=view.getBoundingClientRect();zoomAt(.8,r.width/2,r.height/2)};$('#zFit').onclick=fit;
 
 // ---------- tools and their options ----------
-function setTool(t){TOOL=t;setTimeout(()=>window.paintDock?.(),0);setTimeout(()=>window.paintRailNames?.(),0);if(VMODE==='front'||VMODE==='back')FF()?.tool?.(t);$$('.rail [data-tool]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.tool===t)));view.style.cursor=t==='hand'?'grab':t==='select'?'default':t==='text'?'text':'crosshair';paintOpts();draw()}
+function setTool(t){TOOL=t;cursorPaint(null);document.body.classList.toggle('typing',t==='text'&&(VMODE==='front'||VMODE==='back'));setTimeout(()=>window.paintDock?.(),0);setTimeout(()=>window.paintRailNames?.(),0);if(VMODE==='front'||VMODE==='back')FF()?.tool?.(t);$$('.rail [data-tool]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.tool===t)));view.style.cursor=t==='hand'?'grab':t==='select'?'default':t==='text'?'text':'crosshair';paintOpts();draw()}
 const pressHtml=()=>`<label class="chk" title="With an Apple Pencil, pressing harder makes the line wider"><input type="checkbox" data-press ${OPT.pressure?'checked':''}> Pencil pressure</label>`;
 $('#opts').addEventListener('change',e=>{if(e.target.matches('[data-press]'))OPT.pressure=e.target.checked});
 // Steady: the line trails the Pencil a little, so a shaky hand draws smooth (Procreate's StreamLine). QuickShape: hold the Pencil still at the
@@ -681,7 +719,7 @@ function paintOpts(){
   else if(TOOL==='area')o.innerHTML=rg('area','Size',4,600)+'<span class="hint">Paint over what the AI should change. Hold Alt to rub out.</span><button class="btn sm" type="button" data-clearmask>Clear the area</button>';
   else o.innerHTML=`<span class="hint">${help[TOOL]||''}</span>`;
   // on the flats the same tools draw on the flat itself, saved with it and carried into the tech pack
-  if(VMODE==='front'||VMODE==='back'){const fh={select:'Drag a graphic to move it, a corner to resize it, the green knob to turn it; its size and place, in inches, are in the panel on the right.',hand:'Drag to move around once zoomed in; pinch or Ctrl and the wheel zooms.',brush:'Draws on the flat. It is saved with the flat and goes into the tech pack. With the Pencil, fingers move and pinch the view.',eraser:'Rubs out what you drew on the flat; anywhere else it rubs out the sketch\'s own lines (put them back from the Design panel).',distress:'Wears away what was drawn on the flat.',text:'Tap where the type should go, then type it.',rect:'Drag to draw a box on the flat.',ellipse:'Drag to draw a ring on the flat.',line:'Drag to draw a line on the flat.',area:'Drag a box on the flat over what the AI should redraw, then say what to change.'}[TOOL];
+  if(VMODE==='front'||VMODE==='back'){const fh={select:'Drag a graphic to move it, a corner to resize it, the green knob to turn it; its size and place, in inches, are in the panel on the right.',hand:'Drag to move around once zoomed in; pinch or Ctrl and the wheel zooms.',brush:'Draws on the flat. It is saved with the flat and goes into the tech pack. With the Pencil, fingers move and pinch the view.',eraser:'Rubs out what you drew on the flat; anywhere else it rubs out the sketch\'s own lines (put them back from the Design panel).',distress:'Wears away what was drawn on the flat.',text:'Type the words in the panel; tap or drag on the flat to move them. Place keeps them; another tool places them too.',rect:'Drag to draw a box on the flat.',ellipse:'Drag to draw a ring on the flat.',line:'Drag to draw a line on the flat.',area:'Drag a box on the flat over what the AI should redraw, then say what to change.'}[TOOL];
     o.querySelector('[data-clearmask]')?.remove();const h=o.querySelector('.hint');if(h&&fh)h.textContent=fh;else if(fh)o.insertAdjacentHTML('beforeend',`<span class="hint">${fh}</span>`)}
   window.PRO?.opts(o);
 }
@@ -718,7 +756,8 @@ function moveLayer(l,d){const i=LAYERS.indexOf(l),j=clamp(i+d,0,LAYERS.length-1)
 function duplicate(l){const c={...copyL(l),id:uid(),name:l.name+' copy',_pc:null,_pk:null};if(isRaster(l)){c.raster=cloneCanvas(l.raster);if(l.raster._rid===l._srcRid)c._srcRid=c.raster._rid}if(c.kind==='base'){c.kind='image';c.locked=false}if(!fixed(c)){c.x+=20;c.y+=20}addLayer(c)}
 // type and shapes become a picture layer (with their look baked in), so they can be painted on, rubbed out and distressed by hand
 function rasterize(l){const c=processed(l),r=cloneCanvas(c),n={...fresh('image',{name:l.name}),x:l.x,y:l.y,scale:l.scale,rot:l.rot,flip:l.flip,opacity:l.opacity,blend:l.blend,raster:r,src:null,dirty:true};const i=LAYERS.indexOf(l);LAYERS[i]=n;SEL=n.id;commit();paintPanels();draw()}
-const thumbOf=l=>{try{const c=processed(l),t=canvas(80,80),x=t.getContext('2d'),k=Math.min(80/c.width,80/c.height);x.drawImage(c,(80-c.width*k)/2,(80-c.height*k)/2,c.width*k,c.height*k);return t.toDataURL('image/png')}catch{return ''}};
+const thumbOf=l=>{const k=sig(l)+(l.warp?JSON.stringify(l.warp):'');if(l._tk===k&&l._tu)return l._tu;const u=thumbOf0(l);l._tk=k;l._tu=u;return u}; // a layer's thumbnail is made again only when the layer changes
+const thumbOf0=l=>{try{const c=processed(l),t=canvas(80,80),x=t.getContext('2d'),k=Math.min(80/c.width,80/c.height);x.drawImage(c,(80-c.width*k)/2,(80-c.height*k)/2,c.width*k,c.height*k);return t.toDataURL('image/png')}catch{return ''}};
 const EYE='<svg viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>',SHUT='<svg viewBox="0 0 24 24"><path d="M3 3l18 18M10.6 5.1A10 10 0 0112 5c6 0 10 7 10 7a17 17 0 01-3 3.7M6.6 6.6C3.8 8.4 2 12 2 12s4 7 10 7a9.5 9.5 0 004.4-1"/></svg>',LOCK='<svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/></svg>',OPEN='<svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 017.5-2"/></svg>';
 
 let TAB='layers';
@@ -768,15 +807,22 @@ const TECH_KINDS=[['embroidery','Embroidery'],['print','Print'],['heat_transfer'
 const techOpts=v=>`<option value="">None</option>${TECH_KINDS.map(([k,lab])=>{const t=(D.techniques||[]).filter(x=>x.kind===k);return t.length?`<optgroup label="${lab}">${t.map(x=>`<option value="${x.id}" ${x.id===v?'selected':''}>${esc(x.name)}</option>`).join('')}</optgroup>`:''}).join('')}`;
 // "Made as": every way the mark can be made, drawn on the layer itself as small previews, grouped by kind; the library's recipes (src/lab-finish.js) do the drawing
 let TKIND='',TTH=new Map(),MADE={color:'#d9d6cf',cloth:'jersey'};
-function techThumb(l,t){const src=contentOf(l),key=l.id+'|'+t.id+'|'+(isRaster(l)?(l.raster&&l.raster._rid):[l.text,l.font,l.size,l.color,l.shape,l.w,l.h,l.fillColor].join('|'))+'|'+JSON.stringify(t.finish);if(TTH.has(key))return TTH.get(key);
+function techThumb(l,t){const src=contentOf(l),key=techKey(l,t);if(TTH.has(key))return TTH.get(key);
   const TW=132,TH=76,k=Math.min(TW*.9/src.width,TH*.84/src.height),w=Math.max(2,Math.round(src.width*k)),h=Math.max(2,Math.round(src.height*k)),g=canvas(w,h);g.getContext('2d').drawImage(src,0,0,w,h);
   let out;try{const f=t.finish||{};let e=window.FBFinish.effect(g,f,.45,1);if(f.distress&&f.distress.amount>0){const c2=canvas(w,h);c2.getContext('2d').drawImage(e,0,0);window.FBFinish.distress(c2,f.distress,1);e=c2}
-    const tile=canvas(TW,TH),x=tile.getContext('2d');x.drawImage(window.FBFinish.fabric(TW,TH,MADE.color,MADE.cloth,3),0,0);x.globalAlpha=f.opacity??1;x.globalCompositeOperation=f.blend||'source-over';const sh=window.FBFinish.shadow(f,.3);if(sh){x.shadowColor=sh.color;x.shadowBlur=sh.blur;x.shadowOffsetX=sh.dx;x.shadowOffsetY=sh.dy}x.drawImage(e,(TW-w)/2,(TH-h)/2);out=tile.toDataURL('image/png')}catch{out=''}
+    const tile=canvas(TW,TH),x=tile.getContext('2d'),fk=TW+'x'+TH+MADE.color+MADE.cloth;if(techThumb.fk!==fk){techThumb.fk=fk;techThumb.fab=window.FBFinish.fabric(TW,TH,MADE.color,MADE.cloth,3)}x.drawImage(techThumb.fab,0,0);x.globalAlpha=f.opacity??1;x.globalCompositeOperation=f.blend||'source-over';const sh=window.FBFinish.shadow(f,.3);if(sh){x.shadowColor=sh.color;x.shadowBlur=sh.blur;x.shadowOffsetX=sh.dx;x.shadowOffsetY=sh.dy}x.drawImage(e,(TW-w)/2,(TH-h)/2);out=tile.toDataURL('image/png')}catch{out=''}
   if(TTH.size>600)TTH.clear();TTH.set(key,out);return out}
-function techHtml(l){const f=l.finish,kind=TKIND||(f&&(D.techniques||[]).find(t=>t.id===f.id)?.kind)||'embroidery',list=(D.techniques||[]).filter(t=>t.kind===kind);
+const TBLANK='data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==';
+function techKey(l,t){return l.id+'|'+t.id+'|'+(isRaster(l)?(l.raster&&l.raster._rid):[l.text,l.font,l.size,l.color,l.shape,l.w,l.h,l.fillColor].join('|'))+'|'+JSON.stringify(t.finish)}
+const techThumbNow=(l,t)=>TTH.get(techKey(l,t))||'';
+// the previews still to draw, one at a time between frames, and never while something is being drawn or dragged
+let TTQ=0;function techThumbsSoon(){cancelAnimationFrame(TTQ);const step=()=>{TTQ=0;if(DRAG||GEST){TTQ=requestAnimationFrame(()=>setTimeout(step,120));return}
+  const l=selected(),img=l&&[...document.querySelectorAll('#pLayers img[data-tth]')].find(i=>i.src===TBLANK||i.src.endsWith(TBLANK));if(!img)return;const t=(D.techniques||[]).find(x=>x.id===img.dataset.tth);if(!t){img.removeAttribute('data-tth');return}
+  const t0=performance.now();img.src=techThumb(l,t)||TBLANK;if(img.src===TBLANK)img.removeAttribute('data-tth');TTQ=requestAnimationFrame(()=>setTimeout(step,Math.min(60,performance.now()-t0)))};TTQ=requestAnimationFrame(()=>setTimeout(step,30))}
+function techHtml(l){techThumbsSoon();const f=l.finish,kind=TKIND||(f&&(D.techniques||[]).find(t=>t.id===f.id)?.kind)||'embroidery',list=(D.techniques||[]).filter(t=>t.kind===kind);
   return `<div class="sec"><h4>Made as</h4><p class="note" style="margin:0 0 4px">How this mark is made on the piece. Pick a way below: it is drawn on the layer straight away. Embroidery, prints, transfers, patches, knit, laser, metal and stones, each in its variants; the <a href="/lab/library#techniques" target="_blank" rel="noopener">technique library</a> has their factory notes.</p>
   <div class="row" style="gap:4px">${TECH_KINDS.map(([k,lab])=>`<button type="button" class="btn sm ${kind===k?'':'q'}" data-tkind="${k}" aria-pressed="${kind===k}">${lab}</button>`).join('')}</div>
-  <div class="tiles" style="grid-template-columns:repeat(2,minmax(0,1fr));margin-top:6px">${list.map(t=>`<button type="button" class="tile" data-tapply="${t.id}" title="${esc(t.summary)}" style="${f&&f.id===t.id?'border-color:var(--ink);background:#fff':''}"><img alt="" src="${techThumb(l,t)}" width="132" height="76" style="border-radius:8px;width:100%;height:auto">${esc(t.name)}</button>`).join('')||'<span class="note">None of this kind yet.</span>'}</div>
+  <div class="tiles" style="grid-template-columns:repeat(2,minmax(0,1fr));margin-top:6px">${list.map(t=>`<button type="button" class="tile" data-tapply="${t.id}" title="${esc(t.summary)}" style="${f&&f.id===t.id?'border-color:var(--ink);background:#fff':''}"><img alt="" src="${techThumbNow(l,t)||TBLANK}" data-tth="${t.id}" width="132" height="76" style="border-radius:8px;width:100%;height:auto;background:#eeede9">${esc(t.name)}</button>`).join('')||'<span class="note">None of this kind yet.</span>'}</div>
   <label class="f w" style="margin-top:8px"><span>Or pick by name</span><select class="t" data-tech>${techOpts(f&&f.id)}</select></label>
   <div class="row" style="margin-top:8px"><button class="btn sm q" type="button" data-act="madeall">See it made every way</button>${f?`<button class="btn sm q" type="button" data-tapply="">Plain (no technique)</button>`:''}</div>
   ${f?`<p class="note" style="margin:6px 0 0"><b>${esc(f.name)}</b></p>${f.effect!=='none'?rng2('fin.strength','Strength',0,1,.05,f.strength):''}${rng2('fin.raise','Raised',0,12,.5,f.raise)}${['stitch','foil','film','rubber','silicone','metallic','knit'].includes(f.effect)?rng2('fin.angle','Direction',-180,180,5,f.angle,'°'):''}
@@ -817,7 +863,7 @@ function setProp(l,p,v){
   else if(p==='rotd')l.rot=Number(v)*Math.PI/180;else if(['name','text','font','blend','color','outlineColor','fillColor','strokeColor','case','shadowKind','outline2Color','shadowColor','env'].includes(p))l[p]=v;else if(['fill','stroke'].includes(p))l[p]=Boolean(v);else l[p]=Number(v);
 }
 const pL=$('#pLayers');
-pL.addEventListener('input',e=>{const p=e.target.dataset.p,l=selected();if(!p||!l)return;setProp(l,p,e.target.type==='checkbox'?e.target.checked:e.target.value);if(e.target.type==='range'&&e.target.nextElementSibling)e.target.nextElementSibling.textContent=e.target.value+({opacity:'',scale:'×',rotd:'°','a.hue':'°','a.sat':'%','a.bright':'%','a.contrast':'%',size:'px',w:'px',h:'px',radius:'px',strokeW:'px',outline:'px'}[p]??'');touch();draw()});
+pL.addEventListener('input',e=>{const p=e.target.dataset.p,l=selected();if(!p||!l)return;if(e.target.type==='range')SLIDE={l,until:performance.now()+150};setProp(l,p,e.target.type==='checkbox'?e.target.checked:e.target.value);if(e.target.type==='range'&&e.target.nextElementSibling)e.target.nextElementSibling.textContent=e.target.value+({opacity:'',scale:'×',rotd:'°','a.hue':'°','a.sat':'%','a.bright':'%','a.contrast':'%',size:'px',w:'px',h:'px',radius:'px',strokeW:'px',outline:'px'}[p]??'');touch();draw()});
 pL.addEventListener('change',e=>{if(e.target.matches('[data-tech]')){const l=selected();if(l){applyTech(l,e.target.value);commit();paintLayers();draw()}return}if(!e.target.dataset.p)return;commit();if(['name','blend','d.amount','text'].includes(e.target.dataset.p)||e.target.tagName==='SELECT'||e.target.type==='checkbox')paintLayers()});
 pL.addEventListener('click',e=>{
   const row=e.target.closest('[data-ly]');
@@ -1136,7 +1182,7 @@ $('#undo').onclick=undo;$('#redo').onclick=redo;
 // the rail's own Undo and Redo: always in reach of a thumb on an iPad (the ones in the top bar are small and fold away)
 $('#railUndo').onclick=undo;$('#railRedo').onclick=redo;
 // what each tool is and does, beside the rail: for learning by trying. Tap a name to pick the tool; the choice to show them is remembered
-const TOOL_HELP={liquify:'Push the pixels of a picture or painting, like a finger in wet paint',fill:'Tap inside lines to fill there, in the chosen colour',select:'Tap a layer to choose it; drag to move, corners to resize, the green knob to turn',hand:'Drag to move around the page (two fingers do it too)',brush:'Paint on the chosen layer',eraser:'Rub out paint, or lines of the sketch on a flat',distress:'Wear the layer away, like a washed print',text:'Tap the page and type',rect:'Drag to draw a box',ellipse:'Drag to draw an oval or circle',line:'Drag to draw a straight line',pen:'Tap for corners, drag for curves; tap the first point to close',node:'Move the points of a shape you drew',ruler:'Drag across something you know the size of, to set real inches',warp:'Bend a graphic to follow the garment',pick:'Tap the picture to borrow a colour',area:'Paint where the AI should change the picture'};
+const TOOL_HELP={liquify:'Push the pixels of a picture or painting, like a finger in wet paint',fill:'Tap inside lines to fill there, in the chosen colour',select:'Tap a layer to choose it; drag to move, corners to resize, the green knob to turn',hand:'Drag to move around the page (two fingers do it too)',brush:'Paint on the chosen layer',eraser:'Rub out paint, or lines of the sketch on a flat',distress:'Wear the layer away, like a washed print',text:'Type the words; on a flat, tap or drag to move them',rect:'Drag to draw a box',ellipse:'Drag to draw an oval or circle',line:'Drag to draw a straight line',pen:'Tap for corners, drag for curves; tap the first point to close',node:'Move the points of a shape you drew',ruler:'Drag across something you know the size of, to set real inches',warp:'Bend a graphic to follow the garment',pick:'Tap the picture to borrow a colour',area:'Paint where the AI should change the picture'};
 function paintRailNames(){const box=$('#railLabels'),open=$('#railNames').getAttribute('aria-pressed')==='true';$('.studio')?.classList.toggle('names-on',open);box.classList.toggle('hidden',!open);if(!open)return;const rail=$('.rail'),rb=rail.getBoundingClientRect(),sb=box.parentElement.getBoundingClientRect();
   box.style.top=(rb.top-sb.top)+'px';box.style.left=(rb.right-sb.left)+'px';box.style.height=rb.height+'px';
   box.innerHTML=[...rail.querySelectorAll('button[data-tool]')].filter(b=>b.offsetParent).map(b=>{const t=b.dataset.tool,r=b.getBoundingClientRect(),name=b.getAttribute('aria-label');return `<button type="button" role="listitem" data-pick-tool="${t}" aria-pressed="${b.getAttribute('aria-pressed')==='true'}" style="top:${r.top-rb.top+r.height/2}px"><b>${esc(name)}</b><small>${esc(TOOL_HELP[t]||b.title)}</small></button>`}).join('')}
@@ -1484,7 +1530,7 @@ async function setVMode(v,{push=true}={}){
     // the graphics placed on the picture go onto the flats before they are shown
     if(!GMODE&&DIRTY&&(was==='picture'||!FLOADED)){busy('Putting the graphics on the flats…');try{const sent=await syncFlats({before:flatsFirst});if(sent&&FLOADED)reloadFlats()}catch(x){toast('The flats did not take the graphics: '+x.message)}finally{busy()}}
     if(!FLOADED)loadFlats()}
-  VMODE=v;$('#app').dataset.v=v;$$('#viewSeg [data-v]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.v===v)));$('#pieceSteps').setStep?.(stepOfView(v));
+  VMODE=v;$('#app').dataset.v=v;document.body.classList.toggle('typing',TOOL==='text'&&(v==='front'||v==='back'));$$('#viewSeg [data-v]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.v===v)));$('#pieceSteps').setStep?.(stepOfView(v));
   const f=FF();if(f&&f.ready()){f.mode(v==='split'?'compact':'full');if(v==='front'||v==='back'){f.setView(v);f.tool?.(TOOL)}}
   if(['warp','pick','ruler'].includes(TOOL)&&v!=='picture')setTool('select');paintOpts();syncUndo();
   if(push){const u=new URL(location.href);if(v==='picture')u.searchParams.delete('view');else u.searchParams.set('view',v);u.searchParams.delete('template');history.replaceState(null,'',u)}
@@ -1596,11 +1642,12 @@ applyLayout();
 
 // ---------- tags and labels in the studio ----------
 async function tagStart(){const t=TAGM.spec,k=Math.max(6,Math.min(24,1600/Math.max(t.widthMm,t.heightMm)));W=Math.round(t.widthMm*k);H=Math.round(t.heightMm*k);
-  const fill=(TAGM.colours||[])[0]?.hex||'',T=await import('/lab/lab-tags.js'),img=await imgOf('data:image/svg+xml;charset=utf-8,'+encodeURIComponent(T.tagFaceSvg(t,{pxPerMm:k,fill}))),face=canvas(W,H);face.getContext('2d').drawImage(img,0,0,W,H);
+  const fill=(TAGM.colours||[])[0]?.hex||'',T=await import('/lab/lab-tags.js'),img=await imgOf('data:image/svg+xml;charset=utf-8,'+encodeURIComponent(T.tagFaceSvg(t,{pxPerMm:k,fill,words:false}))),face=canvas(W,H);face.getContext('2d').drawImage(img,0,0,W,H);
   const dark=fill?(()=>{const n=parseInt(fill.slice(1),16);return((n>>16)*299+((n>>8)&255)*587+(n&255)*114)/1000<128})():/leather|rubber/.test(t.material||''),ink=dark?'#f3eee4':'#141416';
   LAYERS=[fresh('base',{name:'Clear background',raster:stamp(canvas(W,H)),x:W/2,y:H/2,dirty:true}),fresh('image',{name:'Tag face',raster:stamp(face),x:W/2,y:H/2,scale:1,dirty:true})];
   // its words, each its own type layer: change the font, the words, the size and the colour like any type
-  const lines=(t.text||[]).slice(0,4),fs=Math.max(12,Math.min(H*.26,W*.86/(Math.max(6,...lines.map(l=>l.length))*.62)));
+  let brand='';try{brand=FORC?(await api('/v1/lab/concepts/'+FORC)).concept?.clientName||'':(await api('/v1/lab/materials?kind=tag')).brand||''}catch{}
+  const lines=T.brandWords((t.text||[]).slice(0,4),brand),fs=Math.max(12,Math.min(H*.26,W*.86/(Math.max(6,...lines.map(l=>l.length))*.62)));
   lines.forEach((line,i)=>LAYERS.push(fresh('text',{name:line.slice(0,30),x:W/2,y:H/2+(i-(lines.length-1)/2)*fs*1.3,text:line,font:'grotesk',size:Math.round(i?fs*.8:fs),bold:i===0,italic:false,track:Math.round(fs*.06),lead:1.1,align:'center',arc:0,color:ink,outline:0,outlineColor:'#ffffff'})));
   setTimeout(()=>{DIRTY=true;showSaved()},0)}
 // the design is the tag's face: put on the tag (a starter tag a room cannot change is copied into the room's own library first)

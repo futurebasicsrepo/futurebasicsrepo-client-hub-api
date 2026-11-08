@@ -562,6 +562,16 @@ export async function migrate() {
       updated_by uuid references users(id) on delete set null,
       updated_at timestamptz not null default now()
     );
+    -- the concept's card shows whichever was saved last: the picture (image_at, set whenever the picture changes) or the flat (flat_thumb: the saved
+    -- flat's front, or the flat it starts as when none is saved; an empty one when the piece has no flat)
+    alter table lab_concepts add column if not exists flat_thumb bytea;
+    alter table lab_concepts add column if not exists image_at timestamptz;
+    create or replace function lab_concept_image_at() returns trigger language plpgsql as $$
+      begin if tg_op = 'INSERT' then if new.image is not null then new.image_at := now(); end if;
+      elsif new.image is distinct from old.image then new.image_at := case when new.image is null then null else now() end; end if; return new; end $$;
+    drop trigger if exists lab_concepts_image_at on lab_concepts;
+    create trigger lab_concepts_image_at before insert or update of image on lab_concepts for each row execute function lab_concept_image_at();
+    update lab_concepts set image_at=updated_at where image is not null and image_at is null;
     create table if not exists lab_technique_photos (
       id uuid primary key default gen_random_uuid(),
       technique_id uuid not null references lab_techniques(id) on delete cascade,

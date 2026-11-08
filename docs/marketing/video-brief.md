@@ -59,7 +59,7 @@ already has show as "on the sketch".
 ### The Studio (the design workspace)
 `/lab/studio`. One workspace with four views of a piece: the picture, the flat front, the flat back, and the pattern or engineering.
 
-- On the flats: **Colour a panel** (tap a sleeve and both sleeves take the colour, right to their seams; a tap on a rib takes the whole band)
+- On the flats: **Colour a part**, in the Garment panel (pick a swatch, tap a sleeve and both sleeves take the colour, right to their seams; a tap on a rib takes the whole band; zoom in and a belt loop or a pocket takes it on its own)
   and **Cloth** (pick a fabric and the flat shows its surface; it becomes the garment's main fabric).
 
 - **Necklines:** swap a tee's neck like a pocket: thin crew, regular crew, V neck, mock neck or turtleneck, drawn on the flats and specced for the factory.
@@ -154,7 +154,7 @@ The fabrics are browsed by family and weight:
 - 12 leathers;
 - 14 vegan leathers, from PU to cactus, apple, mycelium and cork.
 
-Labels chosen on a garment are drawn on its flats where they are sewn; they can be added and removed in one tap from the flat's Garment panel.
+Labels chosen on a garment are drawn on its flats where they are sewn, with their words on them (the brand, and the piece's size on a size tab). The flat's Garment panel shows the labels on the piece; **Add the usual** puts on the neck or waistband label, the size tab and the care label in one tap, and Add a label lists only the labels that suit the garment. On a client's piece the labels carry the client's own brand, and **Design** on any label (or Design your own label) opens it in the tag and label studio at its real size, so a brand can make labels its own way.
 
 ### Beyond clothing (good for a "it does more than tees" cut)
 - **Bags:** backpacks, slings, totes, helmet bags, work bags, messengers, duffels and waist bags, designed as a bag designer would and rendered on a set that suits each; a design sheet; drawn in panels a designer recolours and reshapes; and a library of eleven original bag flats to start from.

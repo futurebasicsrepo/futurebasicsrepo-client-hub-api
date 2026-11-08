@@ -479,7 +479,7 @@ export function tagMarks(p, tags = []) {
     } else if (S.kind === 'bottom') {
       const wb = m.waistband || 1.5, hip = (m.hip || 20) / 2;
       if (kind === 'waistband' || kind === 'neck') at(t, 'back', side, wb / 2, kind === 'neck', kind === 'waistband' ? 'Waistband label' : 'Label, inside back waistband');
-      else if (kind === 'size') at(t, 'back', (seen.waistband || seen.neck ? 1.4 : 0) + side, wb / 2, true, 'Size tab, inside');
+      else if (kind === 'size') { const lw = (Number(tags.find(z => ['waistband', 'neck'].includes(z.spec?.tagKind))?.spec?.widthMm) || 0) / 25.4; at(t, 'back', (lw ? lw / 2 + .2 + w / 2 : 0) + side, wb / 2, true, 'Size tab, inside'); } // beside the waistband label, clear of it
       else if (kind === 'care') at(t, 'front', -hip + .35 + w / 2, wb + 4 + h / 2 + side, true, 'Care label, inside left side seam');
       else if (kind === 'pocket') at(t, 'back', hip * .5 + side, wb + 2.5 + h / 2, false, 'Back pocket patch');
       else if (kind === 'hem') at(t, 'front', -hip + 1 + w / 2, wb + (m.rise || 11) + 2 + side, false, 'Hem tag');
