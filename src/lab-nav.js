@@ -142,7 +142,7 @@
   let doorAt = 0;
   const door = force => { const t = (() => { try { return localStorage.getItem('fb.admin.token') || localStorage.getItem('fb.client.token') || ''; } catch { return ''; } })();
     if (!t || (!force && Date.now() - doorAt < 10 * 60e3)) return; doorAt = Date.now();
-    fetch('/v1/lab/door', { headers: { Authorization: 'Bearer ' + t }, credentials: 'same-origin', cache: 'no-store' }).catch(() => { doorAt = 0; }); };
+    fetch('/v1/lab/door', { headers: { Authorization: 'Bearer ' + t }, credentials: 'same-origin', cache: 'no-store' }).then(r => r.text()).catch(() => { doorAt = 0; }); }; // the answer is read to its end, or the request stays open in the browser (and a page never goes quiet)
   if (location.pathname === '/lab' || location.pathname.startsWith('/lab/')) { // not on the tech pack page, which borrows the step bar
     door(true); setInterval(() => door(true), 30 * 60e3);
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') door(false); });
