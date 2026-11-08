@@ -718,7 +718,7 @@ await journey('J211', 'Design Lab studio in a browser: open it from a concept, a
     await page.keyboard.press('t'); await page.mouse.click(cx, cy - 60);
     await page.waitForSelector('#pLayers textarea[data-p=text]'); await page.fill('#pLayers textarea[data-p=text]', 'BASICS DEPT.'); await page.locator('#pLayers textarea[data-p=text]').blur();
     await page.locator('#pLayers [data-p=arc]').fill('40'); await page.locator('#pLayers [data-p=arc]').dispatchEvent('change');
-    ok(await layers() === 2 && /BASICS DEPT/.test(await page.evaluate(() => JSON.stringify(serialize().layers.map(l => l.text || '')))), 'type is added where it was clicked, its words changed, and arched');
+    ok(await layers() === 2 && /BASICS DEPT/.test(await page.evaluate(async () => JSON.stringify((await serialize()).layers.map(l => l.text || '')))), 'type is added where it was clicked, its words changed, and arched');
     // our mark, recoloured with a brand colour, sitting in the fabric
     await page.click('.tabs [data-tab=add]'); await page.click('#pAdd [data-mark=word]'); await page.waitForFunction(n => document.querySelectorAll('#pLayers .ly').length === n, 3);
     await page.click('#pAdd [data-sw="#4BFF9A"], #pAdd [data-sw="#4bff9a"]');
@@ -1962,7 +1962,7 @@ await journey('J230', 'Decoration to the factory: a graphic has a real size in i
       await page.mouse.move(box.x + at[0], box.y + at[1]); await page.mouse.down(); await page.mouse.move(box.x + at[2], box.y + at[3], { steps: 6 }); await page.mouse.up();
       await page.waitForSelector('#rulerDlg[open]'); await page.fill('#rulerIn', '20'); await page.click('#rulerDlg button[value=yes]'); await page.waitForFunction(() => PPISET, null, { timeout: 5000 }).catch(() => {});
       ok(await page.evaluate(n => PPISET && Math.abs(PPI - n / 20) / (n / 20) < .03, at[4]), '   the ruler: 40% of the picture set as 20 in makes the scale', await page.evaluate(() => [PPI, PPISET]));
-      ok(await page.evaluate(() => serialize().ppi === PPI && serialize().ppiSet === true), '   and the scale is saved with the design');
+      ok(await page.evaluate(async () => { const d = await serialize(); return d.ppi === PPI && d.ppiSet === true; }), '   and the scale is saved with the design');
       // warp
       const flatW = await page.evaluate(() => inchesOf(selected()).w); await page.keyboard.press('v'); await page.click('#pLayers [data-warp=arcup]');
       const w1 = await page.evaluate(() => { const l = selected(), c = processed(l), s = contentOf(l); return { kind: l.warp && l.warp.kind, taller: c.height > s.height, svg: /<image /.test(svgDoc()) }; });

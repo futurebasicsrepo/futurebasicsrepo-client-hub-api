@@ -1006,7 +1006,7 @@ $('#verDlg').addEventListener('click',async e=>{if(e.target.closest('[data-vercl
   const vo=e.target.closest('[data-vopen]');if(vo){const n=Number(vo.dataset.vopen);if(DIRTY&&!(await ask('Open version '+n+'?','What is on the canvas now is not saved. Keep a version of it first if you want it back.')))return;busy('Opening version '+n+'…');
     try{const r=await api(`/v1/lab/concepts/${CID}/studio/versions/${n}`);if(!r.doc)throw new Error('That version has no layers');W=r.doc.w;H=r.doc.h;LAYERS=[];window.ILL?.load(r.doc);for(const o of r.doc.layers){try{LAYERS.push(await loadLayer(o))}catch{toast('A layer could not be loaded and was left out.')}}SEL=null;docC.width=W;docC.height=H;mask=canvas(W,H);maskX=mask.getContext('2d');HIST=[snap()];HI=0;syncUndo();touch();paintLayers();requestAnimationFrame(fit);$('#verDlg').close();toast(`Version ${n} is on the canvas. Save to keep working from it.`)}
     catch(x){$('#verMsg').className='msg bad';$('#verMsg').textContent=x.message}finally{busy()}return}
-  if(e.target.id==='verKeep'){const b=e.target;FBN.begin(b);try{compose();const r=await api(`/v1/lab/concepts/${CID}/studio/versions`,{body:{image:docC.toDataURL('image/png'),doc:serialize(),note:'Kept from the studio'}});FBN.end(b,true);FBN.toast(`Kept as version ${r.n}.`,'ok');await verOpen()}catch(x){FBN.end(b,false);$('#verMsg').className='msg bad';$('#verMsg').textContent=x.message}}
+  if(e.target.id==='verKeep'){const b=e.target;FBN.begin(b);try{compose();const r=await api(`/v1/lab/concepts/${CID}/studio/versions`,{body:{...(await (async()=>{const image=enc(docC),doc=serialize();return{image:await image,doc:await doc}})()),note:'Kept from the studio'}});FBN.end(b,true);FBN.toast(`Kept as version ${r.n}.`,'ok');await verOpen()}catch(x){FBN.end(b,false);$('#verMsg').className='msg bad';$('#verMsg').textContent=x.message}}
 });
 // the fabric from the materials library: choose it for the concept (its cost follows), and have the image model draw the piece in it
 let FABS=null,FABPICKS=null;
@@ -1065,13 +1065,16 @@ $('#pAi').addEventListener('click',async e=>{
 });
 
 // ---------- saving, using, exporting ----------
-function serialize(){return{...(window.ILL?ILL.docData():{}),w:W,h:H,ppi:PPI,ppiSet:PPISET,selected:SEL,linked:[...LINKING],layers:LAYERS.map(l=>{const o={};for(const[k,v]of Object.entries(l))if(!k.startsWith('_')&&k!=='raster'&&k!=='dirty')o[k]=v;
-  if(isRaster(l)&&(l.dirty||!l.src||l.kind==='paint'||l.raster._rid!==l._srcRid))o.src=l.raster.toDataURL('image/png');return o})}}
+// a picture as a PNG data: URL, made off the page's thread (src/lab-encode.js): the canvas is copied at the call, so drawing on during a save is safe
+const enc=(c,t='image/png',q)=>window.FBEnc?FBEnc.url(c,t,q):Promise.resolve(c.toDataURL(t,q));
+// the document as saved: what each layer is, now; its pictures are copied at the call and encoded together, so the page keeps drawing while they are made
+async function serialize(){const d={...(window.ILL?ILL.docData():{}),w:W,h:H,ppi:PPI,ppiSet:PPISET,selected:SEL,linked:[...LINKING]},wait=[];d.layers=LAYERS.map(l=>{const o={};for(const[k,v]of Object.entries(l))if(!k.startsWith('_')&&k!=='raster'&&k!=='dirty')o[k]=v;
+  if(isRaster(l)&&(l.dirty||!l.src||l.kind==='paint'||l.raster._rid!==l._srcRid))wait.push(enc(l.raster).then(u=>{o.src=u}));return o});await Promise.all(wait);return d}
 async function save(){if(SAVING)return SAVING_P||true;SAVING_P=(async()=>{SAVING=true;try{return await saveNow()}finally{SAVING=false;showSaved();if(DIRTY&&!HOLD)autoSoon()}})();return SAVING_P}
 let SAVING_P=null;
 async function saveNow(){const b=$('#save');b.disabled=true;$('#saved').className='saved';$('#saved').textContent='Saving…';
-  try{if(!GMODE){const sent=await syncFlats({before:flatsFirst}).catch(x=>{toast('The flats did not take the graphics: '+x.message);return false});if(sent)reloadFlats()}const doc=serialize(),at=EDITS;let r;
-    if(GMODE){compose();const image=docC.toDataURL('image/png');
+  try{if(!GMODE){const sent=await syncFlats({before:flatsFirst}).catch(x=>{toast('The flats did not take the graphics: '+x.message);return false});if(sent)reloadFlats()}const at=EDITS,doc=await serialize();let r;
+    if(GMODE){compose();const image=await enc(docC);
       // a graphic not yet in the library goes in with its first save; after that its layers are saved on it
       if(!GID){const k=await api('/v1/lab/library/studio/keep',{body:{image,name:TAGM?`Label · ${TAGM.name}`.slice(0,120):D.concept.name,doc}});GID=k.id;D.concept.hasImage=true;if(!TAGM)history.replaceState(null,'',`/lab/studio?art=${GID}`);r={savedAt:new Date().toISOString()}}
       // a tag's face is its picture: every save puts the new picture on it, not only the layers
@@ -1114,7 +1117,7 @@ $('#expBtn').onclick=e=>{e.stopPropagation();const p=$('#expPop'),open=p.classLi
 document.addEventListener('click',e=>{if(!e.target.closest('.menu')){$('#expPop').classList.add('hidden');$('#expBtn').setAttribute('aria-expanded','false')}});
 $('#expPop').addEventListener('click',e=>{const b=e.target.closest('[data-exp]');if(!b)return;$('#expPop').classList.add('hidden');const k=b.dataset.exp;compose();
   if(k==='png')download(docC.toDataURL('image/png'),fileBase()+'.png');
-  if(k==='keepnew'){const name=prompt('Name for the new graphic',(D.concept.name||'Graphic')+' (variant)');if(name===null)return;busy('Keeping it in the library…');api('/v1/lab/library/studio/keep',{body:{image:docC.toDataURL('image/png'),name,doc:serialize()}}).then(()=>toast(`"${name}" is in the graphics library now.`,'/lab/library')).catch(x=>toast(x.message)).finally(()=>busy())}
+  if(k==='keepnew'){const name=prompt('Name for the new graphic',(D.concept.name||'Graphic')+' (variant)');if(name===null)return;busy('Keeping it in the library…');Promise.all([enc(docC),serialize()]).then(([image,doc])=>api('/v1/lab/library/studio/keep',{body:{image,name,doc}})).then(()=>toast(`"${name}" is in the graphics library now.`,'/lab/library')).catch(x=>toast(x.message)).finally(()=>busy())}
   if(k==='svg'){const url=URL.createObjectURL(new Blob([svgDoc()],{type:'image/svg+xml'}));download(url,fileBase()+'-layers.svg');setTimeout(()=>URL.revokeObjectURL(url),4000)}
   if(k==='layer'){const l=selected();if(!l){toast('Choose a layer first.');return}const c=processed(l),o=canvas(c.width*l.scale,c.height*l.scale);o.getContext('2d').drawImage(c,0,0,o.width,o.height);download(o.toDataURL('image/png'),fileBase()+'-'+l.name.toLowerCase().replace(/[^a-z0-9]+/g,'-').slice(0,30)+'.png')}});
 // ---------- Illustrator round-trip: the studio's own SVG comes back as layers; any other SVG comes in as picture layers ----------
@@ -1178,14 +1181,14 @@ function ask(title,text,yes='Yes'){return new Promise(ok=>{const d=$('#askDlg');
 $('#apply').onclick=async()=>{
   if(GMODE&&TAGM){busy('Putting the design on the tag…');try{await tagSaveAll();toast('The tag shows this design now: in the materials library, on the garments that use it and in their tech packs.')}catch(x){toast(x.message)}finally{busy()}return}
   if(GMODE){busy(GID?'Updating the graphic…':'Keeping it in the library…');
-    try{compose();const image=docC.toDataURL('image/png'),doc=serialize();
+    try{compose();const[image,doc]=await Promise.all([enc(docC),serialize()]);
       if(GID&&PICK&&QS.get('fork')==='1'){const k=await api('/v1/lab/library/studio/keep',{body:{image,name:D.concept.name,doc}});GID=k.id;history.replaceState(null,'',`/lab/studio?art=${GID}&pick=1&fork=1`)}
       else if(GID){await api(`/v1/lab/library/graphics/${GID}/studio/apply`,{body:{image,doc}});toast('The graphic is updated in the library. Pieces that already use it keep what they had.','/lab/library')}
       else{const k=await api('/v1/lab/library/studio/keep',{body:{image,name:D.concept.name,doc}});GID=k.id;D.concept.hasImage=true;history.replaceState(null,'',`/lab/studio?art=${GID}${PICK?'&pick=1':''}`);paintSub();if(!PICK)toast('It is in the graphics library now. Put it on any concept or product from there.','/lab/library')}
       DIRTY=false;SAVED_AT=new Date().toISOString();showSaved();if(PICK){try{parent.FBDesign?.graphicKept?.(GID,D.concept.name)}catch{}}}catch(x){toast(x.message)}finally{busy()}return}
   if(D.concept.locked)return;
   const ok=await ask('Use this as the concept picture?',`Everything visible becomes the picture of "${D.concept.name}". Its turns (on a model: front, three-quarter, side and back) are drawn again from it straight away; its walk can be made again on the board.${D.concept.status==='approved'?' It is approved, so it goes back to draft to be approved again.':''} The picture it has now is kept and can be put back.`,'Use it');if(!ok)return;
-  busy('Saving and using it…');try{await save();compose();const r=await api(`/v1/lab/concepts/${CID}/studio/apply`,{body:{image:docC.toDataURL('image/png'),doc:serialize()}});D.concept.status=r.status;D.canRestore=true;paintSub();
+  busy('Saving and using it…');try{await save();compose();const[image,doc]=await Promise.all([enc(docC),serialize()]);const r=await api(`/v1/lab/concepts/${CID}/studio/apply`,{body:{image,doc}});D.concept.status=r.status;D.canRestore=true;paintSub();
     // the turns (the piece on a model from the front, three-quarter, side and back) are drawn again from the new picture straight away; a
     // piece nobody wears gets its front and back product views instead
     let made='';try{const v=await api(`/v1/lab/concepts/${CID}/views`,{body:{kinds:['model_front','model_34','model_side','model_back']}}).catch(async x=>{if(x.status===422)return api(`/v1/lab/concepts/${CID}/views`,{body:{kinds:['flat_front','flat_back']}});throw x});made=v?.started?` Its turns are being drawn from it (${v.started} view${v.started===1?'':'s'}); they show on the concept board in a few minutes.`:''}catch(x){made=` The turns were not started: ${x.message}`}
@@ -1706,6 +1709,7 @@ $('#tagAddGo').onclick=async()=>{const cid=$('#tagAddSel').value,b=$('#tagAddGo'
 boot();
 </script>
 <script src="/lab/lab-gl.js"></script>
+<script src="/lab/lab-encode.js"></script>
 <script src="/lab/studio-pro.js"></script>
 <script src="/lab/vendor/polygon-clipping.js"></script>
 <script src="/lab/studio-vec.js"></script>

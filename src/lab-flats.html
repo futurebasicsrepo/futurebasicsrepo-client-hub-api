@@ -131,6 +131,7 @@ textarea.t{min-height:64px;resize:vertical}
 <script>try{if(!localStorage.getItem('fb.admin.token')&&localStorage.getItem('fb.client.token'))document.documentElement.dataset.labClient='1'}catch{}</script>
 <script src="/lab/nav.js"></script>
 <script src="/lab/lab-fonts.js"></script>
+<script src="/lab/lab-encode.js"></script>
 <script type="module">
 import { rotOf, tagMarks, STYLES, FITS, SIZES, DETAILS, STITCHES, defaultDetail, describeEdit, geometry, renderSvg, viewBoxOf, templatesFor, templateOf, defaultTemplate, describe, placementChecks, overlapChecks, pomTable, defaultParams, defaultPlacement, remapEdits, measurementsFor, POM_NAMES, pomName, fitToTemplate, FLAT_PARTS, PART_KINDS, partOf, defaultPart, fmt, fmtCm, MASK_URL, drawingOf, TEMPLATE_URL } from '/lab/flats.js';
 import { panelAt, panelName } from '/lab/lab-flat-panels.js';
@@ -309,6 +310,15 @@ async function panelRaster(){const d=drawingOf(P,VIEW,$('#size').value||P.size);
   const img=new Image();img.src=drawn||TEMPLATE_URL(d.t.file);await img.decode();
   if(drawn)x.drawImage(img,0,0,W,H);else{const pg=d.t.page;x.drawImage(img,(pg[0]-bx)*S,(pg[1]-by)*S,pg[2]*S,pg[3]*S)}
   PANELRAS={key,d,S,bx,by,img:{data:x.getImageData(0,0,W,H).data,width:W,height:H}};return PANELRAS}
+// a panel found off the page's thread (src/lab-panels-worker.js): the sketch's pixels go over once per sketch, then only the taps. Where a module
+// worker cannot start (or it fails), it is found here, as before
+const PW={w:null,key:null,n:0,wait:new Map()};
+function panelWorker(){if(PW.w!==null)return PW.w;try{PW.w=new Worker('/lab/lab-panels-worker.js',{type:'module'});
+  PW.w.onmessage=e=>{const{id,panel,err}=e.data||{},p=PW.wait.get(id);if(!p)return;PW.wait.delete(id);if(err)p.no(new Error(err));else p.ok(panel)};
+  PW.w.onerror=()=>{for(const p of PW.wait.values())p.no(new Error('stopped'));PW.wait.clear();PW.w=false;PW.key=null}}catch{PW.w=false}return PW.w}
+async function panelOf(r,px,py){const w=panelWorker();if(w){try{return await new Promise((ok,no)=>{const id=++PW.n,first=PW.key!==r.key;PW.wait.set(id,{ok,no});
+    w.postMessage({id,key:r.key,at:[px,py],...(first?{img:{data:r.img.data.slice(),width:r.img.width,height:r.img.height}}:{})});PW.key=r.key})}catch{PW.key=null}}
+  return panelAt(r.img,px,py)}
 const inPoly=([x,y],pts)=>{let c=false;for(let i=0,j=pts.length-1;i<pts.length;j=i++){const[a,b]=pts[i],[e,f]=pts[j];if((b>y)!==(f>y)&&x<(e-a)*(y-b)/(f-b)+a)c=!c}return c};
 async function fillAt(X,Y){
   // a panel already coloured: it takes the new colour
@@ -317,11 +327,11 @@ async function fillAt(X,Y){
   let r;try{r=await panelRaster()}catch{r=null}if(!r){FBN.toast('This flat has no sketch to find panels on: use Block by hand','info');return}
   const toPx=(X,Y)=>[(X*r.d.sx+r.d.ox-r.bx)*r.S,(Y*r.d.sy+r.d.oy-r.by)*r.S],toIn=([px,py])=>[Math.round((r.bx+px/r.S-r.d.ox)/r.d.sx*32)/32,Math.round((r.by+py/r.S-r.d.oy)/r.d.sy*32)/32];
   const m=measurementsFor(P,$('#size').value||P.size),kind=STYLES[P.style].kind,half=((m.chest||m.waist||22))/2,length=m.length||((m.rise||0)+(m.inseam||0))||27;
-  const one=(X,Y)=>{const[px,py]=toPx(X,Y),f=panelAt(r.img,px,py);if(!f)return null;const pts=f.pts.map(toIn),xs=pts.map(q=>q[0]),ys=pts.map(q=>q[1]),box={x0:Math.min(...xs),x1:Math.max(...xs),y0:Math.min(...ys),y1:Math.max(...ys)};return{pts,box}};
-  const a=one(X,Y);if(!a){FBN.toast('No panel there: tap inside the garment, between its seams','info');return}
+  const one=async(X,Y)=>{const[px,py]=toPx(X,Y),f=await panelOf(r,px,py);if(!f)return null;const pts=f.pts.map(toIn),xs=pts.map(q=>q[0]),ys=pts.map(q=>q[1]),box={x0:Math.min(...xs),x1:Math.max(...xs),y0:Math.min(...ys),y1:Math.max(...ys)};return{pts,box}};
+  const a=await one(X,Y);if(!a){FBN.toast('No panel there: tap inside the garment, between its seams','info');return}
   const name=panelName(a.box,{kind,half,length}),made=[{id:newId('b'),type:'block',view:VIEW,pts:a.pts,color:NEWBL.color,name,traced:true}];
   // the same panel on the other side (the other sleeve, cuff or hood half), when the tap was off the centre line
-  if(NEWBL.both&&Math.abs((a.box.x0+a.box.x1)/2)>.75&&!(a.box.x0<0&&a.box.x1>0)){const b=one(-X,Y);if(b&&!(Math.abs(b.box.x0-a.box.x0)<.3&&Math.abs(b.box.x1-a.box.x1)<.3)&&!P.edits.some(e=>e.type==='block'&&e.view===VIEW&&inPoly([-X,Y],e.pts)))made.push({id:newId('b'),type:'block',view:VIEW,pts:b.pts,color:NEWBL.color,name,traced:true})}
+  if(NEWBL.both&&Math.abs((a.box.x0+a.box.x1)/2)>.75&&!(a.box.x0<0&&a.box.x1>0)){const b=await one(-X,Y);if(b&&!(Math.abs(b.box.x0-a.box.x0)<.3&&Math.abs(b.box.x1-a.box.x1)<.3)&&!P.edits.some(e=>e.type==='block'&&e.view===VIEW&&inPoly([-X,Y],e.pts)))made.push({id:newId('b'),type:'block',view:VIEW,pts:b.pts,color:NEWBL.color,name,traced:true})}
   P.edits.push(...made);SELE=made[0].id;touch();paint();FBN.toast(made.length>1?`${name}s coloured, both sides`:`${name} coloured`,'ok')}
 function finishDraft(){const pts=DRAFT.filter((q,i)=>!i||Math.hypot(q[0]-DRAFT[i-1][0],q[1]-DRAFT[i-1][1])>.1);let e=null;
   if(MODE==='stitch'&&pts.length>=2)e={id:newId('s'),type:'stitch',view:VIEW,pts,stitch:NEWST.stitch,thread:NEWST.thread==='#141416'?'':NEWST.thread,spi:0};
@@ -851,9 +861,10 @@ const mkUp=e=>{const g=MDRAG;if(!g||(e.pointerId!==undefined&&g.pid!==e.pointerI
 ['touchstart','touchmove'].forEach(t=>$('#canvas').addEventListener(t,e=>{if(MKW.classList.contains('on')&&[...e.changedTouches].some(x=>x.touchType==='stylus'))e.preventDefault()},{passive:false}));
 // at save: each view drawn on since the last save is kept as a picture; one rubbed out completely is dropped
 async function mkUpload(){const tpl=mkTpl();for(const v of ['front','back']){const m=MK[v];if(!m)continue;if(m.tpl!==tpl){delete MK[v];if(P.markup)delete P.markup[v];continue}if(!m.dirty)continue;
-    const d=mkSnap(m).data;let ink=false;for(let i=3;i<d.length;i+=4)if(d[i]){ink=true;break}
-    if(!ink){if(P.markup)delete P.markup[v];m.dirty=false;continue}
-    const r=await api(`/v1/lab/concepts/${CID}/flats/markup`,{body:{view:v,png:m.cv.toDataURL('image/png')}});m.art=r.art;m.dirty=false;P.markup={...(P.markup||{}),template:tpl,[v]:{art:r.art,x:m.x,y:m.y,w:m.w,h:m.h}}}
+    // whether anything is drawn, and its picture, made off the page's thread (src/lab-encode.js); drawn on again meanwhile, it stays to be saved next time
+    const ver=m.ver,png=window.FBEnc?await FBEnc.drawn(m.cv):m.cv.toDataURL('image/png');
+    if(!png){if(P.markup)delete P.markup[v];m.dirty=m.ver!==ver;continue}
+    const r=await api(`/v1/lab/concepts/${CID}/flats/markup`,{body:{view:v,png}});m.art=r.art;m.dirty=m.ver!==ver;P.markup={...(P.markup||{}),template:tpl,[v]:{art:r.art,x:m.x,y:m.y,w:m.w,h:m.h}}}
   if(P.markup&&!P.markup.front&&!P.markup.back)delete P.markup;else if(P.markup)P.markup.template=tpl}
 
 // ---------- the service: the artwork check, saving, the spec sheet, the tech pack ----------
