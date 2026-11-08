@@ -1,7 +1,6 @@
 // The Studio (/lab/studio), part 4 of 5: opening the design, real size, warp, tone on tone, colour separations, embroidery.
-// The five parts are classic scripts that share one global scope, loaded in order by lab-studio.html (core, layers, io, open,
-// workspace); a later part may use what an earlier one declared at any time, an earlier one may use a later one's only inside functions
-// that run after the page has loaded. scripts/studio-split-check.mjs checks that.
+// The five parts are one script, served joined in order (core, layers, io, open, workspace) as /lab/studio-main.js (src/server.js), so
+// they share one scope exactly as the single inline script they were cut from did; they are separate files to be read and changed.
 // ---------- opening the design: the saved layers, or the concept's picture as the base ----------
 async function loadLayer(o){
   const l={...fresh(o.kind),...o,adjust:{...fresh(o.kind).adjust,...(o.adjust||{})},tint:{...fresh(o.kind).tint,...(o.tint||{})},distress:{...fresh(o.kind).distress,...(o.distress||{})},finish:o.finish&&o.finish.id?{...o.finish,distress:{...(o.finish.distress||{})}}:null};

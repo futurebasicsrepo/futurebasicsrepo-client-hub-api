@@ -1,7 +1,6 @@
 // The Studio (/lab/studio), part 5 of 5: one workspace with the flats, one placement model, Simple and Pro, the checklist, fabrics and trims, room for the drawing, tags; then boot().
-// The five parts are classic scripts that share one global scope, loaded in order by lab-studio.html (core, layers, io, open,
-// workspace); a later part may use what an earlier one declared at any time, an earlier one may use a later one's only inside functions
-// that run after the page has loaded. scripts/studio-split-check.mjs checks that.
+// The five parts are one script, served joined in order (core, layers, io, open, workspace) as /lab/studio-main.js (src/server.js), so
+// they share one scope exactly as the single inline script they were cut from did; they are separate files to be read and changed.
 // ---------- one workspace: the picture and its flats ----------
 // The flats page runs in a frame beside or instead of the picture (?embed=full: its own panel of Placements, Design, Garment, Measurements;
 // ?embed=compact: the drawing alone, for side by side). The header, the view switch and Save are this page's. The frame loads the first
