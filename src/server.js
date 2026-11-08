@@ -836,6 +836,8 @@ app.get('/lab', (_req, reply) => reply.header('cache-control', 'no-store, max-ag
 // the studio may be framed by itself: the flats panel opens it as the graphic studio in a window over the piece (frame-ancestors 'self', the rest as everywhere)
 // The scripts the Studio loads, and the file each comes from: the page names each as /lab/….js?v=<a hash of the file>, so a change to a file is a
 // new address (fetched once) and an unchanged one is taken from the browser's cache (see the onSend hook above)
+// the Studio's own script: five source files served joined, in order, as /lab/studio-main.js (below)
+const STUDIO_PARTS = ['core', 'layers', 'io', 'open', 'workspace'].map(p => `./lab-studio-${p}.js`);
 const STUDIO_SCRIPTS = { '/lab/finish.js': './lab-finish.js', '/lab/nav.js': './lab-nav.js', '/lab/lab-fonts.js': './lab-fonts.js', '/lab/lab-gl.js': './lab-gl.js', '/lab/lab-encode.js': './lab-encode.js',
   '/lab/studio-main.js': STUDIO_PARTS,
   '/lab/studio-pro.js': './lab-studio-pro.js', '/lab/vendor/polygon-clipping.js': './vendor/polygon-clipping.min.js', '/lab/studio-vec.js': './lab-studio-vec.js', '/lab/studio-ill.js': './lab-studio-ill.js', '/lab/studio-tools.js': './lab-studio-tools.js',
@@ -852,7 +854,6 @@ app.get('/lab/recipe', (_req, reply) => reply.header('cache-control', 'no-store,
 app.get('/lab/nav.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-nav.js', import.meta.url), 'utf8')));
 // The Studio's own script: five source files (src/lab-studio-core.js … lab-studio-workspace.js) served joined, in order, as one script, so
 // the page runs it exactly as one (a frame or a timer can never fire between two parts and find a name the next part has not declared yet)
-const STUDIO_PARTS = ['core', 'layers', 'io', 'open', 'workspace'].map(p => `./lab-studio-${p}.js`);
 const studioMain = () => STUDIO_PARTS.map(f => readFileSync(new URL(f, import.meta.url), 'utf8')).join('\n');
 app.get('/lab/studio-main.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(studioMain()));
 app.get('/lab/studio-pro.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-studio-pro.js', import.meta.url), 'utf8')));
