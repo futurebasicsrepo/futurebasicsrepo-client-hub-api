@@ -32,14 +32,14 @@ export function tagOutline(shape, w, h) {
 
 // → an SVG string of the tag at scale (px per mm), with its fold, eyelet, string and the words on it. `art` is an image href drawn in the middle.
 // `face` is the tag's whole face as designed in the studio (fonts, words, graphics): it fills the outline and stands in for the words
-export function tagSvg(spec = {}, { scale = 3, art = '', face = '', textLines = null, fill = '', ink = '#141416', showSize = true } = {}) {
+export function tagSvg(spec = {}, { scale = 3, art = '', face = '', textLines = null, fill = '', ink = '#141416', showSize = true, brand = '' } = {}) {
   const w = Math.max(5, Number(spec.widthMm) || 40), h = Math.max(5, Number(spec.heightMm) || 20), shape = TAG_SHAPES.includes(spec.shape) ? spec.shape : 'rectangle', fold = spec.fold || 'none';
   const mat = String(spec.material || ''), paper = /paper|board|tyvek/.test(mat), leather = /leather/.test(mat), metal = /metal/.test(mat), rubber = /rubber/.test(mat);
   const bg = fill || (paper ? '#f4efe4' : leather ? '#6b4a2b' : metal ? '#b9b9bd' : rubber ? '#2a2a2e' : '#f7f6f2'), fg = fill ? ink : (leather || rubber ? '#f3eee4' : ink);
   const pad = 14, hang = spec.tagKind === 'hang' || /string/.test(String(spec.attach || '')), stringLen = hang && spec.string && spec.string !== 'none' ? h * .9 : 0;
   const W = (w + pad * 2) * scale, H = (h + pad * 2 + stringLen) * scale, ox = pad * scale, oy = (pad + stringLen) * scale, s = scale;
   const outline = tagOutline(shape, w, h);
-  const lines = (Array.isArray(textLines) ? textLines : Array.isArray(spec.text) ? spec.text : String(spec.text || '').split(/\n|\//)).map(t => String(t).trim()).filter(Boolean).slice(0, 4);
+  const lines = brandWords((Array.isArray(textLines) ? textLines : Array.isArray(spec.text) ? spec.text : String(spec.text || '').split(/\n|\//)).map(t => String(t).trim()).filter(Boolean), brand).slice(0, 4);
   const fs = Math.max(2.2, Math.min(h * .28, w * .86 / (Math.max(6, Math.max(...lines.map(l => l.length), 1)) * .7)));
   const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   let body = `<g transform="translate(${ox} ${oy}) scale(${s})">`;
@@ -77,12 +77,15 @@ export function tagWords(spec = {}) {
 
 // → an SVG of the tag's blank face only, exactly its size (no margin, string or words): the base the studio designs the face on
 const SIZE_WORD = /^(XXS|XS|S|M|L|XL|XXL|XXXL|[2-5]XL|OS|ONE SIZE)$/i;
-export function tagFaceSvg(spec = {}, { pxPerMm = 12, fill = '', size = '', words = true } = {}) {
+// the house words on the starter labels: on a client's piece they become the client's own brand (a label a room designed keeps its own words)
+const HOUSE = /^(FUTURE BASICS|FB)$/i;
+export const brandWords = (lines, brand) => { const b = String(brand || '').trim(); return b ? lines.map(t => (HOUSE.test(String(t).trim()) ? b.toUpperCase() : t)) : lines; };
+export function tagFaceSvg(spec = {}, { pxPerMm = 12, fill = '', size = '', words = true, brand = '' } = {}) {
   const w = Math.max(5, Number(spec.widthMm) || 40), h = Math.max(5, Number(spec.heightMm) || 20), shape = TAG_SHAPES.includes(spec.shape) ? spec.shape : 'rectangle', mat = String(spec.material || '');
   const paper = /paper|board|tyvek/.test(mat), leather = /leather/.test(mat), metal = /metal/.test(mat), rubber = /rubber/.test(mat), bg = fill || (paper ? '#f4efe4' : leather ? '#6b4a2b' : metal ? '#b9b9bd' : rubber ? '#2a2a2e' : '#f7f6f2');
   const outline = tagOutline(shape, w, h), weave = /woven|jacquard/.test(mat) ? `<path d="${outline}" fill="url(#weave)" opacity=".3"/>` : '';
   const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const lines = !words ? [] : (Array.isArray(spec.text) ? spec.text : String(spec.text || '').split(/\n|\//)).map(t => String(t).trim()).filter(Boolean).map(t => (size && SIZE_WORD.test(t) ? String(size).toUpperCase() : t)).slice(0, h < 14 ? 1 : h < 24 ? 2 : 3);
+  const lines = !words ? [] : brandWords((Array.isArray(spec.text) ? spec.text : String(spec.text || '').split(/\n|\//)).map(t => String(t).trim()).filter(Boolean), brand).map(t => (size && SIZE_WORD.test(t) ? String(size).toUpperCase() : t)).slice(0, h < 14 ? 1 : h < 24 ? 2 : 3);
   const lum = c => { const m = /^#?([0-9a-f]{6})$/i.exec(c || ''); if (!m) return 1; const n = parseInt(m[1], 16); return (0.2126 * (n >> 16) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255)) / 255; }, ink = lum(bg) < .5 ? '#f3eee4' : '#141416';
   const fs = lines.length ? Math.max(1.6, Math.min(h * (lines.length > 1 ? .3 : .45), w * .88 / (Math.max(...lines.map(l => l.length), 1) * .62))) : 0;
   const text = lines.map((t, i) => `<text x="${w / 2}" y="${h / 2 + (i - (lines.length - 1) / 2) * fs * 1.2 + fs * .35}" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="${i === 0 ? 700 : 400}" font-size="${(i === 0 ? fs : fs * .82).toFixed(2)}" letter-spacing="${(fs * .06).toFixed(2)}" fill="${ink}">${esc(t)}</text>`).join('');

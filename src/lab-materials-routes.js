@@ -56,7 +56,8 @@ export function registerLabMaterialsRoutes(app, d) {
     if (clip(q.q, 80)) { args.push(`%${clip(q.q, 80).toLowerCase()}%`); where.push(`(lower(name) like $${args.length} or lower(code) like $${args.length} or lower(supplier) like $${args.length} or lower(spec::text) like $${args.length})`); }
     if (clip(q.for, 20)) { args.push(clip(q.for, 20).toLowerCase()); where.push(`(kind <> 'tag' or spec->'for' ? $${args.length})`); }
     const rows = (await pool.query(`select ${COLS} from lab_materials where ${where.join(' and ')} order by array_position($${args.length + 1}::text[], kind), builtin desc, name limit 400`, [...args, MATERIAL_KINDS.map(k => k.id)])).rows;
-    return { materials: rows.map(r => ({ ...shape(r), editable: mine(req, r), room: own(req) ? '' : r.room_name || '' })), options: options(), client: Boolean(own(req)) };
+    const brand = own(req) ? (await pool.query('select name from clients where id=$1', [own(req)])).rows[0]?.name || '' : ''; // a room's labels carry its own brand
+    return { materials: rows.map(r => ({ ...shape(r), editable: mine(req, r), room: own(req) ? '' : r.room_name || '' })), options: options(), client: Boolean(own(req)), brand };
   });
   app.post('/v1/lab/materials', { preHandler: pre, bodyLimit: 12_000_000 }, async (req, reply) => {
     const c = cleanMaterial(req.body || {}); if (c.error) return bad(reply, c.error); const x = c.material;
@@ -94,7 +95,8 @@ export function registerLabMaterialsRoutes(app, d) {
     if (!need(req, reply)) return; const m = await one(req.params.id); if (!m || m.kind !== 'tag') return bad(reply, 'Not found', 404);
     const q = req.query || {}, text = q.text ? String(q.text).split('/').map(t => clip(t, 40)).filter(Boolean) : null;
     const facePng = UUID.test(String(m.spec?.face || '')) ? (await pool.query('select png from lab_art where id=$1', [m.spec.face])).rows[0]?.png : null; // the designed face goes inside the picture, so it shows wherever the SVG is opened
-    return reply.header('content-type', 'image/svg+xml').header('cache-control', 'private, max-age=600').send(tagSvg(m.spec, { scale: Number(q.scale) || 3, textLines: text, art: UUID.test(String(m.spec?.art || '')) ? `/v1/lab/art/${m.spec.art}` : '', face: facePng ? `data:image/png;base64,${facePng.toString('base64')}` : '' }));
+    const brand = clip(q.brand, 40) || (own(req) ? (await pool.query('select name from clients where id=$1', [own(req)])).rows[0]?.name || '' : '');
+    return reply.header('content-type', 'image/svg+xml').header('cache-control', 'private, max-age=600').send(tagSvg(m.spec, { brand, scale: Number(q.scale) || 3, textLines: text, art: UUID.test(String(m.spec?.art || '')) ? `/v1/lab/art/${m.spec.art}` : '', face: facePng ? `data:image/png;base64,${facePng.toString('base64')}` : '' }));
   });
 
   // ---- what a concept is made of ----
