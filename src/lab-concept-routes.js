@@ -77,7 +77,8 @@ export function registerLabConceptRoutes(app, d) {
     if (brand) for (const c of gen.concepts) c.spec = { ...c.spec, branding: { ...(c.spec.branding || {}), logo: { ...(c.spec.branding?.logo || {}), mark: 'none' } } };
     if (!gen.concepts.length) throw Object.assign(new Error('The assistant did not come back with usable concepts. Try again, or change the note.'), { status: 502 });
     const cfg = imageCfg(), refLite = refs.map(r => ({ id: r.id, title: r.title, brand: r.brand, attrs: r.attrs || {}, summary: r.summary }));
-    const made = await Promise.all(gen.concepts.map(async c => {
+    const t0 = Date.now(); // each is kept as it is drawn, but dated in the order the assistant wrote them, so the board lists them the same way every time
+    const made = await Promise.all(gen.concepts.map(async (c, i) => {
       const concept = { ...c, category: line.category };
       let img = null, imageNote = '';
       if (!cfg.configured) imageNote = 'No image model is connected, so this concept has no picture yet.';
@@ -89,14 +90,14 @@ export function registerLabConceptRoutes(app, d) {
       let ai = null, cents = gen.costCents / gen.concepts.length;
       try { const o = await aiOpinion({ concept, refs: refLite, code, askImpl, env, fetchImpl }); ai = o.ai; cents += o.costCents; } catch (e) { log.warn?.({ err: e.message }, 'design lab second opinion failed'); }
       // kept the moment it is drawn and checked, not when all of them are: a restart part way through loses only the ones still being drawn
-      return keep({ c, img, imageNote, close: closeness(concept, refLite, { brandNames: names, ai }), cents });
+      return keep({ c, img, imageNote, close: closeness(concept, refLite, { brandNames: names, ai }), cents, at: new Date(t0 + i) });
     }));
     if (line.id) await pool.query(`update lab_plan_lines set status='in_concept' where id=$1 and status='planned'`, [line.id]);
     return made;
     async function keep(m) {
-      const r = (await pool.query(`insert into lab_concepts(plan_id,line_id,parent_id,name,category,role,spec,twist,price_cents,cost_cents,qty,refs,image,thumb,image_note,closeness,created_by,cost_ai,raw)
-        values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) returning id`,
-      [plan?.id || null, line.id || null, parent?.id || null, m.c.name, line.category, line.role, m.c.spec, m.c.twist, line.priceCents ?? null, line.costCents ?? null, line.qty ?? 0, refs.map(r => r.id), m.img?.image || null, m.img?.thumb || null, m.imageNote, m.close, actorOf(req), m.cents, m.img?.raw || null])).rows[0];
+      const r = (await pool.query(`insert into lab_concepts(plan_id,line_id,parent_id,name,category,role,spec,twist,price_cents,cost_cents,qty,refs,image,thumb,image_note,closeness,created_by,cost_ai,raw,created_at)
+        values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) returning id`,
+      [plan?.id || null, line.id || null, parent?.id || null, m.c.name, line.category, line.role, m.c.spec, m.c.twist, line.priceCents ?? null, line.costCents ?? null, line.qty ?? 0, refs.map(r => r.id), m.img?.image || null, m.img?.thumb || null, m.imageNote, m.close, actorOf(req), m.cents, m.img?.raw || null, m.at])).rows[0];
       return one(r.id);
     }
   }
