@@ -99,8 +99,10 @@ function envAt(kind,t,a,size,lw){const S=Math.sin(Math.PI*t);switch(kind){case'b
   case'flag':{const A=a*size*.28;return{dy:A*Math.sin(2*Math.PI*t),sy:1,rot:Math.atan(A*2*Math.PI*Math.cos(2*Math.PI*t)/Math.max(1,lw))}}case'wave':{const A=a*size*.22;return{dy:A*Math.sin(4*Math.PI*t),sy:1,rot:Math.atan(A*4*Math.PI*Math.cos(4*Math.PI*t)/Math.max(1,lw))}}
   case'rise':{const A=a*size*.9;return{dy:-A*(t-.5),sy:1,rot:Math.atan(-A/Math.max(1,lw))}}case'grow':return{dy:0,sy:Math.max(.2,1+a*(t-.5)*1.4),rot:0,base:true};default:return{dy:0,sy:1,rot:0}}}
 function textMetrics(l){
+  // a type layer with no size yet (one opened from an older save, or half made) is set at the usual size rather than throwing on its font
+  if(!(Number(l.size)>0))l.size=96;
   const x=docX,font=`${l.italic?'italic ':''}${l.bold?'700':'400'} ${l.size}px ${FONTS[l.font]?.[1]||FONTS.grotesk[1]}`;x.save();x.font=font;
-  if(document.fonts&&!document.fonts.check(font))document.fonts.load(font).then(()=>{if(document.fonts.check(font)){l._pk=null;l._pc=null;l._tk=null;draw()}}).catch(()=>{});
+  try{if(document.fonts&&!document.fonts.check(font))document.fonts.load(font).then(()=>{if(document.fonts.check(font)){l._pk=null;l._pc=null;l._tk=null;draw()}}).catch(()=>{})}catch{}
   const lines=caseOf(String(l.text||' '),l.case).split('\n'),lw=lines.map(t=>[...t].reduce((s,ch)=>s+x.measureText(ch).width,0)+Math.max(0,[...t].length-1)*l.track);x.restore();return{font,lines,lw}}
 function contentOf(l){
   if(isRaster(l))return l.raster;

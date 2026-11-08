@@ -65,6 +65,13 @@ const brave = http.createServer((q, s) => {
 await new Promise(r => brave.listen(3133, '127.0.0.1', r));
 // the page asks its questions in its own box (the browser's prompt() can be switched off): type the answer and continue
 const say = async (page, text) => { await page.waitForSelector('dialog.ask[open] textarea', { timeout: 8000 }); await page.fill('dialog.ask[open] textarea', text); await page.click('dialog.ask[open] button.go'); await page.waitForFunction(() => !document.querySelector('dialog.ask[open]'), null, { timeout: 4000 }); };
+// the flats keep the sheets in their own panel (the Sheets tab): open it and say whether the spec and decoration sheets are there
+const flatSheets = async F => { await F.click('.tabs [data-tab=sheets]'); return await F.isVisible('#pSheets [data-sheet=spec]') && await F.isVisible('#pSheets [data-sheet=deco]'); };
+// on the flats, the fabrics, trims and labels window opens from the Garment tab
+const flatMats = async page => { const F = await (await page.waitForSelector('#flatFrame')).contentFrame(); await F.waitForSelector('.tabs [data-tab=garment]', { timeout: 20000 }); await F.click('.tabs [data-tab=garment]'); await F.click('[data-mats]'); };
+// a recipe piece on its flats: Edit recipe is in the flats' Garment tab (on the picture it is in the top bar)
+const flatRecipe = async page => { const F = await (await page.waitForSelector('#flatFrame')).contentFrame(); await F.waitForSelector('.tabs [data-tab=garment]', { timeout: 20000 });
+  return F.evaluate(() => { document.querySelector('.tabs [data-tab=garment]').click(); return Boolean(document.querySelector('#pGarment a[href*="/lab/recipe?concept="]')); }); };
 const SCAN = async (id) => (await K(`/brands/${id}/scan?wait=1`, { method: 'POST', body: {} }));
 // a brand on the watchlist; a refusal says why, rather than leaving the next line to read a property of nothing
 const mkBrand = async (name, site, role = 'reference') => { const r = await K('/brands', { body: { name: `${name} ${stamp}`, site, role } }); if (!r.json.brand) throw new Error(`mkBrand ${name}: ${r.status} ${r.json.error || ''}`); return r.json.brand; };
@@ -951,7 +958,7 @@ await journey('J214', 'Design Lab flats: a concept becomes measured front and ba
     const edited = { ...body, color: '#1f2a44', edits: [{ id: 'pk', type: 'detail', kind: 'pocket-patch', view: 'front', x: -5, y: 10, w: 4.5, h: 5, stitch: 'double', thread: '#e0218a' }, { id: 'hm', type: 'stitch', view: 'back', pts: [[-10, 26], [10, 26]], stitch: 'cover' }, rd.json.edit] };
     ok((await F('', { method: 'PUT', body: edited })).status === 200 && (await F()).json.flat.edits.length === 3, 'the edits are saved with the flats');
     const svg2 = await (await fetch(`${BASE}/v1/lab/concepts/${c.id}/flats/sheet.svg`, { headers: { Authorization: 'Bearer ' + kyleT } })).text();
-    ok(/Colour, details and stitching/.test(svg2) && /Main colour #1f2a44/.test(svg2) && /Patch pocket/.test(svg2) && /double needle in #e0218a thread/.test(svg2) && /Coverstitch/.test(svg2) && /redrawn: make this a welt pocket/.test(svg2) && /<image href="data:image\/png;base64,/.test(svg2), 'the spec sheet shows the colour and lists every detail and stitch for the factory');
+    ok(/Colour, (wash, )?details and stitching/.test(svg2) && /Main colour #1f2a44/.test(svg2) && /Patch pocket/.test(svg2) && /double needle in #e0218a thread/.test(svg2) && /Coverstitch/.test(svg2) && /redrawn: make this a welt pocket/.test(svg2) && /<image href="data:image\/png;base64,/.test(svg2), 'the spec sheet shows the colour and lists every detail and stitch for the factory');
     ok((await sharp(Buffer.from(svg2)).png().toBuffer()).length > 10000, 'and still renders');
     await F('', { method: 'PUT', body });
 
@@ -1596,7 +1603,7 @@ await journey('J215', 'Design Lab flats in a browser: open them from a concept, 
     await page.click('#save'); await F.waitForFunction(() => /^Saved/.test(document.getElementById('saved').textContent), null, { timeout: 15000 });
     const row = sql(`select params->>'fit' || ':' || (params->'m'->>'length') from lab_flats where concept_id='${c.id}'`); ok(row === 'oversized:31', 'saved, as changed', row);
     const eds = sql(`select (params->>'color') || ':' || jsonb_array_length(params->'edits') from lab_flats where concept_id='${c.id}'`); ok(eds === '#1f2a44:3', 'with its colour and its three changes', eds);
-    const [popup] = await Promise.all([page.waitForEvent('popup'), page.click('#specBtn')]); await popup.waitForLoadState(); ok(/Spec sheet/.test(await popup.title()), 'the spec sheet opens to print', await popup.title()); await popup.close();
+    await F.click('.tabs [data-tab=sheets]'); const [popup] = await Promise.all([page.waitForEvent('popup'), F.click('#pSheets [data-sheet=spec]')]); await popup.waitForLoadState(); ok(/Spec sheet/.test(await popup.title()), 'the spec sheet opens to print', await popup.title()); await popup.close();
     await F.click('.tabs [data-tab=pl]'); await page.click('#viewSeg [data-v=front]'); await F.check('#showPom');
     await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/lab-flats.png` }).catch(() => {});
     ok(errs.length === 0, 'no page errors', errs); await oc.close();
@@ -1705,12 +1712,16 @@ await journey('J227', 'Every tool in the studio works: each rail tool and zoom b
 
     // 1. the rail and the zoom
     const tools = await page.$$eval('.rail [data-tool]', els => els.map(e => e.dataset.tool)); let railOk = 0;
-    for (const t of tools) { await page.click(`.rail [data-tool="${t}"]`);
+    // a tool that shares a group with others sits behind the one showing: open the group (a right click, as a hold on a tablet) and pick it
+    const pick = async t => { const sel = `.rail [data-tool="${t}"]`; if (await page.isVisible(sel)) return page.click(sel);
+      const head = await page.evaluate(x => { const g = document.querySelector(`.rail [data-tool="${x}"]`).dataset.grp; return [...document.querySelectorAll(`.rail [data-grp="${g}"]`)].find(b => !b.classList.contains('tg-off'))?.dataset.tool; }, t);
+      await page.click(`.rail [data-tool="${head}"]`, { button: 'right' }); await page.click(`#toolFly [data-fly="${t}"]`); };
+    for (const t of tools) { await pick(t);
       // the shape builder needs two shapes chosen: with fewer it says so and goes back to Select
       if (t === 'shapebuilder') { if (await page.evaluate(() => TOOL === 'select' && /Choose two shapes/.test(document.getElementById('stToast')?.textContent || ''))) railOk++; continue; }
       if (await page.evaluate(x => TOOL === x && document.querySelector(`.rail [data-tool="${x}"]`).getAttribute('aria-pressed') === 'true', t) && (await page.innerText('#opts')).trim().length > 0) railOk++; }
-    ok(railOk === tools.length && tools.length === 20, `1. every rail tool selects and shows its options (${tools.join(', ')})`, railOk);
-    const z0 = await page.innerText('#zLabel'); await page.click('#zIn'); await page.waitForFunction(z => document.getElementById('zLabel').textContent !== z, z0); const z1 = await page.innerText('#zLabel'); await page.click('#zOut'); await page.waitForFunction(z => document.getElementById('zLabel').textContent !== z, z1); await page.click('#zFit'); await page.waitForFunction(z => document.getElementById('zLabel').textContent === z, z0);
+    ok(railOk === tools.length && tools.length === 24, `1. every rail tool selects and shows its options (${tools.join(', ')})`, railOk);
+    await page.click('#zFit'); await page.waitForTimeout(200); const z0 = await page.innerText('#zLabel'); await page.click('#zIn'); await page.waitForFunction(z => document.getElementById('zLabel').textContent !== z, z0); const z1 = await page.innerText('#zLabel'); await page.click('#zOut'); await page.waitForFunction(z => document.getElementById('zLabel').textContent !== z, z1); await page.click('#zFit'); await page.waitForFunction(z => document.getElementById('zLabel').textContent === z, z0);
     ok(parseInt(z1) > parseInt(z0), '   zoom in, out and fit', [z0, z1]);
 
     // 2. Add
@@ -1814,8 +1825,11 @@ await journey('J228', 'The smaller items: custom fonts (uploaded once, set in ty
         // fonts in the studio
         ok(await page.evaluate(k => Boolean(FONTS[k]) && document.fonts.check("16px 'fb-test-grotesk'"), 'f_' + F.id), '3. the studio loaded the font from the Lab and the browser can set type in it');
         await page.keyboard.press('t'); await page.mouse.click(cx, cy - 80); await page.waitForSelector('#pLayers textarea[data-p=text]'); await page.fill('#pLayers textarea[data-p=text]', 'ROUND TRIP'); await page.locator('#pLayers textarea[data-p=text]').blur();
-        ok((await page.locator('#pLayers [data-p=font] optgroup').count()) === 2 && (await page.locator('#pLayers [data-act=addfont]').count()) === 1, '   the type panel offers Built in and Our fonts, and Add a font…');
-        await page.selectOption('#pLayers [data-p=font]', 'f_' + F.id); ok(await page.evaluate(k => selected().font === k, 'f_' + F.id), '   the type is set in it');
+        // the font is chosen from the Fonts window (every font set in the words themselves, by kind: the studio's, the library's, ours uploaded)
+        ok((await page.locator('#pLayers [data-fontpick]').count()) === 1 && (await page.locator('#pLayers [data-act=addfont]').count()) === 1, '   the type panel offers the fonts, and Add a font…');
+        await page.click('#pLayers [data-fontpick]'); await page.waitForSelector('#fontDlg[open]');
+        ok(await page.locator('#fontDlg [data-fcat="Uploaded"]').count() === 1, '   the Fonts window lists ours under Uploaded');
+        await page.click(`#fontDlg [data-fk="f_${F.id}"]`); await page.waitForFunction(k => selected().font === k, 'f_' + F.id, { timeout: 10000 }).catch(() => {}); ok(await page.evaluate(k => selected().font === k, 'f_' + F.id), '   the type is set in it');
         await page.keyboard.press('r'); await page.mouse.move(cx - 60, cy + 40); await page.mouse.down(); await page.mouse.move(cx + 60, cy + 120, { steps: 4 }); await page.mouse.up(); await page.waitForFunction(() => selected().kind === 'shape');
         const svgText = await page.evaluate(() => svgDoc()); ok(/font-family="Test Grotesk"/.test(svgText) && /<rect /.test(svgText) && (svgText.match(/<g /g) || []).length === 3, '4. the export names the font, keeps the rectangle as a shape, one group per layer');
         // the round trip: edit the text in the file, bring it back
@@ -1866,6 +1880,8 @@ await journey('J229', 'Made as: a mark or graphic in the studio is made as any o
       await page.goto(`${BASE}/lab/studio?concept=${c.id}`, { waitUntil: 'networkidle' }); await page.waitForSelector('#pLayers .ly', { timeout: 20000 }); await page.waitForFunction(() => !document.querySelector('#busy:not(.hidden)'));
       await page.click('.tabs [data-tab=add]'); await page.click('#pAdd [data-mark=word]'); await page.waitForFunction(() => LAYERS.length === 2); await page.click('.tabs [data-tab=layers]'); await page.waitForSelector('#pLayers [data-tkind]');
       const fin = () => page.evaluate(() => { const l = selected(); return l.finish ? { id: l.finish.id, name: l.finish.name, effect: l.finish.effect, raise: l.finish.raise } : null; });
+      // the previews are drawn one at a time between frames, so the panel opens at once and fills in
+      await page.waitForFunction(() => [...document.querySelectorAll('#pLayers [data-tapply] img')].every(i => i.getAttribute('src').startsWith('data:image/png')), null, { timeout: 15000 }).catch(() => {});
       ok((await page.locator('#pLayers [data-tkind]').count()) === 6 && (await page.locator('#pLayers [data-tapply]:not([data-tapply=""])').count()) === byKind('embroidery').length && (await page.$$eval('#pLayers [data-tapply] img', els => els.every(i => i.getAttribute('src').startsWith('data:image/png')))), '2. the wordmark\'s panel opens on Made as: six kinds, and a drawn preview for every embroidery');
       const puff = T.find(t => t.key === 'puff-embroidery'); await page.click(`#pLayers [data-tapply="${puff.id}"]`); await page.waitForFunction(() => selected().finish && selected().finish.id, null, { timeout: 5000 });
       const f1 = await fin(); ok(f1.id === puff.id && f1.effect === 'stitch' && f1.raise === 6, '   one click makes it 3D puff embroidery, drawn on the layer', f1);
@@ -1983,7 +1999,7 @@ await journey('J230', 'Decoration to the factory: a graphic has a real size in i
       await page.click('#save'); await page.waitForFunction(() => !DIRTY, null, { timeout: 15000 });
       const d = (await K(`/concepts/${sc.id}/studio`)).json.doc; ok(d && d.ppiSet === true && d.ppi > 1, '   saved: the scale set with the ruler comes back next time', d && [d.ppi, d.ppiSet]);
       // flats and the plan page
-      await page.goto(`${BASE}/lab/studio?concept=${c.id}&view=front`, { waitUntil: 'networkidle' }); await page.waitForSelector('#app[data-v=front]'); ok(await page.isVisible('#decoBtn') && await page.isVisible('#specBtn'), '11. the flats, in Design, have a Decoration sheet button');
+      await page.goto(`${BASE}/lab/studio?concept=${c.id}&view=front`, { waitUntil: 'networkidle' }); await page.waitForSelector('#app[data-v=front]'); { const F = await (await page.waitForSelector('#flatFrame')).contentFrame(); await F.waitForSelector('.tabs [data-tab=sheets]', { timeout: 20000 }); ok(await flatSheets(F), '11. the flats, in Design, have a Decoration sheet in their Sheets tab'); }
       await page.goto(`${BASE}/lab#plans`, { waitUntil: 'networkidle' }); await page.evaluate(id => openPlan(id), plan.plan.id); await page.waitForFunction(id => [...document.querySelectorAll('#mkArt option')].some(o => o.value === id), art, { timeout: 15000 });
       await page.selectOption('#mkArt', art); await page.selectOption('#mkWhich', 'all'); await page.click('[data-mkgo]'); await page.waitForSelector('#mkOut [data-mk]', { timeout: 30000 });
       ok((await page.locator('#mkOut [data-mk]').count()) >= 2 && (await page.locator('#mkOut img').count()) >= 1, '12. the plan page: one graphic previewed on every piece, with a tick each');
@@ -2314,7 +2330,8 @@ await journey('J234', 'One Design workspace: a concept opens on its picture, and
       ok(await page.evaluate(() => DIRTY), '   a wordmark set to 3.5 in for the left chest, not saved yet');
       await page.click('#viewSeg [data-v=front]'); await page.waitForSelector('#app[data-v=front]');
       const F = await (await page.waitForSelector('#flatFrame')).contentFrame(); await F.waitForSelector('#pPl [data-q]', { timeout: 20000 });
-      ok(!(await page.isVisible('#stage')) && await page.isVisible('#specBtn') && await page.isVisible('#decoBtn') && !(await page.isVisible('#apply')) && /view=front/.test(page.url()), '2. Flat front: the flats fill the workspace, and the header swaps the picture\'s buttons for the sheets', page.url());
+      ok(!(await page.isVisible('#stage')) && !(await page.isVisible('#apply')) && /view=front/.test(page.url()), '2. Flat front: the flats fill the workspace, and the header drops the picture\'s buttons', page.url());
+      ok(await flatSheets(F), '   the sheets are in the flats panel\'s Sheets tab'); await F.click('.tabs [data-tab=pl]');
       ok(await F.evaluate(() => [...document.querySelectorAll('#pPl [data-q] .where')].some(w => /from the studio/.test(w.textContent))), '   the wordmark from the picture is already on the flats, without a save');
       ok(!(await F.isVisible('header')) && !(await F.isVisible('.bar')), '   the flats carry no second header or bar');
       await page.click('#viewSeg [data-v=back]'); await F.waitForFunction(() => document.querySelector('[data-view=back]')?.getAttribute('aria-pressed') === 'true', null, { timeout: 5000 });
@@ -2355,7 +2372,7 @@ await journey('J235', 'Design, one placement model and two levels: a graphic\'s 
       const page = await oc.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
       await page.goto(`${BASE}/lab/studio?concept=${c.id}`, { waitUntil: 'networkidle' }); await page.waitForSelector('#pLayers .ly', { timeout: 20000 }); await page.waitForFunction(() => !document.querySelector('#busy:not(.hidden)'));
       // levels
-      ok(await page.getAttribute('#app', 'data-level') === 'pro' && await page.isVisible('.rail [data-tool=distress]'), '2. Future Basics opens on Pro: every tool, distress among them');
+      ok(await page.getAttribute('#app', 'data-level') === 'pro' && await page.evaluate(() => Boolean(document.querySelector('.rail [data-tool=distress]')) && document.querySelector('.rail [data-tool=brush]').classList.contains('tg-has')), '2. Future Basics opens on Pro: every tool, distress among them (in the brush\'s group)');
       await page.click('#levelSeg [data-level=simple]');
       ok(!(await page.isVisible('.rail [data-tool=distress]')) && !(await page.isVisible('.rail [data-tool=warp]')) && !(await page.isVisible('#impBtn')) && await page.isVisible('.rail [data-tool=brush]') && await page.evaluate(() => localStorage.getItem('fb.design.level')) === 'simple', '   Simple keeps the essentials and puts distress, warp, the ruler and Illustrator import away, and is remembered');
       await page.keyboard.press('d'); ok(await page.evaluate(() => TOOL) !== 'distress', '   and their shortcuts rest with them');
@@ -2444,7 +2461,8 @@ await journey('J236', 'Charges off per room, and Design on an iPad with the Penc
       const opaque = () => page.evaluate(() => { const l = LAYERS.find(q => q.kind === 'paint'), d = l.raster.getContext('2d').getImageData(0, 0, l.raster.width, l.raster.height).data; let n = 0; for (let i = 3; i < d.length; i += 16) if (d[i] > 20) n++; return n; });
       const before = await opaque(), px0 = await page.evaluate(() => PX);
       const tp = (type, pts) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: pts.map((p, i) => ({ x: p[0], y: p[1], id: i + 1 })) });
-      const cx = vb.x + vb.width * .5, cy = vb.y + vb.height * .5;
+      // a spot where the canvas itself is under the finger (the size dock sits over it beside the tool names)
+      const [cx, cy] = await page.evaluate(([x, y, w, h]) => { for (const [u, v] of [[.5, .5], [.75, .5], [.75, .3], [.6, .7]]) { const px = x + w * u, py = y + h * v; if (document.elementFromPoint(px, py)?.closest('#view')) return [px, py]; } return [x + w * .5, y + h * .5]; }, [vb.x, vb.y, vb.width, vb.height]);
       await tp('touchStart', [[cx, cy]]); for (let i = 1; i <= 6; i++) await tp('touchMove', [[cx + i * 20, cy + i * 8]]); await tp('touchEnd', []);
       ok(await opaque() === before && await page.evaluate(() => PX) !== px0, '8. after the Pencil, a finger (or a resting palm) moves the view and paints nothing', [before, px0, await page.evaluate(() => PX)]);
       const z0 = await page.evaluate(() => Z);
@@ -2501,7 +2519,9 @@ await journey('J237', 'Graphics added on the flats come onto the picture, and th
       await ip.goto(`${BASE}/lab/studio?concept=${c.id}&view=front`, { waitUntil: 'networkidle' }); await ip.waitForSelector('#app[data-v=front]', { timeout: 20000 });
       const IF = await (await ip.waitForSelector('#flatFrame')).contentFrame(); await IF.waitForSelector('#canvas svg', { timeout: 20000 });
       const cdp = await ic.newCDPSession(ip), cb = await ip.locator('#flatFrame').boundingBox(), sb = await IF.locator('#canvas').boundingBox();
-      const cx = sb.x + sb.width / 2, cy = sb.y + sb.height / 2, tp = (type, pts) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: pts.map((p, i) => ({ x: p[0], y: p[1], id: i + 1 })) });
+      // two fingers on a graphic size it, so the pinch starts where no graphic is under either finger
+      const cx = sb.x + sb.width / 2, cy = sb.y + sb.height * await IF.evaluate(() => { const c = document.querySelector('#canvas').getBoundingClientRect(), on = (x, y) => document.elementFromPoint(c.x + x, c.y + y)?.closest?.('[data-pl]');
+        return [.5, .85, .15, .7, .3].find(f => ![-50, 0, 50].some(dx => on(c.width / 2 + dx, c.height * f))) ?? .5; }), tp = (type, pts) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: pts.map((p, i) => ({ x: p[0], y: p[1], id: i + 1 })) });
       await tp('touchStart', [[cx - 50, cy], [cx + 50, cy]]); for (let i = 1; i <= 6; i++) await tp('touchMove', [[cx - 50 - i * 25, cy], [cx + 50 + i * 25, cy]]); await tp('touchEnd', []);
       const fz = await IF.evaluate(() => ({ z: FBFlats.zoom(), vb: document.querySelector('#canvas svg').getAttribute('viewBox'), base: document.querySelector('#canvas svg').dataset.base, fit: !document.getElementById('fzFit').classList.contains('hidden') }));
       ok(fz.z > 1.5 && fz.vb !== fz.base && fz.fit, '6. on the iPad two fingers pinch the flats to zoom in, and Fit appears', fz);
@@ -2639,7 +2659,7 @@ await journey('J240', 'Design on an iPad, as Kyle found it: the ruler takes any 
         await pen(r, [at(.35, .3), at(.42, .36), at(.5, .42), at(.58, .46)]);
         ok(await F.evaluate(() => FBFlats.canUndo() && FBFlats.dirty()), '7c. a Pencil stroke draws on the flat');
         ok(!(await page.$eval('#undo', b => b.disabled)), '   Undo is offered for it'); await page.click('#undo');
-        ok(await F.evaluate(() => !FBFlats.canUndo() && FBFlats.canRedo()), '   Undo takes it off, Redo is offered'); await page.click('#redo');
+        ok(await F.evaluate(() => { const m = FBFlats.marks(); return m.undo === 0 && m.redo === 1 && FBFlats.canRedo(); }), '   Undo takes it off, Redo is offered'); await page.click('#redo');
         await page.click('.rail [data-tool=rect]'); await pen(r, [at(.3, .6), at(.45, .7), at(.6, .75)]);
         await page.click('#save'); await page.waitForFunction(() => !DIRTY, null, { timeout: 30000 }); await page.waitForTimeout(400);
         const mk = (await K(`/concepts/${c.id}/flats`)).json.flat.markup;
@@ -2649,8 +2669,8 @@ await journey('J240', 'Design on an iPad, as Kyle found it: the ruler takes any 
         await page.reload({ waitUntil: 'networkidle' }); const F2 = await (await page.waitForSelector('#flatFrame')).contentFrame(); await F2.waitForFunction(() => window.FBFlats?.ready(), null, { timeout: 20000 });
         ok(await F2.evaluate(() => { const c = document.querySelector('.mkw canvas'); return Boolean(c && c.width > 10); }), '   opened again, the drawing is back on the flat'); }
       await page.click('.rail [data-tool=select]');
-      // fabrics, trims and labels from the library, added to the garment from Design (here on the flat; the same button is on the picture)
-      await page.click('#matBtn'); await page.waitForSelector('#matDlg[open] #matLib [data-madd]', { timeout: 15000 }); await page.waitForSelector('#matLib .mc svg[role="img"]');
+      // fabrics, trims and labels from the library, added to the garment from Design (here from the flat's Garment tab; on the picture, from its fabric section)
+      await flatMats(page); await page.waitForSelector('#matDlg[open] #matLib [data-madd]', { timeout: 15000 }); await page.waitForSelector('#matLib .mc svg[role="img"]');
       await page.click('#matLib [data-madd]'); await page.waitForSelector('#matOn [data-mp][data-role="main"]', { timeout: 15000 });
       await page.click('#matKinds [data-mk=tag]'); await page.waitForSelector('#matLib .th.tg svg'); await page.click('#matLib [data-madd]'); await page.waitForSelector('#matOn [data-mp][data-role="tag"]', { timeout: 15000 });
       let bom = (await K(`/concepts/${c.id}/materials`)).json;
@@ -3508,7 +3528,9 @@ await journey('J258', 'A fox, drawn as a fox and checked against its picture: a 
 });
 
 await journey('J259', 'A sketch picked opens straight away: on a phone, tapping a sketch in the sketch pack opens a sheet over the gallery (no scrolling to the bottom); the designer picks a cloth and a colour, the sketch is drawn in that colour, and Open in the Studio makes the concept with the cloth as its main fabric and the flats in that colour', async () => {
-  const fabs = (await K('/materials?kind=fabric')).json.materials, fab = fabs.find(m => (m.colours || []).some(c => /^#[0-9a-f]{6}$/i.test(c.hex || ''))) || fabs[0];
+  // a cloth that suits a tee (the sheet folds away the ones that do not), with a colour of its own
+  const { rankFabrics } = await import('../../src/lab-fabric-fit.js'), hasHex = m => (m.colours || []).some(c => /^#[0-9a-f]{6}$/i.test(c.hex || ''));
+  const fabs = (await K('/materials?kind=fabric')).json.materials, suits = rankFabrics('tee', fabs).filter(m => m.fit?.tier && m.fit.tier !== 'no'), fab = suits.find(hasHex) || suits[0] || fabs.find(hasHex) || fabs[0];
   ok(Boolean(fab), '1. the library has a cloth to choose');
   const api1 = await K('/concepts/from-sketch', { body: { template: 'tee-oversized', colour: { name: 'Navy', hex: '#1F2A44' } } }), c1 = api1.json.concept?.id;
   try {
@@ -4126,8 +4148,9 @@ await journey('J269', 'Easy to find and clear to use: the recipe menu is in the 
       await s.goto(`${BASE}/lab/studio?concept=${L}&fabric=1`, { waitUntil: 'networkidle' }); await s.waitForSelector('#matDlg[open] #matFit:not(.hidden)', { timeout: 30000 });
       await K(`/concepts/${L}/fabric-accept`, { method: 'DELETE' }); await K(`/concepts/${L}/materials`, { body: { material: twill.id, role: 'main' } }); // back to the twill, with nothing kept on purpose
       await s.evaluate(() => matLoadOn()); await s.waitForFunction(() => /does not suit/.test(document.querySelector('#matFit').textContent), null, { timeout: 15000 });
-      const marks = await s.evaluate(() => [...document.querySelectorAll('#matLib .mok')].map(x => x.className));
-      ok(marks.length > 3 && marks.some(c => /good/.test(c)) && /good/.test(marks[0]), '5. the Studio\'s fabric window shows the check, marks every fabric, the ones that suit first', marks.slice(0, 4));
+      // the fabrics are grouped by how well they suit the piece, the ones that suit first; those that need changes say why; those that do not suit fold away
+      const marks = await s.evaluate(() => ({ heads: [...document.querySelectorAll('#matLib .mgh')].map(x => x.textContent), cards: document.querySelectorAll('#matLib .mc').length, check: [...document.querySelectorAll('#matLib .mok.check')].every(x => x.textContent.length > 3), folded: Boolean(document.querySelector('#matLib [data-mgno]')) }));
+      ok(marks.cards > 3 && /^(Best for|Also suits)/.test(marks.heads[0] || '') && marks.check && marks.folded, '5. the Studio\'s fabric window shows the check, every fabric placed by how well it suits, the ones that suit first', marks);
       await s.fill('#fitWhy', 'Woven on purpose for the capsule'); await s.click('[data-fitkeep]'); await s.waitForFunction(() => /Kept on purpose/.test(document.querySelector('#matFit').textContent), null, { timeout: 15000 });
       ok((await rd())?.state === 'done', '   Keep it, with a reason, clears the checklist');
       ok(s.errs.length === 0, '   no page errors for staff', s.errs);
@@ -4172,7 +4195,7 @@ await journey('J270', 'The recipe flow finished: a tee with a polo collar (drawn
         const p = await c.newPage(), errs = []; p.on('pageerror', e => errs.push(String(e)));
         const n = await K('/concepts/from-recipe', { body: { base: 'hoodie', addons: ['kangaroo'], system: 'forest' } }); made.push(n.json.concept.id);
         await p.goto(`${BASE}/lab/studio?concept=${n.json.concept.id}&view=front`, { waitUntil: 'networkidle' }); await p.waitForSelector('#flatPicBar:not(.hidden)', { timeout: 30000 });
-        ok(await p.isVisible('#recipeBtn'), '5. in the Studio a recipe piece shows Edit recipe and the bar to draw its picture');
+        ok(await flatRecipe(p), '5. in the Studio a recipe piece shows Edit recipe and the bar to draw its picture');
         // the Studio already has saved layers (its blank page, and a word laid on it), saved by itself a few seconds after the change
         await p.waitForFunction(() => typeof LAYERS !== 'undefined' && LAYERS.some(l => l.kind === 'base'), null, { timeout: 20000 });
         await p.evaluate(() => { addLayer(fresh('shape', { name: 'Word', shape: 'rect', w: 200, h: 80, radius: 0, fill: true, fillColor: '#141416', stroke: false, strokeW: 4, strokeColor: '#141416', x: W / 2, y: H / 2 })); touch(); });
@@ -4375,8 +4398,8 @@ await journey('J274', 'Easy on a phone: every step of a piece fits the step bar,
         const tiny = await p.$$eval('#readyBtn,#save,#moreBtn,#panelBtn', bs => bs.filter(x => x.getBoundingClientRect().height && x.getBoundingClientRect().height < 34).map(x => x.id));
         ok(tiny.length === 0, '2. the Studio\'s buttons are a thumb\'s size', tiny);
         const row = await p.$$eval('#readyBtn,#save,#moreBtn,#panelBtn', bs => [...new Set(bs.filter(x => x.offsetParent).map(x => Math.round(x.getBoundingClientRect().top)))]);
-        ok(row.length === 1 && !(await p.isVisible('#recipeBtn')), '   its actions sit on one row (Edit recipe waits under More)', row);
-        await p.click('#moreBtn'); ok(await p.isVisible('#recipeBtn'), '   and More brings Edit recipe out'); await p.click('#moreBtn');
+        ok(row.length === 1 && !(await p.isVisible('#recipeBtn')), '   its actions sit on one row', row);
+        ok(await flatRecipe(p), '   and Edit recipe is with the garment, on the flats it opens on');
         // the concept list
         await p.goto(`${BASE}/lab/studio`, { waitUntil: 'networkidle' }); await p.waitForSelector('#pickList a', { timeout: 20000 });
         ok(await outside() === 0, '3. the Studio\'s concept list stays inside the screen');
@@ -4731,7 +4754,7 @@ await journey('J287', 'The cloth and the panels on the flats, in the Studio: a r
       await f.click('.tabs [data-tab="design"]'); await f.waitForSelector('.cloths [data-cloth]', { timeout: 15000 });
       // the cloth, from the flats
       const tiles = await f.$$eval('.cloths [data-cloth]', els => els.map(e => [e.dataset.cloth, e.title]));
-      const fl = tiles.find(t => /fleece/i.test(t[1])) || tiles[0], tw = tiles.find(t => /twill|denim/i.test(t[1]) && t[0] !== fl[0]) || tiles[1];
+      const fl = tiles.find(t => /fleece/i.test(t[1])) || tiles[0], soft = /fleece|sweat|terry|loopback|polar|sherpa/i, tw = tiles.find(t => /twill|denim/i.test(t[1]) && t[0] !== fl[0]) || tiles.find(t => t[0] !== fl[0] && !soft.test(t[1])) || tiles[1]; // a cloth whose surface photo is not the fleece's
       await f.click(`.cloths [data-cloth="${fl[0]}"]`); await f.waitForFunction(id => document.querySelector(`.cloths [data-cloth="${id}"]`)?.getAttribute('aria-checked') === 'true', fl[0], { timeout: 15000 });
       await f.click(`.cloths [data-cloth="${tw[0]}"]`); await f.waitForFunction(id => document.querySelector(`.cloths [data-cloth="${id}"]`)?.getAttribute('aria-checked') === 'true', tw[0], { timeout: 15000 });
       const mats = (await K(`/concepts/${C}/materials`)).json.picks.filter(x => x.kind === 'fabric' && !x.part);
@@ -4743,8 +4766,8 @@ await journey('J287', 'The cloth and the panels on the flats, in the Studio: a r
       await K(`/concepts/${C}/materials`, { body: { material: fl[0], role: 'main' } }); await p.evaluate(() => matChanged());
       await f.waitForFunction(h => (document.querySelector('#canvas pattern[id$="-tx"] image')?.getAttribute('href') || '') !== h, before, { timeout: 15000 }).catch(() => {});
       ok((await tex()) !== before && /aria-checked="true"/.test(await f.$eval(`.cloths [data-cloth="${fl[0]}"]`, e => e.outerHTML)), '2. a fabric chosen in the Studio\'s fabrics window shows on the flat', await tex());
-      // a panel by a tap: the sleeves, both sides
-      await f.click('[data-mode="fill"]');
+      // a panel by a tap: the sleeves, both sides (from the Garment tab)
+      await f.click('.tabs [data-tab="garment"]'); await f.click('[data-mode="fill"]');
       const tap = async (x, y) => { const pt = await f.evaluate(([x, y]) => { const s = document.querySelector('#canvas svg'), q = s.createSVGPoint(); q.x = x; q.y = y; const r = q.matrixTransform(s.getScreenCTM()); return [r.x, r.y]; }, [x, y]); const fr = await (await p.$('#flatFrame')).boundingBox(); await p.mouse.click(fr.x + pt[0], fr.y + pt[1]); };
       await tap(-14, 12); await f.waitForFunction(() => document.querySelectorAll('.prow').length >= 2, null, { timeout: 10000 }).catch(() => {});
       const rows = await f.$$eval('.prow [data-pname]', els => els.map(e => e.value));
