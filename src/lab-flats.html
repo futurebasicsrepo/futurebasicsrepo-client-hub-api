@@ -19,6 +19,8 @@ var c=q.get('concept')||'',t=q.get('template')||'',v=q.get('view')==='back'?'bac
 #typePop .tp-more{border-top:1px solid var(--line,#e2e2dc);padding-top:6px}#typePop .tp-more summary{cursor:pointer;color:#6b6b70;padding:4px 0}#typePop .tp-more[open]{display:grid;gap:8px}#typePop{max-height:calc(100vh - 16px);overflow-y:auto}
 .lbrow.on{align-items:center}.lbact{display:flex;gap:6px;flex:none}.lbown{margin:8px 0}.lbface{width:44px;height:24px;object-fit:contain;flex:none;background:#f6f6f3;border-radius:4px}.lbadd summary{cursor:pointer;font-weight:600;padding:6px 0}.lbmine{display:grid;gap:6px;margin-bottom:8px}
 .parts .psw{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:8px}.parts .psw button{width:28px;height:28px;border-radius:50%;border:1px solid rgba(20,20,22,.18);cursor:pointer}.parts .psw button[aria-pressed=true]{box-shadow:0 0 0 2px #fff,0 0 0 4px var(--ink,#141416)}.parts .psw .pick input{width:32px;height:30px;padding:0}
+.plghost{position:fixed;left:0;top:0;transform-origin:0 0;pointer-events:none;z-index:40;will-change:transform;outline:1.5px dashed #17603a;outline-offset:2px}.plghost img{display:block;width:100%;height:100%;user-select:none}
+.flsnapw{position:fixed;overflow:hidden;pointer-events:none;z-index:2}.flsnap{position:absolute;transform-origin:50% 50%;pointer-events:none;will-change:transform}
 .mcol{margin:6px 0 8px}.mcol .lbl{display:block;font-size:12px;color:var(--dim,#6b6b66);margin-bottom:4px}.mcol .psw{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:6px}.mcol .psw button{width:26px;height:26px;border-radius:50%;border:1px solid rgba(20,20,22,.18);cursor:pointer}.mcol .psw button[aria-pressed=true]{box-shadow:0 0 0 2px #fff,0 0 0 4px var(--ink,#141416)}.mcol .psw .pick input{width:32px;height:28px;padding:0}.mcol .rowx{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.mcol .chk{display:flex;gap:6px;align-items:center;font-size:13px}
 #typePop .tp-end .btn{min-height:40px;min-width:76px;touch-action:manipulation}#typePop .tp-hint{margin:0;color:#6b6b70;font-size:11.5px}#typePop .tp-row{flex-wrap:wrap}#typePop .tp-row input[type=color]{width:34px;height:30px;padding:0;flex:none}#typePop .tp-row select{flex:1 1 90px}#typePop{width:min(300px,calc(100vw - 16px));box-sizing:border-box;overflow-x:hidden;max-width:calc(100vw - 16px)}
 #typePop .tp-prev{font-size:24px;line-height:1.25;padding:6px 8px;background:#f6f6f3;border-radius:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:34px}
@@ -182,7 +184,7 @@ setInterval(()=>{const el=$('#saved');if(!DIRTY&&SAVED_F&&!SAVING_F&&/^Saved /.t
 // ---------- drawing ----------
 // the quick checks (the drawing) run here at once; the artwork checks come back from the service a moment later
 function localFindings(){const out={},over=overlapChecks(PL);for(const q of PL){const t=D.techniques.find(x=>x.id===q.techniqueId);const loc=placementChecks(q,P,t?{...t.rules,techniqueName:t.name}:{});const art=(CHECK.findings[q.id]||[]).filter(f=>['FINE_DETAIL','INKS','GRADIENT','STITCHES','TINY'].includes(f.code));out[q.id]=[...loc,...(over[q.id]||[]),...art]}return out}
-function draw(){
+function draw(){liveEnd();
   const F=localFindings(),sz=$('#size').value||P.size,pls=PL.map(q=>{if(!q.grade)return q;const g=q.grade.find(x=>x.sizes.includes(sz));return g?{...q,w:g.w,h:g.h,y:q.y-q.h/2+g.h/2}:q}),svg=renderSvg(P,VIEW,{maskHref:MASK_URL,placements:pls,hrefs:HREF,size:sz,showPom:$('#showPom').checked,showDims:$('#showDims').checked,selected:SEL,findings:F,scale:0,editable:true,selectedEdit:SELE,editHrefs:EHREF,overlay:overlay(),alloverHref:AOHREF,texture:clothTex(),tags:tagsOn()});
   showSvg(svg);zoomSvg();const fail=Object.values(F).flat().filter(f=>f.level==='fail').length,warn=Object.values(F).flat().filter(f=>f.level==='warn').length,s=$('#status');
   s.className='status '+(fail?'bad':warn?'warn':'ok');s.innerHTML=fail?`<span class="dot fail"></span>${fail} problem${fail===1?'':'s'} to fix before it can be made`:warn?`<span class="dot warn"></span>Can be made: ${warn} thing${warn===1?'':'s'} to check`:'<span class="dot ok"></span>Can be made as drawn';
@@ -199,7 +201,7 @@ function syncKids(a,b){const A=a.childNodes,B=[...b.childNodes];
     if(o.nodeType!==1||n.nodeType!==1||o.namespaceURI!==n.namespaceURI||o.localName!==n.localName){a.replaceChild(n,o);continue}
     syncAttrs(o,n);syncKids(o,n)}
   while(A.length>B.length)a.removeChild(a.lastChild)}
-let LASTSVG='';function showSvg(svg){const c=$('#canvas'),cur=c.querySelector(':scope>svg');if(cur&&svg===LASTSVG)return;LASTSVG=svg;SVGTPL.innerHTML=svg;const k=SVGTPL.content,nu=k.firstElementChild;
+let LASTSVG='',SVGV=0;function showSvg(svg){const c=$('#canvas'),cur=c.querySelector(':scope>svg');if(cur&&svg===LASTSVG)return;LASTSVG=svg;SVGV++;SVGTPL.innerHTML=svg;const k=SVGTPL.content,nu=k.firstElementChild;
   if(!cur||!nu||k.childElementCount!==1||nu.localName!=='svg'||[...c.children].some(e=>e!==cur&&!e.classList.contains('mkw'))){c.innerHTML=svg;SVGTPL.innerHTML='';return}
   // the frame of the drawing (viewBox), its turn (style) and its full-view frame (data-base) belong to the zoom: changed only when they differ, as a
   // change to any of them lays out and paints the whole flat again
@@ -585,7 +587,7 @@ $$('[data-view]').forEach(b=>b.onclick=()=>setView(b.dataset.view));$('#fzFit').
 ['#showDims','#showPom','#size'].forEach(s=>$(s).addEventListener('change',draw));
 let DRAG=null;
 // ---------- zoom on the flats: two fingers pinch and move it (an iPad), Ctrl and the wheel on a computer, one finger moves it once zoomed ----------
-let FZ=1,FC=null,FG=null,FPAN=null,FR=0;const FPTR=new Map();
+let FZ=1,FC=null,FG=null,FPAN=null,FR=0;const ZMIN=.4,ZMAX=6;const FPTR=new Map(); // the flat can be made smaller than its fit (to 40%) as well as bigger
 function baseBox(){const svg=$('#canvas svg');if(!svg)return null;const v=(svg.dataset.base||svg.getAttribute('viewBox')||'').split(/[ ,]+/).map(Number);return v.length===4&&v.every(Number.isFinite)?{x:v[0],y:v[1],w:v[2],h:v[3]}:null}
 // The view's own geometry, worked out here rather than asked of the browser: the drawing's box on the page (unturned), the viewBox in it
 // (scaled to fit, centred), and the view's turn (FR, degrees, about the box's centre). Every point on the screen goes to inches through it,
@@ -598,9 +600,34 @@ function toInch(X,Y){const g=vgeo();if(!g)return[0,0];const[lx,ly]=turn(X-g.cx,Y
 // the view's turn on the drawing and on the hand drawing over it (both turn about their own centre, which is the same box)
 function applyTurn(){VG=null;const svg=$('#canvas svg'),t=FR?`rotate(${FR}deg)`:'';if(svg){svg.style.transform=t;svg.style.transformOrigin='50% 50%'}MKW.style.transform=t;MKW.style.transformOrigin='50% 50%'}
 function zoomSvg(){VG=null;const svg=$('#canvas svg');if(!svg)return;if(!svg.dataset.base)svg.dataset.base=svg.getAttribute('viewBox')||'';const b=baseBox();if(!b)return;
-  const setVB=v=>{if(svg.getAttribute('viewBox')!==v)svg.setAttribute('viewBox',v)};if(FZ<=1.001){FZ=1;FC=null;setVB(svg.dataset.base)}
+  const setVB=v=>{if(svg.getAttribute('viewBox')!==v)svg.setAttribute('viewBox',v)};if(Math.abs(FZ-1)<.001){FZ=1;FC=null;setVB(svg.dataset.base)}
+  else if(FZ<1){const w=b.w/FZ,h=b.h/FZ,c=[b.x+b.w/2,b.y+b.h/2];FC=null;setVB(`${c[0]-w/2} ${c[1]-h/2} ${w} ${h}`)} // smaller than the fit: the whole flat, centred, with room round it
   else{const w=b.w/FZ,h=b.h/FZ,c=FC||[b.x+b.w/2,b.y+b.h/2],cx=Math.min(Math.max(c[0],b.x+w/2),b.x+b.w-w/2),cy=Math.min(Math.max(c[1],b.y+h/2),b.y+b.h-h/2);FC=[cx,cy];setVB(`${cx-w/2} ${cy-h/2} ${w} ${h}`)}
-  $('#fzFit')?.classList.toggle('hidden',FZ<=1&&!FR);const zl=$('#fzLabel');if(zl)zl.textContent=Math.round(FZ*100)+'%'+(FR?` · ${Math.round(FR)}°`:'');applyTurn();mkPlace()}
+  snapSoon();$('#fzFit')?.classList.toggle('hidden',FZ===1&&!FR);const zl=$('#fzLabel');if(zl)zl.textContent=Math.round(FZ*100)+'%'+(FR?` · ${Math.round(FR)}°`:'');applyTurn();mkPlace()}
+// Pinching and turning the view on an iPad: the flat is a picture with masks, filters and a fabric pattern, which Safari draws again at every
+// step of a pinch. So, on a touch screen, a still picture of the flat as it is shown is made a moment after it settles, and a pinch moves and
+// turns that picture (a single layer the iPad scales for nothing); the flat itself is drawn once at the end, at the new zoom.
+const SNAP={key:'',img:null,busy:false,on:null},D2U=new Map(),TOUCHY=matchMedia('(pointer:coarse)').matches;let SNAPT=0;
+const snapKeyNow=()=>{const svg=$('#canvas svg');return svg?SVGV+'|'+svg.getAttribute('viewBox'):''};
+function snapSoon(){if(!TOUCHY)return;clearTimeout(SNAPT);SNAPT=setTimeout(()=>snapMake().catch(()=>{}),600)}
+async function toDataUrl(u){if(D2U.has(u))return D2U.get(u);let out='';
+  try{if(u.startsWith('blob:')){const i=new Image();i.src=u;await i.decode();const k=Math.min(1,1400/Math.max(i.naturalWidth||1,i.naturalHeight||1)),c=document.createElement('canvas');c.width=Math.max(1,Math.round((i.naturalWidth||1)*k));c.height=Math.max(1,Math.round((i.naturalHeight||1)*k));c.getContext('2d').drawImage(i,0,0,c.width,c.height);out=c.toDataURL('image/png')}
+    else{const b=await (await fetch(u)).blob();out=await new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(r.result);r.onerror=no;r.readAsDataURL(b)})}}catch{out=''}
+  D2U.set(u,out);return out}
+async function snapMake(){const svg=$('#canvas svg');if(!svg||SNAP.busy||FG||FPAN)return;const key=snapKeyNow();if(SNAP.key===key)return;SNAP.busy=true;
+  try{const cl=svg.cloneNode(true);cl.removeAttribute('style');cl.setAttribute('width',svg.clientWidth);cl.setAttribute('height',svg.clientHeight);if(!cl.getAttribute('xmlns'))cl.setAttribute('xmlns','http://www.w3.org/2000/svg');
+    for(const e of cl.querySelectorAll('[style*="visibility"]'))e.style.visibility='';
+    for(const e of cl.querySelectorAll('image')){const u=e.getAttribute('href')||e.getAttributeNS('http://www.w3.org/1999/xlink','href')||'';if(!u||u.startsWith('data:'))continue;const d=await toDataUrl(u);e.setAttribute('href',d);e.removeAttributeNS('http://www.w3.org/1999/xlink','href')}
+    if(snapKeyNow()!==key)return; // it changed while the pictures were read: the next settle makes it
+    const url=URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(cl)],{type:'image/svg+xml'})),img=new Image();img.className='flsnap';img.alt='';img.src=url;await img.decode();
+    if(SNAP.img&&SNAP.img!==SNAP.on)URL.revokeObjectURL(SNAP.img.src);SNAP.img=img;SNAP.key=key}finally{SNAP.busy=false}}
+// the picture in the flat's place, exactly over it, for a pinch; null when there is none for what is on screen now
+function snapUse(){const svg=$('#canvas svg'),g=vgeo();if(!svg||!g||!SNAP.img||SNAP.key!==snapKeyNow())return null;const i=SNAP.img,cr=$('#canvas').getBoundingClientRect();
+  // inside a frame the size of the drawing area, so a picture pinched bigger stays within it, as the flat does
+  const w=SNAP.wrap||(SNAP.wrap=Object.assign(document.createElement('div'),{className:'flsnapw'}));Object.assign(w.style,{left:cr.left+'px',top:cr.top+'px',width:cr.width+'px',height:cr.height+'px'});
+  Object.assign(i.style,{left:(g.cx-g.w/2-cr.left)+'px',top:(g.cy-g.h/2-cr.top)+'px',width:g.w+'px',height:g.h+'px',transform:FR?`rotate(${FR}deg)`:''});w.append(i);document.body.append(w);svg.style.visibility='hidden';SNAP.on=i;return i}
+// after the pinch: the flat is drawn at its new zoom first, and the picture taken away once it is on screen (no blank frame between)
+function snapDone(){const i=SNAP.on;if(!i)return;SNAP.on=null;const svg=$('#canvas svg');if(svg)svg.style.visibility='';requestAnimationFrame(()=>requestAnimationFrame(()=>{if(SNAP.on!==i){i.remove();SNAP.wrap?.remove()}}))}
 const unitsPerPx=()=>{const g=vgeo();return g?1/g.k:1};
 const centreNow=()=>{const b=baseBox();return FC||(b?[b.x+b.w/2,b.y+b.h/2]:[0,0])};
 function fzFit(){FZ=1;FC=null;FR=0;zoomSvg()} // Fit also straightens a turned view
@@ -614,28 +641,28 @@ $('#canvas').addEventListener('pointerdown',e=>{if(e.pointerType!=='touch')retur
   if(DRAG){if(DRAG.q&&DRAG.ox!==undefined){DRAG.q.x=DRAG.ox;DRAG.q.y=DRAG.oy}if(DRAG.size)Object.assign(DRAG.size,DRAG.orig);if(DRAG.ed&&DRAG.orig)Object.assign(DRAG.ed,JSON.parse(JSON.stringify(DRAG.orig)));DRAG=null;draw()} // two fingers: a pinch, not a move
   BOXDRAG=null;FPAN=null;const[a,b]=[...FPTR.values()],g0=vgeo();if(!g0)return;FG={d:Math.hypot(a[0]-b[0],a[1]-b[1])||1,m:[(a[0]+b[0])/2,(a[1]+b[1])/2],z:FZ,c:centreNow(),u:1/g0.k,C:[g0.cx,g0.cy],r0:FR,ang:Math.atan2(b[1]-a[1],b[0]-a[0])};
   // two fingers on a graphic resize and turn it (about its centre, keeping its shape), as in other drawing apps; anywhere else they zoom the view
-  const on=[a,b,FG.m].map(([x,y])=>document.elementFromPoint(x,y)?.closest?.('[data-pl]')).find(Boolean),q=on&&PL.find(x=>x.id===on.dataset.pl);if(q){SEL=q.id;FG.q=q;FG.w0=q.w;FG.h0=q.h;FG.r0=q.rot||0;FG.a0=Math.atan2(b[1]-a[1],b[0]-a[0]);FG.base=shownQ(q)}},true);
+  const on=[a,b,FG.m].map(([x,y])=>document.elementFromPoint(x,y)?.closest?.('[data-pl]')).find(Boolean),q=on&&PL.find(x=>x.id===on.dataset.pl);if(q){SEL=q.id;FG.q=q;FG.w0=q.w;FG.h0=q.h;FG.r0=q.rot||0;FG.a0=Math.atan2(b[1]-a[1],b[0]-a[0]);FG.base=shownQ(q)}else FG.snap=snapUse()},true);
 $('#canvas').addEventListener('pointermove',e=>{const p=FPTR.get(e.pointerId);if(p){p[0]=e.clientX;p[1]=e.clientY}
   if(FG&&FPTR.size>=2){e.stopImmediatePropagation();const[a,b]=[...FPTR.values()],d=Math.hypot(a[0]-b[0],a[1]-b[1])||1,m=[(a[0]+b[0])/2,(a[1]+b[1])/2];
     if(FG.q){const k=Math.min(40/FG.w0,40/FG.h0,Math.max(.25/FG.w0,.25/FG.h0,d/FG.d));FG.q.w=r8(FG.w0*k);FG.q.h=r8(FG.h0*k);FG.q.rot=turnTo(FG.r0+(Math.atan2(b[1]-a[1],b[0]-a[0])-FG.a0)*180/Math.PI);FG.moved=true;liveQ(FG.q,FG.base);return}
     // the view: moved, zoomed and turned by one transform on the page while the fingers are down (nothing is drawn again, so it follows the
     // fingers); the zoom and turn are set for real when they lift
-    const zN=Math.min(Math.max(FG.z*d/FG.d,1),6),sc=zN/FG.z;let dr=(Math.atan2(b[1]-a[1],b[0]-a[0])-FG.ang)*180/Math.PI;dr=((dr+540)%360)-180;
+    const zN=Math.min(Math.max(FG.z*d/FG.d,ZMIN),ZMAX),sc=zN/FG.z;let dr=(Math.atan2(b[1]-a[1],b[0]-a[0])-FG.ang)*180/Math.PI;dr=((dr+540)%360)-180;
     const rN=FG.r0+dr,snap=Math.round(rN/90)*90,rT=Math.abs(rN-snap)<5?snap:rN;dr=rT-FG.r0; // a turn near square snaps to it
     const[qx,qy]=turn((FG.C[0]-FG.m[0])*sc,(FG.C[1]-FG.m[1])*sc,dr),tx=m[0]+qx-FG.C[0],ty=m[1]+qy-FG.C[1],t=`translate(${tx}px,${ty}px) rotate(${rT}deg) scale(${sc})`;
-    FG.live={sc,dr,rT,tx,ty,zN};const svg=$('#canvas svg');if(svg){svg.style.willChange='transform';svg.style.transformOrigin='50% 50%';svg.style.transform=t}MKW.style.willChange='transform';MKW.style.transformOrigin='50% 50%';MKW.style.transform=t;return}
+    FG.live={sc,dr,rT,tx,ty,zN};const svg=FG.snap||$('#canvas svg');if(svg){svg.style.willChange='transform';svg.style.transformOrigin='50% 50%';svg.style.transform=t}MKW.style.willChange='transform';MKW.style.transformOrigin='50% 50%';MKW.style.transform=t;return}
   if(FPAN){e.stopImmediatePropagation();FPAN.dx=e.clientX-FPAN.x;FPAN.dy=e.clientY-FPAN.y;if(!FPAN.raf)FPAN.raf=requestAnimationFrame(()=>{if(!FPAN)return;FPAN.raf=0;const t=`translate(${FPAN.dx}px,${FPAN.dy}px)${FR?` rotate(${FR}deg)`:''}`,svg=$('#canvas svg');if(svg){svg.style.willChange='transform';svg.style.transform=t}MKW.style.transform=t})}},true);
 function fpanCommit(){const P0=FPAN;FPAN=null;if(!P0||P0.dx===undefined)return;if(P0.raf)cancelAnimationFrame(P0.raf);const svg=$('#canvas svg');if(svg){svg.style.transform='';svg.style.willChange=''}MKW.style.transform='';VG=null;const u=unitsPerPx(),[ddx,ddy]=turn(P0.dx,P0.dy,-FR);FC=[P0.c[0]-ddx*u,P0.c[1]-ddy*u];zoomSvg()}
-const fzUp=e=>{FPTR.delete(e.pointerId);if(FG&&FPTR.size<2){const g=FG;FG=null;e.stopImmediatePropagation();if(g.q&&g.moved){if(LIVE.raf){cancelAnimationFrame(LIVE.raf);LIVE.raf=0}touch();paint()}if(g.live)fzCommit(g)}if(FPAN){fpanCommit();e.stopImmediatePropagation()}};
+const fzUp=e=>{FPTR.delete(e.pointerId);if(FG&&FPTR.size<2){const g=FG;FG=null;e.stopImmediatePropagation();if(g.q&&g.moved){if(LIVE.raf){cancelAnimationFrame(LIVE.raf);LIVE.raf=0}touch();paint()}if(g.live)fzCommit(g);else snapDone()}if(FPAN){fpanCommit();e.stopImmediatePropagation()}};
 ['pointerup','pointercancel','lostpointercapture'].forEach(t=>$('#canvas').addEventListener(t,e=>{if(e.type==='lostpointercapture'&&(!FPTR.has(e.pointerId)||MDRAG?.pid===e.pointerId))return;fzUp(e)},true));
 $('#canvas').addEventListener('wheel',e=>{if(!(e.ctrlKey||e.metaKey)){if(FZ>1){e.preventDefault();const u=unitsPerPx(),c=centreNow(),[ddx,ddy]=turn(e.deltaX,e.deltaY,-FR);FC=[c[0]+ddx*u,c[1]+ddy*u];zoomSvg()}return} // two fingers on a trackpad move a zoomed flat
   e.preventDefault();fzAt(FZ*Math.exp(-e.deltaY*.01),e.clientX,e.clientY)},{passive:false});
 // zoom about a point on the screen: the inch under it stays under it
 // the pinch set for real: the point that was under the old centre of the view is found through the transform, and becomes the centre
 function fzCommit(g){const L=g.live,[qx,qy]=turn(-L.tx/L.sc,-L.ty/L.sc,-L.rT);FZ=L.zN;FR=((L.rT%360)+360)%360;if(FR>180)FR-=360;
-  FC=FZ<=1.001?null:[g.c[0]+qx*g.u,g.c[1]+qy*g.u];const svg=$('#canvas svg');if(svg){svg.style.transform='';svg.style.willChange=''}MKW.style.transform='';MKW.style.willChange='';VG=null;zoomSvg()}
+  if(Math.abs(FZ-1)<.04)FZ=1;FC=FZ<=1?null:[g.c[0]+qx*g.u,g.c[1]+qy*g.u];const svg=$('#canvas svg');if(svg){svg.style.transform='';svg.style.willChange=''}MKW.style.transform='';MKW.style.willChange='';VG=null;zoomSvg();snapDone()}
 function fzAt(nz,cx,cy){const g=vgeo();if(!g)return;const u=1/g.k,c=centreNow(),[ox,oy]=turn(cx-g.cx,cy-g.cy,-FR),P=[c[0]+ox*u,c[1]+oy*u];
-  const z0=FZ;FZ=Math.min(Math.max(nz,1),6);const u1=u*z0/FZ;FC=[P[0]-ox*u1,P[1]-oy*u1];zoomSvg()}
+  const z0=FZ;FZ=Math.min(Math.max(nz,ZMIN),ZMAX);if(Math.abs(FZ-1)<.04)FZ=1;const u1=u*z0/FZ;FC=FZ>1?[P[0]-ox*u1,P[1]-oy*u1]:null;zoomSvg()}
 // Safari's page zoom is never wanted here; a trackpad pinch (Magic Keyboard) arrives only as gesture events, so it zooms the flat under the pointer
 let TPG=null;['gesturestart','gesturechange','gestureend'].forEach(t=>document.addEventListener(t,e=>{e.preventDefault();if(!e.target.closest?.('#canvas')||FPTR.size>=2){TPG=null;return}
   if(t==='gesturestart')TPG={z:FZ};else if(t==='gesturechange'&&TPG)fzAt(TPG.z*e.scale,e.clientX,e.clientY);else TPG=null},{passive:false}));
@@ -643,10 +670,21 @@ const inch=e=>toInch(e.clientX,e.clientY);
 // a graphic on the move (dragged, resized, turned, pinched): only its own group moves, by one transform, once a frame; the whole flat is drawn
 // again once, when the finger lifts. Drawing the whole flat on every move is what made dragging lag on an iPad.
 const shownQ=q=>{if(!q.grade)return{x:q.x,y:q.y,w:q.w,h:q.h,rot:q.rot||0};const sz=$('#size').value||P.size,g=q.grade.find(x=>x.sizes.includes(sz));return g?{x:q.x,y:q.y-q.h/2+g.h/2,w:g.w,h:g.h,rot:q.rot||0}:{x:q.x,y:q.y,w:q.w,h:q.h,rot:q.rot||0}};
-const LIVE={raf:0,q:null,base:null};
+const LIVE={raf:0,q:null,base:null,g:null};
+// A graphic being moved, sized or turned is lifted off the flat while the finger is down: the flat (its cloth, wash, masks and filters, which
+// Safari paints slowly) is drawn once as it goes and once as it comes back, not every frame, and a picture of the graphic on a layer of its own
+// follows the finger. Let go and the flat is drawn with it in its new place.
 function liveQ(q,base){if(!base)return draw();LIVE.q=q;LIVE.base=base;if(LIVE.raf)return;LIVE.raf=requestAnimationFrame(()=>{LIVE.raf=0;const{q,base:b}=LIVE;
-  const el=[...document.querySelectorAll('#canvas svg [data-pl]')].find(e=>e.dataset.pl===q.id);if(!el){draw();return}const s=shownQ(q),f=v=>Math.round(v*1e4)/1e4;
-  el.setAttribute('transform',`translate(${f(s.x)} ${f(s.y)}) rotate(${f(rotOf(s))}) scale(${f(s.w/(b.w||1))} ${f(s.h/(b.h||1))}) translate(${f(-b.x)} ${f(-b.y)})`)})}
+  const g=ghostOf(q,b);if(!g){draw();return}const s=shownQ(q),k=g.k,n=v=>Math.round(v*100)/100;
+  g.d.style.transform=`${g.m} translate(${n(s.x*k)}px,${n(s.y*k)}px) rotate(${n(rotOf(s))}deg) scale(${n(s.w/(b.w||1)*1e3)/1e3},${n(s.h/(b.h||1)*1e3)/1e3}) translate(${n(-b.w*k/2)}px,${n(-b.h*k/2)}px)`})}
+function ghostOf(q,b){if(LIVE.g?.id===q.id&&LIVE.g.d.isConnected)return LIVE.g;liveEnd();
+  const el=[...document.querySelectorAll('#canvas svg [data-pl]')].find(e=>e.dataset.pl===q.id),img=el?.querySelector('image'),g=vgeo();if(!el||!g)return null;
+  // inches → the screen: the view's scale, its frame and its turn (FR) about the middle of the drawing
+  const a=FR*Math.PI/180,c=Math.cos(a),sn=Math.sin(a),k=g.k,tx=-g.v[0]*k+g.ox-g.w/2,ty=-g.v[1]*k+g.oy-g.h/2,e=g.cx+tx*c-ty*sn,f=g.cy+tx*sn+ty*c;
+  const d=document.createElement('div');d.className='plghost';d.style.width=(b.w*k)+'px';d.style.height=(b.h*k)+'px';
+  if(img){const i=document.createElement('img');i.alt='';i.draggable=false;i.src=img.getAttribute('href')||img.getAttribute('xlink:href')||'';d.append(i)}
+  document.body.append(d);el.style.visibility='hidden';LIVE.g={id:q.id,d,el,k,m:`matrix(${c},${sn},${-sn},${c},${e},${f})`};return LIVE.g}
+function liveEnd(){const g=LIVE.g;if(!g)return;LIVE.g=null;g.d.remove();g.el.style.visibility=''}
 $('#canvas').addEventListener('pointerdown',e=>{
   if(MODE==='fill'){const[x,y]=inch(e);fillAt(x,y);return}
   if(MODE==='stitch'||MODE==='block'){const[x,y]=inch(e);DRAFT.push([r8(x),r8(y)]);draw();return}
