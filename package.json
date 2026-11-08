@@ -11,7 +11,8 @@
     "journeys": "bash scripts/journeys/run.sh",
     "flat-masks": "node scripts/make-flat-masks.mjs",
     "audit:deps": "npm audit --omit=dev --audit-level=high",
-    "perf": "node scripts/perf/studio-perf.mjs"
+    "perf": "node scripts/perf/studio-perf.mjs",
+    "studio:split-check": "node scripts/studio-split-check.mjs"
   },
   "engines": {
     "node": ">=22"

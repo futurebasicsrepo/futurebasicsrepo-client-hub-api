@@ -7,7 +7,7 @@ import { registerGuard } from './guard.js';
 import { createWatch } from './watch.js';
 import { NODES as MAP_NODES, EDGES as MAP_EDGES, FLOWS as MAP_FLOWS } from './platform-map.js';
 import { createHash, createHmac, timingSafeEqual, randomBytes, randomInt, randomUUID } from 'node:crypto';
-import { createReadStream, createWriteStream, mkdirSync, readFileSync, readdirSync } from 'node:fs';
+import { createReadStream, createWriteStream, mkdirSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { unlink, writeFile, mkdir, readFile, copyFile } from 'node:fs/promises';
 import { pipeline } from 'node:stream/promises';
 import { gzip as gzipCb, gzipSync } from 'node:zlib';
@@ -171,6 +171,9 @@ await app.register(multipart, {
 // copy watch and export fingerprints (src/watch.js): before the compression below, so it reads and marks the file itself
 const watch = createWatch({ pool, log: app.log }); await watch.ensure().catch(e => app.log.warn({ err: e.message }, 'copy watch tables not ready'));
 app.addHook('onSend', watch.onSend);
+// a script asked for with ?v=<the hash of its file> (the Studio names its scripts so, src/lab-studio.html) is the same until its file changes:
+// the browser keeps it, and the code it compiled from it, instead of fetching and compiling it again on every visit
+app.addHook('onSend', async (req, reply, payload) => { if (req.method === 'GET' && req.query?.v && /^\/lab\/[a-z0-9/._-]+\.js$/i.test(req.url.split('?')[0]) && reply.statusCode === 200) reply.header('cache-control', 'public, max-age=31536000, immutable'); return payload; });
 app.addHook('onSend', async (_req, reply, payload) => {
   reply
     .header('strict-transport-security', 'max-age=31536000')
@@ -831,13 +834,24 @@ app.get('/home', sendWorkHome); // the work console's home: leads, prototypes, p
 // Brand and assets: the wordmark, icons, colours, fonts and a guide, to use and download. Open to every signed-in staff member.
 app.get('/lab', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').type('text/html').send(readFileSync(new URL('./lab.html', import.meta.url), 'utf8')));
 // the studio may be framed by itself: the flats panel opens it as the graphic studio in a window over the piece (frame-ancestors 'self', the rest as everywhere)
-app.get('/lab/studio', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').header('content-security-policy', "upgrade-insecure-requests; default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob: https:; connect-src 'self' https://thefuturebasics.com; frame-ancestors 'self'; base-uri 'self'; form-action 'self'").type('text/html').send(readFileSync(new URL('./lab-studio.html', import.meta.url), 'utf8')));
+// The scripts the Studio loads, and the file each comes from: the page names each as /lab/….js?v=<a hash of the file>, so a change to a file is a
+// new address (fetched once) and an unchanged one is taken from the browser's cache (see the onSend hook above)
+const STUDIO_SCRIPTS = { '/lab/finish.js': './lab-finish.js', '/lab/nav.js': './lab-nav.js', '/lab/lab-fonts.js': './lab-fonts.js', '/lab/lab-gl.js': './lab-gl.js', '/lab/lab-encode.js': './lab-encode.js',
+  '/lab/studio-core.js': './lab-studio-core.js', '/lab/studio-layers.js': './lab-studio-layers.js', '/lab/studio-io.js': './lab-studio-io.js', '/lab/studio-open.js': './lab-studio-open.js', '/lab/studio-workspace.js': './lab-studio-workspace.js',
+  '/lab/studio-pro.js': './lab-studio-pro.js', '/lab/vendor/polygon-clipping.js': './vendor/polygon-clipping.min.js', '/lab/studio-vec.js': './lab-studio-vec.js', '/lab/studio-ill.js': './lab-studio-ill.js', '/lab/studio-tools.js': './lab-studio-tools.js',
+  '/lab/studio-emb.js': './lab-studio-emb.js', '/lab/studio-board.js': './lab-studio-board.js', '/lab/studio-gen.js': './lab-studio-gen.js', '/lab/studio-outline.js': './lab-studio-outline.js', '/lab/studio-type.js': './lab-studio-type.js', '/lab/studio-fx.js': './lab-studio-fx.js' };
+const scriptHashes = new Map();
+const fileHash = f => { try { const st = statSync(new URL(f, import.meta.url)), k = `${f}|${st.mtimeMs}|${st.size}`, h = scriptHashes.get(f); if (h?.k === k) return h.v; const v = createHash('sha1').update(readFileSync(new URL(f, import.meta.url))).digest('hex').slice(0, 12); scriptHashes.set(f, { k, v }); return v; } catch { return ''; } };
+const versionScripts = html => html.replace(/(<script[^>]*\ssrc=")(\/lab\/[^"?]+\.js)(")/g, (all, a, u, b) => { const f = STUDIO_SCRIPTS[u], v = f && fileHash(f); return v ? `${a}${u}?v=${v}${b}` : all; });
+app.get('/lab/studio', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').header('content-security-policy', "upgrade-insecure-requests; default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob: https:; connect-src 'self' https://thefuturebasics.com; frame-ancestors 'self'; base-uri 'self'; form-action 'self'").type('text/html').send(versionScripts(readFileSync(new URL('./lab-studio.html', import.meta.url), 'utf8'))));
 app.get('/lab/library', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').type('text/html').send(readFileSync(new URL('./lab-library.html', import.meta.url), 'utf8')));
 app.get('/lab/share/:token', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').header('referrer-policy', 'no-referrer').type('text/html').send(readFileSync(new URL('./lab-share.html', import.meta.url), 'utf8')));
 app.get('/lab/poll/:token', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').header('referrer-policy', 'no-referrer').type('text/html').send(readFileSync(new URL('./lab-poll.html', import.meta.url), 'utf8')));
 app.get('/lab/sketches', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').type('text/html').send(readFileSync(new URL('./lab-sketches.html', import.meta.url), 'utf8')));
 app.get('/lab/recipe', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').type('text/html').send(readFileSync(new URL('./lab-recipe.html', import.meta.url), 'utf8')));
 app.get('/lab/nav.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-nav.js', import.meta.url), 'utf8')));
+// The Studio's own script, in five parts loaded in order (src/lab-studio-core.js … lab-studio-workspace.js)
+for (const part of ['core', 'layers', 'io', 'open', 'workspace']) app.get(`/lab/studio-${part}.js`, (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL(`./lab-studio-${part}.js`, import.meta.url), 'utf8')));
 app.get('/lab/studio-pro.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-studio-pro.js', import.meta.url), 'utf8')));
 app.get('/lab/studio-ill.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-studio-ill.js', import.meta.url), 'utf8')));
 app.get('/lab/studio-tools.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-studio-tools.js', import.meta.url), 'utf8')));
