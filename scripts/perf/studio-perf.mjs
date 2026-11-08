@@ -28,7 +28,7 @@ window.__perfClick=async(sel)=>{const fr=()=>new Promise(r=>requestAnimationFram
 const line = (x0, y0, x1, y1, n = 40) => Array.from({ length: n }, (_, i) => [x0 + (x1 - x0) * i / (n - 1), y0 + (y1 - y0) * i / (n - 1)]);
 
 export async function runPerf({ base, token, playwright = null, rate = 4, only = '', gl = false, log = console.log } = {}) {
-  const q = gl ? '&gl=1' : ''; // --gl 1: the picture on the graphics chip (on trial), for comparison
+  const q = gl ? '&gl=1' : '&gl=0'; // the budgets are for the canvas; --gl 1: the picture on the graphics chip (the default in the app), for comparison
   playwright ||= createRequire(import.meta.url)(process.env.PLAYWRIGHT_PATH || 'playwright');
   const b = await playwright.chromium.launch(), results = [], errors = [];
   try {

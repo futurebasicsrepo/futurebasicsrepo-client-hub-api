@@ -17,8 +17,8 @@
   void main(){ o = solid == 1 ? C : texture(T, uv) * A; }`;
   function attach(view) {
     if (G.cv || !view) return G.ok;
-    // on trial: on where it was switched on (the Hand tool's bar, or ?gl=1), until it has been tried on an iPad
-    try { if (/[?&]gl=0\b/.test(location.search) || !(localStorage.getItem('fb.studio.gl') === '1' || /[?&]gl=1\b/.test(location.search))) return false; } catch { return false; }
+    // on by default; off where it was switched off (the Hand tool's bar keeps it per device) or with ?gl=0. No WebGL2: the canvas draws, as before
+    try { if (/[?&]gl=0\b/.test(location.search) || (localStorage.getItem('fb.studio.gl') === '0' && !/[?&]gl=1\b/.test(location.search))) return false; } catch { /* storage closed: on */ }
     const cv = document.createElement('canvas'); cv.setAttribute('aria-hidden', 'true'); cv.style.pointerEvents = 'none';
     const gl = cv.getContext('webgl2', { alpha: true, premultipliedAlpha: true, antialias: false, desynchronized: true, preserveDrawingBuffer: false });
     if (!gl) return false;

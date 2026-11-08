@@ -105,9 +105,14 @@
     const st = think.get(b); if (!st) return; st.said = firstWords(text) || st.said; b.setAttribute('title', String(text).replace(/\s+/g, ' ').trim());
     if (st.on && st.el.parentNode === b) st.el.lastChild.textContent = busyWords(b, st.said, st.label);
   }
+  const failedOn = new WeakSet();
   function end(b, ok) {
     if (!b || b.dataset.fb === 'off') return;
+    // a press can own more than one request (a refresh the page starts within the moment counts too): when the last ends, the button
+    // says it failed if any of them did, never a tick over a failure
+    if (!ok) failedOn.add(b);
     const n = (pending.get(b) || 1) - 1; pending.set(b, n); if (n > 0) return;
+    ok = ok && !failedOn.has(b); failedOn.delete(b);
     settle(b); b.classList.remove('fbn-busy'); b.removeAttribute('aria-busy');
     if (b.dataset.fbTitle !== undefined) { if (b.dataset.fbTitle) b.setAttribute('title', b.dataset.fbTitle); else b.removeAttribute('title'); delete b.dataset.fbTitle; }
     const cls = ok ? 'fbn-ok' : 'fbn-err'; b.classList.add(cls); setTimeout(() => b.classList.remove(cls), ok ? 1000 : 1800);
