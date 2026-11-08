@@ -32,6 +32,36 @@ html[data-focus] body>header,html[data-focus] .fbside,html[data-focus] .fbburger
 html[data-focus] body.fbnav,html[data-focus] body{padding-left:0!important;padding-bottom:0!important}html[data-focus] .studio{height:100dvh}
 html[data-focus] .bar{padding:4px 10px;min-height:44px;gap:6px}
 #panelBtn[aria-pressed=true],#focusBtn[aria-pressed=true]{background:var(--ink);color:#fff}
+/* Focus, deeper: the drawing takes the whole screen and everything else floats over it in Liquid Glass: the bar a capsule along the top,
+   the tool rail a pill on the left, the tool's options a capsule under the bar, the panel a card on the right, the zoom and the size dock
+   glass too. fit() keeps the drawing in the room the glass leaves (focusInsets). Side by side keeps its columns. */
+:root{--glass:rgba(255,255,255,.56);--glass-hi:rgba(255,255,255,.74);--glass-line:rgba(255,255,255,.72);--glass-edge:rgba(20,20,22,.08);--glass-shadow:0 12px 36px rgba(20,20,22,.14),0 2px 6px rgba(20,20,22,.06),inset 0 1px 0 rgba(255,255,255,.85)}
+html[data-focus] .studio:not([data-v=split]){display:block;position:relative;overflow:hidden}
+html[data-focus] .studio:not([data-v=split]) .mid{position:absolute;inset:0;display:block}
+html[data-focus] .studio:not([data-v=split]) :is(.stage,.flathost,.pathost){position:absolute;inset:0}
+html[data-focus] .studio:not([data-v=split]) :is(.bar,.rail,.opts,.side,.zoom,.size-dock){background:var(--glass);-webkit-backdrop-filter:blur(24px) saturate(1.8);backdrop-filter:blur(24px) saturate(1.8);border:1px solid var(--glass-line);outline:1px solid var(--glass-edge);outline-offset:0;box-shadow:var(--glass-shadow)}
+html[data-focus] .studio:not([data-v=split]) .bar{position:absolute;z-index:40;top:10px;left:10px;right:10px;width:max-content;max-width:calc(100% - 20px);margin-inline:auto;border-radius:999px;padding:5px 8px;min-height:44px;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
+html[data-focus] .studio:not([data-v=split]) .bar::-webkit-scrollbar{display:none}
+html[data-focus] .studio:not([data-v=split]) .bar>*{flex:none}html[data-focus] .studio:not([data-v=split]) .bar .ttl{display:flex;align-items:center;min-width:0;max-width:220px}html[data-focus] .studio:not([data-v=split]) .bar .ttl b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px}html[data-focus] .studio:not([data-v=split]) .bar .ttl span{display:none}
+html[data-focus] .studio:not([data-v=split]) .bar>[data-lab-menu],html[data-focus] .studio:not([data-v=split]) .bar #pieceSteps:not(.hidden)~.ttl{display:none} /* the piece's steps already say where you are */
+html[data-focus] .studio:not([data-v=split]) .size-dock{left:76px}
+/* the capsule keeps the essentials (where you are, the checklist, Save, More, Panel, Focus); More opens the rest in it; the steps, Undo and Redo
+   (on the rail) and the saved notes step aside */
+html[data-focus] .studio:not([data-v=split]) .bar :is(#pieceSteps,#undo,#redo,.saved){display:none!important}
+html[data-focus] .studio:not([data-v=split]) #moreBtn{display:inline-flex}
+html[data-focus] #app.steps:not([data-v=split]) #viewSeg :is([data-v=picture],[data-v=pattern]){display:inline-block} /* with the steps put away, the views carry Picture and Pattern again */
+html[data-focus] .studio:not([data-v=split]) .bar:not(.open) :is(.fold:not(#focusBtn),#recipeBtn){display:none!important}
+html[data-focus] .studio:not([data-v=split]) .bar.open{flex-wrap:wrap;border-radius:24px;justify-content:center;row-gap:6px}
+html[data-focus] .studio:not([data-v=split]) .rail{position:absolute;z-index:36;left:10px;top:66px;max-height:calc(100% - 76px);width:56px;border-radius:28px;padding:8px 0}
+html[data-focus] .studio:not([data-v=split]) .opts{position:absolute;z-index:34;top:66px;left:78px;right:78px;width:max-content;max-width:calc(100% - 156px);margin-inline:auto;border-radius:999px;padding:4px 14px;min-height:40px}
+html[data-focus] .studio[data-panel=on]:not([data-v=split]) .opts{right:362px;max-width:calc(100% - 440px)}
+html[data-focus] .studio:not([data-v=split]) .side{position:absolute;z-index:35;right:10px;top:66px;bottom:10px;width:340px;border-radius:24px;overflow:hidden}
+html[data-focus] .studio:not([data-v=split]) .side>.tabs{background:transparent}
+html[data-focus] .studio:not([data-v=split]) .zoom{bottom:12px;right:12px;border-radius:999px}
+html[data-focus] .studio[data-panel=on]:not([data-v=split]) .zoom{right:362px}
+html[data-focus] .studio:not([data-v=split]) .size-dock{border-radius:22px}
+html[data-focus] .studio:not([data-v=split]) .stage{background-color:var(--stage)}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){html[data-focus] .studio :is(.bar,.rail,.opts,.side,.zoom,.size-dock){background:var(--glass-hi)}}
 /* on a phone the toolbar keeps the piece's steps, its name, Save and the panel; the rest folds behind More */
 #moreBtn{display:none}/* a phone: a menu from the header (the Checklist, Export) opens as a sheet across the bottom of the screen, never hanging off an edge */
 @media(max-width:700px){.bar .menu .pop,.bar #readyPop{position:fixed;left:12px;right:12px;top:auto;bottom:calc(12px + env(safe-area-inset-bottom,0px));width:auto;min-width:0;max-height:72dvh;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;z-index:60;box-shadow:0 -8px 40px rgba(20,20,22,.22)}

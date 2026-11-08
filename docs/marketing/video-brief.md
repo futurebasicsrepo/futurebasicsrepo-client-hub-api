@@ -92,6 +92,7 @@ already has show as "on the sketch".
 - **A new graphic, right on the flats:** open the graphic studio from the panel, draw or make it with AI, and **Put it on the garment**; or upload your own artwork.
 - **Make the turns from the flats** draws the piece on a model from four sides, every logo and graphic in place, and **Make the walk** films the model walking in it, right on the board.
 - **iPad and Apple Pencil:** pressure, palm rejection, pinch, pan and a two-finger turn of the picture and the flat (it snaps square; Fit straightens it). Undo and redo sit at the top of the tool rail, and the rail can show each tool's name and what it does. The brush has eight tips (round, pencil, ink pen, marker, airbrush, calligraphy, chalk, spray) and the eraser a hard and a soft one, each with its own size on a big slider beside the canvas. It can be kept on the home screen like an app.
+- **Focus, full screen to design in:** one press (or `F`) and the picture or the flat takes the whole screen; the bar, the tools, the options and the panel float over it in Liquid Glass, frosted and out of the way.
 - **Draw the picture from the flats:** one tap turns the coloured flat into a concept picture.
 - Every detail from the recipe can be moved, resized, recoloured or removed on the flats. **Edit recipe** reopens the menu with the piece's
   own picks.

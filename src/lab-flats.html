@@ -86,6 +86,19 @@ textarea.t{min-height:64px;resize:vertical}
 .newgfx{display:grid;gap:6px;border:1px dashed rgba(20,20,22,.22);border-radius:12px;padding:10px 12px;margin:8px 0}
 /* the Design workspace's layout: the panel folds away, Focus trims the words around the drawing so it gets the room */
 [data-embed][data-panel=off] .wrap{grid-template-columns:minmax(0,1fr)}[data-embed][data-panel=off] .side{display:none}
+/* Focus, deeper (as the Design workspace's): the flat fills the screen; the workspace's bar, rail and options float over the top and left,
+   the panel floats on the right and these tools float at the foot, all in Liquid Glass */
+[data-embed][data-focus]{--glass:rgba(255,255,255,.56);--glass-line:rgba(255,255,255,.72);--glass-edge:rgba(20,20,22,.08);--glass-shadow:0 12px 36px rgba(20,20,22,.14),0 2px 6px rgba(20,20,22,.06),inset 0 1px 0 rgba(255,255,255,.85)}
+[data-embed][data-focus] .wrap{display:block;position:relative;height:100vh;min-height:0;overflow:hidden}
+[data-embed][data-focus] .stage{position:absolute;inset:0;padding:0;display:block}
+[data-embed][data-focus] .canvas{position:absolute;left:78px;right:14px;top:116px;bottom:70px;border:0;border-radius:0;background:transparent}
+[data-embed][data-focus][data-panel=on] .canvas{right:372px}
+[data-embed][data-focus] .canvas>svg{width:100%;height:100%;max-height:none}
+[data-embed][data-focus] :is(.tools,.side){background:var(--glass);-webkit-backdrop-filter:blur(24px) saturate(1.8);backdrop-filter:blur(24px) saturate(1.8);border:1px solid var(--glass-line);outline:1px solid var(--glass-edge);box-shadow:var(--glass-shadow)}
+[data-embed][data-focus] .tools{position:absolute;z-index:30;bottom:12px;left:78px;right:14px;width:max-content;max-width:calc(100% - 92px);margin-inline:auto;border-radius:999px;padding:5px 12px;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
+[data-embed][data-focus][data-panel=on] .tools{right:372px;max-width:calc(100% - 450px)}
+[data-embed][data-focus] .side{position:absolute;z-index:31;right:10px;top:66px;bottom:10px;width:350px;border-radius:24px;overflow:hidden}
+[data-embed][data-focus] .side>.tabs{background:transparent}[data-embed][data-focus] .pane{max-height:none;height:100%}
 [data-embed][data-focus] .stage>p.msg,[data-embed][data-focus] .status.ok{display:none}[data-embed][data-focus] .stage{padding-top:8px;padding-bottom:8px;gap:8px}[data-embed][data-focus] .canvas>svg{max-height:calc(100vh - 70px)}
 /* Simple, set by the Design workspace: the essentials; Pro shows everything */
 [data-level=simple] .lv-pro{display:none!important}
