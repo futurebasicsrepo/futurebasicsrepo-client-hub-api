@@ -562,9 +562,9 @@ export async function migrate() {
       updated_by uuid references users(id) on delete set null,
       updated_at timestamptz not null default now()
     );
-    -- the concept's card shows whichever was saved last: the picture (image_at, set whenever the picture changes) or the saved flat (its thumb)
-    alter table lab_flats add column if not exists thumb bytea;
-    alter table lab_flats add column if not exists thumb_at timestamptz;
+    -- the concept's card shows whichever was saved last: the picture (image_at, set whenever the picture changes) or the flat (flat_thumb: the saved
+    -- flat's front, or the flat it starts as when none is saved; an empty one when the piece has no flat)
+    alter table lab_concepts add column if not exists flat_thumb bytea;
     alter table lab_concepts add column if not exists image_at timestamptz;
     create or replace function lab_concept_image_at() returns trigger language plpgsql as $$
       begin if tg_op = 'INSERT' then if new.image is not null then new.image_at := now(); end if;
