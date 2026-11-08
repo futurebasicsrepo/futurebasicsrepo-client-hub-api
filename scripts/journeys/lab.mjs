@@ -68,7 +68,7 @@ const say = async (page, text) => { await page.waitForSelector('dialog.ask[open]
 // the flats keep the sheets in their own panel (the Sheets tab): open it and say whether the spec and decoration sheets are there
 const flatSheets = async F => { await F.click('.tabs [data-tab=sheets]'); return await F.isVisible('#pSheets [data-sheet=spec]') && await F.isVisible('#pSheets [data-sheet=deco]'); };
 // on the flats, the fabrics, trims and labels window opens from the Garment tab
-const flatMats = async F => { await F.click('.tabs [data-tab=garment]'); await F.click('[data-mats]'); };
+const flatMats = async page => { const F = await (await page.waitForSelector('#flatFrame')).contentFrame(); await F.waitForSelector('.tabs [data-tab=garment]', { timeout: 20000 }); await F.click('.tabs [data-tab=garment]'); await F.click('[data-mats]'); };
 // a recipe piece on its flats: Edit recipe is in the flats' Garment tab (on the picture it is in the top bar)
 const flatRecipe = async page => { const F = await (await page.waitForSelector('#flatFrame')).contentFrame(); await F.waitForSelector('.tabs [data-tab=garment]', { timeout: 20000 });
   return F.evaluate(() => { document.querySelector('.tabs [data-tab=garment]').click(); return Boolean(document.querySelector('#pGarment a[href*="/lab/recipe?concept="]')); }); };
@@ -2461,7 +2461,8 @@ await journey('J236', 'Charges off per room, and Design on an iPad with the Penc
       const opaque = () => page.evaluate(() => { const l = LAYERS.find(q => q.kind === 'paint'), d = l.raster.getContext('2d').getImageData(0, 0, l.raster.width, l.raster.height).data; let n = 0; for (let i = 3; i < d.length; i += 16) if (d[i] > 20) n++; return n; });
       const before = await opaque(), px0 = await page.evaluate(() => PX);
       const tp = (type, pts) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: pts.map((p, i) => ({ x: p[0], y: p[1], id: i + 1 })) });
-      const cx = vb.x + vb.width * .5, cy = vb.y + vb.height * .5;
+      // a spot where the canvas itself is under the finger (the size dock sits over it beside the tool names)
+      const [cx, cy] = await page.evaluate(([x, y, w, h]) => { for (const [u, v] of [[.5, .5], [.75, .5], [.75, .3], [.6, .7]]) { const px = x + w * u, py = y + h * v; if (document.elementFromPoint(px, py)?.closest('#view')) return [px, py]; } return [x + w * .5, y + h * .5]; }, [vb.x, vb.y, vb.width, vb.height]);
       await tp('touchStart', [[cx, cy]]); for (let i = 1; i <= 6; i++) await tp('touchMove', [[cx + i * 20, cy + i * 8]]); await tp('touchEnd', []);
       ok(await opaque() === before && await page.evaluate(() => PX) !== px0, '8. after the Pencil, a finger (or a resting palm) moves the view and paints nothing', [before, px0, await page.evaluate(() => PX)]);
       const z0 = await page.evaluate(() => Z);
@@ -2658,7 +2659,7 @@ await journey('J240', 'Design on an iPad, as Kyle found it: the ruler takes any 
         await pen(r, [at(.35, .3), at(.42, .36), at(.5, .42), at(.58, .46)]);
         ok(await F.evaluate(() => FBFlats.canUndo() && FBFlats.dirty()), '7c. a Pencil stroke draws on the flat');
         ok(!(await page.$eval('#undo', b => b.disabled)), '   Undo is offered for it'); await page.click('#undo');
-        ok(await F.evaluate(() => !MUNDO[VIEW]?.length && MREDO[VIEW]?.length === 1 && FBFlats.canRedo()), '   Undo takes it off, Redo is offered'); await page.click('#redo');
+        ok(await F.evaluate(() => { const m = FBFlats.marks(); return m.undo === 0 && m.redo === 1 && FBFlats.canRedo(); }), '   Undo takes it off, Redo is offered'); await page.click('#redo');
         await page.click('.rail [data-tool=rect]'); await pen(r, [at(.3, .6), at(.45, .7), at(.6, .75)]);
         await page.click('#save'); await page.waitForFunction(() => !DIRTY, null, { timeout: 30000 }); await page.waitForTimeout(400);
         const mk = (await K(`/concepts/${c.id}/flats`)).json.flat.markup;
@@ -2669,7 +2670,7 @@ await journey('J240', 'Design on an iPad, as Kyle found it: the ruler takes any 
         ok(await F2.evaluate(() => { const c = document.querySelector('.mkw canvas'); return Boolean(c && c.width > 10); }), '   opened again, the drawing is back on the flat'); }
       await page.click('.rail [data-tool=select]');
       // fabrics, trims and labels from the library, added to the garment from Design (here from the flat's Garment tab; on the picture, from its fabric section)
-      await flatMats(F); await page.waitForSelector('#matDlg[open] #matLib [data-madd]', { timeout: 15000 }); await page.waitForSelector('#matLib .mc svg[role="img"]');
+      await flatMats(page); await page.waitForSelector('#matDlg[open] #matLib [data-madd]', { timeout: 15000 }); await page.waitForSelector('#matLib .mc svg[role="img"]');
       await page.click('#matLib [data-madd]'); await page.waitForSelector('#matOn [data-mp][data-role="main"]', { timeout: 15000 });
       await page.click('#matKinds [data-mk=tag]'); await page.waitForSelector('#matLib .th.tg svg'); await page.click('#matLib [data-madd]'); await page.waitForSelector('#matOn [data-mp][data-role="tag"]', { timeout: 15000 });
       let bom = (await K(`/concepts/${c.id}/materials`)).json;

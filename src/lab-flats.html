@@ -987,7 +987,7 @@ if(EMBED)window.FBFlats={refresh:()=>refreshFlat(),replaceGraphic:(pl,id,name)=>
   zoom:()=>FZ,
   // the Design workspace's tools, on the flat: the Pencil, brush, eraser, shapes and type draw on the view; undo and redo step through them
   tool:t=>{MTOOL=t||'select';if(MTOOL!=='text'&&TY)typeClose(true);else if(MTOOL==='text'&&!TY)setTimeout(typeStart,0);if(t==='area'){if(P&&MODE!=='ai'){MODE='ai';AIBOX=null;if(TAB!=='design')tab('design');paint()}}else if(MODE==='ai'&&!AIBOX){MODE=null;if(P)paint()}mkPlace()},
-  undo:()=>fUndo(),redo:()=>fRedo(),canUndo:fCanUndo,canRedo:fCanRedo,
+  undo:()=>fUndo(),redo:()=>fRedo(),canUndo:fCanUndo,canRedo:fCanRedo,marks:()=>({undo:MUNDO[VIEW]?.length||0,redo:MREDO[VIEW]?.length||0}),
   // a flat drawn for the Studio's board: the drawing alone, in a colourway's colour or at a size (the artwork as graded for it)
   frame:(view,{color,size}={})=>{if(!P)return '';const sz=size||P.size,pls=PL.map(q=>{if(!q.grade)return q;const g=q.grade.find(x=>x.sizes.includes(sz));return g?{...q,w:g.w,h:g.h,y:q.y-q.h/2+g.h/2}:q});return renderSvg(color?{...P,color}:P,view,{maskHref:MASK_URL,placements:pls,hrefs:HREF,size:sz,showPom:false,showDims:false,scale:0,editHrefs:EHREF,alloverHref:AOHREF,plain:true,withArt:true,texture:clothTex(),tags:tagsOn()})},
   sizes:()=>[...document.querySelectorAll('#size option')].map(o=>o.value).filter(Boolean),graded:()=>Boolean(P&&PL.some(q=>q.grade)),size:()=>P?.size||'',colourways:()=>D?.colourways||[],
