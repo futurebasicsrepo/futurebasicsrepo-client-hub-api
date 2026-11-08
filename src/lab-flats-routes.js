@@ -134,8 +134,10 @@ export function registerLabFlatsRoutes(app, d) {
   const techniques = async (cid = null) => (await pool.query('select id, key, kind, name, base, finish, rules from lab_techniques where not archived and ((client_id is null and ($1::uuid is null or builtin)) or client_id=$1) order by builtin desc, name', [UUID.test(String(cid || '')) ? cid : null])).rows.map(t => ({ ...t, rules: cleanRules(t.rules || {}, t.base) }));
   const techFor = (list, q) => list.find(t => t.id === q.techniqueId) || list.find(t => t.key === PREFERRED[q.technique]) || list.find(t => t.base === q.technique) || list.find(t => t.key === 'plastisol') || { name: q.technique || 'screen print', base: q.technique || 'screen print', rules: cleanRules({}, q.technique) };
   const marks = new Map();
-  const markPng = async mark => { if (!marks.has(mark)) marks.set(mark, await sharp(Buffer.from(logoSvg(mark))).resize({ width: 1200 }).png().toBuffer()); return marks.get(mark); };
-  const pngOf = async q => q.art ? (await pool.query('select png from lab_art where id=$1', [q.art])).rows[0]?.png || null : q.mark ? markPng(q.mark) : null;
+  // a brand mark as a picture, in the colours its placement chose (the lines and lettering, and the cue dot), or in the brand's own
+  const markPng = async (mark, colour = '', dot = '') => { const k = `${mark}|${colour}|${dot}`; if (!marks.has(k)) marks.set(k, await sharp(Buffer.from(logoSvg(mark, { ...(colour ? { fill: colour } : {}), ...(dot ? { dot } : {}) }))).resize({ width: 1200 }).png().toBuffer()); return marks.get(k); };
+  // a brand mark is drawn from itself in its colours, even once the studio has kept a picture of it (the colour may have changed since)
+  const pngOf = async q => q.mark ? markPng(q.mark, q.colour || '', q.dot || '') : q.art ? (await pool.query('select png from lab_art where id=$1', [q.art])).rows[0]?.png || null : null;
   const aspectOf = async q => { const b = await pngOf(q); if (!b) return 1; const m = await sharp(b).metadata(); return (m.width || 1) / (m.height || 1); };
 
   // the sketch the piece is drawn from: scored from the words, then confirmed from the concept's picture by the vision model (cached per picture)
@@ -229,7 +231,7 @@ export function registerLabFlatsRoutes(app, d) {
   const colourCache = new Map();
   async function coloursOf(q) {
     // a mark is measured from its own drawing like any artwork: the cue mark is ink and the green dot, two threads or two screens, not one
-    const key = q.art || (q.mark ? `mark:${q.mark}` : ''); if (colourCache.has(key)) return colourCache.get(key);
+    const key = q.art || (q.mark ? `mark:${q.mark}:${q.colour || ''}:${q.dot || ''}` : ''); if (colourCache.has(key)) return colourCache.get(key);
     const b = await pngOf(q); const list = b ? (await artColours(b, { max: 12 })).filter(c => c.share >= .02).map(c => ({ hex: c.hex, name: c.name, pantone: c.code || '', share: c.share })) : [];
     if (colourCache.size > 300) colourCache.clear(); colourCache.set(key, list); return list;
   }
@@ -704,9 +706,10 @@ export function registerLabFlatsRoutes(app, d) {
       if (!art) return bad(reply, `${clip(l.name, 40) || 'A layer'}: send its picture`);
       const tech = UUID.test(String(l.techniqueId || '')) ? list.find(x => x.id === l.techniqueId) : null;
       arts[l.layer] = art;
-      graphics.push({ ...(/^[a-z0-9-]{1,40}$/i.test(String(l.fromFlat || '')) ? { fromFlat: String(l.fromFlat) } : {}), name: clip(l.name, 80) || 'Studio graphic', kind: 'icon', idea: 'Placed and measured in the studio', placement: PLACEMENTS[l.placement].label.toLowerCase(), technique: tech?.base || 'screen print', art, ...(tech ? { finish: { id: tech.id, name: tech.name } } : {}), studioLayer: l.layer, widthIn: Math.round(w * 100) / 100, heightIn: Math.round(h * 100) / 100 });
+      const hx = v => (/^#[0-9a-f]{6}$/i.test(String(v || '')) ? String(v).toLowerCase() : undefined), brand = ['mark', 'word', 'lockup'].includes(l.brand?.mark) ? { mark: l.brand.mark, colour: hx(l.brand.colour), dot: hx(l.brand.dot) } : null;
+      graphics.push({ ...(brand ? { brand } : {}), ...(/^[a-z0-9-]{1,40}$/i.test(String(l.fromFlat || '')) ? { fromFlat: String(l.fromFlat) } : {}), name: clip(l.name, 80) || 'Studio graphic', kind: 'icon', idea: 'Placed and measured in the studio', placement: PLACEMENTS[l.placement].label.toLowerCase(), technique: tech?.base || 'screen print', art, ...(tech ? { finish: { id: tech.id, name: tech.name } } : {}), studioLayer: l.layer, widthIn: Math.round(w * 100) / 100, heightIn: Math.round(h * 100) / 100 });
     }
-    const spec = { ...(c.spec || {}), graphics: [...(c.spec?.graphics || []).filter(g => !g.studioLayer), ...graphics.map(({ fromFlat, ...g }) => g)].slice(0, 8) };
+    const spec = { ...(c.spec || {}), graphics: [...(c.spec?.graphics || []).filter(g => !g.studioLayer), ...graphics.map(({ fromFlat, brand, ...g }) => g)].slice(0, 8) };
     await pool.query('update lab_concepts set spec=$2, updated_at=now() where id=$1', [c.id, spec]);
     // the flats already saved take the studio's graphics too: kept where they were moved to, resized, new ones at their spot, removed ones gone
     const r = (await pool.query('select params, placements from lab_flats where concept_id=$1', [c.id])).rows[0]; let flats = null;
@@ -716,7 +719,8 @@ export function registerLabFlatsRoutes(app, d) {
       for (const g of graphics) {
         const prev = old.find(q => q.source === 'studio' && q.layer === g.studioLayer) || (g.fromFlat ? old.find(q => q.id === g.fromFlat && q.source !== 'studio') : null), t = techFor(list, { techniqueId: g.finish?.id, technique: g.technique });
         const base = prev ? { view: prev.view, x: prev.x, y: prev.y - prev.h / 2 + g.heightIn / 2, w: g.widthIn, h: g.heightIn } : sized(defaultPlacement('graphic', params, { aspect: g.widthIn / g.heightIn, label: g.placement }), g, params);
-        studio.push({ ...(prev || {}), mark: undefined, added: undefined, id: 's-' + g.studioLayer, name: g.name, source: 'studio', layer: g.studioLayer, art: g.art, technique: t.base, techniqueId: t.id, ...base });
+        // a brand mark stays one (its colours too), so the flats keep offering its colour; anything else is the studio's picture
+        studio.push({ ...(prev || {}), mark: g.brand?.mark, colour: g.brand?.colour, dot: g.brand?.dot, added: undefined, id: 's-' + g.studioLayer, name: g.name, source: 'studio', layer: g.studioLayer, art: g.art, technique: t.base, techniqueId: t.id, ...base });
       }
       const { params: p2, placements } = cleanFlat({ ...params, placements: [...keep, ...studio] }), ck = await check(p2, placements, c.client_id);
       await pool.query('update lab_flats set placements=$2, check_result=$3, checked_at=now(), updated_at=now() where concept_id=$1', [c.id, JSON.stringify(placements), ck]);

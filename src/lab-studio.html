@@ -949,7 +949,11 @@ async function paintLib(){const box=$('#libTiles');if(!box)return;
   try{if(!LIB){const q=($('#libQ')?.value||'').trim();LIB=(await api('/v1/lab/library/graphics?limit=24'+(q?'&q='+encodeURIComponent(q):''))).graphics}
     box.innerHTML=LIB.length?LIB.map(g=>`<button class="tile" type="button" data-lib="${g.id}" title="${esc(g.name)}${g.techniqueName?' · '+esc(g.techniqueName):''}"><img alt="" data-libimg="${g.id}">${esc((g.name||'Untitled').slice(0,28))}</button>`).join(''):'<span class="note">Nothing found.</span>';
     for(const i of box.querySelectorAll('[data-libimg]'))blobOf('/v1/lab/art/'+i.dataset.libimg+'?thumb=1').then(b=>{i.src=URL.createObjectURL(b)}).catch(()=>{})}catch(x){box.innerHTML=`<span class="note">${esc(x.message)}</span>`}}
-async function markRaster(id,color='#141416'){const m=D.marks.find(x=>x.id===id);const svg=m.svg.replace(/#141416/gi,color);const img=await imgOf('data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg));const k=1600/Math.max(img.naturalWidth||img.width,1),c=canvas((img.naturalWidth||img.width)*k,(img.naturalHeight||img.height)*k);c.getContext('2d').drawImage(img,0,0,c.width,c.height);return stamp(c)}
+// a brand mark as pixels: its lines and lettering in color, its cue dot in dot (its own green when none). brand:word:#a02a20:#a02a20 says both
+const brandSrc=q=>'brand:'+q.mark+(q.colour||q.dot?':'+(q.colour||'')+':'+(q.dot||''):''),brandOf=src=>{const m=/^brand:(mark|word|lockup)(?::(#[0-9a-f]{6})?)?(?::(#[0-9a-f]{6})?)?$/i.exec(String(src||''));return m?{mark:m[1],...(m[2]?{colour:m[2].toLowerCase()}:{}),...(m[3]?{dot:m[3].toLowerCase()}:{})}:null};
+// a mark the studio has not changed (no tint, colour adjustment, distress, warp or filter): it can be drawn from itself on the flats in its colours
+const plainMark=l=>!l.tint?.amount&&!l.distress?.amount&&!l.warp&&!l.fx&&!l.filters?.length&&(!l.adjust||(l.adjust.hue===0&&l.adjust.sat===100&&l.adjust.bright===100&&l.adjust.contrast===100))&&!(l.raster&&l.raster._rid!==l._srcRid);
+async function markRaster(id,color='#141416',dot=''){const m=D.marks.find(x=>x.id===id);let svg=m.svg.replace(/#141416/gi,color||'#141416');if(dot)svg=svg.replace(/#4BFF9A/gi,dot);const img=await imgOf('data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg));const k=1600/Math.max(img.naturalWidth||img.width,1),c=canvas((img.naturalWidth||img.width)*k,(img.naturalHeight||img.height)*k);c.getContext('2d').drawImage(img,0,0,c.width,c.height);return stamp(c)}
 async function addPicture(src,name,{fit=.45,origin=null}={}){const img=await imgOf(src),c=canvas(img.naturalWidth,img.naturalHeight);c.getContext('2d').drawImage(img,0,0);const sc=Math.min(W*fit/c.width,H*fit/c.height,1);return addLayer(fresh('image',{name,raster:stamp(c),src:origin,dirty:!origin,_srcRid:c._rid,scale:+sc.toFixed(3),x:W/2,y:H/2}))}
 async function addFiles(files){for(const f of[...files].filter(f=>/^image\//.test(f.type)).slice(0,6)){if(f.size>15e6){toast(f.name+' is over 15 MB.');continue}try{await addPicture(await urlOfBlob(f),f.name.replace(/\.[a-z0-9]+$/i,'').slice(0,40)||'Picture')}catch(x){toast(x.message)}}}
 $('#pAdd').addEventListener('click',async e=>{
@@ -1235,7 +1239,7 @@ try{if(localStorage.getItem('fb.studio.names')!=='0'&&matchMedia('(pointer:coars
 async function loadLayer(o){
   const l={...fresh(o.kind),...o,adjust:{...fresh(o.kind).adjust,...(o.adjust||{})},tint:{...fresh(o.kind).tint,...(o.tint||{})},distress:{...fresh(o.kind).distress,...(o.distress||{})},finish:o.finish&&o.finish.id?{...o.finish,distress:{...(o.finish.distress||{})}}:null};
   if(isRaster(l)){let src=l.src||'';
-    if(/^brand:/.test(src)){l.raster=await markRaster(src.slice(6))}
+    if(/^brand:/.test(src)){const b=brandOf(src)||{mark:src.slice(6)};l.raster=await markRaster(b.mark,b.colour,b.dot)}
     else{if(src.startsWith('/v1/lab/art/'))src=await urlOfBlob(await blobOf(src));const img=await imgOf(src),c=canvas(img.naturalWidth,img.naturalHeight);c.getContext('2d').drawImage(img,0,0);l.raster=stamp(c)}
     l._srcRid=l.raster._rid}
   return l;
@@ -1453,7 +1457,7 @@ const syncKey=(placed=placedNow())=>JSON.stringify(placed.map(x=>[x.l.id,x.l.fro
 async function syncFlats({before}={}){
   if(before)await before(); // unsaved changes on the flats go first and their sizes come back to the layers, so nothing set on the flats is undone
   const placed=placedNow(),key=syncKey(placed);if(key===SYNCED)return false;
-  const layers=placed.map(x=>({layer:x.l.id,...(x.l.fromFlat?{fromFlat:x.l.fromFlat}:{}),name:x.l.name,widthIn:x.s.w,heightIn:x.s.h,placement:x.l.placement,techniqueId:x.l.finish?.id||null,...(x.l.art&&x.l.artSig===x.key?{art:x.l.art}:{image:artPng(x.l)})}));
+  const layers=placed.map(x=>({layer:x.l.id,...(x.l.fromFlat?{fromFlat:x.l.fromFlat}:{}),...(brandOf(x.l.src)&&plainMark(x.l)?{brand:brandOf(x.l.src)}:{}),name:x.l.name,widthIn:x.s.w,heightIn:x.s.h,placement:x.l.placement,techniqueId:x.l.finish?.id||null,...(x.l.art&&x.l.artSig===x.key?{art:x.l.art}:{image:artPng(x.l)})}));
   const r=await api(`/v1/lab/concepts/${CID}/studio/graphics`,{body:{layers}});
   for(const x of placed)if(r.arts[x.l.id]){x.l.art=r.arts[x.l.id];x.l.artSig=x.key}
   if(SYNCED!==null||placed.length)toast(placed.length?`On the concept${r.flats?' and its flats':''}: ${placed.length} graphic${placed.length>1?'s':''} at their size.`:'Nothing from the studio is on the flats now.');
@@ -1488,6 +1492,9 @@ function adoptFlats(list,{saved=true}={}){FLATS={saved,placements:list||[]};if(G
   for(const l of LAYERS){if(l.kind==='base'||!l.placement)continue;const q=FLATS.placements.find(x=>x.source==='studio'&&x.layer===l.id);
     if(q){const s=inchesOf(l);if(s.w>0&&Math.abs(q.w-s.w)>.07){l.scale=clamp(l.scale*q.w/s.w,.02,40);changed.push(`${l.name} is ${fin(q.w)} in wide, as on the flats`)}}
     else if(saved&&l.art){l.placement=undefined;changed.push(`${l.name} came off the flats, so it is on the picture only`)}} // only a layer that was on them (it has its artwork) can have come off
+  // a brand mark recoloured on the flats takes the new colours on the picture too (and so in what is saved next)
+  for(const l of LAYERS){const b=brandOf(l.src);if(!b)continue;const q=FLATS.placements.find(x=>x.mark&&((x.source==='studio'&&x.layer===l.id)||x.id===l.fromFlat));if(!q||brandSrc(q)===l.src)continue;
+    const src=brandSrc(q);l.src=src;markRaster(q.mark,q.colour,q.dot).then(r=>{if(l.src!==src)return;l.raster=r;l._srcRid=r._rid;l._pc=null;l._pk=null;l._tk=null;commit();paintLayers();draw()}).catch(()=>{})}
   if(changed.length){commit();draw();toast(changed.slice(0,2).join('. ')+(changed.length>2?` and ${changed.length-2} more`:'')+'.');if(inStep&&saved)SYNCED=syncKey()}
   paintLayers();
   // a logo or graphic added on the flats comes onto the picture by itself (the front only: the picture shows the front). What came with the
@@ -1505,7 +1512,7 @@ function flatKey(q){const ids=(D.placements||[]).map(p=>p.id),t=`${q.name||''} $
   if(q.w>=9&&ids.includes('full front'))return'full front';if(Math.abs(q.x)>=1.25&&ids.includes('left chest'))return'left chest';return ids.includes('centre chest')?'centre chest':ids[0]||undefined}
 async function flatToLayer(q){let r,src;
   if(q.art){const u=await urlOfBlob(await blobOf('/v1/lab/art/'+q.art)),img=await imgOf(u);r=stamp(canvas(img.naturalWidth,img.naturalHeight));r.getContext('2d').drawImage(img,0,0);src='/v1/lab/art/'+q.art}
-  else if(q.mark){r=await markRaster(q.mark);src='brand:'+q.mark}else return null;
+  else if(q.mark){r=await markRaster(q.mark,q.colour,q.dot);src=brandSrc(q)}else return null;
   const box=garmentBox(),l=addLayer(fresh('image',{name:String(q.name||'Graphic').slice(0,40),raster:r,src,_srcRid:r._rid,scale:1,x:Math.round(box?box.cx+q.x*PPI:W/2),y:Math.round(box?box.top+q.y*PPI:H*.4)}),{silent:true});
   const sz=inchesOf(l);if(sz.w>0)l.scale=clamp(q.w/sz.w,.02,40);l.placement=flatKey(q);l.fromFlat=q.id;if(q.techniqueId&&D.techniques?.some(t=>t.id===q.techniqueId))applyTech(l,q.techniqueId);return l}
 let LINKP=Promise.resolve();
