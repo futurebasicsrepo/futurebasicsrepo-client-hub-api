@@ -1596,7 +1596,7 @@ applyLayout();
 
 // ---------- tags and labels in the studio ----------
 async function tagStart(){const t=TAGM.spec,k=Math.max(6,Math.min(24,1600/Math.max(t.widthMm,t.heightMm)));W=Math.round(t.widthMm*k);H=Math.round(t.heightMm*k);
-  const fill=(TAGM.colours||[])[0]?.hex||'',T=await import('/lab/lab-tags.js'),img=await imgOf('data:image/svg+xml;charset=utf-8,'+encodeURIComponent(T.tagFaceSvg(t,{pxPerMm:k,fill}))),face=canvas(W,H);face.getContext('2d').drawImage(img,0,0,W,H);
+  const fill=(TAGM.colours||[])[0]?.hex||'',T=await import('/lab/lab-tags.js'),img=await imgOf('data:image/svg+xml;charset=utf-8,'+encodeURIComponent(T.tagFaceSvg(t,{pxPerMm:k,fill,words:false}))),face=canvas(W,H);face.getContext('2d').drawImage(img,0,0,W,H);
   const dark=fill?(()=>{const n=parseInt(fill.slice(1),16);return((n>>16)*299+((n>>8)&255)*587+(n&255)*114)/1000<128})():/leather|rubber/.test(t.material||''),ink=dark?'#f3eee4':'#141416';
   LAYERS=[fresh('base',{name:'Clear background',raster:stamp(canvas(W,H)),x:W/2,y:H/2,dirty:true}),fresh('image',{name:'Tag face',raster:stamp(face),x:W/2,y:H/2,scale:1,dirty:true})];
   // its words, each its own type layer: change the font, the words, the size and the colour like any type

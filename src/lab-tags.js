@@ -76,9 +76,15 @@ export function tagWords(spec = {}) {
 }
 
 // → an SVG of the tag's blank face only, exactly its size (no margin, string or words): the base the studio designs the face on
-export function tagFaceSvg(spec = {}, { pxPerMm = 12, fill = '' } = {}) {
+const SIZE_WORD = /^(XXS|XS|S|M|L|XL|XXL|XXXL|[2-5]XL|OS|ONE SIZE)$/i;
+export function tagFaceSvg(spec = {}, { pxPerMm = 12, fill = '', size = '', words = true } = {}) {
   const w = Math.max(5, Number(spec.widthMm) || 40), h = Math.max(5, Number(spec.heightMm) || 20), shape = TAG_SHAPES.includes(spec.shape) ? spec.shape : 'rectangle', mat = String(spec.material || '');
   const paper = /paper|board|tyvek/.test(mat), leather = /leather/.test(mat), metal = /metal/.test(mat), rubber = /rubber/.test(mat), bg = fill || (paper ? '#f4efe4' : leather ? '#6b4a2b' : metal ? '#b9b9bd' : rubber ? '#2a2a2e' : '#f7f6f2');
   const outline = tagOutline(shape, w, h), weave = /woven|jacquard/.test(mat) ? `<path d="${outline}" fill="url(#weave)" opacity=".3"/>` : '';
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${Math.round(w * pxPerMm)}" height="${Math.round(h * pxPerMm)}"><defs><pattern id="weave" width="1.2" height="1.2" patternUnits="userSpaceOnUse"><path d="M0 .6 H1.2 M.6 0 V1.2" stroke="#000" stroke-width=".12"/></pattern></defs><path d="${outline}" fill="${bg}"/>${weave}</svg>`;
+  const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const lines = !words ? [] : (Array.isArray(spec.text) ? spec.text : String(spec.text || '').split(/\n|\//)).map(t => String(t).trim()).filter(Boolean).map(t => (size && SIZE_WORD.test(t) ? String(size).toUpperCase() : t)).slice(0, h < 14 ? 1 : h < 24 ? 2 : 3);
+  const lum = c => { const m = /^#?([0-9a-f]{6})$/i.exec(c || ''); if (!m) return 1; const n = parseInt(m[1], 16); return (0.2126 * (n >> 16) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255)) / 255; }, ink = lum(bg) < .5 ? '#f3eee4' : '#141416';
+  const fs = lines.length ? Math.max(1.6, Math.min(h * (lines.length > 1 ? .3 : .45), w * .88 / (Math.max(...lines.map(l => l.length), 1) * .62))) : 0;
+  const text = lines.map((t, i) => `<text x="${w / 2}" y="${h / 2 + (i - (lines.length - 1) / 2) * fs * 1.2 + fs * .35}" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="${i === 0 ? 700 : 400}" font-size="${(i === 0 ? fs : fs * .82).toFixed(2)}" letter-spacing="${(fs * .06).toFixed(2)}" fill="${ink}">${esc(t)}</text>`).join('');
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${Math.round(w * pxPerMm)}" height="${Math.round(h * pxPerMm)}"><defs><pattern id="weave" width="1.2" height="1.2" patternUnits="userSpaceOnUse"><path d="M0 .6 H1.2 M.6 0 V1.2" stroke="#000" stroke-width=".12"/></pattern></defs><path d="${outline}" fill="${bg}"/>${weave}${text}</svg>`;
 }
