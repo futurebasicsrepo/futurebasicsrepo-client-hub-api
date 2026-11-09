@@ -126,6 +126,11 @@ function tailoredPieces(S, m, o, style, K) {
     piece('flap', 'Pocket flap', rect(6.25, 2.5), { cut: 4, pair: true, notes: ['Self and lining; over a jetted pocket, set level at the waist'], shown: flap, place: { view: 'front', x: half * .2, y: waistY + 3.2, z: 3 } }),
     { ...twin('flap-2', 'Pocket flap', flap, { view: 'front', x: -half * .2 - 6.25, y: waistY + 3.2, z: 3 }), shown: flap },
     piece('pocket-bag', 'Pocket bag', rect(7.5, 15), { fabric: 'pocketing', cut: 6, hidden: true, notes: ['Two to each flap pocket, two for the chest welt'], place: { view: 'front', x: half * .3, y: waistY + 3, z: -3 } }));
+  // a belt (a trench): with its loops and buckle, at the waist
+  if (K.belt) { const bl = r8(m.chest * 2 + 16), band = [[-half - .6, 0], [half + .6, 0], [half + .6, 1.75], [-half - .6, 1.75]];
+    pieces.push(piece('belt', 'Belt', rect(bl, 4), { cut: 1, notes: ['Folded to 1¾ in, fused, edge-stitched; a pointed end'], shown: band, place: { view: 'front', x: 0, y: waistY - .9, z: 7 } }), { ...piece('belt-back', 'Belt', rect(bl, 4), { cut: 0, shown: band, place: { view: 'back', x: 0, y: waistY - .9, z: 7 } }), of: 'belt', twin: true, copy: true },
+      piece('belt-loop', 'Belt loop', rect(1.5, 3.5), { cut: 5, notes: ['Folded in four, edge-stitched; at the side seams and the back'], hidden: true, place: { view: 'front', x: half - 1, y: waistY, z: -1 } }));
+    trims.push({ item: 'Buckle', spec: '1¾ in, covered or metal, with prong', qty: 1, where: 'Belt' }); }
   // the buttons as the front shows them
   const btn = [[-.35, 0], [0, -.35], [.35, 0], [0, .35]], rows = dbl ? [breakY + .5, breakY + 3.5, breakY + 6.5] : [breakY + .25, breakY + 4.75], cols = dbl ? [ext - .9, -(ext - .9)] : [-0];
   let n = 0; for (const y of rows) for (const x of cols) pieces.push({ ...piece(`button-${++n}`, 'Button', btn, { cut: 0, shown: btn, place: { view: 'front', x, y, z: 6 } }), twin: true, copy: true, of: 'front' });

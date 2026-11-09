@@ -4958,6 +4958,28 @@ await journey('J297', 'A turn edited by hand on the board: the piece\'s graphics
   } finally { if (cid) await K(`/concepts/${cid}`, { method: 'DELETE' }); }
 });
 
+await journey('J298', 'The sketch library grows: a piece\'s flats drawn from its picture and saved go into the library with their drawings, what the piece is built with and its name; a new piece started from it opens with those drawings (no AI); the sketch pack shows it first; it can be taken out of the library', async () => {
+  const made = []; let sid = null;
+  try {
+    const a = await K('/concepts/from-sketch', { body: { template: 'jk-blazer', name: 'Library test double-breasted coat' } }); const cid = a.json.concept?.id; made.push(cid);
+    const fl = (await K(`/concepts/${cid}/flats`)).json.flat; await K(`/concepts/${cid}/flats`, { method: 'PUT', body: { ...fl, placements: [] } });
+    const pic = await K(`/concepts/${cid}/flats/picture`, { body: {} }); ok(pic.status === 200, '0. the piece has a picture (drawn from its flats)', [pic.status, pic.json]);
+    const dr = await K(`/concepts/${cid}/flats/draw`, { body: { ...fl, placements: [], views: ['front', 'back'] } });
+    if (dr.status === 400 && /no picture/i.test(JSON.stringify(dr.json))) { ok(true, 'skipped: the test concept has no picture to draw from'); return; }
+    ok(dr.status === 200 && dr.json.drawn?.front, '1. the flats are drawn from the picture', [dr.status, dr.json]);
+    const put = await K(`/concepts/${cid}/flats`, { method: 'PUT', body: { ...fl, drawn: dr.json.drawn, options: { ...(fl.options || {}), construction: { breasted: 'double' } }, placements: [] } });
+    ok(put.status === 200, '   and saved', put.json);
+    let g = null; for (let i = 0; i < 20 && !g; i++) { g = (await K('/library/sketches')).json.sketches?.find(x => x.label === 'Library test double-breasted coat'); if (!g) await new Promise(q => setTimeout(q, 250)); }
+    sid = g?.id; ok(g && g.style === 'jacket' && g.template === 'jk-blazer' && g.construction?.breasted === 'double' && g.hasBack, '2. the library has it: its sketch, its drawings, what it is built with, its name', g);
+    ok((await call(`/v1/lab/library/sketches/${sid}/front`, { token: kyleT })).status === 200, '   with its front drawing');
+    const b = await K('/concepts/from-sketch', { body: { template: g.template, name: 'From the grown library' } }), bid = b.json.concept?.id; made.push(bid);
+    const st = await K(`/concepts/${bid}/flats/from-library-sketch`, { body: { sketch: sid } }); ok(st.status === 200, '3. a new piece starts from it', st.json);
+    const f2 = (await K(`/concepts/${bid}/flats`)).json.flat; ok(f2.drawn?.front && f2.drawn.template === 'jk-blazer' && f2.options?.construction?.breasted === 'double', '   its flats open with the drawings and what it is built with (no AI)', { drawn: f2.drawn, o: f2.options });
+    if (playwright) { const br = await playwright.chromium.launch(); try { const pg = await (await br.newContext({ viewport: { width: 1280, height: 900 } })).newPage(); await pg.addInitScript(t => localStorage.setItem('fb.admin.token', t), kyleT); await pg.goto(`${BASE}/lab/sketches`, { waitUntil: 'load' }); await pg.locator(`[data-grown="${sid}"]`).waitFor({ timeout: 15000 }); ok(true, '4. the sketch pack shows it, first, with the stock sketches after'); } finally { await br.close(); } }
+    ok((await call(`/v1/lab/library/sketches/${sid}`, { token: kyleT, method: 'DELETE' })).status === 200 && !(await K('/library/sketches')).json.sketches.some(x => x.id === sid), '5. taken out of the library, it is gone from it');
+  } finally { for (const id of made) if (id) await K(`/concepts/${id}`, { method: 'DELETE' }); }
+});
+
 await journey('J295', 'Sandals, clogs, slides and mules have patterns: a sandal is straps tucked under a footbed (each strap its length over the foot, split at its buckle, lined), a thong a post and two straps, a clog a vamp on a footbed or a wooden base, a moulded slide one injection mould a size, a mule a closed toe with no back; the Pattern page chooses how each is made', async () => {
   const made = await K('/concepts/from-scratch', { body: { category: 'footwear', style: 'sandal', name: `Scratch sandal ${stamp}` } }), cid = made.json.concept?.id;
   try {

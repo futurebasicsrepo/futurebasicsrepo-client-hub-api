@@ -643,7 +643,27 @@ export async function migrate() {
       updated_at timestamptz not null default now(),
       primary key (concept_id, kind)
     );
-    alter table lab_concept_views add column if not exists prev bytea; -- a turn as it was before its last edit by hand (one step of undo)
+    alter table lab_concept_views add column if not exists prev bytea;
+    -- the sketch library as it grows: a flat drawn from a concept's picture, kept when it is saved, so the next piece like it starts from it
+    -- (no AI); a client's stays in that room, ours are everyone's. The drawings are its own copies (a concept deleted leaves them)
+    create table if not exists lab_sketches (
+      id uuid primary key default gen_random_uuid(),
+      client_id uuid references clients(id) on delete cascade,
+      source_concept uuid unique references lab_concepts(id) on delete set null,
+      style text not null,
+      template text not null,
+      label text not null default '',
+      words text not null default '',
+      construction jsonb not null default '{}',
+      m jsonb not null default '{}',
+      front bytea not null,
+      back bytea,
+      thumb bytea not null,
+      hidden boolean not null default false,
+      created_by text not null default '',
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    ); -- a turn as it was before its last edit by hand (one step of undo)
     do $$ begin
       if not exists(select 1 from information_schema.columns where table_name='users' and column_name='email_verified_at') then
         alter table users add column email_verified_at timestamptz;

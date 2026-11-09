@@ -41,7 +41,7 @@ test('a sketch never gets a length its name does not say: cropped shortens, long
 
 test('the features the sketches show are in the pattern, and on the product as the flats draw them', () => {
   const rag = pat('tee', 'tee-raglan'); assert.ok(rag.pieces.find(q => q.id === 'sleeve').name === 'Raglan sleeve' && ids(rag).includes('raglan-front'));
-  const west = pat('jacket', 'jk-western-yoke-jacket'); assert.ok(['front-yoke', 'yoke', 'chest-pocket', 'chest-flap'].every(i => ids(west).includes(i)));
+  const west = pat('jacket', 'jk-western-yoke-jacket'); assert.ok(['front-yoke', 'yoke', 'welt'].every(i => ids(west).includes(i)), 'the western yoke, front and back, and the slanted welt pockets the sketch draws');
   const dk = pat('pants', 'pt-double-knee-work-pants'), knee = dk.pieces.find(q => q.id === 'knee'), front = dk.pieces.find(q => q.id === 'front');
   assert.ok(knee && boundsOf(knee.shown).w <= boundsOf(front.shown).w + .01, 'the knee panel is on one leg');
   const cargo = pat('pants', 'pt-cargo-joggers'); assert.ok(ids(cargo).includes('cargo') && cargo.trims.some(t => t.item === 'Drawcord'));

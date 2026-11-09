@@ -964,7 +964,7 @@ async function boot(){
   if(D.picture)picNote(D.picture);
   // a concept with a picture whose flats were never saved is drawn from its picture the first time they open: the flat follows the picture's
   // own lines (its shoulders, closure, lapels, pockets), not the stock sketch's; once per concept on this device, two AI generations
-  if(D.picture&&!D.flat.saved&&!P.drawn?.front){let k='fb.flats.autodrawn.'+CID,done=false;try{done=localStorage.getItem(k)==='1'}catch{}if(!done){try{localStorage.setItem(k,'1')}catch{}const b=$('#picRedraw');if(b){$('#picNote span').textContent='Drawing the flats from your picture: its own lines, not a stock sketch (about a minute, two AI generations).';redrawFromPicture(b)}}}
+  if(D.picture&&!D.flat.saved&&!P.drawn?.front){let k='fb.flats.autodrawn.'+CID,done=false;try{done=localStorage.getItem(k)==='1'}catch{}if(!done){try{localStorage.setItem(k,'1')}catch{}const b=$('#picRedraw');if(b){$('#picNote span').textContent='Drawing the flats from your picture: its own lines, not a stock sketch (about a minute, two AI generations).';redrawFromPicture(b).then(()=>fhReset())}}} // the drawing is where the piece starts, not an edit to undo
   tab('pl');
   if(EMBED){const v=new URLSearchParams(location.search).get('view');if(v==='back')setView('back');HOST()?.flatsReady?.()}
 }

@@ -40,6 +40,7 @@ const DECOR_BASES = () => DECOR_COST;
 import { brandDoc, fact, table, safe, INK, DIM, LINE } from './brand-pdf.js';
 import { imageConfig, openaiEdit } from './check.js';
 import { callJsonSchema, nearestName } from './studio.js';
+import { FLAT_TEMPLATES } from './lab-flat-templates.js';
 import { rankTemplates, candidateTemplates, tagMarks } from './lab-flats.js';
 import { tagFaceSvg } from './lab-tags.js';
 import { washWords, washPrompt, cleanWash, washShrink } from './lab-wash.js';
@@ -152,12 +153,18 @@ export function registerLabFlatsRoutes(app, d) {
     // every sketch of the style when there are not too many (the model reads their names, which costs little), so a sketch the words missed
     // (a blazer named only "double-breasted") is still in front of it; the best by the words first
     const cands = ranked.length <= 60 ? ranked : candidateTemplates(ranked);
+    // the library as it has grown: sketches drawn from earlier pieces of this style (this room's and ours), offered beside the stock sketches;
+    // one chosen starts the flats as it is (its drawings copied over), so a piece like one made before is not drawn again
+    if (!c.spec?.drawnStart) { const g = (await pool.query(`select id, label, words from lab_sketches where not hidden and style=$1 and (client_id is null or client_id=$2) order by created_at desc limit 30`, [det.style, c.client_id || null])).rows;
+      for (const r of g) cands.push({ id: 'lib:' + r.id, label: `${r.label} (drawn from an earlier piece: ${clip(r.words, 120)})`, score: 0 }); }
     try {
       const jpeg = await sharp(img).resize({ width: 900, height: 900, fit: 'inside' }).jpeg({ quality: 80 }).toBuffer();
       const out = await pickImpl('You are a garment technologist choosing which professional flat sketch a product picture should be drawn from. Judge the silhouette (leg or body shape, rise, width, length), the construction (pockets, panels, knees, pleats, closures) and the fabric family. Prefer the sketch that adds nothing the garment does not have.',
         [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: jpeg.toString('base64') } }, { type: 'text', text: `The concept: ${clip([c.name, c.spec?.silhouette, c.spec?.fabric, c.spec?.description].filter(Boolean).join(' · '), 500)}\nThe sketches to choose from:\n${cands.map(t => `- id "${t.id}": ${t.label}`).join('\n')}\nAnswer with the id of the closest sketch.` }],
         { type: 'object', additionalProperties: false, required: ['id', 'why'], properties: { id: { type: 'string', enum: cands.map(t => t.id) }, why: { type: 'string' } } }, { maxTokens: 300 });
-      const id = cands.some(t => t.id === out?.id) ? out.id : det.template; if (picks.size > 500) picks.clear(); picks.set(key, id); return id;
+      let id = cands.some(t => t.id === out?.id) ? out.id : det.template;
+      if (String(id).startsWith('lib:')) { const d = await startFrom(c, id.slice(4), null).catch(() => null); id = d?.template || det.template; }
+      if (picks.size > 500) picks.clear(); picks.set(key, id); return id;
     } catch (e) { log.warn?.({ err: e.message }, 'flats sketch pick by picture failed'); return det.template; }
   }
   // what the concept's picture shows: the garment it is, its fit and its main colour, read by the vision model (cached per picture). The flat is
@@ -207,13 +214,19 @@ export function registerLabFlatsRoutes(app, d) {
     if (read && read.style !== det?.style && !(looksLikeFootwear(c) && !det)) { const words = [c.name, c.spec?.silhouette, c.spec?.fabric, c.spec?.fit, c.spec?.description].join(' '), fit = read.fit || det?.fit || 'regular';
       det = { style: read.style, fit, options: det?.options || {}, template: defaultTemplate(read.style, fit, words, [c.name, c.spec?.silhouette, c.spec?.fabric].join(' ')) }; }
     if (!det) return null;
-    if (det.template !== 'none' || !c.spec?.scratch) det.template = await pickTemplate(c, det);
+    // a sketch chosen by the person (started from the sketch pack) is the sketch, whatever the name or the picture suggests
+    const chosen = c.spec?.template && c.spec.template !== 'none' ? FLAT_TEMPLATES.find(t => t.id === c.spec.template) || null : null;
+    if (chosen) det = { style: chosen.style, fit: det.fit || 'regular', options: det.options || {}, template: chosen.id };
+    else if (det.template !== 'none' || !c.spec?.scratch) det.template = await pickTemplate(c, det);
     // what the concept's own words say of how a tailored piece closes (double-breasted, a peak lapel): kept on the flats, so the pattern drafts it
     { const w = ` ${[c.name, c.spec?.silhouette, c.spec?.description, ...(c.spec?.details || [])].join(' ').toLowerCase().replace(/[^a-z]+/g, ' ')} `, k = {};
       if (/ double breasted /.test(w)) k.breasted = 'double'; else if (/ single breasted /.test(w)) k.breasted = 'single';
       if (/ peak(ed)? lapel/.test(w)) k.lapel = 'peak'; else if (/ notch(ed)? lapel/.test(w)) k.lapel = 'notch';
       if (Object.keys(k).length) det.options = { ...(det.options || {}), construction: { ...(det.options?.construction || {}), ...k } }; }
-    const params = fitToTemplate({ ...defaultParams(det.style, det.fit, det.options), ...(det.template ? { template: det.template } : {}), ...(read?.color ? { color: read.color } : /^#[0-9a-f]{6}$/.test(String(c.spec?.color || '')) ? { color: c.spec.color } : {}) }), spec = ensureBranding(c.spec || {}, c.category), placements = [], list = await techniques(c.client_id);
+    let params = fitToTemplate({ ...defaultParams(det.style, det.fit, det.options), ...(det.template ? { template: det.template } : {}), ...(read?.color ? { color: read.color } : /^#[0-9a-f]{6}$/.test(String(c.spec?.color || '')) ? { color: c.spec.color } : {}) }), spec = ensureBranding(c.spec || {}, c.category), placements = [], list = await techniques(c.client_id);
+    // a piece started from a grown library sketch (picked for its picture, or chosen in the sketch pack) starts as that sketch: its frame,
+    // its drawings and what it is built with; no AI
+    const ds = c.spec?.drawnStart; if (ds?.front && ds.style === params.style) params = { ...fitToTemplate({ ...params, template: ds.template }), drawn: { template: ds.template, front: ds.front, ...(ds.back ? { back: ds.back } : {}) }, options: { ...(params.options || {}), construction: { ...(ds.construction || {}), ...(params.options?.construction || {}) } } };
     const logo = spec.branding?.logo || {};
     if (logo.mark && logo.mark !== 'none') { const mark = logo.mark === 'cue' ? 'mark' : logo.mark, base = LOGO_BASE[logo.technique] || 'embroidery', aspect = await aspectOf({ mark }); const t = techFor(list, { technique: base });
       placements.push({ id: 'logo', name: 'Future Basics logo', source: 'logo', mark, technique: base, techniqueId: t.id, ...defaultPlacement('logo', params, { aspect, label: logo.placement || '' }) }); }
@@ -341,6 +354,51 @@ export function registerLabFlatsRoutes(app, d) {
     await pool.query('update lab_flats set params=$2, updated_by=$3, updated_at=now() where concept_id=$1', [c.id, next, actorOf(req)]);
     return { ok: true, params: next, legOpening: next.m.legOpening, kneeRatio: next.options?.kneeRatio ?? null };
   });
+  // ---- the sketch library as it grows (lab_sketches) ----
+  // a flat drawn from its concept's picture is kept in the library when it is saved: the sketch it was drawn on (its frame and inches), its
+  // drawings, what it is built with and its measurements, named as the concept; saved again, the entry follows. A client's stays in its room
+  async function keepInLibrary(c, params, req) {
+    const d = params.drawn; if (!d?.front || d.template !== params.template || !params.template || params.template === 'none') return;
+    const art = async id => (UUID.test(String(id || '')) ? (await pool.query('select png from lab_art where id=$1', [id])).rows[0]?.png || null : null);
+    const front = await art(d.front), back = await art(d.back); if (!front) return;
+    const thumb = await sharp(front).resize({ width: 360, height: 360, fit: 'contain', background: { r: 255, g: 255, b: 255, alpha: 0 } }).png().toBuffer();
+    const words = clip([c.name, c.spec?.silhouette, c.spec?.fabric, c.spec?.fit].filter(Boolean).join(' · '), 300);
+    await pool.query(`insert into lab_sketches(client_id, source_concept, style, template, label, words, construction, m, front, back, thumb, created_by) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+      on conflict (source_concept) do update set style=excluded.style, template=excluded.template, label=excluded.label, words=excluded.words, construction=excluded.construction, m=excluded.m, front=excluded.front, back=excluded.back, thumb=excluded.thumb, updated_at=now()`,
+    [c.client_id || null, c.id, params.style, params.template, clip(c.name, 120), words, params.options?.construction || {}, params.m || {}, front, back, thumb, actorOf(req)]);
+  }
+  // the grown sketches a room may use: its own and ours (Future Basics staff see every one)
+  const grown = async (req, style = null) => (await pool.query(`select id, client_id, style, template, label, words, construction, (back is not null) has_back, created_at from lab_sketches where not hidden
+    and ($1::uuid is null or client_id is null or client_id=$1) and ($2::text is null or style=$2) order by created_at desc limit 400`, [own(req), style])).rows;
+  app.get('/v1/lab/library/sketches', { preHandler: pre }, async req => ({ sketches: (await grown(req)).map(r => ({ id: r.id, style: r.style, styleLabel: STYLES[r.style]?.label || r.style, template: r.template, label: r.label, words: r.words, construction: r.construction, hasBack: r.has_back, ours: !r.client_id, at: r.created_at })) }));
+  app.get('/v1/lab/library/sketches/:sid/:view', { preHandler: pre }, async (req, reply) => {
+    if (!UUID.test(req.params.sid) || !['front', 'back', 'thumb'].includes(req.params.view)) return bad(reply, 'Not found', 404);
+    const r = (await pool.query(`select ${req.params.view} img from lab_sketches where id=$1 and ($2::uuid is null or client_id is null or client_id=$2)`, [req.params.sid, own(req)])).rows[0];
+    if (!r?.img) return bad(reply, 'Not found', 404); return reply.header('content-type', 'image/png').header('cache-control', 'private, max-age=300').send(r.img);
+  });
+  // taken out of the library: by Future Basics staff, or by the room it belongs to (its pieces keep their flats)
+  app.delete('/v1/lab/library/sketches/:sid', { preHandler: pre }, async (req, reply) => {
+    if (!UUID.test(req.params.sid)) return bad(reply, 'Not found', 404);
+    const r = await pool.query(`update lab_sketches set hidden=true, updated_at=now() where id=$1 and ($2::uuid is null or client_id=$2) returning id`, [req.params.sid, own(req)]);
+    return r.rowCount ? { ok: true } : bad(reply, 'Not found', 404);
+  });
+  // a grown sketch's drawings, copied onto a concept as its flats' starting drawings (the flats then start as that sketch, with no AI)
+  async function startFrom(c, sid, req) {
+    const s = (await pool.query(`select * from lab_sketches where id=$1 and not hidden and ($2::uuid is null or client_id is null or client_id=$2)`, [sid, req ? own(req) : (c.client_id || null)])).rows[0]; if (!s) return null;
+    const put = async (b, v) => (b ? (await pool.query(`insert into lab_art(concept_id,name,png,thumb,prompt,model,source,in_library) values($1,$2,$3,$4,'','library','flat',false) returning id`, [c.id, clip(`Flat ${v}: from the sketch library (${s.label})`, 80), b, await sharp(b).resize({ width: 256, height: 256, fit: 'inside' }).png().toBuffer()])).rows[0].id : null);
+    const drawnStart = { template: s.template, front: await put(s.front, 'front'), back: await put(s.back, 'back'), sketch: s.id, construction: s.construction || {}, style: s.style };
+    await pool.query(`update lab_concepts set spec = coalesce(spec,'{}'::jsonb) || jsonb_build_object('drawnStart', $2::jsonb), updated_at=now() where id=$1`, [c.id, JSON.stringify(drawnStart)]);
+    c.spec = { ...(c.spec || {}), drawnStart }; return drawnStart;
+  }
+  app.post('/v1/lab/concepts/:id/flats/from-library-sketch', { preHandler: pre }, async (req, reply) => {
+    const c = await concept(req.params.id); if (!c) return bad(reply, 'Not found', 404); if (own(req) && c.client_id !== own(req)) return bad(reply, 'Not found', 404);
+    if (c.status === 'tech_pack' && !c.product_id) return bad(reply, 'This concept is already a tech pack', 409);
+    if (!UUID.test(String(req.body?.sketch || ''))) return bad(reply, 'Choose a sketch from the library');
+    const d = await startFrom(c, req.body.sketch, req); if (!d) return bad(reply, 'That sketch is not in the library', 404);
+    await pool.query('delete from lab_flats where concept_id=$1', [c.id]); // the flats start again, as the sketch
+    return { ok: true, studio: `/lab/studio?concept=${c.id}&view=front` };
+  });
+
   app.put('/v1/lab/concepts/:id/flats', { preHandler: pre }, async (req, reply) => {
     const t = await take(req, reply); if (!t) return;
     if (t.c.status === 'tech_pack' && !t.c.product_id) return bad(reply, 'This concept is already a tech pack', 409);
@@ -349,7 +407,7 @@ export function registerLabFlatsRoutes(app, d) {
       on conflict(concept_id) do update set style=excluded.style, params=excluded.params, placements=excluded.placements, check_result=excluded.check_result, checked_at=now(), updated_by=excluded.updated_by, updated_at=now()`,
     [t.c.id, t.params.style, t.params, JSON.stringify(t.placements), ck, actorOf(req)]);
     let decorations = [], cost = null; try { decorations = await decorationsOf(t.c, t.params, t.placements); cost = await keepDecorations(t.c, decorations); } catch (e) { log.warn?.({ err: e.message }, 'flats decoration costing failed'); }
-    thumbSoon(t.c);
+    thumbSoon(t.c); keepInLibrary(t.c, t.params, req).catch(e => log.warn?.({ err: e.message }, 'sketch library keep failed'));
     return { ok: true, check: ck, where: Object.fromEntries(t.placements.map(q => [q.id, describe(q, t.params)])), decorations, cost: cost ? { decorationCents: cost.decorationCents, landedCents: cost.landedCents, marginPct: cost.marginPct } : null };
   });
 
