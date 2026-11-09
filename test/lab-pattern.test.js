@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { STYLES, defaultParams } from '../src/lab-flats.js';
-import { garmentPattern, plushPattern, cleanPlush, offsetOf, areaOf, boundsOf, layoutOf, explodeAt, assembled, patternDxf, patternSvg, fillGrams, cutWords } from '../src/lab-pattern.js';
+import { garmentPattern, plushPattern, cleanPlush, offsetOf, areaOf, boundsOf, layoutOf, explodeAt, assembled, patternDxf, patternSvg, fillGrams, cutWords, placed } from '../src/lab-pattern.js';
 import { kindOf, cleanPatternSpec } from '../src/lab-pattern-routes.js';
 
 const ok = pts => pts.length >= 3 && pts.every(([x, y]) => Number.isFinite(x) && Number.isFinite(y));
@@ -193,4 +193,26 @@ test('shorts drawn flaring out follow their drawing, trued on the pattern: the h
   const f = followTheDrawing(raw), after = drawnCheck(f, gp(f));
   assert.ok(Math.abs(after.shape.pattern - after.shape.drawn) / after.shape.drawn <= .03 && !after.legsNear && !after.legsOff && f.options.legsDrawn, JSON.stringify(after.shape));
   assert.equal(followTheDrawing({ ...defaultParams('skirt', 'regular') }).options?.legsDrawn, undefined, 'a skirt is left as it is');
+});
+
+test('trousers as their sketch is built: a back yoke cut from the back leg, back pockets only where drawn, belt loops, the pocket openings seen on the front', async () => {
+  const { defaultParams, fitToTemplate } = await import('../src/lab-flats.js');
+  const { constructionOf } = await import('../src/lab-construction.js');
+  const base = fitToTemplate({ ...defaultParams('pants'), template: 'pt-slim-jeans' }), K = c => ({ ...base, options: { ...base.options, construction: c } });
+  const plain = garmentPattern(K({ backPockets: true })), yoked = garmentPattern(K({ yoke: { front: false, back: true }, beltLoops: true }));
+  const area = id => p => Math.abs(areaOf(p.pieces.find(q => q.id === id).sew));
+  const yoke = yoked.pieces.find(q => q.id === 'back-yoke');
+  assert.ok(yoke && yoke.cut === 2 && area('back')(yoked) < area('back')(plain) && Math.abs(area('back')(plain) - area('back')(yoked) - Math.abs(areaOf(yoke.sew))) < .5, 'the yoke is the top of the back leg, cut away and cut on its own');
+  const pk = yoked.pieces.find(q => q.id === 'back-pocket'), yb = boundsOf(placed(yoke)); assert.ok(boundsOf(placed(pk)).y0 >= yb.y1 - .6, 'the back pockets sit below the yoke');
+  assert.ok(yoked.pieces.some(q => q.id === 'belt-loops' && q.cut === 1) && yoked.trims.some(t => t.item === 'Belt loops'), 'belt loops: one strip, and the trims say how many');
+  assert.ok(!garmentPattern(K({ backPockets: false })).pieces.some(q => /back-pocket/.test(q.id)), 'no back pockets when the sketch has none');
+  assert.ok(plain.pieces.some(q => q.id === 'back-pocket'), 'set nowhere, back pockets are kept as before');
+  assert.ok(plain.pieces.filter(q => /^pocket-opening/.test(q.id)).length === 2 && plain.pieces.some(q => q.id === 'waistband-back'), 'the pocket openings show on both fronts, the band on the back');
+  for (const q of plain.pieces.filter(q => /^pocket-opening/.test(q.id))) { const f = plain.pieces.find(x => x.id === (q.place.flip ? 'front' : 'front-2')), fb = boundsOf(placed(f)), ob = boundsOf(placed(q)); assert.ok(ob.x0 >= fb.x0 - .1 && ob.x1 <= fb.x1 + .1, 'an opening stays on its leg'); }
+  assert.ok(!garmentPattern(K({ pockets: [] })).pieces.some(q => /^pocket-opening/.test(q.id)), 'no front pockets, no openings');
+  // the order: what is set on the piece, then what the sketch was read to show, then its name, then the style
+  const { TEMPLATE_CONSTRUCTION } = await import('../src/lab-template-construction.js'), id = Object.keys(TEMPLATE_CONSTRUCTION)[0];
+  if (id) { const t = (await import('../src/lab-flat-templates.js')).FLAT_TEMPLATES.find(x => x.id === id), read = TEMPLATE_CONSTRUCTION[id], c = constructionOf({ ...defaultParams(t.style), template: id });
+    for (const [k, v] of Object.entries(read)) assert.deepEqual(c[k], v, `${id}: ${k} as read`);
+    assert.equal(constructionOf({ ...defaultParams(t.style), template: id, options: { construction: { backPockets: !read.backPockets } } }).backPockets, !read.backPockets, 'set on the piece wins'); }
 });

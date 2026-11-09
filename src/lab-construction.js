@@ -4,11 +4,14 @@
 // Where it comes from, in order:
 //   1. what was set on the piece (`options.construction`): by the designer in the pattern panel, or read from a freehand drawing by the vision
 //      model (src/lab-flats-routes.js, readConstruction), so a drawing with no name drafts as what it shows;
-//   2. what the library sketch's name says (a "cargo bomber", "double-knee work pants", a "raglan boxy tee");
-//   3. the style's own defaults (a hoodie has a hood and a kangaroo pocket; a zip hoodie a split one; a jacket a zip and welt pockets).
+//   2. what the library sketch shows, read once from its front and back by two vision models and kept where they agree
+//      (src/lab-template-construction.js, made by scripts/pattern-read-sketches.mjs);
+//   3. what the library sketch's name says (a "cargo bomber", "double-knee work pants", a "raglan boxy tee");
+//   4. the style's own defaults (a hoodie has a hood and a kangaroo pocket; a zip hoodie a split one; a jacket a zip and welt pockets).
 // Each source fills only what the one before left unset. Pure: no I/O.
 import { STYLES } from './lab-flats.js';
 import { FLAT_TEMPLATES } from './lab-flat-templates.js';
+import { TEMPLATE_CONSTRUCTION } from './lab-template-construction.js';
 
 export const SLEEVES = ['set', 'raglan', 'drop', 'none'];
 export const COLLARS = ['none', 'rib', 'shirt', 'stand', 'polo', 'lapel', 'shearling', 'funnel'];
@@ -102,7 +105,7 @@ export function cleanConstruction(c) {
   if (ok(c.leg, LEGS)) out.leg = c.leg;
   if (Number.isFinite(Number(c.pleats)) && c.pleats !== null && c.pleats !== '') out.pleats = Math.min(Math.max(Math.round(Number(c.pleats)), 0), 3);
   if (ok(c.panels, PANELS)) out.panels = c.panels;
-  for (const k of ['quilted', 'belt', 'lined']) if (typeof c[k] === 'boolean') out[k] = c[k];
+  for (const k of ['quilted', 'belt', 'lined', 'backPockets', 'beltLoops']) if (typeof c[k] === 'boolean') out[k] = c[k];
   return out;
 }
 
@@ -110,7 +113,8 @@ export function cleanConstruction(c) {
 export function constructionOf(p) {
   const t = p.template && p.template !== 'none' ? FLAT_TEMPLATES.find(x => x.id === p.template) : null;
   const set = cleanConstruction(p.options?.construction), named = t ? cleanConstruction(fromName(`${t.id} ${t.label}`, p.style)) : {}, base = styleDefaults(p.style, p.options || {});
-  const out = { ...base, ...named, ...set };
+  const seen = t ? cleanConstruction(TEMPLATE_CONSTRUCTION[t.id]) : {};
+  const out = { ...base, ...named, ...seen, ...set };
   // what follows from the rest: a hood takes the place of a collar; a collar the place of a neck rib
   if (out.hood && out.collar && out.collar !== 'shearling') delete out.collar;
   return out;
@@ -127,6 +131,8 @@ export function constructionWords(c) {
   const pk = {}; for (const x of c.pockets || []) pk[x] = (pk[x] || 0) + 1;
   for (const [k, n] of Object.entries(pk)) w.push(`${n > 1 ? `${n} ` : ''}${{ kangaroo: 'kangaroo pocket', 'split-kangaroo': 'split kangaroo pocket', welt: 'welt pockets', 'flap-welt': 'flap pockets', chest: 'chest pocket', 'chest-flap': 'flap chest pocket', 'patch-hip': 'patch hip pocket', cargo: 'cargo pockets', 'five-pocket': 'five-pocket', slash: 'slash pockets' }[k]}${n > 1 && !/s$/.test(k) ? 's' : ''}`.replace(/^./, s => s.toUpperCase()));
   if (c.waist && c.waist !== 'fixed') w.push(c.waist === 'drawcord' ? 'Elastic waist with drawcord' : 'Elastic waist');
+  if (c.backPockets === false) w.push('No back pockets');
+  if (c.beltLoops) w.push('Belt loops');
   if (c.knee === 'double') w.push('Double knee');
   if (c.leg && c.leg !== 'straight') w.push({ flare: 'Flared leg', wide: 'Wide leg', taper: 'Tapered leg', balloon: 'Balloon leg' }[c.leg]);
   if (c.pleats) w.push(`${c.pleats} front pleat${c.pleats > 1 ? 's' : ''}`);

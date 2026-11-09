@@ -379,6 +379,11 @@ function bottomPieces(S, m, o, style) {
     void k; return { sew, shown, crease, ext, kneeY, sideX, hipW };
   };
   const F = leg(false), B = leg(true);
+  // a back yoke (jeans, work pants): the top of the back leg cut away along a seam 2½ in deep at the centre back and 1 in at the side, and
+  // cut as its own piece; the seat shaping goes into the yoke seam, so the back leg has no dart
+  let yokeB = null;
+  if (K.yoke?.back) { const ln = [[.8, 2.75], [B.sideX - 1, 1.15]], cut = splitPiece(B.sew, ln), cutS = splitPiece(B.shown, ln), top = ps => ps && ps.slice().sort((a, b) => boundsOf(a).y1 - boundsOf(b).y1);
+    if (cut && cutS) { const [ys, rest] = top(cut), [yh, restS] = top(cutS); B.sew = rest; B.shown = restS; yokeB = { sew: ys, shown: yh }; } }
   // on the flats the front of the right leg is drawn on the viewer's left: the pieces are placed as one leg each side, from the centre
   pieces.push(piece('front', 'Front leg', F.sew, { cut: 2, pair: true, grain: [[F.crease, hipY + 2], [F.crease, Hy - 3]], notches: [[F.ext, rd], [-(m.hip / 2 - .5), hipY]], notes: [S.label === 'Leggings' ? 'Four-way stretch' : 'Crease line is the grain'], place: { view: 'front', x: 0, y: wb, flip: true } }));
   pieces.push(twin('front-2', 'Front leg', F.sew, { view: 'front', x: 0, y: wb }));
@@ -386,7 +391,16 @@ function bottomPieces(S, m, o, style) {
   pieces.push(piece('back', 'Back leg', B.sew, { cut: 2, pair: true, grain: [[B.crease, hipY + 2], [B.crease, Hy - 3]], notches: [[B.ext, rd], [B.ext - .5, rd], [-(m.hip / 2 + .5), hipY]], notes: ['Two notches mark the back; dart or seat seam at the waist'], place: { view: 'back', x: 0, y: wb } }));
   pieces.push(twin('back-2', 'Back leg', B.sew, { view: 'back', x: 0, y: wb, flip: true }));
   pieces[pieces.length - 2].shown = B.shown; pieces[pieces.length - 1].shown = B.shown;
+  if (yokeB) { pieces.find(x => x.id === 'back').notes = ['Two notches mark the back; the seat shaping is in the yoke seam'];
+    pieces.push(piece('back-yoke', 'Back yoke', yokeB.sew, { cut: 2, pair: true, notes: ['Felled to the back leg, the seam topstitched twice'], place: { view: 'back', x: 0, y: wb, z: 1 } }));
+    pieces.push(twin('back-yoke-2', 'Back yoke', yokeB.sew, { view: 'back', x: 0, y: wb, flip: true, z: 1 }));
+    pieces[pieces.length - 2].shown = yokeB.shown; pieces[pieces.length - 1].shown = yokeB.shown; }
   const pleatOf = () => (K.pleats || 0) * 1.25;
+  // the front pocket openings, seen on the product: a slash pocket a straight slant from the waist to the side seam, a jeans scoop a curve; as
+  // thin shapes on each front leg (the pocket bags and facings are inside)
+  { const wx = Math.min(...F.shown.filter(([, y]) => y < .01).map(([x]) => x)), sideAt = y => { const xs = []; const P = F.shown; for (let i = 0; i < P.length; i++) { const [x1, y1] = P[i], [x2, y2] = P[(i + 1) % P.length]; if ((y1 <= y) !== (y2 <= y)) xs.push(x1 + (y - y1) / (y2 - y1) * (x2 - x1)); } return xs.length ? Math.min(...xs) : F.sideX; }, thin = pts => [...pts, ...pts.slice().reverse().map(([x, y]) => [x + .06, y + .06])];
+    const open = has('five-pocket') ? thin([[wx + 3.6, 0], ...tail(cubic([wx + 3.6, 0], [wx + 3.4, 2.2], [wx + 1.6, 3.2], [sideAt(3.3) + .05, 3.3]))]) : has('slash') ? thin([[wx + 1.7, 0], [sideAt(6.5) + .05, 6.5]]) : null;
+    if (open) for (const sg of [1, -1]) pieces.push({ ...piece(`pocket-opening${sg < 0 ? '-2' : ''}`, 'Pocket opening', open, { cut: 0, shown: open, place: { view: 'front', x: 0, y: wb, ...(sg > 0 ? { flip: true } : {}), z: 2 } }), of: 'front', twin: true, copy: true }); }
   // pleat lines on the front, from the waist, the first on the crease
   if (K.pleats) for (let i = 0; i < K.pleats; i++) for (const sg of [1, -1]) { const x = F.crease - i * 1.6, ln = [[x, 0], [x + .07, 0], [x + .07, 3.2], [x, 3.2]];
     pieces.push({ ...piece(`pleat-${i}${sg < 0 ? '-2' : ''}`, 'Pleat', ln, { cut: 0, shown: ln, place: { view: 'front', x: 0, y: wb, ...(sg > 0 ? { flip: true } : {}), z: 2 } }), of: 'front', twin: true, copy: true }); }
@@ -412,11 +426,17 @@ function bottomPieces(S, m, o, style) {
     pieces.push(piece('side-panel', 'Side panel', [[-1.25, 0], [1.25, 0], [1.25, Hy], [-1.25, Hy]], { cut: 2, fabric: 'contrast', shown: strip, notes: ['Contrast; 2½ in wide, between the front and back legs at the side seam'], place: { view: 'front', x: 0, y: wb, flip: true, z: 1 } }), { ...twin('side-panel-2', 'Side panel', [[-1.25, 0], [1.25, 0], [1.25, Hy], [-1.25, Hy]], { view: 'front', x: 0, y: wb, z: 1 }), fabric: 'contrast', shown: strip }); }
   if (drawcord) trims.push({ item: 'Drawcord', spec: '¼ in flat or round cord, tipped ends', qty: `${r8(m.waist * 2 + 22)} in`, where: 'Through the waistband' }, { item: 'Eyelets', spec: '¼ in, with washers (or two buttonholes)', qty: 2, where: 'Centre front of the waistband' });
   if (elastic) trims.push({ item: 'Elastic', spec: `${r8(wb - .25)} in knitted elastic`, qty: `${r8(m.waist * 2 * .9)} in`, where: 'In the waistband' });
+  // belt loops: one strip, folded in four, cut into seven loops; shown on the band, front and back
+  if (K.beltLoops && !elastic) { const lw = .5, lh = wb + .4, loop = x => [[x - lw / 2, -.2], [x + lw / 2, -.2], [x + lw / 2, lh - .2], [x - lw / 2, lh - .2]];
+    pieces.push(piece('belt-loops', 'Belt loops', rect(2, 7 * (lh + 1.25)), { cut: 1, notes: ['One strip, folded in four and edge-stitched, cut into 7 loops: two at the front, one at each side, three at the back'], shown: loop(0), place: { view: 'front', x: -(m.waist / 2 - 3.4), y: 0, z: 5 } }));
+    for (const [id, v, x] of [['belt-loop-2', 'front', m.waist / 2 - 3.4], ['belt-loop-3', 'back', -(m.waist / 2 - 1)], ['belt-loop-4', 'back', m.waist / 2 - 1], ['belt-loop-5', 'back', 0]]) pieces.push({ ...piece(id, 'Belt loop', loop(0), { cut: 0, shown: loop(0), place: { view: v, x, y: 0, z: 5 } }), twin: true, copy: true, of: 'belt-loops' });
+    trims.push({ item: 'Belt loops', spec: `½ in finished, ${r8(lh)} in long, bar-tacked top and bottom`, qty: 7, where: 'Waistband' }); }
   pieces.push(piece('waistband', elastic ? 'Waistband (elastic channel)' : 'Waistband', rect(r8(m.waist * 2 + (elastic ? 0 : 1.5)), wb * 2), { shown: [[m.waist + .75 - m.waist / 2, 0], [m.waist + .75 + m.waist / 2, 0], [m.waist + .75 + m.waist / 2, wb], [m.waist + .75 - m.waist / 2, wb]], notes: [elastic ? `Elastic ${r8(wb - .25)} in wide${drawcord ? ', drawcord through two eyelets' : ''}` : 'Fused, 1½ in overlap for the button'], place: { view: 'front', x: -m.waist - .75, y: 0, z: 2 } }));
+  { const w = pieces.find(x => x.id === 'waistband'); pieces.push({ ...piece('waistband-back', w.name, w.sew, { cut: 0, shown: w.shown, place: { ...w.place, view: 'back' } }), twin: true, copy: true, of: 'waistband' }); } // the same band, seen from the back
   if (style !== 'leggings') {
     pieces.push(piece('pocket-bag', 'Pocket bag', [[0, 0], [6.5, 0], [6.5, 9], ...tail(cubic([6.5, 9], [6.5, 11.5], [2, 11.5], [0, 10]))], { fabric: 'pocketing', cut: 4, pair: true, hidden: true, place: { view: 'front', x: m.waist / 2 - 7.2, y: wb, z: -1 } }));
     if (!elastic) pieces.push(piece('fly', 'Fly facing', [[0, 0], [1.75, 0], [1.75, 6], ...tail(cubic([1.75, 6], [1.75, 7.6], [.6, 7.8], [0, 7.8]))], { cut: 2, notes: ['Fused; a 7 in zip'], place: { view: 'front', x: -1.9, y: wb, z: 2 } }));
-    pieces.push(piece('back-pocket', 'Back pocket', [[0, 0], [5, -.4], [4.8, 5.6], [2.6, 6.4], [.4, 5.8]], { cut: 2, notes: ['1 in turn-back at the opening'], place: { view: 'back', x: 1.8, y: wb + 1.8, z: 3 } }), twin('back-pocket-2', 'Back pocket', [[0, 0], [5, -.4], [4.8, 5.6], [2.6, 6.4], [.4, 5.8]], { view: 'back', x: -1.8, y: wb + 1.8, flip: true, z: 3 }));
+    if (K.backPockets !== false) { pieces.push(piece('back-pocket', 'Back pocket', [[0, 0], [5, -.4], [4.8, 5.6], [2.6, 6.4], [.4, 5.8]], { cut: 2, notes: ['1 in turn-back at the opening'], place: { view: 'back', x: 1.8, y: wb + (K.yoke?.back ? 3.9 : 1.8), z: 3 } }), twin('back-pocket-2', 'Back pocket', [[0, 0], [5, -.4], [4.8, 5.6], [2.6, 6.4], [.4, 5.8]], { view: 'back', x: -1.8, y: wb + (K.yoke?.back ? 3.9 : 1.8), flip: true, z: 3 })); }
     if (has('five-pocket')) { pieces.push(piece('coin-pocket', 'Coin pocket', rect(3, 3.25), { cut: 1, notes: ['On the right front pocket facing, double-needle topstitched'], place: { view: 'front', x: m.waist / 2 - 4.5, y: wb + 1, z: 3 } }));
       trims.push({ item: 'Rivets', spec: 'Copper burr rivets, 9 mm', qty: 6, where: 'Front pocket corners and coin pocket' }, { item: 'Shank button', spec: '17 mm tack button', qty: 1, where: 'Waistband' }); if (!elastic) trims.push({ item: 'Fly zip', spec: '#4.5 metal, 7 in, closed-end', qty: 1, where: 'Fly' }); }
   }
