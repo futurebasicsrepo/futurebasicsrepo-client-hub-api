@@ -1,0 +1,97 @@
+# Checks every pull request before it can be merged, and main after each merge.
+#   test      the unit tests and the cut-and-sew proof (every library pattern sews together at every size). A few minutes.
+#   journeys  the customer journeys: scripted customers and staff driving real servers through the API and a browser, against Postgres.
+# What each one covers is in docs/checks.md.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# a newer push to the same pull request replaces the run in progress
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Tests and pattern proof
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Unit tests
+        run: npm test
+      - name: Cut-and-sew proof (every library pattern, every size)
+        run: npm run pattern:proof
+      - name: Keep the proof page when a pattern fails
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pattern-proof
+          path: pattern-proof/
+          retention-days: 7
+
+  journeys:
+    name: Customer journeys (${{ matrix.suite }})
+    # on pull requests only: main has just passed them on the pull request that was merged
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        # two machines share the run: the Design Lab's journeys, and all the others (scripts/journeys/run.sh)
+        suite: [core, lab]
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      # the journeys make their own throwaway database on this server (scripts/journeys/run.sh)
+      PGHOST: localhost
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      JOURNEY_LOG_DIR: ${{ github.workspace }}/journey-logs
+      JOURNEY_SUITE: ${{ matrix.suite }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Browser for the journeys
+        run: |
+          npm install --no-save playwright@1.63.0
+          npx playwright install --with-deps chromium
+      - name: psql, which the journeys use to make their database
+        run: command -v psql || (sudo apt-get update && sudo apt-get install -y postgresql-client)
+      - name: Customer journeys
+        run: npm run journeys
+      - name: Keep the servers' logs when a journey fails
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: journey-logs-${{ matrix.suite }}
+          path: journey-logs/
+          retention-days: 7
+          if-no-files-found: ignore

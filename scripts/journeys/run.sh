@@ -5,6 +5,8 @@
 #   needs: Postgres reachable at DATABASE_URL, psql on PATH. Optional: Playwright (PLAYWRIGHT_PATH or on the module path).
 #   run:   npm run journeys            (payment gate on, the production setup)
 #          JOURNEY_GATE=off npm run journeys   (gate switched off for everyone; the journeys that start from a locked pack are skipped)
+#          JOURNEY_SUITE=core|lab npm run journeys   (everything but the Design Lab, or the Design Lab alone)
+#          JOURNEY_ONLY=J57,J48 npm run journeys     (just those)
 set -u
 cd "$(dirname "$0")/../.."
 # By default every run gets its own empty database (created here, dropped at the end), so runs stay fast and independent:
@@ -50,21 +52,28 @@ env "${COMMON[@]}" SHOPIFY_TOKEN_KEY=journey-token-key QUICKBOOKS_CLIENT_ID=qbid
 env "${COMMON[@]}" CUTOUT_FIXTURE=1 STUDIO_DAILY_PACKS=1 MESH_POLL_MS=300 MESH_FIXTURE_MS=1200 CHECK_FIXTURE_SCORE=92 PORT=3131 CLIENT_HUB_URL=http://127.0.0.1:3131 AI_FIXTURE=scripts/journeys/fixtures/ai-runner-needsfix.json AI_FIXTURE_DELAY_MS=300 LOOP_STEP_DELAY_MS=150 TECH_PACK_BILLING=off PAYMENT_SWEEP=off START_RATE_LIMIT=1000 node src/server.js > "$T/server-j-h.log" 2>&1 & PH=$!
 for port in 3124 3125 3127 3128 3129 3130 3131; do for i in $(seq 1 120); do curl -sf "http://127.0.0.1:$port/health" >/dev/null && break; sleep 0.5; done; done
 RC=0
-node scripts/journeys/api.mjs          || RC=1
-if node -e "require(process.env.PLAYWRIGHT_PATH||'playwright')" 2>/dev/null; then node scripts/journeys/browser.mjs || RC=1; else echo "skipping the browser journeys (Playwright not found)"; fi
-node scripts/journeys/shopify-down.mjs || RC=1
-node scripts/journeys/model-down.mjs   || RC=1
-node scripts/journeys/payments.mjs     || RC=1
-node scripts/journeys/loop.mjs         || RC=1
-node scripts/journeys/studio.mjs       || RC=1
-node scripts/journeys/customer.mjs     || RC=1
-node scripts/journeys/cap.mjs          || RC=1
-node scripts/journeys/booth.mjs        || RC=1
-node scripts/journeys/contracts.mjs    || RC=1
-node scripts/journeys/autopay.mjs      || RC=1
-node scripts/journeys/team.mjs         || RC=1
-node scripts/journeys/workspace.mjs    || RC=1
-node scripts/journeys/lab.mjs          || RC=1
+# JOURNEY_SUITE picks a part of the run, so two machines can share it (the CI workflow does): core is everything but the Design Lab, lab is
+# the Design Lab alone; unset runs it all.
+SUITE="${JOURNEY_SUITE:-all}"
+if [ "$SUITE" != lab ]; then
+  node scripts/journeys/api.mjs          || RC=1
+  if node -e "require(process.env.PLAYWRIGHT_PATH||'playwright')" 2>/dev/null; then node scripts/journeys/browser.mjs || RC=1; else echo "skipping the browser journeys (Playwright not found)"; fi
+  node scripts/journeys/shopify-down.mjs || RC=1
+  node scripts/journeys/model-down.mjs   || RC=1
+  node scripts/journeys/payments.mjs     || RC=1
+  node scripts/journeys/loop.mjs         || RC=1
+  node scripts/journeys/studio.mjs       || RC=1
+  node scripts/journeys/customer.mjs     || RC=1
+  node scripts/journeys/cap.mjs          || RC=1
+  node scripts/journeys/booth.mjs        || RC=1
+  node scripts/journeys/contracts.mjs    || RC=1
+  node scripts/journeys/autopay.mjs      || RC=1
+  node scripts/journeys/team.mjs         || RC=1
+  node scripts/journeys/workspace.mjs    || RC=1
+fi
+if [ "$SUITE" != core ]; then node scripts/journeys/lab.mjs || RC=1; fi
 kill -9 $PA $PB $PC $PD $PE $PF $PG $PH $PM 2>/dev/null; wait $PA $PB $PC $PD $PE $PF $PG $PH $PM 2>/dev/null
+# when a run finds problems, the servers' logs say why: kept where the caller asks (JOURNEY_LOG_DIR; the CI workflow uploads them)
+if [ $RC != 0 ] && [ -n "${JOURNEY_LOG_DIR:-}" ]; then mkdir -p "$JOURNEY_LOG_DIR" && cp "$T"/*.log "$JOURNEY_LOG_DIR"/ 2>/dev/null; fi
 [ -n "$THROWAWAY" ] && psql "postgres://postgres:postgres@localhost:5432/postgres" -qAtc "drop database if exists $THROWAWAY with (force)" >/dev/null 2>&1
 echo "journeys: $([ $RC = 0 ] && echo 'all clear' || echo 'PROBLEMS FOUND')"; exit $RC

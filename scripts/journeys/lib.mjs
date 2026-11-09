@@ -15,8 +15,34 @@ export async function journey(id, title, fn) {
   if (process.env.JOURNEY_GATE === 'off' && NEEDS_GATE_ON.has(id)) { console.log(`skip ${id} ${title} (needs the payment gate on)`); return; }
   cur = { id, title, checks: 0, fails: [], ms: 0, error: null }; results.push(cur); const t = Date.now();
   try { await fn(); } catch (e) { cur.error = String(e.stack || e).split('\n').slice(0, 3).join(' | '); nBad++; }
+  if (SHOTS && (cur.fails.length || cur.error)) for (const ctx of openContexts) for (const p of ctx.pages()) await snapPage(p); // the pages a failure left open
   cur.ms = Date.now() - t; console.log(`${cur.fails.length || cur.error ? 'FAIL' : 'ok  '} ${id} ${title} (${cur.checks} checks, ${cur.ms}ms)`);
   for (const f of cur.fails) console.log('       ✗ ' + f); if (cur.error) console.log('       ! ' + cur.error);
+  // what its pages looked like as they closed: kept when it failed, thrown away when it passed
+  if (SHOTS) { const mine = shots.splice(0); if (cur.fails.length || cur.error) { if (mine.length) console.log('       pictures: ' + mine.join(' ')); } else for (const f of mine) rmSync(f, { force: true }); }
+}
+// When a run is asked to keep pictures (JOURNEY_SHOT_DIR, or JOURNEY_LOG_DIR as the CI workflow sets), every browser page is photographed
+// just before it closes, and the pictures of a journey that failed are kept: a timeout in a browser journey says which selector never came,
+// and the picture says what was on the screen instead. Done once here for every journey file, by wrapping the browser the files launch.
+const SHOTS = process.env.JOURNEY_SHOT_DIR || (process.env.JOURNEY_LOG_DIR ? join(process.env.JOURNEY_LOG_DIR, 'shots') : ''), shots = [], openContexts = new Set();
+let shotN = 0;
+const snapPage = async page => { if (!cur || page.isClosed()) return; const f = join(SHOTS, `${cur.id}-${++shotN}.png`); try { await page.screenshot({ path: f, timeout: 4000 }); shots.push(f); } catch { /* a page that will not be photographed is let go */ } };
+if (SHOTS) {
+  try {
+    mkdirSync(SHOTS, { recursive: true });
+    const pw = createRequire(import.meta.url)(process.env.PLAYWRIGHT_PATH || 'playwright'), snap = snapPage;
+    for (const kind of ['chromium', 'webkit', 'firefox']) {
+      const type = pw[kind], launch = type.launch.bind(type);
+      type.launch = async (...a) => {
+        const browser = await launch(...a), newContext = browser.newContext.bind(browser), closeBrowser = browser.close.bind(browser), open = new Set();
+        browser.newContext = async (...b) => { const ctx = await newContext(...b), closeCtx = ctx.close.bind(ctx); open.add(ctx); openContexts.add(ctx);
+          const newPage = ctx.newPage.bind(ctx); ctx.newPage = async (...d) => { const p = await newPage(...d), closePage = p.close.bind(p); p.close = async (...e) => { await snap(p); return closePage(...e); }; return p; };
+          ctx.close = async (...c) => { for (const p of ctx.pages()) await snap(p); open.delete(ctx); openContexts.delete(ctx); return closeCtx(...c); }; return ctx; };
+        browser.close = async (...c) => { for (const ctx of open) { for (const p of ctx.pages()) await snap(p); openContexts.delete(ctx); } open.clear(); return closeBrowser(...c); };
+        return browser;
+      };
+    }
+  } catch { /* no browser here: nothing to photograph */ }
 }
 export const summary = () => { console.log(`\n${results.length} journeys · ${nChecks} checks · ${nBad} problems`); return nBad; };
 export function api(base) {

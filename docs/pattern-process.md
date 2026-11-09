@@ -18,7 +18,7 @@ Nobody has to remember to run the check. It runs at each of these points:
 | A sketch or a bag is added to the library in code (`FLAT_TEMPLATES`, `BAG_TEMPLATES`) | `test/pattern-check.test.js` checks every library garment at XS to XXL, and every bag | `npm test` | A change that breaks any library pattern fails the tests |
 | Before a release, or after drafting changes | `npm run pattern:proof` | `pattern-proof/pattern-proof.html` for the whole library | It exits non-zero when anything fails, so it can gate a release |
 
-The repo has no CI workflow. `npm test` and `npm run pattern:proof` run where a contributor or an agent runs them. The repo instructions (`CLAUDE.md`) require them for any change to drafting.
+Every pull request runs `npm test` and `npm run pattern:proof` in GitHub Actions (`.github/workflows/ci.yml`; see [checks.md](checks.md)), and the customer journeys beside them. A contributor or an agent still runs them before pushing. The repo instructions (`CLAUDE.md`) require them for any change to drafting.
 
 ## What the check proves
 

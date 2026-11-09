@@ -27,3 +27,14 @@ Every build with a live address (and not archived) is checked every 5 minutes (j
 - **Alerts (today).** Each is said once and again if it comes back after a fix: *down*, *slow*, *back up*, *certificate runs out in N days* (warning at 21, urgent at 7), *domain name runs out in N days* (warning at 30, urgent at 7). Every one is a console notice; down, back up and the urgent expiries are also emailed to staff. One alert policy for all of Health (who hears what, escalation, quiet hours) is the next step.
 - **Where it shows.** Platform health has a **Client sites** card (names the site that is down, lists each site's answer time and expiry days), and a project on Home shows **Site up / slow / down** next to its name. `GET /v1/admin/sites` lists every watched site with its 30-day uptime; `POST /v1/admin/sites/check` runs a sweep now.
 - **Notes.** The domain lookup uses the public registry service (RDAP) and is best effort: if it cannot tell, nothing is said. Addresses must be public websites. `SITE_SLOW_MS` changes the slow limit. Data: `site_monitors` (current state) and `site_checks` (35 days of history for uptime). Rules in `src/site-monitor.js`, tests in `test/site-monitor.test.js`, journey J159.
+
+## The failure log
+
+The newest 500 failures are kept in the database (`platform_events`), so they survive a deploy:
+
+- **The server's own** (`web`): any answer of 500 or above, with its route.
+- **Work the server started and did not wait for** (`server`): a promise nobody caught. It is kept here and the service carries on; before, it ended the process and dropped every request in flight.
+- **Each outside service's** (`anthropic`, `shopify`, `github` and the rest): each failed call.
+- **A page's own, in someone's browser** (`browser`): a fault in a page's code, sent by `src/feedback.js` to `POST /v1/public/client-errors`. What is sent, and what is left out, is in [checks.md](checks.md).
+
+An async route handler that answers with `reply.send(...)` and then returns nothing is wrapped in `src/server.js` so it answers once. Before that, every signed-out request to such a route left "Cannot write headers after they are sent to the client" in this log.

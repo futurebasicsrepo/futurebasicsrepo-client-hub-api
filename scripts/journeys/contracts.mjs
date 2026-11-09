@@ -87,7 +87,8 @@ await journey('J164', 'Contracts: a fixed-fee agreement is drafted from a deal, 
 
   // invoices from the schedule
   ok((await C(`/${id}/invoices`, { body: {} })).status === 403, 'only signers draft the invoices');
-  const inv = await K(`/${id}/invoices`, { body: {} }); ok(inv.status === 200 && inv.json.made.length === 7, 'one invoice per payment in the schedule', inv.json.error || inv.json.made?.length);
+  // paid by ACH, so the invoices were drafted the moment it was fully signed: there is nothing left to press for
+  ok((await K(`/${id}`)).json.contract.invoicesAt && (await K(`/${id}`)).json.events.some(e => e.kind === 'invoices_drafted'), 'an agreement paid by ACH has its invoices drafted when it is fully signed', (await K(`/${id}`)).json.contract?.invoicesAt);
   const rows = sql(`select number, total_cents, due_on, status, deal_id, contract_id, work_kind, contact_email from money_invoices where contract_id='${id}' order by contract_seq`).split('\n').map(l => l.split('|'));
   ok(rows.length === 7 && rows.reduce((s, r) => s + Number(r[1]), 0) === 1200000 && rows.every(r => r[3] === 'draft' && r[4] === deal && r[6] === 'software' && r[7] === SIGNER), 'the invoices add up to the fee, are drafts, and belong to the deal', JSON.stringify(rows.slice(0, 2)));
   ok(rows[1][2] === '2026-12-01' && rows[6][2] === '2027-05-01', 'monthly invoices fall on the schedule dates', rows.map(r => r[2]).join(' '));
@@ -164,8 +165,9 @@ await journey('J165', 'Contracts in a browser: staff draft one from a deal with 
     await page.reload({ waitUntil: 'networkidle' }); await page.waitForSelector('#rows tr.click'); const row = page.locator('#rows tr.click', { hasText: `Salon app ${stamp}` }).first();
     ok(/Needs our signature/i.test(await row.innerText()), 'the list shows it needs our signature'); await row.click(); await page.waitForSelector('[data-a]');
     ok(/pays by card/.test(await page.innerText('#dBody')) && /autopay on/.test(await page.innerText('#dBody')), 'the contract shows who signed, the payment method they chose and that autopay is on');
-    await page.click('#acts button:has-text("Sign for Future Basics")'); await page.waitForFunction(() => /fully signed/i.test(document.querySelector('#dBody')?.innerText || ''), null, { timeout: 15000 }); ok(true, 'Sign for Future Basics: the agreement is final');
-    await page.click('#acts button:has-text("Draft the invoices")'); await page.waitForFunction(() => document.querySelectorAll('#dBody a[href^="/money?invoice="]').length === 9, null, { timeout: 15000 }); ok(true, 'Draft the invoices: nine, one per payment');
+    await page.click('#acts button:has-text("Sign for Future Basics")'); await page.click('dialog[open] button:has-text("Sign it"), .modal button:has-text("Sign it"), button:has-text("Sign it")'); await page.waitForFunction(() => /fully signed/i.test(document.querySelector('#dBody')?.innerText || ''), null, { timeout: 15000 }); ok(true, 'Sign for Future Basics: the agreement is final');
+    // paid by card, so the invoices are drafted on signing: nine, one per payment, with no button to press for them
+    await page.waitForFunction(() => document.querySelectorAll('#dBody a[href^="/money?invoice="]').length === 9, null, { timeout: 15000 }); ok(await page.locator('#acts button:has-text("Draft the invoices")').count() === 0, 'fully signed, its nine invoices are drafted by themselves, one per payment');
     ok(sql(`select count(*) from sales_deals where id='${deal2}' and stage='won'`) === '1', 'the deal is Won');
     await cp.reload({ waitUntil: 'networkidle' }); await cp.waitForSelector('.banner.ok'); ok(/Signed by both parties/.test(await cp.innerText('.banner.ok')) && await cp.locator('a:has-text("Download the PDF")').count() === 1, 'the client\'s page now says it is signed by both and offers the PDF');
     await page.click('#acts button:has-text("Download PDF")').catch(() => {});
