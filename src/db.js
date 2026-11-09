@@ -643,6 +643,7 @@ export async function migrate() {
       updated_at timestamptz not null default now(),
       primary key (concept_id, kind)
     );
+    alter table lab_concept_views add column if not exists prev bytea; -- a turn as it was before its last edit by hand (one step of undo)
     do $$ begin
       if not exists(select 1 from information_schema.columns where table_name='users' and column_name='email_verified_at') then
         alter table users add column email_verified_at timestamptz;

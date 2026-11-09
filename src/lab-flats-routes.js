@@ -39,7 +39,7 @@ import { decorationCost, decorationLine, gradeArt, suggestInks, calibrationOf, P
 const DECOR_BASES = () => DECOR_COST;
 import { brandDoc, fact, table, safe, INK, DIM, LINE } from './brand-pdf.js';
 import { imageConfig, openaiEdit } from './check.js';
-import { callJsonSchema } from './studio.js';
+import { callJsonSchema, nearestName } from './studio.js';
 import { rankTemplates, candidateTemplates, tagMarks } from './lab-flats.js';
 import { tagFaceSvg } from './lab-tags.js';
 import { washWords, washPrompt, cleanWash, washShrink } from './lab-wash.js';
@@ -830,7 +830,15 @@ export function registerLabFlatsRoutes(app, d) {
       const art = await sharp(b).ensureAlpha().resize({ width: 640, height: 640, fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } }).extend({ top: 64, bottom: 64, left: 64, right: 64, background: { r: 0, g: 0, b: 0, alpha: 0 } }).png().toBuffer().then(x => sharp(x).flatten({ background: ground }).png().toBuffer()).catch(() => null); if (!art) continue; // sharp flattens before it resizes, so the ground goes on after
       const view = q.view === 'back' ? 'back' : 'front';
       out.graphics.push({ view, name: String(q.name || 'Graphic').slice(0, 80), art, words: `${q.name || 'Graphic'}: ${techFor(list, q).name}, ${fmt(q.w)} wide × ${fmt(q.h)} tall, on the ${view}, ${describe(q, s.p)}` });
+      // the art itself (on clear), for placing it on a turn by hand
+      (out.placed = out.placed || []).push({ id: q.id, view, name: String(q.name || 'Graphic').slice(0, 80), technique: techFor(list, q).name, png: b, aspect: q.w && q.h ? q.w / q.h : 1 });
     }
+    // the parts in their own colour (a belt loop, a pocket, a yoke coloured on the Garment tab): named, with their colour and side, so every turn
+    // that faces them keeps them in that colour
+    out.details = (s.p.edits || []).filter(e => e.type === 'block' && /^#[0-9a-f]{6}$/i.test(String(e.color || ''))).slice(0, 12).map(e => {
+      const xs = (e.pts || []).map(q => q[0]), cx = xs.length ? (Math.min(...xs) + Math.max(...xs)) / 2 : 0, side = Math.abs(cx) < 1 ? 'at the centre' : cx < 0 ? 'on the left as seen' : 'on the right as seen';
+      return { view: e.view === 'back' ? 'back' : 'front', name: String(e.name || 'Part').slice(0, 60), color: e.color, words: `${e.name || 'A coloured part'} on the ${e.view === 'back' ? 'back' : 'front'} ${side}: ${nearestName(e.color)} (${e.color}), not the garment colour` };
+    });
     return out;
   }
   return { flatThumb: async id => { const c = await concept(id); return c ? flatThumb(c) : null; }, thumbSoonById: async id => { const c = await concept(id).catch(() => null); if (c) thumbSoon(c, 200); }, flatPictures: async id => { const c = await concept(id); return c ? flatPictures(c) : null; }, startCheck, productionFiles: async id => { const c = await concept(id); return c ? productionFiles(c) : { files: [], notes: [] }; }, sheetSvg: async id => { const c = await concept(id); const sh = c && await sheet(c); return sh?.svg || null; }, files: async id => { const c = await concept(id); return c ? files(c) : []; }, sendToPack: async (id, productId) => { const c = await concept(id); return c ? sendToPack(c, productId) : null; } };

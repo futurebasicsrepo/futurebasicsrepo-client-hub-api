@@ -4907,7 +4907,7 @@ await journey('J296', 'Trousers and shorts against their drawing, and a Studio w
       ok(await page.evaluate(() => { const p = document.querySelector('#palette'); return !p || p.hidden; }), '6. on the Board the palette stands aside too');
       // the turns: drawn from the flats, each in a portrait frame with the whole figure, and a tap opens it large to zoom
       const started = await K(`/concepts/${cid}/views`, { body: { from: 'flats', kinds: ['model_front', 'model_34', 'model_side', 'model_back'] } });
-      for (let i = 0; i < 60 && started.status === 200; i++) { const v = (await K(`/concepts/${cid}/views`)).json.views || {}; if (v.model_front?.status === 'ready') break; await new Promise(r => setTimeout(r, 500)); }
+      for (let i = 0; i < 120 && started.status < 300; i++) { const v = (await K(`/concepts/${cid}/views`)).json.views || {}; if (v.model_front?.status === 'ready') break; await new Promise(r => setTimeout(r, 500)); }
       await page.evaluate(() => setVMode('board')); const fig = page.locator('#bTurns figure[data-turn=model_front][role=button]'); await fig.waitFor({ timeout: 20000 });
       const fr = await fig.locator('.fr').boundingBox(); ok(fr && fr.height > fr.width * 1.4, '7. a turn sits in a portrait frame, tall enough for the whole figure', fr);
       await fig.click(); await page.waitForFunction(() => { const d = document.querySelector('#turnZoom'), i = d?.querySelector('img'); return d?.open && i?.naturalWidth > 0; }, null, { timeout: 15000 });
@@ -4918,6 +4918,42 @@ await journey('J296', 'Trousers and shorts against their drawing, and a Studio w
       await page.locator('#turnZoom [data-tz=next]').click(); await page.waitForTimeout(300); ok(await page.evaluate(() => document.querySelector('#turnZoom').dataset.k) === 'model_34', '   and steps to the next turn');
       await page.keyboard.press('Escape'); ok(await page.evaluate(() => !document.querySelector('#turnZoom').open), '   Escape closes it');
       ok(!errs.length, '9. no page errors', errs.slice(0, 3));
+    } finally { await b.close(); }
+  } finally { if (cid) await K(`/concepts/${cid}`, { method: 'DELETE' }); }
+});
+
+await journey('J297', 'A turn edited by hand on the board: the piece\'s graphics (from its flats) and its coloured parts are offered; the logo is put on the back turn where the designer drags it, applied, and the turn changes; Undo last edit brings it back; nothing to place and nothing painted is refused', async () => {
+  const r = await K('/concepts/from-recipe', { body: { base: 'shorts' } }), cid = r.json.concept?.id;
+  try {
+    const fl = (await K(`/concepts/${cid}/flats`)).json.flat;
+    await K(`/concepts/${cid}/flats`, { method: 'PUT', body: { ...fl, placements: [{ id: 'g1', name: 'Logo', view: 'back', x: 3, y: 3, w: 2.5, h: .5, mark: 'mark' }] } });
+    const tg = await K(`/concepts/${cid}/turn-graphics`); ok(tg.status === 200 && tg.json.graphics.some(g => g.id === 'g1' && g.view === 'back' && /^data:image\/png/.test(g.png)), '1. the piece\'s graphics are offered to put on a turn, as art on clear', tg.json.graphics?.map(g => g.id));
+    const started = await K(`/concepts/${cid}/views`, { body: { from: 'flats', kinds: ['model_front', 'model_34', 'model_side', 'model_back'] } });
+    for (let i = 0; i < 240 && started.status < 300; i++) { const v = (await K(`/concepts/${cid}/views`)).json.views || {}; if (v.model_back?.status === 'ready') break; await new Promise(q => setTimeout(q, 500)); }
+    const e0 = await K(`/concepts/${cid}/views/model_back/edit`, { body: {} }), e1 = await K(`/concepts/${cid}/views/model_back/edit`, { body: { graphics: [{ id: 'nope', x: .5, y: .5, w: .2 }] } });
+    ok(e0.status === 422, '2. nothing placed and nothing painted is refused', [e0.status, e0.json]);
+    ok(e1.status === 422, '   a graphic that is not on the piece is refused', [e1.status, e1.json]);
+    if (!playwright) { const e = await K(`/concepts/${cid}/views/model_back/edit`, { body: { graphics: [{ id: 'g1', x: .5, y: .4, w: .2 }] } }); ok(e.status === 200, '3. (no browser) the logo is put on the back turn', e.json); return; }
+    const b = await playwright.chromium.launch(), errs = [];
+    try {
+      const ctx = await b.newContext({ viewport: { width: 1194, height: 834 }, hasTouch: true });
+      await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); localStorage.setItem('fb.helper.on', '0'); localStorage.setItem('fb.design.level', 'pro'); localStorage.setItem('fb.design.layout', JSON.stringify({ panel: true, focus: true })); } catch {} }, kyleT);
+      const page = await ctx.newPage(); page.on('pageerror', e => errs.push(String(e)));
+      await page.goto(`${BASE}/lab/studio?concept=${cid}&view=board`, { waitUntil: 'load' });
+      const fig = page.locator('#bTurns figure[data-turn=model_back][role=button]'); await fig.waitFor({ timeout: 30000 });
+      const before = await page.evaluate(async id => { const r = await fetch(`/v1/lab/concepts/${id}/views/model_back`, { headers: { Authorization: 'Bearer ' + localStorage.getItem('fb.admin.token') } }); return r.headers.get('etag'); }, cid);
+      await fig.click(); await page.locator('#turnZoom [data-tz=edit]').click(); await page.locator('#turnZoom .tz-gt[data-tg=g1]').waitFor({ timeout: 15000 });
+      ok(true, '3. Edit opens the turn\'s editor with the piece\'s graphics');
+      await page.locator('#turnZoom .tz-gt[data-tg=g1]').click(); const g = await page.locator('#turnZoom .tz-g').boundingBox();
+      await page.mouse.move(g.x + g.width / 2, g.y + g.height / 2); await page.mouse.down(); await page.mouse.move(g.x + g.width / 2 + 40, g.y + g.height / 2 + 30, { steps: 5 }); await page.mouse.up();
+      const g2 = await page.locator('#turnZoom .tz-g').boundingBox(); ok(Math.abs(g2.x - g.x - 40) < 6 && Math.abs(g2.y - g.y - 30) < 6, '4. the logo is dragged into place on the turn', { g, g2 });
+      await page.locator('#turnZoom [data-tz=apply]').click(); await page.waitForFunction(() => /updated/.test(document.querySelector('#turnZoom .tz-msg').textContent), null, { timeout: 30000 });
+      const after = await page.evaluate(async id => { const r = await fetch(`/v1/lab/concepts/${id}/views/model_back`, { headers: { Authorization: 'Bearer ' + localStorage.getItem('fb.admin.token') } }); return r.headers.get('etag'); }, cid);
+      ok(after && after !== before, '5. applied, the back turn is the edited one', { before, after });
+      await page.locator('#turnZoom [data-tz=undo]').click(); await page.waitForFunction(() => /as it was/.test(document.querySelector('#turnZoom .tz-msg').textContent), null, { timeout: 15000 });
+      ok(true, '6. Undo last edit brings the turn back');
+      ok((await K(`/concepts/${cid}/views/model_back/undo`, { body: {} })).status === 200, '   and undo again is the edit again (one step back and forth)');
+      ok(!errs.length, '7. no page errors', errs.slice(0, 3));
     } finally { await b.close(); }
   } finally { if (cid) await K(`/concepts/${cid}`, { method: 'DELETE' }); }
 });

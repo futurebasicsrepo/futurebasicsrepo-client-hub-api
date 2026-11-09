@@ -27,10 +27,19 @@ html[data-focus] .studio[data-v=board] .boardhost{padding-top:72px;height:100%}.
 .boardhost figure[data-turn] .fr{aspect-ratio:2/3;background:#cdd0d5;position:relative}.boardhost figure[data-turn] .fr .zm{position:absolute;right:8px;bottom:8px;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:rgba(255,255,255,.78);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);box-shadow:0 2px 8px rgba(0,0,0,.18);font-size:16px;pointer-events:none}
 .studio[data-panel=on][data-v=board] .boardhost{padding-right:20px}html[data-focus] .studio[data-panel=on][data-v=board] .boardhost{padding-right:384px}html[data-focus] .studio[data-v=board] .boardhost{padding-left:24px;padding-bottom:96px}
 #turnZoom{border:0;padding:0;margin:0;width:100vw;height:100dvh;max-width:none;max-height:none;background:rgba(18,18,20,.92);color:#f4f4f2}#turnZoom::backdrop{background:transparent}
-#turnZoom .tz-stage{position:absolute;inset:0;overflow:hidden;touch-action:none;cursor:grab}#turnZoom .tz-stage.drag{cursor:grabbing}#turnZoom .tz-stage img{position:absolute;left:50%;top:50%;max-width:none;transform-origin:0 0;user-select:none;-webkit-user-drag:none}
+#turnZoom .tz-stage{position:absolute;inset:0;overflow:hidden;touch-action:none;cursor:grab}#turnZoom .tz-stage.drag{cursor:grabbing}
 #turnZoom .tz-bar{position:absolute;left:50%;bottom:calc(16px + env(safe-area-inset-bottom));translate:-50% 0;display:flex;gap:6px;align-items:center;padding:6px 8px;border-radius:999px;background:rgba(40,40,44,.72);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.14);font:500 13px 'Space Grotesk',system-ui,sans-serif;max-width:calc(100vw - 24px);overflow-x:auto}
 #turnZoom .tz-bar button,#turnZoom .tz-bar a{min-width:40px;height:40px;border:0;border-radius:999px;background:transparent;color:inherit;font:inherit;padding:0 12px;cursor:pointer;text-decoration:none;display:grid;place-items:center;flex:none}#turnZoom .tz-bar button:hover,#turnZoom .tz-bar a:hover{background:rgba(255,255,255,.12)}#turnZoom .tz-bar button:disabled{opacity:.35}
 #turnZoom .tz-bar b{padding:0 8px;white-space:nowrap;font-weight:500}#turnZoom .tz-bar .tz-z{font-variant-numeric:tabular-nums;min-width:52px;text-align:center;opacity:.8}
+#turnZoom .tz-layer{position:absolute;left:50%;top:50%;transform-origin:0 0}#turnZoom .tz-layer>img{position:absolute;inset:0;width:100%;height:100%;user-select:none;-webkit-user-drag:none}#turnZoom .tz-paint{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+#turnZoom .tz-stage.painting{cursor:crosshair}#turnZoom .tz-g{position:absolute;cursor:move;outline:calc(2px * var(--k,1)) dashed #2a6df4;outline-offset:calc(3px * var(--k,1))}#turnZoom .tz-g>img{display:block;width:100%;pointer-events:none}
+#turnZoom .tz-g i,#turnZoom .tz-g b{position:absolute;width:calc(22px * var(--k,1));height:calc(22px * var(--k,1));border-radius:50%;background:#2a6df4;border:calc(2px * var(--k,1)) solid #fff;box-sizing:border-box}#turnZoom .tz-sz{right:calc(-14px * var(--k,1));bottom:calc(-14px * var(--k,1));cursor:nwse-resize}#turnZoom .tz-rt{left:50%;top:calc(-34px * var(--k,1));translate:-50% 0;cursor:grab;background:#3dfa9a!important}#turnZoom .tz-del{left:calc(-14px * var(--k,1));top:calc(-14px * var(--k,1));background:#141416!important;color:#fff;font:700 calc(11px * var(--k,1))/calc(18px * var(--k,1)) system-ui;text-align:center;cursor:pointer}
+#turnZoom .tz-edit{position:absolute;top:calc(14px + env(safe-area-inset-top));right:14px;bottom:calc(84px + env(safe-area-inset-bottom));width:310px;overflow:auto;padding:14px;border-radius:20px;background:rgba(40,40,44,.82);-webkit-backdrop-filter:blur(22px);backdrop-filter:blur(22px);border:1px solid rgba(255,255,255,.14);display:grid;align-content:start;gap:10px;font:13px/1.4 'Space Grotesk',system-ui,sans-serif}#turnZoom .tz-edit[hidden]{display:none}
+#turnZoom .tz-edit h4{margin:0 34px 0 0;font-size:15px;font-weight:600}#turnZoom .tz-h{margin:0;opacity:.75;font-size:12px}#turnZoom .tz-gs{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}#turnZoom .tz-gt{display:grid;gap:3px;justify-items:center;padding:6px;border-radius:12px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.06);color:inherit;font:inherit;font-size:11px;cursor:pointer;min-height:44px}#turnZoom .tz-gt img{width:100%;aspect-ratio:1;object-fit:contain;background:repeating-conic-gradient(#555 0 25%,#444 0 50%) 0 0/12px 12px;border-radius:8px}#turnZoom .tz-gt small{opacity:.6}
+#turnZoom .tz-dt{display:flex;gap:6px;align-items:center;padding:6px 10px;border-radius:999px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.06);color:inherit;font:inherit;font-size:12px;cursor:pointer;margin:0 6px 6px 0}#turnZoom .tz-dt i{width:14px;height:14px;border-radius:50%;border:1px solid rgba(255,255,255,.5)}
+#turnZoom .tz-row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}#turnZoom .tz-row button{min-height:40px;padding:0 12px;border-radius:999px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.08);color:inherit;font:inherit;cursor:pointer}#turnZoom .tz-row button[aria-pressed=true],#turnZoom .tz-row button.go{background:#3dfa9a;color:#141416;border-color:#3dfa9a}#turnZoom .tz-brush{flex:1;min-width:80px}
+#turnZoom .tz-say{width:100%;box-sizing:border-box;border-radius:12px;border:1px solid rgba(255,255,255,.2);background:rgba(0,0,0,.25);color:inherit;font:inherit;font-size:16px;padding:8px 10px;resize:vertical}#turnZoom .tz-chk{display:flex;gap:8px;align-items:flex-start;font-size:12px}#turnZoom .tz-msg{margin:0;min-height:1.2em;font-size:12px;color:#3dfa9a}
+#turnZoom [data-tz=edit][aria-pressed=true]{background:#3dfa9a;color:#141416}#turnZoom.editing .tz-x{right:338px}
 #turnZoom .tz-x{position:absolute;top:calc(14px + env(safe-area-inset-top));right:14px;width:44px;height:44px;border-radius:50%;border:1px solid rgba(255,255,255,.18);background:rgba(40,40,44,.72);color:#fff;font-size:20px;cursor:pointer}`;
   document.head.appendChild(css);
 
@@ -106,35 +115,94 @@ html[data-focus] .studio[data-v=board] .boardhost{padding-top:72px;height:100%}.
   host.addEventListener('click', e => { const fg = e.target.closest('[data-bopen]'); if (fg) setVMode(fg.dataset.bopen); });
   // ---- a turn, large: the full picture (not the thumbnail), fitted to the screen; pinch, the wheel, a double tap or the buttons zoom, a drag
   // pans; the arrows (and the arrow keys) step through the turns ----
-  const FULL_SRC = {};
+  const FULL_SRC = {}; let TG = null; // the piece's graphics to place on a turn (from its flats), asked once
+  const turnLabel = k => (TURNS.find(t => t[0] === k) || [])[1] || '';
   async function zoomTurn(k) {
     const ready = [...document.querySelectorAll('#bTurns figure[data-turn][role=button]')].map(f => f.dataset.turn); if (!ready.includes(k)) return;
     let d = document.getElementById('turnZoom');
-    if (!d) { document.body.insertAdjacentHTML('beforeend', '<dialog id="turnZoom" aria-label="A turn, large"><div class="tz-stage"><img alt=""></div><button class="tz-x" type="button" data-tz="close" aria-label="Close">✕</button><div class="tz-bar"><button type="button" data-tz="prev" aria-label="The turn before">‹</button><b class="tz-n"></b><button type="button" data-tz="next" aria-label="The next turn">›</button><button type="button" data-tz="out" aria-label="Zoom out">−</button><span class="tz-z">100%</span><button type="button" data-tz="in" aria-label="Zoom in">+</button><button type="button" data-tz="fit">Fit</button><a data-tz="save" download>Save</a></div></dialog>'); d = document.getElementById('turnZoom'); wireZoom(d); }
-    d.dataset.k = k; d.querySelector('.tz-n').textContent = (TURNS.find(t => t[0] === k) || [])[1] || '';
+    if (!d) { document.body.insertAdjacentHTML('beforeend', `<dialog id="turnZoom" aria-label="A turn, large"><div class="tz-stage"><div class="tz-layer"><img alt=""><canvas class="tz-paint"></canvas></div></div><button class="tz-x" type="button" data-tz="close" aria-label="Close">✕</button>
+      <aside class="tz-edit" hidden><h4>Edit this turn</h4>
+        <p class="tz-h">Graphics on this piece: tap one to put it on, then drag it into place, its corner to size it, the dot to turn it.</p><div class="tz-gs"></div>
+        <div class="tz-ds"></div>
+        <div class="tz-row"><button type="button" data-tz="paint" aria-pressed="false">Paint an area</button><input type="range" min="8" max="120" value="36" class="tz-brush" aria-label="Brush size"><button type="button" data-tz="clear">Clear</button></div>
+        <textarea class="tz-say" rows="2" placeholder="What to change in the painted area: make the belt loop mustard yellow"></textarea>
+        <label class="tz-chk"><input type="checkbox" class="tz-blend" checked> Work the graphics into the cloth (one AI generation)</label>
+        <div class="tz-row"><button type="button" class="go" data-tz="apply">Apply</button><button type="button" data-tz="undo">Undo last edit</button></div><p class="tz-msg" role="status"></p></aside>
+      <div class="tz-bar"><button type="button" data-tz="prev" aria-label="The turn before">‹</button><b class="tz-n"></b><button type="button" data-tz="next" aria-label="The next turn">›</button><button type="button" data-tz="out" aria-label="Zoom out">−</button><span class="tz-z">100%</span><button type="button" data-tz="in" aria-label="Zoom in">+</button><button type="button" data-tz="fit">Fit</button><button type="button" data-tz="edit" aria-pressed="false">Edit</button><a data-tz="save" download>Save</a></div></dialog>`); d = document.getElementById('turnZoom'); wireZoom(d); }
+    d.dataset.k = k; d.querySelector('.tz-n').textContent = turnLabel(k);
     d.querySelector('[data-tz=prev]').disabled = ready.indexOf(k) <= 0; d.querySelector('[data-tz=next]').disabled = ready.indexOf(k) >= ready.length - 1;
-    if (!d.open) d.showModal();
+    d._reset?.(); if (!d.open) d.showModal();
     const img = d.querySelector('img'), thumb = document.querySelector(`#bTurns figure[data-turn="${k}"] img`)?.src; if (thumb) { img.src = thumb; img.onload = () => d._fit(); }
-    try { if (!FULL_SRC[k + '|' + thumb]) FULL_SRC[k + '|' + thumb] = await urlOfBlob(await blobOf(`/v1/lab/concepts/${CID}/views/${k}`)); if (d.dataset.k === k) { img.src = FULL_SRC[k + '|' + thumb]; d.querySelector('[data-tz=save]').href = img.src; d.querySelector('[data-tz=save]').download = `${(D?.concept?.name || 'turn').replace(/[^\w -]+/g, '')} ${k.replace('model_', '')}.jpg`; } } catch { /* the thumbnail stays */ }
+    try { const key = k + '|' + thumb; if (!FULL_SRC[key]) FULL_SRC[key] = await urlOfBlob(await blobOf(`/v1/lab/concepts/${CID}/views/${k}`)); if (d.dataset.k === k) { img.src = FULL_SRC[key]; const a = d.querySelector('[data-tz=save]'); a.href = img.src; a.download = `${(D?.concept?.name || 'turn').replace(/[^\w -]+/g, '')} ${k.replace('model_', '')}.jpg`; } } catch { /* the thumbnail stays */ }
+    if (d.classList.contains('editing')) d._graphics();
   }
   function wireZoom(d) {
-    const st = d.querySelector('.tz-stage'), img = d.querySelector('img'), z = d.querySelector('.tz-z'); let k = 1, x = 0, y = 0, fitK = 1;
-    const paint = () => { img.style.transform = `translate(${x}px,${y}px) scale(${k})`; z.textContent = Math.round(k / fitK * 100) + '%'; };
-    d._fit = () => { const w = img.naturalWidth || 1, h = img.naturalHeight || 1, W = st.clientWidth, H = st.clientHeight - 80; fitK = Math.min(W / w, H / h) * .96; k = fitK; x = -w * k / 2; y = -h * k / 2 - 30; img.style.left = '50%'; img.style.top = '50%'; paint(); };
+    const st = d.querySelector('.tz-stage'), lay = d.querySelector('.tz-layer'), img = d.querySelector('img'), cv = d.querySelector('.tz-paint'), z = d.querySelector('.tz-z'), msg = d.querySelector('.tz-msg');
+    let k = 1, x = 0, y = 0, fitK = 1, painting = false, placed = [];
+    const W = () => img.naturalWidth || 1, H = () => img.naturalHeight || 1;
+    const paint = () => { lay.style.width = W() + 'px'; lay.style.height = H() + 'px'; lay.style.transform = `translate(${x}px,${y}px) scale(${k})`; z.textContent = Math.round(k / fitK * 100) + '%'; for (const g of placed) g.el.style.setProperty('--k', 1 / k); };
+    d._fit = () => { const ed = d.classList.contains('editing'), SW = st.clientWidth - (ed ? 340 : 0), SH = st.clientHeight - 80; fitK = Math.min(SW / W(), SH / H()) * .96; k = fitK; x = -W() * k / 2 - (ed ? 170 : 0); y = -H() * k / 2 - 30;
+      if (cv.width !== W() || cv.height !== H()) { cv.width = W(); cv.height = H(); } paint(); };
+    // a point on the screen → a point on the picture (its own pixels)
+    const toImg = (cx, cy) => { const r = st.getBoundingClientRect(); return [(cx - r.left - r.width / 2 - x) / k, (cy - r.top - r.height / 2 - y) / k]; };
     const at = (nk, cx, cy) => { nk = Math.min(Math.max(nk, fitK * .5), fitK * 8); const r = st.getBoundingClientRect(), px = cx - r.left - r.width / 2, py = cy - r.top - r.height / 2; x = px - (px - x) * nk / k; y = py - (py - y) * nk / k; k = nk; paint(); };
     const mid = () => { const r = st.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; };
     st.addEventListener('wheel', e => { e.preventDefault(); at(k * Math.exp(-e.deltaY * .0025), e.clientX, e.clientY); }, { passive: false });
-    const pts = new Map(); let last = null;
-    st.addEventListener('pointerdown', e => { st.setPointerCapture(e.pointerId); pts.set(e.pointerId, [e.clientX, e.clientY]); st.classList.add('drag'); last = null; });
-    st.addEventListener('pointermove', e => { if (!pts.has(e.pointerId)) return; const prev = pts.get(e.pointerId); pts.set(e.pointerId, [e.clientX, e.clientY]);
+    // ---- the graphics put on the picture: drag to move, the corner to size, the dot to turn ----
+    const place = g => { const el = g.el; el.style.left = (g.x * W()) + 'px'; el.style.top = (g.y * H()) + 'px'; el.style.width = (g.w * W()) + 'px'; el.style.transform = `translate(-50%,-50%) rotate(${g.rot}deg)`; };
+    const addGraphic = src => { const el = document.createElement('div'); el.className = 'tz-g'; el.innerHTML = `<img alt="${esc(src.name)}" src="${src.png}"><i class="tz-sz" title="Drag to size"></i><i class="tz-rt" title="Drag to turn"></i><b class="tz-del" title="Take it off">✕</b>`;
+      const g = { id: src.id, name: src.name, x: .5, y: d.dataset.k === 'model_back' ? .36 : .42, w: .14, rot: 0, el }; lay.appendChild(el); placed.push(g); place(g); paint(); return g; };
+    const pts = new Map(); let last = null, drag = null;
+    st.addEventListener('pointerdown', e => {
+      const gel = e.target.closest('.tz-g'); st.setPointerCapture(e.pointerId);
+      if (gel) { const g = placed.find(q => q.el === gel); if (e.target.classList.contains('tz-del')) { gel.remove(); placed = placed.filter(q => q !== g); return; }
+        const [ix, iy] = toImg(e.clientX, e.clientY); drag = { g, mode: e.target.classList.contains('tz-sz') ? 'size' : e.target.classList.contains('tz-rt') ? 'turn' : 'move', ix, iy, g0: { ...g } }; return; }
+      if (painting && e.pointerType !== 'touch' || painting && pts.size === 0 && e.isPrimary) { drag = { mode: 'paint' }; dab(e); return; }
+      pts.set(e.pointerId, [e.clientX, e.clientY]); st.classList.add('drag'); last = null; });
+    const dab = e => { const [ix, iy] = toImg(e.clientX, e.clientY), c = cv.getContext('2d'), r = Number(d.querySelector('.tz-brush').value) / 2 / (k / fitK); c.fillStyle = 'rgba(42,109,244,.45)'; c.beginPath(); c.arc(ix, iy, r, 0, Math.PI * 2); c.fill(); cv.dataset.on = '1'; };
+    st.addEventListener('pointermove', e => {
+      if (drag) { if (drag.mode === 'paint') { dab(e); return; } const [ix, iy] = toImg(e.clientX, e.clientY), g = drag.g, g0 = drag.g0, cx = g0.x * W(), cy = g0.y * H();
+        if (drag.mode === 'move') { g.x = Math.min(Math.max(g0.x + (ix - drag.ix) / W(), 0), 1); g.y = Math.min(Math.max(g0.y + (iy - drag.iy) / H(), 0), 1); }
+        else if (drag.mode === 'size') { const d0 = Math.hypot(drag.ix - cx, drag.iy - cy) || 1, d1 = Math.hypot(ix - cx, iy - cy); g.w = Math.min(Math.max(g0.w * d1 / d0, .02), .9); }
+        else { g.rot = Math.round((Math.atan2(iy - cy, ix - cx) - Math.atan2(drag.iy - cy, drag.ix - cx)) * 180 / Math.PI + g0.rot); }
+        place(g); return; }
+      if (!pts.has(e.pointerId)) return; const prev = pts.get(e.pointerId); pts.set(e.pointerId, [e.clientX, e.clientY]);
       if (pts.size === 1) { x += e.clientX - prev[0]; y += e.clientY - prev[1]; paint(); return; }
       const [a, b] = [...pts.values()], dist = Math.hypot(a[0] - b[0], a[1] - b[1]), c = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]; if (last) { x += c[0] - last.c[0]; y += c[1] - last.c[1]; at(k * dist / last.dist, c[0], c[1]); } last = { dist, c }; });
-    const up = e => { pts.delete(e.pointerId); last = null; if (!pts.size) st.classList.remove('drag'); }; st.addEventListener('pointerup', up); st.addEventListener('pointercancel', up);
-    st.addEventListener('dblclick', e => (k > fitK * 1.05 ? d._fit() : at(fitK * 2.5, e.clientX, e.clientY)));
+    const up = e => { drag = null; pts.delete(e.pointerId); last = null; if (!pts.size) st.classList.remove('drag'); }; st.addEventListener('pointerup', up); st.addEventListener('pointercancel', up);
+    st.addEventListener('dblclick', e => { if (painting || e.target.closest('.tz-g')) return; k > fitK * 1.05 ? d._fit() : at(fitK * 2.5, e.clientX, e.clientY); });
+    const clearPaint = () => { cv.getContext('2d').clearRect(0, 0, cv.width, cv.height); delete cv.dataset.on; };
+    d._reset = () => { for (const g of placed) g.el.remove(); placed = []; clearPaint(); msg.textContent = ''; d.querySelector('.tz-say').value = ''; };
+    // the piece's graphics (the ones on the side this turn faces first) and its coloured parts
+    d._graphics = async () => { const box = d.querySelector('.tz-gs'), ds = d.querySelector('.tz-ds');
+      try { if (!TG) TG = await api(`/v1/lab/concepts/${CID}/turn-graphics`); } catch (x) { box.innerHTML = `<p class="tz-h">${esc(x.message)}</p>`; return; }
+      const v = d.dataset.k === 'model_back' ? 'back' : d.dataset.k === 'model_side' ? '' : 'front', list = [...TG.graphics].sort((a, b) => (b.view === v) - (a.view === v));
+      box.innerHTML = list.length ? list.map(g => `<button type="button" class="tz-gt" data-tg="${esc(g.id)}" title="${esc(g.name)} · ${esc(g.technique || '')} · on the ${esc(g.view)}"><img alt="" src="${g.png}"><span>${esc(g.name)}</span><small>${esc(g.view)}</small></button>`).join('') : '<p class="tz-h">No graphics on the flats yet: place one on the Flat front or back first.</p>';
+      ds.innerHTML = TG.details?.length ? `<p class="tz-h">Coloured parts: tap one, then paint over it on the turn.</p>${TG.details.map(p => `<button type="button" class="tz-dt" data-dn="${esc(p.name)}" data-dc="${esc(p.color)}"><i style="background:${esc(p.color)}"></i>${esc(p.name)} <small>${esc(p.view)}</small></button>`).join('')}` : ''; };
+    const setEdit = on => { d.classList.toggle('editing', on); d.querySelector('.tz-edit').hidden = !on; d.querySelector('[data-tz=edit]').setAttribute('aria-pressed', String(on)); if (on) d._graphics(); else { painting = false; d.querySelector('[data-tz=paint]').setAttribute('aria-pressed', 'false'); st.classList.remove('painting'); } d._fit(); };
     const step = n => { const ready = [...document.querySelectorAll('#bTurns figure[data-turn][role=button]')].map(f => f.dataset.turn), i = ready.indexOf(d.dataset.k) + n; if (ready[i]) zoomTurn(ready[i]); };
-    d.addEventListener('click', e => { const b = e.target.closest('[data-tz]'); if (!b) return; const a = b.dataset.tz;
-      if (a === 'close') d.close(); else if (a === 'prev') step(-1); else if (a === 'next') step(1); else if (a === 'in') at(k * 1.4, ...mid()); else if (a === 'out') at(k / 1.4, ...mid()); else if (a === 'fit') d._fit(); });
-    d.addEventListener('keydown', e => { if (e.key === 'ArrowLeft') step(-1); else if (e.key === 'ArrowRight') step(1); else if (e.key === '+' || e.key === '=') at(k * 1.4, ...mid()); else if (e.key === '-') at(k / 1.4, ...mid()); else if (e.key === '0') d._fit(); });
+    async function apply() {
+      const b = d.querySelector('[data-tz=apply]'), say = d.querySelector('.tz-say').value.trim(), blend = d.querySelector('.tz-blend').checked;
+      if (!placed.length && !cv.dataset.on) { msg.textContent = 'Put a graphic on the turn, or paint an area and say what to change.'; return; }
+      if (cv.dataset.on && !say) { msg.textContent = 'Say what to change in the painted area.'; return; }
+      // the painted area as a mask the size of the picture: painted = change it
+      let mask = null; if (cv.dataset.on) { const m = document.createElement('canvas'); m.width = cv.width; m.height = cv.height; const c = m.getContext('2d'); c.drawImage(cv, 0, 0); c.globalCompositeOperation = 'source-in'; c.fillStyle = '#000'; c.fillRect(0, 0, m.width, m.height); mask = m.toDataURL('image/png'); }
+      b.disabled = true; msg.textContent = blend || mask ? 'Working it into the turn… about a minute' : 'Setting it on…';
+      try { const r = await api(`/v1/lab/concepts/${CID}/views/${d.dataset.k}/edit`, { method: 'POST', body: { graphics: placed.map(g => ({ id: g.id, x: g.x, y: g.y, w: g.w, rot: g.rot })), mask, prompt: say, blend } });
+        await refreshTurn(); msg.textContent = r.blended ? 'Done: the turn is updated. Undo last edit takes it back.' : 'Set on. Undo last edit takes it back.'; }
+      catch (x) { msg.textContent = x.message; } finally { b.disabled = false; } }
+    async function refreshTurn() { const k0 = d.dataset.k; for (const key of Object.keys(FULL_SRC)) if (key.startsWith(k0 + '|')) delete FULL_SRC[key]; await paintTurns(); zoomTurn(k0); }
+    d.addEventListener('click', async e => { const t = e.target.closest('[data-tg]'); if (t) { const g = TG?.graphics.find(q => q.id === t.dataset.tg); if (g) addGraphic(g); return; }
+      const dt = e.target.closest('[data-dn]'); if (dt) { d.querySelector('.tz-say').value = `make the ${dt.dataset.dn.toLowerCase()} ${dt.dataset.dc} exactly, as on the flats`; if (!painting) d.querySelector('[data-tz=paint]').click(); return; }
+      const b = e.target.closest('[data-tz]'); if (!b) return; const a = b.dataset.tz;
+      if (a === 'close') d.close(); else if (a === 'prev') step(-1); else if (a === 'next') step(1); else if (a === 'in') at(k * 1.4, ...mid()); else if (a === 'out') at(k / 1.4, ...mid()); else if (a === 'fit') d._fit();
+      else if (a === 'edit') setEdit(!d.classList.contains('editing'));
+      else if (a === 'paint') { painting = !painting; b.setAttribute('aria-pressed', String(painting)); st.classList.toggle('painting', painting); }
+      else if (a === 'clear') clearPaint();
+      else if (a === 'apply') apply();
+      else if (a === 'undo') { b.disabled = true; try { await api(`/v1/lab/concepts/${CID}/views/${d.dataset.k}/undo`, { method: 'POST', body: {} }); await refreshTurn(); msg.textContent = 'Back to the turn as it was.'; } catch (x) { msg.textContent = x.message; } finally { b.disabled = false; } } });
+    d.addEventListener('keydown', e => { if (e.target.closest('textarea,input')) return; if (e.key === 'ArrowLeft') step(-1); else if (e.key === 'ArrowRight') step(1); else if (e.key === '+' || e.key === '=') at(k * 1.4, ...mid()); else if (e.key === '-') at(k / 1.4, ...mid()); else if (e.key === '0') d._fit(); });
+    d.addEventListener('close', () => setEdit(false));
     addEventListener('resize', () => { if (d.open) d._fit(); });
   }
   host.addEventListener('click', e => { const fg = e.target.closest('figure[data-turn][role=button]'); if (fg) zoomTurn(fg.dataset.turn); });

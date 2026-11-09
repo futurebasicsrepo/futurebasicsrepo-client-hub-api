@@ -20,6 +20,9 @@ export const POCKETS = ['kangaroo', 'split-kangaroo', 'welt', 'flap-welt', 'ches
 export const WAISTS = ['fixed', 'elastic', 'drawcord'];
 export const LEGS = ['straight', 'flare', 'wide', 'taper', 'balloon'];
 export const PANELS = ['none', 'side-stripe', 'side-panel', 'sleeve-stripe'];
+export const BACK_POCKETS = ['jeans', 'square', 'welt'];
+export const HEMS = ['straight', 'curved'];
+export const ANKLES = ['open', 'cuff', 'elastic'];
 
 // what a sketch's name says, as a partial description
 export function fromName(name, style) {
@@ -105,7 +108,8 @@ export function cleanConstruction(c) {
   if (ok(c.leg, LEGS)) out.leg = c.leg;
   if (Number.isFinite(Number(c.pleats)) && c.pleats !== null && c.pleats !== '') out.pleats = Math.min(Math.max(Math.round(Number(c.pleats)), 0), 3);
   if (ok(c.panels, PANELS)) out.panels = c.panels;
-  for (const k of ['quilted', 'belt', 'lined', 'backPockets', 'beltLoops']) if (typeof c[k] === 'boolean') out[k] = c[k];
+  for (const k of ['quilted', 'belt', 'lined', 'backPockets', 'beltLoops', 'coinPocket', 'utility']) if (typeof c[k] === 'boolean') out[k] = c[k];
+  if (ok(c.backPocket, BACK_POCKETS)) out.backPocket = c.backPocket; if (ok(c.hem, HEMS)) out.hem = c.hem; if (ok(c.ankle, ANKLES)) out.ankle = c.ankle;
   return out;
 }
 
@@ -133,6 +137,11 @@ export function constructionWords(c) {
   if (c.waist && c.waist !== 'fixed') w.push(c.waist === 'drawcord' ? 'Elastic waist with drawcord' : 'Elastic waist');
   if (c.backPockets === false) w.push('No back pockets');
   if (c.beltLoops) w.push('Belt loops');
+  if (c.backPocket && c.backPocket !== 'jeans' && c.backPockets !== false) w.push(c.backPocket === 'square' ? 'Square back pockets' : 'Welt back pockets');
+  if (c.coinPocket === false && (c.pockets || []).includes('five-pocket')) w.push('No coin pocket');
+  if (c.utility) w.push('Rule pocket and hammer loop');
+  if (c.hem === 'curved') w.push('Curved hem');
+  if (c.ankle && c.ankle !== 'open') w.push(c.ankle === 'cuff' ? 'Rib ankle cuffs' : 'Elastic ankles');
   if (c.knee === 'double') w.push('Double knee');
   if (c.leg && c.leg !== 'straight') w.push({ flare: 'Flared leg', wide: 'Wide leg', taper: 'Tapered leg', balloon: 'Balloon leg' }[c.leg]);
   if (c.pleats) w.push(`${c.pleats} front pleat${c.pleats > 1 ? 's' : ''}`);

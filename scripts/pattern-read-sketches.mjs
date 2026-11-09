@@ -21,10 +21,12 @@ const png = svg => sharp(Buffer.from(svg)).resize({ width: 900, height: 900, fit
 const b64 = b => ({ type: 'image', source: { type: 'base64', media_type: 'image/png', data: b.toString('base64') } });
 
 // what is asked of a pair of trousers or shorts: only what the pattern can draft
-const BOTTOM = { type: 'object', additionalProperties: false, required: ['front_pockets', 'cargo_pockets', 'back_pockets', 'back_yoke', 'belt_loops', 'waist', 'fly', 'pleats', 'knee', 'leg', 'side', 'notes'], properties: {
+const BOTTOM = { type: 'object', additionalProperties: false, required: ['front_pockets', 'cargo_pockets', 'utility', 'back_pockets', 'back_pocket_style', 'back_yoke', 'belt_loops', 'waist', 'fly', 'pleats', 'knee', 'leg', 'hem', 'ankle', 'side', 'notes'], properties: {
   front_pockets: { type: 'string', enum: ['none', 'slash', 'jeans scoop with coin pocket', 'jeans scoop'], description: 'the front hip pockets: slanted or side-seam openings (slash), curved jeans scoops, or none' },
-  cargo_pockets: { type: 'boolean', description: 'patch or bellows pockets on the side of the thigh' },
+  cargo_pockets: { type: 'boolean', description: 'large patch or bellows pockets (about 6 in wide or more, often with a flap) on the side of the thigh; not a narrow rule pocket' },
+  utility: { type: 'boolean', description: 'carpenter details: a narrow rule (ruler) pocket down the side of a thigh, or a hammer loop at the side seam' },
   back_pockets: { type: 'boolean', description: 'any pockets on the back (patch or welt)' },
+  back_pocket_style: { type: 'string', enum: ['jeans', 'square', 'welt'], description: 'jeans: a patch pocket with a pointed bottom; square: a patch with a straight or rounded bottom; welt: a slit pocket set into the leg (if no back pockets, the closest)' },
   back_yoke: { type: 'boolean', description: 'a seam across the back below the waistband (a jeans yoke)' },
   belt_loops: { type: 'boolean' },
   waist: { type: 'string', enum: ['fixed', 'elastic', 'drawcord'], description: 'fixed: a flat band with a button or hook; elastic: gathered; drawcord: gathered with a cord out at the front' },
@@ -32,6 +34,8 @@ const BOTTOM = { type: 'object', additionalProperties: false, required: ['front_
   pleats: { type: 'integer', description: 'front pleats on each leg (0 if none)' },
   knee: { type: 'string', enum: ['single', 'double'], description: 'double: a second layer of cloth over the front knee' },
   leg: { type: 'string', enum: ['straight', 'taper', 'wide', 'flare', 'balloon'] },
+  hem: { type: 'string', enum: ['straight', 'curved'], description: 'curved: a running-shorts hem that rises to the side seam' },
+  ankle: { type: 'string', enum: ['open', 'cuff', 'elastic'], description: 'cuff: a separate rib band at the ankle; elastic: gathered by elastic in the hem; open: a plain hem' },
   side: { type: 'string', enum: ['none', 'stripe', 'panel'], description: 'a stripe of tape or a contrast panel down the outside of the leg' },
   notes: { type: 'string', description: 'anything else about how it is built that the fields above do not cover, in a few words' } } };
 const SYSTEM = 'You are a technical pattern maker reading a designer\'s flat sketch (front and back) to draft its pattern. Report only construction you can see drawn: not what such a garment usually has. Look at both views.';
@@ -44,7 +48,7 @@ async function judges() {
 // what the answer means for the pattern (src/lab-construction.js's fields)
 const toConstruction = a => {
   const pk = []; if (a.front_pockets === 'slash') pk.push('slash'); if (/jeans/.test(a.front_pockets)) pk.push('five-pocket'); if (a.cargo_pockets) pk.push('cargo');
-  return { pockets: pk, backPockets: a.back_pockets, yoke: { front: false, back: a.back_yoke }, beltLoops: a.belt_loops, waist: a.waist, pleats: Math.min(Math.max(a.pleats | 0, 0), 3), knee: a.knee, leg: a.leg, panels: { none: 'none', stripe: 'side-stripe', panel: 'side-panel' }[a.side] || 'none' };
+  return { pockets: pk, backPockets: a.back_pockets, backPocket: a.back_pocket_style, coinPocket: a.front_pockets === 'jeans scoop with coin pocket', utility: a.utility, hem: a.hem, ankle: a.ankle, yoke: { front: false, back: a.back_yoke }, beltLoops: a.belt_loops, waist: a.waist, pleats: Math.min(Math.max(a.pleats | 0, 0), 3), knee: a.knee, leg: a.leg, panels: { none: 'none', stripe: 'side-stripe', panel: 'side-panel' }[a.side] || 'none' };
 };
 // only what both saw: a field where they differ is left out (the name and the style decide it)
 const agree = (A, B) => {

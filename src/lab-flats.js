@@ -188,12 +188,16 @@ export function drawnLegs(p, size = p.size || 'M') {
 // the hip across one front leg, as the pattern drafts it), so a straight sketch makes a straight leg and a slim one a slim leg
 export function legsFromDrawing(p, size = p.size || 'M') {
   const L = drawnLegs(p, size); if (!L) return null; const m = measurementsFor(p, size), thigh = m.hip * .46, c = (v, a, b) => Math.min(Math.max(v, a), b);
-  return { legOpening: r8(c(thigh * L.hem / L.thigh / .9, 4.5, 16)), kneeRatio: L.knee ? Math.round(c(L.knee / L.hem, .8, 1.7) * 100) / 100 : null, drawn: L };
+  // a sketch drawn fuller than the body (relaxed joggers, running shorts) is cut as full: the hip raised to what the sketch shows across the hip
+  // or through the thigh, whichever is fuller (the pattern is about 0.95 of the hip across the front, and 0.465 of it through one thigh), by
+  // at most a fifth; a sketch drawn slimmer than the body keeps the measurement (a sketch is drawn slim)
+  const room = Math.max(L.hip / (m.hip * .953), L.thigh / (m.hip * .465)), hip = room > 1.05 ? r8(Math.max(m.hip, Math.min(m.hip * room, m.hip * 1.2, L.hip / .953 * 1.04))) : null;
+  return { legOpening: r8(c((hip || m.hip) * .46 * L.hem / L.thigh / .9, 4.5, 16)), kneeRatio: L.knee ? Math.round(c(L.knee / L.hem, .8, 1.7) * 100) / 100 : null, hip, drawn: L };
 }
 // the legs of a pair of trousers or shorts made as its sketch draws them (Follow the drawing on the Pattern page); the rest is kept
 export function followDrawing(p) {
   const f = legsFromDrawing(p, 'M'); if (!f) return p;
-  return { ...p, m: { ...p.m, legOpening: f.legOpening }, options: { ...(p.options || {}), legsDrawn: true, ...(f.kneeRatio ? { kneeRatio: f.kneeRatio } : {}) } };
+  return { ...p, m: { ...p.m, legOpening: f.legOpening, ...(f.hip && !(p.m?.hip > f.hip) ? { hip: f.hip } : {}) }, options: { ...(p.options || {}), legsDrawn: true, ...(f.kneeRatio ? { kneeRatio: f.kneeRatio } : {}) } };
 }
 let FITTING = false; // fitting a sketch reads its drawing, and drawing a sketch fits it: once round is enough
 export function fitToTemplate(p, asDrawn = false) {

@@ -369,16 +369,20 @@ function bottomPieces(S, m, o, style) {
     const crotch = cubic([0, rd * .55], [0, rd * .85], [ext * .35, rd], [ext, rd]);
     const knee = side => kneeW ? [[crease + side * kneeW / 2, kneeY]] : [];
     const sideCurve = tail(cubic([sideX, hipY], [sideX, hipY * .5], [-waistW - pleat - .2 + panel, hipY * .2], [-waistW - pleat + panel, 0]));
-    const sew = [[0, -cbRaise], ...crotch, ...knee(1), [crease + hemW / 2, Hy], [crease - hemW / 2, Hy], ...knee(-1), [sideX, hipY], ...sideCurve];
+    // a curved (running) hem: it rises to the side seam, the side shorter than the inseam
+    const lift = K.hem === 'curved' ? Math.min(2.25, inseam * .35) : 0, hemOut = (xi, xo) => lift ? tail(cubic([xi - (xi - xo) * .45, Hy], [xo + (xi - xo) * .12, Hy], [xo, Hy - lift * .45], [xo, Hy - lift])) : [[xo, Hy]];
+    const sew = [[0, -cbRaise], ...crotch, ...knee(1), [crease + hemW / 2, Hy], ...(lift ? [[crease + hemW / 2 - hemW * .45, Hy]] : []), ...hemOut(crease + hemW / 2, crease - hemW / 2), ...knee(-1), [sideX, hipY], ...sideCurve];
     // on the product the leg is seen from the centre line out: its crotch extension tucks under the other leg, the two meet at the centre
     // laid flat, the legs meet at the centre: a leg too wide to sit either side of its crease there moves out, at its full width (it is not cut
     // narrower than it is: a straight or wide leg shows as wide as it is cut)
     const inX = x => Math.min(x, -.35), sideSeen = tail(cubic([sideX, hipY], [sideX, hipY * .5], [-waistW - .2 + panel, hipY * .2], [-waistW + panel, 0]));
     const flat = (w, y) => { const i = inX(crease + w / 2); return [[i, y], [i - w, y]]; }, [kIn, kOut] = kneeW ? flat(kneeW, kneeY) : [], [hIn, hOut] = flat(hemW, Hy);
-    const shown = [[0, 0], [0, rd], ...(kIn ? [kIn] : []), hIn, hOut, ...(kOut ? [kOut] : []), [sideX, hipY], ...sideSeen];
-    void k; return { sew, shown, crease, ext, kneeY, sideX, hipW };
+    const shown = [[0, 0], [0, rd], ...(kIn ? [kIn] : []), hIn, ...(lift ? [[hIn[0] - hemW * .45, Hy]] : []), ...hemOut(hIn[0], hOut[0]), ...(kOut ? [kOut] : []), [sideX, hipY], ...sideSeen];
+    void k; return { sew, shown, crease, ext, kneeY, sideX, hipW, hemW, hIn, hOut, lift };
   };
   const F = leg(false), B = leg(true);
+  // the outer side of a leg as the product shows it, from the hem's outer corner up the side seam to the waist (a stripe or a panel follows it)
+  const outerSide = Lg => { const P = Lg.shown, i = P.findIndex((q, k) => k > 2 && Math.abs(q[1] - (Hy - Lg.lift)) < .01 && q[0] <= Lg.hOut[0] + .01); return P.slice(i < 0 ? 0 : i).slice().sort((a, b) => b[1] - a[1]); };
   // a back yoke (jeans, work pants): the top of the back leg cut away along a seam 2½ in deep at the centre back and 1 in at the side, and
   // cut as its own piece; the seat shaping goes into the yoke seam, so the back leg has no dart
   let yokeB = null;
@@ -396,11 +400,18 @@ function bottomPieces(S, m, o, style) {
     pieces.push(twin('back-yoke-2', 'Back yoke', yokeB.sew, { view: 'back', x: 0, y: wb, flip: true, z: 1 }));
     pieces[pieces.length - 2].shown = yokeB.shown; pieces[pieces.length - 1].shown = yokeB.shown; }
   const pleatOf = () => (K.pleats || 0) * 1.25;
+  let coinShown = null;
   // the front pocket openings, seen on the product: a slash pocket a straight slant from the waist to the side seam, a jeans scoop a curve; as
   // thin shapes on each front leg (the pocket bags and facings are inside)
   { const wx = Math.min(...F.shown.filter(([, y]) => y < .01).map(([x]) => x)), sideAt = y => { const xs = []; const P = F.shown; for (let i = 0; i < P.length; i++) { const [x1, y1] = P[i], [x2, y2] = P[(i + 1) % P.length]; if ((y1 <= y) !== (y2 <= y)) xs.push(x1 + (y - y1) / (y2 - y1) * (x2 - x1)); } return xs.length ? Math.min(...xs) : F.sideX; }, thin = pts => [...pts, ...pts.slice().reverse().map(([x, y]) => [x + .06, y + .06])];
     const open = has('five-pocket') ? thin([[wx + 3.6, 0], ...tail(cubic([wx + 3.6, 0], [wx + 3.4, 2.2], [wx + 1.6, 3.2], [sideAt(3.3) + .05, 3.3]))]) : has('slash') ? thin([[wx + 1.7, 0], [sideAt(6.5) + .05, 6.5]]) : null;
-    if (open) for (const sg of [1, -1]) pieces.push({ ...piece(`pocket-opening${sg < 0 ? '-2' : ''}`, 'Pocket opening', open, { cut: 0, shown: open, place: { view: 'front', x: 0, y: wb, ...(sg > 0 ? { flip: true } : {}), z: 2 } }), of: 'front', twin: true, copy: true }); }
+    if (open) for (const sg of [1, -1]) pieces.push({ ...piece(`pocket-opening${sg < 0 ? '-2' : ''}`, 'Pocket opening', open, { cut: 0, shown: open, place: { view: 'front', x: 0, y: wb, ...(sg > 0 ? { flip: true } : {}), z: 2 } }), of: 'front', twin: true, copy: true });
+    // the coin pocket sits on the right front's pocket facing, inside the scoop; the carpenter's rule pocket down the right thigh, at the side,
+    // and the hammer loop on the left, at the side seam below the hip
+    if (has('five-pocket') && K.coinPocket !== false) coinShown = [[wx + .55, .55], [wx + 2.25, .45], [wx + 2.2, 2.25], [wx + .6, 2.35]];
+    if (K.utility) { const ry = rd + 1.5, rx = sideAt(ry), rule = [[rx + .2, ry], [rx + 2.7, ry], [rx + 2.7, ry + 8], [rx + .2, ry + 8]], hy = rd - 1.5, hx = sideAt(hy), loop = [[hx - .2, hy], [hx + .9, hy], [hx + .9, hy + 5.5], [hx - .2, hy + 5.5]];
+      pieces.push(piece('rule-pocket', 'Rule pocket', rect(3.25, 9), { cut: 1, notes: ['Patch, open at the top, on the right thigh at the side seam; bar-tacked'], shown: rule, place: { view: 'front', x: 0, y: wb, flip: true, z: 3 } }),
+        piece('hammer-loop', 'Hammer loop', rect(2.25, 6.5), { cut: 1, notes: ['Folded double, caught into the left side seam and bar-tacked below'], shown: loop, place: { view: 'front', x: 0, y: wb, z: 3 } })); } }
   // pleat lines on the front, from the waist, the first on the crease
   if (K.pleats) for (let i = 0; i < K.pleats; i++) for (const sg of [1, -1]) { const x = F.crease - i * 1.6, ln = [[x, 0], [x + .07, 0], [x + .07, 3.2], [x, 3.2]];
     pieces.push({ ...piece(`pleat-${i}${sg < 0 ? '-2' : ''}`, 'Pleat', ln, { cut: 0, shown: ln, place: { view: 'front', x: 0, y: wb, ...(sg > 0 ? { flip: true } : {}), z: 2 } }), of: 'front', twin: true, copy: true }); }
@@ -419,11 +430,20 @@ function bottomPieces(S, m, o, style) {
   // a side stripe (tape) or a contrast side panel down the outseam
   if (K.panels === 'side-stripe') {
     // the tape seen down each outseam, front and back: from the waist down the side to the hem
-    for (const [v, Lg] of [['front', F], ['back', B]]) { const side = Lg.shown.filter(([x, y]) => (y === Hy && x < Lg.crease) || (x <= Lg.sideX + .01 && y > 0) || y === 0 && x < -1).sort((a, b) => b[1] - a[1]), strip = [...side, ...side.slice().reverse().map(([x, y]) => [x + 1.1, y])];
+    for (const [v, Lg] of [['front', F], ['back', B]]) { const side = outerSide(Lg), strip = [...side, ...side.slice().reverse().map(([x, y]) => [x + 1.1, y])];
       for (const sg of [1, -1]) pieces.push({ ...piece(`stripe-${v}${sg < 0 ? '-2' : ''}`, 'Stripe', strip, { fabric: 'contrast', cut: 0, shown: strip, place: { view: v, x: 0, y: wb, ...((v === 'front') === (sg > 0) ? { flip: true } : {}), z: 2 } }), of: 'front', twin: true, copy: true }); }
     trims.push({ item: 'Stripe tape', spec: '1¼ in woven tape', qty: `${r8((m.rise + inseam + 1) * 2)} in`, where: 'Down each side seam, waist to hem' }); for (const q of pieces.filter(x => x.id === 'front')) q.notes.push('Stripe tape down the side seam'); }
-  if (K.panels === 'side-panel') { const side = F.shown.filter(([x, y]) => (y === Hy && x < F.crease) || (x <= F.sideX + .01 && y > 0) || (y === 0 && x < -1)).sort((a, b) => b[1] - a[1]), strip = [...side.map(([x, y]) => [x - 1.25, y]), ...side.slice().reverse().map(([x, y]) => [x + 1.25, y])];
+  if (K.panels === 'side-panel') { const side = outerSide(F), strip = [...side.map(([x, y]) => [x - 1.25, y]), ...side.slice().reverse().map(([x, y]) => [x + 1.25, y])];
     pieces.push(piece('side-panel', 'Side panel', [[-1.25, 0], [1.25, 0], [1.25, Hy], [-1.25, Hy]], { cut: 2, fabric: 'contrast', shown: strip, notes: ['Contrast; 2½ in wide, between the front and back legs at the side seam'], place: { view: 'front', x: 0, y: wb, flip: true, z: 1 } }), { ...twin('side-panel-2', 'Side panel', [[-1.25, 0], [1.25, 0], [1.25, Hy], [-1.25, Hy]], { view: 'front', x: 0, y: wb, z: 1 }), fabric: 'contrast', shown: strip }); }
+  // the panel runs down the side, so it shows from the back as well
+  if (K.panels === 'side-panel') { const side = outerSide(B), strip = [...side.map(([x, y]) => [x - 1.25, y]), ...side.slice().reverse().map(([x, y]) => [x + 1.25, y])];
+    for (const [id, fl] of [['side-panel-back', false], ['side-panel-back-2', true]]) pieces.push({ ...piece(id, 'Side panel', strip, { cut: 0, fabric: 'contrast', shown: strip, place: { view: 'back', x: 0, y: wb, ...(fl ? { flip: true } : {}), z: 1 } }), twin: true, copy: true, of: 'side-panel' }); }
+  // the ankle: a rib cuff (joggers), or elastic in a turned channel
+  if (K.ankle === 'cuff' && inseam > 14) { const ch = 2.75, cuff = Lg => { const a = Lg.hIn[0] - .15, b = Lg.hOut[0] + .15; return [[a, Hy], [b, Hy], [b, Hy + ch], [a, Hy + ch]]; }, circ = r8((F.hemW + B.hemW) * .85);
+    pieces.push(piece('cuff', 'Ankle cuff', rect(circ, ch * 2), { cut: 2, fabric: 'rib', notes: [`1x1 rib, folded; ${circ} in round, stretched onto the hem`], shown: cuff(F), place: { view: 'front', x: 0, y: wb, flip: true, z: 2 } }), { ...twin('cuff-2', 'Ankle cuff', cuff(F), { view: 'front', x: 0, y: wb, z: 2 }), shown: cuff(F) },
+      { ...piece('cuff-back', 'Ankle cuff', cuff(B), { cut: 0, shown: cuff(B), place: { view: 'back', x: 0, y: wb, z: 2 } }), twin: true, copy: true, of: 'cuff' }, { ...piece('cuff-back-2', 'Ankle cuff', cuff(B), { cut: 0, shown: cuff(B), place: { view: 'back', x: 0, y: wb, flip: true, z: 2 } }), twin: true, copy: true, of: 'cuff' }); }
+  if (K.ankle === 'elastic') { trims.push({ item: 'Ankle elastic', spec: '¾ in knitted elastic', qty: `${r8((F.hemW + B.hemW) * .8 * 2)} in`, where: 'In a turned channel at each hem' }); for (const q of pieces.filter(x => x.id === 'front' || x.id === 'back')) q.notes.push('Hem turned 1 in for the ankle elastic'); }
+  if (K.hem === 'curved') for (const q of pieces.filter(x => x.id === 'front' || x.id === 'back')) q.notes.push('Curved hem: rises to the side seam, the hem bound or faced');
   if (drawcord) trims.push({ item: 'Drawcord', spec: '¼ in flat or round cord, tipped ends', qty: `${r8(m.waist * 2 + 22)} in`, where: 'Through the waistband' }, { item: 'Eyelets', spec: '¼ in, with washers (or two buttonholes)', qty: 2, where: 'Centre front of the waistband' });
   if (elastic) trims.push({ item: 'Elastic', spec: `${r8(wb - .25)} in knitted elastic`, qty: `${r8(m.waist * 2 * .9)} in`, where: 'In the waistband' });
   // belt loops: one strip, folded in four, cut into seven loops; shown on the band, front and back
@@ -436,8 +456,13 @@ function bottomPieces(S, m, o, style) {
   if (style !== 'leggings') {
     pieces.push(piece('pocket-bag', 'Pocket bag', [[0, 0], [6.5, 0], [6.5, 9], ...tail(cubic([6.5, 9], [6.5, 11.5], [2, 11.5], [0, 10]))], { fabric: 'pocketing', cut: 4, pair: true, hidden: true, place: { view: 'front', x: m.waist / 2 - 7.2, y: wb, z: -1 } }));
     if (!elastic) pieces.push(piece('fly', 'Fly facing', [[0, 0], [1.75, 0], [1.75, 6], ...tail(cubic([1.75, 6], [1.75, 7.6], [.6, 7.8], [0, 7.8]))], { cut: 2, notes: ['Fused; a 7 in zip'], place: { view: 'front', x: -1.9, y: wb, z: 2 } }));
-    if (K.backPockets !== false) { pieces.push(piece('back-pocket', 'Back pocket', [[0, 0], [5, -.4], [4.8, 5.6], [2.6, 6.4], [.4, 5.8]], { cut: 2, notes: ['1 in turn-back at the opening'], place: { view: 'back', x: 1.8, y: wb + (K.yoke?.back ? 3.9 : 1.8), z: 3 } }), twin('back-pocket-2', 'Back pocket', [[0, 0], [5, -.4], [4.8, 5.6], [2.6, 6.4], [.4, 5.8]], { view: 'back', x: -1.8, y: wb + (K.yoke?.back ? 3.9 : 1.8), flip: true, z: 3 })); }
-    if (has('five-pocket')) { pieces.push(piece('coin-pocket', 'Coin pocket', rect(3, 3.25), { cut: 1, notes: ['On the right front pocket facing, double-needle topstitched'], place: { view: 'front', x: m.waist / 2 - 4.5, y: wb + 1, z: 3 } }));
+    // the back pockets: a jeans pocket (pointed), a square patch with rounded corners, or a welt (a slit with a facing, the bag inside)
+    { const sq = [[0, 0], [5.75, 0], [5.75, 5.6], ...tail(cubic([5.75, 5.6], [5.75, 6.4], [5.4, 6.5], [4.8, 6.5])), [.95, 6.5], ...tail(cubic([.95, 6.5], [.35, 6.5], [0, 6.4], [0, 5.6]))], welt = [[0, 0], [5.25, 0], [5.25, .5], [0, .5]], py = wb + (K.yoke?.back ? 3.9 : 1.8);
+      if (K.backPockets !== false && (K.backPocket === 'square' || K.backPocket === 'welt')) { const shp = K.backPocket === 'square' ? sq : welt, nm = K.backPocket === 'square' ? 'Back pocket' : 'Back welt';
+        pieces.push(piece('back-pocket', nm, K.backPocket === 'square' ? sq : rect(6.25, 1.25), { cut: 2, notes: [K.backPocket === 'square' ? '1 in turn-back at the opening, the corners rounded' : 'Jetted: the welt 1/2 in finished, a bag of pocketing inside'], shown: shp, place: { view: 'back', x: 1.6, y: py, z: 3 } }), { ...twin('back-pocket-2', nm, shp, { view: 'back', x: -1.6, y: py, flip: true, z: 3 }), shown: shp });
+        if (K.backPocket === 'welt') pieces.push(piece('back-pocket-bag', 'Back pocket bag', rect(6.5, 7.5), { fabric: 'pocketing', cut: 2, hidden: true, notes: ['Behind the welt'], place: { view: 'back', x: 1.6, y: py, z: -1 } })); }
+      else if (K.backPockets !== false) { pieces.push(piece('back-pocket', 'Back pocket', [[0, 0], [5, -.4], [4.8, 5.6], [2.6, 6.4], [.4, 5.8]], { cut: 2, notes: ['1 in turn-back at the opening'], place: { view: 'back', x: 1.8, y: wb + (K.yoke?.back ? 3.9 : 1.8), z: 3 } }), twin('back-pocket-2', 'Back pocket', [[0, 0], [5, -.4], [4.8, 5.6], [2.6, 6.4], [.4, 5.8]], { view: 'back', x: -1.8, y: wb + (K.yoke?.back ? 3.9 : 1.8), flip: true, z: 3 })); } }
+    if (has('five-pocket')) { if (coinShown) pieces.push(piece('coin-pocket', 'Coin pocket', rect(3, 3.25), { cut: 1, notes: ['On the right front pocket facing, double-needle topstitched'], shown: coinShown, place: { view: 'front', x: 0, y: wb, flip: true, z: 3 } }));
       trims.push({ item: 'Rivets', spec: 'Copper burr rivets, 9 mm', qty: 6, where: 'Front pocket corners and coin pocket' }, { item: 'Shank button', spec: '17 mm tack button', qty: 1, where: 'Waistband' }); if (!elastic) trims.push({ item: 'Fly zip', spec: '#4.5 metal, 7 in, closed-end', qty: 1, where: 'Fly' }); }
   }
   pieces.trims = trims;
@@ -689,11 +714,13 @@ export function resample(pts, n = 64) {
 export function drawnCheck(p, pat, size = p.size || 'M') {
   const S = STYLES[p.style]; if (!S || S.kind !== 'bottom' || S.skirt || !pat) return null;
   const L = drawnLegs(p, size); if (!L) return null; const m = measurementsFor(p, size), wb = m.waistband || 1.5, A = assembled(pat);
-  const legs = A.pieces.filter(x => x.piece.id === 'front' || x.piece.id === 'front-2');
+  const legs = A.pieces.filter(x => /^(front|front-2|side-panel(-2)?)$/.test(x.piece.id)); // a contrast side panel is part of the leg's width
   const spans = (poly, y) => { const xs = []; for (let i = 0; i < poly.length; i++) { const [x1, y1] = poly[i], [x2, y2] = poly[(i + 1) % poly.length]; if ((y1 <= y) !== (y2 <= y)) xs.push(x1 + (y - y1) / (y2 - y1) * (x2 - x1)); } xs.sort((a, b) => a - b); const o = []; for (let i = 0; i + 1 < xs.length; i += 2) o.push([xs[i], xs[i + 1]]); return o; };
-  const leg = y => { const q = legs.flatMap(x => spans(x.pts, y)).filter(q => q[0] < 0).sort((a, b) => a[0] - b[0])[0]; return q ? r8(Math.min(q[1], 0) - q[0]) : null; };
+  // the spans at a height, those that touch (a leg and its side panel) joined into one
+  const joined = y => { const sp = legs.flatMap(x => spans(x.pts, y)).sort((a, b) => a[0] - b[0]), out = []; for (const q of sp) { const l = out[out.length - 1]; if (l && q[0] <= l[1] + .3) l[1] = Math.max(l[1], q[1]); else out.push([...q]); } return out; };
+  const leg = y => { const q = joined(y).filter(q => q[0] < 0)[0]; return q ? r8(Math.min(q[1], 0) - q[0]) : null; };
   const across = y => { const sp = legs.flatMap(x => spans(x.pts, y)); return sp.length ? r8(Math.max(...sp.map(q => q[1])) - Math.min(...sp.map(q => q[0]))) : null; };
-  const H = m.rise + m.inseam, rows = [['hip', 'Hip, across', L.hip, across(wb + Math.min(7.5, (m.rise - wb) * .7))], ['thigh', 'Thigh, one leg', L.thigh, leg(m.rise + 1.5)], ...(L.knee ? [['knee', 'Knee, one leg', L.knee, leg(m.rise + m.inseam * .48)]] : []), ['hem', 'Hem, one leg', L.hem, leg(H - .4)]]
+  const H = m.rise + m.inseam, rows = [['hip', 'Hip, across', L.hip, across(wb + Math.min(7.5, (m.rise - wb) * .7))], ['thigh', 'Thigh, one leg', L.thigh, leg(m.rise + 1.5)], ...(L.knee ? [['knee', 'Knee, one leg', L.knee, leg(m.rise + m.inseam * .48)]] : []), ['hem', 'Hem, one leg', L.hem, leg(H - 2)]]
     .filter(r => r[3] != null).map(([key, label, drawn, pattern]) => ({ key, label, drawn, pattern }));
   // the knee and the hem against the thigh, as the sketch has them: the widths themselves follow the hip measurement, the proportions the sketch
   const th = rows.find(r => r.key === 'thigh'); for (const r of rows) r.off = Boolean(th && (r.key === 'knee' || r.key === 'hem') && Math.abs(r.pattern / th.pattern - r.drawn / th.drawn) / (r.drawn / th.drawn) > .15);
