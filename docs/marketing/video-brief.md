@@ -161,7 +161,7 @@ Labels chosen on a garment are drawn on its flats where they are sewn, with thei
 
 ### Beyond clothing (good for a "it does more than tees" cut)
 - **Bags:** backpacks, slings, totes, helmet bags, work bags, messengers, duffels and waist bags, designed as a bag designer would and rendered on a set that suits each; a design sheet; drawn in panels a designer recolours and reshapes; and a library of eleven original bag flats to start from.
-- **Footwear:** concepts drawn as designer-grade three-quarter renders on a set that suits the shoe, a design sheet (side, top, outsole, heel and four colourways on one board), the shoe drawn as a technical flat in five views and traced into panels a designer recolours and reshapes in the Studio, a parametric shoe last, the upper flattened off the last into pattern pieces, a size run, and a tech flat from four sides.
+- **Footwear:** concepts drawn as designer-grade three-quarter renders on a set that suits the shoe, a design sheet (side, top, outsole, heel and four colourways on one board), the shoe drawn as a technical flat in five views and traced into panels a designer recolours and reshapes in the Studio, a parametric shoe last, the upper flattened off the last into pattern pieces, a size run, and a tech flat from four sides; and a library of original footwear flats by type (thirteen drawn, from a catalogue of 91 styles in 13 types) to start from, at no charge.
 - **Plush:** photo-real concepts, patterned like clothing.
 - **Patterns:** the product shown exploded into the pieces it is cut from, with an AAMA/ASTM DXF export.
 - **Engineering:** hard goods, toys, home objects and electronics as 3D parts in an exploded view, with tooling and cost, a bill of materials,

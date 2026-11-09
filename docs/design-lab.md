@@ -1110,6 +1110,19 @@ A footwear (or bag, above) concept's **Flats** in the Studio (`/lab/shoe-flats`,
 Routes: `GET|POST /v1/lab/concepts/:id/shoe-drawing`, `PUT /v1/lab/concepts/:id/shoe-drawing/:view`, `POST …/:view/reset`,
 `GET …/:view.svg` (or `?art=1` for the line art). Journey J280.
 
+**The library of footwear flats** (`src/footwear-templates`, `src/lab-footwear-templates.js`, built by `scripts/footwear-templates/build.mjs`
+from the catalogue in `scripts/footwear-templates/catalogue.mjs`). The catalogue is the range a footwear designer works across: 91 styles in 13
+types (lifestyle sneakers, running, court and field sport, outdoor and hiking, boots, work and safety, dress and loafers, clogs and mules,
+sandals and slides, flats and Mary Janes, heels, slippers, kids), each with its construction, closure, height, the pattern style it is
+drafted in (or the new style it needs) and a priority, with a note on each type's market. A style is in the library once it is drawn: an
+original technical flat in its five views, drawn once in a neutral prototype colourway (light-grey upper, darker-grey overlays, pale-cream
+midsole, mid-grey outsole) and traced into panels. Thirteen are drawn so far. They sit in the Sketch library under **Footwear**, by type; the
+colour picked goes on the upper. **Open in the Studio** makes a new footwear concept with the five drawings in place and its pattern drafted
+in the library shoe's style (`POST /v1/lab/concepts/from-library-footwear`); **Or put this on a concept you already have** puts them on a
+footwear concept (`POST /v1/lab/concepts/:id/shoe-drawing/from-library`, which refuses a bag on a shoe and a shoe on a bag). No image model is
+used, so nothing is charged. **Back to the drawing as traced** goes back to the library's drawing. `GET /v1/lab/library/footwear` lists them,
+`GET /v1/lab/library/footwear/:id` gives one with its views. Journey J292.
+
 ### How a shoe concept is designed and drawn
 
 The concept writer gets a footwear designer's brief (`CATEGORY_WORDS.footwear` in `src/lab-concepts.js`). It designs the sole unit first (cupsole
