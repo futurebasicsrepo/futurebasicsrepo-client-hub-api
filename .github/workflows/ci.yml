@@ -66,10 +66,9 @@ jobs:
           --health-timeout 5s
           --health-retries 20
     env:
-      # the journeys make their own throwaway database on this server (scripts/journeys/run.sh)
-      PGHOST: localhost
-      PGUSER: postgres
-      PGPASSWORD: postgres
+      # The journeys make their own throwaway database on the Postgres above (scripts/journeys/run.sh names it in full, user and password
+      # included). No PGPASSWORD here: the servers treat any setting whose name ends in PASSWORD as a secret and hide its value wherever it
+      # appears in the health page, and a password of "postgres" hid the database's own name there.
       JOURNEY_LOG_DIR: ${{ github.workspace }}/journey-logs
       JOURNEY_SUITE: ${{ matrix.suite }}
     steps:
