@@ -6,6 +6,7 @@
 // The same file runs in the page (served as /lab/flats.js) and on the service (the check and the spec sheet), so it uses neither the DOM nor Node.
 // All lengths are inches. On the front flat the viewer's right is the wearer's left.
 import { FLAT_TEMPLATES } from './lab-flat-templates.js';
+import { TEMPLATE_PROPORTIONS } from './lab-template-proportions.js';
 // sketches the pack's measuring script reads wrong, corrected by hand. Only the length a sketch suggests (its ratio) is corrected: how the
 // sketch is laid over inches stays as it was measured, because colour blocks, stitch lines and graphics already placed on it are kept in
 // inches, and moving the sketch under them would leave them off the drawing. The shearling aviator: its zip splits the hem band on the
@@ -213,6 +214,13 @@ export function fitToTemplate(p, asDrawn = false) {
   else if (S.kind === 'bottom' && S.skirt) m.length = r8(base.length * k);
   else if (S.kind === 'bottom') m.inseam = r8(Math.max(1, (base.rise + base.inseam) * k - (m.rise || base.rise)));
   // a pair of trousers or shorts takes its sketch's legs: a straight sketch is not cut tapered, nor a wide one narrow
+  // a top takes the widths and the sleeve its sketch draws (traced off it: scripts/pattern-read-proportions.mjs): its shoulder, armhole, sleeve
+  // length and opening from the style's own plus the sketch's change, and the angle its sleeve is drawn at. Picking another sketch sets them again
+  if (!asDrawn && S.kind === 'top') {
+    const tp = TEMPLATE_PROPORTIONS[t.id] || {}, { sleeveAngle, ...o } = p.options || {};
+    for (const k of ['shoulder', 'armhole', 'sleeve', 'sleeveOpening']) if (k in base) m[k] = r8(base[k] + (tp[k] || 0));
+    return { ...p, m, options: { ...o, ...(Number.isFinite(tp.sleeveAngle) && m.sleeve > 0 ? { sleeveAngle: tp.sleeveAngle } : {}) } };
+  }
   if (!asDrawn && !FITTING && S.kind === 'bottom' && !S.skirt) { FITTING = true; try { const f = { ...p, m }, g = followDrawing(f); return g; } finally { FITTING = false; } }
   return { ...p, m };
 }
@@ -802,7 +810,7 @@ export function cleanFlat(input = {}) {
   const style = STYLES[input.style] ? input.style : null; if (!style) return { error: 'Choose what the piece is' };
   const fit = FITS[input.fit] ? input.fit : 'regular', base = defaultParams(style, fit), m = {};
   for (const k of Object.keys(base.m)) { const v = Number(input.m?.[k]); m[k] = Number.isFinite(v) ? r8(Math.min(Math.max(v, 0), 80)) : base.m[k]; }
-  const o = input.options || {}, options = { drop: Boolean(o.drop), cropped: Boolean(o.cropped), pleats: Math.min(Math.max(Math.round(Number(o.pleats) || 0), 0), 2), chestPocket: Boolean(o.chestPocket), noPocket: Boolean(o.noPocket), drawcord: o.drawcord !== false, rib: o.rib !== false, ...(o.legsDrawn ? { legsDrawn: true } : {}), ...(Number(o.kneeRatio) >= .8 && Number(o.kneeRatio) <= 1.7 ? { kneeRatio: Math.round(Number(o.kneeRatio) * 100) / 100 } : {}), ...(keptConstruction(o.construction) ? { construction: keptConstruction(o.construction) } : {}) }; // the legs as the sketch draws them (followDrawing); how it is built, as the concept says or as read
+  const o = input.options || {}, options = { drop: Boolean(o.drop), cropped: Boolean(o.cropped), pleats: Math.min(Math.max(Math.round(Number(o.pleats) || 0), 0), 2), chestPocket: Boolean(o.chestPocket), noPocket: Boolean(o.noPocket), drawcord: o.drawcord !== false, rib: o.rib !== false, ...(o.legsDrawn ? { legsDrawn: true } : {}), ...(Number(o.kneeRatio) >= .8 && Number(o.kneeRatio) <= 1.7 ? { kneeRatio: Math.round(Number(o.kneeRatio) * 100) / 100 } : {}), ...(keptConstruction(o.construction) ? { construction: keptConstruction(o.construction) } : {}), ...(Number.isFinite(Number(o.sleeveAngle)) && o.sleeveAngle !== null && o.sleeveAngle !== '' && Number(o.sleeveAngle) >= 0 && Number(o.sleeveAngle) <= 85 ? { sleeveAngle: Math.round(Number(o.sleeveAngle)) } : {}) }; // the legs as the sketch draws them (followDrawing); how it is built, as the concept says or as read
   const template = input.template === 'none' ? 'none' : FLAT_TEMPLATES.some(t => t.id === input.template && t.style === style) ? input.template : defaultTemplate(style, fit);
   const ao = input.allover, allover = ao && /^[0-9a-f-]{36}$/i.test(String(ao.art || '')) ? { art: ao.art, w: r8(Math.min(Math.max(Number(ao.w) || 4, .5), 48)), h: r8(Math.min(Math.max(Number(ao.h) || 4, .5), 48)), type: String(ao.type || 'straight').slice(0, 20), name: String(ao.name || 'All-over print').replace(/\s+/g, ' ').trim().slice(0, 60),
     base: ALLOVER_BASES.includes(ao.base) ? ao.base : ALLOVER_BASES[0], ...(/^[0-9a-f-]{36}$/i.test(String(ao.techniqueId || '')) ? { techniqueId: ao.techniqueId } : {}) } : null;

@@ -214,7 +214,7 @@ function topPieces(S, m, o, style) {
       // point and the underarm can only sit splayed out; on a flat the cap rounds over the shoulder and the sleeve falls nearly straight, its
       // inner edge from the underarm down beside the body, its end square to it. Drawn in the front's own inches (the right sleeve; the left
       // is its mirror); the cut piece is unchanged
-      const short = m.sleeve <= 12, al = (full ? 7 : short ? 60 : 10) * Math.PI / 180, d = [Math.sin(al), Math.cos(al)], n = [Math.cos(al), -Math.sin(al)];
+      const short = m.sleeve <= 12, al = (Number.isFinite(o.sleeveAngle) && !full ? o.sleeveAngle : full ? 7 : short ? 60 : 10) * Math.PI / 180 /* the angle the sketch draws the sleeve at (traced: src/lab-template-proportions.js) */, d = [Math.sin(al), Math.cos(al)], n = [Math.cos(al), -Math.sin(al)];
       const wTop = b * (full ? .42 : .38), wEnd = full ? Math.max(m.sleeveOpening * 1.12, 4) : Math.max(m.sleeveOpening, 3.25), Li = short ? Math.max(Ls - ch * .55, 1.5) : Math.max(Ls - ch, 4);
       const I = [UA[0] + d[0] * Li, UA[1] + d[1] * Li], O = [I[0] + n[0] * wEnd, I[1] + n[1] * wEnd], T = [UA[0] + wTop, UA[1] - depth * .08];
       const bow = full ? 1.6 : .35, len = Math.hypot(O[0] - T[0], O[1] - T[1]), at = (P, k, off) => [P[0] + d[0] * k + n[0] * off, P[1] + d[1] * k + n[1] * off];

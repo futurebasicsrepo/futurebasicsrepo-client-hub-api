@@ -22,3 +22,17 @@ test('pattern score: tanks and shorts stay close to their sketches', () => {
     }
   } finally { rmSync(out, { recursive: true, force: true }); }
 });
+
+test('a top takes the shoulder and sleeve traced off its sketch, set again (never added twice) when a sketch is picked', async () => {
+  const { TEMPLATE_PROPORTIONS: TP } = await import('../src/lab-template-proportions.js');
+  const { fitToTemplate, defaultParams } = await import('../src/lab-flats.js');
+  const [id, tp] = Object.entries(TP).find(([, v]) => Number.isFinite(v.sleeveAngle) && v.shoulder) || [];
+  assert.ok(id, 'some top has a traced shoulder and sleeve');
+  const { FLAT_TEMPLATES } = await import('../src/lab-flat-templates.js'), style = FLAT_TEMPLATES.find(t => t.id === id).style, base = defaultParams(style).m;
+  const p = fitToTemplate({ ...defaultParams(style), template: id });
+  assert.equal(p.m.shoulder, Math.round((base.shoulder + tp.shoulder) * 8) / 8);
+  assert.equal(p.options.sleeveAngle, tp.sleeveAngle);
+  const again = fitToTemplate(p); assert.equal(again.m.shoulder, p.m.shoulder, 'picked again: the same, not twice the change');
+  const other = FLAT_TEMPLATES.find(t => t.style === style && !TP[t.id]);
+  if (other) { const q = fitToTemplate({ ...p, template: other.id }); assert.equal(q.m.shoulder, base.shoulder); assert.equal(q.options.sleeveAngle, undefined); }
+});
