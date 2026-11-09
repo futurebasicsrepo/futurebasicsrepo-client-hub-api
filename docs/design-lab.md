@@ -288,6 +288,12 @@ on the picture, a garment's flats and a bag's or a shoe's drawing:
 Outside Focus the rail stays as it is; with its names shown (the list button at its top) it lists every tool, not only the one in front of
 each group. Journey J294.
 
+**Nothing floats over anything** (Focus). The palette publishes the room it takes on its edge (`--pal-l`, `--pal-t`, `--pal-r`, `--pal-b`,
+on the Studio and inside the flats and drawing frames), and the options bar, the side panel, the zoom, the size dock and the canvas keep
+clear of it; the options bar also stops at the side panel. The palette shows only where its tools draw (the picture and the flats); on the
+Pattern and Board views it stands aside, and in Focus the Pattern page floats its own bar at the foot in glass. The **No picture yet** card
+sits above the bottom bars, in the room left of the panel. Journey J296.
+
 **On the flats**, two fingers on a graphic resize it about its centre, keeping its shape (anywhere else they zoom the flat). What is drawn on a flat covers the whole window, not only the garment's frame: the drawing spans all the window shows at full view, and an older, smaller drawing grows to the window before the next stroke, keeping what is on it.
 
 **Zoom.** Moving or zooming the picture does not put its layers together again each frame (that made pinches slow and jumpy). A trackpad pinch (Magic Keyboard), which Safari reports only as gesture events, zooms the picture or the flat under the pointer, and Safari's own page zoom (a pinch or double tap anywhere in Design) is turned off. The flats have − / % / + / Fit like the picture, a two-finger trackpad scroll moves a zoomed flat, and a pinch keeps the point between the fingers where it is. The flat is redrawn as it changes, so a finger's lift could reach an element no longer there and leave a finger "down" for ever, which threw every later pinch off: the flat's canvas now keeps every touch, and the first finger down clears any finger whose lift went missing.
@@ -1253,6 +1259,16 @@ What the picture sets can also be set by hand, and every value is bounded:
 ## Editing pieces and the AAMA/ASTM DXF
 
 A drafted pattern is a start: a pattern maker can change every piece on the Pattern view and keep what they changed.
+
+**Against the drawing** (in the pattern panel, trousers and shorts drawn from a sketch; `drawnCheck` in `src/lab-pattern.js`). The
+pattern's front is put together (each leg laid flat, the legs meeting at the centre) and measured where the sketch is: the hip across, and
+each leg at the thigh, the knee and the hem, beside the sketch's own widths (`drawnLegs` in `src/lab-flats.js`, read from the sketch's
+outline in inches). The legs' shape is the design, so the knee and the hem are compared against the thigh: more than about a seventh off
+the sketch's proportion is flagged, a smaller gap (over 5%) is said; the hip is said, not flagged (a sketch is drawn slimmer at the hip
+than a body, and the pattern keeps the hip measurement). **Follow the drawing** (`POST /v1/lab/concepts/:id/flats/follow-drawing`,
+`followTheDrawing`) makes the leg opening and the knee the sketch's, then trues them on the drafted pattern until the hem stands to the
+thigh as the sketch's does (within about 2%); the flats keep it (`legsDrawn`, `kneeRatio`), and the Studio reloads them. A sketch picked
+for a new piece already gives its legs, so a straight sketch is not cut tapered nor a slim one wide. Journey J296.
 
 **Built with** (in the pattern panel, garments) says how the piece is built, the description the pattern is drafted from (`src/lab-construction.js`):
 - **What it covers:** the sleeve (set-in, raglan, dropped, none), hood, collar, opening (zip, half or quarter zip, buttons, snaps, placket), front and back yokes, the pockets (kangaroo, split kangaroo, welt, flap, chest, flap chest, patch hip, cargo, five-pocket, slash), the waist (fixed, elastic, drawcord), double knee, the leg (straight, flare, wide, taper, balloon), pleats, panels and stripes, quilting, a belt and the lining.

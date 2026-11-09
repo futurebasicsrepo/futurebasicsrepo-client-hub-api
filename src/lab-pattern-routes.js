@@ -7,7 +7,7 @@
 //   GET|PUT|PATCH|DELETE /v1/lab/concepts/:id/pattern/underlays[/:view]   a paper sketch laid under a view of a shoe (its picture, and where it sits)
 //   POST /v1/lab/concepts/from-scratch           {name?, category, style?, shape?} a concept with nothing drawn yet: a blank page in Design to draw on,
 //                                                with a guide (the flat's outline for a garment, the plush's shape) → { concept, studio }
-import { STYLES, SIZES, FITS, defaultParams, detectStyle } from './lab-flats.js';
+import { STYLES, SIZES, FITS, defaultParams, detectStyle, fitToTemplate } from './lab-flats.js';
 import { cleanConstruction, constructionWords, SLEEVES, COLLARS, OPENINGS, POCKETS, WAISTS, LEGS, PANELS } from './lab-construction.js';
 import { PLUSH_TYPE, PLUSH_SNOUTS, PLUSH_HORNS, PLUSH_MANES, PLUSH_TAILS, PLUSH_PARTS, garmentPattern, applyEdits, cutWords, cleanPatternEdits, patternDxfAama, plushPattern, cleanPlush, plushDefaults, patternSvg, patternDxf, yardage, fillGrams, PLUSH_SHAPES, PLUSH_EARS, PLUSH_FABRICS, PLUSH_EYES, PLUSH_AGES } from './lab-pattern.js';
 import { CATEGORIES, planLineOf, putOnLine } from './lab.js';
@@ -67,7 +67,7 @@ export function registerLabPatternRoutes(app, d) {
     const f = (await pool.query('select params from lab_flats where concept_id=$1', [c.id])).rows[0]?.params || null;
     const row = (await pool.query('select kind, spec, updated_at from lab_patterns where concept_id=$1', [c.id])).rows[0] || null;
     let flat = f, det = null;
-    if (!flat && c.category !== 'plush') { det = c.spec?.style && STYLES[c.spec.style] ? { style: c.spec.style, fit: 'regular', options: {} } : detectStyle(c); if (det) flat = { ...defaultParams(det.style, det.fit, det.options), ...(det.template ? { template: det.template } : {}) }; }
+    if (!flat && c.category !== 'plush') { det = c.spec?.style && STYLES[c.spec.style] ? { style: c.spec.style, fit: 'regular', options: {} } : detectStyle(c); if (det) { const tpl = det.template || (typeof c.spec?.template === 'string' ? c.spec.template : ''); flat = fitToTemplate({ ...defaultParams(det.style, det.fit, det.options), ...(tpl ? { template: tpl } : {}) }); } } // as the flats start it: fitted to its sketch
     const kind = kindOf(c, flat?.style);
     const spec0 = kind === 'plush' ? cleanPlush(row?.kind === 'plush' ? row.spec : plushProposal(plushDefaults(c.spec?.plush?.shape || 'bear'), null, c.spec?.plush).spec) : kind === 'footwear' ? cleanFootwear(row?.kind === 'footwear' ? row.spec : { ...fwDefaults(c.spec?.footwear?.style || guessShoe(c)), ...(c.spec?.footwear || {}) }) : cleanGarment(row?.spec);
     const ed = cleanPatternEdits(row?.spec?.edits), spec = ed ? { ...spec0, edits: ed } : spec0;

@@ -5,7 +5,7 @@
 // The same file runs in the page (served as /lab/pattern.js) and on the service (the DXF and the SVG), so it uses neither the DOM nor Node.
 // All lengths are inches; y runs down. A pattern from here is a first block from the measurements: a pattern maker trues it up on the sample.
 import { dxfR12 } from './lab-dxf.js';
-import { STYLES, measurementsFor, SIZES } from './lab-flats.js';
+import { STYLES, measurementsFor, SIZES, drawnLegs, followDrawing } from './lab-flats.js';
 import { constructionOf } from './lab-construction.js';
 import { cleanSketches, VIEWS_OF } from './lab-sketch.js';
 import { cleanLogos } from './lab-logos.js';
@@ -361,14 +361,21 @@ function bottomPieces(S, m, o, style) {
     // a side panel takes 1¼ in off each leg at the side seam; front pleats add their depth to the front's waist
     const panel = K.panels === 'side-panel' ? 1.25 : 0, pleat = back ? 0 : (K.pleats || 0) * 1.25;
     const sideX = -hipW + panel, crease = (ext + sideX) / 2, cbRaise = back ? 1 : 0;
-    const legK = { flare: 1.7, wide: 1.45, taper: .82, balloon: .9 }[K.leg] || 1, hemW = m.legOpening * (back ? 1.1 : .9) * legK, kneeY = rd + inseam * .48;
-    const kneeW = K.leg === 'flare' ? m.legOpening * (back ? 1.1 : .9) * .92 : K.leg === 'balloon' ? (hipW + ext) * .95 : null;
+    const legK = o.legsDrawn ? 1 : { flare: 1.7, wide: 1.45, taper: .82, balloon: .9 }[K.leg] || 1, // a leg opening read from the sketch is already as wide as the leg is drawn
+      hemW = m.legOpening * (back ? 1.1 : .9) * legK, kneeY = rd + inseam * .48;
+    // the knee: a flare narrows to it, a balloon fills out at it; otherwise as the sketch draws it (its knee in proportion to its hem), or a
+    // straight line from the hip to the hem when there is no sketch to read
+    const kneeW = K.leg === 'flare' ? m.legOpening * (back ? 1.1 : .9) * .92 : K.leg === 'balloon' ? (hipW + ext) * .95 : o.kneeRatio ? Math.min(hemW * o.kneeRatio, hipW + ext * .6) : null;
     const crotch = cubic([0, rd * .55], [0, rd * .85], [ext * .35, rd], [ext, rd]);
     const knee = side => kneeW ? [[crease + side * kneeW / 2, kneeY]] : [];
     const sideCurve = tail(cubic([sideX, hipY], [sideX, hipY * .5], [-waistW - pleat - .2 + panel, hipY * .2], [-waistW - pleat + panel, 0]));
     const sew = [[0, -cbRaise], ...crotch, ...knee(1), [crease + hemW / 2, Hy], [crease - hemW / 2, Hy], ...knee(-1), [sideX, hipY], ...sideCurve];
     // on the product the leg is seen from the centre line out: its crotch extension tucks under the other leg, the two meet at the centre
-    const inX = x => Math.min(x, -.35), sideSeen = tail(cubic([sideX, hipY], [sideX, hipY * .5], [-waistW - .2 + panel, hipY * .2], [-waistW + panel, 0])), shown = [[0, 0], [0, rd], ...knee(1).map(([x, y]) => [inX(x), y]), [inX(crease + hemW / 2), Hy], [crease - hemW / 2, Hy], ...knee(-1), [sideX, hipY], ...sideSeen];
+    // laid flat, the legs meet at the centre: a leg too wide to sit either side of its crease there moves out, at its full width (it is not cut
+    // narrower than it is: a straight or wide leg shows as wide as it is cut)
+    const inX = x => Math.min(x, -.35), sideSeen = tail(cubic([sideX, hipY], [sideX, hipY * .5], [-waistW - .2 + panel, hipY * .2], [-waistW + panel, 0]));
+    const flat = (w, y) => { const i = inX(crease + w / 2); return [[i, y], [i - w, y]]; }, [kIn, kOut] = kneeW ? flat(kneeW, kneeY) : [], [hIn, hOut] = flat(hemW, Hy);
+    const shown = [[0, 0], [0, rd], ...(kIn ? [kIn] : []), hIn, hOut, ...(kOut ? [kOut] : []), [sideX, hipY], ...sideSeen];
     void k; return { sew, shown, crease, ext, kneeY, sideX, hipW };
   };
   const F = leg(false), B = leg(true);
@@ -655,6 +662,39 @@ export function resample(pts, n = 64) {
   return out;
 }
 // the product as its pieces: the front view, and the back view beside it; → { pieces: [{piece, pts}], bounds, backDx }
+// a pair of trousers or shorts against its sketch: the pattern's front as it is put together (each leg laid flat, the legs meeting at the
+// centre), measured where the sketch is: the hip across, each leg at the thigh, the knee and the hem. The legs' shape is the design, so a leg
+// whose knee or hem, against its thigh, is more than about a seventh off the sketch's is flagged; the hip is said, not flagged (a sketch is drawn slimmer at the hip than a body is, and
+// the pattern keeps the hip measurement). → { rows: [{ key, label, drawn, pattern, off }], legsOff, hipNote } or null
+export function drawnCheck(p, pat, size = p.size || 'M') {
+  const S = STYLES[p.style]; if (!S || S.kind !== 'bottom' || S.skirt || !pat) return null;
+  const L = drawnLegs(p, size); if (!L) return null; const m = measurementsFor(p, size), wb = m.waistband || 1.5, A = assembled(pat);
+  const legs = A.pieces.filter(x => x.piece.id === 'front' || x.piece.id === 'front-2');
+  const spans = (poly, y) => { const xs = []; for (let i = 0; i < poly.length; i++) { const [x1, y1] = poly[i], [x2, y2] = poly[(i + 1) % poly.length]; if ((y1 <= y) !== (y2 <= y)) xs.push(x1 + (y - y1) / (y2 - y1) * (x2 - x1)); } xs.sort((a, b) => a - b); const o = []; for (let i = 0; i + 1 < xs.length; i += 2) o.push([xs[i], xs[i + 1]]); return o; };
+  const leg = y => { const q = legs.flatMap(x => spans(x.pts, y)).filter(q => q[0] < 0).sort((a, b) => a[0] - b[0])[0]; return q ? r8(Math.min(q[1], 0) - q[0]) : null; };
+  const across = y => { const sp = legs.flatMap(x => spans(x.pts, y)); return sp.length ? r8(Math.max(...sp.map(q => q[1])) - Math.min(...sp.map(q => q[0]))) : null; };
+  const H = m.rise + m.inseam, rows = [['hip', 'Hip, across', L.hip, across(wb + Math.min(7.5, (m.rise - wb) * .7))], ['thigh', 'Thigh, one leg', L.thigh, leg(m.rise + 1.5)], ...(L.knee ? [['knee', 'Knee, one leg', L.knee, leg(m.rise + m.inseam * .48)]] : []), ['hem', 'Hem, one leg', L.hem, leg(H - .4)]]
+    .filter(r => r[3] != null).map(([key, label, drawn, pattern]) => ({ key, label, drawn, pattern }));
+  // the knee and the hem against the thigh, as the sketch has them: the widths themselves follow the hip measurement, the proportions the sketch
+  const th = rows.find(r => r.key === 'thigh'); for (const r of rows) r.off = Boolean(th && (r.key === 'knee' || r.key === 'hem') && Math.abs(r.pattern / th.pattern - r.drawn / th.drawn) / (r.drawn / th.drawn) > .15);
+  // the shape: does the leg run as the sketch's does, from the thigh to the hem (straight, tapered, widening)?
+  const shape = (a, b) => (b && a ? b / a : null), dS = shape(L.thigh, L.hem), pS = shape(rows.find(r => r.key === 'thigh')?.pattern, rows.find(r => r.key === 'hem')?.pattern);
+  const shapeOff = dS && pS && Math.abs(pS - dS) / dS > .15, hip = rows.find(r => r.key === 'hip');
+  const shapeGap = dS && pS ? Math.abs(pS - dS) / dS : 0;
+  return { rows, legsOff: shapeOff || rows.some(r => r.off), legsNear: !shapeOff && shapeGap > .05, shape: { drawn: dS && Math.round(dS * 100) / 100, pattern: pS && Math.round(pS * 100) / 100 }, legsDrawn: Boolean(p.options?.legsDrawn),
+    hipNote: hip && Math.abs(hip.pattern - hip.drawn) / hip.drawn > .08 ? (hip.drawn < hip.pattern ? `The sketch is drawn slimmer at the hip (${hip.drawn} in) than the hip measurement makes it (${hip.pattern} in across the front): the pattern keeps the measurement.` : `The sketch is drawn fuller at the hip (${hip.drawn} in) than the hip measurement (${hip.pattern} in): raise the hip on the flats if it is meant to be.`) : '' };
+}
+// Follow the drawing: the legs' opening and knee from the sketch, then trued on the pattern itself (the first reading assumes the pattern's
+// thigh; the drafted leg is measured and its opening scaled until the hem stands to the thigh as the sketch's does, within about 2%)
+export function followTheDrawing(p, size = 'M') {
+  let q = followDrawing(p); if (q === p) return p;
+  for (let i = 0; i < 4; i++) {
+    const c = drawnCheck(q, garmentPattern(q, size), size); if (!c?.shape?.drawn || !c.shape.pattern) break;
+    const k = c.shape.drawn / c.shape.pattern; if (Math.abs(k - 1) < .02) break;
+    q = { ...q, m: { ...q.m, legOpening: Math.round(Math.min(Math.max(q.m.legOpening * k, 4.5), 18) * 8) / 8 } };
+  }
+  return q;
+}
 export function assembled(pat) {
   const vis = pat.pieces, fb = boundsOf(vis.filter(q => q.place.view !== 'back').flatMap(q => placed(q))), bb = boundsOf(vis.filter(q => q.place.view === 'back').flatMap(q => placed(q)));
   const backDx = Number.isFinite(bb.x0) ? fb.x1 - bb.x0 + 5 : 0;

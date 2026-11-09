@@ -12,7 +12,8 @@
   const KEY = 'fb.studio.palette', esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   let S = { dock: 'top', shrunk: false, bx: 14, by: 120 }; try { Object.assign(S, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch { /* private window */ }
   const keep = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch { /* fine */ } };
-  const focusOn = () => Boolean(document.documentElement.dataset.focus) && $('.studio')?.dataset.v !== 'split';
+  // in Focus, on the picture and the flats (a garment's, or a bag's or a shoe's drawing): the Pattern and the Board have no use for drawing tools
+  const focusOn = () => Boolean(document.documentElement.dataset.focus) && ['picture', 'front', 'back'].includes($('.studio')?.dataset.v || 'picture');
   // the tools, in the rail's order and its groups (a rule between groups), every one of them
   const SIZED = { brush: 'size', eraser: 'esize', distress: 'dsize', liquify: 'size' };
   const INKED = ['brush', 'fill', 'text', 'rect', 'ellipse', 'polygon', 'star', 'line', 'pen', 'typepath'];
@@ -38,14 +39,24 @@
     const css = document.createElement('style'); css.textContent = CSS; document.head.append(css);
     wire();
   }
+  // the room the palette takes on its edge, as --pal-l / --pal-t / --pal-r / --pal-b: the Studio keeps the options, the side panel, the zoom and
+  // the picture clear of it, and hands it to the flats and the drawings in their frames (window.FBLAYOUT)
+  let LAST = '';
+  function room() {
+    const p = $('#palette'), z = { l: 0, t: 0, r: 0, b: 0 };
+    if (p && !p.hidden) { const r = p.getBoundingClientRect(), g = 8; if (S.dock === 'left') z.l = Math.round(r.right + g); else if (S.dock === 'right') z.r = Math.round(innerWidth - r.left + g); else if (S.dock === 'bottom') z.b = Math.round(innerHeight - r.top + g); else z.t = Math.round(r.bottom + g); }
+    const k = JSON.stringify(z); if (k === LAST) return; LAST = k;
+    for (const [a, v] of Object.entries(z)) document.documentElement.style.setProperty(`--pal-${a}`, v + 'px');
+    try { window.FBLAYOUT?.(z); } catch { /* the Studio not ready */ }
+  }
   function paint() {
     const p = $('#palette'), pin = $('#palPin'); if (!p) return;
     const on = focusOn(); document.documentElement.classList.toggle('pal-on', on);
-    p.hidden = !on || S.shrunk; pin.hidden = !on || !S.shrunk; if (!on || S.shrunk) document.documentElement.classList.remove('pal-left', 'pal-right'); if (!on) return;
+    p.hidden = !on || S.shrunk; pin.hidden = !on || !S.shrunk; if (!on || S.shrunk) document.documentElement.classList.remove('pal-left', 'pal-right'); if (!on) { room(); return; }
     const t = tool(), c = cur(), list = tools(), active = list.find(x => x.t === t) || list[0], ok = can();
     if (S.shrunk) {
       pin.innerHTML = `${active?.svg || ''}<i style="background:${esc(c)}"></i>`; pin.title = `${active?.name || 'Tools'}: tap for every tool`;
-      pin.style.left = Math.max(6, Math.min(innerWidth - 66, S.bx)) + 'px'; pin.style.top = Math.max(6, Math.min(innerHeight - 66, S.by)) + 'px'; return;
+      pin.style.left = Math.max(6, Math.min(innerWidth - 66, S.bx)) + 'px'; pin.style.top = Math.max(6, Math.min(innerHeight - 66, S.by)) + 'px'; room(); return;
     }
     p.dataset.dock = S.dock; for (const k of ['left', 'right']) document.documentElement.classList.toggle('pal-' + k, S.dock === k);
     let last = -1; const cols = swatches();
@@ -55,6 +66,7 @@
         return `${sep ? '<i class="pal-sep" aria-hidden="true"></i>' : ''}<button type="button" class="pal-t${ok && !ok.has(x.t) ? ' pal-na' : ''}" data-pt="${esc(x.t)}" aria-pressed="${x.t === t}" aria-label="${esc(x.name)}" title="${esc(ok && !ok.has(x.t) ? x.name + ': works on the picture, not on this drawing' : x.title)}">${x.svg}${INKED.includes(x.t) ? `<i class="pal-ink" style="background:${esc(c)}"></i>` : ''}${n != null ? `<small>${n}</small>` : ''}</button>`; }).join('')}</span>
       <span class="pal-cols" role="radiogroup" aria-label="Colour">${cols.map(x => `<button type="button" class="pal-sw" data-psw="${x}" role="radio" aria-checked="${x === c}" aria-label="Colour ${x}" style="--c:${x}"></button>`).join('')}<label class="pal-sw pal-any" title="Any colour"><input type="color" data-pany value="${esc(c)}" aria-label="Any colour"></label></span>
       <span class="pal-g"><button type="button" class="pal-c" data-pa="more" aria-label="More" aria-expanded="false" title="More">${ICON.more}</button></span>`;
+    room();
   }
   function menu(btn) {
     $('#palMenu')?.remove(); const m = document.createElement('div'); m.id = 'palMenu'; m.className = 'pal-menu'; m.setAttribute('role', 'menu');
@@ -125,12 +137,22 @@
 
   const CSS = `
 html.pal-on .studio:not([data-v=split]) .rail,html.pal-on .studio:not([data-v=split]) #railLabels{display:none!important}
+html[data-focus] .studio:is([data-v=pattern],[data-v=board]) :is(.rail,#railLabels,#opts,.size-dock){display:none!important}
+/* in Focus everything floating keeps clear of the palette's edge */
+html[data-focus] .studio:not([data-v=split]) .opts{left:max(78px,var(--pal-l,0px));right:max(78px,var(--pal-r,0px))}
+html[data-focus] .studio:not([data-v=split]) .size-dock{left:max(76px,var(--pal-l,0px))}
+html[data-focus] .studio[data-panel=on]:not([data-v=split]) .opts{right:calc(362px + var(--pal-r,0px));max-width:calc(100% - max(78px,var(--pal-l,0px)) - 362px - var(--pal-r,0px))}
+/* the no-picture card floats above the bottom bars (size, product/exploded, zoom), in the room left of the panel */
+html[data-focus] .fpbar{bottom:calc(72px + var(--pal-b,0px));width:min(640px,calc(100vw - 180px));flex-wrap:nowrap;padding:10px 12px}html[data-focus] .fpbar span{flex:1 1 auto;min-width:0;font-size:12.5px}html[data-focus] .fpbar .btn{flex:none}
+html[data-focus]:has(.studio[data-panel=on]:not([data-v=split])) .fpbar{left:calc((100vw - 362px) / 2);width:min(600px,calc(100vw - 362px - 170px))}
+html[data-focus] .studio:not([data-v=split]) .side{right:calc(10px + var(--pal-r,0px));bottom:calc(10px + var(--pal-b,0px))}
+html[data-focus] .studio:not([data-v=split]) .zoom{bottom:calc(12px + var(--pal-b,0px));right:calc(12px + var(--pal-r,0px))}
 html.pal-left .studio:not([data-v=split]) .size-dock{left:112px}html.pal-right .studio:not([data-v=split]) .size-dock{left:auto;right:112px}
 .pal,.pal-pin,.pal-menu{--g:rgba(24,24,27,.8);--gl:rgba(255,255,255,.14);color:#f4f4f2;background:var(--g);-webkit-backdrop-filter:blur(26px) saturate(1.8);backdrop-filter:blur(26px) saturate(1.8);border:1px solid var(--gl);box-shadow:0 18px 44px rgba(0,0,0,.28),0 2px 8px rgba(0,0,0,.18),inset 0 1px 0 rgba(255,255,255,.12)}
 .pal{position:fixed;z-index:60;display:flex;align-items:center;gap:10px;padding:10px 16px 10px 14px;border-radius:44px;max-width:calc(100vw - 24px);font:500 12px/1 'Space Grotesk',system-ui,sans-serif;transition:transform .32s cubic-bezier(.2,.9,.25,1.15),box-shadow .2s}
 .pal[hidden],.pal-pin[hidden]{display:none!important}
 .pal[data-dock=top]{top:112px;left:50%;translate:-50% 0}.pal[data-dock=bottom]{bottom:14px;left:50%;translate:-50% 0}
-.pal[data-dock=left]{left:10px;top:50%;translate:0 -50%;flex-direction:column;padding:14px 10px;max-height:calc(100vh - 24px)}.pal[data-dock=right]{right:10px;top:50%;translate:0 -50%;flex-direction:column;padding:14px 10px;max-height:calc(100vh - 24px)}
+.pal[data-dock=left]{left:10px;top:66px;bottom:10px;flex-direction:column;padding:12px 7px;max-height:none}.pal[data-dock=right]{right:10px;top:66px;bottom:10px;flex-direction:column;padding:12px 7px;max-height:none}
 .pal-grip{position:absolute;left:50%;top:5px;width:44px;height:5px;margin-left:-22px;border-radius:5px;background:rgba(255,255,255,.28);cursor:grab;touch-action:none}
 .pal-grip::before{content:'';position:absolute;inset:-12px -20px}.pal[data-dock=left] .pal-grip,.pal[data-dock=right] .pal-grip{top:50%;left:5px;width:5px;height:44px;margin:-22px 0 0}
 .pal-g,.pal-tools,.pal-cols{display:flex;align-items:flex-end;gap:2px}.pal[data-dock=left] :is(.pal-g,.pal-tools,.pal-cols),.pal[data-dock=right] :is(.pal-g,.pal-tools,.pal-cols){flex-direction:column;align-items:center}
@@ -139,13 +161,13 @@ html.pal-left .studio:not([data-v=split]) .size-dock{left:112px}html.pal-right .
 .pal-c svg,.pal-t svg,.pal-pin svg,.pal-names svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.pal-c[data-pa=more] svg{fill:currentColor;stroke:none}
 .pal-t{position:relative;flex:none;width:40px;height:58px;border:0;border-radius:14px 14px 8px 8px;background:linear-gradient(180deg,rgba(255,255,255,.1),rgba(255,255,255,.02));color:#d8d8dc;display:grid;place-items:start center;padding-top:9px;cursor:pointer;transition:transform .22s cubic-bezier(.2,.9,.25,1.3),background .2s,color .2s}
 .pal-t:hover{color:#fff;transform:translateY(-3px)}.pal-t[aria-pressed=true]{transform:translateY(-10px);color:#141416;background:linear-gradient(180deg,#fafaf7,#d9d9d4);box-shadow:0 8px 18px rgba(0,0,0,.35)}
-.pal[data-dock=left] .pal-t,.pal[data-dock=right] .pal-t{width:58px;height:40px;border-radius:14px 8px 8px 14px;place-items:center start;padding:0 0 0 10px}.pal[data-dock=left] .pal-t[aria-pressed=true]{transform:translateX(10px)}.pal[data-dock=right] .pal-t[aria-pressed=true]{transform:translateX(-10px)}
+.pal[data-dock=left] .pal-t,.pal[data-dock=right] .pal-t{width:50px;height:36px;border-radius:14px 8px 8px 14px;place-items:center start;padding:0 0 0 10px}.pal[data-dock=left] .pal-t[aria-pressed=true]{transform:translateX(10px)}.pal[data-dock=right] .pal-t[aria-pressed=true]{transform:translateX(-10px)}
 .pal-t.pal-na{opacity:.35}
 .pal-t.pal-na{opacity:.35}
 .pal-ink{position:absolute;left:9px;right:9px;bottom:16px;height:4px;border-radius:2px;box-shadow:0 0 0 1px rgba(255,255,255,.18)}.pal[data-dock=left] .pal-ink,.pal[data-dock=right] .pal-ink{left:auto;right:14px;top:9px;bottom:9px;width:4px;height:auto}
 .pal-t small{position:absolute;bottom:4px;left:0;right:0;text-align:center;font:500 9px 'IBM Plex Mono',monospace;opacity:.75}.pal[data-dock=left] .pal-t small,.pal[data-dock=right] .pal-t small{bottom:auto;left:auto;right:4px;width:auto}
 .pal-sep{flex:none;width:1px;height:34px;margin:0 6px 10px;background:rgba(255,255,255,.16)}.pal[data-dock=left] .pal-sep,.pal[data-dock=right] .pal-sep{width:34px;height:1px;margin:6px 0}
-.pal-cols{display:grid;grid-template-columns:repeat(4,30px);gap:7px;align-items:center}.pal[data-dock=left] .pal-cols,.pal[data-dock=right] .pal-cols{grid-template-columns:repeat(2,30px)}
+.pal-cols{display:grid;grid-template-columns:repeat(4,30px);gap:7px;align-items:center}.pal[data-dock=left] .pal-cols,.pal[data-dock=right] .pal-cols{grid-template-columns:repeat(2,24px);gap:5px}.pal[data-dock=left] .pal-sw,.pal[data-dock=right] .pal-sw{width:24px;height:24px}.pal[data-dock=left] .pal-c,.pal[data-dock=right] .pal-c{width:34px;height:34px}
 .pal-sw{width:30px;height:30px;border-radius:50%;border:0;padding:0;background:var(--c);box-shadow:inset 0 0 0 1px rgba(255,255,255,.22);cursor:pointer;position:relative}
 .pal-sw[aria-checked=true]{box-shadow:0 0 0 2px #1c1c1e,0 0 0 4px #fff}.pal-any{background:conic-gradient(#f43,#fd3,#4c6,#3cf,#66f,#c4f,#f43);display:block;overflow:hidden}
 .pal-any input{opacity:0;position:absolute;inset:0;width:100%;height:100%;cursor:pointer}

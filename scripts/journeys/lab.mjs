@@ -4878,6 +4878,38 @@ await journey('J294', 'The tool palette in Focus: the rail becomes one glass doc
   } finally { await b.close(); if (cid) await K(`/concepts/${cid}`, { method: 'DELETE' }); }
 });
 
+await journey('J296', 'Trousers and shorts against their drawing, and a Studio where nothing floats over anything: the Pattern page measures the pattern where the sketch is (hip, thigh, knee, hem) and offers Follow the drawing when the legs are not cut as drawn; one press makes the leg opening the sketch\'s and the flats follow; in Focus the palette, the options bar, the side panel, the size dock and the no-picture card keep clear of one another, and on the Pattern and Board views the palette stands aside', async () => {
+  const r = await K('/concepts/from-recipe', { body: { base: 'shorts' } }), cid = r.json.concept?.id;
+  try {
+    const fl = (await K(`/concepts/${cid}/flats`)).json.flat, m0 = { ...fl.m, legOpening: 8.5 }, o0 = { ...(fl.options || {}) }; delete o0.legsDrawn; delete o0.kneeRatio;
+    const put = await K(`/concepts/${cid}/flats`, { method: 'PUT', body: { ...fl, template: 'sh-pleat', m: m0, options: o0, placements: [] } });
+    ok(put.status === 200, '1. shorts drawn from a flaring sketch, saved with the style\'s plain 8½ in leg opening', put.json);
+    if (!playwright) { const f = await K(`/concepts/${cid}/flats/follow-drawing`, { body: {} }); ok(f.status === 200 && f.json.legOpening > 8.5, '2. (no browser here) following the drawing widens the leg opening', f.json); return; }
+    const b = await playwright.chromium.launch(), errs = [];
+    try {
+      const ctx = await b.newContext({ viewport: { width: 1366, height: 1024 }, hasTouch: true });
+      await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); localStorage.setItem('fb.helper.on', '0'); localStorage.setItem('fb.design.level', 'pro'); localStorage.setItem('fb.studio.names', '0'); localStorage.setItem('fb.design.layout', JSON.stringify({ panel: true, focus: true })); localStorage.setItem('fb.studio.palette', JSON.stringify({ dock: 'left', shrunk: false })); } catch {} }, kyleT);
+      const page = await ctx.newPage(); page.on('pageerror', e => errs.push(String(e)));
+      await page.goto(`${BASE}/lab/studio?concept=${cid}&view=pattern`, { waitUntil: 'load' });
+      const pf = page.frameLocator('#patFrame'); await pf.locator('#drawnBox').waitFor({ timeout: 30000 });
+      const box = await pf.locator('#drawnBox').innerText();
+      ok(/Thigh, one leg/.test(box) && /Hem, one leg/.test(box) && await pf.locator('#followDraw').count() === 1, '2. the Pattern page sets the pattern against the sketch, leg by leg, and offers Follow the drawing', box);
+      ok(await page.evaluate(() => { const p = document.querySelector('#palette'); return !p || p.hidden; }), '3. on the Pattern view the palette stands aside');
+      await pf.locator('#followDraw').click(); await pf.locator('#drawnBox:not(:has(#followDraw))').waitFor({ timeout: 15000 });
+      const after = (await K(`/concepts/${cid}/flats`)).json.flat;
+      ok(after.m.legOpening > 10 && after.options?.legsDrawn, '4. one press: the leg opening is the sketch\'s, and the flats keep it', { legOpening: after.m.legOpening, options: after.options });
+      await page.locator('#viewSeg [data-v=front]').click(); await page.frameLocator('#flatFrame').locator('svg').first().waitFor({ timeout: 20000 }); await page.waitForTimeout(800);
+      const rects = await page.evaluate(() => { const g = s => { const e = document.querySelector(s); if (!e || e.hidden || e.offsetParent === null && getComputedStyle(e).position !== 'fixed') return null; const r = e.getBoundingClientRect(); return r.width && r.height ? { l: r.left, t: r.top, r: r.right, b: r.bottom } : null; }; const fr = document.querySelector('#flatFrame'), o = fr.getBoundingClientRect(), d = fr.contentDocument, in_ = s => { const e = d.querySelector(s); const r = e?.getBoundingClientRect(); return r?.width ? { l: r.left + o.left, t: r.top + o.top, r: r.right + o.left, b: r.bottom + o.top } : null; }; return { pal: g('#palette'), opts: g('#opts'), side: in_('.side'), dock: in_('.tools'), card: g('#flatPicBar') }; });
+      const hit = (a, c) => a && c && a.l < c.r - 1 && c.l < a.r - 1 && a.t < c.b - 1 && c.t < a.b - 1, pairs = [['pal', 'opts'], ['pal', 'side'], ['pal', 'dock'], ['opts', 'side'], ['dock', 'side'], ['card', 'dock'], ['card', 'side'], ['card', 'pal']];
+      const bad = pairs.filter(([a, c]) => hit(rects[a], rects[c]));
+      ok(rects.pal && !bad.length, '5. on the Flat front in Focus, the palette (docked left), the options bar, the side panel, the size dock and the no-picture card keep clear of one another', { bad, rects });
+      await page.locator('#viewSeg [data-v=board]').click(); await page.waitForTimeout(800);
+      ok(await page.evaluate(() => { const p = document.querySelector('#palette'); return !p || p.hidden; }), '6. on the Board the palette stands aside too');
+      ok(!errs.length, '7. no page errors', errs.slice(0, 3));
+    } finally { await b.close(); }
+  } finally { if (cid) await K(`/concepts/${cid}`, { method: 'DELETE' }); }
+});
+
 await journey('J295', 'Sandals, clogs, slides and mules have patterns: a sandal is straps tucked under a footbed (each strap its length over the foot, split at its buckle, lined), a thong a post and two straps, a clog a vamp on a footbed or a wooden base, a moulded slide one injection mould a size, a mule a closed toe with no back; the Pattern page chooses how each is made', async () => {
   const made = await K('/concepts/from-scratch', { body: { category: 'footwear', style: 'sandal', name: `Scratch sandal ${stamp}` } }), cid = made.json.concept?.id;
   try {

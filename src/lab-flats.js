@@ -167,6 +167,35 @@ const REF = {};
 const refRatio = style => { if (!(style in REF)) { const r = FLAT_TEMPLATES.filter(t => t.style === style && t.views.front.ratio).map(t => t.views.front.measuredRatio ?? t.views.front.ratio).sort((a, b) => a - b); REF[style] = r.length ? r[Math.floor(r.length / 2)] : null; } return REF[style]; };
 // asDrawn: the sketch's ratio as the pack measured it, which is what the drawing is laid over inches by (drawingOf), so a correction to the
 // length a sketch suggests never moves what is already placed on it
+// The sketch's own legs (trousers and shorts): read off its front drawing, at the piece's scale (the drawing is scaled by its waist), in
+// inches laid flat: the hip across the front, and each leg on its own at the thigh (1½ in below the crotch), the knee and the hem. A sketch is
+// drawn by hand: its widths are not measurements (most are drawn slimmer at the hip than a body is), but its proportions are the design: a leg
+// that runs straight, tapers or widens. → { hip, thigh, knee, hem } or null (a skirt, or a sketch with no outline)
+export function drawnLegs(p, size = p.size || 'M') {
+  const S = STYLES[p.style]; if (!S || S.kind !== 'bottom' || S.skirt) return null;
+  const d = drawingOf(p, 'front', size), clip = d?.v?.clip; if (!Array.isArray(clip) || clip.length < 6) return null;
+  const m = measurementsFor(p, size), wb = m.waistband || 1.5, H = m.rise + m.inseam;
+  const at = yIn => { const y = d.oy + yIn * d.sy, xs = []; for (let i = 0; i < clip.length; i++) { const [x1, y1] = clip[i], [x2, y2] = clip[(i + 1) % clip.length]; if ((y1 <= y) !== (y2 <= y)) xs.push(x1 + (y - y1) / (y2 - y1) * (x2 - x1)); }
+    xs.sort((a, b) => a - b); const out = []; for (let i = 0; i + 1 < xs.length; i += 2) out.push([(xs[i] - d.ox) / d.sx, (xs[i + 1] - d.ox) / d.sx]); return out; };
+  const leg = yIn => { const q = at(yIn).filter(s => s[0] < -.2).sort((a, b) => a[0] - b[0])[0]; const w = q ? Math.min(q[1], 0) - q[0] : 0; return w > .5 ? r8(w) : null; };
+  // the hem where the drawing ends (a sketch is drawn to its own length; the measurements may make the piece longer or shorter), read 2 in
+  // above it: a hem is often drawn on a slant
+  const bottom = Math.min(H, (Math.max(...clip.map(q => q[1])) - d.oy) / d.sy), inseam = bottom - m.rise;
+  const hip = at(wb + Math.min(7.5, (m.rise - wb) * .7)).reduce((a, s) => a + s[1] - s[0], 0), thigh = leg(m.rise + 1.5), hem = leg(bottom - 2), knee = inseam > 14 ? leg(m.rise + inseam * .48) : null;
+  return thigh && hem ? { hip: r8(hip), thigh, knee, hem } : null;
+}
+// a leg opening and a knee as the sketch draws them: its hem (and knee) in proportion to its thigh, on the pattern's own thigh (about 0.46 of
+// the hip across one front leg, as the pattern drafts it), so a straight sketch makes a straight leg and a slim one a slim leg
+export function legsFromDrawing(p, size = p.size || 'M') {
+  const L = drawnLegs(p, size); if (!L) return null; const m = measurementsFor(p, size), thigh = m.hip * .46, c = (v, a, b) => Math.min(Math.max(v, a), b);
+  return { legOpening: r8(c(thigh * L.hem / L.thigh / .9, 4.5, 16)), kneeRatio: L.knee ? Math.round(c(L.knee / L.hem, .8, 1.7) * 100) / 100 : null, drawn: L };
+}
+// the legs of a pair of trousers or shorts made as its sketch draws them (Follow the drawing on the Pattern page); the rest is kept
+export function followDrawing(p) {
+  const f = legsFromDrawing(p, 'M'); if (!f) return p;
+  return { ...p, m: { ...p.m, legOpening: f.legOpening }, options: { ...(p.options || {}), legsDrawn: true, ...(f.kneeRatio ? { kneeRatio: f.kneeRatio } : {}) } };
+}
+let FITTING = false; // fitting a sketch reads its drawing, and drawing a sketch fits it: once round is enough
 export function fitToTemplate(p, asDrawn = false) {
   const t = templateOf(p), v = t?.views?.front, S = STYLES[p.style], ref = refRatio(p.style), base = defaultParams(p.style, p.fit, p.options)?.m; if (!v?.ratio || !S || !ref || !base) return p;
   let k = Math.min(Math.max((asDrawn ? v.measuredRatio ?? v.ratio : v.ratio) / ref, .45), 2.4); if (Math.abs(k - 1) < .08) k = 1;
@@ -179,6 +208,8 @@ export function fitToTemplate(p, asDrawn = false) {
   if (S.kind === 'top' && base.length) m.length = r8(base.length * k);
   else if (S.kind === 'bottom' && S.skirt) m.length = r8(base.length * k);
   else if (S.kind === 'bottom') m.inseam = r8(Math.max(1, (base.rise + base.inseam) * k - (m.rise || base.rise)));
+  // a pair of trousers or shorts takes its sketch's legs: a straight sketch is not cut tapered, nor a wide one narrow
+  if (!asDrawn && !FITTING && S.kind === 'bottom' && !S.skirt) { FITTING = true; try { const f = { ...p, m }, g = followDrawing(f); return g; } finally { FITTING = false; } }
   return { ...p, m };
 }
 // the sketch a piece is drawn from: the one it names, or its style's default; 'none' is the simple outline
@@ -759,7 +790,7 @@ export function cleanFlat(input = {}) {
   const style = STYLES[input.style] ? input.style : null; if (!style) return { error: 'Choose what the piece is' };
   const fit = FITS[input.fit] ? input.fit : 'regular', base = defaultParams(style, fit), m = {};
   for (const k of Object.keys(base.m)) { const v = Number(input.m?.[k]); m[k] = Number.isFinite(v) ? r8(Math.min(Math.max(v, 0), 80)) : base.m[k]; }
-  const o = input.options || {}, options = { drop: Boolean(o.drop), cropped: Boolean(o.cropped), pleats: Math.min(Math.max(Math.round(Number(o.pleats) || 0), 0), 2), chestPocket: Boolean(o.chestPocket), noPocket: Boolean(o.noPocket), drawcord: o.drawcord !== false, rib: o.rib !== false };
+  const o = input.options || {}, options = { drop: Boolean(o.drop), cropped: Boolean(o.cropped), pleats: Math.min(Math.max(Math.round(Number(o.pleats) || 0), 0), 2), chestPocket: Boolean(o.chestPocket), noPocket: Boolean(o.noPocket), drawcord: o.drawcord !== false, rib: o.rib !== false, ...(o.legsDrawn ? { legsDrawn: true } : {}), ...(Number(o.kneeRatio) >= .8 && Number(o.kneeRatio) <= 1.7 ? { kneeRatio: Math.round(Number(o.kneeRatio) * 100) / 100 } : {}) }; // the legs as the sketch draws them (followDrawing)
   const template = input.template === 'none' ? 'none' : FLAT_TEMPLATES.some(t => t.id === input.template && t.style === style) ? input.template : defaultTemplate(style, fit);
   const ao = input.allover, allover = ao && /^[0-9a-f-]{36}$/i.test(String(ao.art || '')) ? { art: ao.art, w: r8(Math.min(Math.max(Number(ao.w) || 4, .5), 48)), h: r8(Math.min(Math.max(Number(ao.h) || 4, .5), 48)), type: String(ao.type || 'straight').slice(0, 20), name: String(ao.name || 'All-over print').replace(/\s+/g, ' ').trim().slice(0, 60),
     base: ALLOVER_BASES.includes(ao.base) ? ao.base : ALLOVER_BASES[0], ...(/^[0-9a-f-]{36}$/i.test(String(ao.techniqueId || '')) ? { techniqueId: ao.techniqueId } : {}) } : null;

@@ -71,6 +71,16 @@ dialog form{display:grid;gap:10px}
 
 /* the Design workspace's Panel button folds this panel away (the Studio sets data-panel on this page) */
 [data-panel=off] .wrap{grid-template-columns:minmax(0,1fr)}[data-panel=off] .wrap>aside.side{display:none}
+
+/* Focus (the Design workspace's): the Studio's bar floats over the top, so this page's own bar floats at the foot in glass and the page starts
+   below the Studio's; the panel stays at the right */
+[data-focus]{--glass:rgba(255,255,255,.62);--glass-line:rgba(255,255,255,.75);--glass-edge:rgba(20,20,22,.08);--glass-shadow:0 12px 36px rgba(20,20,22,.14),0 2px 6px rgba(20,20,22,.06),inset 0 1px 0 rgba(255,255,255,.85)}
+[data-focus] body>.bar,[data-focus] .bar{position:fixed;z-index:40;bottom:12px;left:50%;translate:-50% 0;width:max-content;max-width:calc(100% - 24px);border-radius:999px;padding:6px 10px;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;background:var(--glass);-webkit-backdrop-filter:blur(24px) saturate(1.8);backdrop-filter:blur(24px) saturate(1.8);border:1px solid var(--glass-line);outline:1px solid var(--glass-edge);box-shadow:var(--glass-shadow)}
+[data-focus][data-panel=on] .bar{left:calc((100% - 352px) / 2);max-width:calc(100% - 376px)}
+[data-focus] .bar .ttl{display:none}[data-focus] .bar>*{flex:none}
+[data-focus] .toast{bottom:76px}
+[data-focus] .wrap{padding-top:64px;min-height:100vh;box-sizing:border-box}[data-focus] .side{max-height:calc(100vh - 64px)}
+[data-focus] #canvas{padding-bottom:72px}[data-focus] #canvas svg{max-height:calc(100vh - 64px - 130px)}
 </style>
 <link rel="stylesheet" href="/cue.css">
 </head>

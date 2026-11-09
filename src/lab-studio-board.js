@@ -10,7 +10,7 @@
   VIEWS.push('board');
   const css = document.createElement('style'); css.textContent = `
 .studio[data-v=board] .stage,.studio[data-v=board] .rail,.studio[data-v=board] .opts,.studio[data-v=board] .flathost,.studio[data-v=board] .pathost,.studio[data-v=board] .pic-only{display:none!important}
-.studio[data-v=board] .mid{grid-column:1/span 2}.boardhost{display:none;overflow:auto;height:calc(100dvh - 140px);padding:18px 20px 40px;box-sizing:border-box}.studio[data-v=board] .boardhost{display:block}
+html[data-focus] .studio[data-v=board] .boardhost{padding-top:72px;height:100%}.studio[data-v=board] .mid{grid-column:1/span 2}.boardhost{display:none;overflow:auto;height:calc(100dvh - 140px);padding:18px 20px 40px;box-sizing:border-box}.studio[data-v=board] .boardhost{display:block}
 .boardhost .bh{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 14px}.boardhost h3{margin:0;font-size:15px;font-weight:500}
 .boardhost h4{margin:22px 0 10px;font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#5b5e66}
 .boardhost .row{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start}
