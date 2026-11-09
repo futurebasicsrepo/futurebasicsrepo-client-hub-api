@@ -11,6 +11,7 @@ import { readFileSync } from 'node:fs';
 import sharp from 'sharp';
 import { imageConfig, openaiEdit } from './check.js';
 import { BAG_TEMPLATES } from './lab-bag-templates.js';
+import { FOOTWEAR_TEMPLATES } from './lab-footwear-templates.js';
 import { makeViews } from './lab-views.js';
 import { DRAWN, viewsOf, firstOf, makeShoeDrawings, traceShoe, shoeSvg, cleanDrawing } from './lab-shoe-draw.js';
 
@@ -21,7 +22,7 @@ const LIB = new Map();
 // the library bag's body (its largest colour on the front, the light grey) in another colour, on every view
 const rgbOf = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
 export function recolourBody(views, hex) {
-  const area = new Map(); for (const p of views.front?.panels || []) area.set(p.fill, (area.get(p.fill) || 0) + p.area);
+  const area = new Map(); for (const p of (views.front || views.lateral)?.panels || []) area.set(p.fill, (area.get(p.fill) || 0) + p.area); // a bag's front, a shoe's outside
   const body = [...area.entries()].sort((a, b) => b[1] - a[1])[0]?.[0]; if (!body) return views; const B = rgbOf(body);
   const near = f => { const c = rgbOf(f); return Math.hypot(c[0] - B[0], c[1] - B[1], c[2] - B[2]) < 30; };
   return Object.fromEntries(Object.entries(views).map(([v, dw]) => [v, { ...dw, panels: dw.panels.map(p => near(p.fill) ? { ...p, fill: hex } : p) }]));
@@ -31,6 +32,15 @@ export function libraryBag(id) {
   if (!LIB.has(id)) { try { LIB.set(id, JSON.parse(readFileSync(new URL(`./bag-templates/${id}.json`, import.meta.url), 'utf8'))); } catch { return null; } }
   return LIB.get(id);
 }
+// a library shoe's drawings (src/footwear-templates, built by scripts/footwear-templates/build.mjs), read once
+export function libraryShoe(id) {
+  if (!FOOTWEAR_TEMPLATES.some(t => t.id === id)) return null;
+  if (!LIB.has(id)) { try { LIB.set(id, JSON.parse(readFileSync(new URL(`./footwear-templates/${id}.json`, import.meta.url), 'utf8'))); } catch { return null; } }
+  return LIB.get(id);
+}
+// either library, by the drawing's own category
+export const libraryOf = (category, id) => (category === 'footwear' ? libraryShoe(id) : category === 'bags' ? libraryBag(id) : null);
+export const libraryAny = id => libraryBag(id) || libraryShoe(id);
 
 export function registerLabShoeDrawRoutes(app, d) {
   const { pool, authenticate, adminOnly, env = process.env, imageCfg = () => imageConfig(env), edit = openaiEdit, lab = null, log = console } = d;
@@ -115,6 +125,23 @@ export function registerLabShoeDrawRoutes(app, d) {
   });
   // start a bag's drawing from a bag in the library (no image model): every view of it, ready to recolour and reshape
   app.get('/v1/lab/library/bags', { preHandler: pre }, async () => ({ bags: BAG_TEMPLATES }));
+  app.get('/v1/lab/library/footwear', { preHandler: pre }, async () => ({ footwear: FOOTWEAR_TEMPLATES }));
+  app.get('/v1/lab/library/footwear/:tid', { preHandler: pre }, async (req, reply) => { const t = libraryShoe(String(req.params.tid)); return t || bad(reply, 'Not found', 404); });
+  // a new footwear concept from a library shoe: its drawings in place, the upper in the chosen colour, and the pattern style the shoe is drafted
+  // in (src/lab-footwear.js) set from the library; no AI
+  app.post('/v1/lab/concepts/from-library-footwear', { preHandler: pre }, async (req, reply) => {
+    const t = libraryShoe(String(req.body?.template || '')); if (!t) return bad(reply, 'Choose a shoe from the library', 422);
+    const line = req.body?.lineId ? await planLineOf(pool, req.body.lineId, lab?.scope?.(req) || null) : null; if (req.body?.lineId && !line) return bad(reply, 'That piece is not on a line plan here', 404);
+    const hex = /^#[0-9a-f]{6}$/i.test(String(req.body?.colour?.hex || '')) ? String(req.body.colour.hex).toLowerCase() : '', cname = String(req.body?.colour?.name || '').replace(/[<>]/g, '').slice(0, 40);
+    const name = String(req.body?.name || '').replace(/[<>]/g, '').trim().slice(0, 120) || line?.name || t.label;
+    const spec = { description: `Started from the library: ${t.label}.`, silhouette: t.label, fabric: '', fit: '', details: [], trims: '', colors: hex ? [cname || hex] : [], ...(t.style ? { footwear: { style: t.style } } : {}), libraryShoe: t.id };
+    const actor = /^[0-9a-f-]{36}$/i.test(String(req.auth?.sub || '')) ? req.auth.sub : null, room = lab?.scope?.(req) || null;
+    const id = (await pool.query(`insert into lab_concepts(name, category, role, spec, twist, created_by, client_id) values($1,'footwear','core',$2,'',$3,$4) returning id`, [name, spec, actor, room])).rows[0].id;
+    if (line) await putOnLine(pool, id, line);
+    const views = hex ? recolourBody(t.views, hex) : t.views;
+    for (const [v, dw] of Object.entries(views)) await pool.query(`insert into lab_shoe_drawings(concept_id,view,status,art,drawing,model,edited) values($1,$2,'ready',null,$3,'library',$4)`, [id, v, dw, Boolean(hex)]);
+    return reply.code(201).send({ concept: { id, name, category: 'footwear' }, studio: `/lab/studio?concept=${id}&view=front` });
+  });
   app.get('/v1/lab/library/bags/:tid', { preHandler: pre }, async (req, reply) => { const t = libraryBag(String(req.params.tid)); return t || bad(reply, 'Not found', 404); });
   // a new bag concept from a library bag (the Sketch library's Open in the Studio): its drawings in place, the body in the chosen colour; no AI
   app.post('/v1/lab/concepts/from-library-bag', { preHandler: pre }, async (req, reply) => {
@@ -132,21 +159,22 @@ export function registerLabShoeDrawRoutes(app, d) {
   });
   app.post('/v1/lab/concepts/:id/shoe-drawing/from-library', { preHandler: pre }, async (req, reply) => {
     const c = await concept(req.params.id); if (!c) return bad(reply, 'Not found', 404);
-    if (c.category !== 'bags') return bad(reply, 'A library bag starts a bag concept\'s drawing');
+    if (c.category !== 'bags' && c.category !== 'footwear') return bad(reply, 'A library bag or shoe starts a bag or footwear concept\'s drawing');
     if (c.status === 'tech_pack') return bad(reply, 'This concept is already a tech pack', 409);
-    if (running.has(c.id)) return bad(reply, 'The bag is being drawn already', 409);
-    const t = libraryBag(String(req.body?.template || '')); if (!t) return bad(reply, 'Unknown library bag', 404);
+    if (running.has(c.id)) return bad(reply, `The ${c.category === 'footwear' ? 'shoe' : 'bag'} is being drawn already`, 409);
+    const t = libraryOf(c.category, String(req.body?.template || '')); if (!t) return bad(reply, c.category === 'footwear' ? 'Unknown library shoe' : 'Unknown library bag', 404);
     await pool.query('delete from lab_shoe_drawings where concept_id=$1', [c.id]);
     for (const [v, dw] of Object.entries(t.views)) await pool.query(`insert into lab_shoe_drawings(concept_id,view,status,art,drawing,model,edited) values($1,$2,'ready',null,$3,'library',false)`, [c.id, v, dw]);
-    // the bag's kind follows the library bag, unless the concept already says one
-    if (!c.spec?.bag?.type) await pool.query(`update lab_concepts set spec = jsonb_set(coalesce(spec,'{}'::jsonb), '{bag}', $2::jsonb), updated_at=now() where id=$1`, [c.id, JSON.stringify({ type: t.type })]);
+    // a shoe's pattern style follows the library shoe, unless the concept already says one; a bag's kind likewise
+    if (c.category === 'footwear') { if (t.style && !c.spec?.footwear?.style) await pool.query(`update lab_concepts set spec = jsonb_set(coalesce(spec,'{}'::jsonb), '{footwear}', coalesce(spec->'footwear','{}'::jsonb) || $2::jsonb), updated_at=now() where id=$1`, [c.id, JSON.stringify({ style: t.style })]); }
+    else if (!c.spec?.bag?.type) await pool.query(`update lab_concepts set spec = jsonb_set(coalesce(spec,'{}'::jsonb), '{bag}', $2::jsonb), updated_at=now() where id=$1`, [c.id, JSON.stringify({ type: t.type })]);
     return { ok: true, template: t.id, ...(await shape(c)) };
   });
   app.post('/v1/lab/concepts/:id/shoe-drawing/:view/reset', { preHandler: pre }, async (req, reply) => {
     const c = await concept(req.params.id); if (!c) return bad(reply, 'Not found', 404); const v = viewOf(req, reply, c); if (!v) return;
     const r = await row(c, v); if (!r) return bad(reply, 'This view is not drawn yet', 409);
     // a view that came from the library goes back to the library's drawing; a drawn one is traced again from its line art
-    const lib = String(r.drawing?.source || '').startsWith('library:') ? libraryBag(r.drawing.source.slice(8))?.views?.[v] : null;
+    const lib = String(r.drawing?.source || '').startsWith('library:') ? libraryAny(r.drawing.source.slice(8))?.views?.[v] : null;
     if (!r.art && !lib) return bad(reply, 'This view has nothing to go back to', 409);
     const { svg, ...dw } = lib ? { ...lib } : await traceShoe(r.art);
     await pool.query(`update lab_shoe_drawings set drawing=$3, edited=false, updated_at=now() where concept_id=$1 and view=$2`, [c.id, v, dw]);

@@ -953,6 +953,12 @@ app.get('/lab/bag-templates/thumbs/:file', (req, reply) => {
   const f = String(req.params.file || ''); if (!/^[a-z0-9-]+\.webp$/.test(f)) return reply.code(404).send('Not found');
   try { return reply.header('cache-control', 'public, max-age=86400').type('image/webp').send(readFileSync(new URL(`./bag-templates/thumbs/${f}`, import.meta.url))); } catch { return reply.code(404).send('Not found'); }
 });
+// the library of footwear flats (src/footwear-templates, built by scripts/footwear-templates/build.mjs): the list and the thumbnails
+app.get('/lab/lab-footwear-templates.js', (req, reply) => sendPack(req, reply, './lab-footwear-templates.js', 'application/javascript; charset=utf-8', 300));
+app.get('/lab/footwear-templates/thumbs/:file', (req, reply) => {
+  const f = String(req.params.file || ''); if (!/^[a-z0-9-]+\.webp$/.test(f)) return reply.code(404).send('Not found');
+  try { return reply.header('cache-control', 'public, max-age=86400').type('image/webp').send(readFileSync(new URL(`./footwear-templates/thumbs/${f}`, import.meta.url))); } catch { return reply.code(404).send('Not found'); }
+});
 app.get('/lab/flat-templates/thumbs/:file', (req, reply) => {
   const f = String(req.params.file || ''); if (!/^[a-z0-9-]+\.webp$/.test(f)) return reply.code(404).send('Not found');
   try { return reply.header('cache-control', 'public, max-age=86400').type('image/webp').send(readFileSync(new URL(`./flat-templates/thumbs/${f}`, import.meta.url))); } catch { return reply.code(404).send('Not found'); }

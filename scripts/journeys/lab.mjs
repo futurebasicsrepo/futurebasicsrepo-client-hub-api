@@ -4793,6 +4793,41 @@ await journey('J287', 'The cloth and the panels on the flats, in the Studio: a r
   } finally { if (C) await K(`/concepts/${C}`, { method: 'DELETE' }); }
 });
 
+// The library of footwear flats (src/footwear-templates, built by scripts/footwear-templates/build.mjs from scripts/footwear-templates/catalogue.mjs)
+await journey('J292', 'Footwear: a shoe from the library, listed by type, opens in the Studio as its drawing in panels in the colour picked, its pattern drafted in the library shoe\'s style; the Sketch library shows shoes by type; a bag cannot take a library shoe', async () => {
+  const lib = (await K('/library/footwear')).json.footwear || [];
+  ok(lib.length >= 1 && lib.every(s => s.group && s.label && s.views.includes('lateral')), '1. the library lists shoes, each with its type and its outside view', lib.map(s => s.id));
+  const court = lib.find(s => s.id === 'footwear-lifestyle-court-low') || lib[0], full = (await K(`/library/footwear/${court.id}`)).json;
+  ok(['lateral', 'medial', 'top', 'bottom', 'back'].every(v => full.views?.[v]?.panels?.length > 5), '   each with its outside, inside, top, bottom and heel in panels', Object.keys(full.views || {}));
+  const made = await K('/concepts/from-library-footwear', { body: { template: court.id, colour: { name: 'Navy', hex: '#1F3A5F' } } }), cid = made.json.concept?.id;
+  try {
+    ok(made.status === 201 && made.json.concept.category === 'footwear' && /\/lab\/studio\?concept=/.test(made.json.studio), '2. Open in the Studio makes a footwear concept', made.json);
+    const g = (await K(`/concepts/${cid}/shoe-drawing`)).json;
+    ok(g.noun === 'shoe' && ['lateral', 'medial', 'top', 'bottom', 'back'].every(v => g.views[v]?.status === 'ready'), '   with every view drawn from the library', Object.keys(g.views || {}));
+    ok(g.views.lateral.drawing.panels.some(p => p.fill === '#1f3a5f'), '   its upper in the colour picked');
+    const pat = (await K(`/concepts/${cid}/pattern`)).json;
+    ok(!court.style || pat.spec?.style === court.style, '3. its pattern is drafted in the library shoe\'s style', [court.style, pat.spec?.style]);
+    const bagLib = (await K('/library/bags')).json.bags || [];
+    ok((await K(`/concepts/${cid}/shoe-drawing/from-library`, { body: { template: bagLib[0]?.id || 'bag-tote' } })).status === 404, '4. a shoe concept cannot take a library bag');
+    const bag = (await K('/concepts/from-library-bag', { body: { template: bagLib[0]?.id } })).json.concept;
+    if (bag) { ok((await K(`/concepts/${bag.id}/shoe-drawing/from-library`, { body: { template: court.id } })).status === 404, '   nor a bag concept a library shoe'); await K(`/concepts/${bag.id}`, { method: 'DELETE' }); }
+    ok((await K('/concepts/from-library-footwear', { body: { template: 'footwear-moon-boot' } })).status === 422, '   a shoe that is not in the library is not made');
+    ok((await call('/v1/lab/library/footwear')).status === 401, '   and nobody signed out sees the library');
+    if (!playwright) { ok(true, 'needs a browser'); return; }
+    const b = await playwright.chromium.launch();
+    try {
+      const ctx = await b.newContext({ viewport: { width: 1280, height: 900 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); localStorage.setItem('fb.helper.on', '0'); } catch {} }, kyleT);
+      const page = await ctx.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
+      await page.goto(`${BASE}/lab/sketches`, { waitUntil: 'networkidle' }); await page.selectOption('#range', 'footwear');
+      await page.waitForSelector(`#gal [data-tpl="${court.id}"]`); const shown = await page.$$eval('#gal [data-tpl]', bs => bs.map(x => x.textContent));
+      ok(shown.length === lib.length && shown.some(t => t.includes(court.group)), '5. the Sketch library\'s Footwear range shows every shoe, by type', shown.slice(0, 4));
+      await page.click(`#gal [data-tpl="${court.id}"]`); await page.waitForSelector('#sheet[open] #shArt svg', { timeout: 10000 });
+      ok((await page.locator('#shArt svg').count()) >= 4 && /upper/.test(await page.innerText('#colNote')) && (await page.isHidden('#mats')), '   a shoe opens with its views, the colour going on the upper, and no cloth to pick', await page.innerText('#shKind'));
+      ok(errs.length === 0, '   no page errors', errs);
+    } finally { await b.close(); }
+  } finally { if (cid) await K(`/concepts/${cid}`, { method: 'DELETE' }); }
+});
+
 await journey('J290', 'Start from scratch on a line plan: a piece is drawn on a blank page or started from a library flat, and the concept lands on that piece of the plan', async () => {
   const plan = await K('/plans', { body: { name: `Scratch plan ${stamp}`, season: 'Spring' } }); const pid = plan.json.plan?.id || plan.json.id;
   const added = await K(`/plans/${pid}/lines`, { body: { name: 'Field Tee', category: 'tops', role: 'hero', price: 60, qty: 500 } }), line = added.json.lines?.find(l => l.name === 'Field Tee');
