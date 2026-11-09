@@ -65,3 +65,21 @@ test('strapless and strappy tops, swim, a bikini set and a mini dress are cut as
   assert.ok(ids(pat('bikini', 'bk-bandeau-tie-bikini')).includes('bandeau'));
   const mini = fit('dress', 'dr-strapless-mini-dress').m.length; assert.ok(mini > 30 && mini < 35, `a mini dress is above the knee, not cropped (${mini})`);
 });
+
+test('every kind of bag is drafted: panels, its gusset, how it is carried and closed, linings and hardware', async () => {
+  const { bagPattern, BAG_KINDS, patternSvg, assembled } = await import('../src/lab-pattern.js');
+  const { kindOf, cleanBagSpec } = await import('../src/lab-pattern-routes.js');
+  for (const type of BAG_KINDS) {
+    const p = bagPattern({ type }), ids = p.pieces.map(q => q.id);
+    assert.equal(p.kind, 'bag'); assert.ok(p.pieces.every(q => q.sew.length >= 3 && q.sew.flat().every(Number.isFinite)), `${type} pieces are closed`);
+    assert.ok(ids.includes(type === 'duffel' ? 'body' : 'front'), `${type} has its body`); assert.ok(p.trims.length >= 3, `${type} lists its hardware`);
+    assert.ok(patternSvg(p).includes('<svg') && assembled(p).pieces.length, `${type} lays out and assembles`);
+  }
+  const bp = bagPattern({ type: 'backpack', w: 12, h: 17, d: 5.5 });
+  assert.ok(['zip-gusset', 'base-gusset', 'strap', 'front-pocket', 'sleeve'].every(i => bp.pieces.some(q => q.id === i)), 'a zip backpack: clamshell gusset, straps, front pocket, laptop sleeve');
+  assert.ok(bp.trims.some(t => t.item === 'Zip' && /two-way/.test(t.spec)));
+  const tote = bagPattern({ type: 'tote', w: 16, h: 14, d: 5.5 }), g = tote.pieces.find(q => q.id === 'gusset');
+  assert.ok(Math.abs(Math.max(...g.sew.map(([x]) => x)) - (2 * 14 + 16)) < .2, 'the gusset runs down a side, across the bottom and up the other');
+  assert.equal(kindOf({ category: 'bags', name: 'Field tote' }), 'bag');
+  assert.equal(cleanBagSpec({}, 'Night rolltop pack').type, 'rolltop'); assert.equal(cleanBagSpec({ type: 'duffel', w: 99 }).w, undefined, 'a size out of range is dropped');
+});

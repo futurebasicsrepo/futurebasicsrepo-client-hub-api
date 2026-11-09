@@ -252,6 +252,14 @@ function drawnSleeve(t) {
   const n = `${t.id} ${t.label}`.toLowerCase(); if (!BODY_STYLES.includes(t.style) || /sleeveless/.test(n) || TEMPLATE_CONSTRUCTION[t.id]?.sleeve === 'none') return null;
   return /long[- ]sleeve/.test(n) ? { sleeve: 23, sleeveOpening: 4 } : /cap[- ]sleeve/.test(n) ? { sleeve: 3, sleeveOpening: 6.5 } : /\btee\b|t-shirt|short[- ]sleeve/.test(n) ? { sleeve: 6.5, sleeveOpening: 5.5 } : null;
 }
+// a sleeve the sketch's name gives against its style's: a long-sleeve polo or tee (the style is short-sleeved) gets a long sleeve and a rib
+// cuff; a short-sleeve one of a long-sleeved style a short sleeve
+function namedSleeve(t, base) {
+  const n = `${t.id} ${t.label}`.toLowerCase();
+  if (base.sleeve > 0 && base.sleeve <= 12 && /long[- ]sleeve/.test(n)) return { sleeve: 24.5, sleeveOpening: 4, cuffRib: Math.max(base.cuffRib || 0, 2.5) };
+  if (base.sleeve > 12 && /short[- ]sleeve/.test(n)) return { sleeve: 9, sleeveOpening: 7, cuffRib: 0 };
+  return null;
+}
 let FITTING = false; // fitting a sketch reads its drawing, and drawing a sketch fits it: once round is enough
 export function fitToTemplate(p, asDrawn = false) {
   const t = templateOf(p), v = t?.views?.front, S = STYLES[p.style], ref = refRatio(p.style), base = defaultParams(p.style, p.fit, p.options)?.m; if (!v?.ratio || !S || !ref || !base) return p;
@@ -270,7 +278,8 @@ export function fitToTemplate(p, asDrawn = false) {
   // a top takes the widths and the sleeve its sketch draws (traced off it: scripts/pattern-read-proportions.mjs): its shoulder, armhole, sleeve
   // length and opening from the style's own plus the sketch's change, and the angle its sleeve is drawn at. Picking another sketch sets them again
   if (!asDrawn && S.kind === 'top') {
-    const tp = TEMPLATE_PROPORTIONS[t.id] || {}, { sleeveAngle, ...o } = p.options || {}, b0 = { ...base, ...(base.sleeve === 0 ? drawnSleeve(t) || {} : {}) };
+    const tp = TEMPLATE_PROPORTIONS[t.id] || {}, { sleeveAngle, ...o } = p.options || {}, b0 = { ...base, ...(base.sleeve === 0 ? drawnSleeve(t) || {} : namedSleeve(t, base) || {}) };
+    if (b0.cuffRib !== base.cuffRib) m.cuffRib = b0.cuffRib;
     for (const k of ['shoulder', 'armhole', 'sleeve', 'sleeveOpening']) if (k in b0) m[k] = r8(b0[k] + (/^sleeve/.test(k) && !b0.sleeve ? 0 : tp[k] || 0)); // no sleeve at the start: none traced
     return { ...p, m, options: { ...o, ...(Number.isFinite(tp.sleeveAngle) && m.sleeve > 0 ? { sleeveAngle: tp.sleeveAngle } : {}) } };
   }

@@ -42,10 +42,10 @@ for (const t of T) {
   const m0 = p0.m, sleeved = m0.sleeve > 0, short = sleeved && m0.sleeve <= 12, nw = m0.neckWidth;
   // what is traced, each within what the piece can be: [key, start, low, high, first step]
   // (a shoulder from 3 in narrower to 4 wider, a dropped one, but not on a raglan, which has no shoulder seam; the armhole 1½ in either way; a
-  // short sleeve 3 to 13 in, a long one within 4 in. Not the sleeve opening: it is cut to the arm, and a drawn end is narrower than it is)
+  // sleeve within 1½ in of the style's (the pack draws sleeves long; published specs hold them close). Not the sleeve opening: it is cut to the arm, and a drawn end is narrower than it is)
   let raglan = false; try { raglan = garmentPattern(p0)?.construction?.sleeve === 'raglan'; } catch { }
   const knobs = [...(raglan ? [] : [['shoulder', m0.shoulder, Math.max(nw + 4, m0.shoulder - 3), Math.min(m0.chest * 1.25, m0.shoulder + 4), 1.5]]), ['armhole', m0.armhole, m0.armhole - 1.5, m0.armhole + 1.5, 1]];
-  if (sleeved) knobs.push(['sleeve', m0.sleeve, short ? 3 : m0.sleeve - 4, short ? 13 : m0.sleeve + 4, 2], ['sleeveAngle', short ? 60 : 10, short ? 25 : 0, short ? 80 : 30, short ? 10 : 5]);
+  if (sleeved) knobs.push(['sleeve', m0.sleeve, Math.max(short ? 2.5 : 14, m0.sleeve - 1.5), m0.sleeve + 1.5, 1], ['sleeveAngle', short ? 45 : 6, short ? 20 : 0, short ? 75 : 25, short ? 10 : 4]);
   const cur = Object.fromEntries(knobs.map(([k, v]) => [k, v])), make = c => { const { sleeveAngle, ...mm } = c; return { ...p0, m: { ...p0.m, ...mm }, options: { ...p0.options, ...(sleeved ? { sleeveAngle } : {}) } }; };
   const start = score(make(cur)); let best = start;
   for (let round = 0; round < 3; round++) for (const [k, , lo, hi, s0] of knobs) {

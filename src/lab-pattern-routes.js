@@ -9,7 +9,7 @@
 //                                                with a guide (the flat's outline for a garment, the plush's shape) → { concept, studio }
 import { STYLES, SIZES, FITS, defaultParams, detectStyle, fitToTemplate } from './lab-flats.js';
 import { cleanConstruction, constructionWords, SLEEVES, COLLARS, OPENINGS, POCKETS, WAISTS, LEGS, PANELS } from './lab-construction.js';
-import { PLUSH_TYPE, PLUSH_SNOUTS, PLUSH_HORNS, PLUSH_MANES, PLUSH_TAILS, PLUSH_PARTS, garmentPattern, applyEdits, cutWords, cleanPatternEdits, patternDxfAama, plushPattern, cleanPlush, plushDefaults, patternSvg, patternDxf, yardage, fillGrams, PLUSH_SHAPES, PLUSH_EARS, PLUSH_FABRICS, PLUSH_EYES, PLUSH_AGES } from './lab-pattern.js';
+import { PLUSH_TYPE, PLUSH_SNOUTS, PLUSH_HORNS, PLUSH_MANES, PLUSH_TAILS, PLUSH_PARTS, garmentPattern, bagPattern, BAG_KINDS, applyEdits, cutWords, cleanPatternEdits, patternDxfAama, plushPattern, cleanPlush, plushDefaults, patternSvg, patternDxf, yardage, fillGrams, PLUSH_SHAPES, PLUSH_EARS, PLUSH_FABRICS, PLUSH_EYES, PLUSH_AGES } from './lab-pattern.js';
 import { CATEGORIES, planLineOf, putOnLine } from './lab.js';
 import { silhouette, readShoe, proposal } from './lab-shoe-read.js';
 import { readPlush, plushProposal } from './lab-plush-read.js';
@@ -45,13 +45,18 @@ export const SOON = { toys: 'Toys and objects are engineered as 3D parts', elect
 export function kindOf(c, flatStyle = null) {
   if (c.category === 'plush') return 'plush';
   if (c.category === 'footwear') return 'footwear';
+  if (c.category === 'bags') return 'bag';
   if (flatStyle && STYLES[flatStyle]) return 'garment';
   if (SOON[c.category]) return 'soon';
   return detectStyle(c) ? 'garment' : 'none';
 }
 const cleanGarment = (s = {}) => ({ sa: [.25, .375, .5, .625].includes(Number(s.sa)) ? Number(s.sa) : null, width: WIDTHS.includes(Number(s.width)) ? Number(s.width) : 58 });
 // the choices, and the pattern engineer's edits on top (src/lab-pattern.js applyEdits)
-export const cleanPatternSpec = (kind, s) => { const base = kind === 'plush' ? cleanPlush(s || {}) : kind === 'footwear' ? cleanFootwear(s || {}) : (g => { const k = cleanConstruction(s?.construction); return Object.keys(k).length ? { ...g, construction: k } : g; })(cleanGarment(s || {})), edits = cleanPatternEdits(s?.edits); return edits ? { ...base, edits } : base; };
+// a bag's choices: its kind and its body size (inches), the cloth's width; a kind not given is read from the concept's name
+const bagNum = (v, a, z) => { const n = Number(v); return Number.isFinite(n) && n >= a && n <= z ? Math.round(n * 4) / 4 : null; };
+export const cleanBagSpec = (s = {}, name = '') => { const t = BAG_KINDS.includes(s?.type) ? s.type : BAG_KINDS.find(k => new RegExp(k === 'drawstring' ? 'top.?loader|drawstring' : k === 'briefcase' ? 'brief|work bag|laptop' : k === 'pouch' ? 'pouch|crossbody' : k === 'waist' ? 'waist|belt bag|fanny|bum bag' : k, 'i').test(name)) || 'tote';
+  return { type: t, ...(bagNum(s?.w, 2, 40) ? { w: bagNum(s.w, 2, 40) } : {}), ...(bagNum(s?.h, 2, 40) ? { h: bagNum(s.h, 2, 40) } : {}), ...(bagNum(s?.d, .5, 24) ? { d: bagNum(s.d, .5, 24) } : {}), width: WIDTHS.includes(Number(s?.width)) ? Number(s.width) : 58 }; };
+export const cleanPatternSpec = (kind, s) => { const base = kind === 'bag' ? cleanBagSpec(s || {}) : kind === 'plush' ? cleanPlush(s || {}) : kind === 'footwear' ? cleanFootwear(s || {}) : (g => { const k = cleanConstruction(s?.construction); return Object.keys(k).length ? { ...g, construction: k } : g; })(cleanGarment(s || {})), edits = cleanPatternEdits(s?.edits); return edits ? { ...base, edits } : base; };
 
 // a footwear concept's style from its words, until it is chosen
 export const guessShoe = c => { const t = [c.name, c.spec?.silhouette, c.spec?.description].join(' ').toLowerCase(); return /chelsea/.test(t) ? 'chelsea' : /hik(e|er|ing)/.test(t) ? 'hiker' : /high[- ]?top|basketball/.test(t) ? 'hightop' : /\bboots?\b/.test(t) ? 'boot' : /loafer|penny|moc/.test(t) ? 'loafer' : /derby|oxford|blucher|dress shoe/.test(t) ? 'derby' : /run|trainer|jog/.test(t) ? 'runner' : 'sneaker'; };
@@ -69,7 +74,7 @@ export function registerLabPatternRoutes(app, d) {
     let flat = f, det = null;
     if (!flat && c.category !== 'plush') { det = c.spec?.style && STYLES[c.spec.style] ? { style: c.spec.style, fit: 'regular', options: {} } : detectStyle(c); if (det) { const tpl = det.template || (typeof c.spec?.template === 'string' ? c.spec.template : ''); flat = fitToTemplate({ ...defaultParams(det.style, det.fit, det.options), ...(tpl ? { template: tpl } : {}) }); } } // as the flats start it: fitted to its sketch
     const kind = kindOf(c, flat?.style);
-    const spec0 = kind === 'plush' ? cleanPlush(row?.kind === 'plush' ? row.spec : plushProposal(plushDefaults(c.spec?.plush?.shape || 'bear'), null, c.spec?.plush).spec) : kind === 'footwear' ? cleanFootwear(row?.kind === 'footwear' ? row.spec : { ...fwDefaults(c.spec?.footwear?.style || guessShoe(c)), ...(c.spec?.footwear || {}) }) : cleanGarment(row?.spec);
+    const spec0 = kind === 'bag' ? cleanBagSpec(row?.kind === 'bag' ? row.spec : c.spec?.bag, c.name) : kind === 'plush' ? cleanPlush(row?.kind === 'plush' ? row.spec : plushProposal(plushDefaults(c.spec?.plush?.shape || 'bear'), null, c.spec?.plush).spec) : kind === 'footwear' ? cleanFootwear(row?.kind === 'footwear' ? row.spec : { ...fwDefaults(c.spec?.footwear?.style || guessShoe(c)), ...(c.spec?.footwear || {}) }) : cleanGarment(row?.spec);
     const ed = cleanPatternEdits(row?.spec?.edits), spec = ed ? { ...spec0, edits: ed } : spec0;
     // a shoe drawn in the Studio: its colours come from the outside drawing when that was changed after the pattern was last saved (the last
     // edit wins), so recolouring a panel there recolours the pattern here
@@ -112,7 +117,7 @@ export function registerLabPatternRoutes(app, d) {
       const k = cleanConstruction(out); return { construction: k, words: constructionWords(k) }; }
     catch (e) { log.warn?.({ err: e.message }, 'construction read failed'); return reply.code(502).send({ error: `The drawing could not be read: ${String(e.message).slice(0, 160)}` }); }
   });
-  const draft = (L, size) => L.kind === 'plush' ? plushPattern(L.spec) : L.kind === 'footwear' ? footwearPattern(L.spec, size !== '' && size != null && Number.isFinite(Number(size)) ? Number(size) : null) : L.kind === 'garment' && L.flat ? (p => p && L.spec.sa ? { ...p, sa: L.spec.sa } : p)(garmentPattern(L.spec?.construction ? { ...L.flat, options: { ...(L.flat.options || {}), construction: L.spec.construction } } : L.flat, SIZES.includes(size) ? size : L.flat.size || 'M')) : null;
+  const draft = (L, size) => L.kind === 'bag' ? bagPattern(L.spec) : L.kind === 'plush' ? plushPattern(L.spec) : L.kind === 'footwear' ? footwearPattern(L.spec, size !== '' && size != null && Number.isFinite(Number(size)) ? Number(size) : null) : L.kind === 'garment' && L.flat ? (p => p && L.spec.sa ? { ...p, sa: L.spec.sa } : p)(garmentPattern(L.spec?.construction ? { ...L.flat, options: { ...(L.flat.options || {}), construction: L.spec.construction } } : L.flat, SIZES.includes(size) ? size : L.flat.size || 'M')) : null;
   const options = { footwear: { styles: Object.fromEntries(Object.entries(FW_STYLES).map(([k, v]) => [k, v.label])), variants: Object.fromEntries(Object.entries(VARIANTS).map(([k, v]) => [k, Object.fromEntries(Object.entries(v).map(([a, b]) => [a, b.label]))])), toes: Object.fromEntries(Object.entries(TOES).map(([k, v]) => [k, v.label])), systems: SYSTEMS, widths: SHOE_WIDTHS, uppers: UPPERS, linings: LININGS, limits: SIZE_LIMITS }, plush: { shapes: PLUSH_SHAPES, types: PLUSH_TYPE, ears: PLUSH_EARS, fabrics: PLUSH_FABRICS, eyes: PLUSH_EYES, ages: PLUSH_AGES, snouts: PLUSH_SNOUTS, horns: PLUSH_HORNS, manes: PLUSH_MANES, tails: PLUSH_TAILS, parts: PLUSH_PARTS }, widths: WIDTHS, seamAllowances: [.25, .375, .5, .625], sizes: SIZES, fits: FITS,
     styles: Object.fromEntries(Object.entries(STYLES).map(([k, v]) => [k, { label: v.label, kind: v.kind, category: v.category }])), soon: SOON };
 
@@ -125,7 +130,7 @@ export function registerLabPatternRoutes(app, d) {
   });
   app.put('/v1/lab/concepts/:id/pattern', { preHandler: pre, bodyLimit: 4_000_000 }, async (req, reply) => {
     const L = await load(req.params.id); if (!L) return bad(reply, 'Not found', 404);
-    if (!['plush', 'garment', 'footwear'].includes(L.kind)) return bad(reply, L.kind === 'soon' ? SOON[L.c.category] : 'This piece has no pattern the Lab can draft yet');
+    if (!['plush', 'garment', 'footwear', 'bag'].includes(L.kind)) return bad(reply, L.kind === 'soon' ? SOON[L.c.category] : 'This piece has no pattern the Lab can draft yet');
     const spec = await save(L, req.body?.spec, actorOf(req));
     const pat = patternOf({ ...L, spec }, L.flat?.size);
     return { ok: true, spec, yardage: yardage(pat, Number(spec.width) || 58), ...(pat.kind === 'plush' ? { fillGrams: fillGrams(pat), checks: pat.checks } : {}), ...(pat.kind === 'footwear' ? footExtra(spec, pat) : {}) };

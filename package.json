@@ -14,6 +14,7 @@
     "pattern:judge": "node scripts/pattern-judge.mjs",
     "pattern:score": "node scripts/pattern-score.mjs",
     "pattern:proportions": "node scripts/pattern-read-proportions.mjs",
+    "footwear:library": "node scripts/footwear-read-library.mjs",
     "perf": "node scripts/perf/studio-perf.mjs"
   },
   "engines": {
