@@ -38,6 +38,21 @@ const BOTTOM = { type: 'object', additionalProperties: false, required: ['front_
   ankle: { type: 'string', enum: ['open', 'cuff', 'elastic'], description: 'cuff: a separate rib band at the ankle; elastic: gathered by elastic in the hem; open: a plain hem' },
   side: { type: 'string', enum: ['none', 'stripe', 'panel'], description: 'a stripe of tape or a contrast panel down the outside of the leg' },
   notes: { type: 'string', description: 'anything else about how it is built that the fields above do not cover, in a few words' } } };
+// and of a top (a tee, a shirt, a jacket, a dress, a swimsuit)
+const TOP = { type: 'object', additionalProperties: false, required: ['sleeve', 'hood', 'collar', 'opening', 'kangaroo', 'chest_pockets', 'chest_flaps', 'hip_pockets', 'cargo_pockets', 'front_yoke', 'back_yoke', 'panels', 'quilted', 'belt', 'notes'], properties: {
+  sleeve: { type: 'string', enum: ['set', 'raglan', 'drop', 'none'], description: 'set: a seam round the shoulder point; raglan: a seam from the underarm to the neck; drop: the shoulder seam below the shoulder; none: sleeveless' },
+  hood: { type: 'boolean' },
+  collar: { type: 'string', enum: ['none', 'rib', 'shirt', 'stand', 'polo', 'lapel', 'shearling', 'funnel'], description: 'rib: a knit neckband (crew or V); shirt: a collar on a stand; polo: a knit collar; lapel: a notched tailored collar; funnel: a tall collar cut in one with the body; none: a plain or bound neck' },
+  opening: { type: 'string', enum: ['none', 'zip', 'half-zip', 'quarter-zip', 'buttons', 'snaps', 'placket'], description: 'how the front opens; placket: a short button placket (polo, henley)' },
+  kangaroo: { type: 'string', enum: ['none', 'kangaroo', 'split'], description: 'a pouch pocket across the front (split: in two halves either side of a zip)' },
+  chest_pockets: { type: 'integer', description: 'how many chest pockets (0-2)' },
+  chest_flaps: { type: 'boolean', description: 'the chest pockets have flaps' },
+  hip_pockets: { type: 'string', enum: ['none', 'welt', 'flap', 'patch'], description: 'pockets at the hip, low on the front: a welt (slit), a flap over a welt, or a patch' },
+  cargo_pockets: { type: 'boolean', description: 'bellows pockets with flaps (on the body or sleeve)' },
+  front_yoke: { type: 'boolean' }, back_yoke: { type: 'boolean' },
+  panels: { type: 'string', enum: ['none', 'sleeve-stripe', 'side-panel', 'side-stripe'], description: 'a stripe down the sleeve, a contrast panel down the side, or a stripe down the side' },
+  quilted: { type: 'boolean' }, belt: { type: 'boolean' },
+  notes: { type: 'string', description: 'anything else about how it is built that the fields above do not cover, in a few words' } } };
 const SYSTEM = 'You are a technical pattern maker reading a designer\'s flat sketch (front and back) to draft its pattern. Report only construction you can see drawn: not what such a garment usually has. Look at both views.';
 async function judges() {
   const out = [];
@@ -50,6 +65,12 @@ const toConstruction = a => {
   const pk = []; if (a.front_pockets === 'slash') pk.push('slash'); if (/jeans/.test(a.front_pockets)) pk.push('five-pocket'); if (a.cargo_pockets) pk.push('cargo');
   return { pockets: pk, backPockets: a.back_pockets, backPocket: a.back_pocket_style, coinPocket: a.front_pockets === 'jeans scoop with coin pocket', utility: a.utility, hem: a.hem, ankle: a.ankle, yoke: { front: false, back: a.back_yoke }, beltLoops: a.belt_loops, waist: a.waist, pleats: Math.min(Math.max(a.pleats | 0, 0), 3), knee: a.knee, leg: a.leg, panels: { none: 'none', stripe: 'side-stripe', panel: 'side-panel' }[a.side] || 'none' };
 };
+const topConstruction = a => {
+  const pk = []; if (a.kangaroo === 'kangaroo') pk.push('kangaroo'); if (a.kangaroo === 'split') pk.push('split-kangaroo');
+  for (let i = 0; i < Math.min(Math.max(a.chest_pockets | 0, 0), 2); i++) pk.push(a.chest_flaps ? 'chest-flap' : 'chest');
+  if (a.hip_pockets !== 'none') pk.push(...Array(2).fill({ welt: 'welt', flap: 'flap-welt', patch: 'patch-hip' }[a.hip_pockets])); if (a.cargo_pockets) pk.push('cargo');
+  return { sleeve: a.sleeve, hood: a.hood, collar: a.hood && a.collar === 'none' ? 'none' : a.collar, opening: a.opening, pockets: pk, yoke: { front: a.front_yoke, back: a.back_yoke }, panels: a.panels, quilted: a.quilted, belt: a.belt };
+};
 // only what both saw: a field where they differ is left out (the name and the style decide it)
 const agree = (A, B) => {
   const out = {}, off = [];
@@ -60,7 +81,7 @@ const agree = (A, B) => {
   return { out, off };
 };
 
-let T = FLAT_TEMPLATES.filter(t => STYLES[t.style]?.kind === 'bottom' && !STYLES[t.style].skirt);
+let T = FLAT_TEMPLATES.filter(t => (STYLES[t.style]?.kind === 'bottom' && !STYLES[t.style].skirt) || STYLES[t.style]?.kind === 'top');
 if (STY.length) T = T.filter(t => STY.includes(t.style)); if (ONLY.length) T = T.filter(t => ONLY.includes(t.id));
 const J = await judges(); if (J.length < 2) { console.error('Both ANTHROPIC_API_KEY and OPENAI_API_KEY are needed: a sketch is read by two models and only what both see is kept'); process.exit(2); }
 console.log(`${T.length} sketches · ${J.map(j => j.name).join(' and ')}`);
@@ -68,12 +89,13 @@ const result = { ...TEMPLATE_CONSTRUCTION }, review = [];
 async function one(t) {
   const p = fitToTemplate({ ...defaultParams(t.style), template: t.id });
   const views = []; for (const v of ['front', 'back']) { try { views.push([v, await png(renderSvg(p, v, { templateSvg, showDims: false, plain: true, scale: 40 }))]); } catch { /* a sketch with one view */ } }
-  const content = [...views.flatMap(([v, b]) => [{ type: 'text', text: `The flat sketch, ${v}:` }, b64(b)]), { type: 'text', text: `It is "${t.label}", a pair of ${STYLES[t.style].label.toLowerCase()}. Say how it is built from what is drawn.` }];
+  const top = STYLES[t.style].kind === 'top', SC = top ? TOP : BOTTOM, conv = top ? topConstruction : toConstruction;
+  const content = [...views.flatMap(([v, b]) => [{ type: 'text', text: `The flat sketch, ${v}:` }, b64(b)]), { type: 'text', text: `It is "${t.label}", ${top ? 'a' : 'a pair of'} ${STYLES[t.style].label.toLowerCase()}. Say how it is built from what is drawn.` }];
   const got = {};
   for (const j of J) { const f = `${OUT}/cache/${t.id}-${j.name}.json`; if (existsSync(f)) { got[j.name] = JSON.parse(readFileSync(f, 'utf8')); continue; }
-    try { got[j.name] = await j.ask(SYSTEM, content, BOTTOM); writeFileSync(f, JSON.stringify(got[j.name])); } catch (e) { console.log(`${t.id}: ${j.name} failed: ${e.message}`); } }
+    try { got[j.name] = await j.ask(SYSTEM, content, SC); writeFileSync(f, JSON.stringify(got[j.name])); } catch (e) { console.log(`${t.id}: ${j.name} failed: ${e.message}`); } }
   if (!got.Claude || !got.OpenAI) return;
-  const { out, off } = agree(toConstruction(got.Claude), toConstruction(got.OpenAI)); result[t.id] = out;
+  const { out, off } = agree(conv(got.Claude), conv(got.OpenAI)); result[t.id] = out;
   if (off.length) review.push(`${t.id}: ${off.join('; ')}`);
   console.log(`${t.id}: ${Object.keys(out).length} agreed${off.length ? `, ${off.length} differ` : ''}`);
 }
