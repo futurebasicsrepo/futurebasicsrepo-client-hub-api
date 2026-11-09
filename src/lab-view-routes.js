@@ -4,7 +4,7 @@
 //   POST /v1/lab/concepts/:id/views {kinds?, redo?}    make views for one concept      GET /v1/lab/concepts/:id/views   which exist and how they are getting on
 //   GET  /v1/lab/concepts/:id/views/:kind[?thumb=1]    the picture (or the walk video); needs the sign-in header, so the page fetches it
 //   POST /v1/lab/concepts/:id/walk                     make the walk from the front on-model view (video model)
-import { imageConfig } from './check.js';
+import { imageConfig, openaiEdit } from './check.js';
 import { categoryLabel } from './lab.js';
 import { ensureBranding } from './lab-concepts.js';
 import { cleanColourways } from './lab-materials.js';
@@ -123,6 +123,71 @@ export function registerLabViewRoutes(app, d) {
     try { await charge(req, { kind: 'view', units: kinds.length, conceptId: c.id }); } catch (e) { return bad(reply, e.message, e.status || 500, e.meter ? { code: e.code, meter: e.meter } : {}); }
     const n = await startViews(c, kinds, { redo: Boolean(req.body?.redo) || Boolean(flats), flats });
     return reply.code(202).send({ started: n, views: await summary(c.id) });
+  });
+
+  // ---- a turn edited by hand (the board's turn viewer) ----
+  // the graphics placed on the piece's flats, as art on clear, to put on a turn: [{ id, name, view, technique, aspect, png (data URL) }]
+  app.get('/v1/lab/concepts/:id/turn-graphics', { preHandler: pre }, async (req, reply) => {
+    if (!needId(req, reply)) return; const c = await concept(req.params.id); if (!c) return bad(reply, 'Not found', 404);
+    const f = flatPictures ? await flatPictures(c.id).catch(() => null) : null;
+    const list = await Promise.all((f?.placed || []).map(async g => ({ id: g.id, name: g.name, view: g.view, technique: g.technique, aspect: g.aspect, png: `data:image/png;base64,${(await sharp(g.png).resize({ width: 400, height: 400, fit: 'inside' }).png().toBuffer()).toString('base64')}` })));
+    return { graphics: list, details: (f?.details || []).map(({ view, name, color }) => ({ view, name, color })) };
+  });
+  // { graphics: [{ id, x, y, w, rot }] (centre and width as fractions of the picture, the turn in degrees), mask: PNG data URL (painted = change
+  // it), prompt, blend (default true) }: the graphics are set on the turn where they were put, then the image model works them into the cloth
+  // (printed or stitched, following its folds and light) and changes the painted area as asked; everything else is kept. One AI generation.
+  // With blend false and no painted area, the graphics are only set on (no model, no charge). The turn as it was is kept for one undo.
+  app.post('/v1/lab/concepts/:id/views/:kind/edit', { preHandler: pre, bodyLimit: 8_000_000 }, async (req, reply) => {
+    if (!needId(req, reply)) return; const kind = req.params.kind; if (!isKind(kind) || !kind.startsWith('model')) return bad(reply, 'Only a turn on a model is edited here', 404);
+    const c = await concept(req.params.id); if (!c) return bad(reply, 'Not found', 404);
+    if (c.status === 'tech_pack' && !c.product_id) return bad(reply, 'This concept is already a tech pack', 409);
+    const row = (await pool.query(`select image from lab_concept_views where concept_id=$1 and kind=$2 and status='ready'`, [c.id, kind])).rows[0]; if (!row?.image) return bad(reply, 'This turn is not drawn yet', 409);
+    const b = req.body || {}, prompt = String(b.prompt || '').replace(/\s+/g, ' ').trim().slice(0, 600), want = Array.isArray(b.graphics) ? b.graphics.slice(0, 6) : [];
+    const fr = (v, lo, hi) => Number.isFinite(Number(v)) ? Math.min(Math.max(Number(v), lo), hi) : null;
+    const f = want.length && flatPictures ? await flatPictures(c.id).catch(() => null) : null, placed = [];
+    for (const g of want) { const art = (f?.placed || []).find(x => x.id === g.id), x = fr(g.x, 0, 1), y = fr(g.y, 0, 1), w = fr(g.w, .01, 1); if (!art || x == null || y == null || w == null) return bad(reply, 'A graphic to place is not on this piece, or its place is off the picture'); placed.push({ art, x, y, w, rot: fr(g.rot, -180, 180) || 0 }); }
+    let mask = null; if (b.mask) { const m = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(String(b.mask)); if (!m || m[1].length > 4e6) return bad(reply, 'The painted area could not be read'); mask = Buffer.from(m[1], 'base64'); }
+    if (!placed.length && !mask && !prompt) return bad(reply, 'Place a graphic, or paint an area and say what to change');
+    if ((mask || prompt) && !prompt && !placed.length) return bad(reply, 'Say what to change in the painted area');
+    const meta = await sharp(row.image).metadata(), W = meta.width, H = meta.height;
+    // the graphics set on the picture where they were put
+    const layers = []; for (const g of placed) { const gw = Math.max(8, Math.round(g.w * W)); let a = await sharp(g.art.png).resize({ width: gw }).png().toBuffer(); if (g.rot) a = await sharp(a).rotate(g.rot, { background: { r: 0, g: 0, b: 0, alpha: 0 } }).png().toBuffer(); const am = await sharp(a).metadata();
+      layers.push({ input: a, left: Math.round(g.x * W - am.width / 2), top: Math.round(g.y * H - am.height / 2), w: am.width, h: am.height }); }
+    let out = layers.length ? await sharp(row.image).composite(layers.map(({ input, left, top }) => ({ input, left: Math.max(-4000, left), top: Math.max(-4000, top) }))).jpeg({ quality: 92 }).toBuffer() : row.image;
+    const useModel = b.blend !== false || Boolean(mask) || Boolean(prompt);
+    if (useModel) {
+      const cfg = imageCfg(); if (!cfg.configured) return bad(reply, 'No image model is connected, so the turn cannot be worked on. Turn off Blend to only set the graphic on.', 503);
+      const left = await imageCapLeft(1); if (left !== true) return bad(reply, `The daily limit of ${left} views is reached. Raise LAB_DAILY_VIEWS.`, 429);
+      try { await charge(req, { kind: 'view', units: 1, conceptId: c.id }); } catch (e) { return bad(reply, e.message, e.status || 500, e.meter ? { code: e.code, meter: e.meter } : {}); }
+      // the model's frame: the turn's own shape at a size it draws; the area it may redraw is the painted area and each graphic's box (padded)
+      const [MW, MH] = W >= H ? [1536, 1024] : [1024, 1536], base = await sharp(out).resize(MW, MH, { fit: 'fill' }).png().toBuffer();
+      const holes = layers.map(l => ({ x: Math.round((l.left - l.w * .15) * MW / W), y: Math.round((l.top - l.h * .15) * MH / H), w: Math.round(l.w * 1.3 * MW / W), h: Math.round(l.h * 1.3 * MH / H) }));
+      // the mask: opaque where the model keeps the picture, clear where it may redraw (each graphic's box and the painted area)
+      const alpha = new Uint8Array(MW * MH).fill(255);
+      for (const h of holes) for (let y = Math.max(0, h.y); y < Math.min(MH, h.y + h.h); y++) alpha.fill(0, y * MW + Math.max(0, h.x), y * MW + Math.min(MW, h.x + h.w));
+      if (mask) { const pm = await sharp(mask).resize(MW, MH, { fit: 'fill' }).ensureAlpha().raw().toBuffer(); for (let i = 0; i < MW * MH; i++) if (pm[i * 4 + 3] > 24) alpha[i] = 0; }
+      const rgb = await sharp(base).removeAlpha().raw().toBuffer(), rgba = Buffer.alloc(MW * MH * 4); for (let i = 0; i < MW * MH; i++) { rgba[i * 4] = rgb[i * 3]; rgba[i * 4 + 1] = rgb[i * 3 + 1]; rgba[i * 4 + 2] = rgb[i * 3 + 2]; rgba[i * 4 + 3] = alpha[i]; }
+      const maskPng = await sharp(rgba, { raw: { width: MW, height: MH, channels: 4 } }).png().toBuffer();
+      const tech = [...new Set(placed.map(g => g.art.technique))].join(' or ');
+      const words = ['This is a product photograph of a man wearing a garment. Keep everything outside the editable area exactly as it is: the man, his pose, the garment, its colour and folds, the light and the background.',
+        placed.length ? `The artwork set on the garment (${placed.map(g => g.art.name).join(', ')}) must become part of it: ${tech || 'printed'} on the cloth, following its folds, curve, light and shadow, at exactly that size and place, the artwork itself unchanged (its shape, its colours, any words spelled exactly). Remove any flat edge or box around it.` : '',
+        prompt ? `In the painted area: ${prompt}` : ''].filter(Boolean).join('\n');
+      if (cfg.provider === 'fixture') out = await sharp(base).resize(W, H, { fit: 'fill' }).jpeg({ quality: 92 }).toBuffer(); // the test stand-in: the graphics as set
+      else try { const got = await (edit || openaiEdit)({ images: [base, ...placed.map(g => g.art.png)], prompt: words, mask: maskPng, cfg: { ...cfg, size: `${MW}x${MH}` } }); out = got; }
+      catch (e) { log.warn?.({ err: e.message }, 'turn edit failed'); return bad(reply, `The turn could not be worked on: ${String(e.message).slice(0, 160)}`, 502); }
+    }
+    const image = await sharp(out).rotate().resize({ width: 1400, height: 1400, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 88 }).toBuffer(), thumb = await sharp(image).resize({ width: 420, height: 420, fit: 'inside' }).jpeg({ quality: 72 }).toBuffer();
+    await pool.query(`update lab_concept_views set prev=image, image=$3, thumb=$4, note='', updated_at=now() where concept_id=$1 and kind=$2`, [c.id, kind, image, thumb]);
+    return { ok: true, views: await summary(c.id), blended: useModel };
+  });
+  // back to the turn as it was before its last edit (once: the undone edit becomes the one to come back to)
+  app.post('/v1/lab/concepts/:id/views/:kind/undo', { preHandler: pre }, async (req, reply) => {
+    if (!needId(req, reply)) return; const kind = req.params.kind; if (!isKind(kind)) return bad(reply, 'Not found', 404);
+    const c = await concept(req.params.id); if (!c) return bad(reply, 'Not found', 404);
+    const r = (await pool.query(`select prev from lab_concept_views where concept_id=$1 and kind=$2 and prev is not null`, [c.id, kind])).rows[0]; if (!r) return bad(reply, 'Nothing to undo on this turn', 409);
+    const thumb = await sharp(r.prev).resize({ width: 420, height: 420, fit: 'inside' }).jpeg({ quality: 72 }).toBuffer();
+    await pool.query(`update lab_concept_views set prev=image, image=prev, thumb=$3, updated_at=now() where concept_id=$1 and kind=$2`, [c.id, kind, thumb]);
+    return { ok: true, views: await summary(c.id) };
   });
 
   app.post('/v1/lab/assortment/views', { preHandler: pre }, async (req, reply) => {

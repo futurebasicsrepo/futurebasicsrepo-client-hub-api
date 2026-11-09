@@ -6,6 +6,8 @@
 // The same file runs in the page (served as /lab/flats.js) and on the service (the check and the spec sheet), so it uses neither the DOM nor Node.
 // All lengths are inches. On the front flat the viewer's right is the wearer's left.
 import { FLAT_TEMPLATES } from './lab-flat-templates.js';
+import { TEMPLATE_PROPORTIONS } from './lab-template-proportions.js';
+import { TEMPLATE_CONSTRUCTION } from './lab-template-construction.js';
 // sketches the pack's measuring script reads wrong, corrected by hand. Only the length a sketch suggests (its ratio) is corrected: how the
 // sketch is laid over inches stays as it was measured, because colour blocks, stitch lines and graphics already placed on it are kept in
 // inches, and moving the sketch under them would leave them off the drawing. The shearling aviator: its zip splits the hem band on the
@@ -29,36 +31,45 @@ export const POM_NAMES = { ...TOP, ...BOTTOM, length: TOP.length, crownWidth: 'C
 // a style's own name for a point of measure where the general one does not fit it (a skirt's length, a bikini's top width)
 export const pomName = (style, k) => STYLES[style]?.names?.[k] || POM_NAMES[k] || k;
 const topBase = (o, extra = {}) => ({ kind: 'top', base: o, grade: { chest: 1, length: 1, shoulder: .75, sleeve: o.sleeve > 12 ? .5 : .25, sleeveOpening: .25, armhole: .5, neckWidth: .25, neckDropFront: .125, neckDropBack: 0, hemRib: 0, cuffRib: 0, neckRib: 0 }, ...extra });
+// each style's size-M starting measurements, checked against published garment spec sheets (docs/measurement-sources.md)
 export const STYLES = {
-  tee: { label: 'T-shirt', category: 'tops', ...topBase({ chest: 21, length: 28, shoulder: 18.5, sleeve: 8.5, sleeveOpening: 7.25, armhole: 9, neckWidth: 7.25, neckDropFront: 3.5, neckDropBack: 1, hemRib: 0, cuffRib: 0, neckRib: .875 }) },
-  longsleeve: { label: 'Long-sleeve tee', category: 'tops', ...topBase({ chest: 21, length: 28, shoulder: 18.5, sleeve: 25, sleeveOpening: 4, armhole: 9, neckWidth: 7.25, neckDropFront: 3.5, neckDropBack: 1, hemRib: 0, cuffRib: 2.5, neckRib: .875 }) },
-  crewneck: { label: 'Crewneck sweatshirt', category: 'tops', ...topBase({ chest: 22, length: 27, shoulder: 19.5, sleeve: 24.5, sleeveOpening: 4, armhole: 10, neckWidth: 7.5, neckDropFront: 3.25, neckDropBack: 1, hemRib: 2.75, cuffRib: 2.75, neckRib: 1 }) },
-  hoodie: { label: 'Pullover hoodie', category: 'tops', ...topBase({ chest: 23, length: 27.5, shoulder: 20, sleeve: 25, sleeveOpening: 4, armhole: 10.5, neckWidth: 8, neckDropFront: 3.5, neckDropBack: 1, hemRib: 2.75, cuffRib: 2.75, neckRib: 0 }), hood: true, pocket: 'kangaroo' },
-  ziphoodie: { label: 'Zip hoodie', category: 'tops', ...topBase({ chest: 23, length: 27.5, shoulder: 20, sleeve: 25, sleeveOpening: 4, armhole: 10.5, neckWidth: 8, neckDropFront: 3, neckDropBack: 1, hemRib: 2.75, cuffRib: 2.75, neckRib: 0 }), hood: true, zip: true, pocket: 'split' },
-  jacket: { label: 'Zip jacket', category: 'outerwear', ...topBase({ chest: 24, length: 27, shoulder: 20, sleeve: 25.5, sleeveOpening: 4.5, armhole: 11, neckWidth: 7.5, neckDropFront: 3, neckDropBack: 1, hemRib: 2.5, cuffRib: 2.5, neckRib: 1.5 }), zip: true, pocket: 'welt' },
-  pants: { label: 'Pants', category: 'bottoms', kind: 'bottom', base: { waist: 16.5, hip: 21.5, rise: 12, inseam: 30, thigh: 13, legOpening: 8.5, waistband: 1.5 }, grade: { waist: 1, hip: 1, rise: .375, inseam: 0, thigh: .5, legOpening: .25, waistband: 0 } },
+  tee: { label: 'T-shirt', category: 'tops', ...topBase({ chest: 20.5, length: 29, shoulder: 18.5, sleeve: 8.5, sleeveOpening: 7.25, armhole: 9, neckWidth: 7.25, neckDropFront: 3.5, neckDropBack: 1, hemRib: 0, cuffRib: 0, neckRib: .875 }) },
+  longsleeve: { label: 'Long-sleeve tee', category: 'tops', ...topBase({ chest: 20.5, length: 29, shoulder: 18.5, sleeve: 26, sleeveOpening: 4, armhole: 9, neckWidth: 7.25, neckDropFront: 3.5, neckDropBack: 1, hemRib: 0, cuffRib: 2.5, neckRib: .875 }) },
+  crewneck: { label: 'Crewneck sweatshirt', category: 'tops', ...topBase({ chest: 22, length: 28, shoulder: 19.5, sleeve: 24.5, sleeveOpening: 4, armhole: 10, neckWidth: 7.5, neckDropFront: 3.25, neckDropBack: 1, hemRib: 2.75, cuffRib: 2.75, neckRib: 1 }) },
+  hoodie: { label: 'Pullover hoodie', category: 'tops', ...topBase({ chest: 22, length: 28, shoulder: 20, sleeve: 25, sleeveOpening: 4, armhole: 10.5, neckWidth: 8, neckDropFront: 3.5, neckDropBack: 1, hemRib: 2.75, cuffRib: 2.75, neckRib: 0 }), hood: true, pocket: 'kangaroo' },
+  ziphoodie: { label: 'Zip hoodie', category: 'tops', ...topBase({ chest: 22, length: 28, shoulder: 20, sleeve: 25, sleeveOpening: 4, armhole: 10.5, neckWidth: 8, neckDropFront: 3, neckDropBack: 1, hemRib: 2.75, cuffRib: 2.75, neckRib: 0 }), hood: true, zip: true, pocket: 'split' },
+  jacket: { label: 'Zip jacket', category: 'outerwear', ...topBase({ chest: 23, length: 27.5, shoulder: 20, sleeve: 25.5, sleeveOpening: 4.5, armhole: 11, neckWidth: 7.5, neckDropFront: 3, neckDropBack: 1, hemRib: 2.5, cuffRib: 2.5, neckRib: 1.5 }), zip: true, pocket: 'welt' },
+  pants: { label: 'Pants', category: 'bottoms', kind: 'bottom', base: { waist: 16.5, hip: 21.5, rise: 12, inseam: 30, thigh: 13, legOpening: 8, waistband: 1.5 }, grade: { waist: 1, hip: 1, rise: .375, inseam: 0, thigh: .5, legOpening: .25, waistband: 0 } },
   shorts: { label: 'Shorts', category: 'bottoms', kind: 'bottom', base: { waist: 16.5, hip: 22, rise: 12, inseam: 7, thigh: 13.5, legOpening: 12, waistband: 1.5 }, grade: { waist: 1, hip: 1, rise: .375, inseam: 0, thigh: .5, legOpening: .5, waistband: 0 } },
   cap: { label: 'Six-panel cap', category: 'headwear', kind: 'cap', base: { crownWidth: 8.5, crownHeight: 4.5, brimLength: 2.75, brimWidth: 7.5 }, grade: {}, oneSize: true },
   beanie: { label: 'Cuffed beanie', category: 'headwear', kind: 'beanie', base: { width: 9, height: 10.5, cuff: 3 }, grade: {}, oneSize: true },
   tote: { label: 'Tote bag', category: 'bags', kind: 'tote', base: { width: 15, height: 16, handleDrop: 11, handleWidth: 1 }, grade: {}, oneSize: true },
   // the rest of the flat-sketch pack: woven shirts, polos, sleeveless tops, vests, coats, and the women's range
-  shirt: { label: 'Button-up shirt', category: 'tops', ...topBase({ chest: 22.5, length: 30, shoulder: 19, sleeve: 25, sleeveOpening: 4.75, armhole: 10, neckWidth: 6.75, neckDropFront: 3, neckDropBack: .75, hemRib: 0, cuffRib: 2.5, neckRib: 0 }) },
-  shirtss: { label: 'Short-sleeve shirt', category: 'tops', ...topBase({ chest: 22.5, length: 29, shoulder: 19, sleeve: 9.5, sleeveOpening: 7.5, armhole: 10, neckWidth: 6.75, neckDropFront: 3, neckDropBack: .75, hemRib: 0, cuffRib: 0, neckRib: 0 }) },
-  polo: { label: 'Polo', category: 'tops', ...topBase({ chest: 21.5, length: 28.5, shoulder: 18.5, sleeve: 9, sleeveOpening: 6.5, armhole: 9, neckWidth: 7, neckDropFront: 3, neckDropBack: .75, hemRib: 0, cuffRib: 1, neckRib: 0 }) },
-  tank: { label: 'Tank', category: 'tops', ...topBase({ chest: 20, length: 27, shoulder: 14, sleeve: 0, sleeveOpening: 0, armhole: 10, neckWidth: 8, neckDropFront: 4, neckDropBack: 1.5, hemRib: 0, cuffRib: 0, neckRib: .5 }) },
-  vest: { label: 'Vest', category: 'outerwear', ...topBase({ chest: 21, length: 25, shoulder: 14.5, sleeve: 0, sleeveOpening: 0, armhole: 11, neckWidth: 7.5, neckDropFront: 8, neckDropBack: 1, hemRib: 0, cuffRib: 0, neckRib: 0 }) },
+  shirt: { label: 'Button-up shirt', category: 'tops', ...topBase({ chest: 23, length: 31, shoulder: 19, sleeve: 25, sleeveOpening: 4.75, armhole: 10, neckWidth: 6.75, neckDropFront: 3, neckDropBack: .75, hemRib: 0, cuffRib: 2.5, neckRib: 0 }) },
+  shirtss: { label: 'Short-sleeve shirt', category: 'tops', ...topBase({ chest: 23, length: 29, shoulder: 19, sleeve: 9.5, sleeveOpening: 7.5, armhole: 10, neckWidth: 6.75, neckDropFront: 3, neckDropBack: .75, hemRib: 0, cuffRib: 0, neckRib: 0 }) },
+  polo: { label: 'Polo', category: 'tops', ...topBase({ chest: 21.5, length: 29.5, shoulder: 18.5, sleeve: 9, sleeveOpening: 6.5, armhole: 9, neckWidth: 7, neckDropFront: 3, neckDropBack: .75, hemRib: 0, cuffRib: 1, neckRib: 0 }) },
+  tank: { label: 'Tank', category: 'tops', ...topBase({ chest: 20, length: 29, shoulder: 14, sleeve: 0, sleeveOpening: 0, armhole: 10, neckWidth: 8, neckDropFront: 4, neckDropBack: 1.5, hemRib: 0, cuffRib: 0, neckRib: .5 }) },
+  vest: { label: 'Vest', category: 'outerwear', ...topBase({ chest: 22, length: 27.5, shoulder: 14.5, sleeve: 0, sleeveOpening: 0, armhole: 11, neckWidth: 7.5, neckDropFront: 8, neckDropBack: 1, hemRib: 0, cuffRib: 0, neckRib: 0 }) },
   coat: { label: 'Coat', category: 'outerwear', ...topBase({ chest: 24, length: 40, shoulder: 20, sleeve: 26, sleeveOpening: 5.5, armhole: 11, neckWidth: 7.5, neckDropFront: 3, neckDropBack: 1, hemRib: 0, cuffRib: 0, neckRib: 0 }), pocket: 'welt' },
-  dress: { label: 'Dress', category: 'dresses', ...topBase({ chest: 17.5, length: 38, shoulder: 14, sleeve: 0, sleeveOpening: 0, armhole: 8.5, neckWidth: 8, neckDropFront: 4.5, neckDropBack: 2, hemRib: 0, cuffRib: 0, neckRib: 0 }) },
+  dress: { label: 'Dress', category: 'dresses', ...topBase({ chest: 18.5, length: 38, shoulder: 14, sleeve: 0, sleeveOpening: 0, armhole: 8.5, neckWidth: 8, neckDropFront: 4.5, neckDropBack: 2, hemRib: 0, cuffRib: 0, neckRib: 0 }) },
   bodysuit: { label: 'Bodysuit', category: 'tops', ...topBase({ chest: 16.5, length: 25, shoulder: 13, sleeve: 0, sleeveOpening: 0, armhole: 8, neckWidth: 7.5, neckDropFront: 4.5, neckDropBack: 2, hemRib: 0, cuffRib: 0, neckRib: 0 }), names: { length: 'Body length from the high point of the shoulder to the crotch' } },
   swimsuit: { label: 'Swimsuit', category: 'tops', ...topBase({ chest: 15.5, length: 24, shoulder: 12, sleeve: 0, sleeveOpening: 0, armhole: 8, neckWidth: 8, neckDropFront: 5.5, neckDropBack: 4, hemRib: 0, cuffRib: 0, neckRib: 0 }), names: { length: 'Body length from the top of the strap to the crotch' } },
   bikini: { label: 'Bikini', category: 'tops', ...topBase({ chest: 13, length: 20, shoulder: 10, sleeve: 0, sleeveOpening: 0, armhole: 6, neckWidth: 6, neckDropFront: 6, neckDropBack: 6, hemRib: 0, cuffRib: 0, neckRib: 0 }), names: { chest: 'Top width, flat, under the cups', length: 'Set height, top of the strap to the bottom of the brief', shoulder: 'Strap spread at the top', armhole: 'Side height of the top', neckWidth: 'Neck opening between the straps' } },
   bra: { label: 'Sports bra', category: 'tops', ...topBase({ chest: 14.5, length: 11, shoulder: 11, sleeve: 0, sleeveOpening: 0, armhole: 7, neckWidth: 7, neckDropFront: 4, neckDropBack: 4, hemRib: 1.5, cuffRib: 0, neckRib: 0 }), names: { hemRib: 'Underband height' } },
-  cami: { label: 'Cami top', category: 'tops', ...topBase({ chest: 16.5, length: 18, shoulder: 11, sleeve: 0, sleeveOpening: 0, armhole: 8, neckWidth: 8, neckDropFront: 4, neckDropBack: 2.5, hemRib: 0, cuffRib: 0, neckRib: 0 }) },
-  skirt: { label: 'Skirt', category: 'bottoms', kind: 'bottom', skirt: true, names: { length: 'Length from the top of the waistband' }, base: { waist: 14.5, hip: 19.5, length: 17, sweep: 22, waistband: 1.25 }, grade: { waist: 1, hip: 1, length: .25, sweep: 1, waistband: 0 } },
-  leggings: { label: 'Leggings', category: 'bottoms', kind: 'bottom', base: { waist: 13, hip: 16.5, rise: 10.5, inseam: 28, thigh: 9.5, legOpening: 4.25, waistband: 3 }, grade: { waist: 1, hip: 1, rise: .375, inseam: 0, thigh: .5, legOpening: .25, waistband: 0 } },
+  cami: { label: 'Cami top', category: 'tops', ...topBase({ chest: 16.5, length: 20, shoulder: 11, sleeve: 0, sleeveOpening: 0, armhole: 8, neckWidth: 8, neckDropFront: 4, neckDropBack: 2.5, hemRib: 0, cuffRib: 0, neckRib: 0 }) },
+  skirt: { label: 'Skirt', category: 'bottoms', kind: 'bottom', skirt: true, names: { length: 'Length from the top of the waistband' }, base: { waist: 16.5, hip: 21.5, length: 19.5, sweep: 24.5, waistband: 1.25 }, grade: { waist: 1, hip: 1, length: .25, sweep: 1, waistband: 0 } },
+  leggings: { label: 'Leggings', category: 'bottoms', kind: 'bottom', base: { waist: 13.5, hip: 16.5, rise: 10.5, inseam: 28, thigh: 9.5, legOpening: 4.25, waistband: 3 }, grade: { waist: 1, hip: 1, rise: .375, inseam: 0, thigh: .5, legOpening: .25, waistband: 0 } },
   bucket: { label: 'Bucket hat', category: 'headwear', kind: 'cap', bucket: true, base: { crownWidth: 9.5, crownHeight: 3.75, brimLength: 2.25, brimWidth: 13 }, grade: {}, oneSize: true }
 };
 export const FITS = { slim: 'Slim', regular: 'Regular', relaxed: 'Relaxed', boxy: 'Boxy', oversized: 'Oversized', wide: 'Wide' };
+// grading from the sample size, as published garment specs grade (Gildan, Bella+Canvas, Comfort Colors, Port & Company, Carhartt, Lands'
+// End, QVC; checked against about 60 spec sheets): unisex and men's tops 2 in across the chest a size, the length 1; women's 1 and ½;
+// men's trousers and shorts 1½ at the waist and the hip, women's 1
+for (const [k, S] of Object.entries(STYLES)) {
+  if (S.kind === 'top' && !['dress', 'bodysuit', 'swimsuit', 'bikini', 'bra', 'cami'].includes(k)) S.grade.chest = 2;
+  if (['dress', 'bodysuit', 'swimsuit', 'bikini', 'bra', 'cami'].includes(k)) S.grade.length = .5;
+  if (k === 'pants' || k === 'shorts') { S.grade.waist = 1.5; S.grade.hip = 1.5; }
+}
 const FIT_TOP = { slim: { chest: -1.5, shoulder: -.5 }, regular: {}, relaxed: { chest: 1.5, shoulder: 1.5, drop: true }, boxy: { chest: 2.5, length: -1.5, shoulder: 3, drop: true }, oversized: { chest: 3.5, length: 1, shoulder: 3.5, drop: true, sleeve: .5 }, wide: { chest: 2.5, shoulder: 2.5, drop: true } };
 const FIT_BOTTOM = { slim: { thigh: -1, legOpening: -1.5, hip: -.5 }, regular: {}, relaxed: { thigh: 1.5, legOpening: 1.5, hip: .5 }, boxy: { thigh: 1.5, legOpening: 2 }, oversized: { thigh: 2.5, legOpening: 3, hip: 1 }, wide: { thigh: 3, legOpening: 3.5, hip: 1 } };
 const r8 = v => Math.round(v * 8) / 8;
@@ -106,7 +117,7 @@ export function detectStyle(c = {}) {
 // from a skinny double-knee cargo just because it shares a word. The routes then let the vision model confirm the pick from the concept's picture.
 const SYN = [[/boot[- ]?cut|flare|bell[- ]?bottom/, 'flared'], [/skinny/, 'skinny'], [/\bslim\b|tapered|narrow/, 'slim'], [/straight[- ]leg|\bstraight\b/, 'straight'], [/wide[- ]leg|\bwide\b/, 'wide'], [/baggy|loose/, 'baggy'], [/balloon|barrel/, 'balloon'], [/relaxed/, 'relaxed'],
   [/denim|\bjeans?\b/, 'jeans'], [/chino|twill|khaki/, 'chinos'], [/sweatpant|fleece|jogger|french terry|loopback/, 'sweatpants'], [/track|nylon|shell|ripstop/, 'track'], [/\btrouser/, 'trousers'], [/jort/, 'jorts'],
-  [/cargo/, 'cargo'], [/carpenter|hammer loop|tool pocket/, 'carpenter'], [/double[- ]knee|knee patch/, 'double-knee'], [/painter/, 'painter'], [/work ?(pant|wear|jean|short|trouser)|workwear/, 'work'], [/pleat/, 'pleated'], [/tailor|\bsuit\b/, 'tailored'], [/elastic/, 'elastic-waist'], [/drawcord|drawstring/, 'drawcord'],
+  [/cargo/, 'cargo'], [/carpenter|hammer loop|tool pocket/, 'carpenter'], [/double[- ]knee|knee patch/, 'double-knee'], [/painter/, 'painter'], [/work ?(pant|wear|jean|short|trouser)|workwear/, 'work'], [/pleat/, 'pleated'], [/tailor|\bsuit\b/, 'tailored'], [/blazer|double[- ]breasted|single[- ]breasted|sport ?coat|suit jacket|(peak|notch)(ed)? lapel|\blapels?\b/, 'blazer'], [/elastic/, 'elastic-waist'], [/drawcord|drawstring/, 'drawcord'],
   [/distress|ripped|destroy/, 'distressed'], [/five[- ]pocket|5[- ]pocket/, 'five-pocket'], [/crop/, 'cropped'], [/raglan/, 'raglan'], [/hood/, 'hood'], [/\bzip/, 'zip'], [/bomber|varsity|ma-?1/, 'bomber'], [/trucker|chore|overshirt|denim jacket/, 'trucker'], [/funnel|mock neck/, 'funnel'], [/mesh/, 'mesh'], [/running|\brun\b/, 'running'], [/lined/, 'lined'], [/stripe/, 'stripe'], [/panel/, 'paneled'], [/cuff/, 'cuffed'], [/heavy/, 'heavy'], [/oversiz/, 'oversized'], [/boxy/, 'boxy'], [/v[- ]?neck/, 'v-neck'], [/\blong\b/, 'long'], [/curved hem/, 'curved'], [/split hem/, 'split'], [/bike/, 'bike'], [/lounge/, 'lounge'], [/boxer/, 'boxer'], [/retro/, 'retro'], [/contrast/, 'contrast'], [/zip pocket/, 'zip-pocket'], [/side stripe/, 'side-stripe'], [/three stripe|3 stripe/, 'three-stripe']];
 const SYN_TOKENS = new Set(SYN.map(x => x[1]));
 const FAMILY = new Set(['jeans', 'chinos', 'sweatpants', 'joggers', 'track', 'trousers', 'jorts', 'pants', 'shorts', 'tee', 'hoodie', 'jacket', 'cap', 'shirt', 'polo', 'tank', 'vest', 'coat', 'dress', 'skirt', 'leggings', 'bra', 'cami', 'bikini', 'swimsuit', 'bodysuit', 'briefs']);
@@ -188,12 +199,58 @@ export function drawnLegs(p, size = p.size || 'M') {
 // the hip across one front leg, as the pattern drafts it), so a straight sketch makes a straight leg and a slim one a slim leg
 export function legsFromDrawing(p, size = p.size || 'M') {
   const L = drawnLegs(p, size); if (!L) return null; const m = measurementsFor(p, size), thigh = m.hip * .46, c = (v, a, b) => Math.min(Math.max(v, a), b);
-  return { legOpening: r8(c(thigh * L.hem / L.thigh / .9, 4.5, 16)), kneeRatio: L.knee ? Math.round(c(L.knee / L.hem, .8, 1.7) * 100) / 100 : null, drawn: L };
+  // a sketch drawn fuller than the body (relaxed joggers, running shorts) is cut as full: the hip raised to what the sketch shows across the hip
+  // or through the thigh, whichever is fuller (the pattern is about 0.95 of the hip across the front, and 0.465 of it through one thigh), by
+  // at most a fifth; a sketch drawn slimmer than the body keeps the measurement (a sketch is drawn slim)
+  const room = Math.max(L.hip / (m.hip * .953), L.thigh / (m.hip * .465)), hip = room > 1.05 ? r8(Math.max(m.hip, Math.min(m.hip * room, m.hip * 1.2, L.hip / .953 * 1.04))) : null;
+  return { legOpening: r8(c((hip || m.hip) * .46 * L.hem / L.thigh / .9, 4.5, 16)), kneeRatio: L.knee ? Math.round(c(L.knee / L.hem, .8, 1.7) * 100) / 100 : null, hip, drawn: L };
 }
 // the legs of a pair of trousers or shorts made as its sketch draws them (Follow the drawing on the Pattern page); the rest is kept
 export function followDrawing(p) {
   const f = legsFromDrawing(p, 'M'); if (!f) return p;
-  return { ...p, m: { ...p.m, legOpening: f.legOpening }, options: { ...(p.options || {}), legsDrawn: true, ...(f.kneeRatio ? { kneeRatio: f.kneeRatio } : {}) } };
+  return { ...p, m: { ...p.m, legOpening: f.legOpening, ...(f.hip && !(p.m?.hip > f.hip) ? { hip: f.hip } : {}) }, options: { ...(p.options || {}), legsDrawn: true, ...(f.kneeRatio ? { kneeRatio: f.kneeRatio } : {}) } };
+}
+// A bodysuit's or a dress's body as its sketch draws it: the side seam from the underarm to the hem (a bodysuit: on round the leg to the
+// crotch), read off the sketch's outline at 11 heights and given as each width against the width just below the bust, so a fitted body, an
+// A-line or a column comes out as drawn, whatever the pack's chest line read. [[f, r]…]: f from the underarm (0) to the hem (1), r the half
+// width over the half chest. Each kept within what a body can be; a sketch with no outline gives its style's usual body
+export const BODY_STYLES = ['bodysuit', 'swimsuit', 'dress', 'cami'];
+const BODY_DEFAULT = {
+  bodysuit: [[0, 1], [.1, 1], [.2, .96], [.3, .98], [.4, 1.06], [.5, 1.13], [.6, .9], [.7, .55], [.8, .38], [.9, .28], [1, .22]],
+  dress: [[0, 1], [.1, .98], [.2, .92], [.3, .96], [.4, 1.04], [.5, 1.08], [.6, 1.1], [.7, 1.12], [.8, 1.14], [.9, 1.16], [1, 1.18]],
+  cami: [[0, 1], [.1, 1], [.2, 1], [.3, 1.01], [.4, 1.02], [.5, 1.03], [.6, 1.04], [.7, 1.05], [.8, 1.06], [.9, 1.07], [1, 1.08]],
+};
+BODY_DEFAULT.swimsuit = BODY_DEFAULT.bodysuit;
+const BODY_BOUNDS = { // [up to f, low, high]
+  bodysuit: [[.15, .9, 1.12], [.4, .85, 1.15], [.6, .9, 1.2], [1, .14, 1.2]],
+  dress: [[.15, .85, 1.12], [.35, .8, 1.12], [.55, .92, 1.35], [1, .9, 2.2]],
+  cami: [[.15, .85, 1.15], [.5, .8, 1.4], [1, .8, 1.8]],
+};
+BODY_BOUNDS.swimsuit = BODY_BOUNDS.bodysuit;
+const BODY = {};
+export function bodyProfile(style, templateId) {
+  if (!BODY_STYLES.includes(style)) return null; const key = `${style}:${templateId}`; if (key in BODY) return BODY[key];
+  const t = FLAT_TEMPLATES.find(x => x.id === templateId && x.style === style), v = t?.views?.front, B = STYLES[style].base;
+  let out = BODY_DEFAULT[style];
+  if (Array.isArray(v?.clip) && v.hemY > v.hpsY && v.chest > 0) {
+    const H = v.hemY - v.hpsY, ua = (B.armhole + 1.25) / B.length, at = f => { const y = v.hpsY + H * (ua + (1 - ua) * f), sp = spanAt(v.clip, y, v.cf); return sp ? Math.max(v.cf - sp[0], sp[1] - v.cf) : null; };
+    // a dress's hem read just above its rounded corners; a long sleeve hangs against the body to about the hip, so there the style's usual
+    // body is kept and below it the sketch's widths are taken against its chest line
+    const bust = [.1, .15, .2, .25].map(at).filter(Boolean), mn = Math.min(...bust); // the bust: the widest of these that a short sleeve is not part of
+    const long = /long[- ]sleeve/.test(`${t.id} ${t.label}`.toLowerCase()), ref = long ? v.chest / 2 : bust.length ? Math.max(...bust.filter(w => w <= mn * 1.15)) : null;
+    const raw = Array.from({ length: 11 }, (_, i) => [i / 10, at(i === 10 && (style === 'dress' || style === 'cami') ? .95 : i / 10)]);
+    if (ref && raw.every(([, w]) => w)) {
+      const lim = f => BODY_BOUNDS[style].find(([u]) => f <= u + 1e-9);
+      out = raw.map(([f, w], i) => { const [, lo, hi] = lim(f); return [f, f === 0 ? 1 : long && f <= .5 ? BODY_DEFAULT[style][i][1] : Math.round(Math.min(Math.max(w / ref, lo), hi) * 100) / 100]; });
+    }
+  }
+  return (BODY[key] = out);
+}
+// sleeves a bodysuit's or a dress's sketch draws (its style is sleeveless at the start): a long sleeve, a tee's, a cap
+// (by the sketch's name; the models' read of it wins when it saw none: a cap sleeve is then cut in one with the body)
+function drawnSleeve(t) {
+  const n = `${t.id} ${t.label}`.toLowerCase(); if (!BODY_STYLES.includes(t.style) || /sleeveless/.test(n) || TEMPLATE_CONSTRUCTION[t.id]?.sleeve === 'none') return null;
+  return /long[- ]sleeve/.test(n) ? { sleeve: 23, sleeveOpening: 4 } : /cap[- ]sleeve/.test(n) ? { sleeve: 3, sleeveOpening: 6.5 } : /\btee\b|t-shirt|short[- ]sleeve/.test(n) ? { sleeve: 6.5, sleeveOpening: 5.5 } : null;
 }
 let FITTING = false; // fitting a sketch reads its drawing, and drawing a sketch fits it: once round is enough
 export function fitToTemplate(p, asDrawn = false) {
@@ -202,13 +259,21 @@ export function fitToTemplate(p, asDrawn = false) {
   // the length the sketch suggests is trusted as far as the sketch says it is meant to go: a sketch's proportions are drawn by hand, and a
   // hem read in the wrong place made a T-shirt dress 20 in and a blazer 49 in long. A cropped sketch may shorten the piece, a long one
   // lengthen it; any other moves it at most about a tenth (the measurements can always be typed). The drawing itself is not moved (asDrawn)
-  if (!asDrawn) { const n = `${t.id} ${t.label}`.toLowerCase(), crop = /crop|super|mini|micro|bralette|tube|bandeau/.test(n), long = /long|maxi|midi|gown|parka|overcoat|trench|duster|tunic/.test(n);
-    k = Math.min(Math.max(k, crop ? .68 : long ? 1.02 : .92), crop ? .97 : long ? 1.7 : 1.1); }
+  if (!asDrawn) { const n = `${t.id} ${t.label}`.toLowerCase(), mini = /\bmini\b/.test(n) && ['dress', 'skirt'].includes(p.style), crop = !mini && p.style !== 'bikini' && /crop|super|mini|micro|bralette|tube|bandeau/.test(n), long = /long|maxi|midi|gown|parka|overcoat|trench|duster|tunic/.test(n);
+    const maxi = ['dress', 'skirt'].includes(p.style) && /maxi|gown/.test(n), midi = ['dress', 'skirt'].includes(p.style) && /midi/.test(n);
+    k = mini ? Math.min(Math.max(k, .82), .9) : maxi ? Math.min(Math.max(k, 1.35), 1.6) : midi ? Math.min(Math.max(k, 1.1), 1.3) : Math.min(Math.max(k, crop ? .68 : long ? 1.02 : .92), crop ? .97 : long ? 1.7 : 1.1); } // a mini dress or skirt: above the knee, not cropped; a midi to mid-calf, a maxi or a gown to the ankle
   const m = { ...p.m };
   if (S.kind === 'top' && base.length) m.length = r8(base.length * k);
   else if (S.kind === 'bottom' && S.skirt) m.length = r8(base.length * k);
   else if (S.kind === 'bottom') m.inseam = r8(Math.max(1, (base.rise + base.inseam) * k - (m.rise || base.rise)));
   // a pair of trousers or shorts takes its sketch's legs: a straight sketch is not cut tapered, nor a wide one narrow
+  // a top takes the widths and the sleeve its sketch draws (traced off it: scripts/pattern-read-proportions.mjs): its shoulder, armhole, sleeve
+  // length and opening from the style's own plus the sketch's change, and the angle its sleeve is drawn at. Picking another sketch sets them again
+  if (!asDrawn && S.kind === 'top') {
+    const tp = TEMPLATE_PROPORTIONS[t.id] || {}, { sleeveAngle, ...o } = p.options || {}, b0 = { ...base, ...(base.sleeve === 0 ? drawnSleeve(t) || {} : {}) };
+    for (const k of ['shoulder', 'armhole', 'sleeve', 'sleeveOpening']) if (k in b0) m[k] = r8(b0[k] + (/^sleeve/.test(k) && !b0.sleeve ? 0 : tp[k] || 0)); // no sleeve at the start: none traced
+    return { ...p, m, options: { ...o, ...(Number.isFinite(tp.sleeveAngle) && m.sleeve > 0 ? { sleeveAngle: tp.sleeveAngle } : {}) } };
+  }
   if (!asDrawn && !FITTING && S.kind === 'bottom' && !S.skirt) { FITTING = true; try { const f = { ...p, m }, g = followDrawing(f); return g; } finally { FITTING = false; } }
   return { ...p, m };
 }
@@ -786,11 +851,19 @@ function cleanInks(inks) {
   return Object.keys(out).length ? { inks: out } : {};
 }
 // → clean, bounded params and placements (from the page)
+// how a piece is built, kept on its flats (src/lab-construction.js cleans it again when it drafts): words and flags only, short
+function keptConstruction(c) {
+  if (!c || typeof c !== 'object' || Array.isArray(c)) return null; const out = {};
+  for (const [k, v] of Object.entries(c).slice(0, 30)) { if (!/^[a-zA-Z]{1,20}$/.test(k)) continue;
+    if (typeof v === 'boolean' || (typeof v === 'number' && Number.isFinite(v))) out[k] = v; else if (typeof v === 'string' && v.length <= 24) out[k] = v;
+    else if (Array.isArray(v)) out[k] = v.filter(x => typeof x === 'string' && x.length <= 24).slice(0, 8); else if (v && typeof v === 'object') out[k] = Object.fromEntries(Object.entries(v).filter(([a, b]) => /^[a-z]{1,12}$/.test(a) && typeof b === 'boolean').slice(0, 4)); }
+  return Object.keys(out).length ? out : null;
+}
 export function cleanFlat(input = {}) {
   const style = STYLES[input.style] ? input.style : null; if (!style) return { error: 'Choose what the piece is' };
   const fit = FITS[input.fit] ? input.fit : 'regular', base = defaultParams(style, fit), m = {};
   for (const k of Object.keys(base.m)) { const v = Number(input.m?.[k]); m[k] = Number.isFinite(v) ? r8(Math.min(Math.max(v, 0), 80)) : base.m[k]; }
-  const o = input.options || {}, options = { drop: Boolean(o.drop), cropped: Boolean(o.cropped), pleats: Math.min(Math.max(Math.round(Number(o.pleats) || 0), 0), 2), chestPocket: Boolean(o.chestPocket), noPocket: Boolean(o.noPocket), drawcord: o.drawcord !== false, rib: o.rib !== false, ...(o.legsDrawn ? { legsDrawn: true } : {}), ...(Number(o.kneeRatio) >= .8 && Number(o.kneeRatio) <= 1.7 ? { kneeRatio: Math.round(Number(o.kneeRatio) * 100) / 100 } : {}) }; // the legs as the sketch draws them (followDrawing)
+  const o = input.options || {}, options = { drop: Boolean(o.drop), cropped: Boolean(o.cropped), pleats: Math.min(Math.max(Math.round(Number(o.pleats) || 0), 0), 2), chestPocket: Boolean(o.chestPocket), noPocket: Boolean(o.noPocket), drawcord: o.drawcord !== false, rib: o.rib !== false, ...(o.legsDrawn ? { legsDrawn: true } : {}), ...(Number(o.kneeRatio) >= .8 && Number(o.kneeRatio) <= 1.7 ? { kneeRatio: Math.round(Number(o.kneeRatio) * 100) / 100 } : {}), ...(keptConstruction(o.construction) ? { construction: keptConstruction(o.construction) } : {}), ...(Number.isFinite(Number(o.sleeveAngle)) && o.sleeveAngle !== null && o.sleeveAngle !== '' && Number(o.sleeveAngle) >= 0 && Number(o.sleeveAngle) <= 85 ? { sleeveAngle: Math.round(Number(o.sleeveAngle)) } : {}) }; // the legs as the sketch draws them (followDrawing); how it is built, as the concept says or as read
   const template = input.template === 'none' ? 'none' : FLAT_TEMPLATES.some(t => t.id === input.template && t.style === style) ? input.template : defaultTemplate(style, fit);
   const ao = input.allover, allover = ao && /^[0-9a-f-]{36}$/i.test(String(ao.art || '')) ? { art: ao.art, w: r8(Math.min(Math.max(Number(ao.w) || 4, .5), 48)), h: r8(Math.min(Math.max(Number(ao.h) || 4, .5), 48)), type: String(ao.type || 'straight').slice(0, 20), name: String(ao.name || 'All-over print').replace(/\s+/g, ' ').trim().slice(0, 60),
     base: ALLOVER_BASES.includes(ao.base) ? ao.base : ALLOVER_BASES[0], ...(/^[0-9a-f-]{36}$/i.test(String(ao.techniqueId || '')) ? { techniqueId: ao.techniqueId } : {}) } : null;

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { STYLES, defaultParams } from '../src/lab-flats.js';
-import { garmentPattern, plushPattern, cleanPlush, offsetOf, areaOf, boundsOf, layoutOf, explodeAt, assembled, patternDxf, patternSvg, fillGrams, cutWords } from '../src/lab-pattern.js';
+import { garmentPattern, plushPattern, cleanPlush, offsetOf, areaOf, boundsOf, layoutOf, explodeAt, assembled, patternDxf, patternSvg, fillGrams, cutWords, placed } from '../src/lab-pattern.js';
 import { kindOf, cleanPatternSpec } from '../src/lab-pattern-routes.js';
 
 const ok = pts => pts.length >= 3 && pts.every(([x, y]) => Number.isFinite(x) && Number.isFinite(y));
@@ -22,7 +22,7 @@ test('a tee: front and back on the fold, a pair of sleeves whose cap fits the ar
   assert.ok(by(M, 'sleeve-2').twin && by(M, 'sleeve-2').cut === 0, 'the second sleeve is drawn on the product but never cut twice');
   const w = id => boundsOf(by(M, id).sew).w, wx = id => boundsOf(by(XL, id).sew).w;
   assert.ok(Math.abs(w('front') - p.m.chest) < .05, `the front is the chest across (${w('front')} vs ${p.m.chest})`);
-  assert.ok(wx('front') - w('front') > 1.9 && wx('front') - w('front') < 2.1, 'two sizes up is 2 in wider');
+  assert.ok(wx('front') - w('front') > 3.9 && wx('front') - w('front') < 4.1, 'two sizes up is 4 in wider (2 in a size)');
   // the neck rib is shorter than the neckline it is stretched onto
   assert.ok(boundsOf(by(M, 'neck-rib').sew).w < 2 * p.m.neckWidth + 2 * p.m.neckDropFront + 4);
 });
@@ -188,9 +188,45 @@ test('shorts drawn flaring out follow their drawing, trued on the pattern: the h
   const { defaultParams } = await import('../src/lab-flats.js');
   const { garmentPattern: gp, drawnCheck, followTheDrawing } = await import('../src/lab-pattern.js');
   const raw = { ...defaultParams('shorts', 'regular'), template: 'sh-pleat' }, before = drawnCheck(raw, gp(raw));
-  assert.ok(before && before.shape.drawn > before.shape.pattern, `the sketch flares more than the default: ${JSON.stringify(before.shape)}`);
+  assert.ok(before && Math.abs(before.shape.pattern - before.shape.drawn) / before.shape.drawn > .05, `the default leg is not the sketch's: ${JSON.stringify(before.shape)}`);
   assert.ok(before.legsNear || before.legsOff, 'a leg that is a little off still offers Follow the drawing');
   const f = followTheDrawing(raw), after = drawnCheck(f, gp(f));
   assert.ok(Math.abs(after.shape.pattern - after.shape.drawn) / after.shape.drawn <= .03 && !after.legsNear && !after.legsOff && f.options.legsDrawn, JSON.stringify(after.shape));
   assert.equal(followTheDrawing({ ...defaultParams('skirt', 'regular') }).options?.legsDrawn, undefined, 'a skirt is left as it is');
+});
+
+test('trousers as their sketch is built: a back yoke cut from the back leg, back pockets only where drawn, belt loops, the pocket openings seen on the front', async () => {
+  const { defaultParams, fitToTemplate } = await import('../src/lab-flats.js');
+  const { constructionOf } = await import('../src/lab-construction.js');
+  const base = fitToTemplate({ ...defaultParams('pants'), template: 'pt-slim-jeans' }), K = c => ({ ...base, options: { ...base.options, construction: c } });
+  const plain = garmentPattern(K({ backPockets: true, yoke: { front: false, back: false } })), yoked = garmentPattern(K({ yoke: { front: false, back: true }, beltLoops: true }));
+  const area = id => p => Math.abs(areaOf(p.pieces.find(q => q.id === id).sew));
+  const yoke = yoked.pieces.find(q => q.id === 'back-yoke');
+  assert.ok(yoke && yoke.cut === 2 && area('back')(yoked) < area('back')(plain) && Math.abs(area('back')(plain) - area('back')(yoked) - Math.abs(areaOf(yoke.sew))) < .5, 'the yoke is the top of the back leg, cut away and cut on its own');
+  const pk = yoked.pieces.find(q => q.id === 'back-pocket'), yb = boundsOf(placed(yoke)); assert.ok(boundsOf(placed(pk)).y0 >= yb.y1 - .6, 'the back pockets sit below the yoke');
+  assert.ok(yoked.pieces.some(q => q.id === 'belt-loops' && q.cut === 1) && yoked.trims.some(t => t.item === 'Belt loops'), 'belt loops: one strip, and the trims say how many');
+  assert.ok(!garmentPattern(K({ backPockets: false })).pieces.some(q => /back-pocket/.test(q.id)), 'no back pockets when the sketch has none');
+  assert.ok(plain.pieces.some(q => q.id === 'back-pocket'), 'set nowhere, back pockets are kept as before');
+  assert.ok(plain.pieces.filter(q => /^pocket-opening/.test(q.id)).length === 2 && plain.pieces.some(q => q.id === 'waistband-back'), 'the pocket openings show on both fronts, the band on the back');
+  for (const q of plain.pieces.filter(q => /^pocket-opening/.test(q.id))) { const f = plain.pieces.find(x => x.id === (q.place.flip ? 'front' : 'front-2')), fb = boundsOf(placed(f)), ob = boundsOf(placed(q)); assert.ok(ob.x0 >= fb.x0 - .1 && ob.x1 <= fb.x1 + .1, 'an opening stays on its leg'); }
+  assert.ok(!garmentPattern(K({ pockets: [] })).pieces.some(q => /^pocket-opening/.test(q.id)), 'no front pockets, no openings');
+  // the order: what is set on the piece, then what the sketch was read to show, then its name, then the style
+  const { TEMPLATE_CONSTRUCTION } = await import('../src/lab-template-construction.js'), id = Object.keys(TEMPLATE_CONSTRUCTION)[0];
+  if (id) { const t = (await import('../src/lab-flat-templates.js')).FLAT_TEMPLATES.find(x => x.id === id), read = TEMPLATE_CONSTRUCTION[id], c = constructionOf({ ...defaultParams(t.style), template: id });
+    for (const [k, v] of Object.entries(read)) assert.deepEqual(c[k], v, `${id}: ${k} as read`);
+    assert.equal(constructionOf({ ...defaultParams(t.style), template: id, options: { construction: { backPockets: !read.backPockets } } }).backPockets, !read.backPockets, 'set on the piece wins'); }
+});
+
+test('a tailored jacket is cut as a tailor cuts it: lapel, collar, side body, two-piece sleeve, no rib; double-breasted has the overlap and six buttons', async () => {
+  const { fitToTemplate } = await import('../src/lab-flats.js');
+  const base = fitToTemplate({ ...defaultParams('jacket'), template: 'jk-blazer' }), at = c => garmentPattern({ ...base, options: { ...base.options, construction: c } });
+  const sb = at({ collar: 'lapel', opening: 'buttons' }), db = at({ collar: 'lapel', opening: 'buttons', breasted: 'double' }), ids = p => p.pieces.map(q => q.id);
+  for (const id of ['front', 'side-body', 'back', 'top-collar', 'under-collar', 'facing', 'top-sleeve', 'under-sleeve', 'chest-welt', 'flap', 'front-lining']) assert.ok(ids(sb).includes(id), id);
+  assert.ok(!ids(sb).some(id => /rib|cuff|hem-band/.test(id)), 'no rib anywhere');
+  assert.equal(sb.pieces.filter(q => /^button-/.test(q.id)).length, 2); assert.equal(db.pieces.filter(q => /^button-/.test(q.id)).length, 6);
+  const ov = p => -Math.min(...p.pieces.find(q => q.id === 'front').sew.filter(([, y]) => y > 20).map(([x]) => x));
+  assert.ok(ov(db) > ov(sb) + 2, `the double-breasted overlap is wider: ${ov(db)} against ${ov(sb)}`);
+  assert.ok(db.pieces.some(q => q.name === 'Peak lapel') && sb.pieces.some(q => q.name === 'Notch lapel'), 'a double-breasted takes a peak lapel, a single a notch');
+  assert.equal(db.trims.find(t => t.item === 'Front buttons').qty, 6);
+  assert.ok(garmentPattern({ ...defaultParams('jacket') }).pieces.some(q => q.id === 'hem-rib'), 'a zip jacket keeps its rib');
 });

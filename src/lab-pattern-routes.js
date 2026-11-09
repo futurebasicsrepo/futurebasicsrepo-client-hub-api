@@ -106,7 +106,8 @@ export function registerLabPatternRoutes(app, d) {
       sleeve: { type: 'string', enum: SLEEVES }, hood: { type: 'boolean' }, collar: { type: 'string', enum: COLLARS }, opening: { type: 'string', enum: OPENINGS },
       yoke: { type: 'object', additionalProperties: false, required: ['front', 'back'], properties: { front: { type: 'boolean' }, back: { type: 'boolean' } } },
       pockets: { type: 'array', items: { type: 'string', enum: POCKETS } }, waist: { type: 'string', enum: WAISTS }, knee: { type: 'string', enum: ['single', 'double'] }, leg: { type: 'string', enum: LEGS },
-      pleats: { type: 'integer' }, panels: { type: 'string', enum: PANELS }, quilted: { type: 'boolean' }, belt: { type: 'boolean' }, lined: { type: 'boolean' } } };
+      pleats: { type: 'integer' }, panels: { type: 'string', enum: PANELS }, quilted: { type: 'boolean' }, belt: { type: 'boolean' }, lined: { type: 'boolean' },
+      breasted: { type: 'string', enum: ['single', 'double'], description: 'with a lapel collar: one row of buttons or a wide overlap with two rows' }, lapel: { type: 'string', enum: ['notch', 'peak'], description: 'with a lapel collar: a notch (a step down at the collar) or a peak (the lapel points up past the collar)' } } };
     try { const out = await askImpl('You are a pattern maker reading a designer\'s flat sketch to draft its pattern. Report only construction you can see in the drawing.', content, schema, { maxTokens: 600 });
       const k = cleanConstruction(out); return { construction: k, words: constructionWords(k) }; }
     catch (e) { log.warn?.({ err: e.message }, 'construction read failed'); return reply.code(502).send({ error: `The drawing could not be read: ${String(e.message).slice(0, 160)}` }); }
