@@ -143,8 +143,11 @@ html[data-focus] .studio:not([data-v=split]) .opts{left:max(78px,var(--pal-l,0px
 html[data-focus] .studio:not([data-v=split]) .size-dock{left:max(76px,var(--pal-l,0px))}
 html[data-focus] .studio[data-panel=on]:not([data-v=split]) .opts{right:calc(362px + var(--pal-r,0px));max-width:calc(100% - max(78px,var(--pal-l,0px)) - 362px - var(--pal-r,0px))}
 /* the no-picture card floats above the bottom bars (size, product/exploded, zoom), in the room left of the panel */
-html[data-focus] .fpbar{bottom:calc(72px + var(--pal-b,0px));width:min(640px,calc(100vw - 180px));flex-wrap:nowrap;padding:10px 12px}html[data-focus] .fpbar span{flex:1 1 auto;min-width:0;font-size:12.5px}html[data-focus] .fpbar .btn{flex:none}
-html[data-focus]:has(.studio[data-panel=on]:not([data-v=split])) .fpbar{left:calc((100vw - 362px) / 2);width:min(600px,calc(100vw - 362px - 170px))}
+html[data-focus] .fpbar{bottom:calc(72px + var(--pal-b,0px));max-width:calc(100vw - 180px)}
+html[data-focus]:has(.studio[data-panel=on]:not([data-v=split])) .fpbar{left:calc((100vw - 362px) / 2);max-width:calc(100vw - 362px - 40px)}
+@media (max-width:900px){html[data-focus] .fpbar{bottom:calc(132px + var(--pal-b,0px))}} /* on an upright iPad the flats' size dock runs to two lines */
+/* on the top or the foot, with the panel open, the palette keeps to the room left of the panel (and scrolls along if it is wider) */
+html:has(.studio[data-panel=on]:not([data-v=split])) .pal:is([data-dock=top],[data-dock=bottom]){left:calc((100vw - 362px) / 2);max-width:calc(100vw - 362px - 24px);overflow-x:auto;scrollbar-width:none}
 html[data-focus] .studio:not([data-v=split]) .side{right:calc(10px + var(--pal-r,0px));bottom:calc(10px + var(--pal-b,0px))}
 html[data-focus] .studio:not([data-v=split]) .zoom{bottom:calc(12px + var(--pal-b,0px));right:calc(12px + var(--pal-r,0px))}
 html.pal-left .studio:not([data-v=split]) .size-dock{left:112px}html.pal-right .studio:not([data-v=split]) .size-dock{left:auto;right:112px}

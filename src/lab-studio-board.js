@@ -22,14 +22,23 @@ html[data-focus] .studio[data-v=board] .boardhost{padding-top:72px;height:100%}.
 #pLayers .ly .inst{font:600 11px 'IBM Plex Mono',monospace;color:#067a3e;margin-left:4px}
 #compDlg{border:0;border-radius:18px;padding:0;width:min(760px,94vw)}#compDlg .tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;max-height:56vh;overflow:auto}
 #compDlg .tile{display:grid;gap:4px;border:1px solid rgba(20,20,22,.14);border-radius:10px;padding:6px;background:#fff;cursor:pointer;font-size:12px;text-align:left}#compDlg .tile img{width:100%;aspect-ratio:1;object-fit:contain;background:#f1f1ec;border-radius:6px}
-#compDlg .tile:hover{border-color:#141416}`;
+#compDlg .tile:hover{border-color:#141416}
+/* the turns are full-length photographs: a portrait frame on the model's own grey, the whole figure in it; a tap opens it large */
+.boardhost figure[data-turn] .fr{aspect-ratio:2/3;background:#cdd0d5;position:relative}.boardhost figure[data-turn] .fr .zm{position:absolute;right:8px;bottom:8px;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:rgba(255,255,255,.78);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);box-shadow:0 2px 8px rgba(0,0,0,.18);font-size:16px;pointer-events:none}
+.studio[data-panel=on][data-v=board] .boardhost{padding-right:20px}html[data-focus] .studio[data-panel=on][data-v=board] .boardhost{padding-right:384px}html[data-focus] .studio[data-v=board] .boardhost{padding-left:24px;padding-bottom:96px}
+#turnZoom{border:0;padding:0;margin:0;width:100vw;height:100dvh;max-width:none;max-height:none;background:rgba(18,18,20,.92);color:#f4f4f2}#turnZoom::backdrop{background:transparent}
+#turnZoom .tz-stage{position:absolute;inset:0;overflow:hidden;touch-action:none;cursor:grab}#turnZoom .tz-stage.drag{cursor:grabbing}#turnZoom .tz-stage img{position:absolute;left:50%;top:50%;max-width:none;transform-origin:0 0;user-select:none;-webkit-user-drag:none}
+#turnZoom .tz-bar{position:absolute;left:50%;bottom:calc(16px + env(safe-area-inset-bottom));translate:-50% 0;display:flex;gap:6px;align-items:center;padding:6px 8px;border-radius:999px;background:rgba(40,40,44,.72);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.14);font:500 13px 'Space Grotesk',system-ui,sans-serif;max-width:calc(100vw - 24px);overflow-x:auto}
+#turnZoom .tz-bar button,#turnZoom .tz-bar a{min-width:40px;height:40px;border:0;border-radius:999px;background:transparent;color:inherit;font:inherit;padding:0 12px;cursor:pointer;text-decoration:none;display:grid;place-items:center;flex:none}#turnZoom .tz-bar button:hover,#turnZoom .tz-bar a:hover{background:rgba(255,255,255,.12)}#turnZoom .tz-bar button:disabled{opacity:.35}
+#turnZoom .tz-bar b{padding:0 8px;white-space:nowrap;font-weight:500}#turnZoom .tz-bar .tz-z{font-variant-numeric:tabular-nums;min-width:52px;text-align:center;opacity:.8}
+#turnZoom .tz-x{position:absolute;top:calc(14px + env(safe-area-inset-top));right:14px;width:44px;height:44px;border-radius:50%;border:1px solid rgba(255,255,255,.18);background:rgba(40,40,44,.72);color:#fff;font-size:20px;cursor:pointer}`;
   document.head.appendChild(css);
 
   // ---- the board ----
   const seg = document.getElementById('viewSeg');
   seg?.insertAdjacentHTML('beforeend', '<button type="button" data-v="board" aria-pressed="false" title="Every frame of the piece side by side: the picture, the flats, each colourway and size">Board</button>');
   seg?.querySelector('[data-v=board]').addEventListener('click', () => setVMode('board'));
-  document.querySelector('#app .mid')?.insertAdjacentHTML('beforeend', `<div class="boardhost" id="boardHost" aria-live="polite"><div class="bh"><div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><button class="btn go sm" type="button" id="turnsBtn" title="Draw the piece on a model from the front, three-quarter, side and back, following the flats as they are now">Make the turns from the flats</button><h3 id="boardTitle">The piece</h3></div><label class="f" style="margin:0;display:flex;gap:8px;align-items:center"><span class="note" style="margin:0">Frame size</span><input type="range" id="boardSize" min="160" max="460" step="20" value="260" aria-label="Frame size"></label></div><div id="boardBody"><p class="note">Drawing the frames…</p></div></div>`);
+  document.querySelector('#app .mid')?.insertAdjacentHTML('beforeend', `<div class="boardhost" id="boardHost" aria-live="polite"><div class="bh"><div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><button class="btn go sm" type="button" id="turnsBtn" title="Draw the piece on a model from the front, three-quarter, side and back, following the flats as they are now">Make the turns from the flats</button><h3 id="boardTitle">The piece</h3></div><label class="f" style="margin:0;display:flex;gap:8px;align-items:center"><span class="note" style="margin:0;white-space:nowrap">Frame size</span><input type="range" id="boardSize" min="160" max="460" step="20" value="260" aria-label="Frame size"></label></div><div id="boardBody"><p class="note">Drawing the frames…</p></div></div>`);
   const host = document.getElementById('boardHost'), body = document.getElementById('boardBody');
   document.getElementById('boardSize').addEventListener('input', e => host.style.setProperty('--fw', e.target.value + 'px'));
   // each drawing on the board gets its own ids, so one frame's masks and clips are never another's
@@ -80,7 +89,7 @@ html[data-focus] .studio[data-v=board] .boardhost{padding-top:72px;height:100%}.
     for (const [k, label] of TURNS) { const s = v[k]; if (!s) continue;
       let inner = `<p class="note" style="padding:12px;text-align:center">${s.status === 'pending' ? 'Drawing…' : esc(s.note || 'Not drawn')}</p>`;
       if (s.status === 'ready' && s.has) { const key = `${k}|${s.at}`; if (!TURN_SRC[key]) { try { TURN_SRC[key] = await urlOfBlob(await blobOf(`/v1/lab/concepts/${CID}/views/${k}?thumb=1`)); } catch { TURN_SRC[key] = ''; } } if (TURN_SRC[key]) inner = `<img alt="${esc(label)} on a model" src="${TURN_SRC[key]}">`; }
-      cells.push(`<figure tabindex="0" data-turn="${k}"><div class="fr">${inner}</div><figcaption><span>${esc(label)}</span><small>${s.status === 'pending' ? 'drawing' : s.status === 'failed' ? 'failed' : ''}</small></figcaption>${s.status === 'ready' && s.note ? `<p class="note" style="margin:0;color:#8a5a00">${esc(s.note)}</p>` : ''}</figure>`); }
+      cells.push(`<figure tabindex="0" data-turn="${k}"${s.status === 'ready' && s.has ? ` role="button" aria-label="Open the ${esc(label.toLowerCase())} turn large"` : ''}><div class="fr">${inner}${s.status === 'ready' && s.has ? '<span class="zm" aria-hidden="true">⤢</span>' : ''}</div><figcaption><span>${esc(label)}</span><small>${s.status === 'pending' ? 'drawing' : s.status === 'failed' ? 'failed' : ''}</small></figcaption>${s.status === 'ready' && s.note ? `<p class="note" style="margin:0;color:#8a5a00">${esc(s.note)}</p>` : ''}</figure>`); }
     if (document.getElementById('bTurns') !== row) return; row.innerHTML = cells.join('');
     paintWalk(v, ws.video);
     if ([...TURNS.map(([k]) => k), 'walk'].some(k => v[k]?.status === 'pending') && VMODE === 'board') turnT = setTimeout(paintTurns, 5000);
@@ -95,6 +104,42 @@ html[data-focus] .studio[data-v=board] .boardhost{padding-top:72px;height:100%}.
     catch (x) { toast(x.message); } finally { busy(); b.disabled = false; }
   });
   host.addEventListener('click', e => { const fg = e.target.closest('[data-bopen]'); if (fg) setVMode(fg.dataset.bopen); });
+  // ---- a turn, large: the full picture (not the thumbnail), fitted to the screen; pinch, the wheel, a double tap or the buttons zoom, a drag
+  // pans; the arrows (and the arrow keys) step through the turns ----
+  const FULL_SRC = {};
+  async function zoomTurn(k) {
+    const ready = [...document.querySelectorAll('#bTurns figure[data-turn][role=button]')].map(f => f.dataset.turn); if (!ready.includes(k)) return;
+    let d = document.getElementById('turnZoom');
+    if (!d) { document.body.insertAdjacentHTML('beforeend', '<dialog id="turnZoom" aria-label="A turn, large"><div class="tz-stage"><img alt=""></div><button class="tz-x" type="button" data-tz="close" aria-label="Close">✕</button><div class="tz-bar"><button type="button" data-tz="prev" aria-label="The turn before">‹</button><b class="tz-n"></b><button type="button" data-tz="next" aria-label="The next turn">›</button><button type="button" data-tz="out" aria-label="Zoom out">−</button><span class="tz-z">100%</span><button type="button" data-tz="in" aria-label="Zoom in">+</button><button type="button" data-tz="fit">Fit</button><a data-tz="save" download>Save</a></div></dialog>'); d = document.getElementById('turnZoom'); wireZoom(d); }
+    d.dataset.k = k; d.querySelector('.tz-n').textContent = (TURNS.find(t => t[0] === k) || [])[1] || '';
+    d.querySelector('[data-tz=prev]').disabled = ready.indexOf(k) <= 0; d.querySelector('[data-tz=next]').disabled = ready.indexOf(k) >= ready.length - 1;
+    if (!d.open) d.showModal();
+    const img = d.querySelector('img'), thumb = document.querySelector(`#bTurns figure[data-turn="${k}"] img`)?.src; if (thumb) { img.src = thumb; img.onload = () => d._fit(); }
+    try { if (!FULL_SRC[k + '|' + thumb]) FULL_SRC[k + '|' + thumb] = await urlOfBlob(await blobOf(`/v1/lab/concepts/${CID}/views/${k}`)); if (d.dataset.k === k) { img.src = FULL_SRC[k + '|' + thumb]; d.querySelector('[data-tz=save]').href = img.src; d.querySelector('[data-tz=save]').download = `${(D?.concept?.name || 'turn').replace(/[^\w -]+/g, '')} ${k.replace('model_', '')}.jpg`; } } catch { /* the thumbnail stays */ }
+  }
+  function wireZoom(d) {
+    const st = d.querySelector('.tz-stage'), img = d.querySelector('img'), z = d.querySelector('.tz-z'); let k = 1, x = 0, y = 0, fitK = 1;
+    const paint = () => { img.style.transform = `translate(${x}px,${y}px) scale(${k})`; z.textContent = Math.round(k / fitK * 100) + '%'; };
+    d._fit = () => { const w = img.naturalWidth || 1, h = img.naturalHeight || 1, W = st.clientWidth, H = st.clientHeight - 80; fitK = Math.min(W / w, H / h) * .96; k = fitK; x = -w * k / 2; y = -h * k / 2 - 30; img.style.left = '50%'; img.style.top = '50%'; paint(); };
+    const at = (nk, cx, cy) => { nk = Math.min(Math.max(nk, fitK * .5), fitK * 8); const r = st.getBoundingClientRect(), px = cx - r.left - r.width / 2, py = cy - r.top - r.height / 2; x = px - (px - x) * nk / k; y = py - (py - y) * nk / k; k = nk; paint(); };
+    const mid = () => { const r = st.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; };
+    st.addEventListener('wheel', e => { e.preventDefault(); at(k * Math.exp(-e.deltaY * .0025), e.clientX, e.clientY); }, { passive: false });
+    const pts = new Map(); let last = null;
+    st.addEventListener('pointerdown', e => { st.setPointerCapture(e.pointerId); pts.set(e.pointerId, [e.clientX, e.clientY]); st.classList.add('drag'); last = null; });
+    st.addEventListener('pointermove', e => { if (!pts.has(e.pointerId)) return; const prev = pts.get(e.pointerId); pts.set(e.pointerId, [e.clientX, e.clientY]);
+      if (pts.size === 1) { x += e.clientX - prev[0]; y += e.clientY - prev[1]; paint(); return; }
+      const [a, b] = [...pts.values()], dist = Math.hypot(a[0] - b[0], a[1] - b[1]), c = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]; if (last) { x += c[0] - last.c[0]; y += c[1] - last.c[1]; at(k * dist / last.dist, c[0], c[1]); } last = { dist, c }; });
+    const up = e => { pts.delete(e.pointerId); last = null; if (!pts.size) st.classList.remove('drag'); }; st.addEventListener('pointerup', up); st.addEventListener('pointercancel', up);
+    st.addEventListener('dblclick', e => (k > fitK * 1.05 ? d._fit() : at(fitK * 2.5, e.clientX, e.clientY)));
+    const step = n => { const ready = [...document.querySelectorAll('#bTurns figure[data-turn][role=button]')].map(f => f.dataset.turn), i = ready.indexOf(d.dataset.k) + n; if (ready[i]) zoomTurn(ready[i]); };
+    d.addEventListener('click', e => { const b = e.target.closest('[data-tz]'); if (!b) return; const a = b.dataset.tz;
+      if (a === 'close') d.close(); else if (a === 'prev') step(-1); else if (a === 'next') step(1); else if (a === 'in') at(k * 1.4, ...mid()); else if (a === 'out') at(k / 1.4, ...mid()); else if (a === 'fit') d._fit(); });
+    d.addEventListener('keydown', e => { if (e.key === 'ArrowLeft') step(-1); else if (e.key === 'ArrowRight') step(1); else if (e.key === '+' || e.key === '=') at(k * 1.4, ...mid()); else if (e.key === '-') at(k / 1.4, ...mid()); else if (e.key === '0') d._fit(); });
+    addEventListener('resize', () => { if (d.open) d._fit(); });
+  }
+  host.addEventListener('click', e => { const fg = e.target.closest('figure[data-turn][role=button]'); if (fg) zoomTurn(fg.dataset.turn); });
+  host.addEventListener('keydown', e => { const fg = e.target.closest('figure[data-turn][role=button]'); if (fg && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); zoomTurn(fg.dataset.turn); } });
+  window.zoomTurn = zoomTurn;
   host.addEventListener('keydown', e => { const fg = e.target.closest('[data-bopen]'); if (fg && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); setVMode(fg.dataset.bopen); } });
   const setVMode0 = window.setVMode;
   window.setVMode = async (v, o) => { host.dataset.ready = ''; await setVMode0(v, o); if (VMODE === 'board') paintBoard(); };

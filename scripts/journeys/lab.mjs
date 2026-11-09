@@ -4878,7 +4878,7 @@ await journey('J294', 'The tool palette in Focus: the rail becomes one glass doc
   } finally { await b.close(); if (cid) await K(`/concepts/${cid}`, { method: 'DELETE' }); }
 });
 
-await journey('J296', 'Trousers and shorts against their drawing, and a Studio where nothing floats over anything: the Pattern page measures the pattern where the sketch is (hip, thigh, knee, hem) and offers Follow the drawing when the legs are not cut as drawn; one press makes the leg opening the sketch\'s and the flats follow; in Focus the palette, the options bar, the side panel, the size dock and the no-picture card keep clear of one another, and on the Pattern and Board views the palette stands aside', async () => {
+await journey('J296', 'Trousers and shorts against their drawing, and a Studio where nothing floats over anything: the Pattern page measures the pattern where the sketch is (hip, thigh, knee, hem) and offers Follow the drawing when the legs are not cut as drawn; one press makes the leg opening the sketch\'s and the flats follow; in Focus the palette, the options bar, the side panel, the size dock and the no-picture card keep clear of one another, and on the Pattern and Board views the palette stands aside; a turn on the Board shows the whole figure and opens large to zoom', async () => {
   const r = await K('/concepts/from-recipe', { body: { base: 'shorts' } }), cid = r.json.concept?.id;
   try {
     const fl = (await K(`/concepts/${cid}/flats`)).json.flat, m0 = { ...fl.m, legOpening: 8.5 }, o0 = { ...(fl.options || {}) }; delete o0.legsDrawn; delete o0.kneeRatio;
@@ -4905,7 +4905,19 @@ await journey('J296', 'Trousers and shorts against their drawing, and a Studio w
       ok(rects.pal && !bad.length, '5. on the Flat front in Focus, the palette (docked left), the options bar, the side panel, the size dock and the no-picture card keep clear of one another', { bad, rects });
       await page.locator('#viewSeg [data-v=board]').click(); await page.waitForTimeout(800);
       ok(await page.evaluate(() => { const p = document.querySelector('#palette'); return !p || p.hidden; }), '6. on the Board the palette stands aside too');
-      ok(!errs.length, '7. no page errors', errs.slice(0, 3));
+      // the turns: drawn from the flats, each in a portrait frame with the whole figure, and a tap opens it large to zoom
+      const started = await K(`/concepts/${cid}/views`, { body: { from: 'flats', kinds: ['model_front', 'model_34', 'model_side', 'model_back'] } });
+      for (let i = 0; i < 60 && started.status === 200; i++) { const v = (await K(`/concepts/${cid}/views`)).json.views || {}; if (v.model_front?.status === 'ready') break; await new Promise(r => setTimeout(r, 500)); }
+      await page.evaluate(() => setVMode('board')); const fig = page.locator('#bTurns figure[data-turn=model_front][role=button]'); await fig.waitFor({ timeout: 20000 });
+      const fr = await fig.locator('.fr').boundingBox(); ok(fr && fr.height > fr.width * 1.4, '7. a turn sits in a portrait frame, tall enough for the whole figure', fr);
+      await fig.click(); await page.waitForFunction(() => { const d = document.querySelector('#turnZoom'), i = d?.querySelector('img'); return d?.open && i?.naturalWidth > 0; }, null, { timeout: 15000 });
+      const z0 = await page.evaluate(() => { const i = document.querySelector('#turnZoom img').getBoundingClientRect(); return { w: i.width, h: i.height, inView: i.top >= 0 && i.bottom <= innerHeight && i.left >= 0 && i.right <= innerWidth, pct: document.querySelector('#turnZoom .tz-z').textContent }; });
+      ok(z0.inView && z0.h > fr.height, '8. a tap opens the turn large, the whole picture on the screen', z0);
+      await page.locator('#turnZoom [data-tz=in]').click(); await page.locator('#turnZoom [data-tz=in]').click();
+      ok(parseInt(await page.locator('#turnZoom .tz-z').textContent()) > 150, '   it zooms in');
+      await page.locator('#turnZoom [data-tz=next]').click(); await page.waitForTimeout(300); ok(await page.evaluate(() => document.querySelector('#turnZoom').dataset.k) === 'model_34', '   and steps to the next turn');
+      await page.keyboard.press('Escape'); ok(await page.evaluate(() => !document.querySelector('#turnZoom').open), '   Escape closes it');
+      ok(!errs.length, '9. no page errors', errs.slice(0, 3));
     } finally { await b.close(); }
   } finally { if (cid) await K(`/concepts/${cid}`, { method: 'DELETE' }); }
 });
@@ -4937,7 +4949,7 @@ await journey('J295', 'Sandals, clogs, slides and mules have patterns: a sandal 
       ok(opts.length === 4 && opts.some(t => /Thong/.test(t)) && opts.some(t => /Fisherman/.test(t)), '6. the Pattern page chooses how a sandal is made', opts);
       await page.selectOption('select[data-k=variant]', 'fisherman'); await page.waitForTimeout(400);
       ok(/Heel strap/.test(await page.innerText('body')) && /Cross strap 5/.test(await page.innerText('body')), '   made as a fisherman sandal its cross straps and its heel strap are drafted');
-      ok(!errs.length, '7. no page errors', errs.slice(0, 3));
+      ok(!errs.length, '9. no page errors', errs.slice(0, 3));
     } finally { await b.close(); }
   } finally { if (cid) await K(`/concepts/${cid}`, { method: 'DELETE' }); }
 });
