@@ -362,7 +362,7 @@ export function registerLabFlatsRoutes(app, d) {
     const d = params.drawn; if (!d?.front || d.template !== params.template || !params.template || params.template === 'none') return;
     // a sketch joins the library only when its pattern makes the garment at every size (src/lab-pattern-check.js): whoever starts from it starts
     // from a pattern that sews together, measures to its spec and has everything it is made with
-    if (['top', 'bottom'].includes(STYLES[params.style]?.kind)) { const fails = (STYLES[params.style].oneSize ? ['M'] : SIZES).filter(z => { try { const pat = garmentPattern(params, z); return !pat || !constructionCheck(pat, { m: measurementsFor(params, z), style: params.style }).ok; } catch { return true; } });
+    if (['top', 'bottom', 'cap', 'beanie', 'tote'].includes(STYLES[params.style]?.kind)) { const fails = (STYLES[params.style].oneSize ? ['M'] : SIZES).filter(z => { try { const pat = garmentPattern(params, z); return !pat || !constructionCheck(pat, { m: measurementsFor(params, z), style: params.style }).ok; } catch { return true; } });
       if (fails.length) { log.info?.({ concept: c.id, sizes: fails }, 'not kept in the sketch library: its pattern does not pass the construction check'); return; } }
     const art = async id => (UUID.test(String(id || '')) ? (await pool.query('select png from lab_art where id=$1', [id])).rows[0]?.png || null : null);
     const front = await art(d.front), back = await art(d.back); if (!front) return;

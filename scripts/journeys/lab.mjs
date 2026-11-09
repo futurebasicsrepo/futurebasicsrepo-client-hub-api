@@ -2902,6 +2902,11 @@ await journey('J244', 'From scratch to pattern pieces: a hoodie started from not
   const pp = (await K(`/concepts/${pid}/pattern`)).json; ok(pl.status === 201 && pp.kind === 'plush' && pp.spec.shape === 'bunny' && pp.spec.ears === 'long' && pp.fillGrams > 0, '3. a plush starts as its shape: a bunny with long ears, and the fill it takes', pp.spec);
   const unsafe = (await K(`/concepts/${pid}/pattern`, { method: 'PUT', body: { spec: { ...pp.spec, eyes: 'safety', age: '0+' } } })).json;
   ok(unsafe.checks?.some(c => c.level === 'fail' && /Safety eyes/.test(c.msg)), '   safety eyes on a toy for under-3s are flagged', unsafe.checks);
+  // a plush bolted together from the parts library: a dragon started from the library, its tail swapped; every join between its parts walks
+  const dragon = (await K(`/concepts/${pid}/pattern`, { method: 'PUT', body: { spec: { shape: 'build', height: 14, build: { body: 'seated', head: 'snout', legs: 'four', tail: 'bushy', horns: 'two', wings: 'bat', back: 'spikes', extras: ['belly'] } } } })).json;
+  ok(dragon.spec?.shape === 'build' && dragon.spec.build.tail === 'bushy' && dragon.check?.ok === true && dragon.check.made >= 9, '   a plush built from parts (a dragon, its tail swapped) sews together: every join between its parts walked', dragon.check);
+  const bad = (await K(`/concepts/${pid}/pattern`, { method: 'PUT', body: { spec: { shape: 'build', height: 14, build: { body: 'bean', head: 'gusset', legs: 'four' } } } })).json;
+  ok(bad.spec?.build.head === 'none' && bad.spec.build.legs === 'none', '   parts that do not go on a body are left off (a bean is its own head; four legs go on a four-legged body)', bad.spec?.build);
   const shoe = await K('/concepts/from-scratch', { body: { category: 'toys', name: `Scratch toy ${stamp}` } }), sp = (await K(`/concepts/${shoe.json.concept.id}/pattern`)).json;
   ok(sp.kind === 'soon' && /engineered as 3D parts/.test(sp.soon) && (await K(`/concepts/${shoe.json.concept.id}/pattern.dxf`)).status === 422, '   toys and objects are engineered as 3D parts (the Engineering page), not cut from a pattern', sp.soon);
   if (!playwright) { ok(true, 'needs a browser'); return; }

@@ -15,7 +15,7 @@ const sgn = v => (v > 0 ? '+' : '') + fr(v);
 // the seam colours: eight that tell apart on paper, for both themes
 const INK = ['#d1495b', '#2e86ab', '#e89f2b', '#3a9d5d', '#8e5ad6', '#c2577f', '#1f9e9e', '#8a6d3b'];
 
-const NAMES = { front: 'Front', back: 'Back', sleeve: 'Sleeve', side: 'Side body', top: 'Top sleeve', under: 'Under sleeve' };
+const NAMES = { front: 'Front', back: 'Back', sleeve: 'Sleeve', side: 'Side body', top: 'Top sleeve', under: 'Under sleeve', panel: 'Crown panel', brim: 'Brim', crown: 'Crown top', band: 'Side band' };
 function blocksOf(pat) { // the block pieces, flat, with a name each
   const out = []; const walk = (o, pre) => { for (const [k, v] of Object.entries(o || {})) if (v && Array.isArray(v.sew) && v.sew.length > 2) out.push({ name: (pre ? pre + ' ' : '') + (NAMES[k] || k), blk: v }); else if (v && typeof v === 'object' && !Array.isArray(v) && k !== 'at') walk(v, k === 'brief' ? 'Brief' : ''); };
   walk(pat.block, ''); return out;
@@ -25,14 +25,14 @@ function sewnSvg(pat, c) {
   const B = blocksOf(pat); if (!B.length) return '';
   let x = 0; const at = new Map(); const gap = 2.5;
   for (const b of B) { const bb = boundsOf(b.blk.sew); at.set(b.blk, { dx: x - bb.x0, dy: -bb.y0, bb }); b.pos = at.get(b.blk); x += bb.w + gap; }
-  const H = Math.max(...B.map(b => b.pos.bb.h)), W = x - gap;
+  const H = Math.max(...B.map(b => b.pos.bb.h)), W = x - gap, fs = Math.max(.35, Math.min(1, Math.max(H, W / 3) / 14)), rr = fs * .62; // labels and markers to the drawing's size (a cap is a few inches, a coat a yard)
   let s = '';
-  for (const b of B) { const { dx, dy, bb } = b.pos; s += `<path class="blk" d="${path(b.blk.sew.map(([px, py]) => [px + dx, py + dy]))}"/><text class="bn" x="${f1(bb.x0 + dx + bb.w / 2)}" y="${f1(H + 1.6)}">${esc(b.name)}</text>`; }
+  for (const b of B) { const { dx, dy, bb } = b.pos; s += `<path class="blk" d="${path(b.blk.sew.map(([px, py]) => [px + dx, py + dy]))}"/><text class="bn" x="${f1(bb.x0 + dx + bb.w / 2)}" y="${f1(H + fs * 1.6)}" style="font-size:${Math.round(fs * 100) / 100}px">${esc(b.name)}</text>`; }
   c.seams.forEach((sm, i) => { if (!sm.edges) return; const col = INK[i % INK.length];
     for (const e of sm.edges) { const p = at.get(e.block); if (!p) continue; const pts = e.pts.map(([px, py]) => [px + p.dx, py + p.dy]);
-      s += `<path class="sm" stroke="${col}" d="${path(pts, false)}"/>`;
-      const mid = pts[Math.floor(pts.length / 2)]; s += `<g class="tag"><circle cx="${f1(mid[0])}" cy="${f1(mid[1])}" r=".62" fill="${col}"/><text x="${f1(mid[0])}" y="${f1(mid[1] + .26)}">${i + 1}</text></g>`; } });
-  return `<svg class="sewn" viewBox="-1 -1 ${f1(W + 2)} ${f1(H + 3.4)}" role="img" aria-label="The block pieces with each seam's two sides marked">${s}</svg>`;
+      s += `<path class="sm" stroke="${col}" stroke-width="${Math.round(rr * 68) / 100}" d="${path(pts, false)}"/>`;
+      const mid = pts[Math.floor(pts.length / 2)]; s += `<g class="tag"><circle cx="${f1(mid[0])}" cy="${f1(mid[1])}" r="${Math.round(rr * 100) / 100}" fill="${col}"/><text x="${f1(mid[0])}" y="${f1(mid[1] + rr * .42)}" style="font-size:${Math.round(rr * 125) / 100}px">${i + 1}</text></g>`; } });
+  return `<svg class="sewn" viewBox="-1 -1 ${f1(W + 2)} ${f1(H + 2 + fs * 2)}" role="img" aria-label="The block pieces with each seam's two sides marked">${s}</svg>`;
 }
 // the cutting table: each cloth at its width, every piece cut from it (a pair: the second turned over), on a 1 in grid
 function tableSvg(pat) {
@@ -99,7 +99,7 @@ h3{margin:0;font-size:18px;font-weight:800}.meta{margin:2px 0 0;color:var(--mute
 .grid{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,6fr);gap:18px;margin-top:12px}@media (max-width:860px){.grid{grid-template-columns:1fr}}
 figure{margin:0}figcaption{font:500 11px 'IBM Plex Mono',monospace;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:4px 0}
 svg{display:block;width:100%;height:auto}
-.sewn{max-height:340px}.sewn .blk{fill:var(--cloth);stroke:var(--ink);stroke-width:.08}.sewn .sm{fill:none;stroke-width:.42;stroke-linecap:round;stroke-linejoin:round;opacity:.92}
+.sewn{max-height:340px}.sewn .blk{fill:var(--cloth);stroke:var(--ink);stroke-width:.08}.sewn .sm{fill:none;stroke-linecap:round;stroke-linejoin:round;opacity:.92}
 .sewn .tag text{font:700 .78px Archivo,sans-serif;fill:#fff;text-anchor:middle}.sewn .bn{font:500 1px 'IBM Plex Mono',monospace;fill:var(--muted);text-anchor:middle}
 .prod{max-height:200px;margin-top:4px}.prod path{fill:var(--cloth);stroke:var(--ink);stroke-width:.1;stroke-linejoin:round}
 .tables{overflow-x:auto}table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:12px}caption{text-align:left;font:500 11px 'IBM Plex Mono',monospace;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;padding:4px 0}
@@ -130,7 +130,7 @@ ${CSS}
 ${lede ? `<p class="lede">${lede}</p>` : ''}
 ${totals.length ? `<div class="sum">${totals.map(([v, l]) => `<div><b>${esc(v)}</b>${esc(l)}</div>`).join('')}</div>` : ''}
 ${how}
-${filters ? `<nav aria-label="Filter"><button aria-pressed="true" data-k="">All</button><button aria-pressed="false" data-k="top">Tops</button><button aria-pressed="false" data-k="bottom">Bottoms</button><button aria-pressed="false" data-k="bag">Bags</button><button aria-pressed="false" data-k="fail">Not passing</button><input type="search" placeholder="Find a garment" aria-label="Find a garment"></nav>` : ''}
+${filters ? `<nav aria-label="Filter"><button aria-pressed="true" data-k="">All</button><button aria-pressed="false" data-k="top">Tops</button><button aria-pressed="false" data-k="bottom">Bottoms</button><button aria-pressed="false" data-k="acc">Headwear and totes</button><button aria-pressed="false" data-k="bag">Bags</button><button aria-pressed="false" data-k="plush">Plush</button><button aria-pressed="false" data-k="fail">Not passing</button><input type="search" placeholder="Find a garment" aria-label="Find a garment"></nav>` : ''}
 ${cards.join('\n')}
 </main><script>
 ${filters ? JS : JS.split('\n').filter(l => /svg\.table/.test(l)).join('\n')}

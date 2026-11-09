@@ -160,6 +160,56 @@ function checkBottom(pat, m, K) {
   return { seams, meas };
 }
 
+// a cap, a bucket hat, a beanie, a tote: one size. A head opening is checked against a one-size head of 22¾ in (adjustable caps and bucket
+// hats are sold to fit about 21½ to 24 in; a fitted 7¼ is 22¾ in), within ½ in
+const HEAD = 22.75;
+const inside = (P, [x, y]) => { let c = false; for (let i = 0, j = P.length - 1; i < P.length; j = i++) { const [xi, yi] = P[i], [xj, yj] = P[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) c = !c; } return c; };
+const perimeter = P => P.reduce((a, q, i) => a + dist(q, P[(i + 1) % P.length]), 0);
+function checkHeadwear(pat, m) {
+  const B = pat.block || {}, seams = [], meas = [];
+  if (B.panel) { // a six-panel cap: each panel's two sides, the brim across the front, the sweatband round the head opening
+    const P = B.panel, base = dist(P.at.br, P.at.bl), head = 6 * base, /* the panel's foot is straight */ ph = P.at.br[1] - P.at.tl[1];
+    seams.push(seam('Crown seams: panel to panel', edge(P, 'tl', 'bl'), edge(P, 'tr', 'br'), { why: 'the six panels are sewn side to side from the button to the band; every side the same length' }));
+    if (B.brim) { const inner = edge(B.brim, 'i0', 'i1');
+      seams.push(seam('Brim onto the crown', 2 * base, inner, { ease: [0, base], why: 'across the two front panels and up to half of each side panel' }));
+      const sb = piece(pat, 'sweatband'); if (sb) seams.push(seam('Sweatband round the head opening', head - 2.25 + 1, lengthOf(sb), { ease: [-.25, .25], why: 'the head opening less the 2¼ in back opening, ½ in turned back at each end' }));
+      const bd = piece(pat, 'brim-board'), bs = piece(pat, 'brim'); if (bd && bs) { const n = bd.sew.filter(q => inside(bs.sew, q)).length; seams.push({ name: 'Brim board inside the brim', ok: n === bd.sew.length, a: bd.sew.length, b: n, diff: n - bd.sew.length, range: [0, 0], why: 'every point of the board inside the brim it is sewn into' }); }
+      // the brim's length at the centre front, from the seam (the inner edge, bowed toward the crown) to its edge; its width side to side
+      const bb = boundsOf(B.brim.sew); meas.push(measure('Brim length at the centre front', B.brim.at.tip[1] - (B.brim.bow || 0), m.brimLength, .125)); meas.push(measure('Brim width', bb.w, m.brimWidth, .25)); }
+    meas.push(measure('Head size (one size, before the strap)', head, HEAD, .5));
+    // the crown's height back off the panel: the panel runs a quarter of the dome round, a quarter-ellipse of the head's radius and the height
+    const a = head / (2 * Math.PI), q = b => Math.PI / 4 * (3 * (a + b) - Math.sqrt((3 * a + b) * (a + 3 * b))); let lo = .5, hi = 12; for (let k = 0; k < 40; k++) { const mid = (lo + hi) / 2; if (q(mid) < ph) lo = mid; else hi = mid; }
+    meas.push(measure('Crown height', lo, m.crownHeight, .25));
+  } else if (B.band) { // a bucket hat: the crown oval onto the band's top, the brim onto the band's foot
+    const band = B.band, brim = B.brim, foot = 2 * dist(band.at.b0, band.at.b1); /* the band's foot is straight; each seam's edges walked inside its own call */
+    seams.push(seam('Crown top onto the side band', perimeter(B.crown.sew), 2 * edge(band, 't0', 't1'), { ease: [-.25, .25], why: 'the oval crown eased into the band, within ¼ in' }));
+    seams.push(seam('Side band seams', edge(band, 't0', 'b0'), edge(band, 't1', 'b1'), { why: 'the two halves of the band sewn at the sides' }));
+    seams.push(seam('Brim onto the side band', 2 * edge(band, 'b0', 'b1'), 2 * edge(brim, 'i0', 'i1'), { why: 'the brim\'s inner edge is the band\'s foot' }));
+    seams.push(seam('Brim seams', edge(brim, 'i0', 'o0'), edge(brim, 'i1', 'o1'), { why: 'the two halves of the brim sewn at the sides' }));
+    meas.push(measure('Head size (at the brim seam)', foot, HEAD, .5)); meas.push(measure('Crown height', boundsOf(band.sew).h, m.crownHeight, .25)); meas.push(measure('Brim length', boundsOf(brim.sew).h, m.brimLength, .125));
+  }
+  return { seams, meas };
+}
+function checkBeanie(pat, m) {
+  const b = piece(pat, 'body'), bb = boundsOf(b.sew), circ = bb.w;
+  return { seams: [seam('Stretched onto the head', HEAD, circ, { ease: [-HEAD * .25, -HEAD * .1], why: 'a rib beanie is knitted 10 to 25% smaller round than the head it stretches onto' })],
+    meas: [measure('Flat width', circ / 2, m.width, .25), measure('Length, the cuff turned up', bb.h - m.cuff, m.height, .25), measure('Cuff', m.cuff, m.cuff, .125)] };
+}
+function checkTote(pat, m) {
+  const b = piece(pat, 'body'), h = piece(pat, 'handle'), bb = boundsOf(b.sew), hb = h ? boundsOf(h.sew) : null, seams = [], meas = [];
+  seams.push(seam('Side seams: front to back', bb.h / 2, bb.h / 2, { why: 'one piece folded at the bottom, the two sides of each side seam the same length' }));
+  meas.push(measure('Width', bb.w, m.width, .25), measure('Height, the top turned back', bb.h / 2 - 1.5, m.height, .25));
+  if (hb) meas.push(measure('Handle drop', (hb.w - 3) / 2, m.handleDrop, .5), measure('Handle width, folded in four', hb.h / 4, m.handleWidth, .125));
+  return { seams, meas };
+}
+// a plush built from parts (src/lab-plush-parts.js): every join between its parts walked (a head onto its neck, a pad into its leg, a base into
+// its gores, a gusset along its seam; an ear, a limb or a tail no wider than the seam it is set into), and its size as drawn stuffed
+function checkPlush(pat) {
+  const B = pat.build, s = pat.spec, seams = B.joints.map(j => seam(j.name, j.a, j.b, { ease: j.ease, why: j.why })), meas = [];
+  const pts = (B.views[B.horizontal ? 'side' : 'front'] || []).flatMap(i => i.pts);
+  if (pts.length) { const b = boundsOf(pts), got = B.horizontal ? b.w : b.h, want = s.height; meas.push(measure(B.horizontal ? 'Length, nose to tail, stuffed' : 'Height, stuffed', got, want, Math.max(.5, want * .1))); }
+  return { seams, meas };
+}
 function checkBag(pat) {
   const seams = [], meas = [], [W, H, D] = String(pat.size).match(/[\d.]+/g).map(Number), front = piece(pat, 'front') || piece(pat, 'body');
   const perim = q => q.sew.reduce((s, p, i) => s + dist(p, q.sew[(i + 1) % q.sew.length]), 0);
@@ -190,10 +240,15 @@ export function outlineFaults(pat) {
 // what every garment is made with, beyond its pieces: each feature the pattern has calls for the parts and trims a factory needs to make it
 // (a fly calls for its zip and a waist button, a woven collar for its fusing, a hood for its lining); → [{ need, for }] for the ones missing
 export function missingComponents(pat) {
+  if (pat.kind === 'plush') { if (!pat.build) return []; const T = (pat.trims || []).map(t => t.item), out = [], need = (ok, what, why) => { if (!ok) out.push({ need: what, for: why }); };
+    need(T.some(t => /fill/i.test(t)), 'Fibre fill', 'a stuffed toy'); need(T.includes('Thread'), 'Thread', 'every plush'); need(T.includes('Law label'), 'Law label', 'every stuffed toy sold (the fill content and registration)');
+    need(T.some(t => /safety eyes|floss/i.test(t)), 'Eyes (safety eyes or floss)', 'the face');
+    for (const c of pat.checks || []) if (c.level === 'fail') out.push({ need: 'A safe build for its age', for: c.msg });
+    return out; }
   if (pat.kind !== 'garment') return [];
   const ids = new Set(pat.pieces.filter(q => q.cut).map(q => q.id)), T = pat.trims.map(t => t.item), has = re => T.some(t => re.test(t)), out = [], need = (ok, what, why) => { if (!ok) out.push({ need: what, for: why }); };
   const pc = id => pat.pieces.find(q => q.id === id && q.cut);
-  need(has(/^Main label$/), 'Main label', 'every garment'); need(has(/^Size label$/), 'Size label', 'every garment'); need(has(/^Care and content label$/), 'Care and content label', 'every garment'); need(has(/^Thread$/), 'Thread', 'every garment');
+  need(has(/^Main label$/), 'Main label', 'every garment'); if (pat.size !== 'One size') need(has(/^Size label$/), 'Size label', 'every sized garment'); need(has(/^Care and content label$/), 'Care and content label', 'every garment'); need(has(/^Thread$/), 'Thread', 'every garment');
   if (ids.has('fly')) { need(has(/zip/i), 'Fly zip', 'the fly'); need(has(/button|hook/i), 'A waist button (or hook and bar)', 'the fly'); }
   const wb = pc('waistband'); if (wb && !/elastic/i.test(wb.name)) need(ids.has('waistband-fuse'), 'Waistband fusing', 'a fixed waistband');
   if (wb && /elastic/i.test(wb.name)) need(has(/elastic/i), 'Elastic', 'an elastic waistband');
@@ -205,6 +260,10 @@ export function missingComponents(pat) {
   if (ids.has('hood')) { need(ids.has('hood-lining'), 'Hood lining', 'the hood'); if (pc('hood').notes.some(n => /drawcord channel/i.test(n))) { need(has(/drawcord/i), 'Drawcord', 'the hood'); need(has(/eyelet/i), 'Eyelets', 'the drawcord'); } }
   if (pat.construction?.opening === 'zip' || ids.has('zip-placket') || ids.has('zip-guard')) need(has(/zip/i), 'A zip', 'the zip opening');
   if (pat.style === 'bra') need(has(/elastic/i), 'Elastic', 'a bra');
+  if (pat.style === 'cap') { need(has(/top button/i), 'Top button', 'the crown, where the panels meet'); need(has(/strap|snap|buckle|closure/i), 'A back closure', 'the back opening'); need(has(/eyelet/i), 'Eyelets', 'a six-panel cap');
+    need(has(/seam tape/i), 'Crown seam tape', 'the crown seams'); need(ids.has('front-buckram'), 'Front panel buckram', 'a structured front'); need(ids.has('brim-board'), 'Brim board', 'the brim'); need(ids.has('sweatband'), 'Sweatband', 'the head opening'); }
+  if (pat.style === 'beanie') need(has(/yarn/i), 'Yarn', 'a knitted beanie');
+  if (pat.style === 'tote') need(ids.has('handle'), 'Handles', 'a tote');
   if (ids.has('front-lining')) { need(ids.has('back-lining'), 'Back lining', 'a lined body'); if (ids.has('sleeve') || ids.has('top-sleeve')) need(ids.has('sleeve-lining'), 'Sleeve lining', 'a lined body with sleeves'); if (ids.has('top-sleeve')) need(ids.has('under-sleeve-lining'), 'Under sleeve lining', 'a two-piece sleeve'); }
   return out;
 }
@@ -214,7 +273,7 @@ export function constructionCheck(pat, { m = null, style = '', width = 58, edges
   if (!pat) return null;
   const knit = (pat.sa || 0) < .45, K = pat.construction || {};
   RUNS = edges ? [] : null;
-  let r; try { r = pat.kind === 'bag' ? checkBag(pat) : pat.block?.front?.at?.crotch || pat.block?.front?.skirt || (m && ('inseam' in m || 'sweep' in m)) ? checkBottom(pat, m || {}, K) : checkTop(pat, m || {}, style || pat.style, knit); } finally { RUNS = null; }
+  let r; try { r = pat.kind === 'plush' && pat.build ? checkPlush(pat) : pat.kind === 'bag' ? checkBag(pat) : ['cap', 'bucket'].includes(pat.style) ? checkHeadwear(pat, m || {}) : pat.style === 'beanie' ? checkBeanie(pat, m || {}) : pat.style === 'tote' ? checkTote(pat, m || {}) : pat.block?.front?.at?.crotch || pat.block?.front?.skirt || (m && ('inseam' in m || 'sweep' in m)) ? checkBottom(pat, m || {}, K) : checkTop(pat, m || {}, style || pat.style, knit); } finally { RUNS = null; }
   const lay = layoutOf(pat, { width }), table = lay.map(g => ({ fabric: g.name, width: g.width, length: g.length, yards: g.yards, efficiency: g.efficiency, pieces: g.items.length, fits: g.items.every(it => it.b.w <= g.width + 1e-6) }));
   const all = [...r.seams, ...r.meas], made = all.filter(x => x.ok !== null), cuts = outlineFaults(pat), missing = missingComponents(pat);
   return { ...r, table, cuts, missing, ok: made.length > 0 && made.every(x => x.ok) && table.every(t => t.fits) && !cuts.length && !missing.length, passed: made.filter(x => x.ok).length, made: made.length, total: all.length };
