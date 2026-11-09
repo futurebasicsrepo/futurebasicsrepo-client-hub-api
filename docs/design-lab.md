@@ -1308,6 +1308,11 @@ A pattern is only right if it sews together into the garment it was drafted for.
   - the shortest of several orders is kept, never longer than plain rows
   - every layout item has `at(pts)` for drawing a piece where it lies
 
+**Headwear and totes** are one size and checked against a 22¾ in head (adjustable caps and bucket hats fit about 21½ to 24 in):
+- **Six-panel cap.** Each panel is solved to a quarter of the dome round, so the crown height reads back off it. The brim's inner edge spans the brim's width and is bowed to run across the two front panels and an eighth of each side panel. Its centre length is set from the seam. The board is the brim inset ¼ in, with its two points left out. The sweatband is the head opening less the 2¼ in back opening, plus ½ in turned back at each end.
+- **Bucket hat.** The head opening is the band's foot. The band narrows to the crown, the crown oval is solved to the band's top, and the brim's inner edge is the band's foot.
+- **Tote.** The body is cut twice the height plus the two 1½ in turn-backs.
+
 `npm run pattern:proof` writes `pattern-proof/pattern-proof.html`. It covers every library garment at M, with a strip of XS to XXL, and every bag. Each card shows:
 - the block pieces, with each seam's two sides in one colour
 - the seam and measurement tables

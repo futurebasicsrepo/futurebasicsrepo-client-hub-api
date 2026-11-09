@@ -19,20 +19,22 @@ const list = v => (v ? String(v).split(',').map(s => s.trim()).filter(Boolean) :
 const SIZE = arg('size', 'M'), STY = list(arg('style')), ONLY = list(arg('only')), OUT = arg('out', 'pattern-proof');
 
 const cards = [], json = []; let gN = 0, gOk = 0, sN = 0, sOk = 0, seamsN = 0, measN = 0;
-const T = FLAT_TEMPLATES.filter(t => ['top', 'bottom'].includes(STYLES[t.style]?.kind) && (!STY.length || STY.includes(t.style)) && (!ONLY.length || ONLY.includes(t.id)));
+const KINDS = ['top', 'bottom', 'cap', 'beanie', 'tote'];
+const T = [...FLAT_TEMPLATES, ...Object.keys(STYLES).filter(k => ['cap', 'beanie', 'tote'].includes(STYLES[k].kind) && !FLAT_TEMPLATES.some(t => t.style === k)).map(k => ({ id: k, style: k, label: STYLES[k].label, template: null }))]
+  .filter(t => KINDS.includes(STYLES[t.style]?.kind) && (!STY.length || STY.includes(t.style)) && (!ONLY.length || ONLY.includes(t.id)));
 for (const t of T) {
-  const p = fitToTemplate({ ...defaultParams(t.style), template: t.id }), pat = garmentPattern(p, SIZE); if (!pat?.block) continue;
-  const c = constructionCheck(pat, { m: measurementsFor(p, SIZE), style: t.style, edges: true });
-  const sizes = proveSizes(z => garmentPattern(p, z), z => measurementsFor(p, z), t.style, SIZES); sN += sizes.length; sOk += sizes.filter(z => z.ok).length;
+  const one = STYLES[t.style].oneSize, p = t.template === null ? defaultParams(t.style) : fitToTemplate({ ...defaultParams(t.style), template: t.id }), pat = garmentPattern(p, one ? 'One size' : SIZE); if (!pat) continue;
+  const c = constructionCheck(pat, { m: measurementsFor(p, one ? 'M' : SIZE), style: t.style, edges: true });
+  const sizes = one ? [] : proveSizes(z => garmentPattern(p, z), z => measurementsFor(p, z), t.style, SIZES); sN += sizes.length; sOk += sizes.filter(z => z.ok).length;
   gN++; if (c.ok) gOk++; seamsN += c.seams.filter(s => s.ok !== null).length; measN += c.meas.filter(s => s.ok !== null).length;
-  cards.push({ order: STYLES[t.style]?.kind === 'top' ? 0 : 1, html: proofCard({ id: t.id, label: t.label, style: STYLES[t.style]?.label || t.style, kind: STYLES[t.style].kind, pat, c, sizes }) });
+  const kd = STYLES[t.style].kind; cards.push({ order: kd === 'top' ? 0 : kd === 'bottom' ? 1 : 2, html: proofCard({ id: t.id, label: t.label, style: STYLES[t.style]?.label || t.style, kind: ['cap', 'beanie', 'tote'].includes(kd) ? 'acc' : kd, pat, c, sizes, size: one ? 'One size' : SIZE }) });
   json.push({ id: t.id, style: t.style, ok: c.ok, passed: c.passed, made: c.made, sizes: sizes.map(z => [z.size, z.ok]), yards: c.table.map(q => [q.fabric, q.yards, q.efficiency]) });
 }
 let bN = 0, bOk = 0;
 if (!STY.length || STY.includes('bag')) for (const t of BAG_TEMPLATES) { if (ONLY.length && !ONLY.includes(t.id)) continue;
   const [w, h, d] = String(t.size).match(/[\d.]+/g).map(Number), pat = bagPattern({ type: t.type, w, h, d }), c = constructionCheck(pat, { edges: true });
   bN++; if (c.ok) bOk++; seamsN += c.seams.filter(s => s.ok !== null).length; measN += c.meas.filter(s => s.ok !== null).length;
-  cards.push({ order: 2, html: proofCard({ id: t.id, label: t.label, style: `Bag · ${t.size}`, kind: 'bag', pat, c, sizes: [] }) });
+  cards.push({ order: 3, html: proofCard({ id: t.id, label: t.label, style: `Bag · ${t.size}`, kind: 'bag', pat, c, sizes: [] }) });
   json.push({ id: t.id, style: 'bag', ok: c.ok, passed: c.passed, made: c.made, yards: c.table.map(q => [q.fabric, q.yards, q.efficiency]) });
 }
 cards.sort((a, b) => a.order - b.order);

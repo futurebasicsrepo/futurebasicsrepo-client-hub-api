@@ -33,6 +33,10 @@ The repo has no CI workflow. `npm test` and `npm run pattern:proof` run where a 
    - tops: chest, length, shoulder, neck, sleeve
    - bottoms: waist, hip, rise, inseam, thigh, opening, sweep
    - bags: width, height, depth
+   - a six-panel cap: head size, crown height (read back off the panel), brim length at the centre front and brim width
+   - a bucket hat: head size at the brim seam, crown height, brim length
+   - a beanie: flat width and length; it must also be knitted 10 to 25% smaller round than a 22¾ in head
+   - a tote: width, height with the top turned back, handle drop and handle width
 4. **Clean outlines.** No cut piece crosses itself or has a corner sharper than 20°.
 5. **Everything it is made with.** Each feature calls for the parts and trims a factory needs (`missingComponents`):
    - every garment: labels and thread
@@ -44,6 +48,10 @@ The repo has no CI workflow. `npm test` and `npm run pattern:proof` run where a 
    - a hood: a lining, and a drawcord and eyelets if it has a channel
    - a lined body: its sleeve linings
    - a bra: elastic
+   - a cap: a top button, a back closure, eyelets, crown seam tape, front panel buckram, a brim board and a sweatband
+   - a beanie: its yarn
+   - a tote: its handles
+   - a one-size piece needs no size label
 6. **The cutting table.** Every piece is laid on its cloth at the cloth's width, nested by its outline (`layoutOf`). The table gives the yardage and how much of the cloth is used. No piece may be wider than its cloth.
 
 `finishGarment` in `src/lab-pattern.js` runs on every garment as it is drafted. It adds the components drafting has not. So a new product usually arrives complete, and the check confirms it.
@@ -92,14 +100,13 @@ A new kind of garment, a new pocket or collar, or a new add-on is not done until
 
 ## Other kinds of product
 
-The construction check covers garments and bags. The other kinds are drafted and checked their own way. Each is reached from the same Pattern or Engineering page and lands in the same factory package.
+The construction check covers garments, bags, and caps, bucket hats, beanies and totes. The other kinds are drafted and checked their own way. Each is reached from the same Pattern or Engineering page and lands in the same factory package.
 
 | Kind | Drafted by | Checked by | In the package |
 |---|---|---|---|
 | Footwear | `footwearPattern` (`src/lab-footwear.js`): the last, the size run, the upper flattened in pieces | `footwearChecks` checks the build: heel height against the style, toe spring under a high heel, a pointed toe on an athletic last, the collar against the ankle bone, a backless shoe's heel seat. It also lists the fitting sample and the tests (sole bond and others). The drawing is reviewed by `src/lab-shoe-review.js`. | The last (drawing and STL), the tech flats, every size as AAMA DXF |
 | Plush | `plushPattern`: the toy as its pieces | `plushChecks` checks safety for the age: safety eyes and small parts for under-3s, how the tail is sewn, chrome-free leather, pile at the seams, the law label. The toy is reviewed by `src/lab-plush-review.js`. | The tech sheet, the pattern, the fill weight |
 | Hard goods and electronics | `src/lab-assembly.js`: 3D parts, processes and tooling | `dfm`, per part: wall thickness for the resin, draft and undercuts, solid sections, clear parts, size against the press, food contact, and whether parts fit on and inside each other | Per-part 3D files, the BOM, tooling and cost |
-| Caps, beanies, totes | Their own drafting in `src/lab-pattern.js` | Not yet covered by the construction check | The pattern files |
 
 Bringing one of these under the construction check follows the steps above: label its blocks, walk its seams, measure it, list its components.
 

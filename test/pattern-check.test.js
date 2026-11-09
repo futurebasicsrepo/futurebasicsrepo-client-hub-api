@@ -13,7 +13,7 @@ const failsOf = c => [...c.seams, ...c.meas, ...c.table.map(q => ({ name: 'cut t
 test('every library garment, at every size, sews together and measures to its spec', () => {
   const bad = []; let n = 0;
   for (const t of FLAT_TEMPLATES) {
-    if (!['top', 'bottom'].includes(STYLES[t.style]?.kind)) continue;
+    if (!['top', 'bottom', 'cap', 'beanie', 'tote'].includes(STYLES[t.style]?.kind)) continue;
     const p = fitToTemplate({ ...defaultParams(t.style), template: t.id });
     for (const size of SIZES) {
       const pat = garmentPattern(p, size); if (!pat?.block) continue; n++;
@@ -52,4 +52,18 @@ test('every bag sews together and is the size it says', () => {
     const [w, h, d] = String(t.size).match(/[\d.]+/g).map(Number), c = constructionCheck(bagPattern({ type: t.type, w, h, d }));
     assert.ok(c.ok, `${t.id}: ${failsOf(c).join('; ')}`);
   }
+});
+
+test('caps, bucket hats, beanies and totes: seams walked, sized to spec, with what they are made with', () => {
+  for (const style of Object.keys(STYLES).filter(k => ['cap', 'beanie', 'tote'].includes(STYLES[k].kind))) {
+    const p = defaultParams(style), pat = garmentPattern(p), c = constructionCheck(pat, { m: measurementsFor(p, pat.size), style });
+    assert.ok(c.ok && c.made >= 4, `${style}: ${failsOf(c).join('; ')}`);
+  }
+  const cap = garmentPattern(defaultParams('cap')), cc = constructionCheck(cap, { m: defaultParams('cap').m, style: 'cap' });
+  assert.ok(['Crown seams: panel to panel', 'Brim onto the crown', 'Sweatband round the head opening', 'Brim board inside the brim'].every(n => cc.seams.some(s => s.name === n && s.ok)));
+  assert.ok(['Top button', 'Back closure', 'Embroidered eyelets', 'Crown seam tape'].every(i => cap.trims.some(t => t.item === i)) && !cap.trims.some(t => t.item === 'Size label'), 'a one-size cap: its button, closure, eyelets and seam tape, no size label');
+  // a brim cut a size too wide, or a tote cut without its turn-backs, is caught
+  const wide = constructionCheck(cap, { m: { ...defaultParams('cap').m, brimWidth: 8.5 }, style: 'cap' }); assert.ok(!wide.ok && wide.meas.some(x => x.name === 'Brim width' && !x.ok));
+  const tp = defaultParams('tote'), tote = structuredClone(garmentPattern(tp)), body = tote.pieces.find(q => q.id === 'body'); body.sew = body.sew.map(([x, y]) => [x, y > 1 ? y - 3 : y]);
+  assert.ok(constructionCheck(tote, { m: tp.m, style: 'tote' }).meas.some(x => /Height/.test(x.name) && !x.ok), 'a tote cut without its turn-backs comes out short');
 });

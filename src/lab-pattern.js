@@ -750,17 +750,24 @@ function bottomPieces(S, m, o, style) {
 function capPieces(S, m, o) {
   const pieces = [];
   if (S.bucket) {
-    const C = 23, r = C / (2 * Math.PI), bandH = m.crownHeight + .25, flare = .75, brim = m.brimLength;
+    // the head opening (23 in, one size) is the band's foot, where the brim is sewn; the band narrows by its flare to the crown, whose oval is
+    // solved to the band's top; the brim's inner edge is the band's foot (src/lab-pattern-check.js walks each seam)
+    const C = 23, bandH = m.crownHeight, flare = .75, brim = m.brimLength, topC = C - 4 * flare;
+    let r = topC / (2 * Math.PI); for (let k = 0; k < 6; k++) r *= topC / lenOf([...ellipse(r * 1.08, r * .92, 48), ellipse(r * 1.08, r * .92, 48)[0]]);
     // seen from the front, as its sketch draws it: the band, a little wider at the brim; the crown's top a thin edge above it; the brim
     // sloping down and out all round
     const wt = C / Math.PI * .98, wb = wt + flare * 1.2, h = m.crownHeight, bo = brim * .78, bd = brim * .62, sp = (pts, n = 6) => pts, top = Array.from({ length: 13 }, (_, k) => { const a = Math.PI + k / 12 * Math.PI; return [Math.cos(a) * wt / 2, -h + Math.sin(a) * .35]; });
     void sp;
     pieces.push(piece('crown', 'Crown top', ellipse(r * 1.08, r * .92, 48), { cut: 2, notes: ['Outer and lining'], shown: [...top, ...top.slice().reverse().map(([x, y]) => [x, -h + (-h - y) * -.4 - .0])], place: { view: 'front', x: 0, y: 0, z: 1 } }));
-    pieces.push(piece('band', 'Side band', [[0, 0], [C / 2, 0], [C / 2 + flare, bandH], [-flare, bandH]], { cut: 4, notes: ['Two halves, outer and lining'], shown: [[-wt / 2, -h], [wt / 2, -h], [wb / 2, 0], [-wb / 2, 0]], place: { view: 'front', x: 0, y: 0, z: 0 } }));
-    pieces.push(piece('brim', 'Brim', [[0, 0], [C / 2, 0], [C / 2 + 3, brim], [-3, brim]], { cut: 4, notes: ['Two halves, top and under; rows of topstitching every ¼ in'], shown: [[-wb / 2, 0], ...tail(cubic([-wb / 2, 0], [-wb * .2, .25], [wb * .2, .25], [wb / 2, 0])), [wb / 2 + bo, bd], ...tail(cubic([wb / 2 + bo, bd], [wb * .3, bd + .9], [-wb * .3, bd + .9], [-wb / 2 - bo, bd]))], place: { view: 'front', x: 0, y: 0, z: 2 } }));
+    const bandP = [[flare, 0], [C / 2 - flare, 0], [C / 2, bandH], [0, bandH]], brimP = [[0, 0], [C / 2, 0], [C / 2 + 3, brim], [-3, brim]];
+    pieces.push(piece('band', 'Side band', bandP, { cut: 4, notes: ['Two halves, outer and lining'], shown: [[-wt / 2, -h], [wt / 2, -h], [wb / 2, 0], [-wb / 2, 0]], place: { view: 'front', x: 0, y: 0, z: 0 } }));
+    pieces.push(piece('brim', 'Brim', brimP, { cut: 4, notes: ['Two halves, top and under; rows of topstitching every ¼ in'], shown: [[-wb / 2, 0], ...tail(cubic([-wb / 2, 0], [-wb * .2, .25], [wb * .2, .25], [wb / 2, 0])), [wb / 2 + bo, bd], ...tail(cubic([wb / 2 + bo, bd], [wb * .3, bd + .9], [-wb * .3, bd + .9], [-wb / 2 - bo, bd]))], place: { view: 'front', x: 0, y: 0, z: 2 } }));
+    pieces.block = { crown: { sew: tidy(ellipse(r * 1.08, r * .92, 48)), at: {} }, band: { sew: tidy(bandP), at: { t0: bandP[0], t1: bandP[1], b1: bandP[2], b0: bandP[3] } }, brim: { sew: tidy(brimP), at: { i0: brimP[0], i1: brimP[1], o1: brimP[2], o0: brimP[3] } } };
     return pieces;
   }
-  const C = 22.75 + (m.crownWidth - 8.5) * 2, base = C / 6, ph = m.crownHeight * 1.42;
+  // the crown's six panels, each as long from the band to the button as a quarter of the dome (the head's round, the crown's height) is
+  // around: solved, not guessed (src/lab-pattern-check.js measures the crown height back off the panel)
+  const C = 22.75 + (m.crownWidth - 8.5) * 2, base = C / 6, qa = C / (2 * Math.PI), qb = m.crownHeight, ph = Math.PI / 4 * (3 * (qa + qb) - Math.sqrt((3 * qa + qb) * (qa + 3 * qb)));
   const panel = [[-.12, 0], [.12, 0], ...tail(cubic([.12, 0], [base * .36, ph * .2], [base * .52, ph * .6], [base / 2, ph])), [-base / 2, ph], ...tail(cubic([-base / 2, ph], [-base * .52, ph * .6], [-base * .36, ph * .2], [-.12, 0])).slice(0, -1)];
   // on the product every panel hangs from the button at the top of the crown, turned out round it: the fronts a little, the sides further
   const PANELS = [['front', 'Front panel', 'Fused with buckram for structure', 13, 1], ['side', 'Side panel', 'One embroidered eyelet', 38, 0], ['back', 'Back panel', 'The back opening (2¼ × 1½ in) cut from the bottom edge', 13, 1]];
@@ -772,13 +779,25 @@ function capPieces(S, m, o) {
     const view = id === 'back' ? 'back' : 'front', at = { view, x: 0, y: 0, z };
     pieces.push(piece(`panel-${id}`, nm, panel, { cut: 2, pair: true, notes: [note], shown: SEEN[id], place: at }), { ...twin(`panel-${id}-2`, nm, panel, { ...at, flip: true }), shown: SEEN[id] });
   }
-  const bw = m.brimWidth / 2, bl = m.brimLength, inner = C * .19;
-  const brim = [...cubic([-inner, 0], [-inner * .4, -.55], [inner * .4, -.55], [inner, 0]), ...tail(cubic([inner, 0], [bw + .4, bl * .25], [bw * .7, bl * 1.05], [0, bl])), ...tail(cubic([0, bl], [-bw * .7, bl * 1.05], [-bw - .4, bl * .25], [-inner, 0])).slice(0, -1)];
+  // the brim: its inner edge across the two front panels and onto the sides; its width and its length at the centre front (from the seam to
+  // the edge) to the spec
+  // (the inner and outer edges meet at the brim's widest points, so its inner edge spans the brim's width)
+  // its inner edge bowed until it runs across the two front panels and an eighth of each side panel (src/lab-pattern-check.js walks it)
+  const inner = m.brimWidth / 2, arcOf = c => lenOf(cubic([-inner, 0], [-inner * .4, c], [inner * .4, c], [inner, 0])), want = base * 2.25;
+  let c0 = -3, c1 = 0; for (let k = 0; k < 40; k++) { const c = (c0 + c1) / 2; if (arcOf(c) > want) c0 = c; else c1 = c; } const cb = (c0 + c1) / 2, bow = cb * .75, bl = m.brimLength + bow;
+  const brimOf = (iw, y0, tip) => [...cubic([-iw, y0], [-iw * .4, y0 + cb], [iw * .4, y0 + cb], [iw, y0]), ...tail(cubic([iw, y0], [iw, y0 + (tip - y0) * .35], [iw * .7, tip + (tip - y0) * .05], [0, tip])), ...tail(cubic([0, tip], [-iw * .7, tip + (tip - y0) * .05], [-iw, y0 + (tip - y0) * .35], [-iw, y0])).slice(0, -1)];
+  // the board: the brim ¼ in in from its edge all round, its two points (where the brim narrows to nothing) left out
+  const brim = brimOf(inner, 0, bl), clear = (p, P) => Math.min(...P.map((a, i) => { const b = P[(i + 1) % P.length], dx = b[0] - a[0], dy = b[1] - a[1], t = Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / (dx * dx + dy * dy || 1))); return Math.hypot(p[0] - a[0] - t * dx, p[1] - a[1] - t * dy); }));
+  const inBrim = ([x, y]) => { let c = false; for (let i = 0, j = brim.length - 1; i < brim.length; j = i++) { const [xi, yi] = brim[i], [xj, yj] = brim[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) c = !c; } return c; };
+  const board = offsetOf(tidy(brim), -.25).filter(p => inBrim(p) && clear(p, brim) > .2);
   // the brim from the front: a visor, as wide as the brim, curving down below the crown
-  const visor = [[-bw * .78, -.05], ...tail(cubic([-bw * .78, -.05], [-bw * .3, -.3], [bw * .3, -.3], [bw * .78, -.05])), ...tail(cubic([bw * .78, -.05], [bw * .95, .5], [bw * .4, bl * .36], [0, bl * .36])), ...tail(cubic([0, bl * .36], [-bw * .4, bl * .36], [-bw * .95, .5], [-bw * .78, -.05])).slice(0, -1)];
+  const bw = m.brimWidth / 2, visor = [[-bw * .78, -.05], ...tail(cubic([-bw * .78, -.05], [-bw * .3, -.3], [bw * .3, -.3], [bw * .78, -.05])), ...tail(cubic([bw * .78, -.05], [bw * .95, .5], [bw * .4, bl * .36], [0, bl * .36])), ...tail(cubic([0, bl * .36], [-bw * .4, bl * .36], [-bw * .95, .5], [-bw * .78, -.05])).slice(0, -1)];
   pieces.push(piece('brim', 'Brim', brim, { cut: 2, notes: ['Top and under, over a board insert; 8 rows of stitching'], shown: visor, place: { view: 'front', x: 0, y: 0, z: 3 } }));
-  pieces.push({ ...piece('brim-board', 'Brim board', offsetOf(tidy(brim), -.25), { fabric: 'board', cut: 1, notes: ['0.8 mm plastic board'], hidden: true, shown: visor, place: { view: 'front', x: 0, y: 0, z: 2 }, sa: 0 }) });
-  pieces.push(piece('sweatband', 'Sweatband', rect(r8(C), 1.25), { fabric: 'self', cut: 1, notes: ['Cotton or moisture-wicking tape; the main label sewn at the centre back'], hidden: true, shown: [[-Wd / 2 + .2, -1], [Wd / 2 - .2, -1], [Wd / 2 - .2, -.2], [-Wd / 2 + .2, -.2]], place: { view: 'back', x: 0, y: 0, z: -1 }, sa: 0 }));
+  pieces.push({ ...piece('brim-board', 'Brim board', board, { fabric: 'board', cut: 1, notes: ['0.8 mm plastic board'], hidden: true, shown: visor, place: { view: 'front', x: 0, y: 0, z: 2 }, sa: 0 }) });
+  pieces.push(piece('sweatband', 'Sweatband', rect(r8(C - 2.25 + 1), 1.25), { fabric: 'self', cut: 1, notes: ['Cotton or moisture-wicking tape; the main label sewn at the centre back'], hidden: true, shown: [[-Wd / 2 + .2, -1], [Wd / 2 - .2, -1], [Wd / 2 - .2, -.2], [-Wd / 2 + .2, -.2]], place: { view: 'back', x: 0, y: 0, z: -1 }, sa: 0 }));
+  // the front panels' buckram, the brim's board inside it; the block the check walks: a panel (the button at its top, the band at its foot) and the brim
+  pieces.push(piece('front-buckram', 'Front panel buckram', panel, { fabric: 'fusing', cut: 2, pair: true, hidden: true, notes: ['Fused buckram, so the front stands'], place: { view: 'front', x: 0, y: 0, z: 0 } }));
+  pieces.block = { panel: { sew: tidy(panel), at: { tl: [-.12, 0], tr: [.12, 0], br: [base / 2, ph], bl: [-base / 2, ph] } }, brim: { sew: tidy(brim), at: { i0: [-inner, 0], i1: [inner, 0], tip: [0, bl] }, bow } };
   return pieces;
 }
 function beaniePieces(m) {
@@ -786,7 +805,8 @@ function beaniePieces(m) {
 }
 function totePieces(m) {
   const w = m.width, H = m.height, hl = r8(m.handleDrop * 2 + 3);
-  return [piece('body', 'Body', [[0, 0], [w, 0], [w, H * 2], [0, H * 2]], { cut: 1, notes: ['Folded at the bottom; side seams French-seamed', '1½ in turn-back at the top'], place: { view: 'front', x: -w / 2, y: 0 } }),
+  // one piece, folded at the bottom: twice the height, and 1½ in at each top edge to turn back
+  return [piece('body', 'Body', [[0, 0], [w, 0], [w, H * 2 + 3], [0, H * 2 + 3]], { cut: 1, notes: ['Folded at the bottom; side seams French-seamed', '1½ in turn-back at the top'], place: { view: 'front', x: -w / 2, y: 0 } }),
     piece('handle', 'Handle', rect(hl, r8(m.handleWidth * 4)), { cut: 2, notes: ['Folded in four and edge-stitched; box-stitched to the body'], place: { view: 'front', x: -w * .45, y: -m.handleDrop, z: 1 } })];
 }
 
@@ -795,13 +815,19 @@ function totePieces(m) {
 // fly's zip and waist button and a fixed waistband's fusing; a skirt's zip; the fusing on a woven collar, stand, cuff and placket; a shirt's
 // sleeve plackets; a hood's lining and its drawcord; a placket's buttons; a bra's elastics. src/lab-pattern-check.js (missingComponents)
 // holds every garment to the same list.
-function finishGarment(pieces, trims, { style, kind, m, K, knit }) {
+function finishGarment(pieces, trims, { style, kind, m, K, knit, oneSize = false }) {
   const has = re => trims.some(t => re.test(t.item)), get = id => pieces.find(q => q.id === id && q.cut), add = (...q) => pieces.push(...q), T = (...t) => trims.push(...t);
   const fuse = (q, name, sew = q.sew) => piece(q.id + '-fuse', name, sew, { fabric: 'fusing', cut: q.cut, pair: q.pair, fold: q.fold, hidden: true, notes: [`Fused to the ${q.name.toLowerCase()}`], place: { ...q.place, z: (q.place?.z || 0) - 1 } });
-  const swim = ['swimsuit', 'bikini'].includes(style), lab = kind === 'bottom' ? 'Centre back waistband, inside' : swim ? 'Left side seam, inside, 2 in above the leg' : 'Centre back neck, inside';
+  const swim = ['swimsuit', 'bikini'].includes(style), lab = kind === 'bottom' ? 'Centre back waistband, inside' : swim ? 'Left side seam, inside, 2 in above the leg' : kind === 'cap' ? 'Sweatband (or inside band), centre back' : kind === 'beanie' ? 'On the cuff, at the back seam' : kind === 'tote' ? 'Inside, below the top turn-back at one side seam' : 'Centre back neck, inside';
   if (!has(/^Main label$/)) T({ item: 'Main label', spec: swim || ['bra', 'leggings', 'bodysuit'].includes(style) ? 'Printed (heat transfer), tagless' : 'Woven, folded end', qty: 1, where: lab });
-  if (!has(/^Size label$/)) T({ item: 'Size label', spec: swim || ['bra', 'leggings', 'bodysuit'].includes(style) ? 'Printed with the main label' : 'Woven', qty: 1, where: 'With the main label' });
-  if (!has(/^Care and content label$/)) T({ item: 'Care and content label', spec: 'Printed satin, fibre content, care symbols and country of origin', qty: 1, where: kind === 'bottom' ? 'Left side seam, inside, 3 in below the waistband' : 'Left side seam, inside, 4 in above the hem' });
+  if (!has(/^Size label$/) && !oneSize) T({ item: 'Size label', spec: swim || ['bra', 'leggings', 'bodysuit'].includes(style) ? 'Printed with the main label' : 'Woven', qty: 1, where: 'With the main label' });
+  if (!has(/^Care and content label$/)) T({ item: 'Care and content label', spec: 'Printed satin, fibre content, care symbols and country of origin', qty: 1, where: kind === 'bottom' ? 'Left side seam, inside, 3 in below the waistband' : kind === 'cap' ? 'Inside, on the sweatband or a crown seam' : kind === 'beanie' ? 'Linked into the back seam, inside' : kind === 'tote' ? 'Side seam, inside' : 'Left side seam, inside, 4 in above the hem' });
+  // headwear and a tote: what each is closed and finished with
+  if (style === 'cap') { if (!has(/top button/i)) T({ item: 'Top button', spec: 'Fabric-covered metal button (squatchee), 18 mm', qty: 1, where: 'Crown, where the six panels meet' });
+    if (!has(/strap|snap|buckle|closure/i)) T({ item: 'Back closure', spec: 'Plastic 7-position snap strap (or a cloth strap and metal slide buckle)', qty: 1, where: 'Back opening' });
+    if (!has(/eyelet/i)) T({ item: 'Embroidered eyelets', spec: '6 mm, in the panel colour', qty: 6, where: 'One on each panel, 2 in below the button' });
+    if (!has(/seam tape/i)) T({ item: 'Crown seam tape', spec: '½ in cotton herringbone, printed optional', qty: `${r8(6 * (lenOf((pieces.find(q => q.id === 'panel-front') || {}).sew || []) / 2 || 6.5) + 23)} in`, where: 'Over the six crown seams and the brim seam, inside' }); }
+  if (style === 'beanie' && !has(/yarn/i)) T({ item: 'Yarn', spec: '2/28 Nm acrylic (or merino), knitted 1×1 rib, 7 gauge', qty: `about ${Math.round((m.width * 2) * (m.height + m.cuff) * .0254 * .0254 * 2 * 300)} g`, where: 'The body, doubled at the cuff' });
   if (!has(/^Thread$/)) { // about a garment's thread: its seams (half the cut edges) times what each stitch takes, an overlock 14×, a lockstitch 2½×, a cover 18× on hems
     const seamIn = pieces.filter(q => q.cut && q.fabric !== 'fusing').reduce((a, q) => a + lenOf([...q.sew, q.sew[0]]) * q.cut / 2, 0), metres = Math.round(seamIn * .0254 * (knit ? 12 : 5) / 10) * 10;
     T({ item: 'Thread', spec: knit ? 'Tex 27 spun polyester for overlock and coverstitch; Tex 40 for lockstitch' : 'Tex 40 core-spun polyester for seams; Tex 60 for topstitching', qty: `about ${metres} m`, where: 'Throughout' }); }
@@ -834,7 +860,7 @@ export function garmentPattern(p, size = p.size || 'M') {
   const K = constructionOf(p), m = measurementsFor(p, size), o = { ...(p.options || {}), template: p.template, K };
   const pieces = S.kind === 'top' ? topPieces(S, m, o, p.style) : S.kind === 'bottom' ? bottomPieces(S, m, o, p.style) : S.kind === 'cap' ? capPieces(S, m, o) : S.kind === 'beanie' ? beaniePieces(m) : totePieces(m), trims = pieces.trims || []; const block = pieces.block || null;
   const knit = ['tee', 'longsleeve', 'crewneck', 'hoodie', 'ziphoodie', 'tank', 'bodysuit', 'swimsuit', 'bikini', 'bra', 'leggings', 'beanie'].includes(p.style);
-  if (S.kind === 'top' || S.kind === 'bottom') finishGarment(pieces, trims, { style: p.style, kind: S.kind, m, K, knit });
+  finishGarment(pieces, trims, { style: p.style, kind: S.kind, m, K, knit, oneSize: Boolean(S.oneSize) });
   return { kind: 'garment', style: p.style, label: S.label, size: S.oneSize ? 'One size' : size, sa: knit ? .375 : .5, construction: K, pieces: pieces.map(q => (q.sew ? { ...q, sew: tidy(q.sew) } : q)) /* every outline cut clean, however it was built */, trims, ...(block && Object.keys(block).length ? { block } : {}), notes: [knit ? 'Knit: ⅜ in seam allowance, overlocked' : 'Woven: ½ in seam allowance', 'A first block from the measurements: true it up on the first sample'] };
 }
 
