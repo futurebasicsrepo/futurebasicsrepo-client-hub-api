@@ -370,6 +370,7 @@ if(EMBED)window.FBFlats={refresh:()=>{if(!DIRTY.size)load().catch(()=>{})},dirty
   tool:t=>{TOOL=t||'select';document.body.dataset.tool=TOOL;if(TOOL!=='pen'&&PEN){PEN=null;liveClear()}draw();paintHint();paintRing()},
   level:()=>{},zoom:()=>ZM[VIEW]?.z||1,
   addGraphic:(id,name)=>addGraphic(id,name),act:a=>act(a),
+  tools:()=>['select','node','hand','fill','pick','liquify','warp','brush','line','rect','ellipse','pen','text','eraser'], // what the Studio's palette leaves undimmed here
   sheet:()=>openSheet(),deco:()=>toast('Place a logo or graphic on the drawing from the panel: Graphics, Add from the library.'),pack:()=>toPack(),canPack:()=>false,unsupported:()=>'',
   placements:()=>[],saved:()=>DIRTY.size===0,select:()=>{},check:()=>({saved:DIRTY.size===0}),
   undo:()=>$('#undo').click(),redo:()=>$('#redo').click(),canUndo:()=>HIST.length>0,canRedo:()=>FUT.length>0,marks:()=>({undo:HIST.length,redo:FUT.length})};

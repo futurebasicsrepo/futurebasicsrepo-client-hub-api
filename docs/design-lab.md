@@ -270,7 +270,23 @@ The Lab installs as its own home-screen app (`/lab.webmanifest`: standalone, ope
 
 The flats zoom too: two fingers pinch and move them, one finger moves them once zoomed (a placement under the finger still drags), Ctrl and the wheel zoom on a computer, and **Fit** shows the whole piece again. A pinch that starts while a placement is being dragged puts it back where it was. On Design, and on any console page on a touch screen narrower than a desktop, the console menu starts folded to its icons (a person's own choice is kept). Installed, exports (the picture, a layer, the Illustrator SVG, the stitch file, the separations) open in the app's sheet with Share and Save rather than as a download that leaves the app.
 
-**Room to draw.** **Panel** (or `\`) folds the right-hand panel away, on the picture and on both flats, so the drawing takes the width. **Focus** (or `F`) hides the page header, the console menu and the Guide switch, and asks for full screen where the browser allows it. The drawing (the picture, a flat or the pattern) then takes the whole screen and everything else floats over it in Liquid Glass (frosted, translucent): the bar is a capsule along the top with the essentials (the views, the checklist, Save, More, Panel, Focus; More opens the rest; the steps, Undo and Redo, which are on the rail, step aside), the tool rail is a pill on the left, the tool's options a capsule under the bar, the panel a card on the right, and the zoom buttons, the size dock and, on the flats, their own size, measurements and zoom bar (a capsule at the foot) are glass too. The picture fits into the room the glass leaves. Side by side keeps its columns. Both are kept on the device for the next time Design opens, and a second press brings them back.
+**Room to draw.** **Panel** (or `\`) folds the right-hand panel away, on the picture and on both flats, so the drawing takes the width. **Focus** (or `F`) hides the page header, the console menu and the Guide switch, and asks for full screen where the browser allows it. The drawing (the picture, a flat or the pattern) then takes the whole screen and everything else floats over it in Liquid Glass (frosted, translucent): the bar is a capsule along the top with the essentials (the views, the checklist, Save, More, Panel, Focus; More opens the rest; the steps, Undo and Redo, which are on the rail, step aside), the tool rail is the tool palette (below), the tool's options a capsule under the bar, the panel a card on the right, and the zoom buttons, the size dock and, on the flats, their own size, measurements and zoom bar (a capsule at the foot) are glass too. The picture fits into the room the glass leaves. Side by side keeps its columns. Both are kept on the device for the next time Design opens, and a second press brings them back.
+
+**The tool palette** (`src/lab-studio-palette.js`, Focus only). In Focus the rail becomes a palette like a notes app's pencil case, the same
+on the picture, a garment's flats and a bag's or a shoe's drawing:
+- **Open**, it is one dark glass dock: Undo and Redo, then every tool laid out in the rail's groups (none hidden in a group, so Polygon,
+  Star, Distress, Width, Measure and the rest are each one tap), the tool in hand lifted, a coloured tip on the tools that draw in the
+  colour, and the size on the brush, the eraser, Distress and Liquify; then the colours (the last used, black, white and the brand's) and
+  any colour; then a menu.
+- **Where it sits**: drag it by its handle to the top (the default, under the options), the foot, the left or the right (on a side it stands
+  upright); drop it in a corner, or choose Shrink in its menu, and it **shrinks to one round button** showing the tool in hand and its
+  colour. Tap the button to open it again. Where it sits and whether it is shrunk are kept on the device.
+- **On a bag's or a shoe's drawing** the tools that work only on the picture (the AI area, Distress, the ruler…) are dimmed and say so.
+- It is the rail underneath: a tool or colour picked on the palette is the Studio's, with its options bar and size dock as before. The
+  menu's **What each tool does** lists every tool with a line on what it does.
+
+Outside Focus the rail stays as it is; with its names shown (the list button at its top) it lists every tool, not only the one in front of
+each group. Journey J294.
 
 **On the flats**, two fingers on a graphic resize it about its centre, keeping its shape (anywhere else they zoom the flat). What is drawn on a flat covers the whole window, not only the garment's frame: the drawing spans all the window shows at full view, and an older, smaller drawing grows to the window before the next stroke, keeping what is on it.
 

@@ -4845,6 +4845,39 @@ await journey('J293', 'A bag or shoe drawn in panels takes the Studio\'s tools: 
   } finally { await b.close(); if (cid) await K(`/concepts/${cid}`, { method: 'DELETE' }); }
 });
 
+await journey('J294', 'The tool palette in Focus: the rail becomes one glass dock with every tool laid out (none hidden in a group), the one in hand lifted; a tool and a colour picked there are the Studio\'s; it docks on any edge, shrinks to a button and opens again; on a bag\'s drawing the tools that work only on the picture are dimmed; outside Focus the rail is back, and with its names shown it lists every tool', async () => {
+  if (!playwright) { ok(true, 'skipped: no browser here'); return; }
+  const made = await K('/concepts/from-library-bag', { body: { template: 'bag-tote' } }), cid = made.json.concept?.id;
+  const b = await playwright.chromium.launch(), errs = [];
+  try {
+    const ctx = await b.newContext({ viewport: { width: 1366, height: 1024 }, hasTouch: true });
+    await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); localStorage.setItem('fb.helper.on', '0'); localStorage.setItem('fb.design.level', 'pro'); localStorage.setItem('fb.studio.names', '0'); localStorage.setItem('fb.design.layout', JSON.stringify({ panel: true, focus: true })); } catch {} }, kyleT);
+    const page = await ctx.newPage(); page.on('pageerror', e => errs.push(String(e)));
+    await page.goto(`${BASE}/lab/studio?concept=${cid}&view=picture`, { waitUntil: 'load' }); await page.waitForFunction(() => window.PALETTE && typeof TOOL === 'string', null, { timeout: 30000 }); await page.waitForTimeout(400);
+    const n = await page.evaluate(() => ({ rail: document.querySelectorAll('.rail button[data-tool]').length, pal: document.querySelectorAll('#palette [data-pt]').length, railShown: getComputedStyle(document.querySelector('.rail')).display !== 'none', shown: !document.querySelector('#palette').hidden }));
+    ok(n.shown && !n.railShown && n.pal === n.rail && n.pal >= 20, '1. in Focus the rail becomes the palette, with every one of its tools', n);
+    await page.locator('#palette [data-pt=ellipse]').click(); await page.waitForTimeout(400); ok(await page.evaluate(() => TOOL) === 'ellipse' && await page.locator('#palette [data-pt=ellipse][aria-pressed=true]').count() === 1, '2. a tool picked there is the Studio\'s tool, and is lifted');
+    await page.locator('#palette [data-pt=star]').click(); ok(await page.evaluate(() => TOOL) === 'star', '   a tool the rail keeps in a group (the star) is right there too');
+    await page.locator('#palette [data-psw="#ffffff"]').click(); ok(await page.evaluate(() => CUR.toLowerCase()) === '#ffffff', '3. a colour picked there is the Studio\'s colour');
+    await page.locator('#palette [data-pa=more]').click(); await page.locator('#palMenu [data-pm=left]').click(); await page.waitForTimeout(150);
+    ok(await page.evaluate(() => document.querySelector('#palette').dataset.dock) === 'left', '4. it docks on the left (standing upright)');
+    await page.evaluate(() => PALETTE.shrink()); await page.waitForTimeout(150);
+    ok(await page.evaluate(() => document.querySelector('#palette').hidden && !document.querySelector('#palPin').hidden), '5. it shrinks to one button showing the tool in hand');
+    await page.locator('#palPin').click(); await page.waitForTimeout(150); ok(await page.evaluate(() => !document.querySelector('#palette').hidden), '   and opens again from it');
+    await page.evaluate(() => PALETTE.dock('top'));
+    await page.locator('#viewSeg [data-v=front]').click().catch(() => page.evaluate(() => setVMode('front')));
+    await page.frameLocator('#flatFrame').locator('#art .panels path').first().waitFor({ timeout: 20000 }); await page.waitForTimeout(500);
+    const dim = await page.evaluate(() => [...document.querySelectorAll('#palette .pal-na')].map(x => x.dataset.pt));
+    ok(dim.includes('area') && !dim.includes('liquify') && !dim.includes('brush'), '6. on the bag\'s drawing the tools for the picture only are dimmed, Liquify and the brush are not', dim);
+    await page.click('#focusBtn'); await page.waitForTimeout(300);
+    ok(await page.evaluate(() => document.querySelector('#palette').hidden && getComputedStyle(document.querySelector('.rail')).display !== 'none'), '7. outside Focus the rail is back');
+    await page.click('#railNames'); await page.waitForTimeout(300);
+    const grouped = await page.evaluate(() => [...document.querySelectorAll('.rail button[data-tool].tg-off')].map(x => ({ t: x.dataset.tool, shown: Boolean(x.offsetParent) })));
+    ok(grouped.length > 0 && grouped.every(x => x.shown), '8. with its names shown the rail lists every tool, none hidden in a group', grouped);
+    ok(!errs.length, '9. no page errors', errs.slice(0, 3));
+  } finally { await b.close(); if (cid) await K(`/concepts/${cid}`, { method: 'DELETE' }); }
+});
+
 await journey('J292', 'Footwear: a shoe from the library, listed by type, opens in the Studio as its drawing in panels in the colour picked, its pattern drafted in the library shoe\'s style; the Sketch library shows shoes by type; a bag cannot take a library shoe', async () => {
   const lib = (await K('/library/footwear')).json.footwear || [];
   ok(lib.length >= 1 && lib.every(s => s.group && s.label && s.views.includes('lateral')), '1. the library lists shoes, each with its type and its outside view', lib.map(s => s.id));
