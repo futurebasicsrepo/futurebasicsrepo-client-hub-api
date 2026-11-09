@@ -999,6 +999,20 @@ garment's seam allowance and cloth width, are kept in `lab_patterns` (`GET|PUT /
 A pattern from the Lab is a **first block from the measurements**: a pattern maker trues it up on the first sample. Toys and objects (tooling) and
 electronics (the engineering) say so on the Pattern view: they come next, one at a time.
 
+## The line plan page
+
+An open plan (`drawPlan` in `src/lab.html`) is laid out as Liquid Glass over a slow field of colour: the plan's name, season and actions; its
+totals (they count up when the plan opens); a bar that stays under the tabs as you scroll, with the plan's sections (Pieces, Price ladder,
+Graphic program, Across the range) and, while anything is being made, a pill that says so and jumps to it; then each piece as a card, its
+role shown by the stripe down its side, its price, cost, margin (with a bar, green at 65% and up) and quantity, and its actions.
+
+**Make concepts says where it is on the piece's own card**, from the press until the concepts are on the board: the step it is probably on
+(design, draw, check, from the usual timings, since the service only says running or done), the time so far and a bar. The request asks for
+the work at once (`?wait=0`) and the job is kept in this browser (`fb.lab.making`), so leaving the page or reloading it picks the work up
+again. When it is done the card says how many concepts were made, with a link to them on the board, and a note rises at the bottom; the page
+does not jump away, so several pieces can be made at once. Before this the button showed a tick as soon as the request was accepted, while
+the work was still running further down the page. Journeys J197, J199 and J201.
+
 ## Footwear: the last, the size run, and the upper in pieces
 
 A footwear concept (`src/lab-footwear.js`, shared by the page and the service) starts from its style:

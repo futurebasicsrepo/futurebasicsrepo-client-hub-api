@@ -118,6 +118,111 @@ dialog.cd{border:0;border-radius:24px;padding:0;width:min(980px,96vw);max-height
 .cm{display:grid;gap:8px}.cm .c{border-top:1px solid var(--line);padding-top:6px;font-size:13px}.cm .c b{margin-right:6px}.cm .c time{color:var(--dim);font-size:12px}
 @media(max-width:700px){.cd .top{grid-template-columns:1fr}.cd .in{padding:16px}}
 @media(max-width:700px){.two{grid-template-columns:1fr}.grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.panel{padding:16px}}
+/* The line plan: Liquid Glass over a slow ambient field of colour, so the glass has something to bend */
+#planView{position:relative;isolation:isolate;--glass:linear-gradient(140deg,rgba(255,255,255,.78),rgba(255,255,255,.5));--rim:rgba(255,255,255,.8)}
+#planView:not(.hidden){margin-top:18px!important;border-top:0!important;padding-top:6px!important}
+.pv-amb{position:absolute;inset:-10px -10px 0;z-index:-1;pointer-events:none;overflow:hidden;border-radius:32px}
+.pv-amb i{position:absolute;border-radius:50%;filter:blur(46px);opacity:.8;animation:pvDrift 24s ease-in-out infinite alternate}
+.pv-amb i:nth-child(1){width:520px;height:420px;left:-120px;top:-80px;background:radial-gradient(circle,rgba(75,255,154,.5),transparent 68%)}
+.pv-amb i:nth-child(2){width:560px;height:460px;right:-140px;top:60px;background:radial-gradient(circle,rgba(125,156,255,.42),transparent 68%);animation-duration:29s;animation-delay:-9s}
+.pv-amb i:nth-child(3){width:480px;height:420px;left:34%;top:620px;background:radial-gradient(circle,rgba(240,164,58,.3),transparent 68%);animation-duration:33s;animation-delay:-15s}
+@keyframes pvDrift{to{transform:translate(70px,90px) scale(1.18)}}
+#planView .glass{background:var(--glass);-webkit-backdrop-filter:blur(22px) saturate(1.7);backdrop-filter:blur(22px) saturate(1.7);border:1px solid var(--rim);box-shadow:inset 0 1px 0 rgba(255,255,255,.95),0 0 0 1px rgba(20,20,22,.05),0 22px 44px -26px rgba(20,20,22,.4)}
+@keyframes pvIn{from{opacity:0;transform:translateY(14px) scale(.985)}}
+#planView.fresh .pv-hero,#planView.fresh .pv-stat,#planView.fresh .pc,#planView.fresh .pv-nav{animation:pvIn .6s cubic-bezier(.2,.8,.2,1) both;animation-delay:calc(var(--i,0)*45ms + 60ms)}
+.pv-hero{border-radius:30px;padding:22px 24px;display:grid;gap:12px}
+.pv-top{display:flex;gap:16px 24px;justify-content:space-between;align-items:flex-end;flex-wrap:wrap}
+.pv-eye{display:flex;gap:10px;align-items:center;flex-wrap:wrap;font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}
+.pv-st{display:inline-flex;align-items:center;gap:6px;padding:3px 10px 3px 8px;border-radius:999px;background:rgba(20,20,22,.06);color:var(--ink)}.pv-st i{width:7px;height:7px;border-radius:50%;background:#b7b7bd}
+.pv-st.ok{background:rgba(47,191,113,.14);color:var(--ok)}.pv-st.ok i{background:#2fbf71;box-shadow:0 0 8px #4bff9a}
+.pv-hero h2{margin:8px 0 4px;font-size:clamp(28px,3.6vw,44px);font-weight:500;letter-spacing:-.035em;line-height:1.02;text-wrap:balance;overflow-wrap:anywhere}
+.pv-brief{margin:0;color:#4a4a52;max-width:70ch}.pv-sum{margin:0;color:#4a4a52;max-width:80ch;font-size:13.5px}
+.pv-acts{display:flex;gap:2px;padding:4px;border-radius:999px;background:rgba(20,20,22,.06);flex-wrap:wrap}
+.pv-acts button{border:0;background:transparent;border-radius:999px;padding:8px 15px;font-weight:600;font-size:13px;cursor:pointer;color:var(--ink);transition:background .25s,box-shadow .25s,transform .2s}
+.pv-acts button:hover{background:rgba(255,255,255,.95);box-shadow:0 3px 12px -5px rgba(20,20,22,.35)}.pv-acts button:active{transform:scale(.96)}
+.pv-acts button.on{background:var(--ink);color:#fff}.pv-acts button:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.pv-hero .forcl{border-top:1px solid rgba(20,20,22,.08);padding-top:10px}
+#planView .tiles.pv-stats{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:10px;margin:14px 0}#planView .pv-stat{grid-column:span 3}#planView .pv-stat:nth-child(n+5){grid-column:span 4}
+@media (max-width:720px){#planView .tiles.pv-stats{grid-template-columns:repeat(2,minmax(0,1fr))}#planView .pv-stat,#planView .pv-stat:nth-child(n+5){grid-column:auto}#planView .pv-stat:last-child{grid-column:1/-1}}
+#planView .tile.pv-stat{border-radius:20px;padding:12px 14px;min-width:0}
+#planView .tile.pv-stat b{display:block;font-size:clamp(20px,2.2vw,26px);font-weight:500;letter-spacing:-.03em;font-variant-numeric:tabular-nums;white-space:nowrap}
+#planView .tile.pv-stat span{font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+#planView .tile.pv-stat.bad{background:linear-gradient(140deg,rgba(255,236,232,.85),rgba(255,255,255,.55))}#planView .tile.pv-stat.bad b{color:var(--bad)}
+.pv-notes{list-style:none;margin:0 0 14px;padding:12px 16px;border-radius:20px;display:grid;gap:6px;font-size:13px;color:#4a4a52}
+.pv-notes li{display:flex;gap:10px}.pv-notes li::before{content:"";flex:none;width:6px;height:6px;margin-top:7px;border-radius:50%;background:#7d9cff}
+.pv-nav{position:sticky;top:var(--pv-top,136px);z-index:8;display:flex;gap:2px;align-items:center;padding:5px;border-radius:999px;margin:0 0 6px;overflow-x:auto;scrollbar-width:none}
+.pv-nav::-webkit-scrollbar{display:none}
+.pv-nav a{white-space:nowrap;text-decoration:none;padding:8px 15px;border-radius:999px;font-weight:600;font-size:13px;color:var(--dim);transition:color .25s,background .25s,box-shadow .25s}
+.pv-nav a:hover{color:var(--ink)}.pv-nav a.on{color:var(--ink);background:#fff;box-shadow:0 3px 12px -5px rgba(20,20,22,.4)}
+.pv-busy{cursor:pointer;margin-left:auto;display:inline-flex;gap:8px;align-items:center;padding:7px 14px;border-radius:999px;background:var(--ink);color:#fff;font-size:12.5px;font-weight:600;white-space:nowrap;animation:pvIn .4s cubic-bezier(.2,.8,.2,1) both}
+.pv-busy i,.mkp .orb{flex:none;width:8px;height:8px;border-radius:50%;background:var(--cue);box-shadow:0 0 10px var(--cue);animation:pvPulse 1.3s ease-in-out infinite}
+@keyframes pvPulse{50%{transform:scale(1.5);opacity:.55}}
+.pv-sec{margin-top:22px;scroll-margin-top:calc(var(--pv-top,136px) + 64px)}
+.pv-card{border-radius:26px;padding:18px 20px}
+.pv-h{display:flex;align-items:baseline;gap:8px 14px;justify-content:space-between;flex-wrap:wrap;margin:0 0 12px}
+.pv-h h3{margin:0;font-size:22px;font-weight:500;letter-spacing:-.025em}
+.pv-legend{display:flex;gap:6px;flex-wrap:wrap}.pv-legend span{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;background:rgba(255,255,255,.7);border:1px solid var(--line);font-size:12px;font-weight:500}
+.pv-legend i{width:8px;height:8px;border-radius:3px;background:var(--rc)}.pv-legend b{font-weight:600;font-variant-numeric:tabular-nums}
+.pieces{display:grid;gap:10px}
+.pc{position:relative;border-radius:24px;padding:16px 18px 16px 26px;display:grid;grid-template-columns:minmax(0,1.3fr) minmax(250px,1.2fr) minmax(200px,.85fr);gap:14px 20px;align-items:start;transition:transform .35s cubic-bezier(.2,.8,.2,1),box-shadow .35s,opacity .3s}
+.pc::before{content:"";position:absolute;left:10px;top:16px;bottom:16px;width:4px;border-radius:4px;background:var(--rc);transition:background .3s}
+@media (hover:hover){.pc:hover{transform:translateY(-2px);box-shadow:inset 0 1px 0 #fff,0 0 0 1px rgba(20,20,22,.07),0 28px 50px -26px rgba(20,20,22,.5)}}
+.pc.dropped{opacity:.5}.pc.dropped::before{background:#d4d4d8}
+.pc .nm{width:100%;font-size:18px;font-weight:500;letter-spacing:-.015em;border:1px solid transparent;background:transparent;border-radius:12px;padding:4px 8px;margin:-4px 0 0 -9px;color:var(--ink);transition:border-color .2s,background .2s}
+.pc .nm:hover{border-color:var(--line)}.pc .nm:focus{outline:none;background:#fff;border-color:var(--ink)}
+.pc-meta{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 4px}
+.chipsel{appearance:none;-webkit-appearance:none;border:1px solid var(--line);background:rgba(255,255,255,.75) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23141416' stroke-width='1.4'/%3E%3C/svg%3E") no-repeat right 10px center;border-radius:999px;padding:5px 28px 5px 12px;font-size:12.5px;font-weight:600;cursor:pointer;color:var(--ink);max-width:100%}
+.chipsel.role{background-color:color-mix(in srgb,var(--rc) 16%,#fff);border-color:color-mix(in srgb,var(--rc) 45%,transparent)}
+.chipsel:focus-visible{outline:2px solid var(--ink);outline-offset:1px}
+.pc-why summary{cursor:pointer;color:#55555c;font-size:13px;list-style:none;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.pc-why summary::-webkit-details-marker{display:none}.pc-why summary::before{content:"▸ ";color:var(--dim)}.pc-why[open] summary::before{content:"▾ "}
+.pc-why[open] summary{display:block}.pc-why p{margin:6px 0;max-width:56ch;font-size:13px}.pc-why label{display:grid;gap:4px;margin-top:6px}
+.pc-why input{border:1px solid var(--line);border-radius:10px;padding:6px 9px;background:#fff;width:100%}
+.pc-warn{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.pc-mx{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.pc-mx .f{display:grid;gap:4px;align-content:start;min-width:0}
+.pc-mx .f>span{font:500 9.5px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);white-space:nowrap}
+.pc-mx input{width:100%;min-width:0;border:1px solid var(--line);border-radius:12px;padding:8px 10px;background:rgba(255,255,255,.85);font-size:15px;font-variant-numeric:tabular-nums;transition:border-color .2s,box-shadow .2s}
+.pc-mx input:focus{outline:none;border-color:var(--ink);box-shadow:0 0 0 3px rgba(75,255,154,.35)}
+.pc-mx .mg b{font-size:17px;font-weight:500;font-variant-numeric:tabular-nums;padding:6px 0 2px;white-space:nowrap}.pc-mx .mg em{font-style:normal;font-size:11px;color:var(--dim)}
+.mgbar{display:block;height:5px;border-radius:5px;background:rgba(20,20,22,.08);overflow:hidden}.mgbar>i{display:block;height:100%;border-radius:5px;background:#9a9aa2;transform-origin:left;transition:transform .8s cubic-bezier(.2,.8,.2,1)}
+.mg.good .mgbar>i{background:linear-gradient(90deg,#17a34a,#4bff9a)}.mg.good b{color:var(--ok)}.mg.low .mgbar>i{background:#e0754f}.mg.low b{color:var(--bad)}
+.pc-act{display:grid;gap:8px;align-content:start;min-width:0}
+.pc-row{display:flex;justify-content:space-between;align-items:center;gap:8px;min-height:30px}.pc-cc{font-weight:600;font-size:13px;text-decoration:none;border-bottom:1px solid currentColor}
+.pc-ic{display:inline-flex;gap:4px}.icb{border:1px solid var(--line);background:rgba(255,255,255,.7);border-radius:999px;padding:4px 11px;font-size:12px;font-weight:600;cursor:pointer;min-height:30px;transition:background .2s,border-color .2s}
+.icb:hover{background:#fff;border-color:var(--ink)}.icb.x{width:30px;padding:0;font-size:16px;line-height:1}.icb.x:hover{color:var(--bad);border-color:var(--bad)}
+.pc .mkrow{display:grid;gap:6px;align-items:stretch}.pc .scr>summary{width:100%;text-align:center;justify-content:center}
+.btn-make{position:relative;overflow:hidden;isolation:isolate;border:0;border-radius:999px;padding:11px 16px;min-height:44px;background:var(--ink);color:#fff;font-weight:600;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:transform .2s cubic-bezier(.3,1.4,.5,1),box-shadow .3s}
+.btn-make::before{content:"";position:absolute;inset:0;z-index:-1;background:linear-gradient(110deg,transparent 30%,rgba(75,255,154,.45) 50%,transparent 70%);background-size:250% 100%;background-position:120% 0;transition:background-position .9s ease}
+.btn-make:hover{box-shadow:0 10px 24px -10px rgba(23,163,74,.7)}.btn-make:hover::before{background-position:-120% 0}.btn-make:active{transform:scale(.96)}
+.btn-make .spark{color:var(--cue);font-size:13px}.btn-make:focus-visible{outline:2px solid var(--cue);outline-offset:2px}
+.pc.making{box-shadow:inset 0 1px 0 #fff,0 0 0 1.5px rgba(47,191,113,.7),0 24px 54px -24px rgba(23,163,74,.55)}
+.pc.making::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;background:linear-gradient(105deg,transparent 35%,rgba(75,255,154,.16) 50%,transparent 65%);background-size:260% 100%;animation:pvSweep 2.6s linear infinite}
+.pc.making::before{background:linear-gradient(180deg,#4bff9a,#17a34a);box-shadow:0 0 12px #4bff9a}
+@keyframes pvSweep{from{background-position:130% 0}to{background-position:-130% 0}}
+.mkp{display:grid;gap:8px;padding:12px 14px;border-radius:18px;background:rgba(20,20,22,.92);color:#fff;animation:pvIn .45s cubic-bezier(.2,.8,.2,1) both}
+.mkp-top{display:flex;align-items:center;gap:9px}.mkp-top b{font-size:13.5px;font-weight:600;flex:1;min-width:0}.mkp-top .mkt{font:500 12px 'IBM Plex Mono',monospace;opacity:.7;font-variant-numeric:tabular-nums}
+.mkp-bar{height:4px;border-radius:4px;background:rgba(255,255,255,.14);overflow:hidden}.mkp-bar i{display:block;height:100%;border-radius:4px;background:linear-gradient(90deg,#17a34a,#4bff9a);box-shadow:0 0 10px #4bff9a;transform-origin:left;transition:transform 1s linear}
+.mkp-steps{display:flex;gap:6px;margin:0;padding:0;list-style:none}.mkp-steps li{flex:1;text-align:center;padding:3px 0;border-radius:999px;font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.45);background:rgba(255,255,255,.06);transition:all .4s}
+.mkp-steps li.on{color:#141416;background:var(--cue)}.mkp-steps li.done{color:#4bff9a;background:rgba(75,255,154,.12)}
+.mkp .sub{color:rgba(255,255,255,.6);font-size:11.5px}
+.mkdone{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:16px;text-decoration:none;color:var(--ink);background:linear-gradient(135deg,rgba(75,255,154,.3),rgba(255,255,255,.7));border:1px solid rgba(47,191,113,.45);animation:pvDone 1.1s cubic-bezier(.2,.8,.2,1) both}
+.mkdone .ic{flex:none;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;background:#17a34a;color:#fff;font-weight:800;font-size:13px}
+.mkdone>span:nth-child(2){flex:1;display:grid;line-height:1.25}.mkdone b{font-size:13.5px}.mkdone .sub{font-size:12px}
+@keyframes pvDone{0%{opacity:0;transform:scale(.92);box-shadow:0 0 0 0 rgba(75,255,154,.8)}60%{opacity:1;transform:scale(1.02);box-shadow:0 0 0 14px rgba(75,255,154,0)}100%{transform:none}}
+.mkerr{display:grid;gap:2px;padding:10px 12px;border-radius:14px;background:rgba(255,236,232,.9);border:1px solid rgba(160,42,32,.3);font-size:12.5px;color:var(--bad)}
+.pv-add{margin-top:10px;border-radius:999px;padding:6px 6px 6px 16px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.pv-add .plus{font-size:20px;color:var(--dim);line-height:1}.pv-add .t{border-radius:999px;background:rgba(255,255,255,.85)}
+.pv-add #newLine{flex:1 1 220px}.pv-add #newCat{flex:0 1 200px}.pv-add .msg{flex-basis:100%;padding:0 6px 4px}.pv-add .msg:empty{display:none}
+#pv-ladder .lad{margin:10px 0}#pv-ladder .track{background:rgba(20,20,22,.06);height:24px}
+#planView .prog,#planView .brd{background:var(--glass);-webkit-backdrop-filter:blur(22px) saturate(1.7);backdrop-filter:blur(22px) saturate(1.7);border:1px solid var(--rim);box-shadow:inset 0 1px 0 #fff,0 0 0 1px rgba(20,20,22,.05),0 22px 44px -26px rgba(20,20,22,.4);border-radius:26px;padding:18px 20px;margin:0}
+#planView .prog h3,#planView .brd h4{font-size:20px;font-weight:500;letter-spacing:-.02em}#planView #pv-range{display:grid;gap:14px}#planView #pv-range .brd{margin-top:0!important}
+#planList .pl{transition:transform .3s cubic-bezier(.2,.8,.2,1),box-shadow .3s,border-color .3s;border-radius:18px}
+@media (hover:hover){#planList .pl:hover{transform:translateY(-1px);box-shadow:0 14px 30px -20px rgba(20,20,22,.45)}}
+@media (max-width:1080px){.pc{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.pc-act{grid-column:1/-1}.pc .mkrow{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}}
+@media (max-width:720px){.pc{grid-template-columns:minmax(0,1fr);padding:14px 14px 14px 22px}.pc .mkrow{grid-template-columns:minmax(0,1fr)}.pc-mx{grid-template-columns:repeat(2,minmax(0,1fr))}.pv-hero{padding:18px}.pv-add{border-radius:22px}.pv-add #newCat,.pv-add .btn{flex:1 1 140px}}
+@media (prefers-reduced-motion:reduce){.pv-amb i,.pc.making::after,.pv-busy i,.mkp .orb,#planView.fresh *,.mkdone,.mkp{animation:none!important}.pc,.btn-make,.mgbar>i,.mkp-bar i{transition:none}}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){#planView .glass,#planView .prog,#planView .brd{background:rgba(255,255,255,.94)}}
 </style>
 <script src="/feedback.js"></script>
 <link rel="stylesheet" href="/cue.css">
@@ -388,32 +493,100 @@ function forClient(pl){const c=(CLIENTS||[]).find(x=>x.id===pl.clientId);
 document.addEventListener('click',e=>{document.querySelectorAll('details.scr[open]').forEach(d=>{if(!d.contains(e.target))d.open=false})});document.addEventListener('keydown',e=>{if(e.key==='Escape')document.querySelectorAll('details.scr[open]').forEach(d=>{d.open=false;d.querySelector('summary').focus()})});
 document.addEventListener('click',async e=>{if(!e.target.closest('[data-pclient]'))return;const m=$('#pClientMsg');
   try{const r=await api(`/v1/lab/plans/${CUR.plan.id}/client`,{method:'PUT',body:{clientId:$('#pClient').value||null,brand:{name:$('#pBrand').value,statement:$('#pStatement').value},shared:$('#pShare').checked}});Object.assign(CUR.plan,r.plan);drawPlan();fillArt($('#planView'));$('#pClientMsg').textContent=r.plan.sharedAt?'Saved: it is in their hub':'Saved'}catch(x){m.textContent=x.message}});
+/* The plan, laid out as glass over a slow ambient field: the plan's name and actions, its totals, a bar that follows you down the page
+   (with what is being made right now), then the pieces as cards. A piece being made says so on its own card, from the press until its
+   concepts are on the board, and keeps saying so if the page is left and opened again (the work is kept in this browser, MAKING). */
+const ROLE_TINT={hero:'#141416',core:'#2fbf71',trend:'#f0a43a',entry:'#7d9cff'};
+const MAKING=(()=>{try{return JSON.parse(localStorage.getItem('fb.lab.making')||'{}')||{}}catch{return {}}})(),MADE={},MAKEERR={},FOLLOWING=new Set();
+const keepMaking=()=>{try{localStorage.setItem('fb.lab.making',JSON.stringify(MAKING))}catch{}};
+// how far along a piece probably is: the service answers only "running" or "done", so the steps follow the usual timings (design about half a
+// minute, three pictures about two minutes, then the check) and the bar eases towards the end without reaching it until the work is done
+const mkStep=s=>s<35?0:s<170?1:2,MK_WORDS=['Designing three concepts','Drawing the pictures','Checking them against what inspired them'];
+const mkClock=s=>`${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,'0')}`;
+function mkHtml(id){const m=MAKING[id];if(m){const s=(Date.now()-m.t0)/1000,k=mkStep(s);
+    return `<div class="mkp" role="status" aria-live="polite" data-mkp="${esc(id)}"><div class="mkp-top"><span class="orb" aria-hidden="true"></span><b data-mkw>${MK_WORDS[k]}</b><span class="mkt" data-mkt>${mkClock(s)}</span></div>
+      <div class="mkp-bar" aria-hidden="true"><i data-mkb style="transform:scaleX(${(.04+.9*(1-Math.exp(-s/120))).toFixed(3)})"></i></div>
+      <ol class="mkp-steps" data-mks>${['Design','Draw','Check'].map((w,i)=>`<li class="${i<k?'done':i===k?'on':''}">${w}</li>`).join('')}</ol>
+      <span class="sub">Usually three to four minutes. You can leave this page: they land on the board.</span></div>`}
+  if(MADE[id])return `<a class="mkdone" href="#board" data-view><span class="ic" aria-hidden="true">✓</span><span><b>${MADE[id]} new concept${MADE[id]===1?'':'s'}</b><span class="sub">On the board. See them</span></span><span aria-hidden="true">→</span></a>`;
+  if(MAKEERR[id])return `<div class="mkerr" role="alert"><b>Not made</b><span>${esc(MAKEERR[id])}</span></div>`;
+  return ''}
+let MKTICK=0;
+function mkTick(){clearInterval(MKTICK);if(!Object.keys(MAKING).length){MKTICK=0;return}
+  MKTICK=setInterval(()=>{if(!Object.keys(MAKING).length){clearInterval(MKTICK);MKTICK=0;return}
+    $$('[data-mkp]').forEach(el=>{const m=MAKING[el.dataset.mkp];if(!m)return;const s=(Date.now()-m.t0)/1000,k=mkStep(s);
+      el.querySelector('[data-mkt]').textContent=mkClock(s);el.querySelector('[data-mkw]').textContent=MK_WORDS[k];
+      el.querySelector('[data-mkb]').style.transform=`scaleX(${(.04+.9*(1-Math.exp(-s/120))).toFixed(3)})`;
+      el.querySelectorAll('[data-mks] li').forEach((li,i)=>li.className=i<k?'done':i===k?'on':'')});
+    const b=$('#pvBusy');if(b)b.innerHTML=busyHtml()},1000)}
+function busyHtml(){const ids=Object.keys(MAKING).filter(id=>CUR&&MAKING[id].plan===CUR.plan.id);return ids.length?`<i aria-hidden="true"></i>${ids.length===1?`Making ${esc(MAKING[ids[0]].name||'a piece')}`:`Making ${ids.length} pieces`}`:''}
+function paintBusy(){const b=$('#pvBusy');if(!b)return;const h=busyHtml();b.innerHTML=h;b.classList.toggle('hidden',!h)}
+// the work for one piece, asked after until it is done: on its card the whole time, then the count of new concepts and a note at the bottom
+async function follow(id,j){FOLLOWING.add(id);
+  try{const r=await settle(j);delete MAKING[id];keepMaking();const n=(r&&r.concepts&&r.concepts.length)||3;MADE[id]=n;
+    if(CUR&&MADE[id]){const l=CUR.lines.find(x=>x.id===id);window.FBN?.toast?.(`${n} concept${n===1?'':'s'} for ${l?l.name:'the piece'} ${n===1?'is':'are'} on the board`,'ok')}
+    if(CUR)await openPlan(CUR.plan.id,true).catch(()=>{});await loadBoard().catch(()=>{})}
+  catch(x){const was=MAKING[id];delete MAKING[id];keepMaking();MAKEERR[id]=x instanceof TypeError?'The connection dropped, but the concepts may still be coming. Look on the board in a few minutes.':x.message;
+    if(CUR&&was&&was.plan===CUR.plan.id)drawPlan()}
+  FOLLOWING.delete(id);paintBusy()}
+// work started before the page was left or reloaded: pick it up again
+function resumeMaking(){for(const [id,m] of Object.entries(MAKING)){if(FOLLOWING.has(id))continue;
+  if(Date.now()-m.t0>900e3||!m.job){delete MAKING[id];continue}follow(id,{job:m.job,status:'running'})}keepMaking();mkTick()}
+let PVSPY=null,PVSHOWN='';
 function drawPlan(){
   const P=CUR;if(!P){$('#planView').classList.add('hidden');return}
   const s=P.summary,pl=P.plan,sel=(opts,v)=>opts.map(o=>`<option value="${o.id}" ${o.id===v?'selected':''}>${esc(o.label)}</option>`).join('');
-  const cats=O.categories,money=c=>c==null?'—':'$'+Math.round(c/100).toLocaleString();
+  const cats=O.categories,money=c=>c==null?'—':'$'+Math.round(c/100).toLocaleString(),fresh=PVSHOWN!==pl.id;PVSHOWN=pl.id;
+  const keepFocus=document.activeElement&&$('#planView').contains(document.activeElement)?document.activeElement.id:'';
+  const live=P.lines.filter(l=>l.status!=='dropped'),roleN=r=>live.filter(l=>l.role===r).length;
+  const stats=[[s.count,'Pieces'],[s.priceMedian!=null?usd(s.priceMedian):'—','Median price'],[s.blendedMarginPct!=null?s.blendedMarginPct+'%':'—','Blended margin'],[s.units.toLocaleString(),'Units'],[money(s.revenueCents),'Revenue at shelf'],[money(s.grossCents),'Gross'],[s.lineWarnings,'Flags']];
+  const mgClass=v=>v==null?'':v>=65?'good':v<50?'low':'';
   $('#planView').classList.remove('hidden');
-  $('#planView').innerHTML=`<div class="row" style="justify-content:space-between"><div style="min-width:0"><h2 style="overflow-wrap:anywhere">${esc(pl.name)}</h2><span class="sub">${esc(pl.season||'')}${pl.brief?' · '+esc(pl.brief):''}</span></div>
-    <div class="row"><button class="btn sm" type="button" data-status>${pl.status==='approved'?'Back to draft':'Mark approved'}</button><button class="btn sm" type="button" data-csv>Download CSV</button><button class="btn sm" type="button" data-rename>Rename</button></div></div>
-    ${pl.summary?`<p class="note">${esc(pl.summary)}</p>`:''}
-    ${forClient(pl)}
-    <div class="tiles"><div class="tile"><b>${s.count}</b><span>Pieces</span></div><div class="tile"><b>${s.priceMedian!=null?usd(s.priceMedian):'—'}</b><span>Median price</span></div><div class="tile"><b>${s.blendedMarginPct!=null?s.blendedMarginPct+'%':'—'}</b><span>Blended margin</span></div><div class="tile"><b>${s.units.toLocaleString()}</b><span>Units</span></div><div class="tile"><b>${money(s.revenueCents)}</b><span>Revenue at shelf</span></div><div class="tile"><b>${money(s.grossCents)}</b><span>Gross</span></div><div class="tile"><b ${s.lineWarnings?'style="color:var(--bad)"':''}>${s.lineWarnings}</b><span>Flags</span></div></div>
-    ${s.notes.length?`<ul class="sub" style="margin:0 0 10px;padding-left:18px">${s.notes.map(n=>`<li>${esc(n)}</li>`).join('')}</ul>`:''}
-    ${programHtml(P)}
-    ${rangeHtml(P)}
-    <h3 style="margin:14px 0 4px;font-size:15px">Price ladder against ${esc(P.anchor)}</h3>${ladderRows(P)||'<p class="note">Add priced pieces to see the ladder.</p>'}
-    <div class="wrapx" style="margin-top:14px"><table class="lt"><thead><tr><th>Piece</th><th>Category</th><th>Role</th><th>Price</th><th title="Estimated: the factory's quote confirms it">Cost (est.)</th><th>Margin</th><th>Qty</th><th>Concepts</th><th></th></tr></thead><tbody>${P.lines.map(l=>`<tr class="${l.status==='dropped'?'dropped':''}" data-line="${l.id}">
-      <td style="min-width:200px"><input data-f="name" value="${esc(l.name)}" maxlength="100" aria-label="Name">
-        <details><summary>${l.twist?esc(l.twist.slice(0,60))+(l.twist.length>60?'…':''):'Details'}</summary><p><b>What:</b> ${esc(l.brief)||'—'}</p><p><b>Our twist:</b> ${esc(l.twist)||'—'}</p><p><b>Why:</b> ${esc(l.rationale)||'—'}</p>${l.refs.length?`<p><b>Looked at:</b> ${l.refs.map(r=>safe(r.url)?`<a href="${esc(safe(r.url))}" target="_blank" rel="noopener noreferrer">${esc(r.title)}</a>`:esc(r.title)).join(' · ')}</p>`:''}
-        <label class="sub">Our twist<input data-f="twist" value="${esc(l.twist)}" maxlength="400"></label></details>
-        ${l.warnings.map(w=>`<span class="chip warn">${esc(w.text)}</span>`).join(' ')}</td>
-      <td><select data-f="category">${sel(cats,l.category)}</select></td><td><select data-f="role">${sel(P.roles,l.role)}</select></td>
-      <td><input class="num" data-f="price" inputmode="decimal" value="${l.price??''}" aria-label="Price"></td><td><input class="num" data-f="cost" inputmode="decimal" value="${l.costIsEstimate?'':l.cost??''}" placeholder="${l.cost!=null?Math.round(l.cost*100)/100:''}" title="${l.costIsEstimate?'An estimate from the brand code: type the real cost when you have it':''}" aria-label="Landed cost"></td>
-      <td>${l.marginPct!=null?l.marginPct+'%':'—'}${l.costIsEstimate&&l.marginPct!=null?'<br><span class="sub">est.</span>':''}</td><td><input class="num" data-f="qty" inputmode="numeric" value="${l.qty}" aria-label="Quantity"></td>
-      <td style="min-width:130px">${l.status==='dropped'?'':`<div class="mkrow"><button class="btn sm" type="button" data-mk>Make concepts</button><details class="scr"><summary class="btn sm">Start from scratch</summary><div class="scr-menu" role="menu"><button type="button" role="menuitem" data-scdraw><b>Draw it</b><span>A blank page in the Studio with the piece's outline as a guide</span></button><a role="menuitem" href="/lab/sketches?line=${esc(l.id)}&cat=${esc(l.category)}&name=${encodeURIComponent(l.name)}"><b>Pick a flat from the library</b><span>Start from a sketch, then recolour and reshape it</span></a></div></details></div>`}${l.conceptCount?`<br><a href="#board" data-view>${l.conceptCount} concept${l.conceptCount===1?'':'s'}${l.approvedConcepts?` · ${l.approvedConcepts} approved`:''}</a>`:''}${l.productId?`<br><a href="/tech-packs/${esc(l.productId)}">Open tech pack</a>`:''}</td>
-      <td><button class="btn sm" type="button" data-drop>${l.status==='dropped'?'Restore':'Drop'}</button> <button class="btn sm" type="button" data-ldel aria-label="Delete ${esc(l.name)}">×</button></td></tr>`).join('')}</tbody></table></div>
-    <div class="row" style="margin-top:12px"><input class="t" id="newLine" placeholder="Add a piece by name" maxlength="100"><select class="t" id="newCat" style="flex:0 0 190px">${sel(cats,'tops')}</select><button class="btn" type="button" id="addLine">Add piece</button><span class="msg" id="lineMsg" role="status"></span></div>`;
+  $('#planView').classList.toggle('fresh',fresh);
+  $('#planView').innerHTML=`<div class="pv-amb" aria-hidden="true"><i></i><i></i><i></i></div>
+    <section class="pv-hero glass" aria-label="The plan">
+      <div class="pv-top"><div style="min-width:0"><div class="pv-eye"><span class="pv-st ${pl.status==='approved'?'ok':''}"><i></i>${pl.status==='approved'?'Approved':'Draft'}</span>${pl.season?`<span>${esc(pl.season)}</span>`:''}<span>${s.count} piece${s.count===1?'':'s'}</span></div>
+        <h2>${esc(pl.name)}</h2>${pl.brief?`<p class="pv-brief">${esc(pl.brief)}</p>`:''}</div>
+        <div class="pv-acts" role="group" aria-label="Plan actions"><button type="button" data-status class="${pl.status==='approved'?'':'on'}">${pl.status==='approved'?'Back to draft':'Mark approved'}</button><button type="button" data-csv>Download CSV</button><button type="button" data-rename>Rename</button></div></div>
+      ${pl.summary?`<p class="pv-sum">${esc(pl.summary)}</p>`:''}
+      ${forClient(pl)}
+    </section>
+    <div class="tiles pv-stats">${stats.map(([v,l],i)=>`<div class="tile pv-stat glass ${l==='Flags'&&s.lineWarnings?'bad':''}" style="--i:${i}"><b ${fresh?`data-count="${esc(String(v))}"`:''}>${esc(String(v))}</b><span>${l}</span></div>`).join('')}</div>
+    ${s.notes.length?`<ul class="pv-notes glass">${s.notes.map(n=>`<li>${esc(n)}</li>`).join('')}</ul>`:''}
+    <nav class="pv-nav glass" aria-label="On this plan"><a href="#pv-pieces" data-pvgo>Pieces</a><a href="#pv-ladder" data-pvgo>Price ladder</a><a href="#pv-program" data-pvgo>Graphic program</a>${P.lines.some(l=>l.conceptCount)?'<a href="#pv-range" data-pvgo>Across the range</a>':''}<span class="pv-busy hidden" id="pvBusy" role="status" title="Show the piece being made"></span></nav>
+    <section class="pv-sec" id="pv-pieces"><div class="pv-h"><h3>Pieces</h3><div class="pv-legend">${P.roles.map(r=>`<span style="--rc:${ROLE_TINT[r.id]||'#c9c9cf'}" title="${esc(r.hint||'')}"><i></i>${esc(r.label)} <b>${roleN(r.id)}</b></span>`).join('')}</div></div>
+    <div class="pieces">${P.lines.map((l,i)=>`<article class="pc glass ${l.status==='dropped'?'dropped':''} ${MAKING[l.id]?'making':''} ${MADE[l.id]?'made':''}" data-line="${l.id}" data-role="${esc(l.role)}" style="--i:${i};--rc:${ROLE_TINT[l.role]||'#c9c9cf'}">
+      <div class="pc-id"><input class="nm" data-f="name" value="${esc(l.name)}" maxlength="100" aria-label="Name">
+        <div class="pc-meta"><select class="chipsel" data-f="category" aria-label="Category">${sel(cats,l.category)}</select><select class="chipsel role" data-f="role" aria-label="Role">${sel(P.roles,l.role)}</select></div>
+        <details class="pc-why"><summary>${l.twist?esc(l.twist.slice(0,90))+(l.twist.length>90?'…':''):'Details'}</summary><p><b>What:</b> ${esc(l.brief)||'—'}</p><p><b>Our twist:</b> ${esc(l.twist)||'—'}</p><p><b>Why:</b> ${esc(l.rationale)||'—'}</p>${l.refs.length?`<p><b>Looked at:</b> ${l.refs.map(r=>safe(r.url)?`<a href="${esc(safe(r.url))}" target="_blank" rel="noopener noreferrer">${esc(r.title)}</a>`:esc(r.title)).join(' · ')}</p>`:''}
+          <label class="sub">Our twist<input data-f="twist" value="${esc(l.twist)}" maxlength="400"></label></details>
+        ${l.warnings.length?`<div class="pc-warn">${l.warnings.map(w=>`<span class="chip warn">${esc(w.text)}</span>`).join('')}</div>`:''}</div>
+      <div class="pc-mx"><label class="f"><span>Price</span><input class="num" data-f="price" inputmode="decimal" value="${l.price??''}" aria-label="Price"></label>
+        <label class="f"><span title="Estimated: the factory's quote confirms it">Cost${l.costIsEstimate?' est.':''}</span><input class="num" data-f="cost" inputmode="decimal" value="${l.costIsEstimate?'':l.cost??''}" placeholder="${l.cost!=null?Math.round(l.cost*100)/100:''}" title="${l.costIsEstimate?'An estimate from the brand code: type the real cost when you have it':''}" aria-label="Landed cost"></label>
+        <div class="f mg ${mgClass(l.marginPct)}"><span>Margin</span><b>${l.marginPct!=null?l.marginPct+'%':'—'}${l.costIsEstimate&&l.marginPct!=null?' <em>est.</em>':''}</b><i class="mgbar" aria-hidden="true"><i style="transform:scaleX(${l.marginPct!=null?Math.max(0,Math.min(100,l.marginPct))/100:0})"></i></i></div>
+        <label class="f"><span>Qty</span><input class="num" data-f="qty" inputmode="numeric" value="${l.qty}" aria-label="Quantity"></label></div>
+      <div class="pc-act"><div class="pc-row">${l.conceptCount?`<a class="pc-cc" href="#board" data-view>${l.conceptCount} concept${l.conceptCount===1?'':'s'}${l.approvedConcepts?` · ${l.approvedConcepts} approved`:''}</a>`:'<span class="sub">No concepts yet</span>'}<span class="pc-ic"><button class="icb" type="button" data-drop title="${l.status==='dropped'?'Restore':'Drop from the plan'}">${l.status==='dropped'?'Restore':'Drop'}</button><button class="icb x" type="button" data-ldel aria-label="Delete ${esc(l.name)}" title="Delete">×</button></span></div>
+        ${l.productId?`<a class="pc-cc" href="/tech-packs/${esc(l.productId)}">Open tech pack</a>`:''}
+        ${l.status==='dropped'?'':MAKING[l.id]?mkHtml(l.id):`${mkHtml(l.id)}<div class="mkrow"><button class="btn-make" type="button" data-mk data-fb="off"><span class="spark" aria-hidden="true">✦</span>${MADE[l.id]||l.conceptCount?'Make more concepts':'Make concepts'}</button><details class="scr"><summary class="btn sm">Start from scratch</summary><div class="scr-menu" role="menu"><button type="button" role="menuitem" data-scdraw><b>Draw it</b><span>A blank page in the Studio with the piece's outline as a guide</span></button><a role="menuitem" href="/lab/sketches?line=${esc(l.id)}&cat=${esc(l.category)}&name=${encodeURIComponent(l.name)}"><b>Pick a flat from the library</b><span>Start from a sketch, then recolour and reshape it</span></a></div></details></div>`}</div>
+    </article>`).join('')}</div>
+    <div class="pv-add glass"><span class="plus" aria-hidden="true">+</span><input class="t" id="newLine" placeholder="Add a piece by name" maxlength="100"><select class="t" id="newCat">${sel(cats,'tops')}</select><button class="btn go" type="button" id="addLine">Add piece</button><span class="msg" id="lineMsg" role="status"></span></div></section>
+    <section class="pv-sec pv-card glass" id="pv-ladder"><div class="pv-h"><h3>Price ladder against ${esc(P.anchor)}</h3><span class="sub">The band is their entry to cap; the tick their core price; each dot one of ours</span></div>${ladderRows(P)||'<p class="note">Add priced pieces to see the ladder.</p>'}</section>
+    <section class="pv-sec" id="pv-program">${programHtml(P)}</section>
+    <section class="pv-sec" id="pv-range">${rangeHtml(P)}</section>`;
+  if(keepFocus){const el=document.getElementById(keepFocus);if(el)el.focus()}
+  paintBusy();mkTick();pvSpy();if(fresh)countUp();
 }
+// the totals count up when a plan opens (not on every edit)
+function countUp(){if(matchMedia('(prefers-reduced-motion: reduce)').matches)return;
+  $$('#planView [data-count]').forEach(b=>{const t=b.dataset.count,m=t.match(/^(\D*)([\d,]+(?:\.\d+)?)(.*)$/);if(!m)return;const to=Number(m[2].replace(/,/g,'')),dec=(m[2].split('.')[1]||'').length,t0=performance.now();
+    const step=now=>{const k=Math.min(1,(now-t0)/900),e=1-Math.pow(1-k,3),v=to*e;b.textContent=m[1]+(dec?v.toFixed(dec):Math.round(v).toLocaleString())+m[3];if(k<1)requestAnimationFrame(step);else b.textContent=t};requestAnimationFrame(step)})}
+// the bar under the tabs lights the section in view; it sits just below whatever is pinned at the top of the page
+function pvSpy(){if(PVSPY)PVSPY.disconnect();const top=[...document.querySelectorAll('header,.fbtabs')].filter(el=>/sticky|fixed/.test(getComputedStyle(el).position)).reduce((a,el)=>Math.max(a,el.getBoundingClientRect().bottom>0?el.offsetHeight+(parseFloat(getComputedStyle(el).top)||0):0),0);
+  $('#planView').style.setProperty('--pv-top',(top+10)+'px');
+  if(!('IntersectionObserver' in window))return;const links=$$('#planView [data-pvgo]');
+  PVSPY=new IntersectionObserver(es=>{for(const e of es)if(e.isIntersecting)links.forEach(a=>a.classList.toggle('on',a.getAttribute('href')==='#'+e.target.id))},{rootMargin:`-${top+70}px 0px -55% 0px`});
+  $$('#planView .pv-sec').forEach(s=>PVSPY.observe(s))}
+document.addEventListener('click',e=>{if(e.target.closest('#pvBusy')){const c=$('#planView .pc.making');if(c)c.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'center'});return}const a=e.target.closest('[data-pvgo]');if(!a)return;e.preventDefault();const t=document.querySelector(a.getAttribute('href'));if(t)t.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'start'})});
 /* across the whole range: one instruction, previewed per piece, applied only where ticked; then the lookbook and the customer poll */
 function rangeHtml(P){const n=P.lines.reduce((a,l)=>a+(l.conceptCount||0),0);if(!n)return '';
   return `<div class="brd" id="rangeBox" style="margin-top:14px"><h4>Across the whole range</h4><div class="sub">One instruction, every piece: “make every tee 260 gsm and swap the accent to olive”. The change per piece is shown first; nothing is applied until you tick and apply. An approved piece that changes goes back to draft and is checked again. Pictures are redrawn afterwards, if you want them.</div>
@@ -447,14 +620,14 @@ async function pollsLoad(){const box=$('#pollList');if(!box||!CUR)return;try{con
 function resultsHtml(res){if(!res.pieces.length)return '<span class="sub">No pieces.</span>';
   return `<div class="sub" style="margin:6px 0">${res.voters} ${res.voters===1?'person has':'people have'} answered.</div><div class="wrapx"><table class="lt"><thead><tr><th>#</th><th>Piece</th><th>Demand</th><th>Yes · maybe · no</th><th>Price</th><th>Read</th><th>What they would change</th></tr></thead><tbody>${res.pieces.map(p=>`<tr><td>${p.rank??'—'}</td><td><b>${esc(p.name)}</b><br><span class="sub">${esc(p.categoryLabel)}${p.priceLabel?' · '+esc(p.priceLabel):''}</span></td><td class="dm ${p.demand==null?'':p.demand>=70?'go':p.demand<45?'no':''}">${p.demand==null?'—':p.demand+'%'}</td><td>${p.yes} · ${p.maybe} · ${p.no}</td><td>${esc(p.priceFeel||'—')}</td><td>${esc(p.read)}</td><td class="sub">${p.notes.slice(0,4).map(n=>`<b>${esc(n.who)}:</b> ${esc(n.note)}`).join('<br>')}</td></tr>`).join('')}</tbody></table></div>`}
 let PLANPOLL=0;
-async function openPlan(id,keepScroll){CUR=await api('/v1/lab/plans/'+id);if(!CLIENTS)CLIENTS=O.client?[]:(await api('/v1/lab/clients').catch(()=>({clients:[]}))).clients;drawPlan();fillArt($('#planView'));pollsLoad().catch(()=>{});mockLoad().catch(()=>{});await loadPlans(true);
+async function openPlan(id,keepScroll){CUR=await api('/v1/lab/plans/'+id);resumeMaking();if(!CLIENTS)CLIENTS=O.client?[]:(await api('/v1/lab/clients').catch(()=>({clients:[]}))).clients;drawPlan();fillArt($('#planView'));pollsLoad().catch(()=>{});mockLoad().catch(()=>{});await loadPlans(true);
   // the program's artwork is drawn in the background: look again until every motif has its picture
   clearTimeout(PLANPOLL);if(CUR&&CUR.program&&CUR.program.motifs.some(m=>m.artStatus==='pending'))PLANPOLL=setTimeout(()=>{if(CUR&&CUR.plan.id===id)openPlan(id,true).catch(()=>{})},5000)}
 async function putLine(tr,body){
   try{CUR=await api(`/v1/lab/plans/${CUR.plan.id}/lines/${tr.dataset.line}`,{method:'PUT',body});drawPlan();await loadPlans(true)}catch(x){const m=$('#lineMsg');if(m){m.className='msg bad';m.textContent=x.message}else alert(x.message)}
 }
 document.addEventListener('change',e=>{
-  const tr=e.target.closest('tr[data-line]');if(!tr||!e.target.dataset.f)return;
+  const tr=e.target.closest('.pc[data-line]');if(!tr||!e.target.dataset.f)return;
   const f=e.target.dataset.f,v=e.target.value;putLine(tr,f==='cost'&&v.trim()===''?{cost:null}:{[f]:v});
 });
 document.addEventListener('click',async e=>{
@@ -463,7 +636,7 @@ document.addEventListener('click',async e=>{
   if(e.target.closest('[data-plall]')){PLANS_ALL=!PLANS_ALL;loadPlans(true).catch(()=>{});return}
   if(pl&&e.target.closest('[data-open]')){PLANS_ALL=false;openPlan(pl.dataset.plan).then(()=>{const l=$('#planList');if(l)l.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'start'})}).catch(x=>alert(x.message));return}
   if(pl&&e.target.closest('[data-pdel]')){if(!confirm('Delete this plan and all its pieces?'))return;try{await api('/v1/lab/plans/'+pl.dataset.plan,{method:'DELETE'});if(CUR&&CUR.plan.id===pl.dataset.plan)CUR=null;await loadPlans()}catch(x){alert(x.message)}return}
-  const tr=e.target.closest('tr[data-line]');
+  const tr=e.target.closest('.pc[data-line]');
   if(tr&&e.target.closest('[data-drop]')){const l=CUR.lines.find(x=>x.id===tr.dataset.line);putLine(tr,{status:l.status==='dropped'?'planned':'dropped'});return}
   if(tr&&e.target.closest('[data-ldel]')){try{CUR=await api(`/v1/lab/plans/${CUR.plan.id}/lines/${tr.dataset.line}`,{method:'DELETE'});drawPlan();await loadPlans(true)}catch(x){alert(x.message)}return}
   if(e.target.id==='addLine'){const n=$('#newLine').value.trim();if(!n){$('#newLine').focus();return}try{CUR=await api(`/v1/lab/plans/${CUR.plan.id}/lines`,{body:{name:n,category:$('#newCat').value,role:'core'}});drawPlan();await loadPlans(true)}catch(x){const m=$('#lineMsg');m.className='msg bad';m.textContent=x.message}return}
@@ -650,16 +823,18 @@ document.addEventListener('click',async e=>{
   if(e.target.closest('[data-progdel]')){if(!confirm('Remove the graphic program? Concepts already made keep their graphics.'))return;try{CUR=await api(`/v1/lab/plans/${CUR.plan.id}/program`,{method:'DELETE'});drawPlan();await loadPlans(true)}catch(x){alert(x.message)}return}
   if(e.target.closest('[data-motifart]')){const id=e.target.closest('.mt').dataset.mid;try{await api(`/v1/lab/plans/${CUR.plan.id}/program/motifs/${id}/art`,{body:{}});await openPlan(CUR.plan.id,true)}catch(x){alert(x.message)}return}
   if(e.target.closest('[data-motifrm]')){const id=e.target.closest('.mt').dataset.mid;try{CUR=await api(`/v1/lab/plans/${CUR.plan.id}/program`,{method:'PUT',body:{removeMotifs:[id]}});drawPlan();await loadPlans(true)}catch(x){alert(x.message)}return}
-  const tr=e.target.closest('tr[data-line]');
-  if(tr&&e.target.closest('[data-view]')){BOARD.line=tr.dataset.line;BOARD.plan=CUR.plan.id;BOARD.status='';loadBoard().then(()=>{location.hash='#board'}).catch(()=>{});e.preventDefault();return}
+  const tr=e.target.closest('.pc[data-line]');
+  if(tr&&e.target.closest('[data-view]')){delete MADE[tr.dataset.line];BOARD.line=tr.dataset.line;BOARD.plan=CUR.plan.id;BOARD.status='';loadBoard().then(()=>{location.hash='#board'}).catch(()=>{});e.preventDefault();return}
   // Start from scratch → Draw it: a concept for this piece on a blank page in the Studio (POST /v1/lab/concepts/from-scratch with the piece)
   if(tr&&e.target.closest('[data-scdraw]')){const btn=e.target.closest('[data-scdraw]'),m=$('#lineMsg');btn.disabled=true;m.className='msg';m.textContent='Opening a blank page…';
     try{const r=await api('/v1/lab/concepts/from-scratch',{body:{lineId:tr.dataset.line}});location.href=r.studio}catch(x){m.className='msg bad';m.textContent=x.message;btn.disabled=false}return}
   if(tr&&e.target.closest('[data-mk]')){
     const steer=await askText('Anything to steer the concepts? (optional, for example “longer back, no pockets”)','');if(steer===null)return;
-    const m=$('#lineMsg'),btn=e.target.closest('[data-mk]');m.className='msg';m.textContent='Designing three concepts, drawing them and checking them. This takes a few minutes…';btn.disabled=true;
-    try{await settle(await api(`/v1/lab/plans/${CUR.plan.id}/lines/${tr.dataset.line}/concepts`,{body:{count:3,note:steer}}),m);BOARD={status:'',plan:CUR.plan.id,line:tr.dataset.line};await openPlan(CUR.plan.id);await loadBoard();location.hash='#board'}
-    catch(x){const mm=$('#lineMsg');if(mm){mm.className='msg bad';mm.textContent=x instanceof TypeError?'The connection dropped, but the concepts are still being made. Look on the board in a few minutes.':x.message}btn.disabled=false}return}
+    // the piece's own card says it is being made from now until its concepts are on the board (see follow): the request answers at once with the work to ask after
+    const id=tr.dataset.line,l=CUR.lines.find(x=>x.id===id);delete MADE[id];delete MAKEERR[id];FOLLOWING.add(id);
+    MAKING[id]={t0:Date.now(),plan:CUR.plan.id,name:l?l.name:''};keepMaking();drawPlan();
+    try{const j=await api(`/v1/lab/plans/${CUR.plan.id}/lines/${id}/concepts?wait=0`,{body:{count:3,note:steer}});if(MAKING[id]&&j.job){MAKING[id].job=j.job;keepMaking()}BOARD={status:'',plan:CUR.plan.id,line:id};await follow(id,j)}
+    catch(x){FOLLOWING.delete(id);delete MAKING[id];keepMaking();MAKEERR[id]=x.message;if(CUR)drawPlan()}return}
   if(!$('#cd').open)return;
   if(e.target.closest('[data-csave]')){
     const f=document.querySelector('[data-cf]'),g=k=>f.querySelector(`[data-k="${k}"]`).value,m=$('#cMsg');m.className='msg';m.textContent='Saving…';
