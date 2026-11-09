@@ -17,10 +17,16 @@ test('a plush concept says what its pattern is drafted from, and is drawn as a s
   assert.equal(cleanSpec({ plush: { shape: 'dragon' } }).plush, undefined, 'a shape the pattern cannot cut is not kept');
   const p = imagePrompt({ name: 'Barley', category: 'plush', spec: s });
   assert.match(p, /plush soft toy/); assert.match(p, /about 11 inches tall/); assert.match(p, /faux fur/); assert.match(p, /seams/); assert.doesNotMatch(p, /menswear/);
-  assert.match(CATEGORY_WORDS.plush, /embroidered eyes for any age/); assert.match(CATEGORY_JSON.plush, /"shape":"bear\|quad\|elephant\|sea\|bean\|bunny\|pillow \(its body type/); assert.match(CATEGORY_JSON.plush, /"horn":"none\|one\|two\|antlers"/); assert.match(CATEGORY_JSON.plush, /"animal"/); assert.match(CATEGORY_JSON.plush, /leather/);
+  assert.match(CATEGORY_WORDS.plush, /embroidered eyes for any age/); assert.match(CATEGORY_JSON.plush, /"shape":"build","build":\{"body":"bean\|ball\|egg\|pillow\|torso\|seated\|tube\|fish"/); assert.match(CATEGORY_JSON.plush, /"wings":"none\|bird\|bat\|butterfly"/); assert.match(CATEGORY_JSON.plush, /"extras":\["belly\|cheeks\|spots"\]/);
+  assert.match(CATEGORY_WORDS.plush, /parts library/); assert.match(CATEGORY_WORDS.plush, /what goes where/, 'the writer is told which parts go on which body'); assert.match(CATEGORY_JSON.plush, /"animal"/); assert.match(CATEGORY_JSON.plush, /leather/);
   assert.match(labelWords('plush'), /tush tag/); assert.equal(LOGO_PLACE.plush[1], null, 'the logo is not laid on a plush\'s picture');
   const fx = conceptFixture({ user: 'Make 2 different concepts\nPlanned piece: Bear\n(category plush, role core)' });
-  assert.equal(fx.concepts[1].plush.shape, 'bunny');
+  assert.equal(fx.concepts[1].plush.shape, 'build'); assert.equal(fx.concepts[1].plush.build.ears, 'long');
+  // a concept built from parts keeps its parts (only those that go on its body), and is drawn as those parts
+  const b = cleanSpec({ plush: { animal: 'dragon', shape: 'build', build: { body: 'seated', head: 'snout', ears: 'pointed', legs: 'four', tail: 'spiked', horns: 'two', wings: 'bat', back: 'spikes', arms: 'flipper', extras: ['belly', 'nope'] }, height: 14, fabric: 'minky' } });
+  assert.equal(b.plush.shape, 'build'); assert.equal(b.plush.build.wings, 'bat'); assert.equal(b.plush.build.arms, 'none', 'a sitting four-legged body takes no arms'); assert.deepEqual(b.plush.build.extras, ['belly']);
+  const bp = imagePrompt({ name: 'Ember', category: 'plush', spec: b });
+  assert.match(bp, /a sitting four-legged body with a long snout/); assert.match(bp, /bat wings/); assert.match(bp, /spikes down its back/); assert.match(bp, /a dragon about 14 inches tall: /);
 });
 test('a shoe concept keeps its style, toe, pieces and colours, and is drawn as a designer\'s three-quarter render on a set that suits it', () => {
   const s = cleanSpec({ footwear: { style: 'derby', toe: 'almond', toeCap: true, upper: 'leather', sole: 'stitched', colours: { upper: '#4A2E1E', sole: 'x' } } });

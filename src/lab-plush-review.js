@@ -4,7 +4,8 @@
 //   reviewPlush({spec, photo, judges}) → the exchange: soft-toy developers (vision models, Claude and an OpenAI model when both are connected,
 //                                       each on its own, briefed by REVIEW_SYSTEM) score the views against the picture on six points, out of
 //                                       100; the stricter score stands. They ask for changes to the toy's choices from the kit (its body type,
-//                                       head, snout, ears, parts, tail, colours; never to the drawing): what both ask for, or one asks for and
+//                                       head, snout, ears, parts, tail, colours), or, for a plush built from parts, to its parts and their
+//                                       sizes (src/lab-plush-parts.js); never to the drawing: what both ask for, or one asks for and
 //                                       the other does not dispute, is made and the views drawn again, round after round, until the score
 //                                       clears the bar, there is nothing left to change, or two rounds in a row gain nothing. Where the judges
 //                                       disagree it says so, for a person. The best toy they saw is the result; nothing is saved here.
@@ -12,6 +13,7 @@
 import sharp from 'sharp';
 import { PLUSH_SHAPES, PLUSH_EARS, PLUSH_SNOUTS, PLUSH_HORNS, PLUSH_MANES, PLUSH_TAILS, PLUSH_FABRICS, PLUSH_EYES, PLUSH_PARTS, cleanPlush, plushDefaults, plushPattern } from './lab-pattern.js';
 import { plushViews } from './lab-plush-views.js';
+import { PLUSH_LIBRARY, PLUSH_SLOTS, SIZE_SLOTS, cleanBuild, buildFromKit, partsMenu } from './lab-plush-parts.js';
 
 export const BAR = 90;
 // what the developer scores, and how much each counts
@@ -25,13 +27,18 @@ export const CRITERIA = [
 ];
 // what the developer may ask to change: the toy's choices from the kit, each bounded again by cleanPlush
 const FIELDS = {
-  shape: { kind: 'enum', of: Object.keys(PLUSH_SHAPES).filter(k => k !== 'build') }, ears: { kind: 'enum', of: Object.keys(PLUSH_EARS) }, snout: { kind: 'enum', of: Object.keys(PLUSH_SNOUTS) },
+  shape: { kind: 'enum', of: Object.keys(PLUSH_SHAPES) }, ears: { kind: 'enum', of: Object.keys(PLUSH_EARS) }, snout: { kind: 'enum', of: Object.keys(PLUSH_SNOUTS) },
   horn: { kind: 'enum', of: Object.keys(PLUSH_HORNS) }, mane: { kind: 'enum', of: Object.keys(PLUSH_MANES) }, tailType: { kind: 'enum', of: Object.keys(PLUSH_TAILS) },
   fabric: { kind: 'enum', of: Object.keys(PLUSH_FABRICS) }, eyes: { kind: 'enum', of: Object.keys(PLUSH_EYES) },
   wings: { kind: 'bool' }, spikes: { kind: 'bool' }, dorsal: { kind: 'bool' }, arms: { kind: 'bool' }, legs: { kind: 'bool' }, tail: { kind: 'bool' },
   head: { kind: 'num', hint: 'the head\'s size against the body, 0.8 to 1.3 (1 is usual)' }, height: { kind: 'num', hint: 'its height in inches (a sea creature\'s length), 4 to 48' },
-  'colours.body': { kind: 'hex' }, 'colours.contrast': { kind: 'hex' }, 'colours.mane': { kind: 'hex' }
+  'colours.body': { kind: 'hex' }, 'colours.contrast': { kind: 'hex' }, 'colours.mane': { kind: 'hex' },
+  // a plush built from parts: a part in each slot, the details as a list, and a part's size against the usual
+  ...Object.fromEntries(PLUSH_SLOTS.map(([k]) => [`part.${k}`, k === 'extras' ? { kind: 'list', of: Object.keys(PLUSH_LIBRARY.extras), hint: 'a comma-separated list, empty for none' } : { kind: 'enum', of: Object.keys(PLUSH_LIBRARY[k]) }])),
+  ...Object.fromEntries(SIZE_SLOTS.map(k => [`size.${k}`, { kind: 'num', hint: `the ${k}' size against the usual, 0.6 to 1.5 (1 is usual)`.replace(`${k}'`, k.endsWith('s') ? `${k}'` : `${k}'s`) }]))
 };
+// the fixed body type's own choices: on a plush built from parts the parts say these, so a change to one changes nothing drawn
+const KIT = ['ears', 'snout', 'horn', 'mane', 'tailType', 'wings', 'spikes', 'dorsal', 'arms', 'legs', 'tail', 'head'];
 export const REVIEW_SCHEMA = {
   type: 'object', additionalProperties: false, required: ['view', 'criteria', 'fixes', 'beyondDrawing', 'summary'],
   properties: {
@@ -45,7 +52,8 @@ export const REVIEW_SCHEMA = {
 export const REVIEW_SYSTEM = `You are a soft-toy developer checking a drafted plush against its design picture before the pattern goes to the sample room. You are given the design picture, then the toy's flats drawn from its pattern: from the front, the back and the side.
 Compare them (the picture's view against the same view of the flats) and score each point out of 100 for how closely the drawing matches the picture: ${CRITERIA.map(c => `${c.key} (${c.ask})`).join('; ')}.
 Be strict: 90 means a sample room would sew the toy in the picture from this drawing. Judge it as the same animal or character, in the same pose, with the same parts.
-Then ask for the changes to the toy's choices that would bring it closer, most important first. Its body type comes first: a four-legged animal sitting is "quad", a whale or fish is "sea", one standing on two legs with arms is "bear", a round one is "bean". Change only what the picture shows clearly; never change something you were told was already changed for the same reason. What these choices cannot show goes in beyondDrawing for a person, not in fixes.`;
+Then ask for the changes to the toy's choices that would bring it closer, most important first. Its body type comes first: a four-legged animal sitting is "quad", a whale or fish is "sea", one standing on two legs with arms is "bear", a round one is "bean", and one the fixed types cannot make (a dragon with wings, an owl, a snake, a ball creature) is "build", made from the parts library.
+A toy built from parts ("shape": "build") is changed by its parts: part.<slot> for the part in a slot (part.body, part.head, part.ears…), part.extras for its details, size.<slot> for a part's size; its ears, snout, tail and the other fixed-type choices do not apply to it. Change only what the picture shows clearly; never change something you were told was already changed for the same reason. What these choices cannot show goes in beyondDrawing for a person, not in fixes.`;
 
 // a change the developer asked for, made on the toy's choices; null when it is not one it may make, or would change nothing the drawing shows
 export function applyFix(spec, fix) {
@@ -54,15 +62,30 @@ export function applyFix(spec, fix) {
   if (f.kind === 'enum') { v = raw.toLowerCase(); if (!f.of.includes(v)) return null; }
   else if (f.kind === 'num') { v = Number(raw.replace(/[^0-9.\-]/g, '')); if (!Number.isFinite(v)) return null; }
   else if (f.kind === 'bool') { if (!/^(true|false)$/i.test(raw)) return null; v = /^true$/i.test(raw); }
+  else if (f.kind === 'list') { v = raw.toLowerCase().split(/[,\s]+/).filter(Boolean); if (v.some(x => !f.of.includes(x))) return null; }
   else { v = raw.toLowerCase(); if (!/^#[0-9a-f]{6}$/.test(v)) return null; }
   let next = { ...spec };
+  // a plush built from parts: a part or a size changes its build; the fixed type's choices do not apply to it, and a part does not apply to a fixed type
+  if (fix.field.startsWith('part.') || fix.field.startsWith('size.')) {
+    if (spec.shape !== 'build') return null;
+    const [grp, slot] = fix.field.split('.'), b = cleanBuild(spec.build), want = grp === 'size' ? { ...b, size: { ...b.size, [slot]: v } } : { ...b, [slot]: v };
+    const nb = cleanPlush({ ...spec, build: want }).build, before = grp === 'size' ? b.size[slot] : b[slot], after = grp === 'size' ? nb.size[slot] : nb[slot];
+    // a part its body does not take (or does not fit) would be dropped by the build: not made, so a round is not spent on it and the part there
+    // is not lost; a new body keeps the parts that go on it
+    if (JSON.stringify(before) === JSON.stringify(after) || (grp === 'part' && slot !== 'body' && JSON.stringify(after) !== JSON.stringify(v))) return null;
+    return { spec: cleanPlush({ ...spec, build: nb }), change: { key: fix.field, from: before ?? null, to: after, why: String(fix.why || '').slice(0, 300) } };
+  }
+  if (spec.shape === 'build' && KIT.includes(fix.field)) return null;
   if (fix.field.startsWith('colours.')) next.colours = { ...(spec.colours || {}), [fix.field.slice(8)]: v };
   // a new body type brings its own parts and size (as the picture's reading does); not a new cloth, colours, eyes or age
-  else if (fix.field === 'shape' && v !== spec.shape) next = { ...plushDefaults(v), colours: spec.colours, fabric: spec.fabric, eyes: spec.eyes, age: spec.age, animal: spec.animal, logos: spec.logos, sketches: spec.sketches, shape: v };
+  else if (fix.field === 'shape' && v !== spec.shape) next = { ...plushDefaults(v), colours: spec.colours, fabric: spec.fabric, eyes: spec.eyes, age: spec.age, animal: spec.animal, logos: spec.logos, sketches: spec.sketches, shape: v,
+    // a fixed type made into a build keeps its parts and its size: the same toy, now made from parts, so the parts can be changed one by one
+    ...(v === 'build' ? { build: buildFromKit(spec), height: spec.height } : {}) };
   else next[fix.field] = v;
   const clean = cleanPlush(next), key = fix.field.startsWith('colours.') ? 'colours' : fix.field;
   const before = key === 'colours' ? spec.colours?.[fix.field.slice(8)] : spec[key], after = key === 'colours' ? clean.colours?.[fix.field.slice(8)] : clean[key];
   if (after == null || JSON.stringify(before) === JSON.stringify(after)) return null;
+  if (fix.field === 'shape' && v === 'build') return { spec: clean, change: { key: 'shape', from: before ?? null, to: after, why: String(fix.why || '').slice(0, 300) } };
   // a part on a body type that does not take it changes nothing drawn: not made, so a round is not spent on it
   const part = Object.keys(PLUSH_PARTS).find(p => p === fix.field); if (part && !PLUSH_PARTS[part].includes(clean.shape)) return null;
   return { spec: clean, change: { key: fix.field, from: before ?? null, to: after, why: String(fix.why || '').slice(0, 300) } };
@@ -119,7 +142,7 @@ export async function reviewPlush({ spec, photo, name = '', judges = [], bar = B
     const content = [
       { type: 'text', text: `The design picture of "${String(name).slice(0, 80)}":` }, imageBlock(pic),
       { type: 'text', text: 'The toy as drafted, its flats (front, back, side):' }, imageBlock(sheet),
-      { type: 'text', text: `The toy's choices now: ${JSON.stringify(choices(cur))}.\nWhat each change means: ${Object.entries(FIELDS).map(([k, f]) => `${k}${f.kind === 'enum' ? ` (${f.of.join(', ')})` : f.hint ? ` (${f.hint})` : f.kind === 'bool' ? ' (true or false)' : ' (#rrggbb)'}`).join('; ')}.\nWhich body types take each part: ${Object.entries(PLUSH_PARTS).map(([k, v]) => `${k}: ${v.join(', ')}`).join('; ')}.${before.length ? `\nAlready changed: ${before.join('; ')}.` : ''}` }
+      { type: 'text', text: `The toy's choices now: ${JSON.stringify(choices(cur))}.\nWhat each change means: ${Object.entries(FIELDS).map(([k, f]) => `${k}${f.kind === 'enum' ? ` (${f.of.join(', ')})` : f.hint ? ` (${f.hint})` : f.kind === 'bool' ? ' (true or false)' : ' (#rrggbb)'}`).filter(x => cur.shape === 'build' ? !KIT.includes(x.split(' ')[0]) : !/^(part|size)\./.test(x)).join('; ')}.\n${cur.shape === 'build' ? `The parts library (a part goes only where it fits):\n${partsMenu()}` : `Which body types take each part: ${Object.entries(PLUSH_PARTS).map(([k, v]) => `${k}: ${v.join(', ')}`).join('; ')}. "build" makes it from the parts library instead, keeping its parts, so they can then be changed one by one.`}${before.length ? `\nAlready changed: ${before.join('; ')}.` : ''}` }
     ];
     // each judge on its own, at the same time; one that cannot answer is left out of the round
     const got = await Promise.allSettled(judges.map(j => j.ask(REVIEW_SYSTEM, content, REVIEW_SCHEMA)));

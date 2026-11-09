@@ -3385,22 +3385,22 @@ await journey('J254', 'Between the modeller and the hand: on a shoe\'s tech flat
   } finally { await K(`/concepts/${cid}`, { method: 'DELETE' }); await K(`/concepts/${tee}`, { method: 'DELETE' }); }
 });
 
-await journey('J255', 'Photo-real plush, patterned out like clothing and footwear: a plush planned in a line plan gets AI concepts that say what they are cut as (a bear, a bunny) and are drawn as sewn, stuffed toys; the pattern starts from the concept\'s words, is read again from its picture, drawn photo-real from its pattern in its materials, checked before the tech pack, and its tech flats become the pack\'s front, back and side', async () => {
+await journey('J255', 'Photo-real plush, patterned out like clothing and footwear: a plush planned in a line plan gets AI concepts built from the plush parts library (a bear, a bunny) and drawn as sewn, stuffed toys; the pattern starts from the concept\'s words, is read again from its picture, drawn photo-real from its pattern in its materials, checked before the tech pack, and its tech flats become the pack\'s front, back and side', async () => {
   const plan = (await K('/plans', { body: { name: `Plush drop ${stamp}`, season: 'Holiday' } })).json, pid = plan.plan.id;
   const line = (await K(`/plans/${pid}/lines`, { body: { name: 'Sleepy bear', category: 'plush', role: 'core', price: 28, qty: 300, brief: 'a soft bedtime bear for little ones' } })).json.lines.at(-1);
   const made = await K(`/plans/${pid}/lines/${line.id}/concepts`, { body: { count: 2 } }), [A, B] = made.json.concepts || [];
-  ok(made.status === 201 && A.spec.plush?.shape === 'bear' && B.spec.plush?.shape === 'bunny' && A.spec.plush.colours?.body, '1. the AI concepts for a plush say what each is cut as, its height, pile, eyes and colours', made.json.error || A?.spec);
+  ok(made.status === 201 && A.spec.plush?.shape === 'build' && A.spec.plush.build?.body === 'torso' && B.spec.plush?.build?.ears === 'long' && A.spec.plush.colours?.body, '1. the AI concepts for a plush are built from the parts library (a bear on an upright body, a bunny with long ears), with their height, pile, eyes and colours', made.json.error || A?.spec);
   const one = (await K(`/concepts/${A.id}`)).json.concept;
   ok(one.hasPicture !== false && (await call(`/v1/lab/concepts/${A.id}/image`, { token: kyleT })).status === 200, '   and each is drawn (an image model draws a plush as a sewn, stuffed toy)');
   let g = (await K(`/concepts/${A.id}/pattern`)).json;
-  ok(g.kind === 'plush' && g.spec.shape === 'bear' && g.spec.height === 12 && g.spec.colours?.body === A.spec.plush.colours.body && g.concept.hasImage, '2. its pattern starts from the concept\'s words: a 12 in bear in its colours', g.spec);
+  ok(g.kind === 'plush' && g.spec.shape === 'build' && g.spec.build.body === 'torso' && g.spec.build.head === 'gusset' && g.spec.height === 12 && g.spec.colours?.body === A.spec.plush.colours.body && g.concept.hasImage && g.check?.ok === true, '2. its pattern starts from the concept\'s words: a 12 in bear built from its parts, in its colours, and every join walks', { spec: g.spec, check: g.check?.ok });
   const rd = await K(`/concepts/${A.id}/pattern/from-picture`, { body: {} });
-  ok(rd.status === 200 && rd.json.source === 'vision' && rd.json.spec.shape === 'bunny' && rd.json.changes.some(c => c.key === 'shape' && c.source === 'picture (AI)'), '3. read again from its picture: the eye sees a bunny, and says what would change and why', rd.json);
+  ok(rd.status === 200 && rd.json.source === 'vision' && rd.json.spec.shape === 'build' && rd.json.spec.build.body === 'bean' && rd.json.spec.build.ears === 'long' && rd.json.changes.some(c => c.key === 'build' && c.source === 'picture (AI)') && !rd.json.changes.some(c => c.key === 'ears'), '3. read again from its picture: the eye sees a bunny\'s parts (a bean body, long ears), and says what would change and why', rd.json);
   const ready0 = (await K(`/concepts/${A.id}/ready`)).json;
   ok(ready0.items.find(i => i.id === 'pattern')?.state === 'todo' && !ready0.items.some(i => i.id === 'flats'), '4. its checklist asks for its pattern, not flats', ready0.items.map(i => `${i.id}:${i.state}`));
   const body = (await K('/materials?kind=plush')).json.materials.find(m => m.key === 'pl-minky') || (await K('/materials?kind=plush')).json.materials[0];
   ok((await K(`/concepts/${A.id}/materials`, { body: { material: body.id, part: 'body' } })).status === 201, '   its body takes a minky from the library');
-  const save = await K(`/concepts/${A.id}/pattern`, { method: 'PUT', body: { spec: rd.json.spec } }); ok(save.status === 200 && save.json.spec.shape === 'bunny', '   the bunny pattern saved');
+  const save = await K(`/concepts/${A.id}/pattern`, { method: 'PUT', body: { spec: rd.json.spec } }); ok(save.status === 200 && save.json.spec.build?.ears === 'long', '   the bunny pattern saved');
   const ready1 = (await K(`/concepts/${A.id}/ready`)).json, st = id => ready1.items.find(i => i.id === id)?.state;
   ok(st('pattern') === 'done' && ['done', 'warn'].includes(st('made')) && st('materials') === 'done', '   the pattern, its checks and the body\'s pile are done', ready1.items.map(i => `${i.id}:${i.state}`));
   const before = (await call(`/v1/lab/concepts/${A.id}/image`, { token: kyleT })).buf?.length || 0;
@@ -3418,7 +3418,7 @@ await journey('J255', 'Photo-real plush, patterned out like clothing and footwea
     await page.goto(`${BASE}/lab/studio?concept=${C2}&view=pattern`, { waitUntil: 'networkidle' }); const F = await (await page.waitForSelector('#patFrame')).contentFrame(); await F.waitForFunction(() => window.FBPattern?.ready?.(), null, { timeout: 20000 });
     await F.waitForSelector('#readBox #useRead', { timeout: 10000 });
     ok(/bunny/i.test(await F.innerText('#readBox')) || /already matches/.test(await F.innerText('#readBox')), '8. the Pattern page reads the plush from its picture by itself, the first time', await F.innerText('#readBox'));
-    await F.click('#useRead'); ok((await F.evaluate(() => window.FBPattern.spec().shape)) === 'bunny', '   Use it: the bunny is drafted');
+    await F.click('#useRead'); ok((await F.evaluate(() => window.FBPattern.spec().build?.ears)) === 'long', '   Use it: the bunny is drafted from its parts');
     await F.click('#skBtn'); await F.click('#ktools [data-k="shape"]');
     const h = await F.evaluate(() => window.FBPattern.handleAt('front', 'height')), fb = await (await page.$('#patFrame')).boundingBox(), up = await F.evaluate(() => { const s = document.querySelector('#canvas svg'), m = s.getScreenCTM(); return 2 * m.a; });
     const h0 = await F.evaluate(() => window.FBPattern.spec().height);
