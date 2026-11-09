@@ -12,6 +12,7 @@
     "flat-masks": "node scripts/make-flat-masks.mjs",
     "audit:deps": "npm audit --omit=dev --audit-level=high",
     "pattern:judge": "node scripts/pattern-judge.mjs",
+    "pattern:score": "node scripts/pattern-score.mjs",
     "perf": "node scripts/perf/studio-perf.mjs"
   },
   "engines": {

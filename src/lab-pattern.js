@@ -209,13 +209,13 @@ function topPieces(S, m, o, style) {
     const shownS = fold.map(([x, y]) => [x * cD - y * sD, x * sD + y * cD]);
     SLV = { rot: aF * 180 / Math.PI, a: aF, Ls, so: full ? Math.min(soB * .5, Math.max(m.sleeveOpening / 2, 1.5)) : so * .5, x: SP[0], y: SP[1], full };
     let shownP = shownS, placeR = { view: 'front', x: SP[0], y: SP[1], rot, z: -1 }, placeL = { view: 'front', x: -SP[0], y: SP[1], rot: -rot, flip: true, z: -1 };
-    if (m.sleeve > 12) {
+    if (m.sleeve > 12 || m.sleeve > 0 && !raglan) {
       // a long sleeve, seen as the flats draw it: hanging close to the body, not held out. Laid flat, a set-in sleeve pinned at both the shoulder
       // point and the underarm can only sit splayed out; on a flat the cap rounds over the shoulder and the sleeve falls nearly straight, its
       // inner edge from the underarm down beside the body, its end square to it. Drawn in the front's own inches (the right sleeve; the left
       // is its mirror); the cut piece is unchanged
-      const al = (full ? 7 : 10) * Math.PI / 180, d = [Math.sin(al), Math.cos(al)], n = [Math.cos(al), -Math.sin(al)];
-      const wTop = b * (full ? .42 : .38), wEnd = full ? Math.max(m.sleeveOpening * 1.12, 4) : Math.max(m.sleeveOpening, 3.25), Li = Math.max(Ls - ch, 4);
+      const short = m.sleeve <= 12, al = (full ? 7 : short ? 60 : 10) * Math.PI / 180, d = [Math.sin(al), Math.cos(al)], n = [Math.cos(al), -Math.sin(al)];
+      const wTop = b * (full ? .42 : .38), wEnd = full ? Math.max(m.sleeveOpening * 1.12, 4) : Math.max(m.sleeveOpening, 3.25), Li = short ? Math.max(Ls - ch * .55, 1.5) : Math.max(Ls - ch, 4);
       const I = [UA[0] + d[0] * Li, UA[1] + d[1] * Li], O = [I[0] + n[0] * wEnd, I[1] + n[1] * wEnd], T = [UA[0] + wTop, UA[1] - depth * .08];
       const bow = full ? 1.6 : .35, len = Math.hypot(O[0] - T[0], O[1] - T[1]), at = (P, k, off) => [P[0] + d[0] * k + n[0] * off, P[1] + d[1] * k + n[1] * off];
       const cap = cubic(SP, [SP[0] + wTop * .55, SP[1] - .25], [T[0] + .15, T[1] - depth * .5], T), outer = cubic(T, at(T, len * .38, bow), at(O, -len * .3, bow * (full ? .9 : .4)), O);
@@ -388,6 +388,11 @@ function topPieces(S, m, o, style) {
   if (has('flap-welt') && WELT) { const { len, cx: wx, cy: wy, slant } = WELT, fl = [[-len / 2 - .25, -2.6], [len / 2 + .25, -2.6], [len / 2 + .25, .35], [-len / 2 - .25, .35]];
     pieces.push(piece('flap', 'Pocket flap', rect(len + .5, 3), { cut: 4, pair: true, shown: fl, notes: ['Outer and facing, the outer fused; a snap under'], place: { view: 'front', x: wx, y: wy, rot: slant, z: 4 } }), { ...piece('flap-2', 'Pocket flap', rect(len + .5, 3), { cut: 0, shown: fl, place: { view: 'front', x: -wx, y: wy, rot: -slant, flip: true, z: 4 } }), twin: true });
     trims.push({ item: 'Snaps', spec: 'Ring snaps, 12 mm, for the pocket flaps', qty: 2, where: 'Under each flap' }); }
+  // buttons down a shirt's front, or a placket's few (a polo, a henley): in the trims, and seen on the product
+  if ((buttons || K.opening === 'placket' || ['shirt', 'shirtss'].includes(style) && K.opening !== 'zip' && K.opening !== 'none') && !outer) {
+    const plk = K.opening === 'placket' || style === 'polo', n = plk ? 3 : Math.max(5, Math.min(8, Math.round((L - m.neckDropFront) / 3.75))), y0 = m.neckDropFront + .6, gap = plk ? 1.7 : (L - y0 - 2.5) / (n - 1);
+    trims.push(K.opening === 'snaps' ? { item: 'Snaps', spec: '12 mm pearl snaps', qty: n, where: 'Down the centre front' } : { item: 'Buttons', spec: plk ? '18 L (11.5 mm) four-hole' : '18 L (11.5 mm) four-hole, plus one spare', qty: n + (plk ? 0 : 1), where: plk ? 'Down the placket' : `Down the centre front (${n})` });
+    const btn = [[-.25, 0], [0, -.25], [.25, 0], [0, .25]]; for (let i = 0; i < n; i++) pieces.push({ ...piece(`button-${i + 1}`, 'Button', btn, { cut: 0, shown: btn, place: { view: 'front', x: 0, y: y0 + i * gap, z: 6 } }), twin: true, copy: true, of: 'front' }); }
   // buttons or snaps down the front of an outer piece (a cardigan, a varsity, a waistcoat)
   if (buttons && outer) { const n = Math.max(4, Math.min(8, Math.round((L - m.neckDropFront) / 4)));
     trims.push(K.opening === 'snaps' ? { item: 'Snaps', spec: '15 mm ring snaps (a varsity: pearl-capped)', qty: n, where: 'Down the centre front, the first 1 in below the neck' } : { item: 'Buttons', spec: '20 L (12.5 mm) four-hole', qty: n + 1, where: `Down the centre front (${n}), one spare on the care label` });
@@ -413,7 +418,7 @@ function topPieces(S, m, o, style) {
     if (jacketCollar === 'shearling') { const W = m.neckWidth / 2 + 2.4, ring = [[0, -2.7], [W, -2.3], [W + .9, -.6], [W + .5, 1.6], [W - 1.2, 2.9], [0, 3.3]], R = blob(ring, .5), h = R.filter(([x]) => x >= 0);
       pieces.push({ ...piece('collar-back', 'Shearling collar', pieces.find(x => x.id === 'collar').sew, { fabric: 'shearling', cut: 0, shown: [...h, ...mirrorX(h).reverse()], place: { view: 'back', x: 0, y: 0, z: 4 } }), of: 'collar', twin: true, copy: true }); }
   }
-  if (m.sleeve === 0) pieces.push(piece('binding', 'Armhole and neck binding', rect(r8(lenOf(armhole) * 4 * .92 + neckLen * .9), 1.25), { fabric: 'self', cut: 1, notes: ['Bias or cross-grain strip, cut into lengths'], place: { view: 'front', x: -half, y: L + 1, z: 2 } }));
+  if (m.sleeve === 0) pieces.push(piece('binding', 'Armhole and neck binding', rect(r8(lenOf(armhole) * 4 * .92 + neckLen * .9), 1.25), { fabric: 'self', cut: 1, hidden: true, /* a strip cut and bound round the edges: on the product it is the edge itself */ notes: ['Bias or cross-grain strip, cut into lengths'], place: { view: 'front', x: -half, y: L + 1, z: 2 } }));
   return pieces;
 }
 function bottomPieces(S, m, o, style) {
