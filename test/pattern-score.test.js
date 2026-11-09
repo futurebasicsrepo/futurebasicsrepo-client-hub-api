@@ -52,3 +52,16 @@ test('a bodysuit is cut round the leg to a gusset, a dress follows its sketch to
   assert.ok(flare(aline) > 1.2, 'an A-line sketch flares to its hem');
   assert.ok(flare(col) < 1.1, 'a column sketch stays straight');
 });
+
+test('strapless and strappy tops, swim, a bikini set and a mini dress are cut as such', async () => {
+  const { fitToTemplate, defaultParams } = await import('../src/lab-flats.js');
+  const { garmentPattern, boundsOf } = await import('../src/lab-pattern.js');
+  const fit = (style, template) => fitToTemplate({ ...defaultParams(style), template }), pat = (s, t) => garmentPattern(fit(s, t)), ids = p => p.pieces.map(q => q.id);
+  const tube = pat('cami', 'cami-tube-top'); assert.ok(boundsOf(tube.pieces.find(q => q.id === 'front').sew).y0 < 1.5, 'a strapless top starts at its top edge'); assert.ok(!ids(tube).includes('strap') && tube.trims.some(t => t.item === 'Gripper elastic'));
+  const slip = pat('dress', 'dr-slip-maxi-dress'); assert.ok(ids(slip).includes('strap') && ids(slip).includes('strap-2'), 'a slip dress hangs on straps');
+  const sw = pat('swimsuit', 'sw-cami-swimsuit'); assert.ok(ids(sw).includes('front-lining') && sw.trims.some(t => t.item === 'Swim elastic'));
+  const fr = sw.pieces.find(q => q.id === 'front'), b = boundsOf(fr.sew); assert.ok(b.w > 8 && fr.sew.filter(([, y]) => y > b.y1 - .1).every(([x]) => Math.abs(x) < 3), 'a swimsuit is cut round the leg to the crotch');
+  const tri = pat('bikini', 'bk-triangle-string-bikini'); assert.ok(['cup', 'underband', 'brief-front', 'brief-back'].every(i => ids(tri).includes(i)), 'a bikini is a top and a brief');
+  assert.ok(ids(pat('bikini', 'bk-bandeau-tie-bikini')).includes('bandeau'));
+  const mini = fit('dress', 'dr-strapless-mini-dress').m.length; assert.ok(mini > 30 && mini < 35, `a mini dress is above the knee, not cropped (${mini})`);
+});

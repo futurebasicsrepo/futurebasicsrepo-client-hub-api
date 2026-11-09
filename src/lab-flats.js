@@ -205,15 +205,19 @@ export function followDrawing(p) {
 // crotch), read off the sketch's outline at 11 heights and given as each width against the width just below the bust, so a fitted body, an
 // A-line or a column comes out as drawn, whatever the pack's chest line read. [[f, r]…]: f from the underarm (0) to the hem (1), r the half
 // width over the half chest. Each kept within what a body can be; a sketch with no outline gives its style's usual body
-export const BODY_STYLES = ['bodysuit', 'dress'];
+export const BODY_STYLES = ['bodysuit', 'swimsuit', 'dress', 'cami'];
 const BODY_DEFAULT = {
   bodysuit: [[0, 1], [.1, 1], [.2, .96], [.3, .98], [.4, 1.06], [.5, 1.13], [.6, .9], [.7, .55], [.8, .38], [.9, .28], [1, .22]],
   dress: [[0, 1], [.1, .98], [.2, .92], [.3, .96], [.4, 1.04], [.5, 1.08], [.6, 1.1], [.7, 1.12], [.8, 1.14], [.9, 1.16], [1, 1.18]],
+  cami: [[0, 1], [.1, 1], [.2, 1], [.3, 1.01], [.4, 1.02], [.5, 1.03], [.6, 1.04], [.7, 1.05], [.8, 1.06], [.9, 1.07], [1, 1.08]],
 };
+BODY_DEFAULT.swimsuit = BODY_DEFAULT.bodysuit;
 const BODY_BOUNDS = { // [up to f, low, high]
   bodysuit: [[.15, .9, 1.12], [.4, .85, 1.15], [.6, .9, 1.2], [1, .14, 1.2]],
   dress: [[.15, .85, 1.12], [.35, .8, 1.12], [.55, .92, 1.35], [1, .9, 2.2]],
+  cami: [[.15, .85, 1.15], [.5, .8, 1.4], [1, .8, 1.8]],
 };
+BODY_BOUNDS.swimsuit = BODY_BOUNDS.bodysuit;
 const BODY = {};
 export function bodyProfile(style, templateId) {
   if (!BODY_STYLES.includes(style)) return null; const key = `${style}:${templateId}`; if (key in BODY) return BODY[key];
@@ -225,7 +229,7 @@ export function bodyProfile(style, templateId) {
     // body is kept and below it the sketch's widths are taken against its chest line
     const bust = [.1, .15, .2, .25].map(at).filter(Boolean), mn = Math.min(...bust); // the bust: the widest of these that a short sleeve is not part of
     const long = /long[- ]sleeve/.test(`${t.id} ${t.label}`.toLowerCase()), ref = long ? v.chest / 2 : bust.length ? Math.max(...bust.filter(w => w <= mn * 1.15)) : null;
-    const raw = Array.from({ length: 11 }, (_, i) => [i / 10, at(i === 10 && style === 'dress' ? .95 : i / 10)]);
+    const raw = Array.from({ length: 11 }, (_, i) => [i / 10, at(i === 10 && (style === 'dress' || style === 'cami') ? .95 : i / 10)]);
     if (ref && raw.every(([, w]) => w)) {
       const lim = f => BODY_BOUNDS[style].find(([u]) => f <= u + 1e-9);
       out = raw.map(([f, w], i) => { const [, lo, hi] = lim(f); return [f, f === 0 ? 1 : long && f <= .5 ? BODY_DEFAULT[style][i][1] : Math.round(Math.min(Math.max(w / ref, lo), hi) * 100) / 100]; });
@@ -246,8 +250,9 @@ export function fitToTemplate(p, asDrawn = false) {
   // the length the sketch suggests is trusted as far as the sketch says it is meant to go: a sketch's proportions are drawn by hand, and a
   // hem read in the wrong place made a T-shirt dress 20 in and a blazer 49 in long. A cropped sketch may shorten the piece, a long one
   // lengthen it; any other moves it at most about a tenth (the measurements can always be typed). The drawing itself is not moved (asDrawn)
-  if (!asDrawn) { const n = `${t.id} ${t.label}`.toLowerCase(), crop = /crop|super|mini|micro|bralette|tube|bandeau/.test(n), long = /long|maxi|midi|gown|parka|overcoat|trench|duster|tunic/.test(n);
-    k = Math.min(Math.max(k, crop ? .68 : long ? 1.02 : .92), crop ? .97 : long ? 1.7 : 1.1); }
+  if (!asDrawn) { const n = `${t.id} ${t.label}`.toLowerCase(), mini = /\bmini\b/.test(n) && ['dress', 'skirt'].includes(p.style), crop = !mini && p.style !== 'bikini' && /crop|super|mini|micro|bralette|tube|bandeau/.test(n), long = /long|maxi|midi|gown|parka|overcoat|trench|duster|tunic/.test(n);
+    const maxi = ['dress', 'skirt'].includes(p.style) && /maxi|gown/.test(n), midi = ['dress', 'skirt'].includes(p.style) && /midi/.test(n);
+    k = mini ? Math.min(Math.max(k, .82), .9) : maxi ? Math.min(Math.max(k, 1.35), 1.6) : midi ? Math.min(Math.max(k, 1.1), 1.3) : Math.min(Math.max(k, crop ? .68 : long ? 1.02 : .92), crop ? .97 : long ? 1.7 : 1.1); } // a mini dress or skirt: above the knee, not cropped; a midi to mid-calf, a maxi or a gown to the ankle
   const m = { ...p.m };
   if (S.kind === 'top' && base.length) m.length = r8(base.length * k);
   else if (S.kind === 'bottom' && S.skirt) m.length = r8(base.length * k);
