@@ -16,51 +16,88 @@ var c=q.get('concept')||'';location.replace('/lab/studio'+(/^[0-9a-f-]{36}$/i.te
 body{margin:0;color:var(--ink);font:400 14px/1.45 'Space Grotesk',system-ui,sans-serif;min-height:100vh}
 button,input,select{font:inherit;color:inherit}.hidden{display:none!important}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--ink);background:#fff;color:var(--ink);border-radius:999px;padding:6px 13px;cursor:pointer;font-weight:600;min-height:34px;font-size:13px;white-space:nowrap}.btn:hover{background:var(--ink);color:#fff}
-.btn.go{background:var(--cue);border-color:var(--cue)}.btn.go:hover{background:#7affb6;color:var(--ink)}.btn.q{border-color:var(--line)}.btn.sm{min-height:28px;padding:3px 10px;font-size:12px}.btn[disabled]{opacity:.45;pointer-events:none}
+.btn.go{background:var(--cue);border-color:var(--cue)}.btn.go:hover{background:#7affb6;color:var(--ink)}.btn.q{border-color:var(--line)}.btn.sm{min-height:30px;padding:3px 11px;font-size:12.5px}.btn[disabled]{opacity:.45;pointer-events:none}
 .btn[aria-pressed=true]{background:var(--ink);color:#fff;border-color:var(--ink)}
 .mono{font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
 .bar{display:flex;align-items:center;gap:8px;padding:10px clamp(14px,2vw,24px);background:#fff;border-bottom:1px solid var(--line);flex-wrap:wrap}
 .bar .ttl{margin-right:auto;display:grid;line-height:1.2}.bar .ttl b{font-size:16px}.bar .ttl span{color:var(--dim);font-size:12px}
-.seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;padding:2px;background:#fff;gap:2px;flex-wrap:wrap}.seg button{border:0;background:none;border-radius:999px;padding:4px 11px;cursor:pointer;font-size:12.5px;font-weight:600;color:var(--dim)}.seg button[aria-pressed=true]{background:var(--ink);color:#fff}.seg button .st{font-weight:400;opacity:.7;margin-left:4px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;padding:2px;background:#fff;gap:2px;flex-wrap:wrap}.seg button{border:0;background:none;border-radius:999px;padding:5px 12px;cursor:pointer;font-size:12.5px;font-weight:600;color:var(--dim);min-height:30px}.seg button[aria-pressed=true]{background:var(--ink);color:#fff}.seg button .st{font-weight:400;opacity:.7;margin-left:4px}
 .saved{color:var(--dim);font-size:12px}.saved.dirty{color:var(--warn)}
-.wrap{display:grid;grid-template-columns:minmax(0,1fr) 320px;min-height:calc(100vh - 58px)}
+.wrap{display:grid;grid-template-columns:minmax(0,1fr) 320px;height:calc(100vh - 58px);min-height:420px}
 html[data-embed=compact] .wrap{grid-template-columns:1fr}html[data-embed=compact] aside{display:none}
-.stage{position:relative;padding:14px;display:grid;place-items:center;min-height:420px}
-#art{width:100%;max-height:calc(100vh - 110px);background:#fff;border-radius:16px;border:1px solid var(--line);touch-action:none;user-select:none}
-#art .panels path{cursor:pointer;transition:filter .12s}#art .panels path:hover{filter:brightness(1.08)}
-#art .panels path.on{stroke:var(--sel)}
+[data-panel=off] .wrap{grid-template-columns:minmax(0,1fr)}[data-panel=off] aside{display:none}
+.stage{position:relative;padding:14px;min-height:0;min-width:0;display:grid}
+.canvas{position:relative;min-height:0;min-width:0;background:#fff;border-radius:16px;border:1px solid var(--line);overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none}
+#art{display:block;width:100%;height:100%}
+#art .panels path{transition:filter .12s}#art .panels path.on{stroke:var(--sel)}
+[data-tool=select] #art .panels path,[data-tool=node] #art .panels path,[data-tool=fill] #art .panels path,[data-tool=pick] #art .panels path{cursor:pointer}
+[data-tool=select] #art .panels path:hover,[data-tool=fill] #art .panels path:hover{filter:brightness(1.08)}
+[data-tool=hand] .canvas{cursor:grab}.panning .canvas{cursor:grabbing!important}
+[data-tool=brush] .canvas,[data-tool=line] .canvas,[data-tool=rect] .canvas,[data-tool=ellipse] .canvas,[data-tool=pen] .canvas,[data-tool=liquify] .canvas,[data-tool=warp] .canvas,[data-tool=eraser] .canvas{cursor:crosshair}
+[data-tool=text] .canvas{cursor:text}
 #art .h{fill:#fff;stroke:var(--sel);cursor:grab}#art .h:hover{fill:var(--sel)}#art .h.drag{cursor:grabbing;fill:var(--sel)}
-.empty{max-width:520px;text-align:center;display:grid;gap:12px;justify-items:center;padding:30px;background:#fff;border:1px solid var(--line);border-radius:16px}
+#art .gfx image{cursor:move}#art .gbox{fill:none;stroke:var(--sel);stroke-dasharray:6 4;pointer-events:none}#art .gh{fill:#fff;stroke:var(--sel);cursor:nwse-resize}#art .gr{fill:var(--cue);stroke:#141416;cursor:grab}
+#art .ring{fill:none;stroke:var(--sel);stroke-width:1.5;pointer-events:none;stroke-dasharray:4 3}
+.empty{max-width:520px;margin:auto;text-align:center;display:grid;gap:12px;justify-items:center;padding:30px;background:#fff;border:1px solid var(--line);border-radius:16px;align-self:center}
 .empty p{margin:0;color:var(--dim)}
-aside{background:#fff;border-left:1px solid var(--line);padding:16px;display:grid;gap:16px;align-content:start;overflow:auto;max-height:calc(100vh - 58px)}
+/* zoom: a small glass pill at the canvas's foot, beside where the Studio's own zoom sits for the picture */
+.zoom{position:absolute;right:24px;bottom:24px;z-index:5;display:flex;align-items:center;gap:2px;padding:4px;border-radius:999px;background:rgba(255,255,255,.72);-webkit-backdrop-filter:blur(18px) saturate(1.7);backdrop-filter:blur(18px) saturate(1.7);border:1px solid rgba(255,255,255,.8);box-shadow:0 8px 24px rgba(20,20,22,.14),inset 0 1px 0 #fff}
+.zoom button{border:0;background:none;border-radius:999px;min-width:34px;height:34px;padding:0 10px;font-weight:600;cursor:pointer}.zoom button:hover{background:rgba(20,20,22,.07)}.zoom output{min-width:48px;text-align:center;font:500 12px 'IBM Plex Mono',monospace}
+.hintline{position:absolute;left:24px;bottom:28px;z-index:5;font-size:12px;color:var(--dim);background:rgba(255,255,255,.8);padding:4px 10px;border-radius:999px;pointer-events:none;max-width:calc(100% - 260px)}
+.hintline:empty{display:none}
+aside{background:#fff;border-left:1px solid var(--line);padding:16px;display:grid;gap:18px;align-content:start;overflow:auto;min-height:0}
 aside h4{margin:0 0 6px;font-size:13px}aside .note{margin:0;color:var(--dim);font-size:12.5px}
 .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-label.f{display:grid;gap:4px;font-size:12px;color:var(--dim)}label.f input[type=text]{border:1px solid var(--line);border-radius:10px;padding:6px 9px;color:var(--ink)}
-input[type=color]{width:42px;height:32px;border:1px solid var(--line);border-radius:8px;padding:2px;background:#fff;cursor:pointer}
+label.f{display:grid;gap:4px;font-size:12px;color:var(--dim)}label.f input[type=text]{border:1px solid var(--line);border-radius:10px;padding:7px 10px;color:var(--ink);font-size:16px}
+input[type=color]{width:42px;height:34px;border:1px solid var(--line);border-radius:8px;padding:2px;background:#fff;cursor:pointer}
 .sw{display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:8px}
 .sw label{display:grid;gap:3px;justify-items:center;font:500 10px 'IBM Plex Mono',monospace;color:var(--dim);cursor:pointer}
 .sw input[type=color]{width:100%;height:36px}
+.glist{display:grid;gap:6px}.gi{display:grid;grid-template-columns:44px 1fr auto;gap:8px;align-items:center;border:1px solid var(--line);border-radius:12px;padding:5px 6px;background:#fff;cursor:pointer}.gi.on{border-color:var(--sel);box-shadow:0 0 0 1px var(--sel)}
+.gi img{width:44px;height:44px;object-fit:contain;background:var(--fog);border-radius:8px}.gi b{font-size:12.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gpick{display:grid;grid-template-columns:repeat(auto-fill,minmax(78px,1fr));gap:8px;max-height:300px;overflow:auto;padding:2px}
+.gpick button{border:1px solid var(--line);border-radius:12px;background:#fff;padding:4px;cursor:pointer;display:grid;gap:3px;font-size:10.5px;color:var(--dim);text-align:center}.gpick button:hover{border-color:var(--ink)}
+.gpick img{width:100%;aspect-ratio:1;object-fit:contain;background:var(--fog);border-radius:8px}
 .toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:9px 16px;border-radius:999px;font-size:13px;z-index:50;max-width:90vw}
-@media(max-width:860px){.wrap{grid-template-columns:1fr}aside{border-left:0;border-top:1px solid var(--line);max-height:none}}
+@media(max-width:860px){.wrap{grid-template-columns:1fr;height:auto}.canvas{min-height:62vh}aside{border-left:0;border-top:1px solid var(--line)}}
+/* Focus (the Design workspace's): the drawing fills the screen; the workspace's bar, rail and options float over the top and left, the panel
+   floats on the right and this page's own bar (views, undo, save) floats at the foot, all in Liquid Glass, so nothing sits under anything */
+[data-embed][data-focus]{--glass:rgba(255,255,255,.56);--glass-line:rgba(255,255,255,.72);--glass-edge:rgba(20,20,22,.08);--glass-shadow:0 12px 36px rgba(20,20,22,.14),0 2px 6px rgba(20,20,22,.06),inset 0 1px 0 rgba(255,255,255,.85)}
+[data-embed][data-focus] .wrap{display:block;position:relative;height:100vh;min-height:0;overflow:hidden}
+[data-embed][data-focus] .stage{position:absolute;inset:0;padding:0;display:block}
+[data-embed][data-focus] .canvas{position:absolute;left:78px;right:14px;top:116px;bottom:70px;border:0;border-radius:0;background:transparent}
+[data-embed][data-focus][data-panel=on] .canvas{right:372px}
+[data-embed][data-focus] :is(.bar,aside,.zoom){background:var(--glass);-webkit-backdrop-filter:blur(24px) saturate(1.8);backdrop-filter:blur(24px) saturate(1.8);border:1px solid var(--glass-line);outline:1px solid var(--glass-edge);box-shadow:var(--glass-shadow)}
+[data-embed][data-focus] .bar{position:fixed;z-index:30;bottom:12px;left:78px;right:200px;width:max-content;max-width:calc(100% - 278px);margin-inline:auto;border-radius:999px;padding:5px 8px 5px 14px;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
+[data-embed][data-focus][data-panel=on] .bar{right:560px;max-width:calc(100% - 638px)}
+[data-embed][data-focus] .bar .ttl{display:none}[data-embed][data-focus] .bar .seg{background:transparent;border-color:transparent;flex-wrap:nowrap}
+[data-embed][data-focus] aside{position:fixed;z-index:31;right:10px;top:66px;bottom:10px;width:350px;border-radius:24px}
+[data-embed][data-focus] .zoom{position:fixed;bottom:12px;right:14px}[data-embed][data-focus][data-panel=on] .zoom{right:372px}
+[data-embed][data-focus] .hintline{position:fixed;left:84px;bottom:66px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
-<body>
+<body data-tool="select">
 <div class="bar"><div class="ttl"><b id="ttl">Drawing</b><span id="sub">Loading…</span></div>
   <div class="seg" id="views" role="group" aria-label="View"></div>
   <span class="saved" id="saved"></span>
   <button class="btn sm q" type="button" id="undo" title="Undo (Ctrl+Z)" disabled>Undo</button><button class="btn sm q" type="button" id="redo" title="Redo" disabled>Redo</button>
   <button class="btn sm go" type="button" id="save" disabled>Save</button>
 </div>
-<div class="wrap"><div class="stage" id="stage"></div>
+<div class="wrap"><div class="stage"><div class="canvas" id="stage"></div>
+  <div class="zoom" id="zoom" role="group" aria-label="Zoom"><button type="button" data-z="out" aria-label="Zoom out">−</button><output id="zv">100%</output><button type="button" data-z="in" aria-label="Zoom in">+</button><button type="button" data-z="fit">Fit</button></div>
+  <div class="hintline" id="hint" role="status"></div></div>
 <aside id="side"></aside></div>
 <script type="module">
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const TOKEN=()=>{try{return localStorage.getItem('fb.admin.token')||localStorage.getItem('fb.client.token')||''}catch{return ''}};
 async function api(path,o={}){const r=await fetch(path,{method:o.method||(o.body?'POST':'GET'),headers:{Authorization:'Bearer '+TOKEN(),...(o.body?{'Content-Type':'application/json'}:{})},body:o.body?JSON.stringify(o.body):undefined});const j=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(new Error(j.error||('Request failed ('+r.status+')')),{status:r.status});return j}
-const toast=m=>{const t=document.createElement('div');t.className='toast';t.setAttribute('role','status');t.textContent=m;document.body.append(t);setTimeout(()=>t.remove(),3200)};
+const toast=m=>{$$('.toast').forEach(t=>t.remove());const t=document.createElement('div');t.className='toast';t.setAttribute('role','status');t.textContent=m;document.body.append(t);setTimeout(()=>t.remove(),3200)};
 const QS=new URLSearchParams(location.search),CID=QS.get('concept')||'',EMBED=document.documentElement.dataset.embed||'',HOST=()=>{try{return EMBED&&parent!==window?parent.FBDesign:null}catch{return null}};
-let D=null,VIEW='',DW={},DIRTY=new Set(),SEL=null,HIST=[],FUT=[],POLL=0,SHOWDET=true;
+let D=null,VIEW='',DW={},DIRTY=new Set(),SEL=null,GSEL=null,HIST=[],FUT=[],POLL=0,SHOWDET=true,TOOL='select',READY=false,PICKED=null,LASTHOST=null;
+const VB={},ZM={};// the view's whole drawing (its viewBox at Fit), and the zoom and centre of each view
+const HREF=new Map(); // a graphic's picture, fetched once (it needs the sign-in), as an object URL
 
 // ---- a panel's shape: the points its curve passes near (the quadratic curve's control points), one list per loop; the curve is drawn back from them
 const n2=v=>+(+v).toFixed(2);
@@ -68,110 +105,277 @@ function parse(d){const loops=[];for(const part of String(d).split('M').slice(1)
 function smooth(pts){const m=(p,q)=>[(p[0]+q[0])/2,(p[1]+q[1])/2],s=m(pts[pts.length-1],pts[0]);let d=`M${n2(s[0])} ${n2(s[1])}`;for(let i=0;i<pts.length;i++){const p=pts[i],q=m(p,pts[(i+1)%pts.length]);d+=`Q${n2(p[0])} ${n2(p[1])} ${n2(q[0])} ${n2(q[1])}`}return d+'Z'}
 const pathOf=loops=>loops.map(smooth).join('');
 const cur=()=>DW[VIEW];
-const snap=()=>JSON.stringify({panels:cur().panels,hideDetails:cur().hideDetails||false});
-function remember(){HIST.push({view:VIEW,s:snap()});if(HIST.length>80)HIST.shift();FUT=[];}
-function restore(h,into){const s=JSON.parse(h.s);VIEW=h.view;DW[VIEW]={...DW[VIEW],...s};DIRTY.add(VIEW);into.push(h)}
+const snap=()=>{const d=cur();return JSON.stringify({panels:d.panels,details:d.details,marks:d.marks||[],graphics:d.graphics||[],hideDetails:d.hideDetails||false,_det:d._det||false})};
+function remember(){if(!cur())return;HIST.push({view:VIEW,s:snap()});if(HIST.length>80)HIST.shift();FUT=[];}
 function touch(){DIRTY.add(VIEW);paintState();HOST()?.flatsChanged?.()}
 function paintState(){const n=DIRTY.size;$('#saved').textContent=n?`Not saved (${n} view${n===1?'':'s'})`:(D&&Object.values(D.views).some(v=>v.status==='ready')?'Saved':'');$('#saved').className='saved'+(n?' dirty':'');$('#save').disabled=!n;$('#undo').disabled=!HIST.length;$('#redo').disabled=!FUT.length}
+const uid=p=>p+Math.random().toString(36).slice(2,8);
 
-// ---- drawing the view: the panels (each clickable), the details over them, and the chosen panel's points as handles
+// ---- the colour and size the Studio's tools are set to (its colour well, its size slider); a colour picked here wins until the Studio's changes
+function hostOpts(){let o={};try{o=HOST()?.drawOpts?.()||{}}catch{}if(o.color&&o.color!==LASTHOST){LASTHOST=o.color;PICKED=null}return o}
+const colour=()=>{const c=PICKED||hostOpts().color||'#141416';return /^#[0-9a-f]{6}$/i.test(c)?c.toLowerCase():'#141416'};
+const pxToUnits=px=>{const svg=$('#art');if(!svg)return px;const r=svg.getBoundingClientRect(),vb=svg.viewBox.baseVal;return px*Math.max(vb.width/r.width,vb.height/r.height)};
+
+// ---- the camera: Fit shows the whole drawing; zoom from 25% to 1600% about a point; pan anywhere
+function fitBox(){const dw=cur(),b=dw.box,pad=24;return{x:b.x0-pad,y:b.y0-pad,w:b.x1-b.x0+2*pad,h:b.y1-b.y0+2*pad}}
+function cam(){const f=VB[VIEW]||(VB[VIEW]=fitBox()),z=ZM[VIEW]||(ZM[VIEW]={z:1,cx:f.x+f.w/2,cy:f.y+f.h/2}),w=f.w/z.z,h=f.h/z.z;return{x:z.cx-w/2,y:z.cy-h/2,w,h}}
+function applyCam(){const svg=$('#art');if(!svg)return;const c=cam();svg.setAttribute('viewBox',`${c.x} ${c.y} ${c.w} ${c.h}`);$('#zv').textContent=Math.round((ZM[VIEW]?.z||1)*100)+'%';paintRing()}
+function zoomAt(k,sx,sy){const svg=$('#art');if(!svg||!ZM[VIEW])return;const z=ZM[VIEW],nz=Math.max(.25,Math.min(16,z.z*k));if(nz===z.z)return;
+  if(sx!=null){const [px,py]=svgPt(svg,{clientX:sx,clientY:sy}),f=nz/z.z;z.cx=px+(z.cx-px)/f;z.cy=py+(z.cy-py)/f}z.z=nz;applyCam()}
+function panBy(dx,dy){const svg=$('#art');if(!svg||!ZM[VIEW])return;const r=svg.getBoundingClientRect(),c=cam(),k=Math.max(c.w/r.width,c.h/r.height);ZM[VIEW].cx-=dx*k;ZM[VIEW].cy-=dy*k;applyCam()}
+function fit(){if(!cur())return;VB[VIEW]=fitBox();const f=VB[VIEW];ZM[VIEW]={z:1,cx:f.x+f.w/2,cy:f.y+f.h/2};applyCam()}
+$('#zoom').addEventListener('click',e=>{const b=e.target.closest('[data-z]');if(!b)return;const r=$('#stage').getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2;if(b.dataset.z==='fit')fit();else zoomAt(b.dataset.z==='in'?1.25:.8,cx,cy)});
+$('#stage').addEventListener('wheel',e=>{if(!$('#art'))return;e.preventDefault();if(e.ctrlKey||e.metaKey)zoomAt(Math.exp(-e.deltaY*.0025),e.clientX,e.clientY);else panBy(-e.deltaX,-e.deltaY)},{passive:false});
+
+// ---- drawing the view: the panels (each clickable), the details, the designer's lines and words, the graphics; the chosen panel's points as handles
 function draw(){
   const st=$('#stage'),v=D?.views?.[VIEW],dw=cur();
   if(!dw){
     const busy=v?.status==='pending'||D?.busy,failed=v?.status==='failed',none=!D?.concept?.hasImage;
     const N=D?.noun||'piece',first=(D?.kinds||[]).find(k=>k.id===D.first)?.label.toLowerCase()||'first',others=(D?.kinds||[]).filter(k=>k.id!==D?.first).map(k=>k.label.toLowerCase()).join(', ');
     st.innerHTML=`<div class="empty"><b>${busy?`Drawing the ${N}…`:failed?'This view could not be drawn':'Not drawn yet'}</b><p>${busy?`The ${first} view is drawn from the board's picture, then the ${others} from it. About a minute a view.`:failed?esc(v.note||''):none?`Draw the concept's picture first: the ${N} is drawn from it.`:`The concept is drawn as a technical flat in ${(D?.kinds||[]).length} views (${(D?.kinds||[]).map(k=>k.label.toLowerCase()).join(', ')}), and traced into panels you can recolour and reshape here. You can also start from a bag or shoe in the Sketch library.`}</p>${busy?'':`<button class="btn go" type="button" data-draw ${none||!D?.imageConnected?'disabled':''}>${failed?'Draw it again':`Draw the ${N}`}</button>`}${D&&!D.imageConnected?'<p>No image model is connected.</p>':''}</div>`;
-    return}
-  const b=dw.box,pad=24,vb=[b.x0-pad,b.y0-pad,b.x1-b.x0+2*pad,b.y1-b.y0+2*pad],sw=dw.stroke||2.4,hr=Math.max(3.5,vb[2]/170);
-  const sel=dw.panels.find(p=>p.id===SEL);
-  st.innerHTML=`<svg id="art" viewBox="${vb.join(' ')}" role="img" aria-label="${esc(D.concept.name)}, ${esc(label(VIEW))}"><g class="panels" stroke="#161616" stroke-width="${sw}" stroke-linejoin="round">${dw.panels.filter(p=>!p.hidden).map(p=>`<path data-p="${esc(p.id)}" class="${p.id===SEL?'on':''}" fill="${esc(p.fill)}" fill-rule="evenodd" d="${p.d}"><title>${esc(p.name||'Panel')}</title></path>`).join('')}</g>${SHOWDET&&!dw.hideDetails?`<g fill="#161616" pointer-events="none">${(dw.details||[]).map(x=>`<path d="${x.d}" fill-rule="evenodd"/>`).join('')}</g>`:''}${sel?`<path d="${sel.d}" fill="none" stroke="var(--sel)" stroke-width="${sw*1.2}" pointer-events="none"/>`+parse(sel.d).map((l,li)=>l.map((p,i)=>`<circle class="h" data-l="${li}" data-i="${i}" cx="${p[0]}" cy="${p[1]}" r="${hr}" stroke-width="${hr/3}"/>`).join('')).join(''):''}</svg>`;
+    $('#zoom').classList.add('hidden');return}
+  $('#zoom').classList.remove('hidden');
+  const c=cam(),sw=dw.stroke||2.4,f=VB[VIEW],hr=Math.max(3.5,f.w/170)/Math.sqrt(ZM[VIEW].z);
+  const sel=dw.panels.find(p=>p.id===SEL),g=(dw.graphics||[]).find(x=>x.id===GSEL);
+  st.innerHTML=`<svg id="art" viewBox="${c.x} ${c.y} ${c.w} ${c.h}" role="img" aria-label="${esc(D.concept.name)}, ${esc(label(VIEW))}"><g class="panels" stroke="#161616" stroke-width="${sw}" stroke-linejoin="round">${dw.panels.filter(p=>!p.hidden).map(p=>`<path data-p="${esc(p.id)}" class="${p.id===SEL?'on':''}" fill="${esc(p.fill)}" fill-rule="evenodd" d="${p.d}"><title>${esc(p.name||'Panel')}</title></path>`).join('')}</g>
+    <g class="details" fill="#161616" pointer-events="none">${SHOWDET&&!dw.hideDetails?(dw.details||[]).map(x=>`<path d="${x.d}" fill-rule="evenodd"/>`).join(''):''}</g>
+    <g class="marks" pointer-events="none">${marksSvg(dw)}</g>
+    <g class="gfx">${(dw.graphics||[]).map(x=>`<image data-g="${esc(x.id)}" x="${x.x-x.w/2}" y="${x.y-x.h/2}" width="${x.w}" height="${x.h}" preserveAspectRatio="xMidYMid meet" transform="rotate(${x.rot||0} ${x.x} ${x.y})" href="${HREF.get(x.art)||''}"/>`).join('')}</g>
+    ${sel&&(TOOL==='select'||TOOL==='node')?`<path d="${sel.d}" fill="none" stroke="var(--sel)" stroke-width="${sw*1.2}" pointer-events="none"/>`+parse(sel.d).map((l,li)=>l.map((p,i)=>`<circle class="h" data-l="${li}" data-i="${i}" cx="${p[0]}" cy="${p[1]}" r="${hr}" stroke-width="${hr/3}"/>`).join('')).join(''):''}
+    ${g?`<g transform="rotate(${g.rot||0} ${g.x} ${g.y})"><rect class="gbox" x="${g.x-g.w/2}" y="${g.y-g.h/2}" width="${g.w}" height="${g.h}" stroke-width="${hr/2}"/>${[[-1,-1],[1,-1],[1,1],[-1,1]].map(([a,b])=>`<rect class="gh" data-gh="${a},${b}" x="${g.x+a*g.w/2-hr}" y="${g.y+b*g.h/2-hr}" width="${hr*2}" height="${hr*2}" stroke-width="${hr/3}"/>`).join('')}<line x1="${g.x}" y1="${g.y-g.h/2}" x2="${g.x}" y2="${g.y-g.h/2-hr*5}" stroke="var(--sel)" stroke-width="${hr/3}"/><circle class="gr" data-grot="1" cx="${g.x}" cy="${g.y-g.h/2-hr*5}" r="${hr*1.3}" stroke-width="${hr/3}"/></g>`:''}
+    <g id="live" pointer-events="none"></g><circle class="ring hidden" id="ring" r="10"/></svg>`;
 }
+const marksSvg=dw=>(dw.marks||[]).map(m=>m.kind==='text'?`<text x="${m.x}" y="${m.y}" font-family="Space Grotesk, Helvetica, Arial, sans-serif" font-weight="600" font-size="${m.size}" fill="${esc(m.color)}" text-anchor="middle" dominant-baseline="middle">${esc(m.text)}</text>`:`<path d="${m.d}" fill="none" stroke="${esc(m.color)}" stroke-width="${m.w}" stroke-linecap="round" stroke-linejoin="round"/>`).join('');
 const label=v=>(D?.kinds||[]).find(k=>k.id===v)?.label||v;
 function paintViews(){$('#views').innerHTML=(D?.kinds||[]).map(k=>{const v=D.views[k.id],s=v?.status==='pending'?'…':v?.status==='failed'?'!':v?.edited?'✎':'';return `<button type="button" data-v="${k.id}" aria-pressed="${k.id===VIEW}">${esc(k.label)}${s?`<span class="st">${s}</span>`:''}</button>`}).join('')}
+const HINTS={select:'Tap a panel to recolour, rename or reshape it; tap a graphic to move, size or turn it. Pinch or Ctrl and the wheel zooms.',node:'Drag a point to reshape the panel; double-click its edge to add a point, Alt-click a point to remove it.',hand:'Drag to move around. Pinch, or Ctrl and the wheel, zooms.',
+  fill:'Tap a panel to fill it with the colour in the rail.',pick:'Tap a panel to take its colour for Fill, the brush and new shapes.',liquify:'Drag to push the drawing: panels, seams and stitching move together. The size is the rail\'s size.',warp:'Drag to push the drawing: panels, seams and stitching move together.',
+  brush:'Draw a line on the drawing, in the rail\'s colour and size. It goes into the tech pack.',line:'Drag a straight line.',rect:'Drag a new panel: a box with an outline, in the rail\'s colour.',ellipse:'Drag a new round panel, in the rail\'s colour.',pen:'Click points to draw a new panel; click the first point (or press Enter) to close it.',
+  text:'Tap where the words go.',eraser:'Rub over lines and words you drew to take them off; tap a panel you added to remove it.',area:'',distress:'',ruler:''};
+function paintHint(){const h=HINTS[TOOL];$('#hint').textContent=h===''?'This tool works on the picture, not on the drawing.':(h||'')}
 function paintSide(){
-  const s=$('#side'),dw=cur();if(!dw){s.innerHTML=`<div><h4>The ${esc(D?.noun||'piece')} as a drawing</h4><p class="note">Each view is a technical flat traced into panels. Pick a panel to recolour, rename or reshape it; change a colour everywhere at once; switch the stitching and tread lines on or off.</p></div>`;return}
-  const p=dw.panels.find(x=>x.id===SEL),cols=[...new Set(dw.panels.map(x=>x.fill))];
-  s.innerHTML=`${p?`<div><h4>Panel</h4><div style="display:grid;gap:10px"><label class="f">Name<input type="text" id="pName" maxlength="60" value="${esc(p.name||'')}" placeholder="vamp, quarter, toe cap, midsole…"></label>
+  const s=$('#side'),dw=cur();if(!dw){s.innerHTML=`<div><h4>The ${esc(D?.noun||'piece')} as a drawing</h4><p class="note">Each view is a technical flat traced into panels. Pick a panel to recolour, rename or reshape it; change a colour everywhere at once; place graphics; switch the stitching and tread lines on or off.</p></div>`;return}
+  const p=dw.panels.find(x=>x.id===SEL),g=(dw.graphics||[]).find(x=>x.id===GSEL),cols=[...new Set(dw.panels.filter(x=>!x.hidden).map(x=>x.fill))],mine=p&&/^u/.test(p.id);
+  s.innerHTML=`${p?`<div><h4>Panel</h4><div style="display:grid;gap:10px"><label class="f">Name<input type="text" id="pName" maxlength="60" value="${esc(p.name||'')}" placeholder="vamp, quarter, toe cap, gusset…"></label>
     <div class="row"><input type="color" id="pFill" value="${esc(p.fill)}" aria-label="Panel colour"><span class="mono">${esc(p.fill)}</span><button class="btn sm q" type="button" id="pAll">Every ${esc(p.fill)} panel</button></div>
     <p class="note">Drag a point to reshape it (edges shared with the next panel move with it). Double-click the panel's edge to add a point; Alt-click a point to remove it.</p>
-    <div class="row"><button class="btn sm q" type="button" id="pHide">Hide this panel</button><button class="btn sm q" type="button" id="pNone">Done</button></div></div></div>`:`<div><h4>Panels</h4><p class="note">${dw.panels.length} panels. Click one on the drawing to recolour, rename or reshape it.</p></div>`}
+    <div class="row"><button class="btn sm q" type="button" id="pUp" title="Bring forward">Forward</button><button class="btn sm q" type="button" id="pDown" title="Send backward">Backward</button><button class="btn sm q" type="button" id="pDup">Duplicate</button></div>
+    <div class="row"><button class="btn sm q" type="button" id="pHide">${mine?'Delete':'Hide'} this panel</button><button class="btn sm q" type="button" id="pNone">Done</button></div></div></div>`:`<div><h4>Panels</h4><p class="note">${dw.panels.length} panels. Tap one on the drawing to recolour, rename or reshape it. The tools in the rail work here too: Fill, Liquify, the brush, shapes (as new panels) and words.</p></div>`}
+    <div><h4>Graphics</h4>${g?`<div style="display:grid;gap:8px;margin-bottom:8px"><p class="note">Drag it to move, a corner to size it, the green knob to turn it.</p><div class="row"><label class="f" style="flex:1">Turn<input type="range" id="gRot" min="-180" max="180" value="${Math.round(g.rot||0)}"></label><button class="btn sm q" type="button" id="gDel">Remove</button><button class="btn sm q" type="button" id="gNone">Done</button></div></div>`:''}
+      <div class="glist">${(dw.graphics||[]).map(x=>`<div class="gi ${x.id===GSEL?'on':''}" data-gi="${esc(x.id)}"><img alt="" src="${HREF.get(x.art)||''}"><b>${esc(x.name||'Graphic')}</b><span class="mono">${Math.round(x.w)}×${Math.round(x.h)}</span></div>`).join('')}</div>
+      <div class="row" style="margin-top:8px"><button class="btn sm" type="button" id="gAdd">Add from the library</button></div><div id="gPick"></div></div>
     <div><h4>Colours in this view</h4><p class="note" style="margin-bottom:8px">Change one to recolour every panel in it (a colourway).</p><div class="sw">${cols.slice(0,24).map(c=>`<label><input type="color" data-col="${esc(c)}" value="${esc(c)}">${esc(c)}</label>`).join('')}</div>
       <div class="row" style="margin-top:8px"><button class="btn sm q" type="button" id="allViews">Same colours on every view</button></div></div>
-    <div><h4>Lines</h4><label class="row" style="font-size:13px"><input type="checkbox" id="det" ${dw.hideDetails?'':'checked'}> Stitching, tread and laces</label></div>
+    <div><h4>Lines</h4><label class="row" style="font-size:13px"><input type="checkbox" id="det" ${dw.hideDetails?'':'checked'}> Stitching, tread and laces</label>${(dw.marks||[]).length?`<div class="row" style="margin-top:6px"><span class="note">${dw.marks.length} line${dw.marks.length===1?'':'s'} and word${dw.marks.length===1?'':'s'} drawn on it</span><button class="btn sm q" type="button" id="mClear">Clear them</button></div>`:''}</div>
     ${dw.panels.some(x=>x.hidden)?`<div><button class="btn sm q" type="button" id="unhide">Show hidden panels (${dw.panels.filter(x=>x.hidden).length})</button></div>`:''}
     <div><h4>This view</h4><div class="row"><button class="btn sm q" type="button" id="dl">Download SVG</button><button class="btn sm q" type="button" id="reset" ${D.views[VIEW]?.edited||DIRTY.has(VIEW)?'':'disabled'}>Back to the drawing as traced</button><button class="btn sm q" type="button" data-draw data-redo>Draw again</button></div></div>`;
 }
-function paint(){paintViews();draw();paintSide();paintState()}
+function paint(){paintViews();draw();paintSide();paintState();paintHint()}
+
+async function artHref(id){if(HREF.has(id))return HREF.get(id);try{const r=await fetch('/v1/lab/art/'+id,{headers:{Authorization:'Bearer '+TOKEN()}});if(!r.ok)throw 0;const u=URL.createObjectURL(await r.blob());HREF.set(id,u);return u}catch{HREF.set(id,'');return ''}}
+async function loadArt(){const ids=new Set();for(const k in DW)for(const g of DW[k]?.graphics||[])if(!HREF.has(g.art))ids.add(g.art);if(!ids.size)return;await Promise.all([...ids].map(artHref));draw();paintSide()}
 
 async function load(){
   D=await api(`/v1/lab/concepts/${CID}/shoe-drawing`);
   for(const k of D.kinds){const v=D.views[k.id];if(v?.drawing&&!DIRTY.has(k.id))DW[k.id]=v.drawing}
   $('#ttl').textContent=D.concept.name;$('#sub').textContent=`${D.noun==='bag'?'Bag':'Shoe'} drawing · technical flat in panels`;
   if(!VIEW)VIEW=D.first;if(!DW[VIEW]){const first=D.kinds.find(k=>DW[k.id]);if(first)VIEW=first.id}
-  paint();clearTimeout(POLL);if(D.busy||Object.values(D.views).some(v=>v.status==='pending'))POLL=setTimeout(()=>load().catch(()=>{}),4000);
+  paint();loadArt();clearTimeout(POLL);if(D.busy||Object.values(D.views).some(v=>v.status==='pending'))POLL=setTimeout(()=>load().catch(()=>{}),4000);
+  if(!READY){READY=true;HOST()?.flatsReady?.()}
 }
 async function drawShoe(redo){try{const r=await api(`/v1/lab/concepts/${CID}/shoe-drawing`,{body:redo?{views:[VIEW],redo:true}:{}});D=r;toast(r.started?`Drawing the ${D.noun}: about a minute a view`:'Every view is drawn already');await load()}catch(e){toast(e.message)}}
 async function save(){
-  try{for(const v of [...DIRTY]){const dw=DW[v];const r=await api(`/v1/lab/concepts/${CID}/shoe-drawing/${v}`,{method:'PUT',body:{panels:dw.panels.map(({id,fill,d,name,hidden})=>({id,fill,d,name,hidden})),hideDetails:Boolean(dw.hideDetails)}});DW[v]=r.drawing;if(D.views[v])D.views[v].edited=true;DIRTY.delete(v)}
+  try{for(const v of [...DIRTY]){const dw=DW[v];const body={panels:dw.panels.map(({id,fill,d,name,hidden})=>({id,fill,d,name,hidden})),hideDetails:Boolean(dw.hideDetails),marks:dw.marks||[],graphics:(dw.graphics||[]).map(({id,art,name,x,y,w,h,rot})=>({id,art,name,x,y,w,h,rot})),...(dw._det?{details:dw.details}:{})};
+      const r=await api(`/v1/lab/concepts/${CID}/shoe-drawing/${v}`,{method:'PUT',body});DW[v]=r.drawing;if(D.views[v])D.views[v].edited=true;DIRTY.delete(v)}
     paint();HOST()?.flatsSaved?.();toast('Saved');return true}catch(e){toast('Not saved: '+e.message);return false}}
 
 // ---- events
-$('#views').onclick=e=>{const b=e.target.closest('[data-v]');if(!b)return;VIEW=b.dataset.v;SEL=null;paint()};
+$('#views').onclick=e=>{const b=e.target.closest('[data-v]');if(!b)return;VIEW=b.dataset.v;SEL=null;GSEL=null;paint()};
 $('#save').onclick=save;
-$('#undo').onclick=()=>{const h=HIST.pop();if(!h)return;FUT.push({view:h.view,s:(VIEW=h.view,snap())});const s=JSON.parse(h.s);DW[h.view]={...DW[h.view],...s};DIRTY.add(h.view);paint()};
-$('#redo').onclick=()=>{const h=FUT.pop();if(!h)return;HIST.push({view:h.view,s:(VIEW=h.view,snap())});const s=JSON.parse(h.s);DW[h.view]={...DW[h.view],...s};DIRTY.add(h.view);paint()};
-document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='z'&&!e.target.closest('input')){e.preventDefault();(e.shiftKey?$('#redo'):$('#undo')).click()}if(e.key==='Escape'&&SEL){SEL=null;paint()}});
+function step(from,to){const h=from.pop();if(!h)return;to.push({view:h.view,s:(VIEW=h.view,snap())});const s=JSON.parse(h.s);DW[h.view]={...DW[h.view],...s};DIRTY.add(h.view);paint();HOST()?.flatsChanged?.()}
+$('#undo').onclick=()=>step(HIST,FUT);$('#redo').onclick=()=>step(FUT,HIST);
+document.addEventListener('keydown',e=>{const typing=e.target.closest('input,textarea');if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='z'&&!typing){e.preventDefault();(e.shiftKey?$('#redo'):$('#undo')).click();return}
+  if(e.key==='Escape'){if(PEN){PEN=null;liveClear();return}if(SEL||GSEL){SEL=null;GSEL=null;paint()}}
+  if(e.key==='Enter'&&PEN){closePen();return}
+  if((e.key==='Delete'||e.key==='Backspace')&&!typing&&GSEL){e.preventDefault();delGraphic()}
+  if(!typing&&(e.metaKey||e.ctrlKey)&&(e.key==='='||e.key==='+')){e.preventDefault();$('[data-z=in]').click()}if(!typing&&(e.metaKey||e.ctrlKey)&&e.key==='-'){e.preventDefault();$('[data-z=out]').click()}if(!typing&&(e.metaKey||e.ctrlKey)&&e.key==='0'){e.preventDefault();fit()}});
 document.addEventListener('click',e=>{if(e.target.closest('[data-draw]'))drawShoe(e.target.closest('[data-draw]').hasAttribute('data-redo'))});
 $('#side').addEventListener('input',e=>{const dw=cur();if(!dw)return;const p=dw.panels.find(x=>x.id===SEL);
   if(e.target.id==='pName'&&p){p.name=e.target.value;touch()}
   if(e.target.id==='pFill'&&p){p.fill=e.target.value;$$(`#art [data-p="${p.id}"]`).forEach(x=>x.setAttribute('fill',p.fill));touch()}
+  if(e.target.id==='gRot'){const g=(dw.graphics||[]).find(x=>x.id===GSEL);if(g){g.rot=+e.target.value;draw();touch()}}
   if(e.target.dataset.col){const from=e.target.dataset.col,to=e.target.value;for(const x of dw.panels)if(x.fill===from)x.fill=to;e.target.dataset.col=to;draw();touch()}});
-$('#side').addEventListener('focusin',e=>{if(e.target.id==='pFill'||e.target.id==='pName'||e.target.dataset.col)remember()});
+$('#side').addEventListener('focusin',e=>{if(e.target.id==='pFill'||e.target.id==='pName'||e.target.id==='gRot'||e.target.dataset.col)remember()});
 $('#side').addEventListener('change',e=>{if(e.target.id==='pFill'||e.target.dataset.col)paint();if(e.target.id==='det'){remember();cur().hideDetails=!e.target.checked;touch();draw()}});
+function delGraphic(){const dw=cur();if(!dw||!GSEL)return;remember();dw.graphics=(dw.graphics||[]).filter(x=>x.id!==GSEL);GSEL=null;touch();paint()}
 $('#side').addEventListener('click',async e=>{const dw=cur();if(!dw)return;const id=e.target.id,p=dw.panels.find(x=>x.id===SEL);
+  const gi=e.target.closest('[data-gi]');if(gi){GSEL=gi.dataset.gi;SEL=null;paint();return}
+  const pk=e.target.closest('[data-gpick]');if(pk){await addGraphic(pk.dataset.gpick,pk.dataset.name);return}
   if(id==='pAll'&&p){const v=$('#pFill').value;remember();for(const x of dw.panels)if(x.fill===p.fill)x.fill=v;touch();paint()}
-  if(id==='pHide'&&p){remember();p.hidden=true;SEL=null;touch();paint()}
+  if(id==='pHide'&&p){remember();if(/^u/.test(p.id))dw.panels=dw.panels.filter(x=>x!==p);else p.hidden=true;SEL=null;touch();paint()}
+  if((id==='pUp'||id==='pDown')&&p){remember();const i=dw.panels.indexOf(p),j=Math.max(0,Math.min(dw.panels.length-1,i+(id==='pUp'?1:-1)));dw.panels.splice(i,1);dw.panels.splice(j,0,p);touch();draw()}
+  if(id==='pDup'&&p){remember();const k=pxToUnits(14),q={...p,id:uid('u'),name:p.name?p.name+' copy':'',d:pathOf(parse(p.d).map(l=>l.map(([x,y])=>[x+k,y+k])))};dw.panels.push(q);SEL=q.id;touch();paint()}
   if(id==='pNone'){SEL=null;paint()}
+  if(id==='gNone'){GSEL=null;paint()}
+  if(id==='gDel')delGraphic();
+  if(id==='gAdd')pickerOpen();
+  if(id==='mClear'){remember();dw.marks=[];touch();paint()}
   if(id==='unhide'){remember();dw.panels.forEach(x=>delete x.hidden);touch();paint()}
   if(id==='allViews'){const map=new Map();
     // the colours of this view, carried to the others by what each colour was when traced (the same colour drawn on every view)
     const was=D.views[VIEW]?.drawing;const orig=new Map((was?.panels||[]).map(x=>[x.id,x.fill]));for(const x of dw.panels){const o=orig.get(x.id);if(o&&o!==x.fill)map.set(o,x.fill)}
     let n=0;for(const k of D.kinds){const o=DW[k.id];if(!o||k.id===VIEW)continue;for(const x of o.panels){const near=[...map.keys()].find(c=>dist(c,x.fill)<28);if(near){x.fill=map.get(near);n++}}DIRTY.add(k.id)}toast(n?`${n} panels recoloured on the other views`:'No colour changed on this view yet');paint()}
-  if(id==='dl'){const s=document.querySelector('#art').cloneNode(true);s.querySelectorAll('.h,[pointer-events="none"][fill="none"]').forEach(x=>x.remove());s.setAttribute('xmlns','http://www.w3.org/2000/svg');const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([s.outerHTML],{type:'image/svg+xml'}));a.download=`${String(D.concept.name).toLowerCase().replace(/[^a-z0-9]+/g,'-')}-${VIEW}.svg`;a.click()}
-  if(id==='reset'){try{const r=await api(`/v1/lab/concepts/${CID}/shoe-drawing/${VIEW}/reset`,{body:{}});DW[VIEW]=r.drawing;D.views[VIEW].edited=false;DIRTY.delete(VIEW);SEL=null;paint();toast('Back to the drawing as traced')}catch(x){toast(x.message)}}});
+  if(id==='dl'){if(DIRTY.has(VIEW)&&!(await save()))return;try{const r=await fetch(`/v1/lab/concepts/${CID}/shoe-drawing/${VIEW}.svg`,{headers:{Authorization:'Bearer '+TOKEN()}});if(!r.ok)throw new Error('Could not make the file');const a=document.createElement('a');a.href=URL.createObjectURL(await r.blob());a.download=`${String(D.concept.name).toLowerCase().replace(/[^a-z0-9]+/g,'-')}-${VIEW}.svg`;a.click()}catch(x){toast(x.message)}}
+  if(id==='reset'){try{const r=await api(`/v1/lab/concepts/${CID}/shoe-drawing/${VIEW}/reset`,{body:{}});DW[VIEW]=r.drawing;D.views[VIEW].edited=false;DIRTY.delete(VIEW);SEL=null;GSEL=null;paint();toast('Back to the drawing as traced')}catch(x){toast(x.message)}}});
 const rgb=h=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16)),dist=(a,b)=>{const x=rgb(a),y=rgb(b);return Math.hypot(x[0]-y[0],x[1]-y[1],x[2]-y[2])};
 
-// ---- on the drawing: pick a panel, drag its points (and the points of its neighbours that sit on them), add or remove points
+// ---- graphics from the library: placed on the view, moved, sized and turned on it; saved with the drawing and drawn into the tech pack
+async function pickerOpen(){const box=$('#gPick');if(!box)return;if(box.innerHTML){box.innerHTML='';return}box.innerHTML='<p class="note">Loading the library…</p>';
+  try{const j=await api('/v1/lab/library/graphics?limit=60');if(!$('#gPick'))return;
+    $('#gPick').innerHTML=j.graphics.length?`<div class="gpick" style="margin-top:8px">${j.graphics.map(g=>`<button type="button" data-gpick="${esc(g.id)}" data-name="${esc(g.name||'Graphic')}" title="${esc(g.name||'')}"><img alt="" data-thumb="${esc(g.id)}"><span>${esc((g.name||'Graphic').slice(0,22))}</span></button>`).join('')}</div>`:'<p class="note">The graphics library is empty. Make one in the Studio\'s graphic studio first.</p>';
+    for(const im of $$('#gPick [data-thumb]'))fetch(`/v1/lab/art/${im.dataset.thumb}?thumb=1`,{headers:{Authorization:'Bearer '+TOKEN()}}).then(r=>r.ok?r.blob():null).then(b=>{if(b)im.src=URL.createObjectURL(b)}).catch(()=>{})}
+  catch(x){box.innerHTML=`<p class="note">${esc(x.message)}</p>`}}
+async function addGraphic(art,name){const dw=cur();if(!dw){toast('Draw this view first');return false}const u=await artHref(art);if(!u){toast('That graphic could not be loaded');return false}
+  const img=await new Promise(r=>{const i=new Image();i.onload=()=>r(i);i.onerror=()=>r(null);i.src=u}),f=VB[VIEW]||fitBox(),c=cam(),w=Math.min(f.w,f.h)*.28,ar=img&&img.naturalWidth?img.naturalHeight/img.naturalWidth:1;
+  remember();const g={id:uid('g'),art,name:String(name||'Graphic').slice(0,60),x:c.x+c.w/2,y:c.y+c.h/2,w,h:w*ar,rot:0};(dw.graphics||(dw.graphics=[])).push(g);GSEL=g.id;SEL=null;if($('#gPick'))$('#gPick').innerHTML='';touch();paint();toast(`${g.name} is on the ${label(VIEW).toLowerCase()}: drag it into place`);return true}
+
+// ---- on the drawing: the Studio's tools. Two fingers (or a pinch) always move and zoom; with a Pencil, fingers move and the Pencil draws.
 const svgPt=(svg,e)=>{const p=svg.createSVGPoint();p.x=e.clientX;p.y=e.clientY;const q=p.matrixTransform(svg.getScreenCTM().inverse());return [q.x,q.y]};
-let DRAG=null;
-$('#stage').addEventListener('pointerdown',e=>{const svg=e.target.closest('svg');if(!svg)return;const dw=cur();
+const PTR=new Map();let SPACE=false,DRAG=null,PINCH=null,PENSEEN=false,PEN=null,RAF=0;
+const liveClear=()=>{const l=$('#live');if(l)l.innerHTML=''};
+function paintRing(){const r=$('#ring');if(!r)return;if(!['liquify','warp','eraser'].includes(TOOL)){r.classList.add('hidden');return}r.setAttribute('r',brushR())}
+const brushR=()=>pxToUnits(Math.max(4,(TOOL==='eraser'?hostOpts().size:hostOpts().size)||40)/2);
+// every number pair in the drawing that can move, for Liquify: the panels, the stitching lines, the lines drawn on it
+function lqItem(it){const parts=it.o[it.key].split(/(-?\d*\.?\d+(?:e-?\d+)?)/i),nums=[];for(let i=1;i<parts.length;i+=2)nums.push(+parts[i]);let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;for(let i=0;i+1<nums.length;i+=2){x0=Math.min(x0,nums[i]);x1=Math.max(x1,nums[i]);y0=Math.min(y0,nums[i+1]);y1=Math.max(y1,nums[i+1])}it.parts=parts;it.nums=nums;it.box=[x0,y0,x1,y1];return it}
+// a panel's straight runs have few points (often only their ends): where the brush first reaches a panel, its long edges get points along
+// them a third of the brush apart, so the edge bends where it is pushed rather than nowhere
+function lqDense(it,R){if(it.dense||!('fill' in it.o))return;it.dense=true;const loops=parse(it.o.d);if(!loops.length)return;const gap=Math.max(R/3,1);let added=0;
+  const out=loops.map(l=>{const r=[];for(let i=0;i<l.length;i++){const p=l[i],q=l[(i+1)%l.length];r.push(p);const n=Math.min(16,Math.floor(Math.hypot(q[0]-p[0],q[1]-p[1])/gap));for(let k=1;k<=n;k++){const t=k/(n+1);r.push([p[0]+(q[0]-p[0])*t,p[1]+(q[1]-p[1])*t]);added++}}return r});
+  if(added){it.o.d=pathOf(out);lqItem(it)}}
+function lqStart(){const dw=cur(),items=[];const add=(o,key)=>items.push(lqItem({o,key}));
+  for(const p of dw.panels)add(p,'d');if(!dw.hideDetails)for(const x of dw.details||[])add(x,'d');for(const m of dw.marks||[])if(m.d)add(m,'d');return items}
+function lqPush(items,cx,cy,dx,dy,R,mode='push',K=1,alt=false){const R2=R*R,step=Math.hypot(dx,dy)||R*.02;for(const it of items){let b=it.box;if(cx+R<b[0]||cx-R>b[2]||cy+R<b[1]||cy-R>b[3])continue;if(!it.dense){lqDense(it,R);b=it.box}let hit=false;const n=it.nums;
+  for(let i=0;i+1<n.length;i+=2){const ex=n[i]-cx,ey=n[i+1]-cy,d2=ex*ex+ey*ey;if(d2>=R2)continue;const k=(1-d2/R2)**2*K;if(mode==='push'){n[i]+=dx*k;n[i+1]+=dy*k}else if(mode==='twirl'){const a=(alt?-1:1)*k*step/R*1.4,c=Math.cos(a),s=Math.sin(a);n[i]=cx+ex*c-ey*s;n[i+1]=cy+ex*s+ey*c}else{const f=(mode==='pinch'?-1:1)*k*step/R*.5;n[i]+=ex*f;n[i+1]+=ey*f}hit=true}
+  if(hit)it.touched=true;
+  if(hit){it.dirty=true;b[0]=Math.min(b[0],cx-R);b[1]=Math.min(b[1],cy-R);b[2]=Math.max(b[2],cx+R);b[3]=Math.max(b[3],cy+R)}}}
+function lqWrite(items,final){for(const it of items){if(!it.dirty)continue;let j=0;const parts=it.parts;for(let i=1;i<parts.length;i+=2)parts[i]=String(+(it.nums[j++]).toFixed(2));it.o[it.key]=parts.join('');it.dirty=final?false:it.dirty}
+  if(final)return;draw()}
+const drawTools=['brush','line','rect','ellipse','pen','liquify','warp','eraser','text'];
+$('#stage').addEventListener('pointerdown',e=>{const svg=e.target.closest('svg');if(!svg)return;const dw=cur();if(!dw)return;
+  PTR.set(e.pointerId,{x:e.clientX,y:e.clientY,type:e.pointerType});if(e.pointerType==='pen')PENSEEN=true;
+  if(PTR.size===2){if(DRAG&&DRAG.kind!=='pan'&&DRAG.undo){step(HIST,FUT);FUT.pop()}DRAG=null;liveClear();const [a,b]=[...PTR.values()];PINCH={d:Math.hypot(a.x-b.x,a.y-b.y),mx:(a.x+b.x)/2,my:(a.y+b.y)/2};return}
+  if(PTR.size>2)return;
+  svg.setPointerCapture?.(e.pointerId);
+  const fingerPans=PENSEEN&&e.pointerType==='touch'&&drawTools.includes(TOOL);
+  if(TOOL==='hand'||fingerPans||e.button===1||SPACE){DRAG={kind:'pan',x:e.clientX,y:e.clientY};document.body.classList.add('panning');return}
+  const [x,y]=svgPt(svg,e);
+  // a graphic: its corner sizes it, its knob turns it, the rest moves it (with the selection tools)
+  if(TOOL==='select'||TOOL==='node'){
+    const gh=e.target.closest('[data-gh]'),gr=e.target.closest('[data-grot]'),gi=e.target.closest('[data-g]');
+    if(gh||gr){const g=dw.graphics.find(q=>q.id===GSEL);remember();DRAG={kind:gr?'grot':'gsize',g,orig:{...g},start:[x,y],undo:true};e.preventDefault();return}
+    if(gi){GSEL=gi.dataset.g;SEL=null;const g=dw.graphics.find(q=>q.id===GSEL);remember();DRAG={kind:'gmove',g,orig:{...g},start:[x,y],undo:true,moved:false};draw();paintSide();return}}
   const h=e.target.closest('.h');
-  if(h){const p=dw.panels.find(x=>x.id===SEL),loops=parse(p.d),li=+h.dataset.l,i=+h.dataset.i;
+  if(h&&(TOOL==='select'||TOOL==='node')){const p=dw.panels.find(q=>q.id===SEL),loops=parse(p.d),li=+h.dataset.l,i=+h.dataset.i;
     if(e.altKey){if(loops[li].length>3){remember();loops[li].splice(i,1);p.d=pathOf(loops);touch();draw()}return}
     remember();const at=loops[li][i],tol=(dw.stroke||2.4)*1.6,links=[];
-    for(const o of dw.panels){if(o===p||o.hidden)continue;const ol=parse(o.d);let hit=false;ol.forEach((l,a)=>l.forEach((q,b)=>{if(Math.hypot(q[0]-at[0],q[1]-at[1])<tol){links.push({o,ol,a,b});hit=true}}))}
-    DRAG={p,loops,li,i,start:svgPt(svg,e),orig:[...at],links:links.map(k=>({...k,orig:[...k.ol[k.a][k.b]]})),svg};h.classList.add('drag');h.setPointerCapture(e.pointerId);e.preventDefault();return}
-  const t=e.target.closest('[data-p]');if(t){SEL=t.dataset.p;draw();paintSide()}else if(e.target===svg){SEL=null;draw();paintSide()}});
-$('#stage').addEventListener('pointermove',e=>{if(!DRAG)return;const [x,y]=svgPt(DRAG.svg,e),dx=x-DRAG.start[0],dy=y-DRAG.start[1];
-  DRAG.loops[DRAG.li][DRAG.i]=[DRAG.orig[0]+dx,DRAG.orig[1]+dy];DRAG.p.d=pathOf(DRAG.loops);
-  for(const k of DRAG.links){k.ol[k.a][k.b]=[k.orig[0]+dx,k.orig[1]+dy];k.o.d=pathOf(k.ol)}
-  const svg=DRAG.svg;svg.querySelector(`[data-p="${DRAG.p.id}"]`)?.setAttribute('d',DRAG.p.d);for(const k of DRAG.links)svg.querySelector(`[data-p="${k.o.id}"]`)?.setAttribute('d',k.o.d);
-  const h=svg.querySelector(`.h[data-l="${DRAG.li}"][data-i="${DRAG.i}"]`);if(h){h.setAttribute('cx',DRAG.loops[DRAG.li][DRAG.i][0]);h.setAttribute('cy',DRAG.loops[DRAG.li][DRAG.i][1])}});
-const endDrag=()=>{if(!DRAG)return;DRAG=null;touch();draw()};
-$('#stage').addEventListener('pointerup',endDrag);$('#stage').addEventListener('pointercancel',endDrag);
-$('#stage').addEventListener('dblclick',e=>{const svg=e.target.closest('svg'),dw=cur();if(!svg||!SEL)return;const p=dw.panels.find(x=>x.id===SEL),loops=parse(p.d),[x,y]=svgPt(svg,e);
+    for(const o of dw.panels){if(o===p||o.hidden)continue;const ol=parse(o.d);ol.forEach((l,a)=>l.forEach((q,b)=>{if(Math.hypot(q[0]-at[0],q[1]-at[1])<tol)links.push({o,ol,a,b})}))}
+    DRAG={kind:'point',p,loops,li,i,start:[x,y],orig:[...at],links:links.map(k=>({...k,orig:[...k.ol[k.a][k.b]]})),svg,undo:true};h.classList.add('drag');e.preventDefault();return}
+  const t=e.target.closest('[data-p]'),panel=t&&dw.panels.find(q=>q.id===t.dataset.p);
+  if(TOOL==='select'||TOOL==='node'){if(panel){SEL=panel.id;GSEL=null}else{SEL=null;GSEL=null}draw();paintSide();return}
+  if(TOOL==='fill'){if(panel){remember();panel.fill=colour();touch();draw();paintSide()}return}
+  if(TOOL==='pick'){if(panel){PICKED=panel.fill;toast(`Picked ${panel.fill}: Fill, the brush and new shapes use it`)}return}
+  if(TOOL==='liquify'||TOOL==='warp'){remember();DRAG={kind:'lq',items:lqStart(),last:[x,y],R:brushR(),undo:true};return}
+  if(TOOL==='eraser'){remember();DRAG={kind:'erase',hit:false,undo:true};eraseAt(x,y,panel);return}
+  if(TOOL==='brush'){DRAG={kind:'brush',pts:[[x,y]],w:pxToUnits(Math.max(1,hostOpts().size||6)),color:colour()};return}
+  if(TOOL==='line'||TOOL==='rect'||TOOL==='ellipse'){DRAG={kind:TOOL,start:[x,y],end:[x,y],color:colour()};return}
+  if(TOOL==='pen'){if(!PEN)PEN={pts:[]};const f=PEN.pts[0];if(f&&PEN.pts.length>=3&&Math.hypot(f[0]-x,f[1]-y)<pxToUnits(12)){closePen();return}PEN.pts.push([x,y]);livePen();return}
+  if(TOOL==='text'){const words=prompt('The words');if(words&&words.trim()){remember();(dw.marks||(dw.marks=[])).push({kind:'text',text:words.trim().slice(0,80),x,y,size:pxToUnits(Math.max(10,(hostOpts().size||24))),color:colour()});touch();draw();paintSide()}return}
+  toast('That tool works on the picture. On the drawing: select, the hand, fill, pick, liquify, the brush, line, shapes, the pen, words and the eraser.')});
+function eraseAt(x,y,panel){const dw=cur(),R=brushR(),before=(dw.marks||[]).length;
+  dw.marks=(dw.marks||[]).filter(m=>{if(m.kind==='text')return Math.hypot(m.x-x,m.y-y)>Math.max(R,m.size*.6);const n=m.d.match(/-?\d*\.?\d+/g).map(Number);for(let i=0;i+1<n.length;i+=2)if(Math.hypot(n[i]-x,n[i+1]-y)<R+m.w/2)return false;return true});
+  if(dw.marks.length!==before){DRAG.hit=true;touch();draw();paintSide();return}
+  if(panel&&/^u/.test(panel.id)){dw.panels=dw.panels.filter(p=>p!==panel);if(SEL===panel.id)SEL=null;DRAG.hit=true;touch();draw();paintSide()}}
+const ptsD=pts=>pts.map((p,i)=>`${i?'L':'M'}${n2(p[0])} ${n2(p[1])}`).join('');
+function shapePts(kind,[x0,y0],[x1,y1]){const a=Math.min(x0,x1),b=Math.min(y0,y1),c=Math.max(x0,x1),d=Math.max(y0,y1);
+  if(kind==='rect')return [[a,b],[a,b],[c,b],[c,b],[c,d],[c,d],[a,d],[a,d]]; // each corner twice: the smooth curve keeps it sharp
+  const cx=(a+c)/2,cy=(b+d)/2,rx=(c-a)/2,ry=(d-b)/2;return Array.from({length:20},(_,i)=>{const t=i/20*Math.PI*2;return [cx+rx*1.03*Math.cos(t),cy+ry*1.03*Math.sin(t)]})}
+function livePen(){const l=$('#live');if(!l||!PEN)return;const sw=(cur().stroke||2.4);l.innerHTML=`<path d="${ptsD(PEN.pts)}" fill="none" stroke="var(--sel)" stroke-width="${sw}" stroke-dasharray="${sw*3} ${sw*2}"/>${PEN.pts.map(p=>`<circle cx="${p[0]}" cy="${p[1]}" r="${sw*2}" fill="#fff" stroke="var(--sel)" stroke-width="${sw/1.5}"/>`).join('')}`}
+function closePen(){const dw=cur();if(!PEN||PEN.pts.length<3){PEN=null;liveClear();return}remember();const q={id:uid('u'),fill:colour(),d:smooth(PEN.pts),name:''};dw.panels.push(q);PEN=null;liveClear();SEL=q.id;touch();paint()}
+$('#stage').addEventListener('dblclick',e=>{if(TOOL==='pen'&&PEN){closePen();return}const svg=e.target.closest('svg'),dw=cur();if(!svg||!SEL||!(TOOL==='select'||TOOL==='node'))return;const p=dw.panels.find(x=>x.id===SEL),loops=parse(p.d),[x,y]=svgPt(svg,e);
   let best=null;loops.forEach((l,li)=>l.forEach((a,i)=>{const b=l[(i+1)%l.length],vx=b[0]-a[0],vy=b[1]-a[1],t=Math.max(0,Math.min(1,((x-a[0])*vx+(y-a[1])*vy)/((vx*vx+vy*vy)||1))),d=Math.hypot(a[0]+t*vx-x,a[1]+t*vy-y);if(!best||d<best.d)best={d,li,i}}));
   if(!best||best.d>(svg.viewBox.baseVal.width/40))return;remember();loops[best.li].splice(best.i+1,0,[x,y]);p.d=pathOf(loops);touch();draw()});
+$('#stage').addEventListener('pointermove',e=>{const svg=$('#art');if(!svg)return;
+  if(PTR.has(e.pointerId))PTR.set(e.pointerId,{...PTR.get(e.pointerId),x:e.clientX,y:e.clientY});
+  const ring=$('#ring');if(ring&&!ring.classList.contains('hidden')){const [rx,ry]=svgPt(svg,e);ring.setAttribute('cx',rx);ring.setAttribute('cy',ry)}
+  if(PINCH&&PTR.size===2){const [a,b]=[...PTR.values()],d=Math.hypot(a.x-b.x,a.y-b.y),mx=(a.x+b.x)/2,my=(a.y+b.y)/2;panBy(mx-PINCH.mx,my-PINCH.my);if(PINCH.d>0)zoomAt(d/PINCH.d,mx,my);PINCH={d,mx,my};return}
+  if(!DRAG)return;
+  if(DRAG.kind==='pan'){panBy(e.clientX-DRAG.x,e.clientY-DRAG.y);DRAG.x=e.clientX;DRAG.y=e.clientY;return}
+  const [x,y]=svgPt(svg,e);
+  if(DRAG.kind==='gmove'){const g=DRAG.g;g.x=DRAG.orig.x+x-DRAG.start[0];g.y=DRAG.orig.y+y-DRAG.start[1];DRAG.moved=true;draw();return}
+  if(DRAG.kind==='gsize'){const g=DRAG.g,o=DRAG.orig,k=Math.max(.05,Math.hypot(x-o.x,y-o.y)/Math.hypot(DRAG.start[0]-o.x,DRAG.start[1]-o.y));g.w=o.w*k;g.h=o.h*k;draw();return}
+  if(DRAG.kind==='grot'){const g=DRAG.g;let a=Math.atan2(y-g.y,x-g.x)*180/Math.PI+90;if(e.shiftKey)a=Math.round(a/15)*15;g.rot=Math.round(((a+540)%360)-180);draw();return}
+  if(DRAG.kind==='point'){const dx=x-DRAG.start[0],dy=y-DRAG.start[1];DRAG.loops[DRAG.li][DRAG.i]=[DRAG.orig[0]+dx,DRAG.orig[1]+dy];DRAG.p.d=pathOf(DRAG.loops);
+    for(const k of DRAG.links){k.ol[k.a][k.b]=[k.orig[0]+dx,k.orig[1]+dy];k.o.d=pathOf(k.ol)}
+    svg.querySelector(`[data-p="${DRAG.p.id}"]`)?.setAttribute('d',DRAG.p.d);for(const k of DRAG.links)svg.querySelector(`[data-p="${k.o.id}"]`)?.setAttribute('d',k.o.d);
+    const h=svg.querySelector(`.h[data-l="${DRAG.li}"][data-i="${DRAG.i}"]`);if(h){h.setAttribute('cx',DRAG.loops[DRAG.li][DRAG.i][0]);h.setAttribute('cy',DRAG.loops[DRAG.li][DRAG.i][1])}return}
+  if(DRAG.kind==='lq'){const [lx,ly]=DRAG.last,o=hostOpts(),mode=o.liqMode||'push';lqPush(DRAG.items,mode==='push'?lx:x,mode==='push'?ly:y,x-lx,y-ly,DRAG.R,mode,Math.max(.05,Math.min(1,(o.liqK??100)/100)),e.altKey);DRAG.last=[x,y];if(!RAF)RAF=requestAnimationFrame(()=>{RAF=0;if(DRAG?.kind==='lq'){lqWrite(DRAG.items,false);const r=$('#ring');if(r){r.classList.remove('hidden');r.setAttribute('cx',x);r.setAttribute('cy',y);r.setAttribute('r',DRAG.R)}}});return}
+  if(DRAG.kind==='erase'){const t=document.elementFromPoint(e.clientX,e.clientY)?.closest?.('[data-p]');eraseAt(x,y,t&&cur().panels.find(q=>q.id===t.dataset.p));return}
+  const l=$('#live');
+  if(DRAG.kind==='brush'){const last=DRAG.pts[DRAG.pts.length-1];if(Math.hypot(last[0]-x,last[1]-y)<DRAG.w*.3)return;DRAG.pts.push([x,y]);l.innerHTML=`<path d="${ptsD(DRAG.pts)}" fill="none" stroke="${DRAG.color}" stroke-width="${DRAG.w}" stroke-linecap="round" stroke-linejoin="round"/>`;return}
+  if(['line','rect','ellipse'].includes(DRAG.kind)){DRAG.end=[x,y];const sw=cur().stroke||2.4;
+    l.innerHTML=DRAG.kind==='line'?`<path d="${ptsD([DRAG.start,DRAG.end])}" stroke="${DRAG.color}" stroke-width="${pxToUnits(Math.max(1,hostOpts().size||6))}" stroke-linecap="round"/>`:`<path d="${smooth(shapePts(DRAG.kind,DRAG.start,DRAG.end))}" fill="${DRAG.color}" stroke="#161616" stroke-width="${sw}"/>`}});
+function endDrag(e){PTR.delete(e.pointerId);if(PTR.size<2)PINCH=null;document.body.classList.remove('panning');if(!DRAG)return;const d=DRAG,dw=cur();DRAG=null;
+  if(d.kind==='pan')return;
+  if(d.kind==='gmove'&&!d.moved){HIST.pop();return}
+  if(d.kind==='lq'){cancelAnimationFrame(RAF);RAF=0;lqWrite(d.items,true);if(d.items.some(it=>it.touched&&dw.details?.includes(it.o)))dw._det=true;$('#ring')?.classList.toggle('hidden',!['liquify','warp','eraser'].includes(TOOL));touch();draw();return}
+  if(d.kind==='erase'){if(!d.hit)HIST.pop();return}
+  if(d.kind==='brush'){liveClear();if(d.pts.length<2)d.pts.push([d.pts[0][0]+.01,d.pts[0][1]]);remember();(dw.marks||(dw.marks=[])).push({kind:'line',d:ptsD(d.pts),w:+d.w.toFixed(2),color:d.color});touch();draw();paintSide();return}
+  if(d.kind==='line'){liveClear();if(Math.hypot(d.end[0]-d.start[0],d.end[1]-d.start[1])<pxToUnits(4))return;remember();(dw.marks||(dw.marks=[])).push({kind:'line',d:ptsD([d.start,d.end]),w:+pxToUnits(Math.max(1,hostOpts().size||6)).toFixed(2),color:d.color});touch();draw();paintSide();return}
+  if(d.kind==='rect'||d.kind==='ellipse'){liveClear();if(Math.abs(d.end[0]-d.start[0])<pxToUnits(6)||Math.abs(d.end[1]-d.start[1])<pxToUnits(6))return;remember();const q={id:uid('u'),fill:d.color,d:smooth(shapePts(d.kind,d.start,d.end)),name:''};dw.panels.push(q);SEL=q.id;touch();paint();return}
+  touch();draw();paintSide()}
+$('#stage').addEventListener('pointerup',endDrag);$('#stage').addEventListener('pointercancel',endDrag);
+$('#stage').addEventListener('pointerleave',()=>$('#ring')?.classList.add('hidden'));
+$('#stage').addEventListener('pointerenter',()=>{if(['liquify','warp','eraser'].includes(TOOL))paintRing(),$('#ring')?.classList.remove('hidden')});
+new ResizeObserver(()=>applyCam()).observe($('#stage'));
+// hold the space bar to move around with any tool, as in the Studio
+document.addEventListener('keydown',e=>{if(e.code==='Space'&&!e.target.closest('input,textarea,button')){SPACE=true;e.preventDefault()}});document.addEventListener('keyup',e=>{if(e.code==='Space')SPACE=false});
+
+// ---- the Studio's options bar, on the chosen panel or graphic
+const mapD=(d,f)=>{const parts=String(d).split(/(-?\d*\.?\d+(?:e-?\d+)?)/i);let x=null;for(let i=1;i<parts.length;i+=2){if(x===null){x=+parts[i];continue}const [a,b]=f(x,+parts[i]);parts[i-2]=String(n2(a));parts[i]=String(n2(b));x=null}return parts.join('')};
+function boxOfD(d){const n=String(d).match(/-?\d*\.?\d+(?:e-?\d+)?/gi).map(Number);let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;for(let i=0;i+1<n.length;i+=2){x0=Math.min(x0,n[i]);x1=Math.max(x1,n[i]);y0=Math.min(y0,n[i+1]);y1=Math.max(y1,n[i+1])}return{cx:(x0+x1)/2,cy:(y0+y1)/2}}
+function act(a){const dw=cur();if(['zin','zout','z100','zfit'].includes(a)){const r=$('#stage').getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2;if(a==='zfit')fit();else if(a==='z100'){if(ZM[VIEW])zoomAt(1/ZM[VIEW].z,cx,cy)}else zoomAt(a==='zin'?1.25:.8,cx,cy);return}
+  if(!dw)return;const p=dw.panels.find(x=>x.id===SEL),g=(dw.graphics||[]).find(x=>x.id===GSEL);
+  if(!p&&!g){toast('Tap a panel or a graphic on the drawing first');return}
+  if(a==='lock'){toast('Lock is for the picture\'s layers');return}
+  remember();
+  if(g){const L=dw.graphics,i=L.indexOf(g);
+    if(a==='flipx'||a==='flipy'){HIST.pop();toast('A graphic is flipped in the graphic studio; here it can be turned with its green knob');return}
+    if(a==='front'||a==='back'){L.splice(i,1);L.splice(Math.max(0,Math.min(L.length,i+(a==='front'?1:-1))),0,g)}
+    if(a==='dup'){const k=pxToUnits(16),q={...g,id:uid('g'),x:g.x+k,y:g.y+k};L.push(q);GSEL=q.id}
+    if(a==='del'){dw.graphics=L.filter(x=>x!==g);GSEL=null}
+  }else{const L=dw.panels,i=L.indexOf(p),c=boxOfD(p.d);
+    if(a==='flipx')p.d=mapD(p.d,(x,y)=>[2*c.cx-x,y]);if(a==='flipy')p.d=mapD(p.d,(x,y)=>[x,2*c.cy-y]);
+    if(a==='front'||a==='back'){L.splice(i,1);L.splice(Math.max(0,Math.min(L.length,i+(a==='front'?1:-1))),0,p)}
+    if(a==='dup'){const k=pxToUnits(14),q={...p,id:uid('u'),name:p.name?p.name+' copy':'',d:mapD(p.d,(x,y)=>[x+k,y+k])};L.push(q);SEL=q.id}
+    if(a==='del'){if(/^u/.test(p.id))dw.panels=L.filter(x=>x!==p);else p.hidden=true;SEL=null}}
+  touch();paint()}
 
 // ---- what the Studio calls (the same as the garment flats: src/lab-flats.html)
-if(EMBED)window.FBFlats={dirty:()=>DIRTY.size>0,ready:()=>Boolean(D),save:()=>(DIRTY.size?save():Promise.resolve(true)),view:()=>VIEW,
-  setView:v=>{const to=D?.noun==='bag'?v:v==='back'?'back':v==='front'?(VIEW==='back'?D?.first:VIEW):v;if(D&&(D.kinds||[]).some(k=>k.id===to)){VIEW=to;SEL=null;paint()}},
-  mode:m=>{document.documentElement.dataset.embed=m==='compact'?'compact':'full'},tool:()=>{},level:()=>{},layout:()=>{},zoom:()=>1,
-  sheet:()=>openSheet(),deco:()=>toast(D?.noun==='bag'?'A bag\'s decoration (logos, prints) is placed on its picture in the Studio.':'A shoe\'s decoration (logos, prints) is placed on its Pattern page.'),pack:()=>toPack(),canPack:()=>false,unsupported:()=>'',
+if(EMBED)window.FBFlats={refresh:()=>{if(!DIRTY.size)load().catch(()=>{})},dirty:()=>DIRTY.size>0,ready:()=>Boolean(D),save:()=>(DIRTY.size?save():Promise.resolve(true)),view:()=>VIEW,
+  setView:v=>{const to=D?.noun==='bag'?v:v==='back'?'back':v==='front'?(VIEW==='back'?D?.first:VIEW):v;if(D&&(D.kinds||[]).some(k=>k.id===to)){VIEW=to;SEL=null;GSEL=null;paint()}},
+  mode:m=>{document.documentElement.dataset.embed=m==='compact'?'compact':'full';applyCam()},
+  // the Studio's Panel and Focus: the panel folds away; Focus floats this page's bar, the panel and the zoom in glass around the drawing
+  layout:({panel=true,focus=false}={})=>{const r=document.documentElement;r.dataset.panel=panel?'on':'off';if(focus)r.dataset.focus='1';else delete r.dataset.focus;requestAnimationFrame(applyCam)},
+  tool:t=>{TOOL=t||'select';document.body.dataset.tool=TOOL;if(TOOL!=='pen'&&PEN){PEN=null;liveClear()}draw();paintHint();paintRing()},
+  level:()=>{},zoom:()=>ZM[VIEW]?.z||1,
+  addGraphic:(id,name)=>addGraphic(id,name),act:a=>act(a),
+  sheet:()=>openSheet(),deco:()=>toast('Place a logo or graphic on the drawing from the panel: Graphics, Add from the library.'),pack:()=>toPack(),canPack:()=>false,unsupported:()=>'',
   placements:()=>[],saved:()=>DIRTY.size===0,select:()=>{},check:()=>({saved:DIRTY.size===0}),
-  undo:()=>$('#undo').click(),redo:()=>$('#redo').click(),canUndo:()=>HIST.length>0,canRedo:()=>FUT.length>0};
+  undo:()=>$('#undo').click(),redo:()=>$('#redo').click(),canUndo:()=>HIST.length>0,canRedo:()=>FUT.length>0,marks:()=>({undo:HIST.length,redo:FUT.length})};
 // every drawn view on one sheet, in a new tab
 async function openSheet(){const views=(D?.kinds||[]).filter(k=>DW[k.id]);if(!views.length){toast(`Draw the ${D?.noun||'piece'} first`);return}
+  if(DIRTY.size&&!(await save()))return;
   const svgs=await Promise.all(views.map(k=>fetch(`/v1/lab/concepts/${CID}/shoe-drawing/${k.id}.svg`,{headers:{Authorization:'Bearer '+TOKEN()}}).then(r=>r.text())));
   const html=`<!doctype html><meta charset="utf-8"><title>${esc(D.concept.name)} · technical flats</title><style>body{font:14px system-ui;margin:24px;color:#141416}h1{font-size:20px}.g{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:18px}.g div{border:1px solid #ddd;border-radius:12px;padding:12px}.g svg{width:100%;height:auto}.g b{display:block;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#727278;margin-bottom:6px}</style><h1>${esc(D.concept.name)} · technical flats</h1><div class="g">${views.map((k,i)=>`<div><b>${esc(k.label)}</b>${svgs[i]}</div>`).join('')}</div>`;
   const w=window.open(URL.createObjectURL(new Blob([html],{type:'text/html'})),'_blank');if(!w)toast('Allow pop-ups to open the sheet')}

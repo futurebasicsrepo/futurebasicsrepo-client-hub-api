@@ -28,7 +28,7 @@ import { logoSvg } from './brand-kit.js';
 import { cleanRules } from './lab-library.js';
 import { jobFile } from './lab-jobfile.js';
 import { traceVector } from './lab-vector.js';
-import { shoeSvg, SHOE_VIEWS, BAG_VIEWS } from './lab-shoe-draw.js';
+import { shoeSvg, withArt, SHOE_VIEWS, BAG_VIEWS } from './lab-shoe-draw.js';
 import { BAG_TYPES } from './lab-bags.js';
 import { ensureBranding } from './lab-concepts.js';
 import { STYLES, FITS, SIZES, DETAILS, ALLOVER_BASES, templateOf, fitToTemplate, detectStyle, defaultTemplate, looksLikeFootwear, defaultParams, defaultPlacement, fitTall, cleanFlat, cleanEdits, describeEdit, placementChecks, overlapChecks, boxesMeet, describe, renderSvg, pomTable, measurementsFor, fmt, fmtCm, drawingOf } from './lab-flats.js';
@@ -137,6 +137,7 @@ export function registerLabFlatsRoutes(app, d) {
   // a brand mark as a picture, in the colours its placement chose (the lines and lettering, and the cue dot), or in the brand's own
   const markPng = async (mark, colour = '', dot = '') => { const k = `${mark}|${colour}|${dot}`; if (!marks.has(k)) marks.set(k, await sharp(Buffer.from(logoSvg(mark, { ...(colour ? { fill: colour } : {}), ...(dot ? { dot } : {}) }))).resize({ width: 1200 }).png().toBuffer()); return marks.get(k); };
   // a brand mark is drawn from itself in its colours, even once the studio has kept a picture of it (the colour may have changed since)
+  const artPng = async id => (await pool.query('select png from lab_art where id=$1', [id])).rows[0]?.png || null;
   const pngOf = async q => q.mark ? markPng(q.mark, q.colour || '', q.dot || '') : q.art ? (await pool.query('select png from lab_art where id=$1', [q.art])).rows[0]?.png || null : null;
   const aspectOf = async q => { const b = await pngOf(q); if (!b) return 1; const m = await sharp(b).metadata(); return (m.width || 1) / (m.height || 1); };
 
@@ -636,6 +637,7 @@ export function registerLabFlatsRoutes(app, d) {
     // a bag drawn in panels in the Studio (src/lab-shoe-draw.js): its views are its technical flats, all of them on one sheet
     if (c.category === 'bags') {
       const rows = (await pool.query(`select view, drawing from lab_shoe_drawings where concept_id=$1 and status='ready' and drawing is not null`, [c.id])).rows, by = new Map(rows.map(r => [r.view, r.drawing]));
+      for (const [k, dw] of by) by.set(k, await withArt(dw, artPng));
       const views = BAG_VIEWS.filter(v => by.has(v.id)); if (!views.length) return null;
       const sketches = []; for (const v of views) sketches.push({ id: `lab-bag-${v.id}`, view: v.id === 'back' ? 'back' : v.id === 'front' ? 'front' : 'detail', label: `Technical flat · ${v.label}`, image: await png(shoeSvg(by.get(v.id)), 1600) });
       const b = c.spec?.bag || {}, t = BAG_TYPES[b.type];
@@ -651,7 +653,7 @@ export function registerLabFlatsRoutes(app, d) {
     const one = async v => { const b = v.box, pad = .8, w = b.x1 - b.x0 + 2 * pad, h = b.y1 - b.y0 + 2 * pad; return png(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="${b.x0 - pad} ${b.y0 - pad} ${w} ${h}" width="${Math.round(w * 100)}" height="${Math.round(h * 100)}"><rect x="${b.x0 - pad}" y="${b.y0 - pad}" width="${w}" height="${h}" fill="#fff"/>${v.svg}</svg>`, 1600); };
     // a shoe drawn in the Studio (src/lab-shoe-draw.js) goes to the pack as the designer drew it: those views are its technical flats
     const drawn = foot ? (await pool.query(`select view, drawing from lab_shoe_drawings where concept_id=$1 and status='ready' and drawing is not null`, [c.id])).rows : [];
-    const byView = new Map(drawn.map(r => [r.view, r.drawing])), useDrawn = byView.has('lateral');
+    const byView = new Map(drawn.map(r => [r.view, r.drawing])), useDrawn = byView.has('lateral'); for (const [k, dw] of byView) byView.set(k, await withArt(dw, artPng)); // the graphics placed on the drawings, in them
     const sketches = []; for (const [k, view, label] of keys) { const dw = useDrawn ? byView.get(k === 'bottom' ? 'bottom' : k) : null; if (useDrawn && !dw) continue; sketches.push({ id: `lab-pattern-${k}`, view, label: `Technical flat · ${label}`, image: dw ? await png(shoeSvg(dw), 1600) : await one(views[k]) }); }
     if (useDrawn && byView.has('back')) sketches.push({ id: 'lab-pattern-back', view: 'back', label: 'Technical flat · Heel', image: await png(shoeSvg(byView.get('back')), 1600) });
     const sheet = useDrawn ? drawnSheet(c.name, SHOE_VIEWS.filter(v => byView.has(v.id)).map(v => ({ label: v.label, svg: shoeSvg(byView.get(v.id)) }))) : foot ? flatsSheet(pat, { title: c.name, ...looks, hrefs }) : plushSheet(pat, { title: c.name, viewsMarkup, ...looks, hrefs });

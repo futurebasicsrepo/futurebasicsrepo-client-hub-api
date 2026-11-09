@@ -13,7 +13,7 @@ import { imageConfig, openaiEdit } from './check.js';
 import { BAG_TEMPLATES } from './lab-bag-templates.js';
 import { FOOTWEAR_TEMPLATES } from './lab-footwear-templates.js';
 import { makeViews } from './lab-views.js';
-import { DRAWN, viewsOf, firstOf, makeShoeDrawings, traceShoe, shoeSvg, cleanDrawing } from './lab-shoe-draw.js';
+import { DRAWN, viewsOf, firstOf, makeShoeDrawings, traceShoe, shoeSvg, cleanDrawing, withArt } from './lab-shoe-draw.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const STALE_MIN = 20;
@@ -47,6 +47,7 @@ export function registerLabShoeDrawRoutes(app, d) {
   const pre = [authenticate, adminOnly], bad = (reply, error, code = 422, extra = {}) => reply.code(code).send({ error, ...extra });
   const charge = async (req, o) => (lab ? lab.charge(req, o) : null), refund = async req => { try { await lab?.refund?.(req); } catch {} };
   const concept = async id => (UUID.test(String(id)) ? (await pool.query('select id, name, category, status, twist, spec, (image is not null) has_image from lab_concepts where id=$1', [id])).rows[0] : null);
+  const artPng = async id => (UUID.test(String(id)) ? (await pool.query('select png from lab_art where id=$1', [id])).rows[0]?.png || null : null); // a graphic placed on a drawing
   const running = new Map();
 
   async function views(id) {
@@ -73,7 +74,7 @@ export function registerLabShoeDrawRoutes(app, d) {
     // what is drawn already: its line art, or (a view from the library, or one the designer edited) its drawing rendered, so the views drawn from it
     // follow what is there now
     const rows = (await pool.query(`select view, art, drawing, edited from lab_shoe_drawings where concept_id=$1 and status='ready' and (art is not null or drawing is not null)`, [c.id])).rows, have = {};
-    for (const r of rows) have[r.view] = r.art && !r.edited ? r.art : r.drawing ? await sharp(Buffer.from(shoeSvg(r.drawing, { width: 1024 }))).flatten({ background: '#ffffff' }).png().toBuffer() : r.art;
+    for (const r of rows) have[r.view] = r.art && !r.edited ? r.art : r.drawing ? await sharp(Buffer.from(shoeSvg(await withArt(r.drawing, artPng), { width: 1024 }))).flatten({ background: '#ffffff' }).png().toBuffer() : r.art;
     const todo = want.filter(v => redo || !have[v]); if (!todo.length) return 0;
     for (const v of todo) await pool.query(`insert into lab_shoe_drawings(concept_id,view,status,note) values($1,$2,'pending','') on conflict (concept_id,view) do update set status='pending', note='', updated_at=now()`, [c.id, v]);
     const cfg = imageCfg(), keep = redo ? Object.fromEntries(Object.entries(have).filter(([v]) => !todo.includes(v))) : have;
@@ -185,7 +186,7 @@ export function registerLabShoeDrawRoutes(app, d) {
     const r = await row(c, v); if (!r) return bad(reply, 'Not drawn yet', 404);
     reply.header('cache-control', 'private, no-cache');
     if (req.query?.art) return reply.type('image/png').send(r.art);
-    return reply.type('image/svg+xml; charset=utf-8').send(shoeSvg(r.drawing, { width: req.query?.w ? Math.min(4000, Math.max(100, Number(req.query.w) || 1200)) : null }));
+    return reply.type('image/svg+xml; charset=utf-8').send(shoeSvg(await withArt(r.drawing, artPng), { width: req.query?.w ? Math.min(4000, Math.max(100, Number(req.query.w) || 1200)) : null }));
   });
   return { idle: async () => { await Promise.all([...running.values()]); } };
 }

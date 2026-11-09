@@ -1121,6 +1121,26 @@ A footwear (or bag, above) concept's **Flats** in the Studio (`/lab/shoe-flats`,
   last's outline, collar and toe spring follow the drawing's edits, and lays that drawing under the shoe. A shoe sent to its tech pack takes these
   drawings as its technical flats (each view and one sheet of all of them) in place of the views drawn from the pattern.
 
+**The Studio's tools on the drawing.** The drawing page tells the Studio when it is ready, so the Studio's rail, options bar, Panel and Focus
+reach it as they reach a garment's flats:
+- **Panel** folds its panel away; **Focus** floats its own bar (views, undo, save) at the foot, its panel on the right and its zoom in the
+  corner, in Liquid Glass, so nothing sits under the Studio's floating bar.
+- **Zoom**: pinch, Ctrl or ⌘ and the wheel, the − / + / Fit pill, ⌘+ ⌘− ⌘0, the hand tool or the space bar to move around. With a Pencil,
+  fingers move and pinch the view while the Pencil draws.
+- **Select** picks a panel (recolour, rename, reshape its points) or a graphic (drag, a corner sizes it, the green knob turns it).
+- **Fill** paints a tapped panel in the rail's colour; **Pick** takes a panel's colour for Fill, the brush and new shapes.
+- **Liquify** (Push, Twirl, Pinch, Bloat, at the bar's strength) moves panels, seams and stitching together under the brush; where the brush
+  first reaches a panel, its long straight runs get points along them so they bend where they are pushed.
+- **Brush** and **Line** draw lines on it; **Type** puts words on it; **Rectangle**, **Ellipse** and the **Pen** add new panels, outlined
+  like the rest; the **Eraser** rubs out what was drawn or a panel that was added.
+- **The options bar** flips, brings forward, sends back, duplicates and removes the chosen panel or graphic.
+- **Graphics**: the panel's Graphics, **Add from the library**, places a library graphic on the view; a graphic kept in the graphic studio
+  lands on it too.
+
+Lines, words, added panels, liquified stitching and graphics are saved with the drawing (`marks`, `graphics`, `details` in
+`cleanDrawing`), and `shoeSvg` draws them, each graphic's picture put in by `withArt`, so the SVG, the board and the tech pack show them.
+The pattern and engineer pages fold their panel with the Studio's Panel button too. Journey J293.
+
 Routes: `GET|POST /v1/lab/concepts/:id/shoe-drawing`, `PUT /v1/lab/concepts/:id/shoe-drawing/:view`, `POST …/:view/reset`,
 `GET …/:view.svg` (or `?art=1` for the line art). Journey J280.
 

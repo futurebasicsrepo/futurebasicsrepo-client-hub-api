@@ -4798,6 +4798,53 @@ await journey('J287', 'The cloth and the panels on the flats, in the Studio: a r
 });
 
 // The library of footwear flats (src/footwear-templates, built by scripts/footwear-templates/build.mjs from scripts/footwear-templates/catalogue.mjs)
+await journey('J293', 'A bag or shoe drawn in panels takes the Studio\'s tools: the Panel button folds its panel away and Focus floats its bar at the foot (nothing under the Studio\'s bar); it zooms out and back to Fit; Fill, Liquify, a new box panel and a brush line work on it; the options bar duplicates and removes what is chosen; a graphic from the library is placed on it, saved, and drawn into its SVG', async () => {
+  if (!playwright) { ok(true, 'skipped: no browser here'); return; }
+  const made = await K('/concepts/from-library-bag', { body: { template: 'bag-tote', colour: { name: 'Olive', hex: '#687248' } } }), cid = made.json.concept?.id;
+  const png = await sharp({ create: { width: 120, height: 120, channels: 4, background: { r: 200, g: 30, b: 40, alpha: 1 } } }).png().toBuffer();
+  const art = (await K('/library/graphics/upload', { body: { image: `data:image/png;base64,${png.toString('base64')}`, name: `J293 badge ${stamp}` } })).json.id;
+  const b = await playwright.chromium.launch(), errs = [];
+  try {
+    ok(made.status === 201 && Boolean(art), '1. a tote from the library and a graphic in the library', { made: made.status, art });
+    const ctx = await b.newContext({ viewport: { width: 1366, height: 1024 }, hasTouch: true });
+    await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); localStorage.setItem('fb.helper.on', '0'); localStorage.setItem('fb.design.level', 'pro'); localStorage.setItem('fb.design.layout', JSON.stringify({ panel: true, focus: true })); } catch {} }, kyleT);
+    const page = await ctx.newPage(); page.on('pageerror', e => errs.push(String(e)));
+    await page.goto(`${BASE}/lab/studio?concept=${cid}&view=front`, { waitUntil: 'load' });
+    const fl = page.frameLocator('#flatFrame'); await fl.locator('#art .panels path').first().waitFor({ timeout: 30000 });
+    const f = page.frames().find(x => x.url().includes('/lab/shoe-flats')), st = () => f.evaluate(() => ({ focus: document.documentElement.dataset.focus || '', panel: document.documentElement.dataset.panel, aside: getComputedStyle(document.querySelector('aside')).display, bar: getComputedStyle(document.querySelector('.bar')).position, barTop: document.querySelector('.bar').getBoundingClientRect().top, h: innerHeight }));
+    let s = await st(); ok(s.focus === '1' && s.panel === 'on' && s.bar === 'fixed' && s.barTop > s.h / 2, '2. the drawing hears the Studio: in Focus its own bar floats at the foot, not under the Studio\'s bar', s);
+    await page.click('#panelBtn'); await page.waitForTimeout(200); s = await st(); ok(s.panel === 'off' && s.aside === 'none', '3. the Panel button folds its panel away', s);
+    await page.click('#panelBtn'); await page.waitForTimeout(200); s = await st(); ok(s.panel === 'on' && s.aside !== 'none', '   and brings it back', s);
+    await fl.locator('[data-z=out]').click(); await fl.locator('[data-z=out]').click(); const z1 = await f.evaluate(() => FBFlats.zoom()); await fl.locator('[data-z=fit]').click();
+    ok(z1 < .7 && await f.evaluate(() => FBFlats.zoom()) === 1, '4. it zooms out, and Fit shows the whole bag again', z1);
+    const box = await fl.locator('#art').boundingBox(), at = (x, y) => [box.x + box.width * x, box.y + box.height * y];
+    const fills = () => f.evaluate(() => [...document.querySelectorAll('#art .panels path')].map(p => p.getAttribute('fill')).join());
+    const before = await fills(); await page.evaluate(() => { CUR = '#2255aa'; setTool('fill'); }); await page.mouse.click(...at(.5, .7)); await page.waitForTimeout(150);
+    ok((await fills()) !== before && /#2255aa/.test(await fills()), '5. Fill paints the panel tapped in the rail\'s colour');
+    const ds = () => f.evaluate(() => [...document.querySelectorAll('#art .panels path')].map(p => p.getAttribute('d')).join('|')), d0 = await ds();
+    await page.evaluate(() => { OPT.size = 120; setTool('liquify'); }); await page.mouse.move(...at(.2, .55)); await page.mouse.down(); for (let i = 1; i <= 8; i++) await page.mouse.move(...at(.2 - i * .008, .55)); await page.mouse.up(); await page.waitForTimeout(100);
+    ok((await ds()) !== d0, '6. Liquify pushes the drawing: the panels under the brush move');
+    const n0 = await f.evaluate(() => document.querySelectorAll('#art .panels path').length);
+    await page.evaluate(() => setTool('rect')); await page.mouse.move(...at(.4, .45)); await page.mouse.down(); await page.mouse.move(...at(.6, .55), { steps: 4 }); await page.mouse.up();
+    ok(await f.evaluate(() => document.querySelectorAll('#art .panels path').length) === n0 + 1, '7. the box tool adds a new panel, outlined like the rest');
+    await page.evaluate(() => setTool('brush')); await page.mouse.move(...at(.3, .8)); await page.mouse.down(); await page.mouse.move(...at(.7, .82), { steps: 6 }); await page.mouse.up();
+    ok(await f.evaluate(() => document.querySelectorAll('#art .marks path').length) === 1, '8. the brush draws a line on it');
+    await page.evaluate(() => setTool('select')); await page.waitForTimeout(150);
+    ok(await f.evaluate(() => document.querySelector('#art .panels path.on') !== null), '   the new panel is the chosen one');
+    await page.locator('#opts [data-ta=dup]').click(); await page.waitForTimeout(150); const n1 = await f.evaluate(() => document.querySelectorAll('#art .panels path').length);
+    await page.locator('#opts [data-ta=del]').click(); await page.waitForTimeout(150);
+    ok(n1 === n0 + 2 && await f.evaluate(() => document.querySelectorAll('#art .panels path').length) === n0 + 1, '9. the options bar duplicates the chosen panel and removes it', { n0, n1 });
+    await fl.locator('#gAdd').click(); await fl.locator(`[data-gpick="${art}"]`).click(); await page.waitForTimeout(400);
+    ok(await f.evaluate(() => document.querySelectorAll('#art .gfx image').length) === 1 && await f.evaluate(() => Boolean(document.querySelector('#art .gbox'))), '10. a graphic from the library is placed on the drawing, chosen, with its handles');
+    ok(await f.evaluate(() => FBFlats.save()), '11. it saves');
+    const saved = (await K(`/concepts/${cid}/shoe-drawing`)).json.views.front.drawing;
+    ok(saved.graphics?.length === 1 && saved.graphics[0].art === art && saved.marks?.length === 1 && saved.panels.some(p => /^u/.test(p.id)) && saved.panels.some(p => p.fill === '#2255aa'), '   with its graphic, its line, its new panel and its colour', { g: saved.graphics?.length, m: saved.marks?.length });
+    const svg = await (await fetch(`${BASE}/v1/lab/concepts/${cid}/shoe-drawing/front.svg`, { headers: { Authorization: 'Bearer ' + kyleT } })).text();
+    ok(/<image [^>]*href="data:image\/png;base64,/.test(svg) && /class="marks"/.test(svg), '12. its SVG (and so the tech pack) draws the graphic and the line');
+    ok(!errs.length, '13. no page errors', errs.slice(0, 3));
+  } finally { await b.close(); if (cid) await K(`/concepts/${cid}`, { method: 'DELETE' }); }
+});
+
 await journey('J292', 'Footwear: a shoe from the library, listed by type, opens in the Studio as its drawing in panels in the colour picked, its pattern drafted in the library shoe\'s style; the Sketch library shows shoes by type; a bag cannot take a library shoe', async () => {
   const lib = (await K('/library/footwear')).json.footwear || [];
   ok(lib.length >= 1 && lib.every(s => s.group && s.label && s.views.includes('lateral')), '1. the library lists shoes, each with its type and its outside view', lib.map(s => s.id));
