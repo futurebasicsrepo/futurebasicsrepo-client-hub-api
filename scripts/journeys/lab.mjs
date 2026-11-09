@@ -2892,6 +2892,10 @@ await journey('J244', 'From scratch to pattern pieces: a hoodie started from not
   const dxf = await call(`/v1/lab/concepts/${cid}/pattern.dxf?size=L`, { token: kyleT }), svg = await call(`/v1/lab/concepts/${cid}/pattern.svg`, { token: kyleT });
   ok(dxf.status === 200 && /POLYLINE\n5\n[0-9A-F]+\n8\nCUT/.test(dxf.text) && /POLYLINE\n5\n[0-9A-F]+\n8\nSEW/.test(dxf.text) && /\$ACADVER\n1\nAC1009/.test(dxf.text) && /TABLE\n2\nLAYER/.test(dxf.text) && /Hood side/.test(dxf.text), '   a DXF with cutting and sewing lines for every piece, in the size asked for');
   ok(svg.status === 200 && /width="[\d.]+in"/.test(svg.text) && /Kangaroo pocket/.test(svg.text), '   and an SVG at real size');
+  // the construction check runs with the pattern: every seam walked, measured to spec, everything it is made with, at every size; the proof opens as a page
+  ok(pat.check && pat.check.ok === true && pat.check.sizes.length === 6 && pat.check.sizes.every(z => z.ok) && pat.check.passed === pat.check.made && pat.check.made > 10, '   the pattern carries its construction check: it sews together and measures to spec at all six sizes', pat.check);
+  const proof = await call(`/v1/lab/concepts/${cid}/pattern-proof.html?size=M`, { token: kyleT });
+  ok(proof.status === 200 && /Hood side onto the neckline/.test(proof.text) && /Cutting table/.test(proof.text) && /Hood lining/.test(proof.text) && /Main label/.test(proof.text), '   and its cut-and-sew proof opens: the hood walked against the neckline, its lining and labels listed, the cutting table', proof.status);
   ok((await K(`/concepts/${cid}/pattern`, { method: 'PUT', body: { spec: { sa: .625, width: 60 } } })).json.spec.width === 60 && (await K(`/concepts/${cid}/pattern`)).json.spec.sa === .625, '   the seam allowance and the cloth width are kept');
   // a plush
   const pl = await K('/concepts/from-scratch', { body: { category: 'plush', shape: 'bunny', name: `Scratch bunny ${stamp}` } }), pid = pl.json.concept?.id;

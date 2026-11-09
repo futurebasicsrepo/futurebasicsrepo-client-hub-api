@@ -1274,6 +1274,8 @@ Every bag has a lining and lists its zips (gauge, way and length), webbing, buck
 
 ## The construction check and the cut-and-sew proof
 
+The runbook for a new product — what runs on its own, what to do when it fails, how to add a style or feature — is [pattern-process.md](pattern-process.md).
+
 A pattern is only right if it sews together into the garment it was drafted for. `constructionCheck` (`src/lab-pattern-check.js`) proves that by measurement, with no AI and no picture. It runs in the page and on the service.
 
 - **Seams.** Each block a garment is built from (`pat.block`) labels its corners: the front, back and sleeve; each leg; a skirt; a tailored jacket's front, side body, back and two-piece sleeve; a bikini brief. Each pair of edges sewn together is walked against the other. They must match within ⅛ in, or ease within the range a factory sews:

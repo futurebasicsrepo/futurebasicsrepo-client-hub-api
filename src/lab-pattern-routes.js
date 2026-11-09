@@ -4,10 +4,14 @@
 //   PUT  /v1/lab/concepts/:id/pattern            save {kind, spec} (a plush's choices; a garment's seam allowance and fabric width)
 //   GET  /v1/lab/concepts/:id/pattern.svg        every piece laid out at real size (print at 100%), ?size=M&width=58
 //   GET  /v1/lab/concepts/:id/pattern.dxf        the same as a DXF (R12, inches) on CUT, SEW, GRAIN, NOTCH and TEXT layers, for a pattern system
+//   GET  /v1/lab/concepts/:id/pattern-proof.html the cut-and-sew proof for a garment or a bag (src/lab-pattern-check.js): its seams, measurements,
+//                                                components and cutting table; GET and PUT /pattern carry the same check as `check`
 //   GET|PUT|PATCH|DELETE /v1/lab/concepts/:id/pattern/underlays[/:view]   a paper sketch laid under a view of a shoe (its picture, and where it sits)
 //   POST /v1/lab/concepts/from-scratch           {name?, category, style?, shape?} a concept with nothing drawn yet: a blank page in Design to draw on,
 //                                                with a guide (the flat's outline for a garment, the plush's shape) → { concept, studio }
-import { STYLES, SIZES, FITS, defaultParams, detectStyle, fitToTemplate } from './lab-flats.js';
+import { STYLES, SIZES, FITS, defaultParams, detectStyle, fitToTemplate, measurementsFor } from './lab-flats.js';
+import { constructionCheck } from './lab-pattern-check.js';
+import { proofCard, proofPage, proveSizes } from './lab-pattern-proof.js';
 import { cleanConstruction, constructionWords, SLEEVES, COLLARS, OPENINGS, POCKETS, WAISTS, LEGS, PANELS } from './lab-construction.js';
 import { PLUSH_TYPE, PLUSH_SNOUTS, PLUSH_HORNS, PLUSH_MANES, PLUSH_TAILS, PLUSH_PARTS, garmentPattern, bagPattern, BAG_KINDS, applyEdits, cutWords, cleanPatternEdits, patternDxfAama, plushPattern, cleanPlush, plushDefaults, patternSvg, patternDxf, yardage, fillGrams, PLUSH_SHAPES, PLUSH_EARS, PLUSH_FABRICS, PLUSH_EYES, PLUSH_AGES } from './lab-pattern.js';
 import { CATEGORIES, planLineOf, putOnLine } from './lab.js';
@@ -95,6 +99,25 @@ export function registerLabPatternRoutes(app, d) {
     if (l.art && !out[`art:${l.art}`]) { const png = (await pool.query('select png from lab_art where id=$1', [l.art]).catch(() => ({ rows: [] }))).rows[0]?.png; if (png) out[`art:${l.art}`] = `data:image/png;base64,${Buffer.from(png).toString('base64')}`; } } return out; };
   const looksOf = L => { const m = partLooks(L.c.spec?.materials); return { colours: { ...(L.spec?.colours || {}), ...m.colours }, tex: m.tex }; };
   const patternOf = (L, size) => applyEdits(draft(L, size), L.spec.edits);
+  // does the pattern make the product? (src/lab-pattern-check.js) Run every time a garment or a bag's pattern is drafted for the page, saved or
+  // exported: its seams walked, the made piece measured against its spec, every component its features call for, every outline clean, and the
+  // same at each size of its run. Pieces edited by hand on the Pattern page are not walked (the check reads the pattern as drafted), so it says so.
+  // → { ok, passed, made, size, sizes: [{size, ok, why}], problems: [string], edited } or null (a shoe, a plush, a hard good: checked their own way)
+  const checkOf = (L, pat, { full = false } = {}) => {
+    if (!pat || !['garment', 'bag'].includes(pat.kind) || (pat.kind === 'garment' && !L.flat)) return null;
+    const style = L.flat?.style, m = z => (pat.kind === 'garment' ? measurementsFor(L.flat, z) : null), c = constructionCheck(draftOnly(L, pat.size), { m: m(pat.size), style, edges: full });
+    if (!c) return null;
+    const run = pat.kind === 'garment' && !STYLES[style]?.oneSize ? SIZES : [], sizes = proveSizes(z => draftOnly(L, z), m, style, run);
+    const problems = [...c.seams.filter(x => x.ok === false).map(x => `${x.name}: ${x.a} and ${x.b} in`), ...c.meas.filter(x => x.ok === false).map(x => `${x.name}: ${x.got} in, the spec ${x.want}`),
+      ...c.cuts.map(x => `${x.piece}: ${x.why}`), ...c.missing.map(x => `Missing ${x.need} (${x.for})`), ...c.table.filter(t => !t.fits).map(t => `A piece is wider than the ${t.fabric}`)];
+    const out = { ok: c.ok && sizes.every(z => z.ok), passed: c.passed, made: c.made, size: pat.size, sizes, problems, edited: Array.isArray(L.spec?.edits) && L.spec.edits.length > 0 };
+    return full ? { ...out, detail: c } : out;
+  };
+  const draftOnly = (L, size) => draft(L, size);
+  // the proof for one product: its block sewn on paper, its seams and measurements, what it is made with, its cutting table
+  const proofOf = (L, pat) => { const k = checkOf(L, pat, { full: true }); if (!k) return null;
+    const card = proofCard({ id: 'proof', label: L.c.name || 'Pattern', style: pat.kind === 'bag' ? 'Bag' : STYLES[L.flat.style]?.label || L.flat.style, kind: pat.kind === 'bag' ? 'bag' : STYLES[L.flat.style]?.kind, pat: draftOnly(L, pat.size), c: k.detail, sizes: k.sizes });
+    return proofPage({ title: `${L.c.name || 'Pattern'}: cut and sew proof`, lede: `The pattern at size ${pat.size}, proved by measurement: every seam walked against the edge it is sewn to, the made piece measured against its spec, every component its features call for, every piece laid on its cloth.${k.edited ? ' Pieces edited by hand on the Pattern page are not walked here: check them on the sample.' : ''}`, totals: [[k.ok ? 'Passes' : 'Does not pass', k.sizes.length ? `at ${k.sizes.filter(z => z.ok).length} of ${k.sizes.length} sizes` : 'its one size'], [`${k.passed}/${k.made}`, `checks at ${pat.size}`]], cards: [card], filters: false }); };
   // what a drawing is built with, read by the vision model: the concept's picture and its drawn flats, front and back. Not saved: the pattern page
   // shows it to the designer, who keeps it (it then saves with the pattern). Without a vision model, the sketch's name and the style stand
   app.post('/v1/lab/concepts/:id/pattern/construction/read', { preHandler: pre }, async (req, reply) => {
@@ -123,7 +146,7 @@ export function registerLabPatternRoutes(app, d) {
 
   app.get('/v1/lab/concepts/:id/pattern', { preHandler: pre }, async (req, reply) => {
     const L = await load(req.params.id); if (!L) return bad(reply, 'Not found', 404);
-    const pat = patternOf(L, L.flat?.size), extra = pat ? { yardage: yardage(pat, Number(L.spec.width) || 58), ...(pat.kind === 'plush' ? { fillGrams: fillGrams(pat) } : {}), ...(pat.kind === 'footwear' ? footExtra(L.spec, pat) : {}) } : {};
+    const pat = patternOf(L, L.flat?.size), check = checkOf(L, pat), extra = pat ? { ...(check ? { check } : {}), yardage: yardage(pat, Number(L.spec.width) || 58), ...(pat.kind === 'plush' ? { fillGrams: fillGrams(pat) } : {}), ...(pat.kind === 'footwear' ? footExtra(L.spec, pat) : {}) } : {};
     const hasImage = L.kind === 'footwear' || L.kind === 'plush' ? Boolean((await pool.query('select image is not null h from lab_concepts where id=$1', [L.c.id])).rows[0]?.h) : false;
     const materials = (Array.isArray(L.c.spec?.materials) ? L.c.spec.materials : []).filter(p => p.part); // what goes on the product's parts, drawn on its flats
     return { concept: { id: L.c.id, name: L.c.name, category: L.c.category, status: L.c.status, hasImage, productId: L.c.product_id || null }, marks: L.kind === 'plush' || L.kind === 'footwear' ? Object.fromEntries(Object.keys(MARKS).flatMap(k => [[k, logoSvg(k === 'cue' ? 'mark' : k)], [`${k}:light`, logoSvg(k === 'cue' ? 'mark' : k, { fill: '#ffffff' })]])) : undefined, colourways: (Array.isArray(L.c.spec?.colourways) ? L.c.spec.colourways : []).filter(c => /^#[0-9a-f]{6}$/i.test(String(c?.hex || ''))).slice(0, 8).map(c => ({ name: clip(c.name, 60), hex: String(c.hex).toLowerCase() })), materials, allMaterials: (Array.isArray(L.c.spec?.materials) ? L.c.spec.materials : []).filter(p => p.kind === 'fabric' && !p.part), parts: partsFor(L.c.category), kind: L.kind, flat: L.flat, flatSaved: L.savedFlat, spec: L.spec, saved: L.saved, updatedAt: L.updatedAt, coloursFrom: L.coloursFrom || null, options, ...(L.kind === 'soon' ? { soon: SOON[L.c.category] } : {}), ...extra };
@@ -133,7 +156,8 @@ export function registerLabPatternRoutes(app, d) {
     if (!['plush', 'garment', 'footwear', 'bag'].includes(L.kind)) return bad(reply, L.kind === 'soon' ? SOON[L.c.category] : 'This piece has no pattern the Lab can draft yet');
     const spec = await save(L, req.body?.spec, actorOf(req));
     const pat = patternOf({ ...L, spec }, L.flat?.size);
-    return { ok: true, spec, yardage: yardage(pat, Number(spec.width) || 58), ...(pat.kind === 'plush' ? { fillGrams: fillGrams(pat), checks: pat.checks } : {}), ...(pat.kind === 'footwear' ? footExtra(spec, pat) : {}) };
+    const check = checkOf({ ...L, spec }, pat);
+    return { ok: true, spec, ...(check ? { check } : {}), yardage: yardage(pat, Number(spec.width) || 58), ...(pat.kind === 'plush' ? { fillGrams: fillGrams(pat), checks: pat.checks } : {}), ...(pat.kind === 'footwear' ? footExtra(spec, pat) : {}) };
   });
   const file = ext => async (req, reply) => {
     const L = await load(req.params.id); if (!L) return bad(reply, 'Not found', 404);
@@ -159,6 +183,10 @@ export function registerLabPatternRoutes(app, d) {
     out.push({ name: 'pattern/pattern-all-sizes-aama.dxf', data: Buffer.from(patternDxfAama(pats, { width, units: 'in', style: L.c.name })) });
     out.push({ name: `pattern/pattern-${String(pat.size).replace(/[^a-z0-9]+/gi, '').toLowerCase() || 'base'}.dxf`, data: Buffer.from(patternDxf(pat, { width })) });
     out.push({ name: 'pattern/pattern.svg', data: Buffer.from(patternSvg(pat, { width, title: L.c.name })) });
+    // the proof that the pattern makes the product, for the factory's pattern room; and a note on the package when it does not
+    { const k = checkOf(L, pat), proof = k && proofOf(L, pat); if (proof) out.push({ name: 'pattern/cut-and-sew-proof.html', data: Buffer.from(proof) });
+      if (k && !k.ok) notes.push(`The pattern does not pass its construction check yet: ${[...k.problems, ...k.sizes.filter(z => !z.ok).map(z => `size ${z.size}: ${z.why}`)].slice(0, 4).join('; ')}`);
+      if (k?.edited) notes.push('Pieces were edited by hand on the Pattern page: the construction check reads the pattern as drafted, so check the edited pieces on the sample'); }
     // the cut list and the trims, for the cutting room and purchasing: every piece cut (fabric, quantity, how), then what goes on besides cloth
     if (pat.kind === 'garment') { const c = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
       const rows = [['Piece', 'Fabric', 'Cut', 'Notes'].map(c).join(','), ...pat.pieces.filter(q => q.cut > 0).map(q => [q.name, q.fabric, cutWords(q).replace(/^Cut /, ''), q.notes.join(' · ')].map(c).join(',')),
@@ -176,6 +204,13 @@ export function registerLabPatternRoutes(app, d) {
     return { files: out, notes };
   }
   app.get('/v1/lab/concepts/:id/pattern.svg', { preHandler: pre }, file('svg'));
+  // the cut-and-sew proof for one garment or bag, as a page (src/lab-pattern-proof.js)
+  app.get('/v1/lab/concepts/:id/pattern-proof.html', { preHandler: pre }, async (req, reply) => {
+    const L = await load(req.params.id); if (!L) return bad(reply, 'Not found', 404);
+    const pat = patternOf(L, String(req.query?.size || L.flat?.size || '')), page = pat && proofOf(L, pat);
+    if (!page) return bad(reply, 'The construction check covers garments and bags; a shoe, a plush or a hard good is checked on its own page');
+    return reply.header('cache-control', 'no-store').type('text/html; charset=utf-8').send(page);
+  });
   // the last, drawn for the last maker: side and bottom with its length, girths, widths, heel and toe spring
   app.get('/v1/lab/concepts/:id/last.svg', { preHandler: pre }, async (req, reply) => {
     const L = await load(req.params.id); if (!L) return bad(reply, 'Not found', 404); if (L.kind !== 'footwear') return bad(reply, 'Only footwear has a last');

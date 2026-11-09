@@ -16,3 +16,17 @@ When a change adds, moves, renames or removes a part of the platform, update `sr
 ## Keep the video brief up to date
 
 `docs/marketing/video-brief.md` is the brief for promotional videos about the Design Lab and its tools. When a change adds, renames or removes a tool a client can see, or changes a price or a number quoted in it (sketches, bases, add-ons, colour systems, factory languages), update the brief in the same PR.
+
+## Prove every pattern makes its product
+
+`docs/pattern-process.md` is the runbook for patterns and engineering drawings. Any change to drafting must leave every library garment and bag passing the construction check (`src/lab-pattern-check.js`). That covers a new style, sketch, feature, add-on, trim or measurement, and any change to `src/lab-pattern.js`, `src/lab-flats.js` or `src/lab-construction.js`. Before pushing:
+
+- Run `npm test`. `test/pattern-check.test.js` checks every library sketch at XS to XXL, and every bag.
+- Run `npm run pattern:proof`. It exits non-zero when anything fails. Look at the cards and cutting tables for the styles you touched.
+- A new feature also gets:
+  - its seams walked in the check
+  - its measurement checked, if it has one
+  - its parts and trims added in `finishGarment`, with the rule that requires them in `missingComponents`
+  - a line in `docs/design-lab.md`
+
+Never loosen a tolerance or delete a rule to get a pattern to pass. Fix the drafting. If a factory range is genuinely wrong, change it with its source.
