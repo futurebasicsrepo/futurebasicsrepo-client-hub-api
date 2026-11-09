@@ -1285,7 +1285,21 @@ A pattern is only right if it sews together into the garment it was drafted for.
   - tops: chest 1 in below the armhole, length from the high point of the shoulder, shoulder, neck, sleeve and opening
   - bottoms: waist, hip, rise along its seam, inseam, thigh, leg opening, sweep
   - bags: width, height and depth
+- **Collars, stands and hoods.** Each records the length of the edge it is sewn on by, measured off its own outline, and is walked against the body's neckline. The neckline runs front edge to front edge for a shirt stand, or centre front to centre front, less any designed turn-back at a zip. A hood's neck edge is solved to half the neckline.
 - **Clean outlines.** No cut piece may cross itself or have a corner sharper than 20°.
+- **Everything it is made with.** Every garment goes through `finishGarment` (`src/lab-pattern.js`). It adds whatever drafting has not:
+  - labels: main, size, care and content
+  - thread, estimated from the seams and the stitch
+  - a back neck tape on knit tops
+  - a fly's zip and waist button, waistband fusing
+  - a skirt's zip and hook
+  - fusing on woven collars, stands, cuffs and plackets
+  - a shirt's sleeve plackets
+  - a hood's lining and drawcord
+  - a placket's buttons
+  - a bra's elastics
+
+  A tailored jacket's sleeve linings are cut from its top and under sleeves. `missingComponents` (`src/lab-pattern-check.js`) holds every garment to the same list, so a missing part fails the check like a seam that does not walk.
 - **The cutting table.** `layoutOf` builds a marker for each cloth at its width:
   - each piece is dropped, by its outline, to the lowest place it fits
   - a piece may be turned end to end, its grain kept along the selvedge

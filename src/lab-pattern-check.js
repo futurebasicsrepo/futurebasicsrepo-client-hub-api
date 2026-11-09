@@ -99,6 +99,11 @@ function checkTop(pat, m, style, knit) {
     seams.push(seam('Sleeve seam: front to back', e(S, 'uaF', 'hemF'), e(S, 'hemB', 'uaB')));
   }
   const neckline = 2 * (e(F, 'cfNeck', 'hps') + e(Bk, 'cfNeck', 'hps')) + (F.ext ? 0 : 0), rib = piece(pat, 'neck-rib');
+  // a collar, a stand, a hood: the edge it is sewn on by (measured off its own outline as drafted) against the neckline it is sewn to, front
+  // edge to front edge or centre front to centre front, less what is designed to turn back at an opening
+  const ext = F.ext || 0;
+  for (const q of pat.pieces) { if (!q.cut || !q.neck) continue; const want = q.neck.to === 'edge' ? neckline : neckline - 2 * ext, got = q.neck.len * (q.neck.pair ? 2 : 1) - (q.neck.extra || 0), knitC = q.fabric === 'rib';
+    seams.push(seam(`${q.name} onto the neckline`, want, got, { ease: knitC ? [-want * .1, .125] : [-.25, .25], why: (q.neck.why ? q.neck.why + '; ' : '') + (knitC ? 'a knit collar may be up to 10% shorter, stretched on' : 'within ¼ in') })); }
   if (rib) seams.push(seam('Neck rib onto the neckline (stretched)', neckline, lengthOf(rib), { ease: [-neckline * .22, -neckline * .08], why: 'a rib is cut 8–22% shorter than the neckline it is stretched onto' }));
   const cuff = piece(pat, 'cuff'), hemS = S ? edge(S, 'hemF', 'hemB') : null;
   if (cuff && hemS) { const w = lengthOf(cuff), shirt = style === 'shirt'; const full = pat.construction?.collar === 'shearling'; seams.push(seam(shirt ? 'Cuff onto the sleeve (pleated in)' : full ? 'Cuff onto the full sleeve (gathered in)' : 'Cuff rib onto the sleeve (stretched)', hemS, w, { ease: shirt ? [-hemS * .5, .5] : full ? [-hemS * .6, -hemS * .05] : [-hemS * .3, -hemS * .05], why: shirt ? 'a shirt cuff takes up the sleeve in its pleats and placket' : full ? 'a full sleeve is gathered into its cuff' : 'a rib cuff is cut 5–30% shorter than the opening' })); }
@@ -182,7 +187,28 @@ export function outlineFaults(pat) {
     if (why) out.push({ piece: q.name, why }); }
   return out;
 }
-// → { seams, meas, table, cuts, ok, coverage } ok: every check that could be made passed; coverage: how many could be made
+// what every garment is made with, beyond its pieces: each feature the pattern has calls for the parts and trims a factory needs to make it
+// (a fly calls for its zip and a waist button, a woven collar for its fusing, a hood for its lining); → [{ need, for }] for the ones missing
+export function missingComponents(pat) {
+  if (pat.kind !== 'garment') return [];
+  const ids = new Set(pat.pieces.filter(q => q.cut).map(q => q.id)), T = pat.trims.map(t => t.item), has = re => T.some(t => re.test(t)), out = [], need = (ok, what, why) => { if (!ok) out.push({ need: what, for: why }); };
+  const pc = id => pat.pieces.find(q => q.id === id && q.cut);
+  need(has(/^Main label$/), 'Main label', 'every garment'); need(has(/^Size label$/), 'Size label', 'every garment'); need(has(/^Care and content label$/), 'Care and content label', 'every garment'); need(has(/^Thread$/), 'Thread', 'every garment');
+  if (ids.has('fly')) { need(has(/zip/i), 'Fly zip', 'the fly'); need(has(/button|hook/i), 'A waist button (or hook and bar)', 'the fly'); }
+  const wb = pc('waistband'); if (wb && !/elastic/i.test(wb.name)) need(ids.has('waistband-fuse'), 'Waistband fusing', 'a fixed waistband');
+  if (wb && /elastic/i.test(wb.name)) need(has(/elastic/i), 'Elastic', 'an elastic waistband');
+  if (wb && !/elastic/i.test(wb.name) && !ids.has('fly') && pat.style === 'skirt') need(has(/zip/i), 'A zip', 'a fixed-waist skirt');
+  if (ids.has('placket')) { need(has(/button|snap|zip/i), 'Buttons (or snaps)', 'the placket'); need(ids.has('placket-fuse'), 'Placket fusing', 'the placket'); }
+  for (const id of ['collar', 'stand']) { const q = pc(id); if (q && q.fabric === 'self' && !/shearling/i.test(q.name)) need(ids.has(id + '-fuse') || ids.has('under-collar-fuse'), `${q.name} fusing`, `a woven ${q.name.toLowerCase()}`); }
+  const cf = pc('cuff'); if (cf && cf.fabric === 'self' && ['shirt', 'shirtss'].includes(pat.style)) need(ids.has('cuff-fuse'), 'Cuff fusing', 'a shirt cuff');
+  if (ids.has('cuff') && pat.style === 'shirt') need(ids.has('sleeve-placket'), 'Sleeve plackets', 'a buttoned shirt cuff opens at a placket');
+  if (ids.has('hood')) { need(ids.has('hood-lining'), 'Hood lining', 'the hood'); if (pc('hood').notes.some(n => /drawcord channel/i.test(n))) { need(has(/drawcord/i), 'Drawcord', 'the hood'); need(has(/eyelet/i), 'Eyelets', 'the drawcord'); } }
+  if (pat.construction?.opening === 'zip' || ids.has('zip-placket') || ids.has('zip-guard')) need(has(/zip/i), 'A zip', 'the zip opening');
+  if (pat.style === 'bra') need(has(/elastic/i), 'Elastic', 'a bra');
+  if (ids.has('front-lining')) { need(ids.has('back-lining'), 'Back lining', 'a lined body'); if (ids.has('sleeve') || ids.has('top-sleeve')) need(ids.has('sleeve-lining'), 'Sleeve lining', 'a lined body with sleeves'); if (ids.has('top-sleeve')) need(ids.has('under-sleeve-lining'), 'Under sleeve lining', 'a two-piece sleeve'); }
+  return out;
+}
+// → { seams, meas, table, cuts, missing, ok, coverage } ok: every check that could be made passed; coverage: how many could be made
 // edges: true also gives each seam the runs of outline it walked ({ block, pts }, in the block's own coordinates)
 export function constructionCheck(pat, { m = null, style = '', width = 58, edges = false } = {}) {
   if (!pat) return null;
@@ -190,6 +216,6 @@ export function constructionCheck(pat, { m = null, style = '', width = 58, edges
   RUNS = edges ? [] : null;
   let r; try { r = pat.kind === 'bag' ? checkBag(pat) : pat.block?.front?.at?.crotch || pat.block?.front?.skirt || (m && ('inseam' in m || 'sweep' in m)) ? checkBottom(pat, m || {}, K) : checkTop(pat, m || {}, style || pat.style, knit); } finally { RUNS = null; }
   const lay = layoutOf(pat, { width }), table = lay.map(g => ({ fabric: g.name, width: g.width, length: g.length, yards: g.yards, efficiency: g.efficiency, pieces: g.items.length, fits: g.items.every(it => it.b.w <= g.width + 1e-6) }));
-  const all = [...r.seams, ...r.meas], made = all.filter(x => x.ok !== null), cuts = outlineFaults(pat);
-  return { ...r, table, cuts, ok: made.length > 0 && made.every(x => x.ok) && table.every(t => t.fits) && !cuts.length, passed: made.filter(x => x.ok).length, made: made.length, total: all.length };
+  const all = [...r.seams, ...r.meas], made = all.filter(x => x.ok !== null), cuts = outlineFaults(pat), missing = missingComponents(pat);
+  return { ...r, table, cuts, missing, ok: made.length > 0 && made.every(x => x.ok) && table.every(t => t.fits) && !cuts.length && !missing.length, passed: made.filter(x => x.ok).length, made: made.length, total: all.length };
 }
