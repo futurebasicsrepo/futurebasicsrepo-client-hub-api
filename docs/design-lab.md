@@ -1272,6 +1272,33 @@ A bag concept opens on the Pattern page as kind `bag` (`bagPattern` in `src/lab-
 
 Every bag has a lining and lists its zips (gauge, way and length), webbing, buckles, hooks, sliders, foam, binding and thread. A gusset, a lining or a sleeve sits under the panel on the product, so the explode shows it. It is a first block from the size: sample it, then true the panels to the drawing.
 
+## The construction check and the cut-and-sew proof
+
+A pattern is only right if it sews together into the garment it was drafted for. `constructionCheck` (`src/lab-pattern-check.js`) proves that by measurement, with no AI and no picture. It runs in the page and on the service.
+
+- **Seams.** Each block a garment is built from (`pat.block`) labels its corners: the front, back and sleeve; each leg; a skirt; a tailored jacket's front, side body, back and two-piece sleeve; a bikini brief. Each pair of edges sewn together is walked against the other. They must match within ⅛ in, or ease within the range a factory sews:
+  - a set-in cap ¼ to ¾ in into its armhole on a knit, ¾ to 1½ in on a woven
+  - a back shoulder ⅛ to ½ in onto the front of a tailored jacket
+  - a rib stretched 8 to 22% onto the neckline
+  - a waistband 1 to 2¼ in over the waist, to overlap at the fly
+- **The made garment.** Measured off the pieces as they are sewn, against the spec within factory tolerances:
+  - tops: chest 1 in below the armhole, length from the high point of the shoulder, shoulder, neck, sleeve and opening
+  - bottoms: waist, hip, rise along its seam, inseam, thigh, leg opening, sweep
+  - bags: width, height and depth
+- **Clean outlines.** No cut piece may cross itself or have a corner sharper than 20°.
+- **The cutting table.** `layoutOf` builds a marker for each cloth at its width:
+  - each piece is dropped, by its outline, to the lowest place it fits
+  - a piece may be turned end to end, its grain kept along the selvedge
+  - the shortest of several orders is kept, never longer than plain rows
+  - every layout item has `at(pts)` for drawing a piece where it lies
+
+`npm run pattern:proof` writes `pattern-proof/pattern-proof.html`. It covers every library garment at M, with a strip of XS to XXL, and every bag. Each card shows:
+- the block pieces, with each seam's two sides in one colour
+- the seam and measurement tables
+- the cutting table
+
+`test/pattern-check.test.js` holds the whole library at every size, and every bag, to the check.
+
 ## Editing pieces and the AAMA/ASTM DXF
 
 A drafted pattern is a start: a pattern maker can change every piece on the Pattern view and keep what they changed.

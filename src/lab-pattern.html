@@ -149,11 +149,11 @@ function drawPieces(){
   if(T>=.999){
     let y0=0;const items=[];
     for(const g of lay){body+=`<text x="0" y="${r3(y0-.5)}" font-size=".55" font-weight="700" fill="#141416">${esc(g.name)}${(m=>m?` · ${esc(m.name)}`:'')(MATS.find(x=>x.part===g.fabric))}</text><text x="${r3(g.width)}" y="${r3(y0-.5)}" font-size=".42" text-anchor="end" fill="#727278">${g.width} in wide · ${g.length} in · ${g.yards} yd · ${g.efficiency}% used</text><rect x="0" y="${r3(y0)}" width="${g.width}" height="${r3(g.length)}" fill="#fff" stroke="#c7c7c2" stroke-width=".04" stroke-dasharray=".3 .2"/>`;
-      for(const it of g.items){const q=it.piece,tf=pts=>pts.map(([x,y])=>[(it.flip?-x+(it.b.x0+it.b.x1):x)+it.x,y+it.y+y0]),sew=tf(q.sew),cut=tf(offsetOf(q.sew,q.sa??PAT.sa)),gr=tf(q.grain),b=boundsOf(sew),fs=Math.min(.55,Math.max(.22,b.w/12));
+      for(const it of g.items){const q=it.piece,tf=pts=>it.at(pts).map(([x,y])=>[x,y+y0]),sew=tf(q.sew),cut=tf(offsetOf(q.sew,q.sa??PAT.sa)),gr=tf(q.grain),b=boundsOf(sew),fs=Math.min(.55,Math.max(.22,b.w/12));
         const ink=inkOn(q);body+=`<g data-pid="${esc(q.id)}" class="pc"><path d="${P(cut)}" fill="${fillOf(q)}" stroke="${SEL===q.id?'#17603a':'#141416'}" stroke-width="${SEL===q.id?.09:.05}"/><path d="${P(sew)}" fill="none" stroke="${ink}" stroke-width=".03" stroke-dasharray=".2 .12"/>`
           +`<path d="M${r3(gr[0][0])} ${r3(gr[0][1])} L${r3(gr[1][0])} ${r3(gr[1][1])}" stroke="#17603a" stroke-width=".05" marker-start="url(#ga)" marker-end="url(#ga)"/>`
           +tf(q.notches).map(n=>`<circle cx="${r3(n[0])}" cy="${r3(n[1])}" r=".12" fill="#141416"/>`).join('')
-          +(q.fold?`<path d="M${r3(it.x)} ${r3(b.y0)} L${r3(it.x)} ${r3(b.y1)}" stroke="#a02a20" stroke-width=".05" stroke-dasharray=".35 .18"/>`:'')
+          +(q.fold?`<path d="M${r3(tf([[0,0]])[0][0])} ${r3(b.y0)} L${r3(tf([[0,0]])[0][0])} ${r3(b.y1)}" stroke="#a02a20" stroke-width=".05" stroke-dasharray=".35 .18"/>`:'')
           +(it.n===0?`<text x="${r3((b.x0+b.x1)/2)}" y="${r3((b.y0+b.y1)/2)}" text-anchor="middle" font-size="${r3(fs)}" font-weight="700" fill="${ink}">${esc(q.name)}</text><text x="${r3((b.x0+b.x1)/2)}" y="${r3((b.y0+b.y1)/2+fs*1.2)}" text-anchor="middle" font-size="${r3(fs*.75)}" fill="${ink}" opacity=".75">${esc(cutWords(q))}</text>`:`<text x="${r3((b.x0+b.x1)/2)}" y="${r3((b.y0+b.y1)/2)}" text-anchor="middle" font-size="${r3(fs*.75)}" fill="${ink}" opacity=".75">${esc(q.name)} ${it.n+1}/${q.cut}</text>`)+`</g>`;items.push(...cut)}
       y0+=g.length+2.4}
     bb=boundsOf(items.length?items:[[0,0],[10,10]]);bb={x0:-.5,y0:-1.4,x1:Math.max(...lay.map(g=>g.width))+.5,y1:y0}

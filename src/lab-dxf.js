@@ -30,7 +30,8 @@ export function dxfR12() {
     // a block of entities drawn by the caller between begin and end, placed with insert (its extent counted where it lands)
     begin(name) { blocks.push('0', 'BLOCK', '5', H(), '8', '0', '2', name, '70', '0', '10', '0', '20', '0', '30', '0', '3', name, '1', ''); },
     end() { blocks.push('0', 'ENDBLK', '5', H(), '8', '0'); },
-    insert(name, x, y, box = null, layer = '0') { const l = use(layer); if (box) { see(x + box.x0, y + box.y0); see(x + box.x1, y + box.y1); } else see(x, y); ents.push('0', 'INSERT', '5', H(), '8', l, '2', name, '10', num(x), '20', num(y), '30', '0'); },
+    // rot: degrees, about the block's origin (a box is then the block's extent as it lands, turned)
+    insert(name, x, y, box = null, layer = '0', rot = 0) { const l = use(layer); if (box) { const t = rot === 180 ? { x0: -box.x1, x1: -box.x0, y0: -box.y1, y1: -box.y0 } : box; see(x + t.x0, y + t.y0); see(x + t.x1, y + t.y1); } else see(x, y); ents.push('0', 'INSERT', '5', H(), '8', l, '2', name, '10', num(x), '20', num(y), '30', '0', ...(rot ? ['50', num(rot)] : [])); },
     toString({ units = 'in' } = {}) {
       const mm = units === 'mm', e = Number.isFinite(ext.x0) ? ext : { x0: 0, y0: 0, x1: 10, y1: 10 };
       const v = (name, code, val) => ['9', name, String(code), String(val)], v2 = (name, x, y) => ['9', name, '10', num(x), '20', num(y)], v3 = (name, x, y, z = 0) => ['9', name, '10', num(x), '20', num(y), '30', num(z)];
