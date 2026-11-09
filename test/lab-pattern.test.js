@@ -22,7 +22,7 @@ test('a tee: front and back on the fold, a pair of sleeves whose cap fits the ar
   assert.ok(by(M, 'sleeve-2').twin && by(M, 'sleeve-2').cut === 0, 'the second sleeve is drawn on the product but never cut twice');
   const w = id => boundsOf(by(M, id).sew).w, wx = id => boundsOf(by(XL, id).sew).w;
   assert.ok(Math.abs(w('front') - p.m.chest) < .05, `the front is the chest across (${w('front')} vs ${p.m.chest})`);
-  assert.ok(wx('front') - w('front') > 1.9 && wx('front') - w('front') < 2.1, 'two sizes up is 2 in wider');
+  assert.ok(wx('front') - w('front') > 3.9 && wx('front') - w('front') < 4.1, 'two sizes up is 4 in wider (2 in a size)');
   // the neck rib is shorter than the neckline it is stretched onto
   assert.ok(boundsOf(by(M, 'neck-rib').sew).w < 2 * p.m.neckWidth + 2 * p.m.neckDropFront + 4);
 });

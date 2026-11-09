@@ -18,11 +18,11 @@ test('the style, fit and details are read from the concept', () => {
 
 test('measurements come from the style and fit, and grade by size', () => {
   const reg = defaultParams('tee', 'regular'), boxy = defaultParams('tee', 'boxy');
-  assert.equal(reg.m.chest, 21); assert.equal(boxy.m.chest, 23.5); assert.ok(boxy.m.length < reg.m.length && boxy.options.drop);
-  assert.equal(measurementsFor(reg, 'XL').chest, 23); assert.equal(measurementsFor(reg, 'XS').length, 26); assert.equal(measurementsFor(defaultParams('cap'), 'XL').crownWidth, 8.5, 'one size does not grade');
+  assert.equal(reg.m.chest, 20.5); assert.equal(boxy.m.chest, 23); assert.ok(boxy.m.length < reg.m.length && boxy.options.drop);
+  assert.equal(measurementsFor(reg, 'XL').chest, 24.5, 'a tee grades 2 in a size across the chest, as published specs do'); assert.equal(measurementsFor(reg, 'XS').length, 27); assert.equal(measurementsFor(defaultParams('cap'), 'XL').crownWidth, 8.5, 'one size does not grade');
   const pom = pomTable(reg); assert.equal(pom[0].code, 'A'); assert.deepEqual(pom[0].values.map(v => v.size), SIZES); assert.ok(!pom.some(r => r.key === 'hemRib'), 'a measurement the piece does not have is left out');
   assert.deepEqual(pomTable(defaultParams('tote'))[0].values.map(v => v.size), ['One size']);
-  assert.equal(defaultParams('tee', 'regular', { cropped: true }).m.length, 24);
+  assert.equal(defaultParams('tee', 'regular', { cropped: true }).m.length, 25);
 });
 
 test('every style draws front and back, closed and measurable', () => {
@@ -65,7 +65,7 @@ test('the drawing checks: on the piece, clear of seams, collars, zips and pocket
 test('what the page sends is kept within bounds', () => {
   assert.match(cleanFlat({ style: 'kimono' }).error, /what the piece is/);
   const { params, placements } = cleanFlat({ style: 'tee', fit: 'weird', m: { chest: 900, length: 'x' }, options: { pleats: 9 }, placements: [{ id: 'a<b', name: '  Logo  ', view: 'side', x: 999, y: 4, w: .1, h: 2, art: 'nope', mark: 'cue', technique: 'embroidery' }] });
-  assert.equal(params.fit, 'regular'); assert.equal(params.m.chest, 80); assert.equal(params.m.length, 28); assert.equal(params.options.pleats, 2);
+  assert.equal(params.fit, 'regular'); assert.equal(params.m.chest, 80); assert.equal(params.m.length, 29); assert.equal(params.options.pleats, 2);
   assert.deepEqual(placements[0], { id: 'p0', name: 'Logo', view: 'front', x: 60, y: 4, w: .25, h: 2, mark: 'mark', technique: 'embroidery', source: 'extra' });
 });
 
