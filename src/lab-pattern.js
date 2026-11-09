@@ -5,7 +5,7 @@
 // The same file runs in the page (served as /lab/pattern.js) and on the service (the DXF and the SVG), so it uses neither the DOM nor Node.
 // All lengths are inches; y runs down. A pattern from here is a first block from the measurements: a pattern maker trues it up on the sample.
 import { dxfR12 } from './lab-dxf.js';
-import { STYLES, measurementsFor, SIZES, drawnLegs, followDrawing } from './lab-flats.js';
+import { STYLES, measurementsFor, SIZES, drawnLegs, followDrawing, bodyProfile } from './lab-flats.js';
 import { constructionOf } from './lab-construction.js';
 import { cleanSketches, VIEWS_OF } from './lab-sketch.js';
 import { cleanLogos } from './lab-logos.js';
@@ -14,6 +14,11 @@ const r3 = v => Math.round(v * 1000) / 1000;
 const r8 = v => Math.round(v * 8) / 8;
 const cubic = (a, c1, c2, b, n = 12) => Array.from({ length: n + 1 }, (_, i) => { const t = i / n, u = 1 - t; return [u * u * u * a[0] + 3 * u * u * t * c1[0] + 3 * u * t * t * c2[0] + t * t * t * b[0], u * u * u * a[1] + 3 * u * u * t * c1[1] + 3 * u * t * t * c2[1] + t * t * t * b[1]]; });
 const tail = pts => pts.slice(1);
+// a smooth line through points (Catmull-Rom, a few steps between each two), the first and the last kept exactly
+function smoothThrough(P, n = 4) { if (P.length < 3) return P; const out = [P[0]];
+  for (let i = 0; i + 1 < P.length; i++) { const p0 = P[Math.max(i - 1, 0)], p1 = P[i], p2 = P[i + 1], p3 = P[Math.min(i + 2, P.length - 1)];
+    for (let k = 1; k <= n; k++) { const t = k / n, t2 = t * t, t3 = t2 * t; out.push([0, 1].map(j => .5 * (2 * p1[j] + (-p0[j] + p2[j]) * t + (2 * p0[j] - 5 * p1[j] + 4 * p2[j] - p3[j]) * t2 + (-p0[j] + 3 * p1[j] - 3 * p2[j] + p3[j]) * t3))); } }
+  return out; }
 const mirrorX = pts => pts.map(([x, y]) => [-x, y]);
 const lenOf = pts => pts.reduce((s, q, i) => i ? s + Math.hypot(q[0] - pts[i - 1][0], q[1] - pts[i - 1][1]) : 0, 0);
 export const areaOf = pts => Math.abs(pts.reduce((s, q, i) => { const n = pts[(i + 1) % pts.length]; return s + q[0] * n[1] - n[0] * q[1]; }, 0) / 2);
@@ -163,7 +168,11 @@ function topPieces(S, m, o, style) {
   // half the body, from the centre-front neck round to the centre-front hem; the whole body is it and its mirror
   // a raglan seam runs from a point on the neckline, about a quarter of the way in from the shoulder, down to the underarm
   const ragOf = nd => { const nk = neck(nd), i = Math.max(1, Math.round((nk.length - 1) * .7)), R = nk[i]; return { nk: nk.slice(0, i + 1), R, line: cubic(R, [R[0] + (UA[0] - R[0]) * .3, R[1] + (UA[1] - R[1]) * .2], [UA[0] - 1.7, UA[1] - 2.4], UA) }; };
-  const halfOf = (nd, ext = 0) => { if (raglan) { const r = ragOf(nd); return [[-ext, nd], ...r.nk, ...tail(r.line), [half, L], [-ext, L]]; } return [[-ext, nd], ...neck(nd), [SP[0], SP[1]], ...tail(armhole), [half, L], [-ext, L]]; };
+  // the side seam from the underarm to the hem: straight down, or (a bodysuit, a dress) through the widths its sketch draws, the leg of a
+  // bodysuit cut round to its crotch (bodyProfile)
+  const prof = bodyProfile(style, o.template), crotch = style === 'bodysuit' ? Math.max(half * (prof?.at(-1)?.[1] ?? .22), 1.1) : 0;
+  const SIDE = prof ? smoothThrough(prof.map(([f, r], i) => [i === prof.length - 1 && crotch ? crotch : half * r, UA[1] + (L - UA[1]) * f])).slice(1) : [[half, L]];
+  const halfOf = (nd, ext = 0) => { if (raglan) { const r = ragOf(nd); return [[-ext, nd], ...r.nk, ...tail(r.line), ...SIDE, [-ext, L]]; } return [[-ext, nd], ...neck(nd), [SP[0], SP[1]], ...tail(armhole), ...SIDE, [-ext, L]]; };
   const whole = nd => { const h = halfOf(nd); return [...h, ...mirrorX(h).reverse()]; };
   const pieces = [], open = zip || buttons || ['shirt', 'shirtss', 'jacket', 'coat', 'vest'].includes(style);
   const ext = ['shirt', 'shirtss', 'coat'].includes(style) || (buttons && outer) ? .75 : 0; // the button stand past the centre front
@@ -418,6 +427,16 @@ function topPieces(S, m, o, style) {
     if (jacketCollar === 'shearling') { const W = m.neckWidth / 2 + 2.4, ring = [[0, -2.7], [W, -2.3], [W + .9, -.6], [W + .5, 1.6], [W - 1.2, 2.9], [0, 3.3]], R = blob(ring, .5), h = R.filter(([x]) => x >= 0);
       pieces.push({ ...piece('collar-back', 'Shearling collar', pieces.find(x => x.id === 'collar').sew, { fabric: 'shearling', cut: 0, shown: [...h, ...mirrorX(h).reverse()], place: { view: 'back', x: 0, y: 0, z: 4 } }), of: 'collar', twin: true, copy: true }); }
   }
+  if (style === 'bodysuit') { // the crotch: a lined gusset snapped shut, the legs finished with elastic
+    const g = [[-crotch, 0], [crotch, 0], [crotch + .6, 4.5], [-crotch - .6, 4.5]];
+    pieces.push(piece('gusset', 'Crotch gusset', g, { cut: 2, fold: false, hidden: true, notes: ['Self and a cotton lining; the front end sewn to the front crotch, the back end to the back, each with a snap tape'], place: { view: 'front', x: 0, y: L - 4.5, z: 1 } }));
+    const leg = lenOf(SIDE.filter(([, y]) => y >= UA[1] + (L - UA[1]) * .5)) * 2;
+    trims.push({ item: 'Snap tape', spec: '3 snaps, 12 mm, on a ⅝ in tape', qty: 1, where: 'Across the crotch' }, { item: 'Leg elastic', spec: `⅜ in clear or knit elastic, ${r8(leg * .85)} in a leg (15% short of the ${r8(leg)} in opening)`, qty: 2, where: 'Round each leg, turned and coverstitched' }); }
+  if (style === 'dress') { // a woven dress fitted through the waist: darts and a zip
+    const waist = Math.min(...SIDE.filter(([, y]) => y < UA[1] + (L - UA[1]) * .45).map(([x]) => x)), sup = half - waist;
+    if (sup > .4) for (const q of pieces.filter(x => x.id === 'front' || x.id === 'back')) q.notes = [...(q.notes || []), `Waist darts: two, ${r8(Math.min(sup * .5, 1.25))} in wide, ${q.id === 'front' ? 'from 1 in below the bust point to 4 in below the waist' : 'from the shoulder blade to 5 in below the waist'}`];
+    if (zip) trims.push({ item: 'Zip', spec: `Exposed metal zip, separating, ${Math.round(L - m.neckDropFront)} in`, qty: 1, where: 'Centre front, neck to hem' });
+    else if (K.opening !== 'buttons') trims.push({ item: 'Zip', spec: `Invisible zip, ${Math.round(Math.min(22, L * .55))} in`, qty: 1, where: 'Centre back' }); }
   if (m.sleeve === 0) pieces.push(piece('binding', 'Armhole and neck binding', rect(r8(lenOf(armhole) * 4 * .92 + neckLen * .9), 1.25), { fabric: 'self', cut: 1, hidden: true, /* a strip cut and bound round the edges: on the product it is the edge itself */ notes: ['Bias or cross-grain strip, cut into lengths'], place: { view: 'front', x: -half, y: L + 1, z: 2 } }));
   return pieces;
 }

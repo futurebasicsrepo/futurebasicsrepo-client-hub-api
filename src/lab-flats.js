@@ -7,6 +7,7 @@
 // All lengths are inches. On the front flat the viewer's right is the wearer's left.
 import { FLAT_TEMPLATES } from './lab-flat-templates.js';
 import { TEMPLATE_PROPORTIONS } from './lab-template-proportions.js';
+import { TEMPLATE_CONSTRUCTION } from './lab-template-construction.js';
 // sketches the pack's measuring script reads wrong, corrected by hand. Only the length a sketch suggests (its ratio) is corrected: how the
 // sketch is laid over inches stays as it was measured, because colour blocks, stitch lines and graphics already placed on it are kept in
 // inches, and moving the sketch under them would leave them off the drawing. The shearling aviator: its zip splits the hem band on the
@@ -200,6 +201,44 @@ export function followDrawing(p) {
   const f = legsFromDrawing(p, 'M'); if (!f) return p;
   return { ...p, m: { ...p.m, legOpening: f.legOpening, ...(f.hip && !(p.m?.hip > f.hip) ? { hip: f.hip } : {}) }, options: { ...(p.options || {}), legsDrawn: true, ...(f.kneeRatio ? { kneeRatio: f.kneeRatio } : {}) } };
 }
+// A bodysuit's or a dress's body as its sketch draws it: the side seam from the underarm to the hem (a bodysuit: on round the leg to the
+// crotch), read off the sketch's outline at 11 heights and given as each width against the width just below the bust, so a fitted body, an
+// A-line or a column comes out as drawn, whatever the pack's chest line read. [[f, r]…]: f from the underarm (0) to the hem (1), r the half
+// width over the half chest. Each kept within what a body can be; a sketch with no outline gives its style's usual body
+export const BODY_STYLES = ['bodysuit', 'dress'];
+const BODY_DEFAULT = {
+  bodysuit: [[0, 1], [.1, 1], [.2, .96], [.3, .98], [.4, 1.06], [.5, 1.13], [.6, .9], [.7, .55], [.8, .38], [.9, .28], [1, .22]],
+  dress: [[0, 1], [.1, .98], [.2, .92], [.3, .96], [.4, 1.04], [.5, 1.08], [.6, 1.1], [.7, 1.12], [.8, 1.14], [.9, 1.16], [1, 1.18]],
+};
+const BODY_BOUNDS = { // [up to f, low, high]
+  bodysuit: [[.15, .9, 1.12], [.4, .85, 1.15], [.6, .9, 1.2], [1, .14, 1.2]],
+  dress: [[.15, .85, 1.12], [.35, .8, 1.12], [.55, .92, 1.35], [1, .9, 2.2]],
+};
+const BODY = {};
+export function bodyProfile(style, templateId) {
+  if (!BODY_STYLES.includes(style)) return null; const key = `${style}:${templateId}`; if (key in BODY) return BODY[key];
+  const t = FLAT_TEMPLATES.find(x => x.id === templateId && x.style === style), v = t?.views?.front, B = STYLES[style].base;
+  let out = BODY_DEFAULT[style];
+  if (Array.isArray(v?.clip) && v.hemY > v.hpsY && v.chest > 0) {
+    const H = v.hemY - v.hpsY, ua = (B.armhole + 1.25) / B.length, at = f => { const y = v.hpsY + H * (ua + (1 - ua) * f), sp = spanAt(v.clip, y, v.cf); return sp ? Math.max(v.cf - sp[0], sp[1] - v.cf) : null; };
+    // a dress's hem read just above its rounded corners; a long sleeve hangs against the body to about the hip, so there the style's usual
+    // body is kept and below it the sketch's widths are taken against its chest line
+    const bust = [.1, .15, .2, .25].map(at).filter(Boolean), mn = Math.min(...bust); // the bust: the widest of these that a short sleeve is not part of
+    const long = /long[- ]sleeve/.test(`${t.id} ${t.label}`.toLowerCase()), ref = long ? v.chest / 2 : bust.length ? Math.max(...bust.filter(w => w <= mn * 1.15)) : null;
+    const raw = Array.from({ length: 11 }, (_, i) => [i / 10, at(i === 10 && style === 'dress' ? .95 : i / 10)]);
+    if (ref && raw.every(([, w]) => w)) {
+      const lim = f => BODY_BOUNDS[style].find(([u]) => f <= u + 1e-9);
+      out = raw.map(([f, w], i) => { const [, lo, hi] = lim(f); return [f, f === 0 ? 1 : long && f <= .5 ? BODY_DEFAULT[style][i][1] : Math.round(Math.min(Math.max(w / ref, lo), hi) * 100) / 100]; });
+    }
+  }
+  return (BODY[key] = out);
+}
+// sleeves a bodysuit's or a dress's sketch draws (its style is sleeveless at the start): a long sleeve, a tee's, a cap
+// (by the sketch's name; the models' read of it wins when it saw none: a cap sleeve is then cut in one with the body)
+function drawnSleeve(t) {
+  const n = `${t.id} ${t.label}`.toLowerCase(); if (!BODY_STYLES.includes(t.style) || /sleeveless/.test(n) || TEMPLATE_CONSTRUCTION[t.id]?.sleeve === 'none') return null;
+  return /long[- ]sleeve/.test(n) ? { sleeve: 23, sleeveOpening: 4 } : /cap[- ]sleeve/.test(n) ? { sleeve: 3, sleeveOpening: 6.5 } : /\btee\b|t-shirt|short[- ]sleeve/.test(n) ? { sleeve: 6.5, sleeveOpening: 5.5 } : null;
+}
 let FITTING = false; // fitting a sketch reads its drawing, and drawing a sketch fits it: once round is enough
 export function fitToTemplate(p, asDrawn = false) {
   const t = templateOf(p), v = t?.views?.front, S = STYLES[p.style], ref = refRatio(p.style), base = defaultParams(p.style, p.fit, p.options)?.m; if (!v?.ratio || !S || !ref || !base) return p;
@@ -217,8 +256,8 @@ export function fitToTemplate(p, asDrawn = false) {
   // a top takes the widths and the sleeve its sketch draws (traced off it: scripts/pattern-read-proportions.mjs): its shoulder, armhole, sleeve
   // length and opening from the style's own plus the sketch's change, and the angle its sleeve is drawn at. Picking another sketch sets them again
   if (!asDrawn && S.kind === 'top') {
-    const tp = TEMPLATE_PROPORTIONS[t.id] || {}, { sleeveAngle, ...o } = p.options || {};
-    for (const k of ['shoulder', 'armhole', 'sleeve', 'sleeveOpening']) if (k in base) m[k] = r8(base[k] + (tp[k] || 0));
+    const tp = TEMPLATE_PROPORTIONS[t.id] || {}, { sleeveAngle, ...o } = p.options || {}, b0 = { ...base, ...(base.sleeve === 0 ? drawnSleeve(t) || {} : {}) };
+    for (const k of ['shoulder', 'armhole', 'sleeve', 'sleeveOpening']) if (k in b0) m[k] = r8(b0[k] + (/^sleeve/.test(k) && !b0.sleeve ? 0 : tp[k] || 0)); // no sleeve at the start: none traced
     return { ...p, m, options: { ...o, ...(Number.isFinite(tp.sleeveAngle) && m.sleeve > 0 ? { sleeveAngle: tp.sleeveAngle } : {}) } };
   }
   if (!asDrawn && !FITTING && S.kind === 'bottom' && !S.skirt) { FITTING = true; try { const f = { ...p, m }, g = followDrawing(f); return g; } finally { FITTING = false; } }

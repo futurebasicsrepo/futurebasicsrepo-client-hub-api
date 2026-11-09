@@ -36,3 +36,19 @@ test('a top takes the shoulder and sleeve traced off its sketch, set again (neve
   const other = FLAT_TEMPLATES.find(t => t.style === style && !TP[t.id]);
   if (other) { const q = fitToTemplate({ ...p, template: other.id }); assert.equal(q.m.shoulder, base.shoulder); assert.equal(q.options.sleeveAngle, undefined); }
 });
+
+test('a bodysuit is cut round the leg to a gusset, a dress follows its sketch to the hem', async () => {
+  const { fitToTemplate, defaultParams } = await import('../src/lab-flats.js');
+  const { garmentPattern, boundsOf } = await import('../src/lab-pattern.js');
+  const pat = (style, template) => garmentPattern(fitToTemplate({ ...defaultParams(style), template }));
+  const widthAt = (pts, y) => { const xs = []; for (let i = 0; i < pts.length; i++) { const [x1, y1] = pts[i], [x2, y2] = pts[(i + 1) % pts.length]; if ((y1 <= y) !== (y2 <= y)) xs.push(x1 + (y - y1) / (y2 - y1) * (x2 - x1)); } return Math.max(...xs) - Math.min(...xs); };
+  const bs = pat('bodysuit', 'bs-crew-tee-bodysuit'), f = bs.pieces.find(q => q.id === 'front'), b = boundsOf(f.sew);
+  assert.ok(widthAt(f.sew, b.y1 - .05) < 5, 'the crotch is narrow');
+  assert.ok(widthAt(f.sew, b.y1 - .05) < widthAt(f.sew, b.y0 + b.h * .6) * .4, 'the leg is cut away below the hip');
+  assert.ok(bs.pieces.some(q => q.id === 'gusset') && bs.trims.some(t => t.item === 'Snap tape') && bs.trims.some(t => t.item === 'Leg elastic'));
+  assert.ok(bs.pieces.some(q => q.id === 'sleeve'), 'a tee bodysuit has the sleeves its sketch draws');
+  const aline = pat('dress', 'dr-strapless-mini-dress').pieces.find(q => q.id === 'front'), col = pat('dress', 'dr-strapless-column-dress').pieces.find(q => q.id === 'back');
+  const flare = p => { const bb = boundsOf(p.sew); return widthAt(p.sew, bb.y1 - 1) / widthAt(p.sew, bb.y0 + bb.h * .35); };
+  assert.ok(flare(aline) > 1.2, 'an A-line sketch flares to its hem');
+  assert.ok(flare(col) < 1.1, 'a column sketch stays straight');
+});

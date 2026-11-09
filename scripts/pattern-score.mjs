@@ -105,7 +105,7 @@ for (const t of T) {
   const K = TEMPLATE_CONSTRUCTION[t.id] || null, exp = K ? FEATURES.filter(([, want]) => want(K)) : [], miss = exp.filter(([, , has]) => !has(pat)).map(([n]) => n);
   rows.push({ id: t.id, style: t.style, label: t.label, shape: Math.round(shape * 100), proportions: Math.round(proportions * 100), size: Math.round(size * 100), trace: Math.round(trace * 100),
     sizeRatio: { w: Math.round(bp.w / bs.w * 100) / 100, h: Math.round(bp.h / bs.h * 100) / 100 }, features: exp.length ? Math.round((exp.length - miss.length) / exp.length * 100) : null, expected: exp.map(([n]) => n), missing: miss, widths: { sketch: ws.map(w => Math.round(w * 100) / 100), pattern: wp.map(w => Math.round(w * 100) / 100) },
-    svg: { S: SS, P } });
+    svg: { S: SS, P }, svgT: { S: ST, P } });
 }
 // ---- the report ----
 const mean = a => (a.length ? Math.round(a.reduce((x, y) => x + y, 0) / a.length) : null), ok = rows.filter(r => !r.error);
@@ -115,12 +115,12 @@ const summary = { sketches: rows.length, errors: rows.filter(r => r.error).lengt
 writeFileSync(`${OUT}/score.json`, JSON.stringify({ summary, rows: rows.map(({ svg, ...r }) => r) }, null, 1));
 // the page: each sketch's outline (red, scaled into the pattern's box) over the pattern's (grey), worst shape first
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
-const over = r => { const B = boundsOf([...r.svg.P.flat(), ...r.svg.S.flat()]), pad = 1, pts = P => P.map(([x, y]) => `${(x - B.x0 + pad).toFixed(2)},${(y - B.y0 + pad).toFixed(2)}`).join(' ');
-  return `<svg viewBox="0 0 ${(B.w + pad * 2).toFixed(1)} ${(B.h + pad * 2).toFixed(1)}" width="220">${r.svg.P.map(P => `<polygon points="${pts(P)}" fill="#e6e1d6" stroke="#888" stroke-width=".08"/>`).join('')}${r.svg.S.map(P => `<polygon points="${pts(P)}" fill="none" stroke="#d33" stroke-width=".16"/>`).join('')}</svg>`; };
+const over = (r, g = r.svg) => { const B = boundsOf([...g.P.flat(), ...g.S.flat()]), pad = 1, pts = P => P.map(([x, y]) => `${(x - B.x0 + pad).toFixed(2)},${(y - B.y0 + pad).toFixed(2)}`).join(' ');
+  return `<svg viewBox="0 0 ${(B.w + pad * 2).toFixed(1)} ${(B.h + pad * 2).toFixed(1)}" width="110">${g.P.map(P => `<polygon points="${pts(P)}" fill="#e6e1d6" stroke="#888" stroke-width=".08"/>`).join('')}${g.S.map(P => `<polygon points="${pts(P)}" fill="none" stroke="#d33" stroke-width=".16"/>`).join('')}</svg>`; };
 const sorted = [...ok].sort((a, b) => a.shape - b.shape);
 writeFileSync(`${OUT}/score.html`, `<!doctype html><meta charset="utf-8"><title>Pattern score</title><style>body{font:14px system-ui;margin:24px;background:#f4f3ef;color:#141416}table{border-collapse:collapse}td,th{padding:4px 8px;text-align:right}td:first-child,th:first-child{text-align:left}.g{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px;margin-top:20px}.c{background:#fff;border-radius:10px;padding:10px;font-size:12px}.c b{font-size:13px}.m{color:#b00}</style>
-<h1>Pattern score · ${rows.length} sketches</h1><p>Shape ${summary.shape} · proportions ${summary.proportions} · size ${summary.size} · trace ${summary.trace} · features ${summary.features} (out of 100). Red: the sketch's outline, scaled to the pattern's width; grey: the pattern as the product shows it.</p>
+<h1>Pattern score · ${rows.length} sketches</h1><p>Shape ${summary.shape} · proportions ${summary.proportions} · size ${summary.size} · trace ${summary.trace} · features ${summary.features} (out of 100). Red: the sketch outline; grey: the pattern as the product shows it. Left: the sketch scaled to the pattern width (shape); right: in inches, a top brought to the pattern length (trace).</p>
 <table><tr><th>Style</th><th>n</th><th>Shape</th><th>Proportions</th><th>Size</th><th>Trace</th><th>Features</th></tr>${Object.entries(byStyle).sort((a, b) => a[1].shape - b[1].shape).map(([s, v]) => `<tr><td>${esc(s)}</td><td>${v.n}</td><td>${v.shape}</td><td>${v.proportions}</td><td>${v.size}</td><td>${v.trace}</td><td>${v.features ?? '–'}</td></tr>`).join('')}</table>
-<div class="g">${sorted.map(r => `<div class="c"><b>${esc(r.label)}</b><br>${esc(r.id)}<br>shape ${r.shape} · proportions ${r.proportions} · size ${r.size} · trace ${r.trace} · features ${r.features ?? '–'}${r.missing.length ? `<br><span class="m">missing: ${esc(r.missing.join(', '))}</span>` : ''}<br>${over(r)}</div>`).join('')}</div>`);
+<div class="g">${sorted.map(r => `<div class="c"><b>${esc(r.label)}</b><br>${esc(r.id)}<br>shape ${r.shape} · proportions ${r.proportions} · size ${r.size} · trace ${r.trace} · features ${r.features ?? '–'}${r.missing.length ? `<br><span class="m">missing: ${esc(r.missing.join(', '))}</span>` : ''}<br>${over(r)}${r.svgT ? over(r, r.svgT) : ""}</div>`).join('')}</div>`);
 console.log(JSON.stringify({ ...summary, missing: Object.fromEntries(Object.entries(summary.missing).slice(0, 12)) }, null, 1));
 console.log(`report: ${OUT}/score.html`);
