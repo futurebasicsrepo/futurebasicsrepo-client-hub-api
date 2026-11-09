@@ -148,7 +148,9 @@ export function registerLabFlatsRoutes(app, d) {
     if (ranked.length < 2 || !env.ANTHROPIC_API_KEY || env.AI_FIXTURE) return det.template;
     const key = c.id + ':' + String(c.updated_at || ''); if (picks.has(key)) return picks.get(key);
     const img = (await pool.query('select image from lab_concepts where id=$1', [c.id])).rows[0]?.image; if (!img) return det.template;
-    const cands = candidateTemplates(ranked);
+    // every sketch of the style when there are not too many (the model reads their names, which costs little), so a sketch the words missed
+    // (a blazer named only "double-breasted") is still in front of it; the best by the words first
+    const cands = ranked.length <= 60 ? ranked : candidateTemplates(ranked);
     try {
       const jpeg = await sharp(img).resize({ width: 900, height: 900, fit: 'inside' }).jpeg({ quality: 80 }).toBuffer();
       const out = await pickImpl('You are a garment technologist choosing which professional flat sketch a product picture should be drawn from. Judge the silhouette (leg or body shape, rise, width, length), the construction (pockets, panels, knees, pleats, closures) and the fabric family. Prefer the sketch that adds nothing the garment does not have.',

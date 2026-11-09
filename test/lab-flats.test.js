@@ -257,3 +257,9 @@ test('the eraser on the sketch: a rub-out stroke is kept, cleaned and drawn unde
   const svg = F.renderSvg(p, 'front', { showDims: false }); assert.match(svg, /stroke="#ffffff" stroke-width="0?\.375" stroke-linecap="round"/);
   assert.match(F.describeEdit(r, p), /Front: a line of the sketch rubbed out/);
 });
+
+test('a double-breasted or lapelled jacket is drawn from a blazer sketch, not a zip jacket', async () => {
+  const { rankTemplates } = await import('../src/lab-flats.js');
+  for (const w of ['Olive Long-Shoulder Double-Breasted jacket in wool twill', 'Navy single-breasted sport coat', 'Charcoal jacket with peak lapels', 'Suit jacket in flannel']) assert.match(rankTemplates('jacket', 'regular', w, w)[0].id, /blazer/, w);
+  assert.doesNotMatch(rankTemplates('jacket', 'regular', 'Black nylon zip track jacket', 'Black nylon zip track jacket')[0].id, /blazer/);
+});
