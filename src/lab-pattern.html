@@ -204,7 +204,7 @@ function drawPieces(){
     if(pic){const k=(PAT.last.length+.3)/Math.max(1,pic.x1-pic.x0),tx=pic.toeLeft?pic.x1*k-.1:-pic.x0*k-.1;body+=`<g transform="translate(${r3(tx)} ${r3(-pic.y1*k+(PAT.ground||0))})${pic.toeLeft?' scale(-1 1)':''}" opacity="${r3(.9*(1-T/.3))}"><image href="${PICURL}" x="0" y="0" width="${r3(pic.imgW*k)}" height="${r3(pic.imgH*k)}" preserveAspectRatio="none"/></g>`}
     const pieceOp=pic?.45:1;
     for(const {piece:q,pts,n,of,layer} of sorted){const b=boundsOf(pts),fs=Math.min(.55,Math.max(.24,b.w/10));
-      body+=`<g data-pid="${esc(q.id)}" class="pc"><path d="${P(pts)}" fill="${fillOf(q)}" fill-opacity="${T<.02?(typeof pieceOp!=='undefined'?pieceOp:1):.94}" stroke="${SEL===q.id||SEL+'-2'===q.id?'#17603a':'#141416'}" stroke-width="${SEL===q.id||SEL+'-2'===q.id?.1:.055}"/>${label?`<text x="${r3((b.x0+b.x1)/2)}" y="${r3((b.y0+b.y1)/2)}" text-anchor="middle" font-size="${r3(fs)}" font-weight="700" fill="${inkOn(q)}" opacity="${Math.min(1,(T-.2)*4)}">${esc(q.name)}${of>1?`<tspan font-weight="400" font-size="${r3(fs*.8)}"> ${n+1}/${of}</tspan>`:''}</text>`:''}</g>`}
+      body+=`<g data-pid="${esc(q.id)}" class="pc"><path d="${P(pts)}" fill="${fillOf(q)}" fill-opacity="${T<.02?(typeof pieceOp!=='undefined'?pieceOp:1):.94}" stroke="${SEL===q.id||SEL+'-2'===q.id?'#17603a':edgeOn(q)}" stroke-width="${SEL===q.id||SEL+'-2'===q.id?.1:.055}"/>${label?`<text x="${r3((b.x0+b.x1)/2)}" y="${r3((b.y0+b.y1)/2)}" text-anchor="middle" font-size="${r3(fs)}" font-weight="700" fill="${inkOn(q)}" opacity="${Math.min(1,(T-.2)*4)}">${esc(q.name)}${of>1?`<tspan font-weight="400" font-size="${r3(fs*.8)}"> ${n+1}/${of}</tspan>`:''}</text>`:''}</g>`}
     if(T<.2&&A.backDx){const fb=A.bounds;body+=`<text x="${r3(fb.x0)}" y="${r3(fb.y1+1.4)}" font-size=".6" fill="#727278">${esc(PAT.views?.front||'Front')}</text><text x="${r3(fb.x0+A.backDx)}" y="${r3(fb.y1+1.4)}" font-size=".6" fill="#727278">${esc(PAT.views?.back||'Back')}</text>`}
     const all=fr.flatMap(x=>x.pts);bb=boundsOf(all.length?all:[[0,0],[10,10]]);bb={x0:Math.min(bb.x0,A.bounds.x0)-1,y0:Math.min(bb.y0,A.bounds.y0)-1,x1:bb.x1+1,y1:Math.max(bb.y1,A.bounds.y1)+2}
   }
@@ -531,9 +531,18 @@ function fitBox(){const f=MFIT;if(!f||f.verdict==='unknown')return'';const v=f.a
 const ROLE_PART={main:'self',contrast:'contrast',rib:'rib',lining:'lining'};
 const matsOf=picks=>{const on=(picks||[]).filter(p=>p.part);if(D.kind==='garment')for(const p of picks||[])if(!p.part&&p.kind==='fabric'&&ROLE_PART[p.role]&&!on.some(x=>x.part===ROLE_PART[p.role]))on.push({...p,part:ROLE_PART[p.role],fromRole:true});return on};
 // a piece in its cloth: the colour of the material on its part (a garment's pieces are cut from self, rib, contrast…), or the drafting colour
-const fillOf=q=>MATS.find(x=>x.part===q.fabric)?.colour?.hex||FILL[q.fabric]||'#eee';
+// a garment with no material on its body yet is drawn in the colour of its flats (the colour the designer chose there), its rib a shade off it,
+// so the pattern looks like the product from the first open; a material put on a part takes over, as before
+const flatHex=()=>D?.kind==='garment'&&/^#[0-9a-f]{6}$/i.test(D.flat?.color||'')?D.flat.color.toLowerCase():null;
+const lumOf=h=>{const n=parseInt(h.slice(1),16);return(.299*(n>>16)+.587*((n>>8)&255)+.114*(n&255))/255};
+const shade=(h,k)=>'#'+[1,3,5].map(i=>{const v=parseInt(h.slice(i,i+2),16);return Math.max(0,Math.min(255,Math.round(k>0?v+(255-v)*k:v*(1+k)))).toString(16).padStart(2,'0')}).join('');
+const flatFill=q=>{const h=flatHex();if(!h)return null;const f=q.fabric||'self';return f==='self'?h:f==='rib'?shade(h,lumOf(h)<.45?.14:-.1):null};
+const fillOf=q=>MATS.find(x=>x.part===q.fabric)?.colour?.hex||flatFill(q)||FILL[q.fabric]||'#eee';
 // ink that reads on a piece's cloth: light on a dark cloth
 const inkOn=q=>{const h=fillOf(q);if(!/^#[0-9a-f]{6}$/i.test(h))return'#141416';const n=parseInt(h.slice(1),16),l=(.299*(n>>16)+.587*((n>>8)&255)+.114*(n&255))/255;return l<.45?'#f4f3ef':'#141416'};
+// the line round a piece where pieces meet on the product: ink on a light cloth; on a dark cloth a lighter shade of the cloth, so a seam
+// between two pieces of the same dark cloth still reads
+const edgeOn=q=>{const h=fillOf(q);return /^#[0-9a-f]{6}$/i.test(h)&&lumOf(h)<.45?shade(h,.42):'#141416'};
 const qPart=k=>k&&!k.fromRole?`?part=${encodeURIComponent(k.part)}`:'';
 // the colourway being looked at, if any: the main part (a shoe's upper, a plush's body) drawn in it, over the material's own colour
 let CW='';const MAINPART=()=>D.kind==='footwear'?'upper':D.kind==='plush'?'body':'';

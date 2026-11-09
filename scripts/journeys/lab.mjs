@@ -5176,4 +5176,40 @@ await journey('J300', 'Nothing breaks quietly: every staff and designer page ope
   } finally { await br.close(); for (const id of [hoodie, plush]) await K(`/concepts/${id}`, { method: 'DELETE' }); }
 });
 
+await journey('J301', 'The work gets the screen, and the pattern looks like the product: on a 13-inch laptop the Studio gives the brand bar\'s room to the work, and on a tall screen it keeps it; a hoodie coloured navy on its flats is drawn navy on Pattern, its rib a shade off, with the seams between its pieces still showing; a material put on the body takes over', async () => {
+  if (!playwright) { ok(true, 'needs a browser'); return; }
+  const cid = (await K('/concepts/from-scratch', { body: { category: 'tops', style: 'hoodie', name: `Navy hoodie ${stamp}` } })).json.concept.id;
+  const fl = (await K(`/concepts/${cid}/flats`)).json.flat; ok((await K(`/concepts/${cid}/flats`, { method: 'PUT', body: { ...fl, color: '#1f2a44' } })).status === 200, '0. the flats are coloured navy');
+  const lum = h => { const n = parseInt(h.slice(1), 16); return (.299 * (n >> 16) + .587 * ((n >> 8) & 255) + .114 * (n & 255)) / 255; };
+  const br = await playwright.chromium.launch();
+  try {
+    const open = async (w, h) => { const ctx = await br.newContext({ viewport: { width: w, height: h } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); localStorage.setItem('fb.helper.on', '0'); } catch {} }, kyleT); const page = await ctx.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e.message)));
+      await page.goto(`${BASE}/lab/studio?concept=${cid}&view=pattern`, { waitUntil: 'load' }); const F = await (await page.waitForSelector('#patFrame')).contentFrame(); await F.waitForFunction(() => window.FBPattern?.ready?.() && document.querySelector('#canvas .pc path'), null, { timeout: 20000 }); await sleep(300); return { ctx, page, F, errs }; };
+    const top = page => page.evaluate(() => ({ header: (() => { const h = document.querySelector('body > header'); return h ? h.getBoundingClientRect().height : 0; })(), bar: Math.round(document.querySelector('.bar').getBoundingClientRect().top), menu: Math.round(document.querySelector('.fbside')?.getBoundingClientRect().top ?? 0), frame: Math.round(document.querySelector('#patFrame').getBoundingClientRect().bottom), h: innerHeight }));
+    // a 13-inch laptop
+    const lap = await open(1280, 720), a = await top(lap.page);
+    ok(a.header === 0 && a.bar === 0 && a.menu === 0 && a.frame === a.h, '1. on a 13-inch laptop the brand bar gives its room to the work: the Studio\'s own bar and the left menu start at the top, and the pattern runs to the bottom', a);
+    const cut = await lap.F.evaluate(() => { const r = document.querySelector('#canvas').getBoundingClientRect(); return Math.round(r.height); });
+    // the pattern in the garment's colour
+    const drawn = await lap.F.evaluate(() => [...document.querySelectorAll('#canvas .pc')].map(g => { const p = g.querySelector('path'); return { fill: (p.getAttribute('fill') || '').toLowerCase(), stroke: (p.getAttribute('stroke') || '').toLowerCase() }; }));
+    const fills = [...new Set(drawn.map(d => d.fill))], body = drawn.filter(d => d.fill === '#1f2a44');
+    ok(body.length >= 4 && fills.length === 2, '2. the pattern is drawn in the colour of its flats: the body pieces navy, the rib one shade off it', fills);
+    ok(fills.every(f => /^#[0-9a-f]{6}$/.test(f) && lum(f) < .45) && lum(fills.find(f => f !== '#1f2a44')) > lum('#1f2a44'), '   the rib is a lighter navy, not another colour', fills);
+    ok(drawn.every(d => d.stroke !== '#141416' && /^#[0-9a-f]{6}$/.test(d.stroke) && lum(d.stroke) > lum(d.fill) + .15), '   and the line round each piece is lighter than its cloth, so a seam between two navy pieces still shows', drawn.slice(0, 2));
+    ok(lap.errs.length === 0, '   no page errors', lap.errs); await lap.ctx.close();
+    // a tall screen keeps the brand bar
+    const tall = await open(1440, 1000), b = await top(tall.page);
+    ok(b.header === 72 && b.bar === 72 && b.menu === 72 && b.frame === b.h, '3. on a tall screen the brand bar stays where it was, and the pattern still ends at the bottom of the screen', b);
+    const cut2 = await tall.F.evaluate(() => Math.round(document.querySelector('#canvas').getBoundingClientRect().height));
+    ok(cut / 720 > cut2 / 1000 - .02, '   so the short screen gives the pattern as large a share of its height as the tall one does', { laptop: `${cut} of 720`, tall: `${cut2} of 1000` });
+    await tall.ctx.close();
+    // a material on the body takes over from the flats' colour
+    const mat = (await K('/materials?kind=fabric')).json.materials.find(m => m.colour?.hex && m.colour.hex.toLowerCase() !== '#1f2a44') || (await K('/materials?kind=fabric')).json.materials[0];
+    const put = await K(`/concepts/${cid}/materials`, { body: { material: mat.id, part: 'self' } });
+    if (put.status === 201) { const own = (await K(`/concepts/${cid}/pattern`)).json.materials.find(m => m.part === 'self')?.colour?.hex?.toLowerCase(); const again = await open(1280, 720); const f2 = await again.F.evaluate(() => [...new Set([...document.querySelectorAll('#canvas .pc path:first-child')].map(p => (p.getAttribute('fill') || '').toLowerCase()))]);
+      ok(own ? f2.includes(own) && !f2.includes('#1f2a44') : true, '4. a material put on the body takes over: the body is drawn in the material\'s colour', { own, f2 }); await again.ctx.close(); }
+    else ok(true, '4. (no fabric in the library takes the body here)');
+  } finally { await br.close(); await K(`/concepts/${cid}`, { method: 'DELETE' }); }
+});
+
 process.exit(summary() ? 1 : 0);
