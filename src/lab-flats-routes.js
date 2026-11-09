@@ -15,7 +15,7 @@
 // technique's size; and its artwork, at the size it is placed, holds the technique's finest line, needs no more inks than the technique is priced for,
 // has no smooth shading a screen cannot print, and, for embroidery, how many stitches it takes.
 import { footwearChecks, footwearPattern, sizeRun } from './lab-footwear.js';
-import { plushPattern } from './lab-pattern.js';
+import { plushPattern, followTheDrawing } from './lab-pattern.js';
 import { footwearViews, flatsSheet, viewsMarkup } from './lab-footwear-views.js';
 import { plushViews, plushSheet } from './lab-plush-views.js';
 import { partLooks } from './lab-looks.js';
@@ -323,6 +323,16 @@ export function registerLabFlatsRoutes(app, d) {
     return { c, params, placements };
   };
   app.post('/v1/lab/concepts/:id/flats/check', { preHandler: pre }, async (req, reply) => { const t = await take(req, reply); if (!t) return; const ck = await check(t.params, t.placements, t.c.client_id); return { check: ck, where: Object.fromEntries(t.placements.map(q => [q.id, describe(q, t.params)])) }; });
+  // the legs of a pair of trousers or shorts made as its sketch draws them (the Pattern page's Follow the drawing): the leg opening and the
+  // knee from the sketch's proportions; every other measurement, the placements and the drawing are kept
+  app.post('/v1/lab/concepts/:id/flats/follow-drawing', { preHandler: pre }, async (req, reply) => {
+    const c = await concept(req.params.id); if (!c) return bad(reply, 'Not found', 404);
+    if (c.status === 'tech_pack' && !c.product_id) return bad(reply, 'This concept is already a tech pack', 409);
+    const r = (await pool.query('select params from lab_flats where concept_id=$1', [c.id])).rows[0]; if (!r?.params) return bad(reply, 'Save the flats first', 409);
+    const next = followTheDrawing(r.params); if (next === r.params) return bad(reply, 'Only trousers and shorts drawn from a sketch follow their drawing', 422);
+    await pool.query('update lab_flats set params=$2, updated_by=$3, updated_at=now() where concept_id=$1', [c.id, next, actorOf(req)]);
+    return { ok: true, params: next, legOpening: next.m.legOpening, kneeRatio: next.options?.kneeRatio ?? null };
+  });
   app.put('/v1/lab/concepts/:id/flats', { preHandler: pre }, async (req, reply) => {
     const t = await take(req, reply); if (!t) return;
     if (t.c.status === 'tech_pack' && !t.c.product_id) return bad(reply, 'This concept is already a tech pack', 409);

@@ -265,7 +265,9 @@ let FITTED=false;
 // in Focus the bar, rail, options and panel float over the stage: the drawing fits in the room they leave
 function focusInsets(r){const o={l:0,t:0,r:0,b:0};if(!document.documentElement.dataset.focus)return o;const vis=e=>{const b=e?.getBoundingClientRect();return b&&b.width>0&&b.height>0?b:null};
   const rail=vis($('.rail')),bar=vis($('.bar')),opts=vis($('#opts')),side=vis($('.side'));if(rail&&rail.left<r.left+r.width/2)o.l=Math.max(0,rail.right-r.left);
-  o.t=Math.max(0,...[bar,opts].filter(Boolean).map(b=>b.bottom-r.top));if(side&&side.left>r.left+r.width/2)o.r=Math.max(0,r.right-side.left);return o}
+  o.t=Math.max(0,...[bar,opts].filter(Boolean).map(b=>b.bottom-r.top));if(side&&side.left>r.left+r.width/2)o.r=Math.max(0,r.right-side.left);
+  // the tool palette on its edge (src/lab-studio-palette.js)
+  const pal=vis($('#palette'));if(pal){const d=$('#palette').dataset.dock;if(d==='left')o.l=Math.max(o.l,pal.right-r.left);else if(d==='right')o.r=Math.max(o.r,r.right-pal.left);else if(d==='bottom')o.b=Math.max(o.b,r.bottom-pal.top);else o.t=Math.max(o.t,pal.bottom-r.top)}return o}
 function fit(){FITTED=true;VR=0;const r=$('#stage').getBoundingClientRect(),n=focusInsets(r),w=r.width-n.l-n.r,h=r.height-n.t-n.b;Z=Math.min((w-48)/W,(h-48)/H,2);PX=n.l+(w-W*Z)/2;PY=n.t+(h-H*Z)/2;draw()}
 function zoomAt(f,cx,cy){FITTED=false;VIEWONLY=performance.now()+120;const nz=clamp(Z*f,.05,8);PX=cx-(cx-PX)*nz/Z;PY=cy-(cy-PY)*nz/Z;Z=nz;draw()}
 {const ro=new ResizeObserver(()=>{VRECT=null;FITTED?fit():draw()});ro.observe($('#stage'));ro.observe(view)}

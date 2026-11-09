@@ -162,3 +162,35 @@ test('the exploded view accounts for every piece cut, at every step, for every g
     assert.equal(centres.size, end.length, `${name}: no two cuts land on one place`);
   }
 });
+
+test('trousers against their sketch: a sketch fitted to a piece gives its legs (a straight sketch is not cut tapered, a slim one not wide), and the check flags legs that are not', async () => {
+  const { defaultParams, fitToTemplate, followDrawing, drawnLegs, cleanFlat } = await import('../src/lab-flats.js');
+  const { garmentPattern: gp, drawnCheck } = await import('../src/lab-pattern.js');
+  // a sketch drawn straight and wide, with the style's default 8½ in opening: the pattern tapers where the sketch runs straight; following the drawing fixes it
+  const raw = { ...defaultParams('pants', 'regular'), template: 'pt-straight-sweatpants' }, before = drawnCheck(raw, gp(raw));
+  assert.ok(before && before.legsOff && before.rows.find(r => r.key === 'hem').off, 'the default leg is flagged against a wide sketch');
+  const fixed = followDrawing(raw), after = drawnCheck(fixed, gp(fixed));
+  assert.ok(fixed.m.legOpening > 10.5 && fixed.options.legsDrawn && !after.legsOff, `followed: opening ${fixed.m.legOpening}`);
+  // a sketch picked for a new piece already gives its legs: straight trousers straight, slim jeans slim, wide legs wide
+  for (const [t, lo, hi] of [['pt-pleat', 9.5, 12], ['pt-slim-jeans', 6, 8], ['pt-wide-leg-trousers', 11, 14]]) {
+    const p = fitToTemplate({ ...defaultParams('pants', 'regular'), template: t }), c = drawnCheck(p, gp(p));
+    assert.ok(p.m.legOpening >= lo && p.m.legOpening <= hi && !c.legsOff, `${t}: opening ${p.m.legOpening}, shape ${JSON.stringify(c.shape)}`);
+    const th = c.rows.find(r => r.key === 'thigh'); for (const r of c.rows.filter(r => r.key === 'knee' || r.key === 'hem')) assert.ok(Math.abs(r.pattern / th.pattern - r.drawn / th.drawn) < .15, `${t} ${r.key} against the thigh: drawn ${r.drawn}/${th.drawn}, pattern ${r.pattern}/${th.pattern}`);
+  }
+  // the hip is said, not flagged; the sketch's legs survive a save of the flats; a skirt has no legs to read
+  const pl = fitToTemplate({ ...defaultParams('pants', 'regular'), template: 'pt-slim-jeans' }), ck = drawnCheck(pl, gp(pl));
+  assert.ok(/hip/.test(ck.hipNote) && !ck.rows.find(r => r.key === 'hip').off);
+  const kept = cleanFlat({ ...pl, placements: [] }).params; assert.ok(kept.options.legsDrawn && kept.options.kneeRatio === pl.options.kneeRatio, 'kept through a save');
+  assert.equal(drawnLegs({ ...defaultParams('skirt', 'regular') }), null);
+});
+
+test('shorts drawn flaring out follow their drawing, trued on the pattern: the hem stands to the thigh as the sketch has it', async () => {
+  const { defaultParams } = await import('../src/lab-flats.js');
+  const { garmentPattern: gp, drawnCheck, followTheDrawing } = await import('../src/lab-pattern.js');
+  const raw = { ...defaultParams('shorts', 'regular'), template: 'sh-pleat' }, before = drawnCheck(raw, gp(raw));
+  assert.ok(before && before.shape.drawn > before.shape.pattern, `the sketch flares more than the default: ${JSON.stringify(before.shape)}`);
+  assert.ok(before.legsNear || before.legsOff, 'a leg that is a little off still offers Follow the drawing');
+  const f = followTheDrawing(raw), after = drawnCheck(f, gp(f));
+  assert.ok(Math.abs(after.shape.pattern - after.shape.drawn) / after.shape.drawn <= .03 && !after.legsNear && !after.legsOff && f.options.legsDrawn, JSON.stringify(after.shape));
+  assert.equal(followTheDrawing({ ...defaultParams('skirt', 'regular') }).options?.legsDrawn, undefined, 'a skirt is left as it is');
+});

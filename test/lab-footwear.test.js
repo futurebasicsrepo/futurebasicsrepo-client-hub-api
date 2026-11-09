@@ -1,10 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { VARIANTS } from '../src/lab-footwear.js';
 import { footLength, lastOf, sizeRun, footwearPattern, cleanFootwear, tooling, hideArea, lastSvg, FW_STYLES, PADDING, lastingOf, components } from '../src/lab-footwear.js';
 import { layoutOf, explodeAt, assembled, boundsOf, areaOf, patternDxf } from '../src/lab-pattern.js';
 import { guessShoe } from '../src/lab-pattern-routes.js';
 
 const ok = pts => pts.length >= 3 && pts.every(([x, y]) => Number.isFinite(x) && Number.isFinite(y));
+
+// closed shoes (pulled over a last, with a back); sandals, clogs, moulded slides and mules are tested on their own below
+const CLOSED = Object.keys(FW_STYLES).filter(k => !FW_STYLES[k].open && !FW_STYLES[k].backless);
 
 test('sizes: a US size is a third of an inch of foot, and the size systems agree', () => {
   assert.ok(Math.abs(footLength('us-m', 9) - 31 / 3) < 1e-9);
@@ -35,8 +39,8 @@ test('the size run: every size in steps, its last and girth graded, a sole mould
   const t = tooling({ runFrom: 7, runTo: 13 }); assert.equal(t.moulds, 7); assert.ok(t.mouldCost[0] > 0 && t.lastPairs === 13);
 });
 
-test('every style drafts its upper: vamp, quarters inside and out, linings, stiffeners, an insole board or a strobel sock, and a sockliner; laced styles get eyestays and a tongue', () => {
-  for (const style of Object.keys(FW_STYLES)) {
+test('every closed style drafts its upper: vamp, quarters inside and out, linings, stiffeners, an insole board or a strobel sock, and a sockliner; laced styles get eyestays and a tongue', () => {
+  for (const style of CLOSED) {
     const pat = footwearPattern({ style }), ids = pat.pieces.map(q => q.id);
     for (const id of ['vamp', 'quarter-lat', 'quarter-med', 'quarter-lining', 'vamp-lining', 'heel-grip', 'collar-backer', 'counter', 'toe-puff', lastingOf({ style }) === 'strobel' ? 'strobel' : 'insole', 'sockliner', 'sole']) assert.ok(ids.includes(id), `${style} has ${id}`);
     assert.equal(ids.includes('tongue'), FW_STYLES[style].laced, `${style} tongue`); assert.equal(ids.includes('eyestay'), FW_STYLES[style].laced);
@@ -75,7 +79,7 @@ test('cleaning the choices, the last drawing, and reading a style from the words
 });
 
 test('inside the shoe: the tongue has a lining and its foam; the padding follows the style; runners and hikers are strobel-lasted', () => {
-  for (const style of Object.keys(FW_STYLES)) {
+  for (const style of CLOSED) {
     const ids = footwearPattern({ style }).pieces.map(q => q.id), P = PADDING[style];
     if (FW_STYLES[style].laced) { assert.ok(ids.includes('tongue-lining') && ids.includes('eyestay-backer'), `${style}: tongue lining and eyestay backer`); assert.equal(ids.includes('tongue-foam'), P.tongue > 0, `${style}: tongue foam`); }
     assert.equal(ids.includes('collar-foam'), P.collar > 0, `${style}: collar foam only where it is padded`);
@@ -98,4 +102,44 @@ test('warm and waterproof: an insulated lining adds an insulation layer, a membr
   const bom = c => components(c).map(x => x.name).join(' | ');
   assert.match(bom({ style: 'hiker' }), /Strobel sock.*Waterproof membrane bootie/); assert.match(bom({ style: 'boot', lining: 'insulated' }), /Insole board.*Insulation/);
   assert.match(bom({ style: 'derby' }), /Collar and tongue foam/); assert.doesNotMatch(bom({ style: 'loafer' }), /Collar and tongue foam/);
+});
+
+test('sandals, clogs and moulded slides: straps or a vamp tucked under a footbed (no lasting), the footbed and outsole made not cut, moulded shoes injected whole', () => {
+  const ids = (st, v, o = {}) => footwearPattern({ style: st, variant: v, ...o }).pieces.map(q => q.id);
+  for (const st of ['sandal', 'footbed-clog', 'moulded']) for (const v of Object.keys(VARIANTS[st])) {
+    const pat = footwearPattern({ style: st, variant: v }), I = pat.pieces.map(q => q.id);
+    assert.equal(pat.open, FW_STYLES[st].open, `${st} ${v} is open footwear`); assert.equal(lastingOf(pat.spec), 'none');
+    assert.ok(!I.includes('insole') && !I.includes('strobel') && !I.includes('quarter-lat'), `${st} ${v}: not lasted, no quarters`);
+    for (const q of pat.pieces) { assert.ok(areaOf(q.sew) > .05 && q.sew.every(p => p.every(Number.isFinite)), `${st} ${v} ${q.id} shape`); if (q.shown) assert.ok(q.shown.every(p => p.every(Number.isFinite)), `${st} ${v} ${q.id} on the shoe`); }
+    const sole = pat.pieces.find(q => q.id === 'sole'); assert.ok(sole.component && sole.cut === 0, `${st} ${v}: the footbed or the shoe is made, not cut`);
+    for (const q of pat.pieces.filter(x => /^strap|-strap$|^spine$/.test(x.id) && !/-lining$/.test(x.id) && x.cut)) assert.ok(I.includes(`${q.id}-lining`), `${st} ${v}: ${q.id} is lined`);
+    assert.ok(pat.components.length >= 3 && pat.tooling.note && pat.checks.length >= 2, `${st} ${v}: components, tooling and checks`);
+  }
+  // two straps, each split at its buckle; a thong's post; a fisherman's closed heel; a suede clog's buckle strap; a wooden clog nailed, no outsole
+  assert.ok(['strap-toe-long', 'strap-toe-buckle', 'strap-instep-long', 'strap-instep-buckle', 'footbed-cover', 'outsole'].every(k => ids('sandal', 'two-strap').includes(k)));
+  assert.ok(ids('sandal', 'thong').includes('toe-post') && ids('sandal', 'thong').includes('strap-lat') && ids('sandal', 'thong').includes('strap-med'));
+  assert.ok(['heel-strap', 'ankle-strap', 'buckle-tab', 'counter', 'spine'].every(k => ids('sandal', 'fisherman').includes(k)) && ids('sandal', 'fisherman').filter(k => /^strap-\d$/.test(k)).length === 5);
+  assert.ok(ids('footbed-clog', 'suede').includes('vamp') && ids('footbed-clog', 'suede').includes('strap-long') && !ids('footbed-clog', 'wood').includes('outsole') && !ids('footbed-clog', 'wood').includes('strap-long'));
+  // a strap's length is the way over the foot, and grows with the size
+  const len = sz => { const q = footwearPattern({ style: 'sandal', variant: 'multi', size: sz }).pieces.find(x => x.id === 'strap-2'); return Math.max(...q.sew.map(p => p[0])) - Math.min(...q.sew.map(p => p[0])); };
+  assert.ok(len(9) > 6 && len(9) < 12 && len(12) > len(8), `strap ${len(8)} → ${len(12)}`);
+  // a recovery slide is one piece, nothing cut; a pool slide's strap is the one cut part; a moulded clog's heel strap rides on it; moulds, no lasts
+  assert.ok(footwearPattern({ style: 'moulded', variant: 'recovery' }).pieces.every(q => !q.cut));
+  assert.deepEqual(footwearPattern({ style: 'moulded', variant: 'slide' }).pieces.filter(q => q.cut).map(q => q.id), ['strap', 'strap-lining']);
+  assert.ok(ids('moulded', 'clog').includes('heel-strap'));
+  const t = tooling({ style: 'moulded', variant: 'clog' }); assert.ok(t.lastPairs === 0 && t.moulds === t.sizes && t.mouldCost[0] >= t.sizes * 3000, 'an injection mould a size, no lasts');
+  assert.equal(cleanFootwear({ style: 'sandal', variant: 'nope' }).variant, 'two-strap', 'an unknown variant falls back to the style\'s own');
+});
+
+test('a mule is a closed toe with no back: sides start a third of the way along, no counter, heel grip or back tab; a loafer mule keeps its apron, a sneaker mule its laces', () => {
+  for (const v of Object.keys(VARIANTS.mule)) {
+    const pat = footwearPattern({ style: 'mule', variant: v }), I = pat.pieces.map(q => q.id);
+    assert.ok(pat.backless && ['vamp', 'quarter-lat', 'quarter-med', 'toe-puff', 'insole', 'sole'].every(k => I.includes(k)), `mule ${v} pieces`);
+    assert.ok(!['counter', 'heel-grip', 'back-tab', 'heel-overlay', 'collar-foam'].some(k => I.includes(k)), `mule ${v}: nothing at the back`);
+    const q = pat.pieces.find(x => x.id === 'quarter-lat'); assert.ok(Math.min(...q.shown.map(p => p[0])) > pat.last.F * .25, `mule ${v}: the side starts forward of the heel`);
+    assert.ok(!pat.components.some(c => /counter/i.test(c.name)) || pat.components.some(c => /Toe puff/.test(c.name)));
+  }
+  assert.ok(footwearPattern({ style: 'mule', variant: 'loafer' }).pieces.some(q => q.id === 'apron'));
+  const sn = footwearPattern({ style: 'mule', variant: 'sneaker' }); assert.ok(sn.pieces.some(q => q.id === 'tongue') && sn.marks.eyelets.length >= 4 && sn.sole.type === 'cupsole');
+  assert.equal(cleanFootwear({ style: 'mule', variant: 'heeled' }).heel, 2.25);
 });

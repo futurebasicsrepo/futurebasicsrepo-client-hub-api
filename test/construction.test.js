@@ -46,7 +46,10 @@ test('the features the sketches show are in the pattern, and on the product as t
   assert.ok(knee && boundsOf(knee.shown).w <= boundsOf(front.shown).w + .01, 'the knee panel is on one leg');
   const cargo = pat('pants', 'pt-cargo-joggers'); assert.ok(ids(cargo).includes('cargo') && cargo.trims.some(t => t.item === 'Drawcord'));
   const flare = pat('pants', 'pt-flared-jeans'), straight = pat('pants', 'pt-straight-jeans'), hem = p => { const f = p.pieces.find(q => q.id === 'front'); return Math.max(...f.sew.map(([, y]) => y)); };
-  assert.ok(boundsOf(flare.pieces.find(q => q.id === 'front').sew.filter(([, y]) => y >= hem(flare) - .01)).w > boundsOf(straight.pieces.find(q => q.id === 'front').sew.filter(([, y]) => y >= hem(straight) - .01)).w, 'a flare is wider at the hem');
+  // a flare narrows to the knee and widens below it (each pair of trousers is as wide as its own sketch draws it, so two sketches are not compared)
+  const widthAt = (pts, y) => { const xs = []; for (let i = 0; i < pts.length; i++) { const [x1, y1] = pts[i], [x2, y2] = pts[(i + 1) % pts.length]; if ((y1 <= y) !== (y2 <= y)) xs.push(x1 + (y - y1) / (y2 - y1) * (x2 - x1)); } return Math.max(...xs) - Math.min(...xs); };
+  const fs = flare.pieces.find(q => q.id === 'front').sew, H = hem(flare); void straight;
+  assert.ok(widthAt(fs, H - .3) > widthAt(fs, H * .62) + .5, `a flare is wider at the hem than at the knee (${widthAt(fs, H - .3).toFixed(2)} vs ${widthAt(fs, H * .62).toFixed(2)})`);
   assert.ok(ids(flare).includes('coin-pocket') && flare.trims.some(t => t.item === 'Rivets'));
   const puffer = pat('jacket', 'jk-hooded-puffer'); assert.ok(ids(puffer).includes('front-fill') && ids(puffer).includes('hood') && puffer.trims.some(t => t.item === 'Insulation'));
   const trench = pat('coat', 'coat-belted-trench-jacket'); assert.ok(ids(trench).includes('belt') && trench.trims.some(t => t.item === 'Buckle'));

@@ -288,6 +288,12 @@ on the picture, a garment's flats and a bag's or a shoe's drawing:
 Outside Focus the rail stays as it is; with its names shown (the list button at its top) it lists every tool, not only the one in front of
 each group. Journey J294.
 
+**Nothing floats over anything** (Focus). The palette publishes the room it takes on its edge (`--pal-l`, `--pal-t`, `--pal-r`, `--pal-b`,
+on the Studio and inside the flats and drawing frames), and the options bar, the side panel, the zoom, the size dock and the canvas keep
+clear of it; the options bar also stops at the side panel. The palette shows only where its tools draw (the picture and the flats); on the
+Pattern and Board views it stands aside, and in Focus the Pattern page floats its own bar at the foot in glass. The **No picture yet** card
+sits above the bottom bars, in the room left of the panel. Journey J296.
+
 **On the flats**, two fingers on a graphic resize it about its centre, keeping its shape (anywhere else they zoom the flat). What is drawn on a flat covers the whole window, not only the garment's frame: the drawing spans all the window shows at full view, and an older, smaller drawing grows to the window before the next stroke, keeping what is on it.
 
 **Zoom.** Moving or zooming the picture does not put its layers together again each frame (that made pinches slow and jumpy). A trackpad pinch (Magic Keyboard), which Safari reports only as gesture events, zooms the picture or the flat under the pointer, and Safari's own page zoom (a pinch or double tap anywhere in Design) is turned off. The flats have − / % / + / Fit like the picture, a two-finger trackpad scroll moves a zoomed flat, and a pinch keeps the point between the fingers where it is. The flat is redrawn as it changes, so a finger's lift could reach an element no longer there and leave a finger "down" for ever, which threw every later pinch off: the flat's canvas now keeps every touch, and the first finger down clears any finger whose lift went missing.
@@ -476,7 +482,7 @@ When nothing holds it up, the list offers **Send to the tech pack**; once it is 
   - **Measurements** (Pro).
 - **The board and components** (`src/lab-studio-board.js`, served at `/lab/studio-board.js`).
   - **Board** (in the view switch, or ⌘K "Show the board") lays every frame of the piece side by side, drawn from the design as it is: the picture, the flat front and back with their graphics, the flat in each of the concept's colourways, and the flat at each size when the artwork is graded. A frame opens its view. The flats come from the flats page's own drawing (`FBFlats.frame(view, {color, size})`, `renderSvg` with `plain` and `withArt`), so the board and the flats never disagree. The frame size slider sets how big they are.
-    - **Make the turns from the flats** (the green pill, top left) draws the piece on a model from the front, three-quarter, side and back. The turns follow the flats as they are now. It saves the flats first. The service draws the saved flats as pictures (`flatPictures` in `src/lab-flats-routes.js`) and gives them to the image model as the first references, front then back (`from: 'flats'` on `POST /v1/lab/concepts/:id/views`, `FROM_FLATS` in `src/lab-views.js`). The flats win over the picture; the picture gives only the look of the cloth. It works without a concept picture, replaces the turns made before, and is metered as four views. The board's **Turns** row shows each turn as it is drawn.
+    - **Make the turns from the flats** (the green pill, top left) draws the piece on a model from the front, three-quarter, side and back. The turns follow the flats as they are now. It saves the flats first. The service draws the saved flats as pictures (`flatPictures` in `src/lab-flats-routes.js`) and gives them to the image model as the first references, front then back (`from: 'flats'` on `POST /v1/lab/concepts/:id/views`, `FROM_FLATS` in `src/lab-views.js`). The flats win over the picture; the picture gives only the look of the cloth. It works without a concept picture, replaces the turns made before, and is metered as four views. The board's **Turns** row shows each turn as it is drawn, in a portrait frame on the model's grey so the whole figure shows, head to shoes. **Tap a turn** to open it large (`#turnZoom`): the full picture fitted to the screen; pinch, the wheel, a double tap or − and + zoom (up to 8×), a drag pans, Fit goes back, ‹ › and the arrow keys step through the turns, Save downloads it, Escape closes. In Focus the board keeps clear of the panel and the palette stands aside. Journey J296.
     - **Every graphic is on every turn it faces.** Each placed graphic goes to the image model as its own reference image: its art on the garment colour, last in the list. The prompt names its technique, size and place from the flats (`graphics` from `flatPictures`, `turnGraphics` and `graphicsPrompt` in `src/lab-views.js`). The front and three-quarter turns get the front graphics, and the back turn gets the back ones. This holds for turns drawn from the picture too, so the back graphic is never lost. When the vision model is connected (`ANTHROPIC_API_KEY`), each finished front, three-quarter and back turn is read against its artwork. A turn missing a graphic is drawn once more, naming what was left out. If one is still missing, the turn keeps a note under it on the board: "Check this turn: … may be missing."
     - **Walk** (under the turns): an 8-second film of the model walking in the piece, made from the front turn by the video model (Google's Veo, with the Google AI key `GEMINI_API_KEY`; `POST /v1/lab/concepts/:id/walk`). It plays on the board; **Make it again** redoes it after the turns change. Without a video model, the row says so. The same walk is in the Lab's Assortment board.
   - **Components.** A graphic from the library is a component, and every layer showing it is a copy, marked ◇ in the layers. A copy's size, place, turn and colour are its own. **Swap…** puts another library graphic in its place at the same width, for that copy or every copy on the piece. **Choose every copy** selects them all. **Edit the main** opens the graphic itself in the Studio, and its update reaches the copies the next time a design opens. **Detach** keeps it as a plain picture. **Make a component** puts any layer (type, a shape, a path, a picture) into the library and makes the layer its first copy. Duplicating a copy makes another copy. A copy is a layer whose `src` is `/v1/lab/art/:id` and whose pixels have not been painted on.
@@ -1061,6 +1067,25 @@ maker, in any size (`GET /v1/lab/concepts/:id/last.svg?size=`).
 - **Allowances:** each piece carries the ⅝ in lasting allowance and ⅜ in overlaps.
 - **The sole unit** (cupsole, EVA midsole, or a stitched outsole and heel) is shown as a moulded component: it is never cut.
 
+**Sandals, clogs, slides and mules** (`openPattern` in `src/lab-footwear.js`). Four more styles, each with the ways it is made (`VARIANTS`, the
+Pattern page's **Made as**):
+- **Sandal** (two-strap, thong, fisherman, multi-strap): nothing is lasted. Each strap is cut flat, its length the way over the foot at its place
+  (half round an ellipse as wide as the footbed and as high as the last, less a little so it sits snug), with ⅝ in tucked under the footbed at
+  each side; a buckled strap is split into its holed side and its buckle side. Every strap is lined. A thong has a toe post and a strap to each
+  side; a fisherman sandal five cross straps, a centre strap, a heel strap with a counter, and an ankle strap with its buckle tab. The footbed
+  (cork and latex, or die-cut EVA for a thong) and the outsole are made, not cut; the top cover is cut from the bottom of the last.
+- **Footbed clog** (suede with a buckle strap, or on a wooden base): a closed vamp cut whole, tucked under a cork footbed, or turned under and
+  tacked round a carved wooden base; no back.
+- **Moulded** (pool slide, recovery slide, moulded clog): injected in one piece. Only a pool slide's strap is cut; a recovery slide has nothing
+  to cut; a clog's pivoting heel strap is moulded and riveted. Tooling is an injection mould a size (no lasts), cut oversize for the EVA's shrink.
+- **Mule** (loafer, heeled, sneaker): the closed-shoe draft with no back: the sides start a third of the way along, low at the back, and there
+  is no counter, heel grip or back tab. A heeled mule over 1½ in is flagged.
+
+Each has its components (footbed, top cover, outsole, buckles, toe post plug, tacks, rivets), its tooling (footbed and outsole moulds, cutting
+knives, a CNC program for a wooden base, injection moulds) and its checks (strap fit on a low and a high instep, the toe post, the EVA's shrink,
+a clog's throat). The tech flats draw them too: the straps or the shell on the footbed, the footbed showing from above, no toe line on an open
+toe. The footwear catalogue's sandals and clogs now name these styles, so 50 of its 91 styles can be drafted. Journey J295.
+
 Product → Exploded → Cutting layout works as for clothes, with the side and the bottom of the shoe side by side. The size picker redraws the
 whole shoe in any size of the run; the DXF and SVG come in the size asked for.
 
@@ -1234,6 +1259,16 @@ What the picture sets can also be set by hand, and every value is bounded:
 ## Editing pieces and the AAMA/ASTM DXF
 
 A drafted pattern is a start: a pattern maker can change every piece on the Pattern view and keep what they changed.
+
+**Against the drawing** (in the pattern panel, trousers and shorts drawn from a sketch; `drawnCheck` in `src/lab-pattern.js`). The
+pattern's front is put together (each leg laid flat, the legs meeting at the centre) and measured where the sketch is: the hip across, and
+each leg at the thigh, the knee and the hem, beside the sketch's own widths (`drawnLegs` in `src/lab-flats.js`, read from the sketch's
+outline in inches). The legs' shape is the design, so the knee and the hem are compared against the thigh: more than about a seventh off
+the sketch's proportion is flagged, a smaller gap (over 5%) is said; the hip is said, not flagged (a sketch is drawn slimmer at the hip
+than a body, and the pattern keeps the hip measurement). **Follow the drawing** (`POST /v1/lab/concepts/:id/flats/follow-drawing`,
+`followTheDrawing`) makes the leg opening and the knee the sketch's, then trues them on the drafted pattern until the hem stands to the
+thigh as the sketch's does (within about 2%); the flats keep it (`legsDrawn`, `kneeRatio`), and the Studio reloads them. A sketch picked
+for a new piece already gives its legs, so a straight sketch is not cut tapered nor a slim one wide. Journey J296.
 
 **Built with** (in the pattern panel, garments) says how the piece is built, the description the pattern is drafted from (`src/lab-construction.js`):
 - **What it covers:** the sleeve (set-in, raglan, dropped, none), hood, collar, opening (zip, half or quarter zip, buttons, snaps, placket), front and back yokes, the pockets (kangaroo, split kangaroo, welt, flap, chest, flap chest, patch hip, cargo, five-pocket, slash), the waist (fixed, elastic, drawcord), double knee, the leg (straight, flare, wide, taper, balloon), pleats, panels and stripes, quilting, a belt and the lining.

@@ -4878,6 +4878,82 @@ await journey('J294', 'The tool palette in Focus: the rail becomes one glass doc
   } finally { await b.close(); if (cid) await K(`/concepts/${cid}`, { method: 'DELETE' }); }
 });
 
+await journey('J296', 'Trousers and shorts against their drawing, and a Studio where nothing floats over anything: the Pattern page measures the pattern where the sketch is (hip, thigh, knee, hem) and offers Follow the drawing when the legs are not cut as drawn; one press makes the leg opening the sketch\'s and the flats follow; in Focus the palette, the options bar, the side panel, the size dock and the no-picture card keep clear of one another, and on the Pattern and Board views the palette stands aside; a turn on the Board shows the whole figure and opens large to zoom', async () => {
+  const r = await K('/concepts/from-recipe', { body: { base: 'shorts' } }), cid = r.json.concept?.id;
+  try {
+    const fl = (await K(`/concepts/${cid}/flats`)).json.flat, m0 = { ...fl.m, legOpening: 8.5 }, o0 = { ...(fl.options || {}) }; delete o0.legsDrawn; delete o0.kneeRatio;
+    const put = await K(`/concepts/${cid}/flats`, { method: 'PUT', body: { ...fl, template: 'sh-pleat', m: m0, options: o0, placements: [] } });
+    ok(put.status === 200, '1. shorts drawn from a flaring sketch, saved with the style\'s plain 8½ in leg opening', put.json);
+    if (!playwright) { const f = await K(`/concepts/${cid}/flats/follow-drawing`, { body: {} }); ok(f.status === 200 && f.json.legOpening > 8.5, '2. (no browser here) following the drawing widens the leg opening', f.json); return; }
+    const b = await playwright.chromium.launch(), errs = [];
+    try {
+      const ctx = await b.newContext({ viewport: { width: 1366, height: 1024 }, hasTouch: true });
+      await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); localStorage.setItem('fb.helper.on', '0'); localStorage.setItem('fb.design.level', 'pro'); localStorage.setItem('fb.studio.names', '0'); localStorage.setItem('fb.design.layout', JSON.stringify({ panel: true, focus: true })); localStorage.setItem('fb.studio.palette', JSON.stringify({ dock: 'left', shrunk: false })); } catch {} }, kyleT);
+      const page = await ctx.newPage(); page.on('pageerror', e => errs.push(String(e)));
+      await page.goto(`${BASE}/lab/studio?concept=${cid}&view=pattern`, { waitUntil: 'load' });
+      const pf = page.frameLocator('#patFrame'); await pf.locator('#drawnBox').waitFor({ timeout: 30000 });
+      const box = await pf.locator('#drawnBox').innerText();
+      ok(/Thigh, one leg/.test(box) && /Hem, one leg/.test(box) && await pf.locator('#followDraw').count() === 1, '2. the Pattern page sets the pattern against the sketch, leg by leg, and offers Follow the drawing', box);
+      ok(await page.evaluate(() => { const p = document.querySelector('#palette'); return !p || p.hidden; }), '3. on the Pattern view the palette stands aside');
+      await pf.locator('#followDraw').click(); await pf.locator('#drawnBox:not(:has(#followDraw))').waitFor({ timeout: 15000 });
+      const after = (await K(`/concepts/${cid}/flats`)).json.flat;
+      ok(after.m.legOpening > 10 && after.options?.legsDrawn, '4. one press: the leg opening is the sketch\'s, and the flats keep it', { legOpening: after.m.legOpening, options: after.options });
+      await page.locator('#viewSeg [data-v=front]').click(); await page.frameLocator('#flatFrame').locator('svg').first().waitFor({ timeout: 20000 }); await page.waitForTimeout(800);
+      const rects = await page.evaluate(() => { const g = s => { const e = document.querySelector(s); if (!e || e.hidden || e.offsetParent === null && getComputedStyle(e).position !== 'fixed') return null; const r = e.getBoundingClientRect(); return r.width && r.height ? { l: r.left, t: r.top, r: r.right, b: r.bottom } : null; }; const fr = document.querySelector('#flatFrame'), o = fr.getBoundingClientRect(), d = fr.contentDocument, in_ = s => { const e = d.querySelector(s); const r = e?.getBoundingClientRect(); return r?.width ? { l: r.left + o.left, t: r.top + o.top, r: r.right + o.left, b: r.bottom + o.top } : null; }; return { pal: g('#palette'), opts: g('#opts'), side: in_('.side'), dock: in_('.tools'), card: g('#flatPicBar') }; });
+      const hit = (a, c) => a && c && a.l < c.r - 1 && c.l < a.r - 1 && a.t < c.b - 1 && c.t < a.b - 1, pairs = [['pal', 'opts'], ['pal', 'side'], ['pal', 'dock'], ['opts', 'side'], ['dock', 'side'], ['card', 'dock'], ['card', 'side'], ['card', 'pal']];
+      const bad = pairs.filter(([a, c]) => hit(rects[a], rects[c]));
+      ok(rects.pal && !bad.length, '5. on the Flat front in Focus, the palette (docked left), the options bar, the side panel, the size dock and the no-picture card keep clear of one another', { bad, rects });
+      await page.locator('#viewSeg [data-v=board]').click(); await page.waitForTimeout(800);
+      ok(await page.evaluate(() => { const p = document.querySelector('#palette'); return !p || p.hidden; }), '6. on the Board the palette stands aside too');
+      // the turns: drawn from the flats, each in a portrait frame with the whole figure, and a tap opens it large to zoom
+      const started = await K(`/concepts/${cid}/views`, { body: { from: 'flats', kinds: ['model_front', 'model_34', 'model_side', 'model_back'] } });
+      for (let i = 0; i < 60 && started.status === 200; i++) { const v = (await K(`/concepts/${cid}/views`)).json.views || {}; if (v.model_front?.status === 'ready') break; await new Promise(r => setTimeout(r, 500)); }
+      await page.evaluate(() => setVMode('board')); const fig = page.locator('#bTurns figure[data-turn=model_front][role=button]'); await fig.waitFor({ timeout: 20000 });
+      const fr = await fig.locator('.fr').boundingBox(); ok(fr && fr.height > fr.width * 1.4, '7. a turn sits in a portrait frame, tall enough for the whole figure', fr);
+      await fig.click(); await page.waitForFunction(() => { const d = document.querySelector('#turnZoom'), i = d?.querySelector('img'); return d?.open && i?.naturalWidth > 0; }, null, { timeout: 15000 });
+      const z0 = await page.evaluate(() => { const i = document.querySelector('#turnZoom img').getBoundingClientRect(); return { w: i.width, h: i.height, inView: i.top >= 0 && i.bottom <= innerHeight && i.left >= 0 && i.right <= innerWidth, pct: document.querySelector('#turnZoom .tz-z').textContent }; });
+      ok(z0.inView && z0.h > fr.height, '8. a tap opens the turn large, the whole picture on the screen', z0);
+      await page.locator('#turnZoom [data-tz=in]').click(); await page.locator('#turnZoom [data-tz=in]').click();
+      ok(parseInt(await page.locator('#turnZoom .tz-z').textContent()) > 150, '   it zooms in');
+      await page.locator('#turnZoom [data-tz=next]').click(); await page.waitForTimeout(300); ok(await page.evaluate(() => document.querySelector('#turnZoom').dataset.k) === 'model_34', '   and steps to the next turn');
+      await page.keyboard.press('Escape'); ok(await page.evaluate(() => !document.querySelector('#turnZoom').open), '   Escape closes it');
+      ok(!errs.length, '9. no page errors', errs.slice(0, 3));
+    } finally { await b.close(); }
+  } finally { if (cid) await K(`/concepts/${cid}`, { method: 'DELETE' }); }
+});
+
+await journey('J295', 'Sandals, clogs, slides and mules have patterns: a sandal is straps tucked under a footbed (each strap its length over the foot, split at its buckle, lined), a thong a post and two straps, a clog a vamp on a footbed or a wooden base, a moulded slide one injection mould a size, a mule a closed toe with no back; the Pattern page chooses how each is made', async () => {
+  const made = await K('/concepts/from-scratch', { body: { category: 'footwear', style: 'sandal', name: `Scratch sandal ${stamp}` } }), cid = made.json.concept?.id;
+  try {
+    const p = (await K(`/concepts/${cid}/pattern`)).json, ids = p.pieces?.map(q => q.id) || [];
+    ok(made.status === 201 && p.spec.style === 'sandal' && p.spec.variant === 'two-strap' && ['strap-toe-long', 'strap-toe-buckle', 'strap-instep-long', 'strap-instep-buckle', 'footbed-cover'].every(k => ids.includes(k)) && !ids.includes('insole'), '1. a sandal starts as a two-strap footbed sandal: two straps split at their buckles, a top cover, no insole board', ids);
+    ok(p.components.some(c => /cork and latex footbed/i.test(c.name)) && p.components.some(c => /Buckles/.test(c.name) && /4/.test(c.qty)) && /footbed press moulds/.test(p.tooling.note), '   its footbed and outsole are made, with four buckles a pair, and footbed moulds', { comp: p.components.map(c => c.name), t: p.tooling.note });
+    const th = (await K(`/concepts/${cid}/pattern`, { method: 'PUT', body: { spec: { ...p.spec, variant: 'thong' } } })).json;
+    ok(th.spec.variant === 'thong' && th.pieces.some(q => q.id === 'toe-post') && /knives/.test(th.tooling.note), '2. made as a thong: a toe post and two straps, die-cut with knives', th.tooling);
+    const dxf = await call(`/v1/lab/concepts/${cid}/pattern.dxf`, { token: kyleT });
+    ok(dxf.status === 200 && /Toe post/.test(dxf.text) && /Strap, outside/.test(dxf.text), '   and its pieces go to the DXF');
+    const cl = (await K(`/concepts/${cid}/pattern`, { method: 'PUT', body: { spec: { ...th.spec, style: 'footbed-clog', variant: 'wood', heel: undefined, spring: undefined, toe: undefined } } })).json;
+    ok(cl.spec.style === 'footbed-clog' && cl.pieces.some(q => q.id === 'vamp') && cl.components.some(c => /Wooden base/.test(c.name)) && cl.components.some(c => /tacks/i.test(c.name)), '3. a clog on a wooden base: the vamp turned under and tacked', cl.components.map(c => c.name));
+    const mo = (await K(`/concepts/${cid}/pattern`, { method: 'PUT', body: { spec: { ...cl.spec, style: 'moulded', variant: 'recovery', heel: undefined, spring: undefined, toe: undefined } } })).json;
+    ok(mo.pieces.every(q => !q.cut) && mo.tooling.lastPairs === 0 && mo.tooling.moulds === mo.tooling.sizes, '4. a recovery slide is injected whole: nothing cut, an injection mould a size, no lasts', mo.tooling);
+    const mu = (await K(`/concepts/${cid}/pattern`, { method: 'PUT', body: { spec: { ...mo.spec, style: 'mule', variant: 'heeled', heel: undefined, spring: undefined, toe: undefined } } })).json; // a new style starts from its own heel, as the page does
+    ok(mu.spec.heel === 2.25 && mu.pieces.some(q => q.id === 'vamp') && !mu.pieces.some(q => q.id === 'counter') && mu.checks.some(c => /backless/i.test(c.msg)), '5. a heeled mule: a closed toe, no counter, its 2¼ in heel flagged for a backless shoe', mu.checks.map(c => c.msg));
+    await K(`/concepts/${cid}/pattern`, { method: 'PUT', body: { spec: { ...mu.spec, style: 'sandal', variant: 'two-strap', heel: undefined, spring: undefined, toe: undefined } } });
+    if (!playwright) { ok(true, 'needs a browser'); return; }
+    const b = await playwright.chromium.launch(), errs = [];
+    try {
+      const oc = await b.newContext({ viewport: { width: 1366, height: 1024 } }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
+      const page = await oc.newPage(); page.on('pageerror', e => errs.push(String(e)));
+      await page.goto(`${BASE}/lab/pattern?concept=${cid}&embed=1`, { waitUntil: 'networkidle' }); await page.waitForFunction(() => window.FBPattern?.ready?.(), null, { timeout: 20000 });
+      const opts = await page.locator('select[data-k=variant] option').allInnerTexts();
+      ok(opts.length === 4 && opts.some(t => /Thong/.test(t)) && opts.some(t => /Fisherman/.test(t)), '6. the Pattern page chooses how a sandal is made', opts);
+      await page.selectOption('select[data-k=variant]', 'fisherman'); await page.waitForTimeout(400);
+      ok(/Heel strap/.test(await page.innerText('body')) && /Cross strap 5/.test(await page.innerText('body')), '   made as a fisherman sandal its cross straps and its heel strap are drafted');
+      ok(!errs.length, '9. no page errors', errs.slice(0, 3));
+    } finally { await b.close(); }
+  } finally { if (cid) await K(`/concepts/${cid}`, { method: 'DELETE' }); }
+});
+
 await journey('J292', 'Footwear: a shoe from the library, listed by type, opens in the Studio as its drawing in panels in the colour picked, its pattern drafted in the library shoe\'s style; the Sketch library shows shoes by type; a bag cannot take a library shoe', async () => {
   const lib = (await K('/library/footwear')).json.footwear || [];
   ok(lib.length >= 1 && lib.every(s => s.group && s.label && s.views.includes('lateral')), '1. the library lists shoes, each with its type and its outside view', lib.map(s => s.id));
