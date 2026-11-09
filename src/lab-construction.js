@@ -39,7 +39,7 @@ export function fromName(name, style) {
     else if (has(/ funnel /)) c.collar = 'funnel';
     else if (has(/ stand collar | mock neck | quarter zip | half zip /) && !has(/ hood/)) c.collar = 'stand';
     else if (has(/ polo | johnny collar | rugby collar | retro collar | collared jersey | collared long sleeve /)) c.collar = 'polo';
-    else if (has(/ collar(ed)? | shirt | overshirt | trucker | harrington | chore | western | work | denim | blouson | shacket | trench /)) c.collar = 'shirt';
+    else if (has(/ collar(ed)? | shirt | overshirt | trucker | harrington | chore | western | work | denim | blouson | shacket | trench /) && !(has(/ t shirt /) && !has(/ collar(ed)? /))) c.collar = 'shirt'; // a T-shirt is not a shirt
     if (has(/ half zip /)) c.opening = 'half-zip';
     else if (has(/ quarter zip /)) c.opening = 'quarter-zip';
     else if (has(/ snap /)) c.opening = 'snaps';
