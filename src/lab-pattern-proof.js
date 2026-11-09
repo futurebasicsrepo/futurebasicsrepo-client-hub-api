@@ -130,7 +130,7 @@ ${CSS}
 ${lede ? `<p class="lede">${lede}</p>` : ''}
 ${totals.length ? `<div class="sum">${totals.map(([v, l]) => `<div><b>${esc(v)}</b>${esc(l)}</div>`).join('')}</div>` : ''}
 ${how}
-${filters ? `<nav aria-label="Filter"><button aria-pressed="true" data-k="">All</button><button aria-pressed="false" data-k="top">Tops</button><button aria-pressed="false" data-k="bottom">Bottoms</button><button aria-pressed="false" data-k="acc">Headwear and totes</button><button aria-pressed="false" data-k="bag">Bags</button><button aria-pressed="false" data-k="fail">Not passing</button><input type="search" placeholder="Find a garment" aria-label="Find a garment"></nav>` : ''}
+${filters ? `<nav aria-label="Filter"><button aria-pressed="true" data-k="">All</button><button aria-pressed="false" data-k="top">Tops</button><button aria-pressed="false" data-k="bottom">Bottoms</button><button aria-pressed="false" data-k="acc">Headwear and totes</button><button aria-pressed="false" data-k="bag">Bags</button><button aria-pressed="false" data-k="plush">Plush</button><button aria-pressed="false" data-k="fail">Not passing</button><input type="search" placeholder="Find a garment" aria-label="Find a garment"></nav>` : ''}
 ${cards.join('\n')}
 </main><script>
 ${filters ? JS : JS.split('\n').filter(l => /svg\.table/.test(l)).join('\n')}

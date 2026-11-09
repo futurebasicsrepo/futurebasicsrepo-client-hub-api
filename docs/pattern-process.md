@@ -100,12 +100,12 @@ A new kind of garment, a new pocket or collar, or a new add-on is not done until
 
 ## Other kinds of product
 
-The construction check covers garments, bags, and caps, bucket hats, beanies and totes. The other kinds are drafted and checked their own way. Each is reached from the same Pattern or Engineering page and lands in the same factory package.
+The construction check covers garments, bags, caps, bucket hats, beanies and totes, and plush built from parts (`src/lab-plush-parts.js`). The other kinds are drafted and checked their own way. Each is reached from the same Pattern or Engineering page and lands in the same factory package.
 
 | Kind | Drafted by | Checked by | In the package |
 |---|---|---|---|
 | Footwear | `footwearPattern` (`src/lab-footwear.js`): the last, the size run, the upper flattened in pieces | `footwearChecks` checks the build: heel height against the style, toe spring under a high heel, a pointed toe on an athletic last, the collar against the ankle bone, a backless shoe's heel seat. It also lists the fitting sample and the tests (sole bond and others). The drawing is reviewed by `src/lab-shoe-review.js`. | The last (drawing and STL), the tech flats, every size as AAMA DXF |
-| Plush | `plushPattern`: the toy as its pieces | `plushChecks` checks safety for the age: safety eyes and small parts for under-3s, how the tail is sewn, chrome-free leather, pile at the seams, the law label. The toy is reviewed by `src/lab-plush-review.js`. | The tech sheet, the pattern, the fill weight |
+| Plush (the seven fixed body types) | `plushPattern`: the toy as its pieces. A plush built from parts is covered by the construction check above. | `plushChecks` checks safety for the age: safety eyes and small parts for under-3s, how the tail is sewn, chrome-free leather, pile at the seams, the law label. The toy is reviewed by `src/lab-plush-review.js`. | The tech sheet, the pattern, the fill weight |
 | Hard goods and electronics | `src/lab-assembly.js`: 3D parts, processes and tooling | `dfm`, per part: wall thickness for the resin, draft and undercuts, solid sections, clear parts, size against the press, food contact, and whether parts fit on and inside each other | Per-part 3D files, the BOM, tooling and cost |
 
 Bringing one of these under the construction check follows the steps above: label its blocks, walk its seams, measure it, list its components.

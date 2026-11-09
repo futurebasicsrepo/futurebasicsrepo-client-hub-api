@@ -14,7 +14,7 @@ export const PLUSH_READ_SCHEMA = {
     plush: { type: 'boolean', description: 'the picture shows a plush or soft toy' },
     view: { type: 'string', enum: ['front', 'three-quarter', 'side', 'back', 'other'] },
     animal: { type: 'string', description: 'what animal or character it is, in one or two words (elephant, bear, fox…)' },
-    shape: { type: 'string', enum: Object.keys(PLUSH_SHAPES), description: 'its body type: quad for any four-legged animal sitting (dog, cat, fox, lion, horse, unicorn, dragon…); sea for a whale, shark, dolphin or fish; bear for one standing on two legs with arms; elephant for an elephant; bean for one rounded body (a chick, a ghost, a blob); bunny for a bean with long ears; pillow for a flat cushion with a side gusset' },
+    shape: { type: 'string', enum: Object.keys(PLUSH_SHAPES).filter(k => k !== 'build'), description: 'its body type: quad for any four-legged animal sitting (dog, cat, fox, lion, horse, unicorn, dragon…); sea for a whale, shark, dolphin or fish; bear for one standing on two legs with arms; elephant for an elephant; bean for one rounded body (a chick, a ghost, a blob); bunny for a bean with long ears; pillow for a flat cushion with a side gusset' },
     heightIn: { type: 'number', description: 'its height in inches, standing or sitting as shown (for a sea creature, its length), judged from its proportions and any scale in the picture (usually 6 to 24)' },
     ears: { type: 'string', enum: Object.keys(PLUSH_EARS) },
     snout: { type: 'string', enum: Object.keys(PLUSH_SNOUTS), description: Object.entries(PLUSH_SNOUTS).map(([k, v]) => `${k}: ${v}`).join('; ') },

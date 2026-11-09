@@ -1601,6 +1601,47 @@ Routes for paper sketches: `GET /v1/lab/concepts/:id/pattern/underlays` (which v
 /v1/lab/concepts/:id/pattern/underlays/:view` (the picture; `PUT {image: data URL, place?}`, `PATCH {place: {x, y, w, opacity}}`, in the view's
 inches; a picture up to 15 MB).
 
+## Plush built from parts
+
+On the Pattern page a plush's body type can be **Built from parts** (`src/lab-plush-parts.js`). Start from one of twenty plush, then swap any part. Each part shows as a picture of itself, and each has a size slider. The starting plush are:
+
+teddy bear, bunny, cat, dog, fox, lion, unicorn, dragon, elephant, owl, penguin, frog, octopus, monster, bee, whale, shark, caterpillar, sausage dog, cloud friend.
+
+| Slot | Parts |
+|---|---|
+| Body | Bean, ball (six gores and a base), egg, pillow, upright body (takes a head), sitting four-legged (takes a head), long tube (takes a head; its size is its length), fish (its size is its length) |
+| Head | Ball (six gores), bear (two sides and a gusset), flat face, long snout |
+| Ears | Round, pointed, tall pointed, long, floppy, big and lined, big round |
+| Face | Eyes and a nose, muzzle patch, beak, felt nose, trunk |
+| Arms | Nubs, arms, flippers, long and dangly |
+| Legs | Feet, sitting legs on pads, four legs on pads, long and dangly, eight tentacles |
+| Tail | Pompom, stub, long, bushy, curly, fluke, tail fin, spiked |
+| Horns | One, two, antlers, antennae |
+| Wings | Feathered, bat or dragon, butterfly |
+| Down the back | Spikes, dorsal fin, mane crest, mane ruff |
+| Details | Belly patch, cheeks, spots |
+
+A part goes only on a body that takes it. For example, four legs go on the sitting body or the tube, and tentacles go on a round body. Each part is drafted to where it is sewn:
+- A head's neck is drafted to the body's neck opening. A ball head's gores are cut where their feet make the neck's round. A bear head's flat feet and gusset end make it.
+- A foot pad is solved to walk its leg's foot opening.
+- A ball's or an egg's base is solved to walk its gores' feet.
+- A gusset is as long round its edges as the seam it runs along.
+- An ear, a limb, a tail, a horn or a wing is no wider at its base than the seam it is set into. A big ear's base is pleated to fit.
+
+Every join is recorded on the pattern (`pat.build.joints`). The construction check walks each one and measures the toy as drawn stuffed. The size asked for is the toy's overall size, ears and dangling legs included (a tube's or a fish's is its length). The pattern is drafted, measured and drafted again until it comes out at that size.
+
+A built plush also lists:
+- its fill, in grams
+- its thread
+- the law label
+- its eyes: a pair of safety eyes, or floss
+
+It is checked on the Pattern page (Sews together), in the factory package and on the proof page. Its views are drawn from its parts' own outlines.
+
+`test/plush-parts.test.js` covers:
+- every starting plush at 6 to 36 in
+- every part on every body that takes it (over 400 combinations)
+
 ## Plush tech flats: the toy as it will be made
 
 A plush's product view on the Pattern page, and **Tech flats (SVG)** under Files (`GET /v1/lab/concepts/:id/flats.svg`, 1:1 in inches), draw it

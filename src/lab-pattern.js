@@ -9,6 +9,7 @@ import { STYLES, measurementsFor, SIZES, drawnLegs, followDrawing, bodyProfile }
 import { constructionOf } from './lab-construction.js';
 import { cleanSketches, VIEWS_OF } from './lab-sketch.js';
 import { cleanLogos } from './lab-logos.js';
+import { buildPlush, cleanBuild, PLUSH_PRESETS } from './lab-plush-parts.js';
 
 const r3 = v => Math.round(v * 1000) / 1000;
 const r8 = v => Math.round(v * 8) / 8;
@@ -62,7 +63,7 @@ export function offsetOf(pts, d) {
 // ---- the pieces ----
 // a piece: { id, name, fabric, cut, pair, fold, sew (closed outline, the whole piece), grain [[x,y],[x,y]], notches [[x,y]], notes [], place {view, x, y, rot, flip, z} }
 // fold: the piece is cut on the fold of the cloth along x = 0 (its own centre line); the drawing shows it whole and marks the fold
-const FABRIC_NAMES = { self: 'Self (main fabric)', rib: 'Rib', shearling: 'Shearling (or faux shearling)', lining: 'Lining', fusing: 'Fusing', insulation: 'Insulation (batting or down)', pocketing: 'Pocketing', board: 'Board', knit: 'Knit (to shape)', pile: 'Plush pile', leather: 'Leather', felt: 'Felt', contrast: 'Contrast', upper: 'Upper', overlay: 'Overlays', foam: 'Foam', elastic: 'Elastic gore', stiffener: 'Stiffener (thermoplastic)', rubber: 'Rubber (moulded)', eva: 'EVA (moulded)', reinforcement: 'Reinforcement (non-woven backer)', membrane: 'Waterproof membrane', strobel: 'Strobel sock (non-woven)' };
+const FABRIC_NAMES = { self: 'Self (main fabric)', rib: 'Rib', shearling: 'Shearling (or faux shearling)', lining: 'Lining', fusing: 'Fusing', insulation: 'Insulation (batting or down)', pocketing: 'Pocketing', board: 'Board', knit: 'Knit (to shape)', pile: 'Plush pile', leather: 'Leather', felt: 'Felt', contrast: 'Contrast', mane: 'Long-pile faux fur (mane)', upper: 'Upper', overlay: 'Overlays', foam: 'Foam', elastic: 'Elastic gore', stiffener: 'Stiffener (thermoplastic)', rubber: 'Rubber (moulded)', eva: 'EVA (moulded)', reinforcement: 'Reinforcement (non-woven backer)', membrane: 'Waterproof membrane', strobel: 'Strobel sock (non-woven)' };
 export const fabricName = f => FABRIC_NAMES[f] || f;
 function piece(id, name, sew, o = {}) {
   const s = tidy(sew), b = boundsOf(s);
@@ -940,9 +941,9 @@ export function bagPattern(spec = {}) {
 // ---- plush ----
 // the body types a plush is drafted on (the kit): each takes the parts below, so a fox is a four-legged sitting body with a long snout, pointed
 // ears and a bushy tail, a unicorn the same body with a horn and a mane, a whale a sea body with a fluke
-export const PLUSH_SHAPES = { bear: 'Standing upright: bear, monkey, bunny on two legs… (head, body, arms, legs)', quad: 'Four-legged, sitting: dog, cat, fox, lion, horse, unicorn, dinosaur…', elephant: 'Elephant (sitting: trunk, big ears, four legs, tail)', sea: 'Sea creature: whale, shark, dolphin, fish…', bean: 'Round: bean character, chick, ghost… (one body, a base)', bunny: 'Bunny (bean body, long ears)', pillow: 'Pillow character (front, back, side gusset)' };
+export const PLUSH_SHAPES = { build: 'Built from parts: a body, a head, ears, a face, arms, legs, a tail and more, from the parts library (src/lab-plush-parts.js)', bear: 'Standing upright: bear, monkey, bunny on two legs… (head, body, arms, legs)', quad: 'Four-legged, sitting: dog, cat, fox, lion, horse, unicorn, dinosaur…', elephant: 'Elephant (sitting: trunk, big ears, four legs, tail)', sea: 'Sea creature: whale, shark, dolphin, fish…', bean: 'Round: bean character, chick, ghost… (one body, a base)', bunny: 'Bunny (bean body, long ears)', pillow: 'Pillow character (front, back, side gusset)' };
 // each body type's name, short, for a label or a sentence
-export const PLUSH_TYPE = { bear: 'Bear', quad: 'Four-legged sitting', elephant: 'Elephant', sea: 'Sea creature', bean: 'Bean character', bunny: 'Bunny', pillow: 'Pillow character' };
+export const PLUSH_TYPE = { build: 'Built from parts', bear: 'Bear', quad: 'Four-legged sitting', elephant: 'Elephant', sea: 'Sea creature', bean: 'Bean character', bunny: 'Bunny', pillow: 'Pillow character' };
 export const PLUSH_EARS = { round: 'Round', pointed: 'Pointed', long: 'Long', floppy: 'Floppy (hanging, a dog\'s)', big: 'Big and floppy (lined)', none: 'None' };
 // the parts the kit puts on a body: which body types take each
 export const PLUSH_SNOUTS = { none: 'None (a flat face)', short: 'Short (a cat, a lion, a bear)', long: 'Long and pointed (a dog, a fox, a dragon)', broad: 'Long and broad (a horse, a cow, a unicorn)' };
@@ -956,12 +957,13 @@ export const PLUSH_FIRM = ['leather', 'vegan', 'suede'];
 export const PLUSH_EYES = { embroidered: 'Embroidered (any age)', safety: 'Safety eyes, 12 mm (3 years and up)', felt: 'Felt, sewn flat' };
 export const PLUSH_AGES = { '0+': 'All ages, under 3 included', '3+': '3 years and up', '14+': 'Collectible, 14 and up' };
 export function plushDefaults(shape = 'bear') {
+  if (shape === 'build') return { ...plushDefaults('bear'), shape: 'build', build: cleanBuild(PLUSH_PRESETS.bear.build) };
   return { shape: PLUSH_SHAPES[shape] ? shape : 'bear', height: shape === 'pillow' ? 14 : shape === 'sea' ? 16 : 12, ears: shape === 'bunny' ? 'long' : shape === 'pillow' || shape === 'quad' ? 'pointed' : shape === 'elephant' ? 'big' : shape === 'sea' ? 'none' : 'round', arms: shape !== 'pillow' && shape !== 'sea' && shape !== 'quad', legs: ['bear', 'elephant', 'quad'].includes(shape), tail: ['bunny', 'elephant', 'quad', 'sea'].includes(shape), fabric: 'minky', eyes: 'embroidered', age: '0+', fill: 'polyester fibre', depth: shape === 'pillow' ? 3 : 0,
     snout: shape === 'quad' || shape === 'bear' ? 'short' : 'none', horn: 'none', mane: 'none', wings: false, spikes: false, dorsal: shape === 'sea', tailType: shape === 'sea' ? 'fluke' : 'long', head: 1 };
 }
 export function cleanPlush(input = {}) {
   const d = plushDefaults(PLUSH_SHAPES[input.shape] ? input.shape : 'bear'), num = (v, lo, hi, def) => { const n = Number(v); return Number.isFinite(n) ? r8(Math.min(Math.max(n, lo), hi)) : def; };
-  return { shape: d.shape, height: num(input.height, 4, 48, d.height), ears: PLUSH_EARS[input.ears] ? input.ears : d.ears, arms: input.arms == null ? d.arms : Boolean(input.arms), legs: input.legs == null ? d.legs : Boolean(input.legs), tail: input.tail == null ? d.tail : Boolean(input.tail),
+  return { shape: d.shape, ...(d.shape === 'build' ? { build: cleanBuild(input.build || d.build) } : {}), height: num(input.height, 4, 48, d.height), ears: PLUSH_EARS[input.ears] ? input.ears : d.ears, arms: input.arms == null ? d.arms : Boolean(input.arms), legs: input.legs == null ? d.legs : Boolean(input.legs), tail: input.tail == null ? d.tail : Boolean(input.tail),
     fabric: PLUSH_FABRICS[input.fabric] ? input.fabric : d.fabric, eyes: PLUSH_EYES[input.eyes] ? input.eyes : d.eyes, age: PLUSH_AGES[input.age] ? input.age : d.age, fill: String(input.fill || d.fill).slice(0, 60), depth: num(input.depth, 1, 12, d.depth || 3),
     // what the character is (an elephant, a fox…), in words: the shape it is drafted as is the nearest the pattern has
     ...(String(input.animal || '').trim() ? { animal: String(input.animal).replace(/[^a-zA-Z \-']/g, '').replace(/\s+/g, ' ').trim().slice(0, 30).toLowerCase() } : {}),
@@ -982,7 +984,13 @@ function earOf(kind, w) {
 }
 export function plushPattern(input = {}) {
   const s = cleanPlush(input), h = s.height, pieces = [], notes = [], ears = s.ears !== 'none';
-  if (s.shape === 'bear') {
+  let built = null;
+  if (s.shape === 'build') {
+    // bolted together from the parts library (src/lab-plush-parts.js): every part drafted to where it is sewn, each join recorded
+    built = buildPlush(s);
+    for (const q of built.pieces) pieces.push(piece(q.id, q.name, q.sew, q));
+    notes.push(...built.notes, `Face: ${PLUSH_EYES[s.eyes]}`);
+  } else if (s.shape === 'bear') {
     const hh = h * .42 * s.head, hw = hh * 1.05, bh = h * .44, bw = bh * .78, legH = h * .26, armL = h * .3, mz = s.snout === 'long' ? 1.45 : 1;
     // the head: two sides and a centre gusset from the nose over the crown to the back of the neck
     // a head side is the head in profile, the nose at x = 0: the two sides meet at the nose, either side of the gusset
@@ -1088,7 +1096,17 @@ export function plushPattern(input = {}) {
   for (const q of pieces) if (q.fabric === 'self') q.fabric = firm ? 'leather' : 'pile';
   notes.push(...(firm ? [`${PLUSH_FABRICS[s.fabric]}: it does not stretch, so the pieces are eased and the curves notched; cut each piece from sound skin, the grain running down the toy`, '⅜ in seam allowance, sewn at 8–9 stitches an inch with a leather needle and bonded nylon thread; seams pressed open with a roller, not an iron', 'Stuffed firm and slowly: leather shows every lump']
     : [`${PLUSH_FABRICS[s.fabric]}: the pile runs down the grain arrow`, '¼ in seam allowance, sewn at 10–12 stitches an inch, backstitched at the opening']));
-  return { kind: 'plush', spec: s, label: s.animal && !PLUSH_TYPE[s.shape].toLowerCase().startsWith(s.animal) ? `${s.animal[0].toUpperCase()}${s.animal.slice(1)} · ${PLUSH_TYPE[s.shape].toLowerCase()} body` : PLUSH_TYPE[s.shape], size: s.shape === 'sea' ? `${s.height} in long` : `${s.height} in tall`, sa: firm ? .375 : .25, pieces, notes, checks: plushChecks(s, pieces) };
+  return { kind: 'plush', spec: s, label: s.animal && !PLUSH_TYPE[s.shape].toLowerCase().startsWith(s.animal) ? `${s.animal[0].toUpperCase()}${s.animal.slice(1)} · ${PLUSH_TYPE[s.shape].toLowerCase()} body` : PLUSH_TYPE[s.shape], size: s.shape === 'sea' || built?.horizontal ? `${s.height} in long` : `${s.height} in tall`, sa: firm ? .375 : .25, pieces, notes, checks: plushChecks(s, pieces), ...(built ? { build: { joints: built.joints, views: built.views, lines: built.lines, face: built.face, opening: built.opening, horizontal: built.horizontal, parts: built.build }, trims: plushTrims(s, pieces) } : {}) };
+}
+// what a plush built from parts is made with besides its cloth: its fill, thread, eyes and nose, and the sewn-in law label
+function plushTrims(s, pieces) {
+  const g = fillGrams({ kind: 'plush', spec: s, pieces }), out = [{ item: 'Polyester fibre fill', spec: 'Siliconised hollow fibre, 7 denier, to EN 71-2 / ASTM F963', qty: `about ${g} g`, where: 'Stuffed through the opening' },
+    { item: 'Thread', spec: 'Tex 40 core-spun polyester; Tex 70 bonded nylon for closing by hand', qty: `about ${Math.max(20, Math.round(pieces.reduce((a, q) => a + (q.cut || 0) * lenOf([...q.sew, q.sew[0]]), 0) * .0254 * 3 / 10) * 10)} m`, where: 'Throughout' },
+    { item: 'Law label', spec: 'Printed satin: the fill content, the registration number, the age it is for', qty: 1, where: 'Sewn into a side or bottom seam' },
+    s.eyes === 'safety' ? { item: 'Safety eyes', spec: '12 mm, with locking washers', qty: '1 pair', where: 'Set before the face is closed' } : { item: 'Embroidery floss', spec: s.eyes === 'felt' ? 'Felt circles for the eyes, appliquéd; 6-strand floss for the nose and mouth' : '6-strand cotton floss for the eyes, the nose and the mouth', qty: '1 skein', where: 'The face' }];
+  if (pieces.some(q => q.id === 'curly-tail' || /pipe cleaner/.test((q.notes || []).join(' ')))) out.push({ item: 'Pipe cleaner', spec: 'Chenille stem, the ends turned in (3 years and up only)', qty: 1, where: 'In the curly tail' });
+  if (pieces.some(q => /antenna/.test(q.id))) out.push({ item: 'Cord', spec: '3 mm cotton cord', qty: '2 × 6 in', where: 'Inside the antennae' });
+  return out;
 }
 // the safety a plush is tested against (ASTM F963 and EN 71): what the choices mean for the age it is for
 export function plushChecks(s, pieces = []) {

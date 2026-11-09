@@ -25,7 +25,7 @@ export const CRITERIA = [
 ];
 // what the developer may ask to change: the toy's choices from the kit, each bounded again by cleanPlush
 const FIELDS = {
-  shape: { kind: 'enum', of: Object.keys(PLUSH_SHAPES) }, ears: { kind: 'enum', of: Object.keys(PLUSH_EARS) }, snout: { kind: 'enum', of: Object.keys(PLUSH_SNOUTS) },
+  shape: { kind: 'enum', of: Object.keys(PLUSH_SHAPES).filter(k => k !== 'build') }, ears: { kind: 'enum', of: Object.keys(PLUSH_EARS) }, snout: { kind: 'enum', of: Object.keys(PLUSH_SNOUTS) },
   horn: { kind: 'enum', of: Object.keys(PLUSH_HORNS) }, mane: { kind: 'enum', of: Object.keys(PLUSH_MANES) }, tailType: { kind: 'enum', of: Object.keys(PLUSH_TAILS) },
   fabric: { kind: 'enum', of: Object.keys(PLUSH_FABRICS) }, eyes: { kind: 'enum', of: Object.keys(PLUSH_EYES) },
   wings: { kind: 'bool' }, spikes: { kind: 'bool' }, dorsal: { kind: 'bool' }, arms: { kind: 'bool' }, legs: { kind: 'bool' }, tail: { kind: 'bool' },

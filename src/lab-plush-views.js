@@ -523,7 +523,27 @@ function sea(pat, C, view) {
   return { svg: d.svg(), pts: all };
 }
 
-const DRAW = { bear, bean, bunny: bean, pillow, elephant, quad, sea };
+// ---- a plush built from parts (src/lab-plush-parts.js): each part's outline as the parts library places it, back to front, the seams that
+// show, the face as the eyes chosen make it, the opening left to stuff ----
+function built(pat, C, view) {
+  const B = pat.build, s = pat.spec, d = painter(pat, C), all = [], F = B.face || {};
+  const fillOf = t => ({ body: C.body, contrast: C.contrast, mane: C.mane, horn: shade(C.contrast, .96), wing: shade(C.body, .9), beak: '#efb04a', dark: C.features, blush: C.blush, spot: shade(C.body, .8) })[t] || C.body;
+  const items = (B.views[view] || []).map((it, i) => ({ ...it, i })).sort((a, b) => (a.z || 0) - (b.z || 0) || a.i - b.i), lines = (B.lines[view] || []).slice();
+  for (const it of items) {
+    if (it.tone === 'blush' || it.tone === 'spot') d.fill(it.pts, fillOf(it.tone), it.tone === 'blush' ? .75 : 1); else d.shape(it.pts, fillOf(it.tone), .03, it.tone === 'dark');
+    all.push(...it.pts);
+    // the seams on what has just been drawn: the body's after the body, the head's after the head
+    for (let k = lines.length - 1; k >= 0; k--) if ((lines[k].z ?? 0) <= (it.z || 0) + 1e-6 && (it.z || 0) >= (lines[k].z ?? 0)) { d.seam(lines[k].pts, lines[k].closed); lines.splice(k, 1); }
+  }
+  for (const l of lines) d.seam(l.pts, l.closed);
+  const parts = B.parts || {}, noNose = parts.face === 'beak' || parts.face === 'trunk';
+  if (view === 'front' && F.front) { eyes(d, C, s.eyes, F.front.eyes, F.size || s.height * .025); if (!noNose && parts.face !== 'nose') noseMouth(d, C, F.front.nose[0], F.front.nose[1], (F.size || .3) * 1.6); }
+  if (view === 'side' && F.side) { eyes(d, C, s.eyes, [F.side.eye], F.size || s.height * .025); if (!noNose && parts.face !== 'nose') d.fill(ellipse(F.side.nose[0], F.side.nose[1], (F.size || .3) * .7, (F.size || .3) * .55), C.features); }
+  const op = B.opening; if (op && op.view === view) { const [x, y] = op.at, h = op.len / 2; ladder(d, C, op.flat ? [x - h, y] : [x, y - h], op.flat ? [x + h, y] : [x, y + h]); }
+  if (view === 'back' && all.length) { const b = box(all); lawLabel(d, b.x1 - (b.x1 - b.x0) * .12, b.y0 + (b.y1 - b.y0) * .8, 1); }
+  return { svg: d.svg(), pts: all };
+}
+const DRAW = { bear, bean, bunny: bean, pillow, elephant, quad, sea, build: built };
 let SEQ = 0;
 export function plushViews(pat, { colours = {}, tex = {}, hrefs = {} } = {}) {
   const surf = { ...(SURFACE[pat.spec.fabric] && !tex.body ? { body: SURFACE[pat.spec.fabric] } : {}), ...tex }; tex = surf;
@@ -535,7 +555,7 @@ export function plushViews(pat, { colours = {}, tex = {}, hrefs = {} } = {}) {
     const r = draw(pat, C, key), b = box(r.pts);
     // it stands (or sits) on the ground: a soft shadow under it
     let svg = `<ellipse cx="${r3((b.x0 + b.x1) / 2)}" cy="${r3(b.y1 - .05)}" rx="${r3((b.x1 - b.x0) * .52)}" ry="${r3(Math.max(.3, (b.x1 - b.x0) * .07))}" fill="url(#gnd-${C.uid})"/>` + r.svg;
-    if (key === 'front') { const d = painter(pat, C); heightCallout(d, b, pat.spec.shape === 'sea' ? Math.round((b.y1 - b.y0) * 2) / 2 : pat.spec.height); svg += d.svg(); b.x0 -= 1.3; }
+    if (key === 'front') { const d = painter(pat, C); heightCallout(d, b, pat.spec.shape === 'sea' || pat.build?.horizontal ? Math.round((b.y1 - b.y0) * 2) / 2 : pat.spec.height); svg += d.svg(); b.x0 -= 1.3; }
     svg += strokesSvg(sk.filter(k => k.on === key)); // drawn by hand on this view
     svg += logoMarkup(pat.spec.logos, key, p => p, hrefs); // our logos and graphics on it
     out[key] = { svg: (defs ? `<defs>${defs}</defs>` : '') + svg, box: b, key, name: { front: 'Front', back: 'Back', side: 'Side' }[key] };
