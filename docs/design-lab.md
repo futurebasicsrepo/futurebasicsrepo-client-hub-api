@@ -1271,6 +1271,8 @@ A drafted pattern is a start: a pattern maker can change every piece on the Patt
 - **Nothing in the library fits**: the flats are drawn from the concept's own picture the first time they open (above), and when they are saved the drawing joins the library, so the next piece like it starts from it.
 - **The sketch pack** (`/lab/sketches`) shows the grown sketches first ("Drawn from our pieces"), filtered with the rest; **Start a piece from it** opens a new piece on it (`POST /v1/lab/concepts/:id/flats/from-library-sketch`), and **Remove** takes it out (staff, or the room it belongs to; the pieces drawn from it keep their flats). `GET /v1/lab/library/sketches`, `…/:id/front|back|thumb`, `DELETE …/:id`. Journey J298.
 
+**Add a sketch** (the sketch pack, Future Basics staff): the kind of piece, a name and what it is like; the image model draws its front and back technical flats on that kind's own sketch (so they measure in inches) and they join the library as ours (`POST /v1/lab/library/sketches/generate`, two AI generations). `scripts/sketch-library-seed.mjs` adds the kinds the stock pack is thin on (knitwear, tailoring and coats, dresses, headwear, active and skirts; 30 to start) against a deployed service with a staff token, skipping what is already there.
+
 A sketch chosen by the person (a piece started from the sketch pack) is the sketch its flats are drawn on, whatever its name suggests.
 
 **Checking the patterns before release** (internal; not in the product). Two scripts keep the library's patterns honest against their sketches:

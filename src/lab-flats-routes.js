@@ -370,7 +370,7 @@ export function registerLabFlatsRoutes(app, d) {
   // the grown sketches a room may use: its own and ours (Future Basics staff see every one)
   const grown = async (req, style = null) => (await pool.query(`select id, client_id, style, template, label, words, construction, (back is not null) has_back, created_at from lab_sketches where not hidden
     and ($1::uuid is null or client_id is null or client_id=$1) and ($2::text is null or style=$2) order by created_at desc limit 400`, [own(req), style])).rows;
-  app.get('/v1/lab/library/sketches', { preHandler: pre }, async req => ({ sketches: (await grown(req)).map(r => ({ id: r.id, style: r.style, styleLabel: STYLES[r.style]?.label || r.style, template: r.template, label: r.label, words: r.words, construction: r.construction, hasBack: r.has_back, ours: !r.client_id, at: r.created_at })) }));
+  app.get('/v1/lab/library/sketches', { preHandler: pre }, async req => ({ canAdd: !own(req), styles: Object.entries(STYLES).map(([id, st]) => ({ id, label: st.label })), sketches: (await grown(req)).map(r => ({ id: r.id, style: r.style, styleLabel: STYLES[r.style]?.label || r.style, template: r.template, label: r.label, words: r.words, construction: r.construction, hasBack: r.has_back, ours: !r.client_id, at: r.created_at })) }));
   app.get('/v1/lab/library/sketches/:sid/:view', { preHandler: pre }, async (req, reply) => {
     if (!UUID.test(req.params.sid) || !['front', 'back', 'thumb'].includes(req.params.view)) return bad(reply, 'Not found', 404);
     const r = (await pool.query(`select ${req.params.view} img from lab_sketches where id=$1 and ($2::uuid is null or client_id is null or client_id=$2)`, [req.params.sid, own(req)])).rows[0];
@@ -381,6 +381,37 @@ export function registerLabFlatsRoutes(app, d) {
     if (!UUID.test(req.params.sid)) return bad(reply, 'Not found', 404);
     const r = await pool.query(`update lab_sketches set hidden=true, updated_at=now() where id=$1 and ($2::uuid is null or client_id=$2) returning id`, [req.params.sid, own(req)]);
     return r.rowCount ? { ok: true } : bad(reply, 'Not found', 404);
+  });
+  // a sketch added to the library from words (Add a sketch on the sketch pack): the image model draws the front and back technical flats of
+  // what is described, on the type's own sketch (its frame and inches), and they join the library; Future Basics staff only (ours, everyone's);
+  // two AI generations
+  app.post('/v1/lab/library/sketches/generate', { preHandler: pre }, async (req, reply) => {
+    if (own(req)) return bad(reply, 'Only Future Basics adds sketches to the library from words', 403);
+    const style = String(req.body?.style || ''), label = clip(req.body?.label, 120), words = clip(req.body?.words, 400);
+    if (!STYLES[style]) return bad(reply, 'Choose the kind of piece it is'); if (!label) return bad(reply, 'Give the sketch a name');
+    const cfg = imageCfg(); if (!cfg.configured) return bad(reply, 'No image model is connected', 503);
+    if ((redraws.get(dayOf()) || 0) + 2 > redrawCap()) return bad(reply, `The daily limit of ${redrawCap()} AI redraws of flats is reached. Raise LAB_DAILY_FLAT_AI.`, 429);
+    const fit = 'regular', template = defaultTemplate(style, fit, `${label} ${words}`, label), base = fitToTemplate({ ...defaultParams(style, fit), template }), plainP = { ...base, color: '', drawn: undefined, edits: [] }, N = 1024, out = {};
+    for (const view of ['front', 'back']) {
+      if (!drawingOf(plainP, view)) continue;
+      const b = drawingOf(plainP, view).box, w = b.x1 - b.x0, h = b.y1 - b.y0, side = Math.max(w, h), cx0 = (b.x0 + b.x1) / 2 - side / 2, cy0 = (b.y0 + b.y1) / 2 - side / 2;
+      const svg = renderSvg(plainP, view, { plain: true, scale: 0, templateSvg, partHref, background: true }).replace(/^<svg ([^>]*?)viewBox="[^"]*"/, `<svg $1viewBox="${cx0} ${cy0} ${side} ${side}" width="${N}" height="${N}"`);
+      const sketch = await sharp(Buffer.from(svg)).flatten({ background: '#ffffff' }).png().toBuffer();
+      const prompt = [`Image 1 is a technical flat sketch of a ${STYLES[style].label.toLowerCase()}, ${view} view.`, `Redraw it as the professional technical flat of this piece, ${view} view, the way a factory tech pack shows it: ${label}${words ? `. ${words}` : ''}.`,
+        'Keep the canvas, the scale, the pose and the centre line of image 1, and the neck where image 1 has it, so the drawing still measures in the same inches; draw the shoulders, sleeves, length, hem and silhouette as the piece described has them.',
+        `Draw every construction detail the piece has on the ${view}: collar and lapel shape, closures and buttons, pockets and flaps, yokes, panels and seams, cuffs, hems, waistbands, drawcords, topstitching as dashed lines.`,
+        'Clean black outlines of even weight on white cloth, flat light grey only where the inside shows, no texture, no shading, no shadows, plain white background. No logos, no text, no people, no labels, no measurements.'].join('\n');
+      let img; try { img = cfg.provider === 'fixture' ? sketch : await editImpl({ images: [sketch], prompt, cfg: { ...cfg, size: '1024x1024' } }); } catch (e) { return bad(reply, `The image model could not draw the ${view}: ${clip(e.message, 200)}`, 502); }
+      redraws.set(dayOf(), (redraws.get(dayOf()) || 0) + 1);
+      const px = v => Math.round(v / side * N), left = Math.max(0, px(b.x0 - cx0)), top = Math.max(0, px(b.y0 - cy0)), bw = Math.min(N - left, px(w)), bh = Math.min(N - top, px(h));
+      const rgb = await sharp(img).resize(N, N, { fit: 'fill' }).extract({ left, top, width: bw, height: bh }).removeAlpha().raw().toBuffer();
+      out[view] = await sharp(clearBackground(rgb, bw, bh), { raw: { width: bw, height: bh, channels: 4 } }).png().toBuffer();
+    }
+    if (!out.front) return bad(reply, 'This kind of piece has no front sketch to draw on');
+    const thumb = await sharp(out.front).resize({ width: 360, height: 360, fit: 'contain', background: { r: 255, g: 255, b: 255, alpha: 0 } }).png().toBuffer();
+    const k = {}, lw = ` ${`${label} ${words}`.toLowerCase().replace(/[^a-z]+/g, ' ')} `; if (/ double breasted /.test(lw)) k.breasted = 'double'; if (/ peak(ed)? lapel/.test(lw)) k.lapel = 'peak';
+    const r = await pool.query(`insert into lab_sketches(client_id, style, template, label, words, construction, m, front, back, thumb, created_by) values(null,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10) returning id`, [style, template, label, words, k, base.m || {}, out.front, out.back || null, thumb, actorOf(req)]);
+    return reply.code(201).send({ id: r.rows[0].id, style, template, label });
   });
   // a grown sketch's drawings, copied onto a concept as its flats' starting drawings (the flats then start as that sketch, with no AI)
   async function startFrom(c, sid, req) {

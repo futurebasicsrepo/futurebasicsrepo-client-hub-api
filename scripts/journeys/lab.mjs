@@ -4977,6 +4977,9 @@ await journey('J298', 'The sketch library grows: a piece\'s flats drawn from its
     const f2 = (await K(`/concepts/${bid}/flats`)).json.flat; ok(f2.drawn?.front && f2.drawn.template === 'jk-blazer' && f2.options?.construction?.breasted === 'double', '   its flats open with the drawings and what it is built with (no AI)', { drawn: f2.drawn, o: f2.options });
     if (playwright) { const br = await playwright.chromium.launch(); try { const pg = await (await br.newContext({ viewport: { width: 1280, height: 900 } })).newPage(); await pg.addInitScript(t => localStorage.setItem('fb.admin.token', t), kyleT); await pg.goto(`${BASE}/lab/sketches`, { waitUntil: 'load' }); await pg.locator(`[data-grown="${sid}"]`).waitFor({ timeout: 15000 }); ok(true, '4. the sketch pack shows it, first, with the stock sketches after'); } finally { await br.close(); } }
     ok((await call(`/v1/lab/library/sketches/${sid}`, { token: kyleT, method: 'DELETE' })).status === 200 && !(await K('/library/sketches')).json.sketches.some(x => x.id === sid), '5. taken out of the library, it is gone from it');
+    const gen = await K('/library/sketches/generate', { body: { style: 'crewneck', label: 'Library test shawl-collar cardigan', words: 'chunky rib knit, five buttons, two patch pockets' } });
+    ok(gen.status === 201 && (await K('/library/sketches')).json.sketches.some(x => x.id === gen.json.id && x.style === 'crewneck' && x.hasBack), '6. Future Basics adds a sketch from words: the front and back are drawn and join the library', [gen.status, gen.json]);
+    if (gen.json?.id) await call(`/v1/lab/library/sketches/${gen.json.id}`, { token: kyleT, method: 'DELETE' });
   } finally { for (const id of made) if (id) await K(`/concepts/${id}`, { method: 'DELETE' }); }
 });
 
