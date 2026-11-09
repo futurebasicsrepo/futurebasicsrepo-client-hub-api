@@ -3,18 +3,22 @@
 //   readPlush(buffer, opts)          → the vision model's reading: the shape it is cut as, its height, ears, arms, legs and tail, the pile, the eyes,
 //                                      the colours of the body and the contrast (muzzle, inner ears, pads)
 //   plushProposal(spec, vision, words) → the plush choices the picture (and the concept's words) ask for, and where each came from
+// The reader also names the parts the toy is made of from the plush parts library (src/lab-plush-parts.js), so a plush built from parts is read as
+// parts: a concept written as a build, or a picture read as one, keeps its build, and a fixed body type is still read for the toys that are one.
 import sharp from 'sharp';
 import { PLUSH_SHAPES, PLUSH_EARS, PLUSH_FABRICS, PLUSH_EYES, PLUSH_AGES, PLUSH_SNOUTS, PLUSH_HORNS, PLUSH_MANES, PLUSH_TAILS, cleanPlush, plushDefaults } from './lab-pattern.js';
+import { PLUSH_BUILD_SCHEMA, cleanBuild, partsMenu } from './lab-plush-parts.js';
 
 const HEX = /^#[0-9a-f]{6}$/i;
 export const PLUSH_READ_SCHEMA = {
   type: 'object', additionalProperties: false,
-  required: ['plush', 'view', 'animal', 'shape', 'heightIn', 'ears', 'snout', 'horn', 'mane', 'wings', 'spikes', 'dorsal', 'tailType', 'head', 'arms', 'legs', 'tail', 'fabric', 'eyes', 'colours', 'why'],
+  required: ['plush', 'view', 'animal', 'shape', 'build', 'heightIn', 'ears', 'snout', 'horn', 'mane', 'wings', 'spikes', 'dorsal', 'tailType', 'head', 'arms', 'legs', 'tail', 'fabric', 'eyes', 'colours', 'why'],
   properties: {
     plush: { type: 'boolean', description: 'the picture shows a plush or soft toy' },
     view: { type: 'string', enum: ['front', 'three-quarter', 'side', 'back', 'other'] },
     animal: { type: 'string', description: 'what animal or character it is, in one or two words (elephant, bear, fox…)' },
-    shape: { type: 'string', enum: Object.keys(PLUSH_SHAPES).filter(k => k !== 'build'), description: 'its body type: quad for any four-legged animal sitting (dog, cat, fox, lion, horse, unicorn, dragon…); sea for a whale, shark, dolphin or fish; bear for one standing on two legs with arms; elephant for an elephant; bean for one rounded body (a chick, a ghost, a blob); bunny for a bean with long ears; pillow for a flat cushion with a side gusset' },
+    shape: { type: 'string', enum: Object.keys(PLUSH_SHAPES), description: 'its body type: build when it is best made from the parts library (a dragon with wings, an owl, a snake, a caterpillar, a ball creature, anything the fixed types below do not fit); quad for any four-legged animal sitting (dog, cat, fox, lion, horse, unicorn, dragon…); sea for a whale, shark, dolphin or fish; bear for one standing on two legs with arms; elephant for an elephant; bean for one rounded body (a chick, a ghost, a blob); bunny for a bean with long ears; pillow for a flat cushion with a side gusset' },
+    build: { ...PLUSH_BUILD_SCHEMA, description: 'the parts it is made of, from the plush parts library, whatever its body type: the body, the head (none when the body is its own head), and each part a slot takes, none when it has none' },
     heightIn: { type: 'number', description: 'its height in inches, standing or sitting as shown (for a sea creature, its length), judged from its proportions and any scale in the picture (usually 6 to 24)' },
     ears: { type: 'string', enum: Object.keys(PLUSH_EARS) },
     snout: { type: 'string', enum: Object.keys(PLUSH_SNOUTS), description: Object.entries(PLUSH_SNOUTS).map(([k, v]) => `${k}: ${v}`).join('; ') },
@@ -32,7 +36,7 @@ export async function readPlush(buf, { ask, name = '' } = {}) {
   if (!ask) return null;
   const jpeg = await sharp(buf).flatten({ background: '#ffffff' }).resize({ width: 1000, height: 1000, fit: 'inside' }).jpeg({ quality: 82 }).toBuffer();
   return ask('You are a soft-toy pattern maker reading a design picture so its pattern can be drafted. Read the toy as it is drawn: its body type, how tall it is, its ears, snout, arms, legs and tail (and the kind of tail), any horn or antlers, mane, wings, spikes or dorsal fin, the size of its head, the pile it is sewn from, its eyes, and the colour of its body, its contrast parts and its mane.',
-    [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: jpeg.toString('base64') } }, { type: 'text', text: `The design is called "${String(name).slice(0, 80)}". Body types: ${Object.entries(PLUSH_SHAPES).map(([k, v]) => `"${k}" ${v}`).join('; ')}.` }],
+    [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: jpeg.toString('base64') } }, { type: 'text', text: `The design is called "${String(name).slice(0, 80)}". Body types: ${Object.entries(PLUSH_SHAPES).map(([k, v]) => `"${k}" ${v}`).join('; ')}.\nThe parts library, for "build" (use only these ids, and only where they go):\n${partsMenu()}` }],
     PLUSH_READ_SCHEMA);
 }
 // the concept's own words first (what the designer asked for), then what the picture shows over them; a safety rule is never loosened: a toy for
@@ -43,7 +47,11 @@ export function plushProposal(spec, vision, words = null) {
   const set = (k, v, src) => { if (v == null || v === '' || Number.isNaN(v)) return; if (k === 'shape' && v !== next.shape) Object.assign(next, plushDefaults(v), { sketches: next.sketches, colours: next.colours, age: next.age, fabric: next.fabric, eyes: next.eyes }); next[k] = v; from[k] = src; };
   const take = (o, src) => {
     if (!o) return;
-    set('shape', PLUSH_SHAPES[o.shape] ? o.shape : null, src);
+    // a plush built from parts stays built from parts when the picture also names its parts: its parts are read, not a fixed body type
+    const keep = next.shape === 'build' && o.build && typeof o.build === 'object';
+    set('shape', PLUSH_SHAPES[o.shape] && !keep ? o.shape : null, src);
+    // a plush built from parts takes the parts named; the head's size rides on the build
+    if (next.shape === 'build' && o.build && typeof o.build === 'object') { const hd = Number(o.head), b = cleanBuild({ ...o.build, size: { ...(o.build.size || {}), ...(hd >= .8 && hd <= 1.3 && !o.build.size?.head ? { head: Math.round(hd * 20) / 20 } : {}) } }); set('build', b, src); }
     const h = Number(o.heightIn ?? o.height); if (h >= 4 && h <= 48) set('height', Math.round(h * 2) / 2, src);
     set('ears', PLUSH_EARS[o.ears] ? o.ears : null, src);
     for (const k of ['arms', 'legs', 'tail']) set(k, typeof o[k] === 'boolean' ? o[k] : null, src);
@@ -57,6 +65,9 @@ export function plushProposal(spec, vision, words = null) {
   const v = vision && vision.plush !== false ? vision : null; take(v, 'picture (AI)');
   if (next.age === '0+' && next.eyes === 'safety') { next.eyes = 'embroidered'; from.eyes = 'safety: under-3s'; }
   const out = cleanPlush(next);
+  // the fixed body type's parts (ears, snout, tail…) do not cut a plush built from parts, so they are not offered as changes to one
+  const KIT = ['ears', 'arms', 'legs', 'tail', 'snout', 'horn', 'mane', 'tailType', 'wings', 'spikes', 'dorsal', 'head'];
+  if (out.shape === 'build') for (const k of KIT) delete from[k];
   const changes = Object.keys(from).filter(k => JSON.stringify(out[k]) !== JSON.stringify(base[k])).map(k => ({ key: k, from: base[k] ?? null, to: out[k], source: from[k] }));
   return { spec: out, from, changes, why: v?.why || '' };
 }

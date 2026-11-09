@@ -1003,7 +1003,10 @@ or a shark is drafted and drawn as itself (`PLUSH_SHAPES` and `PLUSH_PARTS` in `
    stricter score stands.
 2. **They ask for changes to the toy's choices** from the kit, never to the drawing: the body type, ears, snout, horns, mane, tail, wings,
    spikes, dorsal fin, head size, height, cloth, eyes and colours. A new body type brings its own parts and keeps the colours, cloth, eyes,
-   logos and sketches; a part the body type cannot take is not made. What both ask for is made (numbers within 15%, and colours that nearly
+   logos and sketches; a part the body type cannot take is not made. A plush built from parts is changed by its parts instead:
+   `part.<slot>` (a part in a slot, the body included), `part.extras` and `size.<slot>`, with the parts menu in the brief. A part that does
+   not go on the body is not made, so the part already there is never lost. A fixed type changed to `build` keeps its parts and its height
+   (`buildFromKit`), so a developer can turn a four-legged animal into a dragon with bat wings, part by part. What both ask for is made (numbers within 15%, and colours that nearly
    match, are met in the middle); where they ask for different things, the choice is left and listed for a person. What the kit cannot show
    (a scarf, a printed pattern) is listed for a person too.
 3. **Round after round** the toy is drawn again and scored, until it clears **90**, there is nothing left to change, or two rounds gain
@@ -1700,12 +1703,18 @@ the first tap.
 
 **Concepts.** A plush planned in a line plan gets AI concepts written as plush:
 
-- **What the assistant is told** (`CATEGORY_WORDS` in `src/lab-concepts.js`): a plush is cut from pattern pieces and stuffed. It is told the
-  shapes the pattern can cut, and that the toy is for children unless the brief says otherwise: embroidered eyes for any age, safety eyes only
+- **What the assistant is told** (`CATEGORY_WORDS` in `src/lab-concepts.js`): a plush is cut from pattern pieces and stuffed, and is built
+  from the plush parts library (see *Plush built from parts*). It is given the whole library (`partsMenu`): every part in every slot, and
+  which parts go on which body. It is also told the toy is for children unless the brief says otherwise: embroidered eyes for any age, safety eyes only
   for 3 and up, no small hard parts, no long pile on a baby toy. Its character comes from proportion, the face and colour, with at most one
   embroidered motif.
-- **What each concept says** (`spec.plush`): what it is cut as (bear, bean, bunny or pillow), its height, ears, arms, legs and tail, the pile,
-  the eyes, the age, and the body and contrast colours. These are the Pattern page's own choices.
+- **What each concept says** (`spec.plush`): `shape: "build"` and its parts (`build`: the body, head, ears, face, arms, legs, tail, horns,
+  wings, what runs down the back, the details, and a size for each part), its height, the pile, the eyes, the age, and the body and contrast
+  colours. These are the Pattern page's own choices. A part that does not go on its body is dropped (`cleanBuild`). A concept written on a
+  fixed body type (bear, quad, bean…) is still kept.
+- **Its picture prompt** describes the toy from its parts (`buildWords`): "a dragon about 14 inches tall: a sitting four-legged body with a long
+  snout, pointed ears, four legs, a spiked tail, two horns, bat wings, spikes down its back and a contrast belly patch". A long tube or a fish
+  is drawn resting on its belly, seen from the side.
 - **Logo and label.** The logo is a small embroidered mark on a foot pad, never laid on the picture. The law label is a tush tag in the side
   seam.
 - **Footwear concepts** say their style, toe, pieces, upper, sole and colours the same way (`spec.footwear`), and their pattern starts from
@@ -1719,7 +1728,9 @@ a gadget or a home object are the product alone, front and back: nobody wears it
 
 - **First open.** Pattern opens on what the concept said (a 12 in bear in its colours). With a picture, it reads the toy from the picture by
   itself the first time (`src/lab-plush-read.js`, `POST …/pattern/from-picture`, which now takes a plush): the vision model reads the shape,
-  height, parts, pile, eyes and colours, over the concept's words.
+  height, parts, pile, eyes and colours, over the concept's words. It also names the parts the toy is made of from the parts library
+  (`build`, with the parts menu in its prompt). A concept built from parts stays built from parts: the picture's parts are read, not a fixed
+  body type, and the fixed type's ears, snout or tail are not offered as changes. A picture read as `build` turns a fixed type into parts.
 - **What would change.** The page lists each change and where it came from; **Use it** applies them. A new shape brings its own size and
   parts but keeps the pile, eyes and age. A toy for under-3s keeps embroidered eyes whatever the picture shows.
 - **Colours.** The colours read are kept on the plush (`spec.colours`) and draw its tech flats until a material is put on the part.

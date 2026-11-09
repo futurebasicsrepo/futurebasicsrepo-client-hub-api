@@ -518,3 +518,41 @@ export function partThumb(slot, id) {
   const sw = r3(Math.max(bx.w, bx.h) / 60), svg = items.map(i => `<path d="${pathOf(i.pts)}" fill="${TONES[i.tone] || TONES.body}" stroke="#3a3530" stroke-width="${sw}"${whole_ || i.part ? '' : ' opacity=".35"'}/>`).join('');
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${r3(bx.x0)} ${r3(bx.y0)} ${r3(bx.w)} ${r3(bx.h)}" width="56" height="56" aria-hidden="true">${svg}</svg>`;
 }
+
+// ---- for the AI: the parts in words, as a menu, as a schema; and a plush of the fixed kit as the nearest parts ----
+// the menu an AI designer or reader chooses from: every part by slot (its id, what it is), and which bodies take what
+export function partsMenu() {
+  const L = PLUSH_LIBRARY, line = slot => Object.entries(L[slot]).map(([id, p]) => `${id}${p.hint ? ` (${p.hint.toLowerCase()})` : p.name && p.name.toLowerCase() !== id ? ` (${p.name.toLowerCase()})` : ''}`).join(', ');
+  const heads = Object.entries(L.body).filter(([, b]) => b.head).map(([id]) => id).join(', ');
+  return [`body: ${line('body')}`, `head (only on ${heads}; every other body is its own head, so "none"): ${Object.entries(L.head).filter(([k]) => k !== 'none').map(([id, p]) => `${id} (${p.hint.toLowerCase()})`).join(', ')}`,
+    ...['ears', 'face', 'arms', 'legs', 'tail', 'horns', 'wings', 'back'].map(s => `${s}: ${line(s)}`), `extras (a list, any of): ${line('extras')}`,
+    `what goes where: ${Object.entries(FITS).flatMap(([slot, m]) => Object.entries(m).map(([id, bodies]) => `${slot} ${id} only on ${bodies.join(', ')}`)).join('; ')}; a body takes only its own slots (${Object.entries(L.body).map(([id, b]) => `${id}: ${b.takes.join(', ')}`).join('; ')})`].join('\n');
+}
+// the build as a structured-output schema (every slot required, the extras a list): for a concept writer or a picture reader
+export const PLUSH_BUILD_SCHEMA = { type: 'object', additionalProperties: false, required: [...PLUSH_SLOTS.map(([s]) => s)],
+  properties: Object.fromEntries(PLUSH_SLOTS.map(([s]) => [s, s === 'extras' ? { type: 'array', items: { type: 'string', enum: Object.keys(PLUSH_LIBRARY.extras) } } : { type: 'string', enum: Object.keys(PLUSH_LIBRARY[s]) }])) };
+// a plush built from parts in a sentence, for a picture's prompt: "a sitting four-legged body with a long snout head, pointed ears, …"
+export function buildWords(input) {
+  const b = cleanBuild(input), L = PLUSH_LIBRARY, nm = (s, id) => L[s][id].name.toLowerCase(), out = [];
+  if (b.head !== 'none') out.push(`a ${nm('head', b.head)}`.replace('a ball head', 'a round head'));
+  const ph = { ears: id => `${nm('ears', id)} ears`, face: id => id === 'none' ? '' : `a ${nm('face', id).replace(/ patch$/, '')}`, arms: id => ({ tube: 'arms', nub: 'little arm nubs', flipper: 'flippers', dangly: 'long dangly arms' })[id], legs: id => id === 'feet' ? 'little feet' : nm('legs', id).replace(/^long and dangly$/, 'long dangly legs'),
+    tail: id => `a ${nm('tail', id)} tail`.replace('a tail fin tail', 'a tail fin').replace('a fluke tail', 'a tail fluke').replace('a pompom tail', 'a pompom tail'), horns: id => nm('horns', id), wings: id => ({ bird: 'feathered wings', bat: 'bat wings', butterfly: 'butterfly wings' })[id], back: id => id === 'spikes' ? 'spikes down its back' : `a ${nm('back', id)}` };
+  for (const s of ['ears', 'face', 'arms', 'legs', 'tail', 'horns', 'wings', 'back']) if (b[s] !== 'none') { const w = ph[s](b[s]); if (w) out.push(w); }
+  for (const e of b.extras) out.push(e === 'belly' ? 'a contrast belly patch' : e === 'cheeks' ? 'felt cheeks' : 'felt spots');
+  const body = { bean: 'a soft bean body', ball: 'a round ball body', egg: 'an egg-shaped body', pillow: 'a flat pillow body', torso: 'an upright body', seated: 'a sitting four-legged body', tube: 'a long tube body', fish: 'a fish body' }[b.body];
+  return out.length ? `${body} with ${out.length > 1 ? out.slice(0, -1).join(', ') + ' and ' + out.at(-1) : out[0]}` : body;
+}
+// a plush of the fixed kit (src/lab-pattern.js PLUSH_SHAPES) as the nearest parts: so a concept, a picture's reading or a reviewer can move it onto parts
+export function buildFromKit(s = {}) {
+  const shape = s.shape || 'bear', ears = { round: 'round', pointed: 'pointed', long: 'long', floppy: 'floppy', big: 'big', none: 'none' }[s.ears] || 'none';
+  const tail = s.tail === false ? 'none' : ({ short: shape === 'bean' || shape === 'bunny' ? 'pom' : 'stub', long: 'long', bushy: 'bushy', tuft: 'long', hair: 'bushy', fluke: 'fluke', fin: 'fin' }[s.tailType] || 'stub');
+  const horns = { one: 'one', two: 'two', antlers: 'antlers' }[s.horn] || 'none', back = s.spikes ? 'spikes' : s.dorsal ? 'dorsal' : s.mane === 'ruff' ? 'ruff' : s.mane === 'crest' ? 'crest' : 'none';
+  const wings = s.wings ? (s.spikes ? 'bat' : 'bird') : 'none', size = { head: Number(s.head) || 1 };
+  const b = shape === 'bear' ? { body: 'torso', head: s.snout === 'long' || s.snout === 'broad' ? 'snout' : 'gusset', ears, face: s.snout === 'short' ? 'muzzle' : 'none', arms: s.arms === false ? 'none' : 'tube', legs: s.legs === false ? 'none' : 'sitting', tail, horns, wings, back }
+    : shape === 'quad' ? { body: 'seated', head: s.snout === 'long' || s.snout === 'broad' ? 'snout' : s.snout === 'short' ? 'gusset' : 'flat', ears, face: s.snout === 'short' ? 'muzzle' : 'none', legs: 'four', tail, horns, wings, back }
+    : shape === 'elephant' ? { body: 'seated', head: 'ball', ears: 'big', face: 'trunk', legs: 'four', tail: s.tail === false ? 'none' : 'long', horns: 'none', wings: 'none', back: 'none' }
+    : shape === 'sea' ? { body: 'fish', arms: 'flipper', tail: tail === 'fin' ? 'fin' : 'fluke', back: s.dorsal ? 'dorsal' : s.spikes ? 'spikes' : 'none' }
+    : shape === 'pillow' ? { body: 'pillow', ears, arms: s.arms ? 'nub' : 'none' }
+    : { body: 'bean', ears: shape === 'bunny' && ears === 'none' ? 'long' : ears, arms: s.arms === false ? 'none' : 'nub', legs: s.legs ? 'feet' : 'none', tail, horns, wings, back };
+  return cleanBuild({ ...b, size });
+}
