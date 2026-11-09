@@ -4,3 +4,4 @@ uploads
 *.log
 eval/cases
 eval/results
+pattern-judge-out/
