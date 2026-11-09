@@ -39,7 +39,7 @@ export function fromName(name, style) {
     else if (has(/ funnel /)) c.collar = 'funnel';
     else if (has(/ stand collar | mock neck | quarter zip | half zip /) && !has(/ hood/)) c.collar = 'stand';
     else if (has(/ polo | johnny collar | rugby collar | retro collar | collared jersey | collared long sleeve /)) c.collar = 'polo';
-    else if (has(/ collar(ed)? | shirt | overshirt | trucker | harrington | chore | western | work | denim | blouson | shacket | trench /)) c.collar = 'shirt';
+    else if (has(/ collar(ed)? | shirt | overshirt | trucker | harrington | chore | western | work | denim | blouson | shacket | trench /) && !(has(/ t shirt /) && !has(/ collar(ed)? /))) c.collar = 'shirt'; // a T-shirt is not a shirt
     if (has(/ half zip /)) c.opening = 'half-zip';
     else if (has(/ quarter zip /)) c.opening = 'quarter-zip';
     else if (has(/ snap /)) c.opening = 'snaps';
@@ -124,8 +124,9 @@ export function constructionOf(p) {
   const set = cleanConstruction(p.options?.construction), named = t ? cleanConstruction(fromName(`${t.id} ${t.label}`, p.style)) : {}, base = styleDefaults(p.style, p.options || {});
   const seen = t ? cleanConstruction(TEMPLATE_CONSTRUCTION[t.id]) : {};
   const out = { ...base, ...named, ...seen, ...set };
-  // what follows from the rest: a hood takes the place of a collar; a collar the place of a neck rib
-  if (out.hood && out.collar && out.collar !== 'shearling') delete out.collar;
+  // what follows from the rest: a hood takes the place of a collar (but an outer piece keeps a stand or a funnel the hood is set inside, as a
+  // puffer's is); a collar the place of a neck rib
+  if (out.hood && out.collar && out.collar !== 'shearling' && !(['stand', 'funnel'].includes(out.collar) && ['jacket', 'coat', 'vest'].includes(p.style))) delete out.collar;
   return out;
 }
 

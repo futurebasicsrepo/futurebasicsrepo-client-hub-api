@@ -61,5 +61,6 @@ test('a lined jacket is cut with its facings, lining, fusing, zip guard and pock
   const zip = pat.trims.find(t => t.item === 'Separating zip'); assert.ok(zip && /open-end/.test(zip.spec)); assert.match(zip.spec, new RegExp(`${Math.round(m.length + 0 - m.neckDropFront - .5)}|\\d+ in`));
   for (const t of ['Eyelets', 'Main label', 'Care and content label', 'Hanger loop', 'Seam tape']) assert.ok(pat.trims.some(x => x.item === t), t);
   // an unlined knit has none of it
-  const tee = garmentPattern(cookRecipe({ base: 'tee' }).params); assert.ok(!tee.pieces.some(q => q.fabric === 'lining')); assert.deepEqual(tee.trims, []);
+  // an unlined knit has none of it: only what every garment carries (its labels, thread and the tape over its back neck seam)
+  const tee = garmentPattern(cookRecipe({ base: 'tee' }).params); assert.ok(!tee.pieces.some(q => q.fabric === 'lining')); assert.deepEqual(tee.trims.map(t => t.item), ['Main label', 'Size label', 'Care and content label', 'Thread', 'Back neck tape']);
 });

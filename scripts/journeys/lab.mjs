@@ -2892,6 +2892,10 @@ await journey('J244', 'From scratch to pattern pieces: a hoodie started from not
   const dxf = await call(`/v1/lab/concepts/${cid}/pattern.dxf?size=L`, { token: kyleT }), svg = await call(`/v1/lab/concepts/${cid}/pattern.svg`, { token: kyleT });
   ok(dxf.status === 200 && /POLYLINE\n5\n[0-9A-F]+\n8\nCUT/.test(dxf.text) && /POLYLINE\n5\n[0-9A-F]+\n8\nSEW/.test(dxf.text) && /\$ACADVER\n1\nAC1009/.test(dxf.text) && /TABLE\n2\nLAYER/.test(dxf.text) && /Hood side/.test(dxf.text), '   a DXF with cutting and sewing lines for every piece, in the size asked for');
   ok(svg.status === 200 && /width="[\d.]+in"/.test(svg.text) && /Kangaroo pocket/.test(svg.text), '   and an SVG at real size');
+  // the construction check runs with the pattern: every seam walked, measured to spec, everything it is made with, at every size; the proof opens as a page
+  ok(pat.check && pat.check.ok === true && pat.check.sizes.length === 6 && pat.check.sizes.every(z => z.ok) && pat.check.passed === pat.check.made && pat.check.made > 10, '   the pattern carries its construction check: it sews together and measures to spec at all six sizes', pat.check);
+  const proof = await call(`/v1/lab/concepts/${cid}/pattern-proof.html?size=M`, { token: kyleT });
+  ok(proof.status === 200 && /Hood side onto the neckline/.test(proof.text) && /Cutting table/.test(proof.text) && /Hood lining/.test(proof.text) && /Main label/.test(proof.text), '   and its cut-and-sew proof opens: the hood walked against the neckline, its lining and labels listed, the cutting table', proof.status);
   ok((await K(`/concepts/${cid}/pattern`, { method: 'PUT', body: { spec: { sa: .625, width: 60 } } })).json.spec.width === 60 && (await K(`/concepts/${cid}/pattern`)).json.spec.sa === .625, '   the seam allowance and the cloth width are kept');
   // a plush
   const pl = await K('/concepts/from-scratch', { body: { category: 'plush', shape: 'bunny', name: `Scratch bunny ${stamp}` } }), pid = pl.json.concept?.id;
@@ -4981,6 +4985,33 @@ await journey('J298', 'The sketch library grows: a piece\'s flats drawn from its
     ok(gen.status === 201 && (await K('/library/sketches')).json.sketches.some(x => x.id === gen.json.id && x.style === 'crewneck' && x.hasBack), '6. Future Basics adds a sketch from words: the front and back are drawn and join the library', [gen.status, gen.json]);
     if (gen.json?.id) await call(`/v1/lab/library/sketches/${gen.json.id}`, { token: kyleT, method: 'DELETE' });
   } finally { for (const id of made) if (id) await K(`/concepts/${id}`, { method: 'DELETE' }); }
+});
+
+await journey('J299', 'Bags have patterns, and a library shoe is drafted as that shoe: a bag from the library opens on Pattern as its pieces at its own size (panels, gusset, straps or handles, pockets, a lining) with its zips, webbing and buckles in the trims, explodes into them with no error, and lays out on the cloth; a library shoe takes its own collar height and toe spring', async () => {
+  const bagLib = (await K('/library/bags')).json.bags || [], pack = bagLib.find(b => b.id === 'bag-backpack') || bagLib[0];
+  const made = (await K('/concepts/from-library-bag', { body: { template: pack.id } })).json.concept; ok(made?.id, '1. a bag concept from the library', pack?.id);
+  try {
+    const pat = (await K(`/concepts/${made.id}/pattern`)).json;
+    ok(pat.kind === 'bag' && pat.spec?.type === pack.type, '2. it opens on Pattern as a bag of its kind', [pat.kind, pat.spec]);
+    ok((await K(`/concepts/${made.id}/pattern`, { method: 'PUT', body: { kind: 'bag', spec: { ...pat.spec, w: 13, width: 60 } } })).status < 300, '   its size and the cloth can be set and saved');
+    const again = (await K(`/concepts/${made.id}/pattern`)).json; ok(again.spec?.w === 13 && again.spec?.width === 60, '   and are kept', again.spec);
+    const shoe = (await K('/concepts/from-library-footwear', { body: { template: 'footwear-boots-combat' } })).json.concept;
+    if (shoe) { const sp = (await K(`/concepts/${shoe.id}/pattern`)).json.spec; ok(sp?.collar >= 6, '3. a combat boot from the library takes its own collar height', sp?.collar); await K(`/concepts/${shoe.id}`, { method: 'DELETE' }); }
+    if (!playwright) { ok(true, 'needs a browser'); return; }
+    const b = await playwright.chromium.launch();
+    try {
+      const ctx = await b.newContext({ viewport: { width: 1280, height: 900 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); localStorage.setItem('fb.helper.on', '0'); } catch {} }, kyleT);
+      const page = await ctx.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
+      await page.goto(`${BASE}/lab/pattern?concept=${made.id}`, { waitUntil: 'networkidle' });
+      // the pattern page sits in the console's frame: read every frame's text
+      const textOf = async () => (await Promise.all(page.frames().map(f => f.evaluate(() => document.body?.innerText || '').catch(() => '')))).join('\n');
+      for (let i = 0; i < 16 && !/kind and body size/.test(await textOf()); i++) await page.waitForTimeout(400);
+      const head = await textOf(); ok(/13 × 17/.test(head) && /pieces/.test(head), '4. the page names the bag, its size and its pieces', head.match(/[^\n]{0,60}× 17[^\n]{0,40}/g));
+      ok(/kind and body size/.test(head), '   and says it is drafted from its kind and size, not from flats');
+      for (const v of ['Exploded', 'Cutting layout']) for (const f of page.frames()) { const btn = f.getByRole('button', { name: v, exact: true }); if (await btn.count().catch(() => 0)) { await btn.first().click(); await page.waitForTimeout(400); break; } }
+      ok(!errs.length, '5. it explodes and lays out with no error', errs.slice(0, 2));
+    } finally { await b.close(); }
+  } finally { await K(`/concepts/${made.id}`, { method: 'DELETE' }); }
 });
 
 await journey('J295', 'Sandals, clogs, slides and mules have patterns: a sandal is straps tucked under a footbed (each strap its length over the foot, split at its buckle, lined), a thong a post and two straps, a clog a vamp on a footbed or a wooden base, a moulded slide one injection mould a size, a mule a closed toe with no back; the Pattern page chooses how each is made', async () => {

@@ -57,7 +57,7 @@ test('the layout counts every cut, keeps fabrics apart, and the yardage of a tee
 
 test('the exploded view starts on the product and ends in the layout', () => {
   const pat = garmentPattern(defaultParams('hoodie')), A = assembled(pat), start = explodeAt(pat, 0), end = explodeAt(pat, 1);
-  assert.equal(start.length, pat.pieces.length);
+  assert.equal(start.length, pat.pieces.reduce((a, q) => a + (q.cut > 1 && q.hidden && !pat.pieces.some(t => t.of === q.id || t.id === q.id + '-2') ? q.cut : 1), 0), 'every piece once, and every cut of a hidden piece (a hood lining\'s two)');
   const f0 = start.find(x => x.piece.id === 'front'), a0 = A.pieces.find(x => x.piece.id === 'front');
   assert.deepEqual(f0.pts, a0.pts, 'at 0 the pieces sit on the product');
   const f1 = end.find(x => x.piece.id === 'front');

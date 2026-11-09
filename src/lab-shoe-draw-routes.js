@@ -12,6 +12,7 @@ import sharp from 'sharp';
 import { imageConfig, openaiEdit } from './check.js';
 import { BAG_TEMPLATES } from './lab-bag-templates.js';
 import { FOOTWEAR_TEMPLATES } from './lab-footwear-templates.js';
+import { FOOTWEAR_TEMPLATE_SPECS } from './lab-footwear-template-specs.js';
 import { makeViews } from './lab-views.js';
 import { DRAWN, viewsOf, firstOf, makeShoeDrawings, traceShoe, shoeSvg, cleanDrawing, withArt } from './lab-shoe-draw.js';
 
@@ -135,7 +136,7 @@ export function registerLabShoeDrawRoutes(app, d) {
     const line = req.body?.lineId ? await planLineOf(pool, req.body.lineId, lab?.scope?.(req) || null) : null; if (req.body?.lineId && !line) return bad(reply, 'That piece is not on a line plan here', 404);
     const hex = /^#[0-9a-f]{6}$/i.test(String(req.body?.colour?.hex || '')) ? String(req.body.colour.hex).toLowerCase() : '', cname = String(req.body?.colour?.name || '').replace(/[<>]/g, '').slice(0, 40);
     const name = String(req.body?.name || '').replace(/[<>]/g, '').trim().slice(0, 120) || line?.name || t.label;
-    const spec = { description: `Started from the library: ${t.label}.`, silhouette: t.label, fabric: '', fit: '', details: [], trims: '', colors: hex ? [cname || hex] : [], ...(t.style ? { footwear: { style: t.style, ...(t.variant ? { variant: t.variant } : {}) } } : {}), libraryShoe: t.id };
+    const spec = { description: `Started from the library: ${t.label}.`, silhouette: t.label, fabric: '', fit: '', details: [], trims: '', colors: hex ? [cname || hex] : [], ...(t.style ? { footwear: { style: t.style, ...(t.variant ? { variant: t.variant } : {}), ...(FOOTWEAR_TEMPLATE_SPECS[t.id] || {}) } } : {}), libraryShoe: t.id };
     const actor = /^[0-9a-f-]{36}$/i.test(String(req.auth?.sub || '')) ? req.auth.sub : null, room = lab?.scope?.(req) || null;
     const id = (await pool.query(`insert into lab_concepts(name, category, role, spec, twist, created_by, client_id) values($1,'footwear','core',$2,'',$3,$4) returning id`, [name, spec, actor, room])).rows[0].id;
     if (line) await putOnLine(pool, id, line);
@@ -167,7 +168,7 @@ export function registerLabShoeDrawRoutes(app, d) {
     await pool.query('delete from lab_shoe_drawings where concept_id=$1', [c.id]);
     for (const [v, dw] of Object.entries(t.views)) await pool.query(`insert into lab_shoe_drawings(concept_id,view,status,art,drawing,model,edited) values($1,$2,'ready',null,$3,'library',false)`, [c.id, v, dw]);
     // a shoe's pattern style follows the library shoe, unless the concept already says one; a bag's kind likewise
-    if (c.category === 'footwear') { if (t.style && !c.spec?.footwear?.style) await pool.query(`update lab_concepts set spec = jsonb_set(coalesce(spec,'{}'::jsonb), '{footwear}', coalesce(spec->'footwear','{}'::jsonb) || $2::jsonb), updated_at=now() where id=$1`, [c.id, JSON.stringify({ style: t.style, ...(t.variant ? { variant: t.variant } : {}) })]); }
+    if (c.category === 'footwear') { if (t.style && !c.spec?.footwear?.style) await pool.query(`update lab_concepts set spec = jsonb_set(coalesce(spec,'{}'::jsonb), '{footwear}', coalesce(spec->'footwear','{}'::jsonb) || $2::jsonb), updated_at=now() where id=$1`, [c.id, JSON.stringify({ style: t.style, ...(t.variant ? { variant: t.variant } : {}), ...(FOOTWEAR_TEMPLATE_SPECS[t.id] || {}) })]); } // the shoe's own build (collar, spring, upper, toe cap), not only its kind's
     else if (!c.spec?.bag?.type) await pool.query(`update lab_concepts set spec = jsonb_set(coalesce(spec,'{}'::jsonb), '{bag}', $2::jsonb), updated_at=now() where id=$1`, [c.id, JSON.stringify({ type: t.type })]);
     return { ok: true, template: t.id, ...(await shape(c)) };
   });

@@ -67,7 +67,7 @@ export const FITS = { slim: 'Slim', regular: 'Regular', relaxed: 'Relaxed', boxy
 // men's trousers and shorts 1½ at the waist and the hip, women's 1
 for (const [k, S] of Object.entries(STYLES)) {
   if (S.kind === 'top' && !['dress', 'bodysuit', 'swimsuit', 'bikini', 'bra', 'cami'].includes(k)) S.grade.chest = 2;
-  if (['dress', 'bodysuit', 'swimsuit', 'bikini', 'bra', 'cami'].includes(k)) S.grade.length = .5;
+  if (['dress', 'bodysuit', 'swimsuit', 'bikini', 'bra', 'cami'].includes(k)) { S.grade.length = .5; S.grade.shoulder = .375; }
   if (k === 'pants' || k === 'shorts') { S.grade.waist = 1.5; S.grade.hip = 1.5; }
 }
 const FIT_TOP = { slim: { chest: -1.5, shoulder: -.5 }, regular: {}, relaxed: { chest: 1.5, shoulder: 1.5, drop: true }, boxy: { chest: 2.5, length: -1.5, shoulder: 3, drop: true }, oversized: { chest: 3.5, length: 1, shoulder: 3.5, drop: true, sleeve: .5 }, wide: { chest: 2.5, shoulder: 2.5, drop: true } };
@@ -208,7 +208,7 @@ export function legsFromDrawing(p, size = p.size || 'M') {
 // the legs of a pair of trousers or shorts made as its sketch draws them (Follow the drawing on the Pattern page); the rest is kept
 export function followDrawing(p) {
   const f = legsFromDrawing(p, 'M'); if (!f) return p;
-  return { ...p, m: { ...p.m, legOpening: f.legOpening, ...(f.hip && !(p.m?.hip > f.hip) ? { hip: f.hip } : {}) }, options: { ...(p.options || {}), legsDrawn: true, ...(f.kneeRatio ? { kneeRatio: f.kneeRatio } : {}) } };
+  return { ...p, m: { ...p.m, legOpening: f.legOpening, ...(f.hip && !(p.m?.hip > f.hip) ? { hip: f.hip, ...(p.m?.thigh ? { thigh: r8(p.m.thigh * f.hip / p.m.hip) } : {}) } : {}) }, options: { ...(p.options || {}), legsDrawn: true, ...(f.kneeRatio ? { kneeRatio: f.kneeRatio } : {}) } }; // a fuller sketch: the thigh fuller with the hip
 }
 // A bodysuit's or a dress's body as its sketch draws it: the side seam from the underarm to the hem (a bodysuit: on round the leg to the
 // crotch), read off the sketch's outline at 11 heights and given as each width against the width just below the bust, so a fitted body, an
@@ -252,6 +252,14 @@ function drawnSleeve(t) {
   const n = `${t.id} ${t.label}`.toLowerCase(); if (!BODY_STYLES.includes(t.style) || /sleeveless/.test(n) || TEMPLATE_CONSTRUCTION[t.id]?.sleeve === 'none') return null;
   return /long[- ]sleeve/.test(n) ? { sleeve: 23, sleeveOpening: 4 } : /cap[- ]sleeve/.test(n) ? { sleeve: 3, sleeveOpening: 6.5 } : /\btee\b|t-shirt|short[- ]sleeve/.test(n) ? { sleeve: 6.5, sleeveOpening: 5.5 } : null;
 }
+// a sleeve the sketch's name gives against its style's: a long-sleeve polo or tee (the style is short-sleeved) gets a long sleeve and a rib
+// cuff; a short-sleeve one of a long-sleeved style a short sleeve
+function namedSleeve(t, base) {
+  const n = `${t.id} ${t.label}`.toLowerCase();
+  if (base.sleeve > 0 && base.sleeve <= 12 && /long[- ]sleeve/.test(n)) return { sleeve: 24.5, sleeveOpening: 4, cuffRib: Math.max(base.cuffRib || 0, 2.5) };
+  if (base.sleeve > 12 && /short[- ]sleeve/.test(n)) return { sleeve: 9, sleeveOpening: 7, cuffRib: 0 };
+  return null;
+}
 let FITTING = false; // fitting a sketch reads its drawing, and drawing a sketch fits it: once round is enough
 export function fitToTemplate(p, asDrawn = false) {
   const t = templateOf(p), v = t?.views?.front, S = STYLES[p.style], ref = refRatio(p.style), base = defaultParams(p.style, p.fit, p.options)?.m; if (!v?.ratio || !S || !ref || !base) return p;
@@ -270,7 +278,8 @@ export function fitToTemplate(p, asDrawn = false) {
   // a top takes the widths and the sleeve its sketch draws (traced off it: scripts/pattern-read-proportions.mjs): its shoulder, armhole, sleeve
   // length and opening from the style's own plus the sketch's change, and the angle its sleeve is drawn at. Picking another sketch sets them again
   if (!asDrawn && S.kind === 'top') {
-    const tp = TEMPLATE_PROPORTIONS[t.id] || {}, { sleeveAngle, ...o } = p.options || {}, b0 = { ...base, ...(base.sleeve === 0 ? drawnSleeve(t) || {} : {}) };
+    const tp = TEMPLATE_PROPORTIONS[t.id] || {}, { sleeveAngle, ...o } = p.options || {}, b0 = { ...base, ...(base.sleeve === 0 ? drawnSleeve(t) || {} : namedSleeve(t, base) || {}) };
+    if (b0.cuffRib !== base.cuffRib) m.cuffRib = b0.cuffRib;
     for (const k of ['shoulder', 'armhole', 'sleeve', 'sleeveOpening']) if (k in b0) m[k] = r8(b0[k] + (/^sleeve/.test(k) && !b0.sleeve ? 0 : tp[k] || 0)); // no sleeve at the start: none traced
     return { ...p, m, options: { ...o, ...(Number.isFinite(tp.sleeveAngle) && m.sleeve > 0 ? { sleeveAngle: tp.sleeveAngle } : {}) } };
   }
@@ -353,7 +362,7 @@ export function defaultParams(style, fit = 'regular', options = {}) {
 // the measurements of one size, graded from the sample size (M)
 export function measurementsFor(p, size = 'M') {
   const S = STYLES[p.style], step = SIZES.indexOf(size) - SIZES.indexOf('M'), out = {};
-  for (const [k, v] of Object.entries(p.m)) out[k] = r8(v + (S.oneSize ? 0 : (S.grade[k] || 0) * step));
+  for (const [k, v] of Object.entries(p.m)) out[k] = v === 0 ? 0 : r8(v + (S.oneSize ? 0 : (S.grade[k] || 0) * step)); // what a piece has none of (a tank's sleeve) it has none of in every size
   return out;
 }
 export function pomTable(p) {
