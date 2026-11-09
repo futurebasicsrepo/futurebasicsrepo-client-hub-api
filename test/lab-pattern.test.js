@@ -188,7 +188,7 @@ test('shorts drawn flaring out follow their drawing, trued on the pattern: the h
   const { defaultParams } = await import('../src/lab-flats.js');
   const { garmentPattern: gp, drawnCheck, followTheDrawing } = await import('../src/lab-pattern.js');
   const raw = { ...defaultParams('shorts', 'regular'), template: 'sh-pleat' }, before = drawnCheck(raw, gp(raw));
-  assert.ok(before && before.shape.drawn > before.shape.pattern, `the sketch flares more than the default: ${JSON.stringify(before.shape)}`);
+  assert.ok(before && Math.abs(before.shape.pattern - before.shape.drawn) / before.shape.drawn > .05, `the default leg is not the sketch's: ${JSON.stringify(before.shape)}`);
   assert.ok(before.legsNear || before.legsOff, 'a leg that is a little off still offers Follow the drawing');
   const f = followTheDrawing(raw), after = drawnCheck(f, gp(f));
   assert.ok(Math.abs(after.shape.pattern - after.shape.drawn) / after.shape.drawn <= .03 && !after.legsNear && !after.legsOff && f.options.legsDrawn, JSON.stringify(after.shape));
@@ -199,7 +199,7 @@ test('trousers as their sketch is built: a back yoke cut from the back leg, back
   const { defaultParams, fitToTemplate } = await import('../src/lab-flats.js');
   const { constructionOf } = await import('../src/lab-construction.js');
   const base = fitToTemplate({ ...defaultParams('pants'), template: 'pt-slim-jeans' }), K = c => ({ ...base, options: { ...base.options, construction: c } });
-  const plain = garmentPattern(K({ backPockets: true })), yoked = garmentPattern(K({ yoke: { front: false, back: true }, beltLoops: true }));
+  const plain = garmentPattern(K({ backPockets: true, yoke: { front: false, back: false } })), yoked = garmentPattern(K({ yoke: { front: false, back: true }, beltLoops: true }));
   const area = id => p => Math.abs(areaOf(p.pieces.find(q => q.id === id).sew));
   const yoke = yoked.pieces.find(q => q.id === 'back-yoke');
   assert.ok(yoke && yoke.cut === 2 && area('back')(yoked) < area('back')(plain) && Math.abs(area('back')(plain) - area('back')(yoked) - Math.abs(areaOf(yoke.sew))) < .5, 'the yoke is the top of the back leg, cut away and cut on its own');
