@@ -68,6 +68,9 @@ dialog form{display:grid;gap:10px}
 @media(max-width:900px){.wrap{grid-template-columns:1fr}.side{border-left:0;border-top:1px solid var(--line);max-height:none}#view{min-height:58vh}}
 @media(max-width:700px){.bar{padding:8px 12px;gap:6px}.bar .ttl{flex:1 1 100%}#modeSeg,.scrub .mono,.scrub .lbl{display:none}.scrub{padding:8px 12px}.bar .btn{padding:5px 11px}.sum b{font-size:15px}.g3{grid-template-columns:repeat(3,minmax(0,1fr))}.scrub .lbl{min-width:0}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
+
+/* the Design workspace's Panel button folds this panel away (the Studio sets data-panel on this page) */
+[data-panel=off] .wrap{grid-template-columns:minmax(0,1fr)}[data-panel=off] .wrap>aside.side{display:none}
 </style>
 <link rel="stylesheet" href="/cue.css">
 </head>

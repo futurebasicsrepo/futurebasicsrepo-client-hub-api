@@ -859,6 +859,7 @@ app.get('/lab/studio-main.js', (_req, reply) => reply.header('cache-control', 'n
 app.get('/lab/studio-pro.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-studio-pro.js', import.meta.url), 'utf8')));
 app.get('/lab/studio-ill.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-studio-ill.js', import.meta.url), 'utf8')));
 app.get('/lab/studio-tools.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-studio-tools.js', import.meta.url), 'utf8')));
+app.get('/lab/studio-palette.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-studio-palette.js', import.meta.url), 'utf8')));
 app.get('/lab/lab-gl.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-gl.js', import.meta.url), 'utf8')));
 // pictures encoded off the page's thread for the Studio and the flats: the page side, and the worker it starts
 app.get('/lab/lab-encode.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-encode.js', import.meta.url), 'utf8')));
@@ -952,6 +953,12 @@ app.get('/lab/lab-bag-templates.js', (req, reply) => sendPack(req, reply, './lab
 app.get('/lab/bag-templates/thumbs/:file', (req, reply) => {
   const f = String(req.params.file || ''); if (!/^[a-z0-9-]+\.webp$/.test(f)) return reply.code(404).send('Not found');
   try { return reply.header('cache-control', 'public, max-age=86400').type('image/webp').send(readFileSync(new URL(`./bag-templates/thumbs/${f}`, import.meta.url))); } catch { return reply.code(404).send('Not found'); }
+});
+// the library of footwear flats (src/footwear-templates, built by scripts/footwear-templates/build.mjs): the list and the thumbnails
+app.get('/lab/lab-footwear-templates.js', (req, reply) => sendPack(req, reply, './lab-footwear-templates.js', 'application/javascript; charset=utf-8', 300));
+app.get('/lab/footwear-templates/thumbs/:file', (req, reply) => {
+  const f = String(req.params.file || ''); if (!/^[a-z0-9-]+\.webp$/.test(f)) return reply.code(404).send('Not found');
+  try { return reply.header('cache-control', 'public, max-age=86400').type('image/webp').send(readFileSync(new URL(`./footwear-templates/thumbs/${f}`, import.meta.url))); } catch { return reply.code(404).send('Not found'); }
 });
 app.get('/lab/flat-templates/thumbs/:file', (req, reply) => {
   const f = String(req.params.file || ''); if (!/^[a-z0-9-]+\.webp$/.test(f)) return reply.code(404).send('Not found');

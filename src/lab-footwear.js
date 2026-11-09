@@ -27,7 +27,12 @@ export const TOES = { round: { label: 'Round', allowance: .5 }, almond: { label:
 export const SYSTEMS = { 'us-m': "US men's", 'us-w': "US women's", uk: 'UK', eu: 'EU (Paris points)', mm: 'Mondopoint (foot length, mm)' };
 export const WIDTHS = { 'us-m': ['B', 'C', 'D', 'E', 'EE', 'EEEE'], 'us-w': ['AA', 'A', 'B', 'C', 'D', 'E'] };
 export const UPPERS = { leather: 'Full-grain leather', suede: 'Suede', nubuck: 'Nubuck', canvas: 'Canvas', mesh: 'Engineered mesh', synthetic: 'Synthetic leather' };
-export const LININGS = { leather: 'Leather lining', textile: 'Textile lining', mesh: 'Mesh lining' };
+export const LININGS = { leather: 'Leather lining', textile: 'Textile lining', mesh: 'Mesh lining', shearling: 'Shearling lining (or faux shearling)', insulated: 'Insulated textile lining (200 g)' };
+// the padding each style carries, in mm: the collar foam (0 for a dress shoe or a Chelsea, whose leather lining sits close) and the tongue foam
+export const PADDING = { sneaker: { collar: 6, tongue: 5 }, hightop: { collar: 8, tongue: 6 }, runner: { collar: 6, tongue: 4 }, derby: { collar: 0, tongue: 2 }, loafer: { collar: 0, tongue: 0 },
+  chelsea: { collar: 0, tongue: 0 }, boot: { collar: 8, tongue: 6 }, hiker: { collar: 10, tongue: 8 } };
+// how the upper is closed under the foot: board-lasted (cemented to an insole board) or strobel (sewn to a strobel sock; runners and hikers)
+export const lastingOf = s => (FW_STYLES[s.style]?.sole === 'midsole' ? 'strobel' : 'board');
 const MEDIUM = { 'us-m': 'D', 'us-w': 'B' };
 
 // ---- sizes ----
@@ -42,7 +47,7 @@ export function footLength(system, size) {
 }
 const fromFoot = F => ({ usM: r1(F * 3 - 22), usW: r1(F * 3 - 21), uk: r1(F * 3 - 23), eu: Math.round((F + .55) * 2.54 * 1.5), mm: Math.round(F * 25.4) });
 export const SIZE_LIMITS = { 'us-m': [3, 18], 'us-w': [4, 15], uk: [2, 17], eu: [33, 52], mm: [200, 330] };
-export function fwDefaults(style = 'sneaker') { const S = FW_STYLES[style] || FW_STYLES.sneaker; return { style: FW_STYLES[style] ? style : 'sneaker', system: 'us-m', size: 9, width: 'D', toe: S.toe, toeCap: style === 'sneaker' || style === 'boot', upper: style === 'runner' ? 'mesh' : style === 'sneaker' ? 'leather' : 'leather', lining: style === 'runner' ? 'mesh' : 'textile', heel: S.heel, spring: S.spring, runFrom: 7, runTo: 13, halves: true }; }
+export function fwDefaults(style = 'sneaker') { const S = FW_STYLES[style] || FW_STYLES.sneaker; return { style: FW_STYLES[style] ? style : 'sneaker', system: 'us-m', size: 9, width: 'D', toe: S.toe, toeCap: style === 'sneaker' || style === 'boot', upper: style === 'runner' ? 'mesh' : style === 'sneaker' ? 'leather' : 'leather', lining: style === 'runner' ? 'mesh' : style === 'derby' || style === 'loafer' || style === 'chelsea' ? 'leather' : 'textile', membrane: style === 'hiker', heel: S.heel, spring: S.spring, runFrom: 7, runTo: 13, halves: true }; }
 export function cleanFootwear(input = {}) {
   const d = fwDefaults(FW_STYLES[input.style] ? input.style : 'sneaker'), sys = SYSTEMS[input.system] ? input.system : d.system, [lo, hi] = SIZE_LIMITS[sys];
   const num = (v, a, b, def, step = .5) => { const n = Number(v); return Number.isFinite(n) ? Math.round(Math.min(Math.max(n, a), b) / step) * step : def; };
@@ -50,7 +55,7 @@ export function cleanFootwear(input = {}) {
   const size = num(input.size, lo, hi, defSize, sys === 'eu' || sys === 'mm' ? 1 : .5);
   const runFrom = num(input.runFrom, lo, hi, sys === 'us-w' ? 5 : sys === 'eu' ? 39 : sys === 'mm' ? 240 : 7, sys === 'eu' || sys === 'mm' ? 1 : .5), runTo = num(input.runTo, runFrom, hi, Math.max(runFrom, sys === 'us-w' ? 11 : sys === 'eu' ? 46 : sys === 'mm' ? 300 : 13), sys === 'eu' || sys === 'mm' ? 1 : .5);
   return { style: d.style, system: sys, size, width: widths.includes(input.width) ? input.width : MEDIUM[sys] || 'D', toe: TOES[input.toe] ? input.toe : d.toe, toeCap: input.toeCap == null ? d.toeCap : Boolean(input.toeCap),
-    upper: UPPERS[input.upper] ? input.upper : d.upper, lining: LININGS[input.lining] ? input.lining : d.lining, heel: num(input.heel, 0, 4, d.heel, .125), spring: num(input.spring, 0, 1.5, d.spring, .125), runFrom, runTo, halves: input.halves == null ? d.halves : Boolean(input.halves),
+    upper: UPPERS[input.upper] ? input.upper : d.upper, lining: LININGS[input.lining] ? input.lining : d.lining, membrane: input.membrane == null ? d.membrane : Boolean(input.membrane), heel: num(input.heel, 0, 4, d.heel, .125), spring: num(input.spring, 0, 1.5, d.spring, .125), runFrom, runTo, halves: input.halves == null ? d.halves : Boolean(input.halves),
     // read from a picture (or set by hand): the lines and the sole, which otherwise come from the style
     ...cleanLines(input), ...(cleanLast3d(input.last3d) ? { last3d: cleanLast3d(input.last3d) } : {}), ...(cleanSeams(input.seams).length ? { seams: cleanSeams(input.seams) } : {}), ...(input.flatten === false ? { flatten: false } : {}),
     // drawn by hand on the views or on the last (src/lab-sketch.js)
@@ -152,6 +157,7 @@ function band(x0, x1, top, bot, { lean0 = 0, lean1 = 0, n = 18 } = {}) {
   return [...xs.map(x => [x, bot(x)]), ...end(x1, lean1, true).slice(1), ...xs.slice().reverse().map(x => [x, top(Math.min(Math.max(x, x0 + lean0), x1 + lean1))]).slice(1), ...end(x0, lean0, false).slice(1, -1)];
 }
 const LAST_MARGIN = .6; // the lasting allowance: what folds under the last and is cemented to the insole
+const STROBEL_MARGIN = .2; // a strobel upper is not folded under: its edge is stitched to the strobel sock, 3/16 in in
 // as cut: the band with its bottom edge let down by the lasting allowance
 const withMargin = (pts, bot, m = LAST_MARGIN) => pts.map(([x, y]) => Math.abs(y - bot(x)) < .02 ? [x, y + m] : [x, y]);
 // a piece symmetrical about the crest (a vamp, a toe cap), as it is cut: its lower half (down its back edge, along the bottom with the lasting
@@ -187,13 +193,14 @@ export function footwearPattern(input = {}, size = null) {
     if (x <= throat0) { const t = (x - ankle) / (throat0 - ankle); return dip + (tl - dip) * (t * t * (3 - 2 * t)); }
     return S.laced ? crest(x) + open : crest(x) + .1;
   };
+  const PAD = PADDING[s.style] || PADDING.sneaker, LASTING = lastingOf(s), EDGE = LASTING === 'strobel' ? STROBEL_MARGIN : LAST_MARGIN; // the allowance under the foot
   const up = s.upper, fabUp = 'upper', fabOv = s.toeCap || s.style === 'sneaker' ? 'overlay' : 'upper';
   const sidePlace = z => ({ view: 'front', x: 0, y: 0, z });
-  const add = (id, name, shown, o = {}) => { const sew = o.sew || withMargin(shown, bot, o.margin ?? LAST_MARGIN), pc = piece(id, name, sew, { shown, place: sidePlace(o.z ?? 0), cut: o.cut ?? 2, pair: o.pair ?? true, fabric: o.fabric || fabUp, notes: o.notes || [], grain: o.grain }); if (sew.lower) pc.half = sew.lower; pieces.push(pc); };
+  const add = (id, name, shown, o = {}) => { const sew = o.sew || withMargin(shown, bot, o.margin ?? EDGE), pc = piece(id, name, sew, { shown, place: sidePlace(o.z ?? 0), cut: o.cut ?? 2, pair: o.pair ?? true, fabric: o.fabric || fabUp, notes: o.notes || [], grain: o.grain }); if (sew.lower) pc.half = sew.lower; pieces.push(pc); };
   // the vamp: from the vamp line to the toe, the whole width of the forefoot; it runs ⅜ in under the quarters
   const vamp = band(vampX - .35, L - .02, crest, bot, { lean0: .4, lean1: 0 });
   add('vamp', s.style === 'chelsea' ? 'Front (vamp and shaft)' : 'Vamp', s.style === 'chelsea' ? band(throat0 + .2, L - .02, x => x < F * .3 ? bot(0) - S.collar + (crest(F * .3) - bot(0) + S.collar) * Math.max(0, (x - throat0) / (F * .3 - throat0)) ** 2 : crest(x), bot) : vamp,
-    { z: 1, sew: symmetric(vampX - .35, L - .02, .4, crest, bot), pair: false, notes: ['Cut whole: the half on the standard mirrored over the centre line', 'Lasting allowance ⅝ in, skived'], grain: [[vampX + 1, crest(vampX) + 1], [L - 1.5, crest(L - 1.5) + 1]] });
+    { z: 1, sew: symmetric(vampX - .35, L - .02, .4, crest, bot, EDGE), pair: false, notes: ['Cut whole: the half on the standard mirrored over the centre line', LASTING === 'strobel' ? 'Strobel allowance 3/16 in' : 'Lasting allowance ⅝ in, skived'], grain: [[vampX + 1, crest(vampX) + 1], [L - 1.5, crest(L - 1.5) + 1]] });
   if (s.style === 'loafer') add('apron', 'Apron (moc plug)', band(vampX + .4, L - 1.1, crest, x => crest(x) + .85), { z: 3, margin: 0, sew: symmetric(vampX + .4, L - 1.1, 0, crest, x => crest(x) + .85, 0), pair: false, notes: ['Hand-sewn moc seam round the apron'] });
   // the quarters, outside and inside, from the back seam to past the vamp line (they lap over the vamp)
   const qEnd = s.style === 'chelsea' ? F * .28 : vampX + .25;
@@ -221,10 +228,13 @@ export function footwearPattern(input = {}, size = null) {
     // (on a shaft it shows up the front of the leg, in front of the lace edge, and stands above the collar at the top)
     const shownT = S.shaft ? band(legX - .3, vampX + .3, x => Math.min(topline(Math.max(0, x - .4)) - .4, crest(x) - .12), x => Math.max(topline(x) + .3, crest(x) + .3), { n: 24, lean0: .1 })
       : band(throat0 - .5, vampX + .3, x => Math.max(crest(x) - .12, topline(x) - .5), x => crest(x) + .3, { n: 14, lean0: .2 });
-    pieces.push(piece('tongue', 'Tongue', tongue, { shown: shownT, place: sidePlace(0), cut: 2, fabric: s.style === 'runner' ? 'upper' : fabUp, notes: ['Foam-padded, with a woven label at the top'] }));
+    pieces.push(piece('tongue', 'Tongue', tongue, { shown: shownT, place: sidePlace(0), cut: 2, fabric: s.style === 'runner' ? 'upper' : fabUp, notes: [PAD.tongue ? `Faced over ${PAD.tongue} mm foam, with a woven label at the top` : 'Unpadded, with a woven label at the top'] }));
+    // its lining (the size and law label printed on it), and the foam between face and lining, ¼ in in from the edge so the edge stays thin
+    pieces.push(piece('tongue-lining', 'Tongue lining', tongue, { shown: shownT, place: sidePlace(-3), cut: 2, fabric: 'lining', hidden: true, notes: [`${LININGS[s.lining]}; the size and law label printed on it`] }));
+    if (PAD.tongue) pieces.push(piece('tongue-foam', 'Tongue foam', tongue.map(([x, y]) => [x * .8, y * .92 - tl * .02]), { shown: shownT, place: sidePlace(-4), cut: 2, sa: 0, fabric: 'foam', hidden: true, notes: [`${PAD.tongue} mm open-cell foam, skived at the edges; stops ¼ in short of the edge`] }));
   }
   const capLen = s.capLen ?? 2.4, mudH = s.mudH ?? .75, heelH = s.heelH ?? 2.1, heelTop = x => bot(x) - heelH + Math.max(0, x / (F * .23)) * .6;
-  if (s.toeCap) { const tc = band(L - capLen, L - .02, crest, bot, { lean0: .9 }); add('toe-cap', 'Toe cap', tc, { z: 5, sew: symmetric(L - capLen, L - .02, .9, crest, bot), pair: false, fabric: fabOv }); }
+  if (s.toeCap) { const tc = band(L - capLen, L - .02, crest, bot, { lean0: .9 }); add('toe-cap', 'Toe cap', tc, { z: 5, sew: symmetric(L - capLen, L - .02, .9, crest, bot, EDGE), pair: false, fabric: fabOv }); }
   if (s.mudguard) add('mudguard', 'Mudguard', band(F * .2, L - .02, x => bot(x) - mudH, bot, { lean0: .3 }), { z: 4, fabric: 'overlay', notes: ['A low overlay round the foot, over the toe; lasted with the upper'] });
   const heelOv = s.heelOverlay ?? ['sneaker', 'hightop', 'runner', 'boot', 'hiker'].includes(s.style);
   if (heelOv) add('heel-overlay', 'Heel overlay', band(0, F * .23, heelTop, bot, { lean1: .35 }), { z: 5, fabric: fabOv });
@@ -247,14 +257,25 @@ export function footwearPattern(input = {}, size = null) {
   // inside: linings, the collar foam, the stiffeners
   add('quarter-lining', 'Quarter lining', band(0, qEnd + .3, topline, bot), { z: -3, cut: 4, fabric: 'lining', notes: [LININGS[s.lining]] });
   add('vamp-lining', 'Vamp lining', vamp, { z: -3, fabric: 'lining', sew: symmetric(vampX - .35, L - .02, .4, crest, bot, .4), pair: false });
-  if (S.collar < 7) add('collar-foam', 'Collar foam', band(0, throat0, topline, x => topline(x) + 1), { z: -4, cut: 4, margin: 0, fabric: 'foam', notes: ['6 mm open-cell foam, skived to nothing at the edges'] });
+  if (PAD.collar) add('collar-foam', 'Collar foam', band(0, S.shaft ? legX : throat0, topline, x => topline(x) + (S.shaft ? 1.4 : 1)), { z: -4, cut: 4, margin: 0, fabric: 'foam', notes: [`${PAD.collar} mm open-cell foam, skived to nothing at the edges`] });
+  // a heel grip: a pad of microsuede over the counter, inside the collar at the back, so the heel does not slip
+  add('heel-grip', 'Heel grip', band(0, F * .17, x => topline(x) + .15, x => topline(x) + 1.9), { z: -2, margin: 0, fabric: 'lining', notes: ['Microsuede, over the counter, ⅛ in below the collar edge'] });
+  // backers: a non-woven doubler under the eyestay (it takes the lace pull) and under the quarters at the collar (it keeps the topline's shape)
+  if (S.laced) add('eyestay-backer', 'Eyestay backer', band(S.shaft ? legX : throat0, vampX + .1, topline, x => topline(x) + .9), { z: -1, cut: 4, margin: 0, fabric: 'reinforcement', notes: ['Non-woven doubler, cemented under the eyestay before punching'] });
+  add('collar-backer', 'Collar backer', band(0, S.shaft ? legX : throat0, topline, x => topline(x) + .6), { z: -1, cut: 4, margin: 0, fabric: 'reinforcement', notes: ['Non-woven doubler under the topline, skived'] });
+  // warm and waterproof: an insulation layer cut as the linings, and a membrane bootie sewn and seam-taped between the upper and the lining
+  if (s.lining === 'insulated') { add('quarter-insulation', 'Quarter insulation', band(0, qEnd + .3, topline, bot), { z: -2, cut: 4, margin: .2, fabric: 'insulation', notes: ['200 g synthetic insulation, laminated to the lining'] });
+    add('vamp-insulation', 'Vamp insulation', vamp, { z: -2, margin: .2, fabric: 'insulation', sew: symmetric(vampX - .35, L - .02, .4, crest, bot, .2), pair: false }); }
+  if (s.membrane) { add('membrane-quarter', 'Membrane bootie, quarter', band(0, qEnd + .3, topline, bot), { z: -2, cut: 4, margin: .3, fabric: 'membrane', notes: ['Waterproof breathable membrane laminate; seams taped'] });
+    add('membrane-vamp', 'Membrane bootie, vamp', vamp, { z: -2, margin: .3, fabric: 'membrane', sew: symmetric(vampX - .35, L - .02, .4, crest, bot, .3), pair: false, notes: ['Sewn to the quarters and a membrane sock under the foot; seams taped'] }); }
   add('counter', 'Heel counter', band(0, F * .25, x => bot(x) - 2.0, bot), { z: -5, margin: .4, fabric: 'stiffener', notes: ['Thermoplastic, moulded over the heel of the last'] });
   add('toe-puff', 'Toe puff', band(L - 2.2, L - .02, crest, bot, { lean0: .7 }), { z: -5, margin: .4, pair: false, fabric: 'stiffener', notes: ['Holds the toe\'s shape'] });
   // under the foot: the insole board and the sockliner are cut from the bottom view; the sole unit is moulded
   const sole = last.bottom, sock = sole;
   const bplace = z => ({ view: 'back', x: 0, y: 0, z });
-  pieces.push(piece('insole', 'Insole board', sole, { cut: 2, pair: true, fabric: 'board', place: bplace(1), sa: 0, notes: ['Cellulose board, 2 mm; the upper is lasted onto it'] }));
-  pieces.push(piece('sockliner', 'Sockliner', sock, { cut: 2, pair: true, fabric: 'foam', place: bplace(2), sa: 0, notes: ['4 mm foam with a printed top cover'] }));
+  if (LASTING === 'strobel') pieces.push(piece('strobel', 'Strobel sock', sole, { cut: 2, pair: true, fabric: 'strobel', place: bplace(1), sa: 0, notes: ['Non-woven strobel sock; the upper\'s edge is zig-zag stitched to it, closing the upper under the foot before it goes on the last', ...(s.membrane ? ['A membrane sock under it, seam-taped to the bootie'] : [])] }));
+  else pieces.push(piece('insole', 'Insole board', sole, { cut: 2, pair: true, fabric: 'board', place: bplace(1), sa: 0, notes: ['Cellulose board, 2 mm; the upper is lasted onto it'] }));
+  pieces.push(piece('sockliner', 'Sockliner', sock, { cut: 2, pair: true, fabric: 'foam', place: bplace(2), sa: 0, notes: [s.lining === 'shearling' ? 'Shearling-covered foam, 6 mm' : s.style === 'hiker' ? '6 mm moulded foam with a printed top cover' : '4 mm foam with a printed top cover'] }));
   // the sole unit: its full thickness at the heel (the heel height and the foam or rubber under the forefoot), so the shoe stands on it
   const sh = soleHeightOf(s), under = Math.max(.2, sh - s.heel), soleSide = [...Array.from({ length: 31 }, (_, i) => { const x = -.1 + (L + .2) * i / 30; return [x, bot(Math.min(Math.max(x, 0), L)) + .05]; }), ...Array.from({ length: 31 }, (_, i) => { const x = L + .2 - (L + .3) * i / 30; const xx = Math.min(Math.max(x, 0), L); return [x, under + (xx <= last.ballFromHeel ? 0 : bot(xx) - bot(last.ballFromHeel))]; })]; // the tread on the ground to the ball, then up with the toe spring
   const soleName = S.sole === 'cupsole' ? 'Cupsole (rubber)' : S.sole === 'midsole' ? 'Midsole (EVA) and outsole' : 'Outsole and heel (rubber, stitched)';
@@ -273,7 +294,7 @@ export function footwearPattern(input = {}, size = null) {
   }
   for (const q of pieces) delete q.half;
   return { kind: 'footwear', spec: s, label: S.label, flat, ground: r3(under), marks, sole: { type: S.sole, height: r3(sh) }, size: `${SYSTEMS[s.system].replace(/ \(.*$/, '')} ${last.size} ${s.width}`.trim(), sa: .25, pieces, last, views: { front: 'Side', back: 'Bottom' },
-    notes: [`${UPPERS[s.upper]} upper, ${LININGS[s.lining].toLowerCase()}`, 'Overlaps ⅜ in, skived and cemented before stitching; the lasting allowance is ⅝ in', ...notes, 'A first draft on the standard of the last: the pattern engineer trues it up on the fitting sample'],
+    notes: [`${UPPERS[s.upper]} upper, ${LININGS[s.lining].toLowerCase()}`, 'Overlaps ⅜ in, skived and cemented before stitching', LASTING === 'strobel' ? 'Strobel-lasted: the upper\'s edge, 3/16 in, is zig-zag stitched to the strobel sock' : 'Board-lasted: the lasting allowance is ⅝ in, cemented to the insole board', ...notes, 'A first draft on the standard of the last: the pattern engineer trues it up on the fitting sample'],
     checks: footwearChecks(s, last), components: components(s, last), tooling: tooling(s) };
 }
 
@@ -284,6 +305,14 @@ export function components(input = {}, last = lastOf(input)) {
   if (S.laced) out.push({ name: 'Laces', qty: '1 pair', how: 'Flat or round, with aglets' }, { name: 'Eyelets', qty: 'see the eyestay', how: 'Metal or punched' });
   if (s.style === 'chelsea') out.push({ name: 'Elastic gore', qty: '4 panels', how: 'Twin-needle' });
   if (s.style === 'loafer') out.push({ name: 'Saddle strap', qty: '2', how: 'Leather, set over the apron seam' });
+  // under the foot and inside: how it is lasted, the foams, the grip and the backers, and a warm or waterproof layer
+  const P = PADDING[s.style] || PADDING.sneaker;
+  out.push(lastingOf(s) === 'strobel' ? { name: 'Strobel sock', qty: '1 pair', how: 'Non-woven, zig-zag stitched to the upper' } : { name: 'Insole board', qty: '1 pair', how: 'Cellulose, 2 mm; the upper is cemented to it' },
+    { name: 'Sockliner', qty: '1 pair', how: s.lining === 'shearling' ? 'Shearling-covered foam, 6 mm' : s.style === 'hiker' ? 'Moulded foam, 6 mm, printed top cover' : 'Foam, 4 mm, printed top cover' });
+  if (P.collar || P.tongue) out.push({ name: 'Collar and tongue foam', qty: '1 pair', how: [P.collar ? `collar ${P.collar} mm` : '', P.tongue ? `tongue ${P.tongue} mm` : ''].filter(Boolean).join(', ') + ', open-cell, skived' });
+  out.push({ name: 'Heel grip', qty: '1 pair', how: 'Microsuede, over the counter' }, { name: 'Backers', qty: '1 pair set', how: S.laced ? 'Non-woven, under the eyestay and the topline' : 'Non-woven, under the topline' });
+  if (s.lining === 'insulated') out.push({ name: 'Insulation', qty: '1 pair set', how: '200 g synthetic, laminated to the lining' });
+  if (s.membrane) out.push({ name: 'Waterproof membrane bootie', qty: '1 pair', how: 'Breathable laminate, sewn and seam-taped; a membrane sock under the foot' });
   out.push({ name: 'Heel counter and toe puff', qty: '1 pair each', how: 'Thermoplastic, activated in the lasting' }, { name: 'Shank', qty: '1 pair', how: S.sole === 'stitched' ? 'Steel' : 'Fibreglass or none' }, { name: 'Size and law labels', qty: '1 pair', how: 'Printed on the tongue lining' }, { name: 'Box and tissue', qty: '1', how: '' });
   return out;
 }

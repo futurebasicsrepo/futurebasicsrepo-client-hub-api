@@ -2,7 +2,8 @@
 // side profile) traced into vector panels a designer can recolour and reshape in the Studio, with the stitching, tread and laces kept as a
 // detail layer on top.
 //   traceShoe(png)           → { width, height, box, panels: [{ id, fill, area, d, box }], details: [{ d }], stroke, svg }
-//   shoeSvg(drawing, o)      → the drawing as an SVG (its panels with their outlines, then the details), for the page and the tech pack
+//   shoeSvg(drawing, o)      → the drawing as an SVG (its panels with their outlines, then the details, then what the designer added: lines,
+//                              words and graphics), for the page and the tech pack; withArt(drawing, load) puts each graphic's picture in it
 //   makeShoeDrawings(...)    → the five views (outside, inside, top, bottom, heel) drawn by the image model and traced
 //   cleanDrawing(body, base) → a drawing as edited in the Studio, checked against the one saved
 // The outlines are drawn from the panels' own edges, so a panel that is reshaped keeps its outline; the image's lines that are not a panel's
@@ -150,9 +151,25 @@ const esc = s => String(s ?? '').replace(/[<&>"]/g, c => ({ '<': '&lt;', '&': '&
 // → the drawing as SVG. `pad` (px) around the shoe; `ink` the outline colour.
 export function shoeSvg(dw, { pad = 24, ink = '#161616', width = null } = {}) {
   const b = dw.box, vx = b.x0 - pad, vy = b.y0 - pad, vw = b.x1 - b.x0 + 2 * pad, vh = b.y1 - b.y0 + 2 * pad, sw = dw.stroke || 2.4;
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vx} ${vy} ${vw} ${vh}"${width ? ` width="${width}" height="${Math.round(width * vh / vw)}"` : ''}>`
+  return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="${vx} ${vy} ${vw} ${vh}"${width ? ` width="${width}" height="${Math.round(width * vh / vw)}"` : ''}>`
     + `<g class="panels" stroke="${ink}" stroke-width="${sw}" stroke-linejoin="round">${dw.panels.filter(p => !p.hidden).map(p => `<path data-panel="${esc(p.id)}"${p.name ? ` data-name="${esc(p.name)}"` : ''} fill="${esc(p.fill)}" fill-rule="evenodd" d="${p.d}"/>`).join('')}</g>`
-    + `<g class="details" fill="${ink}" stroke="none">${(dw.hideDetails ? [] : dw.details || []).map(x => `<path d="${x.d}" fill-rule="evenodd"/>`).join('')}</g></svg>`;
+    + `<g class="details" fill="${ink}" stroke="none">${(dw.hideDetails ? [] : dw.details || []).map(x => `<path d="${x.d}" fill-rule="evenodd"/>`).join('')}</g>`
+    + extrasSvg(dw) + '</svg>';
+}
+// what the designer added over the traced drawing: lines drawn freehand, words, and graphics from the library (each graphic needs its picture
+// as `href`, a data URI: withArt fills it in on the service; the page passes its own)
+export function extrasSvg(dw) {
+  const marks = (dw.marks || []).map(m => m.kind === 'text'
+    ? `<text x="${+m.x}" y="${+m.y}" font-family="Space Grotesk, Helvetica, Arial, sans-serif" font-weight="600" font-size="${+m.size}" fill="${esc(m.color)}" text-anchor="middle" dominant-baseline="middle">${esc(m.text)}</text>`
+    : `<path d="${m.d}" fill="none" stroke="${esc(m.color)}" stroke-width="${+m.w}" stroke-linecap="round" stroke-linejoin="round"/>`).join('');
+  const gfx = (dw.graphics || []).filter(g => g.href).map(g => `<image x="${+g.x - g.w / 2}" y="${+g.y - g.h / 2}" width="${+g.w}" height="${+g.h}" preserveAspectRatio="xMidYMid meet" transform="rotate(${+g.rot || 0} ${+g.x} ${+g.y})" href="${esc(g.href)}" xlink:href="${esc(g.href)}"/>`).join('');
+  return marks || gfx ? `<g class="marks">${marks}</g><g class="graphics">${gfx}</g>` : '';
+}
+// the drawing with each placed graphic's picture in it, so it renders on its own (the tech pack, a download); `load(id)` → its PNG
+export async function withArt(dw, load) {
+  if (!dw?.graphics?.length) return dw;
+  const graphics = []; for (const g of dw.graphics) { let png = null; try { png = await load(g.art); } catch {} graphics.push(png ? { ...g, href: `data:image/png;base64,${Buffer.from(png).toString('base64')}` } : g); }
+  return { ...dw, graphics };
 }
 
 // ---- drawing the views: the outside traced from the shoe's side profile, then the other four drawn from that drawing ------------------------
@@ -222,14 +239,24 @@ const PATH_OK = /^[MLQCZmlqcz0-9.,\s-]+$/, HEX = /^#[0-9a-f]{6}$/i;
 export function cleanDrawing(b, base) {
   if (!b || typeof b !== 'object' || !base) return null;
   const byId = new Map((base.panels || []).map(p => [p.id, p])), seen = new Set(), panels = [];
+  const okPath = (d, max = 60000) => typeof d === 'string' && d.length < max && PATH_OK.test(d), num = (v, lo, hi) => Number.isFinite(+v) ? Math.max(lo, Math.min(hi, +v)) : null;
   for (const p of Array.isArray(b.panels) ? b.panels.slice(0, 400) : []) {
     const id = String(p?.id || '').slice(0, 20); if (!/^[a-z0-9_-]+$/i.test(id) || seen.has(id)) continue; seen.add(id);
-    const was = byId.get(id) || {}, d = typeof p.d === 'string' && p.d.length < 60000 && PATH_OK.test(p.d) ? p.d : was.d; if (!d) continue;
+    const was = byId.get(id) || {}, d = okPath(p.d) ? p.d : was.d; if (!d) continue;
     panels.push({ id, fill: HEX.test(String(p.fill || '')) ? String(p.fill).toLowerCase() : was.fill || '#cccccc', d, area: Number(was.area) || 0, box: was.box || null, ...(p.name ? { name: String(p.name).replace(/[<>]/g, '').slice(0, 60) } : was.name ? { name: was.name } : {}), ...(p.hidden ? { hidden: true } : {}) });
   }
   if (!panels.length) return null;
-  const details = b.details === false ? [] : base.details || [];
-  return { ...base, panels, details, ...(b.hideDetails !== undefined ? { hideDetails: Boolean(b.hideDetails) } : {}) };
+  // the stitching and tread lines: as traced, or as the designer pushed them (Liquify moves them with the panels)
+  const details = b.details === false ? [] : Array.isArray(b.details) && b.details.length && b.details.length <= 40 && b.details.every(x => okPath(x?.d, 600000)) ? b.details.map(x => ({ d: x.d })) : base.details || [];
+  const span = Math.max(base.width || 0, base.height || 0, 1024) * 2;
+  const marks = (Array.isArray(b.marks) ? b.marks.slice(0, 300) : base.marks || []).map(m => m?.kind === 'text'
+    ? (String(m.text || '').trim() && num(m.x, -span, span) != null && num(m.y, -span, span) != null ? { kind: 'text', text: String(m.text).replace(/[<>]/g, '').slice(0, 80), x: num(m.x, -span, span), y: num(m.y, -span, span), size: num(m.size, 4, 400) || 24, color: HEX.test(String(m.color || '')) ? String(m.color).toLowerCase() : '#161616' } : null)
+    : (okPath(m?.d) && m.d.length < 20000 ? { kind: 'line', d: m.d, w: num(m.w, .5, 80) || 3, color: HEX.test(String(m.color || '')) ? String(m.color).toLowerCase() : '#161616' } : null)).filter(Boolean);
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const graphics = (Array.isArray(b.graphics) ? b.graphics.slice(0, 40) : base.graphics || []).map(g => UUID.test(String(g?.art || '')) && [g.x, g.y, g.w, g.h].every(v => Number.isFinite(+v)) && +g.w > 0 && +g.h > 0
+    ? { id: /^[a-z0-9_-]{1,20}$/i.test(String(g.id || '')) ? String(g.id) : 'g' + Math.random().toString(36).slice(2, 8), art: String(g.art).toLowerCase(), name: String(g.name || '').replace(/[<>]/g, '').slice(0, 60), x: num(g.x, -span, span), y: num(g.y, -span, span), w: num(g.w, 1, span), h: num(g.h, 1, span), rot: num(g.rot, -360, 360) || 0 } : null).filter(Boolean);
+  const { marks: _m, graphics: _g, ...rest } = base;
+  return { ...rest, panels, details, ...(marks.length ? { marks } : {}), ...(graphics.length ? { graphics } : {}), ...(b.hideDetails !== undefined ? { hideDetails: Boolean(b.hideDetails) } : base.hideDetails !== undefined ? { hideDetails: base.hideDetails } : {}) };
 }
 
 // ---- the drawing's colours, for the pattern ---------------------------------------------------------------------------------------------------

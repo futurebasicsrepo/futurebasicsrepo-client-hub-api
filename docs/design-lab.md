@@ -270,7 +270,23 @@ The Lab installs as its own home-screen app (`/lab.webmanifest`: standalone, ope
 
 The flats zoom too: two fingers pinch and move them, one finger moves them once zoomed (a placement under the finger still drags), Ctrl and the wheel zoom on a computer, and **Fit** shows the whole piece again. A pinch that starts while a placement is being dragged puts it back where it was. On Design, and on any console page on a touch screen narrower than a desktop, the console menu starts folded to its icons (a person's own choice is kept). Installed, exports (the picture, a layer, the Illustrator SVG, the stitch file, the separations) open in the app's sheet with Share and Save rather than as a download that leaves the app.
 
-**Room to draw.** **Panel** (or `\`) folds the right-hand panel away, on the picture and on both flats, so the drawing takes the width. **Focus** (or `F`) hides the page header, the console menu and the Guide switch, and asks for full screen where the browser allows it. The drawing (the picture, a flat or the pattern) then takes the whole screen and everything else floats over it in Liquid Glass (frosted, translucent): the bar is a capsule along the top with the essentials (the views, the checklist, Save, More, Panel, Focus; More opens the rest; the steps, Undo and Redo, which are on the rail, step aside), the tool rail is a pill on the left, the tool's options a capsule under the bar, the panel a card on the right, and the zoom buttons, the size dock and, on the flats, their own size, measurements and zoom bar (a capsule at the foot) are glass too. The picture fits into the room the glass leaves. Side by side keeps its columns. Both are kept on the device for the next time Design opens, and a second press brings them back.
+**Room to draw.** **Panel** (or `\`) folds the right-hand panel away, on the picture and on both flats, so the drawing takes the width. **Focus** (or `F`) hides the page header, the console menu and the Guide switch, and asks for full screen where the browser allows it. The drawing (the picture, a flat or the pattern) then takes the whole screen and everything else floats over it in Liquid Glass (frosted, translucent): the bar is a capsule along the top with the essentials (the views, the checklist, Save, More, Panel, Focus; More opens the rest; the steps, Undo and Redo, which are on the rail, step aside), the tool rail is the tool palette (below), the tool's options a capsule under the bar, the panel a card on the right, and the zoom buttons, the size dock and, on the flats, their own size, measurements and zoom bar (a capsule at the foot) are glass too. The picture fits into the room the glass leaves. Side by side keeps its columns. Both are kept on the device for the next time Design opens, and a second press brings them back.
+
+**The tool palette** (`src/lab-studio-palette.js`, Focus only). In Focus the rail becomes a palette like a notes app's pencil case, the same
+on the picture, a garment's flats and a bag's or a shoe's drawing:
+- **Open**, it is one dark glass dock: Undo and Redo, then every tool laid out in the rail's groups (none hidden in a group, so Polygon,
+  Star, Distress, Width, Measure and the rest are each one tap), the tool in hand lifted, a coloured tip on the tools that draw in the
+  colour, and the size on the brush, the eraser, Distress and Liquify; then the colours (the last used, black, white and the brand's) and
+  any colour; then a menu.
+- **Where it sits**: drag it by its handle to the top (the default, under the options), the foot, the left or the right (on a side it stands
+  upright); drop it in a corner, or choose Shrink in its menu, and it **shrinks to one round button** showing the tool in hand and its
+  colour. Tap the button to open it again. Where it sits and whether it is shrunk are kept on the device.
+- **On a bag's or a shoe's drawing** the tools that work only on the picture (the AI area, Distress, the ruler…) are dimmed and say so.
+- It is the rail underneath: a tool or colour picked on the palette is the Studio's, with its options bar and size dock as before. The
+  menu's **What each tool does** lists every tool with a line on what it does.
+
+Outside Focus the rail stays as it is; with its names shown (the list button at its top) it lists every tool, not only the one in front of
+each group. Journey J294.
 
 **On the flats**, two fingers on a graphic resize it about its centre, keeping its shape (anywhere else they zoom the flat). What is drawn on a flat covers the whole window, not only the garment's frame: the drawing spans all the window shows at full view, and an older, smaller drawing grows to the window before the next stroke, keeping what is on it.
 
@@ -999,6 +1015,20 @@ garment's seam allowance and cloth width, are kept in `lab_patterns` (`GET|PUT /
 A pattern from the Lab is a **first block from the measurements**: a pattern maker trues it up on the first sample. Toys and objects (tooling) and
 electronics (the engineering) say so on the Pattern view: they come next, one at a time.
 
+## The line plan page
+
+An open plan (`drawPlan` in `src/lab.html`) is laid out as Liquid Glass over a slow field of colour: the plan's name, season and actions; its
+totals (they count up when the plan opens); a bar that stays under the tabs as you scroll, with the plan's sections (Pieces, Price ladder,
+Graphic program, Across the range) and, while anything is being made, a pill that says so and jumps to it; then each piece as a card, its
+role shown by the stripe down its side, its price, cost, margin (with a bar, green at 65% and up) and quantity, and its actions.
+
+**Make concepts says where it is on the piece's own card**, from the press until the concepts are on the board: the step it is probably on
+(design, draw, check, from the usual timings, since the service only says running or done), the time so far and a bar. The request asks for
+the work at once (`?wait=0`) and the job is kept in this browser (`fb.lab.making`), so leaving the page or reloading it picks the work up
+again. When it is done the card says how many concepts were made, with a link to them on the board, and a note rises at the bottom; the page
+does not jump away, so several pieces can be made at once. Before this the button showed a tick as soon as the request was accepted, while
+the work was still running further down the page. Journeys J197, J199 and J201.
+
 ## Footwear: the last, the size run, and the upper in pieces
 
 A footwear concept (`src/lab-footwear.js`, shared by the page and the service) starts from its style:
@@ -1024,7 +1054,10 @@ maker, in any size (`GET /v1/lab/concepts/:id/last.svg?size=`).
 - **Pieces of the upper:** the vamp (cut whole: the half on the standard mirrored over the centre line), the quarters (outside and inside, the
   inside collar ⅛ in lower), the eyestays and the tongue for laced styles, the toe cap, the heel overlay, the back tab, the elastic gores of a
   Chelsea, and the moc apron of a loafer.
-- **Inside the shoe:** the linings, the collar foam, the heel counter and toe puff (thermoplastic), the insole board and the sockliner.
+- **Inside the shoe:** the quarter and vamp linings, the tongue (a face, a lining with the size label printed on it, and the foam between), a heel grip over the counter, non-woven backers under the eyestay and the topline, the heel counter and toe puff (thermoplastic), and the sockliner.
+  - **Padding by style** (`PADDING`): collar and tongue foam in mm, from none on a loafer or a Chelsea to 10 mm on a hiking boot's collar.
+  - **Under the foot** (`lastingOf`): board-lasted styles fold a ⅝ in lasting allowance onto an insole board; runners and hikers are strobel-lasted, their upper's edge (3/16 in) stitched to a strobel sock.
+  - **Warm and waterproof:** an insulated lining (200 g) adds an insulation layer cut as the linings, and shearling is a lining choice; a membrane (on by default for a hiking boot) adds a sewn, seam-taped bootie between the upper and the lining. All of these reach the bill of materials.
 - **Allowances:** each piece carries the ⅝ in lasting allowance and ⅜ in overlaps.
 - **The sole unit** (cupsole, EVA midsole, or a stitched outsole and heel) is shown as a moulded component: it is never cut.
 
@@ -1104,8 +1137,41 @@ A footwear (or bag, above) concept's **Flats** in the Studio (`/lab/shoe-flats`,
   last's outline, collar and toe spring follow the drawing's edits, and lays that drawing under the shoe. A shoe sent to its tech pack takes these
   drawings as its technical flats (each view and one sheet of all of them) in place of the views drawn from the pattern.
 
+**The Studio's tools on the drawing.** The drawing page tells the Studio when it is ready, so the Studio's rail, options bar, Panel and Focus
+reach it as they reach a garment's flats:
+- **Panel** folds its panel away; **Focus** floats its own bar (views, undo, save) at the foot, its panel on the right and its zoom in the
+  corner, in Liquid Glass, so nothing sits under the Studio's floating bar.
+- **Zoom**: pinch, Ctrl or ⌘ and the wheel, the − / + / Fit pill, ⌘+ ⌘− ⌘0, the hand tool or the space bar to move around. With a Pencil,
+  fingers move and pinch the view while the Pencil draws.
+- **Select** picks a panel (recolour, rename, reshape its points) or a graphic (drag, a corner sizes it, the green knob turns it).
+- **Fill** paints a tapped panel in the rail's colour; **Pick** takes a panel's colour for Fill, the brush and new shapes.
+- **Liquify** (Push, Twirl, Pinch, Bloat, at the bar's strength) moves panels, seams and stitching together under the brush; where the brush
+  first reaches a panel, its long straight runs get points along them so they bend where they are pushed.
+- **Brush** and **Line** draw lines on it; **Type** puts words on it; **Rectangle**, **Ellipse** and the **Pen** add new panels, outlined
+  like the rest; the **Eraser** rubs out what was drawn or a panel that was added.
+- **The options bar** flips, brings forward, sends back, duplicates and removes the chosen panel or graphic.
+- **Graphics**: the panel's Graphics, **Add from the library**, places a library graphic on the view; a graphic kept in the graphic studio
+  lands on it too.
+
+Lines, words, added panels, liquified stitching and graphics are saved with the drawing (`marks`, `graphics`, `details` in
+`cleanDrawing`), and `shoeSvg` draws them, each graphic's picture put in by `withArt`, so the SVG, the board and the tech pack show them.
+The pattern and engineer pages fold their panel with the Studio's Panel button too. Journey J293.
+
 Routes: `GET|POST /v1/lab/concepts/:id/shoe-drawing`, `PUT /v1/lab/concepts/:id/shoe-drawing/:view`, `POST …/:view/reset`,
 `GET …/:view.svg` (or `?art=1` for the line art). Journey J280.
+
+**The library of footwear flats** (`src/footwear-templates`, `src/lab-footwear-templates.js`, built by `scripts/footwear-templates/build.mjs`
+from the catalogue in `scripts/footwear-templates/catalogue.mjs`). The catalogue is the range a footwear designer works across: 91 styles in 13
+types (lifestyle sneakers, running, court and field sport, outdoor and hiking, boots, work and safety, dress and loafers, clogs and mules,
+sandals and slides, flats and Mary Janes, heels, slippers, kids), each with its construction, closure, height, the pattern style it is
+drafted in (or the new style it needs) and a priority, with a note on each type's market. A style is in the library once it is drawn: an
+original technical flat in its five views, drawn once in a neutral prototype colourway (light-grey upper, darker-grey overlays, pale-cream
+midsole, mid-grey outsole) and traced into panels. Thirteen are drawn so far. They sit in the Sketch library under **Footwear**, by type; the
+colour picked goes on the upper. **Open in the Studio** makes a new footwear concept with the five drawings in place and its pattern drafted
+in the library shoe's style (`POST /v1/lab/concepts/from-library-footwear`); **Or put this on a concept you already have** puts them on a
+footwear concept (`POST /v1/lab/concepts/:id/shoe-drawing/from-library`, which refuses a bag on a shoe and a shoe on a bag). No image model is
+used, so nothing is charged. **Back to the drawing as traced** goes back to the library's drawing. `GET /v1/lab/library/footwear` lists them,
+`GET /v1/lab/library/footwear/:id` gives one with its views. Journey J292.
 
 ### How a shoe concept is designed and drawn
 

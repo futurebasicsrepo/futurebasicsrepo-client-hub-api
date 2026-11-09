@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { footLength, lastOf, sizeRun, footwearPattern, cleanFootwear, tooling, hideArea, lastSvg, FW_STYLES } from '../src/lab-footwear.js';
+import { footLength, lastOf, sizeRun, footwearPattern, cleanFootwear, tooling, hideArea, lastSvg, FW_STYLES, PADDING, lastingOf, components } from '../src/lab-footwear.js';
 import { layoutOf, explodeAt, assembled, boundsOf, areaOf, patternDxf } from '../src/lab-pattern.js';
 import { guessShoe } from '../src/lab-pattern-routes.js';
 
@@ -35,10 +35,10 @@ test('the size run: every size in steps, its last and girth graded, a sole mould
   const t = tooling({ runFrom: 7, runTo: 13 }); assert.equal(t.moulds, 7); assert.ok(t.mouldCost[0] > 0 && t.lastPairs === 13);
 });
 
-test('every style drafts its upper: vamp, quarters inside and out, linings, stiffeners, insole and sockliner; laced styles get eyestays and a tongue', () => {
+test('every style drafts its upper: vamp, quarters inside and out, linings, stiffeners, an insole board or a strobel sock, and a sockliner; laced styles get eyestays and a tongue', () => {
   for (const style of Object.keys(FW_STYLES)) {
     const pat = footwearPattern({ style }), ids = pat.pieces.map(q => q.id);
-    for (const id of ['vamp', 'quarter-lat', 'quarter-med', 'quarter-lining', 'vamp-lining', 'counter', 'toe-puff', 'insole', 'sockliner', 'sole']) assert.ok(ids.includes(id), `${style} has ${id}`);
+    for (const id of ['vamp', 'quarter-lat', 'quarter-med', 'quarter-lining', 'vamp-lining', 'heel-grip', 'collar-backer', 'counter', 'toe-puff', lastingOf({ style }) === 'strobel' ? 'strobel' : 'insole', 'sockliner', 'sole']) assert.ok(ids.includes(id), `${style} has ${id}`);
     assert.equal(ids.includes('tongue'), FW_STYLES[style].laced, `${style} tongue`); assert.equal(ids.includes('eyestay'), FW_STYLES[style].laced);
     for (const q of pat.pieces) { assert.ok(ok(q.sew) && areaOf(q.sew) > .1, `${style} ${q.id} cut shape`); if (q.shown) assert.ok(ok(q.shown), `${style} ${q.id} on the shoe`); }
     assert.ok(pat.pieces.find(q => q.id === 'sole').component && pat.pieces.find(q => q.id === 'sole').cut === 0, 'the sole is moulded, not cut');
@@ -72,4 +72,30 @@ test('cleaning the choices, the last drawing, and reading a style from the words
   assert.equal(cleanFootwear({ system: 'us-w' }).width, 'B'); assert.equal(cleanFootwear({ system: 'eu' }).size, 42);
   const svg = lastSvg({ style: 'boot' }); assert.match(svg, /last length/); assert.match(svg, /ball girth/); assert.ok(!/NaN/.test(svg));
   assert.equal(guessShoe({ name: 'Suede Chelsea boot' }), 'chelsea'); assert.equal(guessShoe({ name: 'Penny loafer' }), 'loafer'); assert.equal(guessShoe({ name: 'Court shoe' }), 'sneaker'); assert.equal(guessShoe({ name: 'Trail runner' }), 'runner');
+});
+
+test('inside the shoe: the tongue has a lining and its foam; the padding follows the style; runners and hikers are strobel-lasted', () => {
+  for (const style of Object.keys(FW_STYLES)) {
+    const ids = footwearPattern({ style }).pieces.map(q => q.id), P = PADDING[style];
+    if (FW_STYLES[style].laced) { assert.ok(ids.includes('tongue-lining') && ids.includes('eyestay-backer'), `${style}: tongue lining and eyestay backer`); assert.equal(ids.includes('tongue-foam'), P.tongue > 0, `${style}: tongue foam`); }
+    assert.equal(ids.includes('collar-foam'), P.collar > 0, `${style}: collar foam only where it is padded`);
+    assert.equal(ids.includes('strobel'), !ids.includes('insole'), `${style}: one or the other under the foot`);
+  }
+  assert.equal(lastingOf({ style: 'runner' }), 'strobel'); assert.equal(lastingOf({ style: 'hiker' }), 'strobel'); assert.equal(lastingOf({ style: 'derby' }), 'board');
+  assert.ok(PADDING.derby.collar === 0 && PADDING.hiker.collar > PADDING.sneaker.collar, 'a dress shoe is unpadded, a hiking boot padded more than a court shoe');
+  // a strobel upper is stitched at its edge (3/16 in), a board-lasted one folds ⅝ in under: the runner's vamp reaches less far under the foot
+  const deep = st => { const q = footwearPattern({ style: st }).pieces.find(x => x.id === 'vamp'); return Math.max(...q.sew.map(p => p[1])) - Math.max(...q.shown.map(p => p[1])); };
+  assert.ok(deep('runner') < deep('sneaker') - .3, `strobel ${deep('runner')} vs lasted ${deep('sneaker')}`);
+});
+
+test('warm and waterproof: an insulated lining adds an insulation layer, a membrane a sewn bootie; a hiking boot is waterproof by default; both reach the bill of materials', () => {
+  const ids = o => footwearPattern(o).pieces.map(q => q.id);
+  assert.ok(ids({ style: 'boot', lining: 'insulated' }).includes('quarter-insulation') && ids({ style: 'boot', lining: 'insulated' }).includes('vamp-insulation'));
+  assert.ok(!ids({ style: 'boot' }).includes('quarter-insulation'));
+  assert.ok(ids({ style: 'hiker' }).includes('membrane-vamp') && cleanFootwear({ style: 'hiker' }).membrane === true);
+  assert.ok(!ids({ style: 'hiker', membrane: false }).includes('membrane-vamp') && ids({ style: 'chelsea', membrane: true }).includes('membrane-quarter'));
+  assert.equal(cleanFootwear({ style: 'chelsea', lining: 'shearling' }).lining, 'shearling');
+  const bom = c => components(c).map(x => x.name).join(' | ');
+  assert.match(bom({ style: 'hiker' }), /Strobel sock.*Waterproof membrane bootie/); assert.match(bom({ style: 'boot', lining: 'insulated' }), /Insole board.*Insulation/);
+  assert.match(bom({ style: 'derby' }), /Collar and tongue foam/); assert.doesNotMatch(bom({ style: 'loafer' }), /Collar and tongue foam/);
 });

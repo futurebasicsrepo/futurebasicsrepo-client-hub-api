@@ -43,6 +43,9 @@ table.pcs tr[data-pid]{cursor:pointer}table.pcs tr.on{background:#effff6}
 .toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:9px 14px;border-radius:999px;font-size:13px;z-index:50}
 @media(max-width:900px){.wrap{grid-template-columns:1fr}.side{border-left:0;border-top:1px solid var(--line);max-height:none}#canvas svg{max-height:62vh}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
+
+/* the Design workspace's Panel button folds this panel away (the Studio sets data-panel on this page) */
+[data-panel=off] .wrap{grid-template-columns:minmax(0,1fr)}[data-panel=off] .wrap>aside.side{display:none}
 </style>
 <link rel="stylesheet" href="/cue.css">
 </head>
@@ -89,7 +92,7 @@ const TOKEN=()=>{try{return localStorage.getItem('fb.admin.token')||localStorage
 async function api(path,o={}){const r=await fetch(path,{method:o.method||(o.body?'POST':'GET'),headers:{Authorization:'Bearer '+TOKEN(),...(o.body?{'Content-Type':'application/json'}:{})},body:o.body?JSON.stringify(o.body):undefined});const j=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(new Error(j.error||'Something went wrong'),{status:r.status});return j}
 const toast=m=>{const t=document.createElement('div');t.className='toast';t.setAttribute('role','status');t.textContent=m;document.body.append(t);setTimeout(()=>t.remove(),2600)};
 const CID=new URLSearchParams(location.search).get('concept')||'',HOST=()=>{try{return parent!==window?parent.FBDesign:null}catch{return null}};
-const FILL={upper:'#e6d8c3',overlay:'#d9c2a3',foam:'#f3efc9',stiffener:'#dcdfe6',rubber:'#bdbdb8',eva:'#e8e8e2',elastic:'#cfd6c8',self:'#e9e4d8',pile:'#efe2cf',leather:'#d8c3a8',rib:'#d6e4ef',lining:'#e6dcef',fusing:'#f1efe6',pocketing:'#e3ecdf',board:'#dcdcdc',knit:'#e0e9d6',contrast:'#f3d3cc',felt:'#f1e2b8'};
+const FILL={upper:'#e6d8c3',overlay:'#d9c2a3',foam:'#f3efc9',stiffener:'#dcdfe6',reinforcement:'#e4e1d6',membrane:'#d3e3ea',strobel:'#e1ddd3',insulation:'#f2ead8',rubber:'#bdbdb8',eva:'#e8e8e2',elastic:'#cfd6c8',self:'#e9e4d8',pile:'#efe2cf',leather:'#d8c3a8',rib:'#d6e4ef',lining:'#e6dcef',fusing:'#f1efe6',pocketing:'#e3ecdf',board:'#dcdcdc',knit:'#e0e9d6',contrast:'#f3d3cc',felt:'#f1e2b8'};
 let PAT0=null,EDIT=false,EP=null,SELP=[],SEAM={a:null,b:null},EH=[],EHI=-1,DRAG=null,D=null,PAT=null,SPEC=null,SIZE='M',T=0,ANIM=0,SEL=null,DIRTY=false,RD=null,RDBUSY=false,RV=null,PICURL='',SHOWPIC=true;
 const r3=v=>Math.round(v*1000)/1000,P=pts=>'M'+pts.map(q=>`${r3(q[0])} ${r3(q[1])}`).join(' L')+' Z';
 // ---- how the piece is built (src/lab-construction.js): what the pattern drafts from, changed here or read from the drawing ----
