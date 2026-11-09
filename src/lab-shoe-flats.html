@@ -88,6 +88,7 @@ input[type=color]{width:42px;height:34px;border:1px solid var(--line);border-rad
   <div class="zoom" id="zoom" role="group" aria-label="Zoom"><button type="button" data-z="out" aria-label="Zoom out">−</button><output id="zv">100%</output><button type="button" data-z="in" aria-label="Zoom in">+</button><button type="button" data-z="fit">Fit</button></div>
   <div class="hintline" id="hint" role="status"></div></div>
 <aside id="side"></aside></div>
+<script src="/feedback.js"></script>
 <script type="module">
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));

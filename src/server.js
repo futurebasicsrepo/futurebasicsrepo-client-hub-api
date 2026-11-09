@@ -125,6 +125,18 @@ import { nextFreeStep, nextPaidStep, nurtureEmail, marketingFooter, parseCaseStu
 
 const app = Fastify({ logger: true, bodyLimit: 1_000_000, trustProxy: true });
 // every API route, counted as it is declared: the platform map shows the live number
+// An async handler that answers with reply.send(…) and then returns nothing (`const v = await needViewer(req, reply); if (!v) return;`) used
+// to be answered twice. The reply's onSend hooks below are async, so the reply is not yet "sent" when the handler's promise resolves with
+// undefined, and Fastify sends that undefined as well: the person got the first answer, and the second threw "Cannot write headers after they
+// are sent to the client", kept in the failure log as a server error on every signed-out request to such a route. So every async handler is
+// wrapped: one that has already answered and returns nothing returns the reply, which is how Fastify is told the answer is on its way.
+// (The onSend hook that marks a reply as answered is registered first and is synchronous, so it has run by the time send() returns.)
+const ANSWERED = Symbol('answered');
+app.addHook('onSend', (_req, reply, payload, done) => { reply[ANSWERED] = true; done(null, payload); });
+app.addHook('onRoute', route => {
+  const h = route.handler; if (typeof h !== 'function' || h.constructor.name !== 'AsyncFunction') return;
+  route.handler = async function (req, reply) { const out = await h.call(this, req, reply); return out === undefined && reply[ANSWERED] ? reply : out; };
+});
 const apiRoutes=new Set();app.addHook('onRoute',r=>{if(String(r.url).startsWith('/v1/'))for(const m of [].concat(r.method))if(m!=='HEAD')apiRoutes.add(`${m} ${r.url}`)});
 // Platform health: every answer is counted, and failures are kept in the database (the newest 500) so they survive a deploy.
 app.addHook('onResponse', async (req, reply) => { try { recordRequest(req.routeOptions?.url || '(no route)', reply.statusCode, reply.elapsedTime); } catch {} });
@@ -6531,6 +6543,16 @@ async function runOfferSweep(){
   }
 }
 
+// A page that broke in someone's browser says so here (src/feedback.js sends it), so it shows in the failure log on the platform health page
+// beside the server's own failures. Open to anyone, so it is small, counted per address, and never carries a token: a long path segment
+// (an id, a share token) is written as ":id", and the query is dropped.
+app.post('/v1/public/client-errors', { bodyLimit: 4000 }, async (req, reply) => {
+  if (!publicIntakeAllowed(req.ip, { bucket: 'client-errors', limit: 30 })) return reply.code(204).send();
+  const b = req.body && typeof req.body === 'object' ? req.body : {}, msg = String(b.message || '').replace(/\s+/g, ' ').trim().slice(0, 300);
+  const page = String(b.page || '').split(/[?#]/)[0].split('/').map(seg => (seg.length >= 16 || /^[0-9a-f-]{8,}$/i.test(seg) ? ':id' : seg)).join('/').slice(0, 120);
+  if (msg) reportError('browser', `${page || '(page)'}: ${msg}`, { page, where: String(b.where || '').slice(0, 160), agent: String(req.headers['user-agent'] || '').slice(0, 160) });
+  return reply.code(204).send();
+});
 app.setErrorHandler((error, req, reply) => {
   // Postgres class 22 = the value could not be read as the column's type (a malformed uuid in the path, a NUL byte in text)
   if (/^22/.test(String(error.code || '')) && !error.statusCode) {
@@ -6540,7 +6562,18 @@ app.setErrorHandler((error, req, reply) => {
   }
   req.log.error(error);
   if (!error.statusCode || error.statusCode >= 500) reportError('web', `${req.method} ${req.routeOptions?.url || req.url.split('?')[0]}: ${error.message}`, { status: error.statusCode || 500 });
-  reply.code(error.statusCode || 500).send({ error: error.statusCode ? error.message : 'Internal server error' });
+  // a failure nobody planned for is said in words a person can act on; what went wrong is in the log and the failure log, not on their screen
+  reply.code(error.statusCode || 500).send({ error: error.statusCode ? error.message : 'Something went wrong on our side. Nothing is lost: try again in a moment.' });
+});
+
+// A promise nobody caught (work started and not awaited, whose failure was not handled) used to end the process: Node's default. That drops
+// every request in flight for everyone, and after five such crashes in a row Railway stops restarting the service. It is logged and kept in
+// the failure log instead, and the service carries on. An uncaught exception still ends the process: after one its state cannot be trusted,
+// and Railway starts a fresh one.
+process.on('unhandledRejection', reason => {
+  const err = reason instanceof Error ? reason : new Error(String(reason));
+  try { app.log.error({ err }, 'unhandled rejection'); } catch {}
+  reportError('server', `Unhandled rejection: ${String(err.message).slice(0, 300)}`, { stack: String(err.stack || '').split('\n').slice(1, 5).map(l => l.trim()).join(' | ') });
 });
 
 // Graceful shutdown: Railway sends SIGTERM on every redeploy. Without a handler
@@ -6602,7 +6635,9 @@ async function siteAlert(a){
   if(a.severity==='critical'||a.key==='recovered')await notifyStaff(a.title,`<p>${emailEscape(a.body)}</p><p>${emailEscape(a.url)}</p><p>See <a href="${emailEscape(workHubUrl)}/platform">Platform health</a>.</p>`).catch(()=>{});
 }
 const runSites=()=>runSiteChecks(pool,{probeOpts:siteProbeOpts,alert:siteAlert});
-if(process.env.PROTOTYPE_TEST_ORIGIN)declareJob('Site checks', 5 * 60 * 1000, 'the test rig runs them on request'); else jobEvery('Site checks', 5 * 60 * 1000, async()=>{const r=await runSites();return r.checked}, { delay: 60 * 1000 });
+// SITES_AUTO=off: the sweep runs only when asked (POST /v1/admin/sites/check). The journeys set it on every server: they share one database,
+// and a server sweeping by itself a minute after it starts checked the builds the site-watch journey had just made, and said each was down.
+if(process.env.PROTOTYPE_TEST_ORIGIN||process.env.SITES_AUTO==='off')declareJob('Site checks', 5 * 60 * 1000, 'the test rig runs them on request'); else jobEvery('Site checks', 5 * 60 * 1000, async()=>{const r=await runSites();return r.checked}, { delay: 60 * 1000 });
 app.get('/v1/admin/sites',{preHandler:[authenticate,adminOnly]},async()=>{
   const rows=(await pool.query(`select m.*, b.name, (select round(100.0*count(*) filter (where c.ok)/nullif(count(*),0),2)::float from site_checks c where c.build_id=m.build_id and c.at > now() - interval '30 days') up30 from site_monitors m join builds b on b.id=m.build_id order by case m.state when 'down' then 0 when 'slow' then 1 else 2 end, b.name`)).rows;
   return {sites:rows.map(r=>siteView(r,r.up30))};

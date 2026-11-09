@@ -123,15 +123,16 @@ await journey('J31', 'getting to the tech pack and back: every level is a link, 
   // staff: client room → product → tech pack → back
   const admin = await forge({ sub: sql(`select id from users where lower(email)='${r.email}'`), clientId: r.clientId, role: 'admin' });
   ({ ctx, page } = await wide('admin', admin));
-  await page.goto(`${W}/clients/${r.clientId}#product=${r.id}`, { waitUntil: 'networkidle' }); await page.waitForSelector('.tpstrip', { timeout: 10000 });
+  // the staff product page is a sheet: its Overview leads with four tiles (tech pack, factory, price, quote), and the tech pack tile opens the pack
+  await page.goto(`${W}/clients/${r.clientId}#product=${r.id}`, { waitUntil: 'networkidle' }); await page.waitForSelector('.pf-tile:has-text("Tech pack")', { timeout: 10000 });
   ok(await page.locator('#clientPageBody .room-status').count() === 0, 'a product page does not carry the client details panel above it');
   c = await crumbs(page); ok(c[0] === 'Clients' && c.length === 4 && c[3] === 'Layer runner', 'the console product page shows Clients › client › project › product', c);
-  const groups = await page.$$eval('.actgroup > .meta', els => els.map(e => e.textContent.trim())); ok(groups.length === 3, 'product actions sit in three labelled groups, not one row of pills', groups);
-  await page.click('.tpstrip'); await page.waitForSelector('#acts .btn.primary', { timeout: 10000 }); await sleep(600);
+  const groups = await page.$$eval('.actgroup > .meta', els => els.map(e => e.textContent.trim())); ok(['Move it along', 'Design', 'Set up & price', 'Shopify'].every(g => groups.includes(g)) && groups.length === 4, 'product actions sit in labelled groups (move it along, design, set up and price, Shopify), not one row of pills', groups);
+  await page.click('.pf-tile:has-text("Tech pack")'); await page.waitForSelector('#acts .btn.primary', { timeout: 10000 }); await sleep(600);
   c = await crumbs(page); ok(c.length === 5 && c[0] === 'Clients' && c[4] === 'Tech pack', 'the console tech pack shows Clients › client › project › product › Tech pack', c);
   const vis = await page.$$eval('#acts > .btn, #acts > .status', els => els.filter(e => e.offsetParent).map(e => e.textContent.trim())); ok(vis.length <= 4 && vis.some(t => /^Save/.test(t)) && vis.some(t => /^Publish/.test(t)), 'staff see status, Save, Publish and More — the rest is under More', vis);
   await page.click('#acts details.more > summary'); const am = await page.$$eval('#acts .menu button', els => els.map(e => e.textContent.trim())); ok(am.includes('Download PDF') && am.some(t => /assistant/i.test(t)) && am.some(t => /factory/i.test(t)), 'run assistant, translate and PDF are under More', am);
-  await page.click('body', { position: { x: 4, y: 500 } }); await page.click('#crumb a.parent'); await page.waitForSelector('.tpstrip', { timeout: 10000 });
+  await page.click('body', { position: { x: 4, y: 500 } }); await page.click('#crumb a.parent'); await page.waitForSelector('.pf-tile:has-text("Tech pack")', { timeout: 10000 });
   ok(page.url().endsWith(`/clients/${r.clientId}#product=${r.id}`) && /Layer runner/i.test(await page.$eval('#roomMain .product h3', e => e.textContent)), 'back from the console tech pack opens the same product in the room', page.url());
   ok(page.errs.length === 0, 'no script errors (staff)', page.errs); await ctx.close();
   // phone: a single "‹ product" link instead of the whole trail
@@ -1204,8 +1205,8 @@ await journey('J130', 'software projects in browsers: a staff member makes one w
     await page.goto(`${W}/clients/${r.clientId}#project=${pid}`, { waitUntil: 'networkidle' }); await page.reload({ waitUntil: 'networkidle' }); const card = page.locator('.project-card.sw');
     await card.waitFor({ timeout: 10000 });
     ok((await card.locator('.sw-rail li').allInnerTexts()).length === 7 && /Prototype/.test(await card.locator('.sw-rail li.now').innerText()) && await card.locator('.sw-rail li.done').count() === 1, 'the project card shows the stage rail with Prototype current');
-    ok(/Salon site/.test(await card.locator('.sw-build h4').innerText()) && (await card.locator('.sw-build a[target=_blank]').getAttribute('href')) === `https://salon-${tag}.example.com` && (await card.locator('.sw-stack span').allInnerTexts()).join() === 'Node.js,Postgres' && /Online booking/.test(await card.locator('.sw-feat').innerText()), 'and the build card: the live site, what it is built with and its features');
-    ok(await card.locator('button:has-text("+ product")').count() === 0, 'a software project has no "+ product" button');
+    ok(/Salon site/.test(await card.locator('.sw-build h4').innerText()) && (await card.locator('.sw-build a[target=_blank]:not(.sw-shot)').getAttribute('href')) === `https://salon-${tag}.example.com` && (await card.locator('.sw-stack span').allInnerTexts()).join() === 'Node.js,Postgres' && /Online booking/.test(await card.locator('.sw-feat2').innerText()), 'and the build card: the live site, what it is built with and its features');
+    ok(await card.locator('button:has-text("+ product")').count() === 1, 'a software project can hold products too: its page offers "+ product" (a project shows everything it holds, sites and products together)');
     await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || '/tmp'}/j130-room.png` }).catch(() => {});
     await card.locator('.sw-stagepick select').selectOption('build'); await page.waitForFunction(() => /Build/.test(document.querySelector('.project-card.sw .sw-rail li.now')?.innerText || ''), null, { timeout: 8000 });
     ok(sql(`select stage from projects where id='${pid}'`) === 'build' && await page.locator('.project-card.sw .sw-rail li.done').count() === 2, 'moving the stage saves it and the rail follows');
@@ -1353,6 +1354,10 @@ await journey('J133', 'the work home in a browser: the week at a glance, who to 
   const r = await room('133', { wait: false }), tag = `wh${stamp}`, W = 'http://work.localhost:3123';
   const admin = await forge({ sub: sql(`select id from users where lower(email)='${r.email}'`), clientId: r.clientId, role: 'admin', email: 'kyle@thefuturebasics.com' });
   const A = (path, o = {}) => call('/v1/admin' + path, { token: admin, ...o }), S = (path, o = {}) => call('/v1/sales' + path, { token: admin, ...o });
+  // "Reach out today" holds ten rows, and what clients asked for and what is overdue come first (by design: renderReach in src/work-home.html).
+  // Earlier journeys leave both behind, so this one starts from a quiet day: those are closed here, and the list is left to the tasks, posts
+  // and leads this journey is about.
+  sql(`update requests set status='done' where status in ('submitted','in-progress')`); sql(`update money_invoices set status='paid' where status='sent' and due_on < current_date`);
   const lead = (await S('/contacts', { body: { name: `Lena ${tag}`, email: `lena-${tag}@lead.test`, source: 'website', tags: [] } })).json.id;
   const build = (await A('/builds', { body: { name: `Proto ${tag}`, status: 'in-progress', visibility: 'invite', hosting: 'railway', stack: ['Node', 'Postgres'], liveUrl: `https://proto-${tag}.example.com` } })).json.id;
   sql(`insert into build_views(email,build_id,kind) values('prospect-${tag}@x.test','${build}','open')`);
@@ -1499,7 +1504,7 @@ await journey('J138', 'Money in a browser: Colby is turned away and never sees t
   const page = await ctx.newPage(); page.errs = []; page.on('pageerror', e => page.errs.push(e.message)); page.on('dialog', d => d.accept());
   await page.goto(`${W}/home`, { waitUntil: 'networkidle' }); await page.waitForSelector('.fbside a[data-section=money]:not([hidden])', { timeout: 10000 }); ok(/Money/.test(await page.locator('.fbside a[data-section=money]').innerText()), 'the menu shows Money to Kyle');
   await page.click('.fbside a[data-section=money]'); await page.waitForURL(/\/money/, { timeout: 8000 }); await page.waitForSelector('#t-overview .tile', { timeout: 15000 });
-  ok(/Money/.test(await page.innerText('#app h1')) && await page.locator('#t-overview .tile').count() === 4, 'Money opens on its overview');
+  ok(/Money/.test(await page.innerText('#app h1')) && await page.locator('#t-overview .tile').count() === 5 && /Under contract/.test(await page.innerText('#t-overview')), 'Money opens on its overview: received, owed, overdue, under contract, to sort out');
   // a new invoice: lines, tax, a deposit
   await page.click('#newInv'); await page.waitForSelector('#dlg[open] [name=company]');
   await page.fill('#dlg [name=company]', `Acme ${tag}`); await page.fill('#dlg [name=address]', '1 Main St\nBrooklyn, NY'); await page.fill('#dlg [name=contactEmail]', `ap-${tag}@acme.test`);
@@ -1800,14 +1805,16 @@ await journey('J150', 'Late invoices on the work home Today list: first in the l
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyle);
   const page = await ctx.newPage(); page.errs = []; page.on('pageerror', e => page.errs.push(e.message)); page.on('dialog', d => d.accept());
   await page.goto(`${W}/home`, { waitUntil: 'networkidle' }); await page.waitForSelector('#reachList .row[data-k=money]', { timeout: 15000 });
-  const rows = await page.$$eval('#reachList .row', rs => rs.map(x => ({ k: x.dataset.k, text: x.innerText.replace(/\s+/g, ' '), href: x.getAttribute('href') })));
-  ok(rows[0].k === 'money' && rows[1].k === 'money' && rows[2].k === 'money' && rows[3].k === 'money', 'the late invoices come first in the list', JSON.stringify(rows.slice(0, 5).map(x => x.k)));
-  ok(/overdue/i.test(rows[0].text) && /Late .* · / .test(rows[0].text) && /\$500 owed/.test(rows[0].text) && /days late/.test(rows[0].text) && /^\/money\?invoice=[0-9a-f-]{36}#invoices$/.test(rows[0].href), 'a row says who, which invoice, how much and how late, and links to it', rows[0].text);
-  ok(/\d+ more late invoices?/.test(rows[3].text) && rows[3].href === '/money#invoices', 'past three there is one line for the rest', rows[3].text);
+  const rows = await page.$$eval('#reachList .row', rs => rs.map(x => ({ k: x.dataset.k, kind: (x.querySelector('.chip')?.textContent || '').trim(), text: x.innerText.replace(/\s+/g, ' '), href: x.getAttribute('href') })));
+  // what a client asked for leads the list (earlier journeys in a full run leave some); the late invoices come straight after, before anything else
+  const at = rows.findIndex(x => /^overdue$/i.test(x.kind)), late = rows.slice(at, at + 4);
+  ok(at >= 0 && rows.slice(0, at).every(x => /request/i.test(x.kind)) && late.length === 4 && late.every(x => /^overdue$/i.test(x.kind)), 'the late invoices come first in the list, after only what a client is waiting on', JSON.stringify(rows.slice(0, at + 5).map(x => x.kind)));
+  ok(/Late .* · / .test(late[0].text) && /\$500 owed/.test(late[0].text) && /days late/.test(late[0].text) && /^\/money\?invoice=[0-9a-f-]{36}#invoices$/.test(late[0].href), 'a row says who, which invoice, how much and how late, and links to it', late[0].text);
+  ok(/\d+ more late invoices?/.test(late[3].text) && late[3].href === '/money#invoices', 'past three there is one line for the rest', late[3].text);
   ok(!rows.some(x => /Paid lt|Future lt/.test(x.text) || x.text.includes(`Paid ${tag}`) || x.text.includes(`Future ${tag}`)), 'a paid invoice and one not yet due are not listed');
   await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || '/tmp'}/j150-home.png`, fullPage: true }).catch(() => {});
   // the row opens that invoice
-  await page.click('#reachList .row[data-k=money]:first-child'); await page.waitForURL(/\/money\?invoice=/, { timeout: 10000 }); await page.waitForSelector('#dlg[open] #detail .panel', { timeout: 15000 });
+  await page.locator('#reachList .row[href^="/money?invoice="]').first().click(); await page.waitForURL(/\/money\?invoice=/, { timeout: 10000 }); await page.waitForSelector('#dlg[open] #detail .panel', { timeout: 15000 });
   const num = (await call(`/v1/money/invoices/${ids[0]}`, { token: kyle })).json.invoice.number; ok(page.url().includes(`invoice=${ids[0]}`) && (await page.innerText('#dlg')).includes(num), 'the most overdue invoice opens straight from the Today list', num + ' / ' + (await page.innerText('#dlg')).slice(0, 60));
   ok(page.errs.length === 0, 'no script errors', page.errs); await ctx.close();
 
@@ -1815,7 +1822,7 @@ await journey('J150', 'Late invoices on the work home Today list: first in the l
   const c2 = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await c2.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, other);
   const p2 = await c2.newPage(); p2.errs = []; p2.on('pageerror', e => p2.errs.push(e.message));
   await p2.goto(`${W}/home`, { waitUntil: 'networkidle' }); await p2.waitForSelector('#reachList', { timeout: 15000 }); await p2.waitForTimeout(1200);
-  ok(await p2.locator('#reachList .row[data-k=money]').count() === 0 && !/Late lt/.test(await p2.innerText('#reachList')) && p2.errs.length === 0, 'someone Money is not open to sees no invoices and no errors'); await c2.close();
+  ok(await p2.locator('#reachList .row[href^="/money"]').count() === 0 && !/Late lt|Overdue/.test(await p2.innerText('#reachList')) && p2.errs.length === 0, 'someone Money is not open to sees no invoices and no errors'); await c2.close();
   const { ctx: pc, page: ph } = await phone(); try { await ph.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyle); await ph.goto(`${W}/home`, { waitUntil: 'networkidle' }); await ph.waitForSelector('#reachList .row[data-k=money]', { timeout: 15000 });
     ok(await ph.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'on a phone nothing is wider than the screen'); await ph.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || '/tmp'}/j150-phone.png` }).catch(() => {}); } finally { await pc.close(); }
 });
@@ -1959,11 +1966,13 @@ await journey('J162', 'Pip the helper mouse: a switch anyone can flip, a mouse t
   await page.click('.fbh-tog'); await page.waitForSelector('.fbh-g', { state: 'visible' });
   ok(await page.getAttribute('.fbh-tog', 'aria-pressed') === 'true' && (await title()) === 'Start a tech pack' && /step 1 of 6/i.test(await meta()), 'turning it on starts the first-tech-pack guide at step 1', `${await title()} · ${await meta()}`);
   const bub = await page.innerText('.fbh-b'); ok(/\bdo\b/i.test(bub) && /\bwhy\b/i.test(bub) && /next\s+add your design/i.test(bub), 'each step says what to do, why, and what comes next', bub.replace(/\s+/g, ' ').slice(0, 220));
+  await page.waitForSelector('.fbh-ring', { state: 'visible', timeout: 5000 }).catch(() => {}); // the ring is placed on the next frame after the step starts
   const ringBox = await page.locator('.fbh-ring').boundingBox(), btnBox = await page.locator('#newTechPack').boundingBox();
   ok(ringBox && Math.abs(ringBox.x + 6 - btnBox.x) < 3 && ringBox.width >= btnBox.width, 'a ring is drawn around the thing to press', JSON.stringify([ringBox, btnBox]));
   ok(await page.evaluate(() => localStorage.getItem('fb.helper.on')) === '1', 'the choice is remembered');
   // it follows the pointer once the person moves away from where it walked to
-  await page.mouse.move(300, 700); await page.mouse.move(900, 760, { steps: 8 }); await sleep(1800);
+  // (the mouse stays where it walked to for the first 0.7 s, so a pointer that was already moving does not pull it away: wait that out, as a person does)
+  await sleep(900); await page.mouse.move(300, 700); await page.mouse.move(900, 760, { steps: 8 }); await sleep(1800);
   const gb = await page.locator('.fbh-mouse').boundingBox(); ok(gb && Math.hypot(gb.x - 900, gb.y - 760) < 140, 'the mouse follows the pointer', JSON.stringify(gb));
   await page.mouse.move(640, 300); await sleep(1500); const gb2 = await page.locator('.fbh-mouse').boundingBox(); ok(gb2 && Math.hypot(gb2.x - 640, gb2.y - 300) < 140, 'and keeps following', JSON.stringify(gb2));
 
@@ -2173,7 +2182,7 @@ await journey('J176', 'A prototype made elsewhere in a browser: add it from the 
   const ctext = await card.textContent(); ok(/Made elsewhere/.test(ctext) && /Not on Builds yet/.test(ctext), 'it is in the list as made elsewhere and not on Builds yet', ctext);
   await card.locator('[data-open]').click(); await page.waitForSelector('#dlg[open] #xPush', { timeout: 10000 });
   ok(/Store password: sneakers/.test(await page.innerText('#dBody')) && (await page.locator('#xProj option').allInnerTexts()).some(t => t.includes(`Storefront ${stamp}`)), 'its page shows how to get in and offers the client project');
-  await page.selectOption('#xProj', proj.id); await page.click('#xPush');
+  await page.selectOption('#xProj', `p:${proj.id}`); await page.click('#xPush'); // the picker lists every room: a room's own project is p:<id>, a new site project in a room is c:<id>
   await page.waitForFunction(() => /On Builds/.test(document.querySelector('#dSub')?.textContent || ''), null, { timeout: 10000 });
   const tied = sql(`select build_id is not null from projects where id='${proj.id}'`); ok(tied === 't' && /On Builds/.test(await page.textContent('#dSub')), 'pushing puts it on Builds and on the client project', { tied, sub: await page.textContent('#dSub'), msg: await page.textContent('#dMsg') });
   await page.click('#xBack'); await page.waitForFunction(() => /Not on Builds yet/.test(document.querySelector('#dSub')?.textContent || ''), null, { timeout: 10000 });

@@ -76,7 +76,7 @@ export const NODES = [
    what:'Software and site projects per room, the showcase\'s GitHub sync, pushing a theme to a client\'s own Shopify store as an unpublished draft, and products to Square or Wix. Live client sites are checked every 5 minutes. A software project in the work room shows its build in full: the site\'s picture, hosting, code, stack, the client\'s Shopify app connection and the site\'s health.',
    code:['src/builds.js','src/commerce.js','src/shopify-merchant.js','src/theme-pack.js','src/site-monitor.js','src/commerce-routes.js','src/builds-admin.html'],data:['builds','build_pushes','client_shopify_stores','site_monitors'],talks:['shopify','github']},
   {id:'health',lane:'svc',name:'Platform health and jobs',sub:'checks · jobs · telemetry',
-   what:'Live checks of every connection, job and risky setting, grouped by area, without spending paid quota; the copy watch card; request and job telemetry. Runs the background jobs; the main ones are in "What runs on its own".',
+   what:'Live checks of every connection, job and risky setting, grouped by area, without spending paid quota; the copy watch card; request and job telemetry; a failure log that keeps the server\'s failures, each outside service\'s, and a page\'s own faults in someone\'s browser (sent by src/feedback.js to POST /v1/public/client-errors). Runs the background jobs; the main ones are in "What runs on its own".',
    code:['src/platform.js','src/platform-coverage.js','src/telemetry.js','src/payments.js','src/platform-map.js','src/platform-map.html'],data:['app_settings','platform_events'],talks:['pg','shopify','qbo','claude']},
   // data
   {id:'pg',lane:'data',t:'data',name:'Postgres',sub:'142 tables',

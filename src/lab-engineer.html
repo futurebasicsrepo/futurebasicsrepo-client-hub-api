@@ -127,6 +127,7 @@ dialog form{display:grid;gap:10px}
   <p class="note" id="sWhy"></p>
   <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end"><button class="btn q" type="button" id="sCompose" title="For a product none of these kinds fit: Claude lays out every part from the concept's picture and words, and the checks' problems go back to be fixed">Design it from the concept</button><button class="btn q" type="button" id="sRead" title="Read the kind, size and features from the concept's picture">Read the picture</button><button class="btn q" value="cancel" formnovalidate>Cancel</button><button class="btn go" type="button" id="sGo">Start from this</button></div>
 </form></dialog>
+<script src="/feedback.js"></script>
 <script type="module">
 import { engineer, cleanAssembly, cleanPart, explodeOffsets, extentOf, blockSvg, RESINS, SHAPES, ELEC, ARCHES, housingsOf, faceOfPart, compsOnBoard, frontOf, cablePath, CABLE_INK, bomRows } from '/lab/lab-assembly.js';
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)],esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));

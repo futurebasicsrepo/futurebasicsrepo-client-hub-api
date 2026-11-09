@@ -6,6 +6,9 @@
 //   - work that takes more than a moment is said on the button itself: three pulsing dots and what it is doing ("Designing three
 //     concepts…", "Saving…", "Thinking…"). A page's own "working on it" line (a status line ending in …) is taken into the button rather
 //     than shown further down the page; the page's answer when the work is done shows where it always did.
+//   - a save that could not reach the service, or that the service could not finish, says so in plain words and that the work is still on the
+//     page (never "Failed to fetch" or "Internal Server Error"); while the device is offline a strip at the top says so, and goes when it is back;
+//   - a page with unsaved work asks before it is left: FBN.guard(() => there is unsaved work).
 // Pages can say more themselves: FBN.toast(text, 'ok' | 'err' | 'info'), and FBN.run(button, async () => …, { done, failed }) for work that
 // is not a request. A button with data-fb="off" is left alone (one that already shows its own progress); data-fb-busy="Drawing…" names
 // what it does while it works.
@@ -45,9 +48,10 @@
 @keyframes fbnPop{from{transform:scale(0) rotate(-45deg)}}
 @keyframes fbnDrain{from{transform:scaleX(1)}to{transform:scaleX(0)}}
 @media (prefers-reduced-motion:reduce){.fbn-busy::before{animation:none;background:rgba(75,255,154,.12)}.fbn-busy::after{animation:none;transform:scaleX(.5)}.fbn-toast,.fbn-toast .ic,.fbn-toast.out,.fbn-err,.fbn-ok,.fbn-ok::after,.fbn-dots i{animation:none}.fbn-press{transform:none}}
-@media print{.fbn-stack{display:none}}`;
+.fbn-down{position:fixed;top:0;left:0;right:0;z-index:2147483001;background:#141416;color:#fff;font:500 13px/1.35 system-ui,sans-serif;padding:9px 16px;text-align:center;box-shadow:0 6px 24px rgba(20,20,22,.18)}.fbn-down::before{content:'';display:inline-block;width:7px;height:7px;border-radius:50%;background:#ffb020;margin-right:9px;vertical-align:1px}
+@media print{.fbn-stack,.fbn-down{display:none}}`;
   // the words, in the page's language when it sets window.FBN_STRINGS (the factory page does)
-  const EN = { working: 'Working…', thinking: 'Thinking', saving: 'Saving', sending: 'Sending', removing: 'Removing', uploading: 'Uploading', preparing: 'Preparing', copying: 'Copying', done: 'done', failed: 'did not work', offline: 'could not reach the service. Check your connection and try again.', wrong: 'Something went wrong', dismiss: 'Dismiss' };
+  const EN = { working: 'Working…', thinking: 'Thinking', saving: 'Saving', sending: 'Sending', removing: 'Removing', uploading: 'Uploading', preparing: 'Preparing', copying: 'Copying', done: 'done', failed: 'did not work', offline: 'could not reach the service. Check your connection and try again.', kept: 'Nothing is lost: what you changed is still on this page.', down: 'You are offline. What you change stays on this page: save it when you are back online.', back: 'Back online', wrong: 'Something went wrong', dismiss: 'Dismiss' };
   const words = new Proxy(EN, { get: (o, k) => (window.FBN_STRINGS || {})[k] || o[k] });
   let stack = null;
   const ready = () => {
@@ -135,14 +139,19 @@
   for (const k of ['confirm', 'prompt', 'alert']) { const f = window[k]; if (typeof f === 'function') window[k] = function () { const r = f.apply(window, arguments); if (last && Date.now() - last.at < 600000) last.at = Date.now(); return r; }; }
   // what the service said went wrong (its JSON error, or a line of its text)
   async function reason(r) {
-    try { const j = await r.clone().json(); if (j && (j.error || j.message)) return String(j.error || j.message); } catch { /* not JSON */ }
-    try { const t = (await r.clone().text()).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim(); if (t && t.length < 160) return t; } catch { /* no body */ }
-    return r.status === 401 ? 'you are signed out: sign in again' : r.status === 403 ? 'you do not have access to this' : r.status === 404 ? 'it was not found (it may have been removed)' : r.status === 413 ? 'the file is too large' : r.status === 429 ? 'too many tries: wait a moment and try again' : r.status >= 500 ? `the service had a problem (${r.status}); try again in a moment` : `${words.failed} (${r.status})`;
+    // the service's own words, unless they are only the name of the status ("Internal Server Error"), which tells a designer nothing
+    const bare = t => /^(internal server error|bad gateway|service unavailable|gateway time-?out|unknown error|error)\.?$/i.test(String(t).trim());
+    try { const j = await r.clone().json(); if (j && (j.error || j.message) && !bare(j.error || j.message)) return String(j.error || j.message); } catch { /* not JSON */ }
+    try { const t = (await r.clone().text()).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim(); if (t && t.length < 160 && !bare(t) && !/^[{\[]/.test(t)) return t; } catch { /* no body */ }
+    return r.status === 401 ? 'you are signed out: sign in again' : r.status === 403 ? 'you do not have access to this' : r.status === 404 ? 'it was not found (it may have been removed)' : r.status === 413 ? 'the file is too large' : r.status === 429 ? 'too many tries: wait a moment and try again' : r.status >= 500 ? `the service had a problem (${r.status}); try again in a moment. ${words.kept}` : `${words.failed} (${r.status})`;
   }
   const realFetch = window.fetch.bind(window);
   window.fetch = function (input, init) {
     const method = String((init && init.method) || (input && input.method) || 'GET').toUpperCase(), who = owner();
-    if (!who || (init && init.headers && (init.headers['x-fb'] === 'off'))) return realFetch(input, init);
+    // a request that never reached the service fails in the browser's words ("Failed to fetch", "Load failed"): say it in ours, for every
+    // caller, so a page that shows the error's message shows something a person can act on. Still a TypeError, with the browser's as its cause.
+    const plain = err => { if (err instanceof TypeError && err.name !== 'AbortError' && !err.fbn) { const e2 = new TypeError(`${words.offline.charAt(0).toUpperCase()}${words.offline.slice(1)}${method !== 'GET' ? ' ' + words.kept : ''}`); e2.cause = err; e2.fbn = true; return e2; } return err; };
+    if (!who || (init && init.headers && (init.headers['x-fb'] === 'off'))) return realFetch(input, init).catch(err => { throw plain(err); });
     begin(who.b);
     return realFetch(input, init).then(async r => {
       end(who.b, r.ok);
@@ -151,10 +160,17 @@
       return r;
     }, err => {
       end(who.b, false);
-      if (!(err && err.name === 'AbortError')) toast(`${who.label ? who.label + ': ' : ''}${words.offline}`, 'err');
-      throw err;
+      if (!(err && err.name === 'AbortError')) toast(`${who.label ? who.label + ': ' : ''}${words.offline}${method !== 'GET' ? ' ' + words.kept : ''}`, 'err');
+      throw plain(err);
     });
   };
+  // a page that breaks tells the service (POST /v1/public/client-errors → the failure log on the platform health page): a few per page; only a fault
+  // in the page's own code (a thrown TypeError, a missing name), never a request that did not get through (the connection's doing) or the
+  // service's own answer ("the daily limit is reached"), which the person was already told
+  let told = 0;
+  const tell = (message, where) => { if (told >= 5 || !message) return; told++; try { const body = JSON.stringify({ message: String(message).slice(0, 300), page: location.pathname, where: String(where || '').slice(0, 160) }); if (!(navigator.sendBeacon && navigator.sendBeacon('/v1/public/client-errors', new Blob([body], { type: 'application/json' })))) realFetch('/v1/public/client-errors', { method: 'POST', headers: { 'content-type': 'application/json' }, body, keepalive: true }).catch(() => {}); } catch { /* telling must never break the page */ } };
+  window.addEventListener('error', e => { if (e && e.message && !/^Script error\.?$/.test(e.message)) tell(e.message, `${String(e.filename || '').split('/').pop().split('?')[0]}:${e.lineno || 0}`); });
+  window.addEventListener('unhandledrejection', e => { const err = e.reason; if (!err || err.name === 'AbortError' || err.fbn || (err instanceof TypeError && /fetch|network|load failed/i.test(err.message || ''))) return; if (!(err instanceof TypeError || err instanceof ReferenceError || err instanceof RangeError || err instanceof SyntaxError)) return; tell(`${err.name}: ${err.message}`, 'promise'); });
   // a press whose work failed and nobody caught it
   window.addEventListener('unhandledrejection', e => {
     const err = e.reason; if (err && err.name === 'AbortError') return;
@@ -192,5 +208,15 @@
     try { const v = await fn(); end(b, true); if (o.done) toast(o.done, 'ok'); return v; }
     catch (err) { end(b, false); toast(`${o.failed || (b && labelOf(b)) || words.wrong}: ${(err && err.message) || words.failed}`, 'err'); throw err; }
   }
-  window.FBN = { toast, run, begin, end };
+  // offline: a strip across the top for as long as the device has no connection, so a save is not tried into nothing
+  let down = null;
+  const framed = (() => { try { return window.top !== window; } catch { return true; } })();
+  const setDown = off => { if (!document.body || framed) return; if (off && !down) { ready(); down = document.createElement('div'); down.className = 'fbn-down'; down.setAttribute('role', 'status'); down.textContent = words.down; document.body.appendChild(down); } else if (!off && down) { down.remove(); down = null; toast(words.back, 'ok', 2500); } };
+  window.addEventListener('offline', () => setDown(true)); window.addEventListener('online', () => setDown(false));
+  if (navigator.onLine === false) (document.readyState === 'loading' ? document.addEventListener('DOMContentLoaded', () => setDown(true)) : setDown(true));
+  // unsaved work: a page says when it has some, and the browser asks before the page is left
+  const guards = [];
+  window.addEventListener('beforeunload', e => { if (guards.some(f => { try { return Boolean(f()); } catch { return false; } })) { e.preventDefault(); e.returnValue = ''; } });
+  const guard = f => { if (typeof f === 'function') guards.push(f); };
+  window.FBN = { toast, run, begin, end, guard };
 })();

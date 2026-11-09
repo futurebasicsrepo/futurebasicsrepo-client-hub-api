@@ -5,6 +5,8 @@
 #   needs: Postgres reachable at DATABASE_URL, psql on PATH. Optional: Playwright (PLAYWRIGHT_PATH or on the module path).
 #   run:   npm run journeys            (payment gate on, the production setup)
 #          JOURNEY_GATE=off npm run journeys   (gate switched off for everyone; the journeys that start from a locked pack are skipped)
+#          JOURNEY_SUITE=core|lab npm run journeys   (everything but the Design Lab, or the Design Lab alone)
+#          JOURNEY_ONLY=J57,J48 npm run journeys     (just those)
 set -u
 cd "$(dirname "$0")/../.."
 # By default every run gets its own empty database (created here, dropped at the end), so runs stay fast and independent:
@@ -24,7 +26,9 @@ export JOURNEY_TMP="$(mktemp -d)"; T="$JOURNEY_TMP"; mkdir -p "$T/uploads"
 psql "$DATABASE_URL" -qAtc "delete from app_settings where key='techPackBilling'" >/dev/null 2>&1 # start every run with the payment gate on automatic
 for port in 3123 3124 3125 3126 3127 3128 3129 3130 3131 3132 3133 3135; do for p in $(ss -ltnp 2>/dev/null | grep ":$port " | grep -o 'pid=[0-9]*' | cut -d= -f2); do kill -9 "$p"; done; done
 # LAB_DAILY_ART: the platform-wide daily artwork limit (40) is a spend guard for real image models; a full run makes more than 40 stand-in artworks in one day, so the journeys raise it (the limit itself is covered by test/lab-art-cap.test.js)
-COMMON=(DATABASE_URL="$DATABASE_URL" SITE_PEEK=off LAB_DAILY_ART=5000 FACTORY_ACTIONS=on JWT_SECRET=smoke-secret STAFF_ACCESS_DEFAULT=all LAB_AUTO=off UPLOAD_DIR="$T/uploads" FOLLOWUPS_DISABLED=true VENDOR_DATA_KEY=00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff VENDOR_REVEAL_EMAILS=@chaos.test)
+# SITES_AUTO=off: no server sweeps client sites by itself. They share this database, and a sweep from a server that cannot reach the
+# journeys' stand-in sites marked the site-watch journey's builds as down while it ran (J159, about a minute after the servers start).
+COMMON=(DATABASE_URL="$DATABASE_URL" SITE_PEEK=off SITES_AUTO=off LAB_DAILY_ART=5000 FACTORY_ACTIONS=on JWT_SECRET=smoke-secret STAFF_ACCESS_DEFAULT=all LAB_AUTO=off UPLOAD_DIR="$T/uploads" FOLLOWUPS_DISABLED=true VENDOR_DATA_KEY=00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff VENDOR_REVEAL_EMAILS=@chaos.test)
 FIX=scripts/journeys/fixtures/ai-runner.json
 # Servers with the payment gate off do not run the locked-pack sweep (PAYMENT_SWEEP=off): they share this database, and would start the
 # packs that the gated servers' journeys expect to stay locked.
@@ -50,21 +54,28 @@ env "${COMMON[@]}" SHOPIFY_TOKEN_KEY=journey-token-key QUICKBOOKS_CLIENT_ID=qbid
 env "${COMMON[@]}" CUTOUT_FIXTURE=1 STUDIO_DAILY_PACKS=1 MESH_POLL_MS=300 MESH_FIXTURE_MS=1200 CHECK_FIXTURE_SCORE=92 PORT=3131 CLIENT_HUB_URL=http://127.0.0.1:3131 AI_FIXTURE=scripts/journeys/fixtures/ai-runner-needsfix.json AI_FIXTURE_DELAY_MS=300 LOOP_STEP_DELAY_MS=150 TECH_PACK_BILLING=off PAYMENT_SWEEP=off START_RATE_LIMIT=1000 node src/server.js > "$T/server-j-h.log" 2>&1 & PH=$!
 for port in 3124 3125 3127 3128 3129 3130 3131; do for i in $(seq 1 120); do curl -sf "http://127.0.0.1:$port/health" >/dev/null && break; sleep 0.5; done; done
 RC=0
-node scripts/journeys/api.mjs          || RC=1
-if node -e "require(process.env.PLAYWRIGHT_PATH||'playwright')" 2>/dev/null; then node scripts/journeys/browser.mjs || RC=1; else echo "skipping the browser journeys (Playwright not found)"; fi
-node scripts/journeys/shopify-down.mjs || RC=1
-node scripts/journeys/model-down.mjs   || RC=1
-node scripts/journeys/payments.mjs     || RC=1
-node scripts/journeys/loop.mjs         || RC=1
-node scripts/journeys/studio.mjs       || RC=1
-node scripts/journeys/customer.mjs     || RC=1
-node scripts/journeys/cap.mjs          || RC=1
-node scripts/journeys/booth.mjs        || RC=1
-node scripts/journeys/contracts.mjs    || RC=1
-node scripts/journeys/autopay.mjs      || RC=1
-node scripts/journeys/team.mjs         || RC=1
-node scripts/journeys/workspace.mjs    || RC=1
-node scripts/journeys/lab.mjs          || RC=1
+# JOURNEY_SUITE picks a part of the run, so two machines can share it (the CI workflow does): core is everything but the Design Lab, lab is
+# the Design Lab alone; unset runs it all.
+SUITE="${JOURNEY_SUITE:-all}"
+if [ "$SUITE" != lab ]; then
+  node scripts/journeys/api.mjs          || RC=1
+  if node -e "require(process.env.PLAYWRIGHT_PATH||'playwright')" 2>/dev/null; then node scripts/journeys/browser.mjs || RC=1; else echo "skipping the browser journeys (Playwright not found)"; fi
+  node scripts/journeys/shopify-down.mjs || RC=1
+  node scripts/journeys/model-down.mjs   || RC=1
+  node scripts/journeys/payments.mjs     || RC=1
+  node scripts/journeys/loop.mjs         || RC=1
+  node scripts/journeys/studio.mjs       || RC=1
+  node scripts/journeys/customer.mjs     || RC=1
+  node scripts/journeys/cap.mjs          || RC=1
+  node scripts/journeys/booth.mjs        || RC=1
+  node scripts/journeys/contracts.mjs    || RC=1
+  node scripts/journeys/autopay.mjs      || RC=1
+  node scripts/journeys/team.mjs         || RC=1
+  node scripts/journeys/workspace.mjs    || RC=1
+fi
+if [ "$SUITE" != core ]; then node scripts/journeys/lab.mjs || RC=1; fi
 kill -9 $PA $PB $PC $PD $PE $PF $PG $PH $PM 2>/dev/null; wait $PA $PB $PC $PD $PE $PF $PG $PH $PM 2>/dev/null
+# when a run finds problems, the servers' logs say why: kept where the caller asks (JOURNEY_LOG_DIR; the CI workflow uploads them)
+if [ $RC != 0 ] && [ -n "${JOURNEY_LOG_DIR:-}" ]; then mkdir -p "$JOURNEY_LOG_DIR" && cp "$T"/*.log "$JOURNEY_LOG_DIR"/ 2>/dev/null; fi
 [ -n "$THROWAWAY" ] && psql "postgres://postgres:postgres@localhost:5432/postgres" -qAtc "drop database if exists $THROWAWAY with (force)" >/dev/null 2>&1
 echo "journeys: $([ $RC = 0 ] && echo 'all clear' || echo 'PROBLEMS FOUND')"; exit $RC

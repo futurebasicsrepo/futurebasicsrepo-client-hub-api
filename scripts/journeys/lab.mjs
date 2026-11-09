@@ -422,7 +422,7 @@ await journey('J199', 'Design Lab concepts in a browser: make concepts from a pl
     await page.selectOption('#cd [data-b="mark"]', 'word'); await page.fill('#cd [data-k="twist"]', 'Our own back yoke seam that nobody else makes'); await page.locator('#cd [data-csave]').click(); await page.waitForFunction(() => /Saved/.test(document.querySelector('#cMsg')?.textContent || ''), null, { timeout: 8000 });
     ok(await page.locator('#cd [data-b="mark"]').inputValue() === 'word', 'the logo choice is kept');
     await page.locator('#cd [data-credraw]').click(); await page.waitForFunction(() => document.querySelector('#cd .big img') && !/Drawing/.test(document.querySelector('#cAct')?.textContent || ''), null, { timeout: 15000 }); ok(true, 'the picture is drawn again');
-    await page.fill('#cd [data-k="twist"]', 'Like the Ralph Lauren polo pony but ours'); await page.locator('#cd [data-csave]').click(); await page.waitForFunction(() => /too close/i.test(document.querySelector('#cd .verdict')?.textContent || ''), null, { timeout: 8000 });
+    await page.fill('#cd [data-k="twist"]', 'Like the Ralph Lauren polo pony but ours'); await page.locator('#cd [data-csave]').click(); await page.waitForFunction(() => /too close/i.test(document.querySelector('#cd .verdict')?.textContent || ''), null, { timeout: 25000 }); // the save runs the too-close check against every reference: seconds on a two-core machine
     ok(/Ralph Lauren/.test(await page.innerText('#cd .verdict')), 'naming another brand flags it "too close" and says which name');
     await page.locator('#cd [data-capprove]').click(); await say(page, 'We looked at it beside the reference and it is clearly different'); await page.waitForFunction(() => /approved/i.test(document.querySelector('#cd .in .chip')?.textContent || ''), null, { timeout: 10000 });
     ok(/approved anyway because/i.test(await page.innerText('#cd .verdict')), 'approving needs a reason, and the reason is shown with the check');
@@ -4919,7 +4919,7 @@ await journey('J296', 'Trousers and shorts against their drawing, and a Studio w
       for (let i = 0; i < 120 && started.status < 300; i++) { const v = (await K(`/concepts/${cid}/views`)).json.views || {}; if (v.model_front?.status === 'ready') break; await new Promise(r => setTimeout(r, 500)); }
       await page.evaluate(() => setVMode('board')); const fig = page.locator('#bTurns figure[data-turn=model_front][role=button]'); await fig.waitFor({ timeout: 20000 });
       const fr = await fig.locator('.fr').boundingBox(); ok(fr && fr.height > fr.width * 1.4, '7. a turn sits in a portrait frame, tall enough for the whole figure', fr);
-      await fig.click(); await page.waitForFunction(() => { const d = document.querySelector('#turnZoom'), i = d?.querySelector('img'); return d?.open && i?.naturalWidth > 0; }, null, { timeout: 15000 });
+      await fig.click(); await page.waitForFunction(() => { const d = document.querySelector('#turnZoom'), i = d?.querySelector('img'); return d?.open && i?.naturalWidth > 0 && i.getBoundingClientRect().height > 0; }, null, { timeout: 15000 }); // loaded and laid out: on a slower machine the box was still 0 by 0 a moment after it loaded
       const z0 = await page.evaluate(() => { const i = document.querySelector('#turnZoom img').getBoundingClientRect(); return { w: i.width, h: i.height, inView: i.top >= 0 && i.bottom <= innerHeight && i.left >= 0 && i.right <= innerWidth, pct: document.querySelector('#turnZoom .tz-z').textContent }; });
       ok(z0.inView && z0.h > fr.height, '8. a tap opens the turn large, the whole picture on the screen', z0);
       await page.locator('#turnZoom [data-tz=in]').click(); await page.locator('#turnZoom [data-tz=in]').click();
@@ -5117,6 +5117,63 @@ await journey('J291', 'the Studio stays inside its latency budget: drawing, movi
   const g = await runPerf({ base: BASE, token: kyleT, playwright, only: 'picture', gl: true, log: () => {} });
   ok(g.results.filter(x => !x.skipped && x.group === 'picture on the graphics chip').length >= 9 && !g.errors.length, '   and on the graphics chip: every picture interaction measured, no page errors', [g.results.filter(x => x.skipped).map(x => x.name), g.errors.slice(0, 3)]);
   ok(!g.over.length, "   every one inside the chip's budget", g.over.map(x => `${x.group}: ${x.name}: ${x.over.join(', ')}`));
+});
+
+await journey('J300', 'Nothing breaks quietly: every staff and designer page opens at a desktop, an iPad and a phone with no error and nothing off the side of the screen; a pattern whose save fails says so in plain words, keeps the work on the page and asks before it is left; a signed-out request leaves no error behind on the server; and a page that breaks in a browser shows in the failure log, without its link\'s token', async () => {
+  // a signed-out request to a route that answers inside its handler: 401 for the person, and no "headers already sent" in the failure log
+  sql(`delete from platform_events where message like '%Cannot write headers%'`);
+  for (let i = 0; i < 4; i++) ok((await call('/v1/builds/me')).status === 401, `1. signed out, the builds say so (${i + 1})`);
+  await sleep(400);
+  ok(sql(`select count(*) from platform_events where message like '%Cannot write headers%'`) === '0', '   and the server did not answer twice (no error is kept for it)', sql(`select message from platform_events where message like '%Cannot write headers%' limit 1`));
+  // a page that breaks in a browser tells the service; a link's token never reaches the log
+  const mark = `TypeError: journey ${stamp} is not a function`, tell = body => fetch(`${BASE}/v1/public/client-errors`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  const said = await tell({ message: mark, page: '/tp/abcdef0123456789abcdef0123456789/edit?t=secret', where: 'page.js:12' });
+  await sleep(400); const kept = sql(`select source||'|'||message from platform_events where message like '%journey ${stamp}%' order by id desc limit 1`);
+  ok(said.status === 204 && kept.startsWith('browser|/tp/:id/edit: ') && !/abcdef|secret/.test(kept), '2. a page\'s own failure is kept in the failure log as the browser\'s, with the token in its link left out', kept);
+  ok((await tell({ message: 'x'.repeat(9000) })).status === 413, '   and it takes a short note only');
+  if (!playwright) { ok(true, 'needs a browser'); return; }
+  const hoodie = (await K('/concepts/from-scratch', { body: { category: 'tops', style: 'hoodie', name: `Sweep hoodie ${stamp}` } })).json.concept.id, plush = (await K('/concepts/from-scratch', { body: { category: 'plush', shape: 'build', name: `Sweep plush ${stamp}` } })).json.concept.id;
+  const plan = (await K('/plans', { body: { name: `Sweep plan ${stamp}`, season: 'Fall' } })).json.plan.id;
+  const PAGES = ['/home', '/admin', `/clients/${clientId}`, '/platform', '/platform/map', '/start', '/lab', `/lab?plan=${plan}`, `/lab/studio?concept=${hoodie}`, `/lab/studio?concept=${hoodie}&view=flats`, `/lab/studio?concept=${hoodie}&view=pattern`, `/lab/studio?concept=${plush}&view=pattern`,
+    '/lab/library', '/lab/sketches', '/lab/materials', '/lab/recipe', '/sales', '/money', '/factories', '/prototypes', '/intel', '/contracts', '/team', '/brand', '/signature', '/builds/admin', '/pricing', '/help'];
+  const signIn = t => { try { localStorage.setItem('fb.admin.token', t); localStorage.setItem('fb.helper.on', '0'); } catch {} };
+  const br = await playwright.chromium.launch();
+  try {
+    for (const [size, w, h] of [['desktop', 1440, 900], ['iPad', 1024, 1366], ['phone', 390, 844]]) {
+      const ctx = await br.newContext({ viewport: { width: w, height: h }, hasTouch: size !== 'desktop' }); await ctx.addInitScript(signIn, kyleT);
+      const broke = [], wide = [], odd = [];
+      for (const path of PAGES) {
+        const page = await ctx.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e.message).slice(0, 120)));
+        await page.goto(BASE + path, { waitUntil: 'load', timeout: 30000 }).catch(e => errs.push('did not open: ' + String(e.message).slice(0, 60))); await page.waitForLoadState('networkidle', { timeout: 6000 }).catch(() => {}); await sleep(250);
+        const seen = await page.evaluate(() => { const t = document.body.innerText || ''; return { w: document.documentElement.scrollWidth, vw: innerWidth, odd: (t.match(/\bundefined\b|\bNaN\b|\[object Object\]/g) || []).slice(0, 2), blank: t.trim().length < 20 }; }).catch(() => ({ w: 0, vw: w, odd: [], blank: true }));
+        if (errs.length) broke.push(`${path}: ${errs[0]}`); if (seen.w > seen.vw + 2) wide.push(`${path}: ${seen.w}px in ${seen.vw}px`); if (seen.odd.length || seen.blank) odd.push(`${path}: ${seen.blank ? 'blank' : seen.odd.join(', ')}`);
+        await page.close();
+      }
+      ok(!broke.length, `3. on a ${size}, all ${PAGES.length} pages open with no page error`, broke.slice(0, 4));
+      ok(!wide.length, '   nothing runs off the side of the screen', wide.slice(0, 4));
+      ok(!odd.length, '   and no page is blank or shows "undefined", "NaN" or "[object Object]"', odd.slice(0, 4));
+      await ctx.close();
+    }
+    // a save that fails: plain words, the work kept, and a question before leaving
+    const ctx = await br.newContext({ viewport: { width: 1440, height: 900 } }); await ctx.addInitScript(signIn, kyleT);
+    for (const how of ['the service fails', 'the connection is gone']) {
+      const page = await ctx.newPage(); await page.goto(`${BASE}/lab/studio?concept=${hoodie}&view=pattern`, { waitUntil: 'load' }); const F = await (await page.waitForSelector('#patFrame')).contentFrame(); await F.waitForFunction(() => window.FBPattern?.ready?.(), null, { timeout: 20000 });
+      await page.route('**/v1/lab/concepts/*/pattern', r => r.request().method() !== 'PUT' ? r.continue() : how === 'the service fails' ? r.fulfill({ status: 500, contentType: 'application/json', body: '{"error":"Internal Server Error"}' }) : r.abort('internetdisconnected'));
+      for (const sel of await F.$$('select')) if ((await sel.evaluate(e => [...e.options].map(o => o.textContent).join())).includes('⅜')) { await sel.selectOption({ index: 0 }); break; }
+      await F.click('#saveP'); await F.waitForSelector('.fbn-toast.err', { timeout: 6000 }).catch(() => {});
+      const note = await F.evaluate(() => document.querySelector('.fbn-toast.err')?.textContent || '');
+      ok(/Nothing is lost/.test(note) && !/Failed to fetch|Internal Server Error|\{/.test(note) && (how === 'the service fails' ? /the service had a problem/.test(note) : /could not reach the service/.test(note)), `4. a pattern saved while ${how}: it says so in plain words, and that nothing is lost`, note);
+      ok(await F.evaluate(() => window.FBPattern.dirty()), '   the change is still on the page, unsaved');
+      let asked = false; page.on('dialog', d => { asked = d.type() === 'beforeunload'; d.dismiss().catch(() => {}); });
+      await page.goto(`${BASE}/lab`, { waitUntil: 'load' }).catch(() => {}); await sleep(300);
+      ok(asked && /\/lab\/studio/.test(page.url()), '   and leaving the Studio with it unsaved asks first', { asked, at: page.url().replace(BASE, '') });
+      await page.close({ runBeforeUnload: false });
+    }
+    // offline: a strip says so, and goes when the connection is back
+    const page = await ctx.newPage(); await page.goto(`${BASE}/lab`, { waitUntil: 'load' }); await ctx.setOffline(true); await page.waitForSelector('.fbn-down', { timeout: 4000 }).catch(() => {});
+    ok(/You are offline/.test(await page.evaluate(() => document.querySelector('.fbn-down')?.textContent || '')), '5. offline: a strip across the top says so, and that the work stays on the page');
+    await ctx.setOffline(false); await sleep(400); ok(await page.locator('.fbn-down').count() === 0, '   back online, it goes'); await ctx.close();
+  } finally { await br.close(); for (const id of [hoodie, plush]) await K(`/concepts/${id}`, { method: 'DELETE' }); }
 });
 
 process.exit(summary() ? 1 : 0);

@@ -154,7 +154,9 @@ document.addEventListener('keydown',e=>{
   const t={v:'select',h:'hand',b:'brush',e:'eraser',d:'distress',t:'text',r:'rect',o:'ellipse',l:'line',i:'pick',m:'area',u:'ruler',w:'warp'}[e.key.toLowerCase()];if(t&&!mod&&!e.altKey&&!(LEVEL==='simple'&&PRO_TOOLS.includes(t)))setTool(t);
 });
 document.addEventListener('keyup',e=>{if(e.key===' '){SPACE=false;setTool(TOOL)}});
-window.addEventListener('beforeunload',e=>{if(DIRTY||FF()?.dirty()){e.preventDefault();e.returnValue=''}});
+// the pattern (or the engineering page) in its frame counts too: its Save is its own, so leaving with it unsaved would lose it
+const PFD=()=>{try{const w=$('#patFrame')?.contentWindow;return Boolean((w?.FBPattern||w?.FBEngineer)?.dirty?.())}catch{return false}};
+window.addEventListener('beforeunload',e=>{if(DIRTY||FF()?.dirty()||PFD()){e.preventDefault();e.returnValue=''}});
 $('#undo').onclick=undo;$('#redo').onclick=redo;
 // the rail's own Undo and Redo: always in reach of a thumb on an iPad (the ones in the top bar are small and fold away)
 $('#railUndo').onclick=undo;$('#railRedo').onclick=redo;
