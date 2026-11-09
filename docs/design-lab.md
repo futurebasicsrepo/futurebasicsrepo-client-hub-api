@@ -1024,7 +1024,10 @@ maker, in any size (`GET /v1/lab/concepts/:id/last.svg?size=`).
 - **Pieces of the upper:** the vamp (cut whole: the half on the standard mirrored over the centre line), the quarters (outside and inside, the
   inside collar ⅛ in lower), the eyestays and the tongue for laced styles, the toe cap, the heel overlay, the back tab, the elastic gores of a
   Chelsea, and the moc apron of a loafer.
-- **Inside the shoe:** the linings, the collar foam, the heel counter and toe puff (thermoplastic), the insole board and the sockliner.
+- **Inside the shoe:** the quarter and vamp linings, the tongue (a face, a lining with the size label printed on it, and the foam between), a heel grip over the counter, non-woven backers under the eyestay and the topline, the heel counter and toe puff (thermoplastic), and the sockliner.
+  - **Padding by style** (`PADDING`): collar and tongue foam in mm, from none on a loafer or a Chelsea to 10 mm on a hiking boot's collar.
+  - **Under the foot** (`lastingOf`): board-lasted styles fold a ⅝ in lasting allowance onto an insole board; runners and hikers are strobel-lasted, their upper's edge (3/16 in) stitched to a strobel sock.
+  - **Warm and waterproof:** an insulated lining (200 g) adds an insulation layer cut as the linings, and shearling is a lining choice; a membrane (on by default for a hiking boot) adds a sewn, seam-taped bootie between the upper and the lining. All of these reach the bill of materials.
 - **Allowances:** each piece carries the ⅝ in lasting allowance and ⅜ in overlaps.
 - **The sole unit** (cupsole, EVA midsole, or a stitched outsole and heel) is shown as a moulded component: it is never cut.
 
