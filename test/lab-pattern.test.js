@@ -216,3 +216,17 @@ test('trousers as their sketch is built: a back yoke cut from the back leg, back
     for (const [k, v] of Object.entries(read)) assert.deepEqual(c[k], v, `${id}: ${k} as read`);
     assert.equal(constructionOf({ ...defaultParams(t.style), template: id, options: { construction: { backPockets: !read.backPockets } } }).backPockets, !read.backPockets, 'set on the piece wins'); }
 });
+
+test('a tailored jacket is cut as a tailor cuts it: lapel, collar, side body, two-piece sleeve, no rib; double-breasted has the overlap and six buttons', async () => {
+  const { fitToTemplate } = await import('../src/lab-flats.js');
+  const base = fitToTemplate({ ...defaultParams('jacket'), template: 'jk-blazer' }), at = c => garmentPattern({ ...base, options: { ...base.options, construction: c } });
+  const sb = at({ collar: 'lapel', opening: 'buttons' }), db = at({ collar: 'lapel', opening: 'buttons', breasted: 'double' }), ids = p => p.pieces.map(q => q.id);
+  for (const id of ['front', 'side-body', 'back', 'top-collar', 'under-collar', 'facing', 'top-sleeve', 'under-sleeve', 'chest-welt', 'flap', 'front-lining']) assert.ok(ids(sb).includes(id), id);
+  assert.ok(!ids(sb).some(id => /rib|cuff|hem-band/.test(id)), 'no rib anywhere');
+  assert.equal(sb.pieces.filter(q => /^button-/.test(q.id)).length, 2); assert.equal(db.pieces.filter(q => /^button-/.test(q.id)).length, 6);
+  const ov = p => -Math.min(...p.pieces.find(q => q.id === 'front').sew.filter(([, y]) => y > 20).map(([x]) => x));
+  assert.ok(ov(db) > ov(sb) + 2, `the double-breasted overlap is wider: ${ov(db)} against ${ov(sb)}`);
+  assert.ok(db.pieces.some(q => q.name === 'Peak lapel') && sb.pieces.some(q => q.name === 'Notch lapel'), 'a double-breasted takes a peak lapel, a single a notch');
+  assert.equal(db.trims.find(t => t.item === 'Front buttons').qty, 6);
+  assert.ok(garmentPattern({ ...defaultParams('jacket') }).pieces.some(q => q.id === 'hem-rib'), 'a zip jacket keeps its rib');
+});

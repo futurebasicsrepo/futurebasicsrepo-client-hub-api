@@ -102,7 +102,8 @@ export function artFindings(q, info, rules, tech) {
 export const flatDrawPrompt = (view, words = '') => [
   `Image 1 is a technical flat sketch of a garment, ${view} view. Image 2 is a photograph of the real garment${words ? ` (${words})` : ''}.`,
   `Redraw image 1 as the professional technical flat of the garment in image 2, ${view} view, the way a factory tech pack shows it.`,
-  'Keep the canvas, the framing, the pose, the scale and the centre line of image 1 exactly: the garment sits in the same place and at the same size, with the shoulders, neck and sleeves where image 1 has them. Change the length, the shape and the hem only where image 2 really differs (a cropped body is drawn cropped).',
+  'Keep the canvas, the scale, the pose and the centre line of image 1, and the neck where image 1 has it, so the drawing still measures in the same inches. Everything else is traced from image 2, not from image 1: the shoulder line (an extended, dropped or strong shoulder is drawn so), how the sleeves are set and their width, the length, the hem and the silhouette. Do not keep a line of image 1 that image 2 does not have.',
+  'A double-breasted garment is drawn double-breasted: its wide overlap, both rows of buttons in the number and place image 2 shows, and its lapels (peak or notch) at the width image 2 shows.',
   `Draw every construction detail image 2 shows on the ${view}: collar and lapel shape, closures and buttons or snaps, pockets and flaps, yokes, panels and seams, linings and quilting that show, cuffs, hems, waistbands, drawcords and their tips, stripes and contrast bands that are part of the cloth, topstitching as dashed lines.`,
   'Flat colour fills in the garment\'s real colours from image 2 (main cloth, contrast, lining, trims), clean black outlines of even weight, no photographic texture, no shading or gradients, no shadows, plain white background.',
   'Leave out logos, patches, printed graphics and text: they are placed separately. No people, no hangers, no labels, no measurements.',
@@ -207,6 +208,11 @@ export function registerLabFlatsRoutes(app, d) {
       det = { style: read.style, fit, options: det?.options || {}, template: defaultTemplate(read.style, fit, words, [c.name, c.spec?.silhouette, c.spec?.fabric].join(' ')) }; }
     if (!det) return null;
     if (det.template !== 'none' || !c.spec?.scratch) det.template = await pickTemplate(c, det);
+    // what the concept's own words say of how a tailored piece closes (double-breasted, a peak lapel): kept on the flats, so the pattern drafts it
+    { const w = ` ${[c.name, c.spec?.silhouette, c.spec?.description, ...(c.spec?.details || [])].join(' ').toLowerCase().replace(/[^a-z]+/g, ' ')} `, k = {};
+      if (/ double breasted /.test(w)) k.breasted = 'double'; else if (/ single breasted /.test(w)) k.breasted = 'single';
+      if (/ peak(ed)? lapel/.test(w)) k.lapel = 'peak'; else if (/ notch(ed)? lapel/.test(w)) k.lapel = 'notch';
+      if (Object.keys(k).length) det.options = { ...(det.options || {}), construction: { ...(det.options?.construction || {}), ...k } }; }
     const params = fitToTemplate({ ...defaultParams(det.style, det.fit, det.options), ...(det.template ? { template: det.template } : {}), ...(read?.color ? { color: read.color } : /^#[0-9a-f]{6}$/.test(String(c.spec?.color || '')) ? { color: c.spec.color } : {}) }), spec = ensureBranding(c.spec || {}, c.category), placements = [], list = await techniques(c.client_id);
     const logo = spec.branding?.logo || {};
     if (logo.mark && logo.mark !== 'none') { const mark = logo.mark === 'cue' ? 'mark' : logo.mark, base = LOGO_BASE[logo.technique] || 'embroidery', aspect = await aspectOf({ mark }); const t = techFor(list, { technique: base });

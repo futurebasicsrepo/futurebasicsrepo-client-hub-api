@@ -23,6 +23,8 @@ export const PANELS = ['none', 'side-stripe', 'side-panel', 'sleeve-stripe'];
 export const BACK_POCKETS = ['jeans', 'square', 'welt'];
 export const HEMS = ['straight', 'curved'];
 export const ANKLES = ['open', 'cuff', 'elastic'];
+export const BREASTED = ['single', 'double'];
+export const LAPELS = ['notch', 'peak'];
 
 // what a sketch's name says, as a partial description
 export function fromName(name, style) {
@@ -43,6 +45,9 @@ export function fromName(name, style) {
     else if (has(/ snap /)) c.opening = 'snaps';
     else if (has(/ henley /)) c.opening = 'placket';
     else if (has(/ button | cardigan | waistcoat | blazer | popover /)) c.opening = 'buttons';
+    if (has(/ double breasted /)) c.breasted = 'double'; else if (has(/ single breasted /)) c.breasted = 'single';
+    if (has(/ peak(ed)? lapel /)) c.lapel = 'peak'; else if (has(/ notch(ed)? lapel /)) c.lapel = 'notch';
+    if (has(/ sport ?coat | suit jacket | double breasted /)) { c.collar = 'lapel'; c.opening = 'buttons'; }
     if (has(/ western | trucker | yoke /)) c.yoke = { back: true, front: has(/ western | football | shoulder yoke | yoke football /) };
     const pk = [];
     if (has(/ kangaroo /)) pk.push(style === 'ziphoodie' || has(/ zip /) ? 'split-kangaroo' : 'kangaroo');
@@ -109,7 +114,7 @@ export function cleanConstruction(c) {
   if (Number.isFinite(Number(c.pleats)) && c.pleats !== null && c.pleats !== '') out.pleats = Math.min(Math.max(Math.round(Number(c.pleats)), 0), 3);
   if (ok(c.panels, PANELS)) out.panels = c.panels;
   for (const k of ['quilted', 'belt', 'lined', 'backPockets', 'beltLoops', 'coinPocket', 'utility']) if (typeof c[k] === 'boolean') out[k] = c[k];
-  if (ok(c.backPocket, BACK_POCKETS)) out.backPocket = c.backPocket; if (ok(c.hem, HEMS)) out.hem = c.hem; if (ok(c.ankle, ANKLES)) out.ankle = c.ankle;
+  if (ok(c.backPocket, BACK_POCKETS)) out.backPocket = c.backPocket; if (ok(c.hem, HEMS)) out.hem = c.hem; if (ok(c.ankle, ANKLES)) out.ankle = c.ankle; if (ok(c.breasted, BREASTED)) out.breasted = c.breasted; if (ok(c.lapel, LAPELS)) out.lapel = c.lapel;
   return out;
 }
 
@@ -137,6 +142,7 @@ export function constructionWords(c) {
   if (c.waist && c.waist !== 'fixed') w.push(c.waist === 'drawcord' ? 'Elastic waist with drawcord' : 'Elastic waist');
   if (c.backPockets === false) w.push('No back pockets');
   if (c.beltLoops) w.push('Belt loops');
+  if (c.collar === 'lapel' && c.breasted) w.push(c.breasted === 'double' ? 'Double-breasted' : 'Single-breasted'); if (c.collar === 'lapel' && c.lapel) w.push(c.lapel === 'peak' ? 'Peak lapel' : 'Notch lapel');
   if (c.backPocket && c.backPocket !== 'jeans' && c.backPockets !== false) w.push(c.backPocket === 'square' ? 'Square back pockets' : 'Welt back pockets');
   if (c.coinPocket === false && (c.pockets || []).includes('five-pocket')) w.push('No coin pocket');
   if (c.utility) w.push('Rule pocket and hammer loop');

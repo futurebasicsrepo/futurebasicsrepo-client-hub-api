@@ -790,11 +790,19 @@ function cleanInks(inks) {
   return Object.keys(out).length ? { inks: out } : {};
 }
 // → clean, bounded params and placements (from the page)
+// how a piece is built, kept on its flats (src/lab-construction.js cleans it again when it drafts): words and flags only, short
+function keptConstruction(c) {
+  if (!c || typeof c !== 'object' || Array.isArray(c)) return null; const out = {};
+  for (const [k, v] of Object.entries(c).slice(0, 30)) { if (!/^[a-zA-Z]{1,20}$/.test(k)) continue;
+    if (typeof v === 'boolean' || (typeof v === 'number' && Number.isFinite(v))) out[k] = v; else if (typeof v === 'string' && v.length <= 24) out[k] = v;
+    else if (Array.isArray(v)) out[k] = v.filter(x => typeof x === 'string' && x.length <= 24).slice(0, 8); else if (v && typeof v === 'object') out[k] = Object.fromEntries(Object.entries(v).filter(([a, b]) => /^[a-z]{1,12}$/.test(a) && typeof b === 'boolean').slice(0, 4)); }
+  return Object.keys(out).length ? out : null;
+}
 export function cleanFlat(input = {}) {
   const style = STYLES[input.style] ? input.style : null; if (!style) return { error: 'Choose what the piece is' };
   const fit = FITS[input.fit] ? input.fit : 'regular', base = defaultParams(style, fit), m = {};
   for (const k of Object.keys(base.m)) { const v = Number(input.m?.[k]); m[k] = Number.isFinite(v) ? r8(Math.min(Math.max(v, 0), 80)) : base.m[k]; }
-  const o = input.options || {}, options = { drop: Boolean(o.drop), cropped: Boolean(o.cropped), pleats: Math.min(Math.max(Math.round(Number(o.pleats) || 0), 0), 2), chestPocket: Boolean(o.chestPocket), noPocket: Boolean(o.noPocket), drawcord: o.drawcord !== false, rib: o.rib !== false, ...(o.legsDrawn ? { legsDrawn: true } : {}), ...(Number(o.kneeRatio) >= .8 && Number(o.kneeRatio) <= 1.7 ? { kneeRatio: Math.round(Number(o.kneeRatio) * 100) / 100 } : {}) }; // the legs as the sketch draws them (followDrawing)
+  const o = input.options || {}, options = { drop: Boolean(o.drop), cropped: Boolean(o.cropped), pleats: Math.min(Math.max(Math.round(Number(o.pleats) || 0), 0), 2), chestPocket: Boolean(o.chestPocket), noPocket: Boolean(o.noPocket), drawcord: o.drawcord !== false, rib: o.rib !== false, ...(o.legsDrawn ? { legsDrawn: true } : {}), ...(Number(o.kneeRatio) >= .8 && Number(o.kneeRatio) <= 1.7 ? { kneeRatio: Math.round(Number(o.kneeRatio) * 100) / 100 } : {}), ...(keptConstruction(o.construction) ? { construction: keptConstruction(o.construction) } : {}) }; // the legs as the sketch draws them (followDrawing); how it is built, as the concept says or as read
   const template = input.template === 'none' ? 'none' : FLAT_TEMPLATES.some(t => t.id === input.template && t.style === style) ? input.template : defaultTemplate(style, fit);
   const ao = input.allover, allover = ao && /^[0-9a-f-]{36}$/i.test(String(ao.art || '')) ? { art: ao.art, w: r8(Math.min(Math.max(Number(ao.w) || 4, .5), 48)), h: r8(Math.min(Math.max(Number(ao.h) || 4, .5), 48)), type: String(ao.type || 'straight').slice(0, 20), name: String(ao.name || 'All-over print').replace(/\s+/g, ' ').trim().slice(0, 60),
     base: ALLOVER_BASES.includes(ao.base) ? ao.base : ALLOVER_BASES[0], ...(/^[0-9a-f-]{36}$/i.test(String(ao.techniqueId || '')) ? { techniqueId: ao.techniqueId } : {}) } : null;
