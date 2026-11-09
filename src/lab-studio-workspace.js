@@ -79,8 +79,16 @@ $$('#levelSeg [data-level]').forEach(b=>b.onclick=()=>setLevel(b.dataset.level))
 let READY=null;
 async function loadReady(){if(GMODE||!CID)return;try{READY=await api(`/v1/lab/concepts/${CID}/ready`)}catch{return}paintReady()}
 // a piece with flats but no picture (from the recipe menu or a sketch): draw the picture from the flats in one go
-function paintFlatPic(){const show=Boolean(CID&&!GMODE&&D?.concept&&!D.concept.hasImage&&D.concept.hasFlats&&!D.concept.locked&&D.ai?.connected);$('#flatPicBar').classList.toggle('hidden',!show)}
+function paintFlatPic(){const show=Boolean(CID&&!GMODE&&D?.concept&&!D.concept.hasImage&&D.concept.hasFlats&&!D.concept.locked&&D.ai?.connected);$('#flatPicBar').classList.toggle('hidden',!show);dockFlatPic()}
 $('#flatPicX').onclick=()=>$('#flatPicBar').classList.add('hidden');
+// On a wide screen the prompt takes a place in the bar when the bar has the room on the rows it already has, so it never sits on the foot
+// of the drawing. Where it would cost the work a row (the Picture view on a laptop, an iPad), in Focus and on a narrow screen it floats
+// over the canvas as before.
+const FPQ=matchMedia('(min-width:981px)');
+function dockFlatPic(){const el=$('#flatPicBar'),bar=$('.bar'),put=on=>{if(on===el.classList.contains('docked'))return;el.classList.toggle('docked',on);if(on)bar.insertBefore(el,$('#people'));else $('#app').after(el)};
+  if(!FPQ.matches||document.documentElement.dataset.focus||el.classList.contains('hidden'))return put(false);
+  put(false);const h=bar.offsetHeight;put(true);if(bar.offsetHeight>h+2)put(false)}
+FPQ.addEventListener('change',dockFlatPic);{const mo=new MutationObserver(dockFlatPic);mo.observe(document.documentElement,{attributes:true,attributeFilter:['data-focus']});mo.observe($('#app'),{attributes:true,attributeFilter:['data-v','class']});try{new ResizeObserver(dockFlatPic).observe($('.bar'))}catch{}}
 $('#flatPicGo').onclick=async()=>{const b=$('#flatPicGo');if(HOLD)return;
   // what is open is saved first, and nothing saves while the model draws: a save landing after the picture would put the old base back
   if(!(await saveAll()))return;HOLD=true;busy('Drawing the picture from the flats. About a minute…');

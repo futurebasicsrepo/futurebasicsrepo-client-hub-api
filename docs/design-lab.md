@@ -270,6 +270,14 @@ The Lab installs as its own home-screen app (`/lab.webmanifest`: standalone, ope
 
 The flats zoom too: two fingers pinch and move them, one finger moves them once zoomed (a placement under the finger still drags), Ctrl and the wheel zoom on a computer, and **Fit** shows the whole piece again. A pinch that starts while a placement is being dragged puts it back where it was. On Design, and on any console page on a touch screen narrower than a desktop, the console menu starts folded to its icons (a person's own choice is kept). Installed, exports (the picture, a layer, the Illustrator SVG, the stitch file, the separations) open in the app's sheet with Share and Save rather than as a download that leaves the app.
 
+**Nothing sits on the work.** Three things used to cover the drawing or the tools, and no longer do. Journey J301 checks each.
+
+- The guide's mouse has the foot of the tool rail to itself: the rail keeps that room free, so its last tools scroll clear of it.
+- The tool names (the rail's first button; on by default on a touch screen) are the tool's name only, and the tool in hand also says what
+  it does. They ran 300 px over the garment on an iPad before.
+- **Front** and **Back** under the Pattern's two views are written at about 12 px on the screen however far the drawing is zoomed out to
+  fit. They were 6 px on a laptop.
+
 **A short screen.** On a screen 800 px tall or less and over 980 px wide (a 13-inch laptop, a browser with its toolbars showing; not an iPad on its side, which is 820), the Studio's brand bar gives its 72 px to the work: the Studio's own bar and the left menu start at the top. It holds only the wordmark there, and the left menu's first icon goes home. On Pattern at 1280 by 720 the working area goes from 493 to 565 px tall. The pattern's frame is sized to the row it is given on a wide screen, so the end of the Pattern page is always in reach (it ran 29 px past the bottom of the screen when the bar wrapped to two rows). Journey J301 checks both, and the pattern's colours.
 
 **Room to draw.** **Panel** (or `\`) folds the right-hand panel away, on the picture and on both flats, so the drawing takes the width. **Focus** (or `F`) hides the page header, the console menu and the Guide switch, and asks for full screen where the browser allows it. The drawing (the picture, a flat or the pattern) then takes the whole screen and everything else floats over it in Liquid Glass (frosted, translucent): the bar is a capsule along the top with the essentials (the views, the checklist, Save, More, Panel, Focus; More opens the rest; the steps, Undo and Redo, which are on the rail, step aside), the tool rail is the tool palette (below), the tool's options a capsule under the bar, the panel a card on the right, and the zoom buttons, the size dock and, on the flats, their own size, measurements and zoom bar (a capsule at the foot) are glass too. The picture fits into the room the glass leaves. Side by side keeps its columns. Both are kept on the device for the next time Design opens, and a second press brings them back.
@@ -293,8 +301,10 @@ each group. Journey J294.
 **Nothing floats over anything** (Focus). The palette publishes the room it takes on its edge (`--pal-l`, `--pal-t`, `--pal-r`, `--pal-b`,
 on the Studio and inside the flats and drawing frames), and the options bar, the side panel, the zoom, the size dock and the canvas keep
 clear of it; the options bar also stops at the side panel. The palette shows only where its tools draw (the picture and the flats); on the
-Pattern and Board views it stands aside, and in Focus the Pattern page floats its own bar at the foot in glass. The **No picture yet** card
-sits above the bottom bars, in the room left of the panel. Journey J296.
+Pattern and Board views it stands aside, and in Focus the Pattern page floats its own bar at the foot in glass. The **No picture yet** prompt
+takes a place in the Studio's bar on a wide screen, when the bar has the room on the rows it already has (the Flats and Pattern views on a
+laptop); where it would cost the work a row, in Focus and on a narrow screen it floats above the bottom bars, in the room left of the
+panel. Journeys J296 and J301.
 
 **On the flats**, two fingers on a graphic resize it about its centre, keeping its shape (anywhere else they zoom the flat). What is drawn on a flat covers the whole window, not only the garment's frame: the drawing spans all the window shows at full view, and an older, smaller drawing grows to the window before the next stroke, keeping what is on it.
 

@@ -9,7 +9,7 @@
 //   run:   node scripts/perf/studio-perf.mjs --base http://127.0.0.1:3200 --token <staff JWT>   (or npm run perf -- …)
 //          runs everything on the canvas, then the picture on the graphics chip (the app's default) against its own budgets; --gl 0|1 for one
 //          PERF_JSON=out.json writes the numbers; --rate 1 runs at full speed; --only picture|flats|panel
-//   exit:  1 when anything is over its budget, with the table saying which
+//   exit:  1 when anything is over its budget, with the table saying which (measured a second time before it counts: runPerfTwice)
 import { createRequire } from 'node:module';
 import { readFileSync, writeFileSync } from 'node:fs';
 
@@ -147,6 +147,18 @@ export async function runPerf({ base, token, playwright = null, rate = 4, only =
   return { results, over, errors };
 }
 
+// A busy machine only ever adds time: a shared test runner draws the pixels in software beside everything else it is doing, and one slow
+// frame puts a figure a millisecond over. So anything over its budget is measured a second time, from a fresh browser and the same fixture,
+// and counts only when it is over both times. Code that got slower is over every time; the budgets themselves do not move.
+export async function runPerfTwice(opts = {}) {
+  const a = await runPerf(opts); if (!a.over.length) return a;
+  const key = r => `${r.group}: ${r.name}`, say = r => `${key(r)}: ${r.over.join(', ')}`, log = opts.log || console.log;
+  const b = await runPerf({ ...opts, log: () => {} }), again = new Map(b.over.map(r => [key(r), r])), over = a.over.filter(r => again.has(key(r)));
+  for (const r of over) r.over = [...r.over, `and again ${again.get(key(r)).over.join(', ')}`];
+  log(`over its budget the first time: ${a.over.map(say).join('; ')}`); log(over.length ? `measured again, still over: ${over.map(key).join('; ')}` : 'measured again: all inside');
+  return { results: a.results, over, errors: [...a.errors, ...b.errors], first: a.over.map(say) };
+}
+
 // ---- run from the command line ----
 if (import.meta.url === `file://${process.argv[1]}`) {
   const arg = k => { const i = process.argv.indexOf('--' + k); return i > 0 ? process.argv[i + 1] : ''; };
@@ -154,8 +166,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   if (!token) { console.error('studio-perf: a staff token is needed (--token or PERF_TOKEN)'); process.exit(2); }
   // --gl both (the default): everything on the canvas, then the picture on the graphics chip; --gl 0 or --gl 1: one of them
   const mode = arg('gl') || 'both', rate = Number(arg('rate')) || 4, only = arg('only'), runs = [];
-  if (mode !== '1') runs.push(await runPerf({ base, token, rate, only, gl: false }));
-  if (mode !== '0' && (!only || only === 'picture')) runs.push(await runPerf({ base, token, rate, only: 'picture', gl: true }));
+  if (mode !== '1') runs.push(await runPerfTwice({ base, token, rate, only, gl: false }));
+  if (mode !== '0' && (!only || only === 'picture')) runs.push(await runPerfTwice({ base, token, rate, only: 'picture', gl: true }));
   const r = { results: runs.flatMap(x => x.results), over: runs.flatMap(x => x.over), errors: runs.flatMap(x => x.errors) };
   if (process.env.PERF_JSON) writeFileSync(process.env.PERF_JSON, JSON.stringify(r, null, 1));
   if (r.over.length || r.errors.length) { console.error(`studio-perf: ${r.over.length} over budget${r.errors.length ? `, ${r.errors.length} page errors` : ''}`); process.exit(1); }

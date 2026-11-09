@@ -13,6 +13,8 @@ When a check fails, the run keeps what explains it for a week: the proof page (`
 
 A browser journey that fails also keeps a picture of each of its pages (`journey-logs-*/shots/J31-2.png`): a timeout says which element never came, and the picture says what was on the screen instead. Locally, `JOURNEY_SHOT_DIR=/some/folder npm run journeys` does the same.
 
+The Studio's latency budget (journey J291, `npm run perf`) is a measurement, and a shared machine only ever adds time to one. So an interaction over its budget is measured a second time, from a fresh browser and the same fixture, and counts only when it is over both times (`runPerfTwice` in `scripts/perf/studio-perf.mjs`). Code that got slower is over every time. The budgets in `scripts/perf/budgets.json` do not move for this.
+
 ## Making the checks required
 
 The workflow reports the checks. GitHub only blocks a merge on them when the repository says so:
