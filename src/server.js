@@ -6635,7 +6635,9 @@ async function siteAlert(a){
   if(a.severity==='critical'||a.key==='recovered')await notifyStaff(a.title,`<p>${emailEscape(a.body)}</p><p>${emailEscape(a.url)}</p><p>See <a href="${emailEscape(workHubUrl)}/platform">Platform health</a>.</p>`).catch(()=>{});
 }
 const runSites=()=>runSiteChecks(pool,{probeOpts:siteProbeOpts,alert:siteAlert});
-if(process.env.PROTOTYPE_TEST_ORIGIN)declareJob('Site checks', 5 * 60 * 1000, 'the test rig runs them on request'); else jobEvery('Site checks', 5 * 60 * 1000, async()=>{const r=await runSites();return r.checked}, { delay: 60 * 1000 });
+// SITES_AUTO=off: the sweep runs only when asked (POST /v1/admin/sites/check). The journeys set it on every server: they share one database,
+// and a server sweeping by itself a minute after it starts checked the builds the site-watch journey had just made, and said each was down.
+if(process.env.PROTOTYPE_TEST_ORIGIN||process.env.SITES_AUTO==='off')declareJob('Site checks', 5 * 60 * 1000, 'the test rig runs them on request'); else jobEvery('Site checks', 5 * 60 * 1000, async()=>{const r=await runSites();return r.checked}, { delay: 60 * 1000 });
 app.get('/v1/admin/sites',{preHandler:[authenticate,adminOnly]},async()=>{
   const rows=(await pool.query(`select m.*, b.name, (select round(100.0*count(*) filter (where c.ok)/nullif(count(*),0),2)::float from site_checks c where c.build_id=m.build_id and c.at > now() - interval '30 days') up30 from site_monitors m join builds b on b.id=m.build_id order by case m.state when 'down' then 0 when 'slow' then 1 else 2 end, b.name`)).rows;
   return {sites:rows.map(r=>siteView(r,r.up30))};
