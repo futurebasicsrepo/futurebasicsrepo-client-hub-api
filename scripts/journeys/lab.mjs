@@ -4878,6 +4878,38 @@ await journey('J294', 'The tool palette in Focus: the rail becomes one glass doc
   } finally { await b.close(); if (cid) await K(`/concepts/${cid}`, { method: 'DELETE' }); }
 });
 
+await journey('J295', 'Sandals, clogs, slides and mules have patterns: a sandal is straps tucked under a footbed (each strap its length over the foot, split at its buckle, lined), a thong a post and two straps, a clog a vamp on a footbed or a wooden base, a moulded slide one injection mould a size, a mule a closed toe with no back; the Pattern page chooses how each is made', async () => {
+  const made = await K('/concepts/from-scratch', { body: { category: 'footwear', style: 'sandal', name: `Scratch sandal ${stamp}` } }), cid = made.json.concept?.id;
+  try {
+    const p = (await K(`/concepts/${cid}/pattern`)).json, ids = p.pieces?.map(q => q.id) || [];
+    ok(made.status === 201 && p.spec.style === 'sandal' && p.spec.variant === 'two-strap' && ['strap-toe-long', 'strap-toe-buckle', 'strap-instep-long', 'strap-instep-buckle', 'footbed-cover'].every(k => ids.includes(k)) && !ids.includes('insole'), '1. a sandal starts as a two-strap footbed sandal: two straps split at their buckles, a top cover, no insole board', ids);
+    ok(p.components.some(c => /cork and latex footbed/i.test(c.name)) && p.components.some(c => /Buckles/.test(c.name) && /4/.test(c.qty)) && /footbed press moulds/.test(p.tooling.note), '   its footbed and outsole are made, with four buckles a pair, and footbed moulds', { comp: p.components.map(c => c.name), t: p.tooling.note });
+    const th = (await K(`/concepts/${cid}/pattern`, { method: 'PUT', body: { spec: { ...p.spec, variant: 'thong' } } })).json;
+    ok(th.spec.variant === 'thong' && th.pieces.some(q => q.id === 'toe-post') && /knives/.test(th.tooling.note), '2. made as a thong: a toe post and two straps, die-cut with knives', th.tooling);
+    const dxf = await call(`/v1/lab/concepts/${cid}/pattern.dxf`, { token: kyleT });
+    ok(dxf.status === 200 && /Toe post/.test(dxf.text) && /Strap, outside/.test(dxf.text), '   and its pieces go to the DXF');
+    const cl = (await K(`/concepts/${cid}/pattern`, { method: 'PUT', body: { spec: { ...th.spec, style: 'footbed-clog', variant: 'wood', heel: undefined, spring: undefined, toe: undefined } } })).json;
+    ok(cl.spec.style === 'footbed-clog' && cl.pieces.some(q => q.id === 'vamp') && cl.components.some(c => /Wooden base/.test(c.name)) && cl.components.some(c => /tacks/i.test(c.name)), '3. a clog on a wooden base: the vamp turned under and tacked', cl.components.map(c => c.name));
+    const mo = (await K(`/concepts/${cid}/pattern`, { method: 'PUT', body: { spec: { ...cl.spec, style: 'moulded', variant: 'recovery', heel: undefined, spring: undefined, toe: undefined } } })).json;
+    ok(mo.pieces.every(q => !q.cut) && mo.tooling.lastPairs === 0 && mo.tooling.moulds === mo.tooling.sizes, '4. a recovery slide is injected whole: nothing cut, an injection mould a size, no lasts', mo.tooling);
+    const mu = (await K(`/concepts/${cid}/pattern`, { method: 'PUT', body: { spec: { ...mo.spec, style: 'mule', variant: 'heeled', heel: undefined, spring: undefined, toe: undefined } } })).json; // a new style starts from its own heel, as the page does
+    ok(mu.spec.heel === 2.25 && mu.pieces.some(q => q.id === 'vamp') && !mu.pieces.some(q => q.id === 'counter') && mu.checks.some(c => /backless/i.test(c.msg)), '5. a heeled mule: a closed toe, no counter, its 2¼ in heel flagged for a backless shoe', mu.checks.map(c => c.msg));
+    await K(`/concepts/${cid}/pattern`, { method: 'PUT', body: { spec: { ...mu.spec, style: 'sandal', variant: 'two-strap', heel: undefined, spring: undefined, toe: undefined } } });
+    if (!playwright) { ok(true, 'needs a browser'); return; }
+    const b = await playwright.chromium.launch(), errs = [];
+    try {
+      const oc = await b.newContext({ viewport: { width: 1366, height: 1024 } }); await oc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyleT);
+      const page = await oc.newPage(); page.on('pageerror', e => errs.push(String(e)));
+      await page.goto(`${BASE}/lab/pattern?concept=${cid}&embed=1`, { waitUntil: 'networkidle' }); await page.waitForFunction(() => window.FBPattern?.ready?.(), null, { timeout: 20000 });
+      const opts = await page.locator('select[data-k=variant] option').allInnerTexts();
+      ok(opts.length === 4 && opts.some(t => /Thong/.test(t)) && opts.some(t => /Fisherman/.test(t)), '6. the Pattern page chooses how a sandal is made', opts);
+      await page.selectOption('select[data-k=variant]', 'fisherman'); await page.waitForTimeout(400);
+      ok(/Heel strap/.test(await page.innerText('body')) && /Cross strap 5/.test(await page.innerText('body')), '   made as a fisherman sandal its cross straps and its heel strap are drafted');
+      ok(!errs.length, '7. no page errors', errs.slice(0, 3));
+    } finally { await b.close(); }
+  } finally { if (cid) await K(`/concepts/${cid}`, { method: 'DELETE' }); }
+});
+
 await journey('J292', 'Footwear: a shoe from the library, listed by type, opens in the Studio as its drawing in panels in the colour picked, its pattern drafted in the library shoe\'s style; the Sketch library shows shoes by type; a bag cannot take a library shoe', async () => {
   const lib = (await K('/library/footwear')).json.footwear || [];
   ok(lib.length >= 1 && lib.every(s => s.group && s.label && s.views.includes('lateral')), '1. the library lists shoes, each with its type and its outside view', lib.map(s => s.id));

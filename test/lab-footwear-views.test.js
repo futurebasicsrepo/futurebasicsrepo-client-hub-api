@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { footwearPattern, FW_STYLES } from '../src/lab-footwear.js';
+import { footwearPattern, FW_STYLES, VARIANTS } from '../src/lab-footwear.js';
 import { footwearViews, viewsLayout, flatsSheet } from '../src/lab-footwear-views.js';
 
-test('every style is drawn from four sides: outside, inside, top and bottom', () => {
-  for (const style of Object.keys(FW_STYLES)) {
+test('every closed style is drawn from four sides: outside, inside, top and bottom', () => {
+  for (const style of Object.keys(FW_STYLES).filter(k => !FW_STYLES[k].open && !FW_STYLES[k].backless)) {
     const pat = footwearPattern({ style }), v = footwearViews(pat);
     for (const k of ['lateral', 'medial', 'top', 'bottom']) {
       const b = v[k].box; assert.ok(b.x1 - b.x0 > pat.last.length * .9 && b.x1 - b.x0 < pat.last.length + 2, `${style} ${k} width ${b.x1 - b.x0}`);
@@ -36,4 +36,14 @@ test('from above the shoe is foot-shaped: a narrow round heel, widest across the
   const boot = footwearPattern({ style: 'boot' }), c = boot.marks.collar, top0 = c[0][1], front = c[c.length - 1];
   assert.ok(front[0] > 3 && Math.abs(front[1] - top0) < .5, `the boot's collar runs level about 3½ in to the front of the leg (${front})`);
   const e = boot.marks.eyelets; assert.ok(e[0][1] < top0 + 1 && e[e.length - 1][0] > boot.marks.vamp - 1, 'the lacing runs from the top of the shaft down to the vamp');
+});
+
+test('sandals, clogs, moulded slides and mules are drawn from four sides too: the straps or the shell on the footbed, the footbed showing from above, no toe line on an open toe', () => {
+  for (const style of ['sandal', 'footbed-clog', 'moulded', 'mule']) for (const variant of Object.keys(VARIANTS[style])) {
+    const pat = footwearPattern({ style, variant }), v = footwearViews(pat);
+    for (const k of ['lateral', 'medial', 'top', 'bottom']) assert.ok(!/NaN|Infinity/.test(v[k].svg) && v[k].box.x1 - v[k].box.x0 > pat.last.length * .9, `${style} ${variant} ${k}`);
+    const shown = pat.pieces.filter(q => q.shown && (!q.component || q.onShoe) && q.place.view === 'front' && !/lining|counter|puff/.test(q.id));
+    assert.ok(shown.length && shown.every(q => v.lateral.svg.includes(`data-pid="${q.id}"`) || v.medial.svg.includes(`data-pid="${q.id}"`)), `${style} ${variant}: what is on the shoe is drawn`);
+    assert.ok(!/<clipPath id="fbt\d+o">/.test(v.top.svg), `${style} ${variant}: no closed foot opening from above`);
+  }
 });

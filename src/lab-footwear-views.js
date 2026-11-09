@@ -78,7 +78,7 @@ function soleSide(pat, W) {
 // the part a piece is cut in (src/lab-materials-goods.js PARTS): its material's surface goes over its colour
 const partOf = q => q.fabric === 'overlay' || /eyestay|toe-cap|heel-overlay|mudguard|back-tab/.test(q.id) ? 'overlay' : 'upper';
 const surface = (C, q, d) => { const t = C.tex?.[partOf(q)]; return t ? `<path d="${d}" fill="url(#lk-${t}-${C.uid})" stroke="none" pointer-events="none"/>` : ''; };
-const visibleOn = (q, side) => q.place.view === 'front' && q.shown && !q.component && !INSIDE.test(q.id) && (side === 'medial' ? !/-lat(-|$)/.test(q.id) && !(q.seamSide === 'lateral') : !/-med(-|$)/.test(q.id) && !(q.seamSide === 'medial'));
+const visibleOn = (q, side) => q.place.view === 'front' && q.shown && (!q.component || q.onShoe) && !INSIDE.test(q.id) && (side === 'medial' ? !/-lat(-|$)/.test(q.id) && !(q.seamSide === 'lateral') : !/-med(-|$)/.test(q.id) && !(q.seamSide === 'medial'));
 function sideView(pat, side, C) {
   const l = pat.last, W = warpOf(l), fill = q => q.fabric === 'overlay' ? C.overlay : q.fabric === 'lining' ? C.lining : C.upper;
   const pieces = pat.pieces.filter(q => visibleOn(q, side)).sort((a, b) => (a.place.z || 0) - (b.place.z || 0));
@@ -90,7 +90,9 @@ function sideView(pat, side, C) {
     if (over || q.id === 'vamp') svg += `<path d="${P(inset(pts, .075))}" fill="none" stroke="${C.stitch}" stroke-width=".014" stroke-dasharray=".07 .05"/>`;
     if (q.id === 'tongue') svg += `<path d="${L_(chaikin(dense(q.shown.slice(0, Math.ceil(q.shown.length / 2)), .2).map(W), 1, false))}" fill="none" stroke="${C.stitch}" stroke-width=".012" stroke-dasharray=".05 .05" opacity=".6"/>`;
   }
-  svg += `</g><path d="${L_(chaikin(nose.edge, 1, false))}" fill="none" stroke="${C.line}" stroke-width=".028" stroke-linecap="round"/>`;
+  // the toe's edge, unless the toe is open (a sandal, a slide: nothing covers the last there)
+  const openToe = pat.open && pat.open !== 'clog' && !(pat.open === 'moulded' && pat.spec?.variant === 'clog');
+  svg += `</g>${openToe ? '' : `<path d="${L_(chaikin(nose.edge, 1, false))}" fill="none" stroke="${C.line}" stroke-width=".028" stroke-linecap="round"/>`}`;
   const eye = (pat.marks?.eyelets || []).map(W);
   svg += eye.map(([x, y]) => `<circle cx="${r3(x)}" cy="${r3(y)}" r=".085" fill="#fff" stroke="${C.line}" stroke-width=".022"/>`).join('');
   // the laces: from each eyelet over the middle of the opening (on the far side of the tongue) towards the next; the bow at the top
@@ -132,10 +134,10 @@ function planOf(pat) {
 const gapAt = (m, x) => .3 + .14 * Math.min(1, Math.max(0, (m.vamp - x) / Math.max(.5, m.vamp - m.throat)));
 function topView(pat, C) {
   const l = pat.last, L = l.length, pl = planOf(pat), m = pat.marks || {}, type = pat.sole?.type, id = `fbt${++SEQ}`, line = w => `stroke="${C.line}" stroke-width="${w}" stroke-linejoin="round"`;
-  const sole = inset(pl.outline, type === 'stitched' ? -.14 : type === 'midsole' ? -.26 : -.17);
-  let svg = `<clipPath id="${id}"><path d="${P(pl.outline)}"/></clipPath><path d="${P(sole)}" fill="${C.sole}" ${line('.03')}/><path d="${P(pl.outline)}" fill="${C.upper}" ${line('.03')}/>${C.tex?.upper ? `<path d="${P(pl.outline)}" fill="url(#lk-${C.tex.upper}-${C.uid})"/>` : ''}`;
+  const sole = inset(pl.outline, type === 'stitched' ? -.14 : type === 'midsole' ? -.26 : -.17), bare = Boolean(pat.open || pat.backless); // a sandal, a clog or a mule shows its footbed
+  let svg = `<clipPath id="${id}"><path d="${P(pl.outline)}"/></clipPath><path d="${P(sole)}" fill="${C.sole}" ${line('.03')}/><path d="${P(pl.outline)}" fill="${bare ? shade(C.lining, 1.03) : C.upper}" ${line('.03')}/>${C.tex?.upper && !bare ? `<path d="${P(pl.outline)}" fill="url(#lk-${C.tex.upper}-${C.uid})"/>` : ''}`;
   // the pieces, each on its side; one cut whole (the vamp, the toe cap) on both, meeting along the top centre, where no line is drawn
-  const pieces = pat.pieces.filter(q => q.place.view === 'front' && q.shown && !q.component && !INSIDE.test(q.id) && !['back-tab', 'tongue', 'eyestay'].includes(q.id)).sort((a, b) => (a.place.z || 0) - (b.place.z || 0));
+  const pieces = pat.pieces.filter(q => q.place.view === 'front' && q.shown && (!q.component || q.onShoe) && !INSIDE.test(q.id) && !['back-tab', 'tongue', 'eyestay'].includes(q.id)).sort((a, b) => (a.place.z || 0) - (b.place.z || 0));
   svg += `<g clip-path="url(#${id})">`;
   for (const q of pieces) {
     const sides = /-med(-|$)/.test(q.id) || q.seamSide === 'medial' ? ['medial'] : /-lat(-|$)/.test(q.id) || q.seamSide === 'lateral' ? ['lateral'] : ['lateral', 'medial'], over = q.fabric === 'overlay' || /toe-cap|heel-overlay|mudguard/.test(q.id);
@@ -152,7 +154,7 @@ function topView(pat, C) {
   const collar = m.collar || [];
   let open = null;
   if (m.shaft) { const a = (m.leg + .1) / 2, cx = a - .08, b = Math.min(1.3, Math.abs(pl.edge('medial', cx)) * .82); open = Array.from({ length: 48 }, (_, i) => { const t = i / 48 * 2 * Math.PI, c = Math.cos(t), s2 = Math.sin(t); return [cx + a * Math.sign(c) * Math.abs(c) ** .8, b * Math.sign(s2) * Math.abs(s2) ** .85]; }); }
-  else if (collar.length) open = chaikin([...collar.map(p => pl.proj('lateral', p)), ...collar.slice().reverse().map(p => pl.proj('medial', p))], 2);
+  else if (collar.length && !pat.backless) open = chaikin([...collar.map(p => pl.proj('lateral', p)), ...collar.slice().reverse().map(p => pl.proj('medial', p))], 2);
   if (open) {
     const rim = inset(open, -.13), wall = shade(C.lining, .8), bed = chaikin(inset(pl.outline, .3), 1), oid = `${id}o`;
     svg += `<path d="${P(rim)}" fill="${shade(C.upper, .97)}" ${line('.028')}/><path d="${P(open)}" fill="${wall}" ${line('.026')}/>`;

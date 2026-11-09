@@ -17,7 +17,7 @@ import { textPath } from './lab-type.js';
 import { locateMarks } from './lab-place.js';
 import { tasteWords } from './lab-taste.js';
 import { cleanPlush, PLUSH_SHAPES, PLUSH_TYPE, PLUSH_SNOUTS, PLUSH_HORNS, PLUSH_TAILS, PLUSH_MANES, PLUSH_EARS, PLUSH_FABRICS, PLUSH_EYES, PLUSH_AGES } from './lab-pattern.js';
-import { FW_STYLES, TOES, UPPERS, SOLES } from './lab-footwear.js';
+import { FW_STYLES, VARIANTS, TOES, UPPERS, SOLES } from './lab-footwear.js';
 import { BAG_TYPES, BAG_BODIES, BAG_CLOSURES, bagShot, cleanBag } from './lab-bags.js';
 
 const clip = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
@@ -262,7 +262,7 @@ export const CATEGORY_WORDS = {
 export const CATEGORY_JSON = {
   bags: `"bag":{"type":"${Object.keys(BAG_TYPES).join('|')}","w":12,"h":17,"d":5.5,"litres":20,"body":"${Object.keys(BAG_BODIES).join('|')}","closure":"${Object.keys(BAG_CLOSURES).join('|')}","colours":{"body":"#rrggbb","trim":"#rrggbb","webbing":"#rrggbb","hardware":"#rrggbb","lining":"#rrggbb"}}`,
   plush: `"plush":{"animal":"elephant, fox, unicorn, whale…","shape":"${Object.keys(PLUSH_SHAPES).join('|')} (its body type: quad for any four-legged animal sitting, sea for a whale, shark or fish, bear for one standing on two legs, bean for a round one; elephant has its own)","height":12,"ears":"${Object.keys(PLUSH_EARS).join('|')}","snout":"${Object.keys(PLUSH_SNOUTS).join('|')}","horn":"${Object.keys(PLUSH_HORNS).join('|')}","mane":"${Object.keys(PLUSH_MANES).join('|')}","wings":false,"spikes":false,"dorsal":false,"tailType":"${Object.keys(PLUSH_TAILS).join('|')}","head":1,"arms":true,"legs":true,"tail":false,"fabric":"${Object.keys(PLUSH_FABRICS).join('|')}","eyes":"${Object.keys(PLUSH_EYES).join('|')}","age":"${Object.keys(PLUSH_AGES).join('|')}","colours":{"body":"#rrggbb","contrast":"#rrggbb","mane":"#rrggbb (only with a mane)"}}`,
-  footwear: `"footwear":{"style":"${Object.keys(FW_STYLES).join('|')}","toe":"${Object.keys(TOES).join('|')}","toeCap":true,"mudguard":false,"upper":"${Object.keys(UPPERS).join('|')}","sole":"${Object.keys(SOLES).join('|')}","colours":{"upper":"#rrggbb","overlay":"#rrggbb","sole":"#rrggbb","lining":"#rrggbb"}}`
+  footwear: `"footwear":{"style":"${Object.keys(FW_STYLES).join('|')}","variant":"(for ${Object.keys(VARIANTS).join(', ')} only: ${Object.entries(VARIANTS).map(([k, v]) => `${k}: ${Object.keys(v).join('|')}`).join('; ')})","toe":"${Object.keys(TOES).join('|')}","toeCap":true,"mudguard":false,"upper":"${Object.keys(UPPERS).join('|')}","sole":"${Object.keys(SOLES).join('|')}","colours":{"upper":"#rrggbb","overlay":"#rrggbb","sole":"#rrggbb","lining":"#rrggbb"}}`
 };
 // what a concept says its pattern is drafted from: a plush's choices; a shoe's style, toe, pieces, upper, sole and colours
 const HEXC = /^#[0-9a-f]{6}$/i;
@@ -272,7 +272,7 @@ export function cleanMakeup(s = {}) {
   const bag = cleanBag(s.bag); if (bag) out.bag = bag;
   const f = s.footwear; if (f && typeof f === 'object' && FW_STYLES[f.style]) {
     const c = f.colours && typeof f.colours === 'object' ? Object.fromEntries(['upper', 'overlay', 'sole', 'lining'].filter(k => HEXC.test(String(f.colours[k] || ''))).map(k => [k, String(f.colours[k]).toLowerCase()])) : {};
-    out.footwear = { style: f.style, ...(TOES[f.toe] ? { toe: f.toe } : {}), ...(typeof f.toeCap === 'boolean' ? { toeCap: f.toeCap } : {}), ...(typeof f.mudguard === 'boolean' ? { mudguard: f.mudguard } : {}), ...(UPPERS[f.upper] ? { upper: f.upper } : {}), ...(SOLES[f.sole] ? { sole: f.sole } : {}), ...(Object.keys(c).length ? { colours: c } : {}) };
+    out.footwear = { style: f.style, ...(VARIANTS[f.style]?.[f.variant] ? { variant: f.variant } : {}), ...(TOES[f.toe] ? { toe: f.toe } : {}), ...(typeof f.toeCap === 'boolean' ? { toeCap: f.toeCap } : {}), ...(typeof f.mudguard === 'boolean' ? { mudguard: f.mudguard } : {}), ...(UPPERS[f.upper] ? { upper: f.upper } : {}), ...(SOLES[f.sole] ? { sole: f.sole } : {}), ...(Object.keys(c).length ? { colours: c } : {}) };
   }
   return out;
 }

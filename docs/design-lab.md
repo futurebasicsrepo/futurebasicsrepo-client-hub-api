@@ -1061,6 +1061,25 @@ maker, in any size (`GET /v1/lab/concepts/:id/last.svg?size=`).
 - **Allowances:** each piece carries the ⅝ in lasting allowance and ⅜ in overlaps.
 - **The sole unit** (cupsole, EVA midsole, or a stitched outsole and heel) is shown as a moulded component: it is never cut.
 
+**Sandals, clogs, slides and mules** (`openPattern` in `src/lab-footwear.js`). Four more styles, each with the ways it is made (`VARIANTS`, the
+Pattern page's **Made as**):
+- **Sandal** (two-strap, thong, fisherman, multi-strap): nothing is lasted. Each strap is cut flat, its length the way over the foot at its place
+  (half round an ellipse as wide as the footbed and as high as the last, less a little so it sits snug), with ⅝ in tucked under the footbed at
+  each side; a buckled strap is split into its holed side and its buckle side. Every strap is lined. A thong has a toe post and a strap to each
+  side; a fisherman sandal five cross straps, a centre strap, a heel strap with a counter, and an ankle strap with its buckle tab. The footbed
+  (cork and latex, or die-cut EVA for a thong) and the outsole are made, not cut; the top cover is cut from the bottom of the last.
+- **Footbed clog** (suede with a buckle strap, or on a wooden base): a closed vamp cut whole, tucked under a cork footbed, or turned under and
+  tacked round a carved wooden base; no back.
+- **Moulded** (pool slide, recovery slide, moulded clog): injected in one piece. Only a pool slide's strap is cut; a recovery slide has nothing
+  to cut; a clog's pivoting heel strap is moulded and riveted. Tooling is an injection mould a size (no lasts), cut oversize for the EVA's shrink.
+- **Mule** (loafer, heeled, sneaker): the closed-shoe draft with no back: the sides start a third of the way along, low at the back, and there
+  is no counter, heel grip or back tab. A heeled mule over 1½ in is flagged.
+
+Each has its components (footbed, top cover, outsole, buckles, toe post plug, tacks, rivets), its tooling (footbed and outsole moulds, cutting
+knives, a CNC program for a wooden base, injection moulds) and its checks (strap fit on a low and a high instep, the toe post, the EVA's shrink,
+a clog's throat). The tech flats draw them too: the straps or the shell on the footbed, the footbed showing from above, no toe line on an open
+toe. The footwear catalogue's sandals and clogs now name these styles, so 50 of its 91 styles can be drafted. Journey J295.
+
 Product → Exploded → Cutting layout works as for clothes, with the side and the bottom of the shoe side by side. The size picker redraws the
 whole shoe in any size of the run; the DXF and SVG come in the size asked for.
 

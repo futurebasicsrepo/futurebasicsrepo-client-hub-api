@@ -35,7 +35,7 @@ import { partLooks } from './lab-looks.js';
 import { logoSvg } from './brand-kit.js';
 import { MARKS } from './lab-logos.js';
 import { partsFor } from './lab-materials-goods.js';
-import { footwearPattern, cleanFootwear, fwDefaults, sizeRun, lastOf, lastSvg, hideArea, FW_STYLES, TOES, SYSTEMS, WIDTHS as SHOE_WIDTHS, UPPERS, LININGS, SIZE_LIMITS } from './lab-footwear.js';
+import { footwearPattern, cleanFootwear, fwDefaults, sizeRun, lastOf, lastSvg, hideArea, FW_STYLES, VARIANTS, TOES, SYSTEMS, WIDTHS as SHOE_WIDTHS, UPPERS, LININGS, SIZE_LIMITS } from './lab-footwear.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const clip = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
@@ -112,7 +112,7 @@ export function registerLabPatternRoutes(app, d) {
     catch (e) { log.warn?.({ err: e.message }, 'construction read failed'); return reply.code(502).send({ error: `The drawing could not be read: ${String(e.message).slice(0, 160)}` }); }
   });
   const draft = (L, size) => L.kind === 'plush' ? plushPattern(L.spec) : L.kind === 'footwear' ? footwearPattern(L.spec, size !== '' && size != null && Number.isFinite(Number(size)) ? Number(size) : null) : L.kind === 'garment' && L.flat ? (p => p && L.spec.sa ? { ...p, sa: L.spec.sa } : p)(garmentPattern(L.spec?.construction ? { ...L.flat, options: { ...(L.flat.options || {}), construction: L.spec.construction } } : L.flat, SIZES.includes(size) ? size : L.flat.size || 'M')) : null;
-  const options = { footwear: { styles: Object.fromEntries(Object.entries(FW_STYLES).map(([k, v]) => [k, v.label])), toes: Object.fromEntries(Object.entries(TOES).map(([k, v]) => [k, v.label])), systems: SYSTEMS, widths: SHOE_WIDTHS, uppers: UPPERS, linings: LININGS, limits: SIZE_LIMITS }, plush: { shapes: PLUSH_SHAPES, types: PLUSH_TYPE, ears: PLUSH_EARS, fabrics: PLUSH_FABRICS, eyes: PLUSH_EYES, ages: PLUSH_AGES, snouts: PLUSH_SNOUTS, horns: PLUSH_HORNS, manes: PLUSH_MANES, tails: PLUSH_TAILS, parts: PLUSH_PARTS }, widths: WIDTHS, seamAllowances: [.25, .375, .5, .625], sizes: SIZES, fits: FITS,
+  const options = { footwear: { styles: Object.fromEntries(Object.entries(FW_STYLES).map(([k, v]) => [k, v.label])), variants: Object.fromEntries(Object.entries(VARIANTS).map(([k, v]) => [k, Object.fromEntries(Object.entries(v).map(([a, b]) => [a, b.label]))])), toes: Object.fromEntries(Object.entries(TOES).map(([k, v]) => [k, v.label])), systems: SYSTEMS, widths: SHOE_WIDTHS, uppers: UPPERS, linings: LININGS, limits: SIZE_LIMITS }, plush: { shapes: PLUSH_SHAPES, types: PLUSH_TYPE, ears: PLUSH_EARS, fabrics: PLUSH_FABRICS, eyes: PLUSH_EYES, ages: PLUSH_AGES, snouts: PLUSH_SNOUTS, horns: PLUSH_HORNS, manes: PLUSH_MANES, tails: PLUSH_TAILS, parts: PLUSH_PARTS }, widths: WIDTHS, seamAllowances: [.25, .375, .5, .625], sizes: SIZES, fits: FITS,
     styles: Object.fromEntries(Object.entries(STYLES).map(([k, v]) => [k, { label: v.label, kind: v.kind, category: v.category }])), soon: SOON };
 
   app.get('/v1/lab/concepts/:id/pattern', { preHandler: pre }, async (req, reply) => {

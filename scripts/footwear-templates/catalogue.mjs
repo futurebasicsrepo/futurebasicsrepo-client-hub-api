@@ -135,20 +135,20 @@ export const LIBRARY = [
   { id: 'footwear-dress-driving', type: 'dress', label: 'Driving moccasin (pebble sole)', construction: 'moccasin', closure: 'slip-on', height: 'low', pattern: 'new:moccasin', priority: 3 },
 
   // ---- Clogs and mules: +5% in 2025 ----
-  { id: 'footwear-clogs-moulded', type: 'clogs', label: 'Moulded foam clog (vents, heel strap)', construction: 'injection', closure: 'strap', height: 'low', pattern: 'new:moulded', priority: 1 },
-  { id: 'footwear-clogs-suede-mule', type: 'clogs', label: 'Suede footbed clog (backless)', construction: 'footbed', closure: 'buckle', height: 'low', pattern: 'new:footbed-clog', priority: 1 },
-  { id: 'footwear-clogs-wood', type: 'clogs', label: 'Leather clog on a wooden base', construction: 'footbed', closure: 'none', height: 'low', pattern: 'new:footbed-clog', priority: 2 },
-  { id: 'footwear-clogs-loafer-mule', type: 'clogs', label: 'Loafer mule (backless)', construction: 'blake', closure: 'slip-on', height: 'low', pattern: 'new:mule', priority: 2 },
-  { id: 'footwear-clogs-sneaker-mule', type: 'clogs', label: 'Sneaker mule (backless court)', construction: 'cupsole', closure: 'lace', height: 'low', pattern: 'new:mule', priority: 3 },
-  { id: 'footwear-clogs-heeled-mule', type: 'clogs', label: 'Heeled mule (block heel)', construction: 'cemented', closure: 'slip-on', height: 'low', pattern: 'new:mule', priority: 2 },
+  { id: 'footwear-clogs-moulded', type: 'clogs', label: 'Moulded foam clog (vents, heel strap)', construction: 'injection', closure: 'strap', height: 'low', pattern: 'moulded', variant: 'clog', priority: 1 },
+  { id: 'footwear-clogs-suede-mule', type: 'clogs', label: 'Suede footbed clog (backless)', construction: 'footbed', closure: 'buckle', height: 'low', pattern: 'footbed-clog', variant: 'suede', priority: 1 },
+  { id: 'footwear-clogs-wood', type: 'clogs', label: 'Leather clog on a wooden base', construction: 'footbed', closure: 'none', height: 'low', pattern: 'footbed-clog', variant: 'wood', priority: 2 },
+  { id: 'footwear-clogs-loafer-mule', type: 'clogs', label: 'Loafer mule (backless)', construction: 'blake', closure: 'slip-on', height: 'low', pattern: 'mule', variant: 'loafer', priority: 2 },
+  { id: 'footwear-clogs-sneaker-mule', type: 'clogs', label: 'Sneaker mule (backless court)', construction: 'cupsole', closure: 'lace', height: 'low', pattern: 'mule', variant: 'sneaker', priority: 3 },
+  { id: 'footwear-clogs-heeled-mule', type: 'clogs', label: 'Heeled mule (block heel)', construction: 'cemented', closure: 'slip-on', height: 'low', pattern: 'mule', variant: 'heeled', priority: 2 },
 
   // ---- Sandals and slides: slides and flip-flops up, multi-strap sandals down ----
-  { id: 'footwear-sandals-pool-slide', type: 'sandals', label: 'Pool slide (moulded)', construction: 'injection', closure: 'none', height: 'low', pattern: 'new:moulded', priority: 1 },
-  { id: 'footwear-sandals-recovery-slide', type: 'sandals', label: 'Recovery slide (thick foam)', construction: 'injection', closure: 'none', height: 'low', pattern: 'new:moulded', priority: 1 },
-  { id: 'footwear-sandals-two-strap', type: 'sandals', label: 'Two-strap footbed sandal', construction: 'footbed', closure: 'buckle', height: 'low', pattern: 'new:sandal', priority: 1 },
-  { id: 'footwear-sandals-flip-flop', type: 'sandals', label: 'Flip-flop (thong)', construction: 'footbed', closure: 'none', height: 'low', pattern: 'new:sandal', priority: 1 },
-  { id: 'footwear-sandals-fisherman', type: 'sandals', label: 'Fisherman sandal (woven straps)', construction: 'cemented', closure: 'buckle', height: 'low', pattern: 'new:sandal', priority: 2 },
-  { id: 'footwear-sandals-strappy', type: 'sandals', label: 'Multi-strap flat sandal', construction: 'cemented', closure: 'buckle', height: 'low', pattern: 'new:sandal', priority: 3 },
+  { id: 'footwear-sandals-pool-slide', type: 'sandals', label: 'Pool slide (moulded)', construction: 'injection', closure: 'none', height: 'low', pattern: 'moulded', variant: 'slide', priority: 1 },
+  { id: 'footwear-sandals-recovery-slide', type: 'sandals', label: 'Recovery slide (thick foam)', construction: 'injection', closure: 'none', height: 'low', pattern: 'moulded', variant: 'recovery', priority: 1 },
+  { id: 'footwear-sandals-two-strap', type: 'sandals', label: 'Two-strap footbed sandal', construction: 'footbed', closure: 'buckle', height: 'low', pattern: 'sandal', variant: 'two-strap', priority: 1 },
+  { id: 'footwear-sandals-flip-flop', type: 'sandals', label: 'Flip-flop (thong)', construction: 'footbed', closure: 'none', height: 'low', pattern: 'sandal', variant: 'thong', priority: 1 },
+  { id: 'footwear-sandals-fisherman', type: 'sandals', label: 'Fisherman sandal (woven straps)', construction: 'cemented', closure: 'buckle', height: 'low', pattern: 'sandal', variant: 'fisherman', priority: 2 },
+  { id: 'footwear-sandals-strappy', type: 'sandals', label: 'Multi-strap flat sandal', construction: 'cemented', closure: 'buckle', height: 'low', pattern: 'sandal', variant: 'multi', priority: 3 },
 
   // ---- Flats and Mary Janes: ballerinas a 2025 bright spot ----
   { id: 'footwear-flats-ballet', type: 'flats', label: 'Ballet flat (drawstring topline)', construction: 'cemented', closure: 'slip-on', height: 'low', pattern: 'new:ballet', priority: 1 },
