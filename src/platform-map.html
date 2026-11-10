@@ -166,7 +166,7 @@ svg.edges path.cur{stroke-width:3.2}
         <li><span></span><div><b>Access</b>: staff are held to the modules ticked for them on Team access; a client's queries are scoped to their own room.</div></li>
         <li><span></span><div><b>Lab door</b>: pages and engine code under <code>/lab</code> need a 12-hour HttpOnly Lab cookie from <code>/v1/lab/door</code>.</div></li>
         <li><span></span><div><b>Copy watch</b>: library pulls are counted per account per hour; clients far past normal are paused. Every download is logged with a reference, written into Lab files.</div></li>
-        <li><span></span><div><b>On the way out</b>: security headers (CSP, HSTS, no framing), <code>private</code> caching for the Lab, <code>noindex</code> everywhere but the public pages, gzip.</div></li>
+        <li><span></span><div><b>On the way out</b>: security headers (CSP, HSTS, no framing), <code>private</code> caching for the Lab, <code>noindex</code> everywhere but the public pages, gzip, and a fingerprint (ETag) on every answer that may be kept, so one that has not changed is not sent again (304).</div></li>
       </ol>
     </div>
     <div class="card">

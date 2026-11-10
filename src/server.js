@@ -196,6 +196,18 @@ app.addHook('onSend', async (_req, reply, payload) => {
   // The pages and the pack data are text (a tech pack page is ~300 KB, a published pack with pictures several MB of JSON): compress what the browser can take, so a
   // factory on a phone connection waits for a fifth of it. Streams, PDFs and images are left as they are; nothing here changes what is sent, only how.
   const type = String(reply.getHeader('content-type') || ''), isText = /(json|html|javascript|css|svg|text\/)/i.test(type);
+  // An answer that has not changed is not sent again. A GET answer carries a fingerprint of its bytes (an ETag); the browser sends it back
+  // the next time, and the same bytes are answered with 304, "use what you have": the Lab board's list (over a megabyte), a page's
+  // scripts. The request is still checked and answered in full on the server (sign-in included), so nobody is shown another person's
+  // copy and nothing is ever stale; only the sending is saved. Answers marked no-store, and ones that set their own ETag, are left alone.
+  if (_req.method === 'GET' && reply.statusCode === 200 && (typeof payload === 'string' || Buffer.isBuffer(payload)) && isText && payload.length > 1400 && !reply.getHeader('etag')) {
+    const cc = String(reply.getHeader('cache-control') || '');
+    if (!/no-store/i.test(cc)) {
+      const tag = `W/"${createHash('sha1').update(payload).digest('base64url').slice(0, 22)}"`;
+      reply.header('etag', tag); if (!cc) reply.header('cache-control', 'private, no-cache');
+      if (String(_req.headers['if-none-match'] || '').split(',').map(x => x.trim()).includes(tag)) { reply.code(304).removeHeader('content-length'); reply.removeHeader('content-type'); return null; }
+    }
+  }
   if ((typeof payload === 'string' || Buffer.isBuffer(payload)) && isText && payload.length > 1400 && /\bgzip\b/i.test(String(_req.headers['accept-encoding'] || '')) && !reply.getHeader('content-encoding')) {
     const body = await gzipAsync(payload, { level: 5 });
     reply.header('content-encoding', 'gzip').header('vary', 'Accept-Encoding').removeHeader('content-length');

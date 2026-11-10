@@ -3,6 +3,7 @@
 //   POST /v1/lab/plans/:id/program/motifs/:mid/art          draw one motif of the plan's graphic program again (in the background)
 import { imageConfig } from './check.js';
 import { drawArt } from './lab-art.js';
+import sharp from 'sharp';
 import { cleanProgram } from './lab-program.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -52,11 +53,23 @@ export function createArtService(pool, { env = process.env, imageCfg = () => ima
   return { drawAndStore, drawProgram, load, idle, capLeft };
 }
 
+// The small copy of a graphic, as the pages show it in their tiles. It is kept as a 360 px PNG (about 230 KB for a painted graphic); the
+// tiles get it as WebP with its transparency, about a tenth of that, made once and remembered (an artwork never changes). The Studio opens
+// with two dozen of them. The full PNG, the one that is placed and printed, is untouched.
+const SMALL = new Map();
+async function smallThumb(id, png) {
+  if (SMALL.has(id)) return SMALL.get(id);
+  let out = null; try { const b = await sharp(png).webp({ quality: 82, alphaQuality: 90 }).toBuffer(); if (b.length < png.length) out = b; } catch { out = null; }
+  SMALL.set(id, out); if (SMALL.size > 600) SMALL.delete(SMALL.keys().next().value);
+  return out;
+}
+
 export function registerLabArtRoutes(app, { pool, authenticate, adminOnly, art, lab = null }) {
   const pre = [authenticate, adminOnly], bad = (reply, error, code = 422, extra = {}) => reply.code(code).send({ error, ...extra });
   app.get('/v1/lab/art/:id', { preHandler: pre }, async (req, reply) => {
     if (!UUID.test(req.params.id)) return bad(reply, 'Not found', 404);
     const r = (await pool.query('select png, thumb, created_at from lab_art where id=$1', [req.params.id])).rows[0]; if (!r) return bad(reply, 'Not found', 404);
+    if (req.query?.thumb) { const small = await smallThumb(req.params.id, r.thumb); if (small) return reply.header('content-type', 'image/webp').header('cache-control', 'private, max-age=86400, immutable').send(small); }
     return reply.header('content-type', 'image/png').header('cache-control', 'private, max-age=86400, immutable').send(req.query?.thumb ? r.thumb : r.png); // a drawn artwork never changes: drawing again makes a new one
   });
   app.post('/v1/lab/plans/:id/program/motifs/:mid/art', { preHandler: pre }, async (req, reply) => {

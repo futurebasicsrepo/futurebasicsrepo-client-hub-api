@@ -32,6 +32,8 @@ A pressure test of every way into a tech pack and every hand-off on the way to a
 | No style number on the page a factory prices from | Assigned (FB-yy-0001) when the pack is published; a typed one is kept. The client is no longer asked for it. |
 | Packing, labels, origin, fibre and sourcing were nowhere in the checklist | A "not required, but a factory will ask" list on the client's Submit tab. |
 | 300 KB pages and multi-megabyte pack JSON went uncompressed to phones | Text responses are gzipped for browsers that accept it. |
+| The Lab board fetched its whole list (over 1 MB) on every visit, and the Flats and Pattern views fetched their scripts again every time | An answer that has not changed is not sent again: it carries a fingerprint (an ETag), and the second request is answered 304. The sign-in is still checked each time, and pages themselves are never kept. Journey J302. |
+| The Studio opened with two dozen library graphics at about 230 KB each (3 MB) | Their small copies go out as WebP with transparency, about a tenth of the size. The full PNG that is placed and printed is untouched. Journey J302. |
 | (earlier pass) Concept render did not reach Callouts or Check; no way to adjust the logo; no way to reuse saved files | Concept render is the front view, the logo is the client's own file placed on it, "from your files" on image uploads. |
 
 ## Closed in the second pass
