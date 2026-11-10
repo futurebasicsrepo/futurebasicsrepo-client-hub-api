@@ -2282,5 +2282,41 @@ await journey('J266', 'Touch screens never zoom or slide sideways: on a phone an
   }
 });
 
+await journey('J303', 'A file added to a product in the console reaches it: Add asset takes a picture as it is (not shrunk, not sent as text) and the product lists it; New version takes a PDF; the file comes back byte for byte; and the new-product dialog still takes several photos', async () => {
+  const r = await room('303', { wait: false }), W = 'http://work.localhost:3123';
+  const admin = await forge({ sub: sql(`select id from users where lower(email)='${r.email}'`), clientId: r.clientId, role: 'admin' });
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+  const page = await ctx.newPage(), errs = []; page.on('pageerror', e => errs.push(e.message));
+  try {
+    const pic = Buffer.from(runner.split(',')[1], 'base64'), pdf = Buffer.from('%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n');
+    await page.goto(`${W}/clients/${r.clientId}#product=${r.id}`, { waitUntil: 'networkidle' });
+    await page.locator('button', { hasText: /^Files & comments/ }).first().click(); await page.locator('button', { hasText: /^Add asset$/ }).first().click(); await page.waitForSelector('#editorModal[open]', { timeout: 8000 });
+    const field = await page.$eval('#editorForm input[type=file][name=file]', i => ({ accept: i.accept, multiple: i.multiple, required: i.required }));
+    ok(/\.pdf/.test(field.accept) && /\.ai/.test(field.accept) && /\.jpe?g/.test(field.accept) && !field.multiple && field.required, '1. the file field takes what its label says (PDF, .ai, pictures, archives), one file, and it is required', field);
+    await page.fill('#editorForm [name=name]', 'Logo placement render'); await page.fill('#editorForm [name=notes]', 'V1');
+    await page.setInputFiles('#editorForm input[type=file][name=file]', { name: 'IMG_4711.jpeg', mimeType: 'image/jpeg', buffer: pic });
+    await page.locator('#editorForm button[type=submit]').click();
+    await page.waitForFunction(() => /v1 · IMG_4711\.jpeg/.test(document.body.innerText) || (/required|not |could|Allowed/i.test(document.querySelector('#editorMessage')?.textContent || '') && !/Sav/.test(document.querySelector('#editorMessage')?.textContent || '')), null, { timeout: 15000 }).catch(() => {});
+    const said = await page.$eval('#editorMessage', e => e.textContent).catch(() => '');
+    ok(await page.locator('a', { hasText: 'v1 · IMG_4711.jpeg' }).count() === 1 && !/required/i.test(said), '2. a picture chosen in Add asset is saved, and the product lists it as version 1', said);
+    const v1 = sql(`select v.id from asset_versions v join assets a on a.id=v.asset_id where a.product_id='${r.id}' and a.name='Logo placement render' order by v.version desc limit 1`);
+    const got = v1 ? await fetch(`${BASE}/v1/asset-versions/${v1}/download`, { headers: { authorization: 'Bearer ' + admin } }) : null, bytes = got ? Buffer.from(await got.arrayBuffer()) : Buffer.alloc(0);
+    ok(got?.status === 200 && bytes.equals(pic), '3. the file comes back byte for byte: it was not made smaller on the way', { status: got?.status, sent: pic.length, back: bytes.length });
+    // a new version, a PDF this time
+    await page.locator('button', { hasText: /^New version$/ }).first().click(); await page.waitForSelector('#editorModal[open]', { timeout: 8000 });
+    await page.fill('#editorForm [name=notes]', 'Spec sheet added'); await page.setInputFiles('#editorForm input[type=file][name=file]', { name: 'placement-spec.pdf', mimeType: 'application/pdf', buffer: pdf });
+    await page.locator('#editorForm button[type=submit]').click(); await page.locator('a', { hasText: 'v2 · placement-spec.pdf' }).first().waitFor({ timeout: 15000 }).catch(() => {});
+    ok(await page.locator('a', { hasText: 'v2 · placement-spec.pdf' }).count() === 1 && await page.locator('a', { hasText: 'v1 · IMG_4711.jpeg' }).count() === 1, '4. New version takes a PDF: the product lists version 2 beside version 1', await page.$eval('#editorMessage', e => e.textContent).catch(() => ''));
+    // the dialog with nothing chosen says so itself, and the new-product dialog still takes photos
+    await page.waitForFunction(() => !document.querySelector('#editorModal')?.open, null, { timeout: 5000 }).catch(() => {});
+    await page.evaluate(id => window.addAsset(id), r.id); await page.fill('#editorForm [name=name]', 'No file'); await page.locator('#editorForm button[type=submit]').click(); await sleep(300);
+    ok(await page.$eval('#editorForm input[type=file][name=file]', i => !i.validity.valid) && sql(`select count(*) from assets where product_id='${r.id}' and name='No file'`) === '0', '5. with no file chosen the dialog stops at the file field, and nothing is saved');
+    await page.evaluate(() => document.querySelector('#editorModal').close());
+    await page.evaluate(([c, n]) => window.addProduct(c, n), [r.clientId, 'UI Room']); const ph = await page.$eval('#editorForm input[type=file][name=referencePhotos]', i => ({ accept: i.accept, multiple: i.multiple, photos: 'photos' in i.dataset }));
+    ok(ph.multiple && ph.accept === 'image/*' && ph.photos, '6. the new-product dialog still takes several photos, which are made small before they are sent', ph);
+    ok(errs.length === 0, '   no page errors', errs);
+  } finally { await ctx.close(); }
+});
+
 await browser.close();
 const bad = summary(); process.exit(bad ? 1 : 0);
