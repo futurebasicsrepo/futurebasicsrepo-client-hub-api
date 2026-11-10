@@ -3306,7 +3306,9 @@ await journey('J253', 'The materials library takes footwear materials, plush and
       ok(/#2f4a39/.test(await F.innerHTML('#canvas')), '   the upper\'s colour changed to forest, from the colours the suede comes in');
       if (process.env.SHOT_DIR) await page.screenshot({ path: process.env.SHOT_DIR + '/mats-shoe.png' });
       const lib = await oc.newPage(); lib.on('pageerror', e => errs.push(String(e))); await lib.goto(`${BASE}/lab/materials`, { waitUntil: 'networkidle' });
-      await lib.click('#kinds [data-kind="plastic"]'); await lib.waitForSelector('.card [data-draw] svg', { timeout: 10000 });
+      await lib.click('#kinds [data-kind="plastic"]');
+      // wait for the plastics themselves: the fabrics the page opened on are drawn too, so "a drawn card" was already true before the plastics arrived
+      await lib.waitForFunction(() => /PMMA cast acrylic/.test(document.body.innerText) && document.querySelectorAll('.card [data-draw] svg').length >= 10, null, { timeout: 15000 }).catch(() => {});
       ok(/PMMA cast acrylic/.test(await lib.innerText('body')) && await lib.locator('.card [data-draw] svg').count() >= 10, '8. the library page lists the plastics and acrylics, each drawn');
       if (process.env.SHOT_DIR) await lib.screenshot({ path: process.env.SHOT_DIR + '/mats-lib.png' });
       ok(errs.length === 0, 'no page errors', errs); await oc.close();
