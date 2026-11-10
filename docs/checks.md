@@ -11,7 +11,7 @@ The journeys run on pull requests only. Main has just passed them on the pull re
 
 When a check fails, the run keeps what explains it for a week: the proof page (`pattern-proof`) or the journey servers' logs (`journey-logs-core`, `journey-logs-lab`), under the run's **Artifacts**.
 
-A browser journey that fails also keeps a picture of each of its pages (`journey-logs-*/shots/J31-2.png`): a timeout says which element never came, and the picture says what was on the screen instead. Locally, `JOURNEY_SHOT_DIR=/some/folder npm run journeys` does the same.
+A browser journey that fails also prints what its pages said in a pop-up (`the page said: alert: …`), since a page that reports a refused press in an alert shows nothing of it in a picture. It also keeps a picture of each of its pages (`journey-logs-*/shots/J31-2.png`): a timeout says which element never came, and the picture says what was on the screen instead. Locally, `JOURNEY_SHOT_DIR=/some/folder npm run journeys` does the same.
 
 The Studio's latency budget (journey J291, `npm run perf`) is a measurement, and a shared machine only ever adds time to one. So an interaction over its budget is measured a second time, from a fresh browser and the same fixture, and counts only when it is over both times (`runPerfTwice` in `scripts/perf/studio-perf.mjs`). Code that got slower is over every time. The budgets in `scripts/perf/budgets.json` do not move for this.
 
