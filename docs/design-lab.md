@@ -1208,7 +1208,7 @@ types (lifestyle sneakers, running, court and field sport, outdoor and hiking, b
 sandals and slides, flats and Mary Janes, heels, slippers, kids), each with its construction, closure, height, the pattern style it is
 drafted in (or the new style it needs) and a priority, with a note on each type's market. A style is in the library once it is drawn: an
 original technical flat in its five views, drawn once in a neutral prototype colourway (light-grey upper, darker-grey overlays, pale-cream
-midsole, mid-grey outsole) and traced into panels. Thirteen are drawn so far. They sit in the Sketch library under **Footwear**, by type; the
+midsole, mid-grey outsole) and traced into panels. Twenty-four are drawn so far. They sit in the Sketch library under **Footwear**, by type; the
 colour picked goes on the upper. **Open in the Studio** makes a new footwear concept with the five drawings in place and its pattern drafted
 in the library shoe's style (`POST /v1/lab/concepts/from-library-footwear`); **Or put this on a concept you already have** puts them on a
 footwear concept (`POST /v1/lab/concepts/:id/shoe-drawing/from-library`, which refuses a bag on a shoe and a shoe on a bag). No image model is
