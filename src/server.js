@@ -6619,7 +6619,10 @@ if(!(await getSetting('packPicturesMoved'))){
 const jobEvery = (name, every, fn, { delay = null } = {}) => { const run = trackJob(name, every, fn); setInterval(run, every).unref(); if (delay) setTimeout(run, delay).unref(); return run; };
 const offerJob = jobEvery('Offer sweep', 5 * 60 * 1000, runOfferSweep);
 // The CRM stays in step with the hub: clients, leads and the people who sign in for them are contacts, tagged client / lead / tech-pack.
-jobEvery('Sales automations', 60 * 1000, async()=>{const r=await processRuns(pool,{sendToContact:salesEmail.sendToContact,checkContact:salesEmail.checkContact},{log:app.log});return r.steps||0}, { delay: 45 * 1000 });
+// SALES_AUTO=off: runs are processed only when asked (POST /v1/sales/automations/process). The journeys set it on every server: they share one
+// database, and a server with no email key that processed a run by itself held its email back six hours ("email is not set up yet"), a
+// moment before the sales-automation journey asked the one server that has the key to send it.
+if(process.env.SALES_AUTO==='off')declareJob('Sales automations', 60 * 1000, 'the test rig runs them on request'); else jobEvery('Sales automations', 60 * 1000, async()=>{const r=await processRuns(pool,{sendToContact:salesEmail.sendToContact,checkContact:salesEmail.checkContact},{log:app.log});return r.steps||0}, { delay: 45 * 1000 });
 // Sales intelligence: listen to each due watch and have the AI read what is new (every 15 minutes; each watch has its own interval). Switched off with INTEL_AUTO=off.
 // saved lead searches that are due (PROTOTYPE_SCHEDULE_TICK_MS is only shortened by the journeys)
 if(process.env.BRAVE_API_KEY)jobEvery('Lead search schedules', Number(process.env.PROTOTYPE_SCHEDULE_TICK_MS || 3 * 3600 * 1000), async()=>protos.runSchedules(), process.env.PROTOTYPE_SCHEDULE_TICK_MS?{}:{ delay: 2 * 60 * 1000 }); else declareJob('Lead search schedules', 3 * 3600 * 1000, 'switched off (no BRAVE_API_KEY)');
