@@ -421,8 +421,11 @@ await journey('J199', 'Design Lab concepts in a browser: make concepts from a pl
     if (await page.locator('#cd .gfx').count()) { await page.locator('#cd [data-grm]').first().click(); ok(await page.locator('#cd .gfx').count() === 0, 'a graphic can be removed'); }
     await page.selectOption('#cd [data-b="mark"]', 'word'); await page.fill('#cd [data-k="twist"]', 'Our own back yoke seam that nobody else makes'); await page.locator('#cd [data-csave]').click(); await page.waitForFunction(() => /Saved/.test(document.querySelector('#cMsg')?.textContent || ''), null, { timeout: 8000 });
     ok(await page.locator('#cd [data-b="mark"]').inputValue() === 'word', 'the logo choice is kept');
-    await page.locator('#cd [data-credraw]').click(); await page.waitForFunction(() => document.querySelector('#cd .big img') && !/Drawing/.test(document.querySelector('#cAct')?.textContent || ''), null, { timeout: 15000 }); ok(true, 'the picture is drawn again');
-    await page.fill('#cd [data-k="twist"]', 'Like the Ralph Lauren polo pony but ours'); await page.locator('#cd [data-csave]').click(); await page.waitForFunction(() => /too close/i.test(document.querySelector('#cd .verdict')?.textContent || ''), null, { timeout: 25000 }); // the save runs the too-close check against every reference: seconds on a two-core machine
+    // words typed while the picture is being drawn again are still there when it is done (the form used to be put back as it was saved)
+    await page.locator('#cd [data-credraw]').click(); await page.fill('#cd [data-k="twist"]', 'Like the Ralph Lauren polo pony but ours');
+    await page.waitForFunction(() => /Done: the picture was drawn again/.test(document.querySelector('#cMarkMsg')?.textContent || '') && document.querySelector('#cd .big img'), null, { timeout: 40000 }); ok(true, 'the picture is drawn again');
+    ok(await page.locator('#cd [data-k="twist"]').inputValue() === 'Like the Ralph Lauren polo pony but ours', '   and what was typed into the form while it was drawn is still there');
+    await page.locator('#cd [data-csave]').click(); await page.waitForFunction(() => /too close/i.test(document.querySelector('#cd .verdict')?.textContent || ''), null, { timeout: 25000 }); // the save runs the too-close check against every reference: seconds on a two-core machine
     ok(/Ralph Lauren/.test(await page.innerText('#cd .verdict')), 'naming another brand flags it "too close" and says which name');
     await page.locator('#cd [data-capprove]').click(); await say(page, 'We looked at it beside the reference and it is clearly different'); await page.waitForFunction(() => /approved/i.test(document.querySelector('#cd .in .chip')?.textContent || ''), null, { timeout: 10000 });
     ok(/approved anyway because/i.test(await page.innerText('#cd .verdict')), 'approving needs a reason, and the reason is shown with the check');
@@ -3303,7 +3306,9 @@ await journey('J253', 'The materials library takes footwear materials, plush and
       ok(/#2f4a39/.test(await F.innerHTML('#canvas')), '   the upper\'s colour changed to forest, from the colours the suede comes in');
       if (process.env.SHOT_DIR) await page.screenshot({ path: process.env.SHOT_DIR + '/mats-shoe.png' });
       const lib = await oc.newPage(); lib.on('pageerror', e => errs.push(String(e))); await lib.goto(`${BASE}/lab/materials`, { waitUntil: 'networkidle' });
-      await lib.click('#kinds [data-kind="plastic"]'); await lib.waitForSelector('.card [data-draw] svg', { timeout: 10000 });
+      await lib.click('#kinds [data-kind="plastic"]');
+      // wait for the plastics themselves: the fabrics the page opened on are drawn too, so "a drawn card" was already true before the plastics arrived
+      await lib.waitForFunction(() => /PMMA cast acrylic/.test(document.body.innerText) && document.querySelectorAll('.card [data-draw] svg').length >= 10, null, { timeout: 15000 }).catch(() => {});
       ok(/PMMA cast acrylic/.test(await lib.innerText('body')) && await lib.locator('.card [data-draw] svg').count() >= 10, '8. the library page lists the plastics and acrylics, each drawn');
       if (process.env.SHOT_DIR) await lib.screenshot({ path: process.env.SHOT_DIR + '/mats-lib.png' });
       ok(errs.length === 0, 'no page errors', errs); await oc.close();
@@ -4875,7 +4880,8 @@ await journey('J294', 'The tool palette in Focus: the rail becomes one glass doc
     await page.locator('#palPin').click(); await page.waitForTimeout(150); ok(await page.evaluate(() => !document.querySelector('#palette').hidden), '   and opens again from it');
     await page.evaluate(() => PALETTE.dock('top'));
     await page.locator('#viewSeg [data-v=front]').click().catch(() => page.evaluate(() => setVMode('front')));
-    await page.frameLocator('#flatFrame').locator('#art .panels path').first().waitFor({ timeout: 20000 }); await page.waitForTimeout(500);
+    await page.frameLocator('#flatFrame').locator('#art .panels path').first().waitFor({ timeout: 20000 });
+    await page.waitForFunction(() => document.querySelector('#palette .pal-na'), null, { timeout: 8000 }).catch(() => {}); // the palette follows the drawing once its frame has loaded
     const dim = await page.evaluate(() => [...document.querySelectorAll('#palette .pal-na')].map(x => x.dataset.pt));
     ok(dim.includes('area') && !dim.includes('liquify') && !dim.includes('brush'), '6. on the bag\'s drawing the tools for the picture only are dimmed, Liquify and the brush are not', dim);
     await page.click('#focusBtn'); await page.waitForTimeout(300);
@@ -5226,6 +5232,39 @@ await journey('J301', 'The work gets the screen, and the pattern looks like the 
       ok(own ? f2.includes(own) && !f2.includes('#1f2a44') : true, '4. a material put on the body takes over: the body is drawn in the material\'s colour', { own, f2 }); await again.ctx.close(); }
     else ok(true, '4. (no fabric in the library takes the body here)');
   } finally { await br.close(); await K(`/concepts/${cid}`, { method: 'DELETE' }); }
+});
+
+await journey('J302', 'An answer that has not changed is not sent again, and nobody is shown a copy they may not see: the Lab board\'s list and a page\'s scripts carry a fingerprint and answer 304 the second time; a change brings the new answer; a signed-out request with the fingerprint is still refused; pages are never kept; and a library graphic\'s small copy is a fraction of the size while the full one is untouched', async () => {
+  const get = (path, h = {}) => fetch(BASE + path, { headers: { 'accept-encoding': 'gzip', ...h } }), auth = { authorization: 'Bearer ' + kyleT };
+  const cid = (await K('/concepts/from-scratch', { body: { category: 'tops', style: 'hoodie', name: `Kept ${stamp}` } })).json.concept.id;
+  try {
+    // the Lab board's list
+    const a = await get('/v1/lab/concepts', auth), tag = a.headers.get('etag'), bytes = (await a.arrayBuffer()).byteLength;
+    ok(a.status === 200 && /^W\/"[\w-]{22}"$/.test(tag || '') && /private/.test(a.headers.get('cache-control') || '') && /no-cache/.test(a.headers.get('cache-control') || '') && bytes > 1400, '1. the list carries a fingerprint, and the browser is told to keep it privately and ask before using it', { status: a.status, tag, cc: a.headers.get('cache-control'), bytes });
+    const b = await get('/v1/lab/concepts', { ...auth, 'if-none-match': tag }), none = (await b.arrayBuffer()).byteLength;
+    ok(b.status === 304 && none === 0 && b.headers.get('etag') === tag, '2. asked again with the fingerprint, the answer is 304 and nothing is sent', { status: b.status, none });
+    const c = await get('/v1/lab/concepts', { 'if-none-match': tag });
+    ok(c.status === 401, '3. without a sign-in the same request is refused: a fingerprint opens nothing', c.status);
+    ok((await K(`/concepts/${cid}`, { method: 'PUT', body: { name: `Kept and renamed ${stamp}` } })).status === 200, '   (a concept is renamed)');
+    const d = await get('/v1/lab/concepts', { ...auth, 'if-none-match': tag }), txt = await d.text();
+    ok(d.status === 200 && d.headers.get('etag') !== tag && txt.includes(`Kept and renamed ${stamp}`), '4. after a change the old fingerprint gets the new answer, in full', { status: d.status });
+    // a script, and a page
+    const s1 = await get('/lab/nav.js'), st = s1.headers.get('etag'); await s1.arrayBuffer();
+    const s2 = await get('/lab/nav.js', { 'if-none-match': st });
+    ok(s1.status === 200 && st && s2.status === 304, '5. a page\'s script answers 304 the second time', { first: s1.status, tag: st, second: s2.status });
+    const pg = await get('/lab/studio'); await pg.arrayBuffer();
+    ok(pg.status === 200 && /no-store/.test(pg.headers.get('cache-control') || '') && !pg.headers.get('etag'), '6. a page itself is never kept, as before', { cc: pg.headers.get('cache-control'), tag: pg.headers.get('etag') });
+    // a library graphic's small copy
+    const raw = Buffer.alloc(900 * 900 * 4); for (let i = 0; i < raw.length; i += 4) { const x = (i / 4) % 900, y = Math.floor(i / 4 / 900), on = Math.hypot(x - 450, y - 450) < 400; raw[i] = (x * 7 + y * 3) & 255; raw[i + 1] = (x * 2 + y * 5) & 255; raw[i + 2] = (i * 2654435761 >>> 24) & 255; raw[i + 3] = on ? 255 : 0; }
+    const up = await K('/library/graphics/upload', { body: { image: `data:image/png;base64,${(await sharp(raw, { raw: { width: 900, height: 900, channels: 4 } }).png().toBuffer()).toString('base64')}`, name: `Small copy ${stamp}` } });
+    if (up.status < 300 && up.json?.id) {
+      const full = await get(`/v1/lab/art/${up.json.id}`, auth), fb = Buffer.from(await full.arrayBuffer()), small = await get(`/v1/lab/art/${up.json.id}?thumb=1`, auth), sb = Buffer.from(await small.arrayBuffer());
+      const sm = await sharp(sb).metadata(), fm = await sharp(fb).metadata();
+      ok(full.headers.get('content-type') === 'image/png' && fm.format === 'png' && fm.hasAlpha, '7. the full graphic is the PNG it was, with its transparency', { type: full.headers.get('content-type'), w: fm.width });
+      ok(small.headers.get('content-type') === 'image/webp' && sm.format === 'webp' && sm.hasAlpha && sm.width <= 360 && sb.length < fb.length / 4, '8. its small copy keeps its transparency and is a fraction of the size', { type: small.headers.get('content-type'), small: sb.length, full: fb.length, w: sm.width });
+      ok(/immutable/.test(small.headers.get('cache-control') || ''), '   and is kept by the browser, as before', small.headers.get('cache-control'));
+    } else ok(false, '7. a graphic could be added to the library', up.json);
+  } finally { await K(`/concepts/${cid}`, { method: 'DELETE' }); }
 });
 
 process.exit(summary() ? 1 : 0);

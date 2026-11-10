@@ -117,7 +117,7 @@
     document.addEventListener('pointerup', end); document.addEventListener('pointercancel', end);
     // the palette follows the tool, the colour and the sizes as they change anywhere
     let t0 = '', c0 = '', s0 = '';
-    setInterval(() => { if (!focusOn() && $('#palette')?.hidden && $('#palPin')?.hidden) return; const s = Object.values(SIZED).map(k => OPT?.[k]).join() + (typeof VMODE !== 'undefined' ? VMODE : ''); if (tool() !== t0 || cur() !== c0 || s !== s0) { t0 = tool(); c0 = cur(); s0 = s; paint(); } }, 250);
+    setInterval(() => { if (!focusOn() && $('#palette')?.hidden && $('#palPin')?.hidden) return; const ok = can(), s = Object.values(SIZED).map(k => OPT?.[k]).join() + (typeof VMODE !== 'undefined' ? VMODE : '') + (ok ? '|' + [...ok].join() : ''); /* the tools the drawing takes are watched too: its frame can finish loading after the view changed, and the picture-only tools stayed undimmed until the next change of tool */ if (tool() !== t0 || cur() !== c0 || s !== s0) { t0 = tool(); c0 = cur(); s0 = s; paint(); } }, 250);
     new MutationObserver(() => apply()).observe(document.documentElement, { attributes: true, attributeFilter: ['data-focus'] });
     const st = $('.studio'); if (st) new MutationObserver(() => apply()).observe(st, { attributes: true, attributeFilter: ['data-v'] });
     window.addEventListener('resize', () => paint());

@@ -756,8 +756,11 @@ async function libPicker(box){
       :'<span class="sub">The library is empty. Draw or add graphics on the <a href="/lab/library">Graphics and techniques</a> page.</span>';
     fillArt(box)}catch(x){box.innerHTML=`<span class="sub">${esc(x.message)}</span>`}}
 async function openConcept(id){
-  OPENID=id;const dlg=$('#cd'),d=await api('/v1/lab/concepts/'+id);
-  const flat=['flat','sketch'].includes(d.concept.thumbFrom)&&d.concept.thumb;dlg.innerHTML=conceptHtml(d,flat||'');if(flat){const b=dlg.querySelector('.big');b.dataset.flat='1';b.insertAdjacentHTML('beforeend',`<span class="bigtag">${d.concept.thumbFrom==='sketch'?'Flat · not saved yet':'Saved flat'}${d.concept.hasImage?' · newer than the picture':''}</span>`)}fillArt(dlg);if(window.FBLabNav)window.FBLabNav.steps(dlg.querySelector('[data-csteps]'),d.concept,{at:'concept',onStep:st=>st==='concept'});if(!dlg.open)dlg.showModal();matLoad(id).catch(()=>{});
+  const same=OPENID===id;OPENID=id;const dlg=$('#cd'),d=await api('/v1/lab/concepts/'+id);
+  // What was typed into the form and not saved yet stays when the same concept is drawn on the page again. A redraw takes about a minute,
+  // and when it finished it put the form back as it was saved: words typed in the meantime were gone, and Save then saved the old ones.
+  const typed=same&&dlg.open?[...dlg.querySelectorAll('[data-cf] [data-k]')].filter(el=>'defaultValue' in el&&el.value!==el.defaultValue).map(el=>[el.dataset.k,el.value]):[];
+  const flat=['flat','sketch'].includes(d.concept.thumbFrom)&&d.concept.thumb;dlg.innerHTML=conceptHtml(d,flat||'');for(const [k,v] of typed){const el=dlg.querySelector(`[data-cf] [data-k="${k}"]`);if(el)el.value=v}if(flat){const b=dlg.querySelector('.big');b.dataset.flat='1';b.insertAdjacentHTML('beforeend',`<span class="bigtag">${d.concept.thumbFrom==='sketch'?'Flat · not saved yet':'Saved flat'}${d.concept.hasImage?' · newer than the picture':''}</span>`)}fillArt(dlg);if(window.FBLabNav)window.FBLabNav.steps(dlg.querySelector('[data-csteps]'),d.concept,{at:'concept',onStep:st=>st==='concept'});if(!dlg.open)dlg.showModal();matLoad(id).catch(()=>{});
   CPINS=d.comments;CPIN=null;shrLoad(id).catch(()=>{});
   if(d.concept.hasImage&&!flat){const u=await blobUrl(id);if(OPENID===id&&u){IMGURL&&URL.revokeObjectURL(IMGURL);IMGURL=u;const b=dlg.querySelector('.big');if(b){b.innerHTML=`<img src="${esc(u)}" alt="${esc(d.concept.name)}">`;paintPins()}}}
 }
@@ -839,6 +842,7 @@ document.addEventListener('click',async e=>{
   if(e.target.closest('[data-csave]')){
     const f=document.querySelector('[data-cf]'),g=k=>f.querySelector(`[data-k="${k}"]`).value,m=$('#cMsg');m.className='msg';m.textContent='Saving…';
     try{await api('/v1/lab/concepts/'+OPENID,{method:'PUT',body:{name:g('name'),twist:g('twist'),description:g('description'),silhouette:g('silhouette'),fabric:g('fabric'),colors:g('colors').split(',').map(x=>x.trim()).filter(Boolean),details:g('details').split(/\n/).map(x=>x.trim()).filter(Boolean),price:g('price'),qty:g('qty'),logo:{mark:document.querySelector('[data-b="mark"]').value,technique:document.querySelector('[data-b="technique"]').value,placement:document.querySelector('[data-b="placement"]').value},graphics:CGFX}});
+      f.querySelectorAll('[data-k]').forEach(el=>{if('defaultValue' in el)el.defaultValue=el.value}); // saved: the form is drawn again from what the server kept
       const now=JSON.stringify([document.querySelector('[data-b="mark"]').value,document.querySelector('[data-b="placement"]').value,CGFX.length]),branded=now!==CBRAND;let extra='';
       // a changed or removed logo or graphic is put right on the picture straight away (a graphic the image model printed needs Redraw)
       if(branded){try{await placeAgain();extra=' The logo and graphics on the picture were updated.'}catch(x){extra=' '+x.message}}else{await openConcept(OPENID);await loadBoard()}
