@@ -19,12 +19,12 @@ export async function journey(id, title, fn) {
   cur.ms = Date.now() - t; console.log(`${cur.fails.length || cur.error ? 'FAIL' : 'ok  '} ${id} ${title} (${cur.checks} checks, ${cur.ms}ms)`);
   for (const f of cur.fails) console.log('       ✗ ' + f); if (cur.error) console.log('       ! ' + cur.error);
   // what its pages looked like as they closed: kept when it failed, thrown away when it passed
-  if (SHOTS) { const mine = shots.splice(0); if (cur.fails.length || cur.error) { if (mine.length) console.log('       pictures: ' + mine.join(' ')); } else for (const f of mine) rmSync(f, { force: true }); }
+  if (SHOTS) { const mine = shots.splice(0), heard = said.splice(0); if (cur.fails.length || cur.error) { if (heard.length) console.log('       the page said: ' + heard.join(' | ')); if (mine.length) console.log('       pictures: ' + mine.join(' ')); } else for (const f of mine) rmSync(f, { force: true }); }
 }
 // When a run is asked to keep pictures (JOURNEY_SHOT_DIR, or JOURNEY_LOG_DIR as the CI workflow sets), every browser page is photographed
 // just before it closes, and the pictures of a journey that failed are kept: a timeout in a browser journey says which selector never came,
 // and the picture says what was on the screen instead. Done once here for every journey file, by wrapping the browser the files launch.
-const SHOTS = process.env.JOURNEY_SHOT_DIR || (process.env.JOURNEY_LOG_DIR ? join(process.env.JOURNEY_LOG_DIR, 'shots') : ''), shots = [], openContexts = new Set();
+const SHOTS = process.env.JOURNEY_SHOT_DIR || (process.env.JOURNEY_LOG_DIR ? join(process.env.JOURNEY_LOG_DIR, 'shots') : ''), shots = [], said = [], openContexts = new Set();
 let shotN = 0;
 const snapPage = async page => { if (!cur || page.isClosed()) return; const f = join(SHOTS, `${cur.id}-${++shotN}.png`); try { await page.screenshot({ path: f, timeout: 4000 }); shots.push(f); } catch { /* a page that will not be photographed is let go */ } };
 if (SHOTS) {
@@ -36,7 +36,10 @@ if (SHOTS) {
       type.launch = async (...a) => {
         const browser = await launch(...a), newContext = browser.newContext.bind(browser), closeBrowser = browser.close.bind(browser), open = new Set();
         browser.newContext = async (...b) => { const ctx = await newContext(...b), closeCtx = ctx.close.bind(ctx); open.add(ctx); openContexts.add(ctx);
-          const newPage = ctx.newPage.bind(ctx); ctx.newPage = async (...d) => { const p = await newPage(...d), closePage = p.close.bind(p); p.close = async (...e) => { await snap(p); return closePage(...e); }; return p; };
+          const newPage = ctx.newPage.bind(ctx); ctx.newPage = async (...d) => { const p = await newPage(...d), closePage = p.close.bind(p);
+            // what the page said in a pop-up (an alert with the reason a press failed) is kept for the failure's report. A page with no
+            // listener of the journey's own has its pop-ups answered as Playwright answers them when nobody listens: dismissed, and "leave the page?" accepted.
+            p.on('dialog', dlg => { const leaving = dlg.type() === 'beforeunload'; if (!leaving) said.push(`${dlg.type()}: ${String(dlg.message()).replace(/\s+/g, ' ').slice(0, 300)}`); if (p.listenerCount('dialog') === 1) (leaving ? dlg.accept() : dlg.dismiss()).catch(() => {}); }); p.close = async (...e) => { await snap(p); return closePage(...e); }; return p; };
           ctx.close = async (...c) => { for (const p of ctx.pages()) await snap(p); open.delete(ctx); openContexts.delete(ctx); return closeCtx(...c); }; return ctx; };
         browser.close = async (...c) => { for (const ctx of open) { for (const p of ctx.pages()) await snap(p); openContexts.delete(ctx); } open.clear(); return closeBrowser(...c); };
         return browser;

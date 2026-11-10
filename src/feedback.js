@@ -152,13 +152,17 @@
     // caller, so a page that shows the error's message shows something a person can act on. Still a TypeError, with the browser's as its cause.
     const plain = err => { if (err instanceof TypeError && err.name !== 'AbortError' && !err.fbn) { const e2 = new TypeError(`${words.offline.charAt(0).toUpperCase()}${words.offline.slice(1)}${method !== 'GET' ? ' ' + words.kept : ''}`); e2.cause = err; e2.fbn = true; return e2; } return err; };
     if (!who || (init && init.headers && (init.headers['x-fb'] === 'off'))) return realFetch(input, init).catch(err => { throw plain(err); });
-    begin(who.b);
+    // A press that failed stays failed until the button is pressed again. For a second and a half after a press, every request the page
+    // starts is the press's: a refresh that began just after the failed one had ended used to clear the red mark and put a tick there.
+    const press = last; begin(who.b);
     return realFetch(input, init).then(async r => {
-      end(who.b, r.ok);
+      if (!r.ok && press) press.failed = true;
+      end(who.b, r.ok && !(press && press.failed));
       if (!r.ok) toast(`${who.label ? who.label + ': ' : ''}${await reason(r)}`, 'err');
       else if (method !== 'GET' && who.b.dataset.fbDone !== 'off') toast(who.b.dataset.fbDone || `${who.label || 'That'}: ${words.done}`, 'ok');
       return r;
     }, err => {
+      if (press) press.failed = true;
       end(who.b, false);
       if (!(err && err.name === 'AbortError')) toast(`${who.label ? who.label + ': ' : ''}${words.offline}${method !== 'GET' ? ' ' + words.kept : ''}`, 'err');
       throw plain(err);
