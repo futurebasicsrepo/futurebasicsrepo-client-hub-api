@@ -27,3 +27,14 @@ test('lines drawn by hand on a plush are kept on their view and drawn into its t
   assert.ok(v.front.svg.includes('#c2410c') && !v.back.svg.includes('#c2410c'));
   const sheet = plushSheet(pat, { title: 'Bean', viewsMarkup }); assert.match(sheet, /^<\?xml/); assert.match(sheet, />Front</); assert.match(sheet, />Side</);
 });
+
+test('a plush with no legs, or a bigger or smaller head, is drawn the height it says: the drawing is scaled as the pattern is', () => {
+  const side = (shape, o = {}) => { const b = plushViews(plushPattern({ shape, height: 12, ears: 'none', ...o })).side.box; return shape === 'sea' ? b.x1 - b.x0 : b.y1 - b.y0; };
+  // each drawn 9¾ to 13⅜ in for 12 in before
+  for (const [shape, o] of [['bear', { legs: false }], ['quad', { head: 1.3 }], ['quad', { head: .8 }], ['sea', { head: 1.3 }], ['sea', { head: .8 }]]) { const usual = side(shape), own = side(shape, o);
+    assert.ok(Math.abs(own - usual) < .12 && Math.abs(usual - 12) < .4, `${shape} ${JSON.stringify(o)}: drawn ${own.toFixed(2)} in, the usual toy ${usual.toFixed(2)} in`); }
+  // a bear with no legs has none on its front or its back either, and is drawn larger to make its height
+  const legs = plushViews(plushPattern({ shape: 'bear', height: 12 })), none = plushViews(plushPattern({ shape: 'bear', height: 12, legs: false }));
+  for (const k of ['front', 'back']) assert.ok((none[k].svg.match(/<path/g) || []).length < (legs[k].svg.match(/<path/g) || []).length, `${k}: no legs drawn`);
+  assert.ok(none.front.box.x1 - none.front.box.x0 > legs.front.box.x1 - legs.front.box.x0 + 1, 'the body is drawn larger, as it is cut');
+});
