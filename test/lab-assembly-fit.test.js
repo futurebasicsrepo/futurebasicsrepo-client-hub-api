@@ -146,3 +146,17 @@ test('the bike light the journeys design from a concept really is clear: nothing
   const f = fitOf(cleanAssembly({ arch: 'custom', kind: 'electronics', parts: old.parts })), ids = f.contact.filter(c => c.level === 'warn').flatMap(c => c.parts);
   assert.ok(['battery', 'led', 'screws', 'pcb'].every(id => ids.includes(id)), `floating: ${ids.join(', ')}`); assert.ok(f.fasteners.some(c => c.level === 'warn' && c.need === 2 && c.have === 4));
 });
+
+test('the Engineering page lets a person set what a part passes through, where its other pieces are and a housing\'s bosses', async () => {
+  const { readFileSync } = await import('node:fs'), A = await import('../src/lab-assembly.js'), html = readFileSync(new URL('../src/lab-engineer.html', import.meta.url), 'utf8');
+  // the editor's markup, rendered here with the page's own function and the engine's lists
+  const SPEC = archetype('handheld'), esc = s => String(s ?? '').replace(/[&<>"]/g, c => `&#${c.charCodeAt(0)};`), opt = (l, v) => l.map(x => (Array.isArray(x) ? x : [x, x])).map(([k, t]) => `<option value="${k}"${k === v ? ' selected' : ''}>${t}</option>`).join('');
+  const D = { options: { processes: Object.keys(A.PROCESSES), finishes: A.FINISHES, fixes: Object.keys(A.FIXES) } }, SHAPES = A.SHAPES, RESINS = A.RESINS; void SPEC; void esc; void opt; void D; void SHAPES; void RESINS;
+  const editor = eval(`(${html.slice(html.indexOf('function editor(p){'), html.indexOf('function wireEditor(){')).replace('function editor(p){', 'function(p){')})`), P = id => SPEC.parts.find(p => p.id === id), n = (h, re) => (h.match(re) || []).length;
+  const housing = editor(P('bottom')), screws = editor(P('screws')), keypad = editor(P('keypad'));
+  assert.equal(n(housing, /data-boss-del=/g), 4, 'a row for each of the housing\'s four bosses'); assert.equal(n(housing, /data-k="boss\d_[012]"/g), 12); assert.equal(n(housing, /data-k="bossd\d"/g), 4); assert.match(housing, /data-act="boss"/); assert.match(housing, /Openings cut in this part: \d+ \(for /);
+  assert.equal(n(screws, /data-k="spot\d_[012]"/g), 9, 'three other screws, each with its place'); assert.equal(n(screws, /data-k="thru[012]"/g), 3); assert.ok(/<option value="bottom" selected>/.test(screws) && /<option value="pcb" selected>/.test(screws), 'what it passes through is chosen');
+  assert.match(keypad, /<option value="top" selected>/); assert.ok(!/data-k="spot/.test(keypad) && !/data-act="boss"/.test(keypad), 'no pieces or bosses for a single keypad');
+  for (const k of ['thru[012]', 'spot\\d+_[012]', 'boss\\d+_[012]', 'bossd\\d+']) assert.ok(html.includes(`/^${k}$/.test(k)`), `the page sets ${k}`);
+  assert.ok(html.includes('p.cuts,p.bosses,p.flange'), 'the 3D part is rebuilt when its openings or bosses change');
+});

@@ -2046,6 +2046,9 @@ screen, the drawing and the files agree. Routes: `src/lab-assembly-routes.js`; s
   (a speaker driver's: full width for a few millimetres at one end, a narrower body behind), so it lies on a baffle's face, goes through
   with its body, and its screws go through the flange into the baffle. A housing carries screw `bosses` on its
   floor. Screws are parts: one line a kind, every position listed, lying through the part held and into the part that takes the thread.
+  On the page, the chosen part's editor has **Passes through** (up to three parts), the places of its other pieces when its quantity is
+  over one, and for a housing its screw bosses (**Add a screw boss**: x, y, z of the free end from the part's centre, and the screw's
+  diameter); it also says which openings are cut in the part and for what.
   Openings and bosses are in the part's solid: its STL, and its STEP as exact faces (holes through a floor or a solid part, bosses, and
   windows in a housing's side walls with their sides, sill and head, a notch where one reaches the rim). The 3D view shows them too: a
   housing with a window in a side wall is drawn from its solid.
