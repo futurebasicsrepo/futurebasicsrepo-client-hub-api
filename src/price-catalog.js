@@ -55,7 +55,13 @@ const KIND = { tee: ['T-Shirts'], 'long-sleeve': ['T-Shirts', 'Shirts'], hoodie:
 
 // Suggestions for one product: the items whose names share the most with the product's (its words, its kind), priced ones first. A product
 // nothing in the catalogue resembles gets none, so a weak guess is never offered as a starting price.
+// A product whose design was started from a catalogue item in the Design Lab (its concept remembers the item: product.catalogId) gets that very
+// item first, marked startedFrom, whatever its title has become; the alike follow.
 export function suggestFor(product = {}, n = 5, catalogs = loadCatalogs()) {
+  const alike = alikeFor(product, n, catalogs), exact = product.catalogId ? catalogs.flatMap(c => c.items).find(i => i.id === product.catalogId) : null;
+  return exact ? [{ ...view(exact, catalogs), startedFrom: true }, ...alike.filter(x => x.id !== exact.id)].slice(0, Math.max(1, n)) : alike;
+}
+function alikeFor(product = {}, n = 5, catalogs = loadCatalogs()) {
   const want = wordsOf(`${product.title || ''} ${product.kind || ''}`), kindWords = wordsOf(product.kind || ''), sections = KIND[product.kind] || [], head = productHead(product.title) || kindWords[0] || '';
   if (!want.length) return [];
   const scored = [];

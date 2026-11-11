@@ -64,8 +64,10 @@ export function registerProductSheetRoutes(app, { pool, authenticate, adminOnly,
     const past = rankPast({ ...p, category: spec?.category || '' }, pool2).map(x => ({ id: x.id, title: x.title, client: x.client_name, image: x.shopify_image_url || (x.has_rendering ? renderingUrl(x.id) : ''), kind: kindOf(`${x.title} ${x.product_type || ''}`), score: x.score,
       config: x.config ? { blank: x.config.blank_name || '', material: x.config.material || '', decoration: x.config.decoration_method || '', moq: x.config.moq, leadTimeDays: x.config.lead_time_days } : null,
       tiers: (x.tiers || []).map(tierView) }));
+    // a product whose design was started from a catalogue item in the Design Lab (the concept remembers it: src/lab-catalog-routes.js): that item is offered first
+    const startedFrom = (await pool.query(`select spec->'catalog'->>'id' id from lab_concepts where product_id=$1 and spec->'catalog'->>'id' is not null order by updated_at desc limit 1`, [p.id]).catch(() => ({ rows: [] }))).rows[0]?.id || null;
     return { product: { id: p.id, title: p.title, kind: kindOf(`${p.title} ${p.product_type || ''} ${spec?.category || ''}`) }, spec, lines: makeLines(config, spec || {}), config, factory, tiers: tiers.map(tierView), ladders, past,
-      catalog: { catalogs: catalogSummary(), suggestions: suggestFor({ title: p.title, kind: kindOf(`${p.title} ${p.product_type || ''} ${spec?.category || ''}`) }) } };
+      catalog: { catalogs: catalogSummary(), suggestions: suggestFor({ title: p.title, kind: kindOf(`${p.title} ${p.product_type || ''} ${spec?.category || ''}`), catalogId: startedFrom }) } };
   });
   app.get('/v1/admin/price-catalog', { preHandler: pre }, async req => ({ catalogs: catalogSummary(), ...searchCatalog({ q: String(req.query?.q || '').slice(0, 80), category: String(req.query?.category || '').slice(0, 60), limit: req.query?.limit }) }));
 

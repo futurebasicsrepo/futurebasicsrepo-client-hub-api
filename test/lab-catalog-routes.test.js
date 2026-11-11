@@ -8,7 +8,8 @@ import { registerLabCatalogRoutes, catalogStart } from '../src/lab-catalog-route
 import { registerLabConceptRoutes } from '../src/lab-concept-routes.js';
 import { registerLabShoeDrawRoutes } from '../src/lab-shoe-draw-routes.js';
 import { labCatalog } from '../src/lab-catalog.js';
-import { STYLES } from '../src/lab-flats.js';
+import { STYLES, detectStyle } from '../src/lab-flats.js';
+import { cleanConceptEdit } from '../src/lab-concepts.js';
 
 // what we pay the supplier never reaches a Lab response: not a cost, not a price status, not a dollar amount
 const noPrice = (json, what) => { const t = typeof json === 'string' ? json : JSON.stringify(json); assert.ok(!/costCents/i.test(t), `${what}: no costCents`); assert.ok(!/price/i.test(t), `${what}: no price`); assert.ok(!/\$\s?\d/.test(t), `${what}: no dollar amount`); assert.ok(!/"(live|projected|soon|quote)"/.test(t), `${what}: no price status`); };
@@ -86,4 +87,13 @@ test('catalogStart: each kind of base goes to the route that makes it', () => {
   const via = name => catalogStart(pick(i => i.name === name)).via;
   assert.equal(via('Champion Long Sleeve T-Shirt'), '/v1/lab/concepts/from-sketch'); assert.equal(via('Fanny Pack'), '/v1/lab/concepts/from-library-bag'); assert.equal(via('Men\'s High Top Leather Sneakers'), '/v1/lab/concepts/from-library-footwear'); assert.equal(via('econscious Everyday Tote'), 'style');
   assert.ok(catalogStart(null).error);
+});
+
+test('editing the words of a concept started from the catalogue keeps which product it was, and the style it names', () => {
+  const spec = { description: 'Started from the catalogue: White 11oz Mug.', silhouette: 'Mug', style: 'mug', template: 'none', catalog: { id: 'openwav-fall-2026:1', name: 'White 11oz Mug', brand: '', costCents: 249, price: 'live' }, branding: { logo: { mark: 'none' } } };
+  const e = cleanConceptEdit({ name: 'Studio mug', description: 'Our mug, in bone white.' }, { name: 'White 11oz Mug', twist: '', spec, priceCents: null, costCents: null, qty: null, category: 'other' });
+  assert.deepEqual(e.spec.catalog, { id: 'openwav-fall-2026:1', name: 'White 11oz Mug', brand: '' }, 'the product, and only its id, name and brand'); assert.equal(e.spec.style, 'mug'); assert.equal(e.spec.template, 'none'); assert.equal(e.spec.branding.logo.mark, 'none');
+  assert.equal(detectStyle({ name: e.name, category: 'other', spec: e.spec }).style, 'mug', 'its flat is still a mug\'s');
+  // a concept with no catalogue product gains nothing
+  const plain = cleanConceptEdit({ name: 'Tee' }, { name: 'T', twist: '', spec: { style: 'mug', template: 'none', description: 'x' }, priceCents: null, costCents: null, qty: null, category: 'tops' }); assert.equal(plain.spec.catalog, undefined); assert.equal(plain.spec.style, undefined);
 });

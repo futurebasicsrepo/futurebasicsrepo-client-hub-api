@@ -46,3 +46,15 @@ test('suggestions: the thing itself counts most, and a loose word in common is n
   for (const t of ['Kaweco Steel Pen', 'Multitool', 'Pencil Pack', 'Ouster Protective Balm — Black', '']) assert.deepEqual(sug(t), [], `${t || '(no name)'}: nothing alike, so nothing is offered (not a steel tumbler for a steel pen)`);
   assert.ok(sug('Heavyweight Hoodie', 3).length === 3 && sug('Heavyweight Hoodie').every(i => i.costCents != null), 'priced items are what is offered when there are any');
 });
+
+test('a product whose design was started from a catalogue item gets that very item first, whatever it is called now', () => {
+  const mug = ow.items.find(i => i.name === 'White 11oz Mug'), plain = suggestFor({ title: 'Summit hoodie, washed black', kind: 'hoodie' });
+  const s = suggestFor({ title: 'Summit hoodie, washed black', kind: 'hoodie', catalogId: mug.id });
+  assert.equal(s[0].id, mug.id); assert.equal(s[0].startedFrom, true); assert.equal(s.length, Math.min(5, plain.length + 1)); assert.deepEqual(s.slice(1).map(x => x.id), plain.slice(0, 4).map(x => x.id));
+  assert.ok(s.slice(1).every(x => !x.startedFrom));
+  // already among the alike: it moves to the front, once
+  const tee = sug('Gildan Heavy Cotton T-Shirt'), second = tee[1] || tee[0], again = suggestFor({ title: 'Gildan Heavy Cotton T-Shirt', kind: 'tee', catalogId: second.id });
+  assert.equal(again[0].id, second.id); assert.equal(new Set(again.map(x => x.id)).size, again.length);
+  // nothing alike, still the item; an id that is not in the catalogue changes nothing
+  assert.deepEqual(suggestFor({ title: 'Zzzz qqqq', catalogId: mug.id }).map(x => x.id), [mug.id]); assert.deepEqual(suggestFor({ title: 'Summit hoodie, washed black', kind: 'hoodie', catalogId: 'nope:1' }), plain);
+});
