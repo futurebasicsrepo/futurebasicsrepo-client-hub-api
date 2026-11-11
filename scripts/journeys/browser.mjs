@@ -2318,5 +2318,35 @@ await journey('J303', 'A file added to a product in the console reaches it: Add 
   } finally { await ctx.close(); }
 });
 
+await journey('J304', "A project's product list in the hub shows each product's numbers: MOQ, wholesale and SRP on the row, the same figures as the product's own page; a product with no pricing says so once; and on a phone the numbers sit under the name without pushing the row sideways", async () => {
+  const r = await room('304');
+  sql(`insert into price_tiers(product_id,min_quantity,unit_cost_cents,wholesale_cents,srp_cents) values('${r.id}',1250,1111,2150,8900),('${r.id}',5000,900,1900,8900)`);
+  const bare = sql(`insert into products(client_id,project_id,title) select client_id,project_id,'No numbers yet' from products where id='${r.id}' returning id`).split('\n')[0].trim();
+  const open = async (viewport, phone) => { const ctx = await browser.newContext(phone ? { viewport, isMobile: true, hasTouch: true } : { viewport }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.client.token', t); } catch {} }, r.token); const page = await ctx.newPage(); page.errs = []; page.on('pageerror', e => page.errs.push(e.message)); await page.goto(`${BASE}/projects/${r.projectId}`, { waitUntil: 'networkidle' }); await page.waitForSelector('.proj-list .proj-row', { timeout: 10000 }); return { ctx, page }; };
+  const rows = page => page.$$eval('.proj-list .proj-row', els => els.map(e => ({ title: e.querySelector('b')?.textContent, nums: [...e.querySelectorAll('.nums > span')].map(x => x.querySelector('small').textContent + ' ' + x.querySelector('b').textContent), none: e.querySelector('.nums.none')?.textContent || '', thumb: Math.round(e.querySelector('.thumb').getBoundingClientRect().width), box: (b => ({ l: b.left, r: b.right, t: b.top, b: b.bottom }))(e.getBoundingClientRect()), numsBox: (b => ({ l: b.left, r: b.right, t: b.top }))(e.querySelector('.nums').getBoundingClientRect()), nameBox: (b => ({ l: b.left, r: b.right, b: b.bottom }))(e.querySelector('span:not(.nums):not(.arrow)').getBoundingClientRect()), arrowBox: (b => ({ l: b.left }))(e.querySelector('.arrow').getBoundingClientRect()) })));
+  let { ctx, page } = await open({ width: 1280, height: 860 });
+  try {
+    const list = await rows(page), priced = list.find(x => x.title === 'Layer runner'), empty = list.find(x => x.title === 'No numbers yet');
+    ok(list.length === 2 && !!bare, '1. the project lists its two products', list.map(x => x.title));
+    ok(priced?.nums.join(' | ') === 'MOQ 1,250 | Wholesale $21.50 | SRP $89.00', '2. a priced product shows MOQ, wholesale and SRP on its row, from its first price tier', priced?.nums);
+    ok(empty?.none === 'Pricing to come' && empty.nums.length === 0, '3. a product with no numbers says "Pricing to come" once, not three blanks', empty);
+    ok(priced.numsBox.l >= priced.nameBox.r - 1 && priced.numsBox.r <= priced.arrowBox.l + 1 && Math.abs(priced.numsBox.r - empty.numsBox.r) < 1.5, '4. on a wide screen the numbers sit between the name and the arrow, lined up down the list', { priced: priced.numsBox, empty: empty.numsBox });
+    await page.locator('.proj-list .proj-row', { hasText: 'Layer runner' }).click(); await page.waitForSelector(`#cp-${r.id} .detail-grid`, { timeout: 10000 });
+    const card = await page.$$eval(`#cp-${r.id} .detail-grid .detail`, els => els.map(e => e.querySelector('small').textContent + ' ' + e.querySelector('b').textContent));
+    ok(card.includes('MOQ 1250') && card.includes('Wholesale $21.50') && card.includes('SRP $89.00'), "5. pressing the row still opens the product, and its page carries the same MOQ, wholesale and SRP", card);
+    ok(list.every(x => x.thumb === 46), '   a product with no picture keeps a small square in its place: it used to stretch across the row', list.map(x => x.thumb));
+    ok(page.errs.length === 0, '   no page errors (wide)', page.errs);
+  } finally { await ctx.close(); }
+  ({ ctx, page } = await open({ width: 390, height: 844 }, true));
+  try {
+    const list = await rows(page), priced = list.find(x => x.title === 'Layer runner'), empty = list.find(x => x.title === 'No numbers yet');
+    const wide = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    ok(priced.numsBox.t >= priced.nameBox.b - 1 && Math.abs(priced.numsBox.l + 60 - priced.nameBox.l) < 80 && priced.numsBox.r <= priced.box.r + 0.5, '6. on a phone the numbers drop under the name, inside the row', { nums: priced.numsBox, name: priced.nameBox, row: priced.box });
+    ok(wide <= 0 && list.every(x => x.box.r <= 390.5), '7. and nothing pushes the page sideways', { wide, rights: list.map(x => x.box.r) });
+    ok(priced.nums.length === 3 && empty.none === 'Pricing to come', '   the same numbers show on the phone', { priced: priced.nums, empty: empty.none });
+    ok(page.errs.length === 0, '   no page errors (phone)', page.errs);
+  } finally { await ctx.close(); }
+});
+
 await browser.close();
 const bad = summary(); process.exit(bad ? 1 : 0);

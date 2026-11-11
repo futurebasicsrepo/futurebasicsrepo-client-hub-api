@@ -44,7 +44,8 @@ test('an expired or revoked invite opens nothing', () => {
 });
 
 test('who may ask for a sign-in code at all, and the order builds are shown in', () => {
-  assert.equal(hasAnyAccess({ invites: [] }), false); assert.equal(hasAnyAccess({ invites: [inv({ expires_at: past })] }), false, 'a lapsed invite is no access at all'); assert.equal(hasAnyAccess({ invites: [inv({ revoked_at: new Date().toISOString() })] }), false, 'neither is a revoked one'); assert.equal(hasAnyAccess({ invites: [inv({})] }), true);
+  // the clock is given, as it is to canSee above: read from the real clock, the invite's "future" date came due on 11 November 2026 and this failed from that day on
+  assert.equal(hasAnyAccess({ invites: [] }, NOW), false); assert.equal(hasAnyAccess({ invites: [inv({ expires_at: past })] }, NOW), false, 'a lapsed invite is no access at all'); assert.equal(hasAnyAccess({ invites: [inv({ revoked_at: '2026-10-01T00:00:00Z' })] }, NOW), false, 'neither is a revoked one'); assert.equal(hasAnyAccess({ invites: [inv({})] }, NOW), true);
   assert.equal(hasAnyAccess({ staff: true, invites: [] }), true); assert.equal(hasAnyAccess({ client: true, invites: [] }), true); assert.equal(hasAnyAccess(null), false);
   const list = visibleBuilds([B({ id: 'z', name: 'Zed', sort_order: 5 }), B({ id: 'a', name: 'Alpha', sort_order: 50 }), B({ id: 'b', name: 'Bravo', sort_order: 50 })], { staff: true }, NOW);
   assert.deepEqual(list.map(b => b.name), ['Zed', 'Alpha', 'Bravo']);
