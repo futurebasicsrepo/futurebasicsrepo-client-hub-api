@@ -7,7 +7,7 @@ import { constructionCheck } from '../src/lab-pattern-check.js';
 import { defaultParams, fitToTemplate, measurementsFor, STYLES, SIZES } from '../src/lab-flats.js';
 import { FLAT_TEMPLATES } from '../src/lab-flat-templates.js';
 import { BAG_TEMPLATES } from '../src/lab-bag-templates.js';
-import { garmentPattern, bagPattern, plushPattern, plushDefaults, PLUSH_SHAPES, PLUSH_EARS, PLUSH_SNOUTS } from '../src/lab-pattern.js';
+import { garmentPattern, bagPattern, plushPattern, plushDefaults, plushChecks, cleanPlush, PLUSH_SHAPES, PLUSH_EARS, PLUSH_SNOUTS } from '../src/lab-pattern.js';
 
 const failsOf = c => [...c.seams, ...c.meas, ...c.table.map(q => ({ name: 'cut table: ' + q.fabric, ok: q.fits }))].filter(x => x.ok === false).map(x => `${x.name} ${x.got ?? x.b}/${x.want ?? x.a}`).concat(c.cuts.map(x => `${x.piece}: ${x.why}`), c.missing.map(x => `missing ${x.need} (${x.for})`));
 
@@ -186,6 +186,39 @@ test('a fixed plush is drafted with how it goes together: dependent pieces sized
   assert.ok(!bean0.trims.some(t => t.item === 'Polypellets') && bean3.trims.some(t => t.item === 'Polypellets') && bean3.trims.some(t => t.item === 'Pellet pouch'));
   const sb = plushOf('bear', { eyes: 'safety', age: '3+' }); assert.ok(sb.trims.some(t => t.item === 'Safety eyes') && sb.trims.some(t => t.item === 'Embroidery floss'));
   const unsafe = constructionCheck(plushOf('bear', { eyes: 'safety', age: '0+' })); assert.ok(!unsafe.ok && unsafe.missing.some(x => /safe build/.test(x.need)), 'safety eyes on a toy for under-3s hold the check, as for a plush built from parts');
+});
+
+test('a plush\'s added parts (a horn, antlers, a mane, wings, spikes) are sized from the seam they go into, and every edge of them is sewn', () => {
+  const pc = (p, id) => p.pieces.find(q => q.id === id), wide = q => Math.max(...q.sew.map(v => v[0])) - Math.min(...q.sew.map(v => v[0])), seamOf = (c, re) => c.seams.find(x => re.test(x.name));
+  // every body type with every part it takes, small to large, with a small and a large head
+  let n = 0; for (const shape of ['quad', 'bear', 'bean', 'bunny', 'sea']) for (const horn of ['one', 'two', 'antlers']) for (const mane of ['crest', 'ruff']) for (const height of [4, 12, 30]) for (const head of [.8, 1.3]) { n++;
+    const c = constructionCheck(plushOf(shape, { height, head, horn, mane, wings: true, spikes: true })); assert.ok(c.ok && [...c.seams, ...c.meas].every(x => x.ok !== null), `${shape} ${height} in, head ${head}, ${horn}, ${mane}: ${failsOf(c).join('; ')}`); }
+  assert.ok(n >= 180);
+  // what was measured at 12 in before: a row of spikes 8.4 in long for a back seam of 7 in; on a sea creature the row ran through the
+  // dorsal fin's seat; a crest 6.6 in long with no seam to lie in; a ruff 10¾ in long for 7⅞ in of neck seam; a horn's base wider than
+  // the gusset it sits on
+  const q = plushOf('quad', { height: 12, horn: 'one', mane: 'crest', wings: true, spikes: true }), cq = constructionCheck(q), back = seamOf(cq, /^Spikes caught in the back seam.*outer/);
+  assert.ok(back && Math.abs(wide(pc(q, 'spikes')) - back.a) < .02 && back.a < 7.5, `the spikes are as long as the back seam from the neck to the tail (${back?.a})`);
+  const crest = seamOf(cq, /^Mane caught in the back seam.*one long edge/), onHead = wide(pc(q, 'mane')) - crest.a; assert.ok(onHead > 2 && /stitched down the centre of the head gusset/.test(pc(q, 'mane').notes[0]), `a crest lies on the gusset's centre (${onHead.toFixed(2)} in) and in the back seam (${crest.a} in)`);
+  const lion = plushOf('quad', { height: 12, mane: 'ruff' }), cl = constructionCheck(lion), neck = cl.seams.filter(x => /^Head onto the neck/.test(x.name)).reduce((t, x) => t + x.a, 0);
+  assert.ok(Math.abs(wide(pc(lion, 'mane')) - neck) < .03 && seamOf(cl, /^Mane: its two ends joined/), `a ruff is as long as the seam round the neck (${neck.toFixed(2)} in), its ends joined`);
+  const fin = plushOf('sea', { height: 12, spikes: true }), toFin = seamOf(constructionCheck(fin), /^Top seam.*the nose to the dorsal fin/), none = plushOf('sea', { height: 12, spikes: true, dorsal: false });
+  assert.ok(toFin && Math.abs(wide(pc(fin, 'spikes')) - toFin.a) < .02 && /to the dorsal fin/.test(pc(fin, 'spikes').notes[1]), `on a sea creature the row stops at the dorsal fin (${toFin?.a} in)`);
+  assert.ok(/to the stuffing opening/.test(pc(none, 'spikes').notes[1]) && constructionCheck(none).ok, 'and at the stuffing opening on one with no fin');
+  const horn = pc(q, 'horn'), room = cq.meas.find(x => /^Horn on the head gusset/.test(x.name)); assert.ok(horn.cut === 1 && seamOf(cq, /^Horn: its side seam/).ok && room.ok && room.got >= .1, 'one horn is a cone (a sector, its two straight edges sewn) whose base clears the gusset\'s seams');
+  for (const [id, o] of [['horn', { horn: 'two' }], ['antler', { horn: 'antlers' }], ['wing', { wings: true }]]) { const p = plushOf('bear', { height: 12, ...o }); assert.ok(pc(p, id).cut === 4 && p.assembly.filter(e => new RegExp(`^${id[0].toUpperCase()}${id.slice(1)}, (right|left): outer to inner`).test(e.name)).length === 2 && p.assembly.some(e => e.fin === 'sewn on by hand' && e.a.length === 4), `${id}: two pairs, each sewn round, the four bases sewn on by hand`); }
+  assert.ok(plushChecks(cleanPlush({ shape: 'bear', age: '0+', eyes: 'embroidered', wings: true }), plushOf('bear', { wings: true }).pieces).some(k => k.level === 'warn' && /sewn on by hand/.test(k.msg)), 'hand-sewn parts on a toy for under-3s are warned about');
+  // broken on purpose
+  const stretchX = (piece, k) => { piece.sew = piece.sew.map(v => [v[0] * k, v[1]]); for (const key of Object.keys(piece.at)) piece.at[key] = [piece.at[key][0] * k, piece.at[key][1]]; };
+  const broken = [
+    ['spikes 1½ in longer than their seam', { spikes: true }, p => stretchX(pc(p, 'spikes'), 1.2), /Spikes caught in/],
+    ['a crest longer than the gusset and the seam it lies in', { mane: 'crest' }, p => stretchX(pc(p, 'mane'), 1.25), /Mane caught in/],
+    ['a ruff shorter than the neck seam', { mane: 'ruff' }, p => stretchX(pc(p, 'mane'), .8), /Mane caught in/],
+    ['a horn too wide for its gusset', { horn: 'one' }, p => stretchX(pc(p, 'horn'), 2.2), /Horn on the head gusset/],
+    ['a horn whose two straight edges do not match', { horn: 'one' }, p => { const h = pc(p, 'horn'), i = h.sew.findIndex(v => v[0] === h.at.b[0] && v[1] === h.at.b[1]); h.sew[i] = [h.sew[i][0] * 1.6, h.sew[i][1] - .3]; h.at.b = h.sew[i].slice(); }, /Horn: its side seam/],
+    ['wings whose bases are in no seam', { wings: true }, p => { p.assembly = p.assembly.filter(e => !/^Wing bases/.test(e.name)); }, /No edge left unsewn/],
+    ['an antler sewn to itself twice', { horn: 'antlers' }, p => { p.assembly.push({ ...p.assembly.find(e => /^Antler, right/.test(e.name)) }); }, /No edge left unsewn/]];
+  for (const [what, o, hurt, re] of broken) { const p = plushOf('quad', { height: 12, ...o }); assert.ok(constructionCheck(p).ok, `${what}: sound before it is broken`); hurt(p); const c = constructionCheck(p), f = failsOf(c); assert.ok(!c.ok && f.some(x => re.test(x)), `${what} is caught (${f.join('; ') || 'nothing failed'})`); }
 });
 
 test('a fixed plush broken on purpose is caught, and by the check that is about it', () => {

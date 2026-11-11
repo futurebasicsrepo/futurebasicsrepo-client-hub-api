@@ -1717,6 +1717,17 @@ needs one. Every piece that depends on another is sized from the edge it is sewn
   on the body side's top and the top of its chest; the chest seam runs from there to the chest notch.
 - **A bear's back** is 6% fuller than its front, and its length is trued so the side seams walk each other.
 - **An ear lining** is the size of its ear. An elephant's ear is pleated (a quarter of its base taken up) into the gusset seam.
+- **The kit's added parts** are sized from the seam they go into, and are in the assembly as the body's own parts are:
+  - **A row of spikes** is as long as its seam: on a four-legged toy the back seam from the neck to the tail (closed in by hand with the
+    stuffing opening where it crosses it), on a sea creature the top seam from the nose to the dorsal fin (to the opening on one with no
+    fin). Two layers, sewn round the points and turned.
+  - **A mane** is a strip folded in half along its length. A ruff lies in the seam that joins the head to the neck, all the way round, its
+    ends joined. A crest is stitched down the centre of the head gusset from between the ears, then lies in the back seam from the neck to
+    the stuffing opening; it is as long as those two together.
+  - **One horn** is a cone: a sector of a circle whose two straight edges are sewn together. Its base sits ⅛ in inside each seam of the
+    head gusset (a tenth of the gusset's width on a small toy).
+  - **Two horns, antlers and wings** are two pairs each, sewn round and turned, their bases turned in and sewn on by hand. On a toy for
+    under-3s that is a warning: each has to take the 15 lbf pull.
 - **Ears, arms, fins and a tail** are caught in a seam between two notches as far apart as the part's base: a bear's and a four-legged
   animal's ears in the gusset seam, a bear's arms in the side seam, a bean's ears and arm nubs in the side seams, a pillow's ears in the
   front seam, a sea creature's fins in the belly seam and its dorsal fin in the top seam, a tail in the back seam. A sea creature's tail

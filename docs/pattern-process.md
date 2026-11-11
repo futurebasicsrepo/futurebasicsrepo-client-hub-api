@@ -127,5 +127,5 @@ Bringing one of these under the construction check follows the steps above: labe
 - The check proves the pattern makes the product it describes. It does not prove the product fits a body. Only a fitted sample does that, and corrections from the sample come back through the sample-corrections form.
 - Pieces edited by hand are not walked. They are flagged.
 - The notched tailored collar and the shearling collar are not yet walked against the neckline.
-- On a fixed plush, the kit's add-ons (horns, antlers, a mane, wings, spikes) are not in the assembly: they are sewn on by hand or laid in a seam, and carry no notches yet. A sewn-on leg's place is a notch, not a walked seam.
+- On a fixed plush, a part sewn on by hand (two horns, antlers, wings) has every edge accounted for, but where on the toy its base goes is said in its notes, not marked by notches. A sewn-on leg's place is a notch, not a walked seam.
 - Turning a piece end to end on the cutting table assumes the cloth has no nap. Corduroy, velvet and pile need one-way layouts.

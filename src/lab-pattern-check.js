@@ -310,6 +310,8 @@ function checkPlushShape(pat) {
       meas.push(atLeast(`${e.name}: wide enough to turn and stuff through`, l, Math.min(1.5, s.height * .15), 'at least 1½ in (on a toy under 10 in, 15% of its height)')); }
     else if (e.b) { const a = runsLen(pat, e.a), b0 = runsLen(pat, e.b); seams.push(seam(e.name, a, b0 == null ? null : b0 + (e.gap || 0), { ease: e.ease, why: e.why })); if (!e.caught) use(e.a); use(e.b); }
     else if (e.fin) use(e.a);
+    // a round base sewn on a piece (a horn on the head gusset): as wide as its edge is long over π, against the piece's width between two of its marks
+    else if (e.round) { const q = piece(pat, e.between[0]), c = quiet(() => runLen(pat, e.round)), p0 = q?.at?.[e.between[1]], p1 = q?.at?.[e.between[2]]; const wide = p0 && p1 ? Math.hypot(p0[0] - p1[0], p0[1] - p1[1]) : null; meas.push(atLeast(e.name, c != null && wide != null ? (wide - c / Math.PI) / 2 : null, wide == null ? .125 : Math.min(.125, wide * .1), e.rule || 'a round base sits ⅛ in inside the seams of the piece it is sewn on (a tenth of that piece\'s width where it is under 1¼ in wide)')); }
   }
   meas.push(atLeast('A stuffing opening left in a seam', opens, 1));
   let worst = 0, who = '';
