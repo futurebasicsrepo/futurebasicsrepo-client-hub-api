@@ -9,6 +9,9 @@
 // a pocket divides them; dividing a piece does not change a seam's length or the garment's size), and the rib, cuff and band pieces as cut.
 // A bag is checked by its assembly (the list of every seam, zip and finished edge its drafting gives): each seam's two sides, each zip in
 // its opening, that no edge is left unsewn or sewn twice, that what is sewn on a panel lies on it, and its body against its size.
+// A plush drafted on one of the fixed body types is checked by its assembly too: each seam's two sides (a head gusset along its head side, a
+// foot pad round its leg's open end, a base round the bottom edges, an ear, a fin or a tail in the seam it is caught in), that no edge of any
+// piece is left unsewn or sewn twice, its stuffing opening, and the toy's height (a sea creature's length) measured off its pieces.
 // The same file runs in the page and on the service: no DOM, no Node.
 import { layoutOf, boundsOf } from './lab-pattern.js';
 
@@ -278,6 +281,47 @@ function checkBag(pat) {
   return { seams, meas };
 }
 
+// ---- a plush on one of the fixed body types: its assembly walked (src/lab-pattern.js draftFixed lists it) ----
+// the points of the run between two labelled corners, and where a seam that is not level sits once it is sewn (its mean height)
+const runPts = (q, a, b) => { const keep = RUNS; RUNS = []; let pts = null; try { if (edge(q, a, b) != null) pts = RUNS[0].pts; } finally { RUNS = keep; } return pts; };
+const levelOf = (q, ...ks) => { let L = 0, m = 0; for (let i = 0; i + 1 < ks.length; i++) { const r = q?.at ? runPts(q, ks[i], ks[i + 1]) : null; if (!r) return null; for (let j = 1; j < r.length; j++) { const d = dist(r[j], r[j - 1]); L += d; m += d * (r[j][1] + r[j - 1][1]) / 2; } } return L ? m / L : null; };
+// the made toy's size, off its pieces as they are sewn: a standing bear's head above its neck seam, its body below that seam down to the hip notch and its leg
+// below that (the leg's two top corners sit at the notch); a sitting animal's head above its neck seam and its body below it down to the seat; a sea creature from its nose to the end of
+// its tail stock and its tail beyond; a bean's, a bunny's or a pillow's front, top to bottom
+function plushSize(pat) {
+  const P = id => piece(pat, id), sh = pat.spec.shape, has = (q, ...ks) => q?.at && ks.every(k => q.at[k]), sum = (...v) => (v.every(x => x != null && Number.isFinite(x)) ? v.reduce((a, x) => a + x, 0) : null);
+  if (sh === 'sea') { const b = P('body-side'), t = P('tail'); return has(b, 'st', 'sb') ? sum((b.at.st[0] + b.at.sb[0]) / 2 - boundsOf(b.sew).x0, t?.cut ? (has(t, 'b0', 'b1') ? boundsOf(t.sew).x1 - (t.at.b0[0] + t.at.b1[0]) / 2 : null) : 0) : null; }
+  if (sh === 'bear') { const hd = P('head-side'), f = P('body-front'), leg = P('leg'); if (!hd || !has(f, 'nc', 'sh')) return null; const head = sum(levelOf(hd, 'throat', 'nape'), -boundsOf(hd.sew).y0);
+    const neck = levelOf(f, 'nc', 'sh'); if (neck == null) return null;
+    return leg?.cut ? (has(f, 'hip') && has(leg, 't0', 't1') ? sum(head, f.at.hip[1] - neck, boundsOf(leg.sew).y1 - (leg.at.t0[1] + leg.at.t1[1]) / 2) : null) : sum(head, boundsOf(f.sew).y1 - neck); }
+  if (sh === 'quad' || sh === 'elephant') { const hd = P('head-side'), b = P('body-side'); return hd && b ? sum(levelOf(hd, 'back', 'throat'), -boundsOf(hd.sew).y0, boundsOf(b.sew).y1, -levelOf(b, 'nb', 'top0', 'nf')) : null; }
+  const f = P('front'); return f ? boundsOf(f.sew).h : null;
+}
+function checkPlushShape(pat) {
+  const seams = [], meas = [], A = pat.assembly || [], s = pat.spec, long = s.shape === 'sea';
+  // every run a seam or a finish uses, by piece and copy: at the end every cut of every labelled piece must be used once, all of it
+  const used = new Map(), quiet = f => { const keep = RUNS; RUNS = null; try { return f(); } finally { RUNS = keep; } };
+  const use = r => { for (const [id, ks, k = 0] of (Array.isArray(r[0]) ? r : [r])) { const l = quiet(() => runLen(pat, [id, ks])); if (l != null) used.set(`${id}#${k}`, (used.get(`${id}#${k}`) || 0) + l); } };
+  let opens = 0;
+  for (const e of A) {
+    if (e.open) { opens++; const l = quiet(() => runsLen(pat, e.open)), ends = (e.ends || []).map(r => quiet(() => runsLen(pat, r)));
+      meas.push(measure(`${e.name}: between its two notches`, l, e.len, .125));
+      meas.push(atLeast(`${e.name}: seam sewn beyond each end`, ends.length === 2 && ends.every(v => v != null) ? Math.min(...ends) : null, .375, 'the seam is backstitched at least ⅜ in beyond each end of the opening'));
+      meas.push(atLeast(`${e.name}: wide enough to turn and stuff through`, l, Math.min(1.5, s.height * .15), 'at least 1½ in (on a toy under 10 in, 15% of its height)')); }
+    else if (e.b) { const a = runsLen(pat, e.a), b0 = runsLen(pat, e.b); seams.push(seam(e.name, a, b0 == null ? null : b0 + (e.gap || 0), { ease: e.ease, why: e.why })); if (!e.caught) use(e.a); use(e.b); }
+    else if (e.fin) use(e.a);
+  }
+  meas.push(atLeast('A stuffing opening left in a seam', opens, 1));
+  let worst = 0, who = '';
+  for (const q of pat.pieces) { if (!q.cut || !q.at) continue; for (let k = 0; k < q.cut; k++) { const d = Math.abs((used.get(`${q.id}#${k}`) || 0) - perimOf(q)); if (d > worst) { worst = d; who = q.name; } } }
+  meas.push(measure(`No edge left unsewn, none sewn twice${worst > .125 ? ` (out on the ${who.toLowerCase()})` : ''}`, worst, 0, .125));
+  // its size: a stuffed toy's height is held to ½ in, or 5% on one over 10 in (how firmly it is filled moves it that much, no more)
+  meas.push(measure(long ? 'Length, nose to tail' : s.shape === 'quad' || s.shape === 'elephant' ? 'Height, sitting, crown to seat' : s.shape === 'bear' ? 'Height, standing, crown to sole' : 'Height', plushSize(pat), s.height, Math.max(.5, s.height * .05)));
+  if (s.shape === 'pillow') meas.push(measure('Depth, the side gusset', piece(pat, 'gusset') ? boundsOf(piece(pat, 'gusset').sew).h : null, s.depth, .125));
+  if (s.shape === 'quad' || s.shape === 'elephant') { const b = piece(pat, 'body-side'), l = piece(pat, 'leg-front'); meas.push(measure('Front legs reach the ground: their soles level with the seat', b?.at?.lf && l?.at?.t0 && l.at.t1 ? b.at.lf[1] + boundsOf(l.sew).y1 - (l.at.t0[1] + l.at.t1[1]) / 2 : null, b ? boundsOf(b.sew).y1 : null, .25)); }
+  return { seams, meas };
+}
+
 // every piece cut is a clean outline: it never crosses itself (it could not be cut) and has no corner sharper than 20° between two edges
 // longer than ⅛ in (a sliver no cutter follows and no machinist sews); → [{ piece, why }] for the ones that are not
 const crosses = (a, b, c, d) => { const o = (p, q, r) => (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]); return o(c, d, a) * o(c, d, b) < -1e-9 && o(a, b, c) * o(a, b, d) < -1e-9; };
@@ -293,9 +337,12 @@ export function outlineFaults(pat) {
 // what every garment is made with, beyond its pieces: each feature the pattern has calls for the parts and trims a factory needs to make it
 // (a fly calls for its zip and a waist button, a woven collar for its fusing, a hood for its lining); → [{ need, for }] for the ones missing
 export function missingComponents(pat) {
-  if (pat.kind === 'plush') { if (!pat.build) return []; const T = (pat.trims || []).map(t => t.item), out = [], need = (ok, what, why) => { if (!ok) out.push({ need: what, for: why }); };
+  if (pat.kind === 'plush') { const T = (pat.trims || []).map(t => t.item), out = [], need = (ok, what, why) => { if (!ok) out.push({ need: what, for: why }); }; // built from parts or on a fixed body type: the same list
     need(T.some(t => /fill/i.test(t)), 'Fibre fill', 'a stuffed toy'); need(T.includes('Thread'), 'Thread', 'every plush'); need(T.includes('Law label'), 'Law label', 'every stuffed toy sold (the fill content and registration)');
     need(T.some(t => /safety eyes|floss/i.test(t)), 'Eyes (safety eyes or floss)', 'the face');
+    need(!T.includes('Polypellets') || T.includes('Pellet pouch'), 'A pellet pouch', 'pellets are sewn into an inner bag, never loose in the toy');
+    if (pat.pieces.some(q => q.cut && (q.notes || []).some(n => /tuft is yarn/i.test(n)))) need(T.includes('Yarn'), 'Yarn', 'the tail\'s tuft');
+    if (pat.pieces.some(q => q.cut && (q.notes || []).some(n => /pouch of polypellets/i.test(n)))) need(T.includes('Polypellets'), 'Polypellets', 'the weighted base');
     for (const c of pat.checks || []) if (c.level === 'fail') out.push({ need: 'A safe build for its age', for: c.msg });
     return out; }
   if (pat.kind === 'bag') { // a bag: what each of its zips, straps, pads and linings calls for
@@ -341,7 +388,7 @@ export function constructionCheck(pat, { m = null, style = '', width = 58, edges
   if (!pat) return null;
   const knit = (pat.sa || 0) < .45, K = pat.construction || {};
   RUNS = edges ? [] : null;
-  let r; try { r = pat.kind === 'plush' && pat.build ? checkPlush(pat) : pat.kind === 'bag' ? checkBag(pat) : ['cap', 'bucket'].includes(pat.style) ? checkHeadwear(pat, m || {}) : pat.style === 'beanie' ? checkBeanie(pat, m || {}) : pat.style === 'tote' ? checkTote(pat, m || {}) : pat.block?.front?.at?.crotch || pat.block?.front?.skirt || (m && ('inseam' in m || 'sweep' in m)) ? checkBottom(pat, m || {}, K) : checkTop(pat, m || {}, style || pat.style, knit); } finally { RUNS = null; }
+  let r; try { r = pat.kind === 'plush' && pat.build ? checkPlush(pat) : pat.kind === 'plush' ? checkPlushShape(pat) : pat.kind === 'bag' ? checkBag(pat) : ['cap', 'bucket'].includes(pat.style) ? checkHeadwear(pat, m || {}) : pat.style === 'beanie' ? checkBeanie(pat, m || {}) : pat.style === 'tote' ? checkTote(pat, m || {}) : pat.block?.front?.at?.crotch || pat.block?.front?.skirt || (m && ('inseam' in m || 'sweep' in m)) ? checkBottom(pat, m || {}, K) : checkTop(pat, m || {}, style || pat.style, knit); } finally { RUNS = null; }
   const lay = layoutOf(pat, { width }), table = lay.map(g => ({ fabric: g.name, width: g.width, length: g.length, yards: g.yards, efficiency: g.efficiency, pieces: g.items.length, fits: g.items.every(it => it.b.w <= g.width + 1e-6) }));
   const all = [...r.seams, ...r.meas], made = all.filter(x => x.ok !== null), cuts = outlineFaults(pat), missing = missingComponents(pat);
   return { ...r, table, cuts, missing, ok: made.length > 0 && made.every(x => x.ok) && table.every(t => t.fits) && !cuts.length && !missing.length, passed: made.filter(x => x.ok).length, made: made.length, total: all.length };
