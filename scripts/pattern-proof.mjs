@@ -13,6 +13,7 @@ import { defaultParams, fitToTemplate, measurementsFor, STYLES, SIZES } from '..
 import { garmentPattern, bagPattern, plushPattern, plushDefaults, PLUSH_SHAPES, PLUSH_TYPE } from '../src/lab-pattern.js';
 import { PLUSH_PRESETS } from '../src/lab-plush-parts.js';
 import { constructionCheck } from '../src/lab-pattern-check.js';
+import { footwearPattern, fwDefaults, FW_STYLES, VARIANTS } from '../src/lab-footwear.js';
 import { proofCard, proofPage, proveSizes } from '../src/lab-pattern-proof.js';
 
 const arg = (k, d = '') => { const i = process.argv.indexOf('--' + k); return i < 0 ? d : process.argv[i + 1] || d; };
@@ -50,14 +51,21 @@ if (!STY.length || STY.includes('plush')) for (const shape of Object.keys(PLUSH_
   const pat = plushPattern({ ...plushDefaults(shape), height: 12 }), c = constructionCheck(pat, { edges: true }); pN++; if (c.ok) pOk++; seamsN += c.seams.filter(s => s.ok !== null).length; measN += c.meas.filter(s => s.ok !== null).length;
   cards.push({ order: 5, html: proofCard({ id: 'plush-shape-' + shape, label: PLUSH_TYPE[shape], style: `Plush, a fixed body type · ${pat.size}`, kind: 'plush', pat, c, sizes: [] }) });
   json.push({ id: 'plush-shape-' + shape, style: 'plush', ok: c.ok, passed: c.passed, made: c.made, yards: c.table.map(q => [q.fabric, q.yards, q.efficiency]) }); }
+// footwear: every style and each way of making it, at its own size, put together by footwearAssembly (src/lab-footwear.js). No card is
+// drawn for a shoe here (its pieces come off a last, not off a cutting table): what does not go together is listed and fails the run
+let fN = 0, fOk = 0; const fBad = [];
+if (!STY.length || STY.includes('footwear')) for (const style of Object.keys(FW_STYLES)) for (const v of Object.keys(VARIANTS[style] || { _: 1 })) { const id = 'footwear-' + style + (v === '_' ? '' : '-' + v); if (ONLY.length && !ONLY.includes(id)) continue;
+  const A = footwearPattern(fwDefaults(style, v === '_' ? null : v)).assembly; fN++; if (A.ok) fOk++; else fBad.push(`${id}: ${[...A.seams, ...A.meas].filter(x => x.ok === false).map(x => x.name).concat(A.missing.map(m => 'missing ' + m.need)).join('; ')}`);
+  seamsN += A.seams.filter(x => x.ok !== null).length; measN += A.meas.filter(x => x.ok !== null).length; json.push({ id, style: 'footwear', ok: A.ok, passed: A.passed, made: A.made }); }
 cards.sort((a, b) => a.order - b.order);
 
 const html = proofPage({ title: 'Cut and Sew Proof', lede: `Every garment and bag in the sketch library, drafted at size ${SIZE}, checked by measurement: the two sides of every seam walked against each other (collars, stands and hoods against the neckline), the finished piece measured against its spec, every component its features call for present, and every piece laid on its cloth. No pictures are judged and no AI is used. Each strip of sizes shows the same check run from XS to XXL.`,
-  totals: [[`${gOk}/${gN}`, `garments pass at ${SIZE}`], [`${sOk}/${sN}`, 'garment sizes pass'], [`${bOk}/${bN}`, 'bags pass'], [`${pOk}/${pN}`, 'plush pass'], [seamsN.toLocaleString(), 'seams walked'], [measN.toLocaleString(), 'measurements checked']],
+  totals: [[`${gOk}/${gN}`, `garments pass at ${SIZE}`], [`${sOk}/${sN}`, 'garment sizes pass'], [`${bOk}/${bN}`, 'bags pass'], [`${pOk}/${pN}`, 'plush pass'], [`${fOk}/${fN}`, 'shoes go together'], [seamsN.toLocaleString(), 'seams walked'], [measN.toLocaleString(), 'measurements checked']],
   how: `<div class="how"><div><b>Seams.</b> Two edges sewn together must be the same length within ⅛ in, or eased within the range a factory sews: a sleeve cap ¼ to 1½ in into its armhole, a rib stretched 8 to 22% onto a neckline.</div><div><b>Measurements.</b> Taken off the pieces as sewn (chest 1 in below the armhole, length from the high point of the shoulder, rise and inseam along their seams) against the spec in <code>docs/measurement-sources.md</code>, within factory tolerances.</div><div><b>Cutting table.</b> Every piece cut, pairs turned over, laid at the cloth's width (58 in unless the material says otherwise) with the grain line, the yardage and how much of the cloth is used.</div></div>`, cards: cards.map(x => x.html), filters: true });
 mkdirSync(OUT, { recursive: true });
 writeFileSync(join(OUT, 'pattern-proof.html'), html);
-writeFileSync(join(OUT, 'proof.json'), JSON.stringify({ size: SIZE, garments: [gOk, gN], sizes: [sOk, sN], bags: [bOk, bN], seams: seamsN, measurements: measN, items: json }, null, 1));
-console.log(`garments ${gOk}/${gN} at ${SIZE} · sizes ${sOk}/${sN} · bags ${bOk}/${bN} · plush ${pOk}/${pN} · ${seamsN} seams, ${measN} measurements → ${join(OUT, 'pattern-proof.html')} (${Math.round(html.length / 1024)} KB)`);
+writeFileSync(join(OUT, 'proof.json'), JSON.stringify({ size: SIZE, garments: [gOk, gN], sizes: [sOk, sN], bags: [bOk, bN], plush: [pOk, pN], footwear: [fOk, fN], seams: seamsN, measurements: measN, items: json }, null, 1));
+console.log(`garments ${gOk}/${gN} at ${SIZE} · sizes ${sOk}/${sN} · bags ${bOk}/${bN} · plush ${pOk}/${pN} · footwear ${fOk}/${fN} · ${seamsN} seams, ${measN} measurements → ${join(OUT, 'pattern-proof.html')} (${Math.round(html.length / 1024)} KB)`);
 // exits non-zero when anything does not pass, so a run can gate a release
-if (gOk < gN || sOk < sN || bOk < bN || pOk < pN) process.exitCode = 1;
+for (const line of fBad) console.log('does not go together · ' + line);
+if (gOk < gN || sOk < sN || bOk < bN || pOk < pN || fOk < fN) process.exitCode = 1;

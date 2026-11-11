@@ -43,7 +43,8 @@ test('the eye\'s reading (AI) sets the style and the lines; the outline still me
   assert.ok(p.changes.some(c => c.key === 'style' && c.from === 'sneaker' && c.to === 'hightop'));
   const pat = footwearPattern(p.spec), ids = pat.pieces.map(q => q.id);
   assert.ok(ids.includes('mudguard') && !ids.includes('toe-cap') && /8 eyelets/.test(pat.pieces.find(q => q.id === 'eyestay').notes[0]), 'the pattern follows: a mudguard, no toe cap, 8 eyelets');
-  assert.ok(Math.abs(boundsOf(pat.pieces.find(q => q.id === 'vamp').shown).x0 - (pat.last.F * .58 - .35)) < .1, 'the vamp line where the picture has it');
+  // the vamp line is where the picture has it; the quarters' front edge shows ¼ in in front of it, and the vamp runs ⅜ in under them
+  assert.ok(Math.abs(pat.marks.vamp - pat.last.F * .58) < .01 && Math.abs(boundsOf(pat.pieces.find(q => q.id === 'vamp').shown).x0 - (pat.last.F * .58 + .25 - pat.lasting.lap)) < .1, 'the vamp line where the picture has it');
   assert.equal(proposal({ style: 'derby' }, null, { ...vision, footwear: false }).changes.length, 0, 'not a shoe: nothing changes');
 });
 

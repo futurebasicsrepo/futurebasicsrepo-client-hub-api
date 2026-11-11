@@ -1129,6 +1129,24 @@ maker, in any size (`GET /v1/lab/concepts/:id/last.svg?size=`).
   - **Under the foot** (`lastingOf`): board-lasted styles fold a ⅝ in lasting allowance onto an insole board; runners and hikers are strobel-lasted, their upper's edge (3/16 in) stitched to a strobel sock.
   - **Warm and waterproof:** an insulated lining (200 g) adds an insulation layer cut as the linings, and shearling is a lining choice; a membrane (on by default for a hiking boot) adds a sewn, seam-taped bootie between the upper and the lining. All of these reach the bill of materials.
 - **Allowances:** each piece carries the ⅝ in lasting allowance and ⅜ in overlaps.
+- **How many to cut** is for a pair of shoes: 2 of a piece there is one of on a shoe, 4 of a piece drawn for one side that goes on both.
+- **The lines agree before the shoe is drafted.** The collar, the vamp line, where the lacing starts and the eyelets are each set on their own (dragged, or read off a picture), so `footwearPattern` reconciles them and says in the notes what it moved:
+  - on a low shoe the lacing (a slip-on's throat) starts ½ in or more in front of the ankle bone
+  - a laced low shoe keeps 1⅛ in of lace edge behind the vamp line; the vamp line moves forward when there is no room
+  - on a boot or a high-top the front of the leg stays a fifth of the foot's length behind the vamp line
+  - eyelets are never closer than ⅜ in: a short lace edge takes fewer than were asked for
+  - a Chelsea's gore is 3⅜ in on a 6 in collar and the same share of a lower one
+- **Does it go together** (`footwearAssembly`, on every pattern as `assembly`; what fails is a finding on the Pattern page):
+  - every piece cut whole (vamp, toe cap, saddle, vamp lining, toe puff) is measured along sections marked across it against a tape over the last there: its allowance is left each side, never 1/16 in short, and at the tip of the toe
+  - the vamp's fold against the last's centre line; the lining and the toe puff inside the vamp
+  - the back seam's two sides; each quarter's allowance; the quarters' (a Chelsea's front shaft's) front edge against the line it laps to on the vamp
+  - a boot's or a high-top's leg as high as cut as it is drawn, from the back seam to the front of the leg
+  - a Chelsea's gore into the back quarter and the front shaft, level across the collar
+  - a strobel upper's edge against the sock's, notch to notch along each side and round the heel and the toe
+  - the tongue as long as the lace edge (measured off the eyestay), ⅜ in under the vamp and 2 in above the collar; its lining and foam
+  - the counter below the topline and short of the upper's edge; the insole, sock and sockliner against the bottom of the last
+  - what a shoe cannot be made without (counter, toe puff, insole or sock, tongue and eyestays on a laced shoe, a Chelsea's gores)
+  `test/lab-footwear-assembly.test.js` holds every style and variant to it at three sizes and across the choices that used to break, and breaks twelve shoes on purpose. `npm run pattern:proof` counts footwear too.
 - **The sole unit** (cupsole, EVA midsole, or a stitched outsole and heel) is shown as a moulded component: it is never cut.
 
 **Sandals, clogs, slides and mules** (`openPattern` in `src/lab-footwear.js`). Four more styles, each with the ways it is made (`VARIANTS`, the
@@ -1576,7 +1594,9 @@ before.
 **The pieces.** Each piece of the upper is carried from the side view onto the surface and off it, flat:
 
 - the pieces of the inside quarter on the inside half, the rest on the outside;
-- the lasting allowance below the feather line and a boot's shaft above the last carried straight on;
+- the lasting allowance below the feather line carried straight on;
+- a leg stood straight up from the last's shoulder: the back of the last, under the leg, is open at the top, so above the point where a section's side leaves upright a height is carried straight on up the sheet and not round over the top (carried round, a 6 in collar was cut 6½ in high at the middle of the leg and bowed). How far forward the leg comes is the style's: a boot's to the front of its leg, a low shoe's to the ankle bone;
+- a piece cut whole made as wide at every section as a tape over the last there, and its fold never longer than the last's centre line (no flat sheet holds every section's length: round a square toe box the flattening left it 1/16 in a side narrow);
 - a piece cut whole (the vamp, the toe cap) flattened on one side and mirrored over its flattened centre line;
 - its side-view outline kept for how it shows on the shoe.
 
