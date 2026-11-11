@@ -316,10 +316,12 @@ export function registerLabFlatsRoutes(app, d) {
     const all = await techniques(c.client_id), list = all.map(t => ({ id: t.id, name: t.name, kind: t.kind, base: t.base, rules: t.rules, surfaces: t.surfaces }));
     // a saved flat that does not match its picture (another garment, another sketch, or a cloth colour far from the picture's) says so, and
     // offers to redraw it from the picture
-    if (r) return shape(c, { ...r.params, placements: r.placements, check: r.check_result, saved: true, updatedAt: r.updated_at }, { techniques: list, firstTechnique: firstTechniques(all), picture: await mismatch(c, r.params) });
+    // madeAs: the technique each graphic is made with when it names none of its own, so the page shows what the sheets will say
+    const madeAs = (style, pl) => Object.fromEntries((pl || []).filter(q => !q.techniqueId).map(q => [q.id, techFor(all, q, style).id]).filter(x => x[1]));
+    if (r) return shape(c, { ...r.params, placements: r.placements, check: r.check_result, saved: true, updatedAt: r.updated_at }, { techniques: list, firstTechnique: firstTechniques(all), madeAs: madeAs(r.params.style, r.placements), picture: await mismatch(c, r.params) });
     const init = await initial(c);
     if (!init) return shape(c, null, { techniques: list, firstTechnique: firstTechniques(all), unsupported: looksLikeFootwear(c) && c.category !== 'footwear' ? `This piece reads as footwear, but it sits in a ${c.category} line, so it is not drawn as ${c.category}. A shoe is drawn in panels when it sits in a footwear line: move it there, or change the concept's words.` : `Flats are not drawn for ${c.category} yet. They cover tops, hoodies, sweatshirts, jackets, pants, shorts, caps, beanies and totes.` });
-    return shape(c, { ...init, check: await check(init, init.placements, c.client_id), saved: false }, { techniques: list, firstTechnique: firstTechniques(all), picture: await mismatch(c, init) });
+    return shape(c, { ...init, check: await check(init, init.placements, c.client_id), saved: false }, { techniques: list, firstTechnique: firstTechniques(all), madeAs: madeAs(init.style, init.placements), picture: await mismatch(c, init) });
   });
   // the flat drawn again from the picture (not saved): the garment, fit and colour the picture shows; the graphics come along, the ones added
   // on the flats alone included
@@ -629,7 +631,7 @@ export function registerLabFlatsRoutes(app, d) {
     body += T(cx, py, 20, `Points of measure (inches) · sample size ${STYLES[p.style].oneSize ? 'one size' : 'M'}${washShrink(p) ? ' · finished, after wash' : ''}`, { w: 600 }); py += 30;
     body += T(cx, py, 12, 'Point', { w: 600, c: '#727278' }) + cols.map((s, i) => T(cx + 330 + i * 52, py, 12, s, { w: 600, c: s === 'M' ? '#141416' : '#727278', a: 'end' })).join('') + T(cx + 330 + cols.length * 52 + 20, py, 12, 'Tol ±', { w: 600, c: '#727278', a: 'end' });
     for (const row of pom) { py += 22; body += T(cx, py, 12, `${row.code} ${row.name}`.slice(0, 48)) + row.values.map((v, i) => T(cx + 330 + i * 52, py, 12, String(v.value), { a: 'end', w: v.size === 'M' ? 600 : 400 })).join('') + T(cx + 330 + cols.length * 52 + 20, py, 12, String(row.tolerance), { a: 'end', c: '#727278' }); }
-    const head = `${T(60, 62, 30, c.name, { w: 600 })}${T(60, 92, 15, `${STYLES[p.style].label} · ${FITS[p.fit] || p.fit} fit · Future Basics Design Lab · ${new Date().toISOString().slice(0, 10)}`, { c: '#727278' })}${T(1640, 62, 15, ck.summary.fail ? `${ck.summary.fail} problem${ck.summary.fail === 1 ? '' : 's'} to fix before it can be made` : ck.summary.warn ? `${ck.summary.warn} thing${ck.summary.warn === 1 ? '' : 's'} to check` : 'Ready to make', { a: 'end', w: 600, c: ck.summary.fail ? '#a02a20' : ck.summary.warn ? '#8a5a00' : '#17603a' })}`;
+    const head = `${T(60, 62, 30, c.name, { w: 600 })}${T(60, 92, 15, `${STYLES[p.style].label}${STYLES[p.style].kind === 'goods' ? '' : ` · ${FITS[p.fit] || p.fit} fit`} · Future Basics Design Lab · ${new Date().toISOString().slice(0, 10)}`, { c: '#727278' })}${T(1640, 62, 15, ck.summary.fail ? `${ck.summary.fail} problem${ck.summary.fail === 1 ? '' : 's'} to fix before it can be made` : ck.summary.warn ? `${ck.summary.warn} thing${ck.summary.warn === 1 ? '' : 's'} to check` : 'Ready to make', { a: 'end', w: 600, c: ck.summary.fail ? '#a02a20' : ck.summary.warn ? '#8a5a00' : '#17603a' })}`;
     const H = Math.max(y, py) + 60;
     return { editHrefs, alloverHref, svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="#ffffff"/><rect x="0" y="0" width="${W}" height="6" fill="#4bff9a"/>${head}${body}</svg>`, p, pl, hrefs, svgs, views, tags };
   }
@@ -734,7 +736,8 @@ export function registerLabFlatsRoutes(app, d) {
     const r = (await pool.query('select params, placements from lab_flats where concept_id=$1', [c.id])).rows[0], p = r.params, pl = upgradePlacements(p, r.placements), list = await techniques(c.client_id);
     const S = STYLES[p.style], tpl = templateOf(p), edits = p.edits || [];
     const pom = pomTable(p).map(row => ({ code: row.code, name: row.name, how: washShrink(p) ? `From the flats; finished, after the wash (allow ${washShrink(p)}% shrinkage)` : 'From the flats', tolerance: String(row.tolerance), values: Object.fromEntries(row.values.map(v => [v.size, String(v.value)])) }));
-    const construction = [{ area: 'Drawing', detail: `${FITS[p.fit] || p.fit} fit ${S.label.toLowerCase()}, drawn from the ${tpl ? `"${tpl.label}" flat sketch` : 'measurements'}; sample size M.` },
+    const goods = S.kind === 'goods'; // a product type has no fit and one size, and is not cut from cloth: the pack does not say it is
+    const construction = [{ area: 'Drawing', detail: goods ? `${S.label}, drawn from its measurements; one size.` : `${FITS[p.fit] || p.fit} fit ${S.label.toLowerCase()}, drawn from the ${tpl ? `"${tpl.label}" flat sketch` : 'measurements'}; sample size M.` },
       ...pl.map(q => ({ area: `${sideOf(q, p)} · ${q.name}`, detail: `${techFor(list, q, p.style).name}, ${fmtCm(q.w)} × ${fmtCm(q.h)}: ${describe(q, p)}.${q.grade ? ` Artwork by size: ${gradeWords(q)}.` : ''}` })),
       ...pl.filter(q => q.inks).map(q => ({ area: `Inks by colourway · ${q.name}`, detail: Object.entries(q.inks).map(([cw, m]) => `on ${(cleanColourways(c.spec?.colourways).find(x => x.hex === cw)?.name) || cw}: ${Object.entries(m).filter(([a, b2]) => a !== b2).map(([a, b2]) => `${pantoneOf(a)} changed to ${pantoneOf(b2)}`).join(', ') || 'as drawn'}`).join('; ') })),
       ...(p.crop ? [{ area: 'Cropped body', detail: `Cropped ${fmtCm(p.crop)} shorter than the sketch's body, taken out above the hem band so the band and hem finish stay as drawn; the sleeves keep their length. Body length (sample M) ${fmtCm(p.m.length)}.` }] : []),
@@ -747,13 +750,13 @@ export function registerLabFlatsRoutes(app, d) {
     const bom = [...pl.map(q => { const dd = decoOf(q); return { component: `Decoration · ${q.name}`, material: techFor(list, q, p.style).name, spec: dd ? `${q.grade ? gradeWords(q) : `${fmtCm(q.w)} × ${fmtCm(q.h)}`}, ${dd.colours} colour${dd.colours === 1 ? '' : 's'}${dd.basis ? `; ${dd.basis}` : ''}`.slice(0, 200) : '', color: dd ? dd.pantones.join(', ').slice(0, 120) : '', placement: describe(q, p).slice(0, 160), qty: '1', unit: 'pc', ...(dd && !dd.unpriced ? { cost: (dd.perPieceCents / 100).toFixed(2) } : {}) }; }),
       ...decos.filter(d2 => d2.allover).map(d2 => ({ component: `All-over print · ${d2.name}`, material: d2.technique, spec: `${d2.placement}; ${d2.colours} colour${d2.colours === 1 ? '' : 's'}${d2.basis ? `; ${d2.basis}` : ''}`.slice(0, 200), color: d2.pantones.join(', ').slice(0, 120), placement: 'All panels', qty: '1', unit: 'pc', cost: (d2.perPieceCents / 100).toFixed(2) })),
       ...[...threads].map(([hex, where]) => ({ component: 'Contrast thread', material: 'Polyester sewing thread', color: hex, placement: [...new Set(where)].join(', ').slice(0, 160), qty: '1', unit: 'cone' })),
-      ...edits.filter(e => e.type === 'block').map(e => ({ component: `Colour block · ${e.name || 'panel'}`, material: 'Self fabric', color: e.color, placement: viewLabel(p.style, e.view).toLowerCase() }))];
+      ...edits.filter(e => e.type === 'block').map(e => ({ component: `Colour block · ${e.name || 'panel'}`, material: goods && surfaceOf(p.style) !== 'cloth' ? 'Same material' : 'Self fabric', color: e.color, placement: viewLabel(p.style, e.view).toLowerCase() }))];
     return {
       files: items,
       lab: { pom, sizes: S.oneSize ? ['One size'] : SIZES, construction, bom, materials, colourways, color: p.color ? { hex: p.color, name: 'Main colour' } : null,
         // the wrap is the pack's 'flat' view under its own name (the pack's front and back are the cup's two sides)
         sketches: [...items.filter(i => /^Technical flat · /.test(i.name)).map(i => (i.wrap ? { id: 'lab-flat-wrap', view: 'flat', label: i.name, image: i.image } : { view: i.name.endsWith('back') ? 'back' : 'front', label: i.name, image: i.image })), ...labelSketches],
-        priceCents: c.price_cents, costCents: c.cost_cents, qty: c.qty, planName: c.plan_name, style: { sampleSize: S.oneSize ? 'One size' : 'M', fitBlock: `${FITS[p.fit] || p.fit} ${S.label.toLowerCase()}${tpl ? ` (${tpl.label})` : ''}` } }
+        priceCents: c.price_cents, costCents: c.cost_cents, qty: c.qty, planName: c.plan_name, style: { sampleSize: S.oneSize ? 'One size' : 'M', fitBlock: goods ? S.label : `${FITS[p.fit] || p.fit} ${S.label.toLowerCase()}${tpl ? ` (${tpl.label})` : ''}` } }
     };
   }
   // the shoe's drawn views on one sheet: each view's own SVG nested in a cell, named under it

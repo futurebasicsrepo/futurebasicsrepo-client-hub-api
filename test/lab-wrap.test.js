@@ -141,7 +141,7 @@ async function build(flats = null) {
     if (/select 1 from lab_art/.test(sql)) return args[0] === ART ? { rows: [{}], rowCount: 1 } : { rows: [], rowCount: 0 };
     return { rows: [], rowCount: 0 };
   } };
-  const app = Fastify(), api = registerLabFlatsRoutes(app, { pool, authenticate: async () => {}, adminOnly: async () => {}, log: { warn() {}, info() {} } });
+  const app = Fastify(), api = registerLabFlatsRoutes(app, { pool, authenticate: async () => {}, adminOnly: async () => {}, applyHandoff: async (_product, h) => h, log: { warn() {}, info() {} } });
   await app.ready(); return { app, api, state };
 }
 
@@ -164,6 +164,14 @@ test('the routes: a graphic on the wrap saves and reads back, the spec sheet and
   // the tech pack's pictures: the front, the back, and the wrap laid flat, each named as what it is
   const files = await api.files(CID); assert.deepEqual(files.map(f => f.name), ['Spec sheet · flats, placements and measurements', 'Technical flat · front', 'Technical flat · back', 'Technical flat · wrap, laid flat']);
   for (const f of files) assert.match(f.image, /^data:image\/png;base64,/);
+  // what the tech pack takes: its front and back are the cup's two sides, the wrap is its flat view under its own name, the graphic is listed as on
+  // the wrap, and nothing says a mug has a fit or is cut from cloth
+  const pack = await api.sendToPack(CID, 'product');
+  assert.deepEqual(pack.lab.sketches.map(k => [k.view, k.label]), [['front', 'Technical flat · front'], ['back', 'Technical flat · back'], ['flat', 'Technical flat · wrap, laid flat']]);
+  assert.ok(pack.lab.construction.some(c => c.area === 'Wrap · Band' && /: On the wrap, /.test(c.detail)), JSON.stringify(pack.lab.construction));
+  assert.equal(pack.lab.construction[0].detail, 'Mug, drawn from its measurements; one size.'); assert.equal(pack.lab.style.fitBlock, 'Mug'); assert.deepEqual(pack.lab.sizes, ['One size']);
+  assert.ok(!/ fit\b|wash|neckline/i.test(JSON.stringify(pack.lab.construction)), 'no fit, wash or neckline on a mug\'s pack');
+  assert.ok(!/Regular fit/.test(sheet.body), 'nor a fit on its spec sheet');
   // an older mug: a graphic saved on its back, before there was a wrap
   const older = await build({ style: 'mug', params: { ...cleanFlat({ style: 'mug', template: 'none' }).params }, placements: [{ id: 'old', name: 'Old', view: 'back', x: .5, y: 1.875, w: 1, h: 1, technique: 'screen print', source: 'extra' }], check_result: { findings: {}, summary: { fail: 0, warn: 0 } }, updated_at: new Date() });
   const o = (await older.app.inject({ url: `/v1/lab/concepts/${CID}/flats` })).json();

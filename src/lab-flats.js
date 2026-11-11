@@ -542,7 +542,7 @@ function describeAt(q, p) {
   if (S.kind === 'cap') return `${across ? 'Centred' : `Centre ${fmtCm(q.x)} off centre`} on the ${q.view} crown, bottom edge ${fmtCm(-(q.y + q.h / 2))} above the brim seam`;
   if (S.kind === 'beanie') return `${across ? 'Centred' : `Centre ${fmtCm(q.x)} off centre`} on the ${reg === 'cuff' ? 'cuff' : 'crown'}, ${fmtCm(top - (reg === 'cuff' ? p.m.height - p.m.cuff : 0))} below its top edge`;
   // a cup: on the wrap, from the nearest centre marked on it (the front's, the back's) or from its middle; on a side, from that side's centre line
-  if (S.kind === 'goods' && g.wrap) { const k = (g.guides || []).filter(x => x.key !== 'handle').sort((a, b) => Math.abs(q.x - a.x) - Math.abs(q.x - b.x))[0], from = k ? k.label.replace(/^C/, 'c') : 'middle of the wrap', dx = q.x - (k ? k.x : 0);
+  if (S.kind === 'goods' && g.wrap) { const marks = (g.guides || []).filter(x => x.key !== 'handle'), k = [...marks, ...(marks.some(x => Math.abs(x.x) < .125) ? [] : [{ x: 0, label: 'middle of the wrap' }])].sort((a, b) => Math.abs(q.x - a.x) - Math.abs(q.x - b.x))[0], from = k.label.replace(/^C/, 'c'), dx = q.x - k.x;
     return `On the wrap, ${fmtCm(top)} below the top edge of the ${S.label.toLowerCase()}, ${Math.abs(dx) < .125 ? `at the ${from}` : `centre ${fmtCm(dx)} to the ${dx > 0 ? 'right' : 'left'} of the ${from}`}`; }
   if (S.kind === 'goods' && g.sides?.length > 1) { const sd = g.sides.slice().sort((a, b) => Math.abs(q.x - a.x) - Math.abs(q.x - b.x))[0], dx = q.x - sd.x;
     return `${sd.key === 'back' ? 'On the back, ' : ''}${fmtCm(top)} below the top edge, ${Math.abs(dx) < .125 ? 'centred' : `centre ${fmtCm(dx)} off centre`}`; }

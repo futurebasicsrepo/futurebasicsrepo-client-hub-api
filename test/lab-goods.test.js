@@ -3,7 +3,7 @@
 // flat as its second view (test/lab-wrap.test.js holds the wrap itself).
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { GOODS, goodsGeom, goodsSides, hasWrap } from '../src/lab-goods.js';
+import { GOODS, goodsGeom, goodsSides, hasWrap, goodsTakes } from '../src/lab-goods.js';
 import { STYLES, viewsOf, sideOf, pomName, defaultParams, geometry, renderSvg, defaultPlacement, placementChecks, cleanFlat, pomTable, describe, detectStyle, measurementsFor, SIZES } from '../src/lab-flats.js';
 import { kindOf, notSewn } from '../src/lab-pattern-routes.js';
 import { rankFabrics } from '../src/lab-fabric-fit.js';
@@ -76,4 +76,11 @@ test('a product type has no pattern, and says so plainly; a concept started from
   assert.equal(notSewn('tee'), ''); assert.equal(kindOf({ name: 'Tee', category: 'tops', spec: {} }, 'tee'), 'garment');
   // a named style without the catalogue's mark is still read from the words, as before
   assert.equal(detectStyle({ name: 'Heavy tee', category: 'tops', spec: { style: 'mug', template: 'none' } }).style, 'tee');
+});
+
+test('what the Studio offers beside a product type: cloth, labels and sewing details only for what is sewn; no wash, fit or garment sketch for any', () => {
+  for (const [k, g] of Object.entries(GOODS)) { const t = goodsTakes(g), sewn = ['cloth', 'any'].includes(g.surface);
+    assert.deepEqual(t, { cloth: sewn, labels: sewn, sewing: sewn, wash: false, fit: false, sketch: false }, k); }
+  for (const k of ['mug', 'poster', 'phonecase', 'tumbler', 'mousepad', 'skateboard']) assert.equal(goodsTakes(GOODS[k]).cloth, false, `${k} has no cloth to choose`);
+  for (const k of ['pillow', 'towel', 'apron', 'socks', 'blanket']) assert.equal(goodsTakes(GOODS[k]).labels, true, `${k} takes a sewn-in label`);
 });

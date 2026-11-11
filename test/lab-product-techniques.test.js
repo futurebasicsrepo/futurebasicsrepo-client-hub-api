@@ -132,6 +132,7 @@ test('the routes: a mug\'s graphic is made as a mug is, a wrong technique is cau
   assert.equal(put.check.summary.fail, 0, JSON.stringify(put.check.findings)); assert.equal(put.decorations[0].technique, 'Sublimation on coated blanks'); assert.equal(put.decorations[0].unpriced, true); assert.equal(put.decorations[0].perPieceCents, 0);
   assert.ok(!/\$\s?\d/.test(JSON.stringify(put.decorations)), 'no dollar amount for it');
   const sheet = (await app.inject({ url: `/v1/lab/concepts/${CID}/flats/sheet.svg` })).body; assert.ok(sheet.includes('Sublimation on coated blanks ·'), 'the spec sheet names it');
+  assert.equal((await flatOf(app)).r.madeAs.art, idOf('sublimation-blank'), 'and the page is told so, so its Made as shows what the sheet says');
   // embroidery chosen on a mug (as a concept saved before this could be): the check says it cannot be made, and how to put it right
   const bad = (await app.inject({ method: 'PUT', url: `/v1/lab/concepts/${CID}/flats`, payload: { ...params, placements: [{ ...q, techniqueId: idOf('satin-embroidery'), technique: 'embroidery' }] } })).json();
   assert.equal(bad.check.summary.fail, 1); assert.match(bad.check.findings.art[0].text, /Satin stitch embroidery, which is not made on a mug/);
