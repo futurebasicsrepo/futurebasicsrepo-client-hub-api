@@ -218,7 +218,7 @@ export function registerLabFlatsRoutes(app, d) {
     // a sketch chosen by the person (started from the sketch pack) is the sketch, whatever the name or the picture suggests
     const chosen = c.spec?.template && c.spec.template !== 'none' ? FLAT_TEMPLATES.find(t => t.id === c.spec.template) || null : null;
     if (chosen) det = { style: chosen.style, fit: det.fit || 'regular', options: det.options || {}, template: chosen.id };
-    else if (det.template !== 'none' || !c.spec?.scratch) det.template = await pickTemplate(c, det);
+    else if (det.template !== 'none' || !(c.spec?.scratch || c.spec?.catalog)) det.template = await pickTemplate(c, det); // (a catalogue product on a style with no sketch keeps none)
     // what the concept's own words say of how a tailored piece closes (double-breasted, a peak lapel): kept on the flats, so the pattern drafts it
     { const w = ` ${[c.name, c.spec?.silhouette, c.spec?.description, ...(c.spec?.details || [])].join(' ').toLowerCase().replace(/[^a-z]+/g, ' ')} `, k = {};
       if (/ double breasted /.test(w)) k.breasted = 'double'; else if (/ single breasted /.test(w)) k.breasted = 'single';

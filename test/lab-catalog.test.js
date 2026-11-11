@@ -78,7 +78,7 @@ test('every base a rule names exists: a library sketch of that style, a library 
 });
 
 // what we pay the supplier never leaves src/price-catalog.js: not a cost, not a price status, not a dollar amount
-export const noPrice = (json, what) => { const t = typeof json === 'string' ? json : JSON.stringify(json);
+const noPrice = (json, what) => { const t = typeof json === 'string' ? json : JSON.stringify(json);
   assert.ok(!/costCents/i.test(t), `${what}: no costCents`); assert.ok(!/"price"/i.test(t) && !/price/i.test(t), `${what}: no price`); assert.ok(!/\$\s?\d/.test(t), `${what}: no dollar amount`); assert.ok(!/"(live|projected|soon|quote)"/.test(t), `${what}: no price status`); };
 
 test('the Lab\'s catalogue carries id, name, brand and base, and no price', () => {

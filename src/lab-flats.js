@@ -86,6 +86,9 @@ export function looksLikeFootwear(c = {}) {
 export function detectStyle(c = {}) {
   const t = [c.name, c.spec?.silhouette, c.spec?.description, ...(c.spec?.details || [])].join(' ').toLowerCase(), cat = c.category;
   const has = re => re.test(t);
+  // a concept started from a catalogue product on a style drawn from its measurements (a beanie, a tote, a product type) names that style
+  // (src/lab-catalog-routes.js): its name is a supplier's product name, not a description to read a garment from
+  if (c.spec?.catalog && c.spec.template === 'none' && STYLES[c.spec.style]) return { style: c.spec.style, fit: 'regular', options: {}, template: 'none' };
   if (looksLikeFootwear(c)) return null;
   let style = null;
   if (cat === 'headwear') style = has(/beanie|knit hat|watch cap|toque/) ? 'beanie' : has(/bucket/) ? 'bucket' : 'cap';
