@@ -204,6 +204,8 @@ function checkHeadwear(pat, m) {
     seams.push(seam('Brim seams', edge(brim, 'i0', 'o0'), edge(brim, 'i1', 'o1'), { why: 'the two halves of the brim sewn at the sides' }));
     meas.push(measure('Head size (at the brim seam)', 2 * edge(band, 'b0', 'b1'), HEAD, .5)); meas.push(measure('Crown height, up the band', edge(band, 't0', 'b0'), m.crownHeight, .25));
     meas.push(measure('Brim length at the side seams', edge(brim, 'i0', 'o0'), m.brimLength, .125));
+    // how far the brim stands out: across its edge less across its seam, each the round of that edge over π, against the two widths of the spec
+    if (m.brimWidth != null && m.crownWidth != null) meas.push(measure('Brim width less crown width: across the brim\'s edge, less across the brim seam', 2 * (edge(brim, 'o0', 'o1') - edge(brim, 'i0', 'i1')) / Math.PI, m.brimWidth - m.crownWidth, .25));
     // the brim is the same length all round: its outer edge is a constant distance from its inner edge (measured at the middle of the half)
     const mid = brim.sew[near(brim.sew, brim.at.i0) === 0 ? Math.floor((near(brim.sew, brim.at.i1)) / 2) : 0], outer = brim.sew.slice(near(brim.sew, brim.at.o1), near(brim.sew, brim.at.o0) + 1);
     if (mid && outer.length > 1) meas.push(measure('Brim length at the centre', Math.min(...outer.map((q, i) => i ? toSeg(mid, outer[i - 1], q) : Infinity)), m.brimLength, .125));

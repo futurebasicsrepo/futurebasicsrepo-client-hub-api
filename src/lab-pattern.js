@@ -752,12 +752,15 @@ function capPieces(S, m, o) {
   const pieces = [];
   if (S.bucket) {
     // the head opening (23 in, one size) is the band's foot, where the brim is sewn; the band narrows by its flare to the crown, whose oval is
-    // solved to the band's top; the brim's inner edge is the band's foot (src/lab-pattern-check.js walks each seam)
-    const C = 23, bandH = m.crownHeight, flare = .75, brim = m.brimLength, topC = C - 4 * flare;
+    // solved to the band's top; the brim's inner edge is the band's foot (src/lab-pattern-check.js walks each seam).
+    // Its two widths are the sketch's, seen from the front: the crown width is across the hat at the brim seam, the brim width across the
+    // brim's edge. So the brim reaches out half their difference each side (1¾ in of a 2¼ in brim on the base hat: it slopes), and a wider
+    // crown is a bigger head opening, 2 in round for each inch across, as on the cap
+    const C = 23 + (m.crownWidth - 9.5) * 2, bandH = m.crownHeight, flare = .75, brim = m.brimLength, topC = C - 4 * flare, reach = Math.min(Math.max((m.brimWidth - m.crownWidth) / 2, brim * .3), brim * .95);
     let r = topC / (2 * Math.PI); for (let k = 0; k < 6; k++) r *= topC / lenOf([...ellipse(r * 1.08, r * .92, 48), ellipse(r * 1.08, r * .92, 48)[0]]);
     // seen from the front, as its sketch draws it: the band, a little wider at the brim; the crown's top a thin edge above it; the brim
     // sloping down and out all round
-    const wt = C / Math.PI * .98, wb = wt + flare * 1.2, h = m.crownHeight, bo = brim * .78, bd = brim * .62, sp = (pts, n = 6) => pts, top = Array.from({ length: 13 }, (_, k) => { const a = Math.PI + k / 12 * Math.PI; return [Math.cos(a) * wt / 2, -h + Math.sin(a) * .35]; });
+    const wt = C / Math.PI * .98, wb = wt + flare * 1.2, h = m.crownHeight, bo = reach, bd = Math.sqrt(Math.max(brim * brim - reach * reach, .01)), sp = (pts, n = 6) => pts, top = Array.from({ length: 13 }, (_, k) => { const a = Math.PI + k / 12 * Math.PI; return [Math.cos(a) * wt / 2, -h + Math.sin(a) * .35]; });
     void sp;
     pieces.push(piece('crown', 'Crown top', ellipse(r * 1.08, r * .92, 48), { cut: 2, notes: ['Outer and lining'], shown: [...top, ...top.slice().reverse().map(([x, y]) => [x, -h + (-h - y) * -.4 - .0])], place: { view: 'front', x: 0, y: 0, z: 1 } }));
     // The band and the brim are each a cone round the head, and a cone opens flat into part of a ring: its two curved edges the cone's two
@@ -766,8 +769,8 @@ function capPieces(S, m, o) {
     const ring = (R1, R2, ang, n) => { const pt = (R, a) => [R * Math.sin(a), R * Math.cos(a) - R1], inn = Array.from({ length: n + 1 }, (_, i) => pt(R1, -ang / 2 + ang * i / n)), out = Array.from({ length: n + 1 }, (_, i) => pt(R2, ang / 2 - ang * i / n)); return { pts: [...inn, ...out], a0: inn[0], a1: inn[n], b1: out[0], b0: out[n] }; };
     // the band: its top rim the crown's round, its foot the head's, the crown's height up its slant
     const bR1 = bandH * topC / (C - topC), bandR = ring(bR1, bR1 + bandH, C / 2 / (bR1 + bandH), 16), bandP = bandR.pts;
-    // the brim: its inner rim the head's round, reaching out 0.78 of its length (as its sketch draws it), its length down its slant
-    const outC = C + 2 * Math.PI * .78 * brim, mR1 = brim * C / (outC - C), brimR = ring(mR1, mR1 + brim, C / 2 / mR1, 36), brimP = brimR.pts;
+    // the brim: its inner rim the head's round, its edge further out by its reach all round, its length down its slant
+    const outC = C + 2 * Math.PI * reach, mR1 = brim * C / (outC - C), brimR = ring(mR1, mR1 + brim, C / 2 / mR1, 36), brimP = brimR.pts;
     pieces.push(piece('band', 'Side band', bandP, { cut: 4, notes: ['Two halves, outer and lining', 'Part of a ring: the curved edges are the crown seam and the brim seam'], shown: [[-wt / 2, -h], [wt / 2, -h], [wb / 2, 0], [-wb / 2, 0]], place: { view: 'front', x: 0, y: 0, z: 0 } }));
     pieces.push(piece('brim', 'Brim', brimP, { cut: 4, notes: ['Two halves, top and under; rows of topstitching every ¼ in', 'Half a ring: the inner edge is sewn to the band\'s foot'], shown: [[-wb / 2, 0], ...tail(cubic([-wb / 2, 0], [-wb * .2, .25], [wb * .2, .25], [wb / 2, 0])), [wb / 2 + bo, bd], ...tail(cubic([wb / 2 + bo, bd], [wb * .3, bd + .9], [-wb * .3, bd + .9], [-wb / 2 - bo, bd]))], place: { view: 'front', x: 0, y: 0, z: 2 } }));
     pieces.block = { crown: { sew: tidy(ellipse(r * 1.08, r * .92, 48)), at: {} }, band: { sew: tidy(bandP), at: { t0: bandR.a0, t1: bandR.a1, b1: bandR.b1, b0: bandR.b0 } }, brim: { sew: tidy(brimP), at: { i0: brimR.a0, i1: brimR.a1, o1: brimR.b1, o0: brimR.b0 } } };

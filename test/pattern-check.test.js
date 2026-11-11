@@ -71,6 +71,13 @@ test('headwear is cut to the shape it is sewn into: cap panels a sixth of the do
   // a straight-sided brim (as it used to be: longer at its ends than its middle) is caught
   const flat = made('bucket'), b = flat.pat.block.brim; b.sew = [[0, 0], [11.5, 0], [14.5, 2.25], [-3, 2.25]]; b.at = { i0: [0, 0], i1: [11.5, 0], o1: [14.5, 2.25], o0: [-3, 2.25] };
   assert.ok(bad(constructionCheck(flat.pat, { m: flat.m, style: 'bucket' })).some(n => /Brim length at the side seams/.test(n)), 'a trapezoid brim is caught');
+  // its two widths are used: the brim stands out half the difference between the width across its edge and the width at its seam
+  const wide = (o, size = 'M') => { const p = defaultParams('bucket'); p.m = { ...(p.m || {}), ...o }; const m = measurementsFor(p, size), pat = garmentPattern(p, 'One size'); return { pat, m, c: constructionCheck(pat, { m, style: 'bucket' }) }; };
+  const outer = h => h.pat.block.brim.sew.reduce((t, q, i, all) => t + Math.hypot(q[0] - all[(i + 1) % all.length][0], q[1] - all[(i + 1) % all.length][1]), 0), reach = h => h.c.meas.find(x => /^Brim width less crown width/.test(x.name));
+  assert.ok(reach(bk) && reach(bk).ok && Math.abs(reach(bk).got - 3.5) < .05, 'the base hat: 13 in across the brim, 9½ in across the crown, 1¾ in of reach each side');
+  const steep = wide({ brimWidth: 11 }), flatter = wide({ brimLength: 3.5, brimWidth: 15 }); assert.ok(steep.c.ok && flatter.c.ok && outer(steep) < outer(bk) - 2 && Math.abs(reach(steep).got - 1.5) < .05, 'a narrower brim width is a steeper brim, its edge shorter round');
+  assert.ok(bad(wide({ brimWidth: 15 }).c).some(n => /Brim width less crown width/.test(n)), 'a brim width its brim is too short to reach is a finding');
+  assert.ok(bad(wide({ crownWidth: 10.5 }).c).some(n => /Head size/.test(n)), 'a wider crown is a bigger head opening, and one too big for one size is a finding');
   const bn = made('beanie'); assert.ok(bn.c.ok, failsOf(bn.c).join('; '));
   const body = bn.pat.pieces.find(q => q.id === 'body'); assert.ok(body.notches.length === 2 && body.sew.length > 20, 'the cuff fold is marked and the crown is petals');
   const short = made('beanie'); short.pat.pieces.find(q => q.id === 'body').at.foldL = [0, short.pat.pieces.find(q => q.id === 'body').at.foldL[1] + 1];
