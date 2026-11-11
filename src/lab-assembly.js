@@ -154,7 +154,7 @@ const axisOf = p => p.axis === 'y' ? 1 : p.axis === 'x' ? 0 : 2;
 // through a ball) is left out, so the clash it was meant to clear is still found.
 //   → { w, d, L, r, t, round, sgn, floor, u0, uf, u1, holes: [{ cx, cy, hw, hd, round }], sides: [{ wall | phi, a, b, ua, ub }], bosses: [{ cx, cy, R, rp, ue }] }
 const HOLE_N = 24;
-function featuresOf(p) {
+export function featuresOf(p) {
   const [w, d, L] = localDims(p), round = ROUND.has(p.shape), r = round ? 0 : Math.max(0, Math.min(p.r ?? 0, w / 2 - .01, d / 2 - .01)), t = shellLike(p) ? Math.min(p.wall, Math.min(w, d) / 2 - .2) : 0, o = openOf(p);
   const sgn = shellLike(p) && o === '-' ? -1 : 1, floor = shellLike(p) && o !== 'both', F = { w, d, L, r, t, round, sgn, floor, shell: shellLike(p), u0: -L / 2, uf: floor ? -L / 2 + t : -L / 2, u1: L / 2, holes: [], sides: [], bosses: [] };
   if (p.shape === 'ball') return F;
@@ -176,7 +176,9 @@ function featuresOf(p) {
     else { const lim = half - Math.max(r, t) - .05, a = Math.max(-lim, at[mi] - sz[mi] / 2), b = Math.min(lim, at[mi] + sz[mi] / 2); if (b - a < .1) continue; F.sides.push({ wall: ki, side, a, b, ua, ub }); }
   }
   if (floor) for (const b of p.bosses || []) { const at = toLocal(p, b.at), R = Math.max(b.d * 1.2, b.d / 2 + 1.2), ue = sgn * at[2], q = { cx: at[0], cy: at[1], hw: R, hd: R, R, rp: b.d * .4, ue };
-    if (ue > F.uf + .3 && inFloor(q.cx, q.cy, R, R, .15) && F.holes.every(h => apart(h, q)) && F.bosses.every(h => Math.hypot(h.cx - q.cx, h.cy - q.cy) > h.R + R + .2)) F.bosses.push(q); }
+    // a screw that comes up through the floor into its boss: the hole in the floor and the boss's pilot are one bore
+    const bore = F.holes.find(h => h.round && !h.boss && Math.hypot(h.cx - q.cx, h.cy - q.cy) < .05 && Math.abs(h.hw - h.hd) < 1e-6 && h.hw < R - .4); if (bore) q.rp = bore.hw;
+    if (ue > F.uf + .3 && inFloor(q.cx, q.cy, R, R, .15) && F.holes.every(h => h === bore || apart(h, q)) && F.bosses.every(h => Math.hypot(h.cx - q.cx, h.cy - q.cy) > h.R + R + .2)) { if (bore) { bore.boss = true; q.bore = true; } F.bosses.push(q); } }
   return F;
 }
 // the outline across the part with the windows' edges added to it, outer and inner in step (the same number of points, one over the other)
@@ -268,8 +270,9 @@ function solidOf(p) {
     if (!F.floor && !cur.some(([x]) => x <= u0 + 1e-9)) quad(at(out[i], u0), at(inn[i], u0), at(inn[j], u0), at(out[j], u0));
   }
   if (F.floor) { // the floor: its outside face, its inside face round the bosses, the openings through it, and each boss with its pilot hole
-    flat(out, loops, u0, false); flat(inn, [...loops, ...F.bosses.map(b => ringLoop(b.cx, b.cy, b.R))], uf, true); for (const l of loops) tube(l, u0, uf, false);
-    for (const b of F.bosses) { const o = ringLoop(b.cx, b.cy, b.R), q = ringLoop(b.cx, b.cy, b.rp); tube(o, uf, b.ue, true); tube(q, uf, b.ue, false); flat(q, [], uf, true); for (let i = 0; i < o.length; i++) { const j = (i + 1) % o.length; quad(at(o[i], b.ue), at(o[j], b.ue), at(q[j], b.ue), at(q[i], b.ue)); } }
+    const own = loops.filter((_, i) => !F.holes[i].boss);
+    flat(out, loops, u0, false); flat(inn, [...own, ...F.bosses.map(b => ringLoop(b.cx, b.cy, b.R))], uf, true); for (const l of own) tube(l, u0, uf, false);
+    for (const b of F.bosses) { const o = ringLoop(b.cx, b.cy, b.R), q = ringLoop(b.cx, b.cy, b.rp); tube(o, uf, b.ue, true); tube(q, b.bore ? u0 : uf, b.ue, false); if (!b.bore) flat(q, [], uf, true); for (let i = 0; i < o.length; i++) { const j = (i + 1) % o.length; quad(at(o[i], b.ue), at(o[j], b.ue), at(q[j], b.ue), at(q[i], b.ue)); } }
   }
   return { T, sgn: F.sgn };
 }
@@ -347,8 +350,8 @@ export function cleanAssembly(s = {}) {
     labour: r2(num(s.labour, 1, 80, 6)), ...(dm ? { dims: dm } : {}), parts };
 }
 // The openings each part needs, worked out afresh every time so an opening follows the part it is for: a part that says it goes `through`
-// another gets its outline (and each of its `spots`) cut there with 0.2 mm round it, and every socket gets its opening in the housing wall
-// it reaches. A window in a side wall, a hole in a floor or through a solid part; see featuresOf for what can be cut.
+// another gets its outline (and each of its `spots`) cut there with 0.2 mm round it, and every socket and every clear window gets its
+// opening in the housing wall it reaches. A window in a side wall, a hole in a floor or through a solid part; see featuresOf for what can be cut.
 function cutFor(h, q, o) {
   const clr = .2, e = 1e-6, ax = axisOf(h), qa = q.at.map((v, k) => v + o[k]), qlo = qa.map((v, k) => v - q.size[k] / 2), qhi = qa.map((v, k) => v + q.size[k] / 2), hlo = h.at.map((v, k) => v - h.size[k] / 2), hhi = h.at.map((v, k) => v + h.size[k] / 2);
   if ([0, 1, 2].some(k => qhi[k] <= hlo[k] + e || qlo[k] >= hhi[k] - e) || h.shape === 'ball') return [];
@@ -363,7 +366,9 @@ function openings(parts) {
   const byId = Object.fromEntries(parts.map(p => [p.id, p])); for (const p of parts) delete p.cuts;
   const add = (h, q) => { for (const o of [[0, 0, 0], ...(q.spots || [])]) for (const ho of [[0, 0, 0], ...(h.spots || [])]) for (const c of cutFor(h, q, o.map((v, k) => v - ho[k]))) if ((h.cuts ||= []).length < 40 && !h.cuts.some(x => x.axis === c.axis && x.at.every((v, k) => Math.abs(v - c.at[k]) < .01))) h.cuts.push(c); };
   for (const q of parts) { for (const id of q.through || []) add(byId[id], q);
-    if (q.elec && (ELEC[q.elec.kind].port || q.elec.kind === 'usbc')) for (const h of parts) if (h !== q && (h.shape === 'shell' || h.shape === 'cup') && !(q.through || []).includes(h.id)) add(h, q); }
+    // a socket reaches through the housing wall it sits at, and a clear part set into a housing wall is a window: both get their opening
+    const socket = q.elec && (ELEC[q.elec.kind].port || q.elec.kind === 'usbc'), pane = RESINS[q.resin].clear && !shellLike(q);
+    if (socket || pane) for (const h of parts) if (h !== q && shellLike(h) && !h.elec && (socket || !RESINS[h.resin].clear) && !(q.through || []).includes(h.id)) add(h, q); }
 }
 
 // ---- archetypes: a starting assembly drawn to the product's size ---------------------------------------------------------------------------------
@@ -379,116 +384,165 @@ export function archetype(arch, dims = {}, { mah = null, radio = null, display =
   let made = null; // [w, d, h]: the size asked for, as built
   const elec = (kind, o) => { const e = ELEC[kind]; add({ name: e.name, shape: e.round ? 'cyl' : 'box', size: o.size || e.size, resin: 'bought in', process: 'bought in', cost: e.cost, fix: kind === 'speaker' ? 'screws' : kind === 'battery' ? 'adhesive' : 'solder', fixQty: kind === 'speaker' ? 2 : 0, elec: { kind }, r: .3, ...o }); };
   if (arch === 'puck') {
-    const D = num(dims.w, 50, 300, 96), H = num(dims.h, 25, 200, 48), w = 2, rad = radio === 'none' ? 'mcu' : radio === 'wifi' ? 'wifi' : 'ble', side = (D - 2 * w) * .68, mA = fitCell(mah || 2000, [side, side, Math.max(4, H * .64 - w - 6)], Boolean(mah)), cell = cellOf(mA);
-    const hb = H * .64, ht = H - hb;
-    add({ id: 'bottom', name: 'Bottom housing', shape: 'cup', size: [D, D, hb], at: [0, 0, hb / 2], wall: w, open: '+', resin: 'PC/ABS', finish: 'SPI C-1 (matte)', draft: 1, undercuts: 1, fix: 'place', order: 1, lvl: 0, main: true });
-    add({ id: 'foot', name: 'Non-slip foot', shape: 'cyl', size: [D - 12, D - 12, 1.5], at: [0, 0, -.75], resin: 'silicone (LSR)', process: 'LSR moulding', fix: 'adhesive', order: 9, dir: [0, 0, -1], lvl: 1.2 });
-    add({ id: 'screws', name: 'Screw, M2 × 6 self-tapping', shape: 'cyl', size: [2, 2, 6], at: [D * .3, 0, -3], resin: 'bought in', process: 'bought in', cost: .02, qty: 3, fix: 'screws', order: 8, dir: [0, 0, -1], lvl: 2 });
-    add({ id: 'battery', name: `Li-ion cell, ${mA} mAh`, shape: 'box', size: cell.size, at: [0, 0, w + .4 + cell.size[2] / 2], resin: 'bought in', process: 'bought in', cost: cell.cost, fix: 'adhesive', order: 2, parent: 'bottom', elec: { kind: 'battery', mah: mA }, lvl: .6 });
-    const pz = w + cell.size[2] + 2.5; add({ id: 'pcb', name: 'Main board', shape: 'pcb', size: [D - 2 * w - 3, D - 2 * w - 3, 1.6], r: D, at: [0, 0, pz + .8], fix: 'screws', fixQty: 3, order: 3, parent: 'bottom', lvl: 1.4, layers: rad === 'wifi' ? 4 : 2 });
-    const top = pz + 1.6; elec(rad, { at: [-(D / 2 - 2 * w - 12), 0, top + ELEC[rad].size[2] / 2], parent: 'pcb', order: 3, lvl: 1.7 });
+    // a round device: a bottom housing on its foot with the cell and the board on three bosses, a light ring between the halves that shows
+    // all the way round, and a top cover carrying the speaker under its grille, with the keys through it
+    const D = num(dims.w, 50, 300, 96), H = num(dims.h, 25, 200, 48), w = 2, zb = 1.5, sh = e2(Math.max(5, Math.min(12, H * .25))), ht = e2(Math.max((H - zb - 3) * .36, sh + w + 1)), hb = e2(H - zb - 3 - ht), rad = radio === 'none' ? 'mcu' : radio === 'wifi' ? 'wifi' : 'ble', side = (D - 2 * w) * .68, mA = fitCell(mah || 2000, [side, side, Math.max(4, hb - w - 6)], Boolean(mah)), cell = cellOf(mA);
+    made = [D, D, H];
+    add({ id: 'bottom', name: 'Bottom housing', shape: 'cup', size: [D, D, hb], at: [0, 0, zb + hb / 2], wall: w, open: '+', resin: 'PC/ABS', finish: 'SPI C-1 (matte)', draft: 1, undercuts: 1, fix: 'place', order: 1, lvl: 0, main: true });
+    add({ id: 'foot', name: 'Non-slip foot', shape: 'cyl', size: [D - 12, D - 12, 1.5], at: [0, 0, .75], resin: 'silicone (LSR)', process: 'LSR moulding', fix: 'adhesive', order: 9, dir: [0, 0, -1], lvl: 1.2 });
+    const pz = zb + w + .2 + cell.size[2] + 2.3, top = pz + 1.6, pr = (D - 2 * w - 3) / 2 - 4, pb = [45, 165, 285].map(a => [pr * Math.cos(a * Math.PI / 180), pr * Math.sin(a * Math.PI / 180)]);
+    screw('screws', 'Screw, M2 × 6 self-tapping', 2, 6, 'z', pb.map(q => [...q, top + 1 - 3]), { parent: 'pcb', through: ['pcb'], order: 3, lvl: 2 });
+    add({ id: 'battery', name: `Li-ion cell, ${mA} mAh`, shape: 'box', size: cell.size, at: [0, 0, zb + w + .2 + cell.size[2] / 2], resin: 'bought in', process: 'bought in', cost: cell.cost, fix: 'adhesive', order: 2, parent: 'bottom', elec: { kind: 'battery', mah: mA }, lvl: .6 });
+    add({ id: 'pcb', name: 'Main board', shape: 'pcb', size: [D - 2 * w - 3, D - 2 * w - 3, 1.6], r: D, at: [0, 0, pz + .8], fix: 'screws', fixQty: 3, order: 3, parent: 'bottom', lvl: 1.4, layers: rad === 'wifi' ? 4 : 2 });
+    boss('bottom', pb.map(q => [...q, pz]), 2);
+    elec(rad, { at: [-(D / 2 - 2 * w - 12), 0, top + ELEC[rad].size[2] / 2], parent: 'pcb', order: 3, lvl: 1.7 });
     elec('usbc', { at: [D / 2 - w - 5, 0, top + 1.6], parent: 'pcb', order: 3, lvl: 1.7 });
     elec('charger', { at: [D / 2 - w - 14, 8, top + .5], parent: 'pcb', order: 3, lvl: 1.7 }); elec('reg', { at: [D / 2 - w - 14, -8, top + .5], parent: 'pcb', order: 3, lvl: 1.7 });
     elec('amp', { at: [-6, -16, top + .4], parent: 'pcb', order: 3, lvl: 1.7 }); elec('mic', { at: [6, -18, top + .5], parent: 'pcb', order: 3, lvl: 1.7 });
     elec('led', { at: [0, D / 2 - w - 6, top + .3], parent: 'pcb', order: 3, lvl: 1.7, qty: 8 });
-    const sd = Math.min(52, D - 30); elec('speaker', { size: [sd, sd, 12], at: [0, 0, H - w - 1 - 6], parent: 'top', order: 5, lvl: 3, dir: [0, 0, 1] });
-    add({ id: 'pipe', name: 'Light ring', shape: 'ring', size: [D - 2 * w - 1, D - 2 * w - 1, 3], at: [0, 0, hb + 1.5], wall: 1.2, resin: 'PMMA (acrylic)', finish: 'SPI A-2 (high gloss)', draft: .5, fix: 'press', order: 4, lvl: 2.2 });
-    add({ id: 'top', name: 'Top cover with grille', shape: 'cup', size: [D, D, ht], at: [0, 0, hb + ht / 2], wall: w, open: '-', resin: 'PC/ABS', finish: 'SPI C-1 (matte)', draft: 1, undercuts: 0, fix: 'snap', order: 6, lvl: 4, main: true });
-    const nb = Math.round(num(buttons ?? undefined, 0, 6, 3)); for (let i = 0; i < nb; i++) add({ id: `key${i + 1}`, name: `Button ${i + 1}`, shape: 'cyl', size: [9, 9, 3], at: [(i - (nb - 1) / 2) * 14, D * .28, H + .5], resin: 'silicone (LSR)', process: 'LSR moulding', fix: 'press', order: 5, parent: null, lvl: 5.2 });
+    const sd = Math.min(52, D - 30), ceil = H - w, sx = sd / 2 - 4;
+    elec('speaker', { size: [sd, sd, sh], at: [0, 0, ceil - .5 - sh / 2], parent: 'top', order: 5, lvl: 3, dir: [0, 0, 1] });
+    add({ id: 'pipe', name: 'Light ring', shape: 'ring', size: [D, D, 3], at: [0, 0, zb + hb + 1.5], wall: w + 1.2, resin: 'PMMA (acrylic)', finish: 'SPI A-2 (high gloss)', draft: .5, fix: 'press', order: 4, lvl: 2.2 });
+    add({ id: 'top', name: 'Top cover with grille', shape: 'cup', size: [D, D, ht], at: [0, 0, H - ht / 2], wall: w, open: '-', resin: 'PC/ABS', finish: 'SPI C-1 (matte)', draft: 1, undercuts: 0, fix: 'snap', order: 6, lvl: 4, main: true });
+    const nb = Math.round(num(buttons ?? undefined, 0, 6, 3)), sp = Math.min(14, D * .17), kd = Math.min(9, sp - 2.5);
+    for (let i = 0; i < nb; i++) add({ id: `key${i + 1}`, name: `Button ${i + 1}`, shape: 'cyl', size: [kd, kd, w + .2], at: [(i - (nb - 1) / 2) * sp, D * .28, H - (w + .2) / 2], resin: 'silicone (LSR)', process: 'LSR moulding', through: ['top'], fix: 'press', order: 5, parent: null, lvl: 5.2 });
+    screw('screws-spk', `Screw, M2 × ${Math.round(sh + 1.5)} (speaker)`, 2, sh + 1.7, 'z', [[-sx, 0, ceil - .5 - sh + (sh + 1.7) / 2], [sx, 0, ceil - .5 - sh + (sh + 1.7) / 2]], { order: 5, lvl: 2.6 });
   } else if (arch === 'handheld') {
-    const W = num(dims.w, 25, 200, 46), Lg = num(dims.d, 50, 300, 128), H = num(dims.h, 8, 80, 18), w = 1.6, rad = radio === 'none' ? 'mcu' : radio === 'wifi' ? 'wifi' : 'ble', hb = H / 2, room = [W - 2 * w - 2, Lg - 2 * w - 13, hb - w - .5], mA = fitCell(mah || 1200, room, Boolean(mah)), cell = cellOf(mA);
+    // a handheld: two shells closed by four screws that come up through the bottom's bosses and the board into the top's bosses, the cell
+    // under the board, the keypad and the status window through the top, the USB-C port at the bottom end
+    const W = num(dims.w, 25, 200, 46), Lg = num(dims.d, 50, 300, 128), H = num(dims.h, 8, 80, 18), w = 1.6, rad = radio === 'none' ? 'mcu' : radio === 'wifi' ? 'wifi' : 'ble', hb = e2(H / 2), room = [W - 2 * w - 2, Lg - 2 * w - 13, hb - w - .5], mA = fitCell(mah || 1200, room, Boolean(mah)), cell = cellOf(mA);
+    made = [W, Lg, H];
     add({ id: 'bottom', name: 'Bottom housing', shape: 'shell', size: [W, Lg, hb], at: [0, 0, hb / 2], r: 8, wall: w, open: '+', resin: 'PC/ABS', finish: 'soft-touch paint', draft: 1.5, undercuts: 1, order: 1, lvl: 0, main: true });
-    add({ id: 'screws', name: 'Screw, M1.6 × 5', shape: 'cyl', size: [1.6, 1.6, 5], at: [0, Lg * .35, -2.5], resin: 'bought in', process: 'bought in', cost: .02, qty: 4, fix: 'screws', order: 8, dir: [0, 0, -1], lvl: 2 });
+    const pz = hb + .2, bxs = W / 2 - w - 4, bys = Lg / 2 - w - 5, sl = e2(Math.min(hb + 4.2, 20)), sp4 = [[-bxs, -bys], [bxs, -bys], [bxs, bys], [-bxs, bys]];
+    screw('screws', `Screw, M2 × ${Math.round(sl)} self-tapping`, 2, sl, 'z', sp4.map(q => [...q, pz + 1 + 3 - sl / 2]), { parent: 'pcb', through: ['bottom', 'pcb'], dir: [0, 0, -1], lvl: 2 });
     const bs = cell.size[1] > room[1] || cell.size[0] > room[0] ? [cell.size[1], cell.size[0], cell.size[2]] : cell.size; // turned to lie along the handheld when that fits better
-    add({ id: 'battery', name: `Li-ion cell, ${mA} mAh`, shape: 'box', size: bs, at: [0, -Lg / 2 + w + 11 + bs[1] / 2, w + .4 + bs[2] / 2], resin: 'bought in', process: 'bought in', cost: cell.cost, fix: 'adhesive', order: 2, parent: 'bottom', elec: { kind: 'battery', mah: mA }, lvl: .7 });
+    add({ id: 'battery', name: `Li-ion cell, ${mA} mAh`, shape: 'box', size: bs, at: [0, -Lg / 2 + w + 11 + bs[1] / 2, w + .2 + bs[2] / 2], resin: 'bought in', process: 'bought in', cost: cell.cost, fix: 'adhesive', order: 2, parent: 'bottom', elec: { kind: 'battery', mah: mA }, lvl: .7 });
     // the board runs the length of the inside: the status light at the top, the keys below it, then the radio module and the power parts,
     // and the USB-C port at the bottom end
-    const pz = hb + .2, nb = Math.round(num(buttons ?? undefined, 0, 12, 4)), rows = Math.ceil(nb / 2), key0 = Lg * .28, ms = ELEC[rad].size;
-    add({ id: 'pcb', name: 'Main board', shape: 'pcb', size: [W - 2 * w - 1.5, Lg - 2 * w - 3, 1], at: [0, 0, pz + .5], fix: 'screws', fixQty: 2, order: 3, parent: 'bottom', lvl: 1.4, layers: rad === 'wifi' ? 4 : 2 });
+    const nb = Math.round(num(buttons ?? undefined, 0, 12, 4)), rows = Math.ceil(nb / 2), ly = Lg / 2 - w - 8, key0 = Math.min(Lg * .28, ly - 9), ms = ELEC[rad].size;
+    add({ id: 'pcb', name: 'Main board', shape: 'pcb', size: [W - 2 * w - 1.5, Lg - 2 * w - 3, 1], r: 6, at: [0, 0, pz + .5], fix: 'screws', fixQty: 4, order: 3, parent: 'bottom', lvl: 1.4, layers: rad === 'wifi' ? 4 : 2 });
+    boss('bottom', sp4.map(q => [...q, pz]), 2);
     const top = pz + 1, my = key0 - Math.max(rows - 1, 0) * 12 - (rows ? 5 : 0) - ms[1] / 2;
     elec(rad, { at: [0, my, top + ms[2] / 2], parent: 'pcb', order: 3, lvl: 1.7 });
     elec('usbc', { at: [0, -(Lg / 2 - w - 3.75 + .2), pz - 1.6 + .1], parent: 'pcb', order: 3, lvl: 1.7 }); elec('charger', { at: [ms[0] / 2 + 4, my, top + .5], parent: 'pcb', order: 3, lvl: 1.7 });
-    elec('reg', { at: [-(ms[0] / 2 + 4), my, top + .5], parent: 'pcb', order: 3, lvl: 1.7 }); elec('led', { at: [0, Lg * .42, top + .3], parent: 'pcb', order: 3, lvl: 1.7 });
-    if (nb) { for (let i = 0; i < nb; i++) elec('button', { at: [(i % 2 ? 1 : -1) * W * .18, key0 - Math.floor(i / 2) * 12, top + 1.75], parent: 'pcb', order: 3, lvl: 1.7 }); add({ id: 'keypad', name: 'Keypad', shape: 'box', size: [W * .6, rows * 12, 2.4], r: 2, at: [0, key0 - (rows - 1) * 6, H - w + 1.2], resin: 'silicone (LSR)', process: 'LSR moulding', fix: 'place', order: 4, lvl: 2.6 }); }
-    add({ id: 'lens', name: 'Status window', shape: 'box', size: [10, 4, 1], r: 1, at: [0, Lg * .42, H - .5], resin: 'PMMA (acrylic)', finish: 'SPI A-2 (high gloss)', draft: .5, fix: 'adhesive', order: 7, lvl: 4.2 });
+    elec('reg', { at: [-(ms[0] / 2 + 4), my, top + .5], parent: 'pcb', order: 3, lvl: 1.7 }); elec('led', { at: [0, ly, top + .3], parent: 'pcb', order: 3, lvl: 1.7 });
+    if (nb) { for (let i = 0; i < nb; i++) elec('button', { at: [(i % 2 ? 1 : -1) * W * .18, key0 - Math.floor(i / 2) * 12, top + 1.75], parent: 'pcb', order: 3, lvl: 1.7 }); add({ id: 'keypad', name: 'Keypad', shape: 'box', size: [W * .6, rows * 12, w + .4], r: 2, at: [0, key0 - (rows - 1) * 6, H - (w + .4) / 2], resin: 'silicone (LSR)', process: 'LSR moulding', through: ['top'], fix: 'place', order: 4, lvl: 2.6 }); }
+    add({ id: 'lens', name: 'Status window', shape: 'box', size: [10, 4, w], r: 1, at: [0, ly, H - w / 2], resin: 'PMMA (acrylic)', finish: 'SPI A-2 (high gloss)', draft: .5, through: ['top'], fix: 'adhesive', order: 7, lvl: 4.2 });
     add({ id: 'top', name: 'Top housing', shape: 'shell', size: [W, Lg, H - hb], at: [0, 0, hb + (H - hb) / 2], r: 8, wall: w, open: '-', resin: 'PC/ABS', finish: 'soft-touch paint', draft: 1.5, undercuts: 0, fix: 'snap', order: 6, lvl: 3.4, main: true });
+    boss('top', sp4.map(q => [...q, pz + 1]), 2);
   } else if (arch === 'desk') {
-    const W = num(dims.w, 60, 400, 140), D = num(dims.d, 30, 300, 70), H = num(dims.h, 40, 300, 86), w = 2, rad = radio === 'none' ? 'mcu' : radio === 'ble' ? 'ble' : 'wifi', disp = display === 'oled' || (display !== 'lcd' && H < 75) ? 'oled' : 'lcd';
-    const df = D * .4, db = D - df, ds = ELEC[disp].size;
-    add({ id: 'front', name: 'Front housing', shape: 'shell', axis: 'y', size: [W, df, H], at: [0, -D / 2 + df / 2, H / 2], r: 6, wall: w, open: '+', resin: 'PC/ABS', finish: 'SPI B-1 (semi-gloss)', draft: 1, undercuts: 0, fix: 'snap', order: 6, dir: [0, -1, 0], lvl: 3, main: true });
-    add({ id: 'lens', name: 'Display lens', shape: 'box', axis: 'y', size: [Math.min(W - 16, ds[1] + 10), 1.2, Math.min(H - 16, ds[0] + 10)], r: 2, at: [0, -D / 2 - .6, H / 2 + 4], resin: 'PC clear', finish: 'SPI A-2 (high gloss)', draft: .5, fix: 'adhesive', order: 7, dir: [0, -1, 0], lvl: 4.4 });
-    add({ id: 'display', name: ELEC[disp].name, shape: 'box', axis: 'y', size: [ds[1], ds[2], ds[0]], r: .5, at: [0, -D / 2 + w + ds[2] / 2 + .4, H / 2 + 4], resin: 'bought in', process: 'bought in', cost: ELEC[disp].cost, elec: { kind: disp }, fix: 'adhesive', order: 5, parent: 'front', dir: [0, -1, 0], lvl: 2 });
-    const py = D / 2 - w - 7.5 - 1.1; /* the board stands at the back, so the USB-C port reaches the back wall */ add({ id: 'pcb', name: 'Main board', shape: 'pcb', axis: 'y', size: [W - 2 * w - 4, 1.6, H - 2 * w - 4], at: [0, py, H / 2], fix: 'screws', fixQty: 4, order: 3, parent: 'back', dir: [0, 1, 0], lvl: 1, layers: 4 });
-    const bk = py + .8; elec(rad, { size: [ELEC[rad].size[0], ELEC[rad].size[2], ELEC[rad].size[1]], axis: 'y', at: [W * .25, bk + ELEC[rad].size[2] / 2, H * .62], parent: 'pcb', order: 3, dir: [0, 1, 0], lvl: 1.3 });
-    elec('usbc', { size: [9, 7.5, 3.2], at: [-W * .3, bk + 3.75, w + 3.6], parent: 'pcb', order: 3, dir: [0, 1, 0], lvl: 1.3 });
-    elec('reg', { size: [3, 1, 3], axis: 'y', at: [-W * .2, bk + .5, H * .5], parent: 'pcb', order: 3, dir: [0, 1, 0], lvl: 1.3 }); elec('env', { size: [2.5, .9, 2.5], axis: 'y', at: [-W * .32, bk + .45, H * .7], parent: 'pcb', order: 3, dir: [0, 1, 0], lvl: 1.3 });
-    elec('button', { size: [6, 6, 3.5], at: [W * .3, D * .05, H - w - 3.5], parent: 'back', order: 4, dir: [0, 0, 1], lvl: 1.6 });
-    add({ id: 'back', name: 'Back housing', shape: 'shell', axis: 'y', size: [W, db, H], at: [0, D / 2 - db / 2, H / 2], r: 6, wall: w, open: '-', resin: 'PC/ABS', finish: 'SPI B-1 (semi-gloss)', draft: 1, undercuts: 1, fix: 'place', order: 1, dir: [0, 1, 0], lvl: 0, main: true });
-    add({ id: 'screws', name: 'Screw, M2 × 8 self-tapping', shape: 'cyl', axis: 'y', size: [2, 8, 2], at: [W * .35, D / 2 + 4, H * .8], resin: 'bought in', process: 'bought in', cost: .02, qty: 4, fix: 'screws', order: 8, dir: [0, 1, 0], lvl: 2.5 });
-    add({ id: 'feet', name: 'Foot pad', shape: 'cyl', size: [10, 10, 1.5], at: [W * .35, 0, -.75], resin: 'silicone (LSR)', process: 'LSR moulding', qty: 4, fix: 'adhesive', order: 9, dir: [0, 0, -1], lvl: 1.2 });
+    // a desk device: front and back shells on four feet, closed by four screws from the back that run through the back's bosses and the
+    // board into the front's; the display behind its lens in the front, the board standing at the back with the USB-C through the back wall
+    const W = num(dims.w, 60, 400, 140), D = num(dims.d, 30, 300, 70), H = num(dims.h, 40, 300, 86), w = 2, zb = 1.5, Hs = e2(H - zb), zc = zb + Hs / 2, rad = radio === 'none' ? 'mcu' : radio === 'ble' ? 'ble' : 'wifi', disp = display === 'oled' || (display !== 'lcd' && (H < 75 || W < 80)) ? 'oled' : 'lcd';
+    const df = e2(D * .4), db = D - df, ds = ELEC[disp].size;
+    made = [W, D, H];
+    add({ id: 'front', name: 'Front housing', shape: 'shell', axis: 'y', size: [W, df, Hs], at: [0, -D / 2 + df / 2, zc], r: 6, wall: w, open: '+', resin: 'PC/ABS', finish: 'SPI B-1 (semi-gloss)', draft: 1, undercuts: 0, fix: 'snap', order: 6, dir: [0, -1, 0], lvl: 3, main: true });
+    add({ id: 'lens', name: 'Display lens', shape: 'box', axis: 'y', size: [Math.min(W - 24, ds[1] + 10), w, Math.min(Hs - 24, ds[0] + 10)], r: 2, at: [0, -D / 2 + w / 2, zc + Math.max(0, Math.min(4, (Hs - 2 * w - ds[0]) / 2 - .5))], resin: 'PC clear', finish: 'SPI A-2 (high gloss)', draft: .5, through: ['front'], fix: 'adhesive', order: 7, dir: [0, -1, 0], lvl: 4.4 });
+    add({ id: 'display', name: ELEC[disp].name, shape: 'box', axis: 'y', size: [ds[1], ds[2], ds[0]], r: .5, at: [0, -D / 2 + w + ds[2] / 2 + .2, zc + Math.max(0, Math.min(4, (Hs - 2 * w - ds[0]) / 2 - .5))], resin: 'bought in', process: 'bought in', cost: ELEC[disp].cost, elec: { kind: disp }, fix: 'adhesive', order: 5, parent: 'front', dir: [0, -1, 0], lvl: 2 });
+    const py = D / 2 - w - 7.5 - 1.1; /* the board stands at the back, so the USB-C port reaches the back wall */ add({ id: 'pcb', name: 'Main board', shape: 'pcb', axis: 'y', size: [W - 2 * w - 4, 1.6, Hs - 2 * w - 4], r: 5, at: [0, py, zc], fix: 'screws', fixQty: 4, order: 3, parent: 'back', dir: [0, 1, 0], lvl: 1, layers: 4 });
+    const bk = py + .8; elec(rad, { size: [ELEC[rad].size[0], ELEC[rad].size[2], ELEC[rad].size[1]], axis: 'y', at: [W * .25, bk + ELEC[rad].size[2] / 2, zb + Hs * .62], parent: 'pcb', order: 3, dir: [0, 1, 0], lvl: 1.3 });
+    elec('usbc', { size: [9, 7.5, 3.2], at: [-W * .3, bk + 3.75, zb + w + 3.6], parent: 'pcb', order: 3, dir: [0, 1, 0], lvl: 1.3 });
+    elec('reg', { size: [3, 1, 3], axis: 'y', at: [-W * .2, bk + .5, zc], parent: 'pcb', order: 3, dir: [0, 1, 0], lvl: 1.3 }); elec('env', { size: [2.5, .9, 2.5], axis: 'y', at: [-W * .32, bk + .45, zb + Hs * .7], parent: 'pcb', order: 3, dir: [0, 1, 0], lvl: 1.3 });
+    elec('button', { size: [6, 6, 3.5], at: [W * .3, Math.min(D * .05, py - 4.3), H - w - .3 - 1.75], parent: 'back', order: 4, dir: [0, 0, 1], lvl: 1.6 });
+    add({ id: 'back', name: 'Back housing', shape: 'shell', axis: 'y', size: [W, db, Hs], at: [0, D / 2 - db / 2, zc], r: 6, wall: w, open: '-', resin: 'PC/ABS', finish: 'SPI B-1 (semi-gloss)', draft: 1, undercuts: 1, fix: 'place', order: 1, dir: [0, 1, 0], lvl: 0, main: true });
+    const cx = W / 2 - w - 5, cz = Hs / 2 - w - 5, c4 = [[cx, zc + cz], [-cx, zc + cz], [-cx, zc - cz], [cx, zc - cz]], sl = e2(Math.min(D / 2 - py + 5, 30));
+    screw('screws', `Screw, M2 × ${Math.round(sl)} self-tapping`, 2, sl, 'y', c4.map(q => [q[0], D / 2 - sl / 2, q[1]]), { parent: 'pcb', through: ['back', 'pcb'], dir: [0, 1, 0], lvl: 2.5 });
+    boss('back', c4.map(q => [q[0], py + .8, q[1]]), 2); boss('front', c4.map(q => [q[0], py - .8, q[1]]), 2);
+    const fx = W * .35, fy = D * .3;
+    add({ id: 'feet', name: 'Foot pad', shape: 'cyl', size: [10, 10, 1.5], at: [fx, fy, .75], resin: 'silicone (LSR)', process: 'LSR moulding', qty: 4, spots: [[-2 * fx, 0, 0], [-2 * fx, -2 * fy, 0], [0, -2 * fy, 0]], fix: 'adhesive', order: 9, dir: [0, 0, -1], lvl: 1.2 });
   } else if (arch === 'cdplayer') {
-    // a hi-fi component: a stamped steel chassis and cover, an aluminium front panel, the CD loader at the front, the mains supply at the back left,
-    // the main board at the back right with the line outputs through the back panel, the display and IR window behind the front panel
-    const W = num(dims.w, 290, 500, 430), D = num(dims.d, 230, 450, 300), H = num(dims.h, 60, 160, 88), w = 1, tb = Math.min(30, H * .4), so = 6, rad = radio === 'ble' ? 'ble' : radio === 'wifi' ? 'wifi' : 'mcu', cm = ELEC.cdmech.size;
+    // a hi-fi component: a stamped steel chassis on four feet inside a steel cover that wraps over it, an aluminium front panel; the CD
+    // loader's face comes through the panel, the mains supply sits at the back left, the main board at the back right with the line
+    // outputs through the back, the display behind its window, and the buttons' caps reach through the panel to their switches
+    const W = num(dims.w, 290, 500, 430), D = num(dims.d, 230, 450, 300), H = num(dims.h, 60, 160, 88), w = 1, so = 6, fh = 10, rad = radio === 'ble' ? 'ble' : radio === 'wifi' ? 'wifi' : 'mcu', cm = ELEC.cdmech.size, ant = rad !== 'mcu' ? 12 : 0;
+    const Hc = e2(H - fh), yf = -D / 2 + 9.5, yb = D / 2 - ant, Dc = e2(yb - yf), yc = (yf + yb) / 2, cw = W - 2.4, cd = Dc - 2.4, ch = Hc - 1.2, x0c = -cw / 2, yf2 = yc - cd / 2, yb2 = yc + cd / 2; // the cover's box, and the chassis 1.2 mm inside it all round
     const steel = { resin: 'steel SPCC', process: 'stamping', finish: 'spray paint', r: 1, wall: w };
-    add({ id: 'chassis', name: 'Chassis', shape: 'shell', size: [W, D, tb], at: [0, 0, tb / 2], open: '+', ...steel, fix: 'place', order: 1, lvl: 0, main: true });
-    add({ id: 'feet', name: 'Foot', shape: 'cup', size: [36, 36, 10], at: [W * .4, D * .35, -5], wall: 2, open: '+', resin: 'ABS', finish: 'SPI C-1 (matte)', draft: 1, qty: 4, fix: 'screws', order: 2, dir: [0, 0, -1], lvl: 1 });
-    elec('psu', { at: [-W / 2 + w + 6 + 50, D / 2 - w - 8 - 30, w + so + 15], parent: 'chassis', fix: 'screws', fixQty: 4, order: 2, lvl: 1 });
-    elec('iec', { at: [-W / 2 + w + 6 + 100 + 30, D / 2 - 10.5, w + so + 20], parent: 'chassis', fix: 'screws', fixQty: 2, order: 2, dir: [0, 1, 0], lvl: 1 });
-    elec('cdmech', { at: [-W / 2 + w + 4 + cm[0] / 2, -D / 2 + w + 2 + cm[1] / 2, w + so + cm[2] / 2], parent: 'chassis', fix: 'screws', fixQty: 4, order: 3, lvl: 1.4 });
-    const x0 = -W / 2 + w + 6 + 104, x1 = W / 2 - w - 4, y0 = -D / 2 + w + 2 + cm[1] + 4, y1 = D / 2 - w - 3, pw = x1 - x0, pd = y1 - y0, px = (x0 + x1) / 2, py = (y0 + y1) / 2, top = w + so + 1.6; // behind the loader, right of the supply
-    add({ id: 'pcb', name: 'Main board', shape: 'pcb', size: [pw, pd, 1.6], at: [px, py, w + so + .8], fix: 'screws', fixQty: 4, order: 3, parent: 'chassis', lvl: 1.1 });
+    made = [W, D, H];
+    add({ id: 'chassis', name: 'Chassis', shape: 'shell', size: [cw, cd, ch], at: [0, yc, fh + ch / 2], open: '+', ...steel, fix: 'place', order: 1, lvl: 0, main: true });
+    const fx = W * .4, fy = Dc * .35, feet = [[fx, yc + fy], [-fx, yc + fy], [-fx, yc - fy], [fx, yc - fy]];
+    add({ id: 'feet', name: 'Foot', shape: 'cup', size: [36, 36, fh], at: [...feet[0], fh / 2], wall: 2, open: '+', resin: 'ABS', finish: 'SPI C-1 (matte)', draft: 1, qty: 4, spots: feet.slice(1).map(q => [q[0] - feet[0][0], q[1] - feet[0][1], 0]), fix: 'screws', fixQty: 1, order: 2, dir: [0, 0, -1], lvl: 1 });
+    const zf = fh + w, px0 = x0c + w + 6 + 50, py0 = yb2 - w - 8 - 30, lx = x0c + w + 4 + cm[0] / 2, lyc = -D / 2 + 1.5 + cm[1] / 2;
+    elec('psu', { at: [px0, py0, zf + so + 15], parent: 'chassis', fix: 'screws', fixQty: 4, order: 2, lvl: 1 });
+    elec('iec', { at: [x0c + w + 6 + 100 + 30, yb - 10, zf + so + 20], parent: 'chassis', fix: 'snap', order: 2, dir: [0, 1, 0], lvl: 1 });
+    elec('cdmech', { at: [lx, lyc, zf + so + cm[2] / 2], parent: 'panel', through: ['panel', 'cover', 'chassis'], fix: 'screws', fixQty: 4, order: 3, lvl: 1.4 });
+    const x0 = x0c + w + 6 + 104, x1 = cw / 2 - w - 4, y0 = lyc + cm[1] / 2 + 4, y1 = yb2 - w - 3, pw = x1 - x0, pd = y1 - y0, px = (x0 + x1) / 2, py = (y0 + y1) / 2, top = zf + so + 1.6; // behind the loader, right of the supply
+    add({ id: 'pcb', name: 'Main board', shape: 'pcb', size: [pw, pd, 1.6], at: [px, py, zf + so + .8], fix: 'screws', fixQty: 4, order: 3, parent: 'chassis', lvl: 1.1 });
     elec(rad, { at: [px - pw * .2, py, top + ELEC[rad].size[2] / 2], parent: 'pcb', order: 3, lvl: 1.3 }); elec('dac', { at: [px + pw * .1, py - pd * .2, top + .6], parent: 'pcb', order: 3, lvl: 1.3 });
-    elec('reg', { at: [px + pw * .3, py + pd * .1, top + .5], parent: 'pcb', order: 3, lvl: 1.3 }); elec('rca', { at: [px + pw * .25, D / 2 - 7.5, top + 7], parent: 'pcb', order: 3, dir: [0, 1, 0], lvl: 1.3 });
-    const dx = W / 2 - w - 12 - 55, dz = H * .62;
-    if (rad !== 'mcu') elec('antenna', { axis: 'y', at: [W / 2 - 40, D / 2 - 1, H * .6], parent: 'cover', fix: 'screws', order: 8, dir: [0, 1, 0], lvl: 3.4 }); // a steel case: the radio needs its antenna outside
-    elec('vfd', { axis: 'y', size: [110, 6, 26], at: [dx, -D / 2 + w + 3.4, dz], parent: 'chassis', fix: 'screws', fixQty: 2, order: 4, dir: [0, -1, 0], lvl: .6 });
-    elec('ir', { at: [W / 2 - w - 6, -D / 2 + w + 4, dz], parent: 'chassis', order: 4, dir: [0, -1, 0], lvl: .6 });
-    elec('button', { name: 'Tact switches (play, pause, stop, skip, open)', qty: 5, at: [W * .3, -D / 2 + w + 3.4, H * .28], parent: 'chassis', order: 4, dir: [0, -1, 0], lvl: .6 });
-    add({ id: 'cover', name: 'Top cover', shape: 'shell', size: [W, D, H - tb], at: [0, 0, tb + (H - tb) / 2], open: '-', ...steel, fix: 'screws', fixQty: 6, order: 7, lvl: 3.2, main: true });
-    add({ id: 'panel', name: 'Front panel', shape: 'box', axis: 'y', size: [W, 8, H], r: 1, at: [0, -D / 2 - 4, H / 2], resin: 'aluminium 6061', process: 'CNC machined', cost: r2(4 + W * H / 1e4 * 1.2), finish: 'anodised', fix: 'screws', fixQty: 4, order: 8, dir: [0, -1, 0], lvl: 1.6 });
-    add({ id: 'window', name: 'Display window', shape: 'box', axis: 'y', size: [124, 1.5, 34], r: 2, at: [dx, -D / 2 - 8 - .75, dz], resin: 'PMMA (acrylic)', finish: 'SPI A-2 (high gloss)', draft: .5, fix: 'adhesive', order: 9, dir: [0, -1, 0], lvl: 2.4 });
-    add({ id: 'caps', name: 'Button caps', shape: 'box', axis: 'y', size: [12, 6, 8], r: 1, at: [W * .3, -D / 2 - 8 - 3, H * .28], resin: 'aluminium 6061', process: 'CNC machined', cost: .3, finish: 'anodised', qty: 5, fix: 'press', order: 9, dir: [0, -1, 0], lvl: 2.4 });
+    elec('reg', { at: [px + pw * .3, py + pd * .1, top + .5], parent: 'pcb', order: 3, lvl: 1.3 }); elec('rca', { at: [px + pw * .25, yb - 7, top + 7], parent: 'pcb', order: 3, dir: [0, 1, 0], lvl: 1.3 });
+    const dx = cw / 2 - w - 12 - 55, dz = fh + Hc * .62, kz = fh + Hc * .28, kx = W * .3 - 32, k5 = [1, 2, 3, 4].map(i => [i * 16, 0, 0]), yin = yf2 + w + .3;
+    if (ant) elec('antenna', { axis: 'y', at: [W / 2 - 40, yb + 1, fh + Hc * .6], parent: 'cover', fix: 'press', order: 8, dir: [0, 1, 0], lvl: 3.4 }); // a steel case: the radio needs its antenna outside
+    elec('vfd', { axis: 'y', size: [110, 6, 26], at: [dx, yin + 3, dz], parent: 'chassis', fix: 'screws', fixQty: 2, order: 4, dir: [0, -1, 0], lvl: .6 });
+    elec('ir', { at: [cw / 2 - w - 6.3, yin + 3, dz], parent: 'chassis', fix: 'adhesive', order: 4, dir: [0, -1, 0], lvl: .6 });
+    elec('button', { name: 'Tact switches (play, pause, stop, skip, open)', qty: 5, spots: k5, size: [6, 3.5, 6], at: [kx, yin + 1.75, kz], parent: 'chassis', order: 4, dir: [0, -1, 0], lvl: .6 });
+    add({ id: 'cover', name: 'Top cover', shape: 'shell', size: [W, Dc, Hc], at: [0, yc, fh + Hc / 2], open: '-', ...steel, fix: 'screws', fixQty: 6, order: 7, lvl: 3.2, main: true });
+    add({ id: 'panel', name: 'Front panel', shape: 'box', axis: 'y', size: [W, 8, Hc], r: 1, at: [0, yf - 4, fh + Hc / 2], resin: 'aluminium 6061', process: 'CNC machined', cost: r2(4 + W * H / 1e4 * 1.2), finish: 'anodised', fix: 'screws', fixQty: 4, order: 8, dir: [0, -1, 0], lvl: 1.6 });
+    add({ id: 'window', name: 'Display window', shape: 'box', axis: 'y', size: [100, yin - (yf - 8), 20], r: 2, at: [dx, (yin + yf - 8) / 2, dz], resin: 'PMMA (acrylic)', finish: 'SPI A-2 (high gloss)', draft: .5, parent: 'panel', through: ['panel', 'cover', 'chassis'], fix: 'adhesive', order: 9, dir: [0, -1, 0], lvl: 2.4 });
+    add({ id: 'caps', name: 'Button caps', shape: 'box', axis: 'y', size: [12, yin + D / 2, 8], r: 1, at: [kx, (yin - D / 2) / 2, kz], resin: 'aluminium 6061', process: 'CNC machined', cost: .3, finish: 'anodised', qty: 5, spots: k5, through: ['panel', 'cover', 'chassis'], fix: 'press', order: 9, dir: [0, -1, 0], lvl: 2.4 });
+    const st = (cx, cy, hw, hd) => [[cx - hw, cy - hd], [cx + hw, cy - hd], [cx + hw, cy + hd], [cx - hw, cy + hd]], so12 = [...st(px0, py0, 44, 24), ...st(lx, lyc + 6, 68, 58), ...st(px, py, pw / 2 - 5, pd / 2 - 5)];
+    add({ id: 'standoffs', name: 'Standoff, M3 × 6, pressed into the chassis', shape: 'cyl', size: [5.5, 5.5, so], at: [...so12[0], zf + so / 2], resin: 'bought in', process: 'bought in', cost: .04, qty: 12, spots: so12.slice(1).map(q => [q[0] - so12[0][0], q[1] - so12[0][1], 0]), fix: 'press', order: 2, lvl: .6 });
+    screw('screws-floor', 'Screw, M3 × 10 (supply, loader and board, up through the chassis and its standoffs)', 3, 10, 'z', so12.map(q => [...q, fh + 5]), { through: ['chassis', 'pcb'], dir: [0, 0, -1], lvl: 2 });
+    screw('screws-feet', 'Screw, M3 × 12 (feet)', 3, 12, 'z', feet.map(q => [...q, 6]), { through: ['feet', 'chassis'], dir: [0, 0, -1], lvl: 2.6 });
+    screw('screws-vfd', 'Screw, M3 × 6 (display)', 3, 6, 'y', [[dx - 52.5, yf + 3, dz], [dx + 52.5, yf + 3, dz]], { through: ['cover', 'chassis'], dir: [0, -1, 0], lvl: 1.2 });
+    screw('screws-panel', 'Screw, M3 × 8 (front panel)', 3, 8, 'y', [[-W * .45, yin - .3 - 4, fh + 8], [W * .45, yin - .3 - 4, fh + 8], [-W * .45, yin - .3 - 4, H - 8], [W * .45, yin - .3 - 4, H - 8]], { through: ['cover', 'chassis'], dir: [0, 1, 0], lvl: 1.2 });
+    screw('screws-cover', 'Screw, M3 × 6 (cover)', 3, 6, 'x', [-1, 1].flatMap(sx => [-.3, 0, .3].map(k => [sx * (W / 2 - 3), yc + k * Dc, fh + Hc * .5])), { through: ['cover', 'chassis'], dir: [1, 0, 0], lvl: 3.6 });
   } else if (arch === 'cassette') {
-    // a portable cassette player standing up: the transport behind a clear door at the front left, two AA cells beside it, the board behind
-    // both, the keys along the top, the headphone jack on top and the volume wheel on the right side, a belt clip on the back
-    const W = num(dims.w, 120, 220, 136), D = num(dims.d, 26, 70, 34), H = num(dims.h, 75, 180, 90), w = 1.6, df = D / 2, ms = ELEC.tapemech.size;
-    const mx = -W / 2 + w + .6 + ms[0] / 2, my = -D / 2 + w + .6 + ms[1] / 2, mz = Math.max(w + .6 + ms[2] / 2, H / 2 + 1);
-    add({ id: 'back', name: 'Back housing', shape: 'shell', axis: 'y', size: [W, D - df, H], r: 6, at: [0, D / 2 - (D - df) / 2, H / 2], wall: w, open: '-', resin: 'ABS', finish: 'SPI B-1 (semi-gloss)', draft: 1, undercuts: 1, fix: 'place', order: 1, dir: [0, 1, 0], lvl: 1.6, main: true });
-    elec('aa', { at: [W / 2 - w - .6 - 14.5, -D / 2 + w + .6 + 7.25, w + .6 + 25], parent: 'front', fix: 'place', order: 2, dir: [0, -1, 0], lvl: 1.4, elec: { kind: 'aa', mah: mah || 2500 } });
+    // a portable cassette player standing up: the transport behind a clear door in the front, two AA cells beside it, the board on three
+    // bosses behind both, the keys through the top, the headphone jack on top and the volume wheel through the right side, a belt clip
+    const W = num(dims.w, 120, 220, 136), D = num(dims.d, 26, 70, 34), H = num(dims.h, 75, 180, 90), w = 1.6, Dh = e2(D - 2.5), df = e2(Dh / 2), Hs = H - 4, y0 = -D / 2, ym = y0 + df, yb = y0 + Dh, ms = ELEC.tapemech.size;
+    const mx = -W / 2 + w + 2.5 + ms[0] / 2, my = y0 + w + .3 + ms[1] / 2, mz = Math.max(w + 2.5 + ms[2] / 2, Hs / 2 + 1);
+    made = [W, D, H];
+    add({ id: 'back', name: 'Back housing', shape: 'shell', axis: 'y', size: [W, Dh - df, Hs], r: 6, at: [0, (ym + yb) / 2, Hs / 2], wall: w, open: '-', resin: 'ABS', finish: 'SPI B-1 (semi-gloss)', draft: 1, undercuts: 1, fix: 'place', order: 1, dir: [0, 1, 0], lvl: 1.6, main: true });
+    elec('aa', { at: [W / 2 - w - 2.5 - 14.5, y0 + w + .3 + 7.25, w + 2.5 + 25], parent: 'front', fix: 'place', order: 2, dir: [0, -1, 0], lvl: 1.4, elec: { kind: 'aa', mah: mah || 2500 } });
     elec('tapemech', { at: [mx, my, mz], parent: 'front', fix: 'screws', fixQty: 3, order: 3, dir: [0, -1, 0], lvl: 1.6 });
-    const by = my + ms[1] / 2 + 1.5, pz = w + 2 + (H - 2 * w - 22) / 2, bk = by + .5;
-    add({ id: 'pcb', name: 'Main board', shape: 'pcb', axis: 'y', size: [W - 2 * w - 4, 1, H - 2 * w - 22], at: [0, by, pz], fix: 'screws', fixQty: 3, order: 4, parent: 'back', dir: [0, 1, 0], lvl: .4 });
+    const by = my + ms[1] / 2 + 1.5, bh = Hs - 2 * w - 22, pz = w + 2 + bh / 2, bk = by + .5, bw = W - 2 * w - 4;
+    add({ id: 'pcb', name: 'Main board', shape: 'pcb', axis: 'y', size: [bw, 1, bh], r: 5, at: [0, by, pz], fix: 'screws', fixQty: 3, order: 4, parent: 'back', dir: [0, 1, 0], lvl: .4 });
     const back = (k, x, z) => { const e = ELEC[k].size; elec(k, { axis: 'y', size: [e[0], e[2], e[1]], at: [x, bk + e[2] / 2, z], parent: 'pcb', order: 4, dir: [0, 1, 0], lvl: .7 }); };
     back('preamp', -W * .25, pz + 10); back('hpamp', W * .18, pz + 10); back('mcu', 0, pz - 8); back('reg', W * .3, pz - 12);
-    elec('jack', { at: [W / 2 - w - 14, by + 3, H - 7.2], order: 5, dir: [0, 0, 1], lvl: .8 });
-    elec('pot', { at: [W / 2 - 2.6, by + 6, H * .78], order: 5, dir: [1, 0, 0], lvl: .8 });
-    elec('button', { name: 'Tact switches (play, stop, rewind, fast-forward, record)', qty: 5, at: [-W * .15, by + 2, H - w - 2.5], order: 5, dir: [0, 0, 1], lvl: .6 });
-    add({ id: 'keys', name: 'Keys', shape: 'shell', size: [W * .5, 10, 8], r: 1.5, at: [-W * .15, by + 1, H + 2], wall: 1.5, open: '-', resin: 'ABS', finish: 'SPI C-1 (matte)', draft: 1, fix: 'place', order: 6, dir: [0, 0, 1], lvl: 1.4 });
-    add({ id: 'front', name: 'Front housing', shape: 'shell', axis: 'y', size: [W, df, H], r: 6, at: [0, -D / 2 + df / 2, H / 2], wall: w, open: '+', resin: 'ABS', finish: 'SPI B-1 (semi-gloss)', draft: 1, undercuts: 1, fix: 'snap', order: 7, dir: [0, -1, 0], lvl: 2.6, main: true });
-    add({ id: 'door', name: 'Cassette door with window', shape: 'box', axis: 'y', size: [ms[0] + 4, 1.5, ms[2] + 2], r: 3, at: [mx, -D / 2 - .75, mz], resin: 'PC clear', finish: 'SPI A-2 (high gloss)', draft: .5, undercuts: 1, fix: 'snap', order: 8, dir: [0, -1, 0], lvl: 3.4 });
-    add({ id: 'clip', name: 'Belt clip', shape: 'box', axis: 'y', size: [36, 2.5, 50], r: 3, at: [0, D / 2 + 1.25, H * .55], resin: 'POM (acetal)', finish: 'SPI C-1 (matte)', draft: 1, fix: 'screws', fixQty: 2, order: 9, dir: [0, 1, 0], lvl: 2.6 });
+    const kw = W * .5, kx = -W * .15, kyc = by + 3, kz0 = Hs - w - 2;
+    elec('jack', { at: [W / 2 - w - 14, kyc + 2, Hs - 7], order: 5, dir: [0, 0, 1], lvl: .8 });
+    elec('pot', { size: [6, 6, 16], at: [W / 2 - 3, kyc + 3, Hs * .7], through: ['back', 'front'], order: 5, dir: [1, 0, 0], lvl: .8 });
+    elec('button', { name: 'Tact switches (play, stop, rewind, fast-forward, record)', qty: 5, spots: [1, 2, 3, 4].map(i => [i * kw / 5, 0, 0]), at: [kx - kw * .4, kyc, kz0 - .1 - 1.75], order: 5, dir: [0, 0, 1], lvl: .6 });
+    add({ id: 'keys', name: 'Keys', shape: 'shell', size: [kw, 8, H - kz0], r: 1.5, at: [kx, kyc, (H + kz0) / 2], wall: 1.5, open: '-', resin: 'ABS', finish: 'SPI C-1 (matte)', draft: 1, through: ['back', 'front'], fix: 'place', order: 6, dir: [0, 0, 1], lvl: 1.4 });
+    add({ id: 'front', name: 'Front housing', shape: 'shell', axis: 'y', size: [W, df, Hs], r: 6, at: [0, (y0 + ym) / 2, Hs / 2], wall: w, open: '+', resin: 'ABS', finish: 'SPI B-1 (semi-gloss)', draft: 1, undercuts: 1, fix: 'snap', order: 7, dir: [0, -1, 0], lvl: 2.6, main: true });
+    add({ id: 'door', name: 'Cassette door with window', shape: 'box', axis: 'y', size: [ms[0] - 16, w, ms[2] - 12], r: 3, at: [mx, y0 + w / 2, mz], resin: 'PC clear', finish: 'SPI A-2 (high gloss)', draft: .5, undercuts: 1, through: ['front'], fix: 'snap', order: 8, dir: [0, -1, 0], lvl: 3.4 });
+    add({ id: 'clip', name: 'Belt clip', shape: 'box', axis: 'y', size: [36, 2.5, 50], r: 3, at: [0, D / 2 - 1.25, Hs * .55], resin: 'POM (acetal)', finish: 'SPI C-1 (matte)', draft: 1, fix: 'screws', fixQty: 2, order: 9, dir: [0, 1, 0], lvl: 2.6 });
+    const b3 = [[-(bw / 2 - 5), pz + bh / 2 - 5], [bw / 2 - 5, pz + bh / 2 - 5], [0, pz - bh / 2 + 4]];
+    boss('back', b3.map(q => [q[0], by + .5, q[1]]), 2);
+    screw('screws-board', 'Screw, M2 × 5 (board)', 2, 5, 'y', b3.map(q => [q[0], by - .5 - 1 + 2.5, q[1]]), { parent: 'pcb', through: ['pcb'], dir: [0, -1, 0], lvl: 1 });
+    screw('screws-deck', 'Screw, M2 × 18 (transport)', 2, 18, 'y', [[mx - ms[0] / 2 + 4, y0 + .6 + 9, mz], [mx + ms[0] / 2 - 4, y0 + .6 + 9, mz], [mx, y0 + .6 + 9, mz + ms[2] / 2 - 3]], { dir: [0, 1, 0], lvl: 2 });
+    screw('screws-clip', 'Screw, M2 × 4 countersunk (belt clip)', 2, 4, 'y', [[-10, D / 2 - 2, Hs * .55 + 15], [10, D / 2 - 2, Hs * .55 + 15]], { through: ['clip'], dir: [0, 1, 0], lvl: 3.2 });
   } else if (arch === 'speaker') {
-    // a powered bookshelf speaker: an MDF cabinet open at the front, closed by the baffle that carries the woofer and tweeter; the amplifier
-    // board stands at the back with the mains inlet, line input and volume through the back panel; a bass port at the top of the back
-    const W = num(dims.w, 130, 400, 170), D = num(dims.d, 190, 450, 230), H = num(dims.h, 220, 600, 280), t = 15, bf = 18, rad = radio === 'none' ? 'mcu' : radio === 'wifi' ? 'wifi' : 'ble';
-    const area = 2 * (W * H + D * H + W * D) / 1e6, wd = Math.max(70, Math.min(130, W - 30, H - 2 * t - 100)), tz = H - t - 46, wz = Math.max(t + 5 + wd / 2, Math.min(H * .36, tz - 45 - wd / 2 - 5)); // the tweeter at the top, the woofer below it with 5 mm between
-    add({ id: 'cab', name: 'Cabinet', shape: 'shell', axis: 'y', size: [W, D - bf, H], r: 3, at: [0, -D / 2 + bf + (D - bf) / 2, H / 2], wall: t, open: '-', resin: 'MDF', process: 'CNC routed', cost: r2(4.5 + area * 11), finish: 'none', fix: 'glue', order: 1, lvl: 0, main: true });
-    add({ id: 'feet', name: 'Foot pad', shape: 'cyl', size: [16, 16, 2], at: [W * .35, D * .35, -1], resin: 'silicone (LSR)', process: 'LSR moulding', qty: 4, fix: 'adhesive', order: 2, dir: [0, 0, -1], lvl: 1.2 });
-    elec('psu', { at: [0, 11.5, t + .4 + 15], parent: 'cab', fix: 'screws', fixQty: 4, order: 2, lvl: 3.6 }); // the inside lifts out of the top in the exploded view
-    const py = D / 2 - t - 14, pz = t + 4 + H * .225, ff = py - .8, bb = py + .8;
-    add({ id: 'pcb', name: 'Amplifier board', shape: 'pcb', axis: 'y', size: [W - 2 * t - 6, 1.6, H * .45], at: [0, py, pz], fix: 'screws', fixQty: 4, order: 3, parent: 'cab', lvl: 4.6, layers: 4 });
+    // a powered bookshelf speaker: an MDF cabinet open at the front, closed by the baffle that carries the woofer and tweeter behind a
+    // grille; the amplifier board stands on standoffs off the back, with the mains inlet, line input, volume and bass port through the back
+    const W = num(dims.w, 130, 400, 170), D = num(dims.d, 190, 450, 230), H = num(dims.h, 220, 600, 280), t = 15, bf = 18, gr = 10, kn = 16, zb = 2, Hs = H - zb, y0 = -D / 2, yb = D / 2 - kn, cdp = e2(yb - y0 - gr - bf), rad = radio === 'none' ? 'mcu' : radio === 'wifi' ? 'wifi' : 'ble';
+    const area = 2 * (W * Hs + D * Hs + W * D) / 1e6, wd = Math.max(70, Math.min(130, W - 34, Hs - 2 * t - 100)), tz = H - t - 46, wz = Math.max(zb + t + 5 + wd / 2, Math.min(zb + Hs * .36, tz - 45 - wd / 2 - 5)); // the tweeter at the top, the woofer below it with 5 mm between
+    made = [W, D, H];
+    add({ id: 'cab', name: 'Cabinet', shape: 'shell', axis: 'y', size: [W, cdp, Hs], r: 3, at: [0, yb - cdp / 2, zb + Hs / 2], wall: t, open: '-', resin: 'MDF', process: 'CNC routed', cost: r2(4.5 + area * 11), finish: 'none', fix: 'glue', order: 1, lvl: 0, main: true });
+    const fx = W * .35, fy = D * .3;
+    add({ id: 'feet', name: 'Foot pad', shape: 'cyl', size: [16, 16, 2], at: [fx, fy, 1], resin: 'silicone (LSR)', process: 'LSR moulding', qty: 4, spots: [[-2 * fx, 0, 0], [-2 * fx, -2 * fy, 0], [0, -2 * fy, 0]], fix: 'adhesive', order: 2, dir: [0, 0, -1], lvl: 1.2 });
+    const psy = yb - t - 37;
+    elec('psu', { at: [0, psy, zb + t + .2 + 15], parent: 'cab', fix: 'screws', fixQty: 4, order: 2, lvl: 3.6 }); // the inside lifts out of the top in the exploded view
+    const py = yb - t - 10, bhh = Math.min(Hs * .45, H - 2 * t - Math.min(50, W - 2 * t - 50) - 55 - zb), pz = zb + t + 44 + bhh / 2, ff = py - .8, bw = W - 2 * t - 6;
+    add({ id: 'pcb', name: 'Amplifier board', shape: 'pcb', axis: 'y', size: [bw, 1.6, bhh], at: [0, py, pz], fix: 'screws', fixQty: 4, order: 3, parent: 'cab', lvl: 4.6, layers: 4 });
     const front = (k, x, z) => { const e = ELEC[k].size; elec(k, { axis: 'y', size: [e[0], e[2], e[1]], at: [x, ff - e[2] / 2, z], parent: 'pcb', order: 3, lvl: 4.6 }); };
-    front('amp2', -W * .18, pz - H * .08); front(rad, W * .15, pz + H * .12); front('dac', W * .16, pz - H * .06); front('reg', -W * .25, pz + H * .14);
-    elec('iec', { at: [-W * .2, D / 2 - 10.5, pz - H * .13], parent: 'cab', fix: 'screws', fixQty: 2, order: 3, dir: [0, 1, 0], lvl: 1.2 });
-    elec('rca', { at: [W * .12, D / 2 - 7.5, pz - H * .13], parent: 'cab', fix: 'screws', fixQty: 2, order: 3, dir: [0, 1, 0], lvl: 1.2 });
-    elec('encoder', { at: [W * .12, D / 2 - 10.5, pz + H * .1], through: ['cab'], fix: 'screws', fixQty: 1, order: 3, dir: [0, 1, 0], lvl: 1.2 });
-    add({ id: 'knob', name: 'Volume knob', shape: 'cyl', axis: 'y', size: [30, 16, 30], at: [W * .12, D / 2 + 8, pz + H * .1], resin: 'aluminium 6061', process: 'CNC machined', cost: 1.2, finish: 'anodised', fix: 'press', order: 9, lvl: 5.4 });
-    add({ id: 'port', name: 'Bass port tube', shape: 'ring', axis: 'y', size: [50, 110, 50], wall: 2.5, at: [0, D / 2 - 55, H * .82], resin: 'ABS', finish: 'SPI C-1 (matte)', draft: 1, fix: 'glue', order: 4, lvl: 6 });
-    add({ id: 'baffle', name: 'Baffle', shape: 'box', axis: 'y', size: [W, bf, H], r: 3, at: [0, -D / 2 + bf / 2, H / 2], resin: 'MDF', process: 'CNC routed', cost: r2(1.5 + W * H / 1e6 * 11), finish: 'none', fix: 'glue', order: 6, dir: [0, -1, 0], lvl: 1.2 });
-    elec('woofer', { axis: 'y', size: [wd, 70, wd], at: [0, -D / 2 - 1 + 35, wz], parent: 'baffle', fix: 'screws', fixQty: 4, order: 7, dir: [0, -1, 0], lvl: 1.8 });
-    elec('tweeter', { axis: 'y', size: [80, 40, 80], at: [0, -D / 2 - 1 + 20, tz], parent: 'baffle', fix: 'screws', fixQty: 4, order: 7, dir: [0, -1, 0], lvl: 1.8 });
-    add({ id: 'grille', name: 'Grille (cloth on a frame)', shape: 'shell', axis: 'y', size: [W - 4, 10, H - 4], r: 3, at: [0, -D / 2 - 7, H / 2], wall: 2, open: '+', resin: 'ABS', finish: 'none', draft: 1, fix: 'press', order: 10, dir: [0, -1, 0], lvl: 2.8 });
+    front('amp2', -W * .16, pz - bhh * .18); front(rad, W * .15, pz + bhh * .27); front('dac', W * .16, pz - bhh * .13); front('reg', -W * .2, pz + bhh * .3);
+    elec('iec', { at: [-W * .2, yb - 10, zb + t + 16], parent: 'cab', fix: 'snap', order: 3, dir: [0, 1, 0], lvl: 1.2 });
+    elec('rca', { at: [W * .12, yb - 7, zb + t + 14], parent: 'cab', fix: 'press', order: 3, dir: [0, 1, 0], lvl: 1.2 });
+    elec('encoder', { at: [W * .12, yb - 10, zb + t + 34], through: ['cab'], fix: 'press', order: 3, dir: [0, 1, 0], lvl: 1.2 });
+    add({ id: 'knob', name: 'Volume knob', shape: 'cyl', axis: 'y', size: [24, kn, 24], at: [W * .12, yb + kn / 2, zb + t + 34], resin: 'aluminium 6061', process: 'CNC machined', cost: 1.2, finish: 'anodised', fix: 'press', order: 9, lvl: 5.4 });
+    const pl = Math.min(110, cdp - 30), pdia = Math.min(50, W - 2 * t - 50);
+    add({ id: 'port', name: 'Bass port tube', shape: 'ring', axis: 'y', size: [pdia, pl, pdia], wall: 2.5, at: [-W / 2 + t + 8 + pdia / 2, yb - pl / 2, H - t - 8 - pdia / 2], resin: 'ABS', finish: 'SPI C-1 (matte)', draft: 1, through: ['cab'], fix: 'glue', order: 4, lvl: 6 });
+    add({ id: 'baffle', name: 'Baffle', shape: 'box', axis: 'y', size: [W, bf, Hs], r: 3, at: [0, y0 + gr + bf / 2, zb + Hs / 2], resin: 'MDF', process: 'CNC routed', cost: r2(1.5 + W * Hs / 1e6 * 11), finish: 'none', fix: 'glue', order: 6, dir: [0, -1, 0], lvl: 1.2 });
+    const wdep = Math.min(70, cdp - t - 70), yw = y0 + gr - 1;
+    elec('woofer', { axis: 'y', size: [wd, wdep, wd], at: [0, yw + wdep / 2, wz], parent: 'baffle', through: ['baffle'], fix: 'screws', fixQty: 4, order: 7, dir: [0, -1, 0], lvl: 1.8 });
+    elec('tweeter', { axis: 'y', size: [80, 40, 80], at: [0, yw + 20, tz], parent: 'baffle', through: ['baffle'], fix: 'screws', fixQty: 4, order: 7, dir: [0, -1, 0], lvl: 1.8 });
+    add({ id: 'grille', name: 'Grille (cloth on a frame)', shape: 'shell', axis: 'y', size: [W - 4, gr, Hs - 4], r: 3, at: [0, y0 + gr / 2, zb + Hs / 2], wall: 2, open: '+', resin: 'ABS', finish: 'none', draft: 1, fix: 'press', order: 10, dir: [0, -1, 0], lvl: 2.8 });
+    const so4 = [[-(bw / 2 - 5), pz - bhh / 2 + 5], [bw / 2 - 5, pz - bhh / 2 + 5], [bw / 2 - 5, pz + bhh / 2 - 5], [-(bw / 2 - 5), pz + bhh / 2 - 5]], sol = yb - t - (py + .8);
+    add({ id: 'standoffs', name: `Standoff, M3 × ${Math.round(sol)}, threaded into the back`, shape: 'cyl', axis: 'y', size: [5.5, sol, 5.5], at: [so4[0][0], py + .8 + sol / 2, so4[0][1]], resin: 'bought in', process: 'bought in', cost: .05, qty: 4, spots: so4.slice(1).map(q => [q[0] - so4[0][0], 0, q[1] - so4[0][1]]), fix: 'press', order: 2, lvl: 4.2 });
+    screw('screws-board', 'Screw, M3 × 6 (amplifier board)', 3, 6, 'y', so4.map(q => [q[0], py - .8 - 1 + 3, q[1]]), { parent: 'pcb', through: ['pcb'], dir: [0, -1, 0], lvl: 5 });
+    screw('screws-psu', 'Screw, M4 × 20 wood (supply, up through the cabinet)', 4, 20, 'z', [[-44, psy - 24], [44, psy - 24], [44, psy + 24], [-44, psy + 24]].map(q => [...q, zb + 10]), { through: ['cab'], dir: [0, 0, -1], lvl: 2 });
+    const rim = (cz, r) => [45, 135, 225, 315].map(a => [(r + .3) * Math.cos(a * Math.PI / 180), y0 + gr + 7, cz + (r + .3) * Math.sin(a * Math.PI / 180)]);
+    screw('screws-drivers', 'Screw, M4 × 16 wood (drivers, through the rim into the baffle)', 4, 16, 'y', [...rim(wz, wd / 2), ...rim(tz, 40)], { dir: [0, -1, 0], lvl: 2.4 });
   } else if (arch === 'turntable') {
 
     // a belt-drive turntable: an MDF plinth closed underneath by a steel plate on four feet, with the main bearing, the motor and the board
@@ -528,7 +582,7 @@ export function archetype(arch, dims = {}, { mah = null, radio = null, display =
     add({ id: 'hub', name: 'Sub-platter (the belt runs on it)', shape: 'ring', size: [60, 60, 4], wall: (60 - 7.4) / 2, at: [px, 0, zt + 2], resin: 'POM (acetal)', finish: 'SPI C-1 (matte)', draft: 1, fix: 'press', order: 4, lvl: 1.4 });
     const so = [[bx - bw / 2 + 5, by - bd / 2 + 5], [bx + bw / 2 - 5, by - bd / 2 + 5], [bx + bw / 2 - 5, by + bd / 2 - 5], [bx - bw / 2 + 5, by - bd / 2 + 30]];
     add({ id: 'standoffs', name: 'Standoff, M3 × 6 brass, riveted to the plate', shape: 'cyl', size: [5.5, 5.5, 6], at: [...so[0], z0 + 3], resin: 'bought in', process: 'bought in', cost: .04, qty: 4, spots: so.slice(1).map(q => [q[0] - so[0][0], q[1] - so[0][1], 0]), fix: 'press', order: 2, lvl: .6 });
-    screw('screws-board', 'Screw, M3 × 6 pan head (board)', 3, 6.5, 'z', so.map(q => [...q, z0 + 6 + 1.6 + 1 - 3.25]), { through: ['pcb'], order: 3, lvl: 1 });
+    screw('screws-board', 'Screw, M3 × 6 pan head (board)', 3, 6.5, 'z', so.map(q => [...q, z0 + 6 + 1.6 + 1 - 3.25]), { parent: 'pcb', through: ['pcb'], order: 3, lvl: 1 });
     const wy = D / 2 - t / 2, wx = W / 2 - t / 2;
     screw('screws-plate', 'Screw, M3 × 14 (plate and feet)', 3, 14, 'z', [[-wx, 0, fh + 7], [wx, 0, fh + 7], [-W * .25, wy, fh + 7], [W * .25, wy, fh + 7], [-W * .25, -wy, fh + 7], [W * .25, -wy, fh + 7], ...feet.map(q => [q[0], q[1], 7])], { through: ['plate', 'feet'], dir: [0, 0, -1], lvl: 3 });
     const pr = 16, tri = [90, 210, 330].map(a => [Math.cos(a * Math.PI / 180), Math.sin(a * Math.PI / 180)]);
@@ -565,45 +619,54 @@ export function archetype(arch, dims = {}, { mah = null, radio = null, display =
     add({ id: 'cushion', name: 'Headband cushion (memory foam in PU leather)', shape: 'box', size: [W - 74, 30, 10], r: 4, at: [0, 0, H - 7], resin: 'EVA foam', process: 'die cut', fix: 'snap', order: 8, lvl: 2 });
     const bzs = [pz + bh / 2 - 4, pz - bh / 2 + 4], sxc = ox - cd / 2, yy = cw / 2 + .3;
     boss('cup-r', bzs.map(z => [rx + .6, 0, z]), 2);
-    screw('screws-board', 'Screw, M2 × 5 (board)', 2, 5, 'x', bzs.map(z => [rx + 1.1, 0, z]), { through: ['pcb'], dir: [-1, 0, 0], lvl: 1.2 });
+    screw('screws-board', 'Screw, M2 × 5 (board)', 2, 5, 'x', bzs.map(z => [rx + 1.1, 0, z]), { parent: 'pcb', through: ['pcb'], dir: [-1, 0, 0], lvl: 1.2 });
     screw('screws-yoke', 'Screw, M2 × 6 shoulder (yoke pivots)', 2, 6, 'y', [[-sxc, yy, zc], [-sxc, -yy, zc], [sxc, yy, zc], [sxc, -yy, zc]], { through: ['yoke-l', 'cup-l', 'yoke-r', 'cup-r'], dir: [0, 1, 0], lvl: 2.2 });
     screw('screws-band', 'Screw, M2 × 6 countersunk (band)', 2, 6, 'z', [[-sxc, -3.5, H - 3], [-sxc, 3.5, H - 3], [sxc, -3.5, H - 3], [sxc, 3.5, H - 3]], { through: ['band'], lvl: 3.6 });
   } else if (arch === 'smartspeaker') {
-    // a smart speaker: a round base holding the main board, the Wi-Fi module, the amplifier and the DC input; a fabric grille over the
-    // up-firing driver; a top cap with its board of four microphones, the light ring's LEDs and the buttons
-    const D = num(dims.w, 80, 200, 100), H = num(dims.h, 100, 260, 152), w = 2, hb = Math.round(H * .3), ht = 22, hg = H - hb - ht, sd = Math.min(76, D - 16);
-    add({ id: 'body', name: 'Base housing', shape: 'cup', size: [D, D, hb], at: [0, 0, hb / 2], wall: w, open: '+', resin: 'PC/ABS', finish: 'SPI C-1 (matte)', draft: 1, undercuts: 1, fix: 'place', order: 1, lvl: 0, main: true });
-    add({ id: 'foot', name: 'Non-slip foot', shape: 'cyl', size: [D - 14, D - 14, 1.5], at: [0, 0, -.75], resin: 'silicone (LSR)', process: 'LSR moulding', fix: 'adhesive', order: 9, dir: [0, 0, -1], lvl: 1.2 });
-    const pz = w + 6, on = pz + .8;
+    // a smart speaker: a round base on its foot holding the main board on three bosses, the Wi-Fi module, the amplifier and the DC input; a
+    // fabric grille with the up-firing driver hung under its top; a light ring that shows all the way round; and a top cap with its board
+    // of four microphones, the ring's LEDs and the buttons, whose caps come through the top
+    const D = num(dims.w, 80, 200, 100), H = num(dims.h, 100, 260, 152), w = 2, zb = 1.5, hb = Math.round((H - zb) * .3), ht = 22, hg = e2(H - zb - hb - ht - 3), sd = Math.min(76, D - 16), z1 = zb + hb, z2 = z1 + hg;
+    made = [D, D, H];
+    add({ id: 'body', name: 'Base housing', shape: 'cup', size: [D, D, hb], at: [0, 0, zb + hb / 2], wall: w, open: '+', resin: 'PC/ABS', finish: 'SPI C-1 (matte)', draft: 1, undercuts: 1, fix: 'place', order: 1, lvl: 0, main: true });
+    add({ id: 'foot', name: 'Non-slip foot', shape: 'cyl', size: [D - 14, D - 14, 1.5], at: [0, 0, .75], resin: 'silicone (LSR)', process: 'LSR moulding', fix: 'adhesive', order: 9, dir: [0, 0, -1], lvl: 1.2 });
+    const pz = zb + w + 6, on = pz + .8, pr = (D - 2 * w - 4) / 2 - 4, pb = [90, 210, 330].map(a => [pr * Math.cos(a * Math.PI / 180), pr * Math.sin(a * Math.PI / 180)]);
     add({ id: 'pcb', name: 'Main board', shape: 'pcb', size: [D - 2 * w - 4, D - 2 * w - 4, 1.6], r: D, at: [0, 0, pz], fix: 'screws', fixQty: 3, order: 2, parent: 'body', lvl: .8, layers: 4 });
     elec('wifi', { at: [-D * .16, D * .06, on + ELEC.wifi.size[2] / 2], parent: 'pcb', order: 2, lvl: .8 }); elec('amp', { at: [D * .18, -D * .1, on + .4], parent: 'pcb', order: 2, lvl: .8 }); elec('reg', { at: [D * .18, D * .1, on + .5], parent: 'pcb', order: 2, lvl: .8 });
     elec('dcjack', { at: [0, -(D / 2 - 7.5), on + 5.5], parent: 'pcb', order: 2, dir: [0, -1, 0], lvl: .8 });
-    add({ id: 'grille', name: 'Grille (fabric over a frame)', shape: 'cup', size: [D, D, hg], at: [0, 0, hb + hg / 2], wall: w, open: '-', resin: 'ABS', finish: 'none', draft: 1, fix: 'snap', order: 4, lvl: 1.8, main: true });
-    elec('speaker', { name: 'Speaker driver, 3 in full range 10 W', size: [sd, sd, 34], at: [0, 0, hb + 4 + 17], parent: 'grille', fix: 'screws', fixQty: 4, order: 3, dir: [0, 0, 1], lvl: 1.2 });
+    add({ id: 'grille', name: 'Grille (fabric over a frame)', shape: 'cup', size: [D, D, hg], at: [0, 0, z1 + hg / 2], wall: w, open: '-', resin: 'ABS', finish: 'none', draft: 1, fix: 'snap', order: 4, lvl: 1.8, main: true });
+    const sh = Math.min(34, hg - w - 4), sx = sd / 2 - 5;
+    elec('speaker', { name: 'Speaker driver, 3 in full range 10 W', size: [sd, sd, sh], at: [0, 0, z2 - w - .3 - sh / 2], parent: 'grille', fix: 'screws', fixQty: 4, order: 3, dir: [0, 0, 1], lvl: 1.2 });
     add({ id: 'cap', name: 'Top cap', shape: 'cup', size: [D, D, ht], at: [0, 0, H - ht / 2], wall: w, open: '-', resin: 'PC/ABS', finish: 'SPI C-1 (matte)', draft: 1, undercuts: 0, fix: 'snap', order: 6, lvl: 3, main: true });
-    const tz = H - w - 7, tn = tz + .6;
+    const tz = H - w - 7, tn = tz + .6, k0 = [-D * .12 - 7, -D * .1 - 7], k4 = [[14, 0, 0], [14, 14, 0], [0, 14, 0]], tx = D / 2 - w - 12;
     add({ id: 'top', name: 'Top board (microphones, lights, buttons)', shape: 'pcb', size: [D - 2 * w - 6, D - 2 * w - 6, 1.2], r: D, at: [0, 0, tz], fix: 'screws', fixQty: 2, order: 5, parent: 'cap', lvl: 2.4 });
     elec('mic', { name: 'MEMS microphones, an array of four', qty: 4, at: [D * .3, 0, tn + .5], parent: 'top', order: 5, lvl: 2.4 }); elec('led', { name: 'LEDs (RGB) for the light ring', qty: 12, at: [0, D * .36, tn + .3], parent: 'top', order: 5, lvl: 2.4 });
-    elec('button', { name: 'Tact switches (action, mic off, volume up, down)', qty: 4, at: [-D * .12, -D * .1, tn + 1.75], parent: 'top', order: 5, lvl: 2.4 });
-    add({ id: 'ring', name: 'Light ring', shape: 'ring', size: [D - 2 * w - 1, D - 2 * w - 1, 3], at: [0, 0, H - ht + 2], wall: 1.6, resin: 'PMMA (acrylic)', finish: 'SPI A-2 (high gloss)', draft: .5, fix: 'press', order: 5, parent: 'cap', lvl: 2.2 });
-    add({ id: 'keys', name: 'Button caps', shape: 'cyl', size: [10, 10, 1.5], at: [-D * .12, -D * .1, H + .75], resin: 'silicone (LSR)', process: 'LSR moulding', qty: 4, fix: 'press', order: 7, lvl: 3.8 });
+    elec('button', { name: 'Tact switches (action, mic off, volume up, down)', qty: 4, spots: k4, at: [...k0, tn + 1.75], parent: 'top', order: 5, lvl: 2.4 });
+    add({ id: 'ring', name: 'Light ring', shape: 'ring', size: [D, D, 3], at: [0, 0, z2 + 1.5], wall: w + 1.6, resin: 'PMMA (acrylic)', finish: 'SPI A-2 (high gloss)', draft: .5, fix: 'press', order: 5, lvl: 2.2 });
+    add({ id: 'keys', name: 'Button caps', shape: 'cyl', size: [10, 10, H - (tn + 3.5)], at: [...k0, (H + tn + 3.5) / 2], resin: 'silicone (LSR)', process: 'LSR moulding', qty: 4, spots: k4, through: ['cap'], fix: 'press', order: 7, lvl: 3.8 });
+    boss('body', pb.map(q => [...q, pz - .8]), 2); boss('cap', [[-tx * .7, tx * .7, tn], [tx * .7, -tx * .7, tn]], 2);
+    screw('screws-board', 'Screw, M2 × 5 (main board)', 2, 5, 'z', pb.map(q => [...q, on + 1 - 2.5]), { parent: 'pcb', through: ['pcb'], lvl: 1.4 });
+    screw('screws-top', 'Screw, M2 × 5 (top board)', 2, 5, 'z', [[-tx * .7, tx * .7, tz - .6 - 1 + 2.5], [tx * .7, -tx * .7, tz - .6 - 1 + 2.5]], { parent: 'top', through: ['top'], dir: [0, 0, -1], lvl: 2 });
+    screw('screws-spk', 'Screw, M3 × 8 (driver)', 3, 8, 'z', [[-sx, 0], [sx, 0], [0, -sx], [0, sx]].map(q => [...q, z2 - 4]), { through: ['grille'], lvl: 2.2 });
   } else if (arch === 'powerbank') {
-    // a power bank: a pack of 18650 cells side by side, the controller board at one end with USB-C in and out, a four-LED fuel gauge behind
-    // its window and a button, in two PC/ABS shells
-    const n = Math.round(num(mah ? mah / 3000 : null, 2, 4, 3)), L = num(dims.d, 110, 200, 146), w = 1.8, W = Math.max(num(dims.w, 40, 100, 0), n * 18.6 + 2 * w + 3), H = num(dims.h, 22, 40, 25), hb = H / 2;
+    // a power bank: a pack of 18650 cells side by side, the controller board at one end on two screws that close the shells there, USB-C in
+    // and out through the end, a four-LED fuel gauge behind its window and a button under its cap, in two PC/ABS shells
+    const n = Math.round(num(mah ? mah / 3000 : undefined, 2, 4, 3)), L = num(dims.d, 110, 200, 146), w = 1.8, W = e2(Math.max(num(dims.w, 40, 100, 0), n * 18.6 + 2 * w + 3)), H = num(dims.h, 22, 40, 25), hb = e2(H / 2);
+    made = [Number(dims.w) > 0 ? num(dims.w, 40, 100, W) : W, L, H]; // a width asked for that the cells do not fit in is kept, so the size check says how much wider it came out
     add({ id: 'bottom', name: 'Bottom shell', shape: 'shell', size: [W, L, hb], r: 6, at: [0, 0, hb / 2], wall: w, open: '+', resin: 'PC/ABS', finish: 'MT-11010 (fine texture)', draft: 3, undercuts: 1, fix: 'place', order: 1, lvl: 0, main: true });
     const cy = -L / 2 + w + 2 + 32.5;
-    add({ id: 'cells', name: `Li-ion cells, ${n} × 18650, ${n * 3000} mAh (1S${n}P)`, shape: 'box', size: [n * 18.4, 65, 18], at: [0, cy, w + .4 + 9], resin: 'bought in', process: 'bought in', cost: r2(n * 1.7), fix: 'adhesive', order: 2, parent: 'bottom', elec: { kind: 'li18650', mah: n * 3000 }, lvl: .8 });
-    const by0 = cy + 32.5 + 4, by1 = L / 2 - w - 1, pl = by1 - by0, py = (by0 + by1) / 2, pz = w + 4, on = pz + .6;
-    add({ id: 'pcb', name: 'Main board', shape: 'pcb', size: [W - 2 * w - 1.5, pl, 1.2], at: [0, py, pz], fix: 'screws', fixQty: 2, order: 3, parent: 'bottom', lvl: 1.4 });
+    add({ id: 'cells', name: `Li-ion cells, ${n} × 18650, ${n * 3000} mAh (1S${n}P)`, shape: 'box', size: [n * 18.4, 65, 18], at: [0, cy, w + .2 + 9], resin: 'bought in', process: 'bought in', cost: r2(n * 1.7), fix: 'adhesive', order: 2, parent: 'bottom', elec: { kind: 'li18650', mah: n * 3000 }, lvl: .8 });
+    const by0 = cy + 32.5 + 4, by1 = L / 2 - w - 1, pl = by1 - by0, py = (by0 + by1) / 2, pz = w + 4, on = pz + .6, sxs = W / 2 - w - 4.5, sy = L / 2 - w - 12, sl = e2(Math.min(H - 5, 20));
+    add({ id: 'pcb', name: 'Main board', shape: 'pcb', size: [W - 2 * w - 1.5, pl, 1.2], r: 5, at: [0, py, pz], fix: 'screws', fixQty: 2, order: 3, parent: 'bottom', lvl: 1.4 });
     elec('pbms', { at: [-W * .18, py - pl * .1, on + .5], parent: 'pcb', order: 3, lvl: 1.4 }); elec('reg', { at: [W * .2, py - pl * .1, on + .5], parent: 'pcb', order: 3, lvl: 1.4 });
-    elec('usbc', { name: 'USB-C receptacles, in and out', qty: 2, at: [-W * .2, L / 2 - w - 3.75 + .2, on + 1.6], parent: 'pcb', order: 3, dir: [0, 1, 0], lvl: 1.4 });
+    elec('usbc', { name: 'USB-C receptacles, in and out', qty: 2, spots: [[W * .4, 0, 0]], at: [-W * .2, L / 2 - w - 3.75 + .2, on + 1.6], parent: 'pcb', order: 3, dir: [0, 1, 0], lvl: 1.4 });
     elec('led', { name: 'LEDs, fuel gauge', qty: 4, at: [W * .18, py - pl * .3, on + .3], parent: 'pcb', order: 3, lvl: 1.4 });
     elec('button', { at: [W * .18, py + pl * .15, on + 1.75], parent: 'pcb', order: 3, lvl: 1.4 });
-    add({ id: 'window', name: 'Fuel gauge window', shape: 'box', size: [12, 4, 1], r: 1, at: [W * .18, py - pl * .3, H - .5], resin: 'PMMA (acrylic)', finish: 'SPI A-2 (high gloss)', draft: .5, fix: 'adhesive', order: 7, lvl: 4.2 });
-    add({ id: 'key', name: 'Button cap', shape: 'cyl', size: [7, 7, 1.5], at: [W * .18, py + pl * .15, H + .75], resin: 'silicone (LSR)', process: 'LSR moulding', fix: 'press', order: 7, lvl: 4.2 });
+    add({ id: 'window', name: 'Fuel gauge window', shape: 'box', size: [12, 4, w], r: 1, at: [W * .18, py - pl * .3, H - w / 2], resin: 'PMMA (acrylic)', finish: 'SPI A-2 (high gloss)', draft: .5, through: ['top'], fix: 'adhesive', order: 7, lvl: 4.2 });
+    add({ id: 'key', name: 'Button cap', shape: 'cyl', size: [7, 7, H - (on + 3.5)], at: [W * .18, py + pl * .15, (H + on + 3.5) / 2], resin: 'silicone (LSR)', process: 'LSR moulding', through: ['top'], fix: 'press', order: 7, lvl: 4.2 });
     add({ id: 'top', name: 'Top shell', shape: 'shell', size: [W, L, H - hb], r: 6, at: [0, 0, hb + (H - hb) / 2], wall: w, open: '-', resin: 'PC/ABS', finish: 'MT-11010 (fine texture)', draft: 3, undercuts: 0, fix: 'snap', order: 6, lvl: 3.2, main: true });
-    add({ id: 'screws', name: 'Screw, M1.6 × 5', shape: 'cyl', size: [1.6, 1.6, 5], at: [0, L * .4, -2.5], resin: 'bought in', process: 'bought in', cost: .02, qty: 4, fix: 'screws', order: 8, dir: [0, 0, -1], lvl: 2 });
+    screw('screws', `Screw, M2 × ${Math.round(sl)} self-tapping`, 2, sl, 'z', [[-sxs, sy, sl / 2], [sxs, sy, sl / 2]], { parent: 'pcb', through: ['bottom', 'pcb'], dir: [0, 0, -1], lvl: 2 });
+    boss('bottom', [[-sxs, sy, pz - .6], [sxs, sy, pz - .6]], 2); boss('top', [[-sxs, sy, on], [sxs, sy, on]], 2);
   } else if (arch === 'lamp') {
 
     // a cordless table lamp: a weighted die-cast base closed by a plate, holding the cell, the board and the USB-C input; an aluminium
@@ -629,34 +692,41 @@ export function archetype(arch, dims = {}, { mah = null, radio = null, display =
     const rb = Db / 2 - w - 6, pb = [90, 200, 340].map(a => [rb * Math.cos(a * Math.PI / 180), rb * Math.sin(a * Math.PI / 180)]), bxs = [-(Db * .2 - 4), Db * .2 - 4], byy = -12.5;
     boss('base', [...pb.map(q => [...q, zb + 1.5]), ...bxs.map(x => [x, byy, pz + .8])], 3);
     screw('screws-plate', 'Screw, M3 × 8 (base plate)', 3, 8, 'z', pb.map(q => [...q, zb + 4]), { through: ['plate'], dir: [0, 0, -1], lvl: 3 });
-    screw('screws-board', 'Screw, M3 × 5 (board)', 3, 5, 'z', bxs.map(x => [x, byy, pz - .8 - 1 + 2.5]), { through: ['pcb'], dir: [0, 0, -1], lvl: 1.6 });
+    screw('screws-board', 'Screw, M3 × 5 (board)', 3, 5, 'z', bxs.map(x => [x, byy, pz - .8 - 1 + 2.5]), { parent: 'pcb', through: ['pcb'], dir: [0, 0, -1], lvl: 1.6 });
     screw('screws-led', 'Screw, M2 × 6 (LED board)', 2, 6, 'z', [[-13, 0, st - 4 + 3], [13, 0, st - 4 + 3]], { through: [led], dir: [0, 0, -1], lvl: 1.6 });
     screw('screws-shade', 'Screw, M3 × 6 countersunk (shade)', 3, 6, 'z', [[-12, 0, H - 3], [12, 0, H - 3]], { through: ['shade'], lvl: 3.8 });
   } else if (arch === 'tumbler') {
-    const D = num(dims.w, 50, 160, 88), H = num(dims.h, 80, 400, 180), w = 2.2, lh = 18;
-    add({ id: 'body', name: 'Cup body', shape: 'cup', size: [D, D, H - lh + 4], at: [0, 0, (H - lh + 4) / 2], wall: w, open: '+', resin: 'Tritan', finish: 'SPI A-2 (high gloss)', draft: 1, fix: 'place', order: 1, lvl: 0, food: true, main: true });
-    add({ id: 'gasket', name: 'Lid seal', shape: 'ring', size: [D - 2 * w + .6, D - 2 * w + .6, 4], at: [0, 0, H - lh + 1], wall: 2, resin: 'silicone (LSR)', process: 'LSR moulding', fix: 'press', order: 2, lvl: 1.5, food: true });
-    add({ id: 'lid', name: 'Lid', shape: 'cup', size: [D + 3, D + 3, lh], at: [0, 0, H - lh / 2], wall: 2, open: '-', resin: 'PP', finish: 'SPI C-1 (matte)', draft: 1.5, undercuts: 1, fix: 'press', order: 3, lvl: 2.5, food: true, main: true });
-    add({ id: 'slider', name: 'Sip slider', shape: 'box', size: [16, 22, 3], r: 3, at: [0, D * .22, H + 1.5], resin: 'PP', finish: 'SPI C-1 (matte)', draft: 1, undercuts: 1, fix: 'snap', order: 4, lvl: 3.4, food: true });
-    add({ id: 'straw', name: 'Straw', shape: 'ring', size: [8, 8, H + 20], at: [0, -D * .15, (H + 20) / 2 + 2], wall: .9, resin: 'Tritan', process: 'injection moulding', finish: 'SPI A-2 (high gloss)', draft: .5, fix: 'place', order: 5, lvl: 4.4, food: true });
-    add({ id: 'base', name: 'Base pad', shape: 'cyl', size: [D - 8, D - 8, 2], at: [0, 0, -1], resin: 'silicone (LSR)', process: 'LSR moulding', fix: 'press', order: 6, dir: [0, 0, -1], lvl: 1.2 });
+    // a tumbler: the cup on its base pad, a lid whose skirt comes down over the cup's rim with the seal squeezed between the rim and the
+    // lid, the straw through the lid, a slider over the sip opening. The width asked is the lid's, the height is to the straw's tip
+    const D = num(dims.w, 50, 160, 88), H = num(dims.h, 80, 400, 180), w = 2.2, lh = 18, Db = e2(D - 4.4), lt = H - 20, bt = lt - 4;
+    made = [D, D, H];
+    add({ id: 'body', name: 'Cup body', shape: 'cup', size: [Db, Db, bt - 2], at: [0, 0, 2 + (bt - 2) / 2], wall: w, open: '+', resin: 'Tritan', finish: 'SPI A-2 (high gloss)', draft: 1, fix: 'place', order: 1, lvl: 0, food: true, main: true });
+    add({ id: 'gasket', name: 'Lid seal', shape: 'ring', size: [Db, Db, 2], at: [0, 0, bt + 1], wall: w + 1, resin: 'silicone (LSR)', process: 'LSR moulding', fix: 'press', order: 2, lvl: 1.5, food: true });
+    add({ id: 'lid', name: 'Lid', shape: 'cup', size: [D, D, lh], at: [0, 0, lt - lh / 2], wall: 2, open: '-', resin: 'PP', finish: 'SPI C-1 (matte)', draft: 1.5, undercuts: 1, fix: 'press', order: 3, lvl: 2.5, food: true, main: true });
+    add({ id: 'slider', name: 'Sip slider', shape: 'box', size: [16, Math.min(22, D * .3), 3], r: 3, at: [0, D * .22, lt + 1.5], resin: 'PP', finish: 'SPI C-1 (matte)', draft: 1, undercuts: 1, fix: 'snap', order: 4, lvl: 3.4, food: true });
+    add({ id: 'straw', name: 'Straw', shape: 'ring', size: [8, 8, H - 2 - w - 1], at: [0, -D * .15, (H + 2 + w + 1) / 2], wall: .9, resin: 'Tritan', process: 'injection moulding', finish: 'SPI A-2 (high gloss)', draft: .5, through: ['lid'], fix: 'place', order: 5, lvl: 4.4, food: true });
+    add({ id: 'base', name: 'Base pad', shape: 'cyl', size: [Db - 8, Db - 8, 2], at: [0, 0, 1], resin: 'silicone (LSR)', process: 'LSR moulding', fix: 'press', order: 6, dir: [0, 0, -1], lvl: 1.2 });
   } else if (arch === 'case') {
-    const W = num(dims.w, 60, 800, 220), D = num(dims.d, 40, 600, 160), H = num(dims.h, 25, 400, 72), w = 2.5, hb = H * .7;
-    add({ id: 'base', name: 'Base', shape: 'shell', size: [W, D, hb], at: [0, 0, hb / 2], r: 10, wall: w, open: '+', resin: 'PP', finish: 'SPI D-2 (textured)', draft: 3, undercuts: 1, fix: 'place', order: 1, lvl: 0, main: true });
-    add({ id: 'foam', name: 'Foam insert', shape: 'box', size: [W - 2 * w - 1, D - 2 * w - 1, hb * .7], r: 6, at: [0, 0, w + .4 + hb * .35], resin: 'EVA foam', process: 'die cut', fix: 'place', order: 2, parent: 'base', lvl: 1.6 });
-    add({ id: 'lid', name: 'Lid', shape: 'shell', size: [W, D, H - hb], at: [0, 0, hb + (H - hb) / 2], r: 10, wall: w, open: '-', resin: 'PP', finish: 'SPI D-2 (textured)', draft: 3, undercuts: 1, fix: 'place', order: 3, lvl: 3, main: true });
-    add({ id: 'hinge', name: 'Hinge pin', shape: 'cyl', axis: 'x', size: [W * .8, 3, 3], at: [0, D / 2 + 2, hb], resin: 'stainless 304', process: 'bought in', cost: .12, qty: 1, fix: 'press', order: 4, dir: [0, 1, 0], lvl: 1.5 });
-    add({ id: 'latch', name: 'Latch', shape: 'box', size: [30, 3, 16], r: 1, at: [0, -D / 2 - 1.5, hb], resin: 'POM (acetal)', finish: 'SPI C-1 (matte)', draft: 1, undercuts: 1, fix: 'snap', order: 5, dir: [0, -1, 0], lvl: 1.5 });
-    add({ id: 'feet', name: 'Foot', shape: 'cyl', size: [12, 12, 2], at: [W * .38, D * .35, -1], resin: 'TPE', process: 'overmoulding', qty: 4, fix: 'moulded in', order: 6, dir: [0, 0, -1], lvl: 1.2 });
+    // a case: base and lid on four moulded-in feet, the hinge pin along the back and the latch on the front, inside the depth asked
+    const W = num(dims.w, 60, 800, 220), D = num(dims.d, 40, 600, 160), H = num(dims.h, 25, 400, 72), w = 2.5, zb = 2, Ds = e2(D - 6.4), hb = e2((H - zb) * .7), fx = W * .38, fy = Ds * .35;
+    made = [W, D, H];
+    add({ id: 'base', name: 'Base', shape: 'shell', size: [W, Ds, hb], at: [0, 0, zb + hb / 2], r: 10, wall: w, open: '+', resin: 'PP', finish: 'SPI D-2 (textured)', draft: 3, undercuts: 1, fix: 'place', order: 1, lvl: 0, main: true });
+    add({ id: 'foam', name: 'Foam insert', shape: 'box', size: [W - 2 * w - 1, Ds - 2 * w - 1, hb * .7], r: 6, at: [0, 0, zb + w + .2 + hb * .35], resin: 'EVA foam', process: 'die cut', fix: 'place', order: 2, parent: 'base', lvl: 1.6 });
+    add({ id: 'lid', name: 'Lid', shape: 'shell', size: [W, Ds, H - zb - hb], at: [0, 0, zb + hb + (H - zb - hb) / 2], r: 10, wall: w, open: '-', resin: 'PP', finish: 'SPI D-2 (textured)', draft: 3, undercuts: 1, fix: 'place', order: 3, lvl: 3, main: true });
+    add({ id: 'hinge', name: 'Hinge pin', shape: 'cyl', axis: 'x', size: [W * .8, 3, 3], at: [0, D / 2 - 1.5, zb + hb], resin: 'stainless 304', process: 'bought in', cost: .12, qty: 1, fix: 'press', order: 4, dir: [0, 1, 0], lvl: 1.5 });
+    add({ id: 'latch', name: 'Latch', shape: 'box', size: [Math.min(30, W * .4), 3.2, Math.min(16, (H - zb) * .5)], r: 1, at: [0, -D / 2 + 1.6, zb + hb], resin: 'POM (acetal)', finish: 'SPI C-1 (matte)', draft: 1, undercuts: 1, fix: 'snap', order: 5, dir: [0, -1, 0], lvl: 1.5 });
+    add({ id: 'feet', name: 'Foot', shape: 'cyl', size: [Math.min(12, W * .15), Math.min(12, W * .15), 2], at: [fx, fy, 1], resin: 'TPE', process: 'overmoulding', qty: 4, spots: [[-2 * fx, 0, 0], [-2 * fx, -2 * fy, 0], [0, -2 * fy, 0]], fix: 'moulded in', order: 6, dir: [0, 0, -1], lvl: 1.2 });
   } else if (arch === 'figure') {
-    const H = num(dims.h, 60, 600, 180), k = H / 185;
+    // a vinyl figure on its base: legs, body, arms and head each seated on the next (the plugs that join them are not drawn)
+    const H = num(dims.h, 60, 600, 180), k = H / 184;
+    made = [128 * k, 90 * k, H];
     add({ id: 'base', name: 'Display base', shape: 'cup', size: [90 * k, 90 * k, 12 * k], at: [0, 0, 6 * k], wall: 2.5, open: '-', resin: 'ABS', finish: 'SPI C-1 (matte)', draft: 1, fix: 'place', order: 1, lvl: 0 });
     add({ id: 'legs', name: 'Legs', shape: 'box', size: [44 * k, 26 * k, 46 * k], r: 10 * k, at: [0, 0, 12 * k + 23 * k], resin: 'soft PVC (vinyl)', process: 'rotocasting', finish: 'spray paint', fix: 'press', order: 2, lvl: 1, main: true });
-    add({ id: 'body', name: 'Body', shape: 'ball', size: [56 * k, 40 * k, 60 * k], at: [0, 0, 58 * k + 30.3 * k], resin: 'soft PVC (vinyl)', process: 'rotocasting', finish: 'spray paint', fix: 'press', order: 3, lvl: 2, main: true });
-    add({ id: 'arml', name: 'Left arm', shape: 'cyl', axis: 'x', size: [36 * k, 14 * k, 14 * k], at: [-46.6 * k, 0, 96 * k], resin: 'soft PVC (vinyl)', process: 'rotocasting', finish: 'spray paint', fix: 'press', order: 4, dir: [-1, 0, 0], lvl: 1.2 });
-    add({ id: 'armr', name: 'Right arm', shape: 'cyl', axis: 'x', size: [36 * k, 14 * k, 14 * k], at: [46.6 * k, 0, 96 * k], resin: 'soft PVC (vinyl)', process: 'rotocasting', finish: 'spray paint', fix: 'press', order: 4, dir: [1, 0, 0], lvl: 1.2 });
-    add({ id: 'head', name: 'Head', shape: 'ball', size: [74 * k, 66 * k, 66 * k], at: [0, 0, 118.9 * k + 33 * k], resin: 'soft PVC (vinyl)', process: 'rotocasting', finish: 'spray paint', fix: 'press', order: 5, lvl: 3, main: true });
-  } else add({ id: 'body', name: 'Body', shape: 'shell', size: [num(dims.w, 5, 2000, 100), num(dims.d, 5, 2000, 60), num(dims.h, 5, 2000, 40)], at: [0, 0, num(dims.h, 5, 2000, 40) / 2], r: 4, wall: 2, open: '+', resin: 'ABS', finish: 'SPI C-1 (matte)', draft: 1, order: 1, main: true });
+    add({ id: 'body', name: 'Body', shape: 'ball', size: [56 * k, 40 * k, 60 * k], at: [0, 0, 58 * k + 30 * k], resin: 'soft PVC (vinyl)', process: 'rotocasting', finish: 'spray paint', fix: 'press', order: 3, lvl: 2, main: true });
+    add({ id: 'arml', name: 'Left arm', shape: 'cyl', axis: 'x', size: [36 * k, 14 * k, 14 * k], at: [-46 * k, 0, 96 * k], resin: 'soft PVC (vinyl)', process: 'rotocasting', finish: 'spray paint', fix: 'press', order: 4, dir: [-1, 0, 0], lvl: 1.2 });
+    add({ id: 'armr', name: 'Right arm', shape: 'cyl', axis: 'x', size: [36 * k, 14 * k, 14 * k], at: [46 * k, 0, 96 * k], resin: 'soft PVC (vinyl)', process: 'rotocasting', finish: 'spray paint', fix: 'press', order: 4, dir: [1, 0, 0], lvl: 1.2 });
+    add({ id: 'head', name: 'Head', shape: 'ball', size: [74 * k, 66 * k, 66 * k], at: [0, 0, 118 * k + 33 * k], resin: 'soft PVC (vinyl)', process: 'rotocasting', finish: 'spray paint', fix: 'press', order: 5, lvl: 3, main: true });
+  } else { made = [num(dims.w, 5, 2000, 100), num(dims.d, 5, 2000, 60), num(dims.h, 5, 2000, 40)]; add({ id: 'body', name: 'Body', shape: 'shell', size: made, at: [0, 0, made[2] / 2], r: 4, wall: 2, open: '+', resin: 'ABS', finish: 'SPI C-1 (matte)', draft: 1, order: 1, main: true }); }
   return cleanAssembly({ arch, kind: ARCHES[arch]?.kind, ...(made ? { dims: { w: made[0], d: made[1], h: made[2] } } : {}), parts });
 }
 // the archetype a concept reads as, from its words (the designer's own words first)
@@ -832,6 +902,9 @@ function samplesOf(p, F) {
   if (!F.shell) { grid(F.w, F.d, F.r, F.u0); grid(F.w, F.d, F.r, F.u1); } else if (F.floor) { grid(F.w, F.d, F.r, F.u0); grid(F.w - 2 * F.t, F.d - 2 * F.t, Math.max(F.r - F.t, 0), F.uf); }
   for (const b of F.bosses) for (let i = 0; i < 8; i++) { const a = i / 8 * 2 * Math.PI; for (const R of [b.R, (b.R + b.rp) / 2]) pts.push([b.cx + R * Math.cos(a), b.cy + R * Math.sin(a), b.ue]); }
   for (const h of F.holes) for (const q of denser(holeLoop(h), 32, .5)) for (const u of F.shell ? [F.u0, F.uf] : [F.u0, F.u1]) pts.push([q[0], q[1], u]); // round each opening, where what passes through it comes nearest
+  // round each window in a side wall, just outside its edge, on both faces of the wall
+  for (const m of F.sides) for (const v of [m.a - .02, (m.a + m.b) / 2, m.b + .02]) for (const u of [m.ua - .02, (m.ua + m.ub) / 2, m.ub + .02]) for (const k of [0, F.t]) {
+    if (m.phi) pts.push([(F.w / 2 - k) * Math.cos(v), (F.d / 2 - k) * Math.sin(v), u]); else { const c = m.side * ((m.wall === 1 ? F.d : F.w) / 2 - k); pts.push(m.wall === 1 ? [v, c, u] : [c, v, u]); } }
   return pts.map(Wd).filter(w => inPart(p, F, w));
 }
 // an outline with points added along it, no further apart than its length over n (and no closer than lo)
@@ -856,7 +929,8 @@ function depthIn(p, F, w) {
 }
 // for tests and tools: is this point of the world in the part's material (its openings open, its bosses standing)?
 export const inMaterial = (p, w) => inPart(p, featuresOf(p), w);
-const boxOf = p => { const os = [[0, 0, 0], ...(p.spots || [])]; return { lo: p.size.map((v, k) => p.at[k] - v / 2 + Math.min(...os.map(o => o[k]))), hi: p.size.map((v, k) => p.at[k] + v / 2 + Math.max(...os.map(o => o[k]))) }; };
+// the box a part's material lies in: every piece of it, and its bosses where they stand past its rim
+const boxOf = p => { const os = [[0, 0, 0], ...(p.spots || [])], bs = (p.bosses || []).map(b => ({ c: b.at, r: Math.max(b.d * 1.2, b.d / 2 + 1.2) })); return { lo: p.size.map((v, k) => p.at[k] + Math.min(-v / 2, ...bs.map(b => b.c[k] - b.r)) + Math.min(...os.map(o => o[k]))), hi: p.size.map((v, k) => p.at[k] + Math.max(v / 2, ...bs.map(b => b.c[k] + b.r)) + Math.max(...os.map(o => o[k]))) }; };
 // everything the fit checks measure, by kind: { contact, clash, fasteners, size }, each a list of { id, level, kind, text, ... }
 export function fitOf(s) {
   const parts = s.parts, n = parts.length, F = parts.map(featuresOf), B = parts.map(boxOf), S = new Array(n), smp = i => S[i] || (S[i] = samplesOf(parts[i], F[i])), name = p => p.name, low = p => p.name.toLowerCase();
@@ -897,7 +971,7 @@ export function fitOf(s) {
   const screws = parts.filter(isScrew), fixed = parts.filter(p => p.fix === 'screws' && !isScrew(p)), need = fixed.reduce((t, p) => t + Math.max(1, p.fixQty) * p.qty, 0), have = screws.reduce((t, p) => t + p.qty, 0);
   if (need !== have) say('fasteners', (screws[0] || fixed[0]).id, 'warn', `Screws: the parts fixed by screws ask for ${need} (${fixed.map(p => `${low(p)} ${Math.max(1, p.fixQty) * p.qty}`).join(', ') || 'none'}) and the parts list carries ${have}${screws.length ? ` (${screws.map(p => `${p.name} × ${p.qty}`).join(', ')})` : ''}. Make them agree.`, { need, have });
   let loose = 0; for (const sc of screws) { const i0 = parts.indexOf(sc), ax = sc.size.indexOf(Math.max(...sc.size)), L = sc.size[ax], N = Math.max(8, Math.ceil(L / .1));
-    [[0, 0, 0], ...(sc.spots || [])].forEach((o, pc) => { const len = {}; for (let k = 0; k < N; k++) { const w = sc.at.map((v, q) => v + o[q]); w[ax] += -L / 2 + L * (k + .5) / N; for (let j = 0; j < n; j++) if (j !== i0 && !isScrew(parts[j]) && w.every((v, q) => v >= B[j].lo[q] - 50 && v <= B[j].hi[q] + 50) && inPart(parts[j], F[j], w, true)) len[j] = (len[j] || 0) + L / N; }
+    [[0, 0, 0], ...(sc.spots || [])].forEach((o, pc) => { const len = {}, o2 = [0, 1, 2].filter(q => q !== ax), rr = Math.min(sc.size[o2[0]], sc.size[o2[1]]) * .45; for (let k = 0; k < N; k++) { const c = sc.at.map((v, q) => v + o[q]); c[ax] += -L / 2 + L * (k + .5) / N; for (let j = 0; j < n; j++) { if (j === i0 || isScrew(parts[j]) || c.some((v, q) => v < B[j].lo[q] - 5 || v > B[j].hi[q] + 5)) continue; if ([[0, 0], [rr, 0], [-rr, 0], [0, rr], [0, -rr]].some(([a, b]) => { const w = [...c]; w[o2[0]] += a; w[o2[1]] += b; return inPart(parts[j], F[j], w, true); })) len[j] = (len[j] || 0) + L / N; } }
       const thru = Object.keys(len).filter(j => len[j] >= .5); if (thru.length >= 2) return; loose++;
       say('fasteners', sc.id, 'warn', `${sc.name}${sc.spots?.length ? ` (piece ${pc + 1} of ${sc.qty})` : ''}: goes through ${thru.length ? `only ${low(parts[thru[0]])} (${r1(len[thru[0]])} mm of its ${L} mm)` : 'no part at all'}; a screw joins two parts. Put it through the part it holds and into the part that takes its thread.`, { through: thru.map(j => parts[j].id), piece: pc + 1 }); }); }
   if (screws.length && need === have && !loose) say('fasteners', screws[0].id, 'ok', `Screws: ${have} on the parts list for the ${need} the parts ask for, each through two parts.`);
@@ -948,6 +1022,8 @@ export function dfm(s) {
     if (p.fix === 'moulded in' || p.fix === 'solder' || p.small === false) continue; const d = [...p.size].sort((a, b) => a - b);
     if (d[0] <= SMALL.d && d[1] <= SMALL.d && d[2] <= SMALL.h) say(p.id, s.age === '0+' ? 'bad' : 'warn', s.age === '0+' ? `${p.name}: fits the small-parts cylinder (${SMALL.d} × ${SMALL.h} mm): not allowed for under-3s if it can come off (16 CFR 1501, EN 71-1). Make it larger or fix it so it passes the torque and tension tests.` : `${p.name}: a small part; label "Choking hazard: small parts. Not for children under 3 years" (16 CFR 1500.19).`);
   }
+  // do the parts go together: clash by outline, contact, fasteners and size, measured off the parts as built (fitOf)
+  const fit = fitOf(s); out.push(...fit.clash, ...fit.contact, ...fit.fasteners, ...fit.size);
   if (s.kind === 'electronics') out.push(...elecChecks(s));
   return out;
 }

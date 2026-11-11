@@ -2012,7 +2012,7 @@ screen, the drawing and the files agree. Routes: `src/lab-assembly-routes.js`; s
   jack, tact switches, LEDs, encoders, a glowing VFD and screens, the battery pouch with its label and protection board, AA cells with
   springs, woofer and tweeter (basket, cone, surround, dust cap, spider, magnet; silk dome), the class-D board and heatsink, the open-frame
   supply (transformer, capacitors, fuse), the CD loader with an iridescent disc, the tape transport with a cassette in it; housings with
-  bevelled edges and the bosses and ribs inside, clear parts that transmit light, brushed and anodised metal, painted steel, MDF grain, grille
+  bevelled edges and their screw bosses where the engineering has them, clear parts that transmit light, brushed and anodised metal, painted steel, MDF grain, grille
   cloth, knurled knobs, screws with threads. A socket faces the nearest outside wall, a part on a board faces away from it. The first view
   looks across the way the parts pull apart. **Zoom to part** closes in on the chosen part; **Files → Picture of this view** saves a PNG.
   Drag to turn, pinch or scroll to zoom, two fingers to move, double-click to reset. **Explode it** or the slider
@@ -2025,6 +2025,23 @@ screen, the drawing and the files agree. Routes: `src/lab-assembly-routes.js`; s
 - **Checks.** Wall against the resin's range (ribs and bosses sized from it), draft for the finish (3° for a texture), undercuts, clear parts
   without an SPI A polish, solid sections that will sink, parts over 600 mm, food contact (PP, Tritan, PETG, LSR, 304), each part inside its
   housing with clearance (a housing and the half that closes it are one space), two parts in one space, and small parts for under-3s.
+- **Do the parts go together** (`fitOf`, part of `dfm`). Measured off the parts as they are built (outlines, walls, floors, openings, bosses,
+  every piece of a part with a quantity), not from the sums that placed them. Each finding carries its `kind` and its number:
+  - `clash` (fix before tooling): a part 0.25 mm or more into another's material where there is no opening: a rectangular cell in a round
+    housing, a board corner in a rounded corner, a part through a wall. A soft part (silicone, TPE, TPU, foam, vinyl) may be squeezed up
+    to 1.5 mm; screws and moulded-in parts are left out.
+  - `contact` (watch): a part, or a group of parts, that touches nothing else within 0.5 mm, with how far the nearest part is.
+  - `fasteners` (watch): the screws on the parts list against what the screw-fixed parts ask for (`fixQty` × quantity), and each screw
+    through two parts.
+  - `size` (watch): the size the parts make against the size asked for at **Start from…** (kept on the assembly as `dims`), over 0.5 mm.
+- **Openings, bosses and screws.** A part says what it passes `through` (a key through its cover, a shaft through a panel, a screw through
+  a board) and the opening is cut there with 0.2 mm round it, worked out each time so it follows the part; sockets and clear windows get
+  theirs without being told. A part with a quantity can list where its other pieces are (`spots`). A housing carries screw `bosses` on its
+  floor. Screws are parts: one line a kind, every position listed, lying through the part held and into the part that takes the thread.
+  Openings and bosses are in the part's solid: its STL, and its STEP as exact faces (holes through a floor or a solid part, and bosses;
+  windows in a housing's side walls are in the STL only for now). The 3D view shows floor openings and bosses.
+- **Starting points are built inside the size asked**, feet, keys, knobs and hinges included, from the table up. A size that cannot hold its
+  parts (a 25 × 50 × 8 mm handheld, a cell asked for that is larger than its housing) still builds, and the checks say what does not fit.
 - **Electronics.** The parts on the board are parts like any other. The page adds the block diagram (power → the main chip → what it drives,
   each line named by its bus), the power budget (run time, standby, charge time, Wh; the share of time each part is on can be set), the board
   (size, layers, how full, placements, fab and SMT cost), the USB-C port at the wall, the radio clear of the battery and of metal, the heat
@@ -2037,7 +2054,8 @@ screen, the drawing and the files agree. Routes: `src/lab-assembly-routes.js`; s
   button shows or hides them. The drawing carries them too.
 - **Parts that open.** A CD loader's tray, with the disc on it, slides out toward the product's front (`frontOf`: the way its front panel
   looks) as the view pulls apart, so the laser sled on its rails and the spindle show; the exploded STL and drawing show it open.
-- **The board's fixing.** Its mounting holes are cut through (M3 clearance), each with a pan-head screw on a brass hex standoff.
+- **The board's fixing.** Its mounting holes are where its screws pass through it; the screws, and the standoffs under a board on steel or
+  MDF, are parts on the list, as many as the board says it is fixed by.
 - **Design it from the concept** (Start from…, `src/lab-assembly-compose.js`): for a product none of the starting points fit (a bike light,
   a drone, a kettle), Claude lays out every part from the concept's picture and words in the engine's own terms (its shapes, materials,
   processes, finishes and electronic parts, with its rules for units, placement, walls and draft), so it is checked, wired, costed and
