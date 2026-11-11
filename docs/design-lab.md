@@ -2034,12 +2034,32 @@ screen, the drawing and the files agree. Routes: `src/lab-assembly-routes.js`; s
   - `fasteners` (watch): the screws on the parts list against what the screw-fixed parts ask for (`fixQty` × quantity), and each screw
     through two parts.
   - `size` (watch): the size the parts make against the size asked for at **Start from…** (kept on the assembly as `dims`), over 0.5 mm.
+  Contact, fasteners and size stay at watch, not fix before tooling. Measured on the 15 starting assemblies as they were saved before they
+  were rebuilt: 12 have a contact or fastener finding (38 contact findings, 27 of them a gap of 2 mm or less: drawn loosely, not a part
+  missing), so every such saved assembly would turn red and lose up to 30 review points for what a parts list or a nudge puts right; a
+  part just added with **Add part** starts 20 mm outside the product; and the size asked goes stale when a designer resizes a housing on
+  purpose. On the 60 assemblies the starting points make today none of the three is raised, so a clash (a part in another's material)
+  is the one that blocks.
 - **Openings, bosses and screws.** A part says what it passes `through` (a key through its cover, a shaft through a panel, a screw through
   a board) and the opening is cut there with 0.2 mm round it, worked out each time so it follows the part; sockets and clear windows get
-  theirs without being told. A part with a quantity can list where its other pieces are (`spots`). A housing carries screw `bosses` on its
+  theirs without being told. A part with a quantity can list where its other pieces are (`spots`). A round solid part can have a `flange`
+  (a speaker driver's: full width for a few millimetres at one end, a narrower body behind), so it lies on a baffle's face, goes through
+  with its body, and its screws go through the flange into the baffle. A housing carries screw `bosses` on its
   floor. Screws are parts: one line a kind, every position listed, lying through the part held and into the part that takes the thread.
-  Openings and bosses are in the part's solid: its STL, and its STEP as exact faces (holes through a floor or a solid part, and bosses;
-  windows in a housing's side walls are in the STL only for now). The 3D view shows floor openings and bosses.
+  On the page, the chosen part's editor has **Passes through** (up to three parts), the places of its other pieces when its quantity is
+  over one, and for a housing its screw bosses (**Add a screw boss**: x, y, z of the free end from the part's centre, and the screw's
+  diameter); it also says which openings are cut in the part and for what.
+  Openings and bosses are in the part's solid: its STL, and its STEP as exact faces (holes through a floor or a solid part, bosses, and
+  windows in a housing's side walls with their sides, sill and head, a notch where one reaches the rim). The 3D view shows them too: a
+  housing with a window in a side wall is drawn from its solid.
+- **An assembly saved before these rules** (it carries no `v`; a starting point or a design from a concept made now carries `v: 2`) is read as
+  it was meant when it is opened: a part that plainly goes through a wall (in on one side and out on the other or flush with the far
+  face, much narrower than the wall, and not a part that sits inside that housing) gets its opening, worked out each time and never written
+  into the saved parts. On the 15 starting assemblies as they were saved before, that clears 9 of 17 clash findings (the cassette's keys,
+  the speaker's drivers and port, the lamp's stem, the tumbler's straw); the 8 left are misfits the old drawings really had, and say so:
+  board corners in rounded housing corners (handheld, power bank), the cassette's cell holder in a corner, the tumbler lid 0.5 mm into
+  the cup, the turntable's plate and pillar sunk into the plinth, the headphones' square baffles in oval cups. Give the board a corner
+  radius or move the part on the page, or start the piece again from its starting point.
 - **Starting points are built inside the size asked**, feet, keys, knobs and hinges included, from the table up. A size that cannot hold its
   parts (a 25 × 50 × 8 mm handheld, a cell asked for that is larger than its housing) still builds, and the checks say what does not fit.
 - **Electronics.** The parts on the board are parts like any other. The page adds the block diagram (power → the main chip → what it drives,

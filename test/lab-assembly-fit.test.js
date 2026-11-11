@@ -80,6 +80,12 @@ test('the checks catch each fault made on purpose, each by the check that is abo
   c = kinds(edit('handheld', s => { s.parts = s.parts.filter(p => p.id !== 'screws'); }), 'fasteners', 'warn'); assert.equal(c.length, 1); assert.equal(c[0].need, 4); assert.equal(c[0].have, 0); assert.match(c[0].text, /ask for 4 .* carries 0/);
   c = kinds(edit('puck', (s, P) => { P('screws').qty = 2; }), 'fasteners', 'warn'); assert.ok(c.some(x => x.need === 5 && x.have === 4));
   c = kinds(edit('desk', (s, P) => { P('screws').at[1] += 12; }), 'fasteners', 'warn'); assert.ok(c.length >= 1 && c.every(x => /a screw joins two parts/.test(x.text)), c.map(x => x.text).join(' | '));
+  // a speaker driver has a flange: it lies on the baffle's face, the body goes through, and the screws go through the flange into the baffle.
+  const spk = cleanAssembly(archetype('speaker')), wf = spk.parts.find(p => p.elec?.kind === 'woofer'), bf = spk.parts.find(p => p.id === 'baffle'), sd = spk.parts.find(p => p.id === 'screws-drivers');
+  assert.deepEqual(wf.flange, { body: 106.6, t: 4, end: '-' }); assert.ok(Math.abs(bf.cuts.find(x => x.for === wf.id).size[0] - 107) < .01, 'the opening is the body\'s, not the flange\'s');
+  const mid = [sd.at[0], 0, sd.at[2]]; assert.equal(inMaterial(wf, [mid[0], wf.at[1] - wf.size[1] / 2 + 2, mid[2]]), true, 'the screw is in the flange'); assert.equal(inMaterial(wf, [mid[0], wf.at[1], mid[2]]), false, 'and beside the body behind it');
+  assert.equal(inMaterial(bf, [mid[0], bf.at[1], mid[2]]), true, 'and in the baffle'); assert.equal(kinds(spk, 'fasteners', 'warn').length, 0);
+  const bare = cleanAssembly(edit('speaker', s => { for (const q of s.parts) delete q.flange; })).parts.find(q => q.id === 'baffle'); assert.equal(inMaterial(bare, [mid[0], bare.at[1], mid[2]]), false, 'with no flange the opening is as wide as the driver, and the same screw would be in the opening, not in the baffle');
   // a part hung outside the size asked
   c = kinds(edit('desk', (s, P) => { P('feet').at[2] -= 3; }), 'size', 'warn'); assert.equal(c.length, 1); assert.match(c[0].text, /3 mm more tall/); assert.deepEqual(c[0].asked, [140, 70, 86]);
   // a part with no parent and a part with several pieces are measured like any other
@@ -117,4 +123,57 @@ test('the files: a made part\'s STL is its one closed solid, and its STEP carrie
   const baffle = stepOf(sp, { only: 'baffle' }), slab = stepOf(plain, { only: 'baffle' });
   assert.equal(count(baffle, /CYLINDRICAL_SURFACE\(/g) - count(slab, /CYLINDRICAL_SURFACE\(/g), 4, 'the woofer\'s and the tweeter\'s openings, two half-cylinders each'); assert.equal(count(baffle, /FACE_BOUND\(/g), 4, 'two openings in each face of the baffle');
   const hh = cleanAssembly(archetype('handheld')), bottom = stepOf(hh, { only: 'bottom' }); assert.ok(shut(bottom)); assert.ok(count(bottom, /CYLINDRICAL_SURFACE\(/g) >= 4 + 4 * 4, 'four bosses, each bored through the floor for its screw');
+  // a window in a side wall (the USB-C port's notch in the end of each shell) is in the STEP and in the 3D view, as it is in the STL
+  const bot = hh.parts.find(q => q.id === 'bottom'), usb = hh.parts.find(q => q.elec?.kind === 'usbc'), win = bot.cuts.find(c => c.for === usb.id); assert.equal(win.axis, 'y');
+  assert.equal(inMaterial(bot, [usb.at[0], bot.at[1] - bot.size[1] / 2 + bot.wall / 2, usb.at[2] - 1]), false, 'the end wall is open where the port is'); assert.equal(inMaterial(bot, [usb.at[0] + 12, bot.at[1] - bot.size[1] / 2 + bot.wall / 2, usb.at[2] - 1]), true);
+  const noPort = stepOf({ ...hh, parts: hh.parts.filter(q => q.id !== usb.id) }, { only: 'bottom' }); assert.ok(shut(noPort));
+  assert.ok(count(bottom, /ADVANCED_FACE\(/g) >= count(noPort, /ADVANCED_FACE\(/g) + 3, 'the notch adds its two sides and its sill, and splits the walls at its height');
+  const { realMeshes } = await import('../src/lab-parts-mesh.js'), drawn = realMeshes(hh);
+  for (const id of ['bottom', 'top']) { assert.equal(drawn[id].length, 1, `${id}: drawn from its solid`); assert.ok(closed(drawn[id][0].tri), `${id}: the drawn housing is closed, its window cut`); }
+  let windows = 0, written = 0; for (const a of Object.keys(ARCHES)) { const s = cleanAssembly(archetype(a)); for (const q of s.parts) { const side = (q.cuts || []).filter(c => c.axis !== q.axis).length; if (!side) continue; windows += side;
+    const mine = stepOf(s, { only: q.id }), alone = stepOf(cleanAssembly({ ...s, parts: [{ ...q, cuts: undefined }] })); assert.ok(shut(mine), `${a}: ${q.name}`); if (count(mine, /ADVANCED_FACE\(/g) > count(alone, /ADVANCED_FACE\(/g)) written++; } } // alone: the part with nothing passing through it
+  assert.ok(windows >= 60 && written >= 15, `${windows} windows in side walls over the starting assemblies, in ${written} housings' STEP`);
+});
+
+test('the bike light the journeys design from a concept really is clear: nothing floating, its screws through the board into bosses, its lens and key through their walls', async () => {
+  const { readFileSync } = await import('node:fs'), { composeAssembly } = await import('../src/lab-assembly-compose.js');
+  const answers = JSON.parse(readFileSync(new URL('../scripts/journeys/fixtures/assembly-compose.json', import.meta.url), 'utf8')); let i = 0;
+  const r = await composeAssembly({ concept: { name: 'Bike front light', category: 'electronics' }, ask: async () => answers[i++] });
+  assert.equal(r.status, 'clear'); assert.equal(r.spec.parts.length, 14); assert.deepEqual(notOk(fitOf(r.spec)).map(c => `${c.kind}: ${c.text}`), [], 'no clash, contact, fastener or size finding at any level');
+  const by = Object.fromEntries(r.spec.parts.map(p => [p.id, p])); assert.equal(by.body.bosses.length, 2); assert.equal(by.screws.qty, 2); assert.ok(by.top.cuts.some(c => c.for === 'key') && by.body.cuts.some(c => c.for === 'lens') && by.top.cuts.some(c => c.for === 'lens'));
+  // as it was drawn before (a cell 1.1 mm off the floor, an LED module 0.7 mm from the wall and 5.5 mm from all else, four screws in mid-air), the contact and fastener checks say so
+  const old = JSON.parse(JSON.stringify(answers[1])), P = id => old.parts.find(p => p.id === id); P('battery').at = [0, -16, 6.4]; P('led').at = [0, 41, 17]; Object.assign(P('screws'), { at: [12, 30, 26], qty: 4, spots: undefined, through: undefined, parent: undefined }); delete P('body').bosses;
+  const f = fitOf(cleanAssembly({ arch: 'custom', kind: 'electronics', parts: old.parts })), ids = f.contact.filter(c => c.level === 'warn').flatMap(c => c.parts);
+  assert.ok(['battery', 'led', 'screws', 'pcb'].every(id => ids.includes(id)), `floating: ${ids.join(', ')}`); assert.ok(f.fasteners.some(c => c.level === 'warn' && c.need === 2 && c.have === 4));
+});
+
+test('the Engineering page lets a person set what a part passes through, where its other pieces are and a housing\'s bosses', async () => {
+  const { readFileSync } = await import('node:fs'), A = await import('../src/lab-assembly.js'), html = readFileSync(new URL('../src/lab-engineer.html', import.meta.url), 'utf8');
+  // the editor's markup, rendered here with the page's own function and the engine's lists
+  const SPEC = archetype('handheld'), esc = s => String(s ?? '').replace(/[&<>"]/g, c => `&#${c.charCodeAt(0)};`), opt = (l, v) => l.map(x => (Array.isArray(x) ? x : [x, x])).map(([k, t]) => `<option value="${k}"${k === v ? ' selected' : ''}>${t}</option>`).join('');
+  const D = { options: { processes: Object.keys(A.PROCESSES), finishes: A.FINISHES, fixes: Object.keys(A.FIXES) } }, SHAPES = A.SHAPES, RESINS = A.RESINS; void SPEC; void esc; void opt; void D; void SHAPES; void RESINS;
+  const editor = eval(`(${html.slice(html.indexOf('function editor(p){'), html.indexOf('function wireEditor(){')).replace('function editor(p){', 'function(p){')})`), P = id => SPEC.parts.find(p => p.id === id), n = (h, re) => (h.match(re) || []).length;
+  const housing = editor(P('bottom')), screws = editor(P('screws')), keypad = editor(P('keypad'));
+  assert.equal(n(housing, /data-boss-del=/g), 4, 'a row for each of the housing\'s four bosses'); assert.equal(n(housing, /data-k="boss\d_[012]"/g), 12); assert.equal(n(housing, /data-k="bossd\d"/g), 4); assert.match(housing, /data-act="boss"/); assert.match(housing, /Openings cut in this part: \d+ \(for /);
+  assert.equal(n(screws, /data-k="spot\d_[012]"/g), 9, 'three other screws, each with its place'); assert.equal(n(screws, /data-k="thru[012]"/g), 3); assert.ok(/<option value="bottom" selected>/.test(screws) && /<option value="pcb" selected>/.test(screws), 'what it passes through is chosen');
+  assert.match(keypad, /<option value="top" selected>/); assert.ok(!/data-k="spot/.test(keypad) && !/data-act="boss"/.test(keypad), 'no pieces or bosses for a single keypad');
+  for (const k of ['thru[012]', 'spot\\d+_[012]', 'boss\\d+_[012]', 'bossd\\d+']) assert.ok(html.includes(`/^${k}$/.test(k)`), `the page sets ${k}`);
+  assert.ok(html.includes('p.cuts,p.bosses,p.flange'), 'the 3D part is rebuilt when its openings or bosses change');
+});
+
+test('an assembly saved before parts said what they pass through: a part plainly through a wall gets its opening when it is opened, the saved parts are not rewritten, and a real misfit still shows', () => {
+  const strip = s => { const c = JSON.parse(JSON.stringify(s)); delete c.v; return c; }, bads = s => dfm(cleanAssembly(s)).filter(c => c.level === 'bad').map(c => `${c.id}: ${c.text}`);
+  // as it would have been saved: no `v`, and the caps do not say they go through the plinth
+  const saved = strip(archetype('turntable')); delete saved.parts.find(p => p.id === 'caps').through; const opened = cleanAssembly(saved);
+  assert.equal(opened.v, undefined); assert.equal(opened.parts.find(p => p.id === 'caps').through, undefined, 'nothing is written into the saved part');
+  assert.equal(opened.parts.find(p => p.id === 'plinth').cuts.filter(c => c.for === 'caps').length, 3, 'an opening for each of the three caps'); assert.deepEqual(bads(saved), []);
+  assert.ok(bads({ ...saved, v: 2 }).some(t => /^caps: Button caps goes [\d.]+ mm into/.test(t)), 'made today, the same part has to say it passes through');
+  // the old cassette player's keys, a hollow cap through the top of both halves
+  const tape = strip(archetype('cassette')); delete tape.parts.find(p => p.id === 'keys').through; assert.deepEqual(bads(tape), []); assert.ok(cleanAssembly(tape).parts.find(p => p.id === 'back').cuts.some(c => c.for === 'keys'));
+  // what only digs into a wall, what sits inside its housing, and a lid a size too small are not read as passing through
+  const sunk = strip(archetype('turntable')); sunk.parts.find(p => p.id === 'hinge').at[2] -= 4; assert.ok(bads(sunk).some(t => /^hinge: /.test(t)), 'a hinge sunk 4 mm into the plinth');
+  const cell = strip(archetype('puck')); cell.parts.find(p => p.id === 'battery').size = [60, 88, 6]; assert.ok(bads(cell).some(t => /^battery: .* into the wall of bottom housing/.test(t)), 'a cell through its own housing\'s wall');
+  const lid = strip(archetype('tumbler')); lid.parts.find(p => p.id === 'body').size[0] = lid.parts.find(p => p.id === 'body').size[1] = 88; lid.parts.find(p => p.id === 'lid').size = [91, 91, 18]; assert.ok(bads(lid).some(t => /0\.5 mm into the material/.test(t)), 'the lid 0.5 mm into the cup');
+  for (const a of Object.keys(ARCHES)) assert.deepEqual(bads(strip(archetype(a))), [], `${a}: read under the old rules, today's assembly is still clean`);
+  assert.equal(archetype('puck').v, 2); assert.equal(cleanAssembly({ ...archetype('puck'), v: 7 }).v, 2);
 });
