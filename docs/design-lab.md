@@ -1791,7 +1791,7 @@ It is checked on the Pattern page (Sews together), in the factory package and on
 ## Plush tech flats: the toy as it will be made
 
 A plush's product view on the Pattern page, and **Tech flats (SVG)** under Files (`GET /v1/lab/concepts/:id/flats.svg`, 1:1 in inches), draw it
-from the front, the back and the side as it is when stuffed and sewn (`src/lab-plush-views.js`), from the same sizes the pattern is drafted to:
+from the front, the back and the side as it is when stuffed and sewn (`src/lab-plush-views.js`), from the same sizes the pattern is drafted to. A toy with no legs, or with a bigger or smaller head, is drafted larger or smaller so that it still measures the height asked for, and its drawing is scaled the same way: its body, from the side, is as tall as the usual toy of its type is drawn. The views:
 
 - **Bear:** the head with the gusset's two seams over the crown, round, pointed or long ears with the inner ear in contrast, the muzzle in
   contrast with an embroidered nose and mouth, arms at the shoulders and legs under the body (their seams), from the side the head's profile

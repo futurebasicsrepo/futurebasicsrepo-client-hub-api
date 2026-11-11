@@ -84,7 +84,7 @@ function heightCallout(d, b, h) { const x = b.x0 - .7; d.raw(`<path d="M${r3(x)}
 
 // ---- the bear ----
 function bear(pat, C, view) {
-  const s = pat.spec, h = s.height, hh = h * .42 * (s.head || 1), hw = hh * 1.05, bh = h * .44, bw = bh * .78, legH = h * .26, armL = h * .3, y0 = hh * .92, d = painter(pat, C), all = [];
+  const s = pat.spec, h = pat.drawAt || s.height, hh = h * .42 * (s.head || 1), hw = hh * 1.05, bh = h * .44, bw = bh * .78, legH = h * .26, armL = h * .3, y0 = hh * .92, d = painter(pat, C), all = [];
   const ear = s.ears !== 'none' ? (s.ears === 'long' ? .22 : .32) * hh : 0, mzk = { none: 0, short: 1, long: 1.4, broad: 1.4 }[s.snout || 'short'];
   if (view === 'side') {
     // the bear from its left, facing left, in the round: what is on its far side first, a tone deeper (the far ear ahead of the near one on
@@ -125,7 +125,7 @@ function bear(pat, C, view) {
   // front and back: the legs behind the body, the arms at the shoulders, the head over the neck
   const head = sym([[0, 0], [hw * .3, hh * .03], [hw * .44, hh * .2], [hw * .5, hh * .5], [hw * .44, hh * .8], [hw * .26, hh * .96], [0, hh]]);
   const body = sym([[0, y0 - hh * .04], [bw * .3, y0], [bw * .46, y0 + bh * .18], [bw * .54, y0 + bh * .6], [bw * .46, y0 + bh * .9], [bw * .2, y0 + bh], [0, y0 + bh * 1.01]].map(([x, y]) => [x * (view === 'back' ? 1.04 : 1), y]));
-  for (const sg of [1, -1]) { const top = [sg * bw * .24, y0 + bh * .7], foot = [sg * bw * .27, h - legH * .2]; const leg = chaikin([...capsule(top, foot, legH * .3, legH * .32)], 1); d.shape(leg); all.push(...leg);
+  if (s.legs !== false) for (const sg of [1, -1]) { const top = [sg * bw * .24, y0 + bh * .7], foot = [sg * bw * .27, h - legH * .2]; const leg = chaikin([...capsule(top, foot, legH * .3, legH * .32)], 1); d.shape(leg); all.push(...leg);
     if (view === 'front') d.seam(capsule(top, foot, legH * .16, legH * .18).slice(0, 11), false); }
   if (ear) for (const sg of [1, -1]) { const e = earShape(s.ears, ear, sg * hw * .36, hh * .14, sg * .45); d.shape(e.out); if (view === 'front') d.shape(e.inner, C.contrast, .02); all.push(...e.out); }
   if (s.wings) for (const sg of [1, -1]) all.push(...wingPart(d, C, [sg * bw * .2, y0 + bh * .2], h * .4, sg, view === 'front' ? shade(C.body, .8) : C.body));
@@ -150,7 +150,7 @@ function bear(pat, C, view) {
 }
 // ---- the bean and the bunny ----
 function bean(pat, C, view) {
-  const s = pat.spec, h = s.height, w = h * .7, d = painter(pat, C), all = [], ears = s.ears !== 'none', ew = h * (s.ears === 'long' ? .13 : .2);
+  const s = pat.spec, h = pat.drawAt || s.height, w = h * .7, d = painter(pat, C), all = [], ears = s.ears !== 'none', ew = h * (s.ears === 'long' ? .13 : .2);
   if (view === 'side') {
     const dep = w * .62, body = chaikin([[0, h * .02], [dep * .32, h * .06], [dep * .5, h * .4], [dep * .52, h * .84], [dep * .36, h], [-dep * .4, h], [-dep * .56, h * .84], [-dep * .54, h * .4], [-dep * .34, h * .06]], 3);
     if (ears) { const e = earShape(s.ears, ew * .45, 0, h * .06, -.08); d.shape(e.out); all.push(...e.out); }
@@ -182,7 +182,7 @@ function bean(pat, C, view) {
 }
 // ---- the pillow character ----
 function pillow(pat, C, view) {
-  const s = pat.spec, h = s.height, w = h * .82, d = painter(pat, C), all = [], ears = s.ears !== 'none', ew = h * .22;
+  const s = pat.spec, h = pat.drawAt || s.height, w = h * .82, d = painter(pat, C), all = [], ears = s.ears !== 'none', ew = h * .22;
   if (view === 'side') {
     // the side gusset sets its depth; filled, it is thickest in the middle
     const dep = s.depth, bulge = Math.min(h * .12, dep * .5), side = chaikin([[0, 0], [dep / 2 + bulge * .3, h * .04], [dep / 2 + bulge, h * .5], [dep / 2 + bulge * .3, h * .96], [0, h], [-dep / 2 - bulge * .3, h * .96], [-dep / 2 - bulge, h * .5], [-dep / 2 - bulge * .3, h * .04]], 3);
@@ -200,7 +200,7 @@ function pillow(pat, C, view) {
 
 // ---- the elephant, sitting ----
 function elephant(pat, C, view) {
-  const s = pat.spec, h = s.height, hh = h * .46, hw = hh, tr = h * .34, bh = h * .58, bw = h * .62, y0 = hh * .74, d = painter(pat, C), all = [], big = s.ears !== 'none';
+  const s = pat.spec, h = pat.drawAt || s.height, hh = h * .46, hw = hh, tr = h * .34, bh = h * .58, bw = h * .62, y0 = hh * .74, d = painter(pat, C), all = [], big = s.ears !== 'none';
   // a big ear as it hangs from the side of the head: a fan, its lining in contrast inside the rim
   const earOut = (sg, k = 1) => chaikin([[sg * hw * .32, hh * .14], [sg * hw * (.62 + .16 * k), -hh * .04], [sg * hw * (.98 + .12 * k), hh * .18], [sg * hw * (1.06 + .1 * k), hh * .56], [sg * hw * (.9 + .06 * k), hh * .9], [sg * hw * .58, hh * .98], [sg * hw * .36, hh * .74]], 3);
   const earIn = sg => earOut(sg).map(([x, y]) => [sg * hw * .36 + (x - sg * hw * .36) * .84, hh * .5 + (y - hh * .5) * .84]);
@@ -408,7 +408,7 @@ function quadTail(d, C, kind, [x, y], h, dir = 1, view = 'side') {
 
 // ---- four-legged, sitting: the body, legs and pads as the elephant's (it sits the same way), the head and its parts from the kit ----
 function quad(pat, C, view) {
-  const s = pat.spec, h = s.height, d = painter(pat, C), all = [], k = s.head, far = shade(C.body, .8), farPad = shade(C.contrast, .82), maneTone = C.mane;
+  const s = pat.spec, h = pat.drawAt || s.height, d = painter(pat, C), all = [], k = s.head, far = shade(C.body, .8), farPad = shade(C.contrast, .82), maneTone = C.mane;
   C.n = C.n || 0;
   if (view === 'side') {
     // from its left, facing left, on a unit of its height; the head scaled about the neck by its size
@@ -484,7 +484,7 @@ function quad(pat, C, view) {
 
 // ---- a sea creature, its size its length: a body in two sides and a pale belly, fins either side, a dorsal fin, a fluke or a tail fin ----
 function sea(pat, C, view) {
-  const s = pat.spec, L = s.height, d = painter(pat, C), all = [], far = shade(C.body, .8), belly = C.contrast, k = s.head;
+  const s = pat.spec, L = pat.drawAt || s.height, d = painter(pat, C), all = [], far = shade(C.body, .8), belly = C.contrast, k = s.head;
   C.n = C.n || 0;
   if (view === 'side') {
     // from its left, facing left; the body on a unit of its length, the head (the front third) scaled by its size
@@ -551,8 +551,16 @@ export function plushViews(pat, { colours = {}, tex = {}, hrefs = {} } = {}) {
   const firm = /leather|vegan/.test(pat.spec.fabric || ''), vol = `<radialGradient id="vol-${C.uid}" cx=".36" cy=".3" r=".78" fx=".32" fy=".24"><stop offset="0" stop-color="#fff" stop-opacity="${firm ? .42 : .26}"/><stop offset="${firm ? .22 : .4}" stop-color="#fff" stop-opacity="0"/><stop offset=".72" stop-color="#000" stop-opacity=".05"/><stop offset="1" stop-color="#000" stop-opacity="${firm ? .3 : .24}"/></radialGradient>`
     + `<filter id="soft-${C.uid}" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation=".12"/></filter><radialGradient id="gnd-${C.uid}"><stop offset="0" stop-color="#000" stop-opacity=".22"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient>`;
   const defs = lookDefs(C.uid, tex) + vol, draw = DRAW[pat.spec.shape] || bean, out = {}, sk = pat.spec.sketches || [];
+  // A toy with no legs, or a bigger or smaller head, is drafted larger or smaller so that it still measures the height asked for
+  // (src/lab-pattern.js fixedPlush). Its drawing does the same: it is drawn at the scale at which its body, seen from the side with nothing
+  // added to it, is as tall (a sea creature: as long) as the toy of its type with its legs and a head of the usual size is drawn. Drawn
+  // at the one scale, a 12 in bear with no legs came out 9¾ in tall beside a callout that said 12.
+  let drawn = pat;
+  if (!pat.build && DRAW[pat.spec.shape]) { const s = pat.spec, long = s.shape === 'sea', bare = { ears: 'none', horn: 'none', mane: 'none', wings: false, spikes: false };
+    const sizeOf = sp => { const bx = box(draw({ ...pat, spec: { ...sp, ...bare }, drawAt: sp.height }, C, 'side').pts); return long ? bx.x1 - bx.x0 : bx.y1 - bx.y0; };
+    const usual = sizeOf({ ...s, legs: true, head: 1 }), own = sizeOf(s); if (own > 0 && Math.abs(usual / own - 1) > .005) drawn = { ...pat, drawAt: s.height * usual / own }; }
   for (const key of ['front', 'back', 'side']) {
-    const r = draw(pat, C, key), b = box(r.pts);
+    const r = draw(drawn, C, key), b = box(r.pts);
     // it stands (or sits) on the ground: a soft shadow under it
     let svg = `<ellipse cx="${r3((b.x0 + b.x1) / 2)}" cy="${r3(b.y1 - .05)}" rx="${r3((b.x1 - b.x0) * .52)}" ry="${r3(Math.max(.3, (b.x1 - b.x0) * .07))}" fill="url(#gnd-${C.uid})"/>` + r.svg;
     if (key === 'front') { const d = painter(pat, C); heightCallout(d, b, pat.spec.shape === 'sea' || pat.build?.horizontal ? Math.round((b.y1 - b.y0) * 2) / 2 : pat.spec.height); svg += d.svg(); b.x0 -= 1.3; }
