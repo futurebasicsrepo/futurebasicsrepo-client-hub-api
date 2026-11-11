@@ -102,9 +102,9 @@ export function registerLabPatternRoutes(app, d) {
   // does the pattern make the product? (src/lab-pattern-check.js) Run every time a garment or a bag's pattern is drafted for the page, saved or
   // exported: its seams walked, the made piece measured against its spec, every component its features call for, every outline clean, and the
   // same at each size of its run. Pieces edited by hand on the Pattern page are not walked (the check reads the pattern as drafted), so it says so.
-  // → { ok, passed, made, size, sizes: [{size, ok, why}], problems: [string], edited } or null (a shoe, a plush, a hard good: checked their own way)
+  // → { ok, passed, made, size, sizes: [{size, ok, why}], problems: [string], edited } or null (a shoe, a hard good: checked their own way)
   const checkOf = (L, pat, { full = false } = {}) => {
-    if (!pat || !(['garment', 'bag'].includes(pat.kind) || (pat.kind === 'plush' && pat.build)) || (pat.kind === 'garment' && !L.flat)) return null; // a plush built from parts is checked; the kit's plush by its own checks
+    if (!pat || !['garment', 'bag', 'plush'].includes(pat.kind) || (pat.kind === 'garment' && !L.flat)) return null; // a plush is checked by its joins (built from parts) or its assembly (a fixed body type)
     const style = L.flat?.style, m = z => (pat.kind === 'garment' ? measurementsFor(L.flat, z) : null), c = constructionCheck(draftOnly(L, pat.size), { m: m(pat.size), style, edges: full });
     if (!c) return null;
     const run = pat.kind === 'garment' && !STYLES[style]?.oneSize ? SIZES : [], sizes = proveSizes(z => draftOnly(L, z), m, style, run);
@@ -116,7 +116,7 @@ export function registerLabPatternRoutes(app, d) {
   const draftOnly = (L, size) => draft(L, size);
   // the proof for one product: its block sewn on paper, its seams and measurements, what it is made with, its cutting table
   const proofOf = (L, pat) => { const k = checkOf(L, pat, { full: true }); if (!k) return null;
-    const card = proofCard({ id: 'proof', label: L.c.name || 'Pattern', style: pat.kind === 'bag' ? 'Bag' : pat.kind === 'plush' ? `Plush built from parts · ${pat.size}` : STYLES[L.flat.style]?.label || L.flat.style, kind: pat.kind === 'bag' ? 'bag' : pat.kind === 'plush' ? 'plush' : STYLES[L.flat.style]?.kind, pat: draftOnly(L, pat.size), c: k.detail, sizes: k.sizes });
+    const card = proofCard({ id: 'proof', label: L.c.name || 'Pattern', style: pat.kind === 'bag' ? 'Bag' : pat.kind === 'plush' ? `${pat.build ? 'Plush built from parts' : 'Plush'} · ${pat.size}` : STYLES[L.flat.style]?.label || L.flat.style, kind: pat.kind === 'bag' ? 'bag' : pat.kind === 'plush' ? 'plush' : STYLES[L.flat.style]?.kind, pat: draftOnly(L, pat.size), c: k.detail, sizes: k.sizes });
     return proofPage({ title: `${L.c.name || 'Pattern'}: cut and sew proof`, lede: `The pattern at size ${pat.size}, proved by measurement: every seam walked against the edge it is sewn to, the made piece measured against its spec, every component its features call for, every piece laid on its cloth.${k.edited ? ' Pieces edited by hand on the Pattern page are not walked here: check them on the sample.' : ''}`, totals: [[k.ok ? 'Passes' : 'Does not pass', k.sizes.length ? `at ${k.sizes.filter(z => z.ok).length} of ${k.sizes.length} sizes` : 'its one size'], [`${k.passed}/${k.made}`, `checks at ${pat.size}`]], cards: [card], filters: false }); };
   // what a drawing is built with, read by the vision model: the concept's picture and its drawn flats, front and back. Not saved: the pattern page
   // shows it to the designer, who keeps it (it then saves with the pattern). Without a vision model, the sketch's name and the style stand

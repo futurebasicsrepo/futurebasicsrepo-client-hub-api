@@ -10,7 +10,7 @@ Nobody has to remember to run the check. It runs at each of these points:
 
 | When | What runs | Where the result shows | What it stops |
 |---|---|---|---|
-| A garment or bag is opened on the Pattern page | `constructionCheck` at the piece's size, and again at every size of its run | The **Sews together** panel: pass or the first problems, a tick or cross for each size, and **Open the cut and sew proof** | Nothing; it is shown to the designer |
+| A garment, a bag or a plush is opened on the Pattern page | `constructionCheck` at the piece's size, and again at every size of its run | The **Sews together** panel: pass or the first problems, a tick or cross for each size, and **Open the cut and sew proof** | Nothing; it is shown to the designer |
 | The pattern is saved (`PUT /v1/lab/concepts/:id/pattern`) | The same check on the saved pattern | The panel refreshes | Nothing; it is shown |
 | The factory package is built (`productionFiles` in `src/lab-pattern-routes.js`) | The check, plus the proof page | `pattern/cut-and-sew-proof.html` in the zip, beside the DXF, SVG and cut list. If anything fails, a note on the package says what | The note goes to whoever sends the package |
 | Someone opens the proof (`GET /v1/lab/concepts/:id/pattern-proof.html?size=M`) | The check with seam edges, rendered by `src/lab-pattern-proof.js` | A page with the block sewn on paper, the seam and measurement tables, every piece and trim, and the cutting table | — |
